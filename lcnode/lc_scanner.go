@@ -441,7 +441,7 @@ func (s *LcScanner) inodeExpired(inode *proto.InodeInfo, condE *proto.Expiration
 	if condT != nil {
 		for _, cond := range condT {
 			if cond.StorageClass == proto.OpTypeStorageClassEBS {
-				if expired(s.now.Unix(), inode.CreateTime.Unix(), cond.Days, cond.Date) && inode.StorageClass < proto.StorageTypeEBS {
+				if expired(s.now.Unix(), inode.CreateTime.Unix(), cond.Days, cond.Date) && inode.StorageClass < proto.StorageClass_BlobStore {
 					op = proto.OpTypeStorageClassEBS
 					return
 				}
@@ -449,7 +449,7 @@ func (s *LcScanner) inodeExpired(inode *proto.InodeInfo, condE *proto.Expiration
 		}
 		for _, cond := range condT {
 			if cond.StorageClass == proto.OpTypeStorageClassHDD {
-				if expired(s.now.Unix(), inode.CreateTime.Unix(), cond.Days, cond.Date) && inode.StorageClass < proto.StorageTypeHDD {
+				if expired(s.now.Unix(), inode.CreateTime.Unix(), cond.Days, cond.Date) && inode.StorageClass < proto.StorageClass_Replica_HDD {
 					op = proto.OpTypeStorageClassHDD
 					return
 				}

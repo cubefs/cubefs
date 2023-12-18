@@ -134,7 +134,7 @@ func TestLifecycleConfigurationTransition1(t *testing.T) {
         <Status>Enabled</Status>
         <Transition>
            <Days>365</Days>
-           <StorageClass>HDD</StorageClass>
+           <StorageClass>STANDARD_IA</StorageClass>
         </Transition>
     </Rule>
 </LifecycleConfiguration>
@@ -162,7 +162,7 @@ func TestLifecycleConfigurationTransition1(t *testing.T) {
 	_, err = l1.Validate()
 	require.Equal(t, LifeCycleErrMalformedXML, err)
 
-	l1.Rules[0].Transitions[0].StorageClass = "HDD"
+	l1.Rules[0].Transitions[0].StorageClass = "STANDARD_IA"
 	_, err = l1.Validate()
 	require.Equal(t, LifeCycleErrDateType, err)
 
@@ -181,11 +181,11 @@ func TestLifecycleConfigurationTransition2(t *testing.T) {
         <Status>Enabled</Status>
         <Transition>
            <Days>365</Days>
-           <StorageClass>HDD</StorageClass>
+           <StorageClass>STANDARD_IA</StorageClass>
         </Transition>
 		<Transition>
            <Days>365</Days>
-           <StorageClass>HDD</StorageClass>
+           <StorageClass>STANDARD_IA</StorageClass>
         </Transition>
     </Rule>
 </LifecycleConfiguration>
@@ -199,7 +199,7 @@ func TestLifecycleConfigurationTransition2(t *testing.T) {
 	require.Equal(t, LifeCycleErrStorageClass, err)
 
 	//test validTransitions
-	l1.Rules[0].Transitions[1].StorageClass = "EBS"
+	l1.Rules[0].Transitions[1].StorageClass = "GLACIER"
 	now := time.Now().In(time.UTC)
 	ti := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
 	l1.Rules[0].Transitions[1].Days = nil

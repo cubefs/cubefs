@@ -27,20 +27,16 @@ const (
 	RuleDisabled string = "Disabled"
 
 	OpTypeDelete          = "DELETE"
-	OpTypeStorageClassHDD = "HDD"
-	OpTypeStorageClassEBS = "EBS"
-
-	StorageTypeSSD uint32 = 1
-	StorageTypeHDD uint32 = 2
-	StorageTypeEBS uint32 = 3
+	OpTypeStorageClassHDD = "STANDARD_IA"
+	OpTypeStorageClassEBS = "GLACIER"
 )
 
 func OpTypeToStorageType(op string) uint32 {
 	switch op {
 	case OpTypeStorageClassHDD:
-		return StorageTypeHDD
+		return StorageClass_Replica_HDD
 	case OpTypeStorageClassEBS:
-		return StorageTypeEBS
+		return StorageClass_BlobStore
 	}
 	return 0
 }
