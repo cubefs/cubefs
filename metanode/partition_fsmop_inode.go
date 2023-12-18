@@ -497,6 +497,8 @@ func (mp *metaPartition) fsmAppendExtentsWithCheck(ino *Inode, isSplit bool) (st
 	}
 
 	if err := fsmIno.updateStorageClass(ino.StorageClass, isCache, isMigration); err != nil {
+		log.LogErrorf("action[fsmAppendExtentsWithCheck] updateStorageClass inode %v isCache %v isMigration %v, failed %v",
+			ino.Inode, isCache, isMigration, err.Error())
 		status = proto.OpDismatchStorageClass
 		return
 	}

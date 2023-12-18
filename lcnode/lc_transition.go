@@ -180,7 +180,7 @@ func (t *TransitionMgr) readFromExtentClient(e *proto.ScanDentry, writer io.Writ
 	return
 }
 
-func (t *TransitionMgr) migrateToEbs(e *proto.ScanDentry) (oek proto.ObjExtentKey, err error) {
+func (t *TransitionMgr) migrateToEbs(e *proto.ScanDentry) (oeks []proto.ObjExtentKey, err error) {
 	if err = t.ec.OpenStream(e.Inode, false, false); err != nil {
 		log.LogErrorf("migrateToEbs: OpenStream fail, inode(%v) err: %v", e.Inode, err)
 		return
@@ -225,7 +225,7 @@ func (t *TransitionMgr) migrateToEbs(e *proto.ScanDentry) (oek proto.ObjExtentKe
 		err = errors.NewErrorf("migrateToEbs check md5 inconsistent, srcMd5: %v, md5Value: %v", srcMd5, md5Value)
 		return
 	}
-
+	oeks = []proto.ObjExtentKey{oek}
 	log.LogInfof("migrateToEbs and check finished, inode(%v)", e.Inode)
 	return
 }
