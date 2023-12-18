@@ -151,6 +151,7 @@ type OpInode interface {
 	QuotaCreateInode(req *proto.QuotaCreateInodeRequest, p *Packet, remoteAddr string) (err error)
 	RenewalForbiddenMigration(req *proto.RenewalForbiddenMigrationRequest, p *Packet, remoteAddr string) (err error)
 	UpdateExtentKeyAfterMigration(req *proto.UpdateExtentKeyAfterMigrationRequest, p *Packet, remoteAddr string) (err error)
+	InodeGetWithEk(req *InodeGetReq, p *Packet) (err error)
 }
 
 type OpExtend interface {
