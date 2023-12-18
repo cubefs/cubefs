@@ -15,6 +15,7 @@
 package proto
 
 import (
+	"errors"
 	"fmt"
 	"sync"
 	"time"
@@ -23,24 +24,22 @@ import (
 )
 
 const (
-	RuleEnabled  string = "Enabled"
-	RuleDisabled string = "Disabled"
+	RuleEnabled   string = "Enabled"
+	RuleDisabled  string = "Disabled"
+	RuleMaxCounts        = 1000
+	MaxIdLength          = 255
 
 	OpTypeDelete          = "DELETE"
 	OpTypeStorageClassHDD = "HDD"
-	OpTypeStorageClassEBS = "EBS"
-
-	StorageTypeSSD uint32 = 1
-	StorageTypeHDD uint32 = 2
-	StorageTypeEBS uint32 = 3
+	OpTypeStorageClassEBS = "BLOBSTORE"
 )
 
 func OpTypeToStorageType(op string) uint32 {
 	switch op {
 	case OpTypeStorageClassHDD:
-		return StorageTypeHDD
+		return StorageClass_Replica_HDD
 	case OpTypeStorageClassEBS:
-		return StorageTypeEBS
+		return StorageClass_BlobStore
 	}
 	return 0
 }
@@ -71,6 +70,191 @@ type Transition struct {
 	Date         *time.Time `json:"Date,omitempty" xml:"Date,omitempty" bson:"Date,omitempty"`
 	Days         *int       `json:"Days,omitempty" xml:"Days,omitempty" bson:"Days,omitempty"`
 	StorageClass string     `json:"StorageClass,omitempty" xml:"StorageClass,omitempty" bson:"StorageClass,omitempty"`
+}
+
+var (
+	LifeCycleErrTooManyRules   = errors.New("Rules number should not exceed allowed limit of 1000")
+	LifeCycleErrMissingRules   = errors.New("No Lifecycle Rules found in request")
+	LifeCycleErrMissingActions = errors.New("At least one action needs to be specified in a rule")
+	LifeCycleErrMissingRuleID  = errors.New("No Lifecycle Rule ID in request")
+	LifeCycleErrTooLongRuleID  = errors.New("ID length should not exceed allowed limit of 255")
+	LifeCycleErrSameRuleID     = errors.New("Rule ID must be unique. Found same ID for more than one rule")
+	LifeCycleErrDateType       = errors.New("'Date' must be at midnight GMT")
+	LifeCycleErrDaysType       = errors.New("'Days' for Expiration action must be a positive integer")
+	LifeCycleErrStorageClass   = errors.New("'StorageClass' must be different for 'Transition' actions in same 'Rule'")
+	LifeCycleErrMalformedXML   = errors.New("The XML you provided was not well-formed or did not validate against our published schema")
+)
+
+func ValidRules(Rules []*Rule) error {
+	if len(Rules) > RuleMaxCounts {
+		return LifeCycleErrTooManyRules
+	}
+	if len(Rules) <= 0 {
+		return LifeCycleErrMissingRules
+	}
+
+	isRuleIdExist := make(map[string]bool)
+	for _, rule := range Rules {
+		_, ok := isRuleIdExist[rule.ID]
+		if !ok {
+			isRuleIdExist[rule.ID] = true
+		} else {
+			return LifeCycleErrSameRuleID
+		}
+		if err := validRule(rule); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func validRule(r *Rule) error {
+	if len(r.ID) == 0 {
+		return LifeCycleErrMissingRuleID
+	}
+	if len(r.ID) > MaxIdLength {
+		return LifeCycleErrTooLongRuleID
+	}
+	if r.Status != RuleEnabled && r.Status != RuleDisabled {
+		return LifeCycleErrMalformedXML
+	}
+
+	if r.Expiration == nil && r.Transitions == nil {
+		return LifeCycleErrMissingActions
+	}
+
+	if r.Expiration != nil {
+		if err := validExpiration(r.Expiration); err != nil {
+			return err
+		}
+	}
+
+	if r.Transitions != nil {
+		daysMap := make(map[string]int)
+		dateMap := make(map[string]*time.Time)
+		singleMap := make(map[string]int)
+		for _, transition := range r.Transitions {
+			singleMap[transition.StorageClass]++
+			if singleMap[transition.StorageClass] > 1 {
+				return LifeCycleErrStorageClass
+			}
+			if err := validTransition(transition, dateMap, daysMap); err != nil {
+				return err
+			}
+		}
+
+		if err := validTransitions(dateMap, daysMap, r.Expiration); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func validExpiration(e *Expiration) error {
+	// Date and Days cannot be set at the same time
+	if e.Date != nil && e.Days != nil {
+		return LifeCycleErrMalformedXML
+	}
+	// Date and Days cannot both be nil
+	if e.Date == nil && e.Days == nil {
+		return LifeCycleErrMalformedXML
+	}
+	// Date must be midnight UTC
+	if e.Date != nil {
+		date := e.Date.In(time.UTC)
+		if !(date.Hour() == 0 && date.Minute() == 0 && date.Second() == 0 && date.Nanosecond() == 0) {
+			return LifeCycleErrDateType
+		}
+	} else if e.Days != nil {
+		// Days must be greater than 0
+		if *e.Days <= 0 {
+			return LifeCycleErrDaysType
+		}
+	}
+
+	return nil
+}
+
+func validTransition(t *Transition, dateMap map[string]*time.Time, daysMap map[string]int) error {
+	// Date and Days cannot be set at the same time
+	if t.Date != nil && t.Days != nil {
+		return LifeCycleErrMalformedXML
+	}
+	// Date and Days cannot both be nil
+	if t.Date == nil && t.Days == nil {
+		return LifeCycleErrMalformedXML
+	}
+	// StorageClass must be the specified
+	if t.StorageClass != OpTypeStorageClassHDD && t.StorageClass != OpTypeStorageClassEBS {
+		return LifeCycleErrMalformedXML
+	}
+	// Date must be midnight UTC
+	if t.Date != nil {
+		date := t.Date.In(time.UTC)
+		if !(date.Hour() == 0 && date.Minute() == 0 && date.Second() == 0 && date.Nanosecond() == 0) {
+			return LifeCycleErrDateType
+		}
+		dateMap[t.StorageClass] = t.Date
+	} else if t.Days != nil {
+		// Days must be greater than 0
+		if *t.Days <= 0 {
+			return LifeCycleErrDaysType
+		}
+		daysMap[t.StorageClass] = *t.Days
+	}
+
+	return nil
+}
+
+func validTransitions(dateMap map[string]*time.Time, daysMap map[string]int, expiration *Expiration) error {
+	// transitions and expiration must be all in date form or all in days form
+	if len(dateMap) > 0 && len(daysMap) > 0 {
+		return LifeCycleErrMalformedXML
+	}
+
+	if len(dateMap) > 0 {
+		var s []*time.Time
+		if c, ok := dateMap[OpTypeStorageClassHDD]; ok {
+			s = append(s, c)
+		}
+		if c, ok := dateMap[OpTypeStorageClassEBS]; ok {
+			s = append(s, c)
+		}
+		for i := 0; i < len(s)-1; i++ {
+			if !s[i+1].After(*s[i]) {
+				return LifeCycleErrMalformedXML
+			}
+		}
+		if expiration != nil {
+			if expiration.Days != nil || !expiration.Date.After(*s[len(s)-1]) {
+				return LifeCycleErrMalformedXML
+			}
+		}
+	}
+
+	if len(daysMap) > 0 {
+		var s []int
+		if c, ok := daysMap[OpTypeStorageClassHDD]; ok {
+			s = append(s, c)
+		}
+		if c, ok := daysMap[OpTypeStorageClassEBS]; ok {
+			s = append(s, c)
+		}
+		for i := 0; i < len(s)-1; i++ {
+			if s[i+1] <= s[i] {
+				return LifeCycleErrMalformedXML
+			}
+		}
+		if expiration != nil {
+			if expiration.Date != nil || *expiration.Days <= s[len(s)-1] {
+				return LifeCycleErrMalformedXML
+			}
+		}
+	}
+
+	return nil
 }
 
 func (lcConf *LcConfiguration) GenEnabledRuleTasks() []*RuleTask {
