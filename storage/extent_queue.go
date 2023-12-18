@@ -297,6 +297,8 @@ type recordFileWriter struct {
 	fp   *os.File
 	bufW *bufio.Writer
 	lat  int64 // Last active time (unix seconds)
+
+	inflight int64
 }
 
 func (r *recordFileWriter) WriteRecord(rec *record) (err error) {
@@ -307,13 +309,21 @@ func (r *recordFileWriter) WriteRecord(rec *record) (err error) {
 	}
 	var n int
 	n, err = r.bufW.Write(b)
-	r.rf.incSize(int64(n))
+	r.inflight += int64(n)
 	return
 }
 
 func (r *recordFileWriter) Flush() error {
+	if r.inflight == 0 {
+		return nil
+	}
+	if err := r.bufW.Flush(); err != nil {
+		return err
+	}
+	r.rf.incSize(r.inflight)
+	r.inflight = 0
 	r.lat = time.Now().Unix()
-	return r.bufW.Flush()
+	return nil
 
 }
 
@@ -356,6 +366,10 @@ func (r *recordFileReader) Offset() int64 {
 }
 
 func (r *recordFileReader) ReadRecord(rec *record) (err error) {
+	if r.rf.size()-r.offset < queueRecordCodecLength {
+		err = io.EOF
+		return
+	}
 	var b = getRecordCodecBytes()
 	defer returnRecordCodecBytes(b)
 	var n int
@@ -498,10 +512,18 @@ type ExtentQueue struct {
 
 func (q *ExtentQueue) statRecordFile(rfn recordFilename) (rf *recordFile, err error) {
 	var info os.FileInfo
-	if info, err = os.Stat(path.Join(q.path, rfn.original())); err != nil {
+	var filepath = path.Join(q.path, rfn.original())
+	if info, err = os.Stat(filepath); err != nil {
 		return
 	}
-	rf = newRecordFile(rfn, info.Size())
+	var size int64
+	if size = info.Size(); size%queueRecordCodecLength != 0 {
+		size = (size / queueRecordCodecLength) * queueRecordCodecLength
+		if err = os.Truncate(filepath, size); err != nil {
+			return
+		}
+	}
+	rf = newRecordFile(rfn, size)
 	return
 }
 
@@ -540,11 +562,7 @@ func (q *ExtentQueue) openRecordFileWriter(rf *recordFile) (writer *recordFileWr
 	if fp, err = os.OpenFile(filepath, queueRecordFileWriterOpenFlag, queueRecordFilePerm); err != nil {
 		return
 	}
-	var info os.FileInfo
-	if info, err = fp.Stat(); err != nil {
-		return
-	}
-	var filesize = info.Size()
+	var filesize = rf.size()
 	if filesize%queueRecordCodecLength != 0 {
 		filesize = (filesize / queueRecordCodecLength) * queueRecordCodecLength
 		if err = fp.Truncate(filesize); err != nil {

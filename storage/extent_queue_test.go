@@ -4,6 +4,7 @@ import (
 	"container/list"
 	"context"
 	"os"
+	"path"
 	"sort"
 	"strconv"
 	"sync"
@@ -233,8 +234,7 @@ func validRecordFileList(t *testing.T, path string, expected []string) {
 
 func TestExtentQueue_ConsumingWithProducing(t *testing.T) {
 	var testpath = testutil.InitTempTestPath(t)
-	t.Logf("TestPath: %v", testpath.Path())
-	//defer testpath.Cleanup()
+	defer testpath.Cleanup()
 
 	type __item struct {
 		ino       uint64
@@ -311,4 +311,75 @@ func TestExtentQueue_ConsumingWithProducing(t *testing.T) {
 	wg.Wait()
 
 	assert.Equal(t, atomic.LoadInt64(&produced), atomic.LoadInt64(&consumed))
+}
+
+func TestBatchProducer_BrokenData(t *testing.T) {
+	var testpath = testutil.InitTempTestPath(t)
+	defer testpath.Cleanup()
+
+	var err error
+	var queue *ExtentQueue
+	queue, err = OpenExtentQueue(testpath.Path(), 4*1024*1024, -1)
+	assert.Nil(t, err)
+
+	// 生产50000条记录
+	for i := 0; i < 50000; i++ {
+		err = queue.Produce(0, 0, 0, 0, 0)
+		assert.Nil(t, err)
+	}
+	assert.Equal(t, 50000, queue.Remain())
+	queue.Close()
+
+	err = breakRecordFiles(testpath.Path())
+	assert.Nil(t, err)
+
+	queue, err = OpenExtentQueue(testpath.Path(), 4*1024*1024, -1)
+	assert.Nil(t, err)
+
+	assert.Equal(t, 50000, queue.Remain())
+
+	// 生产10000条记录
+	for i := 0; i < 10000; i++ {
+		err = queue.Produce(0, 0, 0, 0, 0)
+		assert.Nil(t, err)
+	}
+	assert.Equal(t, 60000, queue.Remain())
+
+	var count int
+	err = queue.Consume(func(ino, extent uint64, offset, size, timestamp int64) (goon bool, err error) {
+		count++
+		return true, nil
+	})
+	assert.Nil(t, err)
+
+	assert.Equal(t, 60000, count)
+	queue.Close()
+}
+
+func breakRecordFiles(dir string) error {
+	var err error
+	var dirFp *os.File
+	if dirFp, err = os.Open(dir); err != nil {
+		return err
+	}
+	var names []string
+	if names, err = dirFp.Readdirnames(-1); err != nil {
+		return err
+	}
+	_ = dirFp.Close()
+	sort.Strings(names)
+	for _, name := range names {
+		if _, is := parseRecordFilename(name); !is {
+			continue
+		}
+		var filepath = path.Join(dir, name)
+		var info os.FileInfo
+		if info, err = os.Stat(filepath); err != nil {
+			return err
+		}
+		if err = os.Truncate(filepath, info.Size()+1); err != nil {
+			return err
+		}
+	}
+	return nil
 }
