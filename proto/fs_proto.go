@@ -95,9 +95,11 @@ type InodeInfo struct {
 	VerSeq            uint64                    `json:"seq"`
 	expiration        int64
 	PersistAccessTime time.Time `json:"pat"`
-	StorageClass      uint32    `json:"storageClass"`
-	WriteGen          uint64    `json:"writeGen"`
-	ForbiddenLc       bool      `json:"forbiddenLc"`
+
+	StorageClass          uint32 `json:"storageClass"`
+	WriteGen              uint64 `json:"writeGen"`
+	ForbiddenLc           bool   `json:"forbiddenLc"`
+	MigrationStorageClass uint32 `json:"migrationStorageClass"`
 }
 
 type SimpleExtInfo struct {
@@ -1078,9 +1080,18 @@ type RenewalForbiddenMigrationRequest struct {
 }
 
 type UpdateExtentKeyAfterMigrationRequest struct {
-	PartitionID   uint64      `json:"pid"`
-	Inode         uint64      `json:"ino"`
-	StorageClass  uint32      `json:"storageClass"`
-	NewExtentKeys interface{} `json:"newExtentKeys"`
-	WriteGen      uint64      `json:"writeGen"`
+	PartitionID      uint64         `json:"pid"`
+	Inode            uint64         `json:"ino"`
+	StorageClass     uint32         `json:"storageClass"`
+	NewObjExtentKeys []ObjExtentKey `json:"newObjExtentKeys"`
+	WriteGen         uint64         `json:"writeGen"`
+}
+
+type InodeGetWithEkResponse struct {
+	Info                     *InodeInfo     `json:"info"`
+	LayAll                   []InodeInfo    `json:"layerInfo"`
+	HybridCloudExtents       []ExtentKey    `json:"eks"`
+	HybridCloudObjExtents    []ObjExtentKey `json:"objeks"`
+	MigrationExtents         []ExtentKey    `json:"migrationEks"`
+	MigrationCloudObjExtents []ObjExtentKey `json:"migrationObjeks"`
 }
