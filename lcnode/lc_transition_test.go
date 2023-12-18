@@ -61,6 +61,10 @@ func (m *MockExtentClient) Flush(inode uint64) error {
 	return nil
 }
 
+func (m *MockExtentClient) Close() error {
+	return nil
+}
+
 type MockEbsClient struct {
 	data []byte
 }

@@ -108,6 +108,17 @@ func NewS3Scanner(adminTask *proto.AdminTask, l *LcNode) (*LcScanner, error) {
 		return nil, err
 	}
 
+	var volumeInfo *proto.SimpleVolView
+	volumeInfo, err = l.mc.AdminAPI().GetVolumeSimpleInfo(scanner.Volume)
+	if err != nil {
+		log.LogErrorf("NewVolume: get volume info from master failed: volume(%v) err(%v)", scanner.Volume, err)
+		return nil, err
+	}
+	if volumeInfo.Status == 1 {
+		log.LogWarnf("NewVolume: volume has been marked for deletion: volume(%v) status(%v - 0:normal/1:markDelete)",
+			scanner.Volume, volumeInfo.Status)
+		return nil, proto.ErrVolNotExists
+	}
 	var extentConfig = &stream.ExtentConfig{
 		Volume:                      scanner.Volume,
 		Masters:                     l.masters,
@@ -117,9 +128,15 @@ func NewS3Scanner(adminTask *proto.AdminTask, l *LcNode) (*LcScanner, error) {
 		OnGetExtents:                metaWrapper.GetExtents,
 		OnTruncate:                  metaWrapper.Truncate,
 		OnRenewalForbiddenMigration: metaWrapper.RenewalForbiddenMigration,
+		AllowedStorageClass:         volumeInfo.AllowedStorageClass,
 	}
 	var extentClient *stream.ExtentClient
 	if extentClient, err = stream.NewExtentClient(extentConfig); err != nil {
+		log.LogErrorf("NewExtentClient err: %v", err)
+		return nil, err
+	}
+	var extentClientForW *stream.ExtentClient
+	if extentClientForW, err = stream.NewExtentClient(extentConfig); err != nil {
 		log.LogErrorf("NewExtentClient err: %v", err)
 		return nil, err
 	}
@@ -127,6 +144,7 @@ func NewS3Scanner(adminTask *proto.AdminTask, l *LcNode) (*LcScanner, error) {
 	scanner.transitionMgr = &TransitionMgr{
 		volume:    scanner.Volume,
 		ec:        extentClient,
+		ecForW:    extentClientForW,
 		ebsClient: ebsClient,
 	}
 
@@ -350,11 +368,11 @@ func (s *LcScanner) handleFile(dentry *proto.ScanDentry) {
 		_, err := s.mw.DeleteWithCond_ll(dentry.ParentId, dentry.Inode, dentry.Name, os.FileMode(dentry.Type).IsDir(), dentry.Path)
 		if err != nil {
 			atomic.AddInt64(&s.currentStat.ErrorSkippedNum, 1)
-			log.LogWarnf("batchHandleFile DeleteWithCond_ll err: %v, dentry: %+v, skip it", err, dentry)
+			log.LogWarnf("delete DeleteWithCond_ll err: %v, dentry: %+v, skip it", err, dentry)
 			return
 		}
 		if err = s.mw.Evict(dentry.Inode, dentry.Path); err != nil {
-			log.LogWarnf("batchHandleFile Evict err: %v, dentry: %+v", err, dentry)
+			log.LogWarnf("delete Evict err: %v, dentry: %+v", err, dentry)
 		}
 		atomic.AddInt64(&s.currentStat.ExpiredNum, 1)
 
@@ -441,7 +459,7 @@ func (s *LcScanner) inodeExpired(inode *proto.InodeInfo, condE *proto.Expiration
 	if condT != nil {
 		for _, cond := range condT {
 			if cond.StorageClass == proto.OpTypeStorageClassEBS {
-				if expired(s.now.Unix(), inode.CreateTime.Unix(), cond.Days, cond.Date) && inode.StorageClass < proto.StorageTypeEBS {
+				if expired(s.now.Unix(), inode.CreateTime.Unix(), cond.Days, cond.Date) && inode.StorageClass < proto.StorageClass_BlobStore {
 					op = proto.OpTypeStorageClassEBS
 					return
 				}
@@ -449,7 +467,7 @@ func (s *LcScanner) inodeExpired(inode *proto.InodeInfo, condE *proto.Expiration
 		}
 		for _, cond := range condT {
 			if cond.StorageClass == proto.OpTypeStorageClassHDD {
-				if expired(s.now.Unix(), inode.CreateTime.Unix(), cond.Days, cond.Date) && inode.StorageClass < proto.StorageTypeHDD {
+				if expired(s.now.Unix(), inode.CreateTime.Unix(), cond.Days, cond.Date) && inode.StorageClass < proto.StorageClass_Replica_HDD {
 					op = proto.OpTypeStorageClassHDD
 					return
 				}
@@ -666,5 +684,7 @@ func (s *LcScanner) Stop() {
 	close(s.dirChan.In)
 	close(s.fileChan.In)
 	s.mw.Close()
+	s.transitionMgr.ec.Close()
+	s.transitionMgr.ecForW.Close()
 	log.LogInfof("scanner(%v) stopped", s.ID)
 }

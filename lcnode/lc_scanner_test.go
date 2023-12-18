@@ -38,6 +38,7 @@ func TestLcScanner(t *testing.T) {
 		transitionMgr: &TransitionMgr{
 			volume:    "test_vol",
 			ec:        NewMockExtentClient(),
+			ecForW:    NewMockExtentClient(),
 			ebsClient: NewMockEbsClient(),
 		},
 		adminTask: &proto.AdminTask{
