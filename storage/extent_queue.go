@@ -746,7 +746,6 @@ func (q *ExtentQueue) __walk(si recordIndex, visitor recordVisitor) (err error) 
 			return true
 		}
 		if err != nil {
-			_ = reader.Close()
 			return false
 		}
 		defer func() {

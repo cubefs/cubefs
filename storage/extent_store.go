@@ -646,8 +646,8 @@ func (s *ExtentStore) FlushDelete(interceptor Interceptor, count int) (deleted, 
 			if e, err = s.ExtentWithHeader(info); err != nil {
 				return maybeGoon(), nil
 			}
-			if err = s.tinyDelete(e, offset, size); err != nil && log.IsWarnEnabled() {
-				log.LogWarnf("Store(%v) delete TinyExtent data failed: ino=%v, extent=%v, offset=%v, size=%v, error=%v",
+			if err = s.tinyDelete(e, offset, size); err != nil {
+				log.LogErrorf("Store(%v) delete TinyExtent data failed: ino=%v, extent=%v, offset=%v, size=%v, error=%v",
 					s.partitionID, ino, extent, offset, size, err)
 				return true, nil
 			}
@@ -665,10 +665,13 @@ func (s *ExtentStore) FlushDelete(interceptor Interceptor, count int) (deleted, 
 		if ctx, err = interceptor.Before(); err != nil {
 			return false, err
 		}
-		if err = os.Remove(filepath); err != nil && !os.IsNotExist(err) && log.IsWarnEnabled() {
-			log.LogWarnf("Store(%v) remove NormalExtent file failed: extent=%v, ino=%v, filepath=%v, error=%v", s.partitionID, extent, ino, filepath, err)
+		if err = os.Remove(filepath); err != nil && os.IsNotExist(err) {
+			err = nil
 		}
 		interceptor.After(ctx, 0, err)
+		if err != nil {
+			log.LogErrorf("Store(%v) remove NormalExtent file failed: extent=%v, ino=%v, filepath=%v, error=%v", s.partitionID, extent, ino, filepath, err)
+		}
 
 		deleted++
 		if err = s.removeExtentHeader(extent); err != nil && log.IsWarnEnabled() {
