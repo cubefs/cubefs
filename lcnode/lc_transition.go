@@ -32,6 +32,7 @@ type ExtentApi interface {
 	Read(inode uint64, data []byte, offset int, size int, storageClass uint32, isMigration bool) (read int, err error)
 	Write(inode uint64, offset int, data []byte, flags int, checkFunc func() error, storageClass uint32, isMigration bool) (write int, err error)
 	Flush(inode uint64) error
+	Close() error
 }
 
 type EbsApi interface {
@@ -41,18 +42,28 @@ type EbsApi interface {
 
 type TransitionMgr struct {
 	volume    string
-	ec        ExtentApi
+	ec        ExtentApi // extent client for read
+	ecForW    ExtentApi // extent client for write
 	ebsClient EbsApi
 }
 
 func (t *TransitionMgr) migrate(e *proto.ScanDentry) (err error) {
 	if err = t.ec.OpenStream(e.Inode, false, false); err != nil {
-		log.LogErrorf("migrate: OpenStream fail, inode(%v) err: %v", e.Inode, err)
+		log.LogErrorf("migrate: ec OpenStream fail, inode(%v) err: %v", e.Inode, err)
 		return
 	}
 	defer func() {
 		if closeErr := t.ec.CloseStream(e.Inode); err != nil {
-			log.LogErrorf("migrate: CloseStream fail, inode(%v) err: %v", e.Inode, closeErr)
+			log.LogErrorf("migrate: ec CloseStream fail, inode(%v) err: %v", e.Inode, closeErr)
+		}
+	}()
+	if err = t.ecForW.OpenStream(e.Inode, false, false); err != nil {
+		log.LogErrorf("migrate: ecForW OpenStream fail, inode(%v) err: %v", e.Inode, err)
+		return
+	}
+	defer func() {
+		if closeErr := t.ecForW.CloseStream(e.Inode); err != nil {
+			log.LogErrorf("migrate: ecForW CloseStream fail, inode(%v) err: %v", e.Inode, closeErr)
 		}
 	}()
 
@@ -84,9 +95,9 @@ func (t *TransitionMgr) migrate(e *proto.ScanDentry) (err error) {
 			return
 		}
 		if readN > 0 {
-			writeN, err = t.ec.Write(e.Inode, writeOffset, buf[:readN], 0, nil, proto.OpTypeToStorageType(e.Op), true)
+			writeN, err = t.ecForW.Write(e.Inode, writeOffset, buf[:readN], 0, nil, proto.OpTypeToStorageType(e.Op), true)
 			if err != nil {
-				log.LogErrorf("migrate: ebs write err: %v, inode(%v), target offset(%v)", err, e.Inode, writeOffset)
+				log.LogErrorf("migrate: ecForW write err: %v, inode(%v), target offset(%v)", err, e.Inode, writeOffset)
 				return
 			}
 			readOffset += readN
@@ -101,8 +112,8 @@ func (t *TransitionMgr) migrate(e *proto.ScanDentry) (err error) {
 		}
 	}
 
-	if err = t.ec.Flush(e.Inode); err != nil {
-		log.LogErrorf("migrate: ec flush err: %v, inode(%v)", err, e.Inode)
+	if err = t.ecForW.Flush(e.Inode); err != nil {
+		log.LogErrorf("migrate: ecForW flush err: %v, inode(%v)", err, e.Inode)
 		return
 	}
 
@@ -162,7 +173,12 @@ func (t *TransitionMgr) readFromExtentClient(e *proto.ScanDentry, writer io.Writ
 		}
 		buf = buf[:readSize]
 
-		readN, err = t.ec.Read(e.Inode, buf, readOffset, readSize, e.StorageClass, isMigrationExtent)
+		if isMigrationExtent {
+			readN, err = t.ecForW.Read(e.Inode, buf, readOffset, readSize, e.StorageClass, isMigrationExtent)
+		} else {
+			readN, err = t.ec.Read(e.Inode, buf, readOffset, readSize, e.StorageClass, isMigrationExtent)
+		}
+
 		if err != nil && err != io.EOF {
 			return
 		}
