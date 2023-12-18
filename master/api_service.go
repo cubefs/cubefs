@@ -22,6 +22,7 @@ import (
 	"math"
 	"net/http"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -2314,6 +2315,10 @@ func (m *Server) checkStorageClassForCreateVolReq(req *createVolReq) (err error)
 			req.name, req.volStorageClass)
 		req.allowedStorageClass = append(req.allowedStorageClass, req.volStorageClass)
 	}
+
+	sort.Slice(req.allowedStorageClass, func(i, j int) bool {
+		return req.allowedStorageClass[i] < req.allowedStorageClass[j]
+	})
 
 	if m.HasMultiReplicaStorageClass(req.allowedStorageClass) {
 		if m.cluster.FaultDomain {
