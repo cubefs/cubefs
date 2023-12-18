@@ -6257,12 +6257,37 @@ func (m *Server) SetBucketLifecycle(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-	if _, err = m.cluster.getVol(req.VolName); err != nil {
+	var vol *Vol
+	if vol, err = m.cluster.getVol(req.VolName); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeVolNotExists, Msg: err.Error()})
 		return
 	}
+
+	if err = proto.ValidRules(req.Rules); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	//lifecycle transition storage class must in vol allowedStorageClass
+	for _, rule := range req.Rules {
+		for _, t := range rule.Transitions {
+			if !allowedStorageClass(t.StorageClass, vol.allowedStorageClass) {
+				sendErrReply(w, r, newErrHTTPReply(proto.ErrNoSupportStorageClass))
+				return
+			}
+		}
+	}
+
 	_ = m.cluster.SetBucketLifecycle(&req)
 	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("PutBucketLifecycleConfiguration successful ")))
+}
+
+func allowedStorageClass(sc string, allowed []uint32) bool {
+	for _, a := range allowed {
+		if proto.OpTypeToStorageType(sc) == a {
+			return true
+		}
+	}
+	return false
 }
 
 func (m *Server) GetBucketLifecycle(w http.ResponseWriter, r *http.Request) {
@@ -6281,7 +6306,7 @@ func (m *Server) GetBucketLifecycle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if _, err = m.cluster.getVol(name); err != nil {
-		sendErrReply(w, r, newErrHTTPReply(proto.ErrVolNotExists))
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeVolNotExists, Msg: err.Error()})
 		return
 	}
 	lcConf = m.cluster.GetBucketLifecycle(name)
