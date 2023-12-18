@@ -377,13 +377,13 @@ func (s *LcScanner) handleFile(dentry *proto.ScanDentry) {
 
 	case proto.OpTypeStorageClassEBS:
 		s.limiter.Wait(context.Background())
-		oek, err := s.transitionMgr.migrateToEbs(dentry)
+		oeks, err := s.transitionMgr.migrateToEbs(dentry)
 		if err != nil {
 			atomic.AddInt64(&s.currentStat.ErrorSkippedNum, 1)
 			log.LogErrorf("migrateToEbs err: %v, dentry: %+v, skip it", err, dentry)
 			return
 		}
-		err = s.mw.UpdateExtentKeyAfterMigration(dentry.Inode, proto.OpTypeToStorageType(dentry.Op), oek, dentry.WriteGen)
+		err = s.mw.UpdateExtentKeyAfterMigration(dentry.Inode, proto.OpTypeToStorageType(dentry.Op), oeks, dentry.WriteGen)
 		if err != nil {
 			atomic.AddInt64(&s.currentStat.ErrorSkippedNum, 1)
 			log.LogErrorf("update extent key err: %v, dentry: %+v, skip it", err, dentry)

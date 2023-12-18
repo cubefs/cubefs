@@ -80,23 +80,24 @@ func IsAncestor(parent, child string) bool {
 
 // InodeInfo defines the inode struct.
 type InodeInfo struct {
-	Inode        uint64                    `json:"ino"`
-	Mode         uint32                    `json:"mode"`
-	Nlink        uint32                    `json:"nlink"`
-	Size         uint64                    `json:"sz"`
-	Uid          uint32                    `json:"uid"`
-	Gid          uint32                    `json:"gid"`
-	Generation   uint64                    `json:"gen"`
-	ModifyTime   time.Time                 `json:"mt"`
-	CreateTime   time.Time                 `json:"ct"`
-	AccessTime   time.Time                 `json:"at"`
-	Target       []byte                    `json:"tgt"`
-	QuotaInfos   map[uint32]*MetaQuotaInfo `json:"qifs"`
-	VerSeq       uint64                    `json:"seq"`
-	expiration   int64
-	StorageClass uint32 `json:"storageClass"`
-	WriteGen     uint64 `json:"writeGen"`
-	ForbiddenLc  bool   `json:"forbiddenLc"`
+	Inode                 uint64                    `json:"ino"`
+	Mode                  uint32                    `json:"mode"`
+	Nlink                 uint32                    `json:"nlink"`
+	Size                  uint64                    `json:"sz"`
+	Uid                   uint32                    `json:"uid"`
+	Gid                   uint32                    `json:"gid"`
+	Generation            uint64                    `json:"gen"`
+	ModifyTime            time.Time                 `json:"mt"`
+	CreateTime            time.Time                 `json:"ct"`
+	AccessTime            time.Time                 `json:"at"`
+	Target                []byte                    `json:"tgt"`
+	QuotaInfos            map[uint32]*MetaQuotaInfo `json:"qifs"`
+	VerSeq                uint64                    `json:"seq"`
+	expiration            int64
+	StorageClass          uint32 `json:"storageClass"`
+	WriteGen              uint64 `json:"writeGen"`
+	ForbiddenLc           bool   `json:"forbiddenLc"`
+	MigrationStorageClass uint32 `json:"migrationStorageClass"`
 }
 
 type SimpleExtInfo struct {
@@ -1047,9 +1048,18 @@ type RenewalForbiddenMigrationRequest struct {
 }
 
 type UpdateExtentKeyAfterMigrationRequest struct {
-	PartitionID   uint64      `json:"pid"`
-	Inode         uint64      `json:"ino"`
-	StorageClass  uint32      `json:"storageClass"`
-	NewExtentKeys interface{} `json:"newExtentKeys"`
-	WriteGen      uint64      `json:"writeGen"`
+	PartitionID      uint64         `json:"pid"`
+	Inode            uint64         `json:"ino"`
+	StorageClass     uint32         `json:"storageClass"`
+	NewObjExtentKeys []ObjExtentKey `json:"newObjExtentKeys"`
+	WriteGen         uint64         `json:"writeGen"`
+}
+
+type InodeGetWithEkResponse struct {
+	Info                     *InodeInfo     `json:"info"`
+	LayAll                   []InodeInfo    `json:"layerInfo"`
+	HybridCloudExtents       []ExtentKey    `json:"eks"`
+	HybridCloudObjExtents    []ObjExtentKey `json:"objeks"`
+	MigrationExtents         []ExtentKey    `json:"migrationEks"`
+	MigrationCloudObjExtents []ObjExtentKey `json:"migrationObjeks"`
 }
