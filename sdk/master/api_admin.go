@@ -919,3 +919,58 @@ func (api *AdminAPI) ChangeMasterLeader(leaderAddr string) (err error) {
 	_, err = api.mc.requestOnce(req, leaderAddr)
 	return
 }
+
+func (api *AdminAPI) CreateFlashGroup(slots string) (fgView proto.FlashGroupAdminView, err error) {
+	err = api.mc.requestWith(&fgView, newRequest(post, proto.AdminFlashGroupCreate).
+		Header(api.h).addParam("slots", slots))
+	return
+}
+
+func (api *AdminAPI) SetFlashGroup(flashGroupID uint64, isActive bool) (fgView proto.FlashGroupAdminView, err error) {
+	err = api.mc.requestWith(&fgView, newRequest(post, proto.AdminFlashGroupSet).
+		Header(api.h).Param(anyParam{"id", flashGroupID}, anyParam{"enable", isActive}))
+	return
+}
+
+func (api *AdminAPI) RemoveFlashGroup(flashGroupID uint64) (result string, err error) {
+	request := newRequest(post, proto.AdminFlashGroupRemove).Header(api.h).addParamAny("id", flashGroupID)
+	data, err := api.mc.serveRequest(request)
+	return string(data), err
+}
+
+func (api *AdminAPI) flashGroupFlashNodes(uri string, flashGroupID uint64, count int, zoneName, addr string,
+) (fgView proto.FlashGroupAdminView, err error) {
+	err = api.mc.requestWith(&fgView, newRequest(post, uri).Header(api.h).Param(
+		anyParam{"id", flashGroupID}, anyParam{"count", count}, anyParam{"zoneName", zoneName}, anyParam{"addr", addr}))
+	return
+}
+
+func (api *AdminAPI) FlashGroupAddFlashNode(flashGroupID uint64, count int, zoneName, addr string,
+) (fgView proto.FlashGroupAdminView, err error) {
+	return api.flashGroupFlashNodes(proto.AdminFlashGroupNodeAdd, flashGroupID, count, zoneName, addr)
+}
+
+func (api *AdminAPI) FlashGroupRemoveFlashNode(flashGroupID uint64, count int, zoneName, addr string,
+) (fgView proto.FlashGroupAdminView, err error) {
+	return api.flashGroupFlashNodes(proto.AdminFlashGroupNodeRemove, flashGroupID, count, zoneName, addr)
+}
+
+func (api *AdminAPI) GetFlashGroup(flashGroupID uint64) (fgView proto.FlashGroupAdminView, err error) {
+	err = api.mc.requestWith(&fgView, newRequest(get, proto.AdminFlashGroupGet).
+		Header(api.h).addParamAny("id", flashGroupID))
+	return
+}
+
+func (api *AdminAPI) ListFlashGroups(isActive, listAllStatus bool) (fgView proto.FlashGroupsAdminView, err error) {
+	var params []anyParam
+	if !listAllStatus {
+		params = append(params, anyParam{"enable", isActive})
+	}
+	err = api.mc.requestWith(&fgView, newRequest(get, proto.AdminFlashGroupList).Header(api.h).Param(params...))
+	return
+}
+
+func (api *AdminAPI) ClientFlashGroups() (fgView proto.FlashGroupView, err error) {
+	err = api.mc.requestWith(&fgView, newRequest(get, proto.ClientFlashGroups).Header(api.h))
+	return
+}

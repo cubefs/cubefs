@@ -184,3 +184,36 @@ func (api *NodeAPI) QueryCancelDecommissionedDataNode(addr string) (err error) {
 	err = api.mc.request(newRequest(get, proto.CancelDecommissionDataNode).Header(api.h).addParam("addr", addr))
 	return
 }
+
+func (api *NodeAPI) AddFlashNode(serverAddr, zoneName, version string) (id uint64, err error) {
+	request := newRequest(post, proto.FlashNodeAdd).Header(api.h).
+		addParam("addr", serverAddr).addParam("zoneName", zoneName).addParam("version", version)
+	val, err := api.mc.serveRequest(request)
+	if err != nil {
+		return
+	}
+	id, err = strconv.ParseUint(string(val), 10, 64)
+	return
+}
+
+func (api *NodeAPI) SetFlashNode(addr, state string) (err error) {
+	return api.mc.request(newRequest(get, proto.FlashNodeSet).Header(api.h).
+		addParam("addr", addr).addParam("state", state))
+}
+
+func (api *NodeAPI) RemoveFlashNode(nodeAddr string) (result string, err error) {
+	request := newRequest(post, proto.FlashNodeRemove).Header(api.h).addParam("addr", nodeAddr).NoTimeout()
+	data, err := api.mc.serveRequest(request)
+	return string(data), err
+}
+
+func (api *NodeAPI) GetFlashNode(addr string) (node proto.FlashNodeViewInfo, err error) {
+	err = api.mc.requestWith(&node, newRequest(get, proto.FlashNodeGet).Header(api.h).addParam("addr", addr))
+	return
+}
+
+func (api *AdminAPI) ListFlashNodes(all bool) (zoneFlashNodes map[string][]*proto.FlashNodeViewInfo, err error) {
+	zoneFlashNodes = make(map[string][]*proto.FlashNodeViewInfo)
+	err = api.mc.requestWith(&zoneFlashNodes, newRequest(get, proto.FlashNodeList).Header(api.h).addParamAny("all", all))
+	return
+}
