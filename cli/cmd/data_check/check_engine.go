@@ -34,6 +34,7 @@ type CheckEngine struct {
 	closeCh           chan bool
 	repairPersist     *BadExtentPersist
 	onCheckFail       func(uint32, string)
+	stopOnce          sync.Once
 	checkedExtentsMap *sync.Map
 }
 
@@ -88,11 +89,13 @@ func (checkEngine *CheckEngine) Reset() {
 }
 
 func (checkEngine *CheckEngine) Close() {
-	if checkEngine.closeCh != nil {
-		close(checkEngine.closeCh)
-	}
-	checkEngine.repairPersist.Close()
-	checkEngine.closed = true
+	checkEngine.stopOnce.Do(func() {
+		if checkEngine.closeCh != nil {
+			close(checkEngine.closeCh)
+		}
+		checkEngine.repairPersist.Close()
+		checkEngine.closed = true
+	})
 }
 
 func parseTime(timeStr string) (t time.Time, err error) {

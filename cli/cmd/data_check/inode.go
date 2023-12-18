@@ -77,13 +77,17 @@ func (checkEngine *CheckEngine) checkInodeEk(ek proto.ExtentKey, ino uint64) {
 	}
 	var partition *proto.DataPartitionInfo
 	for j := 0; j == 0 || j < 3 && err != nil; j++ {
-		partition, err = checkEngine.mc.AdminAPI().GetDataPartition("", ek.PartitionId)
+		partition, err = checkEngine.mc.AdminAPI().GetDataPartition(checkEngine.currentVol, ek.PartitionId)
 	}
 	if err != nil {
 		return
 	}
 	if partition == nil {
 		err = fmt.Errorf("partition not exists")
+		return
+	}
+	if len(partition.Replicas) < 3 {
+		err = fmt.Errorf("replica num less than 3")
 		return
 	}
 	log.LogDebugf("action[checkInodeEk] cluster:%v, volume:%v, ino:%v, begin check extent key:%v", checkEngine.cluster, checkEngine.currentVol, ino, ek)

@@ -291,7 +291,9 @@ func (s *CrcWorker) ConsumeTask(task *proto.Task) (restore bool, err error) {
 	if err != nil {
 		return
 	}
-	defer checkEngine.Close()
+	defer func() {
+		checkEngine.Close()
+	}()
 	go func() {
 		select {
 		case <-s.stopC:
