@@ -71,7 +71,7 @@ func (*MockMetaWrapper) Evict(inode uint64, fullPath string) error {
 	return nil
 }
 
-func (*MockMetaWrapper) UpdateExtentKeyAfterMigration(inode uint64, storageType uint32, extentKeys interface{}, writeGen uint64) error {
+func (*MockMetaWrapper) UpdateExtentKeyAfterMigration(inode uint64, storageType uint32, extentKeys []proto.ObjExtentKey, writeGen uint64) error {
 	return nil
 }
 

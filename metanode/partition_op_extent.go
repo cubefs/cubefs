@@ -164,6 +164,7 @@ func (mp *metaPartition) ExtentAppendWithCheck(req *proto.AppendExtentKeyWithChe
 	if req.IsCache {
 		inoParm.Extents.Append(ext)
 	} else if req.IsMigration {
+		inoParm.HybridCouldExtentsMigration.storageClass = req.StorageClass
 		inoParm.HybridCouldExtentsMigration.sortedEks = NewSortedExtents()
 		inoParm.HybridCouldExtentsMigration.sortedEks.(*SortedExtents).Append(ext)
 	} else {

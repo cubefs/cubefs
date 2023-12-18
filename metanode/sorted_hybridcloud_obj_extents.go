@@ -16,5 +16,5 @@ type SortedHybridCloudExtentsMigration struct {
 }
 
 func NewSortedHybridCloudExtentsMigration() *SortedHybridCloudExtentsMigration {
-	return &SortedHybridCloudExtentsMigration{storageClass: proto.MediaType_Unspecified}
+	return &SortedHybridCloudExtentsMigration{storageClass: proto.StorageClass_Unspecified}
 }
