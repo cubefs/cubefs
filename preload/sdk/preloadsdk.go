@@ -131,6 +131,12 @@ func NewClient(config PreloadConfig) *PreLoadClient {
 		return nil
 	}
 
+	var view *proto.SimpleVolView
+	if view, err = c.mc.AdminAPI().GetVolumeSimpleInfo(c.vol); err != nil {
+		log.LogErrorf("CheckVolumeInfoFromMaster: get volume simple info fail: volume(%v) err(%v)", c.vol, err)
+		return nil
+	}
+
 	if mw, err = meta.NewMetaWrapper(&meta.MetaConfig{
 		Volume:        config.Volume,
 		Masters:       config.Masters,
@@ -149,6 +155,7 @@ func NewClient(config PreloadConfig) *PreLoadClient {
 		OnGetExtents:      mw.GetExtents,
 		OnTruncate:        mw.Truncate,
 		VolumeType:        proto.VolumeTypeCold,
+		VolStorageClass:   view.VolStorageClass,
 	}); err != nil {
 		log.LogErrorf("newClient NewExtentClient failed(%v)", err)
 		return nil
