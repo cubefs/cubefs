@@ -243,6 +243,7 @@ type client struct {
 	cluster             string
 	dirChildrenNumLimit uint32
 	enableAudit         bool
+	volStorageClass     uint32
 
 	// runtime context
 	cwd    string // current working directory
@@ -1226,6 +1227,7 @@ func (c *client) start() (err error) {
 		OnCacheBcache:     c.bc.Put,
 		OnEvictBcache:     c.bc.Evict,
 		DisableMetaCache:  true,
+		VolStorageClass:   c.volStorageClass,
 	}); err != nil {
 		log.LogErrorf("newClient NewExtentClient failed(%v)", err)
 		return
@@ -1476,6 +1478,7 @@ func (c *client) loadConfFromMaster(masters []string) (err error) {
 	c.cacheAction = volumeInfo.CacheAction
 	c.cacheRuleKey = volumeInfo.CacheRule
 	c.cacheThreshold = volumeInfo.CacheThreshold
+	c.volStorageClass = volumeInfo.VolStorageClass
 
 	var clusterInfo *proto.ClusterInfo
 	clusterInfo, err = mc.AdminAPI().GetClusterInfo()
