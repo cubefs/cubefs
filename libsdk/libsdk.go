@@ -960,6 +960,13 @@ func cfs_mkdirs(id C.int64_t, path *C.char, mode C.mode_t) C.int {
 						gerr = err
 						return errorToStatus(err)
 					}
+					// if dir already exist, lookup and assign to child
+					child_ino, _, err := c.mw.Lookup_ll(pino, dir)
+					if err != nil {
+						gerr = err
+						return errorToStatus(err)
+					}
+					child = child_ino
 				} else {
 					child = info.Inode
 				}
