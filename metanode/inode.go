@@ -971,7 +971,7 @@ func (i *Inode) mergeExtentArr(mpId uint64, extentKeysLeft []proto.ExtentKey, ex
 
 	doWork := func(keyArr *[]proto.ExtentKey, pos int) {
 		mLen := len(sortMergedExts)
-		if mLen > 0 && sortMergedExts[mLen-1].IsSequence(&(*keyArr)[pos]) {
+		if mLen > 0 && sortMergedExts[mLen-1].IsSequenceWithSameSeq(&(*keyArr)[pos]) {
 			sortMergedExts[mLen-1].Size += (*keyArr)[pos].Size
 			log.LogDebugf("[mergeExtentArr] mpId[%v]. ek left %v right %v", mpId, sortMergedExts[mLen-1], (*keyArr)[pos])
 			if !sortMergedExts[mLen-1].IsSplit() || !(*keyArr)[pos].IsSplit() {
