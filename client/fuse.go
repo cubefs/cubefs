@@ -435,7 +435,7 @@ func main() {
 
 	proto.InitBufferPoolEx(opt.BuffersTotalLimit, int(opt.BufferChanSize))
 	log.LogInfof("InitBufferPoolEx: total limit %d, chan size %d", opt.BuffersTotalLimit, opt.BufferChanSize)
-	if proto.IsCold(opt.VolType) || proto.VolSupportsBlobStore(opt.AllowedStorageClass) {
+	if proto.IsCold(opt.VolType) || proto.IsStorageClassBlobStore(opt.VolStorageClass) {
 		buf.InitCachePool(opt.EbsBlockSize)
 	}
 	if opt.EnableBcache {
@@ -815,9 +815,11 @@ func mount(opt *proto.MountOptions) (fsConn *fuse.Conn, super *cfs.Super, err er
 				os.Exit(1)
 			}
 			super.SetTransaction(volumeInfo.EnableTransactionV1, volumeInfo.TxTimeout, volumeInfo.TxConflictRetryNum, volumeInfo.TxConflictRetryInterval)
-			if proto.IsCold(opt.VolType) || proto.VolSupportsBlobStore(opt.AllowedStorageClass) {
+			if proto.IsCold(opt.VolType) || proto.IsStorageClassBlobStore(opt.VolStorageClass) {
 				super.CacheAction = volumeInfo.CacheAction
 				super.CacheThreshold = volumeInfo.CacheThreshold
+				super.EbsBlockSize = volumeInfo.ObjBlockSize
+			} else if proto.VolSupportsBlobStore(opt.AllowedStorageClass) {
 				super.EbsBlockSize = volumeInfo.ObjBlockSize
 			}
 		}
@@ -1065,6 +1067,7 @@ func loadConfFromMaster(opt *proto.MountOptions) (err error) {
 	opt.TxConflictRetryInterval = volumeInfo.TxConflictRetryInterval
 	opt.CacheDpStorageClass = volumeInfo.CacheDpStorageClass
 	opt.AllowedStorageClass = volumeInfo.AllowedStorageClass
+	opt.VolStorageClass = volumeInfo.VolStorageClass
 
 	var clusterInfo *proto.ClusterInfo
 	clusterInfo, err = mc.AdminAPI().GetClusterInfo()
