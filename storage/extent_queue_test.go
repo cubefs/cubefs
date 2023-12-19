@@ -3,6 +3,7 @@ package storage
 import (
 	"container/list"
 	"context"
+	"math/rand"
 	"os"
 	"path"
 	"sort"
@@ -313,9 +314,37 @@ func TestExtentQueue_ConsumingWithProducing(t *testing.T) {
 	assert.Equal(t, atomic.LoadInt64(&produced), atomic.LoadInt64(&consumed))
 }
 
-func TestBatchProducer_BrokenData(t *testing.T) {
+func TestBatchProducer_BrokenRecordFile_IllegalFileSize(t *testing.T) {
 	var testpath = testutil.InitTempTestPath(t)
 	defer testpath.Cleanup()
+
+	var breakRecordFiles = func() error {
+		var err error
+		var dirFp *os.File
+		if dirFp, err = os.Open(testpath.Path()); err != nil {
+			return err
+		}
+		var names []string
+		if names, err = dirFp.Readdirnames(-1); err != nil {
+			return err
+		}
+		_ = dirFp.Close()
+		sort.Strings(names)
+		for _, name := range names {
+			if _, is := parseRecordFilename(name); !is {
+				continue
+			}
+			var filepath = path.Join(testpath.Path(), name)
+			var info os.FileInfo
+			if info, err = os.Stat(filepath); err != nil {
+				return err
+			}
+			if err = os.Truncate(filepath, info.Size()+1); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
 
 	var err error
 	var queue *ExtentQueue
@@ -330,7 +359,7 @@ func TestBatchProducer_BrokenData(t *testing.T) {
 	assert.Equal(t, 50000, queue.Remain())
 	queue.Close()
 
-	err = breakRecordFiles(testpath.Path())
+	err = breakRecordFiles()
 	assert.Nil(t, err)
 
 	queue, err = OpenExtentQueue(testpath.Path(), 4*1024*1024, -1)
@@ -356,30 +385,85 @@ func TestBatchProducer_BrokenData(t *testing.T) {
 	queue.Close()
 }
 
-func breakRecordFiles(dir string) error {
+func TestBatchProducer_BrokenRecordFile_BrokenFileData(t *testing.T) {
+	var testpath = testutil.InitTempTestPath(t)
+	defer testpath.Cleanup()
+
+	var breakRecordFiles = func() (int, error) {
+		var err error
+		var dirFp *os.File
+		if dirFp, err = os.Open(testpath.Path()); err != nil {
+			return 0, err
+		}
+		var names []string
+		if names, err = dirFp.Readdirnames(-1); err != nil {
+			return 0, err
+		}
+		_ = dirFp.Close()
+		sort.Strings(names)
+		var count int
+		for _, name := range names {
+			if _, is := parseRecordFilename(name); !is {
+				continue
+			}
+			var filepath = path.Join(testpath.Path(), name)
+			var info os.FileInfo
+			if info, err = os.Stat(filepath); err != nil {
+				return 0, err
+			}
+			var off = rand.Int63n(info.Size())
+			var fp *os.File
+			if fp, err = os.OpenFile(filepath, os.O_RDWR, os.ModePerm); err != nil {
+				return 0, err
+			}
+			var b = make([]byte, 1)
+			if _, err = fp.ReadAt(b, off); err != nil {
+				return 0, err
+			}
+			b[0] += 1
+			if _, err = fp.WriteAt(b, off); err != nil {
+				return 0, err
+			}
+			count++
+		}
+		return count, nil
+	}
+
 	var err error
-	var dirFp *os.File
-	if dirFp, err = os.Open(dir); err != nil {
-		return err
+	var queue *ExtentQueue
+	queue, err = OpenExtentQueue(testpath.Path(), 4*1024*1024, -1)
+	assert.Nil(t, err)
+
+	// 生产50000条记录
+	for i := 0; i < 50000; i++ {
+		err = queue.Produce(0, 0, 0, 0, 0)
+		assert.Nil(t, err)
 	}
-	var names []string
-	if names, err = dirFp.Readdirnames(-1); err != nil {
-		return err
+	assert.Equal(t, 50000, queue.Remain())
+	queue.Close()
+
+	var count int
+	count, err = breakRecordFiles()
+	assert.Nil(t, err)
+
+	queue, err = OpenExtentQueue(testpath.Path(), 100*1024, -1)
+	assert.Nil(t, err)
+
+	assert.Equal(t, 50000, queue.Remain())
+
+	// 生产10000条记录
+	for i := 0; i < 10000; i++ {
+		err = queue.Produce(0, 0, 0, 0, 0)
+		assert.Nil(t, err)
 	}
-	_ = dirFp.Close()
-	sort.Strings(names)
-	for _, name := range names {
-		if _, is := parseRecordFilename(name); !is {
-			continue
-		}
-		var filepath = path.Join(dir, name)
-		var info os.FileInfo
-		if info, err = os.Stat(filepath); err != nil {
-			return err
-		}
-		if err = os.Truncate(filepath, info.Size()+1); err != nil {
-			return err
-		}
-	}
-	return nil
+	assert.Equal(t, 60000, queue.Remain())
+
+	err = queue.Consume(func(ino, extent uint64, offset, size, timestamp int64) (goon bool, err error) {
+		count++
+		return true, nil
+	})
+	assert.Nil(t, err)
+
+	assert.Equal(t, 60000, count)
+	queue.Close()
 }

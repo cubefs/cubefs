@@ -25,7 +25,7 @@ var (
 
 	ErrInvalidRecordFilename = errors.New("invalid record filename")
 	ErrIllegalRecordLength   = errors.New("illegal record binary length")
-	ErrIllegalRecordData     = errors.New("illegal record data")
+	ErrBrokenRecord          = errors.New("broken record")
 	ErrNilInstance           = errors.New("nil pointer instance")
 
 	recordPool = sync.Pool{
@@ -153,7 +153,7 @@ func (r *record) decodeFrom(b []byte) (err error) {
 		return ErrIllegalRecordLength
 	}
 	if binary.BigEndian.Uint32(b[0:4]) != crc32.ChecksumIEEE(b[4:44]) {
-		return ErrIllegalRecordData
+		return ErrBrokenRecord
 	}
 	r.ino = binary.BigEndian.Uint64(b[4:12])
 	r.extent = binary.BigEndian.Uint64(b[12:20])
@@ -216,11 +216,7 @@ func (rfs *recordFiles) new() (rf *recordFile) {
 	} else {
 		rfn = (*rfs)[len(*rfs)-1].rfn.next()
 	}
-	rf = &recordFile{
-		rfn:   rfn,
-		_seq:  rfn.seq(),
-		_size: 0,
-	}
+	rf = newRecordFile(rfn, 0)
 	*rfs = append(*rfs, rf)
 	return
 }
@@ -309,6 +305,13 @@ func (r *recordFileWriter) WriteRecord(rec *record) (err error) {
 	}
 	var n int
 	n, err = r.bufW.Write(b)
+	if err != nil {
+		return
+	}
+	if n != queueRecordCodecLength {
+		err = fmt.Errorf("unexpected number of wroten bytes, expected %v, actual %v", queueRecordCodecLength, n)
+		return
+	}
 	r.inflight += int64(n)
 	return
 }
@@ -316,6 +319,9 @@ func (r *recordFileWriter) WriteRecord(rec *record) (err error) {
 func (r *recordFileWriter) Flush() error {
 	if r.inflight == 0 {
 		return nil
+	}
+	if r.inflight%queueRecordCodecLength != 0 {
+		return fmt.Errorf("inflight data length %v is not divisible by %v", r.inflight, queueRecordCodecLength)
 	}
 	if err := r.bufW.Flush(); err != nil {
 		return err
@@ -650,7 +656,13 @@ func (q *ExtentQueue) __produce(recs ...*record) (err error) {
 		return ErrNilInstance
 	}
 	q.writeMu.Lock()
-	defer q.writeMu.Unlock()
+	defer func() {
+		if err != nil && q.writer != nil {
+			_ = q.writer.Close()
+			q.writer = nil
+		}
+		q.writeMu.Unlock()
+	}()
 	if q.writer == nil {
 		q.rfsMu.Lock()
 		if q.rfs.len() == 0 || q.rfs.last().size() >= q.maxFilesize {
@@ -779,6 +791,15 @@ func (q *ExtentQueue) __walk(si recordIndex, visitor recordVisitor) (err error) 
 				err = nil
 				break
 			}
+			if err == ErrBrokenRecord {
+				// Skip broken record
+				err = nil
+				if log.IsWarnEnabled() {
+					log.LogWarnf("EQ %v: meets and skips broken record %v", q.path, idx)
+				}
+				idx = idx.next()
+				continue
+			}
 			if err != nil {
 				return false
 			}
@@ -840,14 +861,14 @@ func (q *ExtentQueue) Consume(visitor QueueVisitor) (err error) {
 
 	var advanced, advanceErr = q.mf.advanceConsumed(si)
 	if advanceErr != nil {
-		log.LogErrorf("extent queue advance consumed index failed: path=%v, error=%v", q.path, si)
+		log.LogErrorf("EQ %v: advance consumed index failed: %v", q.path, advanceErr)
 		return
 	}
 	if !advanced {
 		return
 	}
 	if log.IsDebugEnabled() {
-		log.LogDebugf("extent queue advanced consumed index: path=%v, index=%v", q.path, si)
+		log.LogDebugf("EQ %v: consumed index advanced to : %v", q.path, si)
 	}
 	_ = q.cleanup()
 	return
@@ -872,7 +893,7 @@ func (q *ExtentQueue) cleanup() (err error) {
 				err = nil
 			}
 			if err != nil {
-				log.LogErrorf("remove consumed record file failed: path=%v, file=%v, error=%v", q.path, filepath, err)
+				log.LogErrorf("EQ %v: remove record file %v failed: %v", q.path, filepath, err)
 				return false
 			}
 			return true
