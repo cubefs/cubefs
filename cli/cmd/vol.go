@@ -578,16 +578,16 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 
 			if optVolStorageClass != 0 {
 				if !proto.IsValidStorageClass(uint32(optVolStorageClass)) {
-					err = fmt.Errorf("invalid param VolStorageClass: %v\n", optVolStorageClass)
+					err = fmt.Errorf("invalid param volStorageClass: %v\n", optVolStorageClass)
 					return
 				}
 
 				isChange = true
-				confirmString.WriteString(fmt.Sprintf("  VolStorageClass : %v -> %v\n",
+				confirmString.WriteString(fmt.Sprintf("  volStorageClass : %v -> %v\n",
 					vv.VolStorageClass, optVolStorageClass))
 				vv.VolStorageClass = uint32(optVolStorageClass)
 			} else {
-				confirmString.WriteString(fmt.Sprintf("  VolStorageClass : %v\n",
+				confirmString.WriteString(fmt.Sprintf("  volStorageClass : %v\n",
 					proto.StorageClassString(vv.VolStorageClass)))
 			}
 

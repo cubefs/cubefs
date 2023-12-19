@@ -84,6 +84,7 @@ func main() {
 		fmt.Println("Preload only work in cold volume")
 		os.Exit(1)
 	}
+
 	fmt.Printf("conf is %v\n", config)
 	action := cfg.GetString("action")
 	if action == "preload" {

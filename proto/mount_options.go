@@ -327,4 +327,5 @@ type MountOptions struct {
 	FileSystemName               string
 	VerReadSeq                   uint64
 	AllowedStorageClass          []uint32
+	VolStorageClass              uint32
 }
