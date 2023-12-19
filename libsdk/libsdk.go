@@ -256,6 +256,7 @@ type client struct {
 	bc   *bcache.BcacheClient
 	ebsc *blobstore.BlobStoreClient
 	sc   *fs.SummaryCache
+	mu   sync.Mutex
 }
 
 //export cfs_new_client
@@ -1065,6 +1066,7 @@ func cfs_rename(id C.int64_t, from *C.char, to *C.char) C.int {
 		return statusEINVAL
 	}
 
+	c.mu.Lock()
 	start := time.Now()
 	var err error
 
@@ -1072,6 +1074,7 @@ func cfs_rename(id C.int64_t, from *C.char, to *C.char) C.int {
 	absTo := c.absPath(C.GoString(to))
 
 	defer func() {
+		defer c.mu.Unlock()
 		auditlog.LogClientOp("Rename", absFrom, absTo, err, time.Since(start).Microseconds(), 0, 0)
 	}()
 
