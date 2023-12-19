@@ -343,5 +343,7 @@ type MountOptions struct {
 	DisableMountSubtype bool
 	// stream retry timeout
 	StreamRetryTimeout int
+
 	AllowedStorageClass []uint32
+	VolStorageClass     uint32
 }
