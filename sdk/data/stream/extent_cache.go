@@ -181,7 +181,7 @@ func (cache *ExtentCache) SplitExtentKey(inodeID uint64, ekPivot *proto.ExtentKe
 		ek.Size = ek.Size - ekPivot.Size
 		ek.FileOffset = ek.FileOffset + uint64(ekPivot.Size)
 		ek.ExtentOffset = ek.ExtentOffset + uint64(ekPivot.Size)
-		if ekLeft != nil && ekLeft.IsSequence(ekPivot) {
+		if ekLeft != nil && ekLeft.IsSequenceWithSameSeq(ekPivot) {
 			log.LogDebugf("SplitExtentKey.merge.begin. ekLeft %v and %v", ekLeft, ekPivot)
 			ekLeft.Size += ekPivot.Size
 			log.LogDebugf("action[SplitExtentKey] inode %v ek [%v], ekPivot[%v] ekLeft[%v]", inodeID, ek, ekPivot, ekLeft)
@@ -194,7 +194,7 @@ func (cache *ExtentCache) SplitExtentKey(inodeID uint64, ekPivot *proto.ExtentKe
 	} else if ek.FileOffset+uint64(ek.Size) == ekPivot.FileOffset+uint64(ekPivot.Size) { // end
 		ek.Size = ek.Size - ekPivot.Size
 		log.LogDebugf("action[SplitExtentKey] inode %v ek [%v]", inodeID, ek)
-		if ekRight != nil && ekPivot.IsSequence(ekRight) {
+		if ekRight != nil && ekPivot.IsSequenceWithSameSeq(ekRight) {
 			cache.root.Delete(ekRight)
 			ekRight.FileOffset = ekPivot.FileOffset
 			ekRight.ExtentOffset = ekPivot.ExtentOffset

@@ -2543,7 +2543,7 @@ func (m *metadataManager) checkMultiVersionStatus(mp MetaPartition, p *Packet) (
 	}
 	// meta node do not need to check verSeq as strictly as datanode,file append or modAppendWrite on meta node is invisible to other files.
 	// only need to guarantee the verSeq wrote on meta nodes grow up linearly on client's angle
-	log.LogDebugf("action[checkmultiSnap.multiVersionstatus] mp %v ver %v, packet ver %v", mp.GetBaseConfig().PartitionId, mp.GetVerSeq(), p.VerSeq)
+	log.LogDebugf("action[checkmultiSnap.multiVersionstatus] mp %v ver %v, packet ver %v reqId %v", mp.GetBaseConfig().PartitionId, mp.GetVerSeq(), p.VerSeq, p.ReqID)
 	if mp.GetVerSeq() >= p.VerSeq {
 		if mp.GetVerSeq() > p.VerSeq {
 			log.LogDebugf("action[checkmultiSnap.multiVersionstatus] mp ver %v, packet ver %v", mp.GetVerSeq(), p.VerSeq)

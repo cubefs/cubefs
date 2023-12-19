@@ -260,7 +260,7 @@ func (se *SortedExtents) SplitWithCheck(mpId uint64, inodeID uint64, ekSplit pro
 			keyBefore = &se.eks[len(se.eks)-1]
 			log.LogDebugf("SplitWithCheck. mpId [%v].keyBefore. ek %v and ekSplit %v", mpId, keyBefore, ekSplit)
 		}
-		if keyBefore != nil && keyBefore.IsSequence(&ekSplit) {
+		if keyBefore != nil && keyBefore.IsSequenceWithSameSeq(&ekSplit) {
 			log.LogDebugf("SplitWithCheck. mpId [%v]. inode %v  keyBefore [%v], ekSplit [%v]", mpId, inodeID, keyBefore, ekSplit)
 			log.LogDebugf("SplitWithCheck. mpId [%v].merge.head. ek %v and %v", mpId, keyBefore, ekSplit)
 			keyBefore.Size += ekSplit.Size
@@ -286,7 +286,7 @@ func (se *SortedExtents) SplitWithCheck(mpId uint64, inodeID uint64, ekSplit pro
 		copy(eks, se.eks[startIndex:])
 		se.eks = se.eks[:startIndex]
 
-		if len(eks) > 0 && ekSplit.IsSequence(&eks[0]) {
+		if len(eks) > 0 && ekSplit.IsSequenceWithSameSeq(&eks[0]) {
 			log.LogDebugf("SplitWithCheck.mpId [%v].merge.end. ek %v and %v", mpId, ekSplit, eks[0])
 			eks[0].FileOffset = ekSplit.FileOffset
 			eks[0].ExtentOffset = ekSplit.ExtentOffset
@@ -344,13 +344,18 @@ func (se *SortedExtents) AppendWithCheck(inodeID uint64, ek proto.ExtentKey, add
 	}
 	idx := len(se.eks) - 1
 	lastKey := &se.eks[idx]
-	log.LogDebugf("action[AppendWithCheck] ek %v,lastKey %v", ek, lastKey)
+	log.LogDebugf("action[AppendWithCheck] ek %v,lastKey %v, discard [%v]", ek, lastKey, discard)
 	if lastKey.FileOffset+uint64(lastKey.Size) <= ek.FileOffset {
-		se.eks = append(se.eks, ek)
-		if lastKey.IsSequenceWithDiffSeq(&ek) {
-			addRefFunc(lastKey)
-			addRefFunc(&ek)
+		if !lastKey.IsSameExtent(&ek) {
+			se.eks = append(se.eks, ek)
+			return
 		}
+
+		se.eks = append(se.eks, ek)
+		if !lastKey.IsSplit() {
+			addRefFunc(lastKey)
+		}
+		addRefFunc(&ek)
 		return
 	}
 
