@@ -712,10 +712,14 @@ func (dp *DataPartition) FlushDelete(limit int) (deleted, remain int, err error)
 	)
 
 	var (
-		monitorData = dp.monitorData[proto.ActionFlushDelete]
-
-		before storage.BeforeFunc = func() (ctx context.Context, err error) {
-			ctx = context.WithValue(context.Background(), ctxKeyExporterTp, exporter.NewModuleTP(exporterOp))
+		monitorData                    = dp.monitorData[proto.ActionFlushDelete]
+		before      storage.BeforeFunc = func() (ctx context.Context, err error) {
+			ctx = context.Background()
+			err = dp.limit(ctx, proto.OpFlushDelete_, 0, multirate.FlowDisk)
+			if err != nil {
+				return
+			}
+			ctx = context.WithValue(ctx, ctxKeyExporterTp, exporter.NewModuleTP(exporterOp))
 			ctx = context.WithValue(ctx, ctxKeySreTp, monitorData.BeforeTp())
 			return
 		}

@@ -554,9 +554,11 @@ func getRateLimitDesc(rateLimit map[string]map[string]map[int]proto.AllLimitGrou
 func getOpDesc(module string, opcode int) string {
 	if opcode <= math.MaxUint8 {
 		return strings.TrimPrefix(proto.GetOpMsg(uint8(opcode)), "Op")
-	} else {
-		return strconv.Itoa(opcode)
 	}
+	if msg := strings.TrimPrefix(proto.GetOpMsgExtend(opcode), "Op"); msg != "" {
+		return msg
+	}
+	return strconv.Itoa(opcode)
 }
 
 func getOpCode(name string) int {
@@ -567,9 +569,12 @@ func getOpCode(name string) int {
 	for opcode := 0; opcode < math.MaxUint8; opcode++ {
 		m[proto.GetOpMsg(uint8(opcode))] = opcode
 	}
+
 	if op, ok := m["Op"+name]; ok {
 		return op
-	} else {
-		return -1
 	}
+	if op := proto.GetOpCodeExtend("Op" + name); op > 0 {
+		return op
+	}
+	return -1
 }

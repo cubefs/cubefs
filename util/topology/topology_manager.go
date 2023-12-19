@@ -15,7 +15,7 @@ import (
 )
 
 var rateLimitProperties = multirate.Properties{
-	{multirate.PropertyTypeOp, strconv.Itoa(int(proto.OpFetchDataPartitionView))},
+	{multirate.PropertyTypeOp, strconv.Itoa(int(proto.OpFetchDataPartitionView_))},
 }
 
 const (
