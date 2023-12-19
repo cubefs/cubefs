@@ -155,7 +155,7 @@ func formatSimpleVolView(svv *proto.SimpleVolView) string {
 	for _, asc := range svv.AllowedStorageClass {
 		allowedStorageClassStr = append(allowedStorageClassStr, proto.StorageClassString(asc))
 	}
-	sb.WriteString(fmt.Sprintf("  volStorageClass                 : %v\n", proto.StorageClassString(svv.VolStorageClass)))
+	sb.WriteString(fmt.Sprintf("  VolStorageClass                 : %v\n", proto.StorageClassString(svv.VolStorageClass)))
 	sb.WriteString(fmt.Sprintf("  AllowedStorageClass             : %v\n", allowedStorageClassStr))
 	sb.WriteString(fmt.Sprintf("  CacheDpStorageClass             : %v\n", proto.StorageClassString(svv.CacheDpStorageClass)))
 
