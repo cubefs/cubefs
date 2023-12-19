@@ -430,7 +430,8 @@ func (w *Wrapper) getDataPartitionFromMaster(isInit bool, dpId uint64) (err erro
 		return
 	}
 
-	log.LogInfof("getDataPartitionFromMaster: get data partitions: volume(%v), dpId(%v)", w.volName, dpId)
+	log.LogInfof("getDataPartitionFromMaster: get data partitions: volume(%v), dpId(%v) mediaType(%v)",
+		w.volName, dpId, proto.MediaTypeString(dpInfo.MediaType))
 	var leaderAddr string
 	for _, replica := range dpInfo.Replicas {
 		if replica.IsLeader {

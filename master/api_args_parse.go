@@ -575,13 +575,13 @@ func parseVolUpdateReq(r *http.Request, vol *Vol, req *updateVolReq) (err error)
 	}
 	if vol.volStorageClass == proto.StorageClass_BlobStore {
 		if req.volStorageClass != vol.volStorageClass {
-			err = fmt.Errorf("volStorageClass is StorageClass_BlobStore, not allow to change it")
+			err = fmt.Errorf("volume volStorageClass is StorageClass_BlobStore, not allow to change it")
 			log.LogErrorf("[parseVolUpdateReq] vol(%v) err: %v", vol.Name, err.Error())
 			return
 		}
 	} else if proto.IsStorageClassReplica(vol.volStorageClass) {
 		if !proto.IsStorageClassReplica(req.volStorageClass) {
-			err = fmt.Errorf(" vol.volStorageClass is replica, not allow to change to: %v",
+			err = fmt.Errorf("volume volStorageClass is replica, not allow to change to: %v",
 				proto.StorageClassString(req.volStorageClass))
 			log.LogErrorf("[parseVolUpdateReq] vol(%v) err: %v", vol.Name, err.Error())
 			return
@@ -594,7 +594,7 @@ func parseVolUpdateReq(r *http.Request, vol *Vol, req *updateVolReq) (err error)
 			}
 		}
 		if !volStorageClassAllowed {
-			err = fmt.Errorf(" req.volStorageClass(%v) not in vol.allowedStorageClass",
+			err = fmt.Errorf("requeset volStorageClass(%v) not in volume's allowedStorageClass",
 				proto.StorageClassString(req.volStorageClass))
 			log.LogErrorf("[parseVolUpdateReq] vol(%v) err: %v", vol.Name, err.Error())
 			return
