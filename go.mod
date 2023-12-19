@@ -12,7 +12,8 @@ require (
 	github.com/afex/hystrix-go v0.0.0-20180502004556-fa1af6a1f4f5
 	github.com/aws/aws-sdk-go v1.33.1
 	github.com/benbjohnson/clock v1.3.1
-	github.com/bits-and-blooms/bitset v1.2.1
+	github.com/bits-and-blooms/bitset v1.10.0
+	github.com/bits-and-blooms/bloom/v3 v3.6.0
 	github.com/brahma-adshonor/gohook v1.1.9
 	github.com/deniswernert/go-fstab v0.0.0-20141204152952-eb4090f26517
 	github.com/desertbit/grumble v1.1.3
