@@ -1036,21 +1036,16 @@ func (mp *metaPartition) fsmUpdateExtentKeyAfterMigration(ino *Inode) (resp *Ino
 	}
 	i := item.(*Inode)
 	//only can migrate to HDD or ebs for now
-	if ino.StorageClass == proto.StorageClass_BlobStore {
-		//store old ek
-		i.HybridCouldExtentsMigration.storageClass = i.StorageClass
-		i.HybridCouldExtentsMigration.sortedEks = i.HybridCouldExtents.sortedEks
-		i.StorageClass = ino.HybridCouldExtentsMigration.storageClass
-		i.HybridCouldExtents.sortedEks = ino.HybridCouldExtentsMigration.sortedEks
-	} else {
-		tmpStorageClass := i.HybridCouldExtentsMigration.storageClass
-		tmpSortedEks := i.HybridCouldExtentsMigration.sortedEks
-		i.HybridCouldExtentsMigration.storageClass = i.StorageClass
-		i.HybridCouldExtentsMigration.sortedEks = i.HybridCouldExtents.sortedEks
-		i.StorageClass = tmpStorageClass
-		i.HybridCouldExtentsMigration.sortedEks = tmpSortedEks
-	}
+	tmpStorageClass := i.HybridCouldExtentsMigration.storageClass
+	tmpSortedEks := i.HybridCouldExtentsMigration.sortedEks
+	// store old storage ek in HybridCouldExtentsMigration
 	i.HybridCouldExtentsMigration.storageClass = i.StorageClass
+	i.HybridCouldExtentsMigration.sortedEks = i.HybridCouldExtents.sortedEks
+	// store new storage ek  in HybridCouldExtents
+	i.StorageClass = tmpStorageClass
+	i.HybridCouldExtents.sortedEks = tmpSortedEks
+	log.LogInfof("action[fsmForbiddenInodeMigration] inode %v storage class change from %v to %v", ino.Inode,
+		ino.HybridCouldExtentsMigration.storageClass, ino.StorageClass)
 	//TODO:chihe delete old ek
 	return
 }

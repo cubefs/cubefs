@@ -1061,10 +1061,14 @@ func (mp *metaPartition) UpdateExtentKeyAfterMigration(req *proto.UpdateExtentKe
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return
 	}
+	//store ek after migration in HybridCouldExtentsMigration
 	ino.HybridCouldExtentsMigration.storageClass = req.StorageClass
 	if req.StorageClass == proto.StorageClass_BlobStore {
 		ino.HybridCouldExtentsMigration.sortedEks = NewSortedObjExtentsFromObjEks(req.NewObjExtentKeys)
-	} else if req.StorageClass != proto.MediaType_HDD {
+	} else if req.StorageClass == proto.MediaType_HDD {
+		//do nothing, ek has been stored in ino.HybridCouldExtentsMigration before UpdateExtentKeyAfterMigration
+		//is called
+	} else {
 		err = fmt.Errorf("mp %v inode %v unsupport new migration storage class %v",
 			mp.config.PartitionId, ino.Inode, req.StorageClass)
 		log.LogErrorf("action[UpdateExtentKeyAfterMigration] %v", err)
