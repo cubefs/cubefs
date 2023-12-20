@@ -107,7 +107,7 @@ func (mp *metaPartition) GetTruncateEKCountEveryTime() (count int) {
 }
 
 func (mp *metaPartition) deleteWorker() {
-	freeRetryListHandleTimer := time.NewTicker(time.Hour*1)
+	freeLaterInodesCleanTimer := time.NewTicker(time.Minute*10)
 	var (
 		//idx      uint64
 		isLeader   bool
@@ -126,19 +126,16 @@ func (mp *metaPartition) deleteWorker() {
 				mp.inodeDelEkFd.Sync()
 				mp.inodeDelEkFd.Close()
 			}
-			freeRetryListHandleTimer.Stop()
+			freeLaterInodesCleanTimer.Stop()
 			return
-		case <- freeRetryListHandleTimer.C:
-			if _, isLeader = mp.IsLeader(); !isLeader {
-				continue
-			}
-			for inodeID := range mp.needRetryFreeInodes {
-				mp.freeList.Push(inodeID)
-			}
+		case <- freeLaterInodesCleanTimer.C:
+			//clean all free later inodes
+			mp.freeLaterInodes = make(map[uint64]byte, 0)
 		default:
 		}
 
 		if _, isLeader = mp.IsLeader(); !isLeader {
+			mp.freeLaterInodes = make(map[uint64]byte, 0)
 			time.Sleep(AsyncDeleteInterval)
 			continue
 		}
@@ -185,7 +182,7 @@ func (mp *metaPartition) batchDeleteExtentsByPartition(ctx context.Context, part
 		go func(partitionID uint64, extents []*proto.MetaDelExtentKey) {
 			start := 0
 			for {
-				end := start + DefaultDelEKBatchCount//每次删除的ek个数不能超过限速的burst值
+				end := start + DefaultDelEKBatchCount//每次删除的ek个数不超过1000
 				if end > len(extents) {
 					end = len(extents)
 				}
@@ -214,22 +211,23 @@ func (mp *metaPartition) batchDeleteExtentsByPartition(ctx context.Context, part
 
 		errorEKs, _ := partitionDeleteExtents[dpID]
 		for _, ek := range errorEKs {
-			mp.freeList.Remove(ek.InodeId)
-			mp.needRetryFreeInodes[ek.InodeId] = 0
+			mp.freeLaterInodes[ek.InodeId] = 0
 		}
 	}
 
 	for _, inode := range allInodes {
-		if inode.Extents == nil || inode.Extents.Len() == 0 {
+		if _, ok := mp.freeLaterInodes[inode.Inode]; ok {
+			continue
+		}
+
+		if mp.HasRocksDBStore() || inode.Extents == nil || inode.Extents.Len() == 0 {
 			shouldCommit = append(shouldCommit, inode)
 			continue
 		}
 
-		if mp.freeList.Find(inode.Inode) {
-			ekCount := inode.Extents.TruncateByCountFromEnd(truncateCount)
-			if ekCount == 0 {
-				shouldCommit = append(shouldCommit, inode)
-			}
+		ekCount := inode.Extents.TruncateByCountFromEnd(truncateCount)
+		if ekCount == 0 {
+			shouldCommit = append(shouldCommit, inode)
 		}
 	}
 	return
@@ -321,6 +319,10 @@ func (mp *metaPartition) deleteMarkedInodes(ctx context.Context, inoSlice []uint
 	deleteExtentsByPartition := make(map[uint64][]*proto.MetaDelExtentKey)
 	allInodes := make([]*Inode, 0)
 	for _, ino := range inoSlice {
+		if _, ok := mp.freeLaterInodes[ino]; ok {
+			log.LogDebugf("[deleteMarkedInodes], inode(%v) need free later", ino)
+			continue
+		}
 		var inodeVal *Inode
 		dio, err := mp.inodeDeletedTree.RefGet(ino)
 		if err != nil {
@@ -341,7 +343,7 @@ func (mp *metaPartition) deleteMarkedInodes(ctx context.Context, inoSlice []uint
 		}
 
 		truncateIndexOffset := inodeVal.Extents.Len() - truncateEKCount
-		if truncateIndexOffset < 0 {
+		if truncateIndexOffset < 0 || mp.HasRocksDBStore() {
 			truncateIndexOffset = 0
 		}
 

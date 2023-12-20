@@ -954,10 +954,8 @@ func (m *metadataManager) MarshalJSON() (data []byte, err error) {
 }
 
 func (m *metadataManager) rateLimit(conn net.Conn, p *Packet, remoteAddr string) (error){
-	// ignore rate limit if request is from cluster internal nodes
-	addrSlice := strings.Split(remoteAddr, ":")
-	_, isInternal := clusterMap[addrSlice[0]]
-	if isInternal {
+	// ignore rate limit if request is from cluster master nodes
+	if p.isMasterRequest() {
 		return nil
 	}
 

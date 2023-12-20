@@ -138,6 +138,17 @@ func (p *Packet) IsNeedRemoveDupOperation() bool {
 	return false
 }
 
+func (p *Packet) isMasterRequest() bool {
+	if p.Opcode == proto.OpCreateMetaPartition || p.Opcode == proto.OpMetaNodeHeartbeat || p.Opcode == proto.OpDeleteMetaPartition ||
+		p.Opcode == proto.OpUpdateMetaPartition || p.Opcode == proto.OpLoadMetaPartition || p.Opcode == proto.OpDecommissionMetaPartition ||
+		p.Opcode == proto.OpAddMetaPartitionRaftMember || p.Opcode == proto.OpRemoveMetaPartitionRaftMember ||
+		p.Opcode == proto.OpMetaPartitionTryToLeader || p.Opcode == proto.OpResetMetaPartitionRaftMember ||
+		p.Opcode == proto.OpAddMetaPartitionRaftLearner || p.Opcode == proto.OpPromoteMetaPartitionRaftLearner {
+		return true
+	}
+	return false
+}
+
 func NewPacket(ctx context.Context) *Packet {
 	p := &Packet{}
 	p.SetCtx(ctx)
