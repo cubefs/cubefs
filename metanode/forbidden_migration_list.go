@@ -39,11 +39,13 @@ func (fmList *forbiddenMigrationList) Put(ino uint64) {
 		fmList.list.Remove(old)
 		delete(fmList.index, ino)
 	}
+	expiration := time.Now().Add(fmList.expiration).Unix()
 	info := &forbiddenInodeInfo{ino: ino,
-		expiration: time.Now().Add(fmList.expiration).UnixNano()}
+		expiration: expiration}
 	element := fmList.list.PushFront(info)
 	fmList.index[ino] = element
 	fmList.Unlock()
+	log.LogDebugf("action[forbiddenMigrationList] inode %v expiration %v", ino, expiration)
 }
 
 func (fmList *forbiddenMigrationList) Delete(ino uint64) {
@@ -60,17 +62,20 @@ func (fmList *forbiddenMigrationList) getExpiredForbiddenMigrationInodes() []uin
 	fmList.RLock()
 	defer fmList.RUnlock()
 	var expiredInos []uint64
-	currentTime := time.Now().UnixNano()
+	currentTime := time.Now().Unix()
 	for e := fmList.list.Back(); e != nil; e = e.Prev() {
 		info := e.Value.(*forbiddenInodeInfo)
 		//the first one that has not expired
 		if info.expiration > currentTime {
+			log.LogDebugf("[getExpiredForbiddenMigrationInodes] ino %v is not expired:%v", info.ino, info.expiration)
 			return expiredInos
 		}
 		//reset
+
 		expiredInos = append(expiredInos, info.ino)
 		fmList.list.Remove(e)
 		delete(fmList.index, info.ino)
+		log.LogDebugf("[getExpiredForbiddenMigrationInodes] remove expired ino %v[%v]", info.ino, info.expiration)
 	}
 	return expiredInos
 }
