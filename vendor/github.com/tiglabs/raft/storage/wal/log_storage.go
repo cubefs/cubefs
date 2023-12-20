@@ -192,7 +192,7 @@ func (ls *logEntryStorage) test(depth int) (err error) {
 		if lf, err = ls.get(lfs[i]); err != nil {
 			return
 		}
-		if lf.FirstIndex() != lfs[i].index {
+		if lf.Len() != 0 && lf.FirstIndex() != lfs[i].index {
 			err = fmt.Errorf("log file (%v) index mismatch with firstindex (%v)", lfs[i].String(), lf.FirstIndex())
 			return
 		}

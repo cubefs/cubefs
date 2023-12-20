@@ -189,6 +189,11 @@ func TestLogEntryStorage_OpenWithBrokenFiles(t *testing.T) {
 
 	ls.Close()
 
+	// Step 2. 重新打开数据, 此时数据正常, 不应该出现错误
+	if ls, err = openLogStorage(testPath, &Storage{c: &Config{SyncRotate: true}}); err != nil {
+		t.Fatalf("unecpected result on open storage without any broken log files: %v", err)
+	}
+
 	// Step 2. 破坏导数第二个文件(0000000000000004-0000000000001d4d.log)的数据, 导致第二个文件数据丢失。
 	// 破坏后的数据目录如下所示:
 	// -rw-------  1 zhangmofei  staff   161K Aug 25 14:29 0000000000000001-0000000000000001.log
@@ -214,4 +219,5 @@ func TestLogEntryStorage_OpenWithBrokenFiles(t *testing.T) {
 	if ls, err = openLogStorage(testPath, &Storage{c: &Config{SyncRotate: true}}); err == nil {
 		t.Fatalf("unecpected result on open storage with broken log files")
 	}
+	t.Log(err)
 }
