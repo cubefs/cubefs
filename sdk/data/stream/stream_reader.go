@@ -121,7 +121,7 @@ func (s *Streamer) GetExtentReader(ek *proto.ExtentKey, storageClass uint32) (*E
 	}
 
 	retryRead := true
-	if proto.IsCold(s.client.volumeType) || proto.IsStorageClassBlobStore(storageClass) {
+	if proto.IsStorageClassBlobStore(storageClass) {
 		retryRead = false
 	}
 

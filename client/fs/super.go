@@ -248,7 +248,7 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 		StreamRetryTimeout:           opt.StreamRetryTimeout,
 		OnRenewalForbiddenMigration:  s.mw.RenewalForbiddenMigration,
 		CacheDpStorageClass:          s.cacheDpStorageClass,
-		VolStorageClass:              opt.VolStorageClass,
+		AllowedStorageClass:          opt.AllowedStorageClass,
 	}
 
 	s.ec, err = stream.NewExtentClient(extentConfig)
@@ -257,7 +257,7 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 	}
 	s.mw.VerReadSeq = s.ec.GetReadVer()
 
-	if proto.IsStorageClassBlobStore(opt.VolStorageClass) {
+	if proto.VolSupportsBlobStore(opt.AllowedStorageClass) {
 		s.ebsc, err = blobstore.NewEbsClient(access.Config{
 			ConnMode: access.NoLimitConnMode,
 			Consul: access.ConsulConfig{
@@ -283,7 +283,7 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 	}
 
 	s.suspendCh = make(chan interface{})
-	if proto.IsStorageClassBlobStore(opt.VolStorageClass) {
+	if proto.VolSupportsBlobStore(opt.AllowedStorageClass) {
 		go s.scheduleFlush()
 	}
 	if s.mw.EnableSummary {

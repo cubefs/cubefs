@@ -71,6 +71,7 @@ const (
 	OpGetMaxExtentIDAndPartitionSize uint8 = 0x16
 	OpSnapshotExtentRepairRead       uint8 = 0x17
 	OpSnapshotExtentRepairRsp        uint8 = 0x18
+	// 0x19 is occupied by OpMetaUpdateExtentKeyAfterMigration
 
 	// Operations: Client -> MetaNode.
 	OpMetaCreateInode   uint8 = 0x20
