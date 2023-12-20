@@ -1068,6 +1068,7 @@ func (mp *metaPartition) UpdateExtentKeyAfterMigration(req *proto.UpdateExtentKe
 		return
 	} else {
 		ino.StorageClass = item.(*Inode).StorageClass
+		ino.HybridCouldExtents.sortedEks = item.(*Inode).HybridCouldExtents.sortedEks
 	}
 	if !ino.storeInReplicaSystem() && req.NewObjExtentKeys == nil {
 		err = fmt.Errorf("mp %v inode %v new extentKey for storageClass %v  can not be nil",
@@ -1167,16 +1168,17 @@ func (mp *metaPartition) InodeGetWithEk(req *InodeGetReq, p *Packet) (err error)
 			log.LogDebugf("req ino %v, toplayer ino %v", retMsg.Msg, inode)
 			resp.LayAll = inode.Msg.getAllInodesInfo()
 		}
-		//ino = NewInode(req.Inode, 0)
-		//retMsg = mp.getInodeTopLayer(ino)
-		//
-		////notice.getInode should not set verSeq due to extent need filter from the newest layer to req.VerSeq
-		//ino = retMsg.Msg
+		// get cache ek
+		ino.Extents.Range(func(_ int, ek proto.ExtentKey) bool {
+			resp.CacheExtents = append(resp.CacheExtents, ek)
+			log.LogInfof("action[InodeGetWithEk] Cache Extents append ek %v", ek)
+			return true
+		})
 		//get EK
 		if ino.HybridCouldExtents.sortedEks != nil {
 			if proto.IsStorageClassReplica(ino.StorageClass) {
 				extents := ino.HybridCouldExtents.sortedEks.(*SortedExtents)
-				extents.Range(func(ek proto.ExtentKey) bool {
+				extents.Range(func(_ int, ek proto.ExtentKey) bool {
 					resp.HybridCloudExtents = append(resp.HybridCloudExtents, ek)
 					log.LogInfof("action[InodeGetWithEk] Extents append ek %v", ek)
 					return true
@@ -1193,7 +1195,7 @@ func (mp *metaPartition) InodeGetWithEk(req *InodeGetReq, p *Packet) (err error)
 		if ino.HybridCouldExtentsMigration.sortedEks != nil {
 			if proto.IsStorageClassReplica(ino.HybridCouldExtentsMigration.storageClass) {
 				extents := ino.HybridCouldExtentsMigration.sortedEks.(*SortedExtents)
-				extents.Range(func(ek proto.ExtentKey) bool {
+				extents.Range(func(_ int, ek proto.ExtentKey) bool {
 					resp.MigrationExtents = append(resp.MigrationExtents, ek)
 					log.LogInfof("action[ExtentsList] migrationExtents append ek %v", ek)
 					return true
