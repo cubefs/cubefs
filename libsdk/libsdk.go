@@ -1060,7 +1060,7 @@ func cfs_unlink(id C.int64_t, path *C.char) C.int {
 }
 
 //export cfs_rename
-func cfs_rename(id C.int64_t, from *C.char, to *C.char) C.int {
+func cfs_rename(id C.int64_t, from *C.char, to *C.char, overwritten bool) C.int {
 	c, exist := getClient(int64(id))
 	if !exist {
 		return statusEINVAL
@@ -1090,7 +1090,7 @@ func cfs_rename(id C.int64_t, from *C.char, to *C.char) C.int {
 		return errorToStatus(err)
 	}
 
-	err = c.mw.Rename_ll(srcDirInfo.Inode, srcName, dstDirInfo.Inode, dstName, absFrom, absTo, false)
+	err = c.mw.Rename_ll(srcDirInfo.Inode, srcName, dstDirInfo.Inode, dstName, absFrom, absTo, overwritten)
 	c.ic.Delete(srcDirInfo.Inode)
 	c.ic.Delete(dstDirInfo.Inode)
 	c.dc.Delete(absFrom)
