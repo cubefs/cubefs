@@ -15,14 +15,12 @@
 package stream
 
 import (
-	"encoding/binary"
 	"fmt"
 	"sync"
 	"sync/atomic"
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/btree"
-	"github.com/cubefs/cubefs/util/fastcrc32"
 	"github.com/cubefs/cubefs/util/log"
 )
 
@@ -117,13 +115,4 @@ func (this *SlotItem) Less(than btree.Item) bool {
 
 func (this *SlotItem) Copy() btree.Item {
 	return this
-}
-
-func ComputeCacheBlockSlot(volume string, inode, fixedFileOffset uint64) uint32 {
-	volLen := len(volume)
-	buf := make([]byte, volLen+16)
-	copy(buf[:volLen], volume)
-	binary.BigEndian.PutUint64(buf[volLen:volLen+8], inode)
-	binary.BigEndian.PutUint64(buf[volLen+8:volLen+16], fixedFileOffset)
-	return fastcrc32.Checksum(buf)
 }
