@@ -256,3 +256,12 @@ func ComputeSourcesVersion(sources []*DataSource) (version uint32) {
 	}
 	return fastcrc32.Checksum(crcData)
 }
+
+func ComputeCacheBlockSlot(volume string, inode, fixedFileOffset uint64) uint32 {
+	volLen := len(volume)
+	buf := make([]byte, volLen+16)
+	copy(buf[:volLen], volume)
+	binary.BigEndian.PutUint64(buf[volLen:volLen+8], inode)
+	binary.BigEndian.PutUint64(buf[volLen+8:volLen+16], fixedFileOffset)
+	return fastcrc32.Checksum(buf)
+}
