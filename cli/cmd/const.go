@@ -21,6 +21,7 @@ const (
 	CliOpStatus                      = "stat"
 	CliOpCreate                      = "create"
 	CliOpDelete                      = "delete"
+	CliOpRemove                  = "remove"
 	CliOpInfo                        = "info"
 	CliOpAdd                         = "add"
 	CliOpSet                         = "set"
