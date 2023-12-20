@@ -383,22 +383,26 @@ cfs_packet_batch_iget_reply_from_json(cfs_json_t *json,
 			goto failed;
 		for (; res->info_vec.num < res->info_vec.cap;
 		     res->info_vec.num++) {
+			struct cfs_packet_inode *info;
+
 			ret = cfs_json_get_array_item(
 				&json_infos, res->info_vec.num, &json_info);
 			if (unlikely(ret < 0))
 				goto failed;
-			res->info_vec.base[res->info_vec.num] =
-				cfs_packet_inode_new();
-			if (!res->info_vec.base[res->info_vec.num]) {
+			info = cfs_packet_inode_new();
+			if (!info) {
 				ret = -ENOMEM;
 				goto failed;
 			}
-			ret = cfs_packet_inode_from_json(
-				&json_info,
-				res->info_vec.base[res->info_vec.num]);
+			ret = cfs_packet_inode_from_json(&json_info, info);
+			if (!ret)
+				res->info_vec.base[res->info_vec.num] = info;
+			else
+				cfs_packet_inode_release(info);
 			CHECK_GOTO(ret, "failed to parse info");
 		}
 	}
+	return 0;
 failed:
 	cfs_packet_batch_iget_reply_clear(res);
 	return ret;

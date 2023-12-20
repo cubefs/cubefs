@@ -891,7 +891,10 @@ static int cfs_meta_ievict_internal(struct cfs_meta_client *mc,
 		cfs_packet_release(packet);
 		return ret;
 	}
-	ret = cfs_parse_status(packet->reply.hdr.result_code);
+	if (packet->reply.hdr.result_code == CFS_STATUS_NOT_EXIST)
+		ret = 0;
+	else
+		ret = cfs_parse_status(packet->reply.hdr.result_code);
 	if (ret > 0) {
 		cfs_log_error(mc->log, "server return error 0x%x\n",
 			      packet->reply.hdr.result_code);
@@ -1637,7 +1640,8 @@ int cfs_meta_batch_get(struct cfs_meta_client *mc, struct u64_array *ino_vec,
 	if (ret < 0)
 		goto unlock;
 	hash_for_each(tasks, i, task, hash) {
-		while (task->iinfo_vec.num-- > 0) {
+		while (task->iinfo_vec.num > 0) {
+			task->iinfo_vec.num--;
 			iinfo_vec->base[iinfo_vec->num++] =
 				task->iinfo_vec.base[task->iinfo_vec.num];
 		}

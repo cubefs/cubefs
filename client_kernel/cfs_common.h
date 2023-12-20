@@ -77,7 +77,8 @@
 	{                                                                      \
 		if (!array || !array->base)                                    \
 			return;                                                \
-		while (array->num-- > 0) {                                     \
+		while (array->num > 0) {                                       \
+			array->num--;                                          \
 			name##_clear(&array->base[array->num]);                \
 		}                                                              \
 		kfree(array->base);                                            \
