@@ -601,6 +601,7 @@ func (s *raft) run() {
 		case truncIndex := <-s.truncatec:
 			func(truncateTo uint64) {
 				defer util.HandleCrash(fmt.Sprintf("raft[%v]->truncateTo", s.raftFsm.id))
+
 				if lasti, err := s.raftConfig.Storage.LastIndex(); err != nil {
 					logger.Error("raft[%v] truncate failed to get last index from storage: %v", s.raftFsm.id, err)
 				} else if lasti > s.config.RetainLogs {
@@ -610,13 +611,12 @@ func (s *raft) run() {
 						logger.Error("raft[%v] truncate failed to get first index from storage: %v", s.raftFsm.id, err)
 						return
 					}
-					committed := s.raftFsm.raftLog.committed
-					if truncateTo >= firsti && truncateTo < committed {
+					if truncateTo >= firsti {
 						if err = s.raftConfig.Storage.Truncate(truncateTo); err != nil {
 							logger.Error("raft[%v] truncate failed,error is: %v", s.raftFsm.id, err)
 							return
 						}
-						logger.Debug("raft[%v] [firstindex: %v, lastindex: %v, committed: %v] truncate storage to %v", s.raftFsm.id, firsti, lasti, committed, truncateTo)
+						logger.Debug("raft[%v] [firstindex: %v] truncate storage to %v", s.raftFsm.id, firsti, truncateTo)
 					}
 
 				}
