@@ -572,8 +572,8 @@ func (d *Disk) flushDelete() {
 	var __flushOnce = func() (deleted, remain int, goon bool) {
 
 		d.WalkPartitions(func(partition *DataPartition) bool {
-			const count = 128
-			var n, r, err = partition.FlushDelete(count)
+			const limit = 128
+			var n, r, err = partition.FlushDelete(limit)
 			if err != nil {
 				log.LogErrorf("DP %v: flush delete failed: %v", partition.ID(), err)
 			}

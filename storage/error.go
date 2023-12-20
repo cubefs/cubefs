@@ -17,6 +17,7 @@ package storage
 import (
 	"errors"
 	"fmt"
+	"syscall"
 )
 
 var (
@@ -38,4 +39,13 @@ var (
 func NewParameterMismatchErr(msg string) (err error) {
 	err = fmt.Errorf("parameter mismatch error: %s", msg)
 	return
+}
+
+func isIOError(err error) bool {
+	switch err {
+	case syscall.EIO, syscall.EROFS:
+		return true
+	default:
+	}
+	return false
 }
