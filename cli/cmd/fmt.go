@@ -1005,3 +1005,31 @@ func replicaInHost(hosts []string, replica string) bool {
 func formatDecommissionTokenStatus(status *proto.DecommissionTokenStatus) string {
 	return fmt.Sprintf("Nodeset %v: %v/%v", status.NodesetID, status.CurTokenNum, status.MaxTokenNum)
 }
+
+var (
+	formatFlashNodeSimpleViewTableTitle = arow("Zone", "ID", "Address", "Active", "Enable", "FlashGroupID", "ReportTime")
+	formatFlashNodeViewTableTitle       = append(formatFlashNodeSimpleViewTableTitle[:], "HitRate", "Evicts", "Limit")
+	formatFlashGroupViewTile            = arow("ID", "Slots", "Status", "FlashNodeCount")
+)
+
+func formatFlashNodeView(fn *proto.FlashNodeViewInfo) string {
+	return "[FlashNode]\n" + alignColumn(
+		arow("  ID", fn.ID),
+		arow("  Address", fn.Addr),
+		arow("  Version", fn.Version),
+		arow("  ZoneName", fn.ZoneName),
+		arow("  FlashGroupID", fn.FlashGroupID),
+		arow("  ReportTime", formatTimeToString(fn.ReportTime)),
+		arow("  IsActive", fn.IsActive),
+		arow("  IsEnable", fn.IsEnable),
+	)
+}
+
+func formatFlashGroupView(fg *proto.FlashGroupAdminView) string {
+	return "[FlashGroup]\n" + alignColumn(
+		arow("  ID", fg.ID),
+		arow("  Slots", fg.Slots),
+		arow("  Status", fg.Status),
+		arow("  FlashNodeCount", fg.FlashNodeCount),
+	)
+}
