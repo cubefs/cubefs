@@ -1090,6 +1090,7 @@ type UpdateExtentKeyAfterMigrationRequest struct {
 type InodeGetWithEkResponse struct {
 	Info                     *InodeInfo     `json:"info"`
 	LayAll                   []InodeInfo    `json:"layerInfo"`
+	CacheExtents             []ExtentKey    `json:"cacheEks"`
 	HybridCloudExtents       []ExtentKey    `json:"eks"`
 	HybridCloudObjExtents    []ObjExtentKey `json:"objeks"`
 	MigrationExtents         []ExtentKey    `json:"migrationEks"`

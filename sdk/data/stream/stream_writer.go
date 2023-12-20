@@ -465,7 +465,7 @@ func (s *Streamer) doDirectWriteByAppend(req *ExtentRequest, direct bool, op uin
 	}
 
 	retry := true
-	if proto.IsCold(s.client.volumeType) || proto.IsStorageClassBlobStore(storageClass) {
+	if proto.IsStorageClassBlobStore(storageClass) {
 		retry = false
 	}
 	log.LogDebugf("action[doDirectWriteByAppend] inode %v  data process", s.inode)
@@ -638,7 +638,7 @@ func (s *Streamer) doOverwrite(req *ExtentRequest, direct bool, storageClass uin
 	}
 
 	retry := true
-	if proto.IsCold(s.client.volumeType) || proto.IsStorageClassBlobStore(storageClass) {
+	if proto.IsStorageClassBlobStore(storageClass) {
 		retry = false
 	}
 
@@ -840,7 +840,7 @@ func (s *Streamer) doWriteAppendEx(data []byte, offset, size int, direct bool, r
 
 	log.LogDebugf("doWriteAppendEx enter: ino(%v) offset(%v) size(%v) storeMode(%v) storageClass(%v)",
 		s.inode, offset, size, storeMode, storageClass)
-	if proto.IsHot(s.client.volumeType) || proto.IsStorageClassReplica(storageClass) {
+	if proto.IsStorageClassReplica(storageClass) {
 		if reUseEk {
 			if isLastEkVerNotEqual := s.tryInitExtentHandlerByLastEk(offset, size, isMigration); isLastEkVerNotEqual {
 				log.LogDebugf("doWriteAppendEx enter: ino(%v) tryInitExtentHandlerByLastEk worked but seq not equal", s.inode)
