@@ -611,7 +611,7 @@ func (s *raft) run() {
 						return
 					}
 					committed := s.raftFsm.raftLog.committed
-					if truncateTo >= firsti && truncateTo >= committed {
+					if truncateTo >= firsti && truncateTo < committed {
 						if err = s.raftConfig.Storage.Truncate(truncateTo); err != nil {
 							logger.Error("raft[%v] truncate failed,error is: %v", s.raftFsm.id, err)
 							return
