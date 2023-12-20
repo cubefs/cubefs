@@ -984,7 +984,14 @@ func (mp *metaPartition) internalFreeForbiddenMigrationInode(val []byte) (err er
 		log.LogDebugf("internalFreeForbiddenMigration: received internal free forbidden migration"+
 			": partitionID(%v) inode(%v)",
 			mp.config.PartitionId, ino.Inode)
-		mp.freeForbiddenMigrationInode(ino)
+		item := mp.inodeTree.CopyGet(ino)
+		if item == nil {
+			log.LogDebugf("internalFreeForbiddenMigration: cannot find partitionID(%v) inode(%v)", mp.config.PartitionId, ino.Inode)
+			continue
+		}
+		inode := item.(*Inode)
+		mp.freeForbiddenMigrationInode(inode)
+
 	}
 }
 
@@ -1025,27 +1032,38 @@ func (mp *metaPartition) fsmRenewalInodeForbiddenMigration(ino *Inode) (resp *In
 	return
 }
 
-func (mp *metaPartition) fsmUpdateExtentKeyAfterMigration(ino *Inode) (resp *InodeResponse) {
+func (mp *metaPartition) fsmUpdateExtentKeyAfterMigration(inoParam *Inode) (resp *InodeResponse) {
 	resp = NewInodeResponse()
-	log.LogDebugf("action[fsmForbiddenInodeMigration] inode %v", ino)
+	log.LogDebugf("action[fsmForbiddenInodeMigration] inode %v", inoParam)
 	resp.Status = proto.OpOk
-	item := mp.inodeTree.CopyGet(ino)
+	item := mp.inodeTree.CopyGet(inoParam)
 	if item == nil {
 		resp.Status = proto.OpNotExistErr
 		return
 	}
 	i := item.(*Inode)
-	//only can migrate to HDD or ebs for now
-	tmpStorageClass := i.HybridCouldExtentsMigration.storageClass
-	tmpSortedEks := i.HybridCouldExtentsMigration.sortedEks
 	// store old storage ek in HybridCouldExtentsMigration
-	i.HybridCouldExtentsMigration.storageClass = i.StorageClass
-	i.HybridCouldExtentsMigration.sortedEks = i.HybridCouldExtents.sortedEks
+	i.HybridCouldExtentsMigration.storageClass = inoParam.StorageClass
+	i.HybridCouldExtentsMigration.sortedEks = inoParam.HybridCouldExtents.sortedEks
 	// store new storage ek  in HybridCouldExtents
-	i.StorageClass = tmpStorageClass
-	i.HybridCouldExtents.sortedEks = tmpSortedEks
-	log.LogInfof("action[fsmForbiddenInodeMigration] inode %v storage class change from %v to %v", ino.Inode,
-		ino.HybridCouldExtentsMigration.storageClass, ino.StorageClass)
+	i.StorageClass = inoParam.HybridCouldExtentsMigration.storageClass
+	i.HybridCouldExtents.sortedEks = inoParam.HybridCouldExtentsMigration.sortedEks
+	log.LogInfof("action[fsmUpdateExtentKeyAfterMigration] inode %v storage class change from %v to %v", i.Inode,
+		i.HybridCouldExtentsMigration.storageClass, i.StorageClass)
+	if proto.IsStorageClassBlobStore(i.StorageClass) {
+		log.LogInfof("action[fsmUpdateExtentKeyAfterMigration] inode %v current ek %v",
+			i.Inode, i.HybridCouldExtents.sortedEks.(*SortedObjExtents).eks)
+	} else if proto.IsStorageClassReplica(i.StorageClass) {
+		log.LogInfof("action[fsmUpdateExtentKeyAfterMigration] inode %v current ek %v",
+			i.Inode, i.HybridCouldExtents.sortedEks.(*SortedExtents).eks)
+	}
+	if proto.IsStorageClassBlobStore(i.HybridCouldExtentsMigration.storageClass) {
+		log.LogInfof("action[fsmUpdateExtentKeyAfterMigration] inode %v old ek %v",
+			i.Inode, i.HybridCouldExtentsMigration.sortedEks.(*SortedObjExtents).eks)
+	} else if proto.IsStorageClassReplica(i.HybridCouldExtentsMigration.storageClass) {
+		log.LogInfof("action[fsmUpdateExtentKeyAfterMigration] inode %v old ek %v",
+			i.Inode, i.HybridCouldExtentsMigration.sortedEks.(*SortedExtents).eks)
+	}
 	//TODO:chihe delete old ek
 	return
 }

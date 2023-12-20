@@ -138,3 +138,67 @@ func TestMetaPartition_LoadSnapshot(t *testing.T) {
 	require.Equal(t, ErrSnapshotCrcMismatch, err)
 
 }
+
+func TestMetaPartition_LoadHybridCouldMigrationSnapshot(t *testing.T) {
+	testPath := "/tmp/testMetaPartition/"
+	os.RemoveAll(testPath)
+	defer os.RemoveAll(testPath)
+	mpC := &MetaPartitionConfig{
+		PartitionId:   1,
+		VolName:       "test_vol",
+		Start:         0,
+		End:           100,
+		PartitionType: 1,
+		Peers:         nil,
+		RootDir:       testPath,
+	}
+	metaM := &metadataManager{
+		nodeId:     1,
+		zoneName:   "test",
+		raftStore:  nil,
+		partitions: make(map[uint64]MetaPartition),
+		metaNode:   &MetaNode{},
+	}
+
+	partition := NewMetaPartition(mpC, metaM)
+	require.NotNil(t, partition)
+	mp, ok := partition.(*metaPartition)
+	require.True(t, ok)
+	ino := NewInode(2, 0)
+	ino.StorageClass = proto.StorageClass_BlobStore
+	ino.HybridCouldExtents.sortedEks = NewSortedObjExtentsFromObjEks(
+		[]proto.ObjExtentKey{{Size: uint64(1024), FileOffset: uint64(0), BlobSize: 4194304, BlobsLen: 1,
+			Blobs: []proto.Blob{{Count: 1, MinBid: 30138734, Vid: 525}}}})
+	ino.HybridCouldExtentsMigration.storageClass = proto.StorageClass_Replica_SSD
+	ino.HybridCouldExtentsMigration.sortedEks = NewSortedExtentsFromEks([]proto.ExtentKey{{FileOffset: 0, PartitionId: 164,
+		ExtentId: 55, ExtentOffset: 0, Size: 1024, CRC: 0}})
+	mp.inodeTree.ReplaceOrInsert(ino, true)
+	//dentry := &Dentry{}
+	//mp.dentryTree.ReplaceOrInsert(dentry, true)
+	//extend := &Extend{}
+	//mp.extendTree.ReplaceOrInsert(extend, true)
+	//multipart := &Multipart{}
+	//mp.multipartTree.ReplaceOrInsert(multipart, true)
+	msg := &storeMsg{
+		command:        1,
+		applyIndex:     0,
+		txId:           mp.txProcessor.txManager.txIdAlloc.getTransactionID(),
+		inodeTree:      mp.inodeTree,
+		dentryTree:     mp.dentryTree,
+		extendTree:     mp.extendTree,
+		multipartTree:  mp.multipartTree,
+		txTree:         mp.txProcessor.txManager.txTree,
+		txRbInodeTree:  mp.txProcessor.txResource.txRbInodeTree,
+		txRbDentryTree: mp.txProcessor.txResource.txRbDentryTree,
+		uniqId:         mp.GetUniqId(),
+		uniqChecker:    mp.uniqChecker,
+	}
+	mp.uidManager = NewUidMgr(mpC.VolName, mpC.PartitionId)
+	mp.mqMgr = NewQuotaManager(mpC.VolName, mpC.PartitionId)
+	mp.multiVersionList = &proto.VolVersionInfoList{}
+	err := mp.store(msg)
+	require.Nil(t, err)
+	snapshotPath := path.Join(mp.config.RootDir, snapshotDir)
+	err = partition.LoadSnapshot(snapshotPath)
+	require.Nil(t, err)
+}

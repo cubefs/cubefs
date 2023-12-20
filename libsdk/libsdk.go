@@ -243,7 +243,7 @@ type client struct {
 	cluster             string
 	dirChildrenNumLimit uint32
 	enableAudit         bool
-	volStorageClass     uint32
+	allowedStorageClass []uint32
 
 	// runtime context
 	cwd    string // current working directory
@@ -617,11 +617,11 @@ func cfs_write(id C.int64_t, fd C.int, buf unsafe.Pointer, size C.size_t, off C.
 	var wait bool
 
 	if f.flags&uint32(C.O_DIRECT) != 0 || f.flags&uint32(C.O_SYNC) != 0 || f.flags&uint32(C.O_DSYNC) != 0 {
-		if proto.IsHot(c.volType) || proto.IsStorageClassReplica(f.storageClass) {
+		if proto.IsStorageClassReplica(f.storageClass) {
 			wait = true
 		}
 	}
-	if f.flags&uint32(C.O_APPEND) != 0 || proto.IsCold(c.volType) || proto.IsStorageClassBlobStore(f.storageClass) {
+	if f.flags&uint32(C.O_APPEND) != 0 || proto.IsStorageClassBlobStore(f.storageClass) {
 		flags |= proto.FlagsAppend
 		flags |= proto.FlagsSyncWrite
 	}
@@ -1214,20 +1214,20 @@ func (c *client) start() (err error) {
 	}
 	var ec *stream.ExtentClient
 	if ec, err = stream.NewExtentClient(&stream.ExtentConfig{
-		Volume:            c.volName,
-		VolumeType:        c.volType,
-		Masters:           masters,
-		FollowerRead:      c.followerRead,
-		OnAppendExtentKey: mw.AppendExtentKey,
-		OnSplitExtentKey:  mw.SplitExtentKey,
-		OnGetExtents:      mw.GetExtents,
-		OnTruncate:        mw.Truncate,
-		BcacheEnable:      c.enableBcache,
-		OnLoadBcache:      c.bc.Get,
-		OnCacheBcache:     c.bc.Put,
-		OnEvictBcache:     c.bc.Evict,
-		DisableMetaCache:  true,
-		VolStorageClass:   c.volStorageClass,
+		Volume:              c.volName,
+		VolumeType:          c.volType,
+		Masters:             masters,
+		FollowerRead:        c.followerRead,
+		OnAppendExtentKey:   mw.AppendExtentKey,
+		OnSplitExtentKey:    mw.SplitExtentKey,
+		OnGetExtents:        mw.GetExtents,
+		OnTruncate:          mw.Truncate,
+		BcacheEnable:        c.enableBcache,
+		OnLoadBcache:        c.bc.Get,
+		OnCacheBcache:       c.bc.Put,
+		OnEvictBcache:       c.bc.Evict,
+		DisableMetaCache:    true,
+		AllowedStorageClass: c.allowedStorageClass,
 	}); err != nil {
 		log.LogErrorf("newClient NewExtentClient failed(%v)", err)
 		return
@@ -1285,7 +1285,7 @@ func (c *client) allocFD(ino uint64, flags, mode uint32, fileCache bool, fileSiz
 	if flags&0x0f != syscall.O_RDONLY {
 		f.openForWrite = true
 	}
-	if proto.IsCold(c.volType) || proto.IsStorageClassBlobStore(storageClass) {
+	if proto.IsStorageClassBlobStore(storageClass) {
 		clientConf := blobstore.ClientConfig{
 			VolName:         c.volName,
 			VolType:         c.volType,
@@ -1302,6 +1302,7 @@ func (c *client) allocFD(ino uint64, flags, mode uint32, fileCache bool, fileSiz
 			FileCache:       fileCache,
 			FileSize:        fileSize,
 			CacheThreshold:  c.cacheThreshold,
+			StorageClass:    storageClass,
 		}
 		f.fileWriter.FreeCache()
 		switch flags & 0xff {
@@ -1404,7 +1405,7 @@ func (c *client) closeStream(f *file) {
 }
 
 func (c *client) flush(f *file) error {
-	if proto.IsHot(c.volType) || proto.IsStorageClassReplica(f.storageClass) {
+	if proto.IsStorageClassReplica(f.storageClass) {
 		return c.ec.Flush(f.ino)
 	} else {
 		if f.fileWriter != nil {
@@ -1423,7 +1424,7 @@ func (c *client) truncate(f *file, size int) error {
 }
 
 func (c *client) write(f *file, offset int, data []byte, flags int) (n int, err error) {
-	if proto.IsHot(c.volType) || proto.IsStorageClassReplica(f.storageClass) {
+	if proto.IsStorageClassReplica(f.storageClass) {
 		c.ec.GetStreamer(f.ino).SetParentInode(f.pino) // set the parent inode
 		checkFunc := func() error {
 			if !c.mw.EnableQuota {
@@ -1450,7 +1451,7 @@ func (c *client) write(f *file, offset int, data []byte, flags int) (n int, err 
 }
 
 func (c *client) read(f *file, offset int, data []byte) (n int, err error) {
-	if proto.IsHot(c.volType) || proto.IsStorageClassReplica(f.storageClass) {
+	if proto.IsStorageClassReplica(f.storageClass) {
 		n, err = c.ec.Read(f.ino, data, offset, len(data), f.storageClass, false)
 	} else {
 		n, err = f.fileReader.Read(c.ctx(c.id, f.ino), data, offset, len(data))
@@ -1478,7 +1479,7 @@ func (c *client) loadConfFromMaster(masters []string) (err error) {
 	c.cacheAction = volumeInfo.CacheAction
 	c.cacheRuleKey = volumeInfo.CacheRule
 	c.cacheThreshold = volumeInfo.CacheThreshold
-	c.volStorageClass = volumeInfo.VolStorageClass
+	c.allowedStorageClass = volumeInfo.AllowedStorageClass
 
 	var clusterInfo *proto.ClusterInfo
 	clusterInfo, err = mc.AdminAPI().GetClusterInfo()

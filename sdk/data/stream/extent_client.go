@@ -125,7 +125,7 @@ type ExtentConfig struct {
 	OnRenewalForbiddenMigration RenewalForbiddenMigrationFunc
 
 	CacheDpStorageClass uint32
-	VolStorageClass     uint32
+	AllowedStorageClass []uint32
 }
 
 type MultiVerMgr struct {
@@ -246,7 +246,7 @@ func NewExtentClient(config *ExtentConfig) (client *ExtentClient, err error) {
 retry:
 
 	client.dataWrapper, err = wrapper.NewDataPartitionWrapper(client, config.Volume, config.Masters,
-		config.Preload, config.MinWriteAbleDataPartitionCnt, config.VerReadSeq, config.VolStorageClass)
+		config.Preload, config.MinWriteAbleDataPartitionCnt, config.VerReadSeq, config.AllowedStorageClass)
 	if err != nil {
 		log.LogErrorf("NewExtentClient: new data partition wrapper failed: volume(%v) mayRetry(%v) err(%v)",
 			config.Volume, limit, err)
@@ -461,7 +461,11 @@ func (client *ExtentClient) RefreshExtentsCache(inode uint64) error {
 	if s == nil {
 		return nil
 	}
-	return s.GetExtents(false)
+	var isMigration = false
+	if s.isCache {
+		isMigration = true
+	}
+	return s.GetExtents(isMigration)
 }
 
 func (client *ExtentClient) ForceRefreshExtentsCache(inode uint64) error {
