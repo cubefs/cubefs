@@ -613,7 +613,7 @@ func (a *Audit) shiftFiles() error {
 }
 
 func isPathSafe(filePath string) bool {
-	safePattern := `^[a-zA-Z0-9\-_/]+$`
+	safePattern := `^(/|\.{0,2}/|[a-zA-Z0-9_@.-]+\/)+([a-zA-Z0-9_@.-]+|\.{1,2})$`
 	match, _ := regexp.MatchString(safePattern, filePath)
 	return match
 }
