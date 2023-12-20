@@ -703,7 +703,7 @@ func (dp *DataPartition) MarkDelete(marker storage.Marker) (err error) {
 	return
 }
 
-func (dp *DataPartition) FlushDelete(count int) (deleted, remain int, err error) {
+func (dp *DataPartition) FlushDelete(limit int) (deleted, remain int, err error) {
 
 	const (
 		exporterOp            = "FlushDelete"
@@ -729,7 +729,7 @@ func (dp *DataPartition) FlushDelete(count int) (deleted, remain int, err error)
 		}
 	)
 
-	deleted, remain, err = dp.extentStore.FlushDelete(storage.NewFuncInterceptor(before, after), count)
+	deleted, remain, err = dp.extentStore.FlushDelete(storage.NewFuncInterceptor(before, after), limit)
 	return
 }
 

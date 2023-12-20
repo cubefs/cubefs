@@ -601,85 +601,88 @@ func (s *ExtentStore) MarkDelete(marker Marker) (err error) {
 // Parameter:
 //  * interceptor:
 //      The caller can inject an interceptor to track the execution of the delete operation.
-//  * count:
+//  * limit:
 //      limit on the number of deletions to be performed.
 //      When it is less than or equal to 0, it means there is no limit.
-func (s *ExtentStore) FlushDelete(interceptor Interceptor, count int) (deleted, remain int, err error) {
-	var start = time.Now()
+func (s *ExtentStore) FlushDelete(interceptor Interceptor, limit int) (deleted, remain int, err error) {
 	defer func() {
 		if err != nil {
 			log.LogErrorf("Store(%v) flush delete failed: %v", s.partitionID, err)
 			return
 		}
 		if log.IsDebugEnabled() && deleted > 0 {
-			log.LogDebugf("Store(%v) flush delete complete, count %v, deleted %v, remain %v, elapsed %v",
-				s.partitionID, count, deleted, remain, time.Now().Sub(start))
+			log.LogDebugf("Store(%v) flush delete complete, limit %v, deleted %v, remain %v",
+				s.partitionID, limit, deleted, remain)
 		}
 	}()
 
-	var maybeGoon = func() bool {
-		// Check if meets count limitation
-		return !(count > 0 && deleted >= count)
+	if interceptor == nil {
+		interceptor = noopInterceptor
 	}
 
-	err = s.deletionQueue.Consume(func(ino, extent uint64, offset, size, timestamp int64) (bool, error) {
+	err = s.deletionQueue.Consume(func(ino, extent uint64, offset, size, _ int64) (bool, error) {
 		var err error
-		if interceptor != nil {
-			var ctx context.Context
-			if ctx, err = interceptor.Before(); err != nil {
-				return false, err
-			}
-			defer func() {
-				interceptor.After(ctx, 0, err)
-			}()
-		}
-		if proto.IsTinyExtent(extent) {
-			if log.IsDebugEnabled() {
-				log.LogDebugf("Store(%v) flush delete TinyExtent: extent=%v, offset=%v, size=%v, timestamp=%v",
-					s.partitionID, extent, offset, size, timestamp)
-			}
-			var info, ok = s.getExtentInfoByExtentID(extent)
-			if !ok {
-				return maybeGoon(), nil
-			}
-			var e *Extent
-			if e, err = s.ExtentWithHeader(info); err != nil {
-				return maybeGoon(), nil
-			}
-			if err = s.tinyDelete(e, offset, size); err != nil {
-				log.LogErrorf("Store(%v) delete TinyExtent data failed: ino=%v, extent=%v, offset=%v, size=%v, error=%v",
-					s.partitionID, ino, extent, offset, size, err)
-				return true, nil
-			}
-			deleted++
-			return maybeGoon(), nil
-		}
-		if log.IsDebugEnabled() {
-			log.LogDebugf("Store(%v) flush delete NormalExtent: ino=%v, extent=%v, timestamp=%v",
-				s.partitionID, ino, extent, timestamp)
-		}
-		var filepath = path.Join(s.dataPath, strconv.FormatUint(extent, 10))
-
-		var interceptor = s.interceptors.Get(IORemove)
 		var ctx context.Context
 		if ctx, err = interceptor.Before(); err != nil {
 			return false, err
 		}
-		if err = os.Remove(filepath); err != nil && os.IsNotExist(err) {
+		defer func() {
+			interceptor.After(ctx, 0, err)
+		}()
+		if err = s.__deleteExtent(ino, extent, offset, size); err != nil {
+			if isIOError(err) {
+				return false, err
+			}
 			err = nil
+			return true, nil
 		}
-		interceptor.After(ctx, 0, err)
-		if err != nil {
-			log.LogErrorf("Store(%v) remove NormalExtent file failed: extent=%v, ino=%v, filepath=%v, error=%v", s.partitionID, extent, ino, filepath, err)
-		}
-
 		deleted++
-		if err = s.removeExtentHeader(extent); err != nil && log.IsWarnEnabled() {
-			log.LogWarnf("Store(%v) remove block CRC info failed: extent=%v, ino=%v, error=%v", s.partitionID, extent, ino, err)
-		}
-		return maybeGoon(), nil
+		return limit <= 0 || deleted < limit, nil
 	})
 	remain = s.deletionQueue.Remain()
+	return
+}
+
+func (s *ExtentStore) __deleteExtent(ino, extent uint64, offset, size int64) (err error) {
+	if proto.IsTinyExtent(extent) {
+		if log.IsDebugEnabled() {
+			log.LogDebugf("Store(%v) flush delete TinyExtent: extent=%v, offset=%v, size=%v",
+				s.partitionID, extent, offset, size)
+		}
+		var info, ok = s.getExtentInfoByExtentID(extent)
+		if !ok {
+			return
+		}
+		var e *Extent
+		if e, err = s.ExtentWithHeader(info); err != nil {
+			return
+		}
+		if err = s.tinyDelete(e, offset, size); err != nil {
+			log.LogErrorf("Store(%v) delete TinyExtent data failed: ino=%v, extent=%v, offset=%v, size=%v, error=%v",
+				s.partitionID, ino, extent, offset, size, err)
+		}
+		return
+	}
+	if log.IsDebugEnabled() {
+		log.LogDebugf("Store(%v) flush delete NormalExtent: ino=%v, extent=%v, timestamp=%v",
+			s.partitionID, ino, extent)
+	}
+	var filepath = path.Join(s.dataPath, strconv.FormatUint(extent, 10))
+	var interceptor = s.interceptors.Get(IORemove)
+	var ctx context.Context
+	if ctx, err = interceptor.Before(); err != nil {
+		return
+	}
+	if err = os.Remove(filepath); err != nil && os.IsNotExist(err) {
+		err = nil
+	}
+	interceptor.After(ctx, 0, err)
+	if err != nil {
+		log.LogErrorf("Store(%v) remove NormalExtent file failed: extent=%v, ino=%v, filepath=%v, error=%v", s.partitionID, extent, ino, filepath, err)
+	}
+	if err = s.removeExtentHeader(extent); err != nil && log.IsWarnEnabled() {
+		log.LogWarnf("Store(%v) remove block CRC info failed: extent=%v, ino=%v, error=%v", s.partitionID, extent, ino, err)
+	}
 	return
 }
 
