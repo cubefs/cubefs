@@ -68,7 +68,7 @@ var (
 
 // NewFile returns a new file.
 func NewFile(s *Super, i *proto.InodeInfo, flag uint32, pino uint64, filename string) fs.Node {
-	if proto.IsCold(s.volType) || proto.IsStorageClassBlobStore(i.StorageClass) {
+	if proto.IsStorageClassBlobStore(i.StorageClass) {
 		var (
 			fReader    *blobstore.Reader
 			fWriter    *blobstore.Writer
@@ -91,6 +91,7 @@ func NewFile(s *Super, i *proto.InodeInfo, flag uint32, pino uint64, filename st
 			FileCache:       false,
 			FileSize:        i.Size,
 			CacheThreshold:  s.CacheThreshold,
+			StorageClass:    i.StorageClass,
 		}
 		log.LogDebugf("Trace NewFile:flag(%v). clientConf(%v)", flag, clientConf)
 
@@ -245,7 +246,7 @@ func (f *File) Open(ctx context.Context, req *fuse.OpenRequest, resp *fuse.OpenR
 	if f.super.keepCache && resp != nil {
 		resp.Flags |= fuse.OpenKeepCache
 	}
-	if proto.IsCold(f.super.volType) || proto.IsStorageClassBlobStore(f.info.StorageClass) {
+	if proto.IsStorageClassBlobStore(f.info.StorageClass) {
 		log.LogDebugf("TRANCE open ino(%v) info(%v)", ino, f.info)
 		fileSize, _ := f.fileSizeVersion2(ino)
 		clientConf := blobstore.ClientConfig{
@@ -264,6 +265,7 @@ func (f *File) Open(ctx context.Context, req *fuse.OpenRequest, resp *fuse.OpenR
 			FileCache:       false,
 			FileSize:        uint64(fileSize),
 			CacheThreshold:  f.super.CacheThreshold,
+			StorageClass:    f.info.StorageClass,
 		}
 		f.fWriter.FreeCache()
 		switch req.Flags & 0x0f {
@@ -341,7 +343,7 @@ func (f *File) Read(ctx context.Context, req *fuse.ReadRequest, resp *fuse.ReadR
 		metric.SetWithLabels(err, map[string]string{exporter.Vol: f.super.volname})
 	}()
 	var size int
-	if proto.IsHot(f.super.volType) || proto.IsStorageClassReplica(f.info.StorageClass) {
+	if proto.IsStorageClassReplica(f.info.StorageClass) {
 		size, err = f.super.ec.Read(f.info.Inode, resp.Data[fuse.OutHeaderSize:], int(req.Offset),
 			req.Size, f.info.StorageClass, false)
 	} else {
@@ -388,7 +390,7 @@ func (f *File) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.Wri
 	reqlen := len(req.Data)
 	log.LogDebugf("TRACE Write enter: ino(%v) offset(%v) len(%v)  flags(%v) fileflags(%v) quotaIds(%v) req(%v)",
 		ino, req.Offset, reqlen, req.Flags, req.FileFlags, f.info.QuotaInfos, req)
-	if proto.IsHot(f.super.volType) || proto.IsStorageClassReplica(f.info.StorageClass) {
+	if proto.IsStorageClassReplica(f.info.StorageClass) {
 		filesize, _ := f.fileSize(ino)
 		if req.Offset > int64(filesize) && reqlen == 1 && req.Data[0] == 0 {
 
@@ -415,13 +417,13 @@ func (f *File) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.Wri
 		if f.super.enSyncWrite {
 			flags |= proto.FlagsSyncWrite
 		}
-		if proto.IsCold(f.super.volType) || proto.IsStorageClassBlobStore(f.info.StorageClass) {
+		if proto.IsStorageClassBlobStore(f.info.StorageClass) {
 			waitForFlush = false
 			flags |= proto.FlagsSyncWrite
 		}
 	}
 
-	if req.FileFlags&fuse.OpenAppend != 0 || proto.IsCold(f.super.volType) || proto.IsStorageClassBlobStore(f.info.StorageClass) {
+	if req.FileFlags&fuse.OpenAppend != 0 || proto.IsStorageClassBlobStore(f.info.StorageClass) {
 		flags |= proto.FlagsAppend
 	}
 
@@ -448,7 +450,7 @@ func (f *File) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.Wri
 		return nil
 	}
 	var size int
-	if proto.IsHot(f.super.volType) || proto.IsStorageClassReplica(f.info.StorageClass) {
+	if proto.IsStorageClassReplica(f.info.StorageClass) {
 		f.super.ec.GetStreamer(ino).SetParentInode(f.parentIno)
 		if size, err = f.super.ec.Write(ino, int(req.Offset), req.Data, flags, checkFunc, f.info.StorageClass, false); err == ParseError(syscall.ENOSPC) {
 			return
@@ -509,7 +511,7 @@ func (f *File) Flush(ctx context.Context, req *fuse.FlushRequest) (err error) {
 	defer func() {
 		metric.SetWithLabels(err, map[string]string{exporter.Vol: f.super.volname})
 	}()
-	if proto.IsHot(f.super.volType) || proto.IsStorageClassReplica(f.info.StorageClass) {
+	if proto.IsStorageClassReplica(f.info.StorageClass) {
 		err = f.super.ec.Flush(f.info.Inode)
 	} else {
 		f.Lock()
@@ -543,7 +545,7 @@ func (f *File) Fsync(ctx context.Context, req *fuse.FsyncRequest) (err error) {
 
 	log.LogDebugf("TRACE Fsync enter: ino(%v)", f.info.Inode)
 	start := time.Now()
-	if proto.IsHot(f.super.volType) || proto.IsStorageClassReplica(f.info.StorageClass) {
+	if proto.IsStorageClassReplica(f.info.StorageClass) {
 		err = f.super.ec.Flush(f.info.Inode)
 	} else {
 		err = f.fWriter.Flush(f.info.Inode, ctx)
@@ -577,7 +579,7 @@ func (f *File) Setattr(ctx context.Context, req *fuse.SetattrRequest, resp *fuse
 	if proto.IsStorageClassBlobStore(f.info.StorageClass) {
 		isCache = true
 	}
-	if req.Valid.Size() && (proto.IsHot(f.super.volType) || proto.IsStorageClassReplica(f.info.StorageClass)) {
+	if req.Valid.Size() && proto.IsStorageClassReplica(f.info.StorageClass) {
 		// when use trunc param in open request through nfs client and mount on cfs mountPoint, cfs client may not recv open message but only setAttr,
 		// the streamer may not open and cause io error finally,so do a open no matter the stream be opened or not
 		if err := f.super.ec.OpenStream(ino, openForWrite, isCache); err != nil {
@@ -605,7 +607,7 @@ func (f *File) Setattr(ctx context.Context, req *fuse.SetattrRequest, resp *fuse
 		return ParseError(err)
 	}
 
-	if req.Valid.Size() && (proto.IsHot(f.super.volType) || proto.IsStorageClassReplica(f.info.StorageClass)) {
+	if req.Valid.Size() && proto.IsStorageClassReplica(f.info.StorageClass) {
 		if req.Size != info.Size {
 			log.LogWarnf("Setattr: truncate ino(%v) reqSize(%v) inodeSize(%v)", ino, req.Size, info.Size)
 		}
@@ -763,7 +765,7 @@ func (f *File) fileSize(ino uint64) (size int, gen uint64) {
 
 func (f *File) fileSizeVersion2(ino uint64) (size int, gen uint64) {
 	size, gen, valid := f.super.ec.FileSize(ino)
-	if proto.IsCold(f.super.volType) || proto.IsStorageClassBlobStore(f.info.StorageClass) {
+	if proto.IsStorageClassBlobStore(f.info.StorageClass) {
 		valid = false
 	}
 	if !valid {

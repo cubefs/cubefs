@@ -2747,7 +2747,7 @@ func (m *metadataManager) opMetaUpdateExtentKeyAfterMigration(conn net.Conn, p *
 	mp.UpdateExtentKeyAfterMigration(req, p, remoteAddr)
 	m.updatePackRspSeq(mp, p)
 	m.respondToClientWithVer(conn, p)
-	log.LogDebugf("%s [opMetaRenewalForbiddenMigration] req: %d - %v, resp body: %v, "+
+	log.LogDebugf("%s [opMetaUpdateExtentKeyAfterMigration] req: %d - %v, resp body: %v, "+
 		"resp body: %s", remoteAddr, p.GetReqID(), req, p.GetResultMsg(), p.Data)
 	return
 }
