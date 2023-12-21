@@ -41,7 +41,7 @@ func (f *FlashNode) handleEvictVolume(w http.ResponseWriter, r *http.Request) {
 	r.ParseForm()
 	volume := r.FormValue("volume")
 	if volume == "" {
-		replyErr(w, r, http.StatusBadRequest, "volume name can not be empty", nil)
+		replyErr(w, r, proto.ErrCodeParamError, "volume name can not be empty", nil)
 		return
 	}
 	replyOK(w, r, f.cacheEngine.EvictCacheByVolume(volume))
@@ -53,7 +53,7 @@ func (f *FlashNode) handleEvictAll(w http.ResponseWriter, r *http.Request) {
 }
 
 func replyOK(w http.ResponseWriter, r *http.Request, data interface{}) {
-	replyErr(w, r, http.StatusOK, "OK", data)
+	replyErr(w, r, proto.ErrCodeSuccess, "OK", data)
 }
 
 func replyErr(w http.ResponseWriter, r *http.Request, code int32, msg string, data interface{}) {
