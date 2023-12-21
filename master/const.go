@@ -242,7 +242,7 @@ const (
 	dataNodesUnAvailable = 3
 
 	unusedFlashNodeFlashGroupID = 0
-	defaultFlashGroupSlotsCount = 128
+	defaultFlashGroupSlotsCount = 32
 )
 
 const (
