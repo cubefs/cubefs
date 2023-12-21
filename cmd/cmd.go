@@ -33,6 +33,7 @@ import (
 	"github.com/cubefs/cubefs/cmd/common"
 	"github.com/cubefs/cubefs/console"
 	"github.com/cubefs/cubefs/datanode"
+	"github.com/cubefs/cubefs/flashnode"
 	"github.com/cubefs/cubefs/lcnode"
 	"github.com/cubefs/cubefs/master"
 	"github.com/cubefs/cubefs/metanode"
@@ -68,6 +69,7 @@ const (
 	RoleObject    = "objectnode"
 	RoleConsole   = "console"
 	RoleLifeCycle = "lcnode"
+	RoleFlash     = "flashnode"
 )
 
 const (
@@ -78,6 +80,7 @@ const (
 	ModuleObject    = "objectNode"
 	ModuleConsole   = "console"
 	ModuleLifeCycle = "lcnode"
+	ModuleFlash     = "flashNode"
 )
 
 const (
@@ -199,6 +202,9 @@ func main() {
 	case RoleLifeCycle:
 		server = lcnode.NewServer()
 		module = ModuleLifeCycle
+	case RoleFlash:
+		server = flashnode.NewServer()
+		module = ModuleFlash
 	default:
 		err = errors.NewErrorf("Fatal: role mismatch: %s", role)
 		fmt.Println(err)

@@ -25,22 +25,21 @@ import (
 )
 
 func (f *FlashNode) registerAPIHandler() {
-	http.HandleFunc("/stat", f.getCacheStatHandler)
-	http.HandleFunc("/evictVol", f.evictVolumeCacheHandler)
-	http.HandleFunc("/evictAll", f.evictAllCacheHandler)
+	http.HandleFunc("/stat", f.handleStat)
+	http.HandleFunc("/evictVol", f.handleEvictVolume)
+	http.HandleFunc("/evictAll", f.handleEvictAll)
 }
 
-func (f *FlashNode) getCacheStatHandler(w http.ResponseWriter, r *http.Request) {
+func (f *FlashNode) handleStat(w http.ResponseWriter, r *http.Request) {
 	replyOK(w, r, proto.FlashNodeStat{
-		NodeLimit:   f.nodeLimit,
-		VolLimit:    f.volLimitMap,
+		NodeLimit:   uint64(f.readLimiter.Limit()),
 		CacheStatus: f.cacheEngine.Status(),
 	})
 }
 
-func (f *FlashNode) evictVolumeCacheHandler(w http.ResponseWriter, r *http.Request) {
+func (f *FlashNode) handleEvictVolume(w http.ResponseWriter, r *http.Request) {
 	r.ParseForm()
-	volume := r.FormValue(volumePara)
+	volume := r.FormValue("volume")
 	if volume == "" {
 		replyErr(w, r, http.StatusBadRequest, "volume name can not be empty", nil)
 		return
@@ -48,7 +47,7 @@ func (f *FlashNode) evictVolumeCacheHandler(w http.ResponseWriter, r *http.Reque
 	replyOK(w, r, f.cacheEngine.EvictCacheByVolume(volume))
 }
 
-func (f *FlashNode) evictAllCacheHandler(w http.ResponseWriter, r *http.Request) {
+func (f *FlashNode) handleEvictAll(w http.ResponseWriter, r *http.Request) {
 	f.cacheEngine.EvictCacheAll()
 	replyOK(w, r, nil)
 }
