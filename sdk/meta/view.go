@@ -160,6 +160,13 @@ func (mw *MetaWrapper) updateVolStatInfo() (err error) {
 		log.LogWarnf("updateVolStatInfo: get volume status fail: volume(%v) err(%v)", mw.volname, err)
 		return
 	}
+
+	if info.UsedSize > info.TotalSize {
+		log.LogInfof("volume(%v) queried usedSize(%v) is larger than totalSize(%v), force set usedSize as totalSize",
+			mw.volname, info.UsedSize, info.TotalSize)
+		info.UsedSize = info.TotalSize
+	}
+
 	atomic.StoreUint64(&mw.totalSize, info.TotalSize)
 	atomic.StoreUint64(&mw.usedSize, info.UsedSize)
 	atomic.StoreUint64(&mw.inodeCount, info.InodeCount)
