@@ -18,6 +18,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"hash/crc32"
+	"sort"
 	"sync"
 
 	"github.com/cubefs/cubefs/proto"
@@ -136,17 +137,22 @@ func (t *flashNodeTopology) deleteFlashNode(flashNode *FlashNode) {
 
 // the function caller should use createFlashGroupLock
 func (t *flashNodeTopology) allocateNewSlotsForCreateFlashGroup(fgID uint64, setSlots []uint32) (slots []uint32) {
-	slots = make([]uint32, 0, defaultFlashGroupSlotsCount)
-	if len(setSlots) != 0 {
-		slots = append(slots, setSlots...)
+	slots = make([]uint32, 0, len(setSlots))
+	for _, slot := range setSlots {
+		if _, ok := t.slotsMap[slot]; !ok {
+			slots = append(slots, slot)
+		}
 	}
+	if len(slots) > 0 {
+		return
+	}
+
 	for len(slots) < defaultFlashGroupSlotsCount {
 		slot := allocateNewSlot()
 		if _, ok := t.slotsMap[slot]; ok {
 			continue
 		}
 		slots = append(slots, slot)
-		t.slotsMap[slot] = fgID
 	}
 	return
 }
@@ -161,19 +167,22 @@ func (t *flashNodeTopology) removeSlots(slots []uint32) {
 	for _, slot := range slots {
 		delete(t.slotsMap, slot)
 	}
-	return
 }
 
 func (t *flashNodeTopology) createFlashGroup(fgID uint64, c *Cluster, setSlots []uint32) (flashGroup *FlashGroup, err error) {
 	t.createFlashGroupLock.Lock()
 	defer t.createFlashGroupLock.Unlock()
 	slots := t.allocateNewSlotsForCreateFlashGroup(fgID, setSlots)
+	sort.Slice(slots, func(i, j int) bool { return slots[i] < slots[j] })
 	flashGroup = newFlashGroup(fgID, slots, proto.FlashGroupStatus_Inactive)
 	if err = c.syncAddFlashGroup(flashGroup); err != nil {
 		t.removeSlots(slots)
 		return
 	}
 	t.flashGroupMap.Store(flashGroup.ID, flashGroup)
+	for _, slot := range slots {
+		t.slotsMap[slot] = flashGroup.ID
+	}
 	return
 }
 
@@ -219,19 +228,9 @@ func (t *flashNodeTopology) getFlashGroupView() (fgv *proto.FlashGroupView) {
 				Slot:  fg.Slots,
 				Hosts: hosts,
 			})
-			//for _, slot := range fg.Slots {
-			//	fgv.FlashGroups = append(fgv.FlashGroups, proto.FlashGroupInfo{
-			//		ID:    fg.ID,
-			//		Slot:  slot,
-			//		Hosts: hosts,
-			//	})
-			//}
 		}
 		return true
 	})
-	//sort.Slice(fgv.FlashGroups, func(i, j int) bool {
-	//	return fgv.FlashGroups[i].Slot < fgv.FlashGroups[j].Slot
-	//})
 	return
 }
 

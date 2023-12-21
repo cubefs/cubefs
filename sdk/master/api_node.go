@@ -197,7 +197,7 @@ func (api *NodeAPI) AddFlashNode(serverAddr, zoneName, version string) (id uint6
 }
 
 func (api *NodeAPI) SetFlashNode(addr, state string) (err error) {
-	return api.mc.request(newRequest(get, proto.FlashNodeSet).Header(api.h).
+	return api.mc.request(newRequest(post, proto.FlashNodeSet).Header(api.h).
 		addParam("addr", addr).addParam("state", state))
 }
 

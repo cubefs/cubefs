@@ -247,7 +247,7 @@ const (
 	dataNodesUnAvailable = 3
 
 	unusedFlashNodeFlashGroupID = 0
-	defaultFlashGroupSlotsCount = 128
+	defaultFlashGroupSlotsCount = 32
 )
 
 const (
@@ -318,13 +318,6 @@ const (
 	opSyncAddLcResult    uint32 = 0x3a
 	opSyncDeleteLcResult uint32 = 0x3b
 
-	opSyncAddFlashNode     uint32 = 0x3A
-	opSyncDeleteFlashNode  uint32 = 0x3B
-	opSyncUpdateFlashNode  uint32 = 0x3C
-	opSyncAddFlashGroup    uint32 = 0x3D
-	opSyncDeleteFlashGroup uint32 = 0x3E
-	opSyncUpdateFlashGroup uint32 = 0x3F
-
 	opSyncAllocQuotaID uint32 = 0x40
 	opSyncSetQuota     uint32 = 0x41
 	opSyncDeleteQuota  uint32 = 0x42
@@ -332,6 +325,13 @@ const (
 
 	opSyncS3QosSet    uint32 = 0x60
 	opSyncS3QosDelete uint32 = 0x61
+
+	opSyncAddFlashNode     uint32 = 0x6A
+	opSyncDeleteFlashNode  uint32 = 0x6B
+	opSyncUpdateFlashNode  uint32 = 0x6C
+	opSyncAddFlashGroup    uint32 = 0x6D
+	opSyncDeleteFlashGroup uint32 = 0x6E
+	opSyncUpdateFlashGroup uint32 = 0x6F
 )
 
 const (
