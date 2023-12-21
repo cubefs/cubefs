@@ -49,6 +49,12 @@ x-define-lcnode: &lcnode
     ports:
         - "17410"
         - 9500
+x-define-flashnode: &flashnode
+    <<: *servernode
+    ports:
+        - "17510"
+        - "17520"
+        - 9500
 
 x-define-command: &command
     <<: [*image, *env]
@@ -93,6 +99,9 @@ services:
             - lcnode1
             - lcnode2
             - lcnode3
+            - flashnode1
+            - flashnode2
+            - flashnode3
             - console1
             - nginx
         networks:
@@ -283,6 +292,37 @@ services:
         networks:
             extnetwork:
                 ipv4_address: 192.168.0.63
+
+    flashnode1:
+        <<: *flashnode
+        volumes:
+            - ./bin:/cfs/bin:ro
+            - ${DiskPath:-./docker_data}/flashnode1/log:/cfs/log
+            - ./conf/flashnode.json:/cfs/conf/flashnode.json
+            - ./script/start_flashnode.sh:/cfs/script/start.sh
+        networks:
+            extnetwork:
+                ipv4_address: 192.168.0.71
+    flashnode2:
+        <<: *flashnode
+        volumes:
+            - ./bin:/cfs/bin:ro
+            - ${DiskPath:-./docker_data}/flashnode2/log:/cfs/log
+            - ./conf/flashnode.json:/cfs/conf/flashnode.json
+            - ./script/start_flashnode.sh:/cfs/script/start.sh
+        networks:
+            extnetwork:
+                ipv4_address: 192.168.0.72
+    flashnode3:
+        <<: *flashnode
+        volumes:
+            - ./bin:/cfs/bin:ro
+            - ${DiskPath:-./docker_data}/flashnode3/log:/cfs/log
+            - ./conf/flashnode.json:/cfs/conf/flashnode.json
+            - ./script/start_flashnode.sh:/cfs/script/start.sh
+        networks:
+            extnetwork:
+                ipv4_address: 192.168.0.73
 
     console1:
         <<: *servernode

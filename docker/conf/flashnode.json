@@ -1,0 +1,18 @@
+{
+  "role": "flashnode",
+  "listen": "17510",
+  "prof": "17511",
+  "consulAddr": "http://192.168.0.101:8500",
+  "exporterPort": 9500,
+  "logDir": "/cfs/log",
+  "logLevel": "debug",
+  "masterAddr": [
+    "192.168.0.11:17010",
+    "192.168.0.12:17010",
+    "192.168.0.13:17010"
+  ],
+  "zoneName": "docker",
+  "memTotal": 0,
+  "memPercent": 0.5,
+  "readRps": 512
+}
