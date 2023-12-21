@@ -73,7 +73,8 @@ type CacheEngine struct {
 }
 
 type (
-	ReadExtentData func(source *proto.DataSource, afterReadFunc func([]byte, int64) error) (n int, err error)
+	ReadExtentAfter func([]byte, int64) error
+	ReadExtentData  func(source *proto.DataSource, afterReadFunc ReadExtentAfter) (n int, err error)
 )
 
 func NewCacheEngine(dataDir string, totalSize int64, maxUseRatio float64,
@@ -81,6 +82,9 @@ func NewCacheEngine(dataDir string, totalSize int64, maxUseRatio float64,
 ) (s *CacheEngine, err error) {
 	s = new(CacheEngine)
 	s.dataPath = dataDir
+	if maxUseRatio < 1e-1 {
+		maxUseRatio = DefaultCacheMaxUsedRatio
+	}
 	s.config = CacheConfig{
 		MaxAlloc: int64(float64(totalSize) * maxUseRatio),
 		Total:    totalSize,
@@ -313,7 +317,7 @@ func (c *CacheEngine) EvictCacheByVolume(evictVol string) (failedKeys []interfac
 
 func (c *CacheEngine) EvictCacheAll() {
 	c.lruCache.EvictAll()
-	log.LogWarnf("action[EvictCacheAll] evict all finish")
+	log.LogWarn("action[EvictCacheAll] evict all finish")
 }
 
 func GenCacheBlockKey(volume string, inode, offset uint64, version uint32) string {

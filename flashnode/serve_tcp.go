@@ -15,7 +15,6 @@
 package flashnode
 
 import (
-	"bufio"
 	"fmt"
 	"io"
 	"net"
@@ -33,30 +32,30 @@ func NewServer() *FlashNode {
 
 // StartTcpService binds and listens to the specified port.
 func (f *FlashNode) startTcpServer() (err error) {
-	f.netListener, err = net.Listen("tcp", ":"+f.listen)
+	f.tcpListener, err = net.Listen("tcp", ":"+f.listen)
 	if err != nil {
 		return
 	}
 	go func() {
-		defer f.netListener.Close()
+		defer f.tcpListener.Close()
 		var latestAlarm time.Time
 		for {
-			conn, err1 := f.netListener.Accept()
+			conn, err1 := f.tcpListener.Accept()
 
 			select {
 			case <-f.stopCh:
-				log.LogWarnf("http server stopped")
+				log.LogWarn("flashnode tcp server stopped")
 				return
 			default:
 			}
 
 			if err1 != nil {
-				log.LogErrorf("action[startTcpServer] failed to accept, err:%s", err.Error())
+				log.LogErrorf("action[tcpAccept] failed err:%s", err.Error())
 				// Alarm only once at 1 minute
 				if time.Since(latestAlarm) > time.Minute {
 					warnMsg := fmt.Sprintf("SERVER ACCEPT CONNECTION FAILED!\n"+
-						"Failed on accept connection from %v and will retry after 10s.\n"+
-						"Error message: %s", f.netListener.Addr(), err.Error())
+						"Failed on accept connection from %v and will retry after 1s.\n"+
+						"Error message: %s", f.tcpListener.Addr(), err.Error())
 					exporter.Warning(warnMsg)
 					latestAlarm = time.Now()
 				}
@@ -66,45 +65,44 @@ func (f *FlashNode) startTcpServer() (err error) {
 			go f.serveConn(conn)
 		}
 	}()
-	log.LogInfof("start tcp server over...")
+	log.LogInfo("started tcp server")
 	return
 }
 
 func (f *FlashNode) stopServer() {
-	f.netListener.Close()
+	f.tcpListener.Close()
 }
 
-// serveConn Read data from the specified tcp connection until the connection is closed by the remote or the tcp service is down.
 func (f *FlashNode) serveConn(conn net.Conn) {
 	defer conn.Close()
 	c := conn.(*net.TCPConn)
-	_ = c.SetKeepAlive(true) // Ignore error
-	_ = c.SetNoDelay(true)   // Ignore error
+	c.SetKeepAlive(true)
+	c.SetNoDelay(true)
+
 	remoteAddr := conn.RemoteAddr().String()
-	connReader := bufio.NewReader(c)
 	for {
+		c.SetReadDeadline(time.Now().Add(time.Second * _tcpServerTimeoutSec))
 		select {
 		case <-f.stopCh:
 			return
 		default:
 		}
-		p := NewPacket()
-		_ = c.SetReadDeadline(time.Now().Add(time.Second * ServerTimeout))
-		if err := p.ReadFromReader(connReader); err != nil {
+
+		p := proto.NewPacketReqID()
+		if err := p.ReadFromConn(c, -1); err != nil {
 			if err != io.EOF {
-				log.LogError("serve FlashNode: ", err.Error())
+				log.LogError("flashnode read from remote", err.Error())
 			}
 			return
 		}
 		if err := f.preHandle(conn, p); err != nil {
-			logContent := fmt.Sprintf("preHandle %v.", p.LogMessage(p.GetOpMsg(), remoteAddr, p.StartT, err))
-			log.LogWarnf(logContent)
+			log.LogWarn("preHandle", p.LogMessage(p.GetOpMsg(), remoteAddr, p.StartT, err))
 			p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
-			_ = respondToClient(conn, p)
+			p.WriteToConn(conn)
 			continue
 		}
-		if err := f.handlePacket(conn, p, remoteAddr); err != nil {
-			log.LogErrorf("serve handlePacket fail: %v", err)
+		if err := f.handlePacket(conn, p); err != nil {
+			log.LogError("handlePacket", err)
 		}
 	}
 }
