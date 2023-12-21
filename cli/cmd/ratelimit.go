@@ -335,6 +335,9 @@ func newRateLimitSetCmd(client *master.MasterClient) *cobra.Command {
 			if info.TopologyForceFetchIntervalSec > 0 {
 				msg += fmt.Sprintf("Topology Force Fetch Interval: %v second, ", info.TopologyForceFetchIntervalSec)
 			}
+			if info.DataNodeDiskReservedRatio >= 0 {
+				msg += fmt.Sprintf("Data Node Disk Reserved Ratio: %v, ", info.DataNodeDiskReservedRatio)
+			}
 			if msg == "" {
 				stdout("No valid parameters\n")
 				return
@@ -419,6 +422,7 @@ func newRateLimitSetCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().Int64Var(&info.MetaNodeDumpSnapCount, proto.MetaNodeDumpSnapCountKey, -1, "set metanode dump snap count")
 	cmd.Flags().Int64Var(&info.TopologyFetchIntervalMin, proto.TopologyFetchIntervalMinKey, 0, "topology fetch interval, unit: min")
 	cmd.Flags().Int64Var(&info.TopologyForceFetchIntervalSec, proto.TopologyForceFetchIntervalSecKey, 0, "topology force fetch interval, unit: second")
+	cmd.Flags().Float64Var(&info.DataNodeDiskReservedRatio, proto.DataNodeDiskReservedRatioKey, -1, "data node disk reserved ratio, greater than or equal 0")
 	return cmd
 }
 
@@ -505,6 +509,7 @@ func formatRateLimitInfo(info *proto.LimitInfo) string {
 	sb.WriteString(fmt.Sprintf("    (map[zoneName]SnapCount of specified zone)\n"))
 	sb.WriteString(fmt.Sprintf("  TopologyFetchInterval            : %v Min\n", info.TopologyFetchIntervalMin))
 	sb.WriteString(fmt.Sprintf("  TopologyFroceFetchInterval       : %v Sec\n", info.TopologyForceFetchIntervalSec))
+	sb.WriteString(fmt.Sprintf("  DataNodeDiskReservedRatio        : %v\n", info.DataNodeDiskReservedRatio))
 	return sb.String()
 }
 

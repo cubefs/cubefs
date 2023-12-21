@@ -351,13 +351,20 @@ func (m *MetaNode) stopMetaManager() {
 func (m *MetaNode) register() (err error) {
 	var rsp *proto.RegNodeRsp
 	regReq := &masterSDK.RegNodeInfoReq{
-		Role: proto.RoleMeta,
+		Role:     proto.RoleMeta,
 		ZoneName: m.zoneName,
-		Version: MetaNodeLatestVersion,
-		SrvPort: m.listen,
+		Version:  MetaNodeLatestVersion,
+		SrvPort:  m.listen,
 	}
-	rsp, err = masterClient.RegNodeInfo(proto.AuthFilePath, regReq)
+	for retryCount := registerMaxRetryCount; retryCount > 0; retryCount-- {
+		rsp, err = masterClient.RegNodeInfo(proto.AuthFilePath, regReq)
+		if err == nil {
+			break
+		}
+		time.Sleep(registerRetryWaitInterval)
+	}
 	if err != nil {
+		log.LogErrorf("MetaNode register failed: %v", err)
 		return
 	}
 	if m.localAddr == "" {

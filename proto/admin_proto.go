@@ -307,6 +307,7 @@ const (
 	ClusterNameKey                   = "clusterName"
 	TopologyFetchIntervalMinKey      = "topoFetchIntervalMin"
 	TopologyForceFetchIntervalSecKey = "topoForceFetchIntervalSec"
+	DataNodeDiskReservedRatioKey     = "dataNodeDiskReservedRatio"
 
 	IDsKey = "ids"
 )
@@ -677,6 +678,8 @@ type LimitInfo struct {
 
 	TopologyFetchIntervalMin      int64
 	TopologyForceFetchIntervalSec int64
+
+	DataNodeDiskReservedRatio float64
 }
 
 // CreateDataPartitionRequest defines the request to create a data partition.
@@ -1398,6 +1401,7 @@ type RateLimitInfo struct {
 	MetaNodeDumpSnapCount            int64
 	TopologyFetchIntervalMin         int64
 	TopologyForceFetchIntervalSec    int64
+	DataNodeDiskReservedRatio        float64
 }
 
 type ConvertMode uint8

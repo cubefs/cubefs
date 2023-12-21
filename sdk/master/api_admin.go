@@ -950,6 +950,9 @@ func (api *AdminAPI) SetRateLimit(info *proto.RateLimitInfo) (err error) {
 	if info.TopologyForceFetchIntervalSec > 0 {
 		request.addParam(proto.TopologyForceFetchIntervalSecKey, strconv.Itoa(int(info.TopologyForceFetchIntervalSec)))
 	}
+	if info.DataNodeDiskReservedRatio >= 0 {
+		request.addParam(proto.DataNodeDiskReservedRatioKey, strconv.FormatFloat(info.DataNodeDiskReservedRatio, 'f', -1, 64))
+	}
 	request.addParam("volume", info.Volume)
 	request.addParam("zoneName", info.ZoneName)
 	if _, _, err = api.mc.serveRequest(request); err != nil {

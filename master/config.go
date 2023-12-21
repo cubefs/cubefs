@@ -177,6 +177,7 @@ type clusterConfig struct {
 	ClusterName                         string
 	TopologyFetchIntervalMin            int64
 	TopologyForceFetchIntervalSec       int64
+	DataNodeDiskReservedRatio           float64
 }
 
 func newClusterConfig() (cfg *clusterConfig) {

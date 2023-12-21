@@ -4042,6 +4042,16 @@ func (c *Cluster) setClusterConfig(params map[string]interface{}) (err error) {
 		atomic.StoreInt64(&c.cfg.TopologyForceFetchIntervalSec, v)
 	}
 
+	oldDataNodeDiskReservedRatio := c.cfg.DataNodeDiskReservedRatio
+	if val, ok := params[proto.DataNodeDiskReservedRatioKey]; ok {
+		v := val.(float64)
+		if v < proto.DataNodeDiskReservedMinRatio || v > proto.DataNodeDiskReservedMaxRatio {
+			err = errors.NewErrorf("parameter %s must be greater than 0.01 and less than 0.1", proto.DataNodeDiskReservedRatioKey)
+			return
+		}
+		c.cfg.DataNodeDiskReservedRatio = v
+	}
+
 	if err = c.syncPutCluster(); err != nil {
 		log.LogErrorf("action[setClusterConfig] err[%v]", err)
 		atomic.StoreUint64(&c.cfg.MetaNodeDeleteBatchCount, oldDeleteBatchCount)
@@ -4092,6 +4102,7 @@ func (c *Cluster) setClusterConfig(params map[string]interface{}) (err error) {
 		atomic.StoreInt64(&c.cfg.RemoteReadConnTimeoutMs, oldRemoteReadConnTimeout)
 		atomic.StoreInt64(&c.cfg.TopologyFetchIntervalMin, oldTopologyFetchIntervalMin)
 		atomic.StoreInt64(&c.cfg.TopologyForceFetchIntervalSec, oldTopologyForceFetchIntervalSec)
+		c.cfg.DataNodeDiskReservedRatio = oldDataNodeDiskReservedRatio
 		err = proto.ErrPersistenceByRaft
 		return
 	}

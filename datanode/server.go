@@ -19,7 +19,6 @@ import (
 	"errors"
 	"fmt"
 	"io/ioutil"
-	"math"
 	"net"
 	"net/http"
 	"os"
@@ -311,6 +310,12 @@ func (s *DataNode) startSpaceManager(cfg *config.Config) (err error) {
 		return
 	}
 
+	var limitInfo *proto.LimitInfo
+	limitInfo, err = MasterClient.AdminAPI().GetLimitInfo("")
+	if err == nil && limitInfo != nil {
+		s.space.SetDiskReservedRatio(limitInfo.DataNodeDiskReservedRatio)
+	}
+
 	s.space.SetRaftStore(s.raftStore)
 	s.space.SetNodeID(s.nodeID)
 	s.space.SetClusterID(s.clusterID)
@@ -324,14 +329,6 @@ func (s *DataNode) startSpaceManager(cfg *config.Config) (err error) {
 			return
 		}
 		devID = stat.Dev
-		return
-	}
-	var getDeviceCapacity = func(path string) (capacity uint64, err error) {
-		var statfs = new(syscall.Statfs_t)
-		if err = syscall.Statfs(path, statfs); err != nil {
-			return
-		}
-		capacity = statfs.Blocks * uint64(statfs.Bsize)
 		return
 	}
 
@@ -360,12 +357,8 @@ func (s *DataNode) startSpaceManager(cfg *config.Config) (err error) {
 			err = fmt.Errorf("dependent device in disks configuration: [%v,%v]", d, p.Path())
 			return
 		}
-		var capacity uint64
-		if capacity, err = getDeviceCapacity(diskPath.Path()); err != nil {
-			return
-		}
-		diskPath.SetReserved(uint64(math.Max(float64(capacity)*unit.NewRatio(DefaultDiskReservedRatio).Float64(), float64(diskPath.Reserved()))))
-		log.LogInfof("disk device: %v, path %v, device %v, capacity %v, reserved %v", d, diskPath.Path(), devID, capacity, diskPath.Reserved())
+
+		log.LogInfof("disk device: %v, path %v, device %v", d, diskPath.Path(), devID)
 		diskPaths[devID] = diskPath
 	}
 
@@ -388,13 +381,13 @@ func (s *DataNode) startSpaceManager(cfg *config.Config) (err error) {
 	var futures []*async.Future
 	for devID, diskPath := range diskPaths {
 		var future = async.NewFuture()
-		go func(path *DiskPath, future *async.Future) {
+		go func(path string, future *async.Future) {
 			if log.IsInfoEnabled() {
 				log.LogInfof("SPCMGR: loading disk: devID=%v, path=%v", devID, diskPath)
 			}
 			var err = s.space.LoadDisk(path, checkExpired)
 			future.Respond(nil, err)
-		}(diskPath, future)
+		}(diskPath.Path(), future)
 		futures = append(futures, future)
 	}
 	for _, future := range futures {
@@ -451,8 +444,16 @@ func (s *DataNode) register() (err error) {
 		regRsp *proto.RegNodeRsp
 	)
 
+	for retryCount := registerMaxRetryCount; retryCount > 0; retryCount-- {
+		regRsp, err = MasterClient.RegNodeInfo(proto.AuthFilePath, regInfo)
+		if err == nil {
+			break
+		}
+		time.Sleep(registerRetryWaitInterval)
+	}
 
-	if regRsp, err = MasterClient.RegNodeInfo(proto.AuthFilePath, regInfo); err != nil {
+	if err != nil {
+		log.LogErrorf("DataNode register failed: %v", err)
 		return
 	}
 	ipAddr := strings.Split(regRsp.Addr, ":")[0]

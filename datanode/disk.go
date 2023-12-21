@@ -101,8 +101,10 @@ func ParseDiskPath(str string) (p *DiskPath, success bool) {
 	return
 }
 
+type GetReservedRatioFunc func() float64
+
 type DiskConfig struct {
-	Reserved                 uint64
+	GetReservedRatio         GetReservedRatioFunc
 	MaxErrCnt                int
 	MaxFDLimit               uint64     // 触发强制FD淘汰策略的阈值
 	ForceFDEvictRatio        unit.Ratio // 强制FD淘汰比例
@@ -125,7 +127,9 @@ type Disk struct {
 
 	MaxErrCnt     int // maximum number of errors
 	Status        int // disk status such as READONLY
-	ReservedSpace uint64
+
+	getReservedRatio GetReservedRatioFunc
+	ReservedSpace    uint64
 
 	RejectWrite  bool
 	partitionMap map[uint64]*DataPartition
@@ -173,7 +177,7 @@ func OpenDisk(path string, config *DiskConfig, space *SpaceManager, parallelism 
 
 	d = &Disk{
 		Path:                     path,
-		ReservedSpace:            config.Reserved,
+		getReservedRatio:         config.GetReservedRatio,
 		MaxErrCnt:                config.MaxErrCnt,
 		RejectWrite:              false,
 		space:                    space,
@@ -354,12 +358,15 @@ func (d *Disk) computeUsageOnSFXDevice() (err error) {
 		}
 		d.RLock()
 		defer d.RUnlock()
-		total := int64(dStatus.totalPhysicalCapability) - int64(d.ReservedSpace)
+		reservedSpace := int64(float64(dStatus.totalPhysicalCapability) * d.getReservedRatio())
+		d.ReservedSpace = uint64(reservedSpace)
+
+		total := int64(dStatus.totalPhysicalCapability) - reservedSpace
 		if total < 0 {
 			total = 0
 		}
 		d.Total = uint64(total)
-		available := int64(dStatus.freePhysicalCapability) - int64(d.ReservedSpace)
+		available := int64(dStatus.freePhysicalCapability) - reservedSpace
 		if available < 0 {
 			available = 0
 		}
@@ -374,7 +381,7 @@ func (d *Disk) computeUsageOnSFXDevice() (err error) {
 		for _, dp := range d.partitionMap {
 			allocatedSize += uint64(dp.Size())
 		}
-		atomic.StoreUint64(&d.Allocated, uint64(allocatedSize))
+		atomic.StoreUint64(&d.Allocated, allocatedSize)
 		unallocated := d.Total - allocatedSize
 		if unallocated < 0 {
 			unallocated = 0
@@ -400,13 +407,17 @@ func (d *Disk) computeUsageOnStdDevice() (err error) {
 	d.RLock()
 	defer d.RUnlock()
 	//  total := math.Max(0, int64(fs.Blocks*uint64(fs.Bsize)- d.ReservedSpace))
-	total := int64(fs.Blocks*uint64(fs.Bsize) - d.ReservedSpace)
+	capacity := int64(fs.Blocks*uint64(fs.Bsize))
+	reservedSpace := int64(float64(capacity) * d.getReservedRatio())
+	d.ReservedSpace = uint64(reservedSpace)
+
+	total := capacity - reservedSpace
 	if total < 0 {
 		total = 0
 	}
 	d.Total = uint64(total)
 	//  available := math.Max(0, int64(fs.Bavail*uint64(fs.Bsize) - d.ReservedSpace))
-	available := int64(fs.Bavail*uint64(fs.Bsize) - d.ReservedSpace)
+	available := int64(fs.Bavail*uint64(fs.Bsize)) - reservedSpace
 	if available < 0 {
 		available = 0
 	}
@@ -709,13 +720,13 @@ func (d *Disk) updateSpaceInfo() {
 	}
 	if log.IsDebugEnabled() {
 		log.LogDebugf("Disk %v: updated space info: total(%v) available(%v) remain(%v) "+
-			"restSize(%v) maxErrs(%v) readErrs(%v) writeErrs(%v) status(%v)", d.Path,
+			"reservedSpace(%v) maxErrs(%v) readErrs(%v) writeErrs(%v) status(%v)", d.Path,
 			d.Total, d.Available, d.Unallocated, d.ReservedSpace, d.MaxErrCnt, d.ReadErrCnt, d.WriteErrCnt, d.Status)
 	}
 	return
 }
 
-// AttachDataPartition adds a data partition to the partition map.
+// AttachDataPartition adds a data partition to the partition map.G
 func (d *Disk) AttachDataPartition(dp *DataPartition) {
 	d.Lock()
 	d.partitionMap[dp.ID()] = dp

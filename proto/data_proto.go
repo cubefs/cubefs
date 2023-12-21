@@ -188,3 +188,8 @@ type ExtentIdLockInfo struct {
 	ExpireTime int64
 	TTL        int64
 }
+
+const (
+	DataNodeDiskReservedMinRatio = 0.01
+	DataNodeDiskReservedMaxRatio = 0.1
+)
