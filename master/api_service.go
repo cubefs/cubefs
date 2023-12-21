@@ -4729,7 +4729,7 @@ func volStat(vol *Vol, countByMeta bool) (stat *proto.VolStatInfo) {
 	stat.TotalSize = vol.Capacity * util.GB
 	stat.UsedSize = vol.totalUsedSpaceByMeta(countByMeta)
 	if stat.UsedSize > stat.TotalSize {
-		stat.UsedSize = stat.TotalSize
+		log.LogWarnf("vol(%v) useSize(%v) is larger than capacity(%v)", vol.Name, stat.UsedSize, stat.TotalSize)
 	}
 
 	stat.UsedRatio = strconv.FormatFloat(float64(stat.UsedSize)/float64(stat.TotalSize), 'f', 2, 32)
