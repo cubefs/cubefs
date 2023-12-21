@@ -15,11 +15,13 @@
 package flashnode
 
 import (
+	"fmt"
 	"net"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
+
+	"golang.org/x/time/rate"
 
 	"github.com/cubefs/cubefs/cmd/common"
 	"github.com/cubefs/cubefs/flashnode/cachengine"
@@ -30,7 +32,6 @@ import (
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
-	"golang.org/x/time/rate"
 )
 
 //TODO: remove this later.
@@ -40,25 +41,22 @@ const (
 	TmpfsPath = "/cfs/tmpfs"
 
 	moduleName = "flashNode"
-	volumePara = "volume"
 
-	LruCacheDefaultCapacity     = 400000
-	UpdateRateLimitInfoInterval = 60 * time.Second
-	ServerTimeout               = 60 * 5
-	ConnectPoolIdleConnTimeout  = 60 * time.Second
-	DefaultBurst                = 512
-
-	ExtentReadMaxRetry      = 3
-	ExtentReadTimeoutSec    = 3
-	ExtentReadSleepInterval = 100 * time.Millisecond
-	IdleConnTimeoutData     = 30 * time.Second
+	_defaultReadBurst     = 512
+	_defaultLRUCapacity   = 400000
+	_tcpServerTimeoutSec  = 60 * 5
+	_connPoolIdleTimeout  = 60 * time.Second
+	_extentReadMaxRetry   = 3
+	_extentReadTimeoutSec = 3
+	_extentReadInterval   = 100 * time.Millisecond
 )
 
 // Configuration keys
 const (
-	cfgLocalIP  = "localIP"
-	cfgTotalMem = "totalMem"
-	cfgZoneName = "zoneName"
+	cfgMemTotal   = "memTotal"
+	cfgMemPercent = "memPercent"
+	cfgZoneName   = "zoneName"
+	cfgReadRps    = "readRps"
 )
 
 // The FlashNode manages the inode block cache to speed the file reading.
@@ -75,19 +73,16 @@ type FlashNode struct {
 	clusterID string
 	nodeID    uint64
 
-	nodeLimit     uint64
-	nodeLimiter   *rate.Limiter
-	volLimitMap   map[string]uint64        // volume -> limit
-	volLimiterMap map[string]*rate.Limiter // volume -> *Limiter
-
 	control  common.Control
 	stopOnce sync.Once
 	stopCh   chan struct{}
 
 	connPool    *util.ConnectPool
-	netListener net.Listener
-	readSource  *ReadSource
+	tcpListener net.Listener
 	cacheEngine *cachengine.CacheEngine
+
+	readRps     int
+	readLimiter *rate.Limiter
 }
 
 // Start starts up the flash node with the specified configuration.
@@ -122,15 +117,14 @@ func doStart(s common.Server, cfg *config.Config) (err error) {
 		return
 	}
 	f.initLimiter()
-	f.connPool = util.NewConnectPoolWithTimeout(ConnectPoolIdleConnTimeout, 1)
+	initExtentConnPool()
+	f.connPool = util.NewConnectPoolWithTimeout(_connPoolIdleTimeout, 1)
 	f.registerAPIHandler()
-	go f.startUpdateScheduler()
 
-	if err = f.startTcpServer(); err != nil {
+	if err = f.startCacheEngine(); err != nil {
 		return
 	}
-	f.readSource = NewReadSource()
-	if err = f.startCacheEngine(); err != nil {
+	if err = f.startTcpServer(); err != nil {
 		return
 	}
 
@@ -156,26 +150,39 @@ func (f *FlashNode) parseConfig(cfg *config.Config) (err error) {
 	if cfg == nil {
 		return errors.New("invalid configuration")
 	}
-	f.localAddr = cfg.GetString(cfgLocalIP)
 	f.listen = strings.TrimSpace(cfg.GetString(proto.ListenPort))
 	if f.listen == "" {
 		return errors.New("bad listen config")
 	}
-	f.zoneName = cfg.GetString(cfgZoneName)
-	f.total, err = strconv.ParseUint(cfg.GetString(cfgTotalMem), 10, 64)
-	if err != nil {
-		return err
+	if f.zoneName = cfg.GetString(cfgZoneName); f.zoneName == "" {
+		return errors.New("bad zoneName config")
 	}
-	if f.total == 0 {
-		return errors.New("recommended to be configured as 80 percent of physical machine memory")
+	f.readRps = cfg.GetInt(cfgReadRps)
+	if f.readRps <= 0 {
+		f.readRps = _defaultReadBurst
 	}
-	total, _, err := util.GetMemInfo()
-	if err == nil && f.total > uint64(float64(total)*0.8) {
-		return errors.New("recommended to be configured as 80 percent of physical machine memory")
+
+	mem := cfg.GetInt64(cfgMemTotal)
+	if mem <= 0 {
+		percent := cfg.GetFloat(cfgMemPercent)
+		if percent <= 1e-2 || percent > 0.8 {
+			return errors.NewErrorf("recommended to physical memory %s=0.8 %.2f", cfgMemPercent, percent)
+		}
+		total, _, err := util.GetMemInfo()
+		if err != nil {
+			return errors.NewErrorf("get physical memory %v", err)
+		}
+		mem = int64(float64(total) * percent)
 	}
-	log.LogInfof("[parseConfig] load localAddr[%v].", f.localAddr)
-	log.LogInfof("[parseConfig] load listen[%v].", f.listen)
-	log.LogInfof("[parseConfig] load zoneName[%v].", f.zoneName)
+	if mem < 32*(1<<20) {
+		return errors.NewErrorf("low physical memory %d", mem)
+	}
+	f.total = uint64(mem)
+
+	log.LogInfof("[parseConfig] load listen[%s].", f.listen)
+	log.LogInfof("[parseConfig] load zoneName[%s].", f.zoneName)
+	log.LogInfof("[parseConfig] load totalMem[%d].", f.total)
+	log.LogInfof("[parseConfig] load  readRps[%d].", f.readRps)
 
 	f.mc = master.NewMasterClient(cfg.GetStringSlice(proto.MasterAddr), false)
 	if len(f.mc.Nodes()) == 0 {
@@ -186,16 +193,16 @@ func (f *FlashNode) parseConfig(cfg *config.Config) (err error) {
 
 func (f *FlashNode) stopCacheEngine() {
 	if f.cacheEngine != nil {
-		err := f.cacheEngine.Stop()
-		if err != nil {
-			log.LogErrorf("stopCacheEngine: err:%v", err)
+		if err := f.cacheEngine.Stop(); err != nil {
+			log.LogErrorf("stopCacheEngine err:%v", err)
 		}
 	}
 }
 
 func (f *FlashNode) startCacheEngine() (err error) {
-	if f.cacheEngine, err = cachengine.NewCacheEngine(f.tmpPath, int64(f.total), cachengine.DefaultCacheMaxUsedRatio, LruCacheDefaultCapacity, time.Hour, f.readSource.ReadExtentData); err != nil {
-		log.LogErrorf("start CacheEngine failed: %v", err)
+	if f.cacheEngine, err = cachengine.NewCacheEngine(f.tmpPath, int64(f.total),
+		0, _defaultLRUCapacity, time.Hour, ReadExtentData); err != nil {
+		log.LogErrorf("startCacheEngine failed:%v", err)
 		return
 	}
 	f.cacheEngine.Start()
@@ -203,33 +210,43 @@ func (f *FlashNode) startCacheEngine() (err error) {
 }
 
 func (f *FlashNode) initLimiter() {
-	f.nodeLimit = 0
-	f.nodeLimiter = rate.NewLimiter(rate.Inf, DefaultBurst)
-	f.volLimitMap = make(map[string]uint64)
-	f.volLimiterMap = make(map[string]*rate.Limiter)
+	f.readLimiter = rate.NewLimiter(rate.Limit(f.readRps), 2*f.readRps)
 }
 
-func (f *FlashNode) register() (err error) {
-	// TODO: xxx
-	// var (
-	// 	regInfo = &master.RegNodeInfoReq{
-	// 		Role:     proto.RoleFlash,
-	// 		ZoneName: f.zoneName,
-	// 		Version:  NodeLatestVersion,
-	// 		SrvPort:  f.listen,
-	// 	}
-	// 	regRsp *proto.RegNodeRsp
-	// )
+func (f *FlashNode) register() error {
+	ticker := time.NewTicker(time.Second)
+	defer ticker.Stop()
+	for {
+		log.LogInfo("to register flashnode")
+		for {
+			ci, err := f.mc.AdminAPI().GetClusterInfo()
+			if err != nil {
+				log.LogErrorf("action[register] cannot get ip from master err(%v)", err)
+				break
+			}
 
-	// if regRsp, err = masterClient.RegNodeInfo(proto.AuthFilePath, regInfo); err != nil {
-	// 	return
-	// }
+			localIP := ci.Ip
+			if !util.IsIPV4(localIP) {
+				log.LogErrorf("action[register] got an invalid local ip(%s) from master", localIP)
+				break
+			}
+			f.clusterID = ci.Cluster
+			f.localAddr = fmt.Sprintf("%s:%v", localIP, f.listen)
 
-	// f.nodeID= regRsp.Id
-	// ipAddr := strings.Split(regRsp.Addr, ":")[0]
-	// f.localAddr = ipAddr
-	// f.clusterID = regRsp.Cluster
+			nodeID, err := f.mc.NodeAPI().AddFlashNode(f.localAddr, f.zoneName, "")
+			if err != nil {
+				log.LogErrorf("action[register] cannot register flashnode to master err(%v).", err)
+				break
+			}
+			f.nodeID = nodeID
+			log.LogInfof("action[register] flashnode(%d) cluster(%s) localAddr(%s)", f.nodeID, f.clusterID, f.localAddr)
+			return nil
+		}
 
-	f.nodeID = 0
-	return
+		select {
+		case <-ticker.C:
+		case <-f.stopCh:
+			return fmt.Errorf("stopped")
+		}
+	}
 }
