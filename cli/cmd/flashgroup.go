@@ -61,6 +61,10 @@ func newCmdFlashGroupCreate(client *master.MasterClient) *cobra.Command {
 		Run: func(cmd *cobra.Command, args []string) {
 			var err error
 			defer func() { errout(err) }()
+			if optSlots == "" {
+				err = fmt.Errorf("pls set --slots")
+				return
+			}
 			fgView, err := client.AdminAPI().CreateFlashGroup(optSlots)
 			if err != nil {
 				return
@@ -339,6 +343,7 @@ func newCmdFlashGroupSearch(client *master.MasterClient) *cobra.Command {
 					return
 				}
 			}
+			stdoutlnf("Not found (%s %d %d) -> %d", volume, inode, offset, slotKey)
 		},
 	}
 }
@@ -378,13 +383,19 @@ func newCmdFlashGroupGraph(client *master.MasterClient) *cobra.Command {
 				return slots[i].slot < slots[j].slot
 			})
 
-			const _fgView = "%-10v    %-10v    %-18v    %-6v    %-6v"
 			stdoutln("[Flash Groups]")
-			stdoutlnf(_fgView, "SLOT", "ID", "STATUS", "Count", "Ref")
-			for _, slot := range slots {
+			tbl := table{arow("Slot", "ID", "Status", "Count", "Ref", "Proportion")}
+			for idx, slot := range slots {
 				g := groups[slot.fgID]
-				stdoutlnf(_fgView, slot.slot, g.ID, g.Status.String(), g.FlashNodeCount, groupn[g.ID])
+				var p string
+				if idx == len(slots)-1 {
+					p = proportion(slot.slot, math.MaxUint32)
+				} else {
+					p = proportion(slot.slot, slots[idx+1].slot)
+				}
+				tbl = tbl.append(arow(slot.slot, g.ID, g.Status.String(), g.FlashNodeCount, groupn[g.ID], p))
 			}
+			stdoutln(alignTable(tbl...))
 
 			fnView, err := client.AdminAPI().ListFlashNodes(true)
 			if err != nil {
@@ -402,7 +413,7 @@ func newCmdFlashGroupGraph(client *master.MasterClient) *cobra.Command {
 				}
 			}
 			stdoutln("[FlashNodes Busy]")
-			tbl := showFlashNodesView(busyNodes, true, table{formatFlashNodeViewTableTitle})
+			tbl = showFlashNodesView(busyNodes, true, table{formatFlashNodeViewTableTitle})
 			stdoutln(alignTable(tbl...))
 			stdoutln("[FlashNodes Idle]")
 			tbl = showFlashNodesView(idleNodes, true, table{formatFlashNodeViewTableTitle})
@@ -413,4 +424,14 @@ func newCmdFlashGroupGraph(client *master.MasterClient) *cobra.Command {
 
 func parseFlashGroupID(id string) (uint64, error) {
 	return strconv.ParseUint(id, 10, 64)
+}
+
+const fullDot = ".................................................."
+
+func proportion(s, e uint32) string {
+	p := "."
+	if n := int(float64(e-s) * float64(len(fullDot)) / float64(math.MaxUint32)); n > 0 {
+		p = fullDot[:n]
+	}
+	return p
 }
