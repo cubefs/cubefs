@@ -1,3 +1,43 @@
+## Release v3.3.1 - 2023/12/25
+
+### **UPGRAGDE NOTICE**
+UPGRAGDE NOTICE
+If your CubeFS version is v2.3.x or before, please refer to the UPGRADE NOTICE in v2.4.0 for upgrading steps.
+if you CubeFS version is v3.2.1 or before, and need to upgrade to v3.3.*, you must follow these upgrade steps:
+1. When upgrading the metanode node, you need to add "raftSyncSnapFormatVersion": 0 to the configuration file.
+2. After all metanodes are upgraded, remove this configuration item so that raftSyncSnapFormatVersion defaults to 1.
+3. Restart all metanodes.
+4. Please upgrade the client at the end, the master has enhanced the check of the client, otherwise it will cause the client to mount abnormally
+
+If your Blobstore version is v1.1.0 or before which built with cubefs-blobstore (https://github.com/cubefs/cubefs-blobstore) , please refer to UPGRADE to v3.2.0 following these steps [#1556](https://github.com/cubefs/cubefs/issues/1556).
+
+### **Main Feature**
+* `client`: Add a trash feature to client (#2291, @bboyCH4)
+
+### **Enhance**
+* `datanode`: Support cleaning up garbage data on the datanode (#2880, @Victor1319)
+* `metanode`: Audit log in metanode  (#2899, @NaturalSelect)
+* `datanode`: limit datanode's disk flow and concurrent iops  (#2900, @sejust)
+* `client`: Too many waring errors log when use trash  (#2915, @bboyCH4)
+
+### **Bugfix**
+* `client`: Audit's writer maybe nil leadto error  (#2901, @longerfly)
+* `gapi`: fix read body entirely into memory (#2691, @tangdeyi)
+* `objectnode`: Timing attack can leak user passwords and CubeFS leaks users key in logs from cncf security audit (#2781, @leonrayang)
+* `client`: Optimize insecure random number generation in function util/string.go:RandomString (#2698, @true1064)
+* `docs`: Add Security Best practice (#2853, @leonrayang)
+* `gapi`: Timing attack can leak user passwords and CubeFS leaks users key in logs from cncf security audit (#2781, @leonrayang)
+* `objectnode`: fix limiter lib deadlock (#2794, @tangdeyi)
+* `master\objectnode`: some commits related with security audit (#2824, @leonrayang)
+* `master`: qos.Lock of assignClientsNewQos forget release and trigger deadlock(#2861, @leonrayang)
+* `bcache`: fix possible deadlock of bacahe(#2819, @longerfly)
+* `ClusterMgr`: fix volume manager deadlock(#2793, @tangdeyi)
+* `blobnode`: fix put shard deadlock (#2790, @mawei029)
+* `client`: inode leak when use trash(#2911, @bboyCH4)
+* `client`: trash encounters IO error when dealing with log file names(#2912, @bboyCH4)
+* `client`: trash delete interval do not work(#2914, @bboyCH4)
+* `client`: Failed to delete a large directory with trash enable(#2917, @bboyCH4)
+
 ## Release v3.2.1 - 2023/03/16
 
 ### **UPGRAGDE NOTICE**
