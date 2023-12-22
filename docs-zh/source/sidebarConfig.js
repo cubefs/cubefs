@@ -45,6 +45,7 @@ module.exports = [
             'user-guide/atomicity.md',
             'user-guide/quota.md',
             'user-guide/qos.md',
+            'user-guide/trash.md',
             {
                 text: '优化',
                 children: [
