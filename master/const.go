@@ -287,6 +287,7 @@ const (
 	opSyncDeleteVolUser             uint32 = 0x1D
 	opSyncUpdateVolUser             uint32 = 0x1E
 	opSyncNodeSetGrp                uint32 = 0x1F
+	opSyncDataPartitionsView        uint32 = 0x20
 	opSyncExclueDomain              uint32 = 0x23
 	opSyncUpdateZone                uint32 = 0x24
 	opSyncAllocClientID             uint32 = 0x25
@@ -299,6 +300,7 @@ const (
 
 	opSyncAddLcNode    uint32 = 0x30
 	opSyncDeleteLcNode uint32 = 0x31
+	opSyncUpdateLcNode uint32 = 0x32
 	opSyncAddLcConf    uint32 = 0x33
 	opSyncDeleteLcConf uint32 = 0x34
 	opSyncUpdateLcConf uint32 = 0x35
