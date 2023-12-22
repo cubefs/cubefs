@@ -659,6 +659,12 @@ func mount(opt *proto.MountOptions) (fsConn *fuse.Conn, super *cfs.Super, err er
 				log.LogErrorf("UpdateVolConf: get vol info from master failed, err %s", err.Error())
 				continue
 			}
+			if volumeInfo.Status == proto.VolStatusMarkDelete {
+				err = fmt.Errorf("vol [%s] has been deleted, stop client", volumeInfo.Name)
+				log.LogError(err)
+				daemonize.SignalOutcome(err)
+				os.Exit(1)
+			}
 			super.SetTransaction(volumeInfo.EnableTransaction, volumeInfo.TxTimeout, volumeInfo.TxConflictRetryNum, volumeInfo.TxConflictRetryInterval)
 			if proto.IsCold(opt.VolType) {
 				super.CacheAction = volumeInfo.CacheAction
