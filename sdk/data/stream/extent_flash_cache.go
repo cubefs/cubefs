@@ -133,7 +133,7 @@ func (rc *RemoteCache) Read(ctx context.Context, fg *FlashGroup, inode uint64, r
 		log.LogWarnf("FlashGroup read failed: err(%v)", err)
 		return
 	}
-	reqPacket := NewFlashCachePacket(inode, proto.OpCacheRead)
+	reqPacket := NewFlashCachePacket(inode, proto.OpFlashNodeCacheRead)
 	if err = reqPacket.MarshalDataPb(&req.CacheReadRequest); err != nil {
 		log.LogWarnf("FlashGroup Read: failed to MarshalData (%+v). err(%v)", req, err)
 		return
@@ -197,7 +197,7 @@ func (rc *RemoteCache) Prepare(ctx context.Context, fg *FlashGroup, inode uint64
 		log.LogWarnf("FlashGroup prepare failed: err(%v)", err)
 		return
 	}
-	reqPacket := NewFlashCachePacket(inode, proto.OpCachePrepare)
+	reqPacket := NewFlashCachePacket(inode, proto.OpFlashNodeCachePrepare)
 	if err = reqPacket.MarshalDataPb(req); err != nil {
 		log.LogWarnf("FlashGroup Prepare: failed to MarshalData (%v), err(%v)", req, err)
 		return
