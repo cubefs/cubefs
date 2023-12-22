@@ -315,6 +315,22 @@ Parameter List
 | authKey   | string | Calculate the 32-bit MD5 value of the owner field of vol as authentication information | Yes      |
 | capacity  | int    | The quota of the volume after compression, in GB                                       | Yes      |
 
+## Trash
+
+``` bash
+curl -v "http://127.0.0.1:17010/vol/setTrashInterval?name=test&authKey=trashInterval=7200" 
+```
+
+Enable/Disable trash feature for the specified volume.
+
+Parameter List
+
+| Parameter | Type   |      Description                       | Required  |
+|----------|--------|---------------------------|-----|
+| name      | string | Volume name         | Yes      |
+| authKey   | string | Calculate the 32-bit MD5 value of the owner field of vol as authentication information | Yes      |
+| trashInterval | int    | The time interval for cleaning expired data in the trash is specified in minutes. A value of 0 indicates that the trash is disabled, while any other positive value indicates that the trash is enabled.             | Yes   
+
 ## Two Replicas
 
 ### Main Issues
