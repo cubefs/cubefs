@@ -1,4 +1,4 @@
-// Copyright 2018 The CubeFS Authors.
+// Copyright 2023 The CubeFS Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -99,6 +99,7 @@ func (flashNode *FlashNode) getFlashNodeViewInfo() (info *proto.FlashNodeViewInf
 	return
 }
 
+// TODO: sync with proto.FlashNodeHeartbeatResponse.
 func (c *Cluster) syncFlashNodeHeartbeatTasks(tasks []*proto.AdminTask) {
 	for _, t := range tasks {
 		if t == nil {
@@ -339,7 +340,7 @@ func (c *Cluster) peekFlashNode(addr string) (flashNode *FlashNode, err error) {
 }
 
 func flashNodeNotFound(addr string) (err error) {
-	return notFoundMsg(fmt.Sprintf("flash node[%v]", addr))
+	return notFoundMsg(fmt.Sprintf("flashnode[%v]", addr))
 }
 
 func (m *Server) setFlashNode(w http.ResponseWriter, r *http.Request) {

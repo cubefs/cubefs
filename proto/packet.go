@@ -650,6 +650,12 @@ func (p *Packet) GetOpMsg() (m string) {
 		m = "OpBatchLockNormalExtent"
 	case OpBatchUnlockNormalExtent:
 		m = "OpBatchUnlockNormalExtent"
+	case OpFlashNodeHeartbeat:
+		m = "OpFlashNodeHeartbeat"
+	case OpCachePrepare:
+		m = "OpCachePrepare"
+	case OpCacheRead:
+		m = "OpCacheRead"
 	default:
 		m = fmt.Sprintf("op:%v not found", p.Opcode)
 	}
