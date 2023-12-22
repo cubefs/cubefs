@@ -29,6 +29,7 @@ import (
 	masterSDK "github.com/cubefs/cubefs/sdk/master"
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/auth"
+	"github.com/cubefs/cubefs/util/bloom"
 	"github.com/cubefs/cubefs/util/btree"
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/log"
@@ -192,6 +193,8 @@ type MetaWrapper struct {
 	CacheDpStorageClass uint32
 	InnerReq            bool
 	FollowerRead        bool
+
+	RemoteCacheBloom func() *bloom.BloomFilter
 }
 
 type uniqidRange struct {
