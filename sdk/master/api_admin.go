@@ -262,6 +262,17 @@ func (api *AdminAPI) DeleteVolume(volName, authKey string) (err error) {
 	return
 }
 
+func (api *AdminAPI) UnDeleteVolume(volName, authKey string, status bool) (err error) {
+	var request = newAPIRequest(http.MethodGet, proto.AdminDeleteVol)
+	request.addParam("name", volName)
+	request.addParam("authKey", authKey)
+	request.addParam("delete", strconv.FormatBool(false))
+	if _, err = api.mc.serveRequest(request); err != nil {
+		return
+	}
+	return
+}
+
 func (api *AdminAPI) UpdateVolume(
 	vv *proto.SimpleVolView,
 	txTimeout int64,

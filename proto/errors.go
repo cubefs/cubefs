@@ -101,6 +101,7 @@ const (
 	ErrCodeMarshalData
 	ErrCodeUnmarshalData
 	ErrCodeVolNotExists
+	ErrCodeVolNotDelete
 	ErrCodeMetaPartitionNotExists
 	ErrCodeDataPartitionNotExists
 	ErrCodeDataNodeNotExists
