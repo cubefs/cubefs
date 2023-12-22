@@ -253,7 +253,7 @@ func parseGetVolParameter(r *http.Request) (p *getVolParameter, err error) {
 	return
 }
 
-func parseRequestToDeleteVol(r *http.Request) (name, authKey string, force bool, err error) {
+func parseRequestToDeleteVol(r *http.Request) (name, authKey string, status, force bool, err error) {
 	if err = r.ParseForm(); err != nil {
 		return
 	}
@@ -263,6 +263,10 @@ func parseRequestToDeleteVol(r *http.Request) (name, authKey string, force bool,
 	}
 
 	if authKey, err = extractAuthKey(r); err != nil {
+		return
+	}
+
+	if status, err = extractBoolWithDefault(r, deleteVolKey, true); err != nil {
 		return
 	}
 

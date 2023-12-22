@@ -41,6 +41,7 @@ const (
 	cacheRuleKey          = "cacheRuleKey"
 	emptyCacheRuleKey     = "emptyCacheRule"
 	forbiddenKey          = "forbidden"
+	deleteVolKey          = "delete"
 
 	forceDelVolKey             = "forceDelVol"
 	ebsBlkSizeKey              = "ebsBlkSize"
