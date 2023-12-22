@@ -725,6 +725,7 @@ const (
 func newVolDeleteCmd(client *master.MasterClient) *cobra.Command {
 	var (
 		optYes bool
+		status bool
 	)
 	var cmd = &cobra.Command{
 		Use:   cmdVolDeleteUse,
@@ -740,26 +741,49 @@ func newVolDeleteCmd(client *master.MasterClient) *cobra.Command {
 			}()
 			// ask user for confirm
 			if !optYes {
-				stdout("Delete volume [%v] (yes/no)[no]:", volumeName)
-				var userConfirm string
-				_, _ = fmt.Scanln(&userConfirm)
-				if userConfirm != "yes" {
-					err = fmt.Errorf("Abort by user.\n")
-					return
+				if status {
+					stdout("Delete volume [%v] (yes/no)[no]:", volumeName)
+					var userConfirm string
+					_, _ = fmt.Scanln(&userConfirm)
+					if userConfirm != "yes" {
+						err = fmt.Errorf("Abort by user.\n")
+						return
+					}
+				} else {
+					stdout("UnDelete volume [%v] (yes/no)[no]:", volumeName)
+					var userConfirm string
+					_, _ = fmt.Scanln(&userConfirm)
+					if userConfirm != "yes" {
+						err = fmt.Errorf("Abort by user.\n")
+						return
+					}
 				}
 			}
 
 			var svv *proto.SimpleVolView
-			if svv, err = client.AdminAPI().GetVolumeSimpleInfo(volumeName); err != nil {
-				err = fmt.Errorf("Delete volume failed:\n%v\n", err)
-				return
+			svv, err = client.AdminAPI().GetVolumeSimpleInfo(volumeName)
+			if status {
+				if err != nil {
+					err = fmt.Errorf("Delete volume failed:\n%v\n", err)
+					return
+				}
+				if err = client.AdminAPI().DeleteVolume(volumeName, util.CalcAuthKey(svv.Owner)); err != nil {
+					err = fmt.Errorf("Delete volume failed:\n%v\n", err)
+					return
+				}
+				stdout("Volume has been deleted successfully.\n")
+			} else {
+				if err != nil {
+					err = fmt.Errorf("UnDelete volume failed:\n%v\n", err)
+					return
+				}
+				if err = client.AdminAPI().UnDeleteVolume(volumeName, util.CalcAuthKey(svv.Owner), status); err != nil {
+					err = fmt.Errorf("UnDelete volume failed:\n%v\n", err)
+					return
+				}
+				stdout("Volume has been undeleted successfully.\n")
 			}
 
-			if err = client.AdminAPI().DeleteVolume(volumeName, util.CalcAuthKey(svv.Owner)); err != nil {
-				err = fmt.Errorf("Delete volume failed:\n%v\n", err)
-				return
-			}
-			stdout("Volume has been deleted successfully.\n")
 		},
 		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 			if len(args) != 0 {
@@ -769,6 +793,7 @@ func newVolDeleteCmd(client *master.MasterClient) *cobra.Command {
 		},
 	}
 	cmd.Flags().BoolVarP(&optYes, "yes", "y", false, "Answer yes for all questions")
+	cmd.Flags().BoolVarP(&status, "status", "s", true, "Decide whether to delete or undelete")
 	return cmd
 }
 
