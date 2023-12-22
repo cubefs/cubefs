@@ -56,8 +56,8 @@ type Streamer struct {
 	needUpdateVer        int32
 	isCache              bool
 	openForWrite         bool
-
-	rdonly bool
+	rdonly               bool
+	bloomStatus          bool
 }
 
 type bcacheKey struct {
@@ -240,6 +240,17 @@ func (s *Streamer) read(data []byte, offset int, size int, storageClass uint32) 
 					log.LogDebugf("Streamer not read from bcache, ino(%v) storageClass(%v) s.client.bcacheEnable(%v) bcacheOnlyForNotSSD(%v)",
 						s.inode, proto.StorageClassString(inodeInfo.StorageClass), s.client.bcacheEnable, s.client.bcacheOnlyForNotSSD)
 				}
+				log.LogDebugf("TRACE Stream read. miss blockCache cacheKey(%v) loadBcache(%v)", cacheKey, s.client.loadBcache)
+			} else if s.enableRemoteCache() {
+				var cacheReadRequests []*CacheReadRequest
+				cacheReadRequests, err = s.prepareCacheRequests(uint64(offset), uint64(size), data)
+				if err == nil {
+					var read int
+					if read, err = s.readFromRemoteCache(ctx, uint64(offset), uint64(size), cacheReadRequests); err == nil {
+						return read, err
+					}
+				}
+				log.LogWarnf("Stream read: readFromRemoteCache failed: ino(%v) offset(%v) size(%v), err(%v)", s.inode, offset, size, err)
 			}
 
 			if s.needBCache {
