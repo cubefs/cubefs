@@ -45,6 +45,8 @@ type Cluster struct {
 	Name                         string
 	CreateTime                   int64
 	vols                         map[string]*Vol
+	delayDeleteVolsInfo          []*delayDeleteVolInfo
+	stopc                        chan bool
 	dataNodes                    sync.Map
 	metaNodes                    sync.Map
 	volMutex                     sync.RWMutex // volume mutex
@@ -100,6 +102,13 @@ type Cluster struct {
 	snapshotMgr                  *snapshotDelManager
 	DecommissionDiskFactor       float64
 	S3ApiQosQuota                *sync.Map // (api,uid,limtType) -> limitQuota
+}
+
+type delayDeleteVolInfo struct {
+	volName  string
+	authKey  string
+	execTime time.Time
+	user     *User
 }
 
 type followerReadManager struct {
@@ -323,6 +332,8 @@ func newCluster(name string, leaderInfo *LeaderInfo, fsm *MetadataFsm, partition
 	c.Name = name
 	c.leaderInfo = leaderInfo
 	c.vols = make(map[string]*Vol, 0)
+	c.delayDeleteVolsInfo = make([]*delayDeleteVolInfo, 0)
+	c.stopc = make(chan bool, 0)
 	c.cfg = cfg
 	if c.cfg.MaxDpCntLimit == 0 {
 		c.cfg.MaxDpCntLimit = defaultMaxDpCntLimit
@@ -356,6 +367,7 @@ func newCluster(name string, leaderInfo *LeaderInfo, fsm *MetadataFsm, partition
 }
 
 func (c *Cluster) scheduleTask() {
+	c.scheduleToCheckDelayDeleteVols()
 	c.scheduleToCheckDataPartitions()
 	c.scheduleToLoadDataPartitions()
 	c.scheduleToCheckReleaseDataPartitions()
@@ -454,6 +466,46 @@ func (c *Cluster) scheduleToManageDp() {
 			}
 
 			time.Sleep(2 * time.Minute)
+		}
+	}()
+}
+
+func (c *Cluster) scheduleToCheckDelayDeleteVols() {
+	go func() {
+		ticker := time.NewTicker(5 * time.Second)
+		for {
+			select {
+			case <-ticker.C:
+				if len(c.delayDeleteVolsInfo) == 0 {
+					continue
+				}
+				currentDeleteVol := c.delayDeleteVolsInfo[0]
+				if currentDeleteVol.execTime.Sub(time.Now()) > 0 {
+					continue
+				}
+				go func() {
+					if err := c.markDeleteVol(currentDeleteVol.volName, currentDeleteVol.authKey, false); err != nil {
+						msg := fmt.Sprintf("delete vol[%v] failed: err:[%v]", currentDeleteVol.volName, err)
+						log.LogError(msg)
+						return
+					}
+					if err := currentDeleteVol.user.deleteVolPolicy(currentDeleteVol.volName); err != nil {
+						msg := fmt.Sprintf("delete vol[%v] failed: err:[%v]", currentDeleteVol.volName, err)
+						log.LogError(msg)
+						return
+					}
+					msg := fmt.Sprintf("delete vol[%v] successfully", currentDeleteVol.volName)
+					log.LogWarn(msg)
+				}()
+				if len(c.delayDeleteVolsInfo) == 1 {
+					c.delayDeleteVolsInfo = make([]*delayDeleteVolInfo, 0)
+					continue
+				}
+				c.delayDeleteVolsInfo = c.delayDeleteVolsInfo[1:]
+			case <-c.stopc:
+				ticker.Stop()
+				return
+			}
 		}
 	}()
 }

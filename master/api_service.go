@@ -2038,6 +2038,7 @@ func (m *Server) markDeleteVol(w http.ResponseWriter, r *http.Request) {
 	var (
 		name    string
 		authKey string
+		status  bool
 		// force   bool
 		err error
 		msg string
@@ -2047,21 +2048,63 @@ func (m *Server) markDeleteVol(w http.ResponseWriter, r *http.Request) {
 		doStatAndMetric(proto.AdminDeleteVol, metric, err, map[string]string{exporter.Vol: name})
 	}()
 
-	if name, authKey, _, err = parseRequestToDeleteVol(r); err != nil {
+	if name, authKey, status, _, err = parseRequestToDeleteVol(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-
-	if err = m.cluster.markDeleteVol(name, authKey, false); err != nil {
-		sendErrReply(w, r, newErrHTTPReply(err))
+	vol, err := m.cluster.getVol(name)
+	if err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeVolNotExists, Msg: err.Error()})
 		return
 	}
-	if err = m.user.deleteVolPolicy(name); err != nil {
-		sendErrReply(w, r, newErrHTTPReply(err))
-		return
+	if status {
+		oldForbiden := vol.Forbidden
+		vol.Forbidden = true
+		defer func() {
+			if err != nil {
+				vol.Forbidden = oldForbiden
+			}
+		}()
+		if err = m.cluster.syncUpdateVol(vol); err != nil {
+			sendErrReply(w, r, newErrHTTPReply(err))
+			return
+		}
+		vol.setDpRdOnly()
+		vol.setMpRdOnly()
+		m.cluster.delayDeleteVolsInfo = append(m.cluster.delayDeleteVolsInfo, &delayDeleteVolInfo{volName: name, authKey: authKey, execTime: time.Now().Add(time.Duration(m.config.volDelayDeleteTime) * time.Hour), user: m.user})
+		log.LogDebugf("delete vol[%v], slice[%v]", name, m.cluster.delayDeleteVolsInfo)
+		msg = fmt.Sprintf("delete vol: forbid vol[%v] successfully,from[%v]", name, r.RemoteAddr)
+		log.LogWarn(msg)
+	} else {
+		var index int
+		var value *delayDeleteVolInfo
+		for index, value = range m.cluster.delayDeleteVolsInfo {
+			if value.volName == name {
+				break
+			}
+		}
+		if index == len(m.cluster.delayDeleteVolsInfo)-1 && value.volName != name {
+			msg := fmt.Sprintf("vol[%v] was not previously deleted", name)
+			err = errors.New(msg)
+			sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeVolNotDelete, Msg: err.Error()})
+			return
+		}
+		m.cluster.delayDeleteVolsInfo = append(m.cluster.delayDeleteVolsInfo[:index], m.cluster.delayDeleteVolsInfo[index+1:]...)
+		log.LogDebugf("undelete vol[%v], slice[%v]", name, m.cluster.delayDeleteVolsInfo)
+		oldForbiden := vol.Forbidden
+		vol.Forbidden = false
+		defer func() {
+			if err != nil {
+				vol.Forbidden = oldForbiden
+			}
+		}()
+		if err = m.cluster.syncUpdateVol(vol); err != nil {
+			sendErrReply(w, r, newErrHTTPReply(err))
+			return
+		}
+		msg = fmt.Sprintf("undelete vol: unforbid vol[%v] successfully,from[%v]", name, r.RemoteAddr)
+		log.LogWarn(msg)
 	}
-	msg = fmt.Sprintf("delete vol[%v] successfully,from[%v]", name, r.RemoteAddr)
-	log.LogWarn(msg)
 	sendOkReply(w, r, newSuccessHTTPReply(msg))
 }
 

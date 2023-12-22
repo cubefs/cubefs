@@ -52,6 +52,7 @@ const (
 
 	cfgVolForceDeletion           = "volForceDeletion"
 	cfgVolDeletionDentryThreshold = "volDeletionDentryThreshold"
+	cfgVolDeletionDelayTime       = "volDeletionDelayTime"
 )
 
 // default value
@@ -143,6 +144,7 @@ type clusterConfig struct {
 
 	volForceDeletion           bool   // when delete a volume, ignore it's dentry count or not
 	volDeletionDentryThreshold uint64 // in case of volForceDeletion is set to false, define the dentry count threshold to allow volume deletion
+	volDelayDeleteTime         int64
 }
 
 func newClusterConfig() (cfg *clusterConfig) {
