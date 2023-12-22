@@ -263,6 +263,8 @@ func (dpMap *DataPartitionMap) updateResponseCache(needsUpdate bool, minPartitio
 			return
 		}
 		dpResps := dpMap.getDataPartitionsView(minPartitionID)
+		log.LogDebugf("[updateResponseCache] vol(%v) needsUpdate(%v) minPartitionID(%v) volType(%v)  dpNum(%v)",
+			dpMap.volName, needsUpdate, minPartitionID, vol.VolType, len(dpResps))
 		if len(dpResps) == 0 && proto.IsHot(vol.VolType) {
 			log.LogError(fmt.Sprintf("action[updateDpResponseCache],volName[%v] minPartitionID:%v,err:%v",
 				dpMap.volName, minPartitionID, proto.ErrNoAvailDataPartition))
