@@ -134,7 +134,7 @@ func parseNotRecoverPartition(content string) (pids []uint64) {
 	}()
 	pids = make([]uint64, 0)
 	log.LogWarnf("action[parseNotRecoverPartition] content:%v", content)
-	if !strings.Contains(content, "has offlined more than 24 hours") {
+	if !strings.Contains(content, "has offlined more than 24 hours") && !strings.Contains(content, "has migrated more than 24 hours") {
 		return
 	}
 	tmp := strings.Split(content, "map[")[1]

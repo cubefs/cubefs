@@ -29,6 +29,7 @@ type ClusterReleaserHost struct {
 	Host             string `json:"host"`
 	DataNodeHttpPort string `json:"dataNodeHttpPort"`
 	IsEnable         bool   `json:"isEnable"`
+	KeepSec          int
 	TimeLocation     string `json:"timeLocation"`
 }
 
@@ -72,6 +73,7 @@ func (s *ChubaoFSDPReleaser) extractCFSReleaserDomains(cfg *config.Config) (err 
 		CfsDomains   []struct {
 			Host             string `json:"host"`
 			IsEnable         bool   `json:"isEnable"`
+			KeepSec          int    `json:"keepSec"`
 			DataNodeHTTPPort string `json:"dataNodeHttpPort"`
 			TimeLocation     string `json:"timeLocation"`
 		} `json:"cfsDomains"`
@@ -88,13 +90,15 @@ func (s *ChubaoFSDPReleaser) extractCFSReleaserDomains(cfg *config.Config) (err 
 	}
 
 	clusterHosts := make([]*ClusterReleaserHost, 0)
-	for _, cfsDomain := range detail.CfsDomains {
+	for _, domain := range detail.CfsDomains {
+		log.LogInfof("extractCFSReleaserDomains, host:%v, port:%v, enable:%v, keepSec:%v, TimeLocation:%v", domain.Host, domain.DataNodeHTTPPort, domain.IsEnable, domain.KeepSec, domain.TimeLocation)
 		clusterHosts = append(clusterHosts, &ClusterReleaserHost{
-			host:             newClusterHost(cfsDomain.Host),
-			Host:             cfsDomain.Host,
-			DataNodeHttpPort: cfsDomain.DataNodeHTTPPort,
-			IsEnable:         cfsDomain.IsEnable,
-			TimeLocation:     cfsDomain.TimeLocation,
+			host:             newClusterHost(domain.Host),
+			Host:             domain.Host,
+			DataNodeHttpPort: domain.DataNodeHTTPPort,
+			IsEnable:         domain.IsEnable,
+			KeepSec:          domain.KeepSec,
+			TimeLocation:     domain.TimeLocation,
 		})
 	}
 
@@ -164,7 +168,7 @@ func (ch *ClusterReleaserHost) releaseDataNodeDp(cv *ClusterView) {
 				continue
 			}
 			dataNodeHttpAddr := fmt.Sprintf("%s:%s", split[0], ch.DataNodeHttpPort)
-			if err := doReleaseDataNodePartitions(dataNodeHttpAddr, ch.TimeLocation); err != nil {
+			if err := doReleaseDataNodePartitions(dataNodeHttpAddr, ch.Host, ch.TimeLocation, ch.KeepSec); err != nil {
 				log.LogError(fmt.Sprintf("action[releaseDataNodeDp] err:%v", err))
 				continue
 			}
@@ -175,7 +179,7 @@ func (ch *ClusterReleaserHost) releaseDataNodeDp(cv *ClusterView) {
 	log.LogWarn(msg)
 }
 
-func doReleaseDataNodePartitions(dataNodeHttpAddr, timeLocation string) (err error) {
+func doReleaseDataNodePartitions(dataNodeHttpAddr, domain, timeLocation string, keepSec int) (err error) {
 	var (
 		data   []byte
 		reqURL string
@@ -186,12 +190,15 @@ func doReleaseDataNodePartitions(dataNodeHttpAddr, timeLocation string) (err err
 	} else {
 		key = generateAuthKeyWithTimeZone(timeLocation)
 	}
-	reqURL = fmt.Sprintf("http://%v/releasePartitions?key=%s&keepTimeSec=60", dataNodeHttpAddr, key)
+	reqURL = fmt.Sprintf("http://%v/releasePartitions?key=%s", dataNodeHttpAddr, key)
+	if keepSec > 0 {
+		reqURL = reqURL + fmt.Sprintf("&keepTimeSec=%v", keepSec)
+	}
 	data, err = doRequest(reqURL, false)
 	if err != nil {
 		return fmt.Errorf("url[%v],err %v resp[%v]", reqURL, err, string(data))
 	}
-	log.LogInfo(fmt.Sprintf("action[doReleaseDataNodePartitions] url[%v] resp[%v]", reqURL, string(data)))
+	log.LogInfo(fmt.Sprintf("action[doReleaseDataNodePartitions] Domain[%v] url[%v] resp[%v]", domain, reqURL, string(data)))
 	return
 }
 
