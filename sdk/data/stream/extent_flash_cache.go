@@ -72,7 +72,7 @@ type CacheConfig struct {
 	MW      *meta.MetaWrapper
 
 	SameZoneWeight int
-	ReadTimeoutSec int
+	readTimeoutSec int64
 }
 
 type RemoteCache struct {
@@ -105,7 +105,7 @@ func NewRemoteCache(config *CacheConfig) (*RemoteCache, error) {
 	} else {
 		rc.sameZoneWeight = config.SameZoneWeight
 	}
-	rc.readTimeoutSec = config.ReadTimeoutSec
+	rc.readTimeoutSec = int(config.readTimeoutSec)
 	if rc.readTimeoutSec <= 0 {
 		rc.readTimeoutSec = _connReadTimeoutSec
 	}
