@@ -21,3 +21,9 @@ const (
 	Forbid      = 3
 	Unavailable = -1
 )
+
+// volume status
+const (
+	VolStatusNormal     uint8 = 0
+	VolStatusMarkDelete uint8 = 1
+)
