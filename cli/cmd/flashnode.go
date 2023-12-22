@@ -101,7 +101,7 @@ func newCmdFlashNodeList(client *master.MasterClient) *cobra.Command {
 		Run: func(cmd *cobra.Command, args []string) {
 			var err error
 			defer func() { errout(err) }()
-			zoneFlashNodes, err := client.AdminAPI().ListFlashNodes(showAllFlashNodes)
+			zoneFlashNodes, err := client.NodeAPI().ListFlashNodes(showAllFlashNodes)
 			if err != nil {
 				return
 			}

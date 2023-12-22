@@ -212,7 +212,7 @@ func (api *NodeAPI) GetFlashNode(addr string) (node proto.FlashNodeViewInfo, err
 	return
 }
 
-func (api *AdminAPI) ListFlashNodes(all bool) (zoneFlashNodes map[string][]*proto.FlashNodeViewInfo, err error) {
+func (api *NodeAPI) ListFlashNodes(all bool) (zoneFlashNodes map[string][]*proto.FlashNodeViewInfo, err error) {
 	zoneFlashNodes = make(map[string][]*proto.FlashNodeViewInfo)
 	err = api.mc.requestWith(&zoneFlashNodes, newRequest(get, proto.FlashNodeList).Header(api.h).addParamAny("all", all))
 	return

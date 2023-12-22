@@ -1,4 +1,4 @@
-// Copyright 2018 The CubeFS Authors.
+// Copyright 2023 The CubeFS Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -507,7 +507,6 @@ func (c *Cluster) updateFlashGroupResponseCache() {
 		return
 	}
 	c.flashGroupRespCache.Store(flashGroupRespCache)
-	return
 }
 
 func (c *Cluster) clearFlashGroupResponseCache() {
