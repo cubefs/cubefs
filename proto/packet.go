@@ -250,9 +250,9 @@ const (
 	OpReadRepairExtentAgain uint8 = 0xEF
 
 	// Distributed cache related OP codes.
-	OpFlashNodeHeartbeat uint8 = 0xDA
-	OpCachePrepare       uint8 = 0xDB
-	OpCacheRead          uint8 = 0xDC
+	OpFlashNodeHeartbeat    uint8 = 0xDA
+	OpFlashNodeCachePrepare uint8 = 0xDB
+	OpFlashNodeCacheRead    uint8 = 0xDC
 )
 
 const (
@@ -613,10 +613,10 @@ func (p *Packet) GetOpMsg() (m string) {
 		m = "OpMetaReadDirOnly"
 	case OpFlashNodeHeartbeat:
 		m = "OpFlashNodeHeartbeat"
-	case OpCachePrepare:
-		m = "OpCachePrepare"
-	case OpCacheRead:
-		m = "OpCacheRead"
+	case OpFlashNodeCachePrepare:
+		m = "OpFlashNodeCachePrepare"
+	case OpFlashNodeCacheRead:
+		m = "OpFlashNodeCacheRead"
 	default:
 		m = fmt.Sprintf("op:%v not found", p.Opcode)
 	}
