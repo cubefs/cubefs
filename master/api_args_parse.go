@@ -949,7 +949,9 @@ func extractNodeAddr(r *http.Request) (nodeAddr string, err error) {
 	}
 	if ipAddr, ok := util.ParseAddrToIpAddr(nodeAddr); ok {
 		nodeAddr = ipAddr
+		return
 	}
+	err = unmatchedKey(addrKey)
 	return
 }
 

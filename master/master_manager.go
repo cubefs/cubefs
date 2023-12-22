@@ -168,8 +168,8 @@ func (m *Server) loadMetadata() {
 	}(
 		m.cluster.loadDataNodes,
 		m.cluster.loadMetaNodes,
-		m.cluster.loadFlashGroups,
 		m.cluster.loadFlashNodes,
+		m.cluster.loadFlashGroups,
 		m.cluster.loadZoneValue,
 		m.cluster.loadVols,
 		m.cluster.loadMetaPartitions,

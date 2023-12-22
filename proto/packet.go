@@ -611,6 +611,12 @@ func (p *Packet) GetOpMsg() (m string) {
 		m = "OpLcNodeSnapshotVerDel"
 	case OpMetaReadDirOnly:
 		m = "OpMetaReadDirOnly"
+	case OpFlashNodeHeartbeat:
+		m = "OpFlashNodeHeartbeat"
+	case OpCachePrepare:
+		m = "OpCachePrepare"
+	case OpCacheRead:
+		m = "OpCacheRead"
 	default:
 		m = fmt.Sprintf("op:%v not found", p.Opcode)
 	}

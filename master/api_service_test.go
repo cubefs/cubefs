@@ -30,6 +30,7 @@ import (
 
 	"github.com/cubefs/cubefs/master/mocktest"
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/sdk/master"
 	"github.com/cubefs/cubefs/util/compressor"
 	"github.com/cubefs/cubefs/util/config"
 	"github.com/cubefs/cubefs/util/log"
@@ -38,7 +39,8 @@ import (
 )
 
 const (
-	hostAddr          = "http://127.0.0.1:8080"
+	masterAddr        = "127.0.0.1:8080"
+	hostAddr          = "http://" + masterAddr
 	ConfigKeyLogDir   = "logDir"
 	ConfigKeyLogLevel = "logLevel"
 	mds1Addr          = "127.0.0.1:9101"
@@ -62,6 +64,15 @@ const (
 	testZone2     = "zone2"
 	testZone3     = "zone3"
 
+	mfs1Addr = "127.0.0.1:10501"
+	mfs2Addr = "127.0.0.1:10502"
+	mfs3Addr = "127.0.0.1:10503"
+	mfs4Addr = "127.0.0.1:10504"
+	mfs5Addr = "127.0.0.1:10505"
+	mfs6Addr = "127.0.0.1:10506"
+	mfs7Addr = "127.0.0.1:10507"
+	mfs8Addr = "127.0.0.1:10508"
+
 	testUserID  = "testUser"
 	ak          = "0123456789123456"
 	sk          = "01234567891234560123456789123456"
@@ -70,15 +81,21 @@ const (
 
 var (
 	server    = createDefaultMasterServerForTest()
+	mc        = master.NewMasterClient([]string{masterAddr}, false)
 	commonVol *Vol
 	cfsUser   *proto.UserInfo
+
+	mockServerLock   sync.Mutex
+	mockDataServers  []*mocktest.MockDataServer
+	mockMetaServers  []*mocktest.MockMetaServer
+	mockFlashServers []*mocktest.MockFlashServer
 )
 
-var mockServerLock sync.Mutex
-
-var mockDataServers []*mocktest.MockDataServer
-
-var mockMetaServers []*mocktest.MockMetaServer
+func TestMain(m *testing.M) {
+	exitCode := m.Run()
+	server.clearMetadata()
+	os.Exit(exitCode)
+}
 
 func rangeMockDataServers(fun func(*mocktest.MockDataServer) bool) (count int, passed int) {
 	mockServerLock.Lock()
@@ -147,10 +164,23 @@ func createDefaultMasterServerForTest() *Server {
 	mockMetaServers = append(mockMetaServers, addMetaServer(mms4Addr, testZone2))
 	mockMetaServers = append(mockMetaServers, addMetaServer(mms5Addr, testZone2))
 	mockMetaServers = append(mockMetaServers, addMetaServer(mms6Addr, testZone2))
+
+	// add flash node
+	mockFlashServers = append(mockFlashServers,
+		addFlashServer(mfs1Addr, testZone1),
+		addFlashServer(mfs2Addr, testZone1),
+		addFlashServer(mfs3Addr, testZone2),
+		addFlashServer(mfs4Addr, testZone2),
+		addFlashServer(mfs5Addr, testZone3),
+		addFlashServer(mfs6Addr, testZone3),
+		addFlashServer(mfs7Addr, testZone3),
+	)
+
 	// we should wait 5 seoncds for master to prepare state
 	time.Sleep(5 * time.Second)
 	testServer.cluster.checkDataNodeHeartbeat()
 	testServer.cluster.checkMetaNodeHeartbeat()
+	testServer.cluster.checkFlashNodeHeartbeat()
 	time.Sleep(5 * time.Second)
 	testServer.cluster.scheduleToUpdateStatInfo()
 	// set load factor
@@ -187,7 +217,7 @@ func createDefaultMasterServerForTest() *Server {
 	}
 
 	commonVol = vol
-	fmt.Printf("vol[%v] has created\n", newSimpleView(commonVol))
+	fmt.Printf("Volume[%+v] has created\n", newSimpleView(commonVol))
 
 	if err = createUserWithPolicy(testServer); err != nil {
 		panic(err)
@@ -266,6 +296,12 @@ func addDataServer(addr, zoneName string) *mocktest.MockDataServer {
 
 func addMetaServer(addr, zoneName string) *mocktest.MockMetaServer {
 	mms := mocktest.NewMockMetaServer(addr, zoneName)
+	mms.Start()
+	return mms
+}
+
+func addFlashServer(addr, zoneName string) *mocktest.MockFlashServer {
+	mms := mocktest.NewMockFlashServer(addr, zoneName)
 	mms.Start()
 	return mms
 }
