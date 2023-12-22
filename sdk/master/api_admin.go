@@ -961,12 +961,14 @@ func (api *AdminAPI) GetFlashGroup(flashGroupID uint64) (fgView proto.FlashGroup
 	return
 }
 
-func (api *AdminAPI) ListFlashGroups(isActive, listAllStatus bool) (fgView proto.FlashGroupsAdminView, err error) {
-	var params []anyParam
-	if !listAllStatus {
-		params = append(params, anyParam{"enable", isActive})
-	}
-	err = api.mc.requestWith(&fgView, newRequest(get, proto.AdminFlashGroupList).Header(api.h).Param(params...))
+func (api *AdminAPI) ListFlashGroup(isActive bool) (fgView proto.FlashGroupsAdminView, err error) {
+	err = api.mc.requestWith(&fgView, newRequest(get, proto.AdminFlashGroupList).
+		Header(api.h).Param(anyParam{"enable", isActive}))
+	return
+}
+
+func (api *AdminAPI) ListFlashGroups() (fgView proto.FlashGroupsAdminView, err error) {
+	err = api.mc.requestWith(&fgView, newRequest(get, proto.AdminFlashGroupList).Header(api.h))
 	return
 }
 
