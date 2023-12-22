@@ -70,6 +70,7 @@ func TestVol(t *testing.T) {
 	getVol(name, t)
 	statVol(name, t)
 	delVol(name, t)
+	time.Sleep(5 * time.Second)
 	getSimpleVol(name, true, t)
 	vol.checkStatus(server.cluster)
 	err = vol.deleteVolFromStore(server.cluster)

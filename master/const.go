@@ -47,6 +47,7 @@ const (
 	dataNodeSelectorKey    = "dataNodeSelector"
 	metaNodeSelectorKey    = "metaNodeSelector"
 	forbiddenKey           = "forbidden"
+	deleteVolKey           = "delete"
 
 	forceDelVolKey             = "forceDelVol"
 	ebsBlkSizeKey              = "ebsBlkSize"
