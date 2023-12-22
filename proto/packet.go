@@ -700,6 +700,12 @@ func (p *Packet) GetOpMsg() (m string) {
 		m = "OpMetaUpdateExtentKeyAfterMigration"
 	case OpDeleteMigrationExtentKey:
 		m = "OpDeleteMigrationExtentKey"
+	case OpFlashNodeHeartbeat:
+		m = "OpFlashNodeHeartbeat"
+	case OpCachePrepare:
+		m = "OpCachePrepare"
+	case OpCacheRead:
+		m = "OpCacheRead"
 	default:
 		m = fmt.Sprintf("op:%v not found", p.Opcode)
 	}
