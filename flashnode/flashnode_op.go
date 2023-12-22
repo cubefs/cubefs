@@ -1,4 +1,4 @@
-// Copyright 2018 The CubeFS Authors.
+// Copyright 2023 The CubeFS Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -30,7 +30,7 @@ import (
 )
 
 func (f *FlashNode) preHandle(conn net.Conn, p *proto.Packet) error {
-	if p.Opcode == proto.OpCacheRead && !f.readLimiter.Allow() {
+	if p.Opcode == proto.OpFlashNodeCacheRead && !f.readLimiter.Allow() {
 		metric := exporter.NewTPCnt("NodeReqLimit")
 		metric.Set(nil)
 		err := errors.NewErrorf("%s", "flashnode read request was been limited")
@@ -47,10 +47,10 @@ func (f *FlashNode) handlePacket(conn net.Conn, p *proto.Packet) (err error) {
 	switch p.Opcode {
 	case proto.OpFlashNodeHeartbeat:
 		err = f.opFlashNodeHeartbeat(conn, p)
-	case proto.OpCacheRead:
+	case proto.OpFlashNodeCachePrepare:
+		err = f.opCachePrepare(conn, p)
+	case proto.OpFlashNodeCacheRead:
 		err = f.opCacheRead(conn, p)
-	case proto.OpCachePrepare:
-		err = f.opPrepare(conn, p)
 	default:
 		err = fmt.Errorf("unknown Opcode:%d", p.Opcode)
 	}
@@ -75,11 +75,12 @@ func (f *FlashNode) opCacheRead(conn net.Conn, p *proto.Packet) (err error) {
 	var volume string
 	defer func() {
 		if err != nil {
-			logContent := fmt.Sprintf("action[opCacheRead] volume:[%v], logMsg:%v.", volume,
+			log.LogErrorf("action[opCacheRead] volume:[%s], logMsg:%s", volume,
 				p.LogMessage(p.GetOpMsg(), conn.RemoteAddr().String(), p.StartT, err))
-			log.LogError(logContent)
 			p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
-			p.WriteToConn(conn)
+			if e := p.WriteToConn(conn); e != nil {
+				log.LogErrorf("action[opCacheRead] write to conn %v", e)
+			}
 		}
 	}()
 
@@ -88,6 +89,10 @@ func (f *FlashNode) opCacheRead(conn net.Conn, p *proto.Packet) (err error) {
 
 	req := new(proto.CacheReadRequest)
 	if err = p.UnmarshalDataPb(req); err != nil {
+		return
+	}
+	if req.CacheRequest == nil {
+		err = fmt.Errorf("no cache read request")
 		return
 	}
 	volume = req.CacheRequest.Volume
@@ -153,7 +158,7 @@ func (f *FlashNode) doStreamReadRequest(ctx context.Context, conn net.Conn, req 
 		p.ResultCode = proto.OpOk
 		if err = reply.WriteToConn(conn); err != nil {
 			bufRelease()
-			log.LogErrorf("%s volume:[%v] %v.", action, req.CacheRequest.Volume,
+			log.LogErrorf("%s volume:[%s] %s", action, req.CacheRequest.Volume,
 				reply.LogMessage(reply.GetOpMsg(), conn.RemoteAddr().String(), reply.StartT, err))
 			return
 		}
@@ -161,41 +166,47 @@ func (f *FlashNode) doStreamReadRequest(ctx context.Context, conn net.Conn, req 
 		needReplySize -= currReadSize
 		offset += int64(currReadSize)
 		bufRelease()
-		log.LogInfof("%s ReqID[%v] volume:[%v] reply[%v] block[%v] .", action, p.ReqID, req.CacheRequest.Volume,
+		log.LogInfof("%s ReqID[%d] volume:[%s] reply[%s] block[%s]", action, p.ReqID, req.CacheRequest.Volume,
 			reply.LogMessage(reply.GetOpMsg(), conn.RemoteAddr().String(), reply.StartT, err), block.String())
 	}
 	p.PacketOkReply()
 	return
 }
 
-func (f *FlashNode) opPrepare(conn net.Conn, p *proto.Packet) (err error) {
-	action := "action[opPrepare]"
+func (f *FlashNode) opCachePrepare(conn net.Conn, p *proto.Packet) (err error) {
+	action := "action[opCachePrepare]"
 	var volume string
 	defer func() {
 		if err != nil {
-			log.LogErrorf("%s volume:[%v] %v.", action, volume,
+			log.LogErrorf("%s volume:[%s] %s", action, volume,
 				p.LogMessage(p.GetOpMsg(), conn.RemoteAddr().String(), p.StartT, err))
+			p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+			if e := p.WriteToConn(conn); e != nil {
+				log.LogErrorf("%s write to conn %v", action, e)
+			}
 		}
 	}()
 
 	req := new(proto.CachePrepareRequest)
 	if err = p.UnmarshalDataPb(req); err != nil {
-		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
-		if e := p.WriteToConn(conn); e != nil {
-			log.LogErrorf("%s write to conn %v.", action, e)
-		}
+		return
+	}
+	if req.CacheRequest == nil {
+		err = fmt.Errorf("no cache prepare request")
 		return
 	}
 	volume = req.CacheRequest.Volume
 
-	p.PacketOkReply()
-	if e := p.WriteToConn(conn); e != nil {
-		log.LogErrorf("%s write to conn volume:%s %v.", action, volume, e)
+	if err = f.cacheEngine.PrepareCache(p.ReqID, req.CacheRequest); err != nil {
+		log.LogErrorf("%s prepare %v", action, err)
+		return
 	}
 
-	if err = f.cacheEngine.PrepareCache(p.ReqID, req.CacheRequest); err != nil {
-		return err
+	p.PacketOkReply()
+	if e := p.WriteToConn(conn); e != nil {
+		log.LogErrorf("%s write to conn volume:%s %v", action, volume, e)
 	}
+
 	if len(req.FlashNodes) > 0 {
 		f.dispatchRequestToFollowers(req)
 	}
@@ -236,7 +247,7 @@ func (f *FlashNode) sendPrepareRequest(addr string, req *proto.CachePrepareReque
 	log.LogDebugf("%s to addr:%s request:%v", action, addr, req)
 
 	followerPacket := proto.NewPacketReqID()
-	followerPacket.Opcode = proto.OpCachePrepare
+	followerPacket.Opcode = proto.OpFlashNodeCachePrepare
 	if err = followerPacket.MarshalDataPb(req); err != nil {
 		log.LogWarnf("%s failed to MarshalDataPb (%+v) err(%v)", action, followerPacket, err)
 		return err
