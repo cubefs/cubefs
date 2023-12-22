@@ -1,4 +1,4 @@
-// Copyright 2018 The CubeFS Authors.
+// Copyright 2023 The CubeFS Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -108,6 +108,23 @@ func doStart(s common.Server, cfg *config.Config) (err error) {
 	if !ok {
 		return errors.New("Invalid Node Type!")
 	}
+	if err = f.start(cfg); err != nil {
+		return
+	}
+	exporter.Init(moduleName, cfg)
+	exporter.RegistConsul(f.clusterID, moduleName, cfg)
+	return
+}
+
+func doShutdown(s common.Server) {
+	f, ok := s.(*FlashNode)
+	if !ok {
+		return
+	}
+	f.shutdown()
+}
+
+func (f *FlashNode) start(cfg *config.Config) (err error) {
 	if err = f.parseConfig(cfg); err != nil {
 		return
 	}
@@ -127,17 +144,10 @@ func doStart(s common.Server, cfg *config.Config) (err error) {
 	if err = f.startTcpServer(); err != nil {
 		return
 	}
-
-	exporter.Init(moduleName, cfg)
-	exporter.RegistConsul(f.clusterID, moduleName, cfg)
-	return
+	return nil
 }
 
-func doShutdown(s common.Server) {
-	f, ok := s.(*FlashNode)
-	if !ok {
-		return
-	}
+func (f *FlashNode) shutdown() {
 	f.stopOnce.Do(func() {
 		close(f.stopCh)
 	})
@@ -158,7 +168,7 @@ func (f *FlashNode) parseConfig(cfg *config.Config) (err error) {
 		return errors.New("bad zoneName config")
 	}
 	f.readRps = cfg.GetInt(cfgReadRps)
-	if f.readRps <= 0 {
+	if f.readRps < 0 {
 		f.readRps = _defaultReadBurst
 	}
 
