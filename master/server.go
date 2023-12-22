@@ -177,6 +177,9 @@ func (m *Server) Start(cfg *config.Config) (err error) {
 // Shutdown closes the server
 func (m *Server) Shutdown() {
 	var err error
+	if m.cluster.stopc != nil {
+		close(m.cluster.stopc)
+	}
 	if m.apiServer != nil {
 		if err = m.apiServer.Shutdown(context.Background()); err != nil {
 			log.LogErrorf("action[Shutdown] failed, err: %v", err)
@@ -343,6 +346,8 @@ func (m *Server) checkConfig(cfg *config.Config) (err error) {
 		return fmt.Errorf("volDeletionDentryThreshold can't be less than 0 ! ")
 	}
 	m.config.volDeletionDentryThreshold = uint64(threshold)
+
+	m.config.volDelayDeleteTime = cfg.GetInt64WithDefault(cfgVolDeletionDelayTime, 48)
 
 	return
 }

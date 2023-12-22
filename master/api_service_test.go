@@ -120,7 +120,8 @@ func createDefaultMasterServerForTest() *Server {
 		"logLevel":"DEBUG",
 		"walDir":"/tmp/cubefs/raft",
 		"storeDir":"/tmp/cubefs/rocksdbstore",
-		"clusterName":"cubefs"
+		"clusterName":"cubefs",
+		"volDeletionDelayTime": -1
 	}`
 
 	testServer, err := createMasterServer(cfgJSON)
@@ -417,14 +418,8 @@ func TestMarkDeleteVol(t *testing.T) {
 	reqURL := fmt.Sprintf("%v%v?name=%v&authKey=%v", hostAddr, proto.AdminDeleteVol, name, buildAuthKey(testOwner))
 	process(reqURL, t)
 
-	userInfo, err := server.user.getUserInfo("cfs")
-	if err != nil {
-		t.Error(err)
-		return
-	}
-
-	if contains(userInfo.Policy.OwnVols, name) {
-		t.Errorf("expect no vol %v in own vols, but is exist", name)
+	if len(server.cluster.delayDeleteVolsInfo) != 1 || server.cluster.delayDeleteVolsInfo[0].volName != name {
+		t.Errorf("expect vol %v in delayDeleteVolsInfo, but is not exist", name)
 		return
 	}
 }
@@ -535,6 +530,8 @@ func TestUpdateVol(t *testing.T) {
 	assert.True(t, view.CacheRule == "")
 
 	delVol(volName, t)
+
+	time.Sleep(10 * time.Second)
 	// can't update vol after delete
 	checkParam(cacheLRUIntervalKey, proto.AdminUpdateVol, req, lru, lru, t)
 }
@@ -558,7 +555,7 @@ func delVol(name string, t *testing.T) {
 	vol, err := server.cluster.getVol(name)
 	assert.True(t, err == nil)
 
-	assert.True(t, vol.Status == markDelete)
+	assert.True(t, vol.Forbidden == true)
 }
 
 func setVolCapacity(capacity uint64, url string, t *testing.T) {
