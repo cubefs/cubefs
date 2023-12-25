@@ -18,7 +18,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/cubefs/cubefs/util/topology"
 	"hash/crc32"
 	"io/ioutil"
 	"math"
@@ -32,6 +31,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/cubefs/cubefs/util/topology"
 
 	"github.com/cubefs/cubefs/datanode/riskdata"
 	"github.com/cubefs/cubefs/proto"
@@ -774,8 +775,14 @@ func (dp *DataPartition) Disk() *Disk {
 	return dp.disk
 }
 
-func (dp *DataPartition) IsRejectWrite() bool {
-	return dp.Disk().RejectWrite
+func (dp *DataPartition) CheckWritable() error {
+	if dp.Disk().Status == proto.Unavailable {
+		return storage.BrokenDiskError
+	}
+	if dp.used > dp.partitionSize*2 || dp.Disk().Status == proto.ReadOnly {
+		return storage.NoSpaceError
+	}
+	return nil
 }
 
 const (
