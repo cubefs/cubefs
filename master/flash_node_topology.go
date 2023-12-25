@@ -49,12 +49,14 @@ func (zone *FlashNodeZone) putFlashNode(flashNode *FlashNode) {
 
 // the function caller should use lock of FlashNodeZone
 func (zone *FlashNodeZone) selectFlashNodes(count int, excludeHosts []string) (newHosts []string, err error) {
+	zone.mu.Lock()
+	defer zone.mu.Unlock()
 	zone.flashNode.Range(func(_, value interface{}) bool {
 		flashNode := value.(*FlashNode)
 		if contains(excludeHosts, flashNode.Addr) {
 			return true
 		}
-		if flashNode.isWriteAble() {
+		if flashNode.isWriteable() {
 			newHosts = append(newHosts, flashNode.Addr)
 		}
 		if len(newHosts) >= count {
@@ -85,8 +87,10 @@ func (t *flashNodeTopology) clear() {
 		t.zoneMap.Delete(key)
 		return true
 	})
-	t.flashNodeMap.Range(func(key, _ interface{}) bool {
+	t.flashNodeMap.Range(func(key, node interface{}) bool {
 		t.flashNodeMap.Delete(key)
+		flashNode := node.(*FlashNode)
+		flashNode.clean()
 		return true
 	})
 }
@@ -125,7 +129,6 @@ func (t *flashNodeTopology) putFlashNode(flashNode *FlashNode) (err error) {
 	return
 }
 
-// TODO: remove from group.
 func (t *flashNodeTopology) deleteFlashNode(flashNode *FlashNode) {
 	t.flashNodeMap.Delete(flashNode.Addr)
 	zone, err := t.getZone(flashNode.ZoneName)
@@ -190,13 +193,17 @@ func (t *flashNodeTopology) removeFlashGroup(flashGroup *FlashGroup, c *Cluster)
 	t.createFlashGroupLock.Lock()
 	defer t.createFlashGroupLock.Unlock()
 	slots := flashGroup.Slots
-	oldStatus := flashGroup.Status
 
+	flashGroup.lock.Lock()
+	oldStatus := flashGroup.Status
 	flashGroup.Status = proto.FlashGroupStatus_Inactive
 	if err = c.syncDeleteFlashGroup(flashGroup); err != nil {
 		flashGroup.Status = oldStatus
+		flashGroup.lock.Unlock()
 		return
 	}
+	flashGroup.lock.Unlock()
+
 	t.removeSlots(slots)
 	t.flashGroupMap.Delete(flashGroup.ID)
 	return
@@ -218,7 +225,7 @@ func (t *flashNodeTopology) getFlashGroupView() (fgv *proto.FlashGroupView) {
 	fgv = new(proto.FlashGroupView)
 	t.flashGroupMap.Range(func(_, value interface{}) bool {
 		fg := value.(*FlashGroup)
-		if fg.Status.IsActive() {
+		if fg.GetStatus().IsActive() {
 			hosts := fg.getFlashNodeHosts(true)
 			if len(hosts) == 0 {
 				return true
@@ -238,7 +245,7 @@ func (t *flashNodeTopology) getFlashGroupsAdminView(fgStatus proto.FlashGroupSta
 	fgv = new(proto.FlashGroupsAdminView)
 	t.flashGroupMap.Range(func(_, value interface{}) bool {
 		fg := value.(*FlashGroup)
-		if allStatus || fg.Status == fgStatus {
+		if allStatus || fg.GetStatus() == fgStatus {
 			fgv.FlashGroups = append(fgv.FlashGroups, fg.GetAdminView())
 		}
 		return true
@@ -261,22 +268,15 @@ func (c *Cluster) loadFlashNodes() (err error) {
 		}
 		flashNode := newFlashNode(fnv.Addr, fnv.ZoneName, c.Name, fnv.Version, fnv.IsEnable)
 		flashNode.ID = fnv.ID
+		// load later in loadFlashTopology
 		flashNode.FlashGroupID = fnv.FlashGroupID
-
-		if !flashNode.isFlashNodeUnused() {
-			if flashGroup, err1 := c.flashNodeTopo.getFlashGroup(flashNode.FlashGroupID); err1 == nil {
-				flashGroup.putFlashNode(flashNode)
-			} else {
-				log.LogErrorf("action[loadFlashNodes]fnv:%v err:%v", *fnv, err1.Error())
-			}
-		}
 
 		_, err = c.flashNodeTopo.getZone(flashNode.ZoneName)
 		if err != nil {
 			c.flashNodeTopo.putZoneIfAbsent(newFlashNodeZone(flashNode.ZoneName))
 		}
 		c.flashNodeTopo.putFlashNode(flashNode)
-		log.LogInfof("action[loadFlashNodes],flashNode[%v],FlashGroupID[%v]", flashNode.Addr, flashNode.FlashGroupID)
+		log.LogInfof("action[loadFlashNodes], flashNode[%s]", flashNode.Addr)
 	}
 	return
 }
@@ -300,5 +300,24 @@ func (c *Cluster) loadFlashGroups() (err error) {
 		}
 		log.LogInfof("action[loadFlashGroups],flashGroup[%v]", flashGroup.ID)
 	}
+	return
+}
+
+func (c *Cluster) loadFlashTopology() (err error) {
+	c.flashNodeTopo.flashNodeMap.Range(func(addr, flashNode interface{}) bool {
+		node := flashNode.(*FlashNode)
+		node.Lock()
+		if gid := node.FlashGroupID; gid != unusedFlashNodeFlashGroupID {
+			if g, e := c.flashNodeTopo.getFlashGroup(gid); e == nil {
+				g.putFlashNode(node)
+				log.LogInfof("action[loadFlashTopology] load FlashNode[%s] -> FlashGroup[%d]", node.Addr, gid)
+			} else {
+				node.FlashGroupID = unusedFlashNodeFlashGroupID
+				log.LogErrorf("action[loadFlashTopology] FlashNode:%s err:%v", node.Addr, e.Error())
+			}
+		}
+		node.Unlock()
+		return true
+	})
 	return
 }

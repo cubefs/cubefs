@@ -28,21 +28,28 @@ import (
 	"github.com/cubefs/cubefs/util/log"
 )
 
+const (
+	_defaultNodeTimeoutDuration = defaultNodeTimeOutSec * time.Second
+)
+
 type flashNodeValue struct {
-	ID           uint64
-	Addr         string
-	ZoneName     string
-	Version      string
+	// immutable
+	ID       uint64
+	Addr     string
+	ZoneName string
+	Version  string
+	// mutable
 	FlashGroupID uint64 // 0: have not allocated to flash group
 	IsEnable     bool
 }
 
 type FlashNode struct {
-	flashNodeValue
-	sync.RWMutex
-	ReportTime  time.Time
-	IsActive    bool
 	TaskManager *AdminTaskManager
+
+	sync.RWMutex
+	flashNodeValue
+	ReportTime time.Time
+	IsActive   bool
 }
 
 func newFlashNode(addr, zoneName, clusterID, version string, isEnable bool) *FlashNode {
@@ -55,37 +62,36 @@ func newFlashNode(addr, zoneName, clusterID, version string, isEnable bool) *Fla
 	return node
 }
 
-func (flashNode *FlashNode) isFlashNodeUnused() bool {
-	return flashNode.FlashGroupID == unusedFlashNodeFlashGroupID
-}
-
 func (flashNode *FlashNode) clean() {
 	flashNode.TaskManager.exitCh <- struct{}{}
 }
 
-func (flashNode *FlashNode) setNodeActive() {
+func (flashNode *FlashNode) setActive() {
 	flashNode.Lock()
 	flashNode.ReportTime = time.Now()
 	flashNode.IsActive = true
 	flashNode.Unlock()
 }
 
-func (flashNode *FlashNode) isWriteAble() (ok bool) {
+func (flashNode *FlashNode) isWriteable() (ok bool) {
 	flashNode.RLock()
-	if flashNode.isFlashNodeUnused() && time.Since(flashNode.ReportTime) < time.Second*time.Duration(defaultNodeTimeOutSec) {
+	if flashNode.FlashGroupID == unusedFlashNodeFlashGroupID &&
+		time.Since(flashNode.ReportTime) < _defaultNodeTimeoutDuration {
 		ok = true
 	}
 	flashNode.RUnlock()
 	return
 }
 
-func (flashNode *FlashNode) isActiveAndEnable() bool {
+func (flashNode *FlashNode) isActiveAndEnable() (ok bool) {
 	flashNode.RLock()
-	defer flashNode.RUnlock()
-	return flashNode.IsActive && flashNode.IsEnable
+	ok = flashNode.IsActive && flashNode.IsEnable
+	flashNode.RUnlock()
+	return
 }
 
 func (flashNode *FlashNode) getFlashNodeViewInfo() (info *proto.FlashNodeViewInfo) {
+	flashNode.RLock()
 	info = &proto.FlashNodeViewInfo{
 		ID:           flashNode.ID,
 		Addr:         flashNode.Addr,
@@ -96,6 +102,7 @@ func (flashNode *FlashNode) getFlashNodeViewInfo() (info *proto.FlashNodeViewInf
 		FlashGroupID: flashNode.FlashGroupID,
 		IsEnable:     flashNode.IsEnable,
 	}
+	flashNode.RUnlock()
 	return
 }
 
@@ -114,7 +121,7 @@ func (c *Cluster) syncFlashNodeHeartbeatTasks(tasks []*proto.AdminTask) {
 			log.LogError(fmt.Sprintf("action[syncFlashNodeHeartbeatTasks],nodeAddr:%v,taskID:%v,err:%v", t.OperatorAddr, t.ID, err.Error()))
 			continue
 		}
-		node.setNodeActive()
+		node.setActive()
 	}
 }
 
@@ -132,7 +139,7 @@ func (c *Cluster) checkFlashNodeHeartbeat() {
 
 func (flashNode *FlashNode) checkLiveliness() {
 	flashNode.Lock()
-	if time.Since(flashNode.ReportTime) > time.Second*time.Duration(defaultNodeTimeOutSec) {
+	if time.Since(flashNode.ReportTime) > _defaultNodeTimeoutDuration {
 		flashNode.IsActive = false
 	}
 	flashNode.Unlock()
@@ -179,8 +186,6 @@ func (c *Cluster) addFlashNode(nodeAddr, zoneName, version string) (id uint64, e
 		}
 	}()
 
-	// TODO: update when zone changed.
-
 	var flashNode *FlashNode
 	flashNode, err = c.peekFlashNode(nodeAddr)
 	if err == nil {
@@ -200,7 +205,9 @@ func (c *Cluster) addFlashNode(nodeAddr, zoneName, version string) (id uint64, e
 	}
 	flashNode.ReportTime = time.Now()
 	flashNode.IsActive = true
-	c.flashNodeTopo.putFlashNode(flashNode)
+	if err = c.flashNodeTopo.putFlashNode(flashNode); err != nil {
+		return
+	}
 	log.LogInfof("action[addFlashNode],clusterID[%v] Addr:%v ZoneName:%v success", c.Name, nodeAddr, zoneName)
 	return
 }
@@ -265,9 +272,9 @@ func (m *Server) removeFlashNode(w http.ResponseWriter, r *http.Request) {
 }
 
 func (c *Cluster) removeFlashNode(flashNode *FlashNode) (err error) {
-	log.LogWarnf("action[removeFlashNode], Node[%v] FlashGroupID:%v ZoneName:%v OffLine", flashNode.Addr, flashNode.FlashGroupID, flashNode.ZoneName)
-	flashGroupID := flashNode.FlashGroupID
-	if err = c.deleteFlashNode(flashNode); err != nil {
+	log.LogWarnf("action[removeFlashNode], ZoneName[%s] Node[%s] offline", flashNode.ZoneName, flashNode.Addr)
+	var flashGroupID uint64
+	if flashGroupID, err = c.deleteFlashNode(flashNode); err != nil {
 		return
 	}
 	if flashGroupID != unusedFlashNodeFlashGroupID {
@@ -281,15 +288,15 @@ func (c *Cluster) removeFlashNode(flashNode *FlashNode) (err error) {
 			return
 		}
 	}
-	log.LogInfof("action[removeFlashNode],clusterID[%v] node[%v] flashGroupID[%v] offLine success",
+	log.LogInfof("action[removeFlashNode], clusterID[%s] node[%s] flashGroupID[%d] offline success",
 		c.Name, flashNode.Addr, flashGroupID)
 	return
 }
 
-func (c *Cluster) deleteFlashNode(flashNode *FlashNode) (err error) {
+func (c *Cluster) deleteFlashNode(flashNode *FlashNode) (oldFlashGroupID uint64, err error) {
 	flashNode.Lock()
 	defer flashNode.Unlock()
-	oldFlashGroupID := flashNode.FlashGroupID
+	oldFlashGroupID = flashNode.FlashGroupID
 	flashNode.FlashGroupID = unusedFlashNodeFlashGroupID
 	if err = c.syncDeleteFlashNode(flashNode); err != nil {
 		log.LogErrorf("action[deleteFlashNode],clusterID[%v] node[%v] offline failed,err[%v]",
@@ -304,6 +311,46 @@ func (c *Cluster) deleteFlashNode(flashNode *FlashNode) (err error) {
 func (c *Cluster) delFlashNodeFromCache(flashNode *FlashNode) {
 	c.flashNodeTopo.deleteFlashNode(flashNode)
 	go flashNode.clean()
+}
+
+func (m *Server) setFlashNode(w http.ResponseWriter, r *http.Request) {
+	var (
+		nodeAddr  string
+		state     bool
+		flashNode *FlashNode
+		err       error
+	)
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.FlashNodeSet))
+	defer func() {
+		doStatAndMetric(proto.FlashNodeSet, metric, err, nil)
+	}()
+	if nodeAddr, state, err = parseAndExtractFlashNode(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	if flashNode, err = m.cluster.peekFlashNode(nodeAddr); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+	if err = m.cluster.updateFlashNode(flashNode, state); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+	sendOkReply(w, r, newSuccessHTTPReply("set flashNode success"))
+}
+
+func (c *Cluster) updateFlashNode(flashNode *FlashNode, state bool) (err error) {
+	flashNode.Lock()
+	defer flashNode.Unlock()
+	if flashNode.IsEnable != state {
+		oldState := flashNode.IsEnable
+		flashNode.IsEnable = state
+		if err = c.syncUpdateFlashNode(flashNode); err != nil {
+			flashNode.IsEnable = oldState
+			return
+		}
+	}
+	return
 }
 
 func (c *Cluster) syncAddFlashNode(flashNode *FlashNode) (err error) {
@@ -341,37 +388,6 @@ func (c *Cluster) peekFlashNode(addr string) (flashNode *FlashNode, err error) {
 
 func flashNodeNotFound(addr string) (err error) {
 	return notFoundMsg(fmt.Sprintf("flashnode[%v]", addr))
-}
-
-func (m *Server) setFlashNode(w http.ResponseWriter, r *http.Request) {
-	var (
-		nodeAddr  string
-		state     bool
-		flashNode *FlashNode
-		err       error
-	)
-	metric := exporter.NewTPCnt(apiToMetricsName(proto.FlashNodeSet))
-	defer func() {
-		doStatAndMetric(proto.FlashNodeSet, metric, err, nil)
-	}()
-	if nodeAddr, state, err = parseAndExtractFlashNode(r); err != nil {
-		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
-		return
-	}
-	if flashNode, err = m.cluster.peekFlashNode(nodeAddr); err != nil {
-		sendErrReply(w, r, newErrHTTPReply(err))
-		return
-	}
-	if flashNode.IsEnable != state {
-		oldState := flashNode.IsEnable
-		flashNode.IsEnable = state
-		if err = m.cluster.syncUpdateFlashNode(flashNode); err != nil {
-			flashNode.IsEnable = oldState
-			sendErrReply(w, r, newErrHTTPReply(err))
-			return
-		}
-	}
-	sendOkReply(w, r, newSuccessHTTPReply("set flashNode success"))
 }
 
 func parseRequestForAddFlashNode(r *http.Request) (nodeAddr, zoneName, version string, err error) {
