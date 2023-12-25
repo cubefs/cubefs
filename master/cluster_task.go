@@ -309,7 +309,7 @@ func (c *Cluster) checkReplicaMetaPartitions() (
 
 	vols := c.copyVols()
 	for _, vol := range vols {
-		if vol.Status == markDelete {
+		if vol.Status == proto.VolStatusMarkDelete {
 			markDeleteVolNames[vol.Name] = struct{}{}
 			continue
 		}
@@ -1091,7 +1091,7 @@ func (c *Cluster) updateDataNode(dataNode *DataNode, dps []*proto.DataPartitionR
 			if err != nil {
 				continue
 			}
-			if vol.Status == markDelete {
+			if vol.Status == proto.VolStatusMarkDelete {
 				continue
 			}
 			if dp, err := vol.getDataPartitionByID(vr.PartitionID); err == nil {
@@ -1122,7 +1122,7 @@ func (c *Cluster) updateMetaNode(metaNode *MetaNode, metaPartitions []*proto.Met
 				continue
 			}
 
-			if vol.Status == markDelete {
+			if vol.Status == proto.VolStatusMarkDelete {
 				continue
 			}
 

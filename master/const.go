@@ -204,12 +204,12 @@ const (
 )
 
 const (
-	normal               uint8 = 0
-	markDelete           uint8 = 1
-	normalZone                 = 0
-	unavailableZone            = 1
-	metaNodesUnAvailable       = 2
-	dataNodesUnAvailable       = 3
+	normal uint8 = 0
+
+	normalZone           = 0
+	unavailableZone      = 1
+	metaNodesUnAvailable = 2
+	dataNodesUnAvailable = 3
 )
 
 const (
