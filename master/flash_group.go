@@ -41,6 +41,13 @@ type FlashGroup struct {
 	flashNodes map[string]*FlashNode // key: FlashNodeAddr
 }
 
+func (fg *FlashGroup) GetStatus() (st proto.FlashGroupStatus) {
+	fg.lock.RLock()
+	st = fg.Status
+	fg.lock.RUnlock()
+	return
+}
+
 func newFlashGroup(id uint64, slots []uint32, status proto.FlashGroupStatus) *FlashGroup {
 	fg := new(FlashGroup)
 	fg.ID = id
@@ -117,13 +124,13 @@ func (c *Cluster) syncPutFlashGroupInfo(opType uint32, flashGroup *FlashGroup) (
 }
 
 func (fg *FlashGroup) GetAdminView() (view proto.FlashGroupAdminView) {
+	fg.lock.RLock()
 	view = proto.FlashGroupAdminView{
 		ID:     fg.ID,
 		Slots:  fg.Slots,
 		Status: fg.Status,
 	}
 	view.ZoneFlashNodes = make(map[string][]*proto.FlashNodeViewInfo)
-	fg.lock.RLock()
 	view.FlashNodeCount = len(fg.flashNodes)
 	for _, flashNode := range fg.flashNodes {
 		view.ZoneFlashNodes[flashNode.ZoneName] = append(view.ZoneFlashNodes[flashNode.ZoneName], flashNode.getFlashNodeViewInfo())
@@ -183,7 +190,7 @@ func (m *Server) removeFlashGroup(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
-	if flashGroup.Status == proto.FlashGroupStatus_Active && flashGroup.getFlashNodesCount() != 0 {
+	if flashGroup.GetStatus() == proto.FlashGroupStatus_Active && flashGroup.getFlashNodesCount() != 0 {
 		needUpdateFGCache = true
 	}
 	if err = m.cluster.removeFlashGroup(flashGroup); err != nil {
@@ -236,16 +243,21 @@ func (m *Server) setFlashGroup(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
+
+	flashGroup.lock.Lock()
 	oldStatus := flashGroup.Status
 	flashGroup.Status = fgStatus
-	if oldStatus == proto.FlashGroupStatus_Active && fgStatus == proto.FlashGroupStatus_Inactive {
+	if oldStatus != fgStatus {
 		needUpdateFGCache = true
+		if err = m.cluster.syncUpdateFlashGroup(flashGroup); err != nil {
+			flashGroup.Status = oldStatus
+			flashGroup.lock.Unlock()
+			sendErrReply(w, r, newErrHTTPReply(err))
+			return
+		}
 	}
-	if err = m.cluster.syncUpdateFlashGroup(flashGroup); err != nil {
-		flashGroup.Status = oldStatus
-		sendErrReply(w, r, newErrHTTPReply(err))
-		return
-	}
+	flashGroup.lock.Unlock()
+
 	if needUpdateFGCache {
 		m.cluster.updateFlashGroupResponseCache()
 	}
@@ -317,11 +329,11 @@ func (c *Cluster) setFlashNodeToFlashGroup(addr string, flashGroupID uint64) (fl
 	}
 	flashNode.Lock()
 	defer flashNode.Unlock()
-	if !flashNode.isFlashNodeUnused() {
+	if flashNode.FlashGroupID != unusedFlashNodeFlashGroupID {
 		err = fmt.Errorf("flashNode[%v] FlashGroupID[%v] can not add to flash group:%v", flashNode.Addr, flashNode.FlashGroupID, flashGroupID)
 		return
 	}
-	if time.Since(flashNode.ReportTime) > time.Second*time.Duration(defaultNodeTimeOutSec) {
+	if time.Since(flashNode.ReportTime) > _defaultNodeTimeoutDuration {
 		flashNode.IsActive = false
 		err = fmt.Errorf("flashNode[%v] is inactive lastReportTime:%v", flashNode.Addr, flashNode.ReportTime)
 		return
@@ -341,8 +353,6 @@ func (c *Cluster) selectFlashNodesFromZoneAddToFlashGroup(zoneName string, count
 	if err != nil {
 		return
 	}
-	flashNodeZone.mu.Lock()
-	defer flashNodeZone.mu.Unlock()
 	newHosts, err := flashNodeZone.selectFlashNodes(count, excludeHosts)
 	if err != nil {
 		return

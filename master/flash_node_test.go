@@ -20,7 +20,14 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestFlashNodeSet(t *testing.T) {
+func testFlashNode(t *testing.T) {
+	t.Run("Set", testFlashNodeSet)
+	t.Run("Remove", testFlashNodeRemove)
+	t.Run("Get", testFlashNodeGet)
+	t.Run("List", testFlashNodeList)
+}
+
+func testFlashNodeSet(t *testing.T) {
 	fnView, err := mc.NodeAPI().GetFlashNode(mfs1Addr)
 	require.NoError(t, err)
 	require.True(t, fnView.IsEnable)
@@ -32,7 +39,7 @@ func TestFlashNodeSet(t *testing.T) {
 	require.NoError(t, mc.NodeAPI().SetFlashNode(mfs1Addr, "true"))
 }
 
-func TestFlashNodeRemove(t *testing.T) {
+func testFlashNodeRemove(t *testing.T) {
 	addr := mfs8Addr
 	_, err := mc.NodeAPI().GetFlashNode(addr)
 	require.Error(t, err)
@@ -57,7 +64,7 @@ func TestFlashNodeRemove(t *testing.T) {
 	require.Error(t, err)
 }
 
-func TestFlashNodeGet(t *testing.T) {
+func testFlashNodeGet(t *testing.T) {
 	_, err := mc.NodeAPI().GetFlashNode("not-addr")
 	require.Error(t, err)
 	testCases := []struct {
@@ -79,7 +86,7 @@ func TestFlashNodeGet(t *testing.T) {
 	}
 }
 
-func TestFlashNodeList(t *testing.T) {
+func testFlashNodeList(t *testing.T) {
 	zoneNodes, err := mc.NodeAPI().ListFlashNodes(true)
 	require.NoError(t, err)
 	require.Equal(t, 3, len(zoneNodes))
