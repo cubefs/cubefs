@@ -545,7 +545,7 @@ func (mm *monitorMetrics) setMpAndDpMetrics() {
 
 	vols := mm.cluster.copyVols()
 	for _, vol := range vols {
-		if vol.Status == markDelete {
+		if vol.Status == proto.VolStatusMarkDelete {
 			continue
 		}
 		var dps *DataPartitionMap
@@ -700,7 +700,7 @@ func (mm *monitorMetrics) setMpInconsistentErrorMetric() {
 	defer mm.cluster.volMutex.RUnlock()
 
 	for _, vol := range mm.cluster.vols {
-		if vol.Status == markDelete {
+		if vol.Status == proto.VolStatusMarkDelete {
 			continue
 		}
 		vol.mpsLock.RLock()
