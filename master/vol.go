@@ -360,7 +360,7 @@ func (vol *Vol) initDataPartitions(c *Cluster) (err error) {
 }
 
 func (vol *Vol) checkDataPartitions(c *Cluster) (cnt int) {
-	if vol.getDataPartitionsCount() == 0 && vol.Status != markDelete && proto.IsHot(vol.VolType) {
+	if vol.getDataPartitionsCount() == 0 && vol.Status != proto.VolStatusMarkDelete && proto.IsHot(vol.VolType) {
 		c.batchCreateDataPartition(vol, 1, false)
 	}
 
@@ -678,7 +678,7 @@ func (vol *Vol) checkAutoDataPartitionCreation(c *Cluster) {
 		return
 	}
 
-	vol.setStatus(normal)
+	vol.setStatus(proto.VolStatusNormal)
 	log.LogInfof("action[autoCreateDataPartitions] vol[%v] before autoCreateDataPartitions", vol.Name)
 	if !c.DisableAutoAllocate && !vol.Forbidden {
 		vol.autoCreateDataPartitions(c)
@@ -709,7 +709,7 @@ func (vol *Vol) shouldInhibitWriteBySpaceFull() bool {
 func (vol *Vol) needCreateDataPartition() (ok bool, err error) {
 
 	ok = false
-	if vol.status() == markDelete {
+	if vol.status() == proto.VolStatusMarkDelete {
 		err = proto.ErrVolNotExists
 		return
 	}
@@ -958,7 +958,7 @@ func (vol *Vol) checkStatus(c *Cluster) {
 	vol.updateViewCache(c)
 	vol.volLock.Lock()
 	defer vol.volLock.Unlock()
-	if vol.Status != markDelete {
+	if vol.Status != proto.VolStatusMarkDelete {
 		return
 	}
 
