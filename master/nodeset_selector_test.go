@@ -84,13 +84,6 @@ func TestCarryWeightNodesetSelector(t *testing.T) {
 	NodesetSelectorTest(t, selector)
 }
 
-func TestTicketNodesetSelector(t *testing.T) {
-	selector := NewTicketNodesetSelector(DataNodeType)
-	NodesetSelectorTest(t, selector)
-	selector = NewTicketNodesetSelector(MetaNodeType)
-	NodesetSelectorTest(t, selector)
-}
-
 func TestAvailableSpaceFirstNodesetSelector(t *testing.T) {
 	selector := NewAvailableSpaceFirstNodesetSelector(DataNodeType)
 	NodesetSelectorTest(t, selector)
@@ -222,21 +215,6 @@ func TestBenchmarkCarryWeightNodesetSelector(t *testing.T) {
 		return
 	}
 	selector = NewCarryWeightNodesetSelector(MetaNodeType)
-	err = metaNodesetSelectorBench(t, selector)
-	if err != nil {
-		t.Errorf("%v nodeset selector failed to benchmark %v", selector.GetName(), err)
-		return
-	}
-}
-
-func TestBenchmarkTicketNodesetSelector(t *testing.T) {
-	selector := NewTicketNodesetSelector(DataNodeType)
-	err := dataNodesetSelectorBench(t, selector)
-	if err != nil {
-		t.Errorf("%v nodeset selector failed to benchmark %v", selector.GetName(), err)
-		return
-	}
-	selector = NewTicketNodesetSelector(MetaNodeType)
 	err = metaNodesetSelectorBench(t, selector)
 	if err != nil {
 		t.Errorf("%v nodeset selector failed to benchmark %v", selector.GetName(), err)

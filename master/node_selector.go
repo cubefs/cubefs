@@ -33,8 +33,6 @@ const CarryWeightNodeSelectorName = "CarryWeight"
 
 const AvailableSpaceFirstNodeSelectorName = "AvailableSpaceFirst"
 
-const TicketNodeSelectorName = "Ticket"
-
 const StrawNodeSelectorName = "Straw"
 
 const DefaultNodeSelectorName = CarryWeightNodeSelectorName
@@ -496,121 +494,6 @@ func NewRoundRobinNodeSelector(nodeType NodeType) *RoundRobinNodeSelector {
 	}
 }
 
-type TicketNodeSelector struct {
-	nodeType NodeType
-
-	random *rand.Rand
-}
-
-func (s *TicketNodeSelector) GetName() string {
-	return TicketNodeSelectorName
-}
-
-func (s *TicketNodeSelector) GetTicket(nodes []Node, excludeHosts []string, selectedHosts []string) uint64 {
-	total := uint64(0)
-	for i := 0; i != len(nodes); i++ {
-		if !canAllocPartition(nodes[i], s.nodeType) || contains(excludeHosts, nodes[i].GetAddr()) || contains(selectedHosts, nodes[i].GetAddr()) {
-			continue
-		}
-		switch s.nodeType {
-		case MetaNodeType:
-			n := nodes[i].(*MetaNode)
-			total += n.Total - n.Used
-		case DataNodeType:
-			n := nodes[i].(*DataNode)
-			total += n.AvailableSpace
-		default:
-			panic("unkown node type")
-		}
-	}
-	ticket := uint64(0)
-	if total != 0 {
-		ticket = s.random.Uint64() % total
-	}
-	return ticket
-}
-
-func (s *TicketNodeSelector) GetNodeByTicket(ticket uint64, nodes []Node, excludeHosts []string, selectedHosts []string) (node Node) {
-	total := uint64(0)
-	for i := 0; i != len(nodes); i++ {
-		if !canAllocPartition(nodes[i], s.nodeType) || contains(excludeHosts, nodes[i].GetAddr()) || contains(selectedHosts, nodes[i].GetAddr()) {
-			continue
-		}
-		switch s.nodeType {
-		case MetaNodeType:
-			n := nodes[i].(*MetaNode)
-			total += n.Total - n.Used
-		case DataNodeType:
-			n := nodes[i].(*DataNode)
-			total += n.AvailableSpace
-		default:
-			panic("unkown node type")
-		}
-		if ticket <= total {
-			node = nodes[i]
-			return
-		}
-	}
-	return
-}
-
-func (s *TicketNodeSelector) Select(ns *nodeSet, excludeHosts []string, replicaNum int) (newHosts []string, peers []proto.Peer, err error) {
-	newHosts = make([]string, 0)
-	peers = make([]proto.Peer, 0)
-	// if replica == 0, return
-	if replicaNum == 0 {
-		return
-	}
-	orderHosts := make([]string, 0)
-	nodes := ns.getNodes(s.nodeType)
-	sortedNodes := make([]Node, 0)
-	nodes.Range(func(key, value interface{}) bool {
-		sortedNodes = append(sortedNodes, asNodeWrap(value, s.nodeType))
-		return true
-	})
-	// if we cannot get enough nodes, return error
-	if len(sortedNodes) < replicaNum {
-		err = fmt.Errorf("action[%vNodeSelector::Select] no enough writable hosts,replicaNum:%v  MatchNodeCount:%v  ",
-			s.GetName(), replicaNum, len(sortedNodes))
-		return
-	}
-	// sort nodes by id, so we can get a node list that is as stable as possible
-	sort.Slice(sortedNodes, func(i, j int) bool {
-		return sortedNodes[i].GetID() < sortedNodes[j].GetID()
-	})
-	for len(orderHosts) != replicaNum {
-		ticket := s.GetTicket(sortedNodes, excludeHosts, orderHosts)
-		node := s.GetNodeByTicket(ticket, sortedNodes, excludeHosts, orderHosts)
-		if node == nil {
-			break
-		}
-		orderHosts = append(orderHosts, node.GetAddr())
-		node.SelectNodeForWrite()
-		peer := proto.Peer{ID: node.GetID(), Addr: node.GetAddr()}
-		peers = append(peers, peer)
-	}
-	// if we cannot get enough writable nodes, return error
-	if len(orderHosts) < replicaNum {
-		err = fmt.Errorf("action[%vNodeSelector::Select] no enough writable hosts,replicaNum:%v  MatchNodeCount:%v  ",
-			s.GetName(), replicaNum, len(orderHosts))
-		return
-	}
-	log.LogInfof("action[%vNodeSelector::Select] peers[%v]", s.GetName(), peers)
-	// reshuffle for primary-backup replication
-	if newHosts, err = reshuffleHosts(orderHosts); err != nil {
-		err = fmt.Errorf("action[%vNodeSelector::Select] err:%v  orderHosts is nil", s.GetName(), err.Error())
-		return
-	}
-	return
-}
-
-func NewTicketNodeSelector(nodeType NodeType) *TicketNodeSelector {
-	return &TicketNodeSelector{
-		nodeType: nodeType,
-		random:   rand.New(rand.NewSource(time.Now().Unix())),
-	}
-}
-
 const (
 	StrawNodeSelectorRandMax = 65536
 )
@@ -709,8 +592,6 @@ func NewNodeSelector(name string, nodeType NodeType) NodeSelector {
 		return NewRoundRobinNodeSelector(nodeType)
 	case CarryWeightNodeSelectorName:
 		return NewCarryWeightNodeSelector(nodeType)
-	case TicketNodeSelectorName:
-		return NewTicketNodeSelector(nodeType)
 	case AvailableSpaceFirstNodeSelectorName:
 		return NewAvailableSpaceFirstNodeSelector(nodeType)
 	case StrawNodeSelectorName:
