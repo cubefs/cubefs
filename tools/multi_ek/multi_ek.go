@@ -6,9 +6,11 @@ import (
 	"encoding/hex"
 	"flag"
 	"fmt"
+	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/errors"
 	diskv1 "github.com/shirou/gopsutil/disk"
 	"io"
+	"math"
 	"math/rand"
 	"os"
 	"path"
@@ -27,8 +29,7 @@ var testMountPath string
 var testLocalPath string
 
 const (
-	rootPath = "/"
-	baseStr  = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
+	baseStr = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
 )
 
 func randBytes(length int) []byte {
@@ -62,14 +63,45 @@ func init() {
 	os.Mkdir(testMountPath, 0666)
 }
 
+type filePattern struct {
+	size   int64
+	sparse bool
+}
+
 func main() {
-	fileNum := 20
+	testFiles := make([]filePattern, 0)
+	for i := 0; i < 64; i++ {
+		testFiles = append(testFiles, filePattern{1024, false})
+	}
+	for i := 0; i < 64; i++ {
+		testFiles = append(testFiles, filePattern{1024, true})
+	}
+	for i := 0; i < 32; i++ {
+		testFiles = append(testFiles, filePattern{4 * 1024, false})
+	}
+	for i := 0; i < 32; i++ {
+		testFiles = append(testFiles, filePattern{64 * 1024, false})
+	}
+	for i := 0; i < 16; i++ {
+		testFiles = append(testFiles, filePattern{128 * 1024, false})
+	}
+	for i := 0; i < 16; i++ {
+		testFiles = append(testFiles, filePattern{512 * 1024, false})
+	}
+	for i := 0; i < 16; i++ {
+		testFiles = append(testFiles, filePattern{proto.CACHE_BLOCK_SIZE, false})
+	}
 	hashMap := make(map[string]string, 0)
 	fileCh := make(chan string, 4)
-	for i := 0; i < fileNum; i++ {
-		file := generateRandomFile(128 * 1024 * 1024)
-		name := fmt.Sprintf("%v/%v_%v", testMountPath, "test", i)
-		localName := fmt.Sprintf("%v/%v_%v", testLocalPath, "test", i)
+	for i, fileP := range testFiles {
+		var fileSlices []sourcePacket
+		if fileP.sparse {
+			fileSlices = generateRandomSparseFile(fileP.size)
+		} else {
+			fileSlices = generateRandomFile(fileP.size)
+		}
+		name := fmt.Sprintf("%v/%v_%v_%v", testMountPath, "test", fileP.sparse, i)
+		localName := fmt.Sprintf("%v/%v_%v_%v", testLocalPath, "test", fileP.sparse, i)
 		fd, err := os.OpenFile(name, os.O_CREATE|os.O_RDWR, 0666)
 		if err != nil {
 			panic(err)
@@ -83,8 +115,8 @@ func main() {
 		hash := md5.New()
 		rand.New(rand.NewSource(time.Now().UnixNano()))
 		//skip writing will generate multi extent keys for a single inode
-		rand.Shuffle(len(file), func(i, j int) { file[i], file[j] = file[j], file[i] })
-		for _, data := range file {
+		rand.Shuffle(len(fileSlices), func(i, j int) { fileSlices[i], fileSlices[j] = fileSlices[j], fileSlices[i] })
+		for _, data := range fileSlices {
 			n, e := fd.WriteAt(data.Data, data.Offset)
 			if e != nil {
 				panic(e)
@@ -145,8 +177,8 @@ func main() {
 			close(fileCh)
 			return
 		default:
-			for i := 0; i < fileNum; i++ {
-				name := fmt.Sprintf("%v/%v_%v", testMountPath, "test", i)
+			for i, f := range testFiles {
+				name := fmt.Sprintf("%v/%v_%v_%v", testMountPath, "test", f.sparse, i)
 				fileCh <- name
 			}
 			count++
@@ -157,27 +189,50 @@ func main() {
 
 }
 
-type packet struct {
+type sourcePacket struct {
 	Data   []byte
 	Offset int64
 }
 
-func generateRandomFile(fileSize int64) (p []packet) {
-	p = make([]packet, 0)
-	bufSlice := []int{4 * 1024, 16 * 1024, 64 * 1024, 128 * 1024, 256 * 1024, 512 * 1024, 1024 * 1024}
+func generateRandomFile(fileSize int64) (packets []sourcePacket) {
+	if fileSize > proto.CACHE_BLOCK_SIZE {
+		fileSize = proto.CACHE_BLOCK_SIZE
+	}
+	packets = make([]sourcePacket, 0)
+	var bufSlice []int
+	if fileSize > proto.PageSize {
+		bufSlice = []int{1, 3, 4, 5, 11, 64, 128, 512, 1024, proto.PageSize, 16 * 1024, 64 * 1024, 128 * 1024, 256 * 1024, 512 * 1024, proto.CACHE_BLOCK_SIZE}
+	} else {
+		bufSlice = []int{1, 3, 4, 5, 11, 64, 128}
+	}
 	var offset int64
 	//init test data
 	for {
-		if offset > fileSize {
+		if offset >= fileSize {
 			break
 		}
 		rand.New(rand.NewSource(time.Now().UnixNano()))
 		index := rand.Intn(len(bufSlice))
-		p = append(p, packet{
-			Data:   randBytes(bufSlice[index]),
+		if int64(bufSlice[index]) > fileSize {
+			continue
+		}
+		size := int(math.Min(float64(fileSize-offset), float64(bufSlice[index])))
+		packets = append(packets, sourcePacket{
+			Data:   randBytes(size),
 			Offset: offset,
 		})
-		offset += int64(bufSlice[index])
+		offset += int64(size)
+	}
+	return
+}
+
+func generateRandomSparseFile(fileSize int64) (packets []sourcePacket) {
+	packets = make([]sourcePacket, 0)
+	originPackets := generateRandomFile(fileSize)
+	for i, p := range originPackets {
+		if i%2 == 0 {
+			packets = append(packets, p)
+		}
 	}
 	return
 }

@@ -22,6 +22,8 @@ import (
 var (
 	CacheSizeOverflowsError = errors.New("cache size overflows")
 	CacheClosedError        = errors.New("cache is closed")
+	EmptySourcesError       = errors.New("sources is empty")
+	SparseFileError         = errors.New("sparse file is no supported")
 )
 
 func NewParameterMismatchErr(msg string) (err error) {

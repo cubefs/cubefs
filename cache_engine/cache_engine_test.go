@@ -247,7 +247,9 @@ func TestSparseFile(t *testing.T) {
 			Size_:        size2,
 		},
 	}
-	cb, err := ce.createCacheBlock(fmt.Sprintf("%s_%s", t.Name(), "sparse"), 1, 0, 0, DefaultExpireTime, computeAllocSize(sources))
+	alloc, err := computeAllocSize(sources)
+	assert.NoError(t, err)
+	cb, err := ce.createCacheBlock(fmt.Sprintf("%s_%s", t.Name(), "sparse"), 1, 0, 0, DefaultExpireTime, alloc)
 	if assert.Error(t, err) {
 		return
 	}

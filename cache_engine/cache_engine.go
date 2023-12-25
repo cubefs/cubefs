@@ -318,10 +318,15 @@ func (c *CacheEngine) SendToPrepareTaskCh(reqID int64, req *proto.CacheRequest) 
 }
 
 func (c *CacheEngine) CreateBlock(req *proto.CacheRequest) (block *CacheBlock, err error) {
+	var alloc uint64
 	if len(req.Sources) == 0 {
 		return nil, fmt.Errorf("no source data")
 	}
-	if block, err = c.createCacheBlock(req.Volume, req.Inode, req.FixedFileOffset, req.Version, req.TTL, computeAllocSize(req.Sources)); err != nil {
+	alloc, err = computeAllocSize(req.Sources)
+	if err != nil {
+		return
+	}
+	if block, err = c.createCacheBlock(req.Volume, req.Inode, req.FixedFileOffset, req.Version, req.TTL, alloc); err != nil {
 		c.deleteCacheBlock(GenCacheBlockKey(req.Volume, req.Inode, req.FixedFileOffset, req.Version))
 		return nil, err
 	}

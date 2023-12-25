@@ -141,20 +141,20 @@ func (cb *CacheBlock) Read(ctx context.Context, data []byte, offset, size int64)
 	if err = cb.waitCacheReady(ctx); err != nil {
 		return
 	}
-	if cb.getUsedSize() == 0 || offset >= cb.getAllocSize() || offset >= cb.getUsedSize() || offset+size > cb.getUsedSize() {
+	if cb.getUsedSize() == 0 || offset >= cb.getAllocSize() || offset >= cb.getUsedSize() {
 		return 0, fmt.Errorf("invalid read, offset:%d, size:%v, allocSize:%d, usedSize:%d", offset, size, cb.getAllocSize(), cb.getUsedSize())
 	}
+	readSize := int64(math.Min(float64(cb.getUsedSize()-offset), float64(size)))
 	if log.IsDebugEnabled() {
 		log.LogDebugf("action[Read] read cache block:%v, offset:%d, allocSize:%d, usedSize:%d", cb.blockKey, offset, cb.allocSize, cb.usedSize)
 	}
-	if _, err = cb.file.ReadAt(data[:size], offset); err != nil {
+	if _, err = cb.file.ReadAt(data[:readSize], offset); err != nil {
 		return
 	}
 	crc = crc32.ChecksumIEEE(data)
 	return
 }
 
-// todo: use end size to replace allocSize
 func (cb *CacheBlock) checkWriteOffsetAndSize(offset, size int64) error {
 	if offset+size > cb.getAllocSize() {
 		return NewParameterMismatchErr(fmt.Sprintf("invalid write, offset=%v size=%v allocSize:%d", offset, size, cb.getAllocSize()))
@@ -282,19 +282,26 @@ func (cb *CacheBlock) markReady() {
 	close(cb.readyCh)
 }
 
-// align AllocSize with PageSize-4KB
-func computeAllocSize(sources []*proto.DataSource) (alloc uint64) {
+// compute alloc size
+func computeAllocSize(sources []*proto.DataSource) (alloc uint64, err error) {
+	if len(sources) == 0 {
+		err = EmptySourcesError
+		return
+	}
+	var sum uint64
 	for _, s := range sources {
-		blockOffset := s.CacheBlockOffset()
-		blockEnd := blockOffset + s.Size_ - 1
-		pageOffset := blockOffset / proto.PageSize
-		pageEnd := blockEnd / proto.PageSize
-		if blockEnd < blockOffset {
-			return 0
+		off := s.CacheBlockOffset()
+		if off+s.Size_ > alloc {
+			alloc = off + s.Size_
 		}
-		for i := pageOffset; i <= pageEnd; i++ {
-			alloc += proto.PageSize
-		}
+		sum += s.Size_
+	}
+	if sum != alloc {
+		err = SparseFileError
+		return
+	}
+	if alloc%proto.PageSize != 0 {
+		alloc += proto.PageSize - alloc%proto.PageSize
 	}
 	return
 }
