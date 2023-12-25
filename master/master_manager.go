@@ -170,6 +170,7 @@ func (m *Server) loadMetadata() {
 		m.cluster.loadMetaNodes,
 		m.cluster.loadFlashNodes,
 		m.cluster.loadFlashGroups,
+		m.cluster.loadFlashTopology,
 		m.cluster.loadZoneValue,
 		m.cluster.loadVols,
 		m.cluster.loadMetaPartitions,
