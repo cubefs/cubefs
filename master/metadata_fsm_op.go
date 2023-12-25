@@ -1321,7 +1321,7 @@ func (c *Cluster) loadVols() (err error) {
 
 		c.putVol(vol)
 		log.LogInfof("action[loadVols],vol[%v]", vol.Name)
-		if vol.Forbidden && vol.Status == markDelete {
+		if vol.Forbidden && vol.Status == bsProto.VolStatusMarkDelete {
 			c.delayDeleteVolsInfo = append(c.delayDeleteVolsInfo, &delayDeleteVolInfo{volName: vol.Name, authKey: vol.authKey, execTime: vol.DeleteExecTime, user: vol.user})
 			log.LogInfof("action[loadDelayDeleteVols],vol[%v]", vol.Name)
 		}
