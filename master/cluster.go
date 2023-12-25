@@ -140,7 +140,6 @@ type Cluster struct {
 	masterClient *masterSDK.MasterClient
 
 	flashNodeTopo *flashNodeTopology
-	flashGroupRespCache atomic.Value // []byte
 }
 
 type cTask struct {
