@@ -159,7 +159,7 @@ func (mgr *followerReadManager) getVolumeDpView() {
 	}
 
 	for _, vv := range volViews {
-		if vv.Status == markDelete {
+		if vv.Status == proto.VolStatusMarkDelete {
 			mgr.rwMutex.Lock()
 			mgr.lastUpdateTick[vv.Name] = time.Now()
 			mgr.status[vv.Name] = false
@@ -183,7 +183,7 @@ func (mgr *followerReadManager) sendFollowerVolumeDpView() {
 	vols := mgr.c.copyVols()
 	for _, vol := range vols {
 		log.LogDebugf("followerReadManager.getVolumeDpView %v", vol.Name)
-		if vol.Status == markDelete {
+		if vol.Status == proto.VolStatusMarkDelete {
 			continue
 		}
 		var body []byte
@@ -215,7 +215,7 @@ func (mgr *followerReadManager) isVolRecordObsolete(volName string) bool {
 		return true
 	}
 
-	if volView.Status == markDelete {
+	if volView.Status == proto.VolStatusMarkDelete {
 		return true
 	}
 
@@ -600,7 +600,7 @@ func (c *Cluster) doLoadDataPartitions() {
 	}()
 	vols := c.allVols()
 	for _, vol := range vols {
-		if vol.Status == markDelete {
+		if vol.Status == proto.VolStatusMarkDelete {
 			continue
 		}
 		vol.loadDataPartition(c)
@@ -1121,7 +1121,7 @@ func (c *Cluster) checkReplicaOfDataPartitions(ignoreDiscardDp bool) (
 				continue
 			}
 
-			if vol.Status == markDelete {
+			if vol.Status == proto.VolStatusMarkDelete {
 				continue
 			}
 
@@ -1252,9 +1252,9 @@ func (c *Cluster) markDeleteVol(name, authKey string, force bool, isNotCancel bo
 			return proto.ErrVolAuthKeyNotMatch
 		}
 
-		vol.Status = normal
+		vol.Status = proto.VolStatusNormal
 		if err = c.syncUpdateVol(vol); err != nil {
-			vol.Status = markDelete
+			vol.Status = proto.VolStatusMarkDelete
 			return proto.ErrPersistenceByRaft
 		}
 		return
@@ -1290,9 +1290,9 @@ func (c *Cluster) markDeleteVol(name, authKey string, force bool, isNotCancel bo
 		return proto.ErrVolAuthKeyNotMatch
 	}
 
-	vol.Status = markDelete
+	vol.Status = proto.VolStatusMarkDelete
 	if err = c.syncUpdateVol(vol); err != nil {
-		vol.Status = normal
+		vol.Status = proto.VolStatusNormal
 		return proto.ErrPersistenceByRaft
 	}
 	return
@@ -2859,7 +2859,7 @@ func (c *Cluster) updateVol(name, authKey string, newArgs *VolVarargs) (err erro
 		goto errHandler
 	}
 
-	if vol.status() == markDelete {
+	if vol.status() == proto.VolStatusMarkDelete {
 		log.LogErrorf("action[updateVol] vol is already deleted, name(%s)", name)
 		err = proto.ErrVolNotExists
 		goto errHandler
@@ -3017,7 +3017,7 @@ func (c *Cluster) createVol(req *createVolReq) (vol *Vol, err error) {
 
 	if err = vol.initMetaPartitions(c, req.mpCount); err != nil {
 
-		vol.Status = markDelete
+		vol.Status = proto.VolStatusMarkDelete
 		if e := vol.deleteVolFromStore(c); e != nil {
 			log.LogErrorf("action[createVol] failed,vol[%v] err[%v]", vol.Name, e)
 		}
@@ -3039,7 +3039,8 @@ func (c *Cluster) createVol(req *createVolReq) (vol *Vol, err error) {
 		}
 
 		if len(vol.dataPartitions.partitionMap) < defaultInitMetaPartitionCount {
-			err = fmt.Errorf("action[createVol]  initDataPartitions failed, less than %d", defaultInitMetaPartitionCount)
+			err = fmt.Errorf("action[createVol] vol[%v] initDataPartitions failed, less than %d",
+				vol.Name, defaultInitMetaPartitionCount)
 			goto errHandler
 		}
 	}
@@ -3360,7 +3361,7 @@ func (c *Cluster) allVols() (vols map[string]*Vol) {
 	c.volMutex.RLock()
 	defer c.volMutex.RUnlock()
 	for name, vol := range c.vols {
-		if vol.Status == normal {
+		if vol.Status == proto.VolStatusNormal {
 			vols[name] = vol
 		}
 	}
