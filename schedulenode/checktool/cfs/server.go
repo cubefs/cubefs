@@ -89,6 +89,7 @@ const (
 	cfgKeyIgnoreCheckMP                     = "ignoreCheckMP"
 	cfgKeyNodeRapidMemIncWarnThreshold      = "nodeRapidMemIncWarnThreshold"
 	cfgKeyNodeRapidMemIncreaseWarnRatio     = "nodeRapidMemIncreaseWarnRatio"
+	cfgKeyExpiredMetaRemainDays             = "expiredMetaRemainDays"
 	defaultNodeRapidMemIncWarnThreshold     = 20 //内存使用率(%)
 	defaultNodeRapidMemIncreaseWarnRatio    = 0.05
 	minMetaNodeExportDiskUsedRatio          = 70
@@ -98,6 +99,7 @@ const (
 	defaultMaxPendQueueCount                = 0
 	defaultMaxAppliedIDDiffCount            = 100
 	defaultMaxOfflineFlashNodesIn24Hour     = 5
+	defaultExpiredMetaRemainDays            = 1
 )
 
 const (
@@ -170,6 +172,7 @@ type ChubaoFSMonitor struct {
 	jdosErp                                 string
 	umpClient                               *ump.UMPClient
 	clusterConfigCheck                      *ClusterConfigCheck
+	ExpiredMetaRemainDaysCfg                int
 	ctx                                     context.Context
 }
 
@@ -433,6 +436,10 @@ func (s *ChubaoFSMonitor) parseConfig(cfg *config.Config) (err error) {
 	if s.dataNodeUsedRatioMinThresholdSSD <= 0 {
 		fmt.Printf("parse %v failed use default value\n", cfgKeyDataNodeUsedRatioMinThresholdSSD)
 		s.dataNodeUsedRatioMinThresholdSSD = defaultDataNodeUsedRatioMinThresholdSSD
+	}
+	s.ExpiredMetaRemainDaysCfg, _ = strconv.Atoi(cfg.GetString(cfgKeyExpiredMetaRemainDays))
+	if s.ExpiredMetaRemainDaysCfg <= 0 {
+		s.ExpiredMetaRemainDaysCfg = defaultExpiredMetaRemainDays
 	}
 	if err = loadDockerIPList(); err != nil {
 		return

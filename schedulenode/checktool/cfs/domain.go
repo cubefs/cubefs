@@ -53,6 +53,7 @@ type ClusterHost struct {
 	metaNodeDiskRatioWarnTime     time.Time
 	metaNodeDiskUsedWarnTime      time.Time
 	lastDisableFlashNodeTime      time.Time
+	lastCleanExpiredMetaTime      time.Time
 	nodeMemInfo                   map[string]float64
 }
 
@@ -71,6 +72,7 @@ func newClusterHost(host string) *ClusterHost {
 		badPartitionPendingMap:    make(map[string]map[string]*PartitionPending, 0),
 		inactiveNodesForCheckVol:  make(map[string]bool),
 		nodeMemInfo:               make(map[string]float64),
+		lastCleanExpiredMetaTime:  time.Now(),
 	}
 	ch.isReleaseCluster = isReleaseCluster(host)
 	return ch

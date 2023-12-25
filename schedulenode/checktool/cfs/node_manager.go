@@ -58,6 +58,11 @@ func (s *ChubaoFSMonitor) checkNodesAlive() {
 			cv.checkFlashNodeVersion(host, s.flashNodeValidVersions)
 			cv.checkMetaNodeDiskStat(host, defaultMNDiskMinWarnSize)
 			cv.checkMetaNodeDiskStatByMDCInfoFromSre(host, s)
+			cv.checkMetaNodeFailedMetaPartitions(host)
+			if time.Since(host.lastCleanExpiredMetaTime) > time.Hour * 4 {
+				host.lastCleanExpiredMetaTime = time.Now()
+				cv.cleanExpiredMetaPartitions(host, s.ExpiredMetaRemainDaysCfg)
+			}
 			cv.checkMetaNodeRaftLogBackupAlive(host)
 			host.warnInactiveNodesBySpecialUMPKey()
 			log.LogInfof("checkNodesAlive [%v] end,cost[%v]", host, time.Since(startTime))
@@ -685,6 +690,23 @@ func getDataNode(host *ClusterHost, addr string) (dn *DataNodeView, err error) {
 	return
 }
 
+func offlineMetaPatition(host *ClusterHost, addr string, pid uint64) {
+	var reqURL string
+	if host.isReleaseCluster {
+		reqURL = fmt.Sprintf("http://%v/metaPartition/offline?id=%v&addr=%v", host, pid, addr)
+	} else {
+		reqURL = fmt.Sprintf("http://%v/metaPartition/decommission?id=%v&addr=%v", host, pid, addr)
+	}
+	data, err := doRequest(reqURL, host.isReleaseCluster)
+	if err != nil {
+		log.LogErrorf("action[offlineMetaPartition] occurred err,url[%v],err %v", reqURL, err)
+		return
+	}
+	msg := fmt.Sprintf("action[offlineMetaPartition] reqURL[%v],data[%v]", reqURL, string(data))
+	checktool.WarnBySpecialUmpKey(UMPCFSNormalWarnKey, msg)
+	return
+}
+
 func offlineMetaNode(host *ClusterHost, addr string) {
 	var reqURL string
 	if host.isReleaseCluster {
@@ -786,6 +808,32 @@ func (cv *ClusterView) checkMetaNodeRaftLogBackupAlive(host *ClusterHost) {
 	checktool.WarnBySpecialUmpKey(UMPCFSRaftlogBackWarnKey, msg)
 }
 
+func (cv *ClusterView) checkMetaNodeFailedMetaPartitions(host *ClusterHost) {
+	for _, metaNode := range cv.MetaNodes {
+		ipPort := strings.Split(metaNode.Addr, ":")
+		failedMpArr, err := doGetFailedMetaPartitions(ipPort[0], host.getMetaNodePProfPort(), host.isReleaseCluster)
+		if err != nil {
+			log.LogWarnf("action[checkMetaNodeFailedMetaPartitions] host[%v] addr[%v] doGetFailedMetaPartitions err[%v]", host, metaNode.Addr, err)
+			continue
+		}
+
+		for _, mp := range failedMpArr {
+			offlineMetaPatition(host, metaNode.Addr, mp)
+		}
+	}
+}
+
+func (cv *ClusterView) cleanExpiredMetaPartitions(host *ClusterHost, days int) {
+	for _, metaNode := range cv.MetaNodes {
+		ipPort := strings.Split(metaNode.Addr, ":")
+		_, err := doCleanExpiredMetaPartitions(ipPort[0], host.getMetaNodePProfPort(), days, host.isReleaseCluster)
+		if err != nil {
+			log.LogWarnf("action[cleanExpiredMetaPartitions] host[%v] addr[%v] cleanExpiredMetaPartitions err[%v]", host, metaNode.Addr, err)
+			continue
+		}
+	}
+}
+
 func doCheckMetaNodeDiskStat(ip, port string, isReleaseCluster bool, diskMinWarnSize int) (isNeedTelAlarm bool, err error) {
 	type Disk struct {
 		Path      string  `json:"Path"`
@@ -833,6 +881,37 @@ func doCheckMetaNodeRaftLogBackupStat(ip string, port int) (bool, error) {
 		}
 	}
 	return true, returnErr
+}
+
+func doGetFailedMetaPartitions(ip string, port string, isReleaseDb bool) ([]uint64, error) {
+	var returnErr error = nil
+	var failedMpArr []uint64
+	for i := 0; i <= 3; i++ {
+		reqURL := fmt.Sprintf("http://%v:%v/getStartFailedPartitions", ip, port)
+		data, err := doRequest(reqURL, isReleaseDb)
+		if err != nil {
+			returnErr = err
+			continue
+		}
+		returnErr = json.Unmarshal(data, &failedMpArr)
+		break
+	}
+	return failedMpArr, returnErr
+}
+
+func doCleanExpiredMetaPartitions(ip string, port string, days int, isReleaseDb bool) ([]uint64, error) {
+	var returnErr error = nil
+	failedMpArr := make([]uint64, 0)
+	for i := 0; i <= 3; i++ {
+		reqURL := fmt.Sprintf("http://%v:%v/cleanExpiredPartitions?Days=%v", ip, port, days)
+		_, err := doRequest(reqURL, isReleaseDb)
+		if err != nil {
+			returnErr = err
+			continue
+		}
+		break
+	}
+	return failedMpArr, returnErr
 }
 
 func (ch *ClusterHost) doProcessMetaNodeDiskStatAlarm(nodes map[string]*DeadNode, msg string) {
