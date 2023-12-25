@@ -561,7 +561,7 @@ func delVol(name string, t *testing.T) {
 	vol, err := server.cluster.getVol(name)
 	assert.True(t, err == nil)
 
-	assert.True(t, vol.Status == markDelete)
+	assert.True(t, vol.Status == proto.VolStatusMarkDelete)
 }
 
 func setVolCapacity(capacity uint64, url string, t *testing.T) {
