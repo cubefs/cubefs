@@ -11,8 +11,9 @@ After enabling the trash feature, the client will create a hidden folder named "
 
 ::: tip Note
 In order to improve the efficiency of the trash, deleted files are displayed with their parent directories flattened in the file names. The background coroutine constructs the parent directory paths for the files. Therefore, when there are a large number of files in the deleted, it is possible to briefly encounter situations where deleted files do not have their parent directories. This is considered a normal occurrence.
+:::
 
-The "Current" directory is periodically renamed to "Expired_" followed by a timestamp indicating its expiration. When the expiration timestamp of the "Expired" folder is reached, all contents within that folder are deleted.
+The "Current" directory is periodically renamed to **Expired_ExpirationTimestamp**. When the expiration timestamp of the "Expired" folder is reached, all contents within that folder are deleted.
 
 ## Recover deleted files
 
