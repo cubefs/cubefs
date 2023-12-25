@@ -167,39 +167,32 @@ func (c *Cluster) createFlashGroup(setSlots []uint32) (fg *FlashGroup, err error
 	if fg, err = c.flashNodeTopo.createFlashGroup(id, c, setSlots); err != nil {
 		return
 	}
+	c.flashNodeTopo.updateClientCache()
 	log.LogInfof("action[addFlashGroup],clusterID[%v] id:%v Slots:%v success", c.Name, fg.ID, fg.Slots)
 	return
 }
 
 func (m *Server) removeFlashGroup(w http.ResponseWriter, r *http.Request) {
-	var (
-		flashGroupID      uint64
-		flashGroup        *FlashGroup
-		needUpdateFGCache bool
-		err               error
-	)
+	var err error
 	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminFlashGroupRemove))
 	defer func() {
 		doStatAndMetric(proto.AdminFlashGroupRemove, metric, err, nil)
 	}()
+	var flashGroupID uint64
 	if flashGroupID, err = extractFlashGroupID(r); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
+	var flashGroup *FlashGroup
 	if flashGroup, err = m.cluster.flashNodeTopo.getFlashGroup(flashGroupID); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
-	}
-	if flashGroup.GetStatus() == proto.FlashGroupStatus_Active && flashGroup.getFlashNodesCount() != 0 {
-		needUpdateFGCache = true
 	}
 	if err = m.cluster.removeFlashGroup(flashGroup); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
-	if needUpdateFGCache {
-		m.cluster.updateFlashGroupResponseCache()
-	}
+	m.cluster.flashNodeTopo.updateClientCache()
 	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("remove flashGroup:%v successfully,Slots:%v nodeCount:%v",
 		flashGroup.ID, flashGroup.Slots, flashGroup.getFlashNodesCount())))
 }
@@ -225,11 +218,10 @@ func (c *Cluster) removeFlashGroup(flashGroup *FlashGroup) (err error) {
 
 func (m *Server) setFlashGroup(w http.ResponseWriter, r *http.Request) {
 	var (
-		flashGroupID      uint64
-		fgStatus          proto.FlashGroupStatus
-		flashGroup        *FlashGroup
-		err               error
-		needUpdateFGCache bool
+		flashGroupID uint64
+		fgStatus     proto.FlashGroupStatus
+		flashGroup   *FlashGroup
+		err          error
 	)
 	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminFlashGroupSet))
 	defer func() {
@@ -248,19 +240,16 @@ func (m *Server) setFlashGroup(w http.ResponseWriter, r *http.Request) {
 	oldStatus := flashGroup.Status
 	flashGroup.Status = fgStatus
 	if oldStatus != fgStatus {
-		needUpdateFGCache = true
 		if err = m.cluster.syncUpdateFlashGroup(flashGroup); err != nil {
 			flashGroup.Status = oldStatus
 			flashGroup.lock.Unlock()
 			sendErrReply(w, r, newErrHTTPReply(err))
 			return
 		}
+		m.cluster.flashNodeTopo.updateClientCache()
 	}
 	flashGroup.lock.Unlock()
 
-	if needUpdateFGCache {
-		m.cluster.updateFlashGroupResponseCache()
-	}
 	sendOkReply(w, r, newSuccessHTTPReply(flashGroup.GetAdminView()))
 }
 
@@ -311,6 +300,7 @@ func (m *Server) flashGroupAddFlashNode(w http.ResponseWriter, r *http.Request) 
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
+	m.cluster.flashNodeTopo.updateClientCache()
 	sendOkReply(w, r, newSuccessHTTPReply(flashGroup.GetAdminView()))
 }
 
@@ -394,6 +384,7 @@ func (m *Server) flashGroupRemoveFlashNode(w http.ResponseWriter, r *http.Reques
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
+	m.cluster.flashNodeTopo.updateClientCache()
 	sendOkReply(w, r, newSuccessHTTPReply(flashGroup.GetAdminView()))
 }
 
@@ -469,58 +460,27 @@ func (m *Server) listFlashGroups(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *Server) clientFlashGroups(w http.ResponseWriter, r *http.Request) {
-	var (
-		flashGroupRespCache []byte
-		err                 error
-	)
+	var err error
 	metric := exporter.NewTPCnt(apiToMetricsName(proto.ClientFlashGroups))
 	defer func() {
 		doStatAndMetric(proto.ClientFlashGroups, metric, err, nil)
 	}()
-	flashGroupRespCache, err = m.cluster.getFlashGroupResponseCache()
-	if len(flashGroupRespCache) != 0 {
-		send(w, r, flashGroupRespCache)
-	} else {
+	cache, err := m.cluster.getFlashGroupClientResponseCache()
+	if err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
+		return
 	}
+	send(w, r, cache)
 }
 
-func (c *Cluster) getFlashGroupResponseCache() (flashGroupRespCache []byte, err error) {
-	if cached := c.flashGroupRespCache.Load().([]byte); len(cached) == 0 {
-		c.updateFlashGroupResponseCache()
+func (c *Cluster) getFlashGroupClientResponseCache() (cache []byte, err error) {
+	if cache := c.flashNodeTopo.clientRespCache.Load().([]byte); len(cache) == 0 {
+		c.updateFlashGroupClientCache()
 	}
-	flashGroupRespCache = c.flashGroupRespCache.Load().([]byte)
-	if len(flashGroupRespCache) == 0 {
+	if cache = c.flashNodeTopo.clientRespCache.Load().([]byte); len(cache) == 0 {
 		return nil, fmt.Errorf("flash group resp cache is empty")
 	}
 	return
-}
-
-func (c *Cluster) scheduleToUpdateFlashGroupRespCache() {
-	go func() {
-		for {
-			if c.partition != nil && c.partition.IsRaftLeader() {
-				c.updateFlashGroupResponseCache()
-			}
-			time.Sleep(time.Second * time.Duration(c.cfg.IntervalToCheckDataPartition))
-		}
-	}()
-}
-
-func (c *Cluster) updateFlashGroupResponseCache() {
-	fgv := c.flashNodeTopo.getFlashGroupView()
-	reply := newSuccessHTTPReply(fgv)
-	flashGroupRespCache, err := json.Marshal(reply)
-	if err != nil {
-		msg := fmt.Sprintf("action[updateFlashGroupResponseCache] json marshal err:%v", err)
-		log.LogError(msg)
-		return
-	}
-	c.flashGroupRespCache.Store(flashGroupRespCache)
-}
-
-func (c *Cluster) clearFlashGroupResponseCache() {
-	c.flashGroupRespCache.Store([]byte(nil))
 }
 
 func parseRequestForManageFlashNodeOfFlashGroup(r *http.Request) (flashGroupID uint64, addr, zoneName string, count int, err error) {
