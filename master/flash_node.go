@@ -284,6 +284,7 @@ func (c *Cluster) removeFlashNode(flashNode *FlashNode) (err error) {
 		}
 		flashGroup.removeFlashNode(flashNode.Addr)
 		err = c.selectFlashNodesFromZoneAddToFlashGroup(flashNode.ZoneName, 1, []string{flashNode.Addr}, flashGroup)
+		c.flashNodeTopo.updateClientCache()
 		if err != nil {
 			return
 		}
@@ -348,6 +349,9 @@ func (c *Cluster) updateFlashNode(flashNode *FlashNode, state bool) (err error) 
 		if err = c.syncUpdateFlashNode(flashNode); err != nil {
 			flashNode.IsEnable = oldState
 			return
+		}
+		if flashNode.FlashGroupID != unusedFlashNodeFlashGroupID {
+			c.flashNodeTopo.updateClientCache()
 		}
 	}
 	return

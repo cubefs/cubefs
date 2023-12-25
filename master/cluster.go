@@ -103,8 +103,7 @@ type Cluster struct {
 	DecommissionDiskFactor       float64
 	S3ApiQosQuota                *sync.Map // (api,uid,limtType) -> limitQuota
 
-	flashNodeTopo       *flashNodeTopology
-	flashGroupRespCache atomic.Value // []byte
+	flashNodeTopo *flashNodeTopology
 }
 
 type delayDeleteVolInfo struct {
@@ -365,7 +364,6 @@ func newCluster(name string, leaderInfo *LeaderInfo, fsm *MetadataFsm, partition
 	c.snapshotMgr.cluster = c
 	c.S3ApiQosQuota = new(sync.Map)
 	c.flashNodeTopo = newFlashNodeTopology()
-	c.flashGroupRespCache.Store([]byte(nil))
 	return
 }
 
