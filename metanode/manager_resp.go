@@ -63,7 +63,7 @@ func (m *metadataManager) respondToClient(conn net.Conn, p *Packet) (err error) 
 		}
 	}()
 
-	m.responseRateLimit(p)
+	//m.responseRateLimit(p)
 
 	p.finishedTimestamp = time.Now().Unix()
 	// process data and send reply though specified tcp connection.
