@@ -890,15 +890,15 @@ func TestUpdateZoneNodeSelector(t *testing.T) {
 		return
 	}
 	reqUrl := fmt.Sprintf("%v%v?name=%v&enable=1", hostAddr, proto.UpdateZone, testZone2)
-	updateDataSelectorUrl := fmt.Sprintf("%v&dataNodeSelector=%v", reqUrl, TicketNodeSelectorName)
-	updateMetaSelectorUrl := fmt.Sprintf("%v&metaNodeSelector=%v", reqUrl, TicketNodeSelectorName)
+	updateDataSelectorUrl := fmt.Sprintf("%v&dataNodeSelector=%v", reqUrl, StrawNodeSelectorName)
+	updateMetaSelectorUrl := fmt.Sprintf("%v&metaNodeSelector=%v", reqUrl, StrawNodeSelectorName)
 	process(updateDataSelectorUrl, t)
 	failed := false
 	func() {
 		zone.nsLock.RLock()
 		defer zone.nsLock.RUnlock()
 		for _, ns := range zone.nodeSetMap {
-			if ns.GetDataNodeSelector() != TicketNodeSelectorName {
+			if ns.GetDataNodeSelector() != StrawNodeSelectorName {
 				t.Errorf("failed to change data nodeset selector")
 				failed = true
 			}
@@ -912,7 +912,7 @@ func TestUpdateZoneNodeSelector(t *testing.T) {
 		zone.nsLock.RLock()
 		defer zone.nsLock.RUnlock()
 		for _, ns := range zone.nodeSetMap {
-			if ns.GetMetaNodeSelector() != TicketNodeSelectorName {
+			if ns.GetMetaNodeSelector() != StrawNodeSelectorName {
 				t.Errorf("failed to change data nodeset selector")
 				failed = true
 			}
@@ -1203,15 +1203,15 @@ func TestUpdateNodeSet(t *testing.T) {
 	}
 	ns := nsc[0]
 	reqUrl := fmt.Sprintf("%v%v?nodesetId=%v", hostAddr, proto.UpdateNodeSet, ns.ID)
-	updateDataSelectorUrl := fmt.Sprintf("%v&dataNodeSelector=%v", reqUrl, TicketNodeSelectorName)
-	updateMetaSelectorUrl := fmt.Sprintf("%v&metaNodeSelector=%v", reqUrl, TicketNodeSelectorName)
+	updateDataSelectorUrl := fmt.Sprintf("%v&dataNodeSelector=%v", reqUrl, StrawNodeSelectorName)
+	updateMetaSelectorUrl := fmt.Sprintf("%v&metaNodeSelector=%v", reqUrl, StrawNodeSelectorName)
 	process(updateDataSelectorUrl, t)
-	if ns.GetDataNodeSelector() != TicketNodeSelectorName {
+	if ns.GetDataNodeSelector() != StrawNodeSelectorName {
 		t.Errorf("failed to change data nodeset selector")
 		return
 	}
 	process(updateMetaSelectorUrl, t)
-	if ns.GetMetaNodeSelector() != TicketNodeSelectorName {
+	if ns.GetMetaNodeSelector() != StrawNodeSelectorName {
 		t.Errorf("failed to change data nodeset selector")
 		return
 	}
@@ -1233,15 +1233,15 @@ func TestUpdateClusterNodeSelector(t *testing.T) {
 		return
 	}
 	reqUrl := fmt.Sprintf("%v%v", hostAddr, proto.AdminSetNodeInfo)
-	updateDataSelectorUrl := fmt.Sprintf("%v?dataNodeSelector=%v", reqUrl, TicketNodeSelectorName)
-	updateMetaSelectorUrl := fmt.Sprintf("%v?metaNodeSelector=%v", reqUrl, TicketNodeSelectorName)
+	updateDataSelectorUrl := fmt.Sprintf("%v?dataNodeSelector=%v", reqUrl, StrawNodeSelectorName)
+	updateMetaSelectorUrl := fmt.Sprintf("%v?metaNodeSelector=%v", reqUrl, StrawNodeSelectorName)
 	process(updateDataSelectorUrl, t)
 	failed := false
 	func() {
 		zone.nsLock.RLock()
 		defer zone.nsLock.RUnlock()
 		for _, ns := range zone.nodeSetMap {
-			if ns.GetDataNodeSelector() != TicketNodeSelectorName {
+			if ns.GetDataNodeSelector() != StrawNodeSelectorName {
 				t.Errorf("failed to change data nodeset selector")
 				failed = true
 			}
@@ -1255,7 +1255,7 @@ func TestUpdateClusterNodeSelector(t *testing.T) {
 		zone.nsLock.RLock()
 		defer zone.nsLock.RUnlock()
 		for _, ns := range zone.nodeSetMap {
-			if ns.GetMetaNodeSelector() != TicketNodeSelectorName {
+			if ns.GetMetaNodeSelector() != StrawNodeSelectorName {
 				t.Errorf("failed to change data nodeset selector")
 				failed = true
 			}
