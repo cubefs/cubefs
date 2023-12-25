@@ -7,6 +7,7 @@ import (
 	"github.com/cubefs/cubefs/util/config"
 	"github.com/cubefs/cubefs/util/log"
 	"io/ioutil"
+	"net"
 	"net/http"
 	"sync"
 	"time"
@@ -26,7 +27,8 @@ const (
 
 	MasterLBAPPNameCFSMysql     = "elasticdb-master-lb"
 	MasterLBHostCFSMysql        = "cn.elasticdb.jd.local"
-	MasterLBPort                = "80"
+	MasterLBPort                = 80
+	MaxCheckConnRetryCount      = 3
 	MasterLBPortHealthyCheckAPI = "/admin/getIp"
 	PodStatusWarningThreshold   = 0.1
 	minMasterLBFaultTelCount    = 5
@@ -129,7 +131,7 @@ func checkPodsStatFromJDOS(systemName, appName, host string, s *ChubaoFSMonitor)
 				// pod状态正常 检查nginx实例
 				podIps = append(podIps, pod.PodIP)
 				if len(podIps) >= PodStatusBatchCheckCount {
-					badIps := batchCheckPodHealth(podIps, MasterLBPort, MasterLBPortHealthyCheckAPI, host)
+					badIps := batchCheckPodHealth(podIps, MasterLBPort)
 					notRunningPodIps = append(notRunningPodIps, badIps...)
 					podIps = make([]string, 0, PodStatusBatchCheckCount)
 				}
@@ -141,7 +143,7 @@ func checkPodsStatFromJDOS(systemName, appName, host string, s *ChubaoFSMonitor)
 	return
 }
 
-func batchCheckPodHealth(podIps []string, port, api, host string) (badIps []string) {
+func batchCheckPodHealth(podIps []string, port int) (badIps []string) {
 	badIps = make([]string, 0)
 	badIpsLock := new(sync.Mutex)
 	wg := new(sync.WaitGroup)
@@ -149,8 +151,8 @@ func batchCheckPodHealth(podIps []string, port, api, host string) (badIps []stri
 		wg.Add(1)
 		go func(ip string) {
 			defer wg.Done()
-			if _, err1 := doServiceHealthyRequest(ip, port, api, host); err1 != nil {
-				log.LogErrorf("action[doServiceHealthyRequest] ip:%v port:%v api:%v err1:%v", ip, port, api, err1)
+			if err := checkMasterLbPodAlive(ip, port, MaxCheckConnRetryCount); err != nil {
+				log.LogErrorf("action[checkMasterLbPodAlive] ip:%v port:%v err:%v", ip, port, err)
 				badIpsLock.Lock()
 				badIps = append(badIps, ip)
 				badIpsLock.Unlock()
@@ -183,5 +185,22 @@ func doServiceHealthyRequest(podIp string, port string, api string, host string)
 		return
 	}
 	log.LogDebugf("masterlb check:%v,%v\n", url, string(data))
+	return
+}
+
+func checkMasterLbPodAlive(podIp string, port int, maxRetry int) (err error) {
+	var addr = fmt.Sprintf("%v:%v", podIp, port)
+	var conn net.Conn
+	for i := 0; i < maxRetry; i++ {
+		conn, err = net.DialTimeout("tcp", addr, time.Second*5)
+		if err != nil {
+			if i < maxRetry {
+				time.Sleep(time.Second * 1)
+			}
+			continue
+		}
+		_ = conn.Close()
+		return
+	}
 	return
 }
