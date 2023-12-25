@@ -20,6 +20,8 @@ import (
 	"hash/crc32"
 	"sort"
 	"sync"
+	"sync/atomic"
+	"time"
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/log"
@@ -35,6 +37,9 @@ type flashNodeTopology struct {
 	flashGroupMap sync.Map // key: FlashGroupID, value: *FlashGroup
 	flashNodeMap  sync.Map // key: FlashNodeAddr, value: *FlashNode
 	zoneMap       sync.Map // key: zoneName, value: *FlashNodeZone
+
+	clientUpdateCh  chan struct{}
+	clientRespCache atomic.Value // []byte
 }
 
 type FlashNodeZone struct {
@@ -75,7 +80,10 @@ func newFlashNodeZone(name string) (zone *FlashNodeZone) {
 }
 
 func newFlashNodeTopology() (t *flashNodeTopology) {
-	return &flashNodeTopology{slotsMap: make(map[uint32]uint64)}
+	t = &flashNodeTopology{slotsMap: make(map[uint32]uint64)}
+	t.clientUpdateCh = make(chan struct{}, 1)
+	t.clientRespCache.Store([]byte(nil))
+	return t
 }
 
 func (t *flashNodeTopology) clear() {
@@ -93,6 +101,14 @@ func (t *flashNodeTopology) clear() {
 		flashNode.clean()
 		return true
 	})
+	t.clientRespCache.Store([]byte(nil))
+}
+
+func (t *flashNodeTopology) updateClientCache() {
+	select {
+	case t.clientUpdateCh <- struct{}{}:
+	default:
+	}
 }
 
 func (t *flashNodeTopology) getZone(name string) (zone *FlashNodeZone, err error) {
@@ -320,4 +336,34 @@ func (c *Cluster) loadFlashTopology() (err error) {
 		return true
 	})
 	return
+}
+
+func (c *Cluster) scheduleToUpdateFlashGroupRespCache() {
+	go func() {
+		dur := time.Second * time.Duration(c.cfg.IntervalToCheckDataPartition)
+		ticker := time.NewTicker(dur)
+		defer ticker.Stop()
+		for {
+			if c.partition != nil && c.partition.IsRaftLeader() {
+				c.updateFlashGroupClientCache()
+			}
+			select {
+			case <-c.flashNodeTopo.clientUpdateCh:
+				ticker.Reset(dur)
+			case <-ticker.C:
+			}
+		}
+	}()
+}
+
+func (c *Cluster) updateFlashGroupClientCache() {
+	fgv := c.flashNodeTopo.getFlashGroupView()
+	reply := newSuccessHTTPReply(fgv)
+	cache, err := json.Marshal(reply)
+	if err != nil {
+		msg := fmt.Sprintf("action[updateFlashGroupClientCache] json marshal err:%v", err)
+		log.LogError(msg)
+		return
+	}
+	c.flashNodeTopo.clientRespCache.Store(cache)
 }
