@@ -360,7 +360,7 @@ func (s *VolumeService) listVolume(ctx context.Context, args struct {
 			continue
 		}
 
-		if vol.Status == markDelete {
+		if vol.Status == proto.VolStatusMarkDelete {
 			continue
 		}
 

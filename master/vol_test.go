@@ -349,7 +349,7 @@ func TestVolMpsLock(t *testing.T) {
 	}
 	vol.mpsLock.Lock()
 	mpsLock := vol.mpsLock
-	assert.True(t, !(mpsLock.vol.status() == markDelete || atomic.LoadInt32(&mpsLock.enable) == 0))
+	assert.True(t, !(mpsLock.vol.status() == proto.VolStatusMarkDelete || atomic.LoadInt32(&mpsLock.enable) == 0))
 
 	assert.True(t, mpsLock.onLock == true)
 	time.Sleep(time.Microsecond * 100)
