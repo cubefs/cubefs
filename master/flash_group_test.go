@@ -51,7 +51,17 @@ func removeFlashGroups(t *testing.T, groups []proto.FlashGroupAdminView) {
 	}
 }
 
-func TestFlashGroupCreate(t *testing.T) {
+func testFlashGroup(t *testing.T) {
+	t.Run("Create", testFlashGroupCreate)
+	t.Run("Set", testFlashGroupSet)
+	t.Run("Remove", testFlashGroupRemove)
+	t.Run("Node", testFlashGroupNode)
+	t.Run("Get", testFlashGroupGet)
+	t.Run("List", testFlashGroupList)
+	t.Run("Client", testFlashGroupClient)
+}
+
+func testFlashGroupCreate(t *testing.T) {
 	groups := createFlashGroups(t)
 	defer removeFlashGroups(t, groups)
 	_, err := mc.AdminAPI().SetFlashGroup(math.MaxUint64, true)
@@ -68,7 +78,7 @@ func TestFlashGroupCreate(t *testing.T) {
 	require.Error(t, err)
 }
 
-func TestFlashGroupSet(t *testing.T) {
+func testFlashGroupSet(t *testing.T) {
 	groups := createFlashGroups(t)
 	defer removeFlashGroups(t, groups)
 	g := groups[0]
@@ -83,12 +93,12 @@ func TestFlashGroupSet(t *testing.T) {
 	require.False(t, g.Status.IsActive())
 }
 
-func TestFlashGroupRemove(t *testing.T) {
+func testFlashGroupRemove(t *testing.T) {
 	groups := createFlashGroups(t)
 	removeFlashGroups(t, groups)
 }
 
-func TestFlashGroupNode(t *testing.T) {
+func testFlashGroupNode(t *testing.T) {
 	groups := createFlashGroups(t)
 	defer removeFlashGroups(t, groups)
 	g := groups[0]
@@ -106,9 +116,15 @@ func TestFlashGroupNode(t *testing.T) {
 	require.Error(t, err)
 	_, err = mc.AdminAPI().FlashGroupRemoveFlashNode(g.ID, 100, testZone2, "")
 	require.Error(t, err)
+	_, err = mc.AdminAPI().FlashGroupAddFlashNode(g.ID, 2, testZone2, "")
+	require.NoError(t, err)
+	_, err = mc.NodeAPI().RemoveFlashNode(mfs3Addr)
+	require.Error(t, err)
+	_, err = mc.NodeAPI().AddFlashNode(mfs3Addr, testZone2, "")
+	require.NoError(t, err)
 }
 
-func TestFlashGroupGet(t *testing.T) {
+func testFlashGroupGet(t *testing.T) {
 	groups := createFlashGroups(t)
 	defer removeFlashGroups(t, groups)
 	for _, g := range groups {
@@ -117,7 +133,7 @@ func TestFlashGroupGet(t *testing.T) {
 	}
 }
 
-func TestFlashGroupList(t *testing.T) {
+func testFlashGroupList(t *testing.T) {
 	groups := createFlashGroups(t)
 	defer removeFlashGroups(t, groups)
 	g := groups[0]
@@ -136,7 +152,7 @@ func TestFlashGroupList(t *testing.T) {
 	require.Equal(t, g.ID, fgViews.FlashGroups[0].ID)
 }
 
-func TestFlashGroupClient(t *testing.T) {
+func testFlashGroupClient(t *testing.T) {
 	groups := createFlashGroups(t)
 	defer removeFlashGroups(t, groups)
 	g := groups[0]
