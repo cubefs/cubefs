@@ -2545,6 +2545,20 @@ func (c *Cluster) addDataPartitionRaftMember(dp *DataPartition, addPeer proto.Pe
 		return nil
 	}
 
+	dp.Lock()
+
+	oldHosts := make([]string, len(dp.Hosts))
+	copy(oldHosts, dp.Hosts)
+	oldPeers := make([]proto.Peer, len(dp.Peers))
+	copy(oldPeers, dp.Peers)
+
+	newHosts := make([]string, 0, len(dp.Hosts)+1)
+	newPeers := make([]proto.Peer, 0, len(dp.Peers)+1)
+	newHosts = append(dp.Hosts, addPeer.Addr)
+	newPeers = append(dp.Peers, addPeer)
+
+	dp.Unlock()
+
 	//send task to leader addr first,if need to retry,then send to other addr
 	for index, host := range candidateAddrs {
 		if leaderAddr == "" && len(candidateAddrs) < int(dp.ReplicaNum) {
@@ -2559,22 +2573,23 @@ func (c *Cluster) addDataPartitionRaftMember(dp *DataPartition, addPeer proto.Pe
 		}
 	}
 
-	if err != nil {
-		return
-	}
 	dp.Lock()
 	defer dp.Unlock()
-	newHosts := make([]string, 0, len(dp.Hosts)+1)
-	newPeers := make([]proto.Peer, 0, len(dp.Peers)+1)
-	newHosts = append(dp.Hosts, addPeer.Addr)
-	newPeers = append(dp.Peers, addPeer)
+	if err != nil {
+		dp.Hosts = oldHosts
+		dp.Peers = oldPeers
+		return
+	}
 
 	log.LogInfof("action[addDataPartitionRaftMember] try host [%v] to [%v] peers [%v] to [%v]",
 		dp.Hosts, newHosts, dp.Peers, newPeers)
+
 	if err = dp.update("addDataPartitionRaftMember", dp.VolName, newPeers, newHosts, c); err != nil {
 		return
 	}
+
 	return
+
 }
 
 func (c *Cluster) createDataReplica(dp *DataPartition, addPeer proto.Peer) (err error) {
