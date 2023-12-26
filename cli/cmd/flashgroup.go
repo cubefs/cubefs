@@ -15,6 +15,7 @@
 package cmd
 
 import (
+	"encoding/json"
 	"fmt"
 	"math"
 	"sort"
@@ -39,6 +40,7 @@ func newFlashGroupCmd(client *master.MasterClient) *cobra.Command {
 		Short: "cluster flashgroup management",
 	}
 	cmd.AddCommand(
+		newCmdFlashGroupTurn(client),
 		newCmdFlashGroupCreate(client),
 		newCmdFlashGroupSet(client),
 		newCmdFlashGroupRemove(client),
@@ -46,10 +48,32 @@ func newFlashGroupCmd(client *master.MasterClient) *cobra.Command {
 		newCmdFlashGroupNodeRemove(client),
 		newCmdFlashGroupGet(client),
 		newCmdFlashGroupList(client),
+		newCmdFlashGroupClient(client),
 		newCmdFlashGroupSearch(client),
 		newCmdFlashGroupGraph(client),
 	)
 	return cmd
+}
+
+func newCmdFlashGroupTurn(client *master.MasterClient) *cobra.Command {
+	return &cobra.Command{
+		Use:   "turn [IsEnable]",
+		Short: "turn flash group cache",
+		Args:  cobra.MinimumNArgs(1),
+		Run: func(cmd *cobra.Command, args []string) {
+			var err error
+			defer func() { errout(err) }()
+			enabled, err := strconv.ParseBool(args[0])
+			if err != nil {
+				return
+			}
+			result, err := client.AdminAPI().TurnFlashGroup(enabled)
+			if err != nil {
+				return
+			}
+			stdoutln(result)
+		},
+	}
 }
 
 func newCmdFlashGroupCreate(client *master.MasterClient) *cobra.Command {
@@ -129,7 +153,7 @@ func newCmdFlashGroupNodeAdd(client *master.MasterClient) *cobra.Command {
 		optCount    int
 	)
 	cmd := &cobra.Command{
-		Use:   "addNode" + _flashgroupID,
+		Use:   "nodeAdd" + _flashgroupID,
 		Short: "add flash node to given flash group",
 		Args:  cobra.MinimumNArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
@@ -159,7 +183,7 @@ func newCmdFlashGroupNodeRemove(client *master.MasterClient) *cobra.Command {
 		optCount    int
 	)
 	cmd := &cobra.Command{
-		Use:   "removeNode" + _flashgroupID,
+		Use:   "nodeRemove" + _flashgroupID,
 		Short: "remove flash node to given flash group",
 		Args:  cobra.MinimumNArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
@@ -274,6 +298,25 @@ func newCmdFlashGroupList(client *master.MasterClient) *cobra.Command {
 				}
 				stdoutlnf("num:%d slot:%d fg:%d percent:%0.5f%%", i+1, info.slot, info.fgID, info.percent)
 			}
+		},
+	}
+}
+
+func newCmdFlashGroupClient(client *master.MasterClient) *cobra.Command {
+	return &cobra.Command{
+		Use:   "client",
+		Short: "show client response",
+		Args:  cobra.MinimumNArgs(0),
+		Run: func(cmd *cobra.Command, args []string) {
+			var err error
+			defer func() { errout(err) }()
+			fgv, err := client.AdminAPI().ClientFlashGroups()
+			if err != nil {
+				return
+			}
+			stdoutln("Client Response:")
+			b, _ := json.MarshalIndent(fgv, "", "  ")
+			stdoutln(string(b))
 		},
 	}
 }

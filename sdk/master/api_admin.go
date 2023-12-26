@@ -851,6 +851,12 @@ func (api *AdminAPI) ResetDataPartitionRestoreStatus(dpId uint64) (ok bool, err 
 	return
 }
 
+func (api *AdminAPI) TurnFlashGroup(enable bool) (result string, err error) {
+	request := newRequest(post, proto.AdminFlashGroupTurn).Header(api.h).addParamAny("enable", enable)
+	data, err := api.mc.serveRequest(request)
+	return string(data), err
+}
+
 func (api *AdminAPI) CreateFlashGroup(slots string) (fgView proto.FlashGroupAdminView, err error) {
 	err = api.mc.requestWith(&fgView, newRequest(post, proto.AdminFlashGroupCreate).
 		Header(api.h).addParam("slots", slots))

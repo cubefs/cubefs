@@ -38,8 +38,10 @@ type flashNodeTopology struct {
 	flashNodeMap  sync.Map // key: FlashNodeAddr, value: *FlashNode
 	zoneMap       sync.Map // key: zoneName, value: *FlashNodeZone
 
-	clientUpdateCh  chan struct{}
-	clientRespCache atomic.Value // []byte
+	clientEmpty    []byte        // empty response cache
+	clientOff      atomic.Value  // []byte, default nil (on)
+	clientCache    atomic.Value  // []byte
+	clientUpdateCh chan struct{} // update client response cache
 }
 
 type FlashNodeZone struct {
@@ -80,9 +82,17 @@ func newFlashNodeZone(name string) (zone *FlashNodeZone) {
 }
 
 func newFlashNodeTopology() (t *flashNodeTopology) {
-	t = &flashNodeTopology{slotsMap: make(map[uint32]uint64)}
-	t.clientUpdateCh = make(chan struct{}, 1)
-	t.clientRespCache.Store([]byte(nil))
+	empty, err := json.Marshal(newSuccessHTTPReply(proto.FlashGroupView{}))
+	if err != nil {
+		panic(fmt.Sprintf("action[newFlashNodeTopology] json marshal %v", err))
+	}
+	t = &flashNodeTopology{
+		slotsMap:       make(map[uint32]uint64),
+		clientEmpty:    empty,
+		clientUpdateCh: make(chan struct{}, 1),
+	}
+	t.clientOff.Store([]byte(nil))
+	t.clientCache.Store([]byte(nil))
 	return t
 }
 
@@ -101,14 +111,7 @@ func (t *flashNodeTopology) clear() {
 		flashNode.clean()
 		return true
 	})
-	t.clientRespCache.Store([]byte(nil))
-}
-
-func (t *flashNodeTopology) updateClientCache() {
-	select {
-	case t.clientUpdateCh <- struct{}{}:
-	default:
-	}
+	t.clientCache.Store([]byte(nil))
 }
 
 func (t *flashNodeTopology) getZone(name string) (zone *FlashNodeZone, err error) {
@@ -239,6 +242,7 @@ func (t *flashNodeTopology) getFlashGroup(fgID uint64) (flashGroup *FlashGroup, 
 
 func (t *flashNodeTopology) getFlashGroupView() (fgv *proto.FlashGroupView) {
 	fgv = new(proto.FlashGroupView)
+	fgv.Enable = true
 	t.flashGroupMap.Range(func(_, value interface{}) bool {
 		fg := value.(*FlashGroup)
 		if fg.GetStatus().IsActive() {
@@ -267,6 +271,33 @@ func (t *flashNodeTopology) getFlashGroupsAdminView(fgStatus proto.FlashGroupSta
 		return true
 	})
 	return
+}
+
+func (t *flashNodeTopology) updateClientCache() {
+	select {
+	case t.clientUpdateCh <- struct{}{}:
+	default:
+	}
+}
+
+func (t *flashNodeTopology) getClientResponse() []byte {
+	if cache := t.clientOff.Load().([]byte); len(cache) > 0 {
+		return cache
+	}
+	if cache := t.clientCache.Load().([]byte); len(cache) > 0 {
+		return cache
+	}
+	return t.updateClientResponse()
+}
+
+func (t *flashNodeTopology) updateClientResponse() []byte {
+	cache, err := json.Marshal(newSuccessHTTPReply(t.getFlashGroupView()))
+	if err != nil {
+		log.LogError("action[updateClientResponse] json marshal", err)
+		return nil
+	}
+	t.clientCache.Store(cache)
+	return cache[:]
 }
 
 func (c *Cluster) loadFlashNodes() (err error) {
@@ -345,7 +376,7 @@ func (c *Cluster) scheduleToUpdateFlashGroupRespCache() {
 		defer ticker.Stop()
 		for {
 			if c.partition != nil && c.partition.IsRaftLeader() {
-				c.updateFlashGroupClientCache()
+				c.flashNodeTopo.updateClientResponse()
 			}
 			select {
 			case <-c.flashNodeTopo.clientUpdateCh:
@@ -354,16 +385,4 @@ func (c *Cluster) scheduleToUpdateFlashGroupRespCache() {
 			}
 		}
 	}()
-}
-
-func (c *Cluster) updateFlashGroupClientCache() {
-	fgv := c.flashNodeTopo.getFlashGroupView()
-	reply := newSuccessHTTPReply(fgv)
-	cache, err := json.Marshal(reply)
-	if err != nil {
-		msg := fmt.Sprintf("action[updateFlashGroupClientCache] json marshal err:%v", err)
-		log.LogError(msg)
-		return
-	}
-	c.flashNodeTopo.clientRespCache.Store(cache)
 }
