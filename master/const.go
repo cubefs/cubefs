@@ -157,10 +157,6 @@ const (
 	quotaClass                      = "quotaClass"
 	quotaOfClass                    = "quotaOfStorageClass"
 	dataMediaTypeKey                = "dataMediaType"
-
-	stateKey   = "state"
-	versionKey = "version"
-	fgSlotsKey = "slots"
 )
 
 const (
