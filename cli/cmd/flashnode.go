@@ -38,22 +38,30 @@ func newFlashNodeCmd(client *master.MasterClient) *cobra.Command {
 		newCmdFlashNodeRemove(client),
 		newCmdFlashNodeGet(client),
 		newCmdFlashNodeList(client),
+
+		newCmdFlashNodeHTTPStat(client),
+		newCmdFlashNodeHTTPEvict(client),
 	)
 	return cmd
 }
 
 func newCmdFlashNodeSet(client *master.MasterClient) *cobra.Command {
 	return &cobra.Command{
-		Use:   CliOpSet + _flashnodeAddr + " [state]",
+		Use:   CliOpSet + _flashnodeAddr + " [IsEnable]",
 		Short: "set flash node enable or not",
 		Args:  cobra.MinimumNArgs(2),
 		Run: func(_ *cobra.Command, args []string) {
 			var err error
 			defer func() { errout(err) }()
-			if err = client.NodeAPI().SetFlashNode(args[0], args[1]); err != nil {
+			addr := args[0]
+			enable, err := strconv.ParseBool(args[1])
+			if err != nil {
 				return
 			}
-			stdoutlnf("set flashnode:%s state:%s success", args[0], args[1])
+			if err = client.NodeAPI().SetFlashNode(addr, enable); err != nil {
+				return
+			}
+			stdoutlnf("set flashnode:%s enable:%v success", addr, enable)
 		},
 	}
 }
@@ -115,6 +123,46 @@ func newCmdFlashNodeList(client *master.MasterClient) *cobra.Command {
 	}
 	cmd.Flags().BoolVar(&showAllFlashNodes, "all", true, "show all flashnodes contain inactive and not enabled")
 	return cmd
+}
+
+func newCmdFlashNodeHTTPStat(_ *master.MasterClient) *cobra.Command {
+	return &cobra.Command{
+		Use:   "httpStat" + _flashnodeAddr,
+		Short: "show flashnode stat",
+		Args:  cobra.MinimumNArgs(1),
+		Run: func(_ *cobra.Command, args []string) {
+			var err error
+			defer func() { errout(err) }()
+			stat, err := httpclient.New().WithAddr(addr2Prof(args[0])).FlashNode().Stat()
+			if err != nil {
+				return
+			}
+			stdoutln(formatIndent(stat))
+		},
+	}
+}
+
+func newCmdFlashNodeHTTPEvict(_ *master.MasterClient) *cobra.Command {
+	return &cobra.Command{
+		Use:   "httpEvict" + _flashnodeAddr + " [volume]",
+		Short: "evict cache in flashnode",
+		Args:  cobra.MinimumNArgs(1),
+		Run: func(_ *cobra.Command, args []string) {
+			var err error
+			defer func() { errout(err) }()
+			addr := args[0]
+			if len(args) == 1 {
+				if err = httpclient.New().WithAddr(addr2Prof(addr)).FlashNode().EvictAll(); err == nil {
+					stdoutlnf("%s evicts all [OK]", addr)
+				}
+				return
+			}
+			volume := args[1]
+			if err = httpclient.New().WithAddr(addr2Prof(addr)).FlashNode().EvictVol(volume); err == nil {
+				stdoutlnf("%s evicts volume(%s) [OK]", addr, volume)
+			}
+		},
+	}
 }
 
 func showFlashNodesView(flashNodeViewInfos []*proto.FlashNodeViewInfo, showStat bool, tbl table) table {

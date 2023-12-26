@@ -63,11 +63,11 @@ func (zone *FlashNodeZone) selectFlashNodes(count int, excludeHosts []string) (n
 		if contains(excludeHosts, flashNode.Addr) {
 			return true
 		}
-		if flashNode.isWriteable() {
-			newHosts = append(newHosts, flashNode.Addr)
-		}
 		if len(newHosts) >= count {
 			return false
+		}
+		if flashNode.isWriteable() {
+			newHosts = append(newHosts, flashNode.Addr)
 		}
 		return true
 	})

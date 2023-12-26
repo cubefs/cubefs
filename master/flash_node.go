@@ -22,7 +22,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/cubefs/cubefs/cmd/common"
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
@@ -156,9 +158,9 @@ func (flashNode *FlashNode) createHeartbeatTask(masterAddr string) (task *proto.
 
 func (m *Server) addFlashNode(w http.ResponseWriter, r *http.Request) {
 	var (
-		nodeAddr string
-		zoneName string
-		version  string
+		nodeAddr common.String
+		zoneName common.String
+		version  common.String
 		id       uint64
 		err      error
 	)
@@ -166,11 +168,19 @@ func (m *Server) addFlashNode(w http.ResponseWriter, r *http.Request) {
 	defer func() {
 		doStatAndMetric(proto.FlashNodeAdd, metric, err, nil)
 	}()
-	if nodeAddr, zoneName, version, err = parseRequestForAddFlashNode(r); err != nil {
+	if err = parseArgs(r, argParserNodeAddr(&nodeAddr),
+		zoneName.ZoneName().OmitEmpty().OnValue(func() error {
+			if zoneName.V == "" {
+				zoneName.V = DefaultZoneName
+			}
+			return nil
+		}),
+		version.Key("version").OmitEmpty(),
+	); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-	if id, err = m.cluster.addFlashNode(nodeAddr, zoneName, version); err != nil {
+	if id, err = m.cluster.addFlashNode(nodeAddr.V, zoneName.V, version.V); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -218,10 +228,11 @@ func (m *Server) listFlashNodes(w http.ResponseWriter, r *http.Request) {
 		doStatAndMetric(proto.FlashNodeList, metric, nil, nil)
 	}()
 	zoneFlashNodes := make(map[string][]*proto.FlashNodeViewInfo)
-	listAll := extractListAll(r)
+	var listAll common.Bool
+	parseArgs(r, listAll.All().OmitEmpty().OmitError())
 	m.cluster.flashNodeTopo.flashNodeMap.Range(func(key, value interface{}) bool {
 		flashNode := value.(*FlashNode)
-		if listAll || flashNode.isActiveAndEnable() {
+		if listAll.V || flashNode.isActiveAndEnable() {
 			zoneFlashNodes[flashNode.ZoneName] = append(zoneFlashNodes[flashNode.ZoneName], flashNode.getFlashNodeViewInfo())
 		}
 		return true
@@ -235,13 +246,13 @@ func (m *Server) getFlashNode(w http.ResponseWriter, r *http.Request) {
 	defer func() {
 		doStatAndMetric(proto.FlashNodeGet, metric, err, nil)
 	}()
-	var nodeAddr string
-	if nodeAddr, err = parseAndExtractNodeAddr(r); err != nil {
+	var nodeAddr common.String
+	if err = parseArgs(r, argParserNodeAddr(&nodeAddr)); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
 	var flashNode *FlashNode
-	if flashNode, err = m.cluster.peekFlashNode(nodeAddr); err != nil {
+	if flashNode, err = m.cluster.peekFlashNode(nodeAddr.V); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -254,13 +265,13 @@ func (m *Server) removeFlashNode(w http.ResponseWriter, r *http.Request) {
 	defer func() {
 		doStatAndMetric(proto.FlashNodeRemove, metric, err, nil)
 	}()
-	var offLineAddr string
-	if offLineAddr, err = parseAndExtractNodeAddr(r); err != nil {
+	var offLineAddr common.String
+	if err = parseArgs(r, argParserNodeAddr(&offLineAddr)); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
 	var node *FlashNode
-	if node, err = m.cluster.peekFlashNode(offLineAddr); err != nil {
+	if node, err = m.cluster.peekFlashNode(offLineAddr.V); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(proto.ErrDataNodeNotExists))
 		return
 	}
@@ -316,8 +327,8 @@ func (c *Cluster) delFlashNodeFromCache(flashNode *FlashNode) {
 
 func (m *Server) setFlashNode(w http.ResponseWriter, r *http.Request) {
 	var (
-		nodeAddr  string
-		state     bool
+		nodeAddr  common.String
+		enable    common.Bool
 		flashNode *FlashNode
 		err       error
 	)
@@ -325,27 +336,27 @@ func (m *Server) setFlashNode(w http.ResponseWriter, r *http.Request) {
 	defer func() {
 		doStatAndMetric(proto.FlashNodeSet, metric, err, nil)
 	}()
-	if nodeAddr, state, err = parseAndExtractFlashNode(r); err != nil {
+	if err = parseArgs(r, argParserNodeAddr(&nodeAddr), enable.Enable()); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-	if flashNode, err = m.cluster.peekFlashNode(nodeAddr); err != nil {
+	if flashNode, err = m.cluster.peekFlashNode(nodeAddr.V); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
-	if err = m.cluster.updateFlashNode(flashNode, state); err != nil {
+	if err = m.cluster.updateFlashNode(flashNode, enable.V); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
 	sendOkReply(w, r, newSuccessHTTPReply("set flashNode success"))
 }
 
-func (c *Cluster) updateFlashNode(flashNode *FlashNode, state bool) (err error) {
+func (c *Cluster) updateFlashNode(flashNode *FlashNode, enable bool) (err error) {
 	flashNode.Lock()
 	defer flashNode.Unlock()
-	if flashNode.IsEnable != state {
+	if flashNode.IsEnable != enable {
 		oldState := flashNode.IsEnable
-		flashNode.IsEnable = state
+		flashNode.IsEnable = enable
 		if err = c.syncUpdateFlashNode(flashNode); err != nil {
 			flashNode.IsEnable = oldState
 			return
@@ -383,44 +394,19 @@ func (c *Cluster) syncPutFlashNodeInfo(opType uint32, flashNode *FlashNode) (err
 func (c *Cluster) peekFlashNode(addr string) (flashNode *FlashNode, err error) {
 	value, ok := c.flashNodeTopo.flashNodeMap.Load(addr)
 	if !ok {
-		err = errors.Trace(flashNodeNotFound(addr), "%v not found", addr)
+		err = errors.Trace(notFoundMsg(fmt.Sprintf("flashnode[%v]", addr)), "")
 		return
 	}
 	flashNode = value.(*FlashNode)
 	return
 }
 
-func flashNodeNotFound(addr string) (err error) {
-	return notFoundMsg(fmt.Sprintf("flashnode[%v]", addr))
-}
-
-func parseRequestForAddFlashNode(r *http.Request) (nodeAddr, zoneName, version string, err error) {
-	if err = r.ParseForm(); err != nil {
-		return
-	}
-	if nodeAddr, err = extractNodeAddr(r); err != nil {
-		return
-	}
-	if zoneName = r.FormValue(zoneNameKey); zoneName == "" {
-		zoneName = DefaultZoneName
-	}
-	version = r.FormValue(versionKey)
-	return
-}
-
-func parseAndExtractFlashNode(r *http.Request) (nodeAddr string, state bool, err error) {
-	if err = r.ParseForm(); err != nil {
-		return
-	}
-	nodeAddr, err = extractNodeAddr(r)
-	if err != nil {
-		return
-	}
-	state, err = strconv.ParseBool(r.FormValue(stateKey))
-	return
-}
-
-func extractListAll(r *http.Request) (all bool) {
-	all, _ = strconv.ParseBool(r.FormValue("all"))
-	return
+func argParserNodeAddr(nodeAddr *common.String) *common.Argument {
+	return nodeAddr.Addr().OnValue(func() error {
+		if ipAddr, ok := util.ParseAddrToIpAddr(nodeAddr.V); ok {
+			nodeAddr.V = ipAddr
+			return nil
+		}
+		return unmatchedKey(new(common.String).Addr().Key())
+	})
 }
