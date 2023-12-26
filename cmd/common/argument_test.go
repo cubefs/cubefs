@@ -112,3 +112,31 @@ func TestCmdCommonArgs(t *testing.T) {
 		require.Equal(t, "11111", s.V)
 	}
 }
+
+func TestCmdCommonKeys(t *testing.T) {
+	b := new(Bool)
+	require.Equal(t, "enable", b.Enable().Key())
+	require.Equal(t, "status", b.Status().Key())
+	require.Equal(t, "all", b.All().Key())
+
+	i := new(Int)
+	require.Equal(t, "id", i.ID().Key())
+	require.Equal(t, "extentID", i.ExtentID().Key())
+	require.Equal(t, "count", i.Count().Key())
+
+	u := new(Uint)
+	require.Equal(t, "id", u.ID().Key())
+	require.Equal(t, "pid", u.PID().Key())
+	require.Equal(t, "partitionID", u.PartitionID().Key())
+	require.Equal(t, "ino", u.Ino().Key())
+	require.Equal(t, "parentIno", u.ParentIno().Key())
+
+	f := new(Float)
+	require.Equal(t, "fff", f.Key("fff").Key())
+
+	s := new(String)
+	require.Equal(t, "disk", s.Disk().Key())
+	require.Equal(t, "diskPath", s.DiskPath().Key())
+	require.Equal(t, "addr", s.Addr().Key())
+	require.Equal(t, "zoneName", s.ZoneName().Key())
+}

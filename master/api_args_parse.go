@@ -26,12 +26,15 @@ import (
 	"strings"
 	"time"
 
+	"github.com/cubefs/cubefs/cmd/common"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/compressor"
 	"github.com/cubefs/cubefs/util/cryptoutil"
 	"github.com/cubefs/cubefs/util/log"
 )
+
+var parseArgs = common.ParseArguments
 
 // Parse the request that adds/deletes a raft node.
 func parseRequestForRaftNode(r *http.Request) (id uint64, host string, err error) {

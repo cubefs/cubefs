@@ -67,6 +67,11 @@ func (a *Argument) OnValue(f func() error) *Argument {
 	return a
 }
 
+// Key returns key of the argument.
+func (a *Argument) Key() string {
+	return a.key
+}
+
 func ParseArguments(r *http.Request, args ...*Argument) error {
 	if err := r.ParseForm(); err != nil {
 		return err

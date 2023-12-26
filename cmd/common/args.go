@@ -25,10 +25,12 @@ type (
 func (b *Bool) Key(key string) *Argument { return NewArgument(key, &b.V) }
 func (b *Bool) Enable() *Argument        { return b.Key("enable") }
 func (b *Bool) Status() *Argument        { return b.Key("status") }
+func (b *Bool) All() *Argument           { return b.Key("all") }
 
 func (i *Int) Key(key string) *Argument { return NewArgument(key, &i.V) }
 func (i *Int) ID() *Argument            { return i.Key("id") }
 func (i *Int) ExtentID() *Argument      { return i.Key("extentID") }
+func (i *Int) Count() *Argument         { return i.Key("count") }
 
 func (u *Uint) Key(key string) *Argument { return NewArgument(key, &u.V) }
 func (u *Uint) ID() *Argument            { return u.Key("id") }
@@ -42,3 +44,5 @@ func (f *Float) Key(key string) *Argument { return NewArgument(key, &f.V) }
 func (s *String) Key(key string) *Argument { return NewArgument(key, &s.V) }
 func (s *String) Disk() *Argument          { return s.Key("disk") }
 func (s *String) DiskPath() *Argument      { return s.Key("diskPath") }
+func (s *String) Addr() *Argument          { return s.Key("addr") }
+func (s *String) ZoneName() *Argument      { return s.Key("zoneName") }
