@@ -150,10 +150,6 @@ const (
 	trashIntervalKey                = "trashInterval"
 	accessTimeIntervalKey           = "accessTimeValidInterval"
 	enablePersistAccessTimeKey      = "enablePersistAccessTime"
-
-	stateKey                   = "state"
-    versionKey                 = "version"
-    fgSlotsKey                 = "slots"
 )
 
 const (
