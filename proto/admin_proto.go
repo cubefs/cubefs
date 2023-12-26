@@ -260,6 +260,8 @@ const (
 	S3QoSGet                     = "/s3/qos/get"
 	S3QoSDelete                  = "/s3/qos/delete"
 	AdminEnablePersistAccessTime = "/vol/enablePersistAccessTime"
+
+	AdminVolAddAllowedStorageClass = "/vol/addAllowedStorageClass"
 )
 
 var GApiInfo map[string]string = map[string]string{
@@ -279,6 +281,7 @@ var GApiInfo map[string]string = map[string]string{
 	"adminupdatevol":                     AdminUpdateVol,
 	"adminvolshrink":                     AdminVolShrink,
 	"adminvolexpand":                     AdminVolExpand,
+	"adminvoladdallowedstorageclass":     AdminVolAddAllowedStorageClass,
 	"admincreatevol":                     AdminCreateVol,
 	"admingetvol":                        AdminGetVol,
 	"adminclusterfreeze":                 AdminClusterFreeze,

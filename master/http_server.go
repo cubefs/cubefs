@@ -171,11 +171,12 @@ var AuthenticationUri2MsgTypeMap = map[string]proto.MsgType{
 	proto.AdminSetNodeRdOnly: proto.MsgMasterSetNodeRdOnlyReq,
 
 	// Master API volume management
-	proto.AdminCreateVol: proto.MsgMasterCreateVolReq,
-	proto.AdminDeleteVol: proto.MsgMasterDeleteVolReq,
-	proto.AdminUpdateVol: proto.MsgMasterUpdateVolReq,
-	proto.AdminVolShrink: proto.MsgMasterVolShrinkReq,
-	proto.AdminVolExpand: proto.MsgMasterVolExpandReq,
+	proto.AdminCreateVol:                 proto.MsgMasterCreateVolReq,
+	proto.AdminDeleteVol:                 proto.MsgMasterDeleteVolReq,
+	proto.AdminUpdateVol:                 proto.MsgMasterUpdateVolReq,
+	proto.AdminVolShrink:                 proto.MsgMasterVolShrinkReq,
+	proto.AdminVolExpand:                 proto.MsgMasterVolExpandReq,
+	proto.AdminVolAddAllowedStorageClass: proto.MsgMasterVolAddAllowedStorageClass,
 
 	// Master API meta partition management
 	proto.AdminLoadMetaPartition:         proto.MsgMasterLoadMetaPartitionReq,
@@ -431,6 +432,9 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.AdminAbortDecommissionDisk).
 		HandlerFunc(m.abortDecommissionDisk)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminVolAddAllowedStorageClass).
+		HandlerFunc(m.volAddAllowedStorageClass)
 
 	// multi version snapshot APIs
 	router.NewRoute().Methods(http.MethodGet).
