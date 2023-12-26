@@ -15,6 +15,7 @@
 package cmd
 
 import (
+	"encoding/json"
 	"fmt"
 	"math"
 	"sort"
@@ -34,6 +35,11 @@ func formatAddr(ipAddr string, domainAddr string) (addr string) {
 		addr = ipAddr
 	}
 	return
+}
+
+func formatIndent(v interface{}) string {
+	b, _ := json.MarshalIndent(v, "", "  ")
+	return string(b)
 }
 
 func formatClusterView(cv *proto.ClusterView, cn *proto.ClusterNodeInfo, cp *proto.ClusterIP) string {
