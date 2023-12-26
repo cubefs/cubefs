@@ -56,6 +56,7 @@ type VolVarargs struct {
 	crossZone               bool
 	enableAutoDpMetaRepair  bool
 	volStorageClass         uint32
+	allowedStorageClass     []uint32
 }
 
 type CacheSubItem struct {
@@ -1706,6 +1707,7 @@ func setVolFromArgs(args *VolVarargs, vol *Vol) {
 	vol.TrashInterval = args.trashInterval
 	vol.EnableAutoMetaRepair.Store(args.enableAutoDpMetaRepair)
 	vol.volStorageClass = args.volStorageClass
+	vol.allowedStorageClass = append([]uint32{}, args.allowedStorageClass...)
 }
 
 func getVolVarargs(vol *Vol) *VolVarargs {
@@ -1743,6 +1745,7 @@ func getVolVarargs(vol *Vol) *VolVarargs {
 		dpReadOnlyWhenVolFull:   vol.DpReadOnlyWhenVolFull,
 		enableAutoDpMetaRepair:  vol.EnableAutoMetaRepair.Load(),
 		volStorageClass:         vol.volStorageClass,
+		allowedStorageClass:     append([]uint32{}, vol.allowedStorageClass...),
 	}
 }
 
@@ -1812,4 +1815,17 @@ func (vol *Vol) checkDataReplicaMeta(c *Cluster) (cnt int) {
 		checkMetaDpWg.Wait()
 	}
 	return
+}
+
+func (vol *Vol) isStorageClassInAllowed(storageClass uint32) (in bool) {
+	vol.volLock.Lock()
+	defer vol.volLock.Unlock()
+
+	for _, asc := range vol.allowedStorageClass {
+		if asc == storageClass {
+			in = true
+		}
+	}
+
+	return in
 }
