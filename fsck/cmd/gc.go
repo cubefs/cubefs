@@ -143,6 +143,7 @@ func newGCCommand() *cobra.Command {
 }
 
 func setCleanStatus() {
+	CleanS = true
 	// switch CleanStr {
 	// case "true":
 	// 	CleanS = true
