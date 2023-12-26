@@ -50,7 +50,7 @@ func newDataPartitionCmd(client *master.MasterClient) *cobra.Command {
 	}
 	cmd.AddCommand(
 		newDataPartitionGetCmd(client),
-		newListCorruptDataPartitionCmd(client),
+		newDataPartitionCheckCmd(client),
 		newResetDataPartitionCmd(client),
 		newDataPartitionDecommissionCmd(client),
 		newDataPartitionReplicateCmd(client),
@@ -294,7 +294,7 @@ func newDataPartitionGetCmd(client *master.MasterClient) *cobra.Command {
 	return cmd
 }
 
-func newListCorruptDataPartitionCmd(client *master.MasterClient) *cobra.Command {
+func newDataPartitionCheckCmd(client *master.MasterClient) *cobra.Command {
 	var optEnableAutoFullfill bool
 	var optCheckAll bool
 	var optDiffSizeThreshold int

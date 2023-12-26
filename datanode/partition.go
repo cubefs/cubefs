@@ -832,7 +832,8 @@ func (dp *DataPartition) proposeUpdateVolumeInfo() {
 }
 
 func (dp *DataPartition) statusUpdateScheduler(ctx context.Context) {
-	repairTimer := time.NewTimer(time.Minute)
+	rand := rand.New(rand.NewSource(time.Now().UnixNano()))
+	repairTimer := time.NewTimer(time.Minute + time.Duration(rand.Intn(120))*time.Second)
 	validateCRCTimer := time.NewTimer(DefaultIntervalDataPartitionValidateCRC)
 	retryUpdateVolInfoTimer := time.NewTimer(0)
 	retryUpdateVolInfoTimer.Stop()
