@@ -32,11 +32,11 @@ func testFlashNodeSet(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, fnView.IsEnable)
 
-	require.NoError(t, mc.NodeAPI().SetFlashNode(mfs1Addr, "false"))
+	require.NoError(t, mc.NodeAPI().SetFlashNode(mfs1Addr, false))
 	fnView, err = mc.NodeAPI().GetFlashNode(mfs1Addr)
 	require.NoError(t, err)
 	require.False(t, fnView.IsEnable)
-	require.NoError(t, mc.NodeAPI().SetFlashNode(mfs1Addr, "true"))
+	require.NoError(t, mc.NodeAPI().SetFlashNode(mfs1Addr, true))
 }
 
 func testFlashNodeRemove(t *testing.T) {
@@ -94,9 +94,9 @@ func testFlashNodeList(t *testing.T) {
 	require.Equal(t, 2, len(zoneNodes[testZone2]))
 	require.Equal(t, 3, len(zoneNodes[testZone3]))
 
-	require.NoError(t, mc.NodeAPI().SetFlashNode(mfs7Addr, "0"))
+	require.NoError(t, mc.NodeAPI().SetFlashNode(mfs7Addr, false))
 	defer func() {
-		require.NoError(t, mc.NodeAPI().SetFlashNode(mfs7Addr, "1"))
+		require.NoError(t, mc.NodeAPI().SetFlashNode(mfs7Addr, true))
 	}()
 
 	zoneNodes, err = mc.NodeAPI().ListFlashNodes(false)
