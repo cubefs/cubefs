@@ -417,16 +417,13 @@ func (s *ExtentStore) Read(extentID uint64, offset, size int64, nbuf []byte, isR
 		if _, ok := s.extentLockMap[extentID]; !ok {
 			s.elMutex.RUnlock()
 			err = fmt.Errorf("extent(%v) is not locked", extentID)
-			log.LogErrorf("[Read] gc_extent[%d] is not locked", extentID)
+			log.LogErrorf("[Read] gc_extent_no_lock[%d] is not locked", extentID)
 			return
 		}
 	} else {
 		if s.extentLock {
-			if _, ok := s.extentLockMap[extentID]; ok {
-				s.elMutex.RUnlock()
-				err = fmt.Errorf("extent(%v) is locked", extentID)
-				log.LogErrorf("[Read] gc_extent[%d] is locked", extentID)
-				return
+			if _, ok := s.extentLockMap[extentID]; ok && !isRepairRead {
+				log.LogErrorf("[Read] gc_extent_lock[%d] is locked， should not be read.", extentID)
 			}
 		}
 	}
