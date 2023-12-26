@@ -52,6 +52,7 @@ func removeFlashGroups(t *testing.T, groups []proto.FlashGroupAdminView) {
 }
 
 func testFlashGroup(t *testing.T) {
+	t.Run("Turn", testFlashGroupTurn)
 	t.Run("Create", testFlashGroupCreate)
 	t.Run("Set", testFlashGroupSet)
 	t.Run("Remove", testFlashGroupRemove)
@@ -59,6 +60,15 @@ func testFlashGroup(t *testing.T) {
 	t.Run("Get", testFlashGroupGet)
 	t.Run("List", testFlashGroupList)
 	t.Run("Client", testFlashGroupClient)
+}
+
+func testFlashGroupTurn(t *testing.T) {
+	groups := createFlashGroups(t)
+	defer removeFlashGroups(t, groups)
+	_, err := mc.AdminAPI().TurnFlashGroup(false)
+	require.NoError(t, err)
+	_, err = mc.AdminAPI().TurnFlashGroup(true)
+	require.NoError(t, err)
 }
 
 func testFlashGroupCreate(t *testing.T) {
