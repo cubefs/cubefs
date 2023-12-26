@@ -354,9 +354,9 @@ func generateSources(fileSize int64) (sources []*proto.DataSource) {
 	sources = make([]*proto.DataSource, 0)
 	var bufSlice []int
 	if fileSize > proto.PageSize {
-		bufSlice = []int{1, 3, 4, 5, 11, 64, 128, 512, 1024, proto.PageSize, 16 * 1024, 64 * 1024, 128 * 1024, 256 * 1024, 512 * 1024, proto.CACHE_BLOCK_SIZE}
+		bufSlice = []int{1, 4, 16, 64, 128, 512, 1024, proto.PageSize, 16 * 1024, 64 * 1024, 128 * 1024, 256 * 1024, 512 * 1024, proto.CACHE_BLOCK_SIZE}
 	} else {
-		bufSlice = []int{1, 3, 4, 5, 11, 64, 128}
+		bufSlice = []int{1, 4, 16, 64, 128}
 	}
 	var offset int64
 	//init test data

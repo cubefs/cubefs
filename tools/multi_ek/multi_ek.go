@@ -18,6 +18,10 @@ import (
 	"time"
 )
 
+// 工具用途：主要用于分布式缓存中缓存读一致性的测试
+// 1 使用跳跃写法，批量生成extentKey很长的文件
+// 2 文件分别存入本地文件系统和挂载点
+// 3 开启缓存读后，循环检查挂载点的md5是否发生变化
 var (
 	partitionNotFoundError = errors.NewErrorf("partition not found")
 	illegalPathError       = errors.NewErrorf("illegal disk path")
@@ -71,10 +75,13 @@ type filePattern struct {
 func main() {
 	testFiles := make([]filePattern, 0)
 	for i := 0; i < 64; i++ {
-		testFiles = append(testFiles, filePattern{1024, false})
+		testFiles = append(testFiles, filePattern{int64(i*2 + 1), false})
 	}
 	for i := 0; i < 64; i++ {
 		testFiles = append(testFiles, filePattern{1024, true})
+	}
+	for i := 0; i < 64; i++ {
+		testFiles = append(testFiles, filePattern{1024, false})
 	}
 	for i := 0; i < 32; i++ {
 		testFiles = append(testFiles, filePattern{4 * 1024, false})
@@ -83,13 +90,22 @@ func main() {
 		testFiles = append(testFiles, filePattern{64 * 1024, false})
 	}
 	for i := 0; i < 16; i++ {
-		testFiles = append(testFiles, filePattern{128 * 1024, false})
+		testFiles = append(testFiles, filePattern{333 * 1024, false})
 	}
 	for i := 0; i < 16; i++ {
 		testFiles = append(testFiles, filePattern{512 * 1024, false})
 	}
 	for i := 0; i < 16; i++ {
-		testFiles = append(testFiles, filePattern{proto.CACHE_BLOCK_SIZE, false})
+		testFiles = append(testFiles, filePattern{1024 * 1024, false})
+	}
+	for i := 0; i < 8; i++ {
+		testFiles = append(testFiles, filePattern{4 * 1024 * 1024, false})
+	}
+	for i := 0; i < 4; i++ {
+		testFiles = append(testFiles, filePattern{64 * 1024 * 1024, false})
+	}
+	for i := 0; i < 2; i++ {
+		testFiles = append(testFiles, filePattern{128 * 1024 * 1024, false})
 	}
 	hashMap := make(map[string]string, 0)
 	fileCh := make(chan string, 4)
@@ -195,15 +211,12 @@ type sourcePacket struct {
 }
 
 func generateRandomFile(fileSize int64) (packets []sourcePacket) {
-	if fileSize > proto.CACHE_BLOCK_SIZE {
-		fileSize = proto.CACHE_BLOCK_SIZE
-	}
 	packets = make([]sourcePacket, 0)
 	var bufSlice []int
 	if fileSize > proto.PageSize {
-		bufSlice = []int{1, 3, 4, 5, 11, 64, 128, 512, 1024, proto.PageSize, 16 * 1024, 64 * 1024, 128 * 1024, 256 * 1024, 512 * 1024, proto.CACHE_BLOCK_SIZE}
+		bufSlice = []int{1, 4, 16, 64, 128, 512, 1024, proto.PageSize, 16 * 1024, 64 * 1024, 128 * 1024, 256 * 1024, 512 * 1024, proto.CACHE_BLOCK_SIZE, 4 * proto.CACHE_BLOCK_SIZE}
 	} else {
-		bufSlice = []int{1, 3, 4, 5, 11, 64, 128}
+		bufSlice = []int{1, 4, 16, 64, 128}
 	}
 	var offset int64
 	//init test data
