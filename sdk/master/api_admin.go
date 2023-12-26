@@ -429,6 +429,18 @@ func (api *AdminAPI) VolExpand(volName string, capacity uint64, authKey, clientI
 	return
 }
 
+func (api *AdminAPI) VolAddAllowedStorageClass(volName string, addAllowedStorageClass uint32, authKey, clientIDKey string) (err error) {
+	var request = newAPIRequest(http.MethodGet, proto.AdminVolAddAllowedStorageClass)
+	request.addParam("name", volName)
+	request.addParam("allowedStorageClass", strconv.FormatUint(uint64(addAllowedStorageClass), 10))
+	request.addParam("authKey", authKey)
+	request.addParam("clientIDKey", clientIDKey)
+	if _, err = api.mc.serveRequest(request); err != nil {
+		return
+	}
+	return
+}
+
 func (api *AdminAPI) CreateVolName(volName, owner string, capacity uint64, deleteLockTime int64, crossZone, normalZonesFirst bool, business string,
 	mpCount, replicaNum, dpSize int, followerRead bool, zoneName, cacheRuleKey string, ebsBlkSize,
 	cacheCapacity, cacheAction, cacheThreshold, cacheTTL, cacheHighWater, cacheLowWater, cacheLRUInterval int,

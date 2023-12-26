@@ -16,6 +16,7 @@ package cmd
 
 import (
 	"fmt"
+	"math"
 	"sort"
 	"strconv"
 	"strings"
@@ -50,6 +51,7 @@ func newVolCmd(client *master.MasterClient) *cobra.Command {
 		newVolAddDPCmd(client),
 		newVolSetForbiddenCmd(client),
 		newVolSetAuditLogCmd(client),
+		newVolAddAllowedStorageClassCmd(client),
 	)
 	return cmd
 }
@@ -998,5 +1000,56 @@ func newVolSetAuditLogCmd(client *master.MasterClient) *cobra.Command {
 			stdout("Volume audit log has been set successfully, please wait few minutes for the settings to take effect.\n")
 		},
 	}
+	return cmd
+}
+
+var (
+	cmdVolAddAllowedStorageClassUse   = "addAllowedStorageClass [VOLUME] [STORAGE_CLASS_TO_ADD] [flags]"
+	cmdVolAddAllowedStorageClassShort = "add a storageClass to volume's allowedStorageClass list"
+)
+
+func newVolAddAllowedStorageClassCmd(client *master.MasterClient) *cobra.Command {
+	var clientIDKey string
+	var addAllowedStorageClass uint32
+	var ascUint64 uint64
+
+	cmd := &cobra.Command{
+		Use:   cmdVolAddAllowedStorageClassUse,
+		Short: cmdVolAddAllowedStorageClassShort,
+		Args:  cobra.MinimumNArgs(2),
+		Run: func(cmd *cobra.Command, args []string) {
+			volName := args[0]
+			addAllowedStorageClassStr := args[1]
+			var err error
+			defer func() {
+				errout(err)
+			}()
+
+			ascUint64, err = strconv.ParseUint(addAllowedStorageClassStr, 10, 32)
+			if err != nil || ascUint64 > math.MaxUint32 {
+				err = fmt.Errorf("parse param[addAllowedStorageClass] is not valid uint32[%d], err %v", ascUint64, err)
+				return
+			}
+			addAllowedStorageClass = uint32(ascUint64)
+
+			if !proto.IsValidStorageClass(addAllowedStorageClass) {
+				err = fmt.Errorf("param[addAllowedStorageClass] is not valid storageClass: %v", addAllowedStorageClass)
+				return
+			}
+
+			var vv *proto.SimpleVolView
+			if vv, err = client.AdminAPI().GetVolumeSimpleInfo(volName); err != nil {
+				return
+			}
+
+			if err = client.AdminAPI().VolAddAllowedStorageClass(volName, addAllowedStorageClass, util.CalcAuthKey(vv.Owner), clientIDKey); err != nil {
+				return
+			}
+
+			stdout("Volume add allowedStorageClass successfully\n")
+		},
+	}
+
+	cmd.Flags().StringVar(&clientIDKey, CliFlagClientIDKey, client.ClientIDKey(), CliUsageClientIDKey)
 	return cmd
 }

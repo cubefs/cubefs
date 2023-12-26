@@ -1442,7 +1442,7 @@ func (c *Cluster) batchCreateDataPartition(vol *Vol, reqCount int, init bool, me
 		}
 
 		if _, err = c.createDataPartition(vol.Name, nil, mediaType); err != nil {
-			log.LogErrorf("action[batchCreateDataPartition] after create [%v] data partition,occurred error,err[%v]", i, err)
+			log.LogErrorf("action[batchCreateDataPartition] after create [%v] data partition, occurred error,err[%v]", i, err)
 			break
 		}
 		createdCnt++

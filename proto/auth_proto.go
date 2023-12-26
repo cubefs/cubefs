@@ -208,11 +208,12 @@ const (
 	MsgMasterAutoDecommissionReq MsgType = MsgMasterAPIAccessReq + 0x20600
 
 	// Master API volume management
-	MsgMasterCreateVolReq MsgType = MsgMasterAPIAccessReq + 0x30100
-	MsgMasterDeleteVolReq MsgType = MsgMasterAPIAccessReq + 0x30200
-	MsgMasterUpdateVolReq MsgType = MsgMasterAPIAccessReq + 0x30300
-	MsgMasterVolShrinkReq MsgType = MsgMasterAPIAccessReq + 0x30400
-	MsgMasterVolExpandReq MsgType = MsgMasterAPIAccessReq + 0x30500
+	MsgMasterCreateVolReq              MsgType = MsgMasterAPIAccessReq + 0x30100
+	MsgMasterDeleteVolReq              MsgType = MsgMasterAPIAccessReq + 0x30200
+	MsgMasterUpdateVolReq              MsgType = MsgMasterAPIAccessReq + 0x30300
+	MsgMasterVolShrinkReq              MsgType = MsgMasterAPIAccessReq + 0x30400
+	MsgMasterVolExpandReq              MsgType = MsgMasterAPIAccessReq + 0x30500
+	MsgMasterVolAddAllowedStorageClass MsgType = MsgMasterAPIAccessReq + 0x30501
 
 	// Master API meta partition management
 	MsgMasterLoadMetaPartitionReq         MsgType = MsgMasterAPIAccessReq + 0x40100
@@ -300,11 +301,12 @@ var MsgType2ResourceMap = map[MsgType]string{
 	MsgMasterAutoDecommissionReq: "master:autodecommission",
 
 	// Master API volume management
-	MsgMasterCreateVolReq: "master:createvol",
-	MsgMasterDeleteVolReq: "master:deletevol",
-	MsgMasterUpdateVolReq: "master:updatevol",
-	MsgMasterVolShrinkReq: "master:volshrink",
-	MsgMasterVolExpandReq: "master:volexpand",
+	MsgMasterCreateVolReq:              "master:createvol",
+	MsgMasterDeleteVolReq:              "master:deletevol",
+	MsgMasterUpdateVolReq:              "master:updatevol",
+	MsgMasterVolShrinkReq:              "master:volshrink",
+	MsgMasterVolExpandReq:              "master:volexpand",
+	MsgMasterVolAddAllowedStorageClass: "master:voladdallowedStorageClass",
 
 	// Master API meta partition management
 	MsgMasterLoadMetaPartitionReq:         "master:loadmetapartition",
