@@ -139,6 +139,27 @@ func (fg *FlashGroup) GetAdminView() (view proto.FlashGroupAdminView) {
 	return
 }
 
+func (m *Server) turnFlashGroup(w http.ResponseWriter, r *http.Request) {
+	var err error
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminFlashGroupTurn))
+	defer func() {
+		doStatAndMetric(proto.AdminFlashGroupTurn, metric, err, nil)
+	}()
+	r.ParseForm()
+	enabled, err := extractStatus(r)
+	if err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+	topo := m.cluster.flashNodeTopo
+	if enabled {
+		topo.clientOff.Store([]byte(nil))
+	} else {
+		topo.clientOff.Store(topo.clientEmpty)
+	}
+	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("turn %v", enabled)))
+}
+
 func (m *Server) createFlashGroup(w http.ResponseWriter, r *http.Request) {
 	var err error
 	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminFlashGroupCreate))
@@ -465,22 +486,12 @@ func (m *Server) clientFlashGroups(w http.ResponseWriter, r *http.Request) {
 	defer func() {
 		doStatAndMetric(proto.ClientFlashGroups, metric, err, nil)
 	}()
-	cache, err := m.cluster.getFlashGroupClientResponseCache()
-	if err != nil {
-		sendErrReply(w, r, newErrHTTPReply(err))
+	cache := m.cluster.flashNodeTopo.getClientResponse()
+	if len(cache) == 0 {
+		sendErrReply(w, r, newErrHTTPReply(fmt.Errorf("flash group response cache is empty")))
 		return
 	}
 	send(w, r, cache)
-}
-
-func (c *Cluster) getFlashGroupClientResponseCache() (cache []byte, err error) {
-	if cache := c.flashNodeTopo.clientRespCache.Load().([]byte); len(cache) == 0 {
-		c.updateFlashGroupClientCache()
-	}
-	if cache = c.flashNodeTopo.clientRespCache.Load().([]byte); len(cache) == 0 {
-		return nil, fmt.Errorf("flash group resp cache is empty")
-	}
-	return
 }
 
 func parseRequestForManageFlashNodeOfFlashGroup(r *http.Request) (flashGroupID uint64, addr, zoneName string, count int, err error) {

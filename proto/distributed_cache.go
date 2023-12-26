@@ -44,6 +44,7 @@ type FlashGroupInfo struct {
 }
 
 type FlashGroupView struct {
+	Enable      bool
 	FlashGroups []*FlashGroupInfo
 }
 
