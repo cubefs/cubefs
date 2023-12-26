@@ -16,6 +16,7 @@ package metanode
 
 import (
 	"fmt"
+	"github.com/cubefs/cubefs/util/iputil"
 	"github.com/cubefs/cubefs/util/topology"
 	"os"
 	"strconv"
@@ -40,11 +41,11 @@ import (
 )
 
 var (
-	masterClient       *masterSDK.MasterClient
-	masterDomainClient *masterSDK.MasterClient
-	configTotalMem     uint64
-	serverPort         string
-	ProcessUsedMem     uint64
+	masterClient         *masterSDK.MasterClient
+	masterLBDomainClient *masterSDK.MasterClient
+	configTotalMem       uint64
+	serverPort           string
+	ProcessUsedMem       uint64
 )
 
 // The MetaNode manages the dentry and inode information of the meta partitions on a meta node.
@@ -283,19 +284,35 @@ func (m *MetaNode) parseConfig(cfg *config.Config) (err error) {
 	log.LogInfof("[parseConfig] load zoneName[%v].", m.zoneName)
 	log.LogInfof("[parseConfig] load rocksdb dirs[%v].", m.rocksDirs)
 
-	addrs := cfg.GetSlice(proto.MasterAddr)
-	masters := make([]string, 0, len(addrs))
-	for _, addr := range addrs {
-		masters = append(masters, addr.(string))
-	}
-	masterClient = masterSDK.NewMasterClient(masters, false)
+	masterDomain, masterAddrs := m.parseMasterAddrs(cfg)
+	masterClient = masterSDK.NewMasterClientWithDomain(masterDomain, masterAddrs, false)
+	log.LogWarnf("[parseConfig] new master client, masterDomain(%v) masterAddrs(%v)", masterDomain, masterAddrs)
 
-	domainAddr := cfg.GetString(proto.MasterDomainAddr)
-	if domainAddr != "" {
-		masterDomainClient = masterSDK.NewMasterClient([]string{domainAddr}, false)
+	masterLBDomain := m.parseMasterLBDomain(cfg)
+	if masterLBDomain != "" {
+		masterLBDomainClient = masterSDK.NewMasterClientWithLBDomain(masterLBDomain, false)
+		log.LogWarnf("[parseConfig] new master lb client , lb domain addr(%v)", masterLBDomain)
 	}
 	err = m.validConfig()
 	return
+}
+
+func (m *MetaNode) parseMasterAddrs(cfg *config.Config) (masterDomain string, masterAddrs []string) {
+	var err error
+	masterDomain = cfg.GetString(proto.MasterDomain)
+	if masterDomain != "" && !strings.Contains(masterDomain, ":") {
+		masterDomain = masterDomain + ":" + proto.MasterDefaultPort
+	}
+
+	masterAddrs, err = iputil.LookupHost(masterDomain)
+	if err != nil {
+		masterAddrs = cfg.GetStringSlice(proto.MasterAddr)
+	}
+	return
+}
+
+func (m *MetaNode) parseMasterLBDomain(cfg *config.Config) (masterLBDomain string) {
+	return cfg.GetString(proto.MasterLBDomain)
 }
 
 func (m *MetaNode) validConfig() (err error) {
@@ -416,7 +433,7 @@ func (m *MetaNode) delVolFromFetchTopologyManager(name string) {
 }
 
 func (m *MetaNode) initFetchTopologyManager() {
-	m.topoManager = topology.NewTopologyManager(0, 0, masterClient, masterDomainClient,
+	m.topoManager = topology.NewTopologyManager(0, 0, masterClient, masterLBDomainClient,
 		true, true)
 	return
 }
