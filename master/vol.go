@@ -58,6 +58,7 @@ type VolVarargs struct {
 	accessTimeValidInterval int64
 	enablePersistAccessTime bool
 	volStorageClass         uint32
+	allowedStorageClass     []uint32
 }
 
 type CacheSubItem struct {
@@ -1701,6 +1702,7 @@ func setVolFromArgs(args *VolVarargs, vol *Vol) {
 	vol.EnableAutoMetaRepair.Store(args.enableAutoDpMetaRepair)
 	vol.EnablePersistAccessTime = args.enablePersistAccessTime
 	vol.volStorageClass = args.volStorageClass
+	vol.allowedStorageClass = append([]uint32{}, args.allowedStorageClass...)
 }
 
 func getVolVarargs(vol *Vol) *VolVarargs {
@@ -1744,6 +1746,7 @@ func getVolVarargs(vol *Vol) *VolVarargs {
 		enablePersistAccessTime: vol.EnablePersistAccessTime,
 		enableAutoDpMetaRepair:  vol.EnableAutoMetaRepair.Load(),
 		volStorageClass:         vol.volStorageClass,
+		allowedStorageClass:     append([]uint32{}, vol.allowedStorageClass...),
 	}
 }
 
@@ -1813,4 +1816,17 @@ func (vol *Vol) checkDataReplicaMeta(c *Cluster) (cnt int) {
 		checkMetaDpWg.Wait()
 	}
 	return
+}
+
+func (vol *Vol) isStorageClassInAllowed(storageClass uint32) (in bool) {
+	vol.volLock.Lock()
+	defer vol.volLock.Unlock()
+
+	for _, asc := range vol.allowedStorageClass {
+		if asc == storageClass {
+			in = true
+		}
+	}
+
+	return in
 }
