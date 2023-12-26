@@ -6453,3 +6453,83 @@ func isS3QosConfigValid(param *proto.S3QosRequest) bool {
 
 	return true
 }
+
+func (m *Server) volAddAllowedStorageClass(w http.ResponseWriter, r *http.Request) {
+	var (
+		name                   string
+		authKey                string
+		err                    error
+		msg                    string
+		addAllowedStorageClass uint32
+		vol                    *Vol
+	)
+
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminVolAddAllowedStorageClass))
+	defer func() {
+		doStatAndMetric(proto.AdminVolAddAllowedStorageClass, metric, err, map[string]string{exporter.Vol: name})
+	}()
+
+	if err = r.ParseForm(); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	if name, err = extractName(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	if authKey, err = extractAuthKey(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	if addAllowedStorageClass, err = extractUint32(r, allowedStorageClassKey); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	if !proto.IsValidStorageClass(addAllowedStorageClass) {
+		err = fmt.Errorf("invalid storageClass(%v)", addAllowedStorageClass)
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	if vol, err = m.cluster.getVol(name); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeVolNotExists, Msg: err.Error()})
+		return
+	}
+
+	if in := vol.isStorageClassInAllowed(addAllowedStorageClass); in {
+		err = fmt.Errorf("storageClass(%v) already in vol allowedStorageClass(%v)",
+			addAllowedStorageClass, vol.allowedStorageClass)
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	resourceChecker := NewStorageClassResourceChecker(m.cluster)
+	if !resourceChecker.HasResourceOfStorageClass(addAllowedStorageClass) {
+		err = fmt.Errorf("cluster has no resoure to support storageClass(%v)",
+			proto.StorageClassString(addAllowedStorageClass))
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	newArgs := getVolVarargs(vol)
+	newArgs.allowedStorageClass = append(newArgs.allowedStorageClass, addAllowedStorageClass)
+	sort.Slice(newArgs.allowedStorageClass, func(i, j int) bool {
+		return newArgs.allowedStorageClass[i] < newArgs.allowedStorageClass[j]
+	})
+
+	log.LogInfof("to add vol(%v) allowedStorageClass, old(%v), add(%v)",
+		name, vol.allowedStorageClass, addAllowedStorageClass)
+
+	if err = m.cluster.updateVol(name, authKey, newArgs); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+
+	msg = fmt.Sprintf("add vol(%v) allowedStorageClass successfully", name)
+	log.LogInfof("%v, added(%v), current(%v)", msg, addAllowedStorageClass, vol.allowedStorageClass)
+	sendOkReply(w, r, newSuccessHTTPReply(msg))
+}
