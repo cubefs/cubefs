@@ -338,8 +338,8 @@ func extractUint32WithDefault(r *http.Request, key string, def uint32) (val uint
 	}
 
 	var valUint64 uint64
-	if valUint64, err = strconv.ParseUint(str, 10, 32); err != nil || valUint64 < 0 || valUint64 > math.MaxUint32 {
-		return 0, fmt.Errorf("parse [%s] is not valid uint64 [%d], err %v", key, val, err)
+	if valUint64, err = strconv.ParseUint(str, 10, 32); err != nil || valUint64 > math.MaxUint32 {
+		return 0, fmt.Errorf("parse [%s] is not valid uint32 [%d], err %v", key, val, err)
 	}
 
 	val = uint32(valUint64)
@@ -1755,12 +1755,13 @@ func extractUint32(r *http.Request, key string) (val uint32, err error) {
 		return 0, nil
 	}
 
-	var tmp uint64
-	if tmp, err = strconv.ParseUint(str, 10, 32); err != nil {
-		return 0, fmt.Errorf("args [%s] is not legal, val %s", key, str)
+	var valUint64 uint64
+	if valUint64, err = strconv.ParseUint(str, 10, 32); err != nil || valUint64 > math.MaxUint32 {
+		return 0, fmt.Errorf("parse [%s] is not valid uint32 [%d], err %v", key, val, err)
 	}
 
-	return uint32(tmp), nil
+	val = uint32(valUint64)
+	return val, nil
 }
 
 func extractPositiveUint64(r *http.Request, key string) (val uint64, err error) {

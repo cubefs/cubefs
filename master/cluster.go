@@ -1669,7 +1669,7 @@ func (c *Cluster) batchCreateDataPartition(vol *Vol, reqCount int, init bool, me
 		}
 
 		if _, err = c.createDataPartition(vol.Name, nil, mediaType); err != nil {
-			log.LogErrorf("action[batchCreateDataPartition] after create [%v] data partition,occurred error,err[%v]", i, err)
+			log.LogErrorf("action[batchCreateDataPartition] after create [%v] data partition, occurred error,err[%v]", i, err)
 			break
 		}
 		createdCnt++
@@ -3707,7 +3707,6 @@ func (c *Cluster) createVol(req *createVolReq) (vol *Vol, err error) {
 			req.name, readWriteDataPartitions, proto.MediaTypeString(chosenMediaType))
 	}
 
-	vol.dataPartitions.updateResponseCache(true, 0, vol.VolType)
 	vol.updateViewCache(c)
 	// NOTE: update dp view cache
 	vol.dataPartitions.updateResponseCache(true, 0, vol)
