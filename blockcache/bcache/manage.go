@@ -22,10 +22,8 @@ import (
 	"crypto/md5"
 	"encoding/hex"
 	"fmt"
-	"github.com/cubefs/cubefs/util/stat"
 	"hash/crc32"
 	"io"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -37,6 +35,7 @@ import (
 
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/log"
+	"github.com/cubefs/cubefs/util/stat"
 )
 
 const (
@@ -44,7 +43,7 @@ const (
 	CacheConfSeparator   = ":"
 	SpaceCheckInterval   = 60 * time.Second
 	TmpFileCheckInterval = 20 * 60 * time.Second
-	FilePerm             = 0644
+	FilePerm             = 0o644
 	Basedir              = "blocks"
 )
 
@@ -69,15 +68,14 @@ func newBcacheManager(conf *bcacheConfig) BcacheManager {
 		log.LogWarnf("no cache config,cacheDirs or size is empty!")
 		return nil
 	}
-	//todo cachedir reg match
-	var cacheDirs []string
-	cacheDirs = strings.Split(conf.CacheDir, PathListSeparator)
+	// todo cachedir reg match
+	cacheDirs := strings.Split(conf.CacheDir, PathListSeparator)
 	if len(cacheDirs) == 0 {
 		log.LogWarnf("no cache dir config!")
 		return nil
 	}
 
-	var dirSizeMap = make(map[string]int64, len(cacheDirs))
+	dirSizeMap := make(map[string]int64, len(cacheDirs))
 	for _, dir := range cacheDirs {
 		result := strings.Split(dir, CacheConfSeparator)
 		dirPath := result[0]
@@ -97,18 +95,16 @@ func newBcacheManager(conf *bcacheConfig) BcacheManager {
 		blockSize:  conf.BlockSize,
 		pending:    make(chan waitFlush, 1024),
 	}
-	//bm.wg.Add(len(cacheDirs))
-	var index = 0
+	index := 0
 	for cacheDir, cacheSize := range dirSizeMap {
 		disk := NewDiskStore(cacheDir, cacheSize, conf)
 		bm.bstore[index] = disk
 		go bm.reBuildCacheKeys(cacheDir, disk)
 		index++
 	}
-	//bm.wg.Wait()
 	go bm.spaceManager()
 	go bm.flush()
-	//go bm.scrub()
+	// go bm.scrub()
 	return bm
 }
 
@@ -116,12 +112,13 @@ type cacheItem struct {
 	key  string
 	size uint32
 }
+
 type keyPair struct {
 	key string
 	it  *cacheItem
 }
 
-//key vid_inode_offset
+// key vid_inode_offset
 type waitFlush struct {
 	Key  string
 	Data []byte
@@ -129,12 +126,10 @@ type waitFlush struct {
 
 type bcacheManager struct {
 	sync.RWMutex
-	wg         sync.WaitGroup
 	bcacheKeys map[string]*list.Element
 	lrulist    *list.List
 	bstore     []*DiskStore
 	blockSize  uint32
-	freeRatio  float32
 	pending    chan waitFlush
 }
 
@@ -253,9 +248,9 @@ func (bm *bcacheManager) read(key string, offset uint64, len uint32) (io.ReadClo
 		if err != nil {
 			return nil, err
 		} else {
-			//decrypt
+			// decrypt
 			encryptXOR(buf[:n])
-			return ioutil.NopCloser(bytes.NewBuffer(buf[:n])), nil
+			return io.NopCloser(bytes.NewBuffer(buf[:n])), nil
 		}
 	} else {
 		err = os.ErrNotExist
@@ -333,7 +328,6 @@ func (bm *bcacheManager) spaceManager() {
 			}
 		}
 	}
-
 }
 
 //lru cache
@@ -375,7 +369,7 @@ func (bm *bcacheManager) spaceManager() {
 //
 //}
 
-//lru
+// lru
 func (bm *bcacheManager) freeSpace(store *DiskStore, free float32, files int64) {
 	var decreaseSpace int64
 	var decreaseCnt int
@@ -392,7 +386,7 @@ func (bm *bcacheManager) freeSpace(store *DiskStore, free float32, files int64) 
 		if decreaseCnt <= 0 && decreaseSpace <= 0 {
 			break
 		}
-		//avoid dead loop
+		// avoid dead loop
 		if cnt > 500000 {
 			break
 		}
@@ -440,7 +434,6 @@ func (bm *bcacheManager) reBuildCacheKeys(dir string, store *DiskStore) {
 		log.LogDebugf("updateStat(%v)", value.it.size)
 		store.updateStat(value.it.size)
 	}
-	//defer bm.wg.Done()
 }
 
 func (bm *bcacheManager) walker(c chan keyPair, prefix string, initial bool) filepath.WalkFunc {
@@ -466,9 +459,7 @@ func (bm *bcacheManager) walker(c chan keyPair, prefix string, initial bool) fil
 				size: size,
 			},
 		}
-		select {
-		case c <- pair:
-		}
+		c <- pair
 		return nil
 	}
 }
@@ -528,6 +519,7 @@ func NewDiskStore(dir string, cacheSize int64, config *bcacheConfig) *DiskStore 
 		freeLimit: config.FreeRatio,
 		limit:     config.Limit,
 	}
+	log.LogDebugf("ignored method DiskStore.scrub at %p", c.scrub) // TODO: ignored
 	c.checkBuildCacheDir(dir)
 	return c
 }
@@ -591,6 +583,7 @@ func (d *DiskStore) checkBuildCacheDir(dir string) {
 //	return nil
 //
 //}
+
 func (d *DiskStore) flushKey(key string, data []byte) error {
 	var err error
 	bgTime := stat.BeginStat()
@@ -599,7 +592,7 @@ func (d *DiskStore) flushKey(key string, data []byte) error {
 	}()
 	cachePath := d.buildCachePath(key, d.dir)
 	info, err := os.Stat(cachePath)
-	//if already cached
+	// if already cached
 	if err == nil && info.Size() > 0 {
 		return nil
 	}
@@ -612,7 +605,7 @@ func (d *DiskStore) flushKey(key string, data []byte) error {
 		log.LogWarnf("Create block tmp file:%s err:%s!", tmp, err)
 		return err
 	}
-	//encrypt
+	// encrypt
 	encryptXOR(data)
 	_, err = f.Write(data)
 	if err != nil {
@@ -641,7 +634,6 @@ func (d *DiskStore) flushKey(key string, data []byte) error {
 	atomic.AddInt64(&d.usedCount, 1)
 	log.LogDebugf("TRACE BCacheService flushKey Exit. key(%v) cachePath(%v)", key, cachePath)
 	return nil
-
 }
 
 func (d *DiskStore) load(key string) (ReadCloser, error) {
@@ -653,8 +645,8 @@ func (d *DiskStore) load(key string) (ReadCloser, error) {
 	f, err := os.OpenFile(cachePath, os.O_RDONLY, os.FileMode(d.mode))
 	log.LogDebugf("TRACE BCacheService load Exit. err(%v)", err)
 	return f, err
-
 }
+
 func (d *DiskStore) remove(key string) (err error) {
 	var size int64
 	cachePath := d.buildCachePath(key, d.dir)
@@ -732,9 +724,8 @@ func (bm *bcacheManager) deleteTmpFile(store *DiskStore) {
 		filepath.Walk(store.dir, bm.walker(c, keyPrefix, false))
 		close(c)
 	}()
-	//consume chan
+	// consume chan
 	for range c {
-
 	}
 
 	log.LogDebugf("clear tmp files end%v", store.dir)
@@ -747,7 +738,7 @@ func checkoutTempFileOuttime(file string) bool {
 	}
 	stat_t := finfo.Sys().(*syscall.Stat_t)
 	now := time.Now()
-	return now.Sub(timespecToTime(stat_t.Ctim)).Seconds() > 60*60 //1 hour
+	return now.Sub(timespecToTime(stat_t.Ctim)).Seconds() > 60*60 // 1 hour
 }
 
 func timespecToTime(ts syscall.Timespec) time.Time {

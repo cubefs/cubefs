@@ -27,7 +27,6 @@ import (
 	"runtime"
 	"strings"
 	"syscall"
-	"time"
 
 	"github.com/cubefs/cubefs/blockcache/bcache"
 	"github.com/cubefs/cubefs/cmd/common"
@@ -41,25 +40,19 @@ import (
 	"github.com/jacobsa/daemonize"
 )
 
+//TODO: remove this later.
+//go:generate gofumpt -l -w .
+//go:generate git diff --exit-code
+//go:generate golangci-lint run --issues-exit-code=1 -D errcheck -E bodyclose ./...
+
 const (
-	ConfigKeyRole       = "role"
 	ConfigKeyLogDir     = "logDir"
 	ConfigKeyLogLevel   = "logLevel"
 	ConfigKeyProfPort   = "prof"
 	ConfigKeyWarnLogDir = "warnLogDir"
-)
 
-const (
-	UnixSocketPath    = "/var/lib/adls/bcache.socket"
-	DefaultTimeOut    = 5 * time.Second
-	UnixSocketStopUrl = "http://unix/stop"
-)
-
-const (
 	RoleBcache = "blockcache"
-)
 
-const (
 	LoggerOutput = "output.log"
 )
 
@@ -104,7 +97,6 @@ func modifyOpenFiles() (err error) {
 }
 
 func main() {
-
 	if os.Args[1] == "stop" {
 		os.Exit(0)
 	}
@@ -190,14 +182,14 @@ func main() {
 
 	// Init output file
 	outputFilePath := path.Join(logDir, module, LoggerOutput)
-	outputFile, err := os.OpenFile(outputFilePath, os.O_CREATE|os.O_RDWR|os.O_APPEND, 0666)
+	outputFile, err := os.OpenFile(outputFilePath, os.O_CREATE|os.O_RDWR|os.O_APPEND, 0o666)
 	if err != nil {
 		err = errors.NewErrorf("Fatal: failed to open output path - %v", err)
 		fmt.Println(err)
 		daemonize.SignalOutcome(err)
 		os.Exit(1)
 	}
-	//stat log
+	// stat log
 	_, err = stat.NewStatistic(logDir, "blockcache", int64(stat.DefaultStatLogSize),
 		stat.DefaultTimeOutUs, true)
 	if err != nil {
@@ -231,7 +223,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	//for multi-cpu scheduling
+	// for multi-cpu scheduling
 	runtime.GOMAXPROCS(runtime.NumCPU())
 	if err = ump.InitUmp(role, umpDatadir); err != nil {
 		log.LogFlush()
