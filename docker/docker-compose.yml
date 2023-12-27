@@ -450,6 +450,31 @@ services:
         networks:
             extnetwork:
 
+    client_ltp:
+        image: ${IMAGELTP}
+        ports:
+            - 9500
+            - 17410:17410
+        volumes:
+            - ./bin:/cfs/bin:ro
+            - ./conf/hosts:/etc/hosts:ro
+            - ./conf/client.json:/cfs/conf/client.json
+            - ${DiskPath:-./docker_data}/client/log:/cfs/log
+            - ./script/run_test.sh:/cfs/script/start.sh
+            - ./script/start_client.sh:/cfs/script/start_client.sh
+            - ./ltp/runtest/fs:/opt/ltp/runtest/fs
+            - ./s3tests:/opt/s3tests:ro
+        privileged: true
+        devices:
+            - /dev/fuse:/dev/fuse:rwm
+        cap_add:
+            - SYS_ADMIN
+        command: /bin/bash /cfs/script/start.sh -ltp
+        environment:
+            - TZ=Asia/Shanghai
+        networks:
+            extnetwork:
+
     consul:
         image: consul:1.5
         ports:
