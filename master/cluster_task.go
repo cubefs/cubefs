@@ -1190,6 +1190,9 @@ func (c *Cluster) doLoadDataPartition(dp *DataPartition) {
 	loadTasks := dp.createLoadTasks()
 	c.addDataNodeTasks(loadTasks)
 	for i := 0; i < timeToWaitForResponse; i++ {
+		if c.leaderHasChanged() {
+			return
+		}
 		if dp.checkLoadResponse(c.cfg.DataPartitionTimeOutSec) {
 			log.LogDebugf("action[checkLoadResponse]  all replica has responded,partitionID:%v ", dp.PartitionID)
 			break
@@ -1634,9 +1637,10 @@ func (c *Cluster) updateInodeIDUpperBound(mp *MetaPartition, mr *proto.MetaParti
 	if !hasArriveThreshold {
 		return
 	}
+	ctx := c.buildCreateMetaPartitionContext()
 	var vol *Vol
 	if vol, err = c.getVol(mp.volName); err != nil {
-		log.LogWarnf("action[updateInodeIDRange] vol[%v] not found", mp.volName)
+		log.LogWarnf("action[updateInodeIDUpperBound] vol[%v] not found", mp.volName)
 		return
 	}
 	maxPartitionID := vol.maxPartitionID()
@@ -1650,8 +1654,8 @@ func (c *Cluster) updateInodeIDUpperBound(mp *MetaPartition, mr *proto.MetaParti
 		end = mr.MaxInodeID + proto.DefaultMetaPartitionInodeIDStep
 	}
 	log.LogWarnf("mpId[%v],start[%v],end[%v],addr[%v],used[%v]", mp.PartitionID, mp.Start, mp.End, metaNode.Addr, metaNode.Used)
-	if err = vol.splitMetaPartition(c, mp, end); err != nil {
-		log.LogError(err)
+	if err = vol.splitMetaPartition(c, mp, end, ctx); err != nil {
+		log.LogErrorf("action[updateInodeIDUpperBound] splits failed,volume[%v],mp[%v],err:%v", mp.volName, mp.PartitionID, err)
 	}
 	return
 }

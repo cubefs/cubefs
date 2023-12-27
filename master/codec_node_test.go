@@ -11,7 +11,7 @@ import (
 func Test_CodecNode(t *testing.T) {
 	addr := "127.0.0.1:10200"
 	addCodecServer(addr, httpPort, DefaultZoneName)
-	server.cluster.checkCodecNodeHeartbeat()
+	server.cluster.doCheckCodecNodeHeartbeat()
 	time.Sleep(5 * time.Second)
 	getCodecNodeInfo(addr, t)
 	getAllCodecNodeInfo(addr, t)

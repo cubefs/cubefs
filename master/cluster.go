@@ -33,7 +33,10 @@ import (
 	"github.com/cubefs/cubefs/util/multirate"
 	"github.com/cubefs/cubefs/util/unit"
 	pb "github.com/gogo/protobuf/proto"
-	atomic2 "go.uber.org/atomic"
+)
+
+var (
+	emptyRespCache = make([]byte, 0)
 )
 
 // Cluster stores all the cluster-level information.
@@ -41,6 +44,7 @@ type Cluster struct {
 	Name                       string
 	responseCache              []byte
 	responseCachePb            []byte
+	respCacheMutex             sync.RWMutex
 	vols                       map[string]*Vol
 	dataNodes                  sync.Map
 	metaNodes                  sync.Map
@@ -88,9 +92,13 @@ type Cluster struct {
 	enMutex                    sync.RWMutex // ec node mutex
 	flashNodeTopo              *flashNodeTopology
 	flashGroupRespCache        []byte
-	isLeader                   atomic2.Bool
+	volsInfoRespCache          []byte
+	volsInfoCacheMutex         sync.RWMutex
 	nodeTaskHandleChan         chan *NodeTask
 	heartbeatPbHandleChan      chan *HeartbeatPbTask
+	raftTermOnStartTask        uint64
+	taskExitC                  chan int
+	taskWg                     sync.WaitGroup
 }
 
 type NodeTask struct {
@@ -157,100 +165,20 @@ func newCluster(name string, leaderInfo *LeaderInfo, fsm *MetadataFsm, partition
 	c.nodeTaskHandleChan = make(chan *NodeTask, defaultHeartbeatHandleChanCap)
 	c.heartbeatPbHandleChan = make(chan *HeartbeatPbTask, defaultHeartbeatHandleChanCap)
 	c.flashNodeTopo = newFlashNodeTopology()
+	c.taskExitC = make(chan int, 16)
 	return
 }
 
 func (c *Cluster) scheduleTask() {
 	c.startNodeTaskHandlerWorker()
 	c.startHeartbeatPbInfoHandlerWorker()
-	c.scheduleToUpdateClusterViewResponseCache()
-	c.scheduleToCheckDataPartitions()
-	c.scheduleToLoadDataPartitions()
-	c.scheduleToCheckReleaseDataPartitions()
-	c.scheduleToCheckHeartbeat()
-	c.scheduleToCheckMetaPartitions()
-	c.scheduleToUpdateStatInfo()
-	c.scheduleToCheckAutoDataPartitionCreation()
-	c.scheduleToCheckVolStatus()
-	c.scheduleToConvertRenamedOldVol()
-	c.scheduleToCheckDiskRecoveryProgress()
-	c.scheduleToCheckMetaPartitionRecoveryProgress()
-	c.scheduleToLoadMetaPartitions()
-	c.scheduleToReduceReplicaNum()
 	c.scheduleToRepairMultiZoneMetaPartitions()
 	c.scheduleToRepairMultiZoneDataPartitions()
-	c.scheduleToMergeZoneNodeset()
-	c.scheduleToCheckAutoMetaPartitionCreation()
-	c.scheduleToCheckEcDataPartitions()
 	c.scheduleToMigrationEc()
-	c.scheduleToCheckUpdatePartitionReplicaNum()
-	c.scheduleToUpdateFlashGroupRespCache()
-
 }
 
 func (c *Cluster) masterAddr() (addr string) {
 	return c.leaderInfo.addr
-}
-
-func (c *Cluster) scheduleToUpdateStatInfo() {
-	go func() {
-		for {
-			if c.partition != nil && c.partition.IsRaftLeader() {
-				c.updateStatInfo()
-			}
-			time.Sleep(2 * time.Minute)
-		}
-	}()
-
-}
-
-func (c *Cluster) scheduleToCheckAutoDataPartitionCreation() {
-	go func() {
-
-		// check volumes after switching leader four minutes
-		time.Sleep(4 * time.Minute)
-		for {
-			if c.partition != nil && c.partition.IsRaftLeader() {
-				vols := c.copyVols()
-				for _, vol := range vols {
-					if !c.isLeader.Load() {
-						break
-					}
-					vol.checkAutoDataPartitionCreation(c)
-				}
-			}
-			time.Sleep(2 * time.Minute)
-		}
-	}()
-}
-
-func (c *Cluster) scheduleToCheckDataPartitions() {
-	go func() {
-		for {
-			if c.partition != nil && c.partition.IsRaftLeader() {
-				c.checkDataPartitions()
-			}
-			time.Sleep(time.Second * time.Duration(c.cfg.IntervalToCheckDataPartition))
-		}
-	}()
-}
-
-func (c *Cluster) scheduleToCheckVolStatus() {
-	go func() {
-		//check vols after switching leader two minutes
-		for {
-			if c.partition.IsRaftLeader() {
-				vols := c.copyVols()
-				for _, vol := range vols {
-					if !c.isLeader.Load() {
-						break
-					}
-					vol.checkStatus(c)
-				}
-			}
-			time.Sleep(time.Second * time.Duration(c.cfg.IntervalToCheckDataPartition))
-		}
-	}()
 }
 
 // Check the replica status of each data partition.
@@ -266,8 +194,8 @@ func (c *Cluster) checkDataPartitions() {
 	allBadDisks := make([]map[string][]string, 0)
 	vols := c.allVols()
 	for _, vol := range vols {
-		if !c.isLeader.Load() {
-			break
+		if c.leaderHasChanged() {
+			return
 		}
 		readWrites, dataNodeBadDisksOfVol := vol.checkDataPartitions(c)
 		allBadDisks = append(allBadDisks, dataNodeBadDisksOfVol)
@@ -280,187 +208,6 @@ func (c *Cluster) checkDataPartitions() {
 	c.updateDataNodeBadDisks(allBadDisks)
 }
 
-func (c *Cluster) scheduleToLoadDataPartitions() {
-	go func() {
-		for {
-			if c.partition != nil && c.partition.IsRaftLeader() {
-				c.doLoadDataPartitions()
-			}
-			time.Sleep(time.Second * 5)
-		}
-	}()
-}
-
-func (c *Cluster) doLoadDataPartitions() {
-	defer func() {
-		if r := recover(); r != nil {
-			log.LogWarnf("doLoadDataPartitions occurred panic,err[%v]", r)
-			WarnBySpecialKey(fmt.Sprintf("%v_%v_scheduling_job_panic", c.Name, ModuleName),
-				"doLoadDataPartitions occurred panic")
-		}
-	}()
-	vols := c.allVols()
-	for _, vol := range vols {
-		vol.loadDataPartition(c)
-	}
-}
-
-func (c *Cluster) scheduleToCheckReleaseDataPartitions() {
-	go func() {
-		for {
-			if c.partition != nil && c.partition.IsRaftLeader() {
-				c.releaseDataPartitionAfterLoad()
-			}
-			time.Sleep(time.Second * defaultIntervalToFreeDataPartition)
-		}
-	}()
-}
-
-// Release the memory used for loading the data partition.
-func (c *Cluster) releaseDataPartitionAfterLoad() {
-	defer func() {
-		if r := recover(); r != nil {
-			log.LogWarnf("releaseDataPartitionAfterLoad occurred panic,err[%v]", r)
-			WarnBySpecialKey(fmt.Sprintf("%v_%v_scheduling_job_panic", c.Name, ModuleName),
-				"releaseDataPartitionAfterLoad occurred panic")
-		}
-	}()
-	vols := c.copyVols()
-	for _, vol := range vols {
-		vol.releaseDataPartitions(c.cfg.numberOfDataPartitionsToFree, c.cfg.secondsToFreeDataPartitionAfterLoad)
-	}
-}
-
-func (c *Cluster) scheduleToCheckHeartbeat() {
-	go func() {
-		for {
-			if c.partition != nil && c.partition.IsRaftLeader() {
-				c.checkLeaderAddr()
-				c.checkDataNodeHeartbeat()
-			}
-			time.Sleep(time.Second * defaultIntervalToCheckHeartbeat)
-		}
-	}()
-
-	go func() {
-		for {
-			if c.partition != nil && c.partition.IsRaftLeader() {
-				c.checkMetaNodeHeartbeat()
-			}
-			time.Sleep(time.Second * defaultIntervalToCheckHeartbeat)
-		}
-	}()
-
-	go func() {
-		for {
-			if c.partition != nil && c.partition.IsRaftLeader() {
-				c.checkEcNodeHeartbeat()
-			}
-			time.Sleep(time.Second * defaultIntervalToCheckHeartbeat)
-		}
-	}()
-
-	go func() {
-		for {
-			if c.partition != nil && c.partition.IsRaftLeader() {
-				c.checkCodecNodeHeartbeat()
-			}
-			time.Sleep(time.Second * defaultIntervalToCheckHeartbeat)
-		}
-	}()
-
-	go func() {
-		for {
-			if c.partition != nil && c.partition.IsRaftLeader() {
-				c.checkFlashNodeHeartbeat()
-			}
-			time.Sleep(time.Second * defaultIntervalToCheckHeartbeat)
-		}
-	}()
-}
-
-func (c *Cluster) checkLeaderAddr() {
-	leaderID, _ := c.partition.LeaderTerm()
-	c.leaderInfo.addr = AddrDatabase[leaderID]
-}
-
-func (c *Cluster) checkDataNodeHeartbeat() {
-	tasks := make([]*proto.AdminTask, 0)
-	c.dataNodes.Range(func(addr, dataNode interface{}) bool {
-		node := dataNode.(*DataNode)
-		node.checkLiveness()
-		task := node.createHeartbeatTask(c.masterAddr())
-		tasks = append(tasks, task)
-		return true
-	})
-	c.addDataNodeTasks(tasks)
-}
-
-func (c *Cluster) checkMetaNodeHeartbeat() {
-	tasks := make([]*proto.AdminTask, 0)
-	c.metaNodes.Range(func(addr, metaNode interface{}) bool {
-		node := metaNode.(*MetaNode)
-		node.checkHeartbeat()
-		task := node.createHeartbeatTask(c.masterAddr())
-		tasks = append(tasks, task)
-		return true
-	})
-	c.addMetaNodeTasks(tasks)
-}
-
-func (c *Cluster) scheduleToCheckMetaPartitions() {
-	go func() {
-		for {
-			if c.partition != nil && c.partition.IsRaftLeader() {
-				c.checkMetaPartitions()
-			}
-			time.Sleep(time.Second * time.Duration(c.cfg.IntervalToCheckDataPartition))
-		}
-	}()
-}
-
-func (c *Cluster) checkMetaPartitions() {
-	defer func() {
-		if r := recover(); r != nil {
-			log.LogWarnf("checkMetaPartitions occurred panic,err[%v]", r)
-			WarnBySpecialKey(fmt.Sprintf("%v_%v_scheduling_job_panic", c.Name, ModuleName),
-				"checkMetaPartitions occurred panic")
-		}
-	}()
-	vols := c.allVols()
-	for _, vol := range vols {
-		if !c.isLeader.Load() {
-			break
-		}
-		writableMpCount := vol.checkMetaPartitions(c)
-		vol.setWritableMpCount(int64(writableMpCount))
-	}
-}
-
-func (c *Cluster) scheduleToReduceReplicaNum() {
-	go func() {
-		for {
-			if c.partition != nil && c.partition.IsRaftLeader() {
-				c.checkVolReduceReplicaNum()
-			}
-			time.Sleep(5 * time.Minute)
-		}
-	}()
-}
-
-func (c *Cluster) checkVolReduceReplicaNum() {
-	defer func() {
-		if r := recover(); r != nil {
-			log.LogWarnf("checkVolReduceReplicaNum occurred panic,err[%v]", r)
-			WarnBySpecialKey(fmt.Sprintf("%v_%v_scheduling_job_panic", c.Name, ModuleName),
-				"checkVolReduceReplicaNum occurred panic")
-		}
-	}()
-	vols := c.allVols()
-	for _, vol := range vols {
-		vol.checkReplicaNum(c)
-	}
-}
 func (c *Cluster) repairDataPartition(wg sync.WaitGroup) {
 	for i := 0; i < cap(c.dpRepairChan); i++ {
 		select {
@@ -2305,7 +2052,7 @@ func (c *Cluster) buildAddDataPartitionRaftMemberTaskAndSyncSendTask(dp *DataPar
 		if err != nil {
 			log.LogErrorf("vol[%v],data partition[%v],resultCode[%v],err[%v]", dp.VolName, dp.PartitionID, resultCode, err)
 		} else {
-			log.LogWarnf("vol[%v],data partition[%v],resultCode[%v],err[%v]", dp.VolName, dp.PartitionID, resultCode, err)
+			log.LogDebugf("vol[%v],data partition[%v],resultCode[%v],err[%v]", dp.VolName, dp.PartitionID, resultCode, err)
 		}
 	}()
 	task, err := dp.createTaskToAddRaftMember(addPeer, leaderAddr)
@@ -3421,7 +3168,7 @@ func (c *Cluster) updateInodeIDRange(volName string, start uint64) (err error) {
 		vol            *Vol
 		partition      *MetaPartition
 	)
-
+	ctx := c.buildCreateMetaPartitionContext()
 	if vol, err = c.getVol(volName); err != nil {
 		log.LogErrorf("action[updateInodeIDRange]  vol [%v] not found", volName)
 		return proto.ErrVolNotExists
@@ -3440,8 +3187,8 @@ func (c *Cluster) updateInodeIDRange(volName string, start uint64) (err error) {
 	}
 	adjustStart = adjustStart + proto.DefaultMetaPartitionInodeIDStep
 	log.LogWarnf("vol[%v],maxMp[%v],start[%v],adjustStart[%v]", volName, maxPartitionID, start, adjustStart)
-	if err = vol.splitMetaPartition(c, partition, adjustStart); err != nil {
-		log.LogErrorf("action[updateInodeIDRange]  mp[%v] err[%v]", partition.PartitionID, err)
+	if err = vol.splitMetaPartition(c, partition, adjustStart, ctx); err != nil {
+		log.LogErrorf("action[updateInodeIDRange] splits  mp[%v] err[%v]", partition.PartitionID, err)
 	}
 	return
 }
@@ -5009,34 +4756,6 @@ func (c *Cluster) syncDataPartitionReplicasToDataNode(dp *DataPartition) {
 	wg.Wait()
 }
 
-func (c *Cluster) scheduleToMergeZoneNodeset() {
-	go func() {
-		for {
-			if c.partition != nil && c.partition.IsRaftLeader() {
-				if c.AutoMergeNodeSet {
-					c.checkMergeZoneNodeset()
-				}
-			}
-			time.Sleep(24 * time.Hour)
-		}
-	}()
-}
-
-func (c *Cluster) checkMergeZoneNodeset() {
-	defer func() {
-		if r := recover(); r != nil {
-			log.LogWarnf("checkMergeZoneNodeset occurred panic,err[%v]", r)
-			WarnBySpecialKey(fmt.Sprintf("%v_%v_scheduling_job_panic", c.Name, ModuleName),
-				"checkMergeZoneNodeset occurred panic")
-		}
-	}()
-	zones := c.t.getAllZones()
-	for _, zone := range zones {
-		zone.mergeNodeSetForMetaNode(c)
-		zone.mergeNodeSetForDataNode(c)
-	}
-}
-
 func (c *Cluster) updateDataNodeBadDisks(allBadDisks []map[string][]string) {
 	//map[string][]string, key: addr,value: diskPaths
 	datanodeBadDisks := new(sync.Map)
@@ -5914,7 +5633,7 @@ func (c *Cluster) setClusterName(clusterName string) (err error) {
 		return
 	}
 
-	if clusterName != "" &&  clusterName != c.Name {
+	if clusterName != "" && clusterName != c.Name {
 		err = fmt.Errorf("cluster name expect[%s], but now[%s]", c.Name, clusterName)
 		log.LogErrorf(err.Error())
 		return
@@ -5992,27 +5711,36 @@ func checkForceRowAndCompact(vol *Vol, forceRowChange, compactTagChange bool) (e
 	return
 }
 
-func (c *Cluster) scheduleToUpdateClusterViewResponseCache() {
-	go func() {
-		for {
-			if c.partition != nil && c.partition.IsRaftLeader() {
-				c.updateClusterViewResponseCache()
-			}
-			time.Sleep(time.Second * time.Duration(c.cfg.IntervalToCheckDataPartition))
-		}
-	}()
+func (c *Cluster) getClusterViewRespCacheWithUpdate(encodeType string) (responseCache []byte) {
+	responseCache = c.getClusterViewRespCache(encodeType)
+	if len(responseCache) != 0 {
+		return responseCache
+	}
+	c.updateClusterViewResponseCache()
+	responseCache = c.getClusterViewRespCache(encodeType)
+	return
 }
 
-func (c *Cluster) getClusterViewResponseCache(encodeType string) (responseCache []byte) {
-	if len(c.responseCachePb) == 0 || len(c.responseCache) == 0 {
-		c.updateClusterViewResponseCache()
-	}
-
+func (c *Cluster) getClusterViewRespCache(encodeType string) (responseCache []byte) {
+	c.respCacheMutex.RLock()
+	defer c.respCacheMutex.RUnlock()
 	if encodeType == proto.ProtobufType {
 		return c.responseCachePb
 	} else {
 		return c.responseCache
 	}
+}
+
+func (c *Cluster) setClusterViewJsonRespCache(data []byte) {
+	c.respCacheMutex.Lock()
+	c.responseCache = data
+	c.respCacheMutex.Unlock()
+}
+
+func (c *Cluster) setClusterViewPbRespCache(data []byte) {
+	c.respCacheMutex.Lock()
+	c.responseCachePb = data
+	c.respCacheMutex.Unlock()
 }
 
 func (c *Cluster) updateClusterViewResponseCache() {
@@ -6026,8 +5754,7 @@ func (c *Cluster) updateClusterViewResponseCache() {
 		WarnBySpecialKey(gAlarmKeyMap[alarmKeyUpdateViewCache], msg)
 		return
 	}
-	c.responseCache = responseCache
-
+	c.setClusterViewJsonRespCache(responseCache)
 	cvPb := proto.ConvertClusterView(cv)
 	data, err := pb.Marshal(cvPb)
 	if err != nil {
@@ -6044,8 +5771,7 @@ func (c *Cluster) updateClusterViewResponseCache() {
 		WarnBySpecialKey(gAlarmKeyMap[alarmKeyUpdateViewCache], msg)
 		return
 	}
-	c.responseCachePb = responseCachePb
-
+	c.setClusterViewPbRespCache(responseCachePb)
 	return
 }
 
@@ -6105,6 +5831,8 @@ func (c *Cluster) getClusterView() (cv *proto.ClusterView) {
 		DisableStrictVolZone:                c.cfg.DisableStrictVolZone,
 		DeleteMarkDelVolInterval:            c.cfg.DeleteMarkDelVolInterval,
 		AutoUpdatePartitionReplicaNum:       c.cfg.AutoUpdatePartitionReplicaNum,
+		BandwidthLimit:                      c.cfg.BandwidthRateLimit,
+		NodesLiveRatioThreshold:             c.cfg.NodesLiveRatio,
 	}
 
 	vols := c.allVolNames()
@@ -6339,25 +6067,6 @@ func (c *Cluster) renameVolToNewVolName(oldVolName, authKey, newVolName, newVolO
 	return
 }
 
-func (c *Cluster) scheduleToConvertRenamedOldVol() {
-	go func() {
-		// check volumes after switching leader two minutes
-		time.Sleep(2 * time.Minute)
-		for {
-			if c.partition != nil && c.partition.IsRaftLeader() {
-				vols := c.copyVols()
-				for _, vol := range vols {
-					if !c.isLeader.Load() {
-						break
-					}
-					vol.doConvertRenamedOldVol(c)
-				}
-			}
-			time.Sleep(2 * time.Minute)
-		}
-	}()
-}
-
 func (vol *Vol) doConvertRenamedOldVol(c *Cluster) {
 	switch vol.RenameConvertStatus {
 	case proto.VolRenameConvertStatusOldVolNeedDel:
@@ -6521,7 +6230,7 @@ func (c *Cluster) convertRenamedOldVolMpMetadataByRaft(oldVol, renamedVol *Vol, 
 	mpIDs := make([]uint64, 0)
 	for _, mp := range affectedMps {
 		oldVol.delMetaPartition(mp)
-		renamedVol.addMetaPartition(mp)
+		renamedVol.addMetaPartition(mp, c.Name)
 		mpIDs = append(mpIDs, mp.PartitionID)
 	}
 	log.LogInfo(fmt.Sprintf("action[convertRenamedOldVolMpMetadataByRaft] mpCount:%v mpIds:%v", len(mpIDs), mpIDs))

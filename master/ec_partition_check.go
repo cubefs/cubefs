@@ -14,36 +14,6 @@ var (
 	randNodes  = rand.New(rand.NewSource(time.Now().Unix()))
 )
 
-func (c *Cluster) scheduleToCheckEcDataPartitions() {
-	go func() {
-		for {
-			if c.partition != nil && c.partition.IsRaftLeader() {
-				c.checkEcDataPartitions()
-			}
-			time.Sleep(time.Second * time.Duration(c.cfg.IntervalToCheckDataPartition))
-		}
-	}()
-}
-
-// Check the replica status of each ec partition.
-func (c *Cluster) checkEcDataPartitions() {
-	defer func() {
-		if r := recover(); r != nil {
-			log.LogWarnf("checkEcDataPartitions occurred panic,err[%v]", r)
-			WarnBySpecialKey(fmt.Sprintf("%v_%v_scheduling_job_panic", c.Name, ModuleName),
-				"checkEcDataPartitions occurred panic")
-		}
-	}()
-
-	vols := c.allVols()
-	for _, vol := range vols {
-		canReadWriteEpCnt := vol.checkEcDataPartitions(c)
-		vol.ecDataPartitions.updateResponseCache(true, 0)
-		msg := fmt.Sprintf("action[checkEcDataPartitions],vol[%v] can readWrite ec partitions:%v  ", vol.Name, canReadWriteEpCnt)
-		log.LogDebugf(msg)
-	}
-}
-
 func (ecdp *EcDataPartition) hasEcHost(addr string) (ok bool) {
 	for _, host := range ecdp.Hosts {
 		if host == addr {

@@ -163,6 +163,7 @@ type MetaPartitionInfo struct {
 	RcokStoreCnt      uint8
 	AllocatorInuseCnt uint64
 	CreateTime        int64
+	PrePartitionID    uint64
 }
 
 // InodeInfo define the information of inode
@@ -267,6 +268,8 @@ type ClusterView struct {
 	ClientReqRecordsReservedCount       int32
 	ClientReqRecordsReservedMin         int32
 	ClientReqRemoveDupFlag              bool
+	BandwidthLimit                      uint64
+	NodesLiveRatioThreshold             float32
 }
 
 type ClusterStatInfo struct {

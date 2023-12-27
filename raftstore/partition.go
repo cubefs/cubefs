@@ -108,6 +108,9 @@ type Partition interface {
 	SetConsistencyMode(mode cfsproto.ConsistencyMode)
 
 	GetConsistencyMode() cfsproto.ConsistencyMode
+
+	IsAllEmptyMsg(end uint64) (bool, error)
+	GetLastIndex() (li uint64, err error)
 }
 
 // Default implementation of the Partition interface.
@@ -460,6 +463,14 @@ func (p *partition) GetConsistencyMode() cfsproto.ConsistencyMode {
 		}
 	}
 	return cfsproto.StandardMode
+}
+
+func (p *partition) IsAllEmptyMsg(end uint64) (bool, error) {
+	return p.raft.IsAllEmptyMsg(p.id, end)
+}
+
+func (p *partition) GetLastIndex() (li uint64, err error) {
+	return p.raft.GetLastIndex(p.id)
 }
 
 func newPartition(cfg *PartitionConfig, raft *raft.RaftServer, walPath string) Partition {

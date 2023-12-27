@@ -335,9 +335,9 @@ func (mds *MockDataServer) handleLoadDataPartition(conn net.Conn, pkg *proto.Pac
 			break
 		}
 	}
-	if partition == nil {
-		return
-	}
+	//if partition == nil {
+	//	return
+	//}
 	//response.VolName = partition.VolName
 	task.Response = response
 	if err = mds.mc.NodeAPI().ResponseDataNodeTask(task); err != nil {

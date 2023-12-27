@@ -157,6 +157,8 @@ const (
 	fgSlotsKey                          = "slots"
 	volReadConnTimeoutKey               = "readConnTimeout"
 	volWriteConnTimeoutKey              = "writeConnTimeout"
+	paraBandWidth                       = "bw"
+	apiReqBwRateLimitKey                = "apiReqBwRate"
 )
 
 const (
@@ -237,7 +239,7 @@ const (
 	maxMetaPartitionsRecoverPoolSize                       = 30
 	defaultMinusOfNodeSetCount                             = 3
 	defaultLearnerPromThreshold                            = 90
-	minRateLimit                                           = 100
+	minRateLimit                                           = 1
 	minPartRateLimit                                       = 1
 	minReadDirLimitNum                                     = 500000
 	minNormalExtentDeleteExpire                            = 10 * 60
@@ -284,6 +286,8 @@ const (
 	volLowCapMaxCapacityRatioForReservedTrashSpace         = 2
 	defaultFlashNodeOnlineState                            = true
 	maxRetryTimes                                          = 2
+	maxBw                                                  = 1800 * 1024 * 1024
+	minBw                                                  = 500 * 1024 * 1024
 )
 
 const (
@@ -334,6 +338,8 @@ const (
 	opSyncAddVolUser           uint32 = 0x1C
 	opSyncDeleteVolUser        uint32 = 0x1D
 	opSyncUpdateVolUser        uint32 = 0x1E
+
+	opSyncPreMpID uint32 = 0x50
 
 	OpSyncAddToken     uint32 = 0x20
 	OpSyncDelToken     uint32 = 0x21
@@ -390,6 +396,7 @@ const (
 	regionPrefix               = keySeparator + regionAcronym + keySeparator
 	idcPrefix                  = keySeparator + idcAcronym + keySeparator
 	metaPartitionPrefix        = keySeparator + metaPartitionAcronym + keySeparator
+	preMpIDPrefix              = keySeparator + "pre_mp_id" + keySeparator
 	clusterPrefix              = keySeparator + clusterAcronym + keySeparator
 	nodeSetPrefix              = keySeparator + nodeSetAcronym + keySeparator
 	frozenDPPrefix             = keySeparator + frozenDataPartitionAcronym + keySeparator
@@ -417,4 +424,12 @@ const (
 
 const (
 	rateLimitDefaultVal = "_"
+)
+
+const (
+	APICodeGetCluster        uint8 = 0x01
+	APICodeGetVol            uint8 = 0x02
+	APICodeGetMetaPartitions uint8 = 0x03
+	APICodeListVols          uint8 = 0x04
+	APICodeGetDataPartitions uint8 = 0x05
 )

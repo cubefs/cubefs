@@ -86,17 +86,6 @@ func (codecNode *CodecNode) clean() {
 	codecNode.TaskManager.exitCh <- struct{}{}
 }
 
-func (c *Cluster) checkCodecNodeHeartbeat() {
-	tasks := make([]*proto.AdminTask, 0)
-	c.codecNodes.Range(func(addr, codecNode interface{}) bool {
-		node := codecNode.(*CodecNode)
-		task := createHeartbeatTask(c.masterAddr(), node.Addr, proto.OpCodecNodeHeartbeat)
-		tasks = append(tasks, task)
-		return true
-	})
-	c.addCodecNodeTasks(tasks)
-}
-
 func (m *Server) getAllCodecNodes(w http.ResponseWriter, r *http.Request) {
 	//todo add cache
 	metrics := exporter.NewModuleTP(proto.GetAllCodecNodesUmpKey)

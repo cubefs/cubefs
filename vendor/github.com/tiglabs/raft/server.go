@@ -472,6 +472,29 @@ func (rs *RaftServer) SetConsistencyMode(id uint64, mode ConsistencyMode) (err e
 	return
 }
 
+func (rs *RaftServer) IsAllEmptyMsg(id, end uint64) (bool, error) {
+	rs.mu.RLock()
+	r, ok := rs.rafts[id]
+	rs.mu.RUnlock()
+
+	if !ok {
+		return false, ErrRaftNotExists
+	}
+	return r.raftFsm.isAllEmptyMsg(end), nil
+}
+
+func (rs *RaftServer) GetLastIndex(id uint64) (li uint64,err error) {
+	rs.mu.RLock()
+	r, ok := rs.rafts[id]
+	rs.mu.RUnlock()
+
+	if !ok {
+		err = ErrRaftNotExists
+		return
+	}
+	return r.raftFsm.raftLog.lastIndex(),nil
+}
+
 func (rs *RaftServer) sendHeartbeat() {
 	// key: sendto nodeId; value: range ids
 	nodes := make(map[uint64]proto.HeartbeatContext)

@@ -11,8 +11,8 @@ import (
 )
 
 func TestDataPartition(t *testing.T) {
-	server.cluster.checkDataNodeHeartbeat()
-	server.cluster.checkMetaNodeHeartbeat()
+	server.cluster.doCheckDataNodeHeartbeat()
+	server.cluster.doCheckMetaNodeHeartbeat()
 	time.Sleep(5 * time.Second)
 	server.cluster.checkDataPartitions()
 	count := 20

@@ -373,6 +373,22 @@ func (r *raftFsm) recoverCommit() error {
 	return nil
 }
 
+func (r *raftFsm) isAllEmptyMsg(end uint64) (ok bool) {
+	ok = true
+	committedEntries := r.raftLog.nextEnts(64 * MB)
+	for _, entry := range committedEntries {
+		if entry.Index > end {
+			break
+		}
+		if !(entry.Data == nil || len(entry.Data) == 0) {
+			ok = false
+			break
+		}
+	}
+	return ok
+}
+
+
 func (r *raftFsm) applyConfChange(cc *proto.ConfChange) {
 	if cc.Peer.ID == NoLeader {
 		r.pendingConf = false

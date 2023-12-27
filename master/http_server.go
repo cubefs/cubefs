@@ -18,12 +18,14 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/cubefs/cubefs/util/buf"
+	"github.com/cubefs/cubefs/util/unit"
 	"net"
 	"net/http"
 	"net/http/httputil"
+	"runtime"
 	"strconv"
-
-	"github.com/cubefs/cubefs/util/buf"
+	"sync/atomic"
 
 	"github.com/samsarahq/thunder/graphql"
 	"github.com/samsarahq/thunder/graphql/introspection"
@@ -58,6 +60,14 @@ func (m *Server) registerAPIMiddleware(route *mux.Router) {
 	var interceptor mux.MiddlewareFunc = func(next http.Handler) http.Handler {
 		return http.HandlerFunc(
 			func(w http.ResponseWriter, r *http.Request) {
+				defer func() {
+					if err := recover(); err != nil && err != http.ErrAbortHandler {
+						size := 16 * unit.KB
+						buf := make([]byte, size)
+						buf = buf[:runtime.Stack(buf, false)]
+						log.LogErrorf("process http request[%v] occurred panic,err[%v],stack[%v]", r.URL.Path, err, string(buf))
+					}
+				}()
 				log.LogDebugf("action[interceptor] request, method[%v] path[%v] query[%v] remoteAddr[%v]",
 					r.Method, r.URL.Path, r.URL.Query(), r.RemoteAddr)
 				if mux.CurrentRoute(r).GetName() == proto.AdminGetIP {
@@ -65,8 +75,8 @@ func (m *Server) registerAPIMiddleware(route *mux.Router) {
 					return
 				}
 				if m.partition.IsRaftLeader() {
-					r.Header.Add(leaderVersion, strconv.FormatUint(m.leaderVersion.Load(), 10))
-					if m.metaReady.Load() {
+					r.Header.Add(leaderVersion, strconv.FormatUint(m.cluster.getLeaderVersion(), 10))
+					if m.cluster.isMetaReady() {
 						next.ServeHTTP(w, r)
 						return
 					}
@@ -153,7 +163,15 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.AdminSetClusterName).
 		HandlerFunc(m.setClusterName)
-
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminBandwidthLimiterSet).
+		HandlerFunc(m.setBandwidthLimiter)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminGetAPIReqBwRateLimitInfo).
+		HandlerFunc(m.getAPIReqLimitInfo)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminAPISetNodesLiveRatio).
+		HandlerFunc(m.setNodesLiveRatioThreshold)
 	// volume management APIs
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.AdminCreateVol).
@@ -657,13 +675,18 @@ func ErrResponse(w http.ResponseWriter, err error) {
 }
 
 func (m *Server) newReverseProxy() *httputil.ReverseProxy {
-	return &httputil.ReverseProxy{
+	transport := http.DefaultTransport.(*http.Transport)
+	transport.MaxConnsPerHost = int(atomic.LoadInt64(&m.config.MaxConnsPerHost))
+	log.LogWarnf("action[newReverseProxy] MaxConnsPerHost:%v", m.config.MaxConnsPerHost)
+	rp := &httputil.ReverseProxy{
+		Transport: transport,
 		Director: func(request *http.Request) {
 			request.URL.Scheme = "http"
 			request.URL.Host = m.leaderInfo.addr
 		},
 		BufferPool: buf.NewBytePool(10000, 32*1024),
 	}
+	return rp
 }
 
 func (m *Server) proxy(w http.ResponseWriter, r *http.Request) {

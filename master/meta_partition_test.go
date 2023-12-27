@@ -9,10 +9,10 @@ import (
 )
 
 func TestMetaPartition(t *testing.T) {
-	server.cluster.checkDataNodeHeartbeat()
-	server.cluster.checkMetaNodeHeartbeat()
+	server.cluster.doCheckDataNodeHeartbeat()
+	server.cluster.doCheckMetaNodeHeartbeat()
 	time.Sleep(5 * time.Second)
-	server.cluster.checkMetaPartitions()
+	server.cluster.doCheckMetaPartitions()
 	commonVol, err := server.cluster.getVol(commonVolName)
 	if !assert.NoError(t, err) {
 		return
@@ -22,7 +22,7 @@ func TestMetaPartition(t *testing.T) {
 	getMetaPartition(commonVol.Name, maxPartitionID, t)
 	getMetaPartition("", maxPartitionID, t) //empty vol name
 	loadMetaPartitionTest(commonVol, maxPartitionID, t)
-	server.cluster.checkMetaNodeHeartbeat()
+	server.cluster.doCheckMetaNodeHeartbeat()
 	time.Sleep(5 * time.Second)
 	decommissionMetaPartition(commonVol, maxPartitionID, t)
 	decommissionMetaPartitionWithoutReplica(commonVol, maxPartitionID, t)
@@ -74,7 +74,7 @@ func loadMetaPartitionTest(vol *Vol, id uint64, t *testing.T) {
 }
 
 func decommissionMetaPartition(vol *Vol, id uint64, t *testing.T) {
-	server.cluster.checkMetaNodeHeartbeat()
+	server.cluster.doCheckMetaNodeHeartbeat()
 	time.Sleep(5 * time.Second)
 	reqURL := fmt.Sprintf("%v%v", hostAddr, proto.AdminGetCluster)
 	process(reqURL, t)
@@ -100,7 +100,7 @@ func decommissionMetaPartition(vol *Vol, id uint64, t *testing.T) {
 }
 
 func decommissionMetaPartitionWithoutReplica(vol *Vol, id uint64, t *testing.T) {
-	server.cluster.checkMetaNodeHeartbeat()
+	server.cluster.doCheckMetaNodeHeartbeat()
 	time.Sleep(5 * time.Second)
 	reqURL := fmt.Sprintf("%v%v", hostAddr, proto.AdminGetCluster)
 	process(reqURL, t)
@@ -142,7 +142,7 @@ func decommissionMetaPartitionWithoutReplica(vol *Vol, id uint64, t *testing.T) 
 func decommissionMetaPartitionToDestAddr(vol *Vol, id uint64, t *testing.T) {
 	msAddr := mms10Addr
 	addMetaServer(msAddr, testZone2)
-	server.cluster.checkMetaNodeHeartbeat()
+	server.cluster.doCheckMetaNodeHeartbeat()
 	time.Sleep(5 * time.Second)
 	vol, err := server.cluster.getVol(vol.Name)
 	if !assert.NoError(t, err) {

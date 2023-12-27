@@ -15,6 +15,7 @@
 package master
 
 import (
+	"context"
 	"crypto/md5"
 	"encoding/hex"
 	"encoding/json"
@@ -279,139 +280,28 @@ func (m *Server) clusterStat(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *Server) getCluster(w http.ResponseWriter, r *http.Request) {
+	var (
+		ctx    context.Context
+		cancel context.CancelFunc
+	)
+	enableLimiter := m.cluster.cfg.APIReqBwRateLimitMap[APICodeGetCluster]
+	if enableLimiter > 0 {
+		ctx, cancel = context.WithDeadline(context.Background(), time.Now().Add(time.Second))
+		defer cancel()
+	}
 	metrics := exporter.NewModuleTP(proto.AdminGetClusterUmpKey)
 	defer func() { metrics.Set(nil) }()
 
 	encodeType := getEncodeType(r)
-	responseCache := m.cluster.getClusterViewResponseCache(encodeType)
-	if len(responseCache) != 0 {
-		send(w, r, responseCache, encodeType)
-		return
-	}
-	cv := &proto.ClusterView{
-		Name:                                m.cluster.Name,
-		LeaderAddr:                          m.leaderInfo.addr,
-		DisableAutoAlloc:                    m.cluster.DisableAutoAllocate,
-		AutoMergeNodeSet:                    m.cluster.AutoMergeNodeSet,
-		NodeSetCapacity:                     m.cluster.cfg.nodeSetCapacity,
-		MetaNodeThreshold:                   m.cluster.cfg.MetaNodeThreshold,
-		DpRecoverPool:                       m.cluster.cfg.DataPartitionsRecoverPoolSize,
-		MpRecoverPool:                       m.cluster.cfg.MetaPartitionsRecoverPoolSize,
-		ClientPkgAddr:                       m.cluster.cfg.ClientPkgAddr,
-		UmpJmtpAddr:                         m.cluster.cfg.UmpJmtpAddr,
-		UmpJmtpBatch:                        m.cluster.cfg.UmpJmtpBatch,
-		Applied:                             m.fsm.applied,
-		MaxDataPartitionID:                  m.cluster.idAlloc.dataPartitionID,
-		MaxMetaNodeID:                       m.cluster.idAlloc.commonID,
-		MaxMetaPartitionID:                  m.cluster.idAlloc.metaPartitionID,
-		MetaNodeRocksdbDiskThreshold:        m.cluster.cfg.MetaNodeRocksdbDiskThreshold,
-		MetaNodeMemModeRocksdbDiskThreshold: m.cluster.cfg.MetaNodeMemModeRocksdbDiskThreshold,
-		MetaNodes:                           make([]proto.NodeView, 0),
-		DataNodes:                           make([]proto.NodeView, 0),
-		CodEcnodes:                          make([]proto.NodeView, 0),
-		EcNodes:                             make([]proto.NodeView, 0),
-		FlashNodes:                          make([]proto.NodeView, 0),
-		BadPartitionIDs:                     make([]proto.BadPartitionView, 0),
-		BadMetaPartitionIDs:                 make([]proto.BadPartitionView, 0),
-		BadEcPartitionIDs:                   make([]proto.BadPartitionView, 0),
-		MigratedDataPartitions:              make([]proto.BadPartitionView, 0),
-		MigratedMetaPartitions:              make([]proto.BadPartitionView, 0),
-		DataNodeBadDisks:                    make([]proto.DataNodeBadDisksView, 0),
-		EcScrubEnable:                       m.cluster.EcScrubEnable,
-		EcMaxScrubExtents:                   m.cluster.EcMaxScrubExtents,
-		EcScrubPeriod:                       m.cluster.EcScrubPeriod,
-		EcScrubStartTime:                    m.cluster.EcStartScrubTime,
-		MaxCodecConcurrent:                  m.cluster.MaxCodecConcurrent,
-		RocksDBDiskReservedSpace:            m.cluster.cfg.RocksDBDiskReservedSpace,
-		LogMaxMB:                            m.cluster.cfg.LogMaxSize,
-		MetaRockDBWalFileSize:               m.cluster.cfg.MetaRockDBWalFileSize,
-		MetaRocksWalMemSize:                 m.cluster.cfg.MetaRocksWalMemSize,
-		MetaRocksLogSize:                    m.cluster.cfg.MetaRocksLogSize,
-		MetaRocksLogReservedTime:            m.cluster.cfg.MetaRocksLogReservedTime,
-		MetaRocksLogReservedCnt:             m.cluster.cfg.MetaRocksLogReservedCnt,
-		MetaRocksFlushWalInterval:           m.cluster.cfg.MetaRocksFlushWalInterval,
-		MetaRocksDisableFlushFlag:           m.cluster.cfg.MetaRocksDisableFlushFlag,
-		MetaRocksWalTTL:                     m.cluster.cfg.MetaRocksWalTTL,
-		MetaDelEKRecordFileMaxMB:            m.cluster.cfg.DeleteEKRecordFilesMaxSize,
-		MetaTrashCleanInterval:              m.cluster.cfg.MetaTrashCleanInterval,
-		MetaRaftLogSize:                     m.cluster.cfg.MetaRaftLogSize,
-		MetaRaftLogCap:                      m.cluster.cfg.MetaRaftLogCap,
-		BitMapAllocatorMaxUsedFactor:        m.cluster.cfg.BitMapAllocatorMaxUsedFactor,
-		BitMapAllocatorMinFreeFactor:        m.cluster.cfg.BitMapAllocatorMinFreeFactor,
-		ClientReqRecordsReservedCount:       m.cluster.cfg.ClientReqRecordsReservedCount,
-		ClientReqRecordsReservedMin:         m.cluster.cfg.ClientReqRecordsReservedMin,
-		ClientReqRemoveDupFlag:              m.cluster.cfg.ClientReqRemoveDup,
-	}
-
-	vols := m.cluster.allVolNames()
-	cv.VolCount = len(vols)
-	cv.MetaNodes = m.cluster.allMetaNodes()
-	cv.DataNodes = m.cluster.allDataNodes()
-	cv.DataNodeStatInfo = m.cluster.dataNodeStatInfo
-	cv.MetaNodeStatInfo = m.cluster.metaNodeStatInfo
-	cv.CodEcnodes = m.cluster.allCodecNodes()
-	cv.EcNodes = m.cluster.allEcNodes()
-	cv.FlashNodes = m.cluster.allFlashNodes()
-	cv.EcNodeStatInfo = m.cluster.ecNodeStatInfo
-	m.cluster.BadDataPartitionIds.Range(func(key, value interface{}) bool {
-		badDataPartitionId := value.(uint64)
-		path := key.(string)
-		cv.BadPartitionIDs = append(cv.BadPartitionIDs, proto.BadPartitionView{
-			Path:        path,
-			PartitionID: badDataPartitionId,
-		})
-		return true
-	})
-	m.cluster.BadMetaPartitionIds.Range(func(key, value interface{}) bool {
-		badPartitionId := value.(uint64)
-		path := key.(string)
-		cv.BadMetaPartitionIDs = append(cv.BadMetaPartitionIDs, proto.BadPartitionView{
-			Path:        path,
-			PartitionID: badPartitionId,
-		})
-		return true
-	})
-	m.cluster.BadEcPartitionIds.Range(func(key, value interface{}) bool {
-		badPartitionId := value.(uint64)
-		path := key.(string)
-		cv.BadEcPartitionIDs = append(cv.BadEcPartitionIDs, proto.BadPartitionView{
-			Path:        path,
-			PartitionID: badPartitionId,
-		})
-		return true
-	})
-	m.cluster.MigratedDataPartitionIds.Range(func(key, value interface{}) bool {
-		badPartitionId := value.(uint64)
-		path := key.(string)
-		cv.MigratedDataPartitions = append(cv.MigratedDataPartitions, proto.BadPartitionView{
-			Path:        path,
-			PartitionID: badPartitionId,
-		})
-		return true
-	})
-	m.cluster.MigratedMetaPartitionIds.Range(func(key, value interface{}) bool {
-		badPartitionId := value.(uint64)
-		path := key.(string)
-		cv.MigratedMetaPartitions = append(cv.MigratedMetaPartitions, proto.BadPartitionView{
-			Path:        path,
-			PartitionID: badPartitionId,
-		})
-		return true
-	})
-	cv.DataNodeBadDisks = m.cluster.getDataNodeBadDisks()
-
-	if encodeType == proto.ProtobufType {
-		cvPb := proto.ConvertClusterView(cv)
-		data, err := pb.Marshal(cvPb)
-		if err != nil {
-			log.LogErrorf("fail to marshal http reply[%v]. URL[%v],remoteAddr[%v] err:[%v]", cvPb, r.URL, r.RemoteAddr, err)
-			http.Error(w, "fail to marshal http reply", http.StatusBadRequest)
+	responseCache := m.cluster.getClusterViewRespCacheWithUpdate(encodeType)
+	if enableLimiter > 0 {
+		if err := m.bandwidthRateLimiter.WaitN(ctx, len(responseCache)); err != nil {
+			sendErrReply(w, r, newErrHTTPReply(err))
 			return
 		}
-		sendOkReplyPb(w, r, data)
-	} else {
-		sendOkReply(w, r, newSuccessHTTPReply(cv))
 	}
+	send(w, r, responseCache, encodeType)
+	return
 }
 
 func (m *Server) getIPAddr(w http.ResponseWriter, r *http.Request) {
@@ -1405,7 +1295,7 @@ func (m *Server) setupAutoMergeNodeSet(w http.ResponseWriter, r *http.Request) {
 	m.cluster.AutoMergeNodeSet = status
 	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("set setupAutoMergeNodeSet to %v successfully", status)))
 	if m.cluster.AutoMergeNodeSet {
-		m.cluster.checkMergeZoneNodeset()
+		m.cluster.doCheckMergeZoneNodeset()
 	}
 }
 
@@ -2173,7 +2063,7 @@ func (m *Server) getVolSimpleInfo(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if vol, err = m.cluster.getVol(name); err != nil {
-		m.sendErrReply(w, r, newErrHTTPReply(proto.ErrVolNotExists), currentLeaderVersion)
+		m.sendErrReplyWithLeaderVersion(w, r, newErrHTTPReply(proto.ErrVolNotExists), currentLeaderVersion)
 		return
 	}
 	volView = newSimpleView(vol)
@@ -2329,7 +2219,7 @@ func (m *Server) regNode(w http.ResponseWriter, r *http.Request) {
 		checkKey = hex.EncodeToString(md5.New().Sum([]byte(m.cluster.cfg.ClusterName)))
 	}
 
-	if authKey != ""  && m.cluster.cfg.ClusterName != "" {
+	if authKey != "" && m.cluster.cfg.ClusterName != "" {
 		if authKey != checkKey {
 			err = fmt.Errorf("invalid auth key, may be other cluster, expect[%s], but now[%s]", checkKey, authKey)
 			sendErrReply(w, r, newErrHTTPReply(err))
@@ -2349,7 +2239,7 @@ func (m *Server) regNode(w http.ResponseWriter, r *http.Request) {
 		id, err = m.cluster.addEcNode(nodeAddr, httpPort, zoneName, version)
 	case proto.RoleFlash:
 		id, err = m.cluster.addFlashNode(nodeAddr, zoneName, version)
-	default :
+	default:
 		err = fmt.Errorf("unknow node type[%s]", role)
 	}
 
@@ -2359,8 +2249,8 @@ func (m *Server) regNode(w http.ResponseWriter, r *http.Request) {
 	}
 
 	sendOkReply(w, r, newSuccessHTTPReply(&proto.RegNodeRsp{
-		Addr: nodeAddr,
-		Id: id,
+		Addr:    nodeAddr,
+		Id:      id,
 		Cluster: m.cluster.cfg.ClusterName,
 		AuthKey: checkKey}))
 	return
@@ -2783,6 +2673,13 @@ func (m *Server) setNodeInfoHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if err = m.cluster.setMetaNodeDeleteEKVolLimit(val.(uint64), volName); err != nil {
+			sendErrReply(w, r, newErrHTTPReply(err))
+			return
+		}
+	}
+	if val, ok := params[apiReqBwRateLimitKey]; ok {
+		v := val.(int64)
+		if err = m.cluster.setAPIReqBandwidthRateLimit(uint8(op), v); err != nil {
 			sendErrReply(w, r, newErrHTTPReply(err))
 			return
 		}
@@ -4977,7 +4874,7 @@ func parseAndExtractSetNodeInfoParams(r *http.Request) (params map[string]interf
 	intKeys := []string{metaNodeReqRateKey, metaNodeReqOpRateKey, dpRecoverPoolSizeKey, mpRecoverPoolSizeKey, clientVolOpRateKey, objectVolActionRateKey, proto.MetaRaftLogSizeKey,
 		proto.MetaRaftLogCapKey, proto.TrashCleanDurationKey, proto.TrashItemCleanMaxCountKey, proto.DeleteMarkDelVolIntervalKey, proto.DpTimeoutCntThreshold,
 		proto.ClientReqRecordReservedCntKey, proto.ClientReqRecordReservedMinKey, proto.RemoteReadConnTimeoutKey, proto.ReadConnTimeoutMsKey, proto.WriteConnTimeoutMsKey, proto.MetaNodeDumpSnapCountKey,
-		proto.TopologyFetchIntervalMinKey, proto.TopologyForceFetchIntervalSecKey}
+		proto.TopologyFetchIntervalMinKey, proto.TopologyForceFetchIntervalSecKey, apiReqBwRateLimitKey}
 	for _, key := range intKeys {
 		if err = parseIntKey(params, key, r); err != nil {
 			return
@@ -5141,6 +5038,22 @@ func sendOkReplyPb(w http.ResponseWriter, r *http.Request, data []byte) (err err
 	return
 }
 
+func (m *Server) sendWithLeaderVersion(w http.ResponseWriter, r *http.Request, reply []byte, contentType string) {
+	if !m.cluster.isMetaReady() {
+		log.LogWarnf("action[sendErrReplyWithLeaderVersion] leader meta is not ready")
+		http.Error(w, m.leaderInfo.addr, http.StatusInternalServerError)
+		return
+	}
+	oldLeaderVersion := m.getCurrentLeaderVersion(r)
+	if m.cluster.getLeaderVersion() != oldLeaderVersion {
+		log.LogWarnf("action[sendErrReplyWithLeaderVersion] leader has changed")
+		http.Error(w, m.leaderInfo.addr, http.StatusInternalServerError)
+		return
+	}
+	send(w, r, reply, contentType)
+	return
+}
+
 func send(w http.ResponseWriter, r *http.Request, reply []byte, contentType string) {
 	w.Header().Set("content-type", contentType)
 	w.Header().Set("Content-Length", strconv.Itoa(len(reply)))
@@ -5153,7 +5066,7 @@ func send(w http.ResponseWriter, r *http.Request, reply []byte, contentType stri
 }
 
 func sendErrReply(w http.ResponseWriter, r *http.Request, httpReply *proto.HTTPReply) {
-	log.LogInfof("URL[%v],remoteAddr[%v],response err[%v]", r.URL, r.RemoteAddr, httpReply)
+	log.LogErrorf("URL[%v],remoteAddr[%v],response err[%v]", r.URL, r.RemoteAddr, httpReply)
 	reply, err := json.Marshal(httpReply)
 	if err != nil {
 		log.LogErrorf("fail to marshal http reply[%v]. URL[%v],remoteAddr[%v] err:[%v]", httpReply, r.URL, r.RemoteAddr, err)
@@ -5178,10 +5091,17 @@ func getEncodeType(r *http.Request) string {
 
 func (m *Server) getMetaPartitions(w http.ResponseWriter, r *http.Request) {
 	var (
-		name string
-		vol  *Vol
-		err  error
+		name   string
+		vol    *Vol
+		err    error
+		ctx    context.Context
+		cancel context.CancelFunc
 	)
+	enableLimiter := m.cluster.cfg.APIReqBwRateLimitMap[APICodeGetMetaPartitions]
+	if enableLimiter > 0 {
+		ctx, cancel = context.WithDeadline(context.Background(), time.Now().Add(time.Second))
+		defer cancel()
+	}
 	currentLeaderVersion := m.getCurrentLeaderVersion(r)
 	metrics := exporter.NewModuleTP(proto.ClientMetaPartitionsUmpKey)
 	defer func() { metrics.Set(err) }()
@@ -5190,7 +5110,7 @@ func (m *Server) getMetaPartitions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if vol, err = m.cluster.getVol(name); err != nil {
-		m.sendErrReply(w, r, newErrHTTPReply(proto.ErrVolNotExists), currentLeaderVersion)
+		m.sendErrReplyWithLeaderVersion(w, r, newErrHTTPReply(proto.ErrVolNotExists), currentLeaderVersion)
 		return
 	}
 
@@ -5199,44 +5119,57 @@ func (m *Server) getMetaPartitions(w http.ResponseWriter, r *http.Request) {
 	if len(mpsCache) == 0 {
 		mpsCache, _, err = vol.updateViewCache(m.cluster, encodeType)
 		if err != nil {
-			m.sendErrReply(w, r, newErrHTTPReply(err), currentLeaderVersion)
+			m.sendErrReplyWithLeaderVersion(w, r, newErrHTTPReply(err), currentLeaderVersion)
 			return
 		}
 	}
-	send(w, r, mpsCache, encodeType)
+	if enableLimiter > 0 {
+		if err = m.bandwidthRateLimiter.WaitN(ctx, len(mpsCache)); err != nil {
+			m.sendErrReplyWithLeaderVersion(w, r, newErrHTTPReply(proto.ErrNetworkOutLimitArrived), currentLeaderVersion)
+			return
+		}
+	}
+	m.sendWithLeaderVersion(w, r, mpsCache, encodeType)
 	return
 }
 
 // Obtain all the data partitions in a volume.
 func (m *Server) getDataPartitions(w http.ResponseWriter, r *http.Request) {
 	var (
-		body  []byte
-		name  string
-		vol   *Vol
-		err   error
-		dpIDs []uint64
+		body   []byte
+		name   string
+		vol    *Vol
+		err    error
+		dpIDs  []uint64
+		ctx    context.Context
+		cancel context.CancelFunc
 	)
+	enableLimiter := m.cluster.cfg.APIReqBwRateLimitMap[APICodeGetDataPartitions]
+	if enableLimiter > 0 {
+		ctx, cancel = context.WithDeadline(context.Background(), time.Now().Add(time.Second))
+		defer cancel()
+	}
 	currentLeaderVersion := m.getCurrentLeaderVersion(r)
 	metrics := exporter.NewModuleTP(proto.ClientDataPartitionsUmpKey)
 	defer func() { metrics.Set(err) }()
 	if name, err = parseAndExtractName(r); err != nil {
-		m.sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()}, currentLeaderVersion)
+		m.sendErrReplyWithLeaderVersion(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()}, currentLeaderVersion)
 		return
 	}
 	if vol, err = m.cluster.getVol(name); err != nil {
-		m.sendErrReply(w, r, newErrHTTPReply(proto.ErrVolNotExists), currentLeaderVersion)
+		m.sendErrReplyWithLeaderVersion(w, r, newErrHTTPReply(proto.ErrVolNotExists), currentLeaderVersion)
 		return
 	}
 
 	encodeType := getEncodeType(r)
 	dpIDs, err = extractIDs(r)
 	if err != nil {
-		m.sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()}, currentLeaderVersion)
+		m.sendErrReplyWithLeaderVersion(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()}, currentLeaderVersion)
 		return
 	}
 	if len(dpIDs) != 0 {
 		if body, err = vol.getDataPartitionsViewByIDs(encodeType, dpIDs); err != nil {
-			m.sendErrReply(w, r, newErrHTTPReply(err), currentLeaderVersion)
+			m.sendErrReplyWithLeaderVersion(w, r, newErrHTTPReply(err), currentLeaderVersion)
 			return
 		}
 		send(w, r, body, encodeType)
@@ -5244,10 +5177,16 @@ func (m *Server) getDataPartitions(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if body, err = vol.getDataPartitionsView(encodeType); err != nil {
-		m.sendErrReply(w, r, newErrHTTPReply(err), currentLeaderVersion)
+		m.sendErrReplyWithLeaderVersion(w, r, newErrHTTPReply(err), currentLeaderVersion)
 		return
 	}
-	send(w, r, body, encodeType)
+	if enableLimiter > 0 {
+		if err = m.bandwidthRateLimiter.WaitN(ctx, len(body)); err != nil {
+			m.sendErrReplyWithLeaderVersion(w, r, newErrHTTPReply(proto.ErrNetworkOutLimitArrived), currentLeaderVersion)
+			return
+		}
+	}
+	m.sendWithLeaderVersion(w, r, body, encodeType)
 }
 
 func (m *Server) getVol(w http.ResponseWriter, r *http.Request) {
@@ -5259,20 +5198,27 @@ func (m *Server) getVol(w http.ResponseWriter, r *http.Request) {
 		ticket  cryptoutil.Ticket
 		ts      int64
 		param   *getVolParameter
+		ctx     context.Context
+		cancel  context.CancelFunc
 	)
+	enableLimiter := m.cluster.cfg.APIReqBwRateLimitMap[APICodeGetVol]
+	if enableLimiter > 0 {
+		ctx, cancel = context.WithDeadline(context.Background(), time.Now().Add(time.Second))
+		defer cancel()
+	}
 	currentLeaderVersion := m.getCurrentLeaderVersion(r)
 	metrics := exporter.NewModuleTP(proto.ClientVolUmpKey)
 	defer func() { metrics.Set(err) }()
 	if param, err = parseGetVolParameter(r); err != nil {
-		m.sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()}, currentLeaderVersion)
+		m.sendErrReplyWithLeaderVersion(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()}, currentLeaderVersion)
 		return
 	}
 	if vol, err = m.cluster.getVol(param.name); err != nil {
-		m.sendErrReply(w, r, newErrHTTPReply(proto.ErrVolNotExists), currentLeaderVersion)
+		m.sendErrReplyWithLeaderVersion(w, r, newErrHTTPReply(proto.ErrVolNotExists), currentLeaderVersion)
 		return
 	}
 	if !param.skipOwnerValidation && !matchKey(vol.Owner, param.authKey) {
-		m.sendErrReply(w, r, newErrHTTPReply(proto.ErrVolAuthKeyNotMatch), currentLeaderVersion)
+		m.sendErrReplyWithLeaderVersion(w, r, newErrHTTPReply(proto.ErrVolAuthKeyNotMatch), currentLeaderVersion)
 		return
 	}
 
@@ -5281,26 +5227,32 @@ func (m *Server) getVol(w http.ResponseWriter, r *http.Request) {
 	if len(viewCache) == 0 {
 		_, viewCache, err = vol.updateViewCache(m.cluster, encodeType)
 		if err != nil {
-			m.sendErrReply(w, r, newErrHTTPReply(err), currentLeaderVersion)
+			m.sendErrReplyWithLeaderVersion(w, r, newErrHTTPReply(err), currentLeaderVersion)
+			return
+		}
+	}
+	if enableLimiter > 0 {
+		if err = m.bandwidthRateLimiter.WaitN(ctx, len(viewCache)); err != nil {
+			m.sendErrReplyWithLeaderVersion(w, r, newErrHTTPReply(proto.ErrNetworkOutLimitArrived), currentLeaderVersion)
 			return
 		}
 	}
 	if !param.skipOwnerValidation && vol.authenticate {
 		if jobj, ticket, ts, err = parseAndCheckTicket(r, m.cluster.MasterSecretKey, param.name); err != nil {
 			if err == proto.ErrExpiredTicket {
-				m.sendErrReply(w, r, newErrHTTPReply(err), currentLeaderVersion)
+				m.sendErrReplyWithLeaderVersion(w, r, newErrHTTPReply(err), currentLeaderVersion)
 				return
 			}
-			m.sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeInvalidTicket, Msg: err.Error()}, currentLeaderVersion)
+			m.sendErrReplyWithLeaderVersion(w, r, &proto.HTTPReply{Code: proto.ErrCodeInvalidTicket, Msg: err.Error()}, currentLeaderVersion)
 			return
 		}
 		if message, err = genRespMessage(viewCache, &jobj, ts, ticket.SessionKey.Key); err != nil {
-			m.sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeMasterAPIGenRespError, Msg: err.Error()}, currentLeaderVersion)
+			m.sendErrReplyWithLeaderVersion(w, r, &proto.HTTPReply{Code: proto.ErrCodeMasterAPIGenRespError, Msg: err.Error()}, currentLeaderVersion)
 			return
 		}
 		sendOkReply(w, r, newSuccessHTTPReply(message))
 	} else {
-		send(w, r, viewCache, encodeType)
+		m.sendWithLeaderVersion(w, r, viewCache, encodeType)
 	}
 }
 
@@ -5319,7 +5271,7 @@ func (m *Server) getVolStatInfo(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if vol, err = m.cluster.getVol(name); err != nil {
-		m.sendErrReply(w, r, newErrHTTPReply(proto.ErrVolNotExists), currentLeaderVersion)
+		m.sendErrReplyWithLeaderVersion(w, r, newErrHTTPReply(proto.ErrVolNotExists), currentLeaderVersion)
 		return
 	}
 	sendOkReply(w, r, newSuccessHTTPReply(volStat(vol)))
@@ -5342,8 +5294,8 @@ func volStat(vol *Vol) (stat *proto.VolStatInfo) {
 
 func getMetaPartitionView(mp *MetaPartition) (mpView *proto.MetaPartitionView) {
 	mpView = proto.NewMetaPartitionView(mp.PartitionID, mp.Start, mp.End, mp.Status)
-	mp.Lock()
-	defer mp.Unlock()
+	mp.RLock()
+	defer mp.RUnlock()
 	log.LogDebugf("[getMetaPartitionView] partition id:%v, status:%v, start:%v, end:%v",
 		mp.PartitionID, mp.Status, mp.Start, mp.End)
 	for _, host := range mp.Hosts {
@@ -5468,6 +5420,7 @@ func (m *Server) getMetaPartition(w http.ResponseWriter, r *http.Request) {
 			RcokStoreCnt:      rocksCnt,
 			AllocatorInuseCnt: mp.InoAllocatorInuseCnt,
 			CreateTime:        mp.CreateTime,
+			PrePartitionID:    mp.PrePartitionID,
 		}
 		return mpInfo
 	}
@@ -5501,7 +5454,14 @@ func (m *Server) listVols(w http.ResponseWriter, r *http.Request) {
 		keywords string
 		vol      *Vol
 		volsInfo []*proto.VolInfo
+		ctx      context.Context
+		cancel   context.CancelFunc
 	)
+	enableLimiter := m.config.APIReqBwRateLimitMap[APICodeListVols]
+	if enableLimiter > 0 {
+		ctx, cancel = context.WithDeadline(context.Background(), time.Now().Add(time.Second))
+		defer cancel()
+	}
 	currentLeaderVersion := m.getCurrentLeaderVersion(r)
 	metrics := exporter.NewModuleTP(proto.AdminListVolsUmpKey)
 	defer func() { metrics.Set(err) }()
@@ -5509,24 +5469,43 @@ func (m *Server) listVols(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-	volsInfo = make([]*proto.VolInfo, 0)
-	for _, name := range m.cluster.allVolNames() {
-		if strings.Contains(name, keywords) {
-			if vol, err = m.cluster.getVol(name); err != nil {
-				m.sendErrReply(w, r, newErrHTTPReply(proto.ErrVolNotExists), currentLeaderVersion)
+	if len(keywords) == 0 {
+		body := m.cluster.getVolsResponseCache()
+		if len(body) == 0 {
+			body, err = m.cluster.updateVolsResponseCache()
+		}
+
+		if err != nil {
+			sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+			return
+		}
+		if enableLimiter > 0 {
+			if err = m.bandwidthRateLimiter.WaitN(ctx, len(body)); err != nil {
+				m.sendErrReplyWithLeaderVersion(w, r, newErrHTTPReply(proto.ErrNetworkOutLimitArrived), currentLeaderVersion)
 				return
 			}
-			stat := volStat(vol)
-
-			volInfo := proto.NewVolInfo(vol.Name, vol.Owner, vol.createTime, vol.status(), stat.TotalSize, stat.RealUsedSize,
-				vol.trashRemainingDays, vol.ChildFileMaxCount, vol.isSmart, vol.smartRules, vol.ForceROW, vol.compact(),
-				vol.TrashCleanInterval, vol.enableToken, vol.enableWriteCache, vol.BatchDelInodeCnt, vol.DelInodeInterval,
-				vol.CleanTrashDurationEachTime, vol.TrashCleanMaxCountEachTime, vol.EnableBitMapAllocator, vol.enableRemoveDupReq,
-				vol.TruncateEKCountEveryTime, vol.DefaultStoreMode)
-			volsInfo = append(volsInfo, volInfo)
 		}
+		m.sendWithLeaderVersion(w, r, body, proto.JsonType)
+	} else {
+		volsInfo = make([]*proto.VolInfo, 0)
+		for _, name := range m.cluster.allVolNames() {
+			if strings.Contains(name, keywords) {
+				if vol, err = m.cluster.getVol(name); err != nil {
+					m.sendErrReplyWithLeaderVersion(w, r, newErrHTTPReply(proto.ErrVolNotExists), currentLeaderVersion)
+					return
+				}
+				stat := volStat(vol)
+
+				volInfo := proto.NewVolInfo(vol.Name, vol.Owner, vol.createTime, vol.status(), stat.TotalSize, stat.RealUsedSize,
+					vol.trashRemainingDays, vol.ChildFileMaxCount, vol.isSmart, vol.smartRules, vol.ForceROW, vol.compact(),
+					vol.TrashCleanInterval, vol.enableToken, vol.enableWriteCache, vol.BatchDelInodeCnt, vol.DelInodeInterval,
+					vol.CleanTrashDurationEachTime, vol.TrashCleanMaxCountEachTime, vol.EnableBitMapAllocator, vol.enableRemoveDupReq,
+					vol.TruncateEKCountEveryTime, vol.DefaultStoreMode)
+				volsInfo = append(volsInfo, volInfo)
+			}
+		}
+		sendOkReply(w, r, newSuccessHTTPReply(volsInfo))
 	}
-	sendOkReply(w, r, newSuccessHTTPReply(volsInfo))
 }
 
 func (m *Server) getDataPartitionsWithHdd(w http.ResponseWriter, r *http.Request) {
@@ -5542,11 +5521,11 @@ func (m *Server) getDataPartitionsWithHdd(w http.ResponseWriter, r *http.Request
 	defer func() { metrics.Set(err) }()
 
 	if name, err = parseAndExtractName(r); err != nil {
-		m.sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()}, currentLeaderVersion)
+		m.sendErrReplyWithLeaderVersion(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()}, currentLeaderVersion)
 		return
 	}
 	if vol, err = m.cluster.getVol(name); err != nil {
-		m.sendErrReply(w, r, newErrHTTPReply(err), currentLeaderVersion)
+		m.sendErrReplyWithLeaderVersion(w, r, newErrHTTPReply(err), currentLeaderVersion)
 		return
 	}
 
@@ -5565,7 +5544,7 @@ func (m *Server) getDataPartitionsWithHdd(w http.ResponseWriter, r *http.Request
 	if len(hddDPs) <= 0 {
 		var dps []*DataPartition
 		if dps, err = m.createHddDataPartition(vol.Name, 10); err != nil {
-			m.sendErrReply(w, r, newErrHTTPReply(err), currentLeaderVersion)
+			m.sendErrReplyWithLeaderVersion(w, r, newErrHTTPReply(err), currentLeaderVersion)
 			return
 		}
 		for _, dp := range dps {
@@ -5596,7 +5575,7 @@ func (m *Server) listSmartVols(w http.ResponseWriter, r *http.Request) {
 	for _, name := range m.cluster.allVolNames() {
 		if strings.Contains(name, keywords) {
 			if vol, err = m.cluster.getVol(name); err != nil {
-				m.sendErrReply(w, r, newErrHTTPReply(proto.ErrVolNotExists), currentLeaderVersion)
+				m.sendErrReplyWithLeaderVersion(w, r, newErrHTTPReply(proto.ErrVolNotExists), currentLeaderVersion)
 				return
 			}
 			if !vol.isSmart {
@@ -5626,7 +5605,7 @@ func (m *Server) listCompactVols(w http.ResponseWriter, r *http.Request) {
 	volsInfo = make([]*proto.VolInfo, 0)
 	for _, name := range m.cluster.allVolNames() {
 		if vol, err = m.cluster.getVol(name); err != nil {
-			m.sendErrReply(w, r, newErrHTTPReply(proto.ErrVolNotExists), currentLeaderVersion)
+			m.sendErrReplyWithLeaderVersion(w, r, newErrHTTPReply(proto.ErrVolNotExists), currentLeaderVersion)
 			return
 		}
 		if vol.compactTag == proto.CompactDefault {
@@ -6645,8 +6624,8 @@ func (m *Server) setClusterName(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-	clusterName    = r.FormValue(proto.ClusterNameKey)
-	forceReset, _  = extractForce(r)
+	clusterName = r.FormValue(proto.ClusterNameKey)
+	forceReset, _ = extractForce(r)
 	if !forceReset && clusterName == "" {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: keyNotFound(proto.ClusterNameKey).Error()})
 		return
@@ -6688,7 +6667,7 @@ func (m *Server) setNodeSetCapacity(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("set nodeSetCapacity to %d successfully", capacity)))
-	m.cluster.checkMergeZoneNodeset()
+	m.cluster.doCheckMergeZoneNodeset()
 }
 
 func parseRequestToSetCompactVol(r *http.Request) (name, compactTag, authKey string, err error) {
@@ -6736,21 +6715,14 @@ func (m *Server) setVolChildFileMaxCount(w http.ResponseWriter, r *http.Request)
 }
 
 // sendErrReply after check leader or meta status
-func (m *Server) sendErrReply(w http.ResponseWriter, r *http.Request, httpReply *proto.HTTPReply, oldLeaderVersion uint64) {
-	if !m.metaReady.Load() {
-		log.LogWarnf("action[sendErrReply] leader meta is not ready")
+func (m *Server) sendErrReplyWithLeaderVersion(w http.ResponseWriter, r *http.Request, httpReply *proto.HTTPReply, oldLeaderVersion uint64) {
+	if !m.cluster.isMetaReady() {
+		log.LogWarnf("action[sendErrReplyWithLeaderVersion] leader meta is not ready")
 		http.Error(w, m.leaderInfo.addr, http.StatusInternalServerError)
 		return
 	}
-	leaderID, _ := m.partition.LeaderTerm()
-	if m.leaderInfo.addr == "" || leaderID <= 0 {
-		log.LogErrorf("action[sendErrReply] no leader,request[%v]", r.URL)
-		http.Error(w, "no leader", http.StatusInternalServerError)
-		return
-	}
-
-	if m.leaderVersion.Load() != oldLeaderVersion {
-		log.LogWarnf("action[sendErrReply] leader meta is not ready")
+	if m.cluster.getLeaderVersion() != oldLeaderVersion {
+		log.LogWarnf("action[sendErrReplyWithLeaderVersion] leader has changed")
 		http.Error(w, m.leaderInfo.addr, http.StatusInternalServerError)
 		return
 	}
@@ -6762,7 +6734,7 @@ func (m *Server) getCurrentLeaderVersion(r *http.Request) (currentLeaderVersion 
 	currentLeaderVersion, err := strconv.ParseUint(r.Header.Get(leaderVersion), 10, 64)
 	if err != nil {
 		log.LogErrorf("action[getCurrentLeaderVersion] err:%v", err)
-		currentLeaderVersion = m.leaderVersion.Load()
+		currentLeaderVersion = m.cluster.getLeaderVersion()
 	}
 	return
 }

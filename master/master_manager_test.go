@@ -15,12 +15,12 @@ import (
 func TestHandleLeaderChange(t *testing.T) {
 	leaderID := server.id
 	newLeaderID := leaderID + 1
-	server.doLeaderChange(newLeaderID)
-	if !assert.Falsef(t, server.metaReady.Load(), "logic error,metaReady should be false,metaReady[%v]", server.metaReady.Load()) {
+	server.doLeaderChange(newLeaderID, 0, 0)
+	if !assert.Falsef(t, server.cluster.isMetaReady(), "logic error,metaReady should be false,metaReady[%v]", server.cluster.isMetaReady()) {
 		return
 	}
-	server.doLeaderChange(leaderID)
-	if !assert.Truef(t, server.metaReady.Load(), "logic error,metaReady should be true,metaReady[%v]", server.metaReady.Load()) {
+	server.doLeaderChange(leaderID, 0, 0)
+	if !assert.Truef(t, server.cluster.isMetaReady(), "logic error,metaReady should be true,metaReady[%v]", server.cluster.isMetaReady()) {
 		return
 	}
 }
@@ -134,7 +134,7 @@ func TestSnapshotWithClusterName(t *testing.T) {
 		t.Errorf("get cluster name failed,%s", err.Error())
 		return
 	}
-	if len(cv.ClusterName) == 0 ||  cv.ClusterName != server.cluster.cfg.ClusterName {
+	if len(cv.ClusterName) == 0 || cv.ClusterName != server.cluster.cfg.ClusterName {
 		err = fmt.Errorf("cfg cluster name err, expect:%s, but now:%s", server.cluster.cfg.ClusterName, cv.ClusterName)
 		assert.NoError(t, err)
 		t.Errorf("%s", err.Error())

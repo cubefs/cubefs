@@ -77,6 +77,7 @@ type MetaPartition struct {
 	modifyTime           int64
 	lastOfflineTime      int64
 	CreateTime           int64
+	PrePartitionID       uint64
 	PanicHosts           []string //PanicHosts records the hosts discard by reset peer action.
 	LoadResponse         []*proto.MetaPartitionLoadResponse
 	offlineMutex         sync.RWMutex
@@ -162,8 +163,22 @@ func (mp *MetaPartition) updateInodeIDRangeForAllReplicas() {
 	}
 }
 
+func (mp *MetaPartition) updateEnd(end uint64) {
+	mp.Lock()
+	defer mp.Unlock()
+	mp.End = end
+}
+
+func (mp *MetaPartition) getEnd() uint64 {
+	mp.RLock()
+	defer mp.RUnlock()
+	return mp.End
+}
+
 // canSplit caller must be add lock
 func (mp *MetaPartition) canSplit(end uint64) (err error) {
+	mp.Lock()
+	defer mp.Unlock()
 	if end < mp.Start {
 		err = fmt.Errorf("end[%v] less than mp.start[%v]", end, mp.Start)
 		return
@@ -202,27 +217,27 @@ func (mp *MetaPartition) addUpdateMetaReplicaTask(c *Cluster) (err error) {
 	return
 }
 
-func (mp *MetaPartition) checkEnd(c *Cluster, maxPartitionID uint64) {
+func (mp *MetaPartition) checkMaxMpEnd(c *Cluster, maxPartitionID uint64) {
 
 	if mp.PartitionID != maxPartitionID {
 		return
 	}
 	vol, err := c.getVol(mp.volName)
 	if err != nil {
-		log.LogWarnf("action[checkEnd] vol[%v] not exist", mp.volName)
+		log.LogWarnf("action[checkMaxMpEnd] vol[%v] not exist", mp.volName)
 		return
 	}
 	vol.createMpMutex.RLock()
 	defer vol.createMpMutex.RUnlock()
 	curMaxPartitionID := vol.maxPartitionID()
 	if mp.PartitionID != curMaxPartitionID {
-		log.LogWarnf("action[checkEnd] partition[%v] not max partition[%v]", mp.PartitionID, curMaxPartitionID)
+		log.LogWarnf("action[checkMaxMpEnd] partition[%v] not max partition[%v]", mp.PartitionID, curMaxPartitionID)
 		return
 	}
 	mp.Lock()
 	defer mp.Unlock()
 	if _, err = mp.getMetaReplicaLeader(); err != nil {
-		log.LogWarnf("action[checkEnd] partition[%v] no leader", mp.PartitionID)
+		log.LogWarnf("action[checkMaxMpEnd] partition[%v] no leader", mp.PartitionID)
 		return
 	}
 	if mp.End != defaultMaxMetaPartitionInodeID {
@@ -230,14 +245,14 @@ func (mp *MetaPartition) checkEnd(c *Cluster, maxPartitionID uint64) {
 		mp.End = defaultMaxMetaPartitionInodeID
 		if err := c.syncUpdateMetaPartition(mp); err != nil {
 			mp.End = oldEnd
-			log.LogErrorf("action[checkEnd] partitionID[%v] err[%v]", mp.PartitionID, err)
+			log.LogErrorf("action[checkMaxMpEnd] partitionID[%v] err[%v]", mp.PartitionID, err)
 			return
 		}
 		if err = mp.addUpdateMetaReplicaTask(c); err != nil {
 			mp.End = oldEnd
 		}
 	}
-	log.LogDebugf("action[checkEnd] partitionID[%v] end[%v]", mp.PartitionID, mp.End)
+	log.LogDebugf("action[checkMaxMpEnd] partitionID[%v] end[%v]", mp.PartitionID, mp.End)
 }
 
 // hosts with lock

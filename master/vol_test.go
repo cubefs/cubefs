@@ -28,7 +28,7 @@ func TestAutoCreateDataPartitions(t *testing.T) {
 
 func TestCheckVol(t *testing.T) {
 	commonVol.checkStatus(server.cluster)
-	commonVol.checkMetaPartitions(server.cluster)
+	commonVol.checkMetaPartitions(server.cluster, server.cluster.buildCreateMetaPartitionContext())
 	commonVol.checkDataPartitions(server.cluster)
 	log.LogFlush()
 }
@@ -38,14 +38,13 @@ func TestVol(t *testing.T) {
 	name := "test1"
 	createVol(name, testZone2, t)
 	//report mp/dp info to master
-	server.cluster.checkDataNodeHeartbeat()
-	server.cluster.checkDataNodeHeartbeat()
+	server.cluster.doCheckDataNodeHeartbeat()
+	server.cluster.doCheckMetaNodeHeartbeat()
 	time.Sleep(5 * time.Second)
 	//check status
-	server.cluster.checkMetaPartitions()
+	server.cluster.doCheckMetaPartitions()
 	server.cluster.checkDataPartitions()
-	server.cluster.checkLoadMetaPartitions()
-	server.cluster.doLoadDataPartitions()
+	server.cluster.doCheckLoadMetaPartitions()
 	vol, err := server.cluster.getVol(name)
 	if !assert.NoError(t, err) {
 		return
@@ -84,14 +83,13 @@ func TestVolMultiZoneDowngrade(t *testing.T) {
 	server.cluster.t.putZoneIfAbsent(newZone(testZone3))
 	createVol(testMultiZone, zone, t)
 	//report mp/dp info to master
-	server.cluster.checkDataNodeHeartbeat()
-	server.cluster.checkDataNodeHeartbeat()
+	server.cluster.doCheckDataNodeHeartbeat()
+	server.cluster.doCheckMetaNodeHeartbeat()
 	time.Sleep(3 * time.Second)
 	//check status
-	server.cluster.checkMetaPartitions()
+	server.cluster.doCheckMetaPartitions()
 	server.cluster.checkDataPartitions()
-	server.cluster.checkLoadMetaPartitions()
-	server.cluster.doLoadDataPartitions()
+	server.cluster.doCheckLoadMetaPartitions()
 	vol, err = server.cluster.getVol(testMultiZone)
 	if !assert.NoError(t, err) {
 		return
@@ -105,8 +103,8 @@ func TestVolMultiZoneDowngrade(t *testing.T) {
 	time.Sleep(3 * time.Second)
 	server.cluster.cfg = newClusterConfig()
 
-	server.cluster.checkDataNodeHeartbeat()
-	server.cluster.checkMetaNodeHeartbeat()
+	server.cluster.doCheckDataNodeHeartbeat()
+	server.cluster.doCheckMetaNodeHeartbeat()
 
 	server.cluster.checkVolRepairDataPartitions()
 	server.cluster.checkVolRepairMetaPartitions()
@@ -173,14 +171,13 @@ func TestVolMultiZone(t *testing.T) {
 	zone := strings.Join(zoneList, ",")
 	createVol(testMultiZone, zone, t)
 	//report mp/dp info to master
-	server.cluster.checkDataNodeHeartbeat()
-	server.cluster.checkMetaNodeHeartbeat()
+	server.cluster.doCheckDataNodeHeartbeat()
+	server.cluster.doCheckMetaNodeHeartbeat()
 	time.Sleep(3 * time.Second)
 	//check status
-	server.cluster.checkMetaPartitions()
+	server.cluster.doCheckMetaPartitions()
 	server.cluster.checkDataPartitions()
-	server.cluster.checkLoadMetaPartitions()
-	server.cluster.doLoadDataPartitions()
+	server.cluster.doCheckLoadMetaPartitions()
 	vol, err = server.cluster.getVol(testMultiZone)
 	if !assert.NoError(t, err) {
 		return
@@ -222,7 +219,7 @@ func checkDataPartitionsWritableTest(vol *Vol, t *testing.T) {
 	if len(vol.dataPartitions.partitions) == 0 {
 		return
 	}
-	server.cluster.checkDataNodeHeartbeat()
+	server.cluster.doCheckDataNodeHeartbeat()
 	time.Sleep(3 * time.Second)
 	//after check data partitions ,the status must be writable
 	vol.checkDataPartitions(server.cluster)
@@ -234,7 +231,7 @@ func checkMetaPartitionsWritableTest(vol *Vol, t *testing.T) {
 	if !assert.NotZero(t, len(vol.MetaPartitions), "no meta partition") {
 		return
 	}
-	server.cluster.checkMetaNodeHeartbeat()
+	server.cluster.doCheckMetaNodeHeartbeat()
 	time.Sleep(3 * time.Second)
 	maxPartitionID := vol.maxPartitionID()
 	maxMp := vol.MetaPartitions[maxPartitionID]
@@ -346,11 +343,11 @@ func TestConcurrentReadWriteDataPartitionMap(t *testing.T) {
 		0, 0)
 	// unavailable mp
 	mp1 := newMetaPartition(1, 1, defaultMaxMetaPartitionInodeID, 3, 0, name, volID)
-	vol.addMetaPartition(mp1)
+	vol.addMetaPartition(mp1, server.cluster.Name)
 	//readonly mp
 	mp2 := newMetaPartition(2, 1, defaultMaxMetaPartitionInodeID, 3, 0, name, volID)
 	mp2.Status = proto.ReadOnly
-	vol.addMetaPartition(mp2)
+	vol.addMetaPartition(mp2, server.cluster.Name)
 	vol.updateViewCache(server.cluster, proto.JsonType)
 	for id := 0; id < 30000; id++ {
 		dp := newDataPartition(uint64(id), 3, name, volID)
@@ -456,8 +453,8 @@ func TestRecoverVol(t *testing.T) {
 	oldVol, err := server.cluster.getVol(oldVolName)
 	assertErrNilOtherwiseFailNow(t, err)
 	oldVolTokens := oldVol.getAllTokens()
-	server.cluster.checkDataNodeHeartbeat()
-	server.cluster.checkMetaNodeHeartbeat()
+	server.cluster.doCheckDataNodeHeartbeat()
+	server.cluster.doCheckMetaNodeHeartbeat()
 	time.Sleep(5 * time.Second)
 
 	if err = server.cluster.renameVolToNewVolName(oldVolName, buildAuthKey("cfs"), newVolNameMarkDel, owner, proto.VolStMarkDelete); err != nil {
