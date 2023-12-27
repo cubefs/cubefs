@@ -111,7 +111,7 @@ func newVersionDelCmd(client *master.MasterClient) *cobra.Command {
 		Aliases: []string{"create"},
 		Run: func(cmd *cobra.Command, args []string) {
 			if len(args) <= 1 {
-				stdout("USAGE:./cfs-cli version verCreate volName verSeq\n")
+				stdout("USAGE:./cfs-cli version verDel volName verSeq\n")
 				return
 			}
 
