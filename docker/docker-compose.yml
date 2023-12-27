@@ -471,6 +471,7 @@ services:
         environment:
             - TZ=Asia/Shanghai
             - DOCKER_TESTING_LOG_OFF="on"
+            - DOCKER_FLASHNODE_TMPFS_OFF="on"
             - http_proxy=
             - https_proxy=
             - HTTP_PROXY=
