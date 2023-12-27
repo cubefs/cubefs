@@ -1,7 +1,6 @@
 #! /bin/bash
 set -e
 RootPath=$(cd $(dirname $0)/..; pwd)
-GOPATH=/go
 export DiskPath="$RootPath/docker/docker_data"
 
 MIN_DNDISK_AVAIL_SIZE_GB=10
@@ -9,17 +8,26 @@ MIN_DNDISK_AVAIL_SIZE_GB=10
 help() {
     cat <<EOF
 
-Usage: ./run_docker.sh [ -h | --help ] [ -d | --disk </disk/path> ] [ -l | --ltptest ]
+Usage: ./run_docker.sh {cmd} [ -h|--help ]  [ -d|--disk </disk/path> ]
     -h, --help              show help info
-    -d, --disk </disk/path>     set CubeFS DataNode local disk path
-    -b, --build             build CubeFS server and client
-    -s, --server            start CubeFS servers docker image
-    -c, --client            start CubeFS client docker image
+    -d, --disk </disk/path> set CubeFS DataNode local disk path
+
+    -b, --build             build binaries of server and so on
+    -t, --test              run all unit testing
+    -r, --run               start servers, client and monitor
+    -s, --server            start server docker images
+    -c, --client            start client docker image
     -m, --monitor           start monitor web ui
-    -l, --ltptest           run ltp test
-    -r, --run               run servers, client and monitor
-    -f, --format            run gofmt to format source code
-    --clean                 cleanup old docker image
+    -f, --format            check format of source code
+        --s3test            run s3 testing
+        --ltptest           run ltp testing
+        --buildlibsdkpre    build libcfs.so
+        --goreleaser        release using goreleaser
+        --bsgofumpt         run blobstore gofumpt
+        --bsgolint          run blobstore golangci-lint
+        --gosec             run gosec of source code
+        --clean             cleanup all old docker images
+
 EOF
     exit 0
 }
@@ -37,6 +45,7 @@ prepare() {
 
 # unit test
 run_unit_test() {
+    prepare
     ${compose} run unit_test
 }
 
@@ -103,7 +112,7 @@ start_s3test() {
 }
 
 start_ltptest() {
-    ${compose} run client bash -c "/cfs/script/start.sh -ltp"
+    ${compose} run client_ltp
 }
 
 run_s3test() {
@@ -141,17 +150,11 @@ for opt in ${ARGS[*]} ; do
         -t|--test)
             cmd=run_test
             ;;
-        -l|--ltptest)
-            cmd=run_ltptest
-            ;;
-        -n|--s3test)
-            cmd=run_s3test
-            ;;
         -r|--run)
             cmd=run
             ;;
         -s|--server)
-            cmd=run_servers
+            cmd=run_server
             ;;
         -c|--client)
             cmd=run_client
@@ -161,6 +164,12 @@ for opt in ${ARGS[*]} ; do
             ;;
         -f|--format)
             cmd=run_format
+            ;;
+        --s3test)
+            cmd=run_s3test
+            ;;
+        --ltptest)
+            cmd=run_ltptest
             ;;
         --buildlibsdkpre)
             cmd=run_build_libsdkpre
@@ -202,10 +211,10 @@ function isDiskAvailable() {
 
 for opt in ${ARGS[*]} ; do
     case "-$1" in
-        --d|---disk)
+        --d|--disk)
             shift
             export DiskPath=${1:?"need disk dir path"}
-            isDiskAvailable $DiskPath
+            isDiskAvailable "${DiskPath}"
             shift
             ;;
         -)
@@ -221,7 +230,7 @@ case "-$cmd" in
     -help) help ;;
     -run) run ;;
     -build) build ;;
-    -run_servers) start_servers ;;
+    -run_server) start_servers ;;
     -run_client) start_client ;;
     -run_monitor) start_monitor ;;
     -run_ltptest) run_ltptest ;;
@@ -236,4 +245,3 @@ case "-$cmd" in
     -clean) clean ;;
     *) help ;;
 esac
-

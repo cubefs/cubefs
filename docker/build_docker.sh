@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 
-RootPath=$(cd $(dirname $0) ; pwd)
-CfsBase="cubefs/cbfs-base:1.0-golang-1.17.13"
+# shellcheck disable=SC2046
+RootPath=$(cd $(dirname "$0") || exit 1; pwd)
+# shellcheck source=/dev/null
+source "${RootPath}/run_docker.env"
 
-docker build -t ${CfsBase} -f ${RootPath}/Dockerfile ${RootPath}
+docker build -t "${IMAGE}" -f "${RootPath}/Dockerfile" "${RootPath}"
+docker build -t "${IMAGELTP}" -f "${RootPath}/Dockerfile-ltp" "${RootPath}"

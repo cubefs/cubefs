@@ -22,8 +22,6 @@ import (
 	"testing"
 
 	"github.com/cubefs/cubefs/blobstore/blobnode/sys"
-	"github.com/stretchr/testify/assert"
-
 	"github.com/cubefs/cubefs/storage"
 	"github.com/cubefs/cubefs/util"
 	"github.com/stretchr/testify/require"
@@ -209,8 +207,8 @@ func TestSeekHole(t *testing.T) {
 		err      error
 		size     int64
 	)
-
 	os.Remove(filePath)
+	defer os.Remove(filePath)
 	e := storage.NewExtentInCore(filePath, 0)
 	err = e.InitToFS()
 	require.NoError(t, err)
@@ -273,12 +271,13 @@ func TestSeekHole(t *testing.T) {
 
 	dataSize, snapSize := e.GetSize()
 	t.Logf("dataSize %v, snapSize %v", dataSize, snapSize)
-	assert.True(t, dataSize == alignlastHole)
+	require.True(t, dataSize == alignlastHole)
 }
 
 func TestExtentRecovery(t *testing.T) {
 	filePath := "./1025"
 	os.Remove(filePath)
+	defer os.Remove(filePath)
 	e := storage.NewExtentInCore(filePath, 1025)
 	err := e.InitToFS()
 	require.NoError(t, err)
@@ -299,5 +298,5 @@ func TestExtentRecovery(t *testing.T) {
 	require.NoError(t, err)
 	dataSize, snapSize := e.GetSize()
 	t.Logf("dataSize %v, snapSize %v", dataSize, snapSize)
-	assert.True(t, util.BlockSize*10 == dataSize)
+	require.True(t, util.BlockSize*10 == dataSize)
 }
