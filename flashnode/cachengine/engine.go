@@ -31,13 +31,9 @@ import (
 	"github.com/cubefs/cubefs/util/tmpfs"
 )
 
-//TODO: remove this later.
-//go:generate gofumpt -l -w .
-//go:generate git diff --exit-code
-//go:generate golangci-lint run --issues-exit-code=1 -D errcheck -E bodyclose ./...
-
 const (
 	prepareWorkers = 20
+	EnvDockerTmpfs = "DOCKER_FLASHNODE_TMPFS_OFF"
 
 	DefaultExpireTime        = 60 * 60
 	InitFileName             = "flash.init"
@@ -70,6 +66,8 @@ type CacheEngine struct {
 
 	closeOnce sync.Once
 	closeCh   chan struct{}
+
+	enableTmpfs bool // for testing in docker
 }
 
 type (
@@ -82,6 +80,7 @@ func NewCacheEngine(dataDir string, totalSize int64, maxUseRatio float64,
 ) (s *CacheEngine, err error) {
 	s = new(CacheEngine)
 	s.dataPath = dataDir
+	s.enableTmpfs = enabledTmpfs()
 	if maxUseRatio < 1e-1 {
 		maxUseRatio = DefaultCacheMaxUsedRatio
 	}
@@ -96,8 +95,10 @@ func NewCacheEngine(dataDir string, totalSize int64, maxUseRatio float64,
 	if err = os.MkdirAll(dataDir, 0o755); err != nil {
 		return nil, fmt.Errorf("NewCacheEngine [%v] err[%v]", dataDir, err)
 	}
-	if err = s.doMount(); err != nil {
-		return
+	if s.enableTmpfs {
+		if err = s.doMount(); err != nil {
+			return
+		}
 	}
 
 	s.cachePrepareTaskCh = make(chan cachePrepareTask, 1024)
@@ -122,6 +123,10 @@ func (c *CacheEngine) Stop() (err error) {
 	c.closeOnce.Do(func() { close(c.closeCh) })
 	if err = c.lruCache.Close(); err != nil {
 		return err
+	}
+	if !c.enableTmpfs {
+		log.LogInfof("CacheEngine stopped, remove tmpfs dir: %s", c.dataPath)
+		return os.RemoveAll(c.dataPath)
 	}
 	time.Sleep(time.Second)
 	log.LogInfof("CacheEngine stopped, umount tmpfs: %v", c.dataPath)
@@ -323,4 +328,8 @@ func (c *CacheEngine) EvictCacheAll() {
 func GenCacheBlockKey(volume string, inode, offset uint64, version uint32) string {
 	u := strconv.FormatUint
 	return path.Join(volume, u(inode, 10)+"#"+u(offset, 10)+"#"+u(uint64(version), 10))
+}
+
+func enabledTmpfs() bool {
+	return os.Getenv(EnvDockerTmpfs) == ""
 }

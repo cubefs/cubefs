@@ -52,6 +52,9 @@ func TestEngineNew(t *testing.T) {
 }
 
 func TestEngineOverFlow(t *testing.T) {
+	if !enabledTmpfs() {
+		t.Skip("disabled tmpfs")
+	}
 	ce, err := NewCacheEngine(testTmpFS, util.GB, 1.1, 1024, DefaultExpireTime, nil)
 	require.NoError(t, err)
 	defer func() { require.NoError(t, ce.Stop()) }()

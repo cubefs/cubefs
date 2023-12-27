@@ -29,12 +29,16 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func initTestTmpfs(size int64) (err error) {
+func initTestTmpfs() (umount func() error, err error) {
+	os.MkdirAll(testTmpFS, 0o777)
+	if !enabledTmpfs() {
+		return func() error { return os.RemoveAll(testTmpFS) }, nil
+	}
 	_, err = os.Stat(testTmpFS)
 	if err == nil {
 		if tmpfs.IsTmpfs(testTmpFS) {
 			if err = tmpfs.Umount(testTmpFS); err != nil {
-				return err
+				return
 			}
 		}
 	} else {
@@ -43,13 +47,17 @@ func initTestTmpfs(size int64) (err error) {
 		}
 		_ = os.MkdirAll(testTmpFS, 0o777)
 	}
-	err = tmpfs.MountTmpfs(testTmpFS, size)
-	return
+	if err = tmpfs.MountTmpfs(testTmpFS, 200*util.MB); err != nil {
+		return
+	}
+	return func() error { return tmpfs.Umount(testTmpFS) }, nil
 }
 
 func TestBlockWriteCache(t *testing.T) {
-	require.NoError(t, initTestTmpfs(200*util.MB))
-	defer func() { require.NoError(t, tmpfs.Umount(testTmpFS)) }()
+	umount, err := initTestTmpfs()
+	require.NoError(t, err)
+	defer func() { require.NoError(t, umount()) }()
+
 	testWriteSingleFile(t)
 	testWriteSingleFileError(t)
 	testWriteCacheBlockFull(t)
@@ -139,8 +147,9 @@ func testWriteMultiCacheBlock(t *testing.T, newMultiCacheFunc func(volume string
 }
 
 func TestBlockReadCache(t *testing.T) {
-	require.NoError(t, initTestTmpfs(200*util.MB))
-	defer func() { require.NoError(t, tmpfs.Umount(testTmpFS)) }()
+	umount, err := initTestTmpfs()
+	require.NoError(t, err)
+	defer func() { require.NoError(t, umount()) }()
 
 	cacheBlock := NewCacheBlock(testTmpFS, t.Name(), 1, 1024, 2568748711, proto.CACHE_BLOCK_SIZE, nil)
 	require.NoError(t, cacheBlock.initFilePath())
@@ -151,7 +160,7 @@ func TestBlockReadCache(t *testing.T) {
 	require.NoError(t, cacheBlock.WriteAt(bytes, offset, 1024))
 	cacheBlock.notifyReady()
 	bytesRead := make([]byte, 1024)
-	_, err := cacheBlock.Read(context.Background(), bytesRead, offset, 1024)
+	_, err = cacheBlock.Read(context.Background(), bytesRead, offset, 1024)
 	require.NoError(t, err)
 	require.Equal(t, bytesRead, bytes)
 }
@@ -163,8 +172,9 @@ func TestParallelOperation(t *testing.T) {
 }
 
 func testParallelOperation(t *testing.T) {
-	require.NoError(t, initTestTmpfs(200*util.MB))
-	defer func() { require.NoError(t, tmpfs.Umount(testTmpFS)) }()
+	umount, err := initTestTmpfs()
+	require.NoError(t, err)
+	defer func() { require.NoError(t, umount()) }()
 
 	cacheBlock := NewCacheBlock(testTmpFS, t.Name(), 1, 1024, 112456871, proto.CACHE_BLOCK_SIZE, nil)
 	require.NoError(t, cacheBlock.initFilePath())
