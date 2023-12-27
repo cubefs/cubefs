@@ -15,20 +15,19 @@
 package bcache
 
 import (
-	"github.com/cubefs/cubefs/util/stat"
 	"os"
 	"strings"
-
 	"sync"
 	"time"
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/log"
+	"github.com/cubefs/cubefs/util/stat"
 )
 
 const (
-	statusUnknown int = iota
+	_ int = iota
 	statusOK
 	statusNoent
 	statusError
@@ -38,8 +37,10 @@ type BcacheClient struct {
 	connPool *ConnPool
 }
 
-var once sync.Once
-var client *BcacheClient
+var (
+	once   sync.Once
+	client *BcacheClient
+)
 
 func NewBcacheClient() *BcacheClient {
 	once.Do(func() {
@@ -134,7 +135,6 @@ func (c *BcacheClient) Get(key string, buf []byte, offset uint64, size uint32) (
 	encryptXOR(buf[:n])
 	stat.EndStat("bcache-get-read", err, readBgTime, 1)
 	return n, nil
-
 }
 
 func (c *BcacheClient) Put(key string, buf []byte) error {
@@ -184,11 +184,9 @@ func (c *BcacheClient) Put(key string, buf []byte) error {
 	}
 
 	return err
-
 }
 
 func (c *BcacheClient) Evict(key string) error {
-
 	req := &DelCacheRequest{CacheKey: key}
 	packet := NewBlockCachePacket()
 	packet.Opcode = OpBlockCacheDel
