@@ -45,7 +45,7 @@ func TestLcScanner(t *testing.T) {
 		batchDentries: proto.NewBatchDentries(),
 		currentStat:   &proto.LcNodeRuleTaskStatistics{},
 		now:           time.Now(),
-		stopC:         make(chan bool, 0),
+		stopC:         make(chan bool),
 	}
 	err := scanner.Start()
 	require.NoError(t, err)

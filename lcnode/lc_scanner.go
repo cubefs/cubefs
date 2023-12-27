@@ -57,7 +57,7 @@ func NewS3Scanner(adminTask *proto.AdminTask, l *LcNode) (*LcScanner, error) {
 	scanTask := request.Task
 	var err error
 
-	var metaConfig = &meta.MetaConfig{
+	metaConfig := &meta.MetaConfig{
 		Volume:        scanTask.VolName,
 		Masters:       l.masters,
 		Authenticate:  false,
@@ -84,7 +84,7 @@ func NewS3Scanner(adminTask *proto.AdminTask, l *LcNode) (*LcScanner, error) {
 		currentStat:   &proto.LcNodeRuleTaskStatistics{},
 		limiter:       rate.NewLimiter(lcScanLimitPerSecond, defaultLcScanLimitBurst),
 		now:           time.Now(),
-		stopC:         make(chan bool, 0),
+		stopC:         make(chan bool),
 	}
 
 	return scanner, nil
@@ -178,7 +178,7 @@ func (s *LcScanner) FindPrefixInode() (inode uint64, prefixDirs []string, err er
 		return proto.RootIno, prefixDirs, nil
 	}
 
-	var parentId = proto.RootIno
+	parentId := proto.RootIno
 	for index, dir := range dirs {
 
 		// Because lookup can only retrieve dentry whose name exactly matches,
@@ -275,9 +275,7 @@ func (s *LcScanner) scan() {
 					return
 				}
 				dentry := val.(*proto.ScanDentry)
-				job := func() {
-					// do nothing
-				}
+				var job func()
 				if s.dirChan.Len() > maxDirChanNum {
 					job = func() {
 						s.handleDirLimitDepthFirst(dentry)
@@ -293,9 +291,7 @@ func (s *LcScanner) scan() {
 				}
 			}
 		}
-
 	}
-
 }
 
 func (s *LcScanner) handleFile(dentry *proto.ScanDentry) {
@@ -307,7 +303,6 @@ func (s *LcScanner) handleFile(dentry *proto.ScanDentry) {
 	if s.batchDentries.Len() >= batchExpirationGetNum {
 		s.batchHandleFile()
 	}
-
 }
 
 func (s *LcScanner) batchHandleFile() {
@@ -324,7 +319,7 @@ func (s *LcScanner) batchHandleFile() {
 		}
 	}
 
-	var getPath = func() (path []string) {
+	getPath := func() (path []string) {
 		for _, d := range expiredDentries {
 			path = append(path, d.Path)
 		}
@@ -348,7 +343,6 @@ func (s *LcScanner) batchHandleFile() {
 }
 
 func (s *LcScanner) inodeExpired(inode *proto.InodeInfo, cond *proto.ExpirationConfig) bool {
-
 	if inode == nil || cond == nil {
 		return false
 	}
@@ -390,14 +384,12 @@ func (s *LcScanner) handleDirLimitDepthFirst(dentry *proto.ScanDentry) {
 		}
 
 		if err == syscall.ENOENT {
-			done = true
 			break
 		}
 
 		if marker != "" {
 			if len(children) >= 1 && marker == children[0].Name {
 				if len(children) <= 1 {
-					done = true
 					break
 				} else {
 					children = children[1:]
@@ -459,14 +451,12 @@ func (s *LcScanner) handleDirLimitBreadthFirst(dentry *proto.ScanDentry) {
 		}
 
 		if err == syscall.ENOENT {
-			done = true
 			break
 		}
 
 		if marker != "" {
 			if len(children) >= 1 && marker == children[0].Name {
 				if len(children) <= 1 {
-					done = true
 					break
 				} else {
 					children = children[1:]
@@ -538,7 +528,6 @@ func (s *LcScanner) checkScanning() {
 					s.lcnode.respondToMaster(s.adminTask)
 					return
 				}
-
 			}
 			taskCheckTimer.Reset(dur)
 		}

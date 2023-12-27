@@ -35,6 +35,11 @@ import (
 	"golang.org/x/time/rate"
 )
 
+//TODO: remove this later.
+//go:generate gofumpt -l -w .
+//go:generate git diff --exit-code
+//go:generate golangci-lint run --issues-exit-code=1 -D errcheck -E bodyclose ./...
+
 type LcNode struct {
 	listen           string
 	localServerAddr  string
@@ -75,7 +80,7 @@ func doStart(s common.Server, cfg *config.Config) (err error) {
 	if !ok {
 		return errors.New("Invalid node Type!")
 	}
-	l.stopC = make(chan bool, 0)
+	l.stopC = make(chan bool)
 
 	if err = l.parseConfig(cfg); err != nil {
 		return

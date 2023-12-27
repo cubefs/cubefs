@@ -49,7 +49,7 @@ type SnapshotScanner struct {
 func NewSnapshotScanner(adminTask *proto.AdminTask, l *LcNode) (*SnapshotScanner, error) {
 	request := adminTask.Request.(*proto.SnapshotVerDelTaskRequest)
 	var err error
-	var metaConfig = &meta.MetaConfig{
+	metaConfig := &meta.MetaConfig{
 		Volume:        request.Task.VolName,
 		Masters:       l.masters,
 		Authenticate:  false,
@@ -71,7 +71,7 @@ func NewSnapshotScanner(adminTask *proto.AdminTask, l *LcNode) (*SnapshotScanner
 		inodeChan:   unboundedchan.NewUnboundedChan(defaultUnboundedChanInitCapacity),
 		rPoll:       routinepool.NewRoutinePool(snapshotRoutineNumPerTask),
 		currentStat: &proto.SnapshotStatistics{},
-		stopC:       make(chan bool, 0),
+		stopC:       make(chan bool),
 	}
 	return scanner, nil
 }
@@ -122,7 +122,7 @@ func (s *SnapshotScanner) Start() {
 	t := time.Now()
 	response.StartTime = &t
 
-	//1. delete all files
+	// 1. delete all files
 	log.LogDebugf("snapshot startScan: first round files start!")
 	s.scanType = SnapScanTypeOnlyFile
 	go s.scan()
@@ -134,7 +134,7 @@ func (s *SnapshotScanner) Start() {
 	s.inodeChan.In <- prefixDentry
 	s.checkScanning(false)
 
-	//2. delete all dirs
+	// 2. delete all dirs
 	log.LogDebugf("snapshot startScan: second round dirs start!")
 	s.scanType = SnapScanTypeOnlyDirAndDepth
 	log.LogDebugf("snapshot startScan: scan type(%v), first dir entry(%v) in!", s.scanType, prefixDentry)
@@ -214,7 +214,6 @@ func (s *SnapshotScanner) handlVerDelDepthFirst(dentry *proto.ScanDentry) {
 				dentry.Inode, marker, s.getTaskVerSeq(), len(children))
 
 			if err == syscall.ENOENT {
-				done = true
 				log.LogErrorf("action[handlVerDelDepthFirst] ReadDirLimitForSnapShotClean failed, parent[%v] maker[%v] verSeq[%v] err[%v]",
 					dentry.Inode, marker, s.getTaskVerSeq(), err)
 				break
@@ -223,7 +222,6 @@ func (s *SnapshotScanner) handlVerDelDepthFirst(dentry *proto.ScanDentry) {
 			if marker != "" {
 				if len(children) >= 1 && marker == children[0].Name {
 					if len(children) <= 1 {
-						done = true
 						log.LogDebugf("action[handlVerDelDepthFirst] ReadDirLimit_ll done, parent[%v] maker[%v] verSeq[%v] children[%v]",
 							dentry.Inode, marker, s.getTaskVerSeq(), children)
 						break
@@ -297,7 +295,6 @@ func (s *SnapshotScanner) handlVerDelDepthFirst(dentry *proto.ScanDentry) {
 			atomic.AddInt64(&s.currentStat.TotalInodeNum, 1)
 		}
 	}
-
 }
 
 func (s *SnapshotScanner) handlVerDelBreadthFirst(dentry *proto.ScanDentry) {
@@ -328,7 +325,6 @@ func (s *SnapshotScanner) handlVerDelBreadthFirst(dentry *proto.ScanDentry) {
 			dentry.Inode, marker, s.getTaskVerSeq(), len(children))
 
 		if err == syscall.ENOENT {
-			done = true
 			log.LogErrorf("action[handlVerDelBreadthFirst] ReadDirLimitForSnapShotClean failed, parent[%v] maker[%v] verSeq[%v] err[%v]",
 				dentry.Inode, marker, s.getTaskVerSeq(), err)
 			break
@@ -337,7 +333,6 @@ func (s *SnapshotScanner) handlVerDelBreadthFirst(dentry *proto.ScanDentry) {
 		if marker != "" {
 			if len(children) >= 1 && marker == children[0].Name {
 				if len(children) <= 1 {
-					done = true
 					log.LogDebugf("action[handlVerDelBreadthFirst] ReadDirLimit_ll done, parent[%v] maker[%v] verSeq[%v] children[%v]",
 						dentry.Inode, marker, s.getTaskVerSeq(), children)
 					break
@@ -379,7 +374,6 @@ func (s *SnapshotScanner) handlVerDelBreadthFirst(dentry *proto.ScanDentry) {
 				atomic.AddInt64(&s.currentStat.FileNum, 1)
 				atomic.AddInt64(&s.currentStat.TotalInodeNum, 1)
 			}
-
 		}
 		scanDentries = scanDentries[:0]
 		childrenNr := len(children)
@@ -392,7 +386,6 @@ func (s *SnapshotScanner) handlVerDelBreadthFirst(dentry *proto.ScanDentry) {
 			log.LogDebugf("action[handlVerDelBreadthFirst] ReadDirLimit_ll next marker[%v] parent[%v]", marker, dentry.Inode)
 		}
 	}
-
 }
 
 func (s *SnapshotScanner) DoneScanning() bool {
@@ -442,5 +435,4 @@ func (s *SnapshotScanner) checkScanning(report bool) {
 			taskCheckTimer.Reset(dur)
 		}
 	}
-
 }
