@@ -17,25 +17,24 @@ package bcache
 import (
 	"encoding/json"
 	"fmt"
+	"io"
+	"net"
+	"os"
+	"path/filepath"
+	"runtime"
+	"strconv"
+
 	"github.com/cubefs/cubefs/cmd/common"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/config"
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/log"
-	"io"
-	"net"
-	"os"
-	"path/filepath"
-	"regexp"
-	"runtime"
-	"strconv"
-	"sync"
 )
 
 const (
 	UnixSocketPath = "/var/run/cubefscache/bcache.socket"
 
-	//config
+	// config
 	CacheDir      = "cacheDir"
 	CacheLimit    = "cacheLimit"
 	CacheFree     = "cacheFree"
@@ -43,10 +42,6 @@ const (
 	MaxFileSize   = 128 << 30
 	MaxBlockSize  = 128 << 20
 	BigExtentSize = 32 << 20
-)
-
-var (
-	keyRegexp = regexp.MustCompile("^.+?_(\\d)+_[0-9a-zA-Z]+?")
 )
 
 type bcacheConfig struct {
@@ -62,17 +57,18 @@ type bcacheStore struct {
 	bcache  BcacheManager
 	conf    *bcacheConfig
 	control common.Control
-	bufPool sync.Pool
 	stopC   chan struct{}
 }
 
 func NewServer() *bcacheStore {
 	return &bcacheStore{}
 }
+
 func (s *bcacheStore) Start(cfg *config.Config) (err error) {
 	runtime.GOMAXPROCS(runtime.NumCPU())
 	return s.control.Start(s, cfg, doStart)
 }
+
 func (s *bcacheStore) Shutdown() {
 	s.control.Shutdown(s, doShutdown)
 }
@@ -112,13 +108,13 @@ func doShutdown(server common.Server) {
 	if !ok {
 		return
 	}
-	//stop unix domain socket
+	// stop unix domain socket
 	s.stopServer()
-	//close connpool
+	// close connpool
 }
 
 func (s *bcacheStore) startServer() (err error) {
-	//create socket dir
+	// create socket dir
 	os.MkdirAll(filepath.Dir(UnixSocketPath), FilePerm)
 
 	if _, err := os.Stat(UnixSocketPath); err == nil {
@@ -244,7 +240,6 @@ func (s *bcacheStore) opBlockCacheGet(conn net.Conn, p *BlockCachePacket) (err e
 	p.PacketOkWithBody(reply)
 	s.response(conn, p)
 	return
-
 }
 
 func (s *bcacheStore) opBlockCacheEvict(conn net.Conn, p *BlockCachePacket) (err error) {
@@ -279,7 +274,6 @@ func (s *bcacheStore) response(conn net.Conn, p *BlockCachePacket) (err error) {
 			err.Error(), p.GetOpMsg())
 	}
 	return
-
 }
 
 func (s *bcacheStore) parserConf(cfg *config.Config) (*bcacheConfig, error) {
@@ -302,5 +296,4 @@ func (s *bcacheStore) parserConf(cfg *config.Config) (*bcacheConfig, error) {
 		bconf.FreeRatio = float32(v)
 	}
 	return bconf, nil
-
 }

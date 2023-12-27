@@ -43,9 +43,7 @@ const (
 	PacketHeaderSize = 11
 )
 
-var (
-	Buffers *buf.BufferPool
-)
+var Buffers *buf.BufferPool
 
 type PutCacheRequest struct {
 	CacheKey string `json:"key"`
@@ -128,7 +126,6 @@ func (p *BlockCachePacket) MarshalHeader(out []byte) {
 	out[2] = p.ResultCode
 	binary.BigEndian.PutUint32(out[3:7], p.CRC)
 	binary.BigEndian.PutUint32(out[7:11], p.Size)
-	return
 }
 
 func (p *BlockCachePacket) UnMarshalHeader(in []byte) error {
@@ -192,9 +189,6 @@ func (p *BlockCachePacket) ReadFromConn(c net.Conn, timeoutSec int) (err error) 
 	}
 	if err = p.UnMarshalHeader(header); err != nil {
 		return
-	}
-	if p.Size < 0 {
-		return syscall.EBADMSG
 	}
 	size := p.Size
 	//if p.Opcode == OpBlockCachePut || p.Opcode == OpBlockCacheDel {
