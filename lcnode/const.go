@@ -60,7 +60,7 @@ const (
 var (
 	// Regular expression used to verify the configuration of the service listening port.
 	// A valid service listening port configuration is a string containing only numbers.
-	regexpListen            = regexp.MustCompile("^(\\d)+$")
+	regexpListen            = regexp.MustCompile(`^(\d)+$`)
 	batchExpirationGetNum   int
 	scanCheckInterval       int64
 	lcScanRoutineNumPerTask int
