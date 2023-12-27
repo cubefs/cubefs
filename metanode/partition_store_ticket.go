@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/unit"
+	"sync/atomic"
 	"time"
 
 	"github.com/cubefs/cubefs/util/errors"
@@ -82,6 +83,7 @@ func (mp *metaPartition) startSchedule(curIndex uint64) {
 	dumpFunc := func(msg *storeMsg) {
 		defer func() {
 			mp.manager.tokenM.ReleaseToken(mp.config.PartitionId)
+			atomic.StoreInt64(&mp.lastDumpTime, time.Now().Unix())
 		}()
 		log.LogWarnf("[beforMetaPartitionStore] partitionId=%d: nowAppID"+
 			"=%d, applyID=%d", mp.config.PartitionId, curIndex,
@@ -132,7 +134,7 @@ func (mp *metaPartition) startSchedule(curIndex uint64) {
 				return
 
 			case <-storeTicker.C:
-				if len(msgs) == 0{
+				if len(msgs) == 0 || time.Now().Unix() - atomic.LoadInt64(&mp.lastDumpTime) < int64(intervalToPersistData / time.Second){
 					continue
 				}
 
