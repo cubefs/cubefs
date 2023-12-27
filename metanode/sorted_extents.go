@@ -332,6 +332,40 @@ func (se *SortedExtents) SplitWithCheck(mpId uint64, inodeID uint64, ekSplit pro
 	return
 }
 
+func (se *SortedExtents) CheckAndAddRef(lastKey *proto.ExtentKey, currEk *proto.ExtentKey, addRefFunc func(*proto.ExtentKey)) (ok bool) {
+	if !lastKey.IsSameExtent(currEk) {
+		return
+	}
+	log.LogDebugf("action[AppendWithCheck.CheckAndAddRef] ek %v,lastKey %v", currEk, lastKey)
+	if lastKey.FileOffset+uint64(lastKey.Size) <= currEk.FileOffset {
+		if !lastKey.IsSplit() {
+			addRefFunc(lastKey)
+		}
+		addRefFunc(currEk)
+		ok = true
+		return
+	}
+
+	if lastKey.FileOffset == currEk.FileOffset &&
+		lastKey.PartitionId == currEk.PartitionId &&
+		lastKey.ExtentId == currEk.ExtentId &&
+		lastKey.ExtentOffset == currEk.ExtentOffset && lastKey.Size < currEk.Size && lastKey.GetSeq() < currEk.GetSeq() {
+
+		log.LogDebugf("action[AppendWithCheck.CheckAndAddRef] split append key %v", currEk)
+		currEk.FileOffset = lastKey.FileOffset + uint64(lastKey.Size)
+		currEk.ExtentOffset = currEk.ExtentOffset + uint64(lastKey.Size)
+		currEk.Size = currEk.Size - lastKey.Size
+		log.LogDebugf("action[AppendWithCheck.CheckAndAddRef] after split append key %v", currEk)
+		if !lastKey.IsSplit() {
+			addRefFunc(lastKey)
+		}
+		addRefFunc(currEk)
+		ok = true
+		return
+	}
+	return
+}
+
 func (se *SortedExtents) AppendWithCheck(inodeID uint64, ek proto.ExtentKey, addRefFunc func(*proto.ExtentKey), discard []proto.ExtentKey) (deleteExtents []proto.ExtentKey, status uint8) {
 	status = proto.OpOk
 	endOffset := ek.FileOffset + uint64(ek.Size)
@@ -344,39 +378,9 @@ func (se *SortedExtents) AppendWithCheck(inodeID uint64, ek proto.ExtentKey, add
 	}
 	idx := len(se.eks) - 1
 	lastKey := &se.eks[idx]
+
 	log.LogDebugf("action[AppendWithCheck] ek %v,lastKey %v, discard [%v]", ek, lastKey, discard)
-	if lastKey.FileOffset+uint64(lastKey.Size) <= ek.FileOffset {
-		if !lastKey.IsSameExtent(&ek) {
-			se.eks = append(se.eks, ek)
-			return
-		}
-
-		se.eks = append(se.eks, ek)
-		if !lastKey.IsSplit() {
-			addRefFunc(lastKey)
-		}
-		addRefFunc(&ek)
-		return
-	}
-
-	if lastKey.FileOffset == ek.FileOffset &&
-		lastKey.PartitionId == ek.PartitionId &&
-		lastKey.ExtentId == ek.ExtentId &&
-		lastKey.ExtentOffset == ek.ExtentOffset && lastKey.Size < ek.Size &&
-		lastKey.GetSeq() < ek.GetSeq() {
-		if len(discard) > 0 {
-			status = proto.OpConflictExtentsErr
-			return
-		}
-		log.LogDebugf("action[AppendWithCheck] split append key %v", ek)
-		ek.FileOffset = lastKey.FileOffset + uint64(lastKey.Size)
-		ek.ExtentOffset = ek.ExtentOffset + uint64(lastKey.Size)
-		ek.Size = ek.Size - lastKey.Size
-		log.LogDebugf("action[AppendWithCheck] after split append key %v", ek)
-		if !lastKey.IsSplit() {
-			addRefFunc(lastKey)
-		}
-		addRefFunc(&ek)
+	if ok := se.CheckAndAddRef(lastKey, &ek, addRefFunc); ok {
 		se.eks = append(se.eks, ek)
 		return
 	}
@@ -437,12 +441,7 @@ func (se *SortedExtents) AppendWithCheck(inodeID uint64, ek proto.ExtentKey, add
 		if startIndex == 0 {
 			return
 		}
-		if se.eks[startIndex-1].IsSequenceWithDiffSeq(&se.eks[startIndex]) {
-			if !se.eks[startIndex-1].IsSplit() {
-				addRefFunc(&se.eks[startIndex-1])
-			}
-			addRefFunc(&se.eks[startIndex])
-		}
+		se.CheckAndAddRef(&se.eks[startIndex-1], &se.eks[startIndex], addRefFunc)
 	}()
 
 	if len(invalidExtents) == 0 {
