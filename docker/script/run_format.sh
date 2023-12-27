@@ -12,7 +12,7 @@ popd
 
 export PATH=$PATH:/go/bin
 
-for subdir in storage cli
+for subdir in storage cli lcnode
 do
     pushd ${CurrentPath}/../../${subdir}
     go generate ./...

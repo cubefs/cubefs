@@ -38,8 +38,8 @@ func (l *LcNode) opMasterHeartbeat(conn net.Conn, p *proto.Packet, remoteAddr st
 	var (
 		req  = &proto.HeartBeatRequest{}
 		resp = &proto.LcNodeHeartbeatResponse{
-			LcScanningTasks:       make(map[string]*proto.LcNodeRuleTaskResponse, 0),
-			SnapshotScanningTasks: make(map[string]*proto.SnapshotVerDelTaskResponse, 0),
+			LcScanningTasks:       make(map[string]*proto.LcNodeRuleTaskResponse),
+			SnapshotScanningTasks: make(map[string]*proto.SnapshotVerDelTaskResponse),
 		}
 		adminTask = &proto.AdminTask{
 			Request: req,

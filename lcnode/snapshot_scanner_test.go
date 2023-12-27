@@ -45,7 +45,7 @@ func TestSnapshotScanner(t *testing.T) {
 		inodeChan:   unboundedchan.NewUnboundedChan(10),
 		rPoll:       routinepool.NewRoutinePool(snapshotRoutineNumPerTask),
 		currentStat: &proto.SnapshotStatistics{},
-		stopC:       make(chan bool, 0),
+		stopC:       make(chan bool),
 	}
 	go scanner.Start()
 	time.Sleep(time.Second * 5)
