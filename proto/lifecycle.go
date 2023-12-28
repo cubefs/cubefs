@@ -41,7 +41,7 @@ func OpTypeToStorageType(op string) uint32 {
 	case OpTypeStorageClassEBS:
 		return StorageClass_BlobStore
 	}
-	return 0
+	return StorageClass_Unspecified
 }
 
 type LcConfiguration struct {
