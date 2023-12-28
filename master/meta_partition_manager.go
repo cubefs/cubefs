@@ -147,9 +147,38 @@ func (c *Cluster) checkMetaPartitionRecoveryProgress() {
 		return true
 	})
 	if len(unrecoverMpIDs) != 0 {
+		deletedMpIds := c.getHasDeletedMpIds(unrecoverMpIDs)
+		for _, id := range deletedMpIds {
+			c.BadMetaPartitionIds.Delete(id)
+			delete(unrecoverMpIDs, id)
+		}
 		msg := fmt.Sprintf("action[checkMetaPartitionRecoveryProgress] clusterID[%v],[%v] has migrated more than 24 hours,still not recovered,ids[%v]", c.Name, len(unrecoverMpIDs), unrecoverMpIDs)
 		WarnBySpecialKey(gAlarmKeyMap[alarmKeyMpHasNotRecover], msg)
 	}
+}
+
+func (c *Cluster) getHasDeletedMpIds(unrecoverPartitionIDs map[uint64]int64) (deletedMpIds []uint64) {
+	lastLeaderVersion := c.getLeaderVersion()
+	if !c.isMetaReady() {
+		return
+	}
+	deletedMpIds = make([]uint64, 0)
+	for partitionID, _ := range unrecoverPartitionIDs {
+		partition, err := c.getDataPartitionByID(partitionID)
+		if err != nil {
+			deletedMpIds = append(deletedMpIds, partitionID)
+			continue
+		}
+		_, err = c.getVol(partition.VolName)
+		if err != nil {
+			deletedMpIds = append(deletedMpIds, partitionID)
+			continue
+		}
+	}
+	if c.getLeaderVersion() != lastLeaderVersion {
+		return nil
+	}
+	return
 }
 
 // Add replica for the partition whose replica number is less than replicaNum

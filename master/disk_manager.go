@@ -75,9 +75,38 @@ func (c *Cluster) checkDiskRecoveryProgress() {
 		return true
 	})
 	if len(unrecoverPartitionIDs) != 0 {
+		deletedDpIds := c.getHasDeletedDpIds(unrecoverPartitionIDs)
+		for _, id := range deletedDpIds {
+			c.BadDataPartitionIds.Delete(id)
+			delete(unrecoverPartitionIDs, id)
+		}
 		msg := fmt.Sprintf("action[checkDiskRecoveryProgress] clusterID[%v],has[%v] has offlined more than 24 hours,still not recovered,ids[%v]", c.Name, len(unrecoverPartitionIDs), unrecoverPartitionIDs)
 		WarnBySpecialKey(gAlarmKeyMap[alarmKeyDpHasNotRecover], msg)
 	}
+}
+
+func (c *Cluster) getHasDeletedDpIds(unrecoverPartitionIDs map[uint64]int64) (deletedDpIds []uint64) {
+	lastLeaderVersion := c.getLeaderVersion()
+	if !c.isMetaReady() {
+		return
+	}
+	deletedDpIds = make([]uint64, 0)
+	for partitionID, _ := range unrecoverPartitionIDs {
+		partition, err := c.getDataPartitionByID(partitionID)
+		if err != nil {
+			deletedDpIds = append(deletedDpIds, partitionID)
+			continue
+		}
+		_, err = c.getVol(partition.VolName)
+		if err != nil {
+			deletedDpIds = append(deletedDpIds, partitionID)
+			continue
+		}
+	}
+	if c.getLeaderVersion() != lastLeaderVersion {
+		return nil
+	}
+	return
 }
 
 // Add replica for the partition whose replica number is less than replicaNum
