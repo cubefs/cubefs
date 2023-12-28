@@ -373,6 +373,7 @@ type metaPartition struct {
 	raftFSMLock                 sync.Mutex
 	reqRecords                  *RequestRecords
 	topoManager                 *topology.TopologyManager
+	lastDumpTime				int64
 }
 
 // Start starts a meta partition.
