@@ -692,6 +692,8 @@ func (mp *metaPartition) versionInit(isCreate bool) (err error) {
 	return
 }
 
+const retryNum = 5
+
 func (mp *metaPartition) onStart(isCreate bool) (err error) {
 	defer func() {
 		if err == nil {
@@ -715,7 +717,15 @@ func (mp *metaPartition) onStart(isCreate bool) (err error) {
 	}
 
 	// set EBS Client
-	if clusterInfo, err = masterClient.AdminAPI().GetClusterInfo(); err != nil {
+	for retry := 0; retry < retryNum; retry++ {
+		if clusterInfo, err = masterClient.AdminAPI().GetClusterInfo(); err != nil {
+			log.LogErrorf("action[onStart] GetClusterInfo err[%v], retry(%d/%d)", err, retry+1, retryNum)
+			time.Sleep(5 * time.Second * time.Duration(retry+1))
+		} else {
+			break
+		}
+	}
+	if err != nil {
 		log.LogErrorf("action[onStart] GetClusterInfo err[%v]", err)
 		return
 	}
@@ -723,7 +733,15 @@ func (mp *metaPartition) onStart(isCreate bool) (err error) {
 	var (
 		volumeInfo *proto.SimpleVolView
 	)
-	if volumeInfo, err = masterClient.AdminAPI().GetVolumeSimpleInfo(mp.config.VolName); err != nil {
+	for retry := 0; retry < retryNum; retry++ {
+		if volumeInfo, err = masterClient.AdminAPI().GetVolumeSimpleInfo(mp.config.VolName); err != nil {
+			log.LogErrorf("action[onStart] GetVolumeSimpleInfo err[%v], retry(%d/%d)", err, retry+1, retryNum)
+			time.Sleep(5 * time.Second * time.Duration(retry+1))
+		} else {
+			break
+		}
+	}
+	if err != nil {
 		log.LogErrorf("action[onStart] GetVolumeSimpleInfo err[%v]", err)
 		return
 	}
