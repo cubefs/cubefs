@@ -1032,7 +1032,8 @@ func (mp *metaPartition) RenewalForbiddenMigration(req *proto.RenewalForbiddenMi
 func (mp *metaPartition) UpdateExtentKeyAfterMigration(req *proto.UpdateExtentKeyAfterMigrationRequest, p *Packet,
 	remoteAddr string) (err error) {
 	ino := NewInode(req.Inode, 0)
-	if item := mp.inodeTree.Get(ino); item == nil {
+	var item BtreeItem
+	if item = mp.inodeTree.Get(ino); item == nil {
 		err = fmt.Errorf("mp %v inode %v reqeust cann't found", mp.config.PartitionId, ino.Inode)
 		log.LogErrorf("action[UpdateExtentKeyAfterMigration] %v", err)
 		p.PacketErrorWithBody(proto.OpNotExistErr, []byte(err.Error()))
@@ -1067,8 +1068,13 @@ func (mp *metaPartition) UpdateExtentKeyAfterMigration(req *proto.UpdateExtentKe
 	if req.StorageClass == proto.StorageClass_BlobStore {
 		ino.HybridCouldExtentsMigration.sortedEks = NewSortedObjExtentsFromObjEks(req.NewObjExtentKeys)
 	} else if req.StorageClass == proto.MediaType_HDD {
-		//do nothing, ek has been stored in ino.HybridCouldExtentsMigration before UpdateExtentKeyAfterMigration
-		//is called
+		if item.(*Inode).HybridCouldExtentsMigration.storageClass != proto.MediaType_HDD {
+			err = fmt.Errorf("mp %v inode %v migration class now is %v",
+				mp.config.PartitionId, ino.Inode, item.(*Inode).HybridCouldExtentsMigration.storageClass)
+			log.LogErrorf("action[UpdateExtentKeyAfterMigration] %v", err)
+			p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+		}
+		ino.HybridCouldExtentsMigration.sortedEks = item.(*Inode).HybridCouldExtentsMigration.sortedEks
 	} else {
 		err = fmt.Errorf("mp %v inode %v unsupport new migration storage class %v",
 			mp.config.PartitionId, ino.Inode, req.StorageClass)
