@@ -664,7 +664,7 @@ func (s *ExtentStore) __deleteExtent(ino, extent uint64, offset, size int64) (er
 		return
 	}
 	if log.IsDebugEnabled() {
-		log.LogDebugf("Store(%v) flush delete NormalExtent: ino=%v, extent=%v, timestamp=%v",
+		log.LogDebugf("Store(%v) flush delete NormalExtent: ino=%v, extent=%v",
 			s.partitionID, ino, extent)
 	}
 	var filepath = path.Join(s.dataPath, strconv.FormatUint(extent, 10))

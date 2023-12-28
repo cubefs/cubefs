@@ -293,28 +293,45 @@ func (f *TopologyManager) updateDataPartitions(volName string, dpIDs []uint64) {
 }
 
 func (f *TopologyManager) backGroundFetchDataPartitions() {
-	timer := time.NewTimer(0)
+	fetchAllTickerValue := atomic.LoadInt64(&f.fetchTimerIntervalMin)
 	tickerValue := atomic.LoadInt64(&f.forceFetchTimerIntervalSec)
+	fetchAllTicker := time.NewTicker(time.Minute * time.Duration(fetchAllTickerValue))
 	ticker := time.NewTicker(time.Second * time.Duration(tickerValue))
+
+	if f.needFetchVolAllDPView {
+		allVolsName := f.getAllVolumesName()
+		for _, volName := range allVolsName {
+			log.LogDebugf("backGroundFetchDataPartitions start fetch volume(%s) view", volName)
+			f.updateDataPartitions(volName, nil)
+		}
+	}
+
 	var needForceFetchDataPartitionsMap = make(map[string]map[uint64]bool, 0)
 	for {
 
 		select {
 		case <-f.stopCh:
-			timer.Stop()
+			fetchAllTicker.Stop()
 			ticker.Stop()
 			return
 
-		case <-timer.C:
+		case <-fetchAllTicker.C:
 			if !f.needFetchVolAllDPView {
 				continue
 			}
-			interval := atomic.LoadInt64(&f.fetchTimerIntervalMin)
-			timer.Reset(time.Duration(interval) * time.Minute)
+
 			allVolsName := f.getAllVolumesName()
 			for _, volName := range allVolsName {
 				log.LogDebugf("backGroundFetchDataPartitions start fetch volume(%s) view", volName)
 				f.updateDataPartitions(volName, nil)
+			}
+
+			newFetchAllTickerValue := atomic.LoadInt64(&f.fetchTimerIntervalMin)
+			if newFetchAllTickerValue > 0 && newFetchAllTickerValue != fetchAllTickerValue {
+				log.LogDebugf("backGroundFetchDataPartitions fetch all ticker change from (%v min) to (%v min)",
+					fetchAllTickerValue, newFetchAllTickerValue)
+				fetchAllTicker.Reset(time.Minute * time.Duration(newFetchAllTickerValue))
+				fetchAllTickerValue = newFetchAllTickerValue
 			}
 
 		case <-ticker.C:

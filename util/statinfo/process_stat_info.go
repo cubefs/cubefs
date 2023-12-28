@@ -34,14 +34,14 @@ func NewProcessStatInfo() *ProcessStatInfo {
 }
 
 func (s *ProcessStatInfo) UpdateStatInfoSchedule() {
-	t := time.NewTimer(time.Duration(0))
-	defer t.Stop()
+	ticker := time.NewTicker(time.Minute)
+	defer ticker.Stop()
 
+	s.DoUpdateStatInfo()
 	for {
 		select {
-		case <-t.C:
+		case <-ticker.C:
 			s.DoUpdateStatInfo()
-			t.Reset(time.Minute * 1)
 		}
 	}
 }

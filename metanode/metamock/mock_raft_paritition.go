@@ -138,3 +138,11 @@ func (m MockPartition) SetConsistencyMode(mode cfsproto.ConsistencyMode) {
 func (m MockPartition) GetConsistencyMode() cfsproto.ConsistencyMode {
 	return cfsproto.StandardMode
 }
+
+func (m MockPartition) IsAllEmptyMsg(end uint64) (isAllEmptyMsg bool, err error) {
+	return
+}
+
+func (m MockPartition) GetLastIndex() (li uint64, err error) {
+	return
+}

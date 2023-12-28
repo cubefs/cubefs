@@ -1584,10 +1584,12 @@ func (mp *metaPartition) FreeInode(val []byte) (err error) {
 }
 
 func (mp *metaPartition) checkRecoverAfterStart() {
-	timer := time.NewTimer(0)
+	ticker := time.NewTicker(time.Second*5)
+	defer ticker.Stop()
+
 	for {
 		select {
-		case <-timer.C:
+		case <-ticker.C:
 			leaderAddr, ok := mp.IsLeader()
 			if ok {
 				log.LogInfof("CheckRecoverAfterStart mp[%v] is leader, skip check recover", mp.config.PartitionId)
@@ -1596,7 +1598,6 @@ func (mp *metaPartition) checkRecoverAfterStart() {
 
 			if leaderAddr == "" {
 				log.LogErrorf("CheckRecoverAfterStart mp[%v] no leader", mp.config.PartitionId)
-				timer.Reset(time.Second * 5)
 				continue
 			}
 
@@ -1604,14 +1605,12 @@ func (mp *metaPartition) checkRecoverAfterStart() {
 			if err != nil {
 				log.LogErrorf("CheckRecoverAfterStart mp[%v] get leader raft apply id failed:%v",
 					mp.config.PartitionId, err)
-				timer.Reset(time.Second * 5)
 				continue
 			}
 
 			if mp.applyID < applyID {
 				log.LogErrorf("CheckRecoverAfterStart mp[%v] apply id(leader:%v, current node:%v)",
 					mp.config.PartitionId, applyID, mp.applyID)
-				timer.Reset(time.Second * 5)
 				continue
 			}
 
@@ -1620,9 +1619,7 @@ func (mp *metaPartition) checkRecoverAfterStart() {
 				mp.config.PartitionId, applyID, mp.applyID)
 			return
 		case <-mp.stopC:
-			timer.Stop()
 			return
-
 		}
 	}
 }

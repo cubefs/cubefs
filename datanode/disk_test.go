@@ -2,6 +2,7 @@ package datanode
 
 import (
 	"fmt"
+	atomic2 "go.uber.org/atomic"
 	"os"
 	"path"
 	"reflect"
@@ -27,6 +28,7 @@ func init() {
 				localServerAddr: localNodeAddress,
 			},
 			partitions: make(map[uint64]*DataPartition),
+			diskReservedRatio: atomic2.NewFloat64(DefaultDiskReservedRatio),
 		}
 		reservedSpace uint64 = DefaultDiskReservedSpace
 		stateFS              = new(syscall.Statfs_t)
@@ -44,6 +46,7 @@ func init() {
 	disk.partitionMap = make(map[uint64]*DataPartition)
 	disk.fixTinyDeleteRecordLimit = spaceManager.fixTinyDeleteRecordLimitOnDisk
 	disk.repairTaskLimit = spaceManager.repairTaskLimitOnDisk
+	disk.getReservedRatio = spaceManager.GetDiskReservedRatio
 }
 func TestFDCount(t *testing.T) {
 	var (
