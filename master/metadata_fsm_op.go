@@ -15,6 +15,7 @@
 package master
 
 import (
+	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"github.com/cubefs/cubefs/raftstore"
@@ -113,11 +114,14 @@ type clusterValue struct {
 	ClientReqRemoveDupFlag              bool
 	RemoteReadConnTimeoutMs             int64
 	ZoneNetConnConfig                   map[string]bsProto.ConnConfig
-	MetaNodeDumpSnapCountByZone			map[string]uint64
-	ClusterName							string
+	MetaNodeDumpSnapCountByZone         map[string]uint64
+	ClusterName                         string
 	TopologyFetchIntervalMin            int64
 	TopologyForceFetchIntervalSec       int64
 	DataNodeDiskReservedRatio           float64
+	BandwidthRateLimit                  uint64
+	NodesLiveRatio                      float32
+	APIReqBwRateLimitMap                map[uint8]int64
 }
 
 func newClusterValue(c *Cluster) (cv *clusterValue) {
@@ -200,49 +204,54 @@ func newClusterValue(c *Cluster) (cv *clusterValue) {
 		RemoteReadConnTimeoutMs:             c.cfg.RemoteReadConnTimeoutMs,
 		ZoneNetConnConfig:                   c.cfg.ZoneNetConnConfig,
 		MetaNodeDumpSnapCountByZone:         c.cfg.MetaNodeDumpSnapCountByZone,
-		ClusterName:						 c.cfg.ClusterName,
+		ClusterName:                         c.cfg.ClusterName,
 		TopologyFetchIntervalMin:            c.cfg.TopologyFetchIntervalMin,
 		TopologyForceFetchIntervalSec:       c.cfg.TopologyForceFetchIntervalSec,
 		DataNodeDiskReservedRatio:           c.cfg.DataNodeDiskReservedRatio,
+		BandwidthRateLimit:                  c.cfg.BandwidthRateLimit,
+		NodesLiveRatio:                      c.cfg.NodesLiveRatio,
+		APIReqBwRateLimitMap:                c.cfg.APIReqBwRateLimitMap,
 	}
 	return cv
 }
 
 type metaPartitionValue struct {
-	PartitionID   uint64
-	Start         uint64
-	End           uint64
-	VolID         uint64
-	ReplicaNum    uint8
-	LearnerNum    uint8
-	Status        int8
-	VolName       string
-	Hosts         string
-	OfflinePeerID uint64
-	Peers         []bsProto.Peer
-	Learners      []bsProto.Learner
-	PanicHosts    []string
-	IsRecover     bool
-	CreateTime    int64
+	PartitionID    uint64
+	Start          uint64
+	End            uint64
+	VolID          uint64
+	ReplicaNum     uint8
+	LearnerNum     uint8
+	Status         int8
+	VolName        string
+	Hosts          string
+	OfflinePeerID  uint64
+	Peers          []bsProto.Peer
+	Learners       []bsProto.Learner
+	PanicHosts     []string
+	IsRecover      bool
+	CreateTime     int64
+	PrePartitionID uint64
 }
 
 func newMetaPartitionValue(mp *MetaPartition) (mpv *metaPartitionValue) {
 	mpv = &metaPartitionValue{
-		PartitionID:   mp.PartitionID,
-		Start:         mp.Start,
-		End:           mp.End,
-		VolID:         mp.volID,
-		ReplicaNum:    mp.ReplicaNum,
-		LearnerNum:    mp.LearnerNum,
-		Status:        mp.Status,
-		VolName:       mp.volName,
-		Hosts:         mp.hostsToString(),
-		Peers:         mp.Peers,
-		Learners:      mp.Learners,
-		OfflinePeerID: mp.OfflinePeerID,
-		IsRecover:     mp.IsRecover,
-		PanicHosts:    mp.PanicHosts,
-		CreateTime:    mp.CreateTime,
+		PartitionID:    mp.PartitionID,
+		Start:          mp.Start,
+		End:            mp.End,
+		VolID:          mp.volID,
+		ReplicaNum:     mp.ReplicaNum,
+		LearnerNum:     mp.LearnerNum,
+		Status:         mp.Status,
+		VolName:        mp.volName,
+		Hosts:          mp.hostsToString(),
+		Peers:          mp.Peers,
+		Learners:       mp.Learners,
+		OfflinePeerID:  mp.OfflinePeerID,
+		IsRecover:      mp.IsRecover,
+		PanicHosts:     mp.PanicHosts,
+		CreateTime:     mp.CreateTime,
+		PrePartitionID: mp.PrePartitionID,
 	}
 	return
 }
@@ -726,7 +735,10 @@ func (c *Cluster) putDataPartitionInfo(opType uint32, dp *DataPartition) (err er
 func (c *Cluster) submit(metadata *RaftCmd) (err error) {
 	cmd, err := metadata.Marshal()
 	if err != nil {
-		return errors.New(err.Error())
+		return bsProto.ErrRaftLeaderHasChanged
+	}
+	if c.leaderHasChanged() {
+		return fmt.Errorf("acition[metadata_submit] leader has changed")
 	}
 	if _, err = c.partition.Submit(cmd); err != nil {
 		msg := fmt.Sprintf("action[metadata_submit] err:%v", err.Error())
@@ -801,6 +813,19 @@ func (c *Cluster) buildMetaPartitionRaftCmd(opType uint32, mp *MetaPartition) (m
 		return metadata, errors.New(err.Error())
 	}
 	return
+}
+
+func (c *Cluster) buildPreMpIDRaftCmd(volID, prePartitionID, mpID uint64) (metadata *RaftCmd) {
+	metadata = new(RaftCmd)
+	metadata.Op = opSyncPreMpID
+	metadata.K = c.buildPreMpIDKey(volID, prePartitionID)
+	metadata.V = make([]byte, 8)
+	binary.BigEndian.PutUint64(metadata.V, mpID)
+	return
+}
+
+func (c *Cluster) buildPreMpIDKey(volID uint64, prePartitionID uint64) string {
+	return preMpIDPrefix + strconv.FormatUint(volID, 10) + strconv.FormatUint(prePartitionID, 10)
 }
 
 func (c *Cluster) buildDataPartitionRaftCmd(opType uint32, dp *DataPartition) (metadata *RaftCmd, err error) {
@@ -1207,6 +1232,18 @@ func (c *Cluster) loadClusterValue() (err error) {
 		c.cfg.TopologyFetchIntervalMin = cv.TopologyFetchIntervalMin
 		c.cfg.TopologyForceFetchIntervalSec = cv.TopologyForceFetchIntervalSec
 		c.cfg.DataNodeDiskReservedRatio = cv.DataNodeDiskReservedRatio
+		if cv.BandwidthRateLimit < minBw {
+			cv.BandwidthRateLimit = maxBw
+		}
+		atomic.StoreUint64(&c.cfg.BandwidthRateLimit, cv.BandwidthRateLimit)
+		if len(cv.APIReqBwRateLimitMap) == 0 {
+			cv.APIReqBwRateLimitMap = make(map[uint8]int64, 0)
+		}
+		c.cfg.APIReqBwRateLimitMap = cv.APIReqBwRateLimitMap
+		c.cfg.NodesLiveRatio = cv.NodesLiveRatio
+		if cv.NodesLiveRatio < defaultNodesLiveRatio {
+			c.cfg.NodesLiveRatio = defaultNodesLiveRatio
+		}
 		log.LogInfof("action[loadClusterValue], cv[%v]", cv)
 		log.LogInfof("action[loadClusterValue], metaNodeThreshold[%v]", cv.Threshold)
 	}
@@ -1320,6 +1357,41 @@ func (c *Cluster) loadVols() (err error) {
 	return
 }
 
+func (c *Cluster) getMetaPartitionFromRocksDB(volID, mpID uint64) (mpv *metaPartitionValue, err error) {
+	key := metaPartitionPrefix + strconv.FormatUint(volID, 10) + keySeparator + strconv.FormatUint(mpID, 10)
+	result, err := c.fsm.store.Get(key)
+	if err != nil {
+		err = fmt.Errorf("action[getMetaPartitionFromRocksDB],err:%v", err.Error())
+		return nil, err
+	}
+	mpv = &metaPartitionValue{}
+	val, ok := result.([]byte)
+	if !ok || len(val) == 0 {
+		return nil, fmt.Errorf("partition[%v] not exist", mpID)
+	}
+	if err = json.Unmarshal(val, mpv); err != nil {
+		err = fmt.Errorf("action[getMetaPartitionFromRocksDB],value:%v,unmarshal err:%v", string(val), err)
+		return nil, err
+	}
+	return
+}
+
+func (c *Cluster) getPreMetaPartitionIDFromRocksDB(volID, preMpID uint64) (mpID uint64, err error) {
+	key := c.buildPreMpIDKey(volID, preMpID)
+	result, err := c.fsm.store.Get(key)
+	if err != nil {
+		err = fmt.Errorf("action[getPreMetaPartitionIDFromRocksDB],err:%v", err.Error())
+		return 0, err
+	}
+	val, ok := result.([]byte)
+	if !ok || len(val) == 0 {
+		return 0, nil
+	}
+	mpID = binary.BigEndian.Uint64(val)
+	log.LogWarnf("action[getPreMetaPartitionIDFromRocksDB] mp[%v] preMpID[%v]", mpID, preMpID)
+	return
+}
+
 func (c *Cluster) loadMetaPartitions() (err error) {
 	result, err := c.fsm.store.SeekForPrefix([]byte(metaPartitionPrefix))
 	if err != nil {
@@ -1343,15 +1415,7 @@ func (c *Cluster) loadMetaPartitions() (err error) {
 			WarnBySpecialKey(gAlarmKeyMap[alarmKeyLoadClusterMetadata], msg)
 			continue
 		}
-		mp := newMetaPartition(mpv.PartitionID, mpv.Start, mpv.End, vol.mpReplicaNum, mpv.LearnerNum, vol.Name, mpv.VolID)
-		mp.setHosts(strings.Split(mpv.Hosts, underlineSeparator))
-		mp.setPeers(mpv.Peers)
-		mp.setLearners(mpv.Learners)
-		mp.OfflinePeerID = mpv.OfflinePeerID
-		mp.IsRecover = mpv.IsRecover
-		mp.modifyTime = time.Now().Unix()
-		mp.CreateTime = mpv.CreateTime
-		mp.PanicHosts = mpv.PanicHosts
+		mp := c.buildMetaPartition(mpv, vol)
 		if mp.IsRecover && len(mp.PanicHosts) > 0 {
 			for _, address := range mp.PanicHosts {
 				c.putBadMetaPartitions(address, mp.PartitionID)
@@ -1360,10 +1424,24 @@ func (c *Cluster) loadMetaPartitions() (err error) {
 		if mp.IsRecover && len(mp.PanicHosts) == 0 {
 			c.putMigratedMetaPartitions("history", mp.PartitionID)
 		}
-		vol.addMetaPartition(mp)
+		vol.addMetaPartition(mp, c.Name)
 		log.LogInfof("action[loadMetaPartitions],vol[%v],mp[%v]", vol.Name, mp.PartitionID)
 	}
 	return
+}
+
+func (c *Cluster) buildMetaPartition(mpv *metaPartitionValue, vol *Vol) *MetaPartition {
+	mp := newMetaPartition(mpv.PartitionID, mpv.Start, mpv.End, vol.mpReplicaNum, mpv.LearnerNum, vol.Name, mpv.VolID)
+	mp.setHosts(strings.Split(mpv.Hosts, underlineSeparator))
+	mp.setPeers(mpv.Peers)
+	mp.setLearners(mpv.Learners)
+	mp.OfflinePeerID = mpv.OfflinePeerID
+	mp.IsRecover = mpv.IsRecover
+	mp.modifyTime = time.Now().Unix()
+	mp.PanicHosts = mpv.PanicHosts
+	mp.CreateTime = mpv.CreateTime
+	mp.PrePartitionID = mpv.PrePartitionID
+	return mp
 }
 
 func (c *Cluster) loadDataPartitions() (err error) {
@@ -1420,6 +1498,7 @@ func (c *Cluster) loadDataPartitions() (err error) {
 		if dp.isRecover && len(dp.PanicHosts) == 0 {
 			c.putMigratedDataPartitionIDs(nil, "history", dp.PartitionID)
 		}
+		dp.lastStatus = bsProto.ReadOnly
 		vol.dataPartitions.put(dp)
 		log.LogInfof("action[loadDataPartitions],vol[%v],dp[%v]", vol.Name, dp.PartitionID)
 	}

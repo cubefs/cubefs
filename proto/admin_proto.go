@@ -91,9 +91,11 @@ const (
 	AdminCheckVolPartitionReplica  = "/vol/checkReplica"
 	AdminSetNodeSetCapacity        = "/admin/nodeSetCapacity/set"
 	AdminGetBadNodes               = "/admin/getBadNodes"
-
-	AdminSmartVolList 			   = "/admin/smartVol/list"
-	AdminHddPartitions 			   = "/admin/hddPartitions"
+	AdminBandwidthLimiterSet       = "/bwLimiter/set"
+	AdminGetAPIReqBwRateLimitInfo  = "/apiLimitInfo/get"
+	AdminAPISetNodesLiveRatio      = "/nodesLiveRatio/set"
+	AdminSmartVolList              = "/admin/smartVol/list"
+	AdminHddPartitions             = "/admin/hddPartitions"
 
 	AdminSetMNRocksDBDiskThreshold        = "/rocksdbDiskThreshold/set"
 	AdminSetMNMemModeRocksDBDiskThreshold = "/memModeRocksdbDiskThreshold/set"
@@ -129,7 +131,7 @@ const (
 	RemoveRaftNode = "/raftNode/remove"
 
 	// Node APIs
-	RegNode          = "/node/reg"
+	RegNode                        = "/node/reg"
 	AddDataNode                    = "/dataNode/add"
 	DecommissionDataNode           = "/dataNode/decommission"
 	DecommissionDisk               = "/disk/decommission"
@@ -240,7 +242,7 @@ const (
 	AdminListFlashGroups           = "/flashGroup/list"
 	ClientFlashGroups              = "/client/flashGroups"
 
-	AdminSetClusterName            = "/admin/setClusterName"
+	AdminSetClusterName = "/admin/setClusterName"
 
 	//graphql api for header
 	HeadAuthorized  = "Authorization"
@@ -583,7 +585,7 @@ type ClusterInfo struct {
 
 type RegNodeRsp struct {
 	Addr    string
-	Id 	    uint64
+	Id      uint64
 	Cluster string
 	AuthKey string
 }
@@ -680,6 +682,7 @@ type LimitInfo struct {
 	TopologyForceFetchIntervalSec int64
 
 	DataNodeDiskReservedRatio float64
+	ApiReqBwRateLimitMap      map[uint8]int64
 }
 
 // CreateDataPartitionRequest defines the request to create a data partition.

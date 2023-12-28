@@ -110,17 +110,6 @@ func (c *Cluster) syncProcessCheckFlashNodeHeartbeatTasks(tasks []*proto.AdminTa
 	}
 }
 
-func (c *Cluster) checkFlashNodeHeartbeat() {
-	tasks := make([]*proto.AdminTask, 0)
-	c.flashNodeTopo.flashNodeMap.Range(func(addr, flashNode interface{}) bool {
-		node := flashNode.(*FlashNode)
-		node.checkLiveliness()
-		task := node.createHeartbeatTask(c.masterAddr())
-		tasks = append(tasks, task)
-		return true
-	})
-	go c.syncProcessCheckFlashNodeHeartbeatTasks(tasks)
-}
 func (flashNode *FlashNode) checkLiveliness() {
 	flashNode.Lock()
 	defer flashNode.Unlock()

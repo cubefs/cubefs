@@ -16,12 +16,13 @@ package master
 
 import (
 	"fmt"
-	"go.uber.org/atomic"
+	"golang.org/x/time/rate"
 	"net"
 	"net/http/httputil"
 	"regexp"
 	"strconv"
 	"sync"
+	"sync/atomic"
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/raftstore"
@@ -34,20 +35,21 @@ import (
 
 // configuration keys
 const (
-	ClusterName       = "clusterName"
-	ID                = "id"
-	IP                = "ip"
-	Port              = "port"
-	LogLevel          = "logLevel"
-	WalDir            = "walDir"
-	StoreDir          = "storeDir"
-	GroupID           = 1
-	ModuleName        = "master"
-	CfgRetainLogs     = "retainLogs"
-	DefaultRetainLogs = 20000
-	cfgTickInterval   = "tickInterval"
-	cfgElectionTick   = "electionTick"
-	SecretKey         = "masterServiceKey"
+	ClusterName        = "clusterName"
+	ID                 = "id"
+	IP                 = "ip"
+	Port               = "port"
+	LogLevel           = "logLevel"
+	WalDir             = "walDir"
+	StoreDir           = "storeDir"
+	GroupID            = 1
+	ModuleName         = "master"
+	CfgRetainLogs      = "retainLogs"
+	DefaultRetainLogs  = 20000
+	cfgTickInterval    = "tickInterval"
+	cfgElectionTick    = "electionTick"
+	SecretKey          = "masterServiceKey"
+	cfgMaxConnsPerHost = "maxConnsPerHost"
 )
 
 var (
@@ -62,42 +64,41 @@ var (
 
 // Server represents the server in a cluster
 type Server struct {
-	id               uint64
-	clusterName      string
-	ip               string
-	port             string
-	walDir           string
-	storeDir         string
-	retainLogs       uint64
-	tickInterval     int
-	electionTick     int
-	leaderInfo       *LeaderInfo
-	config           *clusterConfig
-	cluster          *Cluster
-	user             *User
-	rocksDBStore     *raftstore.RocksDBStore
-	raftStore        raftstore.RaftStore
-	fsm              *MetadataFsm
-	partition        raftstore.Partition
-	wg               sync.WaitGroup
-	reverseProxy     *httputil.ReverseProxy
-	metaReady        atomic.Bool
-	leaderVersion    atomic.Uint64
-	leaderChangeChan chan uint64
-	apiListener      net.Listener
+	id                   uint64
+	clusterName          string
+	ip                   string
+	port                 string
+	walDir               string
+	storeDir             string
+	retainLogs           uint64
+	tickInterval         int
+	electionTick         int
+	leaderInfo           *LeaderInfo
+	config               *clusterConfig
+	cluster              *Cluster
+	user                 *User
+	rocksDBStore         *raftstore.RocksDBStore
+	raftStore            raftstore.RaftStore
+	fsm                  *MetadataFsm
+	partition            raftstore.Partition
+	wg                   sync.WaitGroup
+	reverseProxy         *httputil.ReverseProxy
+	leaderChangeChan     chan *LeaderTermInfo
+	apiListener          net.Listener
+	bandwidthRateLimiter *rate.Limiter
 }
 
 // NewServer creates a new server
 func NewServer() *Server {
-	return &Server{}
+	return &Server{bandwidthRateLimiter: rate.NewLimiter(rate.Limit(maxBw), maxBw)}
 }
 
-func (m *Server) checkClusterName() (err error){
+func (m *Server) checkClusterName() (err error) {
 	var cv *clusterValue
 	if cv, err = m.cluster.getFsmClusterCfg(m.rocksDBStore); err != nil {
 		return
 	}
-	if len(cv.ClusterName) != 0 &&  cv.ClusterName != m.clusterName {
+	if len(cv.ClusterName) != 0 && cv.ClusterName != m.clusterName {
 		err = fmt.Errorf("cfg cluster name err, expect:%s, but now:%s", cv.ClusterName, m.clusterName)
 	}
 
@@ -109,7 +110,7 @@ func (m *Server) Start(cfg *config.Config) (err error) {
 	m.config = newClusterConfig()
 	gConfig = m.config
 	m.leaderInfo = &LeaderInfo{}
-	m.leaderChangeChan = make(chan uint64, 64)
+	m.leaderChangeChan = make(chan *LeaderTermInfo, 64)
 	m.reverseProxy = m.newReverseProxy()
 	if err = m.checkConfig(cfg); err != nil {
 		log.LogError(errors.Stack(err))
@@ -261,6 +262,16 @@ func (m *Server) checkConfig(cfg *config.Config) (err error) {
 	if m.electionTick <= 3 {
 		m.electionTick = 5
 	}
+
+	maxConnsStr := cfg.GetString(cfgMaxConnsPerHost)
+	if maxConnsStr != "" {
+		maxConns, err1 := strconv.ParseInt(maxConnsStr, 10, 64)
+		log.LogWarnf("action[checkConfig] maxConns:%v,err:%v", maxConns, err1)
+		if err1 == nil && maxConns >= 1000 && maxConns <= 50000 {
+			m.config.MaxConnsPerHost = maxConns
+			atomic.StoreInt64(&m.config.MaxConnsPerHost, maxConns)
+		}
+	}
 	return
 }
 
@@ -296,6 +307,7 @@ func (m *Server) initFsm() {
 
 	// register the handlers for the interfaces defined in the Raft library
 	m.fsm.registerApplySnapshotHandler(m.handleApplySnapshot)
+	m.fsm.registerCreateMpHandler(m.handleApply)
 	m.fsm.restore()
 }
 

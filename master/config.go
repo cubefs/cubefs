@@ -79,6 +79,8 @@ const (
 	defaultMemModeRocksdbDiskUsageThreshold          float32 = 0.8
 	defaultMetanodeDumpWaterLevel                            = 100
 	defaultDeleteMarkDelVolInterval                          = 60 * 60 * 24 * 2
+	defaultNodesLiveRatio                            float32 = 0.7
+	defaultMaxConnsPerHost                           int64   = 10000
 )
 
 // AddrDatabase is a map that stores the address of a given host (e.g., the leader)
@@ -178,6 +180,10 @@ type clusterConfig struct {
 	TopologyFetchIntervalMin            int64
 	TopologyForceFetchIntervalSec       int64
 	DataNodeDiskReservedRatio           float64
+	MaxConnsPerHost                     int64
+	BandwidthRateLimit                  uint64
+	NodesLiveRatio                      float32
+	APIReqBwRateLimitMap                map[uint8]int64
 }
 
 func newClusterConfig() (cfg *clusterConfig) {
@@ -221,6 +227,10 @@ func newClusterConfig() (cfg *clusterConfig) {
 	cfg.MetaRaftLogCap = 0             // use meta node config value
 	cfg.ZoneNetConnConfig = make(map[string]bsProto.ConnConfig)
 	cfg.MetaNodeDumpSnapCountByZone = make(map[string]uint64)
+	cfg.BandwidthRateLimit = maxBw
+	cfg.NodesLiveRatio = defaultNodesLiveRatio
+	cfg.MaxConnsPerHost = defaultMaxConnsPerHost
+	cfg.initAPIReqBandwidthRateLimitMap()
 	return
 }
 
@@ -236,6 +246,15 @@ func parsePeerAddr(peerAddr string) (id uint64, ip string, port uint64, err erro
 	}
 	ip = peerStr[1]
 	return
+}
+
+func (cfg *clusterConfig) initAPIReqBandwidthRateLimitMap() {
+	cfg.APIReqBwRateLimitMap = make(map[uint8]int64)
+	cfg.APIReqBwRateLimitMap[APICodeGetCluster] = 0
+	cfg.APIReqBwRateLimitMap[APICodeGetVol] = 0
+	cfg.APIReqBwRateLimitMap[APICodeGetMetaPartitions] = 0
+	cfg.APIReqBwRateLimitMap[APICodeListVols] = 0
+	cfg.APIReqBwRateLimitMap[APICodeGetDataPartitions] = 0
 }
 
 func (cfg *clusterConfig) parsePeers(peerStr string) error {

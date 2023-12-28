@@ -61,28 +61,28 @@ const (
 	mds16Addr         = "127.0.0.1:9116"
 	mds17Addr         = "127.0.0.1:9117"
 
-	mms1Addr      = "127.0.0.1:8101"
-	mms2Addr      = "127.0.0.1:8102"
-	mms3Addr      = "127.0.0.1:8103"
-	mms4Addr      = "127.0.0.1:8104"
-	mms5Addr      = "127.0.0.1:8105"
-	mms6Addr      = "127.0.0.1:8106"
-	mms7Addr      = "127.0.0.1:8107"
-	mms8Addr      = "127.0.0.1:8108"
-	mms9Addr      = "127.0.0.1:8109"
-	mms10Addr     = "127.0.0.1:8110"
-	mms11Addr     = "127.0.0.1:8111"
-	mms12Addr     = "127.0.0.1:8112"
-	mms13Addr     = "127.0.0.1:8113"
-	mms14Addr     = "127.0.0.1:8114"
-	mms15Addr     = "127.0.0.1:8115"
+	mms1Addr  = "127.0.0.1:8101"
+	mms2Addr  = "127.0.0.1:8102"
+	mms3Addr  = "127.0.0.1:8103"
+	mms4Addr  = "127.0.0.1:8104"
+	mms5Addr  = "127.0.0.1:8105"
+	mms6Addr  = "127.0.0.1:8106"
+	mms7Addr  = "127.0.0.1:8107"
+	mms8Addr  = "127.0.0.1:8108"
+	mms9Addr  = "127.0.0.1:8109"
+	mms10Addr = "127.0.0.1:8110"
+	mms11Addr = "127.0.0.1:8111"
+	mms12Addr = "127.0.0.1:8112"
+	mms13Addr = "127.0.0.1:8113"
+	mms14Addr = "127.0.0.1:8114"
+	mms15Addr = "127.0.0.1:8115"
 
 	//use reg test after offline
-	mms16Addr     = "127.0.0.1:8116"
-	mms17Addr     = "127.0.0.1:8117"
-	mms18Addr     = "127.0.0.1:8118"
-	mms19Addr     = "127.0.0.1:8119"
-	mms20Addr     = "127.0.0.1:8120"
+	mms16Addr = "127.0.0.1:8116"
+	mms17Addr = "127.0.0.1:8117"
+	mms18Addr = "127.0.0.1:8118"
+	mms19Addr = "127.0.0.1:8119"
+	mms20Addr = "127.0.0.1:8120"
 
 	commonVolName = "commonVol"
 	quorumVolName = "quorumVol"
@@ -130,7 +130,7 @@ const (
 	mfs6Addr = "127.0.0.1:10506"
 	mfs7Addr = "127.0.0.1:10507"
 
-	readConntimeout = 3 * int64(time.Second)
+	readConntimeout     = 3 * int64(time.Second)
 	metaNodeDataRootDir = "/tmp/chubaofs/MetaNode"
 )
 
@@ -139,7 +139,7 @@ var commonVol *Vol
 var quorumVol *Vol
 var cfsUser *proto.UserInfo
 var mc = master.NewMasterClient([]string{"127.0.0.1:8080"}, false)
-var mtMap map[string] *mocktest.MockMetaServer
+var mtMap map[string]*mocktest.MockMetaServer
 
 func cleanLastDataForTest() {
 	os.RemoveAll("/tmp/chubaofs/Logs")
@@ -150,7 +150,7 @@ func cleanLastDataForTest() {
 
 func createDefaultMasterServerForTest() *Server {
 	cleanLastDataForTest()
-	mtMap = make(map[string] *mocktest.MockMetaServer)
+	mtMap = make(map[string]*mocktest.MockMetaServer)
 	cfgJSON := `{
 		"role": "master",
 		"ip": "127.0.0.1",
@@ -230,14 +230,14 @@ func createDefaultMasterServerForTest() *Server {
 	testServer.cluster.cfg.DataPartitionsRecoverPoolSize = maxDataPartitionsRecoverPoolSize
 	testServer.cluster.cfg.MetaPartitionsRecoverPoolSize = maxMetaPartitionsRecoverPoolSize
 	testServer.cluster.cfg.DeleteMarkDelVolInterval = defaultDeleteMarkDelVolInterval
-	testServer.cluster.checkDataNodeHeartbeat()
-	testServer.cluster.checkMetaNodeHeartbeat()
-	testServer.cluster.checkEcNodeHeartbeat()
-	testServer.cluster.checkCodecNodeHeartbeat()
-	testServer.cluster.checkFlashNodeHeartbeat()
+	testServer.cluster.doCheckDataNodeHeartbeat()
+	testServer.cluster.doCheckMetaNodeHeartbeat()
+	testServer.cluster.doCheckEcNodeHeartbeat()
+	testServer.cluster.doCheckCodecNodeHeartbeat()
+	testServer.cluster.doCheckFlashNodeHeartbeat()
 	testServer.cluster.cfg.nodeSetCapacity = defaultNodeSetCapacity
 	time.Sleep(5 * time.Second)
-	testServer.cluster.scheduleToUpdateStatInfo()
+	testServer.cluster.doCheckAvailSpace()
 	vol, err := testServer.cluster.createVol(commonVolName, "cfs", testZone2, "", 3, 3, 3, 3, 100, 0, defaultEcDataNum, defaultEcParityNum, defaultEcEnable,
 		false, false, false, false, true, false, false, false, 0, 0, defaultChildFileMaxCount,
 		proto.StoreModeMem, proto.MetaPartitionLayout{0, 0}, []string{}, proto.CompactDefault, proto.DpFollowerReadDelayConfig{false, 0}, 0, 0, false)
@@ -340,7 +340,10 @@ func stopMetaServer(mms *mocktest.MockMetaServer) {
 
 func TestGetClusterView(t *testing.T) {
 	server.cluster.responseCache = nil
-	clusterView, err := mc.AdminAPI().GetCluster()
+	reqURL := fmt.Sprintf("%v%v", hostAddr, proto.AdminGetCluster)
+	reply := processReturnRawReply(reqURL, t)
+	clusterView := new(proto.ClusterView)
+	err := json.Unmarshal(reply.Data, &clusterView)
 	assert.NoError(t, err)
 	if len(server.cluster.responseCache) == 0 {
 		t.Errorf("responseCache should not be empty")
@@ -618,7 +621,7 @@ func decommissionDisk(addr, path string, t *testing.T) {
 	if !assert.NoError(t, err) {
 		return
 	}
-	server.cluster.checkDataNodeHeartbeat()
+	server.cluster.doCheckDataNodeHeartbeat()
 	time.Sleep(5 * time.Second)
 	server.cluster.checkDiskRecoveryProgress()
 }
@@ -643,7 +646,7 @@ func decommissionDiskWithAuto(addr, path string, t *testing.T) {
 	if !assert.NoError(t, err) {
 		return
 	}
-	server.cluster.checkDataNodeHeartbeat()
+	server.cluster.doCheckDataNodeHeartbeat()
 	time.Sleep(5 * time.Second)
 	server.cluster.checkDiskRecoveryProgress()
 }
@@ -742,9 +745,9 @@ func TestCreateVol(t *testing.T) {
 }
 
 func TestCreateMetaPartition(t *testing.T) {
-	server.cluster.checkMetaNodeHeartbeat()
+	server.cluster.doCheckMetaNodeHeartbeat()
 	time.Sleep(5 * time.Second)
-	commonVol.checkMetaPartitions(server.cluster)
+	commonVol.checkMetaPartitions(server.cluster, server.cluster.buildCreateMetaPartitionContext())
 	createMetaPartition(commonVol, t)
 	commonVol.createTime = time.Now().Unix() - defaultAutoCreateDPAfterVolCreateSecond*2
 }
@@ -785,7 +788,7 @@ func TestDataPartitionDecommission(t *testing.T) {
 	if !assert.NotZero(t, len(commonVol.dataPartitions.partitions), "no data partitions") {
 		return
 	}
-	server.cluster.checkDataNodeHeartbeat()
+	server.cluster.doCheckDataNodeHeartbeat()
 	time.Sleep(5 * time.Second)
 	partition := commonVol.dataPartitions.partitions[0]
 	partition.isRecover = false
@@ -803,7 +806,7 @@ func TestDataPartitionDecommissionWithoutReplica(t *testing.T) {
 	if !assert.NotZero(t, len(commonVol.dataPartitions.partitions), "no data partitions") {
 		return
 	}
-	server.cluster.checkDataNodeHeartbeat()
+	server.cluster.doCheckDataNodeHeartbeat()
 	time.Sleep(5 * time.Second)
 	partition := commonVol.dataPartitions.partitions[0]
 	partition.RLock()
@@ -930,7 +933,7 @@ func TestAddMetaReplica(t *testing.T) {
 	}
 	msAddr := mms9Addr
 	addMetaServer(msAddr, testZone2)
-	server.cluster.checkMetaNodeHeartbeat()
+	server.cluster.doCheckMetaNodeHeartbeat()
 	time.Sleep(2 * time.Second)
 	reqURL := fmt.Sprintf("%v%v?id=%v&addr=%v", hostAddr, proto.AdminAddMetaReplica, partition.PartitionID, msAddr)
 	process(reqURL, t)
@@ -1478,13 +1481,13 @@ func TestCheckMergeZoneNodeset(t *testing.T) {
 
 	getZoneNodeSetStatus(zoneNodeSet1)
 	getZoneNodeSetStatus(zoneNodeSet2)
-	server.cluster.checkMergeZoneNodeset()
+	server.cluster.doCheckMergeZoneNodeset()
 	getZoneNodeSetStatus(zoneNodeSet1)
 	getZoneNodeSetStatus(zoneNodeSet2)
 	getZoneNodeSetStatus(zoneNodeSet1)
 	getZoneNodeSetStatus(zoneNodeSet2)
 	for i := 0; i < 30; i++ {
-		server.cluster.checkMergeZoneNodeset()
+		server.cluster.doCheckMergeZoneNodeset()
 	}
 	getZoneNodeSetStatus(zoneNodeSet1)
 	getZoneNodeSetStatus(zoneNodeSet2)
@@ -3798,7 +3801,7 @@ func TestSetDisableStrictVolZone(t *testing.T) {
 
 func TestSetAutoUpdatePartitionReplicaNum(t *testing.T) {
 	server.cluster.cfg.AutoUpdatePartitionReplicaNum = true
-	server.cluster.scheduleToCheckUpdatePartitionReplicaNum()
+	server.cluster.doCheckUpdatePartitionReplicaNum()
 	server.cluster.cfg.AutoUpdatePartitionReplicaNum = false
 	testCases := []struct {
 		Value  bool
@@ -3993,7 +3996,7 @@ func TestSetRemoteCacheHandler(t *testing.T) {
 
 }
 
-func TestGetHddDataPartitions(t *testing.T)  {
+func TestGetHddDataPartitions(t *testing.T) {
 	volName := "test_vol_ssd"
 	idcName := "test_idc"
 	c := server.cluster
@@ -4025,7 +4028,6 @@ func TestGetHddDataPartitions(t *testing.T)  {
 		t.Log(err.Error())
 		t.FailNow()
 	}
-
 
 	var hddDprs []*proto.DataPartitionResponse
 	for _, dp := range view.DataPartitions {
@@ -4209,14 +4211,14 @@ func TestDecommissionTwoDpReplicaZone(t *testing.T) {
 }
 
 func TestSetClusterName(t *testing.T) {
-	if err := server.checkClusterName(); err != nil || server.cluster.cfg.ClusterName != ""{
+	if err := server.checkClusterName(); err != nil || server.cluster.cfg.ClusterName != "" {
 		assert.NoError(t, err)
 		t.Errorf("expect success, but failed:%s", err.Error())
 		return
 	}
 
 	reqURL := fmt.Sprintf("%v%v?%s=%s",
-		hostAddr, proto.AdminSetClusterName, proto.ClusterNameKey, server.clusterName + "_error")
+		hostAddr, proto.AdminSetClusterName, proto.ClusterNameKey, server.clusterName+"_error")
 	processWithError(reqURL, t)
 	if server.cluster.cfg.ClusterName != "" {
 		err := fmt.Errorf("expect set cluster name failed, but success")
@@ -4229,7 +4231,7 @@ func TestSetClusterName(t *testing.T) {
 		hostAddr, proto.AdminSetClusterName, proto.ClusterNameKey, server.clusterName)
 	process(reqURL, t)
 
-	if err := server.checkClusterName(); err !=nil || server.cluster.cfg.ClusterName == "" {
+	if err := server.checkClusterName(); err != nil || server.cluster.cfg.ClusterName == "" {
 		assert.NoError(t, err)
 		t.Errorf("expect success, but failed:%s", err.Error())
 		return
@@ -4245,7 +4247,7 @@ func TestSetClusterName(t *testing.T) {
 	server.clusterName = server.cluster.Name
 
 	reqURL = fmt.Sprintf("%v%v?%s=%s",
-		hostAddr, proto.AdminSetClusterName, proto.ClusterNameKey, server.clusterName + "_error")
+		hostAddr, proto.AdminSetClusterName, proto.ClusterNameKey, server.clusterName+"_error")
 	processWithError(reqURL, t)
 	if server.cluster.cfg.ClusterName != server.clusterName {
 		err := fmt.Errorf("expect set cluster name failed, but success")
@@ -4257,7 +4259,7 @@ func TestSetClusterName(t *testing.T) {
 	reqURL = fmt.Sprintf("%v%v?%s=%s",
 		hostAddr, proto.AdminSetClusterName, forceKey, "true")
 	process(reqURL, t)
-	if err := server.checkClusterName(); err !=nil || server.cluster.cfg.ClusterName != "" {
+	if err := server.checkClusterName(); err != nil || server.cluster.cfg.ClusterName != "" {
 		assert.NoError(t, err)
 		t.Errorf("expect success, but failed:%s", err.Error())
 		return

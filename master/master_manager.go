@@ -15,65 +15,71 @@
 package master
 
 import (
+	"encoding/json"
 	"fmt"
 	cfsProto "github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/tiglabs/raft/proto"
+	"github.com/tiglabs/raft/util"
 	"strings"
+	"sync/atomic"
+	"time"
 )
-
-// LeaderInfo represents the leader's information
-type LeaderInfo struct {
-	addr string //host:port
-}
 
 func (m *Server) scheduleProcessLeaderChange() {
 	go func() {
 		for {
 			select {
-			case leader := <-m.leaderChangeChan:
-				log.LogWarnf("action[handleLeaderChange] change leader to [%v],%v ", leader, m.leaderVersion.Load())
-				m.doLeaderChange(leader)
+			case lt := <-m.leaderChangeChan:
+				log.LogWarnf("action[scheduleProcessLeaderChange] change leader to [%v],at term [%v], last leader version:%v ", lt.id, lt.term, m.cluster.getLeaderVersion())
+				m.doLeaderChange(lt.id, lt.term, lt.lastIndex)
 			}
 		}
 	}()
 }
 
-func (m *Server) doLeaderChange(leader uint64) {
+func (m *Server) doLeaderChange(leader, term, li uint64) {
+	m.preProcessOnLeaderChange()
+	// wait old task exit
+	m.cluster.taskWg.Wait()
+	defer func() {
+		m.cluster.taskExitC = make(chan int, 16)
+		// schedule new task
+		if term == 0 {
+			_, term = m.cluster.partition.LeaderTerm()
+		}
+		if m.id == leader {
+			atomic.StoreUint64(&m.cluster.raftTermOnStartTask, term)
+			m.cluster.startPeriodicBackgroundSchedulingTasks()
+		}
+	}()
 	if leader == 0 {
-		log.LogWarnf("action[handleLeaderChange] but no leader")
+		log.LogWarnf("action[doLeaderChange] but no leader")
+		m.loadMetadataOnFollower(term, leader, m.cluster.getLeaderVersion())
 		return
 	}
-	m.metaReady.Store(false)
-	m.cluster.isLeader.Store(false)
-	m.leaderVersion.Add(1)
 	oldLeaderAddr := m.leaderInfo.addr
 	m.leaderInfo.addr = AddrDatabase[leader]
-	log.LogWarnf("action[handleLeaderChange] change leader to [%v] ", m.leaderInfo.addr)
+	log.LogWarnf("action[doLeaderChange] change leader from %v to [%v] ", oldLeaderAddr, m.leaderInfo.addr)
 	m.reverseProxy = m.newReverseProxy()
-
 	if m.id == leader {
 		msg := fmt.Sprintf("clusterID[%v] leader is changed to %v",
 			m.clusterName, m.leaderInfo.addr)
 		WarnBySpecialKey(gAlarmKeyMap[alarmKeyLeaderChanged], msg)
-		if oldLeaderAddr != m.leaderInfo.addr {
-			m.loadMetadata()
-			log.LogInfo("action[refreshUser] begin")
-			if err := m.refreshUser(); err != nil {
-				log.LogErrorf("action[refreshUser] failed,err:%v", err)
-			}
-			log.LogInfo("action[refreshUser] end")
-			m.cluster.updateMetaLoadedTime()
-			msg = fmt.Sprintf("clusterID[%v] leader[%v] load metadata finished.",
-				m.clusterName, m.leaderInfo.addr)
-			WarnBySpecialKey(gAlarmKeyMap[alarmKeyLeaderChanged], msg)
+		m.loadMetadata(term, leader, m.cluster.getLeaderVersion(), li)
+		log.LogInfo("action[refreshUser] begin")
+		if err := m.refreshUser(); err != nil {
+			log.LogErrorf("action[refreshUser] failed,err:%v", err)
 		}
-		m.cluster.checkDataNodeHeartbeat()
-		m.cluster.checkMetaNodeHeartbeat()
-		m.cluster.isLeader.Store(true)
-		m.metaReady.Store(true)
-
+		log.LogInfo("action[refreshUser] end")
+		m.cluster.updateMetaLoadedTime()
+		msg = fmt.Sprintf("clusterID[%v] leader[%v] load metadata finished.",
+			m.clusterName, m.leaderInfo.addr)
+		WarnBySpecialKey(gAlarmKeyMap[alarmKeyLeaderChanged], msg)
+		m.cluster.doCheckDataNodeHeartbeat()
+		m.cluster.doCheckMetaNodeHeartbeat()
+		m.postProcessOnLeaderChange()
 		//new node, snapshot success, but set cluster name after snapshot apply;
 		if m.cluster.cfg.ClusterName != "" && m.cluster.cfg.ClusterName != m.clusterName {
 			msg = fmt.Sprintf("clusterID[%v] leader[%v] check conf cluster name failed; conf[%s], expect[%s].",
@@ -85,7 +91,7 @@ func (m *Server) doLeaderChange(leader uint64) {
 		msg := fmt.Sprintf("clusterID[%v] leader is changed to %v",
 			m.clusterName, m.leaderInfo.addr)
 		WarnBySpecialKey(gAlarmKeyMap[alarmKeyLeaderChanged], msg)
-		m.clearMetadata()
+		m.loadMetadataOnFollower(term, leader, m.cluster.getLeaderVersion())
 		m.cluster.resetMetaLoadedTime()
 		msg = fmt.Sprintf("clusterID[%v] follower[%v] clear metadata has finished.",
 			m.clusterName, m.ip)
@@ -94,7 +100,15 @@ func (m *Server) doLeaderChange(leader uint64) {
 }
 
 func (m *Server) handleLeaderChange(leader uint64) {
-	m.leaderChangeChan <- leader
+
+	_, term := m.cluster.partition.LeaderTerm()
+	li, err := m.cluster.partition.GetLastIndex()
+	if err != nil {
+		panic(err)
+	}
+	lt := &LeaderTermInfo{id: leader, term: term, lastIndex: li}
+	log.LogWarnf("action[handleLeaderChange] to %v,at term %v", leader, term)
+	m.leaderChangeChan <- lt
 }
 
 func (m *Server) handlePeerChange(confChange *proto.ConfChange) (err error) {
@@ -109,10 +123,10 @@ func (m *Server) handlePeerChange(confChange *proto.ConfChange) (err error) {
 		}
 		m.raftStore.AddNodeWithPort(confChange.Peer.ID, arr[0], int(m.config.heartbeatPort), int(m.config.replicaPort))
 		AddrDatabase[confChange.Peer.ID] = string(confChange.Context)
-		msg = fmt.Sprintf("clusterID[%v] peerID:%v,nodeAddr[%v] has been add", m.clusterName, confChange.Peer.ID, addr)
+		msg = fmt.Sprintf("action[handlePeerChange] clusterID[%v] peerID:%v,nodeAddr[%v] has been add", m.clusterName, confChange.Peer.ID, addr)
 	case proto.ConfRemoveNode:
 		m.raftStore.DeleteNode(confChange.Peer.ID)
-		msg = fmt.Sprintf("clusterID[%v] peerID:%v,nodeAddr[%v] has been removed", m.clusterName, confChange.Peer.ID, addr)
+		msg = fmt.Sprintf("action[handlePeerChange] clusterID[%v] peerID:%v,nodeAddr[%v] has been removed", m.clusterName, confChange.Peer.ID, addr)
 	}
 	WarnBySpecialKey(gAlarmKeyMap[alarmKeyPeerChanged], msg)
 	return
@@ -130,17 +144,124 @@ func (m *Server) handleApplySnapshot() {
 	return
 }
 
+func (m *Server) handleApply(cmdMap map[string]*RaftCmd) (err error) {
+
+	for _, cmd := range cmdMap {
+		if cmd.Op != opSyncAddMetaPartition {
+			continue
+		}
+		mpv := new(metaPartitionValue)
+		if err = json.Unmarshal(cmd.V, mpv); err == nil {
+			vol, err1 := m.cluster.getVol(mpv.VolName)
+			if err1 != nil {
+				log.LogErrorf("action[handleApply] err:%v", err1.Error())
+				continue
+			}
+			if vol.ID != mpv.VolID {
+				Warn(m.cluster.Name, fmt.Sprintf("action[handleApply] has duplicate vol[%v],vol.ID[%v],mpv.VolID[%v],mp[%v]", mpv.VolName, vol.ID, mpv.VolID, mpv.PartitionID))
+				continue
+			}
+			mp := m.cluster.buildMetaPartition(mpv, vol)
+			if err = vol.addMetaPartition(mp, m.cluster.Name); err != nil {
+				return
+			}
+			id, err1 := m.cluster.getPreMetaPartitionIDFromRocksDB(vol.ID, mp.PrePartitionID)
+			if err1 != nil {
+				log.LogErrorf("action[handleApply] vol[%v],mp[%v],err:%v", vol.Name, mp.PartitionID, err1)
+				return
+			}
+
+			if id != 0 && id != mp.PartitionID {
+				log.LogErrorf("action[handleApply] mp[%v,%v] has common preMpID[%v],err:%v", id, mp.PartitionID, mpv.PrePartitionID, err1)
+				return cfsProto.ErrHasCommonPreMetaPartition
+			}
+
+			log.LogInfof("action[handleApply] vol[%v] add new mp[%v],start[%v],end[%v]", vol.Name, mp.PartitionID, mp.Start, mp.End)
+		}
+	}
+	return
+}
+
 func (m *Server) restoreIDAlloc() {
 	m.cluster.idAlloc.restore()
 }
 
-// Load stored metadata into the memory
-func (m *Server) loadMetadata() {
-	log.LogInfo("action[loadMetadata] begin")
-	m.clearMetadata()
+func (m *Server) IsAllEmptyMsg(start, end uint64) bool {
+	future := m.fsm.rs.GetEntries(GroupID, start, 64*util.MB)
+	resp, err := future.Response()
+	if err != nil {
+		return false
+	}
+	entries, ok := resp.([]*proto.Entry)
+	if !ok {
+		return false
+	}
+	if len(entries) == 0 {
+		return true
+	}
+	if entries[len(entries)-1].Index < end {
+		return false
+	}
+	ok = true
+	for _, entry := range entries {
+		if entry.Index > end {
+			break
+		}
+		if !(entry.Data == nil || len(entry.Data) == 0) {
+			ok = false
+			break
+		}
+	}
+	return ok
+}
+
+func (m *Server) loadMetadataOnFollower(term, leader, version uint64) {
+	log.LogInfof("action[loadMetadataOnFollower] begin at term:%v,leader:%v,version:%v", term, leader, version)
+	m.clearMetadata(false)
 	m.restoreIDAlloc()
 	m.cluster.fsm.restore()
 	var err error
+
+	if err = m.cluster.loadClusterValue(); err != nil {
+		panic(err)
+	}
+	if err = m.cluster.loadVols(); err != nil {
+		panic(err)
+	}
+	if err = m.cluster.loadMetaPartitions(); err != nil {
+		panic(err)
+	}
+	log.LogInfof("action[loadMetadataOnFollower] end at term:%v,leader:%v,version:%v", term, leader, version)
+}
+
+// Load stored metadata into the memory
+func (m *Server) loadMetadata(term, leader, version, raftLogLastIndex uint64) {
+	log.LogInfof("action[loadMetadata] begin at term:%v,version:%v,leader:%v", term, version, leader)
+	m.clearMetadata(true)
+	m.restoreIDAlloc()
+	m.cluster.fsm.restore()
+	var (
+		raftInternalApplied uint64
+	)
+	for {
+		raftInternalApplied = m.cluster.partition.AppliedIndex()
+		log.LogWarnf("action[loadMetadata] applied:%v,lastIndex:%v,raftInternalApplied:%v,raftCommitId:%v,term:%v,leader:%v",
+			m.cluster.fsm.applied, raftLogLastIndex, raftInternalApplied, m.cluster.partition.CommittedIndex(), term, leader)
+		if raftInternalApplied >= raftLogLastIndex {
+			break
+		}
+
+		//ok, _ := m.cluster.partition.IsAllEmptyMsg(raftLogLastIndex)
+		ok := m.IsAllEmptyMsg(raftInternalApplied, raftLogLastIndex)
+		if ok {
+			log.LogWarnf("action[loadMetadata] all unapplied raft logs are empty messages;applied:%v,lastIndex:%v,raftInternalApplied:%v,raftCommitId:%v,term:%v,leader:%v",
+				m.cluster.fsm.applied, raftLogLastIndex, raftInternalApplied, m.cluster.partition.CommittedIndex(), term, leader)
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	var err error
+
 	if err = m.cluster.loadClusterValue(); err != nil {
 		panic(err)
 	}
@@ -199,7 +320,7 @@ func (m *Server) loadMetadata() {
 	if err = m.cluster.loadFlashNodes(); err != nil {
 		panic(err)
 	}
-	log.LogInfo("action[loadMetadata] end")
+	log.LogInfof("action[loadMetadata] end at term:%v,leader:%v,version:%v", term, leader, version)
 
 	log.LogInfo("action[loadUserInfo] begin")
 	if err = m.user.loadUserStore(); err != nil {
@@ -211,17 +332,21 @@ func (m *Server) loadMetadata() {
 	if err = m.user.loadVolUsers(); err != nil {
 		panic(err)
 	}
+	m.resetBandwidthLimiter(int(m.cluster.cfg.BandwidthRateLimit))
 	log.LogInfo("action[loadUserInfo] end")
 }
 
-func (m *Server) clearMetadata() {
+func (m *Server) clearMetadata(isLeader bool) {
 	m.cluster.clearTopology()
 	m.cluster.clearDataNodes()
 	m.cluster.clearMetaNodes()
 	m.cluster.clearCodecNodes()
 	m.cluster.clearEcNodes()
 	m.cluster.clearMigrateTask()
-	m.cluster.clearVols()
+	if isLeader {
+		m.cluster.clearVols()
+	}
+	m.cluster.clearVolsResponseCache()
 	m.cluster.clearClusterViewResponseCache()
 	m.user.clearUserStore()
 	m.user.clearAKStore()

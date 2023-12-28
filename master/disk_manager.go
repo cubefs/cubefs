@@ -23,21 +23,6 @@ import (
 	"github.com/cubefs/cubefs/util/log"
 )
 
-func (c *Cluster) scheduleToCheckDiskRecoveryProgress() {
-	go func() {
-		for {
-			if c.partition != nil && c.partition.IsRaftLeader() {
-				if c.vols != nil {
-					c.checkDiskRecoveryProgress()
-					c.checkEcDiskRecoveryProgress()
-					c.checkMigratedDataPartitionsRecoveryProgress()
-				}
-			}
-			time.Sleep(time.Second * defaultIntervalToCheckDataPartition)
-		}
-	}()
-}
-
 func (c *Cluster) checkDiskRecoveryProgress() {
 	defer func() {
 		if r := recover(); r != nil {
@@ -49,6 +34,9 @@ func (c *Cluster) checkDiskRecoveryProgress() {
 	c.checkFulfillDataReplica()
 	unrecoverPartitionIDs := make(map[uint64]int64, 0)
 	c.BadDataPartitionIds.Range(func(key, value interface{}) bool {
+		if c.leaderHasChanged() {
+			return false
+		}
 		partitionID := value.(uint64)
 		partition, err := c.getDataPartitionByID(partitionID)
 		if err != nil {

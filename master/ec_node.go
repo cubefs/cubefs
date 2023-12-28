@@ -258,18 +258,6 @@ func (ecNode *ECNode) checkLiveness() {
 	return
 }
 
-func (c *Cluster) checkEcNodeHeartbeat() {
-	tasks := make([]*proto.AdminTask, 0)
-	c.ecNodes.Range(func(addr, ecNode interface{}) bool {
-		node := ecNode.(*ECNode)
-		node.checkLiveness()
-		task := node.createHeartbeatTask(c.masterAddr(), node.Addr, proto.OpEcNodeHeartbeat)
-		tasks = append(tasks, task)
-		return true
-	})
-	c.addEcNodeTasks(tasks)
-}
-
 func (c *Cluster) allEcNodes() (ecNodes []proto.NodeView) {
 	ecNodes = make([]proto.NodeView, 0)
 	c.ecNodes.Range(func(key, value interface{}) bool {
@@ -1435,6 +1423,9 @@ func (c *Cluster) checkEcDiskRecoveryProgress() {
 	}()
 	unrecoverPartitionIDs := make(map[uint64]int64, 0)
 	c.BadEcPartitionIds.Range(func(key, value interface{}) bool {
+		if c.leaderHasChanged() {
+			return false
+		}
 		partitionID := value.(uint64)
 		ep, err := c.getEcPartitionByID(partitionID)
 		if err != nil {

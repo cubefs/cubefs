@@ -500,16 +500,7 @@ func (c *Cluster) getFlashGroupResponseCache() (flashGroupRespCache []byte, err 
 	}
 	return
 }
-func (c *Cluster) scheduleToUpdateFlashGroupRespCache() {
-	go func() {
-		for {
-			if c.partition != nil && c.partition.IsRaftLeader() {
-				c.updateFlashGroupResponseCache()
-			}
-			time.Sleep(time.Second * time.Duration(c.cfg.IntervalToCheckDataPartition))
-		}
-	}()
-}
+
 func (c *Cluster) updateFlashGroupResponseCache() {
 	fgv := c.flashNodeTopo.getFlashGroupView()
 	reply := newSuccessHTTPReply(fgv)

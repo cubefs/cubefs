@@ -17,13 +17,13 @@ package master
 import (
 	"encoding/json"
 	"fmt"
-	"io"
-	"strconv"
-
+	cProto "github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/raftstore"
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/tiglabs/raft"
 	"github.com/tiglabs/raft/proto"
+	"io"
+	"strconv"
 )
 
 const (
@@ -34,7 +34,7 @@ type raftLeaderChangeHandler func(leader uint64)
 
 type raftPeerChangeHandler func(confChange *proto.ConfChange) (err error)
 
-type raftCmdApplyHandler func(cmd *RaftCmd) (err error)
+type raftCmdApplyHandler func(cmdMap map[string]*RaftCmd) (err error)
 
 type raftApplySnapshotHandler func()
 
@@ -47,6 +47,7 @@ type MetadataFsm struct {
 	leaderChangeHandler raftLeaderChangeHandler
 	peerChangeHandler   raftPeerChangeHandler
 	snapshotHandler     raftApplySnapshotHandler
+	cmdApplyHandler     raftCmdApplyHandler
 }
 
 func newMetadataFsm(store *raftstore.RocksDBStore, retainsLog uint64, rs *raft.RaftServer) (fsm *MetadataFsm) {
@@ -70,6 +71,10 @@ func (mf *MetadataFsm) registerPeerChangeHandler(handler raftPeerChangeHandler) 
 // Corresponding to the ApplySnapshot interface in Raft library.
 func (mf *MetadataFsm) registerApplySnapshotHandler(handler raftApplySnapshotHandler) {
 	mf.snapshotHandler = handler
+}
+
+func (mf *MetadataFsm) registerCreateMpHandler(handler raftCmdApplyHandler) {
+	mf.cmdApplyHandler = handler
 }
 
 func (mf *MetadataFsm) restore() {
@@ -103,8 +108,9 @@ func (mf *MetadataFsm) Apply(command []byte, index uint64) (resp interface{}, er
 		log.LogErrorf("action[fsmApply],unmarshal data:%v, err:%v", command, err.Error())
 		panic(err)
 	}
-	log.LogInfof("action[fsmApply],cmd.op[%v],cmd.K[%v],cmd.V[%v]", cmd.Op, cmd.K, string(cmd.V))
+	log.LogInfof("action[fsmApply],index[%v],cmd.op[%v],cmd.K[%v],cmd.V[%v]", index, cmd.Op, cmd.K, string(cmd.V))
 	cmdMap := make(map[string][]byte)
+	createMpCmd := make(map[string]*RaftCmd)
 	if cmd.Op != opSyncBatchPut {
 		cmdMap[cmd.K] = cmd.V
 		cmdMap[applied] = []byte(strconv.FormatUint(uint64(index), 10))
@@ -114,11 +120,23 @@ func (mf *MetadataFsm) Apply(command []byte, index uint64) (resp interface{}, er
 			log.LogErrorf("action[fsmApply],unmarshal nested cmd data:%v, err:%v", command, err.Error())
 			panic(err)
 		}
-		for cmdK, cmd := range nestedCmdMap {
-			log.LogInfof("action[fsmApply],cmd.op[%v],cmd.K[%v],cmd.V[%v]", cmd.Op, cmd.K, string(cmd.V))
-			cmdMap[cmdK] = cmd.V
+		for cmdK, nestCmd := range nestedCmdMap {
+			if nestCmd.Op == opSyncAddMetaPartition {
+				createMpCmd[nestCmd.K] = nestCmd
+			}
+			log.LogInfof("action[fsmApply],cmd.op[%v],cmd.K[%v],cmd.V[%v]", nestCmd.Op, nestCmd.K, string(nestCmd.V))
+			cmdMap[cmdK] = nestCmd.V
 		}
 		cmdMap[applied] = []byte(strconv.FormatUint(uint64(index), 10))
+	}
+	if len(createMpCmd) != 0 {
+		// if this meta partition has common precursor meta partition with other meta partition, don't persist this mp to rocksdb
+		if err = mf.cmdApplyHandler(createMpCmd); err == cProto.ErrHasCommonPreMetaPartition {
+			if err = mf.putIndex(applied, index); err != nil {
+				panic(err)
+			}
+			return nil, nil
+		}
 	}
 	switch cmd.Op {
 	case opSyncDeleteDataNode, opSyncDeleteMetaNode, opSyncDeleteVol, opSyncDeleteDataPartition, opSyncDeleteMetaPartition,
@@ -132,6 +150,8 @@ func (mf *MetadataFsm) Apply(command []byte, index uint64) (resp interface{}, er
 			panic(err)
 		}
 	}
+
+	log.LogInfof("action[fsmApply] finished,index[%v],cmd.op[%v],cmd.K[%v],cmd.V[%v]", index, cmd.Op, cmd.K, string(cmd.V))
 	mf.applied = index
 	if mf.applied > 0 && (mf.applied%mf.retainLogs) == 0 {
 		log.LogWarnf("action[Apply],truncate raft log,retainLogs[%v],index[%v]", mf.retainLogs, mf.applied)
@@ -203,6 +223,12 @@ func (mf *MetadataFsm) HandleLeaderChange(leader uint64) {
 
 func (mf *MetadataFsm) delKeyAndPutIndex(key string, cmdMap map[string][]byte) (err error) {
 	return mf.store.DeleteKeyAndPutIndex(key, cmdMap, true)
+}
+
+func (mf *MetadataFsm) putIndex(key string, index uint64) (err error) {
+	cmdMap := make(map[string][]byte)
+	cmdMap[key] = []byte(strconv.FormatUint(uint64(index), 10))
+	return mf.store.BatchPut(cmdMap, true)
 }
 
 func (mf *MetadataFsm) AskRollback(_ []byte, _ uint64) (rollback []byte, err error) {

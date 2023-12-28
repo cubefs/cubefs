@@ -15,6 +15,7 @@
 package master
 
 import (
+	"context"
 	"fmt"
 	"math"
 	"strconv"
@@ -23,36 +24,6 @@ import (
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/log"
 )
-
-func (c *Cluster) scheduleToLoadMetaPartitions() {
-	go func() {
-		for {
-			if c.partition != nil && c.partition.IsRaftLeader() {
-				if c.vols != nil {
-					c.checkLoadMetaPartitions()
-				}
-			}
-			time.Sleep(60 * time.Second * defaultIntervalToCheckDataPartition)
-		}
-	}()
-}
-
-func (c *Cluster) checkLoadMetaPartitions() {
-	defer func() {
-		if r := recover(); r != nil {
-			log.LogWarnf("checkDiskRecoveryProgress occurred panic,err[%v]", r)
-			WarnBySpecialKey(fmt.Sprintf("%v_%v_scheduling_job_panic", c.Name, ModuleName),
-				"checkDiskRecoveryProgress occurred panic")
-		}
-	}()
-	vols := c.allVols()
-	for _, vol := range vols {
-		mps := vol.cloneMetaPartitionMap()
-		for _, mp := range mps {
-			c.doLoadMetaPartition(mp)
-		}
-	}
-}
 
 func (mp *MetaPartition) checkSnapshot(clusterID string) {
 	mp.RLock()
@@ -132,20 +103,6 @@ func (mp *MetaPartition) checkDentryCount(clusterID string) {
 	}
 }
 
-func (c *Cluster) scheduleToCheckMetaPartitionRecoveryProgress() {
-	go func() {
-		for {
-			if c.partition != nil && c.partition.IsRaftLeader() {
-				if c.vols != nil {
-					c.checkMetaPartitionRecoveryProgress()
-					c.checkMigratedMetaPartitionRecoveryProgress()
-				}
-			}
-			time.Sleep(3 * time.Minute)
-		}
-	}()
-}
-
 func (c *Cluster) checkMetaPartitionRecoveryProgress() {
 	defer func() {
 		if r := recover(); r != nil {
@@ -159,6 +116,9 @@ func (c *Cluster) checkMetaPartitionRecoveryProgress() {
 	c.checkFulfillMetaReplica()
 	unrecoverMpIDs := make(map[uint64]int64, 0)
 	c.BadMetaPartitionIds.Range(func(key, value interface{}) bool {
+		if c.leaderHasChanged() {
+			return false
+		}
 		partitionID := value.(uint64)
 		partition, err := c.getMetaPartitionByID(partitionID)
 		if err != nil {
@@ -259,26 +219,7 @@ func (c *Cluster) fulfillMetaReplica(partitionID uint64, badAddr string) (isPush
 	return
 }
 
-func (c *Cluster) scheduleToCheckAutoMetaPartitionCreation() {
-	go func() {
-		// check volumes after switching leader four minutes
-		time.Sleep(4 * time.Minute)
-		for {
-			if c.partition != nil && c.partition.IsRaftLeader() {
-				vols := c.copyVols()
-				for _, vol := range vols {
-					if !c.isLeader.Load() {
-						break
-					}
-					vol.checkAutoMetaPartitionCreation(c)
-				}
-			}
-			time.Sleep(time.Second * defaultIntervalToWaitMetaPartitionElectionLeader)
-		}
-	}()
-}
-
-func (vol *Vol) checkAutoMetaPartitionCreation(c *Cluster) {
+func (vol *Vol) checkAutoMetaPartitionCreation(c *Cluster, createMpContext context.Context) {
 	defer func() {
 		if r := recover(); r != nil {
 			log.LogWarnf("checkAutoMetaPartitionCreation occurred panic,err[%v]", r)
@@ -290,11 +231,11 @@ func (vol *Vol) checkAutoMetaPartitionCreation(c *Cluster) {
 		return
 	}
 	if vol.status() == proto.VolStNormal && !c.DisableAutoAllocate {
-		vol.autoCreateMetaPartitions(c)
+		vol.autoCreateMetaPartitions(c, createMpContext)
 	}
 }
 
-func (vol *Vol) autoCreateMetaPartitions(c *Cluster) {
+func (vol *Vol) autoCreateMetaPartitions(c *Cluster, createMpContext context.Context) {
 	writableMpCount := int(vol.getWritableMpCount())
 	if writableMpCount < vol.MinWritableMPNum {
 		maxPartitionID := vol.maxPartitionID()
@@ -317,10 +258,14 @@ func (vol *Vol) autoCreateMetaPartitions(c *Cluster) {
 		}
 		log.LogDebugf("action[autoCreateMetaPartitions],cluster[%v],vol[%v],writableMPCount[%v] less than %v, do split.",
 			c.Name, vol.Name, writableMpCount, vol.MinWritableMPNum)
-		if err = vol.splitMetaPartition(c, mp, nextStart); err != nil {
+		if err = vol.splitMetaPartition(c, mp, nextStart, createMpContext); err != nil {
 			msg := fmt.Sprintf("cluster[%v],vol[%v],meta partition[%v] splits failed,err[%v]",
 				c.Name, vol.Name, mp.PartitionID, err)
 			WarnBySpecialKey(gAlarmKeyMap[alarmKeyMpSplit], msg)
 		}
 	}
+}
+
+func (c *Cluster) buildCreateMetaPartitionContext() context.Context {
+	return context.WithValue(context.Background(), leaderVersion, c.getLeaderVersion())
 }

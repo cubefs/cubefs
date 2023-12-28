@@ -11,7 +11,7 @@ func TestMetaNode(t *testing.T) {
 	// /metaNode/add and /metaNode/response processed by mock meta server
 	addr := mms6Addr
 	addMetaServer(addr, testZone2)
-	server.cluster.checkMetaNodeHeartbeat()
+	server.cluster.doCheckMetaNodeHeartbeat()
 	time.Sleep(5 * time.Second)
 	getMetaNodeInfo(addr, t)
 	decommissionMetaNode(addr, t)

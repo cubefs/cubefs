@@ -14,7 +14,7 @@ func TestEC_EcNode(t *testing.T) {
 	addr := "127.0.0.1:10108"
 	addEcServer(addr, httpPort, DefaultZoneName)
 	server.cluster.loadEcNodes()
-	server.cluster.checkEcNodeHeartbeat()
+	server.cluster.doCheckEcNodeHeartbeat()
 	time.Sleep(5 * time.Second)
 	allEcNodes := server.cluster.allEcNodes()
 	assert.NotNilf(t, allEcNodes, "add ecNode [%v] failed", addr)

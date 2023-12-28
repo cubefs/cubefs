@@ -44,22 +44,6 @@ func newZoneStatInfo() *proto.ZoneStat {
 	return &proto.ZoneStat{DataNodeStat: new(proto.ZoneNodesStat), MetaNodeStat: new(proto.ZoneNodesStat)}
 }
 
-// Check the total space, available space, and daily-used space in data nodes,  meta nodes, and volumes
-func (c *Cluster) updateStatInfo() {
-	defer func() {
-		if r := recover(); r != nil {
-			log.LogWarnf("updateStatInfo occurred panic,err[%v]", r)
-			WarnBySpecialKey(fmt.Sprintf("%v_%v_scheduling_job_panic", c.Name, ModuleName),
-				"updateStatInfo occurred panic")
-		}
-	}()
-	c.updateDataNodeStatInfo()
-	c.updateMetaNodeStatInfo()
-	c.updateEcNodeStatInfo()
-	c.updateVolStatInfo()
-	c.updateZoneStatInfo()
-}
-
 func (c *Cluster) updateZoneStatInfo() {
 	var (
 		highUsedRatioDataNodes int
@@ -203,6 +187,9 @@ func (c *Cluster) updateMetaNodeStatInfo() {
 func (c *Cluster) updateVolStatInfo() {
 	vols := c.copyVols()
 	for _, vol := range vols {
+		if c.leaderHasChanged() {
+			return
+		}
 		used, total := vol.totalUsedSpace(), vol.Capacity*unit.GB
 		if total <= 0 {
 			continue

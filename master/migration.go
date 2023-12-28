@@ -17,6 +17,9 @@ func (c *Cluster) checkMigratedDataPartitionsRecoveryProgress() {
 	}()
 	unrecoverPartitionIDs := make(map[uint64]int64, 0)
 	c.MigratedDataPartitionIds.Range(func(key, value interface{}) bool {
+		if c.leaderHasChanged() {
+			return false
+		}
 		partitionID := value.(uint64)
 		partition, err := c.getDataPartitionByID(partitionID)
 		if err != nil {
@@ -89,6 +92,9 @@ func (c *Cluster) checkMigratedMetaPartitionRecoveryProgress() {
 	}()
 
 	c.MigratedMetaPartitionIds.Range(func(key, value interface{}) bool {
+		if c.leaderHasChanged() {
+			return false
+		}
 		partitionID := value.(uint64)
 		partition, err := c.getMetaPartitionByID(partitionID)
 		if err != nil {
@@ -104,6 +110,9 @@ func (c *Cluster) checkMigratedMetaPartitionRecoveryProgress() {
 	)
 	unrecoverMpIDs := make(map[uint64]int64, 0)
 	c.MigratedMetaPartitionIds.Range(func(key, value interface{}) bool {
+		if c.leaderHasChanged() {
+			return false
+		}
 		partitionID := value.(uint64)
 		partition, err := c.getMetaPartitionByID(partitionID)
 		if err != nil {

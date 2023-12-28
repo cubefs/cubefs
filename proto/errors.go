@@ -16,7 +16,7 @@ package proto
 
 import "github.com/cubefs/cubefs/util/errors"
 
-//err
+// err
 var (
 	ErrSuc                    = errors.New("success")
 	ErrInternalError          = errors.New("internal error")
@@ -101,11 +101,13 @@ var (
 	ErrOperationDisabled = errors.New("operation have been disabled")
 	ErrVolInCreation     = errors.New("vol is in creation")
 
-	ExtentNotFoundError = errors.New("extent does not exist")
-	ErrGetExtentsFailed = errors.New("get extents failed")
-	ErrTmpfsNoSpace      = errors.New("no space left on device")
-
-	ErrUnknownMetaPartition = errors.New("unknown meta partition")
+	ExtentNotFoundError          = errors.New("extent does not exist")
+	ErrGetExtentsFailed          = errors.New("get extents failed")
+	ErrTmpfsNoSpace              = errors.New("no space left on device")
+	ErrRaftLeaderHasChanged      = errors.New("raft leader has changed")
+	ErrNetworkOutLimitArrived    = errors.New("the bandwidth limit of network out has arrived")
+	ErrHasCommonPreMetaPartition = errors.New("has common precursor meta partition")
+	ErrUnknownMetaPartition      = errors.New("unknown meta partition")
 )
 
 // http response error code and error message definitions
@@ -181,6 +183,7 @@ const (
 	ErrCodeDataPartitionNotMigrating
 	ErrCodeGetExtentsFailed
 	ErrCodeTmpfsNoSpace
+	ErrCodeRaftLeaderHasChanged
 )
 
 // Err2CodeMap error map to code
@@ -252,6 +255,7 @@ var Err2CodeMap = map[error]int32{
 	ErrVolInCreation:                   ErrCodeVolInCreation,
 	ErrGetExtentsFailed:                ErrCodeGetExtentsFailed,
 	ErrTmpfsNoSpace:                    ErrCodeTmpfsNoSpace,
+	ErrRaftLeaderHasChanged:            ErrCodeRaftLeaderHasChanged,
 }
 
 func ParseErrorCode(code int32) error {
@@ -330,6 +334,7 @@ var code2ErrMap = map[int32]error{
 	ErrCodeVolInCreation:                   ErrVolInCreation,
 	ErrCodeGetExtentsFailed:                ErrGetExtentsFailed,
 	ErrCodeTmpfsNoSpace:                    ErrTmpfsNoSpace,
+	ErrCodeRaftLeaderHasChanged:            ErrRaftLeaderHasChanged,
 }
 
 type GeneralResp struct {

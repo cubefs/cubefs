@@ -44,30 +44,21 @@ func TestPanicCheckDataPartitions(t *testing.T) {
 	c.checkDataPartitions()
 }
 
-func TestCheckBackendLoadDataPartitions(t *testing.T) {
-	server.cluster.scheduleToLoadDataPartitions()
-}
-
-func TestPanicBackendLoadDataPartitions(t *testing.T) {
-	c := buildPanicCluster()
-	c.scheduleToLoadDataPartitions()
-}
-
 func TestCheckReleaseDataPartitions(t *testing.T) {
-	server.cluster.releaseDataPartitionAfterLoad()
+	server.cluster.doReleaseDataPartition()
 }
 func TestPanicCheckReleaseDataPartitions(t *testing.T) {
 	c := buildPanicCluster()
-	c.releaseDataPartitionAfterLoad()
+	c.doReleaseDataPartition()
 }
 
 func TestCheckHeartbeat(t *testing.T) {
-	server.cluster.checkDataNodeHeartbeat()
-	server.cluster.checkMetaNodeHeartbeat()
+	server.cluster.doCheckDataNodeHeartbeat()
+	server.cluster.doCheckMetaNodeHeartbeat()
 }
 
 func TestCheckMetaPartitions(t *testing.T) {
-	server.cluster.checkMetaPartitions()
+	server.cluster.doCheckMetaPartitions()
 }
 
 func TestPanicCheckMetaPartitions(t *testing.T) {
@@ -77,29 +68,29 @@ func TestPanicCheckMetaPartitions(t *testing.T) {
 	partitionID, err := server.cluster.idAlloc.allocateMetaPartitionID()
 	assert.NoError(t, err)
 	mp := newMetaPartition(partitionID, 1, defaultMaxMetaPartitionInodeID, vol.mpReplicaNum, vol.mpLearnerNum, vol.Name, vol.ID)
-	vol.addMetaPartition(mp)
+	_ = vol.addMetaPartition(mp, c.Name)
 	mp = nil
-	c.checkMetaPartitions()
+	c.doCheckMetaPartitions()
 }
 
 func TestCheckAvailSpace(t *testing.T) {
-	server.cluster.scheduleToUpdateStatInfo()
+	server.cluster.doCheckAvailSpace()
 }
 
 func TestPanicCheckAvailSpace(t *testing.T) {
 	c := buildPanicCluster()
 	c.dataNodeStatInfo = nil
-	c.scheduleToUpdateStatInfo()
+	c.doCheckAvailSpace()
 }
 
 func TestCheckCreateDataPartitions(t *testing.T) {
-	server.cluster.scheduleToCheckAutoDataPartitionCreation()
+	server.cluster.doCheckCreateDataPartitions()
 	//time.Sleep(150 * time.Second)
 }
 
 func TestPanicCheckCreateDataPartitions(t *testing.T) {
 	c := buildPanicCluster()
-	c.scheduleToCheckAutoDataPartitionCreation()
+	c.doCheckCreateDataPartitions()
 }
 
 func TestPanicCheckBadDiskRecovery(t *testing.T) {
@@ -110,7 +101,7 @@ func TestPanicCheckBadDiskRecovery(t *testing.T) {
 	assert.NoError(t, err)
 	dp := newDataPartition(partitionID, vol.dpReplicaNum, vol.Name, vol.ID)
 	c.BadDataPartitionIds.Store(fmt.Sprintf("%v", dp.PartitionID), dp)
-	c.scheduleToCheckDiskRecoveryProgress()
+	c.doCheckBadDiskRecovery()
 }
 
 func TestPanicCheckMigratedDataPartitionsRecovery(t *testing.T) {
@@ -131,7 +122,7 @@ func TestPanicCheckMigratedMetaPartitionsRecovery(t *testing.T) {
 	partitionID, err := server.cluster.idAlloc.allocateMetaPartitionID()
 	assert.NoError(t, err)
 	mp := newMetaPartition(partitionID, 1, defaultMaxMetaPartitionInodeID, vol.mpReplicaNum, vol.mpLearnerNum, vol.Name, vol.ID)
-	vol.addMetaPartition(mp)
+	_ = vol.addMetaPartition(mp, c.Name)
 	c.MigratedMetaPartitionIds.Store(fmt.Sprintf("%v", mp.PartitionID), mp)
 	mp = nil
 	c.checkMigratedMetaPartitionRecoveryProgress()
@@ -139,7 +130,7 @@ func TestPanicCheckMigratedMetaPartitionsRecovery(t *testing.T) {
 
 func TestCheckBadDiskRecovery(t *testing.T) {
 
-	server.cluster.checkDataNodeHeartbeat()
+	server.cluster.doCheckDataNodeHeartbeat()
 	time.Sleep(5 * time.Second)
 	vol, err := server.cluster.getVol(commonVolName)
 	if !assert.NoError(t, err) {
@@ -209,11 +200,11 @@ func TestPanicCheckBadMetaPartitionRecovery(t *testing.T) {
 	assert.NoError(t, err)
 	dp := newMetaPartition(partitionID, 0, defaultMaxMetaPartitionInodeID, vol.mpReplicaNum, vol.mpLearnerNum, vol.Name, vol.ID)
 	c.BadMetaPartitionIds.Store(fmt.Sprintf("%v", dp.PartitionID), dp)
-	c.scheduleToCheckMetaPartitionRecoveryProgress()
+	c.doCheckMetaPartitionRecoveryProgress()
 }
 
 func TestCheckBadMetaPartitionRecovery(t *testing.T) {
-	server.cluster.checkMetaNodeHeartbeat()
+	server.cluster.doCheckMetaNodeHeartbeat()
 	time.Sleep(5 * time.Second)
 	//clear
 	server.cluster.BadMetaPartitionIds.Range(func(key, value interface{}) bool {
