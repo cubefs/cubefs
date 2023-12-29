@@ -52,21 +52,6 @@ func (mr *MockClientAPIMockRecorder) AllocBid(arg0, arg1 interface{}) *gomock.Ca
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AllocBid", reflect.TypeOf((*MockClientAPI)(nil).AllocBid), arg0, arg1)
 }
 
-// AllocVolume mocks base method.
-func (m *MockClientAPI) AllocVolume(arg0 context.Context, arg1 *clustermgr.AllocVolumeArgs) (clustermgr.AllocatedVolumeInfos, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "AllocVolume", arg0, arg1)
-	ret0, _ := ret[0].(clustermgr.AllocatedVolumeInfos)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// AllocVolume indicates an expected call of AllocVolume.
-func (mr *MockClientAPIMockRecorder) AllocVolume(arg0, arg1 interface{}) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AllocVolume", reflect.TypeOf((*MockClientAPI)(nil).AllocVolume), arg0, arg1)
-}
-
 // AllocVolumeV2 mocks base method.
 func (m *MockClientAPI) AllocVolumeV2(arg0 context.Context, arg1 *clustermgr.AllocVolumeV2Args) (clustermgr.AllocatedVolumeInfos, error) {
 	m.ctrl.T.Helper()
