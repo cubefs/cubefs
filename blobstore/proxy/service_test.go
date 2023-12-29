@@ -28,10 +28,12 @@ import (
 	errcode "github.com/cubefs/cubefs/blobstore/common/errors"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/rpc"
-	"github.com/cubefs/cubefs/blobstore/proxy/mock"
+	"github.com/cubefs/cubefs/blobstore/testing/mocks"
 	_ "github.com/cubefs/cubefs/blobstore/testing/nolog"
 	"github.com/cubefs/cubefs/blobstore/util/errors"
 )
+
+//go:generate mockgen -destination=./mock_cacher_test.go -package=proxy -mock_names Cacher=MockCacher github.com/cubefs/cubefs/blobstore/proxy/cacher Cacher
 
 var (
 	A = gomock.Any()
@@ -52,7 +54,7 @@ func runMockService(s *Service) string {
 func newMockService(t *testing.T) *Service {
 	ctr := gomock.NewController(t)
 
-	cacher := mock.NewMockCacher(ctr)
+	cacher := NewMockCacher(ctr)
 	cacher.EXPECT().GetVolume(A, A).AnyTimes().DoAndReturn(
 		func(_ context.Context, args *clustermgr.CacheVolumeArgs) (*clustermgr.VersionVolume, error) {
 			volume := new(clustermgr.VersionVolume)
@@ -97,7 +99,8 @@ func newClient() rpc.Client {
 
 func TestService_New(t *testing.T) {
 	// interface test
-	cmcli := mock.ProxyMockClusterMgrCli(t)
+	cmcli := mocks.NewMockClientAPI(gomock.NewController(t))
+	cmcli.EXPECT().RegisterService(A, A, A, A, A).Return(nil)
 
 	testCases := []struct {
 		cfg Config
