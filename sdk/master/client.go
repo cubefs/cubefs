@@ -16,7 +16,6 @@ package master
 
 import (
 	"bytes"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io/ioutil"
@@ -170,25 +169,20 @@ func (c *MasterClient) serveRequest(r *request) (repsData []byte, err error) {
 				log.LogDebugf("server Request resp new master[%v] old [%v]", host, leaderAddr)
 				c.SetLeader(host)
 			}
-			var body = &struct {
-				Code int32           `json:"code"`
-				Msg  string          `json:"msg"`
-				Data json.RawMessage `json:"data"`
-			}{}
-			if err := json.Unmarshal(repsData, body); err != nil {
+			var body = new(proto.HTTPReplyRaw)
+			if err := body.Unmarshal(repsData); err != nil {
 				log.LogErrorf("unmarshal response body err:%v", err)
 				return nil, fmt.Errorf("unmarshal response body err:%v", err)
 
 			}
-			// o represent proto.ErrCodeSuccess
-			if body.Code != 0 {
+			if body.Code != proto.ErrCodeSuccess {
 				log.LogWarnf("serveRequest: code[%v], msg[%v], data[%v] ", body.Code, body.Msg, body.Data)
 				if body.Code == proto.ErrCodeInternalError && len(body.Msg) > 0 {
 					return nil, errors.New(body.Msg)
 				}
 				return nil, proto.ParseErrorCode(body.Code)
 			}
-			return []byte(body.Data), nil
+			return body.Bytes(), nil
 		default:
 			msg := fmt.Sprintf("serveRequest: unknown status: host(%v) uri(%v) status(%v) body(%s).",
 				resp.Request.URL.String(), host, stateCode, strings.Replace(string(repsData), "\n", "", -1))

@@ -496,15 +496,7 @@ func (s *DataNode) buildJSONResp(w http.ResponseWriter, code int, data interface
 	)
 	w.WriteHeader(code)
 	w.Header().Set("Content-Type", "application/json")
-	body := struct {
-		Code int         `json:"code"`
-		Data interface{} `json:"data"`
-		Msg  string      `json:"msg"`
-	}{
-		Code: code,
-		Data: data,
-		Msg:  msg,
-	}
+	body := proto.HTTPReply{Code: int32(code), Msg: msg, Data: data}
 	if jsonBody, err = json.Marshal(body); err != nil {
 		return
 	}
