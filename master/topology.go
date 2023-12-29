@@ -1550,7 +1550,8 @@ func (zone *Zone) canWriteForDataNode(replicaNum uint8) (can bool) {
 		}
 		return true
 	})
-	log.LogInfof("canWriteForDataNode leastAlive[%v],replicaNum[%v],count[%v]\n", leastAlive, replicaNum, zone.dataNodeCount())
+	log.LogInfof("action[canWriteForDataNode] zone name %v canWriteForDataNode leastAlive[%v],replicaNum[%v],count[%v]",
+		zone.name, leastAlive, replicaNum, zone.dataNodeCount())
 	return
 }
 func (zone *Zone) isUsedRatio(ratio float64) (can bool) {
