@@ -565,12 +565,14 @@ func (c *clustermgrClient) ListSealedVolume(ctx context.Context) (rets []*Volume
 	}
 	return
 }
+
 func (c *clustermgrClient) SetVolumeSealed(ctx context.Context, vid proto.Vid) (err error) {
 	c.rwLock.RLock()
 	defer c.rwLock.RUnlock()
 
 	return c.client.SetVolumeSealed(ctx, &cmapi.SetVolumeSealedArgs{Vid: vid})
 }
+
 func (c *clustermgrClient) SetVolumeIdle(ctx context.Context, vid proto.Vid) (err error) {
 	c.rwLock.RLock()
 	defer c.rwLock.RUnlock()
