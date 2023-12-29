@@ -21,6 +21,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cubefs/cubefs/master/mocktest"
 	"github.com/cubefs/cubefs/util"
 )
 
@@ -43,7 +44,7 @@ func printNodesetsOfZone(t *testing.T, zone *Zone) {
 func printNodeset(t *testing.T, nset *nodeSet) {
 	sb := strings.Builder{}
 	writeNodeset(&sb, nset)
-	t.Logf(sb.String())
+	mocktest.Log(t, sb.String())
 }
 
 func NodesetSelectorTest(t *testing.T, selector NodesetSelector) {
@@ -139,7 +140,7 @@ func nodesetSelectorBench(selector NodesetSelector, nsc nodeSetCollection, onSel
 
 func printNodesetSelectTimes(t *testing.T, times map[uint64]int) {
 	for id, count := range times {
-		t.Logf("Nodeset %v select %v times", id, count)
+		mocktest.Log(t, fmt.Sprintf("Nodeset %v select %v times", id, count))
 	}
 }
 

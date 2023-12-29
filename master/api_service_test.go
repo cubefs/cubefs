@@ -233,9 +233,11 @@ func createMasterServer(cfgJSON string) (server *Server, err error) {
 	default:
 		level = log.ErrorLevel
 	}
-	if _, err = log.InitLog(logDir, "master", level, nil, log.DefaultLogLeftSpaceLimit); err != nil {
-		fmt.Println("Fatal: failed to start the cubefs daemon - ", err)
-		return
+	if mocktest.LogOn {
+		if _, err = log.InitLog(logDir, "master", level, nil, log.DefaultLogLeftSpaceLimit); err != nil {
+			fmt.Println("Fatal: failed to start the cubefs daemon - ", err)
+			return
+		}
 	}
 	if profPort != "" {
 		go func() {
@@ -268,7 +270,6 @@ func addMetaServer(addr, zoneName string) *mocktest.MockMetaServer {
 func TestSetMetaNodeThreshold(t *testing.T) {
 	threshold := 0.5
 	reqURL := fmt.Sprintf("%v%v?threshold=%v", hostAddr, proto.AdminSetMetaNodeThreshold, threshold)
-	fmt.Println(reqURL)
 	process(reqURL, t)
 	if server.cluster.cfg.MetaNodeThreshold != float32(threshold) {
 		t.Errorf("set metanode threshold to %v failed", threshold)
@@ -295,13 +296,11 @@ func TestSetDisableAutoAlloc(t *testing.T) {
 
 func TestGetCluster(t *testing.T) {
 	reqURL := fmt.Sprintf("%v%v", hostAddr, proto.AdminGetCluster)
-	fmt.Println(reqURL)
 	process(reqURL, t)
 }
 
 func TestGetIpAndClusterName(t *testing.T) {
 	reqURL := fmt.Sprintf("%v%v", hostAddr, proto.AdminGetIP)
-	fmt.Println(reqURL)
 	process(reqURL, t)
 }
 
@@ -323,7 +322,7 @@ func processWithFatalV2(url string, success bool, req map[string]interface{}, t 
 	body, err := io.ReadAll(resp.Body)
 	assert.Nil(t, err)
 
-	t.Log(string(body), reqURL)
+	mocktest.Log(t, string(body), reqURL)
 
 	reply = &httpReply{}
 	err = json.Unmarshal(body, reply)
@@ -340,19 +339,20 @@ func processWithFatalV2(url string, success bool, req map[string]interface{}, t 
 }
 
 func process(reqURL string, t *testing.T) (reply *proto.HTTPReply) {
+	mocktest.Log(t, reqURL)
 	resp, err := http.Get(reqURL)
 	if err != nil {
 		t.Errorf("err is %v", err)
 		return
 	}
-	fmt.Println(resp.StatusCode)
+	mocktest.Println(resp.StatusCode)
 	defer resp.Body.Close()
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		t.Errorf("err is %v", err)
 		return
 	}
-	fmt.Println(string(body))
+	mocktest.Println(string(body))
 	if resp.StatusCode != http.StatusOK {
 		t.Errorf("status code[%v]", resp.StatusCode)
 		return
@@ -378,20 +378,20 @@ func TestDisk(t *testing.T) {
 func decommissionDisk(addr, path string, t *testing.T) {
 	reqURL := fmt.Sprintf("%v%v?addr=%v&disk=%v",
 		hostAddr, proto.DecommissionDisk, addr, path)
-	fmt.Println(reqURL)
+	mocktest.Log(t, reqURL)
 	resp, err := http.Get(reqURL)
 	if err != nil {
 		t.Errorf("err is %v", err)
 		return
 	}
-	fmt.Println(resp.StatusCode)
+	mocktest.Println(resp.StatusCode)
 	defer resp.Body.Close()
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		t.Errorf("err is %v", err)
 		return
 	}
-	fmt.Println(string(body))
+	mocktest.Println(string(body))
 	if resp.StatusCode != http.StatusOK {
 		t.Errorf("status code[%v]", resp.StatusCode)
 		return
@@ -577,7 +577,7 @@ func setVolCapacity(capacity uint64, url string, t *testing.T) {
 		return
 	}
 
-	fmt.Printf("update capacity to %d success\n", capacity)
+	mocktest.Printf("update capacity to %d success\n", capacity)
 }
 
 func buildAuthKey(owner string) string {
@@ -595,7 +595,6 @@ func TestGetVolSimpleInfo(t *testing.T) {
 func TestCreateVol(t *testing.T) {
 	name := "test_create_vol"
 	reqURL := fmt.Sprintf("%v%v?name=%v&replicas=3&type=extent&capacity=100&owner=cfstest&zoneName=%v", hostAddr, proto.AdminCreateVol, name, testZone2)
-	fmt.Println(reqURL)
 	process(reqURL, t)
 	userInfo, err := server.user.getUserInfo("cfstest")
 	if err != nil {
@@ -805,13 +804,11 @@ func TestRemoveMetaReplica(t *testing.T) {
 
 func TestClusterStat(t *testing.T) {
 	reqUrl := fmt.Sprintf("%v%v", hostAddr, proto.AdminClusterStat)
-	fmt.Println(reqUrl)
 	process(reqUrl, t)
 }
 
 func TestListVols(t *testing.T) {
 	reqURL := fmt.Sprintf("%v%v?keywords=%v", hostAddr, proto.AdminListVols, commonVolName)
-	fmt.Println(reqURL)
 	process(reqURL, t)
 }
 
@@ -946,6 +943,7 @@ func TestUpdateZoneStatus(t *testing.T) {
 }
 
 func post(reqURL string, data []byte, t *testing.T) (reply *proto.HTTPReply) {
+	mocktest.Log(t, reqURL)
 	reader := bytes.NewReader(data)
 	req, err := http.NewRequest(http.MethodPost, reqURL, reader)
 	if err != nil {
@@ -957,14 +955,14 @@ func post(reqURL string, data []byte, t *testing.T) (reply *proto.HTTPReply) {
 		t.Errorf("post err: %v", err)
 		return
 	}
-	fmt.Println(resp.StatusCode)
+	mocktest.Println(resp.StatusCode)
 	defer resp.Body.Close()
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		t.Errorf("err is %v", err)
 		return
 	}
-	fmt.Println(string(body))
+	mocktest.Println(string(body))
 	if resp.StatusCode != http.StatusOK {
 		t.Errorf("status code[%v]", resp.StatusCode)
 		return
@@ -989,13 +987,11 @@ func TestCreateUser(t *testing.T) {
 		t.Error(err)
 		return
 	}
-	fmt.Println(reqURL)
 	post(reqURL, data, t)
 }
 
 func TestGetUser(t *testing.T) {
 	reqURL := fmt.Sprintf("%v%v?user=%v", hostAddr, proto.UserGetInfo, testUserID)
-	fmt.Println(reqURL)
 	process(reqURL, t)
 }
 
@@ -1007,7 +1003,6 @@ func TestUpdateUser(t *testing.T) {
 		t.Error(err)
 		return
 	}
-	fmt.Println(reqURL)
 	post(reqURL, data, t)
 	userInfo, err := server.user.getUserInfo(testUserID)
 	if err != nil {
@@ -1034,7 +1029,6 @@ func TestUpdateUser(t *testing.T) {
 
 func TestGetAKInfo(t *testing.T) {
 	reqURL := fmt.Sprintf("%v%v?ak=%v", hostAddr, proto.UserGetAKInfo, ak)
-	fmt.Println(reqURL)
 	process(reqURL, t)
 }
 
@@ -1046,7 +1040,6 @@ func TestUpdatePolicy(t *testing.T) {
 		t.Error(err)
 		return
 	}
-	fmt.Println(reqURL)
 	post(reqURL, data, t)
 	userInfo, err := server.user.getUserInfo(testUserID)
 	if err != nil {
@@ -1067,7 +1060,6 @@ func TestRemovePolicy(t *testing.T) {
 		t.Error(err)
 		return
 	}
-	fmt.Println(reqURL)
 	post(reqURL, data, t)
 	userInfo, err := server.user.getUserInfo(testUserID)
 	if err != nil {
@@ -1088,7 +1080,6 @@ func TestTransferVol(t *testing.T) {
 		t.Error(err)
 		return
 	}
-	fmt.Println(reqURL)
 	post(reqURL, data, t)
 	userInfo1, err := server.user.getUserInfo(testUserID)
 	if err != nil {
@@ -1126,7 +1117,6 @@ func TestDeleteVolPolicy(t *testing.T) {
 		return
 	}
 	reqURL := fmt.Sprintf("%v%v?name=%v", hostAddr, proto.UserDeleteVolPolicy, commonVolName)
-	fmt.Println(reqURL)
 	process(reqURL, t)
 	userInfo1, err := server.user.getUserInfo(testUserID)
 	if err != nil {
@@ -1150,13 +1140,11 @@ func TestDeleteVolPolicy(t *testing.T) {
 
 func TestListUser(t *testing.T) {
 	reqURL := fmt.Sprintf("%v%v?keywords=%v", hostAddr, proto.UserList, "test")
-	fmt.Println(reqURL)
 	process(reqURL, t)
 }
 
 func TestDeleteUser(t *testing.T) {
 	reqURL := fmt.Sprintf("%v%v?user=%v", hostAddr, proto.UserDelete, testUserID)
-	fmt.Println(reqURL)
 	process(reqURL, t)
 	if _, err := server.user.getUserInfo(testUserID); err != proto.ErrUserNotExists {
 		t.Errorf("expect err ErrUserNotExists, but err is %v", err)
@@ -1166,23 +1154,19 @@ func TestDeleteUser(t *testing.T) {
 
 func TestListUsersOfVol(t *testing.T) {
 	reqURL := fmt.Sprintf("%v%v?name=%v", hostAddr, proto.UsersOfVol, "test_create_vol")
-	fmt.Println(reqURL)
 	process(reqURL, t)
 }
 
 func TestListNodeSets(t *testing.T) {
 	reqURL := fmt.Sprintf("%v%v", hostAddr, proto.GetAllNodeSets)
-	fmt.Println(reqURL)
 	process(reqURL, t)
 
 	reqURL = fmt.Sprintf("%v%v?zoneName=%v", hostAddr, proto.GetAllNodeSets, testZone2)
-	fmt.Println(reqURL)
 	process(reqURL, t)
 }
 
 func TestGetNodeSets(t *testing.T) {
 	reqURL := fmt.Sprintf("%v%v?nodesetId=1", hostAddr, proto.GetNodeSet)
-	fmt.Println(reqURL)
 	process(reqURL, t)
 }
 

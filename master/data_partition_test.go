@@ -30,7 +30,6 @@ func createDataPartition(vol *Vol, count int, t *testing.T) {
 	oldCount := len(vol.dataPartitions.partitions)
 	reqURL := fmt.Sprintf("%v%v?count=%v&name=%v&type=extent",
 		hostAddr, proto.AdminCreateDataPartition, count, vol.Name)
-	fmt.Println(reqURL)
 	process(reqURL, t)
 
 	newCount := len(vol.dataPartitions.partitions)
@@ -45,7 +44,6 @@ func createDataPartition(vol *Vol, count int, t *testing.T) {
 func getDataPartition(id uint64, t *testing.T) {
 	reqURL := fmt.Sprintf("%v%v?id=%v",
 		hostAddr, proto.AdminGetDataPartition, id)
-	fmt.Println(reqURL)
 	process(reqURL, t)
 }
 
@@ -54,7 +52,6 @@ func decommissionDataPartition(dp *DataPartition, t *testing.T) {
 	offlineAddr := dp.Hosts[0]
 	reqURL := fmt.Sprintf("%v%v?name=%v&id=%v&addr=%v",
 		hostAddr, proto.AdminDecommissionDataPartition, dp.VolName, dp.PartitionID, offlineAddr)
-	fmt.Println(reqURL)
 	process(reqURL, t)
 	if contains(dp.Hosts, offlineAddr) {
 		t.Errorf("decommissionDataPartition failed,offlineAddr[%v],hosts[%v]", offlineAddr, dp.Hosts)

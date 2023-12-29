@@ -1,7 +1,6 @@
 package master
 
 import (
-	"fmt"
 	"testing"
 	"time"
 
@@ -63,7 +62,7 @@ func TestSingleZone(t *testing.T) {
 		t.Error(err)
 		return
 	}
-	fmt.Println(newHosts)
+	t.Log(newHosts)
 	topo.deleteDataNode(createDataNodeForTopo(mds1Addr, zoneName, nodeSet))
 }
 

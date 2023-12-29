@@ -40,7 +40,6 @@ func createMetaPartition(vol *Vol, t *testing.T) {
 	start = mp.Start + metaPartitionInodeIdStep
 	reqURL := fmt.Sprintf("%v%v?name=%v&start=%v",
 		hostAddr, proto.AdminCreateMetaPartition, vol.Name, start)
-	fmt.Println(reqURL)
 	process(reqURL, t)
 
 	if start < mp.MaxInodeID {
@@ -71,13 +70,11 @@ func createMetaPartition(vol *Vol, t *testing.T) {
 func getMetaPartition(volName string, id uint64, t *testing.T) {
 	reqURL := fmt.Sprintf("%v%v?name=%v&id=%v",
 		hostAddr, proto.ClientMetaPartition, volName, id)
-	fmt.Println(reqURL)
 	process(reqURL, t)
 }
 
 func loadMetaPartitionTest(vol *Vol, id uint64, t *testing.T) {
 	reqURL := fmt.Sprintf("%v%v?name=%v&id=%v", hostAddr, proto.AdminLoadMetaPartition, vol.Name, id)
-	fmt.Println(reqURL)
 	process(reqURL, t)
 }
 
@@ -85,7 +82,6 @@ func decommissionMetaPartition(vol *Vol, id uint64, t *testing.T) {
 	server.cluster.checkMetaNodeHeartbeat()
 	time.Sleep(5 * time.Second)
 	reqURL := fmt.Sprintf("%v%v", hostAddr, proto.AdminGetCluster)
-	fmt.Println(reqURL)
 	process(reqURL, t)
 	vol, err := server.cluster.getVol(vol.Name)
 	if err != nil {
@@ -100,7 +96,6 @@ func decommissionMetaPartition(vol *Vol, id uint64, t *testing.T) {
 	offlineAddr := mp.Hosts[0]
 	reqURL = fmt.Sprintf("%v%v?name=%v&id=%v&addr=%v",
 		hostAddr, proto.AdminDecommissionMetaPartition, vol.Name, id, offlineAddr)
-	fmt.Println(reqURL)
 	process(reqURL, t)
 	mp, err = server.cluster.getMetaPartitionByID(id)
 	if err != nil {
