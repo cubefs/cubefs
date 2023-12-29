@@ -138,7 +138,6 @@ func NewBlobDeleteMgr(
 	switchMgr *taskswitch.SwitchMgr,
 	blobnodeCli client.BlobnodeAPI,
 ) (*BlobDeleteMgr, error) {
-
 	taskSwitch, err := switchMgr.AddSwitch(proto.TaskTypeBlobDelete.String())
 	if err != nil {
 		return nil, err
@@ -172,7 +171,10 @@ func (mgr *BlobDeleteMgr) Close() {
 	mgr.Closer.Close()
 }
 
-func (mgr *BlobDeleteMgr) Run() {}
+func (mgr *BlobDeleteMgr) Run() {
+	// for code check
+	_ = struct{}{}
+}
 
 // Enabled returns return if delete task switch is enable, otherwise returns false
 func (mgr *BlobDeleteMgr) Enabled() bool {
@@ -224,7 +226,6 @@ func (mgr *BlobDeleteMgr) Delete(ctx context.Context, msg *proto.DeleteMsg) erro
 }
 
 func (mgr *BlobDeleteMgr) recordAllResult(ret *delBlobRet) {
-
 	ctx := ret.ctx
 	delMsg := ret.delMsg
 	span := trace.SpanFromContextSafe(ctx)
@@ -254,7 +255,6 @@ func (mgr *BlobDeleteMgr) deleteWithCheckVolConsistency(ctx context.Context, msg
 }
 
 func (mgr *BlobDeleteMgr) deleteBlob(ctx context.Context, volInfo *client.VolumeInfoSimple, msg *proto.DeleteMsg) (newVol *client.VolumeInfoSimple, err error) {
-
 	newVol, err = mgr.markDelBlob(ctx, volInfo, msg.Bid)
 	if err != nil {
 		return
@@ -396,16 +396,4 @@ func shouldUpdateVolumeErr(errCode int) bool {
 func assumeDeleteSuccess(errCode int) bool {
 	return errCode == errcode.CodeBidNotFound ||
 		errCode == errcode.CodeShardMarkDeleted
-}
-
-func (mgr *BlobDeleteMgr) sleep(duration time.Duration) bool {
-	t := time.NewTimer(duration)
-	defer t.Stop()
-
-	select {
-	case <-t.C:
-		return true
-	case <-mgr.Done():
-		return false
-	}
 }

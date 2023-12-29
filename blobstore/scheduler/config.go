@@ -47,7 +47,6 @@ const (
 	defaultTaskPoolSize           = 10
 	defaultMessagePunishThreshold = 3
 	defaultMessagePunishTimeM     = 4
-	defaultSlowDownTimeS          = 3
 	defaultDeleteLogChunkSize     = uint(29)
 
 	defaultTickInterval   = uint32(1)
@@ -269,7 +268,6 @@ func (c *Config) fixShardRepairConfig() {
 }
 
 func (c *Config) fixBlobDeleteConfig() error {
-
 	c.BlobDelete.ClusterID = c.ClusterID
 	defaulter.LessOrEqual(&c.BlobDelete.DeleteLog.ChunkBits, defaultDeleteLogChunkSize)
 	return nil
