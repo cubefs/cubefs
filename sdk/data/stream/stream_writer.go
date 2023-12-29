@@ -184,7 +184,7 @@ func (s *Streamer) IssueEvictRequest() error {
 func (s *Streamer) GetStoreMod(offset int, size int) (storeMode int) {
 	// Small files are usually written in a single write, so use tiny extent
 	// store only for the first write operation.
-	if offset > 0 || offset+size > s.tinySizeLimit() {
+	if offset+size > s.tinySizeLimit() {
 		storeMode = proto.NormalExtentType
 	} else {
 		storeMode = proto.TinyExtentType
