@@ -125,13 +125,12 @@ type Disk struct {
 	Unallocated uint64
 	Allocated   uint64
 
-	MaxErrCnt     int // maximum number of errors
-	Status        int // disk status such as READONLY
+	MaxErrCnt int // maximum number of errors
+	Status    int // disk status such as READONLY
 
 	getReservedRatio GetReservedRatioFunc
 	ReservedSpace    uint64
 
-	RejectWrite  bool
 	partitionMap map[uint64]*DataPartition
 	space        *SpaceManager
 
@@ -179,7 +178,6 @@ func OpenDisk(path string, config *DiskConfig, space *SpaceManager, parallelism 
 		Path:                     path,
 		getReservedRatio:         config.GetReservedRatio,
 		MaxErrCnt:                config.MaxErrCnt,
-		RejectWrite:              false,
 		space:                    space,
 		partitionMap:             make(map[uint64]*DataPartition),
 		fixTinyDeleteRecordLimit: config.FixTinyDeleteRecordLimit,
@@ -387,7 +385,6 @@ func (d *Disk) computeUsageOnSFXDevice() (err error) {
 			unallocated = 0
 		}
 		d.Unallocated = unallocated
-		d.RejectWrite = d.Available <= 0
 
 		d.PhysicalUsedRatio = dStatus.physicalUsageRatio
 		d.CompressionRatio = dStatus.compRatio
@@ -407,7 +404,7 @@ func (d *Disk) computeUsageOnStdDevice() (err error) {
 	d.RLock()
 	defer d.RUnlock()
 	//  total := math.Max(0, int64(fs.Blocks*uint64(fs.Bsize)- d.ReservedSpace))
-	capacity := int64(fs.Blocks*uint64(fs.Bsize))
+	capacity := int64(fs.Blocks * uint64(fs.Bsize))
 	reservedSpace := int64(float64(capacity) * d.getReservedRatio())
 	d.ReservedSpace = uint64(reservedSpace)
 
@@ -440,8 +437,6 @@ func (d *Disk) computeUsageOnStdDevice() (err error) {
 		unallocated = 0
 	}
 	d.Unallocated = uint64(unallocated)
-
-	d.RejectWrite = d.Available <= 0
 
 	if log.IsDebugEnabled() {
 		log.LogDebugf("Disk %v: computed usage: Capacity %v, Available %v, Used %v, Allocated %v, Unallocated %v",

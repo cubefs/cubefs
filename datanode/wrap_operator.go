@@ -175,11 +175,7 @@ func (s *DataNode) handlePacketToCreateExtent(p *repl.Packet) {
 		}
 	}()
 	partition := p.Object.(*DataPartition)
-	if partition.Used() > partition.Size()*2 || partition.disk.Status == proto.ReadOnly || partition.IsRejectWrite() {
-		err = storage.NoSpaceError
-		return
-	} else if partition.disk.Status == proto.Unavailable {
-		err = storage.BrokenDiskError
+	if err = partition.CheckWritable(); err != nil {
 		return
 	}
 
@@ -438,11 +434,7 @@ func (s *DataNode) handleWritePacket(p *repl.Packet) {
 		}
 	}()
 
-	if partition.Used() > partition.Size()*2 || partition.disk.Status == proto.ReadOnly || partition.IsRejectWrite() {
-		err = storage.NoSpaceError
-		return
-	} else if partition.disk.Status == proto.Unavailable {
-		err = storage.BrokenDiskError
+	if err = partition.CheckWritable(); err != nil {
 		return
 	}
 

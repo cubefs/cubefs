@@ -44,7 +44,6 @@ func init() {
 	disk.partitionMap = make(map[uint64]*DataPartition)
 	disk.fixTinyDeleteRecordLimit = spaceManager.fixTinyDeleteRecordLimitOnDisk
 	disk.repairTaskLimit = spaceManager.repairTaskLimitOnDisk
-	disk.RejectWrite = false
 }
 func TestFDCount(t *testing.T) {
 	var (
@@ -177,7 +176,7 @@ func TestComputeUsage(t *testing.T) {
 	if err := disk.computeUsage(); err != nil {
 		t.Fatalf("Disk compute usage failed, err:%v", err)
 	}
-	t.Logf("disk Total:%v, Available:%v, Used:%v, RejectWrite:%v, Unallocated:%v", disk.Total, disk.Available, disk.Used, disk.RejectWrite, disk.Unallocated)
+	t.Logf("disk Total:%v, Available:%v, Used:%v, Unallocated:%v", disk.Total, disk.Available, disk.Used, disk.Unallocated)
 }
 
 func TestIsPartitionDir(t *testing.T) {
