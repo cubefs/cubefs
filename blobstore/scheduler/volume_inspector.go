@@ -18,11 +18,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/cubefs/cubefs/blobstore/common/codemode"
 	"sort"
 	"sync"
 	"time"
 
+	"github.com/cubefs/cubefs/blobstore/common/codemode"
 	"github.com/cubefs/cubefs/blobstore/common/counter"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/taskswitch"
@@ -171,7 +171,7 @@ type VolumeInspectMgr struct {
 	startVid proto.Vid
 	// start vid in next batch
 	nextVid proto.Vid
-	//sealedVid []proto.Vid
+	// sealedVid []proto.Vid
 
 	firstPrepare bool
 
@@ -267,44 +267,6 @@ func (mgr *VolumeInspectMgr) getStartVid(ctx context.Context) proto.Vid {
 	}
 	return zeroVid
 }
-
-//type getIdleToSealedVolArgs struct {
-//	start proto.Vid
-//	count int
-//}
-//
-//// sealed or idle->sealed
-//func (mgr *VolumeInspectMgr) getNeededVids(ctx context.Context) (vids []proto.Vid) {
-//	span := trace.SpanFromContextSafe(ctx)
-//
-//	vids, err := mgr.clusterMgrCli.GetSealedVids(ctx, mgr.cfg.InspectBatch)
-//	if len(vids) != 0 {
-//		return vids
-//	}
-//
-//	if err != nil {
-//		span.Warnf("Fail to get sealed volumes: err[%+v]", err)
-//	}
-//
-//	// mark idle to sealed
-//	mgr.startVid = mgr.getStartVid(ctx)
-//	vids, err = mgr.clusterMgrCli.GetMarkIdleToSealedVolume(ctx, getIdleToSealedVolArgs{start: mgr.startVid, count: mgr.cfg.InspectBatch})
-//	//if err == nil {
-//	//	vids = genVolumeId()
-//	//}
-//
-//	return []proto.Vid{}
-//}
-//
-//func (mgr *VolumeInspectMgr) genVolumeId(arg getIdleToSealedVolArgs) []proto.Vid {
-//	vids := make([]proto.Vid, mgr.cfg.InspectBatch)
-//
-//	for i := range vids {
-//		vids[i] = arg.start + proto.Vid(i)
-//	}
-//
-//	return vids
-//}
 
 func (mgr *VolumeInspectMgr) getSealedVolume(ctx context.Context) []*client.VolumeInfoSimple {
 	span := trace.SpanFromContextSafe(ctx)
@@ -583,7 +545,6 @@ func (mgr *VolumeInspectMgr) finish(ctx context.Context) {
 }
 
 func (mgr *VolumeInspectMgr) canRecover(codeMode codemode.CodeMode, bads []uint8) bool {
-
 	tactic := codeMode.T()
 	globalStripe, _, _ := tactic.GlobalStripe()
 	badMap := make(map[int]struct{}, len(bads))
