@@ -28,7 +28,6 @@ func SelfIncreaseIdAllocTest(t *testing.T, allocator *IDAllocator, allocFunc fun
 		if newId < id {
 			t.Errorf("id should be uniqued and self-increased")
 		}
-		t.Logf("new id is %v", newId)
 		id = newId
 	}
 	allocator.restore()

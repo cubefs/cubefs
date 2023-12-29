@@ -24,6 +24,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cubefs/cubefs/master/mocktest"
 	"github.com/cubefs/cubefs/util"
 )
 
@@ -44,13 +45,13 @@ func writeMetaNode(sb *strings.Builder, node *MetaNode) {
 func printDataNode(t *testing.T, node *DataNode) {
 	sb := strings.Builder{}
 	writeDataNode(&sb, node)
-	t.Log(sb.String())
+	mocktest.Log(t, sb.String())
 }
 
 func printMetaNode(t *testing.T, node *MetaNode) {
 	sb := strings.Builder{}
 	writeMetaNode(&sb, node)
-	t.Log(sb.String())
+	mocktest.Log(t, sb.String())
 }
 
 func printNodesetAndDataNodes(t *testing.T, nset *nodeSet) {
@@ -150,7 +151,7 @@ func DataNodeSelectorTest(t *testing.T, selector NodeSelector, expectedNode *Dat
 		t.Errorf("failed to get zone %v", err)
 		return nil
 	}
-	t.Log("List nodesets of zone")
+	mocktest.Log(t, "List nodesets of zone")
 	printNodesetsOfZone(t, zone)
 	nsc := zone.getAllNodeSet()
 	if nsc.Len() == 0 {
@@ -158,14 +159,14 @@ func DataNodeSelectorTest(t *testing.T, selector NodeSelector, expectedNode *Dat
 		return nil
 	}
 	nset := nsc[0]
-	t.Logf("List datanodes of nodeset %v", nset.ID)
+	mocktest.Log(t, "List datanodes of nodeset", nset.ID)
 	printNodesetAndDataNodes(t, nset)
 	_, peer, err := selector.Select(nset, nil, 1)
 	if err != nil {
 		t.Errorf("%v failed to select nodes %v", selector.GetName(), err)
 		return nil
 	}
-	t.Log("List selected nodes:")
+	mocktest.Log(t, "List selected nodes:")
 	for i := 0; i < len(peer); i++ {
 		nodeVal, ok := nset.dataNodes.Load(peer[i].Addr)
 		if !ok {
@@ -195,18 +196,18 @@ func MetaNodeSelectorTest(t *testing.T, selector NodeSelector, expectedNode *Met
 		t.Errorf("failed to get zone %v", err)
 		return nil
 	}
-	t.Log("List nodesets of zone")
+	mocktest.Log(t, "List nodesets of zone")
 	printNodesetsOfZone(t, zone)
 	nsc := zone.getAllNodeSet()
 	nset := nsc[0]
-	t.Logf("List metanodes of nodeset %v", nset.ID)
+	mocktest.Log(t, "List metanodes of nodeset", nset.ID)
 	printNodesetAndMetaNodes(t, nset)
 	_, peer, err := selector.Select(nset, nil, 1)
 	if err != nil {
 		t.Errorf("%v failed to select nodes %v", selector.GetName(), err)
 		return nil
 	}
-	t.Log("List selected nodes:")
+	mocktest.Log(t, "List selected nodes:")
 	for i := 0; i < len(peer); i++ {
 		nodeVal, ok := nset.metaNodes.Load(peer[i].Addr)
 		if !ok {
@@ -234,7 +235,7 @@ func printNodeSelectTimes(t *testing.T, times map[uint64]int) {
 	for id, time := range times {
 		sb.WriteString(fmt.Sprintf("Node %v select times %v\n", id, time))
 	}
-	t.Log(sb.String())
+	mocktest.Log(t, sb.String())
 }
 
 func TestCarryWeightNodeSelector(t *testing.T) {
@@ -317,14 +318,14 @@ func TestRoundRobinNodeSelector(t *testing.T) {
 	}
 	selector := NewRoundRobinNodeSelector(DataNodeType)
 	for i, node := range dataNodes {
-		t.Logf("Select DataNode Round %v", i)
+		mocktest.Log(t, "Select DataNode Round", i)
 		if DataNodeSelectorTest(t, selector, node) == nil {
 			return
 		}
 	}
 	selector = NewRoundRobinNodeSelector(MetaNodeType)
 	for i, node := range metaNodes {
-		t.Logf("Select MetaNode Round %v", i)
+		mocktest.Log(t, "Select MetaNode Round", i)
 		if MetaNodeSelectorTest(t, selector, node) == nil {
 			return
 		}

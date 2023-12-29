@@ -2,9 +2,10 @@ package master
 
 import (
 	"fmt"
-	"github.com/cubefs/cubefs/proto"
 	"testing"
 	"time"
+
+	"github.com/cubefs/cubefs/proto"
 )
 
 func TestMetaNode(t *testing.T) {
@@ -23,12 +24,10 @@ func TestMetaNode(t *testing.T) {
 
 func getMetaNodeInfo(addr string, t *testing.T) {
 	reqURL := fmt.Sprintf("%v%v?addr=%v", hostAddr, proto.GetMetaNode, addr)
-	fmt.Println(reqURL)
 	process(reqURL, t)
 }
 
 func decommissionMetaNode(addr string, t *testing.T) {
 	reqURL := fmt.Sprintf("%v%v?addr=%v", hostAddr, proto.DecommissionMetaNode, addr)
-	fmt.Println(reqURL)
 	process(reqURL, t)
 }

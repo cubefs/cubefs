@@ -563,6 +563,8 @@ services:
                 set -e;
                 mkdir -p ${CFSROOT}/docker/bin &&
                 cd ${CFSROOT} && make testcover
+        environment:
+            - DOCKER_TESTING_LOG_OFF="on"
 
     build_libsdkpre:
         image: ${IMAGE}

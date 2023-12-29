@@ -45,7 +45,7 @@ func TestCheckVol(t *testing.T) {
 	commonVol.checkMetaPartitions(server.cluster)
 	commonVol.checkDataPartitions(server.cluster)
 	log.LogFlush()
-	fmt.Printf("writable data partitions[%v]\n", commonVol.dataPartitions.readableAndWritableCnt)
+	t.Logf("writable data partitions[%v]\n", commonVol.dataPartitions.readableAndWritableCnt)
 }
 
 func TestVol(t *testing.T) {
@@ -196,9 +196,6 @@ func buildUrl(host, op string, kv map[string]interface{}) string {
 	for k, v := range kv {
 		url += fmt.Sprintf("%s=%v&", k, v)
 	}
-
-	fmt.Println(url)
-
 	return url[:len(url)-1]
 }
 
@@ -310,14 +307,11 @@ func getSimpleVol(name string, success bool, t *testing.T) *proto.SimpleVolView 
 
 func getVol(name string, t *testing.T) {
 	reqURL := fmt.Sprintf("%v%v?name=%v&authKey=%v", hostAddr, proto.ClientVol, name, buildAuthKey("cfs"))
-	fmt.Println(reqURL)
 	process(reqURL, t)
 }
 
 func statVol(name string, t *testing.T) {
-	reqURL := fmt.Sprintf("%v%v?name=%v",
-		hostAddr, proto.ClientVolStat, name)
-	fmt.Println(reqURL)
+	reqURL := fmt.Sprintf("%v%v?name=%v", hostAddr, proto.ClientVolStat, name)
 	process(reqURL, t)
 }
 

@@ -2,9 +2,10 @@ package master
 
 import (
 	"fmt"
-	"github.com/cubefs/cubefs/proto"
 	"testing"
 	"time"
+
+	"github.com/cubefs/cubefs/proto"
 )
 
 func TestDataNode(t *testing.T) {
@@ -36,12 +37,10 @@ func TestDataNode(t *testing.T) {
 
 func getDataNodeInfo(addr string, t *testing.T) {
 	reqURL := fmt.Sprintf("%v%v?addr=%v", hostAddr, proto.GetDataNode, addr)
-	fmt.Println(reqURL)
 	process(reqURL, t)
 }
 
 func decommissionDataNode(addr string, t *testing.T) {
 	reqURL := fmt.Sprintf("%v%v?addr=%v", hostAddr, proto.DecommissionDataNode, addr)
-	fmt.Println(reqURL)
 	process(reqURL, t)
 }
