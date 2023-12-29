@@ -125,8 +125,6 @@ func (s *Streamer) GetExtentReader(ek *proto.ExtentKey) (*ExtentReader, error) {
 }
 
 func (s *Streamer) read(data []byte, offset int, size int) (total int, err error) {
-	//log.LogErrorf("==========> Streamer Read Enter, inode(%v).", s.inode)
-	//t1 := time.Now()
 	var (
 		readBytes       int
 		reader          *ExtentReader
@@ -163,9 +161,8 @@ func (s *Streamer) read(data []byte, offset int, size int) (total int, err error
 	for _, req := range requests {
 		log.LogDebugf("action[streamer.read] req %v", req)
 		if req.ExtentKey == nil {
-			for i := range req.Data {
-				req.Data[i] = 0
-			}
+			zeros := make([]byte, len(req.Data))
+			copy(req.Data, zeros)
 
 			if req.FileOffset+req.Size > filesize {
 				if req.FileOffset > filesize {
@@ -174,10 +171,6 @@ func (s *Streamer) read(data []byte, offset int, size int) (total int, err error
 				req.Size = filesize - req.FileOffset
 				total += req.Size
 				err = io.EOF
-				//if total == 0 {
-				//	log.LogErrorf("read: ino(%v) req(%v) filesize(%v)", s.inode, req, filesize)
-				//}
-				//log.LogErrorf("==========> Streamer Read Exit, inode(%v), time[%v us].", s.inode, time.Since(t1).Microseconds())
 				return
 			}
 
