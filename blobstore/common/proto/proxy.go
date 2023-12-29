@@ -14,12 +14,6 @@
 
 package proto
 
-import (
-	"github.com/cubefs/cubefs/blobstore/util/errors"
-)
-
-var ErrInvalidMsg = errors.New("msg is invalid")
-
 type DeleteStage byte
 
 const (
@@ -28,13 +22,15 @@ const (
 	DeleteStageDelete
 )
 
-var stageMap = map[DeleteStage]string{
-	DeleteStageMarkDelete: "MarkDelete",
-	DeleteStageDelete:     "Delete",
-}
-
 func (d DeleteStage) String() string {
-	return stageMap[d]
+	switch d {
+	case DeleteStageMarkDelete:
+		return "MarkDelete"
+	case DeleteStageDelete:
+		return "Delete"
+	default:
+		return ""
+	}
 }
 
 type BlobDeleteStage struct {
