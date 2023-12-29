@@ -58,8 +58,8 @@ type ClientAPI interface {
 
 // APIAccess sub of cluster manager api for access
 type APIAccess interface {
+	APIService
 	GetConfig(ctx context.Context, key string) (string, error)
-	GetService(ctx context.Context, args GetServiceArgs) (ServiceInfo, error)
 	ListDisk(ctx context.Context, options *ListOptionArgs) (ListDiskRet, error)
 	AllocVolumeV2(ctx context.Context, args *AllocVolumeV2Args) (ret AllocatedVolumeInfos, err error)
 	AllocBid(ctx context.Context, args *BidScopeArgs) (*BidScopeRet, error)
@@ -69,12 +69,8 @@ type APIAccess interface {
 
 // APIProxy sub of cluster manager api for allocator
 type APIProxy interface {
-	GetConfig(ctx context.Context, key string) (string, error)
 	GetVolumeInfo(ctx context.Context, args *GetVolumeArgs) (*VolumeInfo, error)
 	DiskInfo(ctx context.Context, id proto.DiskID) (*blobnode.DiskInfo, error)
-	AllocVolume(ctx context.Context, args *AllocVolumeArgs) (AllocatedVolumeInfos, error)
-	AllocBid(ctx context.Context, args *BidScopeArgs) (*BidScopeRet, error)
-	RetainVolume(ctx context.Context, args *RetainVolumeArgs) (RetainVolumes, error)
 	RegisterService(ctx context.Context, node ServiceNode, tickInterval, heartbeatTicks, expiresTicks uint32) error
 }
 
