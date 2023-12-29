@@ -18,6 +18,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+
 	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/sync/singleflight"
 
@@ -146,6 +147,8 @@ func (mgr *ShardRepairMgr) Enabled() bool {
 }
 
 func (mgr *ShardRepairMgr) Run() {
+	// for code check
+	_ = struct{}{}
 }
 
 func (mgr *ShardRepairMgr) Close() {
