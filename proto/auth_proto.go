@@ -269,11 +269,7 @@ const (
 )
 
 // HTTPAuthReply uniform response structure
-type HTTPAuthReply struct {
-	Code int32       `json:"code"`
-	Msg  string      `json:"msg"`
-	Data interface{} `json:"data"`
-}
+type HTTPAuthReply = HTTPReply
 
 // MsgType2ResourceMap define the mapping from message type to resource
 var MsgType2ResourceMap = map[MsgType]string{

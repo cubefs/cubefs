@@ -18,10 +18,8 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/binary"
-	"encoding/json"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"os"
 	"strings"
@@ -137,17 +135,13 @@ func getExtentsByInode(ino uint64, mp *proto.MetaPartitionView) (res *proto.GetE
 		return nil, fmt.Errorf("Invalid status code: %v", resp.StatusCode)
 	}
 
-	data, err := ioutil.ReadAll(resp.Body)
+	data, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, fmt.Errorf("ReadAll failed: %v", err)
 	}
 
-	body := &struct {
-		Code int32           `json:"code"`
-		Msg  string          `json:"msg"`
-		Data json.RawMessage `json:"data"`
-	}{}
-	if err = json.Unmarshal(data, body); err != nil {
+	body := new(proto.HTTPReplyRaw)
+	if err = body.Unmarshal(data); err != nil {
 		return nil, fmt.Errorf("Unmarshal failed: %v", err)
 	}
 
@@ -160,7 +154,7 @@ func getExtentsByInode(ino uint64, mp *proto.MetaPartitionView) (res *proto.GetE
 		return nil, fmt.Errorf("getExtentsByInode failed: %v", body.Msg)
 	}
 
-	if err = json.Unmarshal(body.Data, &res); err != nil {
+	if err = body.Result(&res); err != nil {
 		return nil, fmt.Errorf("Unmarshal extents failed: %v", err)
 	}
 	return
@@ -213,22 +207,13 @@ func getDataPartitions(addr, name string) ([]*proto.DataPartitionResponse, error
 		return nil, fmt.Errorf("Invalid status code: %v", resp.StatusCode)
 	}
 
-	data, err := ioutil.ReadAll(resp.Body)
+	data, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, fmt.Errorf("Get data partitions read all body failed: %v", err)
 	}
 
-	body := &struct {
-		Code int32           `json:"code"`
-		Msg  string          `json:"msg"`
-		Data json.RawMessage `json:"data"`
-	}{}
-	if err = json.Unmarshal(data, body); err != nil {
-		return nil, fmt.Errorf("Unmarshal data partitions body failed: %v", err)
-	}
-
 	var dpv *proto.DataPartitionsView
-	if err = json.Unmarshal(body.Data, &dpv); err != nil {
+	if err = proto.UnmarshalHTTPReply(data, dpv); err != nil {
 		return nil, fmt.Errorf("Unmarshal data partitions view failed: %v", err)
 	}
 

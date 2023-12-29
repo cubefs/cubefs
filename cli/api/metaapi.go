@@ -20,7 +20,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"strings"
 	"sync"
@@ -126,7 +125,7 @@ func (c *MetaHttpClient) serveRequest(r *request) (respData []byte, err error) {
 		return
 	}
 	stateCode := resp.StatusCode
-	respData, err = ioutil.ReadAll(resp.Body)
+	respData, err = io.ReadAll(resp.Body)
 	_ = resp.Body.Close()
 	if err != nil {
 		log.LogErrorf("serveRequest: read http response body fail: err(%v)", err)
@@ -134,20 +133,15 @@ func (c *MetaHttpClient) serveRequest(r *request) (respData []byte, err error) {
 	}
 	switch stateCode {
 	case http.StatusOK:
-		body := &struct {
-			Code int32           `json:"code"`
-			Msg  string          `json:"msg"`
-			Data json.RawMessage `json:"data"`
-		}{}
-
-		if err := json.Unmarshal(respData, body); err != nil {
-			return nil, fmt.Errorf("unmarshal response body err:%v", err)
+		body := new(proto.HTTPReplyRaw)
+		if err := body.Unmarshal(respData); err != nil {
+			return nil, err
 		}
-		// o represent proto.ErrCodeSuccess
+		// o represent proto.ErrCodeSuccess, TODO: 200 ???
 		if body.Code != 200 {
 			return nil, proto.ParseErrorCode(body.Code)
 		}
-		return []byte(body.Data), nil
+		return body.Bytes(), nil
 	default:
 		log.LogErrorf("serveRequest: unknown status: host(%v) uri(%v) status(%v) body(%s).",
 			resp.Request.URL.String(), c.host, stateCode, strings.Replace(string(respData), "\n", "", -1))

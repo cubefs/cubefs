@@ -15,6 +15,9 @@
 package proto
 
 import (
+	"encoding/json"
+	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/cubefs/cubefs/util"
@@ -352,6 +355,82 @@ type HTTPReply struct {
 	Code int32       `json:"code"`
 	Msg  string      `json:"msg"`
 	Data interface{} `json:"data"`
+}
+
+type HTTPReplyRaw struct {
+	Code int32           `json:"code"`
+	Msg  string          `json:"msg"`
+	Data json.RawMessage `json:"data"`
+}
+
+func (raw *HTTPReplyRaw) Unmarshal(body []byte) error {
+	r := new(HTTPReplyRaw)
+	if err := json.Unmarshal(body, r); err != nil {
+		return fmt.Errorf("httpreply unmarshal [%s]", err.Error())
+	}
+	*raw = *r
+	return nil
+}
+
+func (raw *HTTPReplyRaw) Success() error {
+	if code := raw.Code; code != ErrCodeSuccess {
+		err := ParseErrorCode(code)
+		return fmt.Errorf("httpreply code[%d] err[%s] msg[%s]", code, err.Error(), raw.Msg)
+	}
+	return nil
+}
+
+func (raw *HTTPReplyRaw) Bytes() []byte {
+	return raw.Data
+}
+
+func (raw *HTTPReplyRaw) String() string {
+	return string(raw.Bytes())
+}
+
+func (raw *HTTPReplyRaw) Int64() (int64, error) {
+	return strconv.ParseInt(string(raw.Data), 10, 64)
+}
+
+func (raw *HTTPReplyRaw) Uint64() (uint64, error) {
+	return strconv.ParseUint(string(raw.Data), 10, 64)
+}
+
+func (raw *HTTPReplyRaw) Result(result interface{}) error {
+	return json.Unmarshal(raw.Data, result)
+}
+
+func UnmarshalHTTPReply(body []byte, result interface{}) error {
+	raw := new(HTTPReplyRaw)
+	if err := raw.Unmarshal(body); err != nil {
+		return err
+	}
+	if err := raw.Success(); err != nil {
+		return err
+	}
+
+	if result == nil {
+		return nil
+	}
+	switch v := result.(type) {
+	case *string:
+		*v = raw.String()
+	case *int64:
+		val, err := raw.Int64()
+		if err != nil {
+			return err
+		}
+		*v = val
+	case *uint64:
+		val, err := raw.Uint64()
+		if err != nil {
+			return err
+		}
+		*v = val
+	default:
+		return raw.Result(result)
+	}
+	return nil
 }
 
 // RegisterMetaNodeResp defines the response to register a meta node.

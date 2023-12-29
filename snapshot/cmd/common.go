@@ -17,9 +17,10 @@ package cmd
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/cubefs/cubefs/proto"
-	"io/ioutil"
+	"io"
 	"net/http"
+
+	"github.com/cubefs/cubefs/proto"
 )
 
 var (
@@ -78,22 +79,13 @@ func getMetaPartitions(addr, name string) ([]*proto.MetaPartitionView, error) {
 		return nil, fmt.Errorf("Invalid status code: %v", resp.StatusCode)
 	}
 
-	data, err := ioutil.ReadAll(resp.Body)
+	data, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, fmt.Errorf("Get meta partitions read all body failed: %v", err)
 	}
 
-	body := &struct {
-		Code int32           `json:"code"`
-		Msg  string          `json:"msg"`
-		Data json.RawMessage `json:"data"`
-	}{}
-	if err = json.Unmarshal(data, body); err != nil {
-		return nil, fmt.Errorf("Unmarshal meta partitions body failed: %v", err)
-	}
-
 	var mps []*proto.MetaPartitionView
-	if err = json.Unmarshal(body.Data, &mps); err != nil {
+	if err = proto.UnmarshalHTTPReply(data, &mps); err != nil {
 		return nil, fmt.Errorf("Unmarshal meta partitions view failed: %v", err)
 	}
 	return mps, nil
