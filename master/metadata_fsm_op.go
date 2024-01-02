@@ -1110,19 +1110,30 @@ func (c *Cluster) updateDecommissionDiskLimit(val uint32) {
 	atomic.StoreUint32(&c.DecommissionDiskLimit, val)
 }
 
-func (c *Cluster) loadZoneValue() (err error) {
+func (c *Cluster) loadZoneValue() (err error, updatedZones []*Zone) {
 	var ok bool
+	updatedZones = make([]*Zone, 0)
+
 	result, err := c.fsm.store.SeekForPrefix([]byte(zonePrefix))
 	if err != nil {
 		err = fmt.Errorf("action[loadZoneValue],err:%v", err.Error())
-		return err
+		return
 	}
 	for _, value := range result {
+		var autoUpdated bool
+
 		cv := &zoneValue{}
 		if err = json.Unmarshal(value, cv); err != nil {
 			log.LogErrorf("action[loadZoneValue], unmarshal err:%v", err.Error())
 			continue
 		}
+		if cv.DataMediaType == proto.MediaType_Unspecified {
+			cv.DataMediaType = c.server.config.legacyDataMediaType
+			autoUpdated = true
+			log.LogWarnf("legacy zone(%v), set mediaType(%v) by config legacyDataMediaType",
+				cv.Name, proto.MediaTypeString(cv.DataMediaType))
+		}
+
 		var zoneInfo interface{}
 		if zoneInfo, ok = c.t.zoneMap.Load(cv.Name); !ok {
 			log.LogErrorf("action[loadZoneValue], zonename [%v] not found", cv.Name)
@@ -1144,6 +1155,10 @@ func (c *Cluster) loadZoneValue() (err error) {
 			proto.MediaTypeString(cv.DataMediaType))
 		zone.loadDataNodeQosLimit()
 		zone.SetDataMediaType(cv.DataMediaType)
+
+		if autoUpdated {
+			updatedZones = append(updatedZones, zone)
+		}
 	}
 
 	return
@@ -1459,14 +1474,17 @@ func (c *Cluster) loadNodeSetGrps() (err error) {
 	return
 }
 
-func (c *Cluster) loadDataNodes() (err error) {
+func (c *Cluster) loadDataNodes() (err error, updatedDataNodes []*DataNode) {
 	result, err := c.fsm.store.SeekForPrefix([]byte(dataNodePrefix))
 	if err != nil {
 		err = fmt.Errorf("action[loadDataNodes],err:%v", err.Error())
-		return err
+		return
 	}
 
+	updatedDataNodes = make([]*DataNode, 0)
+
 	for _, value := range result {
+		var updated bool
 		dnv := &dataNodeValue{}
 		if err = json.Unmarshal(value, dnv); err != nil {
 			err = fmt.Errorf("action[loadDataNodes],value:%v,unmarshal err:%v", string(value), err)
@@ -1474,6 +1492,13 @@ func (c *Cluster) loadDataNodes() (err error) {
 		}
 		if dnv.ZoneName == "" {
 			dnv.ZoneName = DefaultZoneName
+		}
+
+		if dnv.MediaType == proto.MediaType_Unspecified {
+			dnv.MediaType = c.server.config.legacyDataMediaType
+			updated = true
+			log.LogWarnf("legacy datanode(%v), set mediaType(%v) by config legacyDataMediaType",
+				dnv.Addr, proto.MediaTypeString(dnv.MediaType))
 		}
 
 		dataNode := newDataNode(dnv.Addr, dnv.ZoneName, c.Name, dnv.MediaType)
@@ -1508,6 +1533,13 @@ func (c *Cluster) loadDataNodes() (err error) {
 			dataNode.Addr, dataNode.ID, dataNode.MediaType, dnv.ZoneName, dnv.NodeSetID, dataNode.DecommissionStatus,
 			dataNode.DecommissionDstAddr, dataNode.DecommissionRaftForce, dataNode.DecommissionDpTotal, dataNode.DecommissionLimit,
 			time.Unix(dataNode.DecommissionCompleteTime, 0).Format("2006-01-02 15:04:05"), dataNode.ToBeOffline)
+
+		if updated {
+			updatedDataNodes = append(updatedDataNodes, dataNode)
+		}
+
+		log.LogInfof("action[loadDataNodes],dataNode[%v],dataNodeID[%v],zone[%v],ns[%v],MediaType[%v]",
+			dataNode.Addr, dataNode.ID, dnv.ZoneName, dnv.NodeSetID, dataNode.MediaType)
 	}
 	return
 }
@@ -1564,20 +1596,72 @@ func (c *Cluster) loadVolsViews() (err error, volViews []*volValue) {
 	return
 }
 
-func (c *Cluster) loadVols() (err error) {
+func (c *Cluster) setStorageClassForLegacyVol(vv *volValue) (err error, updated bool) {
+	if vv.VolStorageClass != proto.StorageClass_Unspecified {
+		log.LogDebugf("vol(%v) no need to set storageClass", vv.Name)
+		return
+	}
+
+	if proto.IsHot(vv.VolType) {
+		if !proto.IsValidMediaType(c.server.config.legacyDataMediaType) {
+			err = fmt.Errorf("try to set hot vol(%v) volStorageClass, but config legacyDataMediaType not set", vv.Name)
+			return
+		}
+
+		vv.VolStorageClass = proto.GetStorageClassByMediaType(c.server.config.legacyDataMediaType)
+		vv.AllowedStorageClass = append(vv.AllowedStorageClass, vv.VolStorageClass)
+		vv.CacheDpStorageClass = proto.StorageClass_Unspecified
+		updated = true
+		log.LogWarnf("legacy vol(%v), set volStorageClass(%v) by config legacyDataMediaType",
+			vv.Name, proto.StorageClassString(vv.VolStorageClass))
+	} else {
+		vv.VolStorageClass = proto.StorageClass_BlobStore
+		vv.AllowedStorageClass = append(vv.AllowedStorageClass, vv.VolStorageClass)
+		updated = true
+
+		if vv.CacheCapacity == 0 {
+			vv.CacheDpStorageClass = proto.StorageClass_Unspecified
+			log.LogWarnf("legacy cold vol(%v) cacheCapacity is 0, set cacheDpStorageClass(%v)",
+				vv.Name, proto.StorageClassString(vv.CacheDpStorageClass))
+		} else {
+			if !proto.IsValidMediaType(c.server.config.legacyDataMediaType) {
+				err = fmt.Errorf("try to set cold vol(%v) CacheDpStorageClass, but config legacyDataMediaType not set", vv.Name)
+				return
+			}
+			vv.CacheDpStorageClass = proto.GetStorageClassByMediaType(c.server.config.legacyDataMediaType)
+			log.LogWarnf("legacy cold vol(%v), set cacheDpStorageClass(%v) by config legacyDataMediaType",
+				vv.Name, proto.StorageClassString(vv.CacheDpStorageClass))
+		}
+	}
+
+	return
+}
+
+func (c *Cluster) loadVols() (err error, autoUpdatedLegacyVols []*Vol) {
+	autoUpdatedLegacyVols = make([]*Vol, 0)
+
 	result, err := c.fsm.store.SeekForPrefix([]byte(volPrefix))
 	if err != nil {
 		err = fmt.Errorf("action[loadVols],err:%v", err.Error())
-		return err
+		return
 	}
+
 	for _, value := range result {
 		var vv *volValue
+		var updated bool
+
 		if vv, err = newVolValueFromBytes(value); err != nil {
 			err = fmt.Errorf("action[loadVols],value:%v,unmarshal err:%v", string(value), err)
-			return err
+			return
 		}
+
+		err, updated = c.setStorageClassForLegacyVol(vv)
+		if err != nil {
+			log.LogCriticalf("action[loadVols] error: %v", err.Error())
+			return
+		}
+
 		vol := newVolFromVolValue(vv)
-		vol.Status = vv.Status
 		if err = c.loadAclList(vol); err != nil {
 			log.LogInfof("action[loadVols],vol[%v] load acl manager error %v", vol.Name, err)
 			continue
@@ -1593,6 +1677,10 @@ func (c *Cluster) loadVols() (err error) {
 			continue
 		}
 
+		if updated {
+			autoUpdatedLegacyVols = append(autoUpdatedLegacyVols, vol)
+		}
+
 		c.putVol(vol)
 		log.LogInfof("action[loadVols],vol[%v]", vol.Name)
 		if vol.Forbidden && vol.Status == proto.VolStatusMarkDelete {
@@ -1600,6 +1688,7 @@ func (c *Cluster) loadVols() (err error) {
 			log.LogInfof("action[loadDelayDeleteVols],vol[%v]", vol.Name)
 		}
 	}
+
 	return
 }
 
@@ -1651,18 +1740,22 @@ func (c *Cluster) addBadMetaParitionIdMap(mp *MetaPartition) {
 	c.putBadMetaPartitions(mp.Hosts[0], mp.PartitionID)
 }
 
-func (c *Cluster) loadDataPartitions() (err error) {
+func (c *Cluster) loadDataPartitions() (err error, updatedDataPartitions []*DataPartition) {
 	result, err := c.fsm.store.SeekForPrefix([]byte(dataPartitionPrefix))
 	if err != nil {
 		err = fmt.Errorf("action[loadDataPartitions],err:%v", err.Error())
-		return err
+		return
 	}
+
+	updatedDataPartitions = make([]*DataPartition, 0)
+
 	for _, value := range result {
+		var updated bool
 
 		dpv := &dataPartitionValue{}
 		if err = json.Unmarshal(value, dpv); err != nil {
 			err = fmt.Errorf("action[loadDataPartitions],value:%v,unmarshal err:%v", string(value), err)
-			return err
+			return
 		}
 		vol, err1 := c.getVol(dpv.VolName)
 		if err1 != nil {
@@ -1674,6 +1767,13 @@ func (c *Cluster) loadDataPartitions() (err error) {
 			continue
 		}
 
+		if dpv.MediaType == proto.MediaType_Unspecified {
+			dpv.MediaType = c.server.config.legacyDataMediaType
+			updated = true
+			log.LogWarnf("legacy dataPartition(id:%v), set mediaType(%v) by config legacyDataMediaType",
+				dpv.PartitionID, proto.MediaTypeString(dpv.MediaType))
+		}
+
 		dp := dpv.Restore(c)
 		if dp.IsDiscard {
 			log.LogWarnf("[loadDataPartitions] dp(%v) is discard, decommission status(%v)", dp.PartitionID, dp.GetDecommissionStatus())
@@ -1682,6 +1782,11 @@ func (c *Cluster) loadDataPartitions() (err error) {
 		c.addBadDataPartitionIdMap(dp)
 		// add to nodeset decommission list
 		go dp.addToDecommissionList(c)
+
+		if updated {
+			updatedDataPartitions = append(updatedDataPartitions, dp)
+		}
+
 		log.LogInfof("action[loadDataPartitions],vol[%v],dp[%v],mediaType[%v]",
 			vol.Name, dp.PartitionID, proto.MediaTypeString(dp.MediaType))
 	}

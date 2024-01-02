@@ -56,20 +56,20 @@ const (
 	cfgVolForceDeletion           = "volForceDeletion"
 	cfgVolDeletionDentryThreshold = "volDeletionDentryThreshold"
 
-	cfgDefaultDataMediaType = "defaultDataMediaType" // for hybrid cloud
+	cfgLegacyDataMediaType = "legacyDataMediaType" // for hybrid cloud
 )
 
 // default value
 const (
 	defaultTobeFreedDataPartitionCount         = 1000
-	defaultSecondsToFreeDataPartitionAfterLoad = 5 * 60 // a data partition can only be freed after loading 5 mins
-	defaultIntervalToFreeDataPartition         = 10     // in terms of seconds
+	defaultSecondsToFreeDataPartitionAfterLoad = 5 * 60                                // a data partition can only be freed after loading 5 mins
+	defaultIntervalToFreeDataPartition         = 10                                    // in terms of seconds
 	defaultIntervalToCheck                     = 60
 	defaultIntervalToCheckHeartbeat            = 6
 	defaultIntervalToCheckDataPartition        = 5
 	defaultIntervalToCheckQos                  = 1
-	defaultIntervalToCheckCrc                  = 20 * defaultIntervalToCheck // in terms of seconds
-	noHeartBeatTimes                           = 3                           // number of times that no heartbeat reported
+	defaultIntervalToCheckCrc                  = 20 * defaultIntervalToCheck           // in terms of seconds
+	noHeartBeatTimes                           = 3                                     // number of times that no heartbeat reported
 	defaultNodeTimeOutSec                      = noHeartBeatTimes * defaultIntervalToCheckHeartbeat
 	defaultDataPartitionTimeOutSec             = 200 * defaultIntervalToCheckHeartbeat // datanode with massive amount of dp may cost 10-min
 	defaultMissingDataPartitionInterval        = 24 * 3600
@@ -156,6 +156,8 @@ type clusterConfig struct {
 	volForceDeletion           bool   // when delete a volume, ignore it's dentry count or not
 	volDeletionDentryThreshold uint64 // in case of volForceDeletion is set to false, define the dentry count threshold to allow volume deletion
 	volDelayDeleteTimeHour     int64
+
+	legacyDataMediaType uint32 // used to upgrade master's meta to hybrid cloud version
 }
 
 func newClusterConfig() (cfg *clusterConfig) {
