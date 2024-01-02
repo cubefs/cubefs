@@ -105,33 +105,32 @@ var (
 
 // Server represents the server in a cluster
 type Server struct {
-	id                   uint64
-	clusterName          string
-	ip                   string
-	bindIp               bool
-	port                 string
-	logDir               string
-	walDir               string
-	storeDir             string
-	bStoreAddr           string
-	servicePath          string
-	retainLogs           uint64
-	tickInterval         int
-	raftRecvBufSize      int
-	electionTick         int
-	leaderInfo           *LeaderInfo
-	config               *clusterConfig
-	cluster              *Cluster
-	user                 *User
-	rocksDBStore         *raftstore_db.RocksDBStore
-	raftStore            raftstore.RaftStore
-	fsm                  *MetadataFsm
-	partition            raftstore.Partition
-	wg                   sync.WaitGroup
-	reverseProxy         *httputil.ReverseProxy
-	metaReady            bool
-	apiServer            *http.Server
-	defaultDataMediaType uint32 // used to upgrade master's meta to hybrid cloud version
+	id              uint64
+	clusterName     string
+	ip              string
+	bindIp          bool
+	port            string
+	logDir          string
+	walDir          string
+	storeDir        string
+	bStoreAddr      string
+	servicePath     string
+	retainLogs      uint64
+	tickInterval    int
+	raftRecvBufSize int
+	electionTick    int
+	leaderInfo      *LeaderInfo
+	config          *clusterConfig
+	cluster         *Cluster
+	user            *User
+	rocksDBStore    *raftstore_db.RocksDBStore
+	raftStore       raftstore.RaftStore
+	fsm             *MetadataFsm
+	partition       raftstore.Partition
+	wg              sync.WaitGroup
+	reverseProxy    *httputil.ReverseProxy
+	metaReady       bool
+	apiServer       *http.Server
 }
 
 // NewServer creates a new server
@@ -371,9 +370,20 @@ func (m *Server) checkConfig(cfg *config.Config) (err error) {
 	}
 	m.config.volDeletionDentryThreshold = uint64(threshold)
 
-	//TODO:tangjingyu: deal compatibility, old version vol hot type convert to storageClass
-	m.defaultDataMediaType = cfg.GetUint32WithDefault(cfgDefaultDataMediaType, proto.MediaType_SSD)
-	syslog.Println("defaultDataMediaType=", m.defaultDataMediaType)
+	if !cfg.HasKey(cfgLegacyDataMediaType) {
+		m.config.legacyDataMediaType = proto.MediaType_Unspecified
+		syslog.Println("config [", cfgLegacyDataMediaType, "] not set")
+	} else {
+		err, m.config.legacyDataMediaType = cfg.GetUint32(cfgLegacyDataMediaType)
+		if err != nil || !proto.IsValidMediaType(m.config.legacyDataMediaType) {
+			err = fmt.Errorf("config [%v] invalid value: %v", cfgLegacyDataMediaType, m.config.legacyDataMediaType)
+			syslog.Println(err.Error())
+			return
+		}
+
+		syslog.Println("config [", cfgLegacyDataMediaType, "]: ", proto.MediaTypeString(m.config.legacyDataMediaType))
+	}
+
 	return
 }
 
@@ -405,6 +415,7 @@ func (m *Server) createRaftServer(cfg *config.Config) (err error) {
 	}
 	return
 }
+
 func (m *Server) initFsm() {
 	m.fsm = newMetadataFsm(m.rocksDBStore, m.retainLogs, m.raftStore.RaftServer())
 	m.fsm.registerLeaderChangeHandler(m.handleLeaderChange)
