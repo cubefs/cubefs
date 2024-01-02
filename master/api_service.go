@@ -6609,6 +6609,14 @@ func (m *Server) volAddAllowedStorageClass(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
+	if vol.volStorageClass == proto.StorageClass_BlobStore {
+		err = fmt.Errorf("volStorageClass is %v, can not add allowedStorageClass",
+			proto.StorageClassString(vol.volStorageClass))
+		log.LogErrorf("[volAddAllowedStorageClass] vol(%v), err: %v", name, err.Error())
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
 	resourceChecker := NewStorageClassResourceChecker(m.cluster)
 	if !resourceChecker.HasResourceOfStorageClass(addAllowedStorageClass) {
 		err = fmt.Errorf("cluster has no resoure to support storageClass(%v)",
