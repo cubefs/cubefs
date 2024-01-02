@@ -92,30 +92,6 @@ public class TestCfsClient {
             System.out.println("write bytes: " + writeBytes);
 
             mnt.close(fd);
-        } else if (args[0].equals("ls")) {
-            mnt.chdir(targetPath);
-            int fd = mnt.open(".", CfsMount.O_RDWR, 0644);
-
-            if (fd < 0) {
-                System.out.println("Open failed: " + fd);
-                return;
-            }
-
-            int total_entry = 0;
-            Dirent dent = new Dirent();
-            Dirent[] dents = (Dirent[]) dent.toArray(2);
-            for (;;) {
-                int n = mnt.readdir(fd, dents, 2);
-                if (n <= 0) {
-                    break;
-                }
-                total_entry += n;
-                for (int i = 0; i < n; i++) {
-                    System.out.println("ino: " + dents[i].ino + " | d_type: " + dents[i].dType);
-                }
-            }
-            System.out.println("num of entries: " + total_entry);
-            mnt.close(fd);
         } else if (args[0].equals("chmod")) {
             int fd = mnt.open(targetPath, CfsMount.O_RDWR, 0644);
             if (fd < 0) {
@@ -132,8 +108,15 @@ public class TestCfsClient {
             ret = mnt.getAttr(targetPath, stat);
             System.out.println("mode: " + stat.mode);
             mnt.close(fd);
+        } else if (args[0].equals("ls")) {
+            Dirent[] dents = mnt.listdir(targetPath);
+            int k = 0;
+            while (k < dents.length) {
+                System.out.println("ino: " + dents[k].ino + " | d_type: " + dents[k].dType + " | d_name: " + new String(dents[k].name));
+                k++;
+            }
         }
-
         mnt.closeClient();
     }
+
 }
