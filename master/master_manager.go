@@ -120,15 +120,22 @@ func (m *Server) restoreIDAlloc() {
 
 // Load stored metadata into the memory
 func (m *Server) loadMetadata() {
+	var err error
+	var updatedDataNodes []*DataNode
+	var autoUpdatedZones []*Zone
+	var autoUpdatedLegacyVols []*Vol
+	var updatedDataPartitions []*DataPartition
+
 	log.LogInfo("action[loadMetadata] begin")
 	syslog.Println("action[loadMetadata] begin")
 	m.clearMetadata()
 	m.restoreIDAlloc()
 	m.cluster.fsm.restore()
-	var err error
+
 	if err = m.cluster.loadClusterValue(); err != nil {
 		panic(err)
 	}
+
 	var loadDomain bool
 	if m.cluster.FaultDomain { // try load exclude
 		if loadDomain, err = m.cluster.loadZoneDomain(); err != nil {
@@ -160,7 +167,7 @@ func (m *Server) loadMetadata() {
 		}
 	}
 
-	if err = m.cluster.loadDataNodes(); err != nil {
+	if err, updatedDataNodes = m.cluster.loadDataNodes(); err != nil {
 		panic(err)
 	}
 
@@ -168,18 +175,19 @@ func (m *Server) loadMetadata() {
 		panic(err)
 	}
 
-	if err = m.cluster.loadZoneValue(); err != nil {
+	if err, autoUpdatedZones = m.cluster.loadZoneValue(); err != nil {
 		panic(err)
 	}
 
-	if err = m.cluster.loadVols(); err != nil {
+	if err, autoUpdatedLegacyVols = m.cluster.loadVols(); err != nil {
 		panic(err)
 	}
 
 	if err = m.cluster.loadMetaPartitions(); err != nil {
 		panic(err)
 	}
-	if err = m.cluster.loadDataPartitions(); err != nil {
+
+	if err, updatedDataPartitions = m.cluster.loadDataPartitions(); err != nil {
 		panic(err)
 	}
 	if err = m.cluster.loadDecommissionDiskList(); err != nil {
@@ -188,7 +196,6 @@ func (m *Server) loadMetadata() {
 	if err = m.cluster.startDecommissionListTraverse(); err != nil {
 		panic(err)
 	}
-	log.LogInfo("action[loadMetadata] end")
 
 	log.LogInfo("action[loadUserInfo] begin")
 	if err = m.user.loadUserStore(); err != nil {
@@ -231,13 +238,48 @@ func (m *Server) loadMetadata() {
 		panic(err)
 	}
 	log.LogInfo("action[loadLcNodes] end")
-	syslog.Println("action[loadMetadata] end")
 
 	log.LogInfo("action[loadS3QoSInfo] begin")
 	if err = m.cluster.loadS3ApiQosInfo(); err != nil {
 		panic(err)
 	}
 	log.LogInfo("action[loadS3QoSInfo] end")
+
+	for _, dn := range updatedDataNodes {
+		log.LogInfof("action[loadVols] auto updated legacy datanode(%v), persist it", dn.Addr)
+		if err = m.cluster.syncUpdateDataNode(dn); err != nil {
+			log.LogCriticalf("action[loadVols] auto updated legacy datanode(%v), but persist failed: %v", dn.Addr, err.Error())
+			panic(err)
+		}
+	}
+
+	for _, z := range autoUpdatedZones {
+		log.LogInfof("action[loadVols] auto updated legacy zone(%v), persist it", z.name)
+		if err = m.cluster.sycnPutZoneInfo(z); err != nil {
+			log.LogCriticalf("action[loadVols] auto updated legacy zone(%v), but persist failed: %v", z.name, err.Error())
+			panic(err)
+		}
+	}
+
+	for _, v := range autoUpdatedLegacyVols {
+		log.LogInfof("action[loadVols] auto updated legacy vol(%v), persist it", v.Name)
+		if err = m.cluster.syncUpdateVol(v); err != nil {
+			log.LogCriticalf("action[loadVols] auto updated legacy vol(%v), but persist failed: %v", v.Name, err.Error())
+			panic(err)
+		}
+	}
+
+	for _, dp := range updatedDataPartitions {
+		log.LogInfof("action[loadVols] auto updated legacy dataPartition(%v), persist it", dp.PartitionID)
+		if err = m.cluster.syncUpdateDataPartition(dp); err != nil {
+			log.LogCriticalf("action[loadVols] auto updated legacy dataPartition(%v), but persist failed: %v",
+				dp.PartitionID, err.Error())
+			panic(err)
+		}
+	}
+
+	log.LogInfo("action[loadMetadata] end")
+	syslog.Println("action[loadMetadata] end")
 }
 
 func (m *Server) clearMetadata() {
