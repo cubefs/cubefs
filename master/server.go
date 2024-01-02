@@ -131,7 +131,7 @@ type Server struct {
 	reverseProxy         *httputil.ReverseProxy
 	metaReady            bool
 	apiServer            *http.Server
-	defaultDataMediaType uint32
+	defaultDataMediaType uint32 // used to upgrade master's meta to hybrid cloud version
 }
 
 // NewServer creates a new server

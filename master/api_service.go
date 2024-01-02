@@ -6626,8 +6626,9 @@ func (m *Server) volAddAllowedStorageClass(w http.ResponseWriter, r *http.Reques
 	}
 
 	verList := vol.VersionMgr.getVersionList()
-	if len(verList.VerList) > 0 {
-		err = fmt.Errorf("vol(%v) now has or used to have snapshot version, not support multiple allowedStorageClass", name)
+	if len(verList.VerList) > 1 {
+		err = fmt.Errorf("vol(%v) now has or used to have snapshot version, not support multiple allowedStorageClass, verListLen(%v)",
+			name, len(verList.VerList))
 		log.LogErrorf("[volAddAllowedStorageClass] err: %v", err.Error())
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
