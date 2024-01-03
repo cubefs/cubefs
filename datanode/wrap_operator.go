@@ -37,10 +37,6 @@ import (
 	"github.com/cubefs/cubefs/util/log"
 )
 
-var (
-	ErrForbiddenDataPartition = errors.New("the data partition is forbidden")
-)
-
 func (s *DataNode) getPacketTpLabels(p *repl.Packet) map[string]string {
 	labels := make(map[string]string)
 	labels[exporter.Vol] = ""
@@ -530,7 +526,7 @@ func (s *DataNode) handleWritePacket(p *repl.Packet) {
 
 	partition := p.Object.(*DataPartition)
 	if partition.IsForbidden() {
-		err = ErrForbiddenDataPartition
+		err = storage.ForbiddenDataPartitionError
 		return
 	}
 	shallDegrade := p.ShallDegrade()
@@ -632,7 +628,7 @@ func (s *DataNode) handleRandomWritePacket(p *repl.Packet) {
 	}()
 	partition := p.Object.(*DataPartition)
 	if partition.IsForbidden() {
-		err = ErrForbiddenDataPartition
+		err = storage.ForbiddenDataPartitionError
 		return
 	}
 	// cache or preload partition not support raft and repair.
@@ -734,6 +730,11 @@ func (s *DataNode) extentRepairReadPacket(p *repl.Packet, connect net.Conn, isRe
 		}
 	}()
 	partition := p.Object.(*DataPartition)
+	if partition.IsForbidden() {
+		err = storage.ForbiddenDataPartitionError
+		return
+	}
+
 	needReplySize := p.Size
 	offset := p.ExtentOffset
 	store := partition.ExtentStore()
