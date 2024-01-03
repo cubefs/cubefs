@@ -51,6 +51,7 @@ const (
 	statusConflictExtents
 	statusOpDirQuota
 	statusNoSpace
+	statusForbid
 	statusTxInodeInfoNotExist
 	statusTxConflict
 	statusTxTimeout
@@ -371,6 +372,8 @@ func parseStatus(result uint8) (status int) {
 		status = statusTxTimeout
 	case proto.OpUploadPartConflictErr:
 		status = statusUploadPartConflict
+	case proto.OpForbidErr:
+		status = statusForbid
 	default:
 		status = statusError
 	}
@@ -420,6 +423,8 @@ func statusToErrno(status int) error {
 		return syscall.EAGAIN
 	case statusUploadPartConflict:
 		return syscall.EEXIST
+	case statusForbid:
+		return syscall.EPERM
 	default:
 	}
 	return syscall.EIO
