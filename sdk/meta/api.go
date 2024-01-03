@@ -179,7 +179,7 @@ func (mw *MetaWrapper) txCreate_ll(parentID uint64, name string, mode, uid, gid 
 		status, info, err = mw.txIcreate(tx, mp, mode, uid, gid, target, quotaIds, fullPath)
 		if err == nil && status == statusOK {
 			goto create_dentry
-		} else if status == statusNoSpace {
+		} else if status == statusNoSpace || status == statusForbid {
 			log.LogErrorf("Create_ll status %v", status)
 			return nil, statusToErrno(status)
 		} else {
@@ -266,7 +266,7 @@ func (mw *MetaWrapper) create_ll(parentID uint64, name string, mode, uid, gid ui
 			status, info, err = mw.quotaIcreate(mp, mode, uid, gid, target, quotaIds, fullPath)
 			if err == nil && status == statusOK {
 				goto create_dentry
-			} else if status == statusNoSpace {
+			} else if status == statusNoSpace || status == statusForbid {
 				log.LogErrorf("Create_ll status %v", status)
 				return nil, statusToErrno(status)
 			}
@@ -278,7 +278,7 @@ func (mw *MetaWrapper) create_ll(parentID uint64, name string, mode, uid, gid ui
 			status, info, err = mw.icreate(mp, mode, uid, gid, target, fullPath)
 			if err == nil && status == statusOK {
 				goto create_dentry
-			} else if status == statusNoSpace {
+			} else if status == statusNoSpace || status == statusForbid {
 				log.LogErrorf("Create_ll status %v", status)
 				return nil, statusToErrno(status)
 			}
@@ -1568,7 +1568,7 @@ func (mw *MetaWrapper) InodeCreate_ll(parentID uint64, mode, uid, gid uint32, ta
 			status, info, err = mw.quotaIcreate(mp, mode, uid, gid, target, quotaIds, fullPath)
 			if err == nil && status == statusOK {
 				return info, nil
-			} else if status == statusNoSpace {
+			} else if status == statusNoSpace || status == statusForbid {
 				log.LogErrorf("InodeCreate_ll status %v", status)
 				return nil, statusToErrno(status)
 			}
@@ -1580,7 +1580,7 @@ func (mw *MetaWrapper) InodeCreate_ll(parentID uint64, mode, uid, gid uint32, ta
 			status, info, err = mw.icreate(mp, mode, uid, gid, target, fullPath)
 			if err == nil && status == statusOK {
 				return info, nil
-			} else if status == statusNoSpace {
+			} else if status == statusNoSpace || status == statusForbid {
 				log.LogErrorf("InodeCreate_ll status %v", status)
 				return nil, statusToErrno(status)
 			}
@@ -1653,6 +1653,8 @@ func (mw *MetaWrapper) InitMultipart_ll(path string, extend map[string]string) (
 		status, sessionId, err := mw.createMultipart(mp, path, extend)
 		if err == nil && status == statusOK && len(sessionId) > 0 {
 			return sessionId, nil
+		} else if status == statusForbid {
+			break
 		} else {
 			log.LogErrorf("InitMultipart: create multipart id fail, path(%v), mp(%v), status(%v), err(%v)",
 				path, mp, status, err)

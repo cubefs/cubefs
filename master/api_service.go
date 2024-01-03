@@ -225,9 +225,9 @@ func (m *Server) forbidVolume(w http.ResponseWriter, r *http.Request) {
 	}
 	if status {
 		// set data partition status to write only
-		vol.setDpRdOnly()
+		vol.setDpForbid()
 		// set meta partition status to read only
-		vol.setMpRdOnly()
+		vol.setMpForbid()
 	}
 	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("set volume forbidden to (%v) success", status)))
 }
@@ -1831,8 +1831,8 @@ func (m *Server) markDeleteVol(w http.ResponseWriter, r *http.Request) {
 			sendErrReply(w, r, newErrHTTPReply(err))
 			return
 		}
-		vol.setDpRdOnly()
-		vol.setMpRdOnly()
+		vol.setDpForbid()
+		vol.setMpForbid()
 		m.cluster.delayDeleteVolsInfo = append(m.cluster.delayDeleteVolsInfo, &delayDeleteVolInfo{volName: name, authKey: authKey, execTime: time.Now().Add(time.Duration(m.config.volDelayDeleteTime) * time.Hour), user: m.user})
 		log.LogDebugf("delete vol[%v], slice[%v]", name, m.cluster.delayDeleteVolsInfo)
 		msg = fmt.Sprintf("delete vol: forbid vol[%v] successfully,from[%v]", name, r.RemoteAddr)
