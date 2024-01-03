@@ -25,6 +25,8 @@ var (
 	NoAvailableExtentError           = errors.New("no available extent")
 	NoBrokenExtentError              = errors.New("no unavailable extent")
 	NoSpaceError                     = errors.New("no space left on the device")
+	ForbiddenDataPartitionError      = errors.New("the data partition is forbidden")
+	ForbiddenMetaPartitionError      = errors.New("meta partition is forbidden")
 	TryAgainError                    = errors.New("try again")
 	CrcMismatchError                 = errors.New("packet Crc is incorrect")
 	NoLeaderError                    = errors.New("no raft leader")
