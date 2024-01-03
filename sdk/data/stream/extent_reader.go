@@ -113,7 +113,7 @@ func (reader *ExtentReader) checkStreamReply(request *Packet, reply *Packet) (er
 	}
 
 	if reply.ResultCode != proto.OpOk {
-		if request.Opcode == proto.OpStreamFollowerRead {
+		if request.Opcode == proto.OpStreamFollowerRead && reply.ResultCode != proto.OpForbidErr {
 			log.LogWarnf("checkStreamReply: ResultCode(%v) NOK, OpStreamFollowerRead return TryOtherAddrError, "+
 				"req(%v) reply(%v)", reply.GetResultMsg(), request, reply)
 			return TryOtherAddrError

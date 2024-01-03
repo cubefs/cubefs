@@ -458,6 +458,8 @@ func (p *Packet) identificationErrorResultCode(errLog string, errMsg string) {
 		// log.LogDebugf("action[identificationErrorResultCode] not change ver erro code, (%v)", string(debug.Stack()))
 	} else if strings.Contains(errMsg, storage.NoDiskReadRepairExtentTokenError.Error()) {
 		p.ResultCode = proto.OpReadRepairExtentAgain
+	} else if strings.Contains(errMsg, storage.ForbiddenDataPartitionError.Error()) {
+		p.ResultCode = proto.OpForbidErr
 	} else {
 		log.LogErrorf("action[identificationErrorResultCode] error %v, errmsg %v", errLog, errMsg)
 		p.ResultCode = proto.OpIntraGroupNetErr

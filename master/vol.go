@@ -823,12 +823,12 @@ func (vol *Vol) cloneMetaPartitionMap() (mps map[uint64]*MetaPartition) {
 	return
 }
 
-func (vol *Vol) setMpRdOnly() {
+func (vol *Vol) setMpForbid() {
 	vol.mpsLock.RLock()
 	defer vol.mpsLock.RUnlock()
 	for _, mp := range vol.MetaPartitions {
 		if mp.Status != proto.Unavailable {
-			mp.Status = proto.ReadOnly
+			mp.Status = proto.Forbid
 		}
 	}
 }
@@ -843,12 +843,12 @@ func (vol *Vol) cloneDataPartitionMap() (dps map[uint64]*DataPartition) {
 	return
 }
 
-func (vol *Vol) setDpRdOnly() {
+func (vol *Vol) setDpForbid() {
 	vol.dataPartitions.RLock()
 	defer vol.dataPartitions.RUnlock()
 	for _, dp := range vol.dataPartitions.partitionMap {
 		if dp.Status != proto.Unavailable {
-			dp.Status = proto.ReadOnly
+			dp.Status = proto.Forbid
 		}
 	}
 }
