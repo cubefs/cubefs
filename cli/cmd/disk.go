@@ -24,6 +24,7 @@ func newDiskCmd(client *master.MasterClient) *cobra.Command {
 		newListBadDiskCmd(client),
 		newDecommissionDiskCmd(client),
 		newRecommissionDiskCmd(client),
+		newQueryDecommissionDiskCmd(client),
 	)
 	return cmd
 }
@@ -102,6 +103,30 @@ func newRecommissionDiskCmd(client *master.MasterClient) *cobra.Command {
 				return
 			}
 			stdout("Mark disk %v:%v to be recommissioned", args[0], args[1])
+		},
+	}
+	return cmd
+}
+
+const (
+	cmdQueryDecommissionDiskProgressShort = "Query decommmission progress on datanode"
+)
+
+func newQueryDecommissionDiskCmd(client *master.MasterClient) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   CliOpQueryProgress + " [DATA NODE ADDR] [DISK]",
+		Short: cmdQueryDecommissionDiskProgressShort,
+		Args:  cobra.MinimumNArgs(2),
+		Run: func(cmd *cobra.Command, args []string) {
+			var err error
+			defer func() {
+				errout(err)
+			}()
+			progress, err := client.AdminAPI().QueryDecommissionDiskProgress(args[0], args[1])
+			if err != nil {
+				return
+			}
+			stdout("%v", formatDecommissionProgress(progress))
 		},
 	}
 	return cmd

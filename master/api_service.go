@@ -3857,8 +3857,9 @@ func (m *Server) queryDiskDecoProgress(w http.ResponseWriter, r *http.Request) {
 	status, progress := disk.updateDecommissionStatus(m.cluster, true)
 	progress, _ = FormatFloatFloor(progress, 4)
 	resp := &proto.DecommissionProgress{
-		Status:   status,
-		Progress: fmt.Sprintf("%.2f%%", progress*float64(100)),
+		Status:        status,
+		Progress:      fmt.Sprintf("%.2f%%", progress*float64(100)),
+		StatusMessage: GetDecommissionStatusMessage(status),
 	}
 	if status == DecommissionFail {
 		dps := disk.GetLatestDecommissionDP(m.cluster)
@@ -5305,8 +5306,9 @@ func (m *Server) queryDataNodeDecoProgress(w http.ResponseWriter, r *http.Reques
 	status, progress := dn.updateDecommissionStatus(m.cluster, true)
 	progress, _ = FormatFloatFloor(progress, 4)
 	resp := &proto.DecommissionProgress{
-		Status:   status,
-		Progress: fmt.Sprintf("%.2f%%", progress*float64(100)),
+		Status:        status,
+		Progress:      fmt.Sprintf("%.2f%%", progress*float64(100)),
+		StatusMessage: GetDecommissionStatusMessage(status),
 	}
 	if status == DecommissionFail {
 		err, dps := dn.GetDecommissionFailedDPByTerm(m.cluster)
