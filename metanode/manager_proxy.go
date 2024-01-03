@@ -15,6 +15,7 @@
 package metanode
 
 import (
+	"github.com/cubefs/cubefs/storage"
 	"net"
 
 	"github.com/cubefs/cubefs/storage"
