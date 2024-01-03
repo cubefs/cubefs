@@ -844,7 +844,7 @@ func (vol *Vol) setMpForbid() {
 	defer vol.mpsLock.RUnlock()
 	for _, mp := range vol.MetaPartitions {
 		if mp.Status != proto.Unavailable {
-			mp.Status = proto.ReadOnly
+			mp.Status = proto.Forbid
 		}
 	}
 }
@@ -864,7 +864,7 @@ func (vol *Vol) setDpForbid() {
 	defer vol.dataPartitions.RUnlock()
 	for _, dp := range vol.dataPartitions.partitionMap {
 		if dp.Status != proto.Unavailable {
-			dp.Status = proto.ReadOnly
+			dp.Status = proto.Forbid
 		}
 	}
 }

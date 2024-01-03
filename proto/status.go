@@ -19,6 +19,7 @@ const (
 	Recovering  = 0
 	ReadOnly    = 1
 	ReadWrite   = 2
+	Forbid      = 3
 	Unavailable = -1
 )
 
