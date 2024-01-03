@@ -331,9 +331,10 @@ type MetaPartitionDiagnosis struct {
 }
 
 type DecommissionProgress struct {
-	Status    uint32
-	Progress  string
-	FailedDps []uint64
+	Status        uint32
+	Progress      string
+	FailedDps     []uint64
+	StatusMessage string
 }
 
 type BadDiskInfo struct {

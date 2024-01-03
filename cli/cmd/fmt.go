@@ -872,3 +872,13 @@ func formatBadDiskInfoRow(disk proto.BadDiskInfo) string {
 	msgDpIdList := fmt.Sprintf("%v", disk.DiskErrPartitionList)
 	return fmt.Sprintf(badDiskDetailTableRowPattern, disk.Address, disk.Path, disk.TotalPartitionCnt, len(disk.DiskErrPartitionList), msgDpIdList)
 }
+
+func formatDecommissionProgress(progress *proto.DecommissionProgress) string {
+	sb := strings.Builder{}
+	sb.WriteString(fmt.Sprintf("Status:           %v\n", progress.StatusMessage))
+	sb.WriteString(fmt.Sprintf("Progress:         %v\n", progress.Progress))
+	if len(progress.FailedDps) != 0 {
+		sb.WriteString(fmt.Sprintf("Failed Dps:       %v\n", progress.FailedDps))
+	}
+	return sb.String()
+}

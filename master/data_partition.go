@@ -1029,6 +1029,25 @@ const (
 	defaultDecommissionDiskParallelFactor = 0
 )
 
+func GetDecommissionStatusMessage(status uint32) string {
+	switch status {
+	case DecommissionInitial:
+		return "Initial"
+	case markDecommission:
+		return "Marked"
+	case DecommissionPause:
+		return "Paused"
+	case DecommissionRunning:
+		return "Running"
+	case DecommissionSuccess:
+		return "Success"
+	case DecommissionFail:
+		return "Failed"
+	default:
+		return "Unknown"
+	}
+}
+
 func (partition *DataPartition) MarkDecommissionStatus(srcAddr, dstAddr, srcDisk string, raftForce bool, term uint64, c *Cluster) bool {
 	if !partition.canMarkDecommission(term) {
 		log.LogWarnf("action[MarkDecommissionStatus] dp[%v] cannot make decommission:status[%v]",

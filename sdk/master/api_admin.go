@@ -853,6 +853,21 @@ func (api *AdminAPI) RecommissionDisk(addr string, disk string) (err error) {
 	return
 }
 
+func (api *AdminAPI) QueryDecommissionDiskProgress(addr string, disk string) (progress *proto.DecommissionProgress, err error) {
+	var data []byte
+	request := newAPIRequest(http.MethodPost, proto.QueryDiskDecoProgress)
+	request.params["addr"] = addr
+	request.params["disk"] = disk
+	if data, err = api.mc.serveRequest(request); err != nil {
+		return
+	}
+	progress = &proto.DecommissionProgress{}
+	if err = json.Unmarshal(data, progress); err != nil {
+		return
+	}
+	return
+}
+
 func (api *AdminAPI) ListQuotaAll() (volsInfo []*proto.VolInfo, err error) {
 	var request = newAPIRequest(http.MethodGet, proto.QuotaListAll)
 	var data []byte
