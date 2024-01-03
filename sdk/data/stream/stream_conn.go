@@ -17,6 +17,7 @@ package stream
 import (
 	"fmt"
 	"net"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -107,7 +108,7 @@ func (sc *StreamConn) String() string {
 func (sc *StreamConn) Send(retry bool, req *Packet, getReply GetReplyFunc) (err error) {
 	for i := 0; i < StreamSendMaxRetry; i++ {
 		err = sc.sendToPartition(req, retry, getReply)
-		if err == nil || !retry {
+		if err == nil || !retry || strings.Contains(err.Error(), "OpForbidErr") {
 			return
 		}
 		log.LogWarnf("StreamConn Send: err(%v)", err)
