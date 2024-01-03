@@ -173,6 +173,7 @@ const (
 
 	// Commons
 	OpNoSpaceErr         uint8 = 0xEE
+	OpForbidErr          uint8 = 0xEF
 	OpDirQuota           uint8 = 0xF1
 	OpConflictExtentsErr uint8 = 0xF2
 	OpIntraGroupNetErr   uint8 = 0xF3
@@ -598,6 +599,8 @@ func (p *Packet) GetResultMsg() (m string) {
 		m = "OpTxRollbackErr"
 	case OpUploadPartConflictErr:
 		m = "OpUploadPartConflictErr"
+	case OpForbidErr:
+		m = "OpForbidErr"
 	default:
 		return fmt.Sprintf("Unknown ResultCode(%v)", p.ResultCode)
 	}
