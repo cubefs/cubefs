@@ -52,6 +52,7 @@ type VolVersionManager struct {
 	enabled          bool
 	strategy         proto.VolumeVerStrategy
 	checkStrategy    int32
+	checkStatus      int32
 	c                *Cluster
 	sync.RWMutex
 }
