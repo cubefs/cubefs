@@ -754,7 +754,7 @@ func (s *DataNode) handleWritePacket(p *repl.Packet) {
 	}()
 	partition := p.Object.(*DataPartition)
 	if partition.IsForbidden() {
-		err = ErrForbiddenDataPartition
+		err = storage.ForbiddenDataPartitionError
 		return
 	}
 	shallDegrade := p.ShallDegrade()
@@ -877,7 +877,7 @@ func (s *DataNode) handleRandomWritePacket(p *repl.Packet) {
 
 	partition := p.Object.(*DataPartition)
 	if partition.IsForbidden() {
-		err = ErrForbiddenDataPartition
+		err = storage.ForbiddenDataPartitionError
 		return
 	}
 	log.LogDebugf("action[handleRandomWritePacket opcod %v seq %v dpid %v dpseq %v extid %v", p.Opcode, p.VerSeq, p.PartitionID, partition.verSeq, p.ExtentID)
@@ -986,6 +986,10 @@ func (s *DataNode) extentRepairReadPacket(p *repl.Packet, connect net.Conn, isRe
 		}
 	}()
 	partition := p.Object.(*DataPartition)
+	if partition.IsForbidden() {
+		err = storage.ForbiddenDataPartitionError
+		return
+	}
 	log.LogDebugf("extentRepairReadPacket ready to repair dp(%v) disk(%v) extent(%v) offset (%v) needSize (%v)",
 		p.PartitionID, partition.disk.Path, p.ExtentID, p.ExtentOffset, p.Size)
 
