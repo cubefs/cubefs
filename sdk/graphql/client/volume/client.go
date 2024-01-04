@@ -74,10 +74,10 @@ type SimpleVolView struct {
 }
 
 //function begin .....
-func (c *VolumeClient) CreateVolume(ctx context.Context, authenticate bool, capacity uint64, crossZone bool, dataPartitionSize uint64, description string, dpReplicaNum uint64, enableToken bool, followerRead bool, mpCount uint64, name string, owner string, zoneName string) (*Vol, error) {
+func (c *VolumeClient) CreateVolume(ctx context.Context, authenticate bool, capacity uint64, crossZone bool, dataPartitionSize uint64, description string, dpReplicaNum uint64, enableToken bool, followerRead bool, mpCount uint64, dpCount uint64, name string, owner string, zoneName string) (*Vol, error) {
 
-	req := client.NewRequest(ctx, `mutation($authenticate: bool, $capacity: uint64, $crossZone: bool, $dataPartitionSize: uint64, $description: string, $dpReplicaNum: uint64, $enableToken: bool, $followerRead: bool, $mpCount: uint64, $name: string, $owner: string, $zoneName: string){
-			createVolume(authenticate: $authenticate, capacity: $capacity, crossZone: $crossZone, dataPartitionSize: $dataPartitionSize, description: $description, dpReplicaNum: $dpReplicaNum, enableToken: $enableToken, followerRead: $followerRead, mpCount: $mpCount, name: $name, owner: $owner, zoneName: $zoneName){
+	req := client.NewRequest(ctx, `mutation($authenticate: bool, $capacity: uint64, $crossZone: bool, $dataPartitionSize: uint64, $description: string, $dpReplicaNum: uint64, $enableToken: bool, $followerRead: bool, $mpCount: uint64, $dpCount: uint64, $name: string, $owner: string, $zoneName: string){
+			createVolume(authenticate: $authenticate, capacity: $capacity, crossZone: $crossZone, dataPartitionSize: $dataPartitionSize, description: $description, dpReplicaNum: $dpReplicaNum, enableToken: $enableToken, followerRead: $followerRead, mpCount: $mpCount, dpCount: $dpCount, name: $name, owner: $owner, zoneName: $zoneName){
 				capacity
 				createTime
 				dpReplicaNum
@@ -130,6 +130,7 @@ func (c *VolumeClient) CreateVolume(ctx context.Context, authenticate bool, capa
 	req.Var("enableToken", enableToken)
 	req.Var("followerRead", followerRead)
 	req.Var("mpCount", mpCount)
+	req.Var("dpCount", dpCount)
 	req.Var("name", name)
 	req.Var("owner", owner)
 	req.Var("zoneName", zoneName)

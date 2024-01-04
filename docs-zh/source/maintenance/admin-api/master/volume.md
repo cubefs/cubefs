@@ -24,6 +24,7 @@ CubeFS以 **Owner**参数作为用户ID。
 | capacity         | int    | 卷的配额,单位是GB                                            | 是   | 无                                |
 | owner            | string | 卷的所有者，同时也是用户ID                                        | 是   | 无                                |
 | mpCount          | int    | 初始化元数据分片个数                                            | 否   | 3                                |
+| dpCount          | int    | 初始化数据分片个数                                              | 否   | 默认10， 最大值200                 |
 | replicaNum       | int    | 副本数                                                   | 否   | 副本卷默认3（支持1,3），纠删码卷默认1（支持1-16个）   |
 | dpSize           | int    | 数据分片大小上限，单位GB                                           | 否   | 120                              |
 | enablePosixAcl   | bool   | 是否配置posix权限限制                                         | 否   | false                            |

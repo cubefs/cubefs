@@ -429,7 +429,7 @@ func (api *AdminAPI) VolExpand(volName string, capacity uint64, authKey, clientI
 }
 
 func (api *AdminAPI) CreateVolName(volName, owner string, capacity uint64, deleteLockTime int64, crossZone, normalZonesFirst bool, business string,
-	mpCount, replicaNum, dpSize, volType int, followerRead bool, zoneName, cacheRuleKey string, ebsBlkSize,
+	mpCount, dpCount, replicaNum, dpSize, volType int, followerRead bool, zoneName, cacheRuleKey string, ebsBlkSize,
 	cacheCapacity, cacheAction, cacheThreshold, cacheTTL, cacheHighWater, cacheLowWater, cacheLRUInterval int,
 	dpReadOnlyWhenVolFull bool, txMask string, txTimeout uint32, txConflictRetryNum int64, txConflictRetryInterval int64, optEnableQuota string,
 	clientIDKey string) (err error) {
@@ -442,6 +442,7 @@ func (api *AdminAPI) CreateVolName(volName, owner string, capacity uint64, delet
 	request.addParam("normalZonesFirst", strconv.FormatBool(normalZonesFirst))
 	request.addParam("description", business)
 	request.addParam("mpCount", strconv.Itoa(mpCount))
+	request.addParam("dpCount", strconv.Itoa(dpCount))
 	request.addParam("replicaNum", strconv.Itoa(replicaNum))
 	request.addParam("dpSize", strconv.Itoa(dpSize))
 	request.addParam("volType", strconv.Itoa(volType))

@@ -1491,7 +1491,6 @@ func (c *Cluster) createDataPartition(volName string, preload *DataPartitionPreL
 	if partitionID, err = c.idAlloc.allocateDataPartitionID(); err != nil {
 		goto errHandler
 	}
-
 	dp = newDataPartition(partitionID, dpReplicaNum, volName, vol.ID, proto.GetDpType(vol.VolType, isPreload), partitionTTL)
 	dp.Hosts = targetHosts
 	dp.Peers = targetPeers
@@ -3186,8 +3185,13 @@ func (c *Cluster) createVol(req *createVolReq) (vol *Vol, err error) {
 	}
 
 	if vol.CacheCapacity > 0 || (proto.IsHot(vol.VolType) && vol.Capacity > 0) {
+		if req.dpCount > maxInitDataPartitionCnt {
+			err = fmt.Errorf("action[createVol] initDataPartitions failed, vol[%v], dpCount[%d] exceeds maximum limit[%d]",
+				req.name, req.dpCount, maxInitDataPartitionCnt)
+			goto errHandler
+		}
 		for retryCount := 0; readWriteDataPartitions < defaultInitMetaPartitionCount && retryCount < 3; retryCount++ {
-			err = vol.initDataPartitions(c)
+			err = vol.initDataPartitions(c, req.dpCount)
 			if err != nil {
 				log.LogError("action[createVol] init dataPartition error ",
 					err.Error(), retryCount, len(vol.dataPartitions.partitionMap))

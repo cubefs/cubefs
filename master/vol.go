@@ -494,9 +494,12 @@ func (vol *Vol) initMetaPartitions(c *Cluster, count int) (err error) {
 	return
 }
 
-func (vol *Vol) initDataPartitions(c *Cluster) (err error) {
+func (vol *Vol) initDataPartitions(c *Cluster, dpCount int) (err error) {
+	if dpCount == 0 {
+		dpCount = defaultInitDataPartitionCnt
+	}
 	// initialize k data partitionMap at a time
-	err = c.batchCreateDataPartition(vol, defaultInitDataPartitionCnt, true)
+	err = c.batchCreateDataPartition(vol, dpCount, true)
 	return
 }
 

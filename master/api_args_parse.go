@@ -654,6 +654,7 @@ type createVolReq struct {
 	owner                                string
 	dpSize                               int
 	mpCount                              int
+	dpCount                              int
 	dpReplicaNum                         uint8
 	capacity                             int
 	deleteLockTime                       int64
@@ -744,6 +745,10 @@ func parseRequestToCreateVol(r *http.Request, req *createVolReq) (err error) {
 	}
 
 	if req.mpCount, err = extractUintWithDefault(r, metaPartitionCountKey, defaultInitMetaPartitionCount); err != nil {
+		return
+	}
+
+	if req.dpCount, err = extractUintWithDefault(r, dataPartitionCountKey, defaultInitDataPartitionCnt); err != nil {
 		return
 	}
 

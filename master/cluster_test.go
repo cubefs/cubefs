@@ -362,3 +362,56 @@ func TestBalanceMetaPartition(t *testing.T) {
 
 	sortNodes.balanceLeader()
 }
+
+func TestCreateVolWithDpCount(t *testing.T) {
+	// create volume and metaNode will create mp,sleep some time to wait cluster get latest meteNode info
+	// cluster normal volume has 3 mps , total 3*3 =9 mp in metaNode
+
+	t.Run("dpCount != default count", func(t *testing.T) {
+		req := &createVolReq{
+			name:             commonVolName + "001",
+			owner:            "cfs",
+			dpSize:           3,
+			mpCount:          30,
+			dpCount:          30,
+			dpReplicaNum:     3,
+			capacity:         100,
+			followerRead:     false,
+			authenticate:     false,
+			crossZone:        true,
+			normalZonesFirst: false,
+			zoneName:         testZone1 + "," + testZone2,
+			description:      "",
+			qosLimitArgs:     &qosArgs{},
+		}
+		_, err := server.cluster.createVol(req)
+		require.NoError(t, err)
+
+		vol, err := server.cluster.getVol(req.name)
+		require.NoError(t, err)
+
+		dpCount := len(vol.dataPartitions.partitions)
+		require.Equal(t, req.dpCount, dpCount)
+	})
+
+	t.Run("dpCount > max count", func(t *testing.T) {
+		req := &createVolReq{
+			name:             commonVolName + "002",
+			owner:            "cfs",
+			dpSize:           3,
+			mpCount:          30,
+			dpCount:          300,
+			dpReplicaNum:     3,
+			capacity:         100,
+			followerRead:     false,
+			authenticate:     false,
+			crossZone:        true,
+			normalZonesFirst: false,
+			zoneName:         testZone1 + "," + testZone2,
+			description:      "",
+			qosLimitArgs:     &qosArgs{},
+		}
+		_, err := server.cluster.createVol(req)
+		require.Error(t, err)
+	})
+}
