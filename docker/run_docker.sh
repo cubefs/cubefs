@@ -34,6 +34,30 @@ EOF
 
 compose="docker-compose --env-file ${RootPath}/docker/run_docker.env -f ${RootPath}/docker/docker-compose.yml"
 
+check_is_podman() {
+    if docker --version | grep -i -q 'podman'
+    then
+        echo "1"
+    else
+        echo "0"
+    fi
+    return 0
+}
+
+prepare_for_podman() {
+    start=`sysctl net.ipv4.ip_unprivileged_port_start | awk -F= '{print $2}'`
+    if test $start -gt 80
+    then
+        if [ $(whoami) = "root" ]
+        then
+            echo "Using rootful container"
+            return 0
+        fi
+        echo "Please allow us to use 80 port"
+        echo "Execute command 'sudo sysctl net.ipv4.ip_unprivileged_port_start=80' to set 'net.ipv4.ip_unprivileged_port_start' value temporarily"
+        sudo sysctl net.ipv4.ip_unprivileged_port_start=80
+    fi
+}
 
 clean() {
     ${compose} down
@@ -225,6 +249,15 @@ for opt in ${ARGS[*]} ; do
             ;;
     esac
 done
+
+if [ "$cmd" != "help" ] && [ "$cmd" != "build" ] && [ "$cmd" != "clean" ]
+then
+    is_podman=`check_is_podman`
+    if test $is_podman -eq 1
+    then
+        prepare_for_podman
+    fi
+fi
 
 case "-$cmd" in
     -help) help ;;

@@ -6,6 +6,10 @@ x-define-image: &image
 x-define-env: &env
     environment:
         - TZ=Asia/Shanghai
+        - http_proxy=
+        - https_proxy=
+        - HTTP_PROXY=
+        - HTTPS_PROXY=
 
 x-define-servernode: &servernode
     <<: *image
@@ -314,8 +318,6 @@ services:
         privileged: true
         devices:
             - /dev/fuse:/dev/fuse:rwm
-        cap_add:
-            - SYS_ADMIN
         command: /bin/bash /cfs/script/start.sh
         networks:
             extnetwork:
@@ -339,13 +341,12 @@ services:
         privileged: true
         devices:
             - /dev/fuse:/dev/fuse:rwm
-        cap_add:
-            - SYS_ADMIN
         command: /bin/bash /cfs/script/start.sh -ltp
         networks:
             extnetwork:
 
     consul:
+        <<: *env
         image: consul:1.5
         ports:
             - 8500:8500
@@ -357,6 +358,7 @@ services:
                 ipv4_address: 192.168.0.101
 
     prometheus:
+        <<: *env
         image: prom/prometheus
         ports:
             - 9090:9090
@@ -371,6 +373,10 @@ services:
         image: grafana/grafana:6.4.4
         environment:
             - GF_SECURITY_ADMIN_PASSWORD=123456
+            - http_proxy=
+            - https_proxy=
+            - HTTP_PROXY=
+            - HTTPS_PROXY=
         ports:
             - 3000:3000
         volumes:
@@ -384,6 +390,7 @@ services:
                 ipv4_address: 192.168.0.103
 
     nginx:
+        <<: *env
         image: nginx:1.17.8
         ports:
             - "80:80"
@@ -428,6 +435,10 @@ services:
         environment:
             - TZ=Asia/Shanghai
             - DOCKER_TESTING_LOG_OFF="on"
+            - http_proxy=
+            - https_proxy=
+            - HTTP_PROXY=
+            - HTTPS_PROXY=
 
     build_libsdkpre:
         <<: *command
