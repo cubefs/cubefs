@@ -69,6 +69,7 @@ const (
 	CliFlagCapacity            = "capacity"
 	CliFlagBusiness            = "description"
 	CliFlagMPCount             = "mp-count"
+	CliFlagDPCount             = "dp-count"
 	CliFlagReplicaNum          = "replica-num"
 	CliFlagSize                = "size"
 	CliFlagVolType             = "vol-type"

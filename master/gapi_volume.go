@@ -174,10 +174,10 @@ func (s *VolumeService) volPermission(ctx context.Context, args struct {
 }
 
 func (s *VolumeService) createVolume(ctx context.Context, args struct {
-	Name, Owner, ZoneName, Description                     string
-	Capacity, DataPartitionSize, MpCount, DpReplicaNum     uint64
-	FollowerRead, Authenticate, CrossZone, DefaultPriority bool
-	iopsRLimit, iopsWLimit, flowRlimit, flowWlimit         uint64
+	Name, Owner, ZoneName, Description                          string
+	Capacity, DataPartitionSize, MpCount, DpCount, DpReplicaNum uint64
+	FollowerRead, Authenticate, CrossZone, DefaultPriority      bool
+	iopsRLimit, iopsWLimit, flowRlimit, flowWlimit              uint64
 }) (*Vol, error) {
 	uid, per, err := permissions(ctx, ADMIN|USER)
 	if err != nil {
@@ -196,11 +196,16 @@ func (s *VolumeService) createVolume(ctx context.Context, args struct {
 		return nil, fmt.Errorf("invalid arg dpReplicaNum: %v", args.DpReplicaNum)
 	}
 
+	if args.DpCount > maxInitDataPartitionCnt {
+		return nil, fmt.Errorf("invalid arg dpCount[%v], exceeds maximum limit[%d]", args.DpCount, maxInitDataPartitionCnt)
+	}
+
 	req := &createVolReq{
 		name:             args.Name,
 		owner:            args.Owner,
 		dpSize:           int(args.DataPartitionSize),
 		mpCount:          int(args.MpCount),
+		dpCount:          int(args.DpCount),
 		dpReplicaNum:     uint8(args.DpReplicaNum),
 		capacity:         int(args.Capacity),
 		followerRead:     args.FollowerRead,

@@ -35,6 +35,7 @@ const (
 	dirLimitKey           = "dirSizeLimit"
 	dataPartitionSizeKey  = "dpSize"
 	metaPartitionCountKey = "mpCount"
+	dataPartitionCountKey = "dpCount"
 	volCapacityKey        = "capacity"
 	volDeleteLockTimeKey  = "deleteLockTime"
 	volTypeKey            = "volType"
@@ -182,6 +183,7 @@ const (
 	intervalToWarnDataPartition                  = 600
 	intervalToLoadDataPartition                  = 12 * 60 * 60
 	defaultInitDataPartitionCnt                  = 10
+	maxInitDataPartitionCnt                      = 200
 	volExpansionRatio                            = 0.1
 	maxNumberOfDataPartitionsForExpansion        = 100
 	EmptyCrcValue                         uint32 = 4045511210

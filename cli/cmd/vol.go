@@ -87,6 +87,7 @@ const (
 	cmdVolCreateUse                    = "create [VOLUME NAME] [USER ID]"
 	cmdVolCreateShort                  = "Create a new volume"
 	cmdVolDefaultMPCount               = 3
+	cmdVolDefaultDPCount               = 10
 	cmdVolDefaultDPSize                = 120
 	cmdVolDefaultCapacity              = 10 // 100GB
 	cmdVolDefaultZoneName              = ""
@@ -111,6 +112,7 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 	var optNormalZonesFirst string
 	var optBusiness string
 	var optMPCount int
+	var optDPCount int
 	var optReplicaNum string
 	var optDPSize int
 	var optVolType int
@@ -176,6 +178,7 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 				stdout("  DefaultPriority          : %v\n", normalZonesFirst)
 				stdout("  description              : %v\n", optBusiness)
 				stdout("  mpCount                  : %v\n", optMPCount)
+				stdout("  dpCount                  : %v\n", optDPCount)
 				stdout("  replicaNum               : %v\n", optReplicaNum)
 				stdout("  dpSize                   : %v G\n", optDPSize)
 				stdout("  volType                  : %v\n", optVolType)
@@ -206,7 +209,7 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 
 			err = client.AdminAPI().CreateVolName(
 				volumeName, userID, optCapacity, optDeleteLockTime, crossZone, normalZonesFirst, optBusiness,
-				optMPCount, int(replicaNum), optDPSize, optVolType, followerRead,
+				optMPCount, optDPCount, int(replicaNum), optDPSize, optVolType, followerRead,
 				optZoneName, optCacheRuleKey, optEbsBlkSize, optCacheCap,
 				optCacheAction, optCacheThreshold, optCacheTTL, optCacheHighWater,
 				optCacheLowWater, optCacheLRUInterval, dpReadOnlyWhenVolFull,
@@ -223,6 +226,7 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().StringVar(&optNormalZonesFirst, CliNormalZonesFirst, cmdVolDefaultCrossZone, "Write to normal zone first")
 	cmd.Flags().StringVar(&optBusiness, CliFlagBusiness, cmdVolDefaultBusiness, "Description")
 	cmd.Flags().IntVar(&optMPCount, CliFlagMPCount, cmdVolDefaultMPCount, "Specify init meta partition count")
+	cmd.Flags().IntVar(&optDPCount, CliFlagDPCount, cmdVolDefaultDPCount, "Specify init data partition count")
 	cmd.Flags().StringVar(&optReplicaNum, CliFlagReplicaNum, "", "Specify data partition replicas number(default 3 for normal volume,1 for low volume)")
 	cmd.Flags().IntVar(&optDPSize, CliFlagDataPartitionSize, cmdVolDefaultDPSize, "Specify data partition size[Unit: GB]")
 	cmd.Flags().IntVar(&optVolType, CliFlagVolType, cmdVolDefaultVolType, "Type of volume (default 0)")

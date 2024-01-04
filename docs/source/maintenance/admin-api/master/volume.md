@@ -23,8 +23,9 @@ Parameter List
 | capacity         | int    | Volume quota, in GB                                                                                                                                                     | Yes      | None                                                                                                   |
 | owner            | string | Volume owner, also the user ID                                                                                                                                          | Yes      | None                                                                                                   |
 | mpCount          | int    | Number of initialized metadata shards                                                                                                                                   | No       | 3                                                                                                      |
+| dpCount          | int    | Number of initialized data shards                                                                                                                                       | No       | default 10, maximum limit 200                                                                          |
 | replicaNum       | int    | Number of replicas                                                                                                                                                      | No       | 3 for replica volume (supports 1, 3), 1 for erasure-coded volume (supports 1-16)                       |
-| dpSize             | int    | Maximum data shard size, in GB                                                                                                                                                  | No       | 120                                                                                                    |
+| dpSize           | int    | Maximum data shard size, in GB                                                                                                                                          | No       | 120                                                                                                    |
 | enablePosixAcl   | bool   | Whether to configure POSIX permission restrictions                                                                                                                      | No       | false                                                                                                  |
 | followerRead     | bool   | Whether to allow reading data from followers, true by default for erasure-coded volume                                                                                  | No       | false                                                                                                  |
 | crossZone        | bool   | Whether to cross regions. If set to true, the zoneName parameter cannot be set                                                                                          | No       | false                                                                                                  |
@@ -56,7 +57,7 @@ When deleting a volume, all permission information related to the volume will be
 
 Parameter List
 
-| Parameter | Type   | Description                                                                            | 
+| Parameter | Type   | Description                                                                            |
 |-----------|--------|----------------------------------------------------------------------------------------|
 | name      | string | Volume name                                                                            |
 | authKey   | string | Calculate the 32-bit MD5 value of the owner field of vol as authentication information |
@@ -325,9 +326,9 @@ Enable/Disable trash feature for the specified volume.
 
 Parameter List
 
-| Parameter | Type   |      Description                       | Required  |
-|----------|--------|---------------------------|-----|
-| name      | string | Volume name         | Yes      |
+| Parameter | Type   | Description                                                                            | Required |
+|-----------|--------|----------------------------------------------------------------------------------------|----------|
+| name      | string | Volume name                                                                            | Yes      |
 | authKey   | string | Calculate the 32-bit MD5 value of the owner field of vol as authentication information | Yes      |
 | trashInterval | int    | The time interval for cleaning expired data in the trash is specified in minutes. A value of 0 indicates that the trash is disabled, while any other positive value indicates that the trash is enabled.             | Yes   
 
