@@ -6,6 +6,10 @@ x-define-image: &image
 x-define-env: &env
     environment:
         - TZ=Asia/Shanghai
+        - http_proxy=
+        - https_proxy=
+        - HTTP_PROXY=
+        - HTTPS_PROXY=
 
 x-define-servernode: &servernode
     <<: *image
@@ -311,11 +315,9 @@ services:
             - ./script/start_client.sh:/cfs/script/start_client.sh
             - ./ltp/runtest/fs:/opt/ltp/runtest/fs
             - ./s3tests:/opt/s3tests:ro
-        privileged: true
         devices:
             - /dev/fuse:/dev/fuse:rwm
-        cap_add:
-            - SYS_ADMIN
+        privileged: true
         command: /bin/bash /cfs/script/start.sh
         networks:
             extnetwork:
@@ -339,8 +341,6 @@ services:
         privileged: true
         devices:
             - /dev/fuse:/dev/fuse:rwm
-        cap_add:
-            - SYS_ADMIN
         command: /bin/bash /cfs/script/start.sh -ltp
         networks:
             extnetwork:
@@ -352,6 +352,11 @@ services:
         volumes:
             - ./monitor:/monitor
         privileged: true
+        environment:
+            - http_proxy=
+            - https_proxy=
+            - HTTP_PROXY=
+            - HTTPS_PROXY=
         networks:
             extnetwork:
                 ipv4_address: 192.168.0.101
@@ -363,6 +368,11 @@ services:
         volumes:
             - ./monitor/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
         privileged: true
+        environment:
+            - http_proxy=
+            - https_proxy=
+            - HTTP_PROXY=
+            - HTTPS_PROXY=
         networks:
             extnetwork:
                 ipv4_address: 192.168.0.102
@@ -371,6 +381,10 @@ services:
         image: grafana/grafana:6.4.4
         environment:
             - GF_SECURITY_ADMIN_PASSWORD=123456
+            - http_proxy=
+            - https_proxy=
+            - HTTP_PROXY=
+            - HTTPS_PROXY=
         ports:
             - 3000:3000
         volumes:
@@ -392,6 +406,11 @@ services:
         command: /bin/bash -c "nginx -g 'daemon off;'"
         restart: on-failure
         privileged: true
+        environment:
+            - http_proxy=
+            - https_proxy=
+            - HTTP_PROXY=
+            - HTTPS_PROXY=
         networks:
             extnetwork:
                 ipv4_address: 192.168.0.104
@@ -428,6 +447,10 @@ services:
         environment:
             - TZ=Asia/Shanghai
             - DOCKER_TESTING_LOG_OFF="on"
+            - http_proxy=
+            - https_proxy=
+            - HTTP_PROXY=
+            - HTTPS_PROXY=
 
     build_libsdkpre:
         <<: *command
