@@ -375,21 +375,21 @@ func (d *Disk) computeUsageOnSFXDevice() (err error) {
 		}
 		d.Used = uint64(used)
 
-		allocatedSize := uint64(0)
+		allocatedSize := int64(0)
 		for _, dp := range d.partitionMap {
-			allocatedSize += uint64(dp.Size())
+			allocatedSize += int64(dp.Size())
 		}
-		atomic.StoreUint64(&d.Allocated, allocatedSize)
-		unallocated := d.Total - allocatedSize
+		atomic.StoreUint64(&d.Allocated, uint64(allocatedSize))
+		unallocated := total - allocatedSize
 		if unallocated < 0 {
 			unallocated = 0
 		}
-		d.Unallocated = unallocated
+		d.Unallocated = uint64(unallocated)
 
 		d.PhysicalUsedRatio = dStatus.physicalUsageRatio
 		d.CompressionRatio = dStatus.compRatio
-		log.LogDebugf("SfxDiskComputeUsage disk(%v) totalPhysicalSpace(%v) freePhysicalSpace(%v) PhysicalUsedRatio(%v) CompressionRatio(%v)",
-			d.devName, d.Total, d.Available, d.PhysicalUsedRatio, d.CompressionRatio)
+		log.LogDebugf("Disk %v: compute usage: totalPhysicalSpace(%v) freePhysicalSpace(%v) PhysicalUsedRatio(%v) CompressionRatio(%v)",
+			d.Path, d.Total, d.Available, d.PhysicalUsedRatio, d.CompressionRatio)
 	}
 	return
 }
