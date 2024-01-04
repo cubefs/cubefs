@@ -58,6 +58,8 @@ func NewRootCmd(client *master.MasterClient) *CubeFSCmd {
 				}
 				errout(fmt.Errorf("cfs-cli: unknown command %q\n%s", args[0], suggestionsString))
 			},
+			SilenceErrors: true,
+			SilenceUsage:  true,
 		},
 	}
 
