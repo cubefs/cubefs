@@ -59,9 +59,7 @@ func newCmdFlashGroupTurn(client *master.MasterClient) *cobra.Command {
 		Use:   "turn [IsEnable]",
 		Short: "turn flash group cache",
 		Args:  cobra.MinimumNArgs(1),
-		Run: func(cmd *cobra.Command, args []string) {
-			var err error
-			defer func() { errout(err) }()
+		RunE: func(cmd *cobra.Command, args []string) (err error) {
 			enabled, err := strconv.ParseBool(args[0])
 			if err != nil {
 				return
@@ -71,6 +69,7 @@ func newCmdFlashGroupTurn(client *master.MasterClient) *cobra.Command {
 				return
 			}
 			stdoutln(result)
+			return
 		},
 	}
 }
@@ -81,9 +80,7 @@ func newCmdFlashGroupCreate(client *master.MasterClient) *cobra.Command {
 		Use:   CliOpCreate,
 		Short: "create a new flash group",
 		Args:  cobra.MinimumNArgs(0),
-		Run: func(cmd *cobra.Command, args []string) {
-			var err error
-			defer func() { errout(err) }()
+		RunE: func(cmd *cobra.Command, args []string) (err error) {
 			if optSlots == "" {
 				err = fmt.Errorf("pls set --slots")
 				return
@@ -93,6 +90,7 @@ func newCmdFlashGroupCreate(client *master.MasterClient) *cobra.Command {
 				return
 			}
 			stdoutln(formatFlashGroupView(&fgView))
+			return
 		},
 	}
 	cmd.Flags().StringVar(&optSlots, "slots", "", "set group in which slots, --slots=slot1,slot2,...")
@@ -104,9 +102,7 @@ func newCmdFlashGroupSet(client *master.MasterClient) *cobra.Command {
 		Use:   CliOpSet + _flashgroupID + " [IsActive]",
 		Short: "set flash group active or not",
 		Args:  cobra.MinimumNArgs(2),
-		Run: func(cmd *cobra.Command, args []string) {
-			var err error
-			defer func() { errout(err) }()
+		RunE: func(cmd *cobra.Command, args []string) (err error) {
 			flashGroupID, err := parseFlashGroupID(args[0])
 			if err != nil {
 				return
@@ -120,6 +116,7 @@ func newCmdFlashGroupSet(client *master.MasterClient) *cobra.Command {
 				return
 			}
 			stdoutln(formatFlashGroupView(&fgView))
+			return
 		},
 	}
 }
@@ -129,9 +126,7 @@ func newCmdFlashGroupRemove(client *master.MasterClient) *cobra.Command {
 		Use:   CliOpRemove + _flashgroupID,
 		Short: "remove flash group by id",
 		Args:  cobra.MinimumNArgs(1),
-		Run: func(cmd *cobra.Command, args []string) {
-			var err error
-			defer func() { errout(err) }()
+		RunE: func(cmd *cobra.Command, args []string) (err error) {
 			flashGroupID, err := parseFlashGroupID(args[0])
 			if err != nil {
 				return
@@ -141,6 +136,7 @@ func newCmdFlashGroupRemove(client *master.MasterClient) *cobra.Command {
 				return
 			}
 			stdoutln(result)
+			return
 		},
 	}
 }
@@ -155,9 +151,7 @@ func newCmdFlashGroupNodeAdd(client *master.MasterClient) *cobra.Command {
 		Use:   "nodeAdd" + _flashgroupID,
 		Short: "add flash node to given flash group",
 		Args:  cobra.MinimumNArgs(1),
-		Run: func(cmd *cobra.Command, args []string) {
-			var err error
-			defer func() { errout(err) }()
+		RunE: func(cmd *cobra.Command, args []string) (err error) {
 			flashGroupID, err := parseFlashGroupID(args[0])
 			if err != nil {
 				return
@@ -167,6 +161,7 @@ func newCmdFlashGroupNodeAdd(client *master.MasterClient) *cobra.Command {
 				return
 			}
 			stdoutln(formatFlashGroupView(&fgView))
+			return
 		},
 	}
 	cmd.Flags().StringVar(&optAddr, CliFlagAddress, "", "add flash node of given addr")
@@ -185,9 +180,7 @@ func newCmdFlashGroupNodeRemove(client *master.MasterClient) *cobra.Command {
 		Use:   "nodeRemove" + _flashgroupID,
 		Short: "remove flash node to given flash group",
 		Args:  cobra.MinimumNArgs(1),
-		Run: func(cmd *cobra.Command, args []string) {
-			var err error
-			defer func() { errout(err) }()
+		RunE: func(cmd *cobra.Command, args []string) (err error) {
 			flashGroupID, err := parseFlashGroupID(args[0])
 			if err != nil {
 				return
@@ -197,6 +190,7 @@ func newCmdFlashGroupNodeRemove(client *master.MasterClient) *cobra.Command {
 				return
 			}
 			stdoutln(formatFlashGroupView(&fgView))
+			return
 		},
 	}
 	cmd.Flags().StringVar(&optAddr, CliFlagAddress, "", "remove flash node of given addr")
@@ -210,9 +204,7 @@ func newCmdFlashGroupGet(client *master.MasterClient) *cobra.Command {
 		Use:   CliOpInfo + _flashgroupID + " [showHitRate ture/false] ",
 		Short: "get flash group by id, default don't show hit rate",
 		Args:  cobra.MinimumNArgs(1),
-		Run: func(cmd *cobra.Command, args []string) {
-			var err error
-			defer func() { errout(err) }()
+		RunE: func(cmd *cobra.Command, args []string) (err error) {
 			flashGroupID, err := parseFlashGroupID(args[0])
 			if err != nil {
 				return
@@ -239,6 +231,7 @@ func newCmdFlashGroupGet(client *master.MasterClient) *cobra.Command {
 				tbl = showFlashNodesView(flashNodeViewInfos, showHitRate, tbl)
 			}
 			stdoutln(alignTable(tbl...))
+			return
 		},
 	}
 }
@@ -248,9 +241,7 @@ func newCmdFlashGroupList(client *master.MasterClient) *cobra.Command {
 		Use:   CliOpList + " [IsActive]",
 		Short: "list active or inactive flash groups",
 		Args:  cobra.MinimumNArgs(0),
-		Run: func(cmd *cobra.Command, args []string) {
-			var err error
-			defer func() { errout(err) }()
+		RunE: func(cmd *cobra.Command, args []string) (err error) {
 			var fgView proto.FlashGroupsAdminView
 			var isActive bool
 			if len(args) > 0 {
@@ -297,6 +288,7 @@ func newCmdFlashGroupList(client *master.MasterClient) *cobra.Command {
 				}
 				stdoutlnf("num:%d slot:%d fg:%d percent:%0.5f%%", i+1, info.slot, info.fgID, info.percent)
 			}
+			return
 		},
 	}
 }
@@ -306,15 +298,14 @@ func newCmdFlashGroupClient(client *master.MasterClient) *cobra.Command {
 		Use:   "client",
 		Short: "show client response",
 		Args:  cobra.MinimumNArgs(0),
-		Run: func(cmd *cobra.Command, args []string) {
-			var err error
-			defer func() { errout(err) }()
+		RunE: func(cmd *cobra.Command, args []string) (err error) {
 			fgv, err := client.AdminAPI().ClientFlashGroups()
 			if err != nil {
 				return
 			}
 			stdoutln("Client Response:")
 			stdoutln(formatIndent(fgv))
+			return
 		},
 	}
 }
@@ -324,10 +315,7 @@ func newCmdFlashGroupSearch(client *master.MasterClient) *cobra.Command {
 		Use:   "search [volume] [inode] [offset]",
 		Short: "search flash group by volume inode offset",
 		Args:  cobra.MinimumNArgs(3),
-		Run: func(cmd *cobra.Command, args []string) {
-			var err error
-			defer func() { errout(err) }()
-
+		RunE: func(cmd *cobra.Command, args []string) (err error) {
 			volume := args[0]
 			if volume == "" {
 				err = fmt.Errorf("volume is empty")
@@ -385,6 +373,7 @@ func newCmdFlashGroupSearch(client *master.MasterClient) *cobra.Command {
 				}
 			}
 			stdoutlnf("Not found (%s %d %d) -> %d", volume, inode, offset, slotKey)
+			return
 		},
 	}
 }
@@ -394,10 +383,7 @@ func newCmdFlashGroupGraph(client *master.MasterClient) *cobra.Command {
 		Use:   "graph",
 		Short: "show flash group and node",
 		Args:  cobra.MinimumNArgs(0),
-		Run: func(cmd *cobra.Command, args []string) {
-			var err error
-			defer func() { errout(err) }()
-
+		RunE: func(cmd *cobra.Command, args []string) (err error) {
 			fgView, err := client.AdminAPI().ListFlashGroups()
 			if err != nil {
 				return
@@ -459,6 +445,7 @@ func newCmdFlashGroupGraph(client *master.MasterClient) *cobra.Command {
 			stdoutln("[FlashNodes Idle]")
 			tbl = showFlashNodesView(idleNodes, true, table{formatFlashNodeViewTableTitle})
 			stdoutln(alignTable(tbl...))
+			return
 		},
 	}
 }
