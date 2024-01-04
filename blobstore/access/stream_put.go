@@ -228,6 +228,7 @@ func (h *Handler) writeToBlobnodes(ctx context.Context,
 	writtenNum := uint32(0)
 
 	wg.Add(len(volume.Units))
+	needMark := false
 	for i, unitI := range volume.Units {
 		index, unit := i, unitI
 
@@ -291,6 +292,9 @@ func (h *Handler) writeToBlobnodes(ctx context.Context,
 				}
 
 				code := rpc.DetectStatusCode(err)
+				if needMarkSealed(code) {
+					needMark = true
+				}
 				switch code {
 				case errcode.CodeDiskBroken, errcode.CodeDiskNotFound,
 					errcode.CodeChunkNoSpace, errcode.CodeVUIDReadonly:
@@ -375,6 +379,11 @@ func (h *Handler) writeToBlobnodes(ctx context.Context,
 		received[st.index] = st
 	}
 
+	defer func() {
+		if needMark { // disk broken, quorum, az fail
+			h.setVolumeSealed(ctx, clusterID, vid)
+		}
+	}()
 	writeDone := make(chan struct{}, 1)
 	// write unaccomplished shard to repair queue
 	go func(writeDone <-chan struct{}) {
@@ -441,5 +450,10 @@ func (h *Handler) writeToBlobnodes(ctx context.Context,
 
 	close(writeDone)
 	err = fmt.Errorf("quorum write failed (%d < %d) of %s", writtenNum, putQuorum, blob.String())
+	needMark = true
 	return
+}
+
+func needMarkSealed(code int) bool {
+	return code == errcode.CodeDiskBroken || code == errcode.CodeDiskNotFound
 }

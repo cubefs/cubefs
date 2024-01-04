@@ -25,6 +25,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/access/controller"
 	"github.com/cubefs/cubefs/blobstore/api/access"
 	"github.com/cubefs/cubefs/blobstore/api/blobnode"
+	cmapi "github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/api/proxy"
 	"github.com/cubefs/cubefs/blobstore/common/codemode"
 	"github.com/cubefs/cubefs/blobstore/common/ec"
@@ -447,6 +448,16 @@ func (h *Handler) punishDiskWith(ctx context.Context, clusterID proto.ClusterID,
 	reportUnhealth(clusterID, "punish", "diskwith", host, reason)
 	if serviceController, err := h.clusterController.GetServiceController(clusterID); err == nil {
 		serviceController.PunishDiskWithThreshold(ctx, diskID, h.DiskTimeoutPunishIntervalS)
+	}
+}
+
+func (h *Handler) setVolumeSealed(ctx context.Context, cid proto.ClusterID, vid proto.Vid) {
+	span := trace.SpanFromContextSafe(ctx)
+
+	client := h.clusterController.GetClusterClient(cid)
+	err := client.SetVolumeSealed(ctx, &cmapi.SetVolumeSealedArgs{Vid: vid})
+	if err != nil {
+		span.Errorf("Fail to mark sealed volume %d: err[%+v]", vid, err)
 	}
 }
 

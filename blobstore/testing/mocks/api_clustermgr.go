@@ -184,3 +184,17 @@ func (mr *MockClientAPIMockRecorder) RetainVolume(arg0, arg1 interface{}) *gomoc
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RetainVolume", reflect.TypeOf((*MockClientAPI)(nil).RetainVolume), arg0, arg1)
 }
+
+// SetVolumeSealed mocks base method.
+func (m *MockClientAPI) SetVolumeSealed(arg0 context.Context, arg1 *clustermgr.SetVolumeSealedArgs) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SetVolumeSealed", arg0, arg1)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// SetVolumeSealed indicates an expected call of SetVolumeSealed.
+func (mr *MockClientAPIMockRecorder) SetVolumeSealed(arg0, arg1 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetVolumeSealed", reflect.TypeOf((*MockClientAPI)(nil).SetVolumeSealed), arg0, arg1)
+}
