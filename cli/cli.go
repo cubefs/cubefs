@@ -32,14 +32,10 @@ import (
 func runCLI() (err error) {
 	var cfg *cmd.Config
 	if cfg, err = cmd.LoadConfig(); err != nil {
-		fmt.Printf("init cli log err[%v]", err)
-		return
+		return fmt.Errorf("load config %v", err)
 	}
 	cfsCli := setupCommands(cfg)
-	if err = cfsCli.Execute(); err != nil {
-		log.LogErrorf("Command fail, err:%v", err)
-	}
-	return
+	return cfsCli.Execute()
 }
 
 func setupCommands(cfg *cmd.Config) *cobra.Command {
@@ -83,14 +79,14 @@ func main() {
 	var err error
 	_, err = log.InitLog("/tmp/cfs", "cli", log.DebugLevel, nil, log.DefaultLogLeftSpaceLimit)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		log.LogFlush()
+		fmt.Fprintln(os.Stderr, "Error:", err)
 		os.Exit(1)
 	}
-	defer log.LogFlush()
 	if err = runCLI(); err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		fmt.Fprintln(os.Stderr, "Error:", err)
+		log.LogError("Error:", err)
 		log.LogFlush()
 		os.Exit(1)
 	}
+	log.LogFlush()
 }
