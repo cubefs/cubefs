@@ -1410,7 +1410,11 @@ func (dp *DataPartition) limit(ctx context.Context, op int, size uint32, bandTyp
 		stBuilder.SetOutBytes(int(size)).Stat()
 	default:
 	}
-	return multirate.WaitNUseDefaultTimeout(ctx, prBuilder.Properties(), stBuilder.Stat())
+	err = multirate.WaitNUseDefaultTimeout(ctx, prBuilder.Properties(), stBuilder.Stat())
+	if err != nil {
+		err = errors.Trace(err, proto.RateLimit)
+	}
+	return
 }
 
 func (dp *DataPartition) backendRefreshCacheView() {

@@ -623,6 +623,7 @@ func (s *DataNode) handleExtentRepairReadPacket(p *repl.Packet, connect net.Conn
 	if isRepairRead {
 		err = multirate.WaitConcurrency(context.Background(), int(proto.OpExtentRepairRead), partition.disk.Path)
 		if err != nil {
+			err = errors.Trace(err, proto.ConcurrentLimit)
 			return
 		}
 		defer multirate.DoneConcurrency(int(proto.OpExtentRepairRead), partition.disk.Path)
@@ -967,6 +968,7 @@ func (s *DataNode) handleTinyExtentRepairRead(request *repl.Packet, connect net.
 
 	err = multirate.WaitConcurrency(context.Background(), int(proto.OpTinyExtentRepairRead), partition.disk.Path)
 	if err != nil {
+		err = errors.Trace(err, proto.ConcurrentLimit)
 		return
 	}
 	defer multirate.DoneConcurrency(int(proto.OpTinyExtentRepairRead), partition.disk.Path)

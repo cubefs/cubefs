@@ -837,6 +837,7 @@ func (dp *DataPartition) streamRepairExtent(ctx context.Context, remoteExtentInf
 
 	err = multirate.WaitConcurrency(context.Background(), proto.OpExtentRepairWrite_, dp.disk.Path)
 	if err != nil {
+		err = errors.Trace(err, proto.ConcurrentLimit)
 		return
 	}
 	defer multirate.DoneConcurrency(proto.OpExtentRepairWrite_, dp.disk.Path)
@@ -924,7 +925,7 @@ func (dp *DataPartition) streamRepairExtent(ctx context.Context, remoteExtentInf
 		}
 
 		if reply.ResultCode != proto.OpOk {
-			err = errors.Trace(fmt.Errorf("unknow result code"),
+			err = errors.Trace(fmt.Errorf("result code not ok"),
 				"streamRepairExtent receive opcode error(%v) ,localExtentSize(%v) remoteExtentSize(%v)", string(reply.Data[:reply.Size]), currFixOffset, remoteSize)
 			return
 		}
