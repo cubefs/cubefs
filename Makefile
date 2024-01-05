@@ -11,42 +11,42 @@ all: build
 phony += build server authtool client cli libsdkpre libsdk fsck fdstore preload bcache blobstore deploy
 build: server authtool client cli libsdk fsck fdstore preload bcache blobstore deploy
 
-server: 
+server:
 	@build/build.sh server $(GOMOD) --threads=$(threads)
 
 
-deploy: 
+deploy:
 	@build/build.sh deploy $(GOMOD) --threads=$(threads)
 
 
 blobstore:
 	@build/build.sh blobstore $(GOMOD) --threads=$(threads)
 
-client: 
+client:
 	@build/build.sh client $(GOMOD) --threads=$(threads)
 
-authtool: 
+authtool:
 	@build/build.sh authtool $(GOMOD) --threads=$(threads)
 
-cli: 
+cli:
 	@build/build.sh cli $(GOMOD) --threads=$(threads)
 
-fsck: 
+fsck:
 	@build/build.sh fsck $(GOMOD) --threads=$(threads)
 
 libsdkpre:
 	@build/build.sh libsdkpre $(GOMOD) --threads=$(threads)
 
-libsdk: 
+libsdk:
 	@build/build.sh libsdk $(GOMOD) --threads=$(threads)
 
-fdstore: 
+fdstore:
 	@build/build.sh fdstore $(GOMOD) --threads=$(threads)
 
-preload: 
+preload:
 	@build/build.sh preload $(GOMOD) --threads=$(threads)
 
-bcache: 
+bcache:
 	@build/build.sh bcache $(GOMOD) --threads=$(threads)
 
 phony += clean
@@ -69,5 +69,10 @@ phony += mock
 mock:
 	rm -rf metanode/mocktest
 	mockgen -source=raftstore/partition.go -package=raftstoremock -destination=metanode/mocktest/raftstore/partition.go
+
+phony += docker
+docker:
+	@docker/run_docker.sh --build
+	@docker/run_docker.sh --clean
 
 .PHONY: $(phony)
