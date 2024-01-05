@@ -114,6 +114,14 @@ func (m mockRaftPartition) GetConsistencyMode() cfsproto.ConsistencyMode {
 	return cfsproto.StandardMode
 }
 
+func (m mockRaftPartition) IsAllEmptyMsg(end uint64) (isAllEmptyMsg bool, err error) {
+	return
+}
+
+func (m mockRaftPartition) GetLastIndex() (li uint64, err error) {
+	return
+}
+
 type mockRaftStore struct {
 	cfg *raft.Config
 }
