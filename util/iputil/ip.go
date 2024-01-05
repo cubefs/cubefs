@@ -18,6 +18,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"math/rand"
 	"net"
 	"net/http"
 	"strconv"
@@ -197,4 +198,37 @@ func IsValidIP(ipAddr string) bool {
 		return true
 	}
 	return false
+}
+
+func LookupHost(domain string) (found []string, err error) {
+	var (
+		host, port string
+		addrs      []string
+	)
+	host, port, err = net.SplitHostPort(domain)
+	if err != nil {
+		return
+	}
+	addrs, err = net.LookupHost(host)
+	if err != nil {
+		return
+	}
+
+	if len(addrs) == 0 {
+		err = fmt.Errorf("no hosts found for domain: %s", host)
+		return
+	}
+
+	for _, addr := range addrs {
+		found = append(found, net.JoinHostPort(addr, port))
+	}
+	hostsReshuffle(found)
+	return
+}
+
+func hostsReshuffle(s []string) {
+	for i := len(s) - 1; i > 0; i-- {
+		j := rand.Intn(i + 1)
+		s[i], s[j] = s[j], s[i]
+	}
 }

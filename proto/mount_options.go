@@ -79,7 +79,9 @@ const (
 	ObjectNodeDomain  = "objectNodeDomain"
 	MaxReadAhead      = 512 * 1024
 	ProfileAiPrefetch = "ai_prefetch"
-	MasterDomainAddr  = "masterDomain"
+	MasterLBDomain    = "masterLBDomain"
+	MasterDomain      = "masterDomain"
+	MasterDefaultPort = "8868"
 )
 
 type MountOption struct {

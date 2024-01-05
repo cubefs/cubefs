@@ -42,6 +42,7 @@ func TestSetClientReaddirOpRateLimit(t *testing.T) {
 		MetaNodeDelEKZoneRate:       -1,
 		NetworkFlowRatio:            -1,
 		RateLimit:                   -1,
+		DataNodeDiskReservedRatio:   -1,
 	}
 	err := testMc.AdminAPI().SetRateLimit(&info)
 	if err != nil {

@@ -17,6 +17,7 @@ package flashnode
 import (
 	"context"
 	"fmt"
+	"github.com/cubefs/cubefs/util/iputil"
 	"net"
 	"strconv"
 	"strings"
@@ -160,13 +161,25 @@ func (f *FlashNode) parseConfig(cfg *config.Config) (err error) {
 	log.LogInfof("[parseConfig] load listen[%v].", f.listen)
 	log.LogInfof("[parseConfig] load zoneName[%v].", f.zoneName)
 
-	addrs := cfg.GetSlice(cfgMasterAddr)
-	masters := make([]string, 0, len(addrs))
-	for _, addr := range addrs {
-		masters = append(masters, addr.(string))
-	}
-	masterClient = masterSDK.NewMasterClient(masters, false)
+	masterDomain, masterAddrs := f.parseMasterAddrs(cfg)
+	masterClient = masterSDK.NewMasterClientWithDomain(masterDomain, masterAddrs, false)
+	log.LogInfof("[parseConfig] master addr[%v].", masterAddrs)
+	log.LogInfof("[parseConfig] master domain[%v].", masterDomain)
 	err = f.validConfig()
+	return
+}
+
+func (f *FlashNode) parseMasterAddrs(cfg *config.Config) (masterDomain string, masterAddrs []string) {
+	var err error
+	masterDomain = cfg.GetString(proto.MasterDomain)
+	if masterDomain != "" && !strings.Contains(masterDomain, ":") {
+		masterDomain = masterDomain + ":" + proto.MasterDefaultPort
+	}
+
+	masterAddrs, err = iputil.LookupHost(masterDomain)
+	if err != nil {
+		masterAddrs = cfg.GetStringSlice(proto.MasterAddr)
+	}
 	return
 }
 

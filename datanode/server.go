@@ -18,6 +18,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/cubefs/cubefs/util/iputil"
 	"io/ioutil"
 	"net"
 	"net/http"
@@ -60,7 +61,7 @@ var (
 	LocalServerPort             string
 	gConnPool                   = connpool.NewConnectPool()
 	MasterClient                = masterSDK.NewMasterClient(nil, false)
-	MasterDomainClient          = masterSDK.NewMasterClient(nil, false)
+	MasterLBDomainClient        = masterSDK.NewMasterClientWithLBDomain("", false)
 	gHasLoadDataPartition       bool
 	gHasFinishedLoadDisks       bool
 
@@ -92,7 +93,7 @@ const (
 	ConfigKeyRaftHeartbeat  = "raftHeartbeat"  // string
 	ConfigKeyRaftReplica    = "raftReplica"    // string
 	cfgTickIntervalMs       = "tickIntervalMs" // int
-	ConfigKeyMasterDomain   = "masterDomain"
+	ConfigKeyMasterLBDomain = "masterLBDomain"
 	ConfigKeyEnableRootDisk = "enableRootDisk"
 )
 
@@ -163,7 +164,7 @@ func doStart(server common.Server, cfg *config.Config) (err error) {
 	if err != nil {
 		return err
 	}
-	s.topoManager = topology.NewTopologyManager(0, 0, MasterClient, MasterDomainClient,
+	s.topoManager = topology.NewTopologyManager(0, 0, MasterClient, MasterLBDomainClient,
 		false, false)
 	if err = s.topoManager.Start(); err != nil {
 		return
@@ -233,15 +234,20 @@ func (s *DataNode) parseConfig(cfg *config.Config) (err error) {
 	}
 	s.port = port
 	s.httpPort = cfg.GetString(proto.HttpPort)
-	if len(cfg.GetSlice(proto.MasterAddr)) == 0 {
+
+	masterDomain, masterAddrs := s.parseMasterAddrs(cfg)
+	if len(masterAddrs) == 0 {
 		return fmt.Errorf("Err:masterAddr unavalid")
 	}
-	for _, ip := range cfg.GetSlice(proto.MasterAddr) {
-		MasterClient.AddNode(ip.(string))
+
+	for _, ip := range masterAddrs {
+		MasterClient.AddNode(ip)
 	}
-	masterDomain := cfg.GetString(ConfigKeyMasterDomain)
-	if masterDomain != "" {
-		MasterDomainClient.AddNode(masterDomain)
+	MasterClient.SetMasterDomain(masterDomain)
+
+	masterLBDomain := s.parseMasterLBDomain(cfg)
+	if masterLBDomain != "" {
+		MasterLBDomainClient.AddNode(masterLBDomain)
 	}
 	s.zoneName = cfg.GetString(ConfigKeyZone)
 	if s.zoneName == "" {
@@ -255,9 +261,29 @@ func (s *DataNode) parseConfig(cfg *config.Config) (err error) {
 	}
 
 	log.LogInfof("DataNode: parse config: masterAddrs %v ", MasterClient.Nodes())
+	log.LogInfof("DataNode: parse config: master domain %s", masterDomain)
+	log.LogInfof("DataNode: parse config: master lb domain %s", masterLBDomain)
 	log.LogInfof("DataNode: parse config: port %v", s.port)
 	log.LogInfof("DataNode: parse config: zoneName %v ", s.zoneName)
 	return
+}
+
+func (s *DataNode) parseMasterAddrs(cfg *config.Config) (masterDomain string, masterAddrs []string) {
+	var err error
+	masterDomain = cfg.GetString(proto.MasterDomain)
+	if masterDomain != "" && !strings.Contains(masterDomain, ":") {
+		masterDomain = masterDomain + ":" + proto.MasterDefaultPort
+	}
+
+	masterAddrs, err = iputil.LookupHost(masterDomain)
+	if err != nil {
+		masterAddrs = cfg.GetStringSlice(proto.MasterAddr)
+	}
+	return
+}
+
+func (s *DataNode) parseMasterLBDomain(cfg *config.Config) (masterLBDomain string) {
+	return cfg.GetString(proto.MasterLBDomain)
 }
 
 // parseSysStartTime maybeServerFaultOccurred is set true only in these two occasions:

@@ -212,17 +212,16 @@ func (mp *metaPartition) appendDelExtentsToDb() {
 			panic(err)
 		}
 	}()
-	commitCheckTimer := time.NewTimer(time.Minute * 5)
+	commitCheckTicker := time.NewTicker(time.Minute * 5)
 	extDeleteCursor := uint64(0)
 	for {
 		select {
 		case <-mp.stopC:
-			commitCheckTimer.Stop()
+			commitCheckTicker.Stop()
 			return
 		case <-mp.extReset:
 			// nothing to do; already clean
-		case <-commitCheckTimer.C:
-			commitCheckTimer.Reset(time.Minute * 5)
+		case <-commitCheckTicker.C:
 			if _, ok := mp.IsLeader(); !ok {
 				continue
 			}

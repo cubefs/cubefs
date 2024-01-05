@@ -19,6 +19,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/cubefs/cubefs/util/iputil"
 	"io/ioutil"
 	"net/http"
 	netUrl "net/url"
@@ -54,16 +55,18 @@ const (
 
 type MasterClient struct {
 	sync.RWMutex
-	masters           []string
-	useSSL            bool
-	timeout           time.Duration
-	leaderAddr        string
-	nodeAddr          string
-	ClientType        ClientType
-	DataNodeProfPort  uint16
-	MetaNodeProfPort  uint16
-	EcNodeProfPort    uint16
-	FlashNodeProfPort uint16
+	masters                []string
+	useSSL                 bool
+	timeout                time.Duration
+	leaderAddr             string
+	nodeAddr               string
+	ClientType             ClientType
+	DataNodeProfPort       uint16
+	MetaNodeProfPort       uint16
+	EcNodeProfPort         uint16
+	FlashNodeProfPort      uint16
+	masterDomain           string
+	isMasterLBDomainClient bool
 
 	adminAPI  *AdminAPI
 	clientAPI *ClientAPI
@@ -157,10 +160,12 @@ func (c *MasterClient) serveRequest(r *request) (respData []byte, contentType st
 		resp, err, timeout = c.httpRequest(r.method, url, r.params, r.header, r.body)
 		if timeout {
 			log.LogWarnf("serveRequest: send http request timeout: method(%v) url(%v) err(%v)", r.method, url, err)
+			c.updateMasterAddr()
 			continue
 		}
 		if err != nil {
 			log.LogWarnf("serveRequest: send http request fail: method(%v) url(%v) err(%v)", r.method, url, err)
+			c.updateMasterAddr()
 			continue
 		}
 		stateCode := resp.StatusCode
@@ -244,6 +249,29 @@ func (c *MasterClient) Nodes() (nodes []string) {
 	nodes = c.masters
 	c.RUnlock()
 	return
+}
+
+func (c *MasterClient) SetMasterDomain(domain string) {
+	c.Lock()
+	defer c.Unlock()
+
+	c.masterDomain = domain
+}
+
+func (c *MasterClient) updateMasterAddr() {
+	if c.isMasterLBDomainClient || c.masterDomain == "" {
+		return
+	}
+	addrs, err := iputil.LookupHost(c.masterDomain)
+	if err != nil {
+		log.LogErrorf("master direct domain resolution failed: %v", err)
+		return
+	}
+	log.LogWarnf("old master addr: %v, new master addr: %v", c.masters, addrs)
+
+	c.Lock()
+	c.masters = addrs
+	c.Unlock()
 }
 
 // prepareRequest returns the leader address and all master addresses.
@@ -370,6 +398,32 @@ func NewMasterClientFromString(masterAddr string, useSSL bool) *MasterClient {
 		}
 	}
 	return NewMasterClient(masters, useSSL)
+}
+
+func NewMasterClientWithDomain(directDomain string, masters []string, useSSL bool) *MasterClient {
+	var mc = &MasterClient{masters: masters, useSSL: useSSL, timeout: requestTimeout}
+	mc.ClientType = MASTER
+	mc.masterDomain = directDomain
+	mc.adminAPI = &AdminAPI{mc: mc}
+	mc.clientAPI = &ClientAPI{mc: mc}
+	mc.nodeAPI = &NodeAPI{mc: mc}
+	mc.userAPI = &UserAPI{mc: mc}
+	return mc
+}
+
+func NewMasterClientWithLBDomain(domainName string, useSSL bool) *MasterClient {
+	var masterAddrs []string
+	if domainName != "" {
+		masterAddrs = []string{domainName}
+	}
+	var mc = &MasterClient{masters: masterAddrs, useSSL: useSSL, timeout: requestTimeout}
+	mc.ClientType = MASTER
+	mc.isMasterLBDomainClient = true
+	mc.adminAPI = &AdminAPI{mc: mc}
+	mc.clientAPI = &ClientAPI{mc: mc}
+	mc.nodeAPI = &NodeAPI{mc: mc}
+	mc.userAPI = &UserAPI{mc: mc}
+	return mc
 }
 
 func (mc *MasterClient) innerRegNodeWithNewInterface(authKeyPath, ip string, regInfo *RegNodeInfoReq) (rsp *proto.RegNodeRsp, err error) {
