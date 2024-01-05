@@ -38,11 +38,12 @@ const (
 	defaultMaxDiskFreeChunkCnt = int64(1024)
 	defaultMinDiskFreeChunkCnt = int64(20)
 
-	defaultInspectIntervalS  = 1
-	defaultListVolIntervalMs = 10
-	defaultListVolStep       = 100
-	defaultInspectBatch      = 1000
-	defaultInspectTimeoutMs  = 10000
+	defaultInspectIntervalS       = 1
+	defaultListVolIntervalMs      = 10
+	defaultListVolStep            = 100
+	defaultInspectBatch           = 1000
+	defaultInspectTimeoutMs       = 10000
+	defaultClearVidCacheIntervalS = 30 * 60 // 30 minute
 
 	defaultTaskPoolSize           = 10
 	defaultMessagePunishThreshold = 3
@@ -253,6 +254,7 @@ func (c *Config) fixInspectConfig() {
 		c.VolumeInspect.InspectBatch = c.VolumeInspect.ListVolStep
 	}
 	defaulter.LessOrEqual(&c.VolumeInspect.InspectIntervalS, defaultInspectIntervalS)
+	defaulter.LessOrEqual(&c.VolumeInspect.InspectVidCacheIntervalS, defaultClearVidCacheIntervalS)
 }
 
 func (c *Config) fixShardRepairConfig() {
