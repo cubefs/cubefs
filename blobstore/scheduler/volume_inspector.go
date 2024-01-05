@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"sort"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/cubefs/cubefs/blobstore/common/codemode"
@@ -147,8 +148,9 @@ func (d *badShardDeduplicator) key(vid proto.Vid, bid proto.BlobID, badIdxs []ui
 
 // VolumeInspectMgrCfg inspect task manager config
 type VolumeInspectMgrCfg struct {
-	InspectIntervalS int `json:"inspect_interval_s"`
-	InspectBatch     int `json:"inspect_batch"`
+	InspectIntervalS         int `json:"inspect_interval_s"`
+	InspectBatch             int `json:"inspect_batch"`
+	InspectVidCacheIntervalS int `json:"inspect_vid_cache_interval_s"`
 
 	// iops of list volume info
 	ListVolStep       int `json:"list_vol_step"`
@@ -164,6 +166,9 @@ type VolumeInspectMgr struct {
 	tasks  map[string]*inspectTaskInfo
 	tasksL sync.Mutex
 
+	// cache the sealed vid not set by scheduler in latest 30 minute
+	vidCache atomic.Value
+
 	acquireEnable  bool
 	acquireEnableL sync.Mutex
 
@@ -171,7 +176,6 @@ type VolumeInspectMgr struct {
 	startVid proto.Vid
 	// start vid in next batch
 	nextVid proto.Vid
-	// sealedVid []proto.Vid
 
 	firstPrepare bool
 
@@ -192,6 +196,8 @@ func NewVolumeInspectMgr(
 	clusterMgrCli client.ClusterMgrAPI,
 	delMgr *BlobDeleteMgr, repairMgr *ShardRepairMgr,
 	taskSwitch taskswitch.ISwitcher, cfg *VolumeInspectMgrCfg) *VolumeInspectMgr {
+	cache := atomic.Value{}
+	cache.Store(make(map[proto.Vid]struct{}))
 	return &VolumeInspectMgr{
 		Closer:         closer.New(),
 		tasks:          make(map[string]*inspectTaskInfo),
@@ -202,6 +208,7 @@ func NewVolumeInspectMgr(
 		blobDeleteMgr:  delMgr,
 		shardRepairMgr: repairMgr,
 		cfg:            cfg,
+		vidCache:       cache,
 	}
 }
 
@@ -213,6 +220,7 @@ func (mgr *VolumeInspectMgr) Enabled() bool {
 // Run run inspect task manager
 func (mgr *VolumeInspectMgr) Run() {
 	go mgr.run()
+	go mgr.loopClearCache()
 }
 
 func (mgr *VolumeInspectMgr) run() {
@@ -224,6 +232,19 @@ func (mgr *VolumeInspectMgr) run() {
 		case <-t.C:
 			mgr.taskSwitch.WaitEnable()
 			mgr.inspectRun()
+		case <-mgr.Closer.Done():
+			return
+		}
+	}
+}
+
+func (mgr *VolumeInspectMgr) loopClearCache() {
+	t := time.NewTicker(time.Duration(mgr.cfg.InspectVidCacheIntervalS) * time.Second)
+	defer t.Stop()
+	for {
+		select {
+		case <-t.C:
+			mgr.vidCache.Store(make(map[proto.Vid]struct{}))
 		case <-mgr.Closer.Done():
 			return
 		}
@@ -286,14 +307,14 @@ func (mgr *VolumeInspectMgr) getSealedVolume(ctx context.Context) []*client.Volu
 
 func (mgr *VolumeInspectMgr) genSealedTask(ctx context.Context, vols []*client.VolumeInfoSimple) {
 	span := trace.SpanFromContextSafe(ctx)
-
+	mp := mgr.vidCache.Load().(map[proto.Vid]struct{})
 	for _, vol := range vols {
 		err := mgr.clusterMgrCli.SetVolumeSealed(ctx, vol.Vid)
 		if err != nil {
 			span.Errorf("Fail to mark sealed volume: err[%+v]", err)
 			continue
 		}
-
+		mp[vol.Vid] = struct{}{}
 		taskID := mgr.genTaskID(vol)
 		mgr.tasks[taskID] = &inspectTaskInfo{
 			t:           mgr.genInspectTask(taskID, vol),
@@ -319,6 +340,7 @@ func (mgr *VolumeInspectMgr) genIdleVolumeTask(ctx context.Context) {
 	startVid := mgr.startVid
 	span.Infof("start prepare inspect task: start vid[%d]", startVid)
 
+	mp := mgr.vidCache.Load().(map[proto.Vid]struct{})
 	for volCnt < mgr.cfg.InspectBatch {
 		remainCnt := mgr.cfg.InspectBatch - volCnt
 		listStep := mgr.cfg.ListVolStep
@@ -339,8 +361,16 @@ func (mgr *VolumeInspectMgr) genIdleVolumeTask(ctx context.Context) {
 		}
 
 		for _, vol := range vols {
+			if _, ok := mp[vol.Vid]; ok {
+				continue
+			}
 			if vol.IsActive() {
 				span.Infof("volume is active and skip: vid[%d]", vol.Vid)
+				continue
+			}
+			err = mgr.clusterMgrCli.SetVolumeSealed(ctx, vol.Vid)
+			if err != nil {
+				span.Errorf("Fail to mark sealed volume: err[%+v]", err)
 				continue
 			}
 
@@ -482,7 +512,7 @@ func (mgr *VolumeInspectMgr) finish(ctx context.Context) {
 		delete(mgr.tasks, taskID)
 	}
 
-	// post repair shard msg
+	// post repair shard msg or delete junk data
 	vidMap := make(map[proto.Vid]struct{})
 	for _, volMissedShards := range missedShards {
 		vid := volMissedShards[0].Vuid.Vid()
