@@ -349,27 +349,39 @@ func (d *Disk) computeUsage() (err error) {
 // computeUsageOnSFXDevice computes the disk usage on SFX device
 func (d *Disk) computeUsageOnSFXDevice() (err error) {
 	if d.IsSfx {
+		// 物理状态
 		var dStatus sfxStatus
 		dStatus, err = GetSfxStatus(d.devName)
 		if err != nil {
 			return
 		}
+		// 逻辑状态
+		var fsstat = new(syscall.Statfs_t)
+		if err = syscall.Statfs(d.Path, fsstat); err != nil {
+			return
+		}
 		d.RLock()
 		defer d.RUnlock()
+		// 基于物理容量计算保留空间
 		reservedSpace := int64(float64(dStatus.totalPhysicalCapability) * d.getReservedRatio())
 		d.ReservedSpace = uint64(reservedSpace)
 
+		// 基于物理容量及物理保留空间计算总容量
 		total := int64(dStatus.totalPhysicalCapability) - reservedSpace
 		if total < 0 {
 			total = 0
 		}
 		d.Total = uint64(total)
-		available := int64(dStatus.freePhysicalCapability) - reservedSpace
+
+		// 基于物理可用空间和逻辑可用空间计算可用空间, 取两者的最小值
+		var physicalAvail = int64(dStatus.freePhysicalCapability) - reservedSpace
+		var logicalAvail = int64(fsstat.Bavail)*fsstat.Bsize - reservedSpace
+		var available = int64(math.Min(float64(physicalAvail), float64(logicalAvail)))
 		if available < 0 {
 			available = 0
 		}
 		d.Available = uint64(available)
-		used := int64(dStatus.totalPhysicalCapability) - int64(dStatus.freePhysicalCapability)
+		used := int64(dStatus.totalPhysicalCapability) - available
 		if used < 0 {
 			used = 0
 		}
