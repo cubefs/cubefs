@@ -98,7 +98,9 @@ func (p *FollowerPacket) IsErrPacket() bool {
 }
 
 func (p *FollowerPacket) identificationErrorResultCode(errLog string, errMsg string) {
-	if strings.Contains(errMsg, proto.ErrDataPartitionNotExists.Error()) {
+	if strings.Contains(errMsg, proto.RateLimit) || strings.Contains(errMsg, proto.ConcurrentLimit) {
+		p.ResultCode = proto.OpAgain
+	} else if strings.Contains(errMsg, proto.ErrDataPartitionNotExists.Error()) {
 		p.ResultCode = proto.OpTryOtherAddr
 	} else if strings.Contains(errMsg, storage.NoSpaceError.Error()) {
 		p.ResultCode = proto.OpDiskNoSpaceErr
@@ -703,7 +705,9 @@ var (
 )
 
 func (p *Packet) identificationErrorResultCode(errLog string, errMsg string) {
-	if strings.Contains(errMsg, proto.ErrDataPartitionNotExists.Error()) {
+	if strings.Contains(errMsg, proto.RateLimit) || strings.Contains(errMsg, proto.ConcurrentLimit) {
+		p.ResultCode = proto.OpAgain
+	} else if strings.Contains(errMsg, proto.ErrDataPartitionNotExists.Error()) {
 		p.ResultCode = proto.OpTryOtherAddr
 	} else if strings.Contains(errMsg, storage.NoSpaceError.Error()) {
 		p.ResultCode = proto.OpDiskNoSpaceErr

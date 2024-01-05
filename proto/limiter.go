@@ -2,14 +2,19 @@ package proto
 
 const (
 	OpExtentRepairWrite_ = iota + 512
+	OpFlushDelete_
 	OpExtentRepairWriteToApplyTempFile_
 	OpExtentRepairWriteByPolicy_
 	OpExtentRepairReadToRollback_
 	OpExtentRepairReadToComputeCrc_
 	OpExtentReadToGetCrc_
-	OpFlushDelete_
 	OpFetchDataPartitionView_
 	OpFixIssueFragments_
+)
+
+const (
+	RateLimit       = "rate limit"
+	ConcurrentLimit = "concurrent limit"
 )
 
 func GetOpMsgExtend(opcode int) (m string) {

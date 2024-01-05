@@ -832,7 +832,8 @@ func (dp *DataPartition) proposeUpdateVolumeInfo() {
 }
 
 func (dp *DataPartition) statusUpdateScheduler(ctx context.Context) {
-	repairTimer := time.NewTimer(time.Minute)
+	rand := rand.New(rand.NewSource(time.Now().UnixNano()))
+	repairTimer := time.NewTimer(time.Minute + time.Duration(rand.Intn(120))*time.Second)
 	validateCRCTimer := time.NewTimer(DefaultIntervalDataPartitionValidateCRC)
 	retryUpdateVolInfoTimer := time.NewTimer(0)
 	retryUpdateVolInfoTimer.Stop()
@@ -1409,7 +1410,11 @@ func (dp *DataPartition) limit(ctx context.Context, op int, size uint32, bandTyp
 		stBuilder.SetOutBytes(int(size)).Stat()
 	default:
 	}
-	return multirate.WaitNUseDefaultTimeout(ctx, prBuilder.Properties(), stBuilder.Stat())
+	err = multirate.WaitNUseDefaultTimeout(ctx, prBuilder.Properties(), stBuilder.Stat())
+	if err != nil {
+		err = errors.Trace(err, proto.RateLimit)
+	}
+	return
 }
 
 func (dp *DataPartition) backendRefreshCacheView() {
