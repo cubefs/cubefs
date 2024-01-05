@@ -32,7 +32,7 @@ func (c *Cluster) checkDiskRecoveryProgress() {
 		}
 	}()
 	c.checkFulfillDataReplica()
-	unrecoverPartitionIDs := make(map[uint64]int64, 0)
+	unrecoverPartitionIDs := make(map[string]uint64, 0)
 	c.BadDataPartitionIds.Range(func(key, value interface{}) bool {
 		if c.leaderHasChanged() {
 			return false
@@ -40,10 +40,12 @@ func (c *Cluster) checkDiskRecoveryProgress() {
 		partitionID := value.(uint64)
 		partition, err := c.getDataPartitionByID(partitionID)
 		if err != nil {
+			unrecoverPartitionIDs[key.(string)] = partitionID
 			return true
 		}
 		vol, err := c.getVol(partition.VolName)
 		if err != nil {
+			unrecoverPartitionIDs[key.(string)] = partitionID
 			return true
 		}
 		replicaNum := vol.dpReplicaNum
@@ -55,7 +57,7 @@ func (c *Cluster) checkDiskRecoveryProgress() {
 		}
 		if len(partition.Replicas) == 0 || len(partition.Replicas) < int(replicaNum) {
 			if time.Now().Unix()-partition.modifyTime > defaultUnrecoverableDuration {
-				unrecoverPartitionIDs[partitionID] = partition.modifyTime
+				unrecoverPartitionIDs[key.(string)] = partitionID
 			}
 			return true
 		}
@@ -69,37 +71,40 @@ func (c *Cluster) checkDiskRecoveryProgress() {
 			c.BadDataPartitionIds.Delete(key)
 		} else {
 			if time.Now().Unix()-partition.modifyTime > defaultUnrecoverableDuration {
-				unrecoverPartitionIDs[partitionID] = partition.modifyTime
+				unrecoverPartitionIDs[key.(string)] = partitionID
 			}
 		}
 		return true
 	})
 	if len(unrecoverPartitionIDs) != 0 {
 		deletedDpIds := c.getHasDeletedDpIds(unrecoverPartitionIDs)
-		for _, id := range deletedDpIds {
-			c.BadDataPartitionIds.Delete(id)
-			delete(unrecoverPartitionIDs, id)
+		for _, key := range deletedDpIds {
+			c.BadDataPartitionIds.Delete(key)
+			delete(unrecoverPartitionIDs, key)
+		}
+		if len(unrecoverPartitionIDs) == 0 {
+			return
 		}
 		msg := fmt.Sprintf("action[checkDiskRecoveryProgress] clusterID[%v],has[%v] has offlined more than 24 hours,still not recovered,ids[%v]", c.Name, len(unrecoverPartitionIDs), unrecoverPartitionIDs)
 		WarnBySpecialKey(gAlarmKeyMap[alarmKeyDpHasNotRecover], msg)
 	}
 }
 
-func (c *Cluster) getHasDeletedDpIds(unrecoverPartitionIDs map[uint64]int64) (deletedDpIds []uint64) {
+func (c *Cluster) getHasDeletedDpIds(unrecoverPartitionIDs map[string]uint64) (deletedDpIds []string) {
 	lastLeaderVersion := c.getLeaderVersion()
 	if !c.isMetaReady() {
 		return
 	}
-	deletedDpIds = make([]uint64, 0)
-	for partitionID, _ := range unrecoverPartitionIDs {
+	deletedDpIds = make([]string, 0)
+	for key, partitionID := range unrecoverPartitionIDs {
 		partition, err := c.getDataPartitionByID(partitionID)
 		if err != nil {
-			deletedDpIds = append(deletedDpIds, partitionID)
+			deletedDpIds = append(deletedDpIds, key)
 			continue
 		}
 		_, err = c.getVol(partition.VolName)
 		if err != nil {
-			deletedDpIds = append(deletedDpIds, partitionID)
+			deletedDpIds = append(deletedDpIds, key)
 			continue
 		}
 	}
