@@ -454,11 +454,36 @@ func (h *Handler) punishDiskWith(ctx context.Context, clusterID proto.ClusterID,
 func (h *Handler) setVolumeSealed(ctx context.Context, cid proto.ClusterID, vid proto.Vid) {
 	span := trace.SpanFromContextSafe(ctx)
 
+	// If the client is nil, or SetVolumeSealed err.
+	// Then we need the scheduler to guarantee the sealed volume in the inspection process
 	client := h.clusterController.GetClusterClient(cid)
+	if client == nil {
+		span.Errorf("Failed to get cluster[%d] client when seal volume", cid)
+		return
+	}
+
 	err := client.SetVolumeSealed(ctx, &cmapi.SetVolumeSealedArgs{Vid: vid})
 	if err != nil {
 		span.Errorf("Fail to mark sealed volume %d: err[%+v]", vid, err)
+		return
 	}
+	span.Warnf("We mark sealed volume %d", vid)
+}
+
+func (h *Handler) releaseVolume(ctx context.Context, cid proto.ClusterID, vid proto.Vid) {
+	span := trace.SpanFromContextSafe(ctx)
+	client := h.clusterController.GetClusterClient(cid)
+	if client == nil {
+		span.Errorf("Failed to get cluster[%d] client when release volume", cid)
+		return
+	}
+
+	err := client.ReleaseVolume(ctx, &cmapi.ReleaseVolumes{NormalVids: []proto.Vid{vid}})
+	if err != nil {
+		span.Errorf("Failed to release volume %d: err[%+v]", vid, err)
+		return
+	}
+	span.Warnf("We released volume %d", vid)
 }
 
 // blobCount blobSize > 0 is certain

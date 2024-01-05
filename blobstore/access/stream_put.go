@@ -228,7 +228,7 @@ func (h *Handler) writeToBlobnodes(ctx context.Context,
 	writtenNum := uint32(0)
 
 	wg.Add(len(volume.Units))
-	needMark := false
+	hasBroken := false
 	for i, unitI := range volume.Units {
 		index, unit := i, unitI
 
@@ -292,8 +292,8 @@ func (h *Handler) writeToBlobnodes(ctx context.Context,
 				}
 
 				code := rpc.DetectStatusCode(err)
-				if needMarkSealed(code) {
-					needMark = true
+				if code == errcode.CodeDiskBroken {
+					hasBroken = true
 				}
 				switch code {
 				case errcode.CodeDiskBroken, errcode.CodeDiskNotFound,
@@ -379,11 +379,6 @@ func (h *Handler) writeToBlobnodes(ctx context.Context,
 		received[st.index] = st
 	}
 
-	defer func() {
-		if needMark { // disk broken, quorum, az fail
-			h.setVolumeSealed(ctx, clusterID, vid)
-		}
-	}()
 	writeDone := make(chan struct{}, 1)
 	// write unaccomplished shard to repair queue
 	go func(writeDone <-chan struct{}) {
@@ -411,6 +406,9 @@ func (h *Handler) writeToBlobnodes(ctx context.Context,
 	// return if had quorum successful shards
 	if atomic.LoadUint32(&writtenNum) >= putQuorum {
 		writeDone <- struct{}{}
+		if hasBroken {
+			h.releaseVolume(ctx, clusterID, vid) // TODO: Need to cooperate with the alloc and renewal
+		}
 		return
 	}
 
@@ -444,16 +442,17 @@ func (h *Handler) writeToBlobnodes(ctx context.Context,
 			span.Warnf("tolerate-multi-az-write (az-fine:%d az-down:%d az-all:%d) of %s",
 				allFine, allDown, tactic.AZCount, blob.String())
 			writeDone <- struct{}{}
+			if hasBroken {
+				h.releaseVolume(ctx, clusterID, vid)
+			}
 			return
 		}
 	}
 
 	close(writeDone)
 	err = fmt.Errorf("quorum write failed (%d < %d) of %s", writtenNum, putQuorum, blob.String())
-	needMark = true
-	return
-}
+	// need mark sealed: less than quorum, az fail
+	h.setVolumeSealed(ctx, clusterID, vid)
 
-func needMarkSealed(code int) bool {
-	return code == errcode.CodeDiskBroken || code == errcode.CodeDiskNotFound
+	return
 }
