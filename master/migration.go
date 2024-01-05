@@ -15,7 +15,7 @@ func (c *Cluster) checkMigratedDataPartitionsRecoveryProgress() {
 				"checkMigratedDataPartitionsRecoveryProgress occurred panic")
 		}
 	}()
-	unrecoverPartitionIDs := make(map[uint64]int64, 0)
+	unrecoverPartitionIDs := make(map[string]uint64, 0)
 	c.MigratedDataPartitionIds.Range(func(key, value interface{}) bool {
 		if c.leaderHasChanged() {
 			return false
@@ -23,10 +23,12 @@ func (c *Cluster) checkMigratedDataPartitionsRecoveryProgress() {
 		partitionID := value.(uint64)
 		partition, err := c.getDataPartitionByID(partitionID)
 		if err != nil {
+			unrecoverPartitionIDs[key.(string)] = partitionID
 			return true
 		}
 		vol, err := c.getVol(partition.VolName)
 		if err != nil {
+			unrecoverPartitionIDs[key.(string)] = partitionID
 			return true
 		}
 		if len(partition.Replicas) == 0 || len(partition.Replicas) < int(vol.dpReplicaNum) {
@@ -42,7 +44,7 @@ func (c *Cluster) checkMigratedDataPartitionsRecoveryProgress() {
 			c.MigratedDataPartitionIds.Delete(key)
 		} else {
 			if time.Now().Unix()-partition.modifyTime > defaultUnrecoverableDuration {
-				unrecoverPartitionIDs[partitionID] = partition.modifyTime
+				unrecoverPartitionIDs[key.(string)] = partitionID
 			}
 		}
 
@@ -50,9 +52,12 @@ func (c *Cluster) checkMigratedDataPartitionsRecoveryProgress() {
 	})
 	if len(unrecoverPartitionIDs) != 0 {
 		deletedDpIds := c.getHasDeletedDpIds(unrecoverPartitionIDs)
-		for _, id := range deletedDpIds {
-			c.MigratedDataPartitionIds.Delete(id)
-			delete(unrecoverPartitionIDs, id)
+		for _, key := range deletedDpIds {
+			c.MigratedDataPartitionIds.Delete(key)
+			delete(unrecoverPartitionIDs, key)
+		}
+		if len(unrecoverPartitionIDs) == 0 {
+			return
 		}
 		msg := fmt.Sprintf("action[checkMigratedDpRecoveryProgress] clusterID[%v],has[%v] has migrated more than 24 hours,still not recovered,ids[%v]", c.Name, len(unrecoverPartitionIDs), unrecoverPartitionIDs)
 		WarnBySpecialKey(gAlarmKeyMap[alarmKeyDpHasNotRecover], msg)
@@ -113,7 +118,7 @@ func (c *Cluster) checkMigratedMetaPartitionRecoveryProgress() {
 		dentryDiff  float64
 		applyIDDiff float64
 	)
-	unrecoverMpIDs := make(map[uint64]int64, 0)
+	unrecoverMpIDs := make(map[string]uint64, 0)
 	c.MigratedMetaPartitionIds.Range(func(key, value interface{}) bool {
 		if c.leaderHasChanged() {
 			return false
@@ -121,18 +126,18 @@ func (c *Cluster) checkMigratedMetaPartitionRecoveryProgress() {
 		partitionID := value.(uint64)
 		partition, err := c.getMetaPartitionByID(partitionID)
 		if err != nil {
+			unrecoverMpIDs[key.(string)] = partitionID
 			return true
 		}
 		vol, err := c.getVol(partition.volName)
 		if err != nil {
+			unrecoverMpIDs[key.(string)] = partitionID
 			return true
 		}
 		if len(partition.Replicas) == 0 || len(partition.Replicas) < int(vol.mpReplicaNum) {
 			return true
 		}
 		dentryDiff = partition.getMinusOfDentryCount()
-		//inodeDiff = partition.getMinusOfInodeCount()
-		//inodeDiff = partition.getPercentMinusOfInodeCount()
 		applyIDDiff = partition.getMinusOfApplyID()
 		if dentryDiff == 0 && applyIDDiff == 0 && partition.allReplicaHasRecovered() {
 			partition.RLock()
@@ -142,7 +147,7 @@ func (c *Cluster) checkMigratedMetaPartitionRecoveryProgress() {
 			c.MigratedMetaPartitionIds.Delete(key)
 		} else {
 			if time.Now().Unix()-partition.modifyTime > defaultUnrecoverableDuration {
-				unrecoverMpIDs[partitionID] = partition.modifyTime
+				unrecoverMpIDs[key.(string)] = partitionID
 			}
 		}
 
@@ -150,9 +155,12 @@ func (c *Cluster) checkMigratedMetaPartitionRecoveryProgress() {
 	})
 	if len(unrecoverMpIDs) != 0 {
 		deletedMpIds := c.getHasDeletedMpIds(unrecoverMpIDs)
-		for _, id := range deletedMpIds {
-			c.MigratedMetaPartitionIds.Delete(id)
-			delete(unrecoverMpIDs, id)
+		for _, key := range deletedMpIds {
+			c.MigratedMetaPartitionIds.Delete(key)
+			delete(unrecoverMpIDs, key)
+		}
+		if len(unrecoverMpIDs) == 0 {
+			return
 		}
 		msg := fmt.Sprintf("action[checkMetaPartitionRecoveryProgress] clusterID[%v],[%v] has migrated more than 24 hours,still not recovered,ids[%v]", c.Name, len(unrecoverMpIDs), unrecoverMpIDs)
 		WarnBySpecialKey(gAlarmKeyMap[alarmKeyMpHasNotRecover], msg)

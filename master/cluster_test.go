@@ -329,3 +329,63 @@ func TestUpdateDataNodeBadDisks(t *testing.T) {
 	badDiskView = c.getDataNodeBadDisks()
 	assert.Equalf(t, 0, len(badDiskView), "getDataNodeBadDisks should be 0 but get :%v detail:%v", len(badDiskView), badDiskView)
 }
+
+func TestBadDataPartitionsContainHasDeletedDp(t *testing.T) {
+	c := server.cluster
+	var partitionID uint64
+	partitionID, _ = c.idAlloc.allocateDataPartitionID()
+	c.BadDataPartitionIds = &sync.Map{}
+	c.BadDataPartitionIds.Store("", partitionID)
+	c.checkDiskRecoveryProgress()
+	badDpIds := make([]uint64, 0)
+	c.BadDataPartitionIds.Range(func(key, value any) bool {
+		badDpIds = append(badDpIds, value.(uint64))
+		return true
+	})
+	assert.Equal(t, 0, len(badDpIds))
+}
+
+func TestMigratedDataPartitionsContainHasDeletedDp(t *testing.T) {
+	c := server.cluster
+	var partitionID uint64
+	partitionID, _ = c.idAlloc.allocateDataPartitionID()
+	c.MigratedDataPartitionIds = &sync.Map{}
+	c.MigratedDataPartitionIds.Store("", partitionID)
+	c.checkMigratedDataPartitionsRecoveryProgress()
+	badDpIds := make([]uint64, 0)
+	c.MigratedDataPartitionIds.Range(func(key, value any) bool {
+		badDpIds = append(badDpIds, value.(uint64))
+		return true
+	})
+	assert.Equal(t, 0, len(badDpIds))
+}
+
+func TestBadMetaPartitionsContainHasDeletedMp(t *testing.T) {
+	c := server.cluster
+	var partitionID uint64
+	partitionID, _ = c.idAlloc.allocateMetaPartitionID()
+	c.BadMetaPartitionIds = &sync.Map{}
+	c.BadMetaPartitionIds.Store("", partitionID)
+	c.checkMetaPartitionRecoveryProgress()
+	badMpIDs := make([]uint64, 0)
+	c.BadMetaPartitionIds.Range(func(key, value any) bool {
+		badMpIDs = append(badMpIDs, value.(uint64))
+		return true
+	})
+	assert.Equal(t, 0, len(badMpIDs))
+}
+
+func TestMigratedMetaPartitionsContainHasDeletedMp(t *testing.T) {
+	c := server.cluster
+	var partitionID uint64
+	partitionID, _ = c.idAlloc.allocateMetaPartitionID()
+	c.MigratedMetaPartitionIds = &sync.Map{}
+	c.MigratedMetaPartitionIds.Store("", partitionID)
+	c.checkMigratedMetaPartitionRecoveryProgress()
+	badMpIDs := make([]uint64, 0)
+	c.MigratedMetaPartitionIds.Range(func(key, value any) bool {
+		badMpIDs = append(badMpIDs, value.(uint64))
+		return true
+	})
+	assert.Equal(t, 0, len(badMpIDs))
+}

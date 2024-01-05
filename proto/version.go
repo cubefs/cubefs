@@ -7,39 +7,39 @@ import (
 
 const (
 	/*
-	MetaNode: RocksDB
+		MetaNode: RocksDB
 	*/
 	RocksDBVersion = "3.2.0"
 
 	/*
 
-	*/
+	 */
 	Version_3_3_0 = "3.3.0"
 
 	/*
-	MetaNode: BitMap Allocator
+		MetaNode: BitMap Allocator
 	*/
 	BitMapAllocator = "3.4.0"
 
 	/*
 
-	*/
+	 */
 	Version_4_0_0 = "4.0.0"
 
 	/*
-	Client: support opReadDirPlus
-	 */
+		Client: support opReadDirPlus
+	*/
 	ReadDirPlusVersion = "4.2.0"
 
 	/*
-	MetaNode: retry op remove dup
+		MetaNode: retry op remove dup
 	*/
 	RemoveDupReq = "4.3.0"
 
 	/*
 
-	*/
-	BaseVersion = "4.3.0"
+	 */
+	BaseVersion = "4.5.0"
 )
 
 var (

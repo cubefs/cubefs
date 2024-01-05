@@ -114,7 +114,7 @@ func (c *Cluster) checkMetaPartitionRecoveryProgress() {
 
 	var normalReplicaCount int
 	c.checkFulfillMetaReplica()
-	unrecoverMpIDs := make(map[uint64]int64, 0)
+	unrecoverMpIDs := make(map[string]uint64, 0)
 	c.BadMetaPartitionIds.Range(func(key, value interface{}) bool {
 		if c.leaderHasChanged() {
 			return false
@@ -122,10 +122,12 @@ func (c *Cluster) checkMetaPartitionRecoveryProgress() {
 		partitionID := value.(uint64)
 		partition, err := c.getMetaPartitionByID(partitionID)
 		if err != nil {
+			unrecoverMpIDs[key.(string)] = partitionID
 			return true
 		}
 		vol, err := c.getVol(partition.volName)
 		if err != nil {
+			unrecoverMpIDs[key.(string)] = partitionID
 			return true
 		}
 		if len(partition.Replicas) == 0 {
@@ -140,7 +142,7 @@ func (c *Cluster) checkMetaPartitionRecoveryProgress() {
 			c.BadMetaPartitionIds.Delete(key)
 		} else {
 			if time.Now().Unix()-partition.modifyTime > defaultUnrecoverableDuration {
-				unrecoverMpIDs[partitionID] = partition.modifyTime
+				unrecoverMpIDs[key.(string)] = partitionID
 			}
 		}
 
@@ -148,30 +150,33 @@ func (c *Cluster) checkMetaPartitionRecoveryProgress() {
 	})
 	if len(unrecoverMpIDs) != 0 {
 		deletedMpIds := c.getHasDeletedMpIds(unrecoverMpIDs)
-		for _, id := range deletedMpIds {
-			c.BadMetaPartitionIds.Delete(id)
-			delete(unrecoverMpIDs, id)
+		for _, key := range deletedMpIds {
+			c.BadMetaPartitionIds.Delete(key)
+			delete(unrecoverMpIDs, key)
+		}
+		if len(unrecoverMpIDs) == 0 {
+			return
 		}
 		msg := fmt.Sprintf("action[checkMetaPartitionRecoveryProgress] clusterID[%v],[%v] has migrated more than 24 hours,still not recovered,ids[%v]", c.Name, len(unrecoverMpIDs), unrecoverMpIDs)
 		WarnBySpecialKey(gAlarmKeyMap[alarmKeyMpHasNotRecover], msg)
 	}
 }
 
-func (c *Cluster) getHasDeletedMpIds(unrecoverPartitionIDs map[uint64]int64) (deletedMpIds []uint64) {
+func (c *Cluster) getHasDeletedMpIds(unrecoverPartitionIDs map[string]uint64) (deletedMpIds []string) {
 	lastLeaderVersion := c.getLeaderVersion()
 	if !c.isMetaReady() {
 		return
 	}
-	deletedMpIds = make([]uint64, 0)
-	for partitionID, _ := range unrecoverPartitionIDs {
-		partition, err := c.getDataPartitionByID(partitionID)
+	deletedMpIds = make([]string, 0)
+	for key, partitionID := range unrecoverPartitionIDs {
+		partition, err := c.getMetaPartitionByID(partitionID)
 		if err != nil {
-			deletedMpIds = append(deletedMpIds, partitionID)
+			deletedMpIds = append(deletedMpIds, key)
 			continue
 		}
-		_, err = c.getVol(partition.VolName)
+		_, err = c.getVol(partition.volName)
 		if err != nil {
-			deletedMpIds = append(deletedMpIds, partitionID)
+			deletedMpIds = append(deletedMpIds, key)
 			continue
 		}
 	}
