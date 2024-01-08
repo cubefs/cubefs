@@ -38,31 +38,32 @@ import (
 
 // configuration keys
 const (
-	ClusterName          = "clusterName"
-	ID                   = "id"
-	IP                   = "ip"
-	Port                 = "port"
-	LogLevel             = "logLevel"
-	LogDir               = "logDir"
-	WalDir               = "walDir"
-	StoreDir             = "storeDir"
-	EbsAddrKey           = "ebsAddr"
-	BStoreAddrKey        = "bStoreAddr"
-	EbsServicePathKey    = "ebsServicePath"
-	BStoreServicePathKey = "bStoreServicePath"
-	GroupID              = 1
-	ModuleName           = "master"
-	CfgRetainLogs        = "retainLogs"
-	DefaultRetainLogs    = 20000
-	cfgTickInterval      = "tickInterval"
-	cfgRaftRecvBufSize   = "raftRecvBufSize"
-	cfgElectionTick      = "electionTick"
-	SecretKey            = "masterServiceKey"
-	Stat                 = "stat"
-	Authenticate         = "authenticate"
-	AuthNodeHost         = "authNodeHost"
-	AuthNodeEnableHTTPS  = "authNodeEnableHTTPS"
-	AuthNodeCertFile     = "authNodeCertFile"
+	ClusterName              = "clusterName"
+	ID                       = "id"
+	IP                       = "ip"
+	Port                     = "port"
+	LogLevel                 = "logLevel"
+	LogDir                   = "logDir"
+	WalDir                   = "walDir"
+	StoreDir                 = "storeDir"
+	EbsAddrKey               = "ebsAddr"
+	BStoreAddrKey            = "bStoreAddr"
+	EbsServicePathKey        = "ebsServicePath"
+	BStoreServicePathKey     = "bStoreServicePath"
+	GroupID                  = 1
+	ModuleName               = "master"
+	CfgRetainLogs            = "retainLogs"
+	DefaultRetainLogs        = 20000
+	cfgTickInterval          = "tickInterval"
+	cfgRaftRecvBufSize       = "raftRecvBufSize"
+	cfgElectionTick          = "electionTick"
+	SecretKey                = "masterServiceKey"
+	cfgEnableDirectDeleteVol = "enableDirectDeleteVol"
+	Stat                     = "stat"
+	Authenticate             = "authenticate"
+	AuthNodeHost             = "authNodeHost"
+	AuthNodeEnableHTTPS      = "authNodeEnableHTTPS"
+	AuthNodeCertFile         = "authNodeCertFile"
 )
 
 var (
@@ -70,8 +71,9 @@ var (
 	volNameRegexp = regexp.MustCompile("^[a-zA-Z0-9][a-zA-Z0-9_.-]{1,61}[a-zA-Z0-9]$")
 	ownerRegexp   = regexp.MustCompile("^[A-Za-z][A-Za-z0-9_]{0,20}$")
 
-	useConnPool = true // for test
-	gConfig     *clusterConfig
+	useConnPool           = true // for test
+	enableDirectDeleteVol = true
+	gConfig               *clusterConfig
 )
 
 var overSoldFactor = defaultOverSoldFactor
@@ -373,6 +375,7 @@ func (m *Server) checkConfig(cfg *config.Config) (err error) {
 	m.config.volDeletionDentryThreshold = uint64(threshold)
 
 	m.config.volDelayDeleteTime = cfg.GetInt64WithDefault(cfgVolDeletionDelayTime, 48)
+	enableDirectDeleteVol = cfg.GetBoolWithDefault(cfgEnableDirectDeleteVol, true)
 
 	return
 }
