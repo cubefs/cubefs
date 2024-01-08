@@ -918,8 +918,9 @@ func (m *Server) getIPAddr(w http.ResponseWriter, r *http.Request) {
 
 func (m *Server) createMetaPartition(w http.ResponseWriter, r *http.Request) {
 	var (
+		vol     *Vol
 		volName string
-		start   uint64
+		count   int
 		err     error
 	)
 	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminCreateMetaPartition))
@@ -927,12 +928,30 @@ func (m *Server) createMetaPartition(w http.ResponseWriter, r *http.Request) {
 		doStatAndMetric(proto.AdminCreateMetaPartition, metric, err, map[string]string{exporter.Vol: volName})
 	}()
 
-	if volName, start, err = validateRequestToCreateMetaPartition(r); err != nil {
+	if volName, count, err = validateRequestToCreateMetaPartition(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
 
-	if err = m.cluster.updateInodeIDRange(volName, start); err != nil {
+	if vol, err = m.cluster.getVol(volName); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(proto.ErrVolNotExists))
+		return
+	}
+
+	if vol.status() == proto.VolStatusMarkDelete {
+		log.LogErrorf("action[createMetaPartition] vol[%s] is marked delete ", vol.Name)
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+
+	if vol.Forbidden {
+		log.LogErrorf("action[createMetaPartition] vol[%s] is forbidden", vol.Name)
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+
+	if err = vol.addMetaPartitions(m.cluster, count); err != nil {
+		log.LogErrorf("create meta partition fail: volume(%v) err(%v)", volName, err)
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}

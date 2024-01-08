@@ -1313,18 +1313,20 @@ func parseAndExtractSetNodeInfoParams(r *http.Request) (params map[string]interf
 	return
 }
 
-func validateRequestToCreateMetaPartition(r *http.Request) (volName string, start uint64, err error) {
+func validateRequestToCreateMetaPartition(r *http.Request) (volName string, count int, err error) {
+	if err = r.ParseForm(); err != nil {
+		return
+	}
+	if countStr := r.FormValue(countKey); countStr == "" {
+		err = keyNotFound(countKey)
+		return
+	} else if count, err = strconv.Atoi(countStr); err != nil || count == 0 {
+		err = unmatchedKey(countKey)
+		return
+	}
 	if volName, err = extractName(r); err != nil {
 		return
 	}
-
-	var value string
-	if value = r.FormValue(startKey); value == "" {
-		err = keyNotFound(startKey)
-		return
-	}
-
-	start, err = strconv.ParseUint(value, 10, 64)
 	return
 }
 
