@@ -266,7 +266,7 @@ func (s *VolumeService) markDeleteVol(ctx context.Context, args struct {
 		return nil, err
 	}
 
-	if err = s.cluster.markDeleteVol(args.Name, args.AuthKey, false); err != nil {
+	if err = s.cluster.markDeleteVol(args.Name, args.AuthKey, false, true); err != nil {
 		return nil, err
 	}
 
