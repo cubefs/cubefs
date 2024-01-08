@@ -50,6 +50,7 @@ type Cluster struct {
 	metaNodes                    sync.Map
 	volMutex                     sync.RWMutex // volume mutex
 	createVolMutex               sync.RWMutex // create volume mutex
+	deleteVolMutex               sync.RWMutex //delete volume mutex
 	mnMutex                      sync.RWMutex // meta node mutex
 	dnMutex                      sync.RWMutex // data node mutex
 	nsMutex                      sync.RWMutex // nodeset mutex
@@ -444,16 +445,13 @@ func (c *Cluster) scheduleToCheckDelayDeleteVols() {
 				if len(c.delayDeleteVolsInfo) == 0 {
 					continue
 				}
+				c.deleteVolMutex.Lock()
 				currentDeleteVol := c.delayDeleteVolsInfo[0]
 				if currentDeleteVol.execTime.Sub(time.Now()) > 0 {
+					c.deleteVolMutex.Unlock()
 					continue
 				}
 				go func() {
-					if err := c.markDeleteVol(currentDeleteVol.volName, currentDeleteVol.authKey, false); err != nil {
-						msg := fmt.Sprintf("delete vol[%v] failed: err:[%v]", currentDeleteVol.volName, err)
-						log.LogError(msg)
-						return
-					}
 					if err := currentDeleteVol.user.deleteVolPolicy(currentDeleteVol.volName); err != nil {
 						msg := fmt.Sprintf("delete vol[%v] failed: err:[%v]", currentDeleteVol.volName, err)
 						log.LogError(msg)
@@ -464,9 +462,11 @@ func (c *Cluster) scheduleToCheckDelayDeleteVols() {
 				}()
 				if len(c.delayDeleteVolsInfo) == 1 {
 					c.delayDeleteVolsInfo = make([]*delayDeleteVolInfo, 0)
+					c.deleteVolMutex.Unlock()
 					continue
 				}
 				c.delayDeleteVolsInfo = c.delayDeleteVolsInfo[1:]
+				c.deleteVolMutex.Unlock()
 			case <-c.stopc:
 				ticker.Stop()
 				return
@@ -1227,7 +1227,7 @@ func (c *Cluster) deleteVol(name string) {
 	return
 }
 
-func (c *Cluster) markDeleteVol(name, authKey string, force bool) (err error) {
+func (c *Cluster) markDeleteVol(name, authKey string, force bool, isNotCancel bool) (err error) {
 	var (
 		vol           *Vol
 		serverAuthKey string
@@ -1236,6 +1236,20 @@ func (c *Cluster) markDeleteVol(name, authKey string, force bool) (err error) {
 	if vol, err = c.getVol(name); err != nil {
 		log.LogErrorf("action[markDeleteVol] err[%v]", err)
 		return proto.ErrVolNotExists
+	}
+
+	if !isNotCancel {
+		serverAuthKey = vol.Owner
+		if !matchKey(serverAuthKey, authKey) {
+			return proto.ErrVolAuthKeyNotMatch
+		}
+
+		vol.Status = normal
+		if err = c.syncUpdateVol(vol); err != nil {
+			vol.Status = markDelete
+			return proto.ErrPersistenceByRaft
+		}
+		return
 	}
 
 	if !c.cfg.volForceDeletion {
@@ -1273,7 +1287,6 @@ func (c *Cluster) markDeleteVol(name, authKey string, force bool) (err error) {
 		vol.Status = normal
 		return proto.ErrPersistenceByRaft
 	}
-
 	return
 }
 
