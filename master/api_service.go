@@ -1814,6 +1814,21 @@ func (m *Server) markDeleteVol(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
+
+	if enableDirectDeleteVol {
+		if err = m.cluster.markDeleteVol(name, authKey, false, true); err != nil {
+			sendErrReply(w, r, newErrHTTPReply(err))
+			return
+		}
+		if err = m.user.deleteVolPolicy(name); err != nil {
+			sendErrReply(w, r, newErrHTTPReply(err))
+			return
+		}
+		msg = fmt.Sprintf("delete vol[%v] successfully,from[%v]", name, r.RemoteAddr)
+		log.LogWarn(msg)
+		sendOkReply(w, r, newSuccessHTTPReply(msg))
+		return
+	}
 	vol, err := m.cluster.getVol(name)
 	if err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeVolNotExists, Msg: err.Error()})
@@ -1822,51 +1837,78 @@ func (m *Server) markDeleteVol(w http.ResponseWriter, r *http.Request) {
 	if status {
 		oldForbiden := vol.Forbidden
 		vol.Forbidden = true
+		vol.authKey = authKey
+		vol.deleteExecTime = time.Now().Add(time.Duration(m.config.volDelayDeleteTime) * time.Hour)
+		vol.user = m.user
 		defer func() {
 			if err != nil {
 				vol.Forbidden = oldForbiden
+				vol.authKey = ""
+				vol.deleteExecTime = time.Time{}
+				vol.user = nil
 			}
 		}()
-		if err = m.cluster.syncUpdateVol(vol); err != nil {
+		if err = m.cluster.markDeleteVol(name, authKey, false, true); err != nil {
 			sendErrReply(w, r, newErrHTTPReply(err))
 			return
 		}
 		vol.setDpForbid()
 		vol.setMpForbid()
-		m.cluster.delayDeleteVolsInfo = append(m.cluster.delayDeleteVolsInfo, &delayDeleteVolInfo{volName: name, authKey: authKey, execTime: time.Now().Add(time.Duration(m.config.volDelayDeleteTime) * time.Hour), user: m.user})
-		log.LogDebugf("delete vol[%v], slice[%v]", name, m.cluster.delayDeleteVolsInfo)
+		m.cluster.deleteVolMutex.Lock()
+		m.cluster.delayDeleteVolsInfo = append(m.cluster.delayDeleteVolsInfo, &delayDeleteVolInfo{volName: name, authKey: authKey, execTime: vol.deleteExecTime, user: m.user})
+		m.cluster.deleteVolMutex.Unlock()
 		msg = fmt.Sprintf("delete vol: forbid vol[%v] successfully,from[%v]", name, r.RemoteAddr)
 		log.LogWarn(msg)
-	} else {
-		var index int
-		var value *delayDeleteVolInfo
-		for index, value = range m.cluster.delayDeleteVolsInfo {
-			if value.volName == name {
-				break
-			}
-		}
-		if index == len(m.cluster.delayDeleteVolsInfo)-1 && value.volName != name {
-			msg := fmt.Sprintf("vol[%v] was not previously deleted", name)
-			err = errors.New(msg)
-			sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeVolNotDelete, Msg: err.Error()})
-			return
-		}
-		m.cluster.delayDeleteVolsInfo = append(m.cluster.delayDeleteVolsInfo[:index], m.cluster.delayDeleteVolsInfo[index+1:]...)
-		log.LogDebugf("undelete vol[%v], slice[%v]", name, m.cluster.delayDeleteVolsInfo)
-		oldForbiden := vol.Forbidden
-		vol.Forbidden = false
-		defer func() {
-			if err != nil {
-				vol.Forbidden = oldForbiden
-			}
-		}()
-		if err = m.cluster.syncUpdateVol(vol); err != nil {
-			sendErrReply(w, r, newErrHTTPReply(err))
-			return
-		}
-		msg = fmt.Sprintf("undelete vol: unforbid vol[%v] successfully,from[%v]", name, r.RemoteAddr)
-		log.LogWarn(msg)
+		sendOkReply(w, r, newSuccessHTTPReply(msg))
+		return
 	}
+	var index int
+	var value *delayDeleteVolInfo
+	if len(m.cluster.delayDeleteVolsInfo) == 0 {
+		msg := fmt.Sprintf("vol[%v] was not previously deleted or already deleted", name)
+		err = errors.New(msg)
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeVolNotDelete, Msg: err.Error()})
+		return
+	}
+	m.cluster.deleteVolMutex.RLock()
+	for index, value = range m.cluster.delayDeleteVolsInfo {
+		if value.volName == name {
+			break
+		}
+	}
+	m.cluster.deleteVolMutex.RUnlock()
+	if index == len(m.cluster.delayDeleteVolsInfo)-1 && value.volName != name {
+		msg := fmt.Sprintf("vol[%v] was not previously deleted or already deleted", name)
+		err = errors.New(msg)
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeVolNotDelete, Msg: err.Error()})
+		return
+	}
+
+	oldForbiden := vol.Forbidden
+	oldAuthKey := vol.authKey
+	oldDeleteExecTime := vol.deleteExecTime
+	oldUser := vol.user
+	vol.Forbidden = false
+	vol.authKey = ""
+	vol.deleteExecTime = time.Time{}
+	vol.user = nil
+	defer func() {
+		if err != nil {
+			vol.Forbidden = oldForbiden
+			vol.authKey = oldAuthKey
+			vol.deleteExecTime = oldDeleteExecTime
+			vol.user = oldUser
+		}
+	}()
+	if err = m.cluster.markDeleteVol(name, authKey, false, false); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+	m.cluster.deleteVolMutex.Lock()
+	m.cluster.delayDeleteVolsInfo = append(m.cluster.delayDeleteVolsInfo[:index], m.cluster.delayDeleteVolsInfo[index+1:]...)
+	m.cluster.deleteVolMutex.Unlock()
+	msg = fmt.Sprintf("undelete vol: unforbid vol[%v] successfully,from[%v]", name, r.RemoteAddr)
+	log.LogWarn(msg)
 	sendOkReply(w, r, newSuccessHTTPReply(msg))
 }
 
