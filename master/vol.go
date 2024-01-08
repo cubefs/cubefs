@@ -472,6 +472,60 @@ func (vol *Vol) getDataPartitionByID(partitionID uint64) (dp *DataPartition, err
 	return vol.dataPartitions.get(partitionID)
 }
 
+func (vol *Vol) addMetaPartitions(c *Cluster, count int) (err error) {
+	// add extra meta partitions at a time
+	var (
+		start uint64
+		end   uint64
+	)
+
+	vol.createMpMutex.Lock()
+	defer vol.createMpMutex.Unlock()
+
+	// update End of the maxMetaPartition range
+	maxPartitionId := vol.maxPartitionID()
+	rearMetaPartition := vol.MetaPartitions[maxPartitionId]
+	oldEnd := rearMetaPartition.End
+	end = rearMetaPartition.MaxInodeID + gConfig.MetaPartitionInodeIdStep
+
+	if err = rearMetaPartition.canSplit(end, gConfig.MetaPartitionInodeIdStep, false); err != nil {
+		return err
+	}
+
+	rearMetaPartition.End = end
+	if err = c.syncUpdateMetaPartition(rearMetaPartition); err != nil {
+		rearMetaPartition.End = oldEnd
+		log.LogErrorf("action[addMetaPartitions] split partition partitionID[%v] err[%v]", rearMetaPartition.PartitionID, err)
+		return
+	}
+
+	// create new meta partitions
+	for i := 0; i < count; i++ {
+		start = end + 1
+		end = start + gConfig.MetaPartitionInodeIdStep
+
+		if end > (defaultMaxMetaPartitionInodeID - gConfig.MetaPartitionInodeIdStep) {
+			end = defaultMaxMetaPartitionInodeID
+			log.LogWarnf("action[addMetaPartitions] vol[%v] add too many meta partition ,partition range overflow ! ", vol.Name)
+		}
+
+		if i == count-1 {
+			end = defaultMaxMetaPartitionInodeID
+		}
+
+		if err = vol.createMetaPartition(c, start, end); err != nil {
+			log.LogErrorf("action[addMetaPartitions] vol[%v] add meta partition err[%v]", vol.Name, err)
+			break
+		}
+
+		if end == defaultMaxMetaPartitionInodeID {
+			break
+		}
+	}
+
+	return
+}
+
 func (vol *Vol) initMetaPartitions(c *Cluster, count int) (err error) {
 	// initialize k meta partitionMap at a time
 	var (

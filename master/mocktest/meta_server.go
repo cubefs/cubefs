@@ -277,7 +277,7 @@ func (mms *MockMetaServer) handleHeartbeats(conn net.Conn, p *proto.Packet, admi
 			Start:       partition.Start,
 			End:         partition.End,
 			Status:      proto.ReadWrite,
-			MaxInodeID:  1,
+			MaxInodeID:  partition.Start,
 			VolName:     partition.VolName,
 			IsLeader:    partition.isLeaderMetaNode(mms.TcpAddr),
 		}

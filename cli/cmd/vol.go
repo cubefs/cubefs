@@ -48,6 +48,7 @@ func newVolCmd(client *master.MasterClient) *cobra.Command {
 		newVolDeleteCmd(client),
 		newVolTransferCmd(client),
 		newVolAddDPCmd(client),
+		newVolAddMPCmd(client),
 		newVolSetForbiddenCmd(client),
 		newVolSetAuditLogCmd(client),
 	)
@@ -856,6 +857,48 @@ func newVolAddDPCmd(client *master.MasterClient) *cobra.Command {
 				return
 			}
 			stdout("Add dp successfully.\n")
+		},
+		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+			if len(args) != 0 {
+				return nil, cobra.ShellCompDirectiveNoFileComp
+			}
+			return validVols(client, toComplete), cobra.ShellCompDirectiveNoFileComp
+		},
+	}
+	cmd.Flags().StringVar(&clientIDKey, CliFlagClientIDKey, client.ClientIDKey(), CliUsageClientIDKey)
+	return cmd
+}
+
+const (
+	cmdVolAddMPCmdUse   = "add-mp [VOLUME] [NUMBER]"
+	cmdVolAddMPCmdShort = "Create and add more meta partition to a volume"
+)
+
+func newVolAddMPCmd(client *master.MasterClient) *cobra.Command {
+	var clientIDKey string
+	cmd := &cobra.Command{
+		Use:   cmdVolAddMPCmdUse,
+		Short: cmdVolAddMPCmdShort,
+		Args:  cobra.MinimumNArgs(2),
+		Run: func(cmd *cobra.Command, args []string) {
+			volume := args[0]
+			number := args[1]
+			var err error
+			defer func() {
+				errout(err)
+			}()
+			var count int64
+			if count, err = strconv.ParseInt(number, 10, 64); err != nil {
+				return
+			}
+			if count < 1 {
+				err = fmt.Errorf("number must be larger than 0")
+				return
+			}
+			if err = client.AdminAPI().CreateMetaPartition(volume, int(count), clientIDKey); err != nil {
+				return
+			}
+			stdout("Add mp successfully.\n")
 		},
 		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 			if len(args) != 0 {

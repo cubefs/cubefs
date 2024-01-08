@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/cubefs/cubefs/proto"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestMetaPartition(t *testing.T) {
@@ -28,43 +29,39 @@ func TestMetaPartition(t *testing.T) {
 }
 
 func createMetaPartition(vol *Vol, t *testing.T) {
-	maxPartitionID := commonVol.maxPartitionID()
-	mp, err := commonVol.metaPartition(maxPartitionID)
-	if err != nil {
-		t.Error(err)
-		return
-	}
+	count := 3
+	vol.mpsLock.RLock()
+	oldPartitionCount := len(vol.MetaPartitions)
+	vol.mpsLock.RUnlock()
 
-	var start uint64
-	metaPartitionInodeIdStep := gConfig.MetaPartitionInodeIdStep
-	start = mp.Start + metaPartitionInodeIdStep
-	reqURL := fmt.Sprintf("%v%v?name=%v&start=%v",
-		hostAddr, proto.AdminCreateMetaPartition, vol.Name, start)
+	reqURL := fmt.Sprintf("%v%v?name=%v&count=%v",
+		hostAddr, proto.AdminCreateMetaPartition, vol.Name, count)
 	process(reqURL, t)
 
-	if start < mp.MaxInodeID {
-		start = mp.MaxInodeID
-	}
-
-	start = start + metaPartitionInodeIdStep
-	vol, err = server.cluster.getVol(vol.Name)
+	vol, err := server.cluster.getVol(vol.Name)
 	if err != nil {
 		t.Error(err)
 		return
 	}
 
-	maxPartitionID = vol.maxPartitionID()
-	mp, err = vol.metaPartition(maxPartitionID)
+	vol.mpsLock.RLock()
+	newPartitionCount := len(vol.MetaPartitions)
+	newMaxPartitionID := vol.maxPartitionID()
+	newMaxMetaPartition, err := vol.metaPartition(newMaxPartitionID)
 	if err != nil {
+		vol.mpsLock.RUnlock()
 		t.Errorf("createMetaPartition,err [%v]", err)
 		return
 	}
 
-	start = start + 1
-	if mp.Start != start {
-		t.Errorf("expect start[%v],mp.start[%v],not equal", start, mp.Start)
-		return
+	assert.Equal(t, oldPartitionCount+count, newPartitionCount)
+
+	if defaultMaxMetaPartitionInodeID != newMaxMetaPartition.End {
+		t.Errorf("createMetaPartition,err expected MaxMetaPartitionEnd [%v] , actual MaxMetaPartitionEnd [%v]", defaultMaxMetaPartitionInodeID, newMaxMetaPartition.End)
 	}
+	vol.mpsLock.RUnlock()
+
+	server.cluster.checkMetaNodeHeartbeat()
 }
 
 func getMetaPartition(volName string, id uint64, t *testing.T) {

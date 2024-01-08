@@ -426,10 +426,10 @@ func (api *AdminAPI) GetVerInfo(volName string) (ci *proto.VolumeVerInfo, err er
 	return
 }
 
-func (api *AdminAPI) CreateMetaPartition(volName string, inodeStart uint64, clientIDKey string) (err error) {
+func (api *AdminAPI) CreateMetaPartition(volName string, count int, clientIDKey string) (err error) {
 	request := newRequest(get, proto.AdminCreateMetaPartition).Header(api.h)
 	request.addParam("name", volName)
-	request.addParam("start", strconv.FormatUint(inodeStart, 10))
+	request.addParam("count", strconv.Itoa(count))
 	request.addParam("clientIDKey", clientIDKey)
 	_, err = api.mc.serveRequest(request)
 	return
