@@ -327,6 +327,9 @@ func (s *ExtentStore) initBaseFileID() (err error) {
 		if extentID, isExtent = s.ExtentID(name); !isExtent {
 			continue
 		}
+		if !proto.IsTinyExtent(extentID) && extentID > baseFileID {
+			baseFileID = extentID
+		}
 		switch {
 		case proto.IsTinyExtent(extentID):
 			s.infoStore.Create(extentID, 0)
@@ -348,9 +351,6 @@ func (s *ExtentStore) initBaseFileID() (err error) {
 				return
 			}
 			s.infoStore.Create(extentID, inode)
-			if extentID > baseFileID {
-				baseFileID = extentID
-			}
 		default:
 		}
 	}
