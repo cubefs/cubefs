@@ -408,7 +408,6 @@ func (mp *metaPartition) fsmAppendExtents(ino *Inode, req *RequestInfo) (status 
 	oldSize := int64(ino2.Size)
 	eks := ino.Extents.CopyExtents()
 	if status = mp.uidManager.addUidSpace(ino2.Uid, ino2.Inode, eks); status != proto.OpOk {
-		mp.recordRequest(req, status)
 		return
 	}
 	mp.recordRequest(req, status)

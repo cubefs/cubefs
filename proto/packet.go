@@ -19,6 +19,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"hash/crc32"
 	"io"
 	"net"
 	"strconv"
@@ -658,6 +659,7 @@ func (p *Packet) MarshalData(v interface{}) error {
 	if err == nil {
 		p.Data = data
 		p.Size = uint32(len(p.Data))
+		p.CRC = crc32.ChecksumIEEE(data)
 	}
 	return err
 }

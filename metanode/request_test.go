@@ -7,6 +7,10 @@ import (
 	"reflect"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
+
+	"github.com/cubefs/cubefs/proto"
 )
 
 func TestRequestInfo_MarshalBinaryAndUnmarshal(t *testing.T) {
@@ -36,6 +40,28 @@ func TestRequestInfoBatch_MarshalBinaryAndUnmarshal(t *testing.T) {
 	}
 }
 
+func TestRequestRecords(t *testing.T) {
+	records := NewRequestRecords()
+	now := time.Now().Unix()
+	records.Update(&RequestInfo{RequestTime: now, EnableRemoveDupReq: true})
+
+	_, dup := records.IsDupReq(&RequestInfo{RequestTime: now, EnableRemoveDupReq: true})
+	require.True(t, dup)
+
+	_, dup = records.IsDupReq(&RequestInfo{RequestTime: now, EnableRemoveDupReq: true, ReqID: 1})
+	require.False(t, dup)
+
+	records.Update(&RequestInfo{RequestTime: now, ReqID: 1, EnableRemoveDupReq: true})
+	records.Update(&RequestInfo{RequestTime: time.Now().Add(time.Duration(2)).Unix(), EnableRemoveDupReq: true})
+	records.Update(&RequestInfo{RequestTime: time.Now().Add(time.Duration(3)).Unix(), EnableRemoveDupReq: true})
+
+	require.Equal(t, 2, len(records.GetRequestsByRequestTime(now)))
+
+	records.EvictByTime(now)
+	require.Equal(t, 0, len(records.GetRequestsByRequestTime(now)))
+
+}
+
 func genBatchRequestInfo(count int, removeDupEnableState bool) RequestInfoBatch {
 	batchReqInfo := make(RequestInfoBatch, 0, count)
 	for index := 0; index < count; index++ {
@@ -48,9 +74,13 @@ func genBatchRequestInfo(count int, removeDupEnableState bool) RequestInfoBatch 
 func genRequestInfo(removeDupEnableState bool) *RequestInfo {
 	rand.Seed(time.Now().UnixMicro())
 	return &RequestInfo{
-		ClientID:           uint64(rand.Intn(65535)),
+		ClientInfo: proto.ClientInfo{
+			ClientID: uint64(rand.Intn(65535)),
+			ClientIP: binary.BigEndian.Uint32([]byte{byte(rand.Intn(256)),
+				byte(rand.Intn(256)), byte(rand.Intn(256)), byte(rand.Intn(256))}),
+		},
+
 		ReqID:              rand.Int63n(math.MaxInt64),
-		ClientIP:           binary.BigEndian.Uint32([]byte{byte(rand.Intn(256)), byte(rand.Intn(256)), byte(rand.Intn(256)), byte(rand.Intn(256))}),
 		DataCrc:            uint32(rand.Int31n(math.MaxInt32)),
 		RequestTime:        time.Now().UnixMilli(),
 		EnableRemoveDupReq: removeDupEnableState,

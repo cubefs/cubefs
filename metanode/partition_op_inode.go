@@ -320,9 +320,8 @@ func (mp *metaPartition) UnlinkInode(req *UnlinkInoReq, p *Packet, remoteAddr st
 		p.PacketErrorWithBody(status, reply)
 	}()
 
-
 	ino := NewInode(req.Inode, 0)
-	clientReq := NewRequestInfo(req.ClientID, req.ClientStartTime, p.ReqID, req.ClientIP, p.CRC, mp.removeDupClientReqEnableState())
+	clientReq := NewRequestInfo(req.ClientInfo, p.ReqID, p.CRC, mp.removeDupClientReqEnableState())
 	if previousRespCode, isDup := mp.reqRecords.IsDupReq(clientReq); isDup {
 		log.LogCriticalf("UnlinkInode: dup req:%v, previousRespCode:%v", clientReq, previousRespCode)
 		msg = &InodeResponse{
@@ -585,7 +584,7 @@ func (mp *metaPartition) CreateInodeLink(req *LinkInodeReq, p *Packet, remoteAdd
 		r, err = mp.submit(opFSMCreateLinkInodeOnce, val, nil)
 	} else {
 		ino := NewInode(req.Inode, 0)
-		clientReq := NewRequestInfo(req.ClientID, req.ClientStartTime, p.ReqID, req.ClientIP, p.CRC, mp.removeDupClientReqEnableState())
+		clientReq := NewRequestInfo(req.ClientInfo, p.ReqID, p.CRC, mp.removeDupClientReqEnableState())
 		if previousRespCode, isDup := mp.reqRecords.IsDupReq(clientReq); isDup {
 			log.LogCriticalf("CreateInodeLink: dup req:%v, previousRespCode:%v", clientReq, previousRespCode)
 			retMsg = &InodeResponse{
@@ -640,7 +639,7 @@ func (mp *metaPartition) EvictInode(req *EvictInodeReq, p *Packet, remoteAddr st
 	return
 }
 
-// EvictInode evicts an inode.
+// EvictInodeBatch evicts an inode.
 func (mp *metaPartition) EvictInodeBatch(req *BatchEvictInodeReq, p *Packet, remoteAddr string) (err error) {
 
 	if len(req.Inodes) == 0 {
@@ -688,7 +687,7 @@ func (mp *metaPartition) EvictInodeBatch(req *BatchEvictInodeReq, p *Packet, rem
 
 // SetAttr set the inode attributes.
 func (mp *metaPartition) SetAttr(req *SetattrRequest, reqData []byte, p *Packet) (err error) {
-	clientReqInfo := NewRequestInfo(req.ClientID, req.ClientStartTime, p.ReqID, req.ClientIP, p.CRC, mp.removeDupClientReqEnableState())
+	clientReqInfo := NewRequestInfo(req.ClientInfo, p.ReqID, p.CRC, mp.removeDupClientReqEnableState())
 	if previousRespCode, isDup := mp.reqRecords.IsDupReq(clientReqInfo); isDup {
 		log.LogCriticalf("setAttr: dup req:%v, previousRespCode:%v", clientReqInfo, previousRespCode)
 		p.PacketErrorWithBody(previousRespCode, nil)

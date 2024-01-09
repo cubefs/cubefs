@@ -30,8 +30,8 @@ import (
 type VolVarargs struct {
 	zoneName                string
 	description             string
-	capacity                uint64 //GB
-	deleteLockTime          int64  //h
+	capacity                uint64 // GB
+	deleteLockTime          int64  // h
 	followerRead            bool
 	authenticate            bool
 	dpSelectorName          string
@@ -121,7 +121,6 @@ type Vol struct {
 }
 
 func newVol(vv volValue) (vol *Vol) {
-
 	vol = &Vol{ID: vv.ID, Name: vv.Name, MetaPartitions: make(map[uint64]*MetaPartition, 0)}
 
 	if vol.threshold <= 0 {
@@ -271,7 +270,6 @@ func (vol *Vol) initQosManager(limitArgs *qosArgs) {
 		}
 		go vol.qosManager.serverFactorLimitMap[arrType[i]].dispatch()
 	}
-
 }
 
 func (vol *Vol) refreshOSSSecure() (key, secret string) {
@@ -456,7 +454,6 @@ func (vol *Vol) tryUpdateDpReplicaNum(c *Cluster, partition *DataPartition) (err
 }
 
 func (vol *Vol) isOkUpdateRepCnt() (ok bool, rsp []uint64) {
-
 	if proto.IsCold(vol.VolType) {
 		return
 	}
@@ -641,7 +638,6 @@ func (vol *Vol) capacity() uint64 {
 }
 
 func (vol *Vol) autoDeleteDp(c *Cluster) {
-
 	if vol.dataPartitions == nil {
 		return
 	}
@@ -670,7 +666,6 @@ func (vol *Vol) autoDeleteDp(c *Cluster) {
 }
 
 func (vol *Vol) checkAutoDataPartitionCreation(c *Cluster) {
-
 	defer func() {
 		if r := recover(); r != nil {
 			log.LogWarnf("checkAutoDataPartitionCreation occurred panic,err[%v]", r)
@@ -712,7 +707,6 @@ func (vol *Vol) shouldInhibitWriteBySpaceFull() bool {
 }
 
 func (vol *Vol) needCreateDataPartition() (ok bool, err error) {
-
 	ok = false
 	if vol.status() == proto.VolStatusMarkDelete {
 		err = proto.ErrVolNotExists
@@ -745,7 +739,6 @@ func (vol *Vol) needCreateDataPartition() (ok bool, err error) {
 }
 
 func (vol *Vol) autoCreateDataPartitions(c *Cluster) {
-
 	if time.Since(vol.dataPartitions.lastAutoCreateTime) < time.Minute {
 		return
 	}
@@ -848,7 +841,6 @@ func (vol *Vol) sendViewCacheToFollower(c *Cluster) {
 }
 
 func (vol *Vol) ebsUsedSpace() uint64 {
-
 	size := uint64(0)
 	vol.mpsLock.RLock()
 	defer vol.mpsLock.RUnlock()
@@ -873,8 +865,8 @@ func (vol *Vol) updateViewCache(c *Cluster) {
 		return
 	}
 	vol.setMpsCache(mpsBody)
-	//dpResps := vol.dataPartitions.getDataPartitionsView(0)
-	//view.DataPartitions = dpResps
+	// dpResps := vol.dataPartitions.getDataPartitionsView(0)
+	// view.DataPartitions = dpResps
 	view.DomainOn = vol.domainOn
 	viewReply := newSuccessHTTPReply(view)
 	body, err := json.Marshal(viewReply)
@@ -925,14 +917,12 @@ func (vol *Vol) getViewCache() []byte {
 }
 
 func (vol *Vol) deleteDataPartition(c *Cluster, dp *DataPartition) {
-
 	var addrs []string
 	for _, replica := range dp.Replicas {
 		addrs = append(addrs, replica.Addr)
 	}
 
 	for _, addr := range addrs {
-
 		if err := vol.deleteDataPartitionFromDataNode(c, dp.createTaskToDeleteDataPartition(addr)); err != nil {
 			log.LogErrorf("[deleteDataPartitionFromDataNode] delete data replica from datanode fail, id %d, err %s", dp.PartitionID, err.Error())
 		}
@@ -1069,7 +1059,6 @@ func (vol *Vol) deleteDataPartitionFromDataNode(c *Cluster, task *proto.AdminTas
 }
 
 func (vol *Vol) deleteVolFromStore(c *Cluster) (err error) {
-
 	if err = c.syncDeleteVol(vol); err != nil {
 		return
 	}
@@ -1098,7 +1087,6 @@ func (vol *Vol) deleteDataPartitionsFromStore(c *Cluster) {
 	for _, dp := range vol.dataPartitions.partitions {
 		c.syncDeleteDataPartition(dp)
 	}
-
 }
 
 func (vol *Vol) getTasksToDeleteMetaPartitions() (tasks []*proto.AdminTask) {
@@ -1239,7 +1227,6 @@ func (vol *Vol) doCreateMetaPartition(c *Cluster, start, end uint64) (mp *MetaPa
 			log.LogErrorf("action[doCreateMetaPartition] getHostFromDomainZone err[%v]", err)
 			return nil, errors.NewError(err)
 		}
-
 	} else {
 		var excludeZone []string
 		zoneNum := c.decideZoneNum(vol.crossZone)
@@ -1345,7 +1332,6 @@ func setVolFromArgs(args *VolVarargs, vol *Vol) {
 }
 
 func getVolVarargs(vol *Vol) *VolVarargs {
-
 	args := &coldVolArgs{
 		objBlockSize:     vol.EbsBlkSize,
 		cacheCap:         vol.CacheCapacity,
@@ -1405,7 +1391,7 @@ func (vol *Vol) loadQuotaManager(c *Cluster) (err error) {
 	}
 
 	for _, value := range result {
-		var quotaInfo = &proto.QuotaInfo{}
+		quotaInfo := &proto.QuotaInfo{}
 
 		if err = json.Unmarshal(value, quotaInfo); err != nil {
 			log.LogErrorf("loadQuotaManager Unmarshal fail err [%v]", err)

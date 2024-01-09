@@ -968,8 +968,10 @@ func (mp *metaPartition) LoadSnapshot(snapshotPath string) (err error) {
 		}
 	}
 
-	if err = mp.loadRequestRecords(snapshotPath); err != nil {
-		return
+	if crc_count == CRC_COUNT_REQ_RECORD {
+		if err = mp.loadRequestRecords(snapshotPath, crcs[CRC_COUNT_REQ_RECORD-1]); err != nil {
+			return
+		}
 	}
 
 	return mp.loadApplyID(snapshotPath)
@@ -1412,9 +1414,5 @@ func (mp *metaPartition) recordRequest(req *RequestInfo, respCode uint8) {
 }
 
 func (mp *metaPartition) removeDupClientReqEnableState() bool {
-	if mp.reqRecords.enable {
-		return true
-	}
-
-	return false
+	return mp.reqRecords.IsEnable()
 }

@@ -61,9 +61,11 @@ func (records *RequestRecords) IsDupReq(req *RequestInfo) (previousRespCode uint
 	if req == nil || !req.EnableRemoveDupReq {
 		return
 	}
+
 	records.rwLock.RLock()
-	defer records.rwLock.RUnlock()
 	existReq := records.reqTree.Get(req)
+	records.rwLock.RUnlock()
+
 	if existReq == nil {
 		return
 	}
@@ -111,8 +113,7 @@ func (records *RequestRecords) Remove(req *RequestInfo) {
 	element := records.reqList.Back()
 	for element != nil {
 		reqInfo := element.Value.(*RequestInfo)
-		if reqInfo.RequestTime == req.RequestTime && reqInfo.ClientIP == req.ClientIP && reqInfo.ClientID == req.ClientID &&
-			reqInfo.DataCrc == reqInfo.DataCrc && reqInfo.ReqID == req.ReqID && reqInfo.ClientStartTime == reqInfo.ClientStartTime {
+		if reqInfo.Equal(req) {
 			records.reqList.Remove(element)
 		}
 		element = element.Prev()
@@ -200,4 +201,20 @@ func (records *RequestRecords) RangeTree(f func(req *RequestInfo) (ok bool)) {
 	records.reqTree.Ascend(func(i BtreeItem) bool {
 		return f(i.(*RequestInfo))
 	})
+}
+
+func (records *RequestRecords) SetEnable(val bool) {
+
+	records.rwLock.Lock()
+	defer records.rwLock.Unlock()
+	records.enable = val
+}
+
+func (records *RequestRecords) IsEnable() bool {
+
+	records.rwLock.RLock()
+	val := records.enable
+	records.rwLock.RUnlock()
+
+	return val
 }

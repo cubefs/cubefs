@@ -22,8 +22,8 @@ import (
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/auditlog"
-	"github.com/cubefs/cubefs/util/log"
 	"github.com/cubefs/cubefs/util/errors"
+	"github.com/cubefs/cubefs/util/log"
 )
 
 func (mp *metaPartition) TxCreateDentry(req *proto.TxCreateDentryRequest, p *Packet, remoteAddr string) (err error) {
@@ -39,7 +39,7 @@ func (mp *metaPartition) TxCreateDentry(req *proto.TxCreateDentryRequest, p *Pac
 		return
 	}
 
-	clientReq := NewRequestInfo(req.ClientID, req.ClientStartTime, p.ReqID, req.ClientIP, p.CRC, mp.removeDupClientReqEnableState())
+	clientReq := NewRequestInfo(req.ClientInfo, p.ReqID, p.CRC, mp.removeDupClientReqEnableState())
 	if previousRespCode, isDup := mp.reqRecords.IsDupReq(clientReq); isDup {
 		p.ResultCode = previousRespCode
 		log.LogCriticalf("CreateDentry: dup req:%v, previousRespCode:%v", clientReq, previousRespCode)
@@ -103,7 +103,7 @@ func (mp *metaPartition) CreateDentry(req *CreateDentryReq, p *Packet, remoteAdd
 		return
 	}
 
-	clientReq := NewRequestInfo(req.ClientID, req.ClientStartTime, p.ReqID, req.ClientIP, p.CRC, mp.removeDupClientReqEnableState())
+	clientReq := NewRequestInfo(req.ClientInfo, p.ReqID, p.CRC, mp.removeDupClientReqEnableState())
 	if previousRespCode, isDup := mp.reqRecords.IsDupReq(clientReq); isDup {
 		p.ResultCode = previousRespCode
 		log.LogCriticalf("CreateDentry: dup req:%v, previousRespCode:%v", clientReq, previousRespCode)
@@ -157,7 +157,7 @@ func (mp *metaPartition) QuotaCreateDentry(req *proto.QuotaCreateDentryRequest, 
 		return
 	}
 
-	clientReq := NewRequestInfo(req.ClientID, req.ClientStartTime, p.ReqID, req.ClientIP, p.CRC, mp.removeDupClientReqEnableState())
+	clientReq := NewRequestInfo(req.ClientInfo, p.ReqID, p.CRC, mp.removeDupClientReqEnableState())
 	if previousRespCode, isDup := mp.reqRecords.IsDupReq(clientReq); isDup {
 		p.ResultCode = previousRespCode
 		log.LogCriticalf("CreateDentry: dup req:%v, previousRespCode:%v", clientReq, previousRespCode)
@@ -208,7 +208,7 @@ func (mp *metaPartition) QuotaCreateDentry(req *proto.QuotaCreateDentryRequest, 
 }
 
 func (mp *metaPartition) TxDeleteDentry(req *proto.TxDeleteDentryRequest, p *Packet, remoteAddr string) (err error) {
-	clientReq := NewRequestInfo(req.ClientID, req.ClientStartTime, p.ReqID, req.ClientIP, p.CRC, mp.removeDupClientReqEnableState())
+	clientReq := NewRequestInfo(req.ClientInfo, p.ReqID, p.CRC, mp.removeDupClientReqEnableState())
 	if previousRespCode, isDup := mp.reqRecords.IsDupReq(clientReq); isDup {
 		p.ResultCode = previousRespCode
 		log.LogCriticalf("DeleteDentry: dup req:%v, previousRespCode:%v", clientReq, previousRespCode)
@@ -300,7 +300,7 @@ func (mp *metaPartition) DeleteDentry(req *DeleteDentryReq, p *Packet, remoteAdd
 		}
 	}
 
-	clientReq := NewRequestInfo(req.ClientID, req.ClientStartTime, p.ReqID, req.ClientIP, p.CRC, mp.removeDupClientReqEnableState())
+	clientReq := NewRequestInfo(req.ClientInfo, p.ReqID, p.CRC, mp.removeDupClientReqEnableState())
 	if previousRespCode, isDup := mp.reqRecords.IsDupReq(clientReq); isDup {
 		p.ResultCode = previousRespCode
 		log.LogCriticalf("DeleteDentry: dup req:%v, previousRespCode:%v", clientReq, previousRespCode)
