@@ -29,7 +29,7 @@ func (mp *metaPartition) UpdateXAttr(req *proto.UpdateXAttrRequest, p *Packet) (
 	dirsInc, _ := strconv.ParseInt(newValueList[1], 10, 64)
 	bytesInc, _ := strconv.ParseInt(newValueList[2], 10, 64)
 
-	clientReqInfo := NewRequestInfo(req.ClientID, req.ClientStartTime, p.ReqID, req.ClientIP, p.CRC, mp.removeDupClientReqEnableState())
+	clientReqInfo := NewRequestInfo(req.ClientInfo, p.ReqID, p.CRC, mp.removeDupClientReqEnableState())
 	if previousRespCode, isDup := mp.reqRecords.IsDupReq(clientReqInfo); isDup {
 		log.LogCriticalf("SetXAttr: dup req, req:%v, client req info:%v", req, clientReqInfo)
 		p.PacketErrorWithBody(previousRespCode, nil)
@@ -82,7 +82,7 @@ func (mp *metaPartition) UpdateXAttr(req *proto.UpdateXAttrRequest, p *Packet) (
 }
 
 func (mp *metaPartition) SetXAttr(req *proto.SetXAttrRequest, p *Packet) (err error) {
-	clientReqInfo := NewRequestInfo(req.ClientID, req.ClientStartTime, p.ReqID, req.ClientIP, p.CRC, mp.removeDupClientReqEnableState())
+	clientReqInfo := NewRequestInfo(req.ClientInfo, p.ReqID, p.CRC, mp.removeDupClientReqEnableState())
 	if previousRespCode, isDup := mp.reqRecords.IsDupReq(clientReqInfo); isDup {
 		log.LogCriticalf("SetXAttr: dup req, req:%v, client req info:%v", req, clientReqInfo)
 		p.PacketErrorWithBody(previousRespCode, nil)
@@ -100,7 +100,7 @@ func (mp *metaPartition) SetXAttr(req *proto.SetXAttrRequest, p *Packet) (err er
 }
 
 func (mp *metaPartition) BatchSetXAttr(req *proto.BatchSetXAttrRequest, p *Packet) (err error) {
-	clientReqInfo := NewRequestInfo(req.ClientID, req.ClientStartTime, p.ReqID, req.ClientIP, p.CRC, mp.removeDupClientReqEnableState())
+	clientReqInfo := NewRequestInfo(req.ClientInfo, p.ReqID, p.CRC, mp.removeDupClientReqEnableState())
 	if previousRespCode, isDup := mp.reqRecords.IsDupReq(clientReqInfo); isDup {
 		log.LogCriticalf("SetXAttr: dup req, req:%v, client req info:%v", req, clientReqInfo)
 		p.PacketErrorWithBody(previousRespCode, nil)
@@ -200,7 +200,7 @@ func (mp *metaPartition) BatchGetXAttr(req *proto.BatchGetXAttrRequest, p *Packe
 }
 
 func (mp *metaPartition) RemoveXAttr(req *proto.RemoveXAttrRequest, p *Packet) (err error) {
-	clientReqInfo := NewRequestInfo(req.ClientID, req.ClientStartTime, p.ReqID, req.ClientIP, p.CRC, mp.removeDupClientReqEnableState())
+	clientReqInfo := NewRequestInfo(req.ClientInfo, p.ReqID, p.CRC, mp.removeDupClientReqEnableState())
 	if previousRespCode, isDup := mp.reqRecords.IsDupReq(clientReqInfo); isDup {
 		log.LogCriticalf("RemoveXAttr: dup req:%v, previousRespCode:%v", clientReqInfo, previousRespCode)
 		p.PacketErrorWithBody(previousRespCode, nil)

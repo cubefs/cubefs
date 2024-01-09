@@ -9,28 +9,23 @@ import (
 )
 
 const (
-	requestInfoBytesLen       = 41
-	defaultEnableRemoveDupReq = false
-	requestInfoRocksDBKeyLen  = 9
+	requestInfoBytesLen = 41
 )
 
 type RequestInfo struct {
-	ClientID           uint64 `json:"client_id"`
-	ClientStartTime    int64  `json:"client_sTime"`
 	ReqID              int64  `json:"id"`
-	ClientIP           uint32 `json:"ip"`
 	DataCrc            uint32 `json:"crc"`
 	RequestTime        int64  `json:"req_time"`
 	EnableRemoveDupReq bool   `json:"enable_rm_dupReq"`
 	RespCode           uint8  `json:"-"`
+
+	proto.ClientInfo
 }
 
-func NewRequestInfo(clientID uint64, clientSTime, reqID int64, clientIP, dataCrc uint32, enableState bool) *RequestInfo {
+func NewRequestInfo(info proto.ClientInfo, reqID int64, dataCrc uint32, enableState bool) *RequestInfo {
 	return &RequestInfo{
-		ClientID:           clientID,
-		ClientStartTime:    clientSTime,
+		ClientInfo:         info,
 		ReqID:              reqID,
-		ClientIP:           clientIP,
 		DataCrc:            dataCrc,
 		RequestTime:        time.Now().UnixMilli(),
 		EnableRemoveDupReq: enableState,
@@ -61,6 +56,11 @@ func (req *RequestInfo) Copy() BtreeItem {
 	newReq.RequestTime = req.RequestTime
 	newReq.RespCode = req.RespCode
 	return newReq
+}
+
+func (req *RequestInfo) Equal(info *RequestInfo) bool {
+	return info.RequestTime == req.RequestTime && info.ClientIP == req.ClientIP && info.ClientID == req.ClientID &&
+		info.DataCrc == info.DataCrc && info.ReqID == req.ReqID && info.ClientStartTime == info.ClientStartTime
 }
 
 func (req *RequestInfo) MarshalBinary() (data []byte) {

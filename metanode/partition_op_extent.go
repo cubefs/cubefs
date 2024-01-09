@@ -67,7 +67,7 @@ func (mp *metaPartition) ExtentAppend(req *proto.AppendExtentKeyRequest, p *Pack
 		return
 	}
 
-	clientReqInfo := NewRequestInfo(req.ClientID, req.ClientStartTime, p.ReqID, req.ClientIP, p.CRC, mp.removeDupClientReqEnableState())
+	clientReqInfo := NewRequestInfo(req.ClientInfo, p.ReqID, p.CRC, mp.removeDupClientReqEnableState())
 	if previousRespCode, isDup := mp.reqRecords.IsDupReq(clientReqInfo); isDup {
 		log.LogCriticalf("ExtentAppend: partitionID:%v, reqInfo:%v, respCode:%v", mp.config.PartitionId, clientReqInfo, previousRespCode)
 		p.PacketErrorWithBody(previousRespCode, nil)
@@ -110,7 +110,7 @@ func (mp *metaPartition) ExtentAppendWithCheck(req *proto.AppendExtentKeyWithChe
 		inoParm *Inode
 		i       *Inode
 	)
-	clientReqInfo := NewRequestInfo(req.ClientID, req.ClientStartTime, p.ReqID, req.ClientIP, p.CRC, mp.removeDupClientReqEnableState())
+	clientReqInfo := NewRequestInfo(req.ClientInfo, p.ReqID, p.CRC, mp.removeDupClientReqEnableState())
 	if previousRespCode, isDup := mp.reqRecords.IsDupReq(clientReqInfo); isDup {
 		log.LogCriticalf("ExtentAppend: partitionID:%v, reqInfo:%v, respCode:%v", mp.config.PartitionId, clientReqInfo, previousRespCode)
 		p.PacketErrorWithBody(previousRespCode, nil)
@@ -253,7 +253,7 @@ func (mp *metaPartition) ExtentsTruncate(req *ExtentsTruncateReq, p *Packet, rem
 		return
 	}
 
-	clientReqInfo := NewRequestInfo(req.ClientID, req.ClientStartTime, p.ReqID, req.ClientIP, p.CRC, mp.removeDupClientReqEnableState())
+	clientReqInfo := NewRequestInfo(req.ClientInfo, p.ReqID, p.CRC, mp.removeDupClientReqEnableState())
 	if previousRespCode, isDup := mp.reqRecords.IsDupReq(clientReqInfo); isDup {
 		log.LogCriticalf("ExtentsTruncate: partitionID:%v, reqInfo:%v, respCode:%v", mp.config.PartitionId, clientReqInfo, previousRespCode)
 		p.PacketErrorWithBody(previousRespCode, nil)
@@ -308,7 +308,7 @@ func (mp *metaPartition) BatchExtentAppend(req *proto.AppendExtentKeysRequest, p
 		return
 	}
 
-	clientReqInfo := NewRequestInfo(req.ClientID, req.ClientStartTime, p.ReqID, req.ClientIP, p.CRC, mp.removeDupClientReqEnableState())
+	clientReqInfo := NewRequestInfo(req.ClientInfo, p.ReqID, p.CRC, mp.removeDupClientReqEnableState())
 	if previousRespCode, isDup := mp.reqRecords.IsDupReq(clientReqInfo); isDup {
 		log.LogCriticalf("BatchExtentAppend: partitionID:%v, reqInfo:%v, respCode:%v", mp.config.PartitionId, clientReqInfo, previousRespCode)
 		p.PacketErrorWithBody(previousRespCode, nil)
@@ -425,7 +425,7 @@ func (mp *metaPartition) sendExtentsToChan(eks []proto.ExtentKey) (err error) {
 func (mp *metaPartition) SetRemoveDupReqInfo(infos []*proto.RemoveDupReqInfo) {
 	for _, info := range infos {
 		if info.Volume == mp.config.VolName {
-			mp.reqRecords.enable = info.Enable
+			mp.reqRecords.SetEnable(info.Enable)
 			log.LogInfof("SetRemoveDupReqInfo mp %v enable %v ", mp.config.PartitionId, info.Enable)
 			return
 		}

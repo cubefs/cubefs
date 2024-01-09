@@ -43,7 +43,7 @@ const (
 	extendFile        = "extend"
 	multipartFile     = "multipart"
 	txInfoFile        = "tx_info"
-txRbInodeFile     = "tx_rb_inode"
+	txRbInodeFile     = "tx_rb_inode"
 	txRbDentryFile    = "tx_rb_dentry"
 	applyIDFile       = "apply"
 	TxIDFile          = "transactionID"
@@ -725,7 +725,7 @@ func (mp *metaPartition) loadUniqChecker(rootDir string, crc uint32) (err error)
 	return
 }
 
-func (mp *metaPartition) loadRequestRecords(rootDir string) (err error) {
+func (mp *metaPartition) loadRequestRecords(rootDir string, crc uint32) (err error) {
 	filename := path.Join(rootDir, requestRecordFile)
 	if _, err = os.Stat(filename); err != nil {
 		return nil
@@ -764,6 +764,12 @@ func (mp *metaPartition) loadRequestRecords(rootDir string) (err error) {
 		log.LogDebugf("loadRequestRecords: unmarshal req info from bytes: partitionID（%v) reqInfo(%v)", mp.config.PartitionId, reqInfo)
 		offset += int(numBytes)
 	}
+
+	if res := crc32.ChecksumIEEE(mem[:offset]); crc != res {
+		log.LogErrorf("[loadRequestRecords]: check crc mismatch, expected[%d], actual[%d]", crc, res)
+		return ErrSnapshotCrcMismatch
+	}
+
 	mp.reqRecords = InitRequestRecords(requestInfos)
 	log.LogInfof("loadRequestRecords: load complete: partitionID(%v) reqRecordCount(%v) filename(%v)",
 		mp.config.PartitionId, requestRecordCount, filename)

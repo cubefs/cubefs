@@ -173,6 +173,6 @@ func (b *BTree) MaxItem() BtreeItem {
 	return item
 }
 
-func (i *BTree) Count() uint64 {
-	return uint64(i.Len())
+func (b *BTree) Count() uint64 {
+	return uint64(b.Len())
 }

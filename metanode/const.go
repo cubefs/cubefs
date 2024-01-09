@@ -170,12 +170,16 @@ const (
 	opFSMCursor            = 61
 
 	// uniq checker
-	opFSMUniqID              = 62
-	opFSMUniqIDSnap          = 63
-	opFSMUniqCheckerSnap     = 64
-	opFSMUniqCheckerEvict    = 65
+	opFSMUniqID           = 62
+	opFSMUniqIDSnap       = 63
+	opFSMUniqCheckerSnap  = 64
+	opFSMUniqCheckerEvict = 65
+
+	// unlink
 	opFSMUnlinkInodeOnce     = 66
 	opFSMCreateLinkInodeOnce = 67
+
+	// remove record background
 	opFSMSyncEvictReqRecords = 68
 )
 
