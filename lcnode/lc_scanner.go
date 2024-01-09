@@ -655,6 +655,7 @@ func (s *LcScanner) checkScanning() {
 					response.DirScannedNum = s.currentStat.DirScannedNum
 					response.TotalInodeScannedNum = s.currentStat.TotalInodeScannedNum
 					response.ErrorSkippedNum = s.currentStat.ErrorSkippedNum
+					log.LogInfof("checkScanning completed response(%+v)", response)
 
 					s.lcnode.scannerMutex.Lock()
 					s.Stop()
