@@ -119,8 +119,6 @@ const (
 
 	ConfigServiceIDKey = "serviceIDKey"
 
-	// disk status becomes unavailable if disk error count reaches this value
-	ConfigKeyDiskUnavailableErrorCount = "diskUnavailableErrorCount"
 	// disk status becomes unavailable if disk error partition count reaches this value
 	ConfigKeyDiskUnavailablePartitionErrorCount = "diskUnavailablePartitionErrorCount"
 )
@@ -181,7 +179,6 @@ type DataNode struct {
 	cpuUtil                 atomicutil.Float64
 	cpuSamplerDone          chan struct{}
 
-	diskUnavailableErrorCount          uint64 // disk status becomes unavailable when disk error count reaches this value
 	diskUnavailablePartitionErrorCount uint64 // disk status becomes unavailable when disk error partition count reaches this value
 }
 
@@ -350,15 +347,6 @@ func (s *DataNode) parseConfig(cfg *config.Config) (err error) {
 	s.metricsDegrade = cfg.GetInt64(CfgMetricsDegrade)
 
 	s.serviceIDKey = cfg.GetString(ConfigServiceIDKey)
-
-	diskUnavailableErrorCount := cfg.GetInt64(ConfigKeyDiskUnavailableErrorCount)
-	if diskUnavailableErrorCount <= 0 || diskUnavailableErrorCount > 100 {
-		diskUnavailableErrorCount = DefaultDiskUnavailableErrorCount
-		log.LogDebugf("action[parseConfig] ConfigKeyDiskUnavailableErrorCount(%v) out of range, set as default(%v)",
-			diskUnavailableErrorCount, DefaultDiskUnavailableErrorCount)
-	}
-	s.diskUnavailableErrorCount = uint64(diskUnavailableErrorCount)
-	log.LogDebugf("action[parseConfig] load diskUnavailableErrorCount(%v)", s.diskUnavailableErrorCount)
 
 	diskUnavailablePartitionErrorCount := cfg.GetInt64(ConfigKeyDiskUnavailablePartitionErrorCount)
 	if diskUnavailablePartitionErrorCount <= 0 || diskUnavailablePartitionErrorCount > 100 {

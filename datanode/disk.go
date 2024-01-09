@@ -421,7 +421,7 @@ func (d *Disk) CheckDiskError(err error, rwFlag uint8) {
 
 func (d *Disk) doDiskError() {
 	d.Status = proto.Unavailable
-	d.ForceExitRaftStore()
+	//d.ForceExitRaftStore()
 }
 
 func (d *Disk) triggerDiskError(rwFlag uint8, dpId uint64) {
@@ -442,10 +442,10 @@ func (d *Disk) triggerDiskError(rwFlag uint8, dpId uint64) {
 
 	diskErrCnt := d.getTotalErrCnt()
 	diskErrPartitionCnt := d.GetDiskErrPartitionCount()
-	if diskErrCnt >= d.dataNode.diskUnavailableErrorCount || diskErrPartitionCnt >= d.dataNode.diskUnavailablePartitionErrorCount {
+	if diskErrPartitionCnt >= d.dataNode.diskUnavailablePartitionErrorCount {
 		msg := fmt.Sprintf("set disk unavailable for too many disk error, "+
-			"disk path(%v), ip(%v), diskErrCnt(%v) threshold(%v), diskErrPartitionCnt(%v) threshold(%v)",
-			d.Path, LocalIP, diskErrCnt, d.dataNode.diskUnavailableErrorCount, diskErrPartitionCnt, d.dataNode.diskUnavailablePartitionErrorCount)
+			"disk path(%v), ip(%v), diskErrCnt(%v), diskErrPartitionCnt(%v) threshold(%v)",
+			d.Path, LocalIP, diskErrCnt, diskErrPartitionCnt, d.dataNode.diskUnavailablePartitionErrorCount)
 		exporter.Warning(msg)
 		log.LogWarnf(msg)
 		d.doDiskError()
@@ -462,7 +462,7 @@ func (d *Disk) updateSpaceInfo() (err error) {
 		mesg := fmt.Sprintf("disk path %v error on %v", d.Path, LocalIP)
 		log.LogErrorf(mesg)
 		exporter.Warning(mesg)
-		d.ForceExitRaftStore()
+		//d.ForceExitRaftStore()
 	} else if d.Available <= 0 {
 		d.Status = proto.ReadOnly
 	} else {
