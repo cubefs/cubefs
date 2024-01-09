@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"net/http"
 	"runtime"
 	"strconv"
 	"strings"
@@ -26,12 +27,15 @@ import (
 
 	"github.com/cubefs/cubefs/cmd/common"
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/sdk/data/stream"
 	"github.com/cubefs/cubefs/sdk/master"
+	"github.com/cubefs/cubefs/sdk/meta"
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/config"
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
+	"github.com/gorilla/mux"
 	"golang.org/x/time/rate"
 )
 
@@ -88,6 +92,10 @@ func doStart(s common.Server, cfg *config.Config) (err error) {
 	go l.checkRegister()
 	if err = l.startServer(); err != nil {
 		return
+	}
+
+	if enableDebugService {
+		l.debugServiceStart()
 	}
 
 	exporter.Init(ModuleName, cfg)
@@ -213,6 +221,9 @@ func (l *LcNode) parseConfig(cfg *config.Config) (err error) {
 	}
 	log.LogInfof("loadConfig: setup config: %v(%v)", configLcNodeTaskCountLimit, lcNodeTaskCountLimit)
 
+	enableDebugService = cfg.GetBool(configEnableDebugService)
+	log.LogInfof("loadConfig: setup config: %v(%v)", configEnableDebugService, enableDebugService)
+
 	return
 }
 
@@ -330,7 +341,7 @@ func (l *LcNode) serveConn(conn net.Conn, stopC chan bool) {
 }
 
 func (l *LcNode) handlePacket(conn net.Conn, p *proto.Packet, remoteAddr string) (err error) {
-	log.LogInfof("HandleMetadataOperation input info op (%s), remote %s", p.String(), remoteAddr)
+	log.LogInfof("handlePacket input info op (%s), remote %s", p.String(), remoteAddr)
 	switch p.Opcode {
 	case proto.OpLcNodeHeartbeat:
 		err = l.opMasterHeartbeat(conn, p, remoteAddr)
@@ -372,4 +383,109 @@ func (l *LcNode) stopScanners() {
 		s.Stop()
 		delete(l.snapshotScanners, s.ID)
 	}
+}
+
+func (l *LcNode) debugServiceStart() {
+	router := mux.NewRouter().SkipClean(true)
+	router.NewRoute().Methods(http.MethodGet).
+		Path("/debug/getFile").
+		HandlerFunc(l.debugServiceGetFile)
+
+	var server = &http.Server{
+		Addr:         ":8088",
+		Handler:      router,
+		ReadTimeout:  5 * time.Minute,
+		WriteTimeout: 5 * time.Minute,
+	}
+	go func() {
+		if err := server.ListenAndServe(); err != nil {
+			log.LogErrorf("debugServiceStart err: %v", err)
+			return
+		}
+	}()
+	log.LogInfo("debugServiceStart success")
+}
+
+func (l *LcNode) debugServiceGetFile(w http.ResponseWriter, r *http.Request) {
+	var err error
+	if err = r.ParseForm(); err != nil {
+		http.Error(w, fmt.Sprintf("ParseForm err: %v", err.Error()), http.StatusBadRequest)
+		return
+	}
+	var vol = r.FormValue("vol")
+	var ino uint64
+	if ino, err = strconv.ParseUint(r.FormValue("ino"), 10, 64); err != nil {
+		http.Error(w, fmt.Sprintf("ParseUint ino err: %v", err.Error()), http.StatusBadRequest)
+		return
+	}
+	var size uint64
+	if size, err = strconv.ParseUint(r.FormValue("size"), 10, 64); err != nil {
+		http.Error(w, fmt.Sprintf("ParseUint size err: %v", err.Error()), http.StatusBadRequest)
+		return
+	}
+	var sc uint64
+	if sc, err = strconv.ParseUint(r.FormValue("sc"), 10, 32); err != nil {
+		http.Error(w, fmt.Sprintf("ParseUint sc err: %v", err.Error()), http.StatusBadRequest)
+		return
+	}
+	var asc []uint32
+	ascStr := strings.Split(r.FormValue("asc"), ",")
+	for _, scStr := range ascStr {
+		var scUint64 uint64
+		if scUint64, err = strconv.ParseUint(scStr, 10, 32); err != nil {
+			http.Error(w, fmt.Sprintf("ParseUint asc err: %v", err.Error()), http.StatusBadRequest)
+			return
+		}
+		asc = append(asc, uint32(scUint64))
+	}
+
+	var metaConfig = &meta.MetaConfig{
+		Volume:        vol,
+		Masters:       l.masters,
+		Authenticate:  false,
+		ValidateOwner: false,
+	}
+	var metaWrapper *meta.MetaWrapper
+	if metaWrapper, err = meta.NewMetaWrapper(metaConfig); err != nil {
+		http.Error(w, fmt.Sprintf("NewMetaWrapper err: %v", err.Error()), http.StatusBadRequest)
+		return
+	}
+	defer metaWrapper.Close()
+	var extentConfig = &stream.ExtentConfig{
+		Volume:                      vol,
+		Masters:                     l.masters,
+		FollowerRead:                true,
+		OnAppendExtentKey:           metaWrapper.AppendExtentKey,
+		OnSplitExtentKey:            metaWrapper.SplitExtentKey,
+		OnGetExtents:                metaWrapper.GetExtents,
+		OnTruncate:                  metaWrapper.Truncate,
+		OnRenewalForbiddenMigration: metaWrapper.RenewalForbiddenMigration,
+		AllowedStorageClass:         asc,
+	}
+	var extentClient *stream.ExtentClient
+	if extentClient, err = stream.NewExtentClient(extentConfig); err != nil {
+		http.Error(w, fmt.Sprintf("NewExtentClient err: %v", err.Error()), http.StatusBadRequest)
+		return
+	}
+	defer extentClient.Close()
+
+	if err = extentClient.OpenStream(ino, false, false); err != nil {
+		http.Error(w, fmt.Sprintf("OpenStream err: %v", err.Error()), http.StatusBadRequest)
+		return
+	}
+	defer extentClient.CloseStream(ino)
+
+	t := &TransitionMgr{
+		ecForW: extentClient,
+	}
+	e := &proto.ScanDentry{
+		Size:         size,
+		Inode:        ino,
+		StorageClass: uint32(sc),
+	}
+	if err = t.readFromExtentClient(e, w, true); err != nil {
+		http.Error(w, fmt.Sprintf("readFromExtentClient err: %v", err.Error()), http.StatusBadRequest)
+		return
+	}
+	log.LogInfof("debugServiceGetFile success, vol(%v), ino(%v), size(%v)", vol, ino, size)
 }

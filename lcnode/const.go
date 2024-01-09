@@ -31,6 +31,8 @@ const (
 
 	configSnapshotRoutineNumPerTaskStr = "snapshotRoutineNumPerTask"
 	configLcNodeTaskCountLimit         = "lcNodeTaskCountLimit"
+
+	configEnableDebugService = "enableDebugService"
 )
 
 // Default of configuration value
@@ -70,4 +72,6 @@ var (
 	snapshotRoutineNumPerTask int
 	lcNodeTaskCountLimit      int
 	maxDirChanNum             = 1000000
+
+	enableDebugService bool
 )
