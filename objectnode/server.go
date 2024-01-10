@@ -283,6 +283,7 @@ func (o *ObjectNode) startMuxRestAPI() (err error) {
 		Addr:    ":" + o.listen,
 		Handler: router,
 
+		ReadTimeout: ConnIdleTimeout,
 		IdleTimeout: ConnIdleTimeout,
 	}
 
