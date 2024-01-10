@@ -41,13 +41,13 @@ import (
 var (
 	clusterInfo *proto.ClusterInfo
 	//masterClient   *masterSDK.MasterClient
-	masterClient     *masterSDK.MasterCLientWithResolver
-	configTotalMem   uint64
-	serverPort       string
-	smuxPortShift    int
-	smuxPool         *util.SmuxConnectPool
-	smuxPoolCfg      = util.DefaultSmuxConnPoolConfig()
-	defaultMediaType uint64
+	masterClient              *masterSDK.MasterCLientWithResolver
+	configTotalMem            uint64
+	serverPort                string
+	smuxPortShift             int
+	smuxPool                  *util.SmuxConnectPool
+	smuxPoolCfg               = util.DefaultSmuxConnPoolConfig()
+	legacyReplicaStorageClass uint32 // for compatibility when older version upgrade to hybrid cloud
 )
 
 // The MetaNode manages the dentry and inode information of the meta partitions on a meta node.
@@ -335,10 +335,21 @@ func (m *MetaNode) parseConfig(cfg *config.Config) (err error) {
 	if err = masterClient.Start(); err != nil {
 		return err
 	}
-	defaultMediaType, _ = strconv.ParseUint(cfg.GetString(cfgDefaultMediaType), 10, 64)
-	if defaultMediaType == 0 {
-		log.LogWarnf("bad DefaultStorageClass config %v", defaultMediaType)
+
+	if !cfg.HasKey(cfgLegacyStorageClass) {
+		legacyReplicaStorageClass = proto.StorageClass_Unspecified
+		log.LogInfof("parseConfig: [%v] not set", cfgLegacyStorageClass)
+	} else {
+		err, legacyReplicaStorageClass = cfg.GetUint32(cfgLegacyStorageClass)
+		if err != nil || !proto.IsValidStorageClass(legacyReplicaStorageClass) {
+			err = fmt.Errorf("config [%v] invalid value: %v", cfgLegacyStorageClass, legacyReplicaStorageClass)
+			log.LogErrorf("parseConfig: err:%v", err.Error())
+			return err
+		}
+
+		log.LogInfof("parseConfig: config[%v]: %v", cfgLegacyStorageClass, proto.StorageClassString(legacyReplicaStorageClass))
 	}
+
 	err = m.validConfig()
 	return
 }

@@ -131,7 +131,7 @@ func TestRollbackInodeSerialization(t *testing.T) {
 		Flag:                        1,
 		Reserved:                    3,
 		Extents:                     NewSortedExtents(),
-		StorageClass:                proto.MediaType_HDD,
+		StorageClass:                proto.StorageClass_Replica_HDD,
 		HybridCouldExtents:          NewSortedHybridCloudExtents(),
 		HybridCouldExtentsMigration: NewSortedHybridCloudExtentsMigration(),
 		//Extents: NewSortedExtentsFromEks([]proto.ExtentKey{

@@ -90,7 +90,7 @@ type Inode struct {
 	Flag       int32
 	Reserved   uint64 // reserved space
 	// Extents    *ExtentsTree
-	Extents *SortedExtents
+	Extents *SortedExtents // in HybridCloud, this is for cache dp only
 
 	//ObjExtents *SortedObjExtents
 	// Snapshot
@@ -99,9 +99,9 @@ type Inode struct {
 	//HybridCloud
 	StorageClass                uint32
 	HybridCouldExtents          *SortedHybridCloudExtents
+	HybridCouldExtentsMigration *SortedHybridCloudExtentsMigration
 	ForbiddenMigration          uint32
 	WriteGeneration             uint64
-	HybridCouldExtentsMigration *SortedHybridCloudExtentsMigration
 }
 
 func (i *Inode) GetMultiVerString() string {
@@ -897,7 +897,8 @@ func (i *Inode) MarshalValue() (val []byte) {
 	i.RLock()
 	i.MarshalInodeValue(buff)
 	if i.getLayerLen() > 0 && i.getVer() == 0 {
-		log.LogFatalf("action[MarshalValue] inode %v current verseq %v, hist len (%v) stack(%v)", i.Inode, i.getVer(), i.getLayerLen(), string(debug.Stack()))
+		log.LogFatalf("action[MarshalValue] inode %v current verseq %v, hist len (%v) stack(%v)",
+			i.Inode, i.getVer(), i.getLayerLen(), string(debug.Stack()))
 	}
 	if err = binary.Write(buff, binary.BigEndian, int32(i.getLayerLen())); err != nil {
 		i.RUnlock()
@@ -979,6 +980,8 @@ func (i *Inode) UnmarshalInodeValue(buff *bytes.Buffer) (err error) {
 	log.LogDebugf("UnmarshalInodeValue ino(%v) v2(%v) v3(%v) v4(%v)", i.Inode, v2, v3, v4)
 	//hybridcloud format
 	if v4 {
+		//TODO:tangjingyu test only
+		log.LogDebugf("#### [UnmarshalInodeValue] v4, ino(%v)", i.Inode)
 		if err = binary.Read(buff, binary.BigEndian, &i.StorageClass); err != nil {
 			return
 		}
@@ -1113,7 +1116,11 @@ func (i *Inode) UnmarshalInodeValue(buff *bytes.Buffer) (err error) {
 		}
 
 	} else { //transform old-format inode to v4-format
+		//TODO:tangjingyu test only
+		log.LogDebugf("#### [UnmarshalInodeValue] ELSE v4, ino(%v)", i.Inode)
 		if v2 || v3 {
+			//TODO:tangjingyu test only
+			log.LogDebugf("#### [UnmarshalInodeValue] v2 || v3 , ino(%v)", i.Inode)
 			if v2 {
 				i.StorageClass = proto.StorageClass_BlobStore
 				extSize := uint32(0)
@@ -1149,9 +1156,9 @@ func (i *Inode) UnmarshalInodeValue(buff *bytes.Buffer) (err error) {
 					i.HybridCouldExtents.sortedEks = objExtents
 				}
 			} else {
-				i.StorageClass = uint32(defaultMediaType)
+				i.StorageClass = legacyReplicaStorageClass
 				if i.StorageClass == proto.StorageClass_Unspecified {
-					return fmt.Errorf("UnmarshalInodeValue: default media type is not specified in config")
+					return fmt.Errorf("UnmarshalInodeValue: legacyReplicaStorageClass not set in config")
 				}
 				extSize := uint32(0)
 				if err = binary.Read(buff, binary.BigEndian, &extSize); err != nil {
@@ -1183,9 +1190,11 @@ func (i *Inode) UnmarshalInodeValue(buff *bytes.Buffer) (err error) {
 				}
 			}
 		} else {
-			i.StorageClass = uint32(defaultMediaType)
+			//TODO:tangjingyu test only
+			log.LogDebugf("#### [UnmarshalInodeValue] not v2 v3 V4, ino(%v)", i.Inode)
+			i.StorageClass = legacyReplicaStorageClass
 			if i.StorageClass == proto.StorageClass_Unspecified {
-				return fmt.Errorf("UnmarshalInodeValue: default media type is not specified in config")
+				return fmt.Errorf("UnmarshalInodeValue: legacyReplicaStorageClass not set in config")
 			}
 			extents := NewSortedExtents()
 			if err, _ = extents.UnmarshalBinary(buff.Bytes(), false); err != nil {
@@ -1267,21 +1276,28 @@ func (i *Inode) GetSpaceSize() (extSize uint64) {
 // UnmarshalValue unmarshals the value from bytes.
 func (i *Inode) UnmarshalValue(val []byte) (err error) {
 	buff := bytes.NewBuffer(val)
-	i.UnmarshalInodeValue(buff)
+
+	if err = i.UnmarshalInodeValue(buff); err != nil {
+		log.LogErrorf("action[UnmarshalValue] ino(%v) UnmarshalInodeValue failed: %v", i.Inode, err.Error())
+		return
+	}
+
 	if i.Reserved&V3EnableSnapInodeFlag > 0 {
 		var verCnt int32
 		if err = binary.Read(buff, binary.BigEndian, &verCnt); err != nil {
 			log.LogInfof("action[UnmarshalValue] err get ver cnt inode %v new seq %v", i.Inode, i.getVer())
 			return
 		}
-		if verCnt > 0 && i.getVer() == 0 {
-			err = fmt.Errorf("inode %v verCnt %v root ver %v", i.Inode, verCnt, i.getVer())
-			log.LogFatalf("UnmarshalValue. %v", err)
-			return
-		}
+
+		//TODO:tangjingyu eed to handle it
+		//if verCnt > 0 && i.getVer() == 0 {
+		//	err = fmt.Errorf("inode %v verCnt %v root ver %v", i.Inode, verCnt, i.getVer())
+		//	log.LogFatalf("UnmarshalValue. %v", err)
+		//	return
+		//}
 		for idx := int32(0); idx < verCnt; idx++ {
 			ino := &Inode{Inode: i.Inode}
-			ino.UnmarshalInodeValue(buff)
+			ino.UnmarshalInodeValue(buff) //TODO:tangjingyu check err
 			if ino.multiSnap != nil && ino.multiSnap.ekRefMap != nil {
 				if i.multiSnap.ekRefMap == nil {
 					i.multiSnap.ekRefMap = new(sync.Map)
@@ -2341,7 +2357,7 @@ func (i *Inode) CopyTinyExtents() (delExtents []proto.ExtentKey) {
 }
 
 func (i *Inode) storeInReplicaSystem() bool {
-	return i.StorageClass == proto.StorageClass_Replica_HDD || i.StorageClass == proto.StorageClass_Replica_SSD
+	return proto.IsStorageClassReplica(i.StorageClass)
 }
 
 func (i *Inode) updateStorageClass(storageClass uint32, isCache, isMigration bool) error {

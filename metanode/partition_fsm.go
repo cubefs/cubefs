@@ -926,7 +926,7 @@ func (mp *metaPartition) HandleLeaderChange(leader uint64) {
 		}
 		ino := NewInode(id, proto.Mode(os.ModePerm|os.ModeDir))
 		//TODO:
-		//ino.StorageClass = uint32(defaultMediaType)
+		//ino.StorageClass = uint32(legacyReplicaStorageClass)
 		ino.StorageClass = proto.StorageClass_Replica_HDD
 		go mp.initInode(ino)
 	}
