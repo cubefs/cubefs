@@ -236,7 +236,7 @@ const (
 	metaNodeDeleteBatchCountKey = "batchCount"
 	configNameResolveInterval   = "nameResolveInterval" // int
 
-	cfgDefaultMediaType = "defaultMediaType"
+	cfgLegacyStorageClass = "legacyReplicaStorageClass"
 )
 
 const (
