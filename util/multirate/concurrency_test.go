@@ -51,3 +51,23 @@ func TestCancelConcurrency(t *testing.T) {
 	cancel()
 	wg.Wait()
 }
+
+func TestResetConcurrency(t *testing.T) {
+	count := uint64(100)
+	c := newConcurrency(count, time.Millisecond)
+	var wg sync.WaitGroup
+	wg.Add(int(count) * 2)
+	for i := uint64(0); i < count; i++ {
+		go func() {
+			c.done()
+			wg.Done()
+		}()
+	}
+	for ; count > 0; count-- {
+		go func() {
+			c.reset(count)
+			wg.Done()
+		}()
+	}
+	wg.Wait()
+}
