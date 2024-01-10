@@ -446,7 +446,7 @@ func (mp *metaPartition) ExtentsList(req *proto.GetExtentsRequest, p *Packet) (e
 
 	if !ino.storeInReplicaSystem() && (req.IsCache != true && req.IsMigration != true) {
 		status = proto.OpErr
-		reply = []byte(fmt.Sprintf("ino %v storage type %v IsCache %v IsMigration %v do not support ExtentsList",
+		reply = []byte(fmt.Sprintf("ino(%v) storageClass(%v) IsCache(%v) IsMigration(%v) do not support ExtentsList",
 			ino.Inode, ino.StorageClass, req.IsCache, req.IsMigration))
 		p.PacketErrorWithBody(status, reply)
 		return

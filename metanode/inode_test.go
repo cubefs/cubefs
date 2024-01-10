@@ -92,7 +92,7 @@ func TestSDDToEBSV4Inode_Marshal(t *testing.T) {
 }
 
 func TestV1InodeStoreInSSDToV4Inode_UnMarshal(t *testing.T) {
-	defaultMediaType = uint64(proto.MediaType_SSD)
+	legacyReplicaStorageClass = proto.StorageClass_Replica_SSD
 	//
 	ino := NewOldVersionInode(1024, 0)
 	ino.Extents = NewSortedExtentsFromEks([]proto.ExtentKey{{FileOffset: 11, PartitionId: 12,
@@ -101,19 +101,19 @@ func TestV1InodeStoreInSSDToV4Inode_UnMarshal(t *testing.T) {
 	data, _ = ino.Marshal()
 	targetIno := NewInode(0, 0)
 	targetIno.Unmarshal(data)
-	assert.True(t, targetIno.StorageClass == proto.MediaType_SSD)
+	assert.True(t, targetIno.StorageClass == proto.StorageClass_Replica_SSD)
 	assert.True(t, reflect.DeepEqual(targetIno.HybridCouldExtents.sortedEks, ino.Extents))
 	var data2 []byte
 	data2, _ = targetIno.Marshal()
 	targetIno2 := NewInode(0, 0)
 	targetIno2.Unmarshal(data2)
-	assert.True(t, targetIno2.StorageClass == proto.MediaType_SSD)
+	assert.True(t, targetIno2.StorageClass == proto.StorageClass_Replica_SSD)
 	assert.True(t, targetIno2.Reserved|V4EnableHybridCloud > 0)
 	assert.True(t, targetIno2.Reserved|V3EnableSnapInodeFlag > 0)
 }
 
 func TestV1InodeStoreInEBSWithoutCacheToV4Inode_UnMarshal(t *testing.T) {
-	defaultMediaType = uint64(proto.StorageClass_BlobStore)
+	legacyReplicaStorageClass = proto.StorageClass_BlobStore
 	//
 	ino := NewOldVersionInode(1024, 0)
 	ino.ObjExtents = NewSortedObjExtentsFromObjEks(
@@ -134,7 +134,7 @@ func TestV1InodeStoreInEBSWithoutCacheToV4Inode_UnMarshal(t *testing.T) {
 }
 
 func TestV1InodeStoreInEBSWithCacheToV4Inode_UnMarshal(t *testing.T) {
-	defaultMediaType = uint64(proto.StorageClass_BlobStore)
+	legacyReplicaStorageClass = proto.StorageClass_BlobStore
 	//
 	ino := NewOldVersionInode(1024, 0)
 	ino.ObjExtents = NewSortedObjExtentsFromObjEks(
