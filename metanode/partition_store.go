@@ -295,7 +295,7 @@ func (mp *metaPartition) loadExtend(rootDir string, crc uint32) (err error) {
 		if _, err = crcCheck.Write(mem[offset-n : offset]); err != nil {
 			return err
 		}
-		// log.LogDebugf("loadExtend: new extend from bytes: partitionID (%v) volume(%v) inode(%v)",
+		// log.LogDebugf("loadExtend: new extend from bytes: partitionID (%v) volume(%v) inode[%v]",
 		//	mp.config.PartitionId, mp.config.VolName, extend.inode)
 		_ = mp.fsmSetXAttr(extend)
 
@@ -993,7 +993,7 @@ func (mp *metaPartition) storeTxRbInode(rootDir string, sm *storeMsg) (crc uint3
 	})
 
 	crc = sign.Sum32()
-	log.LogInfof("storeTxRbInode: store complete: partitoinID(%v) volume(%v) numRbInode(%v) crc(%v)",
+	log.LogInfof("storeTxRbInode: store complete: partitoinID(%v) volume(%v) numRbinode[%v] crc(%v)",
 		mp.config.PartitionId, mp.config.VolName, sm.txRbInodeTree.Len(), crc)
 	return
 }

@@ -54,7 +54,7 @@ func TestDoEvit(t *testing.T) {
 	checker := mp.uniqChecker
 	mp.uniqCheckerEvict()
 	if checker.inQue.len() != 0 || len(checker.op) != 0 {
-		t.Errorf("failed, inQue %v, op %v", checker.inQue.len(), len(checker.op))
+		t.Errorf("failed, inQue %v, op [%v]", checker.inQue.len(), len(checker.op))
 	}
 
 	for i := 1; i <= 1; i++ {
@@ -64,12 +64,12 @@ func TestDoEvit(t *testing.T) {
 	}
 	mp.uniqCheckerEvict()
 	if checker.inQue.len() != 1 || len(checker.op) != 1 {
-		t.Errorf("failed, inQue %v, op %v", checker.inQue, checker.op)
+		t.Errorf("failed, inQue %v, op [%v]", checker.inQue, checker.op)
 	}
 	mp.uniqChecker.keepTime = 0
 	mp.uniqCheckerEvict()
 	if checker.inQue.len() != 0 || len(checker.op) != 0 {
-		t.Errorf("failed, inQue %v, op %v", checker.inQue, checker.op)
+		t.Errorf("failed, inQue %v, op [%v]", checker.inQue, checker.op)
 	}
 
 	for i := 1; i <= 1000; i++ {
@@ -78,7 +78,7 @@ func TestDoEvit(t *testing.T) {
 		}
 	}
 	if checker.inQue.len() != 1000 || len(checker.op) != 1000 {
-		t.Errorf("failed, inQue %v, op %v", checker.inQue.len(), len(checker.op))
+		t.Errorf("failed, inQue %v, op [%v]", checker.inQue.len(), len(checker.op))
 	}
 
 	mp.uniqCheckerEvict()
@@ -90,7 +90,7 @@ func TestDoEvit(t *testing.T) {
 	}
 	mp.uniqCheckerEvict()
 	if checker.inQue.len() != 100 || len(checker.op) != 100 {
-		t.Errorf("failed, inQue %v, op %v", checker.inQue.len(), len(checker.op))
+		t.Errorf("failed, inQue %v, op [%v]", checker.inQue.len(), len(checker.op))
 	}
 }
 
@@ -109,7 +109,7 @@ func TestDoEvit1(t *testing.T) {
 	mp.uniqCheckerEvict()
 
 	if checker.inQue.len() != 0 || len(checker.op) != 0 {
-		t.Errorf("failed, inQue %v, op %v", checker.inQue, checker.op)
+		t.Errorf("failed, inQue %v, op [%v]", checker.inQue, checker.op)
 	}
 }
 
@@ -132,7 +132,7 @@ func TestDoEvit2(t *testing.T) {
 	}
 	mp.uniqCheckerEvict()
 	if checker.inQue.len() != len(checker.op) {
-		t.Errorf("failed, inQue %v, op %v", checker.inQue.len(), len(checker.op))
+		t.Errorf("failed, inQue %v, op [%v]", checker.inQue.len(), len(checker.op))
 	}
 }
 

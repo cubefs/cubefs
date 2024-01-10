@@ -79,7 +79,7 @@ func (qInode *MetaQuotaInode) Marshal() (result []byte, err error) {
 	}
 	buff.Write(quotaBytes.Bytes())
 	result = buff.Bytes()
-	log.LogDebugf("MetaQuotaInode Marshal inode [%v] inodeLen [%v] size [%v]", qInode.inode.Inode, inodeLen, len(result))
+	log.LogDebugf("MetaQuotaInode Marshal inode[%v] inodeLen [%v] size [%v]", qInode.inode.Inode, inodeLen, len(result))
 	return
 }
 
@@ -131,7 +131,7 @@ func (qInode *TxMetaQuotaInode) Marshal() (result []byte, err error) {
 	}
 	buff.Write(quotaBytes.Bytes())
 	result = buff.Bytes()
-	log.LogDebugf("TxMetaQuotaInode Marshal inode [%v] inodeLen [%v] size [%v]", qInode.txinode.Inode.Inode, inodeLen, len(result))
+	log.LogDebugf("TxMetaQuotaInode Marshal inode[%v] inodeLen [%v] size [%v]", qInode.txinode.Inode.Inode, inodeLen, len(result))
 	return
 }
 
@@ -173,7 +173,7 @@ func (mqMgr *MetaQuotaManager) setQuotaHbInfo(infos []*proto.QuotaHeartBeatInfo)
 		}
 		mqMgr.enable = info.Enable
 		mqMgr.limitedMap.Store(info.QuotaId, info.LimitedInfo)
-		log.LogDebugf("mp [%v] quotaId [%v] limitedInfo [%v]", mqMgr.mpID, info.QuotaId, info.LimitedInfo)
+		log.LogDebugf("mp[%v] quotaId [%v] limitedInfo [%v]", mqMgr.mpID, info.QuotaId, info.LimitedInfo)
 	}
 	mqMgr.limitedMap.Range(func(key, value interface{}) bool {
 		quotaId := key.(uint32)
@@ -205,15 +205,15 @@ func (mqMgr *MetaQuotaManager) getQuotaReportInfos() (infos []*proto.QuotaReport
 		usedInfo = value.(proto.QuotaUsedInfo)
 		if value, isFind := mqMgr.statisticBase.Load(key.(uint32)); isFind {
 			baseInfo := value.(proto.QuotaUsedInfo)
-			log.LogDebugf("[getQuotaReportInfos] statisticTemp mp [%v] key [%v] usedInfo [%v] baseInfo [%v]", mqMgr.mpID,
+			log.LogDebugf("[getQuotaReportInfos] statisticTemp mp[%v] key [%v] usedInfo [%v] baseInfo [%v]", mqMgr.mpID,
 				key.(uint32), usedInfo, baseInfo)
 			usedInfo.Add(&baseInfo)
 			if usedInfo.UsedFiles < 0 {
-				log.LogWarnf("[getQuotaReportInfos] statisticTemp mp [%v] key [%v] usedInfo [%v]", mqMgr.mpID, key.(uint32), usedInfo)
+				log.LogWarnf("[getQuotaReportInfos] statisticTemp mp[%v] key [%v] usedInfo [%v]", mqMgr.mpID, key.(uint32), usedInfo)
 				usedInfo.UsedFiles = 0
 			}
 			if usedInfo.UsedBytes < 0 {
-				log.LogWarnf("[getQuotaReportInfos] statisticTemp mp [%v] key [%v] usedInfo [%v]", mqMgr.mpID, key.(uint32), usedInfo)
+				log.LogWarnf("[getQuotaReportInfos] statisticTemp mp[%v] key [%v] usedInfo [%v]", mqMgr.mpID, key.(uint32), usedInfo)
 				usedInfo.UsedBytes = 0
 			}
 		}
@@ -232,7 +232,7 @@ func (mqMgr *MetaQuotaManager) getQuotaReportInfos() (infos []*proto.QuotaReport
 			UsedInfo: usedInfo,
 		}
 		infos = append(infos, reportInfo)
-		log.LogDebugf("[getQuotaReportInfos] statisticBase mp [%v] key [%v] usedInfo [%v]", mqMgr.mpID, key.(uint32), usedInfo)
+		log.LogDebugf("[getQuotaReportInfos] statisticBase mp[%v] key [%v] usedInfo [%v]", mqMgr.mpID, key.(uint32), usedInfo)
 		return true
 	})
 	return
@@ -270,13 +270,13 @@ func (mqMgr *MetaQuotaManager) statisticRebuildFin(rebuild bool) {
 		mqMgr.statisticTemp.Range(func(key, value interface{}) bool {
 			quotaId := key.(uint32)
 			usedInfo := value.(proto.QuotaUsedInfo)
-			log.LogInfof("statisticRebuildFin statisticTemp  mp [%v] quotaId [%v] usedInfo [%v]", mqMgr.mpID, quotaId, usedInfo)
+			log.LogInfof("statisticRebuildFin statisticTemp  mp[%v] quotaId [%v] usedInfo [%v]", mqMgr.mpID, quotaId, usedInfo)
 			return true
 		})
 		mqMgr.statisticBase.Range(func(key, value interface{}) bool {
 			quotaId := key.(uint32)
 			usedInfo := value.(proto.QuotaUsedInfo)
-			log.LogInfof("statisticRebuildFin statisticBase  mp [%v] quotaId [%v] usedInfo [%v]", mqMgr.mpID, quotaId, usedInfo)
+			log.LogInfof("statisticRebuildFin statisticBase  mp[%v] quotaId [%v] usedInfo [%v]", mqMgr.mpID, quotaId, usedInfo)
 			return true
 		})
 	}
@@ -330,7 +330,7 @@ func (mqMgr *MetaQuotaManager) updateUsedInfo(size int64, files int64, quotaId u
 		baseTemp.UsedFiles += files
 		mqMgr.statisticRebuildTemp.Store(quotaId, baseTemp)
 	}
-	log.LogDebugf("updateUsedInfo mpId [%v] quotaId [%v] baseInfo [%v] baseTemp [%v]", mqMgr.mpID, quotaId, baseInfo, baseTemp)
+	log.LogDebugf("updateUsedInfo mpId [%v] quotaId [%v] baseInfo [%v] baseTemp[%v]", mqMgr.mpID, quotaId, baseInfo, baseTemp)
 	return
 }
 

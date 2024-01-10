@@ -44,7 +44,7 @@ func (e *Extend) checkSequence() (err error) {
 	lastSeq := e.verSeq
 	for id, extend := range e.multiVers {
 		if lastSeq <= extend.verSeq {
-			return fmt.Errorf("id %v seq %v not less than last seq %v", id, extend.verSeq, lastSeq)
+			return fmt.Errorf("id[%v] seq [%v] not less than last seq [%v]", id, extend.verSeq, lastSeq)
 		}
 	}
 	return

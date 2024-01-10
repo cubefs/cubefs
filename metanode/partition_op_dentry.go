@@ -174,7 +174,7 @@ func (mp *metaPartition) QuotaCreateDentry(req *proto.QuotaCreateDentryRequest, 
 		Type:     req.Mode,
 	}
 	dentry.setVerSeq(mp.verSeq)
-	log.LogDebugf("action[CreateDentry] mp[%v] with seq %v,dentry [%v]", mp.config.PartitionId, mp.verSeq, dentry)
+	log.LogDebugf("action[CreateDentry] mp[%v] with seq [%v],dentry [%v]", mp.config.PartitionId, mp.verSeq, dentry)
 	val, err := dentry.Marshal()
 	if err != nil {
 		return
@@ -275,7 +275,7 @@ func (mp *metaPartition) DeleteDentry(req *DeleteDentryReq, p *Packet, remoteAdd
 	if req.InodeCreateTime > 0 {
 		if mp.vol.volDeleteLockTime > 0 && req.InodeCreateTime+mp.vol.volDeleteLockTime*60*60 > time.Now().Unix() {
 			err = errors.NewErrorf("the current Inode[%v] is still locked for deletion", req.Name)
-			log.LogDebugf("DeleteDentry: the current Inode is still locked for deletion, inode(%v) createTime(%v) mw.volDeleteLockTime(%v) now(%v)", req.Name, req.InodeCreateTime, mp.vol.volDeleteLockTime, time.Now().Unix())
+			log.LogDebugf("DeleteDentry: the current Inode is still locked for deletion, inode[%v] createTime(%v) mw.volDeleteLockTime(%v) now(%v)", req.Name, req.InodeCreateTime, mp.vol.volDeleteLockTime, time.Now().Unix())
 			p.PacketErrorWithBody(proto.OpNotPerm, []byte(err.Error()))
 			return
 		}
@@ -527,7 +527,7 @@ func (mp *metaPartition) ReadDir(req *ReadDirReq, p *Packet) (err error) {
 }
 
 func (mp *metaPartition) ReadDirLimit(req *ReadDirLimitReq, p *Packet) (err error) {
-	log.LogInfof("action[ReadDirLimit] read seq %v, request[%v]", req.VerSeq, req)
+	log.LogInfof("action[ReadDirLimit] read seq [%v], request[%v]", req.VerSeq, req)
 	resp := mp.readDirLimit(req)
 	reply, err := json.Marshal(resp)
 	if err != nil {

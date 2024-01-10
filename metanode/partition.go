@@ -318,7 +318,7 @@ func (uMgr *UidManager) addUidSpace(uid uint32, inode uint64, eks []proto.Extent
 
 	status = proto.OpOk
 	if uMgr.getUidAcl(uid) {
-		log.LogWarnf("addUidSpace.vol %v mp[%v] uid %v be set full", uMgr.mpID, uMgr.volName, uid)
+		log.LogWarnf("addUidSpace.volname [%v] mp[%v] uid %v be set full", uMgr.mpID, uMgr.volName, uid)
 		return proto.OpNoSpaceErr
 	}
 	if eks == nil {
@@ -385,7 +385,7 @@ func (uMgr *UidManager) setUidAcl(info []*proto.UidSpaceInfo) {
 		if uidInfo.VolName != uMgr.volName {
 			continue
 		}
-		// log.LogDebugf("setUidAcl.vol %v uid %v be set enable %v", uMgr.volName, uidInfo.Uid, uidInfo.Limited)
+		// log.LogDebugf("setUidAcl.volname [%v] uid %v be set enable %v", uMgr.volName, uidInfo.Uid, uidInfo.Limited)
 		uMgr.uidAcl.Store(uidInfo.Uid, uidInfo.Limited)
 	}
 }
@@ -443,7 +443,7 @@ func (uMgr *UidManager) accumRebuildStart() bool {
 func (uMgr *UidManager) accumRebuildFin(rebuild bool) {
 	uMgr.acLock.Lock()
 	defer uMgr.acLock.Unlock()
-	log.LogDebugf("accumRebuildFin rebuild vol %v, mp:[%v],%v:%v, rebuild:[%v]", uMgr.volName, uMgr.mpID,
+	log.LogDebugf("accumRebuildFin rebuild volname [%v], mp:[%v],%v:%v, rebuild:[%v]", uMgr.volName, uMgr.mpID,
 		uMgr.accumRebuildBase, uMgr.accumRebuildDelta, rebuild)
 	uMgr.rbuilding = false
 	if !rebuild {
@@ -597,9 +597,9 @@ func (mp *metaPartition) updateSize() {
 				})
 
 				mp.size = size
-				log.LogDebugf("[updateSize] update mp(%d) size(%d) success,inodeCount(%d),dentryCount(%d)", mp.config.PartitionId, size, mp.inodeTree.Len(), mp.dentryTree.Len())
+				log.LogDebugf("[updateSize] update mp[%v] size(%d) success,inodeCount(%d),dentryCount(%d)", mp.config.PartitionId, size, mp.inodeTree.Len(), mp.dentryTree.Len())
 			case <-mp.stopC:
-				log.LogDebugf("[updateSize] stop update mp(%d) size,inodeCount(%d),dentryCount(%d)", mp.config.PartitionId, mp.inodeTree.Len(), mp.dentryTree.Len())
+				log.LogDebugf("[updateSize] stop update mp[%v] size,inodeCount(%d),dentryCount(%d)", mp.config.PartitionId, mp.inodeTree.Len(), mp.dentryTree.Len())
 				return
 			}
 		}
@@ -684,7 +684,7 @@ func (mp *metaPartition) versionInit(isCreate bool) (err error) {
 		mp.multiVersionList.VerList = append(mp.multiVersionList.VerList, info)
 	}
 
-	log.LogDebugf("action[onStart] mp %v verList %v", mp.config.PartitionId, mp.multiVersionList.VerList)
+	log.LogDebugf("action[onStart] mp[%v] verList %v", mp.config.PartitionId, mp.multiVersionList.VerList)
 	vlen := len(mp.multiVersionList.VerList)
 	if vlen > 0 {
 		mp.verSeq = mp.multiVersionList.VerList[vlen-1].Ver
@@ -758,14 +758,14 @@ func (mp *metaPartition) onStart(isCreate bool) (err error) {
 
 	go mp.startCheckerEvict()
 
-	log.LogDebugf("[before raft] get mp(%d) applied(%d),inodeCount(%d),dentryCount(%d)", mp.config.PartitionId, mp.applyID, mp.inodeTree.Len(), mp.dentryTree.Len())
+	log.LogDebugf("[before raft] get mp[%v] applied(%d),inodeCount(%d),dentryCount(%d)", mp.config.PartitionId, mp.applyID, mp.inodeTree.Len(), mp.dentryTree.Len())
 
 	if err = mp.startRaft(); err != nil {
 		err = errors.NewErrorf("[onStart] start raft id=%d: %s",
 			mp.config.PartitionId, err.Error())
 		return
 	}
-	log.LogDebugf("[after raft] get mp(%d) applied(%d),inodeCount(%d),dentryCount(%d)", mp.config.PartitionId, mp.applyID, mp.inodeTree.Len(), mp.dentryTree.Len())
+	log.LogDebugf("[after raft] get mp[%v] applied(%d),inodeCount(%d),dentryCount(%d)", mp.config.PartitionId, mp.applyID, mp.inodeTree.Len(), mp.dentryTree.Len())
 
 	mp.updateSize()
 
@@ -1081,7 +1081,7 @@ func (mp *metaPartition) LoadSnapshot(snapshotPath string) (err error) {
 	}
 
 	wg.Wait()
-	log.LogDebugf("[load meta finish] get mp(%d) inodeCount(%d),dentryCount(%d)", mp.config.PartitionId, mp.inodeTree.Len(), mp.dentryTree.Len())
+	log.LogDebugf("[load meta finish] get mp[%v] inodeCount(%d),dentryCount(%d)", mp.config.PartitionId, mp.inodeTree.Len(), mp.dentryTree.Len())
 	for _, err = range errs {
 		if err != nil {
 			return
@@ -1421,7 +1421,7 @@ func (mp *metaPartition) multiVersionTTLWork(dur time.Duration) {
 			}
 
 		case <-mp.stopC:
-			log.LogWarnf("[multiVersionTTLWork] stoped, mp(%d)", mp.config.PartitionId)
+			log.LogWarnf("[multiVersionTTLWork] stoped, mp[%v]", mp.config.PartitionId)
 			return
 		}
 	}
@@ -1437,7 +1437,7 @@ func (mp *metaPartition) delPartitionVersion(verSeq uint64) {
 		reqVerSeq = math.MaxUint64
 	}
 
-	log.LogInfof("action[delPartitionVersion] mp %v verSeq %v:%v", mp.config.PartitionId, verSeq, reqVerSeq)
+	log.LogInfof("action[delPartitionVersion] mp[%v] verseq [%v]:%v", mp.config.PartitionId, verSeq, reqVerSeq)
 	go mp.delPartitionInodesVersion(reqVerSeq, &wg)
 	go mp.delPartitionExtendsVersion(reqVerSeq, &wg)
 	go mp.delPartitionDentriesVersion(reqVerSeq, &wg)
@@ -1627,7 +1627,7 @@ func (mp *metaPartition) doCacheTTL(cacheTTL int) (err error) {
 			mp.InodeTTLScan(cacheTTL)
 
 		case <-mp.stopC:
-			log.LogWarnf("[doCacheTTL] stoped, mp(%d)", mp.config.PartitionId)
+			log.LogWarnf("[doCacheTTL] stoped, mp[%v]", mp.config.PartitionId)
 			return
 		}
 	}

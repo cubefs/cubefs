@@ -217,7 +217,7 @@ func (mp *metaPartition) batchDeleteExtentsByPartition(partitionDeleteExtents ma
 				successDeleteExtentCnt++
 				return true
 			} else {
-				log.LogWarnf("deleteInode Inode(%v) error(%v)", inode.Inode, occurErrors[ek.PartitionId])
+				log.LogWarnf("deleteInode inode[%v] error(%v)", inode.Inode, occurErrors[ek.PartitionId])
 				return false
 			}
 		})
@@ -244,7 +244,7 @@ func (mp *metaPartition) deleteMarkedInodes(inoSlice []uint64) {
 	if len(inoSlice) == 0 {
 		return
 	}
-	log.LogDebugf("[deleteMarkedInodes] . mp %v inoSlice [%v]", mp.config.PartitionId, inoSlice)
+	log.LogDebugf("[deleteMarkedInodes] . mp[%v] inoSlice [%v]", mp.config.PartitionId, inoSlice)
 	shouldCommit := make([]*Inode, 0, DeleteBatchCount())
 	shouldRePushToFreeList := make([]*Inode, 0)
 	deleteExtentsByPartition := make(map[uint64][]*proto.ExtentKey)
@@ -253,7 +253,7 @@ func (mp *metaPartition) deleteMarkedInodes(inoSlice []uint64) {
 		ref := &Inode{Inode: ino}
 		inode, ok := mp.inodeTree.Get(ref).(*Inode)
 		if !ok {
-			log.LogDebugf("[deleteMarkedInodes] . mp %v inode [%v] not found", mp.config.PartitionId, ino)
+			log.LogDebugf("[deleteMarkedInodes] . mp[%v] inode[%v] not found", mp.config.PartitionId, ino)
 			continue
 		}
 
@@ -262,11 +262,11 @@ func (mp *metaPartition) deleteMarkedInodes(inoSlice []uint64) {
 			continue
 		}
 
-		log.LogDebugf("[deleteMarkedInodes] . mp %v inode [%v] inode.Extents: %v, ino verList: %v",
+		log.LogDebugf("[deleteMarkedInodes] . mp[%v] inode[%v] inode.Extents: %v, ino verList: %v",
 			mp.config.PartitionId, ino, inode.Extents, inode.GetMultiVerString())
 
 		if inode.getLayerLen() > 0 {
-			log.LogErrorf("[deleteMarkedInodes] deleteMarkedInodes. mp %v inode [%v] verlist len %v should not drop",
+			log.LogErrorf("[deleteMarkedInodes] deleteMarkedInodes. mp[%v] inode[%v] verlist len %v should not drop",
 				mp.config.PartitionId, ino, inode.getLayerLen())
 			return
 		}
@@ -278,7 +278,7 @@ func (mp *metaPartition) deleteMarkedInodes(inoSlice []uint64) {
 				exts = make([]*proto.ExtentKey, 0)
 			}
 			exts = append(exts, inodeExts...)
-			log.LogWritef("[deleteMarkedInodes] mp(%v) ino(%v) deleteExtent(%v)", mp.config.PartitionId, inode.Inode, len(inodeExts))
+			log.LogWritef("[deleteMarkedInodes] mp[%v] ino(%v) deleteExtent(%v)", mp.config.PartitionId, inode.Inode, len(inodeExts))
 			deleteExtentsByPartition[dpID] = exts
 		}
 

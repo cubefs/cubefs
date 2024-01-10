@@ -151,7 +151,7 @@ func (mp *metaPartition) CreateInode(req *CreateInoReq, p *Packet, remoteAddr st
 		}
 	}
 	p.PacketErrorWithBody(status, reply)
-	log.LogInfof("CreateInode req [%v] qinode [%v] success.", req, qinode)
+	log.LogInfof("CreateInode req [%v] qinode[%v] success.", req, qinode)
 	return
 }
 
@@ -223,7 +223,7 @@ func (mp *metaPartition) QuotaCreateInode(req *proto.QuotaCreateInodeRequest, p 
 		}
 	}
 	p.PacketErrorWithBody(status, reply)
-	log.LogInfof("QuotaCreateInode req [%v] qinode [%v] success.", req, qinode)
+	log.LogInfof("QuotaCreateInode req [%v] qinode[%v] success.", req, qinode)
 	return
 }
 
@@ -267,7 +267,7 @@ func (mp *metaPartition) TxUnlinkInode(req *proto.TxUnlinkInodeRequest, p *Packe
 			}
 
 			p.ResultCode = status
-			log.LogWarnf("TxUnlinkInode: inode is already unlink before, req %v, rbIno %v, item %v", req, respIno, item)
+			log.LogWarnf("TxUnlinkInode: inode is already unlink before, req %v, rbino[%v], item %v", req, respIno, item)
 			return nil
 		}
 
@@ -281,7 +281,7 @@ func (mp *metaPartition) TxUnlinkInode(req *proto.TxUnlinkInodeRequest, p *Packe
 	deleteLockTime := mp.vol.volDeleteLockTime * 60 * 60
 	if deleteLockTime > 0 && createTime+deleteLockTime > time.Now().Unix() {
 		err = fmt.Errorf("the current Inode[%v] is still locked for deletion", req.Inode)
-		log.LogDebugf("TxUnlinkInode: the current Inode is still locked for deletion, inode(%v) createTime(%v) mw.volDeleteLockTime(%v) now(%v)", respIno.Inode, createTime, deleteLockTime, time.Now())
+		log.LogDebugf("TxUnlinkInode: the current Inode is still locked for deletion, inode[%v] createTime(%v) mw.volDeleteLockTime(%v) now(%v)", respIno.Inode, createTime, deleteLockTime, time.Now())
 		p.PacketErrorWithBody(proto.OpNotPerm, []byte(err.Error()))
 		return
 	}
@@ -342,7 +342,7 @@ func (mp *metaPartition) UnlinkInode(req *UnlinkInoReq, p *Packet, remoteAddr st
 	}
 	ino := NewInode(req.Inode, 0)
 	if item := mp.inodeTree.Get(ino); item == nil {
-		err = fmt.Errorf("mp %v inode %v reqeust cann't found", mp.config.PartitionId, ino)
+		err = fmt.Errorf("mp[%v] inode[%v] reqeust cann't found", mp.config.PartitionId, ino)
 		log.LogErrorf("action[UnlinkInode] %v", err)
 		p.PacketErrorWithBody(proto.OpNotExistErr, []byte(err.Error()))
 		return
@@ -353,13 +353,13 @@ func (mp *metaPartition) UnlinkInode(req *UnlinkInoReq, p *Packet, remoteAddr st
 		r, err = mp.submit(opFSMUnlinkInodeOnce, val)
 	} else {
 		ino.setVer(req.VerSeq)
-		log.LogDebugf("action[UnlinkInode] mp %v verseq %v ino %v", mp.config.PartitionId, req.VerSeq, ino)
+		log.LogDebugf("action[UnlinkInode] mp[%v] verseq [%v] ino[%v]", mp.config.PartitionId, req.VerSeq, ino)
 		val, err = ino.Marshal()
 		if err != nil {
 			p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 			return
 		}
-		log.LogDebugf("action[UnlinkInode] mp %v ino %v submit", mp.config.PartitionId, ino)
+		log.LogDebugf("action[UnlinkInode] mp[%v] ino[%v] submit", mp.config.PartitionId, ino)
 		r, err = mp.submit(opFSMUnlinkInode, val)
 	}
 
@@ -442,7 +442,7 @@ func (mp *metaPartition) InodeGetSplitEk(req *InodeGetSplitReq, p *Packet) (err 
 	getAllVerInfo := req.VerAll
 	retMsg := mp.getInode(ino, getAllVerInfo)
 
-	log.LogDebugf("action[InodeGetSplitEk] %v seq %v retMsg.Status %v, getAllVerInfo %v",
+	log.LogDebugf("action[InodeGetSplitEk] %v seq [%v] retMsg.status [%v], getAllVerInfo %v",
 		ino.Inode, req.VerSeq, retMsg.Status, getAllVerInfo)
 
 	ino = retMsg.Msg
@@ -469,20 +469,20 @@ func (mp *metaPartition) InodeGetSplitEk(req *InodeGetSplitReq, p *Packet) (err 
 				return true
 			})
 		}
-		log.LogDebugf("action[InodeGetSplitEk] %v seq %v retMsg.Status %v, getAllVerInfo %v",
+		log.LogDebugf("action[InodeGetSplitEk] %v seq [%v] retMsg.status [%v], getAllVerInfo %v",
 			ino.Inode, req.VerSeq, retMsg.Status, getAllVerInfo)
 		status = proto.OpOk
 		reply, err = json.Marshal(resp)
 		if err != nil {
-			log.LogDebugf("action[InodeGetSplitEk] %v seq %v retMsg.Status %v, getAllVerInfo %v",
+			log.LogDebugf("action[InodeGetSplitEk] %v seq [%v] retMsg.status [%v], getAllVerInfo %v",
 				ino.Inode, req.VerSeq, retMsg.Status, getAllVerInfo)
 			status = proto.OpErr
 			reply = []byte(err.Error())
 		}
-		log.LogDebugf("action[InodeGetSplitEk] %v seq %v retMsg.Status %v, getAllVerInfo %v",
+		log.LogDebugf("action[InodeGetSplitEk] %v seq [%v] retMsg.status [%v], getAllVerInfo %v",
 			ino.Inode, req.VerSeq, retMsg.Status, getAllVerInfo)
 	}
-	log.LogDebugf("action[InodeGetSplitEk] %v seq %v retMsg.Status %v, getAllVerInfo %v",
+	log.LogDebugf("action[InodeGetSplitEk] %v seq [%v] retMsg.status [%v], getAllVerInfo %v",
 		ino.Inode, req.VerSeq, retMsg.Status, getAllVerInfo)
 	p.PacketErrorWithBody(status, reply)
 	return
@@ -495,7 +495,7 @@ func (mp *metaPartition) InodeGet(req *InodeGetReq, p *Packet) (err error) {
 	getAllVerInfo := req.VerAll
 	retMsg := mp.getInode(ino, getAllVerInfo)
 
-	log.LogDebugf("action[Inode] %v seq %v retMsg.Status %v, getAllVerInfo %v",
+	log.LogDebugf("action[Inode] %v seq [%v] retMsg.status [%v], getAllVerInfo %v",
 		ino.Inode, req.VerSeq, retMsg.Status, getAllVerInfo)
 
 	ino = retMsg.Msg
@@ -533,7 +533,7 @@ func (mp *metaPartition) InodeGet(req *InodeGetReq, p *Packet) (err error) {
 		status = proto.OpOk
 		if getAllVerInfo {
 			inode := mp.getInodeTopLayer(ino)
-			log.LogDebugf("req ino %v, toplayer ino %v", retMsg.Msg, inode)
+			log.LogDebugf("req ino[%v], toplayer ino[%v]", retMsg.Msg, inode)
 			resp.LayAll = inode.Msg.getAllInodesInfo()
 		}
 		reply, err = json.Marshal(resp)
@@ -766,7 +766,7 @@ func (mp *metaPartition) SetAttr(req *SetattrRequest, reqData []byte, p *Packet)
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return
 	}
-	log.LogDebugf("action[SetAttr] inode %v ver %v exit", req.Inode, req.VerSeq)
+	log.LogDebugf("action[SetAttr] inode[%v] ver [%v] exit", req.Inode, req.VerSeq)
 	p.PacketOkReply()
 	return
 }
