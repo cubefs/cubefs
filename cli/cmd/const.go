@@ -123,6 +123,12 @@ const (
 	CliFlagDeleteLockTime      = "delete-lock-time"
 	CliFlagClientIDKey         = "clientIDKey"
 
+	CliFlagRemoteCacheEnable         = "remoteCacheEnable"
+	CliFlagRemoteCachePath           = "remoteCachePath"
+	CliFlagRemoteCacheAutoPrepare    = "remoteCacheAutoPrepare"
+	CliFlagRemoteCacheTTL            = "remoteCacheTTL"
+	CliFlagRemoteCacheReadTimeoutSec = "remoteCacheReadTimeoutSec"
+
 	// CliFlagSetDataPartitionCount	= "count" use dp-count instead
 
 	// Shorthand format of resource name
