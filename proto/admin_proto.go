@@ -1018,8 +1018,8 @@ type SimpleVolView struct {
 	EnableAuditLog bool
 
 	// hybrid cloud
-	AllowedStorageClass []uint32
 	VolStorageClass     uint32
+	AllowedStorageClass []uint32
 	CacheDpStorageClass uint32
 }
 

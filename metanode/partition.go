@@ -754,10 +754,9 @@ func (mp *metaPartition) onStart(isCreate bool) (err error) {
 	go mp.runVersionOp()
 
 	mp.volType = volumeInfo.VolType
-	var ebsClient *blobstore.BlobStoreClient
-	//TODO: chihe
-	//if clusterInfo.EbsAddr != "" && proto.IsCold(mp.volType) {
-	if clusterInfo.EbsAddr != "" {
+
+	if clusterInfo.EbsAddr != "" && proto.VolSupportsBlobStore(volumeInfo.AllowedStorageClass) {
+		var ebsClient *blobstore.BlobStoreClient
 		ebsClient, err = blobstore.NewEbsClient(
 			access.Config{
 				ConnMode: access.NoLimitConnMode,

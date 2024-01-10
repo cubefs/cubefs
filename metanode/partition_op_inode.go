@@ -112,6 +112,36 @@ func txReplyInfo(inode *Inode, txInfo *proto.TransactionInfo, quotaInfos map[uin
 	return
 }
 
+// for compatibility: handle req from old version client without filed StorageType
+func (mp *metaPartition) checkCreateInoStorageClassFroCompatibility(reqStorageClass uint32, inodeId uint64) (err error, resultStorageClass uint32) {
+	if proto.IsValidStorageClass(reqStorageClass) {
+		resultStorageClass = reqStorageClass
+		return
+	}
+
+	if reqStorageClass != proto.StorageClass_Unspecified {
+		err = fmt.Errorf("unknown req storageClass(%v)", reqStorageClass)
+		return
+	}
+
+	if proto.IsHot(mp.volType) {
+		if !proto.IsValidStorageClass(legacyReplicaStorageClass) {
+			err = fmt.Errorf("CreateInode req without StorageType, but metanode config legacyReplicaStorageClass not set")
+			return
+		}
+
+		resultStorageClass = legacyReplicaStorageClass
+		log.LogDebugf("legacy CreateInode req, hot vol(%v), mpId(%v), ino(%v), set ino storageClass as config legacyReplicaStorageClass(%v)",
+			mp.config.VolName, mp.config.PartitionId, inodeId, proto.StorageClassString(legacyReplicaStorageClass))
+	} else {
+		resultStorageClass = proto.StorageClass_BlobStore
+		log.LogDebugf("legacy CreateInode req, cold vol(%v), mpId(%v), ino(%v), set ino storageClass as blobstore",
+			mp.config.VolName, mp.config.PartitionId, inodeId)
+	}
+
+	return
+}
+
 // CreateInode returns a new inode.
 func (mp *metaPartition) CreateInode(req *CreateInoReq, p *Packet, remoteAddr string) (err error) {
 	var (
@@ -137,7 +167,13 @@ func (mp *metaPartition) CreateInode(req *CreateInoReq, p *Packet, remoteAddr st
 	ino.Gid = req.Gid
 	ino.setVer(mp.verSeq)
 	ino.LinkTarget = req.Target
-	ino.StorageClass = req.StorageType
+
+	if err, ino.StorageClass = mp.checkCreateInoStorageClassFroCompatibility(req.StorageType, inoID); err != nil {
+		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+		log.LogErrorf("[CreateInode] %v, req(%+v)", err.Error(), req)
+		return
+	}
+
 	if ino.storeInReplicaSystem() {
 		ino.HybridCouldExtents.sortedEks = NewSortedExtents()
 	} else if ino.StorageClass == proto.StorageClass_BlobStore {
@@ -199,7 +235,12 @@ func (mp *metaPartition) QuotaCreateInode(req *proto.QuotaCreateInodeRequest, p 
 	ino.Uid = req.Uid
 	ino.Gid = req.Gid
 	ino.LinkTarget = req.Target
-	ino.StorageClass = req.StorageType
+
+	if err, ino.StorageClass = mp.checkCreateInoStorageClassFroCompatibility(req.StorageType, inoID); err != nil {
+		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+		log.LogErrorf("[QuotaCreateInode] %v, req(%+v)", err.Error(), req)
+		return
+	}
 
 	for _, quotaId := range req.QuotaIds {
 		status = mp.mqMgr.IsOverQuota(false, true, quotaId)
