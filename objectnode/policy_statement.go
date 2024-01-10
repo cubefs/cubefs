@@ -1,19 +1,16 @@
-/*
- * MinIO Cloud Storage, (C) 2018 MinIO, Inc.
- * Modifications copyright 2019 The CubeFS Authors.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
+// Copyright 2019 The CubeFS Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
+// implied. See the License for the specific language governing
+// permissions and limitations under the License.
 
 package objectnode
 
@@ -26,7 +23,7 @@ import (
 // https://docs.aws.amazon.com/AmazonS3/latest/dev/access-policy-language-overview.html
 
 // https://docs.aws.amazon.com/AmazonS3/latest/dev/example-bucket-policies.html
-//https://docs.aws.amazon.com/zh_cn/AmazonS3/latest/dev/example-bucket-policies.html
+// https://docs.aws.amazon.com/zh_cn/AmazonS3/latest/dev/example-bucket-policies.html
 
 type Principal map[string]StringSet
 type Resource string
@@ -61,7 +58,7 @@ func (s *Statement) isValid(bucket string) (bool, error) {
 		return false, err
 	}
 
-	//step2: check each field
+	// step2: check each field
 	if !s.isEffectValid() {
 		return false, ErrInvalidEffectValue
 	}
@@ -78,7 +75,7 @@ func (s *Statement) isValid(bucket string) (bool, error) {
 		return false, ErrInvalidResourceInPolicy
 	}
 
-	//step3: check action & resource valid combination
+	// step3: check action & resource valid combination
 	if !s.isValidCombination() {
 		return false, ErrInvalidActionResourceCombination
 	}
@@ -110,7 +107,7 @@ func (s *Statement) isEffectValid() bool {
 
 //  "Principal": "*" or "Principal" : {"AWS":"111122223333"} or "Principal" : {"AWS":["111122223333","444455556666"]}
 func (s *Statement) isPrincipalValid() bool {
-	//principal: uid must be "*" or uint32, and can't be 0
+	// principal: uid must be "*" or uint32, and can't be 0
 	switch s.Principal.(type) {
 	case string: // "*" or "123"
 		p := s.Principal.(string)
@@ -165,10 +162,10 @@ func (p PrincipalElementType) valid() bool {
 
 func (s *Statement) isActionValid() bool {
 	switch s.Action.(type) {
-	case []interface{}: //["s3:PutObject", "s3:GetObject","s3:DeleteObject"]
+	case []interface{}: // ["s3:PutObject", "s3:GetObject","s3:DeleteObject"]
 		actions := s.Action.([]interface{})
 		return ActionType(actions).valid()
-	case string: //"s3:ListBucket"
+	case string: // "s3:ListBucket"
 		action := s.Action.(string)
 		return ActionElementType(action).valid()
 	default:
@@ -231,7 +228,7 @@ func (r ResourceElementType) valid(bucketId string) bool {
 	if len(bucket_key) < 2 {
 		return r == ResourceElementType(bucketId)
 	}
-	if bucket_key[0] != bucketId { //bucketId in resource list must be same with current bucketId
+	if bucket_key[0] != bucketId { // bucketId in resource list must be same with current bucketId
 		return false
 	}
 	if bucket_key[1] == "" { // key can't be empty when bucket is followed by a slash
@@ -241,7 +238,7 @@ func (r ResourceElementType) valid(bucketId string) bool {
 }
 
 func (s *Statement) isValidCombination() bool {
-	//check action & resource valid combination
+	// check action & resource valid combination
 	hasBucketFormat, hasObjectFormat := s.getResourceFormat()
 	switch s.Action.(type) {
 	case string:
@@ -270,7 +267,7 @@ func (actions ActionType) matchResource(hasBucketFormat, hasObjectFormat bool) b
 	if len(actions) == 0 {
 		return false
 	}
-	for _, a := range actions { //every action should match
+	for _, a := range actions { // every action should match
 		if a1, ok := a.(string); ok {
 			if !ActionElementType(a1).matchResource(hasBucketFormat, hasObjectFormat) {
 				return false

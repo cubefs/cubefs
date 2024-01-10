@@ -1,19 +1,16 @@
-/*
- * MinIO Cloud Storage, (C) 2018 MinIO, Inc.
- * Modifications copyright 2019 The CubeFS Authors.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
+// Copyright 2019 The CubeFS Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
+// implied. See the License for the specific language governing
+// permissions and limitations under the License.
 
 package objectnode
 
@@ -76,22 +73,24 @@ func buildStringToSignV2(method, date, canonicalizedResource string, header http
 }
 
 func buildCanonicalizedAmzHeadersV2(headers http.Header) string {
-	var keys []string
-	keyval := make(map[string]string)
+	xAmzKeys := make([]string, 0)
+	xAmzHeaders := make(map[string]string)
 	for key := range headers {
-		lkey := strings.ToLower(key)
-		if !strings.HasPrefix(lkey, "x-amz-") {
+		lowKey := strings.ToLower(key)
+		if !strings.HasPrefix(lowKey, "x-amz-") {
 			continue
 		}
-		keys = append(keys, lkey)
-		keyval[lkey] = strings.Join(headers[key], ",")
+		xAmzKeys = append(xAmzKeys, lowKey)
+		xAmzHeaders[lowKey] = strings.Join(headers[key], ",")
 	}
-	sort.Strings(keys)
-	var canonicalHeaders []string
-	for _, key := range keys {
-		canonicalHeaders = append(canonicalHeaders, key+":"+keyval[key])
+	sort.Strings(xAmzKeys)
+
+	canonicalizedHeaders := make([]string, 0, len(xAmzKeys))
+	for _, key := range xAmzKeys {
+		canonicalizedHeaders = append(canonicalizedHeaders, key+":"+xAmzHeaders[key])
 	}
-	return strings.Join(canonicalHeaders, "\n")
+
+	return strings.Join(canonicalizedHeaders, "\n")
 }
 
 func buildCanonicalizedResourceQueryV2(resource string, query url.Values) string {
