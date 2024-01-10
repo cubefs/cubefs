@@ -96,6 +96,7 @@ func NewStreamer(client *ExtentClient, inode uint64, openForWrite, isCache bool)
 		s.aheadReadEnable = client.AheadRead.enable
 		s.aheadReadWindow = NewAheadReadWindow(client.AheadRead, s)
 	}
+	s.bloomStatus = client.GetInodeBloomStatus(inode)
 	go s.server()
 	go s.asyncBlockCache()
 	return s

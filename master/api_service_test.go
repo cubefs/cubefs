@@ -627,6 +627,11 @@ func TestUpdateVol(t *testing.T) {
 	checkParam(cacheLowWaterKey, proto.AdminUpdateVol, req, 93, low, t)
 	checkParam(cacheLRUIntervalKey, proto.AdminUpdateVol, req, -1, lru, t)
 	setParam(cacheRuleKey, proto.AdminUpdateVol, req, rule, t)
+	checkParam("remoteCacheEnable", proto.AdminUpdateVol, req, "not-bool", true, t)
+	checkParam("remoteCacheAutoPrepare", proto.AdminUpdateVol, req, "not-bool", false, t)
+	checkParam("remoteCacheTTL", proto.AdminUpdateVol, req, "not-number", int64(77), t)
+	checkParam("remoteCacheReadTimeoutSec", proto.AdminUpdateVol, req, "not-number", int64(7), t)
+	setParam("remoteCachePath", proto.AdminUpdateVol, req, "cache-path,a-path", t)
 
 	view = getSimpleVol(volName, true, t)
 	// check update result
@@ -645,6 +650,11 @@ func TestUpdateVol(t *testing.T) {
 	assert.True(t, view.CacheLowWater == low)
 	assert.True(t, view.CacheLruInterval == lru)
 	assert.True(t, view.CacheRule == rule)
+	require.True(t, view.RemoteCacheEnable)
+	require.Equal(t, "cache-path,a-path", view.RemoteCachePath)
+	require.False(t, view.RemoteCacheAutoPrepare)
+	require.Equal(t, int64(77), view.RemoteCacheTTL)
+	require.Equal(t, int64(7), view.RemoteCacheReadTimeoutSec)
 
 	// update cacheRule to empty
 	setUpdateVolParm(emptyCacheRuleKey, req, true, t)
