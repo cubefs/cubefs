@@ -299,6 +299,11 @@ func (api *AdminAPI) UpdateVolume(
 	request.addParam("trashInterval", strconv.FormatInt(vv.TrashInterval, 10))
 	request.addParam("accessTimeValidInterval", strconv.FormatInt(vv.AccessTimeInterval, 10))
 	request.addParam("enablePersistAccessTime", strconv.FormatBool(vv.EnablePersistAccessTime))
+	request.addParamAny("remoteCacheEnable", vv.RemoteCacheEnable)
+	request.addParamAny("remoteCachePath", vv.RemoteCachePath)
+	request.addParamAny("remoteCacheAutoPrepare", vv.RemoteCacheAutoPrepare)
+	request.addParamAny("remoteCacheTTL", vv.RemoteCacheTTL)
+	request.addParamAny("remoteCacheReadTimeoutSec", vv.RemoteCacheReadTimeoutSec)
 
 	if txMask != "" {
 		request.addParam("enableTxMask", txMask)

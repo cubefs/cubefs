@@ -2323,6 +2323,17 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 	}
 
 	newArgs := getVolVarargs(vol)
+	if err = parseArgs(r,
+		newArg("remoteCacheEnable", &newArgs.remoteCacheEnable).OmitEmpty(),
+		newArg("remoteCacheEnable", &newArgs.remoteCacheEnable).OmitEmpty(),
+		newArg("remoteCachePath", &newArgs.remoteCachePath).OmitEmpty(),
+		newArg("remoteCacheAutoPrepare", &newArgs.remoteCacheAutoPrepare).OmitEmpty(),
+		newArg("remoteCacheTTL", &newArgs.remoteCacheTTL).OmitEmpty(),
+		newArg("remoteCacheReadTimeoutSec", &newArgs.remoteCacheReadTimeoutSec).OmitEmpty(),
+	); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
 
 	newArgs.zoneName = req.zoneName
 	newArgs.crossZone = req.crossZone
@@ -2742,6 +2753,12 @@ func newSimpleView(vol *Vol) (view *proto.SimpleVolView) {
 		EnableAutoDpMetaRepair:  vol.EnableAutoMetaRepair.Load(),
 		AccessTimeInterval:      vol.AccessTimeValidInterval,
 		EnablePersistAccessTime: vol.EnablePersistAccessTime,
+
+		RemoteCacheEnable:         vol.remoteCacheEnable,
+		RemoteCachePath:           vol.remoteCachePath,
+		RemoteCacheAutoPrepare:    vol.remoteCacheAutoPrepare,
+		RemoteCacheTTL:            vol.remoteCacheTTL,
+		RemoteCacheReadTimeoutSec: vol.remoteCacheReadTimeoutSec,
 	}
 
 	vol.uidSpaceManager.rwMutex.RLock()

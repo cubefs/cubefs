@@ -76,6 +76,7 @@ func NewStreamer(client *ExtentClient, inode uint64) *Streamer {
 	s.pendingCache = make(chan bcacheKey, 1)
 	s.verSeq = client.multiVerMgr.latestVerSeq
 	s.extents.verSeq = client.multiVerMgr.latestVerSeq
+	s.bloomStatus = client.GetInodeBloomStatus(inode)
 	go s.server()
 	go s.asyncBlockCache()
 	return s

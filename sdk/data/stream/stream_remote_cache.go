@@ -37,22 +37,16 @@ func (pr *PrepareRemoteCacheRequest) String() string {
 }
 
 func (s *Streamer) enableRemoteCache() bool {
-	if !s.client.IsCacheBoostEnabled() || s.client.RemoteCache == nil {
-		return false
-	}
-	return s.bloomStatus
+	return s.client.IsRemoteCacheEnabled() && s.client.RemoteCache != nil && s.bloomStatus
 }
 
-func (s *Streamer) enableCacheAutoPrepare() bool {
-	if !s.client.EnableCacheAutoPrepare {
-		return false
-	}
-	return s.enableRemoteCache()
+func (s *Streamer) enableRemoteCacheAutoPrepare() bool {
+	return s.enableRemoteCache() && s.client.RcAutoPrepare
 }
 
 func (s *Streamer) sendToPrepareRomoteCacheChan(req *PrepareRemoteCacheRequest) {
 	select {
-	case s.client.prepareRemoteCacheCh <- req:
+	case s.client.rcPrepareCh <- req:
 	default:
 		log.LogWarnf("sendToPrepareRomoteCacheChan: chan is full, discard req(%v)", req)
 	}
@@ -76,7 +70,6 @@ func (s *Streamer) prepareRemoteCache(ctx context.Context, ek *proto.ExtentKey) 
 			CacheRequest: req.CacheRequest,
 			FlashNodes:   fg.Hosts,
 		}
-
 		if err = s.client.RemoteCache.Prepare(ctx, fg, s.inode, prepareReq); err != nil {
 			log.LogWarnf("Streamer prepareRemoteCache: flashGroup prepare failed. fg(%v) req(%v) err(%v)", fg, prepareReq, err)
 		}
@@ -99,7 +92,7 @@ func (s *Streamer) readFromRemoteCache(ctx context.Context, offset, size uint64,
 		}
 		fg := s.getFlashGroup(req.CacheRequest.FixedFileOffset)
 		if fg == nil {
-			err = fmt.Errorf("readFromRemoteCache failed: Cannot find any flashGroups")
+			err = fmt.Errorf("readFromRemoteCache failed: cannot find any flashGroups")
 			return
 		}
 
@@ -185,7 +178,7 @@ func (s *Streamer) prepareCacheRequests(offset, size uint64, data []byte) ([]*Ca
 			Volume:          s.client.dataWrapper.VolName,
 			Inode:           s.inode,
 			FixedFileOffset: fixedOff,
-			TTL:             s.client.CacheTTL,
+			TTL:             s.client.RcTTL,
 			Sources:         sources,
 			Version:         proto.ComputeSourcesVersion(sources),
 		}
