@@ -21,6 +21,7 @@ import (
 	"io/ioutil"
 	"os"
 	"path"
+	"strconv"
 	"strings"
 	"time"
 
@@ -97,7 +98,14 @@ func (mp *metaPartition) confAddNode(req *proto.AddMetaPartitionRaftMemberReques
 		heartbeatPort int
 		replicaPort   int
 	)
-	if heartbeatPort, replicaPort, err = mp.getRaftPort(); err != nil {
+
+	heartbeatPort, err = strconv.Atoi(req.AddPeer.HeartbeatPort)
+	if err != nil {
+		return
+	}
+
+	replicaPort, err = strconv.Atoi(req.AddPeer.ReplicaPort)
+	if err != nil {
 		return
 	}
 
@@ -177,7 +185,6 @@ func (mp *metaPartition) delOldExtentFile(buf []byte) (err error) {
 	return
 }
 
-//
 func (mp *metaPartition) setExtentDeleteFileCursor(buf []byte) (err error) {
 	str := string(buf)
 	var (

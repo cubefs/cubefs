@@ -29,8 +29,10 @@ type CreateNameSpaceResponse struct {
 
 // Peer defines the peer of the node id and address.
 type Peer struct {
-	ID   uint64 `json:"id"`
-	Addr string `json:"addr"`
+	ID            uint64 `json:"id"`
+	Addr          string `json:"addr"`
+	HeartbeatPort string `json:"raftHeartbeat"`
+	ReplicaPort   string `json:"raftReplica"`
 }
 
 // CreateMetaPartitionRequest defines the request to create a meta partition.

@@ -70,7 +70,7 @@ func (mds *MockDataServer) register() {
 	var nodeID uint64
 	var retry int
 	for retry < 3 {
-		nodeID, err = mds.mc.NodeAPI().AddDataNode(mds.TcpAddr, mds.zoneName)
+		nodeID, err = mds.mc.NodeAPI().AddDataNodeWithPort(mds.TcpAddr, mds.zoneName, "", "")
 		if err == nil {
 			break
 		}

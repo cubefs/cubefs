@@ -27,6 +27,7 @@ import (
 	"time"
 
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/raftstore"
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/compressor"
 	"github.com/cubefs/cubefs/util/cryptoutil"
@@ -165,7 +166,7 @@ func parseRequestForUpdateMetaNode(r *http.Request) (nodeAddr string, id uint64,
 	return
 }
 
-func parseRequestForAddNode(r *http.Request) (nodeAddr, zoneName string, err error) {
+func parseRequestForAddNode(r *http.Request) (nodeAddr, zoneName, heartbeatPort, replicaPort string, err error) {
 	if err = r.ParseForm(); err != nil {
 		return
 	}
@@ -174,6 +175,12 @@ func parseRequestForAddNode(r *http.Request) (nodeAddr, zoneName string, err err
 	}
 	if zoneName = r.FormValue(zoneNameKey); zoneName == "" {
 		zoneName = DefaultZoneName
+	}
+	if heartbeatPort = r.FormValue(heartbeatPortKey); heartbeatPort == "" {
+		heartbeatPort = strconv.Itoa(raftstore.DefaultHeartbeatPort)
+	}
+	if replicaPort = r.FormValue(replicaPortKey); replicaPort == "" {
+		replicaPort = strconv.Itoa(raftstore.DefaultReplicaPort)
 	}
 	return
 }

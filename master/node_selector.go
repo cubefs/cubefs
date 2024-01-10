@@ -65,6 +65,8 @@ type Node interface {
 	SelectNodeForWrite()
 	GetID() uint64
 	GetAddr() string
+	GetHeartbeatPort() string
+	GetReplicaPort() string
 }
 
 // SortedWeightedNodes defines an array sorted by carry
@@ -303,7 +305,7 @@ func (s *CarryWeightNodeSelector) Select(ns *nodeSet, excludeHosts []string, rep
 		node := weightedNodes[i].Ptr
 		s.selectNodeForWrite(node)
 		orderHosts = append(orderHosts, node.GetAddr())
-		peer := proto.Peer{ID: node.GetID(), Addr: node.GetAddr()}
+		peer := proto.Peer{ID: node.GetID(), Addr: node.GetAddr(), HeartbeatPort: node.GetHeartbeatPort(), ReplicaPort: node.GetReplicaPort()}
 		peers = append(peers, peer)
 	}
 	log.LogInfof("action[%vNodeSelector::Select] peers[%v]", s.GetName(), peers)

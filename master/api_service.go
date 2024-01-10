@@ -2541,18 +2541,20 @@ func checkIpPort(addr string) bool {
 
 func (m *Server) addDataNode(w http.ResponseWriter, r *http.Request) {
 	var (
-		nodeAddr  string
-		zoneName  string
-		id        uint64
-		err       error
-		nodesetId uint64
+		nodeAddr      string
+		zoneName      string
+		heartbeatPort string
+		replicaPort   string
+		id            uint64
+		err           error
+		nodesetId     uint64
 	)
 	metric := exporter.NewTPCnt(apiToMetricsName(proto.AddDataNode))
 	defer func() {
 		doStatAndMetric(proto.AddDataNode, metric, err, nil)
 	}()
 
-	if nodeAddr, zoneName, err = parseRequestForAddNode(r); err != nil {
+	if nodeAddr, zoneName, heartbeatPort, replicaPort, err = parseRequestForAddNode(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
@@ -2569,7 +2571,7 @@ func (m *Server) addDataNode(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	if id, err = m.cluster.addDataNode(nodeAddr, zoneName, nodesetId); err != nil {
+	if id, err = m.cluster.addDataNode(nodeAddr, zoneName, heartbeatPort, replicaPort, nodesetId); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -4038,18 +4040,20 @@ func (m *Server) handleDataNodeTaskResponse(w http.ResponseWriter, r *http.Reque
 
 func (m *Server) addMetaNode(w http.ResponseWriter, r *http.Request) {
 	var (
-		nodeAddr  string
-		zoneName  string
-		id        uint64
-		err       error
-		nodesetId uint64
+		nodeAddr      string
+		zoneName      string
+		heartbeatPort string
+		replicaPort   string
+		id            uint64
+		err           error
+		nodesetId     uint64
 	)
 	metric := exporter.NewTPCnt(apiToMetricsName(proto.AddMetaNode))
 	defer func() {
 		doStatAndMetric(proto.AddMetaNode, metric, err, nil)
 	}()
 
-	if nodeAddr, zoneName, err = parseRequestForAddNode(r); err != nil {
+	if nodeAddr, zoneName, heartbeatPort, replicaPort, err = parseRequestForAddNode(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
@@ -4066,7 +4070,7 @@ func (m *Server) addMetaNode(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	if id, err = m.cluster.addMetaNode(nodeAddr, zoneName, nodesetId); err != nil {
+	if id, err = m.cluster.addMetaNode(nodeAddr, zoneName, heartbeatPort, replicaPort, nodesetId); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}

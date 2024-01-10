@@ -940,7 +940,7 @@ func (c *Cluster) updateMetaNodeBaseInfo(nodeAddr string, id uint64) (err error)
 	return
 }
 
-func (c *Cluster) addMetaNode(nodeAddr, zoneName string, nodesetId uint64) (id uint64, err error) {
+func (c *Cluster) addMetaNode(nodeAddr, zoneName, heartbeatPort, replicaPort string, nodesetId uint64) (id uint64, err error) {
 	c.mnMutex.Lock()
 	defer c.mnMutex.Unlock()
 
@@ -953,7 +953,7 @@ func (c *Cluster) addMetaNode(nodeAddr, zoneName string, nodesetId uint64) (id u
 		return metaNode.ID, nil
 	}
 
-	metaNode = newMetaNode(nodeAddr, zoneName, c.Name)
+	metaNode = newMetaNode(nodeAddr, zoneName, heartbeatPort, replicaPort, c.Name)
 	zone, err := c.t.getZone(zoneName)
 	if err != nil {
 		zone = c.t.putZoneIfAbsent(newZone(zoneName))
@@ -1004,7 +1004,7 @@ errHandler:
 	return
 }
 
-func (c *Cluster) addDataNode(nodeAddr, zoneName string, nodesetId uint64) (id uint64, err error) {
+func (c *Cluster) addDataNode(nodeAddr, zoneName, heartbeatPort, replicaPort string, nodesetId uint64) (id uint64, err error) {
 	c.dnMutex.Lock()
 	defer c.dnMutex.Unlock()
 	var dataNode *DataNode
@@ -1016,7 +1016,7 @@ func (c *Cluster) addDataNode(nodeAddr, zoneName string, nodesetId uint64) (id u
 		return dataNode.ID, nil
 	}
 
-	dataNode = newDataNode(nodeAddr, zoneName, c.Name)
+	dataNode = newDataNode(nodeAddr, zoneName, c.Name, heartbeatPort, replicaPort)
 	dataNode.DpCntLimit = newDpCountLimiter(&c.cfg.MaxDpCntLimit)
 	zone, err := c.t.getZone(zoneName)
 	if err != nil {
@@ -2434,13 +2434,12 @@ func (c *Cluster) addDataReplica(dp *DataPartition, addr string) (err error) {
 
 	dp.addReplicaMutex.Lock()
 	defer dp.addReplicaMutex.Unlock()
-
 	dataNode, err := c.dataNode(addr)
 	if err != nil {
 		return
 	}
 
-	addPeer := proto.Peer{ID: dataNode.ID, Addr: addr}
+	addPeer := proto.Peer{ID: dataNode.ID, Addr: addr, HeartbeatPort: dataNode.HeartbeatPort, ReplicaPort: dataNode.ReplicaPort}
 
 	if !proto.IsNormalDp(dp.PartitionType) {
 		return fmt.Errorf("action[addDataReplica] [%d] is not normal dp, not support add or delete replica", dp.PartitionID)
@@ -2639,7 +2638,7 @@ func (c *Cluster) removeDataReplica(dp *DataPartition, addr string, validate boo
 	if !proto.IsNormalDp(dp.PartitionType) {
 		return fmt.Errorf("[%d] is not normal dp, not support add or delete replica", dp.PartitionID)
 	}
-	removePeer := proto.Peer{ID: dataNode.ID, Addr: addr}
+	removePeer := proto.Peer{ID: dataNode.ID, Addr: addr, HeartbeatPort: dataNode.HeartbeatPort, ReplicaPort: dataNode.ReplicaPort}
 	if err = c.removeDataPartitionRaftMember(dp, removePeer, raftForceDel); err != nil {
 		return
 	}
