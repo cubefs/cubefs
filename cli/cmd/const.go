@@ -161,6 +161,13 @@ const (
 	CliForbidWriteOpOfProtoVersion0     = "forbidWriteOpOfProtoVersion0"
 	CliFlagVolQuotaClass                = "quotaClass"
 	CliFlagVolQuotaOfClass              = "quotaOfStorageClass"
+
+	CliFlagRemoteCacheEnable         = "remoteCacheEnable"
+	CliFlagRemoteCachePath           = "remoteCachePath"
+	CliFlagRemoteCacheAutoPrepare    = "remoteCacheAutoPrepare"
+	CliFlagRemoteCacheTTL            = "remoteCacheTTL"
+	CliFlagRemoteCacheReadTimeoutSec = "remoteCacheReadTimeoutSec"
+
 	// CliFlagSetDataPartitionCount	= "count" use dp-count instead
 
 	// Shorthand format of resource name

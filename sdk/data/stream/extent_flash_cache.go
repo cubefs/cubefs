@@ -41,7 +41,7 @@ const (
 	BloomBits    = 10 * 1024 * 1024 * 8
 	BloomHashNum = 7
 
-	cacheBoostPathSeparator = ","
+	cachePathSeparator = ","
 
 	pingCount           = 3
 	pingTimeout         = 50 * time.Millisecond
@@ -90,9 +90,11 @@ type RemoteCache struct {
 
 	sameZoneWeight int
 	readTimeoutSec int
+
+	clusterEnable func(bool)
 }
 
-func NewRemoteCache(config *CacheConfig) (*RemoteCache, error) {
+func NewRemoteCache(config *CacheConfig, clusterEnable func(bool)) (*RemoteCache, error) {
 	rc := new(RemoteCache)
 	rc.stopC = make(chan struct{})
 	rc.cluster = config.Cluster
@@ -110,6 +112,7 @@ func NewRemoteCache(config *CacheConfig) (*RemoteCache, error) {
 		rc.readTimeoutSec = _connReadTimeoutSec
 	}
 
+	rc.clusterEnable = clusterEnable
 	err := rc.updateFlashGroups()
 	if err != nil {
 		return nil, err
@@ -246,16 +249,16 @@ func (rc *RemoteCache) GetRemoteCacheBloom() *bloom.BloomFilter {
 	return rc.cacheBloom
 }
 
-func (rc *RemoteCache) ResetCacheBoostPathToBloom(cacheBoostPath string) bool {
+func (rc *RemoteCache) ResetPathToBloom(cachePath string) bool {
 	res := true
 	rc.cacheBloom.ClearAll()
-	for _, path := range strings.Split(cacheBoostPath, cacheBoostPathSeparator) {
+	for _, path := range strings.Split(cachePath, cachePathSeparator) {
 		path = strings.TrimSpace(path)
 		if len(path) == 0 {
 			continue
 		}
 		if ino, err := rc.getPathInode(path); err != nil {
-			log.LogErrorf("RemoteCache: lookup cacheBoostPath %s err: %v", path, err)
+			log.LogErrorf("RemoteCache: lookup cachePath %s err: %v", path, err)
 			res = false
 			continue
 		} else {
@@ -337,6 +340,12 @@ func (rc *RemoteCache) updateFlashGroups() (err error) {
 	)
 	if fgv, err = rc.mc.AdminAPI().ClientFlashGroups(); err != nil {
 		log.LogWarnf("updateFlashGroups: err(%v)", err)
+		return
+	}
+
+	rc.clusterEnable(fgv.Enable)
+	if !fgv.Enable {
+		rc.flashGroups = newFlashGroups
 		return
 	}
 
