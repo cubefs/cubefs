@@ -472,16 +472,16 @@ func (mp *metaPartition) fsmVersionOp(reqData []byte) (err error) {
 		return
 	}
 
-	log.LogInfof("action[fsmVersionOp] mp[%v] seq %v, op %v", mp.config.PartitionId, opData.VerSeq, opData.Op)
+	log.LogInfof("action[fsmVersionOp] volname [%v] mp[%v] seq [%v], op [%v]", mp.config.VolName, mp.config.PartitionId, opData.VerSeq, opData.Op)
 	if opData.Op == proto.CreateVersionPrepare {
 		cnt := len(mp.multiVersionList.VerList)
 		if cnt > 0 {
 			lastVersion := mp.multiVersionList.VerList[cnt-1]
 			if lastVersion.Ver > opData.VerSeq {
-				log.LogWarnf("action[HandleVersionOp] createVersionPrepare reqeust seq %v less than last exist snapshot seq %v", opData.VerSeq, lastVersion.Ver)
+				log.LogWarnf("action[HandleVersionOp] createVersionPrepare reqeust seq [%v] less than last exist snapshot seq [%v]", opData.VerSeq, lastVersion.Ver)
 				return
 			} else if lastVersion.Ver == opData.VerSeq {
-				log.LogWarnf("action[HandleVersionOp] CreateVersionPrepare request seq %v already exist status %v", opData.VerSeq, lastVersion.Status)
+				log.LogWarnf("action[HandleVersionOp] CreateVersionPrepare request seq [%v] already exist status [%v]", opData.VerSeq, lastVersion.Status)
 				return
 			}
 		}
@@ -492,18 +492,18 @@ func (mp *metaPartition) fsmVersionOp(reqData []byte) (err error) {
 		mp.verSeq = opData.VerSeq
 		mp.multiVersionList.VerList = append(mp.multiVersionList.VerList, newVer)
 
-		log.LogInfof("action[fsmVersionOp] updateVerList mp[%v] seq %v, op %v, seqArray size %v", mp.config.PartitionId, opData.VerSeq, opData.Op, len(mp.multiVersionList.VerList))
+		log.LogInfof("action[fsmVersionOp] updateVerList mp[%v] seq [%v], op [%v], seqArray size %v", mp.config.PartitionId, opData.VerSeq, opData.Op, len(mp.multiVersionList.VerList))
 	} else if opData.Op == proto.CreateVersionCommit {
 		cnt := len(mp.multiVersionList.VerList)
 		if cnt > 0 {
 			if mp.multiVersionList.VerList[cnt-1].Ver > opData.VerSeq {
-				log.LogWarnf("action[fsmVersionOp] mp[%v] reqeust seq %v less than last exist snapshot seq %v", mp.config.PartitionId,
+				log.LogWarnf("action[fsmVersionOp] mp[%v] reqeust seq [%v] less than last exist snapshot seq [%v]", mp.config.PartitionId,
 					opData.VerSeq, mp.multiVersionList.VerList[cnt-1].Ver)
 				return
 			}
 			if mp.multiVersionList.VerList[cnt-1].Ver == opData.VerSeq {
 				if mp.multiVersionList.VerList[cnt-1].Status != proto.VersionPrepare {
-					log.LogWarnf("action[fsmVersionOp] mp[%v] reqeust seq %v Equal last exist snapshot seq %v but with status %v", mp.config.PartitionId,
+					log.LogWarnf("action[fsmVersionOp] mp[%v] reqeust seq [%v] Equal last exist snapshot seq [%v] but with status [%v]", mp.config.PartitionId,
 						mp.multiVersionList.VerList[cnt-1].Ver, opData.VerSeq, mp.multiVersionList.VerList[cnt-1].Status)
 				}
 				mp.multiVersionList.VerList[cnt-1].Status = proto.VersionNormal
@@ -517,41 +517,41 @@ func (mp *metaPartition) fsmVersionOp(reqData []byte) (err error) {
 		mp.verSeq = opData.VerSeq
 		mp.multiVersionList.VerList = append(mp.multiVersionList.VerList, newVer)
 
-		log.LogInfof("action[fsmVersionOp] updateVerList mp[%v] seq %v, op %v, seqArray size %v", mp.config.PartitionId, opData.VerSeq, opData.Op, len(mp.multiVersionList.VerList))
+		log.LogInfof("action[fsmVersionOp] updateVerList mp[%v] seq [%v], op [%v], seqArray size %v", mp.config.PartitionId, opData.VerSeq, opData.Op, len(mp.multiVersionList.VerList))
 	} else if opData.Op == proto.DeleteVersion {
 		for i, ver := range mp.multiVersionList.VerList {
 			if i == len(mp.multiVersionList.VerList)-1 {
-				log.LogWarnf("action[fsmVersionOp] mp[%v] seq %v, op %v, seqArray size %v newest ver %v reque ver %v",
+				log.LogWarnf("action[fsmVersionOp] mp[%v] seq [%v], op [%v], seqArray size %v newest ver [%v] reque ver [%v]",
 					mp.config.PartitionId, opData.VerSeq, opData.Op, len(mp.multiVersionList.VerList), ver.Ver, opData.VerSeq)
 				break
 			}
 			if ver.Ver == opData.VerSeq {
-				log.LogInfof("action[fsmVersionOp] updateVerList mp[%v] seq %v, op %v, VerList %v",
+				log.LogInfof("action[fsmVersionOp] updateVerList mp[%v] seq [%v], op [%v], VerList %v",
 					mp.config.PartitionId, opData.VerSeq, opData.Op, mp.multiVersionList.VerList)
 				// mp.multiVersionList = append(mp.multiVersionList[:i], mp.multiVersionList[i+1:]...)
 				mp.multiVersionList.VerList = append(mp.multiVersionList.VerList[:i], mp.multiVersionList.VerList[i+1:]...)
-				log.LogInfof("action[fsmVersionOp] updateVerList mp[%v] seq %v, op %v, VerList %v",
+				log.LogInfof("action[fsmVersionOp] updateVerList mp[%v] seq [%v], op [%v], VerList %v",
 					mp.config.PartitionId, opData.VerSeq, opData.Op, mp.multiVersionList.VerList)
 				break
 			}
 		}
 	} else if opData.Op == proto.SyncBatchVersionList {
-		log.LogInfof("action[fsmVersionOp] mp %v before update:with seq %v verlist %v opData.VerList %v",
+		log.LogInfof("action[fsmVersionOp] mp[%v] before update:with seq [%v] verlist %v opData.VerList %v",
 			mp.config.PartitionId, mp.verSeq, mp.multiVersionList.VerList, opData.VerList)
 
 		lastVer := mp.multiVersionList.GetLastVer()
 		for _, info := range opData.VerList {
 			if info.Ver > lastVer {
 				mp.multiVersionList.VerList = append(mp.multiVersionList.VerList, info)
-				log.LogInfof("action[fsmVersionOp] updateVerList mp %v after update:with seq %v verlist %v",
+				log.LogInfof("action[fsmVersionOp] updateVerList mp[%v] after update:with seq [%v] verlist %v",
 					mp.config.PartitionId, mp.verSeq, mp.multiVersionList.VerList)
 			}
 		}
 		mp.verSeq = mp.multiVersionList.GetLastVer()
-		log.LogInfof("action[fsmVersionOp] updateVerList mp %v after update:with seq %v verlist %v",
+		log.LogInfof("action[fsmVersionOp] updateVerList mp[%v] after update:with seq [%v] verlist %v",
 			mp.config.PartitionId, mp.verSeq, mp.multiVersionList.VerList)
 	} else {
-		log.LogErrorf("action[fsmVersionOp] mp %v with seq %v process op type %v seq %v not found",
+		log.LogErrorf("action[fsmVersionOp] mp[%v] with seq [%v] process op type %v seq [%v] not found",
 			mp.config.PartitionId, mp.verSeq, opData.Op, opData.VerSeq)
 	}
 	return
@@ -628,7 +628,7 @@ func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.Sn
 		ticker := time.NewTicker(5 * time.Second)
 		defer ticker.Stop()
 
-		log.LogWarnf("ApplySnapshot: start to block until store snapshot to disk, mp %d, appid %d", mp.config.PartitionId, appIndexID)
+		log.LogWarnf("ApplySnapshot: start to block until store snapshot to disk, mp[%v], appid %d", mp.config.PartitionId, appIndexID)
 		start := time.Now()
 
 		for {
@@ -679,7 +679,7 @@ func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.Sn
 			mp.multiVersionList.VerList = make([]*proto.VolVersionInfo, len(verList))
 			copy(mp.multiVersionList.VerList, verList)
 			mp.verSeq = mp.multiVersionList.GetLastVer()
-			log.LogInfof("mp %v updateVerList (%v) seq %v", mp.config.PartitionId, mp.multiVersionList.VerList, mp.verSeq)
+			log.LogInfof("mp[%v] updateVerList (%v) seq [%v]", mp.config.PartitionId, mp.multiVersionList.VerList, mp.verSeq)
 			err = nil
 			// store message
 			mp.storeChan <- &storeMsg{
@@ -786,7 +786,7 @@ func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.Sn
 				cursor = ino.Inode
 			}
 			inodeTree.ReplaceOrInsert(ino, true)
-			log.LogDebugf("ApplySnapshot: create inode: partitonID(%v) inode(%v).", mp.config.PartitionId, ino)
+			log.LogDebugf("ApplySnapshot: create inode: partitonID(%v) inode[%v].", mp.config.PartitionId, ino)
 		case opFSMCreateDentry:
 			dentry := &Dentry{}
 			if err = dentry.UnmarshalKey(snap.K); err != nil {
@@ -818,7 +818,7 @@ func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.Sn
 			txRbInode := NewTxRollbackInode(nil, []uint32{}, nil, 0)
 			txRbInode.Unmarshal(snap.V)
 			txRbInodeTree.ReplaceOrInsert(txRbInode, true)
-			log.LogDebugf("ApplySnapshot: create txRbInode: partitionID(%v) txRbInode(%v)", mp.config.PartitionId, txRbInode)
+			log.LogDebugf("ApplySnapshot: create txRbInode: partitionID(%v) txRbinode[%v]", mp.config.PartitionId, txRbInode)
 		case opFSMTxRbDentrySnapshot:
 			txRbDentry := NewTxRollbackDentry(nil, nil, 0)
 			txRbDentry.Unmarshal(snap.V)
@@ -875,12 +875,12 @@ func (mp *metaPartition) HandleLeaderChange(leader uint64) {
 		conn, err := net.DialTimeout("tcp", net.JoinHostPort(localIp, serverPort), time.Second)
 		if err != nil {
 			log.LogErrorf(fmt.Sprintf("HandleLeaderChange serverPort not exsit ,error %v", err))
-			exporter.Warning(fmt.Sprintf("mp [%v] HandleLeaderChange serverPort not exsit ,error %v", mp.config.PartitionId, err))
+			exporter.Warning(fmt.Sprintf("mp[%v] HandleLeaderChange serverPort not exsit ,error %v", mp.config.PartitionId, err))
 			go mp.raftPartition.TryToLeader(mp.config.PartitionId)
 			return
 		}
 		log.LogDebugf("[metaPartition] HandleLeaderChange close conn %v, nodeId: %v, leader: %v", serverPort, mp.config.NodeId, leader)
-		exporter.Warning(fmt.Sprintf("[metaPartition]mp [%v] HandleLeaderChange close conn %v, nodeId: %v, leader: %v", mp.config.PartitionId, serverPort, mp.config.NodeId, leader))
+		exporter.Warning(fmt.Sprintf("[metaPartition]mp[%v] HandleLeaderChange close conn %v, nodeId: %v, leader: %v", mp.config.PartitionId, serverPort, mp.config.NodeId, leader))
 		conn.(*net.TCPConn).SetLinger(0)
 		conn.Close()
 	}
@@ -911,7 +911,7 @@ func (mp *metaPartition) HandleLeaderChange(leader uint64) {
 
 // Put puts the given key-value pair (operation key and operation request) into the raft store.
 func (mp *metaPartition) submit(op uint32, data []byte) (resp interface{}, err error) {
-	log.LogDebugf("submit. op %v", op)
+	log.LogDebugf("submit. op [%v]", op)
 	snap := NewMetaItem(0, nil, nil)
 	snap.Op = op
 	if data != nil {
@@ -924,7 +924,7 @@ func (mp *metaPartition) submit(op uint32, data []byte) (resp interface{}, err e
 
 	// submit to the raft store
 	resp, err = mp.raftPartition.Submit(cmd)
-	log.LogDebugf("submit. op %v done", op)
+	log.LogDebugf("submit. op [%v] done", op)
 	return
 }
 

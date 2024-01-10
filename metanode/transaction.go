@@ -433,7 +433,7 @@ func (tm *TransactionManager) processExpiredTransactions() {
 func (tm *TransactionManager) processTx() {
 	mpId := tm.txProcessor.mp.config.PartitionId
 	start := time.Now()
-	log.LogDebugf("processTx: mp %v mask %v", mpId, proto.GetMaskString(tm.txProcessor.mask))
+	log.LogDebugf("processTx: mp[%v] mask %v", mpId, proto.GetMaskString(tm.txProcessor.mask))
 	defer func() {
 		log.LogDebugf("processTx: mp %d total cost %s", mpId, time.Since(start).String())
 	}()
@@ -1556,7 +1556,7 @@ func (tr *TransactionResource) commitDentry(txID string, pId uint64, name string
 		parInode := NewInode(pId, 0)
 		st := tr.txProcessor.mp.fsmUnlinkInode(parInode, 0)
 		if st.Status != proto.OpOk {
-			log.LogWarnf("commitDentry: try unlink parent inode failed, txId %s, inode %v", txID, parInode)
+			log.LogWarnf("commitDentry: try unlink parent inode failed, txId %s, inode[%v]", txID, parInode)
 			return
 		}
 	}

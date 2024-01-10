@@ -2337,7 +2337,7 @@ func (m *metadataManager) opMetaGetInodeQuota(conn net.Conn, p *Packet, remote s
 
 	err = mp.getInodeQuota(req.Inode, p)
 	_ = m.respondToClient(conn, p)
-	log.LogInfof("[opMetaGetInodeQuota] get inode [%v] quota success.", req.Inode)
+	log.LogInfof("[opMetaGetInodeQuota] get inode[%v] quota success.", req.Inode)
 	return
 }
 
@@ -2379,7 +2379,7 @@ func (m *metadataManager) prepareCreateVersion(req *proto.MultiVersionOpRequest)
 	if value, ok := m.volUpdating.Load(req.VolumeID); ok {
 		ver2Phase = value.(*verOp2Phase)
 		if req.VerSeq < ver2Phase.verSeq {
-			err = fmt.Errorf("seq %v create less than loal %v", req.VerSeq, ver2Phase.verSeq)
+			err = fmt.Errorf("seq [%v] create less than loal %v", req.VerSeq, ver2Phase.verSeq)
 			return
 		} else if req.VerSeq == ver2Phase.verPrepare {
 			if ver2Phase.status == proto.VersionWorking {
@@ -2395,7 +2395,7 @@ func (m *metadataManager) prepareCreateVersion(req *proto.MultiVersionOpRequest)
 
 	m.volUpdating.Store(req.VolumeID, ver2Phase)
 
-	log.LogWarnf("action[prepareCreateVersion] volume %v update to ver %v step %v",
+	log.LogWarnf("action[prepareCreateVersion] volume %v update to ver [%v] step %v",
 		req.VolumeID, req.VerSeq, ver2Phase.step)
 	return
 }
@@ -2416,7 +2416,7 @@ func (m *metadataManager) checkVolVerList() (err error) {
 			if partition.GetVolName() != volName {
 				return true
 			}
-			log.LogDebugf("action[checkVolVerList] volumeName %v id %v dp verlist %v partition.GetBaseConfig().PartitionId %v",
+			log.LogDebugf("action[checkVolVerList] volumeName %v id[%v] dp verlist %v partition.GetBaseConfig().PartitionId %v",
 				volName, id, partition.GetVerList(), partition.GetBaseConfig().PartitionId)
 			mpsVerlist[id] = &proto.VolVersionInfoList{VerList: partition.GetVerList()}
 			return true
@@ -2432,7 +2432,7 @@ func (m *metadataManager) checkVolVerList() (err error) {
 			if partition.GetVolName() != volName {
 				return true
 			}
-			log.LogDebugf("action[checkVolVerList] volumeName %v info %v id %v ", volName, info, id)
+			log.LogDebugf("action[checkVolVerList] volumeName %v info %v id[%v] ", volName, info, id)
 			if _, exist := mpsVerlist[id]; exist {
 				if err = partition.checkByMasterVerlist(mpsVerlist[id], info); err != nil {
 					return true
@@ -2448,7 +2448,7 @@ func (m *metadataManager) checkVolVerList() (err error) {
 }
 
 func (m *metadataManager) commitCreateVersion(VolumeID string, VerSeq uint64, Op uint8, synchronize bool) (err error) {
-	log.LogWarnf("action[commitCreateVersion] volume %v seq %v", VolumeID, VerSeq)
+	log.LogWarnf("action[commitCreateVersion] volume %v seq [%v]", VolumeID, VerSeq)
 	var wg sync.WaitGroup
 	// wg.Add(len(m.partitions))
 	resultCh := make(chan error, len(m.partitions))
@@ -2464,9 +2464,9 @@ func (m *metadataManager) commitCreateVersion(VolumeID string, VerSeq uint64, Op
 		wg.Add(1)
 		go func(mpId uint64, mp MetaPartition) {
 			defer wg.Done()
-			log.LogInfof("action[commitCreateVersion] volume %v mp  %v do HandleVersionOp verseq %v", VolumeID, mpId, VerSeq)
+			log.LogInfof("action[commitCreateVersion] volume %v mp  %v do HandleVersionOp verseq [%v]", VolumeID, mpId, VerSeq)
 			if err := mp.HandleVersionOp(Op, VerSeq, nil, synchronize); err != nil {
-				log.LogErrorf("action[commitCreateVersion] volume %v mp  %v do HandleVersionOp verseq %v err %v", VolumeID, mpId, VerSeq, err)
+				log.LogErrorf("action[commitCreateVersion] volume %v mp  %v do HandleVersionOp verseq [%v] err %v", VolumeID, mpId, VerSeq, err)
 				resultCh <- err
 				return
 			}
@@ -2482,7 +2482,7 @@ func (m *metadataManager) commitCreateVersion(VolumeID string, VerSeq uint64, Op
 			return
 		}
 	default:
-		log.LogInfof("action[commitCreateVersion] volume %v do HandleVersionOp verseq %v finished", VolumeID, VerSeq)
+		log.LogInfof("action[commitCreateVersion] volume %v do HandleVersionOp verseq [%v] finished", VolumeID, VerSeq)
 	}
 
 	if Op == proto.DeleteVersion {
@@ -2495,27 +2495,27 @@ func (m *metadataManager) commitCreateVersion(VolumeID string, VerSeq uint64, Op
 
 	if value, ok := m.volUpdating.Load(VolumeID); ok {
 		ver2Phase := value.(*verOp2Phase)
-		log.LogWarnf("action[commitCreateVersion] try commit volume %v prepare seq %v with commit seq %v",
+		log.LogWarnf("action[commitCreateVersion] try commit volume %v prepare seq [%v] with commit seq [%v]",
 			VolumeID, ver2Phase.verPrepare, VerSeq)
 		if VerSeq < ver2Phase.verSeq {
-			err = fmt.Errorf("vol %v seq %v create less than loal %v", VolumeID, VerSeq, ver2Phase.verSeq)
+			err = fmt.Errorf("volname [%v] seq [%v] create less than loal %v", VolumeID, VerSeq, ver2Phase.verSeq)
 			log.LogErrorf("action[commitCreateVersion] err %v", err)
 			return
 		}
 		if ver2Phase.step != proto.CreateVersionPrepare {
-			err = fmt.Errorf("vol %v step not prepare", VolumeID)
+			err = fmt.Errorf("volname [%v] step not prepare", VolumeID)
 			log.LogErrorf("action[commitCreateVersion] err %v", err)
 			return
 		}
 		ver2Phase.verSeq = VerSeq
 		ver2Phase.step = proto.CreateVersionCommit
 		ver2Phase.status = proto.VersionWorkingFinished
-		log.LogWarnf("action[commitCreateVersion] commit volume %v prepare seq %v with commit seq %v",
+		log.LogWarnf("action[commitCreateVersion] commit volume %v prepare seq [%v] with commit seq [%v]",
 			VolumeID, ver2Phase.verPrepare, VerSeq)
 		return
 	}
 
-	err = fmt.Errorf("vol %v not found", VolumeID)
+	err = fmt.Errorf("volname [%v] not found", VolumeID)
 	log.LogErrorf("action[commitCreateVersion] err %v", err)
 
 	return
@@ -2523,7 +2523,7 @@ func (m *metadataManager) commitCreateVersion(VolumeID string, VerSeq uint64, Op
 
 func (m *metadataManager) updatePackRspSeq(mp MetaPartition, p *Packet) {
 	if mp.GetVerSeq() > p.VerSeq {
-		log.LogDebugf("action[checkmultiSnap.multiVersionstatus] mp ver %v, packet ver %v", mp.GetVerSeq(), p.VerSeq)
+		log.LogDebugf("action[checkmultiSnap.multiVersionstatus] mp ver [%v], packet ver [%v]", mp.GetVerSeq(), p.VerSeq)
 		p.VerSeq = mp.GetVerSeq() // used to response to client and try update verSeq of client
 		p.ExtentType |= proto.VersionListFlag
 		p.VerList = make([]*proto.VolVersionInfo, len(mp.GetVerList()))
@@ -2534,15 +2534,15 @@ func (m *metadataManager) updatePackRspSeq(mp MetaPartition, p *Packet) {
 
 func (m *metadataManager) checkMultiVersionStatus(mp MetaPartition, p *Packet) (err error) {
 	if (p.ExtentType&proto.MultiVersionFlag == 0) && mp.GetVerSeq() > 0 {
-		log.LogWarnf("action[checkmultiSnap.multiVersionstatus] vol %v mp ver %v, client use old ver before snapshot", mp.GetVolName(), mp.GetVerSeq())
+		log.LogWarnf("action[checkmultiSnap.multiVersionstatus] volname [%v] mp ver [%v], client use old ver before snapshot", mp.GetVolName(), mp.GetVerSeq())
 		return fmt.Errorf("client use old ver before snapshot")
 	}
 	// meta node do not need to check verSeq as strictly as datanode,file append or modAppendWrite on meta node is invisible to other files.
 	// only need to guarantee the verSeq wrote on meta nodes grow up linearly on client's angle
-	log.LogDebugf("action[checkmultiSnap.multiVersionstatus] mp %v ver %v, packet ver %v reqId %v", mp.GetBaseConfig().PartitionId, mp.GetVerSeq(), p.VerSeq, p.ReqID)
+	log.LogDebugf("action[checkmultiSnap.multiVersionstatus] mp[%v] ver [%v], packet ver [%v] reqId %v", mp.GetBaseConfig().PartitionId, mp.GetVerSeq(), p.VerSeq, p.ReqID)
 	if mp.GetVerSeq() >= p.VerSeq {
 		if mp.GetVerSeq() > p.VerSeq {
-			log.LogDebugf("action[checkmultiSnap.multiVersionstatus] mp ver %v, packet ver %v", mp.GetVerSeq(), p.VerSeq)
+			log.LogDebugf("action[checkmultiSnap.multiVersionstatus] mp ver [%v], packet ver [%v]", mp.GetVerSeq(), p.VerSeq)
 			p.VerSeq = mp.GetVerSeq() // used to response to client and try update verSeq of client
 			p.ExtentType |= proto.VersionListFlag
 			p.VerList = make([]*proto.VolVersionInfo, len(mp.GetVerList()))
@@ -2556,7 +2556,7 @@ func (m *metadataManager) checkMultiVersionStatus(mp MetaPartition, p *Packet) (
 	}
 	p.ResultCode = proto.OpAgainVerionList
 	// need return and tell client
-	err = fmt.Errorf("vol %v req seq %v but not found commit status", mp.GetVolName(), p.VerSeq)
+	err = fmt.Errorf("volname [%v] req seq [%v] but not found commit status", mp.GetVolName(), p.VerSeq)
 	if value, ok := m.volUpdating.Load(mp.GetVolName()); ok {
 		ver2Phase := value.(*verOp2Phase)
 		if ver2Phase.isActiveReqToMaster {
@@ -2567,7 +2567,7 @@ func (m *metadataManager) checkMultiVersionStatus(mp MetaPartition, p *Packet) (
 	select {
 	case m.verUpdateChan <- mp.GetVolName():
 	default:
-		log.LogWarnf("channel is full, vol %v not be queued", mp.GetVolName())
+		log.LogWarnf("channel is full, volname [%v] not be queued", mp.GetVolName())
 	}
 	return
 }
@@ -2588,19 +2588,19 @@ func (m *metadataManager) checkAndPromoteVersion(volName string) (err error) {
 			if atomic.LoadUint32(&ver2Phase.status) == proto.VersionWorkingAbnormal ||
 				atomic.LoadUint32(&ver2Phase.step) != proto.CreateVersionPrepare {
 
-				log.LogWarnf("action[checkmultiSnap.multiVersionstatus] volumeName %v status %v step %v",
+				log.LogWarnf("action[checkmultiSnap.multiVersionstatus] volumeName %v status [%v] step %v",
 					volName, atomic.LoadUint32(&ver2Phase.status), atomic.LoadUint32(&ver2Phase.step))
 				return
 			}
 
 			if info, err = masterClient.AdminAPI().GetVerInfo(volName); err != nil {
-				log.LogErrorf("action[checkmultiSnap.multiVersionstatus] volumeName %v status %v step %v err %v",
+				log.LogErrorf("action[checkmultiSnap.multiVersionstatus] volumeName %v status [%v] step %v err %v",
 					volName, atomic.LoadUint32(&ver2Phase.status), atomic.LoadUint32(&ver2Phase.step), err)
 				return
 			}
 			if info.VerSeqPrepare != ver2Phase.verPrepare {
 				atomic.StoreUint32(&ver2Phase.status, proto.VersionWorkingAbnormal)
-				err = fmt.Errorf("volumeName %v status %v step %v",
+				err = fmt.Errorf("volumeName %v status [%v] step %v",
 					volName, atomic.LoadUint32(&ver2Phase.status), atomic.LoadUint32(&ver2Phase.step))
 				log.LogErrorf("action[checkmultiSnap.multiVersionstatus] err %v", err)
 				return
@@ -2632,7 +2632,7 @@ func (m *metadataManager) opMultiVersionOp(conn net.Conn, p *Packet,
 		}
 		opAgain bool
 	)
-	log.LogDebugf("action[opMultiVersionOp] volume %v op %v", req.VolumeID, req.Op)
+	log.LogDebugf("action[opMultiVersionOp] volume %v op [%v]", req.VolumeID, req.Op)
 
 	start := time.Now()
 	decode := json.NewDecoder(bytes.NewBuffer(data))

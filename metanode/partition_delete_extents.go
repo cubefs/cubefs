@@ -99,9 +99,9 @@ LOOP:
 	}
 	if lastItem == nil || !strings.HasPrefix(fileName, prefixDelExtentV2) {
 		// if no exist EXTENT_DEL_*, create one
-		log.LogDebugf("action[appendDelExtentsToFile] verseq %v", mp.verSeq)
+		log.LogDebugf("action[appendDelExtentsToFile] verseq [%v]", mp.verSeq)
 		fp, fileName, fileSize, err = mp.createExtentDeleteFile(prefixDelExtentV2, idx, fileList)
-		log.LogDebugf("action[appendDelExtentsToFile] verseq %v fileName %v", mp.verSeq, fileName)
+		log.LogDebugf("action[appendDelExtentsToFile] verseq [%v] fileName %v", mp.verSeq, fileName)
 		if err != nil {
 			panic(err)
 		}
@@ -116,7 +116,7 @@ LOOP:
 		idx = getDelExtFileIdx(fileName)
 	}
 
-	log.LogDebugf("action[appendDelExtentsToFile] verseq %v fileName %v", mp.verSeq, fileName)
+	log.LogDebugf("action[appendDelExtentsToFile] verseq [%v] fileName %v", mp.verSeq, fileName)
 	// TODO Unhandled errors
 	defer fp.Close()
 	buf := make([]byte, 0)
@@ -147,7 +147,7 @@ LOOP:
 			if err != nil {
 				err = mp.sendExtentsToChan(eks)
 				if err != nil {
-					log.LogErrorf("[appendDelExtentsToFile] mp(%d) sendExtentsToChan fail, err(%s)", mp.config.PartitionId, err.Error())
+					log.LogErrorf("[appendDelExtentsToFile] mp[%v] sendExtentsToChan fail, err(%s)", mp.config.PartitionId, err.Error())
 				}
 				continue
 			}
@@ -160,7 +160,7 @@ LOOP:
 				if err != nil {
 					panic(err)
 				}
-				log.LogDebugf("appendDelExtentsToFile. vol %v mp %v createExtentDeleteFile %v",
+				log.LogDebugf("appendDelExtentsToFile. volname [%v] mp[%v] createExtentDeleteFile %v",
 					mp.GetVolName(), mp.config.PartitionId, fileName)
 			}
 			// write delete extents into file
@@ -218,7 +218,7 @@ func (mp *metaPartition) deleteExtentsFromList(fileList *synclist.SyncList) {
 		buf := make([]byte, MB)
 		fp, err := os.OpenFile(file, os.O_RDWR, 0o644)
 		if err != nil {
-			log.LogErrorf("[deleteExtentsFromList] vol %v mp %v openFile %v error: %v", mp.GetVolName(), mp.config.PartitionId, file, err)
+			log.LogErrorf("[deleteExtentsFromList] volname [%v] mp[%v] openFile %v error: %v", mp.GetVolName(), mp.config.PartitionId, file, err)
 			fileList.Remove(element)
 			goto LOOP
 		}
@@ -239,7 +239,7 @@ func (mp *metaPartition) deleteExtentsFromList(fileList *synclist.SyncList) {
 		}
 		cursor := binary.BigEndian.Uint64(buf[:8])
 		stat, _ := fp.Stat()
-		log.LogDebugf("[deleteExtentsFromList] vol %v mp %v o openFile %v file len %v cursor %v", mp.GetVolName(), mp.config.PartitionId, file,
+		log.LogDebugf("[deleteExtentsFromList] volname [%v] mp[%v] o openFile %v file len %v cursor %v", mp.GetVolName(), mp.config.PartitionId, file,
 			stat.Size(), cursor)
 
 		log.LogDebugf("action[deleteExtentsFromList] get cursor %v", cursor)
@@ -318,7 +318,7 @@ func (mp *metaPartition) deleteExtentsFromList(fileList *synclist.SyncList) {
 				time.Sleep(100 * time.Millisecond)
 				err = mp.sendExtentsToChan(errExts)
 				if err != nil {
-					log.LogErrorf("deleteExtentsFromList sendExtentsToChan by raft error, mp(%d), err(%v), ek(%v)", mp.config.PartitionId, err.Error(), len(errExts))
+					log.LogErrorf("deleteExtentsFromList sendExtentsToChan by raft error, mp[%v], err(%v), ek(%v)", mp.config.PartitionId, err.Error(), len(errExts))
 				}
 
 				errExts = make([]proto.ExtentKey, 0)
@@ -351,7 +351,7 @@ func (mp *metaPartition) deleteExtentsFromList(fileList *synclist.SyncList) {
 
 		err = mp.sendExtentsToChan(errExts)
 		if err != nil {
-			log.LogErrorf("deleteExtentsFromList sendExtentsToChan by raft error, mp(%d), err(%v), ek(%v)", mp.config.PartitionId, err.Error(), len(errExts))
+			log.LogErrorf("deleteExtentsFromList sendExtentsToChan by raft error, mp[%v], err(%v), ek(%v)", mp.config.PartitionId, err.Error(), len(errExts))
 		}
 
 		buff.Reset()
@@ -380,7 +380,7 @@ func (mp *metaPartition) deleteExtentsFromList(fileList *synclist.SyncList) {
 // 				CRC:          ek.CRC,
 // 			}
 // 			needDeleteExtents[index] = newEx
-// 			log.LogWritef("mp(%v) deleteExtents(%v)", mp.config.PartitionId, newEx.String())
+// 			log.LogWritef("mp[%v] deleteExtents(%v)", mp.config.PartitionId, newEx.String())
 // 		}
 // 		err := mp.doBatchDeleteExtentsByPartition(partitionID, deleteExtents)
 // 		if err != nil {

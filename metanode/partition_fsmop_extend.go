@@ -85,7 +85,7 @@ func (mp *metaPartition) fsmRemoveXAttr(reqExtend *Extend) (err error) {
 	} else if reqExtend.verSeq == e.verSeq {
 		var globalNewVer uint64
 		if globalNewVer, err = mp.multiVersionList.GetNextNewerVer(reqExtend.verSeq); err != nil {
-			log.LogErrorf("fsmRemoveXAttr. mp [%v] seq %v req ver %v not found newer seq", mp.config.PartitionId, mp.verSeq, reqExtend.verSeq)
+			log.LogErrorf("fsmRemoveXAttr. mp[%v] seq [%v] req ver [%v] not found newer seq", mp.config.PartitionId, mp.verSeq, reqExtend.verSeq)
 			return err
 		}
 		e.verSeq = globalNewVer
@@ -103,7 +103,7 @@ func (mp *metaPartition) fsmRemoveXAttr(reqExtend *Extend) (err error) {
 					return err
 				}
 				if globalNewVer < innerLastVer {
-					log.LogDebugf("mp %v inode %v extent layer %v update seq %v to %v",
+					log.LogDebugf("mp[%v] inode[%v] extent layer %v update seq [%v] to %v",
 						mp.config.PartitionId, ele.inode, id, ele.verSeq, globalNewVer)
 					ele.verSeq = globalNewVer
 					return

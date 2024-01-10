@@ -110,7 +110,7 @@ func initMp(t *testing.T) {
 	mp = newPartition(metaConf, manager)
 	mp.multiVersionList = &proto.VolVersionInfoList{}
 	ino := testCreateInode(nil, DirModeType)
-	t.Logf("cursor %v create ino %v", mp.config.Cursor, ino)
+	t.Logf("cursor %v create ino[%v]", mp.config.Cursor, ino)
 	mp.config.Cursor = 1000
 }
 
@@ -202,7 +202,7 @@ func testCheckExtList(t *testing.T, ino *Inode, seqArr []uint64) bool {
 	}
 
 	for idx, verRead := range seqArr {
-		t.Logf("check extlist index %v ver %v", idx, verRead)
+		t.Logf("check extlist index %v ver [%v]", idx, verRead)
 		reqExtList.VerSeq = verRead
 		getExtRsp := testGetExtList(t, ino, verRead)
 		t.Logf("check extlist rsp %v size %v,%v", getExtRsp, getExtRsp.Size, ino.Size)
@@ -223,7 +223,7 @@ func testCreateInode(t *testing.T, mode uint32) *Inode {
 	ino := NewInode(inoID, mode)
 	ino.setVer(mp.verSeq)
 	if t != nil {
-		t.Logf("testCreateInode ino %v", ino)
+		t.Logf("testCreateInode ino[%v]", ino)
 	}
 
 	mp.fsmCreateInode(ino)
@@ -300,14 +300,14 @@ func testGetEkRefCnt(t *testing.T, ino *Inode, ek *proto.ExtentKey) (cnt uint32)
 		ok  bool
 	)
 	if nil == mp.inodeTree.Get(ino) {
-		t.Logf("testGetEkRefCnt inode %v ek %v not found", ino, ek)
+		t.Logf("testGetEkRefCnt inode[%v] ek [%v] not found", ino, ek)
 		return
 	}
 	if val, ok = ino.multiSnap.ekRefMap.Load(id); !ok {
-		t.Logf("inode %v not ek %v", ino.Inode, ek)
+		t.Logf("inode[%v] not ek [%v]", ino.Inode, ek)
 		return
 	}
-	t.Logf("testGetEkRefCnt ek %v get refCnt %v", ek, val.(uint32))
+	t.Logf("testGetEkRefCnt ek [%v] get refCnt %v", ek, val.(uint32))
 	return val.(uint32)
 }
 
@@ -324,7 +324,7 @@ func testDelDiscardEK(t *testing.T, fileIno *Inode) (cnt uint32) {
 			t.Logf("the delete ek is %v", ek)
 			cnt++
 		}
-		t.Logf("pop %v", i)
+		t.Logf("pop [%v]", i)
 	}
 	t.Logf("testDelDiscardEK discard ek cnt %v", cnt)
 	return
@@ -405,7 +405,7 @@ func testCreateVer() (verSeq uint64) {
 
 func testReadDirAll(t *testing.T, verSeq uint64, parentId uint64) (resp *ReadDirLimitResp) {
 	// testPrintAllDentry(t)
-	t.Logf("[testReadDirAll] with seq %v parentId %v", verSeq, parentId)
+	t.Logf("[testReadDirAll] with seq [%v] parentId %v", verSeq, parentId)
 	req := &ReadDirLimitReq{
 		PartitionID: partitionId,
 		VolName:     mp.GetVolName(),
@@ -468,7 +468,7 @@ func TestAppendList(t *testing.T) {
 		mp.verSeq = seq
 
 		if status := mp.fsmAppendExtentsWithCheck(iTmp, false); status != proto.OpOk {
-			t.Errorf("status %v", status)
+			t.Errorf("status [%v]", status)
 		}
 	}
 	t.Logf("layer len %v, arr size %v, seqarr(%v)", ino.getLayerLen(), len(seqArr), seqArr)
@@ -477,7 +477,7 @@ func TestAppendList(t *testing.T) {
 
 	for i := 0; i < len(seqArr)-1; i++ {
 		assert.True(t, ino.getLayerVer(i) == seqArr[len(seqArr)-i-2])
-		t.Logf("layer %v len %v content %v,seq %v, %v", i, len(ino.multiSnap.multiVersions[i].Extents.eks), ino.multiSnap.multiVersions[i].Extents.eks,
+		t.Logf("layer %v len %v content %v,seq [%v], %v", i, len(ino.multiSnap.multiVersions[i].Extents.eks), ino.multiSnap.multiVersions[i].Extents.eks,
 			ino.getLayerVer(i), seqArr[len(seqArr)-i-2])
 		assert.True(t, len(ino.multiSnap.multiVersions[i].Extents.eks) == 0)
 	}
@@ -629,7 +629,7 @@ func testPrintAllDentry(t *testing.T) uint64 {
 		t.Logf("testPrintAllDentry name %v top layer dentry:%v", den.Name, den)
 		if den.getSnapListLen() > 0 {
 			for id, info := range den.multiSnap.dentryList {
-				t.Logf("testPrintAllDentry name %v layer %v, denSeq %v den %v", den.Name, id, info.getVerSeq(), info)
+				t.Logf("testPrintAllDentry name %v layer %v, denseq [%v] den %v", den.Name, id, info.getVerSeq(), info)
 			}
 		}
 		cnt++
@@ -641,12 +641,12 @@ func testPrintAllDentry(t *testing.T) uint64 {
 func testPrintAllInodeInfo(t *testing.T) {
 	mp.inodeTree.Ascend(func(item BtreeItem) bool {
 		i := item.(*Inode)
-		t.Logf("action[PrintAllVersionInfo] toplayer inode [%v] verSeq [%v] hist len [%v]", i, i.getVer(), i.getLayerLen())
+		t.Logf("action[PrintAllVersionInfo] toplayer inode[%v] verSeq [%v] hist len [%v]", i, i.getVer(), i.getLayerLen())
 		if i.getLayerLen() == 0 {
 			return true
 		}
 		for id, info := range i.multiSnap.multiVersions {
-			t.Logf("action[PrintAllVersionInfo] layer [%v]  verSeq [%v] inode [%v]", id, info.getVer(), info)
+			t.Logf("action[PrintAllVersionInfo] layer [%v]  verSeq [%v] inode[%v]", id, info.getVer(), info)
 		}
 		return true
 	})
@@ -654,12 +654,12 @@ func testPrintAllInodeInfo(t *testing.T) {
 
 func testPrintInodeInfo(t *testing.T, ino *Inode) {
 	i := mp.inodeTree.Get(ino).(*Inode)
-	t.Logf("action[PrintAllVersionInfo] toplayer inode [%v] verSeq [%v] hist len [%v]", i, i.getVer(), i.getLayerLen())
+	t.Logf("action[PrintAllVersionInfo] toplayer inode[%v] verSeq [%v] hist len [%v]", i, i.getVer(), i.getLayerLen())
 	if i.getLayerLen() == 0 {
 		return
 	}
 	for id, info := range i.multiSnap.multiVersions {
-		t.Logf("action[PrintAllVersionInfo] layer [%v]  verSeq [%v] inode [%v]", id, info.getVer(), info)
+		t.Logf("action[PrintAllVersionInfo] layer [%v]  verSeq [%v] inode[%v]", id, info.getVer(), info)
 	}
 }
 
@@ -687,7 +687,7 @@ func testDelDirSnapshotVersion(t *testing.T, verSeq uint64, dirIno *Inode, dirDe
 	assert.True(t, rspDelDen.Status == proto.OpOk)
 
 	for idx, info := range rspReadDir.Children {
-		t.Logf("testDelDirSnapshotVersion: delSeq %v  to del idx %v infof %v", verSeq, idx, info)
+		t.Logf("testDelDirSnapshotVersion: delseq [%v]  to del idx %v infof %v", verSeq, idx, info)
 		rino := &Inode{
 			Inode: info.Inode,
 			Type:  FileModeType,
@@ -696,11 +696,11 @@ func testDelDirSnapshotVersion(t *testing.T, verSeq uint64, dirIno *Inode, dirDe
 			},
 		}
 		testPrintInodeInfo(t, rino)
-		log.LogDebugf("testDelDirSnapshotVersion get rino %v start", rino)
-		t.Logf("testDelDirSnapshotVersion get rino %v start", rino)
+		log.LogDebugf("testDelDirSnapshotVersion get rino[%v] start", rino)
+		t.Logf("testDelDirSnapshotVersion get rino[%v] start", rino)
 		ino := mp.getInode(rino, false)
-		log.LogDebugf("testDelDirSnapshotVersion get rino %v end", ino)
-		t.Logf("testDelDirSnapshotVersion get rino %v end", rino)
+		log.LogDebugf("testDelDirSnapshotVersion get rino[%v] end", ino)
+		t.Logf("testDelDirSnapshotVersion get rino[%v] end", rino)
 		assert.True(t, ino.Status == proto.OpOk)
 		if ino.Status != proto.OpOk {
 			panic(nil)
@@ -710,7 +710,7 @@ func testDelDirSnapshotVersion(t *testing.T, verSeq uint64, dirIno *Inode, dirDe
 
 		assert.True(t, rspDelIno.Status == proto.OpOk || rspDelIno.Status == proto.OpNotExistErr)
 		if rspDelIno.Status != proto.OpOk && rspDelIno.Status != proto.OpNotExistErr {
-			t.Logf("testDelDirSnapshotVersion: rspDelIno %v return st %v", rspDelIno, proto.ParseErrorCode(int32(rspDelIno.Status)))
+			t.Logf("testDelDirSnapshotVersion: rspDelino[%v] return st %v", rspDelIno, proto.ParseErrorCode(int32(rspDelIno.Status)))
 			panic(nil)
 		}
 		dentry := &Dentry{
@@ -770,7 +770,7 @@ func TestDentry(t *testing.T) {
 	seq3 := testCreateVer()
 	//--------------------read dir and it's child on different version ------------------
 
-	t.Logf("TestDentry seq %v,%v,uncommit %v,dir:%v, dentry {%v],inode[%v,%v,%v]", seq1, seq2, seq3, dirDen, denArry, fIno, fIno1, fIno2)
+	t.Logf("TestDentry seq [%v],%v,uncommit %v,dir:%v, dentry {%v],inode[%v,%v,%v]", seq1, seq2, seq3, dirDen, denArry, fIno, fIno1, fIno2)
 	//-----------read curr version --
 	rspReadDir := testReadDirAll(t, 0, 1)
 	t.Logf("len child %v, len arry %v", len(rspReadDir.Children), len(denArry))
@@ -816,10 +816,10 @@ func TestDentry(t *testing.T) {
 	log.LogDebugf("try testDelDirSnapshotVersion 0")
 	testDelDirSnapshotVersion(t, 0, dirIno, dirDen)
 	rspReadDir = testReadDirAll(t, 0, dirIno.Inode)
-	t.Logf("after  testDelDirSnapshotVersion read seq %v can see file %v %v", 0, len(rspReadDir.Children), rspReadDir.Children)
+	t.Logf("after  testDelDirSnapshotVersion read seq [%v] can see file %v %v", 0, len(rspReadDir.Children), rspReadDir.Children)
 	assert.True(t, len(rspReadDir.Children) == 0)
 	rspReadDir = testReadDirAll(t, seq1, dirIno.Inode)
-	t.Logf("after  testDelDirSnapshotVersion read seq %v can see file %v %v", seq1, len(rspReadDir.Children), rspReadDir.Children)
+	t.Logf("after  testDelDirSnapshotVersion read seq [%v] can see file %v %v", seq1, len(rspReadDir.Children), rspReadDir.Children)
 	assert.True(t, len(rspReadDir.Children) == 2)
 
 	//---------------------------------------------
@@ -883,7 +883,7 @@ func testAppendExt(t *testing.T, seq uint64, idx int, inode uint64) {
 	}
 	mp.verSeq = seq
 	if status := mp.fsmAppendExtentsWithCheck(iTmp, false); status != proto.OpOk {
-		t.Errorf("status %v", status)
+		t.Errorf("status [%v]", status)
 	}
 }
 
@@ -904,7 +904,7 @@ func TestTruncateAndDel(t *testing.T) {
 
 	seq2 := testCreateVer() // seq1 is commited,seq2 not commited
 
-	t.Logf("TestTruncate. create new snapshot seq %v,%v,file verlist [%v]", seq1, seq2, fileIno.getLayerLen())
+	t.Logf("TestTruncate. create new snapshot seq [%v],%v,file verlist [%v]", seq1, seq2, fileIno.getLayerLen())
 	log.LogDebugf("TestTruncate start")
 	ino := &Inode{
 		Inode:      fileIno.Inode,
@@ -913,7 +913,7 @@ func TestTruncateAndDel(t *testing.T) {
 	}
 	mp.fsmExtentsTruncate(ino)
 	log.LogDebugf("TestTruncate start")
-	t.Logf("TestTruncate. create new snapshot seq %v,%v,file verlist size %v [%v]", seq1, seq2, len(fileIno.multiSnap.multiVersions), fileIno.multiSnap.multiVersions)
+	t.Logf("TestTruncate. create new snapshot seq [%v],%v,file verlist size %v [%v]", seq1, seq2, len(fileIno.multiSnap.multiVersions), fileIno.multiSnap.multiVersions)
 
 	assert.True(t, 2 == len(fileIno.multiSnap.multiVersions))
 	rsp := testGetExtList(t, fileIno, 0)
@@ -949,7 +949,7 @@ func TestTruncateAndDel(t *testing.T) {
 }
 
 func testDeleteFile(t *testing.T, verSeq uint64, parentId uint64, child *proto.Dentry) {
-	t.Logf("testDeleteFile seq %v", verSeq)
+	t.Logf("testDeleteFile seq [%v]", verSeq)
 	fsmDentry := &Dentry{
 		ParentId:  parentId,
 		Name:      child.Name,
@@ -957,7 +957,7 @@ func testDeleteFile(t *testing.T, verSeq uint64, parentId uint64, child *proto.D
 		Type:      child.Type,
 		multiSnap: NewDentrySnap(verSeq),
 	}
-	t.Logf("testDeleteFile seq %v %v dentry %v", verSeq, fsmDentry.getSeqFiled(), fsmDentry)
+	t.Logf("testDeleteFile seq [%v] %v dentry %v", verSeq, fsmDentry.getSeqFiled(), fsmDentry)
 	assert.True(t, nil != mp.fsmDeleteDentry(fsmDentry, false))
 
 	rino := &Inode{
@@ -972,28 +972,28 @@ func testDeleteFile(t *testing.T, verSeq uint64, parentId uint64, child *proto.D
 
 	assert.True(t, rspDelIno.Status == proto.OpOk || rspDelIno.Status == proto.OpNotExistErr)
 	if rspDelIno.Status != proto.OpOk && rspDelIno.Status != proto.OpNotExistErr {
-		t.Logf("testDelDirSnapshotVersion: rspDelIno %v return st %v", rspDelIno, proto.ParseErrorCode(int32(rspDelIno.Status)))
+		t.Logf("testDelDirSnapshotVersion: rspDelino[%v] return st %v", rspDelIno, proto.ParseErrorCode(int32(rspDelIno.Status)))
 		panic(nil)
 	}
 }
 
 func testDeleteDirTree(t *testing.T, parentId uint64, verSeq uint64) {
-	t.Logf("testDeleteDirTree parentId %v seq %v", parentId, verSeq)
+	t.Logf("testDeleteDirTree parentId %v seq [%v]", parentId, verSeq)
 	rspReadDir := testReadDirAll(t, verSeq, parentId)
 	for _, child := range rspReadDir.Children {
 		if proto.IsDir(child.Type) {
 			testDeleteDirTree(t, child.Inode, verSeq)
 		}
 		t.Logf("action[testDeleteDirTree] delete children %v", child)
-		log.LogDebugf("action[testDeleteDirTree] seq %v delete children %v", verSeq, child)
+		log.LogDebugf("action[testDeleteDirTree] seq [%v] delete children %v", verSeq, child)
 		testDeleteFile(t, verSeq, parentId, &child)
 	}
 	return
 }
 
 func testCleanSnapshot(t *testing.T, verSeq uint64) {
-	t.Logf("action[testCleanSnapshot] verSeq %v", verSeq)
-	log.LogDebugf("action[testCleanSnapshot] verSeq %v", verSeq)
+	t.Logf("action[testCleanSnapshot] verseq [%v]", verSeq)
+	log.LogDebugf("action[testCleanSnapshot] verseq [%v]", verSeq)
 	assert.True(t, testVerListRemoveVer(t, verSeq))
 	if verSeq == 0 {
 		verSeq = math.MaxUint64
@@ -1062,7 +1062,7 @@ func testSnapshotDeletion(t *testing.T, topFirst bool) {
 			testCreateVer()
 		}
 
-		log.LogDebugf("PrintALl verSeq %v get dirCnt %v, fCnt %v mp verlist size %v", ver, dCnt, fCnt, len(mp.multiVersionList.VerList))
+		log.LogDebugf("PrintALl verseq [%v] get dirCnt %v, fCnt %v mp verlist size %v", ver, dCnt, fCnt, len(mp.multiVersionList.VerList))
 	}
 
 	t.Logf("---------------------------------------------------------------------")
@@ -1071,7 +1071,7 @@ func testSnapshotDeletion(t *testing.T, topFirst bool) {
 	for idx, ver := range verArr {
 		dCnt, fCnt := testPrintDirTree(t, 1, "root", ver)
 		t.Logf("---------------------------------------------------------------------")
-		t.Logf("PrintALl verSeq %v get dirCnt %v, fCnt %v", ver, dCnt, fCnt)
+		t.Logf("PrintALl verseq [%v] get dirCnt %v, fCnt %v", ver, dCnt, fCnt)
 		assert.True(t, dCnt == dirCnt+2)
 		assert.True(t, fCnt == fileCnt+(idx+1)*2)
 		dirCnt = dCnt
@@ -1094,13 +1094,13 @@ func testSnapshotDeletion(t *testing.T, topFirst bool) {
 		t.Logf("---------------------------------------------------------------------")
 		for idx, ver := range verArr {
 			t.Logf("---------------------------------------------------------------------")
-			t.Logf("index %v ver %v try to deletion", idx, ver)
-			log.LogDebugf("index %v ver %v try to deletion", idx, ver)
+			t.Logf("index %v ver [%v] try to deletion", idx, ver)
+			log.LogDebugf("index %v ver [%v] try to deletion", idx, ver)
 			t.Logf("---------------------------------------------------------------------")
 			testCleanSnapshot(t, ver)
 			t.Logf("---------------------------------------------------------------------")
-			t.Logf("index %v ver %v after deletion mp inode freeList len %v", idx, ver, mp.freeList.Len())
-			log.LogDebugf("index %v ver %v after deletion mp inode freeList len %v", idx, ver, mp.freeList.Len())
+			t.Logf("index %v ver [%v] after deletion mp inode freeList len %v", idx, ver, mp.freeList.Len())
+			log.LogDebugf("index %v ver [%v] after deletion mp inode freeList len %v", idx, ver, mp.freeList.Len())
 			t.Logf("---------------------------------------------------------------------")
 			if idx == len(verArr)-2 {
 				break
@@ -1537,7 +1537,7 @@ func TestDelPartitionVersion(t *testing.T) {
 	inoNew := mp.getInode(&Inode{Inode: ino.Inode}, false).Msg
 	assert.True(t, inoNew.getVer() == 25)
 	extend = mp.extendTree.Get(NewExtend(ino.Inode)).(*Extend)
-	t.Logf("extent verseq %v, multivers %v", extend.verSeq, extend.multiVers)
+	t.Logf("extent verseq [%v], multivers %v", extend.verSeq, extend.multiVers)
 	assert.True(t, extend.verSeq == 50)
 	assert.True(t, len(extend.multiVers) == 1)
 	assert.True(t, extend.multiVers[0].verSeq == 25)
@@ -1581,7 +1581,7 @@ func TestGetAllVerList(t *testing.T) {
 		return false
 	})
 
-	t.Logf("tmp %v", tmp)
+	t.Logf("tmp[%v]", tmp)
 	t.Logf("mp.multiVersionList %v", mp.multiVersionList)
 
 	mp.multiVersionList.TemporaryVerMap = make(map[uint64]*proto.VolVersionInfo)

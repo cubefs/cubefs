@@ -139,7 +139,7 @@ func (m *Parts) UpdateOrStore(part *Part) (oldInode uint64, update, conflict boo
 		oldPart := (*m)[i]
 		oldInode = oldPart.Inode
 		if part.Inode == oldInode {
-			log.LogWarnf("Request already success,the same partInode(%d) must not be overwritten.", oldInode)
+			log.LogWarnf("Request already success,the same partinode[%d] must not be overwritten.", oldInode)
 			return
 		}
 		if part.UploadTime.Before(oldPart.UploadTime) {

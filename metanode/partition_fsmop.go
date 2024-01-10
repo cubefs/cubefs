@@ -154,7 +154,7 @@ func (mp *metaPartition) confRemoveNode(req *proto.RemoveMetaPartitionRaftMember
 
 func (mp *metaPartition) delOldExtentFile(buf []byte) (err error) {
 	fileName := string(buf)
-	log.LogWarnf("[delOldExtentFile] del extent file(%s), mp(%d)", fileName, mp.config.PartitionId)
+	log.LogWarnf("[delOldExtentFile] del extent file(%s), mp[%v]", fileName, mp.config.PartitionId)
 
 	infos, err := ioutil.ReadDir(mp.config.RootDir)
 	if err != nil {
@@ -170,7 +170,7 @@ func (mp *metaPartition) delOldExtentFile(buf []byte) (err error) {
 			break
 		}
 
-		log.LogWarnf("[delOldExtentFile] del extent file(%s), mp(%d)", f.Name(), mp.config.PartitionId)
+		log.LogWarnf("[delOldExtentFile] del extent file(%s), mp[%v]", f.Name(), mp.config.PartitionId)
 		os.Remove(path.Join(mp.config.RootDir, f.Name()))
 	}
 
@@ -185,7 +185,7 @@ func (mp *metaPartition) setExtentDeleteFileCursor(buf []byte) (err error) {
 		cursor   int64
 	)
 	_, err = fmt.Sscanf(str, "%s %d", &fileName, &cursor)
-	log.LogInfof("[setExtentDeleteFileCursor] &fileName_&cursor(%s), mp(%d)", str, mp.config.PartitionId)
+	log.LogInfof("[setExtentDeleteFileCursor] &fileName_&cursor(%s), mp[%v]", str, mp.config.PartitionId)
 	if err != nil {
 		return
 	}
