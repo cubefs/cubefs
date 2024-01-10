@@ -282,6 +282,8 @@ func (o *ObjectNode) startMuxRestAPI() (err error) {
 	var server = &http.Server{
 		Addr:    ":" + o.listen,
 		Handler: router,
+
+		IdleTimeout: ConnIdleTimeout,
 	}
 
 	go func() {

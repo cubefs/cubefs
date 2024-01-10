@@ -31,6 +31,8 @@ const (
 	GetLocalIPRetryInterval = time.Second * 5
 
 	MaxLevelsOfSymlinks = 40 // POSIX default limits
+
+	ConnIdleTimeout = time.Minute // Max idle TCP connection timeout
 )
 
 const (
