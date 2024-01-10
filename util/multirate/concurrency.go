@@ -17,6 +17,7 @@ type concurrency struct {
 	count   uint64
 	quota   chan bool
 	timeout time.Duration
+	lock    sync.RWMutex
 }
 
 func newConcurrency(count uint64, timeout time.Duration) *concurrency {
@@ -51,6 +52,8 @@ func (c *concurrency) wait(ctx context.Context) error {
 }
 
 func (c *concurrency) done() {
+	c.lock.RLock()
+	defer c.lock.RUnlock()
 	select {
 	case c.quota <- true:
 	default:
@@ -61,6 +64,8 @@ func (c *concurrency) reset(count uint64) {
 	if count == c.count {
 		return
 	}
+	c.lock.Lock()
+	defer c.lock.Unlock()
 	close(c.quota)
 	c.count = count
 	c.quota = make(chan bool, count)
