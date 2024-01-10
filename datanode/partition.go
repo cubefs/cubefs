@@ -585,9 +585,9 @@ func (dp *DataPartition) statusUpdate() {
 		status = proto.Unavailable
 	}
 
-	log.LogInfof("action[statusUpdate] dp %v raft status %v dp.status %v, status %v, dis status %v, res:%v",
-		dp.partitionID, dp.raftStatus, dp.Status(), status, float64(dp.disk.Status), int(math.Min(float64(status), float64(dp.disk.Status))))
-	dp.partitionStatus = int(math.Min(float64(status), float64(dp.disk.Status)))
+	log.LogInfof("action[statusUpdate] dp %v, raft status %v, dp.status %v, status %v, disk status %v",
+		dp.partitionID, dp.raftStatus, dp.Status(), status, float64(dp.disk.Status))
+	dp.partitionStatus = status
 }
 
 func parseFileName(filename string) (extentID uint64, isExtent bool) {
@@ -648,7 +648,7 @@ func (dp *DataPartition) checkIsDiskError(err error) (diskError bool) {
 		dp.disk.incWriteErrCnt()
 		dp.disk.Status = proto.Unavailable
 		dp.statusUpdate()
-		dp.disk.ForceExitRaftStore()
+		//dp.disk.ForceExitRaftStore()
 		diskError = true
 	}
 	return
