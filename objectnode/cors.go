@@ -1,3 +1,17 @@
+// Copyright 2020 The CubeFS Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
+// implied. See the License for the specific language governing
+// permissions and limitations under the License.
+
 package objectnode
 
 // https://docs.aws.amazon.com/AmazonS3/latest/dev/cors.html
@@ -69,25 +83,25 @@ func valid(r CORSRule) *ErrorCode {
 	if len(r.AllowedMethod) == 0 {
 		return NewError("InvalidCORSRule", "Missing AllowedMethods.", 400)
 	}
-	//check origin, at most contain one *
+	// check origin, at most contain one *
 	for _, origin := range r.AllowedOrigin {
 		if strings.Count(origin, "*") > 1 {
 			return NewError("InvalidCORSRule", "AllowedOrigin can not have more than one wildcard: "+origin, 400)
 		}
 	}
-	//AllowedMethod is case sensitive
+	// AllowedMethod is case sensitive
 	for _, method := range r.AllowedMethod {
 		if !StringListContain(methodsRequest, method) {
 			return NewError("InvalidCORSRule", "AllowedMethod is unsupport: "+method, 400)
 		}
 	}
-	//check allowedheaders, at most contain one *
+	// check allowedheaders, at most contain one *
 	for _, header := range r.AllowedHeader {
 		if strings.Count(header, "*") > 1 {
 			return NewError("InvalidCORSRule", "AllowedHeaders can not have more than one wildcard: "+header, 400)
 		}
 	}
-	//exposed headers can't include *
+	// exposed headers can't include *
 	for _, exheader := range r.ExposeHeader {
 		if strings.Contains(exheader, "*") {
 			return NewError("InvalidCORSRule", "ExposedHeaders can not include wildcard: "+exheader, 400)
