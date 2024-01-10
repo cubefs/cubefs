@@ -1,3 +1,17 @@
+// Copyright 2023 The CubeFS Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
+// implied. See the License for the specific language governing
+// permissions and limitations under the License.
+
 package objectnode
 
 import (
@@ -112,12 +126,12 @@ func TestValueSet_UnmarshalJSON(t *testing.T) {
 		expectedResult ValueSet
 		expectErr      bool
 	}{
-		//test duplicate value
+		// test duplicate value
 		{[]byte(`["www.example.com","foo","foo"]`), NewValueSet(NewStringValue("www.example.com"), NewStringValue("foo"), NewStringValue("foo")), true},
-		//test empty value
+		// test empty value
 		{[]byte(`[]`), NewValueSet(), true},
 		{[]byte(`["www.example.com",["foo"]]`), NewValueSet(NewStringValue("www.example.com")), true},
-		//test correct multiple value
+		// test correct multiple value
 		{[]byte(`["www.example.com","foo","bar"]`), NewValueSet(NewStringValue("www.example.com"), NewStringValue("foo"), NewStringValue("bar")), false},
 		{[]byte(`["www.example.com"]`), NewValueSet(NewStringValue("www.example.com")), false},
 		{[]byte(`"www.example.com"`), NewValueSet(NewStringValue("www.example.com")), false},
@@ -144,12 +158,12 @@ func TestValueSet_MarshalJSON(t *testing.T) {
 		expectedResult []byte
 		expectErr      bool
 	}{
-		//test duplicate value
+		// test duplicate value
 		{NewValueSet(NewStringValue("www.example.com"), NewStringValue("foo"), NewStringValue("foo")), []byte(`["www.example.com","foo"]`), false},
-		//test empty value
+		// test empty value
 		{NewValueSet(), []byte(`[]`), true},
 
-		//test correct multiple value
+		// test correct multiple value
 		{NewValueSet(NewStringValue("www.example.com"), NewStringValue("foo"), NewStringValue("bar")), []byte(`["www.example.com","foo","bar"]`), false},
 		{NewValueSet(NewStringValue("www.example.com")), []byte(`["www.example.com"]`), false},
 		{NewValueSet(NewStringValue("www.example.com"), NewIntValue(1), NewBoolValue(true)), []byte(`["www.example.com",1,true]`), false},
