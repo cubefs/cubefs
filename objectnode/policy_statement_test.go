@@ -1,3 +1,17 @@
+// Copyright 2023 The CubeFS Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
+// implied. See the License for the specific language governing
+// permissions and limitations under the License.
+
 package objectnode
 
 import (
@@ -130,7 +144,7 @@ func TestEffectFormat(t *testing.T) {
 }
 
 func TestResourceFormat(t *testing.T) {
-	//bad: "arn:aws:s3:::bucket/" , or "arn:aws:s3:::/keyname" or "arn:aws:s3:::/" or "arn:aws:s3:::wrongbucket/key" or [ ] empty
+	// bad: "arn:aws:s3:::bucket/" , or "arn:aws:s3:::/keyname" or "arn:aws:s3:::/" or "arn:aws:s3:::wrongbucket/key" or [ ] empty
 	bucketId := "examplebucket"
 	var s Statement
 
@@ -152,14 +166,14 @@ func TestResourceFormat(t *testing.T) {
 	}
 
 	invalidResources := []string{
-		`["arn:aws:s3:::examplebucket/","arn:aws:s3:::examplebucket/key"]`, //first one is invaid
+		`["arn:aws:s3:::examplebucket/","arn:aws:s3:::examplebucket/key"]`, // first one is invaid
 		`["arn:aws:s3:::*/keyname"]`,
 		`["arn:aws:s3:::/keyname"]`,
 		`["arn:aws:s3:::/"]`,
 		`["arn:aws:s3:::/*"]`,
 		`["arn:aws:s3:::wrongbucket/key"]`,
 		`["arn:aws:s3:::wrongbucket"]`,
-		`["Arn:aws:s3:::examplebucket"]`, //Arn is invalid, should be arn
+		`["Arn:aws:s3:::examplebucket"]`, // Arn is invalid, should be arn
 		`[]`,
 		`""`,
 		`"arn:aws:s3:::exampl*bucket"`,
@@ -196,11 +210,11 @@ func TestPrincipalFormat(t *testing.T) {
 
 	invalidPrincipal := []string{
 		`{}`,
-		`{"aws":"11"}`, //must be "AWS", not "aws"
-		`{"AWS":11}`,   //must be string, not number, 11 should be "11"
+		`{"aws":"11"}`, // must be "AWS", not "aws"
+		`{"AWS":11}`,   // must be string, not number, 11 should be "11"
 		`{"AWS":[]}`,
 		`{"AWS":["11",22]}`,
-		`["11"]`, //currently, aws not support [] for principal
+		`["11"]`, // currently, aws not support [] for principal
 	}
 	for _, p := range invalidPrincipal {
 		err := json.Unmarshal([]byte(p), &s.Principal)
@@ -231,7 +245,7 @@ func TestActionFormat(t *testing.T) {
 		`["s3:GetBucketPolicy"]`,
 		`["s3:PutBucketPolicy"]`,
 		`[]`,
-		`["s3:PutObject","s3:invalid"]`, //second is invalid
+		`["s3:PutObject","s3:invalid"]`, // second is invalid
 	}
 	for _, a := range invalidAction {
 		err := json.Unmarshal([]byte(a), &s.Action)
@@ -262,14 +276,14 @@ func TestConditionFormat(t *testing.T) {
 	}
 
 	invalidCondition := []string{
-		`{"ipAddress":{"aws:SourceIp":["1.1.1.1/24"]}}`,          //should be "IpAddress"
-		`{"notIpAddress":{"aws:SourceIp":["1.1.1.3"]}}`,          //should be "NotIpAddress"
-		`{"IpAddress":{"SourceIp":["1.1.1.3"]}}`,                 //should be "aws:SourceIp"
-		`{"StringLik":{"aws:Referer":"http://*.example.com/*"}}`, //should be "aws:StringLike"
+		`{"ipAddress":{"aws:SourceIp":["1.1.1.1/24"]}}`,          // should be "IpAddress"
+		`{"notIpAddress":{"aws:SourceIp":["1.1.1.3"]}}`,          // should be "NotIpAddress"
+		`{"IpAddress":{"SourceIp":["1.1.1.3"]}}`,                 // should be "aws:SourceIp"
+		`{"StringLik":{"aws:Referer":"http://*.example.com/*"}}`, // should be "aws:StringLike"
 		`{"StringLike":{"aws:SourceIP":"http://*.example.com/*"}}`,
 		`{"StringLike":{"aws:referer":"http://*.example.com/*"}}`,
 		`{"StringLike":{"aws:host":"http://*.example.com/*"}}`,
-		`{"StringNotLik":{"aws:Referer":"http://*.example.com/*"}}`, //should be "aws:StringLike"
+		`{"StringNotLik":{"aws:Referer":"http://*.example.com/*"}}`, // should be "aws:StringLike"
 		`{"StringNotLike":{"aws:SourceIP":"http://*.example.com/*"}}`,
 		`{"StringNotLike":{"aws:referer":"http://*.example.com/*"}}`,
 		`{"StringNotLike":{"aws:host":"http://*.example.com/*"}}`,
