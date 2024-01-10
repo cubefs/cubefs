@@ -58,6 +58,12 @@ type VolVarargs struct {
 	enableAutoDpMetaRepair  bool
 	accessTimeValidInterval int64
 	enablePersistAccessTime bool
+
+	remoteCacheEnable         bool
+	remoteCachePath           string
+	remoteCacheAutoPrepare    bool
+	remoteCacheTTL            int64
+	remoteCacheReadTimeoutSec int64
 }
 
 type CacheSubItem struct {
@@ -75,6 +81,15 @@ type CacheSubItem struct {
 }
 
 type TxSubItem struct {
+	remoteCacheEnable         bool
+	remoteCachePath           string
+	remoteCacheAutoPrepare    bool
+	remoteCacheTTL            int64
+	remoteCacheReadTimeoutSec int64
+
+	PreloadCacheOn          bool
+	NeedToLowerReplica      bool
+	FollowerRead            bool
 	txTimeout               int64
 	txConflictRetryNum      int64
 	txConflictRetryInterval int64
@@ -1639,6 +1654,12 @@ func setVolFromArgs(args *VolVarargs, vol *Vol) {
 	vol.AccessTimeInterval = args.accessTimeInterval
 	vol.EnableAutoMetaRepair.Store(args.enableAutoDpMetaRepair)
 	vol.EnablePersistAccessTime = args.enablePersistAccessTime
+
+	vol.remoteCacheEnable = args.remoteCacheEnable
+	vol.remoteCachePath = args.remoteCachePath
+	vol.remoteCacheAutoPrepare = args.remoteCacheAutoPrepare
+	vol.remoteCacheTTL = args.remoteCacheTTL
+	vol.remoteCacheReadTimeoutSec = args.remoteCacheReadTimeoutSec
 }
 
 func getVolVarargs(vol *Vol) *VolVarargs {
@@ -1681,6 +1702,12 @@ func getVolVarargs(vol *Vol) *VolVarargs {
 		trashInterval:           vol.TrashInterval,
 		enablePersistAccessTime: vol.EnablePersistAccessTime,
 		enableAutoDpMetaRepair:  vol.EnableAutoMetaRepair.Load(),
+
+		remoteCacheEnable:         vol.remoteCacheEnable,
+		remoteCachePath:           vol.remoteCachePath,
+		remoteCacheAutoPrepare:    vol.remoteCacheAutoPrepare,
+		remoteCacheTTL:            vol.remoteCacheTTL,
+		remoteCacheReadTimeoutSec: vol.remoteCacheReadTimeoutSec,
 	}
 }
 
