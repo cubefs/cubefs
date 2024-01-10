@@ -603,6 +603,7 @@ func (dp *DataPartition) statusUpdate() {
 	log.LogInfof("action[statusUpdate] dp %v raft status %v dp.status %v, status %v, disk status %v",
 		dp.partitionID, dp.raftStatus, dp.Status(), status, float64(dp.disk.Status))
 	//dp.partitionStatus = int(math.Min(float64(status), float64(dp.disk.Status)))
+	dp.partitionStatus = status
 }
 
 func (dp *DataPartition) computeUsage() {
