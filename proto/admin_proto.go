@@ -1275,12 +1275,12 @@ type SimpleVolView struct {
 	ForbidWriteOpOfProtoVer0 bool
 	QuotaOfStorageClass      []*StatOfStorageClass
 
-	RemoteCacheBoostEnable   bool
-	RemoteCacheBoostPath     string
-	RemoteCacheAutoPrepare   bool
-	RemoteCacheTTL           int64
-	RemoteCacheReadTimeoutMs int64
-	EnableRemoveDupReq       bool // TODO: using it in metanode
+	RemoteCacheEnable         bool
+	RemoteCachePath           string
+	RemoteCacheAutoPrepare    bool
+	RemoteCacheTTL            int64
+	RemoteCacheReadTimeoutSec int64
+	RemoteCacheRemoveDupReq   bool // TODO: using it in metanode, origin was named EnableRemoveDupReq
 }
 
 type NodeSetInfo struct {

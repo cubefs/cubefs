@@ -295,6 +295,11 @@ func formatSimpleVolView(svv *proto.SimpleVolView) string {
 		}
 		sb.WriteString(fmt.Sprintf("  QuotaOfClass(%s)       : %v\n", proto.StorageClassString(c.StorageClass), quotaLimitStr(c.QuotaGB)))
 	}
+	sb.WriteString(fmt.Sprintf("  remoteCacheEnable               : %v\n", svv.RemoteCacheEnable))
+	sb.WriteString(fmt.Sprintf("  remoteCachePath                 : %v\n", svv.RemoteCachePath))
+	sb.WriteString(fmt.Sprintf("  remoteCacheAutoPrepare          : %v\n", svv.RemoteCacheAutoPrepare))
+	sb.WriteString(fmt.Sprintf("  remoteCacheTTL                  : %v\n", svv.RemoteCacheTTL))
+	sb.WriteString(fmt.Sprintf("  remoteCacheReadTimeoutSec       : %v\n", svv.RemoteCacheReadTimeoutSec))
 	return sb.String()
 }
 

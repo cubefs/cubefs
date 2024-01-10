@@ -611,7 +611,7 @@ func (eh *ExtentHandler) appendExtentKey() (err error) {
 			_ = eh.stream.extents.Append(eh.key, false)
 		}
 
-		if eh.key.PartitionId > 0 && eh.stream.enableCacheAutoPrepare() {
+		if eh.key.PartitionId > 0 && eh.stream.enableRemoteCacheAutoPrepare() {
 			prepareReq := &PrepareRemoteCacheRequest{
 				ctx:   context.Background(),
 				ek:    eh.key,
