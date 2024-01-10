@@ -318,6 +318,11 @@ func (api *AdminAPI) UpdateVolume(
 	request.addParam("volStorageClass", strconv.FormatUint(uint64(vv.VolStorageClass), 10))
 	request.addParam("forbidWriteOpOfProtoVersion0", strconv.FormatBool(vv.ForbidWriteOpOfProtoVer0))
 	request.addParam(proto.LeaderRetryTimeoutKey, strconv.FormatUint(uint64(vv.LeaderRetryTimeOut), 10))
+	request.addParamAny("remoteCacheEnable", vv.RemoteCacheEnable)
+	request.addParamAny("remoteCachePath", vv.RemoteCachePath)
+	request.addParamAny("remoteCacheAutoPrepare", vv.RemoteCacheAutoPrepare)
+	request.addParamAny("remoteCacheTTL", vv.RemoteCacheTTL)
+	request.addParamAny("remoteCacheReadTimeoutSec", vv.RemoteCacheReadTimeoutSec)
 
 	if txMask != "" {
 		request.addParam("enableTxMask", txMask)

@@ -34,7 +34,10 @@ import (
 	"github.com/cubefs/cubefs/util/log"
 )
 
-var parseArgs = common.ParseArguments
+var (
+	parseArgs = common.ParseArguments
+	newArg    = common.NewArgument
+)
 
 // Parse the request that adds/deletes a raft node.
 func parseRequestForRaftNode(r *http.Request) (id uint64, host string, err error) {
