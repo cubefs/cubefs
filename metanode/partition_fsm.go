@@ -676,7 +676,7 @@ func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.Sn
 			mp.txProcessor.txResource.txRbInodeTree = txRbInodeTree
 			mp.txProcessor.txResource.txRbDentryTree = txRbDentryTree
 			mp.uniqChecker = uniqChecker
-			mp.multiVersionList.VerList = verList
+			copy(mp.multiVersionList.VerList, verList)
 			mp.verSeq = mp.multiVersionList.GetLastVer()
 			log.LogInfof("mp %v updateVerList (%v) seq %v", mp.config.PartitionId, mp.multiVersionList.VerList, mp.verSeq)
 			err = nil

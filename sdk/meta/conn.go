@@ -108,7 +108,7 @@ sendWithList:
 			goto out
 		}
 		req.ExtentType |= proto.VersionListFlag
-		req.VerList = mw.Client.GetVerMgr().VerList
+		copy(req.VerList, mw.Client.GetVerMgr().VerList)
 		log.LogWarnf("sendToMetaPartition: leader failed and goto retry, req(%v) mp(%v) mc(%v) err(%v) resp(%v)", req, mp, mc, err, resp)
 		goto sendWithList
 	}

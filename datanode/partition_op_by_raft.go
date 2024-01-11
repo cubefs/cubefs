@@ -322,16 +322,16 @@ func (dp *DataPartition) CheckRandomWriteVer(p *repl.Packet) (err error) {
 
 			p.VerSeq = dp.verSeq
 			dp.volVersionInfoList.RWLock.RLock()
-			p.VerList = dp.volVersionInfoList.VerList
+			copy(p.VerList, dp.volVersionInfoList.VerList)
 			dp.volVersionInfoList.RWLock.RUnlock()
-			log.LogDebugf("action[CheckRandomWriteVer] partitionId %v reqId %v verList %v seq %v", p.PartitionID, p.ReqID, p.VerList, p.VerSeq)
+			log.LogInfof("action[CheckRandomWriteVer] partitionId %v reqId %v verList %v seq %v", p.PartitionID, p.ReqID, p.VerList, p.VerSeq)
 			return
 		} else if p.VerSeq > dp.verSeq {
-			log.LogDebugf("action[CheckRandomWriteVer] partitionId %v reqId %v verList (%v) seq %v old one(%v)",
+			log.LogWarnf("action[CheckRandomWriteVer] partitionId %v reqId %v verList (%v) seq %v old one(%v)",
 				p.PartitionID, p.ReqID, p.VerList, p.VerSeq, dp.volVersionInfoList.VerList)
 			dp.verSeq = p.VerSeq
 			dp.volVersionInfoList.RWLock.Lock()
-			dp.volVersionInfoList.VerList = p.VerList
+			copy(dp.volVersionInfoList.VerList, p.VerList)
 			dp.volVersionInfoList.RWLock.Unlock()
 		}
 	}
