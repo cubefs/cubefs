@@ -3,6 +3,7 @@
 # github.com/Shopify/sarama v1.33.0
 ## explicit; go 1.16
 github.com/Shopify/sarama
+github.com/Shopify/sarama/mocks
 # github.com/afex/hystrix-go v0.0.0-20180502004556-fa1af6a1f4f5
 ## explicit
 github.com/afex/hystrix-go/hystrix
@@ -123,6 +124,9 @@ github.com/fatih/color
 ## explicit; go 1.12
 github.com/go-ole/go-ole
 github.com/go-ole/go-ole/oleutil
+# github.com/go-ping/ping v1.1.0
+## explicit; go 1.14
+github.com/go-ping/ping
 # github.com/go-playground/locales v0.14.1
 ## explicit; go 1.17
 github.com/go-playground/locales
@@ -401,19 +405,22 @@ golang.org/x/crypto/md4
 golang.org/x/crypto/pbkdf2
 # golang.org/x/net v0.8.0
 ## explicit; go 1.17
+golang.org/x/net/bpf
 golang.org/x/net/context
 golang.org/x/net/http/httpguts
 golang.org/x/net/http2
 golang.org/x/net/http2/hpack
+golang.org/x/net/icmp
 golang.org/x/net/idna
+golang.org/x/net/internal/iana
+golang.org/x/net/internal/socket
 golang.org/x/net/internal/socks
 golang.org/x/net/internal/timeseries
+golang.org/x/net/ipv4
+golang.org/x/net/ipv6
 golang.org/x/net/proxy
 golang.org/x/net/trace
 # golang.org/x/sync v0.1.0
-## explicit
-golang.org/x/sync/errgroup
-golang.org/x/sync/singleflight
 ## explicit
 golang.org/x/sync/errgroup
 golang.org/x/sync/singleflight
