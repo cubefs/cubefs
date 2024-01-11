@@ -3106,6 +3106,11 @@ func (c *Cluster) doCreateVol(req *createVolReq) (vol *Vol, err error) {
 
 	log.LogInfof("[doCreateVol] volView, %v", vv)
 
+	if vv.EnableTransaction == 0 {
+		vv.EnableTransaction = proto.TxOpMask(proto.TxOpMaskRename)
+		log.LogWarnf("[doCreateVol] volView, name %s, set rename default", vv.Name)
+	}
+
 	if _, err = c.getVol(req.name); err == nil {
 		err = proto.ErrDuplicateVol
 		goto errHandler
