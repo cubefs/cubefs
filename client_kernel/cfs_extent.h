@@ -5,11 +5,12 @@
 #define __CFS_EXTENT_H__
 
 #include "cfs_common.h"
-
 #include "cfs_log.h"
 #include "cfs_master.h"
 #include "cfs_meta.h"
 #include "cfs_page.h"
+#include "cfs_option.h"
+#include "cfs_rdma_socket.h"
 
 #define EXTENT_STREAM_BUCKET_MAX_NUM 128
 #define EXTENT_DP_BUCKET_MAX_NUM 128
@@ -44,6 +45,7 @@ struct cfs_data_partition {
 	bool is_recover;
 	bool is_discard;
 	struct cfs_buffer *follower_addrs;
+	struct cfs_buffer *rdma_follower_addrs;
 	u8 nr_followers;
 	atomic_t refcnt;
 };
@@ -125,6 +127,7 @@ struct cfs_extent_stream {
 	u32 max_readers;
 	struct mutex lock_readers;
 	u64 ino;
+	bool enable_rdma;
 };
 
 struct cfs_extent_client {
@@ -139,6 +142,8 @@ struct cfs_extent_client {
 	struct mutex select_lock;
 	struct delayed_work update_dp_work;
 	struct cfs_log *log;
+	bool enable_rdma;
+	u32 rdma_port;
 };
 
 struct cfs_extent_io_info *
@@ -147,7 +152,7 @@ cfs_extent_io_info_new(loff_t offset, size_t size,
 void cfs_extent_io_info_release(struct cfs_extent_io_info *io_info);
 
 struct cfs_data_partition *
-cfs_data_partition_new(struct cfs_data_partition_view *dp_view);
+cfs_data_partition_new(struct cfs_data_partition_view *dp_view, u32 rdma_port);
 void cfs_data_partition_release(struct cfs_data_partition *dp);
 #define cfs_data_partition_put cfs_data_partition_release
 
@@ -226,9 +231,7 @@ void cfs_extent_reader_flush(struct cfs_extent_reader *reader);
 void cfs_extent_reader_request(struct cfs_extent_reader *reader,
 			       struct cfs_packet *packet);
 
-struct cfs_extent_client *
-cfs_extent_client_new(struct cfs_master_client *master,
-		      struct cfs_meta_client *meta, struct cfs_log *log);
+struct cfs_extent_client *cfs_extent_client_new(struct cfs_mount_info *cmi);
 void cfs_extent_client_release(struct cfs_extent_client *ec);
 int cfs_extent_update_partition(struct cfs_extent_client *ec);
 struct cfs_data_partition *

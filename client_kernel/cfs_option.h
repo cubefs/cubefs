@@ -15,6 +15,8 @@ struct cfs_options {
 	u32 attr_cache_valid_ms;
 	u32 quota_cache_valid_ms;
 	bool enable_quota;
+	bool enable_rdma;
+	u32 rdma_port;
 };
 
 struct cfs_options *cfs_options_new(const char *dev_str, const char *opt_str);

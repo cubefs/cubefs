@@ -936,6 +936,55 @@ struct cfs_packet {
 	} rw;
 };
 
+typedef struct RequestHeader { //__attribute__((packed))
+	uint8_t magic;
+	uint8_t ext_type; // the highest bit be set while rsp to client if version not consistent then Verseq be valid
+	uint8_t opcode;
+	uint8_t result_code;
+	uint8_t remaining_followers;
+	uint32_t crc;
+	uint32_t size;
+	uint32_t arglen;
+	uint64_t pid;
+	uint64_t ext_id;
+	int64_t ext_offset;
+	int64_t req_id;
+	uint64_t kernel_offset;
+	uint64_t VerSeq; // only used in mod request to datanode
+	unsigned char
+		arg[40]; // for create or append ops, the data contains the address
+	unsigned char list[40];
+	uint8_t RdmaVersion; //rdma协议版本
+	uint64_t RdmaAddr;
+	uint32_t RdmaLength;
+	uint32_t RdmaKey;
+} __attribute__((packed)) Header; //
+
+typedef struct Response {
+	uint8_t magic;
+	uint8_t ext_type; // the highest bit be set while rsp to client if version not consistent then Verseq be valid
+	uint8_t opcode;
+	uint8_t result_code;
+	uint8_t remaining_followers;
+	uint32_t crc;
+	uint32_t size;
+	uint32_t arglen;
+	uint64_t pid;
+	uint64_t ext_id;
+	int64_t ext_offset;
+	int64_t req_id;
+	uint64_t kernel_offset;
+	uint64_t VerSeq; // only used in mod request to datanode
+	unsigned char
+		arg[40]; // for create or append ops, the data contains the address
+	unsigned char data[500];
+	unsigned char list[40];
+	uint8_t RdmaVersion; //rdma协议版本
+	uint64_t RdmaAddr;
+	uint32_t RdmaLength;
+	uint32_t RdmaKey;
+} Response;
+
 struct cfs_packet *cfs_packet_new(u8 op, u64 pid,
 				  void (*handle_reply)(struct cfs_packet *),
 				  void *private);

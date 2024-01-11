@@ -4,6 +4,7 @@
 #include "cfs_fs.h"
 #include "cfs_packet.h"
 #include "cfs_socket.h"
+#include "cfs_rdma_socket.h"
 
 static int __init cfs_init(void)
 {
@@ -13,6 +14,12 @@ static int __init cfs_init(void)
 	ret = cfs_socket_module_init();
 	if (ret < 0) {
 		cfs_pr_err("init socket module error %d\n", ret);
+		goto exit;
+	}
+
+	ret = cfs_rdma_module_init();
+	if (ret < 0) {
+		cfs_pr_err("init rdma module error %d\n", ret);
 		goto exit;
 	}
 
@@ -56,6 +63,7 @@ static int __init cfs_init(void)
 
 exit:
 	cfs_socket_module_exit();
+	cfs_rdma_module_exit();
 	cfs_packet_module_exit();
 	cfs_extent_module_exit();
 	cfs_fs_module_exit();
@@ -77,6 +85,7 @@ static void __exit cfs_exit(void)
 	remove_proc_entry("fs/cubefs", NULL);
 	cfs_packet_module_exit();
 	cfs_socket_module_exit();
+	cfs_rdma_module_exit();
 	cfs_extent_module_exit();
 	cfs_fs_module_exit();
 	cfs_page_module_exit();

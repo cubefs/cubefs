@@ -20,8 +20,15 @@ struct cfs_extent_reader *cfs_extent_reader_new(struct cfs_extent_stream *es,
 	if (!reader)
 		return ERR_PTR(-ENOMEM);
 	host_idx = host_idx % dp->members.num;
-	ret = cfs_socket_create(CFS_SOCK_TYPE_TCP, &dp->members.base[host_idx],
-				es->ec->log, &reader->sock);
+	if (es->enable_rdma) {
+		ret = cfs_rdma_create(&dp->members.base[host_idx], es->ec->log,
+				      &reader->sock);
+	} else {
+		ret = cfs_socket_create(CFS_SOCK_TYPE_TCP,
+					&dp->members.base[host_idx],
+					es->ec->log, &reader->sock);
+	}
+
 	if (ret < 0) {
 		kfree(reader);
 		return ERR_PTR(ret);
@@ -50,7 +57,12 @@ void cfs_extent_reader_release(struct cfs_extent_reader *reader)
 	cancel_work_sync(&reader->tx_work);
 	cancel_work_sync(&reader->rx_work);
 	cfs_data_partition_release(reader->dp);
-	cfs_socket_release(reader->sock, true);
+	if (reader->sock->enable_rdma) {
+		cfs_rdma_release(reader->sock, true);
+	} else {
+		cfs_socket_release(reader->sock, true);
+	}
+
 	kfree(reader);
 }
 
@@ -91,7 +103,15 @@ static void extent_reader_tx_work_cb(struct work_struct *work)
 
 		if (!(reader->flags &
 		      (EXTENT_READER_F_ERROR | EXTENT_READER_F_RECOVER))) {
-			int ret = cfs_socket_send_packet(reader->sock, packet);
+			int ret;
+			if (reader->sock->enable_rdma) {
+				ret = cfs_rdma_send_packet(reader->sock,
+							   packet);
+			} else {
+				ret = cfs_socket_send_packet(reader->sock,
+							     packet);
+			}
+
 			if (ret == -ENOMEM)
 				reader->flags |= EXTENT_WRITER_F_ERROR;
 			else if (ret < 0)
@@ -137,7 +157,12 @@ static void extent_reader_rx_work_cb(struct work_struct *work)
 		if (reader->flags & EXTENT_READER_F_RECOVER)
 			goto recover_packet;
 
-		ret = cfs_socket_recv_packet(reader->sock, packet);
+		if (reader->sock->enable_rdma) {
+			ret = cfs_rdma_recv_packet(reader->sock, packet);
+		} else {
+			ret = cfs_socket_recv_packet(reader->sock, packet);
+		}
+
 		if (ret < 0 || packet->reply.hdr.result_code != CFS_STATUS_OK) {
 			reader->flags |= EXTENT_READER_F_RECOVER;
 			goto recover_packet;

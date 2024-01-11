@@ -1,8 +1,10 @@
 /*.o
+/rdma/*.o
 /*.o.d
 /*.ko*
 /*.mod.*
 /.*.cmd
+/rdma/.*.cmd
 /Module.symvers
 /modules.order
 /.tmp_versions/

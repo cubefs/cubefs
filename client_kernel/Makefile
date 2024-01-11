@@ -20,7 +20,10 @@ cubefs-y :=	btree.o \
 	cfs_option.o \
 	cfs_packet.o \
 	cfs_page.o \
-	cfs_socket.o
+	cfs_socket.o \
+	rdma/IBVBuffer.o \
+	rdma/IBVSocket.o \
+	cfs_rdma_socket.o
 
 all:
 	make -C /lib/modules/$(shell uname -r)/build M=$(PWD) modules
@@ -31,6 +34,9 @@ mount_dev:
 	sudo insmod cubefs.ko
 	sudo mount -t cubefs -o owner=ltptest,dentry_cache_valid_ms=5000,attr_cache_valid_ms=30000 \
     //10.177.128.203:17010,10.177.128.204:17010,10.177.128.205:17010/ltptest /mnt/cubefs
+# enable RDMA mode:
+#	sudo mount -t cubefs -o owner=ltptest,enable_rdma=true,rdma_port=17360 \
+#    //10.177.128.203:17010,10.177.128.204:17010,10.177.128.205:17010/ltptest /mnt/cubefs
 mount_test:
 	sudo dmesg -C
 	sudo insmod cubefs.ko

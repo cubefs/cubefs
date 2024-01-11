@@ -38,6 +38,19 @@
 
 #include "config.h"
 
+struct cfs_mount_info {
+	struct cfs_options *options;
+	struct proc_dir_entry *proc_dir;
+	struct proc_dir_entry *proc_log;
+	struct cfs_log *log;
+	struct cfs_master_client *master;
+	struct cfs_meta_client *meta;
+	struct cfs_extent_client *ec;
+	atomic_long_t links_limit;
+	struct delayed_work update_limit_work;
+	struct backing_dev_info bdi;
+};
+
 #undef pr_fmt
 #define pr_fmt(fmt) "cfs: %s() " fmt
 
@@ -233,6 +246,7 @@ static inline int cfs_kstrntobool(const char *start, size_t len, bool *res)
 }
 
 const char *cfs_pr_addr(const struct sockaddr_storage *ss);
+const char *cfs_pr_addr_rdma(const struct sockaddr_storage *ss, u32 rdma_port);
 int cfs_parse_addr(const char *str, size_t len, struct sockaddr_storage *ss);
 int cfs_addr_cmp(const struct sockaddr_storage *ss1,
 		 const struct sockaddr_storage *ss2);

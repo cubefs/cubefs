@@ -1754,7 +1754,7 @@ struct cfs_mount_info *cfs_mount_info_new(struct cfs_options *options)
 		err_ptr = ERR_CAST(cmi->meta);
 		goto err_meta;
 	}
-	cmi->ec = cfs_extent_client_new(cmi->master, cmi->meta, cmi->log);
+	cmi->ec = cfs_extent_client_new(cmi);
 	if (IS_ERR(cmi->ec)) {
 		err_ptr = ERR_CAST(cmi->ec);
 		goto err_ec;

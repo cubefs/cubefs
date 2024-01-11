@@ -3,20 +3,9 @@
  */
 #include "cfs_socket.h"
 
-#define SOCK_POOL_BUCKET_COUNT 128
-#define SOCK_POOL_LRU_INTERVAL_MS 60 * 1000u
-// #define DEBUG
-
-struct cfs_socket_pool {
-	struct hlist_head head[SOCK_POOL_BUCKET_COUNT];
-	struct list_head lru;
-	struct mutex lock;
-	struct delayed_work work;
-};
-
 static struct cfs_socket_pool *sock_pool;
 
-static inline u32 hash_sockaddr_storage(const struct sockaddr_storage *addr)
+inline u32 hash_sockaddr_storage(const struct sockaddr_storage *addr)
 {
 	const struct sockaddr_in *in;
 
@@ -102,6 +91,7 @@ int cfs_socket_create(enum cfs_socket_type type,
 				"kernel_setsockopt SO_REUSEADDR error %d\n",
 				ret);
 		csk->pool = sock_pool;
+		csk->enable_rdma = false;
 	} else {
 		hash_del(&csk->hash);
 		list_del(&csk->list);
@@ -567,7 +557,7 @@ int cfs_socket_recv_packet(struct cfs_socket *csk, struct cfs_packet *packet)
 	return ret < 0 ? ret : 0;
 }
 
-static inline bool is_sock_valid(struct cfs_socket *sock)
+inline bool is_sock_valid(struct cfs_socket *sock)
 {
 	return sock->jiffies + msecs_to_jiffies(SOCK_POOL_LRU_INTERVAL_MS) >
 	       jiffies;

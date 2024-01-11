@@ -8,7 +8,7 @@
 struct workqueue_struct *extent_work_queue;
 
 struct cfs_data_partition *
-cfs_data_partition_new(struct cfs_data_partition_view *dp_view)
+cfs_data_partition_new(struct cfs_data_partition_view *dp_view, u32 rdma_port)
 {
 	struct cfs_data_partition *dp;
 	u32 i;
@@ -21,11 +21,25 @@ cfs_data_partition_new(struct cfs_data_partition_view *dp_view)
 		kfree(dp);
 		return NULL;
 	}
+	dp->rdma_follower_addrs = cfs_buffer_new(0);
+	if (!dp->rdma_follower_addrs) {
+		kfree(dp);
+		return NULL;
+	}
 	for (i = 1; i < dp_view->members.num; i++) {
 		if (cfs_buffer_write(dp->follower_addrs, "%s/",
 				     cfs_pr_addr(&dp_view->members.base[i])) <
 		    0) {
 			cfs_buffer_release(dp->follower_addrs);
+			cfs_buffer_release(dp->rdma_follower_addrs);
+			kfree(dp);
+			return NULL;
+		}
+		if (cfs_buffer_write(
+			    dp->rdma_follower_addrs, "%s/",
+			    cfs_pr_addr_rdma(&dp_view->members.base[i], rdma_port)) < 0) {
+			cfs_buffer_release(dp->follower_addrs);
+			cfs_buffer_release(dp->rdma_follower_addrs);
 			kfree(dp);
 			return NULL;
 		}
@@ -62,6 +76,8 @@ void cfs_data_partition_release(struct cfs_data_partition *dp)
 	sockaddr_storage_array_clear(&dp->members);
 	if (dp->follower_addrs)
 		cfs_buffer_release(dp->follower_addrs);
+	if (dp->rdma_follower_addrs)
+		cfs_buffer_release(dp->rdma_follower_addrs);
 	kfree(dp);
 }
 
@@ -77,8 +93,7 @@ static void update_dp_work_cb(struct work_struct *work)
 }
 
 struct cfs_extent_client *
-cfs_extent_client_new(struct cfs_master_client *master,
-		      struct cfs_meta_client *meta, struct cfs_log *log)
+cfs_extent_client_new(struct cfs_mount_info *cmi)
 {
 	struct cfs_extent_client *ec;
 	int ret;
@@ -86,9 +101,12 @@ cfs_extent_client_new(struct cfs_master_client *master,
 	ec = kzalloc(sizeof(*ec), GFP_NOFS);
 	if (!ec)
 		return NULL;
-	ec->master = master;
-	ec->meta = meta;
-	ec->log = log;
+	ec->master = cmi->master;
+	ec->meta = cmi->meta;
+	ec->log = cmi->log;
+	ec->enable_rdma = cmi->options->enable_rdma;
+	ec->rdma_port = cmi->options->rdma_port;
+
 	hash_init(ec->streams);
 	hash_init(ec->data_partitions);
 	INIT_LIST_HEAD(&ec->rw_partitions);
@@ -148,7 +166,7 @@ int cfs_extent_update_partition(struct cfs_extent_client *ec)
 	ec->nr_rw_partitions = 0;
 	for (i = 0; i < dp_views.num; i++) {
 		dp_view = &dp_views.base[i];
-		dp = cfs_data_partition_new(dp_view);
+		dp = cfs_data_partition_new(dp_view, ec->rdma_port);
 		if (!dp) {
 			ret = -ENOMEM;
 			goto unlock;

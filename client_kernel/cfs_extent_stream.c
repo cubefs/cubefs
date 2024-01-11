@@ -25,6 +25,43 @@ static enum extent_write_type extent_io_type(struct cfs_extent_io_info *io_info)
 	return EXTENT_WRITE_TYPE_TINY;
 }
 
+static int do_extent_request_rdma(struct cfs_extent_stream *es,
+				  struct sockaddr_storage *host,
+				  struct cfs_packet *packet)
+{
+	struct cfs_socket *sock;
+	int err;
+
+	err = cfs_rdma_create(host, es->ec->log, &sock);
+	if (err) {
+		cfs_log_error(es->ec->log, "rdma(%s) create error %d\n",
+			      cfs_pr_addr(host), err);
+		return err;
+	}
+
+	err = cfs_rdma_send_packet(sock, packet);
+	if (err < 0) {
+		cfs_log_error(es->ec->log, "rdma(%s) send packet error %d\n",
+			      cfs_pr_addr(host), err);
+		goto out;
+	}
+
+	err = cfs_rdma_recv_packet(sock, packet);
+	if (err) {
+		cfs_log_error(es->ec->log, "rdma(%s) recv packet error %d\n",
+			      cfs_pr_addr(host), err);
+		goto out;
+	}
+
+out:
+	if (err || packet->reply.hdr.result_code != CFS_STATUS_OK)
+		cfs_rdma_release(sock, true);
+	else
+		cfs_rdma_release(sock, false);
+
+	return err;
+}
+
 static int do_extent_request(struct cfs_extent_stream *es,
 			     struct sockaddr_storage *host,
 			     struct cfs_packet *packet)
@@ -66,6 +103,7 @@ out:
 		cfs_socket_release(sock, true);
 	else
 		cfs_socket_release(sock, false);
+
 	return err;
 }
 
@@ -88,7 +126,12 @@ retry:
 	if (host_retry_cnt == 0)
 		return ret;
 	host = &dp->members.base[host_id % dp->members.num];
-	ret = do_extent_request(es, host, packet);
+	if (es->enable_rdma) {
+		ret = do_extent_request_rdma(es, host, packet);
+	} else {
+		ret = do_extent_request(es, host, packet);
+	}
+
 	if (ret < 0) {
 		/* try other host */
 		host_id++;
@@ -353,10 +396,19 @@ retry:
 		ret = -ENOMEM;
 		return ret;
 	}
-	cfs_packet_set_request_arg(packet, dp->follower_addrs);
+	if (es->enable_rdma) {
+		cfs_packet_set_request_arg(packet, dp->rdma_follower_addrs);
+	} else {
+		cfs_packet_set_request_arg(packet, dp->follower_addrs);
+	}
 	cfs_packet_set_write_data(packet, iter, &io_info->size);
 
-	ret = do_extent_request(es, &dp->members.base[0], packet);
+	if (es->enable_rdma) {
+		ret = do_extent_request_rdma(es, &dp->members.base[0], packet);
+	} else {
+		ret = do_extent_request(es, &dp->members.base[0], packet);
+	}
+
 	if (ret < 0) {
 		if (retry_cnt == 1)
 			cfs_log_error(es->ec->log,
@@ -484,7 +536,13 @@ static int extent_write_pages_normal(struct cfs_extent_stream *es,
 		}
 		cfs_packet_set_callback(packet, extent_write_pages_reply_cb,
 					writer);
-		cfs_packet_set_request_arg(packet, writer->dp->follower_addrs);
+		if (es->enable_rdma) {
+			cfs_packet_set_request_arg(
+				packet, writer->dp->rdma_follower_addrs);
+		} else {
+			cfs_packet_set_request_arg(packet,
+						   writer->dp->follower_addrs);
+		}
 		cfs_packet_set_write_data(packet, iter, &w_len);
 
 		cfs_packet_extent_init(&extent, writer->file_offset, 0, 0, 0,
@@ -1128,6 +1186,7 @@ struct cfs_extent_stream *cfs_extent_stream_new(struct cfs_extent_client *ec,
 	mutex_init(&es->lock_writers);
 	mutex_init(&es->lock_readers);
 	mutex_init(&es->lock_io);
+	es->enable_rdma = ec->enable_rdma;
 	return es;
 }
 

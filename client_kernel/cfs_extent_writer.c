@@ -20,8 +20,14 @@ struct cfs_extent_writer *cfs_extent_writer_new(struct cfs_extent_stream *es,
 	writer = kzalloc(sizeof(*writer), GFP_NOFS);
 	if (!writer)
 		return ERR_PTR(-ENOMEM);
-	ret = cfs_socket_create(CFS_SOCK_TYPE_TCP, &dp->members.base[0],
-				es->ec->log, &writer->sock);
+	if (es->enable_rdma) {
+		ret = cfs_rdma_create(&dp->members.base[0], es->ec->log,
+				      &writer->sock);
+	} else {
+		ret = cfs_socket_create(CFS_SOCK_TYPE_TCP, &dp->members.base[0],
+					es->ec->log, &writer->sock);
+	}
+
 	if (ret < 0) {
 		kfree(writer);
 		return ERR_PTR(ret);
@@ -53,7 +59,12 @@ void cfs_extent_writer_release(struct cfs_extent_writer *writer)
 	cancel_work_sync(&writer->tx_work);
 	cancel_work_sync(&writer->rx_work);
 	cfs_data_partition_release(writer->dp);
-	cfs_socket_release(writer->sock, true);
+	if (writer->sock->enable_rdma) {
+		cfs_rdma_release(writer->sock, true);
+	} else {
+		cfs_socket_release(writer->sock, true);
+	}
+
 	kfree(writer);
 }
 
@@ -133,7 +144,15 @@ static void extent_writer_tx_work_cb(struct work_struct *work)
 
 		if (!(writer->flags &
 		      (EXTENT_WRITER_F_ERROR | EXTENT_WRITER_F_RECOVER))) {
-			int ret = cfs_socket_send_packet(writer->sock, packet);
+			int ret;
+			if (writer->sock->enable_rdma) {
+				ret = cfs_rdma_send_packet(writer->sock,
+							   packet);
+			} else {
+				ret = cfs_socket_send_packet(writer->sock,
+							     packet);
+			}
+
 			if (ret < 0)
 				writer->flags |= EXTENT_WRITER_F_RECOVER;
 		}
@@ -177,7 +196,12 @@ static void extent_writer_rx_work_cb(struct work_struct *work)
 		if (writer->flags & EXTENT_WRITER_F_RECOVER)
 			goto recover_packet;
 
-		ret = cfs_socket_recv_packet(writer->sock, packet);
+		if (writer->sock->enable_rdma) {
+			ret = cfs_rdma_recv_packet(writer->sock, packet);
+		} else {
+			ret = cfs_socket_recv_packet(writer->sock, packet);
+		}
+
 		if (ret < 0 || packet->reply.hdr.result_code != CFS_STATUS_OK) {
 			writer->flags |= EXTENT_WRITER_F_RECOVER;
 			goto recover_packet;
@@ -229,7 +253,13 @@ recover_packet:
 			recover->file_offset);
 		packet->request.hdr.remaining_followers =
 			recover->dp->nr_followers;
-		cfs_packet_set_request_arg(packet, recover->dp->follower_addrs);
+		if (writer->sock->enable_rdma) {
+			cfs_packet_set_request_arg(
+				packet, recover->dp->rdma_follower_addrs);
+		} else {
+			cfs_packet_set_request_arg(packet,
+						   recover->dp->follower_addrs);
+		}
 		cfs_packet_set_callback(packet, packet->handle_reply, recover);
 
 		cfs_extent_writer_request(recover, packet);

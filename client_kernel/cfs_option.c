@@ -197,6 +197,40 @@ static int cfs_options_parse(const char *dev_str, const char *opt_str,
 				start = end + 1;
 			else
 				break;
+		} else if (strncmp(start, "enable_rdma=", 12) == 0) {
+			start += 12;
+			end = strchr(start, ',');
+			if (end)
+				ret = cfs_kstrntobool(start, end - start,
+						      &options->enable_rdma);
+			else
+				ret = kstrtobool(start, &options->enable_rdma);
+			if (ret < 0) {
+				cfs_options_clear(options);
+				return -EINVAL;
+			}
+			if (end)
+				start = end + 1;
+			else
+				break;
+		} else if (strncmp(start, "rdma_port=", 10) == 0) {
+			start += 10;
+			end = strchr(start, ',');
+			if (end)
+				ret = cfs_kstrntou32(
+					start, end - start, 10,
+					&options->rdma_port);
+			else
+				ret = kstrtou32(start, 10,
+						&options->rdma_port);
+			if (ret < 0) {
+				cfs_options_clear(options);
+				return -EINVAL;
+			}
+			if (end)
+				start = end + 1;
+			else
+				break;
 		} else {
 			start++;
 		}

@@ -8,6 +8,7 @@
 
 #include "cfs_log.h"
 #include "cfs_packet.h"
+#include "rdma/IBVSocket.h"
 
 struct cfs_socket_pool;
 
@@ -25,6 +26,8 @@ struct cfs_socket {
 	struct cfs_buffer *rx_buffer;
 	unsigned long jiffies;
 	struct cfs_log *log;
+	IBVSocket* ibvsock;
+	bool enable_rdma;
 };
 
 struct cfs_socket_ops {
@@ -33,6 +36,17 @@ struct cfs_socket_ops {
 	void (*sk_write_space)(struct sock *sk);
 };
 
+#define SOCK_POOL_BUCKET_COUNT 128
+#define SOCK_POOL_LRU_INTERVAL_MS 60 * 1000u
+
+struct cfs_socket_pool {
+	struct hlist_head head[SOCK_POOL_BUCKET_COUNT];
+	struct list_head lru;
+	struct mutex lock;
+	struct delayed_work work;
+};
+
+inline u32 hash_sockaddr_storage(const struct sockaddr_storage *addr);
 int cfs_socket_create(enum cfs_socket_type type,
 		      const struct sockaddr_storage *dst, struct cfs_log *log,
 		      struct cfs_socket **cskp);
@@ -48,6 +62,7 @@ int cfs_socket_recv_iovec(struct cfs_socket *csk, struct iovec *iov,
 			  size_t nr_segs);
 int cfs_socket_send_packet(struct cfs_socket *csk, struct cfs_packet *packet);
 int cfs_socket_recv_packet(struct cfs_socket *csk, struct cfs_packet *packet);
+inline bool is_sock_valid(struct cfs_socket *sock);
 int cfs_socket_module_init(void);
 void cfs_socket_module_exit(void);
 #endif

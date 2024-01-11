@@ -44,6 +44,35 @@ const char *cfs_pr_addr(const struct sockaddr_storage *ss)
 	return s;
 }
 
+const char *cfs_pr_addr_rdma(const struct sockaddr_storage *ss, u32 rdma_port)
+{
+	int i;
+	char *s;
+	struct sockaddr_in *in4 = (struct sockaddr_in *)ss;
+	struct sockaddr_in6 *in6 = (struct sockaddr_in6 *)ss;
+
+	i = atomic_inc_return(&addr_str_seq) & ADDR_STR_COUNT_MASK;
+	s = addr_str[i];
+
+	switch (ss->ss_family) {
+	case AF_INET:
+		snprintf(s, MAX_ADDR_STR_LEN, "%pI4:%hu", &in4->sin_addr,
+			 rdma_port);
+		break;
+
+	case AF_INET6:
+		snprintf(s, MAX_ADDR_STR_LEN, "[%pI6c]:%hu", &in6->sin6_addr,
+			 rdma_port);
+		break;
+
+	default:
+		snprintf(s, MAX_ADDR_STR_LEN, "(unknown sockaddr family %hu)",
+			 ss->ss_family);
+	}
+
+	return s;
+}
+
 /**
  * Parse '127.0.0.1:80', '[::1]:80'.
  */
