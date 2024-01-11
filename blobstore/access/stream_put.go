@@ -407,7 +407,7 @@ func (h *Handler) writeToBlobnodes(ctx context.Context,
 	if atomic.LoadUint32(&writtenNum) >= putQuorum {
 		writeDone <- struct{}{}
 		if hasBroken {
-			h.releaseVolume(ctx, clusterID, vid) // TODO: Need to cooperate with the alloc and renewal
+			h.releaseVolumeNormal(ctx, clusterID, vid) // TODO: Need to cooperate with the alloc and renewal
 		}
 		return
 	}
@@ -443,7 +443,7 @@ func (h *Handler) writeToBlobnodes(ctx context.Context,
 				allFine, allDown, tactic.AZCount, blob.String())
 			writeDone <- struct{}{}
 			if hasBroken {
-				h.releaseVolume(ctx, clusterID, vid)
+				h.releaseVolumeNormal(ctx, clusterID, vid)
 			}
 			return
 		}
@@ -452,7 +452,7 @@ func (h *Handler) writeToBlobnodes(ctx context.Context,
 	close(writeDone)
 	err = fmt.Errorf("quorum write failed (%d < %d) of %s", writtenNum, putQuorum, blob.String())
 	// need mark sealed: less than quorum, az fail
-	h.setVolumeSealed(ctx, clusterID, vid)
+	h.releaseVolumeSealed(ctx, clusterID, vid)
 
 	return
 }

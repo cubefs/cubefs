@@ -18,10 +18,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
-	"strings"
-
 	"github.com/afex/hystrix-go/hystrix"
+	"github.com/cubefs/cubefs/blobstore/access/allocator"
 	"github.com/cubefs/cubefs/blobstore/access/controller"
 	"github.com/cubefs/cubefs/blobstore/api/access"
 	"github.com/cubefs/cubefs/blobstore/api/blobnode"
@@ -36,6 +34,8 @@ import (
 	"github.com/cubefs/cubefs/blobstore/util/errors"
 	"github.com/cubefs/cubefs/blobstore/util/log"
 	"github.com/cubefs/cubefs/blobstore/util/retry"
+	"io"
+	"strings"
 )
 
 const (
@@ -119,6 +119,7 @@ type StreamConfig struct {
 	ServicePunishIntervalS     int    `json:"service_punish_interval_s"`
 	AllocRetryTimes            int    `json:"alloc_retry_times"`
 	AllocRetryIntervalMS       int    `json:"alloc_retry_interval_ms"`
+	AllocVolumeNum             int    `json:"alloc_volume_num"`
 	EncoderEnableVerify        bool   `json:"encoder_enableverify"`
 	EncoderConcurrency         int    `json:"encoder_concurrency"`
 	MinReadShardsX             int    `json:"min_read_shards_x"`
@@ -133,6 +134,7 @@ type StreamConfig struct {
 	ClusterConfig  controller.ClusterConfig `json:"cluster_config"`
 	BlobnodeConfig blobnode.Config          `json:"blobnode_config"`
 	ProxyConfig    proxy.Config             `json:"proxy_config"`
+	AllocConfig    allocator.VolumeMgrConf  `json:"alloc_config"`
 
 	// hystrix command config
 	AllocCommandConfig hystrix.CommandConfig `json:"alloc_command_config"`
@@ -161,9 +163,12 @@ type Handler struct {
 	memPool           *resourcepool.MemPool
 	encoder           map[codemode.CodeMode]ec.Encoder
 	clusterController controller.ClusterController
+	allocMgr          allocator.VolumeMgr
+	//volumeCache       atomic.Value
 
 	blobnodeClient blobnode.StorageAPI
 	proxyClient    proxy.Client
+	cmClient       cmapi.APIAccess
 
 	allCodeModes  CodeModePairs
 	maxObjectSize int64
@@ -178,8 +183,8 @@ func confCheck(cfg *StreamConfig) {
 	if cfg.IDC == "" {
 		log.Fatal("idc config can not be null")
 	}
-	if cfg.ClusterConfig.ConsulAgentAddr == "" && len(cfg.ClusterConfig.Clusters) == 0 {
-		log.Panic("consul or clusters can not all be empty")
+	if len(cfg.ClusterConfig.Clusters) != 1 {
+		log.Panic("Only one cluster can be configured")
 	}
 	cfg.ClusterConfig.IDC = cfg.IDC
 
@@ -199,6 +204,7 @@ func confCheck(cfg *StreamConfig) {
 	defaulter.LessOrEqual(&cfg.DiskTimeoutPunishIntervalS, defaultDiskPunishIntervalS/10)
 	defaulter.LessOrEqual(&cfg.ServicePunishIntervalS, defaultServicePunishIntervalS)
 	defaulter.LessOrEqual(&cfg.AllocRetryTimes, defaultAllocRetryTimes)
+	defaulter.LessOrEqual(&cfg.AllocVolumeNum, defaultAllocVolumeNum)
 	if cfg.AllocRetryIntervalMS <= 100 {
 		cfg.AllocRetryIntervalMS = defaultAllocRetryIntervalMS
 	}
@@ -235,12 +241,22 @@ func NewStreamHandler(cfg *StreamConfig, stopCh <-chan struct{}) StreamHandler {
 		log.Fatalf("new cluster controller failed, err: %v", err)
 	}
 
+	// only one cluster
+	cmClient := clusterController.GetClusterClient(cfg.ClusterConfig.Clusters[0].ClusterID)
+	if cmClient == nil {
+		log.Fatal("new cluster client is nil")
+	}
+
+	allocMgr, err := allocator.NewVolumeMgrImpl(cfg.AllocConfig, cmClient, stopCh)
+
 	handler := &Handler{
 		memPool:           resourcepool.NewMemPool(cfg.MemPoolSizeClasses),
 		clusterController: clusterController,
+		allocMgr:          allocMgr,
 
 		blobnodeClient: blobnode.New(&cfg.BlobnodeConfig),
 		proxyClient:    proxyClient,
+		cmClient:       cmClient,
 
 		maxObjectSize: defaultMaxObjectSize,
 		StreamConfig:  *cfg,
@@ -451,39 +467,20 @@ func (h *Handler) punishDiskWith(ctx context.Context, clusterID proto.ClusterID,
 	}
 }
 
-func (h *Handler) setVolumeSealed(ctx context.Context, cid proto.ClusterID, vid proto.Vid) {
+func (h *Handler) releaseVolumeSealed(ctx context.Context, cid proto.ClusterID, vid proto.Vid) {
 	span := trace.SpanFromContextSafe(ctx)
-
-	// If the client is nil, or SetVolumeSealed err.
-	// Then we need the scheduler to guarantee the sealed volume in the inspection process
-	client := h.clusterController.GetClusterClient(cid)
-	if client == nil {
-		span.Errorf("Failed to get cluster[%d] client when seal volume", cid)
-		return
-	}
-
-	err := client.SetVolumeSealed(ctx, &cmapi.SetVolumeSealedArgs{Vid: vid})
-	if err != nil {
-		span.Errorf("Fail to mark sealed volume %d: err[%+v]", vid, err)
-		return
-	}
-	span.Warnf("We mark sealed volume %d", vid)
+	err := h.allocMgr.Release(ctx, &cmapi.ReleaseVolumes{SealedVids: []proto.Vid{vid}})
+	span.Warnf("We released volume %d, err[%+v]", vid, err)
 }
 
-func (h *Handler) releaseVolume(ctx context.Context, cid proto.ClusterID, vid proto.Vid) {
+func (h *Handler) releaseVolumeNormal(ctx context.Context, cid proto.ClusterID, vid proto.Vid) {
 	span := trace.SpanFromContextSafe(ctx)
-	client := h.clusterController.GetClusterClient(cid)
-	if client == nil {
-		span.Errorf("Failed to get cluster[%d] client when release volume", cid)
-		return
-	}
+	err := h.allocMgr.Release(ctx, &cmapi.ReleaseVolumes{NormalVids: []proto.Vid{vid}})
+	span.Warnf("We released volume %d, err[%+v]", vid, err)
+}
 
-	err := client.ReleaseVolume(ctx, &cmapi.ReleaseVolumes{NormalVids: []proto.Vid{vid}})
-	if err != nil {
-		span.Errorf("Failed to release volume %d: err[%+v]", vid, err)
-		return
-	}
-	span.Warnf("We released volume %d", vid)
+func (h *Handler) allocVolume(ctx context.Context, args *allocator.AllocArgs) ([]allocator.AllocRet, error) {
+	return h.allocMgr.Alloc(ctx, args)
 }
 
 // blobCount blobSize > 0 is certain

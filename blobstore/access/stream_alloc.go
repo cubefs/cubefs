@@ -16,17 +16,17 @@ package access
 
 import (
 	"context"
-	"sync/atomic"
-
 	"github.com/afex/hystrix-go/hystrix"
+	"github.com/cubefs/cubefs/blobstore/access/allocator"
 	"github.com/cubefs/cubefs/blobstore/api/access"
-	"github.com/cubefs/cubefs/blobstore/api/proxy"
+	cmapi "github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/common/codemode"
 	errcode "github.com/cubefs/cubefs/blobstore/common/errors"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
 	"github.com/cubefs/cubefs/blobstore/util/errors"
 	"github.com/cubefs/cubefs/blobstore/util/retry"
+	"sync/atomic"
 )
 
 var errAllocatePunishedVolume = errors.New("allocate punished volume")
@@ -104,13 +104,23 @@ func (h *Handler) allocFromAllocator(ctx context.Context, codeMode codemode.Code
 		clusterID = clusterChosen.ClusterID
 	}
 
-	args := proxy.AllocVolsArgs{
-		Fsize:    size,
-		CodeMode: codeMode,
+	//args := proxy.AllocVolsArgs{
+	//	Fsize:    size,
+	//	CodeMode: codeMode,
+	//	BidCount: blobCount(size, blobSize),
+	//}
+	args := &allocator.AllocArgs{
 		BidCount: blobCount(size, blobSize),
+		AllocVolumeV2Args: cmapi.AllocVolumeV2Args{
+			IsInit:   true,
+			CodeMode: codeMode,
+			Count:    1,
+			NeedSize: size,
+		},
 	}
 
-	var allocRets []proxy.AllocRet
+	//var allocRets cmapi.AllocatedVolumeInfos
+	var allocRets []allocator.AllocRet
 	var allocHost string
 	hostsSet := make(map[string]struct{}, 1)
 	if err := retry.ExponentialBackoff(h.AllocRetryTimes, uint32(h.AllocRetryIntervalMS)).On(func() error {
@@ -135,7 +145,10 @@ func (h *Handler) allocFromAllocator(ctx context.Context, codeMode codemode.Code
 		}
 		allocHost = host
 
-		allocRets, err = h.proxyClient.VolumeAlloc(ctx, host, &args)
+		//allocRets, err = h.proxyClient.VolumeAlloc(ctx, host, &args)
+		//allocRets, err = h.cmClient.AllocVolumeV2(ctx, &args)
+		//allocRets, err = h.allocVidBid(ctx, &args, blobCount(size, blobSize))
+		allocRets, err = h.allocVolume(ctx, args)
 		if err != nil {
 			if errorTimeout(err) || errorConnectionRefused(err) {
 				span.Warn("punish unreachable proxy host:", host)
@@ -156,7 +169,7 @@ func (h *Handler) allocFromAllocator(ctx context.Context, codeMode codemode.Code
 			if vInfo.IsPunish {
 				// return err and retry allocate
 				err = errAllocatePunishedVolume
-				args.Excludes = append(args.Excludes, vInfo.Vid)
+				//args.Excludes = append(args.Excludes, vInfo.Vid)
 				span.Warn("next retry exclude vid:", vInfo.Vid, err)
 				return err
 			}
@@ -175,6 +188,19 @@ func (h *Handler) allocFromAllocator(ctx context.Context, codeMode codemode.Code
 	// cache vid in which allocator
 	for _, ret := range allocRets {
 		setCacheVidHost(clusterID, ret.Vid, allocHost)
+		//go func() {
+		//	tk := time.NewTicker(time.Second)
+		//	defer tk.Stop()
+		//
+		//	for {
+		//		select {
+		//		case <-tk.C:
+		//			h.cmClient.RetainVolume(ctx, &cmapi.RetainVolumeArgs{Tokens: []string{}})
+		//		case <-h.stopCh:
+		//			return
+		//		}
+		//	}
+		//}()
 	}
 
 	blobN := blobCount(size, blobSize)
@@ -204,3 +230,37 @@ func (h *Handler) allocFromAllocator(ctx context.Context, codeMode codemode.Code
 
 	return clusterID, blobs, nil
 }
+
+//
+////
+//func (h *Handler) allocVidBid(ctx context.Context, args *cmapi.AllocVolumeV2Args, count uint64) ([]AllocRet, error) {
+//	bidScopeRet, err := h.cmClient.AllocBid(ctx, &cmapi.BidScopeArgs{Count: count})
+//	if err != nil {
+//		return nil, err
+//	}
+//
+//	// get from cache
+//
+//	// alloc from cm
+//	vInfo, err := h.cmClient.AllocVolumeV2(ctx, args)
+//	if err != nil {
+//		return nil, err
+//	}
+//	//h.volumeCache.Store(vInfo)
+//
+//	ret := make([]AllocRet, 0, access.MaxLocationBlobs)
+//	for _, volume := range vInfo.AllocVolumeInfos {
+//		ret = append(ret, AllocRet{
+//			Vid:      volume.Vid,
+//			BidStart: bidScopeRet.StartBid,
+//			BidEnd:   1,
+//		})
+//	}
+//
+//	return ret, nil
+//}
+//
+//// alloc volume and bid use cmClient, cache the volume
+//func (h *Handler) allocVolumeAndBid() {
+//
+//}
