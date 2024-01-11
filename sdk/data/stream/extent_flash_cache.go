@@ -34,6 +34,7 @@ import (
 	"github.com/cubefs/cubefs/util/bloom"
 	"github.com/cubefs/cubefs/util/btree"
 	"github.com/cubefs/cubefs/util/errors"
+	"github.com/cubefs/cubefs/util/iputil"
 	"github.com/cubefs/cubefs/util/log"
 )
 
@@ -418,11 +419,9 @@ func (rc *RemoteCache) refreshHostLatency() {
 
 func (rc *RemoteCache) updateHostLatency(hosts []string) {
 	for _, host := range hosts {
-		// avgTime, err := iputil.PingWithTimeout(strings.Split(host, ":")[0], pingCount, pingTimeout*pingCount)
-		// TODO: add ping
-		avgTime, err := 0, errors.New("TODO")
+		avgRtt, err := iputil.PingWithTimeout(strings.Split(host, ":")[0], pingCount, pingTimeout*pingCount)
 		if err == nil {
-			rc.hostLatency.Store(host, avgTime)
+			rc.hostLatency.Store(host, avgRtt)
 		} else {
 			rc.hostLatency.Delete(host)
 			log.LogWarnf("updateHostLatency: host(%v) err(%v)", host, err)
