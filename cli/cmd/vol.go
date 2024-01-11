@@ -141,7 +141,8 @@ func newVolListCmd(client *master.MasterClient) *cobra.Command {
 			for _, vol := range vols {
 				var vv *proto.SimpleVolView
 				if vv, err = client.AdminAPI().GetVolumeSimpleInfo(vol.Name); err != nil {
-					return
+					stdout(fmt.Sprintf("vol: %v, GetVolumeSimpleInfo failed, err: %v\n", vol.Name, err))
+					continue
 				}
 				if optDetailMod {
 					stdout("%v\n", formatVolDetailInfoTableRow(vv, vol))
@@ -330,47 +331,47 @@ const (
 
 func newVolSetCmd(client *master.MasterClient) *cobra.Command {
 	var (
-		optCapacity               uint64
-		optReplicas               int
-		optMpReplicas             int
-		optTrashDays              int
-		optStoreMode              int
-		optFollowerRead           string
-		optVolWriteMutex          string
-		optNearRead               string
-		optForceROW               string
-		optEnableWriteCache       string
-		optAuthenticate           string
-		optEnableToken            string
-		optAutoRepair             string
-		optBucketPolicy           string
-		optCrossRegionHAType      string
-		optZoneName               string
-		optLayout                 string
-		optExtentCacheExpireSec   int64
-		optYes                    bool
-		confirmString             = strings.Builder{}
-		vv                        *proto.SimpleVolView
-		optIsSmart                string
-		smartRules                []string
-		optCompactTag             string
-		optFolReadDelayInterval   int64
-		optLowestDelayHostWeight  int
-		optTrashCleanInterval     int
-		optBatchDelInodeCnt       int
-		optDelInodeInterval       int
-		optUmpCollectWay          int
-		optEnableBitMapAllocator  string
-		optTrashCleanDuration     int32
-		optTrashCleanMaxCount     int32
-		optRemoteCacheBoostPath   string
-		optRemoteCacheBoostEnable string
-		optRemoteCacheAutoPrepare string
-		optRemoteCacheTTL         int64
-		optEnableRemoveDup        string
-		optDelRemoteCacheBoostPath   string
-		optReadConnTimeoutMs      int64
-		optWriteConnTimeoutMs     int64
+		optCapacity                 uint64
+		optReplicas                 int
+		optMpReplicas               int
+		optTrashDays                int
+		optStoreMode                int
+		optFollowerRead             string
+		optVolWriteMutex            string
+		optNearRead                 string
+		optForceROW                 string
+		optEnableWriteCache         string
+		optAuthenticate             string
+		optEnableToken              string
+		optAutoRepair               string
+		optBucketPolicy             string
+		optCrossRegionHAType        string
+		optZoneName                 string
+		optLayout                   string
+		optExtentCacheExpireSec     int64
+		optYes                      bool
+		confirmString               = strings.Builder{}
+		vv                          *proto.SimpleVolView
+		optIsSmart                  string
+		smartRules                  []string
+		optCompactTag               string
+		optFolReadDelayInterval     int64
+		optLowestDelayHostWeight    int
+		optTrashCleanInterval       int
+		optBatchDelInodeCnt         int
+		optDelInodeInterval         int
+		optUmpCollectWay            int
+		optEnableBitMapAllocator    string
+		optTrashCleanDuration       int32
+		optTrashCleanMaxCount       int32
+		optRemoteCacheBoostPath     string
+		optRemoteCacheBoostEnable   string
+		optRemoteCacheAutoPrepare   string
+		optRemoteCacheTTL           int64
+		optEnableRemoveDup          string
+		optDelRemoteCacheBoostPath  string
+		optReadConnTimeoutMs        int64
+		optWriteConnTimeoutMs       int64
 		optTruncateEKCountEveryTime int
 	)
 	var cmd = &cobra.Command{
@@ -657,7 +658,7 @@ func newVolSetCmd(client *master.MasterClient) *cobra.Command {
 
 			if optDelRemoteCacheBoostPath != "" {
 				isChange = true
-				newRule := delRemoteCacheRules(vv.RemoteCacheBoostPath, optDelRemoteCacheBoostPath,)
+				newRule := delRemoteCacheRules(vv.RemoteCacheBoostPath, optDelRemoteCacheBoostPath)
 				confirmString.WriteString(fmt.Sprintf("  RemoteCacheBoostPath      : %v -> %v\n", vv.RemoteCacheBoostPath, newRule))
 				vv.RemoteCacheBoostPath = newRule
 			}
@@ -665,8 +666,6 @@ func newVolSetCmd(client *master.MasterClient) *cobra.Command {
 			if optRemoteCacheBoostPath == "" && optDelRemoteCacheBoostPath == "" {
 				confirmString.WriteString(fmt.Sprintf("  RemoteCacheBoostPath      : %v\n", vv.RemoteCacheBoostPath))
 			}
-
-
 
 			if optRemoteCacheBoostEnable != "" {
 				isChange = true
@@ -2406,11 +2405,11 @@ func getNewRemoteCacheRules(oldRuleStr, setRuleStr string) (newRuleStr string) {
 	newRuleStr = oldRuleStr
 	oldRules := strings.Split(oldRuleStr, ",")
 	setRules := strings.Split(setRuleStr, ",")
-	for _, setRule :=  range setRules {
-		if ruleIsExist(oldRules, setRule) {//去重
+	for _, setRule := range setRules {
+		if ruleIsExist(oldRules, setRule) { //去重
 			continue
 		}
-		newRuleStr = fmt.Sprintf("%v,%v",newRuleStr, setRule)
+		newRuleStr = fmt.Sprintf("%v,%v", newRuleStr, setRule)
 	}
 	return
 }
