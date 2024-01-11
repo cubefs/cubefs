@@ -20,6 +20,9 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"time"
+
+	"github.com/go-ping/ping"
 )
 
 var (
@@ -135,4 +138,20 @@ const DEFAULT_MAX_DISTANCE = 128
 
 func GetDistance(a, b net.IP) int {
 	return DEFAULT_MAX_DISTANCE - commonPrefixLen(a, b)
+}
+
+// PingWithTimeout ping to addr.
+func PingWithTimeout(addr string, count int, timeout time.Duration) (avgRtt time.Duration, err error) {
+	pinger, err := ping.NewPinger(addr)
+	if err != nil {
+		return
+	}
+	pinger.Count = count
+	pinger.Timeout = timeout
+	pinger.Interval = 50 * time.Microsecond
+	pinger.SetPrivileged(true)
+	if err = pinger.Run(); err != nil {
+		return
+	}
+	return pinger.Statistics().AvgRtt, nil
 }
