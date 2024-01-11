@@ -623,7 +623,7 @@ func (s *Streamer) doOverwrite(req *ExtentRequest, direct bool) (total int, err 
 	for total < size {
 		reqPacket := NewOverwritePacket(dp, req.ExtentKey.ExtentId, offset-ekFileOffset+total+ekExtOffset, s.inode, offset)
 		reqPacket.VerSeq = s.client.multiVerMgr.latestVerSeq
-		reqPacket.VerList = s.client.multiVerMgr.verList.VerList
+		copy(reqPacket.VerList, s.client.multiVerMgr.verList.VerList)
 		reqPacket.ExtentType |= proto.MultiVersionFlag
 		reqPacket.ExtentType |= proto.VersionListFlag
 

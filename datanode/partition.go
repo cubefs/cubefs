@@ -354,17 +354,6 @@ func (dp *DataPartition) replicasInit() {
 	}
 }
 
-func (dp *DataPartition) UpdateVersion(verSeq uint64) (err error) {
-	log.LogInfof("action[UpdateVersion] dp [%v] update seq from [%v] to [%v]", dp.partitionID, dp.verSeq, verSeq)
-	if verSeq < dp.verSeq {
-		err = fmt.Errorf("error.seq [%v] less than exist [%v]", verSeq, dp.verSeq)
-		log.LogErrorf("action[UpdateVersion] %v", err)
-		return
-	}
-	dp.verSeq = verSeq
-	return
-}
-
 func (dp *DataPartition) GetExtentCount() int {
 	return dp.extentStore.GetExtentCount()
 }
