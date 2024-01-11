@@ -20,6 +20,7 @@ require (
 	github.com/dustin/go-humanize v1.0.1
 	github.com/edsrzf/mmap-go v1.1.0
 	github.com/fatih/color v1.15.0
+	github.com/go-ping/ping v1.1.0
 	github.com/gogo/protobuf v1.3.2
 	github.com/golang/mock v1.6.0
 	github.com/golang/protobuf v1.5.2

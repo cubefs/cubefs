@@ -17,6 +17,7 @@ package iputil_test
 import (
 	"net/http"
 	"testing"
+	"time"
 
 	"github.com/cubefs/cubefs/util/iputil"
 	"github.com/stretchr/testify/require"
@@ -40,4 +41,12 @@ func TestGetRealIp(t *testing.T) {
 	}
 	request.Header.Add("X-Real-Ip", ip)
 	require.Equal(t, iputil.RealIP(request), ip)
+}
+
+func TestPing(t *testing.T) {
+	_, err := iputil.PingWithTimeout("not-domain-x/", 10, time.Second)
+	require.Error(t, err)
+	rtt, err := iputil.PingWithTimeout("127.0.0.1", 10, time.Second)
+	require.NoError(t, err)
+	t.Log(rtt)
 }
