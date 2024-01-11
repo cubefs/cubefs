@@ -1,35 +1,6 @@
-# Roadmap
+# Roadmap of 2024
 
-Here we list several todo items as per the main subsystems of Cubefs. 
+## caching & data orchestration for the cloud
 
-## Client
-
-* Linux kernel client
-* FUSE kernel bypass
-
-## Object
-
-* life cycle and tiering
-
-## PCS
-
-* CFA
-* Drive API
-
-## Data
-
-* EC mutation
-
-## Metadata
-
-* from in-memory to RAM + Disk
-
-## Search
-
-* auto index of document files, scalar + vector
-
-## Operations
-
-* GUI
-
+## metadata subsystem redefined
 
