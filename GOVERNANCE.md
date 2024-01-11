@@ -57,9 +57,17 @@ as part of the process.
 
 If a Maintainer feels she/he can not fulfill the "Expectations from Maintainers", they are free to step down.
 
-The CubeFS organization will never forcefully remove a current Maintainer, unless a maintainer
-fails to meet the principles of CubeFS community,
-or adhere to the [Code of Conduct](CODE_OF_CONDUCT.md).
+Maintainers of a repository (or a directory) can lose their status by voluntarily stepping down for personal reasons, or due to inactivity.
+
+In such a case:
+
+A PR is required to move the person in question from the maintainer entry to the retirement entry of the respective OWNERS file. The person in question must be mentioned in the body of the PR. This acts as a final contact attempt so that they can provide their feedback.
+
+Only for core maintainers who are losing their status:
+remove them from the core-maintainers team;
+go to https://maintainers.cncf.io/ and open a PR to remove them under CubeFS;
+remove them from the cubefs.groups.io/g/maintainers mailing list.
+
 
 ## Changes in Project Lead
 
