@@ -1067,3 +1067,20 @@ func (mp *metaPartition) fsmUpdateExtentKeyAfterMigration(inoParam *Inode) (resp
 	//TODO:chihe delete old ek
 	return
 }
+
+func (mp *metaPartition) fsmSetCreateTime(req *SetCreateTimeRequest) (err error) {
+	log.LogDebugf("[fsmSetCreateTime] req %v", req)
+	//ino := NewInode(req.Inode,  proto.Mode(os.ModePerm)) //TODO:tangjingyu
+	ino := NewInode(req.Inode, 0)
+	item := mp.inodeTree.CopyGet(ino)
+	if item == nil {
+		err = fmt.Errorf("[fsmSetCreateTime] inode(%v) not found", req.Inode)
+		return
+	}
+	ino = item.(*Inode)
+	if ino.ShouldDelete() {
+		return
+	}
+	ino.SetCreateTime(req)
+	return
+}

@@ -1064,3 +1064,9 @@ type InodeGetWithEkResponse struct {
 	MigrationExtents         []ExtentKey    `json:"migrationEks"`
 	MigrationCloudObjExtents []ObjExtentKey `json:"migrationObjeks"`
 }
+
+type SetCreateTimeRequest struct {
+	Inode      uint64 `json:"ino"`
+	CreateTime int64  `json:"ct"`
+	VerSeq     uint64 `json:"seq"`
+}

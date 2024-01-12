@@ -1942,6 +1942,7 @@ func (i *Inode) CreateVer(ver uint64) {
 	}
 	i.multiSnap.multiVersions = append([]*Inode{ino}, i.multiSnap.multiVersions...)
 }
+
 func (i *Inode) buildMultiSnap() {
 	if i.multiSnap == nil {
 		i.multiSnap = &InodeMultiSnap{}
@@ -2384,4 +2385,18 @@ func (i *Inode) updateStorageClass(storageClass uint32, isCache, isMigration boo
 	}
 
 	return nil
+}
+
+func (i *Inode) SetCreateTime(req *SetCreateTimeRequest) {
+	log.LogDebugf("action[SetCreateTime] inode %v req seq %v inode seq %v", i.Inode, req.VerSeq, i.getVer())
+
+	if req.VerSeq != i.getVer() {
+		i.CreateVer(req.VerSeq)
+	}
+	i.Lock()
+	log.LogDebugf("action[SetCreateTime] inode %v req seq %v inode seq %v", i.Inode, req.VerSeq, i.getVer())
+
+	i.CreateTime = req.CreateTime
+
+	i.Unlock()
 }
