@@ -473,6 +473,10 @@ func (client *ExtentClient) Truncate(mw *meta.MetaWrapper, parentIno uint64, ino
 	var oldSize uint64
 	if mw.EnableSummary {
 		info, err = mw.InodeGet_ll(inode)
+		if err != nil || info == nil {
+			log.LogErrorf("Truncate: InodeGet failed, fullPath(%s) inode(%d) err(%v)\n", fullPath, inode, err)
+			return err
+		}
 		oldSize = info.Size
 	}
 	err = s.IssueTruncRequest(size, fullPath)
