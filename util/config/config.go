@@ -17,10 +17,10 @@ package config
 import (
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"os"
 	"path"
+	"strconv"
 	"strings"
 )
 
@@ -65,7 +65,7 @@ func LoadConfigString(s string) *Config {
 }
 
 func (c *Config) parse(fileName string) error {
-	jsonFileBytes, err := ioutil.ReadFile(fileName)
+	jsonFileBytes, err := os.ReadFile(fileName)
 	c.Raw = jsonFileBytes
 	if err == nil {
 		decoder := json.NewDecoder(strings.NewReader(string(jsonFileBytes)))
@@ -156,6 +156,14 @@ func (c *Config) GetInt64(key string) int64 {
 			return 0
 		}
 		return number
+	}
+	// TODO: change all int64 setting with string configurations to int64
+	// try parse int64 from string
+	if numStr, isString := x.(string); isString {
+		number, err := strconv.ParseInt(numStr, 10, 64)
+		if err == nil {
+			return number
+		}
 	}
 	return 0
 }
@@ -254,7 +262,7 @@ func (ccfg *ConstConfig) Equals(cfg *ConstConfig) bool {
 func CheckOrStoreConstCfg(fileDir, fileName string, cfg *ConstConfig) (ok bool, err error) {
 	filePath := path.Join(fileDir, fileName)
 	var buf []byte
-	buf, err = ioutil.ReadFile(filePath)
+	buf, err = os.ReadFile(filePath)
 	if err != nil && !os.IsNotExist(err) {
 		return false, fmt.Errorf("read config file %v failed: %v", filePath, err)
 	}
@@ -296,7 +304,7 @@ func CheckOrStoreConstCfg(fileDir, fileName string, cfg *ConstConfig) (ok bool, 
 }
 
 func CheckOrStoreClusterUuid(dirPath, id string, force bool) (err error) {
-	dir, err := ioutil.ReadDir(dirPath)
+	dir, err := os.ReadDir(dirPath)
 	if err != nil {
 		return fmt.Errorf("read dir %v failed: %v", dirPath, err.Error())
 	}
@@ -308,7 +316,7 @@ func CheckOrStoreClusterUuid(dirPath, id string, force bool) (err error) {
 		if err != nil {
 			return fmt.Errorf("json marshal failed: %v", err.Error())
 		}
-		if err = ioutil.WriteFile(versionFile, data, 0o755); err != nil {
+		if err = os.WriteFile(versionFile, data, 0o755); err != nil {
 			return fmt.Errorf("write file %v failed: %v", versionFile, err.Error())
 		}
 	} else {
