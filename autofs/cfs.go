@@ -2,15 +2,16 @@ package main
 
 import (
 	"fmt"
-	"golang.org/x/text/cases"
-	"golang.org/x/text/language"
-	"k8s.io/mount-utils"
 	"log"
 	"os"
 	"os/exec"
 	"reflect"
 	"strings"
 	"time"
+
+	"golang.org/x/text/cases"
+	"golang.org/x/text/language"
+	"k8s.io/mount-utils"
 )
 
 type cfsOption struct {
@@ -99,7 +100,6 @@ func (c *cfsOption) ConvertToCliOptions() (s []string) {
 	}
 
 	return s
-
 }
 
 // cfsParse Parse from string
@@ -150,7 +150,6 @@ func cfsIsMounted(mountPoint string) bool {
 	}
 
 	return false
-
 }
 
 // cfsMountPre exception handling
@@ -235,7 +234,6 @@ func cfsMountPost(mountPoint string) error {
 	}
 
 	return nil
-
 }
 
 func cfsUmount(mountPoint string) error {

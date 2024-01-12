@@ -151,7 +151,7 @@ func (m *Server) loadMetadata() {
 
 	if m.cluster.FaultDomain {
 		log.LogInfof("action[FaultDomain] set")
-		if !loadDomain { //first restart after domain item be added
+		if !loadDomain { // first restart after domain item be added
 			if err = m.cluster.putZoneDomain(true); err != nil {
 				log.LogInfof("action[putZoneDomain] err[%v]", err)
 				panic(err)
@@ -250,7 +250,7 @@ func (m *Server) clearMetadata() {
 	m.user.clearAKStore()
 	m.user.clearVolUsers()
 	m.cluster.t = newTopology()
-	//m.cluster.apiLimiter.Clear()
+	// m.cluster.apiLimiter.Clear()
 }
 
 func (m *Server) refreshUser() (err error) {
@@ -289,7 +289,7 @@ func (m *Server) refreshUser() (err error) {
 		}
 	}*/
 	if _, err = m.user.getUserInfo(RootUserID); err != nil {
-		var param = cfsProto.UserCreateParam{
+		param := cfsProto.UserCreateParam{
 			ID:       RootUserID,
 			Password: DefaultRootPasswd,
 			Type:     cfsProto.UserTypeRoot,

@@ -977,8 +977,8 @@ func (m *metadataManager) opReadDirLimit(conn net.Conn, p *Packet,
 }
 
 func (m *metadataManager) opMetaInodeGet(conn net.Conn, p *Packet,
-	remoteAddr string) (err error) {
-
+	remoteAddr string) (err error,
+) {
 	req := &InodeGetReq{}
 	if err = json.Unmarshal(p.Data, req); err != nil {
 		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
@@ -1011,8 +1011,8 @@ func (m *metadataManager) opMetaInodeGet(conn net.Conn, p *Packet,
 	if value, ok := m.volUpdating.Load(req.VolName); ok {
 		ver2Phase := value.(*verOp2Phase)
 		if ver2Phase.verSeq > req.VerSeq {
-			//reuse ExtentType to identify flag of version inconsistent between metanode and client
-			//will resp to client and make client update all streamer's extent and it's verSeq
+			// reuse ExtentType to identify flag of version inconsistent between metanode and client
+			// will resp to client and make client update all streamer's extent and it's verSeq
 			p.ExtentType |= proto.MultiVersionFlag
 			p.VerSeq = ver2Phase.verSeq
 		}
@@ -2375,9 +2375,7 @@ func (m *metadataManager) opMetaGetUniqID(conn net.Conn, p *Packet,
 }
 
 func (m *metadataManager) prepareCreateVersion(req *proto.MultiVersionOpRequest) (err error, opAagin bool) {
-	var (
-		ver2Phase *verOp2Phase
-	)
+	var ver2Phase *verOp2Phase
 	if value, ok := m.volUpdating.Load(req.VolumeID); ok {
 		ver2Phase = value.(*verOp2Phase)
 		if req.VerSeq < ver2Phase.verSeq {
@@ -2403,9 +2401,7 @@ func (m *metadataManager) prepareCreateVersion(req *proto.MultiVersionOpRequest)
 }
 
 func (m *metadataManager) checkVolVerList() (err error) {
-	var (
-		volumeArr = make(map[string]bool)
-	)
+	volumeArr := make(map[string]bool)
 
 	log.LogDebugf("checkVolVerList start")
 	m.Range(true, func(id uint64, partition MetaPartition) bool {
@@ -2414,7 +2410,7 @@ func (m *metadataManager) checkVolVerList() (err error) {
 	})
 
 	for volName := range volumeArr {
-		var mpsVerlist = make(map[uint64]*proto.VolVersionInfoList)
+		mpsVerlist := make(map[uint64]*proto.VolVersionInfoList)
 		// need get first or else the mp verlist may be change in the follower process
 		m.Range(true, func(id uint64, partition MetaPartition) bool {
 			if partition.GetVolName() != volName {
@@ -2452,7 +2448,6 @@ func (m *metadataManager) checkVolVerList() (err error) {
 }
 
 func (m *metadataManager) commitCreateVersion(VolumeID string, VerSeq uint64, Op uint8, synchronize bool) (err error) {
-
 	log.LogWarnf("action[commitCreateVersion] volume %v seq %v", VolumeID, VerSeq)
 	var wg sync.WaitGroup
 	// wg.Add(len(m.partitions))
@@ -2576,7 +2571,6 @@ func (m *metadataManager) checkMultiVersionStatus(mp MetaPartition, p *Packet) (
 }
 
 func (m *metadataManager) checkAndPromoteVersion(volName string) (err error) {
-
 	log.LogInfof("action[checkmultiSnap.multiVersionstatus] volumeName %v", volName)
 	var info *proto.VolumeVerInfo
 	if value, ok := m.volUpdating.Load(volName); ok {

@@ -20,7 +20,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"math"
 	"net"
 	"os"
@@ -409,7 +408,7 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 		}
 		resp = mp.fsmTxUnlinkInode(txIno)
 	case opFSMTxUpdateDentry:
-		//txDen := NewTxDentry(0, "", 0, 0, nil)
+		// txDen := NewTxDentry(0, "", 0, 0, nil)
 		txUpdateDen := NewTxUpdateDentry(nil, nil, nil)
 		if err = txUpdateDen.Unmarshal(msg.V); err != nil {
 			return
@@ -583,7 +582,7 @@ func (mp *metaPartition) ApplyMemberChange(confChange *raftproto.ConfChange, ind
 		}
 		updated, err = mp.confRemoveNode(req, index)
 	case raftproto.ConfUpdateNode:
-		//updated, err = mp.confUpdateNode(req, index)
+		// updated, err = mp.confUpdateNode(req, index)
 	default:
 		// do nothing
 	}
@@ -661,7 +660,6 @@ func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.Sn
 				return
 			}
 		}
-
 	}
 
 	defer func() {
@@ -729,7 +727,7 @@ func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.Sn
 		snap := NewMetaItem(0, nil, nil)
 		if err = snap.UnmarshalBinary(data); err != nil {
 			if index == 0 {
-				//for compatibility, if leader send snapshot format int version_0, index=0 is applyId in uint64 and
+				// for compatibility, if leader send snapshot format int version_0, index=0 is applyId in uint64 and
 				// will cause snap.UnmarshalBinary err, then just skip index=0 and continue with the other fields
 				log.LogInfof("ApplySnapshot: snap.UnmarshalBinary failed in index=0, partitionID(%v), assuming snapshot format version_0",
 					mp.config.PartitionId)
@@ -807,7 +805,7 @@ func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.Sn
 			log.LogDebugf("ApplySnapshot: set extend attributes: partitionID(%v) extend(%v)",
 				mp.config.PartitionId, extend)
 		case opFSMCreateMultipart:
-			var multipart = MultipartFromBytes(snap.V)
+			multipart := MultipartFromBytes(snap.V)
 			multipartTree.ReplaceOrInsert(multipart, true)
 			log.LogDebugf("ApplySnapshot: create multipart: partitionID(%v) multipart(%v)", mp.config.PartitionId, multipart)
 		case opFSMTxSnapshot:
@@ -831,7 +829,7 @@ func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.Sn
 		case opExtentFileSnapshot:
 			fileName := string(snap.K)
 			fileName = path.Join(mp.config.RootDir, fileName)
-			if err = ioutil.WriteFile(fileName, snap.V, 0644); err != nil {
+			if err = os.WriteFile(fileName, snap.V, 0o644); err != nil {
 				log.LogErrorf("ApplySnapshot: write snap extent delete file fail: partitionID(%v) err(%v)",
 					mp.config.PartitionId, err)
 			}

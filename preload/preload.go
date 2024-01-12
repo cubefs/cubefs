@@ -29,7 +29,7 @@ func main() {
 		fmt.Print(proto.DumpVersion(Role))
 		os.Exit(0)
 	}
-	//TODO: why *configFlie
+	// TODO: why *configFlie
 	cfg, err := config.LoadConfigFile(*configFile)
 	if err != nil {
 		fmt.Println("LoadConfigFile failed")
@@ -66,11 +66,13 @@ func main() {
 		LogDir:   cfg.GetString("logDir"),
 		LogLevel: cfg.GetString("logLevel"),
 		ProfPort: cfg.GetString("prof"),
-		LimitParam: sdk.LimitParameters{TraverseDirConcurrency: travereDirConcurrency,
+		LimitParam: sdk.LimitParameters{
+			TraverseDirConcurrency: travereDirConcurrency,
 			PreloadFileConcurrency: preloadFileConcurrency,
 			ReadBlockConcurrency:   int32(readBlockConcurrency),
 			PreloadFileSizeLimit:   preloadFileSizeLimit,
-			ClearFileConcurrency:   clearFileConcurrency},
+			ClearFileConcurrency:   clearFileConcurrency,
+		},
 	}
 
 	cli := sdk.NewClient(config)
@@ -100,17 +102,16 @@ func main() {
 		fmt.Printf("action[%v] is not support\n", action)
 		os.Exit(1)
 	}
-
 }
 
 func checkConfig(cfg *config.Config) bool {
-	var masters = cfg.GetString("masterAddr")
-	var target = cfg.GetString("target")
-	var vol = cfg.GetString("volumeName")
-	var logDir = cfg.GetString("logDir")
-	var logLevel = cfg.GetString("logLevel")
-	var ttl = cfg.GetString("ttl")
-	var action = cfg.GetString("action")
+	masters := cfg.GetString("masterAddr")
+	target := cfg.GetString("target")
+	vol := cfg.GetString("volumeName")
+	logDir := cfg.GetString("logDir")
+	logLevel := cfg.GetString("logLevel")
+	ttl := cfg.GetString("ttl")
+	action := cfg.GetString("action")
 
 	if len(masters) == 0 || len(target) == 0 || len(vol) == 0 || len(logDir) == 0 ||
 		len(logLevel) == 0 || len(ttl) == 0 || len(action) == 0 {

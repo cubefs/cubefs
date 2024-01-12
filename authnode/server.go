@@ -16,25 +16,23 @@ package authnode
 
 import (
 	"fmt"
-	"github.com/cubefs/cubefs/raftstore/raftstore_db"
-	"io/ioutil"
 	syslog "log"
 	"net/http"
 	"net/http/httputil"
+	"os"
 	"strconv"
 	"sync"
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/raftstore"
+	"github.com/cubefs/cubefs/raftstore/raftstore_db"
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/config"
 	"github.com/cubefs/cubefs/util/cryptoutil"
-
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/log"
 )
 
-//
 const (
 	LRUCacheSize    = 3 << 30
 	WriteBufferSize = 4 * util.MB
@@ -216,10 +214,10 @@ func (m *Server) Start(cfg *config.Config) (err error) {
 
 	if cfg.GetBool(EnableHTTPS) == true {
 		m.cluster.PKIKey.EnableHTTPS = true
-		if m.cluster.PKIKey.AuthRootPublicKey, err = ioutil.ReadFile("/app/server.crt"); err != nil {
+		if m.cluster.PKIKey.AuthRootPublicKey, err = os.ReadFile("/app/server.crt"); err != nil {
 			return fmt.Errorf("action[Start] failed,err[%v]", err)
 		}
-		if m.cluster.PKIKey.AuthRootPrivateKey, err = ioutil.ReadFile("/app/server.key"); err != nil {
+		if m.cluster.PKIKey.AuthRootPrivateKey, err = os.ReadFile("/app/server.key"); err != nil {
 			return fmt.Errorf("action[Start] failed,err[%v]", err)
 		}
 		// TODO: verify cert

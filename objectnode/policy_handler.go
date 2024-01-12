@@ -17,7 +17,6 @@ package objectnode
 import (
 	"encoding/json"
 	"io"
-	"io/ioutil"
 	"net/http"
 
 	"github.com/cubefs/cubefs/util/log"
@@ -33,7 +32,7 @@ func (o *ObjectNode) getBucketPolicyHandler(w http.ResponseWriter, r *http.Reque
 		o.errorResponse(w, r, err, ec)
 	}()
 
-	var param = ParseRequestParam(r)
+	param := ParseRequestParam(r)
 	if param.Bucket() == "" {
 		ec = InvalidBucketName
 		return
@@ -76,7 +75,7 @@ func (o *ObjectNode) putBucketPolicyHandler(w http.ResponseWriter, r *http.Reque
 		o.errorResponse(w, r, err, ec)
 	}()
 
-	var param = ParseRequestParam(r)
+	param := ParseRequestParam(r)
 	if param.Bucket() == "" {
 		ec = InvalidBucketName
 		return
@@ -88,7 +87,7 @@ func (o *ObjectNode) putBucketPolicyHandler(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	policyRaw, err := ioutil.ReadAll(io.LimitReader(r.Body, BucketPolicyLimitSize+1))
+	policyRaw, err := io.ReadAll(io.LimitReader(r.Body, BucketPolicyLimitSize+1))
 	if err != nil {
 		log.LogErrorf("putBucketPolicyHandler: read request body fail: requestID(%v) err(%v)", GetRequestID(r), err)
 		return
@@ -134,7 +133,7 @@ func (o *ObjectNode) deleteBucketPolicyHandler(w http.ResponseWriter, r *http.Re
 		o.errorResponse(w, r, err, errorCode)
 	}()
 
-	var param = ParseRequestParam(r)
+	param := ParseRequestParam(r)
 	if param.Bucket() == "" {
 		errorCode = InvalidBucketName
 		return

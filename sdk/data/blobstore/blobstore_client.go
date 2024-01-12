@@ -41,7 +41,6 @@ type BlobStoreClient struct {
 }
 
 func NewEbsClient(cfg access.Config) (*BlobStoreClient, error) {
-
 	cli, err := access.New(cfg)
 	return &BlobStoreClient{
 		client: cli,
@@ -81,11 +80,9 @@ func (ebs *BlobStoreClient) Read(ctx context.Context, volName string, buf []byte
 		BlobSize:  oek.BlobSize,
 		Blobs:     sliceInfos,
 	}
-	//func get has retry
+	// func get has retry
 	log.LogDebugf("TRACE Ebs Read,oek(%v) loc(%v)", oek, loc)
-	var (
-		body io.ReadCloser
-	)
+	var body io.ReadCloser
 	defer func() {
 		if body != nil {
 			body.Close()

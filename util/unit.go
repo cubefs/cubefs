@@ -18,11 +18,11 @@ import (
 	"crypto/md5"
 	"encoding/hex"
 	"fmt"
-	"github.com/cubefs/cubefs/depends/tiglabs/raft/util"
 	"net"
 	"regexp"
 	"strings"
 
+	"github.com/cubefs/cubefs/depends/tiglabs/raft/util"
 	"github.com/cubefs/cubefs/util/log"
 )
 

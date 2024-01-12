@@ -27,7 +27,7 @@ type NodeAPI struct {
 }
 
 func (api *NodeAPI) AddDataNode(serverAddr, zoneName string) (id uint64, err error) {
-	var request = newAPIRequest(http.MethodGet, proto.AddDataNode)
+	request := newAPIRequest(http.MethodGet, proto.AddDataNode)
 	request.addParam("addr", serverAddr)
 	request.addParam("zoneName", zoneName)
 	var data []byte
@@ -39,7 +39,7 @@ func (api *NodeAPI) AddDataNode(serverAddr, zoneName string) (id uint64, err err
 }
 
 func (api *NodeAPI) AddDataNodeWithAuthNode(serverAddr, zoneName, clientIDKey string) (id uint64, err error) {
-	var request = newAPIRequest(http.MethodGet, proto.AddDataNode)
+	request := newAPIRequest(http.MethodGet, proto.AddDataNode)
 	request.addParam("addr", serverAddr)
 	request.addParam("zoneName", zoneName)
 	request.addParam("clientIDKey", clientIDKey)
@@ -52,7 +52,7 @@ func (api *NodeAPI) AddDataNodeWithAuthNode(serverAddr, zoneName, clientIDKey st
 }
 
 func (api *NodeAPI) AddMetaNode(serverAddr, zoneName string) (id uint64, err error) {
-	var request = newAPIRequest(http.MethodGet, proto.AddMetaNode)
+	request := newAPIRequest(http.MethodGet, proto.AddMetaNode)
 	request.addParam("addr", serverAddr)
 	request.addParam("zoneName", zoneName)
 	var data []byte
@@ -64,7 +64,7 @@ func (api *NodeAPI) AddMetaNode(serverAddr, zoneName string) (id uint64, err err
 }
 
 func (api *NodeAPI) AddMetaNodeWithAuthNode(serverAddr, zoneName, clientIDKey string) (id uint64, err error) {
-	var request = newAPIRequest(http.MethodGet, proto.AddMetaNode)
+	request := newAPIRequest(http.MethodGet, proto.AddMetaNode)
 	request.addParam("addr", serverAddr)
 	request.addParam("zoneName", zoneName)
 	request.addParam("clientIDKey", clientIDKey)
@@ -78,7 +78,7 @@ func (api *NodeAPI) AddMetaNodeWithAuthNode(serverAddr, zoneName, clientIDKey st
 
 func (api *NodeAPI) GetDataNode(serverHost string) (node *proto.DataNodeInfo, err error) {
 	var buf []byte
-	var request = newAPIRequest(http.MethodGet, proto.GetDataNode)
+	request := newAPIRequest(http.MethodGet, proto.GetDataNode)
 	request.addParam("addr", serverHost)
 	if buf, err = api.mc.serveRequest(request); err != nil {
 		return
@@ -92,7 +92,7 @@ func (api *NodeAPI) GetDataNode(serverHost string) (node *proto.DataNodeInfo, er
 
 func (api *NodeAPI) GetMetaNode(serverHost string) (node *proto.MetaNodeInfo, err error) {
 	var buf []byte
-	var request = newAPIRequest(http.MethodGet, proto.GetMetaNode)
+	request := newAPIRequest(http.MethodGet, proto.GetMetaNode)
 	request.addParam("addr", serverHost)
 	if buf, err = api.mc.serveRequest(request); err != nil {
 		return
@@ -109,7 +109,7 @@ func (api *NodeAPI) ResponseMetaNodeTask(task *proto.AdminTask) (err error) {
 	if encoded, err = json.Marshal(task); err != nil {
 		return
 	}
-	var request = newAPIRequest(http.MethodPost, proto.GetMetaNodeTaskResponse)
+	request := newAPIRequest(http.MethodPost, proto.GetMetaNodeTaskResponse)
 	request.addBody(encoded)
 	if _, err = api.mc.serveRequest(request); err != nil {
 		return
@@ -118,12 +118,11 @@ func (api *NodeAPI) ResponseMetaNodeTask(task *proto.AdminTask) (err error) {
 }
 
 func (api *NodeAPI) ResponseDataNodeTask(task *proto.AdminTask) (err error) {
-
 	var encoded []byte
 	if encoded, err = json.Marshal(task); err != nil {
 		return
 	}
-	var request = newAPIRequest(http.MethodPost, proto.GetDataNodeTaskResponse)
+	request := newAPIRequest(http.MethodPost, proto.GetDataNodeTaskResponse)
 	request.addBody(encoded)
 	if _, err = api.mc.serveRequest(request); err != nil {
 		return
@@ -132,7 +131,7 @@ func (api *NodeAPI) ResponseDataNodeTask(task *proto.AdminTask) (err error) {
 }
 
 func (api *NodeAPI) DataNodeDecommission(nodeAddr string, count int, clientIDKey string) (err error) {
-	var request = newAPIRequest(http.MethodGet, proto.DecommissionDataNode)
+	request := newAPIRequest(http.MethodGet, proto.DecommissionDataNode)
 	request.addParam("addr", nodeAddr)
 	request.addParam("count", strconv.Itoa(count))
 	request.addParam("clientIDKey", clientIDKey)
@@ -144,7 +143,7 @@ func (api *NodeAPI) DataNodeDecommission(nodeAddr string, count int, clientIDKey
 }
 
 func (api *NodeAPI) MetaNodeDecommission(nodeAddr string, count int, clientIDKey string) (err error) {
-	var request = newAPIRequest(http.MethodGet, proto.DecommissionMetaNode)
+	request := newAPIRequest(http.MethodGet, proto.DecommissionMetaNode)
 	request.addParam("addr", nodeAddr)
 	request.addParam("count", strconv.Itoa(count))
 	request.addHeader("isTimeOut", "false")
@@ -156,7 +155,7 @@ func (api *NodeAPI) MetaNodeDecommission(nodeAddr string, count int, clientIDKey
 }
 
 func (api *NodeAPI) MetaNodeMigrate(srcAddr, targetAddr string, count int, clientIDKey string) (err error) {
-	var request = newAPIRequest(http.MethodGet, proto.MigrateMetaNode)
+	request := newAPIRequest(http.MethodGet, proto.MigrateMetaNode)
 	request.addParam("srcAddr", srcAddr)
 	request.addParam("targetAddr", targetAddr)
 	request.addParam("count", strconv.Itoa(count))
@@ -169,7 +168,7 @@ func (api *NodeAPI) MetaNodeMigrate(srcAddr, targetAddr string, count int, clien
 }
 
 func (api *NodeAPI) DataNodeMigrate(srcAddr, targetAddr string, count int, clientIDKey string) (err error) {
-	var request = newAPIRequest(http.MethodGet, proto.MigrateDataNode)
+	request := newAPIRequest(http.MethodGet, proto.MigrateDataNode)
 	request.addParam("srcAddr", srcAddr)
 	request.addParam("targetAddr", targetAddr)
 	request.addParam("count", strconv.Itoa(count))
@@ -182,7 +181,7 @@ func (api *NodeAPI) DataNodeMigrate(srcAddr, targetAddr string, count int, clien
 }
 
 func (api *NodeAPI) AddLcNode(serverAddr string) (id uint64, err error) {
-	var request = newAPIRequest(http.MethodGet, proto.AddLcNode)
+	request := newAPIRequest(http.MethodGet, proto.AddLcNode)
 	request.addParam("addr", serverAddr)
 	var data []byte
 	if data, err = api.mc.serveRequest(request); err != nil {
@@ -197,7 +196,7 @@ func (api *NodeAPI) ResponseLcNodeTask(task *proto.AdminTask) (err error) {
 	if encoded, err = json.Marshal(task); err != nil {
 		return
 	}
-	var request = newAPIRequest(http.MethodPost, proto.GetLcNodeTaskResponse)
+	request := newAPIRequest(http.MethodPost, proto.GetLcNodeTaskResponse)
 	request.addBody(encoded)
 	if _, err = api.mc.serveRequest(request); err != nil {
 		return

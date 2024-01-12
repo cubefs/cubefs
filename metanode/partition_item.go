@@ -20,7 +20,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"os"
 	"path"
 	"reflect"
@@ -211,7 +210,7 @@ func newMetaItemIterator(mp *metaPartition) (si *MetaItemIterator, err error) {
 	si.closeCh = make(chan struct{})
 
 	// collect extend del files
-	var filenames = make([]string, 0)
+	filenames := make([]string, 0)
 	var fileInfos []os.DirEntry
 	if fileInfos, err = os.ReadDir(mp.config.RootDir); err != nil {
 		return
@@ -233,7 +232,7 @@ func newMetaItemIterator(mp *metaPartition) (si *MetaItemIterator, err error) {
 			close(iter.dataCh)
 			close(iter.errorCh)
 		}()
-		var produceItem = func(item interface{}) (success bool) {
+		produceItem := func(item interface{}) (success bool) {
 			select {
 			case iter.dataCh <- item:
 				return true
@@ -241,13 +240,13 @@ func newMetaItemIterator(mp *metaPartition) (si *MetaItemIterator, err error) {
 				return false
 			}
 		}
-		var produceError = func(err error) {
+		produceError := func(err error) {
 			select {
 			case iter.errorCh <- err:
 			default:
 			}
 		}
-		var checkClose = func() (closed bool) {
+		checkClose := func() (closed bool) {
 			select {
 			case <-iter.closeCh:
 				return true
@@ -356,7 +355,7 @@ func newMetaItemIterator(mp *metaPartition) (si *MetaItemIterator, err error) {
 		var err error
 		var raw []byte
 		for _, filename := range iter.filenames {
-			if raw, err = ioutil.ReadFile(path.Join(iter.fileRootDir, filename)); err != nil {
+			if raw, err = os.ReadFile(path.Join(iter.fileRootDir, filename)); err != nil {
 				produceError(err)
 				return
 			}

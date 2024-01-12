@@ -528,9 +528,7 @@ func (dp *DataPartition) streamRepairExtent(remoteExtentInfo *storage.ExtentInfo
 			return
 		}
 
-		var (
-			hasRecoverySize uint64
-		)
+		var hasRecoverySize uint64
 		var loopTimes uint64
 		for currFixOffset < dstOffset {
 			if currFixOffset >= dstOffset {
@@ -584,7 +582,7 @@ func (dp *DataPartition) streamRepairExtent(remoteExtentInfo *storage.ExtentInfo
 				if reply.ArgLen == TinyExtentRepairReadResponseArgLen {
 					remoteAvaliSize = binary.BigEndian.Uint64(reply.Arg[9:TinyExtentRepairReadResponseArgLen])
 				}
-				if reply.Arg != nil { //compact v1.2.0 recovery
+				if reply.Arg != nil { // compact v1.2.0 recovery
 					isEmptyResponse = reply.Arg[0] == EmptyResponse
 				}
 				if isEmptyResponse {
@@ -602,7 +600,7 @@ func (dp *DataPartition) streamRepairExtent(remoteExtentInfo *storage.ExtentInfo
 				log.LogDebugf("streamRepairExtent reply size %v, currFixoffset %v, reply %v ", reply.Size, currFixOffset, reply)
 				_, err = store.Write(uint64(localExtentInfo.FileID), int64(currFixOffset), int64(reply.Size), reply.Data, reply.CRC, wType, BufferWrite)
 			}
-			//log.LogDebugf("streamRepairExtent reply size %v, currFixoffset %v, reply %v err %v", reply.Size, currFixOffset, reply, err)
+			// log.LogDebugf("streamRepairExtent reply size %v, currFixoffset %v, reply %v err %v", reply.Size, currFixOffset, reply, err)
 			// write to the local extent file
 			if err != nil {
 				err = errors.Trace(err, "streamRepairExtent repair data error ")

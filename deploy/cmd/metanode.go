@@ -63,16 +63,14 @@ func writeMetaNode(listen, prof, id, localIP string, masterAddrs []string) error
 	if err != nil {
 		return err
 	}
-	err = ioutil.WriteFile(ConfDir+"/metanode"+id+".json", metaNodeData, 0644)
+	err = ioutil.WriteFile(ConfDir+"/metanode"+id+".json", metaNodeData, 0o644)
 	if err != nil {
 		return err
 	}
 	return nil
-
 }
 
 func stopMetanodeInSpecificNode(node string) error {
-
 	files, err := ioutil.ReadDir(ConfDir)
 	if err != nil {
 		return err
@@ -101,7 +99,6 @@ func stopMetanodeInSpecificNode(node string) error {
 	}
 
 	return nil
-
 }
 
 func startMetanodeInSpecificNode(node string) error {
@@ -127,7 +124,6 @@ func startMetanodeInSpecificNode(node string) error {
 					dataDir = config.Global.DataDir
 				} else {
 					dataDir = config.MetaNode.Config.DataDir
-
 				}
 				confFilePath := ConfDir + "/" + file.Name()
 				err = transferConfigFileToRemote(confFilePath, dataDir+"/conf", RemoteUser, node)
@@ -166,7 +162,6 @@ func getMasterAddrAndPort() ([]string, error) {
 }
 
 func startAllMetaNode() error {
-
 	config, err := readConfig()
 	if err != nil {
 		return err
@@ -190,7 +185,6 @@ func startAllMetaNode() error {
 				dataDir = config.Global.DataDir
 			} else {
 				dataDir = config.MetaNode.Config.DataDir
-
 			}
 			err = transferConfigFileToRemote(confFilePath, dataDir+"/conf", RemoteUser, data.LocalIP)
 			if err != nil {
@@ -208,13 +202,12 @@ func startAllMetaNode() error {
 		}
 	}
 
-	//Detect successful deployment
+	// Detect successful deployment
 	log.Println("start all metanode services")
 	return nil
 }
 
 func stopAllMetaNode() error {
-
 	files, err := ioutil.ReadDir(ConfDir)
 	if err != nil {
 		return err

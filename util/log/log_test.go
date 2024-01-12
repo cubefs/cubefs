@@ -33,7 +33,7 @@ func TestLog(t *testing.T) {
 	dir := path.Join("/tmp/cfs", "cfs")
 	_, err := os.Stat(dir)
 	if os.IsNotExist(err) {
-		os.MkdirAll(dir, 0755)
+		os.MkdirAll(dir, 0o755)
 	}
 	defer os.RemoveAll(dir)
 
@@ -85,7 +85,7 @@ func prepareTestLeftSpaceLimit(dir string, logFileName string) (diskSpaceLeft in
 
 	_, err = os.Stat(dir)
 	if os.IsNotExist(err) {
-		os.MkdirAll(dir, 0755)
+		os.MkdirAll(dir, 0o755)
 	}
 
 	logFilePath = path.Join(dir, logFileName)

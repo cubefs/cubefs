@@ -17,11 +17,11 @@ package metanode
 import (
 	"bytes"
 	"encoding/binary"
-
 	"fmt"
+	"math"
+
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/log"
-	"math"
 )
 
 // Dentry wraps necessary properties of the `dentry` information in file system.
@@ -54,7 +54,7 @@ type Dentry struct {
 	Name     string // Name of the current dentry.
 	Inode    uint64 // FileID value of the current inode.
 	Type     uint32
-	//snapshot
+	// snapshot
 	multiSnap *DentryMultiSnap
 }
 
@@ -311,7 +311,7 @@ func (d *Dentry) deleteVerSnapshot(delVerSeq uint64, mpVerSeq uint64, verlist []
 		}
 		// if any alive snapshot in mp dimension exist in seq scope from den to next ascend neighbor, dio snapshot be keep or else drop
 		startSeq := den.getVerSeq()
-		realIdx := idx - 1 //index in history list layer
+		realIdx := idx - 1 // index in history list layer
 		if realIdx == 0 {
 			endSeq = d.getVerSeq()
 		} else {
@@ -362,7 +362,7 @@ func (d *Dentry) String() string {
 }
 
 type TxDentry struct {
-	//ParInode *Inode
+	// ParInode *Inode
 	Dentry *Dentry
 	TxInfo *proto.TransactionInfo
 }
@@ -376,7 +376,7 @@ func NewTxDentry(parentID uint64, name string, ino uint64, mode uint32, parInode
 	}
 
 	txDentry := &TxDentry{
-		//ParInode: parInode,
+		// ParInode: parInode,
 		Dentry: dentry,
 		TxInfo: txInfo,
 	}
@@ -763,7 +763,7 @@ func (d *Dentry) UnmarshalValue(val []byte) (err error) {
 		}
 
 		for i := 0; i < int(verCnt); i++ {
-			//todo(leonchang) name and parentid should be removed to reduce space
+			// todo(leonchang) name and parentid should be removed to reduce space
 			den := &Dentry{
 				Name:     d.Name,
 				ParentId: d.ParentId,

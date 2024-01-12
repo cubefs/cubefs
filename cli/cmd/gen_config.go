@@ -18,7 +18,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"os"
 	"path"
@@ -132,7 +131,7 @@ func (cluster *ClusterConfig) updateNodeConfig(role, clusterName string, nodeCon
 
 // load yaml config file from filePath
 func loadYamlConfig(filePath string) (*RootConfig, error) {
-	yamlFile, err := ioutil.ReadFile(filePath)
+	yamlFile, err := os.ReadFile(filePath)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "load yaml %v error: %v\n", filePath, err)
 		return nil, err
@@ -276,7 +275,7 @@ func storeConfig2Json(configPath string, config map[string]interface{}) error {
 	configData, _ := json.MarshalIndent(config, "", "  ")
 
 	os.MkdirAll(path.Dir(configPath), 0o755)
-	if err := ioutil.WriteFile(configPath, configData, 0o644); err != nil {
+	if err := os.WriteFile(configPath, configData, 0o644); err != nil {
 		fmt.Fprintf(os.Stderr, "store config %s err: %v", configPath, err)
 		return err
 	}

@@ -16,8 +16,9 @@ package master
 
 import (
 	"fmt"
-	"github.com/tecbot/gorocksdb"
 	"io"
+
+	"github.com/tecbot/gorocksdb"
 )
 
 // MetadataSnapshot represents the snapshot of a meta partition

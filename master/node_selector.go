@@ -50,7 +50,6 @@ func (ns *nodeSet) getNodes(nodeType NodeType) *sync.Map {
 
 type NodeSelector interface {
 	GetName() string
-
 	Select(ns *nodeSet, excludeHosts []string, replicaNum int) (newHosts []string, peers []proto.Peer, err error)
 }
 
@@ -189,7 +188,7 @@ func (s *CarryWeightNodeSelector) getCarryDataNodes(maxTotal uint64, excludeHost
 	dataNodes.Range(func(key, value interface{}) bool {
 		dataNode := value.(*DataNode)
 		if contains(excludeHosts, dataNode.Addr) {
-			//log.LogDebugf("[getAvailCarryDataNodeTab] dataNode [%v] is excludeHosts", dataNode.Addr)
+			// log.LogDebugf("[getAvailCarryDataNodeTab] dataNode [%v] is excludeHosts", dataNode.Addr)
 			return true
 		}
 		if !dataNode.canAllocDp() {
@@ -537,7 +536,6 @@ func (s *StrawNodeSelector) selectOneNode(nodes []Node) (index int, maxNode Node
 }
 
 func (s *StrawNodeSelector) Select(ns *nodeSet, excludeHosts []string, replicaNum int) (newHosts []string, peers []proto.Peer, err error) {
-
 	nodes := make([]Node, 0)
 	ns.getNodes(s.nodeType).Range(func(key, value interface{}) bool {
 		node := asNodeWrap(value, s.nodeType)

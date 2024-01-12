@@ -15,12 +15,13 @@
 package blobstore
 
 import (
-	"github.com/cubefs/cubefs/proto"
-	"github.com/stretchr/testify/assert"
 	"math/rand"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/cubefs/cubefs/proto"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestNew(t *testing.T) {
@@ -58,9 +59,9 @@ func TestNew(t *testing.T) {
 	pool := New(3, sliceSize)
 	wg.Add(sliceSize)
 	for _, rs := range rSlices {
-		//rs_ := rs
+		// rs_ := rs
 		pool.Execute(&rs, func(param *rwSlice) {
-			//syslog.Printf("pool.Execute rs = %v", rs_)
+			// syslog.Printf("pool.Execute rs = %v", rs_)
 			time.Sleep(1 * time.Second)
 			wg.Done()
 		})

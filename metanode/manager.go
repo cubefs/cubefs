@@ -38,8 +38,10 @@ import (
 	"github.com/cubefs/cubefs/util/log"
 )
 
-const partitionPrefix = "partition_"
-const ExpiredPartitionPrefix = "expired_"
+const (
+	partitionPrefix        = "partition_"
+	ExpiredPartitionPrefix = "expired_"
+)
 
 const sampleDuration = 1 * time.Second
 
@@ -47,7 +49,7 @@ const sampleDuration = 1 * time.Second
 type MetadataManager interface {
 	Start() error
 	Stop()
-	//CreatePartition(id string, start, end uint64, peers []proto.Peer) error
+	// CreatePartition(id string, start, end uint64, peers []proto.Peer) error
 	HandleMetadataOperation(conn net.Conn, p *Packet, remoteAddr string) error
 	GetPartition(id uint64) (MetaPartition, error)
 	GetLeaderPartitions() map[uint64]MetaPartition
@@ -87,12 +89,11 @@ type metadataManager struct {
 	maxQuotaGoroutineNum int32
 	cpuUtil              atomicutil.Float64
 	stopC                chan struct{}
-	volUpdating          *sync.Map //map[string]*verOp2Phase
+	volUpdating          *sync.Map // map[string]*verOp2Phase
 	verUpdateChan        chan string
 }
 
 func (m *metadataManager) getPacketLabels(p *Packet) (labels map[string]string) {
-
 	labels = make(map[string]string)
 	labels[exporter.Op] = p.GetOpMsg()
 	labels[exporter.PartId] = ""
@@ -412,7 +413,7 @@ func (m *metadataManager) loadPartitions() (err error) {
 	// Check metadataDir directory
 	fileInfo, err := os.Stat(m.rootDir)
 	if err != nil {
-		os.MkdirAll(m.rootDir, 0755)
+		os.MkdirAll(m.rootDir, 0o755)
 		err = nil
 		return
 	}
@@ -539,7 +540,6 @@ func (m *metadataManager) detachPartition(id uint64) (err error) {
 }
 
 func (m *metadataManager) createPartition(request *proto.CreateMetaPartitionRequest) (err error) {
-
 	partitionId := fmt.Sprintf("%d", request.PartitionID)
 	log.LogInfof("start create meta Partition, partition %s", partitionId)
 

@@ -82,7 +82,6 @@ func NewRateLimit(apiLimitConf map[string]*proto.UserLimitConf) RateLimiter {
 		putApi:            putApi,
 	}
 	return rateLimit
-
 }
 
 func (r *RateLimit) AcquireLimitResource(uid string, api string) error {
@@ -139,8 +138,7 @@ func (r *RateLimit) GetReader(uid string, api string, reader io.Reader) io.Reade
 }
 
 // No RateLimit
-type NullRateLimit struct {
-}
+type NullRateLimit struct{}
 
 func (n *NullRateLimit) AcquireLimitResource(uid string, api string) error {
 	return nil
@@ -190,7 +188,6 @@ func NewUserRateMgr(conf *proto.UserLimitConf) UserRateManager {
 }
 
 func (r *UserRateMgr) QPSLimitAllowed(uid string) (bool, time.Duration) {
-
 	defaultQPSLimit := r.UserLimitConf.QPSQuota[proto.DefaultUid]
 	usrQPSLimit := r.UserLimitConf.QPSQuota[uid]
 	qpsQuota := getUserLimitQuota(defaultQPSLimit, usrQPSLimit)
@@ -209,7 +206,6 @@ func (r *UserRateMgr) QPSLimitAllowed(uid string) (bool, time.Duration) {
 }
 
 func (r *UserRateMgr) ConcurrentLimitAcquire(uid string) error {
-
 	defaultConcurrentLimit := r.UserLimitConf.ConcurrentQuota[proto.DefaultUid]
 	usrConcurrentLimit := r.UserLimitConf.ConcurrentQuota[uid]
 
@@ -219,7 +215,6 @@ func (r *UserRateMgr) ConcurrentLimitAcquire(uid string) error {
 	}
 	log.LogDebugf("ConcurrentLimit: defaultConcurrentLimit[%d] usrConcurrentLimit[%d] uid[%s]", defaultConcurrentLimit, usrConcurrentLimit, uid)
 	return r.ConcurrentLimit.Acquire(uid, int64(concurrentQuota))
-
 }
 
 func (r *UserRateMgr) ConcurrentLimitRelease(uid string) {
@@ -227,7 +222,6 @@ func (r *UserRateMgr) ConcurrentLimitRelease(uid string) {
 }
 
 func (r *UserRateMgr) GetResponseWriter(uid string, w io.Writer) io.Writer {
-
 	defaultBandWidthLimit := r.UserLimitConf.BandWidthQuota[proto.DefaultUid]
 	usrBandWidthLimit := r.UserLimitConf.BandWidthQuota[uid]
 
@@ -241,11 +235,9 @@ func (r *UserRateMgr) GetResponseWriter(uid string, w io.Writer) io.Writer {
 	w = flowctrl.NewRateWriterWithCtrl(w, flowCtrl)
 
 	return w
-
 }
 
 func (r *UserRateMgr) GetReader(uid string, reader io.Reader) io.Reader {
-
 	defaultBandWidthLimit := r.UserLimitConf.BandWidthQuota[proto.DefaultUid]
 	usrBandWidthLimit := r.UserLimitConf.BandWidthQuota[uid]
 
@@ -259,12 +251,10 @@ func (r *UserRateMgr) GetReader(uid string, reader io.Reader) io.Reader {
 	reader = flowctrl.NewRateReaderWithCtrl(reader, flowCtrl)
 
 	return reader
-
 }
 
 // priority: usrLimit > defaultLimit
 func getUserLimitQuota(defaultLimit, usrLimit uint64) uint64 {
-
 	if usrLimit != 0 {
 		return usrLimit
 	}

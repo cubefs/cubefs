@@ -23,7 +23,6 @@ import (
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/log"
-	//"github.com/cubefs/cubefs/blobstore/util/errors"
 )
 
 type MasterQuotaManager struct {
@@ -74,7 +73,7 @@ func (mqMgr *MasterQuotaManager) createQuota(req *proto.SetMasterQuotaReuqest) (
 		return
 	}
 
-	var quotaInfo = &proto.QuotaInfo{
+	quotaInfo := &proto.QuotaInfo{
 		VolName:   req.VolName,
 		QuotaId:   quotaId,
 		CTime:     time.Now().Unix(),
@@ -266,7 +265,7 @@ func (mqMgr *MasterQuotaManager) getQuotaHbInfos() (infos []*proto.QuotaHeartBea
 	mqMgr.RLock()
 	defer mqMgr.RUnlock()
 	for quotaId, quotaInfo := range mqMgr.IdQuotaInfoMap {
-		var info = &proto.QuotaHeartBeatInfo{}
+		info := &proto.QuotaHeartBeatInfo{}
 		info.VolName = mqMgr.vol.Name
 		info.QuotaId = quotaId
 		info.LimitedInfo.LimitedFiles = quotaInfo.LimitedInfo.LimitedFiles

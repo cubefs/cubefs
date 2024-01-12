@@ -48,7 +48,6 @@ func TestUmount(t *testing.T) {
 }
 
 func TestCfsMount(t *testing.T) {
-
 	var err error
 
 	mountPoint := "/home/tmp"
@@ -56,5 +55,4 @@ func TestCfsMount(t *testing.T) {
 	err = cfsMount(mountPoint, options)
 
 	fmt.Println("err: ", err)
-
 }

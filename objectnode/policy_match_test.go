@@ -9,7 +9,7 @@ import (
 )
 
 func TestRegexp(t *testing.T) {
-	//case1, any keyname
+	// case1, any keyname
 	raw := "*"
 	pattern := makeRegexPattern(raw)
 
@@ -20,7 +20,7 @@ func TestRegexp(t *testing.T) {
 		require.True(t, ok)
 	}
 
-	//case2, specify name
+	// case2, specify name
 	raw = "user?/img/*/2019/*"
 	pattern = makeRegexPattern(raw)
 
@@ -40,7 +40,7 @@ func TestRegexp(t *testing.T) {
 
 func TestResourceMatch(t *testing.T) {
 	var s Statement
-	//case1: resource is bucket, specified object(case sensitive)
+	// case1: resource is bucket, specified object(case sensitive)
 	s.Resource = []interface{}{"arn:aws:s3:::mybucket", "arn:aws:s3:::mybucket/abc/*", "arn:aws:s3:::mybucket/ABD"}
 	b := s.matchResource(LIST_OBJECTS, nil)
 	require.True(t, b)
@@ -57,7 +57,7 @@ func TestResourceMatch(t *testing.T) {
 	b = s.matchResource(PUT_OBJECT, "ABC/ab")
 	require.False(t, b)
 
-	//case2: resource is any object
+	// case2: resource is any object
 	s.Resource = "arn:aws:s3:::examplebucket/*"
 	keynames := []string{"", "*", "abc", "/*"}
 	for _, k := range keynames {
@@ -202,22 +202,22 @@ func TestIpMatch_InWhite_NotInBlack(t *testing.T) {
 	require.NoError(t, err)
 	conditionToCheck := map[string]string{}
 
-	//white ip
+	// white ip
 	clientIps := []string{"1.2.3.6", "4.4.4.4"}
 	for _, ip := range clientIps {
 		conditionToCheck[SOURCEIP] = ip
 		result := s.matchCondition(conditionToCheck)
 		require.True(t, result)
 	}
-	//black ip
+	// black ip
 	clientIps = []string{"1.2.3.5", "2.2.2.2", "3.3.3.3"}
 	for _, ip := range clientIps {
 		conditionToCheck[SOURCEIP] = ip
 		result := s.matchCondition(conditionToCheck)
 		require.False(t, result)
 	}
-
 }
+
 func TestStringLikeMatch(t *testing.T) {
 	strCondition := `{
 			"StringLike":{"aws:Referer":["http://*.example.com/*","http://example.com/*"]}

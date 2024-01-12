@@ -178,9 +178,11 @@ type sortLeaderMetaNode struct {
 func (s *sortLeaderMetaNode) Less(i, j int) bool {
 	return len(s.nodes[i].metaPartitions) > len(s.nodes[j].metaPartitions)
 }
+
 func (s *sortLeaderMetaNode) Swap(i, j int) {
 	s.nodes[i], s.nodes[j] = s.nodes[j], s.nodes[i]
 }
+
 func (s *sortLeaderMetaNode) Len() int {
 	return len(s.nodes)
 }

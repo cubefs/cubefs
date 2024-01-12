@@ -53,7 +53,6 @@ var restartMasterCommand = &cobra.Command{
 	Short: "",
 	Long:  "",
 	Run: func(cmd *cobra.Command, args []string) {
-
 		err := stopAllMaster()
 		if err != nil {
 			log.Println(err)
@@ -132,5 +131,4 @@ func init() {
 	RestartCmd.Flags().BoolVarP(&allRestart, "all", "a", false, "restart all services")
 	RestartCmd.PersistentFlags().StringVarP(&ip, "ip", "", "", "specify an IP address to start services")
 	restartDatanodeCommand.Flags().StringVarP(&datanodeDisk, "disk", "d", "", "specify the disk where datanode mount")
-
 }

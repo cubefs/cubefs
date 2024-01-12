@@ -51,11 +51,11 @@ func TestCheckVol(t *testing.T) {
 func TestVol(t *testing.T) {
 	name := "test1"
 	createVol(map[string]interface{}{nameKey: name}, t)
-	//report mp/dp info to master
+	// report mp/dp info to master
 	server.cluster.checkDataNodeHeartbeat()
 	server.cluster.checkDataNodeHeartbeat()
 	time.Sleep(5 * time.Second)
-	//check status
+	// check status
 	server.cluster.checkMetaPartitions()
 	server.cluster.checkDataPartitions()
 	server.cluster.checkLoadMetaPartitions()
@@ -79,7 +79,6 @@ func TestVol(t *testing.T) {
 }
 
 func TestCreateColdVol(t *testing.T) {
-
 	volName := "coldVol"
 
 	req := map[string]interface{}{}
@@ -200,7 +199,6 @@ func buildUrl(host, op string, kv map[string]interface{}) string {
 }
 
 func checkWithDefault(kv map[string]interface{}, key string, val interface{}) {
-
 	if kv[key] != nil {
 		return
 	}
@@ -211,7 +209,6 @@ func checkWithDefault(kv map[string]interface{}, key string, val interface{}) {
 const testOwner = "cfs"
 
 func createVol(kv map[string]interface{}, t *testing.T) {
-
 	checkWithDefault(kv, volTypeKey, proto.VolumeTypeHot)
 	checkWithDefault(kv, volOwnerKey, testOwner)
 	checkWithDefault(kv, zoneNameKey, testZone2)
@@ -255,7 +252,7 @@ func checkDataPartitionsWritableTest(vol *Vol, t *testing.T) {
 		return
 	}
 
-	//after check data partitions ,the status must be writable
+	// after check data partitions ,the status must be writable
 	vol.checkDataPartitions(server.cluster)
 	partition = vol.dataPartitions.partitions[0]
 	if partition.Status != proto.ReadWrite {
@@ -279,7 +276,7 @@ func checkMetaPartitionsWritableTest(vol *Vol, t *testing.T) {
 
 	maxPartitionID := vol.maxPartitionID()
 	maxMp := vol.MetaPartitions[maxPartitionID]
-	//after check meta partitions ,the status must be writable
+	// after check meta partitions ,the status must be writable
 	maxMp.checkStatus(server.cluster.Name, false, int(vol.mpReplicaNum), maxPartitionID, 4194304, vol.Forbidden)
 	if maxMp.Status != proto.ReadWrite {
 		t.Errorf("expect partition status[%v],real status[%v]\n", proto.ReadWrite, maxMp.Status)
@@ -318,7 +315,7 @@ func statVol(name string, t *testing.T) {
 func TestVolMpsLock(t *testing.T) {
 	name := "TestVolMpsLock"
 	var volID uint64 = 1
-	var createTime = time.Now().Unix()
+	createTime := time.Now().Unix()
 
 	vv := volValue{
 		ID:                volID,
@@ -374,7 +371,7 @@ func TestVolMpsLock(t *testing.T) {
 func TestConcurrentReadWriteDataPartitionMap(t *testing.T) {
 	name := "TestConcurrentReadWriteDataPartitionMap"
 	var volID uint64 = 1
-	var createTime = time.Now().Unix()
+	createTime := time.Now().Unix()
 
 	vv := volValue{
 		ID:                volID,
@@ -397,7 +394,7 @@ func TestConcurrentReadWriteDataPartitionMap(t *testing.T) {
 	// unavailable mp
 	mp1 := newMetaPartition(1, 1, defaultMaxMetaPartitionInodeID, 3, name, volID, 0)
 	vol.addMetaPartition(mp1)
-	//readonly mp
+	// readonly mp
 	mp2 := newMetaPartition(2, 1, defaultMaxMetaPartitionInodeID, 3, name, volID, 0)
 	mp2.Status = proto.ReadOnly
 	vol.addMetaPartition(mp2)

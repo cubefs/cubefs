@@ -24,7 +24,6 @@ import (
 
 // register api routers
 func (o *ObjectNode) registerApiRouters(router *mux.Router) {
-
 	var bucketRouters []*mux.Router
 	bRouter := router.PathPrefix("/").Subrouter()
 	for _, d := range o.domains {
@@ -33,7 +32,7 @@ func (o *ObjectNode) registerApiRouters(router *mux.Router) {
 	}
 	bucketRouters = append(bucketRouters, bRouter.PathPrefix("/{bucket}").Subrouter())
 
-	var registerBucketHttpHeadRouters = func(r *mux.Router) {
+	registerBucketHttpHeadRouters := func(r *mux.Router) {
 		// Head object
 		// API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_HeadObject.html
 		r.NewRoute().Name(ActionToUniqueRouteName(proto.OSSHeadObjectAction)).
@@ -48,8 +47,7 @@ func (o *ObjectNode) registerApiRouters(router *mux.Router) {
 			HandlerFunc(o.headBucketHandler)
 	}
 
-	var registerBucketHttpGetRouters = func(r *mux.Router) {
-
+	registerBucketHttpGetRouters := func(r *mux.Router) {
 		// Get Object Lock configuration
 		// API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObjectLockConfiguration.html
 		r.NewRoute().Name(ActionToUniqueRouteName(proto.OSSGetObjectLockConfigurationAction)).
@@ -265,7 +263,7 @@ func (o *ObjectNode) registerApiRouters(router *mux.Router) {
 			HandlerFunc(o.getBucketV1Handler)
 	}
 
-	var registerBucketHttpPostRouters = func(r *mux.Router) {
+	registerBucketHttpPostRouters := func(r *mux.Router) {
 		// Create multipart upload
 		// API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_CreateMultipartUpload.html
 		r.NewRoute().Name(ActionToUniqueRouteName(proto.OSSCreateMultipartUploadAction)).
@@ -305,7 +303,7 @@ func (o *ObjectNode) registerApiRouters(router *mux.Router) {
 			HandlerFunc(o.postObjectHandler)
 	}
 
-	var registerBucketHttpPutRouters = func(r *mux.Router) {
+	registerBucketHttpPutRouters := func(r *mux.Router) {
 		// Put Object Lock configuration
 		// API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_PutObjectLockConfiguration.html
 		r.NewRoute().Name(ActionToUniqueRouteName(proto.OSSPutObjectLockConfigurationAction)).
@@ -486,7 +484,7 @@ func (o *ObjectNode) registerApiRouters(router *mux.Router) {
 			HandlerFunc(o.createBucketHandler)
 	}
 
-	var registerBucketHttpDeleteRouters = func(r *mux.Router) {
+	registerBucketHttpDeleteRouters := func(r *mux.Router) {
 		// Abort multipart upload
 		// API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_AbortMultipartUpload.html .
 		r.NewRoute().Name(ActionToUniqueRouteName(proto.OSSAbortMultipartUploadAction)).
@@ -592,10 +590,9 @@ func (o *ObjectNode) registerApiRouters(router *mux.Router) {
 		r.NewRoute().Name(ActionToUniqueRouteName(proto.OSSDeleteBucketAction)).
 			Methods(http.MethodDelete).
 			HandlerFunc(o.deleteBucketHandler)
-
 	}
 
-	var registerBucketHttpOptionsRouters = func(r *mux.Router) {
+	registerBucketHttpOptionsRouters := func(r *mux.Router) {
 		// OPTIONS object
 		// https://docs.aws.amazon.com/AmazonS3/latest/API/RESTOPTIONSobject.html
 		r.NewRoute().Name(ActionToUniqueRouteName(proto.OSSOptionsObjectAction)).

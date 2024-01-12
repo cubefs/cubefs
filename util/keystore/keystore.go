@@ -28,9 +28,7 @@ type KeyInfo struct {
 
 // DumpJSONFile dump KeyInfo to file in json format
 func (u *KeyInfo) DumpJSONFile(filename string, authIdKey string) (err error) {
-	var (
-		data string
-	)
+	var data string
 	if data, err = u.DumpJSONStr(authIdKey); err != nil {
 		return
 	}

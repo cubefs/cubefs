@@ -16,11 +16,10 @@ package master
 
 import (
 	"encoding/json"
-	"sync"
-	"time"
-
 	"fmt"
 	"net"
+	"sync"
+	"time"
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util"
@@ -28,14 +27,14 @@ import (
 	"github.com/cubefs/cubefs/util/log"
 )
 
-//const
+// const
 const (
 	// the maximum number of tasks that can be handled each time
 	MaxTaskNum = 30
 
 	TaskWorkerInterval = time.Second * time.Duration(2)
-	idleConnTimeout    = 90 //seconds
-	connectTimeout     = 10 //seconds
+	idleConnTimeout    = 90 // seconds
+	connectTimeout     = 10 // seconds
 )
 
 // AdminTaskManager sends administration commands to the metaNode or dataNode.
@@ -49,7 +48,6 @@ type AdminTaskManager struct {
 }
 
 func newAdminTaskManager(targetAddr, clusterID string) (sender *AdminTaskManager) {
-
 	proto.InitBufferPool(int64(32768))
 
 	sender = &AdminTaskManager{

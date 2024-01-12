@@ -7,7 +7,7 @@ type TicketMess struct {
 	CertFile    string
 }
 
-//the ticket from authnode
+// the ticket from authnode
 type Ticket struct {
 	ID         string `json:"client_id"`
 	SessionKey string `json:"session_key"`

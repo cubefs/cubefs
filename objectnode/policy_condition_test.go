@@ -11,7 +11,6 @@ import (
 )
 
 func TestCondition_UnmarshalJSON(t *testing.T) {
-
 	op1, err := newIPAddressOp(map[Key]ValueSet{AWSSourceIP: NewValueSet(NewStringValue("1.1.1.1"))})
 	require.NoError(t, err)
 	var expectCondition1 Condition = []Operation{op1}
@@ -48,7 +47,6 @@ func TestCondition_UnmarshalJSON(t *testing.T) {
 			require.Equal(t, testCase.expect, result, fmt.Sprintf("test case %v", i+1))
 		}
 	}
-
 }
 
 func TestCondition_CheckValid(t *testing.T) {

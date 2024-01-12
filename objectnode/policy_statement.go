@@ -25,8 +25,10 @@ import (
 // https://docs.aws.amazon.com/AmazonS3/latest/dev/example-bucket-policies.html
 // https://docs.aws.amazon.com/zh_cn/AmazonS3/latest/dev/example-bucket-policies.html
 
-type Principal map[string]StringSet
-type Resource string
+type (
+	Principal map[string]StringSet
+	Resource  string
+)
 
 const (
 	Allow = "Allow"
@@ -43,7 +45,6 @@ type Statement struct {
 }
 
 func (s Statement) IsAllowed(p *RequestParam) bool {
-
 	return s.Effect == Allow
 }
 

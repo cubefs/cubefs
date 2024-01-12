@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+
 	"github.com/cubefs/cubefs/console/cutil"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/sdk/graphql/client"
@@ -63,8 +64,10 @@ func (ls *LoginService) Schema() *graphql.Schema {
 
 type permissionMode int
 
-const ADMIN permissionMode = permissionMode(1)
-const USER permissionMode = permissionMode(2)
+const (
+	ADMIN permissionMode = permissionMode(1)
+	USER  permissionMode = permissionMode(2)
+)
 
 func permissions(ctx context.Context, mode permissionMode) (userInfo *user.UserInfo, perm permissionMode, err error) {
 	userInfo = ctx.Value(proto.UserInfoKey).(*user.UserInfo)

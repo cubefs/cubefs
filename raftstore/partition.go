@@ -66,9 +66,7 @@ type Partition interface {
 
 	// Truncate raft log
 	Truncate(index uint64)
-
 	TryToLeader(nodeID uint64) error
-
 	IsOfflinePeer() bool
 }
 

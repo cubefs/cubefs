@@ -19,7 +19,6 @@ import (
 	"fmt"
 	"net"
 	"sync"
-
 	"sync/atomic"
 	"time"
 
@@ -28,9 +27,7 @@ import (
 	"github.com/cubefs/cubefs/util/log"
 )
 
-var (
-	gConnPool = util.NewConnectPool()
-)
+var gConnPool = util.NewConnectPool()
 
 // ReplProtocol defines the struct of the replication protocol.
 // 1. ServerConn reads a packet from the client socket, and analyzes the addresses of the followers.
@@ -217,9 +214,7 @@ func (rp *ReplProtocol) SetSmux(f func(addr string) (net.Conn, error), putSmux f
 // ServerConn keeps reading data from the socket to analyze the follower address, execute the prepare function,
 // and throw the packets to the to-be-processed channel.
 func (rp *ReplProtocol) ServerConn() {
-	var (
-		err error
-	)
+	var err error
 	defer func() {
 		rp.Stop()
 		rp.exitedMu.Lock()
@@ -239,7 +234,6 @@ func (rp *ReplProtocol) ServerConn() {
 			}
 		}
 	}
-
 }
 
 // Receive response from all followers.
@@ -273,7 +267,7 @@ func (rp *ReplProtocol) readPkgAndPrepare() (err error) {
 	if err = request.ReadFromConnWithVer(rp.sourceConn, proto.NoReadDeadlineTime); err != nil {
 		return
 	}
-	//log.LogDebugf("action[readPkgAndPrepare] packet(%v) op %v from remote(%v) conn(%v) ",
+	// log.LogDebugf("action[readPkgAndPrepare] packet(%v) op %v from remote(%v) conn(%v) ",
 	//	request.GetUniqueLogId(), request.Opcode, rp.sourceConn.RemoteAddr().String(), rp.sourceConn)
 
 	if err = request.resolveFollowersAddr(); err != nil {
@@ -341,7 +335,6 @@ func (rp *ReplProtocol) OperatorAndForwardPktGoRoutine() {
 			return
 		}
 	}
-
 }
 
 func (rp *ReplProtocol) writeResponseToClientGoRroutine() {
@@ -359,7 +352,6 @@ func (rp *ReplProtocol) writeResponseToClientGoRroutine() {
 			return
 		}
 	}
-
 }
 
 // func (rp *ReplProtocol) operatorFuncWithWaitGroup(wg *sync.WaitGroup, request *Packet) {
@@ -371,9 +363,7 @@ func (rp *ReplProtocol) writeResponseToClientGoRroutine() {
 // If failed to read the response, then mark the packet as failure, and delete it from the list.
 // If all the reads succeed, then mark the packet as success.
 func (rp *ReplProtocol) checkLocalResultAndReciveAllFollowerResponse() {
-	var (
-		e *list.Element
-	)
+	var e *list.Element
 
 	if e = rp.getNextPacket(); e == nil {
 		return
@@ -443,7 +433,6 @@ func (rp *ReplProtocol) Stop() {
 		}
 		atomic.StoreInt32(&rp.exited, ReplExiting)
 	}
-
 }
 
 type SmuxConn struct {

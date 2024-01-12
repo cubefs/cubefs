@@ -38,12 +38,12 @@ func (w *Wildcard) Parse(host string) (bucket string, is bool) {
 }
 
 func NewWildcard(domain string) (*Wildcard, error) {
-	var regexpString = "^(([a-zA-Z0-9]|-|_)+.)+" + domain + "(:(\\d)+)*$"
+	regexpString := "^(([a-zA-Z0-9]|-|_)+.)+" + domain + "(:(\\d)+)*$"
 	r, err := regexp.Compile(regexpString)
 	if err != nil {
 		return nil, err
 	}
-	var wc = &Wildcard{
+	wc := &Wildcard{
 		domain: domain,
 		r:      r,
 	}
@@ -63,7 +63,7 @@ func (ws Wildcards) Parse(host string) (bucket string, is bool) {
 
 func NewWildcards(domains []string) (Wildcards, error) {
 	var err error
-	var ws = make([]*Wildcard, len(domains))
+	ws := make([]*Wildcard, len(domains))
 	for i := 0; i < len(domains); i++ {
 		if ws[i], err = NewWildcard(domains[i]); err != nil {
 			return nil, err

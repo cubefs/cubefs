@@ -16,12 +16,13 @@ package util
 
 import "sync"
 
-type Null struct {
-}
-type Set struct {
-	sync.RWMutex
-	m map[string]Null
-}
+type (
+	Null struct{}
+	Set  struct {
+		sync.RWMutex
+		m map[string]Null
+	}
+)
 
 func NewSet() *Set {
 	return &Set{
@@ -34,6 +35,7 @@ func (s *Set) Add(val string) {
 	defer s.Unlock()
 	s.m[val] = Null{}
 }
+
 func (s *Set) Remove(val string) {
 	s.Lock()
 	defer s.Unlock()

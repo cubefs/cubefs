@@ -2,9 +2,10 @@ package fs
 
 import (
 	"container/list"
-	"github.com/cubefs/cubefs/sdk/meta"
 	"sync"
 	"time"
+
+	"github.com/cubefs/cubefs/sdk/meta"
 )
 
 const (

@@ -60,9 +60,11 @@ func (c *ConsoleNode) Start(cfg *config.Config) error {
 
 	c.addHandle(proto.ConsoleFile, fileService.Schema(), fileService)
 
-	indexPaths := []string{"overview", "login", "overview", "userDetails", "servers",
+	indexPaths := []string{
+		"overview", "login", "overview", "userDetails", "servers",
 		"serverList", "dashboard", "volumeList", "volumeDetail", "fileList", "operations",
-		"alarm", "authorization"}
+		"alarm", "authorization",
+	}
 
 	for _, path := range indexPaths {
 		c.server.HandleFunc("/"+path, c.indexer).Methods("GET")

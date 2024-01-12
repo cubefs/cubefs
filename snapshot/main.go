@@ -16,9 +16,9 @@ package main
 
 import (
 	"fmt"
-	"github.com/cubefs/cubefs/proto"
 	"os"
 
+	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/snapshot/cmd"
 )
 

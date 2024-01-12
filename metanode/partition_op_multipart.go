@@ -19,14 +19,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cubefs/cubefs/util"
-
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util"
 )
 
 func (mp *metaPartition) GetExpiredMultipart(req *proto.GetExpiredMultipartRequest, p *Packet) (err error) {
 	expiredMultiPartInfos := make([]*proto.ExpiredMultipartInfo, 0)
-	var walkTreeFunc = func(i BtreeItem) bool {
+	walkTreeFunc := func(i BtreeItem) bool {
 		multipart := i.(*Multipart)
 		if len(req.Prefix) > 0 && !strings.HasPrefix(multipart.key, req.Prefix) {
 			// skip and continue
@@ -159,9 +158,7 @@ func (mp *metaPartition) RemoveMultipart(req *proto.RemoveMultipartRequest, p *P
 }
 
 func (mp *metaPartition) CreateMultipart(req *proto.CreateMultipartRequest, p *Packet) (err error) {
-	var (
-		multipartId string
-	)
+	var multipartId string
 	for {
 		multipartId = util.CreateMultipartID(mp.config.PartitionId).String()
 		storedItem := mp.multipartTree.Get(&Multipart{key: req.Path, id: multipartId})
@@ -197,13 +194,12 @@ func (mp *metaPartition) CreateMultipart(req *proto.CreateMultipartRequest, p *P
 }
 
 func (mp *metaPartition) ListMultipart(req *proto.ListMultipartRequest, p *Packet) (err error) {
-
 	max := int(req.Max)
 	keyMarker := req.Marker
 	multipartIdMarker := req.MultipartIdMarker
 	prefix := req.Prefix
-	var matches = make([]*Multipart, 0, max)
-	var walkTreeFunc = func(i BtreeItem) bool {
+	matches := make([]*Multipart, 0, max)
+	walkTreeFunc := func(i BtreeItem) bool {
 		multipart := i.(*Multipart)
 		// prefix is enabled
 		if len(prefix) > 0 && !strings.HasPrefix(multipart.key, prefix) {
@@ -220,7 +216,7 @@ func (mp *metaPartition) ListMultipart(req *proto.ListMultipartRequest, p *Packe
 	}
 	multipartInfos := make([]*proto.MultipartInfo, len(matches))
 
-	var convertPartFunc = func(part *Part) *proto.MultipartPartInfo {
+	convertPartFunc := func(part *Part) *proto.MultipartPartInfo {
 		return &proto.MultipartPartInfo{
 			ID:         part.ID,
 			Inode:      part.Inode,
@@ -230,7 +226,7 @@ func (mp *metaPartition) ListMultipart(req *proto.ListMultipartRequest, p *Packe
 		}
 	}
 
-	var convertMultipartFunc = func(multipart *Multipart) *proto.MultipartInfo {
+	convertMultipartFunc := func(multipart *Multipart) *proto.MultipartInfo {
 		partInfos := make([]*proto.MultipartPartInfo, len(multipart.parts))
 		for i := 0; i < len(multipart.parts); i++ {
 			partInfos[i] = convertPartFunc(multipart.parts[i])

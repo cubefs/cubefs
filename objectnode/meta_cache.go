@@ -49,7 +49,7 @@ func (attr *AttrItem) IsExpired() bool {
 	return false
 }
 
-//VolumeInodeAttrsCache caches Attrs for Inodes
+// VolumeInodeAttrsCache caches Attrs for Inodes
 type VolumeInodeAttrsCache struct {
 	sync.RWMutex
 	cache       map[uint64]*list.Element
@@ -109,7 +109,6 @@ func (vac *VolumeInodeAttrsCache) mergeAttr(attr *AttrItem) {
 	vac.RUnlock()
 
 	vac.putAttr(attr)
-
 }
 
 func (vac *VolumeInodeAttrsCache) getAttr(inode uint64) *AttrItem {
@@ -198,7 +197,7 @@ func (vac *VolumeInodeAttrsCache) GetAccessStat() (accssNum, validHit, miss uint
 	return vac.accessStat.accessNum, vac.accessStat.validHit, vac.accessStat.miss
 }
 
-//type DentryItem metanode.Dentry
+// type DentryItem metanode.Dentry
 type DentryItem struct {
 	metanode.Dentry
 	expiredTime int64
@@ -215,7 +214,7 @@ func (di *DentryItem) IsExpired() bool {
 	return false
 }
 
-//VolumeDentryCache accelerates translating S3 path to posix-compatible file system metadata within a volume
+// VolumeDentryCache accelerates translating S3 path to posix-compatible file system metadata within a volume
 type VolumeDentryCache struct {
 	sync.RWMutex
 	cache       map[string]*list.Element
@@ -512,7 +511,6 @@ func (omc *ObjMetaCache) GetDentry(volume string, key string) (dentry *DentryIte
 	}
 	log.LogDebugf("ObjMetaCache GetDentry: volume(%v), key(%v), dentry:(%v)", volume, key, dentry)
 	return dentry, dentry.IsExpired()
-
 }
 
 func (omc *ObjMetaCache) DeleteDentry(volume string, key string) {

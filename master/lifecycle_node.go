@@ -76,7 +76,6 @@ func (lcNode *LcNode) createLcScanTask(masterAddr string, ruleTask *proto.RuleTa
 }
 
 func (lcNode *LcNode) createSnapshotVerDelTask(masterAddr string, sTask *proto.SnapshotVerDelTask) (task *proto.AdminTask) {
-
 	request := &proto.SnapshotVerDelTaskRequest{
 		MasterAddr: masterAddr,
 		LcNodeAddr: lcNode.Addr,

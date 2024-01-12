@@ -55,7 +55,7 @@ type ExtentKey struct {
 	ExtentOffset uint64 // offset in extent like tiny extent offset large than 0,normal is 0
 	Size         uint32 // real size that inode used on the extent,it's size may be part of extent real size, such as tinyExt
 	CRC          uint32
-	//snapshot
+	// snapshot
 	SnapInfo *ExtSnapInfo
 }
 

@@ -49,5 +49,4 @@ func TestIPAddressOpKeys(t *testing.T) {
 	if len(result.Difference(expect)) != 0 || len(expect.Difference(result)) != 0 {
 		t.Fatalf("expect two value set equal, expected: %v, got: %v\n", expect, result)
 	}
-
 }

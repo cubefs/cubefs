@@ -283,7 +283,7 @@ type TxInodeApplyRequest struct {
 
 type TxDentryApplyRequest struct {
 	TxID string `json:"txid"`
-	//DenKey      string `json:"denkey"`
+	// DenKey      string `json:"denkey"`
 	Pid         uint64 `json:"pid"`
 	Name        string `json:"name"`
 	TxApplyType int    `json:"type"`
@@ -364,7 +364,7 @@ type UnlinkInodeRequest struct {
 	VolName     string `json:"vol"`
 	PartitionID uint64 `json:"pid"`
 	Inode       uint64 `json:"ino"`
-	UniqID      uint64 `json:"uid"` //for request dedup
+	UniqID      uint64 `json:"uid"` // for request dedup
 	VerSeq      uint64 `json:"ver"`
 	DenVerSeq   uint64 `json:"denVer"`
 	RequestExtend
@@ -549,6 +549,7 @@ type LookupRequest struct {
 	VerSeq      uint64 `json:"seq"`
 	VerAll      bool   `json:"verAll"`
 }
+
 type DetryInfo struct {
 	Inode  uint64 `json:"ino"`
 	Mode   uint32 `json:"mode"`
@@ -632,6 +633,7 @@ type ReadDirOnlyRequest struct {
 type ReadDirResponse struct {
 	Children []Dentry `json:"children"`
 }
+
 type ReadDirOnlyResponse struct {
 	Children []Dentry `json:"children"`
 }

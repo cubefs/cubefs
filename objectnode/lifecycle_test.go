@@ -48,20 +48,20 @@ func TestLifecycleConfiguration(t *testing.T) {
 </LifecycleConfiguration>
 `
 
-	var l1 = NewLifeCycle()
+	l1 := NewLifeCycle()
 	err := xml.Unmarshal([]byte(LifecycleXml), l1)
 	require.NoError(t, err)
 
-	//same id
+	// same id
 	_, err = l1.Validate()
 	require.Equal(t, err, LifeCycleErrSameRuleID)
 
-	//id = ""
+	// id = ""
 	l1.Rules[0].ID = ""
 	_, err = l1.Validate()
 	require.Equal(t, err, LifeCycleErrMissingRuleID)
 
-	//len(id) > 255
+	// len(id) > 255
 	var id string
 	for i := 0; i < 256; i++ {
 		id += "a"
@@ -71,13 +71,13 @@ func TestLifecycleConfiguration(t *testing.T) {
 	require.Equal(t, err, LifeCycleErrTooLongRuleID)
 	l1.Rules[0].ID = "id"
 
-	//invalid status
+	// invalid status
 	l1.Rules[0].Status = ""
 	_, err = l1.Validate()
 	require.Equal(t, err, LifeCycleErrMalformedXML)
 	l1.Rules[0].Status = "Enabled"
 
-	//days < 0
+	// days < 0
 	day := -1
 	l1.Rules[0].Expire.Days = &day
 	_, err = l1.Validate()
@@ -85,7 +85,7 @@ func TestLifecycleConfiguration(t *testing.T) {
 	day = 0
 	l1.Rules[0].Expire.Days = &day
 
-	//date
+	// date
 	l1.Rules[0].Expire.Days = nil
 	now := time.Now().In(time.UTC)
 	ti := time.Date(now.Year(), now.Month(), now.Day(), 1, 0, 0, 0, time.UTC)
@@ -93,13 +93,13 @@ func TestLifecycleConfiguration(t *testing.T) {
 	_, err = l1.Validate()
 	require.Equal(t, err, LifeCycleErrDateType)
 
-	//days and date all nil
+	// days and date all nil
 	l1.Rules[0].Expire.Days = nil
 	l1.Rules[0].Expire.Date = nil
 	_, err = l1.Validate()
 	require.Equal(t, err, LifeCycleErrMalformedXML)
 
-	//days and date
+	// days and date
 	day = 1
 	l1.Rules[0].Expire.Days = &day
 	ti = time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
@@ -115,7 +115,7 @@ func TestLifecycleConfiguration(t *testing.T) {
 	_, err = l1.Validate()
 	require.Equal(t, err, LifeCycleErrMissingActions)
 
-	//no err
+	// no err
 	l1.Rules = l1.Rules[:1]
 	ok, _ := l1.Validate()
 	require.Equal(t, true, ok)

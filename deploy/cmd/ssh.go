@@ -11,7 +11,7 @@ import (
 func generateSSHKey() error {
 	// Check if the private and public key files already exist
 	privateKeyPath := os.Getenv("HOME") + "/.ssh/id_rsa"
-	//publicKeyPath := privateKeyPath + ".pub"
+	// publicKeyPath := privateKeyPath + ".pub"
 	if _, err := os.Stat(privateKeyPath); err == nil {
 		return fmt.Errorf("SSH key already exists")
 	}
@@ -30,7 +30,6 @@ func generateSSHKey() error {
 
 // Establishing a secure connection
 func establishSSHConnectionWithoutPassword(sourceNode, targetNodeUser, targetNode string) error {
-
 	// Check if the private and public key files already exist and generate an SSH key pairs
 	generateSSHKey()
 

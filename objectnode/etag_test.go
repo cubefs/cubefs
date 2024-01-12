@@ -31,7 +31,8 @@ var samples = []sample{
 		etagValue: ETagValue{
 			Value:   "41f9ede9b03b89d80f3a8460d7792ff6",
 			PartNum: 0,
-			TS:      time.Unix(0, 0)},
+			TS:      time.Unix(0, 0),
+		},
 		etag: "41f9ede9b03b89d80f3a8460d7792ff6",
 	},
 	{
@@ -39,7 +40,8 @@ var samples = []sample{
 		etagValue: ETagValue{
 			Value:   "41f9ede9b03b89d80f3a8460d7792ff6",
 			PartNum: 23,
-			TS:      time.Unix(0, 0)},
+			TS:      time.Unix(0, 0),
+		},
 		etag: "41f9ede9b03b89d80f3a8460d7792ff6-23",
 	},
 	{
@@ -47,7 +49,8 @@ var samples = []sample{
 		etagValue: ETagValue{
 			Value:   "41f9ede9b03b89d80f3a8460d7792ff6",
 			PartNum: 0,
-			TS:      time.Unix(1588562233, 0)},
+			TS:      time.Unix(1588562233, 0),
+		},
 		etag: "41f9ede9b03b89d80f3a8460d7792ff6",
 	},
 	{
@@ -55,7 +58,8 @@ var samples = []sample{
 		etagValue: ETagValue{
 			Value:   "41f9ede9b03b89d80f3a8460d7792ff6",
 			PartNum: 23,
-			TS:      time.Unix(1588562233, 0)},
+			TS:      time.Unix(1588562233, 0),
+		},
 		etag: "41f9ede9b03b89d80f3a8460d7792ff6-23",
 	},
 }

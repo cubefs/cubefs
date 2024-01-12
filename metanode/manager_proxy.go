@@ -27,9 +27,7 @@ const (
 	NoClosedConnect    = false
 )
 
-var (
-	ErrForbiddenMetaPartition = errors.New("meta partition is forbidden")
-)
+var ErrForbiddenMetaPartition = errors.New("meta partition is forbidden")
 
 func (m *metadataManager) IsForbiddenOp(mp MetaPartition, reqOp uint8) bool {
 	if !mp.IsForbidden() {
@@ -77,7 +75,7 @@ func (m *metadataManager) IsForbiddenOp(mp MetaPartition, reqOp uint8) bool {
 		proto.OpAddMultipartPart,
 		proto.OpRemoveMultipart,
 		proto.OpCreateMultipart,
-		//quota
+		// quota
 		proto.OpMetaBatchSetInodeQuota,
 		proto.OpMetaBatchDeleteInodeQuota:
 

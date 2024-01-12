@@ -127,7 +127,7 @@ func (mp *metaPartition) statisticExtendByStore(extend *Extend, inodeTree *BTree
 		log.LogDebugf("statisticExtendByStore get quota key failed, mp [%v] inode [%v]", mp.config.PartitionId, extend.GetInode())
 		return
 	}
-	var quotaInfos = &proto.MetaQuotaInfos{
+	quotaInfos := &proto.MetaQuotaInfos{
 		QuotaInfoMap: make(map[uint32]*proto.MetaQuotaInfo),
 	}
 	if err := json.Unmarshal(value, &quotaInfos.QuotaInfoMap); err != nil {
@@ -164,7 +164,7 @@ func (mp *metaPartition) updateUsedInfo(size int64, files int64, ino uint64) {
 }
 
 func (mp *metaPartition) isExistQuota(ino uint64) (quotaIds []uint32, isFind bool) {
-	var extend = NewExtend(ino)
+	extend := NewExtend(ino)
 	treeItem := mp.extendTree.Get(extend)
 	if treeItem == nil {
 		isFind = false
@@ -176,7 +176,7 @@ func (mp *metaPartition) isExistQuota(ino uint64) (quotaIds []uint32, isFind boo
 		isFind = false
 		return
 	}
-	var quotaInfos = &proto.MetaQuotaInfos{
+	quotaInfos := &proto.MetaQuotaInfos{
 		QuotaInfoMap: make(map[uint32]*proto.MetaQuotaInfo),
 	}
 	if err := json.Unmarshal(value, &quotaInfos.QuotaInfoMap); err != nil {
@@ -209,8 +209,8 @@ func (mp *metaPartition) isOverQuota(ino uint64, size bool, files bool) (status 
 }
 
 func (mp *metaPartition) getInodeQuota(inode uint64, p *Packet) (err error) {
-	var extend = NewExtend(inode)
-	var quotaInfos = &proto.MetaQuotaInfos{
+	extend := NewExtend(inode)
+	quotaInfos := &proto.MetaQuotaInfos{
 		QuotaInfoMap: make(map[uint32]*proto.MetaQuotaInfo),
 	}
 	var (
@@ -232,7 +232,7 @@ func (mp *metaPartition) getInodeQuota(inode uint64, p *Packet) (err error) {
 		}
 	}
 handleRsp:
-	var response = &proto.GetInodeQuotaResponse{}
+	response := &proto.GetInodeQuotaResponse{}
 	log.LogInfof("getInodeQuota indoe %v ,map %v", inode, quotaInfos.QuotaInfoMap)
 	response.MetaQuotaInfoMap = quotaInfos.QuotaInfoMap
 
@@ -252,7 +252,7 @@ func (mp *metaPartition) getInodeQuotaInfos(inode uint64) (quotaInfos map[uint32
 		return
 	}
 	extend := treeItem.(*Extend)
-	var info = &proto.MetaQuotaInfos{
+	info := &proto.MetaQuotaInfos{
 		QuotaInfoMap: make(map[uint32]*proto.MetaQuotaInfo),
 	}
 	value, exist := extend.Get([]byte(proto.QuotaKey))
@@ -268,12 +268,12 @@ func (mp *metaPartition) getInodeQuotaInfos(inode uint64) (quotaInfos map[uint32
 }
 
 func (mp *metaPartition) setInodeQuota(quotaIds []uint32, inode uint64) {
-	var extend = NewExtend(inode)
-	var quotaInfos = &proto.MetaQuotaInfos{
+	extend := NewExtend(inode)
+	quotaInfos := &proto.MetaQuotaInfos{
 		QuotaInfoMap: make(map[uint32]*proto.MetaQuotaInfo),
 	}
 	for _, quotaId := range quotaIds {
-		var quotaInfo = &proto.MetaQuotaInfo{
+		quotaInfo := &proto.MetaQuotaInfo{
 			RootInode: false,
 		}
 		quotaInfos.QuotaInfoMap[quotaId] = quotaInfo

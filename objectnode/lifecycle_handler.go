@@ -17,7 +17,6 @@ package objectnode
 import (
 	"encoding/xml"
 	"io"
-	"io/ioutil"
 	"net/http"
 
 	"github.com/cubefs/cubefs/proto"
@@ -33,7 +32,7 @@ func (o *ObjectNode) getBucketLifecycleConfigurationHandler(w http.ResponseWrite
 		o.errorResponse(w, r, err, errorCode)
 	}()
 
-	var param = ParseRequestParam(r)
+	param := ParseRequestParam(r)
 	if param.Bucket() == "" {
 		errorCode = InvalidBucketName
 		return
@@ -50,7 +49,7 @@ func (o *ObjectNode) getBucketLifecycleConfigurationHandler(w http.ResponseWrite
 		return
 	}
 
-	var lifeCycle = NewLifeCycle()
+	lifeCycle := NewLifeCycle()
 	lifeCycle.Rules = make([]*Rule, 0)
 	for _, lc := range lcConf.Rules {
 		rule := &Rule{
@@ -84,7 +83,6 @@ func (o *ObjectNode) getBucketLifecycleConfigurationHandler(w http.ResponseWrite
 
 	writeSuccessResponseXML(w, data)
 	return
-
 }
 
 // API reference: https://docs.aws.amazon.com/zh_cn/AmazonS3/latest/API/API_PutBucketLifecycleConfiguration.html
@@ -96,7 +94,7 @@ func (o *ObjectNode) putBucketLifecycleConfigurationHandler(w http.ResponseWrite
 		o.errorResponse(w, r, err, errorCode)
 	}()
 
-	var param = ParseRequestParam(r)
+	param := ParseRequestParam(r)
 	if param.Bucket() == "" {
 		errorCode = InvalidBucketName
 		return
@@ -111,7 +109,7 @@ func (o *ObjectNode) putBucketLifecycleConfigurationHandler(w http.ResponseWrite
 		return
 	}
 	var requestBody []byte
-	if requestBody, err = ioutil.ReadAll(r.Body); err != nil && err != io.EOF {
+	if requestBody, err = io.ReadAll(r.Body); err != nil && err != io.EOF {
 		log.LogErrorf("putBucketLifecycle failed: read request body data err: requestID(%v) err(%v)", GetRequestID(r), err)
 		errorCode = &ErrorCode{
 			ErrorCode:    http.StatusText(http.StatusBadRequest),
@@ -121,7 +119,7 @@ func (o *ObjectNode) putBucketLifecycleConfigurationHandler(w http.ResponseWrite
 		return
 	}
 
-	var lifeCycle = NewLifeCycle()
+	lifeCycle := NewLifeCycle()
 	if err = UnmarshalXMLEntity(requestBody, lifeCycle); err != nil {
 		log.LogWarnf("putBucketLifecycle failed: decode request body err: requestID(%v) err(%v)", GetRequestID(r), err)
 		errorCode = LifeCycleErrMalformedXML
@@ -179,7 +177,7 @@ func (o *ObjectNode) deleteBucketLifecycleConfigurationHandler(w http.ResponseWr
 		o.errorResponse(w, r, err, errorCode)
 	}()
 
-	var param = ParseRequestParam(r)
+	param := ParseRequestParam(r)
 	if param.Bucket() == "" {
 		errorCode = InvalidBucketName
 		return

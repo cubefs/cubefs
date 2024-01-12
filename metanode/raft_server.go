@@ -32,7 +32,7 @@ func (m *MetaNode) startRaftServer(cfg *config.Config) (err error) {
 		if !os.IsNotExist(err) {
 			return
 		}
-		if err = os.MkdirAll(m.raftDir, 0755); err != nil {
+		if err = os.MkdirAll(m.raftDir, 0o755); err != nil {
 			err = errors.NewErrorf("create raft server dir: %s", err.Error())
 			return
 		}

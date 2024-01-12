@@ -16,10 +16,11 @@ package loadutil
 
 import (
 	"fmt"
-	"github.com/cubefs/cubefs/util/log"
 	"time"
 
 	"github.com/shirou/gopsutil/cpu"
+
+	"github.com/cubefs/cubefs/util/log"
 )
 
 func GetCpuUtilPercent(sampleDuration time.Duration) (used float64, err error) {

@@ -69,7 +69,7 @@ func (partition *DataPartition) checkStatus(clusterName string, needLog bool, dp
 	default:
 		partition.Status = proto.ReadOnly
 	}
-	//keep readonly if special replica is still decommission
+	// keep readonly if special replica is still decommission
 	if partition.isSpecialReplicaCnt() && partition.GetSpecialReplicaDecommissionStep() > 0 {
 		log.LogInfof("action[checkStatus] partition %v with Special replica cnt %v on decommison status %v, live replicacnt %v",
 			partition.PartitionID, partition.ReplicaNum, partition.Status, len(liveReplicas))
@@ -111,6 +111,7 @@ func (partition *DataPartition) checkReplicaNotHaveStatus(liveReplicas []*DataRe
 
 	return true
 }
+
 func (partition *DataPartition) checkReplicaEqualStatus(liveReplicas []*DataReplica, status int8) (equal bool) {
 	for _, replica := range liveReplicas {
 		if replica.Status != status {
@@ -183,9 +184,7 @@ func (partition *DataPartition) checkMissingReplicas(clusterID, leaderAddr strin
 		if partition.hasHost(replica.Addr) && replica.isMissing(dataPartitionMissSec) && !partition.IsDiscard {
 			if partition.needToAlarmMissingDataPartition(replica.Addr, dataPartitionWarnInterval) {
 				dataNode := replica.getReplicaNode()
-				var (
-					lastReportTime time.Time
-				)
+				var lastReportTime time.Time
 				isActive := true
 				if dataNode != nil {
 					lastReportTime = dataNode.ReportTime
@@ -194,7 +193,7 @@ func (partition *DataPartition) checkMissingReplicas(clusterID, leaderAddr strin
 				msg := fmt.Sprintf("action[checkMissErr],clusterID[%v] paritionID:%v  on node:%v  "+
 					"miss time > %v  lastRepostTime:%v   dnodeLastReportTime:%v  nodeisActive:%v So Migrate by manual",
 					clusterID, partition.PartitionID, replica.Addr, dataPartitionMissSec, replica.ReportTime, lastReportTime, isActive)
-				//msg = msg + fmt.Sprintf(" decommissionDataPartitionURL is http://%v/dataPartition/decommission?id=%v&addr=%v", leaderAddr, partition.PartitionID, replica.Addr)
+				// msg = msg + fmt.Sprintf(" decommissionDataPartitionURL is http://%v/dataPartition/decommission?id=%v&addr=%v", leaderAddr, partition.PartitionID, replica.Addr)
 				Warn(clusterID, msg)
 				if WarnMetrics != nil {
 					WarnMetrics.WarnMissingDp(clusterID, replica.Addr, partition.PartitionID, true)
@@ -204,7 +203,6 @@ func (partition *DataPartition) checkMissingReplicas(clusterID, leaderAddr strin
 			if WarnMetrics != nil {
 				WarnMetrics.WarnMissingDp(clusterID, replica.Addr, partition.PartitionID, false)
 			}
-
 		}
 	}
 	if WarnMetrics != nil {
@@ -224,7 +222,7 @@ func (partition *DataPartition) checkMissingReplicas(clusterID, leaderAddr strin
 		replicaInfo.replicaNum = strconv.FormatUint(uint64(partition.ReplicaNum), 10)
 		replicaInfo.replicaAlive = strconv.FormatUint(uint64(dpReplicaAliveNum), 10)
 		WarnMetrics.dpMissingReplicaInfo[id] = replicaInfo
-		for missingReplicaAddr, _ := range WarnMetrics.dpMissingReplicaInfo[id].addrs {
+		for missingReplicaAddr := range WarnMetrics.dpMissingReplicaInfo[id].addrs {
 			if oldDpReplicaAliveNum != "" {
 				WarnMetrics.missingDp.DeleteLabelValues(clusterID, id, missingReplicaAddr, oldDpReplicaAliveNum, replicaInfo.replicaNum)
 			}

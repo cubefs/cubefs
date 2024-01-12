@@ -60,9 +60,7 @@ func NewQuotaManager(volName string, mpId uint64) (mqMgr *MetaQuotaManager) {
 }
 
 func (qInode *MetaQuotaInode) Marshal() (result []byte, err error) {
-	var (
-		inodeBytes []byte
-	)
+	var inodeBytes []byte
 	quotaBytes := bytes.NewBuffer(make([]byte, 0, 128))
 	buff := bytes.NewBuffer(make([]byte, 0, 128))
 	inodeBytes, err = qInode.inode.Marshal()
@@ -114,9 +112,7 @@ func (qInode *MetaQuotaInode) Unmarshal(raw []byte) (err error) {
 }
 
 func (qInode *TxMetaQuotaInode) Marshal() (result []byte, err error) {
-	var (
-		inodeBytes []byte
-	)
+	var inodeBytes []byte
 	quotaBytes := bytes.NewBuffer(make([]byte, 0, 128))
 	buff := bytes.NewBuffer(make([]byte, 0, 128))
 	inodeBytes, err = qInode.txinode.Marshal()

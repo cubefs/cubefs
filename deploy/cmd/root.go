@@ -7,17 +7,21 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var Version bool
-var CubeFSPath string
-var ConfDir string
-var ScriptDir string
-var BinDir string
-var ConfigFileName string
-var ImageName string
+var (
+	Version        bool
+	CubeFSPath     string
+	ConfDir        string
+	ScriptDir      string
+	BinDir         string
+	ConfigFileName string
+	ImageName      string
+)
 
-const envVar = "CUBEFS"
-const ClusterName = "cubeFS"
-const RemoteUser = "root"
+const (
+	envVar      = "CUBEFS"
+	ClusterName = "cubeFS"
+	RemoteUser  = "root"
+)
 
 const BinVersion = "release-3.2.1"
 
@@ -66,7 +70,6 @@ var RootCmd = &cobra.Command{
 	Short: "CLI for managing CubeFS server and client using Docker",
 	Long:  `cubefs is a CLI application for managing CubeFS, an open-source distributed file system, using Docker containers.`,
 	Run: func(cmd *cobra.Command, args []string) {
-
 		if Version {
 			fmt.Printf("deploy-cli version 0.0.1      cubefs version %s \n", BinVersion)
 		} else {

@@ -28,7 +28,6 @@ func transferConfigFileToRemote(localFilePath string, remoteFilePath string, rem
 }
 
 func transferDirectoryToRemote(localFilePath string, remoteFilePath string, remoteUser string, remoteHost string) error {
-
 	localFile, err := os.Open(localFilePath)
 	if err != nil {
 		return fmt.Errorf("failed to open local file: %s", err)
@@ -86,7 +85,6 @@ func copyFolder(sourcePath, destinationPath string) error {
 
 		return nil
 	})
-
 	if err != nil {
 		return err
 	}
@@ -102,12 +100,12 @@ func createRemoteFolder(nodeUser, node, folderPath string) error {
 		return err
 	}
 	return nil
-
 }
+
 func createFolder(folderPath string) error {
 	_, err := os.Stat(folderPath)
 	if os.IsNotExist(err) {
-		err := os.MkdirAll(folderPath, 0755)
+		err := os.MkdirAll(folderPath, 0o755)
 		if err != nil {
 			return err
 		}

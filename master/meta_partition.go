@@ -15,11 +15,10 @@
 package master
 
 import (
-	"sync"
-
 	"fmt"
 	"math"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/cubefs/cubefs/proto"
@@ -187,10 +186,9 @@ func (mp *MetaPartition) canSplit(end uint64, metaPartitionInodeIdStep uint64, i
 }
 
 func (mp *MetaPartition) addUpdateMetaReplicaTask(c *Cluster) (err error) {
-
 	tasks := make([]*proto.AdminTask, 0)
 	t := mp.createTaskToUpdateMetaReplica(c.Name, mp.PartitionID, mp.End)
-	//if no leader,don't update end
+	// if no leader,don't update end
 	if t == nil {
 		err = proto.ErrNoLeader
 		return
@@ -202,7 +200,6 @@ func (mp *MetaPartition) addUpdateMetaReplicaTask(c *Cluster) (err error) {
 }
 
 func (mp *MetaPartition) dataSize() uint64 {
-
 	maxSize := uint64(0)
 	for _, mr := range mp.Replicas {
 		if maxSize < mr.dataSize {
@@ -214,7 +211,6 @@ func (mp *MetaPartition) dataSize() uint64 {
 }
 
 func (mp *MetaPartition) checkEnd(c *Cluster, maxPartitionID uint64) {
-
 	if mp.PartitionID < maxPartitionID {
 		return
 	}
@@ -292,7 +288,6 @@ func (mp *MetaPartition) checkLeader(clusterID string) {
 	var report bool
 	if _, err := mp.getMetaReplicaLeader(); err != nil {
 		report = true
-
 	}
 	if WarnMetrics != nil {
 		WarnMetrics.WarnMpNoLeader(clusterID, mp.PartitionID, report)
@@ -407,7 +402,6 @@ func (mp *MetaPartition) missingReplicaAddrs() (lackAddrs []string) {
 }
 
 func (mp *MetaPartition) updateMetaPartition(mgr *proto.MetaPartitionReport, metaNode *MetaNode) {
-
 	if !contains(mp.Hosts, metaNode.Addr) {
 		return
 	}
@@ -535,7 +529,7 @@ func (mp *MetaPartition) shouldReportMissingReplica(addr string, interval int64)
 		mp.MissNodes[addr] = time.Now().Unix()
 	}
 	return isWarn
-	//return false
+	// return false
 }
 
 func (mp *MetaPartition) reportMissingReplicas(clusterID, leaderAddr string, seconds, interval int64) {
@@ -546,9 +540,7 @@ func (mp *MetaPartition) reportMissingReplicas(clusterID, leaderAddr string, sec
 		if contains(mp.Hosts, replica.Addr) && replica.isMissing() {
 			if mp.shouldReportMissingReplica(replica.Addr, interval) {
 				metaNode := replica.metaNode
-				var (
-					lastReportTime time.Time
-				)
+				var lastReportTime time.Time
 				isActive := true
 				if metaNode != nil {
 					lastReportTime = metaNode.ReportTime
@@ -558,13 +550,12 @@ func (mp *MetaPartition) reportMissingReplicas(clusterID, leaderAddr string, sec
 					"miss time > :%v  vlocLastRepostTime:%v   dnodeLastReportTime:%v  nodeisActive:%v",
 					clusterID, mp.volName, mp.PartitionID, replica.Addr, seconds, replica.ReportTime, lastReportTime, isActive)
 				Warn(clusterID, msg)
-				//msg = fmt.Sprintf("decommissionMetaPartitionURL is http://%v/dataPartition/decommission?id=%v&addr=%v", leaderAddr, mp.PartitionID, replica.Addr)
-				//Warn(clusterID, msg)
+				// msg = fmt.Sprintf("decommissionMetaPartitionURL is http://%v/dataPartition/decommission?id=%v&addr=%v", leaderAddr, mp.PartitionID, replica.Addr)
+				// Warn(clusterID, msg)
 				if WarnMetrics != nil {
 					WarnMetrics.WarnMissingMp(clusterID, replica.Addr, mp.PartitionID, true)
 				}
 			}
-
 		} else {
 			if WarnMetrics != nil {
 				WarnMetrics.WarnMissingMp(clusterID, replica.Addr, mp.PartitionID, false)
@@ -744,6 +735,7 @@ func (mr *MetaReplica) createTaskToLoadMetaPartition(partitionID uint64) (t *pro
 	resetMetaPartitionTaskID(t, partitionID)
 	return
 }
+
 func (mr *MetaReplica) isMissing() (miss bool) {
 	return time.Now().Unix()-mr.ReportTime > defaultMetaPartitionTimeOutSec
 }

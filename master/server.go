@@ -24,17 +24,15 @@ import (
 	"strconv"
 	"sync"
 
-	"github.com/cubefs/cubefs/raftstore/raftstore_db"
-
-	"github.com/cubefs/cubefs/util/stat"
-
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/raftstore"
+	"github.com/cubefs/cubefs/raftstore/raftstore_db"
 	"github.com/cubefs/cubefs/util/config"
 	"github.com/cubefs/cubefs/util/cryptoutil"
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
+	"github.com/cubefs/cubefs/util/stat"
 )
 
 // configuration keys
@@ -71,7 +69,7 @@ var (
 	volNameRegexp = regexp.MustCompile("^[a-zA-Z0-9][a-zA-Z0-9_.-]{1,61}[a-zA-Z0-9]$")
 	ownerRegexp   = regexp.MustCompile("^[A-Za-z][A-Za-z0-9_]{0,20}$")
 
-	useConnPool = true //for test
+	useConnPool = true // for test
 	gConfig     *clusterConfig
 )
 
@@ -99,9 +97,7 @@ func setOverSoldFactor(factor float32) {
 	}
 }
 
-var (
-	volNameErr = errors.New("name can only start and end with number or letters, and len can't less than 3")
-)
+var volNameErr = errors.New("name can only start and end with number or letters, and len can't less than 3")
 
 // Server represents the server in a cluster
 type Server struct {
@@ -212,7 +208,6 @@ func (m *Server) Sync() {
 }
 
 func (m *Server) checkConfig(cfg *config.Config) (err error) {
-
 	m.clusterName = cfg.GetString(ClusterName)
 	m.ip = cfg.GetString(IP)
 	m.bindIp = cfg.GetBool(proto.BindIpKey)
@@ -402,6 +397,7 @@ func (m *Server) createRaftServer(cfg *config.Config) (err error) {
 	}
 	return
 }
+
 func (m *Server) initFsm() {
 	m.fsm = newMetadataFsm(m.rocksDBStore, m.retainLogs, m.raftStore.RaftServer())
 	m.fsm.registerLeaderChangeHandler(m.handleLeaderChange)
@@ -417,7 +413,7 @@ func (m *Server) initCluster() {
 	m.cluster = newCluster(m.clusterName, m.leaderInfo, m.fsm, m.partition, m.config)
 	m.cluster.retainLogs = m.retainLogs
 
-	//incase any limiter on follower
+	// incase any limiter on follower
 	log.LogInfo("action[loadApiLimiterInfo] begin")
 	m.cluster.loadApiLimiterInfo()
 	log.LogInfo("action[loadApiLimiterInfo] end")

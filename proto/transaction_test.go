@@ -1,10 +1,11 @@
 package proto
 
 import (
-	"github.com/stretchr/testify/require"
 	"reflect"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestGetMaskFromString(t *testing.T) {
@@ -51,7 +52,7 @@ func TestTxInodeInfoMarshal(t *testing.T) {
 		MpID:       11,
 		CreateTime: 10110,
 		Timeout:    112,
-		//TxID:       "tx123",
+		// TxID:       "tx123",
 	}
 
 	bs, err := ifo.Marshal()
@@ -75,7 +76,7 @@ func TestTxDentryInfoMarshal(t *testing.T) {
 		MpID:       11,
 		CreateTime: 10110,
 		Timeout:    112,
-		//TxID:       "tx123",
+		// TxID:       "tx123",
 	}
 
 	bs, err := ifo.Marshal()

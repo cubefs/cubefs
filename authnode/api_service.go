@@ -16,6 +16,7 @@ package authnode
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strconv"
 	"time"
@@ -26,8 +27,6 @@ import (
 	"github.com/cubefs/cubefs/util/iputil"
 	"github.com/cubefs/cubefs/util/keystore"
 	"github.com/cubefs/cubefs/util/log"
-
-	"fmt"
 )
 
 const (
@@ -337,9 +336,7 @@ func (m *Server) handleGetCaps(keyInfo *keystore.KeyInfo) (res *keystore.KeyInfo
 }
 
 func (m *Server) extractClientReqInfo(r *http.Request) (plaintext []byte, err error) {
-	var (
-		message string
-	)
+	var message string
 	if err = r.ParseForm(); err != nil {
 		return
 	}
@@ -456,9 +453,7 @@ func (m *Server) genTicket(key []byte, serviceID string, IP string, caps []byte)
 }
 
 func (m *Server) getSecretKey(id string) (key []byte, err error) {
-	var (
-		keyInfo *keystore.KeyInfo
-	)
+	var keyInfo *keystore.KeyInfo
 	if keyInfo, err = m.getSecretKeyInfo(id); err != nil {
 		return
 	}

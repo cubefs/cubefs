@@ -20,9 +20,7 @@ import (
 	"sync/atomic"
 )
 
-var (
-	ErrLimit = errors.New("limit exceeded")
-)
+var ErrLimit = errors.New("limit exceeded")
 
 type KeyConcurrentLimit struct {
 	mutex   sync.RWMutex
@@ -34,7 +32,6 @@ func NewLimit() *KeyConcurrentLimit {
 }
 
 func (s *KeyConcurrentLimit) Acquire(key string, limit int64) error {
-
 	s.mutex.RLock()
 	count := s.current[key]
 	s.mutex.RUnlock()
@@ -66,7 +63,6 @@ func (s *KeyConcurrentLimit) Release(key string) {
 	if val < 0 {
 		atomic.StoreInt64(count, 0)
 	}
-
 }
 
 func (s *KeyConcurrentLimit) Running() int {

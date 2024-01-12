@@ -16,6 +16,7 @@ package metanode
 
 import (
 	"encoding/binary"
+
 	"github.com/cubefs/cubefs/proto"
 )
 

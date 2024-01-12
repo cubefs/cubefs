@@ -114,7 +114,7 @@ func TestQuotaHbInfo(t *testing.T) {
 func TestGetQuotaReportInfos(t *testing.T) {
 	partition := NewMetaPartitionForQuotaTest()
 	var quotaId uint32 = 1
-	//var infos []*proto.QuotaReportInfo
+	// var infos []*proto.QuotaReportInfo
 	partition.mqMgr.updateUsedInfo(100, 1, quotaId)
 	partition.mqMgr.updateUsedInfo(200, 2, quotaId)
 	partition.mqMgr.limitedMap.Store(quotaId, proto.QuotaLimitedInfo{false, false})

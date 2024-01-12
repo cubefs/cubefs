@@ -16,6 +16,7 @@ package master
 
 import (
 	"fmt"
+
 	"github.com/cubefs/cubefs/proto"
 )
 
@@ -40,7 +41,7 @@ func (fm *FileMetadata) getFileCrc() (crc uint32) {
 	return fm.Crc
 }
 
-//FileInCore define file in data partition
+// FileInCore define file in data partition
 type FileInCore struct {
 	proto.FileInCore
 	MetadataArray []*FileMetadata
@@ -65,7 +66,7 @@ func newFileInCore(name string) (fc *FileInCore) {
 }
 
 func (fc FileInCore) clone() *proto.FileInCore {
-	var metadataArray = make([]*proto.FileMetadata, len(fc.MetadataArray))
+	metadataArray := make([]*proto.FileMetadata, len(fc.MetadataArray))
 	for i, metadata := range fc.MetadataArray {
 		metadataArray[i] = &proto.FileMetadata{
 			Crc:     metadata.Crc,
@@ -102,7 +103,6 @@ func (fc *FileInCore) updateFileInCore(volID uint64, vf *proto.File, volLoc *Dat
 		fm := newFileMetadata(vf.Crc, volLoc.Addr, volLocIndex, vf.Size, vf.ApplyID)
 		fc.MetadataArray = append(fc.MetadataArray, fm)
 	}
-
 }
 
 func (fc *FileInCore) getFileMetaByAddr(replica *DataReplica) (fm *FileMetadata, ok bool) {

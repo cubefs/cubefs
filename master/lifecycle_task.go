@@ -67,9 +67,7 @@ errHandler:
 }
 
 func (c *Cluster) handleLcNodeHeartbeatResp(nodeAddr string, resp *proto.LcNodeHeartbeatResponse) (err error) {
-	var (
-		lcNode *LcNode
-	)
+	var lcNode *LcNode
 
 	log.LogDebugf("action[handleLcNodeHeartbeatResp] clusterID[%v] receive lcNode[%v] heartbeat", c.Name, nodeAddr)
 	if resp.Status != proto.TaskSucceeds {
@@ -87,16 +85,16 @@ func (c *Cluster) handleLcNodeHeartbeatResp(nodeAddr string, resp *proto.LcNodeH
 	lcNode.ReportTime = time.Now()
 	lcNode.Unlock()
 
-	//update lcNodeStatus
+	// update lcNodeStatus
 	log.LogInfof("action[handleLcNodeHeartbeatResp], lcNode[%v], LcScanningTasks[%v], SnapshotScanningTasks[%v]", nodeAddr, len(resp.LcScanningTasks), len(resp.SnapshotScanningTasks))
 	c.lcMgr.lcNodeStatus.UpdateNode(nodeAddr, len(resp.LcScanningTasks))
 	c.snapshotMgr.lcNodeStatus.UpdateNode(nodeAddr, len(resp.SnapshotScanningTasks))
 
-	//handle LcScanningTasks
+	// handle LcScanningTasks
 	for _, taskRsp := range resp.LcScanningTasks {
 		c.lcMgr.lcRuleTaskStatus.Lock()
 
-		//avoid updating TaskResults incorrectly when received handleLcNodeLcScanResp first and then handleLcNodeHeartbeatResp
+		// avoid updating TaskResults incorrectly when received handleLcNodeLcScanResp first and then handleLcNodeHeartbeatResp
 		if c.lcMgr.lcRuleTaskStatus.Results[taskRsp.ID] != nil && c.lcMgr.lcRuleTaskStatus.Results[taskRsp.ID].Done {
 			log.LogInfof("action[handleLcNodeHeartbeatResp], lcNode[%v] task[%v] already done", nodeAddr, taskRsp.ID)
 		} else {
@@ -113,11 +111,11 @@ func (c *Cluster) handleLcNodeHeartbeatResp(nodeAddr string, resp *proto.LcNodeH
 		c.lcMgr.notifyIdleLcNode()
 	}
 
-	//handle SnapshotScanningTasks
+	// handle SnapshotScanningTasks
 	for _, taskRsp := range resp.SnapshotScanningTasks {
 		c.snapshotMgr.lcSnapshotTaskStatus.Lock()
 
-		//avoid updating TaskResults incorrectly when received handleLcNodeLcScanResp first and then handleLcNodeHeartbeatResp
+		// avoid updating TaskResults incorrectly when received handleLcNodeLcScanResp first and then handleLcNodeHeartbeatResp
 		if c.snapshotMgr.lcSnapshotTaskStatus.TaskResults[taskRsp.ID] != nil && c.snapshotMgr.lcSnapshotTaskStatus.TaskResults[taskRsp.ID].Done {
 			log.LogInfof("action[handleLcNodeHeartbeatResp], lcNode[%v] snapshot task[%v] already done", nodeAddr, taskRsp.ID)
 		} else {
@@ -171,7 +169,7 @@ func (c *Cluster) handleLcNodeSnapshotScanResp(nodeAddr string, resp *proto.Snap
 		log.LogWarnf("action[handleLcNodeSnapshotScanResp] scanning failed, resp(%v), redo", resp)
 		return
 	case proto.TaskSucceeds:
-		//1.mark done for VersionMgr
+		// 1.mark done for VersionMgr
 		var vol *Vol
 		vol, err = c.getVol(resp.VolName)
 		if err != nil {
@@ -181,7 +179,7 @@ func (c *Cluster) handleLcNodeSnapshotScanResp(nodeAddr string, resp *proto.Snap
 			_ = vol.VersionMgr.DelVer(resp.VerSeq)
 		}
 
-		//2. mark done for snapshotMgr
+		// 2. mark done for snapshotMgr
 		c.snapshotMgr.lcSnapshotTaskStatus.AddResult(resp)
 		log.LogInfof("action[handleLcNodeSnapshotScanResp] scanning completed, resp(%v)", resp)
 		return

@@ -123,7 +123,7 @@ const (
 	opFSMAppendMultipart         = 24
 	opFSMSyncCursor              = 25
 
-	//supplement action
+	// supplement action
 	opFSMInternalDeleteInodeBatch = 26
 	opFSMDeleteDentryBatch        = 27
 	opFSMUnlinkInodeBatch         = 28
@@ -161,7 +161,7 @@ const (
 	opFSMTxRbInodeSnapshot  = 53
 	opFSMTxRbDentrySnapshot = 54
 
-	//quota
+	// quota
 	opFSMCreateInodeQuota      = 55
 	opFSMSetInodeQuotaBatch    = 56
 	opFSMDeleteInodeQuotaBatch = 57
@@ -189,9 +189,7 @@ const (
 	opFSMVerListSnapShot = 73
 )
 
-var (
-	exporterKey string
-)
+var exporterKey string
 
 var (
 	ErrNoLeader   = errors.New("no leader")
@@ -220,12 +218,12 @@ const (
 	cfgZoneName                  = "zoneName"
 	cfgTickInterval              = "tickInterval"
 	cfgRaftRecvBufSize           = "raftRecvBufSize"
-	cfgSmuxPortShift             = "smuxPortShift"             //int
-	cfgSmuxMaxConn               = "smuxMaxConn"               //int
-	cfgSmuxStreamPerConn         = "smuxStreamPerConn"         //int
-	cfgSmuxMaxBuffer             = "smuxMaxBuffer"             //int
-	cfgRetainLogs                = "retainLogs"                //string, raft RetainLogs
-	cfgRaftSyncSnapFormatVersion = "raftSyncSnapFormatVersion" //int, format version of snapshot that raft leader sent to follower
+	cfgSmuxPortShift             = "smuxPortShift"             // int
+	cfgSmuxMaxConn               = "smuxMaxConn"               // int
+	cfgSmuxStreamPerConn         = "smuxStreamPerConn"         // int
+	cfgSmuxMaxBuffer             = "smuxMaxBuffer"             // int
+	cfgRetainLogs                = "retainLogs"                // string, raft RetainLogs
+	cfgRaftSyncSnapFormatVersion = "raftSyncSnapFormatVersion" // int, format version of snapshot that raft leader sent to follower
 	cfgServiceIDKey              = "serviceIDKey"
 
 	metaNodeDeleteBatchCountKey = "batchCount"

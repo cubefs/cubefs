@@ -5,7 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"os"
 	"path/filepath"
 	"sort"
@@ -148,7 +148,6 @@ func (s *ClusterService) registerObject(schema *schemabuilder.Schema) {
 	object.FieldFunc("metaPartitionInfos", func(ctx context.Context, n *MetaNode) []*proto.MetaPartitionReport {
 		return n.metaPartitionInfos
 	})
-
 }
 
 func (s *ClusterService) registerQuery(schema *schemabuilder.Schema) {
@@ -182,8 +181,8 @@ func (s *ClusterService) registerMutation(schema *schemabuilder.Schema) {
 func (m *ClusterService) decommissionDisk(ctx context.Context, args struct {
 	OffLineAddr string
 	DiskPath    string
-}) (*proto.GeneralResp, error) {
-
+}) (*proto.GeneralResp, error,
+) {
 	node, err := m.cluster.dataNode(args.OffLineAddr)
 	if err != nil {
 		return nil, err
@@ -207,14 +206,13 @@ func (m *ClusterService) decommissionDisk(ctx context.Context, args struct {
 	Warn(m.cluster.Name, rstMsg)
 
 	return proto.Success("success"), nil
-
 }
 
 // Decommission a data node. This will decommission all the data partition on that node.
 func (m *ClusterService) decommissionDataNode(ctx context.Context, args struct {
 	OffLineAddr string
-}) (*proto.GeneralResp, error) {
-
+}) (*proto.GeneralResp, error,
+) {
 	node, err := m.cluster.dataNode(args.OffLineAddr)
 	if err != nil {
 		return nil, err
@@ -535,7 +533,6 @@ func (m *ClusterService) alarmList(ctx context.Context, args struct {
 	}
 
 	f, err := os.Open(path)
-
 	if err != nil {
 		return nil, fmt.Errorf("open file has err:[%s]", err.Error())
 	}
@@ -554,7 +551,7 @@ func (m *ClusterService) alarmList(ctx context.Context, args struct {
 
 	buf := bufio.NewReader(f)
 
-	all, err := ioutil.ReadAll(buf)
+	all, err := io.ReadAll(buf)
 	if err != nil {
 		return nil, fmt.Errorf("read file:[%s] size:[%d] has err:[%s]", path, stat.Size(), err.Error())
 	}
@@ -594,7 +591,7 @@ func (m *ClusterService) alarmList(ctx context.Context, args struct {
 		list = append(list, msg)
 	}
 
-	//reverse slice
+	// reverse slice
 	l := len(list)
 	for i := 0; i < l/2; i++ {
 		list[i], list[l-i-1] = list[l-i-1], list[i]

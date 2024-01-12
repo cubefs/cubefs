@@ -79,7 +79,7 @@ func (mw *MetaWrapper) txIcreate(tx *Transaction, mp *MetaPartition, mode, uid, 
 
 	status = parseStatus(packet.ResultCode)
 	if status != statusOK {
-		//set tx error msg
+		// set tx error msg
 		err = errors.New(packet.GetResultMsg())
 		log.LogErrorf("txIcreate: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
 		return
@@ -330,7 +330,7 @@ func (mw *MetaWrapper) iunlink(mp *MetaPartition, inode uint64, verSeq uint64, d
 		stat.EndStat("iunlink", err, bgTime, 1)
 	}()
 
-	//use uniq id to dedup request
+	// use uniq id to dedup request
 	status, uniqID, err := mw.consumeUniqID(mp)
 	if err != nil || status != statusOK {
 		err = statusToErrno(status)
@@ -876,7 +876,6 @@ func (mw *MetaWrapper) ddelete(mp *MetaPartition, parentID uint64, name string, 
 }
 
 func (mw *MetaWrapper) canDeleteInode(mp *MetaPartition, info *proto.InodeInfo, ino uint64) (can bool, err error) {
-
 	createTime := info.CreateTime.Unix()
 	deleteLockTime := mw.volDeleteLockTime * 60 * 60
 
@@ -1061,9 +1060,7 @@ func (mw *MetaWrapper) iget(mp *MetaPartition, inode uint64, verSeq uint64) (sta
 
 func (mw *MetaWrapper) batchIget(wg *sync.WaitGroup, mp *MetaPartition, inodes []uint64, respCh chan []*proto.InodeInfo) {
 	defer wg.Done()
-	var (
-		err error
-	)
+	var err error
 
 	bgTime := stat.BeginStat()
 	defer func() {
@@ -1485,7 +1482,7 @@ func (mw *MetaWrapper) ilinkWork(mp *MetaPartition, inode uint64, op uint8, full
 		stat.EndStat("ilink", err, bgTime, 1)
 	}()
 
-	//use unique id to dedup request
+	// use unique id to dedup request
 	status, uniqID, err := mw.consumeUniqID(mp)
 	if err != nil || status != statusOK {
 		err = statusToErrno(status)
@@ -2333,9 +2330,7 @@ func (mw *MetaWrapper) listMultiparts(mp *MetaPartition, prefix, delimiter, keyM
 }
 
 func (mw *MetaWrapper) batchGetXAttr(mp *MetaPartition, inodes []uint64, keys []string) ([]*proto.XAttrInfo, error) {
-	var (
-		err error
-	)
+	var err error
 
 	bgTime := stat.BeginStat()
 	defer func() {
@@ -2662,8 +2657,8 @@ func (mw *MetaWrapper) applyQuota(parentIno uint64, quotaId uint32, totalInodeCo
 		*totalInodeCount = *totalInodeCount + 1
 	}
 	var defaultReaddirLimit uint64 = 1024
-	var noMore = false
-	var from = ""
+	noMore := false
+	from := ""
 	for !noMore {
 		entries, err := mw.ReadDirLimit_ll(parentIno, from, defaultReaddirLimit)
 		if err != nil {
@@ -2722,8 +2717,8 @@ func (mw *MetaWrapper) revokeQuota(parentIno uint64, quotaId uint32, totalInodeC
 	}
 
 	var defaultReaddirLimit uint64 = 1024
-	var noMore = false
-	var from = ""
+	noMore := false
+	from := ""
 	for !noMore {
 		entries, err := mw.ReadDirLimit_ll(parentIno, from, defaultReaddirLimit)
 		if err != nil {
@@ -2834,7 +2829,6 @@ func (mw *MetaWrapper) getUniqID(mp *MetaPartition, num uint32) (status int, sta
 }
 
 func (mw *MetaWrapper) checkVerFromMeta(packet *proto.Packet) {
-
 	if packet.VerSeq <= mw.Client.GetLatestVer() {
 		return
 	}

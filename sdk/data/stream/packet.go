@@ -17,13 +17,14 @@ package stream
 import (
 	"encoding/binary"
 	"fmt"
-	"github.com/cubefs/cubefs/proto"
-	"github.com/cubefs/cubefs/sdk/data/wrapper"
-	"github.com/cubefs/cubefs/util"
 	"hash/crc32"
 	"io"
 	"net"
 	"time"
+
+	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/sdk/data/wrapper"
+	"github.com/cubefs/cubefs/util"
 )
 
 // Packet defines a wrapper of the packet in proto.

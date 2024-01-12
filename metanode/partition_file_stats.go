@@ -2,9 +2,10 @@ package metanode
 
 import (
 	"fmt"
+	"time"
+
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/exporter"
-	"time"
 )
 
 type FileSizeRange uint32

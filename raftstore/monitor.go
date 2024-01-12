@@ -2,12 +2,13 @@ package raftstore
 
 import (
 	"fmt"
+	"sync"
+	"time"
+
 	"github.com/cubefs/cubefs/depends/tiglabs/raft/proto"
 	"github.com/cubefs/cubefs/util/config"
 	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
-	"sync"
-	"time"
 )
 
 const (

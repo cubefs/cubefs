@@ -17,7 +17,6 @@ package flowctrl
 import (
 	"fmt"
 	"io"
-	"io/ioutil"
 	"math/rand"
 	"strings"
 	"testing"
@@ -26,7 +25,6 @@ import (
 )
 
 func TestKeyController(t *testing.T) {
-
 	k := NewKeyFlowCtrl()
 	key1, key2, key3 := "10001", "10002", "10003"
 	k.Acquire(key1, 1024)
@@ -54,7 +52,6 @@ func TestKeyController(t *testing.T) {
 	assert.Panics(t, func() {
 		k.Release(key3)
 	})
-
 }
 
 func BenchmarkRWKeyRateCtrl(b *testing.B) {
@@ -83,7 +80,7 @@ func BenchmarkRWKeyRateCtrlReader(b *testing.B) {
 			c := k.Acquire(uidStr, 1024)
 			defer k.Release(uidStr)
 			reader := NewRateReaderWithCtrl(strings.NewReader(str), c)
-			io.Copy(ioutil.Discard, reader)
+			io.Copy(io.Discard, reader)
 		}
 	})
 	t := testing.T{}

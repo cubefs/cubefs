@@ -16,19 +16,23 @@ package metanode
 
 import (
 	"fmt"
-	"github.com/cubefs/cubefs/util/log"
 	"reflect"
 	"testing"
 	"time"
 
-	"github.com/cubefs/cubefs/proto"
 	"github.com/stretchr/testify/assert"
+
+	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util/log"
 )
 
-//var manager = &metadataManager{}
+// var manager = &metadataManager{}
 var mp1 *metaPartition
-var mp2 *metaPartition
-var mp3 *metaPartition
+
+var (
+	mp2 *metaPartition
+	mp3 *metaPartition
+)
 
 const FileModeType uint32 = 420
 
@@ -46,8 +50,7 @@ func init() {
 }
 
 func newMetaPartition(PartitionId uint64, manager *metadataManager) (mp *metaPartition) {
-
-	var metaConf = &MetaPartitionConfig{
+	metaConf := &MetaPartitionConfig{
 		PartitionId:   PartitionId,
 		VolName:       "testVol",
 		PartitionType: proto.VolumeTypeHot,
@@ -76,7 +79,6 @@ func newMetaPartition(PartitionId uint64, manager *metadataManager) (mp *metaPar
 }
 
 func initMps(t *testing.T) {
-
 	test = true
 	mp1 = newMetaPartition(10001, &metadataManager{})
 	mp2 = newMetaPartition(10002, &metadataManager{})
@@ -101,7 +103,6 @@ func (i *TxRollbackInode) Equal(txRbInode *TxRollbackInode) bool {
 }
 
 func TestRollbackInodeLess(t *testing.T) {
-
 	inode := NewInode(101, 0)
 	txInodeInfo := proto.NewTxInodeInfo(MemberAddrs, inodeNum, 10001)
 	rbInode := NewTxRollbackInode(inode, []uint32{}, txInodeInfo, TxAdd)
@@ -121,7 +122,7 @@ func TestRollbackInodeSerialization(t *testing.T) {
 		Gid:        11,
 		Uid:        10,
 		Size:       101,
-		Type:       0755,
+		Type:       0o755,
 		Generation: 13,
 		CreateTime: 102,
 		AccessTime: 104,
@@ -224,22 +225,22 @@ func TestTxMgrOp(t *testing.T) {
 	txId := txInfo.TxID
 	txMgr := mp1.txProcessor.txManager
 
-	//register
+	// register
 	id := txMgr.txIdAlloc.getTransactionID()
 	expectedId := fmt.Sprintf("%d_%d", mp1.config.PartitionId, id)
 	assert.Equal(t, expectedId, txId)
 	txMgr.registerTransaction(txInfo)
 
-	//get
+	// get
 	gotTxInfo := txMgr.getTransaction(txId)
 	assert.Equal(t, txInfo, gotTxInfo)
 
-	//rollback
+	// rollback
 	txMgr.rollbackTxInfo(txId)
 	gotTxInfo = txMgr.getTransaction(txId)
 	assert.True(t, gotTxInfo.IsDone())
 
-	//commit
+	// commit
 	status, _ := txMgr.commitTxInfo("dummy_txId")
 	assert.Equal(t, proto.OpTxInfoNotExistErr, status)
 }
@@ -248,7 +249,7 @@ func TestTxRscOp(t *testing.T) {
 	initMps(t)
 	txMgr := mp1.txProcessor.txManager
 
-	//rbInode
+	// rbInode
 	txInodeInfo1 := proto.NewTxInodeInfo(MemberAddrs, inodeNum, 10001)
 	txInodeInfo1.TxID = txMgr.nextTxID()
 	txInodeInfo1.Timeout = 5
@@ -274,7 +275,7 @@ func TestTxRscOp(t *testing.T) {
 	status = txRsc.addTxRollbackInode(rbInode2)
 	assert.Equal(t, proto.OpTxConflictErr, status)
 
-	//rbDentry
+	// rbDentry
 	txDentryInfo1 := proto.NewTxDentryInfo(MemberAddrs, pInodeNum, dentryName, 10001)
 	dentry := &Dentry{
 		ParentId: pInodeNum,
@@ -391,7 +392,7 @@ func mockDeleteTxDentry(mp *metaPartition) *TxRollbackDentry {
 
 func TestTxRscRollback(t *testing.T) {
 	initMps(t)
-	//roll back add inode
+	// roll back add inode
 	rbInode1 := mockAddTxInode(mp1)
 	txRsc := mp1.txProcessor.txResource
 	req1 := &proto.TxInodeApplyRequest{
@@ -401,7 +402,7 @@ func TestTxRscRollback(t *testing.T) {
 	status, err := txRsc.rollbackInode(req1)
 	assert.True(t, status == proto.OpOk && err == nil)
 
-	//roll back delete inode
+	// roll back delete inode
 	rbInode2 := mockDeleteTxInode(mp1)
 	req2 := &proto.TxInodeApplyRequest{
 		TxID:  rbInode2.txInodeInfo.TxID,
@@ -410,7 +411,7 @@ func TestTxRscRollback(t *testing.T) {
 	status, err = txRsc.rollbackInode(req2)
 	assert.True(t, status == proto.OpOk && err == nil)
 
-	//roll back add dentry
+	// roll back add dentry
 	rbDentry1 := mockAddTxDentry(mp1)
 	req3 := &proto.TxDentryApplyRequest{
 		TxID: rbDentry1.txDentryInfo.TxID,
@@ -420,7 +421,7 @@ func TestTxRscRollback(t *testing.T) {
 	status, err = txRsc.rollbackDentry(req3)
 	assert.True(t, status == proto.OpOk && err == nil)
 
-	//roll back delete dentry
+	// roll back delete dentry
 	rbDentry2 := mockDeleteTxDentry(mp1)
 	req4 := &proto.TxDentryApplyRequest{
 		TxID: rbDentry2.txDentryInfo.TxID,
@@ -433,23 +434,23 @@ func TestTxRscRollback(t *testing.T) {
 
 func TestTxRscCommit(t *testing.T) {
 	initMps(t)
-	//commit add inode
+	// commit add inode
 	rbInode1 := mockAddTxInode(mp1)
 	txRsc := mp1.txProcessor.txResource
 	status, err := txRsc.commitInode(rbInode1.txInodeInfo.TxID, rbInode1.inode.Inode)
 	assert.True(t, status == proto.OpOk && err == nil)
 
-	//commit delete inode
+	// commit delete inode
 	rbInode2 := mockDeleteTxInode(mp1)
 	status, err = txRsc.commitInode(rbInode2.txInodeInfo.TxID, rbInode2.inode.Inode)
 	assert.True(t, status == proto.OpOk && err == nil)
 
-	//commit add dentry
+	// commit add dentry
 	rbDentry1 := mockAddTxDentry(mp1)
 	status, err = txRsc.commitDentry(rbDentry1.txDentryInfo.TxID, rbDentry1.txDentryInfo.ParentId, rbDentry1.txDentryInfo.Name)
 	assert.True(t, status == proto.OpOk && err == nil)
 
-	//commit delete dentry
+	// commit delete dentry
 	rbDentry2 := mockDeleteTxDentry(mp1)
 	status, err = txRsc.commitDentry(rbDentry2.txDentryInfo.TxID, rbDentry2.txDentryInfo.ParentId, rbDentry2.txDentryInfo.Name)
 	assert.True(t, status == proto.OpOk && err == nil)
@@ -469,7 +470,7 @@ func TestTxTreeRollback(t *testing.T) {
 	txInfo.TmID = int64(mp1.config.PartitionId)
 	txMgr := mp1.txProcessor.txManager
 
-	//register
+	// register
 	id := txMgr.txIdAlloc.getTransactionID()
 	expectedId := fmt.Sprintf("%d_%d", mp1.config.PartitionId, id)
 	assert.Equal(t, expectedId, txId)
@@ -484,7 +485,7 @@ func TestTxTreeRollback(t *testing.T) {
 func TestCheckTxLimit(t *testing.T) {
 	initMps(t)
 	txMgr := mp1.txProcessor.txManager
-	//txMgr.Start()
+	// txMgr.Start()
 	txMgr.setLimit(10)
 	txMgr.opLimiter.SetBurst(1)
 	txInfo := proto.NewTransactionInfo(0, proto.TxTypeCreate)
@@ -500,7 +501,7 @@ func TestCheckTxLimit(t *testing.T) {
 func TestGetTxHandler(t *testing.T) {
 	initMps(t)
 	txMgr := mp1.txProcessor.txManager
-	//txMgr.Start()
+	// txMgr.Start()
 
 	txInfo := proto.NewTransactionInfo(0, proto.TxTypeCreate)
 	txDentryInfo := proto.NewTxDentryInfo(MemberAddrs, pInodeNum, dentryName, 10001)
@@ -509,7 +510,7 @@ func TestGetTxHandler(t *testing.T) {
 		mp1.initTxInfo(txInfo)
 	}
 
-	//register
+	// register
 	txMgr.registerTransaction(txInfo)
 	var (
 		req = &proto.TxGetInfoRequest{

@@ -32,13 +32,10 @@ import (
 	"github.com/cubefs/cubefs/util/buf"
 )
 
-var (
-	writer *Writer
-)
+var writer *Writer
 
 func init() {
-
-	//start ebs mock service
+	// start ebs mock service
 	mockServer := NewMockEbsService()
 	cfg := access.Config{
 		ConnMode: access.QuickConnMode,
@@ -91,16 +88,16 @@ func TestNotInstanceWriter_Write(t *testing.T) {
 	var flag int
 	flag |= proto.FlagsAppend
 	_, err := writer.Write(ctx, 0, data, flag)
-	//expect err is not nil
+	// expect err is not nil
 	if err == nil {
 		t.Fatalf("write is called by not instance writer.")
 	}
 }
 
 func TestWriter_doBufferWrite_(t *testing.T) {
-	//write data to buffer,not write to ebs when len(buffer)<BlockSize
+	// write data to buffer,not write to ebs when len(buffer)<BlockSize
 	ctx := context.Background()
-	var testCases = []struct {
+	testCases := []struct {
 		offset int
 		data   []byte
 		n      int
@@ -130,7 +127,7 @@ func TestWriter_doBufferWrite_(t *testing.T) {
 }
 
 func TestWriter_prepareWriteSlice(t *testing.T) {
-	var testCases = []struct {
+	testCases := []struct {
 		offset             int
 		dataLen            int
 		expectSlices       int
@@ -145,8 +142,8 @@ func TestWriter_prepareWriteSlice(t *testing.T) {
 	for _, tc := range testCases {
 		data := make([]byte, tc.dataLen)
 		wSlices := writer.prepareWriteSlice(tc.offset, data)
-		var actualSlices = len(wSlices)
-		var actualSliceDateLen = make([]int, 0)
+		actualSlices := len(wSlices)
+		actualSliceDateLen := make([]int, 0)
 		for _, wSlice := range wSlices {
 			actualSliceDateLen = append(actualSliceDateLen, len(wSlice.Data))
 		}
@@ -309,9 +306,8 @@ func TestFlush(t *testing.T) {
 		writer.dirty = tc.dirty
 		ctx := context.Background()
 		_ = writer.flush(1, ctx, tc.flushFlag)
-		//assert.Equal(t, tc.expectError, gotError)
+		// assert.Equal(t, tc.expectError, gotError)
 	}
-
 }
 
 func TestNewWriter(t *testing.T) {

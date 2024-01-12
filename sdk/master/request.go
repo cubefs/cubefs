@@ -28,9 +28,7 @@ type request struct {
 	body   []byte
 }
 
-var (
-	ReqHeaderUA = fmt.Sprintf("cubefs-sdk/%v (commit %v)", proto.Version, proto.CommitID)
-)
+var ReqHeaderUA = fmt.Sprintf("cubefs-sdk/%v (commit %v)", proto.Version, proto.CommitID)
 
 func (r *request) addParam(key, value string) {
 	r.params[key] = value

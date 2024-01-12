@@ -2,11 +2,12 @@ package cutil
 
 import (
 	"fmt"
+	"sync"
+	"time"
+
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/sdk/graphql/client/user"
 	"github.com/google/uuid"
-	"sync"
-	"time"
 )
 
 var userTimeout int64 = 1200
@@ -19,7 +20,6 @@ type cacheEntity struct {
 }
 
 func TokenValidate(token string) (*user.UserInfo, error) {
-
 	if token == "" {
 		return nil, fmt.Errorf("the token not found in head:[%s] or url param:[%s]", proto.HeadAuthorized, proto.ParamAuthorized)
 	}

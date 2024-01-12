@@ -16,9 +16,8 @@ package raftstore_db
 
 import (
 	"fmt"
-	"strings"
-
 	"os"
+	"strings"
 
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/fileutil"
@@ -48,7 +47,6 @@ func (rs *RocksDBStore) GetDir() string {
 
 // NewRocksDBStore returns a new RocksDB instance.
 func NewRocksDBStore(dir string, lruCacheSize, writeBufferSize int) (store *RocksDBStore, err error) {
-
 	if err = os.MkdirAll(dir, os.ModePerm); err != nil {
 		return
 	}

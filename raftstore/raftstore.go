@@ -75,13 +75,12 @@ func (s *raftStore) Stop() {
 }
 
 func newRaftLogger(dir string) {
-
 	raftLogPath := path.Join(dir, "logs")
 	_, err := os.Stat(raftLogPath)
 	if err != nil {
 		if pathErr, ok := err.(*os.PathError); ok {
 			if os.IsNotExist(pathErr) {
-				os.MkdirAll(raftLogPath, 0755)
+				os.MkdirAll(raftLogPath, 0o755)
 			}
 		}
 	}

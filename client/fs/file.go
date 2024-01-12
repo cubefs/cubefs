@@ -282,7 +282,6 @@ func (f *File) Open(ctx context.Context, req *fuse.OpenRequest, resp *fuse.OpenR
 
 // Release handles the release request.
 func (f *File) Release(ctx context.Context, req *fuse.ReleaseRequest) (err error) {
-
 	ino := f.info.Inode
 	bgTime := stat.BeginStat()
 
@@ -463,7 +462,7 @@ func (f *File) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.Wri
 		log.LogErrorf("Write: ino(%v) offset(%v) len(%v) size(%v)", ino, req.Offset, reqlen, size)
 	}
 
-	//only hot volType need to wait flush
+	// only hot volType need to wait flush
 	if waitForFlush {
 		err = f.super.ec.Flush(ino)
 		if err != nil {

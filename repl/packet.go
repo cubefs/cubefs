@@ -16,7 +16,6 @@ package repl
 
 import (
 	"fmt"
-	"github.com/cubefs/cubefs/util/log"
 	"io"
 	"net"
 	"strings"
@@ -28,6 +27,7 @@ import (
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/exporter"
+	"github.com/cubefs/cubefs/util/log"
 )
 
 var (
@@ -135,7 +135,6 @@ func copyPacket(src *Packet, dst *FollowerPacket) {
 	dst.ExtentOffset = src.ExtentOffset
 	dst.ReqID = src.ReqID
 	dst.Data = src.OrgBuffer
-
 }
 
 func (p *Packet) BeforeTp(clusterID string) (ok bool) {
@@ -289,9 +288,7 @@ func (p *Packet) getErrMessage() (m string) {
 	return fmt.Sprintf("req(%v) err(%v)", p.GetUniqueLogId(), string(p.Data[:p.Size]))
 }
 
-var (
-	ErrorUnknownOp = errors.New("unknown opcode")
-)
+var ErrorUnknownOp = errors.New("unknown opcode")
 
 func (p *Packet) identificationErrorResultCode(errLog string, errMsg string) {
 	log.LogDebugf("action[identificationErrorResultCode] error %v, errmsg %v", errLog, errMsg)

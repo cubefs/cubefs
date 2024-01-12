@@ -19,16 +19,14 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
-
-	"github.com/cubefs/cubefs/storage"
-	"github.com/cubefs/cubefs/util"
-	"github.com/cubefs/cubefs/util/timeutil"
-
 	"io"
 	"time"
 
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/storage"
+	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/log"
+	"github.com/cubefs/cubefs/util/timeutil"
 )
 
 type InodeResponse struct {
@@ -48,7 +46,7 @@ func (mp *metaPartition) fsmTxCreateInode(txIno *TxInode, quotaIds []uint32) (st
 		return proto.OpTxInfoNotExistErr
 	}
 
-	//inodeInfo := mp.txProcessor.txManager.getTxInodeInfo(txIno.TxInfo.TxID, txIno.Inode.Inode)
+	// inodeInfo := mp.txProcessor.txManager.getTxInodeInfo(txIno.TxInfo.TxID, txIno.Inode.Inode)
 	inodeInfo, ok := txIno.TxInfo.TxInodeInfos[txIno.Inode.Inode]
 	if !ok {
 		status = proto.OpTxInodeInfoNotExistErr
@@ -66,7 +64,7 @@ func (mp *metaPartition) fsmTxCreateInode(txIno *TxInode, quotaIds []uint32) (st
 			mp.txProcessor.txResource.deleteTxRollbackInode(txIno.Inode.Inode, txIno.TxInfo.TxID)
 		}
 	}()
-	//3.insert inode in inode tree
+	// 3.insert inode in inode tree
 	return mp.fsmCreateInode(txIno.Inode)
 }
 
@@ -93,7 +91,7 @@ func (mp *metaPartition) fsmTxCreateLinkInode(txIno *TxInode) (resp *InodeRespon
 		return
 	}
 
-	//2.register rollback item
+	// 2.register rollback item
 	inodeInfo, ok := txIno.TxInfo.TxInodeInfos[txIno.Inode.Inode]
 	if !ok {
 		resp.Status = proto.OpTxInodeInfoNotExistErr
@@ -283,9 +281,7 @@ func (mp *metaPartition) fsmTxUnlinkInode(txIno *TxInode) (resp *InodeResponse) 
 
 func (mp *metaPartition) fsmUnlinkInode(ino *Inode, uniqID uint64) (resp *InodeResponse) {
 	log.LogDebugf("action[fsmUnlinkInode] mp %v ino %v", mp.config.PartitionId, ino)
-	var (
-		ext2Del []proto.ExtentKey
-	)
+	var ext2Del []proto.ExtentKey
 
 	resp = NewInodeResponse()
 	resp.Status = proto.OpOk
@@ -452,9 +448,7 @@ func (mp *metaPartition) fsmAppendExtents(ino *Inode) (status uint8) {
 }
 
 func (mp *metaPartition) fsmAppendExtentsWithCheck(ino *Inode, isSplit bool) (status uint8) {
-	var (
-		delExtents []proto.ExtentKey
-	)
+	var delExtents []proto.ExtentKey
 
 	if mp.verSeq < ino.getVer() {
 		status = proto.OpArgMismatchErr
@@ -565,7 +559,6 @@ func (mp *metaPartition) fsmAppendObjExtents(ino *Inode) (status uint8) {
 
 	eks := ino.ObjExtents.CopyExtents()
 	err := inode.AppendObjExtents(eks, ino.ModifyTime)
-
 	// if err is not nil, means obj eks exist overlap.
 	if err != nil {
 		log.LogErrorf("fsmAppendExtents inode(%v) err(%v)", inode.Inode, err)
@@ -810,7 +803,7 @@ func (mp *metaPartition) fsmSetInodeQuotaBatch(req *proto.BatchSetMetaserverQuot
 		var isExist bool
 		var err error
 
-		var extend = NewExtend(ino)
+		extend := NewExtend(ino)
 		treeItem := mp.extendTree.Get(extend)
 		inode := NewInode(ino, 0)
 		retMsg := mp.getInode(inode, false)
@@ -822,10 +815,10 @@ func (mp *metaPartition) fsmSetInodeQuotaBatch(req *proto.BatchSetMetaserverQuot
 		}
 		inode = retMsg.Msg
 		log.LogDebugf("fsmSetInodeQuotaBatch msg [%v] inode [%v]", retMsg, inode)
-		var quotaInfos = &proto.MetaQuotaInfos{
+		quotaInfos := &proto.MetaQuotaInfos{
 			QuotaInfoMap: make(map[uint32]*proto.MetaQuotaInfo),
 		}
-		var quotaInfo = &proto.MetaQuotaInfo{
+		quotaInfo := &proto.MetaQuotaInfo{
 			RootInode: req.IsRoot,
 		}
 
@@ -876,7 +869,7 @@ func (mp *metaPartition) fsmDeleteInodeQuotaBatch(req *proto.BatchDeleteMetaserv
 
 	for _, ino := range req.Inodes {
 		var err error
-		var extend = NewExtend(ino)
+		extend := NewExtend(ino)
 		treeItem := mp.extendTree.Get(extend)
 		inode := NewInode(ino, 0)
 		retMsg := mp.getInode(inode, false)
@@ -887,7 +880,7 @@ func (mp *metaPartition) fsmDeleteInodeQuotaBatch(req *proto.BatchDeleteMetaserv
 		}
 		inode = retMsg.Msg
 		log.LogDebugf("fsmDeleteInodeQuotaBatch msg [%v] inode [%v]", retMsg, inode)
-		var quotaInfos = &proto.MetaQuotaInfos{
+		quotaInfos := &proto.MetaQuotaInfos{
 			QuotaInfoMap: make(map[uint32]*proto.MetaQuotaInfo),
 		}
 

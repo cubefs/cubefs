@@ -58,7 +58,7 @@ func main() {
 	data1 := "1111\n"
 	data2 := "2222\n"
 
-	file1, err := os.OpenFile(outPath1, os.O_WRONLY|os.O_CREATE, 0666)
+	file1, err := os.OpenFile(outPath1, os.O_WRONLY|os.O_CREATE, 0o666)
 	if err != nil {
 		fmt.Println(err)
 		return

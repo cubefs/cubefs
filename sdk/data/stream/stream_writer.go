@@ -302,7 +302,6 @@ func (s *Streamer) handleRequest(request interface{}) {
 		request.done <- struct{}{}
 	default:
 	}
-
 }
 
 func (s *Streamer) write(data []byte, offset, size, flags int, checkFunc func() error) (total int, err error) {
@@ -433,7 +432,6 @@ func (s *Streamer) doOverWriteByAppend(req *ExtentRequest, direct bool) (total i
 }
 
 func (s *Streamer) tryDirectAppendWrite(req *ExtentRequest, direct bool) (total int, extKey *proto.ExtentKey, err error, status int32) {
-
 	req.ExtentKey = s.handler.key
 	return s.doDirectWriteByAppend(req, direct, proto.OpTryWriteAppend)
 }
@@ -735,7 +733,7 @@ func (s *Streamer) tryInitExtentHandlerByLastEk(offset, size int) (isLastEkVerNo
 					VerSeq: seq,
 				},
 			}
-			//handler.dp = dp
+			// handler.dp = dp
 
 			if s.handler != nil {
 				log.LogDebugf("tryInitExtentHandlerByLastEk: close old handler, currentEK.PartitionId(%v)",

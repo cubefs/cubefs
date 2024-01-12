@@ -94,13 +94,13 @@ func NewStatistic(dir, logModule string, logMaxSize int64, timeOutUs [MaxTimeout
 	dir = path.Join(dir, logModule)
 	fi, err := os.Stat(dir)
 	if err != nil {
-		os.MkdirAll(dir, 0755)
+		os.MkdirAll(dir, 0o755)
 	} else {
 		if !fi.IsDir() {
 			return nil, errors.New(dir + " is not a directory")
 		}
 	}
-	_ = os.Chmod(dir, 0755)
+	_ = os.Chmod(dir, 0o755)
 	logName := path.Join(dir, Stat_Module)
 	st := &Statistic{
 		logDir:        dir,
@@ -228,7 +228,7 @@ func WriteStat() error {
 	}
 
 	logFileName := gSt.logBaseName + ".log"
-	statFile, err := os.OpenFile(logFileName, os.O_RDWR|os.O_APPEND|os.O_CREATE, 0666)
+	statFile, err := os.OpenFile(logFileName, os.O_RDWR|os.O_APPEND|os.O_CREATE, 0o666)
 	if err != nil {
 		log.LogErrorf("OpenLogFile failed, logFileName: %s, err: %v\n", logFileName, err)
 		return fmt.Errorf("OpenLogFile failed, logFileName %s\n", logFileName)

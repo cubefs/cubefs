@@ -17,15 +17,15 @@ package auth
 import (
 	"encoding/json"
 	"fmt"
+	"net/http"
+	"os"
+	"sync"
+	"time"
+
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/auth"
 	"github.com/cubefs/cubefs/util/cryptoutil"
 	"github.com/cubefs/cubefs/util/keystore"
-	"io/ioutil"
-	"net/http"
-	"sync"
-	"time"
-
 	"github.com/cubefs/cubefs/util/log"
 )
 
@@ -77,7 +77,7 @@ func (c *AuthClient) request(clientID, clientKey string, key []byte, data interf
 		urlProto = "http://"
 		client = &http.Client{}
 	}
-	//TODO don't retry if the param is wrong
+	// TODO don't retry if the param is wrong
 	for i := 0; i < RequestMaxRetry; i++ {
 		for _, ip := range c.authnodes {
 			url = urlProto + ip + path
@@ -183,7 +183,7 @@ func (c *AuthClient) serveAdminRequest(id, key string, ticket *auth.Ticket, keyI
 }
 
 func loadCertfile(path string) (caCert []byte, err error) {
-	caCert, err = ioutil.ReadFile(path)
+	caCert, err = os.ReadFile(path)
 	if err != nil {
 		return
 	}

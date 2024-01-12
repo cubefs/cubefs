@@ -19,7 +19,6 @@ import (
 	"crypto/md5"
 	"encoding/base64"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"sync"
 	"time"
@@ -39,7 +38,6 @@ type ReloadConf struct {
 }
 
 func (self *ReloadConf) reload(reload func(data []byte) error) error {
-
 	self.mutex.Lock()
 	defer self.mutex.Unlock()
 
@@ -63,7 +61,6 @@ func (self *ReloadConf) reload(reload func(data []byte) error) error {
 }
 
 func (self *ReloadConf) remoteReload(reload func(data []byte) error) (err error) {
-
 	data, md5sum, err := fetchRemote(self.RequestRemote)
 	if err != nil {
 		err = errors.Info(err, "fetchRemote").Detail(err)
@@ -77,9 +74,9 @@ func (self *ReloadConf) remoteReload(reload func(data []byte) error) (err error)
 	}
 
 	confName := fmt.Sprintf("%v_%v", self.ConfName, base64.URLEncoding.EncodeToString(md5sum))
-	err = ioutil.WriteFile(confName, data, 0666)
+	err = os.WriteFile(confName, data, 0o666)
 	if err != nil {
-		err = errors.Info(err, "ioutil.WriteFile")
+		err = errors.Info(err, "os.WriteFile")
 		return
 	}
 	log.LogInfof("remoteReload %v remote file is changed, oldmd5: %v, newmd5: %v", self.ConfName, self.md5sum, md5sum)
@@ -103,10 +100,9 @@ func (self *ReloadConf) remoteReload(reload func(data []byte) error) (err error)
 }
 
 func (self *ReloadConf) localReload(reload func(data []byte) error) (err error) {
-
-	data, err := ioutil.ReadFile(self.ConfName)
+	data, err := os.ReadFile(self.ConfName)
 	if err != nil {
-		err = errors.Info(err, "ioutil.ReadFile").Detail(err)
+		err = errors.Info(err, "os.ReadFile").Detail(err)
 		return
 	}
 	md5sum := calcMD5Sum(data)
@@ -127,10 +123,9 @@ func (self *ReloadConf) localReload(reload func(data []byte) error) (err error) 
 }
 
 func fetchRemote(requestRemote func() ([]byte, error)) (data, md5sum []byte, err error) {
-
 	data, err = requestRemote()
 	if err != nil {
-		err = errors.Info(err, "ioutil.ReadAll")
+		err = errors.Info(err, "io.ReadAll")
 		return
 	}
 	md5sum = calcMD5Sum(data)
@@ -139,7 +134,6 @@ func fetchRemote(requestRemote func() ([]byte, error)) (data, md5sum []byte, err
 }
 
 func StartReload(cfg *ReloadConf, reload func(data []byte) error) (err error) {
-
 	err = cfg.reload(reload)
 	if err != nil {
 		log.LogError("cfg.reload:", cfg.ConfName, errors.Detail(err))

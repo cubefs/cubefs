@@ -5,7 +5,6 @@ import (
 	"time"
 
 	"github.com/cubefs/cubefs/proto"
-
 	"github.com/cubefs/cubefs/util/log"
 )
 
@@ -72,7 +71,7 @@ func (m *MetaNode) stopUpdateNodeInfo() {
 }
 
 func (m *MetaNode) updateNodeInfo() {
-	//clusterInfo, err := getClusterInfo()
+	// clusterInfo, err := getClusterInfo()
 	clusterInfo, err := masterClient.AdminAPI().GetClusterInfo()
 	if err != nil {
 		log.LogErrorf("[updateNodeInfo] %s", err.Error())
@@ -90,5 +89,5 @@ func (m *MetaNode) updateNodeInfo() {
 		log.LogInfof("updateNodeInfo: DirChildrenNumLimit(%v)", clusterInfo.DirChildrenNumLimit)
 	}
 
-	//updateDirChildrenNumLimit(clusterInfo.DirChildrenNumLimit)
+	// updateDirChildrenNumLimit(clusterInfo.DirChildrenNumLimit)
 }

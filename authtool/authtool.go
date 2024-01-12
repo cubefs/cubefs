@@ -6,7 +6,6 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"log"
 	"net/http"
 	"os"
@@ -122,9 +121,7 @@ func (m *ticketFile) dumpJSONFile(filename string) {
 }
 
 func sendReqX(target string, data interface{}, cert *[]byte) (res []byte, err error) {
-	var (
-		client *http.Client
-	)
+	var client *http.Client
 	target = HTTPS + target
 	client, err = cryptoutil.CreateClientX(cert)
 	if err != nil {
@@ -142,7 +139,6 @@ func sendReq(target string, data interface{}) (res []byte, err error) {
 }
 
 func getTicketFromAuth(keyring *keyRing) (ticketfile ticketFile) {
-
 	var (
 		err     error
 		ts      int64
@@ -409,7 +405,6 @@ func accessAuthServer() {
 	}
 
 	return
-
 }
 
 func accessAPI() {
@@ -423,7 +418,7 @@ func accessAPI() {
 
 func loadCertfile(path string) (caCert []byte) {
 	var err error
-	caCert, err = ioutil.ReadFile(path)
+	caCert, err = os.ReadFile(path)
 	if err != nil {
 		log.Fatal(err)
 	}

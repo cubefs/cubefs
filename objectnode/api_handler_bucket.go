@@ -20,7 +20,6 @@ import (
 	"encoding/json"
 	"encoding/xml"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"regexp"
 	"strings"
@@ -94,7 +93,7 @@ func (o *ObjectNode) createBucketHandler(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	if length > 0 {
-		requestBytes, err := ioutil.ReadAll(r.Body)
+		requestBytes, err := io.ReadAll(r.Body)
 		if err != nil && err != io.EOF {
 			log.LogErrorf("createBucketHandler: read request body fail: requestID(%v) err(%v)", GetRequestID(r), err)
 			return
@@ -333,7 +332,7 @@ func (o *ObjectNode) getBucketTaggingHandler(w http.ResponseWriter, r *http.Requ
 		o.errorResponse(w, r, err, errorCode)
 	}()
 
-	var param = ParseRequestParam(r)
+	param := ParseRequestParam(r)
 	if len(param.Bucket()) == 0 {
 		errorCode = InvalidBucketName
 		return
@@ -358,7 +357,7 @@ func (o *ObjectNode) getBucketTaggingHandler(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	ossTaggingData := xattrInfo.Get(XAttrKeyOSSTagging)
-	var output, _ = ParseTagging(string(ossTaggingData))
+	output, _ := ParseTagging(string(ossTaggingData))
 	if nil == output || len(output.TagSet) == 0 {
 		errorCode = NoSuchTagSetError
 		return
@@ -386,7 +385,7 @@ func (o *ObjectNode) putBucketTaggingHandler(w http.ResponseWriter, r *http.Requ
 		o.errorResponse(w, r, err, errorCode)
 	}()
 
-	var param = ParseRequestParam(r)
+	param := ParseRequestParam(r)
 	if param.Bucket() == "" {
 		errorCode = InvalidBucketName
 		return
@@ -410,14 +409,14 @@ func (o *ObjectNode) putBucketTaggingHandler(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	var body []byte
-	if body, err = ioutil.ReadAll(r.Body); err != nil {
+	if body, err = io.ReadAll(r.Body); err != nil {
 		log.LogErrorf("putBucketTaggingHandler: read request body data fail: requestID(%v) err(%v)",
 			GetRequestID(r), err)
 		errorCode = InvalidArgument
 		return
 	}
 
-	var tagging = NewTagging()
+	tagging := NewTagging()
 	if err = UnmarshalXMLEntity(body, tagging); err != nil {
 		log.LogWarnf("putBucketTaggingHandler: unmarshal request body fail: requestID(%v) body(%v) err(%v)",
 			GetRequestID(r), string(body), err)
@@ -453,7 +452,7 @@ func (o *ObjectNode) deleteBucketTaggingHandler(w http.ResponseWriter, r *http.R
 		o.errorResponse(w, r, err, errorCode)
 	}()
 
-	var param = ParseRequestParam(r)
+	param := ParseRequestParam(r)
 	if len(param.Bucket()) == 0 {
 		errorCode = InvalidBucketName
 		return
@@ -509,7 +508,7 @@ func (o *ObjectNode) putObjectLockConfigurationHandler(w http.ResponseWriter, r 
 		o.errorResponse(w, r, err, errorCode)
 	}()
 
-	var param = ParseRequestParam(r)
+	param := ParseRequestParam(r)
 	if param.Bucket() == "" {
 		errorCode = InvalidBucketName
 		return
@@ -521,7 +520,7 @@ func (o *ObjectNode) putObjectLockConfigurationHandler(w http.ResponseWriter, r 
 		return
 	}
 	var body []byte
-	if body, err = ioutil.ReadAll(io.LimitReader(r.Body, MaxObjectLockSize+1)); err != nil {
+	if body, err = io.ReadAll(io.LimitReader(r.Body, MaxObjectLockSize+1)); err != nil {
 		log.LogErrorf("putObjectLockConfigurationHandler: read request body fail: requestID(%v) volume(%v) err(%v)",
 			GetRequestID(r), vol.Name(), err)
 		return
@@ -563,7 +562,7 @@ func (o *ObjectNode) getObjectLockConfigurationHandler(w http.ResponseWriter, r 
 		o.errorResponse(w, r, err, errorCode)
 	}()
 
-	var param = ParseRequestParam(r)
+	param := ParseRequestParam(r)
 	if param.Bucket() == "" {
 		errorCode = InvalidBucketName
 		return

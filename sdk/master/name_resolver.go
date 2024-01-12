@@ -17,7 +17,6 @@ package master
 import (
 	"errors"
 	"fmt"
-	"github.com/cubefs/cubefs/util/log"
 	"math/rand"
 	"net"
 	"regexp"
@@ -25,6 +24,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/cubefs/cubefs/util/log"
 )
 
 var domainRegexp = regexp.MustCompile(`^(?i)[a-z0-9-]+(\.[a-z0-9-]+)+\.?$`)
@@ -35,7 +36,7 @@ func IsValidDomain(domain string) bool {
 
 type IpCache struct {
 	sync.RWMutex
-	Ts  int64 //time.Now().Unix()
+	Ts  int64 // time.Now().Unix()
 	Ips []string
 }
 

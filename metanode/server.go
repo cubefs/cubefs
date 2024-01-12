@@ -19,10 +19,10 @@ import (
 	"io"
 	"net"
 
-	"github.com/cubefs/cubefs/util"
 	"github.com/xtaci/smux"
 
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/log"
 )
 

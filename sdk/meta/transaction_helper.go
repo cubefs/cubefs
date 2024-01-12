@@ -16,9 +16,10 @@ package meta
 
 import (
 	"fmt"
+	"sync/atomic"
+
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/log"
-	"sync/atomic"
 )
 
 var txId uint64 = 1
@@ -28,7 +29,7 @@ func genTransactionId(clientId uint64) string {
 }
 
 func getMembersFromMp(parentMp *MetaPartition) string {
-	var members = parentMp.LeaderAddr
+	members := parentMp.LeaderAddr
 	for _, addr := range parentMp.Members {
 		if addr == parentMp.LeaderAddr {
 			continue
@@ -43,7 +44,7 @@ func getMembersFromMp(parentMp *MetaPartition) string {
 }
 
 func NewCreateTransaction(parentMp, inoMp *MetaPartition, parentID uint64, name string, txTimeout int64, txType uint32) (tx *Transaction, err error) {
-	//tx = NewTransaction(txTimeout, proto.TxTypeCreate)
+	// tx = NewTransaction(txTimeout, proto.TxTypeCreate)
 	tx = NewTransaction(txTimeout, txType)
 
 	members := getMembersFromMp(parentMp)

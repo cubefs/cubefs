@@ -105,9 +105,11 @@ type DataPartitionSorter []*DataPartition
 func (ds DataPartitionSorter) Len() int {
 	return len(ds)
 }
+
 func (ds DataPartitionSorter) Swap(i, j int) {
 	ds[i], ds[j] = ds[j], ds[i]
 }
+
 func (ds DataPartitionSorter) Less(i, j int) bool {
 	return ds[i].Metrics.AvgWriteLatencyNano < ds[j].Metrics.AvgWriteLatencyNano
 }
@@ -140,7 +142,6 @@ func (dp *DataPartition) CheckAllHostsIsAvail(exclude map[string]struct{}) {
 		}
 		conn.Close()
 	}
-
 }
 
 // GetAllAddrs returns the addresses of all the replicas of the data partition.

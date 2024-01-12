@@ -187,7 +187,6 @@ func (uMgr *UidSpaceManager) volUidUpdate(report *proto.MetaPartitionReport) {
 		}
 	}
 	log.LogDebugf("volUidUpdate.mpID %v set uid %v. uid list size %v", id, report.UidInfo, len(uMgr.uidInfo))
-
 }
 
 type ServerFactorLimit struct {
@@ -319,7 +318,6 @@ func (qosManager *QosCtrlManager) getQosLimit(factorTYpe uint32) uint64 {
 }
 
 func (qosManager *QosCtrlManager) initClientQosInfo(clientID uint64, host string) (limitRsp2Client *proto.LimitRsp2Client, err error) {
-
 	log.QosWriteDebugf("action[initClientQosInfo] vol %v clientID %v Host %v", qosManager.vol.Name, clientID, host)
 	clientInitInfo := proto.NewClientReportLimitInfo()
 	cliCnt := qosManager.defaultClientCnt
@@ -446,7 +444,6 @@ func (serverLimit *ServerFactorLimit) dispatch() {
 
 // handle client request and rsp with much more if buffer is enough according rules of allocate
 func (serverLimit *ServerFactorLimit) updateLimitFactor(req interface{}) {
-
 	request := req.(*qosRequestArgs)
 	clientID := request.clientID
 	factorType := request.factorType
@@ -769,7 +766,6 @@ func (vol *Vol) checkQos() {
 }
 
 func (vol *Vol) getQosStatus(cluster *Cluster) interface{} {
-
 	type qosStatus struct {
 		ServerFactorLimitMap map[uint32]*ServerFactorLimit // vol qos data for iops w/r and flow w/r
 		QosEnable            bool

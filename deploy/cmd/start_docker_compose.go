@@ -10,7 +10,7 @@ import (
 func startALLFromDockerCompose(disk string) error {
 	scriptPath := CubeFSPath + "/docker/run_docker.sh"
 	args := []string{"-r", "-d", disk}
-	err := os.Chmod(scriptPath, 0700)
+	err := os.Chmod(scriptPath, 0o700)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -23,7 +23,6 @@ func startALLFromDockerCompose(disk string) error {
 }
 
 func stopALLFromDockerCompose() error {
-
 	err := os.Chdir(CubeFSPath + "/docker")
 	if err != nil {
 		return err

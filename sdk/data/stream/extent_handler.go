@@ -16,7 +16,6 @@ package stream
 
 import (
 	"fmt"
-	"github.com/cubefs/cubefs/util/stat"
 	"net"
 	"sync/atomic"
 	"time"
@@ -26,6 +25,7 @@ import (
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/log"
+	"github.com/cubefs/cubefs/util/stat"
 )
 
 // State machines
@@ -36,9 +36,7 @@ const (
 	ExtentStatusError
 )
 
-var (
-	gExtentHandlerID = uint64(0)
-)
+var gExtentHandlerID = uint64(0)
 
 // GetExtentHandlerID returns the extent handler ID.
 func GetExtentHandlerID() uint64 {
@@ -175,7 +173,7 @@ func (eh *ExtentHandler) write(data []byte, offset, size int, direct bool) (ek *
 			if direct {
 				eh.packet.Opcode = proto.OpSyncWrite
 			}
-			//log.LogDebugf("ExtentHandler Write: NewPacket, eh(%v) packet(%v)", eh, eh.packet)
+			// log.LogDebugf("ExtentHandler Write: NewPacket, eh(%v) packet(%v)", eh, eh.packet)
 		}
 		packsize := int(eh.packet.Size)
 		write = util.Min(size-total, blksize-packsize)
@@ -351,9 +349,7 @@ func (eh *ExtentHandler) processReply(packet *Packet) {
 
 	eh.dp.RecordWrite(packet.StartT)
 
-	var (
-		extID, extOffset uint64
-	)
+	var extID, extOffset uint64
 
 	if eh.storeMode == proto.TinyExtentType {
 		extID = reply.ExtentID
@@ -566,7 +562,7 @@ func (eh *ExtentHandler) allocateExtent() (err error) {
 		eh.conn = conn
 		eh.extID = extID
 
-		//log.LogDebugf("ExtentHandler allocateExtent exit: eh(%v) dp(%v) extID(%v)", eh, dp, extID)
+		// log.LogDebugf("ExtentHandler allocateExtent exit: eh(%v) dp(%v) extID(%v)", eh, dp, extID)
 		return nil
 	}
 

@@ -16,7 +16,7 @@ package objectnode
 
 import (
 	"bytes"
-	"io/ioutil"
+	"io"
 	"strings"
 	"testing"
 
@@ -50,7 +50,7 @@ func TestSignChunkedReader(t *testing.T) {
 	seed := "4f232c4386841ef735655705268965c44a0e4690baa4adea153f7db9fa80a0a9"
 
 	reader := NewSignChunkedReader(buf, key, scope, datetime, seed)
-	b, err := ioutil.ReadAll(reader)
+	b, err := io.ReadAll(reader)
 	require.NoError(t, err)
 	require.Equal(t, 66560, len(b))
 	require.Equal(t, strings.Repeat("a", 66560), string(b))

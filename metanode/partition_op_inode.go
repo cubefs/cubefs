@@ -376,7 +376,6 @@ func (mp *metaPartition) UnlinkInode(req *UnlinkInoReq, p *Packet, remoteAddr st
 
 // DeleteInode deletes an inode.
 func (mp *metaPartition) UnlinkInodeBatch(req *BatchUnlinkInoReq, p *Packet, remoteAddr string) (err error) {
-
 	if len(req.Inodes) == 0 {
 		return nil
 	}
@@ -491,7 +490,6 @@ func (mp *metaPartition) InodeGetSplitEk(req *InodeGetSplitReq, p *Packet) (err 
 
 // InodeGet executes the inodeGet command from the client.
 func (mp *metaPartition) InodeGet(req *InodeGetReq, p *Packet) (err error) {
-
 	ino := NewInode(req.Inode, 0)
 	ino.setVer(req.VerSeq)
 	getAllVerInfo := req.VerAll
@@ -551,7 +549,6 @@ func (mp *metaPartition) InodeGet(req *InodeGetReq, p *Packet) (err error) {
 
 // InodeGetBatch executes the inodeBatchGet command from the client.
 func (mp *metaPartition) InodeGetBatch(req *InodeGetReqBatch, p *Packet) (err error) {
-
 	resp := &proto.BatchInodeGetResponse{}
 	ino := NewInode(0, 0)
 	for _, inoId := range req.Inodes {
@@ -711,7 +708,6 @@ func (mp *metaPartition) EvictInode(req *EvictInodeReq, p *Packet, remoteAddr st
 
 // EvictInode evicts an inode.
 func (mp *metaPartition) EvictInodeBatch(req *BatchEvictInodeReq, p *Packet, remoteAddr string) (err error) {
-
 	if len(req.Inodes) == 0 {
 		return nil
 	}
@@ -795,7 +791,7 @@ func (mp *metaPartition) DeleteInode(req *proto.DeleteInodeRequest, p *Packet, r
 			auditlog.LogInodeOp(remoteAddr, mp.GetVolName(), p.GetOpMsg(), req.GetFullPath(), err, time.Since(start).Milliseconds(), req.Inode, 0)
 		}()
 	}
-	var bytes = make([]byte, 8)
+	bytes := make([]byte, 8)
 	binary.BigEndian.PutUint64(bytes, req.Inode)
 	_, err = mp.submit(opFSMInternalDeleteInode, bytes)
 	if err != nil {

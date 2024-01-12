@@ -110,7 +110,6 @@ type Operation interface {
 
 	// returns condition operator of this operation.
 	operator() operator
-
 	toMap() map[Key]ValueSet
 }
 

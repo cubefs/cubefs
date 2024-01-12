@@ -121,7 +121,6 @@ func (buf *RingBuffer) Len() uint32 {
 	} else {
 		return buf.wIndex + buf.size - buf.rIndex
 	}
-
 }
 
 func (buf *RingBuffer) Reset() {

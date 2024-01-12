@@ -16,6 +16,7 @@ package metanode
 
 import (
 	"encoding/json"
+
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/storage"
 	"github.com/cubefs/cubefs/util"

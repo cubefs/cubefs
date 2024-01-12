@@ -25,9 +25,9 @@ const (
 type User struct {
 	fsm            *MetadataFsm
 	partition      raftstore.Partition
-	userStore      sync.Map //K: userID, V: UserInfo
-	AKStore        sync.Map //K: ak, V: userID
-	volUser        sync.Map //K: vol, V: userIDs
+	userStore      sync.Map // K: userID, V: UserInfo
+	AKStore        sync.Map // K: ak, V: userID
+	volUser        sync.Map // K: vol, V: userIDs
 	userStoreMutex sync.RWMutex
 	AKStoreMutex   sync.RWMutex
 	volUserMutex   sync.RWMutex
@@ -55,12 +55,12 @@ func (u *User) createKey(param *proto.UserCreateParam) (userInfo *proto.UserInfo
 		return
 	}
 
-	var userID = param.ID
-	var password = param.Password
+	userID := param.ID
+	password := param.Password
 	if password == "" {
 		password = DefaultUserPassword
 	}
-	var accessKey = param.AccessKey
+	accessKey := param.AccessKey
 	if accessKey == "" {
 		accessKey = util.RandomString(accessKeyLength, util.Numeric|util.LowerLetter|util.UpperLetter)
 	} else {
@@ -69,7 +69,7 @@ func (u *User) createKey(param *proto.UserCreateParam) (userInfo *proto.UserInfo
 			return
 		}
 	}
-	var secretKey = param.SecretKey
+	secretKey := param.SecretKey
 	if secretKey == "" {
 		secretKey = util.RandomString(secretKeyLength, util.Numeric|util.LowerLetter|util.UpperLetter)
 	} else {
@@ -78,13 +78,13 @@ func (u *User) createKey(param *proto.UserCreateParam) (userInfo *proto.UserInfo
 			return
 		}
 	}
-	var userType = param.Type
-	var description = param.Description
+	userType := param.Type
+	description := param.Description
 	u.userStoreMutex.Lock()
 	defer u.userStoreMutex.Unlock()
 	u.AKStoreMutex.Lock()
 	defer u.AKStoreMutex.Unlock()
-	//check duplicate
+	// check duplicate
 	if _, exist = u.userStore.Load(userID); exist {
 		err = proto.ErrDuplicateUserID
 		return
@@ -95,8 +95,10 @@ func (u *User) createKey(param *proto.UserCreateParam) (userInfo *proto.UserInfo
 		_, exist = u.AKStore.Load(accessKey)
 	}
 	userPolicy = proto.NewUserPolicy()
-	userInfo = &proto.UserInfo{UserID: userID, AccessKey: accessKey, SecretKey: secretKey, Policy: userPolicy,
-		UserType: userType, CreateTime: time.Unix(time.Now().Unix(), 0).Format(proto.TimeFormat), Description: description}
+	userInfo = &proto.UserInfo{
+		UserID: userID, AccessKey: accessKey, SecretKey: secretKey, Policy: userPolicy,
+		UserType: userType, CreateTime: time.Unix(time.Now().Unix(), 0).Format(proto.TimeFormat), Description: description,
+	}
 	AKUser = &proto.AKUser{AccessKey: accessKey, UserID: userID, Password: encodingPassword(password)}
 	if err = u.syncAddUserInfo(userInfo); err != nil {
 		return
@@ -177,7 +179,7 @@ func (u *User) updateKey(param *proto.UserUpdateParam) (userInfo *proto.UserInfo
 		err = proto.ErrNoPermission
 		return
 	}
-	var formerAK = userInfo.AccessKey
+	formerAK := userInfo.AccessKey
 	var akMark, skMark, typeMark, describeMark int
 	if param.AccessKey != "" {
 		if !proto.IsValidAK(param.AccessKey) {
@@ -197,7 +199,7 @@ func (u *User) updateKey(param *proto.UserUpdateParam) (userInfo *proto.UserInfo
 		}
 		skMark = 1
 	}
-	//Type == 0,do not modify type
+	// Type == 0,do not modify type
 	if param.Type != 0 {
 		if param.Type.Valid() {
 			typeMark = 1
@@ -363,8 +365,8 @@ func (u *User) deleteVolPolicy(volName string) (err error) {
 		volUser  *proto.VolUser
 		userInfo *proto.UserInfo
 	)
-	//delete policy
-	var deletedUsers = make([]string, 0)
+	// delete policy
+	deletedUsers := make([]string, 0)
 	var userIDs []string
 	if userIDs, err = u.getUsersOfVol(volName); err != nil {
 		return
@@ -388,7 +390,7 @@ func (u *User) deleteVolPolicy(volName string) (err error) {
 		}
 		userInfo.Mu.Unlock()
 	}
-	//delete volName index
+	// delete volName index
 	if value, exist := u.volUser.Load(volName); exist {
 		volUser = value.(*proto.VolUser)
 	} else {
@@ -415,7 +417,7 @@ func (u *User) transferVol(params *proto.UserTransferVolParam) (targetUserInfo *
 		return
 	}
 	if err == nil {
-		var isOwned = userInfo.Policy.IsOwn(params.Volume)
+		isOwned := userInfo.Policy.IsOwn(params.Volume)
 		if !isOwned && !params.Force && params.UserSrc != params.UserDst {
 			err = proto.ErrHaveNoPolicy
 			return
@@ -477,9 +479,7 @@ func (u *User) getAKUser(ak string) (akUser *proto.AKUser, err error) {
 func (u *User) addUserToVol(userID, volName string) (err error) {
 	u.volUserMutex.Lock()
 	defer u.volUserMutex.Unlock()
-	var (
-		volUser *proto.VolUser
-	)
+	var volUser *proto.VolUser
 	if value, ok := u.volUser.Load(volName); ok {
 		volUser = value.(*proto.VolUser)
 		volUser.Mu.Lock()
@@ -498,10 +498,9 @@ func (u *User) addUserToVol(userID, volName string) (err error) {
 	}
 	return
 }
+
 func (u *User) removeUserFromVol(userID, volName string) (err error) {
-	var (
-		volUser *proto.VolUser
-	)
+	var volUser *proto.VolUser
 	if value, ok := u.volUser.Load(volName); ok {
 		volUser = value.(*proto.VolUser)
 		volUser.Mu.Lock()

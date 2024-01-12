@@ -15,22 +15,20 @@
 package metanode
 
 import (
+	"fmt"
 	syslog "log"
 	"os"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"time"
 
 	"github.com/xtaci/smux"
 
-	masterSDK "github.com/cubefs/cubefs/sdk/master"
-
-	"fmt"
-	"strconv"
-
 	"github.com/cubefs/cubefs/cmd/common"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/raftstore"
+	masterSDK "github.com/cubefs/cubefs/sdk/master"
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/config"
 	"github.com/cubefs/cubefs/util/errors"
@@ -40,7 +38,7 @@ import (
 
 var (
 	clusterInfo *proto.ClusterInfo
-	//masterClient   *masterSDK.MasterClient
+	// masterClient   *masterSDK.MasterClient
 	masterClient   *masterSDK.MasterCLientWithResolver
 	configTotalMem uint64
 	serverPort     string
@@ -64,7 +62,7 @@ type MetaNode struct {
 	raftHeartbeatPort         string
 	raftReplicatePort         string
 	raftRetainLogs            uint64
-	raftSyncSnapFormatVersion uint32 //format version of snapshot that raft leader sent to follower
+	raftSyncSnapFormatVersion uint32 // format version of snapshot that raft leader sent to follower
 	zoneName                  string
 	httpStopC                 chan uint8
 	smuxStopC                 chan uint8
@@ -292,7 +290,7 @@ func (m *MetaNode) parseConfig(cfg *config.Config) (err error) {
 		RaftHeartbetPort: m.raftHeartbeatPort,
 		RaftReplicaPort:  m.raftReplicatePort,
 	}
-	var ok = false
+	ok := false
 	if ok, err = config.CheckOrStoreConstCfg(m.metadataDir, config.DefaultConstConfigFile, &constCfg); !ok {
 		log.LogErrorf("constCfg check failed %v %v %v %v", m.metadataDir, config.DefaultConstConfigFile, constCfg, err)
 		return fmt.Errorf("constCfg check failed %v %v %v %v", m.metadataDir, config.DefaultConstConfigFile, constCfg, err)
@@ -325,7 +323,7 @@ func (m *MetaNode) parseConfig(cfg *config.Config) (err error) {
 		updateInterval = DefaultNameResolveInterval
 	}
 
-	//masterClient = masterSDK.NewMasterClient(masters, false)
+	// masterClient = masterSDK.NewMasterClient(masters, false)
 	masterClient = masterSDK.NewMasterCLientWithResolver(masters, false, updateInterval)
 	if masterClient == nil {
 		err = fmt.Errorf("parseConfig: masters addrs format err[%v]", masters)
@@ -347,7 +345,7 @@ func (m *MetaNode) parseSmuxConfig(cfg *config.Config) error {
 	}
 
 	// SMux buffer
-	var maxBuffer = cfg.GetInt64(cfgSmuxMaxBuffer)
+	maxBuffer := cfg.GetInt64(cfgSmuxMaxBuffer)
 	if maxBuffer > 0 {
 		smuxPoolCfg.MaxReceiveBuffer = int(maxBuffer)
 		if smuxPoolCfg.MaxStreamBuffer > int(maxBuffer) {
@@ -397,7 +395,7 @@ func (m *MetaNode) validConfig() (err error) {
 
 func (m *MetaNode) newMetaManager() (err error) {
 	if _, err = os.Stat(m.metadataDir); err != nil {
-		if err = os.MkdirAll(m.metadataDir, 0755); err != nil {
+		if err = os.MkdirAll(m.metadataDir, 0o755); err != nil {
 			return
 		}
 	}
@@ -414,7 +412,7 @@ func (m *MetaNode) newMetaManager() (err error) {
 		RaftHeartbetPort: m.raftHeartbeatPort,
 		RaftReplicaPort:  m.raftReplicatePort,
 	}
-	var ok = false
+	ok := false
 	if ok, err = config.CheckOrStoreConstCfg(m.metadataDir, config.DefaultConstConfigFile, &constCfg); !ok {
 		log.LogErrorf("constCfg check failed %v %v %v %v", m.metadataDir, config.DefaultConstConfigFile, constCfg, err)
 		return fmt.Errorf("constCfg check failed %v %v %v %v", m.metadataDir, config.DefaultConstConfigFile, constCfg, err)

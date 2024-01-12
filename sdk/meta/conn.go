@@ -20,9 +20,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/cubefs/cubefs/util/errors"
-
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/log"
 )
 
@@ -33,8 +32,8 @@ const (
 
 type MetaConn struct {
 	conn *net.TCPConn
-	id   uint64 //PartitionID
-	addr string //MetaNode addr
+	id   uint64 // PartitionID
+	addr string // MetaNode addr
 }
 
 // Connection managements

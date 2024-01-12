@@ -239,6 +239,7 @@ func TestDescendRange(t *testing.T) {
 		t.Fatalf("descendrange:\n got: %v\nwant: %v", got, want)
 	}
 }
+
 func TestAscendLessThan(t *testing.T) {
 	tr := New(*btreeDegree)
 	for _, v := range perm(100) {
@@ -290,6 +291,7 @@ func TestDescendLessOrEqual(t *testing.T) {
 		t.Fatalf("descendlessorequal:\n got: %v\nwant: %v", got, want)
 	}
 }
+
 func TestAscendGreaterOrEqual(t *testing.T) {
 	tr := New(*btreeDegree)
 	for _, v := range perm(100) {
@@ -546,6 +548,7 @@ func BenchmarkDescend(b *testing.B) {
 		})
 	}
 }
+
 func BenchmarkAscendRange(b *testing.B) {
 	arr := perm(benchmarkTreeSize)
 	tr := New(*btreeDegree)
@@ -591,6 +594,7 @@ func BenchmarkDescendRange(b *testing.B) {
 		}
 	}
 }
+
 func BenchmarkAscendGreaterOrEqual(b *testing.B) {
 	arr := perm(benchmarkTreeSize)
 	tr := New(*btreeDegree)
@@ -618,6 +622,7 @@ func BenchmarkAscendGreaterOrEqual(b *testing.B) {
 		}
 	}
 }
+
 func BenchmarkDescendLessOrEqual(b *testing.B) {
 	arr := perm(benchmarkTreeSize)
 	tr := New(*btreeDegree)

@@ -14,8 +14,7 @@
 
 package objectnode
 
-type MetaStore interface {
-}
+type MetaStore interface{}
 
 // MetaStore
 type Store interface {

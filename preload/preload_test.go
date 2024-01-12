@@ -15,13 +15,14 @@
 package main
 
 import (
-	"github.com/cubefs/cubefs/util/config"
 	"testing"
+
+	"github.com/cubefs/cubefs/util/config"
 )
 
 func TestCheckConfMaster(t *testing.T) {
 	t.Run("masters", func(t *testing.T) {
-		var cfgJSON = `{"target":"/",
+		cfgJSON := `{"target":"/",
 			"volumeName": "cold3",
 			"masterAddr": "10.177.69.105:17010, 10.177.69.106:17010, 10.177.117.108:17010",
   			"logDir": "/home/ADC/80256477/adls/log/preload",
@@ -35,7 +36,7 @@ func TestCheckConfMaster(t *testing.T) {
 	})
 
 	t.Run("masters_empty", func(t *testing.T) {
-		var cfgJSON = `{"target":"/",
+		cfgJSON := `{"target":"/",
 			"volumeName": "cold3",
   			"logDir": "/home/ADC/80256477/adls/log/preload",
   			"logLevel": "debug",
@@ -49,9 +50,8 @@ func TestCheckConfMaster(t *testing.T) {
 }
 
 func TestCheckConfTarget(t *testing.T) {
-
 	t.Run("target_empty", func(t *testing.T) {
-		var cfgJSON = `{
+		cfgJSON := `{
 			"volumeName": "cold3",
 			"masterAddr": "10.177.69.105:17010, 10.177.69.106:17010, 10.177.117.108:17010",
   			"logDir": "/home/ADC/80256477/adls/log/preload",
@@ -67,7 +67,7 @@ func TestCheckConfTarget(t *testing.T) {
 
 func TestCheckConfVol(t *testing.T) {
 	t.Run("vol_empty", func(t *testing.T) {
-		var cfgJSON = `{"target":"/",
+		cfgJSON := `{"target":"/",
 			"masterAddr": "10.177.69.105:17010, 10.177.69.106:17010, 10.177.117.108:17010",
   			"logDir": "/home/ADC/80256477/adls/log/preload",
   			"logLevel": "debug",
@@ -82,7 +82,7 @@ func TestCheckConfVol(t *testing.T) {
 
 func TestCheckConfLogDir(t *testing.T) {
 	t.Run("logDir_empty", func(t *testing.T) {
-		var cfgJSON = `{"target":"/",
+		cfgJSON := `{"target":"/",
 			"volumeName": "cold3",
 			"masterAddr": "10.177.69.105:17010, 10.177.69.106:17010, 10.177.117.108:17010",
   			"logLevel": "debug",
@@ -97,7 +97,7 @@ func TestCheckConfLogDir(t *testing.T) {
 
 func TestCheckConfLogLevel(t *testing.T) {
 	t.Run("logLevel_empty", func(t *testing.T) {
-		var cfgJSON = `{"target":"/",
+		cfgJSON := `{"target":"/",
 			"volumeName": "cold3",
 			"masterAddr": "10.177.69.105:17010, 10.177.69.106:17010, 10.177.117.108:17010",
   			"logDir": "/home/ADC/80256477/adls/log/preload",
@@ -112,7 +112,7 @@ func TestCheckConfLogLevel(t *testing.T) {
 
 func TestCheckConfTTL(t *testing.T) {
 	t.Run("ttl_empty", func(t *testing.T) {
-		var cfgJSON = `{"target":"/",
+		cfgJSON := `{"target":"/",
 			"volumeName": "cold3",
 			"masterAddr": "10.177.69.105:17010, 10.177.69.106:17010, 10.177.117.108:17010",
   			"logDir": "/home/ADC/80256477/adls/log/preload",
@@ -127,7 +127,7 @@ func TestCheckConfTTL(t *testing.T) {
 
 func TestCheckConfAction(t *testing.T) {
 	t.Run("action_empty", func(t *testing.T) {
-		var cfgJSON = `{"target":"/",
+		cfgJSON := `{"target":"/",
 			"volumeName": "cold3",
 			"masterAddr": "10.177.69.105:17010, 10.177.69.106:17010, 10.177.117.108:17010",
   			"logDir": "/home/ADC/80256477/adls/log/preload",

@@ -375,7 +375,6 @@ func TestParseAcl_XmlBodyAcl(t *testing.T) {
 	req.ContentLength = int64(len(aclExample))
 	_, err = ParseACL(req, "user", true, false)
 	require.EqualError(t, err, AccessDenied.Error())
-
 }
 
 func TestCreateDefaultACL(t *testing.T) {

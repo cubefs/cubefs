@@ -20,7 +20,6 @@ import (
 	"encoding/xml"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -54,7 +53,7 @@ func (o *ObjectNode) getObjectHandler(w http.ResponseWriter, r *http.Request) {
 		o.errorResponse(w, r, err, errorCode)
 	}()
 
-	var param = ParseRequestParam(r)
+	param := ParseRequestParam(r)
 	if param.Bucket() == "" {
 		errorCode = InvalidBucketName
 		return
@@ -182,7 +181,7 @@ func (o *ObjectNode) getObjectHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// compute content length
-	var contentLength = uint64(fileInfo.Size)
+	contentLength := uint64(fileInfo.Size)
 	if isRangeRead {
 		contentLength = rangeUpper - rangeLower + 1
 	}
@@ -270,7 +269,7 @@ func (o *ObjectNode) getObjectHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// get object content
-	var offset = rangeLower
+	offset := rangeLower
 	size, err := safeConvertInt64ToUint64(fileInfo.Size)
 	fileSize := size
 	if err != nil {
@@ -375,7 +374,7 @@ func (o *ObjectNode) headObjectHandler(w http.ResponseWriter, r *http.Request) {
 	}()
 
 	// check args
-	var param = ParseRequestParam(r)
+	param := ParseRequestParam(r)
 	if param.Bucket() == "" {
 		errorCode = InvalidBucketName
 		return
@@ -544,7 +543,7 @@ func (o *ObjectNode) deleteObjectsHandler(w http.ResponseWriter, r *http.Request
 		o.errorResponse(w, r, err, errorCode)
 	}()
 
-	var param = ParseRequestParam(r)
+	param := ParseRequestParam(r)
 	if param.Bucket() == "" {
 		errorCode = InvalidBucketName
 		return
@@ -567,7 +566,7 @@ func (o *ObjectNode) deleteObjectsHandler(w http.ResponseWriter, r *http.Request
 	if errorCode != nil {
 		return
 	}
-	bytes, err := ioutil.ReadAll(r.Body)
+	bytes, err := io.ReadAll(r.Body)
 	if err != nil {
 		log.LogErrorf("deleteObjectsHandler: read request body fail: requestID(%v) volume(%v) err(%v)",
 			GetRequestID(r), param.Bucket(), err)
@@ -726,7 +725,7 @@ func (o *ObjectNode) copyObjectHandler(w http.ResponseWriter, r *http.Request) {
 		o.errorResponse(w, r, err, errorCode)
 	}()
 
-	var param = ParseRequestParam(r)
+	param := ParseRequestParam(r)
 	if param.Bucket() == "" {
 		errorCode = InvalidBucketName
 		return
@@ -945,7 +944,7 @@ func (o *ObjectNode) getBucketV1Handler(w http.ResponseWriter, r *http.Request) 
 		o.errorResponse(w, r, err, errorCode)
 	}()
 
-	var param = ParseRequestParam(r)
+	param := ParseRequestParam(r)
 	if param.Bucket() == "" {
 		errorCode = InvalidBucketName
 		return
@@ -1020,9 +1019,9 @@ func (o *ObjectNode) getBucketV1Handler(w http.ResponseWriter, r *http.Request) 
 	}
 
 	// get owner
-	var bucketOwner = NewBucketOwner(vol)
+	bucketOwner := NewBucketOwner(vol)
 	log.LogDebugf("Owner: %v", bucketOwner)
-	var contents = make([]*Content, 0, len(result.Files))
+	contents := make([]*Content, 0, len(result.Files))
 	for _, file := range result.Files {
 		if file.Mode == 0 {
 			// Invalid file mode, which means that the inode of the file may not exist.
@@ -1042,7 +1041,7 @@ func (o *ObjectNode) getBucketV1Handler(w http.ResponseWriter, r *http.Request) 
 		contents = append(contents, content)
 	}
 
-	var commonPrefixes = make([]*CommonPrefix, 0)
+	commonPrefixes := make([]*CommonPrefix, 0)
 	for _, prefix := range result.CommonPrefixes {
 		commonPrefix := &CommonPrefix{
 			Prefix: prefix,
@@ -1085,7 +1084,7 @@ func (o *ObjectNode) getBucketV2Handler(w http.ResponseWriter, r *http.Request) 
 		o.errorResponse(w, r, err, errorCode)
 	}()
 
-	var param = ParseRequestParam(r)
+	param := ParseRequestParam(r)
 	if param.Bucket() == "" {
 		errorCode = InvalidBucketName
 		return
@@ -1187,7 +1186,7 @@ func (o *ObjectNode) getBucketV2Handler(w http.ResponseWriter, r *http.Request) 
 		bucketOwner = NewBucketOwner(vol)
 	}
 
-	var contents = make([]*Content, 0)
+	contents := make([]*Content, 0)
 	if len(result.Files) > 0 {
 		for _, file := range result.Files {
 			if file.Mode == 0 {
@@ -1210,7 +1209,7 @@ func (o *ObjectNode) getBucketV2Handler(w http.ResponseWriter, r *http.Request) 
 		}
 	}
 
-	var commonPrefixes = make([]*CommonPrefix, 0)
+	commonPrefixes := make([]*CommonPrefix, 0)
 	for _, prefix := range result.CommonPrefixes {
 		commonPrefix := &CommonPrefix{
 			Prefix: prefix,
@@ -1254,7 +1253,7 @@ func (o *ObjectNode) putObjectHandler(w http.ResponseWriter, r *http.Request) {
 		o.errorResponse(w, r, err, errorCode)
 	}()
 
-	var param = ParseRequestParam(r)
+	param := ParseRequestParam(r)
 	if param.Bucket() == "" {
 		errorCode = InvalidBucketName
 		return
@@ -1692,7 +1691,7 @@ func (o *ObjectNode) deleteObjectHandler(w http.ResponseWriter, r *http.Request)
 		o.errorResponse(w, r, err, errorCode)
 	}()
 
-	var param = ParseRequestParam(r)
+	param := ParseRequestParam(r)
 	if param.Bucket() == "" {
 		errorCode = InvalidBucketName
 		return
@@ -1750,7 +1749,7 @@ func (o *ObjectNode) getObjectTaggingHandler(w http.ResponseWriter, r *http.Requ
 		o.errorResponse(w, r, err, errorCode)
 	}()
 
-	var param = ParseRequestParam(r)
+	param := ParseRequestParam(r)
 	if param.Bucket() == "" {
 		errorCode = InvalidBucketName
 		return
@@ -1787,7 +1786,7 @@ func (o *ObjectNode) getObjectTaggingHandler(w http.ResponseWriter, r *http.Requ
 
 	ossTaggingData := xattrInfo.Get(XAttrKeyOSSTagging)
 
-	var output, _ = ParseTagging(string(ossTaggingData))
+	output, _ := ParseTagging(string(ossTaggingData))
 	response, err := MarshalXMLEntity(output)
 	if err != nil {
 		log.LogErrorf("getObjectTaggingHandler: xml marshal result fail: requestID(%v) result(%v) err(%v)",
@@ -1812,7 +1811,7 @@ func (o *ObjectNode) putObjectTaggingHandler(w http.ResponseWriter, r *http.Requ
 		o.errorResponse(w, r, err, errorCode)
 	}()
 
-	var param = ParseRequestParam(r)
+	param := ParseRequestParam(r)
 	if param.Bucket() == "" {
 		errorCode = InvalidBucketName
 		return
@@ -1841,14 +1840,14 @@ func (o *ObjectNode) putObjectTaggingHandler(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	var requestBody []byte
-	if requestBody, err = ioutil.ReadAll(r.Body); err != nil {
+	if requestBody, err = io.ReadAll(r.Body); err != nil {
 		log.LogErrorf("putObjectTaggingHandler: read request body data fail: requestID(%v) err(%v)",
 			GetRequestID(r), err)
 		errorCode = InvalidArgument
 		return
 	}
 
-	var tagging = NewTagging()
+	tagging := NewTagging()
 	if err = xml.Unmarshal(requestBody, tagging); err != nil {
 		log.LogWarnf("putObjectTaggingHandler: decode request body fail: requestID(%v) err(%v)",
 			GetRequestID(r), err)
@@ -1890,7 +1889,7 @@ func (o *ObjectNode) deleteObjectTaggingHandler(w http.ResponseWriter, r *http.R
 		o.errorResponse(w, r, err, errorCode)
 	}()
 
-	var param = ParseRequestParam(r)
+	param := ParseRequestParam(r)
 	if param.Bucket() == "" {
 		errorCode = InvalidBucketName
 		return
@@ -1938,7 +1937,7 @@ func (o *ObjectNode) putObjectXAttrHandler(w http.ResponseWriter, r *http.Reques
 		o.errorResponse(w, r, err, errorCode)
 	}()
 
-	var param = ParseRequestParam(r)
+	param := ParseRequestParam(r)
 	if len(param.Bucket()) == 0 {
 		errorCode = InvalidBucketName
 		return
@@ -1966,7 +1965,7 @@ func (o *ObjectNode) putObjectXAttrHandler(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	var requestBody []byte
-	if requestBody, err = ioutil.ReadAll(r.Body); err != nil {
+	if requestBody, err = io.ReadAll(r.Body); err != nil {
 		errorCode = &ErrorCode{
 			ErrorCode:    "BadRequest",
 			ErrorMessage: err.Error(),
@@ -1974,7 +1973,7 @@ func (o *ObjectNode) putObjectXAttrHandler(w http.ResponseWriter, r *http.Reques
 		}
 		return
 	}
-	var putXAttrRequest = PutXAttrRequest{}
+	putXAttrRequest := PutXAttrRequest{}
 	if err = xml.Unmarshal(requestBody, &putXAttrRequest); err != nil {
 		errorCode = &ErrorCode{
 			ErrorCode:    "BadRequest",
@@ -1983,7 +1982,7 @@ func (o *ObjectNode) putObjectXAttrHandler(w http.ResponseWriter, r *http.Reques
 		}
 		return
 	}
-	var key, value = putXAttrRequest.XAttr.Key, putXAttrRequest.XAttr.Value
+	key, value := putXAttrRequest.XAttr.Key, putXAttrRequest.XAttr.Value
 	if len(key) == 0 {
 		return
 	}
@@ -2015,7 +2014,7 @@ func (o *ObjectNode) getObjectXAttrHandler(w http.ResponseWriter, r *http.Reques
 		o.errorResponse(w, r, err, errorCode)
 	}()
 
-	var param = ParseRequestParam(r)
+	param := ParseRequestParam(r)
 	if len(param.Bucket()) == 0 {
 		errorCode = InvalidBucketName
 		return
@@ -2085,7 +2084,7 @@ func (o *ObjectNode) deleteObjectXAttrHandler(w http.ResponseWriter, r *http.Req
 		o.errorResponse(w, r, err, errorCode)
 	}()
 
-	var param = ParseRequestParam(r)
+	param := ParseRequestParam(r)
 	if len(param.Bucket()) == 0 {
 		errorCode = InvalidBucketName
 		return
@@ -2141,7 +2140,7 @@ func (o *ObjectNode) listObjectXAttrs(w http.ResponseWriter, r *http.Request) {
 		o.errorResponse(w, r, err, errorCode)
 	}()
 
-	var param = ParseRequestParam(r)
+	param := ParseRequestParam(r)
 	if len(param.Bucket()) == 0 {
 		errorCode = InvalidBucketName
 		return
@@ -2204,7 +2203,7 @@ func (o *ObjectNode) getObjectRetentionHandler(w http.ResponseWriter, r *http.Re
 	}()
 
 	// check args
-	var param = ParseRequestParam(r)
+	param := ParseRequestParam(r)
 	if param.Bucket() == "" {
 		errorCode = InvalidBucketName
 		return
@@ -2297,7 +2296,7 @@ func GetContentLength(r *http.Request) int64 {
 
 func VerifyContentLength(r *http.Request, bodyLimit int64) (int64, *ErrorCode) {
 	dcl := r.Header.Get(HeaderNameXAmzDecodedContentLength)
-	var length = r.ContentLength
+	length := r.ContentLength
 	if dcl != "" {
 		l, err := strconv.ParseInt(dcl, 10, 64)
 		if err == nil {

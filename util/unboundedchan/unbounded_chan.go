@@ -18,8 +18,8 @@ import "sync/atomic"
 
 type UnboundedChan struct {
 	bufCount int64
-	In       chan<- V //for user to write data into, BUT NOT TO READ FROM! In channel can be "close" by user
-	Out      <-chan V //for user to read data from, BUT NOT TO WRITE INTO!
+	In       chan<- V // for user to write data into, BUT NOT TO READ FROM! In channel can be "close" by user
+	Out      <-chan V // for user to read data from, BUT NOT TO WRITE INTO!
 	buffer   *RingBuffer
 }
 
@@ -62,13 +62,13 @@ func run(in, out chan V, uc *UnboundedChan) {
 	defer close(out)
 LOOP:
 	for {
-		//read data from in channel
+		// read data from in channel
 		val, ok := <-in
 		if !ok {
 			break LOOP
 		}
 
-		//move data to buffer or out channel
+		// move data to buffer or out channel
 		if atomic.LoadInt64(&uc.bufCount) > 0 {
 			uc.feedBuffer(val)
 		} else {
@@ -76,16 +76,15 @@ LOOP:
 			case out <- val:
 				continue
 			default:
-				//out channel is full
+				// out channel is full
 				uc.feedBuffer(val)
 			}
-
 		}
 
-		//try feeding out channel with buffer data
+		// try feeding out channel with buffer data
 		for !uc.buffer.IsEmpty() {
 			select {
-			//when out channel is full, data may still feed in channel
+			// when out channel is full, data may still feed in channel
 			case val, ok := <-in:
 				if !ok {
 					break LOOP
@@ -98,11 +97,10 @@ LOOP:
 					uc.resetBuffer()
 				}
 			}
-
 		}
 	}
 
-	//no more in data, keep feeding out channel with buffer data until it's drained
+	// no more in data, keep feeding out channel with buffer data until it's drained
 	for !uc.buffer.IsEmpty() {
 		out <- uc.buffer.Pop()
 		atomic.AddInt64(&uc.bufCount, -1)

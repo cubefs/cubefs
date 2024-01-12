@@ -90,7 +90,7 @@ func (cp *ConnectPool) GetConnect(targetAddr string) (c *net.TCPConn, err error)
 		cp.Lock()
 		pool, ok = cp.pools[targetAddr]
 		if !ok {
-			//pool = NewPool(cp.mincap, cp.maxcap, cp.timeout, cp.connectTimeout, targetAddr)
+			// pool = NewPool(cp.mincap, cp.maxcap, cp.timeout, cp.connectTimeout, targetAddr)
 			pool = newPool
 			cp.pools[targetAddr] = pool
 		}
@@ -127,7 +127,7 @@ func (cp *ConnectPool) PutConnect(c *net.TCPConn, forceClose bool) {
 }
 
 func (cp *ConnectPool) autoRelease() {
-	var timer = time.NewTimer(time.Second)
+	timer := time.NewTimer(time.Second)
 	for {
 		select {
 		case <-cp.closeCh:
@@ -254,9 +254,7 @@ func (p *Pool) NewConnect(target string) (c *net.TCPConn, err error) {
 }
 
 func (p *Pool) GetConnectFromPool() (c *net.TCPConn, err error) {
-	var (
-		o *Object
-	)
+	var o *Object
 	for {
 		select {
 		case o = <-p.objects:

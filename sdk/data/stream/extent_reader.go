@@ -77,7 +77,7 @@ func (reader *ExtentReader) Read(req *ExtentRequest) (readBytes int, err error) 
 				return TryOtherAddrError, false
 			}
 
-			//log.LogDebugf("ExtentReader Read: ResultCode(%v) req(%v) reply(%v) readBytes(%v)", replyPacket.GetResultMsg(), reqPacket, replyPacket, readBytes)
+			// log.LogDebugf("ExtentReader Read: ResultCode(%v) req(%v) reply(%v) readBytes(%v)", replyPacket.GetResultMsg(), reqPacket, replyPacket, readBytes)
 
 			if replyPacket.ResultCode == proto.OpAgain {
 				return nil, true
@@ -97,7 +97,7 @@ func (reader *ExtentReader) Read(req *ExtentRequest) (readBytes int, err error) 
 	})
 
 	if err != nil {
-		//if cold vol and cach is invaild
+		// if cold vol and cach is invaild
 		if !reader.retryRead && (err == TryOtherAddrError || strings.Contains(err.Error(), "ExistErr")) {
 			log.LogWarnf("Extent Reader Read: err(%v) req(%v) reqPacket(%v)", err, req, reqPacket)
 		} else {

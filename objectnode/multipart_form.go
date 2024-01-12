@@ -18,7 +18,6 @@ import (
 	"bytes"
 	"errors"
 	"io"
-	"io/ioutil"
 	"mime"
 	"mime/multipart"
 	"net/http"
@@ -213,7 +212,7 @@ func (fr *formReader) close() error {
 			return err
 		}
 		// discard the keys after "file" if exist
-		io.Copy(ioutil.Discard, p)
+		io.Copy(io.Discard, p)
 	}
 }
 

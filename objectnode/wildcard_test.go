@@ -17,8 +17,7 @@ package objectnode
 import "testing"
 
 func TestWildcards_Parse(t *testing.T) {
-
-	var domains = []string{
+	domains := []string{
 		"object.cube.io",
 		"oss.cube.io",
 	}
@@ -33,7 +32,7 @@ func TestWildcards_Parse(t *testing.T) {
 		e expect
 	}
 
-	var samples = []sample{
+	samples := []sample{
 		{h: "object.cube.io", e: expect{wildcard: false}},
 		{h: "object.cube.io:8080", e: expect{wildcard: false}},
 		{h: "a.object.cube.io", e: expect{wildcard: true, bucket: "a"}},

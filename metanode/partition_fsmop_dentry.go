@@ -34,7 +34,6 @@ func NewDentryResponse() *DentryResponse {
 }
 
 func (mp *metaPartition) fsmTxCreateDentry(txDentry *TxDentry) (status uint8) {
-
 	done := mp.txProcessor.txManager.txInRMDone(txDentry.TxInfo.TxID)
 	if done {
 		log.LogWarnf("fsmTxCreateDentry: tx is already finish. txId %s", txDentry.TxInfo.TxID)
@@ -94,7 +93,7 @@ func (mp *metaPartition) fsmCreateDentry(dentry *Dentry,
 	}
 
 	if item, ok := mp.dentryTree.ReplaceOrInsert(dentry, false); !ok {
-		//do not allow directories and files to overwrite each
+		// do not allow directories and files to overwrite each
 		// other when renaming
 		d := item.(*Dentry)
 		if d.isDeleted() {
@@ -223,7 +222,6 @@ func (mp *metaPartition) fsmTxDeleteDentry(txDentry *TxDentry) (resp *DentryResp
 
 // Delete dentry from the dentry tree.
 func (mp *metaPartition) fsmDeleteDentry(denParm *Dentry, checkInode bool) (resp *DentryResponse) {
-
 	log.LogDebugf("action[fsmDeleteDentry] mp [%v] delete param (%v) seq %v", mp.config.PartitionId, denParm, denParm.getSeqFiled())
 	resp = NewDentryResponse()
 	resp.Status = proto.OpOk

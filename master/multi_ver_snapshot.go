@@ -3,11 +3,12 @@ package master
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/cubefs/cubefs/proto"
-	"github.com/cubefs/cubefs/util/log"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util/log"
 )
 
 type Ver2PhaseCommit struct {
@@ -69,10 +70,12 @@ func newVersionMgr(vol *Vol) (mgr *VolVersionManager) {
 	}
 	return
 }
+
 func (verMgr *VolVersionManager) String() string {
 	return fmt.Sprintf("mgr:{vol[%v],status[%v] verSeq [%v], prepareinfo [%v], verlist [%v]}",
 		verMgr.vol.Name, verMgr.status, verMgr.verSeq, verMgr.prepareCommit, verMgr.multiVersionList)
 }
+
 func (verMgr *VolVersionManager) Persist() (err error) {
 	persistInfo := &VolVersionPersist{
 		MultiVersionList: verMgr.multiVersionList,
@@ -296,7 +299,6 @@ const (
 )
 
 func (verMgr *VolVersionManager) handleTaskRsp(resp *proto.MultiVersionOpResponse, partitionType uint32) {
-
 	verMgr.RLock()
 	defer verMgr.RUnlock()
 	log.LogInfof("action[handleTaskRsp] vol %v node %v partitionType %v,op %v, inner op %v", verMgr.vol.Name,
@@ -361,8 +363,8 @@ func (verMgr *VolVersionManager) handleTaskRsp(resp *proto.MultiVersionOpRespons
 	if atomic.LoadUint32(&verMgr.prepareCommit.commitCnt) == verMgr.prepareCommit.nodeCnt && needCommit {
 		if verMgr.prepareCommit.op == proto.DeleteVersion {
 			verMgr.CommitVer()
-			//verMgr.prepareCommit.reset()
-			//verMgr.prepareCommit.prepareInfo.Status = proto.VersionWorkingFinished
+			// verMgr.prepareCommit.reset()
+			// verMgr.prepareCommit.prepareInfo.Status = proto.VersionWorkingFinished
 			log.LogWarnf("action[handleTaskRsp] vol %v do Del version finished, verMgr %v", verMgr.vol.Name, verMgr)
 		} else if verMgr.prepareCommit.op == proto.CreateVersionPrepare {
 			log.LogInfof("action[handleTaskRsp] vol %v ver update prepare sucess. op %v, verseq %v,commit cnt %v", verMgr.vol.Name,
@@ -378,9 +380,7 @@ func (verMgr *VolVersionManager) handleTaskRsp(resp *proto.MultiVersionOpRespons
 }
 
 func (verMgr *VolVersionManager) createTaskToDataNode(cluster *Cluster, verSeq uint64, op uint8, force bool) (err error) {
-	var (
-		dpHost sync.Map
-	)
+	var dpHost sync.Map
 
 	log.LogWarnf("action[createTaskToDataNode] vol %v verMgr.status %v verSeq %v op %v force %v, prepareCommit.nodeCnt %v",
 		verMgr.vol.Name, verMgr.status, verSeq, op, force, verMgr.prepareCommit.nodeCnt)
@@ -566,11 +566,10 @@ func (verMgr *VolVersionManager) initVer2PhaseTask(verSeq uint64, op uint8) (ver
 		}
 
 		verMgr.prepareCommit.op = op
-		verMgr.prepareCommit.prepareInfo =
-			&proto.VolVersionInfo{
-				Ver:    verSeq,
-				Status: proto.VersionWorking,
-			}
+		verMgr.prepareCommit.prepareInfo = &proto.VolVersionInfo{
+			Ver:    verSeq,
+			Status: proto.VersionWorking,
+		}
 	}
 	opRes = op
 	return

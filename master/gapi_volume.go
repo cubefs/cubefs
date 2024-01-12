@@ -81,7 +81,6 @@ func (s *VolumeService) registerObject(schema *schemabuilder.Schema) {
 		}
 		return v.createTime, nil
 	})
-
 }
 
 func (s *VolumeService) registerQuery(schema *schemabuilder.Schema) {
@@ -98,7 +97,6 @@ func (s *VolumeService) registerMutation(schema *schemabuilder.Schema) {
 	mutation.FieldFunc("createVolume", s.createVolume)
 	// mutation.FieldFunc("deleteVolume", s.markDeleteVol)
 	mutation.FieldFunc("updateVolume", s.updateVolume)
-
 }
 
 type UserPermission struct {
@@ -110,7 +108,8 @@ type UserPermission struct {
 func (s *VolumeService) volPermission(ctx context.Context, args struct {
 	VolName string
 	UserID  *string
-}) ([]*UserPermission, error) {
+},
+) ([]*UserPermission, error) {
 	uid, perm, err := permissions(ctx, ADMIN|USER)
 	if err != nil {
 		return nil, err
@@ -178,7 +177,8 @@ func (s *VolumeService) createVolume(ctx context.Context, args struct {
 	Capacity, DataPartitionSize, MpCount, DpCount, DpReplicaNum uint64
 	FollowerRead, Authenticate, CrossZone, DefaultPriority      bool
 	iopsRLimit, iopsWLimit, flowRlimit, flowWlimit              uint64
-}) (*Vol, error) {
+},
+) (*Vol, error) {
 	uid, per, err := permissions(ctx, ADMIN|USER)
 	if err != nil {
 		return nil, err
@@ -216,19 +216,17 @@ func (s *VolumeService) createVolume(ctx context.Context, args struct {
 		description:      args.Description,
 	}
 	vol, err := s.cluster.createVol(req)
-
 	if err != nil {
 		return nil, err
 	}
 
 	userInfo, err := s.user.getUserInfo(args.Owner)
-
 	if err != nil {
 		if err != proto.ErrUserNotExists {
 			return nil, err
 		}
 
-		var param = proto.UserCreateParam{
+		param := proto.UserCreateParam{
 			ID:       args.Owner,
 			Password: DefaultUserPassword,
 			Type:     proto.UserTypeNormal,
@@ -247,7 +245,8 @@ func (s *VolumeService) createVolume(ctx context.Context, args struct {
 
 func (s *VolumeService) markDeleteVol(ctx context.Context, args struct {
 	Name, AuthKey string
-}) (*proto.GeneralResp, error) {
+},
+) (*proto.GeneralResp, error) {
 	uid, perm, err := permissions(ctx, ADMIN|USER)
 	if err != nil {
 		return nil, err
@@ -281,7 +280,8 @@ func (s *VolumeService) updateVolume(ctx context.Context, args struct {
 	ZoneName, Description      *string
 	Capacity, ReplicaNum       *uint64
 	FollowerRead, Authenticate *bool
-}) (*Vol, error) {
+},
+) (*Vol, error) {
 	uid, perm, err := permissions(ctx, ADMIN|USER)
 	if err != nil {
 		return nil, err
@@ -345,7 +345,8 @@ func (s *VolumeService) updateVolume(ctx context.Context, args struct {
 func (s *VolumeService) listVolume(ctx context.Context, args struct {
 	UserID  *string
 	Keyword *string
-}) ([]*Vol, error) {
+},
+) ([]*Vol, error) {
 	uid, perm, err := permissions(ctx, ADMIN|USER)
 	if err != nil {
 		return nil, err
@@ -376,8 +377,9 @@ func (s *VolumeService) listVolume(ctx context.Context, args struct {
 
 func (s *VolumeService) getVolume(ctx context.Context, args struct {
 	Name string
-}) (*Vol, error) {
-
+},
+) (*Vol, error,
+) {
 	uid, perm, err := permissions(ctx, ADMIN|USER)
 	if err != nil {
 		return nil, err

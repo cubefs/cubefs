@@ -40,7 +40,6 @@ func NewKeyFlowCtrl() *KeyFlowCtrl {
 }
 
 func (k *KeyFlowCtrl) Acquire(key string, rate int) *Controller {
-
 	k.mutex.Lock()
 	ctrl, ok := k.current[key]
 	if !ok {
@@ -53,7 +52,6 @@ func (k *KeyFlowCtrl) Acquire(key string, rate int) *Controller {
 }
 
 func (k *KeyFlowCtrl) Release(key string) {
-
 	k.mutex.Lock()
 	defer k.mutex.Unlock()
 	ctrl, ok := k.current[key]

@@ -27,9 +27,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/cubefs/cubefs/util"
-
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/log"
 )
 
@@ -359,10 +358,8 @@ func (mw *MetaWrapper) Lookup_ll(parentID uint64, name string) (inode uint64, mo
 
 func (mw *MetaWrapper) BatchGetExpiredMultipart(prefix string, days int) (expiredIds []*proto.ExpiredMultipartInfo, err error) {
 	partitions := mw.partitions
-	var (
-		mp *MetaPartition
-	)
-	var wg = new(sync.WaitGroup)
+	var mp *MetaPartition
+	wg := new(sync.WaitGroup)
 	var resultMu sync.Mutex
 	log.LogDebugf("BatchGetExpiredMultipart: mp num(%v) prefix(%v) days(%v)", len(partitions), prefix, days)
 	for _, mp = range partitions {
@@ -502,7 +499,7 @@ func (mw *MetaWrapper) BatchGetXAttr(inodes []uint64, keys []string) ([]*proto.X
 		mpInodes = make(map[uint64][]uint64)       // Mapping: partition ID -> inodes
 	)
 	for _, ino := range inodes {
-		var mp = mw.getPartitionByInode(ino)
+		mp := mw.getPartitionByInode(ino)
 		if mp != nil {
 			mps[mp.PartitionID] = mp
 			mpInodes[mp.PartitionID] = append(mpInodes[mp.PartitionID], ino)
@@ -540,7 +537,7 @@ func (mw *MetaWrapper) BatchGetXAttr(inodes []uint64, keys []string) ([]*proto.X
 		return nil, <-errorsCh
 	}
 
-	var xattrs = make([]*proto.XAttrInfo, 0, len(inodes))
+	xattrs := make([]*proto.XAttrInfo, 0, len(inodes))
 	for {
 		info := <-xattrsCh
 		if info == nil {
@@ -558,6 +555,7 @@ func (mw *MetaWrapper) Delete_ll(parentID uint64, name string, isDir bool, fullP
 		return mw.Delete_ll_EX(parentID, name, isDir, 0, fullPath)
 	}
 }
+
 func (mw *MetaWrapper) Delete_Ver_ll(parentID uint64, name string, isDir bool, verSeq uint64, fullPath string) (*proto.InodeInfo, error) {
 	if verSeq == 0 {
 		verSeq = math.MaxUint64
@@ -832,7 +830,6 @@ func isObjectLocked(mw *MetaWrapper, inode uint64, name string) error {
 }
 
 func (mw *MetaWrapper) deletewithcond_ll(parentID, cond uint64, name string, isDir bool, fullPath string) (*proto.InodeInfo, error) {
-
 	err := isObjectLocked(mw, cond, name)
 	if err != nil {
 		return nil, err
@@ -1014,12 +1011,11 @@ func (mw *MetaWrapper) txRename_ll(srcParentID uint64, srcName string, dstParent
 			newSt, newErr = mw.txDcreate(tx, dstParentMP, dstParentID, dstName, srcInode, srcMode, []uint32{}, dstFullPath)
 			return newSt, newErr
 		})
-
 	} else {
 		return statusToErrno(status)
 	}
 
-	//var inode uint64
+	// var inode uint64
 	funcs = append(funcs, func() (int, error) {
 		var newSt int
 		var newErr error
@@ -1513,7 +1509,6 @@ func (mw *MetaWrapper) Truncate(inode, size uint64, fullPath string) error {
 		return statusToErrno(status)
 	}
 	return nil
-
 }
 
 func (mw *MetaWrapper) Link(parentID uint64, name string, ino uint64, fullPath string) (*proto.InodeInfo, error) {
@@ -1872,7 +1867,7 @@ func (mw *MetaWrapper) GetMultipart_ll(path, multipartId string) (info *proto.Mu
 		info, _, err = mw.broadcastGetMultipart(path, multipartId)
 		return
 	}
-	var mp = mw.getPartitionByID(mpId)
+	mp := mw.getPartitionByID(mpId)
 	if mp == nil {
 		err = syscall.ENOENT
 		return
@@ -1900,7 +1895,7 @@ func (mw *MetaWrapper) AddMultipartPart_ll(path, multipartId string, partId uint
 			return
 		}
 	}
-	var mp = mw.getPartitionByID(mpId)
+	mp := mw.getPartitionByID(mpId)
 	if mp == nil {
 		log.LogWarnf("AddMultipartPart_ll: has no meta partition: multipartId(%v) mpId(%v)", multipartId, mpId)
 		err = syscall.ENOENT
@@ -1927,7 +1922,7 @@ func (mw *MetaWrapper) RemoveMultipart_ll(path, multipartID string) (err error) 
 			return
 		}
 	}
-	var mp = mw.getPartitionByID(mpId)
+	mp := mw.getPartitionByID(mpId)
 	if mp == nil {
 		err = syscall.ENOENT
 		return
@@ -1945,10 +1940,8 @@ func (mw *MetaWrapper) RemoveMultipart_ll(path, multipartID string) (err error) 
 func (mw *MetaWrapper) broadcastGetMultipart(path, multipartId string) (info *proto.MultipartInfo, mpID uint64, err error) {
 	log.LogInfof("broadcastGetMultipart: find meta partition broadcast multipartId(%v)", multipartId)
 	partitions := mw.partitions
-	var (
-		mp *MetaPartition
-	)
-	var wg = new(sync.WaitGroup)
+	var mp *MetaPartition
+	wg := new(sync.WaitGroup)
 	var resultMu sync.Mutex
 	for _, mp = range partitions {
 		wg.Add(1)
@@ -1980,9 +1973,9 @@ func (mw *MetaWrapper) broadcastGetMultipart(path, multipartId string) (info *pr
 
 func (mw *MetaWrapper) ListMultipart_ll(prefix, delimiter, keyMarker string, multipartIdMarker string, maxUploads uint64) (sessionResponse []*proto.MultipartInfo, err error) {
 	partitions := mw.partitions
-	var wg = sync.WaitGroup{}
-	var wl = sync.Mutex{}
-	var sessions = make([]*proto.MultipartInfo, 0)
+	wg := sync.WaitGroup{}
+	wl := sync.Mutex{}
+	sessions := make([]*proto.MultipartInfo, 0)
 
 	for _, mp := range partitions {
 		wg.Add(1)

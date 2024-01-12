@@ -49,9 +49,7 @@ func unpad(src []byte) []byte {
 
 // AesEncryptCBC defines aes encryption with CBC
 func AesEncryptCBC(key, plaintext []byte) (ciphertext []byte, err error) {
-	var (
-		block cipher.Block
-	)
+	var block cipher.Block
 
 	if len(plaintext) == 0 {
 		err = fmt.Errorf("input for encryption is invalid")
@@ -170,7 +168,6 @@ func EncodeMessage(plaintext []byte, key []byte) (message string, err error) {
 	message = base64.StdEncoding.EncodeToString(cipher)
 
 	return
-
 }
 
 // DecodeMessage decode a message and verify its validity
@@ -208,7 +205,7 @@ func DecodeMessage(message string, key []byte) (plaintext []byte, err error) {
 
 	plaintext = decodedText[MessageOffset:]
 
-	//fmt.Printf("DecodeMessage CBC: %s\n", plaintext)
+	// fmt.Printf("DecodeMessage CBC: %s\n", plaintext)
 	return
 }
 

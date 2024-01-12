@@ -17,7 +17,7 @@ package objectnode
 type PolicyCheckResult int
 
 const (
-	POLICY_UNKNOW PolicyCheckResult = iota + 1 //no policy or not match
+	POLICY_UNKNOW PolicyCheckResult = iota + 1 // no policy or not match
 	POLICY_ALLOW
 	POLICY_DENY
 )
@@ -30,6 +30,7 @@ const (
 	REFERER  = "Referer"
 	HOST     = "Host"
 )
+
 const (
 	Principal_Any       PrincipalElementType = "*"
 	S3_ACTION_PREFIX                         = "s3:"
@@ -37,15 +38,15 @@ const (
 	S3_PRINCIPAL_PREFIX                      = "AWS"
 )
 
-//if more s3 api is supported by policy, need extend bucketApiList, objectApiList
+// if more s3 api is supported by policy, need extend bucketApiList, objectApiList
 var bucketApiList = SliceString{LIST_OBJECTS, LIST_OBJECTS_V2, HEAD_BUCKET, DELETE_BUCKET, LIST_MULTIPART_UPLOADS, GET_BUCKET_LOCATION, GET_OBJECT_LOCK_CFG, PUT_OBJECT_LOCK_CFG}
 var objectApiList = SliceString{GET_OBJECT, HEAD_OBJECT, DELETE_OBJECT, PUT_OBJECT, POST_OBJECT, INITIALE_MULTIPART_UPLOAD, UPLOAD_PART, UPLOAD_PART_COPY, COMPLETE_MULTIPART_UPLOAD, COPY_OBJECT, ABORT_MULTIPART_UPLOAD, LIST_PARTS, BATCH_DELETE, GET_OBJECT_RETENTION}
 
 type SliceString []string
 
-//https://docs.aws.amazon.com/AmazonS3/latest/dev/using-with-s3-actions.html
+// https://docs.aws.amazon.com/AmazonS3/latest/dev/using-with-s3-actions.html
 const (
-	//object level
+	// object level
 	ACTION_GET_OBJECT                  = "getobject"
 	ACTION_DELETE_OBJECT               = "deleteobject"
 	ACTION_PUT_OBJECT                  = "putobject"
@@ -53,7 +54,7 @@ const (
 	ACTION_LIST_MULTIPART_UPLOAD_PARTS = "listmultipartuploadparts"
 	ACTION_GET_OBJECT_RETENTION        = "getobjectretention"
 
-	//bucket level
+	// bucket level
 	ACTION_LIST_BUCKET                   = "listbucket"
 	ACTION_DELETE_BUCKET                 = "deletebucket"
 	ACTION_LIST_BUCKET_MULTIPART_UPLOADS = "listbucketmultipartuploads"
@@ -61,7 +62,7 @@ const (
 	ACTION_GET_OBJECT_LOCK_CFG           = "getobjectlockconfiguration"
 	ACTION_PUT_OBJECT_LOCK_CFG           = "putobjectlockconfiguration"
 
-	//bucket + object level
+	// bucket + object level
 	ACTION_ANY = "*"
 )
 
@@ -83,7 +84,7 @@ var S3ActionToApis = map[string]SliceString{
 
 var allowAnonymousActions = SliceString{ACTION_GET_OBJECT}
 
-//if more bucket actions support policy, need extend validBucketActions
+// if more bucket actions support policy, need extend validBucketActions
 var validBucketActions = SliceString{ACTION_LIST_BUCKET, ACTION_DELETE_BUCKET, ACTION_LIST_BUCKET_MULTIPART_UPLOADS, ACTION_GET_BUCKET_LOCATION, ACTION_PUT_OBJECT_LOCK_CFG, ACTION_GET_OBJECT_LOCK_CFG}
 
 func isPolicyApi(apiName string) bool {

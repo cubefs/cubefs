@@ -75,7 +75,7 @@ func writeDataNode(listen, prof, id, localIP string, masterAddrs, disks []string
 		return err
 	}
 
-	err = ioutil.WriteFile(ConfDir+"/datanode"+id+".json", dataNodeData, 0644)
+	err = ioutil.WriteFile(ConfDir+"/datanode"+id+".json", dataNodeData, 0o644)
 	if err != nil {
 		log.Println("Unable to write to DataNode.json file:", err)
 		return err
@@ -93,7 +93,7 @@ func startAllDataNode() error {
 		diskMap := ""
 		for _, info := range node.Disk {
 			diskMap += " -v " + info.Path + ":/cfs" + info.Path
-			//disksInfo = append(disksInfo, "/cfs"+info.Path+":"+info.Size)
+			// disksInfo = append(disksInfo, "/cfs"+info.Path+":"+info.Size)
 		}
 		disksInfo = append(disksInfo, diskMap)
 	}
@@ -133,7 +133,6 @@ func startAllDataNode() error {
 			index++
 			log.Println(status)
 		}
-
 	}
 
 	log.Println("start all datanode services")
@@ -141,7 +140,6 @@ func startAllDataNode() error {
 }
 
 func startDatanodeInSpecificNode(node string) error {
-
 	config, err := readConfig()
 	if err != nil {
 		return err
@@ -168,7 +166,6 @@ func startDatanodeInSpecificNode(node string) error {
 			diskMap := ""
 			for _, info := range n.Disk {
 				diskMap += " -v " + info.Path + ":/cfs" + info.Path
-
 			}
 			status, err := startDatanodeContainerOnNode(RemoteUser, node, DataNodeName+strconv.Itoa(id+1), dataDir, diskMap)
 			if err != nil {
@@ -205,7 +202,6 @@ func stopDatanodeInSpecificNode(node string) error {
 }
 
 func stopAllDataNode() error {
-
 	files, err := ioutil.ReadDir(ConfDir)
 	if err != nil {
 		return err

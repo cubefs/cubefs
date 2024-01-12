@@ -26,7 +26,7 @@ var (
 	AlarmPool = &sync.Pool{New: func() interface{} {
 		return new(Alarm)
 	}}
-	//AlarmGroup  sync.Map
+	// AlarmGroup  sync.Map
 	AlarmCh chan *Alarm
 )
 

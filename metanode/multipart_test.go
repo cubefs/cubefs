@@ -52,8 +52,8 @@ func TestMUPart_Bytes(t *testing.T) {
 
 func TestMUParts_Bytes(t *testing.T) {
 	var err error
-	var random = rand.New(rand.NewSource(time.Now().UnixNano()))
-	var parts1 = PartsFromBytes(nil)
+	random := rand.New(rand.NewSource(time.Now().UnixNano()))
+	parts1 := PartsFromBytes(nil)
 	for i := 0; i < 100; i++ {
 		part := &Part{
 			ID:         uint16(i),
@@ -77,8 +77,8 @@ func TestMUParts_Bytes(t *testing.T) {
 }
 
 func TestMUParts_Modify(t *testing.T) {
-	var random = rand.New(rand.NewSource(time.Now().UnixNano()))
-	var parts = PartsFromBytes(nil)
+	random := rand.New(rand.NewSource(time.Now().UnixNano()))
+	parts := PartsFromBytes(nil)
 	for i := 0; i < 100; i++ {
 		part := &Part{
 			ID:         uint16(i),
@@ -123,8 +123,8 @@ func TestMUParts_Modify(t *testing.T) {
 
 func TestMUSession_Bytes(t *testing.T) {
 	var err error
-	var random = rand.New(rand.NewSource(time.Now().UnixNano()))
-	var session1 = MultipartFromBytes(nil)
+	random := rand.New(rand.NewSource(time.Now().UnixNano()))
+	session1 := MultipartFromBytes(nil)
 
 	me := NewMultipartExtend()
 	me["oss::tag"] = "name=123&age456"

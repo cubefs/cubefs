@@ -292,7 +292,6 @@ func (w *Wrapper) CheckPermission() {
 }
 
 func (w *Wrapper) updateVerlist(client SimpleClientInfo) (err error) {
-
 	verList, err := w.mc.AdminAPI().GetVerList(w.volName)
 	if err != nil {
 		log.LogErrorf("CheckReadVerSeq: get cluster fail: err(%v)", err)
@@ -348,8 +347,7 @@ func (w *Wrapper) updateSimpleVolView() (err error) {
 }
 
 func (w *Wrapper) updateDataPartitionByRsp(isInit bool, DataPartitions []*proto.DataPartitionResponse) (err error) {
-
-	var convert = func(response *proto.DataPartitionResponse) *DataPartition {
+	convert := func(response *proto.DataPartitionResponse) *DataPartition {
 		return &DataPartition{
 			DataPartitionResponse: *response,
 			ClientWrapper:         w,
@@ -371,7 +369,7 @@ func (w *Wrapper) updateDataPartitionByRsp(isInit bool, DataPartitions []*proto.
 		}
 		log.LogInfof("updateDataPartition: dp(%v)", dp)
 		w.replaceOrInsertPartition(dp)
-		//do not insert preload dp in cold vol
+		// do not insert preload dp in cold vol
 		if proto.IsCold(w.volType) && proto.IsPreLoadDp(dp.PartitionType) {
 			continue
 		}
@@ -417,7 +415,6 @@ func (w *Wrapper) UpdateDataPartition() (err error) {
 // getDataPartitionFromMaster will call master to get data partition info which not include in  cache updated by
 // updateDataPartition which may not take effect if nginx be placed for reduce the pressure of master
 func (w *Wrapper) getDataPartitionFromMaster(isInit bool, dpId uint64) (err error) {
-
 	var dpInfo *proto.DataPartitionInfo
 	if dpInfo, err = w.mc.AdminAPI().GetDataPartition(w.volName, dpId); err != nil {
 		log.LogErrorf("getDataPartitionFromMaster: get data partitions fail: volume(%v) dpId(%v) err(%v)",
@@ -461,7 +458,7 @@ func (w *Wrapper) AllocatePreLoadDataPartition(volName string, count int, capaci
 		log.LogWarnf("CreatePreLoadDataPartition fail: err(%v)", err)
 		return
 	}
-	var convert = func(response *proto.DataPartitionResponse) *DataPartition {
+	convert := func(response *proto.DataPartitionResponse) *DataPartition {
 		return &DataPartition{
 			DataPartitionResponse: *response,
 			ClientWrapper:         w,
@@ -484,9 +481,7 @@ func (w *Wrapper) AllocatePreLoadDataPartition(volName string, count int, capaci
 }
 
 func (w *Wrapper) replaceOrInsertPartition(dp *DataPartition) {
-	var (
-		oldstatus int8
-	)
+	var oldstatus int8
 	w.Lock.Lock()
 	old, ok := w.partitions[dp.PartitionID]
 	if ok {

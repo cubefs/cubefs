@@ -12,7 +12,7 @@ func TestCleanRaftLog(t *testing.T) {
 	dir := path.Join("/tmp/raft", "logs")
 	_, err := os.Stat(dir)
 	if os.IsNotExist(err) {
-		os.MkdirAll(dir, 0755)
+		os.MkdirAll(dir, 0o755)
 	}
 
 	logFilePath1 := path.Join(dir, "raft_info.log.old")

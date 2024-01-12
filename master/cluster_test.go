@@ -21,7 +21,7 @@ func buildPanicVol() *Vol {
 	if err != nil {
 		return nil
 	}
-	var createTime = time.Now().Unix() // record create time of this volume
+	createTime := time.Now().Unix() // record create time of this volume
 
 	vv := volValue{
 		ID:                id,
@@ -68,6 +68,7 @@ func TestPanicBackendLoadDataPartitions(t *testing.T) {
 func TestCheckReleaseDataPartitions(t *testing.T) {
 	server.cluster.releaseDataPartitionAfterLoad()
 }
+
 func TestPanicCheckReleaseDataPartitions(t *testing.T) {
 	c := buildPanicCluster()
 	c.releaseDataPartitionAfterLoad()
@@ -112,7 +113,7 @@ func TestPanicCheckAvailSpace(t *testing.T) {
 
 func TestCheckCreateDataPartitions(t *testing.T) {
 	server.cluster.scheduleToManageDp()
-	//time.Sleep(150 * time.Second)
+	// time.Sleep(150 * time.Second)
 }
 
 func TestPanicCheckCreateDataPartitions(t *testing.T) {
@@ -138,7 +139,7 @@ func TestPanicCheckBadDiskRecovery(t *testing.T) {
 func TestCheckBadDiskRecovery(t *testing.T) {
 	server.cluster.checkDataNodeHeartbeat()
 	time.Sleep(5 * time.Second)
-	//clear
+	// clear
 	server.cluster.BadDataPartitionIds.Range(func(key, value interface{}) bool {
 		server.cluster.BadDataPartitionIds.Delete(key)
 		return true
@@ -182,7 +183,7 @@ func TestCheckBadDiskRecovery(t *testing.T) {
 		t.Errorf("expect bad partition num[%v],real num[%v]", dpsLen, count)
 		return
 	}
-	//check recovery
+	// check recovery
 	server.cluster.checkDiskRecoveryProgress()
 
 	count = 0
@@ -214,7 +215,7 @@ func TestPanicCheckBadMetaPartitionRecovery(t *testing.T) {
 func TestCheckBadMetaPartitionRecovery(t *testing.T) {
 	server.cluster.checkMetaNodeHeartbeat()
 	time.Sleep(5 * time.Second)
-	//clear
+	// clear
 	server.cluster.BadMetaPartitionIds.Range(func(key, value interface{}) bool {
 		server.cluster.BadMetaPartitionIds.Delete(key)
 		return true
@@ -258,7 +259,7 @@ func TestCheckBadMetaPartitionRecovery(t *testing.T) {
 		t.Errorf("expect bad partition num[%v],real num[%v]", mpsLen, count)
 		return
 	}
-	//check recovery
+	// check recovery
 	server.cluster.checkMetaPartitionRecoveryProgress()
 
 	count = 0
@@ -305,7 +306,6 @@ func TestUpdateInodeIDUpperBound(t *testing.T) {
 	if curMpLen == mpLen {
 		t.Errorf("split failed,oldMpLen[%v],curMpLen[%v]", mpLen, curMpLen)
 	}
-
 }
 
 func TestBalanceMetaPartition(t *testing.T) {

@@ -32,7 +32,7 @@ const (
 	// AWSSourceIP - key representing client's IP address (not intermittent proxies) of any API.
 	AWSSourceIP Key = "aws:SourceIp"
 
-	//AWSHost - key representing client's request host of any API, this is not standard AWS key
+	// AWSHost - key representing client's request host of any API, this is not standard AWS key
 	AWSHost Key = "aws:Host"
 )
 
@@ -62,7 +62,7 @@ func (key Key) MarshalJSON() ([]byte, error) {
 	return json.Marshal(string(key))
 }
 
-//returns key operator which is stripped value of prefixes "aws:" and "s3:"
+// returns key operator which is stripped value of prefixes "aws:" and "s3:"
 func (key Key) Name() string {
 	keyString := string(key)
 
@@ -124,7 +124,6 @@ func (set KeySet) AddAll(keys KeySet) {
 	for key := range keys {
 		set[key] = struct{}{}
 	}
-
 }
 
 // returns a key set contains difference of two key set.

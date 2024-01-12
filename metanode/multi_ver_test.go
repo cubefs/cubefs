@@ -34,9 +34,11 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-var partitionId uint64 = 10
-var manager = &metadataManager{partitions: make(map[uint64]MetaPartition), volUpdating: new(sync.Map)}
-var mp *metaPartition
+var (
+	partitionId uint64 = 10
+	manager            = &metadataManager{partitions: make(map[uint64]MetaPartition), volUpdating: new(sync.Map)}
+	mp          *metaPartition
+)
 
 // PartitionId   uint64              `json:"partition_id"`
 // VolName       string              `json:"vol_name"`
@@ -163,7 +165,7 @@ func checkOffSetInSequnce(t *testing.T, eks []proto.ExtentKey) bool {
 	)
 
 	for idx, ext := range eks[1:] {
-		//t.Logf("idx:%v ext:%v, lastFileOff %v, lastSize %v", idx, ext, lastFileOff, lastSize)
+		// t.Logf("idx:%v ext:%v, lastFileOff %v, lastSize %v", idx, ext, lastFileOff, lastSize)
 		if ext.FileOffset != lastFileOff+uint64(lastSize) {
 			t.Errorf("checkOffSetInSequnce not equal idx %v %v:(%v+%v) eks{%v}", idx, ext.FileOffset, lastFileOff, lastSize, eks)
 			return false
@@ -229,7 +231,6 @@ func testCreateInode(t *testing.T, mode uint32) *Inode {
 }
 
 func testCreateDentry(t *testing.T, parentId uint64, inodeId uint64, name string, mod uint32) *Dentry {
-
 	dentry := &Dentry{
 		ParentId:  parentId,
 		Name:      name,
@@ -379,7 +380,6 @@ func TestSplitKeyDeletion(t *testing.T) {
 
 	assert.True(t, testGetSplitSize(t, fileIno) == 0)
 	assert.True(t, testGetEkRefCnt(t, fileIno, &initExt) == 0)
-
 }
 
 func testGetlastVer() (verSeq uint64) {
@@ -404,7 +404,7 @@ func testCreateVer() (verSeq uint64) {
 }
 
 func testReadDirAll(t *testing.T, verSeq uint64, parentId uint64) (resp *ReadDirLimitResp) {
-	//testPrintAllDentry(t)
+	// testPrintAllDentry(t)
 	t.Logf("[testReadDirAll] with seq %v parentId %v", verSeq, parentId)
 	req := &ReadDirLimitReq{
 		PartitionID: partitionId,
@@ -432,8 +432,10 @@ func testVerListRemoveVer(t *testing.T, verSeq uint64) bool {
 	return false
 }
 
-var ct = uint64(time.Now().Unix())
-var seqAllArr = []uint64{0, ct, ct + 2111, ct + 10333, ct + 53456, ct + 60000, ct + 72344, ct + 234424, ct + 334424}
+var (
+	ct        = uint64(time.Now().Unix())
+	seqAllArr = []uint64{0, ct, ct + 2111, ct + 10333, ct + 53456, ct + 60000, ct + 72344, ct + 234424, ct + 334424}
+)
 
 func TestAppendList(t *testing.T) {
 	initMp(t)
@@ -445,7 +447,7 @@ func TestAppendList(t *testing.T) {
 		mp.multiVersionList.VerList = append(mp.multiVersionList.VerList, verInfo)
 	}
 
-	var ino = testCreateInode(t, 0)
+	ino := testCreateInode(t, 0)
 	t.Logf("enter TestAppendList")
 	index := 5
 	seqArr := seqAllArr[1:index]
@@ -482,7 +484,7 @@ func TestAppendList(t *testing.T) {
 
 	//-------------   split at begin -----------------------------------------
 	t.Logf("start split at begin")
-	var splitSeq = seqAllArr[index]
+	splitSeq := seqAllArr[index]
 	splitKey := buildExtentKey(splitSeq, 0, 0, 128000, 10)
 	extents := &SortedExtents{}
 	extents.eks = append(extents.eks, splitKey)
@@ -580,7 +582,7 @@ func TestAppendList(t *testing.T) {
 	assert.True(t, len(getExtRsp.Extents) == lastTopEksLen+1)
 	assert.True(t, len(ino.Extents.eks) == lastTopEksLen+1)
 	assert.True(t, isExtEqual(ino.Extents.eks[lastTopEksLen], splitKey))
-	//assert.True(t, false)
+	// assert.True(t, false)
 
 	//--------  split at the splited one  -----------------------------------------------
 	t.Logf("start split at end")
@@ -651,7 +653,6 @@ func testPrintAllInodeInfo(t *testing.T) {
 }
 
 func testPrintInodeInfo(t *testing.T, ino *Inode) {
-
 	i := mp.inodeTree.Get(ino).(*Inode)
 	t.Logf("action[PrintAllVersionInfo] toplayer inode [%v] verSeq [%v] hist len [%v]", i, i.getVer(), i.getLayerLen())
 	if i.getLayerLen() == 0 {
@@ -660,7 +661,6 @@ func testPrintInodeInfo(t *testing.T, ino *Inode) {
 	for id, info := range i.multiSnap.multiVersions {
 		t.Logf("action[PrintAllVersionInfo] layer [%v]  verSeq [%v] inode [%v]", id, info.getVer(), info)
 	}
-
 }
 
 func testDelDirSnapshotVersion(t *testing.T, verSeq uint64, dirIno *Inode, dirDentry *Dentry) {
@@ -669,7 +669,7 @@ func testDelDirSnapshotVersion(t *testing.T, verSeq uint64, dirIno *Inode, dirDe
 	}
 
 	rspReadDir := testReadDirAll(t, verSeq, dirIno.Inode)
-	//testPrintAllDentry(t)
+	// testPrintAllDentry(t)
 
 	rDirIno := dirIno.Copy().(*Inode)
 	rDirIno.setVerNoCheck(verSeq)
@@ -721,7 +721,7 @@ func testDelDirSnapshotVersion(t *testing.T, verSeq uint64, dirIno *Inode, dirDe
 			Inode:     rino.Inode,
 		}
 		log.LogDebugf("test.testDelDirSnapshotVersion: dentry param %v ", dentry)
-		//testPrintAllDentry(t)
+		// testPrintAllDentry(t)
 		iden, st := mp.getDentry(dentry)
 		if st != proto.OpOk {
 			t.Logf("testDelDirSnapshotVersion: dentry %v return st %v", dentry, proto.ParseErrorCode(int32(st)))
@@ -740,7 +740,7 @@ func TestDentry(t *testing.T) {
 	initMp(t)
 
 	var denArry []*Dentry
-	//err := gohook.HookMethod(mp, "submit", MockSubmitTrue, nil)
+	// err := gohook.HookMethod(mp, "submit", MockSubmitTrue, nil)
 	mp.config.Cursor = 1100
 	//--------------------build dir and it's child on different version ------------------
 	seq0 := testCreateVer()
@@ -867,6 +867,7 @@ func testPrintDirTree(t *testing.T, parentId uint64, path string, verSeq uint64)
 	}
 	return
 }
+
 func testAppendExt(t *testing.T, seq uint64, idx int, inode uint64) {
 	exts := buildExtents(seq, uint64(idx*1000), uint64(idx))
 	t.Logf("buildExtents exts[%v]", exts)
@@ -959,7 +960,7 @@ func testDeleteFile(t *testing.T, verSeq uint64, parentId uint64, child *proto.D
 	t.Logf("testDeleteFile seq %v %v dentry %v", verSeq, fsmDentry.getSeqFiled(), fsmDentry)
 	assert.True(t, nil != mp.fsmDeleteDentry(fsmDentry, false))
 
-	var rino = &Inode{
+	rino := &Inode{
 		Inode: child.Inode,
 		Type:  child.Type,
 		multiSnap: &InodeMultiSnap{
@@ -1006,7 +1007,7 @@ func testSnapshotDeletion(t *testing.T, topFirst bool) {
 	log.LogDebugf("action[TestSnapshotDeletion] start!!!!!!!!!!!")
 	initMp(t)
 	initVer()
-	//err := gohook.HookMethod(mp, "submit", MockSubmitTrue, nil)
+	// err := gohook.HookMethod(mp, "submit", MockSubmitTrue, nil)
 	mp.config.Cursor = 1100
 	//--------------------build dir and it's child on different version ------------------
 
@@ -1126,8 +1127,8 @@ func testSnapshotDeletion(t *testing.T, topFirst bool) {
 	t.Logf("---------------------------------------------------------------------")
 	t.Logf("after deletion current layerr mp inode freeList len %v fileCnt %v dircnt %v", mp.freeList.Len(), fileCnt, dirCnt)
 	assert.True(t, mp.freeList.Len() == fileCnt)
-	//base on 3.2.0 the dir will push to freelist, not count in in later release version
-	//assert.True(t, mp.freeList.Len() == fileCnt+dirCnt)
+	// base on 3.2.0 the dir will push to freelist, not count in in later release version
+	// assert.True(t, mp.freeList.Len() == fileCnt+dirCnt)
 	assert.True(t, 0 == testPrintAllDentry(t))
 	t.Logf("---------------------------------------------------------------------")
 
@@ -1136,7 +1137,7 @@ func testSnapshotDeletion(t *testing.T, topFirst bool) {
 	t.Logf("---------------------------------------------------------------------")
 	testPrintAllInodeInfo(t)
 	t.Logf("---------------------------------------------")
-	//assert.True(t, false)
+	// assert.True(t, false)
 }
 
 // create
@@ -1213,6 +1214,7 @@ func TestSplitKey(t *testing.T) {
 	_, invalid = NewPacketToDeleteExtent(dp, ext)
 	assert.True(t, invalid == false)
 }
+
 func NewMetaPartitionForTest() *metaPartition {
 	mpC := &MetaPartitionConfig{
 		PartitionId: PartitionIdForTest,
@@ -1250,7 +1252,8 @@ func TestCheckVerList(t *testing.T) {
 		[]*proto.VolVersionInfo{
 			{Ver: 20, Status: proto.VersionNormal},
 			{Ver: 30, Status: proto.VersionNormal},
-			{Ver: 40, Status: proto.VersionNormal}}...)
+			{Ver: 40, Status: proto.VersionNormal},
+		}...)
 
 	masterList := &proto.VolVersionInfoList{
 		VerList: []*proto.VolVersionInfo{
@@ -1258,7 +1261,8 @@ func TestCheckVerList(t *testing.T) {
 			{Ver: 20, Status: proto.VersionNormal},
 			{Ver: 30, Status: proto.VersionNormal},
 			{Ver: 40, Status: proto.VersionNormal},
-			{Ver: 50, Status: proto.VersionNormal}},
+			{Ver: 50, Status: proto.VersionNormal},
+		},
 	}
 	var verData []byte
 	mp.checkVerList(masterList, false)
@@ -1270,7 +1274,8 @@ func TestCheckVerList(t *testing.T) {
 	masterList = &proto.VolVersionInfoList{
 		VerList: []*proto.VolVersionInfo{
 			{Ver: 20, Status: proto.VersionNormal},
-			{Ver: 40, Status: proto.VersionNormal}},
+			{Ver: 40, Status: proto.VersionNormal},
+		},
 	}
 
 	needUpdate, _ := mp.checkVerList(masterList, false)
@@ -1509,7 +1514,8 @@ func TestDelPartitionVersion(t *testing.T) {
 			{Ver: 20, Status: proto.VersionNormal},
 			{Ver: 30, Status: proto.VersionNormal},
 			{Ver: 40, Status: proto.VersionNormal},
-			{Ver: 50, Status: proto.VersionNormal}},
+			{Ver: 50, Status: proto.VersionNormal},
+		},
 	}
 	mp.checkByMasterVerlist(mp.multiVersionList, masterList)
 	mp.checkVerList(masterList, true)
@@ -1561,7 +1567,8 @@ func TestGetAllVerList(t *testing.T) {
 			{Ver: 20, Status: proto.VersionNormal},
 			{Ver: 30, Status: proto.VersionNormal},
 			{Ver: 40, Status: proto.VersionNormal},
-			{Ver: 50, Status: proto.VersionNormal}},
+			{Ver: 50, Status: proto.VersionNormal},
+		},
 	}
 	tmp := mp.multiVersionList.VerList
 	mp.multiVersionList.VerList = append(mp.multiVersionList.VerList[:1], mp.multiVersionList.VerList[2:]...)

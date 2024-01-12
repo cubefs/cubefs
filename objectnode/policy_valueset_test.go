@@ -120,6 +120,7 @@ func TestValueGetType(t *testing.T) {
 		}
 	}
 }
+
 func TestValueSet_UnmarshalJSON(t *testing.T) {
 	testCases := []struct {
 		value          []byte

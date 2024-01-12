@@ -252,7 +252,7 @@ func (ccfg *ConstConfig) Equals(cfg *ConstConfig) bool {
 
 // check listen port, raft replica port and raft heartbeat port
 func CheckOrStoreConstCfg(fileDir, fileName string, cfg *ConstConfig) (ok bool, err error) {
-	var filePath = path.Join(fileDir, fileName)
+	filePath := path.Join(fileDir, fileName)
 	var buf []byte
 	buf, err = ioutil.ReadFile(filePath)
 	if err != nil && !os.IsNotExist(err) {
@@ -263,11 +263,11 @@ func CheckOrStoreConstCfg(fileDir, fileName string, cfg *ConstConfig) (ok bool, 
 		if buf, err = json.Marshal(cfg); err != nil {
 			return false, fmt.Errorf("marshal const config failed: %v", err)
 		}
-		if err = os.MkdirAll(fileDir, 0755); err != nil {
+		if err = os.MkdirAll(fileDir, 0o755); err != nil {
 			return false, fmt.Errorf("make directory %v filed: %v", fileDir, err)
 		}
 		var file *os.File
-		if file, err = os.OpenFile(filePath, os.O_CREATE|os.O_RDWR, 0755); err != nil {
+		if file, err = os.OpenFile(filePath, os.O_CREATE|os.O_RDWR, 0o755); err != nil {
 			return false, fmt.Errorf("create config file %v failed: %v", filePath, err)
 		}
 		defer func() {
@@ -308,7 +308,7 @@ func CheckOrStoreClusterUuid(dirPath, id string, force bool) (err error) {
 		if err != nil {
 			return fmt.Errorf("json marshal failed: %v", err.Error())
 		}
-		if err = ioutil.WriteFile(versionFile, data, 0755); err != nil {
+		if err = ioutil.WriteFile(versionFile, data, 0o755); err != nil {
 			return fmt.Errorf("write file %v failed: %v", versionFile, err.Error())
 		}
 	} else {

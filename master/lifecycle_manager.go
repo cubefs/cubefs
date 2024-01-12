@@ -216,7 +216,7 @@ func (ns *lcNodeStatus) GetIdleNode() (nodeAddr string) {
 		return
 	}
 
-	var min = math.MaxInt
+	min := math.MaxInt
 	for n, c := range ns.WorkingCount {
 		if c <= min {
 			nodeAddr = n

@@ -18,7 +18,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"strconv"
 	"strings"
@@ -33,9 +33,7 @@ const (
 	requestTimeout = 30 * time.Second
 )
 
-var (
-	ErrNoValidMaster = errors.New("no valid master")
-)
+var ErrNoValidMaster = errors.New("no valid master")
 
 type MasterCLientWithResolver struct {
 	MasterClient
@@ -138,7 +136,7 @@ func (c *MasterClient) serveRequest(r *request) (repsData []byte, err error) {
 		} else {
 			schema = "http"
 		}
-		var url = fmt.Sprintf("%s://%s%s", schema, host,
+		url := fmt.Sprintf("%s://%s%s", schema, host,
 			r.path)
 		resp, err = c.httpRequest(r.method, url, r.params, r.header, r.body)
 		if err != nil {
@@ -146,7 +144,7 @@ func (c *MasterClient) serveRequest(r *request) (repsData []byte, err error) {
 			continue
 		}
 		stateCode := resp.StatusCode
-		repsData, err = ioutil.ReadAll(resp.Body)
+		repsData, err = io.ReadAll(resp.Body)
 		_ = resp.Body.Close()
 		if err != nil {
 			log.LogErrorf("serveRequest: read http response body fail: err(%v)", err)
@@ -169,7 +167,7 @@ func (c *MasterClient) serveRequest(r *request) (repsData []byte, err error) {
 				log.LogDebugf("server Request resp new master[%v] old [%v]", host, leaderAddr)
 				c.SetLeader(host)
 			}
-			var body = new(proto.HTTPReplyRaw)
+			body := new(proto.HTTPReplyRaw)
 			if err := body.Unmarshal(repsData); err != nil {
 				log.LogErrorf("unmarshal response body err:%v", err)
 				return nil, fmt.Errorf("unmarshal response body err:%v", err)
@@ -348,7 +346,6 @@ func (mc *MasterCLientWithResolver) Start() (err error) {
 }
 
 func (mc *MasterCLientWithResolver) Stop() {
-
 	select {
 	case mc.stopC <- struct{}{}:
 		log.LogDebugf("stop resolver, notified!")
@@ -359,7 +356,7 @@ func (mc *MasterCLientWithResolver) Stop() {
 
 // NewMasterHelper returns a new MasterClient instance.
 func NewMasterClient(masters []string, useSSL bool) *MasterClient {
-	var mc = &MasterClient{masters: masters, useSSL: useSSL, timeout: requestTimeout}
+	mc := &MasterClient{masters: masters, useSSL: useSSL, timeout: requestTimeout}
 	mc.adminAPI = &AdminAPI{mc: mc}
 	mc.clientAPI = &ClientAPI{mc: mc}
 	mc.nodeAPI = &NodeAPI{mc: mc}
@@ -371,7 +368,7 @@ func NewMasterClient(masters []string, useSSL bool) *MasterClient {
 // string and returns a new MasterClient instance.
 // Notes that a valid format raw string must match: "{HOST}:{PORT},{HOST}:{PORT}"
 func NewMasterClientFromString(masterAddr string, useSSL bool) *MasterClient {
-	var masters = make([]string, 0)
+	masters := make([]string, 0)
 	for _, master := range strings.Split(masterAddr, ",") {
 		master = strings.TrimSpace(master)
 		if master != "" {

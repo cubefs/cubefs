@@ -39,7 +39,6 @@ func getMasterPeers(config *Config) string {
 		} else {
 			peers = peers + strconv.Itoa(id+1) + ":" + node + ":" + config.Master.Config.Listen
 		}
-
 	}
 	return peers
 }
@@ -87,16 +86,14 @@ func writeMaster(clusterName, id, ip, listen, prof, peers string) error {
 		return fmt.Errorf("cannot be resolved to master.json %v", err)
 	}
 	fileName := ConfDir + "/master" + id + ".json"
-	err = ioutil.WriteFile(fileName, masterData, 0644)
+	err = ioutil.WriteFile(fileName, masterData, 0o644)
 	if err != nil {
-
 		return fmt.Errorf("unable to write %s  %v", fileName, err)
 	}
 	return nil
 }
 
 func startAllMaster() error {
-
 	config, err := readConfig()
 	if err != nil {
 		return err
@@ -120,7 +117,6 @@ func startAllMaster() error {
 				dataDir = config.Global.DataDir
 			} else {
 				dataDir = config.Master.Config.DataDir
-
 			}
 			err = transferConfigFileToRemote(confFilePath, dataDir+"/conf", RemoteUser, data.IP)
 			if err != nil {
@@ -137,13 +133,12 @@ func startAllMaster() error {
 			log.Println(status)
 		}
 	}
-	//Detect successful deployment
+	// Detect successful deployment
 	log.Println("start all master services")
 	return nil
 }
 
 func stopAllMaster() error {
-
 	files, err := ioutil.ReadDir(ConfDir)
 	if err != nil {
 		return err
@@ -167,7 +162,6 @@ func stopAllMaster() error {
 			}
 			log.Println(status)
 		}
-
 	}
 	return nil
 }

@@ -38,9 +38,7 @@ const (
 	defaultCreateInterval = int64(time.Microsecond * 200)
 )
 
-var (
-	ErrTooMuchSmuxStreams = errors.New("too much smux streams")
-)
+var ErrTooMuchSmuxStreams = errors.New("too much smux streams")
 
 // addr = ip:port
 // afterShift = ip:(port+shift)
@@ -58,7 +56,7 @@ func ShiftAddrPort(addr string, shift int) (afterShift string) {
 	return
 }
 
-//filter smux accept error
+// filter smux accept error
 func FilterSmuxAcceptError(err error) error {
 	if err == nil {
 		return nil
@@ -240,7 +238,7 @@ func (cp *SmuxConnectPool) PutConnect(stream *smux.Stream, forceClose bool) {
 }
 
 func (cp *SmuxConnectPool) autoRelease() {
-	var timer = time.NewTimer(time.Duration(cp.cfg.StreamIdleTimeout))
+	timer := time.NewTimer(time.Duration(cp.cfg.StreamIdleTimeout))
 	for {
 		select {
 		case <-cp.closeCh:
@@ -391,7 +389,7 @@ func (p *SmuxPool) callCreate() (createCall *createSessCall) {
 		} else {
 			return
 		}
-		//default:
+		// default:
 	}
 tryCreateNewSess:
 	prev := createCall
@@ -471,7 +469,7 @@ func (p *SmuxPool) canUse(sess *smux.Session) bool {
 		maxStreams := p.cfg.StreamsPerConn * p.cfg.ConnsPerAddr
 		inflight := p.inflightStreamNum()
 		if inflight >= maxStreams {
-			//oversold
+			// oversold
 			return streamNum <= ((inflight / p.cfg.ConnsPerAddr) + 1)
 		} else {
 			return false
@@ -496,7 +494,7 @@ func (p *SmuxPool) ReleaseAll() {
 }
 
 func (p *SmuxPool) getAvailSess() (sess *smux.Session) {
-	//every time start from different pos
+	// every time start from different pos
 	iter := atomic.AddInt64(&p.sessionsIter, 1) - 1
 	p.sessionsLock.RLock()
 	sessionsLen := len(p.sessions)
@@ -513,7 +511,7 @@ func (p *SmuxPool) getAvailSess() (sess *smux.Session) {
 
 func (p *SmuxPool) insertSession(sess *smux.Session) {
 	p.sessionsLock.Lock()
-	//replace
+	// replace
 	for i, o := range p.sessions {
 		if o == nil || o.IsClosed() {
 			p.sessions[i] = sess
@@ -521,7 +519,7 @@ func (p *SmuxPool) insertSession(sess *smux.Session) {
 			return
 		}
 	}
-	//or append
+	// or append
 	p.sessions = append(p.sessions, sess)
 	p.sessionsLock.Unlock()
 }

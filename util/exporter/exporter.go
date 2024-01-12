@@ -35,15 +35,15 @@ import (
 
 const (
 	PromHandlerPattern      = "/metrics"       // prometheus handler
-	AppName                 = "cfs"            //app name
-	ConfigKeyExporterEnable = "exporterEnable" //exporter enable
-	ConfigKeyExporterPort   = "exporterPort"   //exporter port
-	ConfigKeyConsulAddr     = "consulAddr"     //consul addr
+	AppName                 = "cfs"            // app name
+	ConfigKeyExporterEnable = "exporterEnable" // exporter enable
+	ConfigKeyExporterPort   = "exporterPort"   // exporter port
+	ConfigKeyConsulAddr     = "consulAddr"     // consul addr
 	ConfigKeyConsulMeta     = "consulMeta"     // consul meta
 	ConfigKeyIpFilter       = "ipFilter"       // add ip filter
 	ConfigKeyEnablePid      = "enablePid"      // enable report partition id
 	ConfigKeyPushAddr       = "pushAddr"       // enable push data to gateway
-	ChSize                  = 1024 * 10        //collect chan size
+	ChSize                  = 1024 * 10        // collect chan size
 
 	// monitor label name
 	Vol    = "vol"
@@ -194,7 +194,6 @@ func RegistConsul(cluster string, role string, cfg *config.Config) {
 }
 
 func autoPush(pushAddr, role, cluster, ip, mountPoint string) {
-
 	pid := os.Getpid()
 
 	client := &http.Client{
@@ -229,7 +228,6 @@ func autoPush(pushAddr, role, cluster, ip, mountPoint string) {
 			}
 		}
 	}()
-
 }
 
 func collect() {

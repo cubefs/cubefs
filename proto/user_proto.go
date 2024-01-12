@@ -23,8 +23,10 @@ import (
 var (
 	AKRegexp   = regexp.MustCompile("^[a-zA-Z0-9]{16}$")
 	SKRegexp   = regexp.MustCompile("^[a-zA-Z0-9]{32}$")
-	WriteS3Api = []string{"PostObject", "PutObject", "CopyObject", "CreateMultipartUpload", "UploadPart", "UploadPartCopy",
-		"CompleteMultipartUpload", "AbortMultipartUpload", "DeleteObjects", "DeleteObject"}
+	WriteS3Api = []string{
+		"PostObject", "PutObject", "CopyObject", "CreateMultipartUpload", "UploadPart", "UploadPartCopy",
+		"CompleteMultipartUpload", "AbortMultipartUpload", "DeleteObjects", "DeleteObject",
+	}
 )
 
 type UserType uint8
@@ -104,7 +106,7 @@ type UserInfo struct {
 	CreateTime  string       `json:"create_time" graphql:"create_time"`
 	Description string       `json:"description" graphql:"description"`
 	Mu          sync.RWMutex `json:"-" graphql:"-"`
-	EMPTY       bool         //graphql need ???
+	EMPTY       bool         // graphql need ???
 }
 
 func (i *UserInfo) String() string {
@@ -225,7 +227,7 @@ func (policy *UserPolicy) RemoveOwnVol(volume string) {
 	}
 }
 
-func (policy *UserPolicy) AddAuthorizedVol(volume string, policies []string) { //todo check duplicate
+func (policy *UserPolicy) AddAuthorizedVol(volume string, policies []string) { // todo check duplicate
 	policy.mu.Lock()
 	defer policy.mu.Unlock()
 	newPolicies := make([]string, 0)
@@ -255,7 +257,7 @@ func (policy *UserPolicy) SetPerm(volume string, perm Permission) {
 func (policy *UserPolicy) SetActions(volume string, actions Actions) {
 	policy.mu.Lock()
 	defer policy.mu.Unlock()
-	var values = make([]string, actions.Len())
+	values := make([]string, actions.Len())
 	for i, action := range actions {
 		values[i] = action.String()
 	}

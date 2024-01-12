@@ -16,8 +16,9 @@ package master
 
 import (
 	"fmt"
-	"github.com/cubefs/cubefs/util/log"
 	"time"
+
+	"github.com/cubefs/cubefs/util/log"
 )
 
 // FileCrc defines the crc of a file

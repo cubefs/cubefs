@@ -24,7 +24,6 @@ import (
 )
 
 func (mp *metaPartition) GetUniqID(p *Packet, num uint32) (err error) {
-
 	idBuf := make([]byte, 4)
 	binary.BigEndian.PutUint32(idBuf, num)
 	resp, err := mp.submit(opFSMUniqID, idBuf)
@@ -56,7 +55,7 @@ func (mp *metaPartition) GetUniqID(p *Packet, num uint32) (err error) {
 
 func (mp *metaPartition) allocateUniqID(num uint32) (start, end uint64) {
 	for {
-		//cur is the last allocated id
+		// cur is the last allocated id
 		cur := mp.GetUniqId()
 		start = cur + 1
 		end := cur + uint64(num)
@@ -85,8 +84,10 @@ func (mp *metaPartition) uniqCheckerEvict() (left int, evict int, err error) {
 	return left, idx + 1, err
 }
 
-var inodeOnceSize = 16
-var newInodeOnceSize = 24
+var (
+	inodeOnceSize    = 16
+	newInodeOnceSize = 24
+)
 
 type InodeOnce struct {
 	UniqID uint64

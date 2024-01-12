@@ -1,8 +1,6 @@
 package console
 
 import (
-	//"github.com/shurcooL/vfsgen"
-	//"log"
 	"net/http"
 	"path"
 	"runtime"
@@ -10,8 +8,7 @@ import (
 )
 
 func TestMakeHtml2GoBin(t *testing.T) {
-
-	//when you need rebuild html . please open it
+	// when you need rebuild html . please open it
 	return
 	/*
 		assets := getAssets()

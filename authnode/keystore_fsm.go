@@ -17,7 +17,6 @@ package authnode
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/cubefs/cubefs/raftstore/raftstore_db"
 	"io"
 	"strconv"
 	"strings"
@@ -25,6 +24,7 @@ import (
 
 	"github.com/cubefs/cubefs/depends/tiglabs/raft"
 	"github.com/cubefs/cubefs/depends/tiglabs/raft/proto"
+	"github.com/cubefs/cubefs/raftstore/raftstore_db"
 	"github.com/cubefs/cubefs/util/keystore"
 	"github.com/cubefs/cubefs/util/log"
 )
@@ -54,7 +54,7 @@ type KeystoreFsm struct {
 	keystore       map[string]*keystore.KeyInfo
 	accessKeystore map[string]*keystore.AccessKeyInfo
 	ksMutex        sync.RWMutex // keystore mutex
-	aksMutex       sync.RWMutex //accesskeystore mutex
+	aksMutex       sync.RWMutex // accesskeystore mutex
 	opKeyMutex     sync.RWMutex // operations on key mutex
 	id             uint64       // current id of server
 }
@@ -139,7 +139,7 @@ func (mf *KeystoreFsm) Apply(command []byte, index uint64) (resp interface{}, er
 		if err = mf.delKeyAndPutIndex(cmd.K, cmdMap); err != nil {
 			panic(err)
 		}
-		//if mf.leader != mf.id {
+		// if mf.leader != mf.id {
 		// We don't use above statement to avoid "leader double-change of keystore cache"
 		// Because there may a race condition: before "Apply" raftlog, leader change happens
 		// so that cache changes may not happen in newly selected leader-node and "double-change"
@@ -156,7 +156,7 @@ func (mf *KeystoreFsm) Apply(command []byte, index uint64) (resp interface{}, er
 		if err = mf.batchPut(cmdMap); err != nil {
 			panic(err)
 		}
-		//if mf.leader != mf.id {
+		// if mf.leader != mf.id {
 		// Same reasons as the description above
 		if mf.id != leader {
 			mf.PutKey(&keyInfo)

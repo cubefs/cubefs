@@ -172,7 +172,7 @@ func snapshotTest(t *testing.T) {
 }
 
 func addRaftServerTest(addRaftAddr string, id uint64, t *testing.T) {
-	//don't pass id test
+	// don't pass id test
 	reqURL := fmt.Sprintf("%v%v?id=&addr=%v", hostAddr, proto.AddRaftNode, addRaftAddr)
 	mocktest.Println(reqURL)
 	resp, err := http.Get(reqURL)

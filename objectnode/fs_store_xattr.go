@@ -27,7 +27,7 @@ const (
 )
 
 type xattrStore struct {
-	vm *VolumeManager //vol *Volume
+	vm *VolumeManager // vol *Volume
 }
 
 func (s *xattrStore) Init(vm *VolumeManager) {
@@ -105,6 +105,5 @@ func (s *xattrStore) Delete(vol, path, key string) (err error) {
 }
 
 func (s *xattrStore) List(vol, obj string) (data [][]byte, err error) {
-
 	return
 }

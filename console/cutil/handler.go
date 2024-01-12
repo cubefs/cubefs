@@ -60,7 +60,6 @@ type httpPostBody struct {
 }
 
 func writeResponse(w http.ResponseWriter, code int, value interface{}, err error) {
-
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS, PATCH")
 	w.Header().Set("Access-Control-Allow-Headers", "Origin, Content-Type, Accept, X-Requested-With")
@@ -102,9 +101,8 @@ func writeResponse(w http.ResponseWriter, code int, value interface{}, err error
 	}
 }
 
-//This code is borrowed https://github.com/samsarahq/thunder
+// This code is borrowed https://github.com/samsarahq/thunder
 func (h *graphqlProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-
 	if r.Method != "POST" {
 		writeResponse(w, http.StatusMethodNotAllowed, nil, errors.New("request must be a POST"))
 		return
@@ -173,7 +171,6 @@ func HTTPHandlerWithExecutor(schema *graphql.Schema, executor graphql.ExecutorRu
 }
 
 func (h *httpHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-
 	if r.Method != "POST" {
 		writeResponse(w, http.StatusMethodNotAllowed, nil, errors.New("request must be a POST"))
 		return
@@ -260,7 +257,6 @@ func (h *httpHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			Variables:   params.Variables,
 		})
 		current, err := output.Current, output.Error
-
 		if err != nil {
 			if graphql.ErrorCause(err) == context.Canceled {
 				return nil, err
@@ -295,7 +291,6 @@ func parseResponseNames(r *http.Request) ([]string, error) {
 	}
 
 	return list, nil
-
 }
 
 func IQLFun(writer http.ResponseWriter, request *http.Request) {
