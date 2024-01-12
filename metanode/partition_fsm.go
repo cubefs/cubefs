@@ -463,6 +463,13 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 			return
 		}
 		resp = mp.fsmUpdateExtentKeyAfterMigration(ino)
+	case opFSMSetInodeCreateTime:
+		req := &SetCreateTimeRequest{}
+		err = json.Unmarshal(msg.V, req)
+		if err != nil {
+			return
+		}
+		err = mp.fsmSetCreateTime(req)
 	default:
 		// do nothing
 	}

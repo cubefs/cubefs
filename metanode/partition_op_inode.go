@@ -1237,3 +1237,26 @@ func (mp *metaPartition) InodeGetWithEk(req *InodeGetReq, p *Packet) (err error)
 	p.PacketErrorWithBody(status, reply)
 	return
 }
+
+func (mp *metaPartition) SetCreateTime(req *SetCreateTimeRequest, reqData []byte, p *Packet) (err error) {
+	log.LogInfof("[SetCreateTime] mpId(%v), ino(%v), to set createTime(%v)",
+		mp.config.PartitionId, req.Inode, req.CreateTime)
+	if mp.verSeq != 0 {
+		req.VerSeq = mp.GetVerSeq()
+		reqData, err = json.Marshal(req)
+		if err != nil {
+			log.LogErrorf("[SetCreateTime] mpId(%v) ino(%v) createTime(%v), marshal err(%v) ",
+				mp.config.PartitionId, req.Inode, req.CreateTime, err)
+			return
+		}
+	}
+
+	_, err = mp.submit(opFSMSetInodeCreateTime, reqData)
+	if err != nil {
+		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
+		return
+	}
+
+	p.PacketOkReply()
+	return
+}

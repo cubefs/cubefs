@@ -24,6 +24,7 @@ import (
 	"os"
 	"path"
 	"strconv"
+	"time"
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/config"
@@ -76,6 +77,7 @@ func (m *MetaNode) registerAPIHandler() (err error) {
 	// get tx information
 	http.HandleFunc("/getTx", m.getTxHandler)
 	http.HandleFunc("/getInodeWithExtentKey", m.getInodeWithExtentKeyHandler)
+	http.HandleFunc("/setInodeCreateTime", m.setInodeCreateTimeHandler)
 	return
 }
 
@@ -577,6 +579,7 @@ func (m *MetaNode) getTxHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	return
 }
+
 func (m *MetaNode) getRealVerSeq(w http.ResponseWriter, r *http.Request) (verSeq uint64, err error) {
 	if r.FormValue("verSeq") != "" {
 		var ver int64
@@ -590,6 +593,7 @@ func (m *MetaNode) getRealVerSeq(w http.ResponseWriter, r *http.Request) (verSeq
 	}
 	return
 }
+
 func (m *MetaNode) getAllDentriesHandler(w http.ResponseWriter, r *http.Request) {
 	r.ParseForm()
 	resp := NewAPIResponse(http.StatusSeeOther, "")
@@ -881,8 +885,7 @@ func (m *MetaNode) getInodeWithExtentKeyHandler(w http.ResponseWriter, r *http.R
 	defer func() {
 		data, _ := resp.Marshal()
 		if _, err := w.Write(data); err != nil {
-
-			log.LogErrorf("[getInodeHandler] response %s", err)
+			log.LogErrorf("[getInodeWithExtentKeyHandler] response %s", err)
 		}
 	}()
 	pid, err := strconv.ParseUint(r.FormValue("pid"), 10, 64)
@@ -928,5 +931,83 @@ func (m *MetaNode) getInodeWithExtentKeyHandler(w http.ResponseWriter, r *http.R
 	if len(p.Data) > 0 {
 		resp.Data = json.RawMessage(p.Data)
 	}
+	return
+}
+
+func (m *MetaNode) setInodeCreateTimeHandler(w http.ResponseWriter, r *http.Request) {
+	var err error
+
+	r.ParseForm()
+	resp := NewAPIResponse(http.StatusBadRequest, "")
+	defer func() {
+		data, _ := resp.Marshal()
+		if _, err := w.Write(data); err != nil {
+			log.LogErrorf("[setInodeCreateTimeHandler] response %s", err)
+		}
+	}()
+
+	pid, err := strconv.ParseUint(r.FormValue("pid"), 10, 64)
+	if err != nil {
+		resp.Msg = err.Error()
+		return
+	}
+
+	id, err := strconv.ParseUint(r.FormValue("ino"), 10, 64)
+	if err != nil {
+		resp.Msg = err.Error()
+		return
+	}
+
+	dateTimeStr := r.FormValue("createTime")
+
+	log.LogInfof("[setInodeCreateTimeHandler] mpId(%v) ino(%v), to set createTime: %v",
+		pid, id, dateTimeStr)
+
+	formatStr := "2006-01-02 15:04:05 -0700 MST"
+	datetime, err := time.Parse(formatStr, dateTimeStr)
+	if err != nil {
+		err = fmt.Errorf("failed to parse createTime: %v", err.Error())
+		resp.Msg = err.Error()
+		return
+	}
+	createTime := datetime.Unix()
+
+	mp, err := m.metadataManager.GetPartition(pid)
+	if err != nil {
+		resp.Code = http.StatusNotFound
+		resp.Msg = err.Error()
+		return
+	}
+
+	if leaderAddr, ok := mp.IsLeader(); !ok {
+		resp.Code = http.StatusSeeOther
+		err = fmt.Errorf("not mp leader, leader is %v", leaderAddr)
+		resp.Msg = err.Error()
+		return
+	}
+
+	req := &SetCreateTimeRequest{
+		Inode:      id,
+		CreateTime: createTime,
+	}
+
+	p := &Packet{}
+	err = p.MarshalData(req)
+	if err != nil {
+		resp.Msg = err.Error()
+		return
+	}
+
+	if err = mp.SetCreateTime(req, p.Data, p); err != nil {
+		err = errors.NewErrorf("[setInodeCreateTimeHandler] req: %v, error: %s", req, err.Error())
+		resp.Msg = err.Error()
+		return
+	}
+
+	resp.Code = http.StatusOK
+	resp.Msg = p.GetResultMsg()
+
+	log.LogInfof("[setInodeCreateTimeHandler] mpId(%v) ino(%v), to set createTime: %v(%v)",
+		pid, id, dateTimeStr, createTime)
 	return
 }
