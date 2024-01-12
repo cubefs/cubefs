@@ -999,12 +999,12 @@ type ClientReportLimitInfo struct {
 	FactorMap map[uint32]*ClientLimitInfo
 	Host      string
 	Status    uint8
-	reserved  string
+	_         string // reserved
 }
 
 func NewClientReportLimitInfo() *ClientReportLimitInfo {
 	return &ClientReportLimitInfo{
-		FactorMap: make(map[uint32]*ClientLimitInfo, 0),
+		FactorMap: make(map[uint32]*ClientLimitInfo),
 	}
 }
 
@@ -1015,13 +1015,13 @@ type LimitRsp2Client struct {
 	HitTriggerCnt uint8
 	FactorMap     map[uint32]*ClientLimitInfo
 	Magnify       map[uint32]uint32
-	reserved      string
+	_             string // reserved
 }
 
 func NewLimitRsp2Client() *LimitRsp2Client {
 	limit := &LimitRsp2Client{
-		FactorMap: make(map[uint32]*ClientLimitInfo, 0),
-		Magnify:   make(map[uint32]uint32, 0),
+		FactorMap: make(map[uint32]*ClientLimitInfo),
+		Magnify:   make(map[uint32]uint32),
 	}
 	return limit
 }

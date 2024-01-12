@@ -239,11 +239,6 @@ func (k *ExtentKey) MarshalBinaryExt(data []byte) {
 
 // MarshalBinary marshals the binary format of the extent key.
 func (k *ExtentKey) MarshalBinary(v3 bool) ([]byte, error) {
-	extLen := ExtentLength
-	if v3 {
-		extLen += ExtentVerFieldSize
-	}
-
 	buf := bytes.NewBuffer(make([]byte, 0, ExtentLength))
 	if err := binary.Write(buf, binary.BigEndian, k.FileOffset); err != nil {
 		return nil, err

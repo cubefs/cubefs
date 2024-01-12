@@ -187,7 +187,7 @@ func ParseMountOptions(opts []MountOption, cfg *config.Config) {
 					opts[i].value = v
 				}
 			}
-			fmt.Println(fmt.Sprintf("keyword[%v] value[%v] type[%T]", opts[i].keyword, opts[i].value, v))
+			fmt.Printf("keyword[%v] value[%v] type[%T]\n", opts[i].keyword, opts[i].value, v)
 
 		case int64:
 			if opts[i].cmdlineValue != "" {
@@ -199,7 +199,7 @@ func ParseMountOptions(opts []MountOption, cfg *config.Config) {
 					opts[i].value = v
 				}
 			}
-			fmt.Println(fmt.Sprintf("keyword[%v] value[%v] type[%T]", opts[i].keyword, opts[i].value, v))
+			fmt.Printf("keyword[%v] value[%v] type[%T]\n", opts[i].keyword, opts[i].value, v)
 
 		case bool:
 			if opts[i].cmdlineValue != "" {
@@ -211,10 +211,10 @@ func ParseMountOptions(opts []MountOption, cfg *config.Config) {
 					opts[i].value = v
 				}
 			}
-			fmt.Println(fmt.Sprintf("keyword[%v] value[%v] type[%T]", opts[i].keyword, opts[i].value, v))
+			fmt.Printf("keyword[%v] value[%v] type[%T]\n", opts[i].keyword, opts[i].value, v)
 
 		default:
-			fmt.Println(fmt.Sprintf("keyword[%v] unknown type[%T]", opts[i].keyword, v))
+			fmt.Printf("keyword[%v] unknown type[%T]\n", opts[i].keyword, v)
 		}
 	}
 }

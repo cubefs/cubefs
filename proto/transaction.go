@@ -607,8 +607,8 @@ const initTmId = -1
 func NewTransactionInfo(timeout int64, txType uint32) *TransactionInfo {
 	return &TransactionInfo{
 		Timeout:       timeout,
-		TxInodeInfos:  make(map[uint64]*TxInodeInfo, 0),
-		TxDentryInfos: make(map[string]*TxDentryInfo, 0),
+		TxInodeInfos:  make(map[uint64]*TxInodeInfo),
+		TxDentryInfos: make(map[string]*TxDentryInfo),
 		TmID:          initTmId,
 		TxType:        txType,
 		State:         TxStateInit,
@@ -616,10 +616,7 @@ func NewTransactionInfo(timeout int64, txType uint32) *TransactionInfo {
 }
 
 func (txInfo *TransactionInfo) IsInitialized() bool {
-	if txInfo.TxID != "" {
-		return true
-	}
-	return false
+	return txInfo.TxID != ""
 }
 
 func (txInfo *TransactionInfo) String() string {

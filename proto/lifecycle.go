@@ -122,7 +122,7 @@ type BatchDentries struct {
 
 func NewBatchDentries() *BatchDentries {
 	return &BatchDentries{
-		dentries: make(map[uint64]*ScanDentry, 0),
+		dentries: make(map[uint64]*ScanDentry),
 	}
 }
 
@@ -146,6 +146,6 @@ func (f *BatchDentries) BatchGetAndClear() (map[uint64]*ScanDentry, []uint64) {
 	for i := range f.dentries {
 		inodes = append(inodes, i)
 	}
-	f.dentries = make(map[uint64]*ScanDentry, 0)
+	f.dentries = make(map[uint64]*ScanDentry)
 	return dentries, inodes
 }

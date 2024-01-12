@@ -21,8 +21,8 @@ import (
 )
 
 var (
-	actionRegexp       = regexp.MustCompile("^action:((oss:(\\w+))|(posix:(\\w)+))$")
-	actionPrefixRegexp = regexp.MustCompile("^action:((oss)|(posix)):")
+	actionRegexp       = regexp.MustCompile(`^action:((oss:(\w+))|(posix:(\w)+))$`)
+	actionPrefixRegexp = regexp.MustCompile(`^action:((oss)|(posix)):`)
 )
 
 type Action string
@@ -380,12 +380,12 @@ const (
 )
 
 var (
-	permRegexp                = regexp.MustCompile("^perm:((builtin:((.*/*)([^/]*):*)(Writable|ReadOnly))|(custom:(\\w)+))$")
-	builtinPermRegexp         = regexp.MustCompile("^perm:builtin:((.*/*)([^/]*):*)(Writable|ReadOnly)$")
-	builtinWritablePermRegexp = regexp.MustCompile("^perm:builtin:((.*/*)([^/]*):*)Writable$")
-	builtinReadOnlyPermRegexp = regexp.MustCompile("^perm:builtin:((.*/*)([^/]*):*)ReadOnly$")
-	customPermRegexp          = regexp.MustCompile("^perm:custom:(\\w)+$")
-	subdirRegexp              = regexp.MustCompile("((.*/*)([^/]*)):(Writable|ReadOnly)$")
+	permRegexp                = regexp.MustCompile(`^perm:((builtin:((.*/*)([^/]*):*)(Writable|ReadOnly))|(custom:(\w)+))$`)
+	builtinPermRegexp         = regexp.MustCompile(`^perm:builtin:((.*/*)([^/]*):*)(Writable|ReadOnly)$`)
+	builtinWritablePermRegexp = regexp.MustCompile(`^perm:builtin:((.*/*)([^/]*):*)Writable$`)
+	builtinReadOnlyPermRegexp = regexp.MustCompile(`^perm:builtin:((.*/*)([^/]*):*)ReadOnly$`)
+	customPermRegexp          = regexp.MustCompile(`^perm:custom:(\w)+$`)
+	subdirRegexp              = regexp.MustCompile(`((.*/*)([^/]*)):(Writable|ReadOnly)$`)
 )
 
 func ParsePermission(value string) Permission {

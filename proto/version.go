@@ -5,6 +5,9 @@ import (
 	"runtime"
 )
 
+//TODO: remove this later.
+//go:generate golangci-lint run --issues-exit-code=1 -D errcheck -E bodyclose .
+
 var (
 	Version    string
 	CommitID   string

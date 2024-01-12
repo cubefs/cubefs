@@ -187,7 +187,6 @@ func (policy *UserPolicy) IsAuthorizedS3(volume, api string) bool {
 		if builtinReadOnlyPermRegexp.MatchString(perm) && !contain(api, WriteS3Api) {
 			return true
 		}
-		return false
 	}
 	return false
 }
