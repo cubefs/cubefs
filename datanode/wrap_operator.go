@@ -1179,7 +1179,7 @@ func (s *DataNode) handlePacketToRemoveDataPartitionRaftMember(p *repl.Packet) {
 
 	p.PartitionID = req.PartitionId
 
-	if !dp.IsExsitReplica(req.RemovePeer.Addr) {
+	if !dp.IsExsitReplica(req.RemovePeer.Addr) && !req.Force {
 		log.LogInfof("action[handlePacketToRemoveDataPartitionRaftMember] receive MasterCommand:  req %v[%v] "+
 			"RemoveRaftPeer(%v) has not exsit", p.GetReqID(), string(reqData), req.RemovePeer.Addr)
 		return
