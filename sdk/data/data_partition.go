@@ -679,10 +679,7 @@ func (dp *DataPartition) ClearReadMetrics() {
 	}
 }
 
-func (dp *DataPartition) getLowestReadDelayHost(dataPartitionID uint64) (err error, addr string) {
-	if dataPartitionID != dp.PartitionID {
-		dataPartitionID = dp.PartitionID
-	}
+func (dp *DataPartition) getLowestReadDelayHost(hosts []string) (err error, addr string) {
 	dp.ReadMetrics.RLock()
 	defer dp.ReadMetrics.RUnlock()
 
@@ -690,19 +687,31 @@ func (dp *DataPartition) getLowestReadDelayHost(dataPartitionID uint64) (err err
 	if sortedHosts == nil {
 		return fmt.Errorf("getLowestReadDelayHost failed: dpID(%v) sortedHosts is nil", dp.PartitionID), ""
 	}
+	contains := func(hosts []string, host string) bool {
+		var re bool
+		for _, h := range hosts {
+			if h == host {
+				re = true
+			}
+		}
+		return re
+	}
+
 	var availableHost []string
 	// check hosts status to get available hosts
 	hostsStatus := dp.ClientWrapper.HostsStatus
 	for _, addr = range sortedHosts {
 		if status, ok := hostsStatus[addr]; ok && status {
-			availableHost = append(availableHost, addr)
+			if len(hosts) == 0 || contains(hosts, addr) {
+				availableHost = append(availableHost, addr)
+			}
 		}
 	}
 	addr, err = dp.assignHostByWeight(availableHost)
 	if err != nil {
 		return fmt.Errorf("getLowestReadDelayHost failed: dpID(%v) err(%v)", dp.PartitionID, err), ""
 	}
-	log.LogDebugf("getLowestReadDelayHost success: dpID(%v), host(%v)", dataPartitionID, addr)
+	log.LogDebugf("getLowestReadDelayHost success: dpID(%v), host(%v)", dp.PartitionID, addr)
 	return nil, addr
 }
 
@@ -806,11 +815,11 @@ func (dp *DataPartition) getNearestHost() string {
 	return dp.GetLeaderAddr()
 }
 
-func (dp *DataPartition) getFollowerReadHost() string {
+func (dp *DataPartition) getFollowerReadHost(hosts []string) string {
 	if len(dp.Hosts) > 0 {
 		// if enableCollect is false, use getEpoch; unless, getLowest
 		if dp.ClientWrapper.dpFollowerReadDelayConfig.EnableCollect {
-			err, host := dp.getLowestReadDelayHost(dp.PartitionID)
+			err, host := dp.getLowestReadDelayHost(hosts)
 			if err == nil {
 				return host
 			}

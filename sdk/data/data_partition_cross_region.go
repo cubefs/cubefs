@@ -199,10 +199,13 @@ func (dp *DataPartition) getNearestCrossRegionHost() string {
 	defer dp.CrossRegionMetrics.RUnlock()
 	for i := SameZoneRank; i <= UnknownRegionRank; i++ {
 		if len(dp.CrossRegionMetrics.CrossRegionHosts[i]) > 0 {
-			err, host := dp.getEpochReadHost(dp.CrossRegionMetrics.CrossRegionHosts[i])
+			err, host := dp.getLowestReadDelayHost(dp.CrossRegionMetrics.CrossRegionHosts[i])
 			if err == nil {
 				log.LogDebugf("getNearestCrossRegionHost: dp[%v] crossRegionMetrics[%v] get nearest host[%v] from rank[%v:%v]",
 					dp, dp.CrossRegionMetrics, host, i, dp.CrossRegionMetrics.CrossRegionHosts[i])
+				return host
+			}
+			if err, host := dp.getEpochReadHost(dp.CrossRegionMetrics.CrossRegionHosts[i]); err == nil {
 				return host
 			}
 		}

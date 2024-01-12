@@ -87,7 +87,7 @@ func NewStreamConn(dp *DataPartition, follower bool) *StreamConn {
 
 	return &StreamConn{
 		dp:       dp,
-		currAddr: dp.getFollowerReadHost(),
+		currAddr: dp.getFollowerReadHost([]string{}),
 	}
 }
 
