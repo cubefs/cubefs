@@ -1061,8 +1061,10 @@ func calcDpBadNormalExtentByBF(dpDir, badDir string) (err error) {
 	badCount := 0
 	start := time.Now()
 	defer func() {
-		slog.Printf("finally get total bad extent count %d, size %d, cost %d ms",
+		msg := fmt.Sprintf("finally get total bad extent count %d, size %d, cost %d ms",
 			badCount, badSize, time.Since(start).Milliseconds())
+		slog.Println(msg)
+		log.LogWarn(msg)
 	}()
 
 	for _, fileInfo := range fileInfos {
@@ -1313,6 +1315,7 @@ func batchLockBadNormalExtent(dpIdStr string, exts []*BadNornalExtent, IsCreate 
 
 	if err != nil {
 		log.LogErrorf("batchLockBadNormalExtent：Parse Get connect failed, err: %v", err)
+		return err
 	}
 
 	p := new(proto.Packet)
@@ -1928,13 +1931,12 @@ func cleanBadNormalExtentFromDp(volname, dir, backupDir string, fromDpId uint64,
 			if err1 != nil {
 				err = fmt.Errorf("cleanBadNormalExtentFromDp: clean bad normal ext failed, dp %s, err %s", dpIdStr, err1.Error())
 				log.LogError(err.Error())
-				slog.Printf(err.Error())
+				slog.Println(err.Error())
 				return
 			}
 		})
 	}
 	wg.Wait()
-	return
 }
 
 func newRollbackBadExtentsCmd() *cobra.Command {
