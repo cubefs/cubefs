@@ -16,8 +16,9 @@ package metanode
 
 import (
 	"fmt"
-	"github.com/cubefs/cubefs/util/log"
 	"math"
+
+	"github.com/cubefs/cubefs/util/log"
 )
 
 type ExtendOpResult struct {

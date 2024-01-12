@@ -201,7 +201,7 @@ type file struct {
 	// dir only
 	dirp *dirStream
 
-	//rw
+	// rw
 	fileWriter *blobstore.Writer
 	fileReader *blobstore.Reader
 
@@ -414,13 +414,13 @@ func cfs_getattr(id C.int64_t, path *C.char, stat *C.struct_cfs_stat_info) C.int
 	}
 	// fill up the mode
 	if proto.IsRegular(info.Mode) {
-		stat.mode = C.uint32_t(C.S_IFREG) | C.uint32_t(info.Mode&0777)
+		stat.mode = C.uint32_t(C.S_IFREG) | C.uint32_t(info.Mode&0o777)
 	} else if proto.IsDir(info.Mode) {
-		stat.mode = C.uint32_t(C.S_IFDIR) | C.uint32_t(info.Mode&0777)
+		stat.mode = C.uint32_t(C.S_IFDIR) | C.uint32_t(info.Mode&0o777)
 	} else if proto.IsSymlink(info.Mode) {
-		stat.mode = C.uint32_t(C.S_IFLNK) | C.uint32_t(info.Mode&0777)
+		stat.mode = C.uint32_t(C.S_IFLNK) | C.uint32_t(info.Mode&0o777)
 	} else {
-		stat.mode = C.uint32_t(C.S_IFSOCK) | C.uint32_t(info.Mode&0777)
+		stat.mode = C.uint32_t(C.S_IFSOCK) | C.uint32_t(info.Mode&0o777)
 	}
 
 	// fill up the time struct
@@ -468,7 +468,7 @@ func cfs_open(id C.int64_t, path *C.char, flags C.int, mode C.mode_t) C.int {
 	}
 	start := time.Now()
 
-	fuseMode := uint32(mode) & uint32(0777)
+	fuseMode := uint32(mode) & uint32(0o777)
 	fuseFlags := uint32(flags) &^ uint32(0x8000)
 	accFlags := fuseFlags & uint32(C.O_ACCMODE)
 
@@ -708,13 +708,13 @@ func cfs_batch_get_inodes(id C.int64_t, fd C.int, iids unsafe.Pointer, stats []C
 
 		// fill up the mode
 		if proto.IsRegular(infos[i].Mode) {
-			stats[i].mode = C.uint32_t(C.S_IFREG) | C.uint32_t(infos[i].Mode&0777)
+			stats[i].mode = C.uint32_t(C.S_IFREG) | C.uint32_t(infos[i].Mode&0o777)
 		} else if proto.IsDir(infos[i].Mode) {
-			stats[i].mode = C.uint32_t(C.S_IFDIR) | C.uint32_t(infos[i].Mode&0777)
+			stats[i].mode = C.uint32_t(C.S_IFDIR) | C.uint32_t(infos[i].Mode&0o777)
 		} else if proto.IsSymlink(infos[i].Mode) {
-			stats[i].mode = C.uint32_t(C.S_IFLNK) | C.uint32_t(infos[i].Mode&0777)
+			stats[i].mode = C.uint32_t(C.S_IFLNK) | C.uint32_t(infos[i].Mode&0o777)
 		} else {
-			stats[i].mode = C.uint32_t(C.S_IFSOCK) | C.uint32_t(infos[i].Mode&0777)
+			stats[i].mode = C.uint32_t(C.S_IFSOCK) | C.uint32_t(infos[i].Mode&0o777)
 		}
 
 		// fill up the time struct
@@ -882,13 +882,13 @@ func cfs_lsdir(id C.int64_t, fd C.int, direntsInfo []C.struct_cfs_dirent_info, c
 
 		// fill up the mode
 		if proto.IsRegular(infos[i].Mode) {
-			direntsInfo[index].stat.mode = C.uint32_t(C.S_IFREG) | C.uint32_t(infos[i].Mode&0777)
+			direntsInfo[index].stat.mode = C.uint32_t(C.S_IFREG) | C.uint32_t(infos[i].Mode&0o777)
 		} else if proto.IsDir(infos[i].Mode) {
-			direntsInfo[index].stat.mode = C.uint32_t(C.S_IFDIR) | C.uint32_t(infos[i].Mode&0777)
+			direntsInfo[index].stat.mode = C.uint32_t(C.S_IFDIR) | C.uint32_t(infos[i].Mode&0o777)
 		} else if proto.IsSymlink(infos[i].Mode) {
-			direntsInfo[index].stat.mode = C.uint32_t(C.S_IFLNK) | C.uint32_t(infos[i].Mode&0777)
+			direntsInfo[index].stat.mode = C.uint32_t(C.S_IFLNK) | C.uint32_t(infos[i].Mode&0o777)
 		} else {
-			direntsInfo[index].stat.mode = C.uint32_t(C.S_IFSOCK) | C.uint32_t(infos[i].Mode&0777)
+			direntsInfo[index].stat.mode = C.uint32_t(C.S_IFSOCK) | C.uint32_t(infos[i].Mode&0o777)
 		}
 
 		// fill up the time struct
@@ -901,7 +901,6 @@ func cfs_lsdir(id C.int64_t, fd C.int, direntsInfo []C.struct_cfs_dirent_info, c
 		direntsInfo[index].stat.mtime_nsec = C.uint32_t(t % 1e9)
 	}
 	return n
-
 }
 
 //export cfs_mkdirs
@@ -1146,7 +1145,7 @@ func (c *client) absPath(path string) string {
 }
 
 func (c *client) start() (err error) {
-	var masters = strings.Split(c.masterAddr, ",")
+	masters := strings.Split(c.masterAddr, ",")
 	if c.logDir != "" {
 		if c.logLevel == "" {
 			c.logLevel = "WARN"
@@ -1242,7 +1241,7 @@ func (c *client) checkPermission() (err error) {
 	}
 
 	// checkPermission
-	var mc = masterSDK.NewMasterClientFromString(c.masterAddr, false)
+	mc := masterSDK.NewMasterClientFromString(c.masterAddr, false)
 	var userInfo *proto.UserInfo
 	if userInfo, err = mc.UserAPI().GetAKInfo(c.accessKey); err != nil {
 		return
@@ -1251,7 +1250,7 @@ func (c *client) checkPermission() (err error) {
 		err = proto.ErrNoPermission
 		return
 	}
-	var policy = userInfo.Policy
+	policy := userInfo.Policy
 	if policy.IsOwn(c.volName) {
 		return
 	}
@@ -1362,20 +1361,20 @@ func (c *client) lookupPath(path string) (*proto.InodeInfo, error) {
 func (c *client) setattr(info *proto.InodeInfo, valid uint32, mode, uid, gid uint32, atime, mtime int64) error {
 	// Only rwx mode bit can be set
 	if valid&proto.AttrMode != 0 {
-		fuseMode := mode & uint32(0777)
-		mode = info.Mode &^ uint32(0777) // clear rwx mode bit
+		fuseMode := mode & uint32(0o777)
+		mode = info.Mode &^ uint32(0o777) // clear rwx mode bit
 		mode |= fuseMode
 	}
 	return c.mw.Setattr(info.Inode, valid, mode, uid, gid, atime, mtime)
 }
 
 func (c *client) create(pino uint64, name string, mode uint32, fullPath string) (info *proto.InodeInfo, err error) {
-	fuseMode := mode & 0777
+	fuseMode := mode & 0o777
 	return c.mw.Create_ll(pino, name, fuseMode, 0, 0, nil, fullPath)
 }
 
 func (c *client) mkdir(pino uint64, name string, mode uint32, fullPath string) (info *proto.InodeInfo, err error) {
-	fuseMode := mode & 0777
+	fuseMode := mode & 0o777
 	fuseMode |= uint32(os.ModeDir)
 	return c.mw.Create_ll(pino, name, fuseMode, 0, 0, nil, fullPath)
 }

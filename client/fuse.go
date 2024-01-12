@@ -23,7 +23,7 @@ package main
 import (
 	"flag"
 	"fmt"
-	"io/ioutil"
+	"io"
 	syslog "log"
 	"math"
 	"net"
@@ -40,24 +40,20 @@ import (
 	"time"
 
 	"github.com/cubefs/cubefs/blockcache/bcache"
-	"github.com/cubefs/cubefs/util/auditlog"
-
-	"github.com/cubefs/cubefs/util/buf"
-
-	"github.com/cubefs/cubefs/sdk/master"
-	"github.com/cubefs/cubefs/util"
-
-	sysutil "github.com/cubefs/cubefs/util/sys"
-
 	cfs "github.com/cubefs/cubefs/client/fs"
 	"github.com/cubefs/cubefs/depends/bazil.org/fuse"
 	"github.com/cubefs/cubefs/depends/bazil.org/fuse/fs"
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/sdk/master"
+	"github.com/cubefs/cubefs/util"
+	"github.com/cubefs/cubefs/util/auditlog"
+	"github.com/cubefs/cubefs/util/buf"
 	"github.com/cubefs/cubefs/util/config"
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/cubefs/cubefs/util/stat"
+	sysutil "github.com/cubefs/cubefs/util/sys"
 	"github.com/cubefs/cubefs/util/ump"
 	"github.com/jacobsa/daemonize"
 	_ "go.uber.org/automaxprocs"
@@ -128,7 +124,7 @@ func createUDS(sockAddr string) (listener net.Listener, err error) {
 		return
 	}
 
-	if err = os.Chmod(sockAddr, 0666); err != nil {
+	if err = os.Chmod(sockAddr, 0o666); err != nil {
 		log.LogErrorf("failed to chmod socket file: %v\n", err)
 		listener.Close()
 		return
@@ -193,7 +189,7 @@ func sendSuspendRequest(port string, udsListener net.Listener) (err error) {
 	}
 	defer resp.Body.Close()
 
-	if data, err = ioutil.ReadAll(resp.Body); err != nil {
+	if data, err = io.ReadAll(resp.Body); err != nil {
 		log.LogErrorf("Failed to read response: %v\n", err)
 		return err
 	}
@@ -229,7 +225,7 @@ func sendResumeRequest(port string) (err error) {
 	}
 	defer resp.Body.Close()
 
-	if data, err = ioutil.ReadAll(resp.Body); err != nil {
+	if data, err = io.ReadAll(resp.Body); err != nil {
 		log.LogErrorf("Failed to read response: %v\n", err)
 		return err
 	}
@@ -284,14 +280,13 @@ func main() {
 
 	cfg, _ := config.LoadConfigFile(*configFile)
 	opt, err := parseMountOption(cfg)
-
 	if err != nil {
 		err = errors.NewErrorf("parse mount opt failed: %v\n", err)
 		fmt.Println(err)
 		daemonize.SignalOutcome(err)
 		os.Exit(1)
 	}
-	//load  conf from master
+	// load  conf from master
 	for retry := 0; retry < MasterRetrys; retry++ {
 		err = loadConfFromMaster(opt)
 		if err != nil {
@@ -310,7 +305,7 @@ func main() {
 	if opt.MaxCPUs > 0 {
 		runtime.GOMAXPROCS(int(opt.MaxCPUs))
 	}
-	//use uber automaxprocs: get real cpu number to k8s pod"
+	// use uber automaxprocs: get real cpu number to k8s pod"
 
 	level := parseLogLevel(opt.Loglvl)
 	_, err = log.InitLog(opt.Logpath, opt.Volname, level, nil, log.DefaultLogLeftSpaceLimit)
@@ -359,7 +354,7 @@ func main() {
 		buf.InitbCachePool(bcache.MaxBlockSize)
 	}
 	outputFilePath := path.Join(opt.Logpath, LoggerPrefix, LoggerOutput)
-	outputFile, err := os.OpenFile(outputFilePath, os.O_CREATE|os.O_RDWR|os.O_APPEND, 0666)
+	outputFile, err := os.OpenFile(outputFilePath, os.O_CREATE|os.O_RDWR|os.O_APPEND, 0o666)
 	if err != nil {
 		err = errors.NewErrorf("Open output file failed: %v\n", err)
 		fmt.Println(err)
@@ -492,7 +487,7 @@ func main() {
 }
 
 func getPushAddrFromMaster(masterAddr string) (addr string, err error) {
-	var mc = master.NewMasterClientFromString(masterAddr, false)
+	mc := master.NewMasterClientFromString(masterAddr, false)
 	addr, err = mc.AdminAPI().GetMonitorPushAddr()
 	return
 }
@@ -614,7 +609,7 @@ func mount(opt *proto.MountOptions) (fsConn *fuse.Conn, super *cfs.Super, err er
 	http.HandleFunc(log.GetLogPath, log.GetLog)
 	http.HandleFunc(ControlCommandSuspend, super.SetSuspend)
 	http.HandleFunc(ControlCommandResume, super.SetResume)
-	//auditlog
+	// auditlog
 	http.HandleFunc(auditlog.EnableAuditLogReqPath, super.EnableAuditLog)
 	http.HandleFunc(auditlog.DisableAuditLogReqPath, auditlog.DisableAuditLog)
 	http.HandleFunc(auditlog.SetAuditLogBufSizeReqPath, auditlog.ResetWriterBuffSize)
@@ -648,7 +643,7 @@ func mount(opt *proto.MountOptions) (fsConn *fuse.Conn, super *cfs.Super, err er
 	}
 
 	go func() {
-		var mc = master.NewMasterClientFromString(opt.Master, false)
+		mc := master.NewMasterClientFromString(opt.Master, false)
 		t := time.NewTicker(UpdateConfInterval)
 		defer t.Stop()
 		for range t.C {
@@ -691,7 +686,8 @@ func mount(opt *proto.MountOptions) (fsConn *fuse.Conn, super *cfs.Super, err er
 		fuse.Subtype("cubefs"),
 		fuse.LocalVolume(),
 		fuse.VolumeName(opt.FileSystemName),
-		fuse.RequestTimeout(opt.RequestTimeout)}
+		fuse.RequestTimeout(opt.RequestTimeout),
+	}
 
 	if opt.Rdonly {
 		options = append(options, fuse.ReadOnly())
@@ -785,7 +781,7 @@ func parseMountOption(cfg *config.Config) (*proto.MountOptions, error) {
 	opt.WriteThreads = GlobalMountOptions[proto.WriteThreads].GetInt64()
 
 	opt.BcacheDir = GlobalMountOptions[proto.BcacheDir].GetString()
-	//opt.EnableBcache = GlobalMountOptions[proto.EnableBcache].GetBool()
+	// opt.EnableBcache = GlobalMountOptions[proto.EnableBcache].GetBool()
 	opt.BcacheFilterFiles = GlobalMountOptions[proto.BcacheFilterFiles].GetString()
 	opt.BcacheBatchCnt = GlobalMountOptions[proto.BcacheBatchCnt].GetInt64()
 	opt.BcacheCheckIntervalS = GlobalMountOptions[proto.BcacheCheckIntervalS].GetInt64()
@@ -829,7 +825,7 @@ func parseMountOption(cfg *config.Config) (*proto.MountOptions, error) {
 }
 
 func checkPermission(opt *proto.MountOptions) (err error) {
-	var mc = master.NewMasterClientFromString(opt.Master, false)
+	mc := master.NewMasterClientFromString(opt.Master, false)
 	localIP, _ := ump.GetLocalIpAddr()
 	if info, err := mc.UserAPI().AclOperation(opt.Volname, localIP, util.AclCheckIP); err != nil || !info.OK {
 		syslog.Println(err)
@@ -845,7 +841,7 @@ func checkPermission(opt *proto.MountOptions) (err error) {
 			err = proto.ErrNoPermission
 			return
 		}
-		var policy = userInfo.Policy
+		policy := userInfo.Policy
 		if policy.IsOwn(opt.Volname) {
 			return
 		}
@@ -896,7 +892,7 @@ func freeOSMemory(w http.ResponseWriter, r *http.Request) {
 }
 
 func loadConfFromMaster(opt *proto.MountOptions) (err error) {
-	var mc = master.NewMasterClientFromString(opt.Master, false)
+	mc := master.NewMasterClientFromString(opt.Master, false)
 	var volumeInfo *proto.SimpleVolView
 	volumeInfo, err = mc.AdminAPI().GetVolumeSimpleInfo(opt.Volname)
 	if err != nil {

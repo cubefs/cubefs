@@ -30,9 +30,7 @@ type RoutinePool struct {
 	runningNum    int32
 }
 
-var (
-	ErrorClosed = errors.New("pool is closed")
-)
+var ErrorClosed = errors.New("pool is closed")
 
 func NewRoutinePool(maxRoutineNum int) *RoutinePool {
 	if maxRoutineNum <= 0 {

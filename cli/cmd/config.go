@@ -16,7 +16,6 @@ package cmd
 
 import (
 	"encoding/json"
-	"io/ioutil"
 	"math"
 	"os"
 	"path"
@@ -145,7 +144,7 @@ func setConfig(masterHosts string, timeout uint16) (err error) {
 	if configData, err = json.Marshal(config); err != nil {
 		return
 	}
-	if err = ioutil.WriteFile(defaultConfigPath, configData, 0o600); err != nil {
+	if err = os.WriteFile(defaultConfigPath, configData, 0o600); err != nil {
 		return
 	}
 	return nil
@@ -154,11 +153,11 @@ func setConfig(masterHosts string, timeout uint16) (err error) {
 func LoadConfig() (*Config, error) {
 	var err error
 	var configData []byte
-	if configData, err = ioutil.ReadFile(defaultConfigPath); err != nil && !os.IsNotExist(err) {
+	if configData, err = os.ReadFile(defaultConfigPath); err != nil && !os.IsNotExist(err) {
 		return nil, err
 	}
 	if os.IsNotExist(err) {
-		if err = ioutil.WriteFile(defaultConfigPath, defaultConfigData, 0o600); err != nil {
+		if err = os.WriteFile(defaultConfigPath, defaultConfigData, 0o600); err != nil {
 			return nil, err
 		}
 		configData = defaultConfigData

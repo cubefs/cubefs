@@ -447,6 +447,7 @@ func newZoneDomainValue() (ev *zoneDomainValue) {
 	}
 	return
 }
+
 func newNodeSetValue(nset *nodeSet) (nsv *nodeSetValue) {
 	nsv = &nodeSetValue{
 		ID:               nset.ID,
@@ -457,6 +458,7 @@ func newNodeSetValue(nset *nodeSet) (nsv *nodeSetValue) {
 	}
 	return
 }
+
 func newNodeSetGrpValue(nset *nodeSetGroup) (nsv *domainNodeSetGrpValue) {
 	nsv = &domainNodeSetGrpValue{
 		DomainId:    nset.domainId,
@@ -561,7 +563,7 @@ func (c *Cluster) loadApiLimiterInfo() (err error) {
 		return err
 	}
 	for _, value := range result {
-		//cv := &clusterValue{}
+		// cv := &clusterValue{}
 		limiterInfos := make(map[string]*ApiLimitInfo)
 		if err = json.Unmarshal(value, &limiterInfos); err != nil {
 			log.LogErrorf("action[loadApiLimiterInfo], unmarshal err:%v", err.Error())
@@ -574,7 +576,7 @@ func (c *Cluster) loadApiLimiterInfo() (err error) {
 		c.apiLimiter.m.Lock()
 		c.apiLimiter.limiterInfos = limiterInfos
 		c.apiLimiter.m.Unlock()
-		//c.apiLimiter.Replace(limiterInfos)
+		// c.apiLimiter.Replace(limiterInfos)
 		log.LogInfof("action[loadApiLimiterInfo], limiter info[%v]", value)
 	}
 	return
@@ -1034,6 +1036,7 @@ func (c *Cluster) loadZoneValue() (err error) {
 
 	return
 }
+
 func (c *Cluster) updateMaxConcurrentLcNodes(val uint64) {
 	atomic.StoreUint64(&c.cfg.MaxConcurrentLcNodes, val)
 }
@@ -1102,13 +1105,13 @@ func (c *Cluster) loadClusterValue() (err error) {
 		}
 
 		c.cfg.MetaNodeThreshold = cv.Threshold
-		//c.cfg.DirChildrenNumLimit = cv.DirChildrenNumLimit
+		// c.cfg.DirChildrenNumLimit = cv.DirChildrenNumLimit
 		c.cfg.ClusterLoadFactor = cv.LoadFactor
 		c.DisableAutoAllocate = cv.DisableAutoAllocate
 		c.ForbidMpDecommission = cv.ForbidMpDecommission
 		c.diskQosEnable = cv.DiskQosEnable
 		c.cfg.QosMasterAcceptLimit = cv.QosLimitUpload
-		c.DecommissionLimit = cv.DecommissionLimit //dont update nodesets limit for nodesets are not loaded
+		c.DecommissionLimit = cv.DecommissionLimit // dont update nodesets limit for nodesets are not loaded
 		c.fileStatsEnable = cv.FileStatsEnable
 		c.clusterUuid = cv.ClusterUuid
 		c.clusterUuidEnable = cv.ClusterUuidEnable
@@ -1231,6 +1234,7 @@ func (c *Cluster) putZoneDomain(init bool) (err error) {
 	}
 	return c.submit(metadata)
 }
+
 func (c *Cluster) loadZoneDomain() (ok bool, err error) {
 	log.LogInfof("action[loadZoneDomain]")
 	result, err := c.fsm.store.SeekForPrefix([]byte(DomainPrefix))
@@ -1537,7 +1541,7 @@ func (c *Cluster) loadDataPartitions() (err error) {
 		dp := dpv.Restore(c)
 		vol.dataPartitions.put(dp)
 		c.addBadDataPartitionIdMap(dp)
-		//add to nodeset decommission list
+		// add to nodeset decommission list
 		go dp.addToDecommissionList(c)
 		log.LogInfof("action[loadDataPartitions],vol[%v],dp[%v] ", vol.Name, dp.PartitionID)
 	}
@@ -1558,7 +1562,6 @@ func (c *Cluster) loadQuota() (err error) {
 
 // load s3api qos info to memory cache
 func (c *Cluster) loadS3ApiQosInfo() (err error) {
-
 	keyPrefix := S3QoSPrefix
 	result, err := c.fsm.store.SeekForPrefix([]byte(keyPrefix))
 	if err != nil {

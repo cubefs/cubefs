@@ -19,7 +19,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"strings"
 	"sync"
@@ -32,9 +32,7 @@ const (
 	requestTimeout = 30 * time.Second
 )
 
-var (
-	ErrNoValidMaster = errors.New("no valid master")
-)
+var ErrNoValidMaster = errors.New("no valid master")
 
 // MasterHelper defines the helper struct to manage the master.
 type MasterHelper interface {
@@ -97,7 +95,7 @@ func (helper *masterHelper) request(method, path string, param, header map[strin
 			continue
 		}
 		stateCode := resp.StatusCode
-		repsData, err = ioutil.ReadAll(resp.Body)
+		repsData, err = io.ReadAll(resp.Body)
 		resp.Body.Close()
 		if err != nil {
 			log.LogErrorf("[masterHelper] %s", err)
@@ -119,14 +117,13 @@ func (helper *masterHelper) request(method, path string, param, header map[strin
 			if leaderAddr != host {
 				helper.setLeader(host)
 			}
-			var body = &struct {
+			body := &struct {
 				Code int32           `json:"code"`
 				Msg  string          `json:"msg"`
 				Data json.RawMessage `json:"data"`
 			}{}
 			if err := json.Unmarshal(repsData, body); err != nil {
 				return nil, fmt.Errorf("unmarshal response body err:%v", err)
-
 			}
 			// o represent proto.ErrCodeSuccess
 			if body.Code != 0 {

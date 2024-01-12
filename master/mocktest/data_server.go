@@ -39,8 +39,8 @@ type MockDataServer struct {
 	Total                           uint64
 	Used                            uint64
 	Available                       uint64
-	CreatedPartitionWeights         uint64 //dataPartitionCnt*dataPartitionSize
-	RemainWeightsForCreatePartition uint64 //all-useddataPartitionsWieghts
+	CreatedPartitionWeights         uint64 // dataPartitionCnt*dataPartitionSize
+	RemainWeightsForCreatePartition uint64 // all-useddataPartitionsWieghts
 	CreatedPartitionCnt             uint64
 	MaxWeightsForCreatePartition    uint64
 	partitions                      []*MockDataPartition
@@ -291,7 +291,7 @@ func (mds *MockDataServer) handleHeartbeats(conn net.Conn, pkg *proto.Packet, ta
 			DiskPath:        "/cfs",
 			ExtentCount:     10,
 			NeedCompare:     true,
-			IsLeader:        true, //todo
+			IsLeader:        true, // todo
 			VolName:         partition.VolName,
 		}
 		response.PartitionReports = append(response.PartitionReports, vr)
@@ -342,7 +342,7 @@ func (mds *MockDataServer) handleLoadDataPartition(conn net.Conn, pkg *proto.Pac
 	if partition == nil {
 		return
 	}
-	//response.VolName = partition.VolName
+	// response.VolName = partition.VolName
 	task.Response = response
 	if err = mds.mc.NodeAPI().ResponseDataNodeTask(task); err != nil {
 		return

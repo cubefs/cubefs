@@ -147,7 +147,6 @@ func contains(arr []string, element string) (ok bool) {
 }
 
 func containsID(arr []uint64, element uint64) bool {
-
 	if arr == nil || len(arr) == 0 {
 		return false
 	}

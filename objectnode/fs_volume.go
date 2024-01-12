@@ -318,7 +318,7 @@ func (v *Volume) SetXAttr(path string, key string, data []byte, autoCreate bool)
 		return err
 	}
 	if err == syscall.ENOENT {
-		var dirs, filename = splitPath(path)
+		dirs, filename := splitPath(path)
 		var parentID uint64
 		if parentID, err = v.lookupDirectories(dirs, true); err != nil {
 			return err
@@ -370,7 +370,7 @@ func (v *Volume) GetXAttr(path string, key string) (info *proto.XAttrInfo, err e
 	var notUseCache bool
 
 	if objMetaCache != nil {
-		var retry = 0
+		retry := 0
 		for {
 			if _, inode, _, _, err = v.recursiveLookupTarget(path, notUseCache); err != nil {
 				return v.getXAttr(path, key)
@@ -434,7 +434,6 @@ func (v *Volume) GetXAttr(path string, key string) (info *proto.XAttrInfo, err e
 	}
 
 	return v.getXAttr(path, key)
-
 }
 
 func (v *Volume) DeleteXAttr(path string, key string) (err error) {
@@ -471,7 +470,7 @@ func (v *Volume) ListXAttrs(path string) (keys []string, err error) {
 	var notUseCache bool
 
 	if objMetaCache != nil {
-		var retry = 0
+		retry := 0
 		for {
 			if _, inode, _, _, err = v.recursiveLookupTarget(path, notUseCache); err != nil {
 				return v.listXAttrs(path)
@@ -513,7 +512,6 @@ func (v *Volume) ListXAttrs(path string) (keys []string, err error) {
 		return
 	}
 	return v.listXAttrs(path)
-
 }
 
 func (v *Volume) OSSSecure() (accessKey, secretKey string) {
@@ -609,12 +607,12 @@ func (v *Volume) PutObject(path string, reader io.Reader, opt *PutFileOption) (f
 	// The path is processed according to the content-type. If it is a directory type,
 	// a path separator is appended at the end of the path, so the recursiveMakeDirectory
 	// method can be processed directly in recursion.
-	var fixedPath = path
+	fixedPath := path
 	if opt != nil && opt.MIMEType == ValueContentTypeDirectory && !strings.HasSuffix(path, pathSep) {
 		fixedPath = path + pathSep
 	}
 
-	var pathItems = NewPathIterator(fixedPath).ToSlice()
+	pathItems := NewPathIterator(fixedPath).ToSlice()
 	if len(pathItems) == 0 {
 		// A blank directory entry indicates that the path after the validation is the volume
 		// root directory itself.
@@ -636,7 +634,7 @@ func (v *Volume) PutObject(path string, reader io.Reader, opt *PutFileOption) (f
 			v.name, path, err)
 		return
 	}
-	var lastPathItem = pathItems[len(pathItems)-1]
+	lastPathItem := pathItems[len(pathItems)-1]
 	if lastPathItem.IsDirectory {
 		// If the last path node is a directory, then it has been processed by the previous logic.
 		// Just get the information of this node and return.
@@ -741,7 +739,7 @@ func (v *Volume) PutObject(path string, reader io.Reader, opt *PutFileOption) (f
 		return
 	}
 
-	var etagValue = ETagValue{
+	etagValue := ETagValue{
 		Value:   hex.EncodeToString(md5Hash.Sum(nil)),
 		PartNum: 0,
 		TS:      finalInode.ModifyTime,
@@ -958,7 +956,7 @@ func (v *Volume) InitMultipart(path string, opt *PutFileOption) (multipartID str
 	}
 	// If tagging have been specified, use extend attributes for storage.
 	if opt != nil && opt.Tagging != nil {
-		var encoded = opt.Tagging.Encode()
+		encoded := opt.Tagging.Encode()
 		extend[XAttrKeyOSSTagging] = encoded
 	}
 	// If ACL have been specified, use extend attributes for storage.
@@ -1197,7 +1195,7 @@ func (v *Volume) CompleteMultipart(path, multipartID string, multipartInfo *prot
 	var size uint64
 	var fileOffset uint64
 	if proto.IsCold(v.volType) {
-		var completeObjExtentKeys = make([]proto.ObjExtentKey, 0)
+		completeObjExtentKeys := make([]proto.ObjExtentKey, 0)
 		for _, part := range parts {
 			var objExtents []proto.ObjExtentKey
 			if _, _, _, objExtents, err = v.mw.GetObjExtents(part.Inode); err != nil {
@@ -1218,7 +1216,7 @@ func (v *Volume) CompleteMultipart(path, multipartID string, multipartInfo *prot
 			return
 		}
 	} else {
-		var completeExtentKeys = make([]proto.ExtentKey, 0)
+		completeExtentKeys := make([]proto.ExtentKey, 0)
 		for _, part := range parts {
 			var eks []proto.ExtentKey
 			if _, _, eks, err = v.mw.GetExtents(part.Inode); err != nil {
@@ -1246,7 +1244,7 @@ func (v *Volume) CompleteMultipart(path, multipartID string, multipartInfo *prot
 	if len(parts) == 1 {
 		md5Val = parts[0].MD5
 	} else {
-		var md5Hash = md5.New()
+		md5Hash := md5.New()
 		for _, part := range parts {
 			md5Hash.Write([]byte(part.MD5))
 		}
@@ -1262,7 +1260,7 @@ func (v *Volume) CompleteMultipart(path, multipartID string, multipartInfo *prot
 		return
 	}
 
-	var etagValue = ETagValue{
+	etagValue := ETagValue{
 		Value:   md5Val,
 		PartNum: len(parts),
 		TS:      finalInode.ModifyTime,
@@ -1419,7 +1417,7 @@ func (v *Volume) appendInodeHash(h hash.Hash, inode uint64, total uint64, preAll
 		}
 	}()
 
-	var buf = preAllocatedBuf
+	buf := preAllocatedBuf
 	if len(buf) == 0 {
 		buf = make([]byte, 1024*64)
 	}
@@ -1510,7 +1508,7 @@ func (v *Volume) loadUserDefinedMetadata(inode uint64) (metadata map[string]stri
 			v.name, inode, err)
 		return
 	}
-	var xattrKeys = make([]string, 0)
+	xattrKeys := make([]string, 0)
 	for _, storedXAttrKey := range storedXAttrKeys {
 		if !strings.HasPrefix(storedXAttrKey, "oss:") {
 			xattrKeys = append(xattrKeys, storedXAttrKey)
@@ -1551,7 +1549,7 @@ func (v *Volume) readFile(inode, inodeSize uint64, path string, writer io.Writer
 }
 
 func (v *Volume) readEbs(inode, inodeSize uint64, path string, writer io.Writer, offset, size uint64) error {
-	var upper = size + offset
+	upper := size + offset
 	if upper > inodeSize {
 		upper = inodeSize - offset
 	}
@@ -1561,7 +1559,7 @@ func (v *Volume) readEbs(inode, inodeSize uint64, path string, writer io.Writer,
 	reader := v.getEbsReader(inode)
 	var n int
 	var rest uint64
-	var tmp = buf.ReadBufPool.Get().([]byte)
+	tmp := buf.ReadBufPool.Get().([]byte)
 	defer buf.ReadBufPool.Put(tmp)
 
 	for {
@@ -1600,19 +1598,19 @@ func (v *Volume) readEbs(inode, inodeSize uint64, path string, writer io.Writer,
 }
 
 func (v *Volume) read(inode, inodeSize uint64, path string, writer io.Writer, offset, size uint64) error {
-	var upper = size + offset
+	upper := size + offset
 	if upper > inodeSize {
 		upper = inodeSize - offset
 	}
 
 	var n int
-	var tmp = make([]byte, 2*util.BlockSize)
+	tmp := make([]byte, 2*util.BlockSize)
 	for {
-		var rest = upper - offset
+		rest := upper - offset
 		if rest == 0 {
 			break
 		}
-		var readSize = len(tmp)
+		readSize := len(tmp)
 		if uint64(readSize) > rest {
 			readSize = int(rest)
 		}
@@ -1667,7 +1665,7 @@ func (v *Volume) ObjectMeta(path string) (info *FSFileInfo, xattr *proto.XAttrIn
 	var inode uint64
 	var mode os.FileMode
 	var inoInfo *proto.InodeInfo
-	var retry = 0
+	retry := 0
 	var notUseCache bool
 	for {
 		if _, inode, _, mode, err = v.recursiveLookupTarget(path, notUseCache); err != nil {
@@ -1740,7 +1738,7 @@ func (v *Volume) ObjectMeta(path string) (info *FSFileInfo, xattr *proto.XAttrIn
 		disposition = string(xattr.Get(XAttrKeyOSSDISPOSITION))
 		cacheControl = string(xattr.Get(XAttrKeyOSSCacheControl))
 		expires = string(xattr.Get(XAttrKeyOSSExpires))
-		var rawETag = string(xattr.Get(XAttrKeyOSSETag))
+		rawETag := string(xattr.Get(XAttrKeyOSSETag))
 		if len(rawETag) == 0 {
 			rawETag = string(xattr.Get(XAttrKeyOSSETagDeprecated))
 		}
@@ -1810,7 +1808,7 @@ func (v *Volume) Close() error {
 //	pathname did not exist, or the pathname was an empty string.
 func (v *Volume) recursiveLookupTarget(path string, notUseCache bool) (parent uint64, ino uint64, name string, mode os.FileMode, err error) {
 	parent = rootIno
-	var pathIterator = NewPathIterator(path)
+	pathIterator := NewPathIterator(path)
 	if !pathIterator.HasNext() {
 		err = syscall.ENOENT
 		return
@@ -1820,7 +1818,7 @@ func (v *Volume) recursiveLookupTarget(path string, notUseCache bool) (parent ui
 
 	if objMetaCache != nil && !notUseCache {
 		for pathIterator.HasNext() {
-			var pathItem = pathIterator.Next()
+			pathItem := pathIterator.Next()
 			var curIno uint64
 			var curMode uint32
 			dentry := &DentryItem{
@@ -1888,7 +1886,7 @@ func (v *Volume) recursiveLookupTarget(path string, notUseCache bool) (parent ui
 		return
 	}
 	for pathIterator.HasNext() {
-		var pathItem = pathIterator.Next()
+		pathItem := pathIterator.Next()
 		var curIno uint64
 		var curMode uint32
 		curIno, curMode, err = v.mw.Lookup_ll(parent, pathItem.Name)
@@ -1979,13 +1977,13 @@ func (v *Volume) recursiveMakeDirectory(path string) (partentIno uint64, err err
 	// in case of any mv or rename operation within refresh interval of dentry item in cache,
 	// recursiveMakeDirectory don't look up cache, and will force update dentry item
 	partentIno = rootIno
-	var pathIterator = NewPathIterator(path)
+	pathIterator := NewPathIterator(path)
 	if !pathIterator.HasNext() {
 		err = syscall.ENOENT
 		return
 	}
 	for pathIterator.HasNext() {
-		var pathItem = pathIterator.Next()
+		pathItem := pathIterator.Next()
 		if !pathItem.IsDirectory {
 			break
 		}
@@ -2033,7 +2031,7 @@ func (v *Volume) recursiveMakeDirectory(path string) (partentIno uint64, err err
 
 // Deprecated
 func (v *Volume) lookupDirectories(dirs []string, autoCreate bool) (inode uint64, err error) {
-	var parentId = rootIno
+	parentId := rootIno
 	// check and create dirs
 	for _, dir := range dirs {
 		curIno, curMode, lookupErr := v.mw.Lookup_ll(parentId, dir)
@@ -2084,7 +2082,7 @@ func (v *Volume) lookupDirectories(dirs []string, autoCreate bool) (inode uint64
 
 func (v *Volume) listFilesV1(prefix, marker, delimiter string, maxKeys uint64, onlyObject bool) (infos []*FSFileInfo,
 	prefixes Prefixes, nextMarker string, err error) {
-	var prefixMap = PrefixMap(make(map[string]struct{}))
+	prefixMap := PrefixMap(make(map[string]struct{}))
 
 	parentId, dirs, err := v.findParentId(prefix)
 
@@ -2131,7 +2129,7 @@ func (v *Volume) listFilesV1(prefix, marker, delimiter string, maxKeys uint64, o
 
 func (v *Volume) listFilesV2(prefix, startAfter, contToken, delimiter string, maxKeys uint64) (infos []*FSFileInfo,
 	prefixes Prefixes, nextMarker string, err error) {
-	var prefixMap = PrefixMap(make(map[string]struct{}))
+	prefixMap := PrefixMap(make(map[string]struct{}))
 
 	var marker string
 	if startAfter != "" {
@@ -2196,7 +2194,7 @@ func (v *Volume) findParentId(prefix string) (inode uint64, prefixDirs []string,
 		return proto.RootIno, prefixDirs, nil
 	}
 
-	var parentId = proto.RootIno
+	parentId := proto.RootIno
 	for index, dir := range dirs {
 
 		// Because lookup can only retrieve dentry whose name exactly matches,
@@ -2241,7 +2239,7 @@ func (v *Volume) recursiveScan(fileInfos []*FSFileInfo, prefixMap PrefixMap, par
 	var nextMarker string
 	var lastKey string
 
-	var currentPath = strings.Join(dirs, pathSep) + pathSep
+	currentPath := strings.Join(dirs, pathSep) + pathSep
 	if strings.HasPrefix(currentPath, pathSep) {
 		currentPath = strings.TrimPrefix(currentPath, pathSep)
 	}
@@ -2304,7 +2302,7 @@ readDir:
 		if child.Name == lastKey {
 			continue
 		}
-		var path = strings.Join(append(dirs, child.Name), pathSep)
+		path := strings.Join(append(dirs, child.Name), pathSep)
 		if os.FileMode(child.Type).IsDir() {
 			path += pathSep
 		}
@@ -2330,9 +2328,9 @@ readDir:
 		}
 
 		if delimiter != "" {
-			var nonPrefixPart = strings.Replace(path, prefix, "", 1)
+			nonPrefixPart := strings.Replace(path, prefix, "", 1)
 			if idx := strings.Index(nonPrefixPart, delimiter); idx >= 0 {
-				var commonPrefix = prefix + util.SubString(nonPrefixPart, 0, idx) + delimiter
+				commonPrefix := prefix + util.SubString(nonPrefixPart, 0, idx) + delimiter
 				if prefixMap.contain(commonPrefix) {
 					continue
 				}
@@ -2433,8 +2431,8 @@ func (v *Volume) supplyListFileInfo(fileInfos []*FSFileInfo) (err error) {
 		})
 		var etagValue ETagValue
 		if i >= 0 && i < len(xattrs) && xattrs[i].Inode == fileInfo.Inode {
-			var xattr = xattrs[i]
-			var rawETag = string(xattr.Get(XAttrKeyOSSETag))
+			xattr := xattrs[i]
+			rawETag := string(xattr.Get(XAttrKeyOSSETag))
 			if len(rawETag) == 0 {
 				rawETag = string(xattr.Get(XAttrKeyOSSETagDeprecated))
 			}
@@ -2461,7 +2459,7 @@ func (v *Volume) updateETag(inode uint64, size int64, mt time.Time) (etagValue E
 	if size == 0 {
 		etagValue = EmptyContentETagValue(mt)
 	} else {
-		var splittedRanges = SplitFileRange(size, SplitFileRangeBlockSize)
+		splittedRanges := SplitFileRange(size, SplitFileRangeBlockSize)
 		etagValue = NewRandomUUIDETagValue(len(splittedRanges), mt)
 	}
 	if err = v.mw.XAttrSet_ll(inode, []byte(XAttrKeyOSSETag), []byte(etagValue.Encode())); err != nil {
@@ -2484,7 +2482,7 @@ func (v *Volume) ListMultipartUploads(prefix, delimiter, keyMarker string, multi
 	var count uint64
 	var lastUpload *proto.MultipartInfo
 	for _, session := range sessions {
-		var tempKey = session.Path
+		tempKey := session.Path
 		if len(prefix) > 0 {
 			if !strings.HasPrefix(tempKey, prefix) {
 				continue
@@ -2861,7 +2859,7 @@ func (v *Volume) CopyFile(sv *Volume, sourcePath, targetPath, metaDirective stri
 			v.name, targetPath, tInodeInfo.Inode, err)
 		return
 	}
-	var etagValue = ETagValue{
+	etagValue := ETagValue{
 		Value:   md5Value,
 		PartNum: 0,
 		TS:      finalInode.ModifyTime,
@@ -2970,7 +2968,6 @@ func (v *Volume) CopyFile(sv *Volume, sourcePath, targetPath, metaDirective stri
 }
 
 func (v *Volume) copyFile(parentID uint64, newFileName string, sourceFileInode uint64, mode uint32, newPath string, sourcePath string) (info *proto.InodeInfo, err error) {
-
 	if err = v.mw.DentryCreate_ll(parentID, newFileName, sourceFileInode, mode, newPath); err != nil {
 		return
 	}
@@ -2982,7 +2979,7 @@ func (v *Volume) copyFile(parentID uint64, newFileName string, sourceFileInode u
 
 func NewVolume(config *VolumeConfig) (*Volume, error) {
 	var err error
-	var metaConfig = &meta.MetaConfig{
+	metaConfig := &meta.MetaConfig{
 		Volume:        config.Volume,
 		Masters:       config.Masters,
 		Authenticate:  false,
@@ -3016,7 +3013,7 @@ func NewVolume(config *VolumeConfig) (*Volume, error) {
 		return nil, proto.ErrVolNotExists
 	}
 
-	var extentConfig = &stream.ExtentConfig{
+	extentConfig := &stream.ExtentConfig{
 		Volume:            config.Volume,
 		Masters:           config.Masters,
 		FollowerRead:      true,

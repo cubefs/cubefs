@@ -15,10 +15,11 @@
 package metanode
 
 import (
-	"github.com/cubefs/cubefs/proto"
-	"github.com/cubefs/cubefs/util/log"
 	"strings"
 	"sync"
+
+	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util/log"
 )
 
 // DataPartition defines the struct of data partition that will be used on the meta node.

@@ -25,7 +25,7 @@ import (
 
 func NewRootCmd() *cobra.Command {
 	var optShowVersion bool
-	var c = &cobra.Command{
+	c := &cobra.Command{
 		Use:   path.Base(os.Args[0]),
 		Short: "CubeFS snapshot tool",
 		Args:  cobra.MinimumNArgs(0),

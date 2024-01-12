@@ -27,8 +27,10 @@ type Server interface {
 	Sync()
 }
 
-type DoStartFunc func(s Server, cfg *config.Config) (err error)
-type DoShutdownFunc func(s Server)
+type (
+	DoStartFunc    func(s Server, cfg *config.Config) (err error)
+	DoShutdownFunc func(s Server)
+)
 
 func (c *Control) Start(s Server, cfg *config.Config, do DoStartFunc) (err error) {
 	if atomic.CompareAndSwapUint32(&c.state, StateStandby, StateStart) {
@@ -47,7 +49,6 @@ func (c *Control) Start(s Server, cfg *config.Config, do DoStartFunc) (err error
 		c.wg.Add(1)
 	}
 	return
-
 }
 
 func (c *Control) Shutdown(s Server, do DoShutdownFunc) {
@@ -56,7 +57,6 @@ func (c *Control) Shutdown(s Server, do DoShutdownFunc) {
 		c.wg.Done()
 		atomic.StoreUint32(&c.state, StateStopped)
 	}
-
 }
 
 func (c *Control) Sync() {

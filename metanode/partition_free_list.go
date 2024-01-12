@@ -23,9 +23,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cubefs/cubefs/util"
-
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/log"
 )
@@ -35,7 +34,7 @@ const (
 	UpdateVolTicket               = 2 * time.Minute
 	BatchCounts                   = 128
 	OpenRWAppendOpt               = os.O_CREATE | os.O_RDWR | os.O_APPEND
-	TempFileValidTime             = 86400 //units: sec
+	TempFileValidTime             = 86400 // units: sec
 	DeleteInodeFileExtension      = "INODE_DEL"
 	DeleteWorkerCnt               = 10
 	InodeNLink0DelayDeleteSeconds = 24 * 3600
@@ -43,7 +42,7 @@ const (
 
 func (mp *metaPartition) startFreeList() (err error) {
 	if mp.delInodeFp, err = os.OpenFile(path.Join(mp.config.RootDir,
-		DeleteInodeFileExtension), OpenRWAppendOpt, 0644); err != nil {
+		DeleteInodeFileExtension), OpenRWAppendOpt, 0o644); err != nil {
 		return
 	}
 
@@ -77,7 +76,7 @@ func (mp *metaPartition) updateVolView(convert func(view *proto.DataPartitionsVi
 
 func (mp *metaPartition) updateVolWorker() {
 	t := time.NewTicker(UpdateVolTicket)
-	var convert = func(view *proto.DataPartitionsView) *DataPartitionsView {
+	convert := func(view *proto.DataPartitionsView) *DataPartitionsView {
 		newView := &DataPartitionsView{
 			DataPartitions: make([]*DataPartition, len(view.DataPartitions)),
 		}
@@ -134,7 +133,7 @@ func (mp *metaPartition) deleteWorker() {
 			continue
 		}
 
-		//add sleep time value
+		// add sleep time value
 		DeleteWorkerSleepMs()
 
 		isForceDeleted := sleepCnt%MaxSleepCnt == 0
@@ -159,7 +158,7 @@ func (mp *metaPartition) deleteWorker() {
 				break
 			}
 
-			//check inode nlink == 0 and deleteMarkFlag unset
+			// check inode nlink == 0 and deleteMarkFlag unset
 			if inode, ok := mp.inodeTree.Get(&Inode{Inode: ino}).(*Inode); ok {
 				inTx, _ := mp.txProcessor.txResource.isInodeInTransction(inode)
 				if inode.ShouldDelayDelete() || inTx {
@@ -172,7 +171,7 @@ func (mp *metaPartition) deleteWorker() {
 			buffSlice = append(buffSlice, ino)
 		}
 
-		//delay
+		// delay
 		for _, delayDeleteIno := range delayDeleteInos {
 			mp.freeList.Push(delayDeleteIno)
 		}
@@ -195,7 +194,7 @@ func (mp *metaPartition) batchDeleteExtentsByPartition(partitionDeleteExtents ma
 		lock sync.Mutex
 	)
 
-	//wait all Partition do BatchDeleteExtents finish
+	// wait all Partition do BatchDeleteExtents finish
 	for partitionID, extents := range partitionDeleteExtents {
 		log.LogDebugf("batchDeleteExtentsByPartition partitionID %v extents %v", partitionID, extents)
 		wg.Add(1)
@@ -209,7 +208,7 @@ func (mp *metaPartition) batchDeleteExtentsByPartition(partitionDeleteExtents ma
 	}
 	wg.Wait()
 
-	//range AllNode,find all Extents delete success on inode,it must to be append shouldCommit
+	// range AllNode,find all Extents delete success on inode,it must to be append shouldCommit
 	for i := 0; i < len(allInodes); i++ {
 		successDeleteExtentCnt := 0
 		inode := allInodes[i]

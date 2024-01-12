@@ -35,7 +35,7 @@ type ClientAPI struct {
 }
 
 func (api *ClientAPI) GetVolume(volName string, authKey string) (vv *proto.VolView, err error) {
-	var request = newAPIRequest(http.MethodPost, proto.ClientVol)
+	request := newAPIRequest(http.MethodPost, proto.ClientVol)
 	request.addParam("name", volName)
 	request.addParam("authKey", authKey)
 	var data []byte
@@ -50,7 +50,7 @@ func (api *ClientAPI) GetVolume(volName string, authKey string) (vv *proto.VolVi
 }
 
 func (api *ClientAPI) GetVolumeWithoutAuthKey(volName string) (vv *proto.VolView, err error) {
-	var request = newAPIRequest(http.MethodPost, proto.ClientVol)
+	request := newAPIRequest(http.MethodPost, proto.ClientVol)
 	request.addParam("name", volName)
 	request.addHeader(proto.SkipOwnerValidation, strconv.FormatBool(true))
 	var data []byte
@@ -66,7 +66,7 @@ func (api *ClientAPI) GetVolumeWithoutAuthKey(volName string) (vv *proto.VolView
 
 func (api *ClientAPI) GetVolumeWithAuthnode(volName string, authKey string, token string, decoder Decoder) (vv *proto.VolView, err error) {
 	var body []byte
-	var request = newAPIRequest(http.MethodPost, proto.ClientVol)
+	request := newAPIRequest(http.MethodPost, proto.ClientVol)
 	request.addParam("name", volName)
 	request.addParam("authKey", authKey)
 	request.addParam(proto.ClientMessage, token)
@@ -86,7 +86,7 @@ func (api *ClientAPI) GetVolumeWithAuthnode(volName string, authKey string, toke
 }
 
 func (api *ClientAPI) GetVolumeStat(volName string) (info *proto.VolStatInfo, err error) {
-	var request = newAPIRequest(http.MethodGet, proto.ClientVolStat)
+	request := newAPIRequest(http.MethodGet, proto.ClientVolStat)
 	request.addParam("name", volName)
 	request.addParam("version", strconv.FormatInt(proto.LFClient, 10))
 	var data []byte
@@ -101,7 +101,7 @@ func (api *ClientAPI) GetVolumeStat(volName string) (info *proto.VolStatInfo, er
 }
 
 func (api *ClientAPI) GetMetaPartition(partitionID uint64) (partition *proto.MetaPartitionInfo, err error) {
-	var request = newAPIRequest(http.MethodGet, proto.ClientMetaPartition)
+	request := newAPIRequest(http.MethodGet, proto.ClientMetaPartition)
 	request.addParam("id", strconv.FormatUint(partitionID, 10))
 	var data []byte
 	if data, err = api.mc.serveRequest(request); err != nil {
@@ -115,7 +115,7 @@ func (api *ClientAPI) GetMetaPartition(partitionID uint64) (partition *proto.Met
 }
 
 func (api *ClientAPI) GetMetaPartitions(volName string) (views []*proto.MetaPartitionView, err error) {
-	var request = newAPIRequest(http.MethodGet, proto.ClientMetaPartitions)
+	request := newAPIRequest(http.MethodGet, proto.ClientMetaPartitions)
 	request.addParam("name", volName)
 	var data []byte
 	if data, err = api.mc.serveRequest(request); err != nil {
@@ -128,7 +128,7 @@ func (api *ClientAPI) GetMetaPartitions(volName string) (views []*proto.MetaPart
 }
 
 func (api *ClientAPI) GetDataPartitions(volName string) (view *proto.DataPartitionsView, err error) {
-	var request = newAPIRequest(http.MethodGet, proto.ClientDataPartitions)
+	request := newAPIRequest(http.MethodGet, proto.ClientDataPartitions)
 	request.addParam("name", volName)
 
 	lastLeader := api.mc.leaderAddr
@@ -151,7 +151,7 @@ func (api *ClientAPI) GetDataPartitions(volName string) (view *proto.DataPartiti
 }
 
 func (api *ClientAPI) GetPreLoadDataPartitions(volName string) (view *proto.DataPartitionsView, err error) {
-	var request = newAPIRequest(http.MethodGet, proto.ClientDataPartitions)
+	request := newAPIRequest(http.MethodGet, proto.ClientDataPartitions)
 	request.addParam("name", volName)
 	var data []byte
 	if data, err = api.mc.serveRequest(request); err != nil {

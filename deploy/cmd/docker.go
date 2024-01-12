@@ -18,7 +18,6 @@ func stopContainerOnNode(nodeUser, node, containerName string) (string, error) {
 		return fmt.Sprintf("successful stop %s on node %s", containerName, node), nil
 	}
 	return fmt.Sprintf("%s on node %s already stopped", containerName, node), nil
-
 }
 
 func rmContainerOnNode(nodeUser, node, containerName string) (string, error) {
@@ -31,7 +30,6 @@ func rmContainerOnNode(nodeUser, node, containerName string) (string, error) {
 		return fmt.Sprintf("successful rm %s on node %s", containerName, node), nil
 	}
 	return fmt.Sprintf("%s on node %s already removed", containerName, node), nil
-
 }
 
 func startMasterContainerOnNode(nodeUser, node, containerName, dataDir string) (string, error) {
@@ -122,7 +120,7 @@ func checkAndInstallDocker(nodeUser, node string) error {
 	cmd := exec.Command("ssh", nodeUser+"@"+node, "docker --version")
 	output, err := cmd.Output()
 	if err == nil && strings.Contains(string(output), "Docker version") {
-		//log.Println("Docker installed")
+		// log.Println("Docker installed")
 		return nil
 	}
 
@@ -140,7 +138,6 @@ func checkAndInstallDocker(nodeUser, node string) error {
 	}
 
 	return nil
-
 }
 
 // Check if the Docker service is started and started
@@ -194,7 +191,6 @@ func removeImageOnNode(nodeUser, node, imageName string) error {
 }
 
 func containerStatus(nodeUser, node, containerName string) (string, error) {
-
 	cmd := exec.Command("ssh", nodeUser+"@"+node, "docker inspect --format='{{.State.Status}}' "+containerName)
 	output, err := cmd.Output()
 	if err != nil {
@@ -202,5 +198,4 @@ func containerStatus(nodeUser, node, containerName string) (string, error) {
 	}
 
 	return string(output), nil
-
 }

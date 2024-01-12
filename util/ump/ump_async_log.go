@@ -87,7 +87,7 @@ func (lw *LogWrite) initLogFp(sufixx string) (err error) {
 	lw.bf = bytes.NewBuffer([]byte{})
 	lw.jsonEncoder = json.NewEncoder(lw.bf)
 	lw.jsonEncoder.SetEscapeHTML(false)
-	if lw.logFp, err = os.OpenFile(lw.logName, LogFileOpt, 0666); err != nil {
+	if lw.logFp, err = os.OpenFile(lw.logName, LogFileOpt, 0o666); err != nil {
 		return
 	}
 	if fi, err = lw.logFp.Stat(); err != nil {
@@ -114,7 +114,7 @@ func (lw *LogWrite) backGroundCheckFile() (err error) {
 	}
 	os.Rename(lw.logName, name)
 
-	if lw.logFp, err = os.OpenFile(lw.logName, LogFileOpt, 0666); err != nil {
+	if lw.logFp, err = os.OpenFile(lw.logName, LogFileOpt, 0o666); err != nil {
 		lw.seq--
 		return
 	}
@@ -129,9 +129,7 @@ func (lw *LogWrite) backGroundCheckFile() (err error) {
 
 func (lw *LogWrite) backGroundWrite(umpType string) {
 	for {
-		var (
-			body []byte
-		)
+		var body []byte
 		obj := <-lw.logCh
 		switch umpType {
 		case FunctionTpType:
@@ -173,7 +171,7 @@ func initLogName(module, dataDir string) (err error) {
 	} else {
 		return fmt.Errorf("warnLogDir dir not config")
 	}
-	if err = os.MkdirAll(UmpDataDir, 0755); err != nil {
+	if err = os.MkdirAll(UmpDataDir, 0o755); err != nil {
 		return
 	}
 

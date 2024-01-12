@@ -22,7 +22,6 @@ type rateReader struct {
 }
 
 func (self *rateReader) Read(p []byte) (n int, err error) {
-
 	size := len(p)
 	size = self.c.acquire(size)
 

@@ -18,7 +18,6 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"net"
 	"os"
 	"path"
@@ -473,7 +472,7 @@ func (dp *DataPartition) LoadAppliedID() (err error) {
 	if _, err = os.Stat(filename); err != nil {
 		return
 	}
-	data, err := ioutil.ReadFile(filename)
+	data, err := os.ReadFile(filename)
 	if err != nil {
 		err = errors.NewErrorf("[loadApplyIndex] OpenFile: %s", err.Error())
 		return
@@ -682,7 +681,6 @@ func (dp *DataPartition) getLeaderPartitionSize(maxExtentID uint64) (size uint64
 }
 
 func (dp *DataPartition) getMaxExtentIDAndPartitionSize(target string) (maxExtentID, PartitionSize uint64, err error) {
-
 	var conn *net.TCPConn
 	p := NewPacketToGetMaxExtentIDAndPartitionSIze(dp.partitionID)
 

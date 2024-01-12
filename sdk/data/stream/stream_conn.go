@@ -16,11 +16,11 @@ package stream
 
 import (
 	"fmt"
-	"github.com/cubefs/cubefs/proto"
 	"net"
 	"sync/atomic"
 	"time"
 
+	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/sdk/data/wrapper"
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/errors"
@@ -45,9 +45,7 @@ type StreamConn struct {
 	currAddr string
 }
 
-var (
-	StreamConnPool = util.NewConnectPool()
-)
+var StreamConnPool = util.NewConnectPool()
 
 // NewStreamConn returns a new stream connection.
 func NewStreamConn(dp *wrapper.DataPartition, follower bool) (sc *StreamConn) {

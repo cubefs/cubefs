@@ -75,7 +75,7 @@ const (
 	defaultPeriodToLoadAllDataPartitions       = 60 * 60 * 4 // how long we need to load all the data partitions on the master every time
 	defaultNumberOfDataPartitionsToLoad        = 50          // how many data partitions to load every time
 	defaultMetaPartitionTimeOutSec             = 10 * defaultIntervalToCheckHeartbeat
-	//DefaultMetaPartitionMissSec                         = 3600
+	// DefaultMetaPartitionMissSec                         = 3600
 
 	defaultIntervalToAlarmMissingMetaPartition         = 10 * 60 // interval of checking if a replica is missing
 	defaultMetaPartitionMemUsageThreshold      float32 = 0.75    // memory usage threshold on a meta partition
@@ -115,11 +115,11 @@ type clusterConfig struct {
 	nodeSetCapacity                     int
 	MetaNodeThreshold                   float32
 	ClusterLoadFactor                   float32
-	MetaNodeDeleteBatchCount            uint64 //metanode delete batch count
-	DataNodeDeleteLimitRate             uint64 //datanode delete limit rate
-	MetaNodeDeleteWorkerSleepMs         uint64 //metaNode delete worker sleep time with millisecond. if 0 for no sleep
-	MaxDpCntLimit                       uint64 //datanode data partition limit
-	DataNodeAutoRepairLimitRate         uint64 //datanode autorepair limit rate
+	MetaNodeDeleteBatchCount            uint64 // metanode delete batch count
+	DataNodeDeleteLimitRate             uint64 // datanode delete limit rate
+	MetaNodeDeleteWorkerSleepMs         uint64 // metaNode delete worker sleep time with millisecond. if 0 for no sleep
+	MaxDpCntLimit                       uint64 // datanode data partition limit
+	DataNodeAutoRepairLimitRate         uint64 // datanode autorepair limit rate
 	DpMaxRepairErrCnt                   uint64
 	DpRepairTimeOut                     uint64
 	peers                               []raftstore.PeerAddress

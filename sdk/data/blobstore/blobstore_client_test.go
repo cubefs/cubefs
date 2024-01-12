@@ -36,9 +36,7 @@ const (
 	blobSize = 1 << 20
 )
 
-var (
-	dataCache []byte
-)
+var dataCache []byte
 
 type MockEbsService struct {
 	service *httptest.Server
@@ -181,7 +179,7 @@ func TestEbsClient_Write_Read(t *testing.T) {
 	if err != nil {
 		panic(err)
 	}
-	var testCases = []struct {
+	testCases := []struct {
 		size int
 	}{
 		{1},
@@ -195,7 +193,7 @@ func TestEbsClient_Write_Read(t *testing.T) {
 		location, err := blobStoreClient.Write(ctx, "testVol", data, uint32(tc.size))
 		require.Exactly(t, nil, err)
 
-		//read prepare
+		// read prepare
 		blobs := make([]cproto.Blob, 0)
 		for _, info := range location.Blobs {
 			blob := cproto.Blob{
@@ -219,5 +217,4 @@ func TestEbsClient_Write_Read(t *testing.T) {
 		require.NoError(t, err)
 		require.Exactly(t, tc.size, read)
 	}
-
 }

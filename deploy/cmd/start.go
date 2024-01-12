@@ -7,10 +7,12 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var ip string
-var allStart bool
-var datanodeDisk string
-var disk string
+var (
+	ip           string
+	allStart     bool
+	datanodeDisk string
+	disk         string
+)
 
 var StartCmd = &cobra.Command{
 	Use:   "start",
@@ -37,7 +39,6 @@ var StartCmd = &cobra.Command{
 		} else {
 			fmt.Println(cmd.UsageString())
 		}
-
 	},
 }
 
@@ -81,7 +82,6 @@ var startMetanodeCommand = &cobra.Command{
 				log.Println(err)
 			}
 		}
-
 	},
 }
 

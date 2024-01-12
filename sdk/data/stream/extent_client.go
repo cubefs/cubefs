@@ -37,14 +37,16 @@ import (
 	"golang.org/x/time/rate"
 )
 
-type SplitExtentKeyFunc func(parentInode, inode uint64, key proto.ExtentKey) error
-type AppendExtentKeyFunc func(parentInode, inode uint64, key proto.ExtentKey, discard []proto.ExtentKey) error
-type GetExtentsFunc func(inode uint64) (uint64, uint64, []proto.ExtentKey, error)
-type TruncateFunc func(inode, size uint64, fullPath string) error
-type EvictIcacheFunc func(inode uint64)
-type LoadBcacheFunc func(key string, buf []byte, offset uint64, size uint32) (int, error)
-type CacheBcacheFunc func(key string, buf []byte) error
-type EvictBacheFunc func(key string) error
+type (
+	SplitExtentKeyFunc  func(parentInode, inode uint64, key proto.ExtentKey) error
+	AppendExtentKeyFunc func(parentInode, inode uint64, key proto.ExtentKey, discard []proto.ExtentKey) error
+	GetExtentsFunc      func(inode uint64) (uint64, uint64, []proto.ExtentKey, error)
+	TruncateFunc        func(inode, size uint64, fullPath string) error
+	EvictIcacheFunc     func(inode uint64)
+	LoadBcacheFunc      func(key string, buf []byte, offset uint64, size uint32) (int, error)
+	CacheBcacheFunc     func(key string, buf []byte) error
+	EvictBacheFunc      func(key string) error
+)
 
 const (
 	MaxMountRetryLimit = 6
@@ -149,7 +151,7 @@ type ExtentClient struct {
 	splitExtentKey     SplitExtentKeyFunc
 	getExtents         GetExtentsFunc
 	truncate           TruncateFunc
-	evictIcache        EvictIcacheFunc //May be null, must check before using
+	evictIcache        EvictIcacheFunc // May be null, must check before using
 	loadBcache         LoadBcacheFunc
 	cacheBcache        CacheBcacheFunc
 	evictBcache        EvictBacheFunc
@@ -205,7 +207,6 @@ func (client *ExtentClient) batchEvictStramer(batchCnt int) {
 			break
 		}
 	}
-
 }
 
 func (client *ExtentClient) backgroundEvictStream() {
@@ -337,12 +338,15 @@ func (client *ExtentClient) GetVolumeName() string {
 func (client *ExtentClient) GetLatestVer() uint64 {
 	return atomic.LoadUint64(&client.multiVerMgr.latestVerSeq)
 }
+
 func (client *ExtentClient) GetReadVer() uint64 {
 	return atomic.LoadUint64(&client.multiVerMgr.verReadSeq)
 }
+
 func (client *ExtentClient) GetVerMgr() *proto.VolVersionInfoList {
 	return client.multiVerMgr.verList
 }
+
 func (client *ExtentClient) UpdateLatestVer(verList *proto.VolVersionInfoList) (err error) {
 	verSeq := verList.GetLastVer()
 	if verSeq == 0 || verSeq <= atomic.LoadUint64(&client.multiVerMgr.latestVerSeq) {
@@ -553,8 +557,8 @@ func (client *ExtentClient) Flush(inode uint64) error {
 }
 
 func (client *ExtentClient) Read(inode uint64, data []byte, offset int, size int) (read int, err error) {
-	//log.LogErrorf("======> ExtentClient Read Enter, inode(%v), len(data)=(%v), offset(%v), size(%v).", inode, len(data), offset, size)
-	//t1 := time.Now()
+	// log.LogErrorf("======> ExtentClient Read Enter, inode(%v), len(data)=(%v), offset(%v), size(%v).", inode, len(data), offset, size)
+	// t1 := time.Now()
 	if size == 0 {
 		return
 	}
@@ -605,7 +609,7 @@ func (client *ExtentClient) ReadExtent(inode uint64, ek *proto.ExtentKey, data [
 		return
 	}
 
-	var needCache = false
+	needCache := false
 	cacheKey := util.GenerateKey(s.client.volumeName, s.inode, ek.FileOffset)
 	if _, ok := client.inflightL1cache.Load(cacheKey); !ok && client.shouldBcache() {
 		client.inflightL1cache.Store(cacheKey, true)
@@ -615,7 +619,7 @@ func (client *ExtentClient) ReadExtent(inode uint64, ek *proto.ExtentKey, data [
 
 	// do cache.
 	if needCache {
-		//read full extent
+		// read full extent
 		buf := make([]byte, ek.Size)
 		req = NewExtentRequest(int(ek.FileOffset), int(ek.Size), buf, ek)
 		read, err = reader.Read(req)
@@ -637,7 +641,7 @@ func (client *ExtentClient) ReadExtent(inode uint64, ek *proto.ExtentKey, data [
 		}
 		return
 	} else {
-		//read data by offset:size
+		// read data by offset:size
 		req = NewExtentRequest(int(ek.FileOffset)+offset, size, data, ek)
 		ctx := context.Background()
 		s.client.readLimiter.Wait(ctx)

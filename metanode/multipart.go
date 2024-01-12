@@ -43,8 +43,8 @@ func (m *Part) Equal(o *Part) bool {
 
 func (m Part) Bytes() ([]byte, error) {
 	var err error
-	var buffer = bytes.NewBuffer(nil)
-	var tmp = make([]byte, binary.MaxVarintLen64)
+	buffer := bytes.NewBuffer(nil)
+	tmp := make([]byte, binary.MaxVarintLen64)
 	var n int
 	// ID
 	n = binary.PutUvarint(tmp, uint64(m.ID))
@@ -91,7 +91,7 @@ func PartFromBytes(raw []byte) *Part {
 	var md5Len uint64
 	md5Len, n = binary.Uvarint(raw[offset:])
 	offset += n
-	var md5Content = string(raw[offset : offset+int(md5Len)])
+	md5Content := string(raw[offset : offset+int(md5Len)])
 	offset += int(md5Len)
 	// decode size
 	var sizeU64 uint64
@@ -101,7 +101,7 @@ func PartFromBytes(raw []byte) *Part {
 	var inode uint64
 	inode, n = binary.Uvarint(raw[offset:])
 
-	var muPart = &Part{
+	muPart := &Part{
 		ID:         uint16(u64ID),
 		UploadTime: time.Unix(0, uploadTimeI64),
 		MD5:        md5Content,
@@ -201,8 +201,8 @@ func (m Parts) Search(id uint16) (part *Part, found bool) {
 func (m Parts) Bytes() ([]byte, error) {
 	var err error
 	var n int
-	var buffer = bytes.NewBuffer(nil)
-	var tmp = make([]byte, binary.MaxVarintLen64)
+	buffer := bytes.NewBuffer(nil)
+	tmp := make([]byte, binary.MaxVarintLen64)
 	n = binary.PutUvarint(tmp, uint64(len(m)))
 	if _, err = buffer.Write(tmp[:n]); err != nil {
 		return nil, err
@@ -231,7 +231,7 @@ func PartsFromBytes(raw []byte) Parts {
 	var numPartsU64 uint64
 	numPartsU64, n = binary.Uvarint(raw)
 	offset += n
-	var muParts = make([]*Part, int(numPartsU64))
+	muParts := make([]*Part, int(numPartsU64))
 	for i := 0; i < int(numPartsU64); i++ {
 		var partLengthU64 uint64
 		partLengthU64, n = binary.Uvarint(raw[offset:])
@@ -252,13 +252,13 @@ func NewMultipartExtend() MultipartExtend {
 func (me MultipartExtend) Bytes() ([]byte, error) {
 	var n int
 	var err error
-	var buffer = bytes.NewBuffer(nil)
-	var tmp = make([]byte, binary.MaxVarintLen64)
+	buffer := bytes.NewBuffer(nil)
+	tmp := make([]byte, binary.MaxVarintLen64)
 	n = binary.PutUvarint(tmp, uint64(len(me)))
 	if _, err = buffer.Write(tmp[:n]); err != nil {
 		return nil, err
 	}
-	var marshalStr = func(src string) error {
+	marshalStr := func(src string) error {
 		n = binary.PutUvarint(tmp, uint64(len(src)))
 		if _, err = buffer.Write(tmp[:n]); err != nil {
 			return err
@@ -283,7 +283,7 @@ func MultipartExtendFromBytes(raw []byte) MultipartExtend {
 	var offset, n int
 	var el uint64
 	me := NewMultipartExtend()
-	var unmarshalStr = func(data []byte) (string, int) {
+	unmarshalStr := func(data []byte) (string, int) {
 		var n int
 		var lengthU64 uint64
 		lengthU64, n = binary.Uvarint(data)
@@ -365,11 +365,11 @@ func (m *Multipart) Parts() []*Part {
 
 func (m *Multipart) Bytes() ([]byte, error) {
 	var n int
-	var buffer = bytes.NewBuffer(nil)
+	buffer := bytes.NewBuffer(nil)
 	var err error
 	tmp := make([]byte, binary.MaxVarintLen64)
 	// marshal id
-	var marshalStr = func(src string) error {
+	marshalStr := func(src string) error {
 		n = binary.PutUvarint(tmp, uint64(len(src)))
 		if _, err = buffer.Write(tmp[:n]); err != nil {
 			return err
@@ -420,7 +420,7 @@ func (m *Multipart) Bytes() ([]byte, error) {
 }
 
 func MultipartFromBytes(raw []byte) *Multipart {
-	var unmarshalStr = func(data []byte) (string, int) {
+	unmarshalStr := func(data []byte) (string, int) {
 		var n int
 		var lengthU64 uint64
 		lengthU64, n = binary.Uvarint(data)
@@ -443,15 +443,15 @@ func MultipartFromBytes(raw []byte) *Multipart {
 	var partsLengthU64 uint64
 	partsLengthU64, n = binary.Uvarint(raw[offset:])
 	offset += n
-	var parts = PartsFromBytes(raw[offset : offset+int(partsLengthU64)])
+	parts := PartsFromBytes(raw[offset : offset+int(partsLengthU64)])
 	offset += int(partsLengthU64)
 	// decode multipart extend
 	var extendLengthU64 uint64
 	extendLengthU64, n = binary.Uvarint(raw[offset:])
 	offset += n
-	var me = MultipartExtendFromBytes(raw[offset : offset+int(extendLengthU64)])
+	me := MultipartExtendFromBytes(raw[offset : offset+int(extendLengthU64)])
 
-	var muSession = &Multipart{
+	muSession := &Multipart{
 		id:       id,
 		key:      key,
 		initTime: time.Unix(0, initTimeI64),

@@ -16,9 +16,10 @@ package proto
 
 import (
 	"fmt"
-	"github.com/cubefs/cubefs/util/log"
 	"sync"
 	"time"
+
+	"github.com/cubefs/cubefs/util/log"
 )
 
 const (
@@ -132,22 +133,22 @@ type ClusterView struct {
 
 // ClusterNode defines the structure of a cluster node
 type ClusterNodeInfo struct {
-	//BatchCount          int
+	// BatchCount          int
 	LoadFactor string
-	//MarkDeleteRate      int
-	//AutoRepairRate      int
-	//DeleteWorkerSleepMs int
+	// MarkDeleteRate      int
+	// AutoRepairRate      int
+	// DeleteWorkerSleepMs int
 }
 
 type ClusterIP struct {
 	Cluster string
-	//MetaNodeDeleteBatchCount 	int
-	//MetaNodeDeleteWorkerSleepMs int
-	//DataNodeDeleteLimitRate     int
-	//DataNodeAutoRepairLimitRate int
-	//Ip 							string
+	// MetaNodeDeleteBatchCount 	int
+	// MetaNodeDeleteWorkerSleepMs int
+	// DataNodeDeleteLimitRate     int
+	// DataNodeAutoRepairLimitRate int
+	// Ip 							string
 	EbsAddr string
-	//ServicePath 				string
+	// ServicePath 				string
 }
 
 // NodeView provides the view of the data or meta node.
@@ -184,6 +185,7 @@ type ZoneStat struct {
 	DataNodeStat *ZoneNodesStat
 	MetaNodeStat *ZoneNodesStat
 }
+
 type ZoneNodesStat struct {
 	Total         float64 `json:"TotalGB"`
 	Used          float64 `json:"UsedGB"`
@@ -312,7 +314,7 @@ type DataPartitionDiagnosis struct {
 	RepFileCountDifferDpIDs     []uint64
 	RepUsedSizeDifferDpIDs      []uint64
 	ExcessReplicaDpIDs          []uint64
-	//BadDataPartitionIDs         []BadPartitionView
+	// BadDataPartitionIDs         []BadPartitionView
 	BadDataPartitionInfos      []BadPartitionRepairView
 	BadReplicaDataPartitionIDs []uint64
 }
@@ -418,6 +420,7 @@ type DecommissionDiskLimitDetail struct {
 	NodeSetId uint64
 	Limit     int
 }
+
 type DecommissionDiskLimit struct {
 	Details []DecommissionDiskLimitDetail
 }

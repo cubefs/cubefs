@@ -19,7 +19,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"math"
 	"net/http"
 	"strconv"
@@ -124,7 +124,6 @@ func hasTxParams(r *http.Request) bool {
 }
 
 func parseTxMask(r *http.Request, oldMask proto.TxOpMask) (mask proto.TxOpMask, err error) {
-
 	var maskStr string
 	if maskStr = r.FormValue(enableTxMaskKey); maskStr == "" {
 		mask = oldMask
@@ -200,6 +199,7 @@ func parseDecomDataNodeReq(r *http.Request) (nodeAddr string, err error) {
 
 	return
 }
+
 func parseAndExtractNodeAddr(r *http.Request) (nodeAddr string, err error) {
 	if err = r.ParseForm(); err != nil {
 		return
@@ -224,7 +224,7 @@ func parseRequestToGetTaskResponse(r *http.Request) (tr *proto.AdminTask, err er
 	if err = r.ParseForm(); err != nil {
 		return
 	}
-	if body, err = ioutil.ReadAll(r.Body); err != nil {
+	if body, err = io.ReadAll(r.Body); err != nil {
 		return
 	}
 	tr = &proto.AdminTask{}
@@ -317,11 +317,9 @@ func parseRequestToDeleteVol(r *http.Request) (name, authKey string, force bool,
 	}
 
 	return
-
 }
 
 func extractUintWithDefault(r *http.Request, key string, def int) (val int, err error) {
-
 	var str string
 	if str = r.FormValue(key); str == "" {
 		return def, nil
@@ -335,7 +333,6 @@ func extractUintWithDefault(r *http.Request, key string, def int) (val int, err 
 }
 
 func extractUint64WithDefault(r *http.Request, key string, def uint64) (val uint64, err error) {
-
 	var str string
 	if str = r.FormValue(key); str == "" {
 		return def, nil
@@ -349,7 +346,6 @@ func extractUint64WithDefault(r *http.Request, key string, def uint64) (val uint
 }
 
 func extractInt64WithDefault(r *http.Request, key string, def int64) (val int64, err error) {
-
 	var str string
 	if str = r.FormValue(key); str == "" {
 		return def, nil
@@ -363,7 +359,6 @@ func extractInt64WithDefault(r *http.Request, key string, def int64) (val int64,
 }
 
 func extractStrWithDefault(r *http.Request, key string, def string) (val string) {
-
 	if val = r.FormValue(key); val == "" {
 		return def
 	}
@@ -688,7 +683,6 @@ func checkCacheAction(action int) error {
 }
 
 func parseColdArgs(r *http.Request) (args coldVolArgs, err error) {
-
 	args.cacheRule = extractStr(r, cacheRuleKey)
 
 	if args.objBlockSize, err = extractUint(r, ebsBlkSizeKey); err != nil {
@@ -727,7 +721,6 @@ func parseColdArgs(r *http.Request) (args coldVolArgs, err error) {
 }
 
 func parseRequestToCreateVol(r *http.Request, req *createVolReq) (err error) {
-
 	if err = r.ParseForm(); err != nil {
 		return
 	}
@@ -1022,7 +1015,6 @@ func parseRequestToDecommissionMetaPartition(r *http.Request) (partitionID uint6
 }
 
 func parseAndExtractStatus(r *http.Request) (status bool, err error) {
-
 	if err = r.ParseForm(); err != nil {
 		return
 	}
@@ -1151,6 +1143,7 @@ func parseAndExtractThreshold(r *http.Request) (threshold float64, err error) {
 	}
 	return
 }
+
 func parseAndExtractSetNodeSetInfoParams(r *http.Request) (params map[string]interface{}, err error) {
 	if err = r.ParseForm(); err != nil {
 		return
@@ -1158,7 +1151,7 @@ func parseAndExtractSetNodeSetInfoParams(r *http.Request) (params map[string]int
 	var value string
 	params = make(map[string]interface{})
 	if value = r.FormValue(countKey); value != "" {
-		var count = uint64(0)
+		count := uint64(0)
 		count, err = strconv.ParseUint(value, 10, 64)
 		if err != nil {
 			err = unmatchedKey(countKey)
@@ -1175,7 +1168,7 @@ func parseAndExtractSetNodeSetInfoParams(r *http.Request) (params map[string]int
 	params[zoneNameKey] = zoneName
 
 	if value = r.FormValue(idKey); value != "" {
-		var nodesetId = uint64(0)
+		nodesetId := uint64(0)
 		nodesetId, err = strconv.ParseUint(value, 10, 64)
 		if err != nil {
 			err = unmatchedKey(idKey)
@@ -1191,6 +1184,7 @@ func parseAndExtractSetNodeSetInfoParams(r *http.Request) (params map[string]int
 
 	return
 }
+
 func parseAndExtractSetNodeInfoParams(r *http.Request) (params map[string]interface{}, err error) {
 	if err = r.ParseForm(); err != nil {
 		return
@@ -1200,7 +1194,7 @@ func parseAndExtractSetNodeInfoParams(r *http.Request) (params map[string]interf
 	params = make(map[string]interface{})
 	if value = r.FormValue(nodeDeleteBatchCountKey); value != "" {
 		noParams = false
-		var batchCount = uint64(0)
+		batchCount := uint64(0)
 		batchCount, err = strconv.ParseUint(value, 10, 64)
 		if err != nil {
 			err = unmatchedKey(nodeDeleteBatchCountKey)
@@ -1211,7 +1205,7 @@ func parseAndExtractSetNodeInfoParams(r *http.Request) (params map[string]interf
 
 	if value = r.FormValue(nodeMarkDeleteRateKey); value != "" {
 		noParams = false
-		var val = uint64(0)
+		val := uint64(0)
 		val, err = strconv.ParseUint(value, 10, 64)
 		if err != nil {
 			err = unmatchedKey(nodeMarkDeleteRateKey)
@@ -1222,7 +1216,7 @@ func parseAndExtractSetNodeInfoParams(r *http.Request) (params map[string]interf
 
 	if value = r.FormValue(nodeAutoRepairRateKey); value != "" {
 		noParams = false
-		var val = uint64(0)
+		val := uint64(0)
 		val, err = strconv.ParseUint(value, 10, 64)
 		if err != nil {
 			err = unmatchedKey(nodeAutoRepairRateKey)
@@ -1233,7 +1227,7 @@ func parseAndExtractSetNodeInfoParams(r *http.Request) (params map[string]interf
 
 	if value = r.FormValue(nodeDeleteWorkerSleepMs); value != "" {
 		noParams = false
-		var val = uint64(0)
+		val := uint64(0)
 		val, err = strconv.ParseUint(value, 10, 64)
 		if err != nil {
 			err = unmatchedKey(nodeMarkDeleteRateKey)
@@ -1255,7 +1249,7 @@ func parseAndExtractSetNodeInfoParams(r *http.Request) (params map[string]interf
 
 	if value = r.FormValue(maxDpCntLimitKey); value != "" {
 		noParams = false
-		var val = uint64(0)
+		val := uint64(0)
 		val, err = strconv.ParseUint(value, 10, 64)
 		if err != nil {
 			err = unmatchedKey(maxDpCntLimitKey)
@@ -1266,7 +1260,7 @@ func parseAndExtractSetNodeInfoParams(r *http.Request) (params map[string]interf
 
 	if value = r.FormValue(nodeDpRepairTimeOutKey); value != "" {
 		noParams = false
-		var val = uint64(0)
+		val := uint64(0)
 		val, err = strconv.ParseUint(value, 10, 64)
 		if err != nil {
 			err = unmatchedKey(nodeDpRepairTimeOutKey)
@@ -1277,7 +1271,7 @@ func parseAndExtractSetNodeInfoParams(r *http.Request) (params map[string]interf
 
 	if value = r.FormValue(nodeDpMaxRepairErrCntKey); value != "" {
 		noParams = false
-		var val = uint64(0)
+		val := uint64(0)
 		val, err = strconv.ParseUint(value, 10, 64)
 		if err != nil {
 			err = unmatchedKey(nodeDpMaxRepairErrCntKey)
@@ -1392,7 +1386,7 @@ func parseVolStatReq(r *http.Request) (name string, ver int, byMeta bool, err er
 func parseQosInfo(r *http.Request) (info *proto.ClientReportLimitInfo, err error) {
 	info = proto.NewClientReportLimitInfo()
 	var body []byte
-	if body, err = ioutil.ReadAll(r.Body); err != nil {
+	if body, err = io.ReadAll(r.Body); err != nil {
 		return
 	}
 	// log.LogInfof("action[parseQosInfo] body len:[%v],crc:[%v]", len(body), crc32.ChecksumIEEE(body))
@@ -1488,7 +1482,6 @@ func extractPositiveUint64(r *http.Request, key string) (val uint64, err error) 
 }
 
 func extractStr(r *http.Request, key string) (val string) {
-
 	return r.FormValue(key)
 }
 
@@ -1505,9 +1498,7 @@ func extractOwner(r *http.Request) (owner string, err error) {
 }
 
 func parseAndCheckTicket(r *http.Request, key []byte, volName string) (jobj proto.APIAccessReq, ticket cryptoutil.Ticket, ts int64, err error) {
-	var (
-		plaintext []byte
-	)
+	var plaintext []byte
 
 	if err = r.ParseForm(); err != nil {
 		return
@@ -1531,9 +1522,7 @@ func parseAndCheckTicket(r *http.Request, key []byte, volName string) (jobj prot
 }
 
 func extractClientReqInfo(r *http.Request) (plaintext []byte, err error) {
-	var (
-		message string
-	)
+	var message string
 	if err = r.ParseForm(); err != nil {
 		return
 	}
@@ -1608,7 +1597,6 @@ func newErrHTTPReply(err error) *proto.HTTPReply {
 }
 
 func sendOkReply(w http.ResponseWriter, r *http.Request, httpReply *proto.HTTPReply) (err error) {
-
 	switch httpReply.Data.(type) {
 	case *DataPartition:
 		dp := httpReply.Data.(*DataPartition)
@@ -1689,7 +1677,6 @@ func parseRequestToUpdateDecommissionLimit(r *http.Request) (limit uint64, err e
 }
 
 func parseSetConfigParam(r *http.Request) (key string, value string, err error) {
-
 	if err = r.ParseForm(); err != nil {
 		return
 	}
@@ -1731,7 +1718,7 @@ func parserSetQuotaParam(r *http.Request, req *proto.SetMasterQuotaReuqest) (err
 		return
 	}
 	var body []byte
-	if body, err = ioutil.ReadAll(r.Body); err != nil {
+	if body, err = io.ReadAll(r.Body); err != nil {
 		return
 	}
 
@@ -1840,7 +1827,7 @@ func parseRequestToUpdateDecommissionDiskFactor(r *http.Request) (factor float64
 
 func parseS3QosReq(r *http.Request, req *proto.S3QosRequest) (err error) {
 	var body []byte
-	if body, err = ioutil.ReadAll(r.Body); err != nil {
+	if body, err = io.ReadAll(r.Body); err != nil {
 		return
 	}
 

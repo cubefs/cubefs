@@ -33,9 +33,7 @@ import (
 
 const StatusServerPanic = 597
 
-var (
-	routeSNRegexp = regexp.MustCompile(":(\\w){32}$")
-)
+var routeSNRegexp = regexp.MustCompile(":(\\w){32}$")
 
 func IsMonitoredStatusCode(code int) bool {
 	if code > http.StatusInternalServerError {
@@ -53,7 +51,7 @@ func generateWarnDetail(r *http.Request, errorInfo string) string {
 		statusCode int
 	)
 
-	var param = ParseRequestParam(r)
+	param := ParseRequestParam(r)
 	bucket = param.Bucket()
 	object = param.Object()
 	action = GetActionFromContext(r)
@@ -80,7 +78,7 @@ func (o *ObjectNode) auditMiddleware(next http.Handler) http.Handler {
 // After receiving the request, the handler will assign a unique RequestID to
 // the request and record the processing time of the request.
 func (o *ObjectNode) traceMiddleware(next http.Handler) http.Handler {
-	var generateRequestID = func() (string, error) {
+	generateRequestID := func() (string, error) {
 		var uUID uuid.UUID
 		var err error
 		if uUID, err = uuid.NewRandom(); err != nil {
@@ -124,10 +122,10 @@ func (o *ObjectNode) traceMiddleware(next http.Handler) http.Handler {
 			w.Header().Set(Connection, "keep-alive")
 		}
 
-		var action = ActionFromRouteName(mux.CurrentRoute(r).GetName())
+		action := ActionFromRouteName(mux.CurrentRoute(r).GetName())
 		SetRequestAction(r, action)
 
-		var startTime = time.Now()
+		startTime := time.Now()
 		metric := exporter.NewTPCnt(fmt.Sprintf("action_%v", action.Name()))
 		defer func() {
 			metric.Set(err)
@@ -147,7 +145,7 @@ func (o *ObjectNode) traceMiddleware(next http.Handler) http.Handler {
 		}
 
 		// failed request monitor
-		var statusCode = GetStatusCodeFromContext(r)
+		statusCode := GetStatusCodeFromContext(r)
 		if IsMonitoredStatusCode(statusCode) {
 			exporter.NewTPCnt(fmt.Sprintf("failed_%v", statusCode)).Set(nil)
 			exporter.Warning(generateWarnDetail(r, getResponseErrorMessage(r)))
@@ -257,9 +255,8 @@ func (o *ObjectNode) expectMiddleware(next http.Handler) http.Handler {
 //	Access-Control-Max-Age [0]
 func (o *ObjectNode) corsMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-
 		var err error
-		var param = ParseRequestParam(r)
+		param := ParseRequestParam(r)
 		if param.Bucket() == "" {
 			next.ServeHTTP(w, r)
 			return

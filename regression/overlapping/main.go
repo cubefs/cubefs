@@ -30,13 +30,13 @@ func main() {
 	outPath2 := os.Args[2]
 	data := "aoifjiwjefojwofoiwenfowepojpjoipgnoirngo\n"
 
-	file1, err := os.OpenFile(outPath1, os.O_WRONLY|os.O_CREATE, 0666)
+	file1, err := os.OpenFile(outPath1, os.O_WRONLY|os.O_CREATE, 0o666)
 	if err != nil {
 		fmt.Println(err)
 		return
 	}
 	defer file1.Close()
-	file2, err := os.OpenFile(outPath2, os.O_WRONLY|os.O_CREATE, 0666)
+	file2, err := os.OpenFile(outPath2, os.O_WRONLY|os.O_CREATE, 0o666)
 	if err != nil {
 		fmt.Println(err)
 		return

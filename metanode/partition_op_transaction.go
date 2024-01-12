@@ -26,7 +26,6 @@ import (
 )
 
 func (mp *metaPartition) TxCreate(req *proto.TxCreateRequest, p *Packet) error {
-
 	var err error
 	txInfo := req.TransactionInfo.GetCopy()
 

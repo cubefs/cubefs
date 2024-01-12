@@ -148,15 +148,15 @@ func TestNewDeleteRequest(t *testing.T) {
 	objectRequest := []Object{
 		{
 			Key: "jvsTest001_1",
-			//VersionId:"v0001",
+			// VersionId:"v0001",
 		},
 		{
 			Key: "jvsTest001_2",
-			//VersionId:"v0001",
+			// VersionId:"v0001",
 		},
 		{
 			Key: "jvsTest001_3",
-			//VersionId:"v0001",
+			// VersionId:"v0001",
 		},
 	}
 
@@ -221,7 +221,7 @@ func TestMarshalTagging(t *testing.T) {
 
 func TestResult_PutXAttrRequest_Marshal(t *testing.T) {
 	var err error
-	var request = PutXAttrRequest{
+	request := PutXAttrRequest{
 		XAttr: &XAttr{
 			Key:   "xattr-key",
 			Value: "xattr-value",
@@ -235,7 +235,7 @@ func TestResult_PutXAttrRequest_Marshal(t *testing.T) {
 }
 
 func TestResult_PutXAttrRequest_Unmarshal(t *testing.T) {
-	var raw = []byte(`
+	raw := []byte(`
 <PutXAttrRequest>
 	<XAttr>
 		<Key>xattr-key</Key>
@@ -244,7 +244,7 @@ func TestResult_PutXAttrRequest_Unmarshal(t *testing.T) {
 </PutXAttrRequest>
 `)
 	var err error
-	var request = PutXAttrRequest{}
+	request := PutXAttrRequest{}
 	if err = xml.Unmarshal(raw, &request); err != nil {
 		t.Fatalf("unmarshal raw fail: err(%v)", err)
 	}

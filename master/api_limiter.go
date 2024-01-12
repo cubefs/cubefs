@@ -20,7 +20,7 @@ const (
 type ApiLimitInfo struct {
 	ApiName        string        `json:"api_name"`
 	QueryPath      string        `json:"query_path"`
-	Limit          uint32        `json:"limit"` //qps
+	Limit          uint32        `json:"limit"` // qps
 	LimiterTimeout uint32        `json:"limiter_timeout"`
 	Limiter        *rate.Limiter `json:"-"`
 }
@@ -95,7 +95,6 @@ func (l *ApiLimiter) RmLimiter(apiName string) (err error) {
 }
 
 func (l *ApiLimiter) Wait(qPath string) (err error) {
-
 	var lInfo *ApiLimitInfo
 	var ok bool
 	l.m.RLock()

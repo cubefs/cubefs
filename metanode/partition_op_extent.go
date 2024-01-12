@@ -21,11 +21,10 @@ import (
 	"sort"
 	"time"
 
-	"github.com/cubefs/cubefs/util/auditlog"
-	"github.com/cubefs/cubefs/util/exporter"
-
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util/auditlog"
 	"github.com/cubefs/cubefs/util/errors"
+	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
 )
 
@@ -158,8 +157,8 @@ func (mp *metaPartition) ExtentAppendWithCheck(req *proto.AppendExtentKeyWithChe
 	log.LogDebugf("ExtentAppendWithCheck: ino(%v) mp(%v) verSeq (%v) req.VerSeq(%v) rspcode(%v)", req.Inode, req.PartitionID, mp.verSeq, req.VerSeq, resp.(uint8))
 
 	if mp.verSeq > req.VerSeq {
-		//reuse ExtentType to identify flag of version inconsistent between metanode and client
-		//will resp to client and make client update all streamer's extent and it's verSeq
+		// reuse ExtentType to identify flag of version inconsistent between metanode and client
+		// will resp to client and make client update all streamer's extent and it's verSeq
 		p.ExtentType |= proto.MultiVersionFlag
 		p.VerSeq = mp.verSeq
 	}
@@ -185,7 +184,7 @@ type VerOpData struct {
 }
 
 func (mp *metaPartition) checkByMasterVerlist(mpVerList *proto.VolVersionInfoList, masterVerList *proto.VolVersionInfoList) (err error) {
-	var currMasterSeq = masterVerList.GetLastVer()
+	currMasterSeq := masterVerList.GetLastVer()
 	verMapMaster := make(map[uint64]*proto.VolVersionInfo)
 	for _, ver := range masterVerList.VerList {
 		verMapMaster[ver.Ver] = ver
@@ -237,9 +236,7 @@ func (mp *metaPartition) checkVerList(reqVerListInfo *proto.VolVersionInfoList, 
 		verMapReq[ver.Ver] = ver
 	}
 
-	var (
-		VerList []*proto.VolVersionInfo
-	)
+	var VerList []*proto.VolVersionInfo
 
 	for _, info2 := range mp.multiVersionList.VerList {
 		log.LogDebugf("checkVerList. vol %v mp %v ver info %v", mp.config.VolName, mp.config.PartitionId, info2)
@@ -304,7 +301,6 @@ func (mp *metaPartition) checkVerList(reqVerListInfo *proto.VolVersionInfoList, 
 }
 
 func (mp *metaPartition) HandleVersionOp(op uint8, verSeq uint64, verList []*proto.VolVersionInfo, sync bool) (err error) {
-
 	verData := &VerOpData{
 		Op:      op,
 		VerSeq:  verSeq,
@@ -367,7 +363,6 @@ func (mp *metaPartition) GetExtentByVer(ino *Inode, req *proto.GetExtentsRequest
 		sort.SliceStable(rsp.Extents, func(i, j int) bool {
 			return rsp.Extents[i].FileOffset < rsp.Extents[j].FileOffset
 		})
-
 	})
 
 	return
@@ -390,7 +385,7 @@ func (mp *metaPartition) ExtentsList(req *proto.GetExtentsRequest, p *Packet) (e
 	ino := NewInode(req.Inode, 0)
 	retMsg := mp.getInodeTopLayer(ino)
 
-	//notice.getInode should not set verSeq due to extent need filter from the newest layer to req.VerSeq
+	// notice.getInode should not set verSeq due to extent need filter from the newest layer to req.VerSeq
 	ino = retMsg.Msg
 	var (
 		reply  []byte

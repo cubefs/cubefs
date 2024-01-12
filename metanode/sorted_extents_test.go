@@ -104,7 +104,7 @@ func TestSortedMarshal(t *testing.T) {
 		ExtentId:     10,
 		ExtentOffset: 10110,
 		PartitionId:  100,
-		CRC:          0000,
+		CRC:          0o000,
 	}
 	e2 := proto.ExtentKey{
 		FileOffset:   4,
@@ -112,7 +112,7 @@ func TestSortedMarshal(t *testing.T) {
 		ExtentId:     10,
 		ExtentOffset: 1010,
 		PartitionId:  100,
-		CRC:          0200,
+		CRC:          0o200,
 	}
 
 	se.eks = append(se.eks, e1)

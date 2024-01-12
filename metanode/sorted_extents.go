@@ -5,11 +5,9 @@ import (
 	"encoding/json"
 	"sync"
 
-	"github.com/cubefs/cubefs/util/log"
-
-	"github.com/cubefs/cubefs/storage"
-
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/storage"
+	"github.com/cubefs/cubefs/util/log"
 )
 
 type SortedExtents struct {
@@ -314,7 +312,7 @@ func (se *SortedExtents) SplitWithCheck(mpId uint64, inodeID uint64, ekSplit pro
 			ExtentId:     key.ExtentId,
 			ExtentOffset: key.ExtentOffset + uint64(key.Size) + uint64(ekSplit.Size),
 			Size:         keySize - key.Size - ekSplit.Size,
-			//crc
+			// crc
 			SnapInfo: &proto.ExtSnapInfo{
 				VerSeq:  key.GetSeq(),
 				ModGen:  0,

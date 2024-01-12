@@ -50,9 +50,7 @@ var (
 	regexpDupSep = regexp.MustCompile("/{2,}")
 )
 
-var (
-	keyEscapedSkipBytes = []byte{'/', '*', '.', '-', '_'}
-)
+var keyEscapedSkipBytes = []byte{'/', '*', '.', '-', '_'}
 
 // PathItem defines path node attribute information,
 // including node name and whether it is a directory.
@@ -78,7 +76,6 @@ func (p *PathIterator) init() {
 		p.path = regexpDupSep.ReplaceAllString(p.path, pathSep)
 		p.inited = true
 	}
-
 }
 
 func (p *PathIterator) HasNext() bool {
@@ -148,6 +145,7 @@ func formatSimpleTime(time time.Time) string {
 func formatTimeISO(time time.Time) string {
 	return time.UTC().Format("2006-01-02T15:04:05.000Z")
 }
+
 func formatTimeISOLocal(time time.Time) string {
 	return time.Local().Format("2006-01-02T15:04:05.000Z")
 }
@@ -235,7 +233,7 @@ func wrapUnescapedQuot(src string) string {
 }
 
 func encodeKey(key, encodingType string) string {
-	var isKeyEscapedSkipByte = func(b byte) bool {
+	isKeyEscapedSkipByte := func(b byte) bool {
 		for _, skipByte := range keyEscapedSkipBytes {
 			if b == skipByte {
 				return true
@@ -310,7 +308,7 @@ var cacheControlDir = []string{"public", "private", "no-cache", "no-store", "no-
 var maxAgeRegexp = regexp.MustCompile("^((max-age)|(s-maxage))=[1-9][0-9]*$")
 
 func ValidateCacheControl(cacheControl string) bool {
-	var cacheDirs = strings.Split(cacheControl, ",")
+	cacheDirs := strings.Split(cacheControl, ",")
 	for _, dir := range cacheDirs {
 		if !contains(cacheControlDir, dir) && !maxAgeRegexp.MatchString(dir) {
 			log.LogErrorf("invalid cache-control directive: %v", dir)

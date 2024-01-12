@@ -44,7 +44,7 @@ func (mp *metaPartition) UpdateXAttr(req *proto.UpdateXAttrRequest, p *Packet) (
 			newValue := strconv.FormatInt(int64(newFiles), 10) + "," +
 				strconv.FormatInt(int64(newDirs), 10) + "," +
 				strconv.FormatInt(int64(newBytes), 10)
-			var extend = NewExtend(req.Inode)
+			extend := NewExtend(req.Inode)
 			extend.Put([]byte(req.Key), []byte(newValue), mp.verSeq)
 			if _, err = mp.putExtend(opFSMUpdateXAttr, extend); err != nil {
 				p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
@@ -62,7 +62,7 @@ func (mp *metaPartition) UpdateXAttr(req *proto.UpdateXAttrRequest, p *Packet) (
 			return
 		}
 	} else {
-		var extend = NewExtend(req.Inode)
+		extend := NewExtend(req.Inode)
 		extend.Put([]byte(req.Key), []byte(req.Value), mp.verSeq)
 		if _, err = mp.putExtend(opFSMUpdateXAttr, extend); err != nil {
 			p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
@@ -74,7 +74,7 @@ func (mp *metaPartition) UpdateXAttr(req *proto.UpdateXAttrRequest, p *Packet) (
 }
 
 func (mp *metaPartition) SetXAttr(req *proto.SetXAttrRequest, p *Packet) (err error) {
-	var extend = NewExtend(req.Inode)
+	extend := NewExtend(req.Inode)
 	extend.Put([]byte(req.Key), []byte(req.Value), mp.verSeq)
 	if _, err = mp.putExtend(opFSMSetXAttr, extend); err != nil {
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
@@ -85,7 +85,7 @@ func (mp *metaPartition) SetXAttr(req *proto.SetXAttrRequest, p *Packet) (err er
 }
 
 func (mp *metaPartition) BatchSetXAttr(req *proto.BatchSetXAttrRequest, p *Packet) (err error) {
-	var extend = NewExtend(req.Inode)
+	extend := NewExtend(req.Inode)
 	for key, val := range req.Attrs {
 		extend.Put([]byte(key), []byte(val), mp.verSeq)
 	}
@@ -99,7 +99,7 @@ func (mp *metaPartition) BatchSetXAttr(req *proto.BatchSetXAttrRequest, p *Packe
 }
 
 func (mp *metaPartition) GetXAttr(req *proto.GetXAttrRequest, p *Packet) (err error) {
-	var response = &proto.GetXAttrResponse{
+	response := &proto.GetXAttrResponse{
 		VolName:     req.VolName,
 		PartitionId: req.PartitionId,
 		Inode:       req.Inode,
@@ -124,7 +124,7 @@ func (mp *metaPartition) GetXAttr(req *proto.GetXAttrRequest, p *Packet) (err er
 }
 
 func (mp *metaPartition) GetAllXAttr(req *proto.GetAllXAttrRequest, p *Packet) (err error) {
-	var response = &proto.GetAllXAttrResponse{
+	response := &proto.GetAllXAttrResponse{
 		VolName:     req.VolName,
 		PartitionId: req.PartitionId,
 		Inode:       req.Inode,
@@ -137,7 +137,6 @@ func (mp *metaPartition) GetAllXAttr(req *proto.GetAllXAttrRequest, p *Packet) (
 				response.Attrs[key] = string(val)
 			}
 		}
-
 	}
 	var encoded []byte
 	encoded, err = json.Marshal(response)
@@ -150,7 +149,7 @@ func (mp *metaPartition) GetAllXAttr(req *proto.GetAllXAttrRequest, p *Packet) (
 }
 
 func (mp *metaPartition) BatchGetXAttr(req *proto.BatchGetXAttrRequest, p *Packet) (err error) {
-	var response = &proto.BatchGetXAttrResponse{
+	response := &proto.BatchGetXAttrResponse{
 		VolName:     req.VolName,
 		PartitionId: req.PartitionId,
 		XAttrs:      make([]*proto.XAttrInfo, 0, len(req.Inodes)),
@@ -184,7 +183,7 @@ func (mp *metaPartition) BatchGetXAttr(req *proto.BatchGetXAttrRequest, p *Packe
 }
 
 func (mp *metaPartition) RemoveXAttr(req *proto.RemoveXAttrRequest, p *Packet) (err error) {
-	var extend = NewExtend(req.Inode)
+	extend := NewExtend(req.Inode)
 	extend.Put([]byte(req.Key), nil, req.VerSeq)
 	if _, err = mp.putExtend(opFSMRemoveXAttr, extend); err != nil {
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
@@ -195,7 +194,7 @@ func (mp *metaPartition) RemoveXAttr(req *proto.RemoveXAttrRequest, p *Packet) (
 }
 
 func (mp *metaPartition) ListXAttr(req *proto.ListXAttrRequest, p *Packet) (err error) {
-	var response = &proto.ListXAttrResponse{
+	response := &proto.ListXAttrResponse{
 		VolName:     req.VolName,
 		PartitionId: req.PartitionId,
 		Inode:       req.Inode,

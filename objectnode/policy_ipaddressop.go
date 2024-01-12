@@ -27,6 +27,7 @@ import (
 type ipAddressOp struct {
 	m map[Key][]*IPInfo
 }
+
 type IPInfo struct {
 	IP  net.IP
 	Net *net.IPNet
@@ -45,7 +46,7 @@ func (op ipAddressOp) evaluate(values map[string]string) bool {
 		if IP == nil {
 			panic(fmt.Errorf("invalid IP address '%v'", requestValue))
 		}
-		nothingMatched := true //all values not matched
+		nothingMatched := true // all values not matched
 		for _, IPInfo := range v {
 			if IPInfo.Net.Contains(IP) {
 				nothingMatched = false
@@ -61,7 +62,6 @@ func (op ipAddressOp) evaluate(values map[string]string) bool {
 // returns condition key which is used by this condition operation.
 // Key is always AWSSourceIP.
 func (op ipAddressOp) keys() KeySet {
-
 	keys := make(KeySet)
 	for key := range op.m {
 		keys.Add(key)
@@ -147,7 +147,7 @@ func newIPAddressOp(m map[Key]ValueSet) (Operation, error) {
 	return NewIPAddressOp(newMap)
 }
 
-//returns new IP address operation.
+// returns new IP address operation.
 func NewIPAddressOp(m map[Key][]*IPInfo) (Operation, error) {
 	for key := range m {
 		if key != AWSSourceIP {
@@ -158,7 +158,7 @@ func NewIPAddressOp(m map[Key][]*IPInfo) (Operation, error) {
 	return &ipAddressOp{m: m}, nil
 }
 
-//returns new Not IP address operation.
+// returns new Not IP address operation.
 func newNotIPAddressOp(m map[Key]ValueSet) (Operation, error) {
 	newMap := make(map[Key][]*IPInfo)
 	for k, v := range m {

@@ -20,11 +20,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cubefs/cubefs/util/exporter"
-
-	"github.com/cubefs/cubefs/sdk/master"
-
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/sdk/master"
+	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
 )
 
@@ -180,7 +178,7 @@ func (us *CacheUserInfoLoader) scheduleUpdate() {
 
 func (us *CacheUserInfoLoader) syncUserInit(accessKey string) (releaseFunc func()) {
 	value, _ := us.akInitMap.LoadOrStore(accessKey, new(sync.Mutex))
-	var initMu = value.(*sync.Mutex)
+	initMu := value.(*sync.Mutex)
 	initMu.Lock()
 	log.LogDebugf("syncUserInit: get user init lock: accessKey(%v)", accessKey)
 	return func() {
@@ -206,7 +204,7 @@ func (us *CacheUserInfoLoader) LoadUser(accessKey string) (*proto.UserInfo, erro
 	userInfo, exist = us.akInfoStore[accessKey]
 	us.akInfoMutex.RUnlock()
 	if !exist {
-		var release = us.syncUserInit(accessKey)
+		release := us.syncUserInit(accessKey)
 		us.akInfoMutex.RLock()
 		userInfo, exist = us.akInfoStore[accessKey]
 		if exist {

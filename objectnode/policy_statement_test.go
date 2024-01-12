@@ -58,7 +58,6 @@ func TestPolicyExample(t *testing.T) {
 	out, err := json.Marshal(policy)
 	err = json.Unmarshal(out, &policy)
 	require.NoError(t, err)
-
 }
 
 func TestMissingRequiredField(t *testing.T) {
@@ -140,7 +139,6 @@ func TestEffectFormat(t *testing.T) {
 	json.Unmarshal([]byte(`"Deny"`), &s.Effect)
 	b = s.isEffectValid()
 	require.True(t, b)
-
 }
 
 func TestResourceFormat(t *testing.T) {
@@ -256,7 +254,6 @@ func TestActionFormat(t *testing.T) {
 }
 
 func TestConditionFormat(t *testing.T) {
-
 	validCondition := []string{
 		`{"IpAddress":{"aws:SourceIp":["1.1.1.1/24","1.1.1.1","fe80::45e:9d4c:20ca:20f7/64"]}}`,
 		`{"NotIpAddress":{"aws:SourceIp":"1.1.1.3"}}`,
@@ -298,7 +295,7 @@ func TestConditionFormat(t *testing.T) {
 
 func TestActionResourceCombination(t *testing.T) {
 	var s Statement
-	var resource_action = []struct {
+	resource_action := []struct {
 		action      string
 		resource    string
 		matchResult bool

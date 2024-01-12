@@ -21,11 +21,13 @@ import (
 	"github.com/cubefs/cubefs/util/log"
 )
 
-type ActionElementType string
-type ActionType []interface{}
-type PrincipalElementType string
-type PrincipalType map[string]interface{}
-type ResourceElementType string
+type (
+	ActionElementType    string
+	ActionType           []interface{}
+	PrincipalElementType string
+	PrincipalType        map[string]interface{}
+	ResourceElementType  string
+)
 
 func (s *Statement) CheckPolicy(apiName string, uid string, conditionCheck map[string]string) PolicyCheckResult {
 	if s.match(apiName, uid, conditionCheck) {
@@ -67,7 +69,6 @@ func (s *Statement) match(apiName string, uid string, conditionCheck map[string]
 
 //----------------------------------------------------------------------------------------------------------------
 func (s *Statement) matchAction(apiName string) bool {
-
 	log.LogDebug("start to match action")
 	switch s.Action.(type) {
 	case []interface{}: //["s3:PutObject", "s3:GetObject","s3:DeleteObject"]
@@ -110,7 +111,7 @@ func (s *Statement) matchPrincipal(uid string) bool {
 	switch s.Principal.(type) {
 	case string: // "*" or "123"
 		return PrincipalElementType(s.Principal.(string)).match(uid)
-	case map[string]interface{}: //from json, {"AWS":["11", "22"]} or  {"AWS":"11"}  or {"AWS":"*"}
+	case map[string]interface{}: // from json, {"AWS":["11", "22"]} or  {"AWS":"11"}  or {"AWS":"*"}
 		p := s.Principal.(map[string]interface{})
 		return PrincipalType(p).match(uid)
 	default:
@@ -147,23 +148,21 @@ func (p PrincipalType) match(uid string) bool {
 
 //----------------------------------------------------------------------------------------------------------------
 func (s *Statement) matchResource(apiName string, keyname interface{}) bool {
-
 	if IsBucketApi(apiName) {
 		return s.matchBucketInResource()
 	}
 
-	if keyname == nil { //keyname shoudn't be nil for object api, even if keyname = ""
+	if keyname == nil { // keyname shoudn't be nil for object api, even if keyname = ""
 		return false
 	}
 	if _, ok := keyname.(string); !ok {
 		return false
 	}
 	return s.matchKeyInResource(keyname.(string))
-
 }
 
 func (s *Statement) matchBucketInResource() bool {
-	//if resource list contains bucket format, then match, since bucketId already checked when put policy.
+	// if resource list contains bucket format, then match, since bucketId already checked when put policy.
 	switch s.Resource.(type) {
 	case string:
 		return ResourceElement(s.Resource.(string)).isBucketFormat()
@@ -180,10 +179,9 @@ func (s *Statement) matchBucketInResource() bool {
 	default:
 		return false
 	}
-
 }
 
-func (s *Statement) matchKeyInResource(keyname string) bool { //可以处理 keyname="" 的case
+func (s *Statement) matchKeyInResource(keyname string) bool { // 可以处理 keyname="" 的case
 
 	switch s.Resource.(type) {
 	case string:
@@ -208,11 +206,11 @@ func ResourceElement(r string) ResourceElementType {
 	return ResourceElementType(r1)
 }
 
-func (r ResourceElementType) isBucketFormat() bool { //bucketFormat  support bucket api
+func (r ResourceElementType) isBucketFormat() bool { // bucketFormat  support bucket api
 	return !r.isKeyFormat()
 }
 
-func (r ResourceElementType) isKeyFormat() bool { //keyFormat  support object api
+func (r ResourceElementType) isKeyFormat() bool { // keyFormat  support object api
 	return strings.Contains(string(r), "/")
 }
 
@@ -220,7 +218,7 @@ func (r ResourceElementType) match(keyname string) bool {
 	if !r.isKeyFormat() {
 		return false
 	}
-	//extract regex :  "examplebucket/abc/*"  => rawPattern="abc/*"
+	// extract regex :  "examplebucket/abc/*"  => rawPattern="abc/*"
 	r1 := string(r)
 	i := strings.Index(r1, "/")
 	rawPattern := r1[i+1:]
@@ -241,10 +239,9 @@ func makeRegexPattern(raw string) string {
 
 //----------------------------------------------------------------------------------------------------------------
 func (s *Statement) matchCondition(conditionCheck map[string]string) bool {
-	//condition is optional
+	// condition is optional
 	if s.Condition == nil {
 		return true
 	}
 	return s.Condition.Evaluate(conditionCheck)
-
 }

@@ -20,7 +20,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/cubefs/cubefs/util/log"
 	"io"
 	"net"
 	"strconv"
@@ -30,6 +29,7 @@ import (
 
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/buf"
+	"github.com/cubefs/cubefs/util/log"
 )
 
 var (
@@ -90,7 +90,7 @@ const (
 	OpMetaSetattr       uint8 = 0x30
 	OpMetaReleaseOpen   uint8 = 0x31
 
-	//Operations: MetaNode Leader -> MetaNode Follower
+	// Operations: MetaNode Leader -> MetaNode Follower
 	OpMetaFreeInodesOnRaftFollower uint8 = 0x32
 
 	OpMetaDeleteInode        uint8 = 0x33 // delete specified inode immediately and do not remove data.
@@ -151,13 +151,13 @@ const (
 	OpBatchDeleteExtent   uint8 = 0x75 // SDK to MetaNode
 	OpGetExpiredMultipart uint8 = 0x76
 
-	//Operations: MetaNode Leader -> MetaNode Follower
+	// Operations: MetaNode Leader -> MetaNode Follower
 	OpMetaBatchDeleteInode  uint8 = 0x90
 	OpMetaBatchDeleteDentry uint8 = 0x91
 	OpMetaBatchUnlinkInode  uint8 = 0x92
 	OpMetaBatchEvictInode   uint8 = 0x93
 
-	//Transaction Operations: Client -> MetaNode.
+	// Transaction Operations: Client -> MetaNode.
 	OpMetaTxCreate       uint8 = 0xA0
 	OpMetaTxCreateInode  uint8 = 0xA1
 	OpMetaTxUnlinkInode  uint8 = 0xA2
@@ -171,10 +171,10 @@ const (
 	OpMetaTxLinkInode    uint8 = 0xAA
 	OpMetaTxGet          uint8 = 0xAB
 
-	//Operations: Client -> MetaNode.
+	// Operations: Client -> MetaNode.
 	OpMetaGetUniqID uint8 = 0xAC
 
-	//Multi version snapshot
+	// Multi version snapshot
 	OpRandomWriteAppend     uint8 = 0xB1
 	OpSyncRandomWriteAppend uint8 = 0xB2
 	OpRandomWriteVer        uint8 = 0xB3
@@ -220,7 +220,7 @@ const (
 	OpMetaBatchSetXAttr uint8 = 0xD2
 	OpMetaGetAllXAttr   uint8 = 0xD3
 
-	//transaction error
+	// transaction error
 
 	OpTxInodeInfoNotExistErr  uint8 = 0xE0
 	OpTxConflictErr           uint8 = 0xE1
@@ -739,7 +739,7 @@ func (p *Packet) UnmarshalHeader(in []byte) error {
 
 	// header opcode OpRandomWriteVer should not unmarshal here due to header size is const
 	// the ver param should read at the higher level directly
-	//if p.Opcode ==OpRandomWriteVer {
+	// if p.Opcode ==OpRandomWriteVer {
 
 	return nil
 }
@@ -835,7 +835,7 @@ func (p *Packet) WriteToConn(c net.Conn) (err error) {
 	if p.Opcode == OpRandomWriteVer || p.ExtentType&MultiVersionFlag > 0 {
 		headSize = util.PacketHeaderVerSize
 	}
-	//log.LogDebugf("packet opcode %v header size %v extentype %v conn %v", p.Opcode, headSize, p.ExtentType, c)
+	// log.LogDebugf("packet opcode %v header size %v extentype %v conn %v", p.Opcode, headSize, p.ExtentType, c)
 	header, err := Buffers.Get(headSize)
 	if err != nil {
 		header = make([]byte, headSize)
@@ -1120,7 +1120,6 @@ func (p *Packet) setPacketPrefix() {
 		"Size(%v)_Opcode(%v)_CRC(%v)",
 		p.ReqID, p.PartitionID, p.ExtentID, p.ExtentOffset,
 		p.KernelOffset, p.Size, p.GetOpMsg(), p.CRC)
-
 }
 
 // IsForwardPkt returns if the packet is the forward packet (a packet that will be forwarded to the followers).
@@ -1133,7 +1132,6 @@ func (p *Packet) LogMessage(action, remote string, start int64, err error) (m st
 	if err == nil {
 		m = fmt.Sprintf("id[%v] isPrimaryBackReplLeader[%v] remote[%v] "+
 			" cost[%v] ", p.GetUniqueLogId(), p.IsForwardPkt(), remote, (time.Now().UnixNano()-start)/1e6)
-
 	} else {
 		m = fmt.Sprintf("id[%v] isPrimaryBackReplLeader[%v] remote[%v]"+
 			", err[%v]", p.GetUniqueLogId(), p.IsForwardPkt(), remote, err.Error())

@@ -297,7 +297,6 @@ func (m *MetaNode) getInodeHandler(w http.ResponseWriter, r *http.Request) {
 	defer func() {
 		data, _ := resp.Marshal()
 		if _, err := w.Write(data); err != nil {
-
 			log.LogErrorf("[getInodeHandler] response %s", err)
 		}
 	}()
@@ -576,6 +575,7 @@ func (m *MetaNode) getTxHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	return
 }
+
 func (m *MetaNode) getRealVerSeq(w http.ResponseWriter, r *http.Request) (verSeq uint64, err error) {
 	if r.FormValue("verSeq") != "" {
 		var ver int64
@@ -589,6 +589,7 @@ func (m *MetaNode) getRealVerSeq(w http.ResponseWriter, r *http.Request) (verSeq
 	}
 	return
 }
+
 func (m *MetaNode) getAllDentriesHandler(w http.ResponseWriter, r *http.Request) {
 	r.ParseForm()
 	resp := NewAPIResponse(http.StatusSeeOther, "")
@@ -746,6 +747,7 @@ func (m *MetaNode) getAllTxHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	return
 }
+
 func (m *MetaNode) getDirectoryHandler(w http.ResponseWriter, r *http.Request) {
 	resp := NewAPIResponse(http.StatusBadRequest, "")
 	defer func() {
@@ -860,7 +862,7 @@ func (m *MetaNode) getSnapshotHandler(w http.ResponseWriter, r *http.Request, fi
 		err = errors.NewErrorf("[getInodeSnapshotHandler] Stat: %s", err.Error())
 		return
 	}
-	fp, err := os.OpenFile(filename, os.O_RDONLY, 0644)
+	fp, err := os.OpenFile(filename, os.O_RDONLY, 0o644)
 	if err != nil {
 		err = errors.NewErrorf("[getInodeSnapshotHandler] OpenFile: %s", err.Error())
 		return

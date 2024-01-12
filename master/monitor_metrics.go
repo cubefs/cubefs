@@ -152,7 +152,8 @@ type monitorMetrics struct {
 }
 
 func newMonitorMetrics(c *Cluster) *monitorMetrics {
-	return &monitorMetrics{cluster: c,
+	return &monitorMetrics{
+		cluster:                       c,
 		volNames:                      make(map[string]struct{}),
 		badDisks:                      make(map[string]string),
 		nodesetInactiveDataNodesCount: make(map[uint64]int64),
@@ -167,7 +168,7 @@ type voidType struct{}
 var voidVal voidType
 
 type addrSet struct {
-	addrs        map[string]voidType //empty value of map does not occupy memory
+	addrs        map[string]voidType // empty value of map does not occupy memory
 	replicaNum   string
 	replicaAlive string
 }
@@ -272,10 +273,10 @@ func (m *warningMetrics) WarnMissingDp(clusterName, addr string, partitionID uin
 		return
 	}
 
-	//m.missingDp.SetWithLabelValues(1, clusterName, id, addr)
+	// m.missingDp.SetWithLabelValues(1, clusterName, id, addr)
 	if _, ok := m.dpMissingReplicaInfo[id]; !ok {
 		m.dpMissingReplicaInfo[id] = addrSet{addrs: make(map[string]voidType)}
-		//m.dpMissingReplicaInfo[id].addrs = make(addrSet)
+		// m.dpMissingReplicaInfo[id].addrs = make(addrSet)
 	}
 	m.dpMissingReplicaInfo[id].addrs[addr] = voidVal
 }
@@ -369,7 +370,7 @@ func (m *warningMetrics) WarnMissingMp(clusterName, addr string, partitionID uin
 	m.missingMp.SetWithLabelValues(1, clusterName, id, addr)
 	if _, ok := m.mpMissingReplicaInfo[id]; !ok {
 		m.dpMissingReplicaInfo[id] = addrSet{addrs: make(map[string]voidType)}
-		//m.mpMissingReplicaInfo[id] = make(addrSet)
+		// m.mpMissingReplicaInfo[id] = make(addrSet)
 	}
 	m.mpMissingReplicaInfo[id].addrs[addr] = voidVal
 }
@@ -423,7 +424,6 @@ func (m *warningMetrics) WarnMpNoLeader(clusterName string, partitionID uint64, 
 		m.mpNoLeader.SetWithLabelValues(1, clusterName, strconv.FormatUint(partitionID, 10))
 		m.mpNoLeaderInfo[partitionID] = now
 	}
-
 }
 
 func (mm *monitorMetrics) start() {
@@ -890,6 +890,7 @@ func (mm *monitorMetrics) setNotWritableDataNodesCount() {
 	})
 	mm.dataNodesNotWritable.Set(float64(notWritabelDataNodesCount))
 }
+
 func (mm *monitorMetrics) clearInconsistentMps() {
 	for k := range mm.inconsistentMps {
 		mm.dataNodesetInactiveCount.DeleteLabelValues(k)
@@ -1052,7 +1053,7 @@ func (mm *monitorMetrics) resetAllLeaderMetrics() {
 	mm.metaNodesTotal.Set(0)
 	mm.metaNodesUsed.Set(0)
 	mm.metaNodesIncreased.Set(0)
-	//mm.diskError.Set(0)
+	// mm.diskError.Set(0)
 	mm.dataNodesInactive.Set(0)
 	mm.metaNodesInactive.Set(0)
 

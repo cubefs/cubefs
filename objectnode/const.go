@@ -172,7 +172,7 @@ const (
 )
 
 const (
-	DefaultFileMode = 0644
+	DefaultFileMode = 0o644
 	DefaultDirMode  = DefaultFileMode | os.ModeDir
 )
 

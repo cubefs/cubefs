@@ -28,6 +28,7 @@ func (t *testItem) Less(than BtreeItem) bool {
 	item, ok := than.(*testItem)
 	return ok && (t.data < item.data)
 }
+
 func (t *testItem) Copy() BtreeItem {
 	newItem := *t
 	return &newItem

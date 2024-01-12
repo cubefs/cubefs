@@ -63,6 +63,7 @@ func TestStringLikeOpEvaluate(t *testing.T) {
 		}
 	}
 }
+
 func TestStringNotLikeOpEvaluate(t *testing.T) {
 	case1Operation, err := newStringNotLikeOp(map[Key]ValueSet{AWSReferer: NewValueSet(NewStringValue("*.cubefs.com"), NewStringValue("cubefs.com"))})
 	if err != nil {

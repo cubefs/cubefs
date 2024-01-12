@@ -18,7 +18,6 @@ package objectnode
 
 import (
 	"io"
-	"io/ioutil"
 	"net/http"
 
 	"github.com/cubefs/cubefs/util/log"
@@ -38,7 +37,7 @@ func (o *ObjectNode) getBucketCorsHandler(w http.ResponseWriter, r *http.Request
 		o.errorResponse(w, r, err, errorCode)
 	}()
 
-	var param = ParseRequestParam(r)
+	param := ParseRequestParam(r)
 	if param.Bucket() == "" {
 		errorCode = InvalidBucketName
 		return
@@ -82,7 +81,7 @@ func (o *ObjectNode) putBucketCorsHandler(w http.ResponseWriter, r *http.Request
 		o.errorResponse(w, r, err, errorCode)
 	}()
 
-	var param = ParseRequestParam(r)
+	param := ParseRequestParam(r)
 	if param.Bucket() == "" {
 		errorCode = InvalidBucketName
 		return
@@ -99,7 +98,7 @@ func (o *ObjectNode) putBucketCorsHandler(w http.ResponseWriter, r *http.Request
 		return
 	}
 	var body []byte
-	if body, err = ioutil.ReadAll(io.LimitReader(r.Body, MaxCORSSize+1)); err != nil {
+	if body, err = io.ReadAll(io.LimitReader(r.Body, MaxCORSSize+1)); err != nil {
 		log.LogErrorf("putBucketCorsHandler: read request body fail: requestID(%v) volume(%v) err(%v)",
 			GetRequestID(r), vol.Name(), err)
 		return
@@ -138,7 +137,7 @@ func (o *ObjectNode) deleteBucketCorsHandler(w http.ResponseWriter, r *http.Requ
 		o.errorResponse(w, r, err, errorCode)
 	}()
 
-	var param = ParseRequestParam(r)
+	param := ParseRequestParam(r)
 	if param.Bucket() == "" {
 		errorCode = InvalidBucketName
 		return

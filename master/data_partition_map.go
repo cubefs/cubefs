@@ -236,7 +236,6 @@ func (dpMap *DataPartitionMap) freeMemOccupiedByDataPartitions(partitions []*Dat
 		}(dp)
 	}
 	wg.Wait()
-
 }
 
 func (dpMap *DataPartitionMap) getDataPartitionsToBeChecked(loadFrequencyTime int64) (partitions []*DataPartition, startIndex uint64) {

@@ -2,9 +2,10 @@ package main
 
 import (
 	"fmt"
+	"os"
+
 	"github.com/cubefs/cubefs/deploy/cmd"
 	"github.com/cubefs/cubefs/util/log"
-	"os"
 )
 
 func init() {
@@ -13,11 +14,9 @@ func init() {
 	cmd.RootCmd.AddCommand(cmd.StartCmd)
 	cmd.RootCmd.AddCommand(cmd.StopCmd)
 	cmd.RootCmd.AddCommand(cmd.RestartCmd)
-
 }
 
 func main() {
-
 	_, err := log.InitLog("/tmp/cfs", "deploy", log.DebugLevel, nil, log.DefaultLogLeftSpaceLimit)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
@@ -32,5 +31,4 @@ func main() {
 		log.LogFlush()
 		os.Exit(1)
 	}
-
 }

@@ -17,11 +17,12 @@ package meta
 import (
 	"errors"
 	"fmt"
+	"sync"
+
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/cubefs/cubefs/util/stat"
-	"sync"
 )
 
 type Transaction struct {
@@ -102,11 +103,11 @@ func (tx *Transaction) SetOnCommit(job func()) {
 
 func (tx *Transaction) SetOnRollback(job func()) {
 	tx.onRollbackFuncs = append(tx.onRollbackFuncs, job)
-	//tx.onRollback = job
+	// tx.onRollback = job
 }
 
 func (tx *Transaction) OnDone(err error, mw *MetaWrapper) (newErr error) {
-	//commit or rollback depending on status
+	// commit or rollback depending on status
 	newErr = err
 	if !tx.Started {
 		return
@@ -143,7 +144,7 @@ func (tx *Transaction) Commit(mw *MetaWrapper) (err error) {
 		TxID:        tx.txInfo.TxID,
 		TmID:        uint64(tx.txInfo.TmID),
 		TxApplyType: proto.TxCommit,
-		//TxInfo:      tx.txInfo,
+		// TxInfo:      tx.txInfo,
 	}
 
 	packet := proto.NewPacketReqID()
@@ -202,7 +203,7 @@ func (tx *Transaction) Rollback(mw *MetaWrapper) {
 		TxID:        tx.txInfo.TxID,
 		TmID:        uint64(tx.txInfo.TmID),
 		TxApplyType: proto.TxRollback,
-		//TxInfo:      tx.txInfo,
+		// TxInfo:      tx.txInfo,
 	}
 
 	packet := proto.NewPacketReqID()

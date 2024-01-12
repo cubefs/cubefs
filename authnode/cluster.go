@@ -17,11 +17,11 @@ package authnode
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/cubefs/cubefs/util"
 	"time"
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/raftstore"
+	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/caps"
 	"github.com/cubefs/cubefs/util/cryptoutil"
 	"github.com/cubefs/cubefs/util/errors"
@@ -99,7 +99,7 @@ func (c *Cluster) CreateNewKey(id string, keyInfo *keystore.KeyInfo) (res *keyst
 	}
 	keyInfo.Ts = time.Now().Unix()
 	keyInfo.AuthKey = cryptoutil.GenSecretKey([]byte(c.AuthRootKey), keyInfo.Ts, id)
-	//TODO check duplicate
+	// TODO check duplicate
 	keyInfo.AccessKey = util.RandomString(16, util.Numeric|util.LowerLetter|util.UpperLetter)
 	keyInfo.SecretKey = util.RandomString(32, util.Numeric|util.LowerLetter|util.UpperLetter)
 	if err = c.syncAddKey(keyInfo); err != nil {

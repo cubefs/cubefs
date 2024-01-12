@@ -21,7 +21,7 @@ import (
 	"github.com/cubefs/cubefs/util/exporter"
 )
 
-//metrics
+// metrics
 const (
 	StatPeriod = time.Minute * time.Duration(1)
 

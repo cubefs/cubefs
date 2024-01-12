@@ -20,7 +20,7 @@ import (
 )
 
 func TestWriteReadUnboundedChan(t *testing.T) {
-	//concurrent write and read unbounded chan
+	// concurrent write and read unbounded chan
 	UChan := NewUnboundedChan(10)
 	var wg sync.WaitGroup
 	for i := 0; i < 100; i++ {

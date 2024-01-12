@@ -141,7 +141,7 @@ func (f *BatchDentries) Len() int {
 func (f *BatchDentries) BatchGetAndClear() (map[uint64]*ScanDentry, []uint64) {
 	f.Lock()
 	defer f.Unlock()
-	var dentries = f.dentries
+	dentries := f.dentries
 	var inodes []uint64
 	for i := range f.dentries {
 		inodes = append(inodes, i)

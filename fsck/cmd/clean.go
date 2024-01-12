@@ -39,7 +39,7 @@ const (
 var gMetaWrapper *meta.MetaWrapper
 
 func newCleanCmd() *cobra.Command {
-	var c = &cobra.Command{
+	c := &cobra.Command{
 		Use:   "clean",
 		Short: "clean dirty inode or dentry according to some rules",
 		Args:  cobra.MinimumNArgs(0),
@@ -55,7 +55,7 @@ func newCleanCmd() *cobra.Command {
 }
 
 func newCleanInodeCmd() *cobra.Command {
-	var c = &cobra.Command{
+	c := &cobra.Command{
 		Use:   "inode",
 		Short: "clean dirty inode",
 		Run: func(cmd *cobra.Command, args []string) {
@@ -69,7 +69,7 @@ func newCleanInodeCmd() *cobra.Command {
 }
 
 func newCleanDentryCmd() *cobra.Command {
-	var c = &cobra.Command{
+	c := &cobra.Command{
 		Use:   "dentry",
 		Short: "clean dirty dentry",
 		Run: func(cmd *cobra.Command, args []string) {
@@ -83,7 +83,7 @@ func newCleanDentryCmd() *cobra.Command {
 }
 
 func newEvictInodeCmd() *cobra.Command {
-	var c = &cobra.Command{
+	c := &cobra.Command{
 		Use:   "evict",
 		Short: "clean dirty dentry",
 		Run: func(cmd *cobra.Command, args []string) {
@@ -111,7 +111,7 @@ func Clean(opt string) error {
 	}
 
 	masters := strings.Split(MasterAddr, meta.HostsSeparator)
-	var metaConfig = &meta.MetaConfig{
+	metaConfig := &meta.MetaConfig{
 		Volume:  VolName,
 		Masters: masters,
 	}
@@ -193,6 +193,7 @@ func evictOnTime(wg *sync.WaitGroup, cmdline string) {
 	}
 	log.LogWritef("Done! Dealing with meta partition: %v", cmdline)
 }
+
 func cleanInodes() error {
 	filePath := fmt.Sprintf("_export_%s/%s", VolName, obsoleteInodeDumpFileName)
 
@@ -258,7 +259,7 @@ func doUnlinkInode(inode *Inode) error {
 }
 
 func cleanDentries() error {
-	//filePath := fmt.Sprintf("_export_%s/%s", VolName, obsoleteDentryDumpFileName)
+	// filePath := fmt.Sprintf("_export_%s/%s", VolName, obsoleteDentryDumpFileName)
 	// TODO: send request to meta node directly with pino, name and ino.
 	return nil
 }

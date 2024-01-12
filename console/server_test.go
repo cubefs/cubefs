@@ -8,7 +8,6 @@ import (
 )
 
 func TestServer(t *testing.T) {
-
 	return
 
 	// if _, err := log.InitLog("/tmp", "console", log.DebugLevel, nil); err != nil {
@@ -61,6 +60,7 @@ func TestServer(t *testing.T) {
 type graphErr struct {
 	Message string
 }
+
 type graphResponse struct {
 	Data   interface{}
 	Errors []graphErr

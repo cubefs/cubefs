@@ -38,7 +38,7 @@ const snapshotFullPath = "(Snapshot Cmd Unsupported)"
 var gMetaWrapper *meta.MetaWrapper
 
 func newCleanCmd() *cobra.Command {
-	var c = &cobra.Command{
+	c := &cobra.Command{
 		Use:   "clean",
 		Short: "clean snapshot related inode or dentry according to some rules",
 		Args:  cobra.MinimumNArgs(0),
@@ -55,7 +55,7 @@ func newCleanCmd() *cobra.Command {
 }
 
 func newCleanSnapshotCmd() *cobra.Command {
-	var c = &cobra.Command{
+	c := &cobra.Command{
 		Use:   "snapshot",
 		Short: "clean snapshot",
 		Run: func(cmd *cobra.Command, args []string) {
@@ -69,7 +69,7 @@ func newCleanSnapshotCmd() *cobra.Command {
 }
 
 func newCleanInodeCmd() *cobra.Command {
-	var c = &cobra.Command{
+	c := &cobra.Command{
 		Use:   "inode",
 		Short: "clean dirty inode",
 		Run: func(cmd *cobra.Command, args []string) {
@@ -83,7 +83,7 @@ func newCleanInodeCmd() *cobra.Command {
 }
 
 func newCleanDentryCmd() *cobra.Command {
-	var c = &cobra.Command{
+	c := &cobra.Command{
 		Use:   "dentry",
 		Short: "clean dirty dentry",
 		Run: func(cmd *cobra.Command, args []string) {
@@ -97,7 +97,7 @@ func newCleanDentryCmd() *cobra.Command {
 }
 
 func newEvictInodeCmd() *cobra.Command {
-	var c = &cobra.Command{
+	c := &cobra.Command{
 		Use:   "evict",
 		Short: "clean dirty dentry",
 		Run: func(cmd *cobra.Command, args []string) {
@@ -125,7 +125,7 @@ func Clean(opt string, args []string) error {
 	}
 
 	masters := strings.Split(MasterAddr, meta.HostsSeparator)
-	var metaConfig = &meta.MetaConfig{
+	metaConfig := &meta.MetaConfig{
 		Volume:  VolName,
 		Masters: masters,
 	}
@@ -291,7 +291,7 @@ func cleanSnapshot() (err error) {
 		parents  []proto.Dentry
 		ino      *proto.InodeInfo
 	)
-	//return readSnapshot()
+	// return readSnapshot()
 
 	log.LogDebugf("action[cleanSnapshot] ReadDirLimit_ll parent root verSeq %v", VerSeq)
 	parents, err = gMetaWrapper.ReadDirLimitForSnapShotClean(1, "", math.MaxUint64, VerSeq, false) // one more for nextMarker

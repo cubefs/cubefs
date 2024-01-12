@@ -33,7 +33,7 @@ const (
 )
 
 func newCheckCmd() *cobra.Command {
-	var c = &cobra.Command{
+	c := &cobra.Command{
 		Use:   "check",
 		Short: "check and verify specified volume",
 		Args:  cobra.MinimumNArgs(0),
@@ -49,7 +49,7 @@ func newCheckCmd() *cobra.Command {
 }
 
 func newCheckInodeCmd() *cobra.Command {
-	var c = &cobra.Command{
+	c := &cobra.Command{
 		Use:   "inode",
 		Short: "check and verify inode",
 		Run: func(cmd *cobra.Command, args []string) {
@@ -63,7 +63,7 @@ func newCheckInodeCmd() *cobra.Command {
 }
 
 func newCheckDentryCmd() *cobra.Command {
-	var c = &cobra.Command{
+	c := &cobra.Command{
 		Use:   "dentry",
 		Short: "check and verify dentry",
 		Run: func(cmd *cobra.Command, args []string) {
@@ -77,7 +77,7 @@ func newCheckDentryCmd() *cobra.Command {
 }
 
 func newCheckBothCmd() *cobra.Command {
-	var c = &cobra.Command{
+	c := &cobra.Command{
 		Use:   "both",
 		Short: "check and verify both inode and dentry",
 		Run: func(cmd *cobra.Command, args []string) {
@@ -111,7 +111,7 @@ func Check(chkopt int) (err error) {
 	)
 
 	dirPath := fmt.Sprintf("_export_%s", VolName)
-	if err = os.MkdirAll(dirPath, 0666); err != nil {
+	if err = os.MkdirAll(dirPath, 0o666); err != nil {
 		return
 	}
 

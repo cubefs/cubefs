@@ -25,7 +25,7 @@ type TxIDAllocator struct {
 	txIDLock sync.RWMutex
 }
 
-//func newTxIDAllocator(mpID uint64, partition raftstore.Partition) (alloc *TxIDAllocator) {
+// func newTxIDAllocator(mpID uint64, partition raftstore.Partition) (alloc *TxIDAllocator) {
 func newTxIDAllocator() (alloc *TxIDAllocator) {
 	alloc = new(TxIDAllocator)
 	return

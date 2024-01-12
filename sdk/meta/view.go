@@ -91,7 +91,7 @@ func (mw *MetaWrapper) fetchVolumeView() (view *VolumeView, err error) {
 			vv.Name, vv.Status)
 		return nil, proto.ErrVolNotExists
 	}
-	var convert = func(volView *proto.VolView) *VolumeView {
+	convert := func(volView *proto.VolView) *VolumeView {
 		result := &VolumeView{
 			Name:           volView.Name,
 			Owner:          volView.Owner,
@@ -154,7 +154,6 @@ func (mw *MetaWrapper) updateDirChildrenNumLimit() (err error) {
 }
 
 func (mw *MetaWrapper) updateVolStatInfo() (err error) {
-
 	var info *proto.VolStatInfo
 	if info, err = mw.mc.ClientAPI().GetVolumeStat(mw.volname); err != nil {
 		log.LogWarnf("updateVolStatInfo: get volume status fail: volume(%v) err(%v)", mw.volname, err)
@@ -333,7 +332,7 @@ func (mw *MetaWrapper) parseAndVerifyResp(body []byte, ts int64) (dataBody []byt
 		log.LogWarnf("fetchVolumeView verify response: err(%v)", err)
 		return nil, err
 	}
-	var viewBody = &struct {
+	viewBody := &struct {
 		Code int32  `json:"code"`
 		Msg  string `json:"msg"`
 		Data json.RawMessage
@@ -386,7 +385,6 @@ func (mw *MetaWrapper) updateQuotaInfoTick() {
 		case <-mw.closeCh:
 			return
 		}
-
 	}
 }
 

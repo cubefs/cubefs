@@ -21,7 +21,6 @@ import (
 )
 
 func TestSyncKeyLimit(t *testing.T) {
-
 	l := NewLimit()
 	key1, key2, key3 := string("1"), string("2"), string("3")
 	require.Equal(t, 0, l.Running())
@@ -86,5 +85,4 @@ func TestKeyLimit_Switch(t *testing.T) {
 
 	ast.NoError(l.Acquire(key, 10))
 	ast.Equal(int64(3), l.Get(key))
-
 }

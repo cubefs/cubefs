@@ -21,17 +21,15 @@ import (
 	"fmt"
 	"hash/crc32"
 	"io"
-	"io/ioutil"
 	"os"
 	"path"
 	"strings"
 	"sync/atomic"
 	"time"
 
-	"github.com/cubefs/cubefs/util/log"
-
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/errors"
+	"github.com/cubefs/cubefs/util/log"
 	mmap "github.com/edsrzf/mmap-go"
 )
 
@@ -61,13 +59,13 @@ const (
 
 func (mp *metaPartition) loadMetadata() (err error) {
 	metaFile := path.Join(mp.config.RootDir, metadataFile)
-	fp, err := os.OpenFile(metaFile, os.O_RDONLY, 0644)
+	fp, err := os.OpenFile(metaFile, os.O_RDONLY, 0o644)
 	if err != nil {
 		err = errors.NewErrorf("[loadMetadata]: OpenFile %s", err.Error())
 		return
 	}
 	defer fp.Close()
-	data, err := ioutil.ReadAll(fp)
+	data, err := io.ReadAll(fp)
 	if err != nil || len(data) == 0 {
 		err = errors.NewErrorf("[loadMetadata]: ReadFile %s, data: %s", err.Error(),
 			string(data))
@@ -112,7 +110,7 @@ func (mp *metaPartition) loadInode(rootDir string, crc uint32) (err error) {
 		err = errors.NewErrorf("[loadInode] Stat: %s", err.Error())
 		return
 	}
-	fp, err := os.OpenFile(filename, os.O_RDONLY, 0644)
+	fp, err := os.OpenFile(filename, os.O_RDONLY, 0o644)
 	if err != nil {
 		err = errors.NewErrorf("[loadInode] OpenFile: %s", err.Error())
 		return
@@ -175,7 +173,6 @@ func (mp *metaPartition) loadInode(rootDir string, crc uint32) (err error) {
 		}
 		numInodes += 1
 	}
-
 }
 
 // Load dentry from the dentry snapshot.
@@ -192,7 +189,7 @@ func (mp *metaPartition) loadDentry(rootDir string, crc uint32) (err error) {
 		err = errors.NewErrorf("[loadDentry] Stat: %s", err.Error())
 		return
 	}
-	fp, err := os.OpenFile(filename, os.O_RDONLY, 0644)
+	fp, err := os.OpenFile(filename, os.O_RDONLY, 0o644)
 	if err != nil {
 		err = errors.NewErrorf("[loadDentry] OpenFile: %s", err.Error())
 		return
@@ -256,7 +253,7 @@ func (mp *metaPartition) loadExtend(rootDir string, crc uint32) (err error) {
 		err = errors.NewErrorf("[loadExtend] Stat: %s", err.Error())
 		return err
 	}
-	fp, err := os.OpenFile(filename, os.O_RDONLY, 0644)
+	fp, err := os.OpenFile(filename, os.O_RDONLY, 0o644)
 	if err != nil {
 		err = errors.NewErrorf("[loadExtend] OpenFile: %s", err.Error())
 		return err
@@ -277,7 +274,7 @@ func (mp *metaPartition) loadExtend(rootDir string, crc uint32) (err error) {
 	numExtends, n = binary.Uvarint(mem)
 	offset += n
 
-	var varintTmp = make([]byte, binary.MaxVarintLen64)
+	varintTmp := make([]byte, binary.MaxVarintLen64)
 	// write number of extends
 	n = binary.PutUvarint(varintTmp, numExtends)
 
@@ -298,7 +295,7 @@ func (mp *metaPartition) loadExtend(rootDir string, crc uint32) (err error) {
 		if _, err = crcCheck.Write(mem[offset-n : offset]); err != nil {
 			return err
 		}
-		//log.LogDebugf("loadExtend: new extend from bytes: partitionID (%v) volume(%v) inode(%v)",
+		// log.LogDebugf("loadExtend: new extend from bytes: partitionID (%v) volume(%v) inode(%v)",
 		//	mp.config.PartitionId, mp.config.VolName, extend.inode)
 		_ = mp.fsmSetXAttr(extend)
 
@@ -324,7 +321,7 @@ func (mp *metaPartition) loadMultipart(rootDir string, crc uint32) (err error) {
 		err = errors.NewErrorf("[loadMultipart] Stat: %s", err.Error())
 		return err
 	}
-	fp, err := os.OpenFile(filename, os.O_RDONLY, 0644)
+	fp, err := os.OpenFile(filename, os.O_RDONLY, 0o644)
 	if err != nil {
 		err = errors.NewErrorf("[loadMultipart] OpenFile: %s", err.Error())
 		return err
@@ -343,7 +340,7 @@ func (mp *metaPartition) loadMultipart(rootDir string, crc uint32) (err error) {
 	// read number of multipart
 	var numMultiparts uint64
 	numMultiparts, n = binary.Uvarint(mem)
-	var varintTmp = make([]byte, binary.MaxVarintLen64)
+	varintTmp := make([]byte, binary.MaxVarintLen64)
 	// write number of multipart
 	n = binary.PutUvarint(varintTmp, numMultiparts)
 	crcCheck := crc32.NewIEEE()
@@ -383,7 +380,7 @@ func (mp *metaPartition) loadApplyID(rootDir string) (err error) {
 		err = errors.NewErrorf("[loadApplyID]: Stat %s", err.Error())
 		return
 	}
-	data, err := ioutil.ReadFile(filename)
+	data, err := os.ReadFile(filename)
 	if err != nil {
 		err = errors.NewErrorf("[loadApplyID] ReadFile: %s", err.Error())
 		return
@@ -395,7 +392,6 @@ func (mp *metaPartition) loadApplyID(rootDir string) (err error) {
 	var cursor uint64
 	if strings.Contains(string(data), "|") {
 		_, err = fmt.Sscanf(string(data), "%d|%d", &mp.applyID, &cursor)
-
 	} else {
 		_, err = fmt.Sscanf(string(data), "%d", &mp.applyID)
 	}
@@ -428,7 +424,7 @@ func (mp *metaPartition) loadTxRbDentry(rootDir string, crc uint32) (err error) 
 		err = errors.NewErrorf("[loadTxRbDentry] Stat: %s", err.Error())
 		return
 	}
-	fp, err := os.OpenFile(filename, os.O_RDONLY, 0644)
+	fp, err := os.OpenFile(filename, os.O_RDONLY, 0o644)
 	if err != nil {
 		err = errors.NewErrorf("[loadTxRbDentry] OpenFile: %s", err.Error())
 		return
@@ -484,7 +480,7 @@ func (mp *metaPartition) loadTxRbDentry(rootDir string, crc uint32) (err error) 
 			return err
 		}
 
-		//mp.txProcessor.txResource.txRollbackDentries[txRbDentry.txDentryInfo.GetKey()] = txRbDentry
+		// mp.txProcessor.txResource.txRollbackDentries[txRbDentry.txDentryInfo.GetKey()] = txRbDentry
 		mp.txProcessor.txResource.txRbDentryTree.ReplaceOrInsert(txRbDentry, true)
 		numTxRbDentry++
 	}
@@ -503,7 +499,7 @@ func (mp *metaPartition) loadTxRbInode(rootDir string, crc uint32) (err error) {
 		err = errors.NewErrorf("[loadTxRbInode] Stat: %s", err.Error())
 		return
 	}
-	fp, err := os.OpenFile(filename, os.O_RDONLY, 0644)
+	fp, err := os.OpenFile(filename, os.O_RDONLY, 0o644)
 	if err != nil {
 		err = errors.NewErrorf("[loadTxRbInode] OpenFile: %s", err.Error())
 		return
@@ -572,7 +568,7 @@ func (mp *metaPartition) loadTxInfo(rootDir string, crc uint32) (err error) {
 		err = errors.NewErrorf("[loadTxInfo] Stat: %s", err.Error())
 		return
 	}
-	fp, err := os.OpenFile(filename, os.O_RDONLY, 0644)
+	fp, err := os.OpenFile(filename, os.O_RDONLY, 0o644)
 	if err != nil {
 		err = errors.NewErrorf("[loadTxInfo] OpenFile: %s", err.Error())
 		return
@@ -639,7 +635,7 @@ func (mp *metaPartition) loadTxID(rootDir string) (err error) {
 		err = nil
 		return
 	}
-	data, err := ioutil.ReadFile(filename)
+	data, err := os.ReadFile(filename)
 	if err != nil {
 		err = errors.NewErrorf("[loadTxID] OpenFile: %s", err.Error())
 		return
@@ -669,7 +665,7 @@ func (mp *metaPartition) loadUniqID(rootDir string) (err error) {
 		err = nil
 		return
 	}
-	data, err := ioutil.ReadFile(filename)
+	data, err := os.ReadFile(filename)
 	if err != nil {
 		err = errors.NewErrorf("[loadUniqID] OpenFile: %s", err.Error())
 		return
@@ -703,7 +699,7 @@ func (mp *metaPartition) loadUniqChecker(rootDir string, crc uint32) (err error)
 		return
 	}
 
-	data, err := ioutil.ReadFile(filename)
+	data, err := os.ReadFile(filename)
 	if err != nil {
 		log.LogErrorf("loadUniqChecker read file %s err(%s)", filename, err)
 		err = errors.NewErrorf("[loadUniqChecker] OpenFile: %v", err.Error())
@@ -737,7 +733,7 @@ func (mp *metaPartition) loadMultiVer(rootDir string, crc uint32) (err error) {
 		return
 	}
 
-	data, err := ioutil.ReadFile(filename)
+	data, err := os.ReadFile(filename)
 	if err != nil {
 		if err == os.ErrNotExist {
 			err = nil
@@ -798,7 +794,7 @@ func (mp *metaPartition) loadMultiVer(rootDir string, crc uint32) (err error) {
 func (mp *metaPartition) storeMultiVersion(rootDir string, sm *storeMsg) (crc uint32, err error) {
 	filename := path.Join(rootDir, verdataFile)
 	fp, err := os.OpenFile(filename, os.O_RDWR|os.O_APPEND|os.O_TRUNC|os.
-		O_CREATE, 0755)
+		O_CREATE, 0o755)
 	if err != nil {
 		return
 	}
@@ -846,9 +842,9 @@ func (mp *metaPartition) persistMetadata() (err error) {
 	}
 
 	// TODO Unhandled errors
-	os.MkdirAll(mp.config.RootDir, 0755)
+	os.MkdirAll(mp.config.RootDir, 0o755)
 	filename := path.Join(mp.config.RootDir, metadataFileTmp)
-	fp, err := os.OpenFile(filename, os.O_RDWR|os.O_TRUNC|os.O_APPEND|os.O_CREATE, 0755)
+	fp, err := os.OpenFile(filename, os.O_RDWR|os.O_TRUNC|os.O_APPEND|os.O_CREATE, 0o755)
 	if err != nil {
 		return
 	}
@@ -877,7 +873,7 @@ func (mp *metaPartition) persistMetadata() (err error) {
 func (mp *metaPartition) storeApplyID(rootDir string, sm *storeMsg) (err error) {
 	filename := path.Join(rootDir, applyIDFile)
 	fp, err := os.OpenFile(filename, os.O_RDWR|os.O_APPEND|os.O_TRUNC|os.
-		O_CREATE, 0755)
+		O_CREATE, 0o755)
 	if err != nil {
 		return
 	}
@@ -898,7 +894,7 @@ func (mp *metaPartition) storeApplyID(rootDir string, sm *storeMsg) (err error) 
 func (mp *metaPartition) storeTxID(rootDir string, sm *storeMsg) (err error) {
 	filename := path.Join(rootDir, TxIDFile)
 	fp, err := os.OpenFile(filename, os.O_RDWR|os.O_APPEND|os.O_TRUNC|os.
-		O_CREATE, 0755)
+		O_CREATE, 0o755)
 	if err != nil {
 		return
 	}
@@ -916,7 +912,7 @@ func (mp *metaPartition) storeTxID(rootDir string, sm *storeMsg) (err error) {
 
 func (mp *metaPartition) storeTxRbDentry(rootDir string, sm *storeMsg) (crc uint32, err error) {
 	filename := path.Join(rootDir, txRbDentryFile)
-	fp, err := os.OpenFile(filename, os.O_RDWR|os.O_TRUNC|os.O_APPEND|os.O_CREATE, 0755)
+	fp, err := os.OpenFile(filename, os.O_RDWR|os.O_TRUNC|os.O_APPEND|os.O_CREATE, 0o755)
 	if err != nil {
 		return
 	}
@@ -960,7 +956,7 @@ func (mp *metaPartition) storeTxRbDentry(rootDir string, sm *storeMsg) (crc uint
 
 func (mp *metaPartition) storeTxRbInode(rootDir string, sm *storeMsg) (crc uint32, err error) {
 	filename := path.Join(rootDir, txRbInodeFile)
-	fp, err := os.OpenFile(filename, os.O_RDWR|os.O_TRUNC|os.O_APPEND|os.O_CREATE, 0755)
+	fp, err := os.OpenFile(filename, os.O_RDWR|os.O_TRUNC|os.O_APPEND|os.O_CREATE, 0o755)
 	if err != nil {
 		return
 	}
@@ -1004,7 +1000,7 @@ func (mp *metaPartition) storeTxRbInode(rootDir string, sm *storeMsg) (crc uint3
 
 func (mp *metaPartition) storeTxInfo(rootDir string, sm *storeMsg) (crc uint32, err error) {
 	filename := path.Join(rootDir, txInfoFile)
-	fp, err := os.OpenFile(filename, os.O_RDWR|os.O_TRUNC|os.O_APPEND|os.O_CREATE, 0755)
+	fp, err := os.OpenFile(filename, os.O_RDWR|os.O_TRUNC|os.O_APPEND|os.O_CREATE, 0o755)
 	if err != nil {
 		return
 	}
@@ -1051,7 +1047,7 @@ func (mp *metaPartition) storeInode(rootDir string,
 	sm *storeMsg) (crc uint32, err error) {
 	filename := path.Join(rootDir, inodeFile)
 	fp, err := os.OpenFile(filename, os.O_RDWR|os.O_TRUNC|os.O_APPEND|os.
-		O_CREATE, 0755)
+		O_CREATE, 0o755)
 	if err != nil {
 		return
 	}
@@ -1110,7 +1106,7 @@ func (mp *metaPartition) storeDentry(rootDir string,
 	sm *storeMsg) (crc uint32, err error) {
 	filename := path.Join(rootDir, dentryFile)
 	fp, err := os.OpenFile(filename, os.O_RDWR|os.O_TRUNC|os.O_APPEND|os.
-		O_CREATE, 0755)
+		O_CREATE, 0o755)
 	if err != nil {
 		return
 	}
@@ -1151,10 +1147,10 @@ func (mp *metaPartition) storeDentry(rootDir string,
 }
 
 func (mp *metaPartition) storeExtend(rootDir string, sm *storeMsg) (crc uint32, err error) {
-	var extendTree = sm.extendTree
-	var fp = path.Join(rootDir, extendFile)
+	extendTree := sm.extendTree
+	fp := path.Join(rootDir, extendFile)
 	var f *os.File
-	f, err = os.OpenFile(fp, os.O_RDWR|os.O_TRUNC|os.O_APPEND|os.O_CREATE, 0755)
+	f, err = os.OpenFile(fp, os.O_RDWR|os.O_TRUNC|os.O_APPEND|os.O_CREATE, 0o755)
 	if err != nil {
 		return
 	}
@@ -1166,9 +1162,9 @@ func (mp *metaPartition) storeExtend(rootDir string, sm *storeMsg) (crc uint32, 
 			err = closeErr
 		}
 	}()
-	var writer = bufio.NewWriterSize(f, 4*1024*1024)
-	var crc32 = crc32.NewIEEE()
-	var varintTmp = make([]byte, binary.MaxVarintLen64)
+	writer := bufio.NewWriterSize(f, 4*1024*1024)
+	crc32 := crc32.NewIEEE()
+	varintTmp := make([]byte, binary.MaxVarintLen64)
 	var n int
 	// write number of extends
 	n = binary.PutUvarint(varintTmp, uint64(extendTree.Len()))
@@ -1225,10 +1221,10 @@ func (mp *metaPartition) storeExtend(rootDir string, sm *storeMsg) (crc uint32, 
 }
 
 func (mp *metaPartition) storeMultipart(rootDir string, sm *storeMsg) (crc uint32, err error) {
-	var multipartTree = sm.multipartTree
-	var fp = path.Join(rootDir, multipartFile)
+	multipartTree := sm.multipartTree
+	fp := path.Join(rootDir, multipartFile)
 	var f *os.File
-	f, err = os.OpenFile(fp, os.O_RDWR|os.O_TRUNC|os.O_APPEND|os.O_CREATE, 0755)
+	f, err = os.OpenFile(fp, os.O_RDWR|os.O_TRUNC|os.O_APPEND|os.O_CREATE, 0o755)
 	if err != nil {
 		return
 	}
@@ -1238,9 +1234,9 @@ func (mp *metaPartition) storeMultipart(rootDir string, sm *storeMsg) (crc uint3
 			err = closeErr
 		}
 	}()
-	var writer = bufio.NewWriterSize(f, 4*1024*1024)
-	var crc32 = crc32.NewIEEE()
-	var varintTmp = make([]byte, binary.MaxVarintLen64)
+	writer := bufio.NewWriterSize(f, 4*1024*1024)
+	crc32 := crc32.NewIEEE()
+	varintTmp := make([]byte, binary.MaxVarintLen64)
 	var n int
 	// write number of extends
 	n = binary.PutUvarint(varintTmp, uint64(multipartTree.Len()))
@@ -1292,7 +1288,7 @@ func (mp *metaPartition) storeMultipart(rootDir string, sm *storeMsg) (crc uint3
 func (mp *metaPartition) storeUniqID(rootDir string, sm *storeMsg) (err error) {
 	filename := path.Join(rootDir, uniqIDFile)
 	fp, err := os.OpenFile(filename, os.O_RDWR|os.O_APPEND|os.O_TRUNC|os.
-		O_CREATE, 0755)
+		O_CREATE, 0o755)
 	if err != nil {
 		return
 	}
@@ -1311,7 +1307,7 @@ func (mp *metaPartition) storeUniqID(rootDir string, sm *storeMsg) (err error) {
 func (mp *metaPartition) storeUniqChecker(rootDir string, sm *storeMsg) (crc uint32, err error) {
 	filename := path.Join(rootDir, uniqCheckerFile)
 	fp, err := os.OpenFile(filename, os.O_RDWR|os.O_TRUNC|os.O_APPEND|os.
-		O_CREATE, 0755)
+		O_CREATE, 0o755)
 	if err != nil {
 		return
 	}

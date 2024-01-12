@@ -111,7 +111,6 @@ func TestDoEvit1(t *testing.T) {
 	if checker.inQue.len() != 0 || len(checker.op) != 0 {
 		t.Errorf("failed, inQue %v, op %v", checker.inQue, checker.op)
 	}
-
 }
 
 func TestDoEvit2(t *testing.T) {

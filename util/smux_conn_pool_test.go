@@ -541,7 +541,6 @@ func TestConcurrentGetConn(t *testing.T) {
 	for stream := range streamsCh {
 		pool.PutConnect(stream, true)
 	}
-
 }
 
 func TestConcurrentGetPutConn(t *testing.T) {

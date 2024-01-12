@@ -184,7 +184,7 @@ func (s *Streamer) read(data []byte, offset int, size int) (total int, err error
 				bcacheMetric.AddWithLabels(1, map[string]string{exporter.Vol: s.client.volumeName})
 			}
 
-			//skip hole,ek is not nil,read block cache firstly
+			// skip hole,ek is not nil,read block cache firstly
 			log.LogDebugf("Stream read: ino(%v) req(%v) s.client.bcacheEnable(%v) s.needBCache(%v)", s.inode, req, s.client.bcacheEnable, s.needBCache)
 			cacheKey := util.GenerateRepVolKey(s.client.volumeName, s.inode, req.ExtentKey.PartitionId, req.ExtentKey.ExtentId, req.ExtentKey.FileOffset)
 			if s.client.bcacheEnable && s.needBCache && filesize <= bcache.MaxFileSize {
@@ -207,7 +207,7 @@ func (s *Streamer) read(data []byte, offset int, size int) (total int, err error
 				bcacheMetric.AddWithLabels(1, map[string]string{exporter.Vol: s.client.volumeName})
 			}
 
-			//read extent
+			// read extent
 			reader, err = s.GetExtentReader(req.ExtentKey)
 			if err != nil {
 				log.LogErrorf("action[streamer.read] req %v err %v", req, err)
@@ -215,9 +215,9 @@ func (s *Streamer) read(data []byte, offset int, size int) (total int, err error
 			}
 
 			if s.client.bcacheEnable && s.needBCache && filesize <= bcache.MaxFileSize {
-				//limit big block cache
+				// limit big block cache
 				if s.exceedBlockSize(req.ExtentKey.Size) && atomic.LoadInt32(&s.client.inflightL1BigBlock) > 10 {
-					//do nothing
+					// do nothing
 				} else {
 					select {
 					case s.pendingCache <- bcacheKey{cacheKey: cacheKey, extentKey: req.ExtentKey}:
@@ -259,7 +259,7 @@ func (s *Streamer) asyncBlockCache() {
 			cacheKey := pending.cacheKey
 			log.LogDebugf("asyncBlockCache: cacheKey=(%v) ek=(%v)", cacheKey, ek)
 
-			//read full extent
+			// read full extent
 			var data []byte
 			if ek.Size == bcache.MaxBlockSize {
 				data = buf.BCachePool.Get()
@@ -295,7 +295,6 @@ func (s *Streamer) asyncBlockCache() {
 				return
 			}
 		}
-
 	}
 }
 

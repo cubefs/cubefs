@@ -16,10 +16,10 @@ package stream
 
 import (
 	"fmt"
-	"github.com/cubefs/cubefs/util"
 	"sync"
 
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/btree"
 	"github.com/cubefs/cubefs/util/log"
 )
@@ -80,7 +80,7 @@ func (cache *ExtentCache) RefreshForce(inode uint64, getExtents GetExtentsFunc) 
 	if err != nil {
 		return err
 	}
-	//log.LogDebugf("Local ExtentCache before update: ino(%v) gen(%v) size(%v) extents(%v)", inode, cache.gen, cache.size, cache.List())
+	// log.LogDebugf("Local ExtentCache before update: ino(%v) gen(%v) size(%v) extents(%v)", inode, cache.gen, cache.size, cache.List())
 	cache.update(gen, size, extents)
 	log.LogDebugf("Local ExtentCache after update: ino(%v) gen(%v) size(%v) extents(%v)", inode, cache.gen, cache.size, cache.List())
 	return nil
@@ -96,7 +96,7 @@ func (cache *ExtentCache) Refresh(inode uint64, getExtents GetExtentsFunc) error
 	if err != nil {
 		return err
 	}
-	//log.LogDebugf("Local ExtentCache before update: ino(%v) gen(%v) size(%v) extents(%v)", inode, cache.gen, cache.size, cache.List())
+	// log.LogDebugf("Local ExtentCache before update: ino(%v) gen(%v) size(%v) extents(%v)", inode, cache.gen, cache.size, cache.List())
 	cache.update(gen, size, extents)
 	log.LogDebugf("Local ExtentCache after update: ino(%v) gen(%v) size(%v)", inode, cache.gen, cache.size)
 	return nil
@@ -138,8 +138,8 @@ func (cache *ExtentCache) SplitExtentKey(inodeID uint64, ekPivot *proto.ExtentKe
 	cache.Lock()
 	defer cache.Unlock()
 
-	//log.LogDebugf("before cache output")
-	//cache.LogOutPut()
+	// log.LogDebugf("before cache output")
+	// cache.LogOutPut()
 	// When doing the append, we do not care about the data after the file offset.
 	// Those data will be overwritten by the current extent anyway.
 	var ekFind *proto.ExtentKey
@@ -230,8 +230,8 @@ func (cache *ExtentCache) SplitExtentKey(inodeID uint64, ekPivot *proto.ExtentKe
 	log.LogDebugf("action[SplitExtentKey] inode %v ek [%v], ekPivot[%v]", inodeID, ek, ekPivot)
 	cache.gen++
 
-	//log.LogDebugf("before cache output")
-	//cache.LogOutPut()
+	// log.LogDebugf("before cache output")
+	// cache.LogOutPut()
 	return
 }
 
@@ -268,7 +268,7 @@ func (cache *ExtentCache) Append(ek *proto.ExtentKey, sync bool) (discardExtents
 		if key.PartitionId != 0 && key.ExtentId != 0 && (key.PartitionId != ek.PartitionId || key.ExtentId != ek.ExtentId || ek.ExtentOffset != key.ExtentOffset) {
 			if sync || (ek.PartitionId == 0 && ek.ExtentId == 0) {
 				cache.discard.ReplaceOrInsert(key)
-				//log.LogDebugf("ExtentCache Append add to discard: ino(%v) ek(%v) discard(%v)", cache.inode, ek, key)
+				// log.LogDebugf("ExtentCache Append add to discard: ino(%v) ek(%v) discard(%v)", cache.inode, ek, key)
 			}
 		}
 	}
@@ -299,7 +299,7 @@ func (cache *ExtentCache) RemoveDiscard(discardExtents []proto.ExtentKey) {
 	defer cache.Unlock()
 	for _, ek := range discardExtents {
 		cache.discard.Delete(&ek)
-		//log.LogDebugf("ExtentCache ClearDiscard: ino(%v) discard(%v)", cache.inode, ek)
+		// log.LogDebugf("ExtentCache ClearDiscard: ino(%v) discard(%v)", cache.inode, ek)
 	}
 }
 
@@ -370,7 +370,7 @@ func (cache *ExtentCache) Get(offset uint64) (ret *proto.ExtentKey) {
 
 	cache.root.DescendLessOrEqual(pivot, func(i btree.Item) bool {
 		ek := i.(*proto.ExtentKey)
-		//log.LogDebugf("ExtentCache GetConnect: ino(%v) ek(%v) offset(%v)", cache.inode, ek, offset)
+		// log.LogDebugf("ExtentCache GetConnect: ino(%v) ek(%v) offset(%v)", cache.inode, ek, offset)
 		if offset >= ek.FileOffset && offset < ek.FileOffset+uint64(ek.Size) {
 			ret = ek
 		}

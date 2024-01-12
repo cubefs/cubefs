@@ -19,7 +19,6 @@ import (
 	"encoding/hex"
 	"encoding/xml"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"strconv"
 	"strings"
@@ -49,7 +48,7 @@ func (o *ObjectNode) createMultipleUploadHandler(w http.ResponseWriter, r *http.
 		o.errorResponse(w, r, err, errorCode)
 	}()
 
-	var param = ParseRequestParam(r)
+	param := ParseRequestParam(r)
 	if param.Bucket() == "" {
 		errorCode = InvalidBucketName
 		return
@@ -98,7 +97,7 @@ func (o *ObjectNode) createMultipleUploadHandler(w http.ResponseWriter, r *http.
 	}
 
 	// Checking user-defined metadata
-	var metadata = ParseUserDefinedMetadata(r.Header)
+	metadata := ParseUserDefinedMetadata(r.Header)
 
 	// Check 'x-amz-tagging' header
 	var tagging *Tagging
@@ -116,7 +115,7 @@ func (o *ObjectNode) createMultipleUploadHandler(w http.ResponseWriter, r *http.
 			GetRequestID(r), acl, err)
 		return
 	}
-	var opt = &PutFileOption{
+	opt := &PutFileOption{
 		MIMEType:     contentType,
 		Disposition:  contentDisposition,
 		Tagging:      tagging,
@@ -164,7 +163,7 @@ func (o *ObjectNode) uploadPartHandler(w http.ResponseWriter, r *http.Request) {
 	}()
 
 	// check args
-	var param = ParseRequestParam(r)
+	param := ParseRequestParam(r)
 	// get upload id and part number
 	uploadId := param.GetVar(ParamUploadId)
 	partNumber := param.GetVar(ParamPartNumber)
@@ -285,7 +284,7 @@ func (o *ObjectNode) uploadPartCopyHandler(w http.ResponseWriter, r *http.Reques
 	}()
 
 	// step1: check args
-	var param = ParseRequestParam(r)
+	param := ParseRequestParam(r)
 	uploadId := param.GetVar(ParamUploadId)
 	partNumber := param.GetVar(ParamPartNumber)
 	if uploadId == "" || partNumber == "" {
@@ -443,7 +442,7 @@ func (o *ObjectNode) listPartsHandler(w http.ResponseWriter, r *http.Request) {
 		o.errorResponse(w, r, err, errorCode)
 	}()
 
-	var param = ParseRequestParam(r)
+	param := ParseRequestParam(r)
 	// get upload id and part number
 	uploadId := param.GetVar(ParamUploadId)
 	maxParts := param.GetVar(ParamMaxParts)
@@ -632,7 +631,7 @@ func (o *ObjectNode) completeMultipartUploadHandler(w http.ResponseWriter, r *ht
 		o.errorResponse(w, r, err, errorCode)
 	}()
 
-	var param = ParseRequestParam(r)
+	param := ParseRequestParam(r)
 	// get upload id and part number
 	uploadId := param.GetVar(ParamUploadId)
 	if uploadId == "" {
@@ -673,7 +672,7 @@ func (o *ObjectNode) completeMultipartUploadHandler(w http.ResponseWriter, r *ht
 	if errorCode != nil {
 		return
 	}
-	requestBytes, err := ioutil.ReadAll(r.Body)
+	requestBytes, err := io.ReadAll(r.Body)
 	if err != nil && err != io.EOF {
 		log.LogErrorf("completeMultipartUploadHandler: read request body fail: requestID(%v) err(%v)",
 			GetRequestID(r), err)
@@ -783,7 +782,7 @@ func (o *ObjectNode) abortMultipartUploadHandler(w http.ResponseWriter, r *http.
 	}()
 
 	// check args
-	var param = ParseRequestParam(r)
+	param := ParseRequestParam(r)
 	uploadId := param.GetVar(ParamUploadId)
 	if uploadId == "" {
 		errorCode = InvalidArgument
@@ -839,7 +838,7 @@ func (o *ObjectNode) listMultipartUploadsHandler(w http.ResponseWriter, r *http.
 		o.errorResponse(w, r, err, errorCode)
 	}()
 
-	var param = ParseRequestParam(r)
+	param := ParseRequestParam(r)
 	// get list uploads parameter
 	prefix := param.GetVar(ParamPrefix)
 	keyMarker := param.GetVar(ParamKeyMarker)
@@ -894,7 +893,7 @@ func (o *ObjectNode) listMultipartUploadsHandler(w http.ResponseWriter, r *http.
 
 	uploads := NewUploads(fsUploads, param.AccessKey())
 
-	var commonPrefixes = make([]*CommonPrefix, 0)
+	commonPrefixes := make([]*CommonPrefix, 0)
 	for _, prefix := range prefixes {
 		commonPrefix := &CommonPrefix{
 			Prefix: prefix,

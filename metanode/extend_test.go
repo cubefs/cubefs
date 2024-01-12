@@ -27,7 +27,7 @@ func TestExtend_Bytes(t *testing.T) {
 	var err error
 	const numSamples = 100
 
-	var random = rand.New(rand.NewSource(time.Now().UnixNano()))
+	random := rand.New(rand.NewSource(time.Now().UnixNano()))
 
 	extends := make([]*Extend, numSamples)
 	for i := 0; i < numSamples; i++ {
@@ -53,5 +53,4 @@ func TestExtend_Bytes(t *testing.T) {
 			t.Fatalf("result mismatch")
 		}
 	}
-
 }

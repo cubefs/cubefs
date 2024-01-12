@@ -24,7 +24,7 @@ import (
 	"github.com/cubefs/cubefs/raftstore"
 )
 
-//config key
+// config key
 const (
 	colonSplit = ":"
 	commaSplit = ","
@@ -34,7 +34,7 @@ const (
 	replicaPortKey   = "replicaPort"
 )
 
-//default value
+// default value
 const (
 	defaultIntervalToCheckHeartbeat = 60
 )
@@ -67,6 +67,7 @@ func parsePeerAddr(peerAddr string) (id uint64, ip string, port uint64, err erro
 	ip = peerStr[1]
 	return
 }
+
 func (cfg *clusterConfig) parsePeers(peerStr string) error {
 	peerArr := strings.Split(peerStr, commaSplit)
 	cfg.peerAddrs = peerArr

@@ -242,7 +242,7 @@ func (mp *metaPartition) TxDeleteDentry(req *proto.TxDeleteDentryRequest, p *Pac
 	}
 
 	txDentry := &TxDentry{
-		//ParInode: inoResp.Msg,
+		// ParInode: inoResp.Msg,
 		Dentry: dentry,
 		TxInfo: txInfo,
 	}

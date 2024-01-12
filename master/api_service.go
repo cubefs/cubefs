@@ -338,14 +338,18 @@ func (m *Server) getTopology(w http.ResponseWriter, r *http.Request) {
 			cv.NodeSet[ns.ID] = nsView
 			ns.dataNodes.Range(func(key, value interface{}) bool {
 				dataNode := value.(*DataNode)
-				nsView.DataNodes = append(nsView.DataNodes, proto.NodeView{ID: dataNode.ID, Addr: dataNode.Addr,
-					DomainAddr: dataNode.DomainAddr, Status: dataNode.isActive, IsWritable: dataNode.isWriteAble()})
+				nsView.DataNodes = append(nsView.DataNodes, proto.NodeView{
+					ID: dataNode.ID, Addr: dataNode.Addr,
+					DomainAddr: dataNode.DomainAddr, Status: dataNode.isActive, IsWritable: dataNode.isWriteAble(),
+				})
 				return true
 			})
 			ns.metaNodes.Range(func(key, value interface{}) bool {
 				metaNode := value.(*MetaNode)
-				nsView.MetaNodes = append(nsView.MetaNodes, proto.NodeView{ID: metaNode.ID, Addr: metaNode.Addr,
-					DomainAddr: metaNode.DomainAddr, Status: metaNode.IsActive, IsWritable: metaNode.isWritable()})
+				nsView.MetaNodes = append(nsView.MetaNodes, proto.NodeView{
+					ID: metaNode.ID, Addr: metaNode.Addr,
+					DomainAddr: metaNode.DomainAddr, Status: metaNode.IsActive, IsWritable: metaNode.isWritable(),
+				})
 				return true
 			})
 		}
@@ -810,7 +814,7 @@ func (m *Server) setApiQpsLimit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	//persist to rocksdb
+	// persist to rocksdb
 	var qPath string
 	if err, _, qPath = m.cluster.apiLimiter.IsApiNameValid(name); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
@@ -864,7 +868,7 @@ func (m *Server) rmApiQpsLimit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	//persist to rocksdb
+	// persist to rocksdb
 	var qPath string
 	if err, _, qPath = m.cluster.apiLimiter.IsApiNameValid(name); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
@@ -876,7 +880,6 @@ func (m *Server) rmApiQpsLimit(w http.ResponseWriter, r *http.Request) {
 	}
 	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("rm api qps limit success: name: %v",
 		name)))
-
 }
 
 func (m *Server) getIPAddr(w http.ResponseWriter, r *http.Request) {
@@ -901,7 +904,7 @@ func (m *Server) getIPAddr(w http.ResponseWriter, r *http.Request) {
 		DataNodeAutoRepairLimitRate: autoRepairRate,
 		DpMaxRepairErrCnt:           dpMaxRepairErrCnt,
 		DirChildrenNumLimit:         dirChildrenNumLimit,
-		//Ip:                          strings.Split(r.RemoteAddr, ":")[0],
+		// Ip:                          strings.Split(r.RemoteAddr, ":")[0],
 		Ip:                iputil.RealIP(r),
 		EbsAddr:           m.bStoreAddr,
 		ServicePath:       m.servicePath,
@@ -963,7 +966,6 @@ func parsePreloadDpReq(r *http.Request, preload *DataPartitionPreLoad) (err erro
 }
 
 func (m *Server) createPreLoadDataPartition(w http.ResponseWriter, r *http.Request) {
-
 	var (
 		volName string
 		vol     *Vol
@@ -1888,8 +1890,7 @@ func (m *Server) diagnoseDataPartition(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if lackReplicaDps, badReplicaDps, repFileCountDifferDps, repUsedSizeDifferDps, excessReplicaDPs, corruptDps, err =
-		m.cluster.checkReplicaOfDataPartitions(ignoreDiscardDp); err != nil {
+	if lackReplicaDps, badReplicaDps, repFileCountDifferDps, repUsedSizeDifferDps, excessReplicaDPs, corruptDps, err = m.cluster.checkReplicaOfDataPartitions(ignoreDiscardDp); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -1912,7 +1913,7 @@ func (m *Server) diagnoseDataPartition(w http.ResponseWriter, r *http.Request) {
 		excessReplicaDpIDs = append(excessReplicaDpIDs, dp.PartitionID)
 	}
 
-	//badDataPartitions = m.cluster.getBadDataPartitionsView()
+	// badDataPartitions = m.cluster.getBadDataPartitionsView()
 	badDataPartitionInfos = m.cluster.getBadDataPartitionsRepairView()
 	rstMsg = &proto.DataPartitionDiagnosis{
 		InactiveDataNodes:           inactiveNodes,
@@ -2215,7 +2216,6 @@ func (m *Server) volShrink(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *Server) checkCreateReq(req *createVolReq) (err error) {
-
 	if !proto.IsHot(req.volType) && !proto.IsCold(req.volType) {
 		return fmt.Errorf("vol type %d is illegal", req.volType)
 	}
@@ -2304,11 +2304,9 @@ func (m *Server) checkCreateReq(req *createVolReq) (err error) {
 
 	req.coldArgs = args
 	return nil
-
 }
 
 func (m *Server) createVol(w http.ResponseWriter, r *http.Request) {
-
 	req := &createVolReq{}
 	vol := &Vol{}
 
@@ -2442,7 +2440,6 @@ func newSimpleView(vol *Vol) (view *proto.SimpleVolView) {
 	maxPartitionID := vol.maxPartitionID()
 
 	view = &proto.SimpleVolView{
-
 		ID:                      vol.ID,
 		Name:                    vol.Name,
 		Owner:                   vol.Owner,
@@ -2504,7 +2501,6 @@ func newSimpleView(vol *Vol) (view *proto.SimpleVolView) {
 }
 
 func checkIp(addr string) bool {
-
 	ip := strings.Trim(addr, " ")
 	regStr := `^(([1-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.)(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){2}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])`
 	if match, _ := regexp.MatchString(regStr, ip); match {
@@ -2589,7 +2585,7 @@ func (m *Server) getDataNode(w http.ResponseWriter, r *http.Request) {
 	}
 	log.LogDebugf("getDataNode. addr %v Total %v used %v", nodeAddr, dataNode.Total, dataNode.Used)
 	dataNode.PersistenceDataPartitions = m.cluster.getAllDataPartitionIDByDatanode(nodeAddr)
-	//some dp maybe removed from this node but decommission failed
+	// some dp maybe removed from this node but decommission failed
 	dataNodeInfo = &proto.DataNodeInfo{
 		Total:                     dataNode.Total,
 		Used:                      dataNode.Used,
@@ -2854,20 +2850,20 @@ func (m *Server) setNodeInfoHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("set nodeinfo params %v successfully", params)))
-
 }
-func (m *Server) updateDataUseRatio(ratio float64) (err error) {
 
+func (m *Server) updateDataUseRatio(ratio float64) (err error) {
 	m.cluster.domainManager.dataRatioLimit = ratio
 	err = m.cluster.putZoneDomain(false)
 	return
 }
-func (m *Server) updateExcludeZoneUseRatio(ratio float64) (err error) {
 
+func (m *Server) updateExcludeZoneUseRatio(ratio float64) (err error) {
 	m.cluster.domainManager.excludeZoneUseRatio = ratio
 	err = m.cluster.putZoneDomain(false)
 	return
 }
+
 func (m *Server) updateNodesetId(zoneName string, destNodesetId uint64, nodeType uint64, addr string) (err error) {
 	var (
 		nsId           uint64
@@ -3051,7 +3047,6 @@ func (m *Server) updateClusterSelector(dataNodesetSelector string, metaNodesetSe
 }
 
 func (m *Server) setDpRdOnly(partitionID uint64, rdOnly bool) (err error) {
-
 	var dp *DataPartition
 	if dp, err = m.cluster.getDataPartitionByID(partitionID); err != nil {
 		return fmt.Errorf("[setPartitionRdOnly] getDataPartitionByID err(%s)", err.Error())
@@ -3754,7 +3749,7 @@ func (m *Server) decommissionDisk(w http.ResponseWriter, r *http.Request) {
 	defer func() {
 		doStatAndMetric(proto.DecommissionDisk, metric, err, nil)
 	}()
-	//default diskDisable is true
+	// default diskDisable is true
 	if offLineAddr, diskPath, diskDisable, limit, decommissionType, err = parseReqToDecoDisk(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
@@ -3911,9 +3906,7 @@ func (m *Server) queryDecommissionDiskDecoFailedDps(w http.ResponseWriter, r *ht
 }
 
 func (m *Server) queryAllDecommissionDisk(w http.ResponseWriter, r *http.Request) {
-	var (
-		err error
-	)
+	var err error
 
 	metric := exporter.NewTPCnt("req_queryAllDecommissionDisk")
 	defer func() {
@@ -4794,10 +4787,10 @@ func (m *Server) getMetaPartition(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var toInfo = func(mp *MetaPartition) *proto.MetaPartitionInfo {
+	toInfo := func(mp *MetaPartition) *proto.MetaPartitionInfo {
 		mp.RLock()
 		defer mp.RUnlock()
-		var replicas = make([]*proto.MetaReplicaInfo, len(mp.Replicas))
+		replicas := make([]*proto.MetaReplicaInfo, len(mp.Replicas))
 		zones := make([]string, len(mp.Hosts))
 		nodeSets := make([]uint64, len(mp.Hosts))
 		for idx, host := range mp.Hosts {
@@ -4827,7 +4820,7 @@ func (m *Server) getMetaPartition(w http.ResponseWriter, r *http.Request) {
 		} else {
 			log.LogErrorf("action[getMetaPartition]failed to get volume %v, err %v", mp.volName, err)
 		}
-		var mpInfo = &proto.MetaPartitionInfo{
+		mpInfo := &proto.MetaPartitionInfo{
 			PartitionID:   mp.PartitionID,
 			Start:         mp.Start,
 			End:           mp.End,
@@ -4887,9 +4880,7 @@ func (m *Server) listVols(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *Server) changeMasterLeader(w http.ResponseWriter, r *http.Request) {
-	var (
-		err error
-	)
+	var err error
 	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminChangeMasterLeader))
 	defer func() {
 		doStatAndMetric(proto.AdminChangeMasterLeader, metric, err, nil)
@@ -5145,7 +5136,7 @@ func (m *Server) associateVolWithUser(userID, volName string) error {
 
 	if err == proto.ErrUserNotExists {
 
-		var param = proto.UserCreateParam{
+		param := proto.UserCreateParam{
 			ID:       userID,
 			Password: DefaultUserPassword,
 			Type:     proto.UserTypeNormal,
@@ -5230,9 +5221,7 @@ func (m *Server) updateDecommissionDiskFactor(w http.ResponseWriter, r *http.Req
 }
 
 func (m *Server) queryDecommissionToken(w http.ResponseWriter, r *http.Request) {
-	var (
-		err error
-	)
+	var err error
 
 	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminQueryDecommissionToken))
 	defer func() {
@@ -5266,9 +5255,7 @@ func (m *Server) queryDecommissionLimit(w http.ResponseWriter, r *http.Request) 
 }
 
 func (m *Server) queryDecommissionDiskLimit(w http.ResponseWriter, r *http.Request) {
-	var (
-		resp proto.DecommissionDiskLimit
-	)
+	var resp proto.DecommissionDiskLimit
 	metric := exporter.NewTPCnt("req_queryDecommissionDiskLimit")
 	defer func() {
 		metric.Set(nil)
@@ -5381,7 +5368,6 @@ func (m *Server) enableAutoDecommissionDisk(w http.ResponseWriter, r *http.Reque
 }
 
 func (m *Server) queryAutoDecommissionDisk(w http.ResponseWriter, r *http.Request) {
-
 	metric := exporter.NewTPCnt("req_queryAutoDecommissionDisk")
 	defer func() {
 		metric.Set(nil)
@@ -5634,7 +5620,6 @@ func (m *Server) setConfig(key string, value string) (err error) {
 }
 
 func (m *Server) getConfig(key string) (value string, err error) {
-
 	if key == cfgmetaPartitionInodeIdStep {
 		v := m.config.MetaPartitionInodeIdStep
 		value = strconv.FormatUint(v, 10)
@@ -5645,7 +5630,7 @@ func (m *Server) getConfig(key string) (value string, err error) {
 }
 
 func (m *Server) CreateQuota(w http.ResponseWriter, r *http.Request) {
-	var req = &proto.SetMasterQuotaReuqest{}
+	req := &proto.SetMasterQuotaReuqest{}
 	var (
 		err     error
 		vol     *Vol
@@ -5683,7 +5668,7 @@ func (m *Server) CreateQuota(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *Server) UpdateQuota(w http.ResponseWriter, r *http.Request) {
-	var req = &proto.UpdateMasterQuotaReuqest{}
+	req := &proto.UpdateMasterQuotaReuqest{}
 	var (
 		err error
 		vol *Vol
@@ -5888,7 +5873,6 @@ func parseSetDpDiscardParam(r *http.Request) (dpId uint64, rdOnly bool, err erro
 }
 
 func (m *Server) setDpDiscard(partitionID uint64, isDiscard bool) (err error) {
-
 	var dp *DataPartition
 	if dp, err = m.cluster.getDataPartitionByID(partitionID); err != nil {
 		return fmt.Errorf("[setDpDiacard] getDataPartitionByID err(%s)", err.Error())
@@ -5934,9 +5918,7 @@ func (m *Server) setDpDiscardHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *Server) getDiscardDpHandler(w http.ResponseWriter, r *http.Request) {
-	var (
-		DiscardDpInfos = proto.DiscardDataPartitionInfos{}
-	)
+	DiscardDpInfos := proto.DiscardDataPartitionInfos{}
 
 	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminGetDiscardDp))
 	defer func() {
@@ -6033,7 +6015,7 @@ func (m *Server) SetBucketLifecycle(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-	var req = proto.LcConfiguration{}
+	req := proto.LcConfiguration{}
 	if err = json.Unmarshal(bytes, &req); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
@@ -6176,9 +6158,7 @@ func (m *Server) S3QosSet(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *Server) S3QosGet(w http.ResponseWriter, r *http.Request) {
-	var (
-		err error
-	)
+	var err error
 	metric := exporter.NewTPCnt(apiToMetricsName(proto.S3QoSGet))
 	defer func() {
 		doStatAndMetric(proto.S3QoSGet, metric, err, nil)
@@ -6283,7 +6263,6 @@ func parseS3QoSKey(key string) (api, uid, limitType, nodes string, err error) {
 }
 
 func isS3QosConfigValid(param *proto.S3QosRequest) bool {
-
 	if param.Type != proto.FlowLimit && param.Type != proto.QPSLimit && param.Type != proto.ConcurrentLimit {
 		return false
 	}

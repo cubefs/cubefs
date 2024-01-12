@@ -33,8 +33,8 @@ func (m *Server) startHTTPService() {
 			// Instead, we use client secret key for authentication
 			cfg := &tls.Config{
 				MinVersion: tls.VersionTLS12,
-				//ClientAuth: tls.RequireAndVerifyClientCert,
-				//ClientCAs:  caCertPool,
+				// ClientAuth: tls.RequireAndVerifyClientCert,
+				// ClientCAs:  caCertPool,
 			}
 			srv := &http.Server{
 				Addr:         colonSplit + m.port,
@@ -71,7 +71,8 @@ func (m *Server) newAuthProxy() *AuthProxy {
 			Director: func(request *http.Request) {
 				request.URL.Scheme = "http"
 				request.URL.Host = m.leaderInfo.addr
-			}}
+			},
+		}
 	}
 	return &authProxy
 }

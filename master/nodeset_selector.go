@@ -110,7 +110,6 @@ func (ns *nodeSet) getTotalAvailableSpaceOf(nodeType NodeType) uint64 {
 
 type NodesetSelector interface {
 	GetName() string
-
 	Select(nsc nodeSetCollection, excludeNodeSets []uint64, replicaNum uint8) (ns *nodeSet, err error)
 }
 

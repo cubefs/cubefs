@@ -43,7 +43,6 @@ func NewKeyRateLimit() *KeyRateLimit {
 }
 
 func (k *KeyRateLimit) Acquire(key string, rate int) *ratelimit.RateLimiter {
-
 	k.mutex.Lock()
 	limit, ok := k.current[key]
 	if !ok {
@@ -56,7 +55,6 @@ func (k *KeyRateLimit) Acquire(key string, rate int) *ratelimit.RateLimiter {
 }
 
 func (k *KeyRateLimit) Release(key string) {
-
 	k.mutex.Lock()
 	defer k.mutex.Unlock()
 	limit, ok := k.current[key]

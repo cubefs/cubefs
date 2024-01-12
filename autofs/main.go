@@ -2,13 +2,16 @@ package main
 
 import (
 	"fmt"
-	"github.com/spf13/cobra"
 	"log"
 	"os"
+
+	"github.com/spf13/cobra"
 )
 
-var buildVersion = "DebugVersion"
-var buildDate = "BuildDate"
+var (
+	buildVersion = "DebugVersion"
+	buildDate    = "BuildDate"
+)
 
 var logFile *os.File
 
@@ -48,12 +51,10 @@ var rootCmd = &cobra.Command{
 		if err != nil {
 			log.Fatal("cfsMountErr, err: ", err)
 		}
-
 	},
 }
 
 func main() {
-
 	rootCmd.PersistentFlags().BoolP("no-mtab", "n", false, "Mount without writing in /etc/mtab")
 	rootCmd.PersistentFlags().StringP("options", "o", "", "Options, followed by a comma separated string of options")
 	rootCmd.PersistentFlags().BoolP("version", "V", false, "Output version")
@@ -66,7 +67,7 @@ func main() {
 func init() {
 	// logFile
 	var err error
-	logFile, err = os.OpenFile(getEnv(EnvLogFile, LogFile), os.O_RDWR|os.O_CREATE|os.O_APPEND, 0664)
+	logFile, err = os.OpenFile(getEnv(EnvLogFile, LogFile), os.O_RDWR|os.O_CREATE|os.O_APPEND, 0o664)
 	if err != nil {
 		log.Fatalf("error opening file: %v", err)
 	}

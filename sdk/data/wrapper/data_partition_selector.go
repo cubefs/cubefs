@@ -53,7 +53,7 @@ var (
 // RegisterDataPartitionSelector registers a selector constructor.
 // Users can register their own defined selector through this method.
 func RegisterDataPartitionSelector(name string, constructor DataPartitionSelectorConstructor) error {
-	var clearName = strings.TrimSpace(strings.ToLower(name))
+	clearName := strings.TrimSpace(strings.ToLower(name))
 	if _, exist := dataPartitionSelectorConstructors[clearName]; exist {
 		return ErrDuplicatedDataPartitionSelectorConstructor
 	}
@@ -62,7 +62,7 @@ func RegisterDataPartitionSelector(name string, constructor DataPartitionSelecto
 }
 
 func newDataPartitionSelector(name string, param string) (newDpSelector DataPartitionSelector, err error) {
-	var clearName = strings.TrimSpace(strings.ToLower(name))
+	clearName := strings.TrimSpace(strings.ToLower(name))
 	constructor, exist := dataPartitionSelectorConstructors[clearName]
 	if !exist {
 		return nil, ErrDataPartitionSelectorConstructorNotExist
@@ -72,7 +72,7 @@ func newDataPartitionSelector(name string, param string) (newDpSelector DataPart
 
 func (w *Wrapper) initDpSelector() (err error) {
 	w.dpSelectorChanged = false
-	var selectorName = w.dpSelectorName
+	selectorName := w.dpSelectorName
 	if strings.TrimSpace(selectorName) == "" {
 		log.LogInfof("initDpSelector: can not find dp selector[%v], use default selector", w.dpSelectorName)
 		selectorName = DefaultRandomSelectorName
@@ -94,7 +94,7 @@ func (w *Wrapper) refreshDpSelector(partitions []*DataPartition) {
 	w.Lock.RUnlock()
 
 	if dpSelectorChanged {
-		var selectorName = w.dpSelectorName
+		selectorName := w.dpSelectorName
 		if strings.TrimSpace(selectorName) == "" {
 			log.LogWarnf("refreshDpSelector: can not find dp selector[%v], use default selector", w.dpSelectorName)
 			selectorName = DefaultRandomSelectorName

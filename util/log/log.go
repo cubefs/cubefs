@@ -183,11 +183,11 @@ func (writer *asyncWriter) flushToFile() {
 			FileNameDateFormat) + RotatedExtension
 		if _, err := os.Lstat(oldFile); err != nil {
 			if err := writer.rename(oldFile); err == nil {
-				if fp, err := os.OpenFile(writer.fileName, FileOpt, 0666); err == nil {
+				if fp, err := os.OpenFile(writer.fileName, FileOpt, 0o666); err == nil {
 					writer.file.Close()
 					writer.file = fp
 					writer.logSize = 0
-					_ = os.Chmod(writer.fileName, 0666)
+					_ = os.Chmod(writer.fileName, 0o666)
 				} else {
 					syslog.Printf("log rotate: openFile %v error: %v", writer.fileName, err)
 				}
@@ -213,7 +213,7 @@ func (writer *asyncWriter) rename(newName string) error {
 }
 
 func newAsyncWriter(fileName string, rotateSize int64) (*asyncWriter, error) {
-	fp, err := os.OpenFile(fileName, FileOpt, 0666)
+	fp, err := os.OpenFile(fileName, FileOpt, 0o666)
 	if err != nil {
 		return nil, err
 	}
@@ -221,7 +221,7 @@ func newAsyncWriter(fileName string, rotateSize int64) (*asyncWriter, error) {
 	if err != nil {
 		return nil, err
 	}
-	_ = os.Chmod(fileName, 0666)
+	_ = os.Chmod(fileName, 0o666)
 	w := &asyncWriter{
 		file:       fp,
 		fileName:   fileName,
@@ -311,13 +311,13 @@ func InitLog(dir, module string, level Level, rotate *LogRotate, logLeftSpaceLim
 	LogDir = dir
 	fi, err := os.Stat(dir)
 	if err != nil {
-		os.MkdirAll(dir, 0755)
+		os.MkdirAll(dir, 0o755)
 	} else {
 		if !fi.IsDir() {
 			return nil, errors.New(dir + " is not a directory")
 		}
 	}
-	_ = os.Chmod(dir, 0755)
+	_ = os.Chmod(dir, 0o755)
 
 	fs := syscall.Statfs_t{}
 	if err := syscall.Statfs(dir, &fs); err != nil {
@@ -455,9 +455,7 @@ const (
 )
 
 func SetLogLevel(w http.ResponseWriter, r *http.Request) {
-	var (
-		err error
-	)
+	var err error
 	if err = r.ParseForm(); err != nil {
 		buildFailureResp(w, http.StatusBadRequest, err.Error())
 		return

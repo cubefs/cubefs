@@ -464,7 +464,7 @@ func (o *ObjectNode) startMuxRestAPI() (err error) {
 		o.contentMiddleware,
 	)
 
-	var server = &http.Server{
+	server := &http.Server{
 		Addr:         ":" + o.listen,
 		Handler:      router,
 		ReadTimeout:  5 * time.Minute,

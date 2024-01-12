@@ -86,7 +86,6 @@ func TestOpQueue(t *testing.T) {
 	if q.len() != 0 || len(q.cur.s) != 0 || len(q.ss) != 1 {
 		t.Fatalf("op queue trancate failed")
 	}
-
 }
 
 func TestClone(t *testing.T) {
@@ -109,7 +108,6 @@ func TestClone(t *testing.T) {
 		i++
 		return true
 	})
-
 }
 
 func TestMarshal(t *testing.T) {

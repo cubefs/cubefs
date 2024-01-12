@@ -27,6 +27,7 @@ type ExtentVal struct {
 	dataMap map[string][]byte
 	verSeq  uint64
 }
+
 type Extend struct {
 	inode     uint64
 	dataMap   map[string][]byte
@@ -82,24 +83,24 @@ func NewExtend(inode uint64) *Extend {
 
 func NewExtendFromBytes(raw []byte) (*Extend, error) {
 	var err error
-	var buffer = bytes.NewBuffer(raw)
+	buffer := bytes.NewBuffer(raw)
 	// decode inode
 	var inode uint64
 	if inode, err = binary.ReadUvarint(buffer); err != nil {
 		return nil, err
 	}
-	var ext = NewExtend(inode)
+	ext := NewExtend(inode)
 	// decode number of key-value pairs
 	var numKV uint64
 	if numKV, err = binary.ReadUvarint(buffer); err != nil {
 		return nil, err
 	}
-	var readBytes = func() ([]byte, error) {
+	readBytes := func() ([]byte, error) {
 		var length uint64
 		if length, err = binary.ReadUvarint(buffer); err != nil {
 			return nil, err
 		}
-		var data = make([]byte, length)
+		data := make([]byte, length)
 		if _, err = buffer.Read(data); err != nil {
 			return nil, err
 		}
@@ -223,8 +224,8 @@ func (e *Extend) Bytes() ([]byte, error) {
 	e.mu.RLock()
 	defer e.mu.RUnlock()
 	var n int
-	var tmp = make([]byte, binary.MaxVarintLen64)
-	var buffer = bytes.NewBuffer(nil)
+	tmp := make([]byte, binary.MaxVarintLen64)
+	buffer := bytes.NewBuffer(nil)
 	// write inode with varint codec
 	n = binary.PutUvarint(tmp, e.inode)
 	if _, err = buffer.Write(tmp[:n]); err != nil {
@@ -236,7 +237,7 @@ func (e *Extend) Bytes() ([]byte, error) {
 		return nil, err
 	}
 	// write key-value paris
-	var writeBytes = func(val []byte) error {
+	writeBytes := func(val []byte) error {
 		n = binary.PutUvarint(tmp, uint64(len(val)))
 		if _, err = buffer.Write(tmp[:n]); err != nil {
 			return err

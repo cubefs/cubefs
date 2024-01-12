@@ -15,8 +15,9 @@
 package sdk
 
 import (
-	"github.com/cubefs/cubefs/util/log"
 	"testing"
+
+	"github.com/cubefs/cubefs/util/log"
 )
 
 func TestConvertDebugLevel(t *testing.T) {

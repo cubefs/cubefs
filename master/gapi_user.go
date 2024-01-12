@@ -5,11 +5,12 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"sort"
+
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/samsarahq/thunder/graphql"
 	"github.com/samsarahq/thunder/graphql/schemabuilder"
-	"sort"
 )
 
 type UserService struct {
@@ -41,7 +42,6 @@ type AuthorizedVols struct {
 }
 
 func (s *UserService) registerObject(schema *schemabuilder.Schema) {
-
 	object := schema.Object("UserInfo", proto.UserInfo{})
 
 	object.FieldFunc("userStatistical", func(u *proto.UserInfo) (*UserStatistical, error) {
@@ -71,7 +71,6 @@ func (s *UserService) registerObject(schema *schemabuilder.Schema) {
 		}
 		return list
 	})
-
 }
 
 func (s *UserService) registerQuery(schema *schemabuilder.Schema) {
@@ -111,7 +110,6 @@ func (s *UserService) registerMutation(schema *schemabuilder.Schema) {
 	mutation.FieldFunc("updateUserPolicy", s.updateUserPolicy)
 	mutation.FieldFunc("removeUserPolicy", s.removeUserPolicy)
 	mutation.FieldFunc("transferUserVol", s.transferUserVol)
-
 }
 
 func (m *UserService) transferUserVol(ctx context.Context, args proto.UserTransferVolParam) (*proto.UserInfo, error) {
@@ -230,14 +228,13 @@ func (s *UserService) deleteUser(ctx context.Context, args struct {
 		return nil, err
 	}
 
-	//TODO : make sure can delete self? can delete other admin ??
+	// TODO : make sure can delete self? can delete other admin ??
 	log.LogInfof("delete user:[%s] by admin:[%s]", args.UserID, uid)
 	if err := s.user.deleteKey(args.UserID); err != nil {
 		return nil, err
 	}
 
 	return proto.Success("del user ok"), nil
-
 }
 
 func (s *UserService) getUserInfo(ctx context.Context, args struct {
@@ -285,7 +282,6 @@ func (s *UserService) topNUser(ctx context.Context, args struct {
 
 	var err error
 	s.user.userStore.Range(func(_, ui interface{}) bool {
-
 		u := ui.(*proto.UserInfo)
 
 		us := &UserUseSpace{
@@ -330,7 +326,6 @@ func (s *UserService) topNUser(ctx context.Context, args struct {
 		} else {
 			u.Ratio = float32(u.Size) / float32(sum)
 		}
-
 	}
 
 	return list, nil
@@ -364,8 +359,10 @@ func (s *UserService) validatePassword(ctx context.Context, args struct {
 
 type permissionMode int
 
-const ADMIN permissionMode = permissionMode(1)
-const USER permissionMode = permissionMode(2)
+const (
+	ADMIN permissionMode = permissionMode(1)
+	USER  permissionMode = permissionMode(2)
+)
 
 func permissions(ctx context.Context, mode permissionMode) (userID string, perm permissionMode, err error) {
 	userInfo := ctx.Value(proto.UserInfoKey).(*proto.UserInfo)

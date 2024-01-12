@@ -76,7 +76,7 @@ func (c *Caps) Dump() (d string) {
 	for _, s := range c.API {
 		d += fmt.Sprintf("API:%s,", s)
 	}
-	//TODO c.vol (no usage?)
+	// TODO c.vol (no usage?)
 	return
 }
 

@@ -61,7 +61,6 @@ var configCommand = &cobra.Command{
 		if err != nil {
 			log.Println(err)
 		}
-
 	},
 }
 
@@ -80,9 +79,7 @@ func getCurrentIP() (string, error) {
 
 	for _, addr := range addrs {
 		if ipv4 := addr.To4(); ipv4 != nil {
-
 			return ipv4.String(), nil
-
 		}
 	}
 
@@ -167,8 +164,8 @@ func removeDuplicates(slice []string) []string {
 
 	return result
 }
-func initCluster() {
 
+func initCluster() {
 	config, err := readConfig()
 	if err != nil {
 		log.Fatal(err)
@@ -227,9 +224,9 @@ func initCluster() {
 			log.Printf("Successfully pulled mirror % s on node % s", config.Global.ContainerImage, node)
 		}
 
-		//create  dir
+		// create  dir
 		err = createRemoteFolder(RemoteUser, node, config.Global.DataDir)
-		//check firewall
+		// check firewall
 		if err != nil {
 			log.Println(err)
 		}
@@ -241,9 +238,9 @@ func initCluster() {
 		if err != nil {
 			log.Println(err)
 		}
-		//create conf dir
+		// create conf dir
 		err = createRemoteFolder(RemoteUser, node, config.Global.DataDir+"/conf")
-		//check firewall
+		// check firewall
 		if err != nil {
 			log.Println(err)
 		}
@@ -278,7 +275,6 @@ func cleanContainerAndLogs() {
 			log.Fatalln(err)
 		}
 	}
-
 }
 
 func init() {
@@ -287,5 +283,4 @@ func init() {
 	ClusterCmd.AddCommand(clearCommand)
 	ClusterCmd.AddCommand(configCommand)
 	configCommand.PersistentFlags().StringVarP(&ConfigFileName, "file", "f", "", "Specify the location of the configuration file relative to cfs deploy")
-
 }

@@ -16,7 +16,7 @@ package objectnode
 
 import (
 	"bytes"
-	"io/ioutil"
+	"io"
 	"mime/multipart"
 	"net/http"
 	"testing"
@@ -87,7 +87,7 @@ func TestFormRequest(t *testing.T) {
 	require.NoError(t, err)
 	defer f.Close()
 	require.Equal(t, int64(len(fileData)), size)
-	fb, _ := ioutil.ReadAll(f)
+	fb, _ := io.ReadAll(f)
 	require.Equal(t, fileData, string(fb))
 
 	// 5. on disk
@@ -109,6 +109,6 @@ func TestFormRequest(t *testing.T) {
 	require.NoError(t, err)
 	defer f.Close()
 	require.Equal(t, int64(len(fileData)), size)
-	fb, _ = ioutil.ReadAll(f)
+	fb, _ = io.ReadAll(f)
 	require.Equal(t, fileData, string(fb))
 }

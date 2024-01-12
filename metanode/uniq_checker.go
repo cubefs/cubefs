@@ -191,7 +191,7 @@ func (checker *uniqChecker) doEvict(evictBid uint64) {
 	defer checker.Unlock()
 
 	cnt := 0
-	//evict from map
+	// evict from map
 	if _, ok := checker.op[evictBid]; ok {
 		checker.inQue.scan(func(op *uniqOp) bool {
 			cnt++
@@ -207,10 +207,10 @@ func (checker *uniqChecker) doEvict(evictBid uint64) {
 		return
 	}
 
-	//truncate from queue
+	// truncate from queue
 	checker.inQue.truncate(cnt - 1)
 
-	//regular rebuild map to reduce memory usage
+	// regular rebuild map to reduce memory usage
 	n := timeutil.GetCurrentTimeUnix()
 	if n-checker.rtime > opRebuildSec {
 		checker.op = make(map[uint64]struct{}, checker.inQue.len())

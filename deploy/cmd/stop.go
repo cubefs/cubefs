@@ -38,6 +38,7 @@ var StopCmd = &cobra.Command{
 		}
 	},
 }
+
 var stopFromDockerCompose = &cobra.Command{
 	Use:   "test",
 	Short: "start test for on node",
@@ -114,5 +115,4 @@ func init() {
 	StopCmd.Flags().BoolVarP(&allStop, "all", "a", false, "stop all services")
 	StopCmd.PersistentFlags().StringVarP(&ip, "ip", "", "", "specify an IP address to start services")
 	stopDatanodeCommand.Flags().StringVarP(&datanodeDisk, "disk", "d", "", "specify the disk where datanode mount")
-
 }

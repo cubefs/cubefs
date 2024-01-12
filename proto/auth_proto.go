@@ -19,7 +19,7 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -63,7 +63,7 @@ const (
 	AdminDeleteCaps = "/admin/deletecaps"
 	AdminGetCaps    = "/admin/getcaps"
 
-	//raft node APIs
+	// raft node APIs
 	AdminAddRaftNode    = "/admin/addraftnode"
 	AdminRemoveRaftNode = "/admin/removeraftnode"
 
@@ -86,7 +86,7 @@ const (
 	// DataServiceID defines ticket for datanode access (not supported)
 	DataServiceID = "DatanodeService"
 
-	//ObjectServiceID defines ticket for objectnode access
+	// ObjectServiceID defines ticket for objectnode access
 	ObjectServiceID = "ObjectService"
 )
 
@@ -196,10 +196,10 @@ const (
 	// MsgMasterAPIAccessResp response type for master api access
 	MsgMasterAPIAccessResp MsgType = 0x60001
 
-	//Master API ClientVol
+	// Master API ClientVol
 	MsgMasterFetchVolViewReq MsgType = MsgMasterAPIAccessReq + 0x10000
 
-	//Master API cluster management
+	// Master API cluster management
 	MsgMasterClusterFreezeReq    MsgType = MsgMasterAPIAccessReq + 0x20100
 	MsgMasterAddRaftNodeReq      MsgType = MsgMasterAPIAccessReq + 0x20200
 	MsgMasterRemoveRaftNodeReq   MsgType = MsgMasterAPIAccessReq + 0x20300
@@ -287,7 +287,7 @@ var MsgType2ResourceMap = map[MsgType]string{
 
 	MsgMasterFetchVolViewReq: "master:getvol",
 
-	//Master API cluster management
+	// Master API cluster management
 	MsgMasterClusterFreezeReq:    "master:clusterfreeze",
 	MsgMasterAddRaftNodeReq:      "master:addraftnode",
 	MsgMasterRemoveRaftNodeReq:   "master:removeraftnode",
@@ -508,9 +508,7 @@ func GetDataFromResp(body []byte, key []byte) (plaintext []byte, err error) {
 
 // ParseAuthGetTicketResp parse and validate the auth get ticket resp
 func ParseAuthGetTicketResp(body []byte, key []byte) (resp AuthGetTicketResp, err error) {
-	var (
-		plaintext []byte
-	)
+	var plaintext []byte
 
 	if plaintext, err = GetDataFromResp(body, key); err != nil {
 		return
@@ -525,9 +523,7 @@ func ParseAuthGetTicketResp(body []byte, key []byte) (resp AuthGetTicketResp, er
 
 // ParseAuthAPIAccessResp parse and validate the auth api access resp
 func ParseAuthAPIAccessResp(body []byte, key []byte) (resp AuthAPIAccessResp, err error) {
-	var (
-		plaintext []byte
-	)
+	var plaintext []byte
 
 	if plaintext, err = GetDataFromResp(body, key); err != nil {
 		return
@@ -542,9 +538,7 @@ func ParseAuthAPIAccessResp(body []byte, key []byte) (resp AuthAPIAccessResp, er
 
 // ParseAuthRaftNodeResp parse and validate the auth raft node resp
 func ParseAuthRaftNodeResp(body []byte, key []byte) (resp AuthRaftNodeResp, err error) {
-	var (
-		plaintext []byte
-	)
+	var plaintext []byte
 
 	if plaintext, err = GetDataFromResp(body, key); err != nil {
 		return
@@ -558,9 +552,7 @@ func ParseAuthRaftNodeResp(body []byte, key []byte) (resp AuthRaftNodeResp, err 
 }
 
 func ParseAuthOSAKResp(body []byte, key []byte) (resp AuthOSAccessKeyResp, err error) {
-	var (
-		plaintext []byte
-	)
+	var plaintext []byte
 
 	if plaintext, err = GetDataFromResp(body, key); err != nil {
 		return
@@ -574,9 +566,7 @@ func ParseAuthOSAKResp(body []byte, key []byte) (resp AuthOSAccessKeyResp, err e
 }
 
 func ExtractTicket(str string, key []byte) (ticket cryptoutil.Ticket, err error) {
-	var (
-		plaintext []byte
-	)
+	var plaintext []byte
 
 	if plaintext, err = cryptoutil.DecodeMessage(str, key); err != nil {
 		return
@@ -603,9 +593,7 @@ func checkTicketCaps(ticket *cryptoutil.Ticket, kind string, cap string) (err er
 
 // ParseVerifier checks the verifier structure for replay attack mitigation
 func ParseVerifier(verifier string, key []byte) (ts int64, err error) {
-	var (
-		plainttext []byte
-	)
+	var plainttext []byte
 
 	if plainttext, err = cryptoutil.DecodeMessage(verifier, key); err != nil {
 		return
@@ -716,7 +704,6 @@ func ExtractIDAndAuthKey(authIDKey string) (id string, authKey []byte, err error
 }
 
 func CheckVOLAccessCaps(ticket *cryptoutil.Ticket, volName string, action string, accessNode string) (err error) {
-
 	rule := accessNode + capSeparator + volName + capSeparator + action
 
 	if err = checkTicketCaps(ticket, OwnerVOLRsc, rule); err != nil {
@@ -786,7 +773,7 @@ func SendBytes(client *http.Client, target string, data []byte) (res []byte, err
 		return
 	}
 	defer resp.Body.Close()
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		err = fmt.Errorf("action[doRealSend] failed:" + err.Error())
 		return

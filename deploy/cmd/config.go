@@ -1,8 +1,8 @@
 package cmd
 
 import (
-	"io/ioutil"
 	"log"
+	"os"
 	"strconv"
 
 	"gopkg.in/yaml.v2"
@@ -67,8 +67,7 @@ type DiskInfo struct {
 }
 
 func readConfig() (*Config, error) {
-
-	data, err := ioutil.ReadFile(ConfigFileName)
+	data, err := os.ReadFile(ConfigFileName)
 	if err != nil {
 		log.Println("Unable to read configuration file:", err)
 		return nil, err
@@ -81,7 +80,6 @@ func readConfig() (*Config, error) {
 		return nil, err
 	}
 	return config, nil
-
 }
 
 func convertToJosn() error {

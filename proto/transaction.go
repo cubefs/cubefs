@@ -19,22 +19,23 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"errors"
-	"github.com/cubefs/cubefs/util/btree"
-	"github.com/cubefs/cubefs/util/log"
 	"io"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/cubefs/cubefs/util/btree"
+	"github.com/cubefs/cubefs/util/log"
 )
 
 const (
-	DefaultTransactionTimeout      = 1  //minutes
-	MaxTransactionTimeout          = 60 //minutes
+	DefaultTransactionTimeout      = 1  // minutes
+	MaxTransactionTimeout          = 60 // minutes
 	DefaultTxConflictRetryNum      = 10
 	MaxTxConflictRetryNum          = 100
-	DefaultTxConflictRetryInterval = 20   //ms
-	MaxTxConflictRetryInterval     = 1000 //ms
-	MinTxConflictRetryInterval     = 10   //ms
+	DefaultTxConflictRetryInterval = 20   // ms
+	MaxTxConflictRetryInterval     = 1000 // ms
+	MinTxConflictRetryInterval     = 10   // ms
 	DefaultTxDeleteTime            = 120
 	ClearOrphanTxTime              = 3600
 )
@@ -46,6 +47,7 @@ const (
 	TxOpMaskAll TxOpMask = 0x7F
 	TxPause     TxOpMask = 0xFF
 )
+
 const (
 	TxOpMaskCreate TxOpMask = 0x01 << iota
 	TxOpMaskMkdir
@@ -143,7 +145,7 @@ func GetMaskFromString(maskStr string) (mask TxOpMask, err error) {
 type TxInodeInfo struct {
 	Ino        uint64
 	MpID       uint64
-	CreateTime int64 //time.Now().Unix()
+	CreateTime int64 // time.Now().Unix()
 	Timeout    int64
 	TxID       string
 	MpMembers  string
@@ -266,7 +268,7 @@ type TxDentryInfo struct {
 	MpMembers  string
 	TxID       string
 	MpID       uint64
-	CreateTime int64 //time.Now().Unix()
+	CreateTime int64 // time.Now().Unix()
 	Timeout    int64
 }
 
@@ -463,8 +465,8 @@ type TransactionInfo struct {
 	TxID       string // "metapartitionId_atomicId", if empty, mp should be TM, otherwise it will be RM
 	TxType     uint32
 	TmID       int64
-	CreateTime int64 //time.Now()
-	Timeout    int64 //minutes
+	CreateTime int64 // time.Now()
+	Timeout    int64 // minutes
 	State      int32
 	DoneTime   int64 // time.now()
 	RMFinish   bool  // used to check whether tx success on target rm.

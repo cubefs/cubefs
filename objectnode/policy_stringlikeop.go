@@ -36,7 +36,7 @@ func (op stringLikeOp) evaluate(values map[string]string) bool {
 		if !ok {
 			requestValue = values[k.Name()]
 		}
-		nothingMatched := true //all values not matched
+		nothingMatched := true // all values not matched
 		for p := range v {
 			if Match(p, requestValue) {
 				nothingMatched = false
@@ -140,7 +140,6 @@ func newStringNotLikeOp(m map[Key]ValueSet) (Operation, error) {
 
 //  returns new StringNotLike operation.
 func NewStringNotLikeOp(m map[Key]StringSet) (Operation, error) {
-
 	return &stringNotLikeOp{stringLikeOp{m}}, nil
 }
 

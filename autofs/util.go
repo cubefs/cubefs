@@ -2,8 +2,10 @@ package main
 
 import "os"
 
-const EnvLogFile = "CFSAUTO_LOG_FILE"
-const EnvCfsClientPath = "CFS_CLIENT_PATH"
+const (
+	EnvLogFile       = "CFSAUTO_LOG_FILE"
+	EnvCfsClientPath = "CFS_CLIENT_PATH"
+)
 
 const LogFile = "/var/log/cfsauto.log"
 

@@ -88,7 +88,6 @@ func (mf *MetadataFsm) restore() {
 }
 
 func (mf *MetadataFsm) restoreApplied() {
-
 	value, err := mf.store.Get(applied)
 	if err != nil {
 		panic(fmt.Sprintf("Failed to restore applied err:%v", err.Error()))

@@ -2,17 +2,20 @@ package buf
 
 import (
 	"context"
+	"sync"
+	"sync/atomic"
+
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/log"
 	"golang.org/x/time/rate"
-	"sync"
-	"sync/atomic"
 )
 
-var cacheTotalLimit int64
-var cacheRateLimit = rate.NewLimiter(rate.Limit(16), 16)
-var cacheCount int64
-var CachePool *FileCachePool
+var (
+	cacheTotalLimit int64
+	cacheRateLimit  = rate.NewLimiter(rate.Limit(16), 16)
+	cacheCount      int64
+	CachePool       *FileCachePool
+)
 
 func newWriterCachePool(blockSize int) *sync.Pool {
 	return &sync.Pool{

@@ -68,9 +68,11 @@ const (
 	description = "testUser"
 )
 
-var server = createDefaultMasterServerForTest()
-var commonVol *Vol
-var cfsUser *proto.UserInfo
+var (
+	server    = createDefaultMasterServerForTest()
+	commonVol *Vol
+	cfsUser   *proto.UserInfo
+)
 
 var mockServerLock sync.Mutex
 
@@ -105,7 +107,6 @@ func rangeMockMetaServers(fun func(*mocktest.MockMetaServer) bool) (count int, p
 }
 
 func createDefaultMasterServerForTest() *Server {
-
 	cfgJSON := `{
 		"role": "master",
 		"ip": "127.0.0.1",
@@ -127,7 +128,7 @@ func createDefaultMasterServerForTest() *Server {
 	if err != nil {
 		panic(err)
 	}
-	//add data node
+	// add data node
 	mockDataServers = make([]*mocktest.MockDataServer, 0)
 	mockDataServers = append(mockDataServers, addDataServer(mds1Addr, testZone1))
 	mockDataServers = append(mockDataServers, addDataServer(mds2Addr, testZone1))
@@ -217,8 +218,8 @@ func createMasterServer(cfgJSON string) (server *Server, err error) {
 	os.RemoveAll(logDir)
 	os.RemoveAll(walDir)
 	os.RemoveAll(storeDir)
-	os.Mkdir(walDir, 0755)
-	os.Mkdir(storeDir, 0755)
+	os.Mkdir(walDir, 0o755)
+	os.Mkdir(storeDir, 0o755)
 	logLevel := cfg.GetString(ConfigKeyLogLevel)
 	var level log.Level
 	switch strings.ToLower(logLevel) {

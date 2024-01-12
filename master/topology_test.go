@@ -38,7 +38,7 @@ func TestSingleZone(t *testing.T) {
 		return
 	}
 	replicaNum := 2
-	//single zone exclude,if it is a single zone excludeZones don't take effect
+	// single zone exclude,if it is a single zone excludeZones don't take effect
 	excludeZones := make([]string, 0)
 	excludeZones = append(excludeZones, zoneName)
 	zones, err := topo.allocZonesForDataNode(replicaNum, replicaNum, excludeZones)
@@ -51,7 +51,7 @@ func TestSingleZone(t *testing.T) {
 		return
 	}
 
-	//single zone normal
+	// single zone normal
 	zones, err = topo.allocZonesForDataNode(replicaNum, replicaNum, nil)
 	if err != nil {
 		t.Error(err)
@@ -70,7 +70,7 @@ func TestAllocZones(t *testing.T) {
 	topo := newTopology()
 	c := new(Cluster)
 	zoneCount := 3
-	//add three zones
+	// add three zones
 	zoneName1 := testZone1
 	zone1 := newZone(zoneName1)
 	nodeSet1 := newNodeSet(c, 1, 6, zoneName1)
@@ -102,7 +102,7 @@ func TestAllocZones(t *testing.T) {
 		t.Errorf("expect zones num[%v],len(zones) is %v", zoneCount, len(zones))
 		return
 	}
-	//only pass replica num
+	// only pass replica num
 	replicaNum := 2
 	zones, err := topo.allocZonesForDataNode(replicaNum, replicaNum, nil)
 	if err != nil {
@@ -119,14 +119,14 @@ func TestAllocZones(t *testing.T) {
 	cluster.t = topo
 	cluster.cfg = newClusterConfig()
 
-	//don't cross zone
+	// don't cross zone
 	hosts, _, err := cluster.getHostFromNormalZone(TypeDataPartition, nil, nil, nil, replicaNum, 1, "")
 	if err != nil {
 		t.Error(err)
 		return
 	}
 
-	//cross zone
+	// cross zone
 	hosts, _, err = cluster.getHostFromNormalZone(TypeDataPartition, nil, nil, nil, replicaNum, 2, "")
 	if err != nil {
 		t.Error(err)

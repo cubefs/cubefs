@@ -421,7 +421,7 @@ func (d *Disk) CheckDiskError(err error, rwFlag uint8) {
 
 func (d *Disk) doDiskError() {
 	d.Status = proto.Unavailable
-	//d.ForceExitRaftStore()
+	// d.ForceExitRaftStore()
 }
 
 func (d *Disk) triggerDiskError(rwFlag uint8, dpId uint64) {
@@ -462,7 +462,7 @@ func (d *Disk) updateSpaceInfo() (err error) {
 		mesg := fmt.Sprintf("disk path %v error on %v", d.Path, LocalIP)
 		log.LogErrorf(mesg)
 		exporter.Warning(mesg)
-		//d.ForceExitRaftStore()
+		// d.ForceExitRaftStore()
 	} else if d.Available <= 0 {
 		d.Status = proto.ReadOnly
 	} else {

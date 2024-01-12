@@ -20,12 +20,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"golang.org/x/time/rate"
 	"net"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
+
+	"golang.org/x/time/rate"
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util"
@@ -33,7 +34,7 @@ import (
 	"github.com/cubefs/cubefs/util/log"
 )
 
-//Rollback Type
+// Rollback Type
 const (
 	TxNoOp uint8 = iota
 	TxUpdate
@@ -52,7 +53,7 @@ func (i *TxRollbackInode) ToString() string {
 type TxRollbackInode struct {
 	inode       *Inode
 	txInodeInfo *proto.TxInodeInfo
-	rbType      uint8 //Rollback Type
+	rbType      uint8 // Rollback Type
 	quotaIds    []uint32
 }
 
@@ -72,7 +73,6 @@ func (i *TxRollbackInode) Less(than btree.Item) bool {
 
 // Copy returns a copy of the TxRollbackInode.
 func (i *TxRollbackInode) Copy() btree.Item {
-
 	item := i.inode.Copy()
 	txInodeInfo := *i.txInodeInfo
 
@@ -184,7 +184,7 @@ func NewTxRollbackInode(inode *Inode, quotaIds []uint32, txInodeInfo *proto.TxIn
 type TxRollbackDentry struct {
 	dentry       *Dentry
 	txDentryInfo *proto.TxDentryInfo
-	rbType       uint8 //Rollback Type `
+	rbType       uint8 // Rollback Type `
 }
 
 func (d *TxRollbackDentry) ToString() string {
@@ -294,9 +294,9 @@ func NewTxRollbackDentry(dentry *Dentry, txDentryInfo *proto.TxDentryInfo, rbTyp
 	}
 }
 
-//TM
+// TM
 type TransactionManager struct {
-	//need persistence and sync to all the raft members of the mp
+	// need persistence and sync to all the raft members of the mp
 	txIdAlloc   *TxIDAllocator
 	txTree      *BTree
 	txProcessor *TransactionProcessor
@@ -305,17 +305,17 @@ type TransactionManager struct {
 	sync.RWMutex
 }
 
-//RM
+// RM
 type TransactionResource struct {
-	txRbInodeTree  *BTree //key: inode id
+	txRbInodeTree  *BTree // key: inode id
 	txRbDentryTree *BTree // key: parentId_name
 	txProcessor    *TransactionProcessor
 	sync.RWMutex
 }
 
 type TransactionProcessor struct {
-	txManager  *TransactionManager  //TM
-	txResource *TransactionResource //RM
+	txManager  *TransactionManager  // TM
+	txResource *TransactionResource // RM
 	mp         *metaPartition
 	mask       proto.TxOpMask
 }
@@ -648,9 +648,8 @@ func (tm *TransactionManager) addTxInfo(txInfo *proto.TransactionInfo) {
 	tm.txTree.ReplaceOrInsert(txInfo, true)
 }
 
-//TM register a transaction, process client transaction
+// TM register a transaction, process client transaction
 func (tm *TransactionManager) registerTransaction(txInfo *proto.TransactionInfo) (err error) {
-
 	if uint64(txInfo.TmID) == tm.txProcessor.mp.config.PartitionId {
 		if err := tm.updateTxIdCursor(txInfo.TxID); err != nil {
 			log.LogErrorf("updateTxIdCursor failed, txInfo %s, err %s", txInfo.String(), err.Error())
@@ -848,7 +847,7 @@ func (tm *TransactionManager) commitTx(txId string, skipSetStat bool) (status ui
 		return
 	}
 
-	//1.set transaction to TxStateCommit
+	// 1.set transaction to TxStateCommit
 	if !skipSetStat && tx.State != proto.TxStateCommit {
 		status, err = tm.setTransactionState(txId, proto.TxStateCommit)
 		if status != proto.OpOk {
@@ -857,13 +856,13 @@ func (tm *TransactionManager) commitTx(txId string, skipSetStat bool) (status ui
 		}
 	}
 
-	//2. notify all related RMs that a transaction is completed
+	// 2. notify all related RMs that a transaction is completed
 	status = tm.sendToRM(tx, proto.OpTxCommitRM)
 	if status != proto.OpOk {
 		return
 	}
 
-	//3. TM commit the transaction
+	// 3. TM commit the transaction
 	req := proto.TxApplyRequest{
 		TxID: txId,
 	}
@@ -971,7 +970,7 @@ func (tm *TransactionManager) rollbackTx(txId string, skipSetStat bool) (status 
 		return
 	}
 
-	//1.set transaction to TxStateRollback
+	// 1.set transaction to TxStateRollback
 	if !skipSetStat && tx.State != proto.TxStateRollback {
 		status, err = tm.setTransactionState(txId, proto.TxStateRollback)
 		if status != proto.OpOk {
@@ -980,7 +979,7 @@ func (tm *TransactionManager) rollbackTx(txId string, skipSetStat bool) (status 
 		}
 	}
 
-	//2. notify all related RMs that a transaction is completed
+	// 2. notify all related RMs that a transaction is completed
 	status = tm.sendToRM(tx, proto.OpTxRollbackRM)
 	if status != proto.OpOk {
 		return
@@ -995,7 +994,6 @@ func (tm *TransactionManager) rollbackTx(txId string, skipSetStat bool) (status 
 	}
 
 	resp, err := tm.txProcessor.mp.submit(opFSMTxRollback, val)
-
 	if err != nil {
 		log.LogWarnf("commitTx: rollback transaction[%v]  failed, err[%v]", txId, err)
 		return proto.OpAgain, err
@@ -1192,9 +1190,9 @@ func (tr *TransactionResource) Reset() {
 	tr.txProcessor = nil
 }
 
-//check if item(inode, dentry) is in transaction for modifying
+// check if item(inode, dentry) is in transaction for modifying
 func (tr *TransactionResource) isInodeInTransction(ino *Inode) (inTx bool, txID string) {
-	//return true only if specified inode is in an ongoing transaction(not expired yet)
+	// return true only if specified inode is in an ongoing transaction(not expired yet)
 	tr.Lock()
 	defer tr.Unlock()
 
@@ -1271,7 +1269,7 @@ func (tr *TransactionResource) deleteTxRollbackInode(ino uint64, txId string) (s
 	return proto.OpOk
 }
 
-//RM add an `TxRollbackInode` into `txRollbackInodes`
+// RM add an `TxRollbackInode` into `txRollbackInodes`
 func (tr *TransactionResource) addTxRollbackInode(rbInode *TxRollbackInode) (status uint8) {
 	tr.Lock()
 	defer tr.Unlock()
@@ -1296,7 +1294,6 @@ func (tr *TransactionResource) addTxRollbackInode(rbInode *TxRollbackInode) (sta
 }
 
 func (tr *TransactionResource) getTxRbDentry(pId uint64, name string) *TxRollbackDentry {
-
 	keyNode := &TxRollbackDentry{
 		txDentryInfo: proto.NewTxDentryInfo("", pId, name, 0),
 	}
@@ -1333,7 +1330,7 @@ func (tr *TransactionResource) deleteTxRollbackDentry(pid uint64, name, txId str
 	return proto.OpOk
 }
 
-//RM add a `TxRollbackDentry` into `txRollbackDentries`
+// RM add a `TxRollbackDentry` into `txRollbackDentries`
 func (tr *TransactionResource) addTxRollbackDentry(rbDentry *TxRollbackDentry) (status uint8) {
 	tr.Lock()
 	defer tr.Unlock()
@@ -1409,7 +1406,7 @@ func (tr *TransactionResource) rollbackInodeInternal(rbInode *TxRollbackInode) (
 	return
 }
 
-//RM roll back an inode, retry if error occours
+// RM roll back an inode, retry if error occours
 func (tr *TransactionResource) rollbackInode(req *proto.TxInodeApplyRequest) (status uint8, err error) {
 	tr.Lock()
 	defer tr.Unlock()
@@ -1468,7 +1465,7 @@ func (tr *TransactionResource) rollbackDentryInternal(rbDentry *TxRollbackDentry
 	return
 }
 
-//RM roll back a dentry, retry if error occours
+// RM roll back a dentry, retry if error occours
 func (tr *TransactionResource) rollbackDentry(req *proto.TxDentryApplyRequest) (status uint8, err error) {
 	tr.Lock()
 	defer tr.Unlock()
@@ -1503,7 +1500,7 @@ func (tr *TransactionResource) rollbackDentry(req *proto.TxDentryApplyRequest) (
 	return
 }
 
-//RM simplely remove the inode from TransactionResource
+// RM simplely remove the inode from TransactionResource
 func (tr *TransactionResource) commitInode(txID string, inode uint64) (status uint8, err error) {
 	tr.Lock()
 	defer tr.Unlock()
@@ -1530,7 +1527,7 @@ func (tr *TransactionResource) commitInode(txID string, inode uint64) (status ui
 	return
 }
 
-//RM simplely remove the dentry from TransactionResource
+// RM simplely remove the dentry from TransactionResource
 func (tr *TransactionResource) commitDentry(txID string, pId uint64, name string) (status uint8, err error) {
 	tr.Lock()
 	defer tr.Unlock()

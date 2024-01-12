@@ -499,8 +499,8 @@ func (d *Dir) ReadDirAll(ctx context.Context) ([]fuse.Dirent, error) {
 	}()
 
 	// transform ReadDirAll to ReadDirLimit_ll
-	var noMore = false
-	var from = ""
+	noMore := false
+	from := ""
 	var children []proto.Dentry
 	for !noMore {
 		batches, err := d.super.mw.ReadDirLimit_ll(d.info.Inode, from, DefaultReaddirLimit)
@@ -615,7 +615,7 @@ func (d *Dir) Rename(ctx context.Context, req *fuse.RenameRequest, newDir fs.Nod
 		d.super.fslock.Unlock()
 		auditlog.LogClientOp("Rename", srcPath, dstPath, err, time.Since(start).Microseconds(), srcInode, dstInode)
 	}()
-	//changePathMap := d.super.mw.GetChangeQuota(d.getCwd()+"/"+req.OldName, dstDir.getCwd()+"/"+req.NewName)
+	// changePathMap := d.super.mw.GetChangeQuota(d.getCwd()+"/"+req.OldName, dstDir.getCwd()+"/"+req.NewName)
 	if d.super.mw.EnableQuota {
 		if !d.canRenameByQuota(dstDir, req.OldName) {
 			return fuse.EPERM

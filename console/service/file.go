@@ -39,8 +39,8 @@ func NewFileService(objectNode string, masters []string, mc *client.MasterGClien
 
 func (fs *FileService) empty(ctx context.Context, args struct {
 	Empty bool
-}) (bool, error) {
-
+}) (bool, error,
+) {
 	vol := "test"
 
 	userInfo, err := fs.userClient.GetUserInfoForLogin(ctx, "root")
@@ -59,7 +59,6 @@ func (fs *FileService) empty(ctx context.Context, args struct {
 
 		return false, fmt.Errorf("%v , [%v] , [%v] , [%v]", userInfo.Policy.Own_vols, userInfo.User_id, fs.userVolPerm(ctx, "root", "test"), v)
 	}
-
 }
 
 type ListFileInfo struct {
@@ -88,7 +87,6 @@ func (fs *FileService) listFile(ctx context.Context, args struct {
 	}
 
 	result, err := volume.ListFilesV1(&args.Request)
-
 	if err != nil {
 		return nil, err
 	}
@@ -104,8 +102,8 @@ func (fs *FileService) listFile(ctx context.Context, args struct {
 func (fs *FileService) createDir(ctx context.Context, args struct {
 	VolName string
 	Path    string
-}) (*FSFileInfo, error) {
-
+}) (*FSFileInfo, error,
+) {
 	userInfo, _, err := permissions(ctx, USER|ADMIN)
 	if err != nil {
 		return nil, err
@@ -130,8 +128,8 @@ func (fs *FileService) createDir(ctx context.Context, args struct {
 func (fs *FileService) deleteDir(ctx context.Context, args struct {
 	VolName string
 	Path    string
-}) (*proto.GeneralResp, error) {
-
+}) (*proto.GeneralResp, error,
+) {
 	userInfo, _, err := permissions(ctx, USER|ADMIN)
 	if err != nil {
 		return nil, err
@@ -197,14 +195,13 @@ func _deleteDir(ctx context.Context, volume *Volume, path string, marker string)
 
 		marker = result.NextMarker
 	}
-
 }
 
 func (fs *FileService) deleteFile(ctx context.Context, args struct {
 	VolName string
 	Path    string
-}) (*proto.GeneralResp, error) {
-
+}) (*proto.GeneralResp, error,
+) {
 	userInfo, _, err := permissions(ctx, USER|ADMIN)
 	if err != nil {
 		return nil, err
@@ -229,8 +226,8 @@ func (fs *FileService) deleteFile(ctx context.Context, args struct {
 func (fs *FileService) fileMeta(ctx context.Context, args struct {
 	VolName string
 	Path    string
-}) (info *FSFileInfo, err error) {
-
+}) (info *FSFileInfo, err error,
+) {
 	userInfo, _, err := permissions(ctx, USER|ADMIN)
 	if err != nil {
 		return nil, err
@@ -268,7 +265,7 @@ func (fs *FileService) signURL(ctx context.Context, args struct {
 	}
 
 	sess := session.Must(session.NewSession())
-	var ac = aws.NewConfig()
+	ac := aws.NewConfig()
 	ac.Endpoint = aws.String(fs.objectNode)
 	ac.DisableSSL = aws.Bool(true)
 	ac.Region = aws.String("default")
@@ -396,7 +393,6 @@ func (fs *FileService) UpLoadFile(writer http.ResponseWriter, request *http.Requ
 		Tagging:  nil,
 		Metadata: nil,
 	})
-
 	if err != nil {
 		return fmt.Errorf("put to object has err:[%s]", err.Error())
 	}
@@ -446,9 +442,11 @@ func (fs *FileService) Schema() *graphql.Schema {
 
 type volPerm int
 
-var none = volPerm(0)
-var read = volPerm(1)
-var write = volPerm(2)
+var (
+	none  = volPerm(0)
+	read  = volPerm(1)
+	write = volPerm(2)
+)
 
 func (v volPerm) read() error {
 	if v < read {
@@ -465,7 +463,6 @@ func (v volPerm) write() error {
 }
 
 func (fs *FileService) userVolPerm(ctx context.Context, userID string, vol string) volPerm {
-
 	userInfo, err := fs.userClient.GetUserInfoForLogin(ctx, userID)
 	if err != nil {
 		log.LogErrorf("found user by id:[%s] has err:[%s]", userID, err.Error())

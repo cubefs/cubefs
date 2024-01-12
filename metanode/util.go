@@ -19,7 +19,6 @@ func (del DelExtFile) Swap(i, j int) {
 }
 
 func (del DelExtFile) Less(i, j int) bool {
-
 	idx1 := getDelExtFileIdx(del[i].Name())
 	idx2 := getDelExtFileIdx(del[j].Name())
 

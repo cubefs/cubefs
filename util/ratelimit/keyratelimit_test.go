@@ -21,7 +21,6 @@ import (
 )
 
 func TestKeyController(t *testing.T) {
-
 	k := NewKeyRateLimit()
 	key1, key2, key3 := "10001", "10002", "10003"
 	k.Acquire(key1, 1024)
@@ -49,5 +48,4 @@ func TestKeyController(t *testing.T) {
 	assert.Panics(t, func() {
 		k.Release(key3)
 	})
-
 }

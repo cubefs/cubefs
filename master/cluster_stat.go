@@ -16,9 +16,8 @@ package master
 
 import (
 	"fmt"
-	"strconv"
-
 	"math"
+	"strconv"
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util"

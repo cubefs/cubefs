@@ -19,13 +19,14 @@ import (
 	"os"
 	"path"
 
-	"github.com/cubefs/cubefs/proto"
 	"github.com/spf13/cobra"
+
+	"github.com/cubefs/cubefs/proto"
 )
 
 func NewRootCmd() *cobra.Command {
 	var optShowVersion bool
-	var c = &cobra.Command{
+	c := &cobra.Command{
 		Use:   path.Base(os.Args[0]),
 		Short: "CubeFS fsck tool",
 		Args:  cobra.MinimumNArgs(0),

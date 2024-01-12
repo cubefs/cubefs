@@ -29,26 +29,22 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/cubefs/cubefs/util/auditlog"
-	"github.com/cubefs/cubefs/util/errors"
-	sysutil "github.com/cubefs/cubefs/util/sys"
-
-	"github.com/cubefs/cubefs/console"
-	"github.com/cubefs/cubefs/proto"
-
-	"github.com/cubefs/cubefs/objectnode"
-
-	"github.com/jacobsa/daemonize"
-
 	"github.com/cubefs/cubefs/authnode"
 	"github.com/cubefs/cubefs/cmd/common"
+	"github.com/cubefs/cubefs/console"
 	"github.com/cubefs/cubefs/datanode"
 	"github.com/cubefs/cubefs/lcnode"
 	"github.com/cubefs/cubefs/master"
 	"github.com/cubefs/cubefs/metanode"
+	"github.com/cubefs/cubefs/objectnode"
+	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util/auditlog"
 	"github.com/cubefs/cubefs/util/config"
+	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/log"
+	sysutil "github.com/cubefs/cubefs/util/sys"
 	"github.com/cubefs/cubefs/util/ump"
+	"github.com/jacobsa/daemonize"
 )
 
 const (
@@ -254,7 +250,7 @@ func main() {
 	if *redirectSTD {
 		// Init output file
 		outputFilePath := path.Join(logDir, module, LoggerOutput)
-		outputFile, err := os.OpenFile(outputFilePath, os.O_CREATE|os.O_RDWR|os.O_APPEND, 0666)
+		outputFile, err := os.OpenFile(outputFilePath, os.O_CREATE|os.O_RDWR|os.O_APPEND, 0o666)
 		if err != nil {
 			err = errors.NewErrorf("Fatal: failed to open output path - %v", err)
 			fmt.Println(err)
@@ -290,7 +286,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	//for multi-cpu scheduling
+	// for multi-cpu scheduling
 	runtime.GOMAXPROCS(runtime.NumCPU())
 	if err = ump.InitUmp(role, umpDatadir); err != nil {
 		log.LogFlush()

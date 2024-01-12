@@ -120,8 +120,10 @@ type Audit struct {
 	lock             sync.Mutex
 }
 
-var gAdt *Audit = nil
-var gAdtMutex sync.RWMutex
+var (
+	gAdt      *Audit = nil
+	gAdtMutex sync.RWMutex
+)
 
 func getAddr() (HostName, IPAddr string) {
 	hostName, err := os.Hostname()
@@ -154,9 +156,7 @@ func getAddr() (HostName, IPAddr string) {
 
 // NOTE: for client http apis
 func ResetWriterBuffSize(w http.ResponseWriter, r *http.Request) {
-	var (
-		err error
-	)
+	var err error
 	if err = r.ParseForm(); err != nil {
 		BuildFailureResp(w, http.StatusBadRequest, err.Error())
 		return
@@ -237,13 +237,13 @@ func NewAudit(dir, logModule string, logMaxSize int64) (*Audit, error) {
 	}
 	fi, err := os.Stat(absPath)
 	if err != nil {
-		os.MkdirAll(absPath, 0755)
+		os.MkdirAll(absPath, 0o755)
 	} else {
 		if !fi.IsDir() {
 			return nil, errors.New(absPath + " is not a directory")
 		}
 	}
-	_ = os.Chmod(absPath, 0755)
+	_ = os.Chmod(absPath, 0o755)
 	logName := path.Join(absPath, Audit_Module) + ".log"
 	audit := &Audit{
 		hostName:         host,
@@ -473,7 +473,7 @@ func (a *Audit) newWriterSize(size int) error {
 	}
 
 	if a.logFile == nil {
-		logFile, err := os.OpenFile(a.logFileName, os.O_RDWR|os.O_APPEND|os.O_CREATE, 0666)
+		logFile, err := os.OpenFile(a.logFileName, os.O_RDWR|os.O_APPEND|os.O_CREATE, 0o666)
 		if err != nil {
 			log.LogErrorf("newWriterSize failed, logFileName: %s, err: %v\n", a.logFileName, err)
 			return fmt.Errorf("OpenLogFile failed, logFileName %s", a.logFileName)
@@ -506,7 +506,6 @@ func (a *Audit) newWriterSize(size int) error {
 }
 
 func (a *Audit) removeLogFile() {
-
 	fs := syscall.Statfs_t{}
 	if err := syscall.Statfs(a.logDir, &fs); err != nil {
 		log.LogErrorf("Get fs stat failed, err: %v", err)

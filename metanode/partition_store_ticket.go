@@ -16,11 +16,11 @@ package metanode
 
 import (
 	"encoding/binary"
-	"github.com/cubefs/cubefs/proto"
 	"sync/atomic"
 	"time"
 
 	"github.com/cubefs/cubefs/cmd/common"
+	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"

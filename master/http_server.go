@@ -24,10 +24,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/gorilla/mux"
 	"github.com/samsarahq/thunder/graphql"
 	"github.com/samsarahq/thunder/graphql/introspection"
-
-	"github.com/gorilla/mux"
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/config"
@@ -48,14 +47,14 @@ func (m *Server) startHTTPService(modulename string, cfg *config.Config) {
 		addr = fmt.Sprintf("%s:%s", m.ip, m.port)
 	}
 
-	var server = &http.Server{
+	server := &http.Server{
 		Addr:         addr,
 		Handler:      router,
 		ReadTimeout:  5 * time.Minute,
 		WriteTimeout: 5 * time.Minute,
 	}
 
-	var serveAPI = func() {
+	serveAPI := func() {
 		if err := server.ListenAndServe(); err != nil {
 			log.LogErrorf("serveAPI: serve http server failed: err(%v)", err)
 			return
@@ -151,7 +150,7 @@ func (m *Server) registerAPIMiddleware(route *mux.Router) {
 
 // AuthenticationUri2MsgTypeMap define the mapping from authentication uri to message type
 var AuthenticationUri2MsgTypeMap = map[string]proto.MsgType{
-	//Master API cluster management
+	// Master API cluster management
 	proto.AdminClusterFreeze: proto.MsgMasterClusterFreezeReq,
 	proto.AddRaftNode:        proto.MsgMasterAddRaftNodeReq,
 	proto.RemoveRaftNode:     proto.MsgMasterRemoveRaftNodeReq,
@@ -240,15 +239,15 @@ func (m *Server) registerAuthenticationMiddleware(router *mux.Router) {
 }
 
 func (m *Server) registerAPIRoutes(router *mux.Router) {
-	//graphql api for cluster
+	// graphql api for cluster
 	cs := &ClusterService{user: m.user, cluster: m.cluster, conf: m.config, leaderInfo: m.leaderInfo}
 	m.registerHandler(router, proto.AdminClusterAPI, cs.Schema())
 
 	us := &UserService{user: m.user, cluster: m.cluster}
 	m.registerHandler(router, proto.AdminUserAPI, us.Schema())
 
-	//vs := &VolumeService{user: m.user, cluster: m.cluster}
-	//m.registerHandler(router, proto.AdminVolumeAPI, vs.Schema())
+	// vs := &VolumeService{user: m.user, cluster: m.cluster}
+	// m.registerHandler(router, proto.AdminVolumeAPI, vs.Schema())
 
 	// cluster management APIs
 	router.NewRoute().Name(proto.AdminGetMasterApiList).
@@ -484,7 +483,7 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 	router.NewRoute().Methods(http.MethodGet).
 		Path(proto.QosUpdateMasterLimit).
 		HandlerFunc(m.getQosUpdateMasterLimit)
-	//router.NewRoute().Methods(http.MethodGet).
+	// router.NewRoute().Methods(http.MethodGet).
 	//	Path(proto.QosUpdateMagnify).
 	//	HandlerFunc(m.QosUpdateMagnify)
 	router.NewRoute().Methods(http.MethodGet).
@@ -773,6 +772,7 @@ func (m *Server) registerHandler(router *mux.Router, model string, schema *graph
 		gHandler.ServeHTTP(writer, request)
 	})
 }
+
 func ErrResponse(w http.ResponseWriter, err error) {
 	response := struct {
 		Errors []string `json:"errors"`

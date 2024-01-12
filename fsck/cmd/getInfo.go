@@ -44,7 +44,7 @@ type Summary struct {
 }
 
 func newInfoCmd() *cobra.Command {
-	var c = &cobra.Command{
+	c := &cobra.Command{
 		Use:   "get",
 		Short: "get info of specified inode",
 		Args:  cobra.MinimumNArgs(0),
@@ -60,7 +60,7 @@ func newInfoCmd() *cobra.Command {
 }
 
 func newGetLocationsCmd() *cobra.Command {
-	var c = &cobra.Command{
+	c := &cobra.Command{
 		Use:   "locations",
 		Short: "get inode's locations",
 		Args:  cobra.MinimumNArgs(0),
@@ -75,7 +75,7 @@ func newGetLocationsCmd() *cobra.Command {
 }
 
 func newGetPathCmd() *cobra.Command {
-	var c = &cobra.Command{
+	c := &cobra.Command{
 		Use:   "path",
 		Short: "get inode's path",
 		Args:  cobra.MinimumNArgs(0),
@@ -90,7 +90,7 @@ func newGetPathCmd() *cobra.Command {
 }
 
 func newGetSummaryCmd() *cobra.Command {
-	var c = &cobra.Command{
+	c := &cobra.Command{
 		Use:   "summary",
 		Short: "get inode's summary",
 		Args:  cobra.MinimumNArgs(0),

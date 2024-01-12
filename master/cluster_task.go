@@ -44,7 +44,6 @@ func (c *Cluster) addDataNodeTask(task *proto.AdminTask) {
 }
 
 func (c *Cluster) addMetaNodeTasks(tasks []*proto.AdminTask) {
-
 	for _, t := range tasks {
 		if t == nil {
 			continue
@@ -71,7 +70,6 @@ func (c *Cluster) addLcNodeTasks(tasks []*proto.AdminTask) {
 }
 
 func (c *Cluster) waitForResponseToLoadDataPartition(partitions []*DataPartition) {
-
 	var wg sync.WaitGroup
 	for _, dp := range partitions {
 		wg.Add(1)
@@ -565,7 +563,6 @@ func (c *Cluster) buildAddMetaPartitionRaftMemberTaskAndSyncSend(mp *MetaPartiti
 }
 
 func (c *Cluster) addMetaPartitionRaftMember(partition *MetaPartition, addPeer proto.Peer) (err error) {
-
 	var (
 		candidateAddrs []string
 		leaderAddr     string
@@ -586,9 +583,9 @@ func (c *Cluster) addMetaPartitionRaftMember(partition *MetaPartition, addPeer p
 		}
 		candidateAddrs = append(candidateAddrs, host)
 	}
-	//send task to leader addr first,if need to retry,then send to other addr
+	// send task to leader addr first,if need to retry,then send to other addr
 	for index, host := range candidateAddrs {
-		//wait for a new leader
+		// wait for a new leader
 		if leaderAddr == "" && len(candidateAddrs) < int(partition.ReplicaNum) {
 			time.Sleep(retrySendSyncTaskInternal)
 		}
@@ -690,9 +687,7 @@ func (c *Cluster) handleMetaNodeTaskResponse(nodeAddr string, task *proto.AdminT
 		return
 	}
 	log.LogDebugf(fmt.Sprintf("action[handleMetaNodeTaskResponse] receive Task response:%v from %v now:%v", task.IdString(), nodeAddr, time.Now().Unix()))
-	var (
-		metaNode *MetaNode
-	)
+	var metaNode *MetaNode
 
 	if metaNode, err = c.metaNode(nodeAddr); err != nil {
 		goto errHandler
@@ -843,8 +838,8 @@ func (c *Cluster) dealMetaNodeHeartbeatResp(nodeAddr string, resp *proto.MetaNod
 		log.LogErrorf("action[dealMetaNodeHeartbeatResp],metaNode[%v] error[%v]", metaNode.Addr, err)
 	}
 	c.updateMetaNode(metaNode, resp.MetaPartitionReports, metaNode.reachesThreshold())
-	//todo remove, this no need set metaNode.metaPartitionInfos = nil
-	//metaNode.metaPartitionInfos = nil
+	// todo remove, this no need set metaNode.metaPartitionInfos = nil
+	// metaNode.metaPartitionInfos = nil
 	logMsg = fmt.Sprintf("action[dealMetaNodeHeartbeatResp],metaNode:%v,zone[%v], ReportTime:%v  success", metaNode.Addr, metaNode.ZoneName, time.Now().Unix())
 	log.LogInfof(logMsg)
 	return
@@ -944,9 +939,7 @@ errHandler:
 }
 
 func (c *Cluster) dealDeleteDataPartitionResponse(nodeAddr string, resp *proto.DeleteDataPartitionResponse) (err error) {
-	var (
-		dp *DataPartition
-	)
+	var dp *DataPartition
 	if resp.Status == proto.TaskSucceeds {
 		if dp, err = c.getDataPartitionByID(resp.PartitionId); err != nil {
 			return
@@ -992,7 +985,6 @@ func (c *Cluster) handleResponseToLoadDataPartition(nodeAddr string, resp *proto
 }
 
 func (c *Cluster) handleDataNodeHeartbeatResp(nodeAddr string, resp *proto.DataNodeHeartbeatResponse) (err error) {
-
 	var (
 		dataNode *DataNode
 		logMsg   string

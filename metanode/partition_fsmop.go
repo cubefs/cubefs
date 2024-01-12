@@ -15,15 +15,14 @@
 package metanode
 
 import (
+	"encoding/binary"
 	"encoding/json"
+	"fmt"
 	"io/ioutil"
 	"os"
+	"path"
 	"strings"
 	"time"
-
-	"encoding/binary"
-	"fmt"
-	"path"
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/log"
@@ -154,7 +153,6 @@ func (mp *metaPartition) confRemoveNode(req *proto.RemoveMetaPartitionRaftMember
 }
 
 func (mp *metaPartition) delOldExtentFile(buf []byte) (err error) {
-
 	fileName := string(buf)
 	log.LogWarnf("[delOldExtentFile] del extent file(%s), mp(%d)", fileName, mp.config.PartitionId)
 
@@ -192,7 +190,7 @@ func (mp *metaPartition) setExtentDeleteFileCursor(buf []byte) (err error) {
 		return
 	}
 	fp, err := os.OpenFile(path.Join(mp.config.RootDir, fileName), os.O_CREATE|os.O_RDWR,
-		0644)
+		0o644)
 	if err != nil {
 		log.LogErrorf("[setExtentDeleteFileCursor] openFile %s failed: %s",
 			fileName, err.Error())

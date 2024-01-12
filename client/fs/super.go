@@ -70,7 +70,7 @@ type Super struct {
 	sockaddr  string
 	suspendCh chan interface{}
 
-	//data lake
+	// data lake
 	volType             int
 	ebsEndpoint         string
 	CacheAction         int
@@ -722,7 +722,7 @@ func (s *Super) Close() {
 }
 
 func (s *Super) SetTransaction(txMaskStr string, timeout int64, retryNum int64, retryInterval int64) {
-	//maskStr := proto.GetMaskString(txMask)
+	// maskStr := proto.GetMaskString(txMask)
 	mask, err := proto.GetMaskFromString(txMaskStr)
 	if err != nil {
 		log.LogErrorf("SetTransaction: err[%v], op[%v], timeout[%v]", err, txMaskStr, timeout)

@@ -189,7 +189,7 @@ func NewMetaWrapper(config *MetaConfig) (*MetaWrapper, error) {
 	mw.closeCh = make(chan struct{}, 1)
 
 	if config.Authenticate {
-		var ticketMess = config.TicketMess
+		ticketMess := config.TicketMess
 		mw.ac = authSDK.NewAuthClient(ticketMess.TicketHosts, ticketMess.EnableHTTPS, ticketMess.CertFile)
 		ticket, err := mw.ac.API().GetTicket(config.Owner, ticketMess.ClientKey, proto.MasterServiceID)
 		if err != nil {

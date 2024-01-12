@@ -20,7 +20,6 @@ import (
 	"time"
 
 	"github.com/cubefs/cubefs/proto"
-
 	"github.com/cubefs/cubefs/sdk/master"
 	"github.com/cubefs/cubefs/util/log"
 )
@@ -88,7 +87,7 @@ func (loader *VolumeLoader) VolumeWithoutBlacklist(volName string) (*Volume, err
 
 func (loader *VolumeLoader) syncVolumeInit(volume string) (releaseFunc func()) {
 	value, _ := loader.volInitMap.LoadOrStore(volume, new(sync.Mutex))
-	var initMu = value.(*sync.Mutex)
+	initMu := value.(*sync.Mutex)
 	initMu.Lock()
 	log.LogDebugf("syncVolumeInit: get volume init lock: volume(%v)", volume)
 	return func() {
@@ -106,7 +105,7 @@ func (loader *VolumeLoader) loadVolumeWithoutBlacklist(volName string) (*Volume,
 	volume, exist = loader.volumes[volName]
 	loader.volMu.RUnlock()
 	if !exist {
-		var release = loader.syncVolumeInit(volName)
+		release := loader.syncVolumeInit(volName)
 		loader.volMu.RLock()
 		volume, exist = loader.volumes[volName]
 		if exist {
@@ -123,7 +122,7 @@ func (loader *VolumeLoader) loadVolumeWithoutBlacklist(volName string) (*Volume,
 			default:
 			}
 		}
-		var config = &VolumeConfig{
+		config := &VolumeConfig{
 			Volume:           volName,
 			Masters:          loader.masters,
 			Store:            loader.store,
@@ -169,7 +168,7 @@ func (loader *VolumeLoader) loadVolume(volName string) (*Volume, error) {
 	loader.volMu.RUnlock()
 	log.LogDebugf("loadVolume: load volume from volumes: name(%v) exist(%v) volume(%+v)", volName, exist, volume)
 	if !exist {
-		var release = loader.syncVolumeInit(volName)
+		release := loader.syncVolumeInit(volName)
 		loader.volMu.RLock()
 		volume, exist = loader.volumes[volName]
 		if exist {
@@ -188,7 +187,7 @@ func (loader *VolumeLoader) loadVolume(volName string) (*Volume, error) {
 			default:
 			}
 		}
-		var config = &VolumeConfig{
+		config := &VolumeConfig{
 			Volume:           volName,
 			Masters:          loader.masters,
 			Store:            loader.store,

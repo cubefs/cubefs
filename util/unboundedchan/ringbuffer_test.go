@@ -25,13 +25,12 @@ func TestReadEmptyRingBuffer(t *testing.T) {
 	if v != nil || err == nil {
 		t.Errorf("expected:(%v %v), got:(%v %v)", nil, errors.New("ringbuffer is empty"), v, err)
 	}
-
 }
 
 func TestWriteAndReadOne(t *testing.T) {
 	data := "value"
 	buffer := NewRingBuffer(10)
-	//write
+	// write
 	buffer.Write(data)
 	if buffer.Len() != 1 {
 		t.Errorf("expected buf len:(%v), got:(%v)", 1, buffer.Len())
@@ -54,7 +53,7 @@ func TestWriteAndReadOne(t *testing.T) {
 
 func TestBufferScaleUp(t *testing.T) {
 	buffer := NewRingBuffer(10)
-	//write till buffer full
+	// write till buffer full
 	for i := 0; i < 9; i++ {
 		buffer.Write(i)
 	}
@@ -63,9 +62,9 @@ func TestBufferScaleUp(t *testing.T) {
 		t.Errorf("expected buffer size:(%v), got(%v", 10, buffer.size)
 	}
 
-	//trigger scaling up
+	// trigger scaling up
 	buffer.Write(10)
-	//scale buffer size up to double the size of the current buffer
+	// scale buffer size up to double the size of the current buffer
 	if buffer.size != 20 {
 		t.Errorf("expected buffer size:(%v), got(%v", 20, buffer.size)
 	}

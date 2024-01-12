@@ -28,7 +28,7 @@ type objectStore struct {
 
 func (s *objectStore) Init(vm *VolumeManager) {
 	s.vm = vm
-	//TODO: init meta dir
+	// TODO: init meta dir
 }
 
 func (s *objectStore) Put(vol, obj, key string, data []byte) (err error) {

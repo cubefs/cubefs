@@ -671,7 +671,7 @@ func (i *Inode) MarshalInodeValue(buff *bytes.Buffer) {
 	}
 	i.Reserved |= V3EnableSnapInodeFlag
 
-	//log.LogInfof("action[MarshalInodeValue] inode %v Reserved %v", i.Inode, i.Reserved)
+	// log.LogInfof("action[MarshalInodeValue] inode %v Reserved %v", i.Inode, i.Reserved)
 	if err = binary.Write(buff, binary.BigEndian, &i.Reserved); err != nil {
 		panic(err)
 	}
@@ -738,7 +738,6 @@ func (i *Inode) MarshalValue() (val []byte) {
 
 // UnmarshalValue unmarshals the value from bytes.
 func (i *Inode) UnmarshalInodeValue(buff *bytes.Buffer) (err error) {
-
 	if err = binary.Read(buff, binary.BigEndian, &i.Type); err != nil {
 		return
 	}
@@ -1441,7 +1440,7 @@ func (i *Inode) getLastestVer(reqVerSeq uint64, verlist *proto.VolVersionInfoLis
 
 func (i *Inode) CreateUnlinkVer(mpVer uint64, nVer uint64) {
 	log.LogDebugf("action[CreateUnlinkVer] inode %v mpVer %v nVer %v", i.Inode, mpVer, nVer)
-	//inode copy not include multi ver array
+	// inode copy not include multi ver array
 	ino := i.CopyDirectly().(*Inode)
 	ino.setVer(nVer)
 
@@ -1467,7 +1466,7 @@ func (i *Inode) CreateUnlinkVer(mpVer uint64, nVer uint64) {
 }
 
 func (i *Inode) CreateVer(ver uint64) {
-	//inode copy not include multi ver array
+	// inode copy not include multi ver array
 	ino := i.CopyDirectly().(*Inode)
 	ino.Extents = NewSortedExtents()
 	ino.ObjExtents = NewSortedObjExtents()
@@ -1484,6 +1483,7 @@ func (i *Inode) CreateVer(ver uint64) {
 	}
 	i.multiSnap.multiVersions = append([]*Inode{ino}, i.multiSnap.multiVersions...)
 }
+
 func (i *Inode) buildMultiSnap() {
 	if i.multiSnap == nil {
 		i.multiSnap = &InodeMultiSnap{}
@@ -1494,7 +1494,6 @@ func (i *Inode) buildMultiSnap() {
 }
 
 func (i *Inode) SplitExtentWithCheck(param *AppendExtParam) (delExtents []proto.ExtentKey, status uint8) {
-
 	var err error
 	param.ek.SetSeq(param.mpVer)
 	log.LogDebugf("action[SplitExtentWithCheck] mpId[%v].inode %v,ek %v,hist len %v", param.mpId, i.Inode, param.ek, i.getLayerLen())

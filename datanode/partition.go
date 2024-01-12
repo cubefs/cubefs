@@ -18,7 +18,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"hash/crc32"
-	"io/ioutil"
 	"math"
 	"net"
 	"os"
@@ -131,7 +130,7 @@ type DataPartition struct {
 	verSeqPrepare              uint64
 	verSeqCommitStatus         int8
 	volVersionInfoList         *proto.VolVersionInfoList
-	decommissionRepairProgress float64 //record repair progress for decommission datapartition
+	decommissionRepairProgress float64 // record repair progress for decommission datapartition
 	stopRecover                bool
 	recoverErrCnt              uint64 // donot reset, if reach max err cnt, delete this dp
 
@@ -221,7 +220,7 @@ func (dp *DataPartition) ForceSetRaftRunning() {
 // and creates the partition instance.
 func LoadDataPartition(partitionDir string, disk *Disk) (dp *DataPartition, err error) {
 	var metaFileData []byte
-	if metaFileData, err = ioutil.ReadFile(path.Join(partitionDir, DataPartitionMetadataFileName)); err != nil {
+	if metaFileData, err = os.ReadFile(path.Join(partitionDir, DataPartitionMetadataFileName)); err != nil {
 		return
 	}
 	meta := &DataPartitionMetadata{}
@@ -323,7 +322,7 @@ func newDataPartition(dpCfg *dataPartitionCfg, disk *Disk, isCreate bool) (dp *D
 		log.LogWarnf("action[newDataPartition] dp %v NewExtentStore failed %v", partitionID, err.Error())
 		return
 	}
-	//store applyid
+	// store applyid
 	if err = partition.storeAppliedID(partition.appliedID); err != nil {
 		log.LogErrorf("action[newDataPartition] dp %v initial Apply [%v] failed: %v",
 			partition.partitionID, partition.appliedID, err)
@@ -602,7 +601,7 @@ func (dp *DataPartition) statusUpdate() {
 
 	log.LogInfof("action[statusUpdate] dp %v raft status %v dp.status %v, status %v, disk status %v",
 		dp.partitionID, dp.raftStatus, dp.Status(), status, float64(dp.disk.Status))
-	//dp.partitionStatus = int(math.Min(float64(status), float64(dp.disk.Status)))
+	// dp.partitionStatus = int(math.Min(float64(status), float64(dp.disk.Status)))
 	dp.partitionStatus = status
 }
 
@@ -632,7 +631,7 @@ func (dp *DataPartition) checkIsDiskError(err error, rwFlag uint8) {
 	dp.incDiskErrCnt()
 	dp.disk.triggerDiskError(rwFlag, dp.partitionID)
 
-	//must after change disk.status
+	// must after change disk.status
 	dp.statusUpdate()
 	return
 }

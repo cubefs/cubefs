@@ -28,28 +28,38 @@ const (
 	BufferTypeHeaderVer = 2
 )
 
-var tinyBuffersTotalLimit int64 = 4096
-var NormalBuffersTotalLimit int64
-var HeadBuffersTotalLimit int64
-var HeadVerBuffersTotalLimit int64
+var (
+	tinyBuffersTotalLimit    int64 = 4096
+	NormalBuffersTotalLimit  int64
+	HeadBuffersTotalLimit    int64
+	HeadVerBuffersTotalLimit int64
+)
 
-var tinyBuffersCount int64
-var normalBuffersCount int64
-var headBuffersCount int64
-var headVerBuffersCount int64
+var (
+	tinyBuffersCount    int64
+	normalBuffersCount  int64
+	headBuffersCount    int64
+	headVerBuffersCount int64
+)
 
-var normalBufAllocId uint64
-var headBufAllocId uint64
-var headBufVerAllocId uint64
+var (
+	normalBufAllocId  uint64
+	headBufAllocId    uint64
+	headBufVerAllocId uint64
+)
 
-var normalBufFreecId uint64
-var headBufFreeId uint64
-var headBufVerFreeId uint64
+var (
+	normalBufFreecId uint64
+	headBufFreeId    uint64
+	headBufVerFreeId uint64
+)
 
-var buffersRateLimit = rate.NewLimiter(rate.Limit(16), 16)
-var normalBuffersRateLimit = rate.NewLimiter(rate.Limit(16), 16)
-var headBuffersRateLimit = rate.NewLimiter(rate.Limit(16), 16)
-var headVerBuffersRateLimit = rate.NewLimiter(rate.Limit(16), 16)
+var (
+	buffersRateLimit        = rate.NewLimiter(rate.Limit(16), 16)
+	normalBuffersRateLimit  = rate.NewLimiter(rate.Limit(16), 16)
+	headBuffersRateLimit    = rate.NewLimiter(rate.Limit(16), 16)
+	headVerBuffersRateLimit = rate.NewLimiter(rate.Limit(16), 16)
+)
 
 func NewTinyBufferPool() *sync.Pool {
 	return &sync.Pool{
@@ -110,9 +120,7 @@ type BufferPool struct {
 	headVerPool  *sync.Pool
 }
 
-var (
-	slotCnt = uint64(16)
-)
+var slotCnt = uint64(16)
 
 // NewBufferPool returns a new buffered pool.
 func NewBufferPool() (bufferP *BufferPool) {
@@ -131,6 +139,7 @@ func NewBufferPool() (bufferP *BufferPool) {
 	bufferP.normalPool = NewNormalBufferPool()
 	return bufferP
 }
+
 func (bufferP *BufferPool) getHead(id uint64) (data []byte) {
 	select {
 	case data = <-bufferP.headPools[id%slotCnt]:

@@ -60,13 +60,13 @@ func (mp *metaPartition) fsmTxCommit(txID string) (status uint8) {
 }
 
 func (mp *metaPartition) fsmTxInodeCommit(txID string, inode uint64) (status uint8) {
-	//var err error
+	// var err error
 	status, _ = mp.txProcessor.txResource.commitInode(txID, inode)
 	return
 }
 
 func (mp *metaPartition) fsmTxDentryCommit(txID string, pId uint64, name string) (status uint8) {
-	//var err error
+	// var err error
 	status, _ = mp.txProcessor.txResource.commitDentry(txID, pId, name)
 	return
 }
@@ -162,7 +162,6 @@ func (mp *metaPartition) dentryInTx(parIno uint64, name string) uint8 {
 }
 
 func (mp *metaPartition) txInodeInRb(inode uint64, newTxId string) (rbInode *TxRollbackInode) {
-
 	rbIno := mp.txProcessor.txResource.getTxRbInode(inode)
 	if rbIno != nil && rbIno.txInodeInfo.TxID == newTxId {
 		return rbIno

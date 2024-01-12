@@ -3,14 +3,15 @@ package service
 import (
 	"context"
 	"encoding/json"
-	"github.com/samsarahq/thunder/graphql"
-	"github.com/samsarahq/thunder/graphql/schemabuilder"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/samsarahq/thunder/graphql"
+	"github.com/samsarahq/thunder/graphql/schemabuilder"
 )
 
 type MonitorService struct {
@@ -44,8 +45,8 @@ func (ms *MonitorService) RangeQuery(ctx context.Context, args struct {
 	Start uint32
 	End   uint32
 	Step  uint32
-}) (string, error) {
-
+}) (string, error,
+) {
 	args.Query = strings.ReplaceAll(args.Query, "$app", ms.App)
 	args.Query = strings.ReplaceAll(args.Query, "$cluster", ms.Cluster)
 
@@ -56,12 +57,11 @@ func (ms *MonitorService) RangeQuery(ctx context.Context, args struct {
 	param.Set("step", strconv.Itoa(int(args.Step)))
 
 	resp, err := http.DefaultClient.Get(ms.Address + "/api/v1/query_range?" + param.Encode())
-
 	if err != nil {
 		return "", err
 	}
 
-	b, err := ioutil.ReadAll(resp.Body)
+	b, err := io.ReadAll(resp.Body)
 
 	return string(b), nil
 }
@@ -71,8 +71,8 @@ func (ms *MonitorService) RangeQueryURL(ctx context.Context, args struct {
 	Start uint32
 	End   uint32
 	Step  uint32
-}) (string, error) {
-
+}) (string, error,
+) {
 	_, _, err := permissions(ctx, ADMIN)
 	if err != nil {
 		return "", err
@@ -92,8 +92,8 @@ func (ms *MonitorService) RangeQueryURL(ctx context.Context, args struct {
 
 func (ms *MonitorService) Query(ctx context.Context, args struct {
 	Query string
-}) (string, error) {
-
+}) (string, error,
+) {
 	_, _, err := permissions(ctx, ADMIN)
 	if err != nil {
 		return "", err
@@ -106,12 +106,11 @@ func (ms *MonitorService) Query(ctx context.Context, args struct {
 	param.Set("query", args.Query)
 
 	resp, err := http.DefaultClient.Get(ms.Address + "/api/v1/query?" + param.Encode())
-
 	if err != nil {
 		return "", err
 	}
 
-	b, err := ioutil.ReadAll(resp.Body)
+	b, err := io.ReadAll(resp.Body)
 
 	return string(b), nil
 }
@@ -134,7 +133,6 @@ type FuseRecord struct {
 }
 
 func (ms *MonitorService) FuseClientList(ctx context.Context, args struct{}) ([]*FuseRecord, error) {
-
 	_, _, err := permissions(ctx, ADMIN)
 	if err != nil {
 		return nil, err
@@ -153,7 +151,7 @@ func (ms *MonitorService) FuseClientList(ctx context.Context, args struct{}) ([]
 		return nil, err
 	}
 
-	b, err := ioutil.ReadAll(resp.Body)
+	b, err := io.ReadAll(resp.Body)
 
 	result := struct {
 		Data struct {
