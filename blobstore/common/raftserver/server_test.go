@@ -17,7 +17,6 @@ package raftserver
 import (
 	"bytes"
 	"context"
-	_ "net/http/pprof"
 	"os"
 	"sync"
 	"testing"
