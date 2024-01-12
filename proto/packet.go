@@ -707,14 +707,10 @@ func (p *Packet) MarshalHeader(out []byte) {
 	if p.Opcode == OpRandomWriteVer || p.ExtentType&MultiVersionFlag > 0 {
 		binary.BigEndian.PutUint64(out[util.PacketHeaderSize:util.PacketHeaderSize+8], p.VerSeq)
 	}
-	return
 }
 
 func (p *Packet) IsVersionList() bool {
-	if p.ExtentType&VersionListFlag == VersionListFlag {
-		return true
-	}
-	return false
+	return p.ExtentType&VersionListFlag == VersionListFlag
 }
 
 // UnmarshalHeader unmarshals the packet header.
@@ -943,9 +939,6 @@ func (p *Packet) ReadFromConnWithVer(c net.Conn, timeoutSec int) (err error) {
 		}
 	}
 
-	if p.Size < 0 {
-		return syscall.EBADMSG
-	}
 	size := p.Size
 	if p.IsReadOperation() && p.ResultCode == OpInitResultCode {
 		size = 0
@@ -990,9 +983,6 @@ func (p *Packet) ReadFromConn(c net.Conn, timeoutSec int) (err error) {
 		}
 	}
 
-	if p.Size < 0 {
-		return syscall.EBADMSG
-	}
 	size := p.Size
 	if (p.Opcode == OpRead || p.Opcode == OpStreamRead || p.Opcode == OpExtentRepairRead || p.Opcode == OpStreamFollowerRead) && p.ResultCode == OpInitResultCode {
 		size = 0
