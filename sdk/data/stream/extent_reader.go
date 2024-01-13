@@ -77,8 +77,6 @@ func (reader *ExtentReader) Read(req *ExtentRequest) (readBytes int, err error) 
 				return TryOtherAddrError, false
 			}
 
-			// log.LogDebugf("ExtentReader Read: ResultCode(%v) req(%v) reply(%v) readBytes(%v)", replyPacket.GetResultMsg(), reqPacket, replyPacket, readBytes)
-
 			if replyPacket.ResultCode == proto.OpAgain {
 				return nil, true
 			}

@@ -192,13 +192,6 @@ func (s *Streamer) GetStoreMod(offset int, size int) (storeMode int) {
 func (s *Streamer) server() {
 	t := time.NewTicker(2 * time.Second)
 	defer t.Stop()
-	//defer func() {
-	//	if !s.client.disableMetaCache && s.needBCache {
-	//		close(s.request)
-	//		s.request = nil
-	//	}
-	//}()
-
 	for {
 		select {
 		case request := <-s.request:
@@ -319,7 +312,7 @@ begin:
 		offset = filesize
 	}
 
-	log.LogDebugf("Streamer write enter: ino(%v) offset(%v) size(%v)", s.inode, offset, size)
+	log.LogDebugf("Streamer write enter: ino(%v) offset(%v) size(%v) flags(%v)", s.inode, offset, size, flags)
 
 	ctx := context.Background()
 	s.client.writeLimiter.Wait(ctx)
@@ -507,6 +500,13 @@ func (s *Streamer) doDirectWriteByAppend(req *ExtentRequest, direct bool, op uin
 				// Upon receiving TryOtherAddrError, other hosts will be retried.
 				return TryOtherAddrError, false
 			}
+			log.LogDebugf("action[doDirectWriteByAppend] .UpdateLatestVer ino(%v) get replyPacket %v", s.inode, replyPacket)
+			if replyPacket.VerSeq > sc.dp.ClientWrapper.SimpleClient.GetLatestVer() {
+				err = sc.dp.ClientWrapper.SimpleClient.UpdateLatestVer(&proto.VolVersionInfoList{VerList: replyPacket.VerList})
+				if err != nil {
+					return err, false
+				}
+			}
 			log.LogDebugf("action[doDirectWriteByAppend] ino(%v) get replyPacket opcode %v resultCode %v", s.inode, replyPacket.Opcode, replyPacket.ResultCode)
 			if replyPacket.ResultCode == proto.OpAgain {
 				return nil, true
@@ -549,6 +549,9 @@ func (s *Streamer) doDirectWriteByAppend(req *ExtentRequest, direct bool, op uin
 		log.LogErrorf("action[doDirectWriteByAppend] data process err %v", err)
 		return
 	}
+	if replyPacket.VerSeq > s.verSeq {
+		s.client.UpdateLatestVer(&proto.VolVersionInfoList{VerList: replyPacket.VerList})
+	}
 	extKey = &proto.ExtentKey{
 		FileOffset:   uint64(req.FileOffset),
 		PartitionId:  req.ExtentKey.PartitionId,
@@ -572,7 +575,9 @@ func (s *Streamer) doDirectWriteByAppend(req *ExtentRequest, direct bool, op uin
 		}
 	} else {
 		discards := s.extents.Append(extKey, true)
-		if err = s.client.appendExtentKey(s.parentInode, s.inode, *extKey, discards); err != nil {
+		var st int
+		if st, err = s.client.appendExtentKey(s.parentInode, s.inode, *extKey, discards); err != nil {
+			status = int32(st)
 			log.LogErrorf("action[doDirectWriteByAppend] inode %v meta extent split process err %v", s.inode, err)
 			return
 		}
@@ -581,6 +586,12 @@ func (s *Streamer) doDirectWriteByAppend(req *ExtentRequest, direct bool, op uin
 		s.handler.fileOffset = int(extKey.FileOffset)
 		s.handler.size = int(extKey.Size)
 		s.handler.key = extKey
+	}
+	if atomic.LoadInt32(&s.needUpdateVer) > 0 {
+		if err = s.GetExtents(); err != nil {
+			log.LogErrorf("action[doDirectWriteByAppend] inode %v GetExtents err %v", s.inode, err)
+			return
+		}
 	}
 	log.LogDebugf("action[doDirectWriteByAppend] inode %v process over!", s.inode)
 	return
@@ -623,6 +634,7 @@ func (s *Streamer) doOverwrite(req *ExtentRequest, direct bool) (total int, err 
 	for total < size {
 		reqPacket := NewOverwritePacket(dp, req.ExtentKey.ExtentId, offset-ekFileOffset+total+ekExtOffset, s.inode, offset)
 		reqPacket.VerSeq = s.client.multiVerMgr.latestVerSeq
+		reqPacket.VerList = make([]*proto.VolVersionInfo, len(s.client.multiVerMgr.verList.VerList))
 		copy(reqPacket.VerList, s.client.multiVerMgr.verList.VerList)
 		reqPacket.ExtentType |= proto.MultiVersionFlag
 		reqPacket.ExtentType |= proto.VersionListFlag
@@ -657,7 +669,7 @@ func (s *Streamer) doOverwrite(req *ExtentRequest, direct bool) (total int, err 
 
 			if replyPacket.ResultCode == proto.ErrCodeVersionOpError {
 				e = proto.ErrCodeVersionOp
-				log.LogWarnf("action[doOverwrite] verseq (%v) be updated to (%v) by datanode rsp", s.verSeq, replyPacket.VerSeq)
+				log.LogDebugf("action[doOverwrite] .UpdateLatestVer verseq (%v) be updated by datanode rsp (%v) ", s.verSeq, replyPacket)
 				s.verSeq = replyPacket.VerSeq
 				s.extents.verSeq = s.verSeq
 				s.client.UpdateLatestVer(&proto.VolVersionInfoList{VerList: replyPacket.VerList})
@@ -733,7 +745,7 @@ func (s *Streamer) tryInitExtentHandlerByLastEk(offset, size int) (isLastEkVerNo
 					VerSeq: seq,
 				},
 			}
-			// handler.dp = dp
+			handler.lastKey = *currentEK
 
 			if s.handler != nil {
 				log.LogDebugf("tryInitExtentHandlerByLastEk: close old handler, currentEK.PartitionId(%v)",

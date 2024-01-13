@@ -73,7 +73,7 @@ func (mw *MetaWrapper) sendToMetaPartition(mp *MetaPartition, req *proto.Packet)
 	}
 
 	delta := (sendTimeLimit*2/SendRetryLimit - SendRetryInterval*2) / SendRetryLimit // ms
-	log.LogDebugf("mw.metaSendTimeout: %v s, sendTimeLimit: %v ms, delta: %v ms", mw.metaSendTimeout, sendTimeLimit, delta)
+	log.LogDebugf("mw.metaSendTimeout: %v s, sendTimeLimit: %v ms, delta: %v ms, req %v", mw.metaSendTimeout, sendTimeLimit, delta, req)
 
 	req.ExtentType |= proto.MultiVersionFlag
 
@@ -108,6 +108,7 @@ sendWithList:
 			goto out
 		}
 		req.ExtentType |= proto.VersionListFlag
+		req.VerList = make([]*proto.VolVersionInfo, len(mw.Client.GetVerMgr().VerList))
 		copy(req.VerList, mw.Client.GetVerMgr().VerList)
 		log.LogWarnf("sendToMetaPartition: leader failed and goto retry, req(%v) mp(%v) mc(%v) err(%v) resp(%v)", req, mp, mc, err, resp)
 		goto sendWithList
@@ -146,12 +147,12 @@ retry:
 	}
 
 out:
+	log.LogDebugf("sendToMetaPartition: succeed! req(%v) mc(%v) resp(%v)", req, mc, resp)
+	if mw.Client != nil && resp != nil { // For compatibility with LcNode, the client checks whether it is nil
+		mw.checkVerFromMeta(resp)
+	}
 	if err != nil || resp == nil {
 		return nil, errors.New(fmt.Sprintf("sendToMetaPartition failed: req(%v) mp(%v) errs(%v) resp(%v)", req, mp, errs, resp))
-	}
-	log.LogDebugf("sendToMetaPartition: succeed! req(%v) mc(%v) resp(%v)", req, mc, resp)
-	if mw.Client != nil { // compatible lcNode not init Client
-		mw.checkVerFromMeta(resp)
 	}
 	return resp, nil
 }

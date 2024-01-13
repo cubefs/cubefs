@@ -50,7 +50,7 @@ const (
 	statusError
 	statusInval
 	statusNotPerm
-	statusConflictExtents
+	StatusConflictExtents
 	statusOpDirQuota
 	statusNoSpace
 	statusTxInodeInfoNotExist
@@ -320,7 +320,7 @@ func parseStatus(result uint8) (status int) {
 	case proto.OpNotPerm:
 		status = statusNotPerm
 	case proto.OpConflictExtentsErr:
-		status = statusConflictExtents
+		status = StatusConflictExtents
 	case proto.OpDirQuota:
 		status = statusOpDirQuota
 	case proto.OpNotEmpty:
@@ -370,7 +370,7 @@ func statusToErrno(status int) error {
 		return syscall.EPERM
 	case statusError:
 		return syscall.EAGAIN
-	case statusConflictExtents:
+	case StatusConflictExtents:
 		return syscall.ENOTSUP
 	case statusOpDirQuota:
 		return syscall.EDQUOT

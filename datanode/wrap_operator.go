@@ -315,6 +315,7 @@ func (s *DataNode) commitCreateVersion(req *proto.MultiVersionOpRequest) (err er
 
 		partition.volVersionInfoList.RWLock.Lock()
 		if len(partition.volVersionInfoList.VerList) == 0 {
+			partition.volVersionInfoList.VerList = make([]*proto.VolVersionInfo, len(req.VolVerList))
 			copy(partition.volVersionInfoList.VerList, req.VolVerList)
 			partition.verSeq = req.VerSeq
 			log.LogInfof("action[commitCreateVersion] dp %v seq %v updateVerList reqeust ver %v verlist  %v  dp verlist nil and set",
@@ -359,7 +360,7 @@ func (s *DataNode) commitCreateVersion(req *proto.MultiVersionOpRequest) (err er
 	ver2Phase.verSeq = req.VerSeq
 	ver2Phase.step = proto.CreateVersionCommit
 	ver2Phase.status = proto.VersionWorkingFinished
-	log.LogInfof("action[commitCreateVersion] dp %v commit volume %v prepare seq %v with commit seq %v",
+	log.LogInfof("action[commitCreateVersion] commit volume %v prepare seq %v with commit seq %v",
 		req.VolumeID, ver2Phase.verPrepare, req.VerSeq)
 
 	return
