@@ -1396,10 +1396,10 @@ func (mw *MetaWrapper) SplitExtentKey(parentInode, inode uint64, ek proto.Extent
 }
 
 // Used as a callback by stream sdk
-func (mw *MetaWrapper) AppendExtentKey(parentInode, inode uint64, ek proto.ExtentKey, discard []proto.ExtentKey) error {
+func (mw *MetaWrapper) AppendExtentKey(parentInode, inode uint64, ek proto.ExtentKey, discard []proto.ExtentKey) (int, error) {
 	mp := mw.getPartitionByInode(inode)
 	if mp == nil {
-		return syscall.ENOENT
+		return statusError, syscall.ENOENT
 	}
 	var oldInfo *proto.InodeInfo
 	if mw.EnableSummary {
@@ -1409,7 +1409,7 @@ func (mw *MetaWrapper) AppendExtentKey(parentInode, inode uint64, ek proto.Exten
 	status, err := mw.appendExtentKey(mp, inode, ek, discard, false)
 	if err != nil || status != statusOK {
 		log.LogErrorf("MetaWrapper AppendExtentKey: inode(%v) ek(%v) local discard(%v) err(%v) status(%v)", inode, ek, discard, err, status)
-		return statusToErrno(status)
+		return status, statusToErrno(status)
 	}
 	log.LogDebugf("MetaWrapper AppendExtentKey: ino(%v) ek(%v) discard(%v)", inode, ek, discard)
 
@@ -1424,7 +1424,7 @@ func (mw *MetaWrapper) AppendExtentKey(parentInode, inode uint64, ek proto.Exten
 		}()
 	}
 
-	return nil
+	return statusOK, nil
 }
 
 // AppendExtentKeys append multiple extent key into specified inode with single request.

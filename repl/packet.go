@@ -116,7 +116,7 @@ func (p *Packet) clean() {
 	p.TpObject = nil
 	p.Data = nil
 	p.Arg = nil
-	if p.OrgBuffer != nil && len(p.OrgBuffer) == util.BlockSize && p.IsWriteOperation() {
+	if p.OrgBuffer != nil && len(p.OrgBuffer) == util.BlockSize && p.IsNormalWriteOperation() {
 		proto.Buffers.Put(p.OrgBuffer)
 		p.OrgBuffer = nil
 	}
@@ -328,7 +328,7 @@ func (p *Packet) PackErrorBody(action, msg string) {
 }
 
 func (p *Packet) ReadFull(c net.Conn, opcode uint8, readSize int) (err error) {
-	if p.IsWriteOperation() && readSize == util.BlockSize {
+	if p.IsNormalWriteOperation() && readSize == util.BlockSize {
 		p.Data, _ = proto.Buffers.Get(readSize)
 	} else {
 		p.Data = make([]byte, readSize)
@@ -368,7 +368,7 @@ func (p *Packet) isSpecialReplicaCntPacket() bool {
 // A leader packet is the packet send to the leader and does not require packet forwarding.
 func (p *Packet) IsLeaderPacket() (ok bool) {
 	if (p.IsForwardPkt() || p.isSpecialReplicaCntPacket()) &&
-		(p.IsWriteOperation() || p.IsCreateExtentOperation() || p.IsMarkDeleteExtentOperation()) {
+		(p.IsNormalWriteOperation() || p.IsCreateExtentOperation() || p.IsMarkDeleteExtentOperation()) {
 		ok = true
 	}
 
@@ -379,7 +379,7 @@ func (p *Packet) IsTinyExtentType() bool {
 	return p.ExtentType == proto.TinyExtentType
 }
 
-func (p *Packet) IsWriteOperation() bool {
+func (p *Packet) IsNormalWriteOperation() bool {
 	return p.Opcode == proto.OpWrite || p.Opcode == proto.OpSyncWrite
 }
 

@@ -258,7 +258,7 @@ func (mp *metaPartition) checkVerList(reqVerListInfo *proto.VolVersionInfoList, 
 	mp.multiVersionList.RWLock.RUnlock()
 
 	for _, vInfo := range reqVerListInfo.VerList {
-		if vInfo.Status != proto.VersionNormal {
+		if vInfo.Status != proto.VersionNormal && vInfo.Status != proto.VersionPrepare {
 			log.LogDebugf("checkVerList. vol %v mp %v master info %v", mp.config.VolName, mp.config.PartitionId, vInfo)
 			continue
 		}

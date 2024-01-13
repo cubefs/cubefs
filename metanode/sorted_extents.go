@@ -364,21 +364,21 @@ func (se *SortedExtents) CheckAndAddRef(lastKey *proto.ExtentKey, currEk *proto.
 	return
 }
 
-func (se *SortedExtents) AppendWithCheck(inodeID uint64, ek proto.ExtentKey, addRefFunc func(*proto.ExtentKey), discard []proto.ExtentKey) (deleteExtents []proto.ExtentKey, status uint8) {
+func (se *SortedExtents) AppendWithCheck(inodeID uint64, ek proto.ExtentKey, addRefFunc func(*proto.ExtentKey), clientDiscardExts []proto.ExtentKey) (deleteExtents []proto.ExtentKey, status uint8) {
 	status = proto.OpOk
 	endOffset := ek.FileOffset + uint64(ek.Size)
 	se.Lock()
 	defer se.Unlock()
-
+	log.LogDebugf("action[AppendWithCheck] ek %v, clientDiscardExts [%v] se.eks [%v]", ek, clientDiscardExts, se.eks)
 	if len(se.eks) <= 0 {
 		se.eks = append(se.eks, ek)
 		return
 	}
 	idx := len(se.eks) - 1
-	lastKey := &se.eks[idx]
+	tailKey := &se.eks[idx]
 
-	log.LogDebugf("action[AppendWithCheck] ek %v,lastKey %v, discard [%v]", ek, lastKey, discard)
-	if ok := se.CheckAndAddRef(lastKey, &ek, addRefFunc); ok {
+	log.LogDebugf("action[AppendWithCheck] ek %v,tailKey %v, clientDiscardExts [%v] se.eks [%v]", ek, tailKey, clientDiscardExts, se.eks)
+	if ok := se.CheckAndAddRef(tailKey, &ek, addRefFunc); ok {
 		se.eks = append(se.eks, ek)
 		return
 	}
@@ -417,16 +417,15 @@ func (se *SortedExtents) AppendWithCheck(inodeID uint64, ek proto.ExtentKey, add
 		}
 	}
 
-	log.LogInfof("action[AppendWithCheck] invalidExtents(%v) deleteExtents(%v) discardExtents(%v)", invalidExtents, deleteExtents, discard)
-
-	if discard != nil {
-		if len(deleteExtents) != len(discard) {
-			log.LogErrorf("action[AppendWithCheck] OpConflictExtentsErr error. inode %v deleteExtents [%v] discard [%v]", inodeID, deleteExtents, discard)
+	log.LogDebugf("action[AppendWithCheck] invalidExtents(%v) deleteExtents(%v) discardExtents(%v)", invalidExtents, deleteExtents, clientDiscardExts)
+	if clientDiscardExts != nil {
+		if len(deleteExtents) != len(clientDiscardExts) {
+			log.LogErrorf("action[AppendWithCheck] OpConflictExtentsErr error. inode %v deleteExtents [%v] clientDiscardExts [%v]", inodeID, deleteExtents, clientDiscardExts)
 			return deleteExtents, proto.OpConflictExtentsErr
 		}
-		for i := 0; i < len(discard); i++ {
-			if deleteExtents[i].PartitionId != discard[i].PartitionId || deleteExtents[i].ExtentId != discard[i].ExtentId || deleteExtents[i].ExtentOffset != discard[i].ExtentOffset {
-				log.LogDebugf("action[AppendWithCheck] OpConflictExtentsErr error. inode %v idx %v deleteExtents[%v]  discard [%v]", inodeID, i, deleteExtents[i], discard[i])
+		for i := 0; i < len(clientDiscardExts); i++ {
+			if deleteExtents[i].PartitionId != clientDiscardExts[i].PartitionId || deleteExtents[i].ExtentId != clientDiscardExts[i].ExtentId || deleteExtents[i].ExtentOffset != clientDiscardExts[i].ExtentOffset {
+				log.LogDebugf("action[AppendWithCheck] OpConflictExtentsErr error. inode %v idx %v deleteExtents[%v]  clientDiscardExts [%v]", inodeID, i, deleteExtents[i], clientDiscardExts[i])
 				return deleteExtents, proto.OpConflictExtentsErr
 			}
 		}

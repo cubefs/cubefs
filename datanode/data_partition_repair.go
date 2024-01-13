@@ -316,7 +316,7 @@ func (dp *DataPartition) prepareRepairTasks(repairTasks []*DataPartitionRepairTa
 					extentInfoMap[extentID] = extentInfo
 				}
 			}
-			log.LogInfof("action[prepareRepairTasks] dp %v extentid %v addr[dst %v,leader %v] info %v", dp.partitionID, extentID, repairTask.addr, repairTask.LeaderAddr, extentInfoMap[extentID])
+			//			log.LogInfof("action[prepareRepairTasks] dp %v extentid %v addr[dst %v,leader %v] info %v", dp.partitionID, extentID, repairTask.addr, repairTask.LeaderAddr, extentInfoMap[extentID])
 		}
 	}
 	for extentID := range deleteExtents {

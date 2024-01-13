@@ -81,7 +81,7 @@ type Wrapper struct {
 	minWriteAbleDataPartitionCnt int
 	verConfReadSeq               uint64
 	verReadSeq                   uint64
-	client                       *SimpleClientInfo
+	SimpleClient                 SimpleClientInfo
 }
 
 func (w *Wrapper) GetMasterClient() *masterSDK.MasterClient {
@@ -145,6 +145,7 @@ func NewDataPartitionWrapper(client SimpleClientInfo, volName string, masters []
 		}
 	}
 	w.verReadSeq = verReadSeq
+	w.SimpleClient = client
 	go w.uploadFlowInfoByTick(client)
 	go w.update(client)
 	return
@@ -241,14 +242,18 @@ func (w *Wrapper) uploadFlowInfoByTick(clientInfo SimpleClientInfo) {
 
 func (w *Wrapper) update(clientInfo SimpleClientInfo) {
 	ticker := time.NewTicker(time.Minute)
+	taskFunc := func() {
+		w.updateSimpleVolView()
+		w.updateDataPartition(false)
+		w.updateDataNodeStatus()
+		w.CheckPermission()
+		w.updateVerlist(clientInfo)
+	}
+	taskFunc()
 	for {
 		select {
 		case <-ticker.C:
-			w.updateSimpleVolView()
-			w.updateDataPartition(false)
-			w.updateDataNodeStatus()
-			w.CheckPermission()
-			w.updateVerlist(clientInfo)
+			taskFunc()
 		case <-w.stopC:
 			return
 		}
@@ -311,6 +316,7 @@ func (w *Wrapper) updateVerlist(client SimpleClientInfo) (err error) {
 		return
 	}
 
+	log.LogDebugf("updateSimpleVolView.UpdateLatestVer.try update to verlist[%v]", verList)
 	if err = client.UpdateLatestVer(verList); err != nil {
 		log.LogWarnf("updateSimpleVolView: UpdateLatestVer ver %v faile err %v", verList.GetLastVer(), err)
 		return

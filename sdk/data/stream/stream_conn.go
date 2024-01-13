@@ -105,7 +105,7 @@ func (sc *StreamConn) String() string {
 // or the maximum number of retries is reached.
 func (sc *StreamConn) Send(retry *bool, req *Packet, getReply GetReplyFunc) (err error) {
 	for i := 0; i < StreamSendMaxRetry; i++ {
-		err = sc.sendToPartition(req, retry, getReply)
+		err = sc.sendToDataPartition(req, retry, getReply)
 		if err == nil || err == proto.ErrCodeVersionOp || !*retry || err == TryOtherAddrError {
 			return
 		}
@@ -115,7 +115,7 @@ func (sc *StreamConn) Send(retry *bool, req *Packet, getReply GetReplyFunc) (err
 	return errors.New(fmt.Sprintf("StreamConn Send: retried %v times and still failed, sc(%v) reqPacket(%v)", StreamSendMaxRetry, sc, req))
 }
 
-func (sc *StreamConn) sendToPartition(req *Packet, retry *bool, getReply GetReplyFunc) (err error) {
+func (sc *StreamConn) sendToDataPartition(req *Packet, retry *bool, getReply GetReplyFunc) (err error) {
 	conn, err := StreamConnPool.GetConnect(sc.currAddr)
 	if err == nil {
 		log.LogDebugf("req opcode %v, conn %v", req.Opcode, conn)
@@ -124,22 +124,22 @@ func (sc *StreamConn) sendToPartition(req *Packet, retry *bool, getReply GetRepl
 			StreamConnPool.PutConnect(conn, false)
 			return
 		}
-		log.LogWarnf("sendToPartition: send to curr addr failed, addr(%v) reqPacket(%v) err(%v)", sc.currAddr, req, err)
+		log.LogWarnf("sendToDataPartition: send to curr addr failed, addr(%v) reqPacket(%v) err(%v)", sc.currAddr, req, err)
 		StreamConnPool.PutConnect(conn, true)
 		if err != TryOtherAddrError || !*retry {
 			return
 		}
 	} else {
-		log.LogWarnf("sendToPartition: get connection to curr addr failed, addr(%v) reqPacket(%v) err(%v)", sc.currAddr, req, err)
+		log.LogWarnf("sendToDataPartition: get connection to curr addr failed, addr(%v) reqPacket(%v) err(%v)", sc.currAddr, req, err)
 	}
 
 	hosts := sortByStatus(sc.dp, true)
 
 	for _, addr := range hosts {
-		log.LogWarnf("sendToPartition: try addr(%v) reqPacket(%v)", addr, req)
+		log.LogWarnf("sendToDataPartition: try addr(%v) reqPacket(%v)", addr, req)
 		conn, err = StreamConnPool.GetConnect(addr)
 		if err != nil {
-			log.LogWarnf("sendToPartition: failed to get connection to addr(%v) reqPacket(%v) err(%v)", addr, req, err)
+			log.LogWarnf("sendToDataPartition: failed to get connection to addr(%v) reqPacket(%v) err(%v)", addr, req, err)
 			continue
 		}
 		sc.currAddr = addr
@@ -153,7 +153,7 @@ func (sc *StreamConn) sendToPartition(req *Packet, retry *bool, getReply GetRepl
 		if err != TryOtherAddrError {
 			return
 		}
-		log.LogWarnf("sendToPartition: try addr(%v) failed! reqPacket(%v) err(%v)", addr, req, err)
+		log.LogWarnf("sendToDataPartition: try addr(%v) failed! reqPacket(%v) err(%v)", addr, req, err)
 	}
 	return errors.New(fmt.Sprintf("sendToPatition Failed: sc(%v) reqPacket(%v)", sc, req))
 }

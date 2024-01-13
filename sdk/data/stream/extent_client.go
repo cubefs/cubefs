@@ -39,7 +39,7 @@ import (
 
 type (
 	SplitExtentKeyFunc  func(parentInode, inode uint64, key proto.ExtentKey) error
-	AppendExtentKeyFunc func(parentInode, inode uint64, key proto.ExtentKey, discard []proto.ExtentKey) error
+	AppendExtentKeyFunc func(parentInode, inode uint64, key proto.ExtentKey, discard []proto.ExtentKey) (int, error)
 	GetExtentsFunc      func(inode uint64) (uint64, uint64, []proto.ExtentKey, error)
 	TruncateFunc        func(inode, size uint64, fullPath string) error
 	EvictIcacheFunc     func(inode uint64)
@@ -349,6 +349,7 @@ func (client *ExtentClient) GetVerMgr() *proto.VolVersionInfoList {
 
 func (client *ExtentClient) UpdateLatestVer(verList *proto.VolVersionInfoList) (err error) {
 	verSeq := verList.GetLastVer()
+	log.LogDebugf("action[UpdateLatestVer] verSeq %v verList[%v] mgr seq %v", verSeq, verList, client.multiVerMgr.latestVerSeq)
 	if verSeq == 0 || verSeq <= atomic.LoadUint64(&client.multiVerMgr.latestVerSeq) {
 		return
 	}
@@ -358,7 +359,7 @@ func (client *ExtentClient) UpdateLatestVer(verList *proto.VolVersionInfoList) (
 		return
 	}
 
-	log.LogInfof("action[UpdateLatestVer] update verseq [%v] to [%v]", client.multiVerMgr.latestVerSeq, verSeq)
+	log.LogDebugf("action[UpdateLatestVer] update verSeq [%v] to [%v]", client.multiVerMgr.latestVerSeq, verSeq)
 	atomic.StoreUint64(&client.multiVerMgr.latestVerSeq, verSeq)
 	client.multiVerMgr.verList = verList
 
@@ -367,9 +368,15 @@ func (client *ExtentClient) UpdateLatestVer(verList *proto.VolVersionInfoList) (
 	for _, streamer := range client.streamers {
 		if streamer.verSeq != verSeq {
 			log.LogDebugf("action[ExtentClient.UpdateLatestVer] stream inode %v ver %v try update to %v", streamer.inode, streamer.verSeq, verSeq)
-
+			oldVer := streamer.verSeq
 			streamer.verSeq = verSeq
 			streamer.extents.verSeq = verSeq
+			if err = streamer.GetExtents(); err != nil {
+				log.LogErrorf("action[UpdateLatestVer] inode %v streamer %v", streamer.inode, streamer.verSeq)
+				streamer.verSeq = oldVer
+				streamer.extents.verSeq = oldVer
+				return err
+			}
 			atomic.StoreInt32(&streamer.needUpdateVer, 1)
 			log.LogDebugf("action[ExtentClient.UpdateLatestVer] finhsed stream inode %v ver update to %v", streamer.inode, verSeq)
 		}

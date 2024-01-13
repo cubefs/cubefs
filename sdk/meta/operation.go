@@ -1255,7 +1255,9 @@ func (mw *MetaWrapper) appendExtentKey(mp *MetaPartition, inode uint64, extent p
 	status = parseStatus(packet.ResultCode)
 	if status != statusOK {
 		err = errors.New(packet.GetResultMsg())
-		log.LogErrorf("appendExtentKey: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
+		if status != StatusConflictExtents {
+			log.LogErrorf("appendExtentKey: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
+		}
 	}
 	return status, err
 }
@@ -2833,6 +2835,6 @@ func (mw *MetaWrapper) checkVerFromMeta(packet *proto.Packet) {
 		return
 	}
 
-	log.LogDebugf("checkVerFromMeta.try update meta wrapper verSeq from %v to %v", mw.Client.GetLatestVer(), packet.VerSeq)
+	log.LogDebugf("checkVerFromMeta.UpdateLatestVer.try update meta wrapper verSeq from %v to %v verlist[%v]", mw.Client.GetLatestVer(), packet.VerSeq, packet.VerList)
 	mw.Client.UpdateLatestVer(&proto.VolVersionInfoList{VerList: packet.VerList})
 }

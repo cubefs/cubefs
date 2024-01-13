@@ -17,11 +17,13 @@ package stream
 import (
 	"fmt"
 	"net"
+	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/sdk/data/wrapper"
+	"github.com/cubefs/cubefs/sdk/meta"
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/log"
@@ -107,6 +109,8 @@ type ExtentHandler struct {
 
 	// ver update need alloc new extent
 	verUpdate chan uint64
+	appendLK  sync.Mutex
+	lastKey   proto.ExtentKey
 }
 
 // NewExtentHandler returns a new extent handler.
@@ -124,7 +128,6 @@ func NewExtentHandler(stream *Streamer, offset int, storeMode int, size int) *Ex
 		reply:        make(chan *Packet, 1024),
 		doneSender:   make(chan struct{}),
 		doneReceiver: make(chan struct{}),
-		verUpdate:    make(chan uint64),
 	}
 
 	go eh.receiver()
@@ -135,8 +138,8 @@ func NewExtentHandler(stream *Streamer, offset int, storeMode int, size int) *Ex
 
 // String returns the string format of the extent handler.
 func (eh *ExtentHandler) String() string {
-	return fmt.Sprintf("ExtentHandler{ID(%v)Inode(%v)FileOffset(%v)Size(%v)StoreMode(%v)Status(%v)Dp(%v)}",
-		eh.id, eh.inode, eh.fileOffset, eh.size, eh.storeMode, eh.status, eh.dp)
+	return fmt.Sprintf("ExtentHandler{ID(%v)Inode(%v)FileOffset(%v)Size(%v)StoreMode(%v)Status(%v)Dp(%v)Ver(%v)key(%v)lastKey(%v)}",
+		eh.id, eh.inode, eh.fileOffset, eh.size, eh.storeMode, eh.status, eh.dp, eh.stream.verSeq, eh.key, eh.lastKey)
 }
 
 func (eh *ExtentHandler) write(data []byte, offset, size int, direct bool) (ek *proto.ExtentKey, err error) {
@@ -202,17 +205,8 @@ func (eh *ExtentHandler) write(data []byte, offset, size int, direct bool) (ek *
 func (eh *ExtentHandler) sender() {
 	var err error
 
-	//	t := time.NewTicker(5 * time.Second)
-	//	defer t.Stop()
-
 	for {
 		select {
-		case <-eh.verUpdate:
-			eh.dp = nil
-			eh.key = nil
-			log.LogInfof("action[ExtentHandler] ver update in sender process and set dp and key as nil")
-		//		case <-t.C:
-		//			log.LogDebugf("sender alive: eh(%v) inflight(%v)", eh, atomic.LoadInt32(&eh.inflight))
 		case packet := <-eh.request:
 			log.LogDebugf("ExtentHandler sender begin: eh(%v) packet(%v)", eh, packet)
 			if eh.getStatus() >= ExtentStatusRecovery {
@@ -277,17 +271,10 @@ func (eh *ExtentHandler) sender() {
 }
 
 func (eh *ExtentHandler) receiver() {
-	//	t := time.NewTicker(5 * time.Second)
-	//	defer t.Stop()
-
 	for {
 		select {
-		//		case <-t.C:
-		//			log.LogDebugf("receiver alive: eh(%v) inflight(%v)", eh, atomic.LoadInt32(&eh.inflight))
 		case packet := <-eh.reply:
-			log.LogDebugf("receiver begin: eh(%v) packet(%v)", eh, packet.GetUniqueLogId())
 			eh.processReply(packet)
-			log.LogDebugf("receiver end: eh(%v) packet(%v)", eh, packet.GetUniqueLogId())
 		case <-eh.doneReceiver:
 			log.LogDebugf("receiver done: eh(%v) size(%v) ek(%v)", eh, eh.size, eh.key)
 			return
@@ -315,7 +302,7 @@ func (eh *ExtentHandler) processReply(packet *Packet) {
 		log.LogDebugf("processReply recover packet: handler is in recovery status, inflight(%v) from eh(%v) to recoverHandler(%v) packet(%v)", atomic.LoadInt32(&eh.inflight), eh, eh.recoverHandler, packet)
 		return
 	}
-
+	var verUpdate bool
 	reply := NewReply(packet.ReqID, packet.PartitionID, packet.ExtentID)
 	err := reply.ReadFromConnWithVer(eh.conn, proto.ReadDeadlineTime)
 	if err != nil {
@@ -323,6 +310,19 @@ func (eh *ExtentHandler) processReply(packet *Packet) {
 		return
 	}
 
+	if reply.VerSeq > atomic.LoadUint64(&eh.stream.verSeq) || (eh.key != nil && reply.VerSeq > eh.key.GetSeq()) {
+		log.LogDebugf("processReply.UpdateLatestVer update verseq according to data rsp from version %v to %v", eh.stream.verSeq, reply.VerSeq)
+		if err = eh.stream.client.UpdateLatestVer(&proto.VolVersionInfoList{VerList: reply.VerList}); err != nil {
+			eh.processReplyError(packet, err.Error())
+			return
+		}
+		if err = eh.appendExtentKey(); err != nil {
+			eh.processReplyError(packet, err.Error())
+			return
+		}
+		eh.key = nil
+		verUpdate = true
+	}
 	if reply.ResultCode != proto.OpOk {
 		if reply.ResultCode != proto.ErrCodeVersionOpError {
 			errmsg := fmt.Sprintf("reply NOK: reply(%v)", reply)
@@ -358,10 +358,13 @@ func (eh *ExtentHandler) processReply(packet *Packet) {
 		extID = packet.ExtentID
 		extOffset = packet.KernelOffset - uint64(eh.fileOffset)
 	}
-
+	fileOffset := uint64(eh.fileOffset)
+	if verUpdate {
+		fileOffset = reply.KernelOffset
+	}
 	if eh.key == nil {
 		eh.key = &proto.ExtentKey{
-			FileOffset:   uint64(eh.fileOffset),
+			FileOffset:   fileOffset,
 			PartitionId:  packet.PartitionID,
 			ExtentId:     extID,
 			ExtentOffset: extOffset,
@@ -426,17 +429,67 @@ func (eh *ExtentHandler) cleanup() (err error) {
 
 // can ONLY be called when the handler is not open any more
 func (eh *ExtentHandler) appendExtentKey() (err error) {
+	eh.appendLK.Lock()
+	defer eh.appendLK.Unlock()
+
 	if eh.key != nil {
 		if eh.dirty {
 			if proto.IsCold(eh.stream.client.volumeType) && eh.status == ExtentStatusError {
 				return
 			}
-			var discard []proto.ExtentKey
-			discard = eh.stream.extents.Append(eh.key, true)
-			err = eh.stream.client.appendExtentKey(eh.stream.parentInode, eh.inode, *eh.key, discard)
+			var (
+				discard []proto.ExtentKey
+				status  int
+			)
 
-			if err == nil && len(discard) > 0 {
-				eh.stream.extents.RemoveDiscard(discard)
+			ekey := *eh.key
+			doAppend := func() (err error) {
+				discard = eh.stream.extents.Append(&ekey, true)
+				status, err = eh.stream.client.appendExtentKey(eh.stream.parentInode, eh.inode, ekey, discard)
+				if atomic.LoadInt32(&eh.stream.needUpdateVer) > 0 {
+					if errUpdateExtents := eh.stream.GetExtents(); errUpdateExtents != nil {
+						log.LogErrorf("action[appendExtentKey] inode %v GetExtents err %v errUpdateExtents %v", eh.stream.inode, err, errUpdateExtents)
+						return
+					}
+				}
+				if err == nil && len(discard) > 0 {
+					eh.stream.extents.RemoveDiscard(discard)
+				}
+				return
+			}
+			if err = doAppend(); err == nil {
+				eh.dirty = false
+				eh.lastKey = *eh.key
+				log.LogDebugf("action[appendExtentKey] status %v, needUpdateVer %v, eh{%v}", status, eh.stream.needUpdateVer, eh)
+				return
+			}
+			// Due to the asynchronous synchronization of version numbers, the extent cache version of the client is updated first before being written to the meta.
+			// However, it is possible for the client version to lag behind the meta version, resulting in partial inconsistencies in judgment.
+			// For example, if the version remains unchanged in the client,
+			// the append-write principle is to reuse the extent key while changing the length. But if the meta has already changed its version,
+			// a new extent key information needs to be constructed for retrying the operation.
+			log.LogWarnf("action[appendExtentKey] status %v, handler %v, err %v", status, eh, err)
+			if status == meta.StatusConflictExtents &&
+				(atomic.LoadInt32(&eh.stream.needUpdateVer) > 0 || eh.stream.verSeq > 0) &&
+				eh.lastKey.PartitionId != 0 {
+				log.LogDebugf("action[appendExtentKey] do append again err %v, key %v", err, ekey)
+				if eh.lastKey.IsSameExtent(&ekey) &&
+					eh.lastKey.FileOffset == ekey.FileOffset &&
+					eh.lastKey.ExtentOffset == ekey.ExtentOffset &&
+					eh.lastKey.Size < ekey.Size {
+					ekey.FileOffset += uint64(eh.lastKey.Size)
+					ekey.ExtentOffset += uint64(eh.lastKey.Size)
+					ekey.Size -= eh.lastKey.Size
+					ekey.SetSeq(eh.stream.verSeq)
+					eh.lastKey = ekey
+					if err = doAppend(); err != nil {
+						eh.key = nil
+						eh.lastKey.PartitionId = 0
+					} else {
+						*eh.key = ekey
+					}
+					log.LogDebugf("action[appendExtentKey] do append again err %v, key %v", err, ekey)
+				}
 			}
 		} else {
 			/*
@@ -450,6 +503,9 @@ func (eh *ExtentHandler) appendExtentKey() (err error) {
 	}
 	if err == nil {
 		eh.dirty = false
+	} else {
+		log.LogErrorf("action[appendExtentKey] %v do append again err %v", eh, err)
+		eh.lastKey.PartitionId = 0
 	}
 	return
 }

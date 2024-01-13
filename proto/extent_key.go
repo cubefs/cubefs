@@ -180,6 +180,14 @@ func (k *ExtentKey) IsEqual(rightKey *ExtentKey) bool {
 		k.FileOffset == rightKey.FileOffset
 }
 
+func (k *ExtentKey) IsCoveredWithDiffSeq(rightKey *ExtentKey) bool {
+	return k.PartitionId == rightKey.PartitionId &&
+		k.ExtentId == rightKey.ExtentId &&
+		k.GetSeq() < rightKey.GetSeq() &&
+		k.ExtentOffset+uint64(k.Size) == rightKey.ExtentOffset &&
+		k.FileOffset+uint64(k.Size) == rightKey.FileOffset
+}
+
 func (k *ExtentKey) IsSequenceWithSameSeq(rightKey *ExtentKey) bool {
 	return k.PartitionId == rightKey.PartitionId &&
 		k.ExtentId == rightKey.ExtentId &&
