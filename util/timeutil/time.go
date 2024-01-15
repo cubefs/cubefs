@@ -15,71 +15,43 @@
 package timeutil
 
 import (
-	"sync"
 	"sync/atomic"
 	"time"
 )
 
 // GetCurrentTime returns the current time.
-func GetCurrentTime() (now time.Time) {
-	return n.getCurrentTime()
+func GetCurrentTime() time.Time {
+	return now.time.Load().(time.Time)
 }
 
 // GetCurrentTimeUnix returns the current time unix.
 func GetCurrentTimeUnix() int64 {
-	return n.getCurrentTimeUnix()
+	return atomic.LoadInt64(&now.timeUnix)
 }
 
-// now
-var n = newNowTime()
+var now = newNowTime()
 
 // nowTime defines the current time.
 type nowTime struct {
-	sync.RWMutex
-	now      time.Time
+	time     atomic.Value // store time.Time
 	timeUnix int64
-}
-
-// GetCurrentTime returns the current time.
-func (t *nowTime) getCurrentTime() (now time.Time) {
-	t.RLock()
-	now = t.now
-	t.RUnlock()
-	return
-}
-
-// GetCurrentTimeUnix returns the current time unix.
-func (t *nowTime) getCurrentTimeUnix() int64 {
-	return atomic.LoadInt64(&t.timeUnix)
-}
-
-// updateTime updates the stored time.
-func (t *nowTime) updateTime(now time.Time) {
-	t.Lock()
-	t.now = now
-	t.Unlock()
-}
-
-// updateTimeUnix updates the stored time unix.
-func (t *nowTime) updateTimeUnix(now int64) {
-	atomic.StoreInt64(&t.timeUnix, now)
 }
 
 // newNowTime returns a new nowTime.
 func newNowTime() *nowTime {
-	return &nowTime{
-		now:      time.Now(),
-		timeUnix: time.Now().Unix(),
-	}
-}
+	n := time.Now()
+	t := &nowTime{timeUnix: n.Unix()}
+	t.time.Store(n)
 
-func init() {
 	go func() {
+		ticker := time.NewTicker(time.Second)
+		defer ticker.Stop()
 		for {
-			time.Sleep(time.Second)
-			now := time.Now()
-			n.updateTime(now)
-			n.updateTimeUnix(now.Unix())
+			<-ticker.C
+			n := time.Now()
+			t.time.Store(n)
+			atomic.StoreInt64(&t.timeUnix, n.Unix())
 		}
 	}()
+	return t
 }
