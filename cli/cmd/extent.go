@@ -9,7 +9,6 @@ import (
 	"github.com/cubefs/cubefs/util/topology"
 	"io"
 	"io/ioutil"
-	"math"
 	"os"
 	"path"
 	"sort"
@@ -116,21 +115,38 @@ func newExtentGetCmd() *cobra.Command {
 			fmt.Printf("%-30v: %v\n", "Volume", dp.VolName)
 			fmt.Printf("%-30v: %v\n", "Data Partition", partitionID)
 			fmt.Printf("%-30v: %v\n", "Extent", extentID)
-			fmt.Printf("%-30v: %v\n", "Hosts", strings.Join(dp.Hosts, ","))
+			if proto.IsDbBack {
+				fmt.Printf("%-30v: %v\n", "Hosts", strings.Join(dp.DbBackHosts_, ","))
+			} else {
+				fmt.Printf("%-30v: %v\n", "Hosts", strings.Join(dp.Hosts, ","))
+			}
 			fmt.Println()
-			if proto.IsTinyExtent(extentID) {
+			if !proto.IsDbBack && proto.IsTinyExtent(extentID) {
 				stdout("%v\n", formatTinyExtentTableHeader())
 			} else {
 				stdout("%v\n", formatNormalExtentTableHeader())
 			}
-
-			minSize := uint64(math.MaxUint64)
+			if proto.IsDbBack {
+				for _, r := range dp.Replicas {
+					dHost := fmt.Sprintf("%v:%v", strings.Split(r.Addr, ":")[0], client.DataNodeProfPort)
+					dataClient := http_client.NewDataClient(dHost, false)
+					var extent *proto.ExtentInfoBlock
+					var err1 error
+					extent, err1 = dataClient.GetDbBackExtentInfo(partitionID, extentID)
+					if err1 != nil {
+						stdout("get extent info failed, replica: %v, err: %v\n", r.Addr, err1)
+						continue
+					}
+					stdout("%v\n", formatNormalExtent(r, extent, "N/A"))
+				}
+				return
+			}
 			for _, r := range dp.Replicas {
 				dHost := fmt.Sprintf("%v:%v", strings.Split(r.Addr, ":")[0], client.DataNodeProfPort)
 				dataClient := http_client.NewDataClient(dHost, false)
-
-				extent, err1 := dataClient.GetExtentInfo(partitionID, extentID)
-				if err1 != nil {
+				var extent *proto.ExtentInfoBlock
+				var err1 error
+				if extent, err1 = dataClient.GetExtentInfo(partitionID, extentID); err1 != nil {
 					continue
 				}
 				var md5Sum = "N/A"
@@ -149,12 +165,6 @@ func newExtentGetCmd() *cobra.Command {
 					stdout("%v\n", formatTinyExtent(r, extent, extentHoles, md5Sum))
 				} else {
 					stdout("%v\n", formatNormalExtent(r, extent, md5Sum))
-				}
-				if extent == nil {
-					continue
-				}
-				if minSize > extent[proto.ExtentInfoSize] {
-					minSize = extent[proto.ExtentInfoSize]
 				}
 			}
 			if proto.IsTinyExtent(extentID) {
@@ -752,8 +762,8 @@ func batchDeleteExtent(partitionId uint64, extents []uint64) (err error) {
 	for i := 0; i < len(extents); i++ {
 		eks[i] = &proto.MetaDelExtentKey{
 			ExtentKey: proto.ExtentKey{
-				PartitionId:  partitionId,
-				ExtentId:     extents[i],
+				PartitionId: partitionId,
+				ExtentId:    extents[i],
 			},
 		}
 	}

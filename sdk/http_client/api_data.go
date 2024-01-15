@@ -267,6 +267,35 @@ func (dc *DataClient) GetExtentInfo(id uint64, eid uint64) (ehs *proto.ExtentInf
 	ehs[proto.ExtentInfoCrc] = uint64(ehsOld.Crc)
 	return
 }
+func (dc *DataClient) GetDbBackExtentInfo(id uint64, eid uint64) (ehs *proto.ExtentInfoBlock, err error) {
+	var d []byte
+	params := make(map[string]string)
+	params["partitionId"] = strconv.FormatUint(id, 10)
+	params["extentId"] = strconv.FormatUint(eid, 10)
+	for i := 0; i < 3; i++ {
+		d, err = dc.RequestHttp(http.MethodGet, "/extent", params)
+		if err == nil {
+			break
+		}
+		if strings.Contains(err.Error(), "extent does not exist") || strings.Contains(err.Error(), "404 page") {
+			break
+		}
+		time.Sleep(1 * time.Second)
+	}
+	if err != nil {
+		return
+	}
+	ehs = new(proto.ExtentInfoBlock)
+	dbbakExtent := new(proto.ExtentInfoDbBack)
+	if err = json.Unmarshal(d, dbbakExtent); err != nil {
+		return
+	}
+	ehs[proto.ExtentInfoFileID] = dbbakExtent.FileId
+	ehs[proto.ExtentInfoSize] = dbbakExtent.Size
+	ehs[proto.ExtentInfoModifyTime] = uint64(dbbakExtent.ModTime.Unix())
+	ehs[proto.ExtentInfoCrc] = uint64(dbbakExtent.Crc)
+	return
+}
 
 func (dc *DataClient) RepairExtent(extent uint64, partitionPath string, partition uint64) (err error) {
 	params := make(map[string]string)

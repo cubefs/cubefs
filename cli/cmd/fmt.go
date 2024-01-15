@@ -335,7 +335,9 @@ func formatDataPartitionInfo(human bool, partition *proto.DataPartitionInfo) str
 	var sb = strings.Builder{}
 	sb.WriteString("\n")
 	sb.WriteString(fmt.Sprintf("volume name   : %v\n", partition.VolName))
-	sb.WriteString(fmt.Sprintf("volume ID     : %v\n", partition.VolID))
+	if !proto.IsDbBack {
+		sb.WriteString(fmt.Sprintf("volume ID     : %v\n", partition.VolID))
+	}
 	sb.WriteString(fmt.Sprintf("PartitionID   : %v\n", partition.PartitionID))
 	sb.WriteString(fmt.Sprintf("ReplicaNum    : %v\n", partition.ReplicaNum))
 	sb.WriteString(fmt.Sprintf("Status        : %v\n", formatDataPartitionStatus(partition.Status)))
@@ -351,33 +353,55 @@ func formatDataPartitionInfo(human bool, partition *proto.DataPartitionInfo) str
 		sb.WriteString(fmt.Sprintf("%v\n", formatDataReplica(human, "", replica, true)))
 	}
 	sb.WriteString("\n")
-	sb.WriteString(fmt.Sprintf("Peers :\n"))
-	sb.WriteString(fmt.Sprintf("%v\n", formatPeerTableHeader()))
-	for _, peer := range partition.Peers {
-		sb.WriteString(fmt.Sprintf("%v\n", formatPeer(peer)))
+
+	if !proto.IsDbBack {
+		sb.WriteString(fmt.Sprintf("Peers :\n"))
+		sb.WriteString(fmt.Sprintf("%v\n", formatPeerTableHeader()))
+		for _, peer := range partition.Peers {
+			sb.WriteString(fmt.Sprintf("%v\n", formatPeer(peer)))
+		}
+		sb.WriteString("\n")
 	}
-	sb.WriteString("\n")
-	sb.WriteString(fmt.Sprintf("Learners :\n"))
-	sb.WriteString(fmt.Sprintf("%v\n", formatLearnerTableHeader()))
-	for _, learner := range partition.Learners {
-		sb.WriteString(fmt.Sprintf("%v\n", formatLearner(learner)))
+
+	if !proto.IsDbBack {
+		sb.WriteString(fmt.Sprintf("Learners :\n"))
+		sb.WriteString(fmt.Sprintf("%v\n", formatLearnerTableHeader()))
+		for _, learner := range partition.Learners {
+			sb.WriteString(fmt.Sprintf("%v\n", formatLearner(learner)))
+		}
+		sb.WriteString("\n")
 	}
-	sb.WriteString("\n")
+
 	sb.WriteString(fmt.Sprintf("Hosts :\n"))
-	for _, host := range partition.Hosts {
-		sb.WriteString(fmt.Sprintf("  [%v]", host))
+	if proto.IsDbBack {
+		for _, host := range partition.DbBackHosts_ {
+			sb.WriteString(fmt.Sprintf("  [%v]", host))
+		}
+	} else {
+		for _, host := range partition.Hosts {
+			sb.WriteString(fmt.Sprintf("  [%v]", host))
+		}
 	}
 	sb.WriteString("\n")
-	sb.WriteString(fmt.Sprintf("Zones :\n"))
-	for _, zone := range partition.Zones {
-		sb.WriteString(fmt.Sprintf("  [%v]", zone))
+
+	if !proto.IsDbBack {
+		sb.WriteString(fmt.Sprintf("Zones :\n"))
+		for _, zone := range partition.Zones {
+			sb.WriteString(fmt.Sprintf("  [%v]", zone))
+		}
+		sb.WriteString("\n")
 	}
-	sb.WriteString("\n")
-	sb.WriteString("\n")
 	sb.WriteString(fmt.Sprintf("MissingNodes :\n"))
-	for partitionHost, id := range partition.MissingNodes {
-		sb.WriteString(fmt.Sprintf("  [%v, %v]\n", partitionHost, id))
+	if proto.IsDbBack {
+		for partitionHost, id := range partition.DbBackMissNodes_ {
+			sb.WriteString(fmt.Sprintf("  [%v, %v]\n", partitionHost, id))
+		}
+	} else {
+		for partitionHost, id := range partition.MissingNodes {
+			sb.WriteString(fmt.Sprintf("  [%v, %v]\n", partitionHost, id))
+		}
 	}
+
 	sb.WriteString(fmt.Sprintf("FilesWithMissingReplica : \n"))
 	for file, id := range partition.FilesWithMissingReplica {
 		sb.WriteString(fmt.Sprintf("  [%v, %v]\n", file, id))

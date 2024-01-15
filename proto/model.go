@@ -358,6 +358,8 @@ type DataPartitionInfo struct {
 	OfflinePeerID           uint64
 	FileInCoreMap           map[string]*FileInCore
 	FilesWithMissingReplica map[string]int64 // key: file name, value: last time when a missing replica is found
+	DbBackHosts_            []string         `json:"PersistenceHosts,omitempty"`
+	DbBackMissNodes_        map[string]int64 `json:"MissNodes,omitempty"`
 }
 
 // FileInCore define file in data partition
@@ -411,6 +413,15 @@ type ExtentInfo struct {
 	IsDeleted  bool   `json:"deleted"`
 	ModifyTime int64  `json:"modTime"`
 	Source     string `json:"src"`
+}
+
+type ExtentInfoDbBack struct {
+	FileId      uint64
+	Size        uint64
+	ModTime     time.Time
+	PartitionID uint32
+	RealSize    int64
+	Crc         uint32
 }
 
 // Status raft status

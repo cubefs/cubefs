@@ -315,8 +315,14 @@ The "reset" command will be released in next version`,
 				err       error
 			)
 			if optSpecifyDP > 0 {
-				outPut, isHealthy, _ := checkDataPartition("", optSpecifyDP, client, optDiffSizeThreshold)
-				if !isHealthy {
+				var partition *proto.DataPartitionInfo
+				if partition, err = client.AdminAPI().GetDataPartition("", optSpecifyDP); err != nil || partition == nil {
+					stdout("get partition error, err:[%v]", err)
+					return
+				}
+				outPut := checkDataPartition(partition, optDiffSizeThreshold)
+				if "" != outPut {
+					stdout("%v", formatDataPartitionInfoRow(partition))
 					fmt.Printf(outPut)
 				} else {
 					fmt.Printf("partition is healthy")
@@ -498,9 +504,14 @@ func checkAllDataPartitions(client *master.MasterClient, optDiffSizeThreshold in
 					<-dpCh
 				}()
 				var outPut string
-				var isHealthy bool
-				outPut, isHealthy, _ = checkDataPartition(vol.Name, dp.PartitionID, client, optDiffSizeThreshold)
-				if !isHealthy {
+				var partition *proto.DataPartitionInfo
+				if partition, err = client.AdminAPI().GetDataPartition(vol.Name, dp.PartitionID); err != nil || partition == nil {
+					stdout("get partition error, err:[%v]", err)
+					return
+				}
+				outPut = checkDataPartition(partition, optDiffSizeThreshold)
+				if "" != outPut {
+					stdout("%v", formatDataPartitionInfoRow(partition))
 					volLock.Lock()
 					if outPut == UsedSizeNotEqualErr {
 						sizeNotEqualPids = append(sizeNotEqualPids, dp.PartitionID)
@@ -525,61 +536,80 @@ func checkAllDataPartitions(client *master.MasterClient, optDiffSizeThreshold in
 	}
 	return
 }
-func checkDataPartition(volName string, pid uint64, client *master.MasterClient, optDiffSizeThreshold int) (outPut string, isHealthy bool, err error) {
+func checkDataPartition(partition *proto.DataPartitionInfo, optDiffSizeThreshold int) (output string) {
 	var (
-		partition    *proto.DataPartitionInfo
 		errorReports []string
-		leaderStatus *proto.Status
-		sb           = strings.Builder{}
+		sb           = new(strings.Builder)
 	)
 	defer func() {
-		isHealthy = true
-		if len(errorReports) > 0 {
-			isHealthy = false
-			//mark \033[1;40;31m%-8v\033[0m\n
-			if len(errorReports) == 1 && errorReports[0] == UsedSizeNotEqualErr {
-				outPut = errorReports[0]
-				return
-			}
-			if len(errorReports) == 1 && errorReports[0] == RaftNoLeader {
-				outPut = errorReports[0]
-				return
-			}
-			if len(errorReports) == 2 && errorReports[0] == UsedSizeNotEqualErr && errorReports[1] == RaftNoLeader {
-				outPut = errorReports[0]
-				return
-			}
-			for i, msg := range errorReports {
-				sb.WriteString(fmt.Sprintf("%-8v\n", fmt.Sprintf("error %v: %v", i+1, msg)))
-			}
+		if len(errorReports) == 0 {
+			return
 		}
-		outPut = sb.String()
+		for i, msg := range errorReports {
+			sb.WriteString(fmt.Sprintf("%-8v\n", fmt.Sprintf("error %v: %v", i+1, msg)))
+		}
+		output = sb.String()
 	}()
-	if partition, err = client.AdminAPI().GetDataPartition(volName, pid); err != nil || partition == nil {
-		errorReports = append(errorReports, fmt.Sprintf("get partition error, err:[%v]", err))
-		return
-	}
-	sb.WriteString(fmt.Sprintf("%v", formatDataPartitionInfoRow(partition)))
 	sort.Strings(partition.Hosts)
-	if len(partition.MissingNodes) > 0 || partition.Status == -1 || len(partition.Hosts) != int(partition.ReplicaNum) {
-		errorReports = append(errorReports, PartitionNotHealthyInMaster)
-	}
-	if !checkUsedSizeDiff(partition.Replicas, optDiffSizeThreshold, partition.PartitionID) {
+	if !isSizeEqual(partition, optDiffSizeThreshold) {
 		errorReports = append(errorReports, UsedSizeNotEqualErr)
 	}
+	if proto.IsDbBack {
+		return
+	}
+	if isBadStatus(partition) {
+		errorReports = append(errorReports, PartitionNotHealthyInMaster)
+	}
+	peerError := checkPeer(partition, sb)
+	if len(peerError) > 0 {
+		errorReports = append(errorReports, peerError...)
+	}
+	return
+}
+
+func isBadStatus(partition *proto.DataPartitionInfo) bool {
+	return len(partition.MissingNodes) > 0 || partition.Status == -1 || len(partition.Hosts) != int(partition.ReplicaNum)
+}
+
+func isSizeEqual(partition *proto.DataPartitionInfo, percent int) (isEqual bool) {
+	if len(partition.Replicas) < 2 {
+		return true
+	}
+	if percent < 1 {
+		percent = 1
+	}
+	if percent > 99 {
+		percent = 99
+	}
+	isEqual = true
+	var sizeArr []int
 	for _, r := range partition.Replicas {
-		var dnPartition *proto.DNDataPartitionInfo
-		var err1 error
+		sizeArr = append(sizeArr, int(r.Used))
+	}
+	sort.Ints(sizeArr)
+	diff := sizeArr[len(sizeArr)-1] - sizeArr[0]
+	if diff*100/percent > sizeArr[len(sizeArr)-1] {
+		isEqual = false
+	}
+	return
+}
+
+func checkPeer(partition *proto.DataPartitionInfo, sb *strings.Builder) (errors []string) {
+	var dnPartition *proto.DNDataPartitionInfo
+	var err error
+	var leaderStatus *proto.Status
+	errors = make([]string, 0)
+	for _, r := range partition.Replicas {
 		addr := strings.Split(r.Addr, ":")[0]
 		//check dataPartition by dataNode api
 		for i := 0; i < 3; i++ {
-			if dnPartition, err1 = client.NodeAPI().DataNodeGetPartition(addr, partition.PartitionID); err1 == nil {
+			if dnPartition, err = client.NodeAPI().DataNodeGetPartition(addr, partition.PartitionID); err == nil {
 				break
 			}
 			time.Sleep(1 * time.Second)
 		}
-		if err1 != nil || dnPartition == nil {
-			errorReports = append(errorReports, fmt.Sprintf("get partition[%v] failed in addr[%v], err:%v", partition.PartitionID, addr, err1))
+		if err != nil || dnPartition == nil {
+			errors = append(errors, fmt.Sprintf("get partition[%v] failed in addr[%v], err:%v", partition.PartitionID, addr, err))
 			continue
 		}
 		//RaftStatus Only exists on leader
@@ -592,23 +622,21 @@ func checkDataPartition(volName string, pid uint64, client *master.MasterClient,
 		sort.Strings(peerStrings)
 		sort.Strings(dnPartition.Replicas)
 		sort.Strings(learnerStrings)
-		sb.WriteString(fmt.Sprintf(partitionInfoTablePattern+"\n",
-			"", "", "", fmt.Sprintf("%-22v", r.Addr), fmt.Sprintf("%v/%v", len(dnPartition.Replicas), partition.ReplicaNum), "(hosts)"+strings.Join(dnPartition.Replicas, ",")))
-		sb.WriteString(fmt.Sprintf(partitionInfoTablePattern+"\n",
-			"", "", "", fmt.Sprintf("%-22v", ""), fmt.Sprintf("%v/%v", len(peerStrings), partition.ReplicaNum), "(peers)"+strings.Join(peerStrings, ",")))
+		sb.WriteString(fmt.Sprintf(partitionInfoTablePattern+"\n", "", "", "", fmt.Sprintf("%-22v", r.Addr), fmt.Sprintf("%v/%v", len(dnPartition.Replicas), partition.ReplicaNum), "(hosts)"+strings.Join(dnPartition.Replicas, ",")))
+		sb.WriteString(fmt.Sprintf(partitionInfoTablePattern+"\n", "", "", "", fmt.Sprintf("%-22v", ""), fmt.Sprintf("%v/%v", len(peerStrings), partition.ReplicaNum), "(peers)"+strings.Join(peerStrings, ",")))
 		if len(dnPartition.Learners) > 0 {
-			sb.WriteString(fmt.Sprintf(partitionInfoTablePattern+"\n",
-				"", "", "", fmt.Sprintf("%-22v", ""), fmt.Sprintf("%v/%v", len(learnerStrings), len(partition.Learners)), "(learners)"+strings.Join(learnerStrings, ",")))
+			sb.WriteString(fmt.Sprintf(partitionInfoTablePattern+"\n", "", "", "", fmt.Sprintf("%-22v", ""), fmt.Sprintf("%v/%v", len(learnerStrings), len(partition.Learners)), "(learners)"+strings.Join(learnerStrings, ",")))
 		}
 		if !isEqualStrings(peerStrings, dnPartition.Replicas) || !isEqualStrings(partition.Hosts, peerStrings) || len(dnPartition.Replicas) != int(partition.ReplicaNum) || len(partition.Learners) != len(dnPartition.Learners) {
-			errorReports = append(errorReports, fmt.Sprintf(ReplicaNotConsistent+" on host[%v]", r.Addr))
+			errors = append(errors, fmt.Sprintf(ReplicaNotConsistent+" on host[%v]", r.Addr))
 		}
 	}
 	if leaderStatus == nil || len(leaderStatus.Replicas) == 0 {
-		errorReports = append(errorReports, RaftNoLeader)
+		errors = append(errors, RaftNoLeader)
 	}
 	return
 }
+
 func newResetDataPartitionCmd(client *master.MasterClient) *cobra.Command {
 	var optManualResetAddrs string
 	var cmd = &cobra.Command{
@@ -880,30 +908,6 @@ func newDataPartitionDeleteReplicaCmd(client *master.MasterClient) *cobra.Comman
 		},
 	}
 	return cmd
-}
-
-func checkUsedSizeDiff(replicas []*proto.DataReplica, percent int, id uint64) (isEqual bool) {
-	if len(replicas) < 2 {
-		return true
-	}
-	if percent < 1 {
-		percent = 1
-	}
-	if percent > 99 {
-		percent = 99
-	}
-	isEqual = true
-	var sizeArr []int
-	for _, r := range replicas {
-		sizeArr = append(sizeArr, int(r.Used))
-	}
-	sort.Ints(sizeArr)
-	diff := sizeArr[len(sizeArr)-1] - sizeArr[0]
-	if diff*100/percent > sizeArr[len(sizeArr)-1] {
-		isEqual = false
-		log.LogDebugf("pid: %v diff:%v is larger than 1 percent, sizeArray:%v \n", id, diff, sizeArr)
-	}
-	return
 }
 
 func newDataPartitionAddLearnerCmd(client *master.MasterClient) *cobra.Command {
