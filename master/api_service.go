@@ -2095,6 +2095,7 @@ func (m *Server) markDeleteVol(w http.ResponseWriter, r *http.Request) {
 		m.cluster.deleteVolMutex.Lock()
 		m.cluster.delayDeleteVolsInfo = append(m.cluster.delayDeleteVolsInfo, &delayDeleteVolInfo{volName: name, authKey: authKey, execTime: vol.deleteExecTime, user: m.user})
 		m.cluster.deleteVolMutex.Unlock()
+		log.LogDebugf("action[markDeleteVol] delayDeleteVolsInfo[%v]", m.cluster.delayDeleteVolsInfo)
 		msg = fmt.Sprintf("delete vol: forbid vol[%v] successfully,from[%v]", name, r.RemoteAddr)
 		log.LogWarn(msg)
 		sendOkReply(w, r, newSuccessHTTPReply(msg))
