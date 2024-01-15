@@ -481,27 +481,35 @@ func (c *Cluster) scheduleToCheckDelayDeleteVols() {
 					continue
 				}
 				c.deleteVolMutex.Lock()
-				currentDeleteVol := c.delayDeleteVolsInfo[0]
-				if currentDeleteVol.execTime.Sub(time.Now()) > 0 {
-					c.deleteVolMutex.Unlock()
-					continue
-				}
-				go func() {
-					if err := currentDeleteVol.user.deleteVolPolicy(currentDeleteVol.volName); err != nil {
-						msg := fmt.Sprintf("delete vol[%v] failed: err:[%v]", currentDeleteVol.volName, err)
-						log.LogError(msg)
-						return
+				for index := 0; index < len(c.delayDeleteVolsInfo); index++ {
+					currentDeleteVol := c.delayDeleteVolsInfo[index]
+					log.LogDebugf("action[scheduleToCheckDelayDeleteVols] currentDeleteVol[%v]", currentDeleteVol)
+					if currentDeleteVol.execTime.Sub(time.Now()) > 0 {
+						continue
 					}
-					msg := fmt.Sprintf("delete vol[%v] successfully", currentDeleteVol.volName)
-					log.LogWarn(msg)
-				}()
-				if len(c.delayDeleteVolsInfo) == 1 {
-					c.delayDeleteVolsInfo = make([]*delayDeleteVolInfo, 0)
-					c.deleteVolMutex.Unlock()
-					continue
+					go func() {
+						if err := currentDeleteVol.user.deleteVolPolicy(currentDeleteVol.volName); err != nil {
+							msg := fmt.Sprintf("delete vol[%v] failed: err:[%v]", currentDeleteVol.volName, err)
+							log.LogError(msg)
+							return
+						}
+						msg := fmt.Sprintf("delete vol[%v] successfully", currentDeleteVol.volName)
+						log.LogWarn(msg)
+					}()
+					if len(c.delayDeleteVolsInfo) == 1 {
+						c.delayDeleteVolsInfo = make([]*delayDeleteVolInfo, 0)
+						continue
+					}
+					if index == 0 {
+						c.delayDeleteVolsInfo = c.delayDeleteVolsInfo[index+1:]
+					} else if index == len(c.delayDeleteVolsInfo)-1 {
+						c.delayDeleteVolsInfo = c.delayDeleteVolsInfo[:index]
+					} else {
+						c.delayDeleteVolsInfo = append(c.delayDeleteVolsInfo[:index], c.delayDeleteVolsInfo[index+1:]...)
+					}
 				}
-				c.delayDeleteVolsInfo = c.delayDeleteVolsInfo[1:]
 				c.deleteVolMutex.Unlock()
+
 			case <-c.stopc:
 				ticker.Stop()
 				return

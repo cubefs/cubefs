@@ -1200,6 +1200,7 @@ func (vol *Vol) checkStatus(c *Cluster) {
 	if vol.Status != proto.VolStatusMarkDelete {
 		return
 	}
+
 	if vol.Forbidden && len(c.delayDeleteVolsInfo) != 0 {
 		var value *delayDeleteVolInfo
 		c.deleteVolMutex.RLock()
