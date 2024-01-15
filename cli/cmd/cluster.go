@@ -28,7 +28,7 @@ const (
 	cmdClusterShort = "Manage cluster components"
 )
 
-func (cmd *CubeFSCmd) newClusterCmd(client *master.MasterClient) *cobra.Command {
+func newClusterCmd(client *master.MasterClient) *cobra.Command {
 	clusterCmd := &cobra.Command{
 		Use:   cmdClusterUse,
 		Short: cmdClusterShort,

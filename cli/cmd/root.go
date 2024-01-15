@@ -25,10 +25,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-const (
-	cmdRootShort = "CubeFS Command Line Interface (CLI)"
-)
-
 type CubeFSCmd struct {
 	CFSCmd *cobra.Command
 }
@@ -38,7 +34,7 @@ func NewRootCmd(client *master.MasterClient) *CubeFSCmd {
 	cmd := &CubeFSCmd{
 		CFSCmd: &cobra.Command{
 			Use:   path.Base(os.Args[0]),
-			Short: cmdRootShort,
+			Short: "CubeFS Command Line Interface (CLI)",
 			Args:  cobra.MinimumNArgs(0),
 			Run: func(cmd *cobra.Command, args []string) {
 				if optShowVersion {
@@ -62,7 +58,6 @@ func NewRootCmd(client *master.MasterClient) *CubeFSCmd {
 			SilenceUsage:  true,
 		},
 	}
-
 	cmd.CFSCmd.Flags().BoolVarP(&optShowVersion, "version", "v", false, "Show version information")
 
 	// TODO: delete compatibility cmd at 49e62e794d7c1000c9fb09bd75565112ecd5c5e1.
@@ -70,7 +65,7 @@ func NewRootCmd(client *master.MasterClient) *CubeFSCmd {
 	_ = newCompatibilityCmd()
 
 	cmd.CFSCmd.AddCommand(
-		cmd.newClusterCmd(client),
+		newClusterCmd(client),
 		newVolCmd(client),
 		newUserCmd(client),
 		newMetaNodeCmd(client),
@@ -89,9 +84,7 @@ func NewRootCmd(client *master.MasterClient) *CubeFSCmd {
 	return cmd
 }
 
-func stdout(format string, a ...interface{}) {
-	_, _ = fmt.Fprintf(os.Stdout, format, a...)
-}
+var stdout = stdoutf
 
 func stdoutln(a ...interface{}) {
 	fmt.Fprintln(os.Stdout, a...)
