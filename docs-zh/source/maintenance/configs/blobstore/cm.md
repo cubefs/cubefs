@@ -86,7 +86,8 @@ Clustermgr的配置是基于[公有配置](./base.md)，以下配置说明主要
     "volume_slice_map_num": "cm的卷管理用的concurrentMap，用于提高卷读写的性能,这个值决定将所有卷分到所少个map里面管理",
     "apply_concurrency": "应用wal日志并发",
     "min_allocable_volume_count": "最小可分配的卷数",
-    "allocatable_disk_load_threshold": "卷可分配的对应磁盘的负载"
+    "allocatable_disk_load_threshold": "卷可分配的对应磁盘的负载",
+    "allocatable_size": "卷可分配的最低容量阈值"
   },
   "disk_mgr_config": {
     "refresh_interval_s": "磁盘刷新时间间隔,用于刷新当前cluster的磁盘状态",
