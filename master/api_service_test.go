@@ -121,7 +121,7 @@ func createDefaultMasterServerForTest() *Server {
 		"walDir":"/tmp/cubefs/raft",
 		"storeDir":"/tmp/cubefs/rocksdbstore",
 		"clusterName":"cubefs",
-		"volDeletionDelayTime": -1
+		"volDeletionDelayTime": 0
 	}`
 
 	testServer, err := createMasterServer(cfgJSON)
