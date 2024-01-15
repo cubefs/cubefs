@@ -87,7 +87,8 @@ Clustermgr configuration is based on the [public configuration](./base.md), and 
     "volume_slice_map_num": "ConcurrentMap used for volume management in cm, used to improve the performance of volume read and write. This value determines how many maps all volumes are divided into for management",
     "apply_concurrency": "Concurrency of applying wal logs",
     "min_allocable_volume_count": "Minimum number of allocatable volumes",
-    "allocatable_disk_load_threshold": "Load of the corresponding disk that the volume can be allocated to"
+    "allocatable_disk_load_threshold": "Load of the corresponding disk that the volume can be allocated to",
+    "allocatable_size": "Minimum capacity threshold a volume can allocate"
   },
   "disk_mgr_config": {
     "refresh_interval_s": "Interval for refreshing disk status of the current cluster",
