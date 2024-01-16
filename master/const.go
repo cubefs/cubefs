@@ -23,25 +23,26 @@ import (
 
 // Keys in the request
 const (
-	addrKey               = "addr"
-	diskPathKey           = "disk"
-	nameKey               = "name"
-	idKey                 = "id"
-	countKey              = "count"
-	startKey              = "start"
-	enableKey             = "enable"
-	thresholdKey          = "threshold"
-	dirQuotaKey           = "dirQuota"
-	dirLimitKey           = "dirSizeLimit"
-	dataPartitionSizeKey  = "size"
-	metaPartitionCountKey = "mpCount"
-	volCapacityKey        = "capacity"
-	volDeleteLockTimeKey  = "deleteLockTime"
-	volTypeKey            = "volType"
-	cacheRuleKey          = "cacheRuleKey"
-	emptyCacheRuleKey     = "emptyCacheRule"
-	forbiddenKey          = "forbidden"
-	deleteVolKey          = "delete"
+	addrKey                 = "addr"
+	diskPathKey             = "disk"
+	nameKey                 = "name"
+	idKey                   = "id"
+	countKey                = "count"
+	startKey                = "start"
+	enableKey               = "enable"
+	thresholdKey            = "threshold"
+	volDeletionDelayTimeKey = "volDeletionDelayTime"
+	dirQuotaKey             = "dirQuota"
+	dirLimitKey             = "dirSizeLimit"
+	dataPartitionSizeKey    = "size"
+	metaPartitionCountKey   = "mpCount"
+	volCapacityKey          = "capacity"
+	volDeleteLockTimeKey    = "deleteLockTime"
+	volTypeKey              = "volType"
+	cacheRuleKey            = "cacheRuleKey"
+	emptyCacheRuleKey       = "emptyCacheRule"
+	forbiddenKey            = "forbidden"
+	deleteVolKey            = "delete"
 
 	forceDelVolKey             = "forceDelVol"
 	ebsBlkSizeKey              = "ebsBlkSize"
@@ -184,6 +185,7 @@ const (
 	defaultClientTriggerHitCnt                   = 1
 	defaultClientReqPeriodSeconds                = 1
 	defaultMaxQuotaNumPerVol                     = 100
+	defaultVolDelayDeleteTime                    = 48
 )
 
 const (
