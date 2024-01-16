@@ -551,6 +551,9 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 		Path(proto.AdminSetMetaNodeThreshold).
 		HandlerFunc(m.setMetaNodeThreshold)
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminSetMasterVolDeletionDelayTime).
+		HandlerFunc(m.setMasterVolDeletionDelayTime)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.AdminAddDataReplica).
 		HandlerFunc(m.addDataReplica)
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
