@@ -580,6 +580,15 @@ func (api *AdminAPI) SetMetaNodeThreshold(threshold float64) (err error) {
 	return
 }
 
+func (api *AdminAPI) SetMasterVolDeletionDelayTime(volDeletionDelayTime int) (err error) {
+	var request = newAPIRequest(http.MethodGet, proto.AdminSetMasterVolDeletionDelayTime)
+	request.addParam("volDeletionDelayTime", strconv.FormatInt(int64(volDeletionDelayTime), 10))
+	if _, err = api.mc.serveRequest(request); err != nil {
+		return
+	}
+	return
+}
+
 func (api *AdminAPI) SetClusterParas(batchCount, markDeleteRate, deleteWorkerSleepMs, autoRepairRate, loadFactor, maxDpCntLimit string) (err error) {
 	var request = newAPIRequest(http.MethodGet, proto.AdminSetNodeInfo)
 	request.addParam("batchCount", batchCount)
