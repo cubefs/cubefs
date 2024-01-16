@@ -52,7 +52,6 @@ const (
 
 	cfgVolForceDeletion           = "volForceDeletion"
 	cfgVolDeletionDentryThreshold = "volDeletionDentryThreshold"
-	cfgVolDeletionDelayTime       = "volDeletionDelayTime"
 )
 
 //default value
@@ -164,6 +163,7 @@ func newClusterConfig() (cfg *clusterConfig) {
 	cfg.DirChildrenNumLimit = pt.DefaultDirChildrenNumLimit
 	cfg.MetaPartitionInodeIdStep = defaultMetaPartitionInodeIDStep
 	cfg.MaxQuotaNumPerVol = defaultMaxQuotaNumPerVol
+	cfg.volDelayDeleteTime = defaultVolDelayDeleteTime
 	return
 }
 

@@ -3411,6 +3411,18 @@ func (c *Cluster) setMetaNodeThreshold(threshold float32) (err error) {
 	return
 }
 
+func (c *Cluster) setMasterVolDeletionDelayTime(volDeletionDelayTime int) (err error) {
+	oldVolDeletionDelayTime := c.cfg.volDelayDeleteTime
+	c.cfg.volDelayDeleteTime = int64(volDeletionDelayTime)
+	if err = c.syncPutCluster(); err != nil {
+		log.LogErrorf("action[setMasterVolDeletionDelayTime] err[%v]", err)
+		c.cfg.volDelayDeleteTime = oldVolDeletionDelayTime
+		err = proto.ErrPersistenceByRaft
+		return
+	}
+	return
+}
+
 func (c *Cluster) setMetaNodeDeleteBatchCount(val uint64) (err error) {
 	oldVal := atomic.LoadUint64(&c.cfg.MetaNodeDeleteBatchCount)
 	atomic.StoreUint64(&c.cfg.MetaNodeDeleteBatchCount, val)

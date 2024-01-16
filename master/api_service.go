@@ -155,6 +155,27 @@ func (m *Server) setMetaNodeThreshold(w http.ResponseWriter, r *http.Request) {
 	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("set threshold to %v successfully", threshold)))
 }
 
+func (m *Server) setMasterVolDeletionDelayTime(w http.ResponseWriter, r *http.Request) {
+	var (
+		volDeletionDelayTime int
+		err                  error
+	)
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminSetMasterVolDeletionDelayTime))
+	defer func() {
+		doStatAndMetric(proto.AdminSetMasterVolDeletionDelayTime, metric, err, nil)
+	}()
+
+	if volDeletionDelayTime, err = parseAndExtractVolDeletionDelayTime(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	if err = m.cluster.setMasterVolDeletionDelayTime(volDeletionDelayTime); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("set volDeletionDelayTime to %v successfully", volDeletionDelayTime)))
+}
+
 // Turn on or off the automatic allocation of the data partitions.
 // If DisableAutoAllocate == off, then we WILL NOT automatically allocate new data partitions for the volume when:
 //  1. the used space is below the max capacity,
@@ -566,6 +587,7 @@ func (m *Server) getCluster(w http.ResponseWriter, r *http.Request) {
 		MaxDataPartitionID:   m.cluster.idAlloc.dataPartitionID,
 		MaxMetaNodeID:        m.cluster.idAlloc.commonID,
 		MaxMetaPartitionID:   m.cluster.idAlloc.metaPartitionID,
+		VolDeletionDelayTime: m.cluster.cfg.volDelayDeleteTime,
 		MasterNodes:          make([]proto.NodeView, 0),
 		MetaNodes:            make([]proto.NodeView, 0),
 		DataNodes:            make([]proto.NodeView, 0),
