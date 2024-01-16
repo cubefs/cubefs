@@ -52,7 +52,6 @@ const (
 
 	cfgVolForceDeletion           = "volForceDeletion"
 	cfgVolDeletionDentryThreshold = "volDeletionDentryThreshold"
-	cfgVolDeletionDelayTime       = "volDeletionDelayTime"
 )
 
 // default value
@@ -173,6 +172,7 @@ func newClusterConfig() (cfg *clusterConfig) {
 	cfg.MaxQuotaNumPerVol = defaultMaxQuotaNumPerVol
 	cfg.IntervalToScanS3Expiration = defaultIntervalToScanS3Expiration
 	cfg.MaxConcurrentLcNodes = defaultMaxConcurrentLcNodes
+	cfg.volDelayDeleteTime = defaultVolDelayDeleteTime
 	return
 }
 
