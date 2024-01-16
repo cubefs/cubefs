@@ -88,7 +88,7 @@ Clustermgr configuration is based on the [public configuration](./base.md), and 
     "apply_concurrency": "Concurrency of applying wal logs",
     "min_allocable_volume_count": "Minimum number of allocatable volumes",
     "allocatable_disk_load_threshold": "Load of the corresponding disk that the volume can be allocated to",
-    "allocatable_size": "Minimum capacity threshold a volume can allocate"
+    "allocatable_size": "Minimum capacity threshold a volume can allocate, default 10G, if the volume capacity is small adjust it to a lower value such as 10MB."
   },
   "disk_mgr_config": {
     "refresh_interval_s": "Interval for refreshing disk status of the current cluster",
