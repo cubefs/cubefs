@@ -337,7 +337,7 @@ func newVolValue(vol *Vol) (vv *volValue) {
 		Forbidden:             vol.Forbidden,
 		DisableAuditLog:       vol.DisableAuditLog,
 		AuthKey:               vol.authKey,
-		DeleteExecTime:        vol.deleteExecTime,
+		DeleteExecTime:        vol.DeleteExecTime,
 		User:                  vol.user,
 	}
 
@@ -1328,7 +1328,7 @@ func (c *Cluster) loadVols() (err error) {
 		c.putVol(vol)
 		log.LogInfof("action[loadVols],vol[%v]", vol.Name)
 		if vol.Forbidden && vol.Status == markDelete {
-			c.delayDeleteVolsInfo = append(c.delayDeleteVolsInfo, &delayDeleteVolInfo{volName: vol.Name, authKey: vol.authKey, execTime: vol.deleteExecTime, user: vol.user})
+			c.delayDeleteVolsInfo = append(c.delayDeleteVolsInfo, &delayDeleteVolInfo{volName: vol.Name, authKey: vol.authKey, execTime: vol.DeleteExecTime, user: vol.user})
 			log.LogInfof("action[loadDelayDeleteVols],vol[%v]", vol.Name)
 		}
 	}

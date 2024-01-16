@@ -16,6 +16,7 @@ package proto
 
 import (
 	"github.com/cubefs/cubefs/util"
+	"time"
 )
 
 // api
@@ -877,6 +878,7 @@ type SimpleVolView struct {
 	TrashInterval    int64
 	Forbidden        bool
 	DisableAuditLog  bool
+	DeleteExecTime   time.Time
 }
 
 type NodeSetInfo struct {
