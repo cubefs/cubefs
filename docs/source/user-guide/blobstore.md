@@ -42,7 +42,7 @@ Due to the interdependence of the modules, the deployment should be carried out 
 
 3.  **Language Environment**
 
-    > [Go](https://go.dev/) (1.16.x)
+    > [Go](https://go.dev/) (1.17.x)
 
 ### Install Clustermgr
 
@@ -96,12 +96,21 @@ nohup ./clustermgr -f clustermgr2.conf
                      {"id":3, "host":"127.0.0.1:10112", "learner": false, "node_host":"127.0.0.1:10000"}]
          }
      },
+     "volume_mgr_config": {
+         "allocatable_size": 10485760
+     },
      "disk_mgr_config": {
          "refresh_interval_s": 10,
          "rack_aware":false,
          "host_aware":false
      }
 }
+```
+
+Set the initial value of background task according to the mentioned in [ClusterMgr Manage](../maintenance/admin-api/blobstore/cm.md)
+```bash
+#example balance
+$> curl -X POST http://127.0.0.1:9998/config/set -d '{"key":"balance","value":"false"}' --header 'Content-Type: application/json'
 ```
 
 ### Install Proxy
@@ -413,7 +422,7 @@ The reference configuration is as follows: `clustermgr-learner.conf`:
 
 ## Upload Testing
 
-> Refer to [Quick Use](../tools/cli.md) for details.
+> Refer to [Quick Use](../quick-start/verify.md) for details.
 
 ## Modifying Master Configuration
 

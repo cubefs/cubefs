@@ -87,7 +87,7 @@ Clustermgr的配置是基于[公有配置](./base.md)，以下配置说明主要
     "apply_concurrency": "应用wal日志并发",
     "min_allocable_volume_count": "最小可分配的卷数",
     "allocatable_disk_load_threshold": "卷可分配的对应磁盘的负载",
-    "allocatable_size": "卷可分配的最低容量阈值"
+    "allocatable_size": "卷可分配的最低容量阈值, 默认10G，如果卷容量较小建议调整到更低的一个值如10MB"
   },
   "disk_mgr_config": {
     "refresh_interval_s": "磁盘刷新时间间隔,用于刷新当前cluster的磁盘状态",

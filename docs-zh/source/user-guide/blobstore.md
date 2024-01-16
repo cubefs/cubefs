@@ -42,7 +42,7 @@ $ make blobstore
 
 3.  **语言环境**
 
-    > [Go](https://go.dev/) (1.16.x)
+    > [Go](https://go.dev/) (1.17.x)
 
 ### 启动Clustermgr
 
@@ -96,12 +96,20 @@ nohup ./clustermgr -f clustermgr2.conf
                      {"id":3, "host":"127.0.0.1:10112", "learner": false, "node_host":"127.0.0.1:10000"}]
          }
      },
+     "volume_mgr_config": {
+       "allocatable_size": 10485760
+     },
      "disk_mgr_config": {
          "refresh_interval_s": 10,
          "rack_aware":false,
          "host_aware":false
      }
 }
+```
+启动成功后，参照[ClusterMgr管理界面](../maintenance/admin-api/blobstore/cm.md)中提及的后台任务类型，设置初始值
+```bash
+#示例
+$> curl -X POST http://127.0.0.1:9998/config/set -d '{"key":"balance","value":"false"}' --header 'Content-Type: application/json'
 ```
 
 ### 启动Proxy
@@ -410,7 +418,7 @@ learner节点一般用于数据备份，故障恢复
 
 ## 上传测试
 
-> 可参考[CLI使用](../deploy/verify.md)
+> 可参考[CLI使用](../quick-start/verify.md)
 
 ## 修改Master配置支持纠删码
 
