@@ -20,7 +20,6 @@ import (
 	"math/rand"
 	"sort"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/cubefs/cubefs/blobstore/common/codemode"
@@ -53,11 +52,10 @@ type Shard struct {
 }
 
 type idleVolumes struct {
-	m                 map[proto.Vid]idleItem
-	allocatableShard  []*Shard
-	notAllocatable    *list.List
-	shardNum          int
-	allAllocatableNum int64
+	m                map[proto.Vid]idleItem
+	allocatableShard []*Shard
+	notAllocatable   *list.List
+	shardNum         int
 	sync.RWMutex
 }
 
@@ -75,7 +73,9 @@ func (i *idleVolumes) getOneShardIdles(shardId int) []*volume {
 }
 
 func (i *idleVolumes) statAllocatableNum() int {
-	return int(atomic.LoadInt64(&i.allAllocatableNum))
+	i.RLock()
+	defer i.RUnlock()
+	return len(i.m) - i.notAllocatable.Len()
 }
 
 func (i *idleVolumes) addAllocatable(vol *volume) {
@@ -83,11 +83,9 @@ func (i *idleVolumes) addAllocatable(vol *volume) {
 	if item, ok := i.m[vol.vid]; ok {
 		item.head.Remove(item.element)
 	}
-
 	idx := int(vol.vid) % i.shardNum
 	e := i.allocatableShard[idx].allocatable.PushFront(vol)
 	i.m[vol.vid] = idleItem{element: e, head: i.allocatableShard[idx].allocatable, shardIdx: idx}
-	atomic.AddInt64(&i.allAllocatableNum, 1)
 	i.Unlock()
 }
 
@@ -103,37 +101,38 @@ func (i *idleVolumes) addNotAllocatable(vol *volume) {
 
 func (i *idleVolumes) delete(vid proto.Vid) {
 	i.Lock()
-	var curShardLen int
-	if item, ok := i.m[vid]; ok {
-		curShardIdx := item.shardIdx
-		item.head.Remove(item.element)
-		delete(i.m, vid)
+	defer i.Unlock()
+	if _, ok := i.m[vid]; !ok {
+		return
+	}
+	// remove volume from allocatable or not allocatable list
+	item := i.m[vid]
+	item.head.Remove(item.element)
+	delete(i.m, vid)
 
-		atomic.AddInt64(&i.allAllocatableNum, -1)
-		curShardLen = i.allocatableShard[curShardIdx].allocatable.Len()
-		averageShardLen := int(atomic.LoadInt64(&i.allAllocatableNum)) / i.shardNum
-		// If the Shard volumeLen < average, there must be another Shard volumeLen > average,  guarantee uniformity of each Shard, The time complexity is O(i.shardNum)
-		if float64(curShardLen) < shardBalanceThreshold*float64(averageShardLen) {
-			for j, idx := 0, curShardIdx+1; j < i.shardNum; j++ {
-				if idx >= i.shardNum {
-					idx = idx % i.shardNum
-				}
-				if i.allocatableShard[idx].allocatable.Len() > averageShardLen {
-					// move from
-					eFrom := i.allocatableShard[idx].allocatable
-					e := eFrom.Front()
-					eFrom.Remove(e)
-					// move to
-					eTo := i.allocatableShard[curShardIdx].allocatable
-					i.m[e.Value.(*volume).vid] = idleItem{element: e, head: eTo, shardIdx: curShardIdx}
-					eTo.PushFront(e)
-					break
-				}
-				idx++
+	curShardIdx := item.shardIdx
+	curShardLen := i.allocatableShard[curShardIdx].allocatable.Len()
+	averageShardLen := (len(i.m) - i.notAllocatable.Len()) / i.shardNum
+	// If the Shard volumeLen < average, there must be another Shard volumeLen > average
+	if float64(curShardLen) < shardBalanceThreshold*float64(averageShardLen) {
+		for j, idx := 0, curShardIdx+1; j < i.shardNum; j++ {
+			if idx >= i.shardNum {
+				idx = idx % i.shardNum
 			}
+			if i.allocatableShard[idx].allocatable.Len() > averageShardLen {
+				// move from
+				eFrom := i.allocatableShard[idx].allocatable
+				e := eFrom.Front()
+				eFrom.Remove(e)
+				// move to
+				eTo := i.allocatableShard[curShardIdx].allocatable
+				i.m[e.Value.(*volume).vid] = idleItem{element: e, head: eTo, shardIdx: curShardIdx}
+				eTo.PushFront(e.Value.(*volume))
+				break
+			}
+			idx++
 		}
 	}
-	i.Unlock()
 }
 
 func (i *idleVolumes) get(vid proto.Vid) (vol *volume) {
@@ -199,11 +198,10 @@ func newVolumeAllocator(cfg allocConfig) *volumeAllocator {
 			allocatableShard[i] = &Shard{allocatable: list.New()}
 		}
 		idles[modeConf.mode] = &idleVolumes{
-			m:                 make(map[proto.Vid]idleItem),
-			allocatableShard:  allocatableShard,
-			shardNum:          cfg.shardNum,
-			allAllocatableNum: 0,
-			notAllocatable:    list.New(),
+			m:                make(map[proto.Vid]idleItem),
+			allocatableShard: allocatableShard,
+			shardNum:         cfg.shardNum,
+			notAllocatable:   list.New(),
 		}
 	}
 	return &volumeAllocator{
