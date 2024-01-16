@@ -61,6 +61,7 @@ type clusterValue struct {
 	DpRepairTimeOut             uint64
 	EnableAutoDecommissionDisk  bool
 	DecommissionDiskFactor      float64
+	VolDeletionDelayTime        int64
 }
 
 func newClusterValue(c *Cluster) (cv *clusterValue) {
@@ -91,6 +92,7 @@ func newClusterValue(c *Cluster) (cv *clusterValue) {
 		DpRepairTimeOut:             c.cfg.DpRepairTimeOut,
 		EnableAutoDecommissionDisk:  c.EnableAutoDecommissionDisk,
 		DecommissionDiskFactor:      c.DecommissionDiskFactor,
+		VolDeletionDelayTime:        c.cfg.volDelayDeleteTime,
 	}
 	return cv
 }
@@ -1134,6 +1136,7 @@ func (c *Cluster) loadClusterValue() (err error) {
 		c.DecommissionLimit = cv.DecommissionLimit
 		c.EnableAutoDecommissionDisk = cv.EnableAutoDecommissionDisk
 		c.DecommissionDiskFactor = cv.DecommissionDiskFactor
+		c.cfg.volDelayDeleteTime = cv.VolDeletionDelayTime
 		if c.cfg.QosMasterAcceptLimit < QosMasterAcceptCnt {
 			c.cfg.QosMasterAcceptLimit = QosMasterAcceptCnt
 		}
