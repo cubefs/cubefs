@@ -1152,6 +1152,21 @@ func parseAndExtractThreshold(r *http.Request) (threshold float64, err error) {
 	return
 }
 
+func parseAndExtractVolDeletionDelayTime(r *http.Request) (volDeletionDelayTime int, err error) {
+	if err = r.ParseForm(); err != nil {
+		return
+	}
+	var value string
+	if value = r.FormValue(volDeletionDelayTimeKey); value == "" {
+		err = keyNotFound(volDeletionDelayTimeKey)
+		return
+	}
+	if volDeletionDelayTime, err = strconv.Atoi(value); err != nil {
+		return
+	}
+	return
+}
+
 func parseAndExtractSetNodeSetInfoParams(r *http.Request) (params map[string]interface{}, err error) {
 	if err = r.ParseForm(); err != nil {
 		return

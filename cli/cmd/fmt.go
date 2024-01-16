@@ -68,6 +68,7 @@ func formatClusterView(cv *proto.ClusterView, cn *proto.ClusterNodeInfo, cp *pro
 	sb.WriteString(fmt.Sprintf("  Allow Mp Decomm    : %v\n", formatEnabledDisabled(!cv.ForbidMpDecommission)))
 	sb.WriteString(fmt.Sprintf("  EbsAddr            : %v\n", cp.EbsAddr))
 	sb.WriteString(fmt.Sprintf("  LoadFactor         : %v\n", cn.LoadFactor))
+	sb.WriteString(fmt.Sprintf("  volDeletionDelayTime : %v\n", cv.VolDeletionDelayTime))
 	return sb.String()
 }
 
@@ -167,7 +168,9 @@ func formatSimpleVolView(svv *proto.SimpleVolView) string {
 	sb.WriteString(fmt.Sprintf("  Forbidden                       : %v\n", svv.Forbidden))
 	sb.WriteString(fmt.Sprintf("  EnableAuditLog                  : %v\n", svv.EnableAuditLog))
 	sb.WriteString(fmt.Sprintf("  Quota                           : %v\n", formatEnabledDisabled(svv.EnableQuota)))
-	sb.WriteString(fmt.Sprintf("  DeleteDelayTime                 : %v\n", svv.DeleteExecTime.Sub(time.Now())))
+	if svv.Forbidden && svv.Status == 1 {
+		sb.WriteString(fmt.Sprintf("  DeleteDelayTime                 : %v\n", svv.DeleteExecTime.Sub(time.Now())))
+	}
 	if svv.VolType == 1 {
 		sb.WriteString(fmt.Sprintf("  ObjBlockSize         : %v byte\n", svv.ObjBlockSize))
 		sb.WriteString(fmt.Sprintf("  CacheCapacity        : %v G\n", svv.CacheCapacity))

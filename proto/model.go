@@ -121,6 +121,7 @@ type ClusterView struct {
 	MaxDataPartitionID   uint64
 	MaxMetaNodeID        uint64
 	MaxMetaPartitionID   uint64
+	VolDeletionDelayTime int64
 	DataNodeStatInfo     *NodeStatInfo
 	MetaNodeStatInfo     *NodeStatInfo
 	VolStatInfo          []*VolStatInfo
