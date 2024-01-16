@@ -116,7 +116,7 @@ type Vol struct {
 	EnableAuditLog          bool
 	preloadCapacity         uint64
 	authKey                 string
-	deleteExecTime          time.Time
+	DeleteExecTime          time.Time
 	user                    *User
 }
 
@@ -210,7 +210,7 @@ func newVolFromVolValue(vv *volValue) (vol *Vol) {
 	vol.Forbidden = vv.Forbidden
 	vol.EnableAuditLog = vv.EnableAuditLog
 	vol.authKey = vv.AuthKey
-	vol.deleteExecTime = vv.DeleteExecTime
+	vol.DeleteExecTime = vv.DeleteExecTime
 	vol.user = vv.User
 	return vol
 }

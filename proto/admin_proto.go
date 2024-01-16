@@ -1086,6 +1086,7 @@ type SimpleVolView struct {
 	LatestVer      uint64
 	Forbidden      bool
 	EnableAuditLog bool
+	DeleteExecTime time.Time
 }
 
 type NodeSetInfo struct {
