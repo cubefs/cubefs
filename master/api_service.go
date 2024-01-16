@@ -1838,13 +1838,13 @@ func (m *Server) markDeleteVol(w http.ResponseWriter, r *http.Request) {
 		oldForbiden := vol.Forbidden
 		vol.Forbidden = true
 		vol.authKey = authKey
-		vol.deleteExecTime = time.Now().Add(time.Duration(m.config.volDelayDeleteTime) * time.Hour)
+		vol.DeleteExecTime = time.Now().Add(time.Duration(m.config.volDelayDeleteTime) * time.Hour)
 		vol.user = m.user
 		defer func() {
 			if err != nil {
 				vol.Forbidden = oldForbiden
 				vol.authKey = ""
-				vol.deleteExecTime = time.Time{}
+				vol.DeleteExecTime = time.Time{}
 				vol.user = nil
 			}
 		}()
@@ -1855,7 +1855,7 @@ func (m *Server) markDeleteVol(w http.ResponseWriter, r *http.Request) {
 		vol.setDpForbid()
 		vol.setMpForbid()
 		m.cluster.deleteVolMutex.Lock()
-		m.cluster.delayDeleteVolsInfo = append(m.cluster.delayDeleteVolsInfo, &delayDeleteVolInfo{volName: name, authKey: authKey, execTime: vol.deleteExecTime, user: m.user})
+		m.cluster.delayDeleteVolsInfo = append(m.cluster.delayDeleteVolsInfo, &delayDeleteVolInfo{volName: name, authKey: authKey, execTime: vol.DeleteExecTime, user: m.user})
 		m.cluster.deleteVolMutex.Unlock()
 		log.LogDebugf("action[markDeleteVol] delayDeleteVolsInfo[%v]", m.cluster.delayDeleteVolsInfo)
 		msg = fmt.Sprintf("delete vol: forbid vol[%v] successfully,from[%v]", name, r.RemoteAddr)
@@ -1887,17 +1887,17 @@ func (m *Server) markDeleteVol(w http.ResponseWriter, r *http.Request) {
 
 	oldForbiden := vol.Forbidden
 	oldAuthKey := vol.authKey
-	oldDeleteExecTime := vol.deleteExecTime
+	oldDeleteExecTime := vol.DeleteExecTime
 	oldUser := vol.user
 	vol.Forbidden = false
 	vol.authKey = ""
-	vol.deleteExecTime = time.Time{}
+	vol.DeleteExecTime = time.Time{}
 	vol.user = nil
 	defer func() {
 		if err != nil {
 			vol.Forbidden = oldForbiden
 			vol.authKey = oldAuthKey
-			vol.deleteExecTime = oldDeleteExecTime
+			vol.DeleteExecTime = oldDeleteExecTime
 			vol.user = oldUser
 		}
 	}()
@@ -2387,6 +2387,7 @@ func newSimpleView(vol *Vol) (view *proto.SimpleVolView) {
 		TrashInterval:           vol.TrashInterval,
 		Forbidden:               vol.Forbidden,
 		DisableAuditLog:         vol.DisableAuditLog,
+		DeleteExecTime:          vol.DeleteExecTime,
 	}
 
 	vol.uidSpaceManager.RLock()
