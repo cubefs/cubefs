@@ -40,17 +40,18 @@ func formatClusterView(cv *proto.ClusterView, cn *proto.ClusterNodeInfo, cp *pro
 	for _, master := range cv.MasterNodes {
 		sb.WriteString(fmt.Sprintf("  Master-%d           : %v\n", master.ID, master.Addr))
 	}
-	sb.WriteString(fmt.Sprintf("  Auto allocate      : %v\n", formatEnabledDisabled(!cv.DisableAutoAlloc)))
-	sb.WriteString(fmt.Sprintf("  MetaNode count     : %v\n", len(cv.MetaNodes)))
-	sb.WriteString(fmt.Sprintf("  MetaNode used      : %v GB\n", cv.MetaNodeStatInfo.UsedGB))
-	sb.WriteString(fmt.Sprintf("  MetaNode total     : %v GB\n", cv.MetaNodeStatInfo.TotalGB))
-	sb.WriteString(fmt.Sprintf("  DataNode count     : %v\n", len(cv.DataNodes)))
-	sb.WriteString(fmt.Sprintf("  DataNode used      : %v GB\n", cv.DataNodeStatInfo.UsedGB))
-	sb.WriteString(fmt.Sprintf("  DataNode total     : %v GB\n", cv.DataNodeStatInfo.TotalGB))
-	sb.WriteString(fmt.Sprintf("  Volume count       : %v\n", len(cv.VolStatInfo)))
-	sb.WriteString(fmt.Sprintf("  Allow Mp Decomm    : %v\n", formatEnabledDisabled(!cv.ForbidMpDecommission)))
-	sb.WriteString(fmt.Sprintf("  EbsAddr            : %v\n", cp.EbsAddr))
-	sb.WriteString(fmt.Sprintf("  LoadFactor         : %v\n", cn.LoadFactor))
+	sb.WriteString(fmt.Sprintf("  Auto allocate        : %v\n", formatEnabledDisabled(!cv.DisableAutoAlloc)))
+	sb.WriteString(fmt.Sprintf("  MetaNode count       : %v\n", len(cv.MetaNodes)))
+	sb.WriteString(fmt.Sprintf("  MetaNode used        : %v GB\n", cv.MetaNodeStatInfo.UsedGB))
+	sb.WriteString(fmt.Sprintf("  MetaNode total       : %v GB\n", cv.MetaNodeStatInfo.TotalGB))
+	sb.WriteString(fmt.Sprintf("  DataNode count       : %v\n", len(cv.DataNodes)))
+	sb.WriteString(fmt.Sprintf("  DataNode used        : %v GB\n", cv.DataNodeStatInfo.UsedGB))
+	sb.WriteString(fmt.Sprintf("  DataNode total       : %v GB\n", cv.DataNodeStatInfo.TotalGB))
+	sb.WriteString(fmt.Sprintf("  Volume count         : %v\n", len(cv.VolStatInfo)))
+	sb.WriteString(fmt.Sprintf("  Allow Mp Decomm      : %v\n", formatEnabledDisabled(!cv.ForbidMpDecommission)))
+	sb.WriteString(fmt.Sprintf("  EbsAddr              : %v\n", cp.EbsAddr))
+	sb.WriteString(fmt.Sprintf("  LoadFactor           : %v\n", cn.LoadFactor))
+	sb.WriteString(fmt.Sprintf("  volDeletionDelayTime : %v\n", cv.VolDeletionDelayTime))
 	return sb.String()
 }
 
@@ -137,7 +138,9 @@ func formatSimpleVolView(svv *proto.SimpleVolView) string {
 	sb.WriteString(fmt.Sprintf("  Forbidden                       : %v\n", svv.Forbidden))
 	sb.WriteString(fmt.Sprintf("  DisableAuditLog                 : %v\n", svv.DisableAuditLog))
 	sb.WriteString(fmt.Sprintf("  Quota                           : %v\n", formatEnabledDisabled(svv.EnableQuota)))
-	sb.WriteString(fmt.Sprintf("  DeleteDelayTime                 : %v\n", svv.DeleteExecTime.Sub(time.Now())))
+	if svv.Forbidden && svv.Status == 1 {
+		sb.WriteString(fmt.Sprintf("  DeleteDelayTime                 : %v\n", svv.DeleteExecTime.Sub(time.Now())))
+	}
 	if svv.VolType == 1 {
 		sb.WriteString(fmt.Sprintf("  ObjBlockSize         : %v byte\n", svv.ObjBlockSize))
 		sb.WriteString(fmt.Sprintf("  CacheCapacity        : %v G\n", svv.CacheCapacity))

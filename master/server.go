@@ -349,12 +349,6 @@ func (m *Server) checkConfig(cfg *config.Config) (err error) {
 	}
 	m.config.volDeletionDentryThreshold = uint64(threshold)
 
-	volDelayDeleteTime := cfg.GetInt64WithDefault(cfgVolDeletionDelayTime, 48)
-	if volDelayDeleteTime < 0 {
-		return fmt.Errorf("volDelayDeleteTime can't be less than 0 ! ")
-	}
-
-	m.config.volDelayDeleteTime = volDelayDeleteTime
 	enableDirectDeleteVol = cfg.GetBoolWithDefault(cfgEnableDirectDeleteVol, true)
 
 	return
