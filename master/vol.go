@@ -114,7 +114,7 @@ type Vol struct {
 	DisableAuditLog         bool
 
 	authKey        string
-	deleteExecTime time.Time
+	DeleteExecTime time.Time
 	user           *User
 }
 
@@ -208,7 +208,7 @@ func newVolFromVolValue(vv *volValue) (vol *Vol) {
 	vol.DisableAuditLog = vv.DisableAuditLog
 
 	vol.authKey = vv.AuthKey
-	vol.deleteExecTime = vv.DeleteExecTime
+	vol.DeleteExecTime = vv.DeleteExecTime
 	vol.user = vv.User
 	return vol
 }
