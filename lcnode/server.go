@@ -460,7 +460,8 @@ func (l *LcNode) debugServiceGetFile(w http.ResponseWriter, r *http.Request) {
 		OnGetExtents:                metaWrapper.GetExtents,
 		OnTruncate:                  metaWrapper.Truncate,
 		OnRenewalForbiddenMigration: metaWrapper.RenewalForbiddenMigration,
-		AllowedStorageClass:         asc,
+		//TODO: chenyang: add VolStorageClass
+		VolAllowedStorageClass: asc,
 	}
 	var extentClient *stream.ExtentClient
 	if extentClient, err = stream.NewExtentClient(extentConfig); err != nil {

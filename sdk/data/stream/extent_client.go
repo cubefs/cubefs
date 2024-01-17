@@ -120,7 +120,6 @@ func init() {
 
 type ExtentConfig struct {
 	Volume            string
-	VolumeType        int
 	Masters           []string
 	FollowerRead      bool
 	NearRead          bool
@@ -146,8 +145,9 @@ type ExtentConfig struct {
 
 	OnRenewalForbiddenMigration RenewalForbiddenMigrationFunc
 
-	CacheDpStorageClass uint32
-	AllowedStorageClass []uint32
+	VolStorageClass        uint32
+	VolAllowedStorageClass []uint32
+	VolCacheDpStorageClass uint32
 }
 
 type MultiVerMgr struct {
@@ -159,30 +159,31 @@ type MultiVerMgr struct {
 
 // ExtentClient defines the struct of the extent client.
 type ExtentClient struct {
-	streamers                 map[uint64]*Streamer
-	streamerList              *list.List
-	streamerLock              sync.Mutex
-	maxStreamerLimit          int
-	readLimiter               *rate.Limiter
-	writeLimiter              *rate.Limiter
-	disableMetaCache          bool
-	streamRetryTimeout        time.Duration
-	volumeType                int
-	volumeName                string
-	bcacheEnable              bool
-	bcacheDir                 string
-	BcacheHealth              bool
-	preload                   bool
-	LimitManager              *manager.LimitManager
-	dataWrapper               *wrapper.Wrapper
-	appendExtentKey           AppendExtentKeyFunc
-	splitExtentKey            SplitExtentKeyFunc
-	getExtents                GetExtentsFunc
-	truncate                  TruncateFunc
-	evictIcache               EvictIcacheFunc // May be null, must check before using
-	loadBcache                LoadBcacheFunc
-	cacheBcache               CacheBcacheFunc
-	evictBcache               EvictBacheFunc
+	streamers          map[uint64]*Streamer
+	streamerList       *list.List
+	streamerLock       sync.Mutex
+	maxStreamerLimit   int
+	readLimiter        *rate.Limiter
+	writeLimiter       *rate.Limiter
+	disableMetaCache   bool
+	streamRetryTimeout time.Duration
+	volumeType         int
+	volumeName         string
+	bcacheEnable       bool
+	bcacheDir          string
+	BcacheHealth       bool
+	preload            bool
+	LimitManager       *manager.LimitManager
+	dataWrapper        *wrapper.Wrapper
+	appendExtentKey    AppendExtentKeyFunc
+	splitExtentKey     SplitExtentKeyFunc
+	getExtents         GetExtentsFunc
+	truncate           TruncateFunc
+	evictIcache        EvictIcacheFunc // May be null, must check before using
+	loadBcache         LoadBcacheFunc
+	cacheBcache        CacheBcacheFunc
+	evictBcache        EvictBacheFunc
+
 	inflightL1cache           sync.Map
 	inflightL1BigBlock        int32
 	multiVerMgr               *MultiVerMgr
@@ -267,8 +268,14 @@ func NewExtentClient(config *ExtentConfig) (client *ExtentClient, err error) {
 	limit := 0
 retry:
 
-	client.dataWrapper, err = wrapper.NewDataPartitionWrapper(client, config.Volume, config.Masters,
-		config.Preload, config.MinWriteAbleDataPartitionCnt, config.VerReadSeq, config.AllowedStorageClass)
+	if !proto.IsValidStorageClass(config.VolStorageClass) {
+		err = fmt.Errorf("invalid config.VolStorageClass(%v)", config.VolStorageClass)
+		log.LogCriticalf("NewExtentClient: %v", err.Error())
+		return
+	}
+
+	client.dataWrapper, err = wrapper.NewDataPartitionWrapper(client, config.Volume, config.Masters, config.Preload,
+		config.MinWriteAbleDataPartitionCnt, config.VerReadSeq, config.VolStorageClass, config.VolAllowedStorageClass)
 	if err != nil {
 		log.LogErrorf("NewExtentClient: new data partition wrapper failed: volume(%v) mayRetry(%v) err(%v)",
 			config.Volume, limit, err)
@@ -297,7 +304,6 @@ retry:
 	client.loadBcache = config.OnLoadBcache
 	client.cacheBcache = config.OnCacheBcache
 	client.evictBcache = config.OnEvictBcache
-	client.volumeType = config.VolumeType
 	client.volumeName = config.Volume
 	client.bcacheEnable = config.BcacheEnable
 	client.bcacheDir = config.BcacheDir
@@ -346,7 +352,7 @@ retry:
 	log.LogInfof("max streamer limit %d", client.maxStreamerLimit)
 	client.streamerList = list.New()
 
-	client.CacheDpStorageClass = config.CacheDpStorageClass
+	client.CacheDpStorageClass = config.VolCacheDpStorageClass
 
 	go client.backgroundEvictStream()
 
