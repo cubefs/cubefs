@@ -39,7 +39,7 @@ const (
 	/*
 
 	 */
-	BaseVersion = "4.5.0"
+	BaseVersion = "4.6.0"
 )
 
 var (
