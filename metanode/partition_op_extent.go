@@ -261,6 +261,13 @@ func (mp *metaPartition) MergeExtents(req *proto.InodeMergeExtentsRequest, p *Pa
 		p.PacketErrorWithBody(proto.OpArgMismatchErr, []byte(msg))
 		return
 	}
+	clientReqInfo := NewRequestInfo(req.ClientID, req.ClientStartTime, p.ReqID, req.ClientIP, p.CRC, mp.removeDupClientReqEnableState())
+	if previousRespCode, isDup := mp.reqRecords.IsDupReq(clientReqInfo); isDup {
+		log.LogCriticalf("MergeExtents partitionID:%v, reqInfo:%v, respCode:%v", mp.config.PartitionId, clientReqInfo, previousRespCode)
+		p.PacketErrorWithBody(previousRespCode, nil)
+		return
+	}
+
 	im := &InodeMerge{
 		Inode:      req.Inode,
 		NewExtents: req.NewExtents,
@@ -272,7 +279,7 @@ func (mp *metaPartition) MergeExtents(req *proto.InodeMergeExtentsRequest, p *Pa
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return
 	}
-	resp, err := mp.submit(p.Ctx(), opFSMExtentMerge, p.RemoteWithReqID(), val, nil)
+	resp, err := mp.submit(p.Ctx(), opFSMExtentMerge, p.RemoteWithReqID(), val, clientReqInfo)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return
@@ -291,6 +298,13 @@ func (mp *metaPartition) FileMigMergeExtents(req *proto.InodeMergeExtentsRequest
 		p.PacketErrorWithBody(proto.OpArgMismatchErr, []byte(msg))
 		return
 	}
+	clientReqInfo := NewRequestInfo(req.ClientID, req.ClientStartTime, p.ReqID, req.ClientIP, p.CRC, mp.removeDupClientReqEnableState())
+	if previousRespCode, isDup := mp.reqRecords.IsDupReq(clientReqInfo); isDup {
+		log.LogCriticalf("FileMigMergeExtents partitionID:%v, reqInfo:%v, respCode:%v", mp.config.PartitionId, clientReqInfo, previousRespCode)
+		p.PacketErrorWithBody(previousRespCode, nil)
+		return
+	}
+
 	im := &InodeMerge{
 		Inode:      req.Inode,
 		NewExtents: req.NewExtents,
@@ -302,7 +316,7 @@ func (mp *metaPartition) FileMigMergeExtents(req *proto.InodeMergeExtentsRequest
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return
 	}
-	resp, err := mp.submit(p.Ctx(), opFSMFileMigExtentMerge, p.RemoteWithReqID(), val, nil)
+	resp, err := mp.submit(p.Ctx(), opFSMFileMigExtentMerge, p.RemoteWithReqID(), val, clientReqInfo)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return
