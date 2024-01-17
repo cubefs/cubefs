@@ -384,7 +384,7 @@ func (s *LcScanner) handleFile(dentry *proto.ScanDentry) {
 			log.LogErrorf("migrate err: %v, dentry: %+v, skip it", err, dentry)
 			return
 		}
-		err = s.mw.UpdateExtentKeyAfterMigration(dentry.Inode, proto.OpTypeToStorageType(dentry.Op), nil, dentry.WriteGen)
+		err = s.mw.UpdateExtentKeyAfterMigration(dentry.Inode, proto.OpTypeToStorageType(dentry.Op), nil, dentry.WriteGen, dentry.Path)
 		if err != nil {
 			atomic.AddInt64(&s.currentStat.ErrorSkippedNum, 1)
 			log.LogErrorf("update extent key err: %v, dentry: %+v, skip it", err, dentry)
@@ -401,7 +401,7 @@ func (s *LcScanner) handleFile(dentry *proto.ScanDentry) {
 			log.LogErrorf("migrateToEbs err: %v, dentry: %+v, skip it", err, dentry)
 			return
 		}
-		err = s.mw.UpdateExtentKeyAfterMigration(dentry.Inode, proto.OpTypeToStorageType(dentry.Op), oeks, dentry.WriteGen)
+		err = s.mw.UpdateExtentKeyAfterMigration(dentry.Inode, proto.OpTypeToStorageType(dentry.Op), oeks, dentry.WriteGen, dentry.Path)
 		if err != nil {
 			atomic.AddInt64(&s.currentStat.ErrorSkippedNum, 1)
 			log.LogErrorf("update extent key err: %v, dentry: %+v, skip it", err, dentry)

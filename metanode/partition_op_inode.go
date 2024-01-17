@@ -1083,6 +1083,13 @@ func (mp *metaPartition) UpdateExtentKeyAfterMigration(req *proto.UpdateExtentKe
 		ino.StorageClass = item.(*Inode).StorageClass
 		ino.HybridCouldExtents.sortedEks = item.(*Inode).HybridCouldExtents.sortedEks
 	}
+	start := time.Now()
+	if mp.IsEnableAuditLog() {
+		defer func() {
+			auditlog.LogMigrationOp(remoteAddr, mp.GetVolName(), p.GetOpMsg(), req.GetFullPath(), err, time.Since(start).Milliseconds(), req.Inode, ino.StorageClass, req.StorageClass)
+		}()
+	}
+
 	if !ino.storeInReplicaSystem() && req.NewObjExtentKeys == nil {
 		err = fmt.Errorf("mp %v inode %v new extentKey for storageClass %v  can not be nil",
 			mp.config.PartitionId, ino.Inode, req.StorageClass)
