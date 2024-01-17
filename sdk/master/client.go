@@ -251,6 +251,15 @@ func (c *MasterClient) Nodes() (nodes []string) {
 	return
 }
 
+func (c *MasterClient) IsOnline() bool {
+    for _, master := range c.masters {
+        if strings.Contains(master, ".jd.") {
+            return true
+        }
+    }
+    return false
+}
+
 func (c *MasterClient) SetMasterDomain(domain string) {
 	c.Lock()
 	defer c.Unlock()

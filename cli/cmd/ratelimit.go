@@ -82,6 +82,10 @@ func newRateLimitSetCmd(client *master.MasterClient) *cobra.Command {
 		Use:   CliOpSet,
 		Short: cmdRateLimitSetShort,
 		Run: func(cmd *cobra.Command, args []string) {
+			if client.IsOnline() && info.RemoteCacheBoostEnableState >= 0 {
+				errout("set RemoteCacheBoostEnable for %v is not permited\n", client.Nodes())
+			}
+
 			var err error
 			if (info.ClientReadVolRate > 0 && info.ClientReadVolRate < minRate) ||
 				(info.ClientWriteVolRate > 0 && info.ClientWriteVolRate < minRate) ||

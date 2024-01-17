@@ -38,7 +38,7 @@ func (cmd *ChubaoFSCmd) newClusterCmd(client *master.MasterClient) *cobra.Comman
 		newClusterFreezeCmd(client),
 		newClusterSetThresholdCmd(client),
 		newClusterEcUpdate(client),
-		//newClusterSetClientPkgAddr(client),
+		newClusterSetClientPkgAddr(client),
 		newClusterSetRocksDBDiskThresholdCmd(client),
 		newClusterSetMemModeRocksDBDiskThresholdCmd(client),
 		newClusterSetNodeState(client),
@@ -217,6 +217,10 @@ func newClusterSetClientPkgAddr(client *master.MasterClient) *cobra.Command {
 		Args:  cobra.MinimumNArgs(1),
 		Long:  `set url for download client package used for upgrade client online.`,
 		Run: func(cmd *cobra.Command, args []string) {
+			if client.IsOnline() {
+				errout("%v for %v is not permited\n", CliOpSetClientPkgAddr, client.Nodes())
+			}
+
 			var err error
 			var addr string = args[0]
 			if err = client.ClientAPI().SetClientPkgAddr(addr); err != nil {

@@ -16,14 +16,15 @@ package cmd
 
 import (
 	"fmt"
-	"github.com/cubefs/cubefs/cli/cmd/data_check"
-	"github.com/cubefs/cubefs/proto"
-	"github.com/cubefs/cubefs/sdk/master"
-	"github.com/spf13/cobra"
 	"os"
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/cubefs/cubefs/cli/cmd/data_check"
+	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/sdk/master"
+	"github.com/spf13/cobra"
 )
 
 const (
@@ -165,6 +166,10 @@ func newDataNodeDecommissionCmd(client *master.MasterClient) *cobra.Command {
 		Short: cmdDataNodeDecommissionInfoShort,
 		Args:  cobra.MinimumNArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
+			if client.IsOnline() {
+				errout("%v for %v is not permited\n", CliOpDecommission, client.Nodes())
+			}
+
 			var err error
 			var nodeAddr string
 			defer func() {
@@ -194,6 +199,10 @@ func newDataNodeDiskDecommissionCmd(client *master.MasterClient) *cobra.Command 
 		Short: cmdDataNodeDiskDecommissionInfoShort,
 		Args:  cobra.MinimumNArgs(2),
 		Run: func(cmd *cobra.Command, args []string) {
+			if client.IsOnline() {
+				errout("%v for %v is not permited\n", CliOpDecommissionDisk, client.Nodes())
+			}
+
 			var err error
 			var nodeAddr string
 			var diskAddr string

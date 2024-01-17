@@ -1048,7 +1048,6 @@ func newVolInfoCmd(client *master.MasterClient) *cobra.Command {
 }
 
 const (
-	cmdVolDeleteUse   = "delete [VOLUME NAME]"
 	cmdVolDeleteShort = "Delete a volume from cluster"
 )
 
@@ -1057,10 +1056,14 @@ func newVolDeleteCmd(client *master.MasterClient) *cobra.Command {
 		optYes bool
 	)
 	var cmd = &cobra.Command{
-		Use:   cmdVolDeleteUse,
+		Use:   CliOpDelete + " [VOLUME NAME]",
 		Short: cmdVolDeleteShort,
 		Args:  cobra.MinimumNArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
+			if client.IsOnline() {
+				errout("%v for %v is not permited\n", CliOpDelete, client.Nodes())
+			}
+
 			var err error
 			var volumeName = args[0]
 			// ask user for confirm
