@@ -27,6 +27,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/cubefs/cubefs/datanode/riskdata"
@@ -1377,4 +1378,74 @@ func (s *DataNode) stopRiskFix(w http.ResponseWriter, r *http.Request) {
 		return true
 	})
 	s.buildSuccessResp(w, nil)
+}
+
+func (s *DataNode) transferDeleteV0(w http.ResponseWriter, r *http.Request) {
+	var (
+		err          error
+		partitionStr string
+		partitionID  uint64
+		failes       []uint64
+		succeeds     []uint64
+		archives     int
+		lock         sync.Mutex
+	)
+	succeeds = make([]uint64, 0)
+	failes = make([]uint64, 0)
+	partitionStr = r.FormValue("partitionID")
+	if partitionStr != "" {
+		if partitionID, err = strconv.ParseUint(partitionStr, 10, 64); err != nil {
+			s.buildFailureResp(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		partition := s.space.Partition(partitionID)
+		if partition == nil {
+			s.buildFailureResp(w, http.StatusNotFound, "partition not exist")
+			return
+		}
+		archives, err = partition.extentStore.TransferDeleteV0()
+		if err != nil {
+			log.LogErrorf("transfer failed, partition: %v, err: %v", partitionID, err)
+			s.buildFailureResp(w, http.StatusNotFound, err.Error())
+			return
+		}
+		if archives > 0 {
+			succeeds = append(succeeds, partitionID)
+		}
+	} else {
+		s.transferDeleteLock.Lock()
+		defer s.transferDeleteLock.Unlock()
+		wg := sync.WaitGroup{}
+		s.space.WalkDisks(func(disk *Disk) bool {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				disk.WalkPartitions(func(partition *DataPartition) bool {
+					var archive int
+					archive, err = partition.extentStore.TransferDeleteV0()
+					if err != nil {
+						lock.Lock()
+						failes = append(failes, partition.partitionID)
+						lock.Unlock()
+						log.LogErrorf("transfer failed, partition: %v, err: %v", partitionID, err)
+						return true
+					}
+					if archive == 0 {
+						return true
+					}
+					lock.Lock()
+					succeeds = append(succeeds, partition.partitionID)
+					lock.Unlock()
+					return true
+				})
+			}()
+			return true
+		})
+		wg.Wait()
+	}
+	if len(succeeds) > 0 || len(failes) > 0 {
+		s.buildSuccessResp(w, fmt.Sprintf("all partitions transfer finish, success: %v, failed: %v", succeeds, failes))
+	} else {
+		s.buildSuccessResp(w, "no partitions need to transfer")
+	}
 }

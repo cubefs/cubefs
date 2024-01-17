@@ -29,6 +29,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -119,6 +120,7 @@ type DataNode struct {
 	control                  common.Control
 	processStatInfo          *statinfo.ProcessStatInfo
 	topoManager              *topology.TopologyManager
+	transferDeleteLock       sync.Mutex
 }
 
 func NewServer() *DataNode {
@@ -538,6 +540,7 @@ func (s *DataNode) registerHandler() {
 	http.HandleFunc("/resetFaultOccurredCheckLevel", s.resetFaultOccurredCheckLevel)
 	http.HandleFunc("/sfxStatus", s.getSfxStatus)
 	http.HandleFunc("/getExtentLockInfo", s.getExtentLockInfo)
+	http.HandleFunc("/transferDeleteV0", s.transferDeleteV0)
 	http.HandleFunc("/risk/status", s.getRiskStatus)
 	http.HandleFunc("/risk/startFix", s.startRiskFix)
 	http.HandleFunc("/risk/stopFix", s.stopRiskFix)

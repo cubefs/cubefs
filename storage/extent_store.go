@@ -597,13 +597,25 @@ func (s *ExtentStore) MarkDelete(marker Marker) (err error) {
 	return
 }
 
+func (s *ExtentStore) TransferDeleteV0() (archives int, err error) {
+	pathV0 := path.Join(s.dataPath, ExtentReleasorDirName)
+	if _, err = os.Stat(pathV0); os.IsNotExist(err) {
+		return 0, nil
+	}
+	releaser, err := NewExtentReleaserV0(pathV0, s)
+	if err != nil {
+		return
+	}
+	return releaser.TransferDelete()
+}
+
 // FlushDelete is exported public method removes and releases storage space resource through delete marked extents.
 // Parameter:
-//  * interceptor:
-//      The caller can inject an interceptor to track the execution of the delete operation.
-//  * limit:
-//      limit on the number of deletions to be performed.
-//      When it is less than or equal to 0, it means there is no limit.
+//   - interceptor:
+//     The caller can inject an interceptor to track the execution of the delete operation.
+//   - limit:
+//     limit on the number of deletions to be performed.
+//     When it is less than or equal to 0, it means there is no limit.
 func (s *ExtentStore) FlushDelete(interceptor Interceptor, limit int) (deleted, remain int, err error) {
 	defer func() {
 		if err != nil {
