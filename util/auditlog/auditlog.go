@@ -319,6 +319,26 @@ func (a *Audit) LogTxOp(clientAddr, volume, op, txId string, err error, latency 
 	a.formatLog(clientAddr, volume, op, txId, "nil", err, latency, 0, 0)
 }
 
+func (a *Audit) LogMigrationOp(clientAddr, volume, op, fullPath string, err error, latency int64, ino uint64, from, to uint32) {
+	var errStr string
+	if err != nil {
+		errStr = err.Error()
+	} else {
+		errStr = "nil"
+	}
+	curTime := time.Now()
+	curTimeStr := curTime.Format("2006-01-02 15:04:05")
+	timeZone, _ := curTime.Zone()
+	latencyStr := strconv.FormatInt(latency, 10) + " us"
+
+	entry := fmt.Sprintf("%s %s, %s, %s, %s, %v, %v, %s, %s, from %v, to %v",
+		curTimeStr, timeZone, clientAddr, volume, op, ino, fullPath, errStr, latencyStr, from, to)
+	if a.prefix != nil {
+		entry = fmt.Sprintf("%s%s", a.prefix.String(), entry)
+	}
+	a.AddLog(entry)
+}
+
 func (a *Audit) formatLog(ipAddr, hostName, op, src, dst string, err error, latency int64, srcInode, dstInode uint64) {
 	if entry := a.formatAuditEntry(ipAddr, hostName, op, src, dst, err, latency, srcInode, dstInode); entry != "" {
 		if a.prefix != nil {
@@ -415,6 +435,15 @@ func LogTxOp(clientAddr, volume, op, txId string, err error, latency int64) {
 		return
 	}
 	gAdt.LogTxOp(clientAddr, volume, op, txId, err, latency)
+}
+
+func LogMigrationOp(clientAddr, volume, op, fullPath string, err error, latency int64, ino uint64, from, to uint32) {
+	gAdtMutex.RLock()
+	defer gAdtMutex.RUnlock()
+	if gAdt == nil {
+		return
+	}
+	gAdt.LogMigrationOp(clientAddr, volume, op, fullPath, err, latency, ino, from, to)
 }
 
 func ResetWriterBufferSize(size int) {

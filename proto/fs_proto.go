@@ -1053,6 +1053,7 @@ type UpdateExtentKeyAfterMigrationRequest struct {
 	StorageClass     uint32         `json:"storageClass"`
 	NewObjExtentKeys []ObjExtentKey `json:"newObjExtentKeys"`
 	WriteGen         uint64         `json:"writeGen"`
+	RequestExtend
 }
 
 type InodeGetWithEkResponse struct {
