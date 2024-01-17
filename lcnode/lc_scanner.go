@@ -128,7 +128,8 @@ func NewS3Scanner(adminTask *proto.AdminTask, l *LcNode) (*LcScanner, error) {
 		OnGetExtents:                metaWrapper.GetExtents,
 		OnTruncate:                  metaWrapper.Truncate,
 		OnRenewalForbiddenMigration: metaWrapper.RenewalForbiddenMigration,
-		AllowedStorageClass:         volumeInfo.AllowedStorageClass,
+		VolStorageClass:             volumeInfo.VolStorageClass,
+		VolAllowedStorageClass:      volumeInfo.AllowedStorageClass,
 	}
 	var extentClient *stream.ExtentClient
 	if extentClient, err = stream.NewExtentClient(extentConfig); err != nil {
