@@ -29,6 +29,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/cubefs/cubefs/datanode/riskdata"
+
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/repl"
 	"github.com/cubefs/cubefs/storage"
@@ -297,6 +299,10 @@ func (s *DataNode) getRaftStatus(w http.ResponseWriter, r *http.Request) {
 
 func (s *DataNode) getPartitionsAPI(w http.ResponseWriter, r *http.Request) {
 	partitions := make([]interface{}, 0)
+	var (
+		riskCount        int
+		riskFixerRunning bool
+	)
 	s.space.WalkPartitions(func(dp *DataPartition) bool {
 		partition := &struct {
 			ID                    uint64                  `json:"id"`
@@ -307,6 +313,7 @@ func (s *DataNode) getPartitionsAPI(w http.ResponseWriter, r *http.Request) {
 			Replicas              []string                `json:"replicas"`
 			NeedServerFaultCheck  bool                    `json:"needServerFaultCheck"`
 			ServerFaultCheckLevel FaultOccurredCheckLevel `json:"serverFaultCheckLevel"`
+			RiskFixerStatus       *riskdata.FixerStatus   `json:"riskFixerStatus"`
 		}{
 			ID:                    dp.ID(),
 			Size:                  dp.Size(),
@@ -315,16 +322,31 @@ func (s *DataNode) getPartitionsAPI(w http.ResponseWriter, r *http.Request) {
 			Path:                  dp.Path(),
 			Replicas:              dp.getReplicaClone(),
 			ServerFaultCheckLevel: dp.serverFaultCheckLevel,
+			RiskFixerStatus: func() *riskdata.FixerStatus {
+				if fixer := dp.RiskFixer(); fixer != nil {
+					status := fixer.Status()
+					riskCount += status.Count
+					if status.Running {
+						riskFixerRunning = true
+					}
+					return status
+				}
+				return nil
+			}(),
 		}
 		partitions = append(partitions, partition)
 		return true
 	})
 	result := &struct {
-		Partitions     []interface{} `json:"partitions"`
-		PartitionCount int           `json:"partitionCount"`
+		Partitions       []interface{} `json:"partitions"`
+		PartitionCount   int           `json:"partitionCount"`
+		RiskCount        int           `json:"riskCount"`
+		RiskFixerRunning bool          `json:"riskFixerRunning"`
 	}{
-		Partitions:     partitions,
-		PartitionCount: len(partitions),
+		Partitions:       partitions,
+		PartitionCount:   len(partitions),
+		RiskCount:        riskCount,
+		RiskFixerRunning: riskFixerRunning,
 	}
 	s.buildSuccessResp(w, result)
 }
@@ -1317,4 +1339,42 @@ func (s *DataNode) getExtentLockInfo(w http.ResponseWriter, r *http.Request) {
 	}
 	s.buildSuccessResp(w, extLockInfoMap)
 	return
+}
+
+func (s *DataNode) getRiskStatus(w http.ResponseWriter, r *http.Request) {
+	var result = &struct {
+		Count   int  `json:"count"`
+		Running bool `json:"running"`
+	}{}
+	s.space.WalkPartitions(func(partition *DataPartition) bool {
+		if fixer := partition.RiskFixer(); fixer != nil {
+			status := fixer.Status()
+			result.Count += status.Count
+			if status.Running {
+				result.Running = true
+			}
+		}
+		return true
+	})
+	s.buildSuccessResp(w, result)
+}
+
+func (s *DataNode) startRiskFix(w http.ResponseWriter, r *http.Request) {
+	s.space.WalkPartitions(func(partition *DataPartition) bool {
+		if fixer := partition.RiskFixer(); fixer != nil {
+			fixer.Start()
+		}
+		return true
+	})
+	s.buildSuccessResp(w, nil)
+}
+
+func (s *DataNode) stopRiskFix(w http.ResponseWriter, r *http.Request) {
+	s.space.WalkPartitions(func(partition *DataPartition) bool {
+		if fixer := partition.RiskFixer(); fixer != nil {
+			fixer.Stop()
+		}
+		return true
+	})
+	s.buildSuccessResp(w, nil)
 }

@@ -271,6 +271,7 @@ type DataPartitionViewInfo struct {
 	IsFinishLoad         bool                      `json:"isFinishLoad"`
 	IsRecover            bool                      `json:"isRecover"`
 	BaseExtentID         uint64                    `json:"baseExtentID"`
+	RiskFixerStatus      *riskdata.FixerStatus     `json:"riskFixerStatus"`
 }
 
 func (d *Disk) createPartition(dpCfg *dataPartitionCfg, request *proto.CreateDataPartitionRequest) (dp *DataPartition, err error) {
@@ -518,9 +519,6 @@ func (dp *DataPartition) tryLoadRaftHardStateFromDisk() (hs raftProto.HardState,
 func (dp *DataPartition) Start() (err error) {
 	go func() {
 		go dp.statusUpdateScheduler(context.Background())
-		if dp.dataFixer != nil {
-			dp.dataFixer.Start()
-		}
 		if dp.DataPartitionCreateType == proto.DecommissionedCreateDataPartition {
 			dp.startRaftAfterRepair()
 			return
@@ -528,6 +526,10 @@ func (dp *DataPartition) Start() (err error) {
 		dp.startRaftAsync()
 	}()
 	return
+}
+
+func (dp *DataPartition) RiskFixer() *riskdata.Fixer {
+	return dp.dataFixer
 }
 
 func (dp *DataPartition) replicasInit() {
@@ -1311,6 +1313,12 @@ func (dp *DataPartition) getDataPartitionInfo() (dpInfo *DataPartitionViewInfo, 
 		IsFinishLoad:         dp.ExtentStore().IsFinishLoad(),
 		IsRecover:            dp.DataPartitionCreateType == proto.DecommissionedCreateDataPartition,
 		BaseExtentID:         dp.ExtentStore().GetBaseExtentID(),
+		RiskFixerStatus: func() *riskdata.FixerStatus {
+			if dp.dataFixer != nil {
+				return dp.dataFixer.Status()
+			}
+			return nil
+		}(),
 	}
 	return
 }

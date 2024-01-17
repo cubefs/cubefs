@@ -23,6 +23,7 @@ import (
 
 	"github.com/cubefs/cubefs/cli/cmd/data_check"
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/sdk/http_client"
 	"github.com/cubefs/cubefs/sdk/master"
 	"github.com/spf13/cobra"
 )
@@ -47,6 +48,8 @@ func newDataNodeCmd(client *master.MasterClient) *cobra.Command {
 		newStopMigratingByDataNode(client),
 		newCheckReplicaByDataNodeCmd(client),
 		newResetDataNodeLogLevelCmd(client),
+		newDataNodeStartRiskFix(client),
+		newDataNodeStopRiskFix(client),
 	)
 	return cmd
 }
@@ -147,8 +150,11 @@ func newDataNodeInfoCmd(client *master.MasterClient) *cobra.Command {
 			if datanodeInfo, err = client.NodeAPI().GetDataNode(nodeAddr); err != nil {
 				return
 			}
+			dataClient := http_client.NewDataClient(fmt.Sprintf("%s:%d", strings.Split(nodeAddr, ":")[0], client.DataNodeProfPort), false)
+			//check dataPartition by dataNode api
+			var dnPartitions, _ = dataClient.GetPartitionsFromNode()
 			stdout("[Data node info]\n")
-			stdout(formatDataNodeDetail(datanodeInfo, false))
+			stdout(formatDataNodeDetail(datanodeInfo, dnPartitions, false))
 
 		},
 		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
@@ -388,6 +394,60 @@ func newResetDataNodeLogLevelCmd(client *master.MasterClient) *cobra.Command {
 	}
 	cmd.Flags().Uint64Var(&resetNum, "num", 1, "specify execute count of reset, max:unlimited")
 	cmd.Flags().IntVar(&resetInterval, "interval", 6, "specify interval between reset, max:48")
+	return cmd
+}
+
+func newDataNodeStartRiskFix(client *master.MasterClient) *cobra.Command {
+	var cmd = &cobra.Command{
+		Use:   "start-risk-fix" + " [NODE ADDRESS]",
+		Short: cmdDataNodeInfoShort,
+		Args:  cobra.MinimumNArgs(1),
+		Run: func(cmd *cobra.Command, args []string) {
+			var err error
+			var nodeAddr string
+			nodeAddr = args[0]
+			dataClient := http_client.NewDataClient(fmt.Sprintf("%s:%d", strings.Split(nodeAddr, ":")[0], client.DataNodeProfPort), false)
+			//check dataPartition by dataNode api
+			if err = dataClient.StartRiskFix(); err != nil {
+				stdout("Start risk fix failed: %v\n", err)
+				return
+			}
+			stdout("Start risk fix success\n")
+		},
+		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+			if len(args) != 0 {
+				return nil, cobra.ShellCompDirectiveNoFileComp
+			}
+			return validDataNodes(client, toComplete), cobra.ShellCompDirectiveNoFileComp
+		},
+	}
+	return cmd
+}
+
+func newDataNodeStopRiskFix(client *master.MasterClient) *cobra.Command {
+	var cmd = &cobra.Command{
+		Use:   "stop-risk-fix" + " [NODE ADDRESS]",
+		Short: cmdDataNodeInfoShort,
+		Args:  cobra.MinimumNArgs(1),
+		Run: func(cmd *cobra.Command, args []string) {
+			var err error
+			var nodeAddr string
+			nodeAddr = args[0]
+			dataClient := http_client.NewDataClient(fmt.Sprintf("%s:%d", strings.Split(nodeAddr, ":")[0], client.DataNodeProfPort), false)
+			//check dataPartition by dataNode api
+			if err = dataClient.StopRiskFix(); err != nil {
+				stdout("Stop risk fix failed: %v\n", err)
+				return
+			}
+			stdout("Stop risk fix success\n")
+		},
+		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+			if len(args) != 0 {
+				return nil, cobra.ShellCompDirectiveNoFileComp
+			}
+			return validDataNodes(client, toComplete), cobra.ShellCompDirectiveNoFileComp
+		},
+	}
 	return cmd
 }
 

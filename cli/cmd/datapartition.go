@@ -345,7 +345,7 @@ The "reset" command will be released in next version`,
 				return dataNodes[i].ID < dataNodes[j].ID
 			})
 			for _, node := range dataNodes {
-				stdout("%v\n", formatDataNodeDetail(node, true))
+				stdout("%v\n", formatDataNodeDetail(node, nil, true))
 			}
 			/*stdout("\n")
 			stdout("[Corrupt data partitions](no leader):\n")

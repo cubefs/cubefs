@@ -18,7 +18,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/cubefs/cubefs/util/iputil"
 	"io/ioutil"
 	"net"
 	"net/http"
@@ -32,6 +31,8 @@ import (
 	"strings"
 	"syscall"
 	"time"
+
+	"github.com/cubefs/cubefs/util/iputil"
 
 	"github.com/cubefs/cubefs/util/topology"
 
@@ -537,6 +538,9 @@ func (s *DataNode) registerHandler() {
 	http.HandleFunc("/resetFaultOccurredCheckLevel", s.resetFaultOccurredCheckLevel)
 	http.HandleFunc("/sfxStatus", s.getSfxStatus)
 	http.HandleFunc("/getExtentLockInfo", s.getExtentLockInfo)
+	http.HandleFunc("/risk/status", s.getRiskStatus)
+	http.HandleFunc("/risk/startFix", s.startRiskFix)
+	http.HandleFunc("/risk/stopFix", s.stopRiskFix)
 }
 
 func (s *DataNode) startTCPService() (err error) {

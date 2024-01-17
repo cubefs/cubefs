@@ -27,7 +27,7 @@ EOF
 
 check_docker_images() {
   set +e
-  curl "http://storage.jd.local" 2>1 > /dev/null
+  curl "http://storage.jd.local" > /dev/null 2>$1
   ret=$?
   if [[ ${ret} -ne 0 ]]; then
     set -e
@@ -48,7 +48,7 @@ check_docker_images() {
     count=$(docker images | grep -F "$name" | awk '{print$2}' | grep -c "$version")
     if [[ ${count} -eq 0 ]]; then
       echo -n "Fetching ${name}:${version} ... "
-      wget "http://storage.jd.local/dpgimage/dockerimage/${name}-${version}.tar" -O image.tar 2>1 > /dev/null;
+      wget "http://storage.jd.local/dpgimage/dockerimage/${name}-${version}.tar" -O image.tar > /dev/null 2>&1;
       ret=$?
       if [[ ${ret} -eq 0 ]]; then
         docker load -i image.tar 2>1 > /dev/null

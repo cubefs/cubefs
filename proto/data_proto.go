@@ -8,8 +8,10 @@ const (
 )
 
 type DataPartitions struct {
-	Partitions     []*DataPartition `json:"partitions"`
-	PartitionCount int              `json:"partitionCount"`
+	Partitions       []*DataPartition `json:"partitions"`
+	PartitionCount   int              `json:"partitionCount"`
+	RiskCount        int              `json:"riskCount"`
+	RiskFixerRunning bool             `json:"riskFixerRunning"`
 }
 type DataPartition struct {
 	ID       uint64   `json:"id"`
@@ -18,6 +20,16 @@ type DataPartition struct {
 	Status   int      `json:"status"`
 	Path     string   `json:"path"`
 	Replicas []string `json:"replicas"`
+}
+
+type DNDataPartitionRiskFixerStatus struct {
+	Fragments []struct {
+		ExtentID uint64
+		Offset   uint64
+		Size     uint64
+	}
+	Count   int
+	Running bool
 }
 
 type DNDataPartitionInfo struct {
@@ -36,7 +48,9 @@ type DNDataPartitionInfo struct {
 	Learners             []Learner         `json:"learners"`
 	IsFinishLoad         bool              `json:"isFinishLoad"`
 	IsRecover            bool              `json:"isRecover"`
-	BaseExtentID         uint64			   `json:"baseExtentID"`
+	BaseExtentID         uint64            `json:"baseExtentID"`
+
+	RiskFixerStatus DNDataPartitionRiskFixerStatus `json:"riskFixerStatus"`
 }
 
 type BlockCrc struct {

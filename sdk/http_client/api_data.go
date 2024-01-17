@@ -535,3 +535,31 @@ func (dc *DataClient) GetPartitionRaftHardState(id uint64) (hs proto.HardState, 
 	}
 	return
 }
+
+func (dc *DataClient) StartRiskFix() (err error) {
+	for i := 0; i < 3; i++ {
+		_, err = dc.RequestHttp(http.MethodGet, "/risk/startFix", nil)
+		if err == nil {
+			break
+		}
+		time.Sleep(time.Second)
+	}
+	if err != nil {
+		return
+	}
+	return
+}
+
+func (dc *DataClient) StopRiskFix() (err error) {
+	for i := 0; i < 3; i++ {
+		_, err = dc.RequestHttp(http.MethodGet, "/risk/stopFix", nil)
+		if err == nil {
+			break
+		}
+		time.Sleep(time.Second)
+	}
+	if err != nil {
+		return
+	}
+	return
+}

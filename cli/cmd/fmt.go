@@ -688,7 +688,7 @@ func formatDataNodeDetailTableHeader() string {
 	return fmt.Sprintf(dataNodeDetailTableRowPattern, "ID", "ZONE", "ADDRESS", "USED", "TOTAL", "STATUS", "REPORT TIME")
 }
 
-func formatDataNodeDetail(dn *proto.DataNodeInfo, rowTable bool) string {
+func formatDataNodeDetail(dn *proto.DataNodeInfo, partitions *proto.DataPartitions, rowTable bool) string {
 	if rowTable {
 		return fmt.Sprintf(dataNodeDetailTableRowPattern, dn.ID, dn.ZoneName, dn.Addr, formatSize(dn.Used),
 			formatSize(dn.Total), formatNodeStatus(dn.IsActive), formatTimeToString(dn.ReportTime))
@@ -708,6 +708,10 @@ func formatDataNodeDetail(dn *proto.DataNodeInfo, rowTable bool) string {
 	sb.WriteString(fmt.Sprintf("  Report time         : %v\n", formatTimeToString(dn.ReportTime)))
 	sb.WriteString(fmt.Sprintf("  Partition count     : %v\n", dn.DataPartitionCount))
 	sb.WriteString(fmt.Sprintf("  Bad disks           : %v\n", dn.BadDisks))
+	if partitions != nil {
+		sb.WriteString(fmt.Sprintf("  Risk count          : %v\n", partitions.RiskCount))
+		sb.WriteString(fmt.Sprintf("  Risk fixer running   : %v\n", partitions.RiskFixerRunning))
+	}
 	sb.WriteString(fmt.Sprintf("  Persist partitions  : %v\n", dn.PersistenceDataPartitions))
 	return sb.String()
 }
@@ -1008,21 +1012,24 @@ func formatIdcInfoTableRow(name string, zones string) string {
 	return fmt.Sprintf(idcQueryTablePattern, name, zones)
 }
 
-var raftInfoTableHeader = "%-6v  %-18v  %-9v  %-14v  %-15v  %-10v  %-10v  %-10v  %-10v  %-10v  %-8v  %-16v  %-10v  %-v"
-var dataPartitionRaftTableHeaderInfo = fmt.Sprintf(raftInfoTableHeader, "ID", "ADDRESS", "IS_LEADER", "BASE_EXTENT_ID", "TINY_DEL_SIZE", "COMMIT", "INDEX", "APPLIED", "LOG_FIRST", "LOG_LAST", "PEND_QUE", "STATE", "STOPED", "PEERS")
+var raftInfoTableHeader = "%-6v  %-18v  %-9v  %-14v  %-15v  %-10v  %-10v  %-10v  %-10v  %-10v  %-8v  %-16v  %-10v  %-7v  %-v"
+var dataPartitionRaftTableHeaderInfo = fmt.Sprintf(raftInfoTableHeader, "ID", "ADDRESS", "IS_LEADER", "BASE_EXTENT_ID", "TINY_DEL_SIZE", "COMMIT", "INDEX", "APPLIED", "LOG_FIRST", "LOG_LAST", "PEND_QUE", "STATE", "STOPED", "RISKS", "PEERS")
 
 func formatDataPartitionRaftTableInfo(dnView *proto.DNDataPartitionInfo, nodeId uint64, addr string) string {
 	var sb = strings.Builder{}
 	if dnView == nil {
-		sb.WriteString(fmt.Sprintf(raftInfoTableHeader, nodeId, addr, "N/A", "N/A", "N/A", "N/A", "N/A", "N/A", "N/A", "N/A", "N/A", "N/A", "N/A", "N/A"))
+		sb.WriteString(fmt.Sprintf(raftInfoTableHeader, nodeId, addr, "N/A", "N/A", "N/A", "N/A", "N/A", "N/A", "N/A", "N/A", "N/A", "N/A", "N/A", "N/A", "N/A"))
 		return sb.String()
 	}
 	if dnView.RaftStatus == nil {
-		sb.WriteString(fmt.Sprintf(raftInfoTableHeader, nodeId, addr, "N/A", dnView.BaseExtentID, dnView.TinyDeleteRecordSize, "N/A", "N/A", "N/A", "N/A", "N/A", "N/A", "N/A", "N/A", "N/A"))
+		sb.WriteString(fmt.Sprintf(raftInfoTableHeader, nodeId, addr, "N/A", dnView.BaseExtentID, dnView.TinyDeleteRecordSize, "N/A", "N/A", "N/A", "N/A", "N/A", "N/A", "N/A", "N/A", dnView.RiskFixerStatus.Count, "N/A"))
 		return sb.String()
 	}
 	isLeader := dnView.RaftStatus.Leader == dnView.RaftStatus.NodeID
 	var formatRaftPeers = func(peers []uint64) string {
+		sort.SliceStable(peers, func(i, j int) bool {
+			return peers[i] < peers[j]
+		})
 		return strings.Join(func() []string {
 			ret := make([]string, 0, len(peers))
 			for _, peer := range peers {
@@ -1032,7 +1039,7 @@ func formatDataPartitionRaftTableInfo(dnView *proto.DNDataPartitionInfo, nodeId 
 		}(), ",")
 	}
 	sb.WriteString(fmt.Sprintf(raftInfoTableHeader, nodeId, addr, isLeader, dnView.BaseExtentID, dnView.TinyDeleteRecordSize, dnView.RaftStatus.Commit, dnView.RaftStatus.Index, dnView.RaftStatus.Applied,
-		dnView.RaftStatus.Log.FirstIndex, dnView.RaftStatus.Log.LastIndex, dnView.RaftStatus.PendQueue, dnView.RaftStatus.State, dnView.RaftStatus.Stopped, formatRaftPeers(dnView.RaftStatus.Peers)))
+		dnView.RaftStatus.Log.FirstIndex, dnView.RaftStatus.Log.LastIndex, dnView.RaftStatus.PendQueue, dnView.RaftStatus.State, dnView.RaftStatus.Stopped, dnView.RiskFixerStatus.Count, formatRaftPeers(dnView.RaftStatus.Peers)))
 	return sb.String()
 }
 
