@@ -1309,12 +1309,6 @@ func (c *Cluster) loadVols() (err error) {
 		}
 		vol := newVolFromVolValue(vv)
 		vol.Status = vv.Status
-
-		if vol.enableTransaction == 0 {
-			vol.enableTransaction = bsProto.TxOpMaskRename
-			log.LogWarnf("action[loadVols], vol[%s] enable rename atomic default", vol.Name)
-		}
-
 		if err = c.loadAclList(vol); err != nil {
 			log.LogInfof("action[loadVols],vol[%v] load acl manager error %v", vol.Name, err)
 			continue
