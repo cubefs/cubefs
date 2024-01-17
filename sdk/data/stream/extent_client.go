@@ -99,7 +99,6 @@ func init() {
 
 type ExtentConfig struct {
 	Volume            string
-	VolumeType        int
 	Masters           []string
 	FollowerRead      bool
 	NearRead          bool
@@ -124,8 +123,9 @@ type ExtentConfig struct {
 
 	OnRenewalForbiddenMigration RenewalForbiddenMigrationFunc
 
-	CacheDpStorageClass uint32
-	AllowedStorageClass []uint32
+	VolStorageClass        uint32
+	VolAllowedStorageClass []uint32
+	VolCacheDpStorageClass uint32
 }
 
 type MultiVerMgr struct {
@@ -144,7 +144,6 @@ type ExtentClient struct {
 	readLimiter               *rate.Limiter
 	writeLimiter              *rate.Limiter
 	disableMetaCache          bool
-	volumeType                int
 	volumeName                string
 	bcacheEnable              bool
 	bcacheDir                 string
@@ -245,8 +244,14 @@ func NewExtentClient(config *ExtentConfig) (client *ExtentClient, err error) {
 	limit := 0
 retry:
 
-	client.dataWrapper, err = wrapper.NewDataPartitionWrapper(client, config.Volume, config.Masters,
-		config.Preload, config.MinWriteAbleDataPartitionCnt, config.VerReadSeq, config.AllowedStorageClass)
+	if !proto.IsValidStorageClass(config.VolStorageClass) {
+		err = fmt.Errorf("invalid config.VolStorageClass(%v)", config.VolStorageClass)
+		log.LogCriticalf("NewExtentClient: %v", err.Error())
+		return
+	}
+
+	client.dataWrapper, err = wrapper.NewDataPartitionWrapper(client, config.Volume, config.Masters, config.Preload,
+		config.MinWriteAbleDataPartitionCnt, config.VerReadSeq, config.VolStorageClass, config.VolAllowedStorageClass)
 	if err != nil {
 		log.LogErrorf("NewExtentClient: new data partition wrapper failed: volume(%v) mayRetry(%v) err(%v)",
 			config.Volume, limit, err)
@@ -275,7 +280,6 @@ retry:
 	client.loadBcache = config.OnLoadBcache
 	client.cacheBcache = config.OnCacheBcache
 	client.evictBcache = config.OnEvictBcache
-	client.volumeType = config.VolumeType
 	client.volumeName = config.Volume
 	client.bcacheEnable = config.BcacheEnable
 	client.bcacheDir = config.BcacheDir
@@ -317,7 +321,7 @@ retry:
 	log.LogInfof("max streamer limit %d", client.maxStreamerLimit)
 	client.streamerList = list.New()
 
-	client.CacheDpStorageClass = config.CacheDpStorageClass
+	client.CacheDpStorageClass = config.VolCacheDpStorageClass
 
 	go client.backgroundEvictStream()
 

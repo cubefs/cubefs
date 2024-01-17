@@ -3053,9 +3053,11 @@ func NewVolume(config *VolumeConfig) (*Volume, error) {
 		OnGetExtents:                metaWrapper.GetExtents,
 		OnTruncate:                  metaWrapper.Truncate,
 		OnRenewalForbiddenMigration: metaWrapper.RenewalForbiddenMigration,
-		AllowedStorageClass:         volumeInfo.AllowedStorageClass,
+		VolStorageClass:             volumeInfo.VolStorageClass,
+		VolAllowedStorageClass:      volumeInfo.AllowedStorageClass,
 	}
-	if proto.VolSupportsBlobStore(volumeInfo.AllowedStorageClass) {
+
+	if proto.IsStorageClassBlobStore(volumeInfo.VolStorageClass) {
 		if blockCache != nil {
 			extentConfig.BcacheEnable = true
 			extentConfig.OnLoadBcache = blockCache.Get
