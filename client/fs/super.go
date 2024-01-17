@@ -214,7 +214,7 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 		s.bc = bcache.NewBcacheClient()
 	}
 
-	s.cacheDpStorageClass = opt.CacheDpStorageClass
+	s.cacheDpStorageClass = opt.VolCacheDpStorageClass
 
 	extentConfig := &stream.ExtentConfig{
 		Volume:            opt.Volname,
@@ -223,7 +223,6 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 		NearRead:          opt.NearRead,
 		ReadRate:          opt.ReadRate,
 		WriteRate:         opt.WriteRate,
-		VolumeType:        opt.VolType,
 		BcacheEnable:      opt.EnableBcache,
 		BcacheDir:         opt.BcacheDir,
 		MaxStreamerLimit:  opt.MaxStreamerLimit,
@@ -240,8 +239,9 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 		DisableMetaCache:             DisableMetaCache,
 		MinWriteAbleDataPartitionCnt: opt.MinWriteAbleDataPartitionCnt,
 		OnRenewalForbiddenMigration:  s.mw.RenewalForbiddenMigration,
-		CacheDpStorageClass:          s.cacheDpStorageClass,
-		AllowedStorageClass:          opt.AllowedStorageClass,
+		VolStorageClass:              opt.VolStorageClass,
+		VolAllowedStorageClass:       opt.VolAllowedStorageClass,
+		VolCacheDpStorageClass:       s.cacheDpStorageClass,
 	}
 
 	s.ec, err = stream.NewExtentClient(extentConfig)
@@ -250,7 +250,7 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 	}
 	s.mw.VerReadSeq = s.ec.GetReadVer()
 
-	if proto.VolSupportsBlobStore(opt.AllowedStorageClass) {
+	if proto.VolSupportsBlobStore(opt.VolAllowedStorageClass) {
 		s.ebsc, err = blobstore.NewEbsClient(access.Config{
 			ConnMode: access.NoLimitConnMode,
 			Consul: access.ConsulConfig{
@@ -276,7 +276,7 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 	}
 
 	s.suspendCh = make(chan interface{})
-	if proto.VolSupportsBlobStore(opt.AllowedStorageClass) {
+	if proto.VolSupportsBlobStore(opt.VolAllowedStorageClass) {
 		go s.scheduleFlush()
 	}
 	if s.mw.EnableSummary {

@@ -220,30 +220,31 @@ type client struct {
 	id int64
 
 	// mount config
-	volName             string
-	masterAddr          string
-	followerRead        bool
-	logDir              string
-	logLevel            string
-	ebsEndpoint         string
-	servicePath         string
-	volType             int
-	cacheAction         int
-	ebsBlockSize        int
-	enableBcache        bool
-	readBlockThread     int
-	writeBlockThread    int
-	cacheRuleKey        string
-	cacheThreshold      int
-	enableSummary       bool
-	secretKey           string
-	accessKey           string
-	subDir              string
-	pushAddr            string
-	cluster             string
-	dirChildrenNumLimit uint32
-	enableAudit         bool
-	allowedStorageClass []uint32
+	volName                string
+	masterAddr             string
+	followerRead           bool
+	logDir                 string
+	logLevel               string
+	ebsEndpoint            string
+	servicePath            string
+	volType                int
+	cacheAction            int
+	ebsBlockSize           int
+	enableBcache           bool
+	readBlockThread        int
+	writeBlockThread       int
+	cacheRuleKey           string
+	cacheThreshold         int
+	enableSummary          bool
+	secretKey              string
+	accessKey              string
+	subDir                 string
+	pushAddr               string
+	cluster                string
+	dirChildrenNumLimit    uint32
+	enableAudit            bool
+	volStorageClass        uint32
+	volAllowedStorageClass []uint32
 
 	// runtime context
 	cwd    string // current working directory
@@ -1214,20 +1215,20 @@ func (c *client) start() (err error) {
 	}
 	var ec *stream.ExtentClient
 	if ec, err = stream.NewExtentClient(&stream.ExtentConfig{
-		Volume:              c.volName,
-		VolumeType:          c.volType,
-		Masters:             masters,
-		FollowerRead:        c.followerRead,
-		OnAppendExtentKey:   mw.AppendExtentKey,
-		OnSplitExtentKey:    mw.SplitExtentKey,
-		OnGetExtents:        mw.GetExtents,
-		OnTruncate:          mw.Truncate,
-		BcacheEnable:        c.enableBcache,
-		OnLoadBcache:        c.bc.Get,
-		OnCacheBcache:       c.bc.Put,
-		OnEvictBcache:       c.bc.Evict,
-		DisableMetaCache:    true,
-		AllowedStorageClass: c.allowedStorageClass,
+		Volume:                 c.volName,
+		Masters:                masters,
+		FollowerRead:           c.followerRead,
+		OnAppendExtentKey:      mw.AppendExtentKey,
+		OnSplitExtentKey:       mw.SplitExtentKey,
+		OnGetExtents:           mw.GetExtents,
+		OnTruncate:             mw.Truncate,
+		BcacheEnable:           c.enableBcache,
+		OnLoadBcache:           c.bc.Get,
+		OnCacheBcache:          c.bc.Put,
+		OnEvictBcache:          c.bc.Evict,
+		DisableMetaCache:       true,
+		VolStorageClass:        c.volStorageClass,
+		VolAllowedStorageClass: c.volAllowedStorageClass,
 	}); err != nil {
 		log.LogErrorf("newClient NewExtentClient failed(%v)", err)
 		return
@@ -1479,7 +1480,8 @@ func (c *client) loadConfFromMaster(masters []string) (err error) {
 	c.cacheAction = volumeInfo.CacheAction
 	c.cacheRuleKey = volumeInfo.CacheRule
 	c.cacheThreshold = volumeInfo.CacheThreshold
-	c.allowedStorageClass = volumeInfo.AllowedStorageClass
+	c.volStorageClass = volumeInfo.VolStorageClass
+	c.volAllowedStorageClass = volumeInfo.AllowedStorageClass
 
 	var clusterInfo *proto.ClusterInfo
 	clusterInfo, err = mc.AdminAPI().GetClusterInfo()
