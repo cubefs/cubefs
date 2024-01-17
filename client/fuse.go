@@ -819,7 +819,7 @@ func mount(opt *proto.MountOptions) (fsConn *fuse.Conn, super *cfs.Super, err er
 				super.CacheAction = volumeInfo.CacheAction
 				super.CacheThreshold = volumeInfo.CacheThreshold
 				super.EbsBlockSize = volumeInfo.ObjBlockSize
-			} else if proto.VolSupportsBlobStore(opt.AllowedStorageClass) {
+			} else if proto.VolSupportsBlobStore(opt.VolAllowedStorageClass) {
 				super.EbsBlockSize = volumeInfo.ObjBlockSize
 			}
 		}
@@ -1065,9 +1065,9 @@ func loadConfFromMaster(opt *proto.MountOptions) (err error) {
 	opt.TxTimeout = volumeInfo.TxTimeout
 	opt.TxConflictRetryNum = volumeInfo.TxConflictRetryNum
 	opt.TxConflictRetryInterval = volumeInfo.TxConflictRetryInterval
-	opt.CacheDpStorageClass = volumeInfo.CacheDpStorageClass
-	opt.AllowedStorageClass = volumeInfo.AllowedStorageClass
 	opt.VolStorageClass = volumeInfo.VolStorageClass
+	opt.VolAllowedStorageClass = volumeInfo.AllowedStorageClass
+	opt.VolCacheDpStorageClass = volumeInfo.CacheDpStorageClass
 
 	var clusterInfo *proto.ClusterInfo
 	clusterInfo, err = mc.AdminAPI().GetClusterInfo()
