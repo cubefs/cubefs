@@ -1086,7 +1086,6 @@ func (mp *metaPartition) fsmUpdateExtentKeyAfterMigration(inoParam *Inode) (resp
 
 func (mp *metaPartition) fsmSetCreateTime(req *SetCreateTimeRequest) (err error) {
 	log.LogDebugf("[fsmSetCreateTime] req %v", req)
-	//ino := NewInode(req.Inode,  proto.Mode(os.ModePerm)) //TODO:tangjingyu
 	ino := NewInode(req.Inode, 0)
 	item := mp.inodeTree.CopyGet(ino)
 	if item == nil {
