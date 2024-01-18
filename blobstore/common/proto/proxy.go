@@ -23,7 +23,8 @@ var ErrInvalidMsg = errors.New("msg is invalid")
 type DeleteStage byte
 
 const (
-	DeleteStageMarkDelete = DeleteStage(iota + 1)
+	InitStage DeleteStage = iota
+	DeleteStageMarkDelete
 	DeleteStageDelete
 )
 
