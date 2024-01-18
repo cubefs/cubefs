@@ -413,7 +413,7 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 			//var maskStr string
 			if optTxMask != "" {
 				var oldMask, newMask proto.TxOpMask
-				oldMask, err = proto.GetMaskFromString(vv.EnableTransaction)
+				oldMask, err = proto.GetMaskFromString(vv.EnableTransactionV1)
 				if err != nil {
 					return
 				}
@@ -424,15 +424,15 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 
 				if optTxForceReset {
 					if oldMask == newMask {
-						confirmString.WriteString(fmt.Sprintf("  Transaction Mask    : %v \n", vv.EnableTransaction))
+						confirmString.WriteString(fmt.Sprintf("  Transaction Mask    : %v \n", vv.EnableTransactionV1))
 					} else {
 						isChange = true
-						confirmString.WriteString(fmt.Sprintf("  Transaction Mask    : %v  -> %v \n", vv.EnableTransaction, optTxMask))
+						confirmString.WriteString(fmt.Sprintf("  Transaction Mask    : %v  -> %v \n", vv.EnableTransactionV1, optTxMask))
 					}
 
 				} else {
 					if proto.MaskContains(oldMask, newMask) {
-						confirmString.WriteString(fmt.Sprintf("  Transaction Mask    : %v \n", vv.EnableTransaction))
+						confirmString.WriteString(fmt.Sprintf("  Transaction Mask    : %v \n", vv.EnableTransactionV1))
 					} else {
 						isChange = true
 						mergedMaskString := ""
@@ -442,13 +442,13 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 							mergedMaskString = proto.GetMaskString(oldMask | newMask)
 						}
 
-						confirmString.WriteString(fmt.Sprintf("  Transaction Mask    : %v  -> %v \n", vv.EnableTransaction, mergedMaskString))
+						confirmString.WriteString(fmt.Sprintf("  Transaction Mask    : %v  -> %v \n", vv.EnableTransactionV1, mergedMaskString))
 
 					}
 				}
 
 			} else {
-				confirmString.WriteString(fmt.Sprintf("  Transaction Mask    : %v \n", vv.EnableTransaction))
+				confirmString.WriteString(fmt.Sprintf("  Transaction Mask    : %v \n", vv.EnableTransactionV1))
 			}
 
 			if optTxTimeout > 0 && vv.TxTimeout != optTxTimeout {
