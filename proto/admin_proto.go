@@ -894,7 +894,7 @@ type SimpleVolView struct {
 	Forbidden          bool
 	DisableAuditLog    bool
 	EnableRemoveDupReq bool
-	DeleteExecTime   time.Time
+	DeleteExecTime     time.Time
 }
 
 type NodeSetInfo struct {
