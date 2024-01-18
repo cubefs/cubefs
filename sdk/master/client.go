@@ -19,6 +19,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/iputil"
 	"io/ioutil"
 	"net/http"
@@ -42,6 +43,8 @@ const (
 
 var (
 	ErrNoValidMaster = errors.New("no valid master")
+	UmpKeyErrNoSuchHost = "ErrNoSuchHost"
+	UmpErrNoSuchHostAlarmMsg = "request to master with 'no such host'"
 )
 
 type ClientType int
@@ -164,6 +167,9 @@ func (c *MasterClient) serveRequest(r *request) (respData []byte, contentType st
 			continue
 		}
 		if err != nil {
+			if strings.Contains(err.Error(), "no such host") {
+				exporter.WarningAppendKey(UmpKeyErrNoSuchHost, UmpErrNoSuchHostAlarmMsg)
+			}
 			log.LogWarnf("serveRequest: send http request fail: method(%v) url(%v) err(%v)", r.method, url, err)
 			c.updateMasterAddr()
 			continue
