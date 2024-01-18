@@ -647,16 +647,23 @@ func (mgr *BlobDeleteMgr) deleteShard(ctx context.Context, location proto.VunitL
 		err = mgr.blobnodeCli.Delete(ctx, location, bid)
 	}
 
+	errCode := 0
 	defer func() {
 		if err == nil {
 			span.Debugf("delete shard set stage: location[%+v], stage[%d]", location, stage)
 			stageMgr.setShardDelStage(location.Vuid, stage)
 			return
 		}
+
+		if shouldBackToInitStage(err) {
+			stageMgr.setShardDelStage(location.Vuid, proto.InitStage)
+			span.Warnf("delete shard failed, roll back to init: bid[%d], location[%+v], markDelete[%v], code[%d], err[%+v]",
+				bid, location, markDelete, errCode, err)
+		}
 	}()
 
 	if err != nil {
-		errCode := rpc.DetectStatusCode(err)
+		errCode = rpc.DetectStatusCode(err)
 		if assumeDeleteSuccess(errCode) {
 			span.Debugf("delete bid failed but assume success: bid[%d], location[%+v], err[%+v] ",
 				bid, location, err)
@@ -731,6 +738,11 @@ func shouldUpdateVolumeErr(errCode int) bool {
 	return errCode == errcode.CodeDiskBroken ||
 		errCode == errcode.CodeVuidNotFound ||
 		errCode == errcode.CodeDiskNotFound
+}
+
+func shouldBackToInitStage(err error) bool {
+	// 653: errcode.CodeShardNotMarkDelete
+	return err == errcode.ErrShardNotMarkDelete
 }
 
 func assumeDeleteSuccess(errCode int) bool {
