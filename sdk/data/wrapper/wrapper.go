@@ -590,7 +590,7 @@ func (w *Wrapper) updateDataNodeStatus() (err error) {
 
 	newHostsStatus := make(map[string]bool)
 	for _, node := range cv.DataNodes {
-		newHostsStatus[node.Addr] = node.Status
+		newHostsStatus[node.Addr] = node.IsActive
 	}
 	log.LogInfof("updateDataNodeStatus: update %d hosts status", len(newHostsStatus))
 

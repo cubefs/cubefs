@@ -3370,7 +3370,7 @@ func (c *Cluster) allMasterNodes() (masterNodes []proto.NodeView) {
 	for _, addr := range c.cfg.peerAddrs {
 		split := strings.Split(addr, colonSplit)
 		id, _ := strconv.ParseUint(split[0], 10, 64)
-		masterNode := proto.NodeView{ID: id, Addr: split[1] + ":" + split[2], Status: true}
+		masterNode := proto.NodeView{ID: id, Addr: split[1] + ":" + split[2], IsActive: true}
 		masterNodes = append(masterNodes, masterNode)
 	}
 	return masterNodes
@@ -3390,7 +3390,7 @@ func (c *Cluster) allDataNodes() (dataNodes []proto.NodeView) {
 		dataNode := node.(*DataNode)
 		dataNodes = append(dataNodes, proto.NodeView{
 			Addr: dataNode.Addr, DomainAddr: dataNode.DomainAddr,
-			Status: dataNode.isActive, ID: dataNode.ID, IsWritable: dataNode.isWriteAble(),
+			IsActive: dataNode.isActive, ID: dataNode.ID, IsWritable: dataNode.isWriteAble(),
 		})
 		return true
 	})
@@ -3403,7 +3403,7 @@ func (c *Cluster) allMetaNodes() (metaNodes []proto.NodeView) {
 		metaNode := node.(*MetaNode)
 		metaNodes = append(metaNodes, proto.NodeView{
 			ID: metaNode.ID, Addr: metaNode.Addr, DomainAddr: metaNode.DomainAddr,
-			Status: metaNode.IsActive, IsWritable: metaNode.isWritable(),
+			IsActive: metaNode.IsActive, IsWritable: metaNode.isWritable(),
 		})
 		return true
 	})
