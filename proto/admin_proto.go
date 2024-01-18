@@ -19,8 +19,6 @@ import (
 	"fmt"
 	"strconv"
 	"time"
-
-	"github.com/cubefs/cubefs/util"
 )
 
 // api
@@ -1081,6 +1079,7 @@ type SimpleVolView struct {
 	EnableToken             bool
 	EnablePosixAcl          bool
 	EnableQuota             bool
+	EnableTransactionV1     string
 	EnableTransaction       string
 	TxTimeout               int64
 	TxConflictRetryNum      int64
