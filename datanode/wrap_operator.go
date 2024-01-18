@@ -77,11 +77,11 @@ func (s *DataNode) OperatePacket(p *repl.Packet, c *net.TCPConn) (err error) {
 				}
 			}
 		}
-		size := uint64(p.Size)
 		if p.Opcode == proto.OpMarkDelete {
-			size = 0
+			tpObj.AfterTp(0)
+		} else {
+			tpObj.AfterTp(uint64(sz))
 		}
-		tpObj.AfterTp(size)
 		p.Size = resultSize
 		tpObject.Set(err)
 	}()
