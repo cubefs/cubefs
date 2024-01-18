@@ -27,6 +27,7 @@ type VolumeMgr interface {
 }
 
 type VolumeMgrConf struct {
+	AllocVolumeNum    int `json:"alloc_volume_num"`
 	RetainIntervalSec int `json:"retain_interval_sec"`
 }
 
@@ -38,7 +39,7 @@ type volumeMgrImpl struct {
 	stopCh    <-chan struct{}
 }
 
-func NewVolumeMgrImpl(conf VolumeMgrConf, cmClient cmapi.APIAccess, stopCh <-chan struct{}) (VolumeMgr, error) {
+func NewVolumeMgrImpl(conf VolumeMgrConf, cmClient cmapi.APIAccess, stopCh <-chan struct{}) VolumeMgr {
 	v := &volumeMgrImpl{
 		conf:     conf,
 		cmClient: cmClient,
@@ -46,7 +47,7 @@ func NewVolumeMgrImpl(conf VolumeMgrConf, cmClient cmapi.APIAccess, stopCh <-cha
 		volumes:  make(map[proto.Vid]*cmapi.AllocVolumeInfo),
 	}
 	go v.retainAll()
-	return v, nil
+	return v
 }
 
 func (v *volumeMgrImpl) Alloc(ctx context.Context, args *AllocArgs) ([]AllocRet, error) {

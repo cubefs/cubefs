@@ -18,7 +18,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
+	"strings"
+
 	"github.com/afex/hystrix-go/hystrix"
+
 	"github.com/cubefs/cubefs/blobstore/access/allocator"
 	"github.com/cubefs/cubefs/blobstore/access/controller"
 	"github.com/cubefs/cubefs/blobstore/api/access"
@@ -34,8 +38,6 @@ import (
 	"github.com/cubefs/cubefs/blobstore/util/errors"
 	"github.com/cubefs/cubefs/blobstore/util/log"
 	"github.com/cubefs/cubefs/blobstore/util/retry"
-	"io"
-	"strings"
 )
 
 const (
@@ -119,7 +121,6 @@ type StreamConfig struct {
 	ServicePunishIntervalS     int    `json:"service_punish_interval_s"`
 	AllocRetryTimes            int    `json:"alloc_retry_times"`
 	AllocRetryIntervalMS       int    `json:"alloc_retry_interval_ms"`
-	AllocVolumeNum             int    `json:"alloc_volume_num"`
 	EncoderEnableVerify        bool   `json:"encoder_enableverify"`
 	EncoderConcurrency         int    `json:"encoder_concurrency"`
 	MinReadShardsX             int    `json:"min_read_shards_x"`
@@ -164,7 +165,6 @@ type Handler struct {
 	encoder           map[codemode.CodeMode]ec.Encoder
 	clusterController controller.ClusterController
 	allocMgr          allocator.VolumeMgr
-	//volumeCache       atomic.Value
 
 	blobnodeClient blobnode.StorageAPI
 	proxyClient    proxy.Client
@@ -204,7 +204,8 @@ func confCheck(cfg *StreamConfig) {
 	defaulter.LessOrEqual(&cfg.DiskTimeoutPunishIntervalS, defaultDiskPunishIntervalS/10)
 	defaulter.LessOrEqual(&cfg.ServicePunishIntervalS, defaultServicePunishIntervalS)
 	defaulter.LessOrEqual(&cfg.AllocRetryTimes, defaultAllocRetryTimes)
-	defaulter.LessOrEqual(&cfg.AllocVolumeNum, defaultAllocVolumeNum)
+	defaulter.LessOrEqual(&cfg.AllocConfig.AllocVolumeNum, defaultAllocVolumeNum)
+	defaulter.LessOrEqual(&cfg.AllocConfig.RetainIntervalSec, defaultAllocRetainIntervalSec)
 	if cfg.AllocRetryIntervalMS <= 100 {
 		cfg.AllocRetryIntervalMS = defaultAllocRetryIntervalMS
 	}
@@ -247,7 +248,7 @@ func NewStreamHandler(cfg *StreamConfig, stopCh <-chan struct{}) StreamHandler {
 		log.Fatal("new cluster client is nil")
 	}
 
-	allocMgr, err := allocator.NewVolumeMgrImpl(cfg.AllocConfig, cmClient, stopCh)
+	allocMgr := allocator.NewVolumeMgrImpl(cfg.AllocConfig, cmClient, stopCh)
 
 	handler := &Handler{
 		memPool:           resourcepool.NewMemPool(cfg.MemPoolSizeClasses),
@@ -467,13 +468,13 @@ func (h *Handler) punishDiskWith(ctx context.Context, clusterID proto.ClusterID,
 	}
 }
 
-func (h *Handler) releaseVolumeSealed(ctx context.Context, cid proto.ClusterID, vid proto.Vid) {
+func (h *Handler) releaseVolumeSealed(ctx context.Context, vid proto.Vid) {
 	span := trace.SpanFromContextSafe(ctx)
 	err := h.allocMgr.Release(ctx, &cmapi.ReleaseVolumes{SealedVids: []proto.Vid{vid}})
 	span.Warnf("We released volume %d, err[%+v]", vid, err)
 }
 
-func (h *Handler) releaseVolumeNormal(ctx context.Context, cid proto.ClusterID, vid proto.Vid) {
+func (h *Handler) releaseVolumeNormal(ctx context.Context, vid proto.Vid) {
 	span := trace.SpanFromContextSafe(ctx)
 	err := h.allocMgr.Release(ctx, &cmapi.ReleaseVolumes{NormalVids: []proto.Vid{vid}})
 	span.Warnf("We released volume %d, err[%+v]", vid, err)
