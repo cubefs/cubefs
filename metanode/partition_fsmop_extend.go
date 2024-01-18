@@ -31,13 +31,6 @@ func (mp *metaPartition) fsmSetXAttr(extend *Extend, reqInfo *RequestInfo) (err 
 		status = previousRespCode
 		return
 	}
-
-	defer func() {
-		if err != nil {
-			return
-		}
-		mp.recordRequest(reqInfo, status)
-	}()
 	treeItem := mp.extendTree.CopyGet(extend)
 	var e *Extend
 	if treeItem == nil {
@@ -47,11 +40,13 @@ func (mp *metaPartition) fsmSetXAttr(extend *Extend, reqInfo *RequestInfo) (err 
 		e.Merge(extend, true)
 	}
 
+	mp.recordRequest(reqInfo, status)
+
 	return
 }
 
 func (mp *metaPartition) fsmRemoveXAttr(extend *Extend, reqInfo *RequestInfo) (err error) {
-	var status uint8 = proto.OpOk
+	var status = proto.OpOk
 	if previousRespCode, isDup := mp.reqRecords.IsDupReq(reqInfo); isDup {
 		log.LogCriticalf("fsmRemoveXAttr: dup req:%v, previousRespCode:%v", reqInfo, previousRespCode)
 		status = previousRespCode
@@ -59,9 +54,6 @@ func (mp *metaPartition) fsmRemoveXAttr(extend *Extend, reqInfo *RequestInfo) (e
 	}
 
 	defer func() {
-		if err != nil {
-			return
-		}
 		mp.recordRequest(reqInfo, status)
 	}()
 	treeItem := mp.extendTree.CopyGet(extend)

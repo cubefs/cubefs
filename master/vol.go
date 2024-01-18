@@ -114,10 +114,10 @@ type Vol struct {
 	Forbidden               bool
 	DisableAuditLog         bool
 
-	authKey        string
-	DeleteExecTime time.Time
-	user           *User
-	enableRemoveDupReq      bool //for remove dup client retry operation
+	authKey            string
+	DeleteExecTime     time.Time
+	user               *User
+	enableRemoveDupReq bool // for remove dup client retry operation
 }
 
 func newVol(vv volValue) (vol *Vol) {

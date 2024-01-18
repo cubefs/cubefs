@@ -130,10 +130,11 @@ func (mp *metaPartition) fsmCreateLinkInode(ino *Inode, uniqID uint64, reqInfo *
 			return
 		}
 		resp.Msg = existIno.(*Inode)
+		return
 	}
 
 	defer func() {
-		if resp.Status != proto.OpOk {
+		if resp.Status != proto.OpOk && resp.Status != proto.OpNotExistErr {
 			return
 		}
 		mp.recordRequest(reqInfo, resp.Status)
@@ -278,7 +279,7 @@ func (mp *metaPartition) fsmUnlinkInode(ino *Inode, uniqID uint64, reqInfo *Requ
 		return
 	}
 	defer func() {
-		if resp.Status != proto.OpOk {
+		if resp.Status != proto.OpOk && resp.Status != proto.OpNotExistErr {
 			return
 		}
 		mp.recordRequest(reqInfo, resp.Status)

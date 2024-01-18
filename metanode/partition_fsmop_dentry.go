@@ -210,7 +210,8 @@ func (mp *metaPartition) fsmDeleteDentry(dentry *Dentry, checkInode bool, reqInf
 		return
 	}
 	defer func() {
-		if resp.Status != proto.OpOk {
+		// if not exist, also need record request, avoid repeated request delete new data
+		if resp.Status != proto.OpOk && resp.Status != proto.OpNotExistErr {
 			return
 		}
 		mp.recordRequest(reqInfo, resp.Status)
