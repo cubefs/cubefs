@@ -23,7 +23,6 @@ package main
 import (
 	"flag"
 	"fmt"
-	"github.com/cubefs/cubefs/sdk/meta"
 	"io/ioutil"
 	syslog "log"
 	"net"
@@ -38,6 +37,8 @@ import (
 	"strings"
 	"syscall"
 	"time"
+
+	"github.com/cubefs/cubefs/sdk/meta"
 
 	"github.com/cubefs/cubefs/blockcache/bcache"
 	"github.com/cubefs/cubefs/util/auditlog"
@@ -645,7 +646,7 @@ func mount(opt *proto.MountOptions) (fsConn *fuse.Conn, super *cfs.Super, err er
 				log.LogErrorf("UpdateVolConf: get vol info from master failed, err %s", err.Error())
 				continue
 			}
-			super.SetTransaction(volumeInfo.EnableTransaction, volumeInfo.TxTimeout, volumeInfo.TxConflictRetryNum, volumeInfo.TxConflictRetryInterval)
+			super.SetTransaction(volumeInfo.EnableTransactionV1, volumeInfo.TxTimeout, volumeInfo.TxConflictRetryNum, volumeInfo.TxConflictRetryInterval)
 			if proto.IsCold(opt.VolType) {
 				super.CacheAction = volumeInfo.CacheAction
 				super.CacheThreshold = volumeInfo.CacheThreshold
@@ -871,7 +872,7 @@ func loadConfFromMaster(opt *proto.MountOptions) (err error) {
 	opt.CacheAction = volumeInfo.CacheAction
 	opt.CacheThreshold = volumeInfo.CacheThreshold
 	opt.EnableQuota = volumeInfo.EnableQuota
-	opt.EnableTransaction = volumeInfo.EnableTransaction
+	opt.EnableTransaction = volumeInfo.EnableTransactionV1
 	opt.TxTimeout = volumeInfo.TxTimeout
 	opt.TxConflictRetryNum = volumeInfo.TxConflictRetryNum
 	opt.TxConflictRetryInterval = volumeInfo.TxConflictRetryInterval

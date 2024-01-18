@@ -129,7 +129,7 @@ func formatSimpleVolView(svv *proto.SimpleVolView) string {
 	sb.WriteString(fmt.Sprintf("  ZoneName                        : %v\n", svv.ZoneName))
 	sb.WriteString(fmt.Sprintf("  VolType                         : %v\n", svv.VolType))
 	sb.WriteString(fmt.Sprintf("  DpReadOnlyWhenVolFull           : %v\n", svv.DpReadOnlyWhenVolFull))
-	sb.WriteString(fmt.Sprintf("  Transaction Mask                : %v\n", svv.EnableTransaction))
+	sb.WriteString(fmt.Sprintf("  Transaction Mask                : %v\n", svv.EnableTransactionV1))
 	sb.WriteString(fmt.Sprintf("  Transaction timeout             : %v\n", svv.TxTimeout))
 	sb.WriteString(fmt.Sprintf("  Tx conflict retry num           : %v\n", svv.TxConflictRetryNum))
 	sb.WriteString(fmt.Sprintf("  Tx conflict retry interval(ms)  : %v\n", svv.TxConflictRetryInterval))
