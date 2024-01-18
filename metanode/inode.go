@@ -24,6 +24,7 @@ import (
 	"math"
 	"runtime/debug"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/cubefs/cubefs/util/errors"
@@ -444,6 +445,8 @@ func (i *Inode) String() string {
 			buff.WriteString(fmt.Sprintf("Extents[%s]", i.HybridCouldExtents.sortedEks.(*SortedObjExtents)))
 		}
 	}
+	buff.WriteString(fmt.Sprintf("ForbiddenMigration[%v]", i.ForbiddenMigration))
+	buff.WriteString(fmt.Sprintf("WriteGeneration[%v]", i.WriteGeneration))
 	buff.WriteString("}")
 	return buff.String()
 }
@@ -502,6 +505,9 @@ func (i *Inode) Copy() BtreeItem {
 	newIno.Reserved = i.Reserved
 	newIno.StorageClass = i.StorageClass
 	newIno.Extents = i.Extents.Clone()
+	newIno.WriteGeneration = i.WriteGeneration
+	newIno.ForbiddenMigration = i.ForbiddenMigration
+	//newIno.ObjExtents = i.ObjExtents.Clone()
 	if i.multiSnap != nil {
 		newIno.multiSnap = &InodeMultiSnap{
 			verSeq:        i.getVer(),
@@ -557,6 +563,8 @@ func (i *Inode) CopyDirectly() BtreeItem {
 	newIno.Reserved = i.Reserved
 	newIno.StorageClass = i.StorageClass
 	newIno.Extents = i.Extents.Clone()
+	newIno.WriteGeneration = i.WriteGeneration
+	newIno.ForbiddenMigration = i.ForbiddenMigration
 	//newIno.ObjExtents = i.ObjExtents.Clone()
 	if i.HybridCouldExtents.sortedEks != nil {
 		if i.storeInReplicaSystem() {
@@ -788,7 +796,8 @@ func (i *Inode) MarshalInodeValue(buff *bytes.Buffer) {
 		i.Reserved |= V4MigrationExtentsFlag
 		log.LogDebugf("MarshalInodeValue ino(%v) V4MigrationExtentsFlag", i.Inode)
 	}
-	log.LogDebugf("MarshalInodeValue ino(%v) storageClass(%v) Reserved(%v)", i.Inode, i.StorageClass, i.Reserved)
+	log.LogDebugf("MarshalInodeValue ino(%v) storageClass(%v) Reserved(%v) ForbiddenMigration(%v) WriteGeneration(%v)",
+		i.Inode, i.StorageClass, i.Reserved, atomic.LoadUint32(&i.ForbiddenMigration), atomic.LoadUint64(&i.WriteGeneration))
 	if err = binary.Write(buff, binary.BigEndian, &i.Reserved); err != nil {
 		panic(err)
 	}
@@ -1016,8 +1025,8 @@ func (i *Inode) UnmarshalInodeValue(buff *bytes.Buffer) (err error) {
 		if err = binary.Read(buff, binary.BigEndian, &i.WriteGeneration); err != nil {
 			return
 		}
-		log.LogDebugf("UnmarshalInodeValue ino(%v) StorageClass(%v) v2(%v) v3(%v) v4(%v)", i.Inode, i.StorageClass,
-			v2, v3, v4)
+		log.LogDebugf("UnmarshalInodeValue ino(%v) StorageClass(%v) ForbiddenMigration(%v) WriteGeneration(%v) v2(%v) v3(%v) v4(%v)",
+			i.Inode, i.StorageClass, i.ForbiddenMigration, i.WriteGeneration, v2, v3, v4)
 		extSize := uint32(0)
 		//unmarshall extents cache
 		if err = binary.Read(buff, binary.BigEndian, &extSize); err != nil {
