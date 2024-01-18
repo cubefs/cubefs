@@ -154,7 +154,7 @@ type ClusterIP struct {
 // NodeView provides the view of the data or meta node.
 type NodeView struct {
 	Addr       string
-	Status     bool
+	IsActive   bool
 	DomainAddr string
 	ID         uint64
 	IsWritable bool
@@ -225,10 +225,11 @@ type NodeStatView struct {
 }
 
 type NodeStatInfo struct {
-	TotalGB     uint64
-	UsedGB      uint64
-	IncreasedGB int64
+	TotalGB     string
+	UsedGB      string
+	IncreasedGB string
 	UsedRatio   string
+	AvailGB     string
 }
 
 type VolStatInfo struct {

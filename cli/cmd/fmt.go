@@ -41,12 +41,29 @@ func formatClusterView(cv *proto.ClusterView, cn *proto.ClusterNodeInfo, cp *pro
 		sb.WriteString(fmt.Sprintf("  Master-%d           : %v\n", master.ID, master.Addr))
 	}
 	sb.WriteString(fmt.Sprintf("  Auto allocate      : %v\n", formatEnabledDisabled(!cv.DisableAutoAlloc)))
-	sb.WriteString(fmt.Sprintf("  MetaNode count     : %v\n", len(cv.MetaNodes)))
-	sb.WriteString(fmt.Sprintf("  MetaNode used      : %v GB\n", cv.MetaNodeStatInfo.UsedGB))
-	sb.WriteString(fmt.Sprintf("  MetaNode total     : %v GB\n", cv.MetaNodeStatInfo.TotalGB))
-	sb.WriteString(fmt.Sprintf("  DataNode count     : %v\n", len(cv.DataNodes)))
-	sb.WriteString(fmt.Sprintf("  DataNode used      : %v GB\n", cv.DataNodeStatInfo.UsedGB))
-	sb.WriteString(fmt.Sprintf("  DataNode total     : %v GB\n", cv.DataNodeStatInfo.TotalGB))
+
+	metaNodeActiveCnt := 0
+	for _, node := range cv.MetaNodes {
+		if node.IsActive {
+			metaNodeActiveCnt += 1
+		}
+	}
+	sb.WriteString(fmt.Sprintf("  MetaNode count (active/total)    : %v/%v\n", metaNodeActiveCnt, len(cv.MetaNodes)))
+	sb.WriteString(fmt.Sprintf("  MetaNode used                    : %v GB\n", cv.MetaNodeStatInfo.UsedGB))
+	sb.WriteString(fmt.Sprintf("  MetaNode Available               : %v GB\n", cv.MetaNodeStatInfo.AvailGB))
+	sb.WriteString(fmt.Sprintf("  MetaNode total                   : %v GB\n", cv.MetaNodeStatInfo.TotalGB))
+
+	dataNodeActiveCnt := 0
+	for _, node := range cv.DataNodes {
+		if node.IsActive {
+			dataNodeActiveCnt += 1
+		}
+	}
+	sb.WriteString(fmt.Sprintf("  DataNode count (active/total)    : %v/%v\n", dataNodeActiveCnt, len(cv.DataNodes)))
+	sb.WriteString(fmt.Sprintf("  DataNode used                    : %v GB\n", cv.DataNodeStatInfo.UsedGB))
+	sb.WriteString(fmt.Sprintf("  DataNode Available               : %v GB\n", cv.DataNodeStatInfo.AvailGB))
+	sb.WriteString(fmt.Sprintf("  DataNode total                   : %v GB\n", cv.DataNodeStatInfo.TotalGB))
+
 	sb.WriteString(fmt.Sprintf("  Volume count       : %v\n", len(cv.VolStatInfo)))
 	sb.WriteString(fmt.Sprintf("  Allow Mp Decomm    : %v\n", formatEnabledDisabled(!cv.ForbidMpDecommission)))
 	sb.WriteString(fmt.Sprintf("  EbsAddr            : %v\n", cp.EbsAddr))
@@ -86,19 +103,19 @@ func formatClusterStat(cs *proto.ClusterStatInfo) string {
 var nodeViewTableRowPattern = "%-6v    %-65v    %-8v    %-8v"
 
 func formatNodeViewTableHeader() string {
-	return fmt.Sprintf(nodeViewTableRowPattern, "ID", "ADDRESS", "WRITABLE", "STATUS")
+	return fmt.Sprintf(nodeViewTableRowPattern, "ID", "ADDRESS", "WRITABLE", "ACTIVE")
 }
 
 func formatNodeView(view *proto.NodeView, tableRow bool) string {
 	if tableRow {
 		return fmt.Sprintf(nodeViewTableRowPattern, view.ID, formatAddr(view.Addr, view.DomainAddr),
-			formatYesNo(view.IsWritable), formatNodeStatus(view.Status))
+			formatYesNo(view.IsWritable), formatNodeStatus(view.IsActive))
 	}
 	sb := strings.Builder{}
 	sb.WriteString(fmt.Sprintf("  ID      : %v\n", view.ID))
 	sb.WriteString(fmt.Sprintf("  Address : %v\n", formatAddr(view.Addr, view.DomainAddr)))
 	sb.WriteString(fmt.Sprintf("  Writable: %v\n", formatYesNo(view.IsWritable)))
-	sb.WriteString(fmt.Sprintf("  Status  : %v", formatNodeStatus(view.Status)))
+	sb.WriteString(fmt.Sprintf("  Active  : %v", formatNodeStatus(view.IsActive)))
 	return sb.String()
 }
 
