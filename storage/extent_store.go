@@ -751,10 +751,18 @@ func (s *ExtentStore) Watermark(extentID uint64) (ei *ExtentInfoBlock, err error
 
 // Watermark returns the extent info of the given extent on the record.
 func (s *ExtentStore) ForceWatermark(extentID uint64) (ei *ExtentInfoBlock, err error) {
+	var e *Extent
 	ei, ok := s.getExtentInfoByExtentID(extentID)
 	if !ok || ei == nil {
 		err = fmt.Errorf("e %v not exist", s.getExtentKey(extentID))
 		return
+	}
+	if !s.IsFinishLoad() {
+		e, err = s.ExtentWithHeader(ei)
+		if err != nil {
+			return
+		}
+		s.infoStore.UpdateInfoFromExtent(e, 0)
 	}
 	return
 }

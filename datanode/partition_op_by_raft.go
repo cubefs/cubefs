@@ -319,15 +319,15 @@ func (si *ItemIterator) Next() (data []byte, err error) {
 }
 
 const (
-	SkipLimit   = true
-	NoSkipLimit = false
+	ForceRepair   = true
+	NoForceRepair = false
 )
 
 func (dp *DataPartition) repairDataOnRandomWriteFromHost(extentID uint64, fromOffset, size uint64, host string) (err error) {
 	remoteExtentInfo := storage.ExtentInfoBlock{}
 	remoteExtentInfo[storage.FileID] = extentID
 	remoteExtentInfo[storage.Size] = fromOffset + size
-	err = dp.streamRepairExtent(nil, remoteExtentInfo, host, SkipLimit)
+	err = dp.streamRepairExtent(nil, remoteExtentInfo, host, ForceRepair)
 	log.LogWarnf("repairDataFromHost extentID(%v) fromOffset(%v) size(%v) result(%v)", dp.applyRepairKey(int(extentID)), fromOffset, size, err)
 	return err
 }

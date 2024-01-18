@@ -405,7 +405,7 @@ func (dp *DataPartition) DoRepairOnLeaderDisk(ctx context.Context, repairTask *D
 			}
 		}
 		for _, source := range sources {
-			err := dp.streamRepairExtent(ctx, extentInfo, source, SkipLimit)
+			err := dp.streamRepairExtent(ctx, extentInfo, source, NoForceRepair)
 			if err != nil {
 				err = errors.Trace(err, "DoRepairOnLeaderDisk %v", dp.applyRepairKey(int(extentInfo[storage.FileID])))
 				localExtentInfo, opErr := dp.ExtentStore().Watermark(uint64(extentInfo[storage.FileID]))
@@ -778,7 +778,7 @@ func (dp *DataPartition) doStreamExtentFixRepairOnFollowerDisk(ctx context.Conte
 
 	var err error
 	for _, source := range sources {
-		err = dp.streamRepairExtent(ctx, remoteExtentInfo, source, SkipLimit)
+		err = dp.streamRepairExtent(ctx, remoteExtentInfo, source, NoForceRepair)
 		if err != nil {
 			err = errors.Trace(err, "doStreamExtentFixRepairOnFollowerDisk %v", dp.applyRepairKey(int(remoteExtentInfo[storage.FileID])))
 			localExtentInfo, opErr := dp.ExtentStore().Watermark(uint64(remoteExtentInfo[storage.FileID]))
@@ -818,7 +818,7 @@ func (dp *DataPartition) tryLockExtentRepair(extentID uint64) (release func(), s
 
 // The actual repair of an extent happens here.
 
-func (dp *DataPartition) streamRepairExtent(ctx context.Context, remoteExtentInfo storage.ExtentInfoBlock, source string, skipLimit bool) (err error) {
+func (dp *DataPartition) streamRepairExtent(ctx context.Context, remoteExtentInfo storage.ExtentInfoBlock, source string, forceRepair bool) (err error) {
 
 	var (
 		extentID   = remoteExtentInfo[storage.FileID]
@@ -830,18 +830,14 @@ func (dp *DataPartition) streamRepairExtent(ctx context.Context, remoteExtentInf
 	if !store.IsExists(extentID) || store.IsDeleted(extentID) {
 		return
 	}
-	if !store.IsFinishLoad() {
-		log.LogWarnf("partition(%v) is loading", dp.partitionID)
-		return
+	if !forceRepair {
+		err = multirate.WaitConcurrency(context.Background(), proto.OpExtentRepairWrite_, dp.disk.Path)
+		if err != nil {
+			err = errors.Trace(err, proto.ConcurrentLimit)
+			return
+		}
+		defer multirate.DoneConcurrency(proto.OpExtentRepairWrite_, dp.disk.Path)
 	}
-
-	err = multirate.WaitConcurrency(context.Background(), proto.OpExtentRepairWrite_, dp.disk.Path)
-	if err != nil {
-		err = errors.Trace(err, proto.ConcurrentLimit)
-		return
-	}
-	defer multirate.DoneConcurrency(proto.OpExtentRepairWrite_, dp.disk.Path)
-
 	var release2, success = dp.tryLockExtentRepair(extentID)
 	if !success {
 		return
@@ -849,16 +845,16 @@ func (dp *DataPartition) streamRepairExtent(ctx context.Context, remoteExtentInf
 	defer release2()
 
 	var localExtentInfo *storage.ExtentInfoBlock
-	if !skipLimit {
+	if forceRepair {
+		if localExtentInfo, err = store.ForceWatermark(extentID); err != nil {
+			return errors.Trace(err, "streamRepairExtent Watermark error")
+		}
+	} else {
 		if !AutoRepairStatus && !proto.IsTinyExtent(extentID) {
 			log.LogWarnf("AutoRepairStatus is False,so cannot AutoRepair extent(%v)", remoteExtentInfo.String())
 			return
 		}
 		if localExtentInfo, err = store.Watermark(extentID); err != nil {
-			return errors.Trace(err, "streamRepairExtent Watermark error")
-		}
-	} else {
-		if localExtentInfo, err = store.ForceWatermark(extentID); err != nil {
 			return errors.Trace(err, "streamRepairExtent Watermark error")
 		}
 	}
