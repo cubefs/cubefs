@@ -2546,10 +2546,8 @@ func (c *Cluster) addDataPartitionRaftMember(dp *DataPartition, addPeer proto.Pe
 	oldPeers := make([]proto.Peer, len(dp.Peers))
 	copy(oldPeers, dp.Peers)
 
-	newHosts := make([]string, 0, len(dp.Hosts)+1)
-	newPeers := make([]proto.Peer, 0, len(dp.Peers)+1)
-	newHosts = append(dp.Hosts, addPeer.Addr)
-	newPeers = append(dp.Peers, addPeer)
+	dp.Hosts = append(dp.Hosts, addPeer.Addr)
+	dp.Peers = append(dp.Peers, addPeer)
 
 	dp.Unlock()
 
@@ -2576,9 +2574,11 @@ func (c *Cluster) addDataPartitionRaftMember(dp *DataPartition, addPeer proto.Pe
 	}
 
 	log.LogInfof("action[addDataPartitionRaftMember] try host [%v] to [%v] peers [%v] to [%v]",
-		dp.Hosts, newHosts, dp.Peers, newPeers)
+		dp.Hosts, dp.Hosts, dp.Peers, dp.Peers)
 
-	if err = dp.update("addDataPartitionRaftMember", dp.VolName, newPeers, newHosts, c); err != nil {
+	if err = dp.update("addDataPartitionRaftMember", dp.VolName, dp.Peers, dp.Hosts, c); err != nil {
+		dp.Hosts = oldHosts
+		dp.Peers = oldPeers
 		return
 	}
 
