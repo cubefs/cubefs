@@ -893,6 +893,7 @@ func (mp *metaPartition) HandleFatalEvent(err *raft.FatalError) {
 // HandleLeaderChange handles the leader changes.
 func (mp *metaPartition) HandleLeaderChange(leader uint64) {
 	exporter.Warning(fmt.Sprintf("metaPartition(%v) changeLeader to (%v)", mp.config.PartitionId, leader))
+	log.LogDebugf(fmt.Sprintf("metaPartition(%v) changeLeader to (%v)", mp.config.PartitionId, leader))
 	if mp.config.NodeId == leader {
 		localIp := mp.manager.metaNode.localAddr
 		if localIp == "" {

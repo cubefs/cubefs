@@ -431,7 +431,7 @@ func (mp *metaPartition) GetUidInfo() (info []*proto.UidReportSpaceInfo) {
 
 // ExtentsList returns the list of extents.
 func (mp *metaPartition) ExtentsList(req *proto.GetExtentsRequest, p *Packet) (err error) {
-	log.LogDebugf("action[ExtentsList] inode %v verSeq %v", req.Inode, req.VerSeq)
+	log.LogDebugf("action[ExtentsList] inode [%v] verSeq %v", req.Inode, req.VerSeq)
 
 	// note:don't need set reqSeq, extents get be done in next step
 	ino := NewInode(req.Inode, 0)

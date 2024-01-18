@@ -48,7 +48,8 @@ func replyInfoNoCheck(info *proto.InodeInfo, ino *Inode) bool {
 	info.ModifyTime = time.Unix(ino.ModifyTime, 0)
 	info.StorageClass = ino.StorageClass
 	info.MigrationStorageClass = ino.HybridCouldExtentsMigration.storageClass
-	if ino.ForbiddenMigration == ForbiddenToMigration {
+	info.WriteGen = atomic.LoadUint64(&ino.WriteGeneration)
+	if atomic.LoadUint32(&ino.ForbiddenMigration) == ForbiddenToMigration {
 		info.ForbiddenLc = true
 	}
 	return true
@@ -77,8 +78,8 @@ func replyInfo(info *proto.InodeInfo, ino *Inode, quotaInfos map[uint32]*proto.M
 	info.ModifyTime = time.Unix(ino.ModifyTime, 0)
 	info.QuotaInfos = quotaInfos
 	info.StorageClass = ino.StorageClass
-	info.WriteGen = ino.WriteGeneration
-	if ino.ForbiddenMigration == ForbiddenToMigration {
+	info.WriteGen = atomic.LoadUint64(&ino.WriteGeneration)
+	if atomic.LoadUint32(&ino.ForbiddenMigration) == ForbiddenToMigration {
 		info.ForbiddenLc = true
 	}
 	info.MigrationStorageClass = ino.HybridCouldExtentsMigration.storageClass
@@ -1152,7 +1153,7 @@ func (mp *metaPartition) InodeGetWithEk(req *InodeGetReq, p *Packet) (err error)
 	getAllVerInfo := req.VerAll
 	retMsg := mp.getInode(ino, getAllVerInfo)
 
-	log.LogDebugf("action[InodeGetWithEk] %v seq %v retMsg.Status %v, getAllVerInfo %v",
+	log.LogDebugf("action[InodeGetWithEk] inode %v seq %v retMsg.Status %v, getAllVerInfo %v",
 		ino.Inode, req.VerSeq, retMsg.Status, getAllVerInfo)
 
 	ino = retMsg.Msg
