@@ -53,7 +53,7 @@ func (t *TransitionMgr) migrate(e *proto.ScanDentry) (err error) {
 		return
 	}
 	defer func() {
-		if closeErr := t.ec.CloseStream(e.Inode); err != nil {
+		if closeErr := t.ec.CloseStream(e.Inode); closeErr != nil {
 			log.LogErrorf("migrate: ec CloseStream fail, inode(%v) err: %v", e.Inode, closeErr)
 		}
 	}()
@@ -62,7 +62,7 @@ func (t *TransitionMgr) migrate(e *proto.ScanDentry) (err error) {
 		return
 	}
 	defer func() {
-		if closeErr := t.ecForW.CloseStream(e.Inode); err != nil {
+		if closeErr := t.ecForW.CloseStream(e.Inode); closeErr != nil {
 			log.LogErrorf("migrate: ecForW CloseStream fail, inode(%v) err: %v", e.Inode, closeErr)
 		}
 	}()
@@ -202,7 +202,7 @@ func (t *TransitionMgr) migrateToEbs(e *proto.ScanDentry) (oeks []proto.ObjExten
 		return
 	}
 	defer func() {
-		if closeErr := t.ec.CloseStream(e.Inode); err != nil {
+		if closeErr := t.ec.CloseStream(e.Inode); closeErr != nil {
 			log.LogErrorf("migrateToEbs: CloseStream fail, inode(%v) err: %v", e.Inode, closeErr)
 		}
 	}()

@@ -428,6 +428,11 @@ func (l *LcNode) debugServiceGetFile(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, fmt.Sprintf("ParseUint sc err: %v", err.Error()), http.StatusBadRequest)
 		return
 	}
+	var vsc uint64
+	if vsc, err = strconv.ParseUint(r.FormValue("vsc"), 10, 32); err != nil {
+		http.Error(w, fmt.Sprintf("ParseUint vsc err: %v", err.Error()), http.StatusBadRequest)
+		return
+	}
 	var asc []uint32
 	ascStr := strings.Split(r.FormValue("asc"), ",")
 	for _, scStr := range ascStr {
@@ -460,8 +465,8 @@ func (l *LcNode) debugServiceGetFile(w http.ResponseWriter, r *http.Request) {
 		OnGetExtents:                metaWrapper.GetExtents,
 		OnTruncate:                  metaWrapper.Truncate,
 		OnRenewalForbiddenMigration: metaWrapper.RenewalForbiddenMigration,
-		//TODO: chenyang: add VolStorageClass
-		VolAllowedStorageClass: asc,
+		VolStorageClass:             uint32(vsc),
+		VolAllowedStorageClass:      asc,
 	}
 	var extentClient *stream.ExtentClient
 	if extentClient, err = stream.NewExtentClient(extentConfig); err != nil {
