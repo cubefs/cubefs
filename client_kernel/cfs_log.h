@@ -4,6 +4,10 @@
 #ifndef __CFS_LOG_H__
 #define __CFS_LOG_H__
 
+#include <linux/time.h>
+#include <linux/timex.h>
+#include <linux/rtc.h>
+
 #include "cfs_common.h"
 
 #define CFS_LOG_BUF_LEN (1 << 20)
@@ -57,10 +61,14 @@ static inline enum cfs_log_level cfs_log_get_level(struct cfs_log *log)
 
 static inline s64 cfs_log_time(void)
 {
+#ifdef KERNEL_HAS_TIME64_TO_TM
+	return jiffies_to_msecs(jiffies);
+#else
 	struct timeval tv;
 
 	do_gettimeofday(&tv);
 	return tv.tv_sec * 1000 + tv.tv_usec / 1000;
+#endif
 }
 
 #define cfs_log_debug(log, fmt, ...)                                           \

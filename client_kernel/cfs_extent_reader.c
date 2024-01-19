@@ -20,14 +20,20 @@ struct cfs_extent_reader *cfs_extent_reader_new(struct cfs_extent_stream *es,
 	if (!reader)
 		return ERR_PTR(-ENOMEM);
 	host_idx = host_idx % dp->members.num;
+	/*
+	// For read action, the RDMA is not supported yet.
 	if (es->enable_rdma) {
 		ret = cfs_rdma_create(&dp->members.base[host_idx], es->ec->log,
-				      &reader->sock);
+				      &reader->sock, es->rdma_port);
 	} else {
 		ret = cfs_socket_create(CFS_SOCK_TYPE_TCP,
 					&dp->members.base[host_idx],
 					es->ec->log, &reader->sock);
 	}
+	*/
+	ret = cfs_socket_create(CFS_SOCK_TYPE_TCP,
+				&dp->members.base[host_idx],
+				es->ec->log, &reader->sock);
 
 	if (ret < 0) {
 		kfree(reader);

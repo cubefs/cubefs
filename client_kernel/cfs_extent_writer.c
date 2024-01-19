@@ -22,7 +22,7 @@ struct cfs_extent_writer *cfs_extent_writer_new(struct cfs_extent_stream *es,
 		return ERR_PTR(-ENOMEM);
 	if (es->enable_rdma) {
 		ret = cfs_rdma_create(&dp->members.base[0], es->ec->log,
-				      &writer->sock);
+				      &writer->sock, es->rdma_port);
 	} else {
 		ret = cfs_socket_create(CFS_SOCK_TYPE_TCP, &dp->members.base[0],
 					es->ec->log, &writer->sock);

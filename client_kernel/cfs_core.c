@@ -1,6 +1,8 @@
 /*
  * Copyright 2023 The CubeFS Authors.
  */
+#include <linux/proc_fs.h>
+
 #include "cfs_fs.h"
 #include "cfs_packet.h"
 #include "cfs_socket.h"

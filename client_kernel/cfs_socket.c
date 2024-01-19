@@ -26,6 +26,9 @@ int cfs_socket_create(enum cfs_socket_type type,
 	u32 key;
 	int ret;
 	int optval;
+#ifdef KERNEL_HAS_SOCK_SETSOCKOPT
+	sockptr_t sockptr;
+#endif
 
 	BUG_ON(sock_pool == NULL);
 
@@ -75,6 +78,24 @@ int cfs_socket_create(enum cfs_socket_type type,
 			return -ENOMEM;
 		}
 
+#ifdef KERNEL_HAS_SOCK_SETSOCKOPT
+		optval = 1;
+		sockptr = KERNEL_SOCKPTR(&optval);
+		ret = sock_setsockopt(csk->sock, SOL_TCP, TCP_NODELAY,
+					sockptr, sizeof(sockptr));
+		if (ret < 0)
+			cfs_pr_warning(
+				"sock_setsockopt TCP_NODELAY error %d\n",
+				ret);
+
+		optval = 1;
+		ret = sock_setsockopt(csk->sock, SOL_SOCKET, SO_REUSEADDR,
+					sockptr, sizeof(sockptr));
+		if (ret < 0)
+			cfs_pr_warning(
+				"sock_setsockopt SO_REUSEADDR error %d\n",
+				ret);
+#else
 		optval = 1;
 		ret = kernel_setsockopt(csk->sock, SOL_TCP, TCP_NODELAY,
 					(char *)&optval, sizeof(optval));
@@ -90,6 +111,7 @@ int cfs_socket_create(enum cfs_socket_type type,
 			cfs_pr_warning(
 				"kernel_setsockopt SO_REUSEADDR error %d\n",
 				ret);
+#endif
 		csk->pool = sock_pool;
 		csk->enable_rdma = false;
 	} else {
@@ -134,12 +156,23 @@ void cfs_socket_release(struct cfs_socket *csk, bool forever)
 
 int cfs_socket_set_recv_timeout(struct cfs_socket *csk, u32 timeout_ms)
 {
+#ifdef KERNEL_HAS_SOCK_SETSOCKOPT
+	struct old_timeval32 tv;
+	sockptr_t sockptr;
+	sockptr = KERNEL_SOCKPTR(&tv);
+
+	tv.tv_sec = timeout_ms / 1000;
+	tv.tv_usec = (timeout_ms % 1000) * 1000;
+	return sock_setsockopt(csk->sock, SOL_SOCKET, SO_RCVTIMEO_OLD,
+				 sockptr, sizeof(sockptr));
+#else
 	struct timeval tv;
 
 	tv.tv_sec = timeout_ms / 1000;
 	tv.tv_usec = (timeout_ms % 1000) * 1000;
 	return kernel_setsockopt(csk->sock, SOL_SOCKET, SO_RCVTIMEO,
 				 (char *)&tv, sizeof(tv));
+#endif
 }
 
 int cfs_socket_send(struct cfs_socket *csk, void *data, size_t len)

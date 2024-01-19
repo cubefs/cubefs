@@ -254,5 +254,346 @@ int test (void)
 EOF
 check_flags "KERNEL_HAS_SOCK_CREATE_KERN_WITH_NET"
 
+cat > $TEST_C <<EOF
+#include <linux/uio.h>
+#include "test.h"
+
+int test (void)
+{
+    const struct iov_iter *iter = NULL;
+    iov_iter_iovec(iter);
+    return 0;
+}
+
+EOF
+check_flags "KERNEL_HAS_IOV_ITER_IOVEC"
+
+cat > $TEST_C <<EOF
+#include <linux/uio.h>
+#include "test.h"
+
+int test (void)
+{
+    struct iov_iter *i = NULL;
+    unsigned int direction = 0;
+    const struct iovec *iov = NULL;
+    unsigned long nr_segs = 0;
+    size_t count = 0;
+
+    iov_iter_init(i, direction, iov, nr_segs, count);
+    return 0;
+}
+
+EOF
+check_flags "KERNEL_HAS_IOV_ITER_INIT_DIR"
+
+cat > $TEST_C <<EOF
+#include <linux/uio.h>
+#include "test.h"
+
+int test (void)
+{
+    const struct iov_iter *i = NULL;
+
+    iter_is_iovec(i);
+    return 0;
+}
+
+EOF
+check_flags "KERNEL_HAS_ITER_BVEC"
+
+cat > $TEST_C <<EOF
+#include <linux/uio.h>
+#include "test.h"
+
+int test (void)
+{
+    void *addr = NULL;
+    size_t bytes = 0;
+    struct iov_iter *i = NULL;
+    size_t ret;
+
+    ret = copy_from_iter(addr, bytes, i);
+    ret = copy_to_iter(addr, bytes, i);
+    return 0;
+}
+
+EOF
+check_flags "KERNEL_HAS_COPY_FROM_ITER"
+
+cat > $TEST_C <<EOF
+#include <linux/fs.h>
+#include <linux/uio.h>
+#include "test.h"
+
+int test (void)
+{
+    struct iov_iter *i = NULL;
+    size_t count = 0;
+
+    iov_iter_truncate(i, count);
+    return 0;
+}
+
+EOF
+check_flags "KERNEL_HAS_IOV_ITER_TRUNCATE"
+
+cat > $TEST_C <<EOF
+#include <rdma/ib_verbs.h>
+#include "test.h"
+
+int test (void)
+{
+    struct ib_cq *cq = NULL;
+    struct ib_udata *udata = NULL;
+
+    ib_destroy_cq_user(cq, udata);
+    return 0;
+}
+
+EOF
+check_flags "KERNEL_HAS_IB_DESTROY_CQ_USER"
+
+cat > $TEST_C <<EOF
+#include <rdma/rdma_cm.h>
+#include "test.h"
+
+int test (void)
+{
+    struct rdma_cm_id *id = NULL;
+    const void *private_data = NULL;
+    u8 private_data_len = 0;
+    u8 reason = 0;
+
+    rdma_reject(id, private_data, private_data_len, reason);
+    return 0;
+}
+
+EOF
+check_flags "OFED_RDMA_REJECT_NEEDS_REASON"
+
+cat > $TEST_C <<EOF
+#include <linux/printk.h>
+#include "test.h"
+
+int test (void)
+{
+    pr_warn("test print");
+    return 0;
+}
+
+EOF
+check_flags "KERNEL_SUPPORT_PR_WARN"
+
+cat > $TEST_C <<EOF
+#include <linux/fs.h>
+#include <linux/user_namespace.h>
+#include "test.h"
+
+int test (void)
+{
+    struct user_namespace *ns = NULL;
+    struct inode *inode = NULL;
+    int mask = 0;
+
+    return generic_permission(ns, inode, mask);
+}
+
+EOF
+check_flags "KERNEL_HAS_NAMESPACE"
+
+cat > $TEST_C <<EOF
+#include <linux/fs.h>
+#include "test.h"
+
+int test (void)
+{
+    struct super_block *sb = NULL;
+    return super_setup_bdi_name(sb, "test");
+}
+
+EOF
+check_flags "KERNEL_HAS_SUPER_SETUP_BDI_NAME"
+
+cat > $TEST_C <<EOF
+#include <linux/fs.h>
+#include "test.h"
+
+int test (void)
+{
+    return SB_POSIXACL;
+}
+
+EOF
+check_flags "KERNEL_HAS_SB_POSIXACL"
+
+cat > $TEST_C <<EOF
+#include <linux/proc_fs.h>
+#include "test.h"
+
+int test (void)
+{
+    struct proc_ops ops;
+    ops.proc_flags = 0;
+    return 0;
+}
+
+EOF
+check_flags "KERNEL_HAS_PROC_OPS"
+
+cat > $TEST_C <<EOF
+#include <crypto/hash.h>
+#include "test.h"
+
+int test (void)
+{
+    struct shash_desc desc;
+    desc.flags = 0;
+    return 0;
+}
+
+EOF
+check_flags "KERNEL_SHASH_DESC_FLAGS"
+
+cat > $TEST_C <<EOF
+#include <net/sock.h>
+#include "test.h"
+
+int test (void)
+{
+    struct socket *sock = NULL;
+    int level = 0;
+    int op = 0;
+    sockptr_t optval;
+    unsigned int optlen = 0;
+    return sock_setsockopt(sock, level, op, optval, optlen);
+}
+
+EOF
+check_flags "KERNEL_HAS_SOCK_SETSOCKOPT"
+
+cat > $TEST_C <<EOF
+#include <linux/sockptr.h>
+#include "test.h"
+
+int test (void)
+{
+    return 0;
+}
+
+EOF
+check_flags "KERNEL_HAS_SOCKPTR"
+
+cat > $TEST_C <<EOF
+#include <linux/time.h>
+#include <linux/timex.h>
+#include "test.h"
+
+int test (void)
+{
+    struct tm result;
+    time64_to_tm(0, 0, &result);
+    return 0;
+}
+
+EOF
+check_flags "KERNEL_HAS_TIME64_TO_TM"
+
+cat > $TEST_C <<EOF
+#include <linux/time.h>
+#include <linux/timex.h>
+#include "test.h"
+
+int test (void)
+{
+    mktime64(2024, 1, 22, 0, 0, 0);
+    return 0;
+}
+
+EOF
+check_flags "KERNEL_HAS_MKTIME64"
+
+cat > $TEST_C <<EOF
+#include <linux/time.h>
+#include <linux/timex.h>
+#include "test.h"
+
+int test (void)
+{
+    switch(1) {
+        case 0:
+        fallthrough;
+        case 1:
+        fallthrough;
+        default:
+        return 0;
+    }
+    return 0;
+}
+
+EOF
+check_flags "KERNEL_SUPPORT_SWITCH_FALLTHROUGH"
+
+cat > $TEST_C <<EOF
+#include <rdma/rdma_cm.h>
+#include "test.h"
+
+int test (void)
+{
+    struct rdma_cm_id *new_cm_id;
+	new_cm_id = rdma_create_id(&init_net, NULL, NULL,
+				   RDMA_PS_TCP, IB_QPT_RC);
+    return 0;
+}
+
+EOF
+check_flags "OFED_HAS_NETNS"
+
+cat > $TEST_C <<EOF
+#include <rdma/ib_verbs.h>
+#include "test.h"
+
+int test (void)
+{
+    struct rdma_cm_id *new_cm_id;
+	new_cm_id = rdma_create_id(NULL, NULL, RDMA_PS_TCP,
+				   IB_QPT_RC);
+    return 0;
+}
+
+EOF
+check_flags "OFED_HAS_RDMA_CREATE_QPTYPE"
+
+cat > $TEST_C <<EOF
+#include <rdma/rdma_cm.h>
+#include "test.h"
+
+void event_handler(struct ib_event *ie, void *v) {
+}
+
+void comp_handler(struct ib_cq *cq, void *cq_context) {
+
+}
+
+int test (void)
+{
+	struct ib_cq_init_attr attrs = {
+		.cqe = 0,
+		.comp_vector = 0,
+	};
+    struct ib_cq *cq = NULL;
+    struct ib_device *device = NULL;
+    //ib_comp_handler comp_handler;
+	//void (*event_handler)(struct ib_event *, void *);
+    void *cq_context = NULL;
+
+	cq = ib_create_cq(device, comp_handler, event_handler, cq_context,
+			    &attrs);
+    return 0;
+}
+
+EOF
+check_flags "OFED_HAS_IB_CREATE_CQATTR"
+
 echo "#endif" >> $CONFIG_H
 rm -rf $TMPDIR

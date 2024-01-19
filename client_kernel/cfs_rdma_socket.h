@@ -1,15 +1,13 @@
 #ifndef __CFS_RDMA_SOCKET_H__
 #define __CFS_RDMA_SOCKET_H__
 
-#include "rdma/IBVSocket.h"
+#include "rdma/rdma_api.h"
 #include "cfs_common.h"
 #include "cfs_packet.h"
 #include "cfs_socket.h"
 
-void packet_to_requestheader(struct cfs_packet *packet, Header *header);
-int response_to_packet(Response *response, struct cfs_packet *packet);
 int cfs_rdma_create(struct sockaddr_storage *ss, struct cfs_log *log,
-		    struct cfs_socket **cskp);
+		    struct cfs_socket **cskp, u32 rdma_port);
 void cfs_rdma_release(struct cfs_socket *csk, bool forever);
 int cfs_rdma_send_packet(struct cfs_socket *csk, struct cfs_packet *packet);
 int cfs_rdma_recv_packet(struct cfs_socket *csk, struct cfs_packet *packet);

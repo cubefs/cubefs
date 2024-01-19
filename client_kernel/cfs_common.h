@@ -28,10 +28,16 @@
 #include <linux/spinlock.h>
 #include <linux/statfs.h>
 #include <linux/string.h>
+#include <linux/syscalls.h>
 #include <linux/tcp.h>
+#include <linux/time.h>
 #include <linux/vmalloc.h>
 #include <linux/writeback.h>
 #include <linux/xattr.h>
+#include <linux/proc_fs.h>
+#ifdef KERNEL_HAS_SOCKPTR
+#include <linux/sockptr.h>
+#endif
 #ifdef KERNEL_HAS_SOCK_CREATE_KERN_WITH_NET
 #include <net/net_namespace.h>
 #endif
@@ -55,7 +61,11 @@ struct cfs_mount_info {
 #define pr_fmt(fmt) "cfs: %s() " fmt
 
 #define cfs_pr_err(fmt, ...) pr_err(fmt, __FUNCTION__, ##__VA_ARGS__)
+#ifdef KERNEL_SUPPORT_PR_WARN
+#define cfs_pr_warning(fmt, ...) pr_warn(fmt, __FUNCTION__, ##__VA_ARGS__)
+#else
 #define cfs_pr_warning(fmt, ...) pr_warning(fmt, __FUNCTION__, ##__VA_ARGS__)
+#endif
 #define cfs_pr_notice(fmt, ...) pr_notice(fmt, __FUNCTION__, ##__VA_ARGS__)
 #define cfs_pr_info(fmt, ...) pr_info(fmt, __FUNCTION__, ##__VA_ARGS__)
 #define cfs_pr_debug(fmt, ...) \
@@ -250,8 +260,16 @@ const char *cfs_pr_addr_rdma(const struct sockaddr_storage *ss, u32 rdma_port);
 int cfs_parse_addr(const char *str, size_t len, struct sockaddr_storage *ss);
 int cfs_addr_cmp(const struct sockaddr_storage *ss1,
 		 const struct sockaddr_storage *ss2);
+#ifdef KERNEL_HAS_TIME64_TO_TM
+const char *cfs_pr_time(struct timespec64 *time);
+#else
 const char *cfs_pr_time(struct timespec *time);
+#endif
+#ifdef KERNEL_HAS_MKTIME64
+int cfs_parse_time(const char *str, size_t len, struct timespec64 *time);
+#else
 int cfs_parse_time(const char *str, size_t len, struct timespec *time);
+#endif
 
 int cfs_base64_encode(const char *str, size_t len, char **base64);
 int cfs_base64_decode(const char *base64, size_t base64_len, char **str);

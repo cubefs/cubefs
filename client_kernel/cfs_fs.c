@@ -812,14 +812,27 @@ static int cfs_d_revalidate(struct dentry *dentry, unsigned int flags)
 /**
  * File Inode
  */
+#ifdef KERNEL_HAS_NAMESPACE
+static int cfs_permission(struct user_namespace *ns, struct inode *inode, int mask)
+{
+	if (mask & MAY_NOT_BLOCK)
+		return -ECHILD;
+	return generic_permission(ns, inode, mask);
+}
+#else
 static int cfs_permission(struct inode *inode, int mask)
 {
 	if (mask & MAY_NOT_BLOCK)
 		return -ECHILD;
 	return generic_permission(inode, mask);
 }
+#endif
 
+#ifdef KERNEL_HAS_NAMESPACE
+static int cfs_setattr(struct user_namespace *ns, struct dentry *dentry, struct iattr *iattr)
+#else
 static int cfs_setattr(struct dentry *dentry, struct iattr *iattr)
+#endif
 {
 	struct super_block *sb = dentry->d_sb;
 	struct cfs_mount_info *cmi = sb->s_fs_info;
@@ -829,7 +842,9 @@ static int cfs_setattr(struct dentry *dentry, struct iattr *iattr)
 	int err;
 
 	time = ktime_get();
-#ifdef KERNEL_HAS_SETATTR_PREPARE
+#ifdef KERNEL_HAS_NAMESPACE
+	err = setattr_prepare(ns, dentry, iattr);
+#elif defined(KERNEL_HAS_SETATTR_PREPARE)
 	err = setattr_prepare(dentry, iattr);
 #else
 	err = inode_change_ok(inode, iattr);
@@ -850,7 +865,11 @@ static int cfs_setattr(struct dentry *dentry, struct iattr *iattr)
 			goto out;
 	}
 
+#ifdef KERNEL_HAS_NAMESPACE
+	setattr_copy(ns, inode, iattr);
+#else
 	setattr_copy(inode, iattr);
+#endif
 	mark_inode_dirty(inode);
 
 out:
@@ -862,7 +881,19 @@ out:
 	return err;
 }
 
-#ifdef KERNEL_HAS_GETATTR_WITH_PATH
+#ifdef KERNEL_HAS_NAMESPACE
+static int cfs_getattr(struct user_namespace *ns, const struct path *path, struct kstat *stat,
+		       u32 request_mask, unsigned int query_flags)
+{
+	struct inode *inode = d_inode(path->dentry);
+	struct cfs_inode *ci = (struct cfs_inode *)inode;
+
+	if (!is_iattr_cache_valid(ci))
+		cfs_inode_refresh(ci);
+	generic_fillattr(ns, inode, stat);
+	return 0;
+}
+#elif defined(KERNEL_HAS_GETATTR_WITH_PATH)
 static int cfs_getattr(const struct path *path, struct kstat *stat,
 		       u32 request_mask, unsigned int query_flags)
 {
@@ -988,8 +1019,13 @@ out:
 	return new_dentry;
 }
 
+#ifdef KERNEL_HAS_NAMESPACE
+static int cfs_create(struct user_namespace *ns, struct inode *dir, struct dentry *dentry, umode_t mode,
+		      bool excl)
+#else
 static int cfs_create(struct inode *dir, struct dentry *dentry, umode_t mode,
 		      bool excl)
+#endif
 {
 	struct super_block *sb = dir->i_sb;
 	struct cfs_mount_info *cmi = sb->s_fs_info;
@@ -1077,8 +1113,13 @@ out:
 	return ret;
 }
 
+#ifdef KERNEL_HAS_NAMESPACE
+static int cfs_symlink(struct user_namespace *ns, struct inode *dir, struct dentry *dentry,
+		       const char *target)
+#else
 static int cfs_symlink(struct inode *dir, struct dentry *dentry,
 		       const char *target)
+#endif
 {
 	struct super_block *sb = dir->i_sb;
 	struct cfs_mount_info *cmi = sb->s_fs_info;
@@ -1132,7 +1173,11 @@ out:
 	return ret;
 }
 
+#ifdef KERNEL_HAS_NAMESPACE
+static int cfs_mkdir(struct user_namespace *ns, struct inode *dir, struct dentry *dentry, umode_t mode)
+#else
 static int cfs_mkdir(struct inode *dir, struct dentry *dentry, umode_t mode)
+#endif
 {
 	struct super_block *sb = dir->i_sb;
 	struct cfs_mount_info *cmi = sb->s_fs_info;
@@ -1201,8 +1246,13 @@ static int cfs_rmdir(struct inode *dir, struct dentry *dentry)
 	return ret;
 }
 
+#ifdef KERNEL_HAS_NAMESPACE
+static int cfs_mknod(struct user_namespace *ns, struct inode *dir, struct dentry *dentry, umode_t mode,
+		     dev_t rdev)
+#else
 static int cfs_mknod(struct inode *dir, struct dentry *dentry, umode_t mode,
 		     dev_t rdev)
+#endif
 {
 	struct super_block *sb = dir->i_sb;
 	struct cfs_mount_info *cmi = sb->s_fs_info;
@@ -1253,7 +1303,11 @@ out:
 	return ret;
 }
 
-#ifdef KERNEL_HAS_RENAME_WITH_FLAGS
+#ifdef KERNEL_HAS_NAMESPACE
+static int cfs_rename(struct user_namespace *ns, struct inode *old_dir, struct dentry *old_dentry,
+		      struct inode *new_dir, struct dentry *new_dentry,
+		      unsigned int flags)
+#elif defined(KERNEL_HAS_RENAME_WITH_FLAGS)
 static int cfs_rename(struct inode *old_dir, struct dentry *old_dentry,
 		      struct inode *new_dir, struct dentry *new_dentry,
 		      unsigned int flags)
@@ -1268,7 +1322,7 @@ static int cfs_rename(struct inode *old_dir, struct dentry *old_dentry,
 	int ret;
 
 	/* Any flags not handled by the filesystem should result in EINVAL being returned */
-#ifdef KERNEL_HAS_RENAME_WITH_FLAGS
+#if defined(KERNEL_HAS_RENAME_WITH_FLAGS) || defined(KERNEL_HAS_NAMESPACE)
 	if (flags != 0)
 		return -EINVAL;
 #endif
@@ -1430,7 +1484,6 @@ static int cfs_show_options(struct seq_file *seq_file, struct dentry *dentry)
 /**
  * Filesystem
  */
-
 static int cfs_fs_fill_super(struct super_block *sb, void *data, int silent)
 {
 	struct cfs_mount_info *cmi = data;
@@ -1439,7 +1492,13 @@ static int cfs_fs_fill_super(struct super_block *sb, void *data, int silent)
 	int ret;
 
 	sb->s_fs_info = cmi;
+#ifdef KERNEL_HAS_SUPER_SETUP_BDI_NAME
+	ret = super_setup_bdi_name(sb, "cubefs-%s", cmi->options->volume);
+	if (ret < 0)
+		return ret;
+#else
 	sb->s_bdi = &cmi->bdi;
+#endif
 	sb->s_blocksize = CFS_BLOCK_SIZE;
 	sb->s_blocksize_bits = CFS_BLOCK_SIZE_SHIFT;
 	sb->s_maxbytes = MAX_LFS_FILESIZE;
@@ -1448,7 +1507,11 @@ static int cfs_fs_fill_super(struct super_block *sb, void *data, int silent)
 	sb->s_d_op = &cfs_dentry_ops;
 	sb->s_time_gran = 1;
 	/* no acl */
+#ifdef KERNEL_HAS_SB_POSIXACL
+	sb->s_flags |= SB_POSIXACL;
+#else
 	sb->s_flags |= MS_POSIXACL;
+#endif
 
 	ret = cfs_meta_lookup_path(cmi->meta, cmi->options->path, &iinfo);
 	if (ret < 0)
@@ -1642,6 +1705,15 @@ static int proc_log_release(struct inode *inode, struct file *file)
 	return 0;
 }
 
+#ifdef KERNEL_HAS_PROC_OPS
+static const struct proc_ops log_proc_ops = {
+	.proc_open = proc_log_open,
+	.proc_read = proc_log_read,
+	.proc_lseek = generic_file_llseek,
+	.proc_poll = proc_log_poll,
+	.proc_release = proc_log_release,
+};
+#else
 static const struct file_operations proc_log_fops = {
 	.owner = THIS_MODULE,
 	.open = proc_log_open,
@@ -1650,6 +1722,7 @@ static const struct file_operations proc_log_fops = {
 	.poll = proc_log_poll,
 	.release = proc_log_release,
 };
+#endif
 
 static int init_proc(struct cfs_mount_info *cmi)
 {
@@ -1669,8 +1742,13 @@ static int init_proc(struct cfs_mount_info *cmi)
 	}
 	kfree(proc_name);
 
+#ifdef KERNEL_HAS_PROC_OPS
+	cmi->proc_log = proc_create_data("log", S_IRUSR | S_IRGRP | S_IROTH,
+					 cmi->proc_dir, &log_proc_ops, cmi);
+#else
 	cmi->proc_log = proc_create_data("log", S_IRUSR | S_IRGRP | S_IROTH,
 					 cmi->proc_dir, &proc_log_fops, cmi);
+#endif
 	if (!cmi->proc_log) {
 		proc_remove(cmi->proc_dir);
 		return -ENOMEM;
@@ -1714,7 +1792,9 @@ struct cfs_mount_info *cfs_mount_info_new(struct cfs_options *options)
 {
 	struct cfs_mount_info *cmi;
 	void *err_ptr;
+#ifndef KERNEL_HAS_SUPER_SETUP_BDI_NAME
 	int ret;
+#endif
 
 	cmi = kzalloc(sizeof(*cmi), GFP_NOFS);
 	if (!cmi)
@@ -1732,6 +1812,7 @@ struct cfs_mount_info *cfs_mount_info_new(struct cfs_options *options)
 		err_ptr = ERR_PTR(-ENOMEM);
 		goto err_proc;
 	}
+#ifndef KERNEL_HAS_SUPER_SETUP_BDI_NAME
 	ret = bdi_init(&cmi->bdi);
 	if (ret < 0) {
 		err_ptr = ERR_PTR(ret);
@@ -1743,6 +1824,7 @@ struct cfs_mount_info *cfs_mount_info_new(struct cfs_options *options)
 		err_ptr = ERR_PTR(ret);
 		goto err_bdi2;
 	}
+#endif
 	cmi->master = cfs_master_client_new(&options->addrs, options->volume,
 					    options->owner, cmi->log);
 	if (IS_ERR(cmi->master)) {
@@ -1768,10 +1850,12 @@ err_ec:
 err_meta:
 	cfs_master_client_release(cmi->master);
 err_master:
+#ifndef KERNEL_HAS_SUPER_SETUP_BDI_NAME
 	bdi_unregister(&cmi->bdi);
 err_bdi2:
 	bdi_destroy(&cmi->bdi);
 err_bdi:
+#endif
 	unint_proc(cmi);
 err_proc:
 	cfs_log_release(cmi->log);
@@ -1788,7 +1872,9 @@ void cfs_mount_info_release(struct cfs_mount_info *cmi)
 	cfs_extent_client_release(cmi->ec);
 	cfs_meta_client_release(cmi->meta);
 	cfs_master_client_release(cmi->master);
+#ifndef KERNEL_HAS_SUPER_SETUP_BDI_NAME
 	bdi_destroy(&cmi->bdi);
+#endif
 	unint_proc(cmi);
 	cfs_log_release(cmi->log);
 	cfs_options_release(cmi->options);

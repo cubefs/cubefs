@@ -155,7 +155,11 @@ int cfs_addr_cmp(const struct sockaddr_storage *ss1,
 static char time_str[TIME_STR_COUNT][MAX_TIME_STR_LEN];
 static atomic_t time_str_seq = ATOMIC_INIT(0);
 
+#ifdef KERNEL_HAS_TIME64_TO_TM
+const char *cfs_pr_time(struct timespec64 *time)
+#else
 const char *cfs_pr_time(struct timespec *time)
+#endif
 {
 	int i;
 	char *s;
@@ -163,7 +167,11 @@ const char *cfs_pr_time(struct timespec *time)
 
 	i = atomic_inc_return(&time_str_seq) & TIME_STR_COUNT_MASK;
 	s = time_str[i];
+#ifdef KERNEL_HAS_TIME64_TO_TM
+	time64_to_tm(time->tv_sec, sys_tz.tz_minuteswest / 60, &result);
+#else
 	time_to_tm(time->tv_sec, sys_tz.tz_minuteswest / 60, &result);
+#endif
 	snprintf(s, MAX_TIME_STR_LEN,
 		 "%04ld-%02d-%02dT%02d:%02d:%02d+%02d:%02d",
 		 result.tm_year + 1900, result.tm_mon + 1, result.tm_mday,
@@ -176,7 +184,11 @@ const char *cfs_pr_time(struct timespec *time)
 /**
  * @param str in, format: 2023-07-24T20:44:10+08:00
  */
+#ifdef KERNEL_HAS_MKTIME64
+int cfs_parse_time(const char *str, size_t len, struct timespec64 *time)
+#else
 int cfs_parse_time(const char *str, size_t len, struct timespec *time)
+#endif
 {
 	u32 year, mon, day, hour, min, sec;
 	u32 tz_hour, tz_min, tz_offset;
@@ -249,7 +261,11 @@ int cfs_parse_time(const char *str, size_t len, struct timespec *time)
 		return ret;
 
 	tz_offset = ((tz_hour * 60) + tz_min) * 60;
+#ifdef KERNEL_HAS_MKTIME64
+	time->tv_sec = mktime64(year, mon, day, hour, min, sec) - tz_offset;
+#else
 	time->tv_sec = mktime(year, mon, day, hour, min, sec) - tz_offset;
+#endif
 	time->tv_nsec = 0;
 	return 0;
 }

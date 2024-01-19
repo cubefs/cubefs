@@ -128,6 +128,7 @@ struct cfs_extent_stream {
 	struct mutex lock_readers;
 	u64 ino;
 	bool enable_rdma;
+	u32 rdma_port;
 };
 
 struct cfs_extent_client {

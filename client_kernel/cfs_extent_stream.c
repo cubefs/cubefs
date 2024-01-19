@@ -32,7 +32,7 @@ static int do_extent_request_rdma(struct cfs_extent_stream *es,
 	struct cfs_socket *sock;
 	int err;
 
-	err = cfs_rdma_create(host, es->ec->log, &sock);
+	err = cfs_rdma_create(host, es->ec->log, &sock, es->rdma_port);
 	if (err) {
 		cfs_log_error(es->ec->log, "rdma(%s) create error %d\n",
 			      cfs_pr_addr(host), err);
@@ -126,7 +126,8 @@ retry:
 	if (host_retry_cnt == 0)
 		return ret;
 	host = &dp->members.base[host_id % dp->members.num];
-	if (es->enable_rdma) {
+	// Only support write by RDMA now. The read is not supported yet.
+	if (es->enable_rdma && packet->request.hdr.opcode == CFS_OP_STREAM_RANDOM_WRITE) {
 		ret = do_extent_request_rdma(es, host, packet);
 	} else {
 		ret = do_extent_request(es, host, packet);
@@ -150,6 +151,9 @@ retry:
 			msleep(100);
 			goto retry;
 		}
+#ifdef KERNEL_SUPPORT_SWITCH_FALLTHROUGH
+		fallthrough;
+#endif
 		/* else try other host */
 	default:
 		/* try other host */
@@ -396,12 +400,14 @@ retry:
 		ret = -ENOMEM;
 		return ret;
 	}
+
 	if (es->enable_rdma) {
 		cfs_packet_set_request_arg(packet, dp->rdma_follower_addrs);
 	} else {
 		cfs_packet_set_request_arg(packet, dp->follower_addrs);
 	}
 	cfs_packet_set_write_data(packet, iter, &io_info->size);
+	packet->request.hdr.crc = cpu_to_be32(cfs_page_frags_crc32(packet->request.data.write.frags, packet->request.data.write.nr));
 
 	if (es->enable_rdma) {
 		ret = do_extent_request_rdma(es, &dp->members.base[0], packet);
@@ -1187,6 +1193,7 @@ struct cfs_extent_stream *cfs_extent_stream_new(struct cfs_extent_client *ec,
 	mutex_init(&es->lock_readers);
 	mutex_init(&es->lock_io);
 	es->enable_rdma = ec->enable_rdma;
+	es->rdma_port = ec->rdma_port;
 	return es;
 }
 

@@ -323,7 +323,9 @@ static int calculate_md5(const unsigned char *input, size_t ilen,
 	}
 
 	desc->tfm = tfm;
+#ifdef KERNEL_SHASH_DESC_FLAGS
 	desc->flags = 0;
+#endif
 
 	ret = crypto_shash_init(desc);
 	if (ret) {

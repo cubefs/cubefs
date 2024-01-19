@@ -3,6 +3,7 @@
 /*.o.d
 /*.ko*
 /*.mod.*
+/*.mod
 /.*.cmd
 /rdma/.*.cmd
 /Module.symvers

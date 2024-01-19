@@ -3,46 +3,30 @@
 
 static struct cfs_socket_pool *rdma_sock_pool;
 
-void packet_to_requestheader(struct cfs_packet *packet, Header *header)
-{
-	struct cfs_packet_hdr *hdr = &packet->request.hdr;
-	memcpy(header, hdr, sizeof(struct cfs_packet_hdr));
-	if (packet->request.arg) {
-		memcpy(header->arg, packet->request.arg,
-		       cfs_buffer_size(packet->request.arg));
-	}
-}
+char* parse_sinaddr(const struct in_addr saddr)
+{ 
+    static char ip_str[16];
+    int printed_bytes;
+	u32 val;
 
-int response_to_packet(Response *response, struct cfs_packet *packet)
-{
-	int ret = 0;
-	u32 arglen;
-	struct cfs_packet_hdr *hdr = &packet->reply.hdr;
-	memcpy(hdr, response, sizeof(struct cfs_packet_hdr));
+	printed_bytes = 0;
+    memset(ip_str, 0, sizeof(ip_str));
+	val = ntohl(saddr.s_addr);
 
-	arglen = be32_to_cpu(packet->reply.hdr.arglen);
-	if (arglen > 0) {
-		if (packet->reply.arg) {
-			ret = cfs_buffer_resize(packet->reply.arg, arglen);
-		} else if (!(packet->reply.arg = cfs_buffer_new(arglen))) {
-			ret = -ENOMEM;
-		}
+    printed_bytes = snprintf(ip_str, sizeof(ip_str), "%d.%d.%d.%d", (val >> 24) &0xff, (val >> 16) & 0xff, (val >> 8 ) & 0xff, val & 0xff);
 
-		if (ret < 0) {
-			return ret;
-		}
-		memcpy(packet->reply.arg, response->arg, arglen);
-		cfs_buffer_seek(packet->reply.arg, arglen);
-	}
+    if (printed_bytes > sizeof(ip_str))
+		return NULL;
 
-	return ret;
+    return ip_str;
 }
 
 int cfs_rdma_create(struct sockaddr_storage *ss, struct cfs_log *log,
-		    struct cfs_socket **cskp)
+		    struct cfs_socket **cskp, u32 rdma_port)
 {
 	struct cfs_socket *csk;
 	u32 key;
+	struct sockaddr_in dst_addr;
 
 	BUG_ON(rdma_sock_pool == NULL);
 
@@ -70,8 +54,19 @@ int cfs_rdma_create(struct sockaddr_storage *ss, struct cfs_log *log,
 			return -ENOMEM;
 		}
 
-		csk->ibvsock = IBVSocket_construct();
-		IBVSocket_connectByIP(csk->ibvsock, (struct sockaddr_in *)ss);
+		// replace the port with rdma.
+		dst_addr.sin_family = AF_INET;
+		dst_addr.sin_port = htons(rdma_port);
+		dst_addr.sin_addr.s_addr = ((struct sockaddr_in *)ss)->sin_addr.s_addr;
+		//dst_addr.sin_addr.s_addr = in_aton("127.0.0.1");
+		csk->ibvsock = IBVSocket_construct(&dst_addr);
+		if (IS_ERR(csk->ibvsock)) {
+			cfs_pr_err("failed to connect to %s:%hu\n", parse_sinaddr(dst_addr.sin_addr), rdma_port);
+			cfs_buffer_release(csk->tx_buffer);
+			cfs_buffer_release(csk->rx_buffer);
+			kfree(csk);
+			return -EIO;
+		}
 
 		csk->pool = rdma_sock_pool;
 		csk->enable_rdma = true;
@@ -93,7 +88,7 @@ void cfs_rdma_release(struct cfs_socket *csk, bool forever)
 		return;
 	if (forever) {
 		if (csk->ibvsock)
-			IBVSocket_shutdown(csk->ibvsock);
+			IBVSocket_destruct(csk->ibvsock);
 		cfs_buffer_release(csk->tx_buffer);
 		cfs_buffer_release(csk->rx_buffer);
 		kfree(csk);
@@ -109,12 +104,12 @@ void cfs_rdma_release(struct cfs_socket *csk, bool forever)
 
 int cfs_rdma_send_packet(struct cfs_socket *csk, struct cfs_packet *packet)
 {
-	Header *hdr;
 	struct iov_iter iter;
 	struct iovec iov;
 	struct cfs_page_frag *frags;
 	int i;
 	int ret = 0;
+	ssize_t len = 0;
 
 	cfs_buffer_reset(csk->tx_buffer);
 	switch (packet->request.hdr.opcode) {
@@ -139,21 +134,21 @@ int cfs_rdma_send_packet(struct cfs_socket *csk, struct cfs_packet *packet)
 			cpu_to_be32(cfs_buffer_size(csk->tx_buffer));
 	}
 
-	hdr = (Header *)kmalloc(sizeof(Header), GFP_NOFS);
-	memset(hdr, 0, sizeof(Header));
-	packet_to_requestheader(packet, hdr);
+	if (packet->request.arg) {
+		memcpy(packet->request.hdr_padding.arg, packet->request.arg, cfs_buffer_size(packet->request.arg));
+	}
 
-	hdr->RdmaKey = csk->ibvsock->localDest.rkey;
-	iov.iov_base = hdr;
-	iov.iov_len = sizeof(Header);
-	iter.iov = &iov;
-	iter.nr_segs = 1;
-	iter.count = 1;
-	iter.iov_offset = 0;
+	packet->request.hdr_padding.RdmaKey = htonl(csk->ibvsock->pd->unsafe_global_rkey);
+	iov.iov_base = &packet->request;
+	iov.iov_len = sizeof(struct cfs_packet_hdr) + sizeof(struct request_hdr_padding);
+	iov_iter_init(&iter, READ, &iov, 1, iov.iov_len);
 
 	switch (packet->request.hdr.opcode) {
 	case CFS_OP_EXTENT_CREATE:
-		IBVSocket_send(csk->ibvsock, &iter, 0);
+		len = IBVSocket_send(csk->ibvsock, &iter);
+		if (len < 0) {
+			cfs_log_error(csk->log, "IBVSocket_send error: %ld\n", len);
+		}
 		break;
 	case CFS_OP_STREAM_WRITE:
 	case CFS_OP_STREAM_RANDOM_WRITE:
@@ -164,9 +159,13 @@ int cfs_rdma_send_packet(struct cfs_socket *csk, struct cfs_packet *packet)
 				csk->ibvsock->cm_id->device,
 				frags[i].page->page, frags[i].offset,
 				frags[i].size, DMA_TO_DEVICE);
-			hdr->RdmaAddr = frags[i].rdma_addr;
-			hdr->RdmaLength = frags[i].size;
-			IBVSocket_send(csk->ibvsock, &iter, 0);
+			packet->request.hdr_padding.RdmaAddr = frags[i].rdma_addr;
+			packet->request.hdr_padding.RdmaLength = htonl(frags[i].size);
+			len = IBVSocket_send(csk->ibvsock, &iter);
+			if (len < 0) {
+				cfs_log_error(csk->log, "IBVSocket_send error: %ld\n", len);
+				break;
+			}
 		}
 		break;
 	case CFS_OP_STREAM_READ:
@@ -178,45 +177,63 @@ int cfs_rdma_send_packet(struct cfs_socket *csk, struct cfs_packet *packet)
 				csk->ibvsock->cm_id->device,
 				frags[i].page->page, frags[i].offset,
 				frags[i].size, DMA_FROM_DEVICE);
-			hdr->RdmaAddr = frags[i].rdma_addr;
-			hdr->RdmaLength = frags[i].size;
-			IBVSocket_send(csk->ibvsock, &iter, 0);
+			packet->request.hdr_padding.RdmaAddr = frags[i].rdma_addr;
+			packet->request.hdr_padding.RdmaLength = htonl(frags[i].size);
+			len = IBVSocket_send(csk->ibvsock, &iter);
+			if (len < 0) {
+				cfs_log_error(csk->log, "IBVSocket_send error: %ld\n", len);
+				break;
+			}
 		}
 		break;
 	default:
-		IBVSocket_send(csk->ibvsock, &iter, 0);
+		len = IBVSocket_send(csk->ibvsock, &iter);
+		if (len < 0) {
+			cfs_log_error(csk->log, "IBVSocket_send error: %ld\n", len);
+		}
 		break;
 	}
 
-	kfree(hdr);
+	if (len < 0) {
+		return -ENOENT;
+	}
 	return 0;
 }
 
 int cfs_rdma_recv_packet(struct cfs_socket *csk, struct cfs_packet *packet)
 {
-	Response *response;
 	struct iov_iter iter;
 	struct iovec iov;
 	struct cfs_page_frag *frags;
 	int i, ret = 0;
+	ssize_t len = 0;
+	int arglen;
 
-	response = (Response *)kmalloc(sizeof(Response), GFP_NOFS);
-	memset(response, 0, sizeof(Response));
-	iov.iov_base = response;
-	iov.iov_len = sizeof(Response);
-	iter.iov = &iov;
-	iter.nr_segs = 1;
-	iter.count = 1;
-	iter.iov_offset = 0;
+	iov.iov_base = &packet->reply;
+	iov.iov_len = sizeof(struct cfs_packet_hdr) + sizeof(struct reply_hdr_padding);
+	iov_iter_init(&iter, WRITE, &iov, 1, iov.iov_len);
 
-	IBVSocket_recvT(csk->ibvsock, &iter, 1000);
-	ret = response_to_packet(response, packet);
-	if (ret < 0) {
+	len = IBVSocket_recvT(csk->ibvsock, &iter);
+	if (len < 0) {
 		cfs_log_error(csk->log,
-			      "failed to convert response to packet\n");
+			"rdma socket receive ret: %d\n", len);
+		return -ENOENT;
 	}
 
-	kfree(response);
+	arglen = be32_to_cpu(packet->reply.hdr.arglen);
+	if (arglen > 0) {
+		if (packet->reply.arg) {
+			ret = cfs_buffer_resize(packet->reply.arg, arglen);
+		} else if (!(packet->reply.arg = cfs_buffer_new(arglen))) {
+			ret = -ENOMEM;
+		}
+
+		if (ret < 0) {
+			return ret;
+		}
+		memcpy(packet->reply.arg, packet->reply.hdr_padding.arg, arglen);
+		cfs_buffer_seek(packet->reply.arg, arglen);
+	}
 
 	//unmap the rdma memory.
 	switch (packet->request.hdr.opcode) {

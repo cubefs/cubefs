@@ -8,7 +8,7 @@
 
 #include "cfs_log.h"
 #include "cfs_packet.h"
-#include "rdma/IBVSocket.h"
+#include "rdma/rdma_api.h"
 
 struct cfs_socket_pool;
 
@@ -26,7 +26,7 @@ struct cfs_socket {
 	struct cfs_buffer *rx_buffer;
 	unsigned long jiffies;
 	struct cfs_log *log;
-	IBVSocket* ibvsock;
+	struct IBVSocket* ibvsock;
 	bool enable_rdma;
 };
 

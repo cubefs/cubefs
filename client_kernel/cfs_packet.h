@@ -271,9 +271,15 @@ struct cfs_packet_inode {
 	uid_t uid; /* json: uid */
 	gid_t gid; /* json: gid */
 	u64 generation; /* json: gen */
+#ifdef KERNEL_HAS_TIME64_TO_TM
+	struct timespec64 modify_time; /* json: mt */
+	struct timespec64 create_time; /* json: ct */
+	struct timespec64 access_time; /* json: at */
+#else
 	struct timespec modify_time; /* json: mt */
 	struct timespec create_time; /* json: ct */
 	struct timespec access_time; /* json: at */
+#endif
 	char *target; /* json: tgt */
 	struct cfs_quota_info_array quota_infos; /* json: qifs */
 };
@@ -635,8 +641,13 @@ struct cfs_packet_sattr_request {
 	umode_t mode; /* json: mode */
 	uid_t uid; /* json: uid */
 	gid_t gid; /* json: gid */
+#ifdef KERNEL_HAS_TIME64_TO_TM
+	struct timespec64 modify_time; /* json: mt, s64 */
+	struct timespec64 access_time; /* json: at, s64 */
+#else
 	struct timespec modify_time; /* json: mt, s64 */
 	struct timespec access_time; /* json: at, s64 */
+#endif
 	u32 valid; /* json: valid */
 };
 
@@ -868,9 +879,33 @@ cfs_packet_gquota_reply_clear(struct cfs_packet_gquota_reply *reply)
 	cfs_quota_info_array_clear(&reply->quota_infos);
 }
 
+struct request_hdr_padding {
+	uint64_t VerSeq; // only used in mod request to datanode
+	unsigned char
+		arg[40]; // for create or append ops, the data contains the address
+	unsigned char list[40];
+	uint8_t RdmaVersion; //rdma version
+	uint64_t RdmaAddr;
+	uint32_t RdmaLength;
+	uint32_t RdmaKey;
+}__attribute__((packed)); //
+
+struct reply_hdr_padding {
+	uint64_t VerSeq; // only used in mod request to datanode
+	unsigned char
+		arg[40]; // for create or append ops, the data contains the address
+	unsigned char data[500];
+	unsigned char list[40];
+	uint8_t RdmaVersion; //rdma version
+	uint64_t RdmaAddr;
+	uint32_t RdmaLength;
+	uint32_t RdmaKey;
+}__attribute__((packed));
+
 struct cfs_packet {
 	struct {
 		struct cfs_packet_hdr hdr;
+		struct request_hdr_padding hdr_padding;
 		struct cfs_buffer *arg;
 		union {
 			struct cfs_packet_icreate_request icreate;
@@ -900,9 +935,10 @@ struct cfs_packet {
 				size_t nr;
 			} write;
 		} data;
-	} request;
+	} __attribute__((packed)) request;
 	struct {
 		struct cfs_packet_hdr hdr;
+		struct reply_hdr_padding hdr_padding;
 		struct cfs_buffer *arg;
 		union {
 			struct cfs_packet_icreate_reply icreate;
@@ -924,7 +960,7 @@ struct cfs_packet {
 				size_t nr;
 			} read;
 		} data;
-	} reply;
+	} __attribute__((packed)) reply;
 	struct list_head list;
 	atomic_t refcnt;
 	struct completion done;
@@ -935,55 +971,6 @@ struct cfs_packet {
 		struct cfs_page_frag frags[CFS_PAGE_VEC_NUM];
 	} rw;
 };
-
-typedef struct RequestHeader { //__attribute__((packed))
-	uint8_t magic;
-	uint8_t ext_type; // the highest bit be set while rsp to client if version not consistent then Verseq be valid
-	uint8_t opcode;
-	uint8_t result_code;
-	uint8_t remaining_followers;
-	uint32_t crc;
-	uint32_t size;
-	uint32_t arglen;
-	uint64_t pid;
-	uint64_t ext_id;
-	int64_t ext_offset;
-	int64_t req_id;
-	uint64_t kernel_offset;
-	uint64_t VerSeq; // only used in mod request to datanode
-	unsigned char
-		arg[40]; // for create or append ops, the data contains the address
-	unsigned char list[40];
-	uint8_t RdmaVersion; //rdma协议版本
-	uint64_t RdmaAddr;
-	uint32_t RdmaLength;
-	uint32_t RdmaKey;
-} __attribute__((packed)) Header; //
-
-typedef struct Response {
-	uint8_t magic;
-	uint8_t ext_type; // the highest bit be set while rsp to client if version not consistent then Verseq be valid
-	uint8_t opcode;
-	uint8_t result_code;
-	uint8_t remaining_followers;
-	uint32_t crc;
-	uint32_t size;
-	uint32_t arglen;
-	uint64_t pid;
-	uint64_t ext_id;
-	int64_t ext_offset;
-	int64_t req_id;
-	uint64_t kernel_offset;
-	uint64_t VerSeq; // only used in mod request to datanode
-	unsigned char
-		arg[40]; // for create or append ops, the data contains the address
-	unsigned char data[500];
-	unsigned char list[40];
-	uint8_t RdmaVersion; //rdma协议版本
-	uint64_t RdmaAddr;
-	uint32_t RdmaLength;
-	uint32_t RdmaKey;
-} Response;
 
 struct cfs_packet *cfs_packet_new(u8 op, u64 pid,
 				  void (*handle_reply)(struct cfs_packet *),
