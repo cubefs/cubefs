@@ -14,7 +14,9 @@ func TestCheckLayerPolicy(t *testing.T) {
 	smartRules := []string{"actionMetrics:dp:read:count:minute:1000:5:hdd",
 		"actionMetrics:dp:appendWrite:size:hour:999999:9:hdd",
 		"dpCreateTime:timestamp:1653486964:hdd",
-		"dpCreateTime:days:30:ec"}
+		"dpCreateTime:days:30:ec",
+		"inodeAccessTime:timestamp:1653486964:hdd",
+		"inodeAccessTime:days:30:ec"}
 	err = CheckLayerPolicy(cluster, volName, smartRules)
 	if err != nil {
 		t.Fatalf(err.Error())
@@ -56,6 +58,24 @@ func TestParseLayerType(t *testing.T) {
 	}
 	if lt2 != LayerTypeDPCreateTime {
 		t.Fatalf("layer type is not expected action metrics")
+	}
+
+	ruleInodeAccessTime := "inodeAccessTime:timestamp:1653486964:HDD"
+	lt, err = ParseLayerType(ruleInodeAccessTime)
+	if err != nil {
+		t.Fatalf(err.Error())
+	}
+	if lt != LayerTypeInodeATime {
+		t.Fatalf("layer type is not expected inode accesstime")
+	}
+
+	ruleInodeAccessTime = "inodeAccessTime:days:30:HDD"
+	lt, err = ParseLayerType(ruleInodeAccessTime)
+	if err != nil {
+		t.Fatalf(err.Error())
+	}
+	if lt2 != LayerTypeInodeATime {
+		t.Fatalf("layer type is not expected inode accesstime")
 	}
 }
 
@@ -118,6 +138,32 @@ func TestParseLayerPolicy(t *testing.T) {
 	_, ok = lp.(*LayerPolicyDPCreateTime)
 	if !ok {
 		t.Fatalf("expected layer policy instance is data partition create time")
+	}
+
+	inodeATimeRule1 := "inodeAccessTime:timestamp:1653486964:hdd"
+	lt, lp, err = ParseLayerPolicy(cluster, volName, inodeATimeRule1)
+	if err != nil {
+		t.Fatalf(err.Error())
+	}
+	if lt != LayerTypeInodeATime {
+		t.Fatalf("expected layer type is inode access time")
+	}
+	_, ok = lp.(*LayerPolicyInodeATime)
+	if !ok {
+		t.Fatalf("expected layer policy instance is inode access time")
+	}
+
+	inodeATimeRule2 := "inodeAccessTime:days:30:ec"
+	lt, lp, err = ParseLayerPolicy(cluster, volName, inodeATimeRule2)
+	if err != nil {
+		t.Fatalf(err.Error())
+	}
+	if lt != LayerTypeInodeATime {
+		t.Fatalf("expected layer type is inode access time")
+	}
+	_, ok = lp.(*LayerPolicyInodeATime)
+	if !ok {
+		t.Fatalf("expected layer policy instance is inode access time")
 	}
 }
 
@@ -308,6 +354,33 @@ func TestLayerPolicyDPCreateTime_Parse(t *testing.T) {
 		t.Fatalf("parsed time value is not expected")
 	}
 	if lp.TargetMedium != MediumHDD {
+		t.Fatalf("parsed target medium is not expected")
+	}
+}
+
+func TestLayerPolicyInodeAccessTime_Parse(t *testing.T) {
+	aTime := NewLayerPolicyInodeATime("spark", "smartVolume")
+	fmt.Printf("LayerPolicyInodeATime: %s\n", aTime.String())
+	originRule := "inodeAccessTime:timestamp:1653486964:HDD"
+
+	items := strings.Split(originRule, ":")
+	var err error
+	if err = aTime.ParseTimeType(items[1]); err != nil {
+		t.Fatalf(err.Error())
+	}
+	if err = aTime.ParseTimeValue(items[2]); err != nil {
+		t.Fatalf(err.Error())
+	}
+	if err = aTime.ParseTargetMedium(items[3]); err != nil {
+		t.Fatalf(err.Error())
+	}
+	if aTime.TimeType != InodeAccessTimeTypeTimestamp {
+		t.Fatalf("parsed time type is not expected")
+	}
+	if aTime.TimeValue != 1653486964 {
+		t.Fatalf("parsed time value is not expected")
+	}
+	if aTime.TargetMedium != MediumHDD {
 		t.Fatalf("parsed target medium is not expected")
 	}
 }
