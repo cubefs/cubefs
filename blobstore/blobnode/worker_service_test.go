@@ -17,6 +17,7 @@ package blobnode
 import (
 	"context"
 	"fmt"
+	"hash/crc32"
 	"io"
 	"net/http/httptest"
 	"testing"
@@ -133,11 +134,10 @@ func (m *mockScheCli) AcquireInspectTask(ctx context.Context) (ret *proto.Volume
 	return
 }
 
-func newMockWorkService(t *testing.T) (*Service, *mockScheCli) {
+func newMockWorkService(t *testing.T, blobnodeCli client.IBlobNode) (*Service, *mockScheCli) {
 	cli := mocks.NewMockIScheduler(C(t))
 	schedulerCli := &mockScheCli{MockIScheduler: cli}
 	schedulerCli.EXPECT().CompleteInspectTask(A, A).AnyTimes().Return(nil)
-	blobnodeCli := &mBlobNodeCli{}
 
 	workSvr := &WorkerService{
 		Closer: closer.New(),
@@ -161,7 +161,7 @@ func newMockWorkService(t *testing.T) (*Service, *mockScheCli) {
 }
 
 func TestServiceAPI(t *testing.T) {
-	service, _ := newMockWorkService(t)
+	service, _ := newMockWorkService(t, &mBlobNodeCli{})
 	defer service.WorkerService.Close()
 	workerServer := httptest.NewServer(NewHandler(service))
 	workerCli := bnapi.New(&bnapi.Config{})
@@ -194,8 +194,56 @@ func TestServiceAPI(t *testing.T) {
 	require.NoError(t, err)
 }
 
+func TestShardPartialRepair(t *testing.T) {
+	_, bidInfos, blobnodeCli, _ := InitMockRepair(codemode.EC12P9)
+	service, _ := newMockWorkService(t, blobnodeCli)
+	defer service.WorkerService.Close()
+	workerServer := httptest.NewServer(NewHandler(service))
+	workerCli := bnapi.New(&bnapi.Config{})
+	testCases := []struct {
+		args *proto.ShardRepairTask
+		code int
+	}{
+		{args: &proto.ShardRepairTask{}, code: 672},
+	}
+	for _, tc := range testCases {
+		err := workerCli.RepairShard(context.Background(), workerServer.URL, tc.args)
+		require.Equal(t, tc.code, rpc.DetectStatusCode(err))
+	}
+	badIdx := 4
+	surviveIndex, plan := genPartialPlan(1, codemode.EC12P9, badIdx)
+	workutils.TaskBufPool = workutils.NewBufPool(&workutils.BufConfig{
+		MigrateBufSize:     4 * 1024,
+		MigrateBufCapacity: 100,
+		RepairBufSize:      2 * 1024,
+		RepairBufCapacity:  100,
+	})
+	for _, bi := range bidInfos {
+		if bi.Size == 0 {
+			continue
+		}
+		ret, err := workerCli.ShardPartialRepair(context.Background(), workerServer.URL, &bnapi.ShardPartialRepairArgs{
+			Size:          bi.Size,
+			Bid:           bi.Bid,
+			CodeMode:      codemode.EC12P9,
+			Sources:       plan,
+			BadIdx:        badIdx,
+			SurvivalIndex: surviveIndex,
+			IoType:        2,
+		})
+		require.NoError(t, err)
+		vuid := proto.EncodeVuid(proto.EncodeVuidPrefix(1, 4), 1)
+		_, crc, err := blobnodeCli.vunits[vuid].getShard(bi.Bid)
+		require.Nil(t, err)
+		require.Equal(t, crc, crc32.ChecksumIEEE(ret.Data))
+	}
+
+	_, err := workerCli.WorkerStats(context.Background(), workerServer.URL)
+	require.NoError(t, err)
+}
+
 func TestWorkerService(t *testing.T) {
-	svr, schedulerCli := newMockWorkService(t)
+	svr, schedulerCli := newMockWorkService(t, &mBlobNodeCli{})
 	closed := make(chan struct{})
 	go func() {
 		svr.WorkerService.Run()
