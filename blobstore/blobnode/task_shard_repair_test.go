@@ -236,6 +236,21 @@ func testShardRepair(t *testing.T, mode codemode.CodeMode) {
 	err = repairer.RepairShard(context.Background(), task)
 	require.NoError(t, err)
 	checkRepairShardResult(t, getter, replicas, replicasCrc32)
+	{
+		if (codeInfo.CodeType == codemode.ReedSolomon || codeInfo.CodeType == codemode.OPPOLrc) && codeInfo.AZCount > 1 {
+			task := &proto.ShardRepairTask{
+				Bid:           1,
+				CodeMode:      mode,
+				Sources:       replicas,
+				BadIdxes:      []uint8{1},
+				EnablePartial: true,
+			}
+			getter.Delete(context.Background(), replicas[1].Vuid, 1)
+			err = repairer.RepairShard(context.Background(), task)
+			require.NoError(t, err)
+			checkRepairShardResult(t, getter, replicas, replicasCrc32)
+		}
+	}
 
 	var localIdxs []int
 	if codeInfo.CodeType == codemode.OPPOLrc {
