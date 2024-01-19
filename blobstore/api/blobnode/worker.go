@@ -87,7 +87,8 @@ func (s *ShardPartialRepairRet) UnmarshalFrom(body io.Reader) (err error) {
 		return
 	}
 	data := make([]byte, numData)
-	if _, err = body.Read(data); err != nil {
+	_, err = io.ReadFull(body, data)
+	if err != nil {
 		return err
 	}
 	s.BadIdxes = badIdxes
