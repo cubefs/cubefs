@@ -18,8 +18,10 @@ const (
 const (
 	LayerTypeActionMetrics       LayerType = 1
 	LayerTypeDPCreateTime        LayerType = 2
+	LayerTypeInodeATime          LayerType = 3
 	LayerTypeActionMetricsString           = "actionMetrics"
 	LayerTypeDPCreateTimeString            = "dpCreateTime"
+	LayerTypeInodeATimeString              = "inodeAccessTime"
 )
 
 func CheckLayerPolicy(cluster, volName string, smartRules []string) (err error) {
@@ -39,6 +41,8 @@ func CheckLayerPolicy(cluster, volName string, smartRules []string) (err error) 
 			err = CheckActionMetrics(cluster, volName, rule)
 		case LayerTypeDPCreateTime:
 			err = CheckDPCreateTime(cluster, volName, rule)
+		case LayerTypeInodeATime:
+			err = CheckInodeAccessTime(cluster, volName, rule)
 		}
 		if err != nil {
 			return errors.New(fmt.Sprintf("%s, invalidRule(%s)", err.Error(), rule))
@@ -75,6 +79,9 @@ func ParseLayerType(originRule string) (lt LayerType, err error) {
 	if strings.ToLower(itemFirst) == strings.ToLower(LayerTypeDPCreateTimeString) {
 		return LayerTypeDPCreateTime, nil
 	}
+	if strings.ToLower(itemFirst) == strings.ToLower(LayerTypeInodeATimeString) {
+		return LayerTypeInodeATime, nil
+	}
 	return 0, errors.New("invalid layer type")
 }
 
@@ -86,6 +93,11 @@ func CheckActionMetrics(cluster, volName, originRule string) (err error) {
 func CheckDPCreateTime(cluster, volName, rule string) (err error) {
 	c := NewLayerPolicyDPCreateTime(cluster, volName)
 	return c.Parse(rule)
+}
+
+func CheckInodeAccessTime(cluster, volName, rule string) (err error) {
+	t := NewLayerPolicyInodeATime(cluster, volName)
+	return t.Parse(rule)
 }
 
 func ParseLayerPolicy(cluster, volName, originRule string) (lt LayerType, layerPolicy interface{}, err error) {
@@ -113,6 +125,14 @@ func ParseLayerPolicy(cluster, volName, originRule string) (lt LayerType, layerP
 			return
 		}
 		return lt, dpc, nil
+	case LayerTypeInodeATime:
+		at := NewLayerPolicyInodeATime(cluster, volName)
+		if err = at.Parse(originRule); err != nil {
+			log.LogErrorf("[ParseLayerPolicy] parse inode access time layer policy failed, cluster(%v) ,volumeName(%v), originRule(%v), err(%v)",
+				cluster, volName, originRule, err)
+			return
+		}
+		return lt, at, nil
 	}
 	return
 }
@@ -459,4 +479,102 @@ func parseMediumType(mediumString string) (mediumType MediumType, err error) {
 		return MediumEC, nil
 	}
 	return 0, errors.New("invalid target medium type")
+}
+
+type LayerPolicyInodeATime struct {
+	ClusterId  string
+	VolumeName string
+	OriginRule string // inodeAccessTime:timestamp:1656131411:hdd  inodeAccessTime:days:30:hdd
+	TimeType   int8   // 1: fixed timestamp(unit: second),  2: the days since dp be created(unit: days)
+	// TimeType = 1, inode should be migrated if inode access time is earlier then this value
+	// TimeType = 2, inode should be migrated if the days since inode be accessed is more then this value
+	TimeValue    int64
+	TargetMedium MediumType //targetMediumType, 1:SSD 2:HDD 3:EC
+}
+
+func NewLayerPolicyInodeATime(cluster, volName string) *LayerPolicyInodeATime {
+	return &LayerPolicyInodeATime{
+		ClusterId:  cluster,
+		VolumeName: volName,
+	}
+}
+
+func (t *LayerPolicyInodeATime) Parse(originRule string) (err error) {
+	items := strings.Split(originRule, ":")
+	t.OriginRule = originRule
+	if len(items) != 4 {
+		log.LogErrorf("[LayerPolicyInodeATime Parse] invalid layer origin rule, cluster(%v) ,volumeName(%v), originRule(%v)",
+			t.ClusterId, t.VolumeName, originRule)
+		return errors.New("smart rule items is not enough")
+	}
+	if err = t.ParseTimeType(items[1]); err != nil {
+		log.LogErrorf("[LayerPolicyInodeATime Parse] invalid layer origin rule, invalid time type, cluster(%v), volumeName(%v), originRule(%v), timeType(%v), err(%v)",
+			t.ClusterId, t.VolumeName, originRule, items[1], err)
+		return err
+	}
+	if err = t.ParseTimeValue(items[2]); err != nil {
+		log.LogErrorf("[LayerPolicyInodeATime Parse] invalid layer origin rule, invalid time value, cluster(%v), volumeName(%v), originRule(%v), timeValue(%v), err(%v)",
+			t.ClusterId, t.VolumeName, originRule, items[2], err)
+		return err
+	}
+	if err = t.ParseTargetMedium(items[3]); err != nil {
+		log.LogErrorf("[LayerPolicyInodeATime Parse] invalid layer origin rule, invalid target medium, cluster(%v), volumeName(%v), originRule(%v), targetMedium(%v), err(%v)",
+			t.ClusterId, t.VolumeName, originRule, items[3], err)
+		return err
+	}
+	return nil
+}
+
+func (t *LayerPolicyInodeATime) ParseTimeType(timeType string) error {
+	timeType = strings.ToLower(timeType)
+	if timeType == InodeAccessTimeTypeStringTimestamp {
+		t.TimeType = InodeAccessTimeTypeTimestamp
+		return nil
+	}
+	if timeType == InodeAccessTimeTypeStringDays {
+		t.TimeType = InodeAccessTimeTypeDays
+		return nil
+	}
+	if timeType == InodeAccessTimeTypeStringSec {
+		t.TimeType = InodeAccessTimeTypeSec
+		return nil
+	}
+	return errors.New("invalid time type")
+}
+
+func (t *LayerPolicyInodeATime) ParseTimeValue(timeValue string) error {
+	tv, err := strconv.ParseInt(timeValue, 10, 64)
+	if err != nil {
+		return err
+	}
+	t.TimeValue = tv
+	return nil
+}
+
+func (t *LayerPolicyInodeATime) ParseTargetMedium(targetMediumString string) error {
+	mt, err := parseMediumType(targetMediumString)
+	if err != nil {
+		return err
+	}
+	t.TargetMedium = mt
+	return nil
+}
+
+func (t *LayerPolicyInodeATime) String() string {
+	sb := strings.Builder{}
+	sb.WriteString("ClusterId: ")
+	sb.WriteString(t.ClusterId)
+	sb.WriteString(", VolumeName: ")
+	sb.WriteString(t.VolumeName)
+	sb.WriteString(", TimeType: ")
+	sb.WriteString(strconv.Itoa(int(t.TimeType)))
+	sb.WriteString(", TimeValue: ")
+	sb.WriteString(strconv.FormatInt(t.TimeValue, 10))
+	sb.WriteString(", TargetMedium: ")
+	sb.WriteString(strconv.Itoa(int(t.TargetMedium)))
+	return sb.String()
+}
+
+func (t *LayerPolicyInodeATime) CheckDPMigrated(dp *DataPartitionResponse, originRule interface{}) bool {
+	return true
 }

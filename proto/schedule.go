@@ -63,6 +63,16 @@ const (
 )
 
 const (
+	InodeAccessTimeTypeReserved = iota
+	InodeAccessTimeTypeTimestamp
+	InodeAccessTimeTypeDays
+	InodeAccessTimeTypeSec
+	InodeAccessTimeTypeStringTimestamp = "timestamp"
+	InodeAccessTimeTypeStringDays      = "days"
+	InodeAccessTimeTypeStringSec       = "sec"
+)
+
+const (
 	DataTypeReserved = iota
 	DataTypeCount
 	DataTypeSize
@@ -86,6 +96,7 @@ const (
 	WorkerTypeDPReBalance
 	WorkerTypeDiskReBalance
 	WorkerTypeCheckCrc
+	WorkerTypeInodeMigration
 )
 
 var workerTypeMap = map[WorkerType]string{
@@ -94,6 +105,7 @@ var workerTypeMap = map[WorkerType]string{
 	WorkerTypeDPReBalance:   "dpRebalance",
 	WorkerTypeDiskReBalance: "diskRebalance",
 	WorkerTypeCheckCrc:      "crcworker",
+	WorkerTypeInodeMigration: "inodeMigration",
 }
 
 func WorkerTypeToName(wt WorkerType) string {
