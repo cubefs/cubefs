@@ -685,6 +685,8 @@ func (p *Packet) GetResultMsg() (m string) {
 		m = "OpTxRollbackErr"
 	case OpUploadPartConflictErr:
 		m = "OpUploadPartConflictErr"
+	case OpDismatchStorageClass:
+		m = "OpDismatchStorageClass"
 	default:
 		return fmt.Sprintf("Unknown ResultCode(%v)", p.ResultCode)
 	}
