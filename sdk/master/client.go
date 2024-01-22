@@ -36,8 +36,8 @@ const (
 	requestTimeout = 30 * time.Second
 
 	encodingGzip          = compressor.EncodingGzip
-	headerAcceptEncoding  = "x-cfs-Accept-Encoding"
-	headerContentEncoding = "x-cfs-Content-Encoding"
+	headerAcceptEncoding  = proto.HeaderAcceptEncoding
+	headerContentEncoding = proto.HeaderContentEncoding
 
 	get  = http.MethodGet
 	post = http.MethodPost
@@ -157,6 +157,7 @@ func (c *MasterClient) serveRequest(r *request) (repsData []byte, err error) {
 			log.LogErrorf("serveRequest: read http response body fail: err(%v)", err)
 			continue
 		}
+
 		switch stateCode {
 		case http.StatusForbidden:
 			curMasterAddr := strings.TrimSpace(string(repsData))

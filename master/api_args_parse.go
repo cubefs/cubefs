@@ -1626,9 +1626,9 @@ func sendOkReply(w http.ResponseWriter, r *http.Request, httpReply *proto.HTTPRe
 		return
 	}
 
-	if acceptEncoding := r.Header.Get("x-cfs-Accept-Encoding"); acceptEncoding != "" {
+	if acceptEncoding := r.Header.Get(proto.HeaderAcceptEncoding); acceptEncoding != "" {
 		if compressed, errx := compressor.New(acceptEncoding).Compress(reply); errx == nil {
-			w.Header().Set("x-cfs-Content-Encoding", acceptEncoding)
+			w.Header().Set(proto.HeaderContentEncoding, acceptEncoding)
 			reply = compressed
 		}
 	}

@@ -34,6 +34,7 @@ import (
 	authSDK "github.com/cubefs/cubefs/sdk/auth"
 	masterSDK "github.com/cubefs/cubefs/sdk/master"
 	"github.com/cubefs/cubefs/util"
+	"github.com/cubefs/cubefs/util/compressor"
 	"github.com/cubefs/cubefs/util/config"
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/log"
@@ -102,18 +103,20 @@ type Cluster struct {
 }
 
 type followerReadManager struct {
-	volDataPartitionsView map[string][]byte
-	status                map[string]bool
-	lastUpdateTick        map[string]time.Time
-	needCheck             bool
-	c                     *Cluster
-	volViewMap            map[string]*volValue
-	rwMutex               sync.RWMutex
+	volDataPartitionsView     map[string][]byte
+	volDataPartitionsCompress map[string][]byte
+	status                    map[string]bool
+	lastUpdateTick            map[string]time.Time
+	needCheck                 bool
+	c                         *Cluster
+	volViewMap                map[string]*volValue
+	rwMutex                   sync.RWMutex
 }
 
 func newFollowerReadManager(c *Cluster) (mgr *followerReadManager) {
 	mgr = new(followerReadManager)
 	mgr.volDataPartitionsView = make(map[string][]byte)
+	mgr.volDataPartitionsCompress = make(map[string][]byte)
 	mgr.status = make(map[string]bool)
 	mgr.lastUpdateTick = make(map[string]time.Time)
 	mgr.c = c
@@ -125,6 +128,7 @@ func (mgr *followerReadManager) reSet() {
 	defer mgr.rwMutex.Unlock()
 
 	mgr.volDataPartitionsView = make(map[string][]byte)
+	mgr.volDataPartitionsCompress = make(map[string][]byte)
 	mgr.status = make(map[string]bool)
 	mgr.lastUpdateTick = make(map[string]time.Time)
 }
@@ -226,6 +230,7 @@ func (mgr *followerReadManager) DelObsoleteVolRecord(obsoleteVolNames map[string
 	for volName := range obsoleteVolNames {
 		log.LogDebugf("followerReadManager.DelObsoleteVolRecord, delete obsolete vol: %v", volName)
 		delete(mgr.volDataPartitionsView, volName)
+		delete(mgr.volDataPartitionsCompress, volName)
 		delete(mgr.status, volName)
 		delete(mgr.lastUpdateTick, volName)
 	}
@@ -263,6 +268,12 @@ func (mgr *followerReadManager) updateVolViewFromLeader(key string, view *proto.
 		mgr.rwMutex.Lock()
 		defer mgr.rwMutex.Unlock()
 		mgr.volDataPartitionsView[key] = body
+		gzipData, err := compressor.New(compressor.EncodingGzip).Compress(body)
+		if err != nil {
+			log.LogErrorf("action[updateDpResponseCache] compress error:%+v", err)
+			return
+		}
+		mgr.volDataPartitionsCompress[key] = gzipData
 	}
 	mgr.status[key] = true
 	mgr.lastUpdateTick[key] = time.Now()
@@ -285,11 +296,15 @@ func (mgr *followerReadManager) checkViewContent(volName string, view *proto.Dat
 	return true
 }
 
-func (mgr *followerReadManager) getVolViewAsFollower(key string) (value []byte, ok bool) {
+func (mgr *followerReadManager) getVolViewAsFollower(key string, compress bool) (value []byte, ok bool) {
 	mgr.rwMutex.RLock()
 	defer mgr.rwMutex.RUnlock()
 	ok = true
-	value, _ = mgr.volDataPartitionsView[key]
+	if compress {
+		value, _ = mgr.volDataPartitionsCompress[key]
+	} else {
+		value, _ = mgr.volDataPartitionsView[key]
+	}
 	log.LogDebugf("getVolViewAsFollower. volume %v return!", key)
 	return
 }
@@ -541,6 +556,7 @@ func (c *Cluster) checkDataPartitions() {
 		vol.dataPartitions.setReadWriteDataPartitions(readWrites, c.Name)
 		if c.metaReady {
 			vol.dataPartitions.updateResponseCache(true, 0, vol.VolType)
+			vol.dataPartitions.updateCompressCache(true, 0, vol.VolType)
 		}
 		msg := fmt.Sprintf("action[checkDataPartitions],vol[%v] can readWrite partitions:%v  ",
 			vol.Name, vol.dataPartitions.readableAndWritableCnt)

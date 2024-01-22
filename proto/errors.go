@@ -95,6 +95,8 @@ var (
 	ErrNoNodeSetToUpdateDecommissionDiskFactor = errors.New("no node set available for updating decommission disk factor")
 	ErrNoNodeSetToQueryDecommissionDiskLimit   = errors.New("no node set available for query decommission disk limit")
 	ErrNodeSetNotExists                        = errors.New("node set not exists")
+	ErrCompressFailed                          = errors.New("compress data failed")
+	ErrDecompressFailed                        = errors.New("decompress data failed")
 )
 
 // http response error code and error message definitions
