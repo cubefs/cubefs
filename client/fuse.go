@@ -653,6 +653,7 @@ func mount(opt *proto.MountOptions) (fsConn *fuse.Conn, super *cfs.Super, err er
 			if err != nil {
 				log.LogErrorf("UpdateVolConf: get vol info from master failed, err %s", err.Error())
 				if err == proto.ErrVolNotExists {
+					log.LogFlush()
 					daemonize.SignalOutcome(err)
 					os.Exit(1)
 				}
@@ -661,6 +662,7 @@ func mount(opt *proto.MountOptions) (fsConn *fuse.Conn, super *cfs.Super, err er
 			if volumeInfo.Status == proto.VolStatusMarkDelete {
 				err = fmt.Errorf("vol [%s] has been deleted, stop client", volumeInfo.Name)
 				log.LogError(err)
+				log.LogFlush()
 				daemonize.SignalOutcome(err)
 				os.Exit(1)
 			}

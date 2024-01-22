@@ -30,6 +30,7 @@ import (
 
 	"github.com/cubefs/cubefs/master/mocktest"
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util/compressor"
 	"github.com/cubefs/cubefs/util/config"
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/stretchr/testify/assert"
@@ -178,7 +179,7 @@ func createDefaultMasterServerForTest() *Server {
 		panic(err)
 	}
 
-	vol, err = testServer.cluster.getVol(commonVolName)
+	vol, err = testServer.cluster.getVol(req.name)
 	if err != nil {
 		panic(err)
 	}
@@ -338,7 +339,7 @@ func processWithFatalV2(url string, success bool, req map[string]interface{}, t 
 	return
 }
 
-func process(reqURL string, t *testing.T) (reply *proto.HTTPReply) {
+func process(reqURL string, t testing.TB) (reply *proto.HTTPReply) {
 	mocktest.Log(t, reqURL)
 	resp, err := http.Get(reqURL)
 	if err != nil {
@@ -357,6 +358,50 @@ func process(reqURL string, t *testing.T) (reply *proto.HTTPReply) {
 		t.Errorf("status code[%v]", resp.StatusCode)
 		return
 	}
+	reply = &proto.HTTPReply{}
+	if err = json.Unmarshal(body, reply); err != nil {
+		t.Error(err)
+		return
+	}
+	if reply.Code != 0 {
+		t.Errorf("failed,msg[%v],data[%v]", reply.Msg, reply.Data)
+		return
+	}
+	return
+}
+
+func processCompression(reqURL string, compress bool, t testing.TB) (reply *proto.HTTPReply) {
+	req, err := http.NewRequest(http.MethodGet, reqURL, nil)
+	if err != nil {
+		t.Errorf("new request failed.err:%+v", err)
+		return
+	}
+	if compress {
+		req.Header.Add(proto.HeaderAcceptEncoding, compressor.EncodingGzip)
+	}
+	mocktest.Log(t, reqURL)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Errorf("err is %v", err)
+		return
+	}
+	mocktest.Println(resp.StatusCode)
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Errorf("err is %v", err)
+		return
+	}
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("status code[%v]", resp.StatusCode)
+		return
+	}
+	body, err = compressor.New(resp.Header.Get(proto.HeaderContentEncoding)).Decompress(body)
+	if err != nil {
+		t.Errorf("decompress failed. err is %v", err)
+		return
+	}
+	mocktest.Println(string(body))
 	reply = &proto.HTTPReply{}
 	if err = json.Unmarshal(body, reply); err != nil {
 		t.Error(err)
@@ -675,6 +720,16 @@ func TestGetMetaPartitions(t *testing.T) {
 func TestGetDataPartitions(t *testing.T) {
 	reqURL := fmt.Sprintf("%v%v?name=%v", hostAddr, proto.ClientDataPartitions, commonVolName)
 	process(reqURL, t)
+}
+
+func TestGetDataPartitionsNotCompress(t *testing.T) {
+	reqURL := fmt.Sprintf("%v%v?name=%v", hostAddr, proto.ClientDataPartitions, commonVolName)
+	processCompression(reqURL, false, t)
+}
+
+func TestGetDataPartitionsGzip(t *testing.T) {
+	reqURL := fmt.Sprintf("%v%v?name=%v", hostAddr, proto.ClientDataPartitions, commonVolName)
+	processCompression(reqURL, true, t)
 }
 
 func TestGetTopo(t *testing.T) {
