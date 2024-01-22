@@ -412,6 +412,9 @@ func (mp *metaPartition) UnlinkInode(req *UnlinkInoReq, p *Packet, remoteAddr st
 		return
 	} else {
 		ino.StorageClass = item.(*Inode).StorageClass
+		ino.HybridCouldExtents.sortedEks = item.(*Inode).HybridCouldExtents.sortedEks
+		ino.WriteGeneration = atomic.LoadUint64(&(item.(*Inode).WriteGeneration))
+		ino.ForbiddenMigration = atomic.LoadUint32(&(item.(*Inode).ForbiddenMigration))
 	}
 	enableSnapshot := mp.manager != nil && mp.manager.metaNode != nil && mp.manager.metaNode.clusterEnableSnapshot
 	if req.UniqID > 0 {
@@ -762,6 +765,9 @@ func (mp *metaPartition) EvictInode(req *EvictInodeReq, p *Packet, remoteAddr st
 		return
 	} else {
 		ino.StorageClass = item.(*Inode).StorageClass
+		ino.HybridCouldExtents.sortedEks = item.(*Inode).HybridCouldExtents.sortedEks
+		ino.WriteGeneration = atomic.LoadUint64(&(item.(*Inode).WriteGeneration))
+		ino.ForbiddenMigration = atomic.LoadUint32(&(item.(*Inode).ForbiddenMigration))
 	}
 	val, err := ino.Marshal()
 	if err != nil {
@@ -1082,6 +1088,9 @@ func (mp *metaPartition) RenewalForbiddenMigration(req *proto.RenewalForbiddenMi
 		return
 	} else {
 		ino.StorageClass = item.(*Inode).StorageClass
+		ino.HybridCouldExtents.sortedEks = item.(*Inode).HybridCouldExtents.sortedEks
+		ino.WriteGeneration = atomic.LoadUint64(&(item.(*Inode).WriteGeneration))
+		ino.ForbiddenMigration = atomic.LoadUint32(&(item.(*Inode).ForbiddenMigration))
 	}
 	val, err := ino.Marshal()
 	if err != nil {
@@ -1110,6 +1119,8 @@ func (mp *metaPartition) UpdateExtentKeyAfterMigration(req *proto.UpdateExtentKe
 	} else {
 		ino.StorageClass = item.(*Inode).StorageClass
 		ino.HybridCouldExtents.sortedEks = item.(*Inode).HybridCouldExtents.sortedEks
+		ino.WriteGeneration = atomic.LoadUint64(&(item.(*Inode).WriteGeneration))
+		ino.ForbiddenMigration = atomic.LoadUint32(&(item.(*Inode).ForbiddenMigration))
 	}
 	start := time.Now()
 	if mp.IsEnableAuditLog() {
@@ -1125,6 +1136,7 @@ func (mp *metaPartition) UpdateExtentKeyAfterMigration(req *proto.UpdateExtentKe
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return
 	}
+
 	if atomic.LoadUint32(&ino.ForbiddenMigration) == ForbiddenToMigration {
 		err = fmt.Errorf("mp %v inode %v is forbidden to migration", mp.config.PartitionId, ino.Inode)
 		log.LogErrorf("action[UpdateExtentKeyAfterMigration] %v", err)
