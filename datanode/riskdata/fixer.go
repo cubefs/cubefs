@@ -297,7 +297,7 @@ func (p *Fixer) copyFragments() []*Fragment {
 	var fragments []*Fragment
 	p.indexesMu.RLock()
 	defer p.indexesMu.RUnlock()
-	fragments = make([]*Fragment, len(p.indexes))
+	fragments = make([]*Fragment, 0, len(p.indexes))
 	for _, index := range p.indexes {
 		fragments = append(fragments, index.fragment)
 	}

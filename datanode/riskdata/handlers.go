@@ -3,16 +3,18 @@ package riskdata
 import (
 	"context"
 	"fmt"
-	"github.com/cubefs/cubefs/util/multirate"
 	"hash/crc32"
 	"math"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/repl"
 	"github.com/cubefs/cubefs/storage"
 	"github.com/cubefs/cubefs/util/log"
+	"github.com/cubefs/cubefs/util/multirate"
 	"github.com/cubefs/cubefs/util/unit"
 )
 
@@ -86,8 +88,10 @@ func (p *Fixer) fixByFastTrustPolicy(hosts []string, hat proto.CrossRegionHAType
 		extentID = fragment.ExtentID
 		offset   = fragment.Offset
 		size     = fragment.Size
-		rejects  int
-		failures int
+
+		rejects    int
+		failures   int
+		unsupports int
 	)
 
 	if proto.IsTinyExtent(extentID) {
@@ -111,9 +115,12 @@ func (p *Fixer) fixByFastTrustPolicy(hosts []string, hat proto.CrossRegionHAType
 		start = time.Now()
 		remoteFgp, rejected, err = p.fetchRemoveFingerprint(host, extentID, offset, size, false)
 		if log.IsDebugEnabled() {
-			log.LogDebugf("Fixer[%v] fetched remote FGP %v: host=%v, fgp=%v, rejected=%v, error=%v, elapsed=%v", p.partitionID, fragment, host, remoteFgp, rejected, err, time.Now().Sub(start))
+			log.LogDebugf("Fixer[%v] fetched remote FGP %v: host=%v, fgp=%v, rejected=%v, error=%v, elapsed=%v", p.partitionID, fragment, host, remoteFgp.String(), rejected, err, time.Now().Sub(start))
 		}
 		if err != nil {
+			if strings.Contains(err.Error(), repl.ErrorUnknownOp.Error()) {
+				unsupports++
+			}
 			failures++
 			continue
 		}
@@ -174,6 +181,10 @@ func (p *Fixer) fixByFastTrustPolicy(hosts []string, hat proto.CrossRegionHAType
 	}
 	if failures > 0 {
 		// 存在失败远端，稍后重试
+		if failures == unsupports {
+			// 所有远端副本均为老版本不支持该操作
+			return Failed
+		}
 		return Retry
 	}
 	if rejects == 0 {

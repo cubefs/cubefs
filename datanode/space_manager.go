@@ -237,8 +237,6 @@ func (manager *SpaceManager) LoadDisk(path string, expired CheckExpired) (err er
 		log.LogInfof("Disk %v: load compete: partitions=%v, elapsed=%v", path, count, time.Since(startTime))
 		err = nil
 	}
-	deleteSysStartTimeFile()
-	_ = initSysStartTimeFile()
 	return
 }
 
