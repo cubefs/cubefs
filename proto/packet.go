@@ -735,6 +735,8 @@ func (p *Packet) GetResultMsg() (m string) {
 		return "OpStoreClosed"
 	case OpReachMaxExtentsErr:
 		return "OpReachMaxExtentsErr"
+	case OpDismatchStorageClass:
+		m = "OpDismatchStorageClass"
 	default:
 		return fmt.Sprintf("Unknown ResultCode(%v)", p.ResultCode)
 	}
