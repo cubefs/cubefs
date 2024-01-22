@@ -886,7 +886,7 @@ func (s *DataNode) handleFingerprintPacket(p *repl.Packet) {
 		return
 	}
 
-	if fingerprint, err = store.Fingerprint(p.ExtentID, p.ExtentOffset, int64(p.Size), isIssue); err != nil {
+	if fingerprint, err = store.Fingerprint(p.ExtentID, req.Offset, req.Size, isIssue); err != nil {
 		return
 	}
 	var data = fingerprint.EncodeBinary()

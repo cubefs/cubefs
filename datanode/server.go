@@ -437,6 +437,9 @@ func (s *DataNode) startSpaceManager(cfg *config.Config) (err error) {
 		return
 	}
 
+	deleteSysStartTimeFile()
+	_ = initSysStartTimeFile()
+
 	gHasFinishedLoadDisks = true
 	log.LogInfof("SPCMGR: loaded all %v disks elapsed %v", len(diskPaths), time.Since(startTime))
 	return nil

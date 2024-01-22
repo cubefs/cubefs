@@ -130,8 +130,8 @@ func (f *Fingerprint) EncodeBinary() []byte {
 }
 
 func (f *Fingerprint) DecodeBinary(b []byte) {
-	for i := 0; i+4 < len(b); i += 4 {
-		f.Append(binary.BigEndian.Uint32(b[i : i+4]))
+	for i := 0; i < len(b)/4; i++ {
+		f.Append(binary.BigEndian.Uint32(b[i*4 : (i+1)*4]))
 	}
 }
 
