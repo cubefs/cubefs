@@ -172,8 +172,9 @@ func (mp *metaPartition) ExtentAppendWithCheck(req *proto.AppendExtentKeyWithChe
 		inoParm.HybridCouldExtents.sortedEks = NewSortedExtents()
 		inoParm.HybridCouldExtents.sortedEks.(*SortedExtents).Append(ext)
 	}
-	log.LogDebugf("ExtentAppendWithCheck: ino(%v) mp(%v) verSeq(%v) storageClass(%v)",
-		req.Inode, req.PartitionID, mp.verSeq, proto.StorageClassString(inoParm.StorageClass))
+	log.LogDebugf("ExtentAppendWithCheck: ino(%v) mp(%v) verSeq(%v) storageClass(%v) migrationStorageClass(%v)",
+		req.Inode, req.PartitionID, mp.verSeq, proto.StorageClassString(inoParm.StorageClass),
+		proto.StorageClassString(inoParm.HybridCouldExtentsMigration.storageClass))
 
 	// Store discard extents right after the append extent key.
 	if len(req.DiscardExtents) != 0 {
@@ -431,9 +432,9 @@ func (mp *metaPartition) GetUidInfo() (info []*proto.UidReportSpaceInfo) {
 
 // ExtentsList returns the list of extents.
 func (mp *metaPartition) ExtentsList(req *proto.GetExtentsRequest, p *Packet) (err error) {
-	log.LogDebugf("action[ExtentsList] inode [%v] verSeq %v", req.Inode, req.VerSeq)
+	log.LogDebugf("action[ExtentsList] inode [%v] req %v", req.Inode, req)
 
-	// note:don't need set reqSeq, extents get be done in next step
+	// note:don't need m	dset reqSeq, extents get be done in next step
 	ino := NewInode(req.Inode, 0)
 	retMsg := mp.getInodeTopLayer(ino)
 
@@ -478,11 +479,15 @@ func (mp *metaPartition) ExtentsList(req *proto.GetExtentsRequest, p *Packet) (e
 				})
 			} else if req.IsMigration {
 				if !proto.IsStorageClassReplica(ino.HybridCouldExtentsMigration.storageClass) {
-					status = proto.OpErr
-					reply = []byte(fmt.Sprintf("ino %v storage type %v not migrate to replica system",
-						ino.Inode, ino.StorageClass))
-					p.PacketErrorWithBody(status, reply)
-					return
+					// if HybridCouldExtentsMigration store no migration data, ignore this error
+					if !(ino.HybridCouldExtentsMigration.storageClass == proto.StorageClass_Unspecified &&
+						ino.HybridCouldExtentsMigration.sortedEks == nil) {
+						status = proto.OpErr
+						reply = []byte(fmt.Sprintf("ino %v storage type %v not migrate to replica system",
+							ino.Inode, ino.HybridCouldExtentsMigration.storageClass))
+						p.PacketErrorWithBody(status, reply)
+						return
+					}
 				}
 				ino.DoReadFunc(func() {
 					resp.Generation = ino.Generation

@@ -693,10 +693,10 @@ type GetExtentsRequest struct {
 	PartitionID  uint64 `json:"pid"`
 	Inode        uint64 `json:"ino"`
 	VerSeq       uint64 `json:"seq"`
-	VerAll       bool
-	IsCache      bool
-	OpenForWrite bool
-	IsMigration  bool
+	VerAll       bool   `json:"verAll"`
+	IsCache      bool   `json:"isCache"`
+	OpenForWrite bool   `json:"forWrite"`
+	IsMigration  bool   `json:"isMigration"`
 }
 
 // GetObjExtentsResponse defines the response to the request of getting obj extents.
