@@ -31,6 +31,7 @@ func TestCrossRegionHosts(t *testing.T) {
 		DataPartitionResponse: proto.DataPartitionResponse{Hosts: []string{ip1, ip2, ip3, ip4, ip5},LeaderAddr: proto.NewAtomicString(ip3)},
 		CrossRegionMetrics:    NewCrossRegionMetrics(),
 		ClientWrapper:         dataWrapper,
+		ReadMetrics: 		   proto.NewDPReadMetrics(),
 	}
 	dp.CrossRegionMetrics.CrossRegionHosts = dataWrapper.classifyCrossRegionHosts(dp.Hosts)
 	// check classify
