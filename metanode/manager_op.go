@@ -1237,6 +1237,7 @@ func (m *metadataManager) opMetaExtentsList(conn net.Conn, p *Packet,
 		err = errors.NewErrorf("[%v] req: %v, resp: %v", p.GetOpMsgWithReqAndResult(), req, err.Error())
 		return
 	}
+	log.LogDebugf("opMetaExtentsList: req(%v) ", req)
 	mp, err := m.getPartition(req.PartitionID)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))

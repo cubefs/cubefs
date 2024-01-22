@@ -485,6 +485,7 @@ func (mp *metaPartition) fsmAppendExtentsWithCheck(ino *Inode, isSplit bool) (st
 		isCache     bool
 		isMigration bool
 	)
+	storageClass := ino.StorageClass
 	if len(ino.Extents.eks) != 0 {
 		isCache = true
 		eks = ino.Extents.CopyExtents()
@@ -493,10 +494,11 @@ func (mp *metaPartition) fsmAppendExtentsWithCheck(ino *Inode, isSplit bool) (st
 		eks = ino.HybridCouldExtents.sortedEks.(*SortedExtents).CopyExtents()
 	} else if ino.HybridCouldExtentsMigration.sortedEks != nil && len(ino.HybridCouldExtentsMigration.sortedEks.(*SortedExtents).eks) != 0 {
 		isMigration = true
+		storageClass = ino.HybridCouldExtentsMigration.storageClass
 		eks = ino.HybridCouldExtentsMigration.sortedEks.(*SortedExtents).CopyExtents()
 	}
 
-	if err := fsmIno.updateStorageClass(ino.StorageClass, isCache, isMigration); err != nil {
+	if err := fsmIno.updateStorageClass(storageClass, isCache, isMigration); err != nil {
 		log.LogErrorf("action[fsmAppendExtentsWithCheck] updateStorageClass inode %v isCache %v isMigration %v, failed %v",
 			ino.Inode, isCache, isMigration, err.Error())
 		status = proto.OpDismatchStorageClass
@@ -513,7 +515,7 @@ func (mp *metaPartition) fsmAppendExtentsWithCheck(ino *Inode, isSplit bool) (st
 	}
 
 	if status = mp.uidManager.addUidSpace(fsmIno.Uid, fsmIno.Inode, eks[:1]); status != proto.OpOk {
-		log.LogErrorf("fsmAppendExtentsWithCheck.mp %v addUidSpace status %v", mp.config.PartitionId, status)
+		log.LogErrorf("fsmAppendExtentsWithCh eck.mp %v addUidSpace status %v", mp.config.PartitionId, status)
 		return
 	}
 
