@@ -482,9 +482,9 @@ func (api *AdminAPI) SetMetaNodeThreshold(threshold float64, clientIDKey string)
 	return
 }
 
-func (api *AdminAPI) SetMasterVolDeletionDelayTime(volDeletionDelayTime int) (err error) {
+func (api *AdminAPI) SetMasterVolDeletionDelayTime(volDeletionDelayTimeHour int) (err error) {
 	var request = newRequest(get, proto.AdminSetMasterVolDeletionDelayTime)
-	request.addParam("volDeletionDelayTime", strconv.FormatInt(int64(volDeletionDelayTime), 10))
+	request.addParam("volDeletionDelayTime", strconv.FormatInt(int64(volDeletionDelayTimeHour), 10))
 	_, err = api.mc.serveRequest(request)
 	return
 }
