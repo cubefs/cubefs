@@ -730,7 +730,7 @@ func (s *DataNode) extentRepairReadPacket(p *repl.Packet, connect net.Conn, isRe
 		}
 	}()
 	partition := p.Object.(*DataPartition)
-	if partition.IsForbidden() {
+	if partition.IsForbidden() && !isRepairRead {
 		err = storage.ForbiddenDataPartitionError
 		return
 	}
