@@ -315,6 +315,11 @@ func (mp *MetaPartition) checkStatus(clusterID string, writeLog bool, replicaNum
 		} else {
 			mp.Status = proto.ReadOnly
 		}
+		if mr.Status == proto.Unavailable || !forbiddenVol {
+			mp.Status = mr.Status
+		} else {
+			mp.Status = proto.ReadOnly
+		}
 
 		for _, replica := range liveReplicas {
 			if replica.Status == proto.ReadOnly {
