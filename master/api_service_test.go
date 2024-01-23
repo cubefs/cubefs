@@ -121,11 +121,12 @@ func createDefaultMasterServerForTest() *Server {
 		"logLevel":"DEBUG",
 		"walDir":"/tmp/cubefs/raft",
 		"storeDir":"/tmp/cubefs/rocksdbstore",
-		"clusterName":"cubefs",
-		"volDeletionDelayTime": 0
+		"clusterName":"cubefs"
 	}`
 
 	testServer, err := createMasterServer(cfgJSON)
+	testServer.cluster.cfg.volForceDeletion = true
+
 	if err != nil {
 		panic(err)
 	}

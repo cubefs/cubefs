@@ -173,23 +173,23 @@ func (m *Server) setMetaNodeThreshold(w http.ResponseWriter, r *http.Request) {
 
 func (m *Server) setMasterVolDeletionDelayTime(w http.ResponseWriter, r *http.Request) {
 	var (
-		volDeletionDelayTime int
-		err                  error
+		volDeletionDelayTimeHour int
+		err                      error
 	)
 	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminSetMasterVolDeletionDelayTime))
 	defer func() {
 		doStatAndMetric(proto.AdminSetMasterVolDeletionDelayTime, metric, err, nil)
 	}()
 
-	if volDeletionDelayTime, err = parseAndExtractVolDeletionDelayTime(r); err != nil {
+	if volDeletionDelayTimeHour, err = parseAndExtractVolDeletionDelayTime(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-	if err = m.cluster.setMasterVolDeletionDelayTime(volDeletionDelayTime); err != nil {
+	if err = m.cluster.setMasterVolDeletionDelayTime(volDeletionDelayTimeHour); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
-	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("set volDeletionDelayTime to %v successfully", volDeletionDelayTime)))
+	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("set volDeletionDelayTime to %v h successfully", volDeletionDelayTimeHour)))
 }
 
 // Turn on or off the automatic allocation of the data partitions.
@@ -247,6 +247,11 @@ func (m *Server) forbidVolume(w http.ResponseWriter, r *http.Request) {
 	vol, err := m.cluster.getVol(name)
 	if err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeVolNotExists, Msg: err.Error()})
+		return
+	}
+	if vol.Status == proto.VolStatusMarkDelete {
+		err = errors.New("vol has been mark delete, freeze operation is not allowed")
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeNoPermission, Msg: err.Error()})
 		return
 	}
 	oldForbiden := vol.Forbidden
@@ -767,23 +772,23 @@ func (m *Server) getCluster(w http.ResponseWriter, r *http.Request) {
 	}()
 
 	cv := &proto.ClusterView{
-		Name:                 m.cluster.Name,
-		CreateTime:           time.Unix(m.cluster.CreateTime, 0).Format(proto.TimeFormat),
-		LeaderAddr:           m.leaderInfo.addr,
-		DisableAutoAlloc:     m.cluster.DisableAutoAllocate,
-		ForbidMpDecommission: m.cluster.ForbidMpDecommission,
-		MetaNodeThreshold:    m.cluster.cfg.MetaNodeThreshold,
-		Applied:              m.fsm.applied,
-		MaxDataPartitionID:   m.cluster.idAlloc.dataPartitionID,
-		MaxMetaNodeID:        m.cluster.idAlloc.commonID,
-		MaxMetaPartitionID:   m.cluster.idAlloc.metaPartitionID,
-		VolDeletionDelayTime: m.cluster.cfg.volDelayDeleteTime,
-		MasterNodes:          make([]proto.NodeView, 0),
-		MetaNodes:            make([]proto.NodeView, 0),
-		DataNodes:            make([]proto.NodeView, 0),
-		VolStatInfo:          make([]*proto.VolStatInfo, 0),
-		BadPartitionIDs:      make([]proto.BadPartitionView, 0),
-		BadMetaPartitionIDs:  make([]proto.BadPartitionView, 0),
+		Name:                     m.cluster.Name,
+		CreateTime:               time.Unix(m.cluster.CreateTime, 0).Format(proto.TimeFormat),
+		LeaderAddr:               m.leaderInfo.addr,
+		DisableAutoAlloc:         m.cluster.DisableAutoAllocate,
+		ForbidMpDecommission:     m.cluster.ForbidMpDecommission,
+		MetaNodeThreshold:        m.cluster.cfg.MetaNodeThreshold,
+		Applied:                  m.fsm.applied,
+		MaxDataPartitionID:       m.cluster.idAlloc.dataPartitionID,
+		MaxMetaNodeID:            m.cluster.idAlloc.commonID,
+		MaxMetaPartitionID:       m.cluster.idAlloc.metaPartitionID,
+		VolDeletionDelayTimeHour: m.cluster.cfg.volDelayDeleteTimeHour,
+		MasterNodes:              make([]proto.NodeView, 0),
+		MetaNodes:                make([]proto.NodeView, 0),
+		DataNodes:                make([]proto.NodeView, 0),
+		VolStatInfo:              make([]*proto.VolStatInfo, 0),
+		BadPartitionIDs:          make([]proto.BadPartitionView, 0),
+		BadMetaPartitionIDs:      make([]proto.BadPartitionView, 0),
 	}
 
 	vols := m.cluster.allVolNames()
@@ -2095,10 +2100,15 @@ func (m *Server) markDeleteVol(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if status {
+		if vol.Status == proto.VolStatusMarkDelete {
+			err = errors.New("vol has been mark delete, repeated deletions are not allowed")
+			sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeNoPermission, Msg: err.Error()})
+			return
+		}
 		oldForbiden := vol.Forbidden
 		vol.Forbidden = true
 		vol.authKey = authKey
-		vol.DeleteExecTime = time.Now().Add(time.Duration(m.config.volDelayDeleteTime) * time.Hour)
+		vol.DeleteExecTime = time.Now().Add(time.Duration(m.config.volDelayDeleteTimeHour) * time.Hour)
 		vol.user = m.user
 		defer func() {
 			if err != nil {
