@@ -89,6 +89,7 @@ var (
 	ErrVolNoCacheAndRule                       = errors.New("vol has no cache and rule")
 	ErrNoAclPermission                         = errors.New("acl no permission")
 	ErrQuotaNotExists                          = errors.New("quota not exists")
+	ErrVolNotDelete                            = errors.New("vol was not previously deleted or already deleted")
 )
 
 // http response error code and error message definitions
@@ -285,6 +286,7 @@ var code2ErrMap = map[int32]error{
 	ErrCodeInvalidSecretKey:                ErrInvalidSecretKey,
 	ErrCodeIsOwner:                         ErrIsOwner,
 	ErrCodeZoneNumError:                    ErrZoneNum,
+	ErrCodeVolNotDelete:                    ErrVolNotDelete,
 }
 
 type GeneralResp struct {

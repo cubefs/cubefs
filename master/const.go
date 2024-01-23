@@ -185,7 +185,7 @@ const (
 	defaultClientTriggerHitCnt                   = 1
 	defaultClientReqPeriodSeconds                = 1
 	defaultMaxQuotaNumPerVol                     = 100
-	defaultVolDelayDeleteTime                    = 48
+	defaultVolDelayDeleteTimeHour                = 48
 )
 
 const (
