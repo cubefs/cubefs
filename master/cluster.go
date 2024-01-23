@@ -159,7 +159,7 @@ func (mgr *followerReadManager) getVolumeDpView() {
 	}
 
 	for _, vv := range volViews {
-		if vv.Status == proto.VolStatusMarkDelete {
+		if (vv.Status == proto.VolStatusMarkDelete && !vv.Forbidden) || (vv.Status == proto.VolStatusMarkDelete && vv.Forbidden && vv.DeleteExecTime.Sub(time.Now()) <= 0) {
 			mgr.rwMutex.Lock()
 			mgr.lastUpdateTick[vv.Name] = time.Now()
 			mgr.status[vv.Name] = false
@@ -183,7 +183,7 @@ func (mgr *followerReadManager) sendFollowerVolumeDpView() {
 	vols := mgr.c.copyVols()
 	for _, vol := range vols {
 		log.LogDebugf("followerReadManager.getVolumeDpView %v", vol.Name)
-		if vol.Status == proto.VolStatusMarkDelete {
+		if (vol.Status == proto.VolStatusMarkDelete && !vol.Forbidden) || (vol.Status == proto.VolStatusMarkDelete && vol.Forbidden && vol.DeleteExecTime.Sub(time.Now()) <= 0) {
 			continue
 		}
 		var body []byte
@@ -215,7 +215,7 @@ func (mgr *followerReadManager) isVolRecordObsolete(volName string) bool {
 		return true
 	}
 
-	if volView.Status == proto.VolStatusMarkDelete {
+	if (volView.Status == proto.VolStatusMarkDelete && !volView.Forbidden) || (volView.Status == proto.VolStatusMarkDelete && volView.Forbidden && volView.DeleteExecTime.Sub(time.Now()) <= 0) {
 		return true
 	}
 
@@ -600,7 +600,7 @@ func (c *Cluster) doLoadDataPartitions() {
 	}()
 	vols := c.allVols()
 	for _, vol := range vols {
-		if vol.Status == proto.VolStatusMarkDelete {
+		if (vol.Status == proto.VolStatusMarkDelete && !vol.Forbidden) || (vol.Status == proto.VolStatusMarkDelete && vol.Forbidden && vol.DeleteExecTime.Sub(time.Now()) <= 0) {
 			continue
 		}
 		vol.loadDataPartition(c)
@@ -1121,7 +1121,7 @@ func (c *Cluster) checkReplicaOfDataPartitions(ignoreDiscardDp bool) (
 				continue
 			}
 
-			if vol.Status == proto.VolStatusMarkDelete {
+			if (vol.Status == proto.VolStatusMarkDelete && !vol.Forbidden) || (vol.Status == proto.VolStatusMarkDelete && vol.Forbidden && vol.DeleteExecTime.Sub(time.Now()) <= 0) {
 				continue
 			}
 
@@ -3361,7 +3361,7 @@ func (c *Cluster) allVols() (vols map[string]*Vol) {
 	c.volMutex.RLock()
 	defer c.volMutex.RUnlock()
 	for name, vol := range c.vols {
-		if vol.Status == proto.VolStatusNormal {
+		if vol.Status == proto.VolStatusNormal || (vol.Status == proto.VolStatusMarkDelete && vol.Forbidden) {
 			vols[name] = vol
 		}
 	}
@@ -3411,12 +3411,12 @@ func (c *Cluster) setMetaNodeThreshold(threshold float32) (err error) {
 	return
 }
 
-func (c *Cluster) setMasterVolDeletionDelayTime(volDeletionDelayTime int) (err error) {
-	oldVolDeletionDelayTime := c.cfg.volDelayDeleteTime
-	c.cfg.volDelayDeleteTime = int64(volDeletionDelayTime)
+func (c *Cluster) setMasterVolDeletionDelayTime(volDeletionDelayTimeHour int) (err error) {
+	oldVolDeletionDelayTimeHour := c.cfg.volDelayDeleteTimeHour
+	c.cfg.volDelayDeleteTimeHour = int64(volDeletionDelayTimeHour)
 	if err = c.syncPutCluster(); err != nil {
 		log.LogErrorf("action[setMasterVolDeletionDelayTime] err[%v]", err)
-		c.cfg.volDelayDeleteTime = oldVolDeletionDelayTime
+		c.cfg.volDelayDeleteTimeHour = oldVolDeletionDelayTimeHour
 		err = proto.ErrPersistenceByRaft
 		return
 	}
