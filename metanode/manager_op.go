@@ -1203,7 +1203,7 @@ func (m *metadataManager) opMetaExtentAddWithCheck(conn net.Conn, p *Packet,
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
 		m.respondToClientWithVer(conn, p)
-		err = errors.NewErrorf("[%v] req: %v, resp: %v", p.GetOpMsgWithReqAndResult(), req, err.Error())
+		err = errors.NewErrorf("[%vhun] req: %v, resp: %v", p.GetOpMsgWithReqAndResult(), req, err.Error())
 		return
 	}
 	if !m.serveProxy(conn, mp, p) {
@@ -1237,7 +1237,7 @@ func (m *metadataManager) opMetaExtentsList(conn net.Conn, p *Packet,
 		err = errors.NewErrorf("[%v] req: %v, resp: %v", p.GetOpMsgWithReqAndResult(), req, err.Error())
 		return
 	}
-	log.LogDebugf("opMetaExtentsList: req(%v) ", req)
+	log.LogDebugf("opMetaExtentsList: id(%v) req(%v) ", p.GetReqID(), req)
 	mp, err := m.getPartition(req.PartitionID)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
