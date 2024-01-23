@@ -42,7 +42,7 @@ func TestLimiterManager(t *testing.T) {
 	ml := m.GetLimiter()
 	property := []Properties{
 		{{PropertyTypeFlow, FlowNetwork}},
-		{{PropertyTypeOp, strconv.Itoa(int(proto.OpRead))}, {PropertyTypeDisk, ""}},
+		{{PropertyTypeOp, strconv.Itoa(int(proto.OpRead))}, {PropertyTypeDisk, ""}, {PropertyTypeFlow, FlowDisk}},
 		{{PropertyTypeOp, strconv.Itoa(int(proto.OpWrite))}, {PropertyTypeDisk, ""}},
 		{{PropertyTypeVol, vol}, {PropertyTypeOp, strconv.Itoa(int(proto.OpRead))}, {PropertyTypeDisk, ""}},
 		{{PropertyTypeVol, vol}, {PropertyTypeOp, strconv.Itoa(int(proto.OpWrite))}, {PropertyTypeDisk, ""}},
@@ -78,6 +78,7 @@ func TestLimiterManager(t *testing.T) {
 		}
 		return
 	}
+	property[1] = Properties{{PropertyTypeOp, strconv.Itoa(int(proto.OpRead))}, {PropertyTypeDisk, ""}}
 	expect = []LimitGroup{
 		{statTypeInBytes: rate.Limit(speed * int(ratio) / 100), statTypeOutBytes: rate.Limit(speed * int(ratio) / 100)},
 		{statTypeCount: rate.Limit(limit[1])},

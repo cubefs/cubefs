@@ -188,6 +188,8 @@ func (t PropertyType) String() string {
 		return "Disk"
 	case PropertyTypePartition:
 		return "Partition"
+	case PropertyTypeFlow:
+		return "Flow"
 	default:
 		return fmt.Sprintf("Unkown(%v)", int(t))
 	}

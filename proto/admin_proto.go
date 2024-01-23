@@ -590,7 +590,9 @@ type RegNodeRsp struct {
 	AuthKey string
 }
 
-type AllLimitGroup [11]int64
+const LimitGroupCount = 11
+
+type AllLimitGroup [LimitGroupCount]int64
 type LimitInfo struct {
 	Cluster                          string
 	MetaNodeDeleteBatchCount         uint64

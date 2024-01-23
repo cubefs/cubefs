@@ -340,8 +340,14 @@ func (m *LimiterManager) updateOpLimit(limitInfo *proto.LimitInfo) {
 			}
 			if i == indexTypeTotal {
 				p = Properties{{PropertyTypeOp, strconv.Itoa(int(op))}}
+				if oldGroup[indexInBytes] > 0 || oldGroup[indexOutBytes] > 0 {
+					p = append(p, Property{PropertyTypeFlow, FlowNetwork})
+				}
 			} else if i == indexTypePerDisk {
 				p = Properties{{PropertyTypeOp, strconv.Itoa(int(op))}, {PropertyTypeDisk, ""}}
+				if oldGroup[indexInBytesPerDisk] > 0 || oldGroup[indexOutBytesPerDisk] > 0 {
+					p = append(p, Property{PropertyTypeFlow, FlowDisk})
+				}
 			} else if i == indexTypePerPartition {
 				p = Properties{{PropertyTypeOp, strconv.Itoa(int(op))}, {PropertyTypePartition, ""}}
 			}
@@ -359,8 +365,14 @@ func (m *LimiterManager) updateOpLimit(limitInfo *proto.LimitInfo) {
 			}
 			if i == indexTypeTotal {
 				p = Properties{{PropertyTypeOp, strconv.Itoa(int(op))}}
+				if group[indexInBytes] > 0 || group[indexOutBytes] > 0 {
+					p = append(p, Property{PropertyTypeFlow, FlowNetwork})
+				}
 			} else if i == indexTypePerDisk {
 				p = Properties{{PropertyTypeOp, strconv.Itoa(int(op))}, {PropertyTypeDisk, ""}}
+				if group[indexInBytesPerDisk] > 0 || group[indexOutBytesPerDisk] > 0 {
+					p = append(p, Property{PropertyTypeFlow, FlowDisk})
+				}
 			} else if i == indexTypePerPartition {
 				p = Properties{{PropertyTypeOp, strconv.Itoa(int(op))}, {PropertyTypePartition, ""}}
 			}
@@ -393,7 +405,7 @@ func (m *LimiterManager) getOpRateLimitMap(limitInfo *proto.LimitInfo) map[int]p
 		if !ok {
 			opRateLimitMap[op] = limit
 		}
-		for i := 0; i < int(statTypeMax); i++ {
+		for i := 0; i < proto.LimitGroupCount; i++ {
 			if l[i] == 0 {
 				l[i] = limit[i]
 			}
