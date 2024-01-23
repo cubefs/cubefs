@@ -310,6 +310,10 @@ func (e *Extent) WriteTiny(data []byte, offset, size int64, crc uint32, writeTyp
 	defer e.Unlock()
 	index := offset + size
 
+	if err = e.checkTinyWriteParameter(offset, size, writeType); err != nil {
+		return
+	}
+
 	if IsAppendWrite(writeType) && offset != e.dataSize {
 		return ParameterMismatchError
 	}
@@ -539,6 +543,16 @@ func (e *Extent) checkWriteParameter(offset, size int64, writeType int) error {
 		return NewParameterMismatchErr(fmt.Sprintf("illegal append: offset=%v size=%v extentsize=%v", offset, size, e.dataSize))
 	}
 	if IsRandomWrite(writeType) && offset > e.dataSize {
+		return NewParameterMismatchErr(fmt.Sprintf("%v: offset=%v size=%v extentsize=%v", IllegalOverWriteError, offset, size, e.dataSize))
+	}
+	return nil
+}
+
+func (e *Extent) checkTinyWriteParameter(offset, size int64, writeType int) error {
+	if IsAppendWrite(writeType) && offset != e.dataSize {
+		return NewParameterMismatchErr(fmt.Sprintf("illegal append: offset=%v size=%v extentsize=%v", offset, size, e.dataSize))
+	}
+	if IsRandomWrite(writeType) && offset+size > e.dataSize {
 		return NewParameterMismatchErr(fmt.Sprintf("%v: offset=%v size=%v extentsize=%v", IllegalOverWriteError, offset, size, e.dataSize))
 	}
 	return nil
