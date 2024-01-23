@@ -32,6 +32,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/cubefs/cubefs/metanode"
@@ -904,6 +905,7 @@ func checkNormalVerfyInfo(dir, volname, dirType string) (err error) {
 }
 
 func newCalcBadExtentsCmd() *cobra.Command {
+	var concurrency uint64
 	cmd := &cobra.Command{
 		Use:   "calcBadExtents [VOLNAME] [EXTENT TYPE] [DIR]",
 		Short: "calc bad extents",
@@ -925,7 +927,7 @@ func newCalcBadExtentsCmd() *cobra.Command {
 					slog.Fatalf("Check normal verify info failed, err: %v", err)
 					return
 				}
-				err = calcBadNormalExtents(volname, dir)
+				err = calcBadNormalExtents(volname, dir, int(concurrency))
 				if err != nil {
 					slog.Fatalf("Calc bad normal extents failed, err: %v", err)
 					return
@@ -942,6 +944,7 @@ func newCalcBadExtentsCmd() *cobra.Command {
 
 		},
 	}
+	cmd.Flags().Uint64Var(&concurrency, "concurrency", 0, "clean bad dp concurrency")
 	return cmd
 }
 
@@ -955,7 +958,7 @@ func calcCRC64Hash(data []byte) uint64 {
 	return crc64.Checksum(data, crc64.MakeTable(crc64.ISO))
 }
 
-func calcBadNormalExtents(volname, dir string) (err error) {
+func calcBadNormalExtents(volname, dir string, concurrency int) (err error) {
 	gBloomFilter = util.NewBloomFilter(MaxBloomFilterSize, calcFNVHash, calcCRC64Hash)
 	normalMpDir := filepath.Join(dir, volname, MpDir, normalDir)
 
@@ -982,7 +985,7 @@ func calcBadNormalExtents(volname, dir string) (err error) {
 		return
 	}
 
-	err = calcDpBadNormalExtentByBF(normalDpDir, destDir)
+	err = calcDpBadNormalExtentByBF(normalDpDir, destDir, concurrency)
 	return err
 }
 
@@ -1050,15 +1053,15 @@ func addMpExtentToBF(mpDir string) (err error) {
 	return
 }
 
-func calcDpBadNormalExtentByBF(dpDir, badDir string) (err error) {
+func calcDpBadNormalExtentByBF(dpDir, badDir string, concurrency int) (err error) {
 	fileInfos, err := os.ReadDir(dpDir)
 	if err != nil {
 		slog.Fatalf("Read dp dir failed, err: %v", err)
 		return
 	}
 
-	badSize := 0
-	badCount := 0
+	badSize := uint64(0)
+	badCount := uint64(0)
 	start := time.Now()
 	defer func() {
 		msg := fmt.Sprintf("finally get total bad extent count %d, size %d, cost %d ms",
@@ -1066,6 +1069,13 @@ func calcDpBadNormalExtentByBF(dpDir, badDir string) (err error) {
 		slog.Println(msg)
 		log.LogWarn(msg)
 	}()
+
+	if concurrency == 0 {
+		concurrency = 1
+	}
+	pool := newTaskPool(concurrency)
+	defer pool.close()
+	wg := sync.WaitGroup{}
 
 	for _, fileInfo := range fileInfos {
 		if fileInfo.IsDir() {
@@ -1077,49 +1087,55 @@ func calcDpBadNormalExtentByBF(dpDir, badDir string) (err error) {
 			continue
 		}
 
-		filePath := filepath.Join(dpDir, fileName)
-		file, err := os.Open(filePath)
-		if err != nil {
-			slog.Fatalf("Open file failed, path %s, err: %v", filePath, err.Error())
-		}
-		defer file.Close()
-
-		size := 512 * 1024
-		reader := bufio.NewReaderSize(file, size)
-		for {
-			line, err := reader.ReadBytes('\n')
+		walk := func() {
+			defer wg.Done()
+			filePath := filepath.Join(dpDir, fileName)
+			file, err := os.Open(filePath)
 			if err != nil {
-				if err == io.EOF {
-					err = nil
-					break
-				}
-				slog.Fatalf("Read line failed, path %s, err: %v", filePath, err)
+				slog.Fatalf("Open file failed, path %s, err: %v", filePath, err.Error())
 			}
+			defer file.Close()
 
-			var eksForGc ExtentForGc
-			err = json.Unmarshal(line, &eksForGc)
-			if err != nil {
-				slog.Fatalf("Unmarshal extent failed, path %s, err: %v", filePath, err)
-			}
-
-			if !gBloomFilter.Contains([]byte(eksForGc.Id)) {
-				badCount++
-				badSize += int(eksForGc.Size)
-
-				var badExtent BadNornalExtent
-				parts := strings.Split(eksForGc.Id, "_")
-				dpId := parts[0]
-				badExtent.ExtentId = parts[1]
-				badExtent.Size = eksForGc.Size
-
-				err = writeBadNormalExtentoLocal(dpId, badDir, badExtent)
+			size := 512 * 1024
+			reader := bufio.NewReaderSize(file, size)
+			for {
+				line, err := reader.ReadBytes('\n')
 				if err != nil {
-					slog.Fatalf("Write bad extent failed, err: %v", err)
-					return err
+					if err == io.EOF {
+						err = nil
+						break
+					}
+					slog.Fatalf("Read line failed, path %s, err: %v", filePath, err)
+				}
+
+				var eksForGc ExtentForGc
+				err = json.Unmarshal(line, &eksForGc)
+				if err != nil {
+					slog.Fatalf("Unmarshal extent failed, path %s, err: %v", filePath, err)
+				}
+
+				if !gBloomFilter.Contains([]byte(eksForGc.Id)) {
+					atomic.AddUint64(&badCount, 1)
+					atomic.AddUint64(&badSize, uint64(eksForGc.Size))
+
+					var badExtent BadNornalExtent
+					parts := strings.Split(eksForGc.Id, "_")
+					dpId := parts[0]
+					badExtent.ExtentId = parts[1]
+					badExtent.Size = eksForGc.Size
+
+					err = writeBadNormalExtentoLocal(dpId, badDir, badExtent)
+					if err != nil {
+						slog.Fatalf("Write bad extent failed, err: %v", err)
+					}
 				}
 			}
 		}
+		wg.Add(1)
+		pool.addTask(walk)
 	}
+
+	wg.Wait()
 	return
 }
 
