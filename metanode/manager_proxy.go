@@ -69,6 +69,7 @@ func (m *metadataManager) IsForbiddenOp(mp MetaPartition, reqOp uint8) bool {
 		proto.OpMetaBatchDeleteInode,
 		proto.OpMetaClearInodeCache,
 		proto.OpMetaTxCreateInode,
+		proto.OpMetaLookup,
 		// multipart
 		proto.OpAddMultipartPart,
 		proto.OpRemoveMultipart,

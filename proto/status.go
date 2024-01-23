@@ -18,7 +18,6 @@ package proto
 const (
 	ReadOnly    = 1
 	ReadWrite   = 2
-	Forbid      = 3
 	Unavailable = -1
 )
 
