@@ -32,7 +32,9 @@ type LeaderInfo struct {
 func (m *Server) handleLeaderChange(leader uint64) {
 	if leader == 0 {
 		log.LogWarnf("action[handleLeaderChange] but no leader")
-		WarnMetrics.reset()
+		if WarnMetrics != nil {
+			WarnMetrics.reset()
+		}
 		return
 	}
 
@@ -63,7 +65,9 @@ func (m *Server) handleLeaderChange(leader uint64) {
 		m.cluster.metaReady = false
 		m.cluster.masterClient.AddNode(m.leaderInfo.addr)
 		m.cluster.masterClient.SetLeader(m.leaderInfo.addr)
-		WarnMetrics.reset()
+		if WarnMetrics != nil {
+			WarnMetrics.reset()
+		}
 	}
 }
 
