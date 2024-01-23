@@ -16,6 +16,7 @@ package meta
 
 import (
 	"fmt"
+	"runtime/debug"
 	"strconv"
 	"sync"
 	"syscall"
@@ -1301,6 +1302,8 @@ func (mw *MetaWrapper) getExtents(mp *MetaPartition, inode uint64, isCache bool,
 	defer func() {
 		metric.SetWithLabels(err, map[string]string{exporter.Vol: mw.volname})
 	}()
+	//TODO:chi delete this line when the bug fixed
+	log.LogDebugf("getExtents req: id(%v) data(%v) stack[%v]", packet.GetReqID(), req, string(debug.Stack()))
 
 	packet, err = mw.sendToMetaPartition(mp, packet)
 	if err != nil {
