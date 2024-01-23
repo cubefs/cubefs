@@ -70,11 +70,16 @@ func (mp *metaPartition) fsmRemoveXAttr(reqExtend *Extend) (err error) {
 	if reqExtend.verSeq == math.MaxUint64 {
 		reqExtend.verSeq = 0
 	}
+
 	e.versionMu.Lock()
 	defer e.versionMu.Unlock()
 	if reqExtend.verSeq < e.GetMinVer() {
 		return
 	}
+
+	mp.multiVersionList.RWLock.RLock()
+	defer mp.multiVersionList.RWLock.RUnlock()
+
 	if reqExtend.verSeq > e.verSeq {
 		e.multiVers = append([]*Extend{e.Copy().(*Extend)}, e.multiVers...)
 		e.verSeq = reqExtend.verSeq
