@@ -203,25 +203,25 @@ func newClusterSetVolDeletionDelayTimeCmd(client *master.MasterClient) *cobra.Co
 		Long:  `Set the volDeletionDelayTime of master on each master.`,
 		Run: func(cmd *cobra.Command, args []string) {
 			var (
-				err                  error
-				volDeletionDelayTime int
+				err                      error
+				volDeletionDelayTimeHour int
 			)
 			defer func() {
 				if err != nil {
 					errout(err)
 				}
 			}()
-			if volDeletionDelayTime, err = strconv.Atoi(args[0]); err != nil {
+			if volDeletionDelayTimeHour, err = strconv.Atoi(args[0]); err != nil {
 				err = fmt.Errorf("Parse int fail: %v\n", err)
 			}
-			if volDeletionDelayTime < 0 {
+			if volDeletionDelayTimeHour < 0 {
 				err = fmt.Errorf("volDeletionDelayTime is less than 0\n")
 				return
 			}
-			if err = client.AdminAPI().SetMasterVolDeletionDelayTime(volDeletionDelayTime); err != nil {
+			if err = client.AdminAPI().SetMasterVolDeletionDelayTime(volDeletionDelayTimeHour); err != nil {
 				return
 			}
-			stdout("master volDeletionDelayTime is set to %v!\n", volDeletionDelayTime)
+			stdout("master volDeletionDelayTime is set to %v!\n h", volDeletionDelayTimeHour)
 		},
 	}
 	return cmd

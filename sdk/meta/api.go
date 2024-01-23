@@ -1842,8 +1842,6 @@ func (mw *MetaWrapper) InitMultipart_ll(path string, extend map[string]string) (
 		status, sessionId, err := mw.createMultipart(mp, path, extend)
 		if err == nil && status == statusOK && len(sessionId) > 0 {
 			return sessionId, nil
-		} else if status == statusForbid {
-			break
 		} else {
 			log.LogErrorf("InitMultipart: create multipart id fail, path(%v), mp(%v), status(%v), err(%v)",
 				path, mp, status, err)

@@ -90,6 +90,7 @@ var (
 	ErrVolNoCacheAndRule                       = errors.New("vol has no cache and rule")
 	ErrNoAclPermission                         = errors.New("acl no permission")
 	ErrQuotaNotExists                          = errors.New("quota not exists")
+	ErrVolNotDelete                            = errors.New("vol was not previously deleted or already deleted")
 	ErrCodeVersionOp                           = errors.New("version op failed")
 	ErrNoSuchLifecycleConfiguration            = errors.New("The lifecycle configuration does not exist")
 	ErrNoNodeSetToUpdateDecommissionDiskFactor = errors.New("no node set available for updating decommission disk factor")
@@ -302,6 +303,7 @@ var code2ErrMap = map[int32]error{
 	ErrCodeZoneNumError:                    ErrZoneNum,
 	ErrCodeVersionOpError:                  ErrCodeVersionOp,
 	ErrCodeNodeSetNotExists:                ErrNodeSetNotExists,
+	ErrCodeVolNotDelete:                    ErrVolNotDelete,
 }
 
 type GeneralResp struct {

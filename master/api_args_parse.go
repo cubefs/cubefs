@@ -1152,7 +1152,7 @@ func parseAndExtractThreshold(r *http.Request) (threshold float64, err error) {
 	return
 }
 
-func parseAndExtractVolDeletionDelayTime(r *http.Request) (volDeletionDelayTime int, err error) {
+func parseAndExtractVolDeletionDelayTime(r *http.Request) (volDeletionDelayTimeHour int, err error) {
 	if err = r.ParseForm(); err != nil {
 		return
 	}
@@ -1161,7 +1161,7 @@ func parseAndExtractVolDeletionDelayTime(r *http.Request) (volDeletionDelayTime 
 		err = keyNotFound(volDeletionDelayTimeKey)
 		return
 	}
-	if volDeletionDelayTime, err = strconv.Atoi(value); err != nil {
+	if volDeletionDelayTimeHour, err = strconv.Atoi(value); err != nil {
 		return
 	}
 	return
