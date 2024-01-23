@@ -390,8 +390,6 @@ func (v *VolVersionInfoList) GetNextOlderVer(ver uint64) (verSeq uint64, err err
 }
 
 func (v *VolVersionInfoList) GetNextNewerVer(ver uint64) (verSeq uint64, err error) {
-	v.RWLock.RLock()
-	defer v.RWLock.RUnlock()
 	log.LogDebugf("getNextOlderVer ver %v", ver)
 	for idx, info := range v.VerList {
 		log.LogDebugf("getNextOlderVer id %v ver %v info %v", idx, info.Ver, info)
