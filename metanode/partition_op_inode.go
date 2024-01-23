@@ -254,9 +254,21 @@ func (mp *metaPartition) InodeGet(req *InodeGetReq, p *Packet, version uint8) (e
 			retMsg.Status, req.Inode, mp.config.Start, mp.config.Cursor)
 	}
 
+	var extendAttrResp []*proto.ExtendAttrInfo
+	if req.WithExtendAttr {
+		extendAttrResp, err = mp.getInodeXAttr(req.Inode, req.ExtendAttrKeys)
+		if err != nil {
+			log.LogErrorf("InodeGet: get inode(Inode:%v) extend attr err:%v", req.Inode, err)
+			retMsg.Status = proto.OpErr
+			p.PacketErrorWithBody(retMsg.Status, []byte("get inode extend attr err"))
+			return
+		}
+	}
+
 	status := proto.OpOk
 	resp := &proto.InodeGetResponse{
-		Info: &proto.InodeInfo{},
+		Info:        &proto.InodeInfo{},
+		ExtendAttrs: extendAttrResp,
 	}
 
 	if replyInfo(resp.Info, retMsg.Msg) {
@@ -332,6 +344,17 @@ func (mp *metaPartition) InodeGetBatch(req *InodeGetReqBatch, p *Packet) (err er
 			inoInfo := &proto.InodeInfo{}
 			if replyInfo(inoInfo, retMsg.Msg) {
 				resp.Infos = append(resp.Infos, inoInfo)
+			}
+		}
+
+		if req.WithExtendAttr {
+			var extendAttrs []*proto.ExtendAttrInfo
+			extendAttrs, err = mp.getInodeXAttr(inoId, req.ExtendAttrKeys)
+			if err == nil && extendAttrs != nil {
+				resp.ExtendAttrs = append(resp.ExtendAttrs, &proto.InodeExtendAttrsInfo{
+					InodeID:     inoId,
+					ExtendAttrs: extendAttrs,
+				})
 			}
 		}
 	}

@@ -7,6 +7,7 @@ import (
 	"github.com/cubefs/cubefs/metanode/metamock"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/unit"
+	"github.com/stretchr/testify/assert"
 	"hash/crc32"
 	"math"
 	"math/rand"
@@ -638,11 +639,20 @@ func InodeGetInterGet(t *testing.T, leader, follower *metaPartition) {
 		return
 	}
 
+	resp := &proto.InodeGetResponse{}
+	err = json.Unmarshal(packet.Data[:packet.Size], resp)
+	assert.Equal(t, nil, err, "unmarshal resp failed")
+	assert.Equal(t, 0, len(resp.ExtendAttrs))
+
 	packet = &Packet{}
 	if err = follower.InodeGet(req, packet, proto.OpInodeGetVersion1); err != nil || packet.ResultCode != proto.OpOk {
 		t.Errorf("get exist inode from follower failed, [err:%v, resultCode:%v]", err, packet.ResultCode)
 		return
 	}
+	resp = &proto.InodeGetResponse{}
+	err = json.Unmarshal(packet.Data[:packet.Size], resp)
+	assert.Equal(t, nil, err, "unmarshal resp failed")
+	assert.Equal(t, 0, len(resp.ExtendAttrs))
 
 	//get not exist inode
 	req = &proto.InodeGetRequest{
@@ -672,6 +682,119 @@ func TestMetaPartition_InodeGetCase01(t *testing.T) {
 	//leader is rocksdb mode
 	leader, follower = mockMp(t, dir, proto.StoreModeRocksDb)
 	InodeGetInterGet(t, leader, follower)
+	releaseMp(leader, follower, dir)
+}
+
+func setXAttr(inodeID uint64, keys, values []string, mp *metaPartition) (err error) {
+	rand.Seed(time.Now().UnixNano())
+	clientIP := uint32(rand.Int31n(math.MaxInt32))
+	clientStartTime := time.Now().Unix()
+	clientID := uint64(rand.Int63n(math.MaxInt64))
+	if len(keys) != len(values) {
+		err = fmt.Errorf("diff length between keys array and values array")
+		return
+	}
+	for index := 0; index < len(keys); index++ {
+		req := &proto.SetXAttrRequest{
+			Inode:           inodeID,
+			Key:             keys[index],
+			Value:           values[index],
+			ClientStartTime: clientStartTime,
+			ClientIP:        clientIP,
+			ClientID:        clientID,
+		}
+		packet := &Packet{}
+		packet.Data, _ = json.Marshal(req)
+		packet.Size = uint32(len(packet.Data))
+		packet.CRC = crc32.ChecksumIEEE(packet.Data[:packet.Size])
+		packet.ReqID = rand.Int63n(math.MaxInt64)
+		if err = mp.SetXAttr(req, packet); err != nil || packet.ResultCode != proto.OpOk {
+			err = fmt.Errorf("set XAttr failed: %v", err)
+			return
+		}
+	}
+	return
+}
+
+func InodeGetWithXAttrInnerGet(t *testing.T, leader, follower *metaPartition) {
+	//create inode
+	ino, err := createInode(470, 0, 0, leader)
+	assert.Equal(t, nil, err, "create inode failed")
+
+	keys := []string{"cfs_lock", "extend_attr_1", "extend_attr_2"}
+	values := []string{"cfs_lock_test", "extend_attr_1_test", "extend_attr_2_test"}
+	err = setXAttr(ino, keys, values, leader)
+	assert.Equal(t, nil, err, "set attr failed")
+
+	req := &proto.InodeGetRequest{
+		Inode:          ino,
+		WithExtendAttr: true,
+		ExtendAttrKeys: []string{"cfs_lock"},
+	}
+	packet := &Packet{}
+	err = leader.InodeGet(req, packet, proto.OpInodeGetVersion2)
+	assert.Equal(t, nil, err, "get inode failed")
+	assert.Equal(t, proto.OpOk, packet.ResultCode, "get inode with error code")
+
+	resp := &proto.InodeGetResponse{}
+	err = json.Unmarshal(packet.Data[:packet.Size], resp)
+	assert.Equal(t, nil, err, "unmarshal resp failed")
+
+	assert.Equal(t, 1, len(resp.ExtendAttrs))
+	assert.Equal(t, "cfs_lock", resp.ExtendAttrs[0].Name)
+	assert.Equal(t, "cfs_lock_test", resp.ExtendAttrs[0].Value)
+
+	packet = &Packet{}
+	err = follower.InodeGet(req, packet, proto.OpInodeGetVersion2)
+	assert.Equal(t, nil, err, "get inode failed")
+	assert.Equal(t, proto.OpOk, packet.ResultCode, "get inode with error code")
+
+	resp = &proto.InodeGetResponse{}
+	err = json.Unmarshal(packet.Data[:packet.Size], resp)
+	assert.Equal(t, nil, err, "unmarshal resp failed")
+
+	assert.Equal(t, 1, len(resp.ExtendAttrs))
+	assert.Equal(t, "cfs_lock", resp.ExtendAttrs[0].Name)
+	assert.Equal(t, "cfs_lock_test", resp.ExtendAttrs[0].Value)
+
+	req = &proto.InodeGetRequest{
+		Inode:          ino,
+		WithExtendAttr: true,
+	}
+	packet = &Packet{}
+	err = leader.InodeGet(req, packet, proto.OpInodeGetVersion2)
+	assert.Equal(t, nil, err, "get inode failed")
+	assert.Equal(t, proto.OpOk, packet.ResultCode, "get inode with error code")
+
+	resp = &proto.InodeGetResponse{}
+	err = json.Unmarshal(packet.Data[:packet.Size], resp)
+	assert.Equal(t, nil, err, "unmarshal resp failed")
+
+	assert.Equal(t, 3, len(resp.ExtendAttrs))
+
+	packet = &Packet{}
+	err = follower.InodeGet(req, packet, proto.OpInodeGetVersion2)
+	assert.Equal(t, nil, err, "get inode failed")
+	assert.Equal(t, proto.OpOk, packet.ResultCode, "get inode with error code")
+
+	resp = &proto.InodeGetResponse{}
+	err = json.Unmarshal(packet.Data[:packet.Size], resp)
+	assert.Equal(t, nil, err, "unmarshal resp failed")
+
+	assert.Equal(t, 3, len(resp.ExtendAttrs))
+	return
+}
+
+func TestMetaPartition_InodeGetCase02(t *testing.T) {
+	//leader is mem mode
+	dir := "inode_get_test_02"
+	leader, follower := mockMp(t, dir, proto.StoreModeMem)
+	InodeGetWithXAttrInnerGet(t, leader, follower)
+	releaseMp(leader, follower, dir)
+
+	//leader is rocksdb mode
+	leader, follower = mockMp(t, dir, proto.StoreModeRocksDb)
+	InodeGetWithXAttrInnerGet(t, leader, follower)
 	releaseMp(leader, follower, dir)
 }
 
@@ -717,6 +840,7 @@ func BatchInodeGetInterTest(t *testing.T, leader, follower *metaPartition) {
 		t.Fatalf("get inode count not equla to expect, [expect:%v, actual:%v]", len(testIno), len(resp.Infos))
 		return
 	}
+	assert.Equal(t, 0, len(resp.ExtendAttrs), "inode extend attrs with error count")
 
 	packet = &Packet{}
 	if err = follower.InodeGetBatch(req, packet); err != nil || packet.ResultCode != proto.OpOk {
@@ -732,6 +856,7 @@ func BatchInodeGetInterTest(t *testing.T, leader, follower *metaPartition) {
 		t.Errorf("get inode count not equla to expect, [expect:%v, actual:%v]", len(testIno), len(resp.Infos))
 		return
 	}
+	assert.Equal(t, 0, len(resp.ExtendAttrs), "inode extend attrs with error count")
 	return
 }
 
@@ -745,6 +870,128 @@ func TestMetaPartition_BatchInodeGetCase01(t *testing.T) {
 	//leader is rocksdb mode
 	leader, follower = mockMp(t, dir, proto.StoreModeRocksDb)
 	BatchInodeGetInterTest(t, leader, follower)
+	releaseMp(leader, follower, dir)
+}
+
+func BatchInodeGetWithXAttrInterTest(t *testing.T, leader, follower *metaPartition) {
+	var (
+		inos []uint64
+		err  error
+	)
+	defer func() {
+		for _, ino := range inos {
+			req := &proto.DeleteInodeRequest{
+				Inode: ino,
+			}
+			packet := &Packet{}
+			leader.DeleteInode(req, packet)
+		}
+		assert.Equal(t, uint64(0), leader.inodeTree.Count(), "inode count expect 0")
+		assert.Equal(t, leader.inodeTree.Count(), follower.inodeTree.Count(), "inode count not equal between leader and follower")
+	}()
+	if inos, err = createInodesForTest(leader, follower, 100, 470, 0, 0); err != nil || len(inos) != 100 {
+		t.Fatal(err)
+		return
+	}
+
+	keys := []string{"cfs_lock", "extend_attr_1", "extend_attr_2"}
+	values := []string{"cfs_lock_test", "extend_attr_1_test", "extend_attr_2_test"}
+	for _, ino := range inos {
+		err = setXAttr(ino, keys, values, leader)
+		assert.Equal(t, nil, err, "set attr failed")
+	}
+
+	testIno := inos[20:50]
+
+	req := &proto.BatchInodeGetRequest{
+		Inodes: testIno,
+		WithExtendAttr: true,
+		ExtendAttrKeys: []string{"extend_attr_1"},
+	}
+	packet := &Packet{}
+	err = leader.InodeGetBatch(req, packet)
+	assert.Equal(t, nil, err, "batch get inode failed")
+	assert.Equal(t, proto.OpOk, packet.ResultCode, "batch get inode with error result code")
+
+	resp := &proto.BatchInodeGetResponse{}
+	err = packet.UnmarshalData(resp)
+	assert.Equal(t, nil, err, "unmarshal batch get inode resp failed")
+
+	assert.Equal(t, len(testIno), len(resp.Infos), "inode resp info with error count")
+	assert.Equal(t, len(testIno), len(resp.ExtendAttrs), "inode extend attrs with error count")
+	for index, extendAttr := range resp.ExtendAttrs {
+		assert.Equal(t, testIno[index], extendAttr.InodeID)
+		assert.Equal(t, 1, len(extendAttr.ExtendAttrs))
+		assert.Equal(t, "extend_attr_1", extendAttr.ExtendAttrs[0].Name)
+		assert.Equal(t, "extend_attr_1_test", extendAttr.ExtendAttrs[0].Value)
+	}
+
+	packet = &Packet{}
+	err = follower.InodeGetBatch(req, packet)
+	assert.Equal(t, nil, err, "batch get inode failed")
+	assert.Equal(t, proto.OpOk, packet.ResultCode, "batch get inode with error result code")
+
+	resp = &proto.BatchInodeGetResponse{}
+	err = packet.UnmarshalData(resp)
+	assert.Equal(t, nil, err, "unmarshal batch get inode resp failed")
+
+	assert.Equal(t, len(testIno), len(resp.Infos), "inode resp info with error count")
+	assert.Equal(t, len(testIno), len(resp.ExtendAttrs), "inode extend attrs with error count")
+	for index, extendAttr := range resp.ExtendAttrs {
+		assert.Equal(t, testIno[index], extendAttr.InodeID)
+		assert.Equal(t, 1, len(extendAttr.ExtendAttrs))
+		assert.Equal(t, "extend_attr_1", extendAttr.ExtendAttrs[0].Name)
+		assert.Equal(t, "extend_attr_1_test", extendAttr.ExtendAttrs[0].Value)
+	}
+
+	req = &proto.BatchInodeGetRequest{
+		Inodes: testIno,
+		WithExtendAttr: true,
+	}
+	packet = &Packet{}
+	err = leader.InodeGetBatch(req, packet)
+	assert.Equal(t, nil, err, "batch get inode failed")
+	assert.Equal(t, proto.OpOk, packet.ResultCode, "batch get inode with error result code")
+
+	resp = &proto.BatchInodeGetResponse{}
+	err = packet.UnmarshalData(resp)
+	assert.Equal(t, nil, err, "unmarshal batch get inode resp failed")
+
+	assert.Equal(t, len(testIno), len(resp.Infos), "inode resp info with error count")
+	assert.Equal(t, len(testIno), len(resp.ExtendAttrs), "inode extend attrs with error count")
+	for index, extendAttr := range resp.ExtendAttrs {
+		assert.Equal(t, testIno[index], extendAttr.InodeID)
+		assert.Equal(t, 3, len(extendAttr.ExtendAttrs))
+	}
+
+	packet = &Packet{}
+	err = follower.InodeGetBatch(req, packet)
+	assert.Equal(t, nil, err, "batch get inode failed")
+	assert.Equal(t, proto.OpOk, packet.ResultCode, "batch get inode with error result code")
+
+	resp = &proto.BatchInodeGetResponse{}
+	err = packet.UnmarshalData(resp)
+	assert.Equal(t, nil, err, "unmarshal batch get inode resp failed")
+
+	assert.Equal(t, len(testIno), len(resp.Infos), "inode resp info with error count")
+	assert.Equal(t, len(testIno), len(resp.ExtendAttrs), "inode extend attrs with error count")
+	for index, extendAttr := range resp.ExtendAttrs {
+		assert.Equal(t, testIno[index], extendAttr.InodeID)
+		assert.Equal(t, 3, len(extendAttr.ExtendAttrs))
+	}
+	return
+}
+
+func TestMetaPartition_BatchInodeGetCase02(t *testing.T) {
+	//leader is mem mode
+	dir := "batch_inode_get_test_02"
+	leader, follower := mockMp(t, dir, proto.StoreModeMem)
+	BatchInodeGetWithXAttrInterTest(t, leader, follower)
+	releaseMp(leader, follower, dir)
+
+	//leader is rocksdb mode
+	leader, follower = mockMp(t, dir, proto.StoreModeRocksDb)
+	BatchInodeGetWithXAttrInterTest(t, leader, follower)
 	releaseMp(leader, follower, dir)
 }
 

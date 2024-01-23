@@ -298,26 +298,42 @@ type LookupResponse struct {
 
 // InodeGetRequest defines the request to get the inode.
 type InodeGetRequest struct {
-	VolName     string `json:"vol"`
-	PartitionID uint64 `json:"pid"`
-	Inode       uint64 `json:"ino"`
+	VolName        string   `json:"vol"`
+	PartitionID    uint64   `json:"pid"`
+	Inode          uint64   `json:"ino"`
+	WithExtendAttr bool     `json:"withXAttr"`
+	ExtendAttrKeys []string `json:"keys"`
+}
+
+type ExtendAttrInfo struct {
+	Name  string `json:"name"`
+	Value string `json:"value"`
 }
 
 // InodeGetResponse defines the response to the InodeGetRequest.
 type InodeGetResponse struct {
-	Info *InodeInfo `json:"info"`
+	Info        *InodeInfo        `json:"info"`
+	ExtendAttrs []*ExtendAttrInfo `json:"extendAttrs,omitempty"`
 }
 
 // BatchInodeGetRequest defines the request to get the inode in batch.
 type BatchInodeGetRequest struct {
-	VolName     string   `json:"vol"`
-	PartitionID uint64   `json:"pid"`
-	Inodes      []uint64 `json:"inos"`
+	VolName        string   `json:"vol"`
+	PartitionID    uint64   `json:"pid"`
+	Inodes         []uint64 `json:"inos"`
+	WithExtendAttr bool     `json:"withXAttr"`
+	ExtendAttrKeys []string `json:"keys"`
+}
+
+type InodeExtendAttrsInfo struct {
+	InodeID     uint64            `json:"ino"`
+	ExtendAttrs []*ExtendAttrInfo `json:"extendAttrs"`
 }
 
 // BatchInodeGetResponse defines the response to the request of getting the inode in batch.
 type BatchInodeGetResponse struct {
-	Infos []*InodeInfo `json:"infos"`
+	Infos       []*InodeInfo            `json:"infos"`
+	ExtendAttrs []*InodeExtendAttrsInfo `json:"inodesExtendAttrs,omitempty"`
 }
 
 // ReadDirRequest defines the request to read dir.
