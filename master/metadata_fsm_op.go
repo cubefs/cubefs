@@ -56,7 +56,7 @@ type clusterValue struct {
 	ClusterUuid                 string
 	ClusterUuidEnable           bool
 	MetaPartitionInodeIdStep    uint64
-	VolDeletionDelayTime        int64
+	VolDeletionDelayTimeHour    int64
 }
 
 func newClusterValue(c *Cluster) (cv *clusterValue) {
@@ -82,7 +82,7 @@ func newClusterValue(c *Cluster) (cv *clusterValue) {
 		ClusterUuid:                 c.clusterUuid,
 		ClusterUuidEnable:           c.clusterUuidEnable,
 		MetaPartitionInodeIdStep:    c.cfg.MetaPartitionInodeIdStep,
-		VolDeletionDelayTime:        c.cfg.volDelayDeleteTime,
+		VolDeletionDelayTimeHour:    c.cfg.volDelayDeleteTimeHour,
 	}
 	return cv
 }
@@ -996,7 +996,7 @@ func (c *Cluster) loadClusterValue() (err error) {
 		c.fileStatsEnable = cv.FileStatsEnable
 		c.clusterUuid = cv.ClusterUuid
 		c.clusterUuidEnable = cv.ClusterUuidEnable
-		c.cfg.volDelayDeleteTime = cv.VolDeletionDelayTime
+		c.cfg.volDelayDeleteTimeHour = cv.VolDeletionDelayTimeHour
 
 		if c.cfg.QosMasterAcceptLimit < QosMasterAcceptCnt {
 			c.cfg.QosMasterAcceptLimit = QosMasterAcceptCnt
