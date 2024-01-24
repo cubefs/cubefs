@@ -232,3 +232,40 @@ func hostsReshuffle(s []string) {
 		s[i], s[j] = s[j], s[i]
 	}
 }
+
+func VerifyLocalIP(ip string) (err error) {
+	var localIPs []string
+	localIPs, err = GetLocalIPs()
+	if err != nil {
+		err = fmt.Errorf("VerifyLocalIP, get local ips failed: %v", err)
+		return
+	}
+
+	found := false
+	for _, localIP := range localIPs {
+		if strings.Contains(localIP, ip) {
+			found = true
+			break
+		}
+	}
+	if !found {
+		err = fmt.Errorf("VerifyLocalIP, verify failed, %s not found in local ips(%v)", ip, localIPs)
+	}
+	return
+}
+
+func GetLocalIPs() (localIPs []string, err error) {
+	var localAddrs []net.Addr
+	localAddrs, err = net.InterfaceAddrs()
+	if err != nil {
+		return
+	}
+
+	localIPs = make([]string, 0, len(localAddrs))
+	for _, localAddr := range localAddrs {
+		if ipNet, ok := localAddr.(*net.IPNet); ok && !ipNet.IP.IsLoopback() && ipNet.IP.To4() != nil {
+			localIPs = append(localIPs, localAddr.String())
+		}
+	}
+	return
+}

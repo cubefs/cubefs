@@ -389,6 +389,10 @@ func (m *MetaNode) register() (err error) {
 	}
 	m.clusterId = rsp.Cluster
 	m.nodeId = rsp.Id
+	if err = iputil.VerifyLocalIP(m.localAddr); err != nil {
+		log.LogErrorf("MetaNode register verify local ip failed: %v", err)
+		return
+	}
 	return
 }
 

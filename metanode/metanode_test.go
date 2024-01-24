@@ -13,6 +13,7 @@ import (
 	"os"
 	"path"
 	"strconv"
+	"strings"
 	"testing"
 )
 
@@ -53,7 +54,7 @@ func mockGetIp(w http.ResponseWriter, r *http.Request) {
 	}
 	cInfo := &proto.ClusterInfo{
 		Cluster:              "test",
-		Ip:                   "127.0.0.1",
+		Ip:                   localIp,
 		ClientReadLimitRate:  0,
 		ClientWriteLimitRate: 0,
 	}
@@ -71,7 +72,7 @@ func mockRegNode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	mockSendReply(w, r, newSuccessHTTPReply(&proto.RegNodeRsp{
-		Addr:    "127.0.0.1:9092",
+		Addr:    localIp + ":9092",
 		Id:      10,
 		Cluster: "test",
 		AuthKey: checkKey}))
@@ -213,7 +214,34 @@ func ClusterCheckError(mt *MetaNode, t *testing.T) {
 	}
 }
 
+var localIp string
+
+func getLocalIp (t *testing.T) {
+	nets, err := net.Interfaces()
+	if err != nil {
+		t.Fatalf("can not get sys interfaces info:%v", err.Error())
+	}
+
+	for _, iter := range nets {
+		var addrIp []net.Addr
+		addrIp, err = iter.Addrs()
+		if err != nil {
+			continue
+		}
+		if strings.Contains(iter.Name, "bo") ||  strings.Contains(iter.Name, "eth")  || strings.Contains(iter.Name, "enp") {
+			for _, addr := range addrIp {
+				if ipNet, ok := addr.(*net.IPNet); ok && !ipNet.IP.IsLoopback() && ipNet.IP.To4() != nil {
+					localIp = strings.Split(addr.String(), "/")[0]
+					t.Logf("get local addr:%s", localIp)
+					return
+				}
+			}
+		}
+	}
+}
+
 func TestRegMetaNodeOld(t *testing.T) {
+	getLocalIp(t)
 	var oldMaster net.Listener
 	defer func() {
 		if oldMaster != nil {
@@ -222,7 +250,7 @@ func TestRegMetaNodeOld(t *testing.T) {
 	}()
 	oldMaster = mockInitHttpListen(18001)
 	mockOldMasterHttpReq()
-	masterClient = masterSDK.NewMasterClient([]string{"127.0.0.1:18001"}, false)
+	masterClient = masterSDK.NewMasterClient([]string{localIp + ":18001"}, false)
 	ClusterHasAuthKey = false
 	mt := &MetaNode{
 		zoneName:    "zone",
@@ -235,6 +263,7 @@ func TestRegMetaNodeOld(t *testing.T) {
 }
 
 func TestRegMetaNodeNew(t *testing.T) {
+	getLocalIp(t)
 	var newMaster net.Listener
 
 	defer func() {
@@ -244,7 +273,7 @@ func TestRegMetaNodeNew(t *testing.T) {
 	}()
 	newMaster = mockInitHttpListen(18000)
 	mockNewMasterHttpReq()
-	masterClient = masterSDK.NewMasterClient([]string{"127.0.0.1:18000"}, false)
+	masterClient = masterSDK.NewMasterClient([]string{localIp + ":18000"}, false)
 
 	ClusterHasAuthKey = false
 	mt := &MetaNode{

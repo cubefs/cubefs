@@ -499,6 +499,10 @@ func (s *DataNode) register() (err error) {
 	}
 	s.localServerAddr = fmt.Sprintf("%s:%v", LocalIP, s.port)
 	s.nodeID = regRsp.Id
+	if err = iputil.VerifyLocalIP(LocalIP); err != nil {
+		log.LogErrorf("DataNode register verify local ip failed: %v", err)
+		return
+	}
 	return
 }
 

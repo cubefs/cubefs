@@ -247,5 +247,9 @@ func (f *FlashNode) register() (err error) {
 	ipAddr := strings.Split(regRsp.Addr, ":")[0]
 	f.localAddr = ipAddr
 	f.clusterId = regRsp.Cluster
+	if err = iputil.VerifyLocalIP(f.localAddr); err != nil {
+		log.LogErrorf("FlashNode register verify local ip failed: %v", err)
+		return
+	}
 	return
 }
