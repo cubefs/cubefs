@@ -338,19 +338,7 @@ func (m *LimiterManager) updateOpLimit(limitInfo *proto.LimitInfo) {
 			if !haveLimit(oldGroup, i) || (ok && haveLimit(group, i)) {
 				continue
 			}
-			if i == indexTypeTotal {
-				p = Properties{{PropertyTypeOp, strconv.Itoa(int(op))}}
-				if oldGroup[indexInBytes] > 0 || oldGroup[indexOutBytes] > 0 {
-					p = append(p, Property{PropertyTypeFlow, FlowNetwork})
-				}
-			} else if i == indexTypePerDisk {
-				p = Properties{{PropertyTypeOp, strconv.Itoa(int(op))}, {PropertyTypeDisk, ""}}
-				if oldGroup[indexInBytesPerDisk] > 0 || oldGroup[indexOutBytesPerDisk] > 0 {
-					p = append(p, Property{PropertyTypeFlow, FlowDisk})
-				}
-			} else if i == indexTypePerPartition {
-				p = Properties{{PropertyTypeOp, strconv.Itoa(int(op))}, {PropertyTypePartition, ""}}
-			}
+			p = getProperties(i, group, op, "", false)
 			m.ml.ClearRule(p)
 		}
 		if oldGroup[indexConcurrency] > 0 && (!ok || group[indexConcurrency] <= 0) {
@@ -363,19 +351,7 @@ func (m *LimiterManager) updateOpLimit(limitInfo *proto.LimitInfo) {
 			if !haveLimit(group, i) {
 				continue
 			}
-			if i == indexTypeTotal {
-				p = Properties{{PropertyTypeOp, strconv.Itoa(int(op))}}
-				if group[indexInBytes] > 0 || group[indexOutBytes] > 0 {
-					p = append(p, Property{PropertyTypeFlow, FlowNetwork})
-				}
-			} else if i == indexTypePerDisk {
-				p = Properties{{PropertyTypeOp, strconv.Itoa(int(op))}, {PropertyTypeDisk, ""}}
-				if group[indexInBytesPerDisk] > 0 || group[indexOutBytesPerDisk] > 0 {
-					p = append(p, Property{PropertyTypeFlow, FlowDisk})
-				}
-			} else if i == indexTypePerPartition {
-				p = Properties{{PropertyTypeOp, strconv.Itoa(int(op))}, {PropertyTypePartition, ""}}
-			}
+			p = getProperties(i, group, op, "", false)
 			rule := NewRuleWithTimeout(p, getLimitGroup(group, i), getBurstGroup(group, i), time.Duration(group[indexTimeout]))
 			m.ml.AddRule(rule)
 		}
@@ -435,13 +411,7 @@ func (m *LimiterManager) updateVolOpLimit(limitInfo *proto.LimitInfo) {
 				if !haveLimit(oldGroup, i) || (ok && haveLimit(group, i)) {
 					continue
 				}
-				if i == indexTypeTotal {
-					p = Properties{{PropertyTypeVol, vol}, {PropertyTypeOp, strconv.Itoa(int(op))}}
-				} else if i == indexTypePerDisk {
-					p = Properties{{PropertyTypeVol, vol}, {PropertyTypeOp, strconv.Itoa(int(op))}, {PropertyTypeDisk, ""}}
-				} else if i == indexTypePerPartition {
-					p = Properties{{PropertyTypeVol, vol}, {PropertyTypeOp, strconv.Itoa(int(op))}, {PropertyTypePartition, ""}}
-				}
+				p = getProperties(i, group, op, vol, true)
 				m.ml.ClearRule(p)
 			}
 		}
@@ -457,19 +427,33 @@ func (m *LimiterManager) updateVolOpLimit(limitInfo *proto.LimitInfo) {
 				if !haveLimit(group, i) {
 					continue
 				}
-				if i == indexTypeTotal {
-					p = Properties{{PropertyTypeVol, vol}, {PropertyTypeOp, strconv.Itoa(int(op))}}
-				} else if i == indexTypePerDisk {
-					p = Properties{{PropertyTypeVol, vol}, {PropertyTypeOp, strconv.Itoa(int(op))}, {PropertyTypeDisk, ""}}
-				} else if i == indexTypePerPartition {
-					p = Properties{{PropertyTypeVol, vol}, {PropertyTypeOp, strconv.Itoa(int(op))}, {PropertyTypePartition, ""}}
-				}
+				p = getProperties(i, group, op, vol, true)
 				rule := NewRuleWithTimeout(p, getLimitGroup(group, i), getBurstGroup(group, i), time.Duration(group[indexTimeout]))
 				m.ml.AddRule(rule)
 			}
 		}
 	}
 	m.oldVolOpRateLimitMap = volOpRateLimitMap
+}
+
+func getProperties(i indexType, group proto.AllLimitGroup, op int, vol string, hasVol bool) (p Properties) {
+	p = Properties{{PropertyTypeOp, strconv.Itoa(int(op))}}
+	if hasVol {
+		p = append(p, Property{PropertyTypeVol, vol})
+	}
+	if i == indexTypeTotal {
+		if group[indexInBytes] > 0 || group[indexOutBytes] > 0 {
+			p = append(p, Property{PropertyTypeFlow, FlowNetwork})
+		}
+	} else if i == indexTypePerDisk {
+		p = append(p, Property{PropertyTypeDisk, ""})
+		if group[indexInBytesPerDisk] > 0 || group[indexOutBytesPerDisk] > 0 {
+			p = append(p, Property{PropertyTypeFlow, FlowDisk})
+		}
+	} else if i == indexTypePerPartition {
+		p = append(p, Property{PropertyTypePartition, ""})
+	}
+	return
 }
 
 func getSpeed() (speed int) {
