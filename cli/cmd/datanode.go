@@ -67,7 +67,7 @@ func newDataNodeListCmd(client *master.MasterClient) *cobra.Command {
 			stdoutln(formatNodeViewTableHeader())
 			for _, node := range view.DataNodes {
 				if optFilterStatus != "" &&
-					!strings.Contains(formatNodeStatus(node.IsActive), optFilterStatus) {
+					!strings.Contains(formatNodeStatus(node.Status), optFilterStatus) {
 					continue
 				}
 				if optFilterWritable != "" &&
