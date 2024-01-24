@@ -54,6 +54,11 @@ func NewFSCheckTask(task *proto.Task, mc *master.MasterClient, checkType int, ne
 }
 
 func (t *FSCheckTask) RunOnce() {
+	defer func() {
+		if t.metaWrapper != nil {
+			t.metaWrapper.Close()
+		}
+	}()
 	log.LogInfof("fsckTask RunOnce, %s %s start", t.Cluster, t.VolName)
 	var err error
 	if err = t.init(); err != nil {
@@ -71,11 +76,10 @@ func (t *FSCheckTask) RunOnce() {
 		t.checkObsoleteDentry()
 	}
 
-	//todo:测试阶段先关闭
-	//if err = os.RemoveAll(t.exportDir); err != nil {
-	//	log.LogErrorf("fsckTask RunOnce, %s %s remove export dir %s failed:%v", t.Cluster, t.VolName, t.exportDir, err)
-	//	return
-	//}
+	if err = os.RemoveAll(t.exportDir); err != nil {
+		log.LogErrorf("fsckTask RunOnce, %s %s remove export dir %s failed:%v", t.Cluster, t.VolName, t.exportDir, err)
+		return
+	}
 	return
 }
 
