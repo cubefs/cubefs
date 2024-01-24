@@ -116,11 +116,16 @@ func (c *Cluster) updateDataNodeStatInfo() {
 	var (
 		total uint64
 		used  uint64
+		avail uint64
 	)
 	c.dataNodes.Range(func(addr, node interface{}) bool {
 		dataNode := node.(*DataNode)
 		total = total + dataNode.Total
 		used = used + dataNode.Used
+
+		if dataNode.isActive {
+			avail = avail + dataNode.AvailableSpace
+		}
 		return true
 	})
 	if total <= 0 {
@@ -132,6 +137,7 @@ func (c *Cluster) updateDataNodeStatInfo() {
 			c.Name, usedRate, used, total))
 	}
 	c.dataNodeStatInfo.TotalGB = total / util.GB
+	c.dataNodeStatInfo.AvailGB = avail / util.GB
 	usedGB := used / util.GB
 	c.dataNodeStatInfo.IncreasedGB = int64(usedGB) - int64(c.dataNodeStatInfo.UsedGB)
 	c.dataNodeStatInfo.UsedGB = usedGB
@@ -142,11 +148,15 @@ func (c *Cluster) updateMetaNodeStatInfo() {
 	var (
 		total uint64
 		used  uint64
+		avail uint64
 	)
 	c.metaNodes.Range(func(addr, node interface{}) bool {
 		metaNode := node.(*MetaNode)
 		total = total + metaNode.Total
 		used = used + metaNode.Used
+		if metaNode.IsActive {
+			avail = avail + metaNode.MaxMemAvailWeight
+		}
 		return true
 	})
 	if total <= 0 {
@@ -158,6 +168,7 @@ func (c *Cluster) updateMetaNodeStatInfo() {
 			c.Name, useRate, used, total))
 	}
 	c.metaNodeStatInfo.TotalGB = total / util.GB
+	c.metaNodeStatInfo.AvailGB = avail / util.GB
 	newUsed := used / util.GB
 	c.metaNodeStatInfo.IncreasedGB = int64(newUsed) - int64(c.metaNodeStatInfo.UsedGB)
 	c.metaNodeStatInfo.UsedGB = newUsed
