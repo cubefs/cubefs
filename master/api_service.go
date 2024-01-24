@@ -6278,7 +6278,7 @@ func (m *Server) SetBucketLifecycle(w http.ResponseWriter, r *http.Request) {
 	}
 
 	_ = m.cluster.SetBucketLifecycle(&req)
-	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("PutBucketLifecycleConfiguration successful ")))
+	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("set vol[%v] lifecycle successfully", vol.Name)))
 }
 
 func allowedStorageClass(sc string, allowed []uint32) bool {

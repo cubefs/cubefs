@@ -213,8 +213,7 @@ func (s *LcScanner) Start() (err error) {
 		Path:  strings.TrimPrefix(currentPath, pathSep),
 		Type:  uint32(os.ModeDir),
 	}
-	t := time.Now()
-	response.StartTime = &t
+	response.StartTime = &s.now
 
 	log.LogInfof("startScan: first dentry(%v) in dirChan!", firstDentry)
 	s.dirChan.In <- firstDentry
