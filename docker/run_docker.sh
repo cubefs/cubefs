@@ -45,7 +45,7 @@ has_go() {
 
 get_go_build_cache() {
     tmp=`go env | grep GOCACHE | awk -F= '{print $2}'`
-    echo ${tmp//\'/}
+    echo ${tmp} | sed 's/\"//g'
 }
 
 check_is_podman() {
@@ -125,7 +125,9 @@ build() {
     build_cache_opt=""
     if test ${has} -eq 1
     then
-        build_cache_opt="--volume $(get_go_build_cache):/root/.cache/go-build"
+        go_cache_path=`get_go_build_cache`
+        echo "Mount ${go_cache_path} as go build cache dir"
+        build_cache_opt="--volume ${go_cache_path}:/root/.cache/go-build"
     fi
     ${compose} run --rm ${build_cache_opt} build
 }
@@ -133,7 +135,15 @@ build() {
 # build
 build_s3() {
     prepare
-    ${compose} run --rm build bash -c "/bin/bash /cfs/script/build.sh -s3"
+    has=`has_go`
+    build_cache_opt=""
+    if test ${has} -eq 1
+    then
+        go_cache_path=`get_go_build_cache`
+        echo "Mount ${go_cache_path} as go build cache dir"
+        build_cache_opt="--volume ${go_cache_path}:/root/.cache/go-build"
+    fi
+    ${compose} run --rm ${build_cache_opt} build bash -c "/bin/bash /cfs/script/build.sh -s3"
 }
 
 # start server
