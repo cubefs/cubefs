@@ -59,8 +59,9 @@ func (l *LcNode) opMasterHeartbeat(conn net.Conn, p *proto.Packet, remoteAddr st
 		l.scannerMutex.RLock()
 		for _, scanner := range l.lcScanners {
 			result := &proto.LcNodeRuleTaskResponse{
-				ID:     scanner.ID,
-				LcNode: l.localServerAddr,
+				ID:        scanner.ID,
+				LcNode:    l.localServerAddr,
+				StartTime: &scanner.now,
 				LcNodeRuleTaskStatistics: proto.LcNodeRuleTaskStatistics{
 					Volume:               scanner.Volume,
 					RuleId:               scanner.rule.ID,
