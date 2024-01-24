@@ -768,7 +768,7 @@ func getExtentsByDpId(dir string, volname string, dpId string, beforeTime string
 func getExtentsFromDpId(dir string, volname string, fromDpId string, beforeTime string) (err error) {
 	dps, err := getDataPartitions(MasterAddr, volname)
 	if err != nil {
-		return fmt.Errorf("Get data partitions failed, err: %v", err)
+		return fmt.Errorf("Get data partitions failed, err: %v", err.Error())
 	}
 
 	// fromDp, err := strconv.ParseUint(fromDpId, 10, 64)
@@ -788,7 +788,7 @@ func getExtentsFromDpId(dir string, volname string, fromDpId string, beforeTime 
 			defer wg.Done()
 			err = getExtentsByDpId(dir, volname, strconv.FormatUint(dpId, 10), beforeTime)
 			if err != nil {
-				slog.Fatalf("get extent by dpId failed, vol %s, dp %d, time %s, err %s",
+				log.LogErrorf("get extent by dpId failed, vol %s, dp %d, time %s, err %s",
 					volname, dp.PartitionID, beforeTime, err.Error())
 			}
 		})
