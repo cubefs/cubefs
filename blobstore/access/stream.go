@@ -23,7 +23,6 @@ import (
 
 	"github.com/afex/hystrix-go/hystrix"
 
-	"github.com/cubefs/cubefs/blobstore/access/allocator"
 	"github.com/cubefs/cubefs/blobstore/access/controller"
 	"github.com/cubefs/cubefs/blobstore/api/access"
 	"github.com/cubefs/cubefs/blobstore/api/blobnode"
@@ -135,7 +134,8 @@ type StreamConfig struct {
 	ClusterConfig  controller.ClusterConfig `json:"cluster_config"`
 	BlobnodeConfig blobnode.Config          `json:"blobnode_config"`
 	ProxyConfig    proxy.Config             `json:"proxy_config"`
-	AllocConfig    allocator.VolumeMgrConf  `json:"alloc_config"`
+	// AllocConfig    controller.VolumeMgrConf `json:"alloc_config"`
+	AllocConfig controller.VolumeMgrConfig `json:"alloc_config"`
 
 	// hystrix command config
 	AllocCommandConfig hystrix.CommandConfig `json:"alloc_command_config"`
@@ -164,11 +164,12 @@ type Handler struct {
 	memPool           *resourcepool.MemPool
 	encoder           map[codemode.CodeMode]ec.Encoder
 	clusterController controller.ClusterController
-	allocMgr          allocator.VolumeMgr
+	// allocMgr          controller.VolumeMgrMy
+	allocMgr controller.VolumeMgr
 
 	blobnodeClient blobnode.StorageAPI
 	proxyClient    proxy.Client
-	cmClient       cmapi.APIAccess
+	cmClient       cmapi.APIAccess // limit number 2-3, bid cache, volume cache
 
 	allCodeModes  CodeModePairs
 	maxObjectSize int64
@@ -204,8 +205,8 @@ func confCheck(cfg *StreamConfig) {
 	defaulter.LessOrEqual(&cfg.DiskTimeoutPunishIntervalS, defaultDiskPunishIntervalS/10)
 	defaulter.LessOrEqual(&cfg.ServicePunishIntervalS, defaultServicePunishIntervalS)
 	defaulter.LessOrEqual(&cfg.AllocRetryTimes, defaultAllocRetryTimes)
-	defaulter.LessOrEqual(&cfg.AllocConfig.AllocVolumeNum, defaultAllocVolumeNum)
-	defaulter.LessOrEqual(&cfg.AllocConfig.RetainIntervalSec, defaultAllocRetainIntervalSec)
+	// defaulter.LessOrEqual(&cfg.AllocConfig.AllocVolumeNum, defaultAllocVolumeNum)
+	// defaulter.LessOrEqual(&cfg.AllocConfig.RetainIntervalSec, defaultAllocRetainIntervalSec)
 	if cfg.AllocRetryIntervalMS <= 100 {
 		cfg.AllocRetryIntervalMS = defaultAllocRetryIntervalMS
 	}
@@ -248,7 +249,11 @@ func NewStreamHandler(cfg *StreamConfig, stopCh <-chan struct{}) StreamHandler {
 		log.Fatal("new cluster client is nil")
 	}
 
-	allocMgr := allocator.NewVolumeMgrImpl(cfg.AllocConfig, cmClient, stopCh)
+	// allocMgr := controller.NewVolumeMgrImpl(cfg.AllocConfig, cmClient, stopCh)
+	allocMgr, err := controller.NewVolumeMgr(context.Background(), cfg.AllocConfig, cmClient, stopCh)
+	if err != nil {
+		log.Fatal("Fail to new volume mgr, err: %+v", err)
+	}
 
 	handler := &Handler{
 		memPool:           resourcepool.NewMemPool(cfg.MemPoolSizeClasses),
@@ -480,8 +485,14 @@ func (h *Handler) releaseVolumeNormal(ctx context.Context, vid proto.Vid) {
 	span.Warnf("We released volume %d, err[%+v]", vid, err)
 }
 
-func (h *Handler) allocVolume(ctx context.Context, args *allocator.AllocArgs) ([]allocator.AllocRet, error) {
-	return h.allocMgr.Alloc(ctx, args)
+func (h *Handler) allocVolume(ctx context.Context, args *proxy.AllocVolsV2Args) ([]proxy.AllocRet, error) {
+	args2 := &proxy.AllocVolsV2Args{
+		Fsize:             args.NeedSize,
+		BidCount:          args.BidCount,
+		AllocVolumeV2Args: args.AllocVolumeV2Args,
+	}
+
+	return h.allocMgr.Alloc(ctx, args2)
 }
 
 // blobCount blobSize > 0 is certain

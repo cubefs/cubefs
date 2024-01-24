@@ -1,4 +1,4 @@
-package allocator
+package controller
 
 import (
 	"context"
@@ -10,6 +10,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/trace"
 )
 
+// TODO move
 type AllocRet struct {
 	BidStart proto.BlobID `json:"bid_start"`
 	BidEnd   proto.BlobID `json:"bid_end"`
@@ -21,7 +22,7 @@ type AllocArgs struct {
 	cmapi.AllocVolumeV2Args
 }
 
-type VolumeMgr interface {
+type VolumeMgrMy interface {
 	Alloc(ctx context.Context, args *AllocArgs) ([]AllocRet, error)
 	Release(ctx context.Context, args *cmapi.ReleaseVolumes) error
 }
@@ -33,13 +34,13 @@ type VolumeMgrConf struct {
 
 type volumeMgrImpl struct {
 	conf      VolumeMgrConf
-	volumeLck sync.Mutex
+	volumeLck sync.RWMutex // TODO
 	volumes   map[proto.Vid]*cmapi.AllocVolumeInfo
 	cmClient  cmapi.APIAccess
 	stopCh    <-chan struct{}
 }
 
-func NewVolumeMgrImpl(conf VolumeMgrConf, cmClient cmapi.APIAccess, stopCh <-chan struct{}) VolumeMgr {
+func NewVolumeMgrImpl(conf VolumeMgrConf, cmClient cmapi.APIAccess, stopCh <-chan struct{}) VolumeMgrMy {
 	v := &volumeMgrImpl{
 		conf:     conf,
 		cmClient: cmClient,
@@ -50,9 +51,10 @@ func NewVolumeMgrImpl(conf VolumeMgrConf, cmClient cmapi.APIAccess, stopCh <-cha
 	return v
 }
 
+// TODO single flylight alloc
 func (v *volumeMgrImpl) Alloc(ctx context.Context, args *AllocArgs) ([]AllocRet, error) {
 	// If the bid application succeeds but the volume application fails, this scenario is too low. Don't cache the bid for now
-	bids, err := v.cmClient.AllocBid(ctx, &cmapi.BidScopeArgs{Count: args.BidCount})
+	bids, err := v.cmClient.AllocBid(ctx, &cmapi.BidScopeArgs{Count: args.BidCount}) // TODO cache bid
 	if err != nil {
 		return nil, err
 	}
@@ -127,18 +129,19 @@ func (v *volumeMgrImpl) retainAll() {
 func (v *volumeMgrImpl) retainVolume(ctx context.Context) {
 	span, ctx := trace.StartSpanFromContext(ctx, "")
 
-	v.volumeLck.Lock()
+	v.volumeLck.RLock()
 	tokens := make([]string, 0, len(v.volumes))
 	for _, vol := range v.volumes {
 		if vol.Token != "" {
 			tokens = append(tokens, vol.Token)
 		}
 	}
-	v.volumeLck.Unlock()
+	v.volumeLck.RUnlock()
 
 	span.Debugf("retain volume, tokens:%v", tokens)
 	_, err := v.cmClient.RetainVolume(ctx, &cmapi.RetainVolumeArgs{Tokens: tokens})
 	if err != nil {
+		// TODO handle error volume
 		span.Errorf("Failed to retain volume, tokens:%v, err:%+v", tokens, err)
 	}
 }

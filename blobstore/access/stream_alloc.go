@@ -20,9 +20,9 @@ import (
 
 	"github.com/afex/hystrix-go/hystrix"
 
-	"github.com/cubefs/cubefs/blobstore/access/allocator"
 	"github.com/cubefs/cubefs/blobstore/api/access"
 	cmapi "github.com/cubefs/cubefs/blobstore/api/clustermgr"
+	"github.com/cubefs/cubefs/blobstore/api/proxy"
 	"github.com/cubefs/cubefs/blobstore/common/codemode"
 	errcode "github.com/cubefs/cubefs/blobstore/common/errors"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
@@ -106,17 +106,17 @@ func (h *Handler) allocFromAllocator(ctx context.Context, codeMode codemode.Code
 		clusterID = clusterChosen.ClusterID
 	}
 
-	args := &allocator.AllocArgs{
+	args := &proxy.AllocVolsV2Args{
 		BidCount: blobCount(size, blobSize),
 		AllocVolumeV2Args: cmapi.AllocVolumeV2Args{
 			IsInit:   true,
 			CodeMode: codeMode,
 			NeedSize: size,
-			Count:    h.AllocConfig.AllocVolumeNum,
+			Count:    1, // h.AllocConfig.AllocVolumeNum,
 		},
 	}
 
-	var allocRets []allocator.AllocRet
+	var allocRets []proxy.AllocRet
 	var allocHost string
 	hostsSet := make(map[string]struct{}, 1)
 	if err := retry.ExponentialBackoff(h.AllocRetryTimes, uint32(h.AllocRetryIntervalMS)).On(func() error {
@@ -141,7 +141,7 @@ func (h *Handler) allocFromAllocator(ctx context.Context, codeMode codemode.Code
 		}
 		allocHost = host
 
-		allocRets, err = h.allocVolume(ctx, args)
+		allocRets, err = h.allocVolume(ctx, args) // TODO up limit volume, manage cache
 		if err != nil {
 			if errorTimeout(err) || errorConnectionRefused(err) {
 				span.Warn("punish unreachable proxy host:", host)

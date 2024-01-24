@@ -452,7 +452,8 @@ func (h *Handler) writeToBlobnodes(ctx context.Context,
 	close(writeDone)
 	err = fmt.Errorf("quorum write failed (%d < %d) of %s", writtenNum, putQuorum, blob.String())
 	// need mark sealed: less than quorum, az fail
-	h.releaseVolumeSealed(ctx, vid)
+	h.releaseVolumeSealed(ctx, vid) // TODO background release ,call cm
+	// TODO you hua
 
 	return
 }
