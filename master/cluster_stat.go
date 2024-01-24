@@ -116,16 +116,11 @@ func (c *Cluster) updateDataNodeStatInfo() {
 	var (
 		total uint64
 		used  uint64
-		avail uint64
 	)
 	c.dataNodes.Range(func(addr, node interface{}) bool {
 		dataNode := node.(*DataNode)
 		total = total + dataNode.Total
 		used = used + dataNode.Used
-
-		if dataNode.isActive {
-			avail = avail + dataNode.AvailableSpace
-		}
 		return true
 	})
 	if total <= 0 {
@@ -136,13 +131,10 @@ func (c *Cluster) updateDataNodeStatInfo() {
 		Warn(c.Name, fmt.Sprintf("clusterId[%v] space utilization reached [%v],usedSpace[%v],totalSpace[%v] please add dataNode",
 			c.Name, usedRate, used, total))
 	}
-	c.dataNodeStatInfo.TotalGB = strconv.FormatFloat(float64(total)/util.GB, 'f', 3, 32)
-	c.dataNodeStatInfo.AvailGB = strconv.FormatFloat(float64(avail)/util.GB, 'f', 3, 32)
-
-	oldUsedGB, _ := strconv.ParseFloat(c.dataNodeStatInfo.UsedGB, 64)
-	c.dataNodeStatInfo.IncreasedGB = strconv.FormatFloat(float64(used)/util.GB-oldUsedGB, 'f', 3, 32)
-
-	c.dataNodeStatInfo.UsedGB = strconv.FormatFloat(float64(used)/util.GB, 'f', 3, 32)
+	c.dataNodeStatInfo.TotalGB = total / util.GB
+	usedGB := used / util.GB
+	c.dataNodeStatInfo.IncreasedGB = int64(usedGB) - int64(c.dataNodeStatInfo.UsedGB)
+	c.dataNodeStatInfo.UsedGB = usedGB
 	c.dataNodeStatInfo.UsedRatio = strconv.FormatFloat(usedRate, 'f', 3, 32)
 }
 
@@ -150,15 +142,11 @@ func (c *Cluster) updateMetaNodeStatInfo() {
 	var (
 		total uint64
 		used  uint64
-		avail uint64
 	)
 	c.metaNodes.Range(func(addr, node interface{}) bool {
 		metaNode := node.(*MetaNode)
 		total = total + metaNode.Total
 		used = used + metaNode.Used
-		if metaNode.IsActive {
-			avail = avail + metaNode.MaxMemAvailWeight
-		}
 		return true
 	})
 	if total <= 0 {
@@ -169,13 +157,10 @@ func (c *Cluster) updateMetaNodeStatInfo() {
 		Warn(c.Name, fmt.Sprintf("clusterId[%v] space utilization reached [%v],usedSpace[%v],totalSpace[%v] please add metaNode",
 			c.Name, useRate, used, total))
 	}
-	c.metaNodeStatInfo.TotalGB = strconv.FormatFloat(float64(total)/util.GB, 'f', 3, 32)
-	c.metaNodeStatInfo.AvailGB = strconv.FormatFloat(float64(avail)/util.GB, 'f', 3, 32)
-
-	oldUsedGB, _ := strconv.ParseFloat(c.metaNodeStatInfo.UsedGB, 64)
-	c.metaNodeStatInfo.IncreasedGB = strconv.FormatFloat(float64(used)/util.GB-oldUsedGB, 'f', 3, 32)
-
-	c.metaNodeStatInfo.UsedGB = strconv.FormatFloat(float64(used)/util.GB, 'f', 3, 32)
+	c.metaNodeStatInfo.TotalGB = total / util.GB
+	newUsed := used / util.GB
+	c.metaNodeStatInfo.IncreasedGB = int64(newUsed) - int64(c.metaNodeStatInfo.UsedGB)
+	c.metaNodeStatInfo.UsedGB = newUsed
 	c.metaNodeStatInfo.UsedRatio = strconv.FormatFloat(useRate, 'f', 3, 32)
 }
 
