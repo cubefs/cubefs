@@ -207,19 +207,11 @@ type ExtentClient struct {
 	InnerReq                  bool
 	AheadRead                 *AheadReadCache
 
-	extentConfig     *ExtentConfig
-	RcOldStatus      bool
-	RcClusterEnabled bool
-	RcVolumeEnabled  bool
-	RcPath           string
-	RcAutoPrepare    bool
-	RcTTL            int64
-	RcReadTimeoutSec int64
-	RemoteCache      *RemoteCache
-	rcPrepareCh      chan *PrepareRemoteCacheRequest
-	stopOnce         sync.Once
-	stopCh           chan struct{}
-	wg               sync.WaitGroup
+	extentConfig       *ExtentConfig
+	RemoteCache        RemoteCache
+	stopOnce           sync.Once
+	stopCh             chan struct{}
+	wg                 sync.WaitGroup
 }
 
 func (client *ExtentClient) UidIsLimited(uid uint32) bool {
@@ -375,38 +367,35 @@ retry:
 	client.writeLimiter = rate.NewLimiter(writeLimit, defaultWriteLimitBurst)
 	client.AheadRead = NewAheadReadCache(config.AheadReadEnable, config.AheadReadTotalMem, config.AheadReadBlockTimeOut, config.AheadReadWindowCnt)
 
-	if config.MaxStreamerLimit <= 0 {
-		client.disableMetaCache = true
-		return
-	}
+	if config.MaxStreamerLimit > 0 {
+		if config.MaxStreamerLimit <= defaultStreamerLimit {
+			client.maxStreamerLimit = defaultStreamerLimit
+		} else if config.MaxStreamerLimit > defMaxStreamerLimit {
+			client.maxStreamerLimit = defMaxStreamerLimit
+		} else {
+			client.maxStreamerLimit = int(config.MaxStreamerLimit)
+		}
 
-	if config.MaxStreamerLimit <= defaultStreamerLimit {
-		client.maxStreamerLimit = defaultStreamerLimit
-	} else if config.MaxStreamerLimit > defMaxStreamerLimit {
-		client.maxStreamerLimit = defMaxStreamerLimit
+		client.maxStreamerLimit += fastStreamerEvictNum
+
+		log.LogInfof("max streamer limit %d", client.maxStreamerLimit)
+		client.streamerList = list.New()
+
+		go client.backgroundEvictStream()
 	} else {
-		client.maxStreamerLimit = int(config.MaxStreamerLimit)
+		client.disableMetaCache = true
 	}
 
-	client.maxStreamerLimit += fastStreamerEvictNum
-
-	log.LogInfof("max streamer limit %d", client.maxStreamerLimit)
-	client.streamerList = list.New()
+	client.stopCh = make(chan struct{})
+	client.wg.Add(1)
+	client.metaWrapper = config.MetaWrapper
 
 	if client.metaWrapper != nil {
 		client.metaWrapper.RemoteCacheBloom = client.RemoteCacheBloom
+		client.RemoteCacheBloom().AddUint64(0)
 	}
-
 	client.extentConfig = config
-	if client.IsRemoteCacheEnabled() {
-		client.InitRemoteCache()
-	}
-	client.rcPrepareCh = make(chan *PrepareRemoteCacheRequest, 1024)
-	client.stopCh = make(chan struct{})
-	client.wg.Add(1)
-	go client.DoPrepare()
-
-	go client.backgroundEvictStream()
+	client.RemoteCache.Init(client)
 
 	return
 }
@@ -431,82 +420,19 @@ func (client *ExtentClient) SetClientID(id uint64) (err error) {
 }
 
 func (client *ExtentClient) IsRemoteCacheEnabled() bool {
-	return client.RcClusterEnabled && client.RcVolumeEnabled
+	return client.RemoteCache.ClusterEnabled && client.RemoteCache.VolumeEnabled
 }
 
 func (client *ExtentClient) enableRemoteCacheCluster(enabled bool) {
-	client.RcOldStatus = client.IsRemoteCacheEnabled()
-	if client.RcClusterEnabled != enabled {
-		log.LogInfof("enableRemoteCacheCluster: %v -> %v", client.RcClusterEnabled, enabled)
-		client.RcClusterEnabled = enabled
+	client.RemoteCache.Status = client.IsRemoteCacheEnabled()
+	if client.RemoteCache.ClusterEnabled != enabled {
+		log.LogInfof("enableRemoteCacheCluster: %v -> %v", client.RemoteCache.ClusterEnabled, enabled)
+		client.RemoteCache.ClusterEnabled = enabled
 	}
-}
-
-func (client *ExtentClient) InitRemoteCache() (err error) {
-	cacheConfig := &CacheConfig{
-		Cluster:        client.dataWrapper.ClusterName,
-		Volume:         client.extentConfig.Volume,
-		Masters:        client.extentConfig.Masters,
-		MW:             client.metaWrapper,
-		readTimeoutSec: client.RcReadTimeoutSec,
-	}
-	if client.RemoteCache, err = NewRemoteCache(cacheConfig, client.enableRemoteCacheCluster); err != nil {
-		return
-	}
-	if !client.RemoteCache.ResetPathToBloom(client.RcPath) {
-		client.RcPath = ""
-	}
-	return
 }
 
 func (client *ExtentClient) UpdateRemoteCacheConfig(view *proto.SimpleVolView) {
-	if client.RcVolumeEnabled != view.RemoteCacheEnable {
-		log.LogInfof("RcVolumeEnabled: %v -> %v", client.RcVolumeEnabled, view.RemoteCacheEnable)
-		client.RcVolumeEnabled = view.RemoteCacheEnable
-	}
-	if client.RcOldStatus != client.IsRemoteCacheEnabled() {
-		log.LogInfof("enable: %v -> %v", client.RcOldStatus, client.IsRemoteCacheEnabled())
-	}
-	// RemoteCache may be nil if the first initialization failed, it will not be set nil anymore even if remote cache is disabled
-	if client.IsRemoteCacheEnabled() {
-		if !client.RcOldStatus || client.RemoteCache == nil {
-			log.LogInfof("initRemoteCache: enable(%v -> %v) RemoteCache isNil(%v)",
-				client.RcOldStatus, client.IsRemoteCacheEnabled(), client.RemoteCache == nil)
-			if err := client.InitRemoteCache(); err != nil {
-				log.LogErrorf("updateRemoteCacheConfig: initRemoteCache failed, err: %v", err)
-				return
-			}
-		}
-	} else if client.RcOldStatus && client.RemoteCache != nil {
-		rc := client.RemoteCache
-		client.RemoteCache = nil
-		rc.Stop()
-		log.LogInfo("stop RemoteCache")
-	}
-
-	if client.RcPath != view.RemoteCachePath {
-		oldPath := client.RcPath
-		client.RcPath = view.RemoteCachePath
-		if client.IsRemoteCacheEnabled() && client.RemoteCache != nil {
-			if !client.RemoteCache.ResetPathToBloom(view.RemoteCachePath) {
-				client.RcPath = ""
-			}
-		}
-		log.LogInfof("RcPath: %v -> %v, but(%v)", oldPath, view.RemoteCachePath, client.RcPath)
-	}
-
-	if client.RcAutoPrepare != view.RemoteCacheAutoPrepare {
-		log.LogInfof("RcAutoPrepare: %v -> %v", client.RcAutoPrepare, view.RemoteCacheAutoPrepare)
-		client.RcAutoPrepare = view.RemoteCacheAutoPrepare
-	}
-	if client.RcTTL != view.RemoteCacheTTL {
-		log.LogInfof("RcTTL: %d -> %d", client.RcTTL, view.RemoteCacheTTL)
-		client.RcTTL = view.RemoteCacheTTL
-	}
-	if client.RcReadTimeoutSec != view.RemoteCacheReadTimeoutSec {
-		log.LogInfof("RcReadTimeoutSec: %d -> %d", client.RcReadTimeoutSec, view.RemoteCacheReadTimeoutSec)
-		client.RcReadTimeoutSec = view.RemoteCacheReadTimeoutSec
-	}
+	client.RemoteCache.UpdateRemoteCacheConfig(client, view)
 }
 
 func (client *ExtentClient) GetVolumeName() string {
@@ -1036,35 +962,11 @@ func (client *ExtentClient) UploadFlowInfo(clientInfo wrapper.SimpleClientInfo) 
 }
 
 func (c *ExtentClient) RemoteCacheBloom() *bloom.BloomFilter {
-	if c.RemoteCache != nil {
-		return c.RemoteCache.GetRemoteCacheBloom()
-	}
-	return nil
+	return c.RemoteCache.GetRemoteCacheBloom()
 }
 
 func (c *ExtentClient) GetInodeBloomStatus(ino uint64) bool {
 	return c.RemoteCacheBloom().TestUint64(ino)
-}
-
-func (c *ExtentClient) DoPrepare() {
-	defer c.wg.Done()
-
-	workerWg := sync.WaitGroup{}
-	for range [5]struct{}{} {
-		workerWg.Add(1)
-		go func() {
-			defer workerWg.Done()
-			for {
-				select {
-				case <-c.stopCh:
-					return
-				case req := <-c.rcPrepareCh:
-					c.servePrepareRequest(req)
-				}
-			}
-		}()
-	}
-	workerWg.Wait()
 }
 
 func (c *ExtentClient) servePrepareRequest(prepareReq *PrepareRemoteCacheRequest) {
