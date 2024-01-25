@@ -18,6 +18,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"github.com/cubefs/cubefs/storage"
 	"net"
 	"os"
 	"runtime"
@@ -1008,6 +1009,14 @@ func (m *metadataManager) opMetaLookup(conn net.Conn, p *Packet,
 		err = errors.NewErrorf("[%v] req: %v, resp: %v", p.GetOpMsgWithReqAndResult(), req, err.Error())
 		return
 	}
+
+	if mp.IsForbidden() {
+		err = storage.ForbiddenMetaPartitionError
+		p.PacketErrorWithBody(proto.OpForbidErr, []byte(err.Error()))
+		m.respondToClient(conn, p)
+		return
+	}
+
 	if !mp.IsFollowerRead() && !m.serveProxy(conn, mp, p) {
 		return
 	}
