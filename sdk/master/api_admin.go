@@ -766,3 +766,13 @@ func (api *AdminAPI) GetDiscardDataPartition() (DiscardDpInfos *proto.DiscardDat
 	}
 	return
 }
+
+func (api *AdminAPI) SetDataPartitionDiscard(partitionId uint64, discard bool) (err error) {
+	request := newAPIRequest(http.MethodPost, proto.AdminSetDpDiscard)
+	request.addParam("id", strconv.FormatUint(partitionId, 10))
+	request.addParam("dpDiscard", strconv.FormatBool(discard))
+	if _, err = api.mc.serveRequest(request); err != nil {
+		return
+	}
+	return
+}

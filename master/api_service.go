@@ -5326,10 +5326,13 @@ func (m *Server) setDpDiscard(partitionID uint64, isDiscard bool) (err error) {
 	if dp, err = m.cluster.getDataPartitionByID(partitionID); err != nil {
 		return fmt.Errorf("[setDpDiacard] getDataPartitionByID err(%s)", err.Error())
 	}
-	dp.RLock()
+	dp.Lock()
+	defer dp.Unlock()
+	if dp.IsDiscard && !isDiscard {
+		log.LogWarnf("[setDpDiscard] usnet dp discard flag may cause some junk data")
+	}
 	dp.IsDiscard = isDiscard
 	m.cluster.syncUpdateDataPartition(dp)
-	dp.RUnlock()
 
 	return
 }

@@ -40,6 +40,7 @@ const (
 	CliOpExpand                  = "expand"
 	CliOpShrink                  = "shrink"
 	CliOpGetDiscard              = "get-discard"
+	CliOpSetDiscard              = "set-discard"
 	CliOpForbidMpDecommission    = "forbid-mp-decommission"
 
 	//Shorthand format of operation name
