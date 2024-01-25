@@ -73,7 +73,6 @@ type CacheConfig struct {
 	MW      *meta.MetaWrapper
 
 	SameZoneWeight int
-	readTimeoutSec int64
 }
 
 type RemoteCache struct {
@@ -89,41 +88,122 @@ type RemoteCache struct {
 	metaWrapper *meta.MetaWrapper
 	cacheBloom  *bloom.BloomFilter
 
-	sameZoneWeight int
 	readTimeoutSec int
+	Status         bool
+	ClusterEnabled bool
+	VolumeEnabled  bool
+	Path           string
+	AutoPrepare    bool
+	TTL            int64
+	ReadTimeoutSec int64
+	PrepareCh      chan *PrepareRemoteCacheRequest
 
 	clusterEnable func(bool)
 }
 
-func NewRemoteCache(config *CacheConfig, clusterEnable func(bool)) (*RemoteCache, error) {
-	rc := new(RemoteCache)
-	rc.stopC = make(chan struct{})
-	rc.cluster = config.Cluster
-	rc.volname = config.Volume
-	rc.metaWrapper = config.MW
-	rc.flashGroups = btree.New(32)
-	rc.mc = master.NewMasterClient(config.Masters, false)
-	if config.SameZoneWeight <= 0 {
-		rc.sameZoneWeight = sameZoneWeight
-	} else {
-		rc.sameZoneWeight = config.SameZoneWeight
+func (rc *RemoteCache) UpdateRemoteCacheConfig(client *ExtentClient, view *proto.SimpleVolView) {
+	if rc.VolumeEnabled != view.RemoteCacheEnable {
+		log.LogInfof("RcVolumeEnabled: %v -> %v", rc.VolumeEnabled, view.RemoteCacheEnable)
+		rc.VolumeEnabled = view.RemoteCacheEnable
 	}
-	rc.readTimeoutSec = int(config.readTimeoutSec)
+	if rc.Status != client.IsRemoteCacheEnabled() {
+		log.LogInfof("enable: %v -> %v", rc.Status, client.IsRemoteCacheEnabled())
+	}
+	// RemoteCache may be nil if the first initialization failed, it will not be set nil anymore even if remote cache is disabled
+	if client.IsRemoteCacheEnabled() {
+		if !rc.Status {
+			log.LogInfof("initRemoteCache: enable(%v -> %v)",
+				rc.Status, client.IsRemoteCacheEnabled())
+			if err := rc.Init(client); err != nil {
+				log.LogErrorf("updateRemoteCacheConfig: initRemoteCache failed, err: %v", err)
+				return
+			}
+		}
+	} else if client.RemoteCache.Status {
+		client.RemoteCache.Stop()
+		log.LogInfo("stop RemoteCache")
+	}
+
+	if rc.Path != view.RemoteCachePath {
+		oldPath := client.RemoteCache.Path
+		rc.Path = view.RemoteCachePath
+		if client.IsRemoteCacheEnabled() {
+			if !rc.ResetPathToBloom(view.RemoteCachePath) {
+				rc.Path = ""
+			}
+		}
+		log.LogInfof("RcPath: %v -> %v, but(%v)", oldPath, view.RemoteCachePath, rc.Path)
+	}
+
+	if rc.AutoPrepare != view.RemoteCacheAutoPrepare {
+		log.LogInfof("RcAutoPrepare: %v -> %v", rc.AutoPrepare, view.RemoteCacheAutoPrepare)
+		rc.AutoPrepare = view.RemoteCacheAutoPrepare
+	}
+	if rc.TTL != view.RemoteCacheTTL {
+		log.LogInfof("RcTTL: %d -> %d", rc.TTL, view.RemoteCacheTTL)
+		rc.TTL = view.RemoteCacheTTL
+	}
+	if rc.ReadTimeoutSec != view.RemoteCacheReadTimeoutSec {
+		log.LogInfof("RcReadTimeoutSec: %d -> %d", rc.ReadTimeoutSec, view.RemoteCacheReadTimeoutSec)
+		rc.ReadTimeoutSec = view.RemoteCacheReadTimeoutSec
+	}
+}
+
+func (rc *RemoteCache) DoRemoteCachePrepare(c *ExtentClient) {
+	defer c.wg.Done()
+	workerWg := sync.WaitGroup{}
+	for range [5]struct{}{} {
+		workerWg.Add(1)
+		go func() {
+			defer workerWg.Done()
+			for {
+				select {
+				case <-c.stopCh:
+					return
+				case req := <-c.RemoteCache.PrepareCh:
+					c.servePrepareRequest(req)
+				}
+			}
+		}()
+	}
+	workerWg.Wait()
+}
+
+func (rc *RemoteCache) Init(client *ExtentClient) (err error) {
+	log.LogDebugf("RemoteCache: Init")
+	fmt.Println("RemoteCache: Init")
+	rc.stopC = make(chan struct{})
+	rc.cluster = client.dataWrapper.ClusterName
+	rc.volname = client.extentConfig.Volume
+	rc.metaWrapper = client.metaWrapper
+	rc.flashGroups = btree.New(32)
+	rc.mc = master.NewMasterClient(client.extentConfig.Masters, false)
+
+	rc.readTimeoutSec = int(client.RemoteCache.ReadTimeoutSec)
 	if rc.readTimeoutSec <= 0 {
 		rc.readTimeoutSec = _connReadTimeoutSec
 	}
 
-	rc.clusterEnable = clusterEnable
-	err := rc.updateFlashGroups()
+	rc.clusterEnable = client.enableRemoteCacheCluster
+	err = rc.updateFlashGroups()
 	if err != nil {
-		return nil, err
+		log.LogDebugf("RemoteCache: Init err %v", err)
+		return
 	}
 	rc.conns = util.NewConnectPoolWithTimeoutAndCap(0, 10, _connIdelTimeout, int64(rc.readTimeoutSec))
 	rc.cacheBloom = bloom.New(BloomBits, BloomHashNum)
 
 	rc.wg.Add(1)
 	go rc.refresh()
-	return rc, nil
+
+	if !rc.ResetPathToBloom(client.RemoteCache.Path) {
+		rc.Path = ""
+	}
+	rc.PrepareCh = make(chan *PrepareRemoteCacheRequest, 1024)
+	go rc.DoRemoteCachePrepare(client)
+
+	log.LogDebugf("Init: NewRemoteCache sucess")
+	return
 }
 
 func (rc *RemoteCache) Read(ctx context.Context, fg *FlashGroup, inode uint64, req *CacheReadRequest) (read int, err error) {
@@ -144,6 +224,7 @@ func (rc *RemoteCache) Read(ctx context.Context, fg *FlashGroup, inode uint64, r
 	}
 	defer func() {
 		if err != nil && (os.IsTimeout(err) || strings.Contains(err.Error(), syscall.ECONNREFUSED.Error())) {
+			log.LogErrorf("FlashGroup read: err %v", err)
 			moved = fg.moveToUnknownRank(addr)
 		}
 	}()
@@ -208,6 +289,7 @@ func (rc *RemoteCache) Prepare(ctx context.Context, fg *FlashGroup, inode uint64
 	}
 	defer func() {
 		if err != nil && (os.IsTimeout(err) || strings.Contains(err.Error(), syscall.ECONNREFUSED.Error())) {
+			log.LogErrorf("FlashGroup Prepare: err %v", err)
 			moved = fg.moveToUnknownRank(addr)
 		}
 	}()
@@ -247,6 +329,7 @@ func (rc *RemoteCache) Stop() {
 }
 
 func (rc *RemoteCache) GetRemoteCacheBloom() *bloom.BloomFilter {
+	log.LogDebugf("GetRemoteCacheBloom. cacheBloom %v", rc.cacheBloom)
 	return rc.cacheBloom
 }
 
@@ -343,7 +426,7 @@ func (rc *RemoteCache) updateFlashGroups() (err error) {
 		log.LogWarnf("updateFlashGroups: err(%v)", err)
 		return
 	}
-
+	log.LogDebugf("updateFlashGroups. get flashGroupView [%v]", fgv)
 	rc.clusterEnable(fgv.Enable)
 	if !fgv.Enable {
 		rc.flashGroups = newFlashGroups
@@ -377,7 +460,7 @@ func (rc *RemoteCache) updateFlashGroups() (err error) {
 }
 
 func (rc *RemoteCache) ClassifyHostsByAvgDelay(fgID uint64, hosts []string) (sortedHosts map[ZoneRankType][]string) {
-	sortedHosts = make(map[ZoneRankType][]string, 0)
+	sortedHosts = make(map[ZoneRankType][]string)
 
 	for _, host := range hosts {
 		avgTime := time.Duration(0)
