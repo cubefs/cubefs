@@ -37,16 +37,17 @@ func (pr *PrepareRemoteCacheRequest) String() string {
 }
 
 func (s *Streamer) enableRemoteCache() bool {
-	return s.client.IsRemoteCacheEnabled() && s.client.RemoteCache != nil && s.bloomStatus
+	log.LogDebugf("Streamer inode %v parent %v enableRemoteCache bloomStatus, s.bloomStatus %v", s.inode, s.parentInode, s.bloomStatus)
+	return s.client.IsRemoteCacheEnabled() // && s.bloomStatus
 }
 
 func (s *Streamer) enableRemoteCacheAutoPrepare() bool {
-	return s.enableRemoteCache() && s.client.RcAutoPrepare
+	return s.enableRemoteCache() && s.client.RemoteCache.AutoPrepare
 }
 
 func (s *Streamer) sendToPrepareRomoteCacheChan(req *PrepareRemoteCacheRequest) {
 	select {
-	case s.client.rcPrepareCh <- req:
+	case s.client.RemoteCache.PrepareCh <- req:
 	default:
 		log.LogWarnf("sendToPrepareRomoteCacheChan: chan is full, discard req(%v)", req)
 	}
@@ -114,30 +115,19 @@ func (s *Streamer) getFlashGroup(fixedFileOffset uint64) *FlashGroup {
 
 func (s *Streamer) getDataSource(start, size, fixedFileOffset uint64, isRead bool) ([]*proto.DataSource, error) {
 	sources := make([]*proto.DataSource, 0)
-	var revisedRequests []*ExtentRequest
-	var data []byte
+	log.LogDebugf("getDataSource. start %v size %v fixedFileOffset %v isRead %v", start, size, fixedFileOffset, isRead)
 	eReqs := s.extents.PrepareReadRequests(int(fixedFileOffset), proto.CACHE_BLOCK_SIZE, nil)
-	for _, req := range eReqs {
-		if req.ExtentKey == nil {
+	for _, eReq := range eReqs {
+		log.LogDebugf("getDataSource. eReq %v", eReq)
+		if eReq.ExtentKey == nil {
 			continue
 		}
-		if req.ExtentKey.PartitionId == 0 || req.ExtentKey.ExtentId == 0 {
-			s.writeLock.Lock()
-			if err := s.IssueFlushRequest(); err != nil {
-				s.writeLock.Unlock()
+		if eReq.ExtentKey.PartitionId == 0 {
+			if eReq.ExtentKey.FileOffset+uint64(eReq.ExtentKey.Size) > start && eReq.ExtentKey.FileOffset < start+size {
+				err := fmt.Errorf("temporary ek, isRead[%v] start(%v) size(%v) eReq(%v) fixedOff(%v)", isRead, start, size, eReq, fixedFileOffset)
+				log.LogErrorf("getDataSource failed: err(%v)", err)
 				return nil, err
 			}
-			revisedRequests = s.extents.PrepareReadRequests(int(fixedFileOffset), proto.CACHE_BLOCK_SIZE, data)
-			s.writeLock.Unlock()
-			break
-		}
-	}
-	if revisedRequests != nil {
-		eReqs = revisedRequests
-	}
-
-	for _, eReq := range eReqs {
-		if eReq.ExtentKey == nil {
 			continue
 		}
 
@@ -178,7 +168,7 @@ func (s *Streamer) prepareCacheRequests(offset, size uint64, data []byte) ([]*Ca
 			Volume:          s.client.dataWrapper.VolName,
 			Inode:           s.inode,
 			FixedFileOffset: fixedOff,
-			TTL:             s.client.RcTTL,
+			TTL:             s.client.RemoteCache.TTL,
 			Sources:         sources,
 			Version:         proto.ComputeSourcesVersion(sources),
 		}

@@ -368,6 +368,7 @@ create_dentry:
 
 func (mw *MetaWrapper) Lookup_ll(parentID uint64, name string) (inode uint64, mode uint32, err error) {
 	defer func() {
+		log.LogDebugf("Lookup_ll parent id %v, name %v ,inode %v", parentID, name, inode)
 		if err == nil && mw.RemoteCacheBloom != nil {
 			cacheBloom := mw.RemoteCacheBloom()
 			if cacheBloom.TestUint64(parentID) {
