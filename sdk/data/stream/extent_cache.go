@@ -81,7 +81,7 @@ func (cache *ExtentCache) RefreshForce(inode uint64, getExtents GetExtentsFunc) 
 		return err
 	}
 	// log.LogDebugf("Local ExtentCache before update: ino(%v) gen(%v) size(%v) extents(%v)", inode, cache.gen, cache.size, cache.List())
-	cache.update(gen, size, extents)
+	cache.update(gen, size, true, extents)
 	log.LogDebugf("Local ExtentCache after update: ino(%v) gen(%v) size(%v) extents(%v)", inode, cache.gen, cache.size, cache.List())
 	return nil
 }
@@ -97,28 +97,17 @@ func (cache *ExtentCache) Refresh(inode uint64, getExtents GetExtentsFunc) error
 		return err
 	}
 	// log.LogDebugf("Local ExtentCache before update: ino(%v) gen(%v) size(%v) extents(%v)", inode, cache.gen, cache.size, cache.List())
-	cache.update(gen, size, extents)
+	cache.update(gen, size, false, extents)
 	log.LogDebugf("Local ExtentCache after update: ino(%v) gen(%v) size(%v)", inode, cache.gen, cache.size)
 	return nil
 }
 
-func (cache *ExtentCache) update(gen, size uint64, eks []proto.ExtentKey) {
+func (cache *ExtentCache) update(gen, size uint64, force bool, eks []proto.ExtentKey) {
 	cache.Lock()
 	defer cache.Unlock()
 
 	log.LogDebugf("ExtentCache update: ino(%v) cache.gen(%v) cache.size(%v) gen(%v) size(%v)", cache.inode, cache.gen, cache.size, gen, size)
-
-	//	cache.root.Ascend(func(bi btree.Item) bool {
-	//		ek := bi.(*proto.ExtentKey)
-	//		log.LogDebugf("ExtentCache update: local ino(%v) ek(%v)", cache.inode, ek)
-	//		return true
-	//	})
-	//
-	//	for _, ek := range eks {
-	//		log.LogDebugf("ExtentCache update: remote ino(%v) ek(%v)", cache.inode, ek)
-	//	}
-
-	if cache.gen != 0 && cache.gen >= gen {
+	if !force && cache.gen != 0 && cache.gen >= gen {
 		log.LogDebugf("ExtentCache update: no need to update, ino(%v) gen(%v) size(%v)", cache.inode, gen, size)
 		return
 	}

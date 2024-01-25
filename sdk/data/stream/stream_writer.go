@@ -356,7 +356,7 @@ begin:
 				writeSize, err = s.doOverwrite(req, direct)
 				if err == proto.ErrCodeVersionOp {
 					log.LogDebugf("action[streamer.write] write need version update")
-					if err = s.GetExtents(); err != nil {
+					if err = s.GetExtentsForce(); err != nil {
 						log.LogErrorf("action[streamer.write] err %v", err)
 						return
 					}
@@ -588,7 +588,7 @@ func (s *Streamer) doDirectWriteByAppend(req *ExtentRequest, direct bool, op uin
 		s.handler.key = extKey
 	}
 	if atomic.LoadInt32(&s.needUpdateVer) > 0 {
-		if err = s.GetExtents(); err != nil {
+		if err = s.GetExtentsForce(); err != nil {
 			log.LogErrorf("action[doDirectWriteByAppend] inode %v GetExtents err %v", s.inode, err)
 			return
 		}
@@ -1023,12 +1023,6 @@ func (s *Streamer) truncate(size int, fullPath string) error {
 func (s *Streamer) updateVer(verSeq uint64) (err error) {
 	log.LogInfof("action[stream.updateVer] ver %v update to %v", s.verSeq, verSeq)
 	if s.verSeq != verSeq {
-		//log.LogInfof("action[stream.updateVer] ver %v update to %v", s.verSeq, verSeq)
-		//if s.handler != nil {
-		//	s.handler.verUpdate<-verSeq
-		//} else {
-		//	log.LogInfof("action[stream.updateVer] ver %v update to %v", s.verSeq, verSeq)
-		//}
 		log.LogInfof("action[stream.updateVer] ver %v update to %v", s.verSeq, verSeq)
 		s.verSeq = verSeq
 		s.extents.verSeq = verSeq
