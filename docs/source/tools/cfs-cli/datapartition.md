@@ -39,3 +39,9 @@ Fault diagnosis, find data partitions that are mostly unavailable and missing.
 ```bash
 cfs-cli datapartition check
 ```
+
+## Mark data partition discard
+
+```bash
+cfs-cli datapartition set-discard [DATA PARTITION ID] [DISCARD]
+```

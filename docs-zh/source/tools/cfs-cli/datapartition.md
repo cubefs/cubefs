@@ -39,3 +39,9 @@ cfs-cli datapartition del-replica [Address] [Partition ID]
 ```bash
 cfs-cli datapartition check
 ```
+
+## 标记副本丢失
+
+```bash
+cfs-cli datapartition set-discard [DATA PARTITION ID] [DISCARD]
+```
