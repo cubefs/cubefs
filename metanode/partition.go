@@ -149,6 +149,7 @@ type OpExtend interface {
 	RemoveXAttr(req *proto.RemoveXAttrRequest, p *Packet) (err error)
 	ListXAttr(req *proto.ListXAttrRequest, p *Packet) (err error)
 	UpdateXAttr(req *proto.UpdateXAttrRequest, p *Packet) (err error)
+	LockDir(req *proto.LockDirRequest, p *Packet) (err error)
 }
 
 // OpDentry defines the interface for the dentry operations.

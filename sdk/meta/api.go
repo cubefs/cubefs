@@ -2378,3 +2378,15 @@ func (mw *MetaWrapper) DisableTrashByClient(flag bool) {
 func (mw *MetaWrapper) QueryTrashDisableByClient() bool {
 	return mw.disableTrashByClient
 }
+
+func (mw *MetaWrapper) LockDir(ino uint64, lease uint64, lockId int64) (retLockId int64, err error) {
+	mp := mw.getPartitionByInode(ino)
+	if mp == nil {
+		log.LogErrorf("LockDir: no such partition, ino(%v)", ino)
+		err = syscall.ENOENT
+		return
+	}
+
+	retLockId, err = mw.lockDir(mp, ino, lease, lockId)
+	return
+}
