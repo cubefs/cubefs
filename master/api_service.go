@@ -235,7 +235,7 @@ func (m *Server) forbidVolume(w http.ResponseWriter, r *http.Request) {
 	}
 	if vol.Status == proto.VolStatusMarkDelete {
 		err = errors.New("vol has been mark delete, freeze operation is not allowed")
-		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeNoPermission, Msg: err.Error()})
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeVolHasDeleted, Msg: err.Error()})
 		return
 	}
 	oldForbiden := vol.Forbidden
@@ -1864,7 +1864,7 @@ func (m *Server) markDeleteVol(w http.ResponseWriter, r *http.Request) {
 	if status {
 		if vol.Status == proto.VolStatusMarkDelete {
 			err = errors.New("vol has been mark delete, repeated deletions are not allowed")
-			sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeNoPermission, Msg: err.Error()})
+			sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeVolHasDeleted, Msg: err.Error()})
 			return
 		}
 		oldForbiden := vol.Forbidden

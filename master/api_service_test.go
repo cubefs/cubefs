@@ -124,7 +124,6 @@ func createDefaultMasterServerForTest() *Server {
 	}`
 
 	testServer, err := createMasterServer(cfgJSON)
-	testServer.cluster.cfg.volForceDeletion = true
 
 	if err != nil {
 		panic(err)
