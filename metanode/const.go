@@ -178,8 +178,10 @@ const (
 	opFSMUniqCheckerEvict    = 65
 	opFSMUnlinkInodeOnce     = 66
 	opFSMCreateLinkInodeOnce = 67
+	// dir lock
+	opFSMLockDir = 68
 
-	opFSMVersionOp   = 68
+	opFSMVersionOp   = 74
 	opFSMExtentSplit = 69
 	opFSMDelVer      = 70
 
