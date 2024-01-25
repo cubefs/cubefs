@@ -18,6 +18,7 @@ import (
 	"container/list"
 	"fmt"
 	"net"
+	"os"
 	"sync"
 
 	"sync/atomic"
@@ -377,21 +378,28 @@ func (rp *ReplProtocol) checkLocalResultAndReciveAllFollowerResponse() {
 	if e = rp.getNextPacket(); e == nil {
 		return
 	}
-	request := e.Value.(*Packet)
+	response := e.Value.(*Packet)
 	defer func() {
-		rp.deletePacket(request, e)
+		rp.deletePacket(response, e)
 	}()
-	if request.IsErrPacket() {
+	if response.IsErrPacket() {
 		return
 	}
-	for index := 0; index < len(request.followersAddrs); index++ {
-		followerPacket := request.followerPackets[index]
+	// NOTE: wait for all followers
+	for index := 0; index < len(response.followersAddrs); index++ {
+		followerPacket := response.followerPackets[index]
 		err := <-followerPacket.respCh
 		if err != nil {
-			request.PackErrorBody(ActionReceiveFromFollower, err.Error())
-			return
+			// NOTE: we meet timeout error
+			// set the request status to be timeout
+			if err == os.ErrDeadlineExceeded {
+				response.PackErrorBody(ActionReceiveFromFollower, err.Error())
+				return
+			}
+			// NOTE: other errors, continue to receive response from followers
+			response.PackErrorBody(ActionReceiveFromFollower, err.Error())
+			continue
 		}
-
 	}
 }
 

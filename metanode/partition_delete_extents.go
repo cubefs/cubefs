@@ -324,11 +324,16 @@ func (mp *metaPartition) deleteExtentsFromList(fileList *synclist.SyncList) {
 					panic(err)
 				}
 			}
-			// delete dataPartition
-			if err = mp.doDeleteMarkedInodes(&ek); err != nil {
-				errExts = append(errExts, ek)
-				log.LogWarnf("[deleteExtentsFromList] mp: %v, extent: %v, %s",
-					mp.config.PartitionId, ek.String(), err.Error())
+			// delete extent from dataPartition
+			dp := mp.vol.GetPartition(ek.PartitionId)
+			if !dp.IsDiscard {
+				if err = mp.doDeleteMarkedInodes(&ek); err != nil {
+					errExts = append(errExts, ek)
+					log.LogWarnf("[deleteExtentsFromList] mp: %v, extent: %v, %s",
+						mp.config.PartitionId, ek.String(), err.Error())
+				}
+			} else {
+				log.LogWarnf("action[deleteExtentsFromList] dp(%v) is discard, skip extent(%v)", ek.PartitionId, ek.ExtentId)
 			}
 			deleteCnt++
 		}
