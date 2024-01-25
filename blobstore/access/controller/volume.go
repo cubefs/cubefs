@@ -113,12 +113,13 @@ type volumeGetterImpl struct {
 
 	service   ServiceController
 	proxy     proxy.Cacher
+	cmClient  clustermgr.ClientAPI
 	singleRun *singleflight.Group
 }
 
 // NewVolumeGetter new a volume getter
 //   memExpiration expiration of memcache, 0 means no expiration
-func NewVolumeGetter(clusterID proto.ClusterID, service ServiceController,
+func NewVolumeGetter(clusterID proto.ClusterID, service ServiceController, cmClient clustermgr.ClientAPI,
 	proxy proxy.Cacher, memExpiration time.Duration) (VolumeGetter, error) {
 	_, ctx := trace.StartSpanFromContext(context.Background(), "")
 
@@ -144,6 +145,7 @@ func NewVolumeGetter(clusterID proto.ClusterID, service ServiceController,
 		punishCache:    punishCache,
 		service:        service,
 		proxy:          proxy,
+		cmClient:       cmClient,
 		singleRun:      new(singleflight.Group),
 	}
 
@@ -257,6 +259,15 @@ func (v *volumeGetterImpl) getFromProxy(ctx context.Context, vid proto.Vid, flus
 	id := addCVid(v.cid, vid)
 	triedHosts := make(map[string]struct{})
 	if err = retry.ExponentialBackoff(3, 30).RuptOn(func() (bool, error) {
+		if len(hosts) == 0 {
+			vi, err := v.cmClient.GetVolumeInfo(ctx, &clustermgr.GetVolumeArgs{Vid: vid})
+			if err != nil {
+				return false, err
+			}
+			volume.VolumeInfo = *vi
+			return true, nil
+		}
+
 		for _, host := range hosts {
 			triedHosts[host] = struct{}{}
 			if volume, err = v.proxy.GetCacheVolume(ctx, host,
@@ -295,7 +306,7 @@ func (v *volumeGetterImpl) getFromProxy(ctx context.Context, vid proto.Vid, flus
 	span.Debugf("to update memcache on volume(%d-%d) %+v", v.cid, vid, phy)
 	v.setToLocalCache(ctx, id, phy)
 
-	if flush {
+	if flush && len(hosts) != 0 {
 		v.flush(ctx, vid, ver, hosts, triedHosts)
 	}
 

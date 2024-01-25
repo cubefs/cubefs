@@ -54,9 +54,3 @@ type DiscardVolsArgs struct {
 	CodeMode codemode.CodeMode `json:"code_mode"`
 	Discards []proto.Vid       `json:"discards"`
 }
-
-// type AllocVolsV2Args struct {
-//	Fsize    uint64 `json:"fsize"`
-//	BidCount uint64 `json:"bid_count"`
-//	clustermgr.AllocVolumeV2Args
-// }

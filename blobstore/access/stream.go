@@ -132,11 +132,10 @@ type StreamConfig struct {
 	// just for one AZ is down, cant write quorum in all AZs
 	CodeModesPutQuorums map[codemode.CodeMode]int `json:"code_mode_put_quorums"`
 
-	ClusterConfig  controller.ClusterConfig `json:"cluster_config"`
-	BlobnodeConfig blobnode.Config          `json:"blobnode_config"`
-	ProxyConfig    proxy.Config             `json:"proxy_config"`
-	// AllocConfig    controller.VolumeMgrConf `json:"alloc_config"`
-	AllocConfig controller.VolumeMgrConfig `json:"alloc_config"`
+	ClusterConfig  controller.ClusterConfig   `json:"cluster_config"`
+	BlobnodeConfig blobnode.Config            `json:"blobnode_config"`
+	ProxyConfig    proxy.Config               `json:"proxy_config"`
+	AllocConfig    controller.VolumeMgrConfig `json:"alloc_config"`
 
 	// hystrix command config
 	AllocCommandConfig hystrix.CommandConfig `json:"alloc_command_config"`
@@ -165,12 +164,11 @@ type Handler struct {
 	memPool           *resourcepool.MemPool
 	encoder           map[codemode.CodeMode]ec.Encoder
 	clusterController controller.ClusterController
-	// allocMgr          controller.VolumeMgrMy
-	allocMgr controller.VolumeMgr
+	allocMgr          controller.VolumeMgr
 
 	blobnodeClient blobnode.StorageAPI
 	proxyClient    proxy.Client
-	cmClient       cmapi.APIAccess // limit number 2-3, bid cache, volume cache
+	cmClient       cmapi.ClientAPI // TODO mw: limit link number 2-3, bid cache, volume cache
 
 	allCodeModes  CodeModePairs
 	maxObjectSize int64
@@ -206,8 +204,6 @@ func confCheck(cfg *StreamConfig) {
 	defaulter.LessOrEqual(&cfg.DiskTimeoutPunishIntervalS, defaultDiskPunishIntervalS/10)
 	defaulter.LessOrEqual(&cfg.ServicePunishIntervalS, defaultServicePunishIntervalS)
 	defaulter.LessOrEqual(&cfg.AllocRetryTimes, defaultAllocRetryTimes)
-	// defaulter.LessOrEqual(&cfg.AllocConfig.AllocVolumeNum, defaultAllocVolumeNum)
-	// defaulter.LessOrEqual(&cfg.AllocConfig.RetainIntervalSec, defaultAllocRetainIntervalSec)
 	if cfg.AllocRetryIntervalMS <= 100 {
 		cfg.AllocRetryIntervalMS = defaultAllocRetryIntervalMS
 	}
@@ -474,16 +470,24 @@ func (h *Handler) punishDiskWith(ctx context.Context, clusterID proto.ClusterID,
 	}
 }
 
-func (h *Handler) releaseVolumeSealed(ctx context.Context, vid proto.Vid) {
-	span := trace.SpanFromContextSafe(ctx)
-	err := h.allocMgr.Release(ctx, &cmapi.ReleaseVolumes{SealedVids: []proto.Vid{vid}})
-	span.Warnf("We released volume %d, err[%+v]", vid, err)
-}
+type ReleaseVolume uint8
 
-func (h *Handler) releaseVolumeNormal(ctx context.Context, vid proto.Vid) {
+const (
+	releaseVolumeInvalid = ReleaseVolume(iota)
+	releaseVolumeNormal
+	releaseVolumeSealed
+)
+
+func (h *Handler) releaseVolume(ctx context.Context, vid proto.Vid, tp ReleaseVolume) {
 	span := trace.SpanFromContextSafe(ctx)
-	err := h.allocMgr.Release(ctx, &cmapi.ReleaseVolumes{NormalVids: []proto.Vid{vid}})
-	span.Warnf("We released volume %d, err[%+v]", vid, err)
+	var err error
+	switch tp {
+	case releaseVolumeNormal:
+		err = h.allocMgr.Release(ctx, &cmapi.ReleaseVolumes{NormalVids: []proto.Vid{vid}})
+	case releaseVolumeSealed:
+		err = h.allocMgr.Release(ctx, &cmapi.ReleaseVolumes{SealedVids: []proto.Vid{vid}})
+	}
+	span.Warnf("We released volume %d, type:%d, err[%+v]", vid, tp, err)
 }
 
 func (h *Handler) allocVolume(ctx context.Context, args *proxy.AllocVolsArgs) ([]proxy.AllocRet, error) {

@@ -65,7 +65,6 @@ type APIAccess interface {
 	AllocBid(ctx context.Context, args *BidScopeArgs) (*BidScopeRet, error)
 	RetainVolume(ctx context.Context, args *RetainVolumeArgs) (RetainVolumes, error)
 	ReleaseVolume(ctx context.Context, args *ReleaseVolumes) (err error)
-	SetVolumeSealed(ctx context.Context, args *SetVolumeSealedArgs) (err error)
 }
 
 // APIProxy sub of cluster manager api for allocator

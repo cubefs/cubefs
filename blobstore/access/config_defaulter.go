@@ -21,8 +21,6 @@ const (
 	defaultServicePunishIntervalS int = 60
 	defaultAllocRetryTimes        int = 3
 	defaultAllocRetryIntervalMS   int = 100
-	defaultAllocVolumeNum         int = 4
-	defaultAllocRetainIntervalSec int = 60
 	defaultEncoderConcurrency     int = 1000
 	defaultMinReadShardsX         int = 1
 

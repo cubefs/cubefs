@@ -100,7 +100,7 @@ type ClusterController interface {
 	// ChooseOne returns a available cluster to upload
 	ChooseOne() (*cmapi.ClusterInfo, error)
 	// GetClusterClient returns a cluster client
-	GetClusterClient(clusterID proto.ClusterID) cmapi.APIAccess
+	GetClusterClient(clusterID proto.ClusterID) cmapi.ClientAPI
 	// GetServiceController return ServiceController in specified cluster
 	GetServiceController(clusterID proto.ClusterID) (ServiceController, error)
 	// GetVolumeGetter return VolumeGetter in specified cluster
@@ -270,7 +270,7 @@ func (c *clusterControllerImpl) deal(ctx context.Context, available []*cmapi.Clu
 			continue
 		}
 
-		volumeGetter, err := NewVolumeGetter(clusterID, serviceController, c.proxy, -1)
+		volumeGetter, err := NewVolumeGetter(clusterID, serviceController, cmCli, c.proxy, -1)
 		if err != nil {
 			removeThisCluster()
 			span.Warn("new volume getter failed", clusterID, err)
@@ -344,7 +344,7 @@ func (c *clusterControllerImpl) ChooseOne() (*cmapi.ClusterInfo, error) {
 	return nil, fmt.Errorf("no available cluster by %s", alg.String())
 }
 
-func (c *clusterControllerImpl) GetClusterClient(clusterID proto.ClusterID) cmapi.APIAccess {
+func (c *clusterControllerImpl) GetClusterClient(clusterID proto.ClusterID) cmapi.ClientAPI {
 	allClusters := c.clusters.Load().(clusterMap)
 
 	cm, ok := allClusters[clusterID]

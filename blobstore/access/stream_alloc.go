@@ -136,7 +136,7 @@ func (h *Handler) allocFromAllocator(ctx context.Context, codeMode codemode.Code
 		}
 		allocHost = host
 
-		allocRets, err = h.allocVolume(ctx, args) // TODO up limit volume, manage cache
+		allocRets, err = h.allocVolume(ctx, args)
 		if err != nil {
 			if errorTimeout(err) || errorConnectionRefused(err) {
 				span.Warn("punish unreachable proxy host:", host)

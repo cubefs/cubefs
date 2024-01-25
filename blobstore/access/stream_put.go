@@ -228,8 +228,8 @@ func (h *Handler) writeToBlobnodes(ctx context.Context,
 	writtenNum := uint32(0)
 
 	wg.Add(len(volume.Units))
-	hasBroken := false  // has broken disk, need normal release volume
-	needSealed := false // need sealed release volume
+	// 1: has broken disk, need normal release volume ; 2: need sealed release volume
+	releaseType := releaseVolumeInvalid
 	for i, unitI := range volume.Units {
 		index, unit := i, unitI
 
@@ -294,7 +294,7 @@ func (h *Handler) writeToBlobnodes(ctx context.Context,
 
 				code := rpc.DetectStatusCode(err)
 				if code == errcode.CodeDiskBroken {
-					hasBroken = true
+					releaseType = releaseVolumeNormal
 				}
 				switch code {
 				case errcode.CodeDiskBroken, errcode.CodeDiskNotFound,
@@ -405,13 +405,7 @@ func (h *Handler) writeToBlobnodes(ctx context.Context,
 	}(writeDone)
 
 	defer func() {
-		if hasBroken {
-			go h.releaseVolumeNormal(ctx, vid)
-			return
-		}
-		if needSealed {
-			go h.releaseVolumeSealed(ctx, vid)
-		}
+		go h.releaseVolume(ctx, vid, releaseType)
 	}()
 
 	// return if had quorum successful shards
@@ -457,8 +451,8 @@ func (h *Handler) writeToBlobnodes(ctx context.Context,
 	close(writeDone)
 	err = fmt.Errorf("quorum write failed (%d < %d) of %s", writtenNum, putQuorum, blob.String())
 	// need mark sealed: less than quorum, az fail
-	needSealed = true
-	// TODO optimize accumulated quorum
+	releaseType = releaseVolumeSealed
+	// TODO mw: optimize accumulated quorum
 
 	return
 }

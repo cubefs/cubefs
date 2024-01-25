@@ -45,7 +45,7 @@ var (
 	vid404      = proto.Vid(404)
 	errNotFound = errors.New("not found")
 
-	cmcli    cmapi.APIAccess
+	cmcli    cmapi.ClientAPI
 	proxycli proxy.Cacher
 
 	dataCalled  map[proto.Vid]int

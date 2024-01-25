@@ -220,7 +220,7 @@ type volumeMgr struct {
 
 	BidMgr
 
-	clusterMgr cmapi.APIAccess
+	clusterMgr cmapi.ClientAPI
 	modeInfos  map[codemode.CodeMode]*modeInfo
 	allocChs   map[codemode.CodeMode]chan *allocArgs
 	preIdx     uint64
@@ -256,7 +256,7 @@ type VolumeMgr interface {
 	Release(ctx context.Context, args *cmapi.ReleaseVolumes) error
 }
 
-func NewVolumeMgr(ctx context.Context, conf VolumeMgrConfig, clusterMgr cmapi.APIAccess, stopCh <-chan struct{}) (VolumeMgr, error) {
+func NewVolumeMgr(ctx context.Context, conf VolumeMgrConfig, clusterMgr cmapi.ClientAPI, stopCh <-chan struct{}) (VolumeMgr, error) {
 	span := trace.SpanFromContextSafe(ctx)
 	volConfCheck(&conf.VolConfig)
 	bidMgr, err := NewBidMgr(ctx, conf.BlobConfig, clusterMgr)
@@ -526,7 +526,7 @@ func (v *volumeMgr) allocVolumeLoop(mode codemode.CodeMode) {
 				IsInit:   args.isInit,
 				CodeMode: args.codeMode,
 				Count:    requireCount,
-				NeedSize: 0, // TODO
+				NeedSize: 0, // TODO mw: del?
 			}
 			span.Infof("allocVolumeLoop arguments: %+v, backup: %v", *allocArg, args.isBackup)
 			volumeRets, err := v.allocVolume(ctx, allocArg)
