@@ -3,6 +3,7 @@ package multirate
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"strconv"
 	"strings"
 	"sync"
@@ -11,6 +12,8 @@ import (
 
 const (
 	concurrencySeparator = ","
+
+	controlGetConcurrency = "/multirate/getCon"
 )
 
 type concurrency struct {
@@ -86,6 +89,12 @@ type MultiConcurrency struct {
 
 func NewMultiConcurrency() *MultiConcurrency {
 	return new(MultiConcurrency)
+}
+
+func NewMultiConcurrencyWithHandler() *MultiConcurrency {
+	mc := NewMultiConcurrency()
+	http.HandleFunc(controlGetConcurrency, mc.handlerGetConcurrency)
+	return mc
 }
 
 func (mc *MultiConcurrency) WaitUseDefaultTimeout(ctx context.Context, op int, disk string) error {
@@ -164,10 +173,26 @@ func (mc *MultiConcurrency) updateConcurrency(op int, count uint64, timeout time
 	})
 }
 
+func (mc *MultiConcurrency) getRulesDesc() string {
+	var builder strings.Builder
+	mc.rules.Range(func(k, v interface{}) bool {
+		op := k.(int)
+		rule := v.(*concurrencyRule)
+		builder.WriteString(fmt.Sprintf("op:%v, count:%v, timeout:%v", op, rule.count, rule.timeout))
+		builder.WriteString("\n")
+		return true
+	})
+	return builder.String()
+}
+
 func getConcurrencyKey(op int, disk string) string {
 	var sb strings.Builder
 	sb.WriteString(strconv.Itoa(op))
 	sb.WriteString(concurrencySeparator)
 	sb.WriteString(disk)
 	return sb.String()
+}
+
+func (mc *MultiConcurrency) handlerGetConcurrency(w http.ResponseWriter, r *http.Request) {
+	w.Write([]byte(mc.getRulesDesc()))
 }

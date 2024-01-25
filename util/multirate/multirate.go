@@ -333,7 +333,7 @@ func NewRuleWithTimeout(ps Properties, limit LimitGroup, burst BurstGroup, timeo
 }
 
 func (r *Rule) String() string {
-	return fmt.Sprintf("properties:%v, limit:%v, burst:%v", r.properties, r.limit, r.burst)
+	return fmt.Sprintf("properties:%v, limit:%v, burst:%v, timeout:%v", r.properties, r.limit, r.burst, r.timeout)
 }
 
 func (r *Rule) match(ps Properties) (bool, string) {
