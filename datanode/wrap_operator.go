@@ -667,7 +667,6 @@ func (s *DataNode) handleMarkDeletePacket(p *repl.Packet, c net.Conn) {
 			p.PacketOkReply()
 		}
 	}()
-
 	partition := p.Object.(*DataPartition)
 	// NOTE: we cannot prevent mark delete
 	// even the partition is forbidden, because
@@ -682,6 +681,9 @@ func (s *DataNode) handleMarkDeletePacket(p *repl.Packet, c net.Conn) {
 			partition.disk.allocCheckLimit(proto.IopsWriteType, 1)
 			partition.disk.limitWrite.Run(0, func() {
 				err = partition.ExtentStore().MarkDelete(p.ExtentID, int64(ext.ExtentOffset), int64(ext.Size))
+				if err != nil {
+					log.LogErrorf("action[handleMarkDeletePacket]: failed to mark delete extent(%v), %v", p.ExtentID, err)
+				}
 			})
 		}
 	} else {
@@ -690,6 +692,9 @@ func (s *DataNode) handleMarkDeletePacket(p *repl.Packet, c net.Conn) {
 		partition.disk.allocCheckLimit(proto.IopsWriteType, 1)
 		partition.disk.limitWrite.Run(0, func() {
 			err = partition.ExtentStore().MarkDelete(p.ExtentID, 0, 0)
+			if err != nil {
+				log.LogErrorf("action[handleMarkDeletePacket]: failed to mark delete extent(%v), %v", p.ExtentID, err)
+			}
 		})
 	}
 }
@@ -720,7 +725,13 @@ func (s *DataNode) handleBatchMarkDeletePacket(p *repl.Packet, c net.Conn) {
 				partition.disk.allocCheckLimit(proto.IopsWriteType, 1)
 				partition.disk.limitWrite.Run(0, func() {
 					err = store.MarkDelete(ext.ExtentId, int64(ext.ExtentOffset), int64(ext.Size))
+					if err != nil {
+						log.LogErrorf("action[handleBatchMarkDeletePacket]: failed to mark delete extent(%v), %v", p.ExtentID, err)
+					}
 				})
+				if err != nil {
+					return
+				}
 			} else {
 				log.LogInfof("delete limiter reach(%v), remote (%v) try again.", deleteLimiteRater.Limit(), c.RemoteAddr().String())
 				err = storage.TryAgainError
