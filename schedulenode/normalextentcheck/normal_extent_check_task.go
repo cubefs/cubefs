@@ -452,7 +452,7 @@ func (t *NormalExtentCheckTask) getAllInodeExtents(mpId uint64, leaderAddr strin
 		start          = time.Date(2022, 9, 22, 0, 0, 0, 0, time.Local).Unix()
 		end            = time.Now().Unix()
 		metaHttpClient = meta.NewMetaHttpClient(fmt.Sprintf("%s:%v", strings.Split(leaderAddr, ":")[0],
-			t.masterClient.MetaNodeProfPort), false, false)
+			t.masterClient.MetaNodeProfPort), false)
 		ekCountOverThresholdInodes = make([]*proto.InodeEKCountRecord, 0)
 		muLock        sync.Mutex
 	)

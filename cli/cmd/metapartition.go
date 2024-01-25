@@ -671,7 +671,7 @@ func newMetaPartitionResetCursorCmd(client *master.MasterClient) *cobra.Command 
 			}
 			ip += ":" + strconv.Itoa(int(client.MetaNodeProfPort))
 
-			mtClient := meta.NewMetaHttpClient(ip, false, false)
+			mtClient := meta.NewMetaHttpClient(ip, false)
 			resp, err := mtClient.ResetCursor(partitionID, optCursorResetMode, optNewCursor, optForce)
 			if err != nil {
 				errout("get resp err:%s\n", err.Error())
@@ -723,7 +723,7 @@ func newMetaPartitionListAllInoCmd(client *master.MasterClient) *cobra.Command {
 			}
 			ip += ":" + strconv.Itoa(int(client.MetaNodeProfPort))
 
-			mtClient := meta.NewMetaHttpClient(ip, false, false)
+			mtClient := meta.NewMetaHttpClient(ip, false)
 			resp, err := mtClient.ListAllInodesId(partitionID, optMode, optStTime, optEndTime)
 			if err != nil {
 				errout("get resp err:%s\n", err.Error())
@@ -902,7 +902,12 @@ func newMetaDataChecksum(mc *master.MasterClient) *cobra.Command {
 						return
 					}
 					addr := fmt.Sprintf("%s:%v", hostSplitArr[0], mc.MetaNodeProfPort)
-					metaHttpClient := meta.NewMetaHttpClient(addr, false, proto.IsDbBack)
+					var metaHttpClient *meta.MetaHttpClient
+					if proto.IsDbBack {
+						metaHttpClient = meta.NewDBBackMetaHttpClient(addr, false)
+					} else {
+						metaHttpClient = meta.NewMetaHttpClient(addr, false)
+					}
 					r, e := metaHttpClient.GetMetaDataCrcSum(pid)
 					if e != nil {
 						errCh <- fmt.Errorf("get mp(%v) meta data crc sum from %s failed, error:%v", pid, addr, e)
@@ -1037,7 +1042,12 @@ func newCheckInodeTree(mc *master.MasterClient) *cobra.Command {
 						return
 					}
 					addr := fmt.Sprintf("%s:%v", hostSplitArr[0], mc.MetaNodeProfPort)
-					metaHttpClient := meta.NewMetaHttpClient(addr, false, proto.IsDbBack)
+					var metaHttpClient *meta.MetaHttpClient
+					if proto.IsDbBack {
+						metaHttpClient = meta.NewDBBackMetaHttpClient(addr, false)
+					} else {
+						metaHttpClient = meta.NewMetaHttpClient(addr, false)
+					}
 					var (
 						r *proto.InodesCRCSumInfo
 						e error
@@ -1214,7 +1224,7 @@ func newMetaPartitionInodeInuse(client *master.MasterClient) *cobra.Command {
 
 			ip += ":" + strconv.Itoa(int(client.MetaNodeProfPort))
 
-			mtClient := meta.NewMetaHttpClient(ip, false, false)
+			mtClient := meta.NewMetaHttpClient(ip, false)
 			var inodeInuseBitMap []uint64
 			inodeInuseBitMap, err = mtClient.GetInuseInodes(partitionID)
 			if err != nil {

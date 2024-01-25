@@ -22,10 +22,11 @@ import (
 	"github.com/cubefs/cubefs/convertnode"
 	"github.com/cubefs/cubefs/ecnode"
 	"github.com/cubefs/cubefs/flashnode"
-	"github.com/cubefs/cubefs/schedulenode/checktool"
 	"github.com/cubefs/cubefs/schedulenode/blck"
+	"github.com/cubefs/cubefs/schedulenode/checktool"
 	"github.com/cubefs/cubefs/schedulenode/compact"
 	"github.com/cubefs/cubefs/schedulenode/crcworker"
+	"github.com/cubefs/cubefs/schedulenode/extentdoubleallocatecheck"
 	"github.com/cubefs/cubefs/schedulenode/fsck"
 	"github.com/cubefs/cubefs/schedulenode/mdck"
 	"github.com/cubefs/cubefs/schedulenode/normalextentcheck"
@@ -250,6 +251,9 @@ func run() error {
 	case proto.RoleMetaDataCheck:
 		server = mdck.NewMetaDataCheckWorker()
 		module = proto.ModuleMetaDataCheck
+	case proto.RoleDoubleAllocExtentsCheck:
+		server = extentdoubleallocatecheck.NewExtentDoubleAllocateCheckWorker()
+		module = proto.ModuleDoubleAllocExtentsCheck
 	default:
 		_ = daemonize.SignalOutcome(fmt.Errorf("Fatal: role mismatch: %v", role))
 		return fmt.Errorf("unknown role: %v", role)

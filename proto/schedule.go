@@ -102,6 +102,7 @@ const (
 	WorkerTypeNormalExtentMistakeDelCheck
 	WorkerTypeTinyExtentPunchHoleCheck
 	WorkerTypeMetaDataCrcCheck
+	WorkerTypeExtentDoubleAllocateCheck
 )
 
 var workerTypeMap = map[WorkerType]string{

@@ -474,7 +474,7 @@ func (mp *metaPartition) GetRecoverNodeVersion(nodeID uint64) (metaNodeVersion *
 		recoverNodeInfo.ProfPort = mp.manager.metaNode.profPort
 	}
 
-	metaHttpClient := meta.NewMetaHttpClient(fmt.Sprintf("%s:%s", strings.Split(recoverPeer.Addr, ":")[0], recoverNodeInfo.ProfPort), false, false)
+	metaHttpClient := meta.NewMetaHttpClient(fmt.Sprintf("%s:%s", strings.Split(recoverPeer.Addr, ":")[0], recoverNodeInfo.ProfPort), false)
 	nodeVersionInfo, err = metaHttpClient.GetMetaNodeVersion()
 	if err != nil {
 		err = fmt.Errorf("get node version failed:%v", err)

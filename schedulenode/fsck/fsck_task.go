@@ -205,7 +205,7 @@ func (t *FSCheckTask) getVolumeAllInodeID(endTime int64) (err error) {
 				if !ok {
 					break
 				}
-				metaHttpClient := meta.NewMetaHttpClient(fmt.Sprintf("%s:%v", strings.Split(mp.LeaderAddr, ":")[0], t.masterClient.MetaNodeProfPort), false, false)
+				metaHttpClient := meta.NewMetaHttpClient(fmt.Sprintf("%s:%v", strings.Split(mp.LeaderAddr, ":")[0], t.masterClient.MetaNodeProfPort), false)
 				resp, errGetInode := metaHttpClient.ListAllInodesId(mp.PartitionID, 0, 0, endTime)
 				if errGetInode != nil {
 					log.LogErrorf("GetVolumeAllInodeID get error, task: %v, partitionID: %v, error: %v", t, mp.PartitionID, errGetInode)

@@ -205,7 +205,7 @@ func (t *MetaDataCheckTask) doCheckMetaPartitionMetaData(pid uint64, hosts []str
 					return
 				}
 				addr := fmt.Sprintf("%s:%v", hostSplitArr[0], t.masterClient.MetaNodeProfPort)
-				metaHttpClient := meta.NewMetaHttpClient(addr, false, false)
+				metaHttpClient := meta.NewMetaHttpClient(addr, false)
 				r, e := metaHttpClient.GetMetaDataCrcSum(pid)
 				if e != nil {
 					errCh <- fmt.Errorf("get mp(%v) meta data crc sum from %s failed, error:%v", pid, addr, e)
@@ -269,7 +269,7 @@ func (t *MetaDataCheckTask) doCheckInodeTree(pid uint64, hosts []string) (mismat
 					return
 				}
 				addr := fmt.Sprintf("%s:%v", hostSplitArr[0], t.masterClient.MetaNodeProfPort)
-				metaHttpClient := meta.NewMetaHttpClient(addr, false, false)
+				metaHttpClient := meta.NewMetaHttpClient(addr, false)
 				r, e := metaHttpClient.GetInodesCrcSum(pid)
 				if e != nil {
 					errCh <- fmt.Errorf("get mp(%v) meta data crc sum from %s failed, error:%v", pid, addr, e)
@@ -322,7 +322,7 @@ func (t *MetaDataCheckTask) doCheckMismatchInodes(needCheckMismatchInodes []uint
 					return
 				}
 				addr := fmt.Sprintf("%s:%v", hostSplitArr[0], t.masterClient.MetaNodeProfPort)
-				metaHttpClient := meta.NewMetaHttpClient(addr, false, false)
+				metaHttpClient := meta.NewMetaHttpClient(addr, false)
 				inodeInfo, errGetInode := metaHttpClient.GetInodeInfo(pid, inode)
 				if errGetInode != nil {
 					errCh <- fmt.Errorf("get mp(%v) inode(%v) from %s failed, error:%v", pid, inode, addr, errGetInode)

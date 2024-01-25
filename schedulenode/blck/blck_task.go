@@ -382,7 +382,12 @@ func (t *BlockCheckTask) getExtentsByMPs() (err error) {
 func (t *BlockCheckTask) getExtentsFromMetaPartition(mpId uint64, leaderAddr string, ExtentInfoCh chan *ExtentInfo) (err error) {
 	var resp *proto.MpAllInodesId
 	var retryCnt = 5
-	metaHttpClient := meta.NewMetaHttpClient(fmt.Sprintf("%s:%v", strings.Split(leaderAddr, ":")[0], t.masterClient.MetaNodeProfPort), false, t.masterClient.IsDbBack)
+	var metaHttpClient *meta.MetaHttpClient
+	if t.masterClient.IsDbBack {
+		metaHttpClient = meta.NewDBBackMetaHttpClient(fmt.Sprintf("%s:%v", strings.Split(leaderAddr, ":")[0], t.masterClient.MetaNodeProfPort), false)
+	} else {
+		metaHttpClient = meta.NewMetaHttpClient(fmt.Sprintf("%s:%v", strings.Split(leaderAddr, ":")[0], t.masterClient.MetaNodeProfPort), false)
+	}
 	for retryCnt > 0 {
 		err = nil
 		if t.masterClient.IsDbBack {

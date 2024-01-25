@@ -259,7 +259,7 @@ func (task *ConvertTask) mpReplicasIsConsistent() (ok bool, err error) {
 				return
 			}
 
-			metaHttpClient := meta.NewMetaHttpClient(fmt.Sprintf("%s:%s",strings.Split(nodeAddr, ":")[0], metaNodeInfo.ProfPort), false, false)
+			metaHttpClient := meta.NewMetaHttpClient(fmt.Sprintf("%s:%s",strings.Split(nodeAddr, ":")[0], metaNodeInfo.ProfPort), false)
 			if resp, err = metaHttpClient.GetMetaPartition(task.mpInfo.PartitionID); err != nil {
 				log.LogErrorf("action[mpReplicasIsConsistent] task[%s] get MP[%v] info from meta node[%s] info failed:%v",
 					task.taskName(), task.mpInfo.PartitionID, nodeAddr, err)

@@ -809,7 +809,12 @@ func getExtentsByInodes(inodes []uint64, concurrency uint64, mps []*proto.MetaPa
 		go func() {
 			for ino := range inoCh {
 				mp := locateMpByInode(mps, ino)
-				mtClient := meta.NewMetaHttpClient(fmt.Sprintf("%v:%v", strings.Split(mp.LeaderAddr, ":")[0], client.MetaNodeProfPort), false, proto.IsDbBack)
+				var mtClient *meta.MetaHttpClient
+				if proto.IsDbBack {
+					mtClient = meta.NewDBBackMetaHttpClient(fmt.Sprintf("%v:%v", strings.Split(mp.LeaderAddr, ":")[0], client.MetaNodeProfPort), false)
+				} else {
+					mtClient = meta.NewMetaHttpClient(fmt.Sprintf("%v:%v", strings.Split(mp.LeaderAddr, ":")[0], client.MetaNodeProfPort), false)
+				}
 				re, tmpErr := mtClient.GetExtentKeyByInodeId(mp.PartitionID, ino)
 				if tmpErr != nil {
 					err = fmt.Errorf("get extents from inode err: %v, inode: %d", tmpErr, ino)

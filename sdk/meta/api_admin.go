@@ -55,8 +55,12 @@ type MetaHttpClient struct {
 }
 
 // NewMasterHelper returns a new MasterClient instance.
-func NewMetaHttpClient(host string, useSSL, isDBBack bool) *MetaHttpClient {
-	return &MetaHttpClient{host: host, useSSL: useSSL, isDBBack: isDBBack}
+func NewMetaHttpClient(host string, useSSL bool) *MetaHttpClient {
+	return &MetaHttpClient{host: host, useSSL: useSSL, isDBBack: false}
+}
+
+func NewDBBackMetaHttpClient(host string, useSSL bool) *MetaHttpClient {
+	return &MetaHttpClient{host: host, useSSL: useSSL, isDBBack: true}
 }
 
 func (c *MetaHttpClient) serveRequest(r *request) (respData []byte, err error) {

@@ -2143,7 +2143,7 @@ func getExtentsFromMetaPartition(mpId uint64, leaderAddr string, ExtentInfoCh ch
 		return fmt.Errorf("error leader addr(%s)", leaderAddr)
 	}
 	host := leaderInfo[0] + ":" + strconv.Itoa(int(client.MetaNodeProfPort))
-	metaHttpClient := meta.NewMetaHttpClient(host, false, false)
+	metaHttpClient := meta.NewMetaHttpClient(host, false)
 	var (
 		inodesID    []uint64
 		allInodeIDs *proto.MpAllInodesId
