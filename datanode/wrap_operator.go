@@ -681,7 +681,7 @@ func (s *DataNode) handleMarkDeletePacket(p *repl.Packet, c net.Conn) {
 				p.PartitionID, p.ExtentID, ext.ExtentOffset, ext.Size)
 			partition.disk.allocCheckLimit(proto.IopsWriteType, 1)
 			partition.disk.limitWrite.Run(0, func() {
-				partition.ExtentStore().MarkDelete(p.ExtentID, int64(ext.ExtentOffset), int64(ext.Size))
+				err = partition.ExtentStore().MarkDelete(p.ExtentID, int64(ext.ExtentOffset), int64(ext.Size))
 			})
 		}
 	} else {
@@ -689,7 +689,7 @@ func (s *DataNode) handleMarkDeletePacket(p *repl.Packet, c net.Conn) {
 			p.PartitionID, p.ExtentID)
 		partition.disk.allocCheckLimit(proto.IopsWriteType, 1)
 		partition.disk.limitWrite.Run(0, func() {
-			partition.ExtentStore().MarkDelete(p.ExtentID, 0, 0)
+			err = partition.ExtentStore().MarkDelete(p.ExtentID, 0, 0)
 		})
 	}
 }
@@ -719,7 +719,7 @@ func (s *DataNode) handleBatchMarkDeletePacket(p *repl.Packet, c net.Conn) {
 				log.LogInfof(fmt.Sprintf("recive DeleteExtent (%v) from (%v)", ext, c.RemoteAddr().String()))
 				partition.disk.allocCheckLimit(proto.IopsWriteType, 1)
 				partition.disk.limitWrite.Run(0, func() {
-					store.MarkDelete(ext.ExtentId, int64(ext.ExtentOffset), int64(ext.Size))
+					err = store.MarkDelete(ext.ExtentId, int64(ext.ExtentOffset), int64(ext.Size))
 				})
 			} else {
 				log.LogInfof("delete limiter reach(%v), remote (%v) try again.", deleteLimiteRater.Limit(), c.RemoteAddr().String())
