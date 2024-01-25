@@ -306,6 +306,8 @@ func (p *Packet) identificationErrorResultCode(errLog string, errMsg string) {
 		p.ResultCode = proto.OpNotExistErr
 	} else if strings.Contains(errMsg, storage.NoSpaceError.Error()) {
 		p.ResultCode = proto.OpDiskNoSpaceErr
+	} else if strings.Contains(errMsg, storage.BrokenDiskError.Error()) {
+		p.ResultCode = proto.OpDiskErr
 	} else if strings.Contains(errMsg, storage.TryAgainError.Error()) {
 		p.ResultCode = proto.OpAgain
 	} else if strings.Contains(errMsg, raft.ErrNotLeader.Error()) {

@@ -508,14 +508,25 @@ func (s *ExtentStore) MarkDelete(extentID uint64, offset, size int64) (err error
 		return
 	}
 	extentFilePath := path.Join(s.dataPath, strconv.FormatUint(extentID, 10))
-	if err = os.Remove(extentFilePath); err != nil {
+	log.LogDebugf("action[MarkDelete] extentID %v offset %v size %v ei(size %v extentFilePath %v)",
+		extentID, offset, size, ei.Size, extentFilePath)
+	if err = os.Remove(extentFilePath); err != nil && !os.IsNotExist(err) {
+		// NOTE: if remove failed
+		// we meet a disk error
+		err = BrokenDiskError
 		return
 	}
-	s.PersistenceHasDeleteExtent(extentID)
+	if err = s.PersistenceHasDeleteExtent(extentID); err != nil {
+		err = BrokenDiskError
+		return
+	}
 	ei.IsDeleted = true
 	ei.ModifyTime = time.Now().Unix()
 	s.cache.Del(extentID)
-	s.DeleteBlockCrc(extentID)
+	if err = s.DeleteBlockCrc(extentID); err != nil {
+		err = BrokenDiskError
+		return
+	}
 	s.PutNormalExtentToDeleteCache(extentID)
 
 	s.eiMutex.Lock()
