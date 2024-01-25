@@ -21,7 +21,6 @@ import (
 	"github.com/afex/hystrix-go/hystrix"
 
 	"github.com/cubefs/cubefs/blobstore/api/access"
-	cmapi "github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/api/proxy"
 	"github.com/cubefs/cubefs/blobstore/common/codemode"
 	errcode "github.com/cubefs/cubefs/blobstore/common/errors"
@@ -106,14 +105,10 @@ func (h *Handler) allocFromAllocator(ctx context.Context, codeMode codemode.Code
 		clusterID = clusterChosen.ClusterID
 	}
 
-	args := &proxy.AllocVolsV2Args{
+	args := &proxy.AllocVolsArgs{
+		Fsize:    size,
+		CodeMode: codeMode,
 		BidCount: blobCount(size, blobSize),
-		AllocVolumeV2Args: cmapi.AllocVolumeV2Args{
-			IsInit:   true,
-			CodeMode: codeMode,
-			NeedSize: size,
-			Count:    1, // h.AllocConfig.AllocVolumeNum,
-		},
 	}
 
 	var allocRets []proxy.AllocRet

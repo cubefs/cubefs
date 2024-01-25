@@ -30,6 +30,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/api/proxy"
 	"github.com/cubefs/cubefs/blobstore/common/codemode"
 	"github.com/cubefs/cubefs/blobstore/common/ec"
+	errcode "github.com/cubefs/cubefs/blobstore/common/errors"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/resourcepool"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
@@ -485,14 +486,12 @@ func (h *Handler) releaseVolumeNormal(ctx context.Context, vid proto.Vid) {
 	span.Warnf("We released volume %d, err[%+v]", vid, err)
 }
 
-func (h *Handler) allocVolume(ctx context.Context, args *proxy.AllocVolsV2Args) ([]proxy.AllocRet, error) {
-	args2 := &proxy.AllocVolsV2Args{
-		Fsize:             args.NeedSize,
-		BidCount:          args.BidCount,
-		AllocVolumeV2Args: args.AllocVolumeV2Args,
+func (h *Handler) allocVolume(ctx context.Context, args *proxy.AllocVolsArgs) ([]proxy.AllocRet, error) {
+	if args.BidCount == 0 || args.Fsize == 0 {
+		return nil, errcode.ErrIllegalArguments
 	}
 
-	return h.allocMgr.Alloc(ctx, args2)
+	return h.allocMgr.Alloc(ctx, args)
 }
 
 // blobCount blobSize > 0 is certain

@@ -10,7 +10,6 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/trace"
 )
 
-// TODO move
 type AllocRet struct {
 	BidStart proto.BlobID `json:"bid_start"`
 	BidEnd   proto.BlobID `json:"bid_end"`
@@ -34,7 +33,7 @@ type VolumeMgrConf struct {
 
 type volumeMgrImpl struct {
 	conf      VolumeMgrConf
-	volumeLck sync.RWMutex // TODO
+	volumeLck sync.RWMutex // lock volumes map
 	volumes   map[proto.Vid]*cmapi.AllocVolumeInfo
 	cmClient  cmapi.APIAccess
 	stopCh    <-chan struct{}
