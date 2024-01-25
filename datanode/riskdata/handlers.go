@@ -168,6 +168,7 @@ func (p *Fixer) fixByFastTrustPolicy(hosts []string, hat proto.CrossRegionHAType
 			log.LogDebugf("Fixer[%v] fetched remote data %v: host=%v, bytes=%v, rejected=%v, error=%v, elapsed=%v", p.partitionID, fragment, host, n, rejected, err, time.Now().Sub(start))
 		}
 		if err != nil {
+			failures++
 			continue
 		}
 		if rejected {
