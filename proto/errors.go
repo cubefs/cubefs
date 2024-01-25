@@ -90,6 +90,7 @@ var (
 	ErrNoAclPermission                         = errors.New("acl no permission")
 	ErrQuotaNotExists                          = errors.New("quota not exists")
 	ErrVolNotDelete                            = errors.New("vol was not previously deleted or already deleted")
+	ErrVolHasDeleted                           = errors.New("vol has been deleted")
 )
 
 // http response error code and error message definitions
@@ -102,6 +103,7 @@ const (
 	ErrCodeMarshalData
 	ErrCodeUnmarshalData
 	ErrCodeVolNotExists
+	ErrCodeVolHasDeleted
 	ErrCodeVolNotDelete
 	ErrCodeMetaPartitionNotExists
 	ErrCodeDataPartitionNotExists
@@ -287,6 +289,7 @@ var code2ErrMap = map[int32]error{
 	ErrCodeIsOwner:                         ErrIsOwner,
 	ErrCodeZoneNumError:                    ErrZoneNum,
 	ErrCodeVolNotDelete:                    ErrVolNotDelete,
+	ErrCodeVolHasDeleted:                   ErrVolHasDeleted,
 }
 
 type GeneralResp struct {
