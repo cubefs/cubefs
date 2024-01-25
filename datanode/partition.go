@@ -475,7 +475,10 @@ func (dp *DataPartition) Stop() {
 		// Close the store and raftstore.
 		dp.stopRaft()
 		dp.extentStore.Close()
-		_ = dp.storeAppliedID(atomic.LoadUint64(&dp.appliedID))
+		err := dp.storeAppliedID(atomic.LoadUint64(&dp.appliedID))
+		if err != nil {
+			log.LogErrorf("action[Stop]: failed to store applied index")
+		}
 	})
 }
 

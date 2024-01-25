@@ -91,6 +91,7 @@ func (mp *metaPartition) updateVolWorker() {
 				Status:      view.DataPartitions[i].Status,
 				Hosts:       view.DataPartitions[i].Hosts,
 				ReplicaNum:  view.DataPartitions[i].ReplicaNum,
+				IsDiscard:   view.DataPartitions[i].IsDiscard,
 			}
 		}
 		return newView
@@ -157,6 +158,7 @@ func (mp *metaPartition) deleteWorker() {
 			if ino == 0 {
 				break
 			}
+			log.LogDebugf("action[deleteWorker]: remove inode(%v)", ino)
 
 			// check inode nlink == 0 and deleteMarkFlag unset
 			if inode, ok := mp.inodeTree.Get(&Inode{Inode: ino}).(*Inode); ok {
@@ -196,14 +198,20 @@ func (mp *metaPartition) batchDeleteExtentsByPartition(partitionDeleteExtents ma
 
 	// wait all Partition do BatchDeleteExtents finish
 	for partitionID, extents := range partitionDeleteExtents {
+		dp := mp.vol.GetPartition(partitionID)
+		// NOTE: if dp is discard, skip it
+		if dp.IsDiscard {
+			log.LogWarnf("action[batchDeleteExtentsByPartition] dp(%v) is discard, skip extents count(%v)", partitionID, len(extents))
+			continue
+		}
 		log.LogDebugf("batchDeleteExtentsByPartition partitionID %v extents %v", partitionID, extents)
 		wg.Add(1)
 		go func(partitionID uint64, extents []*proto.ExtentKey) {
+			defer wg.Done()
 			perr := mp.doBatchDeleteExtentsByPartition(partitionID, extents)
 			lock.Lock()
 			occurErrors[partitionID] = perr
 			lock.Unlock()
-			wg.Done()
 		}(partitionID, extents)
 	}
 	wg.Wait()
@@ -213,18 +221,19 @@ func (mp *metaPartition) batchDeleteExtentsByPartition(partitionDeleteExtents ma
 		successDeleteExtentCnt := 0
 		inode := allInodes[i]
 		inode.Extents.Range(func(ek proto.ExtentKey) bool {
-			if occurErrors[ek.PartitionId] == nil {
-				successDeleteExtentCnt++
-				return true
-			} else {
+			if occurErrors[ek.PartitionId] != nil {
 				log.LogWarnf("deleteInode inode[%v] error(%v)", inode.Inode, occurErrors[ek.PartitionId])
 				return false
 			}
+			successDeleteExtentCnt++
+			return true
 		})
 		if successDeleteExtentCnt == inode.Extents.Len() {
 			shouldCommit = append(shouldCommit, inode)
+			log.LogDebugf("action[batchDeleteExtentsByPartition]: delete inode(%v) success", inode)
 		} else {
 			shouldPushToFreeList = append(shouldPushToFreeList, inode)
+			log.LogDebugf("action[batchDeleteExtentsByPartition]: delete inode(%v) fail", inode)
 		}
 	}
 
@@ -371,6 +380,7 @@ func (mp *metaPartition) notifyRaftFollowerToFreeInodes(wg *sync.WaitGroup, targ
 func (mp *metaPartition) doDeleteMarkedInodes(ext *proto.ExtentKey) (err error) {
 	// get the data node view
 	dp := mp.vol.GetPartition(ext.PartitionId)
+	log.LogDebugf("action[doDeleteMarkedInodes] dp(%v) status (%v)", dp.PartitionID, dp.Status)
 	if dp == nil {
 		if proto.IsCold(mp.volType) {
 			log.LogInfof("[doDeleteMarkedInodes] ext(%s) is already been deleted, not delete any more", ext.String())
@@ -386,6 +396,11 @@ func (mp *metaPartition) doDeleteMarkedInodes(ext *proto.ExtentKey) (err error) 
 	if len(dp.Hosts) < 1 {
 		log.LogErrorf("doBatchDeleteExtentsByPartition dp id(%v) is invalid, detail[%v]", ext.PartitionId, dp)
 		err = errors.NewErrorf("dp id(%v) is invalid", ext.PartitionId)
+		return
+	}
+	// NOTE: if all replicas in dp is dead
+	// skip send request to dp leader
+	if dp.Status == proto.Unavailable {
 		return
 	}
 	addr := util.ShiftAddrPort(dp.Hosts[0], smuxPortShift)
