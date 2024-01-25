@@ -1729,6 +1729,31 @@ func (m *metadataManager) opMetaGetXAttr(conn net.Conn, p *Packet, remoteAddr st
 	return
 }
 
+func (m *metadataManager) opMetaLockDir(conn net.Conn, p *Packet, remoteAddr string) (err error) {
+	req := &proto.LockDirRequest{}
+	if err = json.Unmarshal(p.Data, req); err != nil {
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		m.respondToClient(conn, p)
+		err = errors.NewErrorf("[%v] req: %v, resp: %v", p.GetOpMsgWithReqAndResult(), req, err.Error())
+		return
+	}
+	mp, err := m.getPartition(req.PartitionId)
+	if err != nil {
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		m.respondToClient(conn, p)
+		err = errors.NewErrorf("[%v] req: %v, resp: %v", p.GetOpMsgWithReqAndResult(), req, err.Error())
+		return
+	}
+	if !mp.IsFollowerRead() && !m.serveProxy(conn, mp, p) {
+		return
+	}
+	err = mp.LockDir(req, p)
+	_ = m.respondToClient(conn, p)
+	log.LogDebugf("%s [opMetaLockDir] req: %d - %v, resp: %v, body: %s",
+		remoteAddr, p.GetReqID(), req, p.GetResultMsg(), p.Data)
+	return
+}
+
 func (m *metadataManager) opMetaGetAllXAttr(conn net.Conn, p *Packet, remoteAddr string) (err error) {
 	req := &proto.GetAllXAttrRequest{}
 	if err = json.Unmarshal(p.Data, req); err != nil {

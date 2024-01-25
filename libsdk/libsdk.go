@@ -259,6 +259,98 @@ type client struct {
 	mu   sync.Mutex
 }
 
+//export cfs_get_dir_lock
+func cfs_get_dir_lock(id C.int64_t, path *C.char, lock_id *C.int64_t, valid_time **C.char) C.int {
+	c, exist := getClient(int64(id))
+	if !exist {
+		return statusEINVAL
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	log.LogDebugf("cfs_get_dir_lock begin path(%s)\n", c.absPath(C.GoString(path)))
+
+	info, err := c.lookupPath(c.absPath(C.GoString(path)))
+	if err != nil {
+		return errorToStatus(err)
+	}
+
+	ino := info.Inode
+	dir_lock, err := c.getDirLock(ino)
+	if err != nil {
+		log.LogErrorf("getDirLock failed, path(%s) ino(%v) err(%v)", c.absPath(C.GoString(path)), ino, err)
+		return errorToStatus(err)
+	}
+	if len(dir_lock) == 0 {
+		log.LogDebugf("dir(%s) is not locked\n", c.absPath(C.GoString(path)))
+		return errorToStatus(syscall.ENOENT)
+	}
+
+	parts := strings.Split(string(dir_lock), "|")
+	lockIdStr := parts[0]
+	lease := parts[1]
+	lockId, _ := strconv.Atoi(lockIdStr)
+	*lock_id = C.int64_t(lockId)
+	*valid_time = C.CString(lease)
+
+	log.LogDebugf("cfs_get_dir_lock end path(%s) lock_id(%d) lease(%s)\n", c.absPath(C.GoString(path)), lockId, lease)
+	return statusOK
+}
+
+//export cfs_lock_dir
+func cfs_lock_dir(id C.int64_t, path *C.char, lease C.uint64_t, lockId C.int64_t) C.int64_t {
+	c, exist := getClient(int64(id))
+	if !exist {
+		return C.int64_t(statusEINVAL)
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	dirpath := c.absPath(C.GoString(path))
+
+	log.LogDebugf("cfs_lock_dir path(%s) lease(%d) lockId(%d)\n", dirpath, lease, lockId)
+
+	info, err := c.lookupPath(dirpath)
+	if err != nil {
+		log.LogErrorf("cfs_lock_dir lookupPath failed, err%v\n", err)
+		return C.int64_t(errorToStatus(err))
+	}
+
+	ino := info.Inode
+	retLockId, err := c.lockDir(ino, uint64(lease), int64(lockId))
+	if err != nil {
+		log.LogErrorf("cfs_lock_dir failed, dir(%s) ino(%v) err(%v)", dirpath, ino, err)
+		return C.int64_t(errorToStatus(err))
+	}
+
+	log.LogDebugf("cfs_lock_dir success dir(%s) ino(%v) retLockId(%d)\n", dirpath, ino, retLockId)
+	return C.int64_t(retLockId)
+}
+
+//export cfs_unlock_dir
+func cfs_unlock_dir(id C.int64_t, path *C.char) C.int {
+	c, exist := getClient(int64(id))
+	if !exist {
+		return statusEINVAL
+	}
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	info, err := c.lookupPath(c.absPath(C.GoString(path)))
+	if err != nil {
+		return errorToStatus(err)
+	}
+
+	ino := info.Inode
+	if err = c.unlockDir(ino); err != nil {
+		log.LogErrorf("unlockDir failed, ino(%v) err(%v)", ino, err)
+		return errorToStatus(err)
+	}
+
+	return statusOK
+}
+
 //export cfs_new_client
 func cfs_new_client() C.int64_t {
 	c := newClient()
@@ -1383,6 +1475,25 @@ func (c *client) lookupPath(path string) (*proto.InodeInfo, error) {
 	c.ic.Put(info)
 
 	return info, nil
+}
+
+func (c *client) lockDir(ino uint64, lease uint64, lockId int64) (retLockId int64, err error) {
+	return c.mw.LockDir(ino, lease, lockId)
+}
+
+func (c *client) unlockDir(ino uint64) error {
+	return c.mw.XAttrDel_ll(ino, "dir_lock")
+}
+
+func (c *client) getDirLock(ino uint64) ([]byte, error) {
+	info, err := c.mw.XAttrGet_ll(ino, "dir_lock")
+	if err != nil {
+		log.LogErrorf("getDirLock failed, ino(%v) err(%v)", ino, err)
+		return []byte(""), err
+	}
+	value := info.Get("dir_lock")
+	log.LogDebugf("getDirLock success, ino(%v) value(%s)", ino, string(value))
+	return value, nil
 }
 
 func (c *client) setattr(info *proto.InodeInfo, valid uint32, mode, uid, gid uint32, atime, mtime int64) error {

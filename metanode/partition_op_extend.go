@@ -18,6 +18,7 @@ import (
 	"encoding/json"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/cubefs/cubefs/proto"
 )
@@ -219,5 +220,31 @@ func (mp *metaPartition) putExtend(op uint32, extend *Extend) (resp interface{},
 		return
 	}
 	resp, err = mp.submit(op, marshaled)
+	return
+}
+
+func (mp *metaPartition) LockDir(req *proto.LockDirRequest, p *Packet) (err error) {
+	req.SubmitTime = time.Now()
+	val, err := json.Marshal(req)
+	if err != nil {
+		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+		return err
+	}
+
+	r, err := mp.submit(opFSMLockDir, val)
+	if err != nil {
+		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+		return err
+	}
+
+	resp := r.(*proto.LockDirResponse)
+	status := resp.Status
+	var reply []byte
+	reply, err = json.Marshal(resp)
+	if err != nil {
+		status = proto.OpErr
+		reply = []byte(err.Error())
+	}
+	p.PacketErrorWithBody(status, reply)
 	return
 }

@@ -923,3 +923,17 @@ type GetUniqIDRequest struct {
 type GetUniqIDResponse struct {
 	Start uint64 `json:"start"`
 }
+
+type LockDirRequest struct {
+	VolName     string    `json:"vol"`
+	PartitionId uint64    `json:"pid"`
+	Inode       uint64    `json:"ino"`
+	LockId      int64     `json:"lockId"`
+	Lease       uint64    `json:"lease"`
+	SubmitTime  time.Time `json:"submitTime"`
+}
+
+type LockDirResponse struct {
+	LockId int64 `json:"lockId"`
+	Status uint8 `json:"status"`
+}

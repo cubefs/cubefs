@@ -2770,3 +2770,57 @@ func (mw *MetaWrapper) getUniqID(mp *MetaPartition, num uint32) (status int, sta
 	start = resp.Start
 	return
 }
+
+func (mw *MetaWrapper) lockDir(mp *MetaPartition, inode uint64, lease uint64, lockId int64) (retLockId int64, err error) {
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat("lockDir", err, bgTime, 1)
+	}()
+
+	req := &proto.LockDirRequest{
+		VolName:     mw.volname,
+		PartitionId: mp.PartitionID,
+		Inode:       inode,
+		LockId:      lockId,
+		Lease:       lease,
+	}
+
+	packet := proto.NewPacketReqID()
+	packet.Opcode = proto.OpMetaLockDir
+	packet.PartitionID = mp.PartitionID
+	err = packet.MarshalData(req)
+	if err != nil {
+		log.LogErrorf("lockDir: matshal packet fail, err(%v)", err)
+		return
+	}
+
+	metric := exporter.NewTPCnt(packet.GetOpMsg())
+	defer func() {
+		metric.SetWithLabels(err, map[string]string{exporter.Vol: mw.volname})
+	}()
+
+	packet, err = mw.sendToMetaPartition(mp, packet)
+	if err != nil {
+		log.LogErrorf("lockDir: send to partition fail, packet(%v) mp(%v) req(%v) err(%v)",
+			packet, mp, *req, err)
+		return
+	}
+
+	status := parseStatus(packet.ResultCode)
+	if status != statusOK {
+		err = statusToErrno(status)
+		log.LogErrorf("lockDir: received fail status, packet(%v) mp(%v) req(%v) result(%v) err(%v)", packet, mp, *req, packet.GetResultMsg(), err)
+		return
+	}
+
+	resp := new(proto.LockDirResponse)
+	err = packet.UnmarshalData(resp)
+	if err != nil {
+		log.LogErrorf("lockDir: packet(%v) mp(%v) err(%v) PacketData(%v)", packet, mp, err, string(packet.Data))
+		return
+	}
+	retLockId = resp.LockId
+
+	log.LogDebugf("lockDir: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
+	return
+}
