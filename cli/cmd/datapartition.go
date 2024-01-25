@@ -40,6 +40,7 @@ func newDataPartitionCmd(client *master.MasterClient) *cobra.Command {
 		newDataPartitionReplicateCmd(client),
 		newDataPartitionDeleteReplicaCmd(client),
 		newDataPartitionGetDiscardCmd(client),
+		newDataPartitionSetDiscardCmd(client),
 	)
 	return cmd
 }
@@ -51,6 +52,7 @@ const (
 	cmdDataPartitionReplicateShort     = "Add a replication of the data partition on a new address"
 	cmdDataPartitionDeleteReplicaShort = "Delete a replication of the data partition on a fixed address"
 	cmdDataPartitionGetDiscardShort    = "Display all discard data partitions"
+	cmdDataPartitionSetDiscardShort    = "Set discard flag for data partition"
 )
 
 func newDataPartitionGetCmd(client *master.MasterClient) *cobra.Command {
@@ -87,10 +89,10 @@ func newListCorruptDataPartitionCmd(client *master.MasterClient) *cobra.Command 
 	var cmd = &cobra.Command{
 		Use:   CliOpCheck,
 		Short: cmdCheckCorruptDataPartitionShort,
-		Long: `If the data nodes are marked as "Inactive", it means the nodes has been not available for a time. It is suggested to 
-eliminate the network, disk or other problems first. Once the bad nodes can never be "active", they are called corrupt 
+		Long: `If the data nodes are marked as "Inactive", it means the nodes has been not available for a time. It is suggested to
+eliminate the network, disk or other problems first. Once the bad nodes can never be "active", they are called corrupt
 nodes. The "decommission" command can be used to discard the corrupt nodes. However, if more than half replicas of
-a partition are on the corrupt nodes, the few remaining replicas can not reach an agreement with one leader. In this case, 
+a partition are on the corrupt nodes, the few remaining replicas can not reach an agreement with one leader. In this case,
 you can use the "reset" command to fix the problem.The "reset" command may lead to data loss, be careful to do this.
 The "reset" command will be released in next version`,
 		Run: func(cmd *cobra.Command, args []string) {
@@ -378,6 +380,41 @@ func newDataPartitionGetDiscardCmd(client *master.MasterClient) *cobra.Command {
 			for _, partition := range infos.DiscardDps {
 				stdout("%v\n", formatDataPartitionInfoRow(&partition))
 			}
+		},
+	}
+	return cmd
+}
+
+func newDataPartitionSetDiscardCmd(client *master.MasterClient) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   CliOpSetDiscard + " [DATA PARTITION ID] [DISCARD]",
+		Short: cmdDataPartitionSetDiscardShort,
+		Args:  cobra.MinimumNArgs(2),
+		Run: func(cmd *cobra.Command, args []string) {
+			var (
+				err     error
+				dpId    uint64
+				discard bool
+			)
+
+			defer func() {
+				if err != nil {
+					errout("Error: %v\n", err)
+				}
+			}()
+
+			dpId, err = strconv.ParseUint(args[0], 10, 64)
+			if err != nil {
+				return
+			}
+			discard, err = strconv.ParseBool(args[1])
+			if err != nil {
+				return
+			}
+			if err = client.AdminAPI().SetDataPartitionDiscard(dpId, discard); err != nil {
+				return
+			}
+			stdout("Discard %v successful", dpId)
 		},
 	}
 	return cmd
