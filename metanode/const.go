@@ -176,6 +176,8 @@ const (
 	opFSMUniqCheckerEvict    = 65
 	opFSMUnlinkInodeOnce     = 66
 	opFSMCreateLinkInodeOnce = 67
+	// dir lock
+	opFSMLockDir = 68
 )
 
 var (
