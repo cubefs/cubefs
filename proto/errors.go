@@ -91,6 +91,7 @@ var (
 	ErrNoAclPermission                         = errors.New("acl no permission")
 	ErrQuotaNotExists                          = errors.New("quota not exists")
 	ErrVolNotDelete                            = errors.New("vol was not previously deleted or already deleted")
+	ErrVolHasDeleted                           = errors.New("vol has been deleted")
 	ErrCodeVersionOp                           = errors.New("version op failed")
 	ErrNoSuchLifecycleConfiguration            = errors.New("The lifecycle configuration does not exist")
 	ErrNoNodeSetToUpdateDecommissionDiskFactor = errors.New("no node set available for updating decommission disk factor")
@@ -110,6 +111,7 @@ const (
 	ErrCodeMarshalData
 	ErrCodeUnmarshalData
 	ErrCodeVolNotExists
+	ErrCodeVolHasDeleted
 	ErrCodeVolNotDelete
 	ErrCodeMetaPartitionNotExists
 	ErrCodeDataPartitionNotExists
@@ -304,6 +306,7 @@ var code2ErrMap = map[int32]error{
 	ErrCodeVersionOpError:                  ErrCodeVersionOp,
 	ErrCodeNodeSetNotExists:                ErrNodeSetNotExists,
 	ErrCodeVolNotDelete:                    ErrVolNotDelete,
+	ErrCodeVolHasDeleted:                   ErrVolHasDeleted,
 }
 
 type GeneralResp struct {
