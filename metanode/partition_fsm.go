@@ -284,6 +284,12 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 			return
 		}
 		err = mp.fsmSetXAttr(extend)
+	case opFSMLockDir:
+		var req = &proto.LockDirRequest{}
+		if err = json.Unmarshal(msg.V, req); err != nil {
+			return
+		}
+		resp = mp.fsmLockDir(req)
 	case opFSMCreateMultipart:
 		var multipart *Multipart
 		multipart = MultipartFromBytes(msg.V)

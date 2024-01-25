@@ -100,6 +100,7 @@ const (
 	OpMetaBatchGetXAttr      uint8 = 0x39
 	OpMetaExtentAddWithCheck uint8 = 0x3A // Append extent key with discard extents check
 	OpMetaReadDirLimit       uint8 = 0x3D
+	OpMetaLockDir            uint8 = 0x3E
 
 	// Operations: Master -> MetaNode
 	OpCreateMetaPartition           uint8 = 0x40
