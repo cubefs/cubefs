@@ -605,6 +605,17 @@ func (api *AdminAPI) GetDiscardDataPartition() (discardDpInfos *proto.DiscardDat
 	return
 }
 
+func (api *AdminAPI) SetDataPartitionDiscard(partitionId uint64, discard bool) (err error) {
+	request := newRequest(post, proto.AdminSetDpDiscard).
+		Header(api.h).
+		addParam("id", strconv.FormatUint(partitionId, 10)).
+		addParam("dpDiscard", strconv.FormatBool(discard))
+	if err = api.mc.request(request); err != nil {
+		return
+	}
+	return
+}
+
 func (api *AdminAPI) DeleteVersion(volName string, verSeq string) (err error) {
 	request := newRequest(get, proto.AdminDelVersion).Header(api.h)
 	request.addParam("name", volName)
