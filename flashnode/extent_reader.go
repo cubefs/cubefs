@@ -110,10 +110,11 @@ func readFromDataPartition(addr string, reqPacket *proto.Packet, afterReadFunc c
 }
 
 func getReadReply(conn *net.TCPConn, reqPacket *proto.Packet, afterReadFunc cachengine.ReadExtentAfter) (readBytes int, err error) {
-	buf, bufErr := proto.Buffers.Get(util.ReadBlockSize)
+	// todo: add cache block size buffer
+	buf, bufErr := proto.Buffers.Get(int(reqPacket.Size))
 	defer func() {
 		if bufErr == nil {
-			proto.Buffers.Put(buf[:util.ReadBlockSize])
+			proto.Buffers.Put(buf)
 		}
 		if err != nil {
 			log.LogWarnf("getReadReply: req(%v) readBytes(%v) err(%v)", reqPacket, readBytes, err)
