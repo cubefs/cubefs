@@ -2377,6 +2377,11 @@ func (c *Cluster) updateDataNodeSize(addr string, dp *DataPartition) error {
 }
 
 func (c *Cluster) returnDataSize(addr string, dp *DataPartition) {
+	//TODO:chihe debug
+	if len(dp.Replicas) == 0 {
+		log.LogErrorf("returnDataSize dp(%v) has no replicas", dp.PartitionID)
+		return
+	}
 	leaderSize := dp.Replicas[0].Used
 	dataNode, err := c.dataNode(addr)
 	if err != nil {
