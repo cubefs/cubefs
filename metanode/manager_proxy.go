@@ -112,6 +112,7 @@ func (m *metadataManager) serveProxy(conn net.Conn, mp MetaPartition,
 			m.connPool.PutConnect(mConn, ForceClosedConnect)
 			goto end
 		}
+		m.connPool.PutConnect(mConn, NoClosedConnect)
 		break
 	}
 
@@ -119,7 +120,6 @@ func (m *metadataManager) serveProxy(conn net.Conn, mp MetaPartition,
 		log.LogErrorf("serveProxy: send and received packet mismatch: req(%v_%v) resp(%v_%v)",
 			reqID, reqOp, p.ReqID, p.Opcode)
 	}
-	m.connPool.PutConnect(mConn, NoClosedConnect)
 end:
 	if needTryToLeader {
 		p.PacketErrorWithBody(proto.OpErr, []byte(fmt.Sprintf("proxy to leader[%s] err:%v, try to leader", leaderAddr, err)))
