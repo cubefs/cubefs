@@ -27,6 +27,7 @@ type DataPartition struct {
 	ReplicaNum    uint8
 	PartitionType string
 	Hosts         []string
+	IsDiscard     bool
 }
 
 // GetAllAddrs returns all addresses of the data partition.
