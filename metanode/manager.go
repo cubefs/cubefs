@@ -279,6 +279,9 @@ func (m *metadataManager) HandleMetadataOperation(conn net.Conn, p *Packet, remo
 		err = m.opMetaListXAttr(conn, p, remoteAddr)
 	case proto.OpMetaUpdateXAttr:
 		err = m.opMetaUpdateXAttr(conn, p, remoteAddr)
+	// operation for dir lock
+	case proto.OpMetaLockDir:
+		err = m.opMetaLockDir(conn, p, remoteAddr)
 	// operations for multipart session
 	case proto.OpCreateMultipart:
 		err = m.opCreateMultipart(conn, p, remoteAddr)
