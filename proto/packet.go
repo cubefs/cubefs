@@ -1002,6 +1002,18 @@ func (p *Packet) IsFollowerReadMetaPkt() bool {
 	return false
 }
 
+func (p *Packet) ShallTryToLeader() bool {
+	if p.Opcode == OpMetaReadDir || p.Opcode == OpMetaBatchInodeGet || p.Opcode == OpMetaExtentsList || p.Opcode == OpMetaBatchExtentsAdd ||
+		p.Opcode == OpMetaBatchGetXAttr || p.Opcode == OpMetaBatchGetDeletedInode || p.Opcode == OpMetaBatchRecoverDeletedDentry ||
+		p.Opcode == OpMetaBatchRecoverDeletedInode || p.Opcode == OpMetaBatchCleanDeletedInode || p.Opcode == OpMetaBatchCleanDeletedDentry ||
+		p.Opcode == OpMetaBatchDeleteInode || p.Opcode == OpMetaBatchDeleteDentry || p.Opcode == OpMetaBatchUnlinkInode ||
+		p.Opcode == OpMetaBatchEvictInode {
+		return false
+	}
+
+	return true
+}
+
 func NewPacketToGetAllExtentInfo(ctx context.Context, partitionID uint64) (p *Packet) {
 	p = new(Packet)
 	p.Opcode = OpGetAllExtentInfo
