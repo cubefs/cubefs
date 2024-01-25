@@ -332,7 +332,7 @@ func (eh *ExtentHandler) processReply(packet *Packet) {
 		}
 		// todo(leonchang) need check safety
 		log.LogWarnf("processReply: get reply, eh(%v) packet(%v) reply(%v)", eh, packet, reply)
-		eh.stream.GetExtents()
+		eh.stream.GetExtentsForce()
 	}
 
 	if !packet.isValidWriteReply(reply) {
@@ -447,7 +447,7 @@ func (eh *ExtentHandler) appendExtentKey() (err error) {
 				discard = eh.stream.extents.Append(&ekey, true)
 				status, err = eh.stream.client.appendExtentKey(eh.stream.parentInode, eh.inode, ekey, discard)
 				if atomic.LoadInt32(&eh.stream.needUpdateVer) > 0 {
-					if errUpdateExtents := eh.stream.GetExtents(); errUpdateExtents != nil {
+					if errUpdateExtents := eh.stream.GetExtentsForce(); errUpdateExtents != nil {
 						log.LogErrorf("action[appendExtentKey] inode %v GetExtents err %v errUpdateExtents %v", eh.stream.inode, err, errUpdateExtents)
 						return
 					}
