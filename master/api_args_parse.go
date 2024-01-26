@@ -178,12 +178,15 @@ func parseDecomNodeReq(r *http.Request) (nodeAddr string, limit int, err error) 
 	return
 }
 
-func parseDecomDataNodeReq(r *http.Request) (nodeAddr string, err error) {
+func parseDecomDataNodeReq(r *http.Request) (nodeAddr string, limit int, err error) {
 	nodeAddr, err = parseAndExtractNodeAddr(r)
 	if err != nil {
 		return
 	}
-
+	limit, err = parseUintParam(r, countKey)
+	if err != nil {
+		return
+	}
 	return
 }
 func parseAndExtractNodeAddr(r *http.Request) (nodeAddr string, err error) {
