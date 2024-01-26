@@ -26,7 +26,8 @@ func TestLimiterManager(t *testing.T) {
 		info.RateLimit = map[string]map[string]map[int]proto.AllLimitGroup{
 			ModuleDataNode: {
 				ZonePrefix + zone: {
-					int(proto.OpRead): {indexCountPerDisk: limit[0], indexOutBytesPerDisk: limit[1], indexConcurrency: int64(concurrency)},
+					int(proto.OpRead):       {indexCountPerDisk: limit[0], indexOutBytesPerDisk: limit[1], indexConcurrency: int64(concurrency)},
+					int(proto.OpStreamRead): {indexOutBytes: limit[0]},
 				},
 				VolPrefix + vol: {
 					int(proto.OpRead):  {indexCountPerDisk: limit[2]},
@@ -38,19 +39,22 @@ func TestLimiterManager(t *testing.T) {
 	}
 	m, _ := newLimiterManager(ModuleDataNode, zone, getLimitInfo)
 	m.Stop()
-	m.updateLimitInfo()
 	ml := m.GetLimiter()
 	property := []Properties{
 		{{PropertyTypeFlow, FlowNetwork}},
 		{{PropertyTypeOp, strconv.Itoa(int(proto.OpRead))}, {PropertyTypeDisk, ""}, {PropertyTypeFlow, FlowDisk}},
+		{{PropertyTypeOp, strconv.Itoa(int(proto.OpRead))}, {PropertyTypeDisk, ""}},
+		{{PropertyTypeOp, strconv.Itoa(int(proto.OpStreamRead))}, {PropertyTypeFlow, FlowNetwork}},
 		{{PropertyTypeOp, strconv.Itoa(int(proto.OpWrite))}, {PropertyTypeDisk, ""}},
 		{{PropertyTypeVol, vol}, {PropertyTypeOp, strconv.Itoa(int(proto.OpRead))}, {PropertyTypeDisk, ""}},
 		{{PropertyTypeVol, vol}, {PropertyTypeOp, strconv.Itoa(int(proto.OpWrite))}, {PropertyTypeDisk, ""}},
 	}
 	speed := getSpeed()
 	expect := []LimitGroup{
-		{statTypeInBytes: rate.Limit(speed * int(ratio) / 100), statTypeOutBytes: rate.Limit(speed * int(ratio) / 100)},
+		{statTypeInBytes: rate.Limit(speed * 1024 * 1024 * int(ratio) / 100), statTypeOutBytes: rate.Limit(speed * 1024 * 1024 * int(ratio) / 100)},
 		{statTypeCount: rate.Limit(limit[0]), statTypeOutBytes: rate.Limit(limit[1])},
+		{},
+		{statTypeOutBytes: rate.Limit(limit[0])},
 		{},
 		{statTypeCount: rate.Limit(limit[2])},
 		{statTypeCount: rate.Limit(limit[3])},
@@ -78,10 +82,11 @@ func TestLimiterManager(t *testing.T) {
 		}
 		return
 	}
-	property[1] = Properties{{PropertyTypeOp, strconv.Itoa(int(proto.OpRead))}, {PropertyTypeDisk, ""}}
 	expect = []LimitGroup{
-		{statTypeInBytes: rate.Limit(speed * int(ratio) / 100), statTypeOutBytes: rate.Limit(speed * int(ratio) / 100)},
+		{statTypeInBytes: rate.Limit(speed * 1024 * 1024 * int(ratio) / 100), statTypeOutBytes: rate.Limit(speed * 1024 * 1024 * int(ratio) / 100)},
+		{},
 		{statTypeCount: rate.Limit(limit[1])},
+		{},
 		{statTypeCount: rate.Limit(limit[0])},
 		{},
 		{statTypeCount: rate.Limit(limit[2])},

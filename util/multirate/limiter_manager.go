@@ -31,8 +31,8 @@ const (
 	speedFile    = "/sys/class/net/%v/speed"
 	bond0        = "bond0"
 	eth0         = "eth0"
-	defaultSpeed = 1250 // 10Gb/s
-	minSpeed     = 128  // 1Gb/s
+	defaultSpeed = 1250 // 10000 Mb/s
+	minSpeed     = 125  // 1000  Mb/s
 )
 
 type indexType int
@@ -246,7 +246,7 @@ func newLimiterManager(module string, zoneName string, getLimitInfo GetLimitInfo
 	m.zoneName = zoneName
 	m.getLimitInfo = getLimitInfo
 	m.ml = NewMultiLimiterWithHandler()
-	m.mc = NewMultiConcurrency()
+	m.mc = NewMultiConcurrencyWithHandler()
 	m.stopC = make(chan struct{})
 	m.oldOpRateLimitMap = make(map[int]proto.AllLimitGroup)
 	m.oldVolOpRateLimitMap = make(map[string]map[int]proto.AllLimitGroup)
@@ -315,7 +315,7 @@ func (m *LimiterManager) updateLimitInfo() (err error) {
 	}
 
 	ratio := limitInfo.NetworkFlowRatio[m.module]
-	speed := getSpeed() * int(ratio) / 100
+	speed := getSpeed() * 1024 * 1024 * int(ratio) / 100
 	rule := NewRule(Properties{{PropertyTypeFlow, FlowNetwork}}, LimitGroup{statTypeInBytes: rate.Limit(speed), statTypeOutBytes: rate.Limit(speed)}, BurstGroup{statTypeInBytes: speed, statTypeOutBytes: speed})
 	m.ml.AddRule(rule)
 
@@ -335,11 +335,11 @@ func (m *LimiterManager) updateOpLimit(limitInfo *proto.LimitInfo) {
 	for op, oldGroup := range m.oldOpRateLimitMap {
 		group, ok := opRateLimitMap[op]
 		for i := indexType(0); i < indexTypeMax; i++ {
-			if !haveLimit(oldGroup, i) || (ok && haveLimit(group, i)) {
-				continue
+			old := m.getProperties(i, oldGroup, op, "", false)
+			new := m.getProperties(i, group, op, "", false)
+			if old.name() != new.name() {
+				m.ml.ClearRule(old)
 			}
-			p = getProperties(i, group, op, "", false)
-			m.ml.ClearRule(p)
 		}
 		if oldGroup[indexConcurrency] > 0 && (!ok || group[indexConcurrency] <= 0) {
 			m.mc.addRule(op, 0, 0)
@@ -351,7 +351,7 @@ func (m *LimiterManager) updateOpLimit(limitInfo *proto.LimitInfo) {
 			if !haveLimit(group, i) {
 				continue
 			}
-			p = getProperties(i, group, op, "", false)
+			p = m.getProperties(i, group, op, "", false)
 			rule := NewRuleWithTimeout(p, getLimitGroup(group, i), getBurstGroup(group, i), time.Duration(group[indexTimeout]))
 			m.ml.AddRule(rule)
 		}
@@ -380,12 +380,14 @@ func (m *LimiterManager) getOpRateLimitMap(limitInfo *proto.LimitInfo) map[int]p
 		l, ok := opRateLimitMap[op]
 		if !ok {
 			opRateLimitMap[op] = limit
+			continue
 		}
 		for i := 0; i < proto.LimitGroupCount; i++ {
 			if l[i] == 0 {
 				l[i] = limit[i]
 			}
 		}
+		opRateLimitMap[op] = l
 	}
 	return opRateLimitMap
 }
@@ -402,23 +404,24 @@ func (m *LimiterManager) updateVolOpLimit(limitInfo *proto.LimitInfo) {
 		opRateLimitMap, volOk := volOpRateLimitMap[vol]
 		for op, oldGroup := range oldOpRateLimitMap {
 			var group proto.AllLimitGroup
-			var ok bool
 			if volOk {
-				group, ok = opRateLimitMap[op]
+				group = opRateLimitMap[op]
 			}
 			vol = strings.TrimPrefix(vol, VolPrefix)
 			for i := indexType(0); i < indexTypeMax; i++ {
-				if !haveLimit(oldGroup, i) || (ok && haveLimit(group, i)) {
-					continue
+				old := m.getProperties(i, oldGroup, op, vol, true)
+				new := m.getProperties(i, group, op, vol, true)
+				if old.name() != new.name() {
+					m.ml.ClearRule(old)
 				}
-				p = getProperties(i, group, op, vol, true)
-				m.ml.ClearRule(p)
 			}
 		}
 	}
 
+	var deleteKeys []string
 	for vol, opRateLimitMap := range volOpRateLimitMap {
 		if !strings.HasPrefix(vol, VolPrefix) {
+			deleteKeys = append(deleteKeys, vol)
 			continue
 		}
 		vol = strings.TrimPrefix(vol, VolPrefix)
@@ -427,31 +430,42 @@ func (m *LimiterManager) updateVolOpLimit(limitInfo *proto.LimitInfo) {
 				if !haveLimit(group, i) {
 					continue
 				}
-				p = getProperties(i, group, op, vol, true)
+				p = m.getProperties(i, group, op, vol, true)
 				rule := NewRuleWithTimeout(p, getLimitGroup(group, i), getBurstGroup(group, i), time.Duration(group[indexTimeout]))
 				m.ml.AddRule(rule)
 			}
 		}
 	}
+	for _, key := range deleteKeys {
+		delete(volOpRateLimitMap, key)
+	}
 	m.oldVolOpRateLimitMap = volOpRateLimitMap
 }
 
-func getProperties(i indexType, group proto.AllLimitGroup, op int, vol string, hasVol bool) (p Properties) {
+func (m *LimiterManager) getProperties(i indexType, group proto.AllLimitGroup, op int, vol string, hasVol bool) (p Properties) {
+	if !haveLimit(group, i) {
+		return
+	}
 	p = Properties{{PropertyTypeOp, strconv.Itoa(int(op))}}
 	if hasVol {
 		p = append(p, Property{PropertyTypeVol, vol})
 	}
+	var flowType string
 	if i == indexTypeTotal {
-		if group[indexInBytes] > 0 || group[indexOutBytes] > 0 {
-			p = append(p, Property{PropertyTypeFlow, FlowNetwork})
-		}
+		flowType = FlowNetwork
 	} else if i == indexTypePerDisk {
 		p = append(p, Property{PropertyTypeDisk, ""})
-		if group[indexInBytesPerDisk] > 0 || group[indexOutBytesPerDisk] > 0 {
-			p = append(p, Property{PropertyTypeFlow, FlowDisk})
-		}
+		flowType = FlowDisk
 	} else if i == indexTypePerPartition {
 		p = append(p, Property{PropertyTypePartition, ""})
+		if m.module == ModuleDataNode {
+			flowType = FlowDisk
+		} else {
+			flowType = FlowNetwork
+		}
+	}
+	if group[i*indexTypeMax+2] > 0 || group[i*indexTypeMax+3] > 0 {
+		p = append(p, Property{PropertyTypeFlow, flowType})
 	}
 	return
 }
