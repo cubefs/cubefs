@@ -88,11 +88,11 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 			resp = &InodeResponse{Status: status}
 			return
 		}
-		resp = mp.fsmUnlinkInode(ino, 0)
+		resp = mp.fsmUnlinkInode(ino, 0, msg.ReqInfo)
 	case opFSMUnlinkInodeOnce:
 		inoOnce := InodeOnceUnmarshal(msg.V)
 		ino := NewInode(inoOnce.Inode, 0)
-		resp = mp.fsmUnlinkInode(ino, inoOnce.UniqID)
+		resp = mp.fsmUnlinkInode(ino, inoOnce.UniqID, nil)
 	case opFSMUnlinkInodeBatch:
 		inodes, err := InodeBatchUnmarshal(msg.V)
 		if err != nil {
@@ -104,7 +104,7 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 		if err = ino.Unmarshal(msg.V); err != nil {
 			return
 		}
-		resp = mp.fsmExtentsTruncate(ino)
+		resp = mp.fsmExtentsTruncate(ino, msg.ReqInfo)
 	case opFSMCreateLinkInode:
 		ino := NewInode(0, 0)
 		if err = ino.Unmarshal(msg.V); err != nil {
@@ -115,11 +115,11 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 			resp = &InodeResponse{Status: status}
 			return
 		}
-		resp = mp.fsmCreateLinkInode(ino, 0)
+		resp = mp.fsmCreateLinkInode(ino, 0, msg.ReqInfo)
 	case opFSMCreateLinkInodeOnce:
 		inoOnce := InodeOnceUnmarshal(msg.V)
 		ino := NewInode(inoOnce.Inode, 0)
-		resp = mp.fsmCreateLinkInode(ino, inoOnce.UniqID)
+		resp = mp.fsmCreateLinkInode(ino, inoOnce.UniqID, msg.ReqInfo)
 	case opFSMEvictInode:
 		ino := NewInode(0, 0)
 		if err = ino.Unmarshal(msg.V); err != nil {
@@ -143,7 +143,7 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 		if err != nil {
 			return
 		}
-		err = mp.fsmSetAttr(req)
+		err = mp.fsmSetAttr(req, msg.ReqInfo)
 	case opFSMCreateDentry:
 		den := &Dentry{}
 		if err = den.Unmarshal(msg.V); err != nil {
@@ -156,7 +156,7 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 			return
 		}
 
-		resp = mp.fsmCreateDentry(den, false)
+		resp = mp.fsmCreateDentry(den, false, msg.ReqInfo)
 	case opFSMDeleteDentry:
 		den := &Dentry{}
 		if err = den.Unmarshal(msg.V); err != nil {
@@ -169,7 +169,7 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 			return
 		}
 
-		resp = mp.fsmDeleteDentry(den, false)
+		resp = mp.fsmDeleteDentry(den, false, msg.ReqInfo)
 	case opFSMDeleteDentryBatch:
 		db, err := DentryBatchUnmarshal(msg.V)
 		if err != nil {
@@ -200,13 +200,13 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 		if err = ino.Unmarshal(msg.V); err != nil {
 			return
 		}
-		resp = mp.fsmAppendExtents(ino)
+		resp = mp.fsmAppendExtents(ino, msg.ReqInfo)
 	case opFSMExtentsAddWithCheck:
 		ino := NewInode(0, 0)
 		if err = ino.Unmarshal(msg.V); err != nil {
 			return
 		}
-		resp = mp.fsmAppendExtentsWithCheck(ino)
+		resp = mp.fsmAppendExtentsWithCheck(ino, msg.ReqInfo)
 	case opFSMObjExtentsAdd:
 		ino := NewInode(0, 0)
 		if err = ino.Unmarshal(msg.V); err != nil {
@@ -255,6 +255,7 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 			quotaRebuild:   quotaRebuild,
 			uidRebuild:     uidRebuild,
 			uniqChecker:    uniqChecker,
+			reqTree:        mp.reqRecords.ReqBTreeSnap(),
 		}
 		log.LogDebugf("opFSMStoreTick: quotaRebuild [%v] uidRebuild [%v]", quotaRebuild, uidRebuild)
 		mp.storeChan <- msg
@@ -271,19 +272,19 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 		if extend, err = NewExtendFromBytes(msg.V); err != nil {
 			return
 		}
-		err = mp.fsmSetXAttr(extend)
+		err = mp.fsmSetXAttr(extend, msg.ReqInfo)
 	case opFSMRemoveXAttr:
 		var extend *Extend
 		if extend, err = NewExtendFromBytes(msg.V); err != nil {
 			return
 		}
-		err = mp.fsmRemoveXAttr(extend)
+		err = mp.fsmRemoveXAttr(extend, msg.ReqInfo)
 	case opFSMUpdateXAttr:
 		var extend *Extend
 		if extend, err = NewExtendFromBytes(msg.V); err != nil {
 			return
 		}
-		err = mp.fsmSetXAttr(extend)
+		err = mp.fsmSetXAttr(extend, msg.ReqInfo)
 	case opFSMCreateMultipart:
 		var multipart *Multipart
 		multipart = MultipartFromBytes(msg.V)
@@ -347,7 +348,7 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 		if err = txDen.Unmarshal(msg.V); err != nil {
 			return
 		}
-		resp = mp.fsmTxCreateDentry(txDen)
+		resp = mp.fsmTxCreateDentry(txDen, msg.ReqInfo)
 	case opFSMTxSetState:
 		req := &proto.TxSetStateRequest{}
 		if err = json.Unmarshal(msg.V, req); err != nil {
@@ -389,7 +390,7 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 		if err = txDen.Unmarshal(msg.V); err != nil {
 			return
 		}
-		resp = mp.fsmTxDeleteDentry(txDen)
+		resp = mp.fsmTxDeleteDentry(txDen, msg.ReqInfo)
 	case opFSMTxUnlinkInode:
 		txIno := NewTxInode(0, 0, nil)
 		if err = txIno.Unmarshal(msg.V); err != nil {
@@ -408,7 +409,7 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 		if err = txIno.Unmarshal(msg.V); err != nil {
 			return
 		}
-		resp = mp.fsmTxCreateLinkInode(txIno)
+		resp = mp.fsmTxCreateLinkInode(txIno, msg.ReqInfo)
 	case opFSMSetInodeQuotaBatch:
 		req := &proto.BatchSetMetaserverQuotaReuqest{}
 		if err = json.Unmarshal(msg.V, req); err != nil {
@@ -429,6 +430,8 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 			return
 		}
 		err = mp.fsmUniqCheckerEvict(req)
+	case opFSMSyncEvictReqRecords:
+		mp.evictExpiredRequestRecords(int64(binary.BigEndian.Uint64(msg.V)))
 	}
 
 	return
@@ -779,12 +782,13 @@ func (mp *metaPartition) HandleLeaderChange(leader uint64) {
 }
 
 // Put puts the given key-value pair (operation key and operation request) into the raft store.
-func (mp *metaPartition) submit(op uint32, data []byte) (resp interface{}, err error) {
+func (mp *metaPartition) submit(op uint32, data []byte, reqInfo *RequestInfo) (resp interface{}, err error) {
 	snap := NewMetaItem(0, nil, nil)
 	snap.Op = op
 	if data != nil {
 		snap.V = data
 	}
+	snap.ReqInfo = reqInfo
 	cmd, err := snap.MarshalJson()
 	if err != nil {
 		return

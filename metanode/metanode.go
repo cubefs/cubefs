@@ -210,6 +210,16 @@ func (m *MetaNode) parseConfig(cfg *config.Config) (err error) {
 	m.raftRecvBufSize = int(cfg.GetInt(cfgRaftRecvBufSize))
 	m.zoneName = cfg.GetString(cfgZoneName)
 
+	reqRecordMaxCount = cfg.GetInt(cfgReqRecordMaxCount)
+	if reqRecordMaxCount == 0 {
+		reqRecordMaxCount = defaultReqRecordsMaxCount
+	}
+
+	reqRecordReserveMin = cfg.GetInt(cfgReqRecordReserveMin)
+	if reqRecordReserveMin == 0 {
+		reqRecordReserveMin = defaultRecordReservedMin
+	}
+
 	deleteBatchCount := cfg.GetInt64(cfgDeleteBatchCount)
 	if deleteBatchCount > 1 {
 		updateDeleteBatchCount(uint64(deleteBatchCount))

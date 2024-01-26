@@ -721,6 +721,11 @@ func (c *Cluster) checkMetaNodeHeartbeat() {
 				Mask:       vol.enableTransaction,
 				OpLimitVal: vol.txOpLimit,
 			})
+
+			hbReq.RemoveDupReqInfo = append(hbReq.RemoveDupReqInfo, &proto.RemoveDupReqInfo{
+				Volume: vol.Name,
+				Enable: vol.enableRemoveDupReq,
+			})
 		}
 		log.LogDebugf("checkMetaNodeHeartbeat start")
 		for _, info := range hbReq.QuotaHbInfos {
@@ -3111,6 +3116,7 @@ func (c *Cluster) doCreateVol(req *createVolReq) (vol *Vol, err error) {
 		FlowWlimit:   req.qosLimitArgs.flowWVal,
 
 		DpReadOnlyWhenVolFull: req.DpReadOnlyWhenVolFull,
+		EnableRemoveDupReq:    req.enableRemoveDupReq,
 	}
 
 	log.LogInfof("[doCreateVol] volView, %v", vv)
@@ -3894,7 +3900,7 @@ func (c *Cluster) listQuotaAll() (volsInfo []*proto.VolInfo) {
 		if vol.quotaManager.HasQuota() {
 			stat := volStat(vol, false)
 			volInfo := proto.NewVolInfo(vol.Name, vol.Owner, vol.createTime, vol.status(), stat.TotalSize,
-				stat.UsedSize, stat.DpReadOnlyWhenVolFull)
+				stat.UsedSize, stat.DpReadOnlyWhenVolFull, vol.enableRemoveDupReq)
 			volsInfo = append(volsInfo, volInfo)
 		}
 	}

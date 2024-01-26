@@ -322,6 +322,7 @@ func (s *VolumeService) updateVolume(ctx context.Context, args struct {
 	if args.Description != nil {
 		newArgs.description = *args.Description
 	}
+	newArgs.enableRemoveDupReq = false
 
 	if err = s.cluster.updateVol(args.Name, args.AuthKey, newArgs); err != nil {
 		return nil, err

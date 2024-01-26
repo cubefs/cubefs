@@ -64,6 +64,7 @@ func TestMetaPartition_LoadSnapshot(t *testing.T) {
 		txRbDentryTree: mp.txProcessor.txResource.txRbDentryTree,
 		uniqId:         mp.GetUniqId(),
 		uniqChecker:    mp.uniqChecker,
+		reqTree:        mp.reqRecords.reqTree,
 	}
 	mp.uidManager = NewUidMgr(mpC.VolName, mpC.PartitionId)
 	mp.mqMgr = NewQuotaManager(mpC.VolName, mpC.PartitionId)
@@ -91,6 +92,9 @@ func TestMetaPartition_LoadSnapshot(t *testing.T) {
 	}
 	mp.multipartTree.ReplaceOrInsert(multipart, true)
 
+	now := time.Now().Unix()
+	mp.reqRecords.Update(&RequestInfo{RequestTime: now, EnableRemoveDupReq: true})
+
 	msg = &storeMsg{
 		command:        1,
 		applyIndex:     0,
@@ -104,12 +108,15 @@ func TestMetaPartition_LoadSnapshot(t *testing.T) {
 		txRbDentryTree: mp.txProcessor.txResource.txRbDentryTree,
 		uniqId:         mp.GetUniqId(),
 		uniqChecker:    mp.uniqChecker,
+		reqTree:        mp.reqRecords.reqTree,
 	}
 	err = mp.store(msg)
 	require.Nil(t, err)
 	snapshotPath = path.Join(mp.config.RootDir, snapshotDir)
+	mp.reqRecords = nil
 	err = partition.LoadSnapshot(snapshotPath)
 	require.Nil(t, err)
+	require.Equal(t, 1, len(mp.reqRecords.GetRequestsByRequestTime(now)))
 
 	// remove inode file
 	os.Rename(path.Join(snapshotPath, inodeFile), path.Join(snapshotPath, inodeFile+"1"))

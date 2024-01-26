@@ -274,6 +274,7 @@ type volValue struct {
 	TrashInterval                                          int64
 	Forbidden                                              bool
 	DisableAuditLog                                        bool
+	EnableRemoveDupReq                                     bool
 }
 
 func (v *volValue) Bytes() (raw []byte, err error) {
@@ -341,6 +342,7 @@ func newVolValue(vol *Vol) (vv *volValue) {
 		AuthKey:               vol.authKey,
 		DeleteExecTime:        vol.DeleteExecTime,
 		User:                  vol.user,
+		EnableRemoveDupReq:    vol.enableRemoveDupReq,
 	}
 
 	return

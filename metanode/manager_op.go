@@ -109,6 +109,7 @@ func (m *metadataManager) opMasterHeartbeat(conn net.Conn, p *Packet,
 			partition.SetUidLimit(req.UidLimitInfo)
 			partition.SetTxInfo(req.TxInfo)
 			partition.setQuotaHbInfo(req.QuotaHbInfos)
+			partition.SetRemoveDupReqInfo(req.RemoveDupReqInfo)
 			mConf := partition.GetBaseConfig()
 
 			mpr := &proto.MetaPartitionReport{
@@ -209,7 +210,7 @@ func (m *metadataManager) opCreateInode(conn net.Conn, p *Packet,
 		err = errors.NewErrorf("[%v],req[%v],err[%v]", p.GetOpMsgWithReqAndResult(), req, string(p.Data))
 		return
 	}
-	if !m.serveProxy(conn, mp, p) {
+	if !m.serveProxy(conn, mp, p, req) {
 		return
 	}
 	err = mp.CreateInode(req, p, remoteAddr)
@@ -235,7 +236,7 @@ func (m *metadataManager) opQuotaCreateInode(conn net.Conn, p *Packet, remoteAdd
 		err = errors.NewErrorf("[%v],req[%v],err[%v]", p.GetOpMsgWithReqAndResult(), req, string(p.Data))
 		return
 	}
-	if !m.serveProxy(conn, mp, p) {
+	if !m.serveProxy(conn, mp, p, req) {
 		return
 	}
 	err = mp.QuotaCreateInode(req, p, remoteAddr)
@@ -254,6 +255,7 @@ func (m *metadataManager) opTxMetaLinkInode(conn net.Conn, p *Packet, remoteAddr
 		err = errors.NewErrorf("[%v],req[%v],err[%v]", p.GetOpMsgWithReqAndResult(), req, string(p.Data))
 		return
 	}
+
 	mp, err := m.getPartition(req.PartitionID)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
@@ -261,7 +263,7 @@ func (m *metadataManager) opTxMetaLinkInode(conn net.Conn, p *Packet, remoteAddr
 		err = errors.NewErrorf("[%v],req[%v],err[%v]", p.GetOpMsgWithReqAndResult(), req, string(p.Data))
 		return
 	}
-	if !m.serveProxy(conn, mp, p) {
+	if !m.serveProxy(conn, mp, p, req) {
 		return
 	}
 	err = mp.TxCreateInodeLink(req, p, remoteAddr)
@@ -280,6 +282,14 @@ func (m *metadataManager) opMetaLinkInode(conn net.Conn, p *Packet,
 		err = errors.NewErrorf("[%v],req[%v],err[%v]", p.GetOpMsgWithReqAndResult(), req, string(p.Data))
 		return
 	}
+
+	if err = p.FillClientRequestPacket(req); err != nil {
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		m.respondToClient(conn, p)
+		err = errors.NewErrorf("[%v] req: %v, resp: %v", p.GetOpMsgWithReqAndResult(), req, err.Error())
+		return
+	}
+
 	mp, err := m.getPartition(req.PartitionID)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
@@ -287,7 +297,7 @@ func (m *metadataManager) opMetaLinkInode(conn net.Conn, p *Packet,
 		err = errors.NewErrorf("[%v],req[%v],err[%v]", p.GetOpMsgWithReqAndResult(), req, string(p.Data))
 		return
 	}
-	if !m.serveProxy(conn, mp, p) {
+	if !m.serveProxy(conn, mp, p, req) {
 		return
 	}
 	err = mp.CreateInodeLink(req, p, remoteAddr)
@@ -325,6 +335,13 @@ func (m *metadataManager) opTxCreateDentry(conn net.Conn, p *Packet,
 		return
 	}
 
+	if err = p.FillClientRequestPacket(req); err != nil {
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		m.respondToClient(conn, p)
+		err = errors.NewErrorf("[%v] req: %v, resp: %v", p.GetOpMsgWithReqAndResult(), req, err.Error())
+		return
+	}
+
 	mp, err := m.getPartition(req.PartitionID)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
@@ -333,7 +350,7 @@ func (m *metadataManager) opTxCreateDentry(conn net.Conn, p *Packet,
 		return
 	}
 
-	if !m.serveProxy(conn, mp, p) {
+	if !m.serveProxy(conn, mp, p, req) {
 		return
 	}
 	err = mp.TxCreateDentry(req, p, remoteAddr)
@@ -362,7 +379,7 @@ func (m *metadataManager) opTxCreate(conn net.Conn, p *Packet,
 		return
 	}
 
-	if !m.serveProxy(conn, mp, p) {
+	if !m.serveProxy(conn, mp, p, req) {
 		return
 	}
 
@@ -392,7 +409,7 @@ func (m *metadataManager) opTxGet(conn net.Conn, p *Packet,
 		return
 	}
 
-	if !m.serveProxy(conn, mp, p) {
+	if !m.serveProxy(conn, mp, p, req) {
 		return
 	}
 
@@ -424,7 +441,7 @@ func (m *metadataManager) opTxCommitRM(conn net.Conn, p *Packet,
 		return
 	}
 
-	if !m.serveProxy(conn, mp, p) {
+	if !m.serveProxy(conn, mp, p, req) {
 		return
 	}
 
@@ -454,7 +471,7 @@ func (m *metadataManager) opTxRollbackRM(conn net.Conn, p *Packet,
 		return
 	}
 
-	if !m.serveProxy(conn, mp, p) {
+	if !m.serveProxy(conn, mp, p, req) {
 		return
 	}
 
@@ -484,7 +501,7 @@ func (m *metadataManager) opTxCommit(conn net.Conn, p *Packet,
 		return
 	}
 
-	if !m.serveProxy(conn, mp, p) {
+	if !m.serveProxy(conn, mp, p, req) {
 		return
 	}
 
@@ -514,7 +531,7 @@ func (m *metadataManager) opTxRollback(conn net.Conn, p *Packet,
 		return
 	}
 
-	if !m.serveProxy(conn, mp, p) {
+	if !m.serveProxy(conn, mp, p, req) {
 		return
 	}
 
@@ -536,6 +553,14 @@ func (m *metadataManager) opCreateDentry(conn net.Conn, p *Packet,
 		err = errors.NewErrorf("[%v],req[%v],err[%v]", p.GetOpMsgWithReqAndResult(), req, string(p.Data))
 		return
 	}
+
+	if err = p.FillClientRequestPacket(req); err != nil {
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		m.respondToClient(conn, p)
+		err = errors.NewErrorf("[%v] req: %v, resp: %v", p.GetOpMsgWithReqAndResult(), req, err.Error())
+		return
+	}
+
 	mp, err := m.getPartition(req.PartitionID)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
@@ -543,7 +568,7 @@ func (m *metadataManager) opCreateDentry(conn net.Conn, p *Packet,
 		err = errors.NewErrorf("[%v],req[%v],err[%v]", p.GetOpMsgWithReqAndResult(), req, string(p.Data))
 		return
 	}
-	if !m.serveProxy(conn, mp, p) {
+	if !m.serveProxy(conn, mp, p, req) {
 		return
 	}
 	err = mp.CreateDentry(req, p, remoteAddr)
@@ -563,6 +588,14 @@ func (m *metadataManager) opQuotaCreateDentry(conn net.Conn, p *Packet,
 		err = errors.NewErrorf("[%v],req[%v],err[%v]", p.GetOpMsgWithReqAndResult(), req, string(p.Data))
 		return
 	}
+
+	if err = p.FillClientRequestPacket(req); err != nil {
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		m.respondToClient(conn, p)
+		err = errors.NewErrorf("[%v] req: %v, resp: %v", p.GetOpMsgWithReqAndResult(), req, err.Error())
+		return
+	}
+
 	mp, err := m.getPartition(req.PartitionID)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
@@ -570,7 +603,7 @@ func (m *metadataManager) opQuotaCreateDentry(conn net.Conn, p *Packet,
 		err = errors.NewErrorf("[%v],req[%v],err[%v]", p.GetOpMsgWithReqAndResult(), req, string(p.Data))
 		return
 	}
-	if !m.serveProxy(conn, mp, p) {
+	if !m.serveProxy(conn, mp, p, req) {
 		return
 	}
 	err = mp.QuotaCreateDentry(req, p, remoteAddr)
@@ -592,6 +625,13 @@ func (m *metadataManager) opTxDeleteDentry(conn net.Conn, p *Packet,
 		return
 	}
 
+	if err = p.FillClientRequestPacket(req); err != nil {
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		m.respondToClient(conn, p)
+		err = errors.NewErrorf("[%v] req: %v, resp: %v", p.GetOpMsgWithReqAndResult(), req, err.Error())
+		return
+	}
+
 	mp, err := m.getPartition(req.PartitionID)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
@@ -600,7 +640,7 @@ func (m *metadataManager) opTxDeleteDentry(conn net.Conn, p *Packet,
 		return
 	}
 
-	if !m.serveProxy(conn, mp, p) {
+	if !m.serveProxy(conn, mp, p, req) {
 		return
 	}
 	err = mp.TxDeleteDentry(req, p, remoteAddr)
@@ -622,6 +662,14 @@ func (m *metadataManager) opDeleteDentry(conn net.Conn, p *Packet,
 		err = errors.NewErrorf("[%v],req[%v],err[%v]", p.GetOpMsgWithReqAndResult(), req, string(p.Data))
 		return
 	}
+
+	if err = p.FillClientRequestPacket(req); err != nil {
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		m.respondToClient(conn, p)
+		err = errors.NewErrorf("[%v] req: %v, resp: %v", p.GetOpMsgWithReqAndResult(), req, err.Error())
+		return
+	}
+
 	mp, err := m.getPartition(req.PartitionID)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
@@ -629,7 +677,7 @@ func (m *metadataManager) opDeleteDentry(conn net.Conn, p *Packet,
 		err = errors.NewErrorf("[%v],req[%v],err[%v]", p.GetOpMsgWithReqAndResult(), req, string(p.Data))
 		return
 	}
-	if !m.serveProxy(conn, mp, p) {
+	if !m.serveProxy(conn, mp, p, req) {
 		return
 	}
 	err = mp.DeleteDentry(req, p, remoteAddr)
@@ -649,6 +697,7 @@ func (m *metadataManager) opBatchDeleteDentry(conn net.Conn, p *Packet,
 		err = errors.NewErrorf("[%v],req[%v],err[%v]", p.GetOpMsgWithReqAndResult(), req, string(p.Data))
 		return
 	}
+
 	mp, err := m.getPartition(req.PartitionID)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
@@ -656,7 +705,7 @@ func (m *metadataManager) opBatchDeleteDentry(conn net.Conn, p *Packet,
 		err = errors.NewErrorf("[%v],req[%v],err[%v]", p.GetOpMsgWithReqAndResult(), req, string(p.Data))
 		return
 	}
-	if !m.serveProxy(conn, mp, p) {
+	if !m.serveProxy(conn, mp, p, req) {
 		return
 	}
 	err = mp.DeleteDentryBatch(req, p, remoteAddr)
@@ -675,6 +724,7 @@ func (m *metadataManager) opTxUpdateDentry(conn net.Conn, p *Packet, remoteAddr 
 		err = errors.NewErrorf("[%v],req[%v],err[%v]", p.GetOpMsgWithReqAndResult(), req, string(p.Data))
 		return
 	}
+
 	mp, err := m.getPartition(req.PartitionID)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
@@ -682,7 +732,7 @@ func (m *metadataManager) opTxUpdateDentry(conn net.Conn, p *Packet, remoteAddr 
 		err = errors.NewErrorf("[%v],req[%v],err[%v]", p.GetOpMsgWithReqAndResult(), req, string(p.Data))
 		return
 	}
-	if !m.serveProxy(conn, mp, p) {
+	if !m.serveProxy(conn, mp, p, req) {
 		return
 	}
 	err = mp.TxUpdateDentry(req, p, remoteAddr)
@@ -708,7 +758,7 @@ func (m *metadataManager) opUpdateDentry(conn net.Conn, p *Packet,
 		err = errors.NewErrorf("[%v],req[%v],err[%v]", p.GetOpMsgWithReqAndResult(), req, string(p.Data))
 		return
 	}
-	if !m.serveProxy(conn, mp, p) {
+	if !m.serveProxy(conn, mp, p, req) {
 		return
 	}
 	err = mp.UpdateDentry(req, p, remoteAddr)
@@ -735,7 +785,7 @@ func (m *metadataManager) opTxMetaUnlinkInode(conn net.Conn, p *Packet, remoteAd
 		err = errors.NewErrorf("[%v],req[%v],err[%v]", p.GetOpMsgWithReqAndResult(), req, string(p.Data))
 		return
 	}
-	if !m.serveProxy(conn, mp, p) {
+	if !m.serveProxy(conn, mp, p, req) {
 		return
 	}
 	err = mp.TxUnlinkInode(req, p, remoteAddr)
@@ -754,6 +804,14 @@ func (m *metadataManager) opMetaUnlinkInode(conn net.Conn, p *Packet,
 		err = errors.NewErrorf("[%v],req[%v],err[%v]", p.GetOpMsgWithReqAndResult(), req, string(p.Data))
 		return
 	}
+
+	if err = p.FillClientRequestPacket(req); err != nil {
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		m.respondToClient(conn, p)
+		err = errors.NewErrorf("[%v] req: %v, resp: %v", p.GetOpMsgWithReqAndResult(), req, err.Error())
+		return
+	}
+
 	mp, err := m.getPartition(req.PartitionID)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
@@ -761,7 +819,7 @@ func (m *metadataManager) opMetaUnlinkInode(conn net.Conn, p *Packet,
 		err = errors.NewErrorf("[%v],req[%v],err[%v]", p.GetOpMsgWithReqAndResult(), req, string(p.Data))
 		return
 	}
-	if !m.serveProxy(conn, mp, p) {
+	if !m.serveProxy(conn, mp, p, req) {
 		return
 	}
 	err = mp.UnlinkInode(req, p, remoteAddr)
@@ -787,7 +845,7 @@ func (m *metadataManager) opMetaBatchUnlinkInode(conn net.Conn, p *Packet,
 		err = errors.NewErrorf("[%v],req[%v],err[%v]", p.GetOpMsgWithReqAndResult(), req, string(p.Data))
 		return
 	}
-	if !m.serveProxy(conn, mp, p) {
+	if !m.serveProxy(conn, mp, p, req) {
 		return
 	}
 	err = mp.UnlinkInodeBatch(req, p, remoteAddr)
@@ -813,7 +871,7 @@ func (m *metadataManager) opReadDirOnly(conn net.Conn, p *Packet,
 		err = errors.NewErrorf("[%v],req[%v],err[%v]", p.GetOpMsgWithReqAndResult(), req, string(p.Data))
 		return
 	}
-	if !mp.IsFollowerRead() && !m.serveProxy(conn, mp, p) {
+	if !mp.IsFollowerRead() && !m.serveProxy(conn, mp, p, req) {
 		return
 	}
 	err = mp.ReadDirOnly(req, p)
@@ -840,7 +898,7 @@ func (m *metadataManager) opReadDir(conn net.Conn, p *Packet,
 		err = errors.NewErrorf("[%v],req[%v],err[%v]", p.GetOpMsgWithReqAndResult(), req, string(p.Data))
 		return
 	}
-	if !mp.IsFollowerRead() && !m.serveProxy(conn, mp, p) {
+	if !mp.IsFollowerRead() && !m.serveProxy(conn, mp, p, req) {
 		return
 	}
 	err = mp.ReadDir(req, p)
@@ -867,7 +925,7 @@ func (m *metadataManager) opReadDirLimit(conn net.Conn, p *Packet,
 		err = errors.NewErrorf("[%v],req[%v],err[%v]", p.GetOpMsgWithReqAndResult(), req, string(p.Data))
 		return
 	}
-	if !mp.IsFollowerRead() && !m.serveProxy(conn, mp, p) {
+	if !mp.IsFollowerRead() && !m.serveProxy(conn, mp, p, req) {
 		return
 	}
 	err = mp.ReadDirLimit(req, p)
@@ -893,7 +951,7 @@ func (m *metadataManager) opMetaInodeGet(conn net.Conn, p *Packet,
 		err = errors.NewErrorf("[%v],req[%v],err[%v]", p.GetOpMsgWithReqAndResult(), req, string(p.Data))
 		return
 	}
-	if !mp.IsFollowerRead() && !m.serveProxy(conn, mp, p) {
+	if !mp.IsFollowerRead() && !m.serveProxy(conn, mp, p, req) {
 		return
 	}
 	if err = mp.InodeGet(req, p); err != nil {
@@ -921,7 +979,7 @@ func (m *metadataManager) opBatchMetaEvictInode(conn net.Conn, p *Packet,
 		err = errors.NewErrorf("[%v] req: %v, resp: %v", p.GetOpMsgWithReqAndResult(), req, err.Error())
 		return
 	}
-	if !m.serveProxy(conn, mp, p) {
+	if !m.serveProxy(conn, mp, p, req) {
 		return
 	}
 	if err = mp.EvictInodeBatch(req, p, remoteAddr); err != nil {
@@ -949,7 +1007,7 @@ func (m *metadataManager) opMetaEvictInode(conn net.Conn, p *Packet,
 		err = errors.NewErrorf("[%v] req: %v, resp: %v", p.GetOpMsgWithReqAndResult(), req, err.Error())
 		return
 	}
-	if !m.serveProxy(conn, mp, p) {
+	if !m.serveProxy(conn, mp, p, req) {
 		return
 	}
 	if err = mp.EvictInode(req, p, remoteAddr); err != nil {
@@ -971,6 +1029,13 @@ func (m *metadataManager) opSetAttr(conn net.Conn, p *Packet,
 		return
 	}
 
+	if err = p.FillClientRequestPacket(req); err != nil {
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		m.respondToClient(conn, p)
+		err = errors.NewErrorf("[%v] req: %v, resp: %v", p.GetOpMsgWithReqAndResult(), req, err.Error())
+		return
+	}
+
 	mp, err := m.getPartition(req.PartitionID)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
@@ -979,10 +1044,10 @@ func (m *metadataManager) opSetAttr(conn net.Conn, p *Packet,
 		return
 	}
 
-	if !m.serveProxy(conn, mp, p) {
+	if !m.serveProxy(conn, mp, p, req) {
 		return
 	}
-	if err = mp.SetAttr(p.Data, p); err != nil {
+	if err = mp.SetAttr(req, p.Data, p); err != nil {
 		err = errors.NewErrorf("[opSetAttr] req: %v, error: %s", req, err.Error())
 	}
 	m.respondToClient(conn, p)
@@ -1008,7 +1073,7 @@ func (m *metadataManager) opMetaLookup(conn net.Conn, p *Packet,
 		err = errors.NewErrorf("[%v] req: %v, resp: %v", p.GetOpMsgWithReqAndResult(), req, err.Error())
 		return
 	}
-	if !mp.IsFollowerRead() && !m.serveProxy(conn, mp, p) {
+	if !mp.IsFollowerRead() && !m.serveProxy(conn, mp, p, req) {
 		return
 	}
 	err = mp.Lookup(req, p)
@@ -1027,6 +1092,14 @@ func (m *metadataManager) opMetaExtentsAdd(conn net.Conn, p *Packet,
 		err = errors.NewErrorf("[%v] req: %v, resp: %v", p.GetOpMsgWithReqAndResult(), req, err.Error())
 		return
 	}
+
+	if err = p.FillClientRequestPacket(req); err != nil {
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		m.respondToClient(conn, p)
+		err = errors.NewErrorf("[%v] req: %v, resp: %v", p.GetOpMsgWithReqAndResult(), req, err.Error())
+		return
+	}
+
 	mp, err := m.getPartition(req.PartitionID)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
@@ -1034,7 +1107,7 @@ func (m *metadataManager) opMetaExtentsAdd(conn net.Conn, p *Packet,
 		err = errors.NewErrorf("[%v] req: %v, resp: %v", p.GetOpMsgWithReqAndResult(), req, err.Error())
 		return
 	}
-	if !m.serveProxy(conn, mp, p) {
+	if !m.serveProxy(conn, mp, p, req) {
 		return
 	}
 	err = mp.ExtentAppend(req, p)
@@ -1058,6 +1131,14 @@ func (m *metadataManager) opMetaExtentAddWithCheck(conn net.Conn, p *Packet,
 		err = errors.NewErrorf("[%v] req: %v, resp: %v", p.GetOpMsgWithReqAndResult(), req, err.Error())
 		return
 	}
+
+	if err = p.FillClientRequestPacket(req); err != nil {
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		m.respondToClient(conn, p)
+		err = errors.NewErrorf("[%v] req: %v, resp: %v", p.GetOpMsgWithReqAndResult(), req, err.Error())
+		return
+	}
+
 	mp, err := m.getPartition(req.PartitionID)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
@@ -1065,7 +1146,7 @@ func (m *metadataManager) opMetaExtentAddWithCheck(conn net.Conn, p *Packet,
 		err = errors.NewErrorf("[%v] req: %v, resp: %v", p.GetOpMsgWithReqAndResult(), req, err.Error())
 		return
 	}
-	if !m.serveProxy(conn, mp, p) {
+	if !m.serveProxy(conn, mp, p, req) {
 		return
 	}
 	err = mp.ExtentAppendWithCheck(req, p)
@@ -1095,7 +1176,7 @@ func (m *metadataManager) opMetaExtentsList(conn net.Conn, p *Packet,
 		err = errors.NewErrorf("[%v] req: %v, resp: %v", p.GetOpMsgWithReqAndResult(), req, err.Error())
 		return
 	}
-	if !mp.IsFollowerRead() && !m.serveProxy(conn, mp, p) {
+	if !mp.IsFollowerRead() && !m.serveProxy(conn, mp, p, req) {
 		return
 	}
 
@@ -1124,7 +1205,7 @@ func (m *metadataManager) opMetaObjExtentsList(conn net.Conn, p *Packet,
 		err = errors.NewErrorf("[%v] req: %v, resp: %v", p.GetOpMsgWithReqAndResult(), req, err.Error())
 		return
 	}
-	if !mp.IsFollowerRead() && !m.serveProxy(conn, mp, p) {
+	if !mp.IsFollowerRead() && !m.serveProxy(conn, mp, p, req) {
 		return
 	}
 
@@ -1171,6 +1252,14 @@ func (m *metadataManager) opMetaExtentsTruncate(conn net.Conn, p *Packet,
 		err = errors.NewErrorf("[%v] req: %v, resp: %v", p.GetOpMsgWithReqAndResult(), req, err.Error())
 		return
 	}
+
+	if err = p.FillClientRequestPacket(req); err != nil {
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		m.respondToClient(conn, p)
+		err = errors.NewErrorf("[%v] req: %v, resp: %v", p.GetOpMsgWithReqAndResult(), req, err.Error())
+		return
+	}
+
 	mp, err := m.getPartition(req.PartitionID)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
@@ -1178,7 +1267,7 @@ func (m *metadataManager) opMetaExtentsTruncate(conn net.Conn, p *Packet,
 		err = errors.NewErrorf("[%v] req: %v, resp: %v", p.GetOpMsgWithReqAndResult(), req, err.Error())
 		return
 	}
-	if !m.serveProxy(conn, mp, p) {
+	if !m.serveProxy(conn, mp, p, req) {
 		return
 	}
 	mp.ExtentsTruncate(req, p, remoteAddr)
@@ -1204,7 +1293,7 @@ func (m *metadataManager) opMetaClearInodeCache(conn net.Conn, p *Packet,
 		err = errors.NewErrorf("[%v],req[%v],err[%v]", p.GetOpMsgWithReqAndResult(), req, string(p.Data))
 		return
 	}
-	if !m.serveProxy(conn, mp, p) {
+	if !m.serveProxy(conn, mp, p, req) {
 		return
 	}
 	err = mp.ClearInodeCache(req, p)
@@ -1271,7 +1360,7 @@ func (m *metadataManager) opUpdateMetaPartition(conn net.Conn, p *Packet,
 		err = errors.NewErrorf("[%v] req: %v, resp: %v", p.GetOpMsgWithReqAndResult(), req, err.Error())
 		return
 	}
-	if !m.serveProxy(conn, mp, p) {
+	if !m.serveProxy(conn, mp, p, req) {
 		return
 	}
 	m.responseAckOKToMaster(conn, p)
@@ -1346,7 +1435,7 @@ func (m *metadataManager) opDecommissionMetaPartition(conn net.Conn,
 		err = errors.NewErrorf("[%v] req: %v, resp: %v", p.GetOpMsgWithReqAndResult(), req, err.Error())
 		return err
 	}
-	if !m.serveProxy(conn, mp, p) {
+	if !m.serveProxy(conn, mp, p, req) {
 		return nil
 	}
 	if req.AddPeer.ID == req.RemovePeer.ID {
@@ -1422,7 +1511,7 @@ func (m *metadataManager) opAddMetaPartitionRaftMember(conn net.Conn,
 
 	log.LogInfof("[%s], remote %s start add raft member, req %v", p.String(), remoteAddr, adminTask)
 
-	if !m.serveProxy(conn, mp, p) {
+	if !m.serveProxy(conn, mp, p, req) {
 		return nil
 	}
 	reqData, err = json.Marshal(req)
@@ -1492,7 +1581,7 @@ func (m *metadataManager) opRemoveMetaPartitionRaftMember(conn net.Conn,
 		return
 	}
 
-	if !m.serveProxy(conn, mp, p) {
+	if !m.serveProxy(conn, mp, p, req) {
 		return nil
 	}
 	reqData, err = json.Marshal(req)
@@ -1546,7 +1635,7 @@ func (m *metadataManager) opMetaBatchInodeGet(conn net.Conn, p *Packet,
 		err = errors.NewErrorf("[%v] req: %v, resp: %v", p.GetOpMsgWithReqAndResult(), req, err.Error())
 		return
 	}
-	if !mp.IsFollowerRead() && !m.serveProxy(conn, mp, p) {
+	if !mp.IsFollowerRead() && !m.serveProxy(conn, mp, p, req) {
 		return
 	}
 	err = mp.InodeGetBatch(req, p)
@@ -1590,7 +1679,7 @@ func (m *metadataManager) opMetaDeleteInode(conn net.Conn, p *Packet,
 		err = errors.NewErrorf("[%v] req: %v, resp: %v", p.GetOpMsgWithReqAndResult(), req, err.Error())
 		return
 	}
-	if !m.serveProxy(conn, mp, p) {
+	if !m.serveProxy(conn, mp, p, req) {
 		return
 	}
 	err = mp.DeleteInode(req, p, remoteAddr)
@@ -1617,7 +1706,7 @@ func (m *metadataManager) opMetaBatchDeleteInode(conn net.Conn, p *Packet,
 		err = errors.NewErrorf("[%v] req: %v, resp: %v", p.GetOpMsgWithReqAndResult(), req, err.Error())
 		return
 	}
-	if !m.serveProxy(conn, mp, p) {
+	if !m.serveProxy(conn, mp, p, req) {
 		return
 	}
 	err = mp.DeleteInodeBatch(req, p, remoteAddr)
@@ -1637,6 +1726,14 @@ func (m *metadataManager) opMetaUpdateXAttr(conn net.Conn, p *Packet, remoteAddr
 		err = errors.NewErrorf("[%v] req: %v, resp: %v", p.GetOpMsgWithReqAndResult(), req, err.Error())
 		return
 	}
+
+	if err = p.FillClientRequestPacket(req); err != nil {
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		m.respondToClient(conn, p)
+		err = errors.NewErrorf("[%v] req: %v, resp: %v", p.GetOpMsgWithReqAndResult(), req, err.Error())
+		return
+	}
+
 	mp, err := m.getPartition(req.PartitionId)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
@@ -1644,7 +1741,7 @@ func (m *metadataManager) opMetaUpdateXAttr(conn net.Conn, p *Packet, remoteAddr
 		err = errors.NewErrorf("[%v] req: %v, resp: %v", p.GetOpMsgWithReqAndResult(), req, err.Error())
 		return
 	}
-	if !m.serveProxy(conn, mp, p) {
+	if !m.serveProxy(conn, mp, p, req) {
 		return
 	}
 	err = mp.UpdateXAttr(req, p)
@@ -1662,6 +1759,14 @@ func (m *metadataManager) opMetaSetXAttr(conn net.Conn, p *Packet, remoteAddr st
 		err = errors.NewErrorf("[%v] req: %v, resp: %v", p.GetOpMsgWithReqAndResult(), req, err.Error())
 		return
 	}
+
+	if err = p.FillClientRequestPacket(req); err != nil {
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		m.respondToClient(conn, p)
+		err = errors.NewErrorf("[%v] req: %v, resp: %v", p.GetOpMsgWithReqAndResult(), req, err.Error())
+		return
+	}
+
 	mp, err := m.getPartition(req.PartitionId)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
@@ -1669,7 +1774,7 @@ func (m *metadataManager) opMetaSetXAttr(conn net.Conn, p *Packet, remoteAddr st
 		err = errors.NewErrorf("[%v] req: %v, resp: %v", p.GetOpMsgWithReqAndResult(), req, err.Error())
 		return
 	}
-	if !m.serveProxy(conn, mp, p) {
+	if !m.serveProxy(conn, mp, p, req) {
 		return
 	}
 	err = mp.SetXAttr(req, p)
@@ -1687,6 +1792,14 @@ func (m *metadataManager) opMetaBatchSetXAttr(conn net.Conn, p *Packet, remoteAd
 		err = errors.NewErrorf("[%v] req: %v, resp: %v", p.GetOpMsgWithReqAndResult(), req, err.Error())
 		return
 	}
+
+	if err = p.FillClientRequestPacket(req); err != nil {
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		m.respondToClient(conn, p)
+		err = errors.NewErrorf("[%v] req: %v, resp: %v", p.GetOpMsgWithReqAndResult(), req, err.Error())
+		return
+	}
+
 	mp, err := m.getPartition(req.PartitionId)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
@@ -1694,7 +1807,7 @@ func (m *metadataManager) opMetaBatchSetXAttr(conn net.Conn, p *Packet, remoteAd
 		err = errors.NewErrorf("[%v] req: %v, resp: %v", p.GetOpMsgWithReqAndResult(), req, err.Error())
 		return
 	}
-	if !m.serveProxy(conn, mp, p) {
+	if !m.serveProxy(conn, mp, p, req) {
 		return
 	}
 	err = mp.BatchSetXAttr(req, p)
@@ -1719,7 +1832,7 @@ func (m *metadataManager) opMetaGetXAttr(conn net.Conn, p *Packet, remoteAddr st
 		err = errors.NewErrorf("[%v] req: %v, resp: %v", p.GetOpMsgWithReqAndResult(), req, err.Error())
 		return
 	}
-	if !mp.IsFollowerRead() && !m.serveProxy(conn, mp, p) {
+	if !mp.IsFollowerRead() && !m.serveProxy(conn, mp, p, req) {
 		return
 	}
 	err = mp.GetXAttr(req, p)
@@ -1744,7 +1857,7 @@ func (m *metadataManager) opMetaGetAllXAttr(conn net.Conn, p *Packet, remoteAddr
 		err = errors.NewErrorf("[%v] req: %v, resp: %v", p.GetOpMsgWithReqAndResult(), req, err.Error())
 		return
 	}
-	if !m.serveProxy(conn, mp, p) {
+	if !m.serveProxy(conn, mp, p, req) {
 		return
 	}
 	err = mp.GetAllXAttr(req, p)
@@ -1769,7 +1882,7 @@ func (m *metadataManager) opMetaBatchGetXAttr(conn net.Conn, p *Packet, remoteAd
 		err = errors.NewErrorf("[%v] req: %v, resp: %v", p.GetOpMsgWithReqAndResult(), req, err.Error())
 		return
 	}
-	if !mp.IsFollowerRead() && !m.serveProxy(conn, mp, p) {
+	if !mp.IsFollowerRead() && !m.serveProxy(conn, mp, p, req) {
 		return
 	}
 	err = mp.BatchGetXAttr(req, p)
@@ -1787,6 +1900,14 @@ func (m *metadataManager) opMetaRemoveXAttr(conn net.Conn, p *Packet, remoteAddr
 		err = errors.NewErrorf("[%v] req: %v, resp: %v", p.GetOpMsgWithReqAndResult(), req, err.Error())
 		return
 	}
+
+	if err = p.FillClientRequestPacket(req); err != nil {
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		m.respondToClient(conn, p)
+		err = errors.NewErrorf("[%v] req: %v, resp: %v", p.GetOpMsgWithReqAndResult(), req, err.Error())
+		return
+	}
+
 	mp, err := m.getPartition(req.PartitionId)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
@@ -1794,7 +1915,7 @@ func (m *metadataManager) opMetaRemoveXAttr(conn net.Conn, p *Packet, remoteAddr
 		err = errors.NewErrorf("[%v] req: %v, resp: %v", p.GetOpMsgWithReqAndResult(), req, err.Error())
 		return
 	}
-	if !m.serveProxy(conn, mp, p) {
+	if !m.serveProxy(conn, mp, p, req) {
 		return
 	}
 	err = mp.RemoveXAttr(req, p)
@@ -1819,7 +1940,7 @@ func (m *metadataManager) opMetaListXAttr(conn net.Conn, p *Packet, remoteAddr s
 		err = errors.NewErrorf("[%v] req: %v, resp: %v", p.GetOpMsgWithReqAndResult(), req, err.Error())
 		return
 	}
-	if !mp.IsFollowerRead() && !m.serveProxy(conn, mp, p) {
+	if !mp.IsFollowerRead() && !m.serveProxy(conn, mp, p, req) {
 		return
 	}
 	err = mp.ListXAttr(req, p)
@@ -1837,6 +1958,14 @@ func (m *metadataManager) opMetaBatchExtentsAdd(conn net.Conn, p *Packet, remote
 		err = errors.NewErrorf("[%v] req: %v, resp: %v", p.GetOpMsgWithReqAndResult(), req, err.Error())
 		return
 	}
+
+	if err = p.FillClientRequestPacket(req); err != nil {
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		m.respondToClient(conn, p)
+		err = errors.NewErrorf("[%v] req: %v, resp: %v", p.GetOpMsgWithReqAndResult(), req, err.Error())
+		return
+	}
+
 	mp, err := m.getPartition(req.PartitionId)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
@@ -1844,7 +1973,7 @@ func (m *metadataManager) opMetaBatchExtentsAdd(conn net.Conn, p *Packet, remote
 		err = errors.NewErrorf("[%v] req: %v, resp: %v", p.GetOpMsgWithReqAndResult(), req, err.Error())
 		return
 	}
-	if !m.serveProxy(conn, mp, p) {
+	if !m.serveProxy(conn, mp, p, req) {
 		return
 	}
 	err = mp.BatchExtentAppend(req, p)
@@ -1862,6 +1991,7 @@ func (m *metadataManager) opMetaBatchObjExtentsAdd(conn net.Conn, p *Packet, rem
 		err = errors.NewErrorf("[%v] req: %v, resp: %v", p.GetOpMsgWithReqAndResult(), req, err.Error())
 		return
 	}
+
 	mp, err := m.getPartition(req.PartitionID)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
@@ -1869,7 +1999,7 @@ func (m *metadataManager) opMetaBatchObjExtentsAdd(conn net.Conn, p *Packet, rem
 		err = errors.NewErrorf("[%v] req: %v, resp: %v", p.GetOpMsgWithReqAndResult(), req, err.Error())
 		return
 	}
-	if !m.serveProxy(conn, mp, p) {
+	if !m.serveProxy(conn, mp, p, req) {
 		return
 	}
 	err = mp.BatchObjExtentAppend(req, p)
@@ -1894,7 +2024,7 @@ func (m *metadataManager) opCreateMultipart(conn net.Conn, p *Packet, remote str
 		err = errors.NewErrorf("[%v] req: %v, resp: %v", p.GetOpMsgWithReqAndResult(), req, err.Error())
 		return
 	}
-	if !m.serveProxy(conn, mp, p) {
+	if !m.serveProxy(conn, mp, p, req) {
 		return
 	}
 	err = mp.CreateMultipart(req, p)
@@ -1918,7 +2048,7 @@ func (m *metadataManager) opRemoveMultipart(conn net.Conn, p *Packet, remote str
 		err = errors.NewErrorf("[%v] req: %v, resp: %v", p.GetOpMsgWithReqAndResult(), req, err.Error())
 		return
 	}
-	if !m.serveProxy(conn, mp, p) {
+	if !m.serveProxy(conn, mp, p, req) {
 		return
 	}
 	err = mp.RemoveMultipart(req, p)
@@ -1941,7 +2071,7 @@ func (m *metadataManager) opGetMultipart(conn net.Conn, p *Packet, remote string
 		err = errors.NewErrorf("[opGetMultipart] req: %v, resp: %v", req, err.Error())
 		return
 	}
-	if !mp.IsFollowerRead() && !m.serveProxy(conn, mp, p) {
+	if !mp.IsFollowerRead() && !m.serveProxy(conn, mp, p, req) {
 		return
 	}
 	err = mp.GetMultipart(req, p)
@@ -1962,7 +2092,7 @@ func (m *metadataManager) opAppendMultipart(conn net.Conn, p *Packet, remote str
 		m.respondToClient(conn, p)
 		return
 	}
-	if !mp.IsFollowerRead() && !m.serveProxy(conn, mp, p) {
+	if !mp.IsFollowerRead() && !m.serveProxy(conn, mp, p, req) {
 		return
 	}
 	err = mp.AppendMultipart(req, p)
@@ -1985,7 +2115,7 @@ func (m *metadataManager) opListMultipart(conn net.Conn, p *Packet, remote strin
 		err = errors.NewErrorf("[opListMultipart] req: %v, resp: %v", req, err.Error())
 		return
 	}
-	if !mp.IsFollowerRead() && !m.serveProxy(conn, mp, p) {
+	if !mp.IsFollowerRead() && !m.serveProxy(conn, mp, p, req) {
 		return
 	}
 	err = mp.ListMultipart(req, p)
@@ -2012,7 +2142,7 @@ func (m *metadataManager) opTxCreateInode(conn net.Conn, p *Packet,
 		return
 	}
 
-	if !m.serveProxy(conn, mp, p) {
+	if !m.serveProxy(conn, mp, p, req) {
 		return
 	}
 
@@ -2040,7 +2170,7 @@ func (m *metadataManager) opMetaBatchSetInodeQuota(conn net.Conn, p *Packet, rem
 		return
 	}
 
-	if !m.serveProxy(conn, mp, p) {
+	if !m.serveProxy(conn, mp, p, req) {
 		return
 	}
 	resp := &proto.BatchSetMetaserverQuotaResponse{}
@@ -2078,7 +2208,7 @@ func (m *metadataManager) opMetaBatchDeleteInodeQuota(conn net.Conn, p *Packet, 
 		err = errors.NewErrorf("[opMetaBatchDeleteInodeQuota] req: %v, resp: %v", req, err.Error())
 		return
 	}
-	if !m.serveProxy(conn, mp, p) {
+	if !m.serveProxy(conn, mp, p, req) {
 		return
 	}
 	resp := &proto.BatchDeleteMetaserverQuotaResponse{}
@@ -2116,7 +2246,7 @@ func (m *metadataManager) opMetaGetInodeQuota(conn net.Conn, p *Packet, remote s
 		err = errors.NewErrorf("[opGetMultipart] req: %v, resp: %v", req, err.Error())
 		return
 	}
-	if !m.serveProxy(conn, mp, p) {
+	if !m.serveProxy(conn, mp, p, req) {
 		return
 	}
 
@@ -2144,7 +2274,7 @@ func (m *metadataManager) opMetaGetUniqID(conn net.Conn, p *Packet,
 		return
 	}
 
-	if !m.serveProxy(conn, mp, p) {
+	if !m.serveProxy(conn, mp, p, req) {
 		return
 	}
 

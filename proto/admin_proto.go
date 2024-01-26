@@ -85,12 +85,12 @@ const (
 	AdminSetDpDiscard           = "/admin/setDpDiscard"
 	AdminGetDiscardDp           = "/admin/getDiscardDp"
 
-	//graphql master api
+	// graphql master api
 	AdminClusterAPI = "/api/cluster"
 	AdminUserAPI    = "/api/user"
 	AdminVolumeAPI  = "/api/volume"
 
-	//graphql coonsole api
+	// graphql coonsole api
 	ConsoleIQL        = "/iql"
 	ConsoleLoginAPI   = "/login"
 	ConsoleMonitorAPI = "/cfs_monitor"
@@ -121,7 +121,7 @@ const (
 	// uid api
 	AdminUid = "/admin/uidOp"
 
-	//raft node APIs
+	// raft node APIs
 	AddRaftNode    = "/raftNode/add"
 	RemoveRaftNode = "/raftNode/remove"
 	RaftStatus     = "/get/raftStatus"
@@ -182,12 +182,12 @@ const (
 	UserTransferVol     = "/user/transferVol"
 	UserList            = "/user/list"
 	UsersOfVol          = "/vol/users"
-	//graphql api for header
+	// graphql api for header
 	HeadAuthorized  = "Authorization"
 	ParamAuthorized = "_authorization"
 	UserKey         = "_user_key"
 	UserInfoKey     = "_user_info_key"
-	//quota
+	// quota
 	QuotaCreate = "/quota/create"
 	QuotaUpdate = "/quota/update"
 	QuotaDelete = "/quota/delete"
@@ -195,7 +195,7 @@ const (
 	QuotaGet    = "/quota/get"
 	// QuotaBatchModifyPath = "/quota/batchModifyPath"
 	QuotaListAll = "/quota/listAll"
-	//trash
+	// trash
 	AdminSetTrashInterval = "/vol/setTrashInterval"
 )
 
@@ -305,12 +305,13 @@ var GApiInfo map[string]string = map[string]string{
 	"usersofvol":                      UsersOfVol,
 }
 
-//const TimeFormat = "2006-01-02 15:04:05"
+// const TimeFormat = "2006-01-02 15:04:05"
 
 const (
 	TimeFormat                 = "2006-01-02 15:04:05"
 	DefaultDirChildrenNumLimit = 20000000
 	MinDirChildrenNumLimit     = 1000000
+	EnableRemoveDupReq         = "enableRemoveDupReq"
 )
 
 // HTTPReply uniform response structure
@@ -493,6 +494,15 @@ type TxInfos struct {
 	TxInfo []*TxInfo
 }
 
+type RemoveDupReqInfo struct {
+	Volume string
+	Enable bool
+}
+
+type RemoveDupReqInfos struct {
+	RemoveDupReqInfo []*RemoveDupReqInfo
+}
+
 // HeartBeatRequest define the heartbeat request.
 type HeartBeatRequest struct {
 	CurrTime   int64
@@ -505,6 +515,7 @@ type HeartBeatRequest struct {
 	TxInfos
 	ForbiddenVols    []string
 	DisableAuditVols []string
+	RemoveDupReqInfos
 }
 
 // PartitionReport defines the partition report.
@@ -867,22 +878,23 @@ type SimpleVolView struct {
 	DefaultZonePrior        bool
 	DpReadOnlyWhenVolFull   bool
 
-	VolType          int
-	ObjBlockSize     int
-	CacheCapacity    uint64
-	CacheAction      int
-	CacheThreshold   int
-	CacheHighWater   int
-	CacheLowWater    int
-	CacheLruInterval int
-	CacheTtl         int
-	CacheRule        string
-	PreloadCapacity  uint64
-	Uids             []UidSimpleInfo
-	TrashInterval    int64
-	Forbidden        bool
-	DisableAuditLog  bool
-	DeleteExecTime   time.Time
+	VolType            int
+	ObjBlockSize       int
+	CacheCapacity      uint64
+	CacheAction        int
+	CacheThreshold     int
+	CacheHighWater     int
+	CacheLowWater      int
+	CacheLruInterval   int
+	CacheTtl           int
+	CacheRule          string
+	PreloadCapacity    uint64
+	Uids               []UidSimpleInfo
+	TrashInterval      int64
+	Forbidden          bool
+	DisableAuditLog    bool
+	EnableRemoveDupReq bool
+	DeleteExecTime     time.Time
 }
 
 type NodeSetInfo struct {
@@ -898,6 +910,7 @@ type NodeSetInfo struct {
 	DataTotal    uint64
 	DataNodes    []*DataNodeInfo
 }
+
 type SimpleNodeSetGrpInfo struct {
 	ID          uint64
 	Status      uint8
@@ -933,9 +946,11 @@ type VolInfo struct {
 	TotalSize             uint64
 	UsedSize              uint64
 	DpReadOnlyWhenVolFull bool
+	EnableRemoveDupReq    bool
 }
 
-func NewVolInfo(name, owner string, createTime int64, status uint8, totalSize, usedSize uint64, dpReadOnlyWhenVolFull bool) *VolInfo {
+func NewVolInfo(name, owner string, createTime int64, status uint8, totalSize, usedSize uint64, dpReadOnlyWhenVolFull bool,
+	enableRemoveDupReq bool) *VolInfo {
 	return &VolInfo{
 		Name:                  name,
 		Owner:                 owner,
@@ -944,6 +959,7 @@ func NewVolInfo(name, owner string, createTime int64, status uint8, totalSize, u
 		TotalSize:             totalSize,
 		UsedSize:              usedSize,
 		DpReadOnlyWhenVolFull: dpReadOnlyWhenVolFull,
+		EnableRemoveDupReq:    enableRemoveDupReq,
 	}
 }
 
@@ -973,7 +989,6 @@ const (
 )
 
 func GetDpType(volType int, isPreload bool) int {
-
 	if volType == VolumeTypeHot {
 		return PartitionTypeNormal
 	}

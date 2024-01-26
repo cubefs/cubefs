@@ -280,12 +280,19 @@ type TxGetInfoResponse struct {
 	TxInfo *TransactionInfo `json:"tx"`
 }
 
+type ClientInfo struct {
+	ClientID        uint64 `json:"client_id"`
+	ClientIP        uint32 `json:"client_ip"`
+	ClientStartTime int64  `json:"client_sTime"`
+}
+
 // LinkInodeRequest defines the request to link an inode.
 type LinkInodeRequest struct {
 	VolName     string `json:"vol"`
 	PartitionID uint64 `json:"pid"`
 	Inode       uint64 `json:"ino"`
 	UniqID      uint64 `json:"uiq"`
+	ClientInfo
 	RequestExtend
 }
 
@@ -299,6 +306,7 @@ type TxLinkInodeRequest struct {
 	PartitionID uint64           `json:"pid"`
 	Inode       uint64           `json:"ino"`
 	TxInfo      *TransactionInfo `json:"tx"`
+	ClientInfo
 	RequestExtend
 }
 
@@ -344,6 +352,7 @@ type UnlinkInodeRequest struct {
 	PartitionID uint64 `json:"pid"`
 	Inode       uint64 `json:"ino"`
 	UniqID      uint64 `json:"uid"` //for request dedup
+	ClientInfo
 	RequestExtend
 }
 
@@ -393,6 +402,7 @@ type QuotaCreateDentryRequest struct {
 	Name        string   `json:"name"`
 	Mode        uint32   `json:"mode"`
 	QuotaIds    []uint32 `json:"qids"`
+	ClientInfo
 	RequestExtend
 }
 
@@ -403,6 +413,7 @@ type CreateDentryRequest struct {
 	Inode       uint64 `json:"ino"`
 	Name        string `json:"name"`
 	Mode        uint32 `json:"mode"`
+	ClientInfo
 	RequestExtend
 }
 
@@ -420,6 +431,7 @@ type TxCreateDentryRequest struct {
 	Mode        uint32           `json:"mode"`
 	QuotaIds    []uint32         `json:"qids"`
 	TxInfo      *TransactionInfo `json:"tx"`
+	ClientInfo
 	RequestExtend
 }
 
@@ -472,6 +484,7 @@ type TxDeleteDentryRequest struct {
 	Name        string           `json:"name"`
 	Ino         uint64           `json:"ino"`
 	TxInfo      *TransactionInfo `json:"tx"`
+	ClientInfo
 	RequestExtend
 }
 
@@ -490,6 +503,7 @@ type DeleteDentryRequest struct {
 	ParentID        uint64 `json:"pino"`
 	Name            string `json:"name"`
 	InodeCreateTime int64  `json:"inodeCreateTime"`
+	ClientInfo
 	RequestExtend
 }
 
@@ -592,6 +606,7 @@ type AppendExtentKeyRequest struct {
 	PartitionID uint64    `json:"pid"`
 	Inode       uint64    `json:"ino"`
 	Extent      ExtentKey `json:"ek"`
+	ClientInfo
 }
 
 type AppendExtentKeyWithCheckRequest struct {
@@ -600,6 +615,7 @@ type AppendExtentKeyWithCheckRequest struct {
 	Inode          uint64      `json:"ino"`
 	Extent         ExtentKey   `json:"ek"`
 	DiscardExtents []ExtentKey `json:"dek"`
+	ClientInfo
 }
 
 // AppendObjExtentKeyRequest defines the request to append an obj extent key.
@@ -638,6 +654,7 @@ type TruncateRequest struct {
 	PartitionID uint64 `json:"pid"`
 	Inode       uint64 `json:"ino"`
 	Size        uint64 `json:"sz"`
+	ClientInfo
 	RequestExtend
 }
 
@@ -665,6 +682,7 @@ type SetAttrRequest struct {
 	ModifyTime  int64  `json:"mt"`
 	AccessTime  int64  `json:"at"`
 	Valid       uint32 `json:"valid"`
+	ClientInfo
 }
 
 const (
@@ -697,6 +715,7 @@ type AppendExtentKeysRequest struct {
 	PartitionId uint64      `json:"pid"`
 	Inode       uint64      `json:"ino"`
 	Extents     []ExtentKey `json:"eks"`
+	ClientInfo
 }
 
 type SetXAttrRequest struct {
@@ -705,6 +724,7 @@ type SetXAttrRequest struct {
 	Inode       uint64 `json:"ino"`
 	Key         string `json:"key"`
 	Value       string `json:"val"`
+	ClientInfo
 }
 
 type BatchSetXAttrRequest struct {
@@ -712,6 +732,7 @@ type BatchSetXAttrRequest struct {
 	PartitionId uint64            `json:"pid"`
 	Inode       uint64            `json:"ino"`
 	Attrs       map[string]string `json:"attrs"`
+	ClientInfo
 }
 
 type GetAllXAttrRequest struct {
@@ -747,6 +768,7 @@ type RemoveXAttrRequest struct {
 	PartitionId uint64 `json:"pid"`
 	Inode       uint64 `json:"ino"`
 	Key         string `json:"key"`
+	ClientInfo
 }
 
 type ListXAttrRequest struct {
@@ -781,6 +803,7 @@ type UpdateXAttrRequest struct {
 	Inode       uint64 `json:"ino"`
 	Key         string `json:"key"`
 	Value       string `json:"val"`
+	ClientInfo
 }
 
 type MultipartInfo struct {

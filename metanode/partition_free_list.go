@@ -285,7 +285,7 @@ func (mp *metaPartition) syncToRaftFollowersFreeInode(hasDeleteInodes []byte) (e
 	if len(hasDeleteInodes) == 0 {
 		return
 	}
-	_, err = mp.submit(opFSMInternalDeleteInode, hasDeleteInodes)
+	_, err = mp.submit(opFSMInternalDeleteInode, hasDeleteInodes, nil)
 
 	return
 }

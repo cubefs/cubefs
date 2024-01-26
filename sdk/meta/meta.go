@@ -16,6 +16,7 @@ package meta
 
 import (
 	"fmt"
+	"os"
 	"strings"
 	"sync"
 	"syscall"
@@ -173,6 +174,8 @@ type MetaWrapper struct {
 	dirCache             map[uint64]dirInfoCache
 	inoInfoLk            sync.RWMutex
 	subDir               string
+	ClientID             uint64
+	StartTime            int64
 }
 
 type uniqidRange struct {
@@ -235,7 +238,8 @@ func NewMetaWrapper(config *MetaConfig) (*MetaWrapper, error) {
 	mw.dirCache = make(map[uint64]dirInfoCache)
 	mw.subDir = config.SubDir
 	limit := MaxMountRetryLimit
-
+	mw.SetClientID()
+	mw.SetStartTime()
 	for limit > 0 {
 		err = mw.initMetaWrapper()
 		// When initializing the volume, if the master explicitly responds that the specified
@@ -428,4 +432,21 @@ func statusToErrno(status int) error {
 	default:
 	}
 	return syscall.EIO
+}
+
+func (mw *MetaWrapper) SetClientID() {
+	processID := os.Getpid()
+	mw.ClientID = uint64(processID)
+}
+
+func (mw *MetaWrapper) GetClientID() uint64 {
+	return mw.ClientID
+}
+
+func (mw *MetaWrapper) SetStartTime() {
+	mw.StartTime = time.Now().Unix()
+}
+
+func (mw *MetaWrapper) GetStartTime() int64 {
+	return mw.StartTime
 }

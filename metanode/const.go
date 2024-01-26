@@ -170,12 +170,17 @@ const (
 	opFSMCursor            = 61
 
 	// uniq checker
-	opFSMUniqID              = 62
-	opFSMUniqIDSnap          = 63
-	opFSMUniqCheckerSnap     = 64
-	opFSMUniqCheckerEvict    = 65
+	opFSMUniqID           = 62
+	opFSMUniqIDSnap       = 63
+	opFSMUniqCheckerSnap  = 64
+	opFSMUniqCheckerEvict = 65
+
+	// unlink
 	opFSMUnlinkInodeOnce     = 66
 	opFSMCreateLinkInodeOnce = 67
+
+	// remove record background
+	opFSMSyncEvictReqRecords = 68
 )
 
 var (
@@ -218,6 +223,8 @@ const (
 
 	metaNodeDeleteBatchCountKey = "batchCount"
 	configNameResolveInterval   = "nameResolveInterval" // int
+	cfgReqRecordMaxCount        = "reqRecordMaxCount"   // int
+	cfgReqRecordReserveMin      = "reqRecordReserveMin" // int
 )
 
 const (
@@ -225,11 +232,12 @@ const (
 	intervalToPersistData = time.Minute * 5
 	intervalToSyncCursor  = time.Minute * 1
 
-	defaultDelExtentsCnt         = 100000
-	defaultMaxQuotaGoroutine     = 5
-	defaultQuotaSwitch           = true
-	DefaultNameResolveInterval   = 1 // minutes
-	DefaultRaftNumOfLogsToRetain = 20000 * 2
+	defaultDelExtentsCnt          = 100000
+	defaultMaxQuotaGoroutine      = 5
+	defaultQuotaSwitch            = true
+	DefaultNameResolveInterval    = 1 // minutes
+	DefaultRaftNumOfLogsToRetain  = 20000 * 2
+	intervalToSyncEvictReqRecords = time.Second * 5
 )
 
 const (

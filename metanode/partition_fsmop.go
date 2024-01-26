@@ -57,7 +57,7 @@ func (mp *metaPartition) initInode(ino *Inode) {
 				log.LogFatalf("[initInode] marshal: %s", err.Error())
 			}
 			// put first root inode
-			resp, err := mp.submit(opFSMCreateInode, data)
+			resp, err := mp.submit(opFSMCreateInode, data, nil)
 			if err != nil {
 				log.LogFatalf("[initInode] raft sync: %s", err.Error())
 			}
@@ -260,4 +260,9 @@ func (mp *metaPartition) IsEquareCreateMetaPartitionRequst(request *proto.Create
 	}
 
 	return
+}
+
+func (mp *metaPartition) evictExpiredRequestRecords(evictTimestamp int64) {
+	mp.reqRecords.EvictByTime(evictTimestamp)
+	log.LogDebugf("evictExpiredRequestRecords, evict timestamp:%v", evictTimestamp)
 }

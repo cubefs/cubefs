@@ -15,9 +15,12 @@
 package iputil
 
 import (
+	"encoding/binary"
 	"errors"
+	"fmt"
 	"net"
 	"net/http"
+	"strconv"
 	"strings"
 )
 
@@ -107,4 +110,24 @@ const DEFAULT_MAX_DISTANCE = 128
 
 func GetDistance(a, b net.IP) int {
 	return DEFAULT_MAX_DISTANCE - commonPrefixLen(a, b)
+}
+
+func ConvertIPStrToUnit32(ipAddr string) (value uint32, err error) {
+	strArr := strings.Split(ipAddr, ".")
+	if len(strArr) != 4 {
+		err = fmt.Errorf("invalid addr:%s", ipAddr)
+		return
+	}
+	data := make([]byte, 4)
+	for index, str := range strArr {
+		var v uint64
+		v, err = strconv.ParseUint(str, 10, 32)
+		if err != nil || v > 255 {
+			err = fmt.Errorf("invalid addr:%s", ipAddr)
+			return
+		}
+		data[index] = byte(v)
+	}
+	value = binary.BigEndian.Uint32(data)
+	return
 }

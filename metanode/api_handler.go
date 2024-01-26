@@ -15,19 +15,18 @@
 package metanode
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
-	"github.com/cubefs/cubefs/util/config"
-	"github.com/cubefs/cubefs/util/errors"
 	"io"
 	"net/http"
 	"os"
 	"path"
 	"strconv"
 
-	"bytes"
-
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util/config"
+	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/log"
 )
 
@@ -74,6 +73,7 @@ func (m *MetaNode) registerAPIHandler() (err error) {
 	http.HandleFunc("/getDentrySnapshot", m.getDentrySnapshotHandler)
 	// get tx information
 	http.HandleFunc("/getTx", m.getTxHandler)
+	http.HandleFunc("/getReqRecords", m.getRequestRecords)
 	return
 }
 
@@ -739,4 +739,50 @@ func (m *MetaNode) getSnapshotHandler(w http.ResponseWriter, r *http.Request, fi
 		err = errors.NewErrorf("[getInodeSnapshotHandler] copy: %s", err.Error())
 		return
 	}
+}
+
+func (m *MetaNode) getRequestRecords(w http.ResponseWriter, r *http.Request) {
+	var (
+		err error
+		pid uint64
+		mp  MetaPartition
+	)
+	resp := NewAPIResponse(http.StatusOK, "OK")
+	defer func() {
+		data, _ := resp.Marshal()
+		if _, err = w.Write(data); err != nil {
+			log.LogErrorf("[getRequestRecords] response %s", err)
+		}
+	}()
+	if err = r.ParseForm(); err != nil {
+		resp.Code = http.StatusBadRequest
+		resp.Msg = err.Error()
+		return
+	}
+	if pid, err = strconv.ParseUint(r.FormValue("pid"), 10, 64); err != nil {
+		resp.Code = http.StatusBadRequest
+		resp.Msg = err.Error()
+		return
+	}
+	if mp, err = m.metadataManager.GetPartition(pid); err != nil {
+		resp.Code = http.StatusNotFound
+		resp.Msg = err.Error()
+		return
+	}
+
+	count := mp.(*metaPartition).reqRecords.Count()
+	records := make([]*RequestInfo, 0, count)
+
+	mp.(*metaPartition).reqRecords.RangeList(func(req *RequestInfo) bool {
+		records = append(records, req)
+		return true
+	})
+	resp.Data = &struct {
+		Count   int            `json:"count"`
+		Records []*RequestInfo `json:"records"`
+	}{
+		Count:   count,
+		Records: records,
+	}
+	return
 }

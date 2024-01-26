@@ -16,12 +16,29 @@ package metanode
 
 import (
 	"encoding/json"
+	"hash/crc32"
+	"net"
+	"strings"
+
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/storage"
+	"github.com/cubefs/cubefs/util/iputil"
 )
 
 type Packet struct {
 	proto.Packet
+	remote string
+}
+
+func (p *Packet) ReadFromConn(c net.Conn, timeoutSec int) (err error) {
+	if err = p.Packet.ReadFromConn(c, timeoutSec); err != nil {
+		return
+	}
+	if parts := strings.Split(c.RemoteAddr().String(), ":"); len(parts) > 1 {
+		// Split ip address and port.
+		p.remote = parts[0]
+	}
+	return
 }
 
 // NewPacketToDeleteExtent returns a new packet to delete the extent.
@@ -82,4 +99,91 @@ func NewPacketToFreeInodeOnRaftFollower(partitionID uint64, freeInodes []byte) *
 	p.Size = uint32(len(p.Data))
 
 	return p
+}
+
+func (p *Packet) ResetPackageData(req interface{}) {
+	if p.IsNeedRemoveDupOperation() {
+		_ = p.MarshalData(req)
+	}
+	return
+}
+
+func (p *Packet) IsNeedRemoveDupOperation() bool {
+	if p.Opcode == proto.OpMetaExtentsAdd || p.Opcode == proto.OpMetaLinkInode ||
+		p.Opcode == proto.OpMetaUnlinkInode || p.Opcode == proto.OpMetaBatchExtentsAdd || p.Opcode == proto.OpMetaSetattr ||
+		p.Opcode == proto.OpMetaTruncate || p.Opcode == proto.OpMetaSetXAttr || p.Opcode == proto.OpMetaRemoveXAttr ||
+		p.Opcode == proto.OpMetaCreateDentry || p.Opcode == proto.OpMetaDeleteDentry || p.Opcode == proto.OpMetaUpdateXAttr ||
+		p.Opcode == proto.OpMetaExtentAddWithCheck || p.Opcode == proto.OpMetaTxCreateDentry || p.Opcode == proto.OpQuotaCreateDentry ||
+		p.Opcode == proto.OpMetaTxDeleteDentry {
+		return true
+	}
+	return false
+}
+
+func (p *Packet) FillClientRequestPacket(reqObj interface{}) (err error) {
+	if p.CRC != 0 {
+		//already fill
+		return
+	}
+
+	var (
+		clientIPUint32 uint32
+		remoteIP       string
+	)
+	p.CRC = crc32.ChecksumIEEE(p.Data[:p.Size])
+	if parts := strings.Split(p.remote, ":"); len(parts) >= 1 {
+		remoteIP = parts[0]
+	}
+	if clientIPUint32, err = iputil.ConvertIPStrToUnit32(remoteIP); err != nil {
+		return
+	}
+	switch p.Opcode {
+	case proto.OpMetaLinkInode:
+		req := reqObj.(*LinkInodeReq)
+		req.ClientIP = clientIPUint32
+	case proto.OpMetaUnlinkInode:
+		req := reqObj.(*UnlinkInoReq)
+		req.ClientIP = clientIPUint32
+	case proto.OpMetaSetattr:
+		req := reqObj.(*SetattrRequest)
+		req.ClientIP = clientIPUint32
+	case proto.OpMetaTruncate:
+		req := reqObj.(*ExtentsTruncateReq)
+		req.ClientIP = clientIPUint32
+	case proto.OpMetaSetXAttr:
+		req := reqObj.(*proto.SetXAttrRequest)
+		req.ClientIP = clientIPUint32
+	case proto.OpMetaUpdateXAttr:
+		req := reqObj.(*proto.UpdateXAttrRequest)
+		req.ClientIP = clientIPUint32
+	case proto.OpMetaRemoveXAttr:
+		req := reqObj.(*proto.RemoveXAttrRequest)
+		req.ClientIP = clientIPUint32
+	case proto.OpMetaExtentsAdd:
+		req := reqObj.(*proto.AppendExtentKeyRequest)
+		req.ClientIP = clientIPUint32
+	case proto.OpMetaExtentAddWithCheck:
+		req := reqObj.(*proto.AppendExtentKeyWithCheckRequest)
+		req.ClientIP = clientIPUint32
+	case proto.OpMetaBatchExtentsAdd:
+		req := reqObj.(*proto.AppendExtentKeysRequest)
+		req.ClientIP = clientIPUint32
+	case proto.OpMetaCreateDentry:
+		req := reqObj.(*proto.CreateDentryRequest)
+		req.ClientIP = clientIPUint32
+	case proto.OpMetaTxCreateDentry:
+		req := reqObj.(*proto.TxCreateDentryRequest)
+		req.ClientIP = clientIPUint32
+	case proto.OpQuotaCreateDentry:
+		req := reqObj.(*proto.QuotaCreateDentryRequest)
+		req.ClientIP = clientIPUint32
+	case proto.OpMetaDeleteDentry:
+		req := reqObj.(*proto.DeleteDentryRequest)
+		req.ClientIP = clientIPUint32
+	case proto.OpMetaTxDeleteDentry:
+		req := reqObj.(*proto.TxDeleteDentryRequest)
+		req.ClientIP = clientIPUint32
+	default:
+	}
+	return
 }
