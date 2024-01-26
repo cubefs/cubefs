@@ -150,6 +150,11 @@ extern int cfs_unlink(int64_t id, char* path);
 extern int cfs_rename(int64_t id, char* from, char* to);
 extern int cfs_fchmod(int64_t id, int fd, mode_t mode);
 extern int cfs_getsummary(int64_t id, char* path, struct cfs_summary_info* summary, char* useCache, int goroutine_num);
+extern int64_t cfs_lock_dir(int64_t id, char *path, int64_t lease, int64_t lock_id);
+extern int cfs_unlock_dir(int64_t id, char *path);
+extern int cfs_get_dir_lock(int64_t id, char *path, int64_t *lock_id, char **valid_time);
+extern int cfs_symlink(int64_t id, char *src_path, char *dst_path);
+extern int cfs_link(int64_t id, char *src_path, char *dst_path);
 
 #ifdef __cplusplus
 }
