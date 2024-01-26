@@ -174,7 +174,7 @@ func doStart(s common.Server, cfg *config.Config) (err error) {
 		return
 	}
 
-	statistics.InitStatistics(cfg, m.clusterId, statistics.ModelMetaNode, m.localAddr, m.metadataManager.RangeMonitorData)
+	statistics.InitStatistics(cfg, m.clusterId, statistics.ModelMetaNode, m.zoneName, m.localAddr, m.metadataManager.RangeMonitorData)
 
 	go m.startUpdateProcessStatInfo()
 
@@ -453,7 +453,7 @@ func (m *MetaNode) stopFetchTopologyManager() {
 }
 
 func (m *MetaNode) initMultiLimiterManager() (err error) {
-	_, err =  multirate.InitLimiterManager(multirate.ModuleMetaNode, m.zoneName, masterClient.AdminAPI().GetLimitInfo)
+	_, err = multirate.InitLimiterManager(multirate.ModuleMetaNode, m.zoneName, masterClient.AdminAPI().GetLimitInfo)
 	if err != nil {
 		err = fmt.Errorf("init limit manager failed[%s]", err.Error())
 		return

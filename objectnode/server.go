@@ -249,7 +249,7 @@ func handleStart(s common.Server, cfg *config.Config) (err error) {
 			exporter.Warning(message)
 			return
 		}
-		statistics.InitStatistics(cfg, cluster, statistics.ModelObjectNode, localIP, o.rangeMonitorData)
+		statistics.InitStatistics(cfg, cluster, statistics.ModelObjectNode, "default", localIP, o.rangeMonitorData)
 		o.statisticEnabled = true
 		log.LogInfof("statistics inited, cluster [%v], module [%v], localIP [%v]", cluster, statistics.ModelObjectNode, localIP)
 	}(cfg, ci.Cluster)

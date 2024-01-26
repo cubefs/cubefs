@@ -30,6 +30,7 @@ var (
 type Statistics struct {
 	cluster       string
 	module        string
+	zone          string
 	address       string
 	sendList      []*ReportData // store data per second
 	sendListLock  sync.RWMutex
@@ -41,11 +42,11 @@ type Statistics struct {
 }
 
 type MonitorData struct {
-	Action      int
-	ActionStr   string
-	Size        uint64 // the num of read/write byte
-	Count       uint64
-	tpMonitor   *tpmonitor.TpMonitor
+	Action    int
+	ActionStr string
+	Size      uint64 // the num of read/write byte
+	Count     uint64
+	tpMonitor *tpmonitor.TpMonitor
 }
 
 type ReportData struct {
@@ -66,12 +67,13 @@ type ReportData struct {
 type ReportInfo struct {
 	Cluster string
 	Addr    string
+	Zone    string
 	Module  string
 	Infos   []*ReportData
 }
 
 func (m *Statistics) String() string {
-	return fmt.Sprintf("{Cluster(%v) Module(%v) IP(%v) MonitorAddr(%v)}", m.cluster, m.module, m.address, m.monitorAddr)
+	return fmt.Sprintf("{Cluster(%v) Module(%v) Zone(%v) IP(%v) MonitorAddr(%v)}", m.cluster, m.module, m.zone, m.address, m.monitorAddr)
 }
 
 func (data *MonitorData) String() string {
@@ -84,10 +86,11 @@ func (data *ReportData) String() string {
 		data.VolName, data.PartitionID, data.ActionStr, data.Action, data.Count, data.Size, data.Tp99, data.Max, data.Avg, data.DiskPath, data.ReportTime)
 }
 
-func newStatistics(monitorAddr, cluster, moduleName, nodeAddr string) *Statistics {
+func newStatistics(monitorAddr, cluster, moduleName, zone, nodeAddr string) *Statistics {
 	return &Statistics{
 		cluster:       cluster,
 		module:        moduleName,
+		zone:          zone,
 		address:       nodeAddr,
 		monitorAddr:   monitorAddr,
 		sendList:      make([]*ReportData, 0),
@@ -97,7 +100,7 @@ func newStatistics(monitorAddr, cluster, moduleName, nodeAddr string) *Statistic
 	}
 }
 
-func InitStatistics(cfg *config.Config, cluster, moduleName, nodeAddr string, IterFunc func(deal func(data *MonitorData, volName, diskPath string, pid uint64))) {
+func InitStatistics(cfg *config.Config, cluster, moduleName, zone, nodeAddr string, IterFunc func(deal func(data *MonitorData, volName, diskPath string, pid uint64))) {
 	targetCluster = cluster
 	targetModuleName = moduleName
 	targetNodeAddr = nodeAddr
@@ -106,7 +109,7 @@ func InitStatistics(cfg *config.Config, cluster, moduleName, nodeAddr string, It
 		return
 	}
 	once.Do(func() {
-		StatisticsModule = newStatistics(monitorAddr, cluster, moduleName, nodeAddr)
+		StatisticsModule = newStatistics(monitorAddr, cluster, moduleName, zone, nodeAddr)
 		StatisticsModule.Range = IterFunc
 		go StatisticsModule.summaryJob()
 		go StatisticsModule.reportJob()
@@ -213,8 +216,7 @@ func (data *MonitorData) UpdateData(dataSize uint64) {
 	atomic.AddUint64(&data.Size, dataSize)
 }
 
-
-func (data *MonitorData) GenReportData(vol, path string, pid uint64, reportTime int64) *ReportData{
+func (data *MonitorData) GenReportData(vol, path string, pid uint64, reportTime int64) *ReportData {
 	if atomic.LoadUint64(&data.Count) == 0 {
 		return nil
 	}
@@ -239,7 +241,7 @@ func (data *MonitorData) GenReportData(vol, path string, pid uint64, reportTime 
 func (m *Statistics) summaryJob() {
 	defer func() {
 		if err := recover(); err != nil {
-			log.LogErrorf("Monitor: summary job panic(%v) module(%v) ip(%v)", err, m.module, m.address)
+			log.LogErrorf("Monitor: summary job panic(%v) module(%v) zone(%v) ip(%v)", err, m.module, m.zone, m.address)
 		}
 	}()
 	summaryTime := m.GetMonitorSummaryTime()
@@ -278,7 +280,7 @@ func (m *Statistics) summaryJob() {
 func (m *Statistics) reportJob() {
 	defer func() {
 		if err := recover(); err != nil {
-			log.LogErrorf("Monitor: report job panic(%v) module(%v) ip(%v)", err, m.module, m.address)
+			log.LogErrorf("Monitor: report job panic(%v) module(%v) zone(%v) ip(%v)", err, m.module, m.zone, m.address)
 		}
 	}()
 	reportTime := m.GetMonitorReportTime()
@@ -319,6 +321,7 @@ func (m *Statistics) reportToMonitor(sendList []*ReportData) {
 	report := &ReportInfo{
 		Cluster: m.cluster,
 		Module:  m.module,
+		Zone:    m.zone,
 		Addr:    m.address,
 		Infos:   sendList,
 	}

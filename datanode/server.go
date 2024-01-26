@@ -200,7 +200,7 @@ func doStart(server common.Server, cfg *config.Config) (err error) {
 	async.RunWorker(s.startUpdateNodeInfo)
 	async.RunWorker(s.startUpdateProcessStatInfo)
 
-	statistics.InitStatistics(cfg, s.clusterID, statistics.ModelDataNode, LocalIP, s.rangeMonitorData)
+	statistics.InitStatistics(cfg, s.clusterID, statistics.ModelDataNode, s.zoneName, LocalIP, s.rangeMonitorData)
 
 	return
 }

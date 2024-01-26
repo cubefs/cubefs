@@ -37,8 +37,8 @@ func (m *Monitor) collect(w http.ResponseWriter, r *http.Request) {
 			detailBuilder.WriteString(fmt.Sprintf("\t[time: %v, data: %v]\n",
 				time.Unix(data.ReportTime, 0).Format("2006-01-02 15:04:05"), data))
 		}
-		log.LogDebugf("collect report[cluster: %v, module: %v, addr: %v]:\n%v",
-			reportInfo.Cluster, reportInfo.Module, reportInfo.Addr, detailBuilder.String())
+		log.LogDebugf("collect report[cluster: %v, module: %v, zone: %v, addr: %v]:\n%v",
+			reportInfo.Cluster, reportInfo.Module, reportInfo.Zone, reportInfo.Addr, detailBuilder.String())
 	}
 
 	// send to jmq4
@@ -242,8 +242,8 @@ func (m *Monitor) getTopIP(w http.ResponseWriter, r *http.Request) {
 // table name format: **cfs_monitor_20060102150000**
 func getPartitionQueryTable(start string, end string) (table string, err error) {
 	var (
-		startTime	time.Time
-		endTime		time.Time
+		startTime time.Time
+		endTime   time.Time
 	)
 	if startTime, err = time.ParseInLocation(timeLayout, start, time.Local); err != nil {
 		return
@@ -258,7 +258,7 @@ func getPartitionQueryTable(start string, end string) (table string, err error) 
 		return
 	}
 	// compare time difference, use table which has more data
-	if endHour - startTime.Unix() > endTime.Unix() - endHour {
+	if endHour-startTime.Unix() > endTime.Unix()-endHour {
 		table = strings.ToLower(getTableName(startHour, DataTablePrefix))
 	} else {
 		table = strings.ToLower(getTableName(endHour, DataTablePrefix))

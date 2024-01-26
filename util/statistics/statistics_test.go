@@ -64,7 +64,6 @@ func collectHandler(w http.ResponseWriter, r *http.Request) {
 	w.Write(httpReply)
 }
 
-
 func TestStatistics(t *testing.T) {
 	conn, err := net.Listen("tcp", "127.0.0.1:8800")
 	if err != nil {
@@ -77,7 +76,7 @@ func TestStatistics(t *testing.T) {
 		"monitorAddr": "127.0.0.1:8800"
 	}`
 	cfg := config.LoadConfigString(cfgJson)
-	InitStatistics(cfg, "test", "metaNode", "127.0.0.1", rangeMonitiorData)
+	InitStatistics(cfg, "test", "metaNode", "default", "127.0.0.1", rangeMonitiorData)
 
 	helper(1, t)
 	time.Sleep(time.Second * 1)

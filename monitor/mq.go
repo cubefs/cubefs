@@ -10,20 +10,20 @@ import (
 )
 
 type MQProducer struct {
-	topic      	[]string
-	config     	*sarama.Config
-	producer   	[]sarama.SyncProducer
-	produceNum	int64
-	msgChan    	[]chan *statistics.ReportInfo
-	stopC      	chan bool
-	epoch		uint64
+	topic      []string
+	config     *sarama.Config
+	producer   []sarama.SyncProducer
+	produceNum int64
+	msgChan    []chan *statistics.ReportInfo
+	stopC      chan bool
+	epoch      uint64
 }
 
 type JMQConfig struct {
-	address  	string
-	topic    	[]string
-	clientID 	string
-	produceNum	int64
+	address    string
+	topic      []string
+	clientID   string
+	produceNum int64
 }
 
 func initMQProducer(jmqConf *JMQConfig) (mqProducer *MQProducer, err error) {
@@ -80,7 +80,7 @@ func (mqProducer *MQProducer) Produce(msgChan chan *statistics.ReportInfo, produ
 				proMsgs[i] = make([]*sarama.ProducerMessage, 0)
 			}
 			for _, info := range reportInfo.Infos {
-				mqMsg := constructMQMessage(reportInfo.Cluster, reportInfo.Module, reportInfo.Addr, info)
+				mqMsg := constructMQMessage(reportInfo.Cluster, reportInfo.Module, reportInfo.Zone, reportInfo.Addr, info)
 				for topicID, topic := range mqProducer.topic {
 					if len(topic) <= 0 {
 						continue
@@ -97,8 +97,8 @@ func (mqProducer *MQProducer) Produce(msgChan chan *statistics.ReportInfo, produ
 				if err := producer.SendMessages(proMsgs[i]); err != nil {
 					log.LogErrorf("produce to mq error: %v, topic(%v) msgLen(%v) index(%v)", err, mqProducer.topic[i], len(proMsgs[i]), index)
 				}
-				log.LogDebugf("produce to mq: cluster(%v) module(%v) ip(%v) topic(%v) msgLen(%v) index(%v) msgChan(%v) cost(%v)",
-					reportInfo.Cluster, reportInfo.Module, reportInfo.Addr, mqProducer.topic[i], len(proMsgs[i]), index, len(msgChan), time.Since(start))
+				log.LogDebugf("produce to mq: cluster(%v) module(%v) zone(%v) ip(%v) topic(%v) msgLen(%v) index(%v) msgChan(%v) cost(%v)",
+					reportInfo.Cluster, reportInfo.Module, reportInfo.Zone, reportInfo.Addr, mqProducer.topic[i], len(proMsgs[i]), index, len(msgChan), time.Since(start))
 			}
 
 		case <-mqProducer.stopC:
@@ -107,9 +107,9 @@ func (mqProducer *MQProducer) Produce(msgChan chan *statistics.ReportInfo, produ
 	}
 }
 
-func constructMQMessage(cluster, module, ip string, data *statistics.ReportData) []byte {
-	msg := fmt.Sprintf("%v,%v,%v,%v,%v,%v,%v,%v,%v,%v,%v,%v,%v",
+func constructMQMessage(cluster, module, zone, ip string, data *statistics.ReportData) []byte {
+	msg := fmt.Sprintf("%v,%v,%v,%v,%v,%v,%v,%v,%v,%v,%v,%v,%v,%v",
 		data.ReportTime, cluster, module, ip, data.Action, data.VolName, data.PartitionID,
-		data.Size, data.Count, data.Max, data.Avg, data.Tp99, data.DiskPath)
+		data.Size, data.Count, data.Max, data.Avg, data.Tp99, data.DiskPath, zone)
 	return []byte(msg)
 }

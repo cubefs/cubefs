@@ -56,6 +56,7 @@ func TestCollect(t *testing.T) {
 		Cluster: "chubaofs01",
 		Addr:    "127.0.0.1",
 		Module:  statistics.ModelDataNode,
+		Zone:    "default",
 		Infos: []*statistics.ReportData{
 			{
 				VolName:     "ltptest",
