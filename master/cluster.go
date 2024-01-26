@@ -3479,7 +3479,7 @@ func (c *Cluster) allDataNodes() (dataNodes []proto.NodeView) {
 		dataNodes = append(dataNodes, proto.NodeView{
 			Addr: dataNode.Addr, DomainAddr: dataNode.DomainAddr,
 			IsActive: dataNode.isActive, ID: dataNode.ID, IsWritable: dataNode.isWriteAble(),
-		})
+			IsDiskWritable: dataNode.isWriteAble()})
 		return true
 	})
 	return
@@ -3492,7 +3492,7 @@ func (c *Cluster) allMetaNodes() (metaNodes []proto.NodeView) {
 		metaNodes = append(metaNodes, proto.NodeView{
 			ID: metaNode.ID, Addr: metaNode.Addr, DomainAddr: metaNode.DomainAddr,
 			IsActive: metaNode.IsActive, IsWritable: metaNode.isWritable(proto.StoreModeMem),
-		})
+			IsDiskWritable: metaNode.isWritable(proto.StoreModeRocksDb)})
 		return true
 	})
 	return

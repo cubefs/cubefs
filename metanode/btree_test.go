@@ -42,6 +42,15 @@ func mockTree(rocksTree *RocksTree, treeType TreeType) (memModeTree, rocksModeTr
 	case ExtendType:
 		memModeTree = &ExtendBTree{NewBtree()}
 		rocksModeTree, _ = NewExtendRocks(rocksTree)
+	case TransactionType:
+		memModeTree = &TransactionBTree{NewBtree()}
+		rocksModeTree, _ = NewTransactionRocks(rocksTree)
+	case TransactionRollbackInodeType:
+		memModeTree = &TransactionBTree{NewBtree()}
+		rocksModeTree, _ = NewTransactionRollbackInodeRocks(rocksTree)
+	case TransactionRollbackDentryType:
+		memModeTree = &TransactionBTree{NewBtree()}
+		rocksModeTree, _ = NewTransactionRollbackDentryRocks(rocksTree)
 	default:
 		fmt.Printf("error tree type(%v)\n", treeType)
 		os.Exit(1)
@@ -209,6 +218,8 @@ func TestInodeTree_Create(t *testing.T) {
 				Generation: 0,
 				LinkTarget: []byte("linkTarget"),
 				NLink:      3,
+				Extents:    NewSortedExtents(),
+				ObjExtents: NewSortedObjExtents(),
 			},
 		},
 		{
@@ -251,7 +262,7 @@ func TestInodeTree_Create(t *testing.T) {
 			}
 
 			if !reflect.DeepEqual(test.inode, existIno) {
-				t.Errorf("inode info mismatch, expect:%s, actual:%s", test.inode, existIno)
+				t.Errorf("inode info mismatch, expect:%s,\n actual:%s", test.inode, existIno)
 				return
 			}
 
@@ -418,7 +429,7 @@ func TestInodeTreeGet(t *testing.T) {
 	}
 
 	getIno, errForRocks = rocksInodeTree.Get(1000)
-	if errForRocks != nil && errForRocks != rocksDBError {
+	if errForRocks != nil && errForRocks != ErrRocksdbOperation {
 		t.Fatalf("Test Get: result mismatch, expect[err:nil] actual[err:%v]", errForRocks)
 	}
 

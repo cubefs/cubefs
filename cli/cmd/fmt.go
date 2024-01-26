@@ -179,8 +179,8 @@ func formatSimpleVolView(svv *proto.SimpleVolView) string {
 		sb.WriteString(fmt.Sprintf("  CacheHighWater       : %v\n", svv.CacheHighWater))
 		sb.WriteString(fmt.Sprintf("  CacheRule            : %v\n", svv.CacheRule))
 	}
-	sb.WriteString(fmt.Sprintf("  Default store mode   		     : %v\n", svv.DefaultStoreMode.Str()))
-	sb.WriteString(fmt.Sprintf("  Convert state       			 : %v\n", svv.ConvertState.Str()))
+	sb.WriteString(fmt.Sprintf("  Default store mode              : %v\n", svv.DefaultStoreMode.Str()))
+	sb.WriteString(fmt.Sprintf("  Convert state                   : %v\n", svv.ConvertState.Str()))
 	sb.WriteString(fmt.Sprintf("  Meta layout                     : %3d%% - %3d%%\n", svv.MpLayout.PercentOfMP, svv.MpLayout.PercentOfReplica))
 	return sb.String()
 }

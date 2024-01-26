@@ -20,6 +20,7 @@ import (
 	"strings"
 
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util/log"
 )
 
 func (mp *metaPartition) UpdateXAttr(req *proto.UpdateXAttrRequest, p *Packet) (err error) {
@@ -31,8 +32,9 @@ func (mp *metaPartition) UpdateXAttr(req *proto.UpdateXAttrRequest, p *Packet) (
 	mp.xattrLock.Lock()
 	defer mp.xattrLock.Unlock()
 	var extend *Extend
-	extend, err = mp.extendTree.RefGet(req.Inode)
+	extend, err = mp.extendTree.Get(req.Inode)
 	if err != nil {
+		log.LogErrorf("[UpdateXAttr] failed to get xattr, ino(%v), err(%v)", req.Inode, err)
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return
 	}
@@ -57,6 +59,11 @@ func (mp *metaPartition) UpdateXAttr(req *proto.UpdateXAttrRequest, p *Packet) (
 			p.PacketOkReply()
 			return
 		} else {
+			if err != nil {
+				log.LogErrorf("[UpdateXAttr] failed to get xattr, ino(%v), err(%v)", req.Inode, err)
+				return
+			}
+
 			extend.Put([]byte(req.Key), []byte(req.Value), mp.verSeq)
 			if _, err = mp.putExtend(opFSMUpdateXAttr, extend); err != nil {
 				p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))

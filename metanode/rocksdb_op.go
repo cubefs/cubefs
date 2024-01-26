@@ -4,16 +4,17 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
-	"github.com/cubefs/cubefs/util"
-	"github.com/cubefs/cubefs/util/exporter"
-	"github.com/cubefs/cubefs/util/log"
-	"github.com/tecbot/gorocksdb"
 	"io/fs"
 	"os"
 	"runtime/debug"
 	"strings"
 	"sync"
 	"sync/atomic"
+
+	"github.com/cubefs/cubefs/util"
+	"github.com/cubefs/cubefs/util/exporter"
+	"github.com/cubefs/cubefs/util/log"
+	"github.com/tecbot/gorocksdb"
 )
 
 const (
@@ -30,8 +31,8 @@ const (
 )
 
 var (
-	accessDBError = fmt.Errorf("access rocksdb error")
-	rocksDBError  = fmt.Errorf("rocksdb operation error")
+	ErrRocksdbAccess    = fmt.Errorf("access rocksdb error")
+	ErrRocksdbOperation = fmt.Errorf("rocksdb operation error")
 )
 
 type TableType byte
@@ -47,6 +48,10 @@ const (
 	DelInodeTable
 	ExtentDelTable
 	ReqRecordsTable
+	TransactionTable
+	TransactionRollbackInodeTable
+	TransactionRollbackDentryTable
+	MaxTable
 )
 
 const (
@@ -63,6 +68,12 @@ func getTableTypeKey(treeType TreeType) TableType {
 		return MultipartTable
 	case ExtendType:
 		return ExtendTable
+	case TransactionType:
+		return TransactionTable
+	case TransactionRollbackInodeType:
+		return TransactionRollbackInodeTable
+	case TransactionRollbackDentryType:
+		return TransactionRollbackDentryTable
 	default:
 	}
 	panic("error tree type")
@@ -267,7 +278,7 @@ func (dbInfo *RocksDbInfo) interOpenDb(dir string, walFileSize, walMemSize, logF
 	}
 	if err != nil {
 		log.LogErrorf("interOpenDb open db err:%v", err)
-		return rocksDBError
+		return ErrRocksdbOperation
 	}
 	dbInfo.dir = dir
 	dbInfo.defOption = opts
@@ -405,14 +416,14 @@ func (dbInfo *RocksDbInfo) descRangeWithIter(it *gorocksdb.Iterator, start []byt
 func (dbInfo *RocksDbInfo) accessDb() error {
 	if atomic.LoadUint32(&dbInfo.state) != dbOpenedSt {
 		log.LogErrorf("[RocksDB Op] can not access db, db is not opened. Cur state:%v", dbInfo.state)
-		return accessDBError
+		return ErrRocksdbAccess
 	}
 
 	dbInfo.mutex.RLock()
 	if atomic.LoadUint32(&dbInfo.state) != dbOpenedSt {
 		dbInfo.mutex.RUnlock()
 		log.LogErrorf("[RocksDB Op] can not access db, db is not opened. Cur state:%v", dbInfo.state)
-		return accessDBError
+		return ErrRocksdbAccess
 	}
 	return nil
 }
@@ -466,7 +477,38 @@ func (dbInfo *RocksDbInfo) RangeWithSnap(start, end []byte, snap *gorocksdb.Snap
 	return dbInfo.rangeWithIter(it, start, end, cb)
 }
 
-func (dbInfo *RocksDbInfo) RangeWithSnapByPrefix(prefix, start, end []byte, snap *gorocksdb.Snapshot, cb func(k, v []byte) (bool, error)) ( err error) {
+func (dbInfo *RocksDbInfo) GetBytesWithSnap(snap *gorocksdb.Snapshot, key []byte) (value []byte, err error) {
+	defer recoverRocksDBPanic()
+	if snap == nil {
+		err = fmt.Errorf("invalid snapshot")
+		return
+	}
+	if err = dbInfo.accessDb(); err != nil {
+		return
+	}
+	defer dbInfo.releaseDb()
+	ro := genRocksDBReadOption(snap)
+	for index := 0; index < DefRetryCount; {
+		value, err = dbInfo.db.GetBytes(ro, key)
+		if err == nil {
+			break
+		}
+		if !isRetryError(err) {
+			log.LogErrorf("[RocksDB Op] GetBytes failed, error(%v)", err)
+			break
+		}
+		log.LogErrorf("[RocksDB Op] GetBytes failed with retry error(%v), continue", err)
+		index++
+	}
+	if err != nil {
+		log.LogErrorf("[RocksDB Op] GetBytes err:%v", err)
+		err = ErrRocksdbOperation
+		return
+	}
+	return
+}
+
+func (dbInfo *RocksDbInfo) RangeWithSnapByPrefix(prefix, start, end []byte, snap *gorocksdb.Snapshot, cb func(k, v []byte) (bool, error)) (err error) {
 	defer recoverRocksDBPanic()
 	if snap == nil {
 		return fmt.Errorf("invalid snapshot")
@@ -568,7 +610,7 @@ func (dbInfo *RocksDbInfo) GetBytes(key []byte) (bytes []byte, err error) {
 	}
 	if err != nil {
 		log.LogErrorf("[RocksDB Op] GetBytes err:%v", err)
-		err = rocksDBError
+		err = ErrRocksdbOperation
 		return
 	}
 	return
@@ -608,7 +650,7 @@ func (dbInfo *RocksDbInfo) Put(key, value []byte) (err error) {
 	}
 	if err != nil {
 		log.LogErrorf("[RocksDB Op] Put err:%v", err)
-		err = rocksDBError
+		err = ErrRocksdbOperation
 		return
 	}
 	return
@@ -640,7 +682,7 @@ func (dbInfo *RocksDbInfo) Del(key []byte) (err error) {
 	}
 	if err != nil {
 		log.LogErrorf("[RocksDB Op] Del err:%v", err)
-		err = rocksDBError
+		err = ErrRocksdbOperation
 		return
 	}
 	return
@@ -721,7 +763,7 @@ func (dbInfo *RocksDbInfo) CommitBatchAndRelease(handle interface{}) (err error)
 	}
 	if err != nil {
 		log.LogErrorf("[RocksDB Op] CommitBatchAndRelease write failed:%v", err)
-		err = rocksDBError
+		err = ErrRocksdbOperation
 		return
 	}
 	batch.Destroy()
@@ -782,7 +824,7 @@ func (dbInfo *RocksDbInfo) CommitBatch(handle interface{}) (err error) {
 	}
 	if err != nil {
 		log.LogErrorf("[RocksDB Op] CommitBatch write failed, error(%v)", err)
-		err = rocksDBError
+		err = ErrRocksdbOperation
 		return
 	}
 	return

@@ -16,9 +16,11 @@ package metanode
 
 import (
 	"encoding/binary"
-	"github.com/cubefs/cubefs/util/btree"
 	"hash/crc32"
 	"sync"
+
+	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util/btree"
 )
 
 const defaultBTreeDegree = 32
@@ -31,11 +33,15 @@ type (
 var _ Snapshot = &MemSnapShot{}
 
 type MemSnapShot struct {
-	applyID   uint64
-	inode     *InodeBTree
-	dentry    *DentryBTree
-	extend    *ExtendBTree
-	multipart *MultipartBTree
+	applyID             uint64
+	inode               *InodeBTree
+	dentry              *DentryBTree
+	extend              *ExtendBTree
+	multipart           *MultipartBTree
+	transaction         *TransactionBTree
+	transactionRbInode  *TransactionRollbackInodeBTree
+	transactionRbDentry *TransactionRollbackDentryBTree
+	txID                uint64
 }
 
 func (b *MemSnapShot) Range(tp TreeType, cb func(item interface{}) (bool, error)) error {
@@ -60,6 +66,21 @@ func (b *MemSnapShot) Range(tp TreeType, cb func(item interface{}) (bool, error)
 			return cb(multipart)
 		}
 		return b.multipart.Range(&Multipart{}, nil, callBackFunc)
+	case TransactionType:
+		callBackFunc := func(tx *proto.TransactionInfo) (bool, error) {
+			return cb(tx)
+		}
+		return b.transaction.Range(nil, nil, callBackFunc)
+	case TransactionRollbackInodeType:
+		callBackFunc := func(inode *TxRollbackInode) (bool, error) {
+			return cb(inode)
+		}
+		return b.transactionRbInode.Range(nil, nil, callBackFunc)
+	case TransactionRollbackDentryType:
+		callBackFunc := func(dentry *TxRollbackDentry) (bool, error) {
+			return cb(dentry)
+		}
+		return b.transactionRbDentry.Range(nil, nil, callBackFunc)
 	default:
 	}
 	panic("out of type")
@@ -77,6 +98,12 @@ func (b *MemSnapShot) Count(tp TreeType) uint64 {
 		return uint64(b.extend.Len())
 	case MultipartType:
 		return uint64(b.multipart.Len())
+	case TransactionType:
+		return uint64(b.transaction.Len())
+	case TransactionRollbackInodeType:
+		return uint64(b.transactionRbInode.Len())
+	case TransactionRollbackDentryType:
+		return uint64(b.transactionRbDentry.Len())
 	default:
 	}
 	panic("out of type")
@@ -133,6 +160,39 @@ func (b *MemSnapShot) CrcSum(tp TreeType) (crcSum uint32, err error) {
 			return true, nil
 		}
 		err = b.multipart.Range(&Multipart{}, nil, cb)
+	case TransactionType:
+		cb := func(tx *proto.TransactionInfo) (bool, error) {
+			if data, err = tx.Marshal(); err != nil {
+				return false, err
+			}
+			if _, err = crc.Write(data); err != nil {
+				return false, err
+			}
+			return true, nil
+		}
+		err = b.transaction.Range(nil, nil, cb)
+	case TransactionRollbackInodeType:
+		cb := func(inode *TxRollbackInode) (bool, error) {
+			if data, err = inode.Marshal(); err != nil {
+				return false, err
+			}
+			if _, err = crc.Write(data); err != nil {
+				return false, err
+			}
+			return true, nil
+		}
+		err = b.transactionRbInode.Range(nil, nil, cb)
+	case TransactionRollbackDentryType:
+		cb := func(dentry *TxRollbackDentry) (bool, error) {
+			if data, err = dentry.Marshal(); err != nil {
+				return false, err
+			}
+			if _, err = crc.Write(data); err != nil {
+				return false, err
+			}
+			return true, nil
+		}
+		err = b.transactionRbDentry.Range(nil, nil, cb)
 	default:
 		panic("out of type")
 	}
@@ -147,10 +207,17 @@ func (b *MemSnapShot) ApplyID() uint64 {
 	return b.applyID
 }
 
+func (b *MemSnapShot) TxID() uint64 {
+	return b.txID
+}
+
 var _ InodeTree = &InodeBTree{}
 var _ DentryTree = &DentryBTree{}
 var _ ExtendTree = &ExtendBTree{}
 var _ MultipartTree = &MultipartBTree{}
+var _ TransactionTree = &TransactionBTree{}
+var _ TransactionRollbackInodeTree = &TransactionRollbackInodeBTree{}
+var _ TransactionRollbackDentryTree = &TransactionRollbackDentryBTree{}
 
 type InodeBTree struct {
 	*BTree
@@ -168,6 +235,18 @@ type MultipartBTree struct {
 	*BTree
 }
 
+type TransactionBTree struct {
+	*BTree
+}
+
+type TransactionRollbackInodeBTree struct {
+	*BTree
+}
+
+type TransactionRollbackDentryBTree struct {
+	*BTree
+}
+
 func (i *InodeBTree) GetMaxInode() (uint64, error) {
 	i.Lock()
 	item := i.tree.Max()
@@ -178,7 +257,7 @@ func (i *InodeBTree) GetMaxInode() (uint64, error) {
 	return item.(*Inode).Inode, nil
 }
 
-//get
+// get
 func (i *InodeBTree) RefGet(ino uint64) (*Inode, error) {
 	item := i.BTree.Get(&Inode{Inode: ino})
 	if item != nil {
@@ -243,17 +322,74 @@ func (i *MultipartBTree) Get(key, id string) (*Multipart, error) {
 	return nil, nil
 }
 
+func (i *TransactionBTree) RefGet(txId string) (tx *proto.TransactionInfo, err error) {
+	item := i.BTree.Get(&proto.TransactionInfo{TxID: txId})
+	if item != nil {
+		tx = item.(*proto.TransactionInfo)
+	}
+	return
+}
 
+func (i *TransactionBTree) Get(txId string) (tx *proto.TransactionInfo, err error) {
+	item := i.BTree.CopyGet(&proto.TransactionInfo{TxID: txId})
+	if item != nil {
+		tx = item.(*proto.TransactionInfo)
+	}
+	return
+}
+
+func (i *TransactionRollbackInodeBTree) RefGet(ino uint64) (inode *TxRollbackInode, err error) {
+	item := i.BTree.Get(&TxRollbackInode{
+		inode: NewInode(ino, 0),
+	})
+	if item != nil {
+		inode = item.(*TxRollbackInode)
+	}
+	return
+}
+
+func (i *TransactionRollbackInodeBTree) Get(ino uint64) (inode *TxRollbackInode, err error) {
+	item := i.BTree.CopyGet(&TxRollbackInode{
+		inode: NewInode(ino, 0),
+	})
+	if item != nil {
+		inode = item.(*TxRollbackInode)
+	}
+	return
+}
+
+func (i *TransactionRollbackDentryBTree) RefGet(parentId uint64, name string) (dentry *TxRollbackDentry, err error) {
+	item := i.BTree.Get(&TxRollbackDentry{
+		txDentryInfo: proto.NewTxDentryInfo("", parentId, name, 0),
+	})
+	if item != nil {
+		dentry = item.(*TxRollbackDentry)
+	}
+	return
+}
+
+func (i *TransactionRollbackDentryBTree) Get(parentId uint64, name string) (dentry *TxRollbackDentry, err error) {
+	item := i.BTree.CopyGet(&TxRollbackDentry{
+		txDentryInfo: proto.NewTxDentryInfo("", parentId, name, 0),
+	})
+	if item != nil {
+		dentry = item.(*TxRollbackDentry)
+	}
+	return
+}
+
+// put
 func (i *InodeBTree) Update(dbHandle interface{}, inode *Inode) error {
+	i.BTree.ReplaceOrInsert(inode, false)
 	return nil
 }
 
-//put
 func (i *InodeBTree) Put(dbHandle interface{}, inode *Inode) error {
 	i.BTree.ReplaceOrInsert(inode, true)
 	return nil
 }
 func (i *DentryBTree) Update(dbHandle interface{}, dentry *Dentry) error {
+	i.BTree.ReplaceOrInsert(dentry, false)
 	return nil
 }
 func (i *DentryBTree) Put(dbHandle interface{}, dentry *Dentry) error {
@@ -261,6 +397,7 @@ func (i *DentryBTree) Put(dbHandle interface{}, dentry *Dentry) error {
 	return nil
 }
 func (i *ExtendBTree) Update(dbHandle interface{}, extend *Extend) error {
+	i.BTree.ReplaceOrInsert(extend, false)
 	return nil
 }
 func (i *ExtendBTree) Put(dbHandle interface{}, extend *Extend) error {
@@ -268,6 +405,7 @@ func (i *ExtendBTree) Put(dbHandle interface{}, extend *Extend) error {
 	return nil
 }
 func (i *MultipartBTree) Update(dbHandle interface{}, multipart *Multipart) error {
+	i.BTree.ReplaceOrInsert(multipart, false)
 	return nil
 }
 func (i *MultipartBTree) Put(dbHandle interface{}, multipart *Multipart) error {
@@ -275,7 +413,37 @@ func (i *MultipartBTree) Put(dbHandle interface{}, multipart *Multipart) error {
 	return nil
 }
 
-//create
+func (i *TransactionBTree) Update(dbHandle interface{}, tx *proto.TransactionInfo) error {
+	i.BTree.ReplaceOrInsert(tx, false)
+	return nil
+}
+
+func (i *TransactionBTree) Put(dbHandle interface{}, tx *proto.TransactionInfo) error {
+	i.BTree.ReplaceOrInsert(tx, true)
+	return nil
+}
+
+func (i *TransactionRollbackInodeBTree) Update(dbHandle interface{}, inode *TxRollbackInode) error {
+	i.BTree.ReplaceOrInsert(inode, false)
+	return nil
+}
+
+func (i *TransactionRollbackInodeBTree) Put(dbHandle interface{}, inode *TxRollbackInode) error {
+	i.BTree.ReplaceOrInsert(inode, true)
+	return nil
+}
+
+func (i *TransactionRollbackDentryBTree) Update(dbHandle interface{}, dentry *TxRollbackDentry) error {
+	i.BTree.ReplaceOrInsert(dentry, false)
+	return nil
+}
+
+func (i *TransactionRollbackDentryBTree) Put(dbHandle interface{}, dentry *TxRollbackDentry) error {
+	i.BTree.ReplaceOrInsert(dentry, true)
+	return nil
+}
+
+// create
 func (i *InodeBTree) Create(dbHandle interface{}, inode *Inode, replace bool) (*Inode, bool, error) {
 	item, ok := i.BTree.ReplaceOrInsert(inode, replace)
 	if !ok {
@@ -304,6 +472,29 @@ func (i *MultipartBTree) Create(dbHandle interface{}, mul *Multipart, replace bo
 	}
 	return mul, ok, nil
 }
+func (i *TransactionBTree) Create(dbHandle interface{}, tx *proto.TransactionInfo, replace bool) (*proto.TransactionInfo, bool, error) {
+	item, ok := i.BTree.ReplaceOrInsert(tx, replace)
+	if !ok {
+		return item.(*proto.TransactionInfo), ok, nil
+	}
+	return tx, ok, nil
+}
+
+func (i *TransactionRollbackInodeBTree) Create(dbHandle interface{}, inode *TxRollbackInode, replace bool) (*TxRollbackInode, bool, error) {
+	item, ok := i.BTree.ReplaceOrInsert(inode, replace)
+	if !ok {
+		return item.(*TxRollbackInode), ok, nil
+	}
+	return inode, ok, nil
+}
+
+func (i *TransactionRollbackDentryBTree) Create(dbHandle interface{}, dentry *TxRollbackDentry, replace bool) (*TxRollbackDentry, bool, error) {
+	item, ok := i.BTree.ReplaceOrInsert(dentry, replace)
+	if !ok {
+		return item.(*TxRollbackDentry), ok, nil
+	}
+	return dentry, ok, nil
+}
 
 func (i *InodeBTree) Delete(dbHandle interface{}, ino uint64) (bool, error) {
 	if v := i.BTree.Delete(&Inode{Inode: ino}); v == nil {
@@ -329,8 +520,28 @@ func (i *MultipartBTree) Delete(dbHandle interface{}, key, id string) (bool, err
 	}
 	return true, nil
 }
+func (i *TransactionBTree) Delete(dbHandle interface{}, txId string) (bool, error) {
+	if tx := i.BTree.Delete(&proto.TransactionInfo{TxID: txId}); tx == nil {
+		return false, nil
+	}
+	return true, nil
+}
 
-//range
+func (i *TransactionRollbackInodeBTree) Delete(dbHandle interface{}, inode uint64) (bool, error) {
+	if inode := i.BTree.Delete(&TxRollbackInode{inode: NewInode(inode, 0)}); inode == nil {
+		return false, nil
+	}
+	return true, nil
+}
+
+func (i *TransactionRollbackDentryBTree) Delete(dbHandle interface{}, parentInode uint64, name string) (bool, error) {
+	if dentry := i.BTree.Delete(&TxRollbackDentry{txDentryInfo: proto.NewTxDentryInfo("", parentInode, name, 0)}); dentry != nil {
+		return false, nil
+	}
+	return true, nil
+}
+
+// range
 func (i *InodeBTree) Range(start, end *Inode, cb func(i *Inode) (bool, error)) error {
 	var (
 		err  error
@@ -440,6 +651,86 @@ func (i *MultipartBTree) RangeWithPrefix(prefix, start, end *Multipart, cb func(
 	return i.Range(start, end, cb)
 }
 
+func (i *TransactionBTree) Range(start, end *proto.TransactionInfo, cb func(tx *proto.TransactionInfo) (bool, error)) error {
+	var (
+		err  error
+		next bool
+	)
+	callback := func(i BtreeItem) bool {
+		next, err = cb(i.(*proto.TransactionInfo))
+		if err != nil {
+			return false
+		}
+		return next
+	}
+	if start == nil {
+		start = &proto.TransactionInfo{TxID: ""}
+	}
+
+	if end == nil {
+		i.BTree.AscendGreaterOrEqual(start, callback)
+	} else {
+		i.BTree.AscendRange(start, end, callback)
+	}
+	return err
+}
+
+func (i *TransactionRollbackInodeBTree) Range(start, end *TxRollbackInode, cb func(inode *TxRollbackInode) (bool, error)) error {
+	var (
+		err  error
+		next bool
+	)
+	callback := func(i BtreeItem) bool {
+		next, err = cb(i.(*TxRollbackInode))
+		if err != nil {
+			return false
+		}
+		return next
+	}
+	if start == nil {
+		start = &TxRollbackInode{
+			inode: NewInode(0, 0),
+		}
+	}
+
+	if end == nil {
+		i.BTree.AscendGreaterOrEqual(start, callback)
+	} else {
+		i.BTree.AscendRange(start, end, callback)
+	}
+	return err
+}
+
+func (i *TransactionRollbackDentryBTree) Range(start, end *TxRollbackDentry, cb func(dentry *TxRollbackDentry) (bool, error)) error {
+	var (
+		err  error
+		next bool
+	)
+	callback := func(i BtreeItem) bool {
+		next, err = cb(i.(*TxRollbackDentry))
+		if err != nil {
+			return false
+		}
+		return next
+	}
+
+	if start == nil {
+		start = &TxRollbackDentry{
+			txDentryInfo: proto.NewTxDentryInfo("", 0, "", 0),
+		}
+	}
+
+	if end == nil {
+		i.BTree.AscendGreaterOrEqual(start, callback)
+	} else {
+		i.BTree.AscendRange(start, end, callback)
+	}
+	return err
+}
+
+func (i *TransactionRollbackDentryBTree) RangeWithPrefix(prefix, start, end *TxRollbackDentry, cb func(dentry *TxRollbackDentry) (bool, error)) error {
+	return i.Range(start, end, cb)
+}
 
 // MaxItem returns the largest item in the btree.
 func (i *InodeBTree) MaxItem() *Inode {
@@ -594,6 +885,13 @@ func (i *BTree) GetApplyID() uint64 {
 }
 
 func (i *BTree) GetPersistentApplyID() uint64 {
+	return 0
+}
+
+func (i *BTree) SetTxId(txId uint64) {
+}
+
+func (i *BTree) GetTxId() uint64 {
 	return 0
 }
 

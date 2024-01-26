@@ -136,6 +136,7 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 	var optDeleteLockTime int64
 	var clientIDKey string
 	var optYes bool
+	var optStoreMode string
 	cmd := &cobra.Command{
 		Use:   cmdVolCreateUse,
 		Short: cmdVolCreateShort,
@@ -198,6 +199,7 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 				stdout("  TransactionTimeout       : %v min\n", optTxTimeout)
 				stdout("  TxConflictRetryNum       : %v\n", optTxConflictRetryNum)
 				stdout("  TxConflictRetryInterval  : %v ms\n", optTxConflictRetryInterval)
+				stdout("  StoreMode                : %v\n", optStoreMode)
 				stdout("\nConfirm (yes/no)[yes]: ")
 				var userConfirm string
 				_, _ = fmt.Scanln(&userConfirm)
@@ -206,14 +208,26 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 					return
 				}
 			}
-
+			storeMode := proto.StoreModeMem
+			if optStoreMode != "" {
+				optStoreMode = strings.ToLower(optStoreMode)
+				switch optStoreMode {
+				case "memory":
+					storeMode = proto.StoreModeMem
+				case "rocksdb":
+					storeMode = proto.StoreModeRocksDb
+				default:
+					err = fmt.Errorf("Unknown store mode")
+					return
+				}
+			}
 			err = client.AdminAPI().CreateVolName(
 				volumeName, userID, optCapacity, optDeleteLockTime, crossZone, normalZonesFirst, optBusiness,
 				optMPCount, optDPCount, int(replicaNum), optDPSize, optVolType, followerRead,
 				optZoneName, optCacheRuleKey, optEbsBlkSize, optCacheCap,
 				optCacheAction, optCacheThreshold, optCacheTTL, optCacheHighWater,
 				optCacheLowWater, optCacheLRUInterval, dpReadOnlyWhenVolFull,
-				optTxMask, optTxTimeout, optTxConflictRetryNum, optTxConflictRetryInterval, optEnableQuota, clientIDKey)
+				optTxMask, optTxTimeout, optTxConflictRetryNum, optTxConflictRetryInterval, optEnableQuota, clientIDKey, storeMode)
 			if err != nil {
 				err = fmt.Errorf("Create volume failed case:\n%v\n", err)
 				return
@@ -251,7 +265,7 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().Int64Var(&optTxConflictRetryInterval, CliTxConflictRetryInterval, 0, "Specify retry interval[Unit: ms] for transaction conflict [10-1000]")
 	cmd.Flags().StringVar(&optEnableQuota, CliFlagEnableQuota, "false", "Enable quota (default false)")
 	cmd.Flags().Int64Var(&optDeleteLockTime, CliFlagDeleteLockTime, 0, "Specify delete lock time[Unit: hour] for volume")
-
+	cmd.Flags().StringVar(&optStoreMode, CliFlagStoreMode, "memory", "Specify default store mode of mp")
 	return cmd
 }
 

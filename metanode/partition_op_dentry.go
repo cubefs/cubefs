@@ -219,7 +219,13 @@ func (mp *metaPartition) TxDeleteDentry(req *proto.TxDeleteDentryRequest, p *Pac
 	}
 
 	if status != proto.OpOk {
-		if mp.txDentryInRb(req.ParentID, req.Name, req.TxInfo.TxID) {
+		inTx := false
+		inTx, err = mp.txDentryInRb(req.ParentID, req.Name, req.TxInfo.TxID)
+		if err != nil {
+			log.LogErrorf("[TxDeleteDentry] failed to get dentry from rb dentry tree, parent(%v) name(%v), err(%v)", req.ParentID, req.Name, err)
+			return
+		}
+		if inTx {
 			p.ResultCode = proto.OpOk
 			log.LogWarnf("TxDeleteDentry: dentry is already been deleted before, req %v", req)
 			return
@@ -434,7 +440,13 @@ func (mp *metaPartition) TxUpdateDentry(req *proto.TxUpdateDentryRequest, p *Pac
 		return
 	}
 	if status != proto.OpOk {
-		if mp.txDentryInRb(req.ParentID, req.Name, req.TxInfo.TxID) {
+		inTx := false
+		inTx, err = mp.txDentryInRb(req.ParentID, req.Name, req.TxInfo.TxID)
+		if err != nil {
+			log.LogErrorf("[TxDeleteDentry] failed to get dentry from rb dentry tree, parent(%v) name(%v), err(%v)", req.ParentID, req.Name, err)
+			return
+		}
+		if inTx {
 			p.ResultCode = proto.OpOk
 			log.LogWarnf("TxDeleteDentry: dentry is already been deleted before, req %v", req)
 			return

@@ -90,8 +90,13 @@ func (c *Cluster) updateZoneStatInfo() {
 		zone.metaNodes.Range(func(key, value interface{}) bool {
 			zs.MetaNodeStat.TotalNodes++
 			node := value.(*MetaNode)
-			if node.IsActive && node.isWritable(proto.StoreModeMem) {
-				zs.MetaNodeStat.WritableNodes++
+			if node.IsActive {
+				if node.isWritable(proto.StoreModeMem) {
+					zs.MetaNodeStat.WritableNodes++
+				}
+				if node.isWritable(proto.StoreModeRocksDb) {
+					zs.MetaNodeStat.DiskWritableNodes++
+				}
 			}
 			zs.MetaNodeStat.Total += float64(node.Total) / float64(util.GB)
 			zs.MetaNodeStat.Used += float64(node.Used) / float64(util.GB)

@@ -20,9 +20,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/require"
-
 	"github.com/cubefs/cubefs/proto"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestMetaPartition_LoadSnapshot(t *testing.T) {
@@ -37,6 +37,7 @@ func TestMetaPartition_LoadSnapshot(t *testing.T) {
 		PartitionType: 1,
 		Peers:         nil,
 		RootDir:       testPath,
+		StoreMode:     proto.StoreModeMem,
 	}
 	metaM := &metadataManager{
 		nodeId:     1,
@@ -51,38 +52,35 @@ func TestMetaPartition_LoadSnapshot(t *testing.T) {
 
 	// none data
 	mp, ok := partition.(*metaPartition)
+	err := mp.initObjects(true)
+	require.NoError(t, err)
 	require.True(t, ok)
 	msg := &storeMsg{
-		command:        1,
-		applyIndex:     0,
-		txId:           mp.txProcessor.txManager.txIdAlloc.getTransactionID(),
-		inodeTree:      mp.inodeTree,
-		dentryTree:     mp.dentryTree,
-		extendTree:     mp.extendTree,
-		multipartTree:  mp.multipartTree,
-		txTree:         mp.txProcessor.txManager.txTree,
-		txRbInodeTree:  mp.txProcessor.txResource.txRbInodeTree,
-		txRbDentryTree: mp.txProcessor.txResource.txRbDentryTree,
-		uniqId:         mp.GetUniqId(),
-		uniqChecker:    mp.uniqChecker,
+		command:     1,
+		snap:        NewSnapshot(mp),
+		uniqId:      mp.GetUniqId(),
+		uniqChecker: mp.uniqChecker,
 	}
 	mp.uidManager = NewUidMgr(mpC.VolName, mpC.PartitionId)
 	mp.mqMgr = NewQuotaManager(mpC.VolName, mpC.PartitionId)
 	mp.multiVersionList = &proto.VolVersionInfoList{}
 
-	err := mp.store(msg)
+	err = mp.store(msg)
 	require.NoError(t, err)
 	snapshotPath := path.Join(mp.config.RootDir, snapshotDir)
 	err = partition.LoadSnapshot(snapshotPath)
 	require.Nil(t, err)
 
+	handle, err := mp.inodeTree.CreateBatchWriteHandle()
+	require.NoError(t, err)
+
 	// add data to mp
 	ino := NewInode(0, 0)
-	mp.inodeTree.ReplaceOrInsert(ino, true)
+	mp.inodeTree.Put(handle, ino)
 	dentry := &Dentry{}
-	mp.dentryTree.ReplaceOrInsert(dentry, true)
+	mp.dentryTree.Put(handle, dentry)
 	extend := &Extend{}
-	mp.extendTree.ReplaceOrInsert(extend, true)
+	mp.extendTree.Put(handle, extend)
 
 	multipart := &Multipart{
 		id:       "id",
@@ -91,21 +89,16 @@ func TestMetaPartition_LoadSnapshot(t *testing.T) {
 		parts:    Parts{},
 		extend:   MultipartExtend{},
 	}
-	mp.multipartTree.ReplaceOrInsert(multipart, true)
+	mp.multipartTree.Put(handle, multipart)
+
+	err = mp.inodeTree.CommitAndReleaseBatchWriteHandle(handle, false)
+	require.NoError(t, err)
 
 	msg = &storeMsg{
-		command:        1,
-		applyIndex:     0,
-		txId:           mp.txProcessor.txManager.txIdAlloc.getTransactionID(),
-		inodeTree:      mp.inodeTree,
-		dentryTree:     mp.dentryTree,
-		extendTree:     mp.extendTree,
-		multipartTree:  mp.multipartTree,
-		txTree:         mp.txProcessor.txManager.txTree,
-		txRbInodeTree:  mp.txProcessor.txResource.txRbInodeTree,
-		txRbDentryTree: mp.txProcessor.txResource.txRbDentryTree,
-		uniqId:         mp.GetUniqId(),
-		uniqChecker:    mp.uniqChecker,
+		command:     1,
+		snap:        NewSnapshot(mp),
+		uniqId:      mp.GetUniqId(),
+		uniqChecker: mp.uniqChecker,
 	}
 	err = mp.store(msg)
 	require.Nil(t, err)

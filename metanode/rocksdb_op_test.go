@@ -12,12 +12,13 @@ import (
 
 const (
 	MultiCountPerOp = 1000
-	TestCont 		= 1000000
+	TestCont        = 1000000
 )
 
 func TestOpenDb(t *testing.T) {
-	db := NewRocksDb()
 	os.RemoveAll("./db")
+	db := NewRocksDb()
+	defer os.RemoveAll("./db")
 	if err := db.OpenDb("./db", 0, 0, 0, 0, 0, 0); err != nil {
 		t.Errorf("open db without exist dir failed, err:%v", err)
 		return
@@ -46,10 +47,10 @@ func TestOpenDb(t *testing.T) {
 	db.ReleaseRocksDb()
 }
 
-
 func TestReopneDb(t *testing.T) {
-	db := NewRocksDb()
 	os.RemoveAll("./db")
+	db := NewRocksDb()
+	defer os.RemoveAll("./db")
 	if err := db.OpenDb("./db", 0, 0, 0, 0, 0, 0); err != nil {
 		t.Errorf("open db without exist dir failed, err:%v", err)
 	}
@@ -78,8 +79,8 @@ func TestReopneDb(t *testing.T) {
 }
 
 func insertByItem(t *testing.T, db *RocksDbInfo) {
-	i 	  := 0
-	key   := make([]byte, dbExtentKeySize)
+	i := 0
+	key := make([]byte, dbExtentKeySize)
 	value := make([]byte, 1)
 
 	updateKeyToNow(key)
@@ -98,10 +99,10 @@ func insertByItem(t *testing.T, db *RocksDbInfo) {
 }
 
 func insertByMultiItem(t *testing.T, db *RocksDbInfo) {
-	i 	  := 0
-	key   := make([]byte, dbExtentKeySize)
+	i := 0
+	key := make([]byte, dbExtentKeySize)
 	value := make([]byte, 1)
-	keys  := make([]byte, dbExtentKeySize * MultiCountPerOp)
+	keys := make([]byte, dbExtentKeySize*MultiCountPerOp)
 	handle, err := db.CreateBatchHandler()
 
 	if err != nil {
@@ -116,7 +117,7 @@ func insertByMultiItem(t *testing.T, db *RocksDbInfo) {
 		binary.BigEndian.PutUint64(id, uint64(i))
 		copy(key[8:], id)
 
-		if i != 0 && i % MultiCountPerOp == 0 {
+		if i != 0 && i%MultiCountPerOp == 0 {
 			if err = db.CommitBatchAndRelease(handle); err != nil {
 				t.Errorf("insert multi failed:commit failed:%s", err.Error())
 				return
@@ -127,11 +128,11 @@ func insertByMultiItem(t *testing.T, db *RocksDbInfo) {
 			}
 		}
 		offset := (i % MultiCountPerOp) * dbExtentKeySize
-		copy(keys[offset : offset + dbExtentKeySize], key)
-		db.AddItemToBatch(handle, keys[offset : offset + dbExtentKeySize], value)
+		copy(keys[offset:offset+dbExtentKeySize], key)
+		db.AddItemToBatch(handle, keys[offset:offset+dbExtentKeySize], value)
 	}
 
-	if err != nil{
+	if err != nil {
 		db.ReleaseBatchHandle(handle)
 		return
 	}
@@ -142,17 +143,17 @@ func insertByMultiItem(t *testing.T, db *RocksDbInfo) {
 }
 
 func rangeTest(t *testing.T, db *RocksDbInfo) {
-	stKey  := make([]byte, 1)
+	stKey := make([]byte, 1)
 	endKey := make([]byte, 1)
 	i := uint64(0)
 
-	stKey[0]  = byte(ExtentDelTable)
+	stKey[0] = byte(ExtentDelTable)
 	endKey[0] = byte(ExtentDelTable + 1)
 
-	db.Range(stKey, endKey, func(k, v[]byte)(bool, error){
+	db.Range(stKey, endKey, func(k, v []byte) (bool, error) {
 		if k[0] != byte(ExtentDelTable) {
-			t.Errorf("get out of range, cur key:%v\n",k)
-			return false, fmt.Errorf("get out of range, cur key:%v\n",k)
+			t.Errorf("get out of range, cur key:%v\n", k)
+			return false, fmt.Errorf("get out of range, cur key:%v\n", k)
 		}
 		index := binary.BigEndian.Uint64(k[8:16])
 		if i != index {
@@ -169,21 +170,20 @@ func rangeTest(t *testing.T, db *RocksDbInfo) {
 }
 
 func snapRangeTest(t *testing.T, db *RocksDbInfo) {
-	stKey  := make([]byte, 1)
+	stKey := make([]byte, 1)
 	endKey := make([]byte, 1)
 	i := uint64(0)
 	snap := db.OpenSnap()
 	start := time.Now()
 	defer db.ReleaseSnap(snap)
 
-
-	stKey[0]  = byte(ExtentDelTable)
+	stKey[0] = byte(ExtentDelTable)
 	endKey[0] = byte(ExtentDelTable + 1)
 
-	db.RangeWithSnap(stKey, endKey, snap, func(k, v[]byte)(bool, error){
+	db.RangeWithSnap(stKey, endKey, snap, func(k, v []byte) (bool, error) {
 		if k[0] != byte(ExtentDelTable) {
-			t.Errorf("get out of range, cur key:%v\n",k)
-			return false, fmt.Errorf("get out of range, cur key:%v\n",k)
+			t.Errorf("get out of range, cur key:%v\n", k)
+			return false, fmt.Errorf("get out of range, cur key:%v\n", k)
 		}
 		index := binary.BigEndian.Uint64(k[8:16])
 		if i != index {
@@ -201,17 +201,17 @@ func snapRangeTest(t *testing.T, db *RocksDbInfo) {
 }
 
 func descRangeTest(t *testing.T, db *RocksDbInfo) {
-	stKey  := make([]byte, 1)
+	stKey := make([]byte, 1)
 	endKey := make([]byte, 1)
 	i := uint64(TestCont - 1)
 
-	stKey[0]  = byte(ExtentDelTable)
+	stKey[0] = byte(ExtentDelTable)
 	endKey[0] = byte(ExtentDelTable + 1)
 
-	db.DescRange(stKey, endKey, func(k, v[]byte)(bool, error){
+	db.DescRange(stKey, endKey, func(k, v []byte) (bool, error) {
 		if k[0] != byte(ExtentDelTable) {
-			t.Errorf("get out of range, cur key:%v\n",k)
-			return false, fmt.Errorf("get out of range, cur key:%v\n",k)
+			t.Errorf("get out of range, cur key:%v\n", k)
+			return false, fmt.Errorf("get out of range, cur key:%v\n", k)
 		}
 		index := binary.BigEndian.Uint64(k[8:16])
 		if i != index {
@@ -223,24 +223,24 @@ func descRangeTest(t *testing.T, db *RocksDbInfo) {
 	})
 
 	if i != math.MaxUint64 {
-		t.Errorf("range failed, total record:%d, but read:%d", TestCont, TestCont + (math.MaxUint64 - i))
+		t.Errorf("range failed, total record:%d, but read:%d", TestCont, TestCont+(math.MaxUint64-i))
 	}
 }
 
 func snapDescRangeTest(t *testing.T, db *RocksDbInfo) {
-	stKey  := make([]byte, 1)
+	stKey := make([]byte, 1)
 	endKey := make([]byte, 1)
 	i := uint64(TestCont - 1)
 	snap := db.OpenSnap()
 	defer db.ReleaseSnap(snap)
 
-	stKey[0]  = byte(ExtentDelTable)
+	stKey[0] = byte(ExtentDelTable)
 	endKey[0] = byte(ExtentDelTable + 1)
 
-	db.DescRangeWithSnap(stKey, endKey, snap, func(k, v[]byte)(bool, error){
+	db.DescRangeWithSnap(stKey, endKey, snap, func(k, v []byte) (bool, error) {
 		if k[0] != byte(ExtentDelTable) {
-			t.Errorf("get out of range, cur key:%v\n",k)
-			return false, fmt.Errorf("get out of range, cur key:%v\n",k)
+			t.Errorf("get out of range, cur key:%v\n", k)
+			return false, fmt.Errorf("get out of range, cur key:%v\n", k)
 		}
 		index := binary.BigEndian.Uint64(k[8:16])
 		if i != index {
@@ -252,28 +252,28 @@ func snapDescRangeTest(t *testing.T, db *RocksDbInfo) {
 	})
 
 	if i != math.MaxUint64 {
-		t.Errorf("range failed, total record:%d, but read:%d", TestCont, TestCont + (math.MaxUint64 - i))
+		t.Errorf("range failed, total record:%d, but read:%d", TestCont, TestCont+(math.MaxUint64-i))
 	}
 }
 
 func genenerData(t *testing.T, db *RocksDbInfo) {
 	start := time.Now()
-	insertByMultiItem(t,db)
+	insertByMultiItem(t, db)
 	t.Logf("insert by multi items cost:%v", time.Since(start))
 
 	return
 }
 
 func deleteDataByItem(t *testing.T, db *RocksDbInfo) {
-	stKey  := make([]byte, 1)
+	stKey := make([]byte, 1)
 	endKey := make([]byte, 1)
 
-	stKey[0]  = byte(ExtentDelTable)
+	stKey[0] = byte(ExtentDelTable)
 	endKey[0] = byte(ExtentDelTable + 1)
 	start := time.Now()
 	var i = 0
 
-	err := db.Range(stKey, endKey, func(k, v []byte)(bool, error) {
+	err := db.Range(stKey, endKey, func(k, v []byte) (bool, error) {
 
 		if k[0] != byte(ExtentDelTable) {
 			return false, nil
@@ -288,31 +288,31 @@ func deleteDataByItem(t *testing.T, db *RocksDbInfo) {
 }
 
 func deleteDataByMultiItems(t *testing.T, db *RocksDbInfo) {
-	stKey  := make([]byte, 1)
+	stKey := make([]byte, 1)
 	endKey := make([]byte, 1)
 
-	keys := make([]byte, dbExtentKeySize * 1000)
+	keys := make([]byte, dbExtentKeySize*1000)
 
-	stKey[0]  = byte(ExtentDelTable)
+	stKey[0] = byte(ExtentDelTable)
 	endKey[0] = byte(ExtentDelTable + 1)
 	start := time.Now()
 	var i = 0
 	handle, _ := db.CreateBatchHandler()
 
-	err := db.Range(stKey, endKey, func(k, v []byte)(bool, error) {
+	err := db.Range(stKey, endKey, func(k, v []byte) (bool, error) {
 		if k[0] != byte(ExtentDelTable) {
 			return false, nil
 		}
 		index := i % 1000
-		if i % 1000 == 0{
+		if i%1000 == 0 {
 			if i != 0 {
 				_ = db.CommitBatchAndRelease(handle)
 				handle, _ = db.CreateBatchHandler()
 			}
 		}
 		i++
-		copy(keys[index * dbExtentKeySize : (index+1) *dbExtentKeySize], k)
-		db.DelItemToBatch(handle, keys[index * dbExtentKeySize : (index+1) *dbExtentKeySize])
+		copy(keys[index*dbExtentKeySize:(index+1)*dbExtentKeySize], k)
+		db.DelItemToBatch(handle, keys[index*dbExtentKeySize:(index+1)*dbExtentKeySize])
 		return true, nil
 	})
 
@@ -323,8 +323,6 @@ func deleteDataByMultiItems(t *testing.T, db *RocksDbInfo) {
 	t.Logf("********delete %v items by multi used:%v , err:%v\n", i, time.Since(start), err)
 	return
 }
-
-
 
 func TestOps(t *testing.T) {
 
@@ -352,8 +350,6 @@ func TestOps(t *testing.T) {
 	deleteDataByMultiItems(t, db)
 	deleteDataByItem(t, db)
 
-
-
 	genenerData(t, db)
 	runtime.GC()
 	time.Sleep(time.Second * 3)
@@ -370,7 +366,6 @@ func TestOps(t *testing.T) {
 	start = time.Now()
 	deleteDataByMultiItems(t, db)
 	t.Logf("del by multi item cost:%v", time.Since(start))
-
 
 	deleteDataByItem(t, db)
 	runtime.GC()
@@ -395,13 +390,13 @@ func TestOps(t *testing.T) {
 }
 
 func batchAbortTest(t *testing.T, db *RocksDbInfo) {
-	i 	  := 0
-	key   := make([]byte, dbExtentKeySize)
+	i := 0
+	key := make([]byte, dbExtentKeySize)
 	value := make([]byte, 1)
-	keys  := make([]byte, dbExtentKeySize * MultiCountPerOp)
+	keys := make([]byte, dbExtentKeySize*MultiCountPerOp)
 	var (
 		handle interface{}
-		err error
+		err    error
 	)
 
 	handle = nil
@@ -419,12 +414,12 @@ func batchAbortTest(t *testing.T, db *RocksDbInfo) {
 	updateKeyToNow(key)
 	key[0] = byte(ExtentDelTable)
 
-	for i = TestCont ; i < TestCont + TestCont; i++ {
+	for i = TestCont; i < TestCont+TestCont; i++ {
 		id := make([]byte, 8)
 		binary.BigEndian.PutUint64(id, uint64(i))
 		copy(key[8:], id)
 
-		if i != 0 && i % MultiCountPerOp == 0 {
+		if i != 0 && i%MultiCountPerOp == 0 {
 			if err = db.ReleaseBatchHandle(handle); err != nil {
 				t.Errorf("insert multi failed:commit failed:%s", err.Error())
 				return
@@ -435,8 +430,8 @@ func batchAbortTest(t *testing.T, db *RocksDbInfo) {
 			}
 		}
 		offset := (i % MultiCountPerOp) * dbExtentKeySize
-		copy(keys[offset : offset + dbExtentKeySize], key)
-		db.AddItemToBatch(handle, keys[offset : offset + dbExtentKeySize], value)
+		copy(keys[offset:offset+dbExtentKeySize], key)
+		db.AddItemToBatch(handle, keys[offset:offset+dbExtentKeySize], value)
 	}
 
 	db.ReleaseBatchHandle(handle)
@@ -479,7 +474,7 @@ func TestRocksDB_accessDB(t *testing.T) {
 		time.Sleep(time.Millisecond * 1000)
 		db.CloseDb()
 	}()
-	startKey, endKey := []byte{byte(ExtentDelTable)}, []byte{byte(ExtentDelTable+1)}
+	startKey, endKey := []byte{byte(ExtentDelTable)}, []byte{byte(ExtentDelTable + 1)}
 	err := db.RangeWithSnap(startKey, endKey, dbSnap, func(k, v []byte) (bool, error) {
 		return true, nil
 	})

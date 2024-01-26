@@ -9,7 +9,7 @@
   "logLevel": "debug",
   "logDir": "/cfs/log",
   "warnLogDir": "/cfs/log",
-  "totalMem": "536870912",
+  "totalMem": "4294967296",
   "metadataDir": "/cfs/data/meta",
   "raftDir": "/cfs/data/raft",
   "retainLogs": "100",

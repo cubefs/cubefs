@@ -32,9 +32,9 @@ import (
 )
 
 const (
-	DeleteMarkFlag = 1 << 0
-	InodeDelTop    = 1 << 1
-	AccessTimeOffset     = 52
+	DeleteMarkFlag   = 1 << 0
+	InodeDelTop      = 1 << 1
+	AccessTimeOffset = 52
 )
 
 var (
@@ -1284,8 +1284,9 @@ func (i *Inode) ShouldDelVer(delVer uint64, mpVer uint64) (ok bool, err error) {
 	return false, fmt.Errorf("not found")
 }
 
+// idx need calc include nclude top layer. index in multiSnap.multiVersions need add by 1
+//
 //note:search all layers.
-//idx need calc include nclude top layer. index in multiSnap.multiVersions need add by 1
 func (ino *Inode) getInoByVer(verSeq uint64, equal bool) (i *Inode, idx int) {
 	ino.RLock()
 	defer ino.RUnlock()
@@ -1688,6 +1689,7 @@ func (i *Inode) DecSplitExts(mpId uint64, delExtents interface{}) {
 			ek.SetSplit(false)
 		}
 	}
+	log.LogDebugf("[DecSplitExts] exit")
 }
 
 func (i *Inode) DecSplitEk(mpId uint64, ext *proto.ExtentKey) (ok bool, last bool) {

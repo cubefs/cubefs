@@ -15,7 +15,6 @@
 package metanode
 
 import (
-	"fmt"
 	"github.com/cubefs/cubefs/proto"
 	_ "github.com/cubefs/cubefs/proto"
 )
@@ -32,6 +31,9 @@ const (
 	InodeType
 	ExtendType
 	MultipartType
+	TransactionType
+	TransactionRollbackInodeType
+	TransactionRollbackDentryType
 	MaxType
 )
 
@@ -45,24 +47,33 @@ func (t TreeType) String() string {
 		return "extend tree"
 	case MultipartType:
 		return "multipart tree"
+	case TransactionType:
+		return "transaction tree"
+	case TransactionRollbackInodeType:
+		return "transaction rollback inode tree"
+	case TransactionRollbackDentryType:
+		return "transaction rollback dentry tree"
 	default:
 		return "unknown"
 	}
 }
 
 var (
-	existsError    = fmt.Errorf("exists error")
-	baseInfoKey    = []byte{byte(BaseInfoType)}
+	baseInfoKey = []byte{byte(BaseInfoType)}
 )
 
 func NewSnapshot(mp *metaPartition) Snapshot {
 	if mp.HasMemStore() {
 		return &MemSnapShot{
-			applyID:   mp.GetAppliedID(),
-			inode:     &InodeBTree{mp.inodeTree.(*InodeBTree).GetTree()},
-			dentry:    &DentryBTree{mp.dentryTree.(*DentryBTree).GetTree()},
-			extend:    &ExtendBTree{mp.extendTree.(*ExtendBTree).GetTree()},
-			multipart: &MultipartBTree{mp.multipartTree.(*MultipartBTree).GetTree()},
+			applyID:             mp.GetAppliedID(),
+			txID:                mp.txProcessor.txManager.txIdAlloc.getTransactionID(),
+			inode:               &InodeBTree{mp.inodeTree.(*InodeBTree).GetTree()},
+			dentry:              &DentryBTree{mp.dentryTree.(*DentryBTree).GetTree()},
+			extend:              &ExtendBTree{mp.extendTree.(*ExtendBTree).GetTree()},
+			multipart:           &MultipartBTree{mp.multipartTree.(*MultipartBTree).GetTree()},
+			transaction:         &TransactionBTree{mp.txProcessor.txManager.txTree.(*TransactionBTree).GetTree()},
+			transactionRbInode:  &TransactionRollbackInodeBTree{mp.txProcessor.txResource.txRbInodeTree.(*TransactionRollbackInodeBTree).GetTree()},
+			transactionRbDentry: &TransactionRollbackDentryBTree{mp.txProcessor.txResource.txRbDentryTree.(*TransactionRollbackDentryBTree).GetTree()},
 		}
 	}
 	if mp.HasRocksDBStore() {
@@ -78,6 +89,7 @@ type Snapshot interface {
 	Count(tp TreeType) uint64
 	CrcSum(tp TreeType) (uint32, error)
 	ApplyID() uint64
+	TxID() uint64
 }
 
 type Tree interface {
@@ -96,6 +108,8 @@ type Tree interface {
 	GetPersistentApplyID() uint64
 	SetCursor(cursor uint64)
 	GetCursor() uint64
+	SetTxId(txid uint64)
+	GetTxId() uint64
 }
 
 type InodeTree interface {
@@ -162,6 +176,49 @@ type MultipartTree interface {
 	Len() int
 }
 
+// NOTE: transaction
+type TransactionTree interface {
+	Tree
+	RefGet(txId string) (*proto.TransactionInfo, error)
+	Get(txId string) (*proto.TransactionInfo, error)
+	Put(dbHandle interface{}, tx *proto.TransactionInfo) error
+	Update(dbHandle interface{}, tx *proto.TransactionInfo) error
+	Create(dbHandle interface{}, tx *proto.TransactionInfo, replace bool) (*proto.TransactionInfo, bool, error)
+	Delete(dbHandle interface{}, txId string) (bool, error)
+	Range(start, end *proto.TransactionInfo, cb func(t *proto.TransactionInfo) (bool, error)) error
+	RealCount() uint64
+	Count() uint64
+	Len() int
+}
+
+type TransactionRollbackInodeTree interface {
+	Tree
+	RefGet(ino uint64) (*TxRollbackInode, error)
+	Get(ino uint64) (*TxRollbackInode, error)
+	Put(dbHandle interface{}, inode *TxRollbackInode) error
+	Update(dbHandle interface{}, inode *TxRollbackInode) error
+	Create(dbHandle interface{}, inode *TxRollbackInode, replace bool) (*TxRollbackInode, bool, error)
+	Delete(dbHandle interface{}, ino uint64) (bool, error)
+	Range(start, end *TxRollbackInode, cb func(i *TxRollbackInode) (bool, error)) error
+	Count() uint64
+	Len() int
+	RealCount() uint64
+}
+
+type TransactionRollbackDentryTree interface {
+	Tree
+	RefGet(ino uint64, name string) (*TxRollbackDentry, error)
+	Get(pino uint64, name string) (*TxRollbackDentry, error)
+	Update(dbHandle interface{}, dentry *TxRollbackDentry) error
+	Put(dbHandle interface{}, dentry *TxRollbackDentry) error
+	Create(dbHandle interface{}, dentry *TxRollbackDentry, replace bool) (*TxRollbackDentry, bool, error)
+	Delete(dbHandle interface{}, pid uint64, name string) (bool, error)
+	Range(start, end *TxRollbackDentry, cb func(d *TxRollbackDentry) (bool, error)) error
+	RangeWithPrefix(prefix, start, end *TxRollbackDentry, cb func(d *TxRollbackDentry) (bool, error)) error
+	RealCount() uint64
+	Count() uint64
+	Len() int
+}
 
 type MetaTree struct {
 	InodeTree
@@ -173,10 +230,10 @@ type MetaTree struct {
 func newMetaTree(storeMode proto.StoreMode, db *RocksDbInfo) *MetaTree {
 	if (storeMode & proto.StoreModeMem) != 0 {
 		return &MetaTree{
-			InodeTree:         &InodeBTree{NewBtree()},
-			DentryTree:        &DentryBTree{NewBtree()},
-			ExtendTree:        &ExtendBTree{NewBtree()},
-			MultipartTree:     &MultipartBTree{NewBtree()},
+			InodeTree:     &InodeBTree{NewBtree()},
+			DentryTree:    &DentryBTree{NewBtree()},
+			ExtendTree:    &ExtendBTree{NewBtree()},
+			MultipartTree: &MultipartBTree{NewBtree()},
 		}
 	} else {
 		tree, err := DefaultRocksTree(db)
@@ -188,10 +245,10 @@ func newMetaTree(storeMode proto.StoreMode, db *RocksDbInfo) *MetaTree {
 		extendTree, _ := NewExtendRocks(tree)
 		multipartTree, _ := NewMultipartRocks(tree)
 		return &MetaTree{
-			InodeTree:         inodeTree,
-			DentryTree:        dentryTree,
-			ExtendTree:        extendTree,
-			MultipartTree:     multipartTree,
+			InodeTree:     inodeTree,
+			DentryTree:    dentryTree,
+			ExtendTree:    extendTree,
+			MultipartTree: multipartTree,
 		}
 	}
 }

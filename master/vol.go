@@ -49,9 +49,9 @@ type VolVarargs struct {
 	txConflictRetryNum      int64
 	txConflictRetryInterval int64
 	txOpLimit               int
-	convertState               proto.VolConvertState
-	DefaultStoreMode           proto.StoreMode
-	MpLayout                   proto.MetaPartitionLayout
+	convertState            proto.VolConvertState
+	DefaultStoreMode        proto.StoreMode
+	MpLayout                proto.MetaPartitionLayout
 }
 
 // Vol represents a set of meta partitionMap and data partitionMap
@@ -116,9 +116,9 @@ type Vol struct {
 	Forbidden               bool
 	mpsLock                 *mpsLockManager
 	EnableAuditLog          bool
-	convertState               proto.VolConvertState
-	DefaultStoreMode           proto.StoreMode
-	MpLayout                   proto.MetaPartitionLayout
+	convertState            proto.VolConvertState
+	DefaultStoreMode        proto.StoreMode
+	MpLayout                proto.MetaPartitionLayout
 }
 
 func newVol(vv volValue) (vol *Vol) {
@@ -1406,9 +1406,11 @@ func (vol *Vol) doCreateMetaPartition(c *Cluster, start, end uint64) (mp *MetaPa
 				wg.Done()
 			}()
 			if err = c.syncCreateMetaPartitionToMetaNode(host, mp, vol.DefaultStoreMode); err != nil {
+				log.LogInfof("[doCreateMetaPartition] failed to create mp(%v)", partitionID)
 				errChannel <- err
 				return
 			}
+			log.LogInfof("[doCreateMetaPartition] create mp(%v) success", partitionID)
 			mp.Lock()
 			defer mp.Unlock()
 			if err = mp.afterCreation(host, c); err != nil {
@@ -1516,7 +1518,7 @@ func getVolVarargs(vol *Vol) *VolVarargs {
 		coldArgs:                args,
 		dpReadOnlyWhenVolFull:   vol.DpReadOnlyWhenVolFull,
 		DefaultStoreMode:        vol.DefaultStoreMode,
-		MpLayout: 				 vol.MpLayout,
+		MpLayout:                vol.MpLayout,
 	}
 }
 

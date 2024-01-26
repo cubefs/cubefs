@@ -18,6 +18,7 @@ import (
 	"testing"
 
 	raftstoremock "github.com/cubefs/cubefs/metanode/mocktest/raftstore"
+	"github.com/cubefs/cubefs/proto"
 	"github.com/golang/mock/gomock"
 )
 
@@ -138,9 +139,14 @@ func TestDoEvit2(t *testing.T) {
 
 func mockPartitionRaft(ctrl *gomock.Controller) *metaPartition {
 	conf := &MetaPartitionConfig{
-		VerSeq: 0,
+		VerSeq:    0,
+		StoreMode: proto.StoreModeMem,
 	}
 	partition := NewMetaPartition(conf, nil).(*metaPartition)
+	err := partition.initObjects(true)
+	if err != nil {
+		panic(err)
+	}
 	partition.uniqChecker.keepTime = 1
 	partition.uniqChecker.keepOps = 0
 	raft := raftstoremock.NewMockPartition(ctrl)

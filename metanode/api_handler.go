@@ -727,46 +727,69 @@ func (m *MetaNode) getAllTxHandler(w http.ResponseWriter, r *http.Request) {
 		isFirst   = true
 	)
 
-	f := func(i BtreeItem) bool {
+	handleTx := func(tx *proto.TransactionInfo) (bool, error) {
 		if !isFirst {
 			if _, err = w.Write(delimiter); err != nil {
-				return false
+				return false, err
 			}
 		} else {
 			isFirst = false
 		}
-
-		if ino, ok := i.(*TxRollbackInode); ok {
-			_, err = w.Write([]byte(ino.ToString()))
-			if err != nil {
-				return false
-			}
-			return true
-		}
-		if den, ok := i.(*TxRollbackDentry); ok {
-			_, err = w.Write([]byte(den.ToString()))
-			if err != nil {
-				return false
-			}
-			return true
-		}
-
-		val, err = json.Marshal(i)
+		val, err = json.Marshal(tx)
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			w.Write([]byte(err.Error()))
-			return false
+			return false, err
 		}
 		if _, err = w.Write(val); err != nil {
-			return false
+			return false, err
 		}
-		return true
+		return true, nil
+	}
+
+	handleIno := func(ino *TxRollbackInode) (bool, error) {
+		if !isFirst {
+			if _, err = w.Write(delimiter); err != nil {
+				return false, err
+			}
+		} else {
+			isFirst = false
+		}
+		_, err = w.Write([]byte(ino.ToString()))
+		if err != nil {
+			return false, err
+		}
+		return true, nil
+	}
+
+	handleDen := func(den *TxRollbackDentry) (bool, error) {
+		if !isFirst {
+			if _, err = w.Write(delimiter); err != nil {
+				return false, err
+			}
+		} else {
+			isFirst = false
+		}
+		_, err = w.Write([]byte(den.ToString()))
+		if err != nil {
+			return false, err
+		}
+		return true, nil
 	}
 
 	txTree, rbInoTree, rbDenTree := mp.TxGetTree()
-	txTree.Ascend(f)
-	rbInoTree.Ascend(f)
-	rbDenTree.Ascend(f)
+	err = txTree.Range(nil, nil, handleTx)
+	if err != nil {
+		log.LogErrorf("[getAllTxHandler] failed to range tx, err(%v)", err)
+	}
+	err = rbInoTree.Range(nil, nil, handleIno)
+	if err != nil {
+		log.LogErrorf("[getAllTxHandler] failed to range rb inode, err(%v)", err)
+	}
+	err = rbDenTree.Range(nil, nil, handleDen)
+	if err != nil {
+		log.LogErrorf("[getAllTxHandler] failed to range rb dentry, err(%v)", err)
+	}
 
 	shouldSkip = true
 	buff.WriteString(`]}`)

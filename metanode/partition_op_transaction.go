@@ -149,7 +149,11 @@ func (mp *metaPartition) txInit(txInfo *proto.TransactionInfo, p *Packet) (ifo *
 		return nil, fmt.Errorf("init tx by raft failed, %v", proto.GetStatusStr(p.ResultCode))
 	}
 
-	ifo = mp.txProcessor.txManager.getTransaction(txInfo.TxID)
+	ifo, err = mp.txProcessor.txManager.getTransaction(txInfo.TxID)
+	if err != nil {
+		log.LogErrorf("[txInit] failed to get tx(%v) from tx tree, err(%v)", txInfo.TxID, err)
+		return
+	}
 	if ifo == nil {
 		log.LogWarnf("TxCreate: tx is still not exist, info %s", txInfo.String())
 		p.ResultCode = proto.OpTxInfoNotExistErr
@@ -163,7 +167,11 @@ func (mp *metaPartition) txInit(txInfo *proto.TransactionInfo, p *Packet) (ifo *
 func (mp *metaPartition) TxCommitRM(req *proto.TxApplyRMRequest, p *Packet) error {
 	txInfo := req.TransactionInfo.GetCopy()
 
-	ifo := mp.txProcessor.txManager.getTransaction(txInfo.TxID)
+	ifo, err := mp.txProcessor.txManager.getTransaction(txInfo.TxID)
+	if err != nil {
+		log.LogErrorf("[TxCommitRM] failed to get tx(%v) from tx tree, err(%v)", req.TxID, err)
+		return err
+	}
 	if ifo == nil {
 		log.LogWarnf("TxCommitRM: can't find tx, already rollback or commit, ifo %v", req.TransactionInfo)
 		p.PacketErrorWithBody(proto.OpTxInfoNotExistErr, []byte(fmt.Sprintf("tx %s is not exist", txInfo.TxID)))
@@ -196,7 +204,11 @@ func (mp *metaPartition) TxCommitRM(req *proto.TxApplyRMRequest, p *Packet) erro
 func (mp *metaPartition) TxRollbackRM(req *proto.TxApplyRMRequest, p *Packet) error {
 	txInfo := req.TransactionInfo.GetCopy()
 
-	ifo := mp.txProcessor.txManager.getTransaction(txInfo.TxID)
+	ifo, err := mp.txProcessor.txManager.getTransaction(txInfo.TxID)
+	if err != nil {
+		log.LogErrorf("[TxRollbackRM] failed to get tx(%v) from tx tree, err(%v)", txInfo.TxID, err)
+		return err
+	}
 	if ifo == nil {
 		log.LogWarnf("TxRollbackRM: can't find tx, already rollback or commit, ifo %v", req.TransactionInfo)
 		p.PacketErrorWithBody(proto.OpTxInfoNotExistErr, []byte(fmt.Sprintf("tx %s is not exist", txInfo.TxID)))
@@ -266,20 +278,21 @@ func (mp *metaPartition) TxGetCnt() (uint64, uint64, uint64) {
 	return uint64(txCnt), uint64(rbInoCnt), uint64(rbDenCnt)
 }
 
-func (mp *metaPartition) TxGetTree() (*BTree, *BTree, *BTree) {
-	tx := mp.txProcessor.txManager.txTree.GetTree()
-	rbIno := mp.txProcessor.txResource.txRbInodeTree.GetTree()
-	rbDen := mp.txProcessor.txResource.txRbDentryTree.GetTree()
+func (mp *metaPartition) TxGetTree() (TransactionTree, TransactionRollbackInodeTree, TransactionRollbackDentryTree) {
+	tx := mp.txProcessor.txManager.txTree
+	rbIno := mp.txProcessor.txResource.txRbInodeTree
+	rbDen := mp.txProcessor.txResource.txRbDentryTree
 	return tx, rbIno, rbDen
 }
 
 func (mp *metaPartition) TxGetInfo(req *proto.TxGetInfoRequest, p *Packet) (err error) {
 	var status uint8
-
-	txItem := proto.NewTxInfoBItem(req.TxID)
-	var txInfo *proto.TransactionInfo
-	if item := mp.txProcessor.txManager.txTree.Get(txItem); item != nil {
-		txInfo = item.(*proto.TransactionInfo)
+	txInfo, err := mp.txProcessor.txManager.txTree.Get(req.TxID)
+	if err != nil {
+		log.LogErrorf("[TxGetInfo] failed to get tx(%v) from tx tree, err(%v)", req.TxID, err)
+		return
+	}
+	if txInfo != nil {
 		status = proto.OpOk
 	} else {
 		status = proto.OpTxInfoNotExistErr

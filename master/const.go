@@ -133,8 +133,8 @@ const (
 	Periodic                   = "periodic"
 	DecommissionType           = "decommissionType"
 	decommissionDiskFactor     = "decommissionDiskFactor"
-	volMetaLayoutKey                    = "metaLayout"
-	StoreModeKey                        = "storeMode"
+	volMetaLayoutKey           = "metaLayout"
+	StoreModeKey               = "storeMode"
 )
 
 const (
@@ -171,43 +171,43 @@ const (
 )
 
 const (
-	defaultFaultDomainZoneCnt                    = 3
-	defaultNormalCrossZoneCnt                    = 3
-	defaultInitMetaPartitionCount                = 3
-	defaultMaxInitMetaPartitionCount             = 100
-	defaultMaxMetaPartitionInodeID        uint64 = 1<<63 - 1
-	defaultMetaPartitionInodeIDStep       uint64 = 1 << 22
-	defaultMetaNodeReservedMem            uint64 = 1 << 30
-	runtimeStackBufSize                          = 4096
-	spaceAvailableRate                           = 0.90
-	defaultNodeSetCapacity                       = 18
-	minNumOfRWDataPartitions                     = 10
-	intervalToCheckMissingReplica                = 600
-	intervalToWarnDataPartition                  = 600
-	intervalToLoadDataPartition                  = 12 * 60 * 60
-	defaultInitDataPartitionCnt                  = 10
-	maxInitDataPartitionCnt                      = 200
-	volExpansionRatio                            = 0.1
-	maxNumberOfDataPartitionsForExpansion        = 100
-	EmptyCrcValue                         uint32 = 4045511210
-	DefaultZoneName                              = proto.DefaultZoneName
-	retrySendSyncTaskInternal                    = 3 * time.Second
-	defaultRangeOfCountDifferencesAllowed        = 50
-	defaultMinusOfMaxInodeID                     = 1000
-	defaultNodeSetGrpBatchCnt                    = 3
-	defaultMigrateDpCnt                          = 50
-	defaultMigrateMpCnt                          = 3
-	defaultMaxReplicaCnt                         = 16
-	defaultIopsRLimit                     uint64 = 1 << 35
-	defaultIopsWLimit                     uint64 = 1 << 35
-	defaultFlowWLimit                     uint64 = 1 << 35
-	defaultFlowRLimit                     uint64 = 1 << 35
-	defaultLimitTypeCnt                          = 4
-	defaultClientTriggerHitCnt                   = 1
-	defaultClientReqPeriodSeconds                = 1
-	defaultMaxQuotaNumPerVol                     = 100
-	defaultRocksdbDiskUsageThreshold                 float32 = 0.6
-	defaultMemModeRocksdbDiskUsageThreshold          float32 = 0.8
+	defaultFaultDomainZoneCnt                       = 3
+	defaultNormalCrossZoneCnt                       = 3
+	defaultInitMetaPartitionCount                   = 3
+	defaultMaxInitMetaPartitionCount                = 100
+	defaultMaxMetaPartitionInodeID          uint64  = 1<<63 - 1
+	defaultMetaPartitionInodeIDStep         uint64  = 1 << 22
+	defaultMetaNodeReservedMem              uint64  = 1 << 30
+	runtimeStackBufSize                             = 4096
+	spaceAvailableRate                              = 0.90
+	defaultNodeSetCapacity                          = 18
+	minNumOfRWDataPartitions                        = 10
+	intervalToCheckMissingReplica                   = 600
+	intervalToWarnDataPartition                     = 600
+	intervalToLoadDataPartition                     = 12 * 60 * 60
+	defaultInitDataPartitionCnt                     = 10
+	maxInitDataPartitionCnt                         = 200
+	volExpansionRatio                               = 0.1
+	maxNumberOfDataPartitionsForExpansion           = 100
+	EmptyCrcValue                           uint32  = 4045511210
+	DefaultZoneName                                 = proto.DefaultZoneName
+	retrySendSyncTaskInternal                       = 3 * time.Second
+	defaultRangeOfCountDifferencesAllowed           = 50
+	defaultMinusOfMaxInodeID                        = 1000
+	defaultNodeSetGrpBatchCnt                       = 3
+	defaultMigrateDpCnt                             = 50
+	defaultMigrateMpCnt                             = 3
+	defaultMaxReplicaCnt                            = 16
+	defaultIopsRLimit                       uint64  = 1 << 35
+	defaultIopsWLimit                       uint64  = 1 << 35
+	defaultFlowWLimit                       uint64  = 1 << 35
+	defaultFlowRLimit                       uint64  = 1 << 35
+	defaultLimitTypeCnt                             = 4
+	defaultClientTriggerHitCnt                      = 1
+	defaultClientReqPeriodSeconds                   = 1
+	defaultMaxQuotaNumPerVol                        = 100
+	defaultRocksdbDiskUsageThreshold        float32 = 0.6
+	defaultMemModeRocksdbDiskUsageThreshold float32 = 0.8
 )
 
 const (
@@ -346,7 +346,7 @@ const (
 	S3QoSPrefix      = keySeparator + S3QoS + keySeparator
 )
 
-// selector enum
+// NOTE: selector enum
 type NodeType int
 
 const (

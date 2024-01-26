@@ -45,11 +45,12 @@ func (s *MetaItem) MarshalJson() ([]byte, error) {
 
 // MarshalBinary marshals MetaItem to binary data.
 // Binary frame structure:
-//  +------+----+------+------+------+------+
-//  | Item | Op | LenK |   K  | LenV |   V  |
-//  +------+----+------+------+------+------+
-//  | byte | 4  |  4   | LenK |  4   | LenV |
-//  +------+----+------+------+------+------+
+//
+//	+------+----+------+------+------+------+
+//	| Item | Op | LenK |   K  | LenV |   V  |
+//	+------+----+------+------+------+------+
+//	| byte | 4  |  4   | LenK |  4   | LenV |
+//	+------+----+------+------+------+------+
 func (s *MetaItem) MarshalBinary() (result []byte, err error) {
 	buff := bytes.NewBuffer(make([]byte, 0))
 	buff.Grow(4 + len(s.K) + len(s.V))
@@ -79,11 +80,12 @@ func (s *MetaItem) UnmarshalJson(data []byte) error {
 
 // MarshalBinary unmarshal this MetaItem entity from binary data.
 // Binary frame structure:
-//  +------+----+------+------+------+------+
-//  | Item | Op | LenK |   K  | LenV |   V  |
-//  +------+----+------+------+------+------+
-//  | byte | 4  |  4   | LenK |  4   | LenV |
-//  +------+----+------+------+------+------+
+//
+//	+------+----+------+------+------+------+
+//	| Item | Op | LenK |   K  | LenV |   V  |
+//	+------+----+------+------+------+------+
+//	| byte | 4  |  4   | LenK |  4   | LenV |
+//	+------+----+------+------+------+------+
 func (s *MetaItem) UnmarshalBinary(raw []byte) (err error) {
 	var (
 		lenK uint32
@@ -141,9 +143,6 @@ type MetaItemIterator struct {
 	txId              uint64
 	cursor            uint64
 	treeSnap          Snapshot
-	txTree            *BTree
-	txRbInodeTree     *BTree
-	txRbDentryTree    *BTree
 	uniqChecker       *uniqChecker
 	verList           []*proto.VolVersionInfo
 
@@ -193,9 +192,6 @@ func newMetaItemIterator(mp *metaPartition) (si *MetaItemIterator, err error) {
 	si.cursor = mp.GetCursor()
 	si.uniqID = mp.GetUniqId()
 	si.treeSnap = NewSnapshot(mp)
-	si.txTree = mp.txProcessor.txManager.txTree.GetTree()
-	si.txRbInodeTree = mp.txProcessor.txResource.txRbInodeTree.GetTree()
-	si.txRbDentryTree = mp.txProcessor.txResource.txRbDentryTree.GetTree()
 	si.uniqChecker = mp.uniqChecker.clone()
 	si.verList = mp.GetAllVerList()
 	mp.nonIdempotent.Unlock()
@@ -292,12 +288,11 @@ func newMetaItemIterator(mp *metaPartition) (si *MetaItemIterator, err error) {
 			panic(fmt.Sprintf("invalid raftSyncSnapFormatVersione: %v", si.SnapFormatVersion))
 		}
 
+		// NOTE: if using rocksdb, send base
 		// process inodes
 		if err = iter.treeSnap.Range(InodeType, func(v interface{}) (bool, error) {
-			if ok := produceItem(v.(*Inode)); !ok {
-				return false, nil
-			}
-			return true, nil
+			log.LogDebugf("[newMetaItemIterator] send inode")
+			return produceItem(v.(*Inode)), nil
 		}); err != nil {
 			produceError(err)
 			return
@@ -307,10 +302,8 @@ func newMetaItemIterator(mp *metaPartition) (si *MetaItemIterator, err error) {
 		}
 		// process dentries
 		if err = iter.treeSnap.Range(DentryType, func(v interface{}) (bool, error) {
-			if ok := produceItem(v.(*Dentry)); !ok {
-				return false, nil
-			}
-			return true, nil
+			log.LogDebugf("[newMetaItemIterator] send dentries")
+			return produceItem(v.(*Dentry)), nil
 		}); err != nil {
 			produceError(err)
 			return
@@ -320,10 +313,8 @@ func newMetaItemIterator(mp *metaPartition) (si *MetaItemIterator, err error) {
 		}
 		// process extends
 		if err = iter.treeSnap.Range(ExtendType, func(v interface{}) (bool, error) {
-			if ok := produceItem(v.(*Extend)); !ok {
-				return false, nil
-			}
-			return true, nil
+			log.LogDebugf("[newMetaItemIterator] send extends")
+			return produceItem(v.(*Extend)), nil
 		}); err != nil {
 			produceError(err)
 			return
@@ -333,10 +324,8 @@ func newMetaItemIterator(mp *metaPartition) (si *MetaItemIterator, err error) {
 		}
 		// process multiparts
 		if err = iter.treeSnap.Range(MultipartType, func(v interface{}) (bool, error) {
-			if ok := produceItem(v.(*Multipart)); !ok {
-				return false, nil
-			}
-			return true, nil
+			log.LogDebugf("[newMetaItemIterator] send multi parts")
+			return produceItem(v.(*Multipart)), nil
 		}); err != nil {
 			produceError(err)
 			return
@@ -346,22 +335,25 @@ func newMetaItemIterator(mp *metaPartition) (si *MetaItemIterator, err error) {
 		}
 
 		if si.SnapFormatVersion == SnapFormatVersion_1 {
-			iter.txTree.Ascend(func(i BtreeItem) bool {
-				return produceItem(i)
+			iter.treeSnap.Range(TransactionType, func(i interface{}) (bool, error) {
+				log.LogDebugf("[newMetaItemIterator] send transaction")
+				return produceItem(i), nil
 			})
 			if checkClose() {
 				return
 			}
 
-			iter.txRbInodeTree.Ascend(func(i BtreeItem) bool {
-				return produceItem(i)
+			iter.treeSnap.Range(TransactionRollbackInodeType, func(i interface{}) (bool, error) {
+				log.LogDebugf("[newMetaItemIterator] send rb inodes")
+				return produceItem(i), nil
 			})
 			if checkClose() {
 				return
 			}
 
-			iter.txRbDentryTree.Ascend(func(i BtreeItem) bool {
-				return produceItem(i)
+			iter.treeSnap.Range(TransactionRollbackDentryType, func(i interface{}) (bool, error) {
+				log.LogDebugf("[newMetaItemIterator] sebd rb dentries")
+				return produceItem(i), nil
 			})
 			if checkClose() {
 				return
@@ -389,6 +381,7 @@ func newMetaItemIterator(mp *metaPartition) (si *MetaItemIterator, err error) {
 		}
 	}(si)
 
+	log.LogDebugf("[newMetaItemIterator] send snapshot")
 	return
 }
 

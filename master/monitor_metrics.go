@@ -792,6 +792,7 @@ func (mm *monitorMetrics) updateMetaNodesStat() {
 		mm.nodeStat.SetWithLabelValues(float64(metaNode.MetaPartitionCount), MetricRoleMetaNode, metaNode.Addr, "mpCount")
 		mm.nodeStat.SetWithLabelValues(float64(metaNode.Threshold), MetricRoleMetaNode, metaNode.Addr, "threshold")
 		mm.nodeStat.SetBoolWithLabelValues(metaNode.isWritable(proto.StoreModeMem), MetricRoleMetaNode, metaNode.Addr, "writable")
+		mm.nodeStat.SetBoolWithLabelValues(metaNode.isWritable(proto.StoreModeRocksDb), MetricRoleMetaNode, metaNode.Addr, "diskWritable")
 		mm.nodeStat.SetBoolWithLabelValues(metaNode.IsActive, MetricRoleMetaNode, metaNode.Addr, "active")
 
 		return true

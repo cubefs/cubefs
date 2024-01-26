@@ -34,6 +34,7 @@ func (mp *metaPartition) fsmSetXAttr(dbHandle interface{}, extend *Extend) (resp
 	e, err = mp.extendTree.Get(extend.inode)
 	if err != nil {
 		resp.Status = proto.OpErr
+		log.LogErrorf("[fsmSetXAttr] failed to get xattr, ino(%v), err(%v)", extend.inode, err)
 		return
 	}
 	if e == nil {
@@ -52,6 +53,7 @@ func (mp *metaPartition) fsmSetXAttr(dbHandle interface{}, extend *Extend) (resp
 	e.Merge(extend, true)
 submit:
 	if err = mp.extendTree.Put(dbHandle, e); err != nil {
+		log.LogErrorf("[fsmSetXAttr] failed to put xattr, ino(%v), err(%v)", extend.inode, err)
 		resp.Status = proto.OpErr
 		return
 	}
@@ -65,6 +67,7 @@ func (mp *metaPartition) fsmRemoveXAttr(dbHandle interface{}, reqExtend *Extend)
 	e, err = mp.extendTree.Get(reqExtend.inode)
 	if err != nil {
 		resp.Status = proto.OpErr
+		log.LogErrorf("[fsmRemoveXAttr] failed to get xattr, ino(%v), err(%v)", reqExtend.inode, err)
 		return
 	}
 	if e == nil {
@@ -139,6 +142,7 @@ func (mp *metaPartition) fsmRemoveXAttr(dbHandle interface{}, reqExtend *Extend)
 submit:
 	if err = mp.extendTree.Put(dbHandle, e); err != nil {
 		resp.Status = proto.OpErr
+		log.LogErrorf("[fsmRemoveXAttr] failed to put xattr, ino(%v), err(%v)", reqExtend.inode, err)
 		return
 	}
 	return

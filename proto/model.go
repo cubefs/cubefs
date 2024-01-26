@@ -33,10 +33,13 @@ type MetaNodeInfo struct {
 	DomainAddr                string
 	IsActive                  bool
 	IsWriteAble               bool
+	IsDiskWritable            bool
 	ZoneName                  string `json:"Zone"`
 	MaxMemAvailWeight         uint64 `json:"MaxMemAvailWeight"`
 	Total                     uint64 `json:"TotalWeight"`
 	Used                      uint64 `json:"UsedWeight"`
+	DiskTotal                 uint64
+	DiskUsed                  uint64
 	Ratio                     float64
 	SelectCount               uint64
 	Threshold                 float32
@@ -95,8 +98,8 @@ type MetaPartitionInfo struct {
 	MissNodes     map[string]int64
 	LoadResponse  []*MetaPartitionLoadResponse
 	Forbidden     bool
-	MemStoreCnt       uint8
-	RcokStoreCnt      uint8
+	MemStoreCnt   uint8
+	RcokStoreCnt  uint8
 }
 
 // MetaReplica defines the replica of a meta partition
@@ -157,11 +160,12 @@ type ClusterIP struct {
 
 // NodeView provides the view of the data or meta node.
 type NodeView struct {
-	Addr       string
-	IsActive   bool
-	DomainAddr string
-	ID         uint64
-	IsWritable bool
+	Addr           string
+	IsActive       bool
+	DomainAddr     string
+	ID             uint64
+	IsWritable     bool
+	IsDiskWritable bool
 }
 
 type DpRepairInfo struct {
@@ -191,12 +195,13 @@ type ZoneStat struct {
 }
 
 type ZoneNodesStat struct {
-	Total         float64 `json:"TotalGB"`
-	Used          float64 `json:"UsedGB"`
-	Avail         float64 `json:"AvailGB"`
-	UsedRatio     float64
-	TotalNodes    int
-	WritableNodes int
+	Total             float64 `json:"TotalGB"`
+	Used              float64 `json:"UsedGB"`
+	Avail             float64 `json:"AvailGB"`
+	UsedRatio         float64
+	TotalNodes        int
+	WritableNodes     int
+	DiskWritableNodes int
 }
 
 type NodeSetStat struct {
@@ -218,14 +223,15 @@ type NodeSetStatInfo struct {
 }
 
 type NodeStatView struct {
-	Addr       string
-	Status     bool
-	DomainAddr string
-	ID         uint64
-	IsWritable bool
-	Total      uint64
-	Used       uint64
-	Avail      uint64
+	Addr           string
+	Status         bool
+	DomainAddr     string
+	ID             uint64
+	IsWritable     bool
+	IsDiskWritable bool
+	Total          uint64
+	Used           uint64
+	Avail          uint64
 }
 
 type NodeStatInfo struct {

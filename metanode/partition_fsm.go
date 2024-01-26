@@ -63,6 +63,11 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 
 	mp.inodeTree.SetApplyID(index)
 
+	if mp.applyID >= index {
+		log.LogErrorf("[Apply] skip apply duplicated log entry")
+		return
+	}
+
 	//commit db
 	defer func() {
 		if err != nil {
@@ -70,9 +75,14 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 			return
 		}
 
+		log.LogDebugf("[Apply] mp(%v) commit write handle", mp.config.PartitionId)
 		err = mp.inodeTree.CommitAndReleaseBatchWriteHandle(dbWriteHandle, true)
+		if err != nil {
+			// NOTE: try to rollback?
+			log.LogErrorf("[Apply] failed to commit write batch, is disk broken? err(%v)", err)
+		}
 	}()
-
+	log.LogInfof("[Apply] apply mp(%v) op(%v)", mp.config.PartitionId, msg.Op)
 	switch msg.Op {
 	case opFSMCreateInode:
 		ino := NewInode(0, 0)
@@ -81,6 +91,7 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 		}
 		if mp.config.Cursor < ino.Inode {
 			mp.config.Cursor = ino.Inode
+			mp.inodeTree.SetCursor(ino.Inode)
 		}
 		resp, err = mp.fsmCreateInode(dbWriteHandle, ino)
 	case opFSMCreateInodeQuota:
@@ -91,6 +102,7 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 		ino := qinode.inode
 		if mp.config.Cursor < ino.Inode {
 			mp.config.Cursor = ino.Inode
+			mp.inodeTree.SetCursor(ino.Inode)
 		}
 		if len(qinode.quotaIds) > 0 {
 			mp.setInodeQuota(dbWriteHandle, qinode.quotaIds, ino.Inode)
@@ -106,8 +118,11 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 		if err = ino.Unmarshal(msg.V); err != nil {
 			return
 		}
-
-		status := mp.inodeInTx(ino.Inode)
+		var status uint8
+		status, err = mp.inodeInTx(ino.Inode)
+		if err != nil {
+			status = proto.OpErr
+		}
 		if status != proto.OpOk {
 			resp = &InodeResponse{Status: status}
 			return
@@ -134,11 +149,15 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 		}
 		resp, err = mp.fsmExtentsTruncate(dbWriteHandle, ino)
 	case opFSMCreateLinkInode:
+		var status uint8
 		ino := NewInode(0, 0)
 		if err = ino.Unmarshal(msg.V); err != nil {
 			return
 		}
-		status := mp.inodeInTx(ino.Inode)
+		status, err = mp.inodeInTx(ino.Inode)
+		if err != nil {
+			status = proto.OpErr
+		}
 		if status != proto.OpOk {
 			resp = &InodeResponse{Status: status}
 			return
@@ -152,11 +171,15 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 		ino := NewInode(inoOnce.Inode, 0)
 		resp, err = mp.fsmCreateLinkInode(dbWriteHandle, ino, inoOnce.UniqID)
 	case opFSMEvictInode:
+		var status uint8
 		ino := NewInode(0, 0)
 		if err = ino.Unmarshal(msg.V); err != nil {
 			return
 		}
-		status := mp.inodeInTx(ino.Inode)
+		status, err = mp.inodeInTx(ino.Inode)
+		if err != nil {
+			status = proto.OpErr
+		}
 		if status != proto.OpOk {
 			resp = &InodeResponse{Status: status}
 			return
@@ -176,12 +199,16 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 		}
 		resp, err = mp.fsmSetAttr(dbWriteHandle, req)
 	case opFSMCreateDentry:
+		var status uint8
 		den := &Dentry{}
 		if err = den.Unmarshal(msg.V); err != nil {
 			return
 		}
 
-		status := mp.dentryInTx(den.ParentId, den.Name)
+		status, err = mp.dentryInTx(den.ParentId, den.Name)
+		if err != nil {
+			status = proto.OpErr
+		}
 		if status != proto.OpOk {
 			resp = status
 			return
@@ -189,12 +216,16 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 
 		resp, err = mp.fsmCreateDentry(dbWriteHandle, den, false)
 	case opFSMDeleteDentry:
+		var status uint8
 		den := &Dentry{}
 		if err = den.Unmarshal(msg.V); err != nil {
 			return
 		}
 
-		status := mp.dentryInTx(den.ParentId, den.Name)
+		status, err = mp.dentryInTx(den.ParentId, den.Name)
+		if err != nil {
+			status = proto.OpErr
+		}
 		if status != proto.OpOk {
 			resp = status
 			return
@@ -208,12 +239,16 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 		}
 		resp, err = mp.fsmBatchDeleteDentry(db)
 	case opFSMUpdateDentry:
+		var status uint8
 		den := &Dentry{}
 		if err = den.Unmarshal(msg.V); err != nil {
 			return
 		}
 
-		status := mp.dentryInTx(den.ParentId, den.Name)
+		status, err = mp.dentryInTx(den.ParentId, den.Name)
+		if err != nil {
+			status = proto.OpErr
+		}
 		if status != proto.OpOk {
 			resp = &DentryResponse{Status: status}
 			return
@@ -269,27 +304,19 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 		if mp.waitPersistCommitCnt > GetDumpWaterLevel() {
 			mp.waitPersistCommitCnt = 0
 		}
-
-		txTree := mp.txProcessor.txManager.txTree.GetTree()
-		txRbInodeTree := mp.txProcessor.txResource.txRbInodeTree.GetTree()
-		txRbDentryTree := mp.txProcessor.txResource.txRbDentryTree.GetTree()
-		txId := mp.txProcessor.txManager.txIdAlloc.getTransactionID()
 		quotaRebuild := mp.mqMgr.statisticRebuildStart()
 		uidRebuild := mp.acucumRebuildStart()
 		uniqChecker := mp.uniqChecker.clone()
+		// NOTE: already get lock
 		snapMsg := &storeMsg{
-			command:        opFSMStoreTick,
-			applyIndex:     index,
-			txId:           txId,
-			snap:           NewSnapshot(mp),
-			txTree:         txTree,
-			txRbInodeTree:  txRbInodeTree,
-			txRbDentryTree: txRbDentryTree,
-			quotaRebuild:   quotaRebuild,
-			uidRebuild:     uidRebuild,
-			uniqChecker:    uniqChecker,
-			multiVerList:   mp.GetAllVerList(),
+			command:      opFSMStoreTick,
+			snap:         NewSnapshot(mp),
+			quotaRebuild: quotaRebuild,
+			uidRebuild:   uidRebuild,
+			uniqChecker:  uniqChecker,
+			multiVerList: mp.GetAllVerList(),
 		}
+
 		log.LogDebugf("opFSMStoreTick: quotaRebuild [%v] uidRebuild [%v]", quotaRebuild, uidRebuild)
 		if snapMsg.snap == nil {
 			return
@@ -338,19 +365,21 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 		cursor = binary.BigEndian.Uint64(msg.V)
 		if cursor > mp.config.Cursor {
 			mp.config.Cursor = cursor
+			mp.inodeTree.SetCursor(cursor)
 		}
 	case opFSMSyncTxID:
 		var txID uint64
 		txID = binary.BigEndian.Uint64(msg.V)
 		if txID > mp.txProcessor.txManager.txIdAlloc.getTransactionID() {
 			mp.txProcessor.txManager.txIdAlloc.setTransactionID(txID)
+			mp.txProcessor.txManager.txTree.SetTxId(txID)
 		}
 	case opFSMTxInit:
 		txInfo := proto.NewTransactionInfo(0, 0)
 		if err = txInfo.Unmarshal(msg.V); err != nil {
 			return
 		}
-		resp = mp.fsmTxInit(txInfo)
+		resp, err = mp.fsmTxInit(dbWriteHandle, txInfo)
 	case opFSMTxCreateInode:
 		txIno := NewTxInode(0, 0, nil)
 		if err = txIno.Unmarshal(msg.V); err != nil {
@@ -358,6 +387,7 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 		}
 		if mp.config.Cursor < txIno.Inode.Inode {
 			mp.config.Cursor = txIno.Inode.Inode
+			mp.inodeTree.SetCursor(txIno.Inode.Inode)
 		}
 		resp, err = mp.fsmTxCreateInode(dbWriteHandle, txIno, []uint32{})
 	case opFSMTxCreateInodeQuota:
@@ -368,6 +398,7 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 		txIno := qinode.txinode
 		if mp.config.Cursor < txIno.Inode.Inode {
 			mp.config.Cursor = txIno.Inode.Inode
+			mp.inodeTree.SetCursor(txIno.Inode.Inode)
 		}
 		if len(qinode.quotaIds) > 0 {
 			mp.setInodeQuota(dbWriteHandle, qinode.quotaIds, txIno.Inode.Inode)
@@ -389,37 +420,37 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 		if err = json.Unmarshal(msg.V, req); err != nil {
 			return
 		}
-		resp = mp.fsmTxSetState(req)
+		resp, err = mp.fsmTxSetState(dbWriteHandle, req)
 	case opFSMTxCommitRM:
 		req := &proto.TransactionInfo{}
 		if err = req.Unmarshal(msg.V); err != nil {
 			return
 		}
-		resp = mp.fsmTxCommitRM(dbWriteHandle, req)
+		resp, err = mp.fsmTxCommitRM(dbWriteHandle, req)
 	case opFSMTxRollbackRM:
 		req := &proto.TransactionInfo{}
 		if err = req.Unmarshal(msg.V); err != nil {
 			return
 		}
-		resp = mp.fsmTxRollbackRM(dbWriteHandle, req)
+		resp, err = mp.fsmTxRollbackRM(dbWriteHandle, req)
 	case opFSMTxCommit:
 		req := &proto.TxApplyRequest{}
 		if err = json.Unmarshal(msg.V, req); err != nil {
 			return
 		}
-		resp = mp.fsmTxCommit(req.TxID)
+		resp, err = mp.fsmTxCommit(dbWriteHandle, req.TxID)
 	case opFSMTxRollback:
 		req := &proto.TxApplyRequest{}
 		if err = json.Unmarshal(msg.V, req); err != nil {
 			return
 		}
-		resp = mp.fsmTxRollback(req.TxID)
+		resp, err = mp.fsmTxRollback(dbWriteHandle, req.TxID)
 	case opFSMTxDelete:
 		req := &proto.TxApplyRequest{}
 		if err = json.Unmarshal(msg.V, req); err != nil {
 			return
 		}
-		resp = mp.fsmTxDelete(req.TxID)
+		resp, err = mp.fsmTxDelete(dbWriteHandle, req.TxID)
 	case opFSMTxDeleteDentry:
 		txDen := NewTxDentry(0, "", 0, 0, nil, nil)
 		if err = txDen.Unmarshal(msg.V); err != nil {
@@ -632,23 +663,41 @@ func (mp *metaPartition) Snapshot() (snap raftproto.Snapshot, err error) {
 
 func (mp *metaPartition) ResetDbByNewDir(newDBDir string) (err error) {
 	if err = mp.db.CloseDb(); err != nil {
-		log.LogErrorf("Close old db failed:%v", err.Error())
+		log.LogErrorf("[ResetDbByNewDir] Close old db failed:%v", err.Error())
 		return
 	}
 
 	if err = mp.db.ReleaseRocksDb(); err != nil {
-		log.LogErrorf("release db dir failed:%v", err.Error())
+		log.LogErrorf("[ResetDbByNewDir] release db dir failed:%v", err.Error())
+		return
+	}
+
+	tmpDir, err := os.MkdirTemp("", "")
+	if err != nil {
+		log.LogErrorf("[ResetDbByNewDir] failed to create tmp dir")
+		return
+	}
+	tmpDir = path.Join(tmpDir, "rocksdb")
+
+	// NOTE: atomic rename dir
+	if err = os.Rename(mp.getRocksDbRootDir(), tmpDir); err != nil && os.IsNotExist(err) {
+		log.LogErrorf("[ResetDbByNewDir] failed to rename dir, err(%v)", err)
 		return
 	}
 
 	if err = os.Rename(newDBDir, mp.getRocksDbRootDir()); err != nil {
-		log.LogErrorf("rename db dir[%s --> %s] failed:%v", newDBDir, mp.getRocksDbRootDir(), err.Error())
+		log.LogErrorf("[ResetDbByNewDir] rename db dir[%s --> %s] failed:%v", newDBDir, mp.getRocksDbRootDir(), err.Error())
 		return
+	}
+
+	if err = os.RemoveAll(tmpDir); err != nil {
+		log.LogErrorf("[ResetDbByNewDir] failed to remove garbage, err(%v)", err)
+		err = nil
 	}
 
 	if err = mp.db.ReOpenDb(mp.getRocksDbRootDir(), mp.config.RocksWalFileSize, mp.config.RocksWalMemSize,
 		mp.config.RocksLogFileSize, mp.config.RocksLogReversedTime, mp.config.RocksLogReVersedCnt, mp.config.RocksWalTTL); err != nil {
-		log.LogErrorf("reopen db[%s] failed:%v", mp.getRocksDbRootDir(), err.Error())
+		log.LogErrorf("[ResetDbByNewDir] reopen db[%s] failed:%v", mp.getRocksDbRootDir(), err.Error())
 		return
 	}
 
@@ -703,30 +752,36 @@ func (mp *metaPartition) resetMetaTree(metaTree *MetaTree) (err error) {
 
 func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.SnapIterator) (err error) {
 	var (
-		data           []byte
-		index          int
-		appIndexID     uint64
-		txID           uint64
-		uniqID         uint64
-		cursor         uint64
-		txTree         = NewBtree()
-		txRbInodeTree  = NewBtree()
-		txRbDentryTree = NewBtree()
-		uniqChecker    = newUniqChecker()
-		verList        []*proto.VolVersionInfo
-		db             *RocksDbInfo
-		dbWriteHandle  interface{}
-		count          int
+		data          []byte
+		index         int
+		appIndexID    uint64
+		txID          uint64
+		uniqID        uint64
+		cursor        uint64
+		uniqChecker   = newUniqChecker()
+		verList       []*proto.VolVersionInfo
+		db            *RocksDbInfo
+		dbWriteHandle interface{}
 	)
 
 	nowStr := strconv.FormatInt(time.Now().Unix(), 10)
-	newDBDir := mp.getRocksDbRootDir() + "_" + nowStr
-	db, err = newRocksdbHandle(newDBDir)
-	if err != nil {
-		log.LogErrorf("ApplyBaseSnapshot: new rocksdb handle failed, metaPartition id(%d) error(%v)", mp.config.PartitionId, err)
-		return
+	var txTree TransactionTree
+	var txRbInodeTree TransactionRollbackInodeTree
+	var txRbDentryTree TransactionRollbackDentryTree
+	newDBDir := ""
+
+	// NOTE: for rocksdb
+	// open a temp db for write
+	if mp.HasRocksDBStore() {
+		newDBDir = mp.getRocksDbRootDir() + "_" + nowStr
+		db, err = newRocksdbHandle(newDBDir)
+		if err != nil {
+			log.LogErrorf("ApplyBaseSnapshot: new rocksdb handle failed, metaPartition id(%d) error(%v)", mp.config.PartitionId, err)
+			return
+		}
 	}
 
+	// NOTE: init meta trees
 	metaTree := newMetaTree(mp.config.StoreMode, db)
 	if metaTree == nil {
 		log.LogErrorf("ApplyBaseSnapshot: new meta tree for mp[%v] failed", mp.config.PartitionId)
@@ -734,6 +789,22 @@ func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.Sn
 		return
 	}
 
+	// NOTE: init transaction trees
+	if mp.HasRocksDBStore() {
+		inodeRocks := metaTree.InodeTree.(*InodeRocks)
+		tree := inodeRocks.RocksTree
+		txTree, _ = NewTransactionRocks(tree)
+		txRbInodeTree, _ = NewTransactionRollbackInodeRocks(tree)
+		txRbDentryTree, _ = NewTransactionRollbackDentryRocks(tree)
+	}
+
+	if mp.HasMemStore() {
+		txTree = &TransactionBTree{NewBtree()}
+		txRbInodeTree = &TransactionRollbackInodeBTree{NewBtree()}
+		txRbDentryTree = &TransactionRollbackDentryBTree{NewBtree()}
+	}
+
+	// NOTE: open write batch for write
 	dbWriteHandle, err = metaTree.InodeTree.CreateBatchWriteHandle()
 	if err != nil {
 		log.LogErrorf("ApplyBaseSnapshot: metaPartition(%v) create batch write handle failed:%v", mp.config.PartitionId, err)
@@ -780,24 +851,31 @@ func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.Sn
 
 	defer func() {
 		if err != nil && err != io.EOF {
-			if err == rocksDBError {
+			if err == ErrRocksdbOperation {
+				log.LogErrorf("[ApplySnapshot] failed to operate rocksdb, err(%v)", err)
 				exporter.WarningRocksdbError(fmt.Sprintf("action[ApplyBaseSnapshot] clusterID[%s] volumeName[%s] partitionID[%v]"+
 					" apply base snapshot failed witch rocksdb error", mp.manager.metaNode.clusterId, mp.config.VolName,
 					mp.config.PartitionId))
 			}
 			log.LogErrorf("ApplyBaseSnapshot: stop with error: partitionID(%v) err(%v)", mp.config.PartitionId, err)
-			_ = db.CloseDb()
+			if db != nil {
+				_ = db.CloseDb()
+			}
 			return
 		}
 		if err == io.EOF {
-			if err = db.CloseDb(); err != nil {
-				log.LogErrorf("ApplyBaseSnapshot: metaPartition(%v) recover from snap failed; Close new db(dir:%s) failed:%s", mp.config.PartitionId, db.dir, err.Error())
-				return
-			}
+			log.LogDebugf("[ApplySnapshot] mp(%v) apply snapshot finish!", mp.config.PartitionId)
+			if db != nil {
+				if err = db.CloseDb(); err != nil {
+					log.LogErrorf("ApplyBaseSnapshot: metaPartition(%v) recover from snap failed; Close new db(dir:%s) failed:%s", mp.config.PartitionId, db.dir, err.Error())
+					return
+				}
 
-			if err = mp.ResetDbByNewDir(newDBDir); err != nil {
-				log.LogErrorf("afterApplySnapshotHandle: metaPartition(%v) recover from snap failed; Reset db failed:%s", mp.config.PartitionId, err.Error())
-				return
+				log.LogDebugf("[ApplySnapshot] mp(%v) publish rocksdb", mp.config.PartitionId)
+				if err = mp.ResetDbByNewDir(newDBDir); err != nil {
+					log.LogErrorf("afterApplySnapshotHandle: metaPartition(%v) recover from snap failed; Reset db failed:%s", mp.config.PartitionId, err.Error())
+					return
+				}
 			}
 
 			mp.freeList = newFreeList()
@@ -810,9 +888,11 @@ func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.Sn
 				return
 			}
 			mp.config.Cursor = cursor
+			mp.inodeTree.SetCursor(cursor)
 			mp.txProcessor.txManager.txTree = txTree
 			mp.txProcessor.txResource.txRbInodeTree = txRbInodeTree
 			mp.txProcessor.txResource.txRbDentryTree = txRbDentryTree
+			mp.txProcessor.txManager.txTree.SetTxId(txID)
 			mp.uniqChecker = uniqChecker
 			mp.multiVersionList.VerList = make([]*proto.VolVersionInfo, len(verList))
 			copy(mp.multiVersionList.VerList, verList)
@@ -821,15 +901,10 @@ func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.Sn
 			err = nil
 			// store message
 			mp.storeChan <- &storeMsg{
-				command:        opFSMStoreTick,
-				applyIndex:     mp.applyID,
-				txId:           mp.txProcessor.txManager.txIdAlloc.getTransactionID(),
-				snap:           NewSnapshot(mp),
-				txTree:         mp.txProcessor.txManager.txTree.GetTree(),
-				txRbInodeTree:  mp.txProcessor.txResource.txRbInodeTree.GetTree(),
-				txRbDentryTree: mp.txProcessor.txResource.txRbDentryTree.GetTree(),
-				uniqChecker:    uniqChecker.clone(),
-				multiVerList:   mp.GetVerList(),
+				command:      opFSMStoreTick,
+				snap:         NewSnapshot(mp),
+				uniqChecker:  uniqChecker.clone(),
+				multiVerList: mp.GetVerList(),
 			}
 			select {
 			case mp.extReset <- struct{}{}:
@@ -846,12 +921,12 @@ func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.Sn
 		log.LogErrorf("ApplySnapshot: stop with error: partitionID(%v) err(%v)", mp.config.PartitionId, err)
 	}()
 
-	var leaderSnapFormatVer uint32
-	leaderSnapFormatVer = math.MaxUint32
+	leaderSnapFormatVer := uint32(math.MaxUint32)
 
 	for {
 		data, err = iter.Next()
 		if err != nil {
+			// NOTE: handle error in defer
 			return
 		}
 
@@ -876,6 +951,8 @@ func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.Sn
 			err = errors.New("unmarshal snap data failed")
 			return
 		}
+
+		log.LogDebugf("[ApplySnapshot] mp(%v) index(%v) apply(%v)", mp.config.PartitionId, index, snap.Op)
 
 		if index == 0 {
 			if snap.Op != opFSMSnapFormatVersion {
@@ -959,17 +1036,29 @@ func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.Sn
 		case opFSMTxSnapshot:
 			txInfo := proto.NewTransactionInfo(0, proto.TxTypeUndefined)
 			txInfo.Unmarshal(snap.V)
-			txTree.ReplaceOrInsert(txInfo, true)
+			err = txTree.Put(dbWriteHandle, txInfo)
+			if err != nil {
+				log.LogErrorf("ApplySnapshot: put tx failed, partitionID(%v) tx(%v) err(%v)", mp.config.PartitionId, txInfo, err)
+				return
+			}
 			log.LogDebugf("ApplySnapshot: create transaction: partitionID(%v) txInfo(%v)", mp.config.PartitionId, txInfo)
 		case opFSMTxRbInodeSnapshot:
 			txRbInode := NewTxRollbackInode(nil, []uint32{}, nil, 0)
 			txRbInode.Unmarshal(snap.V)
-			txRbInodeTree.ReplaceOrInsert(txRbInode, true)
+			err = txRbInodeTree.Put(dbWriteHandle, txRbInode)
+			if err != nil {
+				log.LogErrorf("ApplySnapshot: put rb inode failed, partitionID(%v) rb inode(%v) err(%v)", mp.config.PartitionId, txRbInode, err)
+				return
+			}
 			log.LogDebugf("ApplySnapshot: create txRbInode: partitionID(%v) txRbinode[%v]", mp.config.PartitionId, txRbInode)
 		case opFSMTxRbDentrySnapshot:
 			txRbDentry := NewTxRollbackDentry(nil, nil, 0)
 			txRbDentry.Unmarshal(snap.V)
-			txRbDentryTree.ReplaceOrInsert(txRbDentry, true)
+			err = txRbDentryTree.Put(dbWriteHandle, txRbDentry)
+			if err != nil {
+				log.LogErrorf("ApplySnapshot: put rb dentry failed, partitionID(%v) rb dentry(%v) err(%v)", mp.config.PartitionId, txRbDentry, err)
+				return
+			}
 			log.LogDebugf("ApplySnapshot: create txRbDentry: partitionID(%v) txRbDentry(%v)", mp.config.PartitionId, txRbDentry)
 		case opFSMVerListSnapShot:
 			json.Unmarshal(snap.V, &verList)
@@ -1000,13 +1089,13 @@ func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.Sn
 			}
 		}
 
-		if count, err = metaTree.InodeTree.BatchWriteCount(dbWriteHandle); err != nil {
-			return
-		}
+		// if count, err = metaTree.InodeTree.BatchWriteCount(dbWriteHandle); err != nil {
+		// 	return
+		// }
 
-		if count < DefMaxWriteBatchCount {
-			continue
-		}
+		// if count < DefMaxWriteBatchCount {
+		// 	continue
+		// }
 
 		if err = metaTree.InodeTree.CommitAndReleaseBatchWriteHandle(dbWriteHandle, true); err != nil {
 			log.LogErrorf("ApplyBaseSnapshot: metaPartition(%v) commit write handle failed:%v", mp.config.PartitionId, err)

@@ -341,13 +341,13 @@ func (m *Server) getTopology(w http.ResponseWriter, r *http.Request) {
 				nsView.DataNodes = append(nsView.DataNodes, proto.NodeView{
 					ID: dataNode.ID, Addr: dataNode.Addr,
 					DomainAddr: dataNode.DomainAddr, IsActive: dataNode.isActive, IsWritable: dataNode.isWriteAble(),
-				})
+					IsDiskWritable: dataNode.isWriteAble()})
 				return true
 			})
 			ns.metaNodes.Range(func(key, value interface{}) bool {
 				metaNode := value.(*MetaNode)
 				nsView.MetaNodes = append(nsView.MetaNodes, proto.NodeView{ID: metaNode.ID, Addr: metaNode.Addr,
-					DomainAddr: metaNode.DomainAddr, IsActive: metaNode.IsActive, IsWritable: metaNode.isWritable(proto.StoreModeMem)})
+					DomainAddr: metaNode.DomainAddr, IsActive: metaNode.IsActive, IsWritable: metaNode.isWritable(proto.StoreModeMem), IsDiskWritable: metaNode.isWritable(proto.StoreModeRocksDb)})
 				return true
 			})
 		}
@@ -495,28 +495,30 @@ func (m *Server) getNodeSet(w http.ResponseWriter, r *http.Request) {
 	ns.dataNodes.Range(func(key, value interface{}) bool {
 		dn := value.(*DataNode)
 		nsStat.DataNodes = append(nsStat.DataNodes, &proto.NodeStatView{
-			Addr:       dn.Addr,
-			Status:     dn.isActive,
-			DomainAddr: dn.DomainAddr,
-			ID:         dn.ID,
-			IsWritable: dn.isWriteAble(),
-			Total:      dn.Total,
-			Used:       dn.Used,
-			Avail:      dn.Total - dn.Used,
+			Addr:           dn.Addr,
+			Status:         dn.isActive,
+			DomainAddr:     dn.DomainAddr,
+			ID:             dn.ID,
+			IsWritable:     dn.isWriteAble(),
+			IsDiskWritable: dn.isWriteAble(),
+			Total:          dn.Total,
+			Used:           dn.Used,
+			Avail:          dn.Total - dn.Used,
 		})
 		return true
 	})
 	ns.metaNodes.Range(func(key, value interface{}) bool {
 		mn := value.(*MetaNode)
 		nsStat.MetaNodes = append(nsStat.MetaNodes, &proto.NodeStatView{
-			Addr:       mn.Addr,
-			Status:     mn.IsActive,
-			DomainAddr: mn.DomainAddr,
-			ID:         mn.ID,
-			IsWritable: mn.isWritable(proto.StoreModeMem),
-			Total:      mn.Total,
-			Used:       mn.Used,
-			Avail:      mn.Total - mn.Used,
+			Addr:           mn.Addr,
+			Status:         mn.IsActive,
+			DomainAddr:     mn.DomainAddr,
+			ID:             mn.ID,
+			IsWritable:     mn.isWritable(proto.StoreModeMem),
+			IsDiskWritable: mn.isWritable(proto.StoreModeRocksDb),
+			Total:          mn.Total,
+			Used:           mn.Used,
+			Avail:          mn.Total - mn.Used,
 		})
 		return true
 	})
@@ -3250,10 +3252,13 @@ func (m *Server) buildNodeSetGrpInfo(nsg *nodeSetGroup) *proto.SimpleNodeSetGrpI
 				Addr:               node.Addr,
 				IsActive:           node.IsActive,
 				IsWriteAble:        node.isWritable(proto.StoreModeMem),
+				IsDiskWritable:     node.isWritable(proto.StoreModeRocksDb),
 				ZoneName:           node.ZoneName,
 				MaxMemAvailWeight:  node.MaxMemAvailWeight,
 				Total:              node.Total,
 				Used:               node.Used,
+				DiskTotal:          node.GetDiskTotal(),
+				DiskUsed:           node.GetDiskUsed(),
 				Ratio:              node.Ratio,
 				SelectCount:        node.SelectCount,
 				Threshold:          node.Threshold,
@@ -4194,10 +4199,13 @@ func (m *Server) getMetaNode(w http.ResponseWriter, r *http.Request) {
 		DomainAddr:                metaNode.DomainAddr,
 		IsActive:                  metaNode.IsActive,
 		IsWriteAble:               metaNode.isWritable(proto.StoreModeMem),
+		IsDiskWritable:            metaNode.isWritable(proto.StoreModeRocksDb),
 		ZoneName:                  metaNode.ZoneName,
 		MaxMemAvailWeight:         metaNode.MaxMemAvailWeight,
 		Total:                     metaNode.Total,
 		Used:                      metaNode.Used,
+		DiskTotal:                 metaNode.GetDiskTotal(),
+		DiskUsed:                  metaNode.GetDiskUsed(),
 		Ratio:                     metaNode.Ratio,
 		SelectCount:               metaNode.SelectCount,
 		Threshold:                 metaNode.Threshold,

@@ -84,6 +84,7 @@ func (m *metadataManager) opMasterHeartbeat(conn net.Conn, p *Packet,
 		adminTask = &proto.AdminTask{
 			Request: req,
 		}
+		diskStat []*proto.MetaNodeDiskInfo
 	)
 
 	go func() {
@@ -105,7 +106,7 @@ func (m *metadataManager) opMasterHeartbeat(conn net.Conn, p *Packet,
 		}
 		// set cpu util and io used in here
 		resp.CpuUtil = m.cpuUtil.Load()
-
+		diskStat = m.metaNode.getRocksDBDiskStat()
 		m.Range(true, func(id uint64, partition MetaPartition) bool {
 			m.checkFollowerRead(req.FLReadVols, partition)
 			m.checkForbiddenVolume(req.ForbiddenVols, partition)
@@ -128,14 +129,28 @@ func (m *metadataManager) opMasterHeartbeat(conn net.Conn, p *Packet,
 				FreeListLen:      uint64(partition.GetFreeListLen()),
 				UidInfo:          partition.GetUidInfo(),
 				QuotaReportInfos: partition.getQuotaReportInfos(),
-				StoreMode:         mConf.StoreMode,
+				StoreMode:        mConf.StoreMode,
 			}
 			mpr.TxCnt, mpr.TxRbInoCnt, mpr.TxRbDenCnt = partition.TxGetCnt()
 
 			if mConf.Cursor >= mConf.End {
 				mpr.Status = proto.ReadOnly
 			}
-			if resp.MemUsed > uint64(float64(resp.Total)*MaxUsedMemFactor) {
+
+			switch mConf.StoreMode {
+			case proto.StoreModeMem:
+				if resp.MemUsed > uint64(float64(resp.Total)*MaxUsedMemFactor) {
+					mpr.Status = proto.ReadOnly
+				}
+			case proto.StoreModeRocksDb:
+				for _, stat := range diskStat {
+					if stat.Path == mConf.RocksDBDir &&
+						stat.UsageRatio >= 0.8 {
+						mpr.Status = proto.ReadOnly
+					}
+				}
+			default:
+				log.LogErrorf("[opMasterHeartbeat] mp(%v) unknown store mode, set read only", mConf.PartitionId)
 				mpr.Status = proto.ReadOnly
 			}
 
@@ -149,7 +164,7 @@ func (m *metadataManager) opMasterHeartbeat(conn net.Conn, p *Packet,
 			return true
 		})
 		resp.ZoneName = m.zoneName
-		resp.RocksDBDiskInfo = m.metaNode.getRocksDBDiskStat()
+		resp.RocksDBDiskInfo = diskStat
 		resp.Status = proto.TaskSucceeds
 	end:
 		adminTask.Request = nil
@@ -191,6 +206,7 @@ func (m *metadataManager) opCreateMetaPartition(conn net.Conn, p *Packet,
 		" master message: %v", p.String(), remoteAddr, adminTask)
 	// create a new meta partition.
 	if err = m.createPartition(req); err != nil {
+		log.LogErrorf("[opCreateMetaPartition] failed to create mp err(%v)", err)
 		err = errors.NewErrorf("[opCreateMetaPartition]->%s; request message: %v",
 			err.Error(), adminTask.Request)
 		return
@@ -1334,10 +1350,16 @@ func (m *metadataManager) opMetaExtentsTruncate(conn net.Conn, p *Packet,
 	}
 	if err = m.checkMultiVersionStatus(mp, p); err != nil {
 		err = errors.NewErrorf("[%v],req[%v],err[%v]", p.GetOpMsgWithReqAndResult(), req, string(p.Data))
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
 		m.respondToClientWithVer(conn, p)
 		return
 	}
-	mp.ExtentsTruncate(req, p, remoteAddr)
+	err = mp.ExtentsTruncate(req, p, remoteAddr)
+	if err != nil {
+		log.LogErrorf("[opMetaExtentsTruncate] failed to truncate ino, err(%v)", err)
+		m.respondToClientWithVer(conn, p)
+		return
+	}
 	m.updatePackRspSeq(mp, p)
 	m.respondToClientWithVer(conn, p)
 	log.LogDebugf("%s [OpMetaTruncate] req: %d - %v, resp body: %v, "+

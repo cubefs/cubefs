@@ -197,7 +197,7 @@ type OpTransaction interface {
 	TxRollback(req *proto.TxApplyRequest, p *Packet, remoteAddr string) (err error)
 	TxGetInfo(req *proto.TxGetInfoRequest, p *Packet) (err error)
 	TxGetCnt() (uint64, uint64, uint64)
-	TxGetTree() (*BTree, *BTree, *BTree)
+	TxGetTree() (TransactionTree, TransactionRollbackInodeTree, TransactionRollbackDentryTree)
 }
 
 // OpExtent defines the interface for the extent operations.
@@ -533,6 +533,8 @@ type metaPartition struct {
 	waitPersistCommitCnt   uint64
 }
 
+var _ MetaPartition = &metaPartition{}
+
 func (mp *metaPartition) IsForbidden() bool {
 	return mp.config.Forbidden
 }
@@ -791,6 +793,7 @@ func (mp *metaPartition) onStart(isCreate bool) (err error) {
 	log.LogDebugf("[before raft] get mp[%v] applied(%d),inodeCount(%d),dentryCount(%d)", mp.config.PartitionId, mp.applyID, mp.inodeTree.Len(), mp.dentryTree.Len())
 
 	if err = mp.startRaft(); err != nil {
+		log.LogErrorf("[onStart] failed to start raft, mp(%v) err(%v)", mp.config.PartitionId, err)
 		err = errors.NewErrorf("[onStart] start raft id=%d: %s",
 			mp.config.PartitionId, err.Error())
 		return
@@ -912,8 +915,8 @@ func NewMetaPartition(conf *MetaPartitionConfig, manager *metadataManager) MetaP
 			TemporaryVerMap: make(map[uint64]*proto.VolVersionInfo),
 		},
 		enableAuditLog: true,
+		db:             NewRocksDb(),
 	}
-	mp.txProcessor = NewTransactionProcessor(mp)
 	return mp
 }
 
@@ -1129,6 +1132,12 @@ const (
 )
 
 func (mp *metaPartition) LoadDataFromRocksDb() (err error) {
+	// NOTE: load tx id
+	txId := mp.inodeTree.GetTxId()
+	if txId > mp.txProcessor.txManager.txIdAlloc.getTransactionID() {
+		mp.txProcessor.txManager.txIdAlloc.setTransactionID(txId)
+	}
+	log.LogDebugf("[LoadDataFromRocksDb] mp(%v) load tx id(%v)", mp.config.PartitionId, mp.txProcessor.txManager.txIdAlloc.getTransactionID())
 	return
 }
 
@@ -1231,11 +1240,6 @@ func (mp *metaPartition) initObjects(isCreate bool) (err error) {
 	mp.uidManager = NewUidMgr(mp.config.VolName, mp.config.PartitionId)
 	mp.mqMgr = NewQuotaManager(mp.config.VolName, mp.config.PartitionId)
 
-	if err = mp.db.OpenDb(mp.getRocksDbRootDir(), mp.config.RocksWalFileSize, mp.config.RocksWalMemSize,
-		mp.config.RocksLogFileSize, mp.config.RocksLogReversedTime, mp.config.RocksLogReVersedCnt, mp.config.RocksWalTTL); err != nil {
-		return
-	}
-
 	if mp.HasMemStore() {
 		mp.initMemoryTree()
 		if isCreate {
@@ -1244,6 +1248,10 @@ func (mp *metaPartition) initObjects(isCreate bool) (err error) {
 	}
 
 	if mp.HasRocksDBStore() {
+		if err = mp.db.OpenDb(mp.getRocksDbRootDir(), mp.config.RocksWalFileSize, mp.config.RocksWalMemSize,
+			mp.config.RocksLogFileSize, mp.config.RocksLogReversedTime, mp.config.RocksLogReVersedCnt, mp.config.RocksWalTTL); err != nil {
+			return
+		}
 		if err = mp.initRocksDBTree(); err != nil {
 			return
 		}
@@ -1251,49 +1259,84 @@ func (mp *metaPartition) initObjects(isCreate bool) (err error) {
 			mp.cleanMemoryTreeResource()
 		}
 	}
+
+	mp.txProcessor = NewTransactionProcessor(mp)
 	return
 }
 
 func (mp *metaPartition) load(isCreate bool) (err error) {
 	if err = mp.loadMetadata(); err != nil {
+		log.LogErrorf("[load] failed to load metadata, mp(%v) err(%v)", mp.config.PartitionId, err)
 		return
 	}
 
 	if err = mp.initObjects(isCreate); err != nil {
+		log.LogErrorf("[load] failed to init objects, mp(%v) err(%v)", mp.config.PartitionId, err)
 		return
 	}
 	// 1. create new metaPartition, no need to load snapshot
 	// 2. store the snapshot files for new mp, because
 	// mp.load() will check all the snapshot files when mn startup
-	if isCreate {
+
+	// NOTE: only memory store need to create snapshot files
+	if isCreate && mp.HasMemStore() {
 		if err = mp.storeSnapshotFiles(); err != nil {
-			err = errors.NewErrorf("[onStart] storeSnapshotFiles for partition id=%d: %s",
+			err = errors.NewErrorf("[load] storeSnapshotFiles for partition id=%d: %s",
 				mp.config.PartitionId, err.Error())
 		}
 		return
 	}
-
-	snapshotPath := path.Join(mp.config.RootDir, snapshotDir)
-	if _, err = os.Stat(snapshotPath); err != nil {
-		log.LogErrorf("load snapshot failed, err: %s", err.Error())
-		return nil
-
-	}
-
+	snapshotPath := ""
 	if mp.HasMemStore() {
+		snapshotPath = path.Join(mp.config.RootDir, snapshotDir)
+		if _, err = os.Stat(snapshotPath); err != nil {
+			log.LogErrorf("[load] load snapshot failed, err: %s", err.Error())
+			return nil
+		}
 		err = mp.LoadSnapshot(snapshotPath)
 	}
 
 	if mp.HasRocksDBStore() {
+		log.LogDebugf("[load] mp(%v) rocksdb dir(%v)", mp.config.PartitionId, mp.config.RocksDBDir)
+		log.LogDebugf("[load] load rocksdb data")
 		err = mp.LoadDataFromRocksDb()
 	}
 
 	if err != nil {
+		log.LogErrorf("[load] failed to load data, mp(%v) err(%v)", mp.config.PartitionId, err)
 		return err
 	}
 
+	// NOTE: snapshotPath can be empty if using rocksdb
 	if err = mp.loadApplyID(snapshotPath); err != nil {
+		log.LogErrorf("[load] failed to load apply id, mp(%v) err(%v)", mp.config.PartitionId, err)
 		return
+	}
+
+	// NOTE: when we create rocksdb mp
+	// we will select a db path and set RocksdbDir config
+	// so we need to persist metadata
+	if mp.HasRocksDBStore() {
+		if err = mp.persistSelectedRocksdbDir(); err != nil {
+			log.LogErrorf("[load] mp(%v) failed to persist rocksdb dir to metadata file, err(%v)", mp.config.PartitionId, err)
+			return
+		}
+	}
+
+	// NOTE: for debug
+	if log.EnableDebug() {
+		log.LogDebugf("[load] mp(%v) is create(%v)", mp.config.PartitionId, isCreate)
+		log.LogDebugf("[load] mp(%v) apply id(%v)", mp.config.PartitionId, mp.applyID)
+		log.LogDebugf("[load] mp(%v) inode real len(%v)", mp.config.PartitionId, mp.inodeTree.RealCount())
+		log.LogDebugf("[load] mp(%v) dentry real len(%v)", mp.config.PartitionId, mp.dentryTree.RealCount())
+		log.LogDebugf("[load] mp(%v) extentd real len(%v)", mp.config.PartitionId, mp.extendTree.RealCount())
+		log.LogDebugf("[load] mp(%v) multipart real len(%v)", mp.config.PartitionId, mp.multipartTree.RealCount())
+		txTree := mp.txProcessor.txManager.txTree
+		txRbInoTree := mp.txProcessor.txResource.txRbInodeTree
+		txRbDenTree := mp.txProcessor.txResource.txRbDentryTree
+		log.LogDebugf("[load] mp(%v) tx real len(%v)", mp.config.PartitionId, txTree.RealCount())
+		log.LogDebugf("[load] mp(%v) tx rb inode real len(%v)", mp.config.PartitionId, txRbInoTree.RealCount())
+		log.LogDebugf("[load] mp(%v) tx rb dentry real len(%v)", mp.config.PartitionId, txRbDenTree.RealCount())
 	}
 
 	return
@@ -1301,13 +1344,14 @@ func (mp *metaPartition) load(isCreate bool) (err error) {
 
 func (mp *metaPartition) store(sm *storeMsg) (err error) {
 	if mp.HasRocksDBStore() {
-		//after reviewed, there no need to execute flush
+		log.LogInfof("[store] mp(%v) using rocksdb, nothing to do", mp.config.PartitionId)
+		// NOTE: after reviewed, there no need to execute flush
 		return nil
 	}
-	log.LogWarnf("metaPartition %d store apply %v", mp.config.PartitionId, sm.applyIndex)
+	log.LogWarnf("metaPartition %d store apply %v", mp.config.PartitionId, sm.snap.ApplyID())
 	tmpDir := path.Join(mp.config.RootDir, snapshotDirTmp)
 	if _, err = os.Stat(tmpDir); err == nil {
-		// TODO Unhandled errors
+		// TODO: Unhandled errors
 		os.RemoveAll(tmpDir)
 	}
 	err = nil
@@ -1317,7 +1361,7 @@ func (mp *metaPartition) store(sm *storeMsg) (err error) {
 
 	defer func() {
 		if err != nil {
-			// TODO Unhandled errors
+			// TODO: Unhandled errors
 			os.RemoveAll(tmpDir)
 		}
 	}()
@@ -1343,7 +1387,7 @@ func (mp *metaPartition) store(sm *storeMsg) (err error) {
 		}
 		crcBuffer.WriteString(fmt.Sprintf("%d", crc))
 	}
-	log.LogWarnf("metaPartition %d store apply %v", mp.config.PartitionId, sm.applyIndex)
+	log.LogWarnf("metaPartition %d store apply %v", mp.config.PartitionId, sm.snap.ApplyID())
 	if err = mp.storeApplyID(tmpDir, sm); err != nil {
 		return
 	}
@@ -1385,7 +1429,7 @@ func (mp *metaPartition) store(sm *storeMsg) (err error) {
 		return
 	}
 
-	mp.storedApplyId = sm.applyIndex
+	mp.storedApplyId = sm.snap.ApplyID()
 	return
 }
 
@@ -1413,6 +1457,7 @@ func (mp *metaPartition) nextInodeID() (inodeId uint64, err error) {
 		if atomic.CompareAndSwapUint64(&mp.config.Cursor, cur, newId) {
 			return newId, nil
 		}
+		mp.inodeTree.SetCursor(newId)
 	}
 }
 
@@ -1932,16 +1977,15 @@ func (mp *metaPartition) initTxInfo(txInfo *proto.TransactionInfo) error {
 }
 
 func (mp *metaPartition) storeSnapshotFiles() (err error) {
+	// NOTE: only will be called
+	// in memory store
+	mp.nonIdempotent.Lock()
+	defer mp.nonIdempotent.Unlock()
 	msg := &storeMsg{
-		applyIndex:     mp.applyID,
-		txId:           mp.txProcessor.txManager.txIdAlloc.getTransactionID(),
-		snap:           NewSnapshot(mp),
-		txTree:         NewBtree(),
-		txRbInodeTree:  NewBtree(),
-		txRbDentryTree: NewBtree(),
-		uniqId:         mp.GetUniqId(),
-		uniqChecker:    newUniqChecker(),
-		multiVerList:   mp.multiVersionList.VerList,
+		snap:         NewSnapshot(mp),
+		uniqId:       mp.GetUniqId(),
+		uniqChecker:  newUniqChecker(),
+		multiVerList: mp.multiVersionList.VerList,
 	}
 
 	return mp.store(msg)

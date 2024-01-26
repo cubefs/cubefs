@@ -10,6 +10,7 @@ import (
 	"path"
 	"testing"
 
+	"github.com/cubefs/cubefs/proto"
 	"github.com/stretchr/testify/require"
 )
 
@@ -48,6 +49,7 @@ func createMetaPartition(rootDir string, t *testing.T) (mp *metaPartition) {
 		PartitionType: 1,
 		Peers:         nil,
 		RootDir:       rootDir,
+		StoreMode:     proto.StoreModeMem,
 	}
 	metaM := &metadataManager{
 		nodeId:     1,
@@ -65,27 +67,22 @@ func createMetaPartition(rootDir string, t *testing.T) (mp *metaPartition) {
 
 	mp, ok := partition.(*metaPartition)
 	require.True(t, ok)
+	err := mp.initObjects(true)
+	require.NoError(t, err)
 	msg := &storeMsg{
-		command:        1,
-		applyIndex:     0,
-		inodeTree:      mp.inodeTree,
-		dentryTree:     mp.dentryTree,
-		extendTree:     mp.extendTree,
-		multipartTree:  mp.multipartTree,
-		txTree:         mp.txProcessor.txManager.txTree,
-		txRbInodeTree:  mp.txProcessor.txResource.txRbInodeTree,
-		txRbDentryTree: mp.txProcessor.txResource.txRbDentryTree,
-		uniqChecker:    newUniqChecker(),
+		command:     1,
+		snap:        NewSnapshot(mp),
+		uniqChecker: newUniqChecker(),
 	}
 	mp.uidManager = NewUidMgr(mpC.VolName, mpC.PartitionId)
 	mp.mqMgr = NewQuotaManager(mpC.VolName, mpC.PartitionId)
 
 	ino := NewInode(1, 0)
-	mp.inodeTree.ReplaceOrInsert(ino, true)
+	mp.inodeTree.Put(nil, ino)
 	dentry := &Dentry{ParentId: 0, Name: "/", Inode: 1}
-	mp.dentryTree.ReplaceOrInsert(dentry, true)
+	mp.dentryTree.Put(nil, dentry)
 
-	err := mp.store(msg)
+	err = mp.store(msg)
 	require.NoError(t, err)
 	return
 }

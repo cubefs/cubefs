@@ -32,6 +32,7 @@ import (
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 var (
@@ -47,6 +48,7 @@ var metaConf = &MetaPartitionConfig{
 	PartitionId:   10001,
 	VolName:       VolNameForTest,
 	PartitionType: proto.VolumeTypeHot,
+	StoreMode:     proto.StoreModeMem,
 }
 
 const (
@@ -70,24 +72,22 @@ func tLogf(format string, args ...interface{}) {
 
 func newPartition(conf *MetaPartitionConfig, manager *metadataManager) (mp *metaPartition) {
 	mp = &metaPartition{
-		config:        conf,
-		dentryTree:    NewBtree(),
-		inodeTree:     NewBtree(),
-		extendTree:    NewBtree(),
-		multipartTree: NewBtree(),
-		stopC:         make(chan bool),
-		storeChan:     make(chan *storeMsg, 100),
-		freeList:      newFreeList(),
-		extDelCh:      make(chan []proto.ExtentKey, defaultDelExtentsCnt),
-		extReset:      make(chan struct{}),
-		vol:           NewVol(),
-		manager:       manager,
-		verSeq:        conf.VerSeq,
+		config:    conf,
+		stopC:     make(chan bool),
+		storeChan: make(chan *storeMsg, 100),
+		freeList:  newFreeList(),
+		extDelCh:  make(chan []proto.ExtentKey, defaultDelExtentsCnt),
+		extReset:  make(chan struct{}),
+		vol:       NewVol(),
+		manager:   manager,
+		verSeq:    conf.VerSeq,
 	}
 	mp.config.Cursor = 0
 	mp.config.End = 100000
-	mp.uidManager = NewUidMgr(conf.VolName, mp.config.PartitionId)
-	mp.mqMgr = NewQuotaManager(conf.VolName, mp.config.PartitionId)
+	err := mp.initObjects(true)
+	if err != nil {
+		panic(err)
+	}
 	return mp
 }
 
@@ -226,7 +226,19 @@ func testCreateInode(t *testing.T, mode uint32) *Inode {
 		t.Logf("testCreateInode ino[%v]", ino)
 	}
 
-	mp.fsmCreateInode(ino)
+	handle, err := mp.inodeTree.CreateBatchWriteHandle()
+	if t != nil {
+		require.NoError(t, err)
+	}
+
+	_, err = mp.fsmCreateInode(handle, ino)
+	if t != nil {
+		require.NoError(t, err)
+	}
+	err = mp.inodeTree.CommitAndReleaseBatchWriteHandle(handle, false)
+	if t != nil {
+		require.NoError(t, err)
+	}
 	return ino
 }
 
@@ -240,11 +252,16 @@ func testCreateDentry(t *testing.T, parentId uint64, inodeId uint64, name string
 	}
 
 	t.Logf("createDentry dentry %v", dentry)
-	ret := mp.fsmCreateDentry(dentry, false)
+	handle, err := mp.inodeTree.CreateBatchWriteHandle()
+	require.NoError(t, err)
+	ret, err := mp.fsmCreateDentry(handle, dentry, false)
+	require.NoError(t, err)
 	assert.True(t, proto.OpOk == ret)
 	if ret != proto.OpOk {
 		panic(nil)
 	}
+	err = mp.inodeTree.CommitAndReleaseBatchWriteHandle(handle, false)
+	require.NoError(t, err)
 	return dentry
 }
 
@@ -281,7 +298,9 @@ func initVer() {
 }
 
 func testGetSplitSize(t *testing.T, ino *Inode) (cnt int32) {
-	if nil == mp.inodeTree.Get(ino) {
+	ino, err := mp.inodeTree.Get(ino.Inode)
+	require.NoError(t, err)
+	if nil == ino {
 		return
 	}
 	ino.multiSnap.ekRefMap.Range(func(key, value interface{}) bool {
@@ -299,7 +318,9 @@ func testGetEkRefCnt(t *testing.T, ino *Inode, ek *proto.ExtentKey) (cnt uint32)
 		val interface{}
 		ok  bool
 	)
-	if nil == mp.inodeTree.Get(ino) {
+	ino, err := mp.inodeTree.Get(ino.Inode)
+	require.NoError(t, err)
+	if nil == ino {
 		t.Logf("testGetEkRefCnt inode[%v] ek [%v] not found", ino, ek)
 		return
 	}
@@ -359,7 +380,11 @@ func TestSplitKeyDeletion(t *testing.T) {
 		},
 	}
 	mp.verSeq = iTmp.getVer()
-	mp.fsmAppendExtentsWithCheck(iTmp, true)
+	handle, err := mp.inodeTree.CreateBatchWriteHandle()
+	require.NoError(t, err)
+	mp.fsmAppendExtentsWithCheck(handle, iTmp, true)
+	err = mp.inodeTree.CommitAndReleaseBatchWriteHandle(handle, false)
+	require.NoError(t, err)
 	assert.True(t, testGetSplitSize(t, fileIno) == 1)
 	assert.True(t, testGetEkRefCnt(t, fileIno, &initExt) == 4)
 
@@ -413,7 +438,9 @@ func testReadDirAll(t *testing.T, verSeq uint64, parentId uint64) (resp *ReadDir
 		Limit:       math.MaxUint64,
 		VerSeq:      verSeq,
 	}
-	return mp.readDirLimit(req)
+	resp, err := mp.readDirLimit(req)
+	require.NoError(t, err)
+	return
 }
 
 func testVerListRemoveVer(t *testing.T, verSeq uint64) bool {
@@ -452,6 +479,8 @@ func TestAppendList(t *testing.T) {
 	index := 5
 	seqArr := seqAllArr[1:index]
 	t.Logf("layer len %v, arr size %v, seqarr(%v)", ino.getLayerLen(), len(seqArr), seqArr)
+	handle, err := mp.inodeTree.CreateBatchWriteHandle()
+	require.NoError(t, err)
 	for idx, seq := range seqArr {
 		exts := buildExtents(seq, uint64(idx*1000), uint64(idx))
 		t.Logf("buildExtents exts[%v]", exts)
@@ -467,10 +496,14 @@ func TestAppendList(t *testing.T) {
 		}
 		mp.verSeq = seq
 
-		if status := mp.fsmAppendExtentsWithCheck(iTmp, false); status != proto.OpOk {
+		status, err := mp.fsmAppendExtentsWithCheck(handle, iTmp, false)
+		require.NoError(t, err)
+		if status != proto.OpOk {
 			t.Errorf("status [%v]", status)
 		}
 	}
+	err = mp.inodeTree.CommitAndReleaseBatchWriteHandle(handle, false)
+	require.NoError(t, err)
 	t.Logf("layer len %v, arr size %v, seqarr(%v)", ino.getLayerLen(), len(seqArr), seqArr)
 	assert.True(t, ino.getLayerLen() == len(seqArr))
 	assert.True(t, ino.getVer() == mp.verSeq)
@@ -497,7 +530,12 @@ func TestAppendList(t *testing.T) {
 		},
 	}
 	mp.verSeq = iTmp.getVer()
-	mp.fsmAppendExtentsWithCheck(iTmp, true)
+	handle, err = mp.inodeTree.CreateBatchWriteHandle()
+	require.NoError(t, err)
+	_, err = mp.fsmAppendExtentsWithCheck(handle, iTmp, true)
+	require.NoError(t, err)
+	err = mp.inodeTree.CommitAndReleaseBatchWriteHandle(handle, false)
+	require.NoError(t, err)
 	t.Logf("in split at begin")
 	assert.True(t, ino.multiSnap.multiVersions[0].Extents.eks[0].GetSeq() == ino.getLayerVer(3))
 	assert.True(t, ino.multiSnap.multiVersions[0].Extents.eks[0].FileOffset == 0)
@@ -537,7 +575,12 @@ func TestAppendList(t *testing.T) {
 	}
 	t.Logf("split at middle multiSnap.multiVersions %v", ino.getLayerLen())
 	mp.verSeq = iTmp.getVer()
-	mp.fsmAppendExtentsWithCheck(iTmp, true)
+	handle, err = mp.inodeTree.CreateBatchWriteHandle()
+	require.NoError(t, err)
+	_, err = mp.fsmAppendExtentsWithCheck(handle, iTmp, true)
+	require.NoError(t, err)
+	err = mp.inodeTree.CommitAndReleaseBatchWriteHandle(handle, false)
+	require.NoError(t, err)
 	t.Logf("split at middle multiSnap.multiVersions %v", ino.getLayerLen())
 
 	getExtRsp := testGetExtList(t, ino, ino.getLayerVer(0))
@@ -571,7 +614,12 @@ func TestAppendList(t *testing.T) {
 	getExtRsp = testGetExtList(t, ino, ino.getLayerVer(0))
 	t.Logf("split at middle multiSnap.multiVersions %v, extent %v, level 1 %v", ino.getLayerLen(), getExtRsp.Extents, ino.multiSnap.multiVersions[0].Extents.eks)
 	mp.verSeq = iTmp.getVer()
-	mp.fsmAppendExtentsWithCheck(iTmp, true)
+	handle, err = mp.inodeTree.CreateBatchWriteHandle()
+	require.NoError(t, err)
+	_, err = mp.fsmAppendExtentsWithCheck(handle, iTmp, true)
+	require.NoError(t, err)
+	err = mp.inodeTree.CommitAndReleaseBatchWriteHandle(handle, false)
+	require.NoError(t, err)
 	t.Logf("split at middle multiSnap.multiVersions %v", ino.getLayerLen())
 	getExtRsp = testGetExtList(t, ino, ino.getLayerVer(0))
 	t.Logf("split at middle multiSnap.multiVersions %v, extent %v, level 1 %v", ino.getLayerLen(), getExtRsp.Extents, ino.multiSnap.multiVersions[0].Extents.eks)
@@ -603,8 +651,12 @@ func TestAppendList(t *testing.T) {
 	}
 	t.Logf("split key:%v", splitKey)
 	mp.verSeq = iTmp.getVer()
-	mp.fsmAppendExtentsWithCheck(iTmp, true)
-
+	handle, err = mp.inodeTree.CreateBatchWriteHandle()
+	require.NoError(t, err)
+	_, err = mp.fsmAppendExtentsWithCheck(handle, iTmp, true)
+	require.NoError(t, err)
+	err = mp.inodeTree.CommitAndReleaseBatchWriteHandle(handle, false)
+	require.NoError(t, err)
 	getExtRsp = testGetExtList(t, ino, ino.getLayerVer(0))
 
 	assert.True(t, len(ino.Extents.eks) == lastTopEksLen+2)
@@ -624,8 +676,9 @@ func testPrintAllSysVerList(t *testing.T) {
 
 func testPrintAllDentry(t *testing.T) uint64 {
 	var cnt uint64
-	mp.dentryTree.Ascend(func(i BtreeItem) bool {
-		den := i.(*Dentry)
+	snap := NewSnapshot(mp)
+	snap.Range(DentryType, func(item interface{}) (bool, error) {
+		den := item.(*Dentry)
 		t.Logf("testPrintAllDentry name %v top layer dentry:%v", den.Name, den)
 		if den.getSnapListLen() > 0 {
 			for id, info := range den.multiSnap.dentryList {
@@ -633,27 +686,30 @@ func testPrintAllDentry(t *testing.T) uint64 {
 			}
 		}
 		cnt++
-		return true
+		return true, nil
 	})
+
 	return cnt
 }
 
 func testPrintAllInodeInfo(t *testing.T) {
-	mp.inodeTree.Ascend(func(item BtreeItem) bool {
+	snap := NewSnapshot(mp)
+	snap.Range(InodeType, func(item interface{}) (bool, error) {
 		i := item.(*Inode)
 		t.Logf("action[PrintAllVersionInfo] toplayer inode[%v] verSeq [%v] hist len [%v]", i, i.getVer(), i.getLayerLen())
 		if i.getLayerLen() == 0 {
-			return true
+			return true, nil
 		}
 		for id, info := range i.multiSnap.multiVersions {
 			t.Logf("action[PrintAllVersionInfo] layer [%v]  verSeq [%v] inode[%v]", id, info.getVer(), info)
 		}
-		return true
+		return true, nil
 	})
 }
 
 func testPrintInodeInfo(t *testing.T, ino *Inode) {
-	i := mp.inodeTree.Get(ino).(*Inode)
+	i, err := mp.inodeTree.Get(ino.Inode)
+	require.NoError(t, err)
 	t.Logf("action[PrintAllVersionInfo] toplayer inode[%v] verSeq [%v] hist len [%v]", i, i.getVer(), i.getLayerLen())
 	if i.getLayerLen() == 0 {
 		return
@@ -674,7 +730,11 @@ func testDelDirSnapshotVersion(t *testing.T, verSeq uint64, dirIno *Inode, dirDe
 	rDirIno := dirIno.Copy().(*Inode)
 	rDirIno.setVerNoCheck(verSeq)
 
-	rspDelIno := mp.fsmUnlinkInode(rDirIno, 0)
+	handle, err := mp.inodeTree.CreateBatchWriteHandle()
+	require.NoError(t, err)
+
+	rspDelIno, err := mp.fsmUnlinkInode(handle, rDirIno, 1, 0)
+	require.NoError(t, err)
 
 	t.Logf("rspDelinfo ret %v content %v", rspDelIno.Status, rspDelIno)
 	assert.True(t, rspDelIno.Status == proto.OpOk)
@@ -683,8 +743,11 @@ func testDelDirSnapshotVersion(t *testing.T, verSeq uint64, dirIno *Inode, dirDe
 	}
 	rDirDentry := dirDentry.Copy().(*Dentry)
 	rDirDentry.setVerSeq(verSeq)
-	rspDelDen := mp.fsmDeleteDentry(rDirDentry, false)
+	rspDelDen, err := mp.fsmDeleteDentry(handle, rDirDentry, false)
+	require.NoError(t, err)
 	assert.True(t, rspDelDen.Status == proto.OpOk)
+	err = mp.inodeTree.CommitAndReleaseBatchWriteHandle(handle, false)
+	require.NoError(t, err)
 
 	for idx, info := range rspReadDir.Children {
 		t.Logf("testDelDirSnapshotVersion: delseq [%v]  to del idx %v infof %v", verSeq, idx, info)
@@ -706,7 +769,14 @@ func testDelDirSnapshotVersion(t *testing.T, verSeq uint64, dirIno *Inode, dirDe
 			panic(nil)
 		}
 		rino.setVer(verSeq)
-		rspDelIno = mp.fsmUnlinkInode(rino, 0)
+
+		handle, err = mp.dentryTree.CreateBatchWriteHandle()
+		require.NoError(t, err)
+
+		rspDelIno, err = mp.fsmUnlinkInode(handle, rino, 1, 0)
+		require.NoError(t, err)
+		err = mp.dentryTree.CommitAndReleaseBatchWriteHandle(handle, false)
+		require.NoError(t, err)
 
 		assert.True(t, rspDelIno.Status == proto.OpOk || rspDelIno.Status == proto.OpNotExistErr)
 		if rspDelIno.Status != proto.OpOk && rspDelIno.Status != proto.OpNotExistErr {
@@ -722,7 +792,9 @@ func testDelDirSnapshotVersion(t *testing.T, verSeq uint64, dirIno *Inode, dirDe
 		}
 		log.LogDebugf("test.testDelDirSnapshotVersion: dentry param %v ", dentry)
 		// testPrintAllDentry(t)
-		iden, st := mp.getDentry(dentry)
+
+		iden, st, err := mp.getDentry(dentry)
+		require.NoError(t, err)
 		if st != proto.OpOk {
 			t.Logf("testDelDirSnapshotVersion: dentry %v return st %v", dentry, proto.ParseErrorCode(int32(st)))
 		}
@@ -731,8 +803,13 @@ func testDelDirSnapshotVersion(t *testing.T, verSeq uint64, dirIno *Inode, dirDe
 
 		rDen := iden.Copy().(*Dentry)
 		rDen.multiSnap = NewDentrySnap(verSeq)
-		rspDelDen = mp.fsmDeleteDentry(rDen, false)
+		handle, err = mp.dentryTree.CreateBatchWriteHandle()
+		require.NoError(t, err)
+		rspDelDen, err = mp.fsmDeleteDentry(handle, rDen, false)
+		require.NoError(t, err)
 		assert.True(t, rspDelDen.Status == proto.OpOk)
+		err = mp.dentryTree.CommitAndReleaseBatchWriteHandle(handle, false)
+		require.NoError(t, err)
 	}
 }
 
@@ -882,9 +959,15 @@ func testAppendExt(t *testing.T, seq uint64, idx int, inode uint64) {
 		},
 	}
 	mp.verSeq = seq
-	if status := mp.fsmAppendExtentsWithCheck(iTmp, false); status != proto.OpOk {
+	handle, err := mp.inodeTree.CreateBatchWriteHandle()
+	require.NoError(t, err)
+	status, err := mp.fsmAppendExtentsWithCheck(handle, iTmp, false)
+	require.NoError(t, err)
+	if status != proto.OpOk {
 		t.Errorf("status [%v]", status)
 	}
+	err = mp.inodeTree.CommitAndReleaseBatchWriteHandle(handle, false)
+	require.NoError(t, err)
 }
 
 func TestTruncateAndDel(t *testing.T) {
@@ -911,7 +994,12 @@ func TestTruncateAndDel(t *testing.T) {
 		Size:       500,
 		ModifyTime: time.Now().Unix(),
 	}
-	mp.fsmExtentsTruncate(ino)
+	handle, err := mp.inodeTree.CreateBatchWriteHandle()
+	require.NoError(t, err)
+	_, err = mp.fsmExtentsTruncate(handle, ino)
+	require.NoError(t, err)
+	err = mp.inodeTree.CommitAndReleaseBatchWriteHandle(handle, false)
+	require.NoError(t, err)
 	log.LogDebugf("TestTruncate start")
 	t.Logf("TestTruncate. create new snapshot seq [%v],%v,file verlist size %v [%v]", seq1, seq2, len(fileIno.multiSnap.multiVersions), fileIno.multiSnap.multiVersions)
 
@@ -931,7 +1019,11 @@ func TestTruncateAndDel(t *testing.T) {
 	// -------------------------------------------------------
 	log.LogDebugf("TestTruncate start")
 	testCreateVer() // seq2 IS commited, seq3 not
-	mp.fsmUnlinkInode(ino, 0)
+	handle, err = mp.inodeTree.CreateBatchWriteHandle()
+	require.NoError(t, err)
+	_, err = mp.fsmUnlinkInode(handle, ino, 1, 0)
+	err = mp.inodeTree.CommitAndReleaseBatchWriteHandle(handle, false)
+	require.NoError(t, err)
 
 	log.LogDebugf("TestTruncate start")
 	assert.True(t, 3 == len(fileIno.multiSnap.multiVersions))
@@ -958,7 +1050,13 @@ func testDeleteFile(t *testing.T, verSeq uint64, parentId uint64, child *proto.D
 		multiSnap: NewDentrySnap(verSeq),
 	}
 	t.Logf("testDeleteFile seq [%v] %v dentry %v", verSeq, fsmDentry.getSeqFiled(), fsmDentry)
-	assert.True(t, nil != mp.fsmDeleteDentry(fsmDentry, false))
+	handle, err := mp.dentryTree.CreateBatchWriteHandle()
+	require.NoError(t, err)
+	resp, err := mp.fsmDeleteDentry(handle, fsmDentry, false)
+	require.NoError(t, err)
+	err = mp.dentryTree.CommitAndReleaseBatchWriteHandle(handle, false)
+	require.NoError(t, err)
+	assert.True(t, nil != resp)
 
 	rino := &Inode{
 		Inode: child.Inode,
@@ -968,7 +1066,12 @@ func testDeleteFile(t *testing.T, verSeq uint64, parentId uint64, child *proto.D
 		},
 	}
 	rino.setVer(verSeq)
-	rspDelIno := mp.fsmUnlinkInode(rino, 0)
+	handle, err = mp.dentryTree.CreateBatchWriteHandle()
+	require.NoError(t, err)
+	rspDelIno, err := mp.fsmUnlinkInode(handle, rino, 1, 0)
+	require.NoError(t, err)
+	err = mp.dentryTree.CommitAndReleaseBatchWriteHandle(handle, false)
+	require.NoError(t, err)
 
 	assert.True(t, rspDelIno.Status == proto.OpOk || rspDelIno.Status == proto.OpNotExistErr)
 	if rspDelIno.Status != proto.OpOk && rspDelIno.Status != proto.OpNotExistErr {
@@ -1080,12 +1183,24 @@ func testSnapshotDeletion(t *testing.T, topFirst bool) {
 	t.Logf("------------rename dir ----------------------")
 	if renameDen != nil {
 		t.Logf("try to move dir %v", renameDen)
-		assert.True(t, nil != mp.fsmDeleteDentry(renameDen, false))
+		handle, err := mp.dentryTree.CreateBatchWriteHandle()
+		require.NoError(t, err)
+		resp, err := mp.fsmDeleteDentry(handle, renameDen, false)
+		require.NoError(t, err)
+		err = mp.dentryTree.CommitAndReleaseBatchWriteHandle(handle, false)
+		require.NoError(t, err)
+		assert.True(t, nil != resp)
 		renameDen.Name = fmt.Sprintf("rename_from_%v", renameDen.Name)
 		renameDen.ParentId = renameDstIno
 
 		t.Logf("try to move to dir %v", renameDen)
-		assert.True(t, mp.fsmCreateDentry(renameDen, false) == proto.OpOk)
+		handle, err = mp.dentryTree.CreateBatchWriteHandle()
+		require.NoError(t, err)
+		s, err := mp.fsmCreateDentry(handle, renameDen, false)
+		require.NoError(t, err)
+		err = mp.dentryTree.CommitAndReleaseBatchWriteHandle(handle, false)
+		require.NoError(t, err)
+		assert.True(t, s == proto.OpOk)
 		testPrintDirTree(t, 1, "root", 0)
 	}
 	delSnapshotList := func() {
@@ -1219,8 +1334,13 @@ func NewMetaPartitionForTest() *metaPartition {
 	mpC := &MetaPartitionConfig{
 		PartitionId: PartitionIdForTest,
 		VolName:     VolNameForTest,
+		StoreMode:   proto.StoreModeMem,
 	}
 	partition := NewMetaPartition(mpC, nil).(*metaPartition)
+	err := partition.initObjects(true)
+	if err != nil {
+		panic(err)
+	}
 	partition.uniqChecker.keepTime = 1
 	partition.uniqChecker.keepOps = 0
 	partition.mqMgr = NewQuotaManager(VolNameForTest, 1)
@@ -1316,8 +1436,10 @@ func newMpWithMock(t *testing.T) {
 	mp.config = metaConf
 	mp.config.Cursor = 0
 	mp.config.End = 100000
-	mp.uidManager = NewUidMgr(metaConf.VolName, metaConf.PartitionId)
-	mp.mqMgr = NewQuotaManager(metaConf.VolName, metaConf.PartitionId)
+	err := mp.initObjects(true)
+	if err != nil {
+		panic(err)
+	}
 	mp.multiVersionList.VerList = append(mp.multiVersionList.VerList, &proto.VolVersionInfo{
 		Ver: 0,
 	})
@@ -1474,7 +1596,8 @@ func TestUpdateDenty(t *testing.T) {
 	mp.UpdateDentry(&UpdateDentryReq{Name: "testfile", ParentID: 1, Inode: 2000}, &Packet{}, localAddrForAudit)
 	den := &Dentry{Name: "testfile", ParentId: 1}
 	den.setVerSeq(math.MaxUint64)
-	denRsp, status := mp.getDentry(den)
+	denRsp, status, err := mp.getDentry(den)
+	require.NoError(t, err)
 	assert.True(t, status == proto.OpOk)
 	assert.True(t, denRsp.Inode == 1000)
 }
@@ -1506,7 +1629,8 @@ func TestDelPartitionVersion(t *testing.T) {
 
 	assert.True(t, err == nil)
 
-	extend := mp.extendTree.Get(NewExtend(ino.Inode)).(*Extend)
+	extend, err := mp.extendTree.Get(ino.Inode)
+	require.NoError(t, err)
 	assert.True(t, len(extend.multiVers) == 1)
 
 	masterList := &proto.VolVersionInfoList{
@@ -1536,7 +1660,8 @@ func TestDelPartitionVersion(t *testing.T) {
 	}
 	inoNew := mp.getInode(&Inode{Inode: ino.Inode}, false).Msg
 	assert.True(t, inoNew.getVer() == 25)
-	extend = mp.extendTree.Get(NewExtend(ino.Inode)).(*Extend)
+	extend, err = mp.extendTree.Get(ino.Inode)
+	require.NoError(t, err)
 	t.Logf("extent verseq [%v], multivers %v", extend.verSeq, extend.multiVers)
 	assert.True(t, extend.verSeq == 50)
 	assert.True(t, len(extend.multiVers) == 1)

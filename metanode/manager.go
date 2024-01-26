@@ -545,6 +545,7 @@ func (m *metadataManager) createPartition(request *proto.CreateMetaPartitionRequ
 	var oldMp MetaPartition
 	partitionId := fmt.Sprintf("%d", request.PartitionID)
 	log.LogInfof("start create meta Partition, partition %s", partitionId)
+	log.LogDebugf("[createPartition] create mp(%v) store mode(%v)", request.PartitionID, request.StoreMode.Str())
 
 	mpc := &MetaPartitionConfig{
 		PartitionId: request.PartitionID,
@@ -560,6 +561,7 @@ func (m *metadataManager) createPartition(request *proto.CreateMetaPartitionRequ
 		ConnPool:    m.connPool,
 		VerSeq:      request.VerSeq,
 		StoreMode:   request.StoreMode,
+		RocksDBDir:  "",
 	}
 	mpc.AfterStop = func() {
 		m.detachPartition(request.PartitionID)

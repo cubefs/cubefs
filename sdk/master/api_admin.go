@@ -262,13 +262,13 @@ func (api *AdminAPI) DecommissionDataPartition(dataPartitionID uint64, nodeAddr 
 	return
 }
 
-func (api *AdminAPI) DecommissionMetaPartition(metaPartitionID uint64, nodeAddr, clientIDKey string, storeMode int) (err error) {
+func (api *AdminAPI) DecommissionMetaPartition(metaPartitionID uint64, nodeAddr, clientIDKey string, storeMode proto.StoreMode) (err error) {
 	request := newAPIRequest(http.MethodGet, proto.AdminDecommissionMetaPartition)
 	request.addParam("id", strconv.FormatUint(metaPartitionID, 10))
 	request.addParam("addr", nodeAddr)
 	request.addParam("clientIDKey", clientIDKey)
 	if storeMode != 0 {
-		request.addParam("storeMode", strconv.Itoa(storeMode))
+		request.addParam("storeMode", strconv.FormatInt(int64(storeMode), 10))
 	}
 	if _, err = api.mc.serveRequest(request); err != nil {
 		return
@@ -309,13 +309,13 @@ func (api *AdminAPI) DeleteMetaReplica(metaPartitionID uint64, nodeAddr string, 
 	return
 }
 
-func (api *AdminAPI) AddMetaReplica(metaPartitionID uint64, nodeAddr string, clientIDKey string, storeMode int) (err error) {
+func (api *AdminAPI) AddMetaReplica(metaPartitionID uint64, nodeAddr string, clientIDKey string, storeMode proto.StoreMode) (err error) {
 	request := newAPIRequest(http.MethodGet, proto.AdminAddMetaReplica)
 	request.addParam("id", strconv.FormatUint(metaPartitionID, 10))
 	request.addParam("addr", nodeAddr)
 	request.addParam("clientIDKey", clientIDKey)
-	if storeMode != 0 {
-		request.addParam("storeMode", strconv.Itoa(storeMode))
+	if storeMode != proto.StoreModeDef {
+		request.addParam("storeMode", strconv.FormatInt(int64(storeMode), 10))
 	}
 	if _, err = api.mc.serveRequest(request); err != nil {
 		return
@@ -441,7 +441,7 @@ func (api *AdminAPI) CreateVolName(volName, owner string, capacity uint64, delet
 	mpCount, dpCount, replicaNum, dpSize, volType int, followerRead bool, zoneName, cacheRuleKey string, ebsBlkSize,
 	cacheCapacity, cacheAction, cacheThreshold, cacheTTL, cacheHighWater, cacheLowWater, cacheLRUInterval int,
 	dpReadOnlyWhenVolFull bool, txMask string, txTimeout uint32, txConflictRetryNum int64, txConflictRetryInterval int64, optEnableQuota string,
-	clientIDKey string) (err error) {
+	clientIDKey string, storeMode proto.StoreMode) (err error) {
 	request := newAPIRequest(http.MethodGet, proto.AdminCreateVol)
 	request.addParam("name", volName)
 	request.addParam("owner", owner)
@@ -469,6 +469,7 @@ func (api *AdminAPI) CreateVolName(volName, owner string, capacity uint64, delet
 	request.addParam("dpReadOnlyWhenVolFull", strconv.FormatBool(dpReadOnlyWhenVolFull))
 	request.addParam("enableQuota", optEnableQuota)
 	request.addParam("clientIDKey", clientIDKey)
+	request.addParam("storeMode", strconv.FormatInt(int64(storeMode), 10))
 	if txMask != "" {
 		request.addParam("enableTxMask", txMask)
 	}

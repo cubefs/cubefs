@@ -257,7 +257,13 @@ func (mp *metaPartition) TxUnlinkInode(req *proto.TxUnlinkInodeRequest, p *Packe
 	ino := NewInode(req.Inode, 0)
 	inoResp := mp.getInode(ino, true)
 	if inoResp.Status != proto.OpOk {
-		if rbIno := mp.txInodeInRb(req.Inode, req.TxInfo.TxID); rbIno != nil {
+		var rbIno *TxRollbackInode
+		rbIno, err = mp.txInodeInRb(req.Inode, req.TxInfo.TxID)
+		if err != nil {
+			log.LogErrorf("[TxUnlinkInode] failed to get rb inode from tx rb inode tree, ino(%v), err(%v)", req.Inode, err)
+			return
+		}
+		if rbIno != nil {
 			respIno = rbIno.inode
 			status = proto.OpOk
 

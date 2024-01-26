@@ -164,10 +164,8 @@ func (mp *metaPartition) updateUsedInfo(size int64, files int64, ino uint64) {
 }
 
 func (mp *metaPartition) isExistQuota(ino uint64) (quotaIds []uint32, isFind bool) {
-extend:
-	*Extend
-	treeItem, _ := mp.extendTree.RefGet(ino)
-	if treeItem == nil {
+	extend, _ := mp.extendTree.RefGet(ino)
+	if extend == nil {
 		isFind = false
 		return
 	}
@@ -209,8 +207,7 @@ func (mp *metaPartition) isOverQuota(ino uint64, size bool, files bool) (status 
 }
 
 func (mp *metaPartition) getInodeQuota(inode uint64, p *Packet) (err error) {
-extend:
-	*Extend
+	var extend *Extend
 	quotaInfos := &proto.MetaQuotaInfos{
 		QuotaInfoMap: make(map[uint32]*proto.MetaQuotaInfo),
 	}

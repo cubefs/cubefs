@@ -15,7 +15,9 @@
 package metanode
 
 import (
+	"fmt"
 	"testing"
+	"time"
 
 	raftstoremock "github.com/cubefs/cubefs/metanode/mocktest/raftstore"
 	"github.com/cubefs/cubefs/proto"
@@ -28,17 +30,23 @@ const (
 	VolNameForTest     = "test1"
 )
 
-func TestBatchSetInodeQuota(t *testing.T) {
+func testBatchSetInodeQuota(t *testing.T, storeMode proto.StoreMode) {
 	mockCtrl := gomock.NewController(t)
 	defer mockCtrl.Finish()
-	mp := mockPartitionRaftForQuotaTest(mockCtrl)
+	mp := mockPartitionRaftForQuotaTest(mockCtrl, storeMode)
+
+	handle, err := mp.inodeTree.CreateBatchWriteHandle()
+	require.NoError(t, err)
 
 	inode := NewInode(2, 0)
 	inode.Size = 100
-	mp.inodeTree.ReplaceOrInsert(inode, true)
+	mp.inodeTree.Put(handle, inode)
 	inode = NewInode(3, 0)
 	inode.Size = 200
-	mp.inodeTree.ReplaceOrInsert(inode, true)
+	mp.inodeTree.Put(handle, inode)
+
+	err = mp.inodeTree.CommitAndReleaseBatchWriteHandle(handle, false)
+	require.NoError(t, err)
 
 	var quotaId1 uint32 = 1
 	var inodes []uint64
@@ -83,15 +91,23 @@ func TestBatchSetInodeQuota(t *testing.T) {
 	require.Equal(t, int64(2), files)
 }
 
-func TestQuotaHbInfo(t *testing.T) {
-	partition := NewMetaPartitionForQuotaTest()
+func TestBatchSetInodeQuota(t *testing.T) {
+	testBatchSetInodeQuota(t, proto.StoreModeMem)
+}
+
+func TestBatchSetInodeQuota_Rocksdb(t *testing.T) {
+	testBatchSetInodeQuota(t, proto.StoreModeRocksDb)
+}
+
+func testQuotaHbInfo(t *testing.T, storeMode proto.StoreMode) {
+	partition := NewMetaPartitionForQuotaTest(storeMode)
 	var hbInfos []*proto.QuotaHeartBeatInfo
 	var quotaId uint32 = 1
 	var quotaId2 uint32 = 2
 	hbInfo := &proto.QuotaHeartBeatInfo{
 		VolName:     VolNameForTest,
 		QuotaId:     quotaId,
-		LimitedInfo: proto.QuotaLimitedInfo{true, true},
+		LimitedInfo: proto.QuotaLimitedInfo{LimitedFiles: true, LimitedBytes: true},
 		Enable:      true,
 	}
 	hbInfos = append(hbInfos, hbInfo)
@@ -102,7 +118,7 @@ func TestQuotaHbInfo(t *testing.T) {
 	hbInfo = &proto.QuotaHeartBeatInfo{
 		VolName:     VolNameForTest,
 		QuotaId:     quotaId2,
-		LimitedInfo: proto.QuotaLimitedInfo{true, false},
+		LimitedInfo: proto.QuotaLimitedInfo{LimitedFiles: true, LimitedBytes: false},
 		Enable:      false,
 	}
 	hbInfos = append(hbInfos, hbInfo)
@@ -111,36 +127,58 @@ func TestQuotaHbInfo(t *testing.T) {
 	require.Equal(t, uint8(0), partition.mqMgr.IsOverQuota(true, true, quotaId2))
 }
 
-func TestGetQuotaReportInfos(t *testing.T) {
-	partition := NewMetaPartitionForQuotaTest()
+func TestQuotaHbInfo(t *testing.T) {
+	testQuotaHbInfo(t, proto.StoreModeMem)
+}
+
+func TestQuotaHbInfo_Rocksdb(t *testing.T) {
+	testQuotaHbInfo(t, proto.StoreModeRocksDb)
+}
+
+func testGetQuotaReportInfos(t *testing.T, storeMode proto.StoreMode) {
+	partition := NewMetaPartitionForQuotaTest(storeMode)
 	var quotaId uint32 = 1
 	// var infos []*proto.QuotaReportInfo
 	partition.mqMgr.updateUsedInfo(100, 1, quotaId)
 	partition.mqMgr.updateUsedInfo(200, 2, quotaId)
-	partition.mqMgr.limitedMap.Store(quotaId, proto.QuotaLimitedInfo{false, false})
+	partition.mqMgr.limitedMap.Store(quotaId, proto.QuotaLimitedInfo{LimitedFiles: false, LimitedBytes: false})
 	info := &proto.QuotaReportInfo{
 		QuotaId:  quotaId,
-		UsedInfo: proto.QuotaUsedInfo{3, 300},
+		UsedInfo: proto.QuotaUsedInfo{UsedFiles: 3, UsedBytes: 300},
 	}
 
 	infos := partition.mqMgr.getQuotaReportInfos()
 	require.Equal(t, info, infos[0])
 }
 
-func NewMetaPartitionForQuotaTest() *metaPartition {
+func TestGetQuotaReportInfos(t *testing.T) {
+	testGetQuotaReportInfos(t, proto.StoreModeMem)
+}
+
+func TestGetQuotaReportInfos_Rocksdb(t *testing.T) {
+	testGetQuotaReportInfos(t, proto.StoreModeRocksDb)
+}
+
+func NewMetaPartitionForQuotaTest(storeMode proto.StoreMode) *metaPartition {
 	mpC := &MetaPartitionConfig{
 		PartitionId: PartitionIdForTest,
 		VolName:     VolNameForTest,
+		StoreMode:   storeMode,
 	}
+	mpC.RocksDBDir = fmt.Sprintf("%v/mp_%v_%v", "/tmp/cfs/mp_db", partitionId, time.Now())
 	partition := NewMetaPartition(mpC, nil).(*metaPartition)
+	err := partition.initObjects(true)
+	if err != nil {
+		panic(err)
+	}
 	partition.uniqChecker.keepTime = 1
 	partition.uniqChecker.keepOps = 0
 	partition.mqMgr = NewQuotaManager(VolNameForTest, 1)
 	return partition
 }
 
-func mockPartitionRaftForQuotaTest(ctrl *gomock.Controller) *metaPartition {
-	partition := NewMetaPartitionForQuotaTest()
+func mockPartitionRaftForQuotaTest(ctrl *gomock.Controller, storeMode proto.StoreMode) *metaPartition {
+	partition := NewMetaPartitionForQuotaTest(storeMode)
 	raft := raftstoremock.NewMockPartition(ctrl)
 	idx := uint64(0)
 	raft.EXPECT().Submit(gomock.Any()).DoAndReturn(func(cmd []byte) (resp interface{}, err error) {

@@ -318,24 +318,44 @@ func (mp *MetaPartition) checkStatus(clusterID string, writeLog bool, replicaNum
 				mp.Status = proto.ReadOnly
 			}
 
-			if mr.metaNode == nil {
+			if replica.metaNode == nil {
 				continue
 			}
 
-			if !mr.metaNode.reachesThreshold() && mp.InodeCount < metaPartitionInodeIdStep {
+			switch replica.StoreMode {
+			case proto.StoreModeMem:
+				if !replica.metaNode.reachesThreshold() && mp.InodeCount < metaPartitionInodeIdStep {
+					continue
+				}
+			case proto.StoreModeRocksDb:
+				if !replica.metaNode.reachesRocksdbDisksThreshold() && mp.InodeCount < metaPartitionInodeIdStep {
+					continue
+				}
+			default:
+				log.LogErrorf("[checkStatus] mp(%v) unknown store mode(%v)", mp.PartitionID, mr.StoreMode)
 				continue
 			}
 
 			if mp.PartitionID == maxPartitionID {
 				log.LogInfof("split[checkStatus] need split,id:%v,status:%v,replicaNum:%v,InodeCount:%v", mp.PartitionID, mp.Status, mp.ReplicaNum, mp.InodeCount)
 				doSplit = true
-			} else {
-				if mr.metaNode.reachesThreshold() || mp.End-mp.MaxInodeID > 2*metaPartitionInodeIdStep {
-					log.LogInfof("split[checkStatus],change state,id:%v,status:%v,replicaNum:%v,replicas:%v,persistenceHosts:%v, inodeCount:%v, MaxInodeID:%v, start:%v, end:%v",
-						mp.PartitionID, mp.Status, mp.ReplicaNum, len(liveReplicas), mp.Hosts, mp.InodeCount, mp.MaxInodeID, mp.Start, mp.End)
-					mp.Status = proto.ReadOnly
+				continue
+			}
+
+			switch replica.StoreMode {
+			case proto.StoreModeMem:
+				if !replica.metaNode.reachesThreshold() && mp.End-mp.MaxInodeID <= 2*metaPartitionInodeIdStep {
+					continue
+				}
+			case proto.StoreModeRocksDb:
+				if !replica.metaNode.reachesRocksdbDisksThreshold() && mp.End-mp.MaxInodeID <= 2*metaPartitionInodeIdStep {
+					continue
 				}
 			}
+
+			log.LogInfof("split[checkStatus],change state,id:%v,status:%v,replicaNum:%v,replicas:%v,persistenceHosts:%v, inodeCount:%v, MaxInodeID:%v, start:%v, end:%v",
+				mp.PartitionID, mp.Status, mp.ReplicaNum, len(liveReplicas), mp.Hosts, mp.InodeCount, mp.MaxInodeID, mp.Start, mp.End)
+			mp.Status = proto.ReadOnly
 		}
 	}
 
@@ -670,7 +690,7 @@ func (mp *MetaPartition) createTaskToCreateReplica(host string, storeMode proto.
 		Members:     mp.Peers,
 		VolName:     mp.volName,
 		VerSeq:      mp.VerSeq,
-		StoreMode: storeMode,
+		StoreMode:   storeMode,
 	}
 	t = proto.NewAdminTask(proto.OpCreateMetaPartition, host, req)
 	resetMetaPartitionTaskID(t, mp.PartitionID)

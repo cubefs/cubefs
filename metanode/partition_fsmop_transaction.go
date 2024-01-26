@@ -19,61 +19,61 @@ import (
 	"github.com/cubefs/cubefs/util/log"
 )
 
-func (mp *metaPartition) fsmTxRollback(txID string) (status uint8) {
-	status = mp.txProcessor.txManager.rollbackTxInfo(txID)
+func (mp *metaPartition) fsmTxRollback(dbHandle interface{}, txID string) (status uint8, err error) {
+	status, err = mp.txProcessor.txManager.rollbackTxInfo(dbHandle, txID)
 	return
 }
 
-func (mp *metaPartition) fsmTxDelete(txID string) (status uint8) {
-	status = mp.txProcessor.txManager.deleteTxInfo(txID)
+func (mp *metaPartition) fsmTxDelete(dbHandle interface{}, txID string) (status uint8, err error) {
+	status, err = mp.txProcessor.txManager.deleteTxInfo(dbHandle, txID)
 	return
 }
 
-func (mp *metaPartition) fsmTxInodeRollback(dbHandle interface{}, req *proto.TxInodeApplyRequest) (status uint8) {
-	status, _ = mp.txProcessor.txResource.rollbackInode(dbHandle, req)
+func (mp *metaPartition) fsmTxInodeRollback(dbHandle interface{}, req *proto.TxInodeApplyRequest) (status uint8, err error) {
+	status, err = mp.txProcessor.txResource.rollbackInode(dbHandle, req)
 	return
 }
 
-func (mp *metaPartition) fsmTxDentryRollback(dbHandle interface{}, req *proto.TxDentryApplyRequest) (status uint8) {
-	status, _ = mp.txProcessor.txResource.rollbackDentry(dbHandle, req)
+func (mp *metaPartition) fsmTxDentryRollback(dbHandle interface{}, req *proto.TxDentryApplyRequest) (status uint8, err error) {
+	status, err = mp.txProcessor.txResource.rollbackDentry(dbHandle, req)
 	return
 }
 
-func (mp *metaPartition) fsmTxSetState(req *proto.TxSetStateRequest) (status uint8) {
-	status, _ = mp.txProcessor.txManager.txSetState(req)
+func (mp *metaPartition) fsmTxSetState(dbHandle interface{}, req *proto.TxSetStateRequest) (status uint8, err error) {
+	status, err = mp.txProcessor.txManager.txSetState(dbHandle, req)
 	return
 }
 
-func (mp *metaPartition) fsmTxInit(txInfo *proto.TransactionInfo) (status uint8) {
+func (mp *metaPartition) fsmTxInit(dbHandle interface{}, txInfo *proto.TransactionInfo) (status uint8, err error) {
 	status = proto.OpOk
-	err := mp.txProcessor.txManager.registerTransaction(txInfo)
+	err = mp.txProcessor.txManager.registerTransaction(dbHandle, txInfo)
 	if err != nil {
 		log.LogErrorf("fsmTxInit: register transaction failed, txInfo %s, err %s", txInfo.String(), err.Error())
-		return proto.OpTxInternalErr
+		status = proto.OpTxInternalErr
+		return
 	}
 	return
 }
 
-func (mp *metaPartition) fsmTxCommit(txID string) (status uint8) {
-	status, _ = mp.txProcessor.txManager.commitTxInfo(txID)
+func (mp *metaPartition) fsmTxCommit(dbHandle interface{}, txID string) (status uint8, err error) {
+	status, err = mp.txProcessor.txManager.commitTxInfo(dbHandle, txID)
 	return
 }
 
-func (mp *metaPartition) fsmTxInodeCommit(txID string, inode uint64) (status uint8) {
-	// var err error
-	status, _ = mp.txProcessor.txResource.commitInode(txID, inode)
+func (mp *metaPartition) fsmTxInodeCommit(dbHandle interface{}, txID string, inode uint64) (status uint8, err error) {
+	status, err = mp.txProcessor.txResource.commitInode(dbHandle, txID, inode)
 	return
 }
 
-func (mp *metaPartition) fsmTxDentryCommit(dbHandle interface{}, txID string, pId uint64, name string) (status uint8) {
-	//var err error
-	status, _ = mp.txProcessor.txResource.commitDentry(dbHandle, txID, pId, name)
+func (mp *metaPartition) fsmTxDentryCommit(dbHandle interface{}, txID string, pId uint64, name string) (status uint8, err error) {
+	status, err = mp.txProcessor.txResource.commitDentry(dbHandle, txID, pId, name)
 	return
 }
 
-func (mp *metaPartition) fsmTxCommitRM(dbHandle interface{}, txInfo *proto.TransactionInfo) (status uint8) {
+func (mp *metaPartition) fsmTxCommitRM(dbHandle interface{}, txInfo *proto.TransactionInfo) (status uint8, err error) {
 	status = proto.OpOk
-	ifo := mp.txProcessor.txManager.copyGetTx(txInfo.TxID)
+	ifo, err := mp.txProcessor.txManager.copyGetTx(txInfo.TxID)
+
 	if ifo == nil || ifo.Finish() {
 		log.LogWarnf("fsmTxCommitRM: tx already commit or rollback before, tx %v, ifo %v", txInfo, ifo)
 		return
@@ -85,7 +85,7 @@ func (mp *metaPartition) fsmTxCommitRM(dbHandle interface{}, txInfo *proto.Trans
 			continue
 		}
 
-		mp.fsmTxInodeCommit(ifo.TxID, ifo.Ino)
+		mp.fsmTxInodeCommit(dbHandle, ifo.TxID, ifo.Ino)
 	}
 
 	for _, ifo := range txInfo.TxDentryInfos {
@@ -97,12 +97,21 @@ func (mp *metaPartition) fsmTxCommitRM(dbHandle interface{}, txInfo *proto.Trans
 	}
 
 	ifo.SetFinish()
-	return proto.OpOk
+	err = mp.txProcessor.txManager.txTree.Update(dbHandle, ifo)
+	if err != nil {
+		return
+	}
+	status = proto.OpOk
+	return
 }
 
-func (mp *metaPartition) fsmTxRollbackRM(dbHandle interface{}, txInfo *proto.TransactionInfo) (status uint8) {
+func (mp *metaPartition) fsmTxRollbackRM(dbHandle interface{}, txInfo *proto.TransactionInfo) (status uint8, err error) {
 	status = proto.OpOk
-	ifo := mp.txProcessor.txManager.copyGetTx(txInfo.TxID)
+	ifo, err := mp.txProcessor.txManager.copyGetTx(txInfo.TxID)
+	if err != nil {
+		return
+	}
+
 	if ifo == nil || ifo.Finish() {
 		log.LogWarnf("fsmTxRollbackRM: tx already commit or rollback before, tx %v, ifo %v", txInfo, ifo)
 		return
@@ -136,44 +145,66 @@ func (mp *metaPartition) fsmTxRollbackRM(dbHandle interface{}, txInfo *proto.Tra
 	}
 
 	ifo.SetFinish()
-	return proto.OpOk
+	err = mp.txProcessor.txManager.txTree.Update(dbHandle, ifo)
+	if err != nil {
+		return
+	}
+	status = proto.OpOk
+	return
 }
 
-func (mp *metaPartition) inodeInTx(inode uint64) uint8 {
-	inTx, txId := mp.txProcessor.txResource.isInodeInTransction(NewInode(inode, 0))
+func (mp *metaPartition) inodeInTx(inode uint64) (status uint8, err error) {
+	inTx, txId, err := mp.txProcessor.txResource.isInodeInTransction(NewInode(inode, 0))
+	if err != nil {
+		return
+	}
 	if inTx {
 		log.LogWarnf("inodeInTx: inode is in transaction, inode %d, txId %s", inode, txId)
-		return proto.OpTxConflictErr
+		status = proto.OpTxConflictErr
+		return
 	}
-	return proto.OpOk
+	status = proto.OpOk
+	return
 }
 
-func (mp *metaPartition) dentryInTx(parIno uint64, name string) uint8 {
-	inTx, txId := mp.txProcessor.txResource.isDentryInTransction(&Dentry{
+func (mp *metaPartition) dentryInTx(parIno uint64, name string) (status uint8, err error) {
+	inTx, txId, err := mp.txProcessor.txResource.isDentryInTransction(&Dentry{
 		ParentId: parIno,
 		Name:     name,
 	})
-
+	if err != nil {
+		return
+	}
 	if inTx {
 		log.LogWarnf("inodeInTx: inode is in transaction, parent inode %d, name %s, txId %s", parIno, name, txId)
-		return proto.OpTxConflictErr
+		status = proto.OpTxConflictErr
+		return
 	}
-	return proto.OpOk
+	status = proto.OpOk
+	return
 }
 
-func (mp *metaPartition) txInodeInRb(inode uint64, newTxId string) (rbInode *TxRollbackInode) {
-	rbIno := mp.txProcessor.txResource.getTxRbInode(inode)
+func (mp *metaPartition) txInodeInRb(inode uint64, newTxId string) (rbInode *TxRollbackInode, err error) {
+
+	rbIno, err := mp.txProcessor.txResource.getTxRbInode(inode)
+	if err != nil {
+		return
+	}
 	if rbIno != nil && rbIno.txInodeInfo.TxID == newTxId {
-		return rbIno
+		return
 	}
 
-	return nil
+	return
 }
 
-func (mp *metaPartition) txDentryInRb(parIno uint64, name, newTxId string) bool {
-	inTx, txId := mp.txProcessor.txResource.isDentryInTransction(&Dentry{
+func (mp *metaPartition) txDentryInRb(parIno uint64, name, newTxId string) (inTx bool, err error) {
+	inTx, txId, err := mp.txProcessor.txResource.isDentryInTransction(&Dentry{
 		ParentId: parIno,
 		Name:     name,
 	})
-	return inTx && txId == newTxId
+	if err != nil {
+		return
+	}
+	inTx = inTx && txId == newTxId
+	return
 }

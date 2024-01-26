@@ -484,6 +484,7 @@ func (mp *metaPartition) ExtentsTruncate(req *ExtentsTruncateReq, p *Packet, rem
 	ino := NewInode(req.Inode, proto.Mode(os.ModePerm))
 	var i *Inode
 	if i, err = mp.inodeTree.RefGet(req.Inode); err != nil {
+		log.LogErrorf("[ExtentsTruncate] failed to get ino(%v), err(%v)", ino.Inode, err)
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return
 	}
@@ -511,10 +512,12 @@ func (mp *metaPartition) ExtentsTruncate(req *ExtentsTruncateReq, p *Packet, rem
 	}
 	resp, err := mp.submit(opFSMExtentTruncate, val)
 	if err != nil {
+		log.LogErrorf("[ExtentsTruncate] failed to truncate ino(%v), err(%v)", ino.Inode, err)
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return
 	}
 	msg := resp.(*InodeResponse)
+	log.LogInfof("[ExtentsTruncate] truncate ino(%v), status(%v)", ino.Inode, msg.Status)
 	p.PacketErrorWithBody(msg.Status, nil)
 	return
 }
