@@ -2553,6 +2553,7 @@ func (m *Server) decommissionDataNode(w http.ResponseWriter, r *http.Request) {
 		rstMsg      string
 		offLineAddr string
 		raftForce   bool
+		limit       int
 		err         error
 	)
 	metric := exporter.NewTPCnt(apiToMetricsName(proto.DecommissionDataNode))
@@ -2560,7 +2561,7 @@ func (m *Server) decommissionDataNode(w http.ResponseWriter, r *http.Request) {
 		doStatAndMetric(proto.DecommissionDataNode, metric, err, nil)
 	}()
 
-	if offLineAddr, err = parseDecomDataNodeReq(r); err != nil {
+	if offLineAddr, limit, err = parseDecomDataNodeReq(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
@@ -2575,7 +2576,7 @@ func (m *Server) decommissionDataNode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err = m.cluster.migrateDataNode(offLineAddr, "", raftForce, 0); err != nil {
+	if err = m.cluster.migrateDataNode(offLineAddr, "", raftForce, limit); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
