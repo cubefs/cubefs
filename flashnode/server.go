@@ -94,7 +94,7 @@ func (f *FlashNode) serveConn(conn net.Conn, stopC chan uint8) {
 		}
 		p := NewPacket(context.Background())
 		_ = c.SetReadDeadline(time.Now().Add(time.Second * ServerTimeOut))
-		if err := p.ReadFromReader(connReader); err != nil {
+		if err := p.ReadFromClient(connReader); err != nil {
 			if err != io.EOF {
 				log.LogError("serve FlashNode: ", err.Error())
 			}

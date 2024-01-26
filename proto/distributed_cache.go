@@ -97,6 +97,10 @@ func (ds *DataSource) EncodeBinaryLen() int {
 	return 40 + 2 + hostsLen
 }
 
+func (ds *DataSource) CacheBlockOffset() uint64 {
+	return uint64(ds.FileOffset) & (CACHE_BLOCK_SIZE - 1)
+}
+
 //type CacheRequest struct {
 //	// 以Volume_Inode_FixedFileOffset_Version 作为Cache块唯一标识
 //	Volume string

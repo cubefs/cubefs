@@ -21,6 +21,7 @@ import (
 	"github.com/cubefs/cubefs/util/tmpfs"
 	"github.com/stretchr/testify/assert"
 	"github.com/tiglabs/raft/util"
+	"math"
 	"math/rand"
 	"os"
 	"sync"
@@ -62,10 +63,14 @@ func initTestTmpfs(size int64) (err error) {
 	return
 }
 
+func umountTestTmpfs() error {
+	return tmpfs.Umount(testTmpFS)
+}
+
 func TestWriteCacheBlock(t *testing.T) {
 	assert.Nil(t, initTestTmpfs(200*util.MB))
 	defer func() {
-		assert.Nil(t, tmpfs.Umount(testTmpFS))
+		assert.Nil(t, umountTestTmpfs())
 	}()
 	testWriteSingleFile(t)
 	testWriteSingleFileError(t)
@@ -171,7 +176,7 @@ func testWriteMultiCacheBlock(t *testing.T, newMultiCacheFunc func(volume string
 func TestReadCacheBlock(t *testing.T) {
 	assert.Nil(t, initTestTmpfs(200*util.MB))
 	defer func() {
-		assert.Nil(t, tmpfs.Umount(testTmpFS))
+		assert.Nil(t, umountTestTmpfs())
 	}()
 	cacheBlock := NewCacheBlock(testTmpFS, t.Name(), 1, 1024, 2568748711, proto.CACHE_BLOCK_SIZE, nil)
 	assert.Nil(t, cacheBlock.initFilePath())
@@ -201,7 +206,7 @@ func TestParallelOperation(t *testing.T) {
 func testParallelOperation(t *testing.T) {
 	assert.Nil(t, initTestTmpfs(200*util.MB))
 	defer func() {
-		assert.Nil(t, tmpfs.Umount(testTmpFS))
+		assert.Nil(t, umountTestTmpfs())
 	}()
 
 	cacheBlock := NewCacheBlock(testTmpFS, t.Name(), 1, 1024, 112456871, proto.CACHE_BLOCK_SIZE, nil)
@@ -250,4 +255,137 @@ func testParallelOperation(t *testing.T) {
 	}()
 	time.Sleep(time.Second * 10)
 	close(stopCh)
+}
+
+func TestComputeAllocSize(t *testing.T) {
+	cases1 := []*proto.DataSource{
+		{
+			FileOffset: 0,
+			Size_:      100,
+		},
+		{
+			FileOffset: 1024,
+			Size_:      100,
+		},
+	}
+	alloc, err := computeAllocSize(cases1)
+	assert.ErrorContains(t, err, SparseFileError.Error())
+
+	cases2 := []*proto.DataSource{
+		{
+			FileOffset: proto.CACHE_BLOCK_SIZE + 53,
+			Size_:      43,
+		},
+	}
+	alloc, err = computeAllocSize(cases2)
+	assert.ErrorContains(t, err, SparseFileError.Error())
+
+	cases3 := []*proto.DataSource{
+		{
+			FileOffset: proto.CACHE_BLOCK_SIZE,
+			Size_:      43,
+		},
+	}
+	alloc, err = computeAllocSize(cases3)
+	assert.NoError(t, err)
+	assert.Equal(t, uint64(proto.PageSize), alloc)
+
+	cases4 := []*proto.DataSource{
+		{
+			FileOffset: 0,
+			Size_:      1024,
+		},
+		{
+			FileOffset: 1024,
+			Size_:      4096,
+		},
+		{
+			FileOffset: 5120,
+			Size_:      4096,
+		},
+	}
+	alloc, err = computeAllocSize(cases4)
+	assert.NoError(t, err)
+	assert.Equal(t, uint64(3*proto.PageSize), alloc)
+
+	cases5 := []*proto.DataSource{
+		{
+			FileOffset: proto.CACHE_BLOCK_SIZE * 128,
+			Size_:      1024,
+		},
+		{
+			FileOffset: proto.CACHE_BLOCK_SIZE*128 + 1024,
+			Size_:      4096,
+		},
+		{
+			FileOffset: proto.CACHE_BLOCK_SIZE*128 + 5120,
+			Size_:      4096,
+		},
+	}
+	alloc, err = computeAllocSize(cases5)
+	assert.NoError(t, err)
+	assert.Equal(t, uint64(3*proto.PageSize), alloc)
+
+	alloc, err = computeAllocSize(generateSparseSources(1024))
+	assert.ErrorContains(t, err, SparseFileError.Error())
+
+	alloc, err = computeAllocSize(generateSources(1024))
+	assert.NoError(t, err)
+	assert.Equal(t, uint64(proto.PageSize), alloc)
+
+	alloc, err = computeAllocSize(generateSources(4 * 1024))
+	assert.NoError(t, err)
+	assert.Equal(t, uint64(4*1024), alloc)
+
+	alloc, err = computeAllocSize(generateSources(128 * 1024))
+	assert.NoError(t, err)
+	assert.Equal(t, uint64(128*1024), alloc)
+
+	alloc, err = computeAllocSize(generateSparseSources(128 * 1024))
+	assert.ErrorContains(t, err, SparseFileError.Error())
+
+	alloc, err = computeAllocSize(generateSources(1024 * 1024))
+	assert.NoError(t, err)
+	assert.Equal(t, uint64(1024*1024), alloc)
+
+}
+
+func generateSources(fileSize int64) (sources []*proto.DataSource) {
+	sources = make([]*proto.DataSource, 0)
+	var bufSlice []int
+	if fileSize > proto.PageSize {
+		bufSlice = []int{1, 4, 16, 64, 128, 512, 1024, proto.PageSize, 16 * 1024, 64 * 1024, 128 * 1024, 256 * 1024, 512 * 1024, proto.CACHE_BLOCK_SIZE}
+	} else {
+		bufSlice = []int{1, 4, 16, 64, 128}
+	}
+	var offset int64
+	//init test data
+	for {
+		if offset >= fileSize {
+			break
+		}
+		rand.New(rand.NewSource(time.Now().UnixNano()))
+		index := rand.Intn(len(bufSlice))
+		if int64(bufSlice[index]) > fileSize {
+			continue
+		}
+		size := int(math.Min(float64(fileSize-offset), float64(bufSlice[index])))
+		sources = append(sources, &proto.DataSource{
+			Size_:      uint64(size),
+			FileOffset: uint64(offset),
+		})
+		offset += int64(size)
+	}
+	return
+}
+
+func generateSparseSources(fileSize int64) (sources []*proto.DataSource) {
+	originSources := generateSources(fileSize)
+	sources = make([]*proto.DataSource, 0)
+	for i, s := range originSources {
+		if i%2 == 0 {
+			sources = append(sources, s)
+		}
+	}
+	return
 }

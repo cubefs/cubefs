@@ -30,7 +30,7 @@ type Packet struct {
 	proto.Packet
 }
 
-func (p *Packet) ReadFromReader(reader io.Reader) (err error) {
+func (p *Packet) ReadFromClient(reader io.Reader) (err error) {
 	header, err := proto.Buffers.Get(unit.PacketHeaderSize)
 	if err != nil {
 		header = make([]byte, unit.PacketHeaderSize)
@@ -61,10 +61,7 @@ func (p *Packet) ReadFromReader(reader io.Reader) (err error) {
 	if (p.Opcode == proto.OpRead || p.Opcode == proto.OpStreamRead || p.Opcode == proto.OpExtentRepairRead || p.Opcode == proto.OpStreamFollowerRead) && p.ResultCode == proto.OpInitResultCode {
 		size = 0
 	}
-	var buffErr error
-	if p.Data, buffErr = proto.Buffers.Get(int(size)); buffErr != nil {
-		p.Data = make([]byte, size)
-	}
+	p.Data = make([]byte, size)
 	if n, err = io.ReadFull(reader, p.Data[:size]); err != nil {
 		return err
 	}
