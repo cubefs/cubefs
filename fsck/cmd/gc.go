@@ -985,7 +985,7 @@ func calcBadNormalExtents(volname, dir string, concurrency int) (err error) {
 		return
 	}
 
-	err = calcDpBadNormalExtentByBF(normalDpDir, destDir, concurrency)
+	err = calcDpBadNormalExtentByBF(volname, normalDpDir, destDir, concurrency)
 	return err
 }
 
@@ -1053,7 +1053,7 @@ func addMpExtentToBF(mpDir string) (err error) {
 	return
 }
 
-func calcDpBadNormalExtentByBF(dpDir, badDir string, concurrency int) (err error) {
+func calcDpBadNormalExtentByBF(vol, dpDir, badDir string, concurrency int) (err error) {
 	fileInfos, err := os.ReadDir(dpDir)
 	if err != nil {
 		slog.Fatalf("Read dp dir failed, err: %v", err)
@@ -1064,8 +1064,8 @@ func calcDpBadNormalExtentByBF(dpDir, badDir string, concurrency int) (err error
 	badCount := uint64(0)
 	start := time.Now()
 	defer func() {
-		msg := fmt.Sprintf("finally get total bad extent count %d, size %d, cost %d ms",
-			badCount, badSize, time.Since(start).Milliseconds())
+		msg := fmt.Sprintf("finally vol %s, get total bad extent count %d, size %d, cost %d ms",
+			vol, badCount, badSize, time.Since(start).Milliseconds())
 		slog.Println(msg)
 		log.LogWarn(msg)
 	}()
