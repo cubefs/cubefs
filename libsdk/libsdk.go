@@ -79,6 +79,7 @@ import (
 	"io"
 	syslog "log"
 	"os"
+	"path"
 	gopath "path"
 	"reflect"
 	"regexp"
@@ -129,6 +130,7 @@ var (
 	statusENOTDIR = errorToStatus(syscall.ENOTDIR)
 	statusEISDIR  = errorToStatus(syscall.EISDIR)
 	statusENOSPC  = errorToStatus(syscall.ENOSPC)
+	statusEPERM   = errorToStatus(syscall.EPERM)
 )
 var once sync.Once
 
@@ -257,6 +259,76 @@ type client struct {
 	ebsc *blobstore.BlobStoreClient
 	sc   *fs.SummaryCache
 	mu   sync.Mutex
+}
+
+//export cfs_symlink
+func cfs_symlink(id C.int64_t, src_path *C.char, dst_path *C.char) C.int {
+	c, exist := getClient(int64(id))
+	if !exist {
+		return statusEINVAL
+	}
+
+	fullSrcPath := c.absPath(C.GoString(src_path))
+	fullDstPath := c.absPath(C.GoString(dst_path))
+	parent_dir := path.Dir(fullDstPath)
+	filename := path.Base(fullDstPath)
+
+	info, err := c.lookupPath(parent_dir)
+	if err != nil {
+		return errorToStatus(err)
+	}
+
+	parentIno := info.Inode
+	info, err = c.mw.Create_ll(parentIno, filename, proto.Mode(os.ModeSymlink|os.ModePerm), 0, 0, []byte(fullSrcPath), fullDstPath, false)
+	if err != nil {
+		log.LogErrorf("Symlink: parent(%v) NewName(%v) err(%v)\n", parentIno, filename, err)
+		return errorToStatus(err)
+	}
+
+	c.ic.Put(info)
+	log.LogDebugf("Symlink: src_path(%s) dst_path(%s)\n", fullSrcPath, fullDstPath)
+
+	return statusOK
+}
+
+//export cfs_link
+func cfs_link(id C.int64_t, src_path *C.char, dst_path *C.char) C.int {
+	c, exist := getClient(int64(id))
+	if !exist {
+		return statusEINVAL
+	}
+
+	fullSrcPath := c.absPath(C.GoString(src_path))
+	info, err := c.lookupPath(fullSrcPath)
+	if err != nil {
+		return errorToStatus(err)
+	}
+
+	src_ino := info.Inode
+	if !proto.IsRegular(info.Mode) {
+		log.LogErrorf("Link: not regular, src_path(%s) src_ino(%v) mode(%v)\n", fullSrcPath, src_ino, proto.OsMode(info.Mode))
+		return statusEPERM
+	}
+
+	fullDstPath := c.absPath(C.GoString(dst_path))
+	parent_dir := path.Dir(fullDstPath)
+	filename := path.Base(fullDstPath)
+	info, err = c.lookupPath(parent_dir)
+	if err != nil {
+		return errorToStatus(err)
+	}
+	parentIno := info.Inode
+
+	info, err = c.mw.Link(parentIno, filename, src_ino, fullDstPath)
+	if err != nil {
+		log.LogErrorf("Link: src_path(%s) src_ino(%v) dst_path(%s) parent(%v) err(%v)\n", fullSrcPath, src_ino, fullDstPath, parentIno, err)
+		return errorToStatus(err)
+	}
+
+	c.ic.Put(info)
+	log.LogDebugf("Link: src_path(%s) src_ino(%v) dst_path(%s) dst_ino(%v) parent(%v)\n", fullSrcPath, src_ino, fullDstPath, info.Inode, parentIno)
+
+	return statusOK
 }
 
 //export cfs_get_dir_lock
