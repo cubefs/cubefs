@@ -393,7 +393,7 @@ func (s *ExtentStore) Write(extentID uint64, offset, size int64, data []byte, cr
 	status = proto.OpOk
 
 	s.eiMutex.Lock()
-	ei, _ = s.extentInfoMap[extentID]
+	ei = s.extentInfoMap[extentID]
 	e, err = s.extentWithHeader(ei)
 	s.eiMutex.Unlock()
 	if err != nil {
