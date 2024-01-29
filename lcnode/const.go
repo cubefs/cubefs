@@ -55,6 +55,7 @@ const (
 
 	defaultUnboundedChanInitCapacity = 10000
 	defaultLcNodeTaskCountLimit      = 1
+	maxLcNodeTaskCountLimit          = 20
 )
 
 var (

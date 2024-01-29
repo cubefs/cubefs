@@ -123,23 +123,32 @@ func (s *SnapshotScanner) Start() {
 	response.StartTime = &t
 
 	// 1. delete all files
-	log.LogDebugf("snapshot startScan: first round files start!")
+	log.LogInfof("snapshot startScan(%v): first round files start!", s.ID)
 	s.scanType = SnapScanTypeOnlyFile
 	go s.scan()
-	prefixDentry := &proto.ScanDentry{
+	firstDentry := &proto.ScanDentry{
 		Inode: proto.RootIno,
 		Type:  proto.Mode(os.ModeDir),
 	}
-	log.LogDebugf("snapshot startScan: scan type(%v), first dir entry(%v) in!", s.scanType, prefixDentry)
-	s.inodeChan.In <- prefixDentry
+	s.firstIn(firstDentry)
 	s.checkScanning(false)
 
 	// 2. delete all dirs
-	log.LogDebugf("snapshot startScan: second round dirs start!")
+	log.LogInfof("snapshot startScan(%v): second round dirs start!", s.ID)
 	s.scanType = SnapScanTypeOnlyDirAndDepth
-	log.LogDebugf("snapshot startScan: scan type(%v), first dir entry(%v) in!", s.scanType, prefixDentry)
-	s.inodeChan.In <- prefixDentry
+	s.firstIn(firstDentry)
 	s.checkScanning(true)
+}
+
+func (s *SnapshotScanner) firstIn(d *proto.ScanDentry) {
+	select {
+	case <-s.stopC:
+		log.LogDebugf("snapshot firstIn(%v): stopC!", s.ID)
+		return
+	default:
+		s.inodeChan.In <- d
+		log.LogDebugf("snapshot startScan(%v): scan type(%v), first dir dentry(%v) in!", s.ID, s.scanType, d)
+	}
 }
 
 func (s *SnapshotScanner) getDirJob(dentry *proto.ScanDentry) (job func()) {
@@ -208,6 +217,7 @@ func (s *SnapshotScanner) handlVerDelDepthFirst(dentry *proto.ScanDentry) {
 			if err != nil && err != syscall.ENOENT {
 				log.LogErrorf("action[handlVerDelDepthFirst] ReadDirLimitForSnapShotClean failed, parent[%v] maker[%v] verSeq[%v] err[%v]",
 					dentry.Inode, marker, s.getTaskVerSeq(), err)
+				atomic.AddInt64(&s.currentStat.ErrorSkippedNum, 1)
 				return
 			}
 			log.LogDebugf("action[handlVerDelDepthFirst] ReadDirLimitForSnapShotClean parent[%v] maker[%v] verSeq[%v] children[%v]",
@@ -256,6 +266,7 @@ func (s *SnapshotScanner) handlVerDelDepthFirst(dentry *proto.ScanDentry) {
 					log.LogErrorf("action[handlVerDelDepthFirst] Delete_Ver_ll failed, file(parent[%v] child name[%v]) verSeq[%v] err[%v]",
 						file.ParentId, file.Name, s.getTaskVerSeq(), err)
 					atomic.AddInt64(&s.currentStat.ErrorSkippedNum, 1)
+					return
 				} else {
 					log.LogDebugf("action[handlVerDelDepthFirst] Delete_Ver_ll success, file(parent[%v] child name[%v]) verSeq[%v] ino[%v]",
 						file.ParentId, file.Name, s.getTaskVerSeq(), ino)
@@ -287,6 +298,7 @@ func (s *SnapshotScanner) handlVerDelDepthFirst(dentry *proto.ScanDentry) {
 				log.LogErrorf("action[handlVerDelDepthFirst] Delete_Ver_ll failed, dir(parent[%v] child name[%v]) verSeq[%v] err[%v]",
 					dentry.ParentId, dentry.Name, s.getTaskVerSeq(), err)
 				atomic.AddInt64(&s.currentStat.ErrorSkippedNum, 1)
+				return
 			}
 		} else {
 			log.LogDebugf("action[handlVerDelDepthFirst] Delete_Ver_ll success, dir(parent[%v] child name[%v]) verSeq[%v] ino[%v]",
@@ -319,6 +331,7 @@ func (s *SnapshotScanner) handlVerDelBreadthFirst(dentry *proto.ScanDentry) {
 		if err != nil && err != syscall.ENOENT {
 			log.LogErrorf("action[handlVerDelBreadthFirst] ReadDirLimitForSnapShotClean failed, parent[%v] maker[%v] verSeq[%v] err[%v]",
 				dentry.Inode, marker, s.getTaskVerSeq(), err)
+			atomic.AddInt64(&s.currentStat.ErrorSkippedNum, 1)
 			return
 		}
 		log.LogDebugf("action[handlVerDelBreadthFirst] ReadDirLimitForSnapShotClean parent[%v] maker[%v] verSeq[%v] children[%v]",
@@ -367,6 +380,7 @@ func (s *SnapshotScanner) handlVerDelBreadthFirst(dentry *proto.ScanDentry) {
 				log.LogErrorf("action[handlVerDelBreadthFirst] Delete_Ver_ll failed, file(parent[%v] child name[%v]) verSeq[%v] err[%v]",
 					file.ParentId, file.Name, s.getTaskVerSeq(), err)
 				atomic.AddInt64(&s.currentStat.ErrorSkippedNum, 1)
+				return
 			} else {
 				totalChildFileNum++
 				log.LogDebugf("action[handlVerDelBreadthFirst] Delete_Ver_ll success, file(parent[%v] child name[%v]) verSeq[%v] ino[%v]",
@@ -407,8 +421,12 @@ func (s *SnapshotScanner) checkScanning(report bool) {
 				if report {
 					t := time.Now()
 					response := s.adminTask.Response.(*proto.SnapshotVerDelTaskResponse)
+					if s.currentStat.ErrorSkippedNum > 0 {
+						response.Status = proto.TaskFailed
+					} else {
+						response.Status = proto.TaskSucceeds
+					}
 					response.EndTime = &t
-					response.Status = proto.TaskSucceeds
 					response.Done = true
 					response.ID = s.ID
 					response.LcNode = s.lcnode.localServerAddr

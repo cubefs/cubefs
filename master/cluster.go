@@ -4453,6 +4453,7 @@ func (c *Cluster) getSnapshotDelVer() {
 		log.LogWarn("getSnapshotDelVer: master is not leader")
 		return
 	}
+	c.snapshotMgr.lcSnapshotTaskStatus.ResetVerInfos()
 
 	vols := c.allVols()
 	for volName, vol := range vols {
