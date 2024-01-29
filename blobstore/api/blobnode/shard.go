@@ -197,7 +197,7 @@ type DeleteShardArgs struct {
 	DiskID proto.DiskID `json:"diskid"`
 	Vuid   proto.Vuid   `json:"vuid"`
 	Bid    proto.BlobID `json:"bid"`
-	Force  bool         `json:"force"`
+	Force  bool         `json:"force,omitempty"`
 }
 
 func (c *client) MarkDeleteShard(ctx context.Context, host string, args *DeleteShardArgs) (err error) {
