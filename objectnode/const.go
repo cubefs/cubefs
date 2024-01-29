@@ -32,7 +32,7 @@ const (
 
 	MaxLevelsOfSymlinks = 40 // POSIX default limits
 
-	ConnIdleTimeout = time.Minute // Max idle TCP connection timeout
+	ConnIdleTimeout = time.Minute * 30 // Max idle TCP connection timeout
 )
 
 const (
