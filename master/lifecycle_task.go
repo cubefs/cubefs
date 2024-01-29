@@ -128,8 +128,11 @@ func (c *Cluster) handleLcNodeHeartbeatResp(nodeAddr string, resp *proto.LcNodeH
 		log.LogDebugf("action[handleLcNodeHeartbeatResp], lcNode[%v] snapshot taskRsp: %v", nodeAddr, taskRsp)
 	}
 	if len(resp.SnapshotScanningTasks) < resp.LcTaskCountLimit {
-		log.LogInfof("action[handleLcNodeHeartbeatResp], notify idle lcNode[%v], now SnapshotScanningTasks[%v]", nodeAddr, len(resp.SnapshotScanningTasks))
-		c.snapshotMgr.notifyIdleLcNode()
+		n := resp.LcTaskCountLimit - len(resp.SnapshotScanningTasks)
+		log.LogInfof("action[handleLcNodeHeartbeatResp], notify idle lcNode[%v], now SnapshotScanningTasks[%v], notify times[%v]", nodeAddr, len(resp.SnapshotScanningTasks), n)
+		for i := 0; i < n; i++ {
+			c.snapshotMgr.notifyIdleLcNode()
+		}
 	}
 
 	log.LogInfof("action[handleLcNodeHeartbeatResp], lcNode[%v], heartbeat success", nodeAddr)
@@ -166,7 +169,7 @@ func (c *Cluster) handleLcNodeSnapshotScanResp(nodeAddr string, resp *proto.Snap
 	switch resp.Status {
 	case proto.TaskFailed:
 		c.snapshotMgr.lcSnapshotTaskStatus.RedoTask(resp.SnapshotVerDelTask)
-		log.LogWarnf("action[handleLcNodeSnapshotScanResp] scanning failed, resp(%v), redo", resp)
+		log.LogErrorf("action[handleLcNodeSnapshotScanResp] scanning failed, resp(%v), redo", resp)
 		return
 	case proto.TaskSucceeds:
 		// 1.mark done for VersionMgr

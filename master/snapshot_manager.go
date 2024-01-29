@@ -36,7 +36,7 @@ func newSnapshotManager() *snapshotDelManager {
 	snapshotMgr := &snapshotDelManager{
 		lcSnapshotTaskStatus: newLcSnapshotVerStatus(),
 		lcNodeStatus:         newLcNodeStatus(),
-		idleNodeCh:           make(chan struct{}),
+		idleNodeCh:           make(chan struct{}, 20), //support notify multi snapshot tasks
 		exitCh:               make(chan struct{}),
 	}
 	return snapshotMgr
@@ -104,8 +104,8 @@ type lcSnapshotVerStatus struct {
 
 func newLcSnapshotVerStatus() *lcSnapshotVerStatus {
 	return &lcSnapshotVerStatus{
-		VerInfos:    make(map[string]*proto.SnapshotVerDelTask, 0),
-		TaskResults: make(map[string]*proto.SnapshotVerDelTaskResponse, 0),
+		VerInfos:    make(map[string]*proto.SnapshotVerDelTask),
+		TaskResults: make(map[string]*proto.SnapshotVerDelTaskResponse),
 	}
 }
 
@@ -126,6 +126,12 @@ func (vs *lcSnapshotVerStatus) GetOneTask() (task *proto.SnapshotVerDelTask) {
 	}
 
 	delete(vs.VerInfos, task.Id)
+	t := time.Now()
+	vs.TaskResults[task.Id] = &proto.SnapshotVerDelTaskResponse{
+		ID:         task.Id,
+		UpdateTime: &t,
+	}
+	log.LogDebugf("GetOneTask(%v) and add TaskResults", task)
 	return
 }
 
@@ -148,7 +154,14 @@ func (vs *lcSnapshotVerStatus) AddVerInfo(task *proto.SnapshotVerDelTask) {
 		return
 	}
 	vs.VerInfos[task.Id] = task
-	log.LogDebugf("Add VerInfo task: %v", task)
+	log.LogDebugf("AddVerInfo task: %v, now num: %v", task, len(vs.VerInfos))
+}
+
+func (vs *lcSnapshotVerStatus) ResetVerInfos() {
+	vs.Lock()
+	defer vs.Unlock()
+	log.LogDebugf("ResetVerInfos remove num %v", len(vs.VerInfos))
+	vs.VerInfos = make(map[string]*proto.SnapshotVerDelTask)
 }
 
 func (vs *lcSnapshotVerStatus) AddResult(resp *proto.SnapshotVerDelTaskResponse) {
