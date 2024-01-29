@@ -246,9 +246,14 @@ func (m *Server) clearMetadata() {
 	m.cluster.clearMetaNodes()
 	m.cluster.clearLcNodes()
 	m.cluster.clearVols()
-	m.user.clearUserStore()
-	m.user.clearAKStore()
-	m.user.clearVolUsers()
+
+	if m.user != nil {
+		// leader change event may be before m.user initialization
+		m.user.clearUserStore()
+		m.user.clearAKStore()
+		m.user.clearVolUsers()
+	}
+
 	m.cluster.t = newTopology()
 	// m.cluster.apiLimiter.Clear()
 }
