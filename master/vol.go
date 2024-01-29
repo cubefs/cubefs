@@ -597,13 +597,16 @@ func (vol *Vol) checkDataPartitions(c *Cluster) (cnt int) {
 
 	totalPreloadCapacity := uint64(0)
 
+	totalPreloadCapacity := uint64(0)
+
 	partitions := vol.dataPartitions.clonePartitions()
 	for _, dp := range partitions {
 
 		if proto.IsPreLoadDp(dp.PartitionType) {
 			now := time.Now().Unix()
 			if now > dp.PartitionTTL {
-				log.LogWarnf("[checkDataPartitions] dp(%d) is deleted because of ttl expired, now(%d), ttl(%d)", dp.PartitionID, now, dp.PartitionTTL)
+				log.LogWarnf("[checkDataPartitions] dp(%d) is deleted because of ttl expired, now(%d), ttl(%d)",
+					dp.PartitionID, now, dp.PartitionTTL)
 				vol.deleteDataPartition(c, dp)
 				continue
 			}
