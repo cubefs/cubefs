@@ -336,7 +336,7 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 				replicaNum, _ := strconv.ParseUint(optReplicaNum, 10, 8)
 				vv.DpReplicaNum = uint8(replicaNum)
 			} else {
-				confirmString.WriteString(fmt.Sprintf("  ReplicaNum         : %v \n", vv.Description))
+				confirmString.WriteString(fmt.Sprintf("  ReplicaNum         : %v \n", vv.DpReplicaNum))
 			}
 
 			if optFollowerRead != "" {
