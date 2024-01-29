@@ -387,15 +387,10 @@ func (h *Handler) writeToBlobnodes(ctx context.Context,
 			return
 		}
 
-		badIdxes := make([]uint8, 0)
 		for idx := range volume.Units {
 			if st, ok := received[idx]; ok && st.status {
 				continue
 			}
-			badIdxes = append(badIdxes, uint8(idx))
-		}
-		if len(badIdxes) > 0 {
-			h.sendRepairMsgBg(ctx, blob, badIdxes)
 		}
 	}(writeDone)
 
