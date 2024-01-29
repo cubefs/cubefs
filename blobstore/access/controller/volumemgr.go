@@ -526,7 +526,6 @@ func (v *volumeMgr) allocVolumeLoop(mode codemode.CodeMode) {
 				IsInit:   args.isInit,
 				CodeMode: args.codeMode,
 				Count:    requireCount,
-				NeedSize: 0, // TODO mw: del?
 			}
 			span.Infof("allocVolumeLoop arguments: %+v, backup: %v", *allocArg, args.isBackup)
 			volumeRets, err := v.allocVolume(ctx, allocArg)

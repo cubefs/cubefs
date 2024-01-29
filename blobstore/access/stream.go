@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"sync"
 
 	"github.com/afex/hystrix-go/hystrix"
 
@@ -168,11 +169,12 @@ type Handler struct {
 
 	blobnodeClient blobnode.StorageAPI
 	proxyClient    proxy.Client
-	cmClient       cmapi.ClientAPI // TODO mw: limit link number 2-3, bid cache, volume cache
+	cmClient       cmapi.ClientAPI
 
 	allCodeModes  CodeModePairs
 	maxObjectSize int64
 
+	failVid        sync.Map
 	discardVidChan chan discardVid
 	stopCh         <-chan struct{}
 

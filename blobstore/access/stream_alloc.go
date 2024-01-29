@@ -105,7 +105,7 @@ func (h *Handler) allocFromAllocator(ctx context.Context, codeMode codemode.Code
 		clusterID = clusterChosen.ClusterID
 	}
 
-	args := &proxy.AllocVolsArgs{
+	args := proxy.AllocVolsArgs{
 		Fsize:    size,
 		CodeMode: codeMode,
 		BidCount: blobCount(size, blobSize),
@@ -136,7 +136,7 @@ func (h *Handler) allocFromAllocator(ctx context.Context, codeMode codemode.Code
 		}
 		allocHost = host
 
-		allocRets, err = h.allocVolume(ctx, args)
+		allocRets, err = h.allocVolume(ctx, &args)
 		if err != nil {
 			if errorTimeout(err) || errorConnectionRefused(err) {
 				span.Warn("punish unreachable proxy host:", host)

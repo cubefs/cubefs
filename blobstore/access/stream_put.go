@@ -392,20 +392,42 @@ func (h *Handler) writeToBlobnodes(ctx context.Context,
 			return
 		}
 
+		var failIdxes sync.Map
+		_, ok := h.failVid.Load(vid)
+		if !ok {
+			h.failVid.Store(vid, failIdxes)
+		}
+		v, _ := h.failVid.Load(vid)
+		failIdxes = v.(sync.Map)
+
 		badIdxes := make([]uint8, 0)
 		for idx := range volume.Units {
 			if st, ok := received[idx]; ok && st.status {
 				continue
 			}
 			badIdxes = append(badIdxes, uint8(idx))
+			failIdxes.Store(uint8(idx), struct{}{})
 		}
 		if len(badIdxes) > 0 {
 			h.sendRepairMsgBg(ctx, blob, badIdxes)
 		}
+
+		failCnt := 0
+		failIdxes.Range(func(k, v interface{}) bool {
+			failCnt++
+			return true
+		})
+		if failCnt > tactic.M {
+			go h.releaseVolume(ctx, vid, releaseVolumeSealed)
+			h.failVid.Delete(vid)
+		}
+
 	}(writeDone)
 
 	defer func() {
-		go h.releaseVolume(ctx, vid, releaseType)
+		if releaseType > releaseVolumeInvalid {
+			go h.releaseVolume(ctx, vid, releaseType)
+		}
 	}()
 
 	// return if had quorum successful shards
@@ -452,7 +474,6 @@ func (h *Handler) writeToBlobnodes(ctx context.Context,
 	err = fmt.Errorf("quorum write failed (%d < %d) of %s", writtenNum, putQuorum, blob.String())
 	// need mark sealed: less than quorum, az fail
 	releaseType = releaseVolumeSealed
-	// TODO mw: optimize accumulated quorum
 
 	return
 }
