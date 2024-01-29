@@ -69,7 +69,6 @@ type ExtentCache struct {
 	root        *se.SortedExtents
 	initialized bool
 	refreshTime time.Time        // the last time to update extent cache
-	ek          *proto.ExtentKey // temporary ek
 }
 
 // NewExtentCache returns a new extent cache.
@@ -98,7 +97,8 @@ func (cache *ExtentCache) update(gen, size uint64, eks []proto.ExtentKey) {
 	cache.Lock()
 	defer cache.Unlock()
 
-	log.LogDebugf("ExtentCache update: ino(%v) cache.gen(%v) cache.size(%v) cache.ek(%v) gen(%v) size(%v)", cache.inode, cache.gen, cache.size, cache.ek, gen, size)
+	log.LogDebugf("ExtentCache update: ino(%v) cache.gen(%v) cache.size(%v) gen(%v) size(%v) ekLen(%v)",
+		cache.inode, cache.gen, cache.size, gen, size, len(eks))
 
 	cache.initialized = true
 	if cache.gen != 0 && cache.gen >= gen {
@@ -106,13 +106,23 @@ func (cache *ExtentCache) update(gen, size uint64, eks []proto.ExtentKey) {
 		return
 	}
 
+	newRoot := se.NewSortedExtents()
+	newRoot.Update(eks)
+	oldRoot := cache.root
+
+	cache.root = newRoot
 	cache.gen = gen
 	cache.size = size
-	cache.root.Update(eks)
-	// append local temporary ek to prevent read unconsistency
-	if cache.ek != nil {
-		cache.insert(cache.ek, false)
-	}
+	// insert temporary ek to prevent read unconsistency
+	oldRoot.Range(func(ek proto.ExtentKey) bool {
+		if ek.PartitionId == 0 || ek.ExtentId == 0 {
+			cache.insert(&ek, false)
+			if log.IsDebugEnabled() {
+				log.LogDebugf("ExtentCache update: ino(%v) insert temp ek(%v) ekLen(%v)", cache.inode, ek, cache.root.Len())
+			}
+		}
+		return true
+	})
 }
 
 func (cache *ExtentCache) UpdateRefreshTime() {
@@ -142,16 +152,13 @@ func (cache *ExtentCache) insert(ek *proto.ExtentKey, sync bool) {
 
 	if sync {
 		cache.gen++
-		cache.ek = nil
-	} else {
-		cache.ek = ek
 	}
 	if ekEnd > cache.size {
 		cache.size = ekEnd
 	}
 
 	if log.IsDebugEnabled() {
-		log.LogDebugf("ExtentCache Insert: ino(%v) ek(%v) deleteEks(%v)", cache.inode, ek, deleteExtents)
+		log.LogDebugf("ExtentCache Insert: ino(%v) ek(%v) deleteEks(%v) ekLen(%v)", cache.inode, ek, deleteExtents, cache.root.Len())
 	}
 }
 

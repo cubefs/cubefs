@@ -3,6 +3,7 @@ package data
 import (
 	"context"
 	"fmt"
+	"github.com/stretchr/testify/assert"
 	"hash/crc32"
 	"math/rand"
 	"os"
@@ -675,6 +676,7 @@ func TestStreamer_WriteFile_discontinuous(t *testing.T) {
 	if err != nil {
 		t.Fatalf("TestExtentHandler_PendingPacket: create wrapper err(%v)", err)
 	}
+	ec.autoFlush = true
 	ec.SetEnableWriteCache(true)
 	ec.tinySize = unit.DefaultTinySizeLimit
 	mw.Delete_ll(context.Background(), 1, "TestStreamer_WriteFile_discontinuous", false)
@@ -682,73 +684,157 @@ func TestStreamer_WriteFile_discontinuous(t *testing.T) {
 	if err != nil {
 		t.Fatalf("TestExtentHandler_PendingPacket: creat inode failed, err(%v)", err)
 	}
-	streamer := NewStreamer(ec, inodeInfo.Inode, ec.streamerConcurrentMap.GetMapSegment(inodeInfo.Inode), false)
+
+	err = ec.OpenStream(inodeInfo.Inode, false)
+	assert.Equal(t, nil, err, "open stream")
 
 	localPath := "/tmp/TestStreamer_WriteFile_discontinuous"
 	localFile, _ := os.Create(localPath)
 
 	defer func() {
-		close(streamer.done)
-		mw.Delete_ll(context.Background(), 1, "TestStreamer_WriteFile_discontinuous", false)
 		log.LogFlush()
 		localFile.Close()
 	}()
 	// discontinuous write
-	streamer.refcnt++
 	writeSize := 128 * 1024
-	if err = writeLocalAndCFS(localFile, streamer, 0, writeSize); err != nil {
+	if err = writeLocalAndCFS(localFile, ec, inodeInfo.Inode, 0, writeSize); err != nil {
 		t.Fatalf("TestStreamer_WriteFile_discontinuous: err(%v)", err)
 		return
 	}
-	if err = writeLocalAndCFS(localFile, streamer, 2*128*1024, writeSize); err != nil {
+	if err = writeLocalAndCFS(localFile, ec, inodeInfo.Inode, 2*128*1024, writeSize); err != nil {
 		t.Fatalf("TestStreamer_WriteFile_discontinuous: err(%v)", err)
 		return
 	}
-	if err = writeLocalAndCFS(localFile, streamer, 4*128*1024, writeSize); err != nil {
+	if err = writeLocalAndCFS(localFile, ec, inodeInfo.Inode, 4*128*1024, writeSize); err != nil {
 		t.Fatalf("TestStreamer_WriteFile_discontinuous: err(%v)", err)
 		return
 	}
 	time.Sleep(30 * time.Second)
 	localFile.Sync()
 	// verify data
-	if err = verifyLocalAndCFS(localFile, streamer, 0, writeSize); err != nil {
+	if err = verifyLocalAndCFS(localFile, ec, inodeInfo.Inode, 0, writeSize); err != nil {
 		t.Fatalf("TestStreamer_WriteFile_discontinuous: err(%v)", err)
 		return
 	}
-	if err = verifyLocalAndCFS(localFile, streamer, 2*128*1024, writeSize); err != nil {
+	if err = verifyLocalAndCFS(localFile, ec, inodeInfo.Inode, 2*128*1024, writeSize); err != nil {
 		t.Fatalf("TestStreamer_WriteFile_discontinuous: err(%v)", err)
 		return
 	}
-	if err = verifyLocalAndCFS(localFile, streamer, 4*128*1024, writeSize); err != nil {
+	if err = verifyLocalAndCFS(localFile, ec, inodeInfo.Inode, 4*128*1024, writeSize); err != nil {
 		t.Fatalf("TestStreamer_WriteFile_discontinuous: err(%v)", err)
 		return
 	}
 }
 
-func writeLocalAndCFS(localF *os.File, streamer *Streamer, offset int64, size int) error {
-	n := rand.Intn(5)
-	writeBytes := make([]byte, size)
-	for i := 0; i < size; i++ {
-		writeBytes[i] = byte(n)
+func TestStreamer_RandWritePending(t *testing.T) {
+	logDir := "/tmp/logs/cfs"
+	log.InitLog(logDir, "test", log.DebugLevel, nil)
+
+	// create inode
+	mw, ec, err := creatHelper(t)
+	if err != nil {
+		t.Fatalf("TestStreamer_RandPending: create wrapper err(%v)", err)
 	}
+	ec.autoFlush = true
+	ec.SetEnableWriteCache(true)
+	ec.tinySize = unit.DefaultTinySizeLimit
+
+	defer func() {
+		log.LogFlush()
+	}()
+
+	mw.Delete_ll(context.Background(), 1, "TestStreamer_RandPending", false)
+	inodeInfo, err := mw.Create_ll(context.Background(), 1, "TestStreamer_RandPending", 0644, 0, 0, nil)
+	if err != nil {
+		t.Fatalf("TestStreamer_RandPending: creat inode failed, err(%v)", err)
+	}
+	err = ec.OpenStream(inodeInfo.Inode, false)
+	assert.Equal(t, nil, err, "open stream")
+
+	localPath := "/tmp/TestStreamer_RandPending"
+	localFile, _ := os.Create(localPath)
+
+	go func() {
+		for {
+			streamer := ec.GetStreamer(inodeInfo.Inode)
+			if streamer != nil {
+				streamer.GetExtents(context.Background())
+			}
+			time.Sleep(1 * time.Millisecond)
+		}
+	}()
+	timestamp := time.Now().Unix()
+	rand.Seed(timestamp)
+	fmt.Println("time: ", timestamp)
+	for i := 0; i < 1024; i++ {
+		wOffset, wSize := randOffset()
+		fmt.Printf("write offset: %v size: %v\n", wOffset, wSize)
+		if err = writeLocalAndCFS(localFile, ec, inodeInfo.Inode, wOffset, wSize); err != nil {
+			panic(err)
+		}
+		rOffset, rSize := randOffset()
+		fmt.Printf("read offset: %v size: %v\n", rOffset, rSize)
+		if err = verifyLocalAndCFS(localFile, ec, inodeInfo.Inode, rOffset, rSize); err != nil {
+			log.LogFlush()
+			panic(err)
+		}
+	}
+	cfsSize, _, _ := ec.FileSize(inodeInfo.Inode)
+	localInfo, _ := localFile.Stat()
+	assert.Equal(t, uint64(localInfo.Size()), cfsSize, "file size")
+	verifySize := 1024*1024
+	for off := int64(0); off < int64(cfsSize); off += int64(verifySize) {
+		if err = verifyLocalAndCFS(localFile, ec, inodeInfo.Inode, off, verifySize); err != nil {
+			log.LogFlush()
+			panic(err)
+		}
+	}
+	if err = ec.Flush(context.Background(), inodeInfo.Inode); err != nil {
+		panic(err)
+	}
+	ec.CloseStream(context.Background(), inodeInfo.Inode)
+	localFile.Close()
+}
+
+func randOffset() (off int64, size int) {
+	off = rand.Int63n(128 * 1024 * 1024)
+	size = rand.Intn(256) * 1024 + 1
+	return
+}
+
+func writeLocalAndCFS(localF *os.File, ec *ExtentClient, inoID uint64, offset int64, size int) error {
+	writeBytes := randTestData(size)
 	localF.WriteAt(writeBytes, offset)
-	n, _, err := streamer.write(context.Background(), writeBytes, uint64(offset), size, false)
+	n, _, err := ec.Write(context.Background(), inoID, uint64(offset), writeBytes, false)
 	if err != nil || n != size {
-		return fmt.Errorf("write file err(%v) write size(%v)", err, size)
+		return fmt.Errorf("write file err(%v) write off(%v) size(%v)", err, offset, size)
 	}
 	return nil
 }
 
-func verifyLocalAndCFS(localF *os.File, streamer *Streamer, offset int64, size int) error {
+
+func verifyLocalAndCFS(localF *os.File, ec *ExtentClient, inoID uint64, offset int64, size int) error {
 	readLocalData := make([]byte, size)
 	readCFSData := make([]byte, size)
-	localF.ReadAt(readLocalData, offset)
-	n, _, err := streamer.read(context.Background(), readCFSData, uint64(offset), size)
-	if err != nil || n != size {
-		return fmt.Errorf("read file err(%v) read size(%v)", err, size)
+	n1, err1 := localF.ReadAt(readLocalData, offset)
+	n2, _, err2 := ec.Read(context.Background(), inoID, readCFSData, uint64(offset), size)
+	if err1 != err2 || n1 != n2 {
+		return fmt.Errorf("read file off(%v) size(%v) cfs(%v %v) local(%v %v)", offset, size, n2, err2, n1, err1)
 	}
-	if crc32.ChecksumIEEE(readCFSData[:size]) != crc32.ChecksumIEEE(readLocalData[:size]) {
-		return fmt.Errorf("offset(%v) size(%v) crc is inconsistent", offset, size)
+	incorrectBegin, incorrectEnd := n1, -1
+	for j := 0; j < n1; j++ {
+		if readLocalData[j] != readCFSData[j] {
+			if incorrectBegin > j {
+				incorrectBegin = j
+			}
+			if incorrectEnd < j {
+				incorrectEnd = j
+			}
+		}
+	}
+	if incorrectEnd != -1 {
+		return fmt.Errorf("read offset(%v) size(%v) cfs(%v %v) local(%v %v) incorrect(%v~%v)\n",
+			offset, size, n2, err2, n1, err1, incorrectBegin, incorrectEnd)
 	}
 	return nil
 }

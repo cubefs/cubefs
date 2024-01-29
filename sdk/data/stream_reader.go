@@ -175,6 +175,9 @@ func (s *Streamer) read(ctx context.Context, data []byte, offset uint64, size in
 	if revisedRequests != nil {
 		requests = revisedRequests
 	}
+	if log.IsDebugEnabled() {
+		log.LogDebugf("Stream read: ino(%v) userExpectOffset(%v) userExpectSize(%v) requests(%v) filesize(%v)", s.inode, offset, size, requests, fileSize)
+	}
 	if offset >= fileSize {
 		return 0, false, io.EOF
 	}
@@ -199,10 +202,6 @@ func (s *Streamer) read(ctx context.Context, data []byte, offset uint64, size in
 			}
 		}
 		log.LogWarnf("Stream read: readFromRemoteCache failed: ino(%v) offset(%v) size(%v), err(%v)", s.inode, offset, size, err)
-	}
-
-	if log.IsDebugEnabled() {
-		log.LogDebugf("Stream read: ino(%v) userExpectOffset(%v) userExpectSize(%v) filesize(%v)", s.inode, offset, size, fileSize)
 	}
 
 	var read int

@@ -2,6 +2,7 @@ package data
 
 import (
 	"fmt"
+	"github.com/stretchr/testify/assert"
 	"math/rand"
 	"reflect"
 	"testing"
@@ -157,4 +158,39 @@ func Test_InsertExtentPerformance(t *testing.T)  {
 	if cost := time.Since(start)/time.Duration(round); cost > 1 * time.Millisecond {
 		t.Fatalf("Test_InsertExtentPerformance insert extent cost too long: %v, ekLen(%v)", cost, ekLen)
 	}
+}
+
+func TestExtentCache_Update(t *testing.T) {
+	extents := NewExtentCache(2)
+	orgEk := []proto.ExtentKey{
+		{FileOffset: 0, Size: 100, PartitionId: 1, ExtentId: 1, ExtentOffset: 1024},
+		{FileOffset: 100, Size: 100, PartitionId: 2, ExtentId: 2},
+		{FileOffset: 200, Size: 50},
+		{FileOffset: 250, Size: 200, PartitionId: 10, ExtentId: 10, ExtentOffset: 100},
+		{FileOffset: 450, Size: 100},
+	}
+	for _, ek := range orgEk {
+		extents.insert(&ek, false)
+	}
+
+	updateEks := []proto.ExtentKey{
+		{FileOffset: 0, Size: 100, PartitionId: 1, ExtentId: 1, ExtentOffset: 1024},
+		{FileOffset: 100, Size: 150, PartitionId: 2, ExtentId: 3},
+		{FileOffset: 250, Size: 200, PartitionId: 10, ExtentId: 10, ExtentOffset: 100},
+	}
+	expectedEks := []proto.ExtentKey{
+		{FileOffset: 0, Size: 100, PartitionId: 1, ExtentId: 1, ExtentOffset: 1024},
+		{FileOffset: 100, Size: 100, PartitionId: 2, ExtentId: 3},
+		{FileOffset: 200, Size: 50},
+		{FileOffset: 250, Size: 200, PartitionId: 10, ExtentId: 10, ExtentOffset: 100},
+		{FileOffset: 450, Size: 100},
+	}
+	extents.update(1, 450, updateEks)
+	eks := extents.List()
+	assert.Equal(t, len(expectedEks), len(eks), "ek len")
+	for i, ek := range eks {
+		assert.EqualExportedValuesf(t, expectedEks[i], ek, "ek index(%v)", i)
+	}
+	assert.Equal(t, uint64(550), extents.size, "eks size")
+	assert.Equal(t, uint64(1), extents.gen, "eks gen")
 }

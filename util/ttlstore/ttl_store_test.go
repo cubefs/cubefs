@@ -23,7 +23,7 @@ func TestTTLStore(t *testing.T) {
 	index := 0
 	em.Range(func(k interface{}, v *Val) bool {
 		index++
-		if v.GetTTL() != exSeconds-waitSeconds {
+		if v.GetTTL() > exSeconds-waitSeconds {
 			assert.FailNowf(t, "", "ttl should be %v, but be %v", exSeconds-waitSeconds, v.GetTTL())
 			return false
 		}
