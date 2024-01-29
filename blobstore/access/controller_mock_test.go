@@ -81,10 +81,10 @@ func (mr *MockClusterControllerMockRecorder) ChooseOne() *gomock.Call {
 }
 
 // GetClusterClient mocks base method.
-func (m *MockClusterController) GetClusterClient(arg0 proto.ClusterID) clustermgr.APIAccess {
+func (m *MockClusterController) GetClusterClient(arg0 proto.ClusterID) clustermgr.ClientAPI {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetClusterClient", arg0)
-	ret0, _ := ret[0].(clustermgr.APIAccess)
+	ret0, _ := ret[0].(clustermgr.ClientAPI)
 	return ret0
 }
 
