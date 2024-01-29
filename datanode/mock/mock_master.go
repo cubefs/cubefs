@@ -15,9 +15,10 @@ import (
 
 const (
 	TestCluster    = "cluster-mock"
-	TestMasterHost = "127.0.0.1:10729"
 	Master         = "master"
 )
+
+var TestMasterHost string
 
 var mockMasterServer *mockMaster
 var ClusterHasAuthKey bool
@@ -37,8 +38,33 @@ type mockMaster struct {
 	DataNodeMap map[string]*mockDataNode
 }
 
+func getLocalIp () {
+	nets, err := net.Interfaces()
+	if err != nil {
+		fmt.Printf("can not get sys interfaces info:%v\n", err.Error())
+	}
+
+	for _, iter := range nets {
+		var addrIp []net.Addr
+		addrIp, err = iter.Addrs()
+		if err != nil {
+			continue
+		}
+		if strings.Contains(iter.Name, "bo") ||  strings.Contains(iter.Name, "eth")  || strings.Contains(iter.Name, "enp") {
+			for _, addr := range addrIp {
+				if ipNet, ok := addr.(*net.IPNet); ok && !ipNet.IP.IsLoopback() && ipNet.IP.To4() != nil {
+					localIP := strings.Split(addr.String(), "/")[0]
+					TestMasterHost  = localIP + ":10729"
+					return
+				}
+			}
+		}
+	}
+}
+
 func NewMockMaster() {
 	fmt.Println("init mock master")
+	getLocalIp()
 	mockMasterServer = &mockMaster{
 		MasterAddr:  TestMasterHost,
 		DataNodeMap: make(map[string]*mockDataNode, 0),

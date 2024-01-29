@@ -29,6 +29,7 @@ const (
 )
 
 func init() {
+	getLocalIp()
 	fmt.Println("init datanode")
 	mock.NewMockMaster()
 	if err := FakeDirCreate(); err != nil {
