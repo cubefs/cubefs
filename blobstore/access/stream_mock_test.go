@@ -242,6 +242,23 @@ var storageAPIRangeGetShard = func(ctx context.Context, host string, args *blobn
 	return
 }
 
+var storageAPIDeleteShard = func(ctx context.Context, host string, args *blobnode.DeleteShardArgs) (err error) {
+	if vuidController.Isbroken(args.Vuid) {
+		err = errors.New("put shard fake error")
+		if vuidController.IsBNRealError() {
+			err = randBlobnodeRealError(putErrors)
+		}
+		return
+	}
+	if vuidController.Isblocked(args.Vuid) {
+		vuidController.block()
+		err = errors.New("put shard timeout")
+		return
+	}
+
+	return nil
+}
+
 var storageAPIPutShard = func(ctx context.Context, host string, args *blobnode.PutShardArgs) (
 	crc uint32, err error) {
 	if vuidController.Isbroken(args.Vuid) {
@@ -485,6 +502,8 @@ func newMockStorageAPI() blobnode.StorageAPI {
 		DoAndReturn(storageAPIRangeGetShard)
 	api.EXPECT().PutShard(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes().
 		DoAndReturn(storageAPIPutShard)
+	api.EXPECT().DeleteShard(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes().
+		DoAndReturn(storageAPIDeleteShard)
 	return api
 }
 

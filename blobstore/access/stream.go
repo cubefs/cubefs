@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"sync/atomic"
 
 	"github.com/afex/hystrix-go/hystrix"
 	"github.com/cubefs/cubefs/blobstore/access/controller"
@@ -312,102 +313,57 @@ func (h *Handler) Admin() interface{} {
 	}
 }
 
-func (h *Handler) sendRepairMsgBg(ctx context.Context, blob blobIdent, badIdxes []uint8) {
-	go func() {
-		h.sendRepairMsg(ctx, blob, badIdxes)
-	}()
-}
-
-func (h *Handler) sendRepairMsg(ctx context.Context, blob blobIdent, badIdxes []uint8) {
-	span := trace.SpanFromContextSafe(ctx)
-	span.Infof("to repair %s indexes(%+v)", blob.String(), badIdxes)
-
-	clusterID := blob.cid
-	serviceController, err := h.clusterController.GetServiceController(clusterID)
-	if err != nil {
-		span.Error(errors.Detail(err))
-		return
-	}
-	reportUnhealth(clusterID, "repair.msg", "-", "-", "-")
-
-	repairArgs := &proxy.ShardRepairArgs{
-		ClusterID: clusterID,
-		Bid:       blob.bid,
-		Vid:       blob.vid,
-		BadIdxes:  badIdxes[:],
-		Reason:    "access-repair",
-	}
-
-	if err := retry.Timed(3, 200).On(func() error {
-		host, err := serviceController.GetServiceHost(ctx, serviceProxy)
-		if err != nil {
-			span.Warn(err)
-			return err
-		}
-		err = h.proxyClient.SendShardRepairMsg(ctx, host, repairArgs)
-		if err != nil {
-			if errorTimeout(err) || errorConnectionRefused(err) {
-				serviceController.PunishServiceWithThreshold(ctx, serviceProxy, host, h.ServicePunishIntervalS)
-			}
-			span.Warnf("send to %s repair message(%+v) %s", host, repairArgs, err.Error())
-			reportUnhealth(clusterID, "punish", serviceProxy, host, "failed")
-			err = errors.Base(err, host)
-		}
-		return err
-	}); err != nil {
-		reportUnhealth(clusterID, "repair.msg", serviceProxy, "-", "failed")
-		span.Errorf("send repair message(%+v) failed %s", repairArgs, errors.Detail(err))
-		return
-	}
-
-	span.Infof("send repair message(%+v)", repairArgs)
-}
-
 func (h *Handler) clearGarbage(ctx context.Context, location *access.Location) error {
 	span := trace.SpanFromContextSafe(ctx)
-	serviceController, err := h.clusterController.GetServiceController(location.ClusterID)
-	if err != nil {
-		span.Error(errors.Detail(err))
-		return errors.Base(err, "clear location:", *location)
-	}
-
-	blobs := location.Spread()
-	deleteArgs := &proxy.DeleteArgs{
-		ClusterID: location.ClusterID,
-		Blobs:     make([]proxy.BlobDelete, 0, len(blobs)),
-	}
-
-	for _, blob := range blobs {
-		deleteArgs.Blobs = append(deleteArgs.Blobs, proxy.BlobDelete{
-			Bid: blob.Bid,
-			Vid: blob.Vid,
-		})
-	}
-
 	var logMsg interface{} = location
-	if len(deleteArgs.Blobs) <= 20 {
-		logMsg = deleteArgs
-	}
-	if err := retry.Timed(3, 200).On(func() error {
-		host, err := serviceController.GetServiceHost(ctx, serviceProxy)
-		if err != nil {
-			span.Warn(err)
-			return err
-		}
-		err = h.proxyClient.SendDeleteMsg(ctx, host, deleteArgs)
-		if err != nil {
-			if errorTimeout(err) || errorConnectionRefused(err) {
-				serviceController.PunishServiceWithThreshold(ctx, serviceProxy, host, h.ServicePunishIntervalS)
+
+	for _, blob := range location.Spread() {
+		if err := retry.Timed(3, 200).On(func() error {
+			volume, err := h.getVolume(ctx, location.ClusterID, blob.Vid, true)
+			if err != nil {
+				return err
 			}
-			span.Warnf("send to %s delete message(%+v) %s", host, logMsg, err.Error())
-			reportUnhealth(location.ClusterID, "punish", serviceProxy, host, "failed")
-			err = errors.Base(err, host)
+
+			successNum := uint32(0)
+			quorum := uint32(volume.CodeMode.Tactic().PutQuorum)
+			statusCh := make(chan int, len(volume.Units))
+			sendDelBlobBgFn := func(idx int, unit controller.Unit) {
+				args := blobnode.DeleteShardArgs{
+					DiskID: unit.DiskID,
+					Vuid:   unit.Vuid,
+					Bid:    blob.Bid,
+					Force:  true,
+				}
+
+				go func() {
+					// If the fails, dont need handle it. and then background inspection on scheduler
+					err1 := h.blobnodeClient.DeleteShard(ctx, unit.Host, &args)
+					if err1 == nil {
+						atomic.AddUint32(&successNum, 1)
+						return
+					}
+
+					statusCh <- idx
+				}()
+			}
+
+			for i, unitI := range volume.Units {
+				sendDelBlobBgFn(i, unitI)
+			}
+
+			retry := 0
+			for atomic.LoadUint32(&successNum) < quorum && retry < len(volume.Units) {
+				retry++
+				index := <-statusCh
+				sendDelBlobBgFn(index, volume.Units[index])
+			}
+
+			return nil
+		}); err != nil {
+			reportUnhealth(location.ClusterID, "delete.msg", proto.ServiceNameBlobNode, "-", "failed")
+			span.Errorf("send delete message(%+v) failed %s", logMsg, errors.Detail(err))
+			return errors.Base(err, "send delete message:", logMsg)
 		}
-		return err
-	}); err != nil {
-		reportUnhealth(location.ClusterID, "delete.msg", serviceProxy, "-", "failed")
-		span.Errorf("send delete message(%+v) failed %s", logMsg, errors.Detail(err))
-		return errors.Base(err, "send delete message:", logMsg)
 	}
 
 	span.Infof("send delete message(%+v)", logMsg)
