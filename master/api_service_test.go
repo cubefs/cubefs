@@ -234,7 +234,7 @@ func createMasterServer(cfgJSON string) (server *Server, err error) {
 	default:
 		level = log.ErrorLevel
 	}
-	if _, err = log.InitLog(logDir, "master", level, nil, log.DefaultLogLeftSpaceLimit); err != nil {
+	if _, err = log.InitLog(logDir, "master", level, nil, log.DefaultLogLeftSpaceLimitRatio); err != nil {
 		fmt.Println("Fatal: failed to start the cubefs daemon - ", err)
 		return
 	}
