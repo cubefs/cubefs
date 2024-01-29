@@ -89,7 +89,7 @@ func NewClient(config PreloadConfig) *PreLoadClient {
 	}
 
 	if config.LogDir != "" {
-		log.InitLog(config.LogDir, "preload", convertLogLevel(config.LogLevel), nil, log.DefaultLogLeftSpaceLimit)
+		log.InitLog(config.LogDir, "preload", convertLogLevel(config.LogLevel), nil, log.DefaultLogLeftSpaceLimitRatio)
 		stat.NewStatistic(config.LogDir, "preload", int64(stat.DefaultStatLogSize), stat.DefaultTimeOutUs, true)
 	}
 
