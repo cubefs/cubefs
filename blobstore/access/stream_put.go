@@ -392,13 +392,12 @@ func (h *Handler) writeToBlobnodes(ctx context.Context,
 			return
 		}
 
-		var failIdxes sync.Map
 		_, ok := h.failVid.Load(vid)
 		if !ok {
-			h.failVid.Store(vid, failIdxes)
+			h.failVid.Store(vid, newFailVuidMap())
 		}
 		v, _ := h.failVid.Load(vid)
-		failIdxes = v.(sync.Map)
+		failIdxes := v.(*failVuidMap)
 
 		badIdxes := make([]uint8, 0)
 		for idx := range volume.Units {
@@ -406,22 +405,16 @@ func (h *Handler) writeToBlobnodes(ctx context.Context,
 				continue
 			}
 			badIdxes = append(badIdxes, uint8(idx))
-			failIdxes.Store(uint8(idx), struct{}{})
+			failIdxes.Store(uint8(idx))
 		}
 		if len(badIdxes) > 0 {
 			h.sendRepairMsgBg(ctx, blob, badIdxes)
 		}
 
-		failCnt := 0
-		failIdxes.Range(func(k, v interface{}) bool {
-			failCnt++
-			return true
-		})
-		if failCnt > tactic.M {
+		if failIdxes.Len() > tactic.M {
 			go h.releaseVolume(ctx, vid, releaseVolumeSealed)
 			h.failVid.Delete(vid)
 		}
-
 	}(writeDone)
 
 	defer func() {
@@ -476,4 +469,35 @@ func (h *Handler) writeToBlobnodes(ctx context.Context,
 	releaseType = releaseVolumeSealed
 
 	return
+}
+
+type failVuidMap struct {
+	failIdx map[uint8]struct{}
+	lck     sync.RWMutex
+}
+
+func newFailVuidMap() *failVuidMap {
+	return &failVuidMap{
+		failIdx: make(map[uint8]struct{}),
+	}
+}
+
+func (m *failVuidMap) Store(idx uint8) {
+	m.lck.RLock()
+	_, ok := m.failIdx[idx]
+	m.lck.RUnlock()
+
+	if ok {
+		return
+	}
+
+	m.lck.Lock()
+	defer m.lck.Unlock()
+	m.failIdx[idx] = struct{}{}
+}
+
+func (m *failVuidMap) Len() int {
+	m.lck.RLock()
+	defer m.lck.RUnlock()
+	return len(m.failIdx)
 }
