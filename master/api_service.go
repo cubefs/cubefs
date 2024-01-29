@@ -838,7 +838,7 @@ func (m *Server) createPreLoadDataPartition(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	total := vol.getPreloadCapacity() + uint64(preload.preloadCacheCapacity)
+	total := vol.CalculatePreloadCapacity() + uint64(preload.preloadCacheCapacity)
 	if total > vol.CacheCapacity {
 		sendErrReply(w, r, newErrHTTPReply(fmt.Errorf("preload total capacity[%d] can't be bigger than cache capacity [%d]",
 			total, vol.CacheCapacity)))
