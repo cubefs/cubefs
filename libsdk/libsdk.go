@@ -1271,7 +1271,7 @@ func (c *client) start() (err error) {
 			c.logLevel = "WARN"
 		}
 		level := parseLogLevel(c.logLevel)
-		log.InitLog(c.logDir, "libcfs", level, nil, log.DefaultLogLeftSpaceLimit)
+		log.InitLog(c.logDir, "libcfs", level, nil, log.DefaultLogLeftSpaceLimitRatio)
 		stat.NewStatistic(c.logDir, "libcfs", int64(stat.DefaultStatLogSize), stat.DefaultTimeOutUs, true)
 	}
 	proto.InitBufferPool(int64(32768))

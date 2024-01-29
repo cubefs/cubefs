@@ -278,7 +278,7 @@ var gLog *Log = nil
 var LogDir string
 
 // InitLog initializes the log.
-func InitLog(dir, module string, level Level, rotate *LogRotate, logLeftSpaceLimit int64) (*Log, error) {
+func InitLog(dir, module string, level Level, rotate *LogRotate, logLeftSpaceLimitRatio float64) (*Log, error) {
 	l := new(Log)
 	dir = path.Join(dir, module)
 	l.dir = dir
@@ -300,13 +300,8 @@ func InitLog(dir, module string, level Level, rotate *LogRotate, logLeftSpaceLim
 				err.Error())
 		}
 		var minLogLeftSpaceLimit float64
-		if float64(fs.Bavail*uint64(fs.Bsize)) < float64(fs.Blocks*uint64(fs.Bsize))*DefaultHeadRatio {
-			minLogLeftSpaceLimit = float64(fs.Bavail*uint64(fs.Bsize)) * DefaultHeadRatio / 1024 / 1024
-		} else {
-			minLogLeftSpaceLimit = float64(fs.Blocks*uint64(fs.Bsize)) * DefaultHeadRatio / 1024 / 1024
-		}
 
-		minLogLeftSpaceLimit = math.Max(minLogLeftSpaceLimit, float64(logLeftSpaceLimit))
+		minLogLeftSpaceLimit = float64(fs.Blocks*uint64(fs.Bsize)) * logLeftSpaceLimitRatio / 1024 / 1024
 
 		rotate.SetHeadRoomMb(int64(math.Min(minLogLeftSpaceLimit, DefaultHeadRoom)))
 
