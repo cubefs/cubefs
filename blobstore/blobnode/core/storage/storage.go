@@ -136,7 +136,7 @@ func (stg *storage) MarkDelete(ctx context.Context, bid proto.BlobID) (err error
 	return nil
 }
 
-func (stg *storage) Delete(ctx context.Context, bid proto.BlobID) (n int64, err error) {
+func (stg *storage) Delete(ctx context.Context, bid proto.BlobID, force bool) (n int64, err error) {
 	span := trace.SpanFromContextSafe(ctx)
 
 	meta, data := stg.meta, stg.data
@@ -147,7 +147,7 @@ func (stg *storage) Delete(ctx context.Context, bid proto.BlobID) (n int64, err 
 		return n, err
 	}
 
-	if shardMeta.Flag != bnapi.ShardStatusMarkDelete {
+	if shardMeta.Flag != bnapi.ShardStatusMarkDelete && !force {
 		span.Errorf("Failed: shard:%v already delete, err:%v", bid, err)
 		return n, bloberr.ErrShardNotMarkDelete
 	}

@@ -427,11 +427,11 @@ func TestChunkStorage_DeleteOp(t *testing.T) {
 	require.NoError(t, err)
 
 	// delete failed
-	err = cs.Delete(ctx, 1025)
+	err = cs.Delete(ctx, 1025, false)
 	require.Error(t, err)
 
 	// delete failed
-	err = cs.Delete(ctx, bid)
+	err = cs.Delete(ctx, bid, false)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "mark delete")
 
@@ -452,12 +452,12 @@ func TestChunkStorage_DeleteOp(t *testing.T) {
 
 	// compacting will failed
 	cs.compacting = true
-	err = cs.Delete(ctx, bid)
+	err = cs.Delete(ctx, bid, false)
 	require.Error(t, err)
 	cs.compacting = false
 
 	// delete
-	err = cs.Delete(ctx, bid)
+	err = cs.Delete(ctx, bid, false)
 	require.NoError(t, err)
 
 	// read. will not exist
