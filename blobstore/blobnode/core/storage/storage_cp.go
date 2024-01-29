@@ -183,8 +183,8 @@ func (stg *replicateStorage) MarkDelete(ctx context.Context, bid proto.BlobID) (
 	return stg.masterStg.MarkDelete(ctx, bid)
 }
 
-func (stg *replicateStorage) Delete(ctx context.Context, bid proto.BlobID) (n int64, err error) {
-	return stg.masterStg.Delete(ctx, bid)
+func (stg *replicateStorage) Delete(ctx context.Context, bid proto.BlobID, force bool) (n int64, err error) {
+	return stg.masterStg.Delete(ctx, bid, force)
 }
 
 func (stg *replicateStorage) ScanMeta(ctx context.Context, startBid proto.BlobID, limit int,

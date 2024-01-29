@@ -408,9 +408,15 @@ func (s *Service) ShardDelete(c *rpc.Context) {
 	ctx = bnapi.SetIoType(ctx, bnapi.NormalIO)
 	ctx = limitio.SetLimitTrack(ctx)
 
-	err = cs.Delete(ctx, args.Bid)
+	err = cs.Delete(ctx, args.Bid, args.Force)
 	if err != nil {
 		err = handlerBidNotFoundErr(err)
+		if err == bloberr.ErrNoSuchBid && args.Force {
+			// In forced delete mode, if bid is not exist, it do work successful also
+			c.Respond()
+			return
+		}
+
 		span.Errorf("Failed to delete, err:%v", err)
 		c.RespondError(err)
 		return
