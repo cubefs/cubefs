@@ -87,6 +87,13 @@ func (dp *DataPartition) ApplyMemberChange(confChange *raftproto.ConfChange, ind
 		}
 		log.LogInfof("action[ApplyMemberChange] ConfRemoveNode [%v], partitionId [%v]", req.RemovePeer, req.PartitionId)
 		isUpdated, err = dp.removeRaftNode(req, index)
+	case raftproto.ConfUpdatePeer:
+		req := &proto.UpdateDataPartitionPeerRequest{}
+		if err = json.Unmarshal(confChange.Context, req); err != nil {
+			return
+		}
+		log.LogInfof("action[ApplyMemberChange] ConfUpdatePeer [%v], partitionId [%v]", req.Peer, req.PartitionId)
+		isUpdated, err = dp.updateRaftPeer(req, index)
 	case raftproto.ConfUpdateNode:
 		log.LogDebugf("[updateRaftNode]: not support.")
 	default:

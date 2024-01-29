@@ -1013,6 +1013,17 @@ func (c *Cluster) addDataNode(nodeAddr, zoneName, heartbeatPort, replicaPort str
 		if nodesetId > 0 && nodesetId != dataNode.NodeSetID {
 			return dataNode.ID, fmt.Errorf("addr already in nodeset [%v]", nodeAddr)
 		}
+		dataNode.Lock()
+		defer dataNode.Unlock()
+		oldHeartBeatPort := dataNode.HeartbeatPort
+		oldReplicaPort := dataNode.ReplicaPort
+		dataNode.HeartbeatPort = heartbeatPort
+		dataNode.ReplicaPort = replicaPort
+		if err := c.syncUpdateDataNode(dataNode); err != nil {
+			dataNode.HeartbeatPort = oldHeartBeatPort
+			dataNode.ReplicaPort = oldReplicaPort
+			return dataNode.ID, fmt.Errorf("update datanode failed addr [%v]", nodeAddr)
+		}
 		return dataNode.ID, nil
 	}
 
@@ -1116,7 +1127,8 @@ func (c *Cluster) checkLackReplicaDataPartitions() (lackReplicaDataPartitions []
 
 func (c *Cluster) checkReplicaOfDataPartitions(ignoreDiscardDp bool) (
 	lackReplicaDPs []*DataPartition, unavailableReplicaDPs []*DataPartition, repFileCountDifferDps []*DataPartition,
-	repUsedSizeDifferDps []*DataPartition, excessReplicaDPs []*DataPartition, noLeaderDPs []*DataPartition, err error) {
+	repUsedSizeDifferDps []*DataPartition, excessReplicaDPs []*DataPartition, noLeaderDPs []*DataPartition, err error,
+) {
 	noLeaderDPs = make([]*DataPartition, 0)
 	lackReplicaDPs = make([]*DataPartition, 0)
 	unavailableReplicaDPs = make([]*DataPartition, 0)
@@ -1560,7 +1572,8 @@ errHandler:
 }
 
 func (c *Cluster) syncCreateDataPartitionToDataNode(host string, size uint64, dp *DataPartition,
-	peers []proto.Peer, hosts []string, createType int, partitionType int, needRollBack bool) (diskPath string, err error) {
+	peers []proto.Peer, hosts []string, createType int, partitionType int, needRollBack bool,
+) (diskPath string, err error) {
 	log.LogInfof("action[syncCreateDataPartitionToDataNode] dp [%v] createtype[%v], partitionType[%v]", dp.PartitionID, createType, partitionType)
 	dataNode, err := c.dataNode(host)
 	if err != nil {
@@ -1668,7 +1681,8 @@ func (c *Cluster) chooseZone2Plus1(zones []*Zone, excludeNodeSets []uint64, excl
 }
 
 func (c *Cluster) chooseZoneNormal(zones []*Zone, excludeNodeSets []uint64, excludeHosts []string,
-	nodeType uint32, replicaNum int) (hosts []string, peers []proto.Peer, err error) {
+	nodeType uint32, replicaNum int,
+) (hosts []string, peers []proto.Peer, err error) {
 	log.LogInfof("action[chooseZoneNormal] zones[%s] nodeType[%d] replicaNum[%d]", printZonesName(zones), nodeType, replicaNum)
 
 	c.zoneIdxMux.Lock()
@@ -2579,6 +2593,61 @@ func (c *Cluster) addDataPartitionRaftMember(dp *DataPartition, addPeer proto.Pe
 		dp.Hosts = oldHosts
 		dp.Peers = oldPeers
 		return
+	}
+
+	return
+}
+
+func (c *Cluster) buildUpdateDataPartitionRaftMemberTaskAndSyncSendTask(dp *DataPartition, newPeer proto.Peer, leaderAddr string) (resp *proto.Packet, err error) {
+	log.LogInfof("action[buildUpdateDataPartitionRaftMemberTaskAndSyncSendTask] add peer [%v] start", newPeer)
+	defer func() {
+		var resultCode uint8
+		if resp != nil {
+			resultCode = resp.ResultCode
+		}
+		if err != nil {
+			log.LogErrorf("vol[%v],data partition[%v],resultCode[%v],err[%v]", dp.VolName, dp.PartitionID, resultCode, err)
+		} else {
+			log.LogWarnf("vol[%v],data partition[%v],resultCode[%v],err[%v]", dp.VolName, dp.PartitionID, resultCode, err)
+		}
+	}()
+	task := dp.createTaskToUpdateDataPartitionPeer(leaderAddr, newPeer)
+	if err != nil {
+		return
+	}
+	leaderDataNode, err := c.dataNode(leaderAddr)
+	if err != nil {
+		return
+	}
+	if resp, err = leaderDataNode.TaskManager.syncSendAdminTask(task); err != nil {
+		return
+	}
+	log.LogInfof("action[buildUpdateDataPartitionRaftMemberTaskAndSyncSendTask] update peer [%v] finished", newPeer)
+	return
+}
+
+func (c *Cluster) updateDataPartitionRaftMember(dp *DataPartition, newPeer proto.Peer) (err error) {
+	var (
+		candidateAddrs []string
+		leaderAddr     string
+	)
+
+	if leaderAddr, candidateAddrs, err = dp.prepareUpdateRaftMember(newPeer); err != nil {
+		log.LogErrorf("[updateDataPartitionPeerFromDataNode] update peer from datanode failed, id %d, err %s", dp.PartitionID, err.Error())
+		return
+	}
+
+	for index, host := range candidateAddrs {
+		if leaderAddr == "" && len(candidateAddrs) < int(dp.ReplicaNum) {
+			time.Sleep(retrySendSyncTaskInternal)
+		}
+		_, err = c.buildUpdateDataPartitionRaftMemberTaskAndSyncSendTask(dp, newPeer, host)
+		if err == nil {
+			break
+		}
+		if index < len(candidateAddrs)-1 {
+			time.Sleep(retrySendSyncTaskInternal)
+		}
 	}
 
 	return

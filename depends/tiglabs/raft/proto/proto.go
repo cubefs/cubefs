@@ -48,6 +48,7 @@ const (
 	ConfAddNode    ConfChangeType = 0
 	ConfRemoveNode ConfChangeType = 1
 	ConfUpdateNode ConfChangeType = 2
+	ConfUpdatePeer ConfChangeType = 3
 
 	EntryNormal     EntryType = 0
 	EntryConfChange EntryType = 1
@@ -185,6 +186,8 @@ func (t ConfChangeType) String() string {
 		return "ConfRemoveNode"
 	case 2:
 		return "ConfUpdateNode"
+	case 3:
+		return "ConfUpdatePeer"
 	}
 	return "unkown"
 }

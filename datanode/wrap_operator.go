@@ -167,6 +167,8 @@ func (s *DataNode) OperatePacket(p *repl.Packet, c net.Conn) (err error) {
 		s.handlePacketToAddDataPartitionRaftMember(p)
 	case proto.OpRemoveDataPartitionRaftMember:
 		s.handlePacketToRemoveDataPartitionRaftMember(p)
+	case proto.OpUpdateDataPartitionPeer:
+		s.handlePacketToUpdateDataPartitionPeer(p)
 	case proto.OpDataPartitionTryToLeader:
 		s.handlePacketToDataPartitionTryToLeader(p)
 	case proto.OpGetPartitionSize:
@@ -1472,6 +1474,67 @@ func (s *DataNode) handlePacketToRemoveDataPartitionRaftMember(p *repl.Packet) {
 	}
 	log.LogDebugf("action[handlePacketToRemoveDataPartitionRaftMember] CanRemoveRaftMember complete "+
 		"req %v dp %v ", p.GetReqID(), dp.partitionID)
+}
+
+func (s *DataNode) handlePacketToUpdateDataPartitionPeer(p *repl.Packet) {
+	var (
+		err          error
+		reqData      []byte
+		isRaftLeader bool
+		req          = &proto.UpdateDataPartitionPeerRequest{}
+	)
+
+	defer func() {
+		if err != nil {
+			p.PackErrorBody(ActionUpdateDataPartitionPeers, err.Error())
+		} else {
+			p.PacketOkReply()
+		}
+	}()
+
+	adminTask := &proto.AdminTask{}
+	decode := json.NewDecoder(bytes.NewBuffer(p.Data))
+	decode.UseNumber()
+	if err = decode.Decode(adminTask); err != nil {
+		return
+	}
+
+	reqData, err = json.Marshal(adminTask.Request)
+	if err != nil {
+		return
+	}
+	if err = json.Unmarshal(reqData, req); err != nil {
+		return
+	}
+
+	log.LogInfof("action[handlePacketToUpdateDataPartitionPeers] %v, partition id %v", req.Peer, req.PartitionId)
+
+	dp := s.space.Partition(req.PartitionId)
+	if dp == nil {
+		return
+	}
+
+	log.LogDebugf("action[handlePacketToUpdateDataPartitionPeers], req %v (%s) Peers(%v) dp %v replicaNum %v",
+		p.GetReqID(), string(reqData), req.Peer, dp.partitionID, dp.replicaNum)
+
+	p.PartitionID = req.PartitionId
+
+	isRaftLeader, err = s.forwardToRaftLeader(dp, p, false)
+	if !isRaftLeader {
+		log.LogWarnf("handlePacketToUpdateDataPartitionPeers return no leader")
+		return
+	}
+
+	if req.Peer.ID != 0 {
+		log.LogDebugf("action[handlePacketToUpdateDataPartitionPeer] UpdateRaftMember "+
+			"req %v dp %v Peer.ID %v", p.GetReqID(), dp.partitionID, req.Peer.ID)
+		_, err = dp.ChangeRaftMember(raftProto.ConfUpdatePeer, raftProto.Peer{ID: req.Peer.ID}, reqData)
+		if err != nil {
+			return
+		}
+	}
+
+	return
 }
 
 func (s *DataNode) handlePacketToDataPartitionTryToLeader(p *repl.Packet) {

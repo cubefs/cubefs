@@ -220,6 +220,27 @@ func (partition *DataPartition) prepareAddRaftMember(addPeer proto.Peer) (leader
 	return
 }
 
+func (partition *DataPartition) prepareUpdateRaftMember(newPeer proto.Peer) (leaderAddr string, candidateAddrs []string, err error) {
+	if !contains(partition.Hosts, newPeer.Addr) {
+		err = fmt.Errorf("vol[%v],data partition[%v] doesn't contain host[%v]", partition.VolName, partition.PartitionID, newPeer.Addr)
+		return
+	}
+	candidateAddrs = make([]string, 0, len(partition.Hosts))
+	leaderAddr = partition.getLeaderAddr()
+	if leaderAddr != "" && contains(partition.Hosts, leaderAddr) {
+		candidateAddrs = append(candidateAddrs, leaderAddr)
+	} else {
+		leaderAddr = ""
+	}
+	for _, host := range partition.Hosts {
+		if host == leaderAddr {
+			continue
+		}
+		candidateAddrs = append(candidateAddrs, host)
+	}
+	return
+}
+
 func (partition *DataPartition) createTaskToTryToChangeLeader(addr string) (task *proto.AdminTask, err error) {
 	task = proto.NewAdminTask(proto.OpDataPartitionTryToLeader, addr, nil)
 	partition.resetTaskID(task)
@@ -290,6 +311,12 @@ func (partition *DataPartition) createTaskToCreateDataPartition(addr string, dat
 
 func (partition *DataPartition) createTaskToDeleteDataPartition(addr string) (task *proto.AdminTask) {
 	task = proto.NewAdminTask(proto.OpDeleteDataPartition, addr, newDeleteDataPartitionRequest(partition.PartitionID))
+	partition.resetTaskID(task)
+	return
+}
+
+func (partition *DataPartition) createTaskToUpdateDataPartitionPeer(addr string, peer proto.Peer) (task *proto.AdminTask) {
+	task = proto.NewAdminTask(proto.OpUpdateDataPartitionPeer, addr, newUpdateDataPartitionPeerRequest(partition.PartitionID, peer))
 	partition.resetTaskID(task)
 	return
 }
@@ -578,6 +605,41 @@ func (partition *DataPartition) checkReplicaNum(c *Cluster, vol *Vol) {
 			partition.VolName, partition.PartitionID, vol.dpReplicaNum, partition.ReplicaNum)
 		vol.NeedToLowerReplica = true
 	}
+}
+
+func (partition *DataPartition) checkDpPeers(c *Cluster) {
+	partition.Lock()
+	defer partition.Unlock()
+
+	newPeers := make([]proto.Peer, len(partition.Peers))
+	copy(newPeers, partition.Peers)
+	needUpdate := false
+	for i, peer := range newPeers {
+		if node, ok := c.dataNodes.Load(peer.Addr); ok {
+			dataNode := node.(*DataNode)
+
+			if peer.HeartbeatPort != dataNode.HeartbeatPort || peer.ReplicaPort != dataNode.ReplicaPort {
+				newPeers[i].HeartbeatPort = dataNode.HeartbeatPort
+				newPeers[i].ReplicaPort = dataNode.ReplicaPort
+				log.LogInfof("[checkPeers] partitionID %v needUpdate peer change from %v to %v", partition.PartitionID, peer, newPeers[i])
+				needUpdate = true
+				if err := c.updateDataPartitionRaftMember(partition, newPeers[i]); err != nil {
+					log.LogErrorf("checkPeers failed : %v", err.Error())
+					return
+				}
+			}
+		}
+	}
+
+	if needUpdate {
+		log.LogInfof("update peer %v", newPeers)
+		if err := partition.update("checkPeers", partition.VolName, newPeers, partition.Hosts, c); err != nil {
+			log.LogErrorf("checkPeers failed : %v", err.Error())
+			return
+		}
+	}
+
+	return
 }
 
 func (partition *DataPartition) hostsToString() (hosts string) {
@@ -1647,7 +1709,7 @@ func (partition *DataPartition) restoreReplicaMeta(c *Cluster) (err error) {
 			partition.PartitionID, partition.DecommissionSrcAddr, err.Error())
 		return
 	}
-	addPeer := proto.Peer{ID: srcDataNode.ID, Addr: partition.DecommissionSrcAddr}
+	addPeer := proto.Peer{ID: srcDataNode.ID, Addr: partition.DecommissionSrcAddr, HeartbeatPort: srcDataNode.HeartbeatPort, ReplicaPort: srcDataNode.ReplicaPort}
 	if err = c.addDataPartitionRaftMember(partition, addPeer); err != nil {
 		log.LogWarnf("action[restoreReplicaMeta]partition %v metadata addReplica %v failed:%v",
 			partition.PartitionID, partition.DecommissionSrcAddr, err.Error())

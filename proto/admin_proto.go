@@ -540,6 +540,12 @@ type DeleteDataPartitionResponse struct {
 	PartitionId uint64
 }
 
+// UpdateDataPartitionPeersRequest defines the request to update peers information of datapartition
+type UpdateDataPartitionPeerRequest struct {
+	PartitionId uint64
+	Peer        Peer
+}
+
 // DataPartitionDecommissionRequest defines the request of decommissioning a data partition.
 type DataPartitionDecommissionRequest struct {
 	PartitionId uint64

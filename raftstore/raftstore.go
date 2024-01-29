@@ -67,6 +67,11 @@ func (s *raftStore) DeleteNode(nodeID uint64) {
 	s.resolver.DeleteNode(nodeID)
 }
 
+// UpdateNodeWithPort update the node with the given port.
+func (s *raftStore) UpdateNodeWithPort(nodeID uint64, addr string, heartbeat int, replicate int) {
+	s.resolver.UpdateNodeWithPort(nodeID, addr, heartbeat, replicate)
+}
+
 // Stop stops the raft store server.
 func (s *raftStore) Stop() {
 	if s.raftServer != nil {
