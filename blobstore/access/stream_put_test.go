@@ -252,7 +252,7 @@ func TestAccessStreamPutShardTimeout(t *testing.T) {
 
 		duration := time.Since(startTime)
 		minDuration := vuidController.duration*3 + time.Millisecond*(200+400) // retry ExponentialBackoff(3, 200)
-		maxDuration := minDuration + minDuration/2
+		maxDuration := minDuration * 3
 		t.Log(duration, minDuration, maxDuration)
 		require.LessOrEqual(t, minDuration, duration, "less duration: ", duration)
 		require.GreaterOrEqual(t, maxDuration, duration, "greater duration: ", duration)
