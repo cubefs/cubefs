@@ -456,6 +456,10 @@ func (dp *DataPartition) ApplyRandomWrite(opItem *rndWrtOpItem, raftApplyID uint
 
 // RandomWriteSubmit submits the proposal to raft.
 func (dp *DataPartition) RandomWriteSubmit(pkg *repl.Packet) (err error) {
+	if !dp.ExtentStore().IsExists(pkg.ExtentID) || dp.ExtentStore().IsDeleted(pkg.ExtentID) {
+		err = proto.ExtentNotFoundError
+		return
+	}
 	err = dp.ExtentStore().CheckIsAvaliRandomWrite(pkg.ExtentID, pkg.ExtentOffset, int64(pkg.Size))
 	if err != nil {
 		return err
