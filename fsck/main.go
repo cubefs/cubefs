@@ -25,7 +25,7 @@ import (
 
 func main() {
 	var err error
-	_, err = log.InitLog("/tmp/cfs", "fsck", log.InfoLevel, nil, log.DefaultLogLeftSpaceLimit)
+	_, err = log.InitLog("/tmp/cfs", "fsck", log.InfoLevel, nil, log.DefaultLogLeftSpaceLimitRatio)
 	if err != nil {
 		fmt.Printf("Failed to init log: %v\n", err)
 		os.Exit(1)
