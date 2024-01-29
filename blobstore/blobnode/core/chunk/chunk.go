@@ -577,7 +577,7 @@ func (cs *chunk) MarkDelete(ctx context.Context, bid proto.BlobID) (err error) {
 	return nil
 }
 
-func (cs *chunk) Delete(ctx context.Context, bid proto.BlobID) (err error) {
+func (cs *chunk) Delete(ctx context.Context, bid proto.BlobID, force bool) (err error) {
 	span := trace.SpanFromContextSafe(ctx)
 
 	// statistics
@@ -596,7 +596,7 @@ func (cs *chunk) Delete(ctx context.Context, bid proto.BlobID) (err error) {
 
 	cs.lock.RUnlock()
 
-	n, err := stg.Delete(ctx, bid)
+	n, err := stg.Delete(ctx, bid, force)
 	if err != nil {
 		span.Errorf("Failed delete, bid:%v, err:%v", bid, err)
 		return err

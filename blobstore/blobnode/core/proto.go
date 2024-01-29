@@ -99,7 +99,7 @@ type Storage interface {
 	ReadShardMeta(ctx context.Context, bid proto.BlobID) (sm *ShardMeta, err error)
 	NewRangeReader(ctx context.Context, b *Shard, from, to int64) (rc io.Reader, err error)
 	MarkDelete(ctx context.Context, bid proto.BlobID) (err error)
-	Delete(ctx context.Context, bid proto.BlobID) (n int64, err error)
+	Delete(ctx context.Context, bid proto.BlobID, force bool) (n int64, err error)
 	ScanMeta(ctx context.Context, startBid proto.BlobID, limit int,
 		fn func(bid proto.BlobID, sm *ShardMeta) error) (err error)
 	SyncData(ctx context.Context) (err error)
@@ -128,7 +128,7 @@ type ChunkAPI interface {
 	Read(ctx context.Context, b *Shard) (n int64, err error)
 	RangeRead(ctx context.Context, b *Shard) (n int64, err error)
 	MarkDelete(ctx context.Context, bid proto.BlobID) (err error)
-	Delete(ctx context.Context, bid proto.BlobID) (err error)
+	Delete(ctx context.Context, bid proto.BlobID, force bool) (err error)
 	ReadShardMeta(ctx context.Context, bid proto.BlobID) (sm *ShardMeta, err error)
 	ListShards(ctx context.Context, startBid proto.BlobID, cnt int, status bnapi.ShardStatus) (infos []*bnapi.ShardInfo, next proto.BlobID, err error)
 	Sync(ctx context.Context) (err error)

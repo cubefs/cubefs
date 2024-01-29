@@ -406,18 +406,18 @@ func (mr *MockStorageMockRecorder) DecrPendingCnt() *gomock.Call {
 }
 
 // Delete mocks base method.
-func (m *MockStorage) Delete(arg0 context.Context, arg1 proto.BlobID) (int64, error) {
+func (m *MockStorage) Delete(arg0 context.Context, arg1 proto.BlobID, arg2 bool) (int64, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Delete", arg0, arg1)
+	ret := m.ctrl.Call(m, "Delete", arg0, arg1, arg2)
 	ret0, _ := ret[0].(int64)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // Delete indicates an expected call of Delete.
-func (mr *MockStorageMockRecorder) Delete(arg0, arg1 interface{}) *gomock.Call {
+func (mr *MockStorageMockRecorder) Delete(arg0, arg1, arg2 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Delete", reflect.TypeOf((*MockStorage)(nil).Delete), arg0, arg1)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Delete", reflect.TypeOf((*MockStorage)(nil).Delete), arg0, arg1, arg2)
 }
 
 // Destroy mocks base method.
@@ -707,17 +707,17 @@ func (mr *MockChunkAPIMockRecorder) CommitCompact(arg0, arg1 interface{}) *gomoc
 }
 
 // Delete mocks base method.
-func (m *MockChunkAPI) Delete(arg0 context.Context, arg1 proto.BlobID) error {
+func (m *MockChunkAPI) Delete(arg0 context.Context, arg1 proto.BlobID, arg2 bool) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Delete", arg0, arg1)
+	ret := m.ctrl.Call(m, "Delete", arg0, arg1, arg2)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // Delete indicates an expected call of Delete.
-func (mr *MockChunkAPIMockRecorder) Delete(arg0, arg1 interface{}) *gomock.Call {
+func (mr *MockChunkAPIMockRecorder) Delete(arg0, arg1, arg2 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Delete", reflect.TypeOf((*MockChunkAPI)(nil).Delete), arg0, arg1)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Delete", reflect.TypeOf((*MockChunkAPI)(nil).Delete), arg0, arg1, arg2)
 }
 
 // Disk mocks base method.

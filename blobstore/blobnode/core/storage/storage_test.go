@@ -227,7 +227,7 @@ func TestStorage_Operations(t *testing.T) {
 	b4 := &core.Shard{
 		Bid: 4,
 	}
-	_, err = stg.Delete(ctx, b4.Bid)
+	_, err = stg.Delete(ctx, b4.Bid, false)
 	require.NoError(t, err)
 }
 

@@ -180,7 +180,7 @@ func TestRunCompact(t *testing.T) {
 
 	err = cs.MarkDelete(ctx, 1)
 	require.NoError(t, err)
-	err = cs.Delete(ctx, 1)
+	err = cs.Delete(ctx, 1, false)
 	require.NoError(t, err)
 
 	go func() {
@@ -344,7 +344,7 @@ func TestDiskStorage_CompactChunkFile2(t *testing.T) {
 	for i := 1; i <= 10; i++ {
 		err = cs.MarkDelete(ctx, proto.BlobID(i))
 		require.NoError(t, err)
-		err = cs.Delete(ctx, proto.BlobID(i))
+		err = cs.Delete(ctx, proto.BlobID(i), false)
 		require.NoError(t, err)
 	}
 
