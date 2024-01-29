@@ -22,8 +22,8 @@ const (
 	// DefaultHeadRoom The tolerance for the log space limit (in megabytes)
 	DefaultHeadRoom = 50 * 1024
 	// DefaultHeadRatio The disk reserve space ratio
-	DefaultHeadRatio         = 0.2
-	DefaultLogLeftSpaceLimit = 5 * 1024
+	DefaultHeadRatio              = 0.2
+	DefaultLogLeftSpaceLimitRatio = 0.05
 )
 
 // A log can be rotated by the size or time.
