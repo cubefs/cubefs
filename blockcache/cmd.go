@@ -179,7 +179,7 @@ func main() {
 		level = log.ErrorLevel
 	}
 
-	_, err = log.InitLog(logDir, module, level, nil, log.DefaultLogLeftSpaceLimit)
+	_, err = log.InitLog(logDir, module, level, nil, log.DefaultLogLeftSpaceLimitRatio)
 	if err != nil {
 		err = errors.NewErrorf("Fatal: failed to init log - %v", err)
 		fmt.Println(err)

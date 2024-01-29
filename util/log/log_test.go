@@ -53,7 +53,7 @@ func TestLog(t *testing.T) {
 		return
 	}
 
-	InitLog("/tmp/cfs", "cfs", DebugLevel, nil, DefaultLogLeftSpaceLimit)
+	InitLog("/tmp/cfs", "cfs", DebugLevel, nil, DefaultLogLeftSpaceLimitRatio)
 	for i := 0; i < 10; i++ {
 		LogDebugf("[debug] current time %v.", time.Now())
 		LogWarnf("[warn] current time %v.", time.Now())
@@ -107,7 +107,7 @@ func TestLogLeftSpaceLimit01(t *testing.T) {
 		t.Errorf("create file[%v] err[%v]", logFilePath, err)
 		return
 	}
-	log, err := InitLog("/tmp/cfs", "cfs", DebugLevel, nil, DefaultLogLeftSpaceLimit)
+	log, err := InitLog("/tmp/cfs", "cfs", DebugLevel, nil, DefaultLogLeftSpaceLimitRatio)
 	if err != nil {
 		t.Errorf("init log err[%v]", err)
 		return
@@ -132,7 +132,7 @@ func TestLogLeftSpaceLimit02(t *testing.T) {
 		return
 	}
 
-	log, err := InitLog("/tmp/cfs", "cfs", DebugLevel, nil, DefaultLogLeftSpaceLimit)
+	log, err := InitLog("/tmp/cfs", "cfs", DebugLevel, nil, DefaultLogLeftSpaceLimitRatio)
 	if err != nil {
 		t.Errorf("init log err[%v]", err)
 		return

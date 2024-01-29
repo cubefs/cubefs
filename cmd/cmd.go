@@ -51,13 +51,13 @@ import (
 )
 
 const (
-	ConfigKeyRole              = "role"
-	ConfigKeyLogDir            = "logDir"
-	ConfigKeyLogLevel          = "logLevel"
-	ConfigKeyProfPort          = "prof"
-	ConfigKeyWarnLogDir        = "warnLogDir"
-	ConfigKeyBuffersTotalLimit = "buffersTotalLimit"
-	ConfigKeyLogLeftSpaceLimit = "logLeftSpaceLimit"
+	ConfigKeyRole                   = "role"
+	ConfigKeyLogDir                 = "logDir"
+	ConfigKeyLogLevel               = "logLevel"
+	ConfigKeyProfPort               = "prof"
+	ConfigKeyWarnLogDir             = "warnLogDir"
+	ConfigKeyBuffersTotalLimit      = "buffersTotalLimit"
+	ConfigKeyLogLeftSpaceLimitRatio = "logLeftSpaceLimitRatio"
 )
 
 const (
@@ -161,11 +161,11 @@ func main() {
 	profPort := cfg.GetString(ConfigKeyProfPort)
 	umpDatadir := cfg.GetString(ConfigKeyWarnLogDir)
 	buffersTotalLimit := cfg.GetInt64(ConfigKeyBuffersTotalLimit)
-	logLeftSpaceLimitStr := cfg.GetString(ConfigKeyLogLeftSpaceLimit)
-	logLeftSpaceLimit, err := strconv.ParseInt(logLeftSpaceLimitStr, 10, 64)
-	if err != nil || logLeftSpaceLimit == 0 {
-		log.LogErrorf("logLeftSpaceLimit is not a legal int value: %v", err.Error())
-		logLeftSpaceLimit = log.DefaultLogLeftSpaceLimit
+	logLeftSpaceLimitRatioStr := cfg.GetString(ConfigKeyLogLeftSpaceLimitRatio)
+	logLeftSpaceLimitRatio, err := strconv.ParseFloat(logLeftSpaceLimitRatioStr, 64)
+	if err != nil || logLeftSpaceLimitRatio <= 0 || logLeftSpaceLimitRatio > 1.0 {
+		log.LogErrorf("logLeftSpaceLimitRatio is not a legal float value: %v", err.Error())
+		logLeftSpaceLimitRatio = log.DefaultLogLeftSpaceLimitRatio
 	}
 	// Init server instance with specified role configuration.
 	var (
@@ -217,7 +217,7 @@ func main() {
 		level = log.ErrorLevel
 	}
 
-	_, err = log.InitLog(logDir, module, level, nil, logLeftSpaceLimit)
+	_, err = log.InitLog(logDir, module, level, nil, logLeftSpaceLimitRatio)
 	if err != nil {
 		err = errors.NewErrorf("Fatal: failed to init log - %v", err)
 		fmt.Println(err)
