@@ -214,7 +214,7 @@ func (l *LcNode) parseConfig(cfg *config.Config) (err error) {
 			return fmt.Errorf("%v,err:%v", proto.ErrInvalidCfg, err.Error())
 		}
 	}
-	if count <= 0 {
+	if count <= 0 || count > maxLcNodeTaskCountLimit {
 		lcNodeTaskCountLimit = defaultLcNodeTaskCountLimit
 	} else {
 		lcNodeTaskCountLimit = int(count)

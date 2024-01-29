@@ -217,12 +217,22 @@ func (s *LcScanner) Start() (err error) {
 	}
 	response.StartTime = &s.now
 
-	log.LogInfof("startScan: first dentry(%v) in dirChan!", firstDentry)
-	s.dirChan.In <- firstDentry
+	s.firstIn(firstDentry)
 
 	go s.checkScanning()
 
 	return
+}
+
+func (s *LcScanner) firstIn(d *proto.ScanDentry) {
+	select {
+	case <-s.stopC:
+		log.LogDebugf("startScan firstIn(%v): stopC!", s.ID)
+		return
+	default:
+		s.dirChan.In <- d
+		log.LogDebugf("startScan(%v): first dir dentry(%v) in!", s.ID, d)
+	}
 }
 
 func (s *LcScanner) FindPrefixInode() (inode uint64, prefixDirs []string, err error) {
