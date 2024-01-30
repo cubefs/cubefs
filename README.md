@@ -51,7 +51,8 @@ Some key features of CubeFS include:
 - Homepage: [cubefs.io](https://cubefs.io/)
 - Mailing list: users@cubefs.groups.io
 - Slack: [cubefs.slack.com](https://cubefs.slack.com/)
-- WeChat: detail see [here](https://github.com/cubefs/cubefs/issues/604).
+- WeChat: detail see [here](https://github.com/cubefs/cubefs/issues/604)
+- Twitter: [cubefs_storge](https://twitter.com/cubefs_storage)
 
 ## Partners and Users
 
