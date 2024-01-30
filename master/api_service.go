@@ -2193,8 +2193,7 @@ func (m *Server) checkReplicaNum(r *http.Request, vol *Vol, req *updateVolReq) (
 		}
 		replicaNum = int(replicaNumInt64)
 	} else {
-		req.replicaNum = int(vol.dpReplicaNum)
-		return
+		replicaNum = int(vol.dpReplicaNum)
 	}
 	req.replicaNum = replicaNum
 	if replicaNum != 0 && replicaNum != int(vol.dpReplicaNum) {
