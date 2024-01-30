@@ -402,6 +402,9 @@ func (d *Disk) computeUsageOnSFXDevice() (err error) {
 		d.CompressionRatio = dStatus.compRatio
 		log.LogDebugf("Disk %v: compute usage: totalPhysicalSpace(%v) freePhysicalSpace(%v) PhysicalUsedRatio(%v) CompressionRatio(%v)",
 			d.Path, d.Total, d.Available, d.PhysicalUsedRatio, d.CompressionRatio)
+		if int64(fsstat.Bavail)*fsstat.Bsize < unit.GB {
+			exporter.WarningBySpecialUMPKey(fmt.Sprintf("%v_%v_%v", d.space.clusterID, ModuleName, "NoSpace"), fmt.Sprintf("path: %v, available space less than 1 GB", d.Path))
+		}
 	}
 	return
 }
@@ -455,6 +458,9 @@ func (d *Disk) computeUsageOnStdDevice() (err error) {
 			d.Path, d.Total, d.Available, d.Used, allocatedSize, unallocated)
 	}
 
+	if fs.Bavail*uint64(fs.Bsize) < unit.GB {
+		exporter.WarningBySpecialUMPKey(fmt.Sprintf("%v_%v_%v", d.space.clusterID, ModuleName, "NoSpace"), fmt.Sprintf("path: %v, available space less than 1 GB", d.Path))
+	}
 	return
 }
 
