@@ -76,7 +76,7 @@ var (
 
 	allCodeModes CodeModePairs
 
-	cmcli             clustermgr.APIAccess
+	cmcli             clustermgr.ClientAPI
 	volumeGetter      controller.VolumeGetter
 	serviceController controller.ServiceController
 	cc                controller.ClusterController
@@ -387,12 +387,13 @@ func initMockData() {
 			IDC:       idc,
 			ReloadSec: 1000,
 		}, cmcli, proxycli, nil)
-	volumeGetter, _ = controller.NewVolumeGetter(clusterID, serviceController, proxycli, 0)
+	volumeGetter, _ = controller.NewVolumeGetter(clusterID, serviceController, cmcli, proxycli, 0)
 
 	ctr = gomock.NewController(&testing.T{})
 	c := NewMockClusterController(ctr)
 	c.EXPECT().Region().AnyTimes().Return("test-region")
 	c.EXPECT().ChooseOne().AnyTimes().Return(clusterInfo, nil)
+	c.EXPECT().GetClusterClient(gomock.Any()).AnyTimes().Return(cmcli)
 	c.EXPECT().GetServiceController(gomock.Any()).AnyTimes().Return(serviceController, nil)
 	c.EXPECT().GetVolumeGetter(gomock.Any()).AnyTimes().Return(volumeGetter, nil)
 	c.EXPECT().ChangeChooseAlg(gomock.Any()).AnyTimes().DoAndReturn(

@@ -113,12 +113,13 @@ type volumeGetterImpl struct {
 
 	service   ServiceController
 	proxy     proxy.Cacher
+	cmClient  clustermgr.ClientAPI
 	singleRun *singleflight.Group
 }
 
 // NewVolumeGetter new a volume getter
 //   memExpiration expiration of memcache, 0 means no expiration
-func NewVolumeGetter(clusterID proto.ClusterID, service ServiceController,
+func NewVolumeGetter(clusterID proto.ClusterID, service ServiceController, cmClient clustermgr.ClientAPI,
 	proxy proxy.Cacher, memExpiration time.Duration) (VolumeGetter, error) {
 	_, ctx := trace.StartSpanFromContext(context.Background(), "")
 
@@ -144,6 +145,7 @@ func NewVolumeGetter(clusterID proto.ClusterID, service ServiceController,
 		punishCache:    punishCache,
 		service:        service,
 		proxy:          proxy,
+		cmClient:       cmClient,
 		singleRun:      new(singleflight.Group),
 	}
 

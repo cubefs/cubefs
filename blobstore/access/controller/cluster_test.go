@@ -227,9 +227,7 @@ func newCC() controller.ClusterController {
 
 func newCCStop() (controller.ClusterController, func()) {
 	cfg := controller.ClusterConfig{
-		Region:            region,
-		ClusterReloadSecs: 0,
-		ConsulAgentAddr:   hostAddr,
+		Region: region,
 	}
 	cfg.CMClientConfig.LbConfig.Config.Tc = rpc.TransportConfig{
 		MaxIdleConns:      4,

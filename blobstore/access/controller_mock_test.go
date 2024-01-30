@@ -80,6 +80,20 @@ func (mr *MockClusterControllerMockRecorder) ChooseOne() *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ChooseOne", reflect.TypeOf((*MockClusterController)(nil).ChooseOne))
 }
 
+// GetClusterClient mocks base method.
+func (m *MockClusterController) GetClusterClient(arg0 proto.ClusterID) clustermgr.ClientAPI {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetClusterClient", arg0)
+	ret0, _ := ret[0].(clustermgr.ClientAPI)
+	return ret0
+}
+
+// GetClusterClient indicates an expected call of GetClusterClient.
+func (mr *MockClusterControllerMockRecorder) GetClusterClient(arg0 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetClusterClient", reflect.TypeOf((*MockClusterController)(nil).GetClusterClient), arg0)
+}
+
 // GetConfig mocks base method.
 func (m *MockClusterController) GetConfig(arg0 context.Context, arg1 string) (string, error) {
 	m.ctrl.T.Helper()

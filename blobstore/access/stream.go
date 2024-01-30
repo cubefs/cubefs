@@ -23,9 +23,11 @@ import (
 	"sync/atomic"
 
 	"github.com/afex/hystrix-go/hystrix"
+
 	"github.com/cubefs/cubefs/blobstore/access/controller"
 	"github.com/cubefs/cubefs/blobstore/api/access"
 	"github.com/cubefs/cubefs/blobstore/api/blobnode"
+	cmapi "github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/api/proxy"
 	"github.com/cubefs/cubefs/blobstore/common/codemode"
 	"github.com/cubefs/cubefs/blobstore/common/ec"
@@ -164,6 +166,7 @@ type Handler struct {
 
 	blobnodeClient blobnode.StorageAPI
 	proxyClient    proxy.Client
+	cmClient       cmapi.ClientAPI
 
 	allCodeModes  CodeModePairs
 	maxObjectSize int64
@@ -178,8 +181,8 @@ func confCheck(cfg *StreamConfig) {
 	if cfg.IDC == "" {
 		log.Fatal("idc config can not be null")
 	}
-	if cfg.ClusterConfig.ConsulAgentAddr == "" && len(cfg.ClusterConfig.Clusters) == 0 {
-		log.Panic("consul or clusters can not all be empty")
+	if len(cfg.ClusterConfig.Clusters) != 1 {
+		log.Panic("Only one cluster can be configured")
 	}
 	cfg.ClusterConfig.IDC = cfg.IDC
 
@@ -235,12 +238,19 @@ func NewStreamHandler(cfg *StreamConfig, stopCh <-chan struct{}) StreamHandler {
 		log.Fatalf("new cluster controller failed, err: %v", err)
 	}
 
+	// only one cluster
+	cmClient := clusterController.GetClusterClient(cfg.ClusterConfig.Clusters[0].ClusterID)
+	if cmClient == nil {
+		log.Fatal("new cluster client is nil")
+	}
+
 	handler := &Handler{
 		memPool:           resourcepool.NewMemPool(cfg.MemPoolSizeClasses),
 		clusterController: clusterController,
 
 		blobnodeClient: blobnode.New(&cfg.BlobnodeConfig),
 		proxyClient:    proxyClient,
+		cmClient:       cmClient,
 
 		maxObjectSize: defaultMaxObjectSize,
 		StreamConfig:  *cfg,

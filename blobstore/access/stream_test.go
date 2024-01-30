@@ -40,9 +40,7 @@ func TestAccessStreamConfig(t *testing.T) {
 			codemode.EC15P12:  16,
 			codemode.EC6P10L2: 18,
 		},
-		ClusterConfig: controller.ClusterConfig{
-			ConsulAgentAddr: "http://127.0.0.1:8500",
-		},
+		ClusterConfig: controller.ClusterConfig{},
 	}
 	confCheck(&cfg)
 

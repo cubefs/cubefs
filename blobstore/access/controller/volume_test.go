@@ -34,7 +34,7 @@ func proxyService() controller.ServiceController {
 func TestAccessVolumeGetterNew(t *testing.T) {
 	_, ctx := trace.StartSpanFromContext(context.Background(), "TestAccessVolumeGetterNew")
 
-	getter, err := controller.NewVolumeGetter(1, proxyService(), proxycli, time.Millisecond*200)
+	getter, err := controller.NewVolumeGetter(1, proxyService(), cmcli, proxycli, time.Millisecond*200)
 	require.Nil(t, err)
 	require.Nil(t, getter.Get(ctx, proto.Vid(0), true))
 
@@ -62,7 +62,7 @@ func TestAccessVolumeGetterNew(t *testing.T) {
 func TestAccessVolumeGetterNotExistVolume(t *testing.T) {
 	_, ctx := trace.StartSpanFromContext(context.Background(), "TestAccessVolumeGetterNotExistVolume")
 
-	getter, err := controller.NewVolumeGetter(0xfe, proxyService(), proxycli, time.Millisecond*200)
+	getter, err := controller.NewVolumeGetter(0xfe, proxyService(), cmcli, proxycli, time.Millisecond*200)
 	require.NoError(t, err)
 
 	id := vid404
@@ -78,7 +78,7 @@ func TestAccessVolumeGetterNotExistVolume(t *testing.T) {
 	getter.Get(ctx, id, true)
 	require.Equal(t, 2, dataCalled[id])
 
-	getter, err = controller.NewVolumeGetter(0xee, proxyService(), proxycli, 0)
+	getter, err = controller.NewVolumeGetter(0xee, proxyService(), cmcli, proxycli, 0)
 	require.NoError(t, err)
 	id = vid404
 	dataCalled[id] = 0
@@ -97,7 +97,7 @@ func TestAccessVolumeGetterNotExistVolume(t *testing.T) {
 func TestAccessVolumeGetterExpiration(t *testing.T) {
 	_, ctx := trace.StartSpanFromContext(context.Background(), "TestAccessVolumeGetterExpiration")
 
-	getter, err := controller.NewVolumeGetter(1, proxyService(), proxycli, time.Millisecond*200)
+	getter, err := controller.NewVolumeGetter(1, proxyService(), cmcli, proxycli, time.Millisecond*200)
 	require.Nil(t, err)
 
 	id := proto.Vid(1)
@@ -118,7 +118,7 @@ func TestAccessVolumeGetterExpiration(t *testing.T) {
 func TestAccessVolumePunish(t *testing.T) {
 	_, ctx := trace.StartSpanFromContext(context.Background(), "TestAccessVolumePunish")
 
-	getter, err := controller.NewVolumeGetter(1, proxyService(), proxycli, 0)
+	getter, err := controller.NewVolumeGetter(1, proxyService(), cmcli, proxycli, 0)
 	require.Nil(t, err)
 	require.Nil(t, getter.Get(ctx, proto.Vid(0), true))
 

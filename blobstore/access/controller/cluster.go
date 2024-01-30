@@ -16,26 +16,18 @@ package controller
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"math/rand"
-	"path/filepath"
 	"sort"
-	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
-	"time"
-
-	"github.com/hashicorp/consul/api"
 
 	cmapi "github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/api/proxy"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
-	"github.com/cubefs/cubefs/blobstore/util/defaulter"
 	"github.com/cubefs/cubefs/blobstore/util/errors"
-	"github.com/cubefs/cubefs/blobstore/util/log"
 )
 
 // AlgChoose algorithm of choose cluster
@@ -107,6 +99,8 @@ type ClusterController interface {
 	All() []*cmapi.ClusterInfo
 	// ChooseOne returns a available cluster to upload
 	ChooseOne() (*cmapi.ClusterInfo, error)
+	// GetClusterClient returns a cluster client
+	GetClusterClient(clusterID proto.ClusterID) cmapi.ClientAPI
 	// GetServiceController return ServiceController in specified cluster
 	GetServiceController(clusterID proto.ClusterID) (ServiceController, error)
 	// GetVolumeGetter return VolumeGetter in specified cluster
@@ -125,15 +119,13 @@ type ClusterConfig struct {
 	IDC               string       `json:"-"` // passing by stream config.
 	Region            string       `json:"region"`
 	RegionMagic       string       `json:"region_magic"`
-	ClusterReloadSecs int          `json:"cluster_reload_secs"`
 	ServiceReloadSecs int          `json:"service_reload_secs"`
 	CMClientConfig    cmapi.Config `json:"clustermgr_client_config"`
 
 	ServicePunishThreshold      uint32 `json:"service_punish_threshold"`
 	ServicePunishValidIntervalS int    `json:"service_punish_valid_interval_s"`
 
-	ConsulAgentAddr string    `json:"consul_agent_addr"`
-	Clusters        []Cluster `json:"clusters"`
+	Clusters []Cluster `json:"cluster"`
 }
 
 // Cluster cluster config, each clusterID related to hosts list
@@ -153,7 +145,6 @@ type clusterQueue []*cmapi.ClusterInfo
 
 type clusterControllerImpl struct {
 	region          string
-	kvClient        *api.Client
 	allocAlg        uint32
 	totalAvailable  int64        // available space of all clusters
 	clusters        atomic.Value // all clusters
@@ -169,52 +160,18 @@ type clusterControllerImpl struct {
 
 // NewClusterController returns a cluster controller
 func NewClusterController(cfg *ClusterConfig, proxy proxy.Cacher, stopCh <-chan struct{}) (ClusterController, error) {
-	defaulter.LessOrEqual(&cfg.ClusterReloadSecs, int(3))
-
-	consulConf := api.DefaultConfig()
-	consulConf.Address = cfg.ConsulAgentAddr
-	var client *api.Client
-	var err error
-	if consulConf.Address != "" {
-		client, err = api.NewClient(consulConf)
-		if err != nil {
-			return nil, fmt.Errorf("new consul client failed, err: %v", err)
-		}
-	}
 	controller := &clusterControllerImpl{
-		region:   cfg.Region,
-		kvClient: client,
-		proxy:    proxy,
-		stopCh:   stopCh,
-		config:   *cfg,
+		region: cfg.Region,
+		proxy:  proxy,
+		stopCh: stopCh,
+		config: *cfg,
 	}
 	atomic.StoreUint32(&controller.allocAlg, uint32(AlgAvailable))
 
-	f := controller.loadWithConfig
-	if client != nil {
-		f = controller.loadWithConsul
-	}
-	if err := f(); err != nil {
+	if err := controller.loadWithConfig(); err != nil {
 		return nil, errors.Base(err, "load cluster failed")
 	}
 
-	if stopCh == nil {
-		return controller, nil
-	}
-	go func() {
-		tick := time.NewTicker(time.Duration(cfg.ClusterReloadSecs) * time.Second)
-		defer tick.Stop()
-		for {
-			select {
-			case <-tick.C:
-				if err := f(); err != nil {
-					log.Warn("load timer error", err)
-				}
-			case <-controller.stopCh:
-				return
-			}
-		}
-	}()
 	return controller, nil
 }
 
@@ -255,53 +212,6 @@ func (c *clusterControllerImpl) loadWithConfig() error {
 		}
 	}
 
-	return c.deal(ctx, available, allClusters, totalAvailable)
-}
-
-func (c *clusterControllerImpl) loadWithConsul() error {
-	span, ctx := trace.StartSpanFromContext(context.Background(), "")
-
-	path := cmapi.GetConsulClusterPath(c.region)
-	span.Debug("to list consul path", path)
-
-	pairs, _, err := c.kvClient.KV().List(path, nil)
-	if err != nil {
-		return err
-	}
-	span.Debugf("found %d clusters", len(pairs))
-
-	allClusters := make(clusterMap)
-	available := make([]*cmapi.ClusterInfo, 0, len(pairs))
-	totalAvailable := int64(0)
-	for _, pair := range pairs {
-		clusterInfo := &cmapi.ClusterInfo{}
-		err := json.Unmarshal(pair.Value, clusterInfo)
-		if err != nil {
-			span.Warnf("decode failed, raw:%s, error:%s", string(pair.Value), err.Error())
-			continue
-		}
-
-		clusterKey := filepath.Base(pair.Key)
-		span.Debug("found cluster", clusterKey)
-
-		clusterID, err := strconv.ParseUint(clusterKey, 10, 32)
-		if err != nil {
-			span.Warn("invalid cluster id", clusterKey, err)
-			continue
-		}
-		if clusterInfo.ClusterID != proto.ClusterID(clusterID) {
-			span.Warn("mismatch cluster id", clusterInfo.ClusterID, clusterID)
-			continue
-		}
-
-		allClusters[proto.ClusterID(clusterID)] = &cluster{clusterInfo: clusterInfo}
-		if !clusterInfo.Readonly && clusterInfo.Available > 0 {
-			available = append(available, clusterInfo)
-			totalAvailable += clusterInfo.Available
-		} else {
-			span.Debug("readonly or no available cluster", clusterID)
-		}
-	}
 	return c.deal(ctx, available, allClusters, totalAvailable)
 }
 
@@ -352,11 +262,11 @@ func (c *clusterControllerImpl) deal(ctx context.Context, available []*cmapi.Clu
 		}, cmCli, c.proxy, c.stopCh)
 		if err != nil {
 			removeThisCluster()
-			span.Warn("new service manager failed", clusterID, err)
+			span.Warn("new service manager failed", clusterID, cmCli, err)
 			continue
 		}
 
-		volumeGetter, err := NewVolumeGetter(clusterID, serviceController, c.proxy, -1)
+		volumeGetter, err := NewVolumeGetter(clusterID, serviceController, cmCli, c.proxy, -1)
 		if err != nil {
 			removeThisCluster()
 			span.Warn("new volume getter failed", clusterID, err)
@@ -428,6 +338,17 @@ func (c *clusterControllerImpl) ChooseOne() (*cmapi.ClusterInfo, error) {
 	}
 
 	return nil, fmt.Errorf("no available cluster by %s", alg.String())
+}
+
+func (c *clusterControllerImpl) GetClusterClient(clusterID proto.ClusterID) cmapi.ClientAPI {
+	allClusters := c.clusters.Load().(clusterMap)
+
+	cm, ok := allClusters[clusterID]
+	if !ok {
+		return nil
+	}
+
+	return cm.client
 }
 
 func (c *clusterControllerImpl) ChangeChooseAlg(alg AlgChoose) error {
