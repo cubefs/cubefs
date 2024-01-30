@@ -496,6 +496,29 @@ func (ml *MultiLimiter) waitOrAlowN(ctx context.Context, ps Properties, stat Sta
 
 	statIndex := stat.index()
 	groups := ml.getLimiters(ps)
+	var timeout time.Duration
+	for _, group := range groups {
+		for i, limiterWithTimeout := range group {
+			if limiterWithTimeout.limiter == nil || !statIndex[i] || ctx == nil {
+				continue
+			}
+			if limiterWithTimeout.timeout > timeout {
+				timeout = limiterWithTimeout.timeout
+			}
+		}
+	}
+	if timeout == 0 {
+		timeout = defaultTimeout
+	}
+	if ctx != nil {
+		_, hasDeadline := ctx.Deadline()
+		var cancel context.CancelFunc
+		if !hasDeadline && useDefault {
+			ctx, cancel = context.WithTimeout(ctx, timeout)
+			defer cancel()
+		}
+	}
+
 	for _, group := range groups {
 		for i, limiterWithTimeout := range group {
 			limiter := limiterWithTimeout.limiter
@@ -512,16 +535,6 @@ func (ml *MultiLimiter) waitOrAlowN(ctx context.Context, ps Properties, stat Sta
 				continue
 			}
 
-			timeout := limiterWithTimeout.timeout
-			if timeout == 0 {
-				timeout = defaultTimeout
-			}
-			_, hasDeadline := ctx.Deadline()
-			var cancel context.CancelFunc
-			if !hasDeadline && useDefault {
-				ctx, cancel = context.WithTimeout(ctx, timeout)
-				defer cancel()
-			}
 			if err = waitN(limiter, ctx, stat.val(statType(i))); err != nil {
 				return
 			}
