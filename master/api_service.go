@@ -1958,8 +1958,7 @@ func (m *Server) checkReplicaNum(r *http.Request, vol *Vol, req *updateVolReq) (
 		}
 		replicaNum = int(replicaNumInt64)
 	} else {
-		req.replicaNum = int(vol.dpReplicaNum)
-		return
+		replicaNum = int(vol.dpReplicaNum)
 	}
 	req.replicaNum = replicaNum
 	if replicaNum != 0 && replicaNum != int(vol.dpReplicaNum) {
@@ -1976,11 +1975,17 @@ func (m *Server) checkReplicaNum(r *http.Request, vol *Vol, req *updateVolReq) (
 			return
 		}
 	}
-
-	if req.replicaNum == 0 ||
-		((req.replicaNum == 1 || req.replicaNum == 2) && !req.followerRead) {
-		err = fmt.Errorf("replica or follower read status error")
-		return
+	if proto.IsHot(vol.VolType) {
+		if req.replicaNum == 0 ||
+			((req.replicaNum == 1 || req.replicaNum == 2) && !req.followerRead) {
+			err = fmt.Errorf("replica or follower read status error")
+			return
+		}
+	} else {
+		if (req.replicaNum == 0 && req.coldArgs.cacheCap > 0) || !req.followerRead {
+			err = fmt.Errorf("replica or follower read status error")
+			return
+		}
 	}
 	return
 }
