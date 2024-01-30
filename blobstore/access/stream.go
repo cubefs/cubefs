@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"sync"
 	"sync/atomic"
 
 	"github.com/afex/hystrix-go/hystrix"
@@ -31,6 +32,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/api/proxy"
 	"github.com/cubefs/cubefs/blobstore/common/codemode"
 	"github.com/cubefs/cubefs/blobstore/common/ec"
+	errcode "github.com/cubefs/cubefs/blobstore/common/errors"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/resourcepool"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
@@ -132,9 +134,10 @@ type StreamConfig struct {
 	// just for one AZ is down, cant write quorum in all AZs
 	CodeModesPutQuorums map[codemode.CodeMode]int `json:"code_mode_put_quorums"`
 
-	ClusterConfig  controller.ClusterConfig `json:"cluster_config"`
-	BlobnodeConfig blobnode.Config          `json:"blobnode_config"`
-	ProxyConfig    proxy.Config             `json:"proxy_config"`
+	ClusterConfig  controller.ClusterConfig   `json:"cluster_config"`
+	BlobnodeConfig blobnode.Config            `json:"blobnode_config"`
+	ProxyConfig    proxy.Config               `json:"proxy_config"`
+	AllocConfig    controller.VolumeMgrConfig `json:"alloc_config"`
 
 	// hystrix command config
 	AllocCommandConfig hystrix.CommandConfig `json:"alloc_command_config"`
@@ -163,6 +166,7 @@ type Handler struct {
 	memPool           *resourcepool.MemPool
 	encoder           map[codemode.CodeMode]ec.Encoder
 	clusterController controller.ClusterController
+	allocMgr          controller.VolumeMgr
 
 	blobnodeClient blobnode.StorageAPI
 	proxyClient    proxy.Client
@@ -171,6 +175,7 @@ type Handler struct {
 	allCodeModes  CodeModePairs
 	maxObjectSize int64
 
+	failVids       sync.Map
 	discardVidChan chan discardVid
 	stopCh         <-chan struct{}
 
@@ -243,10 +248,15 @@ func NewStreamHandler(cfg *StreamConfig, stopCh <-chan struct{}) StreamHandler {
 	if cmClient == nil {
 		log.Fatal("new cluster client is nil")
 	}
+	allocMgr, err := controller.NewVolumeMgr(context.Background(), cfg.AllocConfig, cmClient, stopCh)
+	if err != nil {
+		log.Fatal("Fail to new volume mgr, err: %+v", err)
+	}
 
 	handler := &Handler{
 		memPool:           resourcepool.NewMemPool(cfg.MemPoolSizeClasses),
 		clusterController: clusterController,
+		allocMgr:          allocMgr,
 
 		blobnodeClient: blobnode.New(&cfg.BlobnodeConfig),
 		proxyClient:    proxyClient,
@@ -414,6 +424,34 @@ func (h *Handler) punishDiskWith(ctx context.Context, clusterID proto.ClusterID,
 	if serviceController, err := h.clusterController.GetServiceController(clusterID); err == nil {
 		serviceController.PunishDiskWithThreshold(ctx, diskID, h.DiskTimeoutPunishIntervalS)
 	}
+}
+
+type ReleaseVolume uint8
+
+const (
+	releaseVolumeInvalid = ReleaseVolume(iota)
+	releaseVolumeNormal
+	releaseVolumeSealed
+)
+
+func (h *Handler) releaseVolume(ctx context.Context, vid proto.Vid, tp ReleaseVolume) {
+	span := trace.SpanFromContextSafe(ctx)
+	var err error
+	switch tp {
+	case releaseVolumeNormal:
+		err = h.allocMgr.Release(ctx, &cmapi.ReleaseVolumes{NormalVids: []proto.Vid{vid}})
+	case releaseVolumeSealed:
+		err = h.allocMgr.Release(ctx, &cmapi.ReleaseVolumes{SealedVids: []proto.Vid{vid}})
+	}
+	span.Warnf("We released volume %d, type:%d, err[%+v]", vid, tp, err)
+}
+
+func (h *Handler) allocVolume(ctx context.Context, args *proxy.AllocVolsArgs) ([]proxy.AllocRet, error) {
+	if args.BidCount == 0 || args.Fsize == 0 {
+		return nil, errcode.ErrIllegalArguments
+	}
+
+	return h.allocMgr.Alloc(ctx, args)
 }
 
 // blobCount blobSize > 0 is certain

@@ -19,6 +19,7 @@ import (
 	"sync/atomic"
 
 	"github.com/afex/hystrix-go/hystrix"
+
 	"github.com/cubefs/cubefs/blobstore/api/access"
 	"github.com/cubefs/cubefs/blobstore/api/proxy"
 	"github.com/cubefs/cubefs/blobstore/common/codemode"
@@ -135,7 +136,7 @@ func (h *Handler) allocFromAllocator(ctx context.Context, codeMode codemode.Code
 		}
 		allocHost = host
 
-		allocRets, err = h.proxyClient.VolumeAlloc(ctx, host, &args)
+		allocRets, err = h.allocVolume(ctx, &args)
 		if err != nil {
 			if errorTimeout(err) || errorConnectionRefused(err) {
 				span.Warn("punish unreachable proxy host:", host)
@@ -156,7 +157,6 @@ func (h *Handler) allocFromAllocator(ctx context.Context, codeMode codemode.Code
 			if vInfo.IsPunish {
 				// return err and retry allocate
 				err = errAllocatePunishedVolume
-				args.Excludes = append(args.Excludes, vInfo.Vid)
 				span.Warn("next retry exclude vid:", vInfo.Vid, err)
 				return err
 			}

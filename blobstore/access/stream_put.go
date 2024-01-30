@@ -228,6 +228,8 @@ func (h *Handler) writeToBlobnodes(ctx context.Context,
 	writtenNum := uint32(0)
 
 	wg.Add(len(volume.Units))
+	// 1: has broken disk, need normal release volume ; 2: need sealed release volume
+	releaseType := releaseVolumeInvalid
 	for i, unitI := range volume.Units {
 		index, unit := i, unitI
 
@@ -291,6 +293,9 @@ func (h *Handler) writeToBlobnodes(ctx context.Context,
 				}
 
 				code := rpc.DetectStatusCode(err)
+				if code == errcode.CodeDiskBroken {
+					releaseType = releaseVolumeNormal
+				}
 				switch code {
 				case errcode.CodeDiskBroken, errcode.CodeDiskNotFound,
 					errcode.CodeChunkNoSpace, errcode.CodeVUIDReadonly:
@@ -382,17 +387,34 @@ func (h *Handler) writeToBlobnodes(ctx context.Context,
 			st := <-statusCh
 			received[st.index] = st
 		}
-
 		if _, ok := <-writeDone; !ok {
 			return
 		}
+
+		_, ok := h.failVids.Load(vid)
+		if !ok {
+			h.failVids.Store(vid, newFailVuidMap())
+		}
+		v, _ := h.failVids.Load(vid)
+		failIdxes := v.(*failVuidMap)
 
 		for idx := range volume.Units {
 			if st, ok := received[idx]; ok && st.status {
 				continue
 			}
+			failIdxes.Store(uint8(idx))
+		}
+		if failIdxes.Len() > tactic.M {
+			go h.releaseVolume(ctx, vid, releaseVolumeSealed)
+			h.failVids.Delete(vid)
 		}
 	}(writeDone)
+
+	defer func() {
+		if releaseType > releaseVolumeInvalid {
+			go h.releaseVolume(ctx, vid, releaseType)
+		}
+	}()
 
 	// return if had quorum successful shards
 	if atomic.LoadUint32(&writtenNum) >= putQuorum {
@@ -436,5 +458,38 @@ func (h *Handler) writeToBlobnodes(ctx context.Context,
 
 	close(writeDone)
 	err = fmt.Errorf("quorum write failed (%d < %d) of %s", writtenNum, putQuorum, blob.String())
+	// need mark sealed: less than quorum, az fail
+	releaseType = releaseVolumeSealed
 	return
+}
+
+type failVuidMap struct {
+	failIdx map[uint8]struct{}
+	lck     sync.RWMutex
+}
+
+func newFailVuidMap() *failVuidMap {
+	return &failVuidMap{
+		failIdx: make(map[uint8]struct{}),
+	}
+}
+
+func (m *failVuidMap) Store(idx uint8) {
+	m.lck.RLock()
+	_, ok := m.failIdx[idx]
+	m.lck.RUnlock()
+
+	if ok {
+		return
+	}
+
+	m.lck.Lock()
+	defer m.lck.Unlock()
+	m.failIdx[idx] = struct{}{}
+}
+
+func (m *failVuidMap) Len() int {
+	m.lck.RLock()
+	defer m.lck.RUnlock()
+	return len(m.failIdx)
 }

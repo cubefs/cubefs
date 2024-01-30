@@ -94,7 +94,6 @@ func (h *Handler) loopDiscardVids() {
 						Fsize:    1,
 						BidCount: 1,
 						CodeMode: dv.codeMode,
-						Discards: []proto.Vid{dv.vid},
 					})
 				}(dv)
 				delete(cache, dv)
@@ -114,7 +113,7 @@ func (h *Handler) tryDiscardVidOnAllocator(cid proto.ClusterID, vid proto.Vid, a
 
 	span.Infof("to post on %s discard vids %+v", host, args)
 
-	_, err = h.proxyClient.VolumeAlloc(ctx, host, &args)
+	_, err = h.allocVolume(ctx, &args)
 	if err != nil {
 		span.Warnf("post on %s discard vids %+v : %v", host, args, err)
 	}
