@@ -335,7 +335,7 @@ func (s *ExtentStore) Write(extentID uint64, offset, size int64, data []byte, cr
 	)
 
 	s.eiMutex.Lock()
-	ei, _ = s.extentInfoMap[extentID]
+	ei = s.extentInfoMap[extentID]
 	e, err = s.extentWithHeader(ei)
 	s.eiMutex.Unlock()
 	if err != nil {
@@ -353,10 +353,10 @@ func (s *ExtentStore) Write(extentID uint64, offset, size int64, data []byte, cr
 	} else {
 		if s.extentLock {
 			if _, ok := s.extentLockMap[extentID]; ok {
-				s.elMutex.RUnlock()
-				err = fmt.Errorf("extent(%v) is locked", extentID)
-				log.LogErrorf("[Write] gc_extent[%d] is locked", extentID)
-				return
+				// s.elMutex.RUnlock()
+				// err = fmt.Errorf("extent(%v) is locked", extentID)
+				log.LogErrorf("[Write] gc_extent[%d] is locked, path %s", extentID, s.dataPath)
+				// return
 			}
 		}
 	}
