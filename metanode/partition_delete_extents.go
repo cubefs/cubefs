@@ -396,7 +396,7 @@ func (mp *metaPartition) cleanExpiredExtents(retryList *list.List) (delCursor ui
 	handleItemFunc := func(k, v []byte) (bool, error) {
 
 		needDel := true
-		if retryList.Len() >= maxRetryCnt {
+		if retryList.Len() >= maxRetryCnt || cnt >= cleanExpiredExtentsMaxCountEveryTime {
 			//next term
 			return false, nil
 		}
