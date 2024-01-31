@@ -362,7 +362,7 @@ func (eh *ExtentHandler) processReply(packet *Packet) {
 	if verUpdate {
 		fileOffset = reply.KernelOffset
 	}
-	if eh.key == nil {
+	if eh.key == nil || verUpdate {
 		eh.key = &proto.ExtentKey{
 			FileOffset:   fileOffset,
 			PartitionId:  packet.PartitionID,
