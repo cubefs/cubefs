@@ -1982,7 +1982,10 @@ func (m *Server) checkReplicaNum(r *http.Request, vol *Vol, req *updateVolReq) (
 			return
 		}
 	} else {
-		if (req.replicaNum == 0 && req.coldArgs.cacheCap > 0) || !req.followerRead {
+		if req.replicaNum == 0 && req.coldArgs.cacheCap > 0 {
+			req.replicaNum = 1
+		}
+		if (req.replicaNum == 0 && req.replicaNum != int(vol.dpReplicaNum)) || !req.followerRead {
 			err = fmt.Errorf("replica or follower read status error")
 			return
 		}
