@@ -259,6 +259,7 @@ const (
 
 	registerMaxRetryCount     = 3
 	registerRetryWaitInterval = time.Second * 5
+	cleanExpiredExtentsMaxCountEveryTime = 10 * 10000   //10w
 )
 
 const (
