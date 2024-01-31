@@ -959,17 +959,15 @@ func (m *metadataManager) rateLimit(conn net.Conn, p *Packet, remoteAddr string)
 		return nil
 	}
 
+	var ps = multirate.Properties{}
+	ps = append(ps, multirate.Property{Type: multirate.PropertyTypeOp, Value: strconv.Itoa(int(p.Opcode))})
+
 	pid := p.PartitionID
 	mp, err := m.GetPartition(pid)
-	if err != nil {
-		return nil
-	}
-
-	vol := mp.GetBaseConfig().VolName
-	ps := multirate.Properties{
-		{multirate.PropertyTypeVol, vol},
-		{multirate.PropertyTypeOp, strconv.Itoa(int(p.Opcode))},
-		{multirate.PropertyTypePartition, strconv.Itoa(int(pid))},
+	if err == nil && mp != nil {
+		vol := mp.GetBaseConfig().VolName
+		ps = append(ps, multirate.Property{Type: multirate.PropertyTypeVol, Value: vol})
+		ps = append(ps, multirate.Property{Type: multirate.PropertyTypePartition, Value: strconv.Itoa(int(pid))})
 	}
 	stat := multirate.Stat{
 		Count: 1,
