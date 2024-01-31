@@ -273,12 +273,13 @@ func (d *Disk) initInterceptors() {
 		},
 	}
 	for _, keys := range pairs {
-		d.interceptors.Register(keys.Typ,
+		var typ, exporterKey, monitorAct = keys.Typ, keys.ExporterKey, keys.MonitorAct
+		d.interceptors.Register(typ,
 			storage.NewFuncInterceptor(
 				func() (ctx context.Context, err error) {
 					ctx = context.Background()
-					ctx = context.WithValue(ctx, ctxKeyExporterTP, exporter.NewModuleTPUs(keys.ExporterKey))
-					ctx = context.WithValue(ctx, ctxKeyMonitorTP, d.monitorData[keys.MonitorAct].BeforeTp())
+					ctx = context.WithValue(ctx, ctxKeyExporterTP, exporter.NewModuleTPUs(exporterKey))
+					ctx = context.WithValue(ctx, ctxKeyMonitorTP, d.monitorData[monitorAct].BeforeTp())
 					return
 				},
 				func(ctx context.Context, n int64, err error) {
