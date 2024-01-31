@@ -1,0 +1,87 @@
+name: 'Pull Request Checker'
+
+on:
+  pull_request:
+    types:
+      - opened
+      - edited
+      - reopened
+      - synchronize
+
+jobs:
+  check-pr-title:
+    name: Check Pull Request Title
+    runs-on: ubuntu-latest
+    steps:
+      - uses: amannn/action-semantic-pull-request@e9fabac35e210fea40ca5b14c0da95a099eff26f # v5.4.0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          # feat(ui): Add `Button` component
+          # ^    ^    ^
+          # |    |    |__ Subject
+          # |    |_______ Scope
+          # |____________ Type
+
+          # Default: https://github.com/commitizen/conventional-commit-types
+          # types: |
+          #   fix
+
+          # Configure which scopes are allowed (newline-delimited).
+          # These are regex patterns auto-wrapped in `^ $`.
+          scopes: |
+            [a-z]+
+          # Configure that a scope must always be provided.
+          requireScope: true
+
+          # If you're using a format for the PR title that differs from the traditional Conventional
+          # Commits spec, you can use these options to customize the parsing of the type, scope and
+          # subject. The `headerPattern` should contain a regex where the capturing groups in parentheses
+          # correspond to the parts listed in `headerPatternCorrespondence`.
+          # See: https://github.com/conventional-changelog/conventional-changelog/tree/master/packages/conventional-commits-parser#headerpattern
+          headerPattern: '^(\w*)(?:\((.*?)\))?: (.*)$'
+          headerPatternCorrespondence: type, scope, subject
+
+  check-commit-message:
+    name: Check Commit Message
+    runs-on: ubuntu-latest
+    steps:
+      - name: Get PR Commits
+        id: 'get-pr-commits'
+        uses: tim-actions/get-pr-commits@3efc1387ead42029a0d488ab98f24b7452dc3cde # v1.3.0
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Check Title
+        uses: tim-actions/commit-message-checker-with-regex@094fc16ff83d04e2ec73edb5eaf6aa267db33791 # v0.3.2
+        with:
+          commits: ${{ steps.get-pr-commits.outputs.commits }}
+          pattern: '^[a-z]+\([a-z]+\): .+\n(\n.*)*$'
+          error: 'Title likes `<type>(<scope>): <subject>`'
+
+      - name: Check Subject Line Length
+        uses: tim-actions/commit-message-checker-with-regex@094fc16ff83d04e2ec73edb5eaf6aa267db33791 # v0.3.2
+        with:
+          commits: ${{ steps.get-pr-commits.outputs.commits }}
+          pattern: '^.{0,100}\n(\n.*)*$'
+          error: 'Subject too long (max 100)'
+
+      - name: Check Body Line Length
+        uses: tim-actions/commit-message-checker-with-regex@094fc16ff83d04e2ec73edb5eaf6aa267db33791 # v0.3.2
+        with:
+          commits: ${{ steps.get-pr-commits.outputs.commits }}
+          pattern: '^.+\n(\n.{0,100})*$'
+          error: 'Body line too long (max 100)'
+
+      - name: Document
+        if: ${{ failure() }}
+        run: |
+          echo ": template of commit message"
+          echo "<type>(<scope>): <subject>"
+          echo ""
+          echo "<body>"
+          echo ""
+          echo "close: #<issue_id>"
+          echo ""
+          echo "<footer>"
+          echo "Signed-off-by: <name> <email>"
