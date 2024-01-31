@@ -325,6 +325,28 @@ func (p *Fixer) computeLocalFingerprint(fragment *Fragment) (fgp storage.Fingerp
 	return fgp, nil
 }
 
+func (p *Fixer) checkLocalExists(fragment *Fragment) (exist bool, err error) {
+	if !p.storage.IsExists(fragment.ExtentID) {
+		return false, nil
+	}
+	var localSize uint64
+	if proto.IsTinyExtent(fragment.ExtentID) {
+		if localSize, err = p.storage.TinyExtentGetFinfoSize(fragment.ExtentID); err != nil {
+			return false, err
+		}
+	} else {
+		var ei *storage.ExtentInfoBlock
+		if ei, err = p.storage.Watermark(fragment.ExtentID); err != nil {
+			return false, err
+		}
+		localSize = ei[storage.Size]
+	}
+	if localSize < fragment.Offset+fragment.Size {
+		return false, nil
+	}
+	return true, nil
+}
+
 func (p *Fixer) computeLocalCRC(fragment *Fragment) (crc uint32, err error) {
 	var (
 		extentID   = fragment.ExtentID

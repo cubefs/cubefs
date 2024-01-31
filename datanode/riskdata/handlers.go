@@ -199,7 +199,7 @@ func (p *Fixer) fixByFastTrustPolicy(hosts []string, hat proto.CrossRegionHAType
 }
 
 // 使用可信副本策略对指定数据片段进行修复
-func (p *Fixer) fixByStdTrustPolicy(hosts []string, hat proto.CrossRegionHAType, getLocalCRC func() (uint32, error), fragment *Fragment) FixResult {
+func (p *Fixer) fixByStdTrustPolicy(hosts []string, hat proto.CrossRegionHAType, _ func() (uint32, error), fragment *Fragment) FixResult {
 	var (
 		err       error
 		extentID  = fragment.ExtentID
@@ -217,11 +217,12 @@ func (p *Fixer) fixByStdTrustPolicy(hosts []string, hat proto.CrossRegionHAType,
 		}
 	}()
 
-	var localCRC uint32
-	if localCRC, err = getLocalCRC(); err != nil {
+	var exists bool
+	exists, err = p.checkLocalExists(fragment)
+	if err != nil {
 		return Retry
 	}
-	if localCRC == 0 {
+	if !exists {
 		return Success
 	}
 
