@@ -1530,7 +1530,7 @@ func setVolFromArgs(args *VolVarargs, vol *Vol) {
 	vol.txOpLimit = args.txOpLimit
 	vol.dpReplicaNum = args.dpReplicaNum
 
-	if proto.IsCold(vol.VolType) {
+	if proto.IsVolSupportStorageClass(vol.allowedStorageClass, proto.StorageClass_BlobStore) {
 		coldArgs := args.coldArgs
 		vol.CacheLRUInterval = coldArgs.cacheLRUInterval
 		vol.CacheLowWater = coldArgs.cacheLowWater

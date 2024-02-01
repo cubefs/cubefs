@@ -352,7 +352,7 @@ func main() {
 	}
 
 	proto.InitBufferPool(opt.BuffersTotalLimit)
-	if proto.VolSupportsBlobStore(opt.VolAllowedStorageClass) {
+	if proto.IsVolSupportStorageClass(opt.VolAllowedStorageClass, proto.StorageClass_BlobStore) {
 		buf.InitCachePool(opt.EbsBlockSize)
 	}
 	if opt.EnableBcache {
@@ -661,7 +661,7 @@ func mount(opt *proto.MountOptions) (fsConn *fuse.Conn, super *cfs.Super, err er
 			}
 			super.SetTransaction(volumeInfo.EnableTransaction, volumeInfo.TxTimeout, volumeInfo.TxConflictRetryNum, volumeInfo.TxConflictRetryInterval)
 
-			if proto.VolSupportsBlobStore(opt.VolAllowedStorageClass) {
+			if proto.IsVolSupportStorageClass(opt.VolAllowedStorageClass, proto.StorageClass_BlobStore) {
 				super.EbsBlockSize = volumeInfo.ObjBlockSize
 			}
 			if proto.IsStorageClassBlobStore(opt.VolStorageClass) {
