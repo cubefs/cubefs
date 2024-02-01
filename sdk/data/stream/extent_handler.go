@@ -138,7 +138,12 @@ func (eh *ExtentHandler) String() string {
 
 func (eh *ExtentHandler) write(data []byte, offset, size int, direct bool) (ek *proto.ExtentKey, err error) {
 	var total, write int
-
+	//TODO: eh.packet may be set to nil when ExtentHandler in error status
+	defer func() {
+		if r := recover(); r != nil {
+			err = errors.NewErrorf("ExtentHandler Write: Panic occurred: %v", r)
+		}
+	}()
 	status := eh.getStatus()
 	if status >= ExtentStatusClosed {
 		err = errors.NewErrorf("ExtentHandler Write: Full or Recover eh(%v) key(%v)", eh, eh.key)
