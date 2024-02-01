@@ -5,7 +5,7 @@ Please refer to the release notes for the upgrade steps of each version.
 :::
 
 ## Get Binary
-+ Get the binary of the specified version. Obtain the code of the specified version from https://github.com/cubeFS/cubefs/releases, and compile to generate the binary.
++ Obtain the code of the specified version from https://github.com/cubeFS/cubefs/releases, and compile to generate the binary.
 
 ## Freeze the Cluster
 

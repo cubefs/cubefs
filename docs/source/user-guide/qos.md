@@ -140,7 +140,7 @@ When the interface throttling is triggered (the QPS limit is reached), subsequen
 ### Query Interface Throttling Information
 
 ```bash
-curl -v "http://192.168.0.11:17010/admin/getMasterApiList"
+curl -v "http://192.168.0.11:17010/admin/getApiQpsLimit"
 ```
 
 The response is as follows:

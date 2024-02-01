@@ -37,4 +37,4 @@ dp/mp在ns中均匀分布，每创建一个dp/mp，都会从上一个dp/mp所在
 
 ## NodeSet数量规划
 
-对于3副本的dp/mp，只有当一个ns中存在至少3个可用节点时，dp/mp才会选择该ns。`count(ns)>= 18\*n + 3`
+对于3副本的dp/mp，只有当一个ns中存在至少3个可用节点时，dp/mp才会选择该ns。`count(ns)>= 18*n + 3`

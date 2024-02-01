@@ -418,7 +418,7 @@ learner节点一般用于数据备份，故障恢复
 
 ## 上传测试
 
-> 可参考[CLI使用](../quick-start/verify.md)
+> 可参考[快速使用](../quick-start/verify.md)
 
 ## 修改Master配置支持纠删码
 

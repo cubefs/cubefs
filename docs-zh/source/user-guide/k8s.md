@@ -20,7 +20,7 @@ csi-spec-v0.3.0 分支的代码基本上处于冻结不更新状态，往后 CSI
 | v0.3.0 | v1.13之前的版本，例如 v1.12  |
 | v1.0.0 | v1.13及之后的版本，例如 v1.15 |
 
-CSI 部署之前，请搭建好 CubeFS 集群，文档请参考[快速入门章节](../deploy/requirement.md)。
+CSI 部署之前，请搭建好 CubeFS 集群，文档请参考[快速入门章节](../quick-start/requirement.md)。
 
 ::: tip 提示
 本文部署步骤基于 master 分支进行。
@@ -358,4 +358,4 @@ PVC 会与一个 PV 进行绑定，而这个绑定的 PV 名称就是底下 cube
 
 ### CubeFS卷管理
 
-可以参考 [cubefs cli 工具使用指南](../tools/cli.md)
+可以参考 [cubefs cli 工具使用指南](../tools/cfs-cli/overview.md)

@@ -36,4 +36,4 @@ The dp/mp is evenly distributed in the ns. Each time a dp/mp is created, it will
 
 ## Planning the Number of NodeSets
 
-For dp/mp with 3 replicas, dp/mp will only select the ns when there are at least 3 available nodes in the ns. `count(ns)>= 18\*n + 3`
+For dp/mp with 3 replicas, dp/mp will only select the ns when there are at least 3 available nodes in the ns. `count(ns)>= 18*n + 3`

@@ -27,7 +27,7 @@ Parameter List
 | replicaNum       | int    | Number of replicas                                                                                                                                                      | No       | 3 for replica volume (supports 1, 3), 1 for erasure-coded volume (supports 1-16)                       |
 | dpSize           | int    | Maximum data shard size, in GB                                                                                                                                          | No       | 120                                                                                                    |
 | enablePosixAcl   | bool   | Whether to configure POSIX permission restrictions                                                                                                                      | No       | false                                                                                                  |
-| followerRead     | bool   | Whether to allow reading data from followers, true by default for erasure-coded volume                                                                                  | No       | false                                                                                                  |
+| followerRead     | bool   | Whether to allow reading data from followers, true by default for erasure-coded volume. If set to true, the client also needs to configure this field to true           | No       | false                                                                                                  |
 | crossZone        | bool   | Whether to cross regions. If set to true, the zoneName parameter cannot be set                                                                                          | No       | false                                                                                                  |
 | normalZonesFirst | bool   | Whether to prioritize writing to normal domains                                                                                                                         | No       | false                                                                                                  |
 | zoneName         | string | Specify the region                                                                                                                                                      | No       | default if crossZone is set to false                                                                   |
@@ -50,7 +50,8 @@ curl -v "http://10.196.59.198:17010/vol/delete?name=test&authKey=md5(owner)"
 First, mark the volume as logically deleted (set status to 1), then delete all data shards and metadata shards through periodic tasks, and finally delete them from persistent storage.
 
 ::: warning Note
-The erasure-coded volume can only be deleted when the usage size is 0.
+1. The erasure-coded volume can only be deleted when the usage size is 0.
+2. From v3.3.1 onwards, the volume's Dentry count must be less than the value of the configuration field volDeletionDentryThreshold before deletion is allowed. This configuration field is an integer number and the default value is 0.
 :::
 
 When deleting a volume, all permission information related to the volume will be deleted from all user information.
@@ -457,14 +458,14 @@ Currently, whether on the client or datanode side, traffic is measured in MB.
 2. Minimum Traffic and IO Parameters
 
 These are settings that apply to datanodes and volumes. If a value is set, the following requirements must be met, otherwise an error will occur:
-- `MinFlowLimit = 100 \* util.MB`
+- `MinFlowLimit = 100 * util.MB`
 - `MinIoLimit = 100`
 
 3. If no traffic value is set but flow control is enabled, default values (in bytes) will be used:
-   - `defaultIopsRLimit uint64 = 1 \<\< 16`
-   - `defaultIopsWLimit uint64 = 1 \<\< 16`
-   - `defaultFlowWLimit uint64 = 1 \<\< 35`
-   - `defaultFlowRLimit uint64 = 1 \<\< 35`
+   - `defaultIopsRLimit uint64 = 1 << 16`
+   - `defaultIopsWLimit uint64 = 1 << 16`
+   - `defaultFlowWLimit uint64 = 1 << 35`
+   - `defaultFlowRLimit uint64 = 1 << 35`
 
 ### Communication Between Client and Master
 

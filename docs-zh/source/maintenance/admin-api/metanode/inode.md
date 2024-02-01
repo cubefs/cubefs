@@ -3,7 +3,7 @@
 ## 获取指定Inode基本信息
 
 ``` bash
-curl -v http://192.168.0.22:17210/getInode?pid=100&ino=1024
+curl -v http://192.168.0.22:17220/getInode?pid=100&ino=1024
 ```
 
 请求参数：
@@ -16,7 +16,7 @@ curl -v http://192.168.0.22:17210/getInode?pid=100&ino=1024
 ## 获取指定Inode的数据存储信息
 
 ``` bash
-curl -v http://192.168.0.22:17210/getExtentsByInode?pid=100&ino=1024
+curl -v http://192.168.0.22:17220/getExtentsByInode?pid=100&ino=1024
 ```
 
 请求参数：
@@ -29,7 +29,7 @@ curl -v http://192.168.0.22:17210/getExtentsByInode?pid=100&ino=1024
 ## 获取指定元数据分片的全部inode信息
 
 ``` bash
-curl -v http://192.168.0.22:17210/getAllInodes?pid=100
+curl -v http://192.168.0.22:17220/getAllInodes?pid=100
 ```
 
 请求参数：

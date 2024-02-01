@@ -66,7 +66,7 @@ Flags:
       --maxBytes uint   Specify quota max bytes (default 18446744073709551615)
       --maxFiles uint   Specify quota max files (default 18446744073709551615)
 ```
-创建quota需要指定卷名一个或多个path目录。
+创建quota需要指定卷名、一个或多个path目录。
 注意：path之间不能重复，以及嵌套。
 
 ### 应用配额
