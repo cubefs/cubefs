@@ -217,7 +217,7 @@ func (c *client) DeleteShard(ctx context.Context, host string, args *DeleteShard
 		return
 	}
 
-	urlStr := fmt.Sprintf("%v/shard/delete/diskid/%v/vuid/%v/bid/%v", host, args.DiskID, args.Vuid, args.Bid)
+	urlStr := fmt.Sprintf("%v/shard/delete/diskid/%v/vuid/%v/bid/%v?force=%v", host, args.DiskID, args.Vuid, args.Bid, args.Force)
 	err = c.PostWith(ctx, urlStr, nil, rpc.NoneBody)
 	return
 }

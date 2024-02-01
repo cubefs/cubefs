@@ -138,7 +138,7 @@ func NewHandler(service *Service) *rpc.Router {
 	r.Handle(http.MethodGet, "/shard/list/diskid/:diskid/vuid/:vuid/startbid/:startbid/status/:status/count/:count", service.ShardList, rpc.OptArgsURI())
 	r.Handle(http.MethodGet, "/shard/stat/diskid/:diskid/vuid/:vuid/bid/:bid", service.ShardStat, rpc.OptArgsURI())
 	r.Handle(http.MethodPost, "/shard/markdelete/diskid/:diskid/vuid/:vuid/bid/:bid", service.ShardMarkdelete, rpc.OptArgsURI())
-	r.Handle(http.MethodPost, "/shard/delete/diskid/:diskid/vuid/:vuid/bid/:bid", service.ShardDelete, rpc.OptArgsURI())
+	r.Handle(http.MethodPost, "/shard/delete/diskid/:diskid/vuid/:vuid/bid/:bid", service.ShardDelete, rpc.OptArgsURI(), rpc.OptArgsQuery())
 	r.Handle(http.MethodPost, "/shard/put/diskid/:diskid/vuid/:vuid/bid/:bid/size/:size", service.ShardPut, rpc.OptArgsURI(), rpc.OptArgsQuery())
 
 	r.Handle(http.MethodPost, "/shard/repair", service.WorkerService.ShardRepair, rpc.OptArgsBody())
