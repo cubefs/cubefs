@@ -341,7 +341,7 @@ func (s *Service) ShardMarkdelete(c *rpc.Context) {
 
 /*
  *  method:         POST
- *  url:            /shard/delete/diskid/{diskid}/vuid/{vuid}/bid/{bid}
+ *  url:            /shard/delete/diskid/{diskid}/vuid/{vuid}/bid/{bid}?force={force}
  *  request body:   json.Marshal(deleteArgs)
  */
 func (s *Service) ShardDelete(c *rpc.Context) {
