@@ -756,7 +756,7 @@ func (mp *metaPartition) onStart(isCreate bool) (err error) {
 
 	mp.volType = volumeInfo.VolType
 
-	if clusterInfo.EbsAddr != "" && proto.VolSupportsBlobStore(volumeInfo.AllowedStorageClass) {
+	if clusterInfo.EbsAddr != "" && proto.IsVolSupportStorageClass(volumeInfo.AllowedStorageClass, proto.StorageClass_BlobStore) {
 		var ebsClient *blobstore.BlobStoreClient
 		ebsClient, err = blobstore.NewEbsClient(
 			access.Config{

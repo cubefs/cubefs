@@ -1232,9 +1232,9 @@ func IsStorageClassBlobStore(storageClass uint32) bool {
 	return storageClass == StorageClass_BlobStore
 }
 
-func VolSupportsBlobStore(allowedStorageClass []uint32) bool {
+func IsVolSupportStorageClass(allowedStorageClass []uint32, storeClass uint32) bool {
 	for _, storageClass := range allowedStorageClass {
-		if storageClass == StorageClass_BlobStore {
+		if storageClass == storeClass {
 			return true
 		}
 	}
