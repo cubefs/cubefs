@@ -2858,6 +2858,7 @@ func (m *MetaNode) getRequestRecordsInRocksDB(w http.ResponseWriter, r *http.Req
 		resp.Msg = fmt.Sprintf("open db snap failed")
 		return
 	}
+	defer metapartition.db.ReleaseSnap(dbSnap)
 
 	reqRecords := make(RequestInfoBatch, 0)
 	startKey := []byte{byte(ReqRecordsTable)}
