@@ -80,6 +80,33 @@ Gets disk information, including disk path, space usage, disk status, etc.
 curl -v "http://192.168.0.11:17320/partitions"
 ```
 
+## Disk Decommission
+
+```bash
+curl -v "http://192.168.0.11:17010/disk/decommission
+```
+
+Parameter List
+
+| Parameter | Type   | Description                                      |
+|-----------|--------|--------------------------------------------------|
+| addr      | string | The node address of the disk to be taken offline |
+
+## Migration
+
+```bash
+curl -v "http://10.196.59.198:17010/dataNode/migrate?srcAddr=src&targetAddr=dst&count=3"
+```
+
+Parameter List
+
+| Parameter  | Type   | Description                                                    |
+|------------|--------|----------------------------------------------------------------|
+| srcAddr    | string | The source data node address to be migrated out                |
+| targetAddr | string | The destination data node address for migration                |
+| count      | int    | The number of data partitions to migrate, optional, default 50 |
+
+
 ## Set Disk Decommission Control Speed
 
 ``` bash
@@ -88,8 +115,8 @@ curl -v "http://192.168.0.11:17320/admin/updateDecommissionLimit?decommissionLim
 
 Parameter List
 
-| Parameter         | Type | Description |
-| ----------------- | ---- | ----------- |
+| Parameter         | Type | Description                                   |
+|-------------------|------|-----------------------------------------------|
 | decommissionLimit | int  | Number of concurrent DPs to be decommissioned |
 
 ::: tip Note

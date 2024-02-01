@@ -7,6 +7,18 @@ $ cfs-cli volume expand {volume name} {capacity / GB}
 ```
 该接口用于增加volume容量空间。
 
+::: tip 提示
+DpReadOnlyWhenVolFull可以严格限制卷容量。
+
+卷写满时不再继续写的配置方式：
+(1)master
+在创建卷时，将DpReadOnlyWhenVolFull参数设置为true;
+若已创建的卷此值为false，可以update成trure。
+当此值设置为true后，在卷写满时，master会把卷所有DP状态改为readonly。
+(2)client
+将client升级，并将client配置里“minWriteAbleDataPartitionCnt”参数设置为0。
+:::
+
 ## Volume读写性能优化
 
 可读写的dp数量越多，数据就会越分散，volume的读写性能会有响应提升。

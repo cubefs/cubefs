@@ -138,7 +138,7 @@ name参数的值为接口查询命令响应中`data`下的key，如`admingetdata
 ### 查询接口限流信息
 
 ```bash
-curl -v "http://192.168.0.11:17010/admin/getMasterApiList"
+curl -v "http://192.168.0.11:17010/admin/getApiQpsLimit"
 ```
 响应如下：
 

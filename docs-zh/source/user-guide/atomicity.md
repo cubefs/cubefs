@@ -31,13 +31,13 @@ curl "192.168.0.11:17010/vol/update?name=ltptest&enableTxMask=all&txForceReset=t
 修改事务相关参数值后，最长两分钟从master同步到client端生效。
 :::
 
-| 参数      | 类型     | 描述                                                                        |
-|---------|--------|---------------------------------------------------------------------------|
-| enableTxMask    | string | 值可以为：create,mkdir,remove,rename,mknod,symlink,link,off,all。off和all以及其他值互斥 |
-| txTimeout  | uint32 | 事务超时时间不设置默认是1分钟，单位分钟，最长60分钟                                               |
-| txForceReset | uint32 | 设置值同enableTxMask，不同的是，enableTxMask会做合并，而txForceReset强制重置为指定值              |
-| txConflictRetryNum | uint32 | 取值范围[1-100]，默认为10                                                         |
-| txConflictRetryInterval | uint32 | 单位毫秒，取值范围[10-1000]，默认为20ms                                                |
+| 参数                    | 类型   | 描述                                                                                  |
+|-------------------------|--------|-------------------------------------------------------------------------------------|
+| enableTxMask            | string | 值可以为：create,mkdir,remove,rename,mknod,symlink,link,off,all。off和all以及其他值互斥 |
+| txTimeout               | uint32 | 事务超时时间不设置默认是1分钟，单位分钟，最长60分钟                                     |
+| txForceReset            | bool   | 设置值同enableTxMask，不同的是，enableTxMask会做合并，而txForceReset强制重置为指定值     |
+| txConflictRetryNum      | uint32 | 取值范围[1-100]，默认为10                                                              |
+| txConflictRetryInterval | uint32 | 单位毫秒，取值范围[10-1000]，默认为20ms                                                 |
 
 可以通过获取卷信息查看是否开启事务
 ```

@@ -5,7 +5,7 @@
 :::
 
 ## 获取二进制
-+ 获取指定版本二进制， https://github.com/cubeFS/cubefs/releases 获取指定版本代码，编译生成二进制
++ https://github.com/cubeFS/cubefs/releases 获取指定版本代码，编译生成二进制
 ## 冻结集群
 ```
 $ cfs-cli cluster freeze true
@@ -21,7 +21,7 @@ $ cfs-cli cluster freeze true
 下面以datanode为例描述
 1. 停止旧的datanode进程
 2. 启动新的datanode进程
-3. 启动后检查节点状态，知道显示为active后，再升级下一台机器
+3. 启动后检查节点状态，直到显示为active后，再升级下一台机器
 ```
 $ cfs-cli datanode info 192.168.0.33:17310
 [Data node info]

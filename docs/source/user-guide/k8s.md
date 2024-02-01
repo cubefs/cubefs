@@ -19,7 +19,7 @@ The code of the csi-spec-v0.3.0 branch is basically frozen and not updated. New 
 | v0.3.0       | Versions before v1.13, such as v1.12    |
 | v1.0.0       | Versions v1.13 and later, such as v1.15 |
 
-Before deploying CSI, please set up the CubeFS cluster. Please refer to the [Quick Start](../deploy/requirement.md) section for documentation.
+Before deploying CSI, please set up the CubeFS cluster. Please refer to the [Quick Start](../quick-start/requirement.md) section for documentation.
 
 ::: tip Note
 The deployment steps in this article are based on the master branch.
@@ -353,4 +353,4 @@ The PVC is bound to a PV, and the name of the bound PV is the name of the underl
 
 ### CubeFS Volume Management
 
-Please refer to the [cubefs cli tool usage guide](../tools/cli.md).
+Please refer to the [cubefs cli tool usage guide](../tools/cfs-cli/overview.md).

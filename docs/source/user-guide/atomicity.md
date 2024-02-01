@@ -31,13 +31,13 @@ curl "192.168.0.11:17010/vol/update?name=ltptest&enableTxMask=all&txForceReset=t
 After modifying the parameter of the transaction, new config will be synchronized from Master within 2 minutes.
 :::
 
-| Parameters | Type | Description                                                                                                                                |
-|---------|--------|--------------------------------------------------------------------------------------------------------------------------------------------|
-| enabletxamask | String | Value can be: Create, MKDIR, Remove, RENAME, MKNod, Symlink, Link, off, all. off and all and other values are mutually exclusive           |
-| txtimeout | uint32 | the default transaction time out is 1 minute, the maximum 60 minutes                                                                       |
-| txForceReset | uint32 | The difference from enabletxamask is that value of enabletxmask will be merged, and txforcereset is forced to reset to the specified value |
-| txConflictRetryNum | uint32 | Value range [1-100], defaults to 10                                                                                                        |
-| txConflictRetryInterval | uint32 | Unit: milliseconds, the range of value [10-1000], the default is 20ms                                                                      |
+| Parameters              | Type   | Description                                                                                                                               |
+|-------------------------|--------|-------------------------------------------------------------------------------------------------------------------------------------------|
+| enableTxMask            | String | Value can be: Create, MKDIR, Remove, RENAME, MKNod, Symlink, Link, off, all. off and all and other values are mutually exclusive          |
+| txtimeout               | uint32 | the default transaction time out is 1 minute, the maximum 60 minutes                                                                      |
+| txForceReset            | bool   | The difference from enableTxMask is that value of enableTxMask will be merged, and txForceReset is forced to reset to the specified value |
+| txConflictRetryNum      | uint32 | Value range [1-100], defaults to 10                                                                                                       |
+| txConflictRetryInterval | uint32 | Unit: milliseconds, the range of value [10-1000], the default is 20ms                                                                     |
 
 You can check transaction config by getting the volume information
 ```
