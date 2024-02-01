@@ -1679,7 +1679,7 @@ func setVolFromArgs(args *VolVarargs, vol *Vol) {
 	vol.dpReplicaNum = args.dpReplicaNum
 	vol.crossZone = args.crossZone
 
-	if proto.IsCold(vol.VolType) {
+	if proto.IsVolSupportStorageClass(vol.allowedStorageClass, proto.StorageClass_BlobStore) {
 		coldArgs := args.coldArgs
 		vol.CacheLRUInterval = coldArgs.cacheLRUInterval
 		vol.CacheLowWater = coldArgs.cacheLowWater
