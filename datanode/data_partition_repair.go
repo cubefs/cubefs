@@ -568,7 +568,7 @@ func (dp *DataPartition) streamRepairExtent(remoteExtentInfo *storage.ExtentInfo
 			loopTimes++
 
 			actualCrc := crc32.ChecksumIEEE(reply.Data[:reply.Size])
-			if reply.CRC != crc32.ChecksumIEEE(reply.Data[:reply.Size]) {
+			if reply.CRC != actualCrc {
 				err = fmt.Errorf("streamRepairExtent crc mismatch expectCrc(%v) actualCrc(%v) extent(%v_%v) start fix from (%v)"+
 					" remoteSize(%v) localSize(%v) request(%v) reply(%v) ", reply.CRC, actualCrc, dp.partitionID, remoteExtentInfo.String(),
 					remoteExtentInfo.Source, dstOffset, currFixOffset, request.GetUniqueLogId(), reply.GetUniqueLogId())
