@@ -433,6 +433,20 @@ func parseColdVolUpdateArgs(r *http.Request, vol *Vol) (args *coldVolArgs, err e
 		return
 	}
 
+	if vol.volStorageClass != proto.StorageClass_BlobStore {
+		log.LogInfof("[parseColdVolUpdateArgs] vol(%v) storageClass(%v) is not blobstore, skip parse cache args",
+			vol.Name, proto.StorageClassString(vol.volStorageClass))
+		args.cacheCap = vol.CacheCapacity
+		args.cacheAction = vol.CacheAction
+		args.cacheThreshold = vol.CacheThreshold
+		args.cacheTtl = vol.CacheTTL
+		args.cacheHighWater = vol.CacheHighWater
+		args.cacheLowWater = vol.CacheLowWater
+		args.cacheLRUInterval = vol.CacheLRUInterval
+		args.cacheRule = vol.CacheRule
+		return
+	}
+
 	if args.cacheCap, err = extractUint64WithDefault(r, cacheCapacity, vol.CacheCapacity); err != nil {
 		return
 	}
@@ -606,8 +620,11 @@ func parseVolUpdateReq(r *http.Request, vol *Vol, req *updateVolReq) (err error)
 		}
 	}
 
-	if proto.IsCold(vol.VolType) {
+	if proto.IsStorageClassBlobStore(vol.volStorageClass) {
 		req.followerRead = true
+	}
+
+	if proto.IsVolSupportStorageClass(vol.allowedStorageClass, proto.StorageClass_BlobStore) {
 		req.coldArgs, err = parseColdVolUpdateArgs(r, vol)
 		if err != nil {
 			return
