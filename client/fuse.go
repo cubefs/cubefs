@@ -819,7 +819,7 @@ func mount(opt *proto.MountOptions) (fsConn *fuse.Conn, super *cfs.Super, err er
 				super.CacheAction = volumeInfo.CacheAction
 				super.CacheThreshold = volumeInfo.CacheThreshold
 				super.EbsBlockSize = volumeInfo.ObjBlockSize
-			} else if proto.VolSupportsBlobStore(opt.VolAllowedStorageClass) {
+			} else if proto.IsVolSupportStorageClass(opt.VolAllowedStorageClass, proto.StorageClass_BlobStore) {
 				super.EbsBlockSize = volumeInfo.ObjBlockSize
 			}
 		}

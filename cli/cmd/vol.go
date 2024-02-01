@@ -385,8 +385,8 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 			}
 
 			if optEbsBlkSize > 0 {
-				if vv.VolType == 0 {
-					err = fmt.Errorf("ebs-blk-size not support in hot vol\n")
+				if proto.IsVolSupportStorageClass(vv.AllowedStorageClass, proto.StorageClass_BlobStore) {
+					err = fmt.Errorf("ebs-blk-size can not be set because vol not support blobstore\n")
 					return
 				}
 				isChange = true
@@ -396,8 +396,8 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 				confirmString.WriteString(fmt.Sprintf("  EbsBlkSize          : %v byte\n", vv.ObjBlockSize))
 			}
 			if optCacheCap != "" {
-				if vv.VolType == 0 {
-					err = fmt.Errorf("cache-capacity not support in hot vol\n")
+				if vv.VolStorageClass != proto.StorageClass_BlobStore {
+					err = fmt.Errorf("cache-capacity can not be set because vol storageClass is not blobstore\n")
 					return
 				}
 				isChange = true
@@ -509,8 +509,8 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 			}
 
 			if optCacheAction != "" {
-				if vv.VolType == 0 {
-					err = fmt.Errorf("cache-action not support in hot vol\n")
+				if vv.VolStorageClass != proto.StorageClass_BlobStore {
+					err = fmt.Errorf("cache-action can not be set because vol storageClass is not blobstore\n")
 					return
 				}
 				isChange = true
@@ -523,8 +523,12 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 				confirmString.WriteString(fmt.Sprintf("  CacheAction         : %v \n", vv.CacheAction))
 			}
 			if optCacheRule != "" {
-				if vv.VolType == 0 {
-					err = fmt.Errorf("cache-rule not support in hot vol\n")
+				if vv.VolStorageClass != proto.StorageClass_BlobStore {
+					err = fmt.Errorf("cache-rule can not be set because vol storageClass is not blobstore\n")
+					return
+				}
+				if proto.IsVolSupportStorageClass(vv.AllowedStorageClass, proto.StorageClass_BlobStore) {
+					err = fmt.Errorf("ebs-blk-size can not be set because vol not support blobstore\n")
 					return
 				}
 				isChange = true
@@ -534,8 +538,8 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 				confirmString.WriteString(fmt.Sprintf("  CacheRule        : %v \n", vv.CacheAction))
 			}
 			if optCacheThreshold > 0 {
-				if vv.VolType == 0 {
-					err = fmt.Errorf("cache-threshold not support in hot vol\n")
+				if vv.VolStorageClass != proto.StorageClass_BlobStore {
+					err = fmt.Errorf("cache-threshold can not be set because vol storageClass is not blobstore\n")
 					return
 				}
 				isChange = true
@@ -545,8 +549,8 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 				confirmString.WriteString(fmt.Sprintf("  CacheThreshold      : %v byte\n", vv.CacheThreshold))
 			}
 			if optCacheTTL > 0 {
-				if vv.VolType == 0 {
-					err = fmt.Errorf("cache-ttl not support in hot vol\n")
+				if vv.VolStorageClass != proto.StorageClass_BlobStore {
+					err = fmt.Errorf("cache-ttl can not be set because vol storageClass is not blobstore\n")
 					return
 				}
 				isChange = true
@@ -556,8 +560,8 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 				confirmString.WriteString(fmt.Sprintf("  CacheTTL            : %v day\n", vv.CacheTtl))
 			}
 			if optCacheHighWater > 0 {
-				if vv.VolType == 0 {
-					err = fmt.Errorf("cache-high-water not support in hot vol\n")
+				if vv.VolStorageClass != proto.StorageClass_BlobStore {
+					err = fmt.Errorf("cache-high-water can not be set because vol storageClass is not blobstore\n")
 					return
 				}
 				isChange = true
@@ -567,8 +571,8 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 				confirmString.WriteString(fmt.Sprintf("  CacheHighWater      : %v \n", vv.CacheHighWater))
 			}
 			if optCacheLowWater > 0 {
-				if vv.VolType == 0 {
-					err = fmt.Errorf("cache-low-water not support in hot vol\n")
+				if vv.VolStorageClass != proto.StorageClass_BlobStore {
+					err = fmt.Errorf("cache-low-water can not be set because vol storageClass is not blobstore\n")
 					return
 				}
 				isChange = true
@@ -578,8 +582,8 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 				confirmString.WriteString(fmt.Sprintf("  CacheLowWater       : %v \n", vv.CacheLowWater))
 			}
 			if optCacheLRUInterval > 0 {
-				if vv.VolType == 0 {
-					err = fmt.Errorf("cache-lru-interval not support in hot vol\n")
+				if vv.VolStorageClass != proto.StorageClass_BlobStore {
+					err = fmt.Errorf("cache-lru-interval can not be set because vol storageClass is not blobstore\n")
 					return
 				}
 				isChange = true
