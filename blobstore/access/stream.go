@@ -20,17 +20,19 @@ import (
 	"fmt"
 	"io"
 	"strings"
-	"sync/atomic"
 
 	"github.com/afex/hystrix-go/hystrix"
+
 	"github.com/cubefs/cubefs/blobstore/access/controller"
 	"github.com/cubefs/cubefs/blobstore/api/access"
 	"github.com/cubefs/cubefs/blobstore/api/blobnode"
 	"github.com/cubefs/cubefs/blobstore/api/proxy"
 	"github.com/cubefs/cubefs/blobstore/common/codemode"
 	"github.com/cubefs/cubefs/blobstore/common/ec"
+	errcode "github.com/cubefs/cubefs/blobstore/common/errors"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/resourcepool"
+	"github.com/cubefs/cubefs/blobstore/common/rpc"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
 	"github.com/cubefs/cubefs/blobstore/util/defaulter"
 	"github.com/cubefs/cubefs/blobstore/util/errors"
@@ -315,59 +317,112 @@ func (h *Handler) Admin() interface{} {
 
 func (h *Handler) clearGarbage(ctx context.Context, location *access.Location) error {
 	span := trace.SpanFromContextSafe(ctx)
-	var logMsg interface{} = location
+	var err error
 
 	for _, blob := range location.Spread() {
-		if err := retry.Timed(3, 200).On(func() error {
-			volume, err := h.getVolume(ctx, location.ClusterID, blob.Vid, true)
-			if err != nil {
-				return err
-			}
-
-			successNum := uint32(0)
-			quorum := uint32(volume.CodeMode.Tactic().PutQuorum)
-			statusCh := make(chan int, len(volume.Units))
-			sendDelBlobBgFn := func(idx int, unit controller.Unit) {
-				args := blobnode.DeleteShardArgs{
-					DiskID: unit.DiskID,
-					Vuid:   unit.Vuid,
-					Bid:    blob.Bid,
-					Force:  true,
-				}
-
-				go func() {
-					// If the fails, dont need handle it. and then background inspection on scheduler
-					err1 := h.blobnodeClient.DeleteShard(ctx, unit.Host, &args)
-					if err1 == nil {
-						atomic.AddUint32(&successNum, 1)
-						return
-					}
-
-					statusCh <- idx
-				}()
-			}
-
-			for i, unitI := range volume.Units {
-				sendDelBlobBgFn(i, unitI)
-			}
-
-			retry := 0
-			for atomic.LoadUint32(&successNum) < quorum && retry < len(volume.Units) {
-				retry++
-				index := <-statusCh
-				sendDelBlobBgFn(index, volume.Units[index])
-			}
-
-			return nil
-		}); err != nil {
-			reportUnhealth(location.ClusterID, "delete.msg", proto.ServiceNameBlobNode, "-", "failed")
-			span.Errorf("send delete message(%+v) failed %s", logMsg, errors.Detail(err))
-			return errors.Base(err, "send delete message:", logMsg)
+		if e := h.handleOneBlob(ctx, location, blob); e != nil {
+			err = e
 		}
 	}
+	span.Infof("send delete message(%+v), err:%+v", location, err)
+	return err
+}
 
-	span.Infof("send delete message(%+v)", logMsg)
-	return nil
+func (h *Handler) handleOneBlob(ctx context.Context, location *access.Location, blob access.Blob) error {
+	span := trace.SpanFromContextSafe(ctx)
+	isCache := true
+	volume := &controller.VolumePhy{}
+	var err error
+
+	defer func() {
+		if err != nil {
+			reportUnhealth(location.ClusterID, "delete.msg", proto.ServiceNameBlobNode, "-", "failed")
+			span.Errorf("send delete message(%+v) failed %s", location, errors.Detail(err))
+			err = errors.Base(err, "send delete message:", location)
+		}
+	}()
+
+	if err = retry.Timed(3, 200).On(func() error {
+		volume, err = h.getVolume(ctx, location.ClusterID, blob.Vid, isCache)
+		if err != nil {
+			isCache = false
+		}
+		return err
+	}); err != nil {
+		return err
+	}
+
+	err = h.deleteBlob(ctx, location.ClusterID, blob, volume)
+	return err
+}
+
+// If fail to delete, dont need handle it. and then background inspection on scheduler
+func (h *Handler) deleteBlob(ctx context.Context, clusterID proto.ClusterID, blob access.Blob, volume *controller.VolumePhy) error {
+	span := trace.SpanFromContextSafe(ctx)
+	quorum := int32(volume.CodeMode.Tactic().PutQuorum)
+	statusCh := make(chan bool, len(volume.Units))
+
+	sendDelBlobBgFn := func(idx int, unit controller.Unit) {
+		args := blobnode.DeleteShardArgs{
+			DiskID: unit.DiskID,
+			Vuid:   unit.Vuid,
+			Bid:    blob.Bid,
+			Force:  true,
+		}
+
+		go func() {
+			status := false
+			defer func() {
+				statusCh <- status
+			}()
+
+			delErr := retry.ExponentialBackoff(3, 200).RuptOn(func() (bool, error) {
+				err := h.blobnodeClient.DeleteShard(ctx, unit.Host, &args)
+				if err == nil {
+					status = true
+					return true, nil
+				}
+
+				code := rpc.DetectStatusCode(err)
+				switch code {
+				case errcode.CodeInvalidDiskId, errcode.CodeDiskNotFound, errcode.CodeVuidNotFound, errcode.CodeDiskBroken:
+					latestVolume, err := h.getVolume(ctx, clusterID, blob.Vid, false)
+					if err != nil {
+						span.Warnf("get volume with no cache failed: %+v", err)
+						return true, errors.Base(err, "get volume with no cache failed").Detail(err)
+					}
+					newUnit := latestVolume.Units[idx]
+					if args.DiskID != newUnit.DiskID {
+						unit = newUnit
+						args.DiskID = newUnit.DiskID
+						args.Vuid = newUnit.Vuid
+					}
+				default:
+				}
+				return false, err
+			})
+
+			if delErr != nil {
+				span.Warnf("Fail to delete blobs[%+v], shard[%+v] on %s ecIdx(%02d), err[%+v]", blob, args, unit.Host, idx, delErr)
+			}
+		}()
+	}
+
+	for i, unitI := range volume.Units {
+		sendDelBlobBgFn(i, unitI)
+	}
+
+	successNum := int32(0)
+	for range volume.Units {
+		if successNum >= quorum {
+			return nil
+		}
+		st := <-statusCh
+		if st {
+			successNum++
+		}
+	}
+	return fmt.Errorf("fail to delete blobs[%+v], quorum (%d < %d)", blob, successNum, quorum)
 }
 
 // getVolume get volume info
