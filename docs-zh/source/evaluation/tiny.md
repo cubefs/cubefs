@@ -8,10 +8,16 @@
 ``` bash
 #!/bin/bash
 set -e
-TARGET_PATH="/mnt/test/mdtest" # mount point of CubeFS volume
+TARGET_PATH="/home/service/chubaofs/adls/mnt-perform-test" # mount point of CubeFS volume
 for FILE_SIZE in 1024 2048 4096 8192 16384 32768 65536 131072 # file size
 do
-mpirun --allow-run-as-root -np 512 --hostfile hfile64 mdtest -n 1000 -w $i -e $FILE_SIZE -y -u -i 3 -N 1 -F -R -d $TARGET_PATH;
+    CMD="/usr/lib64/openmpi/bin/mpirun --allow-run-as-root -mca plm_rsh_args '-p 18822' -np 512 --hostfile hfile64 mdtest -n 1000 -w $FILE_SIZE -e $FILE_SIZE -y -u -i 3 -N 1 -F -R -d $TARGET_PATH"
+   #CMD="/usr/lib64/openmpi/bin/mpirun --allow-run-as-root -mca plm_rsh_args '-p 18822' -np 512 --hostfile hfile64 mdtest -n 1000 -w $FILE_SIZE -e $FILE_SIZE -y -u -i 3 -N 1 -F -R -d $TARGET_PATH"
+	echo
+	echo $CMD
+	eval $CMD | tee -a ${LOGPREFIX}.txt
+	echo "start to sleep 5s"
+	sleep 5
 done
 ```
 
@@ -21,7 +27,7 @@ done
 
 | 文件大小（KB）   | 1      | 2      | 4      | 8      | 16     | 32     | 64     | 128    |
 |------------|--------|--------|--------|--------|--------|--------|--------|--------|
-| 创建操作 (TPS) | 70383  | 70383  | 73738  | 74617  | 69479  | 67435  | 47540  | 27147  |
-| 读取操作 (TPS) | 108600 | 118193 | 118346 | 122975 | 116374 | 110795 | 90462  | 62082  |
-| 删除操作 (TPS) | 87648  | 84651  | 83532  | 79279  | 85498  | 86523  | 80946  | 84441  |
-| 信息查看 (TPS) | 231961 | 263270 | 264207 | 252309 | 240244 | 244906 | 273576 | 242930 |
+| 创建操作 (TPS) | 49808  | 37726  | 42296  | 44826  | 41481  | 35699  | 31609  | 35622  |
+| 读取操作 (TPS) | 76743  | 81085  | 84831  | 75397  | 73165  | 69665  | 62135  | 53658  |
+| 删除操作 (TPS) | 72522  | 67749  | 70919  | 68689  | 69819  | 71671  | 71568  | 71647  |
+| 信息查看 (TPS) | 188609 | 185945 | 188542 | 180602 | 188274 | 174771 | 171100 | 183334 |
