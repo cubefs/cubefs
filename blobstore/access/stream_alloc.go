@@ -18,7 +18,6 @@ import (
 	"context"
 	"sync/atomic"
 
-	"github.com/afex/hystrix-go/hystrix"
 	"github.com/cubefs/cubefs/blobstore/api/access"
 	"github.com/cubefs/cubefs/blobstore/api/proxy"
 	"github.com/cubefs/cubefs/blobstore/common/codemode"
@@ -82,10 +81,7 @@ func (h *Handler) Alloc(ctx context.Context, size uint64, blobSize uint32,
 
 func (h *Handler) allocFromAllocatorWithHystrix(ctx context.Context, codeMode codemode.CodeMode, size uint64, blobSize uint32,
 	clusterID proto.ClusterID) (cid proto.ClusterID, bidRets []access.SliceInfo, err error) {
-	err = hystrix.Do(allocCommand, func() error {
-		cid, bidRets, err = h.allocFromAllocator(ctx, codeMode, size, blobSize, clusterID)
-		return err
-	}, nil)
+	cid, bidRets, err = h.allocFromAllocator(ctx, codeMode, size, blobSize, clusterID)
 	return
 }
 
@@ -111,39 +107,16 @@ func (h *Handler) allocFromAllocator(ctx context.Context, codeMode codemode.Code
 	}
 
 	var allocRets []proxy.AllocRet
-	var allocHost string
-	hostsSet := make(map[string]struct{}, 1)
 	if err := retry.ExponentialBackoff(h.AllocRetryTimes, uint32(h.AllocRetryIntervalMS)).On(func() error {
-		serviceController, err := h.clusterController.GetServiceController(clusterID)
+		allocMgr, err := h.clusterController.GetVolumeAllocator(clusterID)
 		if err != nil {
 			span.Warn(err)
-			return errors.Info(err, "get service controller", clusterID)
+			return err
 		}
 
-		var host string
-		for range [10]struct{}{} {
-			host, err = serviceController.GetServiceHost(ctx, serviceProxy)
-			if err != nil {
-				span.Warn(err)
-				return errors.Info(err, "get proxy host", clusterID)
-			}
-			if _, ok := hostsSet[host]; ok {
-				continue
-			}
-			hostsSet[host] = struct{}{}
-			break
-		}
-		allocHost = host
-
-		allocRets, err = h.proxyClient.VolumeAlloc(ctx, host, &args)
+		allocRets, err = allocMgr.Alloc(ctx, &args)
 		if err != nil {
-			if errorTimeout(err) || errorConnectionRefused(err) {
-				span.Warn("punish unreachable proxy host:", host)
-				reportUnhealth(clusterID, "punish", serviceProxy, host, "Timeout")
-				serviceController.PunishServiceWithThreshold(ctx, serviceProxy, host, h.ServicePunishIntervalS)
-			}
-			span.Warn(host, err)
-			return errors.Base(err, "alloc from proxy", host)
+			return errors.Base(err, "alloc failed")
 		}
 
 		// filter punished volume in allocating progress
@@ -170,11 +143,6 @@ func (h *Handler) allocFromAllocator(ctx context.Context, codeMode codemode.Code
 		}
 		// still write to storage if allocating punished volume
 		reportUnhealth(clusterID, "allocate", "-", "-", "punished")
-	}
-
-	// cache vid in which allocator
-	for _, ret := range allocRets {
-		setCacheVidHost(clusterID, ret.Vid, allocHost)
 	}
 
 	blobN := blobCount(size, blobSize)

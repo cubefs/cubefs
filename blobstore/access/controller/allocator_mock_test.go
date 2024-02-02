@@ -32,9 +32,10 @@ import (
 
 func NewAllocatorMockCmCli(tb testing.TB) cm.ClientAPI {
 	cmCli := mocks.NewMockClientAPI(gomock.NewController(tb))
-	cmCli.EXPECT().RegisterService(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
-	cmCli.EXPECT().AllocBid(gomock.Any(), gomock.Any()).Return(&cm.BidScopeRet{StartBid: proto.BlobID(1), EndBid: proto.BlobID(10000)}, nil).AnyTimes()
-	cmCli.EXPECT().GetConfig(gomock.Any(), gomock.Any()).DoAndReturn(func(ctx context.Context, key string) (ret string, err error) {
+	A := gomock.Any()
+	cmCli.EXPECT().RegisterService(A, A, A, A, A).Return(nil).AnyTimes()
+	cmCli.EXPECT().AllocBid(A, A).Return(&cm.BidScopeRet{StartBid: proto.BlobID(1), EndBid: proto.BlobID(10000)}, nil).AnyTimes()
+	cmCli.EXPECT().GetConfig(A, A).DoAndReturn(func(ctx context.Context, key string) (ret string, err error) {
 		switch key {
 		case proto.CodeModeConfigKey:
 			policy := []codemode.Policy{
@@ -51,7 +52,7 @@ func NewAllocatorMockCmCli(tb testing.TB) cm.ClientAPI {
 			return
 		}
 	}).AnyTimes()
-	cmCli.EXPECT().AllocVolumeV2(gomock.Any(), gomock.Any()).DoAndReturn(func(ctx context.Context, args *cm.AllocVolumeV2Args) (ret cm.AllocatedVolumeInfos, err error) {
+	cmCli.EXPECT().AllocVolumeV2(A, A).DoAndReturn(func(ctx context.Context, args *cm.AllocVolumeV2Args) (ret cm.AllocatedVolumeInfos, err error) {
 		if !args.CodeMode.IsValid() {
 			return cm.AllocatedVolumeInfos{}, errors.New("alloc error")
 		}
@@ -76,7 +77,7 @@ func NewAllocatorMockCmCli(tb testing.TB) cm.ClientAPI {
 
 		return rets, nil
 	}).AnyTimes()
-	cmCli.EXPECT().RetainVolume(gomock.Any(), gomock.Any()).DoAndReturn(func(ctx context.Context, args *cm.RetainVolumeArgs) (ret cm.RetainVolumes, err error) {
+	cmCli.EXPECT().RetainVolume(A, A).DoAndReturn(func(ctx context.Context, args *cm.RetainVolumeArgs) (ret cm.RetainVolumes, err error) {
 		now := int64(1598000000)
 		ret = cm.RetainVolumes{}
 		vol := make([]cm.RetainVolume, 0)
@@ -90,6 +91,8 @@ func NewAllocatorMockCmCli(tb testing.TB) cm.ClientAPI {
 		ret.RetainVolTokens = vol
 		return ret, nil
 	}).AnyTimes()
+
+	cmCli.EXPECT().ReleaseVolume(A, A).Return(nil).AnyTimes()
 
 	return cmCli
 }
