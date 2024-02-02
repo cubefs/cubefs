@@ -150,7 +150,7 @@ func TestExtentStore_PlaybackTinyDelete(t *testing.T) {
 		})
 	}
 	// 执行TinyDelete回放
-	if err = store.PlaybackTinyDelete(); err != nil {
+	if err = store.PlaybackTinyDelete(0); err != nil {
 		t.Fatalf("playback tiny delete failed: %v", err)
 	}
 	// 验证回放后测试TinyExtent的洞是否可预期一致

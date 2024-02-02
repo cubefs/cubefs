@@ -79,7 +79,6 @@ func (s *DataNode) getDiskAPI(w http.ResponseWriter, r *http.Request) {
 
 			FixTinyDeleteRecordLimit:     diskItem.fixTinyDeleteRecordLimit,
 			ExecutingFixTinyDeleteRecord: diskItem.executingFixTinyDeleteRecord,
-			RepairTaskLimit:              diskItem.repairTaskLimit,
 			ExecutingRepairTask:          diskItem.executingRepairTask,
 		}
 		disks = append(disks, disk)
@@ -730,6 +729,7 @@ func (s *DataNode) getTinyExtentHoleInfo(w http.ResponseWriter, r *http.Request)
 func (s *DataNode) playbackPartitionTinyDelete(w http.ResponseWriter, r *http.Request) {
 	var (
 		partitionID uint64
+		count       uint64
 		err         error
 	)
 	if err = r.ParseForm(); err != nil {
@@ -745,8 +745,15 @@ func (s *DataNode) playbackPartitionTinyDelete(w http.ResponseWriter, r *http.Re
 		s.buildFailureResp(w, http.StatusNotFound, "partition not exist")
 		return
 	}
+	countStr := r.FormValue("count")
+	if countStr != "" {
+		if count, err = strconv.ParseUint(countStr, 10, 64); err != nil {
+			s.buildFailureResp(w, http.StatusBadRequest, err.Error())
+			return
+		}
+	}
 	store := partition.ExtentStore()
-	if err = store.PlaybackTinyDelete(); err != nil {
+	if err = store.PlaybackTinyDelete(int64(count * storage.DeleteTinyRecordSize)); err != nil {
 		s.buildFailureResp(w, http.StatusInternalServerError, err.Error())
 		return
 	}

@@ -10,6 +10,7 @@ const (
 	OpExtentReadToGetCrc_
 	OpFetchDataPartitionView_
 	OpFixIssueFragments_
+	OpPlaybackTinyDelete_
 )
 
 const (
@@ -37,6 +38,8 @@ func GetOpMsgExtend(opcode int) (m string) {
 		m = "OpFetchDataPartitionView_"
 	case OpFixIssueFragments_:
 		m = "OpFixIssueFragments_"
+	case OpPlaybackTinyDelete_:
+		m = "OpPlaybackTinyDelete_"
 	}
 	return m
 }
@@ -61,6 +64,8 @@ func GetOpCodeExtend(m string) (opcode int) {
 		opcode = OpFetchDataPartitionView_
 	case "OpFixIssueFragments_":
 		opcode = OpFixIssueFragments_
+	case "OpPlaybackTinyDelete_":
+		opcode = OpPlaybackTinyDelete_
 	}
 	return opcode
 }

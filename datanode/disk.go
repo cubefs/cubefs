@@ -317,27 +317,6 @@ func (d *Disk) PartitionCount() int {
 	return len(d.partitionMap)
 }
 
-func (d *Disk) canRepairOnDisk() bool {
-	d.limitLock.Lock()
-	defer d.limitLock.Unlock()
-	if d.repairTaskLimit <= 0 {
-		return false
-	}
-	if d.executingRepairTask >= d.repairTaskLimit {
-		return false
-	}
-	d.executingRepairTask++
-	return true
-}
-
-func (d *Disk) finishRepairTask() {
-	d.limitLock.Lock()
-	defer d.limitLock.Unlock()
-	if d.executingRepairTask > 0 {
-		d.executingRepairTask--
-	}
-}
-
 func (d *Disk) computeUsage() (err error) {
 	if d.IsSfx {
 		err = d.computeUsageOnSFXDevice()

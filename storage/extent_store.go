@@ -42,20 +42,21 @@ import (
 )
 
 const (
-	extentCRCHeaderFilename   = "EXTENT_CRC"
-	baseExtentIDFilename      = "EXTENT_META"
-	tinyDeleteFileOpenFlag    = os.O_CREATE | os.O_RDWR | os.O_APPEND
-	tinyDeleteFilePerm        = 0666
-	tinyExtentDeletedFilename = "TINYEXTENT_DELETE"
-	inodeIndexFilename        = "INODE_INDEX"
-	MaxExtentCount            = 20000
-	MinNormalExtentID         = 1024
-	DeleteTinyRecordSize      = 24
-	UpdateCrcInterval         = 600
-	RepairInterval            = 10
-	RandomWriteType           = 2
-	AppendWriteType           = 1
-	BaseExtentIDPersistStep   = 500
+	extentCRCHeaderFilename         = "EXTENT_CRC"
+	baseExtentIDFilename            = "EXTENT_META"
+	tinyDeleteFileOpenFlag          = os.O_CREATE | os.O_RDWR | os.O_APPEND
+	tinyDeleteFilePerm              = 0666
+	tinyExtentDeletedFilename       = "TINYEXTENT_DELETE"
+	tinyExtentDeletedFilenameBackup = "TINYEXTENT_DELETE_BACK"
+	inodeIndexFilename              = "INODE_INDEX"
+	MaxExtentCount                  = 20000
+	MinNormalExtentID               = 1024
+	DeleteTinyRecordSize            = 24
+	UpdateCrcInterval               = 600
+	RepairInterval                  = 10
+	RandomWriteType                 = 2
+	AppendWriteType                 = 1
+	BaseExtentIDPersistStep         = 500
 
 	deletionQueueDirname                 = "Deletion"
 	deletionQueueFilesize    int64       = 1024 * 1024 * 4
@@ -76,6 +77,8 @@ var (
 var (
 	PartitionIsLoaddingErr = fmt.Errorf("partition is loadding")
 )
+
+type LimiterFunc func(ctx context.Context, op int, size uint32, bandType string) (err error)
 
 func GetSnapShotFileFromPool() (f *proto.File) {
 	f = SnapShotFilePool.Get().(*proto.File)
@@ -627,7 +630,8 @@ func (s *ExtentStore) FlushDelete(interceptor Interceptor, limit int) (deleted, 
 				s.partitionID, limit, deleted, remain)
 		}
 	}()
-
+	s.LockTinyDeleteRecord()
+	defer s.UnlockTinyDeleteRecord()
 	if interceptor == nil {
 		interceptor = noopInterceptor
 	}
@@ -696,6 +700,10 @@ func (s *ExtentStore) __deleteExtent(ino, extent uint64, offset, size int64) (er
 		log.LogWarnf("Store(%v) remove block CRC info failed: extent=%v, ino=%v, error=%v", s.partitionID, extent, ino, err)
 	}
 	return
+}
+
+func (s *ExtentStore) FullSyncTinyDeleteRecord() {
+
 }
 
 // PersistTinyDeleteRecord marks the given extent as deleted.
@@ -1087,6 +1095,27 @@ func (s *ExtentStore) LoadTinyDeleteFileOffset() (offset int64, err error) {
 	return
 }
 
+// todo unimplemented
+func (s *ExtentStore) LockTinyDeleteRecord() {
+
+}
+
+// todo unimplemented
+func (s *ExtentStore) UnlockTinyDeleteRecord() {
+
+}
+
+func (s *ExtentStore) DropTinyDeleteRecord() (err error) {
+	s.LockTinyDeleteRecord()
+	defer s.UnlockTinyDeleteRecord()
+	if err = os.Rename(path.Join(s.dataPath, tinyExtentDeletedFilename), path.Join(s.dataPath, tinyExtentDeletedFilenameBackup)); err != nil {
+		return
+	}
+	if s.tinyExtentDeleteFp, err = os.OpenFile(path.Join(s.dataPath, tinyExtentDeletedFilename), tinyDeleteFileOpenFlag, tinyDeleteFilePerm); err != nil {
+		return
+	}
+	return
+}
 func (s *ExtentStore) getExtentKey(extent uint64) string {
 	return fmt.Sprintf("extent %v_%v", s.partitionID, extent)
 }
@@ -1406,23 +1435,29 @@ func (s *ExtentStore) EvictExpiredNormalExtentDeleteCache(expireTime int64) {
 	log.LogDebugf("action[EvictExpiredNormalExtentDeleteCache] Partition(%d) (%d) extent delete cache has been evicted.", s.partitionID, count)
 }
 
-func (s *ExtentStore) PlaybackTinyDelete() (err error) {
+func (s *ExtentStore) PlaybackTinyDelete(offset int64) (err error) {
 	var (
 		recordFileInfo os.FileInfo
 		recordData           = make([]byte, DeleteTinyRecordSize)
 		readOff        int64 = 0
 		readN                = 0
+		badCount             = 0
+		successCount         = 0
 	)
 	defer func() {
 		if err != nil {
 			log.LogErrorf("action[PlaybackTinyDelete] partition(%v) err:%v", s.partitionID, err)
 		}
+		log.LogInfof("action[PlaybackTinyDelete] partition(%v), offset(%v), offCount(%v), badCount(%v), successCount(%v)", s.partitionID, offset, offset/DeleteTinyRecordSize, badCount, successCount)
 	}()
+	if offset%DeleteTinyRecordSize != 0 {
+		offset = offset + (DeleteTinyRecordSize - offset%DeleteTinyRecordSize)
+	}
 	if recordFileInfo, err = s.tinyExtentDeleteFp.Stat(); err != nil {
 		return
 	}
 	log.LogInfof("action[PlaybackTinyDelete] partition(%v) record file size(%v)", s.partitionID, recordFileInfo.Size())
-	for readOff = 0; readOff < recordFileInfo.Size(); readOff += DeleteTinyRecordSize {
+	for readOff = offset; readOff < recordFileInfo.Size(); readOff += DeleteTinyRecordSize {
 		readN, err = s.tinyExtentDeleteFp.ReadAt(recordData, readOff)
 		if err != nil {
 			if err == io.EOF {
@@ -1435,10 +1470,12 @@ func (s *ExtentStore) PlaybackTinyDelete() (err error) {
 		}
 		extentID, offset, size := UnMarshalTinyExtent(recordData[:readN])
 		if !proto.IsTinyExtent(extentID) {
+			badCount++
 			continue
 		}
 		ei, ok := s.getExtentInfoByExtentID(extentID)
 		if !ok {
+			badCount++
 			continue
 		}
 		var e *Extent
@@ -1448,6 +1485,7 @@ func (s *ExtentStore) PlaybackTinyDelete() (err error) {
 		if _, err = e.DeleteTiny(int64(offset), int64(size)); err != nil {
 			return
 		}
+		successCount++
 	}
 	return
 }

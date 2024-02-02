@@ -27,7 +27,7 @@ func init() {
 			dataNode: &DataNode{
 				localServerAddr: localNodeAddress,
 			},
-			partitions: make(map[uint64]*DataPartition),
+			partitions:        make(map[uint64]*DataPartition),
 			diskReservedRatio: atomic2.NewFloat64(DefaultDiskReservedRatio),
 		}
 		reservedSpace uint64 = DefaultDiskReservedSpace
@@ -139,39 +139,6 @@ func TestPartitionCount(t *testing.T) {
 	total := attachNum - detachNum
 	if actualDpCount != total {
 		t.Fatalf("disk partitionCount mismatch, except:%v, actual:%v", total, actualDpCount)
-	}
-}
-
-func TestCanRepairOnDisk(t *testing.T) {
-	if disk.canRepairOnDisk() {
-		t.Fatal("This should be able to repair on disk")
-	}
-	disk.repairTaskLimit = 10
-	wantRepairCount := 20
-	for i := 0; i < wantRepairCount; i++ {
-		if uint64(i) < disk.repairTaskLimit {
-			if !disk.canRepairOnDisk() {
-				t.Fatal("This should not repair on disk")
-			}
-		} else {
-			if disk.canRepairOnDisk() {
-				t.Fatal("This should be able to repair on disk")
-			}
-		}
-	}
-	if disk.executingRepairTask != disk.repairTaskLimit {
-		t.Fatalf("disk executingRepairTask mismatch, except:%v, actual:%v", disk.repairTaskLimit, disk.executingRepairTask)
-	}
-}
-
-func TestFinishRepairTask(t *testing.T) {
-	num := 100
-	disk.executingRepairTask = uint64(num)
-	for i := 0; i < num/2; i++ {
-		disk.finishRepairTask()
-	}
-	if disk.executingRepairTask != uint64(num)/2 {
-		t.Fatalf("disk executingRepairTask mismatch, except:%v, actual:%v", uint64(num)/2, disk.executingRepairTask)
 	}
 }
 
