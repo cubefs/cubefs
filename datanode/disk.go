@@ -109,7 +109,6 @@ type DiskConfig struct {
 	MaxFDLimit               uint64     // 触发强制FD淘汰策略的阈值
 	ForceFDEvictRatio        unit.Ratio // 强制FD淘汰比例
 	FixTinyDeleteRecordLimit uint64
-	RepairTaskLimit          uint64
 }
 
 // Disk represents the structure of the disk
@@ -137,7 +136,6 @@ type Disk struct {
 	// Parallel limit control
 	fixTinyDeleteRecordLimit     uint64 // Limit for parallel fix tiny delete record tasks
 	executingFixTinyDeleteRecord uint64 // Count of executing fix tiny delete record tasks
-	repairTaskLimit              uint64 // Limit for parallel data repair tasks
 	executingRepairTask          uint64 // Count of executing data repair tasks
 	limitLock                    sync.Mutex
 
@@ -181,7 +179,6 @@ func OpenDisk(path string, config *DiskConfig, space *SpaceManager, parallelism 
 		space:                    space,
 		partitionMap:             make(map[uint64]*DataPartition),
 		fixTinyDeleteRecordLimit: config.FixTinyDeleteRecordLimit,
-		repairTaskLimit:          config.RepairTaskLimit,
 		fdCount:                  0,
 		maxFDLimit:               config.MaxFDLimit,
 		forceEvictFDRatio:        config.ForceFDEvictRatio,
@@ -646,15 +643,6 @@ func (d *Disk) SetFixTinyDeleteRecordLimitOnDisk(value uint64) {
 	if d.fixTinyDeleteRecordLimit != value {
 		log.LogInfof("action[updateTaskExecutionLimit] disk(%v) change fixTinyDeleteRecordLimit from(%v) to(%v)", d.Path, d.fixTinyDeleteRecordLimit, value)
 		d.fixTinyDeleteRecordLimit = value
-	}
-}
-
-func (d *Disk) SetRepairTaskLimitOnDisk(value uint64) {
-	d.limitLock.Lock()
-	defer d.limitLock.Unlock()
-	if d.repairTaskLimit != value {
-		log.LogInfof("action[updateTaskExecutionLimit] disk(%v) change repairTaskLimit from(%v) to(%v)", d.Path, d.repairTaskLimit, value)
-		d.repairTaskLimit = value
 	}
 }
 

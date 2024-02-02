@@ -22,7 +22,6 @@ var disk *Disk
 func init() {
 	var (
 		spaceManager = &SpaceManager{
-			repairTaskLimitOnDisk:          0,
 			fixTinyDeleteRecordLimitOnDisk: 0,
 			dataNode: &DataNode{
 				localServerAddr: localNodeAddress,
@@ -45,7 +44,6 @@ func init() {
 	disk.space = spaceManager
 	disk.partitionMap = make(map[uint64]*DataPartition)
 	disk.fixTinyDeleteRecordLimit = spaceManager.fixTinyDeleteRecordLimitOnDisk
-	disk.repairTaskLimit = spaceManager.repairTaskLimitOnDisk
 	disk.getReservedRatio = spaceManager.GetDiskReservedRatio
 }
 func TestFDCount(t *testing.T) {

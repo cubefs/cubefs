@@ -52,7 +52,6 @@ type SpaceManager struct {
 
 	// Parallel task limits on disk
 	fixTinyDeleteRecordLimitOnDisk uint64
-	repairTaskLimitOnDisk          uint64
 	normalExtentDeleteExpireTime   uint64
 	flushFDIntervalSec             uint32
 	flushFDParallelismOnDisk       uint64
@@ -70,7 +69,6 @@ func NewSpaceManager(dataNode *DataNode) *SpaceManager {
 		stopC:                          make(chan bool, 0),
 		dataNode:                       dataNode,
 		fixTinyDeleteRecordLimitOnDisk: DefaultFixTinyDeleteRecordLimitOnDisk,
-		repairTaskLimitOnDisk:          DefaultRepairTaskLimitOnDisk,
 		normalExtentDeleteExpireTime:   DefaultNormalExtentDeleteExpireTime,
 		topoManager:                    dataNode.topoManager,
 		diskReservedRatio:              atomic2.NewFloat64(DefaultDiskReservedRatio),
@@ -221,7 +219,6 @@ func (manager *SpaceManager) LoadDisk(path string, expired CheckExpired) (err er
 			ForceFDEvictRatio: DiskForceEvictFDRatio,
 
 			FixTinyDeleteRecordLimit: manager.fixTinyDeleteRecordLimitOnDisk,
-			RepairTaskLimit:          manager.repairTaskLimitOnDisk,
 		}
 		var startTime = time.Now()
 		if disk, err = OpenDisk(path, config, manager, DiskLoadPartitionParallelism, manager.topoManager, expired); err != nil {
@@ -600,7 +597,6 @@ func (manager *SpaceManager) SetPartitionConsistencyMode(mode proto.ConsistencyM
 }
 
 const (
-	MaxDiskRepairTaskLimit                 = 256
 	DefaultForceFlushFDSecond              = 10
 	DefaultForceFlushFDParallelismOnDisk   = 5
 	DefaultForceFlushDataSizeOnEachHDDDisk = 2 * util.MB
@@ -608,21 +604,6 @@ const (
 	DefaultDeletionConcurrencyOnDisk       = 2
 	DefaultIssueFixConcurrencyOnDisk       = 16
 )
-
-func (manager *SpaceManager) SetDiskRepairTaskLimit(newValue uint64) {
-	if newValue == 0 {
-		newValue = MaxDiskRepairTaskLimit
-	}
-	if newValue > 0 && manager.repairTaskLimitOnDisk != newValue {
-		log.LogInfof("action[spaceManager] change DiskRepairTaskLimit from(%v) to(%v)", manager.repairTaskLimitOnDisk, newValue)
-		manager.repairTaskLimitOnDisk = newValue
-		manager.diskMutex.Lock()
-		for _, disk := range manager.disks {
-			disk.SetRepairTaskLimitOnDisk(newValue)
-		}
-		manager.diskMutex.Unlock()
-	}
-}
 
 func (manager *SpaceManager) SetForceFlushFDInterval(newValue uint32) {
 	if newValue == 0 {

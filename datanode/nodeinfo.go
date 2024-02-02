@@ -14,7 +14,6 @@ const (
 	DefaultMarkDeleteLimitBurst           = 512
 	UpdateNodeBaseInfoTicket              = 1 * time.Minute
 	DefaultFixTinyDeleteRecordLimitOnDisk = 1
-	DefaultRepairTaskLimitOnDisk          = 5
 	DefaultNormalExtentDeleteExpireTime   = 4 * 3600
 	DefaultLazyLoadParallelismPerDisk     = 2
 )
@@ -64,12 +63,6 @@ func (s *DataNode) updateNodeBaseInfo() {
 	deleteLimiteRater.SetLimit(l)
 
 	s.space.SetDiskFixTinyDeleteRecordLimit(limitInfo.DataNodeFixTinyDeleteRecordLimitOnDisk)
-	if limitInfo.DataNodeRepairTaskCountZoneLimit != nil {
-		if taskLimit, ok := limitInfo.DataNodeRepairTaskCountZoneLimit[s.zoneName]; ok {
-			limitInfo.DataNodeRepairTaskLimitOnDisk = taskLimit
-		}
-	}
-	s.space.SetDiskRepairTaskLimit(limitInfo.DataNodeRepairTaskLimitOnDisk)
 	s.space.SetForceFlushFDInterval(limitInfo.DataNodeFlushFDInterval)
 	s.space.SetSyncWALOnUnstableEnableState(limitInfo.DataSyncWALOnUnstableEnableState)
 	s.space.SetForceFlushFDParallelismOnDisk(limitInfo.DataNodeFlushFDParallelismOnDisk)

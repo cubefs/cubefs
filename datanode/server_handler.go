@@ -62,7 +62,6 @@ func (s *DataNode) getDiskAPI(w http.ResponseWriter, r *http.Request) {
 			Partitions  int    `json:"partitions"`
 
 			// Limits
-			RepairTaskLimit              uint64 `json:"repair_task_limit"`
 			ExecutingRepairTask          uint64 `json:"executing_repair_task"`
 			FixTinyDeleteRecordLimit     uint64 `json:"fix_tiny_delete_record_limit"`
 			ExecutingFixTinyDeleteRecord uint64 `json:"executing_fix_tiny_delete_record"`

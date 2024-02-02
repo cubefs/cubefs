@@ -702,10 +702,6 @@ func (s *ExtentStore) __deleteExtent(ino, extent uint64, offset, size int64) (er
 	return
 }
 
-func (s *ExtentStore) FullSyncTinyDeleteRecord() {
-
-}
-
 // PersistTinyDeleteRecord marks the given extent as deleted.
 func (s *ExtentStore) PersistTinyDeleteRecord(extentID uint64, offset, size int64) (err error) {
 	ei, ok := s.getExtentInfoByExtentID(extentID)
