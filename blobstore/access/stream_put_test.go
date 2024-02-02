@@ -69,8 +69,8 @@ func TestAccessStreamPutBase(t *testing.T) {
 		size := (1 << 23) + 1024
 		loc, err := streamer.Put(ctx(), newReader(size), int64(size), nil)
 		require.NoError(t, err)
-		require.Equal(t, 2, len(loc.Blobs))
-		require.Equal(t, uint32(2), loc.Blobs[1].Count)
+		require.Equal(t, 1, len(loc.Blobs))
+		require.Equal(t, uint32(3), loc.Blobs[0].Count)
 		time.Sleep(time.Second * time.Duration(punishServiceS))
 	}
 	// max size + 1
@@ -85,7 +85,7 @@ func TestAccessStreamPutBase(t *testing.T) {
 
 func TestAccessStreamPutSum(t *testing.T) {
 	ctx := ctxWithName("TestAccessStreamPutSum")
-	sumChecker := func(data []byte) {
+	sumChecker := func(data []byte) *access.Location {
 		dataShards.clean()
 
 		hasherMap := access.HasherMap{
@@ -97,7 +97,7 @@ func TestAccessStreamPutSum(t *testing.T) {
 		}
 		hashSumMap := make(access.HashSumMap, len(hasherMap))
 
-		_, err := streamer.Put(ctx(), bytes.NewReader(data), int64(len(data)), hasherMap)
+		locs, err := streamer.Put(ctx(), bytes.NewReader(data), int64(len(data)), hasherMap)
 		require.NoError(t, err)
 		for alg, hasher := range hasherMap {
 			hashSumMap[alg] = hasher.Sum(nil)
@@ -111,6 +111,7 @@ func TestAccessStreamPutSum(t *testing.T) {
 		require.Equal(t, hashSumMap.GetSumVal(access.HashAlgMD5), sum2Str(bytesMD5[:]))
 		require.Equal(t, hashSumMap.GetSumVal(access.HashAlgSHA1), sum2Str(bytesSHA1[:]))
 		require.Equal(t, hashSumMap.GetSumVal(access.HashAlgSHA256), sum2Str(bytesSHA256[:]))
+		return locs
 	}
 
 	shardsChecher := func(shardSize int, buff []byte, bid proto.BlobID) {
@@ -128,88 +129,95 @@ func TestAccessStreamPutSum(t *testing.T) {
 	// 1 byte
 	{
 		data := []byte("x")
-		sumChecker(data)
+		loc := sumChecker(data)
+		require.Equal(t, uint32(1), loc.Blobs[0].Count)
 
 		shardSize := getBufSizes(len(data)).ShardSize
 		zeroShard := make([]byte, shardSize)
 		shard1 := make([]byte, shardSize)
 		copy(shard1, data)
 
-		require.Equal(t, shard1, dataShards.get(1001, 10000))
-		require.Equal(t, zeroShard, dataShards.get(1002, 10000))
-		require.Equal(t, zeroShard, dataShards.get(1004, 10000))
-		require.Equal(t, 0, len(dataShards.get(1005, 10000)))
-		require.NotEqual(t, ([]byte)(nil), dataShards.get(1007, 10000))
+		require.Equal(t, shard1, dataShards.get(1001, loc.Blobs[0].MinBid))
+		require.Equal(t, zeroShard, dataShards.get(1002, loc.Blobs[0].MinBid))
+		require.Equal(t, zeroShard, dataShards.get(1004, loc.Blobs[0].MinBid))
+		require.Equal(t, 0, len(dataShards.get(1005, loc.Blobs[0].MinBid)))
+		require.NotEqual(t, ([]byte)(nil), dataShards.get(1007, loc.Blobs[0].MinBid))
+
 	}
 	// 7 bytes
 	{
 		data := []byte{0x0, 0x1, 0x2, 0x3, 0x4, 0x5, 0x6}
-		sumChecker(data)
+		loc := sumChecker(data)
+		require.Equal(t, uint32(1), loc.Blobs[0].Count)
 
 		sizes := getBufSizes(len(data))
 		buff := make([]byte, sizes.ECDataSize)
 		copy(buff, data)
-		shardsChecher(sizes.ShardSize, buff, 10000)
+		shardsChecher(sizes.ShardSize, buff, loc.Blobs[0].MinBid)
 	}
 	// 4K + 511B, aligned with MinShardSize
 	{
 		size := (1 << 12) + 511
 		data := make([]byte, size)
 		rand.Read(data)
-		sumChecker(data)
+		loc := sumChecker(data)
 
 		sizes := getBufSizes(len(data))
 		buff := make([]byte, sizes.ECDataSize)
 		copy(buff, data)
-		shardsChecher(sizes.ShardSize, buff, 10000)
+		require.Equal(t, uint32(1), loc.Blobs[0].Count)
+		shardsChecher(sizes.ShardSize, buff, loc.Blobs[0].MinBid)
 	}
 	// 4M
 	{
 		size := 1 << 22
 		data := make([]byte, size)
 		rand.Read(data)
-		sumChecker(data)
+		loc := sumChecker(data)
 
 		sizes := getBufSizes(len(data))
 		buff := make([]byte, sizes.ECDataSize)
 		copy(buff, data)
-		shardsChecher(sizes.ShardSize, buff, 10000)
+		require.Equal(t, uint32(1), loc.Blobs[0].Count)
+		shardsChecher(sizes.ShardSize, buff, loc.Blobs[0].MinBid)
 	}
 	// 4M + 1B
 	{
 		size := (1 << 22) + 1
 		data := make([]byte, size)
 		rand.Read(data)
-		sumChecker(data)
+		loc := sumChecker(data)
+		require.Equal(t, uint32(2), loc.Blobs[0].Count)
 
 		sizes := getBufSizes(blobSize)
 		buff := make([]byte, sizes.ECDataSize)
 		copy(buff, data[:blobSize])
-		shardsChecher(sizes.ShardSize, buff, 10000)
+		shardsChecher(sizes.ShardSize, buff, loc.Blobs[0].MinBid)
 
 		data = data[blobSize:]
 		sizes = getBufSizes(len(data))
 		buff = make([]byte, sizes.ECDataSize)
 		copy(buff, data)
-		shardsChecher(sizes.ShardSize, buff, 20000)
+		shardsChecher(sizes.ShardSize, buff, loc.Blobs[0].MinBid+1)
 	}
 	// 6M + 1K + 7B
 	{
 		size := (1<<20)*6 + 1024 + 7
 		data := make([]byte, size)
 		rand.Read(data)
-		sumChecker(data)
+		loc := sumChecker(data)
+		require.Equal(t, uint32(2), loc.Blobs[0].Count)
 
 		sizes := getBufSizes(blobSize)
 		buff := make([]byte, sizes.ECDataSize)
 		copy(buff, data[:blobSize])
-		shardsChecher(sizes.ShardSize, buff, 10000)
+		shardsChecher(sizes.ShardSize, buff, loc.Blobs[0].MinBid)
 
 		data = data[blobSize:]
 		sizes = getBufSizes(len(data))
 		buff = make([]byte, sizes.ECDataSize)
 		copy(buff, data)
-		shardsChecher(sizes.ShardSize, buff, 20000)
+		shardsChecher(sizes.ShardSize, buff, loc.Blobs[0].MinBid+1)
 	}
 
 	dataShards.clean()

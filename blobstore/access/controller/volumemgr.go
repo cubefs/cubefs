@@ -37,8 +37,8 @@ import (
 const (
 	defaultAllocVolsNum        = 1
 	defaultTotalThresholdRatio = 0.1
-	defaultInitVolumeNum       = 4
-	defaultRetainVolumeNum     = 400
+	defaultInitVolumeNum       = 5
+	defaultRetainVolumeNum     = 10
 
 	defaultRetainIntervalS      = int64(40)
 	defaultMetricIntervalS      = 60
@@ -174,6 +174,27 @@ func (m *modeInfo) getAvailableList(fsize int64, switchable bool) []*volume {
 	return vols
 }
 
+func (m *modeInfo) dealDisCards(discards []proto.Vid) {
+	if len(discards) == 0 {
+		return
+	}
+	m.lock.RLock()
+	for _, vid := range discards {
+		vol, ok := m.current.Get(vid)
+		if ok {
+			vol.mu.Lock()
+			if vol.deleted {
+				vol.mu.Unlock()
+				continue
+			}
+			vol.deleted = true
+			vol.mu.Unlock()
+			m.current.Delete(vid)
+		}
+	}
+	m.lock.RUnlock()
+}
+
 func (m *modeInfo) UpdateTotalFree(isBackup bool, free int64) {
 	m.lock.RLock()
 	if isBackup {
@@ -202,7 +223,7 @@ type volumeMgr struct {
 	modeInfos  map[codemode.CodeMode]*modeInfo
 	allocChs   map[codemode.CodeMode]chan *allocArgs
 	preIdx     uint64
-	closeCh    <-chan struct{}
+	closeCh    chan struct{}
 }
 
 func volConfCheck(cfg *VolConfig) {
@@ -232,9 +253,13 @@ type VolumeMgr interface {
 	List(ctx context.Context, codeMode codemode.CodeMode) (vids []proto.Vid, volumes []cmapi.AllocVolumeInfo, err error)
 	// Release the volumes
 	Release(ctx context.Context, args *cmapi.ReleaseVolumes) error
+	// Discard just used for proxy volume management, remove invalid volumes
+	Discard(ctx context.Context, args *proxy.DiscardVolsArgs) error
+	// Close exit background goroutines
+	Close()
 }
 
-func NewVolumeMgr(ctx context.Context, conf VolumeMgrConfig, clusterMgr cmapi.ClientAPI, stopCh <-chan struct{}) (VolumeMgr, error) {
+func NewVolumeMgr(ctx context.Context, conf VolumeMgrConfig, clusterMgr cmapi.ClientAPI) (VolumeMgr, error) {
 	span := trace.SpanFromContextSafe(ctx)
 	volConfCheck(&conf.VolConfig)
 	bidMgr, err := NewBidMgr(ctx, conf.BlobConfig, clusterMgr)
@@ -249,7 +274,7 @@ func NewVolumeMgr(ctx context.Context, conf VolumeMgrConfig, clusterMgr cmapi.Cl
 		BidMgr:     bidMgr,
 		BlobConfig: conf.BlobConfig,
 		VolConfig:  conf.VolConfig,
-		closeCh:    stopCh,
+		closeCh:    make(chan struct{}),
 	}
 	atomic.StoreUint64(&v.preIdx, rand.Uint64())
 	err = v.initModeInfo(ctx)
@@ -345,6 +370,15 @@ func (v *volumeMgr) Alloc(ctx context.Context, args *proxy.AllocVolsArgs) (alloc
 }
 
 func (v *volumeMgr) Release(ctx context.Context, args *cmapi.ReleaseVolumes) error {
+	arg := &proxy.DiscardVolsArgs{
+		CodeMode: args.CodeMode,
+		Discards: append(args.NormalVids, args.SealedVids...),
+	}
+
+	err := v.Discard(ctx, arg)
+	if err != nil {
+		return err
+	}
 	return v.clusterMgr.ReleaseVolume(ctx, args)
 }
 
@@ -365,6 +399,21 @@ func (v *volumeMgr) List(ctx context.Context, codeMode codemode.CodeMode) (vids 
 	}
 	span.Debugf("[list]code mode: %v, available volumes: %v,count: %v", codeMode, volumes, len(volumes))
 	return
+}
+
+func (v *volumeMgr) Discard(ctx context.Context, args *proxy.DiscardVolsArgs) error {
+	span := trace.SpanFromContextSafe(ctx)
+	info := v.modeInfos[args.CodeMode]
+	if info != nil {
+		span.Debugf("discard code mode[%s], vols[%v]", args.CodeMode, args.Discards)
+		info.dealDisCards(args.Discards)
+		return nil
+	}
+	return errors.New("code mode not exist")
+}
+
+func (v *volumeMgr) Close() {
+	close(v.closeCh)
 }
 
 func (v *volumeMgr) getNextVid(ctx context.Context, vols []*volume, modeInfo *modeInfo, args *proxy.AllocVolsArgs) (proto.Vid, error) {
@@ -429,6 +478,7 @@ func (v *volumeMgr) allocVid(ctx context.Context, args *proxy.AllocVolsArgs) (pr
 func (v *volumeMgr) getAvailableVols(ctx context.Context, args *proxy.AllocVolsArgs) (vols []*volume, err error) {
 	span := trace.SpanFromContextSafe(ctx)
 	info := v.modeInfos[args.CodeMode]
+	info.dealDisCards(args.Discards)
 
 	needSwitch, err := info.needSwitchToBackup(int64(args.Fsize))
 	if err != nil {
@@ -490,7 +540,13 @@ func (v *volumeMgr) allocVolume(ctx context.Context, args *cmapi.AllocVolumeV2Ar
 
 func (v *volumeMgr) allocVolumeLoop(mode codemode.CodeMode) {
 	for {
-		args := <-v.allocChs[mode]
+		var args *allocArgs
+		select {
+		case <-v.closeCh:
+			return
+		case args = <-v.allocChs[mode]:
+		}
+
 		span, ctx := trace.StartSpanFromContext(context.Background(), "")
 		requireCount := args.count
 		for {
