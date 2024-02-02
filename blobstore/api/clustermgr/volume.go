@@ -169,8 +169,9 @@ func (c *Client) RetainVolume(ctx context.Context, args *RetainVolumeArgs) (ret 
 }
 
 type ReleaseVolumes struct {
-	NormalVids []proto.Vid `json:"normal_vids"`
-	SealedVids []proto.Vid `json:"sealed_vids"`
+	CodeMode   codemode.CodeMode `json:"code_mode"`
+	NormalVids []proto.Vid       `json:"normal_vids"`
+	SealedVids []proto.Vid       `json:"sealed_vids"`
 }
 
 func (c *Client) ReleaseVolume(ctx context.Context, args *ReleaseVolumes) (err error) {

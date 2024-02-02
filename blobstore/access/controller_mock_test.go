@@ -110,6 +110,21 @@ func (mr *MockClusterControllerMockRecorder) GetServiceController(arg0 interface
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetServiceController", reflect.TypeOf((*MockClusterController)(nil).GetServiceController), arg0)
 }
 
+// GetVolumeAllocator mocks base method.
+func (m *MockClusterController) GetVolumeAllocator(arg0 proto.ClusterID) (controller.VolumeMgr, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetVolumeAllocator", arg0)
+	ret0, _ := ret[0].(controller.VolumeMgr)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetVolumeAllocator indicates an expected call of GetVolumeAllocator.
+func (mr *MockClusterControllerMockRecorder) GetVolumeAllocator(arg0 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetVolumeAllocator", reflect.TypeOf((*MockClusterController)(nil).GetVolumeAllocator), arg0)
+}
+
 // GetVolumeGetter mocks base method.
 func (m *MockClusterController) GetVolumeGetter(arg0 proto.ClusterID) (controller.VolumeGetter, error) {
 	m.ctrl.T.Helper()
