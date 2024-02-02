@@ -163,6 +163,8 @@ type ExtentStore struct {
 
 	ttlStore      *ttlstore.TTLStore
 	ttlStoreMutex sync.Mutex
+
+	localFlushDeleteC chan struct{}
 }
 
 func MkdirAll(name string) (err error) {
@@ -177,6 +179,7 @@ func NewExtentStore(dataDir string, partitionID uint64, storeSize int,
 	s.infoStore = NewExtentInfoStore(partitionID)
 	s.interceptors = ioi
 	s.ttlStore = ttlstore.NewTTLStore()
+	s.localFlushDeleteC = make(chan struct{}, 1)
 	if err = MkdirAll(dataDir); err != nil {
 		return nil, fmt.Errorf("NewExtentStore [%v] err[%v]", dataDir, err)
 	}
@@ -630,8 +633,13 @@ func (s *ExtentStore) FlushDelete(interceptor Interceptor, limit int) (deleted, 
 				s.partitionID, limit, deleted, remain)
 		}
 	}()
-	s.LockTinyDeleteRecord()
-	defer s.UnlockTinyDeleteRecord()
+
+	var release = s.__lockFlushDelete(false)
+	if release == nil {
+		return
+	}
+	defer release()
+
 	if interceptor == nil {
 		interceptor = noopInterceptor
 	}
@@ -1091,27 +1099,14 @@ func (s *ExtentStore) LoadTinyDeleteFileOffset() (offset int64, err error) {
 	return
 }
 
-// todo unimplemented
-func (s *ExtentStore) LockTinyDeleteRecord() {
-
-}
-
-// todo unimplemented
-func (s *ExtentStore) UnlockTinyDeleteRecord() {
-
+func (s *ExtentStore) LockFlushDelete() (release func()) {
+	return s.__lockFlushDelete(true)
 }
 
 func (s *ExtentStore) DropTinyDeleteRecord() (err error) {
-	s.LockTinyDeleteRecord()
-	defer s.UnlockTinyDeleteRecord()
-	if err = os.Rename(path.Join(s.dataPath, tinyExtentDeletedFilename), path.Join(s.dataPath, tinyExtentDeletedFilenameBackup)); err != nil {
-		return
-	}
-	if s.tinyExtentDeleteFp, err = os.OpenFile(path.Join(s.dataPath, tinyExtentDeletedFilename), tinyDeleteFileOpenFlag, tinyDeleteFilePerm); err != nil {
-		return
-	}
-	return
+	return s.tinyExtentDeleteFp.Truncate(0)
 }
+
 func (s *ExtentStore) getExtentKey(extent uint64) string {
 	return fmt.Sprintf("extent %v_%v", s.partitionID, extent)
 }
@@ -1533,4 +1528,22 @@ func (s *ExtentStore) RangeExtentLockInfo(f func(key interface{}, value *ttlstor
 func (s *ExtentStore) FreeExtentLockInfo() {
 	s.ttlStore.FreeLockInfo()
 	return
+}
+
+// __lockFlushDelete try lock or wait the deletion flushing process.
+func (s *ExtentStore) __lockFlushDelete(wait bool) (release func()) {
+	if wait {
+		s.localFlushDeleteC <- struct{}{}
+		return func() {
+			<-s.localFlushDeleteC
+		}
+	}
+	select {
+	case s.localFlushDeleteC <- struct{}{}:
+		return func() {
+			<-s.localFlushDeleteC
+		}
+	default:
+	}
+	return nil
 }

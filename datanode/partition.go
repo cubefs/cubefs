@@ -1087,11 +1087,13 @@ func (dp *DataPartition) doStreamFixTinyDeleteRecord(ctx context.Context, repair
 			return
 		}
 	}
+
+	var release = dp.extentStore.LockFlushDelete()
+	defer release()
+
 	if localTinyDeleteFileSize, err = dp.extentStore.LoadTinyDeleteFileOffset(); err != nil {
 		return
 	}
-	dp.extentStore.LockTinyDeleteRecord()
-	defer dp.extentStore.UnlockTinyDeleteRecord()
 
 	if localTinyDeleteFileSize >= repairTask.LeaderTinyDeleteRecordFileSize {
 		return

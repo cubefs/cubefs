@@ -601,6 +601,7 @@ func (d *Disk) flushDelete() {
 		deleted += d
 		remain = r
 		if goon {
+			runtime.Gosched()
 			continue
 		}
 		break
