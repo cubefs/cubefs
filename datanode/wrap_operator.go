@@ -218,13 +218,6 @@ func (s *DataNode) handlePacketToCreateExtent(p *repl.Packet) {
 		return
 	}
 
-	// in case too many extents
-	if partition.GetExtentCount() >= storage.MaxExtentCount+10 {
-		log.LogWarnf("[handlePacketToCreateExtent] dp(%v) not enough space, too many extents(%v)", partition.partitionID, partition.GetExtentCount())
-		err = storage.NoSpaceError
-		return
-	}
-
 	partition.disk.allocCheckLimit(proto.IopsWriteType, 1)
 	partition.disk.limitWrite.Run(0, func() {
 		err = partition.ExtentStore().Create(p.ExtentID)
