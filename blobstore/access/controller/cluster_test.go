@@ -30,6 +30,7 @@ import (
 
 	"github.com/cubefs/cubefs/blobstore/access/controller"
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
+	"github.com/cubefs/cubefs/blobstore/common/codemode"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/rpc"
 	"github.com/cubefs/cubefs/blobstore/util/closer"
@@ -58,6 +59,8 @@ func initCluster() {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", consul)
 	mux.HandleFunc("/service/get", serviceGet)
+	mux.HandleFunc("/bid/alloc", bidAlloc)
+	mux.HandleFunc("/config/get", configGet)
 	mux.HandleFunc("/stat", stat)
 
 	testServer := httptest.NewServer(mux)
@@ -139,6 +142,34 @@ func serviceGet(w http.ResponseWriter, req *http.Request) {
 		w.Write([]byte("{cannot unmarshal"))
 	} else {
 		w.Write([]byte("{}"))
+	}
+}
+
+func bidAlloc(w http.ResponseWriter, req *http.Request) {
+	bs := &clustermgr.BidScopeRet{StartBid: proto.BlobID(1), EndBid: proto.BlobID(10000)}
+	data, _ := json.Marshal(bs)
+	w.Write(data)
+}
+
+func configGet(w http.ResponseWriter, req *http.Request) {
+	key := req.URL.Query().Get("key")
+	switch key {
+	case proto.CodeModeConfigKey:
+		policy := []codemode.Policy{
+			{ModeName: codemode.EC6P6.Name(), MinSize: 0, MaxSize: 0, SizeRatio: 0.3, Enable: true},
+			{ModeName: codemode.EC15P12.Name(), MinSize: 0, MaxSize: 0, SizeRatio: 0.7, Enable: true},
+		}
+		data, _ := json.Marshal(policy)
+		str, _ := json.Marshal(string(data))
+		w.Write(str)
+	case proto.VolumeReserveSizeKey:
+		data, _ := json.Marshal("1024")
+		w.Write(data)
+	case proto.VolumeChunkSizeKey:
+		data, _ := json.Marshal("17179869184")
+		w.Write(data)
+	default:
+		return
 	}
 }
 
@@ -315,7 +346,7 @@ func TestAccessClusterGetHandler(t *testing.T) {
 		require.Equal(t, nil, getter)
 
 		_, err = cc2.GetConfig(context.TODO(), "key")
-		require.Error(t, err)
+		require.Nil(t, err)
 	}
 	{
 		service, err := cc1.GetServiceController(1)
@@ -327,7 +358,7 @@ func TestAccessClusterGetHandler(t *testing.T) {
 		require.NotNil(t, getter)
 
 		_, err = cc1.GetConfig(context.TODO(), "key")
-		require.Error(t, err)
+		require.Nil(t, err)
 	}
 }
 

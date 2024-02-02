@@ -104,6 +104,7 @@ func init() {
 
 	cli := mocks.NewMockClientAPI(C(&testing.T{}))
 	cli.EXPECT().GetConfig(A, A).AnyTimes().Return("abc", nil)
+	cli.EXPECT().AllocBid(A, A).Return(&cmapi.BidScopeRet{StartBid: proto.BlobID(1), EndBid: proto.BlobID(10000)}, nil).AnyTimes()
 	cli.EXPECT().GetService(A, A).AnyTimes().DoAndReturn(
 		func(ctx context.Context, args cmapi.GetServiceArgs) (cmapi.ServiceInfo, error) {
 			if val, ok := dataNodes[args.Name]; ok {

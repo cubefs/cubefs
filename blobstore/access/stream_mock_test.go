@@ -21,6 +21,7 @@ package access
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"hash/crc32"
@@ -51,8 +52,7 @@ import (
 )
 
 var (
-	errNotFound     = errors.New("not found")
-	errAllocTimeout = errors.New("alloc timeout")
+	errNotFound = errors.New("not found")
 
 	allocTimeoutSize uint64 = 1 << 40
 	punishServiceS          = 1
@@ -60,12 +60,12 @@ var (
 
 	idc        = "test-idc"
 	idcOther   = "test-idc-other"
+	startVid   = 1
 	allID      = []int{1001, 1002, 1003, 1004, 1005, 1006, 1007, 1008, 1009, 1010, 1011, 1012}
 	idcID      = []int{1001, 1002, 1003, 1007, 1008, 1009}
 	idcOtherID = []int{1004, 1005, 1006, 1010, 1011, 1012}
 
 	clusterID = proto.ClusterID(1)
-	volumeID  = proto.Vid(1)
 	blobSize  = 1 << 22
 
 	streamer *Handler
@@ -76,14 +76,15 @@ var (
 
 	allCodeModes CodeModePairs
 
-	cmcli             clustermgr.APIAccess
-	volumeGetter      controller.VolumeGetter
+	cmcli        clustermgr.ClientAPI
+	volumeGetter controller.VolumeGetter
+	allocMgr     controller.VolumeMgr
+
 	serviceController controller.ServiceController
 	cc                controller.ClusterController
 
 	clusterInfo *clustermgr.ClusterInfo
-	dataVolume  *clustermgr.VersionVolume
-	dataAllocs  []proxy.AllocRet
+	dataVolumes map[proto.Vid]*clustermgr.VersionVolume
 	dataNodes   map[string]clustermgr.ServiceInfo
 	dataDisks   map[proto.DiskID]blobnode.DiskInfo
 	dataShards  *shardsData
@@ -289,35 +290,6 @@ var storageAPIPutShard = func(ctx context.Context, host string, args *blobnode.P
 }
 
 func initMockData() {
-	dataAllocs = make([]proxy.AllocRet, 2)
-	dataAllocs[0] = proxy.AllocRet{
-		BidStart: 10000,
-		BidEnd:   10000,
-		Vid:      volumeID,
-	}
-	dataAllocs[1] = proxy.AllocRet{
-		BidStart: 20000,
-		BidEnd:   50000,
-		Vid:      volumeID,
-	}
-
-	dataVolume = &clustermgr.VersionVolume{VolumeInfo: clustermgr.VolumeInfo{
-		VolumeInfoBase: clustermgr.VolumeInfoBase{
-			Vid:      volumeID,
-			CodeMode: codemode.EC6P6,
-		},
-		Units: func() (units []clustermgr.Unit) {
-			for _, id := range allID {
-				units = append(units, clustermgr.Unit{
-					Vuid:   proto.Vuid(id),
-					DiskID: proto.DiskID(id),
-					Host:   strconv.Itoa(id),
-				})
-			}
-			return
-		}(),
-	}}
-
 	proxyNodes := make([]clustermgr.ServiceNode, 32)
 	for idx := range proxyNodes {
 		proxyNodes[idx] = clustermgr.ServiceNode{
@@ -329,6 +301,7 @@ func initMockData() {
 	}
 
 	dataNodes = make(map[string]clustermgr.ServiceInfo)
+	dataVolumes = make(map[proto.Vid]*clustermgr.VersionVolume)
 	dataNodes[serviceProxy] = clustermgr.ServiceInfo{
 		Nodes: proxyNodes,
 	}
@@ -353,15 +326,92 @@ func initMockData() {
 	dataShards.clean()
 
 	ctr := gomock.NewController(&testing.T{})
-	cli := mocks.NewMockClientAPI(ctr)
-	cli.EXPECT().GetService(gomock.Any(), gomock.Any()).AnyTimes().DoAndReturn(
+	cmCli := mocks.NewMockClientAPI(ctr)
+	cmCli.EXPECT().GetService(gomock.Any(), gomock.Any()).AnyTimes().DoAndReturn(
 		func(ctx context.Context, args clustermgr.GetServiceArgs) (clustermgr.ServiceInfo, error) {
 			if val, ok := dataNodes[args.Name]; ok {
 				return val, nil
 			}
 			return clustermgr.ServiceInfo{}, errNotFound
 		})
-	cmcli = cli
+	cmCli.EXPECT().AllocBid(gomock.Any(), gomock.Any()).Return(&clustermgr.BidScopeRet{StartBid: proto.BlobID(10000), EndBid: proto.BlobID(20000)}, nil).AnyTimes()
+	cmCli.EXPECT().GetConfig(gomock.Any(), gomock.Any()).DoAndReturn(func(ctx context.Context, key string) (ret string, err error) {
+		switch key {
+		case proto.CodeModeConfigKey:
+			policy := []codemode.Policy{
+				{ModeName: codemode.EC6P6.Name(), MinSize: 0, MaxSize: 0, SizeRatio: 0.3, Enable: true},
+				{ModeName: codemode.EC15P12.Name(), MinSize: 0, MaxSize: 0, SizeRatio: 0.7, Enable: false},
+			}
+			data, err := json.Marshal(policy)
+			return string(data), err
+		case proto.VolumeReserveSizeKey:
+			return "1024", nil
+		case proto.VolumeChunkSizeKey:
+			return "17179869184", nil
+		default:
+			return
+		}
+	}).AnyTimes()
+	cmCli.EXPECT().AllocVolumeV2(gomock.Any(), gomock.Any()).DoAndReturn(func(ctx context.Context,
+		args *clustermgr.AllocVolumeV2Args) (ret clustermgr.AllocatedVolumeInfos, err error) {
+		if !args.CodeMode.IsValid() {
+			return clustermgr.AllocatedVolumeInfos{}, errors.New("alloc error")
+		}
+		now := time.Now().UnixNano()
+		rets := clustermgr.AllocatedVolumeInfos{}
+		var lock sync.Mutex
+		lock.Lock()
+		volInfos := make([]clustermgr.AllocVolumeInfo, 0)
+		for i := startVid; i < 50+args.Count; i++ {
+			volInfo := clustermgr.AllocVolumeInfo{
+				VolumeInfo: clustermgr.VolumeInfo{
+					VolumeInfoBase: clustermgr.VolumeInfoBase{
+						CodeMode: args.CodeMode,
+						Vid:      proto.Vid(i),
+						Free:     16 * 1024 * 1024 * 1024,
+					},
+					Units: func() (units []clustermgr.Unit) {
+						for _, id := range allID {
+							units = append(units, clustermgr.Unit{
+								Vuid:   proto.Vuid(id),
+								DiskID: proto.DiskID(id),
+								Host:   strconv.Itoa(id),
+							})
+						}
+						return
+					}(),
+				},
+				ExpireTime: 800*int64(math.Pow(10, 9)) + now,
+			}
+			volInfos = append(volInfos, volInfo)
+			dataVolumes[volInfo.Vid] = &clustermgr.VersionVolume{
+				VolumeInfo: volInfo.VolumeInfo,
+			}
+			startVid = i
+		}
+		lock.Unlock()
+
+		rets.AllocVolumeInfos = volInfos
+
+		return rets, nil
+	}).AnyTimes()
+	cmCli.EXPECT().RetainVolume(gomock.Any(),
+		gomock.Any()).DoAndReturn(func(ctx context.Context,
+		args *clustermgr.RetainVolumeArgs) (ret clustermgr.RetainVolumes, err error) {
+		now := int64(1598000000)
+		ret = clustermgr.RetainVolumes{}
+		vol := make([]clustermgr.RetainVolume, 0)
+		for i, token := range args.Tokens {
+			if i < 8 {
+				continue
+			}
+			retainInfo := clustermgr.RetainVolume{Token: token, ExpireTime: now + 500}
+			vol = append(vol, retainInfo)
+		}
+		ret.RetainVolTokens = vol
+		return ret, nil
+	}).AnyTimes()
+	cmcli = cmCli
 
 	clusterInfo = &clustermgr.ClusterInfo{
 		Region:    "test-region",
@@ -372,7 +422,9 @@ func initMockData() {
 	ctr = gomock.NewController(&testing.T{})
 	proxycli := mocks.NewMockProxyClient(ctr)
 	proxycli.EXPECT().GetCacheVolume(gomock.Any(), gomock.Any(), gomock.Any()).
-		AnyTimes().Return(dataVolume, nil)
+		AnyTimes().DoAndReturn(func(arg0 context.Context, arg1 string, arg2 *clustermgr.CacheVolumeArgs) (*clustermgr.VersionVolume, error) {
+		return dataVolumes[arg2.Vid], nil
+	})
 	proxycli.EXPECT().GetCacheDisk(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes().DoAndReturn(
 		func(_ context.Context, _ string, args *clustermgr.CacheDiskArgs) (*blobnode.DiskInfo, error) {
 			if val, ok := dataDisks[args.DiskID]; ok {
@@ -387,7 +439,14 @@ func initMockData() {
 			IDC:       idc,
 			ReloadSec: 1000,
 		}, cmcli, proxycli, nil)
-	volumeGetter, _ = controller.NewVolumeGetter(clusterID, serviceController, proxycli, 0)
+
+	proxyClient = proxycli
+	volumeGetter, _ = controller.NewVolumeGetter(clusterID, serviceController, proxyClient, 0)
+	allocMgr, _ = controller.NewVolumeMgr(context.Background(), controller.VolumeMgrConfig{
+		VolConfig: controller.VolConfig{
+			ClusterID: clusterID,
+		},
+	}, cmcli)
 
 	ctr = gomock.NewController(&testing.T{})
 	c := NewMockClusterController(ctr)
@@ -395,6 +454,7 @@ func initMockData() {
 	c.EXPECT().ChooseOne().AnyTimes().Return(clusterInfo, nil)
 	c.EXPECT().GetServiceController(gomock.Any()).AnyTimes().Return(serviceController, nil)
 	c.EXPECT().GetVolumeGetter(gomock.Any()).AnyTimes().Return(volumeGetter, nil)
+	c.EXPECT().GetVolumeAllocator(gomock.Any()).AnyTimes().Return(allocMgr, nil)
 	c.EXPECT().ChangeChooseAlg(gomock.Any()).AnyTimes().DoAndReturn(
 		func(alg controller.AlgChoose) error {
 			if alg < 10 {
@@ -403,19 +463,6 @@ func initMockData() {
 			return controller.ErrInvalidChooseAlg
 		})
 	cc = c
-
-	ctr = gomock.NewController(&testing.T{})
-	allocCli := mocks.NewMockProxyClient(ctr)
-	allocCli.EXPECT().SendDeleteMsg(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes().Return(nil)
-	allocCli.EXPECT().SendShardRepairMsg(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes().Return(nil)
-	allocCli.EXPECT().VolumeAlloc(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes().DoAndReturn(
-		func(ctx context.Context, host string, args *proxy.AllocVolsArgs) ([]proxy.AllocRet, error) {
-			if args.Fsize > allocTimeoutSize {
-				return nil, errAllocTimeout
-			}
-			return dataAllocs, nil
-		})
-	proxyClient = allocCli
 }
 
 func initPool() {

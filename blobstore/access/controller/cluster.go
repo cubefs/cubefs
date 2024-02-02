@@ -115,6 +115,8 @@ type ClusterController interface {
 	GetConfig(ctx context.Context, key string) (string, error)
 	// ChangeChooseAlg change alloc algorithm
 	ChangeChooseAlg(alg AlgChoose) error
+	// GetVolumeAllocator return VolumeMgr in specified cluster
+	GetVolumeAllocator(clusterID proto.ClusterID) (VolumeMgr, error)
 }
 
 // ClusterConfig cluster config
@@ -160,11 +162,13 @@ type clusterControllerImpl struct {
 	available       atomic.Value // available clusters
 	serviceMgrs     sync.Map
 	volumeGetters   sync.Map
+	allocMgrs       sync.Map
 	roundRobinCount uint64 // a count for round robin
 	proxy           proxy.Cacher
 	stopCh          <-chan struct{}
 
-	config ClusterConfig
+	config      ClusterConfig
+	allocConfig VolumeMgrConfig
 }
 
 // NewClusterController returns a cluster controller
@@ -198,7 +202,7 @@ func NewClusterController(cfg *ClusterConfig, proxy proxy.Cacher, stopCh <-chan 
 		return nil, errors.Base(err, "load cluster failed")
 	}
 
-	if stopCh == nil {
+	if stopCh == nil || client == nil {
 		return controller, nil
 	}
 	go func() {
@@ -362,9 +366,24 @@ func (c *clusterControllerImpl) deal(ctx context.Context, available []*cmapi.Clu
 			span.Warn("new volume getter failed", clusterID, err)
 			continue
 		}
+		volConfig := c.allocConfig.VolConfig
+		volConfig.ClusterID = clusterID
+		allocMgr, err := NewVolumeMgr(ctx, VolumeMgrConfig{
+			BlobConfig: c.allocConfig.BlobConfig,
+			VolConfig:  volConfig,
+		}, cmCli)
+		if err != nil {
+			removeThisCluster()
+			span.Warn("new volume alloc manager failed", clusterID, err)
+			return err
+		}
 
 		c.serviceMgrs.Store(clusterID, serviceController)
 		c.volumeGetters.Store(clusterID, volumeGetter)
+		if mgr, ok := c.allocMgrs.LoadAndDelete(clusterID); ok {
+			mgr.(VolumeMgr).Close()
+		}
+		c.allocMgrs.Store(clusterID, allocMgr)
 		span.Debug("loaded new cluster", clusterID)
 	}
 
@@ -457,6 +476,16 @@ func (c *clusterControllerImpl) GetVolumeGetter(clusterID proto.ClusterID) (Volu
 		return nil, fmt.Errorf("not volume getter for %d", clusterID)
 	}
 	return nil, fmt.Errorf("no volume getter for %d", clusterID)
+}
+
+func (c *clusterControllerImpl) GetVolumeAllocator(clusterID proto.ClusterID) (VolumeMgr, error) {
+	if volumeGetter, exist := c.allocMgrs.Load(clusterID); exist {
+		if mgr, ok := volumeGetter.(VolumeMgr); ok {
+			return mgr, nil
+		}
+		return nil, fmt.Errorf("not volume alloc manager for %d", clusterID)
+	}
+	return nil, fmt.Errorf("no volume alloc manager for %d", clusterID)
 }
 
 func (c *clusterControllerImpl) GetConfig(ctx context.Context, key string) (ret string, err error) {

@@ -19,45 +19,9 @@ import (
 	"time"
 
 	"github.com/cubefs/cubefs/blobstore/api/proxy"
-	"github.com/cubefs/cubefs/blobstore/common/memcache"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
-	"github.com/cubefs/cubefs/blobstore/util/errors"
 )
-
-type (
-	vidHostKey struct {
-		cid proto.ClusterID
-		vid proto.Vid
-	}
-)
-
-// cacheVidAllocator memory cache of vid in allocator host
-var cacheVidAllocator *memcache.MemCache
-
-func init() {
-	mc, err := memcache.NewMemCache(1 << 15)
-	if err != nil {
-		panic(err)
-	}
-	cacheVidAllocator = mc
-}
-
-func setCacheVidHost(cid proto.ClusterID, vid proto.Vid, host string) {
-	cacheVidAllocator.Set(vidHostKey{cid: cid, vid: vid}, host)
-}
-
-func getCacheVidHost(cid proto.ClusterID, vid proto.Vid) (string, error) {
-	val := cacheVidAllocator.Get(vidHostKey{cid: cid, vid: vid})
-	if val == nil {
-		return "", errors.Newf("not found host of (%d %d)", cid, vid)
-	}
-	host, ok := val.(string)
-	if !ok {
-		return "", errors.Newf("not string host of (%d %d)", cid, vid)
-	}
-	return host, nil
-}
 
 func (h *Handler) loopDiscardVids() {
 	go func() {
@@ -89,33 +53,28 @@ func (h *Handler) loopDiscardVids() {
 			}
 
 			for dv := range cache {
-				go func(dv discardVid) {
-					h.tryDiscardVidOnAllocator(dv.cid, dv.vid, proxy.AllocVolsArgs{
-						Fsize:    1,
-						BidCount: 1,
-						CodeMode: dv.codeMode,
-						Discards: []proto.Vid{dv.vid},
-					})
-				}(dv)
+				h.tryDiscardVidOnAllocator(dv.cid, &proxy.DiscardVolsArgs{
+					CodeMode: dv.codeMode,
+					Discards: []proto.Vid{dv.vid},
+				})
 				delete(cache, dv)
 			}
 		}
 	}()
 }
 
-func (h *Handler) tryDiscardVidOnAllocator(cid proto.ClusterID, vid proto.Vid, args proxy.AllocVolsArgs) {
+func (h *Handler) tryDiscardVidOnAllocator(cid proto.ClusterID, args *proxy.DiscardVolsArgs) {
 	span, ctx := trace.StartSpanFromContext(context.Background(), "")
 
-	host, err := getCacheVidHost(cid, vid)
+	span.Infof("discard vids %+v", args)
+	mgr, err := h.clusterController.GetVolumeAllocator(cid)
 	if err != nil {
-		span.Warnf("to discard vids %+v : %v", args, err)
+		span.Warnf("get alloc manager for cluster[%d] failed, err: %s", cid, err)
 		return
 	}
 
-	span.Infof("to post on %s discard vids %+v", host, args)
-
-	_, err = h.proxyClient.VolumeAlloc(ctx, host, &args)
+	err = mgr.Discard(ctx, args)
 	if err != nil {
-		span.Warnf("post on %s discard vids %+v : %v", host, args, err)
+		span.Warnf("discard vids %+v failed, err : %s", args, err)
 	}
 }
