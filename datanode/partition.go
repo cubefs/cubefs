@@ -1080,6 +1080,9 @@ func (dp *DataPartition) doStreamFixTinyDeleteRecord(ctx context.Context, repair
 	if dp.DataPartitionCreateType != proto.DecommissionedCreateDataPartition && !isFullSync && time.Now().Unix()-dp.lastSyncTinyDeleteTime < MinSyncTinyDeleteTime {
 		return
 	}
+	var release = dp.extentStore.LockFlushDelete()
+	defer release()
+
 	if isFullSync {
 		dp.FullSyncTinyDeleteTime = time.Now().Unix()
 		err = dp.extentStore.DropTinyDeleteRecord()
@@ -1087,14 +1090,9 @@ func (dp *DataPartition) doStreamFixTinyDeleteRecord(ctx context.Context, repair
 			return
 		}
 	}
-
-	var release = dp.extentStore.LockFlushDelete()
-	defer release()
-
 	if localTinyDeleteFileSize, err = dp.extentStore.LoadTinyDeleteFileOffset(); err != nil {
 		return
 	}
-
 	if localTinyDeleteFileSize >= repairTask.LeaderTinyDeleteRecordFileSize {
 		return
 	}
