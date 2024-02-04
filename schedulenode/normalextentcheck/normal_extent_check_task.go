@@ -615,7 +615,7 @@ func (t *NormalExtentCheckTask) getExtentsByDPs() (err error) {
 		errChan        chan error
 	)
 	for index := 1; index < 5; index++ {
-		dpsView, err = t.masterClient.ClientAPI().GetDataPartitions(t.VolName)
+		dpsView, err = t.masterClient.ClientAPI().GetDataPartitions(t.VolName, nil)
 		if err == nil {
 			break
 		}

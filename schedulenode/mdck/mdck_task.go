@@ -332,7 +332,7 @@ func (t *MetaDataCheckTask) doCheckMismatchInodes(needCheckMismatchInodes []uint
 				if proto.IsDir(inodeInfo.Mode) {
 					return
 				}
-				extentsInfo, errGetEKs := metaHttpClient.GetExtentsByInode(pid, inode)
+				extentsInfo, errGetEKs := metaHttpClient.GetExtentKeyByInodeId(pid, inode)
 				if errGetEKs != nil {
 					errCh <- fmt.Errorf("get mp(%v) inode(%v) eks from %s failed, error:%v", pid, inode, addr, errGetInode)
 					return
