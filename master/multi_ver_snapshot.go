@@ -55,6 +55,7 @@ type VolVersionManager struct {
 	checkStrategy    int32
 	checkStatus      int32
 	c                *Cluster
+	enableMiddleOp   bool
 	sync.RWMutex
 }
 
@@ -541,9 +542,11 @@ func (verMgr *VolVersionManager) initVer2PhaseTask(verSeq uint64, op uint8) (ver
 			found bool
 		)
 
-		if ver, status := verMgr.getOldestVer(); ver != verSeq || status != proto.VersionNormal {
-			err = fmt.Errorf("oldest is %v, status %v", ver, status)
-			return
+		if verMgr.enableMiddleOp {
+			if ver, status := verMgr.getOldestVer(); ver != verSeq || status != proto.VersionNormal {
+				err = fmt.Errorf("oldest is %v, status %v", ver, status)
+				return
+			}
 		}
 
 		if idx, found = verMgr.getLayInfo(verSeq); !found {
