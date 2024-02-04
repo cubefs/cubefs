@@ -2,8 +2,12 @@ package blobnode
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
+	"os"
+	"sort"
 	"strconv"
 	"sync"
 	"time"
@@ -38,8 +42,14 @@ var dataInspectMetric = prometheus.NewGaugeVec(
 )
 
 type DataInspectConf struct {
-	IntervalSec int `json:"interval_sec"` // next round inspect interval
-	RateLimit   int `json:"rate_limit"`   // max rate limit per second
+	IntervalSec int    `json:"interval_sec"` // next round inspect interval
+	RateLimit   int    `json:"rate_limit"`   // max rate limit per second
+	CheckPoint  string `json:"check_point"`
+}
+
+type CheckpointInfo struct {
+	ChunkId proto.Vuid   `json:"chunk_id"`
+	DiskId  proto.DiskID `json:"disk_id"`
 }
 
 type DataInspectStat struct {
@@ -60,7 +70,10 @@ func NewDataInspectMgr(svr *Service, conf DataInspectConf, switchMgr *taskswitch
 	if err != nil {
 		return nil, err
 	}
-
+	_, err = os.Stat(conf.CheckPoint)
+	if !os.IsExist(err) {
+		_ = os.MkdirAll(conf.CheckPoint, 0o644)
+	}
 	mgr := &DataInspectMgr{
 		conf:       conf,
 		limits:     make(map[proto.DiskID]*rate.Limiter),
@@ -125,7 +138,27 @@ func (mgr *DataInspectMgr) inspectDisk(ctx context.Context, ds core.DiskAPI, wg 
 		return
 	}
 
-	for _, chunk := range chunks {
+	diskID := ds.ID()
+	checkpointPath := mgr.getCheckpointPath(diskID)
+
+	checkpoint, err := mgr.loadCheckpoint(checkpointPath, diskID)
+	if err != nil {
+		span.Errorf("load checkpoint error:%v", err)
+	}
+
+	sort.Slice(chunks, func(i, j int) bool {
+		return chunks[i].Vuid <= chunks[j].Vuid
+	})
+
+	idx := sort.Search(len(chunks), func(i int) bool {
+		return chunks[i].Vuid >= checkpoint.ChunkId
+	})
+
+	if idx >= len(chunks) {
+		idx = 0
+	}
+
+	for _, chunk := range chunks[idx:] {
 		if chunk.Status == bnapi.ChunkStatusRelease {
 			continue
 		}
@@ -133,6 +166,10 @@ func (mgr *DataInspectMgr) inspectDisk(ctx context.Context, ds core.DiskAPI, wg 
 		if !found {
 			span.Errorf("vuid:%v not found", chunk.Vuid)
 			continue
+		}
+		err = mgr.saveCheckpoint(checkpointPath, &CheckpointInfo{DiskId: diskID, ChunkId: chunk.Vuid})
+		if err != nil {
+			span.Errorf("save checkpoint vuid: %d failed, err: %s", chunk.Vuid, err)
 		}
 		_, err = mgr.inspectChunk(ctx, cs)
 		if err != nil {
@@ -328,6 +365,43 @@ func (s *Service) GetInspectStat(c *rpc.Context) {
 	conf.Open = s.inspectMgr.getSwitch()
 	span.Infof("data inspect args: %+v", conf)
 	c.RespondJSON(&conf)
+}
+
+func (mgr *DataInspectMgr) loadCheckpoint(path string, diskId proto.DiskID) (info *CheckpointInfo, err error) {
+	_, err = os.Stat(path)
+	info = &CheckpointInfo{
+		DiskId:  diskId,
+		ChunkId: proto.InvalidVuid,
+	}
+	if err != nil {
+		if !os.IsExist(err) {
+			err = mgr.saveCheckpoint(path, info)
+		}
+		return
+	}
+	file, err := os.OpenFile(path, os.O_RDONLY, 0o644)
+	if err != nil {
+		return
+	}
+	err = json.NewDecoder(file).Decode(info)
+	_ = file.Close()
+	return
+}
+
+func (mgr *DataInspectMgr) saveCheckpoint(path string, info *CheckpointInfo) error {
+	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE, 0o644)
+	if err != nil {
+		return err
+	}
+	err = json.NewEncoder(file).Encode(info)
+	_ = os.Chmod(path, 0o644)
+	_ = file.Close()
+
+	return err
+}
+
+func (mgr *DataInspectMgr) getCheckpointPath(diskId proto.DiskID) string {
+	return fmt.Sprintf("%s/%d.checkpoint", mgr.conf.CheckPoint, diskId)
 }
 
 func init() {
