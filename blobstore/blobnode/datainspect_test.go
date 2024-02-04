@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"sync"
 	"testing"
 
@@ -28,7 +29,7 @@ func TestDataInspect(t *testing.T) {
 		ctx:     context.Background(),
 		closeCh: make(chan struct{}),
 	}
-	cfg := DataInspectConf{IntervalSec: 100, RateLimit: 2}
+	cfg := DataInspectConf{IntervalSec: 100, RateLimit: 2, CheckPoint: defaultInspectCheckpointPath}
 
 	clusterMgrCli := mocks.NewMockClientAPI(ctr)
 	clusterMgrCli.EXPECT().GetConfig(any, any).AnyTimes().Return("", nil)
@@ -36,13 +37,14 @@ func TestDataInspect(t *testing.T) {
 	mgr, err := NewDataInspectMgr(svr, cfg, switchMgr)
 	svr.inspectMgr = mgr
 	require.NoError(t, err)
+	defer os.Remove(cfg.CheckPoint)
 	require.Equal(t, cfg.IntervalSec, mgr.conf.IntervalSec)
 
 	{
-		ds1.EXPECT().ID().Times(2).Return(proto.DiskID(11))
+		ds1.EXPECT().ID().AnyTimes().Return(proto.DiskID(11))
 		ds1.EXPECT().ListChunks(any).Return(nil, errMock)
 		ds1.EXPECT().Status().Return(proto.DiskStatusNormal)
-		ds2.EXPECT().ID().Times(2).Return(proto.DiskID(22))
+		ds2.EXPECT().ID().AnyTimes().Return(proto.DiskID(22))
 		ds2.EXPECT().ListChunks(any).Return(nil, errMock)
 		ds2.EXPECT().Status().Return(proto.DiskStatusNormal)
 		// close(svr.closeCh)
@@ -57,12 +59,12 @@ func TestDataInspect(t *testing.T) {
 		wg.Add(1)
 
 		cs := NewMockChunkAPI(ctr)
-		cs.EXPECT().Vuid().Times(2).Return(proto.Vuid(1001))
-		cs.EXPECT().ID().Times(2).Return(bnapi.ChunkId{})
+		cs.EXPECT().Vuid().AnyTimes().Return(proto.Vuid(1001))
+		cs.EXPECT().ID().AnyTimes().Return(bnapi.ChunkId{})
 		cs.EXPECT().Disk().Return(ds1)
 		cs.EXPECT().Read(any, any).Return(int64(0), nil)
 		cs.EXPECT().ListShards(any, any, any, any).Return([]*bnapi.ShardInfo{{Bid: 123456, Size: 1}}, proto.BlobID(123456), nil)
-		ds1.EXPECT().ID().Times(1).Return(proto.DiskID(11))
+		ds1.EXPECT().ID().AnyTimes().Return(proto.DiskID(11))
 		ds1.EXPECT().ListChunks(any).Return([]core.VuidMeta{{Vuid: proto.Vuid(1001)}}, nil)
 		ds1.EXPECT().GetChunkStorage(any).Return(cs, true)
 
@@ -74,7 +76,7 @@ func TestDataInspect(t *testing.T) {
 		cs.EXPECT().Vuid().Times(2).Return(proto.Vuid(1001))
 		cs.EXPECT().ID().Times(2).Return(bnapi.ChunkId{})
 		cs.EXPECT().Disk().Return(ds1)
-		ds1.EXPECT().ID().Times(1).Return(proto.DiskID(11))
+		ds1.EXPECT().ID().AnyTimes().Return(proto.DiskID(11))
 
 		batchShards := make([]*bnapi.ShardInfo, 2*speedUpCnt)
 		for i := range batchShards {
@@ -97,7 +99,7 @@ func TestDataInspect(t *testing.T) {
 		cs.EXPECT().Disk().Return(ds1)
 		cs.EXPECT().Read(any, any).Return(int64(0), nil)
 		cs.EXPECT().ListShards(any, any, any, any).Return([]*bnapi.ShardInfo{{Bid: 123456, Size: 8}}, proto.BlobID(123456+1), nil)
-		ds1.EXPECT().ID().Times(1).Return(proto.DiskID(11))
+		ds1.EXPECT().ID().AnyTimes().Return(proto.DiskID(11))
 
 		close(mgr.svr.closeCh)
 		mgr.limits[proto.DiskID(11)].SetLimit(2)
@@ -111,5 +113,17 @@ func TestDataInspect(t *testing.T) {
 		rc := &rpc.Context{Request: &http.Request{}, Writer: &httptest.ResponseRecorder{}}
 		mgr.svr.GetInspectStat(rc)
 		require.Equal(t, cfg.IntervalSec, mgr.conf.IntervalSec)
+	}
+
+	{
+		ci := &CheckpointInfo{
+			DiskId:  1,
+			ChunkId: 2,
+		}
+		err = mgr.saveCheckpoint(mgr.getCheckpointPath(1), ci)
+		require.NoError(t, err)
+		checkpoint, err := mgr.loadCheckpoint(mgr.getCheckpointPath(1), 1)
+		require.NoError(t, err)
+		require.EqualValues(t, ci, checkpoint)
 	}
 }
