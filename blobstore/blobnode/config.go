@@ -44,6 +44,8 @@ const (
 
 	DefaultDeleteQpsLimitPerDisk = 128
 	DefaultInspectRate           = 4 * 1024 * 1024 // rate limit 4MB per second
+
+	defaultInspectCheckpointPath = "/tmp/blobnode/checkpoint"
 )
 
 var (
@@ -108,6 +110,11 @@ func configInit(config *Config) {
 	if config.DeleteQpsLimitPerDisk <= 0 {
 		config.DeleteQpsLimitPerDisk = DefaultDeleteQpsLimitPerDisk
 	}
+
+	if config.InspectConf.CheckPoint == "" {
+		config.InspectConf.CheckPoint = defaultInspectCheckpointPath
+	}
+
 	defaulter.LessOrEqual(&config.InspectConf.IntervalSec, DefaultChunkInspectIntervalSec)
 	defaulter.LessOrEqual(&config.InspectConf.RateLimit, DefaultInspectRate)
 }
