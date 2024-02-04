@@ -251,6 +251,7 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 		txId := mp.txProcessor.txManager.txIdAlloc.getTransactionID()
 		quotaRebuild := mp.mqMgr.statisticRebuildStart()
 		uidRebuild := mp.acucumRebuildStart()
+		uniqId := mp.GetUniqId()
 		uniqChecker := mp.uniqChecker.clone()
 		msg := &storeMsg{
 			command:        opFSMStoreTick,
@@ -265,6 +266,7 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 			txRbDentryTree: txRbDentryTree,
 			quotaRebuild:   quotaRebuild,
 			uidRebuild:     uidRebuild,
+			uniqId:         uniqId,
 			uniqChecker:    uniqChecker,
 			multiVerList:   mp.GetAllVerList(),
 		}
@@ -699,6 +701,7 @@ func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.Sn
 				txTree:         mp.txProcessor.txManager.txTree.GetTree(),
 				txRbInodeTree:  mp.txProcessor.txResource.txRbInodeTree.GetTree(),
 				txRbDentryTree: mp.txProcessor.txResource.txRbDentryTree.GetTree(),
+				uniqId:         mp.GetUniqId(),
 				uniqChecker:    uniqChecker.clone(),
 				multiVerList:   mp.GetVerList(),
 			}
