@@ -662,6 +662,11 @@ func (tm *TransactionManager) registerTransaction(txInfo *proto.TransactionInfo)
 			dentry.SetTimeout(txInfo.Timeout)
 			dentry.SetTxId(txInfo.TxID)
 		}
+
+		if info := tm.getTransaction(txInfo.TxID); info != nil {
+			log.LogWarnf("tx is already exist, txId %s, info %v", txInfo.TxID, info.String())
+			return fmt.Errorf("tx is already exist, txId %s", txInfo.TxID)
+		}
 	}
 
 	if info := tm.getTransaction(txInfo.TxID); info != nil {

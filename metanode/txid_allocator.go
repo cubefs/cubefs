@@ -32,21 +32,30 @@ func newTxIDAllocator() (alloc *TxIDAllocator) {
 }
 
 func (alloc *TxIDAllocator) Reset() {
+	alloc.txIDLock.Lock()
+	defer alloc.txIDLock.Unlock()
+
 	atomic.StoreUint64(&alloc.mpTxID, 0)
 }
 
 func (alloc *TxIDAllocator) setTransactionID(id uint64) {
+	alloc.txIDLock.Lock()
+	defer alloc.txIDLock.Unlock()
+
 	atomic.StoreUint64(&alloc.mpTxID, id)
 }
 
 func (alloc *TxIDAllocator) getTransactionID() uint64 {
-	return atomic.LoadUint64(&alloc.mpTxID)
+	alloc.txIDLock.RLock()
+	defer alloc.txIDLock.RUnlock()
+
+	return alloc.mpTxID
 }
 
 func (alloc *TxIDAllocator) allocateTransactionID() (mpTxID uint64) {
 	alloc.txIDLock.Lock()
 	defer alloc.txIDLock.Unlock()
-	mpTxID = atomic.LoadUint64(&alloc.mpTxID) + 1
-	alloc.setTransactionID(mpTxID)
-	return
+
+	alloc.mpTxID++
+	return alloc.mpTxID
 }
