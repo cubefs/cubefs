@@ -1971,19 +1971,19 @@ func (l *DecommissionDataPartitionList) traverse(c *Cluster) {
 					c.syncUpdateDataPartition(dp)
 				}
 				if dp.IsDecommissionSuccess() {
-					log.LogDebugf("action[DecommissionListTraverse]Remove dp[%v] for success\n",
+					log.LogDebugf("action[DecommissionListTraverse]Remove dp[%v] for success",
 						dp.PartitionID)
 					l.Remove(dp)
 					l.releaseDecommissionToken()
 					dp.ResetDecommissionStatus()
 					c.syncUpdateDataPartition(dp)
 				} else if dp.IsDecommissionFailed() {
-					log.LogDebugf("action[DecommissionListTraverse]Remove dp[%v] for fail\n",
+					log.LogDebugf("action[DecommissionListTraverse]Remove dp[%v] for fail",
 						dp.PartitionID)
 					l.Remove(dp)
 					l.releaseDecommissionToken()
 				} else if dp.IsDecommissionStopped() {
-					log.LogDebugf("action[DecommissionListTraverse]Remove dp[%v] for stop \n",
+					log.LogDebugf("action[DecommissionListTraverse]Remove dp[%v] for stop",
 						dp.PartitionID)
 					//stop do not consume token，wait for add again
 					l.Remove(dp)

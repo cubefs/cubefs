@@ -340,7 +340,7 @@ func newCluster(name string, leaderInfo *LeaderInfo, fsm *MetadataFsm, partition
 	return
 }
 
-func (c *Cluster) scheduleTask() {
+func (c *Cluster) scheduleTask(m *Server) {
 	c.scheduleToCheckDelayDeleteVols()
 	c.scheduleToCheckDataPartitions()
 	c.scheduleToLoadDataPartitions()
@@ -357,8 +357,8 @@ func (c *Cluster) scheduleTask() {
 	c.scheduleToReduceReplicaNum()
 	c.scheduleToCheckNodeSetGrpManagerStatus()
 	c.scheduleToCheckFollowerReadCache()
-	c.scheduleToCheckDecommissionDataNode()
-	c.scheduleToCheckDecommissionDisk()
+	c.scheduleToCheckDecommissionDataNode(m)
+	c.scheduleToCheckDecommissionDisk(m)
 	c.scheduleToCheckDataReplicas()
 }
 
@@ -3572,10 +3572,10 @@ func (c *Cluster) clearMetaNodes() {
 	})
 }
 
-func (c *Cluster) scheduleToCheckDecommissionDataNode() {
+func (c *Cluster) scheduleToCheckDecommissionDataNode(m *Server) {
 	go func() {
 		for {
-			if c.partition.IsRaftLeader() {
+			if c.partition.IsRaftLeader() && m.metaReady == true {
 				c.checkDecommissionDataNode()
 			}
 			time.Sleep(10 * time.Second)
@@ -3729,10 +3729,10 @@ func (c *Cluster) migrateDisk(nodeAddr, diskPath string, raftForce bool, limit i
 	return
 }
 
-func (c *Cluster) scheduleToCheckDecommissionDisk() {
+func (c *Cluster) scheduleToCheckDecommissionDisk(m *Server) {
 	go func() {
 		for {
-			if c.partition.IsRaftLeader() {
+			if c.partition.IsRaftLeader() && m.metaReady == true {
 				c.checkDecommissionDisk()
 			}
 			time.Sleep(10 * time.Second)

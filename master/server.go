@@ -162,7 +162,7 @@ func (m *Server) Start(cfg *config.Config) (err error) {
 	if m.cluster.MasterSecretKey, err = cryptoutil.Base64Decode(MasterSecretKey); err != nil {
 		return fmt.Errorf("action[Start] failed %v, err: master service Key invalid = %s", proto.ErrInvalidCfg, MasterSecretKey)
 	}
-	m.cluster.scheduleTask()
+	m.cluster.scheduleTask(m)
 	m.startHTTPService(ModuleName, cfg)
 	exporter.RegistConsul(m.clusterName, ModuleName, cfg)
 	WarnMetrics = newWarningMetrics(m.cluster)
