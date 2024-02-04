@@ -17,6 +17,7 @@ package master
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/cubefs/cubefs/metanode"
 	"math"
 	"net/http"
 	"sort"
@@ -371,8 +372,8 @@ func (c *Cluster) scheduleTask() {
 	c.scheduleToReduceReplicaNum()
 	c.scheduleToCheckNodeSetGrpManagerStatus()
 	c.scheduleToCheckFollowerReadCache()
-	c.scheduleToCheckDecommissionDataNode()
-	c.scheduleToCheckDecommissionDisk()
+	c.scheduleToCheckDecommissionDataNode(m)
+	c.scheduleToCheckDecommissionDisk(m)
 	c.scheduleToCheckDataReplicas()
 	c.scheduleToLcScan()
 	c.scheduleToSnapshotDelVerScan()
@@ -3792,7 +3793,7 @@ func (c *Cluster) clearMetaNodes() {
 	})
 }
 
-func (c *Cluster) scheduleToCheckDecommissionDataNode() {
+func (c *Cluster) scheduleToCheckDecommissionDataNode(m *Server) {
 	go func() {
 		for {
 			if c.partition.IsRaftLeader() && c.metaReady {
@@ -4041,7 +4042,7 @@ func (c *Cluster) restoreStoppedAutoDecommissionDisk(nodeAddr, diskPath string) 
 	return
 }
 
-func (c *Cluster) scheduleToCheckDecommissionDisk() {
+func (c *Cluster) scheduleToCheckDecommissionDisk(m *Server) {
 	go func() {
 		for {
 			if c.partition.IsRaftLeader() && c.metaReady {
