@@ -18,8 +18,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"math/rand"
-	"net/http"
-	"strconv"
 
 	"github.com/cubefs/cubefs/proto"
 )
@@ -32,41 +30,38 @@ func (d Decoder) Decode(raw []byte) ([]byte, error) {
 
 type ClientAPI struct {
 	mc *MasterClient
+	h  map[string]string // extra headers
+}
+
+func (api *ClientAPI) WithHeader(key, val string) *ClientAPI {
+	return &ClientAPI{mc: api.mc, h: mergeHeader(api.h, key, val)}
+}
+
+func (api *ClientAPI) EncodingWith(encoding string) *ClientAPI {
+	return api.WithHeader(headerAcceptEncoding, encoding)
+}
+
+func (api *ClientAPI) EncodingGzip() *ClientAPI {
+	return api.EncodingWith(encodingGzip)
 }
 
 func (api *ClientAPI) GetVolume(volName string, authKey string) (vv *proto.VolView, err error) {
-	request := newAPIRequest(http.MethodPost, proto.ClientVol)
-	request.addParam("name", volName)
-	request.addParam("authKey", authKey)
-	var data []byte
-	if data, err = api.mc.serveRequest(request); err != nil {
-		return
-	}
 	vv = &proto.VolView{}
-	if err = json.Unmarshal(data, vv); err != nil {
-		return
-	}
+	err = api.mc.requestWith(vv, newRequest(post, proto.ClientVol).
+		Header(api.h).Param(anyParam{"name", volName}, anyParam{"authKey", authKey}))
 	return
 }
 
 func (api *ClientAPI) GetVolumeWithoutAuthKey(volName string) (vv *proto.VolView, err error) {
-	request := newAPIRequest(http.MethodPost, proto.ClientVol)
-	request.addParam("name", volName)
-	request.addHeader(proto.SkipOwnerValidation, strconv.FormatBool(true))
-	var data []byte
-	if data, err = api.mc.serveRequest(request); err != nil {
-		return
-	}
 	vv = &proto.VolView{}
-	if err = json.Unmarshal(data, vv); err != nil {
-		return
-	}
+	err = api.mc.requestWith(vv, newRequest(post, proto.ClientVol).
+		Header(api.h, proto.SkipOwnerValidation, "true").addParam("name", volName))
 	return
 }
 
 func (api *ClientAPI) GetVolumeWithAuthnode(volName string, authKey string, token string, decoder Decoder) (vv *proto.VolView, err error) {
 	var body []byte
-	request := newAPIRequest(http.MethodPost, proto.ClientVol)
+	request := newRequest(post, proto.ClientVol).Header(api.h)
 	request.addParam("name", volName)
 	request.addParam("authKey", authKey)
 	request.addParam(proto.ClientMessage, token)
@@ -86,50 +81,28 @@ func (api *ClientAPI) GetVolumeWithAuthnode(volName string, authKey string, toke
 }
 
 func (api *ClientAPI) GetVolumeStat(volName string) (info *proto.VolStatInfo, err error) {
-	request := newAPIRequest(http.MethodGet, proto.ClientVolStat)
-	request.addParam("name", volName)
-	request.addParam("version", strconv.FormatInt(proto.LFClient, 10))
-	var data []byte
-	if data, err = api.mc.serveRequest(request); err != nil {
-		return
-	}
 	info = &proto.VolStatInfo{}
-	if err = json.Unmarshal(data, info); err != nil {
-		return
-	}
+	err = api.mc.requestWith(info, newRequest(get, proto.ClientVolStat).
+		Header(api.h).Param(anyParam{"name", volName}, anyParam{"version", proto.LFClient}))
 	return
 }
 
 func (api *ClientAPI) GetMetaPartition(partitionID uint64) (partition *proto.MetaPartitionInfo, err error) {
-	request := newAPIRequest(http.MethodGet, proto.ClientMetaPartition)
-	request.addParam("id", strconv.FormatUint(partitionID, 10))
-	var data []byte
-	if data, err = api.mc.serveRequest(request); err != nil {
-		return
-	}
 	partition = &proto.MetaPartitionInfo{}
-	if err = json.Unmarshal(data, partition); err != nil {
-		return
-	}
+	err = api.mc.requestWith(partition, newRequest(get, proto.ClientMetaPartition).
+		Header(api.h).addParamAny("id", partitionID))
 	return
 }
 
 func (api *ClientAPI) GetMetaPartitions(volName string) (views []*proto.MetaPartitionView, err error) {
-	request := newAPIRequest(http.MethodGet, proto.ClientMetaPartitions)
-	request.addParam("name", volName)
-	var data []byte
-	if data, err = api.mc.serveRequest(request); err != nil {
-		return
-	}
-	if err = json.Unmarshal(data, &views); err != nil {
-		return
-	}
+	views = make([]*proto.MetaPartitionView, 0)
+	err = api.mc.requestWith(&views, newRequest(get, proto.ClientMetaPartitions).
+		Header(api.h).addParam("name", volName))
 	return
 }
 
 func (api *ClientAPI) GetDataPartitions(volName string) (view *proto.DataPartitionsView, err error) {
-	request := newAPIRequest(http.MethodGet, proto.ClientDataPartitions)
-	request.addParam("name", volName)
+	request := newRequest(get, proto.ClientDataPartitions).Header(api.h).addParam("name", volName)
 
 	lastLeader := api.mc.leaderAddr
 	defer api.mc.SetLeader(lastLeader)
@@ -151,15 +124,8 @@ func (api *ClientAPI) GetDataPartitions(volName string) (view *proto.DataPartiti
 }
 
 func (api *ClientAPI) GetPreLoadDataPartitions(volName string) (view *proto.DataPartitionsView, err error) {
-	request := newAPIRequest(http.MethodGet, proto.ClientDataPartitions)
-	request.addParam("name", volName)
-	var data []byte
-	if data, err = api.mc.serveRequest(request); err != nil {
-		return
-	}
 	view = &proto.DataPartitionsView{}
-	if err = json.Unmarshal(data, view); err != nil {
-		return
-	}
+	err = api.mc.requestWith(view, newRequest(get, proto.ClientDataPartitions).
+		Header(api.h).addParam("name", volName))
 	return
 }

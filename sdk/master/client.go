@@ -16,6 +16,7 @@ package master
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -26,11 +27,21 @@ import (
 	"time"
 
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util/compressor"
 	"github.com/cubefs/cubefs/util/log"
 )
 
+// TODO: re-use response body.
+
 const (
 	requestTimeout = 30 * time.Second
+
+	encodingGzip          = compressor.EncodingGzip
+	headerAcceptEncoding  = "x-cfs-Accept-Encoding"
+	headerContentEncoding = "x-cfs-Content-Encoding"
+
+	get  = http.MethodGet
+	post = http.MethodPost
 )
 
 var ErrNoValidMaster = errors.New("no valid master")
@@ -130,14 +141,11 @@ func (c *MasterClient) serveRequest(r *request) (repsData []byte, err error) {
 			host = nodes[i]
 		}
 		var resp *http.Response
-		var schema string
+		schema := "http"
 		if c.useSSL {
 			schema = "https"
-		} else {
-			schema = "http"
 		}
-		url := fmt.Sprintf("%s://%s%s", schema, host,
-			r.path)
+		url := fmt.Sprintf("%s://%s%s", schema, host, r.path)
 		resp, err = c.httpRequest(r.method, url, r.params, r.header, r.body)
 		if err != nil {
 			log.LogErrorf("serveRequest: send http request fail: method(%v) url(%v) err(%v)", r.method, url, err)
@@ -167,6 +175,11 @@ func (c *MasterClient) serveRequest(r *request) (repsData []byte, err error) {
 				log.LogDebugf("server Request resp new master[%v] old [%v]", host, leaderAddr)
 				c.SetLeader(host)
 			}
+			repsData, err = compressor.New(resp.Header.Get(headerContentEncoding)).Decompress(repsData)
+			if err != nil {
+				log.LogErrorf("serveRequest: decompress response body fail: err(%v)", err)
+				return nil, fmt.Errorf("decompress response body err:%v", err)
+			}
 			body := new(proto.HTTPReplyRaw)
 			if err := body.Unmarshal(repsData); err != nil {
 				log.LogErrorf("unmarshal response body err:%v", err)
@@ -192,6 +205,25 @@ func (c *MasterClient) serveRequest(r *request) (repsData []byte, err error) {
 	return
 }
 
+func (c *MasterClient) requestWith(rst interface{}, r *request) error {
+	if r.err != nil {
+		return r.err
+	}
+	buf, err := c.serveRequest(r)
+	if err != nil {
+		return err
+	}
+	if rst == nil {
+		return nil
+	}
+	return json.Unmarshal(buf, rst)
+}
+
+// result is nil
+func (c *MasterClient) request(r *request) error {
+	return c.requestWith(nil, r)
+}
+
 // Nodes returns all master addresses.
 func (c *MasterClient) Nodes() (nodes []string) {
 	c.RLock()
@@ -212,7 +244,7 @@ func (c *MasterClient) prepareRequest() (addr string, nodes []string) {
 func (c *MasterClient) httpRequest(method, url string, param, header map[string]string, reqData []byte) (resp *http.Response, err error) {
 	client := http.DefaultClient
 	reader := bytes.NewReader(reqData)
-	if header["isTimeOut"] != "" {
+	if _, has := header["isTimeOut"]; has {
 		var isTimeOut bool
 		if isTimeOut, err = strconv.ParseBool(header["isTimeOut"]); err != nil {
 			return
@@ -220,6 +252,7 @@ func (c *MasterClient) httpRequest(method, url string, param, header map[string]
 		if isTimeOut {
 			client.Timeout = c.timeout
 		}
+		delete(header, "isTimeOut")
 	} else {
 		client.Timeout = c.timeout
 	}
@@ -253,7 +286,7 @@ func (c *MasterClient) updateMaster(address string) {
 }
 
 func (c *MasterClient) mergeRequestUrl(url string, params map[string]string) string {
-	if params != nil && len(params) > 0 {
+	if len(params) > 0 {
 		buff := bytes.NewBuffer([]byte(url))
 		isFirstParam := true
 		for k, v := range params {
@@ -276,7 +309,7 @@ func NewMasterCLientWithResolver(masters []string, useSSL bool, updateInverval i
 	mc := &MasterCLientWithResolver{
 		MasterClient:   MasterClient{masters: masters, useSSL: useSSL, timeout: requestTimeout},
 		updateInverval: updateInverval,
-		stopC:          make(chan struct{}, 0),
+		stopC:          make(chan struct{}),
 	}
 	mc.adminAPI = &AdminAPI{mc: &mc.MasterClient}
 	mc.clientAPI = &ClientAPI{mc: &mc.MasterClient}

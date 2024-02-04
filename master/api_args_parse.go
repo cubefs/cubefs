@@ -28,6 +28,7 @@ import (
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util"
+	"github.com/cubefs/cubefs/util/compressor"
 	"github.com/cubefs/cubefs/util/cryptoutil"
 	"github.com/cubefs/cubefs/util/log"
 )
@@ -1624,6 +1625,14 @@ func sendOkReply(w http.ResponseWriter, r *http.Request, httpReply *proto.HTTPRe
 		http.Error(w, "fail to marshal http reply", http.StatusBadRequest)
 		return
 	}
+
+	if acceptEncoding := r.Header.Get("x-cfs-Accept-Encoding"); acceptEncoding != "" {
+		if compressed, errx := compressor.New(acceptEncoding).Compress(reply); errx == nil {
+			w.Header().Set("x-cfs-Content-Encoding", acceptEncoding)
+			reply = compressed
+		}
+	}
+
 	send(w, r, reply)
 	return
 }
