@@ -680,6 +680,15 @@ func (mp *metaPartition) loadUniqID(rootDir string) (err error) {
 		return
 	}
 
+	if uniqId == 0 {
+		// to avoid the issue of UniqID being read as 0 after a restart due to the lack of persistence in version v3.3.1,
+		// set it to a very large value.
+		uniqId = 200 * 10000 * 10000
+		mp.doStoreUniqID(rootDir, uniqId)
+		log.LogInfof("loadUniqID: vol(%v) loaded uniqId is 0, force set it as %v and persist",
+			mp.config.VolName, uniqId)
+	}
+
 	if uniqId > mp.GetUniqId() {
 		atomic.StoreUint64(&mp.config.UniqId, uniqId)
 	}
@@ -1174,7 +1183,7 @@ func (mp *metaPartition) storeMultipart(rootDir string, sm *storeMsg) (crc uint3
 	return
 }
 
-func (mp *metaPartition) storeUniqID(rootDir string, sm *storeMsg) (err error) {
+func (mp *metaPartition) doStoreUniqID(rootDir string, uniqId uint64) (err error) {
 	filename := path.Join(rootDir, uniqIDFile)
 	fp, err := os.OpenFile(filename, os.O_RDWR|os.O_APPEND|os.O_TRUNC|os.
 		O_CREATE, 0755)
@@ -1185,12 +1194,16 @@ func (mp *metaPartition) storeUniqID(rootDir string, sm *storeMsg) (err error) {
 		err = fp.Sync()
 		fp.Close()
 	}()
-	if _, err = fp.WriteString(fmt.Sprintf("%d", sm.uniqId)); err != nil {
+	if _, err = fp.WriteString(fmt.Sprintf("%d", uniqId)); err != nil {
 		return
 	}
 	log.LogInfof("storeUniqID: store complete: partitionID(%v) volume(%v) uniqID(%v)",
-		mp.config.PartitionId, mp.config.VolName, sm.uniqId)
+		mp.config.PartitionId, mp.config.VolName, uniqId)
 	return
+}
+
+func (mp *metaPartition) storeUniqID(rootDir string, sm *storeMsg) (err error) {
+	return mp.doStoreUniqID(rootDir, sm.uniqId)
 }
 
 func (mp *metaPartition) storeUniqChecker(rootDir string, sm *storeMsg) (crc uint32, err error) {
