@@ -86,7 +86,7 @@ func TestAccessServicePunishService(t *testing.T) {
 	stop := closer.New()
 	defer stop.Close()
 	sc, err := controller.NewServiceController(
-		controller.ServiceConfig{IDC: idc, ReloadSec: 1}, cmcli, proxycli, stop.Done())
+		controller.ServiceConfig{IDC: idc, ReloadSec: 2}, cmcli, proxycli, stop.Done())
 	require.NoError(t, err)
 
 	{
@@ -105,8 +105,7 @@ func TestAccessServicePunishService(t *testing.T) {
 		require.NoError(t, err)
 		require.True(t, host == "proxy-1")
 	}
-
-	time.Sleep(time.Millisecond * 1200)
+	time.Sleep(time.Millisecond * 2200)
 	{
 		keys := make(hostSet)
 		for range [100]struct{}{} {
