@@ -1382,7 +1382,13 @@ func (c *Cluster) loadDataNodes() (err error) {
 			}
 		}
 		c.dataNodes.Store(dataNode.Addr, dataNode)
-		log.LogInfof("action[loadDataNodes],dataNode[%v],dataNodeID[%v],zone[%v],ns[%v]", dataNode.Addr, dataNode.ID, dnv.ZoneName, dnv.NodeSetID)
+		log.LogInfof("action[loadDataNodes],dataNode[%v],dataNodeID[%v],zone[%v],ns[%v] DecommissionStatus [%v] "+
+			"DecommissionDstAddr[%v] DecommissionRaftForce[%v] DecommissionDpTotal[%v] DecommissionLimit[%v]  DecommissionRetry[%v] "+
+			"DecommissionTerm[%v] DecommissionCompleteTime [%v] ToBeOffline[%v]",
+			dataNode.Addr, dataNode.ID, dnv.ZoneName, dnv.NodeSetID, dataNode.DecommissionStatus, dataNode.DecommissionDstAddr,
+			dataNode.DecommissionRaftForce, dataNode.DecommissionDpTotal, dataNode.DecommissionLimit, dataNode.DecommissionRetry,
+			dataNode.DecommissionTerm, time.Unix(dataNode.DecommissionCompleteTime, 0).Format("2006-01-02 15:04:05"),
+			dataNode.ToBeOffline)
 	}
 	return
 }
