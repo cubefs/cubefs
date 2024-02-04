@@ -142,12 +142,12 @@ func (mp *metaPartition) statisticExtendByStore(extend *Extend, ino *Inode) {
 
 func (mp *metaPartition) isExistQuota(ino uint64) (quotaIds []uint32, isFind bool) {
 	extend := NewExtend(ino)
-	treeItem := mp.extendTree.Get(extend)
-	if treeItem == nil {
+	extend, err := mp.extendTree.Get(extend)
+	if extend == nil || err != nil {
 		isFind = false
 		return
 	}
-	extend = treeItem.(*Extend)
+
 	value := extend.Quota
 	if len(value) == 0 {
 		isFind = false
@@ -190,11 +190,11 @@ func (mp *metaPartition) getInodeQuota(inode uint64, p *Packet) (err error) {
 		QuotaInfoMap: make(map[uint32]*proto.MetaQuotaInfo),
 	}
 	var value []byte
-	treeItem := mp.extendTree.CopyGet(extend)
-	if treeItem == nil {
+	extend, err = mp.extendTree.CopyGet(extend)
+	if extend == nil || err != nil {
 		goto handleRsp
 	}
-	extend = treeItem.(*Extend)
+
 	value = extend.Quota
 	if len(value) > 0 {
 		if err = json.Unmarshal(value, &quotaInfos.QuotaInfoMap); err != nil {
@@ -220,11 +220,11 @@ handleRsp:
 }
 
 func (mp *metaPartition) getInodeQuotaInfos(inode uint64) (quotaInfos map[uint32]*proto.MetaQuotaInfo, err error) {
-	treeItem := mp.extendTree.Get(NewExtend(inode))
-	if treeItem == nil {
+	extend, err := mp.extendTree.Get(NewExtend(inode))
+	if extend == nil || err != nil {
 		return
 	}
-	extend := treeItem.(*Extend)
+
 	info := &proto.MetaQuotaInfos{
 		QuotaInfoMap: make(map[uint32]*proto.MetaQuotaInfo),
 	}
@@ -262,13 +262,17 @@ func (mp *metaPartition) setInodeQuota(quotaIds []uint32, inode uint64) {
 	if mp.verSeq > 0 {
 		extend.setVersion(mp.verSeq)
 	}
-	treeItem := mp.extendTree.CopyGet(extend)
-	var e *Extend
-	if treeItem == nil {
+	e, err := mp.extendTree.CopyGet(extend)
+	if err != nil {
+		log.LogErrorf("setInodeQuota get fail [%v]", err)
+		return
+	}
+
+	if e == nil {
 		mp.extendTree.ReplaceOrInsert(extend, true)
 	} else {
-		e = treeItem.(*Extend)
 		e.Merge(extend, true)
+		mp.extendTree.Put(e)
 	}
 	if log.EnableDebug() {
 		log.LogDebugf("setInodeQuota inode[%v] quota [%v] success.", inode, quotaIds)

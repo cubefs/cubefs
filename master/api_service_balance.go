@@ -346,6 +346,8 @@ func (m *Server) migrateMetaPartitionHandler(w http.ResponseWriter, r *http.Requ
 		mpid       uint64
 		err        error
 		mp         *MetaPartition
+		modeInt    int
+		mode       proto.StoreMode
 	)
 	metric := exporter.NewTPCnt(apiToMetricsName(proto.MigrateMetaPartition))
 	defer func() {
@@ -353,6 +355,11 @@ func (m *Server) migrateMetaPartitionHandler(w http.ResponseWriter, r *http.Requ
 	}()
 
 	srcAddr, targetAddr, mpid, err = parseMigratePartitionParam(r)
+	if err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+	modeInt, err = extractStoreMode(r)
 	if err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
@@ -377,7 +384,18 @@ func (m *Server) migrateMetaPartitionHandler(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	if err = m.cluster.migrateMetaPartition(srcAddr, targetAddr, mp); err != nil {
+	if modeInt == 0 {
+		mode, err = mp.GetMetaReplicaStoreMode(srcAddr)
+		if err != nil {
+			err = fmt.Errorf("GetMetaReplicaStoreMode mp ID(%d) err: %s", mpid, err.Error())
+			sendErrReply(w, r, newErrHTTPReply(err))
+			return
+		}
+	} else {
+		mode = proto.StoreMode(modeInt)
+	}
+
+	if err = m.cluster.migrateMetaPartition(srcAddr, targetAddr, mp, mode); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}

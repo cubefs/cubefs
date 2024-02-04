@@ -43,10 +43,17 @@ func (ns *nodeSet) getDataNodeTotalSpace() (toalSpace uint64) {
 	return
 }
 
-func (ns *nodeSet) getMetaNodeTotalSpace() (toalSpace uint64) {
+func (ns *nodeSet) getMetaNodeTotalSpace(nodeType NodeType) (totalSpace uint64) {
 	ns.metaNodes.Range(func(key, value interface{}) bool {
 		metaNode := value.(*MetaNode)
-		toalSpace += metaNode.Total
+		switch nodeType {
+		case MetaNodeType:
+			totalSpace += metaNode.Total
+		case RocksdbType:
+			totalSpace += metaNode.GetRocksdbTotal()
+		default:
+			return false
+		}
 		return true
 	})
 	return
@@ -63,11 +70,18 @@ func (ns *nodeSet) getDataNodeTotalAvailableSpace() (space uint64) {
 	return
 }
 
-func (ns *nodeSet) getMetaNodeTotalAvailableSpace() (space uint64) {
+func (ns *nodeSet) getMetaNodeTotalAvailableSpace(nodeType NodeType) (space uint64) {
 	ns.metaNodes.Range(func(key, value interface{}) bool {
 		metaNode := value.(*MetaNode)
 		if !metaNode.ToBeOffline {
-			space += metaNode.Total - metaNode.Used
+			switch nodeType {
+			case MetaNodeType:
+				space += metaNode.Total - metaNode.Used
+			case RocksdbType:
+				space += metaNode.GetRocksdbTotal() - metaNode.GetRocksdbUsed()
+			default:
+				return false
+			}
 		}
 		return true
 	})
@@ -77,9 +91,9 @@ func (ns *nodeSet) getMetaNodeTotalAvailableSpace() (space uint64) {
 func (ns *nodeSet) canWriteFor(nodeType NodeType, replica int) bool {
 	switch nodeType {
 	case DataNodeType:
-		return ns.canWriteForNode(ns.dataNodes, replica)
-	case MetaNodeType:
-		return ns.canWriteForNode(ns.metaNodes, replica)
+		return ns.canWriteForNode(ns.dataNodes, replica, nodeType)
+	case MetaNodeType, RocksdbType:
+		return ns.canWriteForNode(ns.metaNodes, replica, nodeType)
 	default:
 		panic("unknow node type")
 	}
@@ -89,8 +103,8 @@ func (ns *nodeSet) getTotalSpaceOf(nodeType NodeType) uint64 {
 	switch nodeType {
 	case DataNodeType:
 		return ns.getDataNodeTotalSpace()
-	case MetaNodeType:
-		return ns.getMetaNodeTotalSpace()
+	case MetaNodeType, RocksdbType:
+		return ns.getMetaNodeTotalSpace(nodeType)
 	default:
 		panic("unknow node type")
 	}
@@ -100,8 +114,8 @@ func (ns *nodeSet) getTotalAvailableSpaceOf(nodeType NodeType) uint64 {
 	switch nodeType {
 	case DataNodeType:
 		return ns.getDataNodeTotalAvailableSpace()
-	case MetaNodeType:
-		return ns.getMetaNodeTotalAvailableSpace()
+	case MetaNodeType, RocksdbType:
+		return ns.getMetaNodeTotalAvailableSpace(nodeType)
 	default:
 		panic("unknow node type")
 	}
@@ -142,7 +156,7 @@ func (s *RoundRobinNodesetSelector) Select(nsc nodeSetCollection, excludeNodeSet
 	switch s.nodeType {
 	case DataNodeType:
 		err = proto.ErrNoNodeSetToCreateDataPartition
-	case MetaNodeType:
+	case MetaNodeType, RocksdbType:
 		err = proto.ErrNoNodeSetToCreateMetaPartition
 	default:
 		panic("unknow node type")
@@ -264,7 +278,7 @@ err:
 	switch s.nodeType {
 	case DataNodeType:
 		err = proto.ErrNoNodeSetToCreateDataPartition
-	case MetaNodeType:
+	case MetaNodeType, RocksdbType:
 		err = proto.ErrNoNodeSetToCreateMetaPartition
 	default:
 		panic("unknow node type")
@@ -302,7 +316,7 @@ func (s *AvailableSpaceFirstNodesetSelector) Select(nsc nodeSetCollection, exclu
 	switch s.nodeType {
 	case DataNodeType:
 		err = proto.ErrNoNodeSetToCreateDataPartition
-	case MetaNodeType:
+	case MetaNodeType, RocksdbType:
 		err = proto.ErrNoNodeSetToCreateMetaPartition
 	default:
 		panic("unknow node type")
@@ -346,7 +360,7 @@ func (s *StrawNodesetSelector) Select(nsc nodeSetCollection, excludeNodeSets []u
 		switch s.nodeType {
 		case DataNodeType:
 			err = proto.ErrNoNodeSetToCreateDataPartition
-		case MetaNodeType:
+		case MetaNodeType, RocksdbType:
 			err = proto.ErrNoNodeSetToCreateMetaPartition
 		default:
 			panic("unknow node type")

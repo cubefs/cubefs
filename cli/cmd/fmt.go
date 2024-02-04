@@ -313,6 +313,7 @@ func formatSimpleVolView(svv *proto.SimpleVolView) string {
 
 	// qos of volume
 	sb.WriteString(fmt.Sprintf("  QosEnable                       : %v\n", svv.QosInfo.QosEnable))
+	sb.WriteString(fmt.Sprintf("  Default store mode              : %v\n", svv.DefaultStoreMode.Str()))
 	return sb.String()
 }
 
@@ -731,6 +732,9 @@ func formatMetaPartitionInfo(partition *proto.MetaPartitionInfo) string {
 	sb.WriteString(fmt.Sprintf("Forbidden     : %v\n", partition.Forbidden))
 	sb.WriteString(fmt.Sprintf("Freeze        : %v\n", formatMetaPartitionFreeze(partition.Freeze)))
 	sb.WriteString(fmt.Sprintf("ForbidWriteOpOfProtoVer0 : %v\n", partition.ForbidWriteOpOfProtoVer0))
+	sb.WriteString(fmt.Sprintf("Store mode       : %v\n", partition.StoreMode.Str()))
+	sb.WriteString(fmt.Sprintf("Memory Replicas  : %v\n", partition.MemStoreCnt))
+	sb.WriteString(fmt.Sprintf("Rocksdb Replicas : %v\n", partition.RockStoreCnt))
 	sb.WriteString("\n")
 	sb.WriteString("Replicas : \n")
 	sb.WriteString(fmt.Sprintf("%v\n", formatMetaReplicaTableHeader()))
@@ -1169,6 +1173,8 @@ func formatMetaNodeDetail(mn *proto.MetaNodeInfo, rowTable bool) string {
 	sb.WriteString(fmt.Sprintf("  MaxMemAvailWeight   : %v\n", formatSize(mn.MaxMemAvailWeight)))
 	sb.WriteString(fmt.Sprintf("  Allocated           : %v\n", formatSize(mn.Used)))
 	sb.WriteString(fmt.Sprintf("  Total               : %v\n", formatSize(mn.Total)))
+	sb.WriteString(fmt.Sprintf("  RocksdbAllocated    : %v\n", formatSize(mn.RocksdbUsed)))
+	sb.WriteString(fmt.Sprintf("  RocksdbTotal        : %v\n", formatSize(mn.RocksdbTotal)))
 	sb.WriteString(fmt.Sprintf("  Zone                : %v\n", mn.ZoneName))
 	sb.WriteString(fmt.Sprintf("  Status              : %v\n", formatNodeStatus(mn.IsActive)))
 	sb.WriteString(fmt.Sprintf("  Rdonly              : %v\n", mn.RdOnly))
@@ -1177,6 +1183,10 @@ func formatMetaNodeDetail(mn *proto.MetaNodeInfo, rowTable bool) string {
 	sb.WriteString(fmt.Sprintf("  Persist partitions  : %v\n", mn.PersistenceMetaPartitions))
 	sb.WriteString(fmt.Sprintf("  Can alloc partition : %v\n", mn.CanAllowPartition))
 	sb.WriteString(fmt.Sprintf("  Max partition count : %v\n", mn.MaxMpCntLimit))
+	sb.WriteString("  Select count        :\n")
+	sb.WriteString(fmt.Sprintf("      Total           : %v\n", mn.SelectCount))
+	sb.WriteString(fmt.Sprintf("      Memory          : %v\n", mn.MemorySelectCount))
+	sb.WriteString(fmt.Sprintf("      Rocksdb         : %v\n", mn.RocksdbSelectCount))
 	sb.WriteString(fmt.Sprintf("  CpuUtil             : %.1f%%\n", mn.CpuUtil))
 	return sb.String()
 }
@@ -1190,23 +1200,31 @@ func formatNodeSetView(ns *proto.NodeSetStatInfo) string {
 	sb.WriteString(fmt.Sprintf("CanAllocMetaNode: %v\n", ns.CanAllocMetaNodeCnt))
 	sb.WriteString(fmt.Sprintf("DataNodeSelector: %v\n", ns.DataNodeSelector))
 	sb.WriteString(fmt.Sprintf("MetaNodeSelector: %v\n", ns.MetaNodeSelector))
-	var dataTotal, dataUsed, dataAvail, metaTotal, metaUsed, metaAvail uint64
+	var dataTotal, dataUsed, dataAvail, metaMemTotal, metaMemUsed, metaMemAvail uint64
+	var metaRocksdbTotal, metaRocksdbUsed, metaRocksdbAvali uint64
 	for _, dn := range ns.DataNodes {
 		dataTotal += dn.Total
 		dataUsed += dn.Used
 		dataAvail += dn.Avail
 	}
 	for _, mn := range ns.MetaNodes {
-		metaTotal += mn.Total
-		metaUsed += mn.Used
-		metaAvail += mn.Avail
+		metaMemTotal += mn.Total
+		metaMemUsed += mn.Used
+		metaMemAvail += mn.Avail
+
+		metaRocksdbTotal += mn.RocksdbTotal
+		metaRocksdbUsed += mn.RocksdbUsed
+		metaRocksdbAvali += mn.RocksdbAvali
 	}
-	sb.WriteString(fmt.Sprintf("DataTotal:     %v\n", formatSize(dataTotal)))
-	sb.WriteString(fmt.Sprintf("DataUsed:      %v\n", formatSize(dataUsed)))
-	sb.WriteString(fmt.Sprintf("DataAvail:     %v\n", formatSize(dataAvail)))
-	sb.WriteString(fmt.Sprintf("MetaTotal:     %v\n", formatSize(metaTotal)))
-	sb.WriteString(fmt.Sprintf("MetaUsed:      %v\n", formatSize(metaUsed)))
-	sb.WriteString(fmt.Sprintf("MetaAvail:     %v\n", formatSize(metaAvail)))
+	sb.WriteString(fmt.Sprintf("DataTotal:         %v\n", formatSize(dataTotal)))
+	sb.WriteString(fmt.Sprintf("DataUsed:          %v\n", formatSize(dataUsed)))
+	sb.WriteString(fmt.Sprintf("DataAvail:         %v\n", formatSize(dataAvail)))
+	sb.WriteString(fmt.Sprintf("MetaTotal:         %v\n", formatSize(metaMemTotal)))
+	sb.WriteString(fmt.Sprintf("MetaUsed:          %v\n", formatSize(metaMemUsed)))
+	sb.WriteString(fmt.Sprintf("MetaAvail:         %v\n", formatSize(metaMemAvail)))
+	sb.WriteString(fmt.Sprintf("MetaRocksdbTotal:  %v\n", formatSize(metaRocksdbTotal)))
+	sb.WriteString(fmt.Sprintf("MetaRocksdbUsed:   %v\n", formatSize(metaRocksdbUsed)))
+	sb.WriteString(fmt.Sprintf("MetaRocksdbAvali:  %v\n", formatSize(metaRocksdbAvali)))
 	sb.WriteString("\n")
 	sb.WriteString(fmt.Sprintf("DataNodes[%v]:\n", len(ns.DataNodes)))
 	sb.WriteString(fmt.Sprintf("  %v\n", formatNodeViewTableHeaderForNodeSet()))
@@ -1217,7 +1235,7 @@ func formatNodeSetView(ns *proto.NodeSetStatInfo) string {
 	sb.WriteString(fmt.Sprintf("MetaNodes[%v]:\n", len(ns.MetaNodes)))
 	sb.WriteString(fmt.Sprintf("  %v\n", formatNodeViewTableHeaderForNodeSet()))
 	for _, mn := range ns.MetaNodes {
-		sb.WriteString(fmt.Sprintf("  %v\n", formatNodeViewForNodeSet(mn)))
+		sb.WriteString(fmt.Sprintf("  %v\n", formatNodeViewForNodeSet(&mn.NodeStatView)))
 	}
 	return sb.String()
 }
@@ -1242,7 +1260,7 @@ func formatZoneView(zv *proto.ZoneView) string {
 		sb.WriteString(fmt.Sprintf("  MetaNodes[%v]:\n", ns.MetaNodeLen))
 		sb.WriteString(fmt.Sprintf("    %v\n", formatNodeViewTableHeader()))
 		for _, nv := range ns.MetaNodes {
-			sb.WriteString(fmt.Sprintf("    %v\n", formatNodeView(&nv, true)))
+			sb.WriteString(fmt.Sprintf("    %v\n", formatMetaNodeView(&nv, true)))
 		}
 	}
 	return sb.String()
@@ -1544,4 +1562,18 @@ func formatMetaPartitionFreeze(freeze int8) string {
 	default:
 		return "Unknown"
 	}
+}
+
+func formatMetaNodeView(view *proto.NodeView, tableRow bool) string {
+	if tableRow {
+		return fmt.Sprintf(nodeViewTableRowPattern, view.ID, formatAddr(view.Addr, view.DomainAddr),
+			formatYesNo(view.IsWritable), formatNodeStatus(view.Status))
+	}
+	sb := strings.Builder{}
+	sb.WriteString(fmt.Sprintf("  ID              : %v\n", view.ID))
+	sb.WriteString(fmt.Sprintf("  Address         : %v\n", formatAddr(view.Addr, view.DomainAddr)))
+	sb.WriteString(fmt.Sprintf("  Writable        : %v\n", formatYesNo(view.IsWritable)))
+	sb.WriteString(fmt.Sprintf("  RocksdbWritable : %v\n", formatYesNo(view.IsRocksdbWritable)))
+	sb.WriteString(fmt.Sprintf("  Active          : %v", formatNodeStatus(view.Status)))
+	return sb.String()
 }

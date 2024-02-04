@@ -22,15 +22,16 @@ import (
 	"time"
 
 	"github.com/cubefs/cubefs/master/mocktest"
+	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util"
 )
 
 func writeNodeset(sb *strings.Builder, nset *nodeSet) {
 	sb.WriteString(fmt.Sprintf("Nodeset %v\n", nset.ID))
 	sb.WriteString(fmt.Sprintf("\tTotal Data Space:%v GB\n", nset.getDataNodeTotalSpace()/util.GB))
-	sb.WriteString(fmt.Sprintf("\tTotal Meta Space:%v GB\n", nset.getMetaNodeTotalSpace()/util.GB))
+	sb.WriteString(fmt.Sprintf("\tTotal Meta Space:%v GB\n", nset.getMetaNodeTotalSpace(MetaNodeType)/util.GB))
 	sb.WriteString(fmt.Sprintf("\tTotal Data Available Space:%v GB\n", nset.getDataNodeTotalAvailableSpace()/util.GB))
-	sb.WriteString(fmt.Sprintf("\tTotal Meta Available Space:%v GB\n", nset.getMetaNodeTotalAvailableSpace()/util.GB))
+	sb.WriteString(fmt.Sprintf("\tTotal Meta Available Space:%v GB\n", nset.getMetaNodeTotalAvailableSpace(MetaNodeType)/util.GB))
 }
 
 func printNodesetsOfZone(t *testing.T, zone *Zone) {
@@ -99,12 +100,16 @@ func TestRoundRobinNodesetSelector(t *testing.T) {
 	NodesetSelectorTest(t, selector)
 	selector = NewRoundRobinNodesetSelector(MetaNodeType)
 	NodesetSelectorTest(t, selector)
+	selector = NewRoundRobinNodesetSelector(RocksdbType)
+	NodesetSelectorTest(t, selector)
 }
 
 func TestCarryWeightNodesetSelector(t *testing.T) {
 	selector := NewCarryWeightNodesetSelector(DataNodeType)
 	NodesetSelectorTest(t, selector)
 	selector = NewCarryWeightNodesetSelector(MetaNodeType)
+	NodesetSelectorTest(t, selector)
+	selector = NewCarryWeightNodesetSelector(RocksdbType)
 	NodesetSelectorTest(t, selector)
 }
 
@@ -113,12 +118,16 @@ func TestAvailableSpaceFirstNodesetSelector(t *testing.T) {
 	NodesetSelectorTest(t, selector)
 	selector = NewAvailableSpaceFirstNodesetSelector(MetaNodeType)
 	NodesetSelectorTest(t, selector)
+	selector = NewAvailableSpaceFirstNodesetSelector(RocksdbType)
+	NodesetSelectorTest(t, selector)
 }
 
 func TestStrawNodesetSelector(t *testing.T) {
 	selector := NewStrawNodesetSelector(DataNodeType)
 	NodesetSelectorTest(t, selector)
 	selector = NewStrawNodesetSelector(MetaNodeType)
+	NodesetSelectorTest(t, selector)
+	selector = NewStrawNodesetSelector(RocksdbType)
 	NodesetSelectorTest(t, selector)
 }
 
@@ -195,7 +204,7 @@ func dataNodesetSelectorBench(t *testing.T, selector NodesetSelector) error {
 	return nil
 }
 
-func metaNodesetSelectorBench(t *testing.T, selector NodesetSelector) error {
+func metaNodesetSelectorBench(t *testing.T, selector NodesetSelector, storeMode proto.StoreMode) error {
 	nsc := prepareMetaNodesetForBench(4, 100*util.GB, 100*util.GB)
 	random := rand.New(rand.NewSource(time.Now().Unix()))
 	times, err := nodesetSelectorBench(selector, nsc, func(id uint64) {
@@ -205,10 +214,17 @@ func metaNodesetSelectorBench(t *testing.T, selector NodesetSelector) error {
 				ns.metaNodes.Range(func(key, value interface{}) bool {
 					node := value.(*MetaNode)
 					tmp := decrase
-					if tmp+node.Used > node.Total {
-						tmp = node.Total - node.Used
+					switch storeMode {
+					case proto.StoreModeMem:
+						if tmp+node.Used > node.Total {
+							tmp = node.Total - node.Used
+						}
+						node.Used += tmp
+					case proto.StoreModeRocksDb:
+						if tmp+node.GetRocksdbUsed() > node.GetRocksdbTotal() {
+							tmp = node.GetRocksdbTotal() - node.GetRocksdbUsed()
+						}
 					}
-					node.Used += tmp
 					decrase -= tmp
 					return decrase > 0
 				})
@@ -235,7 +251,13 @@ func TestBenchmarkCarryWeightNodesetSelector(t *testing.T) {
 		return
 	}
 	selector = NewCarryWeightNodesetSelector(MetaNodeType)
-	err = metaNodesetSelectorBench(t, selector)
+	err = metaNodesetSelectorBench(t, selector, proto.StoreModeMem)
+	if err != nil {
+		t.Errorf("%v nodeset selector failed to benchmark %v", selector.GetName(), err)
+		return
+	}
+	selector = NewCarryWeightNodesetSelector(RocksdbType)
+	err = metaNodesetSelectorBench(t, selector, proto.StoreModeRocksDb)
 	if err != nil {
 		t.Errorf("%v nodeset selector failed to benchmark %v", selector.GetName(), err)
 		return
@@ -250,7 +272,13 @@ func TestBenchmarkStrawNodesetSelector(t *testing.T) {
 		return
 	}
 	selector = NewStrawNodesetSelector(MetaNodeType)
-	err = metaNodesetSelectorBench(t, selector)
+	err = metaNodesetSelectorBench(t, selector, proto.StoreModeMem)
+	if err != nil {
+		t.Errorf("%v nodeset selector failed to benchmark %v", selector.GetName(), err)
+		return
+	}
+	selector = NewStrawNodesetSelector(RocksdbType)
+	err = metaNodesetSelectorBench(t, selector, proto.StoreModeRocksDb)
 	if err != nil {
 		t.Errorf("%v nodeset selector failed to benchmark %v", selector.GetName(), err)
 		return

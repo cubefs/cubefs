@@ -16,17 +16,18 @@ package metanode
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
 	"time"
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util"
+	"github.com/cubefs/cubefs/util/exporter"
 )
 
 func (mp *metaPartition) GetExpiredMultipart(req *proto.GetExpiredMultipartRequest, p *Packet) (err error) {
 	expiredMultiPartInfos := make([]*proto.ExpiredMultipartInfo, 0)
-	walkTreeFunc := func(i BtreeItem) bool {
-		multipart := i.(*Multipart)
+	walkTreeFunc := func(multipart *Multipart) bool {
 		if len(req.Prefix) > 0 && !strings.HasPrefix(multipart.key, req.Prefix) {
 			// skip and continue
 			return true
@@ -47,7 +48,7 @@ func (mp *metaPartition) GetExpiredMultipart(req *proto.GetExpiredMultipartReque
 		return true
 	}
 
-	mp.multipartTree.Ascend(walkTreeFunc)
+	mp.multipartTree.Range(nil, nil, walkTreeFunc)
 
 	resp := &proto.GetExpiredMultipartResponse{
 		Infos: expiredMultiPartInfos,
@@ -63,12 +64,21 @@ func (mp *metaPartition) GetExpiredMultipart(req *proto.GetExpiredMultipartReque
 }
 
 func (mp *metaPartition) GetMultipart(req *proto.GetMultipartRequest, p *Packet) (err error) {
-	item := mp.multipartTree.Get(&Multipart{key: req.Path, id: req.MultipartId})
-	if item == nil {
+	multipart, err := mp.multipartTree.Get(&Multipart{key: req.Path, id: req.MultipartId})
+	if err != nil {
+		if err == ErrRocksdbOperation {
+			exporter.WarningRocksdbError(fmt.Sprintf("action[GetMultipart] clusterID[%s] volumeName[%s] partitionID[%v]"+
+				" get multipart failed witch rocksdb error[multipart path:%s, id:%s]", mp.manager.metaNode.clusterId, mp.config.VolName,
+				mp.config.PartitionId, req.Path, req.MultipartId))
+		}
+		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+		return
+	}
+	if multipart == nil {
 		p.PacketErrorWithBody(proto.OpNotExistErr, nil)
 		return
 	}
-	multipart := item.(*Multipart)
+
 	resp := &proto.GetMultipartResponse{
 		Info: &proto.MultipartInfo{
 			ID:       multipart.id,
@@ -101,7 +111,11 @@ func (mp *metaPartition) AppendMultipart(req *proto.AddMultipartPartRequest, p *
 		p.PacketOkReply()
 		return
 	}
-	item := mp.multipartTree.Get(&Multipart{key: req.Path, id: req.MultipartId})
+	item, err := mp.multipartTree.Get(&Multipart{key: req.Path, id: req.MultipartId})
+	if err != nil {
+		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+		return
+	}
 	if item == nil {
 		p.PacketErrorWithBody(proto.OpNotExistErr, nil)
 		return
@@ -159,9 +173,13 @@ func (mp *metaPartition) RemoveMultipart(req *proto.RemoveMultipartRequest, p *P
 
 func (mp *metaPartition) CreateMultipart(req *proto.CreateMultipartRequest, p *Packet) (err error) {
 	var multipartId string
+	var storedItem *Multipart
 	for {
 		multipartId = util.CreateMultipartID(mp.config.PartitionId).String()
-		storedItem := mp.multipartTree.Get(&Multipart{key: req.Path, id: multipartId})
+		storedItem, err = mp.multipartTree.Get(&Multipart{key: req.Path, id: multipartId})
+		if err != nil {
+			break
+		}
 		if storedItem == nil {
 			break
 		}
@@ -199,20 +217,22 @@ func (mp *metaPartition) ListMultipart(req *proto.ListMultipartRequest, p *Packe
 	multipartIdMarker := req.MultipartIdMarker
 	prefix := req.Prefix
 	matches := make([]*Multipart, 0, max)
-	walkTreeFunc := func(i BtreeItem) bool {
-		multipart := i.(*Multipart)
-		// prefix is enabled
+	walkTreeFunc := func(multipart *Multipart) bool {
 		if len(prefix) > 0 && !strings.HasPrefix(multipart.key, prefix) {
 			// skip and continue
 			return true
 		}
-		matches = append(matches, multipart)
+		matches = append(matches, multipart.Copy().(*Multipart))
 		return !(len(matches) >= max)
 	}
 	if len(keyMarker) > 0 {
-		mp.multipartTree.AscendGreaterOrEqual(&Multipart{key: keyMarker, id: multipartIdMarker}, walkTreeFunc)
+		err = mp.multipartTree.Range(&Multipart{key: keyMarker, id: multipartIdMarker}, nil, walkTreeFunc)
 	} else {
-		mp.multipartTree.Ascend(walkTreeFunc)
+		err = mp.multipartTree.Range(nil, nil, walkTreeFunc)
+	}
+	if err != nil {
+		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+		return
 	}
 	multipartInfos := make([]*proto.MultipartInfo, len(matches))
 

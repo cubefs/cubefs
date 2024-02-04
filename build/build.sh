@@ -484,7 +484,7 @@ build_cfs_deploy() {
 build_fsck() {
     pushd $SrcPath >/dev/null
     echo -n "build cfs-fsck      "
-    CGO_ENABLED=0 go build ${MODFLAGS} -gcflags=all=-trimpath=${SrcPath} -asmflags=all=-trimpath=${SrcPath} -ldflags="${LDFlags}" -o ${BuildBinPath}/cfs-fsck ${SrcPath}/tool/fsck/*.go  && echo "success" || echo "failed"
+    CGO_ENABLED=1 go build ${MODFLAGS} -gcflags=all=-trimpath=${SrcPath} -asmflags=all=-trimpath=${SrcPath} -ldflags="${LDFlags}" -o ${BuildBinPath}/cfs-fsck ${SrcPath}/tool/fsck/*.go  && echo "success" || echo "failed"
     popd >/dev/null
 }
 

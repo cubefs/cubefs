@@ -19,6 +19,7 @@ import (
 	"math"
 	"os"
 	"path"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -42,6 +43,7 @@ func TestMetaPartition_LoadSnapshot(t *testing.T) {
 		PartitionType: 1,
 		Peers:         nil,
 		RootDir:       testPath,
+		StoreMode:     proto.StoreModeMem,
 	}
 	metaM := &metadataManager{
 		nodeId:          1,
@@ -57,26 +59,24 @@ func TestMetaPartition_LoadSnapshot(t *testing.T) {
 
 	// none data
 	mp, ok := partition.(*metaPartition)
+	err := mp.initObjects(true)
+	require.NoError(t, err)
 	require.True(t, ok)
+	snap, err := mp.GetSnapShot()
+	require.NoError(t, err)
+	require.NotNil(t, snap)
 	msg := &storeMsg{
-		command:        1,
-		applyIndex:     0,
-		txId:           mp.txProcessor.txManager.txIdAlloc.getTransactionID(),
-		inodeTree:      mp.inodeTree,
-		dentryTree:     mp.dentryTree,
-		extendTree:     mp.extendTree,
-		multipartTree:  mp.multipartTree,
-		txTree:         mp.txProcessor.txManager.txTree,
-		txRbInodeTree:  mp.txProcessor.txResource.txRbInodeTree,
-		txRbDentryTree: mp.txProcessor.txResource.txRbDentryTree,
-		uniqId:         mp.GetUniqId(),
-		uniqChecker:    mp.uniqChecker,
+		command:     1,
+		snap:        snap,
+		uniqId:      mp.GetUniqId(),
+		uniqChecker: mp.uniqChecker,
 	}
 	mp.uidManager = NewUidMgr(mpC.VolName, mpC.PartitionId)
 	mp.mqMgr = NewQuotaManager(mpC.VolName, mpC.PartitionId)
 	mp.multiVersionList = &proto.VolVersionInfoList{}
 
-	err := mp.store(msg)
+	err = mp.store(msg)
+	snap.Close()
 	require.NoError(t, err)
 	snapshotPath := path.Join(mp.config.RootDir, snapshotDir)
 	err = partition.LoadSnapshot(snapshotPath)
@@ -100,21 +100,17 @@ func TestMetaPartition_LoadSnapshot(t *testing.T) {
 	}
 	mp.multipartTree.ReplaceOrInsert(multipart, true)
 
+	snap, err = mp.GetSnapShot()
+	require.NoError(t, err)
+	require.NotNil(t, snap)
 	msg = &storeMsg{
-		command:        1,
-		applyIndex:     0,
-		txId:           mp.txProcessor.txManager.txIdAlloc.getTransactionID(),
-		inodeTree:      mp.inodeTree,
-		dentryTree:     mp.dentryTree,
-		extendTree:     mp.extendTree,
-		multipartTree:  mp.multipartTree,
-		txTree:         mp.txProcessor.txManager.txTree,
-		txRbInodeTree:  mp.txProcessor.txResource.txRbInodeTree,
-		txRbDentryTree: mp.txProcessor.txResource.txRbDentryTree,
-		uniqId:         mp.GetUniqId(),
-		uniqChecker:    mp.uniqChecker,
+		command:     1,
+		snap:        snap,
+		uniqId:      mp.GetUniqId(),
+		uniqChecker: mp.uniqChecker,
 	}
 	err = mp.store(msg)
+	snap.Close()
 	require.Nil(t, err)
 	snapshotPath = path.Join(mp.config.RootDir, snapshotDir)
 	err = partition.LoadSnapshot(snapshotPath)
@@ -156,6 +152,7 @@ func TestMetaPartition_LoadHybridCloudMigrationSnapshot(t *testing.T) {
 		PartitionType: 1,
 		Peers:         nil,
 		RootDir:       testPath,
+		StoreMode:     proto.StoreModeMem,
 	}
 	metaM := &metadataManager{
 		nodeId:          1,
@@ -169,6 +166,10 @@ func TestMetaPartition_LoadHybridCloudMigrationSnapshot(t *testing.T) {
 	partition := NewMetaPartition(mpC, metaM)
 	require.NotNil(t, partition)
 	mp, ok := partition.(*metaPartition)
+	err := mp.initObjects(true)
+	if err != nil {
+		panic(err)
+	}
 	require.True(t, ok)
 	ino := NewInode(2, 0)
 	ino.StorageClass = proto.StorageClass_BlobStore
@@ -189,28 +190,213 @@ func TestMetaPartition_LoadHybridCloudMigrationSnapshot(t *testing.T) {
 	// mp.extendTree.ReplaceOrInsert(extend, true)
 	// multipart := &Multipart{}
 	// mp.multipartTree.ReplaceOrInsert(multipart, true)
+	snap, err := mp.GetSnapShot()
+	require.NoError(t, err)
 	msg := &storeMsg{
-		command:        1,
-		applyIndex:     0,
-		txId:           mp.txProcessor.txManager.txIdAlloc.getTransactionID(),
-		inodeTree:      mp.inodeTree,
-		dentryTree:     mp.dentryTree,
-		extendTree:     mp.extendTree,
-		multipartTree:  mp.multipartTree,
-		txTree:         mp.txProcessor.txManager.txTree,
-		txRbInodeTree:  mp.txProcessor.txResource.txRbInodeTree,
-		txRbDentryTree: mp.txProcessor.txResource.txRbDentryTree,
-		uniqId:         mp.GetUniqId(),
-		uniqChecker:    mp.uniqChecker,
+		command:     1,
+		snap:        snap,
+		uniqId:      mp.GetUniqId(),
+		uniqChecker: mp.uniqChecker,
 	}
 	mp.uidManager = NewUidMgr(mpC.VolName, mpC.PartitionId)
 	mp.mqMgr = NewQuotaManager(mpC.VolName, mpC.PartitionId)
 	mp.multiVersionList = &proto.VolVersionInfoList{}
-	err := mp.store(msg)
+	err = mp.store(msg)
+	snap.Close()
 	require.Nil(t, err)
 	snapshotPath := path.Join(mp.config.RootDir, snapshotDir)
 	err = partition.LoadSnapshot(snapshotPath)
 	require.Nil(t, err)
+}
+
+func prepareDataForMpTest(t *testing.T, mp *metaPartition) {
+	handle, err := mp.inodeTree.CreateBatchWriteHandle()
+	require.NoError(t, err)
+
+	ino := NewInode(0, DirModeType)
+	err = mp.inodeTree.BatchPut(handle, ino)
+	require.NoError(t, err)
+
+	den := &Dentry{
+		ParentId: 0,
+		Name:     "test",
+		Inode:    1,
+	}
+	err = mp.dentryTree.BatchPut(handle, den)
+	require.NoError(t, err)
+
+	err = mp.extendTree.BatchPut(handle, &Extend{})
+	require.NoError(t, err)
+
+	err = mp.multipartTree.BatchPut(handle, &Multipart{})
+	require.NoError(t, err)
+
+	err = mp.txProcessor.txManager.txTree.BatchPut(handle, proto.NewTransactionInfo(0, 0))
+	require.NoError(t, err)
+
+	err = mp.txProcessor.txResource.txRbInodeTree.BatchPut(handle, NewTxRollbackInode(ino, []uint32{}, proto.NewTxInodeInfo("", 0, 0), 0))
+	require.NoError(t, err)
+
+	err = mp.txProcessor.txResource.txRbDentryTree.BatchPut(handle, NewTxRollbackDentry(den, proto.NewTxDentryInfo("", 0, "", 0), 0))
+	require.NoError(t, err)
+
+	err = mp.inodeTree.CommitAndReleaseBatchWriteHandle(handle, true)
+	require.NoError(t, err)
+}
+
+func checkTreeCntForMpTest(t *testing.T, mp *metaPartition) {
+	cnt, err := mp.GetInodeRealCount()
+	require.NoError(t, err)
+	require.EqualValues(t, 1, cnt)
+
+	cnt, err = mp.GetDentryRealCount()
+	require.NoError(t, err)
+	require.EqualValues(t, 1, cnt)
+
+	cnt, err = mp.GetExtendRealCount()
+	require.NoError(t, err)
+	require.EqualValues(t, 1, cnt)
+
+	cnt, err = mp.GetMultipartRealCount()
+	require.NoError(t, err)
+	require.EqualValues(t, 1, cnt)
+
+	cnt, err = mp.GetTxRealCount()
+	require.NoError(t, err)
+	require.EqualValues(t, 1, cnt)
+
+	cnt, err = mp.GetTxRbInodeRealCount()
+	require.NoError(t, err)
+	require.EqualValues(t, 1, cnt)
+
+	cnt, err = mp.GetTxRbDentryRealCount()
+	require.NoError(t, err)
+	require.EqualValues(t, 1, cnt)
+}
+
+func TestMultiPartitionOnDisk(t *testing.T) {
+	dbManager := NewPerDiskRocksdbManager(0, 0, 0, 0, 0)
+	dbDir, err := os.MkdirTemp("", "")
+	require.NoError(t, err)
+	t.Logf("db dir is %v", dbDir)
+	err = dbManager.Register(dbDir)
+	require.NoError(t, err)
+
+	mp1C := MetaPartitionConfig{
+		PartitionId:   1,
+		VolName:       "test_vol",
+		Start:         0,
+		End:           100,
+		PartitionType: 1,
+		Peers:         nil,
+		RootDir:       "",
+		StoreMode:     proto.StoreModeRocksDb,
+		RocksDBDir:    dbDir,
+	}
+	mp2C := mp1C
+	mp2C.PartitionId = 2
+	metaM := &metadataManager{
+		nodeId:         1,
+		zoneName:       "test",
+		raftStore:      nil,
+		partitions:     make(map[uint64]MetaPartition),
+		metaNode:       &MetaNode{},
+		rocksdbManager: dbManager,
+	}
+	partition := NewMetaPartition(&mp1C, metaM)
+	require.NotNil(t, partition)
+	mp1 := partition.(*metaPartition)
+	partition = NewMetaPartition(&mp2C, metaM)
+	require.NotNil(t, partition)
+	mp2 := partition.(*metaPartition)
+
+	err = mp1.initObjects(true)
+	require.NoError(t, err)
+	err = mp2.initObjects(true)
+	require.NoError(t, err)
+
+	prepareDataForMpTest(t, mp1)
+	prepareDataForMpTest(t, mp2)
+
+	checkTreeCntForMpTest(t, mp1)
+	checkTreeCntForMpTest(t, mp2)
+
+	mp2.Clear()
+
+	checkTreeCntForMpTest(t, mp1)
+	os.RemoveAll(mp1.config.RocksDBDir)
+	os.RemoveAll(mp2.config.RocksDBDir)
+}
+
+func getSSTCountForPartitionTest(t *testing.T, dir string) (count int) {
+	dentries, err := os.ReadDir(dir)
+	require.NoError(t, err)
+	for _, dentry := range dentries {
+		if strings.HasSuffix(dentry.Name(), ".sst") {
+			count++
+		}
+	}
+	return
+}
+
+func TestLoadAndStoreMetaPartition(t *testing.T) {
+	dbManager := NewPerDiskRocksdbManager(0, 0, 0, 0, 0)
+	dbDir, err := os.MkdirTemp("", "")
+	require.NoError(t, err)
+	t.Logf("db dir is %v", dbDir)
+	err = dbManager.Register(dbDir)
+	require.NoError(t, err)
+
+	mpC := MetaPartitionConfig{
+		PartitionId:   1,
+		VolName:       "test_vol",
+		Start:         0,
+		End:           100,
+		PartitionType: 1,
+		Peers:         nil,
+		RootDir:       "",
+		StoreMode:     proto.StoreModeRocksDb,
+		RocksDBDir:    dbDir,
+	}
+
+	metaM := &metadataManager{
+		nodeId:         1,
+		zoneName:       "test",
+		raftStore:      nil,
+		partitions:     make(map[uint64]MetaPartition),
+		metaNode:       &MetaNode{},
+		rocksdbManager: dbManager,
+	}
+	partition := NewMetaPartition(&mpC, metaM)
+	require.NotNil(t, partition)
+	mp := partition.(*metaPartition)
+
+	err = mp.initObjects(true)
+	require.NoError(t, err)
+
+	prepareDataForMpTest(t, mp)
+
+	checkTreeCntForMpTest(t, mp)
+
+	count := getSSTCountForPartitionTest(t, dbDir)
+	require.EqualValues(t, 0, count)
+
+	snap, err := mp.GetSnapShot()
+	require.NoError(t, err)
+	require.NotNil(t, snap)
+	msg := &storeMsg{
+		command:     1,
+		snap:        snap,
+		uniqId:      mp.GetUniqId(),
+		uniqChecker: mp.uniqChecker,
+	}
+	err = mp.store(msg)
+	snap.Close()
+	require.NoError(t, err)
+
+	count = getSSTCountForPartitionTest(t, dbDir)
+	require.NotEqualValues(t, 0, count)
+	os.RemoveAll(mp.config.RocksDBDir)
 }
 
 func TestDoFileStats(t *testing.T) {

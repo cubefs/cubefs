@@ -11,10 +11,15 @@ import (
 const (
 	UpdateNodeInfoTicket     = 1 * time.Minute
 	DefaultDeleteBatchCounts = 128
+
+	DefaultRocksDBModeMaxFsUsedPercent   = 60
+	DefaultMemModeMaxFsUsedFactorPercent = 80
+	DefaultDumpWaterLevel                = 100
 )
 
 type NodeInfo struct {
 	deleteBatchCount uint64
+	dumpWaterLevel   uint64
 }
 
 var (
@@ -22,6 +27,9 @@ var (
 	nodeInfoStopC              = make(chan struct{})
 	deleteWorkerSleepMs uint64 = 0
 	dirChildrenNumLimit uint32 = proto.DefaultDirChildrenNumLimit
+
+	RocksDBModeMaxFsUsedPercent uint64 = DefaultRocksDBModeMaxFsUsedPercent
+	MemModeMaxFsUsedPercent     uint64 = DefaultMemModeMaxFsUsedFactorPercent
 )
 
 func DeleteBatchCount() uint64 {
@@ -85,4 +93,20 @@ func (m *MetaNode) updateNodeInfo() {
 		atomic.StoreUint32(&dirChildrenNumLimit, clusterInfo.DirChildrenNumLimit)
 		log.LogInfof("updateNodeInfo: DirChildrenNumLimit(%v)", clusterInfo.DirChildrenNumLimit)
 	}
+}
+
+func getRocksDBModeMaxFsUsedPercent() uint64 {
+	return atomic.LoadUint64(&RocksDBModeMaxFsUsedPercent)
+}
+
+func getMemModeMaxFsUsedPercent() uint64 {
+	return atomic.LoadUint64(&MemModeMaxFsUsedPercent)
+}
+
+func GetDumpWaterLevel() uint64 {
+	val := atomic.LoadUint64(&nodeInfo.dumpWaterLevel)
+	if val < DefaultDumpWaterLevel {
+		val = DefaultDumpWaterLevel
+	}
+	return val
 }

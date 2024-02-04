@@ -78,6 +78,7 @@ type VolVarargs struct {
 	flashNodeTimeoutCount        int64
 	remoteCacheSameZoneTimeout   int64 // microsecond
 	remoteCacheSameRegionTimeout int64 // ms
+	DefaultStoreMode             proto.StoreMode
 }
 
 // nolint: structcheck
@@ -201,6 +202,7 @@ type Vol struct {
 	StatMigrateStorageClass []*proto.StatOfStorageClass
 	StatByDpMediaType       []*proto.StatOfStorageClass
 	QuotaByClass            []*proto.StatOfStorageClass
+	DefaultStoreMode        proto.StoreMode
 }
 
 func newVol(vv volValue) (vol *Vol) {
@@ -297,6 +299,7 @@ func newVol(vv volValue) (vol *Vol) {
 		IdQuotaInfoMap: make(map[uint32]*proto.QuotaInfo),
 		vol:            vol,
 	}
+	vol.DefaultStoreMode = vv.DefaultStoreMode
 
 	return
 }
@@ -335,6 +338,7 @@ func newVolFromVolValue(vv *volValue) (vol *Vol) {
 		vol.AccessTimeValidInterval = proto.DefaultAccessTimeValidInterval
 	}
 	vol.ForbidWriteOpOfProtoVer0.Store(vv.ForbidWriteOpOfProtoVer0)
+	vol.DefaultStoreMode = vv.DefaultStoreMode
 
 	if vol.remoteCacheTTL == 0 {
 		vol.remoteCacheTTL = proto.DefaultRemoteCacheTTL
@@ -990,7 +994,7 @@ func (mp *MetaPartition) memUsedReachThreshold(clusterName, volName string) bool
 	if !foundReadonlyReplica || readonlyReplica == nil {
 		return false
 	}
-	if readonlyReplica.metaNode.IsWriteAble() {
+	if readonlyReplica.metaNode.isWritable(readonlyReplica.StoreMode) {
 		msg := fmt.Sprintf("action[checkSplitMetaPartition] vol[%v],max meta parition[%v] status is readonly\n",
 			volName, mp.PartitionID)
 		Warn(clusterName, msg)
@@ -1697,16 +1701,19 @@ func (vol *Vol) doCreateMetaPartition(c *Cluster, start, end uint64) (mp *MetaPa
 	)
 
 	errChannel := make(chan error, vol.mpReplicaNum)
-
+	nodeType := TypeMetaPartition
+	if vol.DefaultStoreMode == proto.StoreModeRocksDb {
+		nodeType = TypeRocksdbPartition
+	}
 	if c.isFaultDomain(vol) {
-		if hosts, peers, err = c.getHostFromDomainZone(vol.domainId, TypeMetaPartition, vol.mpReplicaNum, proto.StorageClass_Unspecified); err != nil {
+		if hosts, peers, err = c.getHostFromDomainZone(vol.domainId, nodeType, vol.mpReplicaNum, proto.StorageClass_Unspecified); err != nil {
 			log.LogErrorf("action[doCreateMetaPartition] getHostFromDomainZone err[%v]", err)
 			return nil, errors.NewError(err)
 		}
 	} else {
 		var excludeZone []string
 		zoneNum := c.decideZoneNum(vol, proto.StorageClass_Unspecified)
-		if hosts, peers, err = c.getHostFromNormalZone(TypeMetaPartition, excludeZone, nil, nil,
+		if hosts, peers, err = c.getHostFromNormalZone(nodeType, excludeZone, nil, nil,
 			int(vol.mpReplicaNum), zoneNum, vol.zoneName, proto.StorageClass_Unspecified); err != nil {
 			log.LogErrorf("action[doCreateMetaPartition] getHostFromNormalZone err[%v]", err)
 			return nil, errors.NewError(err)
@@ -1732,7 +1739,7 @@ func (vol *Vol) doCreateMetaPartition(c *Cluster, start, end uint64) (mp *MetaPa
 			defer func() {
 				wg.Done()
 			}()
-			if err = c.syncCreateMetaPartitionToMetaNode(host, mp); err != nil {
+			if err = c.syncCreateMetaPartitionToMetaNode(host, mp, vol.DefaultStoreMode); err != nil {
 				log.LogErrorf("doCreateMetaPartition: create mp to metanode failed, mp %d, err %s", mp.PartitionID, err.Error())
 				errChannel <- err
 				return
@@ -1835,6 +1842,7 @@ func setVolFromArgs(args *VolVarargs, vol *Vol) {
 	vol.flashNodeTimeoutCount = args.flashNodeTimeoutCount
 	vol.remoteCacheSameZoneTimeout = args.remoteCacheSameZoneTimeout
 	vol.remoteCacheSameRegionTimeout = args.remoteCacheSameRegionTimeout
+	vol.DefaultStoreMode = args.DefaultStoreMode
 }
 
 func getVolVarargs(vol *Vol) *VolVarargs {
@@ -1895,6 +1903,7 @@ func getVolVarargs(vol *Vol) *VolVarargs {
 		flashNodeTimeoutCount:        vol.flashNodeTimeoutCount,
 		remoteCacheSameZoneTimeout:   vol.remoteCacheSameZoneTimeout,
 		remoteCacheSameRegionTimeout: vol.remoteCacheSameRegionTimeout,
+		DefaultStoreMode:             vol.DefaultStoreMode,
 	}
 }
 

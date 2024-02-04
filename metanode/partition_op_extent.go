@@ -42,13 +42,16 @@ func (mp *metaPartition) CheckQuota(inodeId uint64, p *Packet) (iParm *Inode, in
 		return
 	}
 
-	item := mp.inodeTree.Get(iParm)
-	if item == nil {
+	inode, err = mp.inodeTree.Get(iParm)
+	if err != nil {
+		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+		return
+	}
+	if inode == nil {
 		err = fmt.Errorf("inode[%v] not exist", iParm)
 		p.PacketErrorWithBody(proto.OpNotExistErr, []byte(err.Error()))
 		return
 	}
-	inode = item.(*Inode)
 	iParm.StorageClass = inode.StorageClass
 
 	mp.uidManager.acLock.Lock()
@@ -583,13 +586,17 @@ func (mp *metaPartition) ExtentsTruncate(req *ExtentsTruncateReq, p *Packet, rem
 		}()
 	}
 	ino := NewInode(req.Inode, proto.Mode(os.ModePerm))
-	item := mp.inodeTree.CopyGet(ino)
-	if item == nil {
+	i, err := mp.inodeTree.CopyGet(ino)
+	if err != nil {
+		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+		return
+	}
+	if i == nil {
 		err = fmt.Errorf("inode[%v] is not exist", req.Inode)
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return
 	}
-	i := item.(*Inode)
+
 	if !proto.IsStorageClassReplica(i.StorageClass) {
 		err = fmt.Errorf("inode %v storageClass(%v) do not support tuncate operation", req.Inode, i.StorageClass)
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
@@ -776,13 +783,16 @@ func (mp *metaPartition) persistInodeAccessTime(inode uint64, p *Packet) {
 	}
 
 	i := NewInode(inode, 0)
-	item := mp.inodeTree.Get(i)
-	if item == nil {
+	ino, err := mp.inodeTree.Get(i)
+	if err != nil {
+		log.LogErrorf("persistInodeAccessTime inode(%d) err: %s", inode, err.Error())
+		return
+	}
+	if ino == nil {
 		log.LogWarnf("persistInodeAccessTime inode %v is not found", inode)
 		return
 	}
 
-	ino := item.(*Inode)
 	ctime := timeutil.GetCurrentTimeUnix()
 	atime := ino.AccessTime
 	interval := mp.GetAccessTimeValidInterval()

@@ -176,6 +176,8 @@ type monitorMetrics struct {
 	lcVolError        *exporter.GaugeVec
 
 	diskDecommissionSuccess *exporter.GaugeVec
+
+	metaNodesNotRocksdbWritable *exporter.Gauge
 }
 
 func newMonitorMetrics(c *Cluster) *monitorMetrics {
@@ -632,6 +634,7 @@ func (mm *monitorMetrics) doStat() {
 	mm.updateDataNodesStat()
 	mm.updateMetaNodesStat()
 	mm.updateMastersStat()
+	mm.setNotRocksdbWritableMetaNodesCount()
 }
 
 func (mm *monitorMetrics) setMpAndDpMetrics() {
@@ -1049,6 +1052,7 @@ func (mm *monitorMetrics) updateMetaNodesStat() {
 		mm.nodeStat.SetWithLabelValues(float64(metaNode.MetaPartitionCount), MetricRoleMetaNode, mAddr, "mpCount", zone, setId, media, writable, alloc)
 		mm.nodeStat.SetWithLabelValues(float64(metaNode.Threshold), MetricRoleMetaNode, mAddr, "threshold", zone, setId, media, writable, alloc)
 		mm.nodeStat.SetBoolWithLabelValues(metaNode.IsWriteAble(), MetricRoleMetaNode, mAddr, "writable", zone, setId, media, writable, alloc)
+		mm.nodeStat.SetBoolWithLabelValues(metaNode.isWritable(proto.StoreModeRocksDb), MetricRoleMetaNode, metaNode.Addr, "rocksdbWritable", zone, setId, media, writable, alloc)
 		mm.nodeStat.SetBoolWithLabelValues(metaNode.IsActive, MetricRoleMetaNode, mAddr, "active", zone, setId, media, writable, alloc)
 		mm.nodeStat.SetBoolWithLabelValues(metaNode.PartitionCntLimited() && metaNode.IsWriteAble(), MetricRoleMetaNode, mAddr, "alloc", zone, setId, media, writable, alloc)
 
@@ -1125,18 +1129,8 @@ func (mm *monitorMetrics) updateMastersStat() {
 }
 
 func (mm *monitorMetrics) setNotWritableMetaNodesCount() {
-	var notWritabelMetaNodesCount int64
-	mm.cluster.metaNodes.Range(func(addr, node interface{}) bool {
-		metaNode, ok := node.(*MetaNode)
-		if !ok {
-			return true
-		}
-		if !metaNode.IsWriteAble() {
-			notWritabelMetaNodesCount++
-		}
-		return true
-	})
-	mm.metaNodesNotWritable.Set(float64(notWritabelMetaNodesCount))
+	count := mm.getNotWritableMetaNodesCount(proto.StoreModeMem)
+	mm.metaNodesNotWritable.Set(float64(count))
 }
 
 func (mm *monitorMetrics) setNotWritableDataNodesCount() {
@@ -1382,4 +1376,23 @@ func (mm *monitorMetrics) resetAllLeaderMetrics() {
 	mm.MpMissingReplicaCount.Set(0)
 	mm.ReplicaMissingDPCount.Reset()
 	mm.DpMissingLeaderCount.Reset()
+}
+
+func (mm *monitorMetrics) getNotWritableMetaNodesCount(storeMode proto.StoreMode) (count int64) {
+	mm.cluster.metaNodes.Range(func(key, value interface{}) bool {
+		metaNode, ok := value.(*MetaNode)
+		if !ok {
+			return true
+		}
+		if !metaNode.isWritable(storeMode) {
+			count++
+		}
+		return true
+	})
+	return
+}
+
+func (mm *monitorMetrics) setNotRocksdbWritableMetaNodesCount() {
+	count := mm.getNotWritableMetaNodesCount(proto.StoreModeRocksDb)
+	mm.metaNodesNotRocksdbWritable.Set(float64(count))
 }

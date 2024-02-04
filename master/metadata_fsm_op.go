@@ -396,6 +396,8 @@ type volValue struct {
 	FlashNodeTimeoutCount        int64
 	RemoteCacheSameZoneTimeout   int64
 	RemoteCacheSameRegionTimeout int64
+
+	DefaultStoreMode proto.StoreMode
 }
 
 func (v *volValue) Bytes() (raw []byte, err error) {
@@ -484,6 +486,7 @@ func newVolValue(vol *Vol) (vv *volValue) {
 		FlashNodeTimeoutCount:        vol.flashNodeTimeoutCount,
 		RemoteCacheSameZoneTimeout:   vol.remoteCacheSameZoneTimeout,
 		RemoteCacheSameRegionTimeout: vol.remoteCacheSameRegionTimeout,
+		DefaultStoreMode:             vol.DefaultStoreMode,
 	}
 	vv.AllowedStorageClass = make([]uint32, len(vol.allowedStorageClass))
 	copy(vv.AllowedStorageClass, vol.allowedStorageClass)
@@ -1236,7 +1239,8 @@ func (c *Cluster) loadZoneValue() (err error) {
 			zone.dataNodesetSelector = NewNodesetSelector(cv.DataNodesetSelector, DataNodeType)
 		}
 		if zone.GetMetaNodesetSelector() != cv.MetaNodesetSelector {
-			zone.metaNodesetSelector = NewNodesetSelector(cv.MetaNodesetSelector, MetaNodeType)
+			zone.metaMemoryNodesetSelector = NewNodesetSelector(cv.MetaNodesetSelector, MetaNodeType)
+			zone.metaRocksdbNodesetSelector = NewNodesetSelector(cv.MetaNodesetSelector, RocksdbType)
 		}
 
 		zone.SetDataMediaType(cv.DataMediaType)

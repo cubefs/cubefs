@@ -1147,8 +1147,14 @@ func (c *Cluster) DoMetaPartitionBalanceTask(plan *proto.ClusterPlan) {
 				time.Sleep(time.Second * (mpReplicaDelInterval + 10))
 			}
 
+			mode, err := mp.GetMetaReplicaStoreMode(mrPlan.Source)
+			if err != nil {
+				log.LogErrorf("DoMetaPartitionBalanceTask mp ID(%d) err: %s", mp.PartitionID, err.Error())
+				return
+			}
+
 			log.LogDebugf("Start to migrate meta partition(%d) from %s to %s", mpPlan.ID, mrPlan.Source, mrPlan.Destination)
-			err = c.migrateMetaPartition(mrPlan.Source, mrPlan.Destination, mp)
+			err = c.migrateMetaPartition(mrPlan.Source, mrPlan.Destination, mp, mode)
 			if err != nil {
 				log.LogErrorf("migrateMetaPartition(%d) from %s to %s error: %s", mpPlan.ID, mrPlan.Source, mrPlan.Destination, err.Error())
 				c.SetMetaReplicaPlanStatusError(plan, mrPlan, err.Error())

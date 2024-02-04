@@ -48,18 +48,27 @@ func (mp *metaPartition) fsmLockDir(req *proto.LockDirRequest) (resp *proto.Lock
 	log.LogDebugf("fsmLockDir: req info %s, val %s", req.String(), newVal)
 
 	newExtend := NewExtend(req.Inode)
-	treeItem := mp.extendTree.CopyGet(newExtend)
+	treeItem, err := mp.extendTree.CopyGet(newExtend)
+	if err != nil {
+		log.LogErrorf("extendTree.RefGet(%d) err: %s", req.Inode, err.Error())
+		resp.Status = proto.OpExistErr
+		return
+	}
 
 	var oldValue []byte
 	var existExtend *Extend
 
 	if treeItem == nil {
 		newExtend.Put([]byte(innerDirLockKey), []byte(newVal), 0)
-		mp.extendTree.ReplaceOrInsert(newExtend, true)
+		_, _, err = mp.extendTree.ReplaceOrInsert(newExtend, true)
+		if err != nil {
+			log.LogErrorf("extendTree.Create(%d) err: %s", req.Inode, err.Error())
+			resp.Status = proto.OpExistErr
+		}
 		return
 	}
 
-	existExtend = treeItem.(*Extend)
+	existExtend = treeItem
 	oldValue, _ = existExtend.Get([]byte(innerDirLockKey))
 	if oldValue == nil {
 		newExtend.Put([]byte(innerDirLockKey), []byte(newVal), 0)
@@ -68,7 +77,7 @@ func (mp *metaPartition) fsmLockDir(req *proto.LockDirRequest) (resp *proto.Lock
 	}
 
 	var oldLkId, oldExpire int64
-	_, err := fmt.Sscanf(string(oldValue), "%d|%d", &oldLkId, &oldExpire)
+	_, err = fmt.Sscanf(string(oldValue), "%d|%d", &oldLkId, &oldExpire)
 	if err != nil {
 		log.LogErrorf("fsmLockDir: parse req failed, req %s, old %s, err %s", req.String(), string(oldValue), err.Error())
 		resp.Status = proto.OpExistErr
@@ -107,7 +116,12 @@ func (mp *metaPartition) fsmUnlockDir(req *proto.LockDirRequest) (resp *proto.Lo
 	log.LogDebugf("fsmUnlockDir: req info %s, val %s", req, newVal)
 
 	newExtend := NewExtend(req.Inode)
-	treeItem := mp.extendTree.CopyGet(newExtend)
+	treeItem, err := mp.extendTree.CopyGet(newExtend)
+	if err != nil {
+		log.LogErrorf("fsmUnlockDir: get extend tree failed, req %s, err %s", req.String(), err.Error())
+		resp.Status = proto.OpErr
+		return
+	}
 
 	var oldValue []byte
 	var existExtend *Extend
@@ -117,7 +131,7 @@ func (mp *metaPartition) fsmUnlockDir(req *proto.LockDirRequest) (resp *proto.Lo
 		return
 	}
 
-	existExtend = treeItem.(*Extend)
+	existExtend = treeItem
 	oldValue, _ = existExtend.Get([]byte(innerDirLockKey))
 	if oldValue == nil {
 		log.LogWarnf("fsmUnlockDir: target lock val not exist, no need to unlock, req %s", req.String())
@@ -125,7 +139,7 @@ func (mp *metaPartition) fsmUnlockDir(req *proto.LockDirRequest) (resp *proto.Lo
 	}
 
 	var oldLkId, oldExpire int64
-	_, err := fmt.Sscanf(string(oldValue), "%d|%d", &oldLkId, &oldExpire)
+	_, err = fmt.Sscanf(string(oldValue), "%d|%d", &oldLkId, &oldExpire)
 	if err != nil {
 		log.LogErrorf("fsmUnlockDir: parse req failed, req %s, old %s, err %s", req.String(), string(oldValue), err.Error())
 		resp.Status = proto.OpExistErr
@@ -144,17 +158,23 @@ func (mp *metaPartition) fsmUnlockDir(req *proto.LockDirRequest) (resp *proto.Lo
 	return
 }
 
-func (mp *metaPartition) fsmSetXAttr(extend *Extend) (err error) {
+func (mp *metaPartition) fsmSetXAttr(handle interface{}, extend *Extend) (err error) {
 	if mp.GetVerSeq() > 0 {
 		extend.setVersion(mp.GetVerSeq())
 	}
-	treeItem := mp.extendTree.CopyGet(extend)
-	var e *Extend
-	if treeItem == nil {
-		mp.extendTree.ReplaceOrInsert(extend, true)
+	e, err := mp.extendTree.CopyGet(extend)
+	if err != nil {
+		log.LogErrorf("fsmSetXAttr extendTree(%d) err: %s", extend.inode, err.Error())
+		return err
+	}
+	if e == nil {
+		if handle != nil {
+			mp.extendTree.BatchReplaceOrInsert(handle, extend, true)
+		} else {
+			mp.extendTree.ReplaceOrInsert(extend, true)
+		}
 	} else {
 		// attr multi-ver copy all attr for simplify management
-		e = treeItem.(*Extend)
 		if e.getVersion() != extend.getVersion() {
 			if extend.getVersion() < e.getVersion() {
 				return fmt.Errorf("seq error assign %v but less than %v", extend.getVersion(), e.getVersion())
@@ -163,6 +183,11 @@ func (mp *metaPartition) fsmSetXAttr(extend *Extend) (err error) {
 			e.setVersion(extend.getVersion())
 		}
 		e.Merge(extend, true)
+		err = mp.extendTree.Update(e)
+		if err != nil {
+			log.LogErrorf("fsmSetXAttr extendTree(%d) err: %s", extend.inode, err.Error())
+			return err
+		}
 	}
 
 	return
@@ -170,18 +195,21 @@ func (mp *metaPartition) fsmSetXAttr(extend *Extend) (err error) {
 
 // todo(leon chang):check snapshot delete relation with attr
 func (mp *metaPartition) fsmRemoveXAttr(reqExtend *Extend) (err error) {
-	treeItem := mp.extendTree.CopyGet(reqExtend)
-	if treeItem == nil {
+	e, err := mp.extendTree.CopyGet(reqExtend)
+	if err != nil {
+		log.LogErrorf("[fsmRemoveXAttr] failed to get xattr, ino(%v), err(%v)", reqExtend.inode, err)
+		return
+	}
+	if e == nil {
 		return
 	}
 
-	e := treeItem.(*Extend)
 	if mp.GetVerSeq() == 0 || (e.getVersion() == mp.GetVerSeq() && reqExtend.getVersion() == 0) {
 		reqExtend.Range(func(key, value []byte) bool {
 			e.Remove(key)
 			return true
 		})
-		return
+		goto submit
 	}
 
 	if reqExtend.getVersion() == 0 {
@@ -244,6 +272,9 @@ func (mp *metaPartition) fsmRemoveXAttr(reqExtend *Extend) (err error) {
 			}
 		}
 	}
-
+submit:
+	if err = mp.extendTree.Put(e); err != nil {
+		log.LogErrorf("[fsmRemoveXAttr] failed to put xattr, ino(%v), err(%v)", reqExtend.inode, err)
+	}
 	return
 }

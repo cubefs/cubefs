@@ -50,6 +50,12 @@ type MetaNodeInfo struct {
 	CanAllowPartition         bool
 	MaxMpCntLimit             uint64  `json:"maxMpCntLimit"`
 	CpuUtil                   float64 `json:"cpuUtil"`
+	IsRocksdbWritable         bool
+	RocksdbTotal              uint64
+	RocksdbUsed               uint64
+	MemorySelectCount         uint64
+	RocksdbSelectCount        uint64
+	ProfPort                  string
 }
 
 // DataNode stores all the information about a data node
@@ -115,6 +121,9 @@ type MetaPartitionInfo struct {
 	StatByStorageClass        []*StatOfStorageClass
 	StatByMigrateStorageClass []*StatOfStorageClass
 	ForbidWriteOpOfProtoVer0  bool
+	MemStoreCnt               uint8
+	RockStoreCnt              uint8
+	StoreMode                 StoreMode
 }
 
 // MetaReplica defines the replica of a meta partition
@@ -130,6 +139,7 @@ type MetaReplicaInfo struct {
 	MaxInode        uint64
 	DentryCount     uint64
 	ReadOnlyReasons uint32
+	StoreMode       StoreMode
 }
 
 // ClusterView provides the view of a cluster.
@@ -206,6 +216,7 @@ type NodeView struct {
 	IsWritable               bool
 	MediaType                uint32
 	ForbidWriteOpOfProtoVer0 bool
+	IsRocksdbWritable        bool
 }
 
 type DpRepairInfo struct {
@@ -253,6 +264,8 @@ type ZoneNodesStat struct {
 	UsedRatio     float64
 	TotalNodes    int
 	WritableNodes int
+
+	RocksdbWritableNodes int
 }
 
 type NodeSetStat struct {
@@ -271,7 +284,7 @@ type NodeSetStatInfo struct {
 	Zone                string
 	CanAllocMetaNodeCnt int
 	CanAllocDataNodeCnt int
-	MetaNodes           []*NodeStatView
+	MetaNodes           []*MetaNodeStatView
 	DataNodes           []*NodeStatView
 	DataNodeSelector    string
 	MetaNodeSelector    string
@@ -286,6 +299,14 @@ type NodeStatView struct {
 	Total      uint64
 	Used       uint64
 	Avail      uint64
+}
+
+type MetaNodeStatView struct {
+	NodeStatView
+	IsRocksdbWritable bool
+	RocksdbTotal      uint64
+	RocksdbUsed       uint64
+	RocksdbAvali      uint64
 }
 
 type NodeStatInfo struct {

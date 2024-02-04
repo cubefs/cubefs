@@ -225,6 +225,7 @@ var (
 const (
 	defaultMetadataDir = "metadataDir"
 	defaultRaftDir     = "raftDir"
+	defaultRocksdMode  = "disk"
 )
 
 // Configuration keys
@@ -254,6 +255,17 @@ const (
 
 	metaNodeDeleteBatchCountKey = "batchCount"
 	configNameResolveInterval   = "nameResolveInterval" // int
+
+	cfgRocksDirs         = "rocksDirs"
+	cfgDiskReservedSpace = "diskReservedSpace"
+
+	// NOTE: metanode rocksdb config
+	cfgRocksdbWriteBufferSize       = "rocksdbWriteBufferSize"       // int
+	cfgRocksdbWriteBufferNum        = "rocksdbWriteBufferNum"        // int
+	cfgRocksdbBlockCacheSize        = "rocksdbBlockCacheSize"        // uint64
+	cfgRocksdbMinWriteBufferToMerge = "rocksdbMinWriteBufferToMerge" // int
+	cfgRocksdbMaxSubCompactions     = "rocksdbMaxSubCompactions"     // int
+	cfgRocksdbMode                  = "rocksdbMode"                  // string
 )
 
 const (
@@ -270,6 +282,8 @@ const (
 	defaultSyncInodeAtimeCnt           = 102400
 	RaftCommitDiffMax                  = 100
 	DefaultGOGCValue                   = 100
+	defaultDiskReservedSpace           = 5 * GB
+	AccessTimeOffset                   = 52
 )
 
 const (

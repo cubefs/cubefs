@@ -201,11 +201,14 @@ func (api *AdminAPI) DecommissionDataPartition(dataPartitionID uint64, nodeAddr 
 	return
 }
 
-func (api *AdminAPI) DecommissionMetaPartition(metaPartitionID uint64, nodeAddr, clientIDKey string) (err error) {
+func (api *AdminAPI) DecommissionMetaPartition(metaPartitionID uint64, nodeAddr, clientIDKey string, storeMode proto.StoreMode) (err error) {
 	request := newRequest(get, proto.AdminDecommissionMetaPartition).Header(api.h)
 	request.addParam("id", strconv.FormatUint(metaPartitionID, 10))
 	request.addParam("addr", nodeAddr)
 	request.addParam("clientIDKey", clientIDKey)
+	if storeMode != 0 {
+		request.addParam("storeMode", strconv.FormatInt(int64(storeMode), 10))
+	}
 	_, err = api.mc.serveRequest(request)
 	return
 }
@@ -238,11 +241,14 @@ func (api *AdminAPI) DeleteMetaReplica(metaPartitionID uint64, nodeAddr string, 
 	return
 }
 
-func (api *AdminAPI) AddMetaReplica(metaPartitionID uint64, nodeAddr string, clientIDKey string) (err error) {
+func (api *AdminAPI) AddMetaReplica(metaPartitionID uint64, nodeAddr string, clientIDKey string, storeMode proto.StoreMode) (err error) {
 	request := newRequest(get, proto.AdminAddMetaReplica).Header(api.h)
 	request.addParam("id", strconv.FormatUint(metaPartitionID, 10))
 	request.addParam("addr", nodeAddr)
 	request.addParam("clientIDKey", clientIDKey)
+	if storeMode != proto.StoreModeDef {
+		request.addParam("storeMode", strconv.FormatInt(int64(storeMode), 10))
+	}
 	_, err = api.mc.serveRequest(request)
 	return
 }
@@ -343,6 +349,7 @@ func (api *AdminAPI) UpdateVolume(
 	request.addParamAny("flashNodeTimeoutCount", vv.FlashNodeTimeoutCount)
 	request.addParamAny("remoteCacheSameZoneTimeout", vv.RemoteCacheSameZoneTimeout)
 	request.addParamAny("remoteCacheSameRegionTimeout", vv.RemoteCacheSameRegionTimeout)
+	request.addParam("storeMode", strconv.FormatInt(int64(vv.DefaultStoreMode), 10))
 
 	if txMask != "" {
 		request.addParam("enableTxMask", txMask)
@@ -413,7 +420,7 @@ func (api *AdminAPI) CreateVolName(volName, owner string, capacity uint64, delet
 	clientIDKey string, volStorageClass uint32, allowedStorageClass string, optMetaFollowerRead string, optMaximallyRead string,
 	remoteCacheEnable string, remoteCacheAutoPrepare string, remoteCachePath string, remoteCacheTTL int64, remoteCacheReadTimeout int64,
 	remoteCacheMaxFileSizeGB int64, remoteCacheOnlyForNotSSD string, remoteCacheMultiRead string, flashNodeTimeoutCount int64,
-	remoteCacheSameZoneTimeout int64, remoteCacheSameRegionTimeout int64,
+	remoteCacheSameZoneTimeout int64, remoteCacheSameRegionTimeout int64, storeMode proto.StoreMode,
 ) (err error) {
 	request := newRequest(get, proto.AdminCreateVol).Header(api.h)
 	request.addParam("name", volName)
@@ -448,7 +455,7 @@ func (api *AdminAPI) CreateVolName(volName, owner string, capacity uint64, delet
 	request.addParamAny("flashNodeTimeoutCount", flashNodeTimeoutCount)
 	request.addParamAny("remoteCacheSameZoneTimeout", remoteCacheSameZoneTimeout)
 	request.addParamAny("remoteCacheSameRegionTimeout", remoteCacheSameRegionTimeout)
-
+	request.addParam("storeMode", strconv.FormatInt(int64(storeMode), 10))
 	if txMask != "" {
 		request.addParam("enableTxMask", txMask)
 	}

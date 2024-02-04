@@ -97,6 +97,10 @@ func (mp *metaPartition) fsmTxCommitRM(txInfo *proto.TransactionInfo) (status ui
 	}
 
 	ifo.SetFinish()
+	err := mp.txProcessor.txManager.txTree.Update(ifo)
+	if err != nil {
+		return proto.OpErr
+	}
 	return proto.OpOk
 }
 
@@ -136,11 +140,18 @@ func (mp *metaPartition) fsmTxRollbackRM(txInfo *proto.TransactionInfo) (status 
 	}
 
 	ifo.SetFinish()
+	err := mp.txProcessor.txManager.txTree.Update(ifo)
+	if err != nil {
+		return proto.OpErr
+	}
 	return proto.OpOk
 }
 
 func (mp *metaPartition) inodeInTx(inode uint64) uint8 {
-	inTx, txId := mp.txProcessor.txResource.isInodeInTransction(NewInode(inode, 0))
+	inTx, txId, err := mp.txProcessor.txResource.isInodeInTransction(NewInode(inode, 0))
+	if err != nil {
+		return proto.OpErr
+	}
 	if inTx {
 		log.LogWarnf("inodeInTx: inode is in transaction, inode %d, txId %s", inode, txId)
 		return proto.OpTxConflictErr
@@ -149,10 +160,13 @@ func (mp *metaPartition) inodeInTx(inode uint64) uint8 {
 }
 
 func (mp *metaPartition) dentryInTx(parIno uint64, name string) uint8 {
-	inTx, txId := mp.txProcessor.txResource.isDentryInTransction(&Dentry{
+	inTx, txId, err := mp.txProcessor.txResource.isDentryInTransction(&Dentry{
 		ParentId: parIno,
 		Name:     name,
 	})
+	if err != nil {
+		return proto.OpErr
+	}
 
 	if inTx {
 		log.LogWarnf("inodeInTx: inode is in transaction, parent inode %d, name %s, txId %s", parIno, name, txId)
@@ -162,7 +176,10 @@ func (mp *metaPartition) dentryInTx(parIno uint64, name string) uint8 {
 }
 
 func (mp *metaPartition) txInodeInRb(inode uint64, newTxId string) (rbInode *TxRollbackInode) {
-	rbIno := mp.txProcessor.txResource.getTxRbInode(inode)
+	rbIno, err := mp.txProcessor.txResource.getTxRbInode(inode)
+	if err != nil {
+		return nil
+	}
 	if rbIno != nil && rbIno.txInodeInfo.TxID == newTxId {
 		return rbIno
 	}
@@ -171,9 +188,12 @@ func (mp *metaPartition) txInodeInRb(inode uint64, newTxId string) (rbInode *TxR
 }
 
 func (mp *metaPartition) txDentryInRb(parIno uint64, name, newTxId string) bool {
-	inTx, txId := mp.txProcessor.txResource.isDentryInTransction(&Dentry{
+	inTx, txId, err := mp.txProcessor.txResource.isDentryInTransction(&Dentry{
 		ParentId: parIno,
 		Name:     name,
 	})
+	if err != nil {
+		return false
+	}
 	return inTx && txId == newTxId
 }

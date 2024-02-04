@@ -54,15 +54,17 @@ func (mp *metaPartition) TxCreateDentry(req *proto.TxCreateDentryRequest, p *Pac
 		}
 	}
 
-	var parIno *Inode
-	item := mp.inodeTree.Get(NewInode(req.ParentID, 0))
-	if item == nil {
+	parIno, err := mp.inodeTree.Get(NewInode(req.ParentID, 0))
+	if err != nil {
+		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+		return
+	}
+	if parIno == nil {
 		err = fmt.Errorf("parent inode not exists")
 		p.PacketErrorWithBody(proto.OpNotExistErr, []byte(err.Error()))
 		return
 	}
 
-	parIno = item.(*Inode)
 	quota := atomic.LoadUint32(&dirChildrenNumLimit)
 	if parIno.NLink >= quota {
 		err = fmt.Errorf("parent dir quota limitation reached")
@@ -101,13 +103,16 @@ func (mp *metaPartition) CreateDentry(req *CreateDentryReq, p *Packet, remoteAdd
 		return
 	}
 
-	item := mp.inodeTree.CopyGet(NewInode(req.ParentID, 0))
-	if item == nil {
+	parIno, err := mp.inodeTree.CopyGet(NewInode(req.ParentID, 0))
+	if err != nil {
+		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+		return
+	}
+	if parIno == nil {
 		err = fmt.Errorf("parent inode not exists")
 		p.PacketErrorWithBody(proto.OpNotExistErr, []byte(err.Error()))
 		return
 	} else {
-		parIno := item.(*Inode)
 		quota := atomic.LoadUint32(&dirChildrenNumLimit)
 		if parIno.NLink >= quota {
 			err = fmt.Errorf("parent dir quota limitation reached")
@@ -157,13 +162,17 @@ func (mp *metaPartition) QuotaCreateDentry(req *proto.QuotaCreateDentryRequest, 
 			return
 		}
 	}
-	item := mp.inodeTree.CopyGet(NewInode(req.ParentID, 0))
-	if item == nil {
+	parIno, err := mp.inodeTree.CopyGet(NewInode(req.ParentID, 0))
+	if err != nil {
+		log.LogErrorf("failed to get inodeTree(%d), err: %s", req.ParentID, err.Error())
+		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+		return
+	}
+	if parIno == nil {
 		err = fmt.Errorf("parent inode not exists")
 		p.PacketErrorWithBody(proto.OpNotExistErr, []byte(err.Error()))
 		return
 	} else {
-		parIno := item.(*Inode)
 		quota := atomic.LoadUint32(&dirChildrenNumLimit)
 		if parIno.NLink >= quota {
 			err = fmt.Errorf("parent dir quota limitation reached")
@@ -518,7 +527,11 @@ func (mp *metaPartition) UpdateDentry(req *UpdateDentryReq, p *Packet, remoteAdd
 }
 
 func (mp *metaPartition) ReadDirOnly(req *ReadDirOnlyReq, p *Packet) (err error) {
-	resp := mp.readDirOnly(req)
+	var resp *ReadDirOnlyResp
+	if resp, err = mp.readDirOnly(req); err != nil {
+		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+		return
+	}
 	reply, err := json.Marshal(resp)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
@@ -530,7 +543,11 @@ func (mp *metaPartition) ReadDirOnly(req *ReadDirOnlyReq, p *Packet) (err error)
 
 // ReadDir reads the directory based on the given request.
 func (mp *metaPartition) ReadDir(req *ReadDirReq, p *Packet) (err error) {
-	resp := mp.readDir(req)
+	var resp *ReadDirResp
+	if resp, err = mp.readDir(req); err != nil {
+		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+		return
+	}
 	reply, err := json.Marshal(resp)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
@@ -542,7 +559,11 @@ func (mp *metaPartition) ReadDir(req *ReadDirReq, p *Packet) (err error) {
 
 func (mp *metaPartition) ReadDirLimit(req *ReadDirLimitReq, p *Packet) (err error) {
 	log.LogInfof("action[ReadDirLimit] read seq [%v], request[%v]", req.VerSeq, req)
-	resp := mp.readDirLimit(req)
+	var resp *ReadDirLimitResp
+	if resp, err = mp.readDirLimit(req); err != nil {
+		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+		return
+	}
 	reply, err := json.Marshal(resp)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
@@ -592,11 +613,6 @@ func (mp *metaPartition) Lookup(req *LookupReq, p *Packet) (err error) {
 
 	p.PacketErrorWithBody(status, reply)
 	return
-}
-
-// GetDentryTree returns the dentry tree stored in the meta partition.
-func (mp *metaPartition) GetDentryTree() *BTree {
-	return mp.dentryTree.GetTree()
 }
 
 // GetDentryTreeLen returns the dentry tree length.

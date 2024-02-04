@@ -16,20 +16,20 @@ package metanode
 
 import (
 	"fmt"
+	"os"
 	"reflect"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/log"
 )
 
-// var manager = &metadataManager{}
-var mp1 *metaPartition
-
 var (
+	mp1 *metaPartition
 	mp2 *metaPartition
 	mp3 *metaPartition
 )
@@ -37,23 +37,27 @@ var (
 const FileModeType uint32 = 420
 
 const (
-	MemberAddrs = "127.0.0.1:17210,127.0.0.2:17210,127.0.0.3:17210"
-	inodeNum    = 1001
-	pInodeNum   = 1002
-	inodeNum2   = 1003
-	dentryName  = "parent"
+	MemberAddrs         = "127.0.0.1:17210,127.0.0.2:17210,127.0.0.3:17210"
+	inodeNum            = 1001
+	pInodeNum           = 1002
+	inodeNum2           = 1003
+	dentryName          = "parent"
+	RocksdbTransTestDir = "/tmp/cfs/tx_test"
+	TransactionTestLog  = "/tmp/cfs/tx_logs"
 )
 
 func init() {
-	log.InitLog("/tmp/cfs/logs/", "test", log.DebugLevel, nil, log.DefaultLogLeftSpaceLimitRatio)
+	log.InitLog(TransactionTestLog, "test", log.DebugLevel, nil, log.DefaultLogLeftSpaceLimitRatio)
 }
 
-func newMetaPartition(PartitionId uint64, manager *metadataManager) (mp *metaPartition) {
+func newMetaPartition(PartitionId uint64, manager *metadataManager, storeMode proto.StoreMode) (mp *metaPartition) {
 	metaConf := &MetaPartitionConfig{
 		PartitionId:   PartitionId,
 		VolName:       "testVol",
 		PartitionType: proto.VolumeTypeHot,
+		StoreMode:     storeMode,
 	}
+	metaConf.RocksDBDir = fmt.Sprintf("%v/%v_%v", RocksdbTransTestDir, partitionId, time.Now().UnixMilli())
 
 	if manager == nil {
 		manager = &metadataManager{}
@@ -61,10 +65,6 @@ func newMetaPartition(PartitionId uint64, manager *metadataManager) (mp *metaPar
 
 	mp = &metaPartition{
 		config:         metaConf,
-		dentryTree:     NewBtree(),
-		inodeTree:      NewBtree(),
-		extendTree:     NewBtree(),
-		multipartTree:  NewBtree(),
 		stopC:          make(chan bool),
 		storeChan:      make(chan *storeMsg, 100),
 		freeList:       newFreeList(),
@@ -73,21 +73,29 @@ func newMetaPartition(PartitionId uint64, manager *metadataManager) (mp *metaPar
 		extReset:       make(chan struct{}),
 		vol:            NewVol(),
 		manager:        manager,
+		rocksdbManager: NewPerDiskRocksdbManager(0, 0, 0, 0, 0),
+	}
+	err := mp.rocksdbManager.Register(metaConf.RocksDBDir)
+	if err != nil {
+		panic(err)
 	}
 	mp.config.Cursor = 1000
 	mp.config.End = 100000
 
-	mp.txProcessor = NewTransactionProcessor(mp)
+	err = mp.initObjects(true)
+	if err != nil {
+		panic(err)
+	}
 	mp.uidManager = NewUidMgr(mp.config.VolName, mp.config.PartitionId)
 	mp.manager.initFileStatsConfig()
 	return mp
 }
 
-func initMps(t *testing.T) {
+func initMps(t *testing.T, storeMode proto.StoreMode) {
 	test = true
-	mp1 = newMetaPartition(10001, &metadataManager{})
-	mp2 = newMetaPartition(10002, &metadataManager{})
-	mp3 = newMetaPartition(10003, &metadataManager{})
+	mp1 = newMetaPartition(10001, &metadataManager{}, storeMode)
+	mp2 = newMetaPartition(10002, &metadataManager{}, storeMode)
+	mp3 = newMetaPartition(10003, &metadataManager{}, storeMode)
 }
 
 func (i *Inode) Equal(inode *Inode) bool {
@@ -205,18 +213,27 @@ func TestRollbackDentrySerialization(t *testing.T) {
 	assert.True(t, reflect.DeepEqual(rbDentry, cpDentryInfo.(*TxRollbackDentry)))
 }
 
-func TestNextTxID(t *testing.T) {
-	initMps(t)
+func testNextTxID(t *testing.T) {
 	txMgr := mp1.txProcessor.txManager
 
 	var id uint64 = 2
 	expectedId := fmt.Sprintf("%d_%d", mp1.config.PartitionId, id+1)
 	txMgr.txIdAlloc.setTransactionID(id)
+	txMgr.txTree.SetTxId(id)
 	assert.Equal(t, expectedId, txMgr.nextTxID())
 }
 
-func TestTxMgrOp(t *testing.T) {
-	initMps(t)
+func TestNextTxID(t *testing.T) {
+	initMps(t, proto.StoreModeMem)
+	testNextTxID(t)
+}
+
+func TestNextTxID_Rocksdb(t *testing.T) {
+	initMps(t, proto.StoreModeRocksDb)
+	testNextTxID(t)
+}
+
+func testTxMgrOp(t *testing.T) {
 	txInfo := proto.NewTransactionInfo(5, proto.TxTypeCreate)
 	assert.True(t, txInfo.State == proto.TxStateInit)
 
@@ -251,8 +268,17 @@ func TestTxMgrOp(t *testing.T) {
 	assert.Equal(t, proto.OpTxInfoNotExistErr, status)
 }
 
-func TestTxRscOp(t *testing.T) {
-	initMps(t)
+func TestTxMgrOp(t *testing.T) {
+	initMps(t, proto.StoreModeMem)
+	testTxMgrOp(t)
+}
+
+func TestTxMgrOp_Rocksdb(t *testing.T) {
+	initMps(t, proto.StoreModeRocksDb)
+	testTxMgrOp(t)
+}
+
+func testTxRscOp(t *testing.T) {
 	txMgr := mp1.txProcessor.txManager
 
 	// rbInode
@@ -275,7 +301,7 @@ func TestTxRscOp(t *testing.T) {
 	status = txRsc.addTxRollbackInode(rbInode1)
 	assert.Equal(t, proto.OpExistErr, status)
 
-	inTx, _ := txRsc.isInodeInTransction(inode1)
+	inTx, _, _ := txRsc.isInodeInTransction(inode1)
 	assert.True(t, inTx)
 
 	status = txRsc.addTxRollbackInode(rbInode2)
@@ -305,14 +331,24 @@ func TestTxRscOp(t *testing.T) {
 	status = txRsc.addTxRollbackDentry(rbDentry1)
 	assert.Equal(t, proto.OpExistErr, status)
 
-	inTx, _ = txRsc.isDentryInTransction(dentry)
+	inTx, _, _ = txRsc.isDentryInTransction(dentry)
 	assert.True(t, inTx)
 
 	status = txRsc.addTxRollbackDentry(rbDentry2)
 	assert.Equal(t, proto.OpTxConflictErr, status)
 }
 
-func mockAddTxInode(mp *metaPartition) *TxRollbackInode {
+func TestTxRscOp(t *testing.T) {
+	initMps(t, proto.StoreModeMem)
+	testTxRscOp(t)
+}
+
+func TestTxRscOp_Rocksdb(t *testing.T) {
+	initMps(t, proto.StoreModeRocksDb)
+	testTxRscOp(t)
+}
+
+func mockAddTxInode(mp *metaPartition, t *testing.T) *TxRollbackInode {
 	txMgr := mp.txProcessor.txManager
 	txInodeInfo1 := proto.NewTxInodeInfo(MemberAddrs, inodeNum, 10001)
 	txInodeInfo1.TxID = txMgr.nextTxID()
@@ -396,11 +432,13 @@ func mockDeleteTxDentry(mp *metaPartition) *TxRollbackDentry {
 	return rbDentry
 }
 
-func TestTxRscRollback(t *testing.T) {
-	initMps(t)
+func testTxRscRollback(t *testing.T) {
 	// roll back add inode
-	rbInode1 := mockAddTxInode(mp1)
+	rbInode1 := mockAddTxInode(mp1, t)
 	txRsc := mp1.txProcessor.txResource
+
+	err := txRsc.txProcessor.mp.inodeTree.Put(NewInode(pInodeNum, DirModeType))
+	require.NoError(t, err)
 	req1 := &proto.TxInodeApplyRequest{
 		TxID:  rbInode1.txInodeInfo.TxID,
 		Inode: rbInode1.inode.Inode,
@@ -438,10 +476,20 @@ func TestTxRscRollback(t *testing.T) {
 	assert.True(t, status == proto.OpOk && err == nil)
 }
 
-func TestTxRscCommit(t *testing.T) {
-	initMps(t)
+func TestTxRscRollback(t *testing.T) {
+	initMps(t, proto.StoreModeMem)
+	testTxRscRollback(t)
+}
+
+func TestTxRscRollback_Rocksdb(t *testing.T) {
+	initMps(t, proto.StoreModeRocksDb)
+	testTxRscRollback(t)
+}
+
+func testTxRscCommit(t *testing.T) {
+	initMps(t, proto.StoreModeMem)
 	// commit add inode
-	rbInode1 := mockAddTxInode(mp1)
+	rbInode1 := mockAddTxInode(mp1, t)
 	txRsc := mp1.txProcessor.txResource
 	status, err := txRsc.commitInode(rbInode1.txInodeInfo.TxID, rbInode1.inode.Inode)
 	assert.True(t, status == proto.OpOk && err == nil)
@@ -462,9 +510,17 @@ func TestTxRscCommit(t *testing.T) {
 	assert.True(t, status == proto.OpOk && err == nil)
 }
 
-func TestTxTreeRollback(t *testing.T) {
-	initMps(t)
+func TestTxRscCommit(t *testing.T) {
+	initMps(t, proto.StoreModeMem)
+	testTxRscCommit(t)
+}
 
+func TestTxRscCommit_Rocksdb(t *testing.T) {
+	initMps(t, proto.StoreModeRocksDb)
+	testTxRscCommit(t)
+}
+
+func testTxTreeRollback(t *testing.T) {
 	txInfo := proto.NewTransactionInfo(0, proto.TxTypeCreate)
 	txDentryInfo := proto.NewTxDentryInfo(MemberAddrs, pInodeNum+1, dentryName, 10001)
 	txInfo.TxDentryInfos[txDentryInfo.GetKey()] = txDentryInfo
@@ -488,8 +544,17 @@ func TestTxTreeRollback(t *testing.T) {
 	assert.True(t, txMgr.txTree.Len() == 1)
 }
 
-func TestCheckTxLimit(t *testing.T) {
-	initMps(t)
+func TestTxTreeRollback(t *testing.T) {
+	initMps(t, proto.StoreModeMem)
+	testTxTreeRollback(t)
+}
+
+func TestTxTreeRollback_Rocksdb(t *testing.T) {
+	initMps(t, proto.StoreModeRocksDb)
+	testTxTreeRollback(t)
+}
+
+func testCheckTxLimit(t *testing.T) {
 	txMgr := mp1.txProcessor.txManager
 	// txMgr.Start()
 	txMgr.setLimit(10)
@@ -504,8 +569,17 @@ func TestCheckTxLimit(t *testing.T) {
 	assert.Error(t, err)
 }
 
-func TestGetTxHandler(t *testing.T) {
-	initMps(t)
+func TestCheckTxLimit(t *testing.T) {
+	initMps(t, proto.StoreModeMem)
+	testCheckTxLimit(t)
+}
+
+func TestCheckTxLimit_Rocksdb(t *testing.T) {
+	initMps(t, proto.StoreModeRocksDb)
+	testCheckTxLimit(t)
+}
+
+func testGetTxHandler(t *testing.T) {
 	txMgr := mp1.txProcessor.txManager
 	// txMgr.Start()
 
@@ -528,4 +602,19 @@ func TestGetTxHandler(t *testing.T) {
 
 	assert.True(t, mp1.TxGetInfo(req, p) == nil)
 	assert.True(t, p.ResultCode == proto.OpOk)
+}
+
+func TestGetTxHandler(t *testing.T) {
+	initMps(t, proto.StoreModeMem)
+	testGetTxHandler(t)
+}
+
+func TestGetTxHandler_Rocksdb(t *testing.T) {
+	initMps(t, proto.StoreModeRocksDb)
+	testGetTxHandler(t)
+}
+
+func TestCleanTransactionTestDir(t *testing.T) {
+	os.RemoveAll(RocksdbTransTestDir)
+	os.RemoveAll(TransactionTestLog)
 }

@@ -438,6 +438,7 @@ type updateVolReq struct {
 	forbidWriteOpOfProtoVer0 bool
 	quotaOfClass             uint64
 	quotaClass               uint32
+	storeMode                int
 }
 
 func parseColdVolUpdateArgs(r *http.Request, vol *Vol) (args *coldVolArgs, err error) {
@@ -771,6 +772,16 @@ type createVolReq struct {
 	flashNodeTimeoutCount        int64
 	remoteCacheSameZoneTimeout   int64
 	remoteCacheSameRegionTimeout int64
+
+	storeMode proto.StoreMode
+}
+
+func checkCacheAction(action int) error {
+	if action != proto.NoCache && action != proto.RCache && action != proto.RWCache {
+		return fmt.Errorf("cache action is not legal, action [%d]", action)
+	}
+
+	return nil
 }
 
 func parseColdArgs(r *http.Request) (args coldVolArgs, err error) {
@@ -1023,6 +1034,21 @@ func parseRequestToCreateVol(r *http.Request, req *createVolReq) (err error) {
 	if req.remoteCacheSameRegionTimeout, err = extractInt64WithDefault(r, remoteCacheSameRegionTimeout, proto.DefaultRemoteCacheSameRegionTimeout); err != nil {
 		return
 	}
+
+	storeMode := int(proto.StoreModeMem)
+	if storeModeStr := r.FormValue(StoreModeKey); storeModeStr != "" {
+		storeMode, err = strconv.Atoi(storeModeStr)
+		if err != nil {
+			err = unmatchedKey(StoreModeKey)
+			return
+		}
+		if storeMode != int(proto.StoreModeMem) && storeMode != int(proto.StoreModeRocksDb) {
+			err = unmatchedKey(StoreModeKey)
+			return
+		}
+	}
+	req.storeMode = proto.StoreMode(storeMode)
+
 	return
 }
 
@@ -2364,5 +2390,30 @@ func extractMediaType(r *http.Request) (mediaType uint32, err error) {
 
 	parsedMediaType, err := strconv.ParseUint(value, 10, 32)
 	mediaType = uint32(parsedMediaType)
+	return
+}
+
+func parseRocksDbFieldToUpdateVol(r *http.Request, vol *Vol) (storeMode int, err error) {
+	if storeModeStr := r.FormValue(StoreModeKey); storeModeStr != "" {
+		if storeMode, err = strconv.Atoi(storeModeStr); err != nil {
+			err = unmatchedKey(StoreModeKey)
+			return
+		}
+	} else {
+		storeMode = int(vol.DefaultStoreMode)
+	}
+	return
+}
+
+func extractStoreMode(r *http.Request) (storeMode int, err error) {
+	storeModeStr := r.FormValue(StoreModeKey)
+	if storeModeStr == "" {
+		return
+	}
+
+	storeMode, err = strconv.Atoi(storeModeStr)
+	if err != nil {
+		err = fmt.Errorf("convert storeMode[%v] to num failed; err:%v", storeModeStr, err.Error())
+	}
 	return
 }

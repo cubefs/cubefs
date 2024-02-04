@@ -95,7 +95,7 @@ func (c *Cluster) loadDataPartition(dp *DataPartition) {
 	}()
 }
 
-func (c *Cluster) migrateMetaPartition(srcAddr, targetAddr string, mp *MetaPartition) (err error) {
+func (c *Cluster) migrateMetaPartition(srcAddr, targetAddr string, mp *MetaPartition, dstStoreMode proto.StoreMode) (err error) {
 	var (
 		newPeers        []proto.Peer
 		metaNode        *MetaNode
@@ -105,6 +105,7 @@ func (c *Cluster) migrateMetaPartition(srcAddr, targetAddr string, mp *MetaParti
 		finalHosts      []string
 		oldHosts        []string
 		zones           []string
+		vol             *Vol
 	)
 
 	log.LogWarnf("action[migrateMetaPartition],volName[%v], migrate from src[%s] to target[%s],partitionID[%v] begin",
@@ -126,6 +127,23 @@ func (c *Cluster) migrateMetaPartition(srcAddr, targetAddr string, mp *MetaParti
 	}
 	mp.RUnlock()
 
+	nodeType := TypeMetaPartition
+	if vol, err = c.getVol(mp.volName); err != nil {
+		goto errHandler
+	}
+	if dstStoreMode == proto.StoreModeDef {
+		dstStoreMode = vol.DefaultStoreMode
+		for _, replica := range mp.Replicas {
+			if replica.Addr == srcAddr {
+				dstStoreMode = replica.StoreMode
+				break
+			}
+		}
+	}
+	if dstStoreMode == proto.StoreModeRocksDb {
+		nodeType = TypeRocksdbPartition
+	}
+
 	if err = c.validateDecommissionMetaPartition(mp, srcAddr, false); err != nil {
 		goto errHandler
 	}
@@ -146,7 +164,7 @@ func (c *Cluster) migrateMetaPartition(srcAddr, targetAddr string, mp *MetaParti
 		newPeers = []proto.Peer{{
 			Addr: targetAddr,
 		}}
-	} else if _, newPeers, err = ns.getAvailMetaNodeHosts(oldHosts, 1); err != nil {
+	} else if _, newPeers, err = ns.getAvailMetaNodeHosts(oldHosts, 1, dstStoreMode); err != nil {
 		if _, ok := c.vols[mp.volName]; !ok {
 			log.LogWarnf("[migrateMetaPartition] clusterID[%v] partitionID:%v  on node:[%v]",
 				c.Name, mp.PartitionID, mp.Hosts)
@@ -159,7 +177,7 @@ func (c *Cluster) migrateMetaPartition(srcAddr, targetAddr string, mp *MetaParti
 		}
 		// choose a meta node in other node set in the same zone
 		excludeNodeSets = append(excludeNodeSets, ns.ID)
-		if _, newPeers, err = zone.getAvailNodeHosts(TypeMetaPartition, excludeNodeSets, oldHosts, 1); err != nil {
+		if _, newPeers, err = zone.getAvailNodeHosts(nodeType, excludeNodeSets, oldHosts, 1); err != nil {
 			zones = mp.getLiveZones(srcAddr)
 			var excludeZone []string
 			if len(zones) == 0 {
@@ -168,7 +186,7 @@ func (c *Cluster) migrateMetaPartition(srcAddr, targetAddr string, mp *MetaParti
 				excludeZone = append(excludeZone, zones[0])
 			}
 			// choose a meta node in other zone
-			if _, newPeers, err = c.getHostFromNormalZone(TypeMetaPartition, excludeZone, excludeNodeSets, oldHosts, 1, 1, "", proto.MediaType_Unspecified); err != nil {
+			if _, newPeers, err = c.getHostFromNormalZone(nodeType, excludeZone, excludeNodeSets, oldHosts, 1, 1, "", proto.MediaType_Unspecified); err != nil {
 				goto errHandler
 			}
 		}
@@ -189,7 +207,7 @@ func (c *Cluster) migrateMetaPartition(srcAddr, targetAddr string, mp *MetaParti
 		goto errHandler
 	}
 
-	if err = c.addMetaReplica(mp, newPeers[0].Addr); err != nil {
+	if err = c.addMetaReplica(mp, newPeers[0].Addr, dstStoreMode); err != nil {
 		goto errHandler
 	}
 
@@ -224,12 +242,12 @@ errHandler:
 // 3. synchronized decommission meta partition
 // 4. synchronized create a new meta partition
 // 5. persistent the new host list
-func (c *Cluster) decommissionMetaPartition(nodeAddr string, mp *MetaPartition) (err error) {
+func (c *Cluster) decommissionMetaPartition(nodeAddr string, mp *MetaPartition, dstStoreMode proto.StoreMode) (err error) {
 	if c.ForbidMpDecommission {
 		err = fmt.Errorf("cluster mataPartition decommission switch is disabled")
 		return
 	}
-	return c.migrateMetaPartition(nodeAddr, "", mp)
+	return c.migrateMetaPartition(nodeAddr, "", mp, dstStoreMode)
 }
 
 func (c *Cluster) validateDecommissionMetaPartition(mp *MetaPartition, nodeAddr string, forceDel bool) (err error) {
@@ -530,7 +548,7 @@ func (c *Cluster) updateMetaPartitionOfflinePeerIDWithLock(mp *MetaPartition, pe
 	return
 }
 
-func (c *Cluster) addMetaReplica(partition *MetaPartition, addr string) (err error) {
+func (c *Cluster) addMetaReplica(partition *MetaPartition, addr string, storeMode proto.StoreMode) (err error) {
 	defer func() {
 		if err != nil {
 			log.LogErrorf("action[addMetaReplica],vol[%v],data partition[%v],err[%v]", partition.volName, partition.PartitionID, err)
@@ -555,7 +573,7 @@ func (c *Cluster) addMetaReplica(partition *MetaPartition, addr string) (err err
 	if err = partition.persistToRocksDB("addMetaReplica", partition.volName, newHosts, newPeers, c); err != nil {
 		return
 	}
-	if err = c.createMetaReplica(partition, addPeer); err != nil {
+	if err = c.createMetaReplica(partition, addPeer, storeMode); err != nil {
 		return
 	}
 	if err = partition.afterCreation(addPeer.Addr, c); err != nil {
@@ -564,8 +582,8 @@ func (c *Cluster) addMetaReplica(partition *MetaPartition, addr string) (err err
 	return
 }
 
-func (c *Cluster) createMetaReplica(partition *MetaPartition, addPeer proto.Peer) (err error) {
-	task, err := partition.createTaskToCreateReplica(addPeer.Addr)
+func (c *Cluster) createMetaReplica(partition *MetaPartition, addPeer proto.Peer, storeMode proto.StoreMode) (err error) {
+	task, err := partition.createTaskToCreateReplica(addPeer.Addr, storeMode)
 	if err != nil {
 		return
 	}
@@ -885,8 +903,9 @@ func (c *Cluster) dealMetaNodeHeartbeatResp(nodeAddr string, resp *proto.MetaNod
 
 	// change cpu util and io used
 	metaNode.CpuUtil.Store(resp.CpuUtil)
-	metaNode.updateMetric(resp, c.cfg.MetaNodeThreshold)
+	metaNode.updateMetric(resp, c.cfg.MetaNodeThreshold, c.cfg.MetaNodeRocksdbDiskThreshold)
 	metaNode.setNodeActive()
+	metaNode.updateRocksdbDisks(resp)
 
 	if err = c.t.putMetaNode(metaNode); err != nil {
 		log.LogErrorf("action[dealMetaNodeHeartbeatResp],metaNode[%v] error[%v]", metaNode.Addr, err)

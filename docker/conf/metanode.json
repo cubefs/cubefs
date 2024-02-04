@@ -18,5 +18,10 @@
     "192.168.0.12:17010",
     "192.168.0.13:17010"
   ],
-  "enableLogPanicHook": true
+  "enableLogPanicHook": true,
+  "rocksdbMode": "disk",
+  "rocksdbBlockCacheSize": 0,
+  "rocksdbWriteBufferNum": 0,
+  "rocksdbWriteBufferSize": 0,
+  "rocksdbMaxSubCompactions": 0
 }

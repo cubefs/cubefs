@@ -114,6 +114,9 @@ type metadataManager struct {
 	gcRecyclePercent     float64
 	gcTimer              *util.RecycleTimer
 	limitFactor          map[uint32]*rate.Limiter
+
+	rocksDBDirs    []string
+	rocksdbManager RocksdbManager
 }
 
 func (m *metadataManager) GetAllVolumes() (volumes *util.Set) {
@@ -647,6 +650,13 @@ func (m *metadataManager) loadPartition(fileName string) (err error) {
 		err = nil
 	}
 	partition := NewMetaPartition(partitionConfig, m)
+	if partition.GetBaseConfig().RocksDBDir != "" {
+		err = m.rocksdbManager.AttachPartition(partition.GetBaseConfig().RocksDBDir)
+		if err != nil {
+			log.LogWarnf("[loadPartitions] failed to attach partition to rocksdb manager, err(%v)", err)
+			err = nil
+		}
+	}
 	err = m.attachPartition(id, partition)
 
 	if err != nil {
@@ -767,6 +777,7 @@ func (m *metadataManager) detachPartition(id uint64) (err error) {
 }
 
 func (m *metadataManager) createPartition(request *proto.CreateMetaPartitionRequest) (err error) {
+	var oldMp MetaPartition
 	partitionId := fmt.Sprintf("%d", request.PartitionID)
 	log.LogWarnf("start create meta Partition, partition %s", partitionId)
 
@@ -783,15 +794,23 @@ func (m *metadataManager) createPartition(request *proto.CreateMetaPartitionRequ
 		RootDir:     path.Join(m.rootDir, partitionPrefix+partitionId),
 		ConnPool:    m.connPool,
 		VerSeq:      request.VerSeq,
+		StoreMode:   request.StoreMode,
+		RocksDBDir:  "",
 	}
 	mpc.AfterStop = func() {
 		m.detachPartition(request.PartitionID)
+	}
+
+	if oldMp, err = m.GetPartition(request.PartitionID); err == nil {
+		err = oldMp.IsEquareCreateMetaPartitionRequst(request)
+		return
 	}
 
 	partition := NewMetaPartition(mpc, m)
 
 	if err = partition.RenameStaleMetadata(); err != nil {
 		log.LogErrorf("[createPartition]->%s", err.Error())
+		return
 	}
 
 	if err = partition.PersistMetadata(); err != nil {
@@ -923,6 +942,8 @@ func NewMetadataManager(conf MetadataManagerConfig, metaNode *MetaNode) Metadata
 		enableGcTimer:        conf.EnableGcTimer,
 		gcRecyclePercent:     conf.GcRecyclePercent,
 		limitFactor:          make(map[uint32]*rate.Limiter),
+		rocksDBDirs:          metaNode.rocksDirs,
+		rocksdbManager:       metaNode.rocksdbManager,
 	}
 	m.limitFactor[readDirIops] = rate.NewLimiter(rate.Limit(metaNode.readDirIops), metaNode.readDirIops/2)
 

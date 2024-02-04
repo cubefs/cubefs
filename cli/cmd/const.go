@@ -162,6 +162,7 @@ const (
 	CliForbidWriteOpOfProtoVersion0     = "forbidWriteOpOfProtoVersion0"
 	CliFlagVolQuotaClass                = "quotaClass"
 	CliFlagVolQuotaOfClass              = "quotaOfStorageClass"
+	CliFlagStoreMode                    = "store-mode"
 
 	CliFlagRemoteCacheEnable            = "remoteCacheEnable"
 	CliFlagRemoteCachePath              = "remoteCachePath"

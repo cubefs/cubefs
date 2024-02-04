@@ -149,6 +149,7 @@ type clusterConfig struct {
 	numberOfDataPartitionsToLoad        int
 	nodeSetCapacity                     int
 	MetaNodeThreshold                   float32
+	MetaNodeRocksdbDiskThreshold        float32
 	ClusterLoadFactor                   float32
 	MetaNodeDeleteBatchCount            uint64 // metanode delete batch count
 	DataNodeDeleteLimitRate             uint64 // datanode delete limit rate
@@ -229,6 +230,7 @@ func newClusterConfig() (cfg *clusterConfig) {
 	cfg.numberOfDataPartitionsToLoad = defaultNumberOfDataPartitionsToLoad
 	cfg.PeriodToLoadALLDataPartitions = defaultPeriodToLoadAllDataPartitions
 	cfg.MetaNodeThreshold = defaultMetaPartitionMemUsageThreshold
+	cfg.MetaNodeRocksdbDiskThreshold = defaultRocksdbDiskThreshold
 	cfg.ClusterLoadFactor = defaultOverSoldFactor
 	// cfg.MaxDpCntLimit = defaultMaxDpCntLimit
 	// cfg.MaxMpCntLimit = defaultMaxMpCntLimit

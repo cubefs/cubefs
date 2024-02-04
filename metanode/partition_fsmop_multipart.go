@@ -14,10 +14,16 @@
 
 package metanode
 
-import "github.com/cubefs/cubefs/proto"
+import (
+	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util/log"
+)
 
 func (mp *metaPartition) fsmCreateMultipart(multipart *Multipart) (status uint8) {
-	_, ok := mp.multipartTree.ReplaceOrInsert(multipart, false)
+	_, ok, err := mp.multipartTree.ReplaceOrInsert(multipart, false)
+	if err != nil {
+		return proto.OpErr
+	}
 	if !ok {
 		return proto.OpExistErr
 	}
@@ -25,21 +31,23 @@ func (mp *metaPartition) fsmCreateMultipart(multipart *Multipart) (status uint8)
 }
 
 func (mp *metaPartition) fsmRemoveMultipart(multipart *Multipart) (status uint8) {
-	deletedItem := mp.multipartTree.Delete(multipart)
-	if deletedItem == nil {
+	ok, err := mp.multipartTree.Delete(multipart)
+	if err != nil {
+		return proto.OpErr
+	}
+	if !ok {
 		return proto.OpNotExistErr
 	}
 	return proto.OpOk
 }
 
 func (mp *metaPartition) fsmAppendMultipart(multipart *Multipart) (resp proto.AppendMultipartResponse) {
-	storedItem := mp.multipartTree.CopyGet(multipart)
-	if storedItem == nil {
-		resp.Status = proto.OpNotExistErr
+	storedMultipart, err := mp.multipartTree.CopyGet(multipart)
+	if err != nil {
+		resp.Status = proto.OpErr
 		return
 	}
-	storedMultipart, is := storedItem.(*Multipart)
-	if !is {
+	if storedMultipart == nil {
 		resp.Status = proto.OpNotExistErr
 		return
 	}
@@ -55,5 +63,10 @@ func (mp *metaPartition) fsmAppendMultipart(multipart *Multipart) (resp proto.Ap
 		}
 	}
 	resp.Status = proto.OpOk
+	if err := mp.multipartTree.Put(storedMultipart); err != nil {
+		resp.Status = proto.OpErr
+		log.LogErrorf("[fsmAppendMultipart] update multipart info failed, multipart id:%s, multipart key:%s, error:%v",
+			multipart.id, multipart.key, err)
+	}
 	return
 }

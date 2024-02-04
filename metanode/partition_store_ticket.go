@@ -27,21 +27,13 @@ import (
 )
 
 type storeMsg struct {
-	command        uint32
-	applyIndex     uint64
-	txId           uint64
-	inodeTree      *BTree
-	dentryTree     *BTree
-	extendTree     *BTree
-	multipartTree  *BTree
-	txTree         *BTree
-	txRbInodeTree  *BTree
-	txRbDentryTree *BTree
-	quotaRebuild   bool
-	uidRebuild     bool
-	uniqId         uint64
-	uniqChecker    *uniqChecker
-	multiVerList   []*proto.VolVersionInfo
+	command      uint32
+	snap         Snapshot
+	quotaRebuild bool
+	uidRebuild   bool
+	uniqId       uint64
+	uniqChecker  *uniqChecker
+	multiVerList []*proto.VolVersionInfo
 }
 
 func (mp *metaPartition) startSchedule(curIndex uint64) {
@@ -53,20 +45,20 @@ func (mp *metaPartition) startSchedule(curIndex uint64) {
 	dumpFunc := func(msg *storeMsg) {
 		log.LogWarnf("[startSchedule] partitionId=%d: nowAppID"+
 			"=%d, applyID=%d", mp.config.PartitionId, curIndex,
-			msg.applyIndex)
+			msg.snap.ApplyID())
 		if err := mp.store(msg); err == nil {
 			// truncate raft log
 			if mp.raftPartition != nil {
 				log.LogWarnf("[startSchedule] start trunc, partitionId=%d: nowAppID"+
 					"=%d, applyID=%d", mp.config.PartitionId, curIndex,
-					msg.applyIndex)
+					msg.snap.ApplyID())
 				mp.raftPartition.Truncate(curIndex)
 			} else {
 				// maybe happen when start load dentry
 				log.LogWarnf("[startSchedule] raftPartition is nil so skip" +
 					" truncate raft log")
 			}
-			curIndex = msg.applyIndex
+			curIndex = msg.snap.ApplyID()
 		} else {
 			// retry again
 			mp.storeChan <- msg
@@ -86,8 +78,7 @@ func (mp *metaPartition) startSchedule(curIndex uint64) {
 		readyChan := make(chan struct{}, 1)
 		for {
 			if len(msgs) > 0 {
-				if atomic.LoadUint32(&scheduleState) == common.StateStopped {
-					atomic.StoreUint32(&scheduleState, common.StateRunning)
+				if atomic.CompareAndSwapUint32(&scheduleState, common.StateStopped, common.StateRunning) {
 					readyChan <- struct{}{}
 				}
 			}
@@ -102,20 +93,27 @@ func (mp *metaPartition) startSchedule(curIndex uint64) {
 					maxMsg *storeMsg
 				)
 				for _, msg := range msgs {
-					if curIndex >= msg.applyIndex {
+					if curIndex >= msg.snap.ApplyID() {
+						if msg.snap != nil {
+							msg.snap.Close()
+						}
 						continue
 					}
-					if maxIdx < msg.applyIndex {
-						maxIdx = msg.applyIndex
+					if maxIdx < msg.snap.ApplyID() {
+						if maxMsg != nil && maxMsg.snap != nil {
+							maxMsg.snap.Close()
+						}
+						maxIdx = msg.snap.ApplyID()
 						maxMsg = msg
+					} else {
+						if msg.snap != nil {
+							msg.snap.Close()
+						}
 					}
 				}
 				if maxMsg != nil {
 					go dumpFunc(maxMsg)
 				} else {
-					if _, ok := mp.IsLeader(); ok {
-						timer.Reset(intervalToPersistData)
-					}
 					atomic.StoreUint32(&scheduleState, common.StateStopped)
 				}
 				msgs = msgs[:0]

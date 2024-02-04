@@ -155,6 +155,14 @@ func (m *MetaNode) getPartitionByIDHandler(w http.ResponseWriter, r *http.Reques
 		resp.Msg = err.Error()
 		return
 	}
+	partition := mp.(*metaPartition)
+	snap, err := mp.GetSnapShot()
+	if err != nil {
+		resp.Code = http.StatusInternalServerError
+		resp.Msg = fmt.Sprintf("Can not get mp[%d] snap shot", mp.GetBaseConfig().PartitionId)
+		return
+	}
+	defer snap.Close()
 	msg := make(map[string]interface{})
 	leader, _ := mp.IsLeader()
 	_, leaderTerm := mp.LeaderTerm()
@@ -169,6 +177,11 @@ func (m *MetaNode) getPartitionByIDHandler(w http.ResponseWriter, r *http.Reques
 	msg["peers"] = conf.Peers
 	msg["nodeId"] = conf.NodeId
 	msg["cursor"] = conf.Cursor
+	msg["inode_count"] = snap.Count(InodeType)
+	msg["dentry_count"] = snap.Count(DentryType)
+	msg["multipart_count"] = snap.Count(MultipartType)
+	msg["extend_count"] = snap.Count(ExtendType)
+	msg["apply_id"] = partition.GetAppliedID() // mp.GetAppliedID()
 	resp.Data = msg
 	resp.Code = http.StatusOK
 	resp.Msg = http.StatusText(http.StatusOK)
@@ -218,7 +231,7 @@ func (m *MetaNode) getAllInodesHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	var inode *Inode
 
-	f := func(i BtreeItem) bool {
+	f := func(i interface{}) bool {
 		var (
 			data []byte
 			e    error
@@ -248,7 +261,14 @@ func (m *MetaNode) getAllInodesHandler(w http.ResponseWriter, r *http.Request) {
 		return true
 	}
 
-	mp.GetInodeTree().Ascend(f)
+	snap, err := mp.GetSnapShot()
+	if err != nil {
+		err = fmt.Errorf("can not get mp[%d] snap shot", mp.GetBaseConfig().PartitionId)
+		return
+	}
+	defer snap.Close()
+
+	err = snap.Range(InodeType, f)
 }
 
 func (m *MetaNode) getSplitKeyHandler(w http.ResponseWriter, r *http.Request) {
@@ -636,7 +656,15 @@ func (m *MetaNode) getAllDentriesHandler(w http.ResponseWriter, r *http.Request)
 		isFirst   = true
 	)
 
-	mp.GetDentryTree().Ascend(func(i BtreeItem) bool {
+	snap, err := mp.GetSnapShot()
+	if err != nil {
+		resp.Code = http.StatusInternalServerError
+		resp.Msg = fmt.Sprintf("Can not get mp[%d] snap shot", mp.GetBaseConfig().PartitionId)
+		return
+	}
+	defer snap.Close()
+
+	err = snap.Range(DentryType, func(i interface{}) bool {
 		den, _ := i.(*Dentry).getDentryFromVerList(verSeq, false)
 		if den == nil || den.isDeleted() {
 			return true
@@ -701,40 +729,83 @@ func (m *MetaNode) getAllTxHandler(w http.ResponseWriter, r *http.Request) {
 		isFirst   = true
 	)
 
-	f := func(i BtreeItem) bool {
+	handleTx := func(tx *proto.TransactionInfo) (bool, error) {
 		if !isFirst {
 			if _, err = w.Write(delimiter); err != nil {
-				return false
+				return false, err
 			}
 		} else {
 			isFirst = false
 		}
-
-		if ino, ok := i.(*TxRollbackInode); ok {
-			_, err = w.Write([]byte(ino.ToString()))
-			return err == nil
-		}
-		if den, ok := i.(*TxRollbackDentry); ok {
-			_, err = w.Write([]byte(den.ToString()))
-			return err == nil
-		}
-
-		val, err = json.Marshal(i)
+		val, err = json.Marshal(tx)
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			w.Write([]byte(err.Error()))
-			return false
+			return false, err
 		}
 		if _, err = w.Write(val); err != nil {
-			return false
+			return false, err
 		}
-		return true
+		return true, nil
 	}
 
-	txTree, rbInoTree, rbDenTree := mp.TxGetTree()
-	txTree.Ascend(f)
-	rbInoTree.Ascend(f)
-	rbDenTree.Ascend(f)
+	handleIno := func(ino *TxRollbackInode) (bool, error) {
+		if !isFirst {
+			if _, err = w.Write(delimiter); err != nil {
+				return false, err
+			}
+		} else {
+			isFirst = false
+		}
+		_, err = w.Write([]byte(ino.ToString()))
+		if err != nil {
+			return false, err
+		}
+		return true, nil
+	}
+
+	handleDen := func(den *TxRollbackDentry) (bool, error) {
+		if !isFirst {
+			if _, err = w.Write(delimiter); err != nil {
+				return false, err
+			}
+		} else {
+			isFirst = false
+		}
+		_, err = w.Write([]byte(den.ToString()))
+		if err != nil {
+			return false, err
+		}
+		return true, nil
+	}
+
+	snap, err := mp.GetSnapShot()
+	if err != nil {
+		log.LogErrorf("[getAllTxHandler] failed to get mp(%v) snapshot", mp.GetBaseConfig().PartitionId)
+		return
+	}
+	defer mp.ReleaseSnapShot(snap)
+	err = snap.Range(TransactionType, func(item interface{}) bool {
+		ret, _ := handleTx(item.(*proto.TransactionInfo))
+		return ret
+	})
+	if err != nil {
+		log.LogErrorf("[getAllTxHandler] failed to range tx, err(%v)", err)
+	}
+	err = snap.Range(TransactionRollbackInodeType, func(item interface{}) bool {
+		ret, _ := handleIno(item.(*TxRollbackInode))
+		return ret
+	})
+	if err != nil {
+		log.LogErrorf("[getAllTxHandler] failed to range rb inode, err(%v)", err)
+	}
+	err = snap.Range(TransactionRollbackDentryType, func(item interface{}) bool {
+		ret, _ := handleDen(item.(*TxRollbackDentry))
+		return ret
+	})
+	if err != nil {
+		log.LogErrorf("[getAllTxHandler] failed to range rb dentry, err(%v)", err)
+	}
 
 	shouldSkip = true
 	buff.WriteString(`]}`)

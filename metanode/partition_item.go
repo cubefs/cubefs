@@ -27,6 +27,7 @@ import (
 	"sync"
 
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/log"
 )
 
@@ -141,13 +142,7 @@ type MetaItemIterator struct {
 	uniqID            uint64
 	txId              uint64
 	cursor            uint64
-	inodeTree         *BTree
-	dentryTree        *BTree
-	extendTree        *BTree
-	multipartTree     *BTree
-	txTree            *BTree
-	txRbInodeTree     *BTree
-	txRbDentryTree    *BTree
+	treeSnap          Snapshot
 	uniqChecker       *uniqChecker
 	verList           []*proto.VolVersionInfo
 
@@ -168,6 +163,7 @@ const (
 	SiwKeyCursor
 	SiwKeyUniqId
 	SiwKeyVerList
+	SiwKeyDeletedExtentsId
 )
 
 type SnapItemWrapper struct {
@@ -196,16 +192,17 @@ func newMetaItemIterator(mp *metaPartition) (si *MetaItemIterator, err error) {
 	si.txId = mp.txProcessor.txManager.txIdAlloc.getTransactionID()
 	si.cursor = mp.GetCursor()
 	si.uniqID = mp.GetUniqId()
-	si.inodeTree = mp.inodeTree.GetTree()
-	si.dentryTree = mp.dentryTree.GetTree()
-	si.extendTree = mp.extendTree.GetTree()
-	si.multipartTree = mp.multipartTree.GetTree()
-	si.txTree = mp.txProcessor.txManager.txTree.GetTree()
-	si.txRbInodeTree = mp.txProcessor.txResource.txRbInodeTree.GetTree()
-	si.txRbDentryTree = mp.txProcessor.txResource.txRbDentryTree.GetTree()
+	si.treeSnap, err = mp.GetSnapShot()
+	if err != nil {
+		return
+	}
 	si.uniqChecker = mp.uniqChecker.clone()
 	si.verList = mp.GetAllVerList()
 	mp.nonIdempotent.Unlock()
+
+	if si.treeSnap == nil {
+		return nil, errors.NewErrorf("get mp[%v] tree snap failed", mp.config.PartitionId)
+	}
 
 	si.dataCh = make(chan interface{})
 	si.errorCh = make(chan error, 1)
@@ -233,6 +230,7 @@ func newMetaItemIterator(mp *metaPartition) (si *MetaItemIterator, err error) {
 		defer func() {
 			close(iter.dataCh)
 			close(iter.errorCh)
+			si.treeSnap.Close()
 		}()
 		produceItem := func(item interface{}) (success bool) {
 			select {
@@ -294,51 +292,71 @@ func newMetaItemIterator(mp *metaPartition) (si *MetaItemIterator, err error) {
 			panic(fmt.Sprintf("invalid raftSyncSnapFormatVersione: %v", si.SnapFormatVersion))
 		}
 
+		// NOTE: if using rocksdb, send base
 		// process inodes
-		iter.inodeTree.Ascend(func(i BtreeItem) bool {
-			return produceItem(i)
-		})
+		if err = iter.treeSnap.Range(InodeType, func(v interface{}) bool {
+			log.LogDebugf("[newMetaItemIterator] send inode")
+			return produceItem(v.(*Inode))
+		}); err != nil {
+			produceError(err)
+			return
+		}
 		if checkClose() {
 			return
 		}
 		// process dentries
-		iter.dentryTree.Ascend(func(i BtreeItem) bool {
-			return produceItem(i)
-		})
+		if err = iter.treeSnap.Range(DentryType, func(v interface{}) bool {
+			log.LogDebugf("[newMetaItemIterator] send dentries")
+			return produceItem(v.(*Dentry))
+		}); err != nil {
+			produceError(err)
+			return
+		}
 		if checkClose() {
 			return
 		}
 		// process extends
-		iter.extendTree.Ascend(func(i BtreeItem) bool {
-			return produceItem(i)
-		})
+		if err = iter.treeSnap.Range(ExtendType, func(v interface{}) bool {
+			log.LogDebugf("[newMetaItemIterator] send extends")
+			return produceItem(v.(*Extend))
+		}); err != nil {
+			produceError(err)
+			return
+		}
 		if checkClose() {
 			return
 		}
 		// process multiparts
-		iter.multipartTree.Ascend(func(i BtreeItem) bool {
-			return produceItem(i)
-		})
+		if err = iter.treeSnap.Range(MultipartType, func(v interface{}) bool {
+			log.LogDebugf("[newMetaItemIterator] send multi parts")
+			return produceItem(v.(*Multipart))
+		}); err != nil {
+			produceError(err)
+			return
+		}
 		if checkClose() {
 			return
 		}
 
 		if si.SnapFormatVersion == SnapFormatVersion_1 {
-			iter.txTree.Ascend(func(i BtreeItem) bool {
+			iter.treeSnap.Range(TransactionType, func(i interface{}) bool {
+				log.LogDebugf("[newMetaItemIterator] send transaction")
 				return produceItem(i)
 			})
 			if checkClose() {
 				return
 			}
 
-			iter.txRbInodeTree.Ascend(func(i BtreeItem) bool {
+			iter.treeSnap.Range(TransactionRollbackInodeType, func(i interface{}) bool {
+				log.LogDebugf("[newMetaItemIterator] send rb inodes")
 				return produceItem(i)
 			})
 			if checkClose() {
 				return
 			}
 
-			iter.txRbDentryTree.Ascend(func(i BtreeItem) bool {
+			iter.treeSnap.Range(TransactionRollbackDentryType, func(i interface{}) bool {
+				log.LogDebugf("[newMetaItemIterator] send rb dentries")
 				return produceItem(i)
 			})
 			if checkClose() {
@@ -466,13 +484,31 @@ func (si *MetaItemIterator) Next() (data []byte, err error) {
 		}
 		snap = NewMetaItem(opFSMCreateMultipart, nil, raw)
 	case *proto.TransactionInfo:
-		val, _ := typedItem.Marshal()
+		var val []byte
+		val, err = typedItem.Marshal()
+		if err != nil {
+			si.err = err
+			si.Close()
+			return
+		}
 		snap = NewMetaItem(opFSMTxSnapshot, []byte(typedItem.TxID), val)
 	case *TxRollbackInode:
-		val, _ := typedItem.Marshal()
+		var val []byte
+		val, err = typedItem.Marshal()
+		if err != nil {
+			si.err = err
+			si.Close()
+			return
+		}
 		snap = NewMetaItem(opFSMTxRbInodeSnapshot, typedItem.inode.MarshalKey(), val)
 	case *TxRollbackDentry:
-		val, _ := typedItem.Marshal()
+		var val []byte
+		val, err = typedItem.Marshal()
+		if err != nil {
+			si.err = err
+			si.Close()
+			return
+		}
 		snap = NewMetaItem(opFSMTxRbDentrySnapshot, []byte(typedItem.txDentryInfo.GetKey()), val)
 	case *fileData:
 		snap = NewMetaItem(opExtentFileSnapshot, []byte(typedItem.filename), typedItem.data)

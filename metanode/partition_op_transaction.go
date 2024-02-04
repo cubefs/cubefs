@@ -258,18 +258,13 @@ func (mp *metaPartition) TxRollback(req *proto.TxApplyRequest, p *Packet, remote
 	return err
 }
 
-func (mp *metaPartition) TxGetCnt() (uint64, uint64, uint64) {
-	txCnt := mp.txProcessor.txManager.txTree.Len()
-	rbInoCnt := mp.txProcessor.txResource.txRbInodeTree.Len()
-	rbDenCnt := mp.txProcessor.txResource.txRbDentryTree.Len()
-	return uint64(txCnt), uint64(rbInoCnt), uint64(rbDenCnt)
-}
-
-func (mp *metaPartition) TxGetTree() (*BTree, *BTree, *BTree) {
-	tx := mp.txProcessor.txManager.txTree.GetTree()
-	rbIno := mp.txProcessor.txResource.txRbInodeTree.GetTree()
-	rbDen := mp.txProcessor.txResource.txRbDentryTree.GetTree()
-	return tx, rbIno, rbDen
+func (mp *metaPartition) TxGetCnt() (uint64, uint64, uint64, error) {
+	snap, err := mp.GetSnapShot()
+	if err != nil {
+		return 0, 0, 0, err
+	}
+	defer snap.Close()
+	return snap.Count(TransactionType), snap.Count(TransactionRollbackInodeType), snap.Count(TransactionRollbackDentryType), nil
 }
 
 func (mp *metaPartition) TxGetInfo(req *proto.TxGetInfoRequest, p *Packet) (err error) {
@@ -277,8 +272,12 @@ func (mp *metaPartition) TxGetInfo(req *proto.TxGetInfoRequest, p *Packet) (err 
 
 	txItem := proto.NewTxInfoBItem(req.TxID)
 	var txInfo *proto.TransactionInfo
-	if item := mp.txProcessor.txManager.txTree.Get(txItem); item != nil {
-		txInfo = item.(*proto.TransactionInfo)
+	txInfo, err = mp.txProcessor.txManager.txTree.Get(txItem)
+	if err != nil {
+		log.LogErrorf("[TxGetInfo] failed to get tx(%v) from tx tree, err(%v)", req.TxID, err)
+		return
+	}
+	if txInfo != nil {
 		status = proto.OpOk
 	} else {
 		status = proto.OpTxInfoNotExistErr

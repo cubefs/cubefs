@@ -15,6 +15,7 @@
 package master
 
 import (
+	"errors"
 	"fmt"
 	"math"
 	"math/rand"
@@ -38,11 +39,13 @@ const StrawNodeSelectorName = "Straw"
 
 const DefaultNodeSelectorName = CarryWeightNodeSelectorName
 
+var ErrUnknownNodeResourceType = errors.New("unknown node resource type")
+
 func (ns *nodeSet) getNodes(nodeType NodeType) *sync.Map {
 	switch nodeType {
 	case DataNodeType:
 		return ns.dataNodes
-	case MetaNodeType:
+	case MetaNodeType, RocksdbType:
 		return ns.metaNodes
 	default:
 		panic("unknown node type")
@@ -95,8 +98,20 @@ func (nodes SortedWeightedNodes) Swap(i, j int) {
 	nodes[i], nodes[j] = nodes[j], nodes[i]
 }
 
-func canAllocPartition(node Node) bool {
-	return node.IsWriteAble() && node.PartitionCntLimited()
+func canAllocPartition(node interface{}, nodeType NodeType) bool {
+	switch nodeType {
+	case DataNodeType:
+		dataNode := node.(*DataNode)
+		return dataNode.IsWriteAble() && dataNode.PartitionCntLimited()
+	case MetaNodeType:
+		metaNode := node.(*MetaNode)
+		return metaNode.isWritable(proto.StoreModeMem) && metaNode.PartitionCntLimited()
+	case RocksdbType:
+		metaNode := node.(*MetaNode)
+		return metaNode.isWritable(proto.StoreModeRocksDb) && metaNode.PartitionCntLimited()
+	default:
+		panic(ErrUnknownNodeResourceType)
+	}
 }
 
 func asNodeWrap(node interface{}, nodeType NodeType) Node {
@@ -104,7 +119,7 @@ func asNodeWrap(node interface{}, nodeType NodeType) Node {
 	case DataNodeType:
 		dataNode := node.(*DataNode)
 		return dataNode
-	case MetaNodeType:
+	case MetaNodeType, RocksdbType:
 		metaNode := node.(*MetaNode)
 		return metaNode
 	default:
@@ -123,24 +138,23 @@ func (s *CarryWeightNodeSelector) GetName() string {
 }
 
 func (s *CarryWeightNodeSelector) prepareCarry(nodes *sync.Map, total uint64) {
-	nodes.Range(func(key, value interface{}) bool {
-		node := value.(Node)
-		if _, ok := s.carry[node.GetID()]; !ok {
-			// use available space to calculate initial weight
-			s.carry[node.GetID()] = float64(node.GetAvailableSpace()) / float64(total)
-		}
-		return true
-	})
+	switch s.nodeType {
+	case DataNodeType:
+		s.prepareCarryForDataNodes(nodes, total)
+	case MetaNodeType, RocksdbType:
+		s.prepareCarryForMetaNodes(nodes, total)
+	default:
+	}
 }
 
 func (s *CarryWeightNodeSelector) getTotalMax(nodes *sync.Map) (total uint64) {
-	nodes.Range(func(key, value interface{}) bool {
-		dataNode := value.(Node)
-		if dataNode.GetTotal() > total {
-			total = dataNode.GetTotal()
-		}
-		return true
-	})
+	switch s.nodeType {
+	case DataNodeType:
+		total = s.getTotalMaxForDataNodes(nodes)
+	case MetaNodeType, RocksdbType:
+		total = s.getTotalMaxForMetaNodes(nodes)
+	default:
+	}
 	return
 }
 
@@ -149,7 +163,7 @@ func (s *CarryWeightNodeSelector) getCarryNodes(nset *nodeSet, maxTotal uint64, 
 	switch s.nodeType {
 	case DataNodeType:
 		nodes = nset.dataNodes
-	case MetaNodeType:
+	case MetaNodeType, RocksdbType:
 		nodes = nset.metaNodes
 	default:
 		panic("unknown node type")
@@ -168,7 +182,7 @@ func (s *CarryWeightNodeSelector) getCarryNodes(nset *nodeSet, maxTotal uint64, 
 				s.nodeType, node.GetStorageInfo(), excludeHosts)
 			return true
 		}
-		if !canAllocPartition(node) {
+		if !canAllocPartition(node, s.nodeType) {
 			log.LogWarnf("[getCarryDataNodes] nodeType (%v) storage info (%v)  exclude hosts(%v)", s.nodeType,
 				node.GetStorageInfo(), excludeHosts)
 			return true
@@ -265,7 +279,19 @@ type AvailableSpaceFirstNodeSelector struct {
 }
 
 func (s *AvailableSpaceFirstNodeSelector) getNodeAvailableSpace(node interface{}) uint64 {
-	return node.(Node).GetAvailableSpace()
+	switch s.nodeType {
+	case DataNodeType:
+		dataNode := node.(*DataNode)
+		return dataNode.AvailableSpace
+	case MetaNodeType:
+		metaNode := node.(*MetaNode)
+		return metaNode.Total - metaNode.Used
+	case RocksdbType:
+		metaNode := node.(*MetaNode)
+		return metaNode.GetRocksdbTotal() - metaNode.GetRocksdbUsed()
+	default:
+		panic("unkown node type")
+	}
 }
 
 func (s *AvailableSpaceFirstNodeSelector) GetName() string {
@@ -287,7 +313,7 @@ func (s *AvailableSpaceFirstNodeSelector) Select(ns *nodeSet, excludeHosts []str
 		if contains(excludeHosts, node.GetAddr()) {
 			return true
 		}
-		if !canAllocPartition(node) {
+		if !canAllocPartition(node, s.nodeType) {
 			return true
 		}
 		sortedNodes = append(sortedNodes, node)
@@ -409,7 +435,7 @@ func (s *RoundRobinNodeSelector) Select(ns *nodeSet, excludeHosts []string, repl
 		for nodeIndex < len(sortedNodes) {
 			node := sortedNodes[(nodeIndex+s.index)%len(sortedNodes)]
 			nodeIndex += 1
-			if canAllocPartition(node) {
+			if canAllocPartition(node, s.nodeType) {
 				if excludeHosts == nil || !contains(excludeHosts, node.GetAddr()) {
 					selectedIndex = nodeIndex - 1
 					break
@@ -463,7 +489,19 @@ func (s *StrawNodeSelector) GetName() string {
 }
 
 func (s *StrawNodeSelector) getWeight(node Node) float64 {
-	return float64(node.GetAvailableSpace()) / util.GB
+	switch s.nodeType {
+	case DataNodeType:
+		dataNode := node.(*DataNode)
+		return float64(dataNode.AvailableSpace) / util.GB
+	case MetaNodeType:
+		metaNode := node.(*MetaNode)
+		return float64(metaNode.Total-metaNode.Used) / util.GB
+	case RocksdbType:
+		metaNode := node.(*MetaNode)
+		return float64(metaNode.GetRocksdbTotal()-metaNode.GetRocksdbUsed()) / util.GB
+	default:
+		panic("unkown node type")
+	}
 }
 
 // select a node with max straw and it's ip didn't exist in excludedIpSet
@@ -503,7 +541,7 @@ func (s *StrawNodeSelector) Select(ns *nodeSet, excludeHosts []string, replicaNu
 		if contains(excludeHosts, node.GetAddr()) {
 			return true
 		}
-		if !canAllocPartition(node) {
+		if !canAllocPartition(node, s.nodeType) {
 			return true
 		}
 		nodes = append(nodes, node)
@@ -585,13 +623,16 @@ func NewNodeSelector(name string, nodeType NodeType) NodeSelector {
 	}
 }
 
-func (ns *nodeSet) getAvailMetaNodeHosts(excludeHosts []string, replicaNum int) (newHosts []string, peers []proto.Peer, err error) {
+func (ns *nodeSet) getAvailMetaNodeHosts(excludeHosts []string, replicaNum int, storeMode proto.StoreMode) (newHosts []string, peers []proto.Peer, err error) {
 	ns.nodeSelectLock.Lock()
 	defer ns.nodeSelectLock.Unlock()
 	// we need a read lock to block the modification of node selector
 	ns.metaNodeSelectorLock.RLock()
 	defer ns.metaNodeSelectorLock.RUnlock()
-	return ns.metaNodeSelector.Select(ns, excludeHosts, replicaNum)
+	if storeMode == proto.StoreModeRocksDb {
+		return ns.metaNodeRocksdbSelector.Select(ns, excludeHosts, replicaNum)
+	}
+	return ns.metaNodeMemorySelector.Select(ns, excludeHosts, replicaNum)
 }
 
 func (ns *nodeSet) getAvailDataNodeHosts(excludeHosts []string, replicaNum int) (hosts []string, peers []proto.Peer, err error) {
@@ -601,4 +642,91 @@ func (ns *nodeSet) getAvailDataNodeHosts(excludeHosts []string, replicaNum int) 
 	ns.dataNodeSelectorLock.Lock()
 	defer ns.dataNodeSelectorLock.Unlock()
 	return ns.dataNodeSelector.Select(ns, excludeHosts, replicaNum)
+}
+
+func (s *CarryWeightNodeSelector) prepareCarryForDataNodes(nodes *sync.Map, total uint64) {
+	nodes.Range(func(key, value interface{}) bool {
+		node := value.(Node)
+		if _, ok := s.carry[node.GetID()]; !ok {
+			// use available space to calculate initial weight
+			s.carry[node.GetID()] = float64(node.GetAvailableSpace()) / float64(total)
+		}
+		return true
+	})
+}
+
+func (s *CarryWeightNodeSelector) prepareCarryForMetaNodeMemory(nodes *sync.Map, total uint64) {
+	nodes.Range(func(key, value interface{}) bool {
+		metaNode := value.(*MetaNode)
+		if _, ok := s.carry[metaNode.ID]; !ok {
+			// use available space to calculate initial weight
+			s.carry[metaNode.ID] = float64(metaNode.Total-metaNode.Used) / float64(total)
+		}
+		return true
+	})
+}
+
+func (s *CarryWeightNodeSelector) prepareCarryForMetaNodeRocksdb(nodes *sync.Map, total uint64) {
+	nodes.Range(func(key, value interface{}) bool {
+		metaNode := value.(*MetaNode)
+		if _, ok := s.carry[metaNode.ID]; !ok {
+			// use available space to calculate initial weight
+			s.carry[metaNode.ID] = float64(metaNode.GetRocksdbTotal()-metaNode.GetRocksdbUsed()) / float64(total)
+		}
+		return true
+	})
+}
+
+func (s *CarryWeightNodeSelector) prepareCarryForMetaNodes(nodes *sync.Map, total uint64) {
+	switch s.nodeType {
+	case MetaNodeType:
+		s.prepareCarryForMetaNodeMemory(nodes, total)
+	case RocksdbType:
+		s.prepareCarryForMetaNodeRocksdb(nodes, total)
+	default:
+	}
+}
+
+func (s *CarryWeightNodeSelector) getTotalMaxForMetaNodeMemory(nodes *sync.Map) (total uint64) {
+	nodes.Range(func(key, value interface{}) bool {
+		dataNode := value.(Node)
+		if dataNode.GetTotal() > total {
+			total = dataNode.GetTotal()
+		}
+		return true
+	})
+	return
+}
+
+func (s *CarryWeightNodeSelector) getTotalMaxForMetaNodeRocksdb(nodes *sync.Map) (total uint64) {
+	nodes.Range(func(key, value interface{}) bool {
+		metaNode := value.(*MetaNode)
+		nodeTotal := metaNode.GetRocksdbTotal()
+		if nodeTotal > total {
+			total = nodeTotal
+		}
+		return true
+	})
+	return
+}
+
+func (s *CarryWeightNodeSelector) getTotalMaxForMetaNodes(nodes *sync.Map) (total uint64) {
+	switch s.nodeType {
+	case MetaNodeType:
+		return s.getTotalMaxForMetaNodeMemory(nodes)
+	case RocksdbType:
+		return s.getTotalMaxForMetaNodeRocksdb(nodes)
+	}
+	return
+}
+
+func (s *CarryWeightNodeSelector) getTotalMaxForDataNodes(nodes *sync.Map) (total uint64) {
+	nodes.Range(func(key, value interface{}) bool {
+		dataNode := value.(Node)
+		if dataNode.GetTotal() > total {
+			total = dataNode.GetTotal()
+		}
+		return true
+	})
+	return
 }

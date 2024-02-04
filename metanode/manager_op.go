@@ -119,6 +119,7 @@ func (m *metadataManager) opMasterHeartbeat(conn net.Conn, p *Packet,
 		volsForbidWriteOpOfProtoVer0 = make(map[string]struct{})
 		fileStatsEnableChange        bool
 		thresholdsChange             bool
+		diskStat                     []*proto.MetaNodeRocksdbInfo
 	)
 	start := time.Now()
 	go func() {
@@ -191,7 +192,8 @@ func (m *metadataManager) opMasterHeartbeat(conn net.Conn, p *Packet,
 		}
 		// set cpu util and io used in here
 		resp.CpuUtil = m.cpuUtil.Load()
-
+		log.LogDebugf("[opMasterHeartbeat] collect rocksdb info")
+		diskStat = m.metaNode.getRocksDBDiskStat()
 		m.Range(true, func(id uint64, partition MetaPartition) bool {
 			m.checkFollowerRead(req.FLReadVols, partition)
 			m.checkForbiddenVolume(req.ForbiddenVols, partition)
@@ -222,16 +224,35 @@ func (m *metadataManager) opMasterHeartbeat(conn net.Conn, p *Packet,
 				ForbidWriteOpOfProtoVer0:  mpForbidWriteVer0,
 				LocalPeers:                mConf.Peers,
 				ReadOnlyReasons:           0,
+				StoreMode:                 mConf.StoreMode,
 			}
-			mpr.TxCnt, mpr.TxRbInoCnt, mpr.TxRbDenCnt = partition.TxGetCnt()
+			mpr.TxCnt, mpr.TxRbInoCnt, mpr.TxRbDenCnt, err = partition.TxGetCnt()
+			if err != nil {
+				log.LogErrorf("[opMasterHeartbeat] mp(%v) failed to open snapshot, err(%v)", mConf.PartitionId, err)
+				return true
+			}
 
 			if mConf.Cursor >= mConf.End {
 				mpr.Status = proto.ReadOnly
 				mpr.ReadOnlyReasons |= proto.MpCursorOutOfRange
 			}
-			if resp.Used > uint64(float64(resp.Total)*MaxUsedMemFactor) {
+
+			switch mConf.StoreMode {
+			case proto.StoreModeMem:
+				if resp.Used > uint64(float64(resp.Total)*MaxUsedMemFactor) {
+					mpr.Status = proto.ReadOnly
+					mpr.ReadOnlyReasons |= proto.MetaMemUseLimit
+				}
+			case proto.StoreModeRocksDb:
+				for _, stat := range diskStat {
+					if stat.Path == mConf.RocksDBDir &&
+						stat.UsageRatio >= 0.8 {
+						mpr.Status = proto.ReadOnly
+					}
+				}
+			default:
+				log.LogErrorf("[opMasterHeartbeat] mp(%v) unknown store mode, set read only", mConf.PartitionId)
 				mpr.Status = proto.ReadOnly
-				mpr.ReadOnlyReasons |= proto.MetaMemUseLimit
 			}
 
 			addr, isLeader := partition.IsLeader()
@@ -245,6 +266,7 @@ func (m *metadataManager) opMasterHeartbeat(conn net.Conn, p *Packet,
 		})
 		resp.ZoneName = m.zoneName
 		resp.ReceivedForbidWriteOpOfProtoVer0 = m.metaNode.nodeForbidWriteOpOfProtoVer0
+		resp.RocksDBDiskInfo = diskStat
 		resp.Status = proto.TaskSucceeds
 	end:
 		adminTask.Request = nil
@@ -1536,6 +1558,11 @@ func (m *metadataManager) opDeleteMetaPartition(conn net.Conn,
 	conf := mp.GetBaseConfig()
 	mp.Stop()
 	mp.DeleteRaft()
+	err = mp.Reset()
+	if err != nil {
+		log.LogErrorf("[deletePartition] failed to clear mp(%v) data, err(%v)", conf.PartitionId, err)
+		err = nil
+	}
 	m.deletePartition(mp.GetBaseConfig().PartitionId)
 	os.RemoveAll(conf.RootDir)
 	p.PacketOkReply()

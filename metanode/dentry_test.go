@@ -184,3 +184,18 @@ func BenchmarkDentryUnMarshal(b *testing.B) {
 		d2.Unmarshal(data)
 	}
 }
+
+func TestDentryMarshal(t *testing.T) {
+	dentry := &metanode.Dentry{
+		ParentId: 123,
+		Name:     "dentry_test",
+		Inode:    16797219,
+		Type:     2147484141,
+	}
+	buf, err := dentry.Marshal()
+	require.NoError(t, err)
+	unmarshalDentry := &metanode.Dentry{}
+	err = unmarshalDentry.Unmarshal(buf)
+	require.NoError(t, err)
+	require.Equal(t, dentry, unmarshalDentry)
+}

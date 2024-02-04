@@ -267,6 +267,17 @@ func (mms *MockMetaServer) handleHeartbeats(conn net.Conn, p *proto.Packet, admi
 	}
 	resp.Total = 10 * util.GB
 	resp.Used = 1 * util.GB
+	resp.RocksDBDiskInfo = []*proto.MetaNodeRocksdbInfo{
+		{
+			Path:           "",
+			Total:          10 * util.GB,
+			Used:           1 * util.GB,
+			UsageRatio:     0.1,
+			Status:         proto.ReadWrite,
+			PartitionCount: 0,
+		},
+	}
+
 	// every partition used
 	mms.RLock()
 	for id, partition := range mms.partitions {
@@ -280,6 +291,7 @@ func (mms *MockMetaServer) handleHeartbeats(conn net.Conn, p *proto.Packet, admi
 			MaxInodeID:  partition.Start,
 			VolName:     partition.VolName,
 			IsLeader:    partition.isLeaderMetaNode(mms.TcpAddr),
+			StoreMode:   proto.StoreModeMem,
 		}
 		mpr.Status = proto.ReadWrite
 		resp.MetaPartitionReports = append(resp.MetaPartitionReports, mpr)

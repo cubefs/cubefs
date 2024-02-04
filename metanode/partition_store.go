@@ -34,6 +34,8 @@ import (
 	mmap "github.com/edsrzf/mmap-go"
 )
 
+var ErrInvalidSnapshotRoot = errors.NewErrorf("invalid snapshot root")
+
 const (
 	snapshotDir             = "snapshot"
 	snapshotDirTmp          = ".snapshot"
@@ -98,24 +100,36 @@ func (bf *bufFile) Write(data []byte) (nn int, err error) {
 }
 
 func (mp *metaPartition) loadMetadata() (err error) {
-	metaFile := path.Join(mp.config.RootDir, metadataFile)
-	fp, err := os.OpenFile(metaFile, os.O_RDONLY, 0o644)
+	mConf, err := mp.loadMetadataFromFile()
 	if err != nil {
-		err = errors.NewErrorf("[loadMetadata]: OpenFile %s", err.Error())
 		return
 	}
-	defer fp.Close()
-	data, err := io.ReadAll(fp)
-	if err != nil || len(data) == 0 {
-		err = errors.NewErrorf("[loadMetadata]: ReadFile %s, data: %s", err.Error(),
-			string(data))
-		return
+	mp.config.PartitionId = mConf.PartitionId
+	mp.config.VolName = mConf.VolName
+	mp.config.Start = mConf.Start
+	mp.config.End = mConf.End
+	mp.config.Peers = mConf.Peers
+	mp.config.Cursor = mp.config.Start
+	mp.config.UniqId = 0
+
+	mp.config.StoreMode = mConf.StoreMode
+	mp.config.RocksDBDir = mConf.RocksDBDir
+	mp.config.RocksWalFileSize = mConf.RocksWalFileSize
+	mp.config.RocksWalMemSize = mConf.RocksWalMemSize
+	mp.config.RocksLogFileSize = mConf.RocksLogFileSize
+	mp.config.RocksLogReversedTime = mConf.RocksLogReversedTime
+	mp.config.RocksLogReVersedCnt = mConf.RocksLogReVersedCnt
+	mp.config.RocksWalTTL = mConf.RocksWalTTL
+
+	if mp.config.StoreMode < proto.StoreModeMem || mp.config.StoreMode > proto.StoreModeRocksDb {
+		mp.config.StoreMode = proto.StoreModeMem
 	}
-	mConf := &MetaPartitionConfig{}
-	if err = json.Unmarshal(data, mConf); err != nil {
-		err = errors.NewErrorf("[loadMetadata]: Unmarshal MetaPartitionConfig %s",
-			err.Error())
-		return
+	if mp.config.RocksDBDir == "" {
+		// new version but old config; need select one dir
+		err = mp.selectRocksDBDir()
+		if err != nil {
+			return
+		}
 	}
 
 	// compat with old persisted meta partitions, add raft port info
@@ -130,20 +144,6 @@ func (mp *metaPartition) loadMetadata() (err error) {
 			}
 		}
 	}
-
-	if mConf.checkMeta() != nil {
-		return
-	}
-	mp.config.PartitionId = mConf.PartitionId
-	mp.config.VolName = mConf.VolName
-	mp.config.Start = mConf.Start
-	mp.config.End = mConf.End
-	mp.config.Peers = mConf.Peers
-	mp.config.Cursor = mp.config.Start
-	mp.config.UniqId = 0
-
-	mp.uidManager = NewUidMgr(mp.config.VolName, mp.config.PartitionId)
-	mp.mqMgr = NewQuotaManager(mp.config.VolName, mp.config.PartitionId)
 
 	if mp.manager.metaNode.raftPartitionCanUsingDifferentPort && lackRaftPort {
 		if err = mp.persistMetadata(); err != nil {
@@ -168,6 +168,11 @@ func (mp *metaPartition) loadInode(rootDir string, crc uint32) (err error) {
 				mp.config.PartitionId, mp.config.VolName, numInodes)
 			mp.fileRange = fileRange
 		}
+	}()
+
+	handle, _ := mp.inodeTree.CreateBatchWriteHandle()
+	defer func() {
+		_ = mp.inodeTree.CommitAndReleaseBatchWriteHandle(handle, false)
 	}()
 	filename := path.Join(rootDir, inodeFile)
 	if _, err = os.Stat(filename); err != nil {
@@ -247,10 +252,11 @@ func (mp *metaPartition) loadInode(rootDir string, crc uint32) (err error) {
 
 		mp.size += ino.Size
 
-		mp.fsmCreateInode(ino)
+		mp.batchCreateInode(handle, ino)
 		mp.checkAndInsertFreeList(ino)
 		if mp.config.Cursor < ino.Inode {
 			mp.config.Cursor = ino.Inode
+			mp.inodeTree.SetCursor(ino.Inode)
 		}
 		numInodes += 1
 	}
@@ -279,6 +285,11 @@ func (mp *metaPartition) loadDentry(rootDir string, crc uint32) (err error) {
 			log.LogInfof("loadDentry: load complete: partitonID(%v) volume(%v) numDentries(%v)",
 				mp.config.PartitionId, mp.config.VolName, numDentries)
 		}
+	}()
+
+	handle, _ := mp.inodeTree.CreateBatchWriteHandle()
+	defer func() {
+		_ = mp.inodeTree.CommitAndReleaseBatchWriteHandle(handle, false)
 	}()
 	filename := path.Join(rootDir, dentryFile)
 	if _, err = os.Stat(filename); err != nil {
@@ -339,7 +350,7 @@ func (mp *metaPartition) loadDentry(rootDir string, crc uint32) (err error) {
 			err = errors.NewErrorf("[loadDentry] Unmarshal: %s", err.Error())
 			return
 		}
-		if status := mp.fsmCreateDentry(dentry, true); status != proto.OpOk {
+		if status := mp.fsmCreateDentry(handle, dentry, true); status != proto.OpOk {
 			err = errors.NewErrorf("[loadDentry] createDentry dentry: %v, resp code: %d", dentry, status)
 			return
 		}
@@ -356,6 +367,10 @@ func (mp *metaPartition) loadExtend(rootDir string, crc uint32) (err error) {
 		err = errors.NewErrorf("[loadExtend] Stat: %s", err.Error())
 		return err
 	}
+	handle, _ := mp.inodeTree.CreateBatchWriteHandle()
+	defer func() {
+		_ = mp.inodeTree.CommitAndReleaseBatchWriteHandle(handle, false)
+	}()
 	fp, err := os.OpenFile(filename, os.O_RDONLY, 0o644)
 	if err != nil {
 		err = errors.NewErrorf("[loadExtend] OpenFile: %s", err.Error())
@@ -401,7 +416,7 @@ func (mp *metaPartition) loadExtend(rootDir string, crc uint32) (err error) {
 		}
 		// log.LogDebugf("loadExtend: new extend from bytes: partitionID (%v) volume(%v) inode[%v]",
 		//	mp.config.PartitionId, mp.config.VolName, extend.inode)
-		_ = mp.fsmSetXAttr(extend)
+		_ = mp.fsmSetXAttr(handle, extend)
 
 		if _, err = crcCheck.Write(mem[offset : offset+int(numBytes)]); err != nil {
 			return
@@ -425,6 +440,10 @@ func (mp *metaPartition) loadMultipart(rootDir string, crc uint32) (err error) {
 		err = errors.NewErrorf("[loadMultipart] Stat: %s", err.Error())
 		return err
 	}
+	handle, _ := mp.inodeTree.CreateBatchWriteHandle()
+	defer func() {
+		_ = mp.inodeTree.CommitAndReleaseBatchWriteHandle(handle, false)
+	}()
 	fp, err := os.OpenFile(filename, os.O_RDONLY, 0o644)
 	if err != nil {
 		err = errors.NewErrorf("[loadMultipart] OpenFile: %s", err.Error())
@@ -462,7 +481,7 @@ func (mp *metaPartition) loadMultipart(rootDir string, crc uint32) (err error) {
 		}
 		multipart := MultipartFromBytes(mem[offset : offset+int(numBytes)])
 		log.LogDebugf("loadMultipart: create multipart from bytes: partitionID（%v) multipartID(%v)", mp.config.PartitionId, multipart.id)
-		mp.fsmCreateMultipart(multipart)
+		mp.batchCreateMultipart(handle, multipart)
 		offset += int(numBytes)
 		if _, err = crcCheck.Write(mem[offset-int(numBytes) : offset]); err != nil {
 			return err
@@ -478,39 +497,46 @@ func (mp *metaPartition) loadMultipart(rootDir string, crc uint32) (err error) {
 }
 
 func (mp *metaPartition) loadApplyID(rootDir string) (err error) {
-	filename := path.Join(rootDir, applyIDFile)
-	if _, err = os.Stat(filename); err != nil {
-		err = errors.NewErrorf("[loadApplyID]: Stat %s", err.Error())
-		return
-	}
-	data, err := os.ReadFile(filename)
-	if err != nil {
-		err = errors.NewErrorf("[loadApplyID] ReadFile: %s", err.Error())
-		return
-	}
-	if len(data) == 0 {
-		err = errors.NewErrorf("[loadApplyID]: ApplyID is empty")
-		return
-	}
-	var cursor uint64
-	if strings.Contains(string(data), "|") {
-		_, err = fmt.Sscanf(string(data), "%d|%d", &mp.applyID, &cursor)
-	} else {
-		_, err = fmt.Sscanf(string(data), "%d", &mp.applyID)
-	}
-	if err != nil {
-		err = errors.NewErrorf("[loadApplyID] ReadApplyID: %s", err.Error())
-		return
+	var (
+		applyIDInSnapshot uint64
+		applyIDInRocksDB  uint64
+		cursorInSnapshot  uint64
+		cursorInRocksDB   uint64
+		maxInode          uint64
+	)
+	if mp.HasMemStore() {
+		if rootDir == "" {
+			return ErrInvalidSnapshotRoot
+		}
+		if applyIDInSnapshot, cursorInSnapshot, err = mp.loadApplyIDFromSnapshot(rootDir); err != nil {
+			return
+		}
+
+		atomic.StoreUint64(&mp.applyID, applyIDInSnapshot)
+
+		if cursorInSnapshot > atomic.LoadUint64(&mp.config.Cursor) {
+			atomic.StoreUint64(&mp.config.Cursor, cursorInSnapshot)
+		}
 	}
 
-	mp.storedApplyId = mp.applyID
+	if mp.HasRocksDBStore() {
+		applyIDInRocksDB = mp.inodeTree.GetApplyID()
+		atomic.StoreUint64(&mp.applyID, applyIDInRocksDB)
 
-	if cursor > mp.GetCursor() {
-		atomic.StoreUint64(&mp.config.Cursor, cursor)
+		cursorInRocksDB = mp.inodeTree.GetCursor()
+		if maxInode, err = mp.inodeTree.GetMaxInode(); err != nil {
+			return
+		}
+
+		if maxInode > atomic.LoadUint64(&mp.config.Cursor) {
+			atomic.StoreUint64(&mp.config.Cursor, maxInode)
+		}
+		if cursorInRocksDB > atomic.LoadUint64(&mp.config.Cursor) {
+			atomic.StoreUint64(&mp.config.Cursor, cursorInRocksDB)
+		}
 	}
+	log.LogInfof("mp[%v] applyID:%v, cursor:%v", mp.config.PartitionId, mp.applyID, mp.config.Cursor)
 
-	log.LogInfof("loadApplyID: load complete: partitionID(%v) volume(%v) applyID(%v) cursor(%v) filename(%v)",
-		mp.config.PartitionId, mp.config.VolName, mp.applyID, mp.config.Cursor, filename)
 	return
 }
 
@@ -536,6 +562,12 @@ func (mp *metaPartition) loadTxRbDentry(rootDir string, crc uint32) (err error) 
 	reader := bufio.NewReaderSize(fp, 4*1024*1024)
 	txBuf := make([]byte, 4)
 	crcCheck := crc32.NewIEEE()
+	handle, err := mp.txProcessor.txResource.txRbDentryTree.CreateBatchWriteHandle()
+	if err != nil {
+		log.LogErrorf("[loadTxRbDentry] cannot open write batch, err(%v)", err)
+		return err
+	}
+	defer mp.txProcessor.txResource.txRbDentryTree.ReleaseBatchWriteHandle(handle)
 
 	for {
 		txBuf = txBuf[:4]
@@ -548,7 +580,7 @@ func (mp *metaPartition) loadTxRbDentry(rootDir string, crc uint32) (err error) 
 					log.LogErrorf("[loadTxRbDentry]: check crc mismatch, expected[%d], actual[%d]", crc, res)
 					return ErrSnapshotCrcMismatch
 				}
-				return
+				break
 			}
 			err = errors.NewErrorf("[loadTxRbDentry] ReadHeader: %s", err.Error())
 			return
@@ -584,9 +616,19 @@ func (mp *metaPartition) loadTxRbDentry(rootDir string, crc uint32) (err error) 
 		}
 
 		// mp.txProcessor.txResource.txRollbackDentries[txRbDentry.txDentryInfo.GetKey()] = txRbDentry
-		mp.txProcessor.txResource.txRbDentryTree.ReplaceOrInsert(txRbDentry, true)
+		err = mp.txProcessor.txResource.txRbDentryTree.BatchPut(handle, txRbDentry)
+		if err != nil {
+			return
+		}
 		numTxRbDentry++
 	}
+
+	err = mp.txProcessor.txResource.txRbDentryTree.CommitBatchWrite(handle, false)
+	if err != nil {
+		log.LogErrorf("[loadTxRbDentry] failed to commit write batch, err(%v)", err)
+		return
+	}
+	return
 }
 
 func (mp *metaPartition) loadTxRbInode(rootDir string, crc uint32) (err error) {
@@ -612,6 +654,13 @@ func (mp *metaPartition) loadTxRbInode(rootDir string, crc uint32) (err error) {
 	txBuf := make([]byte, 4)
 	crcCheck := crc32.NewIEEE()
 
+	handle, err := mp.txProcessor.txResource.txRbInodeTree.CreateBatchWriteHandle()
+	if err != nil {
+		log.LogErrorf("[loadTxRbInode] cannot open write batch, err(%v)", err)
+		return
+	}
+	defer mp.txProcessor.txResource.txRbInodeTree.ReleaseBatchWriteHandle(handle)
+
 	for {
 		txBuf = txBuf[:4]
 		// first read length
@@ -619,7 +668,7 @@ func (mp *metaPartition) loadTxRbInode(rootDir string, crc uint32) (err error) {
 		if err != nil {
 			if err == io.EOF {
 				err = nil
-				return
+				break
 			}
 			err = errors.NewErrorf("[loadTxRbInode] ReadHeader: %s", err.Error())
 			return
@@ -653,9 +702,18 @@ func (mp *metaPartition) loadTxRbInode(rootDir string, crc uint32) (err error) {
 			return err
 		}
 
-		mp.txProcessor.txResource.txRbInodeTree.ReplaceOrInsert(txRbInode, true)
+		err = mp.txProcessor.txResource.txRbInodeTree.BatchPut(handle, txRbInode)
+		if err != nil {
+			return
+		}
 		numTxRbInode++
 	}
+	err = mp.txProcessor.txResource.txRbInodeTree.CommitBatchWrite(handle, false)
+	if err != nil {
+		log.LogErrorf("[loadTxRbInode] failed to commit write batch, err(%v)", err)
+		return
+	}
+	return
 }
 
 func (mp *metaPartition) loadTxInfo(rootDir string, crc uint32) (err error) {
@@ -680,6 +738,12 @@ func (mp *metaPartition) loadTxInfo(rootDir string, crc uint32) (err error) {
 	reader := bufio.NewReaderSize(fp, 4*1024*1024)
 	txBuf := make([]byte, 4)
 	crcCheck := crc32.NewIEEE()
+	handle, err := mp.txProcessor.txManager.txTree.CreateBatchWriteHandle()
+	if err != nil {
+		log.LogErrorf("[loadTxInfo] cannot open write batch, err(%v)", err)
+		return
+	}
+	defer mp.txProcessor.txManager.txTree.ReleaseBatchWriteHandle(handle)
 
 	for {
 		txBuf = txBuf[:4]
@@ -692,7 +756,7 @@ func (mp *metaPartition) loadTxInfo(rootDir string, crc uint32) (err error) {
 					log.LogErrorf("[loadTxInfo]: check crc mismatch, expected[%d], actual[%d]", crc, res)
 					return ErrSnapshotCrcMismatch
 				}
-				return
+				break
 			}
 			err = errors.NewErrorf("[loadTxInfo] ReadHeader: %s", err.Error())
 			return
@@ -727,9 +791,20 @@ func (mp *metaPartition) loadTxInfo(rootDir string, crc uint32) (err error) {
 			return err
 		}
 
-		mp.txProcessor.txManager.addTxInfo(txInfo)
+		err = mp.txProcessor.txManager.txTree.BatchPut(handle, txInfo)
+		// NOTE: should never happens in memory store
+		if err != nil {
+			log.LogErrorf("[loadTxInfo]: failed to add tx to tx tree, err(%v)", err)
+			panic(err)
+		}
 		numTxInfos++
 	}
+	err = mp.txProcessor.txManager.txTree.CommitBatchWrite(handle, false)
+	if err != nil {
+		log.LogErrorf("[loadTxInfo] failed to commit write batch, err(%v)", err)
+		return
+	}
+	return
 }
 
 func (mp *metaPartition) loadTxID(rootDir string) (err error) {
@@ -756,6 +831,7 @@ func (mp *metaPartition) loadTxID(rootDir string) (err error) {
 
 	if txId > mp.txProcessor.txManager.txIdAlloc.getTransactionID() {
 		mp.txProcessor.txManager.txIdAlloc.setTransactionID(txId)
+		mp.txProcessor.txManager.txTree.SetTxId(txId)
 	}
 	log.LogInfof("loadTxID: load complete: partitionID(%v) volume(%v) txId(%v) filename(%v)",
 		mp.config.PartitionId, mp.config.VolName, mp.txProcessor.txManager.txIdAlloc.getTransactionID(), filename)
@@ -924,11 +1000,11 @@ func (mp *metaPartition) storeMultiVersion(rootDir string, sm *storeMsg) (crc ui
 	}
 	crc = sign.Sum32()
 
-	if _, err = fp.WriteString(fmt.Sprintf("%d|%s", sm.applyIndex, string(verData))); err != nil {
+	if _, err = fp.WriteString(fmt.Sprintf("%d|%s", sm.snap.ApplyID(), string(verData))); err != nil {
 		return
 	}
 	log.LogInfof("storeMultiVersion: store complete: partitionID(%v) volume(%v) applyID(%v) verData(%v) crc(%v)",
-		mp.config.PartitionId, mp.config.VolName, sm.applyIndex, string(verData), crc)
+		mp.config.PartitionId, mp.config.VolName, sm.snap.ApplyID(), string(verData), crc)
 	return
 }
 
@@ -997,12 +1073,12 @@ func (mp *metaPartition) storeApplyID(rootDir string, sm *storeMsg) (err error) 
 	}()
 
 	cursor := mp.GetCursor()
-	if _, err = fp.WriteString(fmt.Sprintf("%d|%d", sm.applyIndex, cursor)); err != nil {
+	if _, err = fp.WriteString(fmt.Sprintf("%d|%d", sm.snap.ApplyID(), cursor)); err != nil {
 		return
 	}
 
 	log.LogWarnf("storeApplyID: store complete: partitionID(%v) volume(%v) applyID(%v) cursor(%v)",
-		mp.config.PartitionId, mp.config.VolName, sm.applyIndex, cursor)
+		mp.config.PartitionId, mp.config.VolName, sm.snap.ApplyID(), cursor)
 	return
 }
 
@@ -1019,11 +1095,11 @@ func (mp *metaPartition) storeTxID(rootDir string, sm *storeMsg) (err error) {
 		}
 		fp.Close()
 	}()
-	if _, err = fp.WriteString(fmt.Sprintf("%d", sm.txId)); err != nil {
+	if _, err = fp.WriteString(fmt.Sprintf("%d", sm.snap.TxID())); err != nil {
 		return
 	}
 	log.LogInfof("storeTxID: store complete: partitionID(%v) volume(%v) txId(%v)",
-		mp.config.PartitionId, mp.config.VolName, sm.txId)
+		mp.config.PartitionId, mp.config.VolName, sm.snap.TxID())
 	return
 }
 
@@ -1045,7 +1121,7 @@ func (mp *metaPartition) storeTxRbDentry(rootDir string, sm *storeMsg) (crc uint
 	lenBuf := make([]byte, 4)
 	sign := crc32.NewIEEE()
 
-	sm.txRbDentryTree.Ascend(func(i BtreeItem) bool {
+	err = sm.snap.Range(TransactionRollbackDentryType, func(i interface{}) bool {
 		rbDentry := i.(*TxRollbackDentry)
 		if data, err = rbDentry.Marshal(); err != nil {
 			return false
@@ -1066,10 +1142,14 @@ func (mp *metaPartition) storeTxRbDentry(rootDir string, sm *storeMsg) (crc uint
 		}
 		return true
 	})
+	if err != nil {
+		log.LogErrorf("[storeTxRbDentry] failed to store rb dentry, err(%v)", err)
+		return
+	}
 
 	crc = sign.Sum32()
 	log.LogInfof("storeTxRbDentry: store complete: partitoinID(%v) volume(%v) numRbDentry(%v) crc(%v)",
-		mp.config.PartitionId, mp.config.VolName, sm.txRbDentryTree.Len(), crc)
+		mp.config.PartitionId, mp.config.VolName, sm.snap.Count(TransactionRollbackDentryType), crc)
 	return
 }
 
@@ -1091,7 +1171,7 @@ func (mp *metaPartition) storeTxRbInode(rootDir string, sm *storeMsg) (crc uint3
 	lenBuf := make([]byte, 4)
 	sign := crc32.NewIEEE()
 
-	sm.txRbInodeTree.Ascend(func(i BtreeItem) bool {
+	err = sm.snap.Range(TransactionRollbackInodeType, func(i interface{}) bool {
 		rbInode := i.(*TxRollbackInode)
 		if data, err = rbInode.Marshal(); err != nil {
 			return false
@@ -1112,10 +1192,14 @@ func (mp *metaPartition) storeTxRbInode(rootDir string, sm *storeMsg) (crc uint3
 		}
 		return true
 	})
+	if err != nil {
+		log.LogErrorf("[storeTxRbInode] failed to store rb inode, err(%v)", err)
+		return
+	}
 
 	crc = sign.Sum32()
 	log.LogInfof("storeTxRbInode: store complete: partitoinID(%v) volume(%v) numRbinode[%v] crc(%v)",
-		mp.config.PartitionId, mp.config.VolName, sm.txRbInodeTree.Len(), crc)
+		mp.config.PartitionId, mp.config.VolName, sm.snap.Count(TransactionRollbackInodeType), crc)
 	return
 }
 
@@ -1136,8 +1220,7 @@ func (mp *metaPartition) storeTxInfo(rootDir string, sm *storeMsg) (crc uint32, 
 	var data []byte
 	lenBuf := make([]byte, 4)
 	sign := crc32.NewIEEE()
-
-	sm.txTree.Ascend(func(i BtreeItem) bool {
+	err = sm.snap.Range(TransactionType, func(i interface{}) bool {
 		tx := i.(*proto.TransactionInfo)
 		if data, err = tx.Marshal(); err != nil {
 			return false
@@ -1159,10 +1242,14 @@ func (mp *metaPartition) storeTxInfo(rootDir string, sm *storeMsg) (crc uint32, 
 		}
 		return true
 	})
+	if err != nil {
+		log.LogErrorf("[storeTxInfo] failed to store tx info, err(%v)", err)
+		return
+	}
 
 	crc = sign.Sum32()
 	log.LogInfof("storeTxInfo: store complete: partitoinID(%v) volume(%v) numTxs(%v) crc(%v)",
-		mp.config.PartitionId, mp.config.VolName, sm.txTree.Len(), crc)
+		mp.config.PartitionId, mp.config.VolName, sm.snap.Count(TransactionType), crc)
 	return
 }
 
@@ -1193,7 +1280,7 @@ func (mp *metaPartition) storeInode(rootDir string,
 	thresholds, _, enable := mp.manager.GetFileStatsConfig()
 	fileRange := make([]int64, len(thresholds)+1)
 
-	sm.inodeTree.Ascend(func(i BtreeItem) bool {
+	sm.snap.Range(InodeType, func(i interface{}) bool {
 		ino := i.(*Inode)
 		if sm.uidRebuild {
 			mp.acucumUidSizeByStore(ino)
@@ -1241,7 +1328,7 @@ func (mp *metaPartition) storeInode(rootDir string,
 	mp.size = size
 
 	log.LogInfof("storeInode: store complete: partitoinID(%v) volume(%v) numInodes(%v) crc(%v), size (%d)",
-		mp.config.PartitionId, mp.config.VolName, sm.inodeTree.Len(), crc, size)
+		mp.config.PartitionId, mp.config.VolName, sm.snap.Count(InodeType), crc, size)
 
 	return
 }
@@ -1265,7 +1352,7 @@ func (mp *metaPartition) storeDentry(rootDir string,
 	var data []byte
 	lenBuf := make([]byte, 4)
 	sign := crc32.NewIEEE()
-	sm.dentryTree.Ascend(func(i BtreeItem) bool {
+	sm.snap.Range(DentryType, func(i interface{}) bool {
 		dentry := i.(*Dentry)
 
 		tmpBuf := GetDentryBuf()
@@ -1295,19 +1382,18 @@ func (mp *metaPartition) storeDentry(rootDir string,
 	})
 	crc = sign.Sum32()
 	log.LogInfof("storeDentry: store complete: partitoinID(%v) volume(%v) numDentries(%v) crc(%v)",
-		mp.config.PartitionId, mp.config.VolName, sm.dentryTree.Len(), crc)
+		mp.config.PartitionId, mp.config.VolName, sm.snap.Count(DentryType), crc)
 	return
 }
 
 func (mp *metaPartition) storeExtend(rootDir string, sm *storeMsg) (crc uint32, err error) {
-	extendTree := sm.extendTree
 	fp := path.Join(rootDir, extendFile)
 	f, err := newBufFile(fp, os.O_RDWR|os.O_TRUNC|os.O_APPEND|os.O_CREATE, 0o755)
 	if err != nil {
 		return 0, err
 	}
 	log.LogDebugf("storeExtend: store start: partitoinID(%v) volume(%v) numInodes(%v) extends(%v)",
-		mp.config.PartitionId, mp.config.VolName, sm.inodeTree.Len(), sm.extendTree.Len())
+		mp.config.PartitionId, mp.config.VolName, sm.snap.Count(InodeType), sm.snap.Count(ExtendType))
 	defer func() {
 		closeErr := f.Close()
 		if err == nil && closeErr != nil {
@@ -1319,7 +1405,7 @@ func (mp *metaPartition) storeExtend(rootDir string, sm *storeMsg) (crc uint32, 
 	varintTmp := make([]byte, binary.MaxVarintLen64)
 	var n int
 	// write number of extends
-	n = binary.PutUvarint(varintTmp, uint64(extendTree.Len()))
+	n = binary.PutUvarint(varintTmp, uint64(sm.snap.Count(ExtendType)))
 	if _, err = writer.Write(varintTmp[:n]); err != nil {
 		return
 	}
@@ -1327,7 +1413,7 @@ func (mp *metaPartition) storeExtend(rootDir string, sm *storeMsg) (crc uint32, 
 		return
 	}
 	sIno := NewSimpleInode(0)
-	extendTree.Ascend(func(i BtreeItem) bool {
+	sm.snap.Range(ExtendType, func(i interface{}) bool {
 		e := i.(*Extend)
 		var raw []byte
 		if sm.quotaRebuild {
@@ -1355,7 +1441,7 @@ func (mp *metaPartition) storeExtend(rootDir string, sm *storeMsg) (crc uint32, 
 		return true
 	})
 	log.LogInfof("storeExtend: write data ok: partitoinID(%v) volume(%v) numInodes(%v) extends(%v) quotaRebuild(%v)",
-		mp.config.PartitionId, mp.config.VolName, sm.inodeTree.Len(), sm.extendTree.Len(), sm.quotaRebuild)
+		mp.config.PartitionId, mp.config.VolName, sm.snap.Count(InodeType), sm.snap.Count(ExtendType), sm.quotaRebuild)
 	mp.mqMgr.statisticRebuildFin(sm.quotaRebuild)
 	if err != nil {
 		return
@@ -1369,12 +1455,11 @@ func (mp *metaPartition) storeExtend(rootDir string, sm *storeMsg) (crc uint32, 
 	}
 	crc = crc32.Sum32()
 	log.LogInfof("storeExtend: store complete: partitoinID(%v) volume(%v) numExtends(%v) crc(%v)",
-		mp.config.PartitionId, mp.config.VolName, extendTree.Len(), crc)
+		mp.config.PartitionId, mp.config.VolName, sm.snap.Count(ExtendType), crc)
 	return
 }
 
 func (mp *metaPartition) storeMultipart(rootDir string, sm *storeMsg) (crc uint32, err error) {
-	multipartTree := sm.multipartTree
 	fp := path.Join(rootDir, multipartFile)
 	f, err := newBufFile(fp, os.O_RDWR|os.O_TRUNC|os.O_APPEND|os.O_CREATE, 0o755)
 	if err != nil {
@@ -1391,14 +1476,14 @@ func (mp *metaPartition) storeMultipart(rootDir string, sm *storeMsg) (crc uint3
 	varintTmp := make([]byte, binary.MaxVarintLen64)
 	var n int
 	// write number of extends
-	n = binary.PutUvarint(varintTmp, uint64(multipartTree.Len()))
+	n = binary.PutUvarint(varintTmp, uint64(sm.snap.Count(MultipartType)))
 	if _, err = writer.Write(varintTmp[:n]); err != nil {
 		return
 	}
 	if _, err = crc32.Write(varintTmp[:n]); err != nil {
 		return
 	}
-	multipartTree.Ascend(func(i BtreeItem) bool {
+	sm.snap.Range(MultipartType, func(i interface{}) bool {
 		m := i.(*Multipart)
 		var raw []byte
 		if raw, err = m.Bytes(); err != nil {
@@ -1433,7 +1518,7 @@ func (mp *metaPartition) storeMultipart(rootDir string, sm *storeMsg) (crc uint3
 	}
 	crc = crc32.Sum32()
 	log.LogInfof("storeMultipart: store complete: partitoinID(%v) volume(%v) numMultiparts(%v) crc(%v)",
-		mp.config.PartitionId, mp.config.VolName, multipartTree.Len(), crc)
+		mp.config.PartitionId, mp.config.VolName, sm.snap.Count(MultipartType), crc)
 	return
 }
 
@@ -1488,4 +1573,105 @@ func (mp *metaPartition) storeUniqChecker(rootDir string, sm *storeMsg) (crc uin
 	log.LogInfof("storeUniqChecker: store complete: PartitionID(%v) volume(%v) crc(%v)",
 		mp.config.UniqId, mp.config.VolName, crc)
 	return
+}
+
+func (mp *metaPartition) persistSelectedRocksdbDir() (err error) {
+	conf, err := mp.loadMetadataFromFile()
+	if err != nil {
+		return
+	}
+	if conf.RocksDBDir != "" {
+		log.LogDebugf("[persistSelectedRocksdbDir] mp(%v) rocksdb dir(%v)", mp.config.PartitionId, conf.RocksDBDir)
+		return
+	}
+	conf.RocksDBDir = mp.config.RocksDBDir
+	log.LogInfof("[persistSelectedRocksdbDir] mp(%v) persist rocksdb dir(%v)", mp.config.PartitionId, mp.config.RocksDBDir)
+	err = mp.persistMetadata()
+	if err != nil {
+		log.LogErrorf("[persistSelectedRocksdbDir] mp(%v) failed to persist rocksdb dir", mp.config.PartitionId)
+		return
+	}
+	return
+}
+
+func (mp *metaPartition) loadMetadataFromFile() (mConf *MetaPartitionConfig, err error) {
+	metaFile := path.Join(mp.config.RootDir, metadataFile)
+	fp, err := os.OpenFile(metaFile, os.O_RDONLY, 0o644)
+	if err != nil {
+		err = errors.NewErrorf("[loadMetadata]: OpenFile %s", err.Error())
+		return
+	}
+	defer fp.Close()
+	data, err := io.ReadAll(fp)
+	if err != nil || len(data) == 0 {
+		err = errors.NewErrorf("[loadMetadata]: ReadFile %s, data: %s", err.Error(),
+			string(data))
+		return
+	}
+	mConf = &MetaPartitionConfig{}
+	if err = json.Unmarshal(data, mConf); err != nil {
+		err = errors.NewErrorf("[loadMetadata]: Unmarshal MetaPartitionConfig %s",
+			err.Error())
+		return
+	}
+
+	if mConf.checkMeta() != nil {
+		return
+	}
+
+	return
+}
+
+func (mp *metaPartition) loadApplyIDFromSnapshot(rootDir string) (applyID, cursor uint64, err error) {
+	filename := path.Join(rootDir, applyIDFile)
+	if _, err = os.Stat(filename); err != nil {
+		err = errors.NewErrorf("[loadApplyID]: Stat %s", err.Error())
+		return
+	}
+	data, err := os.ReadFile(filename)
+	if err != nil {
+		err = errors.NewErrorf("[loadApplyID] ReadFile: %s", err.Error())
+		return
+	}
+	if len(data) == 0 {
+		err = errors.NewErrorf("[loadApplyID]: ApplyID is empty")
+		return
+	}
+	if strings.Contains(string(data), "|") {
+		_, err = fmt.Sscanf(string(data), "%d|%d", &applyID, &cursor)
+	} else {
+		_, err = fmt.Sscanf(string(data), "%d", &applyID)
+	}
+	if err != nil {
+		err = errors.NewErrorf("[loadApplyID] ReadApplyID: %s", err.Error())
+		return
+	}
+
+	log.LogInfof("loadApplyID: load complete: partitionID(%v) volume(%v) applyID(%v) cursor(%v) filename(%v)",
+		mp.config.PartitionId, mp.config.VolName, mp.applyID, mp.config.Cursor, filename)
+	return
+}
+
+func (mp *metaPartition) batchCreateInode(handle interface{}, ino *Inode) (status uint8) {
+	if status = mp.uidManager.addUidSpace(ino.Uid, ino.Inode, nil); status != proto.OpOk {
+		return
+	}
+
+	status = proto.OpOk
+	if _, _, err := mp.inodeTree.BatchReplaceOrInsert(handle, ino, false); err != nil {
+		status = proto.OpExistErr
+	}
+
+	return
+}
+
+func (mp *metaPartition) batchCreateMultipart(handle interface{}, multipart *Multipart) (status uint8) {
+	_, ok, err := mp.multipartTree.BatchReplaceOrInsert(handle, multipart, false)
+	if err != nil {
+		return proto.OpErr
+	}
+	if !ok {
+		return proto.OpExistErr
+	}
+	return proto.OpOk
 }

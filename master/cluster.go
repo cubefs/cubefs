@@ -551,8 +551,9 @@ func (c *Cluster) addNodeSetGrp(ns *nodeSet, load bool) (err error) {
 }
 
 const (
-	TypeMetaPartition uint32 = 0x01
-	TypeDataPartition uint32 = 0x02
+	TypeMetaPartition    uint32 = 0x01
+	TypeDataPartition    uint32 = 0x02
+	TypeRocksdbPartition uint32 = 0x03
 )
 
 func (c *Cluster) getHostFromDomainZone(domainId uint64, createType uint32, replicaNum uint8, mediaType uint32) (hosts []string, peers []proto.Peer, err error) {
@@ -2056,10 +2057,10 @@ func (c *Cluster) syncCreateDataPartitionToDataNode(host string, size uint64, dp
 	return string(resp.Data), nil
 }
 
-func (c *Cluster) syncCreateMetaPartitionToMetaNode(host string, mp *MetaPartition) (err error) {
+func (c *Cluster) syncCreateMetaPartitionToMetaNode(host string, mp *MetaPartition, storeMode proto.StoreMode) (err error) {
 	hosts := make([]string, 0)
 	hosts = append(hosts, host)
-	tasks := mp.buildNewMetaPartitionTasks(hosts, mp.Peers, mp.volName)
+	tasks := mp.buildNewMetaPartitionTasks(hosts, mp.Peers, mp.volName, storeMode)
 	metaNode, err := c.metaNode(host)
 	if err != nil {
 		return
@@ -2259,13 +2260,21 @@ func (c *Cluster) getHostFromNormalZone(nodeType uint32, excludeZones []string, 
 	}
 	if nodeType == TypeDataPartition {
 		rsMgr = &c.t.dataTopology
+		// get all zones that qualified
+		if zonesQualified, err = c.t.allocZonesForNode(rsMgr, zoneNumNeed, replicaNum, excludeZones, specifiedZones, dataMediaType); err != nil {
+			return
+		}
 	} else {
 		rsMgr = &c.t.metaTopology
-	}
-
-	// get all zones that qualified
-	if zonesQualified, err = c.t.allocZonesForNode(rsMgr, zoneNumNeed, replicaNum, excludeZones, specifiedZones, dataMediaType); err != nil {
-		return
+		if nodeType == TypeMetaPartition {
+			if zonesQualified, err = c.t.allocZonesForMetaNode(zoneNumNeed, replicaNum, excludeZones, proto.StoreModeMem); err != nil {
+				return
+			}
+		} else {
+			if zonesQualified, err = c.t.allocZonesForMetaNode(zoneNumNeed, replicaNum, excludeZones, proto.StoreModeRocksDb); err != nil {
+				return
+			}
+		}
 	}
 
 	if len(zonesQualified) == 1 {
@@ -3687,7 +3696,19 @@ func (c *Cluster) migrateMetaNode(srcAddr, targetAddr string, limit int) (err er
 		wg.Add(1)
 		go func(mp *MetaPartition) {
 			defer wg.Done()
-			if err1 := c.migrateMetaPartition(srcAddr, targetAddr, mp); err1 != nil {
+			vol, err1 := c.getVol(mp.volName)
+			if err1 != nil {
+				errChannel <- err1
+				return
+			}
+			storeMode := vol.DefaultStoreMode
+			for _, replica := range mp.Replicas {
+				if replica.Addr == srcAddr {
+					storeMode = replica.StoreMode
+					break
+				}
+			}
+			if err1 = c.migrateMetaPartition(srcAddr, targetAddr, mp, storeMode); err1 != nil {
 				errChannel <- err1
 			}
 		}(toBeOfflineMps[idx])
@@ -4114,6 +4135,7 @@ func (c *Cluster) doCreateVol(req *createVolReq) (vol *Vol, err error) {
 		FlashNodeTimeoutCount:        req.flashNodeTimeoutCount,
 		RemoteCacheSameZoneTimeout:   req.remoteCacheSameZoneTimeout,
 		RemoteCacheSameRegionTimeout: req.remoteCacheSameRegionTimeout,
+		DefaultStoreMode:             req.storeMode,
 	}
 
 	vv.QuotaOfClass = make([]*proto.StatOfStorageClass, 0)
@@ -4220,9 +4242,14 @@ func (c *Cluster) allMetaNodes() (metaNodes []proto.NodeView) {
 	c.metaNodes.Range(func(addr, node interface{}) bool {
 		metaNode := node.(*MetaNode)
 		metaNodes = append(metaNodes, proto.NodeView{
-			ID: metaNode.ID, Addr: metaNode.Addr, DomainAddr: metaNode.DomainAddr,
-			Status: metaNode.IsActive, IsWritable: metaNode.IsWriteAble(), MediaType: proto.MediaType_Unspecified,
+			ID:                       metaNode.ID,
+			Addr:                     metaNode.Addr,
+			DomainAddr:               metaNode.DomainAddr,
+			Status:                   metaNode.IsActive,
+			IsWritable:               metaNode.isWritable(proto.StoreModeMem),
+			MediaType:                proto.MediaType_Unspecified,
 			ForbidWriteOpOfProtoVer0: metaNode.ReceivedForbidWriteOpOfProtoVer0,
+			IsRocksdbWritable:        metaNode.isWritable(proto.StoreModeRocksDb),
 		})
 		return true
 	})

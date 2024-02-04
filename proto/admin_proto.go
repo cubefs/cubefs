@@ -970,6 +970,7 @@ type MetaPartitionReport struct {
 	StatByMigrateStorageClass []*StatOfStorageClass
 	LocalPeers                []Peer
 	ReadOnlyReasons           uint32
+	StoreMode                 StoreMode
 }
 
 // MetaNodeHeartbeatResponse defines the response to the meta node heartbeat request.
@@ -984,6 +985,7 @@ type MetaNodeHeartbeatResponse struct {
 	Result                           string
 	CpuUtil                          float64 `json:"cpuUtil"`
 	ReceivedForbidWriteOpOfProtoVer0 bool
+	RocksDBDiskInfo                  []*MetaNodeRocksdbInfo
 }
 
 // LcNodeHeartbeatResponse defines the response to the lc node heartbeat.
@@ -1166,6 +1168,9 @@ type MetaPartitionView struct {
 	Status             int8
 	Freeze             int8
 	LastDelReplicaTime int64
+	StoreMode          StoreMode
+	MemCount           uint8
+	RocksCount         uint8
 }
 
 type DataNodeDisksRequest struct{}
@@ -1401,6 +1406,7 @@ type SimpleVolView struct {
 	QosInfo QosSimpleInfo // qos status
 
 	RemoteCacheRemoveDupReq bool // TODO: using it in metanode, origin was named EnableRemoveDupReq
+	DefaultStoreMode        StoreMode
 }
 
 type NodeSetInfo struct {
@@ -1763,3 +1769,12 @@ const (
 	FreezingMetaPartition   = 1
 	FreezedMetaPartition    = 2
 )
+
+type MetaNodeRocksdbInfo struct {
+	Path           string
+	Total          uint64
+	Used           uint64
+	UsageRatio     float64
+	Status         int8
+	PartitionCount int
+}

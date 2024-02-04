@@ -154,6 +154,7 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 	var optFlashNodeTimeoutCount int64
 	var optRemoteCacheSameZoneTimeout int64
 	var optRemoteCacheSameRegionTimeout int64
+	var optStoreMode string
 
 	cmd := &cobra.Command{
 		Use:   cmdVolCreateUse,
@@ -271,7 +272,7 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 				stdout("  flashNodeTimeoutCount    : %v\n", optFlashNodeTimeoutCount)
 				stdout("  rcSameZoneTimeout        : %v microSecond\n", optRemoteCacheSameZoneTimeout)
 				stdout("  rcSameRegionTimeout      : %v ms\n", optRemoteCacheSameRegionTimeout)
-
+				stdout("  StoreMode                : %v\n", optStoreMode)
 				stdout("\nConfirm (yes/no)[yes]: ")
 				var userConfirm string
 				_, _ = fmt.Scanln(&userConfirm)
@@ -280,7 +281,19 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 					return
 				}
 			}
-
+			storeMode := proto.StoreModeMem
+			if optStoreMode != "" {
+				optStoreMode = strings.ToLower(optStoreMode)
+				switch optStoreMode {
+				case "memory":
+					storeMode = proto.StoreModeMem
+				case "rocksdb":
+					storeMode = proto.StoreModeRocksDb
+				default:
+					err = fmt.Errorf("Unknown store mode")
+					return
+				}
+			}
 			err = client.AdminAPI().CreateVolName(
 				volumeName, userID, optCapacity, optDeleteLockTime, crossZone, normalZonesFirst, optBusiness,
 				optMPCount, optDPCount, int(replicaNum), optDPSize, followerRead,
@@ -289,7 +302,7 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 				optVolStorageClass, optAllowedStorageClass, optMetaFollowerRead, optMaximallyRead,
 				optRcEnable, optRcAutoPrepare, optRcPath, optRcTTL, optRcReadTimeout, optRemoteCacheMaxFileSizeGB,
 				optRemoteCacheOnlyForNotSSD, optRemoteCacheMultiRead, optFlashNodeTimeoutCount,
-				optRemoteCacheSameZoneTimeout, optRemoteCacheSameRegionTimeout)
+				optRemoteCacheSameZoneTimeout, optRemoteCacheSameRegionTimeout, storeMode)
 			if err != nil {
 				err = fmt.Errorf("Create volume failed case:\n%v\n", err)
 				return
@@ -336,6 +349,7 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().Int64Var(&optFlashNodeTimeoutCount, CliFlagFlashNodeTimeoutCount, cmdVolDefaultFlashNodeTimeoutCount, "FlashNode timeout count, flashNode will be removed by client if it's timeout count exceeds this value")
 	cmd.Flags().Int64Var(&optRemoteCacheSameZoneTimeout, CliFlagRemoteCacheSameZoneTimeout, proto.DefaultRemoteCacheSameZoneTimeout, "Remote cache same zone timeout microsecond(must > 0)")
 	cmd.Flags().Int64Var(&optRemoteCacheSameRegionTimeout, CliFlagRemoteCacheSameRegionTimeout, proto.DefaultRemoteCacheSameRegionTimeout, "Remote cache same region timeout millisecond(must > 0)")
+	cmd.Flags().StringVar(&optStoreMode, CliFlagStoreMode, "memory", "Specify default store mode of mp")
 
 	return cmd
 }
@@ -388,6 +402,7 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 	var optForbidWriteOpOfProtoVer0 string
 	var optVolQuotaClass int
 	var optVolQuotaOfClass int
+	var optStoreMode string
 
 	confirmString := strings.Builder{}
 	var vv *proto.SimpleVolView
@@ -861,6 +876,20 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 				}
 			}
 
+			if optStoreMode != "" {
+				optStoreMode = strings.ToLower(optStoreMode)
+				switch optStoreMode {
+				case "rocksdb":
+					vv.DefaultStoreMode = proto.StoreModeRocksDb
+					isChange = true
+				case "memory":
+					vv.DefaultStoreMode = proto.StoreModeMem
+					isChange = true
+				}
+				confirmString.WriteString(fmt.Sprintf("  Default store mode : %v\n",
+					vv.DefaultStoreMode.Str()))
+			}
+
 			if err != nil {
 				return
 			}
@@ -938,6 +967,7 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().Int64Var(&optFlashNodeTimeoutCount, CliFlagFlashNodeTimeoutCount, 0, "FlashNode timeout count, flashNode will be removed by client if it's timeout count exceeds this value(default 5)")
 	cmd.Flags().Int64Var(&optRemoteCacheSameZoneTimeout, CliFlagRemoteCacheSameZoneTimeout, 0, "Remote cache same zone timeout microsecond(must > 0),default 400")
 	cmd.Flags().Int64Var(&optRemoteCacheSameRegionTimeout, CliFlagRemoteCacheSameRegionTimeout, 0, "Remote cache same region timeout millisecond(must > 0),default 2")
+	cmd.Flags().StringVar(&optStoreMode, CliFlagStoreMode, "", "Specify default store mode of mp")
 
 	return cmd
 }

@@ -41,6 +41,7 @@ import (
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/fileutil"
 	"github.com/cubefs/cubefs/util/log"
+	"github.com/cubefs/cubefs/util/timeutil"
 )
 
 // NOTE: if the operation is invoked by local machine
@@ -102,6 +103,15 @@ type MetaPartitionConfig struct {
 	Forbidden                bool                `json:"-"`
 	ForbidWriteOpOfProtoVer0 bool                `json:"ForbidWriteOpOfProtoVer0"`
 	Freeze                   bool                `json:"freeze"`
+
+	StoreMode            proto.StoreMode `json:"store_mode"`
+	RocksDBDir           string          `json:"rocksDb_dir"`
+	RocksWalFileSize     uint64          `json:"rocks_wal_file_size"`
+	RocksWalMemSize      uint64          `json:"rocks_wal_mem_size"`
+	RocksLogFileSize     uint64          `json:"rocks_log_file_size"`
+	RocksLogReversedTime uint64          `json:"rocks_log_reversed"`
+	RocksLogReVersedCnt  uint64          `json:"rocks_log_re_versed_cnt"`
+	RocksWalTTL          uint64          `json:"rocks_wal_ttl"`
 }
 
 func (c *MetaPartitionConfig) checkMeta() (err error) {
@@ -139,7 +149,6 @@ type OpInode interface {
 	EvictInode(req *EvictInodeReq, p *Packet, remoteAddr string) (err error)
 	EvictInodeBatch(req *BatchEvictInodeReq, p *Packet, remoteAddr string) (err error)
 	SetAttr(req *SetattrRequest, reqData []byte, p *Packet) (err error)
-	GetInodeTree() *BTree
 	GetInodeTreeLen() int
 	DeleteInode(req *proto.DeleteInodeRequest, p *Packet, remoteAddr string) (err error)
 	DeleteInodeBatch(req *proto.DeleteInodeBatchRequest, p *Packet, remoteAddr string) (err error)
@@ -178,7 +187,6 @@ type OpDentry interface {
 	ReadDirLimit(req *ReadDirLimitReq, p *Packet) (err error)
 	ReadDirOnly(req *ReadDirOnlyReq, p *Packet) (err error)
 	Lookup(req *LookupReq, p *Packet) (err error)
-	GetDentryTree() *BTree
 	GetDentryTreeLen() int
 	TxCreateDentry(req *proto.TxCreateDentryRequest, p *Packet, remoteAddr string) (err error)
 	TxDeleteDentry(req *proto.TxDeleteDentryRequest, p *Packet, remoteAddr string) (err error)
@@ -193,8 +201,7 @@ type OpTransaction interface {
 	TxCommit(req *proto.TxApplyRequest, p *Packet, remoteAddr string) (err error)
 	TxRollback(req *proto.TxApplyRequest, p *Packet, remoteAddr string) (err error)
 	TxGetInfo(req *proto.TxGetInfoRequest, p *Packet) (err error)
-	TxGetCnt() (uint64, uint64, uint64)
-	TxGetTree() (*BTree, *BTree, *BTree)
+	TxGetCnt() (uint64, uint64, uint64, error)
 }
 
 // OpExtent defines the interface for the extent operations.
@@ -274,6 +281,14 @@ type OpPartition interface {
 	CloseAndBackupRaft() error
 }
 
+type MetaPartitionDebug interface {
+	GetInodeRealCount() (count uint64, err error)
+	GetDentryRealCount() (count uint64, err error)
+	GetTxRealCount() (count uint64, err error)
+	GetTxRbInodeRealCount() (count uint64, err error)
+	GetTxRbDentryRealCount() (count uint64, err error)
+}
+
 // MetaPartition defines the interface for the meta partition operations.
 type MetaPartition interface {
 	Start(isCreate bool) error
@@ -294,6 +309,10 @@ type MetaPartition interface {
 	GetStatByStorageClass() []*proto.StatOfStorageClass
 	GetMigrateStatByStorageClass() []*proto.StatOfStorageClass
 	SetFreeze(req *proto.FreezeMetaPartitionRequest) (err error)
+	GetSnapShot() (Snapshot, error)
+	ReleaseSnapShot(snap Snapshot)
+	// NOTE: for debug
+	MetaPartitionDebug
 }
 
 type UidManager struct {
@@ -486,10 +505,10 @@ type metaPartition struct {
 	size                      uint64                // For partition all file size
 	applyID                   uint64                // Inode/Dentry max applyID, this index will be update after restoring from the dumped data.
 	storedApplyId             uint64                // update after store snapshot to disk
-	dentryTree                *BTree                // btree for dentries
-	inodeTree                 *BTree                // btree for inodes
-	extendTree                *BTree                // btree for inode extend (XAttr) management
-	multipartTree             *BTree                // collection for multipart management
+	dentryTree                DentryTree            // btree for dentries
+	inodeTree                 InodeTree             // btree for inodes
+	extendTree                ExtendTree            // btree for inode extend (XAttr) management
+	multipartTree             MultipartTree         // collection for multipart management
 	txProcessor               *TransactionProcessor // transction processor
 	raftPartition             raftstore.Partition
 	stopC                     chan bool
@@ -522,6 +541,10 @@ type metaPartition struct {
 	statByStorageClass        []*proto.StatOfStorageClass
 	statByMigrateStorageClass []*proto.StatOfStorageClass
 	syncAtimeCh               chan uint64
+
+	rocksdbManager       RocksdbManager
+	db                   *RocksdbOperator
+	waitPersistCommitCnt uint64
 }
 
 // IsLeader returns the raft leader address and if the current meta partition is the leader.
@@ -626,64 +649,7 @@ func (mp *metaPartition) updateSize() {
 		for {
 			select {
 			case <-timer.C:
-				size := uint64(0)
-				migrateSize := uint64(0)
-				migrateInodeCnt := uint32(0)
-
-				statStorageClassMap := make(map[uint32]*proto.StatOfStorageClass)
-				var statStorageClass *proto.StatOfStorageClass
-				statByMigStorageClassMap := make(map[uint32]*proto.StatOfStorageClass)
-				var statMigStorageClass *proto.StatOfStorageClass
-				var ok bool
-
-				mp.inodeTree.GetTree().Ascend(func(item BtreeItem) bool {
-					inode := item.(*Inode)
-					size += inode.Size
-
-					// stat normal Extents
-					if statStorageClass, ok = statStorageClassMap[inode.StorageClass]; !ok {
-						statStorageClass = proto.NewStatOfStorageClass(inode.StorageClass)
-						statStorageClassMap[inode.StorageClass] = statStorageClass
-					}
-					statStorageClass.InodeCount++
-					statStorageClass.UsedSizeBytes += inode.Size
-
-					// stat migration Extents
-					if inode.HybridCloudExtentsMigration == nil ||
-						inode.HybridCloudExtentsMigration.sortedEks == nil ||
-						!proto.IsValidStorageClass(inode.HybridCloudExtentsMigration.storageClass) {
-						return true
-					}
-					migrateStorageClass := inode.HybridCloudExtentsMigration.storageClass
-					if statMigStorageClass, ok = statByMigStorageClassMap[migrateStorageClass]; !ok {
-						statMigStorageClass = proto.NewStatOfStorageClass(migrateStorageClass)
-						statByMigStorageClassMap[migrateStorageClass] = statMigStorageClass
-					}
-					migrateInodeCnt += 1
-					migrateSize += inode.Size
-					statMigStorageClass.InodeCount++
-					statMigStorageClass.UsedSizeBytes += inode.Size
-
-					return true
-				})
-				mp.size = size
-
-				normalToSlice := make([]*proto.StatOfStorageClass, 0)
-				for _, stat := range statStorageClassMap {
-					normalToSlice = append(normalToSlice, stat)
-				}
-				mp.statByStorageClass = normalToSlice
-
-				migrateToSlice := make([]*proto.StatOfStorageClass, 0)
-				for _, migStat := range statByMigStorageClassMap {
-					migrateToSlice = append(migrateToSlice, migStat)
-				}
-				mp.statByMigrateStorageClass = migrateToSlice
-
-				log.LogDebugf("[updateSize] update mp(%d) size(%d) success, inodeCount(%d), dentryCount(%d), "+
-					"migrateInodeCount(%v) migrateSize(%v)",
-					mp.config.PartitionId, size, mp.inodeTree.Len(), mp.dentryTree.Len(),
-					migrateInodeCnt, migrateSize)
+				mp.updateSizeLoopFunc()
 			case <-mp.stopC:
 				log.LogDebugf("[updateSize] stop update mp[%v] size, inodeCount(%d), dentryCount(%d)",
 					mp.config.PartitionId, mp.inodeTree.Len(), mp.dentryTree.Len())
@@ -981,10 +947,6 @@ func (mp *metaPartition) getRaftPort() (heartbeat, replica int, err error) {
 func NewMetaPartition(conf *MetaPartitionConfig, manager *metadataManager) MetaPartition {
 	mp := &metaPartition{
 		config:         conf,
-		dentryTree:     NewBtree(),
-		inodeTree:      NewBtree(),
-		extendTree:     NewBtree(),
-		multipartTree:  NewBtree(),
 		stopC:          make(chan bool),
 		storeChan:      make(chan *storeMsg, 100),
 		freeList:       newFreeList(),
@@ -1000,6 +962,9 @@ func NewMetaPartition(conf *MetaPartitionConfig, manager *metadataManager) MetaP
 			TemporaryVerMap: make(map[uint64]*proto.VolVersionInfo),
 		},
 		enableAuditLog: true,
+	}
+	if manager != nil {
+		mp.rocksdbManager = manager.rocksdbManager
 	}
 
 	if mp.manager != nil && mp.manager.metaNode.raftPartitionCanUsingDifferentPort {
@@ -1018,8 +983,9 @@ func NewMetaPartition(conf *MetaPartitionConfig, manager *metadataManager) MetaP
 	if manager != nil {
 		mp.config.ForbidWriteOpOfProtoVer0 = manager.isVolForbidWriteOpOfProtoVer0(mp.config.VolName)
 	}
-	mp.txProcessor = NewTransactionProcessor(mp)
+
 	go mp.batchSyncInodeAtime()
+
 	return mp
 }
 
@@ -1126,9 +1092,9 @@ func (mp *metaPartition) LoadSnapshot(snapshotPath string) (err error) {
 	}
 
 	loadFuncs := []func(rootDir string, crc uint32) error{
-		mp.loadInode,
+		nil, // NOTE: we load inode first
 		mp.loadDentry,
-		nil, // loading quota info from extend requires mp.loadInode() has been completed, so skip mp.loadExtend() here
+		mp.loadExtend,
 		mp.loadMultipart,
 	}
 
@@ -1152,7 +1118,7 @@ func (mp *metaPartition) LoadSnapshot(snapshotPath string) (err error) {
 		loadFuncs = append(loadFuncs, mp.loadUniqChecker)
 	}
 
-	if crc_count == CRC_COUNT_MULTI_VER {
+	if crc_count >= CRC_COUNT_MULTI_VER {
 		if err = mp.loadMultiVer(snapshotPath, crcs[CRC_COUNT_MULTI_VER-1]); err != nil {
 			return
 		}
@@ -1160,7 +1126,10 @@ func (mp *metaPartition) LoadSnapshot(snapshotPath string) (err error) {
 		mp.storeMultiVersion(snapshotPath, &storeMsg{multiVerList: mp.multiVersionList.VerList})
 	}
 
+	// NOTE: load inodes first
 	errs := make([]error, len(loadFuncs))
+	errs[0] = mp.loadInode(snapshotPath, crcs[0])
+
 	var wg sync.WaitGroup
 	wg.Add(len(loadFuncs))
 	for idx, f := range loadFuncs {
@@ -1195,10 +1164,6 @@ func (mp *metaPartition) LoadSnapshot(snapshotPath string) (err error) {
 		}
 	}
 
-	if err = mp.loadExtend(snapshotPath, crcs[2]); err != nil {
-		return
-	}
-
 	if needLoadTxStuff {
 		if err = mp.loadTxID(snapshotPath); err != nil {
 			return
@@ -1211,39 +1176,84 @@ func (mp *metaPartition) LoadSnapshot(snapshotPath string) (err error) {
 		}
 	}
 
-	if err = mp.loadApplyID(snapshotPath); err != nil {
-		return
-	}
 	return
 }
 
 func (mp *metaPartition) load(isCreate bool) (err error) {
 	if err = mp.loadMetadata(); err != nil {
+		log.LogErrorf("[load] failed to load metadata, mp(%v) err(%v)", mp.config.PartitionId, err)
+		return
+	}
+
+	if err = mp.initObjects(isCreate); err != nil {
+		log.LogErrorf("[load] failed to init objects, mp(%v) err(%v)", mp.config.PartitionId, err)
 		return
 	}
 	// 1. create new metaPartition, no need to load snapshot
 	// 2. store the snapshot files for new mp, because
 	// mp.load() will check all the snapshot files when mn startup
-	if isCreate {
+	// NOTE: only memory store need to create snapshot files
+	if isCreate && mp.HasMemStore() {
 		if err = mp.storeSnapshotFiles(); err != nil {
 			err = errors.NewErrorf("[onStart] storeSnapshotFiles for partition id=%d: %s",
 				mp.config.PartitionId, err.Error())
 		}
 		return
 	}
-
-	snapshotPath := path.Join(mp.config.RootDir, snapshotDir)
-	if _, err = os.Stat(snapshotPath); err != nil {
-		log.LogErrorf("load snapshot failed, err: %s", err.Error())
-		return nil
-
+	snapshotPath := ""
+	if mp.HasMemStore() {
+		snapshotPath = path.Join(mp.config.RootDir, snapshotDir)
+		if _, err = os.Stat(snapshotPath); err != nil {
+			log.LogErrorf("[load] load snapshot failed, err: %s", err.Error())
+			return nil
+		}
+		err = mp.LoadSnapshot(snapshotPath)
 	}
 
-	err = mp.LoadSnapshot(snapshotPath)
+	if mp.HasRocksDBStore() {
+		log.LogDebugf("[load] mp(%v) rocksdb dir(%v)", mp.config.PartitionId, mp.config.RocksDBDir)
+		log.LogDebugf("[load] load rocksdb data")
+		err = mp.LoadDataFromRocksDb()
+	}
+
 	if err != nil {
+		log.LogErrorf("[load] failed to load data, mp(%v) err(%v)", mp.config.PartitionId, err)
 		return err
 	}
-	return nil
+
+	// NOTE: snapshotPath can be empty if using rocksdb
+	if err = mp.loadApplyID(snapshotPath); err != nil {
+		log.LogErrorf("[load] failed to load apply id, mp(%v) err(%v)", mp.config.PartitionId, err)
+		return
+	}
+
+	// NOTE: when we create rocksdb mp
+	// we will select a db path and set RocksdbDir config
+	// so we need to persist metadata
+	if mp.HasRocksDBStore() {
+		if err = mp.persistSelectedRocksdbDir(); err != nil {
+			log.LogErrorf("[load] mp(%v) failed to persist rocksdb dir to metadata file, err(%v)", mp.config.PartitionId, err)
+			return
+		}
+	}
+
+	// NOTE: for debug
+	if log.EnableDebug() {
+		log.LogDebugf("[load] mp(%v) is create(%v)", mp.config.PartitionId, isCreate)
+		log.LogDebugf("[load] mp(%v) apply id(%v)", mp.config.PartitionId, mp.applyID)
+		log.LogDebugf("[load] mp(%v) inode real len(%v)", mp.config.PartitionId, mp.inodeTree.RealCount())
+		log.LogDebugf("[load] mp(%v) dentry real len(%v)", mp.config.PartitionId, mp.dentryTree.RealCount())
+		log.LogDebugf("[load] mp(%v) extentd real len(%v)", mp.config.PartitionId, mp.extendTree.RealCount())
+		log.LogDebugf("[load] mp(%v) multipart real len(%v)", mp.config.PartitionId, mp.multipartTree.RealCount())
+		txTree := mp.txProcessor.txManager.txTree
+		txRbInoTree := mp.txProcessor.txResource.txRbInodeTree
+		txRbDenTree := mp.txProcessor.txResource.txRbDentryTree
+		log.LogDebugf("[load] mp(%v) tx real len(%v)", mp.config.PartitionId, txTree.RealCount())
+		log.LogDebugf("[load] mp(%v) tx rb inode real len(%v)", mp.config.PartitionId, txRbInoTree.RealCount())
+		log.LogDebugf("[load] mp(%v) tx rb dentry real len(%v)", mp.config.PartitionId, txRbDenTree.RealCount())
+	}
+
+	return
 }
 
 func (mp *metaPartition) doFileStats(thresholds []uint64) {
@@ -1262,11 +1272,17 @@ func (mp *metaPartition) doFileStats(thresholds []uint64) {
 }
 
 func (mp *metaPartition) store(sm *storeMsg) (err error) {
-	log.LogWarnf("metaPartition %d store apply %v", mp.config.PartitionId, sm.applyIndex)
-	defer func() {
-		log.LogWarnf("metaPartition %d store apply %v finish", mp.config.PartitionId, sm.applyIndex)
-	}()
-
+	if mp.HasRocksDBStore() {
+		mp.storedApplyId = sm.snap.ApplyID()
+		log.LogInfof("[store] mp(%v) flush rocksdb memory table to sst", mp.config.PartitionId)
+		// NOTE: execute flush
+		if err = mp.inodeTree.Flush(); err != nil {
+			return
+		}
+		return nil
+	}
+	log.LogDebugf("[store] mp(%v) store snapshot", mp.config.PartitionId)
+	log.LogWarnf("metaPartition %d store apply %v", mp.config.PartitionId, sm.snap.ApplyID())
 	tmpDir := path.Join(mp.config.RootDir, snapshotDirTmp)
 	if _, err = os.Stat(tmpDir); err == nil {
 		// TODO Unhandled errors
@@ -1304,7 +1320,7 @@ func (mp *metaPartition) store(sm *storeMsg) (err error) {
 		}
 		crcBuffer.WriteString(fmt.Sprintf("%d", crc))
 	}
-	log.LogWarnf("metaPartition %d store apply %v", mp.config.PartitionId, sm.applyIndex)
+	log.LogWarnf("metaPartition %d store apply %v", mp.config.PartitionId, sm.snap.ApplyID())
 	if err = mp.storeApplyID(tmpDir, sm); err != nil {
 		return
 	}
@@ -1346,7 +1362,7 @@ func (mp *metaPartition) store(sm *storeMsg) (err error) {
 		return
 	}
 
-	mp.storedApplyId = sm.applyIndex
+	mp.storedApplyId = sm.snap.ApplyID()
 	return
 }
 
@@ -1374,6 +1390,7 @@ func (mp *metaPartition) nextInodeID() (inodeId uint64, err error) {
 		if atomic.CompareAndSwapUint64(&mp.config.Cursor, cur, newId) {
 			return newId, nil
 		}
+		mp.inodeTree.SetCursor(newId)
 	}
 }
 
@@ -1474,24 +1491,42 @@ func (mp *metaPartition) MarshalJSON() ([]byte, error) {
 
 // Reset resets the meta partition.
 func (mp *metaPartition) Reset() (err error) {
-	mp.dentryTree.Reset()
-	mp.inodeTree.Reset()
-	mp.extendTree.Reset()
-	mp.multipartTree.Reset()
-	mp.config.Cursor = 0
-	mp.config.UniqId = 0
-	mp.applyID = 0
+	log.LogWarnf("[Reset] reset mp(%v)", mp.config.PartitionId)
+	// NOTE: close rocksdb
+	err = mp.Clear()
+	if err != nil {
+		log.LogErrorf("[Reset] mp(%v) failed to clear mp data", mp.config.PartitionId)
+		return
+	}
 	mp.txProcessor.Reset()
+	err = mp.inodeTree.Flush()
+	if err != nil {
+		log.LogErrorf("[Reset] mp(%v) failed to clear data, err(%v)", mp.config.PartitionId, err)
+		err = nil
+	}
+	mp.rocksdbManager.CloseRocksdb(mp.db)
+	mp.db = nil
 
 	// remove files
 	filenames := []string{applyIDFile, dentryFile, inodeFile, extendFile, multipartFile, verdataFile, txInfoFile, txRbInodeFile, txRbDentryFile, TxIDFile}
 	for _, filename := range filenames {
 		filepath := path.Join(mp.config.RootDir, filename)
-		if err = os.Remove(filepath); err != nil {
+		if err = os.Remove(filepath); err != nil && !os.IsNotExist(err) {
 			return
 		}
+		err = nil
+	}
+	if mp.HasMemStore() {
+		mp.cleanMemoryTreeResource()
 	}
 
+	if mp.config.RocksDBDir != "" && mp.rocksdbManager != nil {
+		err = mp.rocksdbManager.DetachPartition(mp.config.RocksDBDir)
+		if err != nil {
+			log.LogWarnf("[opDeleteMetaPartition] failed to detach partition from rocksdb manager, err(%v)", err)
+			err = nil
+		}
+	}
 	return
 }
 
@@ -1587,7 +1622,21 @@ func (mp *metaPartition) delPartitionDentriesVersion(verSeq uint64, wg *sync.Wai
 	count := 0
 	needSleep := false
 
-	mp.dentryTree.GetTree().Ascend(func(i BtreeItem) bool {
+	snap, err := mp.GetSnapShot()
+	if err != nil {
+		log.LogErrorf("mp[%d] create snap shot failed", mp.config.PartitionId)
+		return
+	}
+	defer func() {
+		if snap != nil {
+			mp.ReleaseSnapShot(snap)
+		}
+		if err != nil {
+			log.LogErrorf("mp[%d] range inode failed", mp.config.PartitionId)
+		}
+	}()
+
+	err = snap.Range(DentryType, func(i interface{}) bool {
 		if _, ok := mp.IsLeader(); !ok {
 			return false
 		}
@@ -1626,7 +1675,21 @@ func (mp *metaPartition) delPartitionExtendsVersion(verSeq uint64, wg *sync.Wait
 	count := 0
 	needSleep := false
 
-	mp.extendTree.GetTree().Ascend(func(treeItem BtreeItem) bool {
+	snap, err := mp.GetSnapShot()
+	if err != nil {
+		log.LogErrorf("mp[%d] create snap shot failed", mp.config.PartitionId)
+		return
+	}
+	defer func() {
+		if snap != nil {
+			mp.ReleaseSnapShot(snap)
+		}
+		if err != nil {
+			log.LogErrorf("mp[%d] range inode failed", mp.config.PartitionId)
+		}
+	}()
+
+	err = snap.Range(ExtendType, func(treeItem interface{}) bool {
 		if _, ok := mp.IsLeader(); !ok {
 			return false
 		}
@@ -1663,7 +1726,19 @@ func (mp *metaPartition) delPartitionInodesVersion(verSeq uint64, wg *sync.WaitG
 	count := 0
 	needSleep := false
 
-	mp.inodeTree.GetTree().Ascend(func(i BtreeItem) bool {
+	snap, err := mp.GetSnapShot()
+	if err != nil {
+		log.LogErrorf("mp[%d] create snap shot failed", mp.config.PartitionId)
+		return
+	}
+	defer func() {
+		mp.ReleaseSnapShot(snap)
+		if err != nil {
+			log.LogErrorf("mp[%d] range inode failed", mp.config.PartitionId)
+		}
+	}()
+
+	err = snap.Range(InodeType, func(i interface{}) bool {
 		if _, ok := mp.IsLeader(); !ok {
 			return false
 		}
@@ -1705,6 +1780,130 @@ func (mp *metaPartition) delPartitionInodesVersion(verSeq uint64, wg *sync.WaitG
 	})
 }
 
+// cacheTTLWork only happen in datalake situation
+func (mp *metaPartition) cacheTTLWork() (err error) {
+	// check volume type, only Cold volume will do the cache ttl.
+	volView := mp.vol.GetVolView()
+	if volView.VolType != proto.VolumeTypeCold {
+		return
+	}
+
+	if mp.verSeq > 0 {
+		log.LogWarnf("[doCacheTTL] volume [%v] enable snapshot.exit cache ttl, mp[%v]", mp.GetVolName(), mp.config.PartitionId)
+		return
+	}
+
+	// do cache ttl work
+	go mp.doCacheTTL(volView.CacheTtl)
+	return
+}
+
+func (mp *metaPartition) doCacheTTL(cacheTTL int) (err error) {
+	// first sleep a rand time, range [0, 1200s(20m)],
+	// make sure all mps is not doing scan work at the same time.
+	rand.Seed(time.Now().Unix())
+	time.Sleep(time.Duration(rand.Intn(1200)))
+
+	ttl := time.NewTicker(time.Duration(util.OneDaySec()) * time.Second)
+	for {
+		select {
+		case <-ttl.C:
+			if mp.verSeq > 0 {
+				log.LogWarnf("[doCacheTTL] volume [%v] enable snapshot.exit cache ttl, mp[%v] cacheTTL[%v]",
+					mp.GetVolName(), mp.config.PartitionId, cacheTTL)
+				return
+			}
+			log.LogDebugf("[doCacheTTL] begin cache ttl, mp[%v] cacheTTL[%v]", mp.config.PartitionId, cacheTTL)
+			// only leader can do TTL work
+			if _, ok := mp.IsLeader(); !ok {
+				log.LogDebugf("[doCacheTTL] partitionId=%d is not leader, skip", mp.config.PartitionId)
+				continue
+			}
+
+			// get the last cacheTTL
+			volView, mcErr := masterClient.ClientAPI().GetVolumeWithoutAuthKey(mp.config.VolName)
+			if mcErr != nil {
+				err = fmt.Errorf("[doCacheTTL]: can't get volume info: partitoinID(%v) volume(%v)",
+					mp.config.PartitionId, mp.config.VolName)
+				return
+			}
+			cacheTTL = volView.CacheTTL
+
+			mp.InodeTTLScan(cacheTTL)
+
+		case <-mp.stopC:
+			log.LogWarnf("[doCacheTTL] stoped, mp[%v]", mp.config.PartitionId)
+			return
+		}
+	}
+}
+
+func (mp *metaPartition) InodeTTLScan(cacheTTL int) {
+	curTime := timeutil.GetCurrentTimeUnix()
+	// begin
+	count := 0
+	needSleep := false
+
+	snap, err := mp.GetSnapShot()
+	if err != nil {
+		log.LogErrorf("mp[%d] create snap shot failed", mp.config.PartitionId)
+		return
+	}
+	defer func() {
+		if snap != nil {
+			mp.ReleaseSnapShot(snap)
+		}
+		if err != nil {
+			log.LogErrorf("mp[%d] range inode failed", mp.config.PartitionId)
+		}
+	}()
+
+	err = snap.Range(InodeType, func(i interface{}) bool {
+		inode := i.(*Inode)
+		// dir type just skip
+		if proto.IsDir(inode.Type) {
+			return true
+		}
+		inode.RLock()
+		// eks is empty just skip
+		if len(inode.Extents.eks) == 0 || inode.ShouldDelete() {
+			inode.RUnlock()
+			return true
+		}
+
+		if (curTime - inode.AccessTime) > int64(cacheTTL)*util.OneDaySec() {
+			log.LogDebugf("[InodeTTLScan] mp[%v] do inode ttl delete[%v]", mp.config.PartitionId, inode.Inode)
+			count++
+			// make request
+			p := &Packet{}
+			req := &proto.EmptyExtentKeyRequest{
+				Inode: inode.Inode,
+			}
+			ino := NewInode(req.Inode, 0)
+			curTime = timeutil.GetCurrentTimeUnix()
+			if inode.ModifyTime < curTime {
+				ino.ModifyTime = curTime
+			}
+
+			mp.ExtentsOp(p, ino, opFSMExtentsEmpty)
+			// check empty result.
+			// if result is OpAgain, means the extDelCh maybe full,
+			// so let it sleep 1s.
+			if p.ResultCode == proto.OpAgain {
+				needSleep = true
+			}
+		}
+		inode.RUnlock()
+		// every 1000 inode sleep 1s
+		if count > 1000 || needSleep {
+			count %= 1000
+			needSleep = false
+			time.Sleep(time.Second)
+		}
+		return true
+	})
+}
+
 func (mp *metaPartition) initTxInfo(txInfo *proto.TransactionInfo) error {
 	txInfo.TxID = mp.txProcessor.txManager.nextTxID()
 
@@ -1719,19 +1918,18 @@ func (mp *metaPartition) initTxInfo(txInfo *proto.TransactionInfo) error {
 }
 
 func (mp *metaPartition) storeSnapshotFiles() (err error) {
+	mp.nonIdempotent.Lock()
+	defer mp.nonIdempotent.Unlock()
+	snap, err := mp.GetSnapShot()
+	if err != nil {
+		return
+	}
+	defer snap.Close()
 	msg := &storeMsg{
-		applyIndex:     mp.applyID,
-		txId:           mp.txProcessor.txManager.txIdAlloc.getTransactionID(),
-		inodeTree:      NewBtree(),
-		dentryTree:     NewBtree(),
-		extendTree:     NewBtree(),
-		multipartTree:  NewBtree(),
-		txTree:         NewBtree(),
-		txRbInodeTree:  NewBtree(),
-		txRbDentryTree: NewBtree(),
-		uniqId:         mp.GetUniqId(),
-		uniqChecker:    newUniqChecker(),
-		multiVerList:   mp.multiVersionList.VerList,
+		snap:         snap,
+		uniqId:       mp.GetUniqId(),
+		uniqChecker:  newUniqChecker(),
+		multiVerList: mp.multiVersionList.VerList,
 	}
 
 	return mp.store(msg)
@@ -1805,4 +2003,339 @@ func (mp *metaPartition) getFileRange() []int64 {
 	fileRangeCopy := make([]int64, len(mp.fileRange))
 	copy(fileRangeCopy, mp.fileRange)
 	return fileRangeCopy
+}
+
+func (mp *metaPartition) HasMemStore() bool {
+	return mp.config.StoreMode&proto.StoreModeMem != 0
+}
+
+func (mp *metaPartition) HasRocksDBStore() bool {
+	return mp.config.StoreMode&proto.StoreModeRocksDb != 0
+}
+
+func (mp *metaPartition) GetSnapShot() (Snapshot, error) {
+	return NewSnapshot(mp)
+}
+
+func (mp *metaPartition) ReleaseSnapShot(snap Snapshot) {
+	snap.Close()
+}
+
+// NOTE: for debug
+func (mp *metaPartition) GetInodeRealCount() (count uint64, err error) {
+	snap, err := mp.GetSnapShot()
+	if err != nil {
+		return
+	}
+	defer snap.Close()
+	err = snap.Range(InodeType, func(item interface{}) bool {
+		count++
+		return true
+	})
+	return
+}
+
+func (mp *metaPartition) GetDentryRealCount() (count uint64, err error) {
+	snap, err := mp.GetSnapShot()
+	if err != nil {
+		return
+	}
+	defer snap.Close()
+	err = snap.Range(DentryType, func(item interface{}) bool {
+		count++
+		return true
+	})
+	return
+}
+
+func (mp *metaPartition) GetTxRealCount() (count uint64, err error) {
+	snap, err := mp.GetSnapShot()
+	if err != nil {
+		return
+	}
+	defer snap.Close()
+	err = snap.Range(TransactionType, func(item interface{}) bool {
+		count++
+		return true
+	})
+	return
+}
+
+func (mp *metaPartition) GetTxRbInodeRealCount() (count uint64, err error) {
+	snap, err := mp.GetSnapShot()
+	if err != nil {
+		return
+	}
+	defer snap.Close()
+	err = snap.Range(TransactionRollbackInodeType, func(item interface{}) bool {
+		count++
+		return true
+	})
+	return
+}
+
+func (mp *metaPartition) GetTxRbDentryRealCount() (count uint64, err error) {
+	snap, err := mp.GetSnapShot()
+	if err != nil {
+		return
+	}
+	defer snap.Close()
+	err = snap.Range(TransactionRollbackDentryType, func(item interface{}) bool {
+		count++
+		return true
+	})
+	return
+}
+
+func (mp *metaPartition) GetExtendRealCount() (count uint64, err error) {
+	snap, err := mp.GetSnapShot()
+	if err != nil {
+		return
+	}
+	defer snap.Close()
+	err = snap.Range(ExtendType, func(item interface{}) bool {
+		count++
+		return true
+	})
+	return
+}
+
+func (mp *metaPartition) GetMultipartRealCount() (count uint64, err error) {
+	snap, err := mp.GetSnapShot()
+	if err != nil {
+		return
+	}
+	defer snap.Close()
+	err = snap.Range(MultipartType, func(item interface{}) bool {
+		count++
+		return true
+	})
+	return
+}
+
+func (mp *metaPartition) initMemoryTree() {
+	mp.dentryTree = &DentryBTree{NewBtree()}
+	mp.inodeTree = &InodeBTree{NewBtree()}
+	mp.extendTree = &ExtendBTree{NewBtree()}
+	mp.multipartTree = &MultipartBTree{NewBtree()}
+}
+
+func (mp *metaPartition) initRocksDBTree() (err error) {
+	var tree *RocksTree
+
+	if tree, err = DefaultRocksTree(mp.db, mp.config.PartitionId); err != nil {
+		log.LogErrorf("[initRocksDBTree] default rocks tree dir: %v, id: %v error %v ", mp.config.RocksDBDir, mp.config.PartitionId, err)
+		return
+	}
+	if mp.inodeTree, err = NewInodeRocks(tree); err != nil {
+		return
+	}
+	if mp.dentryTree, err = NewDentryRocks(tree); err != nil {
+		return
+	}
+	if mp.extendTree, err = NewExtendRocks(tree); err != nil {
+		return
+	}
+	if mp.multipartTree, err = NewMultipartRocks(tree); err != nil {
+		return
+	}
+	return
+}
+
+func (mp *metaPartition) cleanMemoryTreeResource() {
+	if mp.HasRocksDBStore() {
+		log.LogWarnf("mp[%v] remove mem dir,but has rocksdb store mode", mp.config.PartitionId)
+	}
+	os.RemoveAll(mp.config.RootDir + snapshotDir)
+	os.RemoveAll(mp.config.RootDir + snapshotDirTmp)
+	os.RemoveAll(mp.config.RootDir + snapshotBackup)
+}
+
+func (mp *metaPartition) selectRocksDBDir() (err error) {
+	maxUsedPercent := getMemModeMaxFsUsedPercent()
+	if mp.HasRocksDBStore() {
+		maxUsedPercent = getRocksDBModeMaxFsUsedPercent()
+	}
+	factor := float64(maxUsedPercent) / float64(100)
+
+	dir, err := mp.manager.rocksdbManager.SelectRocksdbDisk(factor)
+	if err != nil {
+		log.LogErrorf("[selectRocksDBDir] mp(%v) select failed(%v), so set root dir(%s) as rocksdb dir",
+			mp.config.PartitionId, err, mp.manager.rootDir)
+		mp.config.RocksDBDir = mp.manager.rootDir
+		err = nil
+		return
+	}
+	mp.config.RocksDBDir = dir
+	return
+}
+
+func (mp *metaPartition) LoadDataFromRocksDb() (err error) {
+	// NOTE: load tx id
+	txId := mp.inodeTree.GetTxId()
+	if txId > mp.txProcessor.txManager.txIdAlloc.getTransactionID() {
+		mp.txProcessor.txManager.txIdAlloc.setTransactionID(txId)
+	}
+	log.LogDebugf("[LoadDataFromRocksDb] mp(%v) load tx id(%v)", mp.config.PartitionId, mp.txProcessor.txManager.txIdAlloc.getTransactionID())
+	return
+}
+
+func (mp *metaPartition) Clear() (err error) {
+	log.LogDebugf("[Clear] mp(%v) clear data", mp.config.PartitionId)
+	handle, err := mp.inodeTree.CreateBatchWriteHandle()
+	if err != nil {
+		log.LogErrorf("[Clear] mp(%v) failed to open write handle, err(%v)", mp.config.PartitionId, err)
+		return
+	}
+	if err = mp.inodeTree.Clear(handle); err != nil {
+		log.LogErrorf("[Clear] mp(%v) failed to clear inode tree, err(%v)", mp.config.PartitionId, err)
+		return
+	}
+	if err = mp.dentryTree.Clear(handle); err != nil {
+		log.LogErrorf("[Clear] mp(%v) failed to clear dentry tree, err(%v)", mp.config.PartitionId, err)
+		return
+	}
+	if err = mp.extendTree.Clear(handle); err != nil {
+		log.LogErrorf("[Clear] mp(%v) failed to clear extend tree, err(%v)", mp.config.PartitionId, err)
+		return
+	}
+	if err = mp.multipartTree.Clear(handle); err != nil {
+		log.LogErrorf("[Clear] mp(%v) failed to clear multipart tree, err(%v)", mp.config.PartitionId, err)
+		return
+	}
+	txTree := mp.txProcessor.txManager.txTree
+	txRbInoTree := mp.txProcessor.txResource.txRbInodeTree
+	txRbDenTree := mp.txProcessor.txResource.txRbDentryTree
+	if err = txTree.Clear(handle); err != nil {
+		log.LogErrorf("[Clear] mp(%v) failed to clear transaction tree, err(%v)", mp.config.PartitionId, err)
+		return
+	}
+	if err = txRbInoTree.Clear(handle); err != nil {
+		log.LogErrorf("[Clear] mp(%v) failed to clear transaction rollback inode tree, err(%v)", mp.config.PartitionId, err)
+		return
+	}
+	if err = txRbDenTree.Clear(handle); err != nil {
+		log.LogErrorf("[Clear] mp(%v) failed to clear transaction rollback dentry tree, err(%v)", mp.config.PartitionId, err)
+		return
+	}
+	// NOTE: delete metadata
+	if err = mp.inodeTree.DeleteMetadata(handle); err != nil {
+		log.LogErrorf("[Clear] mp(%v) failed to delete metadata, err(%v)", mp.config.PartitionId, err)
+		return
+	}
+	err = mp.inodeTree.CommitAndReleaseBatchWriteForClear(handle)
+	if err != nil {
+		return
+	}
+	err = mp.inodeTree.Flush()
+	if err != nil {
+		return
+	}
+	mp.applyID = 0
+	mp.txProcessor.txManager.txIdAlloc.setTransactionID(0)
+	mp.config.Cursor = 0
+	mp.config.UniqId = 0
+	return
+}
+
+func (mp *metaPartition) updateSizeLoopFunc() error {
+	migrateSize := uint64(0)
+	migrateInodeCnt := uint32(0)
+
+	statStorageClassMap := make(map[uint32]*proto.StatOfStorageClass)
+	var statStorageClass *proto.StatOfStorageClass
+	statByMigStorageClassMap := make(map[uint32]*proto.StatOfStorageClass)
+	var statMigStorageClass *proto.StatOfStorageClass
+	var ok bool
+
+	snap, err := mp.GetSnapShot()
+	if err != nil {
+		log.LogErrorf("mp[%d] create snap shot failed", mp.config.PartitionId)
+		return err
+	}
+	defer func() {
+		if snap != nil {
+			mp.ReleaseSnapShot(snap)
+		}
+		if err != nil {
+			log.LogErrorf("mp[%d] range inode failed", mp.config.PartitionId)
+		}
+	}()
+
+	err = snap.Range(InodeType, func(item interface{}) bool {
+		inode := item.(*Inode)
+
+		// stat normal Extents
+		if statStorageClass, ok = statStorageClassMap[inode.StorageClass]; !ok {
+			statStorageClass = proto.NewStatOfStorageClass(inode.StorageClass)
+			statStorageClassMap[inode.StorageClass] = statStorageClass
+		}
+		statStorageClass.InodeCount++
+		statStorageClass.UsedSizeBytes += inode.Size
+
+		// stat migration Extents
+		if inode.HybridCloudExtentsMigration == nil ||
+			inode.HybridCloudExtentsMigration.sortedEks == nil ||
+			!proto.IsValidStorageClass(inode.HybridCloudExtentsMigration.storageClass) {
+			return true
+		}
+		migrateStorageClass := inode.HybridCloudExtentsMigration.storageClass
+		if statMigStorageClass, ok = statByMigStorageClassMap[migrateStorageClass]; !ok {
+			statMigStorageClass = proto.NewStatOfStorageClass(migrateStorageClass)
+			statByMigStorageClassMap[migrateStorageClass] = statMigStorageClass
+		}
+		migrateInodeCnt += 1
+		migrateSize += inode.Size
+		statMigStorageClass.InodeCount++
+		statMigStorageClass.UsedSizeBytes += inode.Size
+
+		return true
+	})
+
+	mp.size = migrateSize
+
+	normalToSlice := make([]*proto.StatOfStorageClass, 0)
+	for _, stat := range statStorageClassMap {
+		normalToSlice = append(normalToSlice, stat)
+	}
+	mp.statByStorageClass = normalToSlice
+
+	migrateToSlice := make([]*proto.StatOfStorageClass, 0)
+	for _, migStat := range statByMigStorageClassMap {
+		migrateToSlice = append(migrateToSlice, migStat)
+	}
+	mp.statByMigrateStorageClass = migrateToSlice
+
+	log.LogDebugf("[updateSize] update mp(%d) size(%d) success, inodeCount(%d), dentryCount(%d), "+
+		"migrateInodeCount(%v) migrateSize(%v)",
+		mp.config.PartitionId, mp.size, mp.inodeTree.Len(), mp.dentryTree.Len(),
+		migrateInodeCnt, migrateSize)
+
+	return nil
+}
+
+func (mp *metaPartition) initObjects(isCreate bool) (err error) {
+	mp.uidManager = NewUidMgr(mp.config.VolName, mp.config.PartitionId)
+	mp.mqMgr = NewQuotaManager(mp.config.VolName, mp.config.PartitionId)
+
+	if mp.HasMemStore() {
+		mp.initMemoryTree()
+	}
+
+	if mp.HasRocksDBStore() {
+		mp.db, err = mp.rocksdbManager.OpenRocksdb(mp.config.RocksDBDir, mp.config.PartitionId)
+		if err != nil {
+			log.LogErrorf("[initObjects] mp(%v) failed to open rocksdb, err(%v)", mp.config.PartitionId, err)
+			return
+		}
+		if err = mp.initRocksDBTree(); err != nil {
+			return
+		}
+		if isCreate {
+			mp.cleanMemoryTreeResource()
+		}
+	}
+
+	mp.txProcessor = NewTransactionProcessor(mp)
+	return
 }

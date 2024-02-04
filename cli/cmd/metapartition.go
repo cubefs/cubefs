@@ -17,6 +17,7 @@ package cmd
 import (
 	"sort"
 	"strconv"
+	"strings"
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/sdk/master"
@@ -264,6 +265,7 @@ the corrupt nodes, the few remaining replicas can not reach an agreement with on
 
 func newMetaPartitionDecommissionCmd(client *master.MasterClient) *cobra.Command {
 	var clientIDKey string
+	var optStoreMode string
 	cmd := &cobra.Command{
 		Use:   CliOpDecommission + " [ADDRESS] [META PARTITION ID]",
 		Short: cmdMetaPartitionDecommissionShort,
@@ -278,7 +280,20 @@ func newMetaPartitionDecommissionCmd(client *master.MasterClient) *cobra.Command
 			}()
 			address := args[0]
 			partitionID, err = strconv.ParseUint(args[1], 10, 64)
-			if err = client.AdminAPI().DecommissionMetaPartition(partitionID, address, clientIDKey); err != nil {
+			storeMode := proto.StoreModeDef
+			if optStoreMode != "" {
+				optStoreMode = strings.ToLower(optStoreMode)
+				switch optStoreMode {
+				case "memory":
+					storeMode = proto.StoreModeMem
+				case "rocksdb":
+					storeMode = proto.StoreModeRocksDb
+				default:
+					err = fmt.Errorf("Unknown store mode")
+					return
+				}
+			}
+			if err = client.AdminAPI().DecommissionMetaPartition(partitionID, address, clientIDKey, storeMode); err != nil {
 				return
 			}
 			stdout("Decommission meta partition successfully\n")
@@ -291,11 +306,13 @@ func newMetaPartitionDecommissionCmd(client *master.MasterClient) *cobra.Command
 		},
 	}
 	cmd.Flags().StringVar(&clientIDKey, CliFlagClientIDKey, client.ClientIDKey(), CliUsageClientIDKey)
+	cmd.Flags().StringVar(&optStoreMode, CliFlagStoreMode, "", "specify volume default store mode")
 	return cmd
 }
 
 func newMetaPartitionReplicateCmd(client *master.MasterClient) *cobra.Command {
 	var clientIDKey string
+	var optStoreMode string
 	cmd := &cobra.Command{
 		Use:   CliOpReplicate + " [ADDRESS] [META PARTITION ID]",
 		Short: cmdMetaPartitionReplicateShort,
@@ -310,7 +327,21 @@ func newMetaPartitionReplicateCmd(client *master.MasterClient) *cobra.Command {
 			}()
 			address := args[0]
 			partitionID, err = strconv.ParseUint(args[1], 10, 64)
-			if err = client.AdminAPI().AddMetaReplica(partitionID, address, clientIDKey); err != nil {
+
+			storeMode := proto.StoreModeDef
+			if optStoreMode != "" {
+				optStoreMode = strings.ToLower(optStoreMode)
+				switch optStoreMode {
+				case "memory":
+					storeMode = proto.StoreModeMem
+				case "rocksdb":
+					storeMode = proto.StoreModeRocksDb
+				default:
+					err = fmt.Errorf("Unknown store mode")
+					return
+				}
+			}
+			if err = client.AdminAPI().AddMetaReplica(partitionID, address, clientIDKey, storeMode); err != nil {
 				return
 			}
 			stdout("Add replication successfully\n")
@@ -323,6 +354,7 @@ func newMetaPartitionReplicateCmd(client *master.MasterClient) *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&clientIDKey, CliFlagClientIDKey, client.ClientIDKey(), CliUsageClientIDKey)
+	cmd.Flags().StringVar(&optStoreMode, CliFlagStoreMode, "", "specify volume default store mode")
 	return cmd
 }
 

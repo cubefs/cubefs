@@ -19,10 +19,12 @@ import (
 	"reflect"
 	"strconv"
 
+	"github.com/spf13/cobra"
+
 	"github.com/cubefs/cubefs/cli/api"
 	"github.com/cubefs/cubefs/metanode"
 	"github.com/cubefs/cubefs/proto"
-	"github.com/spf13/cobra"
+	"github.com/cubefs/cubefs/util/log"
 )
 
 const (
@@ -103,7 +105,23 @@ func verifyDentry(client *api.MetaHttpClient, mp metanode.MetaPartition) (err er
 	if err != nil {
 		return
 	}
-	mp.GetDentryTree().Ascend(func(d metanode.BtreeItem) bool {
+	snap, err := mp.GetSnapShot()
+	if err != nil {
+		log.LogErrorf("mp[%d] create snap shot failed, err(%v)", mp.GetBaseConfig().PartitionId, err)
+		return
+	}
+	if snap == nil {
+		log.LogErrorf("mp[%d] create snap shot failed", mp.GetBaseConfig().PartitionId)
+		return
+	}
+	defer func() {
+		snap.Close()
+		if err != nil {
+			log.LogErrorf("mp[%d] range dentry failed", mp.GetBaseConfig().PartitionId)
+		}
+	}()
+
+	err = snap.Range(metanode.DentryType, func(d interface{}) bool {
 		dentry, ok := d.(*metanode.Dentry)
 		if !ok {
 			stdout("item type is not *metanode.Dentry \n")
@@ -136,7 +154,23 @@ func verifyInode(client *api.MetaHttpClient, mp metanode.MetaPartition) (err err
 		return
 	}
 	var localInode *api.Inode
-	mp.GetInodeTree().Ascend(func(d metanode.BtreeItem) bool {
+	snap, err := mp.GetSnapShot()
+	if err != nil {
+		log.LogErrorf("mp[%d] create snap shot failed, err(%v)", mp.GetBaseConfig().PartitionId, err)
+		return
+	}
+	if snap == nil {
+		log.LogErrorf("mp[%d] create snap shot failed", mp.GetBaseConfig().PartitionId)
+		return
+	}
+	defer func() {
+		snap.Close()
+		if err != nil {
+			log.LogErrorf("mp[%d] range dentry failed", mp.GetBaseConfig().PartitionId)
+		}
+	}()
+
+	err = snap.Range(metanode.InodeType, func(d interface{}) bool {
 		inode, ok := d.(*metanode.Inode)
 		if !ok {
 			stdout("item type is not *metanode.Inode \n")

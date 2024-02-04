@@ -18,6 +18,7 @@ import (
 	"fmt"
 	syslog "log"
 	"os"
+	"path"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -31,9 +32,15 @@ import (
 	masterSDK "github.com/cubefs/cubefs/sdk/master"
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/config"
+	"github.com/cubefs/cubefs/util/diskmon"
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/exporter"
+	"github.com/cubefs/cubefs/util/fileutil"
 	"github.com/cubefs/cubefs/util/log"
+)
+
+const (
+	RocksdbModeMetaFile = ".rocksdbMode"
 )
 
 var (
@@ -92,6 +99,12 @@ type MetaNode struct {
 	readDirIops                        int
 
 	control common.Control
+
+	rocksDirs         []string
+	rocksdbManager    RocksdbManager
+	diskStopCh        chan struct{}
+	disks             map[string]*diskmon.FsCapMon
+	diskReservedSpace uint64
 }
 
 // Start starts up the meta node with the specified configuration.
@@ -151,6 +164,12 @@ func doStart(s common.Server, cfg *config.Config) (err error) {
 	if err = m.parseConfig(cfg); err != nil {
 		return
 	}
+	if err = m.newRocksdbManager(cfg); err != nil {
+		return
+	}
+	if err = m.startDiskStat(); err != nil {
+		return
+	}
 	if err = m.register(); err != nil {
 		return
 	}
@@ -195,6 +214,7 @@ func doShutdown(s common.Server) {
 	if !ok {
 		return
 	}
+	m.stopDiskStat()
 	m.stopUpdateNodeInfo()
 	// shutdown node and release the resource
 	m.stopStat()
@@ -310,6 +330,29 @@ func (m *MetaNode) parseConfig(cfg *config.Config) (err error) {
 	}
 	syslog.Println("conf raftSyncSnapFormatVersion=", m.raftSyncSnapFormatVersion)
 	log.LogInfof("[parseConfig] raftSyncSnapFormatVersion[%v]", m.raftSyncSnapFormatVersion)
+
+	m.rocksDirs = cfg.GetStringSlice(cfgRocksDirs)
+	if len(m.rocksDirs) == 0 {
+		dbDir := path.Join(m.metadataDir, "db")
+		log.LogInfof("[parseConfig] rocksdb dir not found, using meta dir(%v)", dbDir)
+		m.rocksDirs = append(m.rocksDirs, dbDir)
+	}
+
+	// NOTE: create db dir
+	for _, dbDir := range m.rocksDirs {
+		if !fileutil.ExistDir(dbDir) {
+			err = os.MkdirAll(dbDir, 0o755)
+			if err != nil {
+				log.LogErrorf("[parseConfig] failed to create rocksdb db dir(%v), err(%v)", dbDir, err)
+				return
+			}
+		}
+	}
+
+	m.diskReservedSpace, _ = strconv.ParseUint(cfg.GetString(cfgDiskReservedSpace), 10, 64)
+	if m.diskReservedSpace == 0 || m.diskReservedSpace < defaultDiskReservedSpace {
+		m.diskReservedSpace = defaultDiskReservedSpace
+	}
 
 	constCfg := config.ConstConfig{
 		Listen:           m.listen,
@@ -602,5 +645,97 @@ func (m *MetaNode) RemoveConnection() {
 
 func getUpgradeCompatibleSettings() (volListForbidWriteOpOfProtoVer0 *proto.UpgradeCompatibleSettings, err error) {
 	volListForbidWriteOpOfProtoVer0, err = masterClient.AdminAPI().GetUpgradeCompatibleSettings()
+	return
+}
+
+func (m *MetaNode) hasPartitions() (ok bool, err error) {
+	dentries, err := os.ReadDir(m.metadataDir)
+	if err != nil {
+		return
+	}
+	for _, dentry := range dentries {
+		if strings.HasPrefix(dentry.Name(), partitionPrefix) {
+			ok = true
+			return
+		}
+	}
+	return
+}
+
+func (m *MetaNode) persistRocksdbMode(mode string) (err error) {
+	file := path.Join(m.metadataDir, RocksdbModeMetaFile)
+	tmpFile := file + ".tmp"
+	err = os.WriteFile(tmpFile, []byte(mode), 0o644)
+	if err != nil {
+		return
+	}
+	err = os.Rename(tmpFile, file)
+	return
+}
+
+func (m *MetaNode) readRocksdbMode() (mode string, err error) {
+	file := path.Join(m.metadataDir, RocksdbModeMetaFile)
+	v, err := os.ReadFile(file)
+	if err != nil {
+		return
+	}
+	mode = string(v)
+	return
+}
+
+func (m *MetaNode) newRocksdbManager(cfg *config.Config) (err error) {
+	writeBufferSize := cfg.GetInt(cfgRocksdbWriteBufferSize)
+	blockCacheSize := cfg.GetInt64(cfgRocksdbBlockCacheSize)
+	writeBufferNum := cfg.GetInt(cfgRocksdbWriteBufferNum)
+	minWriteBufferToMerge := cfg.GetInt(cfgRocksdbMinWriteBufferToMerge)
+	maxSubCompactions := cfg.GetInt(cfgRocksdbMaxSubCompactions)
+	mode := cfg.GetString(cfgRocksdbMode)
+	if mode == "" {
+		mode = defaultRocksdMode
+	}
+	rocksdbMode := ParseRocksdbMode(mode)
+
+	rocksdbModeFile := path.Join(m.metadataDir, RocksdbModeMetaFile)
+	if fileutil.Exist(rocksdbModeFile) {
+		var tmp string
+		if tmp, err = m.readRocksdbMode(); err != nil {
+			return
+		}
+		// NOTE: check rocksdb mode consistence
+		if mode != tmp {
+			log.LogWarnf("[newRocksdbManager] inconsistent rocksdb config meta file(%v) persist(%v) config(%v)", rocksdbModeFile, tmp, mode)
+			var hasMp bool
+			hasMp, err = m.hasPartitions()
+			if err != nil {
+				log.LogErrorf("[newRocksdbManager] failed to get persist mp cnt, err(%v)", err)
+				return
+			}
+			if hasMp {
+				log.LogErrorf("[newRocksdbManager] failed to change rocksdb mode(%v) to new(%v), has meta partitions on disk", tmp, mode)
+				return errors.NewErrorf("cannot init rocksdb manager, inconsistent rocksdb mode")
+			}
+			log.LogWarnf("[newRocksdbManager] change rocksdb mode(%v) to new(%v)", tmp, mode)
+		}
+		rocksdbMode = ParseRocksdbMode(mode)
+	}
+	// NOTE: persist rocksdb mode to disk
+	err = m.persistRocksdbMode(mode)
+	if err != nil {
+		log.LogErrorf("[newRocksdbManager] failed to persist rocksdb mode(%v) to meta file(%v), err(%v)", mode, rocksdbModeFile, err)
+		return
+	}
+
+	if rocksdbMode == PerDiskRocksdbMode {
+		m.rocksdbManager = NewPerDiskRocksdbManager(writeBufferSize, writeBufferNum, minWriteBufferToMerge, maxSubCompactions, uint64(blockCacheSize))
+	} else {
+		m.rocksdbManager = NewPerPartitionRocksdbManager(writeBufferSize, writeBufferNum, minWriteBufferToMerge, maxSubCompactions, uint64(blockCacheSize))
+	}
+	for _, dbPath := range m.rocksDirs {
+		err = m.rocksdbManager.Register(dbPath)
+		if err != nil {
+			log.LogErrorf("[initRocksdbProvider] failed to init rocksdb provider")
+			return
+		}
+	}
 	return
 }

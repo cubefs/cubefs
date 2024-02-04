@@ -261,8 +261,9 @@ func (m *ClusterService) loadMetaPartition(ctx context.Context, args struct {
 }
 
 func (m *ClusterService) decommissionMetaPartition(ctx context.Context, args struct {
-	PartitionID uint64
-	NodeAddr    string
+	PartitionID  uint64
+	NodeAddr     string
+	dstStoreMode proto.StoreMode
 },
 ) (*proto.GeneralResp, error) {
 	if _, _, err := permissions(ctx, ADMIN); err != nil {
@@ -272,7 +273,21 @@ func (m *ClusterService) decommissionMetaPartition(ctx context.Context, args str
 	if err != nil {
 		return nil, err
 	}
-	if err := m.cluster.decommissionMetaPartition(args.NodeAddr, mp); err != nil {
+	vol, err := m.cluster.getVol(mp.volName)
+	if err != nil {
+		return nil, err
+	}
+	dstStoreMode := args.dstStoreMode
+	if dstStoreMode == proto.StoreModeDef {
+		dstStoreMode = vol.DefaultStoreMode
+		for _, replica := range mp.Replicas {
+			if replica.Addr == args.NodeAddr {
+				dstStoreMode = replica.StoreMode
+				break
+			}
+		}
+	}
+	if err := m.cluster.decommissionMetaPartition(args.NodeAddr, mp, dstStoreMode); err != nil {
 		return nil, err
 	}
 	log.LogInfof(proto.AdminDecommissionMetaPartition+" partitionID :%v  decommissionMetaPartition successfully", args.PartitionID)
@@ -311,8 +326,9 @@ func (m *ClusterService) getTopology(ctx context.Context, args struct{}) (*proto
 				nsView.MetaNodes = append(nsView.MetaNodes, proto.MetaNodeView{
 					ID: metaNode.ID, Addr: metaNode.Addr,
 					DomainAddr: metaNode.DomainAddr, Status: metaNode.IsActive,
-					IsWritable: metaNode.IsWriteAble(), MediaType: proto.MediaType_Unspecified,
+					IsWritable: metaNode.isWritable(proto.StoreModeMem), MediaType: proto.MediaType_Unspecified,
 					Ratio: metaNode.Ratio, SystemRatio: CaculateNodeMemoryRatio(metaNode),
+					IsRocksdbWritable: metaNode.isWritable(proto.StoreModeRocksDb),
 				})
 				return true
 			})

@@ -340,9 +340,14 @@ func (mp *metaPartition) TxUnlinkInode(req *proto.TxUnlinkInodeRequest, p *Packe
 			respIno = rbIno.inode
 			status = proto.OpOk
 
-			item := mp.inodeTree.Get(NewInode(req.Inode, 0))
+			var item *Inode
+			item, err = mp.inodeTree.Get(NewInode(req.Inode, 0))
+			if err != nil {
+				p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+				return
+			}
 			if item != nil {
-				respIno = item.(*Inode)
+				respIno = item
 			}
 
 			p.ResultCode = status
@@ -420,13 +425,18 @@ func (mp *metaPartition) UnlinkInode(req *UnlinkInoReq, p *Packet, remoteAddr st
 		p.PacketErrorWithBody(status, reply)
 	}
 	ino := NewInode(req.Inode, 0)
-	if item := mp.inodeTree.Get(ino); item == nil {
+	item, err := mp.inodeTree.Get(ino)
+	if err != nil {
+		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+		return
+	}
+	if item == nil {
 		err = fmt.Errorf("mp[%v] inode[%v] reqeust cann't found", mp.config.PartitionId, ino)
 		log.LogWarnf("action[UnlinkInode] %v", err)
 		p.PacketErrorWithBody(proto.OpNotExistErr, []byte(err.Error()))
 		return
 	} else {
-		ino.UpdateHybridCloudParams(item.(*Inode))
+		ino.UpdateHybridCloudParams(item)
 	}
 	enableSnapshot := mp.manager != nil && mp.manager.metaNode != nil && mp.manager.metaNode.clusterEnableSnapshot
 	if req.UniqID > 0 {
@@ -779,13 +789,13 @@ func (mp *metaPartition) EvictInode(req *EvictInodeReq, p *Packet, remoteAddr st
 		}()
 	}
 	ino := NewInode(req.Inode, 0)
-	if item := mp.inodeTree.Get(ino); item == nil {
+	if item, err1 := mp.inodeTree.Get(ino); item == nil || err1 != nil {
 		err = fmt.Errorf("mp %v inode %v reqeust cann't found", mp.config.PartitionId, ino)
 		log.LogWarnf("action[RenewalForbiddenMigration] %v", err)
 		p.PacketErrorWithBody(proto.OpNotExistErr, []byte(err.Error()))
 		return
 	} else {
-		ino.UpdateHybridCloudParams(item.(*Inode))
+		ino.UpdateHybridCloudParams(item)
 	}
 	val, err := ino.Marshal()
 	if err != nil {
@@ -865,11 +875,6 @@ func (mp *metaPartition) SetAttr(req *SetattrRequest, reqData []byte, p *Packet)
 	log.LogDebugf("action[SetAttr] inode[%v] ver [%v] exit", req.Inode, req.VerSeq)
 	p.PacketOkReply()
 	return
-}
-
-// GetInodeTree returns the inode tree.
-func (mp *metaPartition) GetInodeTree() *BTree {
-	return mp.inodeTree.GetTree()
 }
 
 // GetInodeTreeLen returns the inode tree length.
@@ -1054,11 +1059,14 @@ func (mp *metaPartition) InodeGetAccessTime(req *InodeGetReq, p *Packet) (err er
 	)
 
 	ino := NewInode(req.Inode, 0)
-	item := mp.inodeTree.Get(ino)
-	if item == nil {
+	i, err := mp.inodeTree.Get(ino)
+	if err != nil {
+		return
+	}
+	if i == nil {
 		return errors.NewErrorf("inode %v is not found", req.Inode)
 	}
-	i := item.(*Inode)
+
 	if i.ShouldDelete() {
 		return errors.NewErrorf("inode %v is deleted", req.Inode)
 	}
@@ -1084,13 +1092,13 @@ func (mp *metaPartition) RenewalForbiddenMigration(req *proto.RenewalForbiddenMi
 	p *Packet, remoteAddr string,
 ) (err error) {
 	ino := NewInode(req.Inode, 0)
-	if item := mp.inodeTree.Get(ino); item == nil {
+	if item, err1 := mp.inodeTree.Get(ino); item == nil || err1 != nil {
 		err = fmt.Errorf("mp %v inode %v reqeust cann't found", mp.config.PartitionId, ino)
 		log.LogErrorf("action[RenewalForbiddenMigration] %v", err)
 		p.PacketErrorWithBody(proto.OpNotExistErr, []byte(err.Error()))
 		return
 	} else {
-		ino.UpdateHybridCloudParams(item.(*Inode))
+		ino.UpdateHybridCloudParams(item)
 	}
 
 	newExpireTime := timeutil.GetCurrentTimeUnix() + proto.ForbiddenMigrationRenewalSeonds
@@ -1117,15 +1125,14 @@ func (mp *metaPartition) UpdateExtentKeyAfterMigration(req *proto.UpdateExtentKe
 	remoteAddr string,
 ) (err error) {
 	inoParm := NewInode(req.Inode, 0)
-	var item BtreeItem
-	if item = mp.inodeTree.Get(inoParm); item == nil {
+	var oldIno *Inode
+	if oldIno, err = mp.inodeTree.Get(inoParm); oldIno == nil || err != nil {
 		err = fmt.Errorf("mp(%v) can not find inode(%v)", mp.config.PartitionId, inoParm.Inode)
 		log.LogWarnf("action[UpdateExtentKeyAfterMigration] %v", err)
 		p.PacketErrorWithBody(proto.OpNotExistErr, []byte(err.Error()))
 		return
 	}
 
-	oldIno := item.(*Inode)
 	inoParm.UpdateHybridCloudParams(oldIno)
 
 	start := time.Now()
@@ -1361,14 +1368,14 @@ func (mp *metaPartition) DeleteMigrationExtentKey(req *proto.DeleteMigrationExte
 	remoteAddr string,
 ) (err error) {
 	ino := NewInode(req.Inode, 0)
-	var item BtreeItem
-	if item = mp.inodeTree.Get(ino); item == nil {
+	var item *Inode
+	if item, err = mp.inodeTree.Get(ino); item == nil || err != nil {
 		err = fmt.Errorf("mp %v inode %v reqeust cann't found", mp.config.PartitionId, ino.Inode)
 		log.LogErrorf("action[UpdateExtentKeyAfterMigration] %v", err)
 		p.PacketErrorWithBody(proto.OpNotExistErr, []byte(err.Error()))
 		return
 	} else {
-		ino.UpdateHybridCloudParams(item.(*Inode))
+		ino.UpdateHybridCloudParams(item)
 	}
 
 	start := time.Now()

@@ -133,8 +133,12 @@ func (mp *metaPartition) checkHybridMigrationInode() {
 		}
 
 		inoKey.Inode = ino
-		inode, ok := mp.inodeTree.Get(inoKey).(*Inode)
-		if !ok {
+		inode, err := mp.inodeTree.Get(inoKey)
+		if err != nil {
+			log.LogErrorf("get inodeTree inode(%d) err: %s", ino, err.Error())
+			continue
+		}
+		if inode == nil {
 			log.LogInfof("checkHybridMigrationInode: inode maybe already been deleted. ino %d, mp %d",
 				ino, mp.config.PartitionId)
 			continue
@@ -215,13 +219,18 @@ func (mp *metaPartition) deleteWorker() {
 			totalCnt++
 
 			inTx := func(i *Inode) bool {
-				in, _ := mp.txProcessor.txResource.isInodeInTransction(i)
+				in, _, _ := mp.txProcessor.txResource.isInodeInTransction(i)
 				return in
 			}
 
 			// check inode nlink == 0 and deleteMarkFlag unset
 			inoKey.Inode = ino
-			if inode, ok := mp.inodeTree.Get(inoKey).(*Inode); ok {
+			inode, err := mp.inodeTree.Get(inoKey)
+			if err != nil {
+				log.LogErrorf("get inodeTree inode(%d) err: %s", ino, err.Error())
+				continue
+			}
+			if inode != nil {
 				if inode.ShouldDelayDelete() || inTx(inode) {
 					if log.EnableDebug() {
 						log.LogDebugf("[deleteWorker] vol(%v) mp(%v) delay to remove inode: %v as NLink is 0, delay %v",
@@ -359,8 +368,12 @@ func (mp *metaPartition) deleteMarkedInodes(inoSlice []uint64) {
 	)
 	for _, ino := range inoSlice {
 		ref := &Inode{Inode: ino}
-		inode, ok := mp.inodeTree.Get(ref).(*Inode)
-		if !ok {
+		inode, err := mp.inodeTree.Get(ref)
+		if err != nil {
+			log.LogErrorf("get inodeTree inode(%d) err: %s", ino, err.Error())
+			continue
+		}
+		if inode == nil {
 			log.LogDebugf("deleteMarkedInodes. mp %v inode [%v] not found", mp.config.PartitionId, ino)
 			continue
 		}
@@ -503,8 +516,12 @@ func (mp *metaPartition) deleteMarkedReplicaInodes(inoSlice []uint64,
 	allInodes := make([]*Inode, 0)
 	for _, ino := range inoSlice {
 		ref := &Inode{Inode: ino}
-		inode, ok := mp.inodeTree.Get(ref).(*Inode)
-		if !ok {
+		inode, err := mp.inodeTree.Get(ref)
+		if err != nil {
+			log.LogErrorf("get inodeTree inode(%d) err: %s", ino, err.Error())
+			continue
+		}
+		if inode == nil {
 			log.LogDebugf("[deleteMarkedReplicaInodes] mp[%v] inode [%v] not found", mp.config.PartitionId, ino)
 			continue
 		}
@@ -549,8 +566,12 @@ func (mp *metaPartition) deleteMarkedReplicaInodes(inoSlice []uint64,
 func (mp *metaPartition) inodeIdListToInodeList(inoIdList []uint64) (inodeList []*Inode) {
 	for _, inoId := range inoIdList {
 		ref := &Inode{Inode: inoId}
-		inode, ok := mp.inodeTree.Get(ref).(*Inode)
-		if !ok {
+		inode, err := mp.inodeTree.Get(ref)
+		if err != nil {
+			log.LogErrorf("get inodeTree inode(%d) err: %s", inoId, err.Error())
+			continue
+		}
+		if inode == nil {
 			log.LogDebugf("[inodeIdListToInodeList] mp[%v] inode[%v] not found", mp.config.PartitionId, inoId)
 			continue
 		}
@@ -567,8 +588,12 @@ func (mp *metaPartition) deleteMarkedEBSInodes(inoSlice []uint64, isMigration bo
 	allInodes := make([]*Inode, 0)
 	for _, ino := range inoSlice {
 		ref := &Inode{Inode: ino}
-		inode, ok := mp.inodeTree.Get(ref).(*Inode)
-		if !ok {
+		inode, err := mp.inodeTree.Get(ref)
+		if err != nil {
+			log.LogErrorf("get inodeTree inode(%d) err: %s", ino, err.Error())
+			continue
+		}
+		if inode == nil {
 			log.LogDebugf("deleteMarkedEBSInodes. mp %v inode [%v] not found", mp.config.PartitionId, ino)
 			continue
 		}

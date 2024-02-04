@@ -167,6 +167,8 @@ const (
 	flashNodeTimeoutCount        = "flashNodeTimeoutCount"
 	remoteCacheSameZoneTimeout   = "remoteCacheSameZoneTimeout"
 	remoteCacheSameRegionTimeout = "remoteCacheSameRegionTimeout"
+
+	StoreModeKey = "storeMode"
 )
 
 const (
@@ -257,6 +259,8 @@ const (
 
 	maxTrashInterval     = 365 * 24 * 60
 	mpReplicaDelInterval = 300 // 5 minutes
+
+	defaultRocksdbDiskThreshold float32 = 0.6
 )
 
 const (
@@ -502,6 +506,7 @@ type NodeType int
 const (
 	DataNodeType = NodeType(0)
 	MetaNodeType = NodeType(iota)
+	RocksdbType  = NodeType(iota)
 )
 
 func NodeTypeString(nodeType NodeType) string {
@@ -510,6 +515,8 @@ func NodeTypeString(nodeType NodeType) string {
 		return "dataNode"
 	case MetaNodeType:
 		return "metaNode"
+	case RocksdbType:
+		return "rocksdb"
 	default:
 		return fmt.Sprintf("unKnownNodeType(%v)", nodeType)
 	}

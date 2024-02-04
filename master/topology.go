@@ -418,7 +418,7 @@ func (nsgm *DomainManager) checkGrpState(domainGrpManager *DomainNodeSetGrpManag
 			}
 			domainGrpManager.nodeSetGrpMap[i].nodeSets[j].metaNodes.Range(func(key, value interface{}) bool {
 				node := value.(*MetaNode)
-				if node.IsWriteAble() {
+				if node.isWritable(proto.StoreModeMem) {
 					metaWorked = true
 					log.LogInfof("action[checkGrpState] nodeset[%v] zonename[%v] used [%v] total [%v] threshold [%v] got available metanode",
 						node.ID, node.ZoneName, node.Used, node.Total, node.Threshold)
@@ -587,8 +587,12 @@ func (nsgm *DomainManager) getHostFromNodeSetGrpSpecific(domainGrpManager *Domai
 						continue
 					}
 				} else {
-					if host, peer, err = ns.getAvailMetaNodeHosts(nil, needNum); err != nil {
-						log.LogErrorf("action[getHostFromNodeSetGrpSpecific]  ns[%v] zone[%v] TypeMetaPartition err[%v]", ns.ID, ns.zoneName, err)
+					storeMode := proto.StoreModeMem
+					if createType == TypeRocksdbPartition {
+						storeMode = proto.StoreModeRocksDb
+					}
+					if host, peer, err = ns.getAvailMetaNodeHosts(nil, needNum, storeMode); err != nil {
+						log.LogErrorf("action[getHostFromNodeSetGrpSpecific]  ns[%v] zone[%v] type(%d) err[%v]", ns.ID, ns.zoneName, createType, err)
 						// nsg.status = metaNodesUnAvailable
 						continue
 					}
@@ -697,8 +701,12 @@ func (nsgm *DomainManager) getHostFromNodeSetGrp(domainId uint64, replicaNum uin
 					log.LogWarnf("action[getHostFromNodeSetGrp] ns[%v] zone[%v] metaNodesUnAvailable", ns.ID, ns.zoneName)
 					continue
 				}
-				if host, peer, err = ns.getAvailMetaNodeHosts(hosts, 1); err != nil {
-					log.LogWarnf("action[getHostFromNodeSetGrp]  ns[%v] zone[%v] TypeMetaPartition err[%v]", ns.ID, ns.zoneName, err)
+				storeMode := proto.StoreModeMem
+				if createType == TypeRocksdbPartition {
+					storeMode = proto.StoreModeRocksDb
+				}
+				if host, peer, err = ns.getAvailMetaNodeHosts(hosts, 1, storeMode); err != nil {
+					log.LogWarnf("action[getHostFromNodeSetGrp]  ns[%v] zone[%v] ModeRocksDb err[%v]", ns.ID, ns.zoneName, err)
 					// nsg.status = metaNodesUnAvailable
 					continue
 				}
@@ -984,7 +992,8 @@ type nodeSet struct {
 	dataNodeSelectorLock          sync.RWMutex
 	dataNodeSelector              NodeSelector
 	metaNodeSelectorLock          sync.RWMutex
-	metaNodeSelector              NodeSelector
+	metaNodeMemorySelector        NodeSelector
+	metaNodeRocksdbSelector       NodeSelector
 	sync.RWMutex
 	manualDecommissionDiskList        *DecommissionDiskList
 	autoDecommissionDiskList          *DecommissionDiskList
@@ -1021,7 +1030,8 @@ func newNodeSet(c *Cluster, id uint64, cap int, zoneName string) *nodeSet {
 		doneDecommissionDiskListTraverse:  make(chan struct{}, 1),
 		startDecommissionDiskListTraverse: make(chan struct{}, 1),
 		dataNodeSelector:                  NewNodeSelector(DefaultNodeSelectorName, DataNodeType),
-		metaNodeSelector:                  NewNodeSelector(DefaultNodeSelectorName, MetaNodeType),
+		metaNodeMemorySelector:            NewNodeSelector(DefaultNodeSelectorName, MetaNodeType),
+		metaNodeRocksdbSelector:           NewNodeSelector(DefaultZoneName, RocksdbType),
 	}
 	go ns.traverseDecommissionDisk(c)
 	return ns
@@ -1042,13 +1052,14 @@ func (ns *nodeSet) SetDataNodeSelector(name string) {
 func (ns *nodeSet) GetMetaNodeSelector() string {
 	ns.metaNodeSelectorLock.RLock()
 	defer ns.metaNodeSelectorLock.RUnlock()
-	return ns.metaNodeSelector.GetName()
+	return ns.metaNodeMemorySelector.GetName()
 }
 
 func (ns *nodeSet) SetMetaNodeSelector(name string) {
 	ns.metaNodeSelectorLock.Lock()
 	defer ns.metaNodeSelectorLock.Unlock()
-	ns.metaNodeSelector = NewNodeSelector(name, MetaNodeType)
+	ns.metaNodeMemorySelector = NewNodeSelector(name, MetaNodeType)
+	ns.metaNodeRocksdbSelector = NewNodeSelector(name, RocksdbType)
 }
 
 func (ns *nodeSet) metaNodeLen() (count int) {
@@ -1089,15 +1100,30 @@ func (ns *nodeSet) deleteMetaNode(metaNode *MetaNode) {
 	ns.metaNodes.Delete(metaNode.Addr)
 }
 
-func (ns *nodeSet) canWriteForNode(nodes *sync.Map, replicaNum int) bool {
+func (ns *nodeSet) canWriteForNode(nodes *sync.Map, replicaNum int, nodeType NodeType) bool {
 	var count int
 	nodes.Range(func(key, value interface{}) bool {
-		node := value.(Node)
-		if node.IsWriteAble() && node.PartitionCntLimited() {
-			count++
-		}
-		if count >= replicaNum {
+		switch nodeType {
+		case DataNodeType:
+			node := value.(Node)
+			if node.IsWriteAble() && node.PartitionCntLimited() {
+				count++
+			}
+		case MetaNodeType:
+			node := value.(*MetaNode)
+			if node.isWritable(proto.StoreModeMem) && node.PartitionCntLimited() {
+				count++
+			}
+		case RocksdbType:
+			node := value.(*MetaNode)
+			if node.isWritable(proto.StoreModeRocksDb) && node.PartitionCntLimited() {
+				count++
+			}
+		default:
 			return false
+		}
+		if count < replicaNum {
+			return true
 		}
 		return true
 	})
@@ -1495,21 +1521,22 @@ func (t *topology) allocZonesForNode(rsMgr *rsManager, zoneNumNeed, replicaNum i
 
 // Zone stores all the zone related information
 type Zone struct {
-	name                    string
-	dataNodesetSelectorLock sync.RWMutex
-	dataNodesetSelector     NodesetSelector
-	metaNodesetSelectorLock sync.RWMutex
-	metaNodesetSelector     NodesetSelector
-	status                  int
-	dataNodes               *sync.Map
-	metaNodes               *sync.Map
-	nodeSetMap              map[uint64]*nodeSet
-	nsLock                  sync.RWMutex
-	QosIopsRLimit           uint64
-	QosIopsWLimit           uint64
-	QosFlowRLimit           uint64
-	QosFlowWLimit           uint64
-	dataMediaType           uint32
+	name                       string
+	dataNodesetSelectorLock    sync.RWMutex
+	dataNodesetSelector        NodesetSelector
+	metaNodesetSelectorLock    sync.RWMutex
+	metaMemoryNodesetSelector  NodesetSelector
+	metaRocksdbNodesetSelector NodesetSelector
+	status                     int
+	dataNodes                  *sync.Map
+	metaNodes                  *sync.Map
+	nodeSetMap                 map[uint64]*nodeSet
+	nsLock                     sync.RWMutex
+	QosIopsRLimit              uint64
+	QosIopsWLimit              uint64
+	QosFlowRLimit              uint64
+	QosFlowWLimit              uint64
+	dataMediaType              uint32
 	sync.RWMutex
 }
 
@@ -1531,7 +1558,8 @@ func newZone(name string, dataMediaType uint32) (zone *Zone) {
 	zone.metaNodes = new(sync.Map)
 	zone.nodeSetMap = make(map[uint64]*nodeSet)
 	zone.dataNodesetSelector = NewNodesetSelector(DefaultNodesetSelectorName, DataNodeType)
-	zone.metaNodesetSelector = NewNodesetSelector(DefaultNodesetSelectorName, MetaNodeType)
+	zone.metaMemoryNodesetSelector = NewNodesetSelector(DefaultNodesetSelectorName, MetaNodeType)
+	zone.metaRocksdbNodesetSelector = NewNodesetSelector(DefaultNodesetSelectorName, RocksdbType)
 	zone.SetDataMediaType(dataMediaType)
 	return
 }
@@ -1564,13 +1592,14 @@ func (zone *Zone) SetDataNodesetSelector(name string) {
 func (zone *Zone) GetMetaNodesetSelector() string {
 	zone.metaNodesetSelectorLock.RLock()
 	defer zone.metaNodesetSelectorLock.RUnlock()
-	return zone.metaNodesetSelector.GetName()
+	return zone.metaMemoryNodesetSelector.GetName()
 }
 
 func (zone *Zone) SetMetaNodeSelector(name string) {
 	zone.metaNodesetSelectorLock.Lock()
 	defer zone.metaNodesetSelectorLock.Unlock()
-	zone.metaNodesetSelector = NewNodesetSelector(name, MetaNodeType)
+	zone.metaMemoryNodesetSelector = NewNodesetSelector(name, MetaNodeType)
+	zone.metaRocksdbNodesetSelector = NewNodesetSelector(name, RocksdbType)
 }
 
 func (zone *Zone) getFsmValue() *zoneValue {
@@ -1781,7 +1810,7 @@ func (zone *Zone) allocNodeSetForDataNode(excludeNodeSets []uint64, replicaNum u
 	return ns, nil
 }
 
-func (zone *Zone) allocNodeSetForMetaNode(excludeNodeSets []uint64, replicaNum uint8) (ns *nodeSet, err error) {
+func (zone *Zone) allocNodeSetForMetaNode(excludeNodeSets []uint64, replicaNum uint8, storeMode proto.StoreMode) (ns *nodeSet, err error) {
 	nset := zone.getAllNodeSet()
 	if nset == nil {
 		return nil, proto.ErrNoNodeSetToCreateMetaPartition
@@ -1792,7 +1821,11 @@ func (zone *Zone) allocNodeSetForMetaNode(excludeNodeSets []uint64, replicaNum u
 	// we need a read lock to block the modify of nodeset selector
 	zone.metaNodesetSelectorLock.RLock()
 	defer zone.metaNodesetSelectorLock.RUnlock()
-	ns, err = zone.metaNodesetSelector.Select(nset, excludeNodeSets, replicaNum)
+	selector := zone.metaMemoryNodesetSelector
+	if storeMode == proto.StoreModeRocksDb {
+		selector = zone.metaRocksdbNodesetSelector
+	}
+	ns, err = selector.Select(nset, excludeNodeSets, replicaNum)
 	if err != nil {
 		log.LogError(fmt.Sprintf("action[allocNodeSetForMetaNode],zone[%v],excludeNodeSets[%v],rNum[%v],err:%v",
 			zone.name, excludeNodeSets, replicaNum, proto.ErrNoNodeSetToCreateMetaPartition))
@@ -1863,7 +1896,7 @@ func (zone *Zone) isUsedRatio(ratio float64) (can bool) {
 
 	zone.metaNodes.Range(func(addr, value interface{}) bool {
 		metaNode := value.(*MetaNode)
-		if metaNode.IsActive && metaNode.IsWriteAble() {
+		if metaNode.IsActive && metaNode.isWritable(proto.StoreModeMem) {
 			metaNodeUsed += metaNode.Used
 		} else {
 			metaNodeUsed += metaNode.Total
@@ -1880,32 +1913,17 @@ func (zone *Zone) isUsedRatio(ratio float64) (can bool) {
 	return false
 }
 
-func (zone *Zone) getUsed(dataType uint32) (dataNodeUsed uint64, dataNodeTotal uint64) {
-	zone.RLock()
-	defer zone.RUnlock()
-	var nodes *sync.Map
-	if dataType == uint32(MetaNodeType) {
-		nodes = zone.metaNodes
-	} else {
-		nodes = zone.dataNodes
-	}
-	nodes.Range(func(addr, value interface{}) bool {
-		dataNode := value.(Node)
-		if dataNode.IsActiveNode() {
-			dataNodeUsed += dataNode.GetUsed()
-		} else {
-			dataNodeUsed += dataNode.GetTotal()
-		}
-		dataNodeTotal += dataNode.GetTotal()
-		return true
-	})
-
-	return dataNodeUsed, dataNodeTotal
-}
-
 func (zone *Zone) getSpaceLeft(dataType uint32) (spaceLeft uint64) {
-	dataNodeUsed, dataNodeTotal := zone.getUsed(dataType)
-	return dataNodeTotal - dataNodeUsed
+	if dataType == TypeDataPartition {
+		dataNodeUsed, dataNodeTotal := zone.getDataUsed()
+		return dataNodeTotal - dataNodeUsed
+	} else if dataType == TypeMetaPartition {
+		metaNodeUsed, metaNodeTotal := zone.getMetaUsed(proto.StoreModeMem)
+		return metaNodeTotal - metaNodeUsed
+	} else {
+		metaNodeUsed, metaNodeTotal := zone.getMetaUsed(proto.StoreModeRocksDb)
+		return metaNodeTotal - metaNodeUsed
+	}
 }
 
 func (zone *Zone) getAvailNodeHosts(nodeType uint32, excludeNodeSets []uint64, excludeHosts []string, replicaNum int) (newHosts []string, peers []proto.Peer, err error) {
@@ -1923,12 +1941,17 @@ func (zone *Zone) getAvailNodeHosts(nodeType uint32, excludeNodeSets []uint64, e
 		return ns.getAvailDataNodeHosts(excludeHosts, replicaNum)
 	}
 
-	ns, err := zone.allocNodeSetForMetaNode(excludeNodeSets, uint8(replicaNum))
+	storeMode := proto.StoreModeMem
+	if nodeType == TypeRocksdbPartition {
+		storeMode = proto.StoreModeRocksDb
+	}
+
+	ns, err := zone.allocNodeSetForMetaNode(excludeNodeSets, uint8(replicaNum), storeMode)
 	if err != nil {
 		return nil, nil, errors.NewErrorf("zone[%v],err[%v]", zone.name, err)
 	}
 
-	return ns.getAvailMetaNodeHosts(excludeHosts, replicaNum)
+	return ns.getAvailMetaNodeHosts(excludeHosts, replicaNum, storeMode)
 }
 
 func (zone *Zone) updateNodesetSelector(cluster *Cluster, dataNodesetSelector string, metaNodesetSelector string) error {
@@ -2622,4 +2645,125 @@ func (ns *nodeSet) getRunningDecommissionDisk(c *Cluster) []string {
 		return true
 	})
 	return disks
+}
+
+func (zone *Zone) getDataUsed() (dataNodeUsed uint64, dataNodeTotal uint64) {
+	zone.RLock()
+	defer zone.RUnlock()
+	zone.dataNodes.Range(func(addr, value interface{}) bool {
+		dataNode := value.(*DataNode)
+		if dataNode.isActive {
+			dataNodeUsed += dataNode.Used
+		} else {
+			dataNodeUsed += dataNode.Total
+		}
+		dataNodeTotal += dataNode.Total
+		return true
+	})
+
+	return dataNodeUsed, dataNodeTotal
+}
+
+func (zone *Zone) getMetaUsed(storeMode proto.StoreMode) (metaNodeUsed uint64, metaNodeTotal uint64) {
+	if storeMode == proto.StoreModeMem {
+		return zone.getMetaMemoryUsed()
+	}
+	return zone.getMetaRocksdbUsed()
+}
+
+func (zone *Zone) getMetaMemoryUsed() (metaNodeUsed uint64, metaNodeTotal uint64) {
+	zone.RLock()
+	defer zone.RUnlock()
+	zone.metaNodes.Range(func(addr, value interface{}) bool {
+		metaNode := value.(*MetaNode)
+		if metaNode.IsActive && metaNode.isWritable(proto.StoreModeMem) {
+			metaNodeUsed += metaNode.Used
+		} else {
+			metaNodeUsed += metaNode.Total
+		}
+		metaNodeTotal += metaNode.Total
+		return true
+	})
+	return
+}
+
+func (zone *Zone) getMetaRocksdbUsed() (metaNodeUsed uint64, metaNodeTotal uint64) {
+	zone.RLock()
+	defer zone.RUnlock()
+	zone.metaNodes.Range(func(addr, value interface{}) bool {
+		metaNode := value.(*MetaNode)
+		if metaNode.IsActive && metaNode.isWritable(proto.StoreModeRocksDb) {
+			metaNodeUsed += metaNode.GetRocksdbUsed()
+		} else {
+			metaNodeUsed += metaNode.GetRocksdbTotal()
+		}
+		metaNodeTotal += metaNode.GetRocksdbTotal()
+		return true
+	})
+	return
+}
+
+func (zone *Zone) canWriteForMetaNode(replicaNum uint8, storeMode proto.StoreMode) (can bool) {
+	zone.RLock()
+	defer zone.RUnlock()
+	var leastAlive uint8
+	zone.metaNodes.Range(func(addr, value interface{}) bool {
+		metaNode := value.(*MetaNode)
+		if metaNode.IsActive && metaNode.isWritable(storeMode) {
+			leastAlive++
+		}
+		if leastAlive >= replicaNum {
+			can = true
+			return false
+		}
+		return true
+	})
+	return
+}
+
+func (t *topology) allocZonesForMetaNode(zoneNum, replicaNum int, excludeZone []string, storeMode proto.StoreMode) (zones []*Zone, err error) {
+	if len(t.domainExcludeZones) > 0 {
+		zones = t.getDomainExcludeZones()
+		log.LogInfof("action[allocZonesForMetaNode] getDomainExcludeZones zones [%v]", t.domainExcludeZones)
+	} else {
+		// if domain enable, will not enter here
+		zones = t.getAllZones()
+	}
+	if t.isSingleZone() {
+		return zones, nil
+	}
+	if excludeZone == nil {
+		excludeZone = make([]string, 0)
+	}
+	candidateZones := make([]*Zone, 0)
+	demandWriteNodes := calculateDemandWriteNodes(zoneNum, replicaNum, false)
+	for i := 0; i < len(zones); i++ {
+		if t.metaTopology.zoneIndexForNode >= len(zones) {
+			t.metaTopology.zoneIndexForNode = 0
+		}
+		zone := zones[t.metaTopology.zoneIndexForNode]
+		t.metaTopology.zoneIndexForNode++
+		if zone.status == unavailableZone {
+			continue
+		}
+		if contains(excludeZone, zone.name) {
+			continue
+		}
+		if zone.canWriteForMetaNode(uint8(demandWriteNodes), storeMode) {
+			candidateZones = append(candidateZones, zone)
+		}
+		if len(candidateZones) >= zoneNum {
+			break
+		}
+	}
+
+	// if across zone,candidateZones must be larger than or equal with 2,otherwise,must have a candidate zone
+	if (zoneNum >= 2 && len(candidateZones) < 2) || len(candidateZones) < 1 {
+		log.LogError(fmt.Sprintf("action[allocZonesForMetaNode],reqZoneNum[%v],candidateZones[%v],demandWriteNodes[%v],err:%v",
+			zoneNum, len(candidateZones), demandWriteNodes, proto.ErrNoZoneToCreateMetaPartition))
+		return nil, proto.ErrNoZoneToCreateMetaPartition
+	}
+	zones = candidateZones
+	err = nil
+	return
 }
