@@ -229,7 +229,7 @@ func (i *Inode) getTailVerInList() (verSeq uint64, found bool) {
 }
 
 // freelist clean inode get all exist extents info, deal special case for split key
-func (inode *Inode) GetAllExtsOfflineInode(mpID uint64, isCache bool) (extInfo map[uint64][]*proto.ExtentKey) {
+func (inode *Inode) GetAllExtsOfflineInode(mpID uint64, isCache, isMigration bool) (extInfo map[uint64][]*proto.ExtentKey) {
 	extInfo = make(map[uint64][]*proto.ExtentKey)
 
 	if inode.getLayerLen() > 0 {
@@ -246,6 +246,10 @@ func (inode *Inode) GetAllExtsOfflineInode(mpID uint64, isCache bool) (extInfo m
 		var extents = NewSortedExtents()
 		if isCache {
 			extents = dIno.Extents
+		} else if isMigration {
+			if dIno.HybridCouldExtentsMigration.sortedEks != nil {
+				extents = dIno.HybridCouldExtentsMigration.sortedEks.(*SortedExtents)
+			}
 		} else {
 			if dIno.HybridCouldExtents.sortedEks != nil {
 				extents = dIno.HybridCouldExtents.sortedEks.(*SortedExtents)
@@ -430,7 +434,7 @@ func (i *Inode) String() string {
 	buff.WriteString(fmt.Sprintf("multiSnap.multiVersions.len[%v]", i.getLayerLen()))
 	buff.WriteString(fmt.Sprintf("StorageClass[%v]", i.StorageClass))
 	if i.HybridCouldExtents.sortedEks != nil {
-		if i.storeInReplicaSystem() {
+		if proto.IsStorageClassReplica(i.StorageClass) {
 			buff.WriteString(fmt.Sprintf("Extents[%s]", i.HybridCouldExtents.sortedEks.(*SortedExtents)))
 		} else {
 			buff.WriteString(fmt.Sprintf("Extents[%s]", i.HybridCouldExtents.sortedEks.(*SortedObjExtents)))
@@ -507,7 +511,7 @@ func (i *Inode) Copy() BtreeItem {
 		}
 	}
 	if i.HybridCouldExtents.sortedEks != nil {
-		if i.storeInReplicaSystem() {
+		if proto.IsStorageClassReplica(i.StorageClass) {
 			newIno.HybridCouldExtents.sortedEks = i.HybridCouldExtents.sortedEks.(*SortedExtents).Clone()
 		} else {
 			newIno.HybridCouldExtents.sortedEks = i.HybridCouldExtents.sortedEks.(*SortedObjExtents).Clone()
@@ -550,7 +554,7 @@ func (i *Inode) CopyDirectly() BtreeItem {
 	newIno.ForbiddenMigration = i.ForbiddenMigration
 	//newIno.ObjExtents = i.ObjExtents.Clone()
 	if i.HybridCouldExtents.sortedEks != nil {
-		if i.storeInReplicaSystem() {
+		if proto.IsStorageClassReplica(i.StorageClass) {
 			newIno.HybridCouldExtents.sortedEks = i.HybridCouldExtents.sortedEks.(*SortedExtents).Clone()
 		} else {
 			newIno.HybridCouldExtents.sortedEks = i.HybridCouldExtents.sortedEks.(*SortedObjExtents).Clone()
@@ -1273,7 +1277,7 @@ func (i *Inode) GetSpaceSize() (extSize uint64) {
 	if i.HybridCouldExtents.sortedEks == nil {
 		return
 	}
-	if i.storeInReplicaSystem() {
+	if proto.IsStorageClassReplica(i.StorageClass) {
 		extSize += i.HybridCouldExtents.sortedEks.(*SortedExtents).LayerSize()
 	} else {
 		extSize += i.HybridCouldExtents.sortedEks.(*SortedObjExtents).LayerSize()
@@ -1328,7 +1332,7 @@ func (i *Inode) AppendExtents(eks []proto.ExtentKey, ct int64, volType int) (del
 	//if proto.IsCold(volType) {
 	//	return
 	//}
-	if !i.storeInReplicaSystem() {
+	if !proto.IsStorageClassReplica(i.StorageClass) {
 		return
 	}
 	i.Lock()
@@ -2107,7 +2111,7 @@ func (i *Inode) AppendExtentWithCheck(param *AppendExtParam) (delExtents []proto
 		}
 	}
 	//only update size when write into replicaSystem,
-	if i.storeInReplicaSystem() && param.isCache == false && param.isMigration == false {
+	if proto.IsStorageClassReplica(i.StorageClass) && param.isCache == false && param.isMigration == false {
 		size := extents.Size()
 		if i.Size < size {
 			i.Size = size
@@ -2363,10 +2367,6 @@ func (i *Inode) CopyTinyExtents() (delExtents []proto.ExtentKey) {
 	i.RLock()
 	defer i.RUnlock()
 	return i.Extents.CopyTinyExtents()
-}
-
-func (i *Inode) storeInReplicaSystem() bool {
-	return proto.IsStorageClassReplica(i.StorageClass)
 }
 
 func (i *Inode) updateStorageClass(storageClass uint32, isCache, isMigration bool) error {

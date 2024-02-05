@@ -175,7 +175,7 @@ func (mp *metaPartition) CreateInode(req *CreateInoReq, p *Packet, remoteAddr st
 		return
 	}
 
-	if ino.storeInReplicaSystem() {
+	if proto.IsStorageClassReplica(ino.StorageClass) {
 		ino.HybridCouldExtents.sortedEks = NewSortedExtents()
 	} else if ino.StorageClass == proto.StorageClass_BlobStore {
 		ino.HybridCouldExtents.sortedEks = NewSortedObjExtents()
@@ -1102,7 +1102,7 @@ func (mp *metaPartition) UpdateExtentKeyAfterMigration(req *proto.UpdateExtentKe
 		}()
 	}
 
-	if !ino.storeInReplicaSystem() && req.NewObjExtentKeys == nil {
+	if !proto.IsStorageClassReplica(ino.StorageClass) && req.NewObjExtentKeys == nil {
 		err = fmt.Errorf("mp %v inode %v new extentKey for storageClass %v  can not be nil",
 			mp.config.PartitionId, ino.Inode, req.StorageClass)
 		log.LogErrorf("action[UpdateExtentKeyAfterMigration] %v", err)
