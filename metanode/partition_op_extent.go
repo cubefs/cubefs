@@ -445,7 +445,7 @@ func (mp *metaPartition) ExtentsList(req *proto.GetExtentsRequest, p *Packet) (e
 		status = retMsg.Status
 	)
 
-	if !ino.storeInReplicaSystem() && (req.IsCache != true && req.IsMigration != true) {
+	if !proto.IsStorageClassReplica(ino.StorageClass) && (req.IsCache != true && req.IsMigration != true) {
 		status = proto.OpErr
 		reply = []byte(fmt.Sprintf("ino(%v) storageClass(%v) IsCache(%v) IsMigration(%v) do not support ExtentsList",
 			ino.Inode, ino.StorageClass, req.IsCache, req.IsMigration))
@@ -624,7 +624,7 @@ func (mp *metaPartition) ExtentsTruncate(req *ExtentsTruncateReq, p *Packet, rem
 		return
 	}
 	i := item.(*Inode)
-	if !i.storeInReplicaSystem() {
+	if !proto.IsStorageClassReplica(i.StorageClass) {
 		err = fmt.Errorf("inode %v storageClass(%v) do not support tuncate operation", req.Inode, i.StorageClass)
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return
@@ -670,7 +670,7 @@ func (mp *metaPartition) BatchExtentAppend(req *proto.AppendExtentKeysRequest, p
 		return
 	}
 	ino.StorageClass = req.StorageClass
-	if !ino.storeInReplicaSystem() {
+	if !proto.IsStorageClassReplica(ino.StorageClass) {
 		err = fmt.Errorf("ino %v storage type %v donot support BatchExtentAppend", ino.Inode, ino.StorageClass)
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return
