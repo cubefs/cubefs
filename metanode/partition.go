@@ -1147,10 +1147,11 @@ func (mp *metaPartition) LoadSnapshot(snapshotPath string) (err error) {
 		return err
 	}
 
+	// NOTE: parallel load data
 	loadFuncs := []func(rootDir string, crc uint32) error{
-		mp.loadInode,
+		nil, // NOTE: we load inode first
 		mp.loadDentry,
-		nil, // loading quota info from extend requires mp.loadInode() has been completed, so skip mp.loadExtend() here
+		mp.loadExtend,
 		mp.loadMultipart,
 	}
 
@@ -1182,7 +1183,10 @@ func (mp *metaPartition) LoadSnapshot(snapshotPath string) (err error) {
 		mp.storeMultiVersion(snapshotPath, &storeMsg{multiVerList: mp.multiVersionList.VerList})
 	}
 
+	// NOTE: load inodes first
 	errs := make([]error, len(loadFuncs))
+	errs[0] = mp.loadInode(snapshotPath, crcs[0])
+
 	var wg sync.WaitGroup
 	wg.Add(len(loadFuncs))
 	for idx, f := range loadFuncs {
@@ -1210,15 +1214,11 @@ func (mp *metaPartition) LoadSnapshot(snapshotPath string) (err error) {
 	}
 
 	wg.Wait()
-	log.LogDebugf("[load meta finish] get mp[%v] inodeCount(%d),dentryCount(%d)", mp.config.PartitionId, mp.inodeTree.Len(), mp.dentryTree.Len())
+	log.LogDebugf("[load meta finish] get mp[%v] inodeCount(%d),dentryCount(%d), err(%v)", mp.config.PartitionId, mp.inodeTree.Len(), mp.dentryTree.Len(), err)
 	for _, err = range errs {
 		if err != nil {
 			return
 		}
-	}
-
-	if err = mp.loadExtend(snapshotPath, crcs[2]); err != nil {
-		return
 	}
 
 	if needLoadTxStuff {
