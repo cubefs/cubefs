@@ -374,9 +374,10 @@ func (s *DataNode) startSpaceManager(cfg *config.Config) (err error) {
 			err = fmt.Errorf("invalid disks configuration: %v", d)
 			return
 		}
-		var devID uint64
-		if devID, err = getDeviceID(diskPath.Path()); err != nil {
-			return
+		var devID, derr = getDeviceID(diskPath.Path())
+		if derr != nil {
+			log.LogErrorf("get device ID for %v failed: %v", diskPath.Path(), derr)
+			continue
 		}
 		if !cfg.GetBool(ConfigKeyEnableRootDisk) && devID == rootDevID {
 			err = fmt.Errorf("root device in disks configuration: %v (%v), ", d, devID)
@@ -407,7 +408,7 @@ func (s *DataNode) startSpaceManager(cfg *config.Config) (err error) {
 		}
 	}
 
-	var futures []*async.Future
+	var futures = make(map[string]*async.Future)
 	for devID, diskPath := range diskPaths {
 		var future = async.NewFuture()
 		go func(path string, future *async.Future) {
@@ -417,11 +418,12 @@ func (s *DataNode) startSpaceManager(cfg *config.Config) (err error) {
 			var err = s.space.LoadDisk(path, checkExpired)
 			future.Respond(nil, err)
 		}(diskPath.Path(), future)
-		futures = append(futures, future)
+		futures[diskPath.Path()] = future
 	}
-	for _, future := range futures {
-		if _, err = future.Response(); err != nil {
-			return
+	for p, future := range futures {
+		if _, ferr := future.Response(); ferr != nil {
+			log.LogErrorf("load disk [%v] failed: %v", p, ferr)
+			continue
 		}
 	}
 
