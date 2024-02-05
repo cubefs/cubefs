@@ -282,7 +282,7 @@ func (w *Wrapper) IsCacheBoostEnabled() bool {
 	return w.enableClusterCacheBoost && w.enableVolCacheBoost
 }
 
-func (w *Wrapper) initRemoteCache() (err error) {
+func (w *Wrapper) initRemoteCache() {
 	cacheConfig := &flash.CacheConfig{
 		Cluster:       w.clusterName,
 		Volume:        w.volName,
@@ -290,9 +290,7 @@ func (w *Wrapper) initRemoteCache() (err error) {
 		MW:            w.metaWrapper,
 		ReadTimeoutMs: w.cacheReadTimeoutMs,
 	}
-	if w.remoteCache, err = flash.NewRemoteCache(cacheConfig); err != nil {
-		return
-	}
+	w.remoteCache = flash.NewRemoteCache(cacheConfig)
 	if !w.remoteCache.ResetCacheBoostPathToBloom(w.cacheBoostPath) {
 		w.cacheBoostPath = ""
 	}
@@ -606,9 +604,7 @@ func (w *Wrapper) updateRemoteCacheConfig(view *proto.SimpleVolView) {
 	if w.IsCacheBoostEnabled() {
 		if !w.oldCacheBoostStatus || w.remoteCache == nil {
 			log.LogInfof("updateRemoteCacheConfig: initRemoteCache: enable(%v -> %v) remoteCache isNil(%v)", w.oldCacheBoostStatus, w.IsCacheBoostEnabled(), w.remoteCache == nil)
-			if err := w.initRemoteCache(); err != nil {
-				log.LogErrorf("updateRemoteCacheConfig: initRemoteCache failed, err: %v", err)
-			}
+			w.initRemoteCache()
 		}
 	} else if w.oldCacheBoostStatus && w.remoteCache != nil {
 		w.remoteCache.Stop()

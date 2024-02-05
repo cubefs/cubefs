@@ -97,7 +97,7 @@ type RemoteCache struct {
 	limitedHostLock sync.RWMutex
 }
 
-func NewRemoteCache(config *CacheConfig) (*RemoteCache, error) {
+func NewRemoteCache(config *CacheConfig) *RemoteCache {
 	rc := new(RemoteCache)
 	rc.stopC = make(chan struct{})
 	rc.cluster = config.Cluster
@@ -116,18 +116,13 @@ func NewRemoteCache(config *CacheConfig) (*RemoteCache, error) {
 		ReadTimeoutNs:    rc.readTimeoutMs * int64(time.Millisecond),
 		WriteTimeoutNs:   rc.readTimeoutMs * int64(time.Millisecond),
 	}
-
-	err := rc.updateFlashGroups()
-	if err != nil {
-		return nil, err
-	}
 	rc.conns = connpool.NewConnectPoolWithTimeoutAndCap(0, 10, time.Duration(rc.connConfig.IdleTimeoutSec)*time.Second, time.Duration(rc.connConfig.ConnectTimeoutNs))
 	rc.cacheBloom = bloom.New(BloomBits, BloomHashNum)
 	rc.limitedHost = make(map[string]time.Time)
 
 	rc.wg.Add(1)
 	go rc.refresh()
-	return rc, nil
+	return rc
 }
 
 func (rc *RemoteCache) Read(ctx context.Context, fg *FlashGroup, inode uint64, req *CacheReadRequest) (read int, err error) {
@@ -339,10 +334,10 @@ func (rc *RemoteCache) refreshWithRecover() (panicErr error) {
 		}
 	}()
 
-	refreshView := time.NewTicker(RefreshFlashNodesInterval)
+	refreshView := time.NewTimer(0)
 	defer refreshView.Stop()
 
-	refreshLatency := time.NewTimer(0)
+	refreshLatency := time.NewTicker(RefreshHostLatencyInterval)
 	defer refreshLatency.Stop()
 
 	var (
@@ -356,9 +351,9 @@ func (rc *RemoteCache) refreshWithRecover() (panicErr error) {
 			if err = rc.updateFlashGroups(); err != nil {
 				log.LogErrorf("updateFlashGroups err: %v", err)
 			}
+			refreshView.Reset(RefreshFlashNodesInterval)
 		case <-refreshLatency.C:
 			rc.refreshHostLatency()
-			refreshLatency.Reset(RefreshHostLatencyInterval)
 		}
 	}
 }
@@ -383,8 +378,9 @@ func (rc *RemoteCache) updateFlashGroups() (err error) {
 		if log.IsDebugEnabled() {
 			log.LogDebugf("updateFlashGroups: fgID(%v) newAdded hosts: %v", fg.ID, newAdded)
 		}
-
+		// 这个方法耗时久
 		rc.updateHostLatency(newAdded)
+
 		sortedHosts := rc.ClassifyHostsByAvgDelay(fg.ID, fg.Hosts)
 
 		flashGroup := NewFlashGroup(fg, sortedHosts)
