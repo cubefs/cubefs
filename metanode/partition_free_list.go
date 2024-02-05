@@ -212,6 +212,8 @@ func (mp *metaPartition) batchDeleteExtentsByPartition(ctx context.Context, part
 		errorEKs, _ := partitionDeleteExtents[dpID]
 		for _, ek := range errorEKs {
 			mp.freeLaterInodes[ek.InodeId] = 0
+			log.LogWarnf("deleteInode metaPartition(%v) Inode(%v) ek(%v) delete error(%v)",mp.config.PartitionId,
+				ek.InodeId, ek, perr)
 		}
 	}
 
