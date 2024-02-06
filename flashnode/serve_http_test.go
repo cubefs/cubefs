@@ -31,27 +31,27 @@ func testHTTP(t *testing.T) {
 }
 
 func testHTTPStat(t *testing.T) {
-	st, err := httpCli.WithAddr(httpServer.Addr).FlashNode().Stat()
+	st, err := httpCli.Addr(httpServer.Addr).FlashNode().Stat()
 	require.NoError(t, err)
 	t.Logf("node  status %+v", st)
 	t.Logf("cache status %+v", *st.CacheStatus)
 }
 
 func testHTTPEvictVol(t *testing.T) {
-	require.Error(t, httpCli.WithAddr(httpServer.Addr).FlashNode().EvictVol(""))
-	st, err := httpCli.WithAddr(httpServer.Addr).FlashNode().Stat()
+	require.Error(t, httpCli.Addr(httpServer.Addr).FlashNode().EvictVol(""))
+	st, err := httpCli.Addr(httpServer.Addr).FlashNode().Stat()
 	require.NoError(t, err)
 	require.Equal(t, 1, len(st.CacheStatus.Keys))
 	require.Equal(t, cachengine.GenCacheBlockKey(_volume, _inode, _offset, _version), st.CacheStatus.Keys[0])
 	t.Logf("cache status before evicted, %+v", *st.CacheStatus)
 
-	require.NoError(t, httpCli.WithAddr(httpServer.Addr).FlashNode().EvictVol(_volume))
-	st, err = httpCli.WithAddr(httpServer.Addr).FlashNode().Stat()
+	require.NoError(t, httpCli.Addr(httpServer.Addr).FlashNode().EvictVol(_volume))
+	st, err = httpCli.Addr(httpServer.Addr).FlashNode().Stat()
 	require.NoError(t, err)
 	require.Equal(t, 0, len(st.CacheStatus.Keys))
 	t.Logf("cache status after  evicted, %+v", *st.CacheStatus)
 }
 
 func testHTTPEvictAll(t *testing.T) {
-	require.NoError(t, httpCli.WithAddr(httpServer.Addr).FlashNode().EvictAll())
+	require.NoError(t, httpCli.Addr(httpServer.Addr).FlashNode().EvictAll())
 }
