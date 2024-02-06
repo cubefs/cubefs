@@ -3,17 +3,15 @@ package monitor
 import (
 	"context"
 	"fmt"
-	"net/http"
-	"regexp"
-	"strings"
-	"time"
-
 	"github.com/cubefs/cubefs/cmd/common"
 	"github.com/cubefs/cubefs/util/config"
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/cubefs/cubefs/util/statistics"
 	"github.com/gorilla/mux"
+	"net/http"
+	"regexp"
+	"strings"
 )
 
 var (
@@ -24,12 +22,7 @@ var (
 
 type Monitor struct {
 	port             string
-	thriftAddr       string
-	namespace        string
-	queryIP          string
 	clusters         []string
-	splitRegionRules map[string]int64 	// clusterName:regionNum
-	splitKeysForVol	 []string
 	apiServer        *http.Server
 	jmqConfig        *JMQConfig
 	mqProducer       *MQProducer
@@ -106,26 +99,6 @@ func (m *Monitor) parseConfig(cfg *config.Config) (err error) {
 	}
 	m.port = listen
 
-	thriftAddr := cfg.GetString(ConfigThriftAddr)
-	m.thriftAddr = thriftAddr
-
-	namespace := cfg.GetString(ConfigNamespace)
-	if namespace == "" {
-		namespace = defaultNamespace
-	}
-	m.namespace = namespace
-
-	tableExpiredDay := cfg.GetInt64(ConfigExpiredDay)
-	if tableExpiredDay > 0 {
-		TableClearTime = time.Duration(tableExpiredDay) * 24 * time.Hour
-	}
-
-	queryIP := cfg.GetString(ConfigQueryIP)
-	if queryIP == "" {
-		queryIP = defaultQueryIP
-	}
-	m.queryIP = queryIP
-
 	var (
 		jmqTopic    = cfg.GetString(ConfigTopic)
 		jmqAddress  = cfg.GetString(ConfigJMQAddress)
@@ -146,22 +119,14 @@ func (m *Monitor) parseConfig(cfg *config.Config) (err error) {
 		}
 	}
 
-	m.splitRegionRules = getSplitRules(cfg.GetStringSlice(ConfigSplitRegion))
-	m.splitKeysForVol = cfg.GetStringSlice(ConfigSplitVol)
-
 	log.LogInfof("action[parseConfig] load listen port(%v).", m.port)
 	log.LogInfof("action[parseConfig] load cluster name(%v).", m.clusters)
-	log.LogInfof("action[parseConfig] load table expired time(%v).", TableClearTime)
-	log.LogInfof("action[parseConfig] load query ip(%v).", m.queryIP)
-	log.LogInfof("action[parseConfig] load thrift server address(%v).", m.thriftAddr)
 	if m.jmqConfig != nil {
 		log.LogInfof("action[parseConfig] load JMQ topics(%v).", m.jmqConfig.topic)
 		log.LogInfof("action[parseConfig] load JMQ address(%v).", m.jmqConfig.address)
 		log.LogInfof("action[parseConfig] load JMQ clientID(%v).", m.jmqConfig.clientID)
 		log.LogInfof("action[parseConfig] load producer num(%v).", m.jmqConfig.produceNum)
 	}
-	log.LogInfof("action[parseConfig] load splitRegionRules(%v).", m.splitRegionRules)
-	log.LogInfof("action[parseConfig] load splitKeysForVol(%v).", m.splitKeysForVol)
 	return
 }
 
@@ -169,31 +134,22 @@ func (m *Monitor) registerAPIRoutes(router *mux.Router) {
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(statistics.MonitorCollect).
 		HandlerFunc(m.collect)
-	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
-		Path(statistics.MonitorCluster).
-		HandlerFunc(m.setCluster)
 
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
-		Path(statistics.MonitorClusterTopIP).
-		HandlerFunc(m.getClusterTopIP)
+		Path(statistics.MonitorClusterSet).
+		HandlerFunc(m.setCluster)
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
-		Path(statistics.MonitorClusterTopVol).
-		HandlerFunc(m.getClusterTopVol)
+		Path(statistics.MonitorClusterGet).
+		HandlerFunc(m.getCluster)
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
-		Path(statistics.MonitorOpTopIP).
-		HandlerFunc(m.getOpTopIP)
+		Path(statistics.MonitorClusterAdd).
+		HandlerFunc(m.addCluster)
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
-		Path(statistics.MonitorOpTopVol).
-		HandlerFunc(m.getOpTopVol)
+		Path(statistics.MonitorClusterDel).
+		HandlerFunc(m.delCluster)
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
-		Path(statistics.MonitorTopPartition).
-		HandlerFunc(m.getTopPartition)
-	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
-		Path(statistics.MonitorTopOp).
-		HandlerFunc(m.getTopOp)
-	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
-		Path(statistics.MonitorTopIP).
-		HandlerFunc(m.getTopIP)
+		Path(statistics.MonitorTopicSet).
+		HandlerFunc(m.setTopic)
 }
 
 func (m *Monitor) startHTTPService() {
@@ -212,13 +168,4 @@ func (m *Monitor) startHTTPService() {
 	log.LogDebugf("startHTTPService successfully: port(%v)", m.port)
 	m.apiServer = server
 	return
-}
-
-func (m *Monitor) hasPrefixTable(name string, prefixes []string) bool {
-	for _, prefix := range prefixes {
-		if strings.HasPrefix(name, prefix) {
-			return true
-		}
-	}
-	return false
 }

@@ -14,15 +14,13 @@ const (
 const (
 	// Monitor API
 	MonitorCollect = "/collect"
-	MonitorCluster = "/cluster/set"
 
-	MonitorClusterTopVol = "/cluster/top/vol"
-	MonitorClusterTopIP  = "/cluster/top/ip"
-	MonitorOpTopVol      = "/op/top/vol"
-	MonitorOpTopIP       = "/op/top/ip"
-	MonitorTopPartition  = "/top/partition"
-	MonitorTopOp         = "/top/op"
-	MonitorTopIP         = "/top/ip"
+	// Monitor Admin API
+	MonitorClusterSet 	= "/cluster/set"
+	MonitorClusterGet 	= "/cluster/get"
+	MonitorClusterAdd 	= "/cluster/add"
+	MonitorClusterDel	= "/cluster/del"
+	MonitorTopicSet 	= "/topic/set"
 )
 
 const (

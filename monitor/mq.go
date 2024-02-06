@@ -74,14 +74,15 @@ func (mqProducer *MQProducer) Produce(msgChan chan *statistics.ReportInfo, produ
 	for {
 		select {
 		case reportInfo := <-msgChan:
+			topics := mqProducer.topic
 			start := time.Now()
 			proMsgs := make(map[int][]*sarama.ProducerMessage)
-			for i := 0; i < len(mqProducer.topic); i++ {
+			for i := 0; i < len(topics); i++ {
 				proMsgs[i] = make([]*sarama.ProducerMessage, 0)
 			}
 			for _, info := range reportInfo.Infos {
 				mqMsg := constructMQMessage(reportInfo.Cluster, reportInfo.Module, reportInfo.Zone, reportInfo.Addr, info)
-				for topicID, topic := range mqProducer.topic {
+				for topicID, topic := range topics {
 					if len(topic) <= 0 {
 						continue
 					}
@@ -93,12 +94,12 @@ func (mqProducer *MQProducer) Produce(msgChan chan *statistics.ReportInfo, produ
 				}
 			}
 			// send message
-			for i := 0; i < len(mqProducer.topic); i++ {
+			for i := 0; i < len(topics); i++ {
 				if err := producer.SendMessages(proMsgs[i]); err != nil {
-					log.LogErrorf("produce to mq error: %v, topic(%v) msgLen(%v) index(%v)", err, mqProducer.topic[i], len(proMsgs[i]), index)
+					log.LogErrorf("produce to mq error: %v, topic(%v) msgLen(%v) index(%v)", err, topics[i], len(proMsgs[i]), index)
 				}
 				log.LogDebugf("produce to mq: cluster(%v) module(%v) zone(%v) ip(%v) topic(%v) msgLen(%v) index(%v) msgChan(%v) cost(%v)",
-					reportInfo.Cluster, reportInfo.Module, reportInfo.Zone, reportInfo.Addr, mqProducer.topic[i], len(proMsgs[i]), index, len(msgChan), time.Since(start))
+					reportInfo.Cluster, reportInfo.Module, reportInfo.Zone, reportInfo.Addr, topics[i], len(proMsgs[i]), index, len(msgChan), time.Since(start))
 			}
 
 		case <-mqProducer.stopC:

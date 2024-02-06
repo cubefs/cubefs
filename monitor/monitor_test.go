@@ -7,6 +7,7 @@ import (
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/config"
 	"github.com/cubefs/cubefs/util/statistics"
+	"github.com/stretchr/testify/assert"
 	"io/ioutil"
 	"net/http"
 	"strings"
@@ -29,16 +30,8 @@ func createMonitorServer() *Monitor {
 			  "prof": "7001",
 			  "logDir": "/cfs/log",
 			  "logLevel": "debug",
-			  "namespace": "test",
 			  "cluster": "chubaofs01",
-			  "thriftAddr": "127.0.0.1:9091",
-			  "producerNum": "10",
-			  "splitRegion": [
-				"cfs01:0",
-				"cfs02:1",
-				"mysql:2",
-				"spark:6"
-			  ]
+			  "producerNum": "10"
 			}`
 	cfg := config.LoadConfigString(cfgConfig)
 	server := NewServer()
@@ -80,55 +73,22 @@ func TestCollect(t *testing.T) {
 
 func TestSetCluster(t *testing.T) {
 	setCluster := "cfs1,cfs2"
-	reqURL := fmt.Sprintf("http://%v%v?cluster=%v", monitorUrl, statistics.MonitorCluster, setCluster)
-	if err := post(reqURL, nil); err != nil {
-		t.Fatalf("TestSetCluster: post err(%v)", err)
-	}
-	if strings.Join(monitorServer.clusters, ",") != setCluster {
-		t.Fatalf("TestSetCluster: expect cluster(%v) but(%v)", setCluster, monitorServer.clusters)
-	}
-}
+	reqURL := fmt.Sprintf("http://%v%v?cluster=%v", monitorUrl, statistics.MonitorClusterSet, setCluster)
+	assert.Equal(t, nil, post(reqURL, nil), "send set cluster")
+	assert.Equal(t, setCluster, strings.Join(monitorServer.clusters, ","), "set cluster")
 
-func TestGetPartitionQueryTable(t *testing.T) {
-	tests := []struct {
-		name        string
-		startTime   string
-		endTime     string
-		expectTable string
-	}{
-		{
-			name:        "test01",
-			startTime:   "20220411120000",
-			endTime:     "20220411123000",
-			expectTable: "cfs_monitor_20220411120000",
-		},
-		{
-			name:        "test02",
-			startTime:   "20220411125500",
-			endTime:     "20220411130600",
-			expectTable: "cfs_monitor_20220411130000",
-		},
-		{
-			name:        "test03",
-			startTime:   "20220411125000",
-			endTime:     "20220411130300",
-			expectTable: "cfs_monitor_20220411120000",
-		},
-		{
-			name:        "test04",
-			startTime:   "20220411125000",
-			endTime:     "20220411140300",
-			expectTable: "cfs_monitor_20220411120000",
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			table, err := getPartitionQueryTable(tt.startTime, tt.endTime)
-			if err != nil || table != tt.expectTable {
-				t.Errorf("TestGetPartitionQueryTable: name(%v) err(%v) expect table(%v) but(%v)", tt.name, err, tt.expectTable, table)
-			}
-		})
-	}
+	addCluster := "test01"
+	reqURL = fmt.Sprintf("http://%v%v?cluster=%v", monitorUrl, statistics.MonitorClusterAdd, addCluster)
+	assert.Equal(t, nil, post(reqURL, nil), "send add cluster")
+	assert.Equal(t, "cfs1,cfs2,test01", strings.Join(monitorServer.clusters, ","), "add cluster")
+
+	delCluster := "cfs1"
+	reqURL = fmt.Sprintf("http://%v%v?cluster=%v", monitorUrl, statistics.MonitorClusterDel, delCluster)
+	assert.Equal(t, nil, post(reqURL, nil), "send del cluster")
+	assert.Equal(t, "cfs2,test01", strings.Join(monitorServer.clusters, ","), "del cluster")
+
+	reqURL = fmt.Sprintf("http://%v%v", monitorUrl, statistics.MonitorClusterGet)
+	assert.Equal(t, nil, post(reqURL, nil), "send get cluster")
 }
 
 func post(reqURL string, data []byte) (err error) {

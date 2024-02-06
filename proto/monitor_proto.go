@@ -14,25 +14,6 @@
 
 package proto
 
-type QueryHTTPReply struct {
-	Code int32        `json:"code"`
-	Msg  string       `json:"msg"`
-	Data []*QueryData `json:"data"`
-}
-
-type QueryData struct {
-	Pid   uint64 `json:"PID"`
-	Vol   string `json:"VOL"`
-	IP    string `json:"IP"`
-	Op    string `json:"OP"`
-	Count uint64 `json:"TOTAL_COUNT"`
-	Size  uint64 `json:"TOTAL_SIZE"`
-}
-
-type QueryView struct {
-	Data []*QueryData
-}
-
 const (
 	ActionRead = iota
 	ActionRepairRead

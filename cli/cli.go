@@ -23,7 +23,6 @@ import (
 	"github.com/cubefs/cubefs/cli/cmd"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/sdk/master"
-	"github.com/cubefs/cubefs/sdk/monitor"
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/spf13/cobra"
 )
@@ -54,9 +53,8 @@ func setupCommands(cfg *cmd.Config) *cobra.Command {
 	mc.MetaNodeProfPort = cfg.MetaNodeProfPort
 	mc.EcNodeProfPort = cfg.EcNodeProfPort
 	mc.FlashNodeProfPort = cfg.FlashNodeProfPort
-	var monitorCli = monitor.NewMonitorClient(cfg.MonitorAddr, false)
 	cc := convert.NewConvertClient(cfg.ConvertAddr, false)
-	cfsRootCmd := cmd.NewRootCmd(mc, monitorCli, cc)
+	cfsRootCmd := cmd.NewRootCmd(mc, cc)
 	var completionCmd = &cobra.Command{
 		Use:   "completion",
 		Short: "Generate completion bash file",

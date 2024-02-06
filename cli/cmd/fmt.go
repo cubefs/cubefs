@@ -804,15 +804,6 @@ func formatRegionView(rv *proto.RegionView) string {
 	return sb.String()
 }
 
-var (
-	monitorQueryDataTableRowPattern = "%-10v    %-60v    %-20v    %-15v    %-10v    %-10v"
-	monitorQueryDataTableHeader     = fmt.Sprintf(monitorQueryDataTableRowPattern, "PID", "VOL", "IP", "OP", "COUNT", "SIZE(unit: MB)")
-)
-
-func formatMonitorQueryData(data *proto.QueryData) string {
-	return fmt.Sprintf(monitorQueryDataTableRowPattern, data.Pid, data.Vol, data.IP, data.Op, data.Count, data.Size/1024/1024)
-}
-
 func formatConvertProcessorInfo(processors []*proto.ConvertProcessorInfo) string {
 	ProcessorInfoRowPattern := "    %-10v    %-10v    %-10v\n"
 	ProcessorInfoTableHeader := fmt.Sprintf(ProcessorInfoRowPattern, "ID", "STATE", "COUNT")
