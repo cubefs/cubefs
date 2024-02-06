@@ -1174,7 +1174,12 @@ func (partition *DataPartition) Decommission(c *Cluster) bool {
 
 	// delete if not normal data partition
 	if !proto.IsNormalDp(partition.PartitionType) {
-		c.vols[partition.VolName].deleteDataPartition(c, partition)
+		if vol, ok := c.vols[partition.VolName]; !ok {
+			log.LogWarnf("action[decommissionDataPartition]vol [%v] for dp [%v] is deleted ", partition.VolName,
+				partition.PartitionID)
+		} else {
+			vol.deleteDataPartition(c, partition)
+		}
 		partition.SetDecommissionStatus(DecommissionSuccess)
 		log.LogWarnf("action[decommissionDataPartition]delete dp directly[%v]", partition.PartitionID)
 		return true
