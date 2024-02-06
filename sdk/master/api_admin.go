@@ -60,7 +60,7 @@ func (api *AdminAPI) GetClusterIP() (cp *proto.ClusterIP, err error) {
 
 func (api *AdminAPI) GetClusterStat() (cs *proto.ClusterStatInfo, err error) {
 	cs = &proto.ClusterStatInfo{}
-	err = api.mc.requestWith(cs, newRequest(get, proto.AdminClusterStat).Header(api.h, "isTimeOut", "false"))
+	err = api.mc.requestWith(cs, newRequest(get, proto.AdminClusterStat).Header(api.h).NoTimeout())
 	return
 }
 
