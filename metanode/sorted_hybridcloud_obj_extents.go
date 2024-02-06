@@ -13,6 +13,7 @@ func NewSortedHybridCloudExtents() *SortedHybridCloudExtents {
 type SortedHybridCloudExtentsMigration struct {
 	sortedEks    interface{}
 	storageClass uint32
+	expiredTime  int64 //delay delete
 }
 
 func NewSortedHybridCloudExtentsMigration() *SortedHybridCloudExtentsMigration {
