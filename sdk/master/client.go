@@ -21,7 +21,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -146,7 +145,7 @@ func (c *MasterClient) serveRequest(r *request) (repsData []byte, err error) {
 			schema = "https"
 		}
 		url := fmt.Sprintf("%s://%s%s", schema, host, r.path)
-		resp, err = c.httpRequest(r.method, url, r.params, r.header, r.body)
+		resp, err = c.httpRequest(r.method, url, r)
 		if err != nil {
 			log.LogErrorf("serveRequest: send http request fail: method(%v) url(%v) err(%v)", r.method, url, err)
 			continue
@@ -241,30 +240,21 @@ func (c *MasterClient) prepareRequest() (addr string, nodes []string) {
 	return
 }
 
-func (c *MasterClient) httpRequest(method, url string, param, header map[string]string, reqData []byte) (resp *http.Response, err error) {
+func (c *MasterClient) httpRequest(method, url string, r *request) (resp *http.Response, err error) {
 	client := http.DefaultClient
-	reader := bytes.NewReader(reqData)
-	if _, has := header["isTimeOut"]; has {
-		var isTimeOut bool
-		if isTimeOut, err = strconv.ParseBool(header["isTimeOut"]); err != nil {
-			return
-		}
-		if isTimeOut {
-			client.Timeout = c.timeout
-		}
-		delete(header, "isTimeOut")
-	} else {
+	if !r.noTimeout {
 		client.Timeout = c.timeout
 	}
+	reader := bytes.NewReader(r.body)
 	var req *http.Request
-	fullUrl := c.mergeRequestUrl(url, param)
-	log.LogDebugf("httpRequest: merge request url: method(%v) url(%v) bodyLength[%v].", method, fullUrl, len(reqData))
+	fullUrl := c.mergeRequestUrl(url, r.params)
+	log.LogDebugf("httpRequest: method(%v) url(%v) bodyLength[%v].", method, fullUrl, len(r.body))
 	if req, err = http.NewRequest(method, fullUrl, reader); err != nil {
 		return
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Connection", "close")
-	for k, v := range header {
+	for k, v := range r.header {
 		req.Header.Set(k, v)
 	}
 	resp, err = client.Do(req)

@@ -17,9 +17,9 @@ package master
 import (
 	"encoding/json"
 	"fmt"
-	"strconv"
 
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util"
 )
 
 type request struct {
@@ -29,6 +29,8 @@ type request struct {
 	header map[string]string
 	body   []byte
 	err    error
+
+	noTimeout bool
 }
 
 type anyParam struct {
@@ -39,45 +41,7 @@ type anyParam struct {
 var ReqHeaderUA = fmt.Sprintf("cubefs-sdk/%v (commit %v)", proto.Version, proto.CommitID)
 
 func (r *request) addParamAny(key string, value interface{}) *request {
-	var val string
-	switch v := value.(type) {
-	case string:
-		val = v
-	case bool:
-		val = strconv.FormatBool(v)
-
-	case int8:
-		val = strconv.FormatInt(int64(v), 10)
-	case int16:
-		val = strconv.FormatInt(int64(v), 10)
-	case int32:
-		val = strconv.FormatInt(int64(v), 10)
-	case int64:
-		val = strconv.FormatInt(int64(v), 10)
-	case int:
-		val = strconv.FormatInt(int64(v), 10)
-
-	case uint8:
-		val = strconv.FormatUint(uint64(v), 10)
-	case uint16:
-		val = strconv.FormatUint(uint64(v), 10)
-	case uint32:
-		val = strconv.FormatUint(uint64(v), 10)
-	case uint64:
-		val = strconv.FormatUint(uint64(v), 10)
-	case uint:
-		val = strconv.FormatUint(uint64(v), 10)
-
-	case float32:
-		val = strconv.FormatFloat(float64(v), 'f', 6, 64)
-	case float64:
-		val = strconv.FormatFloat(float64(v), 'f', 6, 64)
-
-	default:
-		r.err = fmt.Errorf("unknown param type %v", value)
-		return r
-	}
-	r.params[key] = val
+	r.params[key] = util.Any2String(value)
 	return r
 }
 
@@ -126,6 +90,11 @@ func (r *request) Body(body interface{}) *request {
 		}
 	}
 	r.body = reqBody
+	return r
+}
+
+func (r *request) NoTimeout() *request {
+	r.noTimeout = true
 	return r
 }
 

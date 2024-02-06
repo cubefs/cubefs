@@ -108,11 +108,10 @@ func (api *NodeAPI) ResponseDataNodeTask(task *proto.AdminTask) (err error) {
 }
 
 func (api *NodeAPI) DataNodeDecommission(nodeAddr string, count int, clientIDKey string) (err error) {
-	request := newRequest(get, proto.DecommissionDataNode).Header(api.h)
+	request := newRequest(get, proto.DecommissionDataNode).Header(api.h).NoTimeout()
 	request.addParam("addr", nodeAddr)
 	request.addParam("count", strconv.Itoa(count))
 	request.addParam("clientIDKey", clientIDKey)
-	request.addHeader("isTimeOut", "false")
 	if _, err = api.mc.serveRequest(request); err != nil {
 		return
 	}
@@ -120,10 +119,9 @@ func (api *NodeAPI) DataNodeDecommission(nodeAddr string, count int, clientIDKey
 }
 
 func (api *NodeAPI) MetaNodeDecommission(nodeAddr string, count int, clientIDKey string) (err error) {
-	request := newRequest(get, proto.DecommissionMetaNode).Header(api.h)
+	request := newRequest(get, proto.DecommissionMetaNode).Header(api.h).NoTimeout()
 	request.addParam("addr", nodeAddr)
 	request.addParam("count", strconv.Itoa(count))
-	request.addHeader("isTimeOut", "false")
 	request.addParam("clientIDKey", clientIDKey)
 	if _, err = api.mc.serveRequest(request); err != nil {
 		return
@@ -132,11 +130,10 @@ func (api *NodeAPI) MetaNodeDecommission(nodeAddr string, count int, clientIDKey
 }
 
 func (api *NodeAPI) MetaNodeMigrate(srcAddr, targetAddr string, count int, clientIDKey string) (err error) {
-	request := newRequest(get, proto.MigrateMetaNode).Header(api.h)
+	request := newRequest(get, proto.MigrateMetaNode).Header(api.h).NoTimeout()
 	request.addParam("srcAddr", srcAddr)
 	request.addParam("targetAddr", targetAddr)
 	request.addParam("count", strconv.Itoa(count))
-	request.addHeader("isTimeOut", "false")
 	request.addParam("clientIDKey", clientIDKey)
 	if _, err = api.mc.serveRequest(request); err != nil {
 		return
@@ -145,12 +142,11 @@ func (api *NodeAPI) MetaNodeMigrate(srcAddr, targetAddr string, count int, clien
 }
 
 func (api *NodeAPI) DataNodeMigrate(srcAddr, targetAddr string, count int, clientIDKey string) (err error) {
-	request := newRequest(get, proto.MigrateDataNode).Header(api.h)
+	request := newRequest(get, proto.MigrateDataNode).Header(api.h).NoTimeout()
 	request.addParam("srcAddr", srcAddr)
 	request.addParam("targetAddr", targetAddr)
 	request.addParam("count", strconv.Itoa(count))
 	request.addParam("clientIDKey", clientIDKey)
-	request.addHeader("isTimeOut", "false")
 	if _, err = api.mc.serveRequest(request); err != nil {
 		return
 	}
