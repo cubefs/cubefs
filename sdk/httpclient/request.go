@@ -21,6 +21,8 @@ import (
 	"github.com/cubefs/cubefs/proto"
 )
 
+// TODO: rename sdk/master/request.go to here.
+
 type request struct {
 	method string
 	path   string
