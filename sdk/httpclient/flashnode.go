@@ -15,8 +15,6 @@
 package httpclient
 
 import (
-	"net/http"
-
 	"github.com/cubefs/cubefs/proto"
 )
 
@@ -35,16 +33,16 @@ func (c *Client) FlashNode() FlashNode {
 }
 
 func (f *flashNode) EvictVol(volume string) error {
-	r := newRequest(http.MethodPost, "/evictVol")
+	r := newRequest(post, "/evictVol")
 	r.params.Add("volume", volume)
-	return f.client.serveWith(r, nil)
+	return f.client.serveWith(nil, r)
 }
 
 func (f *flashNode) EvictAll() error {
-	return f.client.serveWith(newRequest(http.MethodPost, "/evictAll"), nil)
+	return f.client.serveWith(nil, newRequest(post, "/evictAll"))
 }
 
 func (f *flashNode) Stat() (st proto.FlashNodeStat, err error) {
-	err = f.client.serveWith(newRequest(http.MethodGet, "/stat"), &st)
+	err = f.client.serveWith(&st, newRequest(get, "/stat"))
 	return
 }

@@ -24,11 +24,13 @@ import (
 	"time"
 
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util/compressor"
 	"github.com/cubefs/cubefs/util/log"
 )
 
 const (
-	requestTimeout = 30 * time.Second
+	get  = http.MethodGet
+	post = http.MethodPost
 )
 
 var ErrNoAddress = errors.New("no address")
@@ -37,29 +39,56 @@ type Client struct {
 	http.Client
 	schema string
 	addr   []string
+	header map[string]string
 }
 
 func New() *Client {
 	return &Client{schema: "http"}
 }
 
-func (c *Client) WithAddr(addresses ...string) *Client {
+func (c *Client) Addr(addresses ...string) *Client {
 	c.addr = addresses[:]
 	return c
 }
 
-func (c *Client) WithTimeout(timeout time.Duration) *Client {
+func (c *Client) Timeout(timeout time.Duration) *Client {
 	c.Client.Timeout = timeout
 	return c
 }
 
-func (c *Client) WithSSL(ssl bool) *Client {
+func (c *Client) SSL(ssl bool) *Client {
+	c.schema = "http"
 	if ssl {
 		c.schema = "https"
-	} else {
-		c.schema = "http"
 	}
 	return c
+}
+
+// WithHeader return a new Client.
+func (c *Client) WithHeader(headers map[string]string, added ...string) *Client {
+	if len(added)%2 == 1 {
+		added = added[:len(added)-1]
+	}
+	nc := &Client{
+		Client: c.Client,
+		schema: c.schema,
+		addr:   c.addr[:],
+		header: make(map[string]string, len(c.header)),
+	}
+	for k, v := range c.header {
+		nc.header[k] = v
+	}
+	for k, v := range headers {
+		nc.header[k] = v
+	}
+	for idx := 0; idx < len(added); idx += 2 {
+		nc.header[added[idx]] = added[idx+1]
+	}
+	return nc
+}
+
+func (c *Client) EncodingGzip() *Client {
+	return c.WithHeader(nil, "x-cfs-Accept-Encoding", compressor.EncodingGzip)
 }
 
 func (c *Client) serve(r *request) (data []byte, err error) {
@@ -74,6 +103,9 @@ func (c *Client) serve(r *request) (data []byte, err error) {
 		}
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("Connection", "close")
+		for k, v := range c.header {
+			req.Header.Set(k, v)
+		}
 		for k, v := range r.header {
 			req.Header.Set(k, v)
 		}
@@ -91,36 +123,33 @@ func (c *Client) serve(r *request) (data []byte, err error) {
 			continue
 		}
 
-		switch resp.StatusCode {
-		case http.StatusOK:
-			body := &struct {
-				Code int32           `json:"code"`
-				Msg  string          `json:"msg"`
-				Data json.RawMessage `json:"data"`
-			}{}
-			if err = json.Unmarshal(respData, body); err != nil {
-				log.LogErrorf("unmarshal response body %v", err)
-				return nil, fmt.Errorf("unmarshal response body %v", err)
-			}
-			if body.Code != proto.ErrCodeSuccess {
-				log.LogWarnf("serve: body code[%d] msg[%s] data[%v] ", body.Code, body.Msg, body.Data)
-				if body.Code == proto.ErrCodeInternalError && len(body.Msg) > 0 {
-					return nil, errors.New(body.Msg)
-				}
-				return nil, proto.ParseErrorCode(body.Code)
-			}
-			return []byte(body.Data), nil
-		default:
+		if resp.StatusCode != http.StatusOK {
 			err = fmt.Errorf("serve: url(%s) status(%d) body(%s)",
 				resp.Request.URL.String(), resp.StatusCode, string(respData))
 			log.LogError(err)
 			continue
 		}
+
+		respData, err = compressor.New(resp.Header.Get("x-cfs-Content-Encoding")).Decompress(respData)
+		if err != nil {
+			log.LogErrorf("decompress response body %v", err)
+			continue
+		}
+		reply := new(proto.HTTPReplyRaw)
+		if err = reply.Unmarshal(respData); err != nil {
+			log.LogError(err)
+			continue
+		}
+		if err = reply.Success(); err != nil {
+			log.LogError(err)
+			continue
+		}
+		return reply.Bytes(), nil
 	}
 	return
 }
 
-func (c *Client) serveWith(r *request, rst interface{}) error {
+func (c *Client) serveWith(rst interface{}, r *request) error {
 	buf, err := c.serve(r)
 	if err != nil {
 		return err

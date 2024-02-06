@@ -127,7 +127,7 @@ func newCmdFlashNodeHTTPStat(_ *master.MasterClient) *cobra.Command {
 		Short: "show flashnode stat",
 		Args:  cobra.MinimumNArgs(1),
 		RunE: func(_ *cobra.Command, args []string) (err error) {
-			stat, err := httpclient.New().WithAddr(addr2Prof(args[0])).FlashNode().Stat()
+			stat, err := httpclient.New().Addr(addr2Prof(args[0])).FlashNode().Stat()
 			if err != nil {
 				return
 			}
@@ -145,13 +145,13 @@ func newCmdFlashNodeHTTPEvict(_ *master.MasterClient) *cobra.Command {
 		RunE: func(_ *cobra.Command, args []string) (err error) {
 			addr := args[0]
 			if len(args) == 1 {
-				if err = httpclient.New().WithAddr(addr2Prof(addr)).FlashNode().EvictAll(); err == nil {
+				if err = httpclient.New().Addr(addr2Prof(addr)).FlashNode().EvictAll(); err == nil {
 					stdoutlnf("%s evicts all [OK]", addr)
 				}
 				return
 			}
 			volume := args[1]
-			if err = httpclient.New().WithAddr(addr2Prof(addr)).FlashNode().EvictVol(volume); err == nil {
+			if err = httpclient.New().Addr(addr2Prof(addr)).FlashNode().EvictVol(volume); err == nil {
 				stdoutlnf("%s evicts volume(%s) [OK]", addr, volume)
 			}
 			return
@@ -173,7 +173,7 @@ func showFlashNodesView(flashNodeViewInfos []*proto.FlashNodeViewInfo, showStat 
 
 		hitRate, evicts, limit := "N/A", "N/A", "N/A"
 		if fn.IsActive && fn.IsEnable {
-			if stat, e := client.WithAddr(addr2Prof(fn.Addr)).FlashNode().Stat(); e == nil {
+			if stat, e := client.Addr(addr2Prof(fn.Addr)).FlashNode().Stat(); e == nil {
 				hitRate = fmt.Sprintf("%.2f%%", stat.CacheStatus.HitRate*100)
 				evicts = strconv.Itoa(stat.CacheStatus.Evicts)
 				limit = strconv.FormatUint(stat.NodeLimit, 10)
