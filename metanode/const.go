@@ -201,7 +201,8 @@ const (
 	opFSMForbiddenMigrationInode             = 86
 	opFSMRenewalForbiddenMigration           = 87
 	opFSMUpdateExtentKeyAfterMigration       = 88
-	opFSMSetInodeCreateTime                  = 80 // for debug
+	opFSMInternalFreeInodeMigrationExtentKey = 89
+	opFSMSetInodeCreateTime                  = 90 //for debug
 )
 
 var exporterKey string

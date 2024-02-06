@@ -1124,6 +1124,7 @@ func (mp *metaPartition) UpdateExtentKeyAfterMigration(req *proto.UpdateExtentKe
 		ino.WriteGeneration = atomic.LoadUint64(&(item.(*Inode).WriteGeneration))
 		ino.ForbiddenMigration = atomic.LoadUint32(&(item.(*Inode).ForbiddenMigration))
 	}
+
 	start := time.Now()
 	if mp.IsEnableAuditLog() {
 		defer func() {
@@ -1155,6 +1156,7 @@ func (mp *metaPartition) UpdateExtentKeyAfterMigration(req *proto.UpdateExtentKe
 	}
 	//store ek after migration in HybridCouldExtentsMigration
 	ino.HybridCouldExtentsMigration.storageClass = req.StorageClass
+	ino.HybridCouldExtentsMigration.expiredTime = time.Now().Add(time.Duration(req.DelayDeleteMinute) * time.Minute).Unix()
 	if req.StorageClass == proto.StorageClass_BlobStore {
 		ino.HybridCouldExtentsMigration.sortedEks = NewSortedObjExtentsFromObjEks(req.NewObjExtentKeys)
 	} else if req.StorageClass == proto.MediaType_HDD {
