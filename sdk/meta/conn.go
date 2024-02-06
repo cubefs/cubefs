@@ -241,6 +241,7 @@ func (mw *MetaWrapper) sendToHost(ctx context.Context, mp *MetaPartition, req *p
 	if addr == "" {
 		return nil, false, errors.New(fmt.Sprintf("sendToHost failed: leader addr empty, req(%v) mp(%v)", req, mp))
 	}
+	req.PartitionID = mp.PartitionID
 	mc, err = mw.getConn(ctx, mp.PartitionID, addr)
 	if err != nil {
 		return

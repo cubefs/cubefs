@@ -366,7 +366,7 @@ func generateSources(fileSize int64) (sources []*proto.DataSource) {
 		}
 		rand.New(rand.NewSource(time.Now().UnixNano()))
 		index := rand.Intn(len(bufSlice))
-		if int64(bufSlice[index]) > fileSize {
+		if int64(bufSlice[index]) >= fileSize {
 			continue
 		}
 		size := int(math.Min(float64(fileSize-offset), float64(bufSlice[index])))
@@ -380,12 +380,20 @@ func generateSources(fileSize int64) (sources []*proto.DataSource) {
 }
 
 func generateSparseSources(fileSize int64) (sources []*proto.DataSource) {
-	originSources := generateSources(fileSize)
-	sources = make([]*proto.DataSource, 0)
-	for i, s := range originSources {
-		if i%2 == 0 {
-			sources = append(sources, s)
+	for i := 0; i < 1000; i++ {
+		originSources := generateSources(fileSize)
+		sources = make([]*proto.DataSource, 0)
+		for j, s := range originSources {
+			if j%2 == 0 {
+				sources = append(sources, s)
+			}
 		}
+		if len(sources) >= 2 {
+			break
+		}
+	}
+	if len(sources) < 2 {
+		return make([]*proto.DataSource, 0)
 	}
 	return
 }

@@ -136,7 +136,7 @@ func createIndexFile(indexPath string, datasetCnt int) (dirIno uint64, err error
 		if fh, err = os.Create(filePath); err != nil {
 			return
 		}
-		b := RandStringRunes(10240)
+		b := randTestData(10240)
 		if _, err = fh.Write(b); err != nil {
 			return
 		}
@@ -148,13 +148,15 @@ func createIndexFile(indexPath string, datasetCnt int) (dirIno uint64, err error
 	return
 }
 
-var letterRunes = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
-func RandStringRunes(n int) []byte {
-	b := make([]rune, n)
+var letterRunes = []byte("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
+
+func randTestData(size int) (data []byte) {
+	rand.Seed(time.Now().UnixNano())
+	b := make([]byte, size)
 	for i := range b {
 		b[i] = letterRunes[rand.Intn(len(letterRunes))]
 	}
-	return []byte(string(b))
+	return b
 }
 
 func TestPrefetchReadByPath(t *testing.T)  {
