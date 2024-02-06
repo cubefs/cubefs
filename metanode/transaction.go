@@ -465,7 +465,8 @@ func (tm *TransactionManager) processTx() {
 	}
 
 	idx := 0
-	f := func(tx *proto.TransactionInfo) (bool, error) {
+	f := func(i interface{}) (bool, error) {
+		tx := i.(*proto.TransactionInfo)
 		idx++
 		if idx%100 == 0 {
 			if _, ok := tm.txProcessor.mp.IsLeader(); !ok {
@@ -601,7 +602,9 @@ func (tm *TransactionManager) processTx() {
 		return true, nil
 	}
 
-	err := tm.txTree.Range(nil, nil, f)
+	// NOTE: must use snapshot
+	snap := NewSnapshot(tm.txProcessor.mp)
+	err := snap.Range(TransactionType, f)
 	if err != nil {
 		log.LogErrorf("[processTx] failed to range tx tree, err(%v)", err)
 		return

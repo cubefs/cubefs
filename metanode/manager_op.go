@@ -87,7 +87,9 @@ func (m *metadataManager) opMasterHeartbeat(conn net.Conn, p *Packet,
 		diskStat []*proto.MetaNodeDiskInfo
 	)
 
+	log.LogDebugf("[opMasterHeartbeat] handle heartbeat begin")
 	go func() {
+		defer log.LogDebugf("[opMasterHeartbeat] handle heartbeat, err(%v)", err)
 		start := time.Now()
 		decode := json.NewDecoder(bytes.NewBuffer(data))
 		decode.UseNumber()
@@ -98,6 +100,7 @@ func (m *metadataManager) opMasterHeartbeat(conn net.Conn, p *Packet,
 		}
 		m.fileStatsEnable = req.FileStatsEnable
 		// collect memory info
+		log.LogDebugf("[opMasterHeartbeat] collect memory info")
 		resp.Total = configTotalMem
 		resp.MemUsed, err = util.GetProcessMemory(os.Getpid())
 		if err != nil {
@@ -106,6 +109,7 @@ func (m *metadataManager) opMasterHeartbeat(conn net.Conn, p *Packet,
 		}
 		// set cpu util and io used in here
 		resp.CpuUtil = m.cpuUtil.Load()
+		log.LogDebugf("[opMasterHeartbeat] collect rocksdb info")
 		diskStat = m.metaNode.getRocksDBDiskStat()
 		m.Range(true, func(id uint64, partition MetaPartition) bool {
 			m.checkFollowerRead(req.FLReadVols, partition)
@@ -115,7 +119,7 @@ func (m *metadataManager) opMasterHeartbeat(conn net.Conn, p *Packet,
 			partition.SetTxInfo(req.TxInfo)
 			partition.setQuotaHbInfo(req.QuotaHbInfos)
 			mConf := partition.GetBaseConfig()
-
+			log.LogDebugf("[opMasterHeartbeat] generate mp report")
 			mpr := &proto.MetaPartitionReport{
 				PartitionID:      mConf.PartitionId,
 				Start:            mConf.Start,
@@ -131,12 +135,14 @@ func (m *metadataManager) opMasterHeartbeat(conn net.Conn, p *Packet,
 				QuotaReportInfos: partition.getQuotaReportInfos(),
 				StoreMode:        mConf.StoreMode,
 			}
+			log.LogDebugf("[opMasterHeartbeat] mp(%v) collect tx info", mConf.PartitionId)
 			mpr.TxCnt, mpr.TxRbInoCnt, mpr.TxRbDenCnt = partition.TxGetCnt()
 
 			if mConf.Cursor >= mConf.End {
 				mpr.Status = proto.ReadOnly
 			}
 
+			log.LogDebugf("[opMasterHeartbeat] mp(%v) set mr status", mConf.PartitionId)
 			switch mConf.StoreMode {
 			case proto.StoreModeMem:
 				if resp.MemUsed > uint64(float64(resp.Total)*MaxUsedMemFactor) {
@@ -156,6 +162,7 @@ func (m *metadataManager) opMasterHeartbeat(conn net.Conn, p *Packet,
 
 			addr, isLeader := partition.IsLeader()
 			if addr == "" {
+				log.LogDebugf("[opMasterHeartbeat] mp(%v) set status to unavailable", mConf.PartitionId)
 				mpr.Status = proto.Unavailable
 			}
 			mpr.IsLeader = isLeader
@@ -169,7 +176,7 @@ func (m *metadataManager) opMasterHeartbeat(conn net.Conn, p *Packet,
 	end:
 		adminTask.Request = nil
 		adminTask.Response = resp
-		m.respondToMaster(adminTask)
+		err = m.respondToMaster(adminTask)
 		if log.EnableInfo() {
 			log.LogInfof("%s pkt %s, resp success req:%v; respAdminTask: %v, cost %s",
 				remoteAddr, p.String(), req, adminTask, time.Since(start).String())
