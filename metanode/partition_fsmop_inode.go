@@ -1047,6 +1047,7 @@ func (mp *metaPartition) fsmUpdateExtentKeyAfterMigration(inoParam *Inode) (resp
 	// store old storage ek in HybridCouldExtentsMigration
 	i.HybridCouldExtentsMigration.storageClass = inoParam.StorageClass
 	i.HybridCouldExtentsMigration.sortedEks = inoParam.HybridCouldExtents.sortedEks
+	i.HybridCouldExtentsMigration.expiredTime = inoParam.HybridCouldExtentsMigration.expiredTime
 	// store new storage ek  in HybridCouldExtents
 	i.StorageClass = inoParam.HybridCouldExtentsMigration.storageClass
 	i.HybridCouldExtents.sortedEks = inoParam.HybridCouldExtentsMigration.sortedEks
@@ -1066,7 +1067,11 @@ func (mp *metaPartition) fsmUpdateExtentKeyAfterMigration(inoParam *Inode) (resp
 		log.LogInfof("action[fsmUpdateExtentKeyAfterMigration] inode %v old ek %v",
 			i.Inode, i.HybridCouldExtentsMigration.sortedEks.(*SortedExtents).eks)
 	}
-	//TODO:chihe delete old ek
+	//delete migration ek in future
+	i.SetDeleteMigrationExtentKey()
+	log.LogInfof("action[fsmUpdateExtentKeyAfterMigration] inode %v migration ek will be deleted at %v",
+		i.Inode, time.Unix(i.HybridCouldExtentsMigration.expiredTime, 0).Format("2006-01-02 15:04:05"))
+	mp.freeList.Push(i.Inode)
 	return
 }
 
@@ -1083,5 +1088,42 @@ func (mp *metaPartition) fsmSetCreateTime(req *SetCreateTimeRequest) (err error)
 		return
 	}
 	ino.SetCreateTime(req)
+	return
+}
+
+func (mp *metaPartition) internalDeleteMigrationExtentKey(val []byte) (err error) {
+	if len(val) == 0 {
+		return
+	}
+	buf := bytes.NewBuffer(val)
+	inoParam := NewInode(0, 0)
+	for {
+		err = binary.Read(buf, binary.BigEndian, &inoParam.Inode)
+		if err != nil {
+			if err == io.EOF {
+				err = nil
+				return
+			}
+			return
+		}
+		log.LogDebugf("internalDeleteMigrationExtentKey:  partitionID(%v) inode(%v)",
+			mp.config.PartitionId, inoParam.Inode)
+		err = mp.internalDeleteInodeMigrationExtentKey(inoParam)
+		if err != nil {
+			return
+		}
+	}
+}
+
+func (mp *metaPartition) internalDeleteInodeMigrationExtentKey(inoParam *Inode) (err error) {
+	item := mp.inodeTree.CopyGet(inoParam)
+	if item == nil {
+		err = fmt.Errorf("[fsmSetCreateTime] inode(%v) not found", inoParam.Inode)
+		return
+	}
+	ino := item.(*Inode)
+	ino.HybridCouldExtentsMigration.storageClass = proto.StorageClass_Unspecified
+	ino.HybridCouldExtentsMigration.expiredTime = 0
+	ino.HybridCouldExtentsMigration.sortedEks = nil
 	return
 }

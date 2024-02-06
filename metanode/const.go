@@ -202,7 +202,9 @@ const (
 	opFSMRenewalForbiddenMigration           = 76
 	opFSMUpdateExtentKeyAfterMigration       = 77
 
-	opFSMSetInodeCreateTime = 78 //for debug
+	opFSMInternalFreeInodeMigrationExtentKey = 78
+
+	opFSMSetInodeCreateTime = 79 //for debug
 )
 
 var (
