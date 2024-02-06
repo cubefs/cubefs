@@ -313,10 +313,6 @@ func (e *Extent) WriteTiny(data []byte, offset, size int64, crc uint32, writeTyp
 	if err = e.checkTinyWriteParameter(offset, size, writeType); err != nil {
 		return
 	}
-
-	if IsAppendWrite(writeType) && offset != e.dataSize {
-		return ParameterMismatchError
-	}
 	var interceptor = e.interceptors.Get(IOWrite)
 	var ctx context.Context
 	if ctx, err = interceptor.Before(); err != nil {

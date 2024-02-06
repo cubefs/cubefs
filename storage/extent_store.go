@@ -1104,7 +1104,12 @@ func (s *ExtentStore) LockFlushDelete() (release func()) {
 }
 
 func (s *ExtentStore) DropTinyDeleteRecord() (err error) {
-	return s.tinyExtentDeleteFp.Truncate(0)
+	err = s.tinyExtentDeleteFp.Truncate(0)
+	if err != nil {
+		return
+	}
+	_, err = s.tinyExtentDeleteFp.Seek(0, io.SeekStart)
+	return err
 }
 
 func (s *ExtentStore) getExtentKey(extent uint64) string {
