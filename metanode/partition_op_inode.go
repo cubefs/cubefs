@@ -20,14 +20,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"sync/atomic"
-	"time"
 
 	"github.com/cubefs/cubefs/util/log"
 
 	"github.com/cubefs/cubefs/proto"
 )
 
-func replyInfo(info *proto.InodeInfo, ino *Inode) bool {
+func replyInfo(info *proto.MetaInodeInfo, ino *Inode) bool {
 	ino.RLock()
 	defer ino.RUnlock()
 	if ino.Flag&DeleteMarkFlag > 0 {
@@ -44,9 +43,9 @@ func replyInfo(info *proto.InodeInfo, ino *Inode) bool {
 		info.Target = make([]byte, length)
 		copy(info.Target, ino.LinkTarget)
 	}
-	info.CreateTime = time.Unix(ino.CreateTime, 0)
-	info.AccessTime = time.Unix(ino.AccessTime, 0)
-	info.ModifyTime = time.Unix(ino.ModifyTime, 0)
+	info.CreateTime = proto.CubeFSTime(ino.CreateTime)
+	info.AccessTime = proto.CubeFSTime(ino.AccessTime)
+	info.ModifyTime = proto.CubeFSTime(ino.ModifyTime)
 	return true
 }
 
@@ -83,7 +82,7 @@ func (mp *metaPartition) CreateInode(req *CreateInoReq, p *Packet) (err error) {
 	)
 	if resp.(uint8) == proto.OpOk {
 		resp := &CreateInoResp{
-			Info: &proto.InodeInfo{},
+			Info: &proto.MetaInodeInfo{},
 		}
 		if replyInfo(resp.Info, ino) {
 			status = proto.OpOk
@@ -121,7 +120,7 @@ func (mp *metaPartition) UnlinkInode(req *UnlinkInoReq, p *Packet) (err error) {
 		var reply []byte
 		if status == proto.OpOk {
 			resp := &UnlinkInoResp{
-				Info: &proto.InodeInfo{},
+				Info: &proto.MetaInodeInfo{},
 			}
 			replyInfo(resp.Info, msg.Msg)
 			if reply, err = json.Marshal(resp); err != nil {
@@ -207,11 +206,11 @@ func (mp *metaPartition) UnlinkInodeBatch(req *BatchUnlinkInoReq, p *Packet) (er
 			continue
 		}
 
-		info := &proto.InodeInfo{}
+		info := &proto.MetaInodeInfo{}
 		replyInfo(info, ir.Msg)
 		result.Items = append(result.Items, &struct {
-			Info   *proto.InodeInfo `json:"info"`
-			Status uint8            `json:"status"`
+			Info   *proto.MetaInodeInfo `json:"info"`
+			Status uint8                `json:"status"`
 		}{
 			Info:   info,
 			Status: ir.Status,
@@ -266,8 +265,8 @@ func (mp *metaPartition) InodeGet(req *InodeGetReq, p *Packet, version uint8) (e
 	}
 
 	status := proto.OpOk
-	resp := &proto.InodeGetResponse{
-		Info:        &proto.InodeInfo{},
+	resp := &proto.MetaInodeGetResponse{
+		Info:        &proto.MetaInodeInfo{},
 		ExtendAttrs: extendAttrResp,
 	}
 
@@ -309,8 +308,8 @@ func (mp *metaPartition) InodeGetNoModifyAT(req *InodeGetReq, p *Packet, version
 	}
 
 	status := proto.OpOk
-	resp := &proto.InodeGetResponse{
-		Info: &proto.InodeInfo{},
+	resp := &proto.MetaInodeGetResponse{
+		Info: &proto.MetaInodeInfo{},
 	}
 
 	if replyInfo(resp.Info, retMsg.Msg) {
@@ -336,12 +335,12 @@ func (mp *metaPartition) InodeGetBatch(req *InodeGetReqBatch, p *Packet) (err er
 
 	mp.monitorData[proto.ActionMetaBatchInodeGet].UpdateData(0)
 
-	resp := &proto.BatchInodeGetResponse{}
+	resp := &proto.MetaBatchInodeGetResponse{}
 	for _, inoId := range req.Inodes {
 		ino.Inode = inoId
 		retMsg, err = mp.getInode(ino)
 		if err == nil && retMsg.Status == proto.OpOk {
-			inoInfo := &proto.InodeInfo{}
+			inoInfo := &proto.MetaInodeInfo{}
 			if replyInfo(inoInfo, retMsg.Msg) {
 				resp.Infos = append(resp.Infos, inoInfo)
 			}
@@ -390,7 +389,7 @@ func (mp *metaPartition) CreateInodeLink(req *LinkInodeReq, p *Packet) (err erro
 		var reply []byte
 		if retMsg.Status == proto.OpOk {
 			r := &LinkInodeResp{
-				Info: &proto.InodeInfo{},
+				Info: &proto.MetaInodeInfo{},
 			}
 			if replyInfo(r.Info, retMsg.Msg) {
 				status = proto.OpOk
@@ -664,8 +663,8 @@ func (mp *metaPartition) GetInodeTree() InodeTree {
 	return mp.inodeTree
 }
 
-func (mp *metaPartition) InodesMergeCheck(inos []uint64, limitCnt uint32, minEkLen int, minInodeSize uint64, maxEkAvgSize uint64) (resp *proto.GetCmpInodesResponse) {
-	resp = &proto.GetCmpInodesResponse{}
+func (mp *metaPartition) InodesMergeCheck(inos []uint64, limitCnt uint32, minEkLen int, minInodeSize uint64, maxEkAvgSize uint64) (resp *proto.MetaGetCmpInodesResponse) {
+	resp = &proto.MetaGetCmpInodesResponse{}
 	cnt := uint32(0)
 	for i := 0; i < len(inos) && cnt < limitCnt; i++ {
 		ino := inos[i]
@@ -678,11 +677,11 @@ func (mp *metaPartition) InodesMergeCheck(inos []uint64, limitCnt uint32, minEkL
 			continue
 		}
 
-		cInode := &proto.InodeInfo{}
+		cInode := &proto.MetaInodeInfo{}
 		if !replyInfo(cInode, inode) {
 			continue
 		}
-		resp.Inodes = append(resp.Inodes, &proto.CmpInodeInfo{Inode: cInode, Extents: inode.Extents.CopyExtents()})
+		resp.Inodes = append(resp.Inodes, &proto.MetaCmpInodeInfo{Inode: cInode, Extents: inode.Extents.CopyExtents()})
 		cnt++
 	}
 	return

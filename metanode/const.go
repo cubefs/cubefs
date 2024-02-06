@@ -33,19 +33,19 @@ type (
 	// Client -> MetaNode create Inode request
 	CreateInoReq = proto.CreateInodeRequest
 	// MetaNode -> Client create Inode response
-	CreateInoResp = proto.CreateInodeResponse
+	CreateInoResp = proto.MetaCreateInodeResponse
 	// Client -> MetaNode create Link Request
 	LinkInodeReq = proto.LinkInodeRequest
 	// MetaNode -> Client create Link Response
-	LinkInodeResp = proto.LinkInodeResponse
+	LinkInodeResp = proto.MetaLinkInodeResponse
 	// Client -> MetaNode delete Inode request struct
 	UnlinkInoReq = proto.UnlinkInodeRequest
 	// Client -> MetaNode delete Inode request struct
 	BatchUnlinkInoReq = proto.BatchUnlinkInodeRequest
 	// MetaNode -> Client delete Inode response
-	UnlinkInoResp = proto.UnlinkInodeResponse
+	UnlinkInoResp = proto.MetaUnlinkInodeResponse
 	// MetaNode -> Client delete batch Inode response
-	BatchUnlinkInoResp = proto.BatchUnlinkInodeResponse
+	BatchUnlinkInoResp = proto.MetaBatchUnlinkInodeResponse
 	// Client -> MetaNode create Dentry request struct
 	CreateDentryReq = proto.CreateDentryRequest
 	// Client -> MetaNode delete Dentry request

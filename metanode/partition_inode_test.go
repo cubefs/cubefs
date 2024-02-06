@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"github.com/cubefs/cubefs/metanode/metamock"
 	"github.com/cubefs/cubefs/proto"
+	se "github.com/cubefs/cubefs/util/sortedextent"
 	"github.com/cubefs/cubefs/util/unit"
 	"github.com/stretchr/testify/assert"
 	"hash/crc32"
@@ -1907,4 +1908,53 @@ func TestResetCursor_ResetMaxMP(t *testing.T) {
 		t.Errorf("cursor mismatch, expect:%v, actual:%v", defaultMaxMetaPartitionInodeID, mp.config.Cursor)
 	}
 	return
+}
+
+func TestProtoInodeInfoMarshaUnmarshal(t *testing.T) {
+	ino := NewInode(10, 0)
+	ino.Uid = 500
+	ino.Gid = 501
+	ino.Size = 1024
+	ino.Generation = 2
+	ino.CreateTime = time.Now().Unix()
+	ino.ModifyTime = time.Now().Unix() + 1
+	ino.AccessTime = time.Now().Unix() + 2
+	ino.LinkTarget = []byte("link")
+	ino.Reserved = 1024 * 1024
+	ino.Extents = se.NewSortedExtents()
+	var i uint64
+	for i = 1; i < 5; i++ {
+		var ek proto.ExtentKey
+		ek.Size = uint32(1024 * i)
+		ek.FileOffset = uint64(1024 * (i - 1))
+		ek.ExtentOffset = i
+		ek.ExtentId = i
+		ek.CRC = uint32(10 * i)
+		ek.PartitionId = i
+		ino.Extents.Insert(nil, ek, 10)
+	}
+	inodeInfo := &proto.MetaInodeInfo{}
+	replyInfo(inodeInfo, ino)
+	data, err := json.Marshal(inodeInfo)
+	if err != nil {
+		t.Errorf("marshal failed: %v", err)
+		return
+	}
+
+	inodeInfoUnmarshal := &proto.InodeInfo{}
+	if err = json.Unmarshal(data, inodeInfoUnmarshal); err != nil {
+		t.Errorf("unmarshal failed: %v", err)
+		return
+	}
+	assert.Equal(t, inodeInfo.Inode, inodeInfoUnmarshal.Inode)
+	assert.Equal(t, inodeInfo.Mode, inodeInfoUnmarshal.Mode)
+	assert.Equal(t, inodeInfo.Size, inodeInfoUnmarshal.Size)
+	assert.Equal(t, inodeInfo.Uid, inodeInfoUnmarshal.Uid)
+	assert.Equal(t, inodeInfo.Gid, inodeInfoUnmarshal.Gid)
+	assert.Equal(t, inodeInfo.Generation, inodeInfoUnmarshal.Generation)
+	assert.Equal(t, inodeInfo.Target, inodeInfoUnmarshal.Target)
+	assert.Equal(t, inodeInfo.Nlink, inodeInfoUnmarshal.Nlink)
+	assert.Equal(t, int64(inodeInfo.ModifyTime), inodeInfoUnmarshal.ModifyTime.Unix())
+	assert.Equal(t, int64(inodeInfo.CreateTime), inodeInfoUnmarshal.CreateTime.Unix())
+	assert.Equal(t, int64(inodeInfo.AccessTime), inodeInfoUnmarshal.AccessTime.Unix())
 }

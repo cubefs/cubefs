@@ -88,6 +88,30 @@ func (info *InodeInfo) String() string {
 	return fmt.Sprintf("Inode(%v) Mode(%v) OsMode(%v) Nlink(%v) Size(%v) Uid(%v) Gid(%v) Gen(%v)", info.Inode, info.Mode, OsMode(info.Mode), info.Nlink, info.Size, info.Uid, info.Gid, info.Generation)
 }
 
+type CubeFSTime int64
+
+func (t CubeFSTime) MarshalText() ([]byte, error) {
+	return []byte(time.Unix(int64(t), 0).Format(time.RFC3339)), nil
+}
+
+func (t CubeFSTime) String() string {
+	return time.Unix(int64(t), 0).Format(time.RFC3339)
+}
+
+type MetaInodeInfo struct {
+	Inode      uint64     `json:"ino"`
+	Mode       uint32     `json:"mode"`
+	Nlink      uint32     `json:"nlink"`
+	Size       uint64     `json:"sz"`
+	Uid        uint32     `json:"uid"`
+	Gid        uint32     `json:"gid"`
+	Generation uint64     `json:"gen"`
+	ModifyTime CubeFSTime `json:"mt"`
+	CreateTime CubeFSTime `json:"ct"`
+	AccessTime CubeFSTime `json:"at"`
+	Target     []byte     `json:"tgt"`
+}
+
 type XAttrInfo struct {
 	Inode  uint64
 	XAttrs map[string]string
@@ -143,6 +167,10 @@ type CreateInodeResponse struct {
 	Info *InodeInfo `json:"info"`
 }
 
+type MetaCreateInodeResponse struct {
+	Info *MetaInodeInfo `json:"info"`
+}
+
 // LinkInodeRequest defines the request to link an inode.
 type LinkInodeRequest struct {
 	VolName         string `json:"vol"`
@@ -156,6 +184,10 @@ type LinkInodeRequest struct {
 // LinkInodeResponse defines the response to the request of linking an inode.
 type LinkInodeResponse struct {
 	Info *InodeInfo `json:"info"`
+}
+
+type MetaLinkInodeResponse struct {
+	Info *MetaInodeInfo `json:"info"`
 }
 
 // UnlinkInodeRequest defines the request to unlink an inode.
@@ -182,11 +214,22 @@ type UnlinkInodeResponse struct {
 	Info *InodeInfo `json:"info"`
 }
 
+type MetaUnlinkInodeResponse struct {
+	Info *MetaInodeInfo `json:"info"`
+}
+
 // batch UnlinkInodeResponse defines the response to the request of unlinking an inode.
 type BatchUnlinkInodeResponse struct {
 	Items []*struct {
 		Info   *InodeInfo `json:"info"`
 		Status uint8      `json:"status"`
+	} `json:"items"`
+}
+
+type MetaBatchUnlinkInodeResponse struct {
+	Items []*struct {
+		Info   *MetaInodeInfo `json:"info"`
+		Status uint8          `json:"status"`
 	} `json:"items"`
 }
 
@@ -316,6 +359,11 @@ type InodeGetResponse struct {
 	ExtendAttrs []*ExtendAttrInfo `json:"extendAttrs,omitempty"`
 }
 
+type MetaInodeGetResponse struct {
+	Info        *MetaInodeInfo    `json:"info"`
+	ExtendAttrs []*ExtendAttrInfo `json:"extendAttrs,omitempty"`
+}
+
 // BatchInodeGetRequest defines the request to get the inode in batch.
 type BatchInodeGetRequest struct {
 	VolName        string   `json:"vol"`
@@ -333,6 +381,11 @@ type InodeExtendAttrsInfo struct {
 // BatchInodeGetResponse defines the response to the request of getting the inode in batch.
 type BatchInodeGetResponse struct {
 	Infos       []*InodeInfo            `json:"infos"`
+	ExtendAttrs []*InodeExtendAttrsInfo `json:"inodesExtendAttrs,omitempty"`
+}
+
+type MetaBatchInodeGetResponse struct {
+	Infos       []*MetaInodeInfo        `json:"infos"`
 	ExtendAttrs []*InodeExtendAttrsInfo `json:"inodesExtendAttrs,omitempty"`
 }
 
@@ -640,8 +693,17 @@ type CmpInodeInfo struct {
 	Extents []ExtentKey
 }
 
+type MetaCmpInodeInfo struct {
+	Inode   *MetaInodeInfo
+	Extents []ExtentKey
+}
+
 type GetCmpInodesResponse struct {
 	Inodes []*CmpInodeInfo
+}
+
+type MetaGetCmpInodesResponse struct {
+	Inodes []*MetaCmpInodeInfo
 }
 
 type InodeMergeExtentsRequest struct {
