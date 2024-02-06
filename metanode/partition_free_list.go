@@ -270,13 +270,18 @@ func (mp *metaPartition) deleteMarkedInodes(inoSlice []uint64) {
 			log.LogDebugf("deleteMarkedInodes. mp %v inode [%v] not found", mp.config.PartitionId, ino)
 			continue
 		}
+		if inode.IsDeleteMigrationExtentKeyOnly() {
+			allInodes = append(allInodes, inode)
+			log.LogDebugf("deleteMarkedInodes. skip mp %v inode [%v] for deleting hybrid cloud extent key", mp.config.PartitionId, ino)
+			continue
+		}
 		if proto.IsStorageClassReplica(inode.StorageClass) {
 			replicaInodes = append(replicaInodes, inode.Inode)
 		} else {
 			ebsInodes = append(ebsInodes, inode.Inode)
 		}
 	}
-	// delete inode by current storage class
+	// step1: delete inode by current storage class
 	if len(replicaInodes) > 0 {
 		shouldCommitReplicaInode, shouldRePushToFreeListReplicaInode :=
 			mp.deleteMarkedReplicaInodes(replicaInodes, false, false)
@@ -289,7 +294,7 @@ func (mp *metaPartition) deleteMarkedInodes(inoSlice []uint64) {
 		shouldRePushToFreeList = append(shouldRePushToFreeList, shouldRePushToFreeListEbsInode...)
 	}
 
-	// delete inode by migration storage class
+	// step2: delete inode by migration storage class
 	replicaInodes = make([]uint64, 0)
 	ebsInodes = make([]uint64, 0)
 	leftInodes := make([]*Inode, 0) //
@@ -315,11 +320,15 @@ func (mp *metaPartition) deleteMarkedInodes(inoSlice []uint64) {
 		allInodes = append(allInodes, shouldCommitEbsInode...)
 		shouldRePushToFreeList = append(shouldRePushToFreeList, shouldRePushToFreeListEbsInode...)
 	}
-	// delete inode by migration cache storage class
-	// cache storage class
+	// step3: delete inode by migration cache storage class
+	// cache storage class can only be replica system for now
 	replicaInodes = make([]uint64, 0)
 	leftInodes = make([]*Inode, 0)
 	for _, ino := range allInodes {
+		if ino.IsDeleteMigrationExtentKeyOnly() {
+			leftInodes = append(leftInodes, ino)
+			continue
+		}
 		if len(ino.Extents.eks) != 0 {
 			replicaInodes = append(replicaInodes, ino.Inode)
 		} else {
@@ -334,23 +343,55 @@ func (mp *metaPartition) deleteMarkedInodes(inoSlice []uint64) {
 		shouldRePushToFreeList = append(shouldRePushToFreeList, shouldRePushToFreeListReplicaInode...)
 	}
 
-	bufSlice := make([]byte, 0, 8*len(allInodes))
+	// notify follower to clear migration extent key
+	deleteInodes := make([]*Inode, 0)
+	deleteMigrationEkInodes := make([]*Inode, 0)
 	for _, inode := range allInodes {
-		bufSlice = append(bufSlice, inode.MarshalKey()...)
-	}
-	err := mp.syncToRaftFollowersFreeInode(bufSlice)
-	if err != nil {
-		log.LogWarnf("[deleteMarkedInodes] raft commit inode list: %v, "+
-			"response %s", allInodes, err.Error())
-	}
-
-	for _, inode := range allInodes {
-		if err == nil {
-			mp.internalDeleteInode(inode)
+		if inode.IsDeleteMigrationExtentKeyOnly() {
+			deleteMigrationEkInodes = append(deleteMigrationEkInodes, inode)
 		} else {
-			mp.freeList.Push(inode.Inode)
+			deleteInodes = append(deleteInodes, inode)
 		}
 	}
+
+	if len(deleteInodes) > 0 {
+		bufSlice := make([]byte, 0, 8*len(deleteInodes))
+		for _, inode := range deleteInodes {
+			bufSlice = append(bufSlice, inode.MarshalKey()...)
+		}
+		err := mp.syncToRaftFollowersFreeInode(bufSlice)
+		if err != nil {
+			log.LogWarnf("[deleteMarkedInodes] raft commit free inode list: %v, "+
+				"response %s", deleteInodes, err.Error())
+		}
+		for _, inode := range deleteInodes {
+			if err == nil {
+				mp.internalDeleteInode(inode)
+			} else {
+				mp.freeList.Push(inode.Inode)
+			}
+		}
+	}
+
+	if len(deleteMigrationEkInodes) > 0 {
+		bufSlice := make([]byte, 0, 8*len(deleteMigrationEkInodes))
+		for _, inode := range deleteMigrationEkInodes {
+			bufSlice = append(bufSlice, inode.MarshalKey()...)
+		}
+		err := mp.syncToRaftFollowersFreeInodeMigrationExtentKey(bufSlice)
+		if err != nil {
+			log.LogWarnf("[deleteMarkedInodes] raft commit free inode migration extent key list: %v, "+
+				"response %s", deleteMigrationEkInodes, err.Error())
+		}
+		for _, inode := range deleteMigrationEkInodes {
+			if err == nil {
+				mp.internalDeleteInodeMigrationExtentKey(inode)
+			} else {
+				mp.freeList.Push(inode.Inode)
+			}
+		}
+	}
+
 	log.LogInfof("[deleteMarkedInodes] metaPartition(%v) deleteInodeCnt(%v) inodeCnt(%v)",
 		mp.config.PartitionId, len(allInodes), mp.inodeTree.Len())
 
@@ -365,7 +406,8 @@ func (mp *metaPartition) deleteMarkedInodes(inoSlice []uint64) {
 
 func (mp *metaPartition) deleteMarkedReplicaInodes(inoSlice []uint64, isCache,
 	isMigration bool) (shouldCommit []*Inode, shouldPushToFreeList []*Inode) {
-	log.LogDebugf("deleteMarkedReplicaInodes. mp %v inoSlice [%v] isCache %v isMigration %v", mp.config.PartitionId, inoSlice)
+	log.LogDebugf("deleteMarkedReplicaInodes. mp %v inoSlice [%v] isCache %v isMigration %v",
+		mp.config.PartitionId, inoSlice, isCache, isMigration)
 	deleteExtentsByPartition := make(map[uint64][]*proto.ExtentKey)
 	allInodes := make([]*Inode, 0)
 	for _, ino := range inoSlice {
@@ -563,6 +605,15 @@ func (mp *metaPartition) syncToRaftFollowersFreeInode(hasDeleteInodes []byte) (e
 		return
 	}
 	_, err = mp.submit(opFSMInternalDeleteInode, hasDeleteInodes)
+
+	return
+}
+
+func (mp *metaPartition) syncToRaftFollowersFreeInodeMigrationExtentKey(hasDeleteInodes []byte) (err error) {
+	if len(hasDeleteInodes) == 0 {
+		return
+	}
+	_, err = mp.submit(opFSMInternalFreeInodeMigrationExtentKey, hasDeleteInodes)
 
 	return
 }

@@ -1048,11 +1048,12 @@ type RenewalForbiddenMigrationRequest struct {
 }
 
 type UpdateExtentKeyAfterMigrationRequest struct {
-	PartitionID      uint64         `json:"pid"`
-	Inode            uint64         `json:"ino"`
-	StorageClass     uint32         `json:"storageClass"`
-	NewObjExtentKeys []ObjExtentKey `json:"newObjExtentKeys"`
-	WriteGen         uint64         `json:"writeGen"`
+	PartitionID       uint64         `json:"pid"`
+	Inode             uint64         `json:"ino"`
+	StorageClass      uint32         `json:"storageClass"`
+	NewObjExtentKeys  []ObjExtentKey `json:"newObjExtentKeys"`
+	WriteGen          uint64         `json:"writeGen"`
+	DelayDeleteMinute uint64         `json:"delayDeleteMinute"`
 	RequestExtend
 }
 

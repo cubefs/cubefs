@@ -34,8 +34,10 @@ import (
 )
 
 const (
-	DeleteMarkFlag = 1 << 0
-	InodeDelTop    = 1 << 1
+	DeleteMarkFlag                          = 1 << 0
+	InodeDelTop                             = 1 << 1
+	DeleteMigrationExtentKeyFlag            = 1 << 2 //only delete migration ek by delay
+	DeleteMigrationExtentKeyImmediatelyFlag = 1 << 3
 )
 
 var (
@@ -519,6 +521,7 @@ func (i *Inode) Copy() BtreeItem {
 	}
 	if i.HybridCouldExtentsMigration.sortedEks != nil {
 		newIno.HybridCouldExtentsMigration.storageClass = i.HybridCouldExtentsMigration.storageClass
+		newIno.HybridCouldExtentsMigration.expiredTime = i.HybridCouldExtentsMigration.expiredTime
 		if proto.IsStorageClassReplica(i.HybridCouldExtentsMigration.storageClass) {
 			newIno.HybridCouldExtentsMigration.sortedEks =
 				i.HybridCouldExtentsMigration.sortedEks.(*SortedExtents).Clone()
@@ -562,6 +565,7 @@ func (i *Inode) CopyDirectly() BtreeItem {
 	}
 	if i.HybridCouldExtentsMigration.sortedEks != nil {
 		newIno.HybridCouldExtentsMigration.storageClass = i.HybridCouldExtentsMigration.storageClass
+		newIno.HybridCouldExtentsMigration.expiredTime = i.HybridCouldExtentsMigration.expiredTime
 		if proto.IsStorageClassReplica(i.HybridCouldExtentsMigration.storageClass) {
 			newIno.HybridCouldExtentsMigration.sortedEks =
 				i.HybridCouldExtentsMigration.sortedEks.(*SortedExtents).Clone()
@@ -853,6 +857,9 @@ func (i *Inode) MarshalInodeValue(buff *bytes.Buffer) {
 		if err = binary.Write(buff, binary.BigEndian, &i.HybridCouldExtentsMigration.storageClass); err != nil {
 			panic(err)
 		}
+		if err = binary.Write(buff, binary.BigEndian, &i.HybridCouldExtentsMigration.expiredTime); err != nil {
+			panic(err)
+		}
 		if i.HybridCouldExtentsMigration.sortedEks == nil {
 			panic(errors.New(fmt.Sprintf("MarshalInodeValue failed,HybridCouldExtentsMigration class %v ek should not be nil",
 				i.HybridCouldExtentsMigration.storageClass)))
@@ -1081,6 +1088,9 @@ func (i *Inode) UnmarshalInodeValue(buff *bytes.Buffer) (err error) {
 				i.HybridCouldExtentsMigration = NewSortedHybridCloudExtentsMigration()
 			}
 			if err = binary.Read(buff, binary.BigEndian, &i.HybridCouldExtentsMigration.storageClass); err != nil {
+				return
+			}
+			if err = binary.Read(buff, binary.BigEndian, &i.HybridCouldExtentsMigration.expiredTime); err != nil {
 				return
 			}
 			if proto.IsStorageClassReplica(i.HybridCouldExtentsMigration.storageClass) {
@@ -2281,6 +2291,24 @@ func (i *Inode) SetDeleteMark() {
 	i.Unlock()
 }
 
+func (i *Inode) SetDeleteMigrationExtentKey() {
+	i.Lock()
+	i.Flag |= DeleteMigrationExtentKeyFlag
+	i.Unlock()
+}
+func (i *Inode) SetDeleteMigrationExtentKeyImmediately() {
+	i.Lock()
+	i.Flag |= DeleteMigrationExtentKeyImmediatelyFlag
+	i.Unlock()
+}
+
+func (i *Inode) IsDeleteMigrationExtentKeyOnly() bool {
+	i.Lock()
+	defer i.Unlock()
+	return (i.Flag&DeleteMigrationExtentKeyImmediatelyFlag == DeleteMigrationExtentKeyImmediatelyFlag) ||
+		(i.Flag&DeleteMigrationExtentKeyFlag == DeleteMigrationExtentKeyFlag)
+}
+
 // ShouldDelete returns if the inode has been marked as deleted.
 func (i *Inode) ShouldDelete() (ok bool) {
 	i.RLock()
@@ -2295,11 +2323,21 @@ func (i *Inode) ShouldDelete() (ok bool) {
 // 3. AccessTime is 7 days ago
 func (i *Inode) ShouldDelayDelete() (ok bool) {
 	i.RLock()
-	ok = (i.Flag&DeleteMarkFlag != DeleteMarkFlag) &&
-		(i.NLink == 0) &&
-		time.Now().Unix()-i.AccessTime < InodeNLink0DelayDeleteSeconds
-	i.RUnlock()
-	return
+	defer i.RUnlock()
+
+	if i.Flag&DeleteMarkFlag == DeleteMarkFlag {
+		return false
+	}
+
+	if i.Flag&DeleteMigrationExtentKeyImmediatelyFlag == DeleteMigrationExtentKeyImmediatelyFlag {
+		return false
+	}
+
+	if (i.Flag&DeleteMigrationExtentKeyFlag == DeleteMigrationExtentKeyFlag) && time.Now().Unix()-i.HybridCouldExtentsMigration.expiredTime <= 0 {
+		return false
+	}
+
+	return i.NLink == 0 && time.Now().Unix()-i.AccessTime < InodeNLink0DelayDeleteSeconds
 }
 
 // SetAttr sets the attributes of the inode.
