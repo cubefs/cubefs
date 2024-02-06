@@ -17,7 +17,6 @@ package master
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/cubefs/cubefs/metanode"
 	"math"
 	"net/http"
 	"sort"
@@ -372,8 +371,8 @@ func (c *Cluster) scheduleTask() {
 	c.scheduleToReduceReplicaNum()
 	c.scheduleToCheckNodeSetGrpManagerStatus()
 	c.scheduleToCheckFollowerReadCache()
-	c.scheduleToCheckDecommissionDataNode(m)
-	c.scheduleToCheckDecommissionDisk(m)
+	c.scheduleToCheckDecommissionDataNode()
+	c.scheduleToCheckDecommissionDisk()
 	c.scheduleToCheckDataReplicas()
 	c.scheduleToLcScan()
 	c.scheduleToSnapshotDelVerScan()
@@ -2503,7 +2502,7 @@ func (c *Cluster) updateDataNodeSize(addr string, dp *DataPartition) error {
 }
 
 func (c *Cluster) returnDataSize(addr string, dp *DataPartition) {
-	//TODO:chihe debug
+	// TODO:chihe debug
 	if len(dp.Replicas) == 0 {
 		log.LogErrorf("returnDataSize dp(%v) has no replicas", dp.PartitionID)
 		return
@@ -3793,7 +3792,7 @@ func (c *Cluster) clearMetaNodes() {
 	})
 }
 
-func (c *Cluster) scheduleToCheckDecommissionDataNode(m *Server) {
+func (c *Cluster) scheduleToCheckDecommissionDataNode() {
 	go func() {
 		for {
 			if c.partition.IsRaftLeader() && c.metaReady {
@@ -4042,7 +4041,7 @@ func (c *Cluster) restoreStoppedAutoDecommissionDisk(nodeAddr, diskPath string) 
 	return
 }
 
-func (c *Cluster) scheduleToCheckDecommissionDisk(m *Server) {
+func (c *Cluster) scheduleToCheckDecommissionDisk() {
 	go func() {
 		for {
 			if c.partition.IsRaftLeader() && c.metaReady {
