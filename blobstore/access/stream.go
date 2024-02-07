@@ -20,12 +20,14 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"sync"
 
 	"github.com/afex/hystrix-go/hystrix"
 
 	"github.com/cubefs/cubefs/blobstore/access/controller"
 	"github.com/cubefs/cubefs/blobstore/api/access"
 	"github.com/cubefs/cubefs/blobstore/api/blobnode"
+	cmapi "github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/api/proxy"
 	"github.com/cubefs/cubefs/blobstore/common/codemode"
 	"github.com/cubefs/cubefs/blobstore/common/ec"
@@ -170,6 +172,7 @@ type Handler struct {
 	allCodeModes  CodeModePairs
 	maxObjectSize int64
 
+	failVids       sync.Map
 	discardVidChan chan discardVid
 	stopCh         <-chan struct{}
 
@@ -459,6 +462,37 @@ func (h *Handler) punishDiskWith(ctx context.Context, clusterID proto.ClusterID,
 	if serviceController, err := h.clusterController.GetServiceController(clusterID); err == nil {
 		serviceController.PunishDiskWithThreshold(ctx, diskID, h.DiskTimeoutPunishIntervalS)
 	}
+}
+
+type ReleaseVolume uint8
+
+const (
+	releaseVolumeInvalid = ReleaseVolume(iota)
+	releaseVolumeNormal
+	releaseVolumeSealed
+)
+
+func (h *Handler) releaseVolume(ctx context.Context, cid proto.ClusterID, md codemode.CodeMode, tp ReleaseVolume, vid ...proto.Vid) {
+	span := trace.SpanFromContextSafe(ctx)
+	allocMgr, err := h.clusterController.GetVolumeAllocator(cid)
+	if err != nil {
+		span.Warnf("fail to get alloc mgr, when releaseVolume. err[%+v]", err)
+		return
+	}
+
+	switch tp {
+	case releaseVolumeNormal:
+		err = allocMgr.Release(ctx, &cmapi.ReleaseVolumes{
+			CodeMode:   md,
+			NormalVids: vid,
+		})
+	case releaseVolumeSealed:
+		err = allocMgr.Release(ctx, &cmapi.ReleaseVolumes{
+			CodeMode:   md,
+			SealedVids: vid,
+		})
+	}
+	span.Warnf("We released volume %d, type:%d, err[%+v]", vid, tp, err)
 }
 
 // blobCount blobSize > 0 is certain

@@ -110,7 +110,7 @@ func (h *Handler) allocFromAllocator(ctx context.Context, codeMode codemode.Code
 	if err := retry.ExponentialBackoff(h.AllocRetryTimes, uint32(h.AllocRetryIntervalMS)).On(func() error {
 		allocMgr, err := h.clusterController.GetVolumeAllocator(clusterID)
 		if err != nil {
-			span.Warn(err)
+			span.Warnf("fail to get alloc mgr, when allocFromAllocator. err[%+v]", err)
 			return err
 		}
 
