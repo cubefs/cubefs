@@ -21,6 +21,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"runtime/debug"
+	"sort"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -88,39 +89,6 @@ func (mw *MetaWrapper) fetchVolumeView() (vv *proto.VolView, err error) {
 			return
 		}
 	}
-	return
-}
-
-func (mw *MetaWrapper) convertVolumeView(vv *proto.VolView) (view *VolumeView) {
-	var convert = func(volView *proto.VolView) *VolumeView {
-		result := &VolumeView{
-			Name:              volView.Name,
-			Owner:             volView.Owner,
-			MetaPartitions:    make([]*MetaPartition, len(volView.MetaPartitions)),
-			OSSSecure:         &OSSSecure{},
-			OSSBucketPolicy:   volView.OSSBucketPolicy,
-			CreateTime:        volView.CreateTime,
-			CrossRegionHAType: volView.CrossRegionHAType,
-			ConnConfig:        volView.ConnConfig,
-		}
-		if volView.OSSSecure != nil {
-			result.OSSSecure.AccessKey = volView.OSSSecure.AccessKey
-			result.OSSSecure.SecretKey = volView.OSSSecure.SecretKey
-		}
-		for i, mp := range volView.MetaPartitions {
-			result.MetaPartitions[i] = &MetaPartition{
-				PartitionID: mp.PartitionID,
-				Start:       mp.Start,
-				End:         mp.End,
-				Members:     mp.Members,
-				Learners:    mp.Learners,
-				Status:      mp.Status,
-				LeaderAddr:  proto.NewAtomicString(mp.LeaderAddr),
-			}
-		}
-		return result
-	}
-	view = convert(vv)
 	return
 }
 
@@ -192,64 +160,178 @@ func (mw *MetaWrapper) updateVolStatInfo() (err error) {
 	return
 }
 
-func (mw *MetaWrapper) updateMetaPartitions() error {
-	var view *VolumeView
-	vv, err := mw.fetchVolumeView()
-	if err != nil {
-		if err == proto.ErrVolNotExists {
-			mw.volNotExistCount++
-		}
-		log.LogWarnf("updateMetaPartitions error: %v, volNotExistCount(%v)", err.Error(), mw.volNotExistCount)
-		return err
+func (mw *MetaWrapper) isCredibleMetaPartitionView(mps []*proto.MetaPartitionView) (isCredible bool) {
+	if len(mps) < len(mw.partitions) {
+		log.LogWarnf("isCredibleMetaPartitionView: mps length:%v less than last update:%v", len(mps), len(mw.partitions))
+		return false
 	}
-	view = mw.convertVolumeView(vv)
 
-	rwPartitions := make([]*MetaPartition, 0)
-	unavailPartitions := make([]*MetaPartition, 0)
-	for _, mp := range view.MetaPartitions {
-		if mw.volNotExistCount <= VolNotExistClearViewThresholdMin {
-			mw.replaceOrInsertPartition(mp)
-			log.LogInfof("updateMetaPartition: mp(%v)", mp)
+	newMaxID := mw.maxPartitionID
+	defer func() {
+		if isCredible {
+			mw.maxPartitionID = newMaxID
 		}
+		if log.IsDebugEnabled() {
+			log.LogDebugf("isCredibleMetaPartitionView: isCredible(%v) maxID(%v)", isCredible, mw.maxPartitionID)
+		}
+	}()
+
+	if mw.maxPartitionID <= 0 {
+		if !sortAndCheckOverlap(mps) {
+			return false
+		}
+		newMaxID = mps[len(mps)-1].PartitionID
+		return true
+	}
+
+	newAddPartition := make([]*proto.MetaPartitionView, 0)
+	for _, mp := range mps {
+		if mp.PartitionID >= newMaxID {
+			newMaxID = mp.PartitionID
+			newAddPartition = append(newAddPartition, mp)
+		}
+	}
+
+	if len(newAddPartition) < 1 {
+		return false
+	}
+	if len(newAddPartition) == 1 {
+		return mw.validMaxPartition(newAddPartition[0])
+	}
+	return sortAndCheckOverlap(newAddPartition)
+}
+
+func (mw *MetaWrapper) validMaxPartition(mp *proto.MetaPartitionView) bool {
+	mw.RLock()
+	defer mw.RUnlock()
+
+	maxMp, ok := mw.partitions[mw.maxPartitionID]
+	if log.IsDebugEnabled() {
+		log.LogDebugf("validMaxPartition: maxMp:%v mp:%v", maxMp, mp)
+	}
+	if ok {
+		return maxMp.PartitionID == mp.PartitionID && maxMp.Start == mp.Start && maxMp.End == mp.End
+	}
+	return false
+}
+
+func sortAndCheckOverlap(mps []*proto.MetaPartitionView) bool {
+	if log.IsDebugEnabled() {
+		log.LogDebugf("sortAndCheckOverlap: mp.len=%v", len(mps))
+	}
+	if len(mps) < 1 {
+		return false
+	}
+	sort.SliceStable(mps, func(i, j int) bool {
+		return mps[i].Start < mps[j].Start
+	})
+
+	for i := 1; i < len(mps); i++ {
+		if mps[i].Start != mps[i-1].End+1 {
+			log.LogWarnf("sortAndCheckOverlap: mp ranges overlap, %v-%v", mps[i-1], mps[i])
+			return false
+		}
+	}
+	return true
+}
+
+func (mw *MetaWrapper) updateConfigByVolView(vv *proto.VolView) {
+	if vv.OSSSecure != nil {
+		ossSecure := &OSSSecure{
+			AccessKey: vv.OSSSecure.AccessKey,
+			SecretKey: vv.OSSSecure.SecretKey,
+		}
+		mw.ossSecure = ossSecure
+	}
+	mw.ossBucketPolicy = vv.OSSBucketPolicy
+	mw.volCreateTime = vv.CreateTime
+	mw.crossRegionHAType = vv.CrossRegionHAType
+
+	mw.updateConnConfig(vv.ConnConfig)
+	return
+}
+
+func (mw *MetaWrapper) updateRanges(mps []*proto.MetaPartitionView, needNewRange bool) {
+	var convert = func(mp *proto.MetaPartitionView) *MetaPartition {
+		return &MetaPartition{
+			PartitionID: mp.PartitionID,
+			Start:       mp.Start,
+			End:         mp.End,
+			Members:     mp.Members,
+			Learners:    mp.Learners,
+			Status:      mp.Status,
+			LeaderAddr:  proto.NewAtomicString(mp.LeaderAddr),
+		}
+	}
+
+	var (
+		newPartitions     map[uint64]*MetaPartition
+		newRanges         *btree.BTree
+		rwPartitions      = make([]*MetaPartition, 0)
+		unavailPartitions = make([]*MetaPartition, 0)
+	)
+
+	if needNewRange {
+		log.LogInfof("updateRanges: clear meta partitions, volNotExistCount(%v)", mw.volNotExistCount)
+		mw.volNotExistCount = 0
+		newRanges = btree.New(32)
+		newPartitions = make(map[uint64]*MetaPartition, 0)
+	}
+
+	for _, view := range mps {
+		mp := convert(view)
 		if mp.Status == proto.ReadWrite {
 			rwPartitions = append(rwPartitions, mp)
 		} else if mp.Status == proto.Unavailable {
 			unavailPartitions = append(unavailPartitions, mp)
 		}
-	}
-
-	if mw.volNotExistCount > VolNotExistClearViewThresholdMin && len(view.MetaPartitions) > 0 {
-		log.LogInfof("clear and updateMetaPartition: volNotExistCount(%v)", mw.volNotExistCount)
-		newPartitions := make(map[uint64]*MetaPartition)
-		newRanges := btree.New(32)
-		for _, mp := range view.MetaPartitions {
-			newPartitions[mp.PartitionID] = mp
+		if needNewRange {
 			newRanges.ReplaceOrInsert(mp)
-			log.LogInfof("updateMetaPartition: mp(%v)", mp)
+			newPartitions[mp.PartitionID] = mp
+		} else {
+			mw.replaceOrInsertPartition(mp)
 		}
-		mw.Lock()
-		mw.partitions = newPartitions
-		mw.ranges = newRanges
-		mw.Unlock()
-		mw.volNotExistCount = 0
-		log.LogInfof("clear and updateMetaPartition done: volNotExistCount(%v)", mw.volNotExistCount)
-	}
-
-	mw.ossSecure = view.OSSSecure
-	mw.ossBucketPolicy = view.OSSBucketPolicy
-	mw.volCreateTime = view.CreateTime
-	mw.crossRegionHAType = view.CrossRegionHAType
-	mw.updateConnConfig(view.ConnConfig)
-
-	if len(rwPartitions) == 0 {
-		log.LogInfof("updateMetaPartition: no valid partitions")
-		return nil
 	}
 
 	mw.Lock()
+	defer mw.Unlock()
+
+	if needNewRange {
+		mw.ranges = newRanges
+		mw.partitions = newPartitions
+	}
+	if len(rwPartitions) == 0 {
+		log.LogInfof("updateRanges: no valid rwPartitions")
+	}
 	mw.rwPartitions = rwPartitions
 	mw.unavailPartitions = unavailPartitions
-	mw.Unlock()
+}
+
+func (mw *MetaWrapper) updateMetaPartitions() error {
+	vv, err := mw.fetchVolumeView()
+	if err != nil {
+		if err == proto.ErrVolNotExists {
+			mw.volNotExistCount++
+		}
+		log.LogWarnf("updateMetaPartitions: fetchVolumeView failed, err(%v) volNotExistCount(%v)", err, mw.volNotExistCount)
+		return err
+	}
+	var needClearRange bool
+	if mw.volCreateTime > 0 && mw.volCreateTime != vv.CreateTime {
+		needClearRange = true
+		log.LogWarnf("updateMetaPartitions: clear partitions, volCreateTime from old(%v) to new(%v)", mw.volCreateTime, vv.CreateTime)
+	}
+	mw.updateConfigByVolView(vv)
+
+	if !mw.isCredibleMetaPartitionView(vv.MetaPartitions) {
+		err = fmt.Errorf("incredible mp view from master, %v", vv.MetaPartitions)
+		return err
+	}
+
+	needNewRange := (mw.volNotExistCount > VolNotExistClearViewThresholdMin) || needClearRange
+	mw.updateRanges(vv.MetaPartitions, needNewRange)
+
+	log.LogInfof("updateMetaPartitions: len(rwPartitions)=%v", len(mw.rwPartitions))
 	return nil
 }
 
@@ -269,32 +351,15 @@ func (mw *MetaWrapper) updateMetaPartitionsWithNoCache() error {
 		log.LogWarnf("updateMetaPartitionsWithNoCache: err(%v) vol(%v) retry next round", err, mw.volname)
 		time.Sleep(1 * time.Second)
 	}
-	rwPartitions := make([]*MetaPartition, 0)
-	for _, view := range views {
-		mp := &MetaPartition{
-			PartitionID: view.PartitionID,
-			Start:       view.Start,
-			End:         view.End,
-			Members:     view.Members,
-			Learners:    view.Learners,
-			Status:      view.Status,
-			LeaderAddr:  proto.NewAtomicString(view.LeaderAddr),
-		}
-		mw.replaceOrInsertPartition(mp)
-		log.LogInfof("updateMetaPartitionsWithNoCache: mp(%v)", mp)
-		if mp.Status == proto.ReadWrite {
-			rwPartitions = append(rwPartitions, mp)
-		}
-	}
-	if len(rwPartitions) == 0 {
-		log.LogInfof("updateMetaPartitionsWithNoCache: no valid partitions")
-		return nil
+
+	if !mw.isCredibleMetaPartitionView(views) {
+		err := fmt.Errorf("incredible mp view from master, %v", views)
+		return err
 	}
 
-	mw.Lock()
-	mw.rwPartitions = rwPartitions
-	mw.Unlock()
+	mw.updateRanges(views, false)
 
+	log.LogInfof("updateMetaPartitionsWithNoCache: len(rwPartition)=%v", len(mw.rwPartitions))
 	return nil
 }
 

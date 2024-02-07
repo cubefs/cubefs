@@ -63,6 +63,7 @@ type Wrapper struct {
 	umpJmtpAddr           string
 	volNotExistCount      int32
 	partitions            *sync.Map //key: dpID; value: *DataPartition
+	volCreateTime         string
 	followerRead          bool
 	followerReadClientCfg bool
 	nearRead              bool
@@ -224,6 +225,7 @@ func RebuildDataPartitionWrapper(volName string, masters []string, dataState *Da
 	LocalIP = dataState.LocalIP
 
 	view := dataState.VolView
+	w.volCreateTime = view.CreateTime
 	w.followerRead = view.FollowerRead
 	w.nearRead = view.NearRead
 	w.forceROW = view.ForceROW
@@ -280,7 +282,7 @@ func (w *Wrapper) IsCacheBoostEnabled() bool {
 	return w.enableClusterCacheBoost && w.enableVolCacheBoost
 }
 
-func (w *Wrapper) initRemoteCache() (err error) {
+func (w *Wrapper) initRemoteCache() {
 	cacheConfig := &flash.CacheConfig{
 		Cluster:       w.clusterName,
 		Volume:        w.volName,
@@ -288,9 +290,7 @@ func (w *Wrapper) initRemoteCache() (err error) {
 		MW:            w.metaWrapper,
 		ReadTimeoutMs: w.cacheReadTimeoutMs,
 	}
-	if w.remoteCache, err = flash.NewRemoteCache(cacheConfig); err != nil {
-		return
-	}
+	w.remoteCache = flash.NewRemoteCache(cacheConfig)
 	if !w.remoteCache.ResetCacheBoostPathToBloom(w.cacheBoostPath) {
 		w.cacheBoostPath = ""
 	}
@@ -355,6 +355,7 @@ func (w *Wrapper) getSimpleVolView() (err error) {
 		log.LogWarnf("getSimpleVolView: get volume simple info fail: volume(%v) err(%v)", w.volName, err)
 		return
 	}
+	w.volCreateTime = view.CreateTime
 	w.followerRead = view.FollowerRead
 	w.nearRead = view.NearRead
 	w.forceROW = view.ForceROW
@@ -387,6 +388,7 @@ func (w *Wrapper) getSimpleVolView() (err error) {
 
 func (w *Wrapper) saveSimpleVolView() *proto.SimpleVolView {
 	view := &proto.SimpleVolView{
+		CreateTime:           w.volCreateTime,
 		FollowerRead:         w.followerRead,
 		NearRead:             w.nearRead,
 		ForceROW:             w.forceROW,
@@ -521,6 +523,12 @@ func (w *Wrapper) updateSimpleVolView() (err error) {
 		return
 	}
 
+	if w.volCreateTime != "" && w.volCreateTime != view.CreateTime {
+		log.LogWarnf("updateSimpleVolView: update volCreateTime from old(%v) to new(%v) and clear data partitions", w.volCreateTime, view.CreateTime)
+		w.volCreateTime = view.CreateTime
+		w.partitions = new(sync.Map)
+	}
+
 	if w.followerRead != view.FollowerRead && !w.followerReadClientCfg {
 		log.LogInfof("updateSimpleVolView: update followerRead from old(%v) to new(%v)",
 			w.followerRead, view.FollowerRead)
@@ -596,9 +604,7 @@ func (w *Wrapper) updateRemoteCacheConfig(view *proto.SimpleVolView) {
 	if w.IsCacheBoostEnabled() {
 		if !w.oldCacheBoostStatus || w.remoteCache == nil {
 			log.LogInfof("updateRemoteCacheConfig: initRemoteCache: enable(%v -> %v) remoteCache isNil(%v)", w.oldCacheBoostStatus, w.IsCacheBoostEnabled(), w.remoteCache == nil)
-			if err := w.initRemoteCache(); err != nil {
-				log.LogErrorf("updateRemoteCacheConfig: initRemoteCache failed, err: %v", err)
-			}
+			w.initRemoteCache()
 		}
 	} else if w.oldCacheBoostStatus && w.remoteCache != nil {
 		w.remoteCache.Stop()
