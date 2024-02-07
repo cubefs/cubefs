@@ -47,7 +47,7 @@ const (
 	cacheBoostPathSeparator = ","
 
 	pingCount            = 3
-	pingTimeout          = 50 * time.Millisecond
+	pingCostPerHost      = 20 * time.Millisecond
 	IdleConnTimeoutData  = 30
 	ConnectTimeoutDataMs = 200
 
@@ -443,7 +443,7 @@ func (rc *RemoteCache) updateHostLatency(hosts []string) {
 		return
 	}
 	for _, host := range hosts {
-		avgTime, err := iputil.PingWithTimeout(strings.Split(host, ":")[0], pingCount, pingTimeout*pingCount)
+		avgTime, err := iputil.PingWithTimeout(strings.Split(host, ":")[0], pingCount, pingCostPerHost)
 		if err == nil {
 			rc.hostLatency.Store(host, avgTime)
 		} else {
