@@ -228,6 +228,8 @@ func (h *Handler) writeToBlobnodes(ctx context.Context,
 	writtenNum := uint32(0)
 
 	wg.Add(len(volume.Units))
+	// 1: has broken disk, need normal release volume ; 2: need sealed release volume
+	releaseType := releaseVolumeInvalid
 	for i, unitI := range volume.Units {
 		index, unit := i, unitI
 
@@ -291,6 +293,9 @@ func (h *Handler) writeToBlobnodes(ctx context.Context,
 				}
 
 				code := rpc.DetectStatusCode(err)
+				if code == errcode.CodeDiskBroken {
+					releaseType = releaseVolumeNormal
+				}
 				switch code {
 				case errcode.CodeDiskBroken, errcode.CodeDiskNotFound,
 					errcode.CodeChunkNoSpace, errcode.CodeVUIDReadonly:
@@ -382,17 +387,30 @@ func (h *Handler) writeToBlobnodes(ctx context.Context,
 			st := <-statusCh
 			received[st.index] = st
 		}
-
 		if _, ok := <-writeDone; !ok {
 			return
 		}
+
+		v, _ := h.failVids.LoadOrStore(vid, newFailVuidMap())
+		failIdxes := v.(*failVuidMap)
 
 		for idx := range volume.Units {
 			if st, ok := received[idx]; ok && st.status {
 				continue
 			}
+			failIdxes.Store(uint8(idx))
+		}
+		if failIdxes.Len() > tactic.M {
+			go h.releaseVolume(ctx, clusterID, volume.CodeMode, releaseVolumeSealed, vid)
+			h.failVids.Delete(vid)
 		}
 	}(writeDone)
+
+	defer func() {
+		if releaseType > releaseVolumeInvalid {
+			go h.releaseVolume(ctx, clusterID, volume.CodeMode, releaseType, vid)
+		}
+	}()
 
 	// return if had quorum successful shards
 	if atomic.LoadUint32(&writtenNum) >= putQuorum {
@@ -436,5 +454,27 @@ func (h *Handler) writeToBlobnodes(ctx context.Context,
 
 	close(writeDone)
 	err = fmt.Errorf("quorum write failed (%d < %d) of %s", writtenNum, putQuorum, blob.String())
+	// need mark sealed: less than quorum, az fail
+	releaseType = releaseVolumeSealed
 	return
+}
+
+type failVuidMap struct {
+	failIdx sync.Map
+	cnt     int32
+}
+
+func newFailVuidMap() *failVuidMap {
+	return &failVuidMap{}
+}
+
+func (m *failVuidMap) Store(idx uint8) {
+	_, ok := m.failIdx.LoadOrStore(idx, struct{}{})
+	if !ok {
+		atomic.AddInt32(&m.cnt, 1)
+	}
+}
+
+func (m *failVuidMap) Len() int {
+	return int(atomic.LoadInt32(&m.cnt))
 }
