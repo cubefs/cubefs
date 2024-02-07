@@ -410,7 +410,7 @@ func NewVolumeCache(client client.ClusterMgrAPI, updateInterval time.Duration) *
 	}
 }
 
-// Load list all volumes info memory cache.
+// LoadVolumes Load list all volumes info memory cache.
 func (c *VolumeCache) LoadVolumes() error {
 	marker := defaultMarker
 	for {
