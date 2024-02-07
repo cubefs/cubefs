@@ -38,6 +38,19 @@ func genMockFailShards(vid proto.Vid, bids []proto.BlobID) []*proto.MissedShard 
 	return FailShards
 }
 
+func genMockNeedDeleteShards(vid proto.Vid, bid proto.BlobID, failed uint8) []*proto.MissedShard {
+	var vuids []proto.Vuid
+	for i := uint8(0); i < failed; i++ {
+		vuid, _ := proto.NewVuid(vid, i, 1)
+		vuids = append(vuids, vuid)
+	}
+	var needDeleteShards []*proto.MissedShard
+	for _, vuid := range vuids {
+		needDeleteShards = append(needDeleteShards, &proto.MissedShard{Vuid: vuid, Bid: bid})
+	}
+	return needDeleteShards
+}
+
 func TestTaskTimeout(t *testing.T) {
 	task := inspectTaskInfo{}
 	require.NoError(t, task.tryAcquire())
@@ -245,6 +258,29 @@ func TestInspectorFinish(t *testing.T) {
 		mgr.finish(ctx)
 		require.Equal(t, 0, len(mgr.tasks))
 	}
+	{
+		mgr := newInspector(t)
+
+		mgr.cfg.InspectBatch = 1
+		mgr.cfg.ListVolStep = 1
+
+		volume := MockGenVolInfo(100012, codemode.EC6P6, proto.VolumeStatusIdle)
+		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().GetVolumeInspectCheckPoint(any).AnyTimes().Return(&proto.VolumeInspectCheckPoint{}, nil)
+		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().ListVolume(any, any, any).Return([]*client.VolumeInfoSimple{volume}, proto.Vid(0), nil)
+		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().ListSealedVolume(any).AnyTimes().Return(nil, nil)
+
+		mgr.prepare(ctx)
+		require.Equal(t, 1, len(mgr.tasks))
+
+		for _, task := range mgr.tasks {
+			task.ret = &proto.VolumeInspectRet{MissedShards: genMockNeedDeleteShards(100012, proto.BlobID(3), 7)}
+		}
+		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().GetVolumeInfo(any, any).Return(volume, nil)
+		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().SetVolumeInspectCheckPoint(any, any).Return(nil)
+
+		mgr.finish(ctx)
+		require.Equal(t, 0, len(mgr.tasks))
+	}
 }
 
 func TestInspectorAcquire(t *testing.T) {
@@ -337,4 +373,30 @@ func TestInspectorComplete(t *testing.T) {
 func TestInspectorGetTaskStats(t *testing.T) {
 	mgr := newInspector(t)
 	mgr.GetTaskStats()
+}
+
+func TestVolCanCover(t *testing.T) {
+	mgr := newInspector(t)
+	{
+		bad := []uint8{1, 2, 3, 4, 5}
+		canRecover := mgr.canRecover(codemode.EC10P4, bad)
+		require.False(t, canRecover)
+
+		bad = []uint8{1, 2, 3, 4}
+		canRecover = mgr.canRecover(codemode.EC10P4, bad)
+		require.True(t, canRecover)
+
+		bad = []uint8{1, 10, 11, 12, 13}
+		canRecover = mgr.canRecover(codemode.EC10P4, bad)
+		require.False(t, canRecover)
+	}
+	{
+		bad := []uint8{1, 2, 3, 4, 5}
+		canRecover := mgr.canRecover(codemode.EC6P6, bad)
+		require.True(t, canRecover)
+
+		bad = []uint8{1, 2, 3, 4, 5, 6, 7}
+		canRecover = mgr.canRecover(codemode.EC10P4, bad)
+		require.False(t, canRecover)
+	}
 }
