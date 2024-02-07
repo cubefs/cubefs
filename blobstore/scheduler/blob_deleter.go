@@ -392,11 +392,6 @@ func shouldUpdateVolumeErr(errCode int) bool {
 		errCode == errcode.CodeDiskNotFound
 }
 
-func shouldBackToInitStage(err error) bool {
-	// 653: errcode.CodeShardNotMarkDelete
-	return err == errcode.ErrShardNotMarkDelete
-}
-
 func assumeDeleteSuccess(errCode int) bool {
 	return errCode == errcode.CodeBidNotFound ||
 		errCode == errcode.CodeShardMarkDeleted
