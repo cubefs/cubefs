@@ -538,22 +538,29 @@ func (mgr *VolumeInspectMgr) finish(ctx context.Context) {
 		for bid, bads := range bidsBads {
 			span.Infof("inspect missed: vid[%d], bid[%d], shards[%+v]", vid, bid, bads)
 			if mgr.canRecover(volInfo.CodeMode, bads) {
-				base.InsistOn(ctx, "send shard repair msg failed", func() error {
+				err := retry.ExponentialBackoff(3, 200).On(func() error {
 					return mgr.shardRepairMgr.Repair(ctx, &proto.ShardRepairMsg{
 						Bid:    bid,
 						Vid:    vid,
 						BadIdx: bads,
 					})
 				})
+				if err != nil {
+					span.Errorf("recover failed: vid[%d], bid[%d], shards[%+v], err[%s]", vid, bid, bads, err)
+				}
 				continue
 			}
 			span.Errorf("inspect missed: vid[%d], bid[%d], shards[%+v], and can not be repaired", vid, bid, bads)
-			base.InsistOn(ctx, "send shard repair msg failed", func() error {
+			err = retry.Timed(3, 200).On(func() error {
 				return mgr.blobDeleteMgr.Delete(ctx, &proto.DeleteMsg{
 					Bid: bid,
 					Vid: vid,
 				})
 			})
+			if err != nil {
+				span.Errorf("delete failed: vid[%d], bid[%d], shards[%+v], err[%s]", vid, bid, bads, err)
+				continue
+			}
 		}
 	}
 
