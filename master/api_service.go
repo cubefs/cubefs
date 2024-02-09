@@ -262,12 +262,21 @@ func (m *Server) clusterStat(w http.ResponseWriter, r *http.Request) {
 		EcNodeStatInfo:   m.cluster.ecNodeStatInfo,
 		ZoneStatInfo:     make(map[string]*proto.ZoneStat, 0),
 	}
-	for zoneName, zoneStat := range m.cluster.zoneStatInfos {
+	m.cluster.zoneStatInfos.Range(func(key, value any) bool {
+		zoneName, ok := key.(string)
+		if !ok {
+			return true
+		}
+		zoneStat, ok := value.(*proto.ZoneStat)
+		if !ok {
+			return true
+		}
 		if zoneStat.MetaNodeStat.TotalNodes <= 0 && zoneStat.DataNodeStat.TotalNodes <= 0 {
-			continue
+			return true
 		}
 		cs.ZoneStatInfo[zoneName] = zoneStat
-	}
+		return true
+	})
 	zoneTag, err := extractZoneTag(r)
 	if err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})

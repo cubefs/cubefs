@@ -53,7 +53,7 @@ func (c *Cluster) updateZoneStatInfo() {
 		highUsedRatioDataNodes = 0
 		highUsedRatioMetaNodes = 0
 		zs := newZoneStatInfo()
-		c.zoneStatInfos[zone.name] = zs
+		c.zoneStatInfos.Store(zone.name, zs)
 		zone.dataNodes.Range(func(key, value interface{}) bool {
 			zs.DataNodeStat.TotalNodes++
 			node := value.(*DataNode)

@@ -62,7 +62,7 @@ type Cluster struct {
 	dataNodeStatInfo           *nodeStatInfo
 	metaNodeStatInfo           *nodeStatInfo
 	ecNodeStatInfo             *nodeStatInfo
-	zoneStatInfos              map[string]*proto.ZoneStat
+	zoneStatInfos              *sync.Map
 	volStatInfo                sync.Map
 	BadDataPartitionIds        *sync.Map
 	BadMetaPartitionIds        *sync.Map
@@ -150,7 +150,7 @@ func newCluster(name string, leaderInfo *LeaderInfo, fsm *MetadataFsm, partition
 	c.dataNodeStatInfo = new(nodeStatInfo)
 	c.metaNodeStatInfo = new(nodeStatInfo)
 	c.ecNodeStatInfo = new(nodeStatInfo)
-	c.zoneStatInfos = make(map[string]*proto.ZoneStat)
+	c.zoneStatInfos = new(sync.Map)
 	c.fsm = fsm
 	c.partition = partition
 	c.idAlloc = newIDAllocator(c.fsm.store, c.partition)
