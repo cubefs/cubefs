@@ -1,6 +1,4 @@
 # Roadmap of 2024
 
-## caching & data orchestration for the cloud
-
-## metadata subsystem redefined
+https://github.com/cubefs/cubefs/issues/3064
 
