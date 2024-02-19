@@ -19,6 +19,7 @@ import (
 	"math"
 	"sort"
 	"strconv"
+	"strings"
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/sdk/master"
@@ -81,10 +82,16 @@ func newCmdFlashGroupCreate(client *master.MasterClient) *cobra.Command {
 		Short: "create a new flash group",
 		Args:  cobra.MinimumNArgs(0),
 		RunE: func(cmd *cobra.Command, args []string) (err error) {
-			if optSlots == "" {
-				err = fmt.Errorf("pls set --slots")
-				return
+			if optSlots != "" {
+				numbers := strings.Split(optSlots, ",")
+				for _, numStr := range numbers {
+					_, err = strconv.Atoi(numStr)
+					if err != nil {
+						return
+					}
+				}
 			}
+
 			fgView, err := client.AdminAPI().CreateFlashGroup(optSlots)
 			if err != nil {
 				return
