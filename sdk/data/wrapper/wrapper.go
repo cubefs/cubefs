@@ -190,7 +190,7 @@ func (w *Wrapper) UpdateUidsView(view *proto.SimpleVolView) {
 	defer w.UidLock.Unlock()
 	w.Uids = make(map[uint32]*proto.UidSimpleInfo)
 	for _, uid := range view.Uids {
-		if uid.Limited == false {
+		if !uid.Limited {
 			continue
 		}
 		w.Uids[uid.UID] = &uid

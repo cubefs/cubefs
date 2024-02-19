@@ -37,7 +37,7 @@ type Partition interface {
 	// Submit submits command data to raft log.
 	Submit(cmd []byte) (resp interface{}, err error)
 
-	// ChaneMember submits member change event and information to raft log.
+	// ChangeMember submits member change event and information to raft log.
 	ChangeMember(changeType proto.ConfChangeType, peer proto.Peer, context []byte) (resp interface{}, err error)
 
 	// Stop removes the raft partition from raft server and shuts down this partition.
@@ -49,7 +49,7 @@ type Partition interface {
 	// Status returns the current raft status.
 	Status() (status *PartitionStatus)
 
-	// Much faster then status().RestoringSnapshot.
+	// IsRestoring Much faster then status().RestoringSnapshot.
 	IsRestoring() bool
 
 	// LeaderTerm returns the current term of leader in the raft group. TODO what is term?
@@ -78,7 +78,7 @@ type partition struct {
 	config  *PartitionConfig
 }
 
-// ChaneMember submits member change event and information to raft log.
+// ChangeMember submits member change event and information to raft log.
 func (p *partition) ChangeMember(changeType proto.ConfChangeType, peer proto.Peer, context []byte) (
 	resp interface{}, err error) {
 	if !p.IsRaftLeader() {
@@ -136,7 +136,7 @@ func (p *partition) IsOfflinePeer() bool {
 	active := 0
 	sumPeers := 0
 	for _, peer := range status.Replicas {
-		if peer.Active == true {
+		if peer.Active {
 			active++
 		}
 		sumPeers++

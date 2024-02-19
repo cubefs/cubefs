@@ -40,8 +40,7 @@ const (
 
 var ErrTooMuchSmuxStreams = errors.New("too much smux streams")
 
-// addr = ip:port
-// afterShift = ip:(port+shift)
+// ShiftAddrPort changes the addr(ip:port) to afterShift(ip:(port+shift)).
 func ShiftAddrPort(addr string, shift int) (afterShift string) {
 	pars := strings.Split(addr, ":")
 	if len(pars) != 2 {
@@ -56,7 +55,7 @@ func ShiftAddrPort(addr string, shift int) (afterShift string) {
 	return
 }
 
-// filter smux accept error
+// FilterSmuxAcceptError filter smux accept error
 func FilterSmuxAcceptError(err error) error {
 	if err == nil {
 		return nil

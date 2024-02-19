@@ -155,7 +155,7 @@ func removeDuplicates(slice []string) []string {
 	result := []string{}
 
 	for _, item := range slice {
-		if encountered[item] == true {
+		if encountered[item] {
 			continue
 		}
 		encountered[item] = true

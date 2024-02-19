@@ -111,7 +111,7 @@ func (br *BufferReader) Grow(n int) {
 		}
 	}()
 
-	var buf []byte = nil
+	var buf []byte
 	if n > br.size {
 		buf = make([]byte, n)
 	} else {

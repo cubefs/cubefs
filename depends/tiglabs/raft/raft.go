@@ -330,7 +330,7 @@ func (s *raft) run() {
 					s.raftFsm.Step(m)
 				}
 				var respErr = true
-				if m.Type == proto.RespMsgAppend && m.Reject != true {
+				if m.Type == proto.RespMsgAppend && !m.Reject {
 					respErr = false
 				}
 				s.maybeChange(respErr)
@@ -573,7 +573,7 @@ func (s *raft) maybeChange(respErr bool) {
 		updated = true
 		s.prevSoftSt.leader = s.raftFsm.leader
 		if s.raftFsm.leader != s.config.NodeID {
-			if respErr == true || preLeader != s.config.NodeID {
+			if respErr || preLeader != s.config.NodeID {
 				s.resetPending(ErrNotLeader)
 			}
 			s.stopSnapping()

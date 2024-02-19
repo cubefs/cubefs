@@ -592,7 +592,7 @@ func (s *Server) SaveFuseContext(fs FS) (msg string, err error) {
 
 		sn.wg.Wait()
 
-		if err = sn.node.Attr(nil, &attr); err != nil {
+		if err = sn.node.Attr(context.TODO(), &attr); err != nil {
 			s.meta.Unlock()
 			err = fmt.Errorf("SaveFuseContext: failed to get mode of node %v: %v", sn.inode, err)
 			return
@@ -629,7 +629,7 @@ func (s *Server) SaveFuseContext(fs FS) (msg string, err error) {
 		}
 
 		if hdl, ok := sh.handle.(HandleFlusher); ok {
-			if err = hdl.Flush(nil, nil); err != nil {
+			if err = hdl.Flush(context.TODO(), nil); err != nil {
 				s.meta.Unlock()
 				err = fmt.Errorf("SaveFuseContext: flush handle %v: %v\n",
 					s.node[sh.nodeID].inode, err)
@@ -645,7 +645,7 @@ func (s *Server) SaveFuseContext(fs FS) (msg string, err error) {
 		}
 
 		hcount++
-		// check if need stop
+		// check 'if' need stop
 		if hcount%20 == 0 {
 			stat, _ := fs.State()
 			if stat != FSStatSuspend {
@@ -733,12 +733,11 @@ func (s *Server) TryRestore(fs FS) error {
 		stat, _ = fs.State()
 		if stat == FSStatResume {
 			//s.CleanupFuseContext()
-			return nil
+			break
 		} else if stat == FSStatRestore {
 			runtime.Gosched()
 		} else {
-			err = fmt.Errorf("Unknown state changed %v", stat)
-			return err
+			return fmt.Errorf("Unknown state changed %v", stat)
 		}
 	}
 
@@ -826,7 +825,7 @@ func (s *Server) LoadFuseContext(fs FS, sockaddr string) error {
 			sn := s.node[ch.NodeID]
 			if node, ok := sn.node.(NodeOpener); ok {
 				// create streamers for cubefs
-				if hdl, err = node.Open(nil, nil, nil); err != nil {
+				if hdl, err = node.Open(context.TODO(), nil, nil); err != nil {
 					err = fmt.Errorf("LoadFuseContext: failed to open handle %v: %v\n", sn.inode, err)
 					return err
 				}
@@ -1838,7 +1837,6 @@ func (c *Server) handleRequest(ctx context.Context, node Node, snode *serveNode,
 					if err != nil {
 						if err == io.EOF {
 							noMore = true
-							err = nil
 						} else {
 							return err
 						}
