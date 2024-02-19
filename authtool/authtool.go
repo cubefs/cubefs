@@ -203,8 +203,6 @@ func getTicket() {
 
 	ticketfile := getTicketFromAuth(&keyring)
 	ticketfile.dumpJSONFile(flaginfo.ticket.output)
-
-	return
 }
 
 func accessAuthServer() {
@@ -403,8 +401,6 @@ func accessAuthServer() {
 	default:
 		// do nothing
 	}
-
-	return
 }
 
 func accessAPI() {

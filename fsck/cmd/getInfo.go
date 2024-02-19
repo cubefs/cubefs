@@ -523,7 +523,7 @@ func decodeDentry(raw []byte, d *Dentry) (err error) {
 	if err = binary.Read(keyBuff, binary.BigEndian, &d.ParentId); err != nil {
 		return
 	}
-	d.Name = string(keyBuff.Bytes())
+	d.Name = keyBuff.String()
 	if err = binary.Read(buff, binary.BigEndian, &valLen); err != nil {
 		return
 	}

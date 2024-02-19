@@ -124,10 +124,10 @@ func (factor *LimitFactor) alloc(allocCnt uint32) (ret uint8, future *util.Futur
 			magnify: factor.magnify,
 		})
 
-		if grid.hitLimit == false {
+		if !grid.hitLimit {
 			factor.gidHitLimitCnt++
 			// 1s have several gird, gidHitLimitCnt is the count that gird count hit limit in latest 1s,
-			// if gidHitLimitCnt large than limit then request for enlarge factor limit
+			// if gidHitLimitCnt larger than limit then request for enlarge factor limit
 			// GetSimpleVolView will call back simpleClient function to get factor info and send to master
 			if factor.gidHitLimitCnt >= factor.mgr.HitTriggerCnt {
 				tmpTime := time.Now()
@@ -261,7 +261,7 @@ func (factor *LimitFactor) CheckGrid() {
 	}
 	factor.gridId++
 
-	if factor.mgr.enable == true && factor.mgr.lastTimeOfSetLimit.Add(time.Second*qosExpireTime).Before(newGrid.time) {
+	if factor.mgr.enable && factor.mgr.lastTimeOfSetLimit.Add(time.Second*qosExpireTime).Before(newGrid.time) {
 		log.LogWarnf("action[CheckGrid]. qos recv no command from master in long time, last time %v, grid time %v",
 			factor.mgr.lastTimeOfSetLimit, newGrid.time)
 	}
@@ -565,7 +565,6 @@ func (limitManager *LimitManager) WaitN(ctx context.Context, lim *LimitFactor, n
 
 func (limitManager *LimitManager) UpdateFlowInfo(limit *proto.LimitRsp2Client) {
 	limitManager.SetClientLimit(limit)
-	return
 }
 
 func (limitManager *LimitManager) SetClientID(id uint64) (err error) {

@@ -277,7 +277,6 @@ func doDump(filePathes string) {
 
 		rsize, err = nodeListFile.Read(data)
 		if rsize == 0 || err == io.EOF {
-			err = nil
 			break
 		}
 
@@ -300,7 +299,7 @@ func doDump(filePathes string) {
 
 	handleListFile, err := os.OpenFile(pathes[1], os.O_RDONLY, 0o644)
 	if err != nil {
-		err = fmt.Errorf("failed to open handles list file: %v\n", err)
+		fmt.Fprintf(os.Stderr, "failed to open handles list file: %v\n", err)
 		return
 	}
 	defer handleListFile.Close()

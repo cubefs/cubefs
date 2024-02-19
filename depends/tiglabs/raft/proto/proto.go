@@ -164,7 +164,7 @@ func (t MsgType) String() string {
 	case 15:
 		return "RespCheckQuorum"
 	}
-	return "unkown"
+	return "unknown"
 }
 
 func (t EntryType) String() string {
@@ -174,7 +174,7 @@ func (t EntryType) String() string {
 	case 1:
 		return "EntryConfChange"
 	}
-	return "unkown"
+	return "unknown"
 }
 
 func (t ConfChangeType) String() string {
@@ -186,7 +186,7 @@ func (t ConfChangeType) String() string {
 	case 2:
 		return "ConfUpdateNode"
 	}
-	return "unkown"
+	return "unknown"
 }
 
 func (t PeerType) String() string {
@@ -196,7 +196,7 @@ func (t PeerType) String() string {
 	case 1:
 		return "PeerArbiter"
 	}
-	return "unkown"
+	return "unknown"
 }
 
 func (p Peer) String() string {
