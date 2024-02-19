@@ -83,6 +83,9 @@ func replyInfo(info *proto.InodeInfo, ino *Inode, quotaInfos map[uint32]*proto.M
 		info.ForbiddenLc = true
 	}
 	info.MigrationStorageClass = ino.HybridCouldExtentsMigration.storageClass
+	if ino.HybridCouldExtentsMigration.storageClass != proto.StorageClass_Unspecified {
+		info.HasMigrationEk = true
+	}
 	return true
 }
 
@@ -411,10 +414,7 @@ func (mp *metaPartition) UnlinkInode(req *UnlinkInoReq, p *Packet, remoteAddr st
 		p.PacketErrorWithBody(proto.OpNotExistErr, []byte(err.Error()))
 		return
 	} else {
-		ino.StorageClass = item.(*Inode).StorageClass
-		ino.HybridCouldExtents.sortedEks = item.(*Inode).HybridCouldExtents.sortedEks
-		ino.WriteGeneration = atomic.LoadUint64(&(item.(*Inode).WriteGeneration))
-		ino.ForbiddenMigration = atomic.LoadUint32(&(item.(*Inode).ForbiddenMigration))
+		ino.UpdateHybridCloudParams(item.(*Inode))
 	}
 
 	if req.UniqID > 0 {
@@ -769,10 +769,7 @@ func (mp *metaPartition) EvictInode(req *EvictInodeReq, p *Packet, remoteAddr st
 		p.PacketErrorWithBody(proto.OpNotExistErr, []byte(err.Error()))
 		return
 	} else {
-		ino.StorageClass = item.(*Inode).StorageClass
-		ino.HybridCouldExtents.sortedEks = item.(*Inode).HybridCouldExtents.sortedEks
-		ino.WriteGeneration = atomic.LoadUint64(&(item.(*Inode).WriteGeneration))
-		ino.ForbiddenMigration = atomic.LoadUint32(&(item.(*Inode).ForbiddenMigration))
+		ino.UpdateHybridCloudParams(item.(*Inode))
 	}
 	val, err := ino.Marshal()
 	if err != nil {
@@ -1060,10 +1057,7 @@ func (mp *metaPartition) RenewalForbiddenMigration(req *proto.RenewalForbiddenMi
 		p.PacketErrorWithBody(proto.OpNotExistErr, []byte(err.Error()))
 		return
 	} else {
-		ino.StorageClass = item.(*Inode).StorageClass
-		ino.HybridCouldExtents.sortedEks = item.(*Inode).HybridCouldExtents.sortedEks
-		ino.WriteGeneration = atomic.LoadUint64(&(item.(*Inode).WriteGeneration))
-		ino.ForbiddenMigration = atomic.LoadUint32(&(item.(*Inode).ForbiddenMigration))
+		ino.UpdateHybridCloudParams(item.(*Inode))
 	}
 	val, err := ino.Marshal()
 	if err != nil {
@@ -1090,10 +1084,7 @@ func (mp *metaPartition) UpdateExtentKeyAfterMigration(req *proto.UpdateExtentKe
 		p.PacketErrorWithBody(proto.OpNotExistErr, []byte(err.Error()))
 		return
 	} else {
-		ino.StorageClass = item.(*Inode).StorageClass
-		ino.HybridCouldExtents.sortedEks = item.(*Inode).HybridCouldExtents.sortedEks
-		ino.WriteGeneration = atomic.LoadUint64(&(item.(*Inode).WriteGeneration))
-		ino.ForbiddenMigration = atomic.LoadUint32(&(item.(*Inode).ForbiddenMigration))
+		ino.UpdateHybridCloudParams(item.(*Inode))
 	}
 
 	start := time.Now()
@@ -1102,6 +1093,21 @@ func (mp *metaPartition) UpdateExtentKeyAfterMigration(req *proto.UpdateExtentKe
 			auditlog.LogMigrationOp(remoteAddr, mp.GetVolName(), p.GetOpMsg(), req.GetFullPath(), err, time.Since(start).Milliseconds(), req.Inode, ino.StorageClass, req.StorageClass)
 		}()
 	}
+
+	defer func() {
+		//delete migration extent key if encounter an error
+		if err != nil {
+			//prepare HybridCouldExtentsMigration info for extent key delete
+			if req.StorageClass == proto.StorageClass_BlobStore {
+				log.LogErrorf("action[UpdateExtentKeyAfterMigration] prepare to delete migration obj extent key for "+
+					"inode %v", ino.Inode)
+				ino.HybridCouldExtentsMigration.storageClass = req.StorageClass
+				ino.HybridCouldExtentsMigration.sortedEks = NewSortedObjExtentsFromObjEks(req.NewObjExtentKeys)
+			}
+			ino.SetDeleteMigrationExtentKeyImmediately()
+			mp.freeList.Push(ino.Inode)
+		}
+	}()
 
 	if !proto.IsStorageClassReplica(ino.StorageClass) && req.NewObjExtentKeys == nil {
 		err = fmt.Errorf("mp %v inode %v new extentKey for storageClass %v  can not be nil",
@@ -1147,6 +1153,7 @@ func (mp *metaPartition) UpdateExtentKeyAfterMigration(req *proto.UpdateExtentKe
 	}
 	val, err := ino.Marshal()
 	if err != nil {
+		log.LogErrorf("action[UpdateExtentKeyAfterMigration] ino %v marshall failed %v", ino.Inode, err)
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return
 	}
@@ -1280,5 +1287,44 @@ func (mp *metaPartition) SetCreateTime(req *SetCreateTimeRequest, reqData []byte
 	}
 
 	p.PacketOkReply()
+	return
+}
+
+func (mp *metaPartition) DeleteMigrationExtentKey(req *proto.DeleteMigrationExtentKeyRequest, p *Packet,
+	remoteAddr string) (err error) {
+	ino := NewInode(req.Inode, 0)
+	var item BtreeItem
+	if item = mp.inodeTree.Get(ino); item == nil {
+		err = fmt.Errorf("mp %v inode %v reqeust cann't found", mp.config.PartitionId, ino.Inode)
+		log.LogErrorf("action[UpdateExtentKeyAfterMigration] %v", err)
+		p.PacketErrorWithBody(proto.OpNotExistErr, []byte(err.Error()))
+		return
+	} else {
+		ino.UpdateHybridCloudParams(item.(*Inode))
+	}
+
+	start := time.Now()
+	if mp.IsEnableAuditLog() {
+		defer func() {
+			auditlog.LogMigrationOp(remoteAddr, mp.GetVolName(), p.GetOpMsg(), req.GetFullPath(), err, time.Since(start).Milliseconds(), req.Inode, ino.StorageClass, ino.StorageClass)
+		}()
+	}
+	//no migration extent key to delete
+	if ino.HybridCouldExtentsMigration.storageClass == proto.StorageClass_Unspecified {
+		p.PacketOkReply()
+		return
+	}
+	val, err := ino.Marshal()
+	if err != nil {
+		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+		return
+	}
+	resp, err := mp.submit(opFSMDeleteMigrationExtentKey, val)
+	if err != nil {
+		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
+		return
+	}
+	msg := resp.(*InodeResponse)
+	p.PacketErrorWithBody(msg.Status, nil)
 	return
 }

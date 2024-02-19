@@ -2559,3 +2559,17 @@ func (mw *MetaWrapper) UpdateExtentKeyAfterMigration(inode uint64, storageType u
 	}
 	return nil
 }
+
+func (mw *MetaWrapper) DeleteMigrationExtentKey(inode uint64, fullPath string) error {
+	mp := mw.getPartitionByInode(inode)
+	if mp == nil {
+		return syscall.ENOENT
+	}
+	status, err := mw.deleteMigrationExtentKey(mp, inode, fullPath)
+	if err != nil || status != statusOK {
+		log.LogErrorf("DeleteMigrationExtentKey: inode(%v)  err(%v) status(%v)",
+			inode, err, status)
+		return statusToErrno(status)
+	}
+	return nil
+}

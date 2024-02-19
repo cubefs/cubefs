@@ -472,6 +472,12 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 		err = mp.fsmSetCreateTime(req)
 	case opFSMInternalFreeInodeMigrationExtentKey:
 		err = mp.internalDeleteMigrationExtentKey(msg.V)
+	case opFSMDeleteMigrationExtentKey:
+		ino := NewInode(0, 0)
+		if err = ino.Unmarshal(msg.V); err != nil {
+			return
+		}
+		resp = mp.fsmUpdateExtentKeyAfterMigration(ino)
 	default:
 		// do nothing
 	}

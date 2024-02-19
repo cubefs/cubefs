@@ -2446,3 +2446,15 @@ func (i *Inode) SetCreateTime(req *SetCreateTimeRequest) {
 
 	i.Unlock()
 }
+
+func (i *Inode) UpdateHybridCloudParams(paramIno *Inode) {
+	i.Lock()
+	defer i.Unlock()
+	i.StorageClass = paramIno.StorageClass
+	i.HybridCouldExtents.sortedEks = paramIno.HybridCouldExtents.sortedEks
+	i.WriteGeneration = atomic.LoadUint64(&(paramIno.WriteGeneration))
+	i.ForbiddenMigration = atomic.LoadUint32(&(paramIno.ForbiddenMigration))
+	i.HybridCouldExtentsMigration.storageClass = paramIno.HybridCouldExtentsMigration.storageClass
+	i.HybridCouldExtentsMigration.sortedEks = paramIno.HybridCouldExtentsMigration.sortedEks
+	i.HybridCouldExtentsMigration.expiredTime = paramIno.HybridCouldExtentsMigration.expiredTime
+}

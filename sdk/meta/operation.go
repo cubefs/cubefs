@@ -2952,3 +2952,47 @@ func (mw *MetaWrapper) updateExtentKeyAfterMigration(mp *MetaPartition, inode ui
 	log.LogDebugf("updateExtentKeyAfterMigration exit: packet(%v) mp(%v) req(%v)", packet, mp, *req)
 	return statusOK, nil
 }
+
+func (mw *MetaWrapper) deleteMigrationExtentKey(mp *MetaPartition, inode uint64, fullPath string) (status int, err error) {
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat("deleteMigrationExtentKey", err, bgTime, 1)
+	}()
+	req := &proto.DeleteMigrationExtentKeyRequest{
+		PartitionID: mp.PartitionID,
+		Inode:       inode,
+	}
+	req.FullPaths = []string{fullPath}
+	packet := proto.NewPacketReqID()
+	packet.Opcode = proto.OpDeleteMigrationExtentKey
+	packet.PartitionID = mp.PartitionID
+	err = packet.MarshalData(req)
+	if err != nil {
+		log.LogErrorf("deleteMigrationExtentKey: ino(%v) err(%v)", inode, err)
+		return
+	}
+
+	log.LogDebugf("deleteMigrationExtentKey enter: packet(%v) mp(%v) req(%v)",
+		packet, mp, string(packet.Data))
+
+	metric := exporter.NewTPCnt(packet.GetOpMsg())
+	defer func() {
+		metric.SetWithLabels(err, map[string]string{exporter.Vol: mw.volname})
+	}()
+
+	packet, err = mw.sendToMetaPartition(mp, packet)
+	if err != nil {
+		log.LogErrorf("deleteMigrationExtentKey: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
+		return
+	}
+
+	status = parseStatus(packet.ResultCode)
+	if status != statusOK {
+		err = errors.New(packet.GetResultMsg())
+		log.LogErrorf("deleteMigrationExtentKey: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
+		return
+	}
+
+	log.LogDebugf("deleteMigrationExtentKey exit: packet(%v) mp(%v) req(%v)", packet, mp, *req)
+	return statusOK, nil
+}
