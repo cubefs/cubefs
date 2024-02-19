@@ -56,7 +56,10 @@ func (s *DefaultRandomSelector) Refresh(partitions []*DataPartition) (err error)
 	defer s.Unlock()
 
 	s.partitions = partitions
-	s.removeDp = sync.Map{}
+	s.removeDp.Range(func(key, value interface{}) bool {
+		s.removeDp.Delete(key)
+		return true
+	})
 	return
 }
 
