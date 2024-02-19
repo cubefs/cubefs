@@ -136,6 +136,7 @@ end:
 		p.PacketErrorWithBody(proto.OpErr, []byte(errMsg))
 	}
 
+	ok = false
 	m.respondToClient(conn, p)
 	if err != nil {
 		log.LogErrorf("[serveProxy]: req: %d - %v, %s", p.GetReqID(),
