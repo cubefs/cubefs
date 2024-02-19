@@ -386,21 +386,7 @@ begin:
 					return
 				}
 			}
-			// try append write, get response
-			log.LogDebugf("action[streamer.write] doAppendWrite req: ExtentKey(%v) FileOffset(%v) size(%v)",
-				req.ExtentKey, req.FileOffset, req.Size)
-			var status int32
-			// First, attempt sequential writes using neighboring extent keys. If the last extent has a different version,
-			// it indicates that the extent may have been fully utilized by the previous version.
-			// Next, try writing and directly checking the extent at the datanode. If the extent cannot be reused, create a new extent for writing.
-			if writeSize, err, status = s.doAppendWrite(req.Data, req.FileOffset, req.Size, direct, true); status == LastEKVersionNotEqual {
-				log.LogDebugf("action[streamer.write] tryDirectAppendWrite req %v FileOffset %v size %v", req.ExtentKey, req.FileOffset, req.Size)
-				if writeSize, _, err, status = s.tryDirectAppendWrite(req, direct); status == int32(proto.OpTryOtherExtent) {
-					log.LogDebugf("action[streamer.write] doAppendWrite again req %v FileOffset %v size %v", req.ExtentKey, req.FileOffset, req.Size)
-					writeSize, err, _ = s.doAppendWrite(req.Data, req.FileOffset, req.Size, direct, false)
-				}
-			}
-			log.LogDebugf("action[streamer.write] doAppendWrite status %v err %v", status, err)
+			writeSize, err = s.doWriteAppend(req, direct)
 		}
 		if err != nil {
 			log.LogErrorf("Streamer write: ino(%v) err(%v)", s.inode, err)
@@ -787,7 +773,29 @@ func (s *Streamer) tryInitExtentHandlerByLastEk(offset, size int) (isLastEkVerNo
 	return
 }
 
-func (s *Streamer) doAppendWrite(data []byte, offset, size int, direct bool, reUseEk bool) (total int, err error, status int32) {
+// First, attempt sequential writes using neighboring extent keys. If the last extent has a different version,
+// it indicates that the extent may have been fully utilized by the previous version.
+// Next, try writing and directly checking the extent at the datanode. If the extent cannot be reused, create a new extent for writing.
+func (s *Streamer) doWriteAppend(req *ExtentRequest, direct bool) (writeSize int, err error) {
+	var status int32
+	// try append write, get response
+	log.LogDebugf("action[streamer.write] doWriteAppend req: ExtentKey(%v) FileOffset(%v) size(%v)",
+		req.ExtentKey, req.FileOffset, req.Size)
+	// First, attempt sequential writes using neighboring extent keys. If the last extent has a different version,
+	// it indicates that the extent may have been fully utilized by the previous version.
+	// Next, try writing and directly checking the extent at the datanode. If the extent cannot be reused, create a new extent for writing.
+	if writeSize, err, status = s.doWriteAppendEx(req.Data, req.FileOffset, req.Size, direct, true); status == LastEKVersionNotEqual {
+		log.LogDebugf("action[streamer.write] tryDirectAppendWrite req %v FileOffset %v size %v", req.ExtentKey, req.FileOffset, req.Size)
+		if writeSize, _, err, status = s.tryDirectAppendWrite(req, direct); status == int32(proto.OpTryOtherExtent) {
+			log.LogDebugf("action[streamer.write] doWriteAppend again req %v FileOffset %v size %v", req.ExtentKey, req.FileOffset, req.Size)
+			writeSize, err, _ = s.doWriteAppendEx(req.Data, req.FileOffset, req.Size, direct, false)
+		}
+	}
+	log.LogDebugf("action[streamer.write] doWriteAppend status %v err %v", status, err)
+	return
+}
+
+func (s *Streamer) doWriteAppendEx(data []byte, offset, size int, direct bool, reUseEk bool) (total int, err error, status int32) {
 	var (
 		ek        *proto.ExtentKey
 		storeMode int
@@ -797,11 +805,11 @@ func (s *Streamer) doAppendWrite(data []byte, offset, size int, direct bool, reU
 	// store only for the first write operation.
 	storeMode = s.GetStoreMod(offset, size)
 
-	log.LogDebugf("doAppendWrite enter: ino(%v) offset(%v) size(%v) storeMode(%v)", s.inode, offset, size, storeMode)
+	log.LogDebugf("doWriteAppendEx enter: ino(%v) offset(%v) size(%v) storeMode(%v)", s.inode, offset, size, storeMode)
 	if proto.IsHot(s.client.volumeType) {
 		if reUseEk {
 			if isLastEkVerNotEqual := s.tryInitExtentHandlerByLastEk(offset, size); isLastEkVerNotEqual {
-				log.LogDebugf("doAppendWrite enter: ino(%v) tryInitExtentHandlerByLastEk worked but seq not equal", s.inode)
+				log.LogDebugf("doWriteAppendEx enter: ino(%v) tryInitExtentHandlerByLastEk worked but seq not equal", s.inode)
 				status = LastEKVersionNotEqual
 				return
 			}
@@ -844,7 +852,7 @@ func (s *Streamer) doAppendWrite(data []byte, offset, size int, direct bool, reU
 	}
 
 	if err != nil || ek == nil {
-		log.LogErrorf("doAppendWrite error: ino(%v) offset(%v) size(%v) err(%v) ek(%v)", s.inode, offset, size, err, ek)
+		log.LogErrorf("doWriteAppendEx error: ino(%v) offset(%v) size(%v) err(%v) ek(%v)", s.inode, offset, size, err, ek)
 		return
 	}
 
