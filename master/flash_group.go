@@ -162,12 +162,18 @@ func (m *Server) turnFlashGroup(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *Server) createFlashGroup(w http.ResponseWriter, r *http.Request) {
-	var err error
+	var (
+		err      error
+		setSlots []uint32
+	)
 	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminFlashGroupCreate))
 	defer func() {
 		doStatAndMetric(proto.AdminFlashGroupCreate, metric, err, nil)
 	}()
-	setSlots := getSetSlots(r)
+	if setSlots, err = getSetSlots(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
 	flashGroup, err := m.cluster.createFlashGroup(setSlots)
 	if err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
@@ -506,16 +512,17 @@ func (m *Server) clientFlashGroups(w http.ResponseWriter, r *http.Request) {
 	send(w, r, cache)
 }
 
-func getSetSlots(r *http.Request) (slots []uint32) {
+func getSetSlots(r *http.Request) (slots []uint32, err error) {
 	r.ParseForm()
 	slots = make([]uint32, 0)
 	slotStr := r.FormValue("slots")
 	if slotStr != "" {
 		arr := strings.Split(slotStr, ",")
+		var slot uint64
 		for i := 0; i < len(arr); i++ {
-			slot, err := strconv.ParseUint(arr[i], 10, 32)
+			slot, err = strconv.ParseUint(arr[i], 10, 32)
 			if err != nil {
-				continue
+				return nil, err
 			}
 			if len(slots) >= defaultFlashGroupSlotsCount {
 				return
