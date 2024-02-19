@@ -100,6 +100,7 @@ type InodeInfo struct {
 	WriteGen              uint64 `json:"writeGen"`
 	ForbiddenLc           bool   `json:"forbiddenLc"`
 	MigrationStorageClass uint32 `json:"migrationStorageClass"`
+	HasMigrationEk        bool   `json:"hasMigrationEk"`
 }
 
 type SimpleExtInfo struct {
@@ -1103,4 +1104,10 @@ type SetCreateTimeRequest struct {
 	Inode      uint64 `json:"ino"`
 	CreateTime int64  `json:"ct"`
 	VerSeq     uint64 `json:"seq"`
+}
+
+type DeleteMigrationExtentKeyRequest struct {
+	PartitionID uint64 `json:"pid"`
+	Inode       uint64 `json:"ino"`
+	RequestExtend
 }
