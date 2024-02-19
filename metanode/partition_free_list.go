@@ -372,7 +372,7 @@ func (mp *metaPartition) deleteMarkedInodes(inoSlice []uint64) {
 			}
 		}
 	}
-
+	//only reset migration extent key
 	if len(deleteMigrationEkInodes) > 0 {
 		bufSlice := make([]byte, 0, 8*len(deleteMigrationEkInodes))
 		for _, inode := range deleteMigrationEkInodes {

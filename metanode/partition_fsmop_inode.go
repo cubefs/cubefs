@@ -1127,3 +1127,19 @@ func (mp *metaPartition) internalDeleteInodeMigrationExtentKey(inoParam *Inode) 
 	ino.HybridCouldExtentsMigration.sortedEks = nil
 	return
 }
+
+func (mp *metaPartition) fsmDeleteMigrationExtentKey(inoParam *Inode) (resp *InodeResponse) {
+	resp = NewInodeResponse()
+	resp.Status = proto.OpOk
+	item := mp.inodeTree.CopyGet(inoParam)
+	if item == nil {
+		resp.Status = proto.OpNotExistErr
+		return
+	}
+	i := item.(*Inode)
+	//delete migration ek in future
+	i.SetDeleteMigrationExtentKeyImmediately()
+	log.LogInfof("action[fsmDeleteMigrationExtentKey] inode %v migration ek will be deleted immediately", i.Inode)
+	mp.freeList.Push(i.Inode)
+	return
+}
