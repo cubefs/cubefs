@@ -27,7 +27,7 @@ func createFlashGroups(t *testing.T) (groups []proto.FlashGroupAdminView) {
 	for idx := range [n]struct{}{} {
 		var slots string
 		if idx == 7 {
-			slots = "create,by,default"
+			slots = "create,by,error"
 		}
 		if idx == 3 {
 			slots = "3000,3333"
@@ -36,11 +36,16 @@ func createFlashGroups(t *testing.T) (groups []proto.FlashGroupAdminView) {
 			slots = "2222222"
 		}
 		fgView, err := mc.AdminAPI().CreateFlashGroup(slots)
+		if idx == 7 {
+			require.Error(t, err)
+			continue
+		}
 		require.NoError(t, err)
+
 		require.Equal(t, proto.FlashGroupStatus_Inactive, fgView.Status)
 		groups = append(groups, fgView)
 	}
-	require.Equal(t, n, len(groups))
+	require.Equal(t, n-1, len(groups))
 	return
 }
 
