@@ -273,6 +273,7 @@ const (
 	OpDismatchStorageClass              uint8 = 0x82
 	OpMetaRenewalForbiddenMigration     uint8 = 0x83
 	OpMetaUpdateExtentKeyAfterMigration uint8 = 0x84
+	OpDeleteMigrationExtentKey          uint8 = 0x85
 )
 
 const (
