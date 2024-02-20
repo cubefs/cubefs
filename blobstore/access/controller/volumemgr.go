@@ -24,7 +24,6 @@ import (
 	"time"
 
 	cmapi "github.com/cubefs/cubefs/blobstore/api/clustermgr"
-	"github.com/cubefs/cubefs/blobstore/api/proxy"
 	"github.com/cubefs/cubefs/blobstore/common/codemode"
 	errcode "github.com/cubefs/cubefs/blobstore/common/errors"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
@@ -248,13 +247,13 @@ type VolumeMgrConfig struct {
 
 type VolumeMgr interface {
 	// Alloc the required volumes to access module
-	Alloc(ctx context.Context, args *proxy.AllocVolsArgs) (allocVols []proxy.AllocRet, err error)
+	Alloc(ctx context.Context, args *cmapi.AllocVolsArgs) (allocVols []cmapi.AllocRet, err error)
 	// List the volumes in the allocator
 	List(ctx context.Context, codeMode codemode.CodeMode) (vids []proto.Vid, volumes []cmapi.AllocVolumeInfo, err error)
 	// Release the volumes
 	Release(ctx context.Context, args *cmapi.ReleaseVolumes) error
-	// Discard just used for proxy volume management, remove invalid volumes
-	Discard(ctx context.Context, args *proxy.DiscardVolsArgs) error
+	// Discard just used for volume management, remove invalid volumes
+	Discard(ctx context.Context, args *cmapi.DiscardVolsArgs) error
 	// Close exit background goroutines
 	Close()
 }
@@ -347,7 +346,7 @@ func (v *volumeMgr) initModeInfo(ctx context.Context) (err error) {
 	return
 }
 
-func (v *volumeMgr) Alloc(ctx context.Context, args *proxy.AllocVolsArgs) (allocRets []proxy.AllocRet, err error) {
+func (v *volumeMgr) Alloc(ctx context.Context, args *cmapi.AllocVolsArgs) (allocRets []cmapi.AllocRet, err error) {
 	allocBidScopes, err := v.BidMgr.Alloc(ctx, args.BidCount)
 	if err != nil {
 		return nil, err
@@ -356,9 +355,9 @@ func (v *volumeMgr) Alloc(ctx context.Context, args *proxy.AllocVolsArgs) (alloc
 	if err != nil {
 		return nil, err
 	}
-	allocRets = make([]proxy.AllocRet, 0, 128)
+	allocRets = make([]cmapi.AllocRet, 0, 128)
 	for _, bidScope := range allocBidScopes {
-		volRet := proxy.AllocRet{
+		volRet := cmapi.AllocRet{
 			BidStart: bidScope.StartBid,
 			BidEnd:   bidScope.EndBid,
 			Vid:      vid,
@@ -370,7 +369,7 @@ func (v *volumeMgr) Alloc(ctx context.Context, args *proxy.AllocVolsArgs) (alloc
 }
 
 func (v *volumeMgr) Release(ctx context.Context, args *cmapi.ReleaseVolumes) error {
-	arg := &proxy.DiscardVolsArgs{
+	arg := &cmapi.DiscardVolsArgs{
 		CodeMode: args.CodeMode,
 		Discards: append(args.NormalVids, args.SealedVids...),
 	}
@@ -401,7 +400,7 @@ func (v *volumeMgr) List(ctx context.Context, codeMode codemode.CodeMode) (vids 
 	return
 }
 
-func (v *volumeMgr) Discard(ctx context.Context, args *proxy.DiscardVolsArgs) error {
+func (v *volumeMgr) Discard(ctx context.Context, args *cmapi.DiscardVolsArgs) error {
 	span := trace.SpanFromContextSafe(ctx)
 	info := v.modeInfos[args.CodeMode]
 	if info != nil {
@@ -416,7 +415,7 @@ func (v *volumeMgr) Close() {
 	close(v.closeCh)
 }
 
-func (v *volumeMgr) getNextVid(ctx context.Context, vols []*volume, modeInfo *modeInfo, args *proxy.AllocVolsArgs) (proto.Vid, error) {
+func (v *volumeMgr) getNextVid(ctx context.Context, vols []*volume, modeInfo *modeInfo, args *cmapi.AllocVolsArgs) (proto.Vid, error) {
 	curIdx := int(atomic.AddUint64(&v.preIdx, uint64(1)) % uint64(len(vols)))
 	l := len(vols) + curIdx
 	for i := curIdx; i < l; i++ {
@@ -428,7 +427,7 @@ func (v *volumeMgr) getNextVid(ctx context.Context, vols []*volume, modeInfo *mo
 	return 0, errcode.ErrNoAvaliableVolume
 }
 
-func (v *volumeMgr) modifySpace(ctx context.Context, volInfo *volume, modeInfo *modeInfo, args *proxy.AllocVolsArgs) bool {
+func (v *volumeMgr) modifySpace(ctx context.Context, volInfo *volume, modeInfo *modeInfo, args *cmapi.AllocVolsArgs) bool {
 	span := trace.SpanFromContextSafe(ctx)
 
 	volInfo.mu.Lock()
@@ -454,7 +453,7 @@ func (v *volumeMgr) modifySpace(ctx context.Context, volInfo *volume, modeInfo *
 	return true
 }
 
-func (v *volumeMgr) allocVid(ctx context.Context, args *proxy.AllocVolsArgs) (proto.Vid, error) {
+func (v *volumeMgr) allocVid(ctx context.Context, args *cmapi.AllocVolsArgs) (proto.Vid, error) {
 	span := trace.SpanFromContextSafe(ctx)
 	info := v.modeInfos[args.CodeMode]
 	if info == nil {
@@ -475,7 +474,7 @@ func (v *volumeMgr) allocVid(ctx context.Context, args *proxy.AllocVolsArgs) (pr
 	return vid, nil
 }
 
-func (v *volumeMgr) getAvailableVols(ctx context.Context, args *proxy.AllocVolsArgs) (vols []*volume, err error) {
+func (v *volumeMgr) getAvailableVols(ctx context.Context, args *cmapi.AllocVolsArgs) (vols []*volume, err error) {
 	span := trace.SpanFromContextSafe(ctx)
 	info := v.modeInfos[args.CodeMode]
 	info.dealDisCards(args.Discards)
@@ -524,8 +523,9 @@ func (v *volumeMgr) allocNotify(ctx context.Context, mode codemode.CodeMode, cou
 	span.Panicf("the codeMode %v not exist", mode)
 }
 
-func (v *volumeMgr) allocVolume(ctx context.Context, args *cmapi.AllocVolumeV2Args) (ret []cmapi.AllocVolumeInfo,
-	err error) {
+func (v *volumeMgr) allocVolume(ctx context.Context, args *cmapi.AllocVolumeV2Args) (
+	ret []cmapi.AllocVolumeInfo, err error,
+) {
 	span := trace.SpanFromContextSafe(ctx)
 	err = retry.ExponentialBackoff(2, 200).On(func() error {
 		allocVolumes, err_ := v.clusterMgr.AllocVolumeV2(ctx, args)

@@ -301,7 +301,8 @@ func (h *Handler) Get(ctx context.Context, w io.Writer, location access.Location
 // 4. Just read essential bytes if the data is a segment of one shard.
 func (h *Handler) readOneBlob(ctx context.Context, getTime *timeReadWrite,
 	serviceController controller.ServiceController,
-	blob blobGetArgs, sortedVuids []sortedVuid, shards [][]byte) error {
+	blob blobGetArgs, sortedVuids []sortedVuid, shards [][]byte,
+) error {
 	span := trace.SpanFromContextSafe(ctx)
 
 	tactic := blob.CodeMode.Tactic()
@@ -462,7 +463,8 @@ func (h *Handler) readOneBlob(ctx context.Context, getTime *timeReadWrite,
 }
 
 func (h *Handler) readOneShard(ctx context.Context, serviceController controller.ServiceController,
-	blob blobGetArgs, vuid sortedVuid, stopChan <-chan struct{}) shardData {
+	blob blobGetArgs, vuid sortedVuid, stopChan <-chan struct{},
+) shardData {
 	clusterID, vid := blob.Cid, blob.Vid
 	shardOffset, shardReadSize := blob.ShardOffset, blob.ShardReadSize
 	span := trace.SpanFromContextSafe(ctx)
@@ -526,7 +528,8 @@ func (h *Handler) readOneShard(ctx context.Context, serviceController controller
 }
 
 func (h *Handler) getDataShardOnly(ctx context.Context, getTime *timeReadWrite,
-	w io.Writer, serviceController controller.ServiceController, blob blobGetArgs) error {
+	w io.Writer, serviceController controller.ServiceController, blob blobGetArgs,
+) error {
 	span := trace.SpanFromContextSafe(ctx)
 	if blob.ReadSize == 0 {
 		return nil
@@ -772,7 +775,8 @@ func genLocationBlobs(location *access.Location, readSize uint64, offset uint64)
 }
 
 func genSortedVuidByIDC(ctx context.Context, serviceController controller.ServiceController, idc string,
-	vuidPhys []controller.Unit) []sortedVuid {
+	vuidPhys []controller.Unit,
+) []sortedVuid {
 	span := trace.SpanFromContextSafe(ctx)
 
 	vuids := make([]sortedVuid, 0, len(vuidPhys))

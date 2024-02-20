@@ -30,6 +30,25 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/rpc"
 )
 
+type AllocRet struct {
+	BidStart proto.BlobID `json:"bid_start"`
+	BidEnd   proto.BlobID `json:"bid_end"`
+	Vid      proto.Vid    `json:"vid"`
+}
+
+type AllocVolsArgs struct {
+	Fsize    uint64            `json:"fsize"`
+	CodeMode codemode.CodeMode `json:"code_mode"`
+	BidCount uint64            `json:"bid_count"`
+	Excludes []proto.Vid       `json:"excludes"`
+	Discards []proto.Vid       `json:"discards"`
+}
+
+type DiscardVolsArgs struct {
+	CodeMode codemode.CodeMode `json:"code_mode"`
+	Discards []proto.Vid       `json:"discards"`
+}
+
 type GetVolumeArgs struct {
 	Vid proto.Vid `json:"vid"`
 }

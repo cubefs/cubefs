@@ -43,8 +43,8 @@ import (
 //
 //	required: size, file size
 //	optional: hasher map to calculate hash.Hash
-func (h *Handler) Put(ctx context.Context, rc io.Reader, size int64,
-	hasherMap access.HasherMap) (*access.Location, error) {
+func (h *Handler) Put(ctx context.Context, rc io.Reader, size int64, hasherMap access.HasherMap,
+) (*access.Location, error) {
 	span := trace.SpanFromContextSafe(ctx)
 	span.Debugf("put request size:%d hashes:b(%b)", size, hasherMap.ToHashAlgorithm())
 
@@ -168,7 +168,8 @@ func (h *Handler) Put(ctx context.Context, rc io.Reader, size int64,
 }
 
 func (h *Handler) writeToBlobnodesWithHystrix(ctx context.Context,
-	blob blobIdent, shards [][]byte, callback func()) error {
+	blob blobIdent, shards [][]byte, callback func(),
+) error {
 	safe := make(chan struct{}, 1)
 	err := hystrix.Do(rwCommand, func() error {
 		safe <- struct{}{}
@@ -192,7 +193,8 @@ type shardPutStatus struct {
 // takeover ec buffer release by callback.
 // return if had quorum successful shards, then wait all shards in background.
 func (h *Handler) writeToBlobnodes(ctx context.Context,
-	blob blobIdent, shards [][]byte, callback func()) (err error) {
+	blob blobIdent, shards [][]byte, callback func(),
+) (err error) {
 	span := trace.SpanFromContextSafe(ctx)
 	clusterID, vid, bid := blob.cid, blob.vid, blob.bid
 
