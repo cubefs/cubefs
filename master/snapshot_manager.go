@@ -36,7 +36,7 @@ func newSnapshotManager() *snapshotDelManager {
 	snapshotMgr := &snapshotDelManager{
 		lcSnapshotTaskStatus: newLcSnapshotVerStatus(),
 		lcNodeStatus:         newLcNodeStatus(),
-		idleNodeCh:           make(chan struct{}, 20), //support notify multi snapshot tasks
+		idleNodeCh:           make(chan struct{}, 1000), // support notify multi snapshot tasks
 		exitCh:               make(chan struct{}),
 	}
 	return snapshotMgr
