@@ -29,60 +29,62 @@ import (
 
 // MetaReplica defines the replica of a meta partition
 type MetaReplica struct {
-	Addr        string
-	start       uint64 // lower bound of the inode id
-	end         uint64 // upper bound of the inode id
-	dataSize    uint64
-	nodeID      uint64
-	MaxInodeID  uint64
-	InodeCount  uint64
-	DentryCount uint64
-	TxCnt       uint64
-	TxRbInoCnt  uint64
-	TxRbDenCnt  uint64
-	FreeListLen uint64
-	ReportTime  int64
-	Status      int8 // unavailable, readOnly, readWrite
-	IsLeader    bool
-	metaNode    *MetaNode
+	Addr               string
+	start              uint64 // lower bound of the inode id
+	end                uint64 // upper bound of the inode id
+	dataSize           uint64
+	nodeID             uint64
+	MaxInodeID         uint64
+	InodeCount         uint64
+	DentryCount        uint64
+	TxCnt              uint64
+	TxRbInoCnt         uint64
+	TxRbDenCnt         uint64
+	FreeListLen        uint64
+	ReportTime         int64
+	Status             int8 // unavailable, readOnly, readWrite
+	IsLeader           bool
+	StatByStorageClass []*proto.StatOftorageClass
+	metaNode           *MetaNode
 }
 
 // MetaPartition defines the structure of a meta partition
 type MetaPartition struct {
-	PartitionID      uint64
-	Start            uint64
-	End              uint64
-	MaxInodeID       uint64
-	InodeCount       uint64
-	DentryCount      uint64
-	FreeListLen      uint64
-	TxCnt            uint64
-	TxRbInoCnt       uint64
-	TxRbDenCnt       uint64
-	Replicas         []*MetaReplica
-	LeaderReportTime int64
-	ReplicaNum       uint8
-	Status           int8
-	IsRecover        bool
-	volID            uint64
-	volName          string
-	Hosts            []string
-	Peers            []proto.Peer
-	OfflinePeerID    uint64
-	MissNodes        map[string]int64
-	LoadResponse     []*proto.MetaPartitionLoadResponse
-	offlineMutex     sync.RWMutex
-	uidInfo          []*proto.UidReportSpaceInfo
-	EqualCheckPass   bool
-	VerSeq           uint64
-	heartBeatDone    bool
-
+	PartitionID        uint64
+	Start              uint64
+	End                uint64
+	MaxInodeID         uint64
+	InodeCount         uint64
+	DentryCount        uint64
+	FreeListLen        uint64
+	TxCnt              uint64
+	TxRbInoCnt         uint64
+	TxRbDenCnt         uint64
+	Replicas           []*MetaReplica
+	LeaderReportTime   int64
+	ReplicaNum         uint8
+	Status             int8
+	IsRecover          bool
+	volID              uint64
+	volName            string
+	Hosts              []string
+	Peers              []proto.Peer
+	OfflinePeerID      uint64
+	MissNodes          map[string]int64
+	LoadResponse       []*proto.MetaPartitionLoadResponse
+	offlineMutex       sync.RWMutex
+	uidInfo            []*proto.UidReportSpaceInfo
+	EqualCheckPass     bool
+	VerSeq             uint64
+	heartBeatDone      bool
+	StatByStorageClass []*proto.StatOftorageClass
 	sync.RWMutex
 }
 
 func newMetaReplica(start, end uint64, metaNode *MetaNode) (mr *MetaReplica) {
 	mr = &MetaReplica{start: start, end: end, nodeID: metaNode.ID, Addr: metaNode.Addr}
 	mr.metaNode = metaNode
+	mr.StatByStorageClass = make([]*proto.StatOftorageClass, 0)
 	mr.ReportTime = time.Now().Unix()
 	return
 }
@@ -99,6 +101,7 @@ func newMetaPartition(partitionID, start, end uint64, replicaNum uint8, volName 
 	mp.VerSeq = verSeq
 	mp.LoadResponse = make([]*proto.MetaPartitionLoadResponse, 0)
 	mp.EqualCheckPass = true
+	mp.StatByStorageClass = make([]*proto.StatOftorageClass, 0)
 	return
 }
 
@@ -407,7 +410,6 @@ func (mp *MetaPartition) missingReplicaAddrs() (lackAddrs []string) {
 }
 
 func (mp *MetaPartition) updateMetaPartition(mgr *proto.MetaPartitionReport, metaNode *MetaNode) {
-
 	if !contains(mp.Hosts, metaNode.Addr) {
 		return
 	}
@@ -429,6 +431,7 @@ func (mp *MetaPartition) updateMetaPartition(mgr *proto.MetaPartitionReport, met
 	mp.SetTxCnt()
 	mp.removeMissingReplica(metaNode.Addr)
 	mp.setUidInfo(mgr)
+	mp.setStatByStorageClass()
 	mp.setHeartBeatDone()
 }
 
@@ -768,6 +771,12 @@ func (mr *MetaReplica) updateMetric(mgr *proto.MetaPartitionReport) {
 	mr.TxRbDenCnt = mgr.TxRbDenCnt
 	mr.FreeListLen = mgr.FreeListLen
 	mr.dataSize = mgr.Size
+	if mgr.StatByStorageClass != nil {
+		mr.StatByStorageClass = mgr.StatByStorageClass
+	} else if len(mr.StatByStorageClass) != 0 {
+		// handle compatibility, report from old version metanode has no filed StatByStorageClass
+		mr.StatByStorageClass = make([]*proto.StatOftorageClass, 0)
+	}
 	mr.setLastReportTime()
 
 	if mr.metaNode.RdOnly && mr.Status == proto.ReadWrite {
@@ -909,6 +918,39 @@ func (mp *MetaPartition) SetTxCnt() {
 		}
 	}
 	mp.TxCnt, mp.TxRbInoCnt, mp.TxRbDenCnt = txCnt, rbInoCnt, rbDenCnt
+}
+
+func (mp *MetaPartition) setStatByStorageClass() {
+	var mpStat *proto.StatOftorageClass
+	var ok bool
+	statByStorageClassMap := make(map[uint32]*proto.StatOftorageClass)
+
+	for _, r := range mp.Replicas {
+		if r.StatByStorageClass == nil {
+			continue
+		}
+
+		for _, rStat := range r.StatByStorageClass {
+			if mpStat, ok = statByStorageClassMap[rStat.StorageClass]; !ok {
+				mpStat = proto.NewStatOfStorageClass(rStat.StorageClass)
+				statByStorageClassMap[rStat.StorageClass] = mpStat
+			}
+
+			if rStat.InodeCount > mpStat.InodeCount {
+				mpStat.InodeCount = rStat.InodeCount
+			}
+
+			if rStat.UsedSizeBytes > mpStat.UsedSizeBytes {
+				mpStat.UsedSizeBytes = rStat.UsedSizeBytes
+			}
+		}
+	}
+
+	toSlice := make([]*proto.StatOftorageClass, 0)
+	for _, mpStat := range statByStorageClassMap {
+		toSlice = append(toSlice, mpStat)
+	}
+	mp.StatByStorageClass = toSlice
 }
 
 func (mp *MetaPartition) getAllNodeSets() (nodeSets []uint64) {
