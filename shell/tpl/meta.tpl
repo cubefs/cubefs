@@ -13,5 +13,5 @@
   "raftDir": "_dir_/raft",
   "masterAddr": [
  	_master_addr_
-]
+  ]
 }

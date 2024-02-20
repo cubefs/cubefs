@@ -15,5 +15,5 @@
   "enableSmuxConnPool": "true",
   "masterAddr": [
       _master_addr_
-]
+  ]
 }

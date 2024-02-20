@@ -1,7 +1,7 @@
 #!/bin/bash
 
 if [ $# -ne 2 ]; then
-    echo "usage: start cluster: ./shell/depoly.sh <baseDir>  <bond0>"
+    echo "usage: start cluster: $0 <baseDir> <bond0>"
     exit 1
 fi
 
