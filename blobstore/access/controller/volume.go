@@ -42,10 +42,11 @@ const (
 type Unit = clustermgr.Unit
 
 // VolumePhy volume physical info
-//     Vid, CodeMode and Units are from cluster
-//     IsPunish is cached in memory
-//     Version is versioned in proxy
-//     Timestamp is cached in proxy to clear outdate volume
+//
+//	Vid, CodeMode and Units are from cluster
+//	IsPunish is cached in memory
+//	Version is versioned in proxy
+//	Timestamp is cached in proxy to clear outdate volume
 type VolumePhy struct {
 	Vid       proto.Vid
 	CodeMode  codemode.CodeMode
@@ -60,7 +61,8 @@ type VolumePhy struct {
 // ctx: context with trace or something
 //
 // isCache: is false means reading from proxy cluster then updating memcache
-//     otherwise reading from memcache -> proxy -> cluster
+//
+//	otherwise reading from memcache -> proxy -> cluster
 type VolumeGetter interface {
 	// Get returns volume physical location of vid
 	Get(ctx context.Context, vid proto.Vid, isCache bool) *VolumePhy
@@ -117,9 +119,11 @@ type volumeGetterImpl struct {
 }
 
 // NewVolumeGetter new a volume getter
-//   memExpiration expiration of memcache, 0 means no expiration
+//
+//	memExpiration expiration of memcache, 0 means no expiration
 func NewVolumeGetter(clusterID proto.ClusterID, service ServiceController,
-	proxy proxy.Cacher, memExpiration time.Duration) (VolumeGetter, error) {
+	proxy proxy.Cacher, memExpiration time.Duration,
+) (VolumeGetter, error) {
 	_, ctx := trace.StartSpanFromContext(context.Background(), "")
 
 	expiration := int64(memExpiration)
@@ -151,8 +155,9 @@ func NewVolumeGetter(clusterID proto.ClusterID, service ServiceController,
 }
 
 // Get implements interface VolumeGetter
-//     1.top level cache from local
-//     2.second level cache from proxy cluster
+//
+//	1.top level cache from local
+//	2.second level cache from proxy cluster
 func (v *volumeGetterImpl) Get(ctx context.Context, vid proto.Vid, isCache bool) (phy *VolumePhy) {
 	span := trace.SpanFromContextSafe(ctx)
 	cid := v.cid.ToString()

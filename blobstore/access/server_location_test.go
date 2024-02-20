@@ -168,7 +168,8 @@ func calcCrcWithoutMagic(loc *access.Location) (uint32, error) {
 
 func benchmarkCrc(b *testing.B, key string,
 	location access.Location, blob access.SliceInfo,
-	run func(loc *access.Location) (uint32, error)) {
+	run func(loc *access.Location) (uint32, error),
+) {
 	cases := []int{0, 2, 4, 8, 16, 32}
 	for _, l := range cases {
 		b.ResetTimer()

@@ -19,7 +19,7 @@ import (
 	"sync/atomic"
 
 	"github.com/cubefs/cubefs/blobstore/api/access"
-	"github.com/cubefs/cubefs/blobstore/api/proxy"
+	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/common/codemode"
 	errcode "github.com/cubefs/cubefs/blobstore/common/errors"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
@@ -31,13 +31,15 @@ import (
 var errAllocatePunishedVolume = errors.New("allocate punished volume")
 
 // Alloc access interface /alloc
-//     required: size, file size
-//     optional: blobSize > 0, alloc with blobSize
-//               assignClusterID > 0, assign to alloc in this cluster certainly
-//               codeMode > 0, alloc in this codemode
-//     return: a location of file
+//
+//	required: size, file size
+//	optional: blobSize > 0, alloc with blobSize
+//	          assignClusterID > 0, assign to alloc in this cluster certainly
+//	          codeMode > 0, alloc in this codemode
+//	return: a location of file
 func (h *Handler) Alloc(ctx context.Context, size uint64, blobSize uint32,
-	assignClusterID proto.ClusterID, codeMode codemode.CodeMode) (*access.Location, error) {
+	assignClusterID proto.ClusterID, codeMode codemode.CodeMode,
+) (*access.Location, error) {
 	span := trace.SpanFromContextSafe(ctx)
 	span.Debugf("alloc request with size:%d blobsize:%d cluster:%d codemode:%d",
 		size, blobSize, assignClusterID, codeMode)
@@ -63,7 +65,7 @@ func (h *Handler) Alloc(ctx context.Context, size uint64, blobSize uint32,
 
 	clusterID, blobs, err := h.allocFromAllocatorWithHystrix(ctx, codeMode, size, blobSize, assignClusterID)
 	if err != nil {
-		span.Error("alloc from proxy", errors.Detail(err))
+		span.Error("alloc", errors.Detail(err))
 		return nil, err
 	}
 	span.Debugf("allocated from %d %+v", clusterID, blobs)
@@ -80,13 +82,15 @@ func (h *Handler) Alloc(ctx context.Context, size uint64, blobSize uint32,
 }
 
 func (h *Handler) allocFromAllocatorWithHystrix(ctx context.Context, codeMode codemode.CodeMode, size uint64, blobSize uint32,
-	clusterID proto.ClusterID) (cid proto.ClusterID, bidRets []access.SliceInfo, err error) {
+	clusterID proto.ClusterID,
+) (cid proto.ClusterID, bidRets []access.SliceInfo, err error) {
 	cid, bidRets, err = h.allocFromAllocator(ctx, codeMode, size, blobSize, clusterID)
 	return
 }
 
 func (h *Handler) allocFromAllocator(ctx context.Context, codeMode codemode.CodeMode, size uint64, blobSize uint32,
-	clusterID proto.ClusterID) (proto.ClusterID, []access.SliceInfo, error) {
+	clusterID proto.ClusterID,
+) (proto.ClusterID, []access.SliceInfo, error) {
 	span := trace.SpanFromContextSafe(ctx)
 
 	if blobSize == 0 {
@@ -100,13 +104,13 @@ func (h *Handler) allocFromAllocator(ctx context.Context, codeMode codemode.Code
 		clusterID = clusterChosen.ClusterID
 	}
 
-	args := proxy.AllocVolsArgs{
+	args := clustermgr.AllocVolsArgs{
 		Fsize:    size,
 		CodeMode: codeMode,
 		BidCount: blobCount(size, blobSize),
 	}
 
-	var allocRets []proxy.AllocRet
+	var allocRets []clustermgr.AllocRet
 	if err := retry.ExponentialBackoff(h.AllocRetryTimes, uint32(h.AllocRetryIntervalMS)).On(func() error {
 		allocMgr, err := h.clusterController.GetVolumeAllocator(clusterID)
 		if err != nil {

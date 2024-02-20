@@ -118,7 +118,8 @@ type serviceControllerImpl struct {
 
 // NewServiceController returns a service controller
 func NewServiceController(cfg ServiceConfig, cmCli clustermgr.APIAccess, proxy proxy.Cacher,
-	stopCh <-chan struct{}) (ServiceController, error) {
+	stopCh <-chan struct{},
+) (ServiceController, error) {
 	defaulter.Equal(&cfg.ServicePunishThreshold, defaultServicePinishThreshold)
 	defaulter.LessOrEqual(&cfg.ServicePunishValidIntervalS, defaultServicePinishValidIntervalS)
 	defaulter.LessOrEqual(&cfg.LoadDiskInterval, int(300))

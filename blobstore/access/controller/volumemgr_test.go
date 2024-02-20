@@ -24,12 +24,22 @@ import (
 	"github.com/stretchr/testify/require"
 
 	cm "github.com/cubefs/cubefs/blobstore/api/clustermgr"
-	"github.com/cubefs/cubefs/blobstore/api/proxy"
 	"github.com/cubefs/cubefs/blobstore/common/codemode"
 	errcode "github.com/cubefs/cubefs/blobstore/common/errors"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
-	"github.com/cubefs/cubefs/blobstore/util/log"
 )
+
+func newAllocVolumeInfo(vid proto.Vid, free uint64, expire int64) cm.AllocVolumeInfo {
+	return cm.AllocVolumeInfo{
+		VolumeInfo: cm.VolumeInfo{
+			VolumeInfoBase: cm.VolumeInfoBase{
+				Vid:  vid,
+				Free: free,
+			},
+		},
+		ExpireTime: expire,
+	}
+}
 
 func TestNewVolumeMgr(t *testing.T) {
 	ctx := context.Background()
@@ -54,61 +64,15 @@ func TestGetAllocList(t *testing.T) {
 	require.NoError(t, err)
 
 	expireTime := time.Now().UnixNano() + 300*int64(math.Pow(10, 9))
-	volInfo1 := cm.AllocVolumeInfo{
-		VolumeInfo: cm.VolumeInfo{
-			VolumeInfoBase: cm.VolumeInfoBase{
-				Vid:  1,
-				Free: 1 * 1024 * 1024,
-			},
-		},
-		ExpireTime: expireTime,
+	volInfo := func(vid proto.Vid, freeMB uint64) cm.AllocVolumeInfo {
+		return newAllocVolumeInfo(vid, freeMB*(1<<20), expireTime)
 	}
-	volInfo2 := cm.AllocVolumeInfo{
-		VolumeInfo: cm.VolumeInfo{
-			VolumeInfoBase: cm.VolumeInfoBase{
-				Vid:  2,
-				Free: 2 * 1024 * 1024,
-			},
-		},
-		ExpireTime: expireTime,
-	}
-	volInfo3 := cm.AllocVolumeInfo{
-		VolumeInfo: cm.VolumeInfo{
-			VolumeInfoBase: cm.VolumeInfoBase{
-				Vid:  3,
-				Free: 15 * 1024 * 1024,
-			},
-		},
-		ExpireTime: expireTime,
-	}
-	volInfo4 := cm.AllocVolumeInfo{
-		VolumeInfo: cm.VolumeInfo{
-			VolumeInfoBase: cm.VolumeInfoBase{
-				Vid:  4,
-				Free: 8 * 1024 * 1024,
-			},
-		},
-		ExpireTime: expireTime,
-	}
-	volInfo5 := cm.AllocVolumeInfo{
-		VolumeInfo: cm.VolumeInfo{
-			VolumeInfoBase: cm.VolumeInfoBase{
-				Vid:  5,
-				Free: 9 * 1024 * 1024,
-			},
-		},
-		ExpireTime: expireTime,
-	}
-
-	volInfo6 := cm.AllocVolumeInfo{
-		VolumeInfo: cm.VolumeInfo{
-			VolumeInfoBase: cm.VolumeInfoBase{
-				Vid:  6,
-				Free: 10 * 1024 * 1024,
-			},
-		},
-		ExpireTime: expireTime,
-	}
+	volInfo1 := volInfo(1, 1)
+	volInfo2 := volInfo(2, 2)
+	volInfo3 := volInfo(3, 15)
+	volInfo4 := volInfo(4, 8)
+	volInfo5 := volInfo(5, 9)
+	volInfo6 := volInfo(6, 10)
 
 	modeInfoMap := make(map[codemode.CodeMode]*modeInfo)
 
@@ -148,7 +112,7 @@ func TestGetAllocList(t *testing.T) {
 		require.Equal(t, []proto.Vid{3, 4, 5, 6}, vids)
 	}
 	{
-		writableVidsArgs := &proxy.AllocVolsArgs{
+		writableVidsArgs := &cm.AllocVolsArgs{
 			Fsize:    12 * 1024 * 1024,
 			BidCount: 6,
 			CodeMode: 2,
@@ -164,7 +128,7 @@ func TestGetAllocList(t *testing.T) {
 		require.Equal(t, 20*1024*1024, int(totalFree)) // require.Equal(t, 11*1024*1024, int(totalFree))
 	}
 	{
-		writableVidsArgs := &proxy.AllocVolsArgs{
+		writableVidsArgs := &cm.AllocVolsArgs{
 			Fsize:    5 * 1024 * 1024,
 			BidCount: 1,
 			CodeMode: 2,
@@ -176,7 +140,7 @@ func TestGetAllocList(t *testing.T) {
 	}
 
 	{
-		alloc, err := vm.Alloc(context.Background(), &proxy.AllocVolsArgs{Fsize: 100, CodeMode: 2, BidCount: 1})
+		alloc, err := vm.Alloc(context.Background(), &cm.AllocVolsArgs{Fsize: 100, CodeMode: 2, BidCount: 1})
 		require.NoError(t, err)
 		require.NotNil(t, alloc)
 	}
@@ -195,27 +159,14 @@ func BenchmarkVolumeMgr_Alloc(b *testing.B) {
 		backup:         &volumes{},
 	}
 	for i := 1; i <= 400; i++ {
-		volInfo := cm.AllocVolumeInfo{
-			VolumeInfo: cm.VolumeInfo{
-				VolumeInfoBase: cm.VolumeInfoBase{
-					Vid:  proto.Vid(i),
-					Free: 16 * 1024 * 1024 * 1024,
-				},
-			},
-			ExpireTime: 100,
-		}
-
-		info.Put(&volume{
-			AllocVolumeInfo: volInfo,
-		}, false)
-		info.Put(&volume{
-			AllocVolumeInfo: volInfo,
-		}, true)
+		volInfo := newAllocVolumeInfo(proto.Vid(i), 16*(1<<30), 100)
+		info.Put(&volume{AllocVolumeInfo: volInfo}, false)
+		info.Put(&volume{AllocVolumeInfo: volInfo}, true)
 	}
 
 	vm.modeInfos[codemode.CodeMode(2)] = info
 
-	args := &proxy.AllocVolsArgs{
+	args := &cm.AllocVolsArgs{
 		Fsize:    100,
 		BidCount: 2,
 		CodeMode: 2,
@@ -240,21 +191,11 @@ func BenchmarkAllocByBackup(b *testing.B) {
 		totalThreshold: 16 * 1024 * 1024 * 1024,
 		backup:         &volumes{},
 	}
-	volInfo := cm.AllocVolumeInfo{
-		VolumeInfo: cm.VolumeInfo{
-			VolumeInfoBase: cm.VolumeInfoBase{
-				Vid:  proto.Vid(1),
-				Free: 10 * 16 * 1024 * 1024 * 1024,
-			},
-		},
-		ExpireTime: 100,
-	}
-	info.Put(&volume{
-		AllocVolumeInfo: volInfo,
-	}, true)
+	volInfo := newAllocVolumeInfo(1, 10*16*(1<<30), 100)
+	info.Put(&volume{AllocVolumeInfo: volInfo}, true)
 
 	vm.modeInfos[codemode.CodeMode(2)] = info
-	args := &proxy.AllocVolsArgs{
+	args := &cm.AllocVolsArgs{
 		Fsize:    1 << 10,
 		CodeMode: codemode.EC6P6,
 		BidCount: 1,
@@ -284,35 +225,13 @@ func TestPollingAlloc(t *testing.T) {
 		totalThreshold: 16 * 1024 * 1024 * 1024,
 	}
 	for i := 1; i <= 10; i++ {
-		volInfo := cm.AllocVolumeInfo{
-			VolumeInfo: cm.VolumeInfo{
-				VolumeInfoBase: cm.VolumeInfoBase{
-					Vid:  proto.Vid(i),
-					Free: 16 * 1024 * 1024 * 1024,
-				},
-			},
-			ExpireTime: 100,
-		}
-
-		info.Put(&volume{
-			AllocVolumeInfo: volInfo,
-		}, false)
-
+		volInfo := newAllocVolumeInfo(proto.Vid(i), 16*(1<<30), 100)
+		info.Put(&volume{AllocVolumeInfo: volInfo}, false)
 	}
-	info.Put(&volume{
-		AllocVolumeInfo: cm.AllocVolumeInfo{
-			VolumeInfo: cm.VolumeInfo{
-				VolumeInfoBase: cm.VolumeInfoBase{
-					Vid:  proto.Vid(20),
-					Free: 16 * 1024 * 1024 * 1024,
-				},
-			},
-			ExpireTime: 100,
-		},
-	}, true)
+	info.Put(&volume{AllocVolumeInfo: newAllocVolumeInfo(20, 16*(1<<30), 100)}, true)
 
 	vm.modeInfos[codemode.CodeMode(2)] = info
-	args := &proxy.AllocVolsArgs{
+	args := &cm.AllocVolsArgs{
 		Fsize:    1 << 30,
 		CodeMode: codemode.EC6P6,
 		BidCount: 1,
@@ -327,7 +246,7 @@ func TestPollingAlloc(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, proto.Vid(3), vid)
 
-	args = &proxy.AllocVolsArgs{
+	args = &cm.AllocVolsArgs{
 		Fsize:    1 << 30,
 		CodeMode: codemode.EC6P6,
 		BidCount: 1,
@@ -338,7 +257,7 @@ func TestPollingAlloc(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, proto.Vid(4), vid) // require.Equal(t, proto.Vid(5), vid)
 
-	args = &proxy.AllocVolsArgs{
+	args = &cm.AllocVolsArgs{
 		Fsize:    1 << 30,
 		CodeMode: codemode.EC6P6,
 		BidCount: 1,
@@ -349,7 +268,7 @@ func TestPollingAlloc(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, proto.Vid(5), vid) // require.Equal(t, proto.Vid(9), vid)
 
-	args = &proxy.AllocVolsArgs{
+	args = &cm.AllocVolsArgs{
 		Fsize:    1 << 30,
 		CodeMode: codemode.EC6P6,
 		BidCount: 1,
@@ -360,7 +279,7 @@ func TestPollingAlloc(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, proto.Vid(6), vid) // require.Equal(t, proto.Vid(10), vid)
 
-	args = &proxy.AllocVolsArgs{
+	args = &cm.AllocVolsArgs{
 		Fsize:    1 << 30,
 		CodeMode: codemode.EC6P6,
 		BidCount: 1,
@@ -380,7 +299,7 @@ func TestAllocVolumeFailed(t *testing.T) {
 
 	vm.modeInfos = make(map[codemode.CodeMode]*modeInfo)
 	vm.modeInfos[codemode.EC6P6] = nil
-	args := &proxy.AllocVolsArgs{
+	args := &cm.AllocVolsArgs{
 		Fsize:    1 << 30,
 		CodeMode: codemode.EC6P6,
 		BidCount: 1,
@@ -398,21 +317,10 @@ func TestAllocVolumeFailed(t *testing.T) {
 	}
 	vm.modeInfos[codemode.EC6P6] = info
 
-	volInfo := cm.AllocVolumeInfo{
-		VolumeInfo: cm.VolumeInfo{
-			VolumeInfoBase: cm.VolumeInfoBase{
-				Vid:  proto.Vid(1),
-				Free: 1024,
-			},
-		},
-		ExpireTime: 100,
-	}
+	volInfo := newAllocVolumeInfo(1, 1<<10, 100)
+	info.Put(&volume{AllocVolumeInfo: volInfo}, false)
 
-	info.Put(&volume{
-		AllocVolumeInfo: volInfo,
-	}, false)
-
-	args = &proxy.AllocVolsArgs{
+	args = &cm.AllocVolsArgs{
 		Fsize:    1 << 30,
 		CodeMode: codemode.EC6P6,
 		BidCount: 1,
@@ -466,39 +374,17 @@ func TestGetAvaliableVols(t *testing.T) {
 		totalThreshold: 2 * 1024 * 1024 * 1024,
 	}
 	for i := 1; i <= 5; i++ {
-		volInfo := cm.AllocVolumeInfo{
-			VolumeInfo: cm.VolumeInfo{
-				VolumeInfoBase: cm.VolumeInfoBase{
-					Vid:      proto.Vid(i),
-					CodeMode: codemode.EC6P6,
-					Free:     uint64(i * 1024 * 1024 * 1024),
-				},
-			},
-			ExpireTime: 100,
-		}
-
-		info.Put(&volume{
-			AllocVolumeInfo: volInfo,
-		}, false)
+		volInfo := newAllocVolumeInfo(proto.Vid(i), uint64(i)*(1<<30), 100)
+		volInfo.VolumeInfoBase.CodeMode = codemode.EC6P6
+		info.Put(&volume{AllocVolumeInfo: volInfo}, false)
 	}
-
-	volInfo := cm.AllocVolumeInfo{
-		VolumeInfo: cm.VolumeInfo{
-			VolumeInfoBase: cm.VolumeInfoBase{
-				Vid:      proto.Vid(6),
-				CodeMode: codemode.EC6P6,
-				Free:     uint64(6 * 1024 * 1024 * 1024),
-			},
-		},
-		ExpireTime: 100,
-	}
-	info.Put(&volume{
-		AllocVolumeInfo: volInfo,
-	}, true)
+	volInfo := newAllocVolumeInfo(6, 6*(1<<30), 100)
+	volInfo.VolumeInfoBase.CodeMode = codemode.EC6P6
+	info.Put(&volume{AllocVolumeInfo: volInfo}, true)
 
 	v.modeInfos[codemode.EC6P6] = info
 
-	args := &proxy.AllocVolsArgs{
+	args := &cm.AllocVolsArgs{
 		Fsize:    1 << 30,
 		CodeMode: codemode.EC6P6,
 		BidCount: 1,
@@ -514,7 +400,7 @@ func TestGetAvaliableVols(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, []proto.Vid{1, 2, 3, 4, 5}, vids)
 
-	args2 := &proxy.AllocVolsArgs{
+	args2 := &cm.AllocVolsArgs{
 		Fsize:    1 << 30,
 		CodeMode: codemode.EC6P6,
 		BidCount: 1,
@@ -528,7 +414,7 @@ func TestGetAvaliableVols(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, []proto.Vid{1, 2, 3, 4, 5}, vids2) // require.Equal(t, []proto.Vid{1, 3, 5}, vids2)
 
-	args3 := &proxy.AllocVolsArgs{
+	args3 := &cm.AllocVolsArgs{
 		CodeMode: codemode.EC6P6,
 		BidCount: 1,
 		Excludes: nil,
@@ -561,32 +447,10 @@ func TestReleaseVolume(t *testing.T) {
 		totalThreshold: 16 * 1024 * 1024 * 1024,
 	}
 	for i := 1; i <= 5; i++ {
-		volInfo := cm.AllocVolumeInfo{
-			VolumeInfo: cm.VolumeInfo{
-				VolumeInfoBase: cm.VolumeInfoBase{
-					Vid:  proto.Vid(i),
-					Free: 16 * 1024 * 1024 * 1024,
-				},
-			},
-			ExpireTime: 100,
-		}
-
-		info.Put(&volume{
-			AllocVolumeInfo: volInfo,
-		}, false)
-
+		volInfo := newAllocVolumeInfo(proto.Vid(i), 16*(1<<30), 100)
+		info.Put(&volume{AllocVolumeInfo: volInfo}, false)
 	}
-	info.Put(&volume{
-		AllocVolumeInfo: cm.AllocVolumeInfo{
-			VolumeInfo: cm.VolumeInfo{
-				VolumeInfoBase: cm.VolumeInfoBase{
-					Vid:  proto.Vid(20),
-					Free: 16 * 1024 * 1024 * 1024,
-				},
-			},
-			ExpireTime: 100,
-		},
-	}, true)
+	info.Put(&volume{AllocVolumeInfo: newAllocVolumeInfo(20, 16*(1<<30), 100)}, true)
 
 	vm.modeInfos[codemode.EC6P6] = info
 	vm.allocChs[codemode.EC6P6] = make(chan *allocArgs)
@@ -595,7 +459,7 @@ func TestReleaseVolume(t *testing.T) {
 		NormalVids: []proto.Vid{1, 2, 3},
 	})
 	require.NoError(t, err)
-	vols, err := vm.getAvailableVols(ctx, &proxy.AllocVolsArgs{Fsize: 1, BidCount: 1, CodeMode: codemode.EC6P6})
+	vols, err := vm.getAvailableVols(ctx, &cm.AllocVolsArgs{Fsize: 1, BidCount: 1, CodeMode: codemode.EC6P6})
 	require.Nil(t, err)
 	require.Equal(t, 2, len(vols))
 	vids2 := make([]proto.Vid, 0)
@@ -606,7 +470,6 @@ func TestReleaseVolume(t *testing.T) {
 }
 
 func TestAllocParallel(b *testing.T) {
-	log.SetOutputLevel(2)
 	cmcli := NewAllocatorMockCmCli(b)
 	ctx := context.Background()
 	bidMgr, _ := NewBidMgr(ctx, BlobConfig{BidAllocNums: 100000}, cmcli)
@@ -620,33 +483,13 @@ func TestAllocParallel(b *testing.T) {
 		totalThreshold: 0,
 	}
 	for i := 1; i <= 400; i++ {
-		volInfo := cm.AllocVolumeInfo{
-			VolumeInfo: cm.VolumeInfo{
-				VolumeInfoBase: cm.VolumeInfoBase{
-					Vid:      proto.Vid(i),
-					CodeMode: codemode.EC6P6,
-					Free:     20 * 1024 * 1024,
-				},
-			},
-			ExpireTime: 100,
-		}
-
-		info.Put(&volume{
-			AllocVolumeInfo: volInfo,
-		}, true)
+		volInfo := newAllocVolumeInfo(proto.Vid(i), 20*(1<<20), 100)
+		volInfo.VolumeInfoBase.CodeMode = codemode.EC6P6
+		info.Put(&volume{AllocVolumeInfo: volInfo}, true)
 	}
-	info.Put(&volume{
-		AllocVolumeInfo: cm.AllocVolumeInfo{
-			VolumeInfo: cm.VolumeInfo{
-				VolumeInfoBase: cm.VolumeInfoBase{
-					Vid:      proto.Vid(20),
-					CodeMode: codemode.EC6P6,
-					Free:     100 * 16 * 1024 * 1024,
-				},
-			},
-			ExpireTime: 100,
-		},
-	}, false)
+	volInfo := newAllocVolumeInfo(20, 100*16*(1<<20), 100)
+	volInfo.VolumeInfoBase.CodeMode = codemode.EC6P6
+	info.Put(&volume{AllocVolumeInfo: volInfo}, false)
 
 	vm.modeInfos[codemode.EC6P6] = info
 	vm.allocChs[codemode.EC6P6] = make(chan *allocArgs)
@@ -655,7 +498,7 @@ func TestAllocParallel(b *testing.T) {
 		wg.Add(1)
 		go func() {
 			vid, err := vm.allocVid(context.Background(),
-				&proxy.AllocVolsArgs{
+				&cm.AllocVolsArgs{
 					Fsize:    1024 * 1024,
 					CodeMode: codemode.EC6P6,
 					BidCount: 1,

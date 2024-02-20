@@ -113,7 +113,8 @@ func (v *volumeMgr) handleFullVols(ctx context.Context, isBackup bool) {
 
 // remove retain failed volume and update success expire time
 func (v *volumeMgr) handleRetainResult(ctx context.Context, retainTokenArgs []string,
-	retainRet []clustermgr.RetainVolume, isBackup bool) {
+	retainRet []clustermgr.RetainVolume, isBackup bool,
+) {
 	span := trace.SpanFromContextSafe(ctx)
 	if len(retainRet) == 0 {
 		for _, token := range retainTokenArgs {

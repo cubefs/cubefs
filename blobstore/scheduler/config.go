@@ -19,7 +19,6 @@ import (
 
 	"github.com/cubefs/cubefs/blobstore/api/blobnode"
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
-	"github.com/cubefs/cubefs/blobstore/api/proxy"
 	"github.com/cubefs/cubefs/blobstore/api/scheduler"
 	"github.com/cubefs/cubefs/blobstore/cmd"
 	"github.com/cubefs/cubefs/blobstore/common/kafka"
@@ -33,7 +32,6 @@ const (
 	defaultVolumeCacheUpdateIntervalS = 10
 	defaultRetryHostsCnt              = 1
 	defaultClientTimeoutMs            = int64(1000)
-	defaultHostSyncIntervalMs         = int64(1000)
 
 	defaultMaxDiskFreeChunkCnt = int64(1024)
 	defaultMinDiskFreeChunkCnt = int64(20)
@@ -74,7 +72,6 @@ type Config struct {
 	FreeChunkCounterBuckets    []float64 `json:"free_chunk_counter_buckets"`
 
 	ClusterMgr clustermgr.Config `json:"clustermgr"`
-	Proxy      proxy.LbConfig    `json:"proxy"`
 	Blobnode   blobnode.Config   `json:"blobnode"`
 	Scheduler  scheduler.Config  `json:"scheduler"`
 
@@ -197,9 +194,6 @@ func (c *Config) fixConfig() (err error) {
 }
 
 func (c *Config) fixClientConfig() {
-	defaulter.LessOrEqual(&c.Proxy.ClientTimeoutMs, defaultClientTimeoutMs)
-	defaulter.LessOrEqual(&c.Proxy.HostSyncIntervalMs, defaultHostSyncIntervalMs)
-	defaulter.LessOrEqual(&c.Proxy.HostRetry, defaultRetryHostsCnt)
 	defaulter.LessOrEqual(&c.Blobnode.ClientTimeoutMs, defaultClientTimeoutMs)
 	defaulter.LessOrEqual(&c.Scheduler.ClientTimeoutMs, defaultClientTimeoutMs)
 	defaulter.LessOrEqual(&c.Scheduler.HostRetry, defaultRetryHostsCnt)
