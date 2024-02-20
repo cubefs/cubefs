@@ -29,7 +29,7 @@ package testing
 //go:generate mockgen -destination=./mocks/api_clustermgr.go -package=mocks -mock_names ClientAPI=MockClientAPI github.com/cubefs/cubefs/blobstore/api/clustermgr ClientAPI
 //go:generate mockgen -destination=./mocks/api_blobnode.go -package=mocks -mock_names StorageAPI=MockStorageAPI github.com/cubefs/cubefs/blobstore/api/blobnode StorageAPI
 //go:generate mockgen -destination=./mocks/api_scheduler.go -package=mocks -mock_names IScheduler=MockIScheduler github.com/cubefs/cubefs/blobstore/api/scheduler IScheduler
-//go:generate mockgen -destination=./mocks/api_proxy.go -package=mocks -mock_names Client=MockProxyClient,LbMsgSender=MockProxyLbRpcClient github.com/cubefs/cubefs/blobstore/api/proxy Client,LbMsgSender
+//go:generate mockgen -destination=./mocks/api_proxy.go -package=mocks -mock_names Client=MockProxyClient github.com/cubefs/cubefs/blobstore/api/proxy Client
 
 import (
 	// add package to go.mod for `go generate`

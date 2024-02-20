@@ -18,7 +18,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/cubefs/cubefs/blobstore/api/proxy"
+	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
 )
@@ -53,7 +53,7 @@ func (h *Handler) loopDiscardVids() {
 			}
 
 			for dv := range cache {
-				h.tryDiscardVidOnAllocator(dv.cid, &proxy.DiscardVolsArgs{
+				h.tryDiscardVidOnAllocator(dv.cid, &clustermgr.DiscardVolsArgs{
 					CodeMode: dv.codeMode,
 					Discards: []proto.Vid{dv.vid},
 				})
@@ -63,7 +63,7 @@ func (h *Handler) loopDiscardVids() {
 	}()
 }
 
-func (h *Handler) tryDiscardVidOnAllocator(cid proto.ClusterID, args *proxy.DiscardVolsArgs) {
+func (h *Handler) tryDiscardVidOnAllocator(cid proto.ClusterID, args *clustermgr.DiscardVolsArgs) {
 	span, ctx := trace.StartSpanFromContext(context.Background(), "")
 
 	span.Infof("discard vids %+v", args)

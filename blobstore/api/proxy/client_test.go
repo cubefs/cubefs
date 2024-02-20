@@ -16,7 +16,6 @@ package proxy
 
 import (
 	"context"
-	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -25,34 +24,8 @@ import (
 
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
-	"github.com/cubefs/cubefs/blobstore/common/rpc"
 	_ "github.com/cubefs/cubefs/blobstore/testing/nolog"
 )
-
-func TestClient_VolumeAlloc(t *testing.T) {
-	cli := New(&Config{})
-	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-		w.WriteHeader(http.StatusOK)
-	}))
-	defer mockServer.Close()
-	args := &AllocVolsArgs{Fsize: 8, CodeMode: 2, BidCount: 1}
-	ret, err := cli.VolumeAlloc(context.Background(), mockServer.URL, args)
-	require.NoError(t, err)
-	require.Equal(t, make([]AllocRet, 0), ret)
-}
-
-func TestClient_ListVolumes(t *testing.T) {
-	cli := New(&Config{})
-	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("{\"vids\":[111,222,333]}"))
-	}))
-	defer mockServer.Close()
-	args := &ListVolsArgs{CodeMode: 2}
-	ret, err := cli.ListVolumes(context.Background(), mockServer.URL, args)
-	require.NoError(t, err)
-	require.Equal(t, 3, len(ret.Vids))
-}
 
 func TestClient_GetCacheVolume(t *testing.T) {
 	cli := New(&Config{})
@@ -102,120 +75,6 @@ func TestClient_GetCacheErase(t *testing.T) {
 	require.Error(t, cli.Erase(context.Background(), url+"x", "volume-111"))
 	require.NoError(t, cli.Erase(context.Background(), url, "disk-111"))
 	require.NoError(t, cli.Erase(context.Background(), url, "ALL"))
-}
-
-func TestLbClient_SendShardRepairMsg(t *testing.T) {
-	mqproxyServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-		w.WriteHeader(200)
-	}))
-	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-		w.WriteHeader(200)
-		w.Write([]byte(fmt.Sprintf(`{"nodes":[{"cluster_id":1,"name":"PROXY","host":"%s","idc":"z0"}]}`, mqproxyServer.URL)))
-	}))
-	defer func() {
-		s.Close()
-		mqproxyServer.Close()
-	}()
-
-	cmCfg := clustermgr.Config{LbConfig: rpc.LbConfig{
-		Hosts: []string{s.URL},
-	}}
-	cm := clustermgr.New(&cmCfg)
-	cli := NewMQLbClient(&LbConfig{
-		Config:             Config{},
-		HostRetry:          0,
-		HostSyncIntervalMs: 0,
-	}, cm, 1)
-
-	err := cli.SendShardRepairMsg(context.Background(), &ShardRepairArgs{
-		ClusterID: 0,
-		Bid:       0,
-		Vid:       0,
-		BadIdxes:  nil,
-		Reason:    "test",
-	})
-	require.NoError(t, err)
-}
-
-func TestLbClient_SendShardRepairMsg_failed(t *testing.T) {
-	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-		w.WriteHeader(200)
-		w.Write([]byte(fmt.Sprintf(`{"nodes":[{"cluster_id":1,"name":"PROXY","host":"%s","idc":"z0"}]}`, "abc.com")))
-	}))
-	defer s.Close()
-
-	cmCfg := clustermgr.Config{LbConfig: rpc.LbConfig{
-		Hosts: []string{s.URL},
-	}}
-	cm := clustermgr.New(&cmCfg)
-	cli := NewMQLbClient(&LbConfig{
-		Config:             Config{},
-		HostRetry:          0,
-		HostSyncIntervalMs: 0,
-	}, cm, 1)
-
-	err := cli.SendShardRepairMsg(context.Background(), &ShardRepairArgs{
-		ClusterID: 0,
-		Bid:       0,
-		Vid:       0,
-		BadIdxes:  nil,
-		Reason:    "test",
-	})
-	require.Error(t, err)
-}
-
-func TestLbClient_BlobDelete_failed(t *testing.T) {
-	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-		w.WriteHeader(200)
-		w.Write([]byte(fmt.Sprintf(`{"nodes":[{"cluster_id":1,"name":"PROXY","host":"%s","idc":"z0"}]}`, "abc.com")))
-	}))
-	defer s.Close()
-
-	cmCfg := clustermgr.Config{LbConfig: rpc.LbConfig{
-		Hosts: []string{s.URL},
-	}}
-	cm := clustermgr.New(&cmCfg)
-	cli := NewMQLbClient(&LbConfig{
-		Config:             Config{},
-		HostRetry:          0,
-		HostSyncIntervalMs: 0,
-	}, cm, 1)
-
-	err := cli.SendDeleteMsg(context.Background(), &DeleteArgs{
-		ClusterID: 0,
-		Blobs:     nil,
-	})
-	require.Error(t, err)
-}
-
-func TestLbClient_BlobDelete(t *testing.T) {
-	mqproxyServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-		w.WriteHeader(200)
-	}))
-	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-		w.WriteHeader(200)
-		w.Write([]byte(fmt.Sprintf(`{"nodes":[{"cluster_id":1,"name":"PROXY","host":"%s","idc":"z0"}]}`, mqproxyServer.URL)))
-	}))
-	defer func() {
-		s.Close()
-		mqproxyServer.Close()
-	}()
-
-	cmCfg := clustermgr.Config{LbConfig: rpc.LbConfig{
-		Hosts: []string{s.URL},
-	}}
-	cm := clustermgr.New(&cmCfg)
-	cli := NewMQLbClient(&LbConfig{
-		Config:             Config{},
-		HostRetry:          0,
-		HostSyncIntervalMs: 0,
-	}, cm, 1)
-
-	err := cli.SendDeleteMsg(context.Background(), &DeleteArgs{
-		ClusterID: 0,
-		Blobs:     nil,
-	})
-	require.NoError(t, err)
 }
 
 func TestCacher_DiskvPathTransform(t *testing.T) {

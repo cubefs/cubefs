@@ -210,7 +210,8 @@ func randBlobnodeRealError(errors []errcode.Error) error {
 }
 
 var storageAPIRangeGetShard = func(ctx context.Context, host string, args *blobnode.RangeGetShardArgs) (
-	body io.ReadCloser, shardCrc uint32, err error) {
+	body io.ReadCloser, shardCrc uint32, err error,
+) {
 	if vuidController.Isbroken(args.Vuid) {
 		err = errors.New("get shard fake error")
 		if vuidController.IsBNRealError() {
@@ -261,7 +262,8 @@ var storageAPIDeleteShard = func(ctx context.Context, host string, args *blobnod
 }
 
 var storageAPIPutShard = func(ctx context.Context, host string, args *blobnode.PutShardArgs) (
-	crc uint32, err error) {
+	crc uint32, err error,
+) {
 	if vuidController.Isbroken(args.Vuid) {
 		err = errors.New("put shard fake error")
 		if vuidController.IsBNRealError() {
@@ -353,7 +355,8 @@ func initMockData() {
 		}
 	}).AnyTimes()
 	cmCli.EXPECT().AllocVolumeV2(gomock.Any(), gomock.Any()).DoAndReturn(func(ctx context.Context,
-		args *clustermgr.AllocVolumeV2Args) (ret clustermgr.AllocatedVolumeInfos, err error) {
+		args *clustermgr.AllocVolumeV2Args,
+	) (ret clustermgr.AllocatedVolumeInfos, err error) {
 		if !args.CodeMode.IsValid() {
 			return clustermgr.AllocatedVolumeInfos{}, errors.New("alloc error")
 		}
@@ -397,7 +400,8 @@ func initMockData() {
 	}).AnyTimes()
 	cmCli.EXPECT().RetainVolume(gomock.Any(),
 		gomock.Any()).DoAndReturn(func(ctx context.Context,
-		args *clustermgr.RetainVolumeArgs) (ret clustermgr.RetainVolumes, err error) {
+		args *clustermgr.RetainVolumeArgs,
+	) (ret clustermgr.RetainVolumes, err error) {
 		now := int64(1598000000)
 		ret = clustermgr.RetainVolumes{}
 		vol := make([]clustermgr.RetainVolume, 0)

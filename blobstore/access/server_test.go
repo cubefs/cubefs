@@ -70,7 +70,8 @@ func newService() *Service {
 
 	s.EXPECT().Alloc(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes().DoAndReturn(
 		func(ctx context.Context, size uint64, blobSize uint32,
-			assignClusterID proto.ClusterID, codeMode codemode.CodeMode) (*access.Location, error) {
+			assignClusterID proto.ClusterID, codeMode codemode.CodeMode,
+		) (*access.Location, error) {
 			if size < 1024 {
 				return nil, errors.New("fake alloc location")
 			}
@@ -84,7 +85,8 @@ func newService() *Service {
 		gomock.Any()).AnyTimes().DoAndReturn(
 		func(ctx context.Context, rc io.Reader,
 			clusterID proto.ClusterID, vid proto.Vid, bid proto.BlobID, size int64,
-			hasherMap access.HasherMap) error {
+			hasherMap access.HasherMap,
+		) error {
 			if size < 1024 {
 				return errcode.ErrAccessLimited
 			}

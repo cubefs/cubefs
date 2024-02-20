@@ -21,12 +21,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/rpc"
-	_ "github.com/cubefs/cubefs/blobstore/testing/nolog"
-
-	"github.com/stretchr/testify/require"
 )
 
 type mockBidMgr struct{}

@@ -55,6 +55,5 @@ func Register(app *grumble.App) {
 		},
 	})
 
-	addCmdAllocator(proxyCommand)
 	addCmdCacher(proxyCommand)
 }
