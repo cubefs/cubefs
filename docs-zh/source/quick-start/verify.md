@@ -65,7 +65,7 @@ cubefs-ltptest   10G     0   10G   0% /home/cfs/client/mnt
 使用[GUI](../tools/gui.md)快速体验CubeFS
 
 ## 验证纠删码子系统
-::: Tip
+::: tip 提示
 注意 纠删码子系统 (Blobstore) 提供了单独的交互式命令行管理工具。目前该工具尚未集成到cfs-cli中，稍后会集成。
 :::
 
