@@ -1259,6 +1259,7 @@ func cfs_rename(id C.int64_t, from *C.char, to *C.char, overwritten bool) C.int 
 	c.ic.Delete(srcDirInfo.Inode)
 	c.ic.Delete(dstDirInfo.Inode)
 	c.dc.Delete(absFrom)
+	c.dc.Delete(absTo)
 	return errorToStatus(err)
 }
 
