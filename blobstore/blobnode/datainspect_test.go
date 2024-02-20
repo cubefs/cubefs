@@ -37,7 +37,7 @@ func TestDataInspect(t *testing.T) {
 	mgr, err := NewDataInspectMgr(svr, cfg, switchMgr)
 	svr.inspectMgr = mgr
 	require.NoError(t, err)
-	defer os.Remove(cfg.CheckPoint)
+	defer os.RemoveAll("/tmp/blobnode")
 	require.Equal(t, cfg.IntervalSec, mgr.conf.IntervalSec)
 
 	{
