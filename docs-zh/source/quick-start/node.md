@@ -10,16 +10,24 @@ $ git clone https://github.com/cubefs/cubefs.git
 ### 脚本部署
 
 #### 部署基础集群
-CubeFS 支持使用脚本一键部署基础集群，包含组件`Master`、`MetaNode`、`DataNode`，步骤如下：
+CubeFS 支持使用脚本一键部署基础集群，基础集群包含组件`Master`、`MetaNode`、`DataNode`，同时可额外选择启动`client`和`ObjectNode`。 步骤如下：
 ```bash
 cd ./cubefs
 # 编译
 make
-# 启动脚本
-sh ./shell/depoly.sh /home/data bond0
+# 生成配置文件并启动基础集群
+sh ./shell/deploy.sh /home/data bond0
+
+# 等待1分钟待集群就绪后，可选执行以下命令
+
+# 挂载文件系统（可选，如果想体验文件存储，则执行该条命令。默认挂载在/home/data/client/mnt）
+sh ./shell/deploy_client.sh /home/data
+
+# 启动对象存储（可选，如果想体验对象存储，则执行该条命令。默认监听端口为17410）
+sh ./shell/deploy_object.sh /home/data
 ```
 + `bond0`: 为本机网卡的名字, 根据实际填写
-+ `/home/data`: 为本地的一个目录,用于保存集群运行日志、数据及配置文件
++ `/home/data`: 为本地的一个目录,用于保存集群运行日志、数据及配置文件。三个`sh`命令的目录应当相同
 + 机器要求
   + 需root权限
   + 能使用`ifconfig`
@@ -31,24 +39,25 @@ sh ./shell/depoly.sh /home/data bond0
 [Cluster]
   Cluster name       : cfs_dev
   Master leader      : 172.16.1.101:17010
+  Master-1           : 172.16.1.101:17010
+  Master-2           : 172.16.1.102:17010
+  Master-3           : 172.16.1.103:17010
   Auto allocate      : Enabled
-  MetaNode count     : 4
-  MetaNode used      : 0 GB
-  MetaNode total     : 21 GB
-  DataNode count     : 4
-  DataNode used      : 191 GB
-  DataNode total     : 369 GB
+  MetaNode count (active/total)    : 4/4
+  MetaNode used                    : 0 GB
+  MetaNode available               : 21 GB
+  MetaNode total                   : 21 GB
+  DataNode count (active/total)    : 4/4
+  DataNode used                    : 44 GB
+  DataNode available               : 191 GB
+  DataNode total                   : 235 GB
   Volume count       : 2
 ...
 ```
 
-#### 部署对象网关
+文件系统的使用可参考[使用文件系统章节](../user-guide/file.md)
 
-::: tip 提示
-可选章节，如果需要使用对象存储服务，则需要部署对象网关（ObjectNode）
-:::
-
-参考[使用对象存储章节](../user-guide/objectnode.md)
+对象存储的使用可参考[使用对象存储章节](../user-guide/objectnode.md)
 
 #### 部署纠删码子系统
 

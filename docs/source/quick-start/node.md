@@ -10,16 +10,24 @@ $ git clone https://github.com/cubefs/cubefs.git
 ### Script Installation
 
 #### Install Basic Cluster
-CubeFS supports one-click deployment of the basic cluster using scripts, including components such as `Master`, `MetaNode`, and `DataNode`. The steps are as follows:
+CubeFS supports deploying a basic cluster with a single script. The basic cluster includes components such as `Master`, `MetaNode`, and `DataNode`, with the option to additionally start a `client` and `ObjectNode`. The steps are as follows:
 ```bash
 cd ./cubefs
 # Compile
 make
-# Start the script
-sh ./shell/depoly.sh /home/data bond0
+# Generate configuration files and start the basic cluster
+sh ./shell/deploy.sh /home/data bond0
+
+# Wait a minute for cluster to prepare state, and optionally execute the following command
+
+# Mount the file system (optional, execute this command if you want to experience file storage. By default, it is mounted at /home/data/client/mnt)
+sh ./shell/deploy_client.sh /home/data
+
+# Start object storage (optional, execute this command if you want to experience object storage. The default listening port is 17410)
+sh ./shell/deploy_object.sh /home/data
 ```
 + `bond0`: The name of the local network card, fill in according to the actual situation
-+ `/home/data`: A local directory used to store cluster running logs, data, and configuration files
++ `/home/data`: A local directory used to store cluster running logs, data, and configuration files. The directory should be the same for all three `sh` commands.
 + Machine requirements
   + Need root permission
   + Able to use `ifconfig`
@@ -31,24 +39,25 @@ sh ./shell/depoly.sh /home/data bond0
 [Cluster]
   Cluster name       : cfs_dev
   Master leader      : 172.16.1.101:17010
+  Master-1           : 172.16.1.101:17010
+  Master-2           : 172.16.1.102:17010
+  Master-3           : 172.16.1.103:17010
   Auto allocate      : Enabled
-  MetaNode count     : 4
-  MetaNode used      : 0 GB
-  MetaNode total     : 21 GB
-  DataNode count     : 4
-  DataNode used      : 191 GB
-  DataNode total     : 369 GB
+  MetaNode count (active/total)    : 4/4
+  MetaNode used                    : 0 GB
+  MetaNode available               : 21 GB
+  MetaNode total                   : 21 GB
+  DataNode count (active/total)    : 4/4
+  DataNode used                    : 44 GB
+  DataNode available               : 191 GB
+  DataNode total                   : 235 GB
   Volume count       : 2
 ...
 ```
 
-#### Install Object Gateway
+For using the file system, refer to the [File System Usage section](../user-guide/file.md).
 
-::: tip Note
-Optional section. If you need to use the object storage service, you need to deploy the object gateway (ObjectNode).
-:::
-
-Refer to [Object Storage Section](../user-guide/objectnode.md)
+For using object storage, refer to the [Object Storage Usage section](../user-guide/objectnode.md).
 
 #### Install Erasure Code Subsystem
 

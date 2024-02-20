@@ -87,18 +87,31 @@ genMeta 3 $ip3
 genMeta 4 $ip4
 
 masterHost="${ip1}:17010,${ip2}:17010,${ip3}:17010"
-mntDir=$baseDir/client/mnt
-if [ ! -d "$mntDir" ]; then
-    echo "mkdir -p $mntDir"
-    mkdir -p $mntDir
-fi
 
+genClient()
+{
+  confFile="${confDir}/client.conf"
+  echo "start gen client.conf"
+  if [ ! -f "$confFile" ]; then
+    sed "s|_master_host_|${masterHost}|g" ${tplDir}/client.tpl | sed "s|_dir_|${baseDir}|g" > "$confFile"
+    echo "gen client.conf success"
+  else
+    echo "client.conf already exists, skipping generation"
+  fi
+}
 
-confFile="${confDir}/client.conf"
-echo "start gen client.conf"
-if [ ! -f "$confFile" ]; then
-  sed "s/_master_host_/${masterHost}/g" ${tplDir}/client.tpl | sed "s|_dir_|${baseDir}|g" > "$confFile"
-  echo "gen client.conf success"
-else
-  echo "client.conf already exists, skipping generation"
-fi
+genClient
+
+genObject()
+{
+  confFile="${confDir}/object.conf"
+  echo "start gen object.conf"
+  if [ ! -f "$confFile" ]; then
+    sed "s|_master_addr_|${masterAddr}|g" ${tplDir}/object.tpl | sed "s|_dir_|${baseDir}|g" > "$confFile"
+    echo "gen object.conf success"
+  else
+    echo "object.conf already exists, skipping generation"
+  fi
+}
+
+genObject
