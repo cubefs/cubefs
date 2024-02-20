@@ -29,6 +29,9 @@ const (
 	slowDownRatio  = 2
 	speedUpCnt     = 2000
 	minRateLimit   = 64 * 1024 // 64 KB/s
+
+	defaultFilePerm os.FileMode = 0o644
+	defaultPathPerm os.FileMode = 0o744
 )
 
 var dataInspectMetric = prometheus.NewGaugeVec(
@@ -72,7 +75,7 @@ func NewDataInspectMgr(svr *Service, conf DataInspectConf, switchMgr *taskswitch
 	}
 	_, err = os.Stat(conf.CheckPoint)
 	if !os.IsExist(err) {
-		_ = os.MkdirAll(conf.CheckPoint, 0o644)
+		_ = os.MkdirAll(conf.CheckPoint, defaultPathPerm)
 	}
 	mgr := &DataInspectMgr{
 		conf:       conf,
@@ -379,7 +382,7 @@ func (mgr *DataInspectMgr) loadCheckpoint(path string, diskId proto.DiskID) (inf
 		}
 		return
 	}
-	file, err := os.OpenFile(path, os.O_RDONLY, 0o644)
+	file, err := os.OpenFile(path, os.O_RDONLY, defaultFilePerm)
 	if err != nil {
 		return
 	}
@@ -389,12 +392,12 @@ func (mgr *DataInspectMgr) loadCheckpoint(path string, diskId proto.DiskID) (inf
 }
 
 func (mgr *DataInspectMgr) saveCheckpoint(path string, info *CheckpointInfo) error {
-	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE, 0o644)
+	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, defaultFilePerm)
 	if err != nil {
 		return err
 	}
 	err = json.NewEncoder(file).Encode(info)
-	_ = os.Chmod(path, 0o644)
+	_ = os.Chmod(path, defaultFilePerm)
 	_ = file.Close()
 
 	return err
