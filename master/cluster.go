@@ -4500,27 +4500,71 @@ type LcNodeStatInfo struct {
 type LcNodeInfoResponse struct {
 	RegisterInfos      []*LcNodeStatInfo
 	LcConfigurations   map[string]*proto.LcConfiguration
-	LcRuleTaskStatus   *lcRuleTaskStatus
-	LcNodeStatus       *lcNodeStatus
-	SnapshotVerStatus  *lcSnapshotVerStatus
-	SnapshotNodeStatus *lcNodeStatus
+	LcRuleTaskStatus   lcRuleTaskStatus
+	LcNodeStatus       lcNodeStatus
+	SnapshotVerStatus  lcSnapshotVerStatus
+	SnapshotNodeStatus lcNodeStatus
 }
 
 func (c *Cluster) getAllLcNodeInfo() (rsp *LcNodeInfoResponse, err error) {
-	rsp = &LcNodeInfoResponse{
-		RegisterInfos: make([]*LcNodeStatInfo, 0),
-	}
+	rsp = &LcNodeInfoResponse{}
 	c.lcNodes.Range(func(addr, value interface{}) bool {
 		rsp.RegisterInfos = append(rsp.RegisterInfos, &LcNodeStatInfo{
 			Addr: addr.(string),
 		})
 		return true
 	})
-	rsp.LcConfigurations = c.lcMgr.lcConfigurations
-	rsp.LcRuleTaskStatus = c.lcMgr.lcRuleTaskStatus
-	rsp.LcNodeStatus = c.lcMgr.lcNodeStatus
-	rsp.SnapshotVerStatus = c.snapshotMgr.lcSnapshotTaskStatus
-	rsp.SnapshotNodeStatus = c.snapshotMgr.lcNodeStatus
+	var b []byte
+
+	c.lcMgr.RLock()
+	if b, err = json.Marshal(c.lcMgr.lcConfigurations); err != nil {
+		c.lcMgr.RUnlock()
+		return
+	}
+	c.lcMgr.RUnlock()
+	if err = json.Unmarshal(b, &rsp.LcConfigurations); err != nil {
+		return
+	}
+
+	c.lcMgr.lcRuleTaskStatus.RLock()
+	if b, err = json.Marshal(c.lcMgr.lcRuleTaskStatus); err != nil {
+		c.lcMgr.lcRuleTaskStatus.RUnlock()
+		return
+	}
+	c.lcMgr.lcRuleTaskStatus.RUnlock()
+	if err = json.Unmarshal(b, &rsp.LcRuleTaskStatus); err != nil {
+		return
+	}
+
+	c.lcMgr.lcNodeStatus.RLock()
+	if b, err = json.Marshal(c.lcMgr.lcNodeStatus); err != nil {
+		c.lcMgr.lcNodeStatus.RUnlock()
+		return
+	}
+	c.lcMgr.lcNodeStatus.RUnlock()
+	if err = json.Unmarshal(b, &rsp.LcNodeStatus); err != nil {
+		return
+	}
+
+	c.snapshotMgr.lcSnapshotTaskStatus.RLock()
+	if b, err = json.Marshal(c.snapshotMgr.lcSnapshotTaskStatus); err != nil {
+		c.snapshotMgr.lcSnapshotTaskStatus.RUnlock()
+		return
+	}
+	c.snapshotMgr.lcSnapshotTaskStatus.RUnlock()
+	if err = json.Unmarshal(b, &rsp.SnapshotVerStatus); err != nil {
+		return
+	}
+
+	c.snapshotMgr.lcNodeStatus.RLock()
+	if b, err = json.Marshal(c.snapshotMgr.lcNodeStatus); err != nil {
+		c.snapshotMgr.lcNodeStatus.RUnlock()
+		return
+	}
+	c.snapshotMgr.lcNodeStatus.RUnlock()
+	if err = json.Unmarshal(b, &rsp.SnapshotNodeStatus); err != nil {
+		return
+	}
 	return
 }
 
