@@ -119,6 +119,7 @@ type Vol struct {
 	allowedStorageClass []uint32 // specifies which storageClasses the vol use, a cluster may have multiple StorageClasses
 	volStorageClass     uint32   // specifies which storageClass is written, unless dirStorageClass is set in file path
 	cacheDpStorageClass uint32   // for SDK those access cache/preload dp of cold volume
+	StatByStorageClass  []*proto.StatOftorageClass
 }
 
 func newVol(vv volValue) (vol *Vol) {
@@ -192,6 +193,7 @@ func newVol(vv volValue) (vol *Vol) {
 	copy(vol.allowedStorageClass, vv.AllowedStorageClass)
 	vol.volStorageClass = vv.VolStorageClass
 	vol.cacheDpStorageClass = vv.CacheDpStorageClass
+	vol.StatByStorageClass = make([]*proto.StatOftorageClass, 0)
 	return
 }
 
@@ -686,10 +688,16 @@ func (vol *Vol) checkMetaPartitions(c *Cluster) {
 	metaPartitionInodeIdStep := gConfig.MetaPartitionInodeIdStep
 	maxPartitionID := vol.maxPartitionID()
 	mps := vol.cloneMetaPartitionMap()
+
 	var (
-		doSplit bool
-		err     error
+		doSplit               bool
+		err                   error
+		volStat               *proto.StatOftorageClass
+		ok                    bool
+		statByStorageClassMap map[uint32]*proto.StatOftorageClass
 	)
+	statByStorageClassMap = make(map[uint32]*proto.StatOftorageClass)
+
 	for _, mp := range mps {
 		doSplit = mp.checkStatus(c.Name, true, int(vol.mpReplicaNum), maxPartitionID, metaPartitionInodeIdStep, vol.Forbidden)
 		if doSplit && !c.cfg.DisableAutoCreate {
@@ -706,7 +714,24 @@ func (vol *Vol) checkMetaPartitions(c *Cluster) {
 		mp.checkEnd(c, maxPartitionID)
 		mp.reportMissingReplicas(c.Name, c.leaderInfo.addr, defaultMetaPartitionTimeOutSec, defaultIntervalToAlarmMissingMetaPartition)
 		tasks = append(tasks, mp.replicaCreationTasks(c.Name, vol.Name)...)
+
+		for _, mpStat := range mp.StatByStorageClass {
+			if volStat, ok = statByStorageClassMap[mpStat.StorageClass]; !ok {
+				volStat = proto.NewStatOfStorageClass(mpStat.StorageClass)
+				statByStorageClassMap[mpStat.StorageClass] = volStat
+			}
+
+			volStat.InodeCount += mpStat.InodeCount
+			volStat.UsedSizeBytes += mpStat.UsedSizeBytes
+		}
 	}
+
+	StatOfStorageClassSlice := make([]*proto.StatOftorageClass, 0)
+	for _, volStat = range statByStorageClassMap {
+		StatOfStorageClassSlice = append(StatOfStorageClassSlice, volStat)
+	}
+	vol.StatByStorageClass = StatOfStorageClassSlice
+
 	c.addMetaNodeTasks(tasks)
 	vol.checkSplitMetaPartition(c, metaPartitionInodeIdStep)
 }

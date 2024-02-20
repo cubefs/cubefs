@@ -68,21 +68,21 @@ func tLogf(format string, args ...interface{}) {
 
 func newPartition(conf *MetaPartitionConfig, manager *metadataManager) (mp *metaPartition) {
 	mp = &metaPartition{
-		config:        conf,
-		dentryTree:    NewBtree(),
-		inodeTree:     NewBtree(),
-		extendTree:    NewBtree(),
-		multipartTree: NewBtree(),
-		stopC:         make(chan bool),
-		storeChan:     make(chan *storeMsg, 100),
-		freeList:      newFreeList(),
-		extDelCh:      make(chan []proto.ExtentKey, defaultDelExtentsCnt),
-		extReset:      make(chan struct{}),
-		vol:           NewVol(),
-		manager:       manager,
-		verSeq:        conf.VerSeq,
-		storageTypes:  make([]uint32, 0),
-		fmList:        newForbiddenMigrationList(proto.ForbiddenMigrationRenewalPeriod),
+		config:             conf,
+		dentryTree:         NewBtree(),
+		inodeTree:          NewBtree(),
+		extendTree:         NewBtree(),
+		multipartTree:      NewBtree(),
+		stopC:              make(chan bool),
+		storeChan:          make(chan *storeMsg, 100),
+		freeList:           newFreeList(),
+		extDelCh:           make(chan []proto.ExtentKey, defaultDelExtentsCnt),
+		extReset:           make(chan struct{}),
+		vol:                NewVol(),
+		manager:            manager,
+		verSeq:             conf.VerSeq,
+		statByStorageClass: make([]*proto.StatOftorageClass, 0),
+		fmList:             newForbiddenMigrationList(proto.ForbiddenMigrationRenewalPeriod),
 	}
 	mp.config.Cursor = 0
 	mp.config.End = 100000

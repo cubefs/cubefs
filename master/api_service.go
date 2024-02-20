@@ -4896,6 +4896,7 @@ func volStat(vol *Vol, countByMeta bool) (stat *proto.VolStatInfo) {
 	vol.mpsLock.RUnlock()
 	stat.DefaultStorageClass = vol.volStorageClass
 	stat.CacheDpStorageClass = vol.cacheDpStorageClass
+	stat.StatByStorageClass = vol.StatByStorageClass
 	log.LogDebugf("action[volStat] vol [%v] total[%v] usedSize[%v] DefaultStorageClass[%v]",
 		vol.Name, stat.TotalSize, stat.UsedSize, stat.DefaultStorageClass)
 	if proto.IsHot(vol.VolType) {
@@ -4988,25 +4989,26 @@ func (m *Server) getMetaPartition(w http.ResponseWriter, r *http.Request) {
 			log.LogErrorf("action[getMetaPartition]failed to get volume %v, err %v", mp.volName, err)
 		}
 		var mpInfo = &proto.MetaPartitionInfo{
-			PartitionID:   mp.PartitionID,
-			Start:         mp.Start,
-			End:           mp.End,
-			VolName:       mp.volName,
-			MaxInodeID:    mp.MaxInodeID,
-			InodeCount:    mp.InodeCount,
-			DentryCount:   mp.DentryCount,
-			Replicas:      replicas,
-			ReplicaNum:    mp.ReplicaNum,
-			Status:        mp.Status,
-			IsRecover:     mp.IsRecover,
-			Hosts:         mp.Hosts,
-			Peers:         mp.Peers,
-			Zones:         zones,
-			NodeSets:      nodeSets,
-			MissNodes:     mp.MissNodes,
-			OfflinePeerID: mp.OfflinePeerID,
-			LoadResponse:  mp.LoadResponse,
-			Forbidden:     forbidden,
+			PartitionID:        mp.PartitionID,
+			Start:              mp.Start,
+			End:                mp.End,
+			VolName:            mp.volName,
+			MaxInodeID:         mp.MaxInodeID,
+			InodeCount:         mp.InodeCount,
+			DentryCount:        mp.DentryCount,
+			Replicas:           replicas,
+			ReplicaNum:         mp.ReplicaNum,
+			Status:             mp.Status,
+			IsRecover:          mp.IsRecover,
+			Hosts:              mp.Hosts,
+			Peers:              mp.Peers,
+			Zones:              zones,
+			NodeSets:           nodeSets,
+			MissNodes:          mp.MissNodes,
+			OfflinePeerID:      mp.OfflinePeerID,
+			LoadResponse:       mp.LoadResponse,
+			Forbidden:          forbidden,
+			StatByStorageClass: mp.StatByStorageClass,
 		}
 		return mpInfo
 	}

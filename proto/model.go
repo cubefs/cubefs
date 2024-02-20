@@ -75,25 +75,26 @@ type DataNodeInfo struct {
 
 // MetaPartition defines the structure of a meta partition
 type MetaPartitionInfo struct {
-	PartitionID   uint64
-	Start         uint64
-	End           uint64
-	MaxInodeID    uint64
-	InodeCount    uint64
-	DentryCount   uint64
-	VolName       string
-	Replicas      []*MetaReplicaInfo
-	ReplicaNum    uint8
-	Status        int8
-	IsRecover     bool
-	Hosts         []string
-	Peers         []Peer
-	Zones         []string
-	NodeSets      []uint64
-	OfflinePeerID uint64
-	MissNodes     map[string]int64
-	LoadResponse  []*MetaPartitionLoadResponse
-	Forbidden     bool
+	PartitionID        uint64
+	Start              uint64
+	End                uint64
+	MaxInodeID         uint64
+	InodeCount         uint64
+	DentryCount        uint64
+	VolName            string
+	Replicas           []*MetaReplicaInfo
+	ReplicaNum         uint8
+	Status             int8
+	IsRecover          bool
+	Hosts              []string
+	Peers              []Peer
+	Zones              []string
+	NodeSets           []uint64
+	OfflinePeerID      uint64
+	MissNodes          map[string]int64
+	LoadResponse       []*MetaPartitionLoadResponse
+	Forbidden          bool
+	StatByStorageClass []*StatOftorageClass
 }
 
 // MetaReplica defines the replica of a meta partition
@@ -247,6 +248,7 @@ type VolStatInfo struct {
 	DpReadOnlyWhenVolFull bool
 	DefaultStorageClass   uint32
 	CacheDpStorageClass   uint32
+	StatByStorageClass    []*StatOftorageClass
 }
 
 // DataPartition represents the structure of storing the file contents.

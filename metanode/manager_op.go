@@ -116,19 +116,19 @@ func (m *metadataManager) opMasterHeartbeat(conn net.Conn, p *Packet,
 			mConf := partition.GetBaseConfig()
 
 			mpr := &proto.MetaPartitionReport{
-				PartitionID:      mConf.PartitionId,
-				Start:            mConf.Start,
-				End:              mConf.End,
-				Status:           proto.ReadWrite,
-				MaxInodeID:       mConf.Cursor,
-				VolName:          mConf.VolName,
-				Size:             partition.DataSize(),
-				InodeCnt:         uint64(partition.GetInodeTreeLen()),
-				DentryCnt:        uint64(partition.GetDentryTreeLen()),
-				FreeListLen:      uint64(partition.GetFreeListLen()),
-				UidInfo:          partition.GetUidInfo(),
-				QuotaReportInfos: partition.getQuotaReportInfos(),
-				StorageTypes:     partition.GetStorageTypes(),
+				PartitionID:        mConf.PartitionId,
+				Start:              mConf.Start,
+				End:                mConf.End,
+				Status:             proto.ReadWrite,
+				MaxInodeID:         mConf.Cursor,
+				VolName:            mConf.VolName,
+				Size:               partition.DataSize(),
+				InodeCnt:           uint64(partition.GetInodeTreeLen()),
+				DentryCnt:          uint64(partition.GetDentryTreeLen()),
+				FreeListLen:        uint64(partition.GetFreeListLen()),
+				UidInfo:            partition.GetUidInfo(),
+				QuotaReportInfos:   partition.getQuotaReportInfos(),
+				StatByStorageClass: partition.GetStatByStorageClass(),
 			}
 			mpr.TxCnt, mpr.TxRbInoCnt, mpr.TxRbDenCnt = partition.TxGetCnt()
 

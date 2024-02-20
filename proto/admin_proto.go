@@ -661,23 +661,23 @@ type DataNodeHeartbeatResponse struct {
 
 // MetaPartitionReport defines the meta partition report.
 type MetaPartitionReport struct {
-	PartitionID      uint64
-	Start            uint64
-	End              uint64
-	Status           int
-	Size             uint64
-	MaxInodeID       uint64
-	IsLeader         bool
-	VolName          string
-	InodeCnt         uint64
-	DentryCnt        uint64
-	TxCnt            uint64
-	TxRbInoCnt       uint64
-	TxRbDenCnt       uint64
-	FreeListLen      uint64
-	UidInfo          []*UidReportSpaceInfo
-	QuotaReportInfos []*QuotaReportInfo
-	StorageTypes     []uint32
+	PartitionID        uint64
+	Start              uint64
+	End                uint64
+	Status             int
+	Size               uint64
+	MaxInodeID         uint64
+	IsLeader           bool
+	VolName            string
+	InodeCnt           uint64
+	DentryCnt          uint64
+	TxCnt              uint64
+	TxRbInoCnt         uint64
+	TxRbDenCnt         uint64
+	FreeListLen        uint64
+	UidInfo            []*UidReportSpaceInfo
+	QuotaReportInfos   []*QuotaReportInfo
+	StatByStorageClass []*StatOftorageClass
 }
 
 // MetaNodeHeartbeatResponse defines the response to the meta node heartbeat request.

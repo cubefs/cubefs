@@ -941,7 +941,7 @@ func (mp *metaPartition) HandleLeaderChange(leader uint64) {
 			exporter.Warning(fmt.Sprintf("[HandleLeaderChange] pid %v init root inode id: %s.", mp.config.PartitionId, err.Error()))
 		}
 		ino := NewInode(id, proto.Mode(os.ModePerm|os.ModeDir))
-		//TODO:
+		//TODO:hchi,tangjingyu: decide storageClass of rootInode
 		//ino.StorageClass = uint32(legacyReplicaStorageClass)
 		ino.StorageClass = proto.StorageClass_Replica_HDD
 		go mp.initInode(ino)
