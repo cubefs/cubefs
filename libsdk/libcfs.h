@@ -147,7 +147,7 @@ extern int cfs_lsdir(int64_t id, int fd, GoSlice direntsInfo, int count);
 extern int cfs_mkdirs(int64_t id, char* path, mode_t mode);
 extern int cfs_rmdir(int64_t id, char* path);
 extern int cfs_unlink(int64_t id, char* path);
-extern int cfs_rename(int64_t id, char* from, char* to);
+extern int cfs_rename(int64_t id, char* from, char* to, GoUint8 overwritten);
 extern int cfs_fchmod(int64_t id, int fd, mode_t mode);
 extern int cfs_getsummary(int64_t id, char* path, struct cfs_summary_info* summary, char* useCache, int goroutine_num);
 extern int64_t cfs_lock_dir(int64_t id, char *path, int64_t lease, int64_t lock_id);
