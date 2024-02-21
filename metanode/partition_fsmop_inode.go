@@ -1053,26 +1053,28 @@ func (mp *metaPartition) fsmUpdateExtentKeyAfterMigration(inoParam *Inode) (resp
 	i.HybridCouldExtents.sortedEks = inoParam.HybridCouldExtentsMigration.sortedEks
 	log.LogInfof("action[fsmUpdateExtentKeyAfterMigration] inode %v storage class change from %v to %v", i.Inode,
 		i.HybridCouldExtentsMigration.storageClass, i.StorageClass)
-	if proto.IsStorageClassBlobStore(i.StorageClass) {
-		log.LogInfof("action[fsmUpdateExtentKeyAfterMigration] inode %v current ek %v",
-			i.Inode, i.HybridCouldExtents.sortedEks.(*SortedObjExtents).eks)
-	} else if proto.IsStorageClassReplica(i.StorageClass) {
-		log.LogInfof("action[fsmUpdateExtentKeyAfterMigration] inode %v current ek %v",
-			i.Inode, i.HybridCouldExtents.sortedEks.(*SortedExtents).eks)
-	}
-	if proto.IsStorageClassBlobStore(i.HybridCouldExtentsMigration.storageClass) {
-		log.LogInfof("action[fsmUpdateExtentKeyAfterMigration] inode %v old ek %v",
-			i.Inode, i.HybridCouldExtentsMigration.sortedEks.(*SortedObjExtents).eks)
-	} else if proto.IsStorageClassReplica(i.HybridCouldExtentsMigration.storageClass) {
-		log.LogInfof("action[fsmUpdateExtentKeyAfterMigration] inode %v old ek %v",
-			i.Inode, i.HybridCouldExtentsMigration.sortedEks.(*SortedExtents).eks)
-	}
+	logCurrentExtentKeys(i.StorageClass, i.HybridCouldExtents.sortedEks, i.Inode)
+	logCurrentExtentKeys(i.HybridCouldExtentsMigration.storageClass, i.HybridCouldExtentsMigration.sortedEks, i.Inode)
 	//delete migration ek in future
 	i.SetDeleteMigrationExtentKey()
 	log.LogInfof("action[fsmUpdateExtentKeyAfterMigration] inode %v migration ek will be deleted at %v",
 		i.Inode, time.Unix(i.HybridCouldExtentsMigration.expiredTime, 0).Format("2006-01-02 15:04:05"))
 	mp.freeList.Push(i.Inode)
 	return
+}
+
+func logCurrentExtentKeys(storageClass uint32, sortedEks interface{}, inode uint64) {
+	if sortedEks == nil {
+		log.LogInfof("action[fsmUpdateExtentKeyAfterMigration] inode %v current ek empty", inode)
+	} else {
+		if proto.IsStorageClassReplica(storageClass) {
+			log.LogInfof("action[fsmUpdateExtentKeyAfterMigration] inode %v current ek %v",
+				inode, sortedEks.(*SortedObjExtents).eks)
+		} else if proto.IsStorageClassBlobStore(storageClass) {
+			log.LogInfof("action[fsmUpdateExtentKeyAfterMigration] inode %v current ek %v",
+				inode, sortedEks.(*SortedExtents).eks)
+		}
+	}
 }
 
 func (mp *metaPartition) fsmSetCreateTime(req *SetCreateTimeRequest) (err error) {
