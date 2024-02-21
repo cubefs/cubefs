@@ -190,9 +190,8 @@ func (s *Streamer) server() {
 			return
 		case <-t.C:
 			s.traverse()
+			s.client.streamerLock.Lock()
 			if s.refcnt <= 0 {
-
-				s.client.streamerLock.Lock()
 				if s.idle >= streamWriterIdleTimeoutPeriod && len(s.request) == 0 {
 					if s.client.disableMetaCache || !s.needBCache {
 						delete(s.client.streamers, s.inode)
@@ -209,10 +208,9 @@ func (s *Streamer) server() {
 					log.LogDebugf("done server: no requests for a long time, ino(%v)", s.inode)
 					return
 				}
-				s.client.streamerLock.Unlock()
-
 				s.idle++
 			}
+			s.client.streamerLock.Unlock()
 		}
 	}
 }
