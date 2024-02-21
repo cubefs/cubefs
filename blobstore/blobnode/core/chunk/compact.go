@@ -161,7 +161,7 @@ func (cs *chunk) doCompact(ctx context.Context, ncs *chunk) (err error) {
 		// update startBid
 		startBid = blobID
 
-		cs.bidlimiter.Acquire(blobID)
+		_ = cs.bidlimiter.Acquire(blobID)
 		defer cs.bidlimiter.Release(blobID)
 
 		// get blob data from srcChunkStorage
@@ -218,7 +218,7 @@ COMPACT:
 		default:
 			err = replStg.ScanMeta(ctx, startBid, cs.conf.CompactBatchSize, copyShardFunc)
 			if err != nil {
-				if err == core.ErrChunkScanEOF {
+				if errors.Is(err, core.ErrChunkScanEOF) {
 					span.Infof("chunk %s scan finished", cs.ID())
 					break COMPACT
 				} else {
