@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/exporter"
 )
 
@@ -29,6 +30,7 @@ const (
 	MetricMetaPartitionInodeCount  = "mpInodeCount"
 	MetricMetaPartitionDentryCount = "mpDentryCount"
 	MetricConnectionCount          = "connectionCnt"
+	Role                           = "MetaNode"
 )
 
 type MetaNodeMetrics struct {
@@ -36,6 +38,7 @@ type MetaNodeMetrics struct {
 	MetricMetaFailedPartition      *exporter.Gauge
 	MetricMetaPartitionInodeCount  *exporter.Gauge
 	MetricMetaPartitionDentryCount *exporter.Gauge
+	MetricVersion                  *exporter.Counter
 
 	metricStopCh chan struct{}
 }
@@ -48,6 +51,7 @@ func (m *MetaNode) startStat() {
 		MetricMetaFailedPartition:      exporter.NewGauge(MetricMetaFailedPartition),
 		MetricMetaPartitionInodeCount:  exporter.NewGauge(MetricMetaPartitionInodeCount),
 		MetricMetaPartitionDentryCount: exporter.NewGauge(MetricMetaPartitionDentryCount),
+		MetricVersion:                  exporter.NewCounter(exporter.Version),
 	}
 
 	go m.collectPartitionMetrics()
@@ -79,10 +83,15 @@ func (m *MetaNode) collectPartitionMetrics() {
 				manager.mu.RUnlock()
 			}
 			m.metrics.MetricConnectionCount.Set(float64(m.connectionCnt))
+			m.metrics.MetricVersion.AddWithLabels(1, m.getVersionLabels())
 		}
 	}
 }
 
 func (m *MetaNode) stopStat() {
 	m.metrics.metricStopCh <- struct{}{}
+}
+
+func (m *MetaNode) getVersionLabels() map[string]string {
+	return proto.GetVersion(Role).ToMap()
 }

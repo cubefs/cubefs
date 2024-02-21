@@ -452,6 +452,14 @@ func main() {
 
 	exporter.Init(ModuleName, cfg)
 	exporter.RegistConsul(super.ClusterName(), ModuleName, cfg)
+	metric := exporter.NewCounter(exporter.Version)
+	go func() {
+		t := time.NewTicker(time.Minute)
+		defer t.Stop()
+		for range t.C {
+			metric.AddWithLabels(1, proto.GetVersion(Role).ToMap())
+		}
+	}()
 
 	err = log.OutputPid(opt.Logpath, ModuleName)
 	if err != nil {
