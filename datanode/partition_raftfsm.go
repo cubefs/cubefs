@@ -15,6 +15,8 @@
 package datanode
 
 import (
+	"bytes"
+	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"sync"
@@ -32,7 +34,30 @@ import (
 
 // Apply puts the data onto the disk.
 func (dp *DataPartition) Apply(command []byte, index uint64) (resp interface{}, err error) {
-	resp, err = dp.ApplyRandomWrite(command, index)
+	buff := bytes.NewBuffer(command)
+	var version uint32
+	if err = binary.Read(buff, binary.BigEndian, &version); err != nil {
+		return
+	}
+	if version != BinaryMarshalMagicVersion {
+		var opItem *RaftCmdItem
+		if opItem, err = UnmarshalRaftCmd(command); err != nil {
+			log.LogErrorf("[ApplyRandomWrite] ApplyID(%v) Partition(%v) unmarshal failed(%v)", index, dp.partitionID, err)
+			return
+		}
+		log.LogInfof("[ApplyRandomWrite] ApplyID(%v) Partition(%v) opItem Op(%v)", index, dp.partitionID, opItem.Op)
+		if opItem.Op == uint32(proto.OpVersionOp) {
+			dp.fsmVersionOp(opItem)
+			return
+		}
+		return
+	}
+	if index > dp.metaAppliedID {
+		resp, err = dp.ApplyRandomWrite(command, index)
+		return
+	}
+	log.LogDebugf("[DataPartition.Apply] dp[%v] metaAppliedID(%v) index(%v) no need apply", dp.partitionID, dp.metaAppliedID, index)
+	resp = proto.OpOk
 	return
 }
 

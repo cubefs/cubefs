@@ -182,6 +182,7 @@ const (
 	OpSyncRandomWriteVerRsp uint8 = 0xB5
 	OpTryWriteAppend        uint8 = 0xB6
 	OpSyncTryWriteAppend    uint8 = 0xB7
+	OpVersionOp             uint8 = 0xB8
 
 	// Commons
 	OpNoSpaceErr uint8 = 0xEE

@@ -66,6 +66,8 @@ type DataPartitionMetadata struct {
 	LastTruncateID          uint64
 	ReplicaNum              int
 	StopRecover             bool
+	VerList                 []*proto.VolVersionInfo
+	ApplyID                 uint64
 }
 
 func (md *DataPartitionMetadata) Validate() (err error) {
@@ -106,6 +108,7 @@ type DataPartition struct {
 	config          *dataPartitionCfg
 	appliedID       uint64 // apply id used in Raft
 	lastTruncateID  uint64 // truncate id used in Raft
+	metaAppliedID   uint64 // apply id while do meta persist
 	minAppliedID    uint64
 	maxAppliedID    uint64
 
@@ -247,6 +250,7 @@ func LoadDataPartition(partitionDir string, disk *Disk) (dp *DataPartition, err 
 		return
 	}
 	dp.stopRecover = meta.StopRecover
+	dp.metaAppliedID = meta.ApplyID
 	dp.computeUsage()
 	dp.ForceSetDataPartitionToLoadding()
 	disk.space.AttachPartition(dp)
@@ -332,11 +336,87 @@ func newDataPartition(dpCfg *dataPartitionCfg, disk *Disk, isCreate bool) (dp *D
 	dp = partition
 	go partition.statusUpdateScheduler()
 	go partition.startEvict()
-	if emsg := dp.getVerListFromMaster(); emsg != nil {
-		log.LogWarnf("action[newDataPartition] vol %v dp %v loadFromMaster verList failed err %v", dp.volumeID, dp.partitionID, emsg)
+	if isCreate {
+		if err = dp.getVerListFromMaster(); err != nil {
+			log.LogErrorf("action[newDataPartition] vol %v dp %v loadFromMaster verList failed err %v", dp.volumeID, dp.partitionID, err)
+			return
+		}
 	}
+
 	log.LogInfof("action[newDataPartition] dp %v replica num %v CreateType %v create success",
 		dp.partitionID, dpCfg.ReplicaNum, dp.DataPartitionCreateType)
+	return
+}
+
+func (partition *DataPartition) HandleVersionOp(req *proto.MultiVersionOpRequest) (err error) {
+	var (
+		verData []byte
+		pItem   *RaftCmdItem
+	)
+	if verData, err = json.Marshal(req); err != nil {
+		return
+	}
+	pItem = &RaftCmdItem{
+		Op: uint32(proto.OpVersionOp),
+		K:  []byte("version"),
+		V:  verData,
+	}
+	data, _ := MarshalRaftCmd(pItem)
+	_, err = partition.Submit(data)
+	return
+}
+
+func (partition *DataPartition) fsmVersionOp(opItem *RaftCmdItem) (err error) {
+	req := new(proto.MultiVersionOpRequest)
+	if err = json.Unmarshal(opItem.V, req); err != nil {
+		log.LogError("action[fsmVersionOp] dpopitem %v", opItem)
+		return
+	}
+	if len(req.VolVerList) == 0 {
+		return
+	}
+	lastSeq := req.VolVerList[len(req.VolVerList)-1].Ver
+	partition.volVersionInfoList.RWLock.Lock()
+	if len(partition.volVersionInfoList.VerList) == 0 {
+		partition.volVersionInfoList.VerList = make([]*proto.VolVersionInfo, len(req.VolVerList))
+		copy(partition.volVersionInfoList.VerList, req.VolVerList)
+		partition.verSeq = lastSeq
+		log.LogInfof("action[fsmVersionOp] dp %v seq %v updateVerList reqeust ver %v verlist  %v  dp verlist nil and set",
+			partition.partitionID, partition.verSeq, lastSeq, req.VolVerList)
+		partition.volVersionInfoList.RWLock.Unlock()
+		return
+	}
+
+	lastVerInfo := partition.volVersionInfoList.GetLastVolVerInfo()
+	log.LogInfof("action[fsmVersionOp] dp %v seq %v lastVerList seq %v req seq %v op %v",
+		partition.partitionID, partition.verSeq, lastVerInfo.Ver, lastSeq, req.Op)
+
+	if lastVerInfo.Ver >= lastSeq {
+		if lastVerInfo.Ver == lastSeq {
+			if req.Op == proto.CreateVersionCommit {
+				lastVerInfo.Status = proto.VersionNormal
+			}
+		}
+		partition.volVersionInfoList.RWLock.Unlock()
+		return
+	}
+
+	var status uint8 = proto.VersionPrepare
+	if req.Op == proto.CreateVersionCommit {
+		status = proto.VersionNormal
+	}
+	partition.volVersionInfoList.VerList = append(partition.volVersionInfoList.VerList, &proto.VolVersionInfo{
+		Status: status,
+		Ver:    lastSeq,
+	})
+
+	partition.verSeq = lastSeq
+
+	err = partition.PersistMetadata()
+	log.LogInfof("action[fsmVersionOp] dp %v seq %v updateVerList reqeust add new seq %v verlist (%v) err (%v)",
+		partition.partitionID, partition.verSeq, lastSeq, partition.volVersionInfoList, err)
+
+	partition.volVersionInfoList.RWLock.Unlock()
 	return
 }
 
@@ -546,13 +626,17 @@ func (dp *DataPartition) PersistMetadata() (err error) {
 		CreateTime:              time.Now().Format(TimeLayout),
 		LastTruncateID:          dp.lastTruncateID,
 		StopRecover:             dp.stopRecover,
+		VerList:                 dp.volVersionInfoList.VerList,
+		ApplyID:                 dp.appliedID,
 	}
+
 	if metaData, err = json.Marshal(md); err != nil {
 		return
 	}
 	if _, err = metadataFile.Write(metaData); err != nil {
 		return
 	}
+	dp.metaAppliedID = dp.appliedID
 	log.LogInfof("PersistMetadata DataPartition(%v) data(%v)", dp.partitionID, string(metaData))
 	err = os.Rename(fileName, path.Join(dp.Path(), DataPartitionMetadataFileName))
 	return
