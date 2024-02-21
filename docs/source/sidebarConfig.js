@@ -54,7 +54,7 @@ module.exports = [
                     'user-guide/optimization/autofs.md',
                 ]
             },
-            'user-guid/authnode.md',
+            'user-guide/authnode.md',
         ]
     },
     {
