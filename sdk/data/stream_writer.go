@@ -747,12 +747,7 @@ func (s *Streamer) doOverwrite(ctx context.Context, req *ExtentRequest, direct b
 			log.LogDebugf("doOverwrite: ino(%v) req(%v) reqPacket(%v) err(%v) replyPacket(%v)", s.inode, req, reqPacket, err, replyPacket)
 		}
 
-		if err != nil || replyPacket.ResultCode != proto.OpOk {
-			break
-		}
-
-		if !reqPacket.IsValidWriteReply(replyPacket) || reqPacket.CRC != replyPacket.CRC {
-			err = errors.New(fmt.Sprintf("doOverwrite: invalid reply, ino(%v) req(%v) replyPacket(%v)", s.inode, req, replyPacket))
+		if err != nil {
 			break
 		}
 

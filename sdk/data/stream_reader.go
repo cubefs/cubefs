@@ -361,22 +361,28 @@ func (dp *DataPartition) getDpAppliedID(ctx context.Context, pid uint64, addr st
 		StreamConnPool.PutConnectWithErr(conn, err)
 	}()
 
-	p := common.NewPacketToGetDpAppliedID(ctx, pid)
-	if err = p.WriteToConnNs(conn, dp.ClientWrapper.connConfig.WriteTimeoutNs); err != nil {
-		log.LogWarnf("getDpAppliedID: failed to WriteToConn, packet(%v) dpHost(%v) orgPacket(%v) err(%v)", p, addr, orgPacket, err)
+	reqPacket := common.NewPacketToGetDpAppliedID(ctx, pid)
+	if err = reqPacket.WriteToConnNs(conn, dp.ClientWrapper.connConfig.WriteTimeoutNs); err != nil {
+		log.LogWarnf("getDpAppliedID: failed to WriteToConn, packet(%v) dpHost(%v) orgPacket(%v) err(%v)", reqPacket, addr, orgPacket, err)
 		return
 	}
-	if err = p.ReadFromConnNs(conn, dp.ClientWrapper.connConfig.ReadTimeoutNs); err != nil {
-		log.LogWarnf("getDpAppliedID: failed to ReadFromConn, packet(%v) dpHost(%v) orgPacket(%v) err(%v)", p, addr, orgPacket, err)
+	replyPacket := new(common.Packet)
+	if err = replyPacket.ReadFromConnNs(conn, dp.ClientWrapper.connConfig.ReadTimeoutNs); err != nil {
+		log.LogWarnf("getDpAppliedID: failed to ReadFromConn, packet(%v) dpHost(%v) orgPacket(%v) err(%v)", reqPacket, addr, orgPacket, err)
 		return
 	}
-	if p.ResultCode != proto.OpOk {
-		log.LogWarnf("getDpAppliedID: packet(%v) result code isn't ok(%v) from host(%v) orgPacket(%v)", p, p.ResultCode, addr, orgPacket)
-		err = errors.NewErrorf("getDpAppliedID error: addr(%v) resultCode(%v) is not ok", addr, p.ResultCode)
+	if replyPacket.ReqID != reqPacket.ReqID {
+		err = fmt.Errorf("mismatch packet")
+		log.LogWarnf("getDpAppliedID: err(%v) req(%v) reply(%v) dpHost(%v) orgPacket(%v)", err, reqPacket, replyPacket, addr, orgPacket)
+		return
+	}
+	if replyPacket.ResultCode != proto.OpOk {
+		log.LogWarnf("getDpAppliedID: packet(%v) result code isn't ok(%v) from host(%v) orgPacket(%v)", reqPacket, replyPacket.ResultCode, addr, orgPacket)
+		err = errors.NewErrorf("getDpAppliedID error: addr(%v) resultCode(%v) is not ok", addr, replyPacket.ResultCode)
 		return
 	}
 
-	appliedID = binary.BigEndian.Uint64(p.Data)
+	appliedID = binary.BigEndian.Uint64(replyPacket.Data)
 	return appliedID, nil
 }
 
