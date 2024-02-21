@@ -150,7 +150,7 @@ func (hdr *ChunkHeader) String() string {
 }
 
 func NewChunkData(ctx context.Context, vm core.VuidMeta, file string, conf *core.Config, createIfMiss bool, ioQos qos.Qos, readPool taskpool.IoPool, writePool taskpool.IoPool) (
-	cd *datafile, err error) {
+	cd core.DataHandler, err error) {
 	span := trace.SpanFromContextSafe(ctx)
 
 	if file == "" || conf == nil {
@@ -170,7 +170,7 @@ func NewChunkData(ctx context.Context, vm core.VuidMeta, file string, conf *core
 
 	ef := core.NewBlobFile(fd, handleIOError, uint64(vm.ChunkId.VolumeUnitId()), readPool, writePool)
 
-	cd = &datafile{
+	df := &datafile{
 		File:   file,
 		chunk:  vm.ChunkId,
 		conf:   conf,
@@ -184,13 +184,13 @@ func NewChunkData(ctx context.Context, vm core.VuidMeta, file string, conf *core
 		},
 	}
 
-	if err = cd.init(&vm); err != nil {
+	if err = df.init(&vm); err != nil {
 		err = fmt.Errorf("block: %s init() error(%v)", file, err)
-		cd.Close()
+		df.Close()
 		return nil, err
 	}
 
-	return cd, nil
+	return df, nil
 }
 
 func (cd *datafile) initHeader(meta *core.VuidMeta) {

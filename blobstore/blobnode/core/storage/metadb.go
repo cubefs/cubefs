@@ -253,7 +253,7 @@ func (cm *metafile) Destroy(ctx context.Context) (err error) {
 	return
 }
 
-// scan a chunk meta file
+// Scan a chunk meta file
 // from - to ( startBid, ... ]
 func (cm *metafile) Scan(ctx context.Context, startBid proto.BlobID, limit int,
 	fn func(bid proto.BlobID, sm *core.ShardMeta) error) (err error,
@@ -292,30 +292,33 @@ func (cm *metafile) Scan(ctx context.Context, startBid proto.BlobID, limit int,
 		if iter.Err() != nil {
 			return iter.Err()
 		}
-		k, v := iter.Key(), iter.Value()
-		key, value := k.Data(), v.Data()
+		if err = func() error {
+			k, v := iter.Key(), iter.Value()
+			key, value := k.Data(), v.Data()
+			defer func() {
+				k.Free()
+				v.Free()
+			}()
 
-		sk, err := parseShardKey(key)
-		if err != nil {
-			span.Errorf("parse key failed. key:%s, err:%v", string(key), err)
-			k.Free()
-			v.Free()
-			return err
-		}
+			sk, err := parseShardKey(key)
+			if err != nil {
+				span.Errorf("parse key failed. key:%s, err:%v", string(key), err)
+				return err
+			}
 
-		sm := core.ShardMeta{}
-		err = sm.Unmarshal(value)
-		if err != nil {
-			span.Errorf("parse value failed. err:%v", err)
-			k.Free()
-			v.Free()
-			return err
-		}
-		k.Free()
-		v.Free()
+			sm := core.ShardMeta{}
+			err = sm.Unmarshal(value)
+			if err != nil {
+				span.Errorf("parse value failed. err:%v", err)
+				return err
+			}
 
-		if err = fn(sk.Bid, &sm); err != nil {
-			span.Errorf("fn(%d, %v) occur error. err:%v", sk.Bid, sm, err)
+			if err = fn(sk.Bid, &sm); err != nil {
+				span.Errorf("fn(%d, %v) occur error. err:%v", sk.Bid, sm, err)
+				return err
+			}
+			return nil
+		}(); err != nil {
 			return err
 		}
 		limit--
