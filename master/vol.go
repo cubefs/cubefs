@@ -17,6 +17,7 @@ package master
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 	"runtime/debug"
 	"strconv"
 	"sync"
@@ -113,6 +114,7 @@ type Vol struct {
 	Forbidden               bool
 	mpsLock                 *mpsLockManager
 	EnableAuditLog          bool
+	preloadCapacity         uint64
 }
 
 func newVol(vv volValue) (vol *Vol) {
@@ -181,6 +183,7 @@ func newVol(vv volValue) (vol *Vol) {
 	vol.DpReadOnlyWhenVolFull = vv.DpReadOnlyWhenVolFull
 	vol.mpsLock = newMpsLockManager(vol)
 	vol.EnableAuditLog = true
+	vol.preloadCapacity = math.MaxUint64 // mark as special value to trigger calculate
 	return
 }
 
@@ -334,7 +337,7 @@ func (vol *Vol) CheckStrategy(c *Cluster) {
 	}()
 }
 
-func (vol *Vol) getPreloadCapacity() uint64 {
+func (vol *Vol) CalculatePreloadCapacity() uint64 {
 	total := uint64(0)
 
 	dps := vol.dataPartitions.partitions
@@ -349,6 +352,15 @@ func (vol *Vol) getPreloadCapacity() uint64 {
 	}
 
 	return uint64(float32(total) / overSoldFactor)
+}
+
+func (vol *Vol) getPreloadCapacity() uint64 {
+	if vol.preloadCapacity != math.MaxUint64 {
+		return vol.preloadCapacity
+	}
+	vol.preloadCapacity = vol.CalculatePreloadCapacity()
+	log.LogDebugf("[getPreloadCapacity] vol(%v) calculated preload capacity: %v", vol.Name, vol.preloadCapacity)
+	return vol.preloadCapacity
 }
 
 func (vol *Vol) initQosManager(limitArgs *qosArgs) {
@@ -509,6 +521,7 @@ func (vol *Vol) checkDataPartitions(c *Cluster) (cnt int) {
 	}
 
 	shouldDpInhibitWriteByVolFull := vol.shouldInhibitWriteBySpaceFull()
+	totalPreloadCapacity := uint64(0)
 
 	partitions := vol.dataPartitions.clonePartitions()
 	for _, dp := range partitions {
@@ -518,6 +531,7 @@ func (vol *Vol) checkDataPartitions(c *Cluster) (cnt int) {
 			if now > dp.PartitionTTL {
 				log.LogWarnf("[checkDataPartitions] dp(%d) is deleted because of ttl expired, now(%d), ttl(%d)", dp.PartitionID, now, dp.PartitionTTL)
 				vol.deleteDataPartition(c, dp)
+				continue
 			}
 
 			startTime := dp.dataNodeStartTime()
@@ -525,7 +539,10 @@ func (vol *Vol) checkDataPartitions(c *Cluster) (cnt int) {
 				log.LogWarnf("[checkDataPartitions] dp(%d) is deleted because of clear, now(%d), create(%d), start(%d)",
 					dp.PartitionID, now, dp.createTime, startTime)
 				vol.deleteDataPartition(c, dp)
+				continue
 			}
+
+			totalPreloadCapacity += dp.total / util.GB
 		}
 
 		dp.checkReplicaStatus(c.cfg.DataPartitionTimeOutSec)
@@ -545,6 +562,15 @@ func (vol *Vol) checkDataPartitions(c *Cluster) (cnt int) {
 		dp.checkDiskError(c.Name, c.leaderInfo.addr)
 
 		dp.checkReplicationTask(c.Name, vol.dataPartitionSize)
+	}
+
+	if overSoldFactor > 0 {
+		totalPreloadCapacity = uint64(float32(totalPreloadCapacity) / overSoldFactor)
+	}
+	vol.preloadCapacity = totalPreloadCapacity
+	if vol.preloadCapacity != 0 {
+		log.LogDebugf("[checkDataPartitions] vol(%v) totalPreloadCapacity(%v GB), overSoldFactor(%v)",
+			vol.Name, totalPreloadCapacity, overSoldFactor)
 	}
 
 	return
