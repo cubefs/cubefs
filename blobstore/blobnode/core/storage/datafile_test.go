@@ -77,6 +77,9 @@ func TestNewChunkData(t *testing.T) {
 	require.NotNil(t, cd)
 	defer cd.Close()
 
+	df, ok := cd.(*datafile)
+	require.True(t, ok)
+
 	log.Infof("chunkdata: \n%s", cd)
 
 	_, err = cd.Read(ctx, nil, 1, 1)
@@ -95,11 +98,14 @@ func TestNewChunkData(t *testing.T) {
 	require.NotNil(t, cdRo)
 	defer cdRo.Close()
 
+	dfRo, ok := cdRo.(*datafile)
+	require.True(t, ok)
+
 	log.Infof("chunkdata: \n%s", cdRo)
 
-	require.Equal(t, cd.header.version, cdRo.header.version)
-	require.Equal(t, cd.wOff, cdRo.wOff)
-	require.Equal(t, cd.File, cdRo.File)
+	require.Equal(t, df.header.version, dfRo.header.version)
+	require.Equal(t, df.wOff, dfRo.wOff)
+	require.Equal(t, df.File, dfRo.File)
 }
 
 func TestChunkData_Write(t *testing.T) {
@@ -129,9 +135,12 @@ func TestChunkData_Write(t *testing.T) {
 	require.NotNil(t, cd)
 	defer cd.Close()
 
+	df, ok := cd.(*datafile)
+	require.True(t, ok)
+
 	log.Infof("chunkdata: \n%s", cd)
 
-	require.Equal(t, int32(cd.wOff), int32(4096))
+	require.Equal(t, int32(df.wOff), int32(4096))
 
 	sharddata := []byte("test data")
 
@@ -151,7 +160,7 @@ func TestChunkData_Write(t *testing.T) {
 	require.NoError(t, err)
 
 	require.Equal(t, int32(shard.Offset), int32(4096))
-	require.Equal(t, int32(cd.wOff), int32(8192))
+	require.Equal(t, int32(df.wOff), int32(8192))
 
 	// read crc
 	r, err := cd.Read(ctx, shard, 0, shard.Size)
@@ -168,7 +177,7 @@ func TestChunkData_Write(t *testing.T) {
 		shard.Offset+core.GetShardHeaderSize()+core.GetShardFooterSize()+crc32block.EncodeSize(int64(shard.Size), core.CrcBlockUnitSize),
 		_pageSize)
 
-	require.Equal(t, expectedOff, cd.wOff)
+	require.Equal(t, expectedOff, df.wOff)
 }
 
 func TestChunkData_ConcurrencyWrite(t *testing.T) {
@@ -197,9 +206,12 @@ func TestChunkData_ConcurrencyWrite(t *testing.T) {
 	require.NotNil(t, cd)
 	defer cd.Close()
 
+	df, ok := cd.(*datafile)
+	require.True(t, ok)
+
 	log.Infof("chunkdata: \n%s", cd)
 
-	require.Equal(t, int32(cd.wOff), int32(4096))
+	require.Equal(t, int32(df.wOff), int32(4096))
 
 	shards := make([]*core.Shard, 0)
 	sharddatas := make([][]byte, 0)
@@ -251,7 +263,7 @@ func TestChunkData_ConcurrencyWrite(t *testing.T) {
 	log.Infof("chunkdata: \n%s", cd)
 
 	expectedOff := 4096 + 4096*10
-	require.Equal(t, int64(expectedOff), int64(cd.wOff))
+	require.Equal(t, int64(expectedOff), df.wOff)
 }
 
 func TestChunkData_Delete(t *testing.T) {
@@ -278,9 +290,12 @@ func TestChunkData_Delete(t *testing.T) {
 	require.NotNil(t, cd)
 	defer cd.Close()
 
+	df, ok := cd.(*datafile)
+	require.True(t, ok)
+
 	log.Infof("chunkdata: \n%s", cd)
 
-	require.Equal(t, int32(cd.wOff), int32(4096))
+	require.Equal(t, int32(df.wOff), int32(4096))
 
 	concurrency := 5
 	shards := make([]*core.Shard, 0)
@@ -340,7 +355,7 @@ func TestChunkData_Delete(t *testing.T) {
 		require.NoError(t, err)
 	}
 
-	stat, err := cd.ef.SysStat()
+	stat, err := df.ef.SysStat()
 	require.NoError(t, err)
 	log.Infof("stat: %v", stat)
 	log.Infof("blksize: %d", stat.Blocks)
@@ -456,16 +471,22 @@ func TestParseMeta(t *testing.T) {
 	require.NotNil(t, cd)
 	defer cd.Close()
 
+	df, ok := cd.(*datafile)
+	require.True(t, ok)
+
 	cd1, err := NewChunkData(ctx, meta, chunkname, diskConfig, false, nil, ioPool, ioPool)
 	require.NoError(t, err)
 	require.NotNil(t, cd1)
 	defer cd1.Close()
 
-	require.Equal(t, cd.header, cd1.header)
-	require.Equal(t, cd1.header.magic, chunkHeaderMagic)
-	require.Equal(t, cd1.header.version, uint8(0x1))
-	require.Equal(t, cd1.header.parentChunk, bnapi.ChunkId{0x8})
-	require.Equal(t, cd1.header.createTime, ctime)
+	df1, ok := cd.(*datafile)
+	require.True(t, ok)
+
+	require.Equal(t, df.header, df1.header)
+	require.Equal(t, df1.header.magic, chunkHeaderMagic)
+	require.Equal(t, df1.header.version, uint8(0x1))
+	require.Equal(t, df1.header.parentChunk, bnapi.ChunkId{0x8})
+	require.Equal(t, df1.header.createTime, ctime)
 
 	// scene 2
 	f, err := os.OpenFile(chunkname, 2, 0o644)
@@ -479,13 +500,13 @@ func TestParseMeta(t *testing.T) {
 	hdr := ChunkHeader{}
 	err = hdr.Unmarshal(buffer)
 	require.NoError(t, err)
-	require.Equal(t, cd.header, hdr)
+	require.Equal(t, df.header, hdr)
 
 	// bad magic
 	badMagic := []byte{0x20, 0x21, 0x03, 0x19}
 	_, err = f.WriteAt(badMagic, 0)
 	require.NoError(t, err)
-	err = cd.parseMeta()
+	err = df.parseMeta()
 	require.Error(t, err)
 }
 
