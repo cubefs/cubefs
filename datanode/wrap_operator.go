@@ -23,6 +23,7 @@ import (
 	"net"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/cubefs/cubefs/depends/tiglabs/raft"
@@ -289,6 +290,7 @@ func (s *DataNode) commitCreateVersion(req *proto.MultiVersionOpRequest) (err er
 	var (
 		value interface{}
 		ok    bool
+		wg    sync.WaitGroup
 	)
 	if value, ok = s.volUpdating.Load(req.VolumeID); !ok {
 		log.LogWarnf("action[commitCreateVersion] vol %v not found seq %v", req.VolumeID, req.VerSeq)
@@ -308,48 +310,41 @@ func (s *DataNode) commitCreateVersion(req *proto.MultiVersionOpRequest) (err er
 
 	s.space.partitionMutex.RLock()
 	defer s.space.partitionMutex.RUnlock()
+	resultCh := make(chan error, len(s.space.partitions))
 	for _, partition := range s.space.partitions {
 		if partition.config.VolName != req.VolumeID {
 			continue
 		}
-
-		partition.volVersionInfoList.RWLock.Lock()
-		if len(partition.volVersionInfoList.VerList) == 0 {
-			partition.volVersionInfoList.VerList = make([]*proto.VolVersionInfo, len(req.VolVerList))
-			copy(partition.volVersionInfoList.VerList, req.VolVerList)
-			partition.verSeq = req.VerSeq
-			log.LogInfof("action[commitCreateVersion] dp %v seq %v updateVerList reqeust ver %v verlist  %v  dp verlist nil and set",
-				partition.partitionID, partition.verSeq, req.VerSeq, req.VolVerList)
-			partition.volVersionInfoList.RWLock.Unlock()
+		if !partition.isRaftLeader {
 			continue
 		}
-
-		lastVerInfo := partition.volVersionInfoList.GetLastVolVerInfo()
-		log.LogInfof("action[commitCreateVersion] dp %v seq %v lastVerList seq %v req seq %v op %v",
-			partition.partitionID, partition.verSeq, lastVerInfo.Ver, req.VerSeq, req.Op)
-
-		if lastVerInfo.Ver >= req.VerSeq {
-			if lastVerInfo.Ver == req.VerSeq {
-				if req.Op == proto.CreateVersionCommit {
-					lastVerInfo.Status = proto.VersionNormal
-				}
+		wg.Add(1)
+		go func(partition *DataPartition) {
+			defer wg.Done()
+			log.LogInfof("action[commitCreateVersion] volume %v dp[%v] do HandleVersionOp verSeq[%v]",
+				partition.volumeID, partition.partitionID, partition.verSeq)
+			if err = partition.HandleVersionOp(req); err != nil {
+				log.LogErrorf("action[commitCreateVersion] volume %v dp[%v] do HandleVersionOp verSeq[%v] err %v",
+					partition.volumeID, partition.partitionID, partition.verSeq, err)
+				resultCh <- err
+				return
 			}
-			partition.volVersionInfoList.RWLock.Unlock()
-			continue
-		}
+		}(partition)
+	}
 
-		var status uint8 = proto.VersionPrepare
-		if req.Op == proto.CreateVersionCommit {
-			status = proto.VersionNormal
+	wg.Wait()
+	select {
+	case err = <-resultCh:
+		if err != nil {
+			close(resultCh)
+			return
 		}
-		partition.volVersionInfoList.VerList = append(partition.volVersionInfoList.VerList, &proto.VolVersionInfo{
-			Status: status,
-			Ver:    req.VerSeq,
-		})
-		log.LogInfof("action[commitCreateVersion] dp %v seq %v updateVerList reqeust add new seq %v verlist (%v)",
-			partition.partitionID, partition.verSeq, req.VerSeq, partition.volVersionInfoList)
-		partition.verSeq = req.VerSeq
-		partition.volVersionInfoList.RWLock.Unlock()
+	default:
+		log.LogInfof("action[commitCreateVersion] volume %v do HandleVersionOp verseq [%v] finished", req.VolumeID, req.VerSeq)
+	}
+
+	if req.Op == proto.DeleteVersion {
+		return
 	}
 
 	if req.Op == proto.CreateVersionPrepare {
@@ -357,6 +352,7 @@ func (s *DataNode) commitCreateVersion(req *proto.MultiVersionOpRequest) (err er
 			req.VolumeID, ver2Phase.verPrepare, req.VerSeq)
 		return
 	}
+
 	ver2Phase.verSeq = req.VerSeq
 	ver2Phase.step = proto.CreateVersionCommit
 	ver2Phase.status = proto.VersionWorkingFinished
