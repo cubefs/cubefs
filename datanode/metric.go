@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
 )
@@ -44,6 +45,7 @@ type DataNodeMetrics struct {
 	MetricDpCount            *exporter.Gauge
 	MetricTotalDpSize        *exporter.Gauge
 	MetricCapacity           *exporter.GaugeVec
+	MetricVersion            *exporter.Counter
 }
 
 func (d *DataNode) registerMetrics() {
@@ -58,6 +60,7 @@ func (d *DataNode) registerMetrics() {
 	d.metrics.MetricDpCount = exporter.NewGauge(MetricDpCount)
 	d.metrics.MetricTotalDpSize = exporter.NewGauge(MetricTotalDpSize)
 	d.metrics.MetricCapacity = exporter.NewGaugeVec(MetricCapacity, "", []string{"type"})
+	d.metrics.MetricVersion = exporter.NewCounter(exporter.Version)
 }
 
 func (d *DataNode) startMetrics() {
@@ -104,6 +107,7 @@ func (dm *DataNodeMetrics) doStat() {
 	dm.setDpCountMetrics()
 	dm.setTotalDpSizeMetrics()
 	dm.setCapacityMetrics()
+	dm.setVersionMetrics()
 }
 
 func (dm *DataNodeMetrics) setLackDpCountMetrics() {
@@ -142,4 +146,8 @@ func (dm *DataNodeMetrics) setCapacityMetrics() {
 	dm.MetricCapacity.SetWithLabelValues(float64(total), "total")
 	dm.MetricCapacity.SetWithLabelValues(float64(used), "used")
 	dm.MetricCapacity.SetWithLabelValues(float64(available), "available")
+}
+
+func (dm *DataNodeMetrics) setVersionMetrics() {
+	dm.MetricVersion.AddWithLabels(1, proto.GetVersion(ModuleName).ToMap())
 }
