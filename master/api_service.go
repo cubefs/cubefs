@@ -7698,6 +7698,7 @@ func (m *Server) volAddAllowedStorageClass(w http.ResponseWriter, r *http.Reques
 		err                    error
 		msg                    string
 		addAllowedStorageClass uint32
+		ebsBlockSize           int
 		vol                    *Vol
 	)
 
@@ -7722,6 +7723,11 @@ func (m *Server) volAddAllowedStorageClass(w http.ResponseWriter, r *http.Reques
 	}
 
 	if addAllowedStorageClass, err = extractUint32(r, allowedStorageClassKey); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	if ebsBlockSize, err = extractUint(r, ebsBlkSizeKey); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
@@ -7780,12 +7786,25 @@ func (m *Server) volAddAllowedStorageClass(w http.ResponseWriter, r *http.Reques
 	}
 
 	newArgs := getVolVarargs(vol)
+
+	if addAllowedStorageClass == proto.StorageClass_BlobStore && ebsBlockSize == 0 {
+		if vol.EbsBlkSize == 0 {
+			ebsBlockSize = defaultEbsBlkSize
+			log.LogInfof("[volAddAllowedStorageClass] vol(%v) allowedStorageClass(%v) use default ebsBlockSize(%v)",
+				name, proto.StorageClassString(proto.StorageClass_BlobStore), ebsBlockSize)
+		} else {
+			ebsBlockSize = vol.EbsBlkSize
+			log.LogInfof("[volAddAllowedStorageClass] vol(%v) allowedStorageClass(%v) use old ebsBlockSize(%v)",
+				name, proto.StorageClassString(proto.StorageClass_BlobStore), defaultEbsBlkSize)
+		}
+	}
+	newArgs.coldArgs.objBlockSize = ebsBlockSize
+
 	newArgs.allowedStorageClass = append(newArgs.allowedStorageClass, addAllowedStorageClass)
 	sort.Slice(newArgs.allowedStorageClass, func(i, j int) bool {
 		return newArgs.allowedStorageClass[i] < newArgs.allowedStorageClass[j]
 	})
-
-	log.LogInfof("to add vol(%v) allowedStorageClass, old(%v), add(%v)",
+	log.LogInfof("[volAddAllowedStorageClass] vol(%v) to add allowedStorageClass, old(%v), add(%v)",
 		name, vol.allowedStorageClass, addAllowedStorageClass)
 
 	if err = m.cluster.updateVol(name, authKey, newArgs); err != nil {
