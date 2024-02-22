@@ -1249,9 +1249,10 @@ var (
 )
 
 func newVolAddAllowedStorageClassCmd(client *master.MasterClient) *cobra.Command {
-	var clientIDKey string
-	var addAllowedStorageClass uint32
+	var optClientIDKey string
 	var ascUint64 uint64
+	var addAllowedStorageClass uint32
+	var optEbsBlkSize int
 
 	cmd := &cobra.Command{
 		Use:   cmdVolAddAllowedStorageClassUse,
@@ -1282,7 +1283,7 @@ func newVolAddAllowedStorageClassCmd(client *master.MasterClient) *cobra.Command
 				return
 			}
 
-			if err = client.AdminAPI().VolAddAllowedStorageClass(volName, addAllowedStorageClass, util.CalcAuthKey(vv.Owner), clientIDKey); err != nil {
+			if err = client.AdminAPI().VolAddAllowedStorageClass(volName, addAllowedStorageClass, optEbsBlkSize, util.CalcAuthKey(vv.Owner), optClientIDKey); err != nil {
 				return
 			}
 
@@ -1290,6 +1291,7 @@ func newVolAddAllowedStorageClassCmd(client *master.MasterClient) *cobra.Command
 		},
 	}
 
-	cmd.Flags().StringVar(&clientIDKey, CliFlagClientIDKey, client.ClientIDKey(), CliUsageClientIDKey)
+	cmd.Flags().StringVar(&optClientIDKey, CliFlagClientIDKey, client.ClientIDKey(), CliUsageClientIDKey)
+	cmd.Flags().IntVar(&optEbsBlkSize, CliFlagEbsBlkSize, cmdVolDefaultEbsBlkSize, "Specify ebsBlockSize for BlobStore")
 	return cmd
 }
