@@ -17,4 +17,5 @@ package proto
 const (
 	HeaderAcceptEncoding  = "x-cfs-Accept-Encoding"
 	HeaderContentEncoding = "x-cfs-Content-Encoding"
+	HeaderRequestID       = "x-cfs-trace-id"
 )
