@@ -74,6 +74,7 @@ type DataPartition struct {
 	VerSeq                         uint64
 	RecoverStartTime               time.Time
 	RecoverLastConsumeTime         time.Duration
+	DecommissionWaitTimes          int
 }
 
 type DataPartitionPreLoad struct {
@@ -1242,6 +1243,7 @@ errHandler:
 		partition.SetDecommissionStatus(DecommissionFail)
 	} else {
 		partition.SetDecommissionStatus(markDecommission) // retry again
+		partition.DecommissionWaitTimes = 0
 	}
 
 	// if need rollback, set to fail,reset DecommissionDstAddr
@@ -1312,12 +1314,14 @@ func (partition *DataPartition) ResetDecommissionStatus() {
 	partition.DecommissionNeedRollbackTimes = 0
 	partition.SetDecommissionStatus(DecommissionInitial)
 	partition.SetSpecialReplicaDecommissionStep(SpecialDecommissionInitial)
+	partition.DecommissionWaitTimes = 0
 }
 
 func (partition *DataPartition) rollback(c *Cluster) {
 	// del new add replica,may timeout, try rollback next time
 	err := c.removeDataReplica(partition, partition.DecommissionDstAddr, false, false)
 	if err != nil {
+		//keep decommission status to failed for rollback
 		log.LogWarnf("action[rollback]dp[%v] rollback to del replica[%v] failed:%v",
 			partition.PartitionID, partition.DecommissionDstAddr, err.Error())
 		return
@@ -1333,6 +1337,7 @@ func (partition *DataPartition) rollback(c *Cluster) {
 	partition.DecommissionRetry = 0
 	partition.isRecover = false
 	partition.DecommissionNeedRollback = false
+	partition.DecommissionWaitTimes = 0
 	partition.SetDecommissionStatus(markDecommission)
 	partition.SetSpecialReplicaDecommissionStep(SpecialDecommissionInitial)
 	c.syncUpdateDataPartition(partition)
@@ -1497,7 +1502,17 @@ func (partition *DataPartition) TryAcquireDecommissionToken(c *Cluster) bool {
 		excludeNodeSets []uint64
 		zones           []string
 	)
+	const MaxRetryDecommissionWait = 60
 	defer c.syncUpdateDataPartition(partition)
+
+	if partition.DecommissionRetry > 0 {
+		partition.DecommissionWaitTimes++
+		if partition.DecommissionWaitTimes < MaxRetryDecommissionWait {
+			return false
+		} else {
+			partition.DecommissionWaitTimes = 0
+		}
+	}
 
 	// the first time for dst addr not specify
 	if !partition.DecommissionDstAddrSpecify && partition.DecommissionDstAddr == "" {
@@ -1578,6 +1593,8 @@ errHandler:
 	partition.DecommissionRetry++
 	if partition.DecommissionRetry >= defaultDecommissionRetryLimit {
 		partition.SetDecommissionStatus(DecommissionFail)
+	} else {
+		partition.DecommissionWaitTimes = 0
 	}
 	log.LogWarnf("action[TryAcquireDecommissionToken] clusterID[%v] vol[%v] partitionID[%v]"+
 		" retry [%v] status [%v] DecommissionDstAddrSpecify [%v] DecommissionDstAddr [%v] failed",
@@ -1676,6 +1693,16 @@ func (partition *DataPartition) needRollback(c *Cluster) bool {
 		log.LogDebugf("action[needRollback]try add restore replica, dp[%v]DecommissionNeedRollbackTimes[%v]",
 			partition.PartitionID, partition.DecommissionNeedRollbackTimes)
 		partition.DecommissionNeedRollback = false
+		err := c.addDataReplica(partition, partition.DecommissionSrcAddr)
+		if err != nil {
+			log.LogWarnf("action[needRollback]dp[%v] recover decommission src replica %v failed: %v",
+				partition.PartitionID, partition.DecommissionSrcAddr, err)
+		}
+		err = c.removeDataReplica(partition, partition.DecommissionDstAddr, false, false)
+		if err != nil {
+			log.LogWarnf("action[needRollback]dp[%v] remove decommission dst replica %v failed: %v",
+				partition.PartitionID, partition.DecommissionDstAddr, err)
+		}
 		return false
 	}
 	return true
