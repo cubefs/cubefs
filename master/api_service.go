@@ -2290,8 +2290,16 @@ func (m *Server) checkStorageClassForCreateVolReq(req *createVolReq) (err error)
 
 		if !resourceChecker.HasResourceOfStorageClass(asc) {
 			err = fmt.Errorf("cluster has no resoure to support allowedStorageClass(%v)", proto.StorageClassString(asc))
-			log.LogErrorf("action[checkStorageClassForCreateVol] create vol(%v) err: %v", req.name, err.Error())
+			log.LogErrorf("[checkStorageClassForCreateVol] create vol(%v) err: %v", req.name, err.Error())
 			return
+		}
+
+		if proto.IsStorageClassBlobStore(asc) {
+			if req.coldArgs.objBlockSize == 0 {
+				req.coldArgs.objBlockSize = defaultEbsBlkSize
+				log.LogInfof("[checkStorageClassForCreateVol] vol(%v) allowed %v, set objBlockSize as default(%v)",
+					req.name, proto.StorageClassString(proto.StorageClass_BlobStore), defaultEbsBlkSize)
+			}
 		}
 
 		// To control the complexity of the entire system at the current stage,
@@ -2300,7 +2308,7 @@ func (m *Server) checkStorageClassForCreateVolReq(req *createVolReq) (err error)
 		// if volStorageClass is blobStore, replica storage class can not be supported
 		if proto.IsStorageClassBlobStore(req.volStorageClass) && proto.IsStorageClassReplica(asc) {
 			err = fmt.Errorf("volStorageClass is blobStore, in this case not support replica storage class")
-			log.LogErrorf("action[checkStorageClassForCreateVol] create vol(%v) err: %v", req.name, err.Error())
+			log.LogErrorf("[checkStorageClassForCreateVol] create vol(%v) err: %v", req.name, err.Error())
 			return
 		}
 
