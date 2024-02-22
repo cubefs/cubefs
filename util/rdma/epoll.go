@@ -19,7 +19,7 @@ type EpollContext struct {
 
 type EPoll struct {
 	epollFd int
-	fds     map[int]ReadAble
+	fds     map[int]*EpollWorker
 }
 
 var instance *EPoll
@@ -39,12 +39,12 @@ func (e *EPoll) init() {
 	if err != nil {
 		panic(err)
 	}
-	instance.fds = make(map[int]ReadAble)
+	instance.fds = make(map[int]*EpollWorker)
 
 	go e.epollLoop()
 }
 
-func (e *EPoll) getContext(fd int) ReadAble {
+func (e *EPoll) getContext(fd int) *EpollWorker {
 	lock.RLock()
 	defer lock.RUnlock()
 	return e.fds[fd]
@@ -55,7 +55,9 @@ func (e *EPoll) EpollAdd(fd int, ctx ReadAble) {
 	event.Events = syscall.EPOLLIN
 	event.Fd = int32(fd)
 	lock.Lock()
-	e.fds[fd] = ctx
+	ew := &EpollWorker{}
+	ew.initEpollWorker(ctx)
+	e.fds[fd] = ew
 	lock.Unlock()
 	syscall.EpollCtl(e.epollFd, syscall.EPOLL_CTL_ADD, fd, &event)
 }
@@ -83,11 +85,20 @@ func (e *EPoll) epollLoop() error {
 			//print(i)
 			//print("->")
 			//println(n)
-			print("event.Fd")
-			println(int(events[i].Fd))
+
+			//print("event.Fd")
+			//println(int(events[i].Fd))
+
 			//e.getContext(int(events[i].Fd))()
+
+			/* serial
 			if eventFunction := e.getContext(int(events[i].Fd)); eventFunction != nil {
 				eventFunction()
+			}
+			*/
+			//parallel
+			if epollWorker := e.getContext(int(events[i].Fd)); epollWorker != nil {
+				epollWorker.epollWorkerAddJob()
 			}
 			//go e.getContext(int(events[i].Fd))()
 		}

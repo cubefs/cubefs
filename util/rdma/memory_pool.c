@@ -20,7 +20,7 @@ struct ibv_pd* alloc_pd() {
     if (!pd) {
         //serverLog(LL_WARNING, "RDMA: ibv alloc pd failed");
         //TODO error handler
-        printf("RDMA: ibv alloc pd failed\n");
+        //printf("RDMA: ibv alloc pd failed\n");
         return NULL;
     }
     
@@ -41,7 +41,7 @@ struct ibv_mr* regist_mr(MemoryPool* pool, struct ibv_pd* pd) {
     if (!mr) {//TODO error handler
         //serverLog(LL_WARNING, "RDMA: reg mr for recv buffer failed");
         //TODO error handler
-        printf("RDMA: reg mr for recv data buffer failed");
+        //printf("RDMA: reg mr for recv data buffer failed");
         //goto destroy_iobuf;
         //TODO clear resources
         return NULL;
@@ -63,7 +63,7 @@ MemoryPool* InitMemoryPool(int block_num, int block_size, int level) {
     MemoryPool * pool = (MemoryPool*)malloc(sizeof(MemoryPool));//TODO 没有考虑返回值为NULL的情况
     pool->size = block_num * block_size;
     posix_memalign((void**)(&(pool->original_mem)), sysconf(_SC_PAGESIZE), pool->size);
-    printf("memoryPool size: %ld\n", pool->size);
+    //printf("memoryPool size: %ld\n", pool->size);
     pool->allocation = buddy_new(level);//TODO 没有考虑返回值为NULL的情况
     pd = alloc_pd();
     if(!pd) {

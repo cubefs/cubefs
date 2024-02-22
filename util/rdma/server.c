@@ -6,15 +6,15 @@
 int OnServerConnPreConnect(struct rdma_cm_id *id, void* ctx) {//TODO maybe need to return C_OK or C_ERR
     struct ConnectionEvent* conn_ev = (struct ConnectionEvent*)ctx;
     struct RdmaListener* server = (struct RdmaListener*)conn_ev->ctx;
-    printf("server=%p, on %s \n", server, __FUNCTION__);
-    sprintf(buffer,"server=%p, on %s \n", server, __FUNCTION__);
-    PrintCallback(buffer);
+    //printf("server=%p, on %s \n", server, __FUNCTION__);
+    //sprintf(buffer,"server=%p, on %s \n", server, __FUNCTION__);
+    //PrintCallback(buffer);
 
     Connection* conn = AllocConnection(id, conn_ev, 1);
 
     if(conn == NULL) {//TODO error handler
-        sprintf(buffer,"server=%p, there is no space to alloc conn\n", server);
-        PrintCallback(buffer);
+        //sprintf(buffer,"server=%p, there is no space to alloc conn\n", server);
+        //PrintCallback(buffer);
         return C_ERR;
     }
 
@@ -27,32 +27,32 @@ int OnServerConnPreConnect(struct rdma_cm_id *id, void* ctx) {//TODO maybe need 
 
 int OnServerConnConnected(struct rdma_cm_id *id, void* ctx) {
     struct RdmaListener* server = (struct RdmaListener*)ctx;
-    printf("server=%p, on %s \n", server, __FUNCTION__);
-    sprintf(buffer,"server=%p, on %s \n", server, __FUNCTION__);
-    PrintCallback(buffer);
+    //printf("server=%p, on %s \n", server, __FUNCTION__);
+    //sprintf(buffer,"server=%p, on %s \n", server, __FUNCTION__);
+    //PrintCallback(buffer);
 
     Connection* conn = (Connection*)id->context;
 
     pthread_mutex_lock(&(server->mutex));
 
     if(EnQueue(server->waitConns,conn) == NULL) { //TODO error handler
-        printf("no more memory can be malloced\n");
-        sprintf(buffer,"no more memory can be malloced\n");
-        PrintCallback(buffer);
+        //printf("no more memory can be malloced\n");
+        //sprintf(buffer,"no more memory can be malloced\n");
+        //PrintCallback(buffer);
     };
-    printf("waitConns size: %d\n",GetSize(server->waitConns));
-    sprintf(buffer,"waitConns size: %d\n",GetSize(server->waitConns));
-    PrintCallback(buffer);
+    //printf("waitConns size: %d\n",GetSize(server->waitConns));
+    //sprintf(buffer,"waitConns size: %d\n",GetSize(server->waitConns));
+    //PrintCallback(buffer);
 
     hashmap_set(server->allConns,conn);
     if(hashmap_oom(server->allConns)) { //TODO error handler
-        printf("no more memory can be malloced\n");
-        sprintf(buffer,"no more memory can be malloced\n");
-        PrintCallback(buffer);
+        //printf("no more memory can be malloced\n");
+        //sprintf(buffer,"no more memory can be malloced\n");
+        //PrintCallback(buffer);
     }
-    printf("hashmap size :%d\n",hashmap_count(server->allConns));
-    sprintf(buffer,"hashmap size :%d\n",hashmap_count(server->allConns));
-    PrintCallback(buffer);
+    //printf("hashmap size :%d\n",hashmap_count(server->allConns));
+    //sprintf(buffer,"hashmap size :%d\n",hashmap_count(server->allConns));
+    //PrintCallback(buffer);
     server->count++;//TODO 需要判断是否达到最大连接数
     wait_group_add(&server->closeWg,1);
 
@@ -68,12 +68,12 @@ int OnServerConnConnected(struct rdma_cm_id *id, void* ctx) {
 int OnServerConnDisconnected(struct rdma_cm_id *id, void* ctx) { //TODO just conn disconnected
 
     struct RdmaListener* server = (struct RdmaListener*)ctx;
-    printf("server=%p, on %s \n", server, __FUNCTION__);
-    sprintf(buffer,"server=%p, on %s \n", server, __FUNCTION__);
-    PrintCallback(buffer);
+    //printf("server=%p, on %s \n", server, __FUNCTION__);
+    //sprintf(buffer,"server=%p, on %s \n", server, __FUNCTION__);
+    //PrintCallback(buffer);
     Connection* conn = (Connection*)id->context;
-    sprintf(buffer,"conn=%d disconnected\n", conn);
-    PrintCallback(buffer);
+    //sprintf(buffer,"conn=%d disconnected\n", conn);
+    //PrintCallback(buffer);
     pthread_spin_lock(&conn->lock);
     conn->state = CONN_STATE_CLOSED;
     pthread_spin_unlock(&conn->lock);
@@ -91,15 +91,15 @@ int OnServerConnDisconnected(struct rdma_cm_id *id, void* ctx) { //TODO just con
     pthread_mutex_lock(&(server->mutex));
 
     if(hashmap_delete(server->allConns,conn) == NULL) { //TODO error handler
-        printf("server conn is not in map\n");
-        sprintf(buffer,"server conn is not in map\n");
-        PrintCallback(buffer);
+        //printf("server conn is not in map\n");
+        //sprintf(buffer,"server conn is not in map\n");
+        //PrintCallback(buffer);
     } else {
         server->count--;
     }
-    printf("hashmap size :%d\n",hashmap_count(server->allConns));
-    sprintf(buffer,"hashmap size :%d\n",hashmap_count(server->allConns));
-    PrintCallback(buffer);
+    //printf("hashmap size :%d\n",hashmap_count(server->allConns));
+    //sprintf(buffer,"hashmap size :%d\n",hashmap_count(server->allConns));
+    //PrintCallback(buffer);
 
     pthread_mutex_unlock(&(server->mutex));
 
@@ -148,16 +148,16 @@ Connection* getServerConn(struct RdmaListener *server) {
     }
     pthread_mutex_unlock(&(server->mutex));
 
-    printf("waitConns size: %d\n",GetSize(server->waitConns));
-    sprintf(buffer,"waitConns size: %d\n",GetSize(server->waitConns));
-    PrintCallback(buffer);
+    //printf("waitConns size: %d\n",GetSize(server->waitConns));
+    //sprintf(buffer,"waitConns size: %d\n",GetSize(server->waitConns));
+    //PrintCallback(buffer);
     return conn;
 }
 
 struct RdmaListener* StartServer(const char* ip, uint16_t port, char* serverAddr) {//, MemoryPool* pool, ObjectPool* headerPool, ObjectPool* responsePool, struct ibv_pd* pd, struct ibv_mr* mr
-    printf("StartServer ip=%s, port=%d\n", ip, port);
-    sprintf(buffer,"StartServer ip=%s, port=%d\n", ip, port);
-    PrintCallback(buffer);
+    //printf("StartServer ip=%s, port=%d\n", ip, port);
+    //sprintf(buffer,"StartServer ip=%s, port=%d\n", ip, port);
+    //PrintCallback(buffer);
     struct rdma_addrinfo hints, *res;
     struct ibv_qp_init_attr init_attr;
     memset(&hints, 0, sizeof hints);
@@ -204,9 +204,9 @@ struct RdmaListener* StartServer(const char* ip, uint16_t port, char* serverAddr
     server->cFd = open_event_fd();
     int ret = wait_group_init(&server->closeWg);
     if(ret) {
-        printf("init conn wg failed, err:%d",ret);
-        sprintf(buffer,"init conn wg failed, err:%d",ret);
-        PrintCallback(buffer);
+        //printf("init conn wg failed, err:%d",ret);
+        //sprintf(buffer,"init conn wg failed, err:%d",ret);
+        //PrintCallback(buffer);
         return NULL;
     }
 
@@ -222,9 +222,9 @@ struct RdmaListener* StartServer(const char* ip, uint16_t port, char* serverAddr
 
     EpollAddConnectEvent(server->listen_id->channel->fd, conn_ev);
 
-    printf("start server %p \n", server);
-    sprintf(buffer,"start server %p \n", server);
-    PrintCallback(buffer);
+    //printf("start server %p \n", server);
+    //sprintf(buffer,"start server %p \n", server);
+    //PrintCallback(buffer);
 
     return server;
 }

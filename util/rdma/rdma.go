@@ -200,7 +200,8 @@ func (server *Server) Accept() *Connection {
 	//conn.waitResp = make(map[*C.char]unsafe.Pointer)
 	//conn.recvMsgList = list.New()
 	//atomic.StoreInt32(&conn.state, CONN_ST_CONNECTED)
-	println("server accept")
+
+	//println("server accept")
 	return conn
 }
 
@@ -210,7 +211,7 @@ func (server *Server) Close() (err error) {
 		err = errors2.New("server free failed")
 		return err
 	}
-	println("server free success")
+	//println("server free success")
 	return
 }
 
@@ -235,7 +236,7 @@ func NewRdmaClient(targetIp, targetPort string) (client *Client, err error) { //
 	cCtx := C.Connect(C.CString(client.RemoteIp), C.CString(client.RemotePort), C.CString(targetAddr)) //, (*C.MemoryPool)(memoryPool.cMemoryPool),
 	//(*C.ObjectPool)(headerPool.cObjectPool), (*C.ObjectPool)(responsePool.cObjectPool), (*C.struct_ibv_pd)(memoryPool.cPd), (*C.struct_ibv_mr)(memoryPool.cMr)
 	if cCtx == nil {
-		println("client connect failed")
+		//println("client connect failed")
 		err = errors2.New("client connect failed")
 		return nil, err
 	}
@@ -255,7 +256,7 @@ func NewRdmaClient(targetIp, targetPort string) (client *Client, err error) { //
 }
 
 func (client *Client) Dial() (conn *Connection) {
-	println("client dial")
+	//println("client dial")
 	conn = &Connection{}
 	cConn := C.getClientConn((*C.struct_RdmaContext)(client.cClient))
 	atomic.StoreInt32(&conn.state, CONN_ST_CONNECTING)
@@ -280,7 +281,7 @@ func (client *Client) Close() (err error) {
 		return err
 	}
 	//client.cClient = nil
-	println("client free success")
+	//println("client free success")
 	return nil
 }
 
@@ -345,7 +346,7 @@ func (conn *Connection) init(cConn *C.Connection) {
 	conn.wFd = C.open_event_fd()
 	conn.SetDeadline(time.Now().Add(50 * time.Millisecond))
 	C.setConnContext(cConn, unsafe.Pointer(conn))
-	println("conn set connContext")
+	//println("conn set connContext")
 
 	conn.recvMsgList = list.New()
 }

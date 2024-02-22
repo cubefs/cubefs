@@ -33,9 +33,9 @@ int rdmaPostRecv(Connection *conn, void *block) {
     if (ret) {
         //serverLog(LL_WARNING, "RDMA: post recv failed: %d", ret);
         //TODO error handler
-        printf("RDMA: post recv failed: %d", ret);
-        sprintf(buffer,"RDMA: post recv failed: %d", ret);
-        PrintCallback(buffer);
+        //printf("RDMA: post recv failed: %d", ret);
+        //sprintf(buffer,"RDMA: post recv failed: %d", ret);
+        //PrintCallback(buffer);
         return C_ERR;
     }
 
@@ -49,9 +49,9 @@ void *page_aligned_zalloc(size_t size) {
     aligned_size = (size + page_size - 1) & (~(page_size - 1));
     if (posix_memalign(&tmp, page_size, aligned_size)) {
         //serverPanic("posix_memalign failed");
-        printf("posix_memalign failed");
-        sprintf(buffer,"posix_memalign failed");
-        PrintCallback(buffer);
+        //printf("posix_memalign failed");
+        //sprintf(buffer,"posix_memalign failed");
+        //PrintCallback(buffer);
     }
 
     memset(tmp, 0x00, aligned_size);
@@ -64,9 +64,9 @@ void rdmaDestroyIoBuf(Connection *conn) {//TODO need to modify
 
     if(conn->freeList) {
         ClearQueue(conn->freeList);
-        printf("header freeList size: %d\n",GetSize(conn->freeList));
-        sprintf(buffer,"header freeList size: %d\n",GetSize(conn->freeList));
-        PrintCallback(buffer);
+        //printf("header freeList size: %d\n",GetSize(conn->freeList));
+        //sprintf(buffer,"header freeList size: %d\n",GetSize(conn->freeList));
+        //PrintCallback(buffer);
     }
     if (conn->header_mr) {
         ibv_dereg_mr(conn->header_mr);
@@ -106,29 +106,29 @@ int rdmaSetupIoBuf(Connection *conn, struct ConnectionEvent *conn_ev, int connty
     Response* response;
     int i;
 
-    printf("wq_depth: %d\n",WQ_DEPTH);
-    sprintf(buffer,"wq_depth: %d\n",WQ_DEPTH);
-    PrintCallback(buffer);
+    //printf("wq_depth: %d\n",WQ_DEPTH);
+    //sprintf(buffer,"wq_depth: %d\n",WQ_DEPTH);
+    //PrintCallback(buffer);
 
-    printf("headers length: %d\n",headers_length);
-    sprintf(buffer,"headers length: %d\n",headers_length);
-    PrintCallback(buffer);
-    printf("responses length: %d\n",responses_length);
-    sprintf(buffer,"responses length: %d\n",responses_length);
-    PrintCallback(buffer);
+    //printf("headers length: %d\n",headers_length);
+    //sprintf(buffer,"headers length: %d\n",headers_length);
+    //PrintCallback(buffer);
+    //printf("responses length: %d\n",responses_length);
+    //sprintf(buffer,"responses length: %d\n",responses_length);
+    //PrintCallback(buffer);
 
     int index = buddy_alloc(headerPool->allocation, WQ_DEPTH);
-    sprintf(buffer,"%d\n",index);
-    PrintCallback(buffer);
+    //sprintf(buffer,"%d\n",index);
+    //PrintCallback(buffer);
     buddy_dump(headerPool->allocation);
     int s = buddy_size(headerPool->allocation,index);//when index == -1,assert is not pass
-    printf("index %d (sz = %d)\n",index,s);
-    sprintf(buffer,"index %d (sz = %d)\n",index,s);
-    PrintCallback(buffer);
+    //printf("index %d (sz = %d)\n",index,s);
+    //sprintf(buffer,"index %d (sz = %d)\n",index,s);
+    //PrintCallback(buffer);
     if(index == -1) {
-        printf("headerPool: there is no space to alloc\n");
-        sprintf(buffer,"headerPool: there is no space to alloc\n");
-        PrintCallback(buffer);
+        //printf("headerPool: there is no space to alloc\n");
+        //sprintf(buffer,"headerPool: there is no space to alloc\n");
+        //PrintCallback(buffer);
         goto destroy_iobuf; //TODO maybe return -1
     }
     void* addr = headerPool->original_mem + index * sizeof(Header);
@@ -137,22 +137,22 @@ int rdmaSetupIoBuf(Connection *conn, struct ConnectionEvent *conn_ev, int connty
 
     if (!conn->header_mr) {
         //serverLog(LL_WARNING, "RDMA: reg mr for CMD failed");
-        printf("RDMA: reg header mr failed\n");
-        sprintf(buffer,"RDMA: reg header mr failed\n");
-        PrintCallback(buffer);
+        //printf("RDMA: reg header mr failed\n");
+        //sprintf(buffer,"RDMA: reg header mr failed\n");
+        //PrintCallback(buffer);
         goto destroy_iobuf;
     }
 
     index = buddy_alloc(responsePool->allocation, WQ_DEPTH);
     buddy_dump(responsePool->allocation);
     s = buddy_size(responsePool->allocation,index);
-    printf("index %d (sz = %d)\n",index,s);
-    sprintf(buffer,"index %d (sz = %d)\n",index,s);
-    PrintCallback(buffer);
+    //printf("index %d (sz = %d)\n",index,s);
+    //sprintf(buffer,"index %d (sz = %d)\n",index,s);
+    //PrintCallback(buffer);
     if(index == -1) {
-        printf("responsePool: there is no space to alloc\n");
-        sprintf(buffer,"responsePool: there is no space to alloc\n");
-        PrintCallback(buffer);
+        //printf("responsePool: there is no space to alloc\n");
+        //sprintf(buffer,"responsePool: there is no space to alloc\n");
+        //PrintCallback(buffer);
         goto destroy_iobuf; //TODO maybe return -1
     }
     addr = responsePool->original_mem + index * sizeof(Response);
@@ -161,9 +161,9 @@ int rdmaSetupIoBuf(Connection *conn, struct ConnectionEvent *conn_ev, int connty
     conn->response_mr = ibv_reg_mr(conn->pd, conn->response_buf, responses_length, access);
     if (!conn->response_mr) {
         //serverLog(LL_WARNING, "RDMA: reg mr for CMD failed");
-        printf("RDMA: reg response mr failed\n");
-        sprintf(buffer,"RDMA: reg response mr failed\n");
-        PrintCallback(buffer);
+        //printf("RDMA: reg response mr failed\n");
+        //sprintf(buffer,"RDMA: reg response mr failed\n");
+        //PrintCallback(buffer);
         goto destroy_iobuf;
     }
     if (conntype == 1) {//server
@@ -171,34 +171,34 @@ int rdmaSetupIoBuf(Connection *conn, struct ConnectionEvent *conn_ev, int connty
             header = conn->header_buf + i;
             if (rdmaPostRecv(conn, header) == C_ERR) {
                 //serverLog(LL_WARNING, "RDMA: post recv failed");
-                printf("headers: RDMA: post recv failed\n");
-                sprintf(buffer,"headers: RDMA: post recv failed\n");
-                PrintCallback(buffer);
+                //printf("headers: RDMA: post recv failed\n");
+                //sprintf(buffer,"headers: RDMA: post recv failed\n");
+                //PrintCallback(buffer);
                 goto destroy_iobuf;
             }
         }
-        sprintf(buffer,"555");
-        PrintCallback(buffer);
+        //sprintf(buffer,"555");
+        //PrintCallback(buffer);
         for (i = 0; i < WQ_DEPTH; i++) {
             response = conn->response_buf + i;
             if(EnQueue(conn->freeList,response) == NULL) { //TODO error handler
-                printf("conn freeList has no more memory can be malloced\n");
-                sprintf(buffer,"conn freeList has no more memory can be malloced\n");
-                PrintCallback(buffer);
+                //printf("conn freeList has no more memory can be malloced\n");
+                //sprintf(buffer,"conn freeList has no more memory can be malloced\n");
+                //PrintCallback(buffer);
                 goto destroy_iobuf;
             }
         }
-        printf("response freeList size: %d\n",GetSize(conn->freeList));
-        sprintf(buffer,"response freeList size: %d\n",GetSize(conn->freeList));
-        PrintCallback(buffer);
+        //printf("response freeList size: %d\n",GetSize(conn->freeList));
+        //sprintf(buffer,"response freeList size: %d\n",GetSize(conn->freeList));
+        //PrintCallback(buffer);
     } else {//client
 
         for (i = 0; i < WQ_DEPTH; i++) {
             response = conn->response_buf + i;
             if (rdmaPostRecv(conn, response) == C_ERR) {
-                printf("responses: RDMA: post recv failed\n");
-                sprintf(buffer,"responses: RDMA: post recv failed\n");
-                PrintCallback(buffer);
+                //printf("responses: RDMA: post recv failed\n");
+                //sprintf(buffer,"responses: RDMA: post recv failed\n");
+                //PrintCallback(buffer);
                 goto destroy_iobuf;
             }
 
@@ -207,15 +207,15 @@ int rdmaSetupIoBuf(Connection *conn, struct ConnectionEvent *conn_ev, int connty
         for (i = 0; i < WQ_DEPTH; i++) {
             header = conn->header_buf + i;
             if(EnQueue(conn->freeList,header) == NULL) { //TODO error handler
-                printf("conn freeList has no more memory can be malloced\n");
-                sprintf(buffer,"conn freeList has no more memory can be malloced\n");
-                PrintCallback(buffer);
+                //printf("conn freeList has no more memory can be malloced\n");
+                //sprintf(buffer,"conn freeList has no more memory can be malloced\n");
+                //PrintCallback(buffer);
                 goto destroy_iobuf;
             }
         }
-        printf("header freeList size: %d\n",GetSize(conn->freeList));
-        sprintf(buffer,"header freeList size: %d\n",GetSize(conn->freeList));
-        PrintCallback(buffer);
+        //printf("header freeList size: %d\n",GetSize(conn->freeList));
+        //sprintf(buffer,"header freeList size: %d\n",GetSize(conn->freeList));
+        //PrintCallback(buffer);
     }
     
     conn->header_pool = headerPool;
@@ -248,34 +248,34 @@ Connection* AllocConnection(struct rdma_cm_id *cm_id, struct ConnectionEvent *co
 
     int ret = wait_group_init(&conn->wg);
     if(ret) {
-        printf("init conn wg failed, err:%d",ret);
-        sprintf(buffer,"init conn wg failed, err:%d",ret);
-        PrintCallback(buffer);
+        //printf("init conn wg failed, err:%d",ret);
+        //sprintf(buffer,"init conn wg failed, err:%d",ret);
+        //PrintCallback(buffer);
         goto error;
     }
     conn->lockInitialized = 0;
     ret = pthread_spin_init(&conn->lock,PTHREAD_PROCESS_SHARED);
     if(ret) {
-        printf("init conn spin lock failed, err:%d",ret);
-        sprintf(buffer,"init conn spin lock failed, err:%d",ret);
-        PrintCallback(buffer);
+        //printf("init conn spin lock failed, err:%d",ret);
+        //sprintf(buffer,"init conn spin lock failed, err:%d",ret);
+        //PrintCallback(buffer);
         goto error;
     }
     conn->lockInitialized = 1;
 
     ret = build_connection(conn_ev, conn);
     if(ret == C_ERR) {
-        printf("server build connection failed");
-        sprintf(buffer,"server build connection failed");
-        PrintCallback(buffer);
+        //printf("server build connection failed");
+        //sprintf(buffer,"server build connection failed");
+        //PrintCallback(buffer);
         goto error;
         //return NULL;
     }
 
     if(!rdmaSetupIoBuf(conn, conn_ev, conntype)) {
-        printf("set up io buf failed\n");
-        sprintf(buffer,"set up io buf failed\n");
-        PrintCallback(buffer);
+        //printf("set up io buf failed\n");
+        //sprintf(buffer,"set up io buf failed\n");
+        //PrintCallback(buffer);
         goto error;
         //return NULL;
     };
@@ -310,9 +310,9 @@ int UpdateConnection(Connection* conn) {
     if (ibv_query_device(conn->cm_id->verbs, &device_attr)) {
         //serverLog(LL_WARNING, "RDMA: ibv ibv query device failed");
         //TODO error handler
-        printf("RDMA: ibv query device failed\n");
-        sprintf(buffer,"RDMA: ibv query device failed\n");
-        PrintCallback(buffer);
+        //printf("RDMA: ibv query device failed\n");
+        //sprintf(buffer,"RDMA: ibv query device failed\n");
+        //PrintCallback(buffer);
         //return C_ERR;
         goto error;
     }
@@ -321,9 +321,9 @@ int UpdateConnection(Connection* conn) {
     if (!cq) {
         //serverLog(LL_WARNING, "RDMA: ibv create cq failed");
         //TODO error handler
-        printf("RDMA: ibv create cq failed: cq:%d\n",cq);
-        sprintf(buffer,"RDMA: ibv create cq failed: cq:%d\n",cq);
-        PrintCallback(buffer);
+        //printf("RDMA: ibv create cq failed: cq:%d\n",cq);
+        //sprintf(buffer,"RDMA: ibv create cq failed: cq:%d\n",cq);
+        //PrintCallback(buffer);
         //return C_ERR;
         goto error;
     }
@@ -345,9 +345,9 @@ int UpdateConnection(Connection* conn) {
     int ret = rdma_create_qp(conn->cm_id, conn->pd, &init_attr);
     if (ret) {//TODO error handler
         //serverLog(LL_WARNING, "RDMA: create qp failed");
-        printf("RDMA: create qp failed: %s\n",strerror(errno));
-        sprintf(buffer,"RDMA: create qp failed: %s\n",strerror(errno));
-        PrintCallback(buffer);
+        //printf("RDMA: create qp failed: %s\n",strerror(errno));
+        //sprintf(buffer,"RDMA: create qp failed: %s\n",strerror(errno));
+        //PrintCallback(buffer);
         goto error;
     }
 
@@ -356,9 +356,9 @@ int UpdateConnection(Connection* conn) {
         response = conn->response_buf + i;
         if (rdmaPostRecv(conn, response) == C_ERR) {//TODO error handler
             //serverLog(LL_WARNING, "RDMA: post recv failed");
-            printf("responses: RDMA: post recv failed\n");
-            sprintf(buffer,"responses: RDMA: post recv failed\n");
-            PrintCallback(buffer);
+            //printf("responses: RDMA: post recv failed\n");
+            //sprintf(buffer,"responses: RDMA: post recv failed\n");
+            //PrintCallback(buffer);
             goto error;
         }
 
@@ -367,24 +367,24 @@ int UpdateConnection(Connection* conn) {
     for (int i = 0; i < WQ_DEPTH; i++) {
         header = conn->header_buf + i;
         if(EnQueue(conn->freeList,header) == NULL) { //TODO error handler
-            printf("no more memory can be malloced\n");
-            sprintf(buffer,"no more memory can be malloced\n");
-            PrintCallback(buffer);
+            //printf("no more memory can be malloced\n");
+            //sprintf(buffer,"no more memory can be malloced\n");
+            //PrintCallback(buffer);
             goto error;
         }
     }
-    printf("header freeList size: %d\n",GetSize(conn->freeList));
-    sprintf(buffer,"header freeList size: %d\n",GetSize(conn->freeList));
-    PrintCallback(buffer);
+    //printf("header freeList size: %d\n",GetSize(conn->freeList));
+    //sprintf(buffer,"header freeList size: %d\n",GetSize(conn->freeList));
+    //PrintCallback(buffer);
     
 
     return C_OK;
 error:
     if(conn->cm_id->qp) {
         if(ibv_destroy_qp(conn->cm_id->qp)) {
-            printf("Failed to destroy qp: %s\n", strerror(errno));
-            sprintf(buffer,"Failed to destroy qp: %s\n", strerror(errno));
-            PrintCallback(buffer);
+            //printf("Failed to destroy qp: %s\n", strerror(errno));
+            //sprintf(buffer,"Failed to destroy qp: %s\n", strerror(errno));
+            //PrintCallback(buffer);
             //printf("Failed to destroy qp cleanly\n");
             // we continue anyways;
         }
@@ -392,10 +392,10 @@ error:
     if(conn->cq) {
         int ret = ibv_destroy_cq(conn->cq);
         if(ret) {
-            printf("%d\n",ret);
-            printf("Failed to destroy cq: %s\n", strerror(errno));
-            sprintf(buffer,"Failed to destroy cq: %s\n", strerror(errno));
-            PrintCallback(buffer);
+            //printf("%d\n",ret);
+            //printf("Failed to destroy cq: %s\n", strerror(errno));
+            //sprintf(buffer,"Failed to destroy cq: %s\n", strerror(errno));
+            //PrintCallback(buffer);
             //printf("Failed to destroy cq cleanly\n");
             // we continue anyways;
         }
@@ -403,9 +403,9 @@ error:
     }        
     if(conn->freeList) {
         ClearQueue(conn->freeList);
-        printf("header freeList size: %d\n",GetSize(conn->freeList));
-        sprintf(buffer,"header freeList size: %d\n",GetSize(conn->freeList));
-        PrintCallback(buffer);
+        //printf("header freeList size: %d\n",GetSize(conn->freeList));
+        //sprintf(buffer,"header freeList size: %d\n",GetSize(conn->freeList));
+        //PrintCallback(buffer);
     }
     close(conn->cFd);
     conn->cFd = -1;
@@ -436,9 +436,9 @@ int ReConnect(Connection* conn) {
     ret = rdma_resolve_addr(conn->cm_id, NULL, addr->ai_addr, TIMEOUT_IN_MS);
     if(ret) {//TODO
         //TODO error handler & release resources ()
-        printf("Failed to resolve addr: %s\n", strerror(errno));
-        sprintf(buffer,"Failed to resolve addr: %s\n", strerror(errno));
-        PrintCallback(buffer);
+        //printf("Failed to resolve addr: %s\n", strerror(errno));
+        //sprintf(buffer,"Failed to resolve addr: %s\n", strerror(errno));
+        //PrintCallback(buffer);
         return C_ERR;
     }
     
@@ -460,9 +460,9 @@ int DisConnect(Connection* conn, bool force) { //TODO ()
         } else {
             conn->state = CONN_STATE_CLOSING;
             pthread_spin_unlock(&conn->lock);
-            printf("force disconnect\n");
-            sprintf(buffer,"force disconnect\n");
-            PrintCallback(buffer);
+            //printf("force disconnect\n");
+            //sprintf(buffer,"force disconnect\n");
+            //PrintCallback(buffer);
             EpollDelConnEvent(conn->comp_channel->fd);
             int ret = rdma_disconnect(conn->cm_id);
             if(ret != 0) {
@@ -486,9 +486,9 @@ int DisConnect(Connection* conn, bool force) { //TODO ()
 
         free(conn);
 
-        printf("server connect closed success\n");
-        sprintf(buffer,"server connect closed success\n");
-        PrintCallback(buffer);
+        //printf("server connect closed success\n");
+        //sprintf(buffer,"server connect closed success\n");
+        //PrintCallback(buffer);
         return C_OK;
     } else {//client
         
@@ -518,9 +518,9 @@ int DisConnect(Connection* conn, bool force) { //TODO ()
             if(wait_event(conn->cFd) <= 0) {//TODO error handler
 		        return C_ERR;
 	        }
-            printf("client connect has been closed\n");
-            sprintf(buffer,"client connect has been closed\n");
-            PrintCallback(buffer);
+            //printf("client connect has been closed\n");
+            //sprintf(buffer,"client connect has been closed\n");
+            //PrintCallback(buffer);
         }
 
         if(conn->cFd > 0) {
@@ -529,9 +529,9 @@ int DisConnect(Connection* conn, bool force) { //TODO ()
             conn->cFd = -1;
         }
 
-        printf("client connect closed success\n");
-        sprintf(buffer,"client connect closed success\n");
-        PrintCallback(buffer);
+        //printf("client connect closed success\n");
+        //sprintf(buffer,"client connect closed success\n");
+        //PrintCallback(buffer);
 
         return C_OK;
     }
@@ -560,9 +560,9 @@ int rdmaSendCommand(Connection *conn, void *block, int32_t len) {
     if (ret != 0) {
         //serverLog(LL_WARNING, "RDMA: post send failed: %d", ret);
         //TODO error handler
-        printf("RDMA: post send failed: %d", ret);
-        sprintf(buffer,"RDMA: post send failed: %d", ret);
-        PrintCallback(buffer);
+        //printf("RDMA: post send failed: %d", ret);
+        //sprintf(buffer,"RDMA: post send failed: %d", ret);
+        //PrintCallback(buffer);
         return C_ERR;
     }
 
@@ -572,9 +572,9 @@ int rdmaSendCommand(Connection *conn, void *block, int32_t len) {
 int connRdmaSendHeader(Connection *conn, void* header, int32_t len) {
     pthread_spin_lock(&conn->lock);
     if(conn->state != CONN_STATE_CONNECTED) {
-        printf("conn state is not connected: state(%d)\n",conn->state);//TODO change print msg
-        sprintf(buffer,"conn state is not connected: state(%d)\n",conn->state);
-        PrintCallback(buffer);
+        //printf("conn state is not connected: state(%d)\n",conn->state);//TODO change print msg
+        //sprintf(buffer,"conn state is not connected: state(%d)\n",conn->state);
+        //PrintCallback(buffer);
         //TODO release buff
         pthread_spin_unlock(&conn->lock);
         return C_ERR;
@@ -588,9 +588,9 @@ int connRdmaSendHeader(Connection *conn, void* header, int32_t len) {
 int connRdmaSendResponse(Connection *conn, Response *response, int32_t len) {
     pthread_spin_lock(&conn->lock);
     if(conn->state != CONN_STATE_CONNECTED) {
-        printf("conn state is not connected: state(%d)\n",conn->state);//TODO change print msg
-       sprintf(buffer,"conn state is not connected: state(%d)\n",conn->state);
-       PrintCallback(buffer);
+       //printf("conn state is not connected: state(%d)\n",conn->state);//TODO change print msg
+       //sprintf(buffer,"conn state is not connected: state(%d)\n",conn->state);
+       //PrintCallback(buffer);
         //TODO release buff
         pthread_spin_unlock(&conn->lock);
         return C_ERR;
@@ -604,9 +604,9 @@ int connRdmaSendResponse(Connection *conn, Response *response, int32_t len) {
 int rdmaPostRecvHeader(Connection *conn, void *headerCtx) {
     pthread_spin_lock(&conn->lock);
     if(conn->state != CONN_STATE_CONNECTED) {//test problem
-        printf("conn state is not connected: state(%d)\n",conn->state);//TODO change print msg
-        sprintf(buffer,"conn state is not connected: state(%d)\n",conn->state);
-        PrintCallback(buffer);
+        //printf("conn state is not connected: state(%d)\n",conn->state);//TODO change print msg
+        //sprintf(buffer,"conn state is not connected: state(%d)\n",conn->state);
+        //PrintCallback(buffer);
         //TODO release buff
         pthread_spin_unlock(&conn->lock);
         return C_ERR;
@@ -627,9 +627,9 @@ error:
 int rdmaPostRecvResponse(Connection *conn, void *responseCtx) {;
     pthread_spin_lock(&conn->lock);
     if(conn->state != CONN_STATE_CONNECTED) {//test problem
-        printf("conn state is not connected: state(%d)\n",conn->state);//TODO change print msg
-        sprintf(buffer,"conn state is not connected: state(%d)\n",conn->state);
-        PrintCallback(buffer);
+        //printf("conn state is not connected: state(%d)\n",conn->state);//TODO change print msg
+        //sprintf(buffer,"conn state is not connected: state(%d)\n",conn->state);
+        //PrintCallback(buffer);
         //TODO release buff
         pthread_spin_unlock(&conn->lock);
         return C_ERR;
@@ -664,34 +664,34 @@ void* getDataBuffer(uint32_t size, int64_t timeout_us,int64_t *ret_size) {//budd
         
         now = get_time_ns();
         if(dead_line == -1) {
-            printf("get data buffer timeout, deadline:%ld, now:%ld\n", dead_line, now);
-            sprintf(buffer,"get data buffer timeout, deadline:%ld, now:%ld\n", dead_line, now);
-            PrintCallback(buffer);
+            //printf("get data buffer timeout, deadline:%ld, now:%ld\n", dead_line, now);
+            //sprintf(buffer,"get data buffer timeout, deadline:%ld, now:%ld\n", dead_line, now);
+            //PrintCallback(buffer);
             return NULL;
         }
         if(now >= dead_line) {
-            printf("get data buffer timeout, deadline:%ld, now:%ld\n", dead_line, now);
-            sprintf(buffer,"get data buffer timeout, deadline:%ld, now:%ld\n", dead_line, now);
-            PrintCallback(buffer);
+            //printf("get data buffer timeout, deadline:%ld, now:%ld\n", dead_line, now);
+            //sprintf(buffer,"get data buffer timeout, deadline:%ld, now:%ld\n", dead_line, now);
+            //PrintCallback(buffer);
             return NULL;
         }
 
         int index = buddy_alloc(rdmaPool->memoryPool->allocation,size / rdmaPoolConfig->memBlockSize);
         if(index == -1) {
-            printf("get data buffer failed, no more data buffer can get\n");
-            sprintf(buffer,"get data buffer failed, no more data buffer can get\n");
-            PrintCallback(buffer);
+            //printf("get data buffer failed, no more data buffer can get\n");
+            //sprintf(buffer,"get data buffer failed, no more data buffer can get\n");
+            //PrintCallback(buffer);
             continue;
         }
         buddy_dump(rdmaPool->memoryPool->allocation);
         int s = buddy_size(rdmaPool->memoryPool->allocation,index);
-        printf("index %d (sz = %d)\n",index,s);
+        //printf("index %d (sz = %d)\n",index,s);
         assert(s >= (size / rdmaPoolConfig->memBlockSize));
 
         *ret_size = s * rdmaPoolConfig->memBlockSize;
         void* send_buffer = rdmaPool->memoryPool->original_mem + index * rdmaPoolConfig->memBlockSize;  //TODO BLOCK_SIZE
-        sprintf(buffer,"getDataBuffer: buff(%d)\n",send_buffer);
-        PrintCallback(buffer);
+        //sprintf(buffer,"getDataBuffer: buff(%d)\n",send_buffer);
+        //PrintCallback(buffer);
         return send_buffer;
     }
 }
@@ -716,44 +716,44 @@ void* getResponseBuffer(Connection *conn, int64_t timeout_us, int32_t *ret_size)
         pthread_spin_lock(&conn->lock);
         if (conn->state != CONN_STATE_CONNECTED) { //在使用之前需要判断连接的状态
             *ret_size = -1;
-            printf("get response buffer: conn(%p) state is not connected: state(%d)\n",conn, conn->state);//TODO change print msg
-            sprintf(buffer,"get response buffer: conn(%p) state is not connected: state(%d)\n",conn, conn->state);
-            PrintCallback(buffer);
+            //printf("get response buffer: conn(%p) state is not connected: state(%d)\n",conn, conn->state);//TODO change print msg
+            //sprintf(buffer,"get response buffer: conn(%p) state is not connected: state(%d)\n",conn, conn->state);
+            //PrintCallback(buffer);
             pthread_spin_unlock(&conn->lock);
             return NULL;
         }
         
         now = get_time_ns();
         if(dead_line == -1) {
-            printf("conn(%p) get response buffer timeout, deadline:%ld, now:%ld\n", conn, dead_line, now);
-            sprintf(buffer,"conn(%p) get response buffer timeout, deadline:%ld, now:%ld\n", conn, dead_line, now);
-            PrintCallback(buffer);
+            //printf("conn(%p) get response buffer timeout, deadline:%ld, now:%ld\n", conn, dead_line, now);
+            //sprintf(buffer,"conn(%p) get response buffer timeout, deadline:%ld, now:%ld\n", conn, dead_line, now);
+            //PrintCallback(buffer);
             DisConnect(conn,true);
             pthread_spin_unlock(&conn->lock);
             return NULL;
         }
         if(now >= dead_line) {
-            printf("conn(%p) get response buffer timeout, deadline:%ld, now:%ld\n", conn, dead_line, now);
-            sprintf(buffer,"conn(%p) get response buffer timeout, deadline:%ld, now:%ld\n", conn, dead_line, now);
-            PrintCallback(buffer);
+            //printf("conn(%p) get response buffer timeout, deadline:%ld, now:%ld\n", conn, dead_line, now);
+            //sprintf(buffer,"conn(%p) get response buffer timeout, deadline:%ld, now:%ld\n", conn, dead_line, now);
+            //PrintCallback(buffer);
             DisConnect(conn,true);
             pthread_spin_unlock(&conn->lock);
             return NULL;
         }
 
         if(DeQueue(conn->freeList,&(response)) == NULL) {//TODO freeList如果没有free的block的话，需要考虑怎么处理,OK
-            printf("conn(%d) get response buffer failed, no more response buffer can get\n", conn);
-            sprintf(buffer,"conn(%d) get response buffer failed, no more response buffer can get\n", conn);
-            PrintCallback(buffer);
+            //printf("conn(%d) get response buffer failed, no more response buffer can get\n", conn);
+            //sprintf(buffer,"conn(%d) get response buffer failed, no more response buffer can get\n", conn);
+            //PrintCallback(buffer);
             pthread_spin_unlock(&conn->lock);
             continue;
         }
 
         pthread_spin_unlock(&conn->lock);
 
-        printf("response freeList size: %d\n",GetSize(conn->freeList));
-        sprintf(buffer,"response freeList size: %d\n",GetSize(conn->freeList));
-        PrintCallback(buffer);
+        //printf("response freeList size: %d\n",GetSize(conn->freeList));
+        //sprintf(buffer,"response freeList size: %d\n",GetSize(conn->freeList));
+        //PrintCallback(buffer);
 
         *ret_size = sizeof(Response);
         return response;
@@ -780,44 +780,44 @@ void* getHeaderBuffer(Connection *conn, int64_t timeout_us, int32_t *ret_size) {
         pthread_spin_lock(&conn->lock);
         if (conn->state != CONN_STATE_CONNECTED) { //在使用之前需要判断连接的状态
             *ret_size = -1;
-            printf("get header buffer: conn state is not connected: state(%d)\n",conn->state);//TODO change print msg
-            sprintf(buffer,"get header buffer: conn state is not connected: state(%d)\n",conn->state);
-            PrintCallback(buffer);
+            //printf("get header buffer: conn state is not connected: state(%d)\n",conn->state);//TODO change print msg
+            //sprintf(buffer,"get header buffer: conn state is not connected: state(%d)\n",conn->state);
+            //PrintCallback(buffer);
             pthread_spin_unlock(&conn->lock);
             return NULL;
         }
 
         now = get_time_ns();
         if(dead_line == -1) {
-            printf("conn(%p) get header buffer timeout, deadline:%ld, now:%ld\n", conn, dead_line, now);
-            sprintf(buffer,"conn(%p) get header buffer timeout, deadline:%ld, now:%ld\n", conn, dead_line, now);
-            PrintCallback(buffer);
+            //printf("conn(%p) get header buffer timeout, deadline:%ld, now:%ld\n", conn, dead_line, now);
+            //sprintf(buffer,"conn(%p) get header buffer timeout, deadline:%ld, now:%ld\n", conn, dead_line, now);
+            //PrintCallback(buffer);
             DisConnect(conn,true);
             pthread_spin_unlock(&conn->lock);
             return NULL;
         }
         if(now >= dead_line) {
-            printf("conn(%p) get header buffer timeout, deadline:%ld, now:%ld\n", conn, dead_line, now);
-            sprintf(buffer,"conn(%p) get header buffer timeout, deadline:%ld, now:%ld\n", conn, dead_line, now);
-            PrintCallback(buffer);
+            //printf("conn(%p) get header buffer timeout, deadline:%ld, now:%ld\n", conn, dead_line, now);
+            //sprintf(buffer,"conn(%p) get header buffer timeout, deadline:%ld, now:%ld\n", conn, dead_line, now);
+            //PrintCallback(buffer);
             DisConnect(conn,true);
             pthread_spin_unlock(&conn->lock);
             return NULL;
         }
 
         if(DeQueue(conn->freeList,&(header)) == NULL) {//TODO freeList如果没有free的block的话，需要考虑怎么处理,OK
-            printf("conn(%d) get header buffer failed, no more response buffer can get\n", conn);
-            sprintf(buffer,"conn(%d) get header buffer failed, no more response buffer can get\n", conn);
-            PrintCallback(buffer);
+            //printf("conn(%d) get header buffer failed, no more response buffer can get\n", conn);
+            //sprintf(buffer,"conn(%d) get header buffer failed, no more response buffer can get\n", conn);
+            //PrintCallback(buffer);
             pthread_spin_unlock(&conn->lock);
             continue;
         }
 
         pthread_spin_unlock(&conn->lock);
 
-        printf("header freeList size: %d\n",GetSize(conn->freeList));
-        sprintf(buffer,"header freeList size: %d\n",GetSize(conn->freeList));
-        PrintCallback(buffer);
+        //printf("header freeList size: %d\n",GetSize(conn->freeList));
+        //sprintf(buffer,"header freeList size: %d\n",GetSize(conn->freeList));
+        //PrintCallback(buffer);
 
         *ret_size = sizeof(Header);
         return header;
@@ -825,21 +825,21 @@ void* getHeaderBuffer(Connection *conn, int64_t timeout_us, int32_t *ret_size) {
 }
 
 void setConnContext(Connection* conn, void* connContext) {
-    sprintf(buffer,"setConnContext: conn %d\n",conn);
-    PrintCallback(buffer);
-    sprintf(buffer,"setConnContext: connContext %d\n",connContext);
-    PrintCallback(buffer);
-    sprintf(buffer,"setConnContext: connState %d\n",conn->state);
-    PrintCallback(buffer);
+    //sprintf(buffer,"setConnContext: conn %d\n",conn);
+    //PrintCallback(buffer);
+    //sprintf(buffer,"setConnContext: connContext %d\n",connContext);
+    //PrintCallback(buffer);
+    //sprintf(buffer,"setConnContext: connState %d\n",conn->state);
+    //PrintCallback(buffer);
     pthread_spin_lock(&conn->lock);
     conn->connContext = connContext;
     conn->state = CONN_STATE_CONNECTED;
-    sprintf(buffer,"setConnContext: 111\n");
-    PrintCallback(buffer);
-    sprintf(buffer,"setConnContext: conn->comp_channel %d\n",conn->comp_channel);
-    PrintCallback(buffer);
-    sprintf(buffer,"setConnContext: conn->comp_channel->fd %d\n",conn->comp_channel->fd);
-    PrintCallback(buffer);
+    //sprintf(buffer,"setConnContext: 111\n");
+    //PrintCallback(buffer);
+    //sprintf(buffer,"setConnContext: conn->comp_channel %d\n",conn->comp_channel);
+    //PrintCallback(buffer);
+    //sprintf(buffer,"setConnContext: conn->comp_channel->fd %d\n",conn->comp_channel->fd);
+    //PrintCallback(buffer);
     EpollAddSendAndRecvEvent(conn->comp_channel->fd, conn);
     pthread_spin_unlock(&conn->lock);
     return;
@@ -869,8 +869,8 @@ void setRecvTimeoutUs(Connection* conn, int64_t timeout_us) {
 
 int releaseDataBuffer(void* buff) {
     //TODO rdmaPool is closed?
-    sprintf(buffer,"releaseDataBuffer: buff(%d)\n",buff);
-    PrintCallback(buffer);
+    //sprintf(buffer,"releaseDataBuffer: buff(%d)\n",buff);
+    //PrintCallback(buffer);
     int index = (int)((buff - (rdmaPool->memoryPool->original_mem)) / (rdmaPoolConfig->memBlockSize));
     buddy_free(rdmaPool->memoryPool->allocation, index);
     buddy_dump(rdmaPool->memoryPool->allocation);
@@ -880,9 +880,9 @@ int releaseDataBuffer(void* buff) {
 int releaseResponseBuffer(Connection* conn, void* buff) {
     pthread_spin_lock(&conn->lock);
     if(conn->state != CONN_STATE_CONNECTED) {
-        printf("conn state is not connected: state(%d)\n",conn->state);//TODO change print msg
-        sprintf(buffer,"conn state is not connected: state(%d)\n",conn->state);
-        PrintCallback(buffer);
+        //printf("conn state is not connected: state(%d)\n",conn->state);//TODO change print msg
+        //sprintf(buffer,"conn state is not connected: state(%d)\n",conn->state);
+        //PrintCallback(buffer);
         //TODO release buff
         pthread_spin_unlock(&conn->lock);
         return C_ERR;
@@ -890,14 +890,14 @@ int releaseResponseBuffer(Connection* conn, void* buff) {
     
     if(EnQueue(conn->freeList,(Response*)buff) == NULL) { //TODO error handler
         pthread_spin_unlock(&conn->lock);
-        printf("no more memory can be malloced\n");
-        sprintf(buffer,"no more memory can be malloced\n");
-        PrintCallback(buffer);
+        //printf("no more memory can be malloced\n");
+        //sprintf(buffer,"no more memory can be malloced\n");
+        //PrintCallback(buffer);
         return C_ERR;
     };
-    printf("response freeList size: %d\n",GetSize(conn->freeList));
-    sprintf(buffer,"response freeList size: %d\n",GetSize(conn->freeList));
-    PrintCallback(buffer);
+    //printf("response freeList size: %d\n",GetSize(conn->freeList));
+    //sprintf(buffer,"response freeList size: %d\n",GetSize(conn->freeList));
+    //PrintCallback(buffer);
     pthread_spin_unlock(&conn->lock);
     return C_OK;
 }
@@ -905,23 +905,23 @@ int releaseResponseBuffer(Connection* conn, void* buff) {
 int releaseHeaderBuffer(Connection* conn, void* buff) {
     pthread_spin_lock(&conn->lock);
     if (conn->state != CONN_STATE_CONNECTED) { //在使用之前需要判断连接的状态
-        printf("conn state is not connected: state(%d)\n",conn->state);//TODO change print msg
-        sprintf(buffer,"conn state is not connected: state(%d)\n",conn->state);
-        PrintCallback(buffer);
+        //printf("conn state is not connected: state(%d)\n",conn->state);//TODO change print msg
+        //sprintf(buffer,"conn state is not connected: state(%d)\n",conn->state);
+        //PrintCallback(buffer);
         //TODO release buff
         pthread_spin_unlock(&conn->lock);
         return C_ERR;//TODO 错误码分情况
     }
     if(EnQueue(conn->freeList,(Header*)buff) == NULL) { //TODO error handler
         pthread_spin_unlock(&conn->lock);
-        printf("no more memory can be malloced\n");
-        sprintf(buffer,"no more memory can be malloced\n");
-        PrintCallback(buffer);
+        //printf("no more memory can be malloced\n");
+        //sprintf(buffer,"no more memory can be malloced\n");
+        //PrintCallback(buffer);
         return C_ERR;
     };
-    printf("header freeList size: %d\n",GetSize(conn->freeList));
-    sprintf(buffer,"header freeList size: %d\n",GetSize(conn->freeList));
-    PrintCallback(buffer);
+    //printf("header freeList size: %d\n",GetSize(conn->freeList));
+    //sprintf(buffer,"header freeList size: %d\n",GetSize(conn->freeList));
+    //PrintCallback(buffer);
     pthread_spin_unlock(&conn->lock);
     return C_OK;
 }
@@ -929,9 +929,9 @@ int releaseHeaderBuffer(Connection* conn, void* buff) {
 int connAppWrite(Connection *conn, void* buff, void *headerCtx, int32_t len) {
     pthread_spin_lock(&conn->lock);
     if (conn->state != CONN_STATE_CONNECTED) { //在使用之前需要判断连接的状态
-        printf("conn state is not connected: state(%d)\n",conn->state);//TODO change print msg
-        sprintf(buffer,"conn state is not connected: state(%d)\n",conn->state);
-        PrintCallback(buffer);
+        //printf("conn state is not connected: state(%d)\n",conn->state);//TODO change print msg
+        //sprintf(buffer,"conn state is not connected: state(%d)\n",conn->state);
+        //PrintCallback(buffer);
         //TODO release buff
         pthread_spin_unlock(&conn->lock);
         return C_ERR;//TODO 错误码分情况
@@ -940,22 +940,22 @@ int connAppWrite(Connection *conn, void* buff, void *headerCtx, int32_t len) {
 
     Header* header = (Header*)headerCtx;
     header->RdmaAddr = htonu64((uint64_t)buff);
-    printf("addr:%d\n",header->RdmaAddr);
+    //printf("addr:%d\n",header->RdmaAddr);
     header->RdmaLength = htonl(len);
-    printf("length:%d\n",header->RdmaLength);
+    //printf("length:%d\n",header->RdmaLength);
     header->RdmaKey = htonl(conn->mr->rkey);
-    printf("key:%d\n",header->RdmaKey);
+    //printf("key:%d\n",header->RdmaKey);
     int ret = connRdmaSendHeader(conn, header, len);
 
     if (ret==C_ERR) {//TODO
-        printf("app write failed\n");
-        sprintf(buffer,"app write failed\n");
-        PrintCallback(buffer);
+        //printf("app write failed\n");
+        //sprintf(buffer,"app write failed\n");
+        //PrintCallback(buffer);
         goto failed;
     }
-    printf("app write success\n");
-    sprintf(buffer,"app write success\n");
-    PrintCallback(buffer);
+    //printf("app write success\n");
+    //sprintf(buffer,"app write success\n");
+    //PrintCallback(buffer);
     return C_OK;
 
 failed:
@@ -967,9 +967,9 @@ failed:
 int connAppSendResp(Connection *conn, void* responseCtx, int32_t len) {
     pthread_spin_lock(&conn->lock);
     if (conn->state != CONN_STATE_CONNECTED) { //在使用之前需要判断连接的状态
-        printf("conn state is not connected: state(%d)\n",conn->state);//TODO change print msg
-        sprintf(buffer,"conn state is not connected: state(%d)\n",conn->state);
-        PrintCallback(buffer);
+        //printf("conn state is not connected: state(%d)\n",conn->state);//TODO change print msg
+        //sprintf(buffer,"conn state is not connected: state(%d)\n",conn->state);
+        //PrintCallback(buffer);
         //TODO release buff
         pthread_spin_unlock(&conn->lock);
         return C_ERR;//TODO 错误码分情况
@@ -980,14 +980,14 @@ int connAppSendResp(Connection *conn, void* responseCtx, int32_t len) {
     int ret = connRdmaSendResponse(conn, response, len);
 
     if (ret==C_ERR) {//TODO
-        printf("app send resp failed\n");
-        sprintf(buffer,"app send resp failed\n");
-        PrintCallback(buffer);
+        //printf("app send resp failed\n");
+        //sprintf(buffer,"app send resp failed\n");
+        //PrintCallback(buffer);
         goto failed;
     }
-    printf("app send resp success\n");
-    sprintf(buffer,"app send resp success\n");
-    PrintCallback(buffer);
+    //printf("app send resp success\n");
+    //sprintf(buffer,"app send resp success\n");
+    //PrintCallback(buffer);
     return C_OK;
 
 failed:
@@ -1002,11 +1002,11 @@ int RdmaRead(Connection *conn, Header *header, MemoryEntry* entry) {//, int64_t 
     struct ibv_sge sge;
 
     char* remote_addr = (char *)ntohu64(header->RdmaAddr);
-    printf("addr:%d\n",header->RdmaAddr);
+    //printf("addr:%d\n",header->RdmaAddr);
     uint32_t remote_length = ntohl(header->RdmaLength);
-    printf("length:%d\n",header->RdmaLength);
+    //printf("length:%d\n",header->RdmaLength);
     uint32_t remote_key = ntohl(header->RdmaKey);
-    printf("addr:%d\n",header->RdmaKey);
+    //printf("addr:%d\n",header->RdmaKey);
 
     int64_t now = get_time_ns();
     int64_t dead_line = 0;
@@ -1021,40 +1021,40 @@ int RdmaRead(Connection *conn, Header *header, MemoryEntry* entry) {//, int64_t 
     while(1) {
         pthread_spin_lock(&conn->lock);
         if (conn->state != CONN_STATE_CONNECTED) { //在使用之前需要判断连接的状态
-            printf("conn(%p) state error or conn closed: state(%d)\n",conn, conn->state);//TODO change print msg
-            sprintf(buffer,"conn(%p) state error or conn closed: state(%d)\n",conn, conn->state);
-            PrintCallback(buffer);
+            //printf("conn(%p) state error or conn closed: state(%d)\n",conn, conn->state);//TODO change print msg
+            //sprintf(buffer,"conn(%p) state error or conn closed: state(%d)\n",conn, conn->state);
+            //PrintCallback(buffer);
             pthread_spin_unlock(&conn->lock);
             return C_ERR;
         }
         now = get_time_ns();
         if(dead_line == -1) {
-            printf("conn(%p) rdma read timeout, deadline:%ld, now:%ld\n", conn, dead_line, now);
-            sprintf(buffer,"conn(%p) rdma read timeout, deadline:%ld, now:%ld\n", conn, dead_line, now);
-            PrintCallback(buffer);
+            //printf("conn(%p) rdma read timeout, deadline:%ld, now:%ld\n", conn, dead_line, now);
+            //sprintf(buffer,"conn(%p) rdma read timeout, deadline:%ld, now:%ld\n", conn, dead_line, now);
+            //PrintCallback(buffer);
             pthread_spin_unlock(&conn->lock);
             return C_ERR;
         }
         if(now >= dead_line) {
-            printf("conn(%p) rdma read timeout, deadline:%ld, now:%ld\n", conn, dead_line, now);
-            sprintf(buffer,"conn(%p) rdma read timeout, deadline:%ld, now:%ld\n", conn, dead_line, now);
-            PrintCallback(buffer);
+            //printf("conn(%p) rdma read timeout, deadline:%ld, now:%ld\n", conn, dead_line, now);
+            //sprintf(buffer,"conn(%p) rdma read timeout, deadline:%ld, now:%ld\n", conn, dead_line, now);
+            //PrintCallback(buffer);
             pthread_spin_unlock(&conn->lock);
             return C_ERR;
         }
         index = buddy_alloc(conn->pool->allocation,remote_length / (rdmaPoolConfig->memBlockSize));
         if(index == -1) {
-            printf("rdmaMeta length:%d\n",remote_length/(rdmaPoolConfig->memBlockSize));
-            printf("conn(%p) rdma read failed, there is no space to read\n", conn);
-            sprintf(buffer,"conn(%p) rdma read failed, there is no space to read\n", conn);
-            PrintCallback(buffer);
+            //printf("rdmaMeta length:%d\n",remote_length/(rdmaPoolConfig->memBlockSize));
+            //printf("conn(%p) rdma read failed, there is no space to read\n", conn);
+            //sprintf(buffer,"conn(%p) rdma read failed, there is no space to read\n", conn);
+            //PrintCallback(buffer);
             pthread_spin_unlock(&conn->lock);
             //return C_ERR; //TODO maybe return -1
             continue;
         }
         buddy_dump(conn->pool->allocation);
         int s = buddy_size(conn->pool->allocation,index);
-        printf("index %d (sz = %d)\n",index,s);
+        //printf("index %d (sz = %d)\n",index,s);
         assert(s >= (remote_length / (rdmaPoolConfig->memBlockSize)));
         
         pthread_spin_unlock(&conn->lock);        
@@ -1086,9 +1086,9 @@ int RdmaRead(Connection *conn, Header *header, MemoryEntry* entry) {//, int64_t 
     if (ret != 0) {
         //serverLog(LL_WARNING, "RDMA: post send failed: %d", ret);
         //TODO error handler
-        printf("RDMA: rdma read failed: %d", ret);
-        sprintf(buffer,"RDMA: rdma read failed: %d", ret);
-        PrintCallback(buffer);
+        //printf("RDMA: rdma read failed: %d", ret);
+        //sprintf(buffer,"RDMA: rdma read failed: %d", ret);
+        //PrintCallback(buffer);
         //conn->state = CONN_STATE_ERROR;
         return C_ERR; //TODO
     }

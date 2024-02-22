@@ -3,9 +3,9 @@
 int OnClientConnPreConnect(struct rdma_cm_id *id, void* ctx) {
     struct ConnectionEvent* conn_ev = (struct ConnectionEvent*)ctx;
     struct RdmaContext* client = (struct RdmaContext*)conn_ev->ctx;
-    printf("client=%p, %s \n", client, __FUNCTION__);
-    sprintf(buffer,"client=%p, %s \n", client, __FUNCTION__);
-    PrintCallback(buffer);
+    //printf("client=%p, %s \n", client, __FUNCTION__);
+    //sprintf(buffer,"client=%p, %s \n", client, __FUNCTION__);
+    //PrintCallback(buffer);
 
     if(!client->isReConnect) {
 
@@ -25,9 +25,9 @@ int OnClientConnPreConnect(struct rdma_cm_id *id, void* ctx) {
         return C_OK;
     } else {
         if(!UpdateConnection(client->conn)) {
-            printf("update connection failed\n");
-            sprintf(buffer,"update connection failed\n");
-            PrintCallback(buffer);
+            //printf("update connection failed\n");
+            //sprintf(buffer,"update connection failed\n");
+            //PrintCallback(buffer);
 
             EpollDelConnEvent(client->listen_id->channel->fd);
             rdma_destroy_id(id);
@@ -44,9 +44,9 @@ int OnClientConnPreConnect(struct rdma_cm_id *id, void* ctx) {
 
 int OnClientConnConnected(struct rdma_cm_id *id, void* ctx) {
     struct RdmaContext* client = (struct RdmaContext*)ctx;
-    printf("client=%p, %s \n", client, __FUNCTION__);
-    sprintf(buffer,"client=%p, %s \n", client, __FUNCTION__);
-    PrintCallback(buffer);
+    //printf("client=%p, %s \n", client, __FUNCTION__);
+    //sprintf(buffer,"client=%p, %s \n", client, __FUNCTION__);
+    //PrintCallback(buffer);
 
     Connection* conn = (Connection*)id->context;
 
@@ -64,8 +64,8 @@ int OnClientConnConnected(struct rdma_cm_id *id, void* ctx) {
     snprintf(conn->remote_addr + strlen(conn->remote_addr), sizeof(conn->remote_addr) - strlen(conn->remote_addr),
             ":%d", ntohs(remote_ipv4->sin_port));
 
-    printf("本地地址：%s\n", conn->local_addr);
-    printf("远程地址：%s\n", conn->remote_addr);
+    //printf("本地地址：%s\n", conn->local_addr);
+    //printf("远程地址：%s\n", conn->remote_addr);
     
     if(!client->isReConnect) {
         client->conn = conn;
@@ -78,9 +78,9 @@ int OnClientConnConnected(struct rdma_cm_id *id, void* ctx) {
 
 int OnClientConnRejected(struct rdma_cm_id *id, void* ctx) {
     struct RdmaContext* client = (struct RdmaContext*)ctx;
-    printf("client=%p, %s \n", client, __FUNCTION__);
-    sprintf(buffer,"client=%p, %s \n", client, __FUNCTION__);
-    PrintCallback(buffer);
+    //printf("client=%p, %s \n", client, __FUNCTION__);
+    //sprintf(buffer,"client=%p, %s \n", client, __FUNCTION__);
+    //PrintCallback(buffer);
 
     Connection* conn = (Connection*)id->context;
 
@@ -88,9 +88,9 @@ int OnClientConnRejected(struct rdma_cm_id *id, void* ctx) {
 
     if (conn->cm_id->qp) {
         if(ibv_destroy_qp(conn->cm_id->qp)) {
-            printf("Failed to destroy qp: %s\n", strerror(errno));
-            sprintf(buffer,"Failed to destroy qp: %s\n", strerror(errno));
-            PrintCallback(buffer);
+            //printf("Failed to destroy qp: %s\n", strerror(errno));
+            //sprintf(buffer,"Failed to destroy qp: %s\n", strerror(errno));
+            //PrintCallback(buffer);
             //printf("Failed to destroy qp cleanly\n");
             // we continue anyways;
         }
@@ -98,9 +98,9 @@ int OnClientConnRejected(struct rdma_cm_id *id, void* ctx) {
     if (conn->cq) {
         int ret = ibv_destroy_cq(conn->cq);
         if(ret) {
-            printf("Failed to destroy cq: %s\n", strerror(errno));
-            sprintf(buffer,"Failed to destroy cq: %s\n", strerror(errno));
-            PrintCallback(buffer);
+            //printf("Failed to destroy cq: %s\n", strerror(errno));
+            //sprintf(buffer,"Failed to destroy cq: %s\n", strerror(errno));
+            //PrintCallback(buffer);
             //printf("Failed to destroy cq cleanly\n");
             // we continue anyways;
         }
@@ -125,9 +125,9 @@ int OnClientConnRejected(struct rdma_cm_id *id, void* ctx) {
     //TODO before clear,need to determind all header or response is back to freeList
     if(conn->freeList) {
         ClearQueue(conn->freeList);
-        printf("header freeList size: %d\n",GetSize(conn->freeList));
-        sprintf(buffer,"header freeList size: %d\n",GetSize(conn->freeList));
-        PrintCallback(buffer);
+        //printf("header freeList size: %d\n",GetSize(conn->freeList));
+        //sprintf(buffer,"header freeList size: %d\n",GetSize(conn->freeList));
+        //PrintCallback(buffer);
     }
 
     client->conn = conn;
@@ -137,9 +137,9 @@ int OnClientConnRejected(struct rdma_cm_id *id, void* ctx) {
 int OnClientConnDisconnected(struct rdma_cm_id *id, void* ctx) {//TODO
 
     struct RdmaContext* client = (struct RdmaContext*)ctx;
-    printf("client=%p, %s \n", client, __FUNCTION__);
-    sprintf(buffer,"client=%p, %s \n", client, __FUNCTION__);
-    PrintCallback(buffer);
+    //printf("client=%p, %s \n", client, __FUNCTION__);
+    //sprintf(buffer,"client=%p, %s \n", client, __FUNCTION__);
+    //PrintCallback(buffer);
 
     Connection* conn = (Connection*)id->context;
     pthread_spin_lock(&conn->lock);
@@ -154,18 +154,18 @@ int OnClientConnDisconnected(struct rdma_cm_id *id, void* ctx) {//TODO
 
     if (conn->cm_id->qp) {
         if(ibv_destroy_qp(conn->cm_id->qp)) {
-            printf("Failed to destroy qp: %s\n", strerror(errno));
-            sprintf(buffer,"Failed to destroy qp: %s\n", strerror(errno));
-            PrintCallback(buffer);
+            //printf("Failed to destroy qp: %s\n", strerror(errno));
+            //sprintf(buffer,"Failed to destroy qp: %s\n", strerror(errno));
+            //PrintCallback(buffer);
             //printf("Failed to destroy qp cleanly\n");
             // we continue anyways;
         }
     }
     if (conn->cq) {
         if(ibv_destroy_cq(conn->cq)) {
-            printf("Failed to destroy cq: %s\n", strerror(errno));
-            sprintf(buffer,"Failed to destroy cq: %s\n", strerror(errno));
-            PrintCallback(buffer);
+            //printf("Failed to destroy cq: %s\n", strerror(errno));
+            //sprintf(buffer,"Failed to destroy cq: %s\n", strerror(errno));
+            //PrintCallback(buffer);
             //printf("Failed to destroy cq cleanly\n");
             // we continue anyways;
         }
@@ -182,9 +182,9 @@ int OnClientConnDisconnected(struct rdma_cm_id *id, void* ctx) {//TODO
     //TODO before clear,need to determind all header or response is back to freeList
     if(conn->freeList) {
         ClearQueue(conn->freeList);
-        printf("header freeList size: %d\n",GetSize(conn->freeList));
-        sprintf(buffer,"header freeList size: %d\n",GetSize(conn->freeList));
-        PrintCallback(buffer);
+        //printf("header freeList size: %d\n",GetSize(conn->freeList));
+        //sprintf(buffer,"header freeList size: %d\n",GetSize(conn->freeList));
+        //PrintCallback(buffer);
     }
 
     notify_event(conn->cFd, 0);
@@ -208,9 +208,9 @@ struct RdmaContext* Connect(const char* ip, const char* port, char* remoteAddr) 
     struct rdma_event_channel *ec = NULL;
     struct rdma_conn_param cm_params;
 
-    printf("ip=%s, port=%s\n", ip, port);
-    sprintf(buffer,"ip=%s, port=%s\n", ip, port);
-    PrintCallback(buffer);
+    //printf("ip=%s, port=%s\n", ip, port);
+    //sprintf(buffer,"ip=%s, port=%s\n", ip, port);
+    //PrintCallback(buffer);
     TEST_NZ_(getaddrinfo(ip, port, NULL, &addr));
 
 
@@ -222,9 +222,9 @@ struct RdmaContext* Connect(const char* ip, const char* port, char* remoteAddr) 
 
     struct RdmaContext* client = (struct RdmaContext*)malloc(sizeof(struct RdmaContext));
     client->listen_id = conn;
-    printf("client listen id %d\n",client->listen_id);
-    sprintf(buffer,"client listen id %d\n",client->listen_id);
-    PrintCallback(buffer);
+    //printf("client listen id %d\n",client->listen_id);
+    //sprintf(buffer,"client listen id %d\n",client->listen_id);
+    //PrintCallback(buffer);
     client->ec = ec;
     client->ip = ip;
     client->port = port;
@@ -246,9 +246,9 @@ struct RdmaContext* Connect(const char* ip, const char* port, char* remoteAddr) 
 
     EpollAddConnectEvent(client->listen_id->channel->fd, conn_ev);
 
-    printf("start client %p \n", client);
-    sprintf(buffer,"start client %p \n", client);
-    PrintCallback(buffer);
+    //printf("start client %p \n", client);
+    //sprintf(buffer,"start client %p \n", client);
+    //PrintCallback(buffer);
 
     return client;
 }
@@ -260,9 +260,9 @@ int CloseClient(struct RdmaContext* client) {
 
         if (conn->comp_channel) {
             if(ibv_destroy_comp_channel(conn->comp_channel) != 0) {
-                printf("Failed to destroy comp channel: %s\n", strerror(errno));
-                sprintf(buffer,"Failed to destroy comp channel: %s\n", strerror(errno));
-                PrintCallback(buffer);
+                //printf("Failed to destroy comp channel: %s\n", strerror(errno));
+                //sprintf(buffer,"Failed to destroy comp channel: %s\n", strerror(errno));
+                //PrintCallback(buffer);
             }
             conn->comp_channel = NULL;
         }
