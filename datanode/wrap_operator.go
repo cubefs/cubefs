@@ -737,6 +737,8 @@ func (s *DataNode) extentRepairReadPacket(p *repl.Packet, connect net.Conn, isRe
 	if !shallDegrade {
 		metricPartitionIOLabels = GetIoMetricLabels(partition, "read")
 	}
+	log.LogDebugf("extentRepairReadPacket ready to repair dp(%v) disk(%v) extent(%v)", p.PartitionID,
+		partition.disk.Path, p.ExtentID)
 	for {
 		if needReplySize <= 0 {
 			break
@@ -770,6 +772,8 @@ func (s *DataNode) extentRepairReadPacket(p *repl.Packet, connect net.Conn, isRe
 			tpObject.Set(err)
 		}
 		partition.checkIsDiskError(err)
+		//log.LogDebugf("extentRepairReadPacket read dp(%v) disk(%v) extent(%v) data size(%v)", p.PartitionID,
+		//	partition.disk.Path, p.ExtentID, currReadSize)
 		p.CRC = reply.CRC
 		if err != nil {
 			return
@@ -878,6 +882,8 @@ func (s *DataNode) tinyExtentRepairRead(request *repl.Packet, connect net.Conn) 
 	var (
 		newOffset, newEnd int64
 	)
+	log.LogDebugf("tinyExtentRepairRead read dp(%v) disk(%v) extent(%v)", request.PartitionID,
+		partition.disk.Path, request.ExtentID)
 	for {
 		if needReplySize <= 0 {
 			break
@@ -913,6 +919,8 @@ func (s *DataNode) tinyExtentRepairRead(request *repl.Packet, connect net.Conn) 
 		if err != nil {
 			return
 		}
+		//log.LogDebugf("tinyExtentRepairRead read dp(%v) disk(%v) extent(%v) data size(%v)", request.PartitionID,
+		//	partition.disk.Path, request.ExtentID, currReadSize)
 		reply.Size = uint32(currReadSize)
 		reply.ResultCode = proto.OpOk
 		if err = reply.WriteToConn(connect); err != nil {
