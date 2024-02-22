@@ -607,8 +607,6 @@ func (client *ExtentClient) GetStreamer(inode uint64) *Streamer {
 	}
 	if !s.isOpen {
 		s.isOpen = true
-		s.request = make(chan interface{}, 64)
-		s.pendingCache = make(chan bcacheKey, 1)
 		go s.server()
 		go s.asyncBlockCache()
 	}
