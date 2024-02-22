@@ -151,7 +151,7 @@ func (mp *metaPartition) CreateInode(req *CreateInoReq, p *Packet, remoteAddr st
 		}
 	}
 	p.PacketErrorWithBody(status, reply)
-	log.LogInfof("CreateInode req [%v] qinode[%v] success.", req, qinode)
+	p.Span().Infof("CreateInode req [%v] qinode[%v] success.", req, qinode)
 	return
 }
 

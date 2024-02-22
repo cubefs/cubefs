@@ -30,6 +30,8 @@ import (
 	"syscall"
 
 	"github.com/cubefs/cubefs/authnode"
+	"github.com/cubefs/cubefs/blobstore/common/trace"
+	blog "github.com/cubefs/cubefs/blobstore/util/log"
 	"github.com/cubefs/cubefs/cmd/common"
 	"github.com/cubefs/cubefs/console"
 	"github.com/cubefs/cubefs/datanode"
@@ -45,6 +47,7 @@ import (
 	sysutil "github.com/cubefs/cubefs/util/sys"
 	"github.com/cubefs/cubefs/util/ump"
 	"github.com/jacobsa/daemonize"
+	"gopkg.in/natefinch/lumberjack.v2"
 )
 
 const (
@@ -207,20 +210,27 @@ func main() {
 	// Init logging
 	var (
 		level log.Level
+		blvl  blog.Level
 	)
 	switch strings.ToLower(logLevel) {
 	case "debug":
 		level = log.DebugLevel
+		blvl = blog.Ldebug
 	case "info":
 		level = log.InfoLevel
+		blvl = blog.Linfo
 	case "warn":
 		level = log.WarnLevel
+		blvl = blog.Lwarn
 	case "error":
 		level = log.ErrorLevel
+		blvl = blog.Lerror
 	case "critical":
 		level = log.CriticalLevel
+		blvl = blog.Lfatal
 	default:
 		level = log.ErrorLevel
+		blvl = blog.Lerror
 	}
 	rotate := log.NewLogRotate()
 	if logRotateSize > 0 {
@@ -246,6 +256,14 @@ func main() {
 			err = nil
 		}
 	}
+	blog.SetOutputLevel(blvl)
+	blog.SetOutput(&lumberjack.Logger{
+		Filename:   path.Join(logDir, module, module+".log"),
+		MaxSize:    1024,
+		MaxAge:     7,
+		MaxBackups: 7,
+		LocalTime:  true,
+	})
 
 	_, err = auditlog.InitAudit(logDir, module, auditlog.DefaultAuditLogSize)
 	if err != nil {
@@ -320,6 +338,9 @@ func main() {
 				if strings.HasPrefix(req.URL.Path, "/debug/") {
 					mux.ServeHTTP(w, req)
 				} else {
+					span, ctx := trace.StartSpanFromHTTPHeaderSafe(req, "")
+					defer span.Finish()
+					req = req.WithContext(ctx)
 					http.DefaultServeMux.ServeHTTP(w, req)
 				}
 			})

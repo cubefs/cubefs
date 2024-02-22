@@ -15,8 +15,11 @@
 package metanode
 
 import (
+	"context"
 	"encoding/json"
+	"sync/atomic"
 
+	"github.com/cubefs/cubefs/blobstore/common/trace"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/storage"
 	"github.com/cubefs/cubefs/util"
@@ -25,6 +28,28 @@ import (
 
 type Packet struct {
 	proto.Packet
+
+	span atomic.Value
+}
+
+func (p *Packet) SetSpan(reqid string) trace.Span {
+	span, _ := trace.StartSpanFromContextWithTraceID(context.Background(), "", reqid)
+	p.span.Store(span)
+	return span
+}
+
+func (p *Packet) Span() trace.Span {
+	if span := p.span.Load(); span != nil {
+		return span.(trace.Span)
+	}
+	var span trace.Span
+	if p.ReqID > 0 {
+		span, _ = trace.StartSpanFromContextWithTraceID(context.Background(), "", util.Any2String(p.ReqID))
+	} else {
+		span, _ = trace.StartSpanFromContext(context.Background(), "")
+	}
+	p.span.Store(span)
+	return span
 }
 
 // NewPacketToDeleteExtent returns a new packet to delete the extent.
