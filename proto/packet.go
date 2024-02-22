@@ -16,6 +16,7 @@ package proto
 
 import (
 	"bytes"
+	"context"
 	"encoding/binary"
 	"encoding/json"
 	"errors"
@@ -27,9 +28,9 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/cubefs/cubefs/blobstore/common/trace"
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/buf"
-	"github.com/cubefs/cubefs/util/log"
 )
 
 var (
@@ -316,6 +317,9 @@ type Packet struct {
 	HasPrepare         bool
 	VerSeq             uint64 // only used in mod request to datanode
 	VerList            []*VolVersionInfo
+
+	// context carries span of trace.
+	ctx context.Context
 }
 
 func IsTinyExtentType(extentType uint8) bool {
@@ -341,6 +345,48 @@ func NewPacketReqID() *Packet {
 	return p
 }
 
+// SetTraceID new a trace context.
+func (p *Packet) SetTraceID(traceID string) *Packet {
+	if traceID != "" {
+		_, p.ctx = trace.StartSpanFromContextWithTraceID(context.Background(), "", traceID)
+	} else {
+		_, p.ctx = trace.StartSpanFromContext(context.Background(), "")
+	}
+	return p
+}
+
+// Context returns context with trace of Packet.ReqID,
+// otherwise new a trace in Packet's context.
+// It's better to call after reading Packet's header.
+func (p *Packet) Context() context.Context {
+	if ctx := p.ctx; ctx != nil {
+		return ctx
+	}
+	traceID := ""
+	if p.ReqID > 0 {
+		traceID = fmt.Sprintf("%016x", p.ReqID)
+	}
+	p.SetTraceID(traceID)
+	return p.ctx
+}
+
+// WithContext clone Packet with new context.
+func (p *Packet) WithContext(ctx context.Context) *Packet {
+	if ctx == nil {
+		panic("nil context")
+	}
+	p2 := new(Packet)
+	*p2 = *p
+	p2.ctx = ctx
+	return p2
+}
+
+// Span returns trace span.
+// It's better to call after reading Packet's Header.
+func (p *Packet) Span() trace.Span {
+	return trace.SpanFromContextSafe(p.Context())
+}
+
 func (p *Packet) GetCopy() *Packet {
 	newPacket := NewPacket()
 	newPacket.ReqID = p.ReqID
@@ -351,6 +397,7 @@ func (p *Packet) GetCopy() *Packet {
 	copy(newPacket.Data[:p.Size], p.Data)
 
 	newPacket.Size = p.Size
+	newPacket.ctx = p.ctx
 	return newPacket
 }
 
@@ -846,10 +893,9 @@ func (p *Packet) WriteToConn(c net.Conn) (err error) {
 		if p.IsVersionList() {
 			d, err1 := p.MarshalVersionSlice()
 			if err1 != nil {
-				log.LogErrorf("MarshalVersionSlice: marshal version ifo failed, err %s", err1.Error())
+				p.Span().Error("MarshalVersionSlice: marshal version err", err1)
 				return err1
 			}
-
 			_, err = c.Write(d)
 			if err != nil {
 				return err
@@ -861,7 +907,6 @@ func (p *Packet) WriteToConn(c net.Conn) (err error) {
 			}
 		}
 	}
-
 	return
 }
 
@@ -922,17 +967,17 @@ func (p *Packet) ReadFromConnWithVer(c net.Conn, timeoutSec int) (err error) {
 			return err
 		}
 		cnt := binary.BigEndian.Uint16(cntByte)
-		log.LogDebugf("action[ReadFromConnWithVer] op %s verseq %v, extType %d, cnt %d",
-			p.GetOpMsg(), p.VerSeq, p.ExtentType, cnt)
+		span := p.Span().WithOperation("ReadFromConnWithVer")
+		span.Debugf("op %s, verseq %v, extType %d, cnt %d", p.GetOpMsg(), p.VerSeq, p.ExtentType, cnt)
 		verData := make([]byte, cnt*verInfoCnt)
 		if _, err = io.ReadFull(c, verData); err != nil {
-			log.LogWarnf("ReadFromConnWithVer: read ver slice from conn failed, err %s", err.Error())
+			span.Warnf("read ver slice from conn err %s", err.Error())
 			return err
 		}
 
 		err = p.UnmarshalVersionSlice(int(cnt), verData)
 		if err != nil {
-			log.LogWarnf("ReadFromConnWithVer: unmarshal ver slice failed, err %s", err.Error())
+			span.Warnf("unmarshal ver slice err %s", err.Error())
 			return err
 		}
 	}

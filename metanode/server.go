@@ -21,9 +21,9 @@ import (
 
 	"github.com/xtaci/smux"
 
+	"github.com/cubefs/cubefs/blobstore/util/log"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util"
-	"github.com/cubefs/cubefs/util/log"
 )
 
 // StartTcpService binds and listens to the specified port.
@@ -55,7 +55,7 @@ func (m *MetaNode) startServer() (err error) {
 			go m.serveConn(conn, stopC)
 		}
 	}(m.httpStopC)
-	log.LogInfof("start server over...")
+	log.Info("start server over...")
 	return
 }
 
@@ -63,7 +63,7 @@ func (m *MetaNode) stopServer() {
 	if m.httpStopC != nil {
 		defer func() {
 			if r := recover(); r != nil {
-				log.LogErrorf("action[StopTcpServer],err:%v", r)
+				log.Errorf("action[StopTcpServer] err:%v", r)
 			}
 		}()
 		close(m.httpStopC)
@@ -90,18 +90,20 @@ func (m *MetaNode) serveConn(conn net.Conn, stopC chan uint8) {
 		p := &Packet{}
 		if err := p.ReadFromConnWithVer(conn, proto.NoReadDeadlineTime); err != nil {
 			if err != io.EOF {
-				log.LogError("serve MetaNode: ", err.Error())
+				p.Span().Error("serve MetaNode: ", err.Error())
 			}
 			return
 		}
+		span := p.Span()
 		if err := m.handlePacket(conn, p, remoteAddr); err != nil {
-			log.LogErrorf("serve handlePacket fail: %v", err)
+			span.Errorf("serve handlePacket fail: %v", err)
 		}
+		span.Info("tracks:", span.TrackLog())
+		span.Finish()
 	}
 }
 
-func (m *MetaNode) handlePacket(conn net.Conn, p *Packet,
-	remoteAddr string) (err error) {
+func (m *MetaNode) handlePacket(conn net.Conn, p *Packet, remoteAddr string) (err error) {
 	// Handle request
 	err = m.metadataManager.HandleMetadataOperation(conn, p, remoteAddr)
 	return
@@ -135,20 +137,20 @@ func (m *MetaNode) startSmuxServer() (err error) {
 			go m.serveSmuxConn(conn, stopC)
 		}
 	}(m.smuxStopC)
-	log.LogInfof("start Smux Server over...")
+	log.Info("start smux server over ...")
 	return
 }
 
 func (m *MetaNode) stopSmuxServer() {
 	if smuxPool != nil {
 		smuxPool.Close()
-		log.LogDebugf("action[stopSmuxServer] stop smux conn pool")
+		log.Debug("action[stopSmuxServer] stop smux conn pool")
 	}
 
 	if m.smuxStopC != nil {
 		defer func() {
 			if r := recover(); r != nil {
-				log.LogErrorf("action[stopSmuxServer],err:%v", r)
+				log.Errorf("action[stopSmuxServer],err:%v", r)
 			}
 		}()
 		close(m.smuxStopC)
@@ -170,7 +172,7 @@ func (m *MetaNode) serveSmuxConn(conn net.Conn, stopC chan uint8) {
 	var err error
 	sess, err = smux.Server(conn, smuxPoolCfg.Config)
 	if err != nil {
-		log.LogErrorf("action[serveSmuxConn] failed to serve smux connection, err(%v)", err)
+		log.Errorf("action[serveSmuxConn] failed to serve smux connection, err(%v)", err)
 		return
 	}
 	defer sess.Close()
@@ -185,9 +187,9 @@ func (m *MetaNode) serveSmuxConn(conn net.Conn, stopC chan uint8) {
 		stream, err := sess.AcceptStream()
 		if err != nil {
 			if util.FilterSmuxAcceptError(err) != nil {
-				log.LogErrorf("action[startSmuxService] failed to accept, err: %s", err)
+				log.Errorf("action[startSmuxService] failed to accept, err: %s", err)
 			} else {
-				log.LogInfof("action[startSmuxService] accept done, err: %s", err)
+				log.Errorf("action[startSmuxService] accept done, err: %s", err)
 			}
 			break
 		}
@@ -206,12 +208,15 @@ func (m *MetaNode) serveSmuxStream(stream *smux.Stream, remoteAddr string, stopC
 		p := &Packet{}
 		if err := p.ReadFromConnWithVer(stream, proto.NoReadDeadlineTime); err != nil {
 			if err != io.EOF {
-				log.LogError("serve MetaNode: ", err.Error())
+				p.Span().Error("serve MetaNode: ", err.Error())
 			}
 			return
 		}
+		span := p.Span()
 		if err := m.handlePacket(stream, p, remoteAddr); err != nil {
-			log.LogErrorf("serve handlePacket fail: %v", err)
+			span.Errorf("serve handlePacket fail: %v", err)
 		}
+		span.Debug("tracks:", span.TrackLog())
+		span.Finish()
 	}
 }
