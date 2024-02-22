@@ -6,34 +6,18 @@ MIN_CQE_NUM = 1024;
 struct RdmaPool *rdmaPool = NULL;
 struct RdmaPoolConfig *rdmaPoolConfig = NULL;
 
-
 struct RdmaPoolConfig* getRdmaPoolConfig() {
     rdmaPoolConfig = (struct RdmaPoolConfig*)malloc(sizeof(struct RdmaPoolConfig));
     memset(rdmaPoolConfig, 0, sizeof(struct RdmaPoolConfig));
-
     rdmaPoolConfig->memBlockNum = 8 * 5 * 1024;//
-
-
     rdmaPoolConfig->memBlockSize = 65536 * 2;
-
-
     rdmaPoolConfig->memPoolLevel = 18;
-
-
     rdmaPoolConfig->headerBlockNum = 32 * 1024;
-
-
     rdmaPoolConfig->headerPoolLevel = 15;
-
-
     rdmaPoolConfig->responseBlockNum = 32 * 1024;
-
-
     rdmaPoolConfig->responsePoolLevel = 15;
-
     rdmaPoolConfig->wqDepth = 32;
     rdmaPoolConfig->minCqeNum = 1024;
-
     return rdmaPoolConfig;
 }
 
@@ -59,29 +43,22 @@ int initRdmaPool(struct RdmaPoolConfig* config) {
         return C_ERR;
     }
     rdmaPoolConfig = config;
-
     WQ_DEPTH = rdmaPoolConfig->wqDepth;
     MIN_CQE_NUM = rdmaPoolConfig->minCqeNum;
-
     rdmaPool = (struct RdmaPool*)malloc(sizeof(struct RdmaPool));
-    memset(rdmaPool, 0, sizeof(struct RdmaPool)); //rdma TODO: all place use malloc need set zero?
-
+    memset(rdmaPool, 0, sizeof(struct RdmaPool));
     rdmaPool->memoryPool = InitMemoryPool(rdmaPoolConfig->memBlockNum, rdmaPoolConfig->memBlockSize, rdmaPoolConfig->memPoolLevel);
     if(rdmaPool->memoryPool == NULL) {
         goto error;
     }
-
     rdmaPool->headerPool = InitObjectPool(rdmaPoolConfig->headerBlockNum, getHeaderSize(), rdmaPoolConfig->headerPoolLevel);
     if(rdmaPool->headerPool == NULL) {
         goto error;
     }
-
     rdmaPool->responsePool = InitObjectPool(rdmaPoolConfig->responseBlockNum, getResponseSize(), rdmaPoolConfig->responsePoolLevel);
     if(rdmaPool->responsePool == NULL) {
         goto error;
     }
-
-
     return C_OK;
 error:
     destroyRdmaPool();

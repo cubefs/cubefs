@@ -13,7 +13,7 @@ static int MEMORY_BLOCK_COUNT   = 1280;
 typedef struct MemoryPool {
     void*  original_mem;
     struct buddy* allocation;
-    int size;
+    int64_t size;
     struct ibv_pd* pd;
     struct ibv_mr* mr;
 } MemoryPool;

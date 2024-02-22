@@ -14,6 +14,8 @@
 #include "rdma_pool.h"
 //#include "rdma_proto.h"
 
+#include "transfer_event.h"
+#include "connection_event.h"
 
 static const int trace = 0;
 #define TRACE_PRINT(fn) if (trace) fn
@@ -58,6 +60,10 @@ void* getDataBuffer(uint32_t size, int64_t timeout_us,int64_t *ret_size);
 void* getResponseBuffer(Connection *conn, int64_t timeout_us, int32_t *ret_size);
 
 void* getHeaderBuffer(Connection *conn, int64_t timeout_us, int32_t *ret_size);
+
+MemoryEntry* getRecvMsgBuffer(Connection *conn);
+
+MemoryEntry* getRecvResponseBuffer(Connection *conn);
 
 void setConnContext(Connection* conn, void* connContext);
 

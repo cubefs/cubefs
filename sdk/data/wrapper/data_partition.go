@@ -174,10 +174,13 @@ func (dp *DataPartition) GetAllAddrs() string {
 }
 
 func (dp *DataPartition) GetAllRdmaAddrs() string {
-	hosts := strings.SplitN(dp.GetAllAddrs(), proto.AddrSplit, -1)
+	hosts := strings.Split(dp.GetAllAddrs(), proto.AddrSplit)
 	rdmaHosts := ""
-	for _, host := range hosts[:len(hosts)-1] {
+	for _, host := range hosts {
 		pars := strings.Split(host, ":")
+		if len(pars) != 2 {
+			return ""
+		}
 		ip, _ := pars[0], pars[1]
 		//ips := strings.Split(ip, ".")
 		//tmp, _ := strconv.Atoi(ips[3])
@@ -191,6 +194,9 @@ func (dp *DataPartition) GetAllRdmaAddrs() string {
 func GetRdmaAddr(addr string) string {
 
 	pars := strings.Split(addr, ":")
+	if len(pars) != 2 {
+		return ""
+	}
 	ip, _ := pars[0], pars[1]
 	//ips := strings.Split(ip, ".")
 	//tmp, _ := strconv.Atoi(ips[3])

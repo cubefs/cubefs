@@ -7,6 +7,8 @@
 //#include "rdma_proto.h"
 #include "rdma_pool.h"
 
+#include "epoll.h"
+
 #include <rdma/rdma_cma.h>
 #include <rdma/rdma_verbs.h>
 

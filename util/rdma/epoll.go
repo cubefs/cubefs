@@ -2,6 +2,7 @@ package rdma
 
 import "C"
 import (
+	"golang.org/x/sys/unix"
 	"sync"
 	"syscall"
 )
@@ -19,7 +20,7 @@ type EpollContext struct {
 
 type EPoll struct {
 	epollFd int
-	fds     map[int]ReadAble
+	fds     map[int]*EpollWorker
 }
 
 var instance *EPoll
@@ -39,12 +40,12 @@ func (e *EPoll) init() {
 	if err != nil {
 		panic(err)
 	}
-	instance.fds = make(map[int]ReadAble)
+	instance.fds = make(map[int]*EpollWorker)
 
 	go e.epollLoop()
 }
 
-func (e *EPoll) getContext(fd int) ReadAble {
+func (e *EPoll) getContext(fd int) *EpollWorker {
 	lock.RLock()
 	defer lock.RUnlock()
 	return e.fds[fd]
@@ -52,25 +53,28 @@ func (e *EPoll) getContext(fd int) ReadAble {
 
 func (e *EPoll) EpollAdd(fd int, ctx ReadAble) {
 	event := syscall.EpollEvent{}
-	event.Events = syscall.EPOLLIN
+	event.Events = unix.EPOLLIN | unix.EPOLLET
 	event.Fd = int32(fd)
 	lock.Lock()
-	e.fds[fd] = ctx
+	ew := &EpollWorker{}
+	ew.initEpollWorker(ctx)
+	e.fds[fd] = ew
 	lock.Unlock()
 	syscall.EpollCtl(e.epollFd, syscall.EPOLL_CTL_ADD, fd, &event)
 }
 
 func (e *EPoll) EpollDel(fd int) {
-	//println(fd)
-	lock.Lock()
-	delete(e.fds, fd)
-	lock.Unlock()
-	syscall.EpollCtl(e.epollFd, syscall.EPOLL_CTL_DEL, fd, nil)
+	/*
+		lock.Lock()
+		delete(e.fds, fd)
+		lock.Unlock()
+		syscall.EpollCtl(e.epollFd, syscall.EPOLL_CTL_DEL, fd, nil)
+	*/
 }
 
 func (e *EPoll) epollLoop() error {
+	events := make([]syscall.EpollEvent, 100)
 	for {
-		events := make([]syscall.EpollEvent, 100)
 		n, err := syscall.EpollWait(e.epollFd, events, -1)
 		if err != nil {
 			if err == syscall.EINTR {
@@ -78,18 +82,16 @@ func (e *EPoll) epollLoop() error {
 			}
 			return err
 		}
-		//println(n)
 		for i := 0; i < n; i++ {
-			//print(i)
-			//print("->")
-			//println(n)
-			print("event.Fd")
-			println(int(events[i].Fd))
-			//e.getContext(int(events[i].Fd))()
+			/* serial
 			if eventFunction := e.getContext(int(events[i].Fd)); eventFunction != nil {
 				eventFunction()
 			}
-			//go e.getContext(int(events[i].Fd))()
+			*/
+			//parallel
+			if epollWorker := e.getContext(int(events[i].Fd)); epollWorker != nil {
+				epollWorker.epollWorkerAddJob()
+			}
 		}
 	}
 }
