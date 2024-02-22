@@ -429,10 +429,11 @@ func (api *AdminAPI) VolExpand(volName string, capacity uint64, authKey, clientI
 	return
 }
 
-func (api *AdminAPI) VolAddAllowedStorageClass(volName string, addAllowedStorageClass uint32, authKey, clientIDKey string) (err error) {
+func (api *AdminAPI) VolAddAllowedStorageClass(volName string, addAllowedStorageClass uint32, ebsBlkSize int, authKey, clientIDKey string) (err error) {
 	var request = newAPIRequest(http.MethodGet, proto.AdminVolAddAllowedStorageClass)
 	request.addParam("name", volName)
 	request.addParam("allowedStorageClass", strconv.FormatUint(uint64(addAllowedStorageClass), 10))
+	request.addParam("ebsBlkSize", strconv.Itoa(ebsBlkSize))
 	request.addParam("authKey", authKey)
 	request.addParam("clientIDKey", clientIDKey)
 	if _, err = api.mc.serveRequest(request); err != nil {
