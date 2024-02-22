@@ -33,9 +33,8 @@ func createMetaNodeServerForTest() (m *MetaNode) {
 	}()
 
 	if err = m.registerAPIHandler(); err != nil {
-		return
+		panic(err)
 	}
-
 	return
 }
 
@@ -92,26 +91,16 @@ func createMetaPartition(rootDir string, t *testing.T) (mp *metaPartition) {
 
 func httpReqHandle(url string, t *testing.T) (data []byte) {
 	resp, err := http.Get(url)
-	if err != nil {
-		t.Errorf("err is %v", err)
-		return
-	}
+	require.NoError(t, err)
 	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		t.Errorf("status code[%v]", resp.StatusCode)
-		return
-	}
+	require.Equal(t, http.StatusOK, resp.StatusCode)
 	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		t.Errorf("err is %v", err)
-		return
-	}
-
+	require.NoError(t, err)
 	return body
 }
 
 func getSnapshot(t *testing.T, snapshotFile string, url string) {
-	testPath := "/tmp/testMetaNodeApiHandler/"
+	testPath := path.Join(os.TempDir(), "testMetaNodeApiHandler")
 	os.RemoveAll(testPath)
 	defer os.RemoveAll(testPath)
 
@@ -127,27 +116,23 @@ func getSnapshot(t *testing.T, snapshotFile string, url string) {
 	require.NoError(t, err)
 
 	hash2 := md5.Sum(httpReqHandle(url, t))
-
 	require.Equal(t, hex.EncodeToString(hash1.Sum(nil)[:16]), hex.EncodeToString(hash2[:]))
 }
 
 func TestGetInodeSnapshot(t *testing.T) {
 	url := fmt.Sprintf("http://127.0.0.1:%v%v?pid=%v",
 		PROF_PORT, "/getInodeSnapshot", METAPARTITION_ID)
-	fmt.Printf(url)
-	fmt.Printf("\n")
 	getSnapshot(t, inodeFile, url)
 }
 
 func TestGetDentrySnapshot(t *testing.T) {
 	url := fmt.Sprintf("http://127.0.0.1:%v%v?pid=%v",
 		PROF_PORT, "/getDentrySnapshot", METAPARTITION_ID)
-	fmt.Printf(url)
 	getSnapshot(t, dentryFile, url)
 }
 
 func TestWithWrongMetaPartitionID(t *testing.T) {
-	testPath := "/tmp/testMetaNodeApiHandler/"
+	testPath := path.Join(os.TempDir(), "testMetaNodeApiHandler")
 	os.RemoveAll(testPath)
 	defer os.RemoveAll(testPath)
 
@@ -156,7 +141,6 @@ func TestWithWrongMetaPartitionID(t *testing.T) {
 
 	url := fmt.Sprintf("http://127.0.0.1:%v%v?pid=%v",
 		PROF_PORT, "/getInodeSnapshot", 2)
-
 	data := httpReqHandle(url, t)
 	require.Contains(t, string(data), "unknown meta partition")
 }
