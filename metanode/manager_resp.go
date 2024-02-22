@@ -61,8 +61,7 @@ func (m *metadataManager) respondToClientWithVer(conn net.Conn, p *Packet) (err 
 	}
 	err = p.WriteToConn(conn)
 	if err != nil {
-		log.LogErrorf("response to client[%s], "+
-			"request[%s], response packet[%s]",
+		p.Span().Errorf("response to client[%s], request[%s], packet[%s]",
 			err.Error(), p.GetOpMsg(), p.GetResultMsg())
 	}
 	return

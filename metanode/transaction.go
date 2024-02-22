@@ -901,7 +901,7 @@ func (tm *TransactionManager) sendToRM(txInfo *proto.TransactionInfo, op uint8) 
 
 		pkt, _ := buildTxPacket(req, mpId, op)
 		if mp.config.PartitionId == mpId {
-			pt := &Packet{*pkt}
+			pt := &Packet{Packet: *pkt}
 			go func() {
 				defer wg.Done()
 				var err error
