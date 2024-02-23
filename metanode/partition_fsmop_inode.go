@@ -1065,7 +1065,7 @@ func (mp *metaPartition) fsmUpdateExtentKeyAfterMigration(inoParam *Inode) (resp
 
 func logCurrentExtentKeys(storageClass uint32, sortedEks interface{}, inode uint64) {
 	if sortedEks == nil {
-		log.LogInfof("action[fsmUpdateExtentKeyAfterMigration] inode %v current ek empty", inode)
+		log.LogErrorf("action[fsmUpdateExtentKeyAfterMigration] inode %v current ek empty", inode)
 	} else {
 		if proto.IsStorageClassReplica(storageClass) {
 			log.LogInfof("action[fsmUpdateExtentKeyAfterMigration] inode %v current ek %v",

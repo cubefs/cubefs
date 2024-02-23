@@ -378,6 +378,12 @@ func (s *LcScanner) handleFile(dentry *proto.ScanDentry) {
 
 	case proto.OpTypeStorageClassHDD:
 		s.limiter.Wait(context.Background())
+		if dentry.HasMek {
+			if err := s.mw.DeleteMigrationExtentKey(dentry.Inode, dentry.Path); err != nil {
+				log.LogErrorf("DeleteMigrationExtentKey err: %v, dentry: %+v", err, dentry)
+			}
+			return
+		}
 		err := s.transitionMgr.migrate(dentry)
 		if err != nil {
 			atomic.AddInt64(&s.currentStat.ErrorSkippedNum, 1)
@@ -395,6 +401,12 @@ func (s *LcScanner) handleFile(dentry *proto.ScanDentry) {
 
 	case proto.OpTypeStorageClassEBS:
 		s.limiter.Wait(context.Background())
+		if dentry.HasMek {
+			if err := s.mw.DeleteMigrationExtentKey(dentry.Inode, dentry.Path); err != nil {
+				log.LogErrorf("DeleteMigrationExtentKey err: %v, dentry: %+v", err, dentry)
+			}
+			return
+		}
 		oeks, err := s.transitionMgr.migrateToEbs(dentry)
 		if err != nil {
 			atomic.AddInt64(&s.currentStat.ErrorSkippedNum, 1)
@@ -431,6 +443,7 @@ func (s *LcScanner) batchHandleFile() {
 				d.Size = info.Size
 				d.StorageClass = info.StorageClass
 				d.WriteGen = info.WriteGen
+				d.HasMek = info.HasMigrationEk
 				s.fileChan.In <- d
 			}
 		}
