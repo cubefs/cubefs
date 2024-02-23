@@ -23,6 +23,7 @@ import (
 	"regexp"
 	"strconv"
 	"sync"
+	"time"
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/raftstore"
@@ -196,9 +197,11 @@ func (m *Server) Shutdown() {
 	}
 
 	// then stop rocksDBStore
+	time.Sleep(time.Second)
 	if m.rocksDBStore != nil {
 		m.rocksDBStore.Close()
 	}
+
 	m.wg.Done()
 }
 
