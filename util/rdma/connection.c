@@ -453,13 +453,14 @@ int ReConnect(Connection* conn) {
 int DisConnect(Connection* conn, bool force) { //TODO ()
 
     if(force) {
-        pthread_spin_lock(&conn->lock);
+        //pthread_spin_lock(&conn->lock);
         if(conn->state == CONN_STATE_CLOSING || conn->state == CONN_STATE_CLOSED) {
-            pthread_spin_unlock(&conn->lock);
+            //pthread_spin_unlock(&conn->lock);
             return C_OK;
         } else {
             conn->state = CONN_STATE_CLOSING;
-            pthread_spin_unlock(&conn->lock);
+            //pthread_spin_unlock(&conn->lock);
+
             //printf("force disconnect\n");
             //sprintf(buffer,"force disconnect\n");
             //PrintCallback(buffer);
@@ -493,9 +494,9 @@ int DisConnect(Connection* conn, bool force) { //TODO ()
     } else {//client
         
         //TODO 如果另一端异常关闭，则此时client已被free掉，这里会报错
-        pthread_spin_lock(&conn->lock);
+        //pthread_spin_lock(&conn->lock);
         if(conn->state == CONN_STATE_CONNECTED) {//正常关闭
-            pthread_spin_unlock(&conn->lock);
+            //pthread_spin_unlock(&conn->lock);
             
             conn->state = CONN_STATE_CLOSING;
             
@@ -512,7 +513,7 @@ int DisConnect(Connection* conn, bool force) { //TODO ()
 		        return C_ERR;
 	        }
         } else {//对端异常关闭 异常关闭
-            pthread_spin_unlock(&conn->lock);
+            //pthread_spin_unlock(&conn->lock);
 
             EpollDelConnEvent(conn->comp_channel->fd);
             if(wait_event(conn->cFd) <= 0) {//TODO error handler
@@ -570,51 +571,51 @@ int rdmaSendCommand(Connection *conn, void *block, int32_t len) {
 }
 
 int connRdmaSendHeader(Connection *conn, void* header, int32_t len) {
-    pthread_spin_lock(&conn->lock);
+    //pthread_spin_lock(&conn->lock);
     if(conn->state != CONN_STATE_CONNECTED) {
         //printf("conn state is not connected: state(%d)\n",conn->state);//TODO change print msg
         //sprintf(buffer,"conn state is not connected: state(%d)\n",conn->state);
         //PrintCallback(buffer);
         //TODO release buff
-        pthread_spin_unlock(&conn->lock);
+        //pthread_spin_unlock(&conn->lock);
         return C_ERR;
     }
     int ret = rdmaSendCommand(conn,header,sizeof(Header));
-    pthread_spin_unlock(&conn->lock);
+    //pthread_spin_unlock(&conn->lock);
     return ret;
     
 }
 
 int connRdmaSendResponse(Connection *conn, Response *response, int32_t len) {
-    pthread_spin_lock(&conn->lock);
+    //pthread_spin_lock(&conn->lock);
     if(conn->state != CONN_STATE_CONNECTED) {
        //printf("conn state is not connected: state(%d)\n",conn->state);//TODO change print msg
        //sprintf(buffer,"conn state is not connected: state(%d)\n",conn->state);
        //PrintCallback(buffer);
         //TODO release buff
-        pthread_spin_unlock(&conn->lock);
+        //pthread_spin_unlock(&conn->lock);
         return C_ERR;
     }
     
     int ret = rdmaSendCommand(conn,response,len);
-    pthread_spin_unlock(&conn->lock);
+    //pthread_spin_unlock(&conn->lock);
     return ret;
 }
 
 int rdmaPostRecvHeader(Connection *conn, void *headerCtx) {
-    pthread_spin_lock(&conn->lock);
+    //pthread_spin_lock(&conn->lock);
     if(conn->state != CONN_STATE_CONNECTED) {//test problem
         //printf("conn state is not connected: state(%d)\n",conn->state);//TODO change print msg
         //sprintf(buffer,"conn state is not connected: state(%d)\n",conn->state);
         //PrintCallback(buffer);
         //TODO release buff
-        pthread_spin_unlock(&conn->lock);
+        //pthread_spin_unlock(&conn->lock);
         return C_ERR;
     }
     Header *header = (Header*)headerCtx;
     
     int ret = rdmaPostRecv(conn,header);
-    pthread_spin_unlock(&conn->lock);
+    //pthread_spin_unlock(&conn->lock);
     if(ret == C_ERR) {
         goto error;
     }
@@ -625,19 +626,19 @@ error:
 }
 
 int rdmaPostRecvResponse(Connection *conn, void *responseCtx) {;
-    pthread_spin_lock(&conn->lock);
+    //pthread_spin_lock(&conn->lock);
     if(conn->state != CONN_STATE_CONNECTED) {//test problem
         //printf("conn state is not connected: state(%d)\n",conn->state);//TODO change print msg
         //sprintf(buffer,"conn state is not connected: state(%d)\n",conn->state);
         //PrintCallback(buffer);
         //TODO release buff
-        pthread_spin_unlock(&conn->lock);
+        //pthread_spin_unlock(&conn->lock);
         return C_ERR;
     }
     Response *response = (Response*)responseCtx;
     
     int ret = rdmaPostRecv(conn,response);
-    pthread_spin_unlock(&conn->lock);
+    //pthread_spin_unlock(&conn->lock);
     if(ret == C_ERR) {
         goto error;
     }
@@ -713,13 +714,13 @@ void* getResponseBuffer(Connection *conn, int64_t timeout_us, int32_t *ret_size)
     }
 
     while(1) {//TODO get timeout handler
-        pthread_spin_lock(&conn->lock);
+        //pthread_spin_lock(&conn->lock);
         if (conn->state != CONN_STATE_CONNECTED) { //在使用之前需要判断连接的状态
             *ret_size = -1;
             //printf("get response buffer: conn(%p) state is not connected: state(%d)\n",conn, conn->state);//TODO change print msg
             //sprintf(buffer,"get response buffer: conn(%p) state is not connected: state(%d)\n",conn, conn->state);
             //PrintCallback(buffer);
-            pthread_spin_unlock(&conn->lock);
+            //pthread_spin_unlock(&conn->lock);
             return NULL;
         }
         
@@ -729,7 +730,7 @@ void* getResponseBuffer(Connection *conn, int64_t timeout_us, int32_t *ret_size)
             //sprintf(buffer,"conn(%p) get response buffer timeout, deadline:%ld, now:%ld\n", conn, dead_line, now);
             //PrintCallback(buffer);
             DisConnect(conn,true);
-            pthread_spin_unlock(&conn->lock);
+            //pthread_spin_unlock(&conn->lock);
             return NULL;
         }
         if(now >= dead_line) {
@@ -737,7 +738,7 @@ void* getResponseBuffer(Connection *conn, int64_t timeout_us, int32_t *ret_size)
             //sprintf(buffer,"conn(%p) get response buffer timeout, deadline:%ld, now:%ld\n", conn, dead_line, now);
             //PrintCallback(buffer);
             DisConnect(conn,true);
-            pthread_spin_unlock(&conn->lock);
+            //pthread_spin_unlock(&conn->lock);
             return NULL;
         }
 
@@ -745,11 +746,11 @@ void* getResponseBuffer(Connection *conn, int64_t timeout_us, int32_t *ret_size)
             //printf("conn(%d) get response buffer failed, no more response buffer can get\n", conn);
             //sprintf(buffer,"conn(%d) get response buffer failed, no more response buffer can get\n", conn);
             //PrintCallback(buffer);
-            pthread_spin_unlock(&conn->lock);
+            //pthread_spin_unlock(&conn->lock);
             continue;
         }
 
-        pthread_spin_unlock(&conn->lock);
+        //pthread_spin_unlock(&conn->lock);
 
         //printf("response freeList size: %d\n",GetSize(conn->freeList));
         //sprintf(buffer,"response freeList size: %d\n",GetSize(conn->freeList));
@@ -777,13 +778,13 @@ void* getHeaderBuffer(Connection *conn, int64_t timeout_us, int32_t *ret_size) {
     }
 
     while(1) {//TODO get timeout handler
-        pthread_spin_lock(&conn->lock);
+        //pthread_spin_lock(&conn->lock);
         if (conn->state != CONN_STATE_CONNECTED) { //在使用之前需要判断连接的状态
             *ret_size = -1;
             //printf("get header buffer: conn state is not connected: state(%d)\n",conn->state);//TODO change print msg
             //sprintf(buffer,"get header buffer: conn state is not connected: state(%d)\n",conn->state);
             //PrintCallback(buffer);
-            pthread_spin_unlock(&conn->lock);
+            //pthread_spin_unlock(&conn->lock);
             return NULL;
         }
 
@@ -793,7 +794,7 @@ void* getHeaderBuffer(Connection *conn, int64_t timeout_us, int32_t *ret_size) {
             //sprintf(buffer,"conn(%p) get header buffer timeout, deadline:%ld, now:%ld\n", conn, dead_line, now);
             //PrintCallback(buffer);
             DisConnect(conn,true);
-            pthread_spin_unlock(&conn->lock);
+            //pthread_spin_unlock(&conn->lock);
             return NULL;
         }
         if(now >= dead_line) {
@@ -801,7 +802,7 @@ void* getHeaderBuffer(Connection *conn, int64_t timeout_us, int32_t *ret_size) {
             //sprintf(buffer,"conn(%p) get header buffer timeout, deadline:%ld, now:%ld\n", conn, dead_line, now);
             //PrintCallback(buffer);
             DisConnect(conn,true);
-            pthread_spin_unlock(&conn->lock);
+            //pthread_spin_unlock(&conn->lock);
             return NULL;
         }
 
@@ -809,11 +810,11 @@ void* getHeaderBuffer(Connection *conn, int64_t timeout_us, int32_t *ret_size) {
             //printf("conn(%d) get header buffer failed, no more response buffer can get\n", conn);
             //sprintf(buffer,"conn(%d) get header buffer failed, no more response buffer can get\n", conn);
             //PrintCallback(buffer);
-            pthread_spin_unlock(&conn->lock);
+            //pthread_spin_unlock(&conn->lock);
             continue;
         }
 
-        pthread_spin_unlock(&conn->lock);
+        //pthread_spin_unlock(&conn->lock);
 
         //printf("header freeList size: %d\n",GetSize(conn->freeList));
         //sprintf(buffer,"header freeList size: %d\n",GetSize(conn->freeList));
@@ -831,7 +832,7 @@ void setConnContext(Connection* conn, void* connContext) {
     //PrintCallback(buffer);
     //sprintf(buffer,"setConnContext: connState %d\n",conn->state);
     //PrintCallback(buffer);
-    pthread_spin_lock(&conn->lock);
+    //pthread_spin_lock(&conn->lock);
     conn->connContext = connContext;
     conn->state = CONN_STATE_CONNECTED;
     //sprintf(buffer,"setConnContext: 111\n");
@@ -841,29 +842,29 @@ void setConnContext(Connection* conn, void* connContext) {
     //sprintf(buffer,"setConnContext: conn->comp_channel->fd %d\n",conn->comp_channel->fd);
     //PrintCallback(buffer);
     EpollAddSendAndRecvEvent(conn->comp_channel->fd, conn);
-    pthread_spin_unlock(&conn->lock);
+    //pthread_spin_unlock(&conn->lock);
     return;
 }
 
 void setSendTimeoutUs(Connection* conn, int64_t timeout_us) {
-    pthread_spin_lock(&conn->lock);
+    //pthread_spin_lock(&conn->lock);
     if(timeout_us > 0) {
         conn->send_timeout_ns = timeout_us * 1000;
     } else {
         conn->send_timeout_ns = -1;
     }
-    pthread_spin_unlock(&conn->lock);
+    //pthread_spin_unlock(&conn->lock);
     return;
 }
 
 void setRecvTimeoutUs(Connection* conn, int64_t timeout_us) {
-    pthread_spin_lock(&conn->lock);
+    //pthread_spin_lock(&conn->lock);
     if(timeout_us > 0) {
         conn->recv_timeout_ns = timeout_us * 1000;
     } else {
         conn->recv_timeout_ns = -1;
     }
-    pthread_spin_unlock(&conn->lock);
+    //pthread_spin_unlock(&conn->lock);
     return;
 }
 
@@ -878,18 +879,18 @@ int releaseDataBuffer(void* buff) {
 }
 
 int releaseResponseBuffer(Connection* conn, void* buff) {
-    pthread_spin_lock(&conn->lock);
+    //pthread_spin_lock(&conn->lock);
     if(conn->state != CONN_STATE_CONNECTED) {
         //printf("conn state is not connected: state(%d)\n",conn->state);//TODO change print msg
         //sprintf(buffer,"conn state is not connected: state(%d)\n",conn->state);
         //PrintCallback(buffer);
         //TODO release buff
-        pthread_spin_unlock(&conn->lock);
+        //pthread_spin_unlock(&conn->lock);
         return C_ERR;
     }
     
     if(EnQueue(conn->freeList,(Response*)buff) == NULL) { //TODO error handler
-        pthread_spin_unlock(&conn->lock);
+        //pthread_spin_unlock(&conn->lock);
         //printf("no more memory can be malloced\n");
         //sprintf(buffer,"no more memory can be malloced\n");
         //PrintCallback(buffer);
@@ -898,22 +899,22 @@ int releaseResponseBuffer(Connection* conn, void* buff) {
     //printf("response freeList size: %d\n",GetSize(conn->freeList));
     //sprintf(buffer,"response freeList size: %d\n",GetSize(conn->freeList));
     //PrintCallback(buffer);
-    pthread_spin_unlock(&conn->lock);
+    //pthread_spin_unlock(&conn->lock);
     return C_OK;
 }
 
 int releaseHeaderBuffer(Connection* conn, void* buff) {
-    pthread_spin_lock(&conn->lock);
+    //pthread_spin_lock(&conn->lock);
     if (conn->state != CONN_STATE_CONNECTED) { //在使用之前需要判断连接的状态
         //printf("conn state is not connected: state(%d)\n",conn->state);//TODO change print msg
         //sprintf(buffer,"conn state is not connected: state(%d)\n",conn->state);
         //PrintCallback(buffer);
         //TODO release buff
-        pthread_spin_unlock(&conn->lock);
+        //pthread_spin_unlock(&conn->lock);
         return C_ERR;//TODO 错误码分情况
     }
     if(EnQueue(conn->freeList,(Header*)buff) == NULL) { //TODO error handler
-        pthread_spin_unlock(&conn->lock);
+        //pthread_spin_unlock(&conn->lock);
         //printf("no more memory can be malloced\n");
         //sprintf(buffer,"no more memory can be malloced\n");
         //PrintCallback(buffer);
@@ -922,21 +923,21 @@ int releaseHeaderBuffer(Connection* conn, void* buff) {
     //printf("header freeList size: %d\n",GetSize(conn->freeList));
     //sprintf(buffer,"header freeList size: %d\n",GetSize(conn->freeList));
     //PrintCallback(buffer);
-    pthread_spin_unlock(&conn->lock);
+    //pthread_spin_unlock(&conn->lock);
     return C_OK;
 }
 
 int connAppWrite(Connection *conn, void* buff, void *headerCtx, int32_t len) {
-    pthread_spin_lock(&conn->lock);
+    //pthread_spin_lock(&conn->lock);
     if (conn->state != CONN_STATE_CONNECTED) { //在使用之前需要判断连接的状态
         //printf("conn state is not connected: state(%d)\n",conn->state);//TODO change print msg
         //sprintf(buffer,"conn state is not connected: state(%d)\n",conn->state);
         //PrintCallback(buffer);
         //TODO release buff
-        pthread_spin_unlock(&conn->lock);
+        //pthread_spin_unlock(&conn->lock);
         return C_ERR;//TODO 错误码分情况
     }
-    pthread_spin_unlock(&conn->lock);
+    //pthread_spin_unlock(&conn->lock);
 
     Header* header = (Header*)headerCtx;
     header->RdmaAddr = htonu64((uint64_t)buff);
@@ -965,16 +966,16 @@ failed:
 }
 
 int connAppSendResp(Connection *conn, void* responseCtx, int32_t len) {
-    pthread_spin_lock(&conn->lock);
+    //pthread_spin_lock(&conn->lock);
     if (conn->state != CONN_STATE_CONNECTED) { //在使用之前需要判断连接的状态
         //printf("conn state is not connected: state(%d)\n",conn->state);//TODO change print msg
         //sprintf(buffer,"conn state is not connected: state(%d)\n",conn->state);
         //PrintCallback(buffer);
         //TODO release buff
-        pthread_spin_unlock(&conn->lock);
+        //pthread_spin_unlock(&conn->lock);
         return C_ERR;//TODO 错误码分情况
     }
-    pthread_spin_unlock(&conn->lock);
+    //pthread_spin_unlock(&conn->lock);
 
     Response* response = (Response*)responseCtx;
     int ret = connRdmaSendResponse(conn, response, len);
@@ -1019,12 +1020,12 @@ int RdmaRead(Connection *conn, Header *header, MemoryEntry* entry) {//, int64_t 
     }
 
     while(1) {
-        pthread_spin_lock(&conn->lock);
+        //pthread_spin_lock(&conn->lock);
         if (conn->state != CONN_STATE_CONNECTED) { //在使用之前需要判断连接的状态
             //printf("conn(%p) state error or conn closed: state(%d)\n",conn, conn->state);//TODO change print msg
             //sprintf(buffer,"conn(%p) state error or conn closed: state(%d)\n",conn, conn->state);
             //PrintCallback(buffer);
-            pthread_spin_unlock(&conn->lock);
+            //pthread_spin_unlock(&conn->lock);
             return C_ERR;
         }
         now = get_time_ns();
@@ -1032,14 +1033,14 @@ int RdmaRead(Connection *conn, Header *header, MemoryEntry* entry) {//, int64_t 
             //printf("conn(%p) rdma read timeout, deadline:%ld, now:%ld\n", conn, dead_line, now);
             //sprintf(buffer,"conn(%p) rdma read timeout, deadline:%ld, now:%ld\n", conn, dead_line, now);
             //PrintCallback(buffer);
-            pthread_spin_unlock(&conn->lock);
+            //pthread_spin_unlock(&conn->lock);
             return C_ERR;
         }
         if(now >= dead_line) {
             //printf("conn(%p) rdma read timeout, deadline:%ld, now:%ld\n", conn, dead_line, now);
             //sprintf(buffer,"conn(%p) rdma read timeout, deadline:%ld, now:%ld\n", conn, dead_line, now);
             //PrintCallback(buffer);
-            pthread_spin_unlock(&conn->lock);
+            //pthread_spin_unlock(&conn->lock);
             return C_ERR;
         }
         index = buddy_alloc(conn->pool->allocation,remote_length / (rdmaPoolConfig->memBlockSize));
@@ -1048,7 +1049,7 @@ int RdmaRead(Connection *conn, Header *header, MemoryEntry* entry) {//, int64_t 
             //printf("conn(%p) rdma read failed, there is no space to read\n", conn);
             //sprintf(buffer,"conn(%p) rdma read failed, there is no space to read\n", conn);
             //PrintCallback(buffer);
-            pthread_spin_unlock(&conn->lock);
+            //pthread_spin_unlock(&conn->lock);
             //return C_ERR; //TODO maybe return -1
             continue;
         }
@@ -1057,7 +1058,7 @@ int RdmaRead(Connection *conn, Header *header, MemoryEntry* entry) {//, int64_t 
         //printf("index %d (sz = %d)\n",index,s);
         assert(s >= (remote_length / (rdmaPoolConfig->memBlockSize)));
         
-        pthread_spin_unlock(&conn->lock);        
+        //pthread_spin_unlock(&conn->lock);
         break;
     }
 

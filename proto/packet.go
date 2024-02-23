@@ -19,7 +19,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/cubefs/cubefs/util/log"
 	"github.com/cubefs/cubefs/util/rdma"
 	"io"
 	"net"
@@ -710,7 +709,7 @@ func (p *Packet) WriteToRDMAConn(conn *rdma.Connection) (err error) {
 
 	defer func() {
 		if headerBuff != nil {
-			log.LogDebugf("header buff release")
+			//log.LogDebugf("header buff release")
 			_ = conn.ReleaseHeaderBuffer(headerBuff)
 		}
 		//if dataBuff != nil {
@@ -747,7 +746,7 @@ func (p *Packet) WriteToFollowerRDMAConn(conn *rdma.Connection) (err error) {
 	var headerBuff []byte
 
 	defer func() {
-		log.LogDebugf("header buff release")
+		//log.LogDebugf("header buff release")
 		_ = conn.ReleaseHeaderBuffer(headerBuff)
 	}()
 
@@ -793,7 +792,7 @@ func (p *Packet) SendRespToRDMAConn(conn *rdma.Connection) (err error) {
 	if _, err = conn.SendResp(respBuff); err != nil {
 		return
 	}
-	log.LogDebugf("rdma send resp success")
+	//log.LogDebugf("rdma send resp success")
 	return
 }
 

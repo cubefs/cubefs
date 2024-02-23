@@ -250,8 +250,6 @@ func (eh *ExtentHandler) sender() {
 
 			if IsRdma {
 				packet.Arg = ([]byte)(eh.dp.GetAllRdmaAddrs())
-				log.LogDebugf("packet follower rdma hosts(%v)", eh.dp.GetAllRdmaAddrs())
-				log.LogDebugf("packet follower hosts(%v)", eh.dp.GetAllAddrs())
 			} else {
 				packet.Arg = ([]byte)(eh.dp.GetAllAddrs())
 			}
@@ -590,9 +588,7 @@ func (eh *ExtentHandler) allocateExtent() (err error) {
 		}
 
 		if IsRdma {
-			log.LogDebugf("allocateExtent: get rdma conn start")
 			addr := wrapper.GetRdmaAddr(dp.Hosts[0])
-			log.LogDebugf("allocateExtent: addr(%v)", addr)
 			if rdmaConn, err = StreamRdmaConnPool.GetRdmaConn(addr); err != nil {
 				log.LogWarnf("allocateExtent: failed to create connection, eh(%v) err(%v) dp(%v) exclude(%v)",
 					eh, err, dp, exclude)
@@ -603,7 +599,6 @@ func (eh *ExtentHandler) allocateExtent() (err error) {
 				}
 				continue
 			}
-			log.LogDebugf("allocateExtent: get rdma conn exit")
 		} else {
 			if conn, err = StreamConnPool.GetConnect(dp.Hosts[0]); err != nil {
 				log.LogWarnf("allocateExtent: failed to create connection, eh(%v) err(%v) dp(%v) exclude(%v)",

@@ -74,9 +74,10 @@ int OnServerConnDisconnected(struct rdma_cm_id *id, void* ctx) { //TODO just con
     Connection* conn = (Connection*)id->context;
     //sprintf(buffer,"conn=%d disconnected\n", conn);
     //PrintCallback(buffer);
-    pthread_spin_lock(&conn->lock);
+
+    //pthread_spin_lock(&conn->lock);
     conn->state = CONN_STATE_CLOSED;
-    pthread_spin_unlock(&conn->lock);
+    //pthread_spin_unlock(&conn->lock);
     
     if(conn->connContext != NULL) {
         DisConnectCallback(conn->connContext);
