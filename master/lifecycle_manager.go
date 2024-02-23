@@ -240,7 +240,7 @@ func (ns *lcNodeStatus) UpdateNode(nodeAddr string, count int) {
 	return
 }
 
-//-----------------------------------------------
+// -----------------------------------------------
 type lcRuleTaskStatus struct {
 	sync.RWMutex
 	ToBeScanned map[string]*proto.RuleTask
