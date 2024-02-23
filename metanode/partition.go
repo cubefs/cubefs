@@ -196,8 +196,7 @@ type OpTransaction interface {
 	TxCommit(req *proto.TxApplyRequest, p *Packet, remoteAddr string) (err error)
 	TxRollback(req *proto.TxApplyRequest, p *Packet, remoteAddr string) (err error)
 	TxGetInfo(req *proto.TxGetInfoRequest, p *Packet) (err error)
-	TxGetCnt() (uint64, uint64, uint64)
-	TxGetTree() (TransactionTree, TransactionRollbackInodeTree, TransactionRollbackDentryTree)
+	TxGetCnt() (uint64, uint64, uint64, error)
 }
 
 // OpExtent defines the interface for the extent operations.
@@ -275,6 +274,15 @@ type OpPartition interface {
 	GetUniqID(p *Packet, num uint32) (err error)
 }
 
+type MetaPartitionDebug interface {
+	GetInodeRealCount() (count uint64, err error)
+	GetDentryRealCount() (count uint64, err error)
+	GetTxRealCount() (count uint64, err error)
+	GetTxRbInodeRealCount() (count uint64, err error)
+	GetTxRbDentryRealCount() (count uint64, err error)
+	GetDeletedExtentsRealCount() (count uint64, err error)
+}
+
 // MetaPartition defines the interface for the meta partition operations.
 type MetaPartition interface {
 	Start(isCreate bool) error
@@ -289,8 +297,10 @@ type MetaPartition interface {
 	SetForbidden(status bool)
 	IsEnableAuditLog() bool
 	SetEnableAuditLog(status bool)
-	GetSnapShot() Snapshot
+	GetSnapShot() (Snapshot, error)
 	ReleaseSnapShot(snap Snapshot)
+	// NOTE: for debug
+	MetaPartitionDebug
 }
 
 type UidManager struct {
@@ -495,13 +505,15 @@ type OpQuota interface {
 //	+-----+             +-------+
 type metaPartition struct {
 	config                 *MetaPartitionConfig
-	size                   uint64        // For partition all file size
-	applyID                uint64        // Inode/Dentry max applyID, this index will be update after restoring from the dumped data.
-	storedApplyId          uint64        // update after store snapshot to disk
-	dentryTree             DentryTree    // btree for dentries
-	inodeTree              InodeTree     // btree for inodes
-	extendTree             ExtendTree    // btree for inode extend (XAttr) management
-	multipartTree          MultipartTree // collection for multipart management
+	size                   uint64             // For partition all file size
+	applyID                uint64             // Inode/Dentry max applyID, this index will be update after restoring from the dumped data.
+	storedApplyId          uint64             // update after store snapshot to disk
+	dentryTree             DentryTree         // btree for dentries
+	inodeTree              InodeTree          // btree for inodes
+	extendTree             ExtendTree         // btree for inode extend (XAttr) management
+	multipartTree          MultipartTree      // collection for multipart management
+	deletedExtentsTree     DeletedExtentsTree // deleted extents
+	deletedExtentId        uint64
 	db                     *RocksDbInfo
 	txProcessor            *TransactionProcessor // transction processor
 	raftPartition          raftstore.Partition
@@ -599,8 +611,8 @@ func (mp *metaPartition) GetAllVerList() (verList []*proto.VolVersionInfo) {
 
 func (mp *metaPartition) updateSizeLoopFunc() (size uint64) {
 	var err error
-	snap := mp.GetSnapShot()
-	if snap == nil {
+	snap, err := mp.GetSnapShot()
+	if err != nil {
 		log.LogErrorf("mp[%d] create snap shot failed", mp.config.PartitionId)
 		return
 	}
@@ -741,11 +753,11 @@ func (mp *metaPartition) onStart(isCreate bool) (err error) {
 		return
 	}
 	mp.startScheduleTask()
-	if err = mp.startFreeList(); err != nil {
-		err = errors.NewErrorf("[onStart] start free list id=%d: %s",
-			mp.config.PartitionId, err.Error())
-		return
-	}
+	// if err = mp.startFreeList(); err != nil {
+	// 	err = errors.NewErrorf("[onStart] start free list id=%d: %s",
+	// 		mp.config.PartitionId, err.Error())
+	// 	return
+	// }
 
 	// set EBS Client
 	if clusterInfo, err = masterClient.AdminAPI().GetClusterInfo(); err != nil {
@@ -925,6 +937,7 @@ func (mp *metaPartition) initMemoryTree() {
 	mp.inodeTree = &InodeBTree{NewBtree()}
 	mp.extendTree = &ExtendBTree{NewBtree()}
 	mp.multipartTree = &MultipartBTree{NewBtree()}
+	mp.deletedExtentsTree = &DeletedExtentsBTree{NewBtree()}
 	return
 }
 
@@ -957,6 +970,9 @@ func (mp *metaPartition) initRocksDBTree() (err error) {
 		return
 	}
 	if mp.multipartTree, err = NewMultipartRocks(tree); err != nil {
+		return
+	}
+	if mp.deletedExtentsTree, err = NewDeletedExtentsRocks(tree); err != nil {
 		return
 	}
 	return
@@ -1313,6 +1329,11 @@ func (mp *metaPartition) load(isCreate bool) (err error) {
 		return
 	}
 
+	if err = mp.loadDeletedExtentId(snapshotPath); err != nil {
+		log.LogErrorf("[load] failed to load deleted extent id, mp(%v) err(%v)", mp.config.PartitionId, err)
+		return
+	}
+
 	// NOTE: when we create rocksdb mp
 	// we will select a db path and set RocksdbDir config
 	// so we need to persist metadata
@@ -1337,6 +1358,8 @@ func (mp *metaPartition) load(isCreate bool) (err error) {
 		log.LogDebugf("[load] mp(%v) tx real len(%v)", mp.config.PartitionId, txTree.RealCount())
 		log.LogDebugf("[load] mp(%v) tx rb inode real len(%v)", mp.config.PartitionId, txRbInoTree.RealCount())
 		log.LogDebugf("[load] mp(%v) tx rb dentry real len(%v)", mp.config.PartitionId, txRbDenTree.RealCount())
+		log.LogDebugf("[load] mp(%v) deleted extent id(%v)", mp.config.PartitionId, mp.deletedExtentsTree.GetDeletedExtentId())
+		log.LogDebugf("[load] mp(%v) deleted extents real len(%v)", mp.config.PartitionId, mp.deletedExtentsTree.RealCount())
 	}
 
 	return
@@ -1395,6 +1418,9 @@ func (mp *metaPartition) store(sm *storeMsg) (err error) {
 		return
 	}
 	if err = mp.storeUniqID(tmpDir, sm); err != nil {
+		return
+	}
+	if err = mp.storeDeletedExtentId(tmpDir, sm); err != nil {
 		return
 	}
 
@@ -1669,8 +1695,8 @@ func (mp *metaPartition) delPartitionDentriesVersion(verSeq uint64, wg *sync.Wai
 	count := 0
 	needSleep := false
 
-	snap := mp.GetSnapShot()
-	if snap == nil {
+	snap, err := mp.GetSnapShot()
+	if err != nil {
 		log.LogErrorf("mp[%d] create snap shot failed", mp.config.PartitionId)
 		return
 	}
@@ -1723,8 +1749,8 @@ func (mp *metaPartition) delPartitionExtendsVersion(verSeq uint64, wg *sync.Wait
 	count := 0
 	needSleep := false
 
-	snap := mp.GetSnapShot()
-	if snap == nil {
+	snap, err := mp.GetSnapShot()
+	if err != nil {
 		log.LogErrorf("mp[%d] create snap shot failed", mp.config.PartitionId)
 		return
 	}
@@ -1775,15 +1801,13 @@ func (mp *metaPartition) delPartitionInodesVersion(verSeq uint64, wg *sync.WaitG
 	count := 0
 	needSleep := false
 
-	snap := mp.GetSnapShot()
-	if snap == nil {
+	snap, err := mp.GetSnapShot()
+	if err != nil {
 		log.LogErrorf("mp[%d] create snap shot failed", mp.config.PartitionId)
 		return
 	}
 	defer func() {
-		if snap != nil {
-			mp.ReleaseSnapShot(snap)
-		}
+		mp.ReleaseSnapShot(snap)
 		if err != nil {
 			log.LogErrorf("mp[%d] range inode failed", mp.config.PartitionId)
 		}
@@ -1903,8 +1927,8 @@ func (mp *metaPartition) InodeTTLScan(cacheTTL int) {
 	count := 0
 	needSleep := false
 
-	snap := mp.GetSnapShot()
-	if snap == nil {
+	snap, err := mp.GetSnapShot()
+	if err != nil {
 		log.LogErrorf("mp[%d] create snap shot failed", mp.config.PartitionId)
 		return
 	}
@@ -1981,8 +2005,13 @@ func (mp *metaPartition) storeSnapshotFiles() (err error) {
 	// in memory store
 	mp.nonIdempotent.Lock()
 	defer mp.nonIdempotent.Unlock()
+	snap, err := mp.GetSnapShot()
+	if err != nil {
+		return
+	}
+	defer snap.Close()
 	msg := &storeMsg{
-		snap:         NewSnapshot(mp),
+		snap:         snap,
 		uniqId:       mp.GetUniqId(),
 		uniqChecker:  newUniqChecker(),
 		multiVerList: mp.multiVersionList.VerList,
@@ -2012,22 +2041,14 @@ func (mp *metaPartition) startCheckerEvict() {
 }
 
 func (mp *metaPartition) HasMemStore() bool {
-	if (mp.config.StoreMode & proto.StoreModeMem) != 0 {
-		return true
-	}
-
-	return false
+	return mp.config.StoreMode&proto.StoreModeMem != 0
 }
 
 func (mp *metaPartition) HasRocksDBStore() bool {
-	if (mp.config.StoreMode & proto.StoreModeRocksDb) != 0 {
-		return true
-	}
-
-	return false
+	return mp.config.StoreMode&proto.StoreModeRocksDb != 0
 }
 
-func (mp *metaPartition) GetSnapShot() Snapshot {
+func (mp *metaPartition) GetSnapShot() (Snapshot, error) {
 	return NewSnapshot(mp)
 }
 
@@ -2038,4 +2059,87 @@ func (mp *metaPartition) ReleaseSnapShot(snap Snapshot) {
 // GetAppliedID returns applied ID of raft
 func (mp *metaPartition) GetAppliedID() uint64 {
 	return atomic.LoadUint64(&mp.applyID)
+}
+
+func (mp *metaPartition) GetDeletedExtenId() uint64 {
+	return atomic.LoadUint64(&mp.deletedExtentId)
+}
+
+// NOTE: for debug
+func (mp *metaPartition) GetInodeRealCount() (count uint64, err error) {
+	snap, err := mp.GetSnapShot()
+	if err != nil {
+		return
+	}
+	defer snap.Close()
+	err = snap.Range(InodeType, func(item interface{}) (bool, error) {
+		count++
+		return true, nil
+	})
+	return
+}
+
+func (mp *metaPartition) GetDentryRealCount() (count uint64, err error) {
+	snap, err := mp.GetSnapShot()
+	if err != nil {
+		return
+	}
+	defer snap.Close()
+	err = snap.Range(DentryType, func(item interface{}) (bool, error) {
+		count++
+		return true, nil
+	})
+	return
+}
+
+func (mp *metaPartition) GetTxRealCount() (count uint64, err error) {
+	snap, err := mp.GetSnapShot()
+	if err != nil {
+		return
+	}
+	defer snap.Close()
+	err = snap.Range(TransactionType, func(item interface{}) (bool, error) {
+		count++
+		return true, nil
+	})
+	return
+}
+
+func (mp *metaPartition) GetTxRbInodeRealCount() (count uint64, err error) {
+	snap, err := mp.GetSnapShot()
+	if err != nil {
+		return
+	}
+	defer snap.Close()
+	err = snap.Range(TransactionRollbackInodeType, func(item interface{}) (bool, error) {
+		count++
+		return true, nil
+	})
+	return
+}
+
+func (mp *metaPartition) GetTxRbDentryRealCount() (count uint64, err error) {
+	snap, err := mp.GetSnapShot()
+	if err != nil {
+		return
+	}
+	defer snap.Close()
+	err = snap.Range(TransactionRollbackDentryType, func(item interface{}) (bool, error) {
+		count++
+		return true, nil
+	})
+	return
+}
+
+func (mp *metaPartition) GetDeletedExtentsRealCount() (count uint64, err error) {
+	snap, err := mp.GetSnapShot()
+	if err != nil {
+		return
+	}
+	defer snap.Close()
+	err = snap.Range(DeletedExtentsType, func(item interface{}) (bool, error) {
+		count++
+		return true, nil
+	})
+	return
 }

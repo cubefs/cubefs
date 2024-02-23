@@ -302,6 +302,7 @@ func (mp *metaPartition) fsmTxUnlinkInode(dbHandle interface{}, txIno *TxInode) 
 		}
 	}()
 
+	log.LogDebugf("action[fsmTxUnlinkInode] invoke fsmUnlinkInode")
 	resp, err = mp.fsmUnlinkInode(dbHandle, txIno.Inode, 1, 0)
 	if resp.Status != proto.OpOk {
 		return
@@ -326,11 +327,13 @@ func (mp *metaPartition) fsmUnlinkInode(dbHandle interface{}, ino *Inode, unlink
 	resp.Status = proto.OpOk
 
 	inode, _ := mp.inodeTree.Get(ino.Inode)
+	// NOTE: if not found
 	if inode == nil {
 		log.LogDebugf("action[fsmUnlinkInode] mp[%v] ino[%v]", mp.config.PartitionId, ino)
 		resp.Status = proto.OpNotExistErr
 		return
 	}
+	// NOTE: no snapshot and should delete
 	if ino.getVer() == 0 && inode.ShouldDelete() {
 		log.LogDebugf("action[fsmUnlinkInode] mp[%v] ino[%v]", mp.config.PartitionId, ino)
 		resp.Status = proto.OpNotExistErr
@@ -349,6 +352,7 @@ func (mp *metaPartition) fsmUnlinkInode(dbHandle interface{}, ino *Inode, unlink
 		status = proto.OpOk
 	)
 
+	// NOTE: remove top level
 	if ino.getVer() == 0 {
 		ext2Del, doMore, status = inode.unlinkTopLayer(mp.config.PartitionId, ino, mp.verSeq, mp.multiVersionList)
 	} else { // means drop snapshot
@@ -357,20 +361,29 @@ func (mp *metaPartition) fsmUnlinkInode(dbHandle interface{}, ino *Inode, unlink
 			log.LogDebugf("action[fsmUnlinkInode] mp[%v] inode[%v] unlink not exist snapshot and return do nothing.reqseq [%v] larger than inode seq [%v]",
 				mp.config.PartitionId, ino.Inode, ino.getVer(), inode.getVer())
 			return
-		} else {
-			ext2Del, doMore, status = inode.unlinkVerInList(mp.config.PartitionId, ino, mp.verSeq, mp.multiVersionList)
 		}
+		ext2Del, doMore, status = inode.unlinkVerInList(mp.config.PartitionId, ino, mp.verSeq, mp.multiVersionList)
 	}
 	if !doMore {
+		if err = mp.inodeTree.Update(dbHandle, inode); err != nil {
+			resp.Status = proto.OpErr
+			return
+		}
 		resp.Status = status
 		return
 	}
-
+	deleted := false
+	log.LogDebugf("[fsmUnlinkInode] unlink ino(%v)", inode)
 	if inode.IsEmptyDirAndNoSnapshot() { // normal deletion
-		if ino.NLink < 2 { // snapshot deletion
+		if inode.NLink < 2 { // snapshot deletion
 			log.LogDebugf("action[fsmUnlinkInode] mp[%v] ino[%v] really be deleted, empty dir", mp.config.PartitionId, inode)
-			mp.inodeTree.Delete(dbHandle, inode.Inode)
+			_, err = mp.inodeTree.Delete(dbHandle, inode.Inode)
+			if err != nil {
+				resp.Status = proto.OpErr
+				return
+			}
 			mp.updateUsedInfo(0, -1, inode.Inode)
+			deleted = true
 		}
 	} else if inode.IsTempFile() {
 		// all snapshot between create to last deletion cleaned
@@ -378,22 +391,39 @@ func (mp *metaPartition) fsmUnlinkInode(dbHandle interface{}, ino *Inode, unlink
 			mp.updateUsedInfo(-1*int64(inode.Size), -1, inode.Inode)
 			log.LogDebugf("action[fsmUnlinkInode] mp[%v] unlink inode[%v] and push to freeList", mp.config.PartitionId, inode)
 			inode.AccessTime = time.Now().Unix()
-			mp.freeList.Push(inode.Inode)
 			mp.uidManager.doMinusUidSpace(inode.Uid, inode.Inode, inode.Size)
 			log.LogDebugf("action[fsmUnlinkInode] mp[%v] ino[%v]", mp.config.PartitionId, inode)
+
+			delExtents := inode.ClearAllExtsOfflineInode(mp.GetBaseConfig().PartitionId)
+			for _, eks := range delExtents {
+				for _, ek := range eks {
+					dek := NewDeletedExtentKey(ek, inode.Inode, mp.AllocDeletedExtentId())
+					err = mp.deletedExtentsTree.Put(dbHandle, dek)
+					if err != nil {
+						return
+					}
+				}
+			}
+			// mp.freeList.Push(inode.Inode)
 		}
 	}
 
 	if len(ext2Del) > 0 {
 		log.LogDebugf("action[fsmUnlinkInode] mp[%v] ino[%v] DecSplitExts ext2Del %v", mp.config.PartitionId, ino, ext2Del)
 		inode.DecSplitExts(mp.config.PartitionId, ext2Del)
-		mp.extDelCh <- ext2Del
+		for _, ek := range ext2Del {
+			dek := NewDeletedExtentKey(&ek, inode.Inode, mp.AllocDeletedExtentId())
+			mp.deletedExtentsTree.Put(dbHandle, dek)
+		}
+		// mp.extDelCh <- ext2Del
+	}
+	if !deleted {
+		if err = mp.inodeTree.Update(dbHandle, inode); err != nil {
+			resp.Status = proto.OpErr
+			return
+		}
 	}
 	log.LogDebugf("action[fsmUnlinkInode] mp[%v] ino[%v] left", mp.config.PartitionId, inode)
-	if err = mp.inodeTree.Update(dbHandle, inode); err != nil {
-		resp.Status = proto.OpErr
-		return
-	}
 	return
 }
 
@@ -429,6 +459,7 @@ func (mp *metaPartition) fsmUnlinkInodeBatch(dbHandle interface{}, batchInode In
 		}
 		var rsp *InodeResponse
 		//todo inode info miss
+		log.LogDebugf("[fsmUnlinkInodeBatch] unlink inode(%v)", inodeID)
 		rsp, err = mp.fsmUnlinkInode(dbHandle, NewInode(inodeID, 0), unlinkNum, 0)
 		if err != nil {
 			resp = resp[:0]
@@ -481,7 +512,32 @@ func (mp *metaPartition) internalDeleteBatch(dbHandle interface{}, val []byte) e
 func (mp *metaPartition) internalDeleteInode(dbHandle interface{}, ino *Inode) (err error) {
 	log.LogDebugf("action[internalDeleteInode] ino[%v] really be deleted", ino)
 	_, err = mp.inodeTree.Delete(dbHandle, ino.Inode)
-	mp.freeList.Remove(ino.Inode)
+	if err != nil {
+		return
+	}
+	var snap Snapshot
+	start := NewDeletedExtentKeyPrefix(mp.config.PartitionId, ino.Inode)
+	end := NewDeletedExtentKeyPrefix(mp.config.PartitionId, ino.Inode+1)
+	snap, err = NewSnapshot(mp)
+	if err != nil {
+		log.LogErrorf("[internalDeleteInode] failed to get snapshot, mp(%v), err(%v)", mp.config.PartitionId, err)
+		return
+	}
+	defer snap.Close()
+	// NOTE: delete from dek tree
+	err = snap.RangeWithScope(DeletedExtentsType, start, end, func(item interface{}) (bool, error) {
+		dek := item.(*DeletedExtentKey)
+		if _, err = mp.deletedExtentsTree.Delete(dbHandle, dek); err != nil {
+			return false, err
+		}
+		return true, nil
+	})
+
+	if err != nil {
+		log.LogErrorf("[internalDeleteInode] failed to delete dek from dek tree, err(%v)", err)
+		return
+	}
+	// mp.freeList.Remove(ino.Inode)
 	_, err = mp.extendTree.Delete(dbHandle, ino.Inode) // Also delete extend attribute.
 	return
 }
@@ -523,14 +579,15 @@ func (mp *metaPartition) fsmAppendExtents(dbHandle interface{}, ino *Inode) (sta
 		return
 	}
 
-	if err = mp.inodeTree.CommitBatchWrite(dbHandle, true); err != nil {
-		log.LogErrorf("fsm(%v) action(AppendExtents) inode(%v) exts(%v) Commit error:%v",
-			mp.config.PartitionId, ino2.Inode, eks, err)
-		status = proto.OpErr
-		return
+	for _, ek := range delExtents {
+		dek := NewDeletedExtentKey(&ek, ino2.Inode, mp.AllocDeletedExtentId())
+		err = mp.deletedExtentsTree.Put(dbHandle, dek)
+		if err != nil {
+			status = proto.OpErr
+			return
+		}
 	}
-	_ = mp.inodeTree.ClearBatchWriteHandle(dbHandle)
-	mp.extDelCh <- delExtents
+	// mp.extDelCh <- delExtents
 	return
 }
 
@@ -600,7 +657,15 @@ func (mp *metaPartition) fsmAppendExtentsWithCheck(dbHandle interface{}, ino *In
 			if !storage.IsTinyExtent(eks[0].ExtentId) && eks[0].ExtentOffset >= util.ExtentSize {
 				eks[0].SetSplit(true)
 			}
-			mp.extDelCh <- eks[:1]
+			for _, ek := range eks[:1] {
+				dek := NewDeletedExtentKey(&ek, fsmIno.Inode, mp.AllocDeletedExtentId())
+				err = mp.deletedExtentsTree.Put(dbHandle, dek)
+				if err != nil {
+					status = proto.OpErr
+					return
+				}
+			}
+			// mp.extDelCh <- eks[:1]
 		}
 	} else {
 		// only the ek itself will be moved to level before
@@ -615,7 +680,15 @@ func (mp *metaPartition) fsmAppendExtentsWithCheck(dbHandle interface{}, ino *In
 
 	// conflict need delete eks[0], to clear garbage data
 	if status == proto.OpConflictExtentsErr {
-		mp.extDelCh <- eks[:1]
+		// mp.extDelCh <- eks[:1]
+		for _, ek := range eks[:1] {
+			dek := NewDeletedExtentKey(&ek, fsmIno.Inode, mp.AllocDeletedExtentId())
+			err = mp.deletedExtentsTree.Put(dbHandle, dek)
+			if err != nil {
+				status = proto.OpErr
+				return
+			}
+		}
 		mp.uidManager.minusUidSpace(fsmIno.Uid, fsmIno.Inode, eks[:1])
 		log.LogDebugf("fsmAppendExtentsWithCheck mp[%v] delExtents inode[%v] ek(%v)", mp.config.PartitionId, fsmIno.Inode, delExtents)
 	}
@@ -624,22 +697,23 @@ func (mp *metaPartition) fsmAppendExtentsWithCheck(dbHandle interface{}, ino *In
 	log.LogInfof("fsmAppendExtentWithCheck mp[%v] inode[%v] ek(%v) deleteExtents(%v) discardExtents(%v) status(%v)",
 		mp.config.PartitionId, fsmIno.Inode, eks[0], delExtents, discardExtentKey, status)
 
-	if err = mp.inodeTree.Put(dbHandle, fsmIno); err != nil {
+	if err = mp.inodeTree.Update(dbHandle, fsmIno); err != nil {
 		status = proto.OpErr
 		log.LogErrorf("fsm(%v) action(AppendExtents) inode(%v) exts(%v) Put error:%v",
 			mp.config.PartitionId, fsmIno.Inode, delExtents, err)
 		return
 	}
 
-	if err = mp.inodeTree.CommitBatchWrite(dbHandle, true); err != nil {
-		log.LogErrorf("fsm(%v) action(AppendExtents) inode(%v) exts(%v) Commit error:%v",
-			mp.config.PartitionId, fsmIno.Inode, eks, err)
-		status = proto.OpErr
-		return
-	}
-	_ = mp.inodeTree.ClearBatchWriteHandle(dbHandle)
 	if delEkFlag {
-		mp.extDelCh <- delExtents
+		for _, ek := range delExtents {
+			dek := NewDeletedExtentKey(&ek, ino.Inode, mp.AllocDeletedExtentId())
+			err = mp.deletedExtentsTree.Put(dbHandle, dek)
+			if err != nil {
+				status = proto.OpErr
+				return
+			}
+		}
+		// mp.extDelCh <- delExtents
 	}
 	return
 }
@@ -670,7 +744,6 @@ func (mp *metaPartition) fsmAppendObjExtents(dbHandle interface{}, ino *Inode) (
 	return
 }
 
-// TODO: fix bugs
 func (mp *metaPartition) fsmExtentsTruncate(dbHandle interface{}, ino *Inode) (resp *InodeResponse, err error) {
 	var i *Inode
 	resp = NewInodeResponse()
@@ -738,16 +811,16 @@ func (mp *metaPartition) fsmExtentsTruncate(dbHandle interface{}, ino *Inode) (r
 		return
 	}
 
-	if err = mp.inodeTree.CommitBatchWrite(dbHandle, true); err != nil {
-		log.LogErrorf("[fsmExtentsTruncate] fsm(%v) action(AppendExtents) inode(%v) exts(%v) Commit error:%v",
-			mp.config.PartitionId, i.Inode, delExtents, err)
-		resp.Status = proto.OpErr
-		return
-	}
-	_ = mp.inodeTree.ClearBatchWriteHandle(dbHandle)
-
 	log.LogInfof("[fsmExtentsTruncate] truncate ino(%v), delete extent(%v)", i.Inode, delExtents)
-	mp.extDelCh <- delExtents
+	for _, ek := range delExtents {
+		dek := NewDeletedExtentKey(&ek, i.Inode, mp.AllocDeletedExtentId())
+		err = mp.deletedExtentsTree.Put(dbHandle, dek)
+		if err != nil {
+			resp.Status = proto.OpErr
+			return
+		}
+	}
+	// mp.extDelCh <- delExtents
 	mp.uidManager.minusUidSpace(i.Uid, i.Inode, delExtents)
 	log.LogInfof("[fsmExtentsTruncate] truncate ino(%v) success", i.Inode)
 	return
@@ -763,7 +836,7 @@ func (mp *metaPartition) fsmEvictInode(dbHandle interface{}, ino *Inode) (resp *
 		resp.Status = proto.OpErr
 		return
 	}
-	if i.ShouldDelete() {
+	if i == nil || i.ShouldDelete() {
 		log.LogDebugf("action[fsmEvictInode] inode[%v] already be mark delete", ino)
 		return
 	}
@@ -778,7 +851,17 @@ func (mp *metaPartition) fsmEvictInode(dbHandle interface{}, ino *Inode) (resp *
 		log.LogDebugf("action[fsmEvictInode] inode[%v] already linke zero and be set mark delete and be put to freelist", ino)
 		if i.isEmptyVerList() {
 			i.SetDeleteMark()
-			mp.freeList.Push(i.Inode)
+			delExtents := i.ClearAllExtsOfflineInode(mp.config.PartitionId)
+			for _, eks := range delExtents {
+				for _, ek := range eks {
+					dek := NewDeletedExtentKey(ek, i.Inode, mp.AllocDeletedExtentId())
+					err = mp.deletedExtentsTree.Put(dbHandle, dek)
+					if err != nil {
+						return
+					}
+				}
+			}
+			// mp.freeList.Push(i.Inode)
 		}
 	}
 	mp.inodeTree.Put(dbHandle, i)
@@ -815,17 +898,17 @@ func (mp *metaPartition) fsmBatchEvictInode(dbHandle interface{}, ib InodeBatch)
 	return
 }
 
-func (mp *metaPartition) checkAndInsertFreeList(ino *Inode) {
-	if proto.IsDir(ino.Type) {
-		return
-	}
-	if ino.ShouldDelete() {
-		mp.freeList.Push(ino.Inode)
-	} else if ino.IsTempFile() {
-		ino.AccessTime = time.Now().Unix()
-		mp.freeList.Push(ino.Inode)
-	}
-}
+// func (mp *metaPartition) checkAndInsertFreeList(ino *Inode) {
+// 	if proto.IsDir(ino.Type) {
+// 		return
+// 	}
+// 	if ino.ShouldDelete() {
+// 		mp.freeList.Push(ino.Inode)
+// 	} else if ino.IsTempFile() {
+// 		ino.AccessTime = time.Now().Unix()
+// 		mp.freeList.Push(ino.Inode)
+// 	}
+// }
 
 func (mp *metaPartition) fsmSetAttr(dbHandle interface{}, req *SetattrRequest) (resp *InodeResponse, err error) {
 	log.LogDebugf("action[fsmSetAttr] req %v", req)
@@ -884,16 +967,16 @@ func (mp *metaPartition) fsmExtentsEmpty(dbHandle interface{}, ino *Inode) (stat
 		return
 	}
 
-	if err = mp.inodeTree.CommitBatchWrite(dbHandle, true); err != nil {
-		log.LogErrorf("fsm(%v) action(AppendExtents) inode(%v) exts(%v) Commit error:%v",
-			mp.config.PartitionId, i.Inode, tinyEks, err)
-		status = proto.OpErr
-		return
-	}
-	_ = mp.inodeTree.ClearBatchWriteHandle(dbHandle)
-
 	if len(tinyEks) > 0 {
-		mp.extDelCh <- tinyEks
+		for _, ek := range tinyEks {
+			dek := NewDeletedExtentKey(&ek, i.Inode, mp.AllocDeletedExtentId())
+			err = mp.deletedExtentsTree.Put(dbHandle, dek)
+			if err != nil {
+				status = proto.OpErr
+				return
+			}
+		}
+		// mp.extDelCh <- tinyEks
 		mp.uidManager.minusUidSpace(i.Uid, i.Inode, tinyEks)
 		log.LogDebugf("fsmExtentsEmpty mp[%v] inode[%d] tinyEks(%v)", mp.config.PartitionId, ino.Inode, tinyEks)
 	}
@@ -934,16 +1017,16 @@ func (mp *metaPartition) fsmDelVerExtents(dbHandle interface{}, ino *Inode) (sta
 		return
 	}
 
-	if err = mp.inodeTree.CommitBatchWrite(dbHandle, true); err != nil {
-		log.LogErrorf("fsm(%v) action(AppendExtents) inode(%v) exts(%v) Commit error:%v",
-			mp.config.PartitionId, i.Inode, tinyEks, err)
-		status = proto.OpErr
-		return
-	}
-	_ = mp.inodeTree.ClearBatchWriteHandle(dbHandle)
-
 	if len(tinyEks) > 0 {
-		mp.extDelCh <- tinyEks
+		for _, ek := range tinyEks {
+			dek := NewDeletedExtentKey(&ek, ino.Inode, mp.AllocDeletedExtentId())
+			err = mp.deletedExtentsTree.Put(dbHandle, dek)
+			if err != nil {
+				status = proto.OpErr
+				return
+			}
+		}
+		// mp.extDelCh <- tinyEks
 		log.LogDebugf("fsmExtentsEmpty mp[%v] inode[%d] tinyEks(%v)", mp.config.PartitionId, ino.Inode, tinyEks)
 	}
 
@@ -977,32 +1060,42 @@ func (mp *metaPartition) fsmClearInodeCache(dbHandle interface{}, ino *Inode) (s
 		return
 	}
 
-	if err = mp.inodeTree.CommitBatchWrite(dbHandle, true); err != nil {
-		log.LogErrorf("fsm(%v) action(AppendExtents) inode(%v) exts(%v) Commit error:%v",
-			mp.config.PartitionId, ino2.Inode, delExtents, err)
-		status = proto.OpErr
-		return
-	}
-	_ = mp.inodeTree.ClearBatchWriteHandle(dbHandle)
-
 	if len(delExtents) > 0 {
 		ino2.DecSplitExts(mp.config.PartitionId, delExtents)
-		mp.extDelCh <- delExtents
+		for _, ek := range delExtents {
+			dek := NewDeletedExtentKey(&ek, ino2.Inode, mp.AllocDeletedExtentId())
+			err = mp.deletedExtentsTree.Put(dbHandle, dek)
+			if err != nil {
+				status = proto.OpErr
+				return
+			}
+		}
+		// mp.extDelCh <- delExtents
 	}
 	return
 }
 
 // attion: unmarshal error will disard extent
-func (mp *metaPartition) fsmSendToChan(val []byte, v3 bool) (status uint8) {
+func (mp *metaPartition) fsmSendToChan(dbHandle interface{}, val []byte, v3 bool) (status uint8, err error) {
 	sortExtents := NewSortedExtents()
 	// ek for del don't need version info
-	err, _ := sortExtents.UnmarshalBinary(val, v3)
+	err, _ = sortExtents.UnmarshalBinary(val, v3)
 	if err != nil {
 		panic(fmt.Errorf("[fsmDelExtents] unmarshal sortExtents error, mp[%v], err(%s)", mp.config.PartitionId, err.Error()))
 	}
 
 	log.LogInfof("fsmDelExtents mp[%v] delExtents(%v)", mp.config.PartitionId, len(sortExtents.eks))
-	mp.extDelCh <- sortExtents.eks
+	// NOTE: only replay old version rpc
+	// will enter here, we never invoke the rpc in
+	// new version
+	for _, ek := range sortExtents.eks {
+		dek := NewDeletedExtentKey(&ek, 0, mp.AllocDeletedExtentId())
+		err = mp.deletedExtentsTree.Put(dbHandle, dek)
+		if err != nil {
+			return
+		}
+	}
+	// mp.extDelCh <- sortExtents.eks
 	return
 }
 

@@ -122,6 +122,7 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 		status, err = mp.inodeInTx(ino.Inode)
 		if err != nil {
 			status = proto.OpErr
+			return
 		}
 		if status != proto.OpOk {
 			resp = &InodeResponse{Status: status}
@@ -137,7 +138,8 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 		ino.setVer(inoOnce.VerSeq)
 		resp, err = mp.fsmUnlinkInode(dbWriteHandle, ino, 1, inoOnce.UniqID)
 	case opFSMUnlinkInodeBatch:
-		inodes, err := InodeBatchUnmarshal(msg.V)
+		var inodes InodeBatch
+		inodes, err = InodeBatchUnmarshal(msg.V)
 		if err != nil {
 			return nil, err
 		}
@@ -298,7 +300,10 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 		}
 		resp, err = mp.fsmClearInodeCache(dbWriteHandle, ino)
 	case opFSMSentToChan:
-		resp = mp.fsmSendToChan(msg.V, true)
+		resp, err = mp.fsmSendToChan(dbWriteHandle, msg.V, true)
+		if err != nil {
+			return
+		}
 	case opFSMStoreTick:
 		log.LogInfof("MP [%d] store tick wait:%d, water level:%d", mp.config.PartitionId, mp.waitPersistCommitCnt, GetDumpWaterLevel())
 		if mp.waitPersistCommitCnt > GetDumpWaterLevel() {
@@ -307,10 +312,16 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 		quotaRebuild := mp.mqMgr.statisticRebuildStart()
 		uidRebuild := mp.acucumRebuildStart()
 		uniqChecker := mp.uniqChecker.clone()
-		// NOTE: already get lock
+		// NOTE: already got lock
+		var snap Snapshot
+		snap, err = mp.GetSnapShot()
+		if err != nil {
+			log.LogErrorf("[Apply]: failed to open snapshot for mp(%v), store(%v), err(%v)", mp.config.PartitionId, mp.config.StoreMode, err)
+			return
+		}
 		snapMsg := &storeMsg{
 			command:      opFSMStoreTick,
-			snap:         NewSnapshot(mp),
+			snap:         snap,
 			quotaRebuild: quotaRebuild,
 			uidRebuild:   uidRebuild,
 			uniqChecker:  uniqChecker,
@@ -318,9 +329,6 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 		}
 
 		log.LogDebugf("opFSMStoreTick: quotaRebuild [%v] uidRebuild [%v]", quotaRebuild, uidRebuild)
-		if snapMsg.snap == nil {
-			return
-		}
 		mp.storeChan <- snapMsg
 	case opFSMInternalDeleteInode:
 		err = mp.internalDelete(dbWriteHandle, msg.V)
@@ -900,9 +908,14 @@ func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.Sn
 			log.LogInfof("mp[%v] updateVerList (%v) seq [%v]", mp.config.PartitionId, mp.multiVersionList.VerList, mp.verSeq)
 			err = nil
 			// store message
+			snap, err := mp.GetSnapShot()
+			if err != nil {
+				log.LogErrorf("[ApplySnapshot]: failed to open snapshot for mp(%v), store(%v), err(%v)", mp.config.PartitionId, mp.config.StoreMode, err)
+				return
+			}
 			mp.storeChan <- &storeMsg{
 				command:      opFSMStoreTick,
-				snap:         NewSnapshot(mp),
+				snap:         snap,
 				uniqChecker:  uniqChecker.clone(),
 				multiVerList: mp.GetVerList(),
 			}

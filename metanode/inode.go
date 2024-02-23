@@ -215,7 +215,7 @@ func (i *Inode) getTailVerInList() (verSeq uint64, found bool) {
 }
 
 // freelist clean inode get all exist extents info, deal special case for split key
-func (inode *Inode) GetAllExtsOfflineInode(mpID uint64) (extInfo map[uint64][]*proto.ExtentKey) {
+func (inode *Inode) ClearAllExtsOfflineInode(mpID uint64) (extInfo map[uint64][]*proto.ExtentKey) {
 	log.LogDebugf("deleteMarkedInodes. GetAllExtsOfflineInode.mp[%v] inode[%v] inode.Extents: %v, ino verList: %v",
 		mpID, inode.Inode, inode.Extents, inode.GetMultiVerString())
 
@@ -249,14 +249,13 @@ func (inode *Inode) GetAllExtsOfflineInode(mpID uint64) (extInfo map[uint64][]*p
 				}
 
 				log.LogDebugf("deleteMarkedInodes. GetAllExtsOfflineInode.mp[%v] inode[%v] ek [%v] be removed", mpID, inode.Inode, ext)
-				ext.SetSplit(false)
-				ext.ExtentOffset = 0
-				ext.Size = 0
 			}
 			extInfo[ext.PartitionId] = append(extInfo[ext.PartitionId], ext)
 			log.LogWritef("GetAllExtsOfflineInode. mp[%v] ino(%v) deleteExtent(%v)", mpID, inode.Inode, ext.String())
 			return true
 		})
+		// NOTE: remove all extents
+		dIno.Extents = NewSortedExtents()
 	}
 	return
 }
@@ -1665,6 +1664,8 @@ func (i *Inode) DecNLinkByVer(verSeq uint64) {
 	i.DecNLink()
 }
 
+// NOTE: in a version layer, 1 extent has 1 rc in rc map
+// even the extent has two or more extent keys in that layer
 func (i *Inode) DecSplitExts(mpId uint64, delExtents interface{}) {
 	log.LogDebugf("[DecSplitExts] mpId [%v] inode[%v]", mpId, i.Inode)
 	cnt := len(delExtents.([]proto.ExtentKey))
@@ -1692,32 +1693,42 @@ func (i *Inode) DecSplitExts(mpId uint64, delExtents interface{}) {
 	log.LogDebugf("[DecSplitExts] exit")
 }
 
+func (i *Inode) GetExtentRefCountId(ext *proto.ExtentKey) (id uint64) {
+	// NOTE:
+	// +---32 bits-----+--32 bits--+
+	// | Partition Id  | Extent Id |
+	// +---------------+-----------+
+	id = ext.PartitionId<<32 | ext.ExtentId
+	return
+}
+
 func (i *Inode) DecSplitEk(mpId uint64, ext *proto.ExtentKey) (ok bool, last bool) {
 	log.LogDebugf("[DecSplitEk] mpId[%v] inode[%v] dp [%v] extent id[%v].key %v ext %v", mpId, i.Inode, ext.PartitionId, ext.ExtentId,
-		ext.PartitionId<<32|ext.ExtentId, ext)
+		i.GetExtentRefCountId(ext), ext)
 
 	if i.multiSnap == nil || i.multiSnap.ekRefMap == nil {
 		log.LogErrorf("DecSplitEk. multiSnap %v", i.multiSnap)
 		return
 	}
-	if val, ok := i.multiSnap.ekRefMap.Load(ext.PartitionId<<32 | ext.ExtentId); !ok {
+	val, ok := i.multiSnap.ekRefMap.Load(i.GetExtentRefCountId(ext))
+	if !ok {
 		log.LogErrorf("[DecSplitEk] mpId[%v]. dp [%v] inode[%v] ext not found", mpId, ext.PartitionId, i.Inode)
 		return false, false
-	} else {
-		if val.(uint32) == 0 {
-			log.LogErrorf("[DecSplitEk] mpId[%v]. dp [%v] inode[%v] ek ref is zero!", mpId, ext.PartitionId, i.Inode)
-			return false, false
-		}
-		if val.(uint32) == 1 {
-			log.LogDebugf("[DecSplitEk] mpId[%v] inode[%v] dp [%v] extent id[%v].key %v", mpId, i.Inode, ext.PartitionId, ext.ExtentId,
-				ext.PartitionId<<32|ext.ExtentId)
-			i.multiSnap.ekRefMap.Delete(ext.PartitionId<<32 | ext.ExtentId)
-			return true, true
-		}
-		i.multiSnap.ekRefMap.Store(ext.PartitionId<<32|ext.ExtentId, val.(uint32)-1)
-		log.LogDebugf("[DecSplitEk] mpId[%v]. extend dp [%v] inode[%v] ek [%v] val %v", mpId, ext.PartitionId, i.Inode, ext, val.(uint32)-1)
-		return true, false
 	}
+	rc := val.(uint32)
+	if rc == 0 {
+		log.LogErrorf("[DecSplitEk] mpId[%v]. dp [%v] inode[%v] ek ref is zero!", mpId, ext.PartitionId, i.Inode)
+		return false, false
+	}
+	if rc == 1 {
+		log.LogDebugf("[DecSplitEk] mpId[%v] inode[%v] dp [%v] extent id[%v].key %v", mpId, i.Inode, ext.PartitionId, ext.ExtentId,
+			i.GetExtentRefCountId(ext))
+		i.multiSnap.ekRefMap.Delete(i.GetExtentRefCountId(ext))
+		return true, true
+	}
+	i.multiSnap.ekRefMap.Store(i.GetExtentRefCountId(ext), rc-1)
+	log.LogDebugf("[DecSplitEk] mpId[%v]. extend dp [%v] inode[%v] ek [%v] val %v", mpId, ext.PartitionId, i.Inode, ext, rc-1)
+	return true, false
 }
 
 // DecNLink decreases the nLink value by one.

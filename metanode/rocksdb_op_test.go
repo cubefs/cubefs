@@ -15,31 +15,37 @@ const (
 	TestCont        = 1000000
 )
 
+func getRocksdbPathForTest() (path string) {
+	path = fmt.Sprintf("/tmp/cfs/rocksdb_test/%v", time.Now().UnixMilli())
+	return
+}
+
 func TestOpenDb(t *testing.T) {
-	os.RemoveAll("./db")
+	path := getRocksdbPathForTest()
+	os.RemoveAll(path)
 	db := NewRocksDb()
-	defer os.RemoveAll("./db")
-	if err := db.OpenDb("./db", 0, 0, 0, 0, 0, 0); err != nil {
+	defer os.RemoveAll(path)
+	if err := db.OpenDb(path, 0, 0, 0, 0, 0, 0); err != nil {
 		t.Errorf("open db without exist dir failed, err:%v", err)
 		return
 	}
 
 	db.CloseDb()
 	db.ReleaseRocksDb()
-	_, err := os.Stat("./db")
+	_, err := os.Stat(path)
 	if err == nil || !os.IsNotExist(err) {
 		t.Errorf("os error, rm dir[db] failed")
 		return
 	}
 
-	os.MkdirAll("./db", 0755)
-	_, err = os.Stat("./db")
+	os.MkdirAll(path, 0755)
+	_, err = os.Stat(path)
 	if err != nil && !os.IsExist(err) {
 		t.Errorf("os error, mk dir[db] failed:%v", err)
 		return
 	}
 
-	if err = db.OpenDb("./db", 0, 0, 0, 0, 0, 0); err != nil {
+	if err = db.OpenDb(path, 0, 0, 0, 0, 0, 0); err != nil {
 		t.Errorf("open db without exist dir failed")
 	}
 
@@ -48,29 +54,30 @@ func TestOpenDb(t *testing.T) {
 }
 
 func TestReopneDb(t *testing.T) {
-	os.RemoveAll("./db")
+	path := getRocksdbPathForTest()
+	os.RemoveAll(path)
 	db := NewRocksDb()
-	defer os.RemoveAll("./db")
-	if err := db.OpenDb("./db", 0, 0, 0, 0, 0, 0); err != nil {
+	defer os.RemoveAll(path)
+	if err := db.OpenDb(path, 0, 0, 0, 0, 0, 0); err != nil {
 		t.Errorf("open db without exist dir failed, err:%v", err)
 	}
 
 	db.CloseDb()
 	db.ReleaseRocksDb()
-	_, err := os.Stat("./db")
+	_, err := os.Stat(path)
 	if err == nil || !os.IsNotExist(err) {
 		t.Errorf("os error, rm dir[db] failed")
 		return
 	}
 
-	os.MkdirAll("./db", 0755)
-	_, err = os.Stat("./db")
+	os.MkdirAll(path, 0755)
+	_, err = os.Stat(path)
 	if err != nil && !os.IsExist(err) {
 		t.Errorf("os error, mk dir[db] failed:%v", err)
 		return
 	}
 
-	if err = db.ReOpenDb("./db", 0, 0, 0, 0, 0, 0); err != nil {
+	if err = db.ReOpenDb(path, 0, 0, 0, 0, 0, 0); err != nil {
 		t.Errorf("open db without exist dir failed")
 	}
 
@@ -325,10 +332,16 @@ func deleteDataByMultiItems(t *testing.T, db *RocksDbInfo) {
 }
 
 func TestOps(t *testing.T) {
-
-	os.RemoveAll("db")
+	path := getRocksdbPathForTest()
+	// NOTE: sleep 1 sec to get diff paths
+	time.Sleep(1 * time.Second)
+	path2 := getRocksdbPathForTest()
+	os.RemoveAll(path)
+	os.RemoveAll(path2)
+	defer os.RemoveAll(path)
+	defer os.RemoveAll(path2)
 	db := NewRocksDb()
-	_ = db.OpenDb("db", 0, 0, 0, 0, 0, 0)
+	_ = db.OpenDb(path, 0, 0, 0, 0, 0, 0)
 
 	start := time.Now()
 	insertByItem(t, db)
@@ -371,15 +384,15 @@ func TestOps(t *testing.T) {
 	runtime.GC()
 	time.Sleep(time.Second * 3)
 	db2 := NewRocksDb()
-	_ = db2.OpenDb("db2", 0, 0, 0, 0, 0, 0)
+	_ = db2.OpenDb(path2, 0, 0, 0, 0, 0, 0)
 	genenerData(t, db2)
 	start = time.Now()
 
 	db2.CloseDb()
 	_ = db.CloseDb()
 	db.ReleaseRocksDb()
-	os.Rename("db2", "db")
-	db.ReOpenDb("db", 0, 0, 0, 0, 0, 0)
+	os.Rename(path2, path)
+	db.ReOpenDb(path, 0, 0, 0, 0, 0, 0)
 	t.Logf("reopen db delete used:%v \n", time.Since(start))
 	rangeTest(t, db)
 	deleteDataByMultiItems(t, db)
@@ -440,9 +453,11 @@ func batchAbortTest(t *testing.T, db *RocksDbInfo) {
 
 func TestAbortOps(t *testing.T) {
 	t.Logf("************ abort test begin *************")
-	os.RemoveAll("db")
+	path := getRocksdbPathForTest()
+	os.RemoveAll(path)
+	defer os.RemoveAll(path)
 	db := NewRocksDb()
-	_ = db.OpenDb("db", 0, 0, 0, 0, 0, 0)
+	_ = db.OpenDb(path, 0, 0, 0, 0, 0, 0)
 	genenerData(t, db)
 	rangeTest(t, db)
 
@@ -458,13 +473,11 @@ func TestAbortOps(t *testing.T) {
 }
 
 func TestRocksDB_accessDB(t *testing.T) {
-	testPanicRecoverPath := "./test_access_db"
-	os.RemoveAll(testPanicRecoverPath)
-	defer func() {
-		os.RemoveAll(testPanicRecoverPath)
-	}()
+	path := getRocksdbPathForTest()
+	os.RemoveAll(path)
+	defer os.RemoveAll(path)
 	db := NewRocksDb()
-	_ = db.OpenDb("db", 0, 0, 0, 0, 0, 0)
+	_ = db.OpenDb(path, 0, 0, 0, 0, 0, 0)
 	genenerData(t, db)
 	dbSnap := db.OpenSnap()
 	if dbSnap == nil {

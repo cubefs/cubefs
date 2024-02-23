@@ -409,7 +409,7 @@ func (v *Volume) GetXAttr(path string, key string) (info *proto.XAttrInfo, err e
 			objMetaCache.PutAttr(v.name, attrItem)
 			val, ok := attr.XAttrs[key]
 			if !ok {
-				log.LogErrorf("XAttrGetAll_ll: meta get xattr fail: volume(%v) path(%v) inode(%v) err(%v)", v.name, path, inode, err)
+				log.LogErrorf("XAttrGetAll_ll: meta get xattr fail: volume(%v) path(%v) key(%v) inode(%v) err(%v)", v.name, path, key, inode, err)
 				return v.getXAttr(path, key)
 			}
 			info.XAttrs[key] = val
@@ -418,12 +418,12 @@ func (v *Volume) GetXAttr(path string, key string) (info *proto.XAttrInfo, err e
 		val, ok := attrItem.XAttrs[key]
 		if !ok {
 			if attr, err = v.mw.XAttrGetAll_ll(inode); err != nil {
-				log.LogErrorf("XAttrGetAll_ll: meta get xattr fail: volume(%v) path(%v) inode(%v) err(%v)", v.name, path, inode, err)
+				log.LogErrorf("XAttrGetAll_ll: meta get xattr fail: volume(%v) path(%v) key(%v) inode(%v) err(%v)", v.name, path, key, inode, err)
 				return v.getXAttr(path, key)
 			}
 			val, ok := attr.XAttrs[key]
 			if !ok {
-				log.LogErrorf("XAttrGetAll_ll: meta get xattr fail: volume(%v) path(%v) inode(%v) err(%v)", v.name, path, inode, err)
+				log.LogErrorf("XAttrGetAll_ll: meta get xattr fail: volume(%v) path(%v) key(%v) inode(%v) err(%v)", v.name, path, key, inode, err)
 				return v.getXAttr(path, key)
 			}
 			info.XAttrs[key] = val

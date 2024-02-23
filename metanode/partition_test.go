@@ -55,9 +55,13 @@ func TestMetaPartition_LoadSnapshot(t *testing.T) {
 	err := mp.initObjects(true)
 	require.NoError(t, err)
 	require.True(t, ok)
+	snap, err := mp.GetSnapShot()
+	require.NoError(t, err)
+	require.NotNil(t, snap)
+	defer snap.Close()
 	msg := &storeMsg{
 		command:     1,
-		snap:        NewSnapshot(mp),
+		snap:        snap,
 		uniqId:      mp.GetUniqId(),
 		uniqChecker: mp.uniqChecker,
 	}
@@ -69,7 +73,7 @@ func TestMetaPartition_LoadSnapshot(t *testing.T) {
 	require.NoError(t, err)
 	snapshotPath := path.Join(mp.config.RootDir, snapshotDir)
 	err = partition.LoadSnapshot(snapshotPath)
-	require.Nil(t, err)
+	require.NoError(t, err)
 
 	handle, err := mp.inodeTree.CreateBatchWriteHandle()
 	require.NoError(t, err)
@@ -94,9 +98,13 @@ func TestMetaPartition_LoadSnapshot(t *testing.T) {
 	err = mp.inodeTree.CommitAndReleaseBatchWriteHandle(handle, false)
 	require.NoError(t, err)
 
+	snap, err = mp.GetSnapShot()
+	require.NoError(t, err)
+	require.NotNil(t, snap)
+	defer snap.Close()
 	msg = &storeMsg{
 		command:     1,
-		snap:        NewSnapshot(mp),
+		snap:        snap,
 		uniqId:      mp.GetUniqId(),
 		uniqChecker: mp.uniqChecker,
 	}

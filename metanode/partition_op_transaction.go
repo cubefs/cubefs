@@ -271,16 +271,13 @@ func (mp *metaPartition) TxRollback(req *proto.TxApplyRequest, p *Packet, remote
 	return err
 }
 
-func (mp *metaPartition) TxGetCnt() (uint64, uint64, uint64) {
-	snap := NewSnapshot(mp)
-	return snap.Count(TransactionType), snap.Count(TransactionRollbackInodeType), snap.Count(TransactionRollbackDentryType)
-}
-
-func (mp *metaPartition) TxGetTree() (TransactionTree, TransactionRollbackInodeTree, TransactionRollbackDentryTree) {
-	tx := mp.txProcessor.txManager.txTree
-	rbIno := mp.txProcessor.txResource.txRbInodeTree
-	rbDen := mp.txProcessor.txResource.txRbDentryTree
-	return tx, rbIno, rbDen
+func (mp *metaPartition) TxGetCnt() (uint64, uint64, uint64,error) {
+	snap, err := mp.GetSnapShot()
+	if err != nil {
+		return 0, 0, 0,err
+	}
+	defer snap.Close()
+	return snap.Count(TransactionType), snap.Count(TransactionRollbackInodeType), snap.Count(TransactionRollbackDentryType),nil
 }
 
 func (mp *metaPartition) TxGetInfo(req *proto.TxGetInfoRequest, p *Packet) (err error) {

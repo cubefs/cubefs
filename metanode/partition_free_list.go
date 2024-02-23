@@ -275,7 +275,7 @@ func (mp *metaPartition) deleteMarkedInodes(inoSlice []uint64) {
 			return
 		}
 
-		extInfo := inode.GetAllExtsOfflineInode(mp.config.PartitionId)
+		extInfo := inode.ClearAllExtsOfflineInode(mp.config.PartitionId)
 		for dpID, inodeExts := range extInfo {
 			exts, ok := deleteExtentsByPartition[dpID]
 			if !ok {

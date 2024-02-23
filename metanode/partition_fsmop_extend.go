@@ -30,15 +30,14 @@ type ExtendOpResult struct {
 func (mp *metaPartition) fsmSetXAttr(dbHandle interface{}, extend *Extend) (resp *proto.XAttrRaftResponse, err error) {
 	extend.verSeq = mp.GetVerSeq()
 	resp = &proto.XAttrRaftResponse{Inode: extend.inode, Status: proto.OpOk}
-	var e *Extend
-	e, err = mp.extendTree.Get(extend.inode)
+	e, err := mp.extendTree.Get(extend.inode)
 	if err != nil {
 		resp.Status = proto.OpErr
 		log.LogErrorf("[fsmSetXAttr] failed to get xattr, ino(%v), err(%v)", extend.inode, err)
 		return
 	}
 	if e == nil {
-		e = NewExtend(extend.inode)
+		e = extend
 		goto submit
 	}
 	if e.verSeq != extend.verSeq {

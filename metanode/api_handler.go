@@ -131,8 +131,8 @@ func (m *MetaNode) getPartitionByIDHandler(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	partition := mp.(*metaPartition)
-	snap := NewSnapshot(partition)
-	if snap == nil {
+	snap, err := mp.GetSnapShot()
+	if err != nil {
 		resp.Code = http.StatusInternalServerError
 		resp.Msg = fmt.Sprintf("Can not get mp[%d] snap shot", mp.GetBaseConfig().PartitionId)
 		return
@@ -239,8 +239,8 @@ func (m *MetaNode) getAllInodesHandler(w http.ResponseWriter, r *http.Request) {
 		return true, nil
 	}
 
-	snap := NewSnapshot(mp.(*metaPartition))
-	if snap == nil {
+	snap, err := mp.GetSnapShot()
+	if err != nil {
 		err = fmt.Errorf("can not get mp[%d] snap shot", mp.GetBaseConfig().PartitionId)
 		return
 	}
@@ -641,8 +641,8 @@ func (m *MetaNode) getAllDentriesHandler(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	snap := NewSnapshot(mp.(*metaPartition))
-	if snap == nil {
+	snap, err := mp.GetSnapShot()
+	if err != nil {
 		resp.Code = http.StatusInternalServerError
 		resp.Msg = fmt.Sprintf("Can not get mp[%d] snap shot", mp.GetBaseConfig().PartitionId)
 		return
@@ -777,16 +777,27 @@ func (m *MetaNode) getAllTxHandler(w http.ResponseWriter, r *http.Request) {
 		return true, nil
 	}
 
-	txTree, rbInoTree, rbDenTree := mp.TxGetTree()
-	err = txTree.Range(nil, nil, handleTx)
+	snap, err := mp.GetSnapShot()
+	if err != nil {
+		log.LogErrorf("[getAllTxHandler] failed to get mp(%v) snapshot", mp.GetBaseConfig().PartitionId)
+		return
+	}
+	defer mp.ReleaseSnapShot(snap)
+	err = snap.Range(TransactionType, func(item interface{}) (bool, error) {
+		return handleTx(item.(*proto.TransactionInfo))
+	})
 	if err != nil {
 		log.LogErrorf("[getAllTxHandler] failed to range tx, err(%v)", err)
 	}
-	err = rbInoTree.Range(nil, nil, handleIno)
+	err = snap.Range(TransactionRollbackInodeType, func(item interface{}) (bool, error) {
+		return handleIno(item.(*TxRollbackInode))
+	})
 	if err != nil {
 		log.LogErrorf("[getAllTxHandler] failed to range rb inode, err(%v)", err)
 	}
-	err = rbDenTree.Range(nil, nil, handleDen)
+	err = snap.Range(TransactionRollbackDentryType, func(item interface{}) (bool, error) {
+		return handleDen(item.(*TxRollbackDentry))
+	})
 	if err != nil {
 		log.LogErrorf("[getAllTxHandler] failed to range rb dentry, err(%v)", err)
 	}

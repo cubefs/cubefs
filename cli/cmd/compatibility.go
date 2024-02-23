@@ -104,21 +104,23 @@ func verifyDentry(client *api.MetaHttpClient, mp metanode.MetaPartition) (err er
 	if err != nil {
 		return
 	}
-	snap := mp.GetSnapShot()
+	snap, err := mp.GetSnapShot()
+	if err != nil {
+		log.LogErrorf("mp[%d] create snap shot failed, err(%v)", mp.GetBaseConfig().PartitionId, err)
+		return
+	}
 	if snap == nil {
 		log.LogErrorf("mp[%d] create snap shot failed", mp.GetBaseConfig().PartitionId)
 		return
 	}
 	defer func() {
-		if snap != nil {
-			mp.ReleaseSnapShot(snap)
-		}
+		snap.Close()
 		if err != nil {
 			log.LogErrorf("mp[%d] range dentry failed", mp.GetBaseConfig().PartitionId)
 		}
 	}()
 
-	err = snap.Range(metanode.DentryType, func(d interface{}) (bool, error){
+	err = snap.Range(metanode.DentryType, func(d interface{}) (bool, error) {
 		dentry, ok := d.(*metanode.Dentry)
 		if !ok {
 			stdout("item type is not *metanode.Dentry \n")
@@ -151,21 +153,23 @@ func verifyInode(client *api.MetaHttpClient, mp metanode.MetaPartition) (err err
 		return
 	}
 	var localInode *api.Inode
-	snap := mp.GetSnapShot()
+	snap, err := mp.GetSnapShot()
+	if err != nil {
+		log.LogErrorf("mp[%d] create snap shot failed, err(%v)", mp.GetBaseConfig().PartitionId, err)
+		return
+	}
 	if snap == nil {
 		log.LogErrorf("mp[%d] create snap shot failed", mp.GetBaseConfig().PartitionId)
 		return
 	}
 	defer func() {
-		if snap != nil {
-			mp.ReleaseSnapShot(snap)
-		}
+		snap.Close()
 		if err != nil {
 			log.LogErrorf("mp[%d] range dentry failed", mp.GetBaseConfig().PartitionId)
 		}
 	}()
 
-	err = snap.Range(metanode.InodeType, func(d interface{}) (bool, error){
+	err = snap.Range(metanode.InodeType, func(d interface{}) (bool, error) {
 		inode, ok := d.(*metanode.Inode)
 		if !ok {
 			stdout("item type is not *metanode.Inode \n")

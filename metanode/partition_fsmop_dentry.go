@@ -140,6 +140,7 @@ func (mp *metaPartition) fsmCreateDentry(dbHandle interface{}, dentry *Dentry, f
 				if err = mp.inodeTree.Update(dbHandle, parIno); err != nil {
 					log.LogErrorf("action[fsmCreateDentry] update parent inode err:%v", err)
 					status = proto.OpErr
+					return
 				}
 			}
 			return
@@ -158,11 +159,13 @@ func (mp *metaPartition) fsmCreateDentry(dbHandle interface{}, dentry *Dentry, f
 	}
 
 	if !forceUpdate {
+		log.LogDebugf("[fsmCreateDentry] increase parent link parent(%v)", parIno)
 		parIno.IncNLink(mp.verSeq)
 		parIno.SetMtime()
 		if err = mp.inodeTree.Update(dbHandle, parIno); err != nil {
 			log.LogErrorf("action[fsmCreateDentry] update parent inode err:%v", err)
 			status = proto.OpErr
+			return
 		}
 	}
 	return
@@ -278,7 +281,7 @@ func (mp *metaPartition) fsmTxDeleteDentry(dbHandle interface{}, txDentry *TxDen
 		return
 	}
 
-	if ok, err = mp.dentryTree.Delete(dbHandle, tmpDen.ParentId, tmpDen.Name); err != nil {
+	if _, err = mp.dentryTree.Delete(dbHandle, tmpDen.ParentId, tmpDen.Name); err != nil {
 		resp.Status = proto.OpErr
 		return
 	}
@@ -297,91 +300,82 @@ func (mp *metaPartition) fsmDeleteDentry(dbHandle interface{}, denParm *Dentry, 
 		den      *Dentry
 		doMore   = true
 		clean    bool
-		d        *Dentry
 	)
 
-	d, err = mp.dentryTree.Get(denParm.ParentId, denParm.Name)
+	den, err = mp.dentryTree.Get(denParm.ParentId, denParm.Name)
 	if err != nil {
-		resp.Status = proto.OpErr
+		log.LogErrorf("action[fsmDeleteDentry] failed to get dentry, parent(%v) name(%v), err(%v)", denParm.ParentId, denParm.Name, err)
 		return
 	}
-	if d == nil {
-		resp.Status = proto.OpNotExistErr
-		return
-	}
+
 	if checkInode {
-		log.LogDebugf("action[fsmDeleteDentry] mp[%v] delete param %v", mp.config.PartitionId, denParm)
-		den, err = mp.dentryTree.Get(denParm.ParentId, denParm.Name)
-		if err != nil {
-			log.LogErrorf("action[fsmDeleteDentry] failed to get dentry, parent(%v) name(%v), err(%v)", denParm.ParentId, denParm.Name, err)
-			return
-		}
 		if den.Inode != denParm.Inode {
 			den = nil
 		}
+	}
+
+	if den != nil {
+		// NOTE: if no snapshot
 		if mp.verSeq == 0 {
-			log.LogDebugf("action[fsmDeleteDentry] mp[%v] volume snapshot not enabled,delete directly", mp.config.PartitionId)
 			denFound = den
-			_, err = mp.dentryTree.Delete(dbHandle, den.ParentId, den.Name)
-			if err != nil {
-				log.LogErrorf("action[fsmDeleteDentry] failed to delete dentry, parent(%v) name(%v), err(%v)", denParm.ParentId, denParm.Name, err)
-				return
-			}
-		}
-		denFound, doMore, clean = den.deleteVerSnapshot(denParm.getSeqFiled(), mp.verSeq, mp.GetVerList())
-	} else {
-		log.LogDebugf("action[fsmDeleteDentry] mp[%v] denParm dentry %v", mp.config.PartitionId, denParm)
-		if mp.verSeq == 0 {
-			var den *Dentry
-			den, err = mp.dentryTree.Get(denParm.ParentId, denParm.Name)
-			if err != nil {
-				log.LogErrorf("action[fsmDeleteDentry] failed to get dentry, mp(%v) denParm dentry(%v)", mp.config.PartitionId, denParm)
-				return
-			}
-			if den != nil {
-				denFound = den
-			}
-			_, err = mp.dentryTree.Delete(dbHandle, denParm.ParentId, denParm.Name)
-			if err != nil {
-				log.LogErrorf("action[fsmDeleteDentry] failed to delete dentry(%v), err(%v)", den, err)
-				return
-			}
 		} else {
-			var den *Dentry
-			den, err = mp.dentryTree.Get(denParm.ParentId, denParm.Name)
-			if err != nil {
-				log.LogErrorf("action[fsmDeleteDentry] failed to get dentry, mp(%v) denParm dentry(%v)", mp.config.PartitionId, denParm)
-				return
-			}
-			if den != nil {
-				denFound, doMore, clean = den.deleteVerSnapshot(denParm.getSeqFiled(), mp.verSeq, mp.GetVerList())
-			}
+			denFound, doMore, clean = den.deleteVerSnapshot(denParm.getSeqFiled(), mp.verSeq, mp.GetVerList())
 		}
 	}
 
-	if den != nil && (clean || (den.getSnapListLen() == 0 && den.isDeleted())) {
+	// NOTE: dentry not found
+	if denFound == nil {
+		// NOTE: if enable snapshot
+		if mp.verSeq != 0 {
+			if doMore {
+				resp.Status = proto.OpNotExistErr
+				log.LogErrorf("action[fsmDeleteDentry] mp[%v] not found dentry %v", mp.config.PartitionId, denParm)
+			} else if den != nil {
+				// NOTE: still need to update dentry
+				err = mp.dentryTree.Update(dbHandle, den)
+				if err != nil {
+					return
+				}
+			}
+		}
+		return
+	}
+
+	// NOTE: snapshot no enable
+	if mp.verSeq == 0 {
+		_, err = mp.dentryTree.Delete(dbHandle, den.ParentId, den.Name)
+		if err != nil {
+			return
+		}
+	} else if clean || (den.getSnapListLen() == 0 && den.isDeleted()) {
+		// NOTE: if not other version, delete directly
 		log.LogDebugf("action[fsmDeleteDentry] mp[%v] dnetry %v really be deleted", mp.config.PartitionId, den)
 		_, err = mp.dentryTree.Delete(dbHandle, den.ParentId, den.Name)
+		if err != nil {
+			return
+		}
+	} else {
+		// NOTE: there are other version in dentry
+		// update it
+		err = mp.dentryTree.Update(dbHandle, den)
 		if err != nil {
 			return
 		}
 	}
 
 	if !doMore { // not the top layer,do nothing to parent inode
-		if denFound != nil {
-			resp.Msg = denFound
-		}
+		resp.Msg = denFound
 		log.LogDebugf("action[fsmDeleteDentry] mp[%v] there's nothing to do more denParm %v", mp.config.PartitionId, denParm)
-		return
-	}
-	if denFound == nil {
-		resp.Status = proto.OpNotExistErr
-		log.LogErrorf("action[fsmDeleteDentry] mp[%v] not found dentry %v", mp.config.PartitionId, denParm)
 		return
 	} else {
 		var parentIno *Inode
 		parentIno, err = mp.inodeTree.Get(denParm.ParentId)
 		if err != nil {
+			log.LogErrorf("[fsmDeleteDentry] mp(%v) err(%v)", mp.config.PartitionId, err)
+			return
+		}
+		if parentIno == nil {
+			log.LogErrorf("[fsmDeleteDentry] mp(%v) parentIno(%v) is nil", mp.config.PartitionId, denParm.ParentId)
 			return
 		}
 		if !parentIno.ShouldDelete() {

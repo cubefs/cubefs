@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/cubefs/cubefs/proto"
+	"github.com/stretchr/testify/require"
 )
 
 func newTestRocksTree(dir string) (rocksTree *RocksTree) {
@@ -227,13 +228,14 @@ func TestInodeTree_Create(t *testing.T) {
 			storeMode:  proto.StoreModeRocksDb,
 			rocksDBDir: "./test_inode_create",
 			inode: &Inode{
-				Inode:   20,
-				Type:    470,
-				Uid:     0,
-				Gid:     0,
-				Size:    4096,
-				NLink:   1,
-				Extents: NewSortedExtents(),
+				Inode:      20,
+				Type:       470,
+				Uid:        0,
+				Gid:        0,
+				Size:       4096,
+				NLink:      1,
+				Extents:    NewSortedExtents(),
+				ObjExtents: NewSortedObjExtents(),
 			},
 		},
 	}
@@ -261,10 +263,7 @@ func TestInodeTree_Create(t *testing.T) {
 				return
 			}
 
-			if !reflect.DeepEqual(test.inode, existIno) {
-				t.Errorf("inode info mismatch, expect:%s,\n actual:%s", test.inode, existIno)
-				return
-			}
+			require.EqualValues(t, test.inode, existIno)
 
 			var ok = false
 			_, ok, err = inodeCreate(inodeTree, test.inode, false)

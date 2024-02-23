@@ -157,8 +157,7 @@ func (mp *metaPartition) GetAllXAttr(req *proto.GetAllXAttrRequest, p *Packet) (
 			}
 		}
 	}
-	var encoded []byte
-	encoded, err = json.Marshal(response)
+	encoded, err := json.Marshal(response)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return

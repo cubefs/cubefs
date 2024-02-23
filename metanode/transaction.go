@@ -603,8 +603,13 @@ func (tm *TransactionManager) processTx() {
 	}
 
 	// NOTE: must use snapshot
-	snap := NewSnapshot(tm.txProcessor.mp)
-	err := snap.Range(TransactionType, f)
+	snap, err := tm.txProcessor.mp.GetSnapShot()
+	if err != nil {
+		log.LogErrorf("[processTx] failed to get mp(%v) snapshot", tm.txProcessor.mp.GetBaseConfig().PartitionId)
+		return
+	}
+	defer snap.Close()
+	err = snap.Range(TransactionType, f)
 	if err != nil {
 		log.LogErrorf("[processTx] failed to range tx tree, err(%v)", err)
 		return
@@ -1463,7 +1468,30 @@ func (tr *TransactionResource) rollbackInodeInternal(dbHandle interface{}, rbIno
 		}
 
 		if ino == nil || ino.IsTempFile() || ino.ShouldDelete() {
-			mp.freeList.Remove(rbInode.inode.Inode)
+			var snap Snapshot
+			start := NewDeletedExtentKeyPrefix(mp.config.PartitionId, rbInode.inode.Inode)
+			end := NewDeletedExtentKeyPrefix(mp.config.PartitionId, rbInode.inode.Inode+1)
+			snap, err = NewSnapshot(mp)
+			if err != nil {
+				log.LogErrorf("[rollbackInodeInternal] failed to get snapshot, mp(%v), err(%v)", mp.config.PartitionId, err)
+				return
+			}
+			defer snap.Close()
+			// NOTE: delete from dek tree
+			err = snap.RangeWithScope(DeletedExtentsType, start, end, func(item interface{}) (bool, error) {
+				dek := item.(*DeletedExtentKey)
+				if _, err = mp.deletedExtentsTree.Delete(dbHandle, dek); err != nil {
+					return false, err
+				}
+				return true, nil
+			})
+
+			if err != nil {
+				log.LogErrorf("[rollbackInodeInternal] failed to delete dek from dek tree, err(%v)", err)
+				return
+			}
+
+			// mp.freeList.Remove(rbInode.inode.Inode)
 			if mp.uidManager != nil {
 				mp.uidManager.addUidSpace(rbInode.inode.Uid, rbInode.inode.Inode, rbInode.inode.Extents.eks)
 			}
@@ -1474,6 +1502,9 @@ func (tr *TransactionResource) rollbackInodeInternal(dbHandle interface{}, rbIno
 				}
 			}
 			_, _, err = mp.inodeTree.Create(dbHandle, rbInode.inode, true)
+			if err != nil {
+				return
+			}
 		} else {
 			ino.IncNLink(mp.verSeq)
 		}
@@ -1489,8 +1520,15 @@ func (tr *TransactionResource) rollbackInodeInternal(dbHandle interface{}, rbIno
 					tr.txProcessor.mp.mqMgr.updateUsedInfo(-1*int64(rbInode.inode.Size), -1, quotaId)
 				}
 			}
+			log.LogDebugf("[rollbackInodeInternal] unlink inode(%v)", rbInode.inode)
 			_, err = tr.txProcessor.mp.fsmUnlinkInode(dbHandle, rbInode.inode, 1, 0)
+			if err != nil {
+				return
+			}
 			_, err = tr.txProcessor.mp.fsmEvictInode(dbHandle, rbInode.inode)
+			if err != nil {
+				return
+			}
 		}
 
 	default:
@@ -1672,6 +1710,7 @@ func (tr *TransactionResource) commitDentry(dbHandle interface{}, txID string, p
 	// unlink parent inode
 	if rbDentry.rbType == TxAdd {
 		parInode := NewInode(pId, 0)
+		log.LogDebugf("[commitDentry] unlink parent inode(%v)", parInode)
 		st, _ := tr.txProcessor.mp.fsmUnlinkInode(dbHandle, parInode, 1, 0)
 		if st.Status != proto.OpOk {
 			log.LogWarnf("commitDentry: try unlink parent inode failed, txId %s, inode[%v]", txID, parInode)

@@ -69,9 +69,13 @@ func createMetaPartition(rootDir string, t *testing.T) (mp *metaPartition) {
 	require.True(t, ok)
 	err := mp.initObjects(true)
 	require.NoError(t, err)
+	snap, err := mp.GetSnapShot()
+	require.NoError(t, err)
+	require.NotNil(t, snap)
+	defer snap.Close()
 	msg := &storeMsg{
 		command:     1,
-		snap:        NewSnapshot(mp),
+		snap:        snap,
 		uniqChecker: newUniqChecker(),
 	}
 	mp.uidManager = NewUidMgr(mpC.VolName, mpC.PartitionId)

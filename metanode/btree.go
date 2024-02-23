@@ -15,6 +15,8 @@
 package metanode
 
 import (
+	"errors"
+
 	"github.com/cubefs/cubefs/proto"
 	_ "github.com/cubefs/cubefs/proto"
 )
@@ -34,6 +36,7 @@ const (
 	TransactionType
 	TransactionRollbackInodeType
 	TransactionRollbackDentryType
+	DeletedExtentsType
 	MaxType
 )
 
@@ -53,18 +56,21 @@ func (t TreeType) String() string {
 		return "transaction rollback inode tree"
 	case TransactionRollbackDentryType:
 		return "transaction rollback dentry tree"
+	case DeletedExtentsType:
+		return "deleted extents"
 	default:
 		return "unknown"
 	}
 }
 
 var (
-	baseInfoKey = []byte{byte(BaseInfoType)}
+	baseInfoKey     = []byte{byte(BaseInfoType)}
+	ErrOpenSnapshot = errors.New("failed to open snapshot")
 )
 
-func NewSnapshot(mp *metaPartition) Snapshot {
+func NewSnapshot(mp *metaPartition) (snap Snapshot, err error) {
 	if mp.HasMemStore() {
-		return &MemSnapShot{
+		snap = &MemSnapShot{
 			applyID:             mp.GetAppliedID(),
 			txID:                mp.txProcessor.txManager.txIdAlloc.getTransactionID(),
 			inode:               &InodeBTree{mp.inodeTree.(*InodeBTree).GetTree()},
@@ -74,22 +80,30 @@ func NewSnapshot(mp *metaPartition) Snapshot {
 			transaction:         &TransactionBTree{mp.txProcessor.txManager.txTree.(*TransactionBTree).GetTree()},
 			transactionRbInode:  &TransactionRollbackInodeBTree{mp.txProcessor.txResource.txRbInodeTree.(*TransactionRollbackInodeBTree).GetTree()},
 			transactionRbDentry: &TransactionRollbackDentryBTree{mp.txProcessor.txResource.txRbDentryTree.(*TransactionRollbackDentryBTree).GetTree()},
+			deletedExtents:      &DeletedExtentsBTree{mp.deletedExtentsTree.(*DeletedExtentsBTree).GetTree()},
+			deletedExtentId:     mp.GetDeletedExtenId(),
 		}
 	}
+
 	if mp.HasRocksDBStore() {
-		return NewRocksSnapShot(mp)
+		snap = NewRocksSnapShot(mp)
 	}
 
-	return nil
+	if snap == nil {
+		err = ErrOpenSnapshot
+	}
+	return
 }
 
 type Snapshot interface {
 	Range(tp TreeType, cb func(item interface{}) (bool, error)) error
+	RangeWithScope(tp TreeType, start, end interface{}, cb func(item interface{}) (bool, error)) error
 	Close()
 	Count(tp TreeType) uint64
 	CrcSum(tp TreeType) (uint32, error)
 	ApplyID() uint64
 	TxID() uint64
+	DeletedExtentId() uint64
 }
 
 type Tree interface {
@@ -110,6 +124,8 @@ type Tree interface {
 	GetCursor() uint64
 	SetTxId(txid uint64)
 	GetTxId() uint64
+	GetDeletedExtentId() uint64
+	SetDeletedExtentId(id uint64)
 }
 
 type InodeTree interface {
@@ -215,6 +231,18 @@ type TransactionRollbackDentryTree interface {
 	Delete(dbHandle interface{}, pid uint64, name string) (bool, error)
 	Range(start, end *TxRollbackDentry, cb func(d *TxRollbackDentry) (bool, error)) error
 	RangeWithPrefix(prefix, start, end *TxRollbackDentry, cb func(d *TxRollbackDentry) (bool, error)) error
+	RealCount() uint64
+	Count() uint64
+	Len() int
+}
+
+// NOTE: deleted extent
+type DeletedExtentsTree interface {
+	Tree
+	Put(dbHandle interface{}, dek *DeletedExtentKey) error
+	Delete(dbHandle interface{}, dek *DeletedExtentKey) (bool, error)
+	Range(start, end *DeletedExtentKey, cb func(dek *DeletedExtentKey) (bool, error)) error
+	RangeWithPrefix(prefix, start, end *DeletedExtentKey, cb func(dek *DeletedExtentKey) (bool, error)) error
 	RealCount() uint64
 	Count() uint64
 	Len() int

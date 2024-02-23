@@ -136,7 +136,11 @@ func (m *metadataManager) opMasterHeartbeat(conn net.Conn, p *Packet,
 				StoreMode:        mConf.StoreMode,
 			}
 			log.LogDebugf("[opMasterHeartbeat] mp(%v) collect tx info", mConf.PartitionId)
-			mpr.TxCnt, mpr.TxRbInoCnt, mpr.TxRbDenCnt = partition.TxGetCnt()
+			mpr.TxCnt, mpr.TxRbInoCnt, mpr.TxRbDenCnt, err = partition.TxGetCnt()
+			if err != nil {
+				log.LogErrorf("[opMasterHeartbeat] mp(%v) failed to open snapshot, err(%v)", mConf.PartitionId, err)
+				return true
+			}
 
 			if mConf.Cursor >= mConf.End {
 				mpr.Status = proto.ReadOnly

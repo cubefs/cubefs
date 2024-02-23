@@ -34,14 +34,14 @@ type RocksBaseInfo struct {
 	dentryCnt         uint64
 	extendCnt         uint64
 	multiCnt          uint64
-	delDentryCnt      uint64
-	delInodeCnt       uint64
 	persistentApplyId uint64
 	cursor            uint64
 	txCnt             uint64
 	txRbInodeCnt      uint64
 	txRbDentryCnt     uint64
 	txId              uint64
+	deletedExtentId   uint64
+	deletedExtentsCnt uint64
 }
 
 func (info *RocksBaseInfo) Marshal() (result []byte, err error) {
@@ -67,12 +67,6 @@ func (info *RocksBaseInfo) Marshal() (result []byte, err error) {
 	if err = binary.Write(buff, binary.BigEndian, atomic.LoadUint64(&info.multiCnt)); err != nil {
 		panic(err)
 	}
-	if err = binary.Write(buff, binary.BigEndian, atomic.LoadUint64(&info.delDentryCnt)); err != nil {
-		panic(err)
-	}
-	if err = binary.Write(buff, binary.BigEndian, atomic.LoadUint64(&info.delInodeCnt)); err != nil {
-		panic(err)
-	}
 	info.persistentApplyId = info.applyId
 	if err = binary.Write(buff, binary.BigEndian, atomic.LoadUint64(&info.cursor)); err != nil {
 		panic(err)
@@ -87,6 +81,12 @@ func (info *RocksBaseInfo) Marshal() (result []byte, err error) {
 		panic(err)
 	}
 	if err = binary.Write(buff, binary.BigEndian, atomic.LoadUint64(&info.txId)); err != nil {
+		panic(err)
+	}
+	if err = binary.Write(buff, binary.BigEndian, atomic.LoadUint64(&info.deletedExtentId)); err != nil {
+		panic(err)
+	}
+	if err = binary.Write(buff, binary.BigEndian, atomic.LoadUint64(&info.deletedExtentsCnt)); err != nil {
 		panic(err)
 	}
 	return buff.Bytes(), nil
@@ -115,12 +115,6 @@ func (info *RocksBaseInfo) MarshalWithoutApplyID() (result []byte, err error) {
 	if err = binary.Write(buff, binary.BigEndian, atomic.LoadUint64(&info.multiCnt)); err != nil {
 		panic(err)
 	}
-	if err = binary.Write(buff, binary.BigEndian, atomic.LoadUint64(&info.delDentryCnt)); err != nil {
-		panic(err)
-	}
-	if err = binary.Write(buff, binary.BigEndian, atomic.LoadUint64(&info.delInodeCnt)); err != nil {
-		panic(err)
-	}
 	if err = binary.Write(buff, binary.BigEndian, atomic.LoadUint64(&info.cursor)); err != nil {
 		panic(err)
 	}
@@ -134,6 +128,12 @@ func (info *RocksBaseInfo) MarshalWithoutApplyID() (result []byte, err error) {
 		panic(err)
 	}
 	if err = binary.Write(buff, binary.BigEndian, atomic.LoadUint64(&info.txId)); err != nil {
+		panic(err)
+	}
+	if err = binary.Write(buff, binary.BigEndian, atomic.LoadUint64(&info.deletedExtentId)); err != nil {
+		panic(err)
+	}
+	if err = binary.Write(buff, binary.BigEndian, atomic.LoadUint64(&info.deletedExtentsCnt)); err != nil {
 		panic(err)
 	}
 	return buff.Bytes(), nil
@@ -163,12 +163,6 @@ func (info *RocksBaseInfo) Unmarshal(raw []byte) (err error) {
 	if err = binary.Read(buff, binary.BigEndian, &info.multiCnt); err != nil {
 		return
 	}
-	if err = binary.Read(buff, binary.BigEndian, &info.delDentryCnt); err != nil {
-		return
-	}
-	if err = binary.Read(buff, binary.BigEndian, &info.delInodeCnt); err != nil {
-		return
-	}
 	info.persistentApplyId = info.applyId
 	if err = binary.Read(buff, binary.BigEndian, &info.cursor); err != nil {
 		return
@@ -185,14 +179,19 @@ func (info *RocksBaseInfo) Unmarshal(raw []byte) (err error) {
 	if err = binary.Read(buff, binary.BigEndian, &info.txId); err != nil {
 		return
 	}
+	if err = binary.Read(buff, binary.BigEndian, &info.deletedExtentId); err != nil {
+		return
+	}
+	if err = binary.Read(buff, binary.BigEndian, &info.deletedExtentsCnt); err != nil {
+		return
+	}
 	return
 }
 
 type RocksTree struct {
-	db             *RocksDbInfo
-	currentApplyID uint64
-	latch          [MaxTable]sync.Mutex
-	baseInfo       RocksBaseInfo
+	db       *RocksDbInfo
+	latch    [MaxTable]sync.Mutex
+	baseInfo RocksBaseInfo
 }
 
 func DefaultRocksTree(dbInfo *RocksDbInfo) (*RocksTree, error) {
@@ -243,6 +242,21 @@ func (r *RocksTree) SetTxId(txId uint64) {
 			return
 		}
 		now = r.GetTxId()
+	}
+}
+
+func (r *RocksTree) GetDeletedExtentId() uint64 {
+	return atomic.LoadUint64(&r.baseInfo.deletedExtentId)
+}
+
+func (r *RocksTree) SetDeletedExtentId(id uint64) {
+	// NOTE: dek id is increase only
+	now := r.GetDeletedExtentId()
+	for now < id {
+		if atomic.CompareAndSwapUint64(&r.baseInfo.deletedExtentId, now, id) {
+			return
+		}
+		now = r.GetDeletedExtentId()
 	}
 }
 
@@ -567,6 +581,7 @@ var _ MultipartTree = &MultipartRocks{}
 var _ TransactionTree = &TransactionRocks{}
 var _ TransactionRollbackInodeTree = &TransactionRollbackInodeRocks{}
 var _ TransactionRollbackDentryTree = &TransactionRollbackDentryRocks{}
+var _ DeletedExtentsTree = &DeletedExtentsRocks{}
 
 func NewInodeRocks(tree *RocksTree) (*InodeRocks, error) {
 	return &InodeRocks{
@@ -638,6 +653,16 @@ func NewTransactionRollbackDentryRocks(tree *RocksTree) (*TransactionRollbackDen
 	}, nil
 }
 
+type DeletedExtentsRocks struct {
+	*RocksTree
+}
+
+func NewDeletedExtentsRocks(tree *RocksTree) (*DeletedExtentsRocks, error) {
+	return &DeletedExtentsRocks{
+		RocksTree: tree,
+	}, nil
+}
+
 func inodeEncodingKey(ino uint64) []byte {
 	buff := new(bytes.Buffer)
 	buff.WriteByte(byte(InodeTable))
@@ -686,39 +711,6 @@ func multipartEncodingPrefix(key string, id string) []byte {
 	return buff.Bytes()
 }
 
-func deletedDentryEncodingKey(parentId uint64, name string, timeStamp int64) []byte {
-	buff := new(bytes.Buffer)
-	buff.WriteByte(byte(DelDentryTable))
-	_ = binary.Write(buff, binary.BigEndian, parentId)
-	buff.WriteString(name)
-	buff.WriteByte(0)
-	_ = binary.Write(buff, binary.BigEndian, timeStamp)
-	return buff.Bytes()
-}
-
-func deletedDentryEncodingPrefix(parentId uint64, name string, timeStamp int64) []byte {
-	buff := new(bytes.Buffer)
-	buff.WriteByte(byte(DelDentryTable))
-	_ = binary.Write(buff, binary.BigEndian, parentId)
-	if name == "" {
-		return buff.Bytes()
-	}
-	buff.WriteString(name)
-	buff.WriteByte(0)
-	if timeStamp == 0 {
-		return buff.Bytes()
-	}
-	_ = binary.Write(buff, binary.BigEndian, timeStamp)
-	return buff.Bytes()
-}
-
-func deletedInodeEncodingKey(ino uint64) []byte {
-	buff := new(bytes.Buffer)
-	buff.WriteByte(byte(DelInodeTable))
-	_ = binary.Write(buff, binary.BigEndian, ino)
-	return buff.Bytes()
-}
-
 func transactionEncodingKey(txId string) []byte {
 	buff := &bytes.Buffer{}
 	buff.WriteByte(byte(TransactionTable))
@@ -748,6 +740,28 @@ func transactionRollbackDentryEncodingPrefix(parentId uint64, name string) []byt
 	if name != "" {
 		buff.WriteString(name)
 	}
+	return buff.Bytes()
+}
+
+func deletedExtentsEncodingKey(partitionId uint64, inode uint64, extentId uint64, deletedExtentId uint64) []byte {
+	buff := &bytes.Buffer{}
+	buff.WriteByte(byte(DeletedExtentsTable))
+	_ = binary.Write(buff, binary.BigEndian, partitionId)
+	buff.WriteByte(0)
+	_ = binary.Write(buff, binary.BigEndian, inode)
+	buff.WriteByte(0)
+	_ = binary.Write(buff, binary.BigEndian, extentId)
+	buff.WriteByte(0)
+	_ = binary.Write(buff, binary.BigEndian, deletedExtentId)
+	return buff.Bytes()
+}
+
+func deletedExtentsEncodingPrefix(partitionId uint64, inode uint64) []byte {
+	buff := &bytes.Buffer{}
+	buff.WriteByte(byte(DeletedExtentsTable))
+	_ = binary.Write(buff, binary.BigEndian, partitionId)
+	buff.WriteByte(0)
+	_ = binary.Write(buff, binary.BigEndian, inode)
 	return buff.Bytes()
 }
 
@@ -801,6 +815,10 @@ func (b *TransactionRollbackDentryRocks) Count() uint64 {
 	return atomic.LoadUint64(&b.baseInfo.txRbDentryCnt)
 }
 
+func (b *DeletedExtentsRocks) Count() uint64 {
+	return atomic.LoadUint64(&b.baseInfo.deletedExtentsCnt)
+}
+
 func (b *InodeRocks) Len() int {
 	return int(b.Count())
 }
@@ -826,6 +844,10 @@ func (b *TransactionRollbackInodeRocks) Len() int {
 }
 
 func (b *TransactionRollbackDentryRocks) Len() int {
+	return int(b.Count())
+}
+
+func (b *DeletedExtentsRocks) Len() int {
 	return int(b.Count())
 }
 
@@ -858,6 +880,10 @@ func (b *TransactionRollbackDentryRocks) RealCount() uint64 {
 	return b.IteratorCount(TransactionRollbackDentryTable)
 }
 
+func (b *DeletedExtentsRocks) RealCount() uint64 {
+	return b.IteratorCount(DeletedExtentsTable)
+}
+
 // Get
 func (b *InodeRocks) RefGet(ino uint64) (*Inode, error) {
 	return b.Get(ino)
@@ -878,9 +904,10 @@ func (b *InodeRocks) Get(ino uint64) (inode *Inode, err error) {
 	if len(bs) == 0 {
 		return
 	}
-	inode = NewInode(ino, 0)
+	inode = &Inode{}
 	if err = inode.Unmarshal(bs); err != nil {
 		log.LogErrorf("[InodeRocks] unmarshal value error : %v", err)
+		return
 	}
 	return
 }
@@ -1126,6 +1153,20 @@ func (b *TransactionRollbackDentryRocks) Put(dbHandle interface{}, dentry *TxRol
 	err = b.RocksTree.Put(dbHandle, &b.baseInfo.txRbDentryCnt, transactionRollbackDentryEncodingKey(dentry.txDentryInfo.ParentId, dentry.txDentryInfo.Name), bs)
 	if err != nil {
 		log.LogErrorf("TransactionRollbackDentryRocks dentry put failed, dentry: %v, error: %v", dentry, err)
+		return
+	}
+	return
+}
+
+func (b *DeletedExtentsRocks) Put(dbHandle interface{}, dek *DeletedExtentKey) (err error) {
+	var bs []byte
+	if bs, err = dek.Marshal(); err != nil {
+		log.LogErrorf("DeletedExtentsRocks deleted extent marshal failed, dek: %v, error: %v", dek, err)
+		return
+	}
+	err = b.RocksTree.Put(dbHandle, &b.baseInfo.deletedExtentsCnt, deletedExtentsEncodingKey(dek.PartitionId, dek.Inode, dek.ExtentId, dek.DeletedExtentId), bs)
+	if err != nil {
+		log.LogErrorf("DeletedExtentsRocks deleted extent put failed, dek: %v, error: %v", dek, err)
 		return
 	}
 	return
@@ -1465,6 +1506,10 @@ func (b *TransactionRollbackDentryRocks) Delete(dbHandle interface{}, parentId u
 	return b.RocksTree.Delete(dbHandle, &b.baseInfo.txRbDentryCnt, transactionRollbackDentryEncodingKey(parentId, name))
 }
 
+func (b *DeletedExtentsRocks) Delete(dbHandle interface{}, dek *DeletedExtentKey) (bool, error) {
+	return b.RocksTree.Delete(dbHandle, &b.baseInfo.deletedExtentsCnt, deletedExtentsEncodingKey(dek.PartitionId, dek.Inode, dek.ExtentId, dek.DeletedExtentId))
+}
+
 // Range begin
 // Range , if end is nil , it will range all of this type , it range not include end
 func (b *InodeRocks) Range(start, end *Inode, cb func(i *Inode) (bool, error)) error {
@@ -1693,6 +1738,51 @@ func (b *TransactionRollbackDentryRocks) RangeWithPrefix(prefix, start, end *TxR
 	return b.RocksTree.RangeWithPrefix(prefixByte, startByte, endByte, callback)
 }
 
+func (b *DeletedExtentsRocks) Range(start, end *DeletedExtentKey, cb func(dek *DeletedExtentKey) (bool, error)) error {
+	startByte := []byte{byte(DeletedExtentsTable)}
+	endByte := []byte{byte(DeletedExtentsTable) + 1}
+	if end != nil {
+		endByte = deletedExtentsEncodingKey(end.PartitionId, end.ExtentId, end.Inode, end.DeletedExtentId)
+	}
+	callback := func(v []byte) (bool, error) {
+		dek := &DeletedExtentKey{}
+		err := dek.Unmarshal(v)
+		if err != nil {
+			return false, err
+		}
+		if start != nil && dek.Less(start) {
+			return true, nil
+		}
+		return cb(dek)
+	}
+	return b.RocksTree.Range(startByte, endByte, callback)
+}
+
+func (b *DeletedExtentsRocks) RangeWithPrefix(prefix, start, end *DeletedExtentKey, cb func(dek *DeletedExtentKey) (bool, error)) error {
+	prefixByte := []byte{byte(TransactionRollbackDentryTable)}
+	startByte := []byte{byte(TransactionRollbackDentryTable)}
+	endByte := []byte{byte(TransactionRollbackDentryTable) + 1}
+	if end != nil {
+		endByte = deletedExtentsEncodingKey(end.PartitionId, end.Inode, end.ExtentId, end.DeletedExtentId)
+	}
+	if start != nil {
+		startByte = deletedExtentsEncodingKey(start.PartitionId, start.Inode, start.ExtentId, start.DeletedExtentId)
+	}
+	if prefix != nil {
+		prefixByte = deletedExtentsEncodingPrefix(prefix.PartitionId, prefix.Inode)
+	}
+
+	callback := func(v []byte) (bool, error) {
+		dek := &DeletedExtentKey{}
+		err := dek.Unmarshal(v)
+		if err != nil {
+			return false, err
+		}
+		return cb(dek)
+	}
+	return b.RocksTree.RangeWithPrefix(prefixByte, startByte, endByte, callback)
+}
+
 func (b *InodeRocks) MaxItem() *Inode {
 	var maxItem *Inode
 	snapshot := b.RocksTree.db.OpenSnap()
@@ -1771,16 +1861,22 @@ func (r *RocksSnapShot) Count(tp TreeType) uint64 {
 		count = r.baseInfo.txRbInodeCnt
 	case TransactionRollbackDentryType:
 		count = r.baseInfo.txRbDentryCnt
+	case DeletedExtentsType:
+		count = r.baseInfo.deletedExtentsCnt
 	}
 	return count
 }
 
 func (r *RocksSnapShot) Range(tp TreeType, cb func(item interface{}) (bool, error)) error {
+	return r.RangeWithScope(tp, nil, nil, cb)
+}
+
+func (r *RocksSnapShot) RangeWithScope(tp TreeType, start, end interface{}, cb func(item interface{}) (bool, error)) error {
 	tableType := getTableTypeKey(tp)
 	callbackFunc := func(k, v []byte) (bool, error) {
 		switch tp {
 		case InodeType:
-			inode := NewInode(0, 0)
+			inode := &Inode{}
 			if err := inode.Unmarshal(v); err != nil {
 				return false, err
 			}
@@ -1810,17 +1906,69 @@ func (r *RocksSnapShot) Range(tp TreeType, cb func(item interface{}) (bool, erro
 			if err := inode.Unmarshal(v); err != nil {
 				return false, err
 			}
+			return cb(inode)
 		case TransactionRollbackDentryType:
 			dentry := &TxRollbackDentry{}
 			if err := dentry.Unmarshal(v); err != nil {
 				return false, err
 			}
+			return cb(dentry)
+		case DeletedExtentsType:
+			dek := &DeletedExtentKey{}
+			if err := dek.Unmarshal(v); err != nil {
+				return false, err
+			}
+			return cb(dek)
 		default:
 			return false, fmt.Errorf("error type")
 		}
-		return true, nil
 	}
-	return r.tree.db.RangeWithSnap([]byte{byte(tableType)}, []byte{byte(tableType) + 1}, r.snap, callbackFunc)
+	startBytes := []byte{byte(tableType)}
+	endBytes := []byte{byte(tableType + 1)}
+	marshal := func(item interface{}) ([]byte, error) {
+		switch tp {
+		case InodeType:
+			inode := item.(*Inode)
+			return inode.Marshal()
+		case DentryType:
+			dentry := item.(*Dentry)
+			return dentry.Marshal()
+		case ExtendType:
+			extend := item.(*Extend)
+			return extend.Bytes()
+		case MultipartType:
+			multipart := item.(*Multipart)
+			return multipart.Bytes()
+		case TransactionType:
+			tx := item.(*proto.TransactionInfo)
+			return tx.Marshal()
+		case TransactionRollbackInodeType:
+			inode := item.(*TxRollbackInode)
+			return inode.Marshal()
+		case TransactionRollbackDentryType:
+			dentry := item.(*TxRollbackDentry)
+			return dentry.Marshal()
+		case DeletedExtentsType:
+			dek := item.(*DeletedExtentKey)
+			return dek.Marshal()
+		default:
+			return nil, fmt.Errorf("error type")
+		}
+	}
+	var err error
+	if start != nil {
+		startBytes, err = marshal(start)
+		if err != nil {
+			return err
+		}
+	}
+	if end != nil {
+		endBytes, err = marshal(end)
+		if err != nil {
+			return err
+		}
+	}
+	return r.tree.db.RangeWithSnap(startBytes, endBytes, r.snap, callbackFunc)
 }
 
 func (r *RocksSnapShot) Close() {
@@ -1859,4 +2007,8 @@ func (r *RocksSnapShot) ApplyID() uint64 {
 
 func (r *RocksSnapShot) TxID() uint64 {
 	return r.baseInfo.txId
+}
+
+func (r *RocksSnapShot) DeletedExtentId() uint64 {
+	return r.baseInfo.deletedExtentId
 }

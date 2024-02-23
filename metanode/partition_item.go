@@ -191,7 +191,10 @@ func newMetaItemIterator(mp *metaPartition) (si *MetaItemIterator, err error) {
 	si.txId = mp.txProcessor.txManager.txIdAlloc.getTransactionID()
 	si.cursor = mp.GetCursor()
 	si.uniqID = mp.GetUniqId()
-	si.treeSnap = NewSnapshot(mp)
+	si.treeSnap, err = mp.GetSnapShot()
+	if err != nil {
+		return
+	}
 	si.uniqChecker = mp.uniqChecker.clone()
 	si.verList = mp.GetAllVerList()
 	mp.nonIdempotent.Unlock()

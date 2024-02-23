@@ -24,6 +24,7 @@ import (
 	"os"
 	"path"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/cubefs/cubefs/proto"
@@ -46,11 +47,17 @@ const (
 	dayKeyIndex     = 4
 	hourKeyIndex    = 5
 
-	defAdjustHourMinuet			= 50
-	defEKDelDelaySecond         = 60 * 10		//10min
+	defAdjustHourMinuet = 50
+	defEKDelDelaySecond = 60 * 10 //10min
 )
 
 var extentsFileHeader = []byte{0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x08}
+
+func (mp *metaPartition) AllocDeletedExtentId() (id uint64) {
+	id = atomic.AddUint64(&mp.deletedExtentId, 1)
+	mp.deletedExtentsTree.SetDeletedExtentId(id)
+	return
+}
 
 func updateKeyToNowWithAdjust(data []byte, addHourFlag bool) {
 	now := time.Now()
@@ -71,8 +78,8 @@ func updateKeyToNow(data []byte) {
 	updateKeyToNowWithAdjust(data, false)
 }
 
-/// start metapartition delete extents work
-///
+// / start metapartition delete extents work
+// /
 func (mp *metaPartition) startToDeleteExtents() {
 	fileList := synclist.New()
 	go mp.appendDelExtentsToFile(fileList)
@@ -202,6 +209,131 @@ LOOP:
 			log.LogDebugf("action[appendDelExtentsToFile] filesize now %v", fileSize)
 		}
 	}
+}
+
+func (mp *metaPartition) getAllDeltedExtentsFromList(fileList *synclist.SyncList) (eks []*proto.ExtentKey, err error) {
+	eks = make([]*proto.ExtentKey, 0)
+	var (
+		fp       *os.File
+		fileInfo os.FileInfo
+	)
+	for {
+		element := fileList.Front()
+		if element == nil {
+			break
+		}
+		fileName := element.Value.(string)
+		file := path.Join(mp.config.RootDir, fileName)
+		if fileInfo, err = os.Stat(file); err != nil {
+			if os.IsNotExist(err) {
+				fileList.Remove(element)
+				continue
+			}
+			log.LogErrorf("[getAllDeltedExtentsFromList] mp(%v) deleted extents file stat error, disk broken? err(%v)", mp.config.PartitionId, err)
+			break
+		}
+
+		// NOTE: get version
+		extentV2 := false
+		extentKeyLen := uint64(proto.ExtentLength)
+		if strings.HasPrefix(fileName, prefixDelExtentV2) {
+			extentV2 = true
+			extentKeyLen = uint64(proto.ExtentV2Length)
+		}
+
+		// read delete extents from file
+		var cursor uint64
+		fp, err = os.OpenFile(file, os.O_RDWR, 0o644)
+		if err != nil {
+			log.LogErrorf("[getAllDeltedExtentsFromList] volname [%v] mp[%v] openFile %v error: %v", mp.GetVolName(), mp.config.PartitionId, file, err)
+			return
+		}
+
+		// get delete extents cursor at file header 8 bytes
+		if err = binary.Read(fp, binary.BigEndian, &cursor); err != nil {
+			log.LogWarnf("[getAllDeltedExtentsFromList] partitionId(%v), failed to read cursor", mp.config.PartitionId)
+			fp.Close()
+			return
+		}
+		log.LogDebugf("action[getAllDeltedExtentsFromList] get cursor %v", cursor)
+		fileSize := uint64(fileInfo.Size())
+
+		// NOTE: >= size, continue
+		if cursor >= fileSize {
+			continue
+		}
+
+		if fileSize-cursor < extentKeyLen {
+			log.LogErrorf("[getAllDeltedExtentsFromList] partitionId(%v), %v file corrupted!", mp.config.PartitionId, fileName)
+			fileList.Remove(element)
+			fp.Close()
+			continue
+		}
+
+		readLoop := func() (err error) {
+			// read extents from cursor
+			defer fp.Close()
+			readLen := 0
+			headerBuffer := make([]byte, proto.ExtentKeyHeaderSize)
+			ekBuffer := make([]byte, proto.ExtentV3Length)
+			for cursor < fileSize {
+				// NOTE: read header to check ek version
+				ekSize := extentKeyLen
+				if extentV2 {
+					// NOTE: check extent V3
+					readLen, err = fp.ReadAt(headerBuffer, int64(cursor))
+					if err != nil {
+						return
+					}
+					if readLen != len(headerBuffer) {
+						log.LogErrorf("[getAllDeltedExtentsFromList] partitionId(%v), %v file corrupted!", mp.config.PartitionId, fileName)
+						return
+					}
+					if extentV2 && bytes.Compare(headerBuffer, proto.ExtentKeyHeaderV3) == 0 {
+						// NOTE: is extent v3
+						ekSize = uint64(proto.ExtentV3Length)
+					}
+				}
+				// NOTE: read extent key
+				readLen, err = fp.ReadAt(ekBuffer, int64(cursor))
+				if err != nil {
+					return
+				}
+				if readLen != int(ekSize) {
+					log.LogErrorf("[getAllDeltedExtentsFromList] partitionId(%v), %v file corrupted!", mp.config.PartitionId, fileName)
+					return
+				}
+				cursor += uint64(readLen)
+				// NOTE: unmarshal extents
+				ek := &proto.ExtentKey{}
+				buff := bytes.NewBuffer(ekBuffer)
+				if extentV2 {
+					if err = ek.UnmarshalBinaryWithCheckSum(buff); err != nil {
+						if err == proto.InvalidKeyHeader || err == proto.InvalidKeyCheckSum {
+							log.LogErrorf("[getAllDeltedExtentsFromList] invalid extent key header %v, %v, %v", fileName, mp.config.PartitionId, err)
+							continue
+						}
+						log.LogErrorf("[getAllDeltedExtentsFromList] mp: %v Unmarshal extentkey from %v unresolved error: %v", mp.config.PartitionId, fileName, err)
+						return err
+					}
+				} else {
+					// ek for del no need to get version
+					if err = ek.UnmarshalBinary(buff, false); err != nil {
+						return err
+					}
+				}
+				// NOTE: append to result set
+				eks = append(eks, ek)
+			}
+			return
+		}
+		err = readLoop()
+		if err != nil {
+			return
+		}
+		fileList.Remove(element)
+	}
+	return
 }
 
 // Delete all the extents of a file.

@@ -16,6 +16,7 @@ package metanode
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
@@ -59,6 +60,7 @@ const (
 	StaleMetadataSuffix     = ".old"
 	StaleMetadataTimeFormat = "20060102150405.000000000"
 	verdataInitFile         = "multiVerInitFile"
+	deletedExtentsIdFile    = "deletedExtentsId"
 )
 
 func (mp *metaPartition) loadMetadataFromFile() (mConf *MetaPartitionConfig, err error) {
@@ -202,7 +204,7 @@ func (mp *metaPartition) loadInode(rootDir string, crc uint32) (err error) {
 		mp.size += ino.Size
 
 		_, err = mp.fsmCreateInode(handler, ino)
-		mp.checkAndInsertFreeList(ino)
+		// mp.checkAndInsertFreeList(ino)
 		if mp.config.Cursor < ino.Inode {
 			mp.config.Cursor = ino.Inode
 			mp.inodeTree.SetCursor(ino.Inode)
@@ -1496,5 +1498,57 @@ func (mp *metaPartition) storeUniqChecker(rootDir string, sm *storeMsg) (crc uin
 
 	log.LogInfof("storeUniqChecker: store complete: PartitionID(%v) volume(%v) crc(%v)",
 		mp.config.UniqId, mp.config.VolName, crc)
+	return
+}
+
+func (mp *metaPartition) loadDeletedExtentId(rootDir string) (err error) {
+	if mp.HasMemStore() {
+		if rootDir == "" {
+			return ErrInvalidSnapshotRoot
+		}
+		filename := path.Join(rootDir, deletedExtentsIdFile)
+		if _, err = os.Stat(filename); err != nil {
+			if os.IsNotExist(err) {
+				err = nil
+				return
+			}
+			err = errors.NewErrorf("[loadDeletedExtentID]: Stat %s", err.Error())
+			return
+		}
+		var data []byte
+		data, err = os.ReadFile(filename)
+		if err != nil {
+			return
+		}
+		mp.deletedExtentId = binary.BigEndian.Uint64(data)
+		return
+	}
+
+	if mp.HasRocksDBStore() {
+		mp.deletedExtentId = mp.deletedExtentsTree.GetDeletedExtentId()
+	}
+	return
+}
+
+func (mp *metaPartition) storeDeletedExtentId(rootDir string, sm *storeMsg) (err error) {
+	filename := path.Join(rootDir, deletedExtentsIdFile)
+	fp, err := os.OpenFile(filename, os.O_RDWR|os.O_TRUNC|os.O_APPEND|os.
+		O_CREATE, 0o755)
+	if err != nil {
+		return
+	}
+	defer func() {
+		err = fp.Sync()
+		fp.Close()
+	}()
+
+	buff := bytes.NewBuffer([]byte{})
+	err = binary.Write(buff, binary.BigEndian, sm.snap.DeletedExtentId())
+	if err != nil {
+		return
+	}
+	if _, err = buff.WriteTo(fp); err != nil {
+		return
+	}
 	return
 }

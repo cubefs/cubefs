@@ -41,46 +41,116 @@ type MemSnapShot struct {
 	transaction         *TransactionBTree
 	transactionRbInode  *TransactionRollbackInodeBTree
 	transactionRbDentry *TransactionRollbackDentryBTree
+	deletedExtents      *DeletedExtentsBTree
 	txID                uint64
+	deletedExtentId     uint64
 }
 
 func (b *MemSnapShot) Range(tp TreeType, cb func(item interface{}) (bool, error)) error {
+	return b.RangeWithScope(tp, nil, nil, cb)
+}
+
+func (b *MemSnapShot) RangeWithScope(tp TreeType, start, end interface{}, cb func(item interface{}) (bool, error)) error {
 	switch tp {
 	case InodeType:
 		callBackFunc := func(inode *Inode) (bool, error) {
 			return cb(inode)
 		}
-		return b.inode.Range(&Inode{}, nil, callBackFunc)
+		var startInode, endInode *Inode
+		startInode = &Inode{}
+		if start != nil {
+			startInode = start.(*Inode)
+		}
+		if end != nil {
+			endInode = start.(*Inode)
+		}
+		return b.inode.Range(startInode, endInode, callBackFunc)
 	case DentryType:
 		callBackFunc := func(dentry *Dentry) (bool, error) {
 			return cb(dentry)
 		}
-		return b.dentry.Range(&Dentry{}, nil, callBackFunc)
+		var startDentry, endDentry *Dentry
+		startDentry = &Dentry{}
+		if start != nil {
+			startDentry = start.(*Dentry)
+		}
+		if end != nil {
+			endDentry = end.(*Dentry)
+		}
+		return b.dentry.Range(startDentry, endDentry, callBackFunc)
 	case ExtendType:
 		callBackFunc := func(extend *Extend) (bool, error) {
 			return cb(extend)
 		}
-		return b.extend.Range(&Extend{}, nil, callBackFunc)
+		var startExtend, endExtend *Extend
+		startExtend = &Extend{}
+		if start != nil {
+			startExtend = start.(*Extend)
+		}
+		if end != nil {
+			endExtend = start.(*Extend)
+		}
+		return b.extend.Range(startExtend, endExtend, callBackFunc)
 	case MultipartType:
 		callBackFunc := func(multipart *Multipart) (bool, error) {
 			return cb(multipart)
 		}
-		return b.multipart.Range(&Multipart{}, nil, callBackFunc)
+		var startMultipart, endMultipart *Multipart
+		if start != nil {
+			startMultipart = start.(*Multipart)
+		}
+		if end != nil {
+			endMultipart = end.(*Multipart)
+		}
+		return b.multipart.Range(startMultipart, endMultipart, callBackFunc)
 	case TransactionType:
 		callBackFunc := func(tx *proto.TransactionInfo) (bool, error) {
 			return cb(tx)
 		}
-		return b.transaction.Range(nil, nil, callBackFunc)
+		var startTx, endTx *proto.TransactionInfo
+		if start != nil {
+			startTx = start.(*proto.TransactionInfo)
+		}
+		if end != nil {
+			endTx = end.(*proto.TransactionInfo)
+		}
+		return b.transaction.Range(startTx, endTx, callBackFunc)
 	case TransactionRollbackInodeType:
 		callBackFunc := func(inode *TxRollbackInode) (bool, error) {
 			return cb(inode)
 		}
-		return b.transactionRbInode.Range(nil, nil, callBackFunc)
+		var startRbInode, endRbInode *TxRollbackInode
+		if start != nil {
+			startRbInode = start.(*TxRollbackInode)
+		}
+		if end != nil {
+			endRbInode = start.(*TxRollbackInode)
+		}
+		return b.transactionRbInode.Range(startRbInode, endRbInode, callBackFunc)
 	case TransactionRollbackDentryType:
 		callBackFunc := func(dentry *TxRollbackDentry) (bool, error) {
 			return cb(dentry)
 		}
-		return b.transactionRbDentry.Range(nil, nil, callBackFunc)
+		var startRbDentry, endRbDentry *TxRollbackDentry
+		if start != nil {
+			startRbDentry = start.(*TxRollbackDentry)
+		}
+		if end != nil {
+			endRbDentry = end.(*TxRollbackDentry)
+		}
+		return b.transactionRbDentry.Range(startRbDentry, endRbDentry, callBackFunc)
+	case DeletedExtentsType:
+		callbackFunc := func(dek *DeletedExtentKey) (bool, error) {
+			return cb(dek)
+		}
+		var startDek, endDek *DeletedExtentKey
+		if start != nil {
+			startDek = start.(*DeletedExtentKey)
+		}
+		if end != nil {
+			endDek = end.(*DeletedExtentKey)
+		}
+		return b.deletedExtents.Range(startDek, endDek, callbackFunc)
 	default:
 	}
 	panic("out of type")
@@ -91,19 +161,21 @@ func (b *MemSnapShot) Close() {}
 func (b *MemSnapShot) Count(tp TreeType) uint64 {
 	switch tp {
 	case InodeType:
-		return uint64(b.inode.Len())
+		return b.inode.Count()
 	case DentryType:
-		return uint64(b.dentry.Len())
+		return b.dentry.Count()
 	case ExtendType:
-		return uint64(b.extend.Len())
+		return b.extend.Count()
 	case MultipartType:
-		return uint64(b.multipart.Len())
+		return b.multipart.Count()
 	case TransactionType:
-		return uint64(b.transaction.Len())
+		return b.transaction.Count()
 	case TransactionRollbackInodeType:
-		return uint64(b.transactionRbInode.Len())
+		return b.transactionRbInode.Count()
 	case TransactionRollbackDentryType:
-		return uint64(b.transactionRbDentry.Len())
+		return b.transactionRbDentry.Count()
+	case DeletedExtentsType:
+		return b.deletedExtents.Count()
 	default:
 	}
 	panic("out of type")
@@ -193,6 +265,17 @@ func (b *MemSnapShot) CrcSum(tp TreeType) (crcSum uint32, err error) {
 			return true, nil
 		}
 		err = b.transactionRbDentry.Range(nil, nil, cb)
+	case DeletedExtentsType:
+		cb := func(dek *DeletedExtentKey) (bool, error) {
+			if data, err = dek.Marshal(); err != nil {
+				return false, err
+			}
+			if _, err = crc.Write(data); err != nil {
+				return false, err
+			}
+			return true, nil
+		}
+		err = b.deletedExtents.Range(nil, nil, cb)
 	default:
 		panic("out of type")
 	}
@@ -211,6 +294,10 @@ func (b *MemSnapShot) TxID() uint64 {
 	return b.txID
 }
 
+func (b *MemSnapShot) DeletedExtentId() uint64 {
+	return b.deletedExtentId
+}
+
 var _ InodeTree = &InodeBTree{}
 var _ DentryTree = &DentryBTree{}
 var _ ExtendTree = &ExtendBTree{}
@@ -218,6 +305,7 @@ var _ MultipartTree = &MultipartBTree{}
 var _ TransactionTree = &TransactionBTree{}
 var _ TransactionRollbackInodeTree = &TransactionRollbackInodeBTree{}
 var _ TransactionRollbackDentryTree = &TransactionRollbackDentryBTree{}
+var _ DeletedExtentsTree = &DeletedExtentsBTree{}
 
 type InodeBTree struct {
 	*BTree
@@ -244,6 +332,10 @@ type TransactionRollbackInodeBTree struct {
 }
 
 type TransactionRollbackDentryBTree struct {
+	*BTree
+}
+
+type DeletedExtentsBTree struct {
 	*BTree
 }
 
@@ -423,6 +515,11 @@ func (i *TransactionBTree) Put(dbHandle interface{}, tx *proto.TransactionInfo) 
 	return nil
 }
 
+func (i *DeletedExtentsBTree) Put(dbHandle interface{}, dek *DeletedExtentKey) error {
+	i.BTree.ReplaceOrInsert(dek, true)
+	return nil
+}
+
 func (i *TransactionRollbackInodeBTree) Update(dbHandle interface{}, inode *TxRollbackInode) error {
 	i.BTree.ReplaceOrInsert(inode, false)
 	return nil
@@ -535,7 +632,14 @@ func (i *TransactionRollbackInodeBTree) Delete(dbHandle interface{}, inode uint6
 }
 
 func (i *TransactionRollbackDentryBTree) Delete(dbHandle interface{}, parentInode uint64, name string) (bool, error) {
-	if dentry := i.BTree.Delete(&TxRollbackDentry{txDentryInfo: proto.NewTxDentryInfo("", parentInode, name, 0)}); dentry != nil {
+	if dentry := i.BTree.Delete(&TxRollbackDentry{txDentryInfo: proto.NewTxDentryInfo("", parentInode, name, 0)}); dentry == nil {
+		return false, nil
+	}
+	return true, nil
+}
+
+func (i *DeletedExtentsBTree) Delete(dbHandle interface{}, dek *DeletedExtentKey) (bool, error) {
+	if old := i.BTree.Delete(dek); old == nil {
 		return false, nil
 	}
 	return true, nil
@@ -732,6 +836,34 @@ func (i *TransactionRollbackDentryBTree) RangeWithPrefix(prefix, start, end *TxR
 	return i.Range(start, end, cb)
 }
 
+func (i *DeletedExtentsBTree) Range(start, end *DeletedExtentKey, cb func(dek *DeletedExtentKey) (bool, error)) error {
+	var (
+		err  error
+		next bool
+	)
+	callback := func(i BtreeItem) bool {
+		next, err = cb(i.(*DeletedExtentKey))
+		if err != nil {
+			return false
+		}
+		return next
+	}
+	if start == nil {
+		start = &DeletedExtentKey{}
+	}
+
+	if end == nil {
+		i.BTree.AscendGreaterOrEqual(start, callback)
+	} else {
+		i.BTree.AscendRange(start, end, callback)
+	}
+	return err
+}
+
+func (i *DeletedExtentsBTree) RangeWithPrefix(prefix, start, end *DeletedExtentKey, cb func(dek *DeletedExtentKey) (bool, error)) error {
+	return i.Range(start, end, cb)
+}
+
 // MaxItem returns the largest item in the btree.
 func (i *InodeBTree) MaxItem() *Inode {
 	i.RLock()
@@ -893,6 +1025,13 @@ func (i *BTree) SetTxId(txId uint64) {
 
 func (i *BTree) GetTxId() uint64 {
 	return 0
+}
+
+func (i *BTree) GetDeletedExtentId() uint64 {
+	return 0
+}
+
+func (i *BTree) SetDeletedExtentId(id uint64) {
 }
 
 func (i *BTree) PersistBaseInfo() error {

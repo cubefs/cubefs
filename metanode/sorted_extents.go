@@ -76,11 +76,11 @@ func (se *SortedExtents) UnmarshalBinary(data []byte, v3 bool) (err error, split
 				splitMap = new(sync.Map)
 			}
 			val, ok := splitMap.Load(ek.GenerateId())
-			if !ok {
-				splitMap.Store(ek.GenerateId(), uint32(1))
-				continue
+			rc := uint32(1)
+			if ok {
+				rc = val.(uint32) + 1
 			}
-			splitMap.Store(ek.GenerateId(), val.(uint32)+1)
+			splitMap.Store(ek.GenerateId(), rc)
 		}
 	}
 	return
@@ -331,10 +331,20 @@ func (se *SortedExtents) SplitWithCheck(mpId uint64, inodeID uint64, ekSplit pro
 }
 
 func (se *SortedExtents) CheckAndAddRef(lastKey *proto.ExtentKey, currEk *proto.ExtentKey, addRefFunc func(*proto.ExtentKey)) (ok bool) {
+	// NOTE: if two extents are diff
+	// no need more check
 	if !lastKey.IsSameExtent(currEk) {
 		return
 	}
 	log.LogDebugf("action[AppendWithCheck.CheckAndAddRef] ek [%v],lastKey %v", currEk, lastKey)
+	// NOTE: in case of
+	// +---------+--------+
+	// | last    | curr   |
+	// +---------+--------+
+	// or
+	// +------+--+--------+
+	// | last |  | curr   |
+	// +------+--+--------+
 	if lastKey.FileOffset+uint64(lastKey.Size) <= currEk.FileOffset {
 		if !lastKey.IsSplit() {
 			addRefFunc(lastKey)
@@ -344,10 +354,23 @@ func (se *SortedExtents) CheckAndAddRef(lastKey *proto.ExtentKey, currEk *proto.
 		return
 	}
 
+	// NOTE: append write on original extent
+	// but has new version
+	// +------------+
+	// | last       |
+	// +------------+
+	// after append:
+	// +-----------------------+
+	// | curr(last)            |
+	// +-----------------------+
+	// but two version are diff
+	// split there into
+	// +---------+--------+
+	// | last    | curr   |
+	// +---------+--------+
 	if lastKey.FileOffset == currEk.FileOffset &&
-		lastKey.PartitionId == currEk.PartitionId &&
-		lastKey.ExtentId == currEk.ExtentId &&
-		lastKey.ExtentOffset == currEk.ExtentOffset && lastKey.Size < currEk.Size && lastKey.GetSeq() < currEk.GetSeq() {
+		lastKey.ExtentOffset == currEk.ExtentOffset &&
+		lastKey.Size < currEk.Size && lastKey.GetSeq() < currEk.GetSeq() {
 
 		log.LogDebugf("action[AppendWithCheck.CheckAndAddRef] split append key %v", currEk)
 		currEk.FileOffset = lastKey.FileOffset + uint64(lastKey.Size)
@@ -370,19 +393,26 @@ func (se *SortedExtents) AppendWithCheck(inodeID uint64, ek proto.ExtentKey, add
 	se.Lock()
 	defer se.Unlock()
 	log.LogDebugf("action[AppendWithCheck] ek [%v], clientDiscardExts [%v] se.eks [%v]", ek, clientDiscardExts, se.eks)
+	// NOTE: no extents, append directly
 	if len(se.eks) <= 0 {
 		se.eks = append(se.eks, ek)
+		// addRefFunc(&se.eks[0])
 		return
 	}
 	idx := len(se.eks) - 1
 	tailKey := &se.eks[idx]
 
 	log.LogDebugf("action[AppendWithCheck] ek [%v],tailKey %v, clientDiscardExts [%v] se.eks [%v]", ek, tailKey, clientDiscardExts, se.eks)
+	// NOTE: same extent, append and update rc
 	if ok := se.CheckAndAddRef(tailKey, &ek, addRefFunc); ok {
 		se.eks = append(se.eks, ek)
 		return
 	}
 
+	// NOTE: write to the head of file
+	// +-----------+----+--------+
+	// | ek        | .. |   se   |
+	// +-----------+----+--------+
 	firstKey := se.eks[0]
 	if firstKey.FileOffset >= endOffset {
 		se.insert(ek, 0)

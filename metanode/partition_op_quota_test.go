@@ -165,7 +165,7 @@ func NewMetaPartitionForQuotaTest(storeMode proto.StoreMode) *metaPartition {
 		VolName:     VolNameForTest,
 		StoreMode:   storeMode,
 	}
-	mpC.RocksDBDir = fmt.Sprintf("%v/mp_%v_%v", "/tmp/cfs/mp_db", partitionId, time.Now())
+	mpC.RocksDBDir = fmt.Sprintf("%v/%v_%v", "/tmp/cfs/qt_test", partitionId, time.Now().UnixMilli())
 	partition := NewMetaPartition(mpC, nil).(*metaPartition)
 	err := partition.initObjects(true)
 	if err != nil {

@@ -44,13 +44,12 @@ const (
 	ExtendTable
 	MultipartTable
 	ExtentDelTableV1
-	DelDentryTable
-	DelInodeTable
 	ExtentDelTable
 	ReqRecordsTable
 	TransactionTable
 	TransactionRollbackInodeTable
 	TransactionRollbackDentryTable
+	DeletedExtentsTable
 	MaxTable
 )
 
@@ -74,6 +73,8 @@ func getTableTypeKey(treeType TreeType) TableType {
 		return TransactionRollbackInodeTable
 	case TransactionRollbackDentryType:
 		return TransactionRollbackDentryTable
+	case DeletedExtentsType:
+		return DeletedExtentsTable
 	default:
 	}
 	panic("error tree type")

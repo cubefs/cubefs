@@ -57,7 +57,7 @@ func newMetaPartition(PartitionId uint64, manager *metadataManager, storeMode pr
 		PartitionType: proto.VolumeTypeHot,
 		StoreMode:     storeMode,
 	}
-	metaConf.RocksDBDir = fmt.Sprintf("%v/mp_%v_%v", "/tmp/cfs/mp_db", partitionId, time.Now())
+	metaConf.RocksDBDir = fmt.Sprintf("%v/%v_%v", "/tmp/cfs/tx_test", partitionId, time.Now().UnixMilli())
 
 	mp = &metaPartition{
 		config:    metaConf,
@@ -527,11 +527,20 @@ func testTxRscRollback(t *testing.T) {
 	// roll back add inode
 	rbInode1 := mockAddTxInode(mp1, t)
 	txRsc := mp1.txProcessor.txResource
+
+	// NOTE: add dentry parent inode
+	handle, err := txRsc.txRbInodeTree.CreateBatchWriteHandle()
+	require.NoError(t, err)
+	err = txRsc.txProcessor.mp.inodeTree.Put(handle, NewInode(pInodeNum, DirModeType))
+	require.NoError(t, err)
+	err = txRsc.txRbInodeTree.CommitAndReleaseBatchWriteHandle(handle, false)
+	require.NoError(t, err)
+
 	req1 := &proto.TxInodeApplyRequest{
 		TxID:  rbInode1.txInodeInfo.TxID,
 		Inode: rbInode1.inode.Inode,
 	}
-	handle, err := txRsc.txRbInodeTree.CreateBatchWriteHandle()
+	handle, err = txRsc.txRbInodeTree.CreateBatchWriteHandle()
 	require.NoError(t, err)
 	status, err := txRsc.rollbackInode(handle, req1)
 	require.NoError(t, err)
@@ -581,7 +590,7 @@ func testTxRscRollback(t *testing.T) {
 	require.NoError(t, err)
 	err = txRsc.txRbDentryTree.CommitAndReleaseBatchWriteHandle(handle, false)
 	require.NoError(t, err)
-	assert.True(t, status == proto.OpOk && err == nil)
+	require.EqualValues(t, proto.OpOk, status)
 }
 
 func TestTxRscRollback(t *testing.T) {
