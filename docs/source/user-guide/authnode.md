@@ -327,3 +327,114 @@ $ openssl req \
 - `server.key`: `AuthNode` private key needed to be securely placed in `/app` folder in `Authnode`
 
 For easy deployment, current implementation of AuthNode uses TLS option insecure_skip_verify and tls.RequireAndVerifyClientCert, which would skip secure verification of both client and server. For environment with high security command, these options should be turned off.
+
+
+## Master API Authentication
+
+Master has numerous APIs, such as creating and deleting volumes, so it is necessary to authenticate access to the master API to improve cluster security.
+
+With the excellent authentication capability of authnode, we have optimized the existing authentication mechanism to achieve the goal of simplifying the authentication process.
+
+### Enable Master API Authentication
+
+example `master.json` ：
+```json
+{
+  "role": "master",
+  "ip": "127.0.0.1",
+  "listen": "17010",
+  "prof":"17020",
+  "id":"1",
+  "peers": "1:127.0.0.1:17010,2:127.0.0.2:17010,3:127.0.0.3:17010",
+  "retainLogs":"20000",
+  "logDir": "/cfs/master/log",
+  "logLevel":"info",
+  "walDir":"/cfs/master/data/wal",
+  "storeDir":"/cfs/master/data/store",
+  "consulAddr": "http://consul.prometheus-cfs.local",
+  "clusterName":"cubefs01",
+  "metaNodeReservedMem": "1073741824",
+  "masterServiceKey": "jgBGSNQp6mLbu7snU8wKIdEkytzl+pO5/OZOJPpIgH4=",
+  "authenticate": true,
+  "authNodeHost": "192.168.0.14:8080,192.168.0.15:8081,192.168.0.16:8082",
+  "authNodeEnableHTTPS": false
+}
+```
+Properties
+
+| Key         | Description                                                  |
+|--------------|-----------------------------------------------------|
+| authenticate | will enable Master API Authentication if set true |
+| authNodeHost   | will set the IP/URL of Authnode cluster                               |
+| authNodeEnableHTTPS  | will enable HTTPS if set true     |
+
+### Use Authentication Parameter
+When accessing the Master API, the parameter clientIDKey for authentication must be included.
+
+When using authtool to create a key, auth_id_key is generated. This key will be used as the clientIDKey when accessing the master API.
+
+#### First Example
+Access the master API via HTTP and write the parameter clientIDKey, such as expanding a volume:
+
+```bash
+curl --location 'http://127.0.0.1:17010/vol/update?name=ltptest&authKey=0e20229116d5a9a4a9e876806b514a85&capacity=100&clientIDKey=eyJpZCI6Imx0cHRlc3QiLCJhdXRoX2tleSI6ImpnQkdTTlFwNm1MYnU3c25VOHdLSWRFa3l0emwrcE81L09aT0pQcElnSDQ9In0='
+```
+
+#### Second Example
+Access the master API via cfs-cli and write the clientIDKey to configuration file .cfs-cli.json, so that any cluster management command is authenticated for permissions.
+
+example `.cfs-cli.json` ：
+```json
+{
+  "masterAddr": [
+    "127.0.0.1:17010",
+    "127.0.0.2:17010",
+    "127.0.0.3:17010"
+  ],
+  "timeout": 60,
+  "clientIDKey": "eyJpZCI6Imx0cHRlc3QiLCJhdXRoX2tleSI6ImpnQkdTTlFwNm1MYnU3c25VOHdLSWRFa3l0emwrcE81L09aT0pQcElnSDQ9In0="
+}
+```
+
+#### Third Example
+When datanode and metanode are started, they will respectively call the AddDataNode and AddMetaNode APIs, so it is also necessary to prepare serviceIDKey for them.
+
+Similarly, use authtool to create keys for datanode and metanode respectively, and write the key as the serviceIDKey to the configuration file. When they start, permission authentication will be performed.
+
+#### Create Key For datanode
+
+```bash
+$ ./cfs-authtool api -host=192.168.0.14:8080 -ticketfile=ticket_admin.json -data=data_datanode.json -output=key_datanode.json AuthService createkey
+```
+
+example `data_datanode` ：
+
+```json
+{
+    "id": "DatanodeService",
+    "role": "service",
+    "caps": "{\"API\":[\"*:*:*\"]}"
+}
+```
+Edit `datanode.json as` following:
+
+- `serviceIDKey`: use the value of `auth_id_key` in `key_datanode.json`
+
+#### Create Key For metanode
+
+```bash
+$ ./cfs-authtool api -host=192.168.0.14:8080 -ticketfile=ticket_admin.json -data=data_metanode.json -output=key_metanode.json AuthService createkey
+```
+
+example `data_metanode` ：
+
+```json
+{
+    "id": "MetanodeService",
+    "role": "service",
+    "caps": "{\"API\":[\"*:*:*\"]}"
+}
+```
+Edit `metanode.json as` following:
+
+- `serviceIDKey`: use the value of `auth_id_key` in `key_metanode.json`
