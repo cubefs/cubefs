@@ -330,6 +330,7 @@ type ScanDentry struct {
 	Size         uint64 `json:"size"`  // for migrate: size of the current dentry
 	StorageClass uint32 `json:"sc"`    // for migrate: storage class of the current dentry
 	WriteGen     uint64 `json:"gen"`   // for migrate: used to determine whether a file is modified
+	HasMek       bool   `json:"mek"`   // for migrate: if HasMek, call DeleteMigrationExtentKey instead of migrating
 }
 
 type BatchDentries struct {
