@@ -11,8 +11,8 @@ import (
 type FileSizeRange uint32
 
 const (
-	Size1K   uint64 = 2 << 10
-	Size1M   uint64 = 2 << 20
+	Size1K   uint64 = 1 << 10
+	Size1M   uint64 = 1 << 20
 	Size16M         = 16 * Size1M
 	Size32M         = 32 * Size1M
 	Size64M         = 64 * Size1M
