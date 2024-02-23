@@ -1069,10 +1069,10 @@ func logCurrentExtentKeys(storageClass uint32, sortedEks interface{}, inode uint
 	} else {
 		if proto.IsStorageClassReplica(storageClass) {
 			log.LogInfof("action[fsmUpdateExtentKeyAfterMigration] inode %v current ek %v",
-				inode, sortedEks.(*SortedObjExtents).eks)
+				inode, sortedEks.(*SortedExtents).eks)
 		} else if proto.IsStorageClassBlobStore(storageClass) {
 			log.LogInfof("action[fsmUpdateExtentKeyAfterMigration] inode %v current ek %v",
-				inode, sortedEks.(*SortedExtents).eks)
+				inode, sortedEks.(*SortedObjExtents).eks)
 		}
 	}
 }
