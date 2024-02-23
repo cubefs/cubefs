@@ -237,3 +237,112 @@ $ docker/run_docker.sh -r -d /data/disk
 ```
 
 在客户端的启动过程中，会先使用clientKey从authnode节点处获取访问Master节点的ticket，再使用ticket访问Master API。因此，只有被受权的客户端才能成功启动并挂载
+
+## Master API鉴权
+
+master有众多API，比如创建卷，删除卷，因此我们有必要对master API的访问进行鉴权，以提高集群安全性。
+
+借助authnode优秀的鉴权能力，在原有鉴权机制的基础上，我们进行了优化，以达到简化鉴权流程的目的。
+
+### 开启Master API鉴权
+
+示例 `master.json` ：
+```json
+{
+  "role": "master",
+  "ip": "127.0.0.1",
+  "listen": "17010",
+  "prof":"17020",
+  "id":"1",
+  "peers": "1:127.0.0.1:17010,2:127.0.0.2:17010,3:127.0.0.3:17010",
+  "retainLogs":"20000",
+  "logDir": "/cfs/master/log",
+  "logLevel":"info",
+  "walDir":"/cfs/master/data/wal",
+  "storeDir":"/cfs/master/data/store",
+  "consulAddr": "http://consul.prometheus-cfs.local",
+  "clusterName":"cubefs01",
+  "metaNodeReservedMem": "1073741824",
+  "masterServiceKey": "jgBGSNQp6mLbu7snU8wKIdEkytzl+pO5/OZOJPpIgH4=",
+  "authenticate": true,
+  "authNodeHost": "192.168.0.14:8080,192.168.0.15:8081,192.168.0.16:8082",
+  "authNodeEnableHTTPS": false
+}
+```
+参数说明
+
+| 字段         | 说明                                                  |
+|--------------|-----------------------------------------------------|
+| authenticate | 是否需要权限认证。设为true表示Master API需要进行权限认证。 |
+| authNodeHost   | authnode集群的节点信息                                |
+| authNodeEnableHTTPS  | 是否使用https协议传输    |
+
+### 附带鉴权参数
+
+访问Master API时，必须带上用于鉴权的参数clientIDKey。
+
+使用authtool创建key时，会生成auth_id_key。此key在访问master API时将作为clientIDKey。
+
+#### 示例1
+以HTTP方式访问master API，写入参数clientIDKey，比如扩容卷：
+
+```bash
+curl --location 'http://127.0.0.1:17010/vol/update?name=ltptest&authKey=0e20229116d5a9a4a9e876806b514a85&capacity=100&clientIDKey=eyJpZCI6Imx0cHRlc3QiLCJhdXRoX2tleSI6ImpnQkdTTlFwNm1MYnU3c25VOHdLSWRFa3l0emwrcE81L09aT0pQcElnSDQ9In0='
+```
+
+#### 示例2
+以cfs-cli方式访问master API，把clientIDKey写到.cfs-cli.json配置文件中，这样任何集群管理命令都进行了权限认证。
+
+示例 `.cfs-cli.json` ：
+```json
+{
+  "masterAddr": [
+    "127.0.0.1:17010",
+    "127.0.0.2:17010",
+    "127.0.0.3:17010"
+  ],
+  "timeout": 60,
+  "clientIDKey": "eyJpZCI6Imx0cHRlc3QiLCJhdXRoX2tleSI6ImpnQkdTTlFwNm1MYnU3c25VOHdLSWRFa3l0emwrcE81L09aT0pQcElnSDQ9In0="
+}
+```
+
+#### 示例3
+datanode和metanode在启动时，会分别调用AddDataNode和AddMetaNode API，因此也需要为它们准备serviceIDKey。
+
+同样的，使用authtool分别为datanode和metanode创建key，把该key作为serviceIDKey写入到配置文件中，当它们启动时，就会进行权限认证。
+
+#### 为datanode节点创建key
+
+```bash
+$ ./cfs-authtool api -host=192.168.0.14:8080 -ticketfile=ticket_admin.json -data=data_datanode.json -output=key_datanode.json AuthService createkey
+```
+
+示例 `data_datanode` ：
+
+```json
+{
+    "id": "DatanodeService",
+    "role": "service",
+    "caps": "{\"API\":[\"*:*:*\"]}"
+}
+```
+
+执行命令后，将 `key_datanode.json` 中 `auth_id_key` 的值作为 `serviceIDKey` 的值写入配置文件 `datanode.json` 中。
+
+#### 为metanode节点创建key
+
+```bash
+$ ./cfs-authtool api -host=192.168.0.14:8080 -ticketfile=ticket_admin.json -data=data_metanode.json -output=key_metanode.json AuthService createkey
+```
+
+示例 `data_metanode` ：
+
+```json
+{
+    "id": "MetanodeService",
+    "role": "service",
+    "caps": "{\"API\":[\"*:*:*\"]}"
+}
+```
+
+执行命令后，将 `key_metanode.json` 中 `auth_id_key` 的值作为 `serviceIDKey` 的值写入配置文件 `metanode.json` 中。
