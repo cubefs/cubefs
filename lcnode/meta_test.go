@@ -75,6 +75,10 @@ func (*MockMetaWrapper) UpdateExtentKeyAfterMigration(inode uint64, storageType 
 	return nil
 }
 
+func (*MockMetaWrapper) DeleteMigrationExtentKey(inode uint64, fullPath string) error {
+	return nil
+}
+
 func (*MockMetaWrapper) ReadDirLimit_ll(parentID uint64, from string, limit uint64) ([]proto.Dentry, error) {
 	// for handleDirLimitDepthFirst
 	if parentID == 4 {
