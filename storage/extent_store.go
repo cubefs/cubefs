@@ -946,7 +946,7 @@ func (s *ExtentStore) UpdateBaseExtentID(id uint64) (err error) {
 }
 
 func (s *ExtentStore) extent(extentID uint64) (e *Extent, err error) {
-	if e, err = s.loadExtentFromDisk(extentID, false); err != nil {
+	if e, err = s.LoadExtentFromDisk(extentID, false); err != nil {
 		err = fmt.Errorf("load extent from disk: %v", err)
 		return nil, err
 	}
@@ -960,7 +960,7 @@ func (s *ExtentStore) extentWithHeader(ei *ExtentInfo) (e *Extent, err error) {
 		return
 	}
 	if e, ok = s.cache.Get(ei.FileID); !ok {
-		if e, err = s.loadExtentFromDisk(ei.FileID, true); err != nil {
+		if e, err = s.LoadExtentFromDisk(ei.FileID, true); err != nil {
 			err = fmt.Errorf("load  %v from disk: %v", s.getExtentKey(ei.FileID), err)
 			return nil, err
 		}
@@ -971,7 +971,7 @@ func (s *ExtentStore) extentWithHeader(ei *ExtentInfo) (e *Extent, err error) {
 func (s *ExtentStore) extentWithHeaderByExtentID(extentID uint64) (e *Extent, err error) {
 	var ok bool
 	if e, ok = s.cache.Get(extentID); !ok {
-		if e, err = s.loadExtentFromDisk(extentID, true); err != nil {
+		if e, err = s.LoadExtentFromDisk(extentID, true); err != nil {
 			err = fmt.Errorf("load  %v from disk: %v", s.getExtentKey(extentID), err)
 			return nil, err
 		}
@@ -994,7 +994,7 @@ func (s *ExtentStore) GetExtentCount() (count int) {
 	return len(s.extentInfoMap)
 }
 
-func (s *ExtentStore) loadExtentFromDisk(extentID uint64, putCache bool) (e *Extent, err error) {
+func (s *ExtentStore) LoadExtentFromDisk(extentID uint64, putCache bool) (e *Extent, err error) {
 	name := path.Join(s.dataPath, fmt.Sprintf("%v", extentID))
 	e = NewExtentInCore(name, extentID)
 	if err = e.RestoreFromFS(); err != nil {
@@ -1012,29 +1012,29 @@ func (s *ExtentStore) loadExtentFromDisk(extentID uint64, putCache bool) (e *Ext
 			return
 		}
 		emptyHeader := make([]byte, util.BlockHeaderSize)
-		log.LogDebugf("loadExtentFromDisk. partition id %v extentId %v, snapshotOff %v, append fp cnt %v",
+		log.LogDebugf("LoadExtentFromDisk. partition id %v extentId %v, snapshotOff %v, append fp cnt %v",
 			s.partitionID, extentID, e.snapshotDataOff, len(s.verifyExtentFpAppend))
 		if e.snapshotDataOff > util.ExtentSize {
 			for id, vFp := range s.verifyExtentFpAppend {
 				if uint64(id) > (e.snapshotDataOff-util.ExtentSize)/util.ExtentSize {
-					log.LogDebugf("loadExtentFromDisk. partition id %v extentId %v, snapshotOff %v id %v out of extent range",
+					log.LogDebugf("LoadExtentFromDisk. partition id %v extentId %v, snapshotOff %v id %v out of extent range",
 						s.partitionID, extentID, e.snapshotDataOff, id)
 					break
 				}
-				log.LogDebugf("loadExtentFromDisk. partition id %v extentId %v, snapshotOff %v id %v", s.partitionID, extentID, e.snapshotDataOff, id)
+				log.LogDebugf("LoadExtentFromDisk. partition id %v extentId %v, snapshotOff %v id %v", s.partitionID, extentID, e.snapshotDataOff, id)
 				header := make([]byte, util.BlockHeaderSize)
 				if _, err = vFp.ReadAt(header, int64(extentID*util.BlockHeaderSize)); err != nil && err != io.EOF {
-					log.LogDebugf("loadExtentFromDisk. partition id %v extentId %v, read at %v err %v",
+					log.LogDebugf("LoadExtentFromDisk. partition id %v extentId %v, read at %v err %v",
 						s.partitionID, extentID, extentID*util.BlockHeaderSize, err)
 					return
 				}
 				if bytes.Equal(emptyHeader, header) {
-					log.LogErrorf("loadExtentFromDisk. partition id %v extent %v hole at id %v", s.partitionID, e, id)
+					log.LogErrorf("LoadExtentFromDisk. partition id %v extent %v hole at id %v", s.partitionID, e, id)
 				}
 				e.header = append(e.header, header...)
 			}
 			if len(s.verifyExtentFpAppend) < int(e.snapshotDataOff-1)/util.ExtentSize {
-				log.LogErrorf("loadExtentFromDisk. extent %v need fp %v out of range %v", e, int(e.snapshotDataOff-1)/util.ExtentSize, len(s.verifyExtentFpAppend))
+				log.LogErrorf("LoadExtentFromDisk. extent %v need fp %v out of range %v", e, int(e.snapshotDataOff-1)/util.ExtentSize, len(s.verifyExtentFpAppend))
 			}
 		}
 	}

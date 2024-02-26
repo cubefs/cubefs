@@ -369,7 +369,7 @@ func (partition *DataPartition) HandleVersionOp(req *proto.MultiVersionOpRequest
 func (partition *DataPartition) fsmVersionOp(opItem *RaftCmdItem) (err error) {
 	req := new(proto.MultiVersionOpRequest)
 	if err = json.Unmarshal(opItem.V, req); err != nil {
-		log.LogError("action[fsmVersionOp] dpopitem %v", opItem)
+		log.LogErrorf("action[fsmVersionOp] dp[%v] op item %v", partition.partitionID, opItem)
 		return
 	}
 	if len(req.VolVerList) == 0 {

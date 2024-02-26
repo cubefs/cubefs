@@ -46,21 +46,8 @@ type (
 	GetExtentCrcFunc func(extentID uint64) (crc uint32, err error)
 )
 
-func (s *ExtentStore) PersistenceBlockCrc(e *Extent, blockNo int, blockCrc uint32) (err error) {
-	log.LogDebugf("PersistenceBlockCrc. extent id %v blockNo %v blockCrc %v data path %v", e.extentID, blockNo, blockCrc, s.dataPath)
-	if !proto.IsNormalDp(s.partitionType) {
-		return
-	}
-
-	if blockNo >= len(e.header)/util.PerBlockCrcSize {
-		exp := make([]byte, util.BlockHeaderSize*(1+(blockNo*util.PerBlockCrcSize-len(e.header))/util.BlockHeaderSize))
-		e.header = append(e.header, exp...)
-	}
-	startIdx := blockNo * util.PerBlockCrcSize % util.BlockHeaderSize
-	endIdx := startIdx + util.PerBlockCrcSize%util.BlockHeaderSize
+func (s *ExtentStore) BuildSnapshotExtentCrcMetaFile(blockNo int) (fp *os.File, err error) {
 	fIdx := blockNo * util.PerBlockCrcSize / util.BlockHeaderSize
-	log.LogDebugf("PersistenceBlockCrc. idx %v startIdx %v endIdx %v", fIdx, startIdx, endIdx)
-	fp := s.verifyExtentFp
 	if fIdx > 0 {
 		gap := fIdx - len(s.verifyExtentFpAppend)
 		log.LogDebugf("PersistenceBlockCrc. idx %v gap %v", fIdx, gap)
@@ -90,14 +77,38 @@ func (s *ExtentStore) PersistenceBlockCrc(e *Extent, blockNo int, blockCrc uint3
 		}
 		fp = s.verifyExtentFpAppend[fIdx-1]
 	}
+	return
+}
 
-	binary.BigEndian.PutUint32(e.header[startIdx:endIdx], blockCrc)
-	verifyStart := startIdx + int(util.BlockHeaderSize*e.extentID)
-	log.LogDebugf("PersistenceBlockCrc. dp %v write at start %v end %v name %v", s.partitionID, startIdx, endIdx, fp.Name())
-	if _, err = fp.WriteAt(e.header[startIdx:endIdx], int64(verifyStart)); err != nil {
+func (s *ExtentStore) PersistenceBlockCrc(e *Extent, blockNo int, blockCrc uint32) (err error) {
+	log.LogDebugf("PersistenceBlockCrc. extent id %v blockNo %v blockCrc %v data path %v", e.extentID, blockNo, blockCrc, s.dataPath)
+	if !proto.IsNormalDp(s.partitionType) {
 		return
 	}
 
+	if blockNo >= len(e.header)/util.PerBlockCrcSize {
+		exp := make([]byte, util.BlockHeaderSize*(1+(blockNo*util.PerBlockCrcSize-len(e.header))/util.BlockHeaderSize))
+		e.header = append(e.header, exp...)
+	}
+
+	fIdx := blockNo * util.PerBlockCrcSize / util.BlockHeaderSize
+	log.LogDebugf("PersistenceBlockCrc. idx %v", fIdx)
+	fp := s.verifyExtentFp
+	if fIdx > 0 {
+		if fp, err = s.BuildSnapshotExtentCrcMetaFile(blockNo); err != nil {
+			return
+		}
+	}
+	startIdx := blockNo * util.PerBlockCrcSize % util.BlockHeaderSize
+	verifyStart := startIdx + int(util.BlockHeaderSize*e.extentID)
+	log.LogDebugf("PersistenceBlockCrc. dp %v write at start %v name %v", s.partitionID, startIdx, fp.Name())
+
+	headerOff := blockNo*util.PerBlockCrcSize%util.BlockHeaderSize + fIdx*util.BlockHeaderSize
+	headerEnd := startIdx + util.PerBlockCrcSize%util.BlockHeaderSize + fIdx*util.BlockHeaderSize
+	binary.BigEndian.PutUint32(e.header[headerOff:headerEnd], blockCrc)
+	if _, err = fp.WriteAt(e.header[headerOff:headerEnd], int64(verifyStart)); err != nil {
+		return
+	}
 	return
 }
 

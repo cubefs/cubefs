@@ -39,6 +39,7 @@ func (dp *DataPartition) Apply(command []byte, index uint64) (resp interface{}, 
 	if err = binary.Read(buff, binary.BigEndian, &version); err != nil {
 		return
 	}
+	resp = proto.OpOk
 	if version != BinaryMarshalMagicVersion {
 		var opItem *RaftCmdItem
 		if opItem, err = UnmarshalRaftCmd(command); err != nil {
@@ -57,7 +58,6 @@ func (dp *DataPartition) Apply(command []byte, index uint64) (resp interface{}, 
 		return
 	}
 	log.LogDebugf("[DataPartition.Apply] dp[%v] metaAppliedID(%v) index(%v) no need apply", dp.partitionID, dp.metaAppliedID, index)
-	resp = proto.OpOk
 	return
 }
 

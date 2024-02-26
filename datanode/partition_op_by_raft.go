@@ -56,7 +56,7 @@ type rndWrtOpItem struct {
 //  +------+----+------+------+------+------+------+
 
 const (
-	BinaryMarshalMagicVersion   = 0xFF
+	BinaryMarshalMagicVersion = 0xFF
 )
 
 func MarshalRandWriteRaftLog(opcode uint8, extentID uint64, offset, size int64, data []byte, crc uint32) (result []byte, err error) {
@@ -227,7 +227,7 @@ func (dp *DataPartition) ApplyRandomWrite(command []byte, raftApplyID uint64) (r
 	defer func() {
 		if err == nil {
 			dp.uploadApplyID(raftApplyID)
-			log.LogDebug("action[ApplyRandomWrite] raftApplyID(%v) success!", raftApplyID)
+			log.LogDebugf("action[ApplyRandomWrite] dp(%v) raftApplyID(%v) success!", dp.partitionID, raftApplyID)
 		} else {
 			if respStatus == proto.OpExistErr { // for tryAppendWrite
 				err = nil
@@ -237,7 +237,7 @@ func (dp *DataPartition) ApplyRandomWrite(command []byte, raftApplyID uint64) (r
 			}
 			err = fmt.Errorf("[ApplyRandomWrite] ApplyID(%v) Partition(%v)_Extent(%v)_ExtentOffset(%v)_Size(%v) apply err(%v) retry[20]",
 				raftApplyID, dp.partitionID, opItem.extentID, opItem.offset, opItem.size, err)
-			log.LogErrorf("action[ApplyRandomWrite] failed err %v", err)
+			log.LogErrorf("action[ApplyRandomWrite] Partition(%v) failed err %v", dp.partitionID, err)
 			exporter.Warning(err.Error())
 			if respStatus == proto.OpOk {
 				respStatus = proto.OpDiskErr

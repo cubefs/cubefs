@@ -342,7 +342,7 @@ func (s *DataNode) commitCreateVersion(req *proto.MultiVersionOpRequest) (err er
 	default:
 		log.LogInfof("action[commitCreateVersion] volume %v do HandleVersionOp verseq [%v] finished", req.VolumeID, req.VerSeq)
 	}
-
+	close(resultCh)
 	if req.Op == proto.DeleteVersion {
 		return
 	}
