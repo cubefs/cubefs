@@ -438,6 +438,13 @@ func (e *Extent) Flush() (err error) {
 	return
 }
 
+func (e *Extent) GetCrc(blockNo int64) uint32 {
+	if int64(len(e.header)) < (blockNo+1)*util.PerBlockCrcSize {
+		return 0
+	}
+	return binary.BigEndian.Uint32(e.header[blockNo*util.PerBlockCrcSize : (blockNo+1)*util.PerBlockCrcSize])
+}
+
 func (e *Extent) autoComputeExtentCrc(crcFunc UpdateCrcFunc) (crc uint32, err error) {
 	var blockCnt int
 	extSize := e.Size()

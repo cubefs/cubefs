@@ -2484,11 +2484,11 @@ func (m *metadataManager) commitCreateVersion(VolumeID string, VerSeq uint64, Op
 	default:
 		log.LogInfof("action[commitCreateVersion] volume %v do HandleVersionOp verseq [%v] finished", VolumeID, VerSeq)
 	}
+	close(resultCh)
 
 	if Op == proto.DeleteVersion {
 		return
 	}
-
 	if Op == proto.CreateVersionPrepare {
 		return
 	}
