@@ -93,13 +93,13 @@ type (
 	// Client -> MetaNode
 	GetUniqIDResp = proto.GetUniqIDResponse
 
-	//Client -> MetaNode
+	// Client -> MetaNode
 	RenewalForbiddenMigrationRequest = proto.RenewalForbiddenMigrationRequest
 
-	//Client -> MetaNode
+	// Client -> MetaNode
 	UpdateExtentKeyAfterMigrationRequest = proto.UpdateExtentKeyAfterMigrationRequest
 
-	//Client -> MetaNode, used for debugging
+	// Client -> MetaNode, used for debugging
 	SetCreateTimeRequest = proto.SetCreateTimeRequest
 
 	DeleteMigrationExtentKeyRequest = proto.DeleteMigrationExtentKeyRequest
@@ -199,6 +199,7 @@ const (
 	opFSMExtentSplit       = 75
 	opFSMSentToChanWithVer = 76
 
+	// hybrid cloud
 	opFSMInternalFreeForbiddenMigrationInode = 85
 	opFSMForbiddenMigrationInode             = 86
 	opFSMRenewalForbiddenMigration           = 87
@@ -206,6 +207,7 @@ const (
 	opFSMInternalFreeInodeMigrationExtentKey = 89
 	opFSMSetInodeCreateTime                  = 90 //for debug
 	opFSMDeleteMigrationExtentKey            = 91
+	opFSMInternalDeleteMigrationExtentKey    = 93
 )
 
 var exporterKey string
