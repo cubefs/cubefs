@@ -68,6 +68,11 @@ func (c *Cluster) checkDiskRecoveryProgress() {
 			}
 			log.LogInfof("action[checkDiskRecoveryProgress] dp %v isSpec %v replicas %v conf replicas num %v",
 				partition.PartitionID, partition.isSpecialReplicaCnt(), len(partition.Replicas), int(partition.ReplicaNum))
+			if len(partition.Replicas) == 0 {
+				partition.SetDecommissionStatus(DecommissionSuccess)
+				log.LogWarnf("action[checkDiskRecoveryProgress] dp %v maybe deleted", partition.PartitionID)
+				continue
+			}
 			//if len(partition.Replicas) == 0 ||
 			//	(!partition.isSpecialReplicaCnt() && len(partition.Replicas) < int(partition.ReplicaNum)) ||
 			//	(partition.isSpecialReplicaCnt() && len(partition.Replicas) > int(partition.ReplicaNum)) {
@@ -81,6 +86,8 @@ func (c *Cluster) checkDiskRecoveryProgress() {
 			if newReplica == nil {
 				log.LogWarnf("action[checkDiskRecoveryProgress] dp %v cannot find replica %v", partition.PartitionID,
 					partition.DecommissionDstAddr)
+				partition.DecommissionNeedRollback = true
+				partition.SetDecommissionStatus(DecommissionFail)
 				continue
 			}
 			if newReplica.isRepairing() {
