@@ -1097,15 +1097,16 @@ func (mp *metaPartition) UpdateExtentKeyAfterMigration(req *proto.UpdateExtentKe
 	defer func() {
 		//delete migration extent key if encounter an error
 		if err != nil {
+			delMigrationIno := item.(*Inode)
 			//prepare HybridCouldExtentsMigration info for extent key delete
 			if req.StorageClass == proto.StorageClass_BlobStore {
-				log.LogErrorf("action[UpdateExtentKeyAfterMigration] prepare to delete migration obj extent key for "+
-					"inode %v", ino.Inode)
-				ino.HybridCouldExtentsMigration.storageClass = req.StorageClass
-				ino.HybridCouldExtentsMigration.sortedEks = NewSortedObjExtentsFromObjEks(req.NewObjExtentKeys)
+				log.LogDebugf("action[UpdateExtentKeyAfterMigration] prepare to delete migration obj extent key for "+
+					"inode %v", delMigrationIno.Inode)
+				delMigrationIno.HybridCouldExtentsMigration.storageClass = req.StorageClass
+				delMigrationIno.HybridCouldExtentsMigration.sortedEks = NewSortedObjExtentsFromObjEks(req.NewObjExtentKeys)
 			}
-			ino.SetDeleteMigrationExtentKeyImmediately()
-			mp.freeList.Push(ino.Inode)
+			//notify follower to delete migration extent key
+			mp.internalNotifyFollowerToDeleteExtentKey(delMigrationIno)
 		}
 	}()
 
@@ -1327,4 +1328,19 @@ func (mp *metaPartition) DeleteMigrationExtentKey(req *proto.DeleteMigrationExte
 	msg := resp.(*InodeResponse)
 	p.PacketErrorWithBody(msg.Status, nil)
 	return
+}
+
+func (mp *metaPartition) internalNotifyFollowerToDeleteExtentKey(ino *Inode) {
+	val, err := ino.Marshal()
+	if err != nil {
+		log.LogErrorf("action[internalNotifyFollowerToDeleteExtentKey] ino %v marshal failed:%v", ino.Inode, err)
+		return
+	}
+	_, err = mp.submit(opFSMInternalDeleteMigrationExtentKey, val)
+	if err != nil {
+		log.LogErrorf("action[internalNotifyFollowerToDeleteExtentKey] ino %v submit opFSMDeleteMigrationExtentKey "+
+			"failed:%v", ino.Inode, err)
+		return
+	}
+	log.LogDebugf("action[internalNotifyFollowerToDeleteExtentKey] submit ino %v", ino.Inode)
 }

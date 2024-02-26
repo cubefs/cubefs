@@ -206,8 +206,9 @@ const (
 
 	opFSMInternalFreeInodeMigrationExtentKey = 78
 
-	opFSMSetInodeCreateTime       = 79 //for debug
-	opFSMDeleteMigrationExtentKey = 80
+	opFSMSetInodeCreateTime               = 79 //for debug
+	opFSMDeleteMigrationExtentKey         = 80
+	opFSMInternalDeleteMigrationExtentKey = 81
 )
 
 var (

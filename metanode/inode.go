@@ -2340,6 +2340,14 @@ func (i *Inode) ShouldDelayDelete() (ok bool) {
 	return i.NLink == 0 && time.Now().Unix()-i.AccessTime < InodeNLink0DelayDeleteSeconds
 }
 
+func (i *Inode) ShouldDeleteMigrationExtentKey(isMigration bool) (ok bool) {
+	i.RLock()
+	defer i.RUnlock()
+
+	ok = isMigration && (i.Flag&DeleteMigrationExtentKeyImmediatelyFlag == DeleteMigrationExtentKeyImmediatelyFlag)
+	return
+}
+
 // SetAttr sets the attributes of the inode.
 func (i *Inode) SetAttr(req *SetattrRequest) {
 	log.LogDebugf("action[SetAttr] inode %v req seq %v inode seq %v", i.Inode, req.VerSeq, i.getVer())
