@@ -1127,6 +1127,8 @@ func (mp *metaPartition) internalDeleteInodeMigrationExtentKey(inoParam *Inode) 
 	ino.HybridCouldExtentsMigration.storageClass = proto.StorageClass_Unspecified
 	ino.HybridCouldExtentsMigration.expiredTime = 0
 	ino.HybridCouldExtentsMigration.sortedEks = nil
+	log.LogDebugf("internalDeleteInodeMigrationExtentKey:  partitionID(%v) inode(%v)",
+		mp.config.PartitionId, inoParam.Inode)
 	return
 }
 
@@ -1139,9 +1141,29 @@ func (mp *metaPartition) fsmDeleteMigrationExtentKey(inoParam *Inode) (resp *Ino
 		return
 	}
 	i := item.(*Inode)
-	//delete migration ek in future
 	i.SetDeleteMigrationExtentKeyImmediately()
 	log.LogInfof("action[fsmDeleteMigrationExtentKey] inode %v migration ek will be deleted immediately", i.Inode)
+	mp.freeList.Push(i.Inode)
+	return
+}
+
+func (mp *metaPartition) fsmInternalDeleteMigrationExtentKey(inoParam *Inode) (resp *InodeResponse) {
+	resp = NewInodeResponse()
+	resp.Status = proto.OpOk
+	item := mp.inodeTree.CopyGet(inoParam)
+	if item == nil {
+		resp.Status = proto.OpNotExistErr
+		return
+	}
+	i := item.(*Inode)
+	//may be triggered by updateMigrationExtentKey
+	if proto.IsStorageClassBlobStore(inoParam.HybridCouldExtentsMigration.storageClass) {
+		log.LogDebugf("action[fsmInternalDeleteMigrationExtentKey] inode %v migration ek replaced", i.Inode)
+		i.HybridCouldExtentsMigration.sortedEks = inoParam.HybridCouldExtentsMigration.sortedEks
+	}
+
+	i.SetDeleteMigrationExtentKeyImmediately()
+	log.LogInfof("action[fsmInternalDeleteMigrationExtentKey] inode %v migration ek will be deleted immediately", i.Inode)
 	mp.freeList.Push(i.Inode)
 	return
 }
