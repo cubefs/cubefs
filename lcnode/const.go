@@ -33,6 +33,7 @@ const (
 	configLcNodeTaskCountLimit         = "lcNodeTaskCountLimit"
 
 	configEnableDebugService = "enableDebugService"
+	configDelayDelMinute     = "delayDelMinute"
 )
 
 // Default of configuration value
@@ -56,6 +57,7 @@ const (
 
 	defaultUnboundedChanInitCapacity = 10000
 	defaultLcNodeTaskCountLimit      = 1
+	defaultDelayDelMinute            = 1440 // default retention min(1 day) of old eks after migration
 
 	MaxSizePutOnce = int64(1) << 23
 )
@@ -74,4 +76,5 @@ var (
 	maxDirChanNum             = 1000000
 
 	enableDebugService bool
+	delayDelMinute     uint64
 )
