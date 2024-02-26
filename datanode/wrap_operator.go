@@ -612,7 +612,11 @@ func (s *DataNode) handleExtentRepairReadPacket(p *repl.Packet, connect net.Conn
 		if err != nil {
 			logContent := fmt.Sprintf("action[operatePacket] %v.",
 				p.LogMessage(p.GetOpMsg(), connect.RemoteAddr().String(), p.StartT, err))
-			log.LogErrorf(logContent)
+			if strings.Contains(err.Error(), proto.ConcurrentLimit) {
+				log.LogWarnf(logContent)
+			} else {
+				log.LogErrorf(logContent)
+			}
 			p.PackErrorBody(ActionStreamRead, err.Error())
 		}
 	}()
