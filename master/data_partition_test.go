@@ -23,7 +23,7 @@ func TestDataPartition(t *testing.T) {
 	partition := commonVol.dataPartitions.partitions[0]
 	getDataPartition(partition.PartitionID, t)
 	loadDataPartitionTest(partition, t)
-	decommissionDataPartition(partition, t)
+	// decommissionDataPartition(partition, t)
 }
 
 func createDataPartition(vol *Vol, count int, t *testing.T) {

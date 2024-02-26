@@ -1980,9 +1980,9 @@ func (m *Server) queryDataPartitionDecommissionStatus(w http.ResponseWriter, r *
 		replicas = append(replicas, replica.Addr)
 	}
 	msg = fmt.Sprintf("partitionID:%v  status[%v] specialStep[%v] retry [%v] raftForce[%v] recover [%v] "+
-		"decommission src dataNode[%v] disk[%v]  dst dataNode[%v] term[%v] replicas[%v]",
+		"decommission src dataNode[%v] disk[%v]  dst dataNode[%v] term[%v] replicas[%v] DecommissionWaitTimes[%v]",
 		partitionID, dp.GetDecommissionStatus(), dp.GetSpecialReplicaDecommissionStep(), dp.DecommissionRetry, dp.DecommissionRaftForce, dp.isRecover,
-		dp.DecommissionSrcAddr, dp.DecommissionSrcDiskPath, dp.DecommissionDstAddr, dp.DecommissionTerm, replicas)
+		dp.DecommissionSrcAddr, dp.DecommissionSrcDiskPath, dp.DecommissionDstAddr, dp.DecommissionTerm, replicas, dp.DecommissionWaitTimes)
 	sendOkReply(w, r, newSuccessHTTPReply(msg))
 }
 
