@@ -2546,12 +2546,12 @@ func (mw *MetaWrapper) RenewalForbiddenMigration(inode uint64) error {
 }
 
 func (mw *MetaWrapper) UpdateExtentKeyAfterMigration(inode uint64, storageType uint32, objExtentKeys []proto.ObjExtentKey,
-	writeGen uint64, fullPath string) error {
+	writeGen uint64, delayDelMinute uint64, fullPath string) error {
 	mp := mw.getPartitionByInode(inode)
 	if mp == nil {
 		return syscall.ENOENT
 	}
-	status, err := mw.updateExtentKeyAfterMigration(mp, inode, storageType, objExtentKeys, writeGen, fullPath)
+	status, err := mw.updateExtentKeyAfterMigration(mp, inode, storageType, objExtentKeys, writeGen, delayDelMinute, fullPath)
 	if err != nil || status != statusOK {
 		log.LogErrorf("UpdateExtentKeyAfterMigration: inode(%v) storageType(%v) extentKeys(%v) writeGen(%v)  err(%v) status(%v)",
 			inode, storageType, objExtentKeys, writeGen, err, status)
