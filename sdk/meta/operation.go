@@ -3019,7 +3019,7 @@ func (mw *MetaWrapper) renewalForbiddenMigration(mp *MetaPartition, inode uint64
 }
 
 func (mw *MetaWrapper) updateExtentKeyAfterMigration(mp *MetaPartition, inode uint64, storageType uint32,
-	extentKeys []proto.ObjExtentKey, writeGen uint64, fullPath string) (status int, err error) {
+	extentKeys []proto.ObjExtentKey, writeGen uint64, delayDelMinute uint64, fullPath string) (status int, err error) {
 	bgTime := stat.BeginStat()
 	defer func() {
 		stat.EndStat("updateExtentKeyAfterMigration", err, bgTime, 1)
@@ -3031,6 +3031,7 @@ func (mw *MetaWrapper) updateExtentKeyAfterMigration(mp *MetaPartition, inode ui
 		NewObjExtentKeys: extentKeys,
 		WriteGen:         writeGen,
 	}
+	req.DelayDeleteMinute = delayDelMinute
 	req.FullPaths = []string{fullPath}
 	packet := proto.NewPacketReqID()
 	packet.Opcode = proto.OpMetaUpdateExtentKeyAfterMigration
