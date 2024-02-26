@@ -221,6 +221,21 @@ func (l *LcNode) parseConfig(cfg *config.Config) (err error) {
 	}
 	log.LogInfof("loadConfig: setup config: %v(%v)", configLcNodeTaskCountLimit, lcNodeTaskCountLimit)
 
+	// parse delayDelMinute
+	var delay int64
+	delayStr := cfg.GetString(configDelayDelMinute)
+	if delayStr != "" {
+		if delay, err = strconv.ParseInt(delayStr, 10, 64); err != nil {
+			return fmt.Errorf("%v,err:%v", proto.ErrInvalidCfg, err.Error())
+		}
+	}
+	if delay <= 0 {
+		delayDelMinute = defaultDelayDelMinute
+	} else {
+		delayDelMinute = uint64(delay)
+	}
+	log.LogInfof("loadConfig: setup config: %v(%v)", configDelayDelMinute, delayDelMinute)
+
 	enableDebugService = cfg.GetBool(configEnableDebugService)
 	log.LogInfof("loadConfig: setup config: %v(%v)", configEnableDebugService, enableDebugService)
 
