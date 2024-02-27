@@ -130,7 +130,8 @@ func RecvMessageCallback(ctx unsafe.Pointer, entry *C.MemoryEntry) { //TODO need
 func DisConnectCallback(ctx unsafe.Pointer) {
 	conn := (*Connection)(ctx)
 	atomic.StoreInt32(&conn.state, CONN_ST_CLOSING)
-	C.notify_event(conn.rFd, 0)
+	//C.notify_event(conn.rFd, 0)
+	conn.rFd <- struct{}{}
 	//C.notify_event(&conn.wFd)
 }
 
@@ -305,8 +306,10 @@ type Connection struct {
 	state       int32
 	mu          sync.RWMutex
 	recvMsgList *list.List
-	rFd         C.int
-	wFd         C.int
+	//rFd         C.int
+	//wFd         C.int
+	rFd chan struct{}
+	wFd chan struct{}
 	//eFd C.int
 	conntype int
 	//ip string
@@ -342,12 +345,13 @@ func (conn *Connection) init(cConn *C.Connection) {
 	//atomic.StoreInt32(&conn.state, CONN_ST_CONNECTED)
 	//TODO accept和setConnContext之间发生了disconnect
 	conn.cConn = unsafe.Pointer(cConn)
-	conn.rFd = C.open_event_fd()
-	conn.wFd = C.open_event_fd()
+	//conn.rFd = C.open_event_fd()
+	//conn.wFd = C.open_event_fd()
 	conn.SetDeadline(time.Now().Add(50 * time.Millisecond))
 	C.setConnContext(cConn, unsafe.Pointer(conn))
 	//println("conn set connContext")
-
+	conn.rFd = make(chan struct{}, 100)
+	conn.wFd = make(chan struct{}, 100)
 	conn.recvMsgList = list.New()
 }
 
@@ -409,7 +413,8 @@ func (conn *Connection) OnRecvCB(buffs ...[]byte) {
 	}
 
 	conn.mu.Unlock()
-	C.notify_event(conn.rFd, 0)
+	//C.notify_event(conn.rFd, 0)
+	conn.rFd <- struct{}{}
 	return
 }
 
@@ -428,7 +433,8 @@ func (conn *Connection) OnSendCB(sendLen int) {
 	//	return
 	//}
 
-	C.notify_event(conn.wFd, 0)
+	//C.notify_event(conn.wFd, 0)
+	conn.wFd <- struct{}{}
 	return
 }
 
@@ -439,8 +445,10 @@ func (conn *Connection) ReConnect() error {
 	if ret := int(C.ReConnect((*C.Connection)(conn.cConn))); ret == 0 {
 		return fmt.Errorf("conn reconnect failed")
 	}
-	conn.rFd = C.open_event_fd()
-	conn.wFd = C.open_event_fd()
+	//conn.rFd = C.open_event_fd()
+	//conn.wFd = C.open_event_fd()
+	conn.rFd = make(chan struct{}, 100)
+	conn.wFd = make(chan struct{}, 100)
 	atomic.StoreInt32(&conn.state, CONN_ST_CONNECTED)
 	return nil
 }
@@ -459,16 +467,22 @@ func (conn *Connection) Close() (err error) {
 		}
 	*/
 
-	if conn.rFd > 0 {
-		C.notify_event(conn.rFd, 0)
-		C.close(conn.rFd)
-		conn.rFd = -1
+	//if conn.rFd > 0 {
+	//	C.notify_event(conn.rFd, 0)
+	//	C.close(conn.rFd)
+	//	conn.rFd = -1
+	//}
+	if conn.rFd != nil {
+		conn.rFd <- struct{}{}
 	}
 
-	if conn.wFd > 0 {
-		C.notify_event(conn.wFd, 0)
-		C.close(conn.wFd)
-		conn.wFd = -1
+	//if conn.wFd > 0 {
+	//	C.notify_event(conn.wFd, 0)
+	//	C.close(conn.wFd)
+	//	conn.wFd = -1
+	//}
+	if conn.wFd != nil {
+		conn.wFd <- struct{}{}
 	}
 
 	//conn.mu.Lock()
@@ -688,9 +702,10 @@ func (conn *Connection) Read([]byte) (int, error) { //*Buffer
 	if atomic.LoadInt32(&conn.state) != CONN_ST_CONNECTED {
 		return -1, fmt.Errorf("conn(%p) has been closed", conn)
 	}
-	if value := C.wait_event(conn.rFd); value <= 0 {
-		return -1, fmt.Errorf("conn(%p) read failed")
-	}
+	//if value := C.wait_event(conn.rFd); value <= 0 {
+	//	return -1, fmt.Errorf("conn(%p) read failed")
+	//}
+	<-conn.rFd
 
 	//println("server conn read before");
 	return 0, nil
@@ -777,9 +792,10 @@ func (conn *Connection) RecvResp([]byte) error { // //TODO *Buffer
 		return fmt.Errorf("conn(%p) has been closed", conn)
 	}
 
-	if value := C.wait_event(conn.rFd); value <= 0 {
-		return fmt.Errorf("conn(%p) recv resp failed", conn)
-	}
+	//if value := C.wait_event(conn.rFd); value <= 0 {
+	//	return fmt.Errorf("conn(%p) recv resp failed", conn)
+	//}
+	<-conn.rFd
 
 	return nil
 }
