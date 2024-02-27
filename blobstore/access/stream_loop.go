@@ -16,9 +16,12 @@ package access
 
 import (
 	"context"
+	"sync"
 	"time"
 
+	"github.com/cubefs/cubefs/blobstore/access/controller"
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
+	"github.com/cubefs/cubefs/blobstore/common/codemode"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
 )
@@ -77,4 +80,84 @@ func (h *Handler) tryDiscardVidOnAllocator(cid proto.ClusterID, args *clustermgr
 	if err != nil {
 		span.Warnf("discard vids %+v failed, err : %s", args, err)
 	}
+}
+
+func (h *Handler) loopReleaseVids() {
+	go func() {
+		span, ctx := trace.StartSpanFromContext(context.Background(), "")
+
+		allCm := h.clusterController.All()
+		for _, cm := range allCm {
+			cid := cm.ClusterID
+			allocMgr, err := h.clusterController.GetVolumeAllocator(cid)
+			if err != nil {
+				span.Warnf("fail to get alloc mgr, when releaseVolume. err[%+v]", err)
+				return
+			}
+
+			go func(cid proto.ClusterID, allocMgr controller.VolumeMgr) {
+				tk := time.NewTicker(time.Second * 60)
+				defer tk.Stop()
+
+				for {
+					select {
+					case <-h.stopCh:
+						return
+					case <-tk.C:
+						var normalVol, sealedVol *releaseVids
+						if v, ok := h.releaseNormal.Load(cid); ok {
+							normalVol = v.(*releaseVids)
+						}
+						if v, ok := h.releaseSealed.Load(cid); ok {
+							sealedVol = v.(*releaseVids)
+						}
+						if normalVol.len() == 0 && sealedVol.len() == 0 {
+							continue
+						}
+
+						normal := normalVol.getVids()
+						sealed := sealedVol.getVids()
+						err = allocMgr.Release(ctx, &clustermgr.ReleaseVolumes{
+							CodeMode:   normalVol.md,
+							NormalVids: normal,
+							SealedVids: sealed,
+						})
+						if err == nil {
+							h.releaseNormal.Delete(cid)
+							h.releaseSealed.Delete(cid)
+						}
+						span.Warnf("We released normal volume:%v, sealed volume:%v, err[%+v]", normal, sealed, err)
+					}
+				}
+			}(cid, allocMgr)
+		}
+	}()
+}
+
+type releaseVids struct {
+	md   codemode.CodeMode
+	vids []proto.Vid
+	lck  sync.RWMutex
+}
+
+func (v *releaseVids) getVids() []proto.Vid {
+	v.lck.RLock()
+	defer v.lck.RUnlock()
+
+	return v.vids
+}
+
+func (v *releaseVids) len() int {
+	v.lck.RLock()
+	defer v.lck.RUnlock()
+
+	return len(v.vids)
+}
+
+func (v *releaseVids) addVid(md codemode.CodeMode, vid ...proto.Vid) {
+	v.lck.Lock()
+	defer v.lck.Unlock()
+
+	v.md = md
+	v.vids = append(v.vids, vid...)
 }

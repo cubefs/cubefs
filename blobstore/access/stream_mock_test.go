@@ -445,7 +445,7 @@ func initMockData() {
 		}, cmcli, proxycli, nil)
 
 	proxyClient = proxycli
-	volumeGetter, _ = controller.NewVolumeGetter(clusterID, serviceController, proxyClient, 0)
+	volumeGetter, _ = controller.NewVolumeGetter(clusterID, serviceController, proxyClient, 0, 0)
 	allocMgr, _ = controller.NewVolumeMgr(context.Background(), controller.VolumeMgrConfig{
 		VolConfig: controller.VolConfig{
 			ClusterID: clusterID,

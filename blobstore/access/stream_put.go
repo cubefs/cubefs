@@ -231,7 +231,7 @@ func (h *Handler) writeToBlobnodes(ctx context.Context,
 
 	wg.Add(len(volume.Units))
 	// 1: has broken disk, need normal release volume ; 2: need sealed release volume
-	releaseType := releaseVolumeInvalid
+	releaseType := releaseVolumeInit
 	for i, unitI := range volume.Units {
 		index, unit := i, unitI
 
@@ -403,14 +403,15 @@ func (h *Handler) writeToBlobnodes(ctx context.Context,
 			failIdxes.Store(uint8(idx))
 		}
 		if failIdxes.Len() > tactic.M {
-			go h.releaseVolume(ctx, clusterID, volume.CodeMode, releaseVolumeSealed, vid)
-			h.failVids.Delete(vid)
+			if _, ok := h.failVids.LoadAndDelete(vid); ok { // prevent duplicate marking sealed
+				h.releaseVolume(clusterID, volume.CodeMode, releaseVolumeSealed, vid)
+			}
 		}
 	}(writeDone)
 
 	defer func() {
-		if releaseType > releaseVolumeInvalid {
-			go h.releaseVolume(ctx, clusterID, volume.CodeMode, releaseType, vid)
+		if releaseType > releaseVolumeInit {
+			go h.releaseVolume(clusterID, volume.CodeMode, releaseType, vid)
 		}
 	}()
 

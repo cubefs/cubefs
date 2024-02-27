@@ -133,6 +133,7 @@ type ClusterConfig struct {
 
 	ServicePunishThreshold      uint32 `json:"service_punish_threshold"`
 	ServicePunishValidIntervalS int    `json:"service_punish_valid_interval_s"`
+	VolumeCacheCount            int    `json:"volume_cache_count"`
 
 	ConsulAgentAddr string    `json:"consul_agent_addr"`
 	Clusters        []Cluster `json:"clusters"`
@@ -360,7 +361,7 @@ func (c *clusterControllerImpl) deal(ctx context.Context, available []*cmapi.Clu
 			continue
 		}
 
-		volumeGetter, err := NewVolumeGetter(clusterID, serviceController, c.proxy, -1)
+		volumeGetter, err := NewVolumeGetter(clusterID, serviceController, c.proxy, -1, c.config.VolumeCacheCount)
 		if err != nil {
 			removeThisCluster()
 			span.Warn("new volume getter failed", clusterID, err)

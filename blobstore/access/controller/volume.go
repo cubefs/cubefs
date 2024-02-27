@@ -29,6 +29,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/rpc"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
+	"github.com/cubefs/cubefs/blobstore/util/defaulter"
 	"github.com/cubefs/cubefs/blobstore/util/errors"
 	"github.com/cubefs/cubefs/blobstore/util/retry"
 )
@@ -65,7 +66,7 @@ type VolumePhy struct {
 //	otherwise reading from memcache -> proxy -> cluster
 type VolumeGetter interface {
 	// Get returns volume physical location of vid
-	Get(ctx context.Context, vid proto.Vid, isCache bool) *VolumePhy
+	Get(ctx context.Context, vid proto.Vid, dontUpdate bool) *VolumePhy
 	// Punish punish vid with interval seconds
 	Punish(ctx context.Context, vid proto.Vid, punishIntervalS int)
 }
@@ -122,16 +123,17 @@ type volumeGetterImpl struct {
 //
 //	memExpiration expiration of memcache, 0 means no expiration
 func NewVolumeGetter(clusterID proto.ClusterID, service ServiceController,
-	proxy proxy.Cacher, memExpiration time.Duration,
+	proxy proxy.Cacher, memExpiration time.Duration, cacheCount int,
 ) (VolumeGetter, error) {
 	_, ctx := trace.StartSpanFromContext(context.Background(), "")
 
+	defaulter.LessOrEqual(&cacheCount, _defaultCacheSize)
 	expiration := int64(memExpiration)
 	if expiration < 0 {
 		expiration = _defaultCacheExpiration
 	}
 
-	mc, err := memcache.NewMemCache(_defaultCacheSize)
+	mc, err := memcache.NewMemCache(cacheCount)
 	if err != nil {
 		return nil, err
 	}
@@ -158,7 +160,7 @@ func NewVolumeGetter(clusterID proto.ClusterID, service ServiceController,
 //
 //	1.top level cache from local
 //	2.second level cache from proxy cluster
-func (v *volumeGetterImpl) Get(ctx context.Context, vid proto.Vid, isCache bool) (phy *VolumePhy) {
+func (v *volumeGetterImpl) Get(ctx context.Context, vid proto.Vid, dontUpdate bool) (phy *VolumePhy) {
 	span := trace.SpanFromContextSafe(ctx)
 	cid := v.cid.ToString()
 	id := addCVid(v.cid, vid)
@@ -185,7 +187,7 @@ func (v *volumeGetterImpl) Get(ctx context.Context, vid proto.Vid, isCache bool)
 	}()
 
 	phy = v.getFromLocalCache(ctx, id)
-	if phy != nil && isCache {
+	if phy != nil && dontUpdate {
 		if v.memExpiration == 0 {
 			if phy.Timestamp < 0 {
 				phy = nil
@@ -221,7 +223,7 @@ func (v *volumeGetterImpl) Get(ctx context.Context, vid proto.Vid, isCache bool)
 		ver = phy.Version
 	}
 	val, err, _ := v.singleRun.Do(singleID, func() (interface{}, error) {
-		return v.getFromProxy(ctx, vid, !isCache, ver)
+		return v.getFromProxy(ctx, vid, !dontUpdate, ver)
 	})
 	if err != nil {
 		cacheMetric.WithLabelValues(cid, "proxy", "miss").Inc()

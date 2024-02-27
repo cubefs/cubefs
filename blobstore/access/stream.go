@@ -27,7 +27,6 @@ import (
 	"github.com/cubefs/cubefs/blobstore/access/controller"
 	"github.com/cubefs/cubefs/blobstore/api/access"
 	"github.com/cubefs/cubefs/blobstore/api/blobnode"
-	cmapi "github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/api/proxy"
 	"github.com/cubefs/cubefs/blobstore/common/codemode"
 	"github.com/cubefs/cubefs/blobstore/common/ec"
@@ -173,6 +172,8 @@ type Handler struct {
 	maxObjectSize int64
 
 	failVids       sync.Map
+	releaseNormal  sync.Map
+	releaseSealed  sync.Map
 	discardVidChan chan discardVid
 	stopCh         <-chan struct{}
 
@@ -299,6 +300,7 @@ func NewStreamHandler(cfg *StreamConfig, stopCh <-chan struct{}) StreamHandler {
 	handler.discardVidChan = make(chan discardVid, 8)
 	handler.stopCh = stopCh
 	handler.loopDiscardVids()
+	handler.loopReleaseVids()
 	return handler
 }
 
@@ -323,7 +325,7 @@ func (h *Handler) clearGarbage(ctx context.Context, location *access.Location) e
 	var err error
 
 	for _, blob := range location.Spread() {
-		if e := h.handleOneBlob(ctx, location, blob); e != nil {
+		if e := h.deleteOneBlob(ctx, location, blob); e != nil {
 			err = e
 		}
 	}
@@ -331,10 +333,8 @@ func (h *Handler) clearGarbage(ctx context.Context, location *access.Location) e
 	return err
 }
 
-func (h *Handler) handleOneBlob(ctx context.Context, location *access.Location, blob access.Blob) error {
+func (h *Handler) deleteOneBlob(ctx context.Context, location *access.Location, blob access.Blob) error {
 	span := trace.SpanFromContextSafe(ctx)
-	isCache := true
-	volume := &controller.VolumePhy{}
 	var err error
 
 	defer func() {
@@ -345,10 +345,12 @@ func (h *Handler) handleOneBlob(ctx context.Context, location *access.Location, 
 		}
 	}()
 
+	dontUpdate := true
+	volume := &controller.VolumePhy{}
 	if err = retry.Timed(3, 200).On(func() error {
-		volume, err = h.getVolume(ctx, location.ClusterID, blob.Vid, isCache)
+		volume, err = h.getVolume(ctx, location.ClusterID, blob.Vid, dontUpdate)
 		if err != nil {
-			isCache = false
+			dontUpdate = false
 		}
 		return err
 	}); err != nil {
@@ -388,7 +390,10 @@ func (h *Handler) deleteBlob(ctx context.Context, clusterID proto.ClusterID, blo
 
 				code := rpc.DetectStatusCode(err)
 				switch code {
-				case errcode.CodeInvalidDiskId, errcode.CodeDiskNotFound, errcode.CodeVuidNotFound, errcode.CodeDiskBroken:
+				// 1. disk id is too old, vuid is too old: need to update volume info
+				// 2. disk is broken, and its data is migrated to another new disk: need to update volume info
+				case errcode.CodeInvalidDiskId, errcode.CodeDiskNotFound, errcode.CodeVuidNotFound,
+					errcode.CodeDiskBroken:
 					latestVolume, err := h.getVolume(ctx, clusterID, blob.Vid, false)
 					if err != nil {
 						span.Warnf("get volume with no cache failed: %+v", err)
@@ -429,13 +434,13 @@ func (h *Handler) deleteBlob(ctx context.Context, clusterID proto.ClusterID, blo
 }
 
 // getVolume get volume info
-func (h *Handler) getVolume(ctx context.Context, clusterID proto.ClusterID, vid proto.Vid, isCache bool) (*controller.VolumePhy, error) {
+func (h *Handler) getVolume(ctx context.Context, clusterID proto.ClusterID, vid proto.Vid, dontUpdate bool) (*controller.VolumePhy, error) {
 	volumeGetter, err := h.clusterController.GetVolumeGetter(clusterID)
 	if err != nil {
 		return nil, err
 	}
 
-	volume := volumeGetter.Get(ctx, vid, isCache)
+	volume := volumeGetter.Get(ctx, vid, dontUpdate)
 	if volume == nil {
 		return nil, errors.Newf("not found volume of (%d %d)", clusterID, vid)
 	}
@@ -467,32 +472,23 @@ func (h *Handler) punishDiskWith(ctx context.Context, clusterID proto.ClusterID,
 type ReleaseVolume uint8
 
 const (
-	releaseVolumeInvalid = ReleaseVolume(iota)
-	releaseVolumeNormal
-	releaseVolumeSealed
+	releaseVolumeInit   = ReleaseVolume(iota)
+	releaseVolumeNormal // 1: If and only if it has broken disk, need normal release volume
+	releaseVolumeSealed // 2: other write fail, need sealed release volume
 )
 
-func (h *Handler) releaseVolume(ctx context.Context, cid proto.ClusterID, md codemode.CodeMode, tp ReleaseVolume, vid ...proto.Vid) {
-	span := trace.SpanFromContextSafe(ctx)
-	allocMgr, err := h.clusterController.GetVolumeAllocator(cid)
-	if err != nil {
-		span.Warnf("fail to get alloc mgr, when releaseVolume. err[%+v]", err)
-		return
-	}
-
+func (h *Handler) releaseVolume(cid proto.ClusterID, md codemode.CodeMode, tp ReleaseVolume, vid ...proto.Vid) {
 	switch tp {
 	case releaseVolumeNormal:
-		err = allocMgr.Release(ctx, &cmapi.ReleaseVolumes{
-			CodeMode:   md,
-			NormalVids: vid,
-		})
+		v, _ := h.releaseNormal.LoadOrStore(cid, &releaseVids{})
+		normalVol := v.(*releaseVids)
+		normalVol.addVid(md, vid...)
 	case releaseVolumeSealed:
-		err = allocMgr.Release(ctx, &cmapi.ReleaseVolumes{
-			CodeMode:   md,
-			SealedVids: vid,
-		})
+		v, _ := h.releaseSealed.LoadOrStore(cid, &releaseVids{})
+		sealedVol := v.(*releaseVids)
+		sealedVol.addVid(md, vid...)
+	default:
 	}
-	span.Warnf("We released volume %d, type:%d, err[%+v]", vid, tp, err)
 }
 
 // blobCount blobSize > 0 is certain
