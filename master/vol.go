@@ -113,9 +113,9 @@ type Vol struct {
 	TrashInterval           int64
 	Forbidden               bool
 	DisableAuditLog         bool
-	authKey        string
-	DeleteExecTime time.Time
-	user           *User
+	authKey                 string
+	DeleteExecTime          time.Time
+	user                    *User
 	preloadCapacity         uint64
 }
 
