@@ -12,8 +12,7 @@ x-define-env: &env
         - HTTPS_PROXY=
 
 x-define-servernode: &servernode
-    <<: *image
-    <<: *env
+    <<: [*image, *env]
     command: /bin/sh /cfs/script/start.sh
     restart: on-failure
     privileged: true
@@ -53,8 +52,7 @@ x-define-lcnode: &lcnode
         - 9500
 
 x-define-command: &command
-    <<: *image
-    <<: *env
+    <<: [*image, *env]
     volumes:
         - ../:${CFSROOT}
 
@@ -301,8 +299,7 @@ services:
             ipv4_address: 192.168.0.50
 
     client:
-        <<: *image
-        <<: *env
+        <<: [*image, *env]
         ports:
             - 9500
             - 17410:17410
