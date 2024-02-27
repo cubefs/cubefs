@@ -189,13 +189,11 @@ func (b *BaseWorker) ParseBaseConfig(cfg *config.Config) (err error) {
 
 	b.NotifyConfig = new(config.NotifyConfig)
 	notifyConfigBytes := cfg.GetJsonObjectBytes(config.ConfigKeyNotify)
-	if notifyConfigBytes == nil {
-		return fmt.Errorf("error: no notify config")
+	if notifyConfigBytes != nil {
+		if err = json.Unmarshal(notifyConfigBytes, &b.NotifyConfig); err != nil {
+			return fmt.Errorf("error: parse notify config failed: %v", err)
+		}
 	}
-	if err = json.Unmarshal(notifyConfigBytes, &b.NotifyConfig); err != nil {
-		return fmt.Errorf("error: parse notify config failed: %v", err)
-	}
-
 	return
 }
 
