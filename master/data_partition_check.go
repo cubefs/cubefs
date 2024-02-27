@@ -227,7 +227,7 @@ func (partition *DataPartition) checkMissingReplicas(clusterID, leaderAddr strin
 		replicaInfo.replicaNum = strconv.FormatUint(uint64(partition.ReplicaNum), 10)
 		replicaInfo.replicaAlive = strconv.FormatUint(uint64(dpReplicaAliveNum), 10)
 		WarnMetrics.dpMissingReplicaInfo[id] = replicaInfo
-		for missingReplicaAddr, _ := range WarnMetrics.dpMissingReplicaInfo[id].addrs {
+		for missingReplicaAddr := range WarnMetrics.dpMissingReplicaInfo[id].addrs {
 			if oldDpReplicaAliveNum != "" {
 				WarnMetrics.missingDp.DeleteLabelValues(clusterID, id, missingReplicaAddr, oldDpReplicaAliveNum, replicaInfo.replicaNum)
 			}
