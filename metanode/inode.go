@@ -231,31 +231,30 @@ func (inode *Inode) GetAllExtsOfflineInode(mpID uint64) (extInfo map[uint64][]*p
 			dIno = inode.multiSnap.multiVersions[i-1]
 		}
 		log.LogDebugf("deleteMarkedInodes. GetAllExtsOfflineInode.mp[%v] inode[%v] dino[%v]", mpID, inode.Inode, dIno)
-		dIno.Extents.Range(func(ek proto.ExtentKey) bool {
-			ext := &ek
-			if ext.IsSplit() {
+		dIno.Extents.Range(func(_ int, ek proto.ExtentKey) bool {
+			if ek.IsSplit() {
 				var (
 					dOK  bool
 					last bool
 				)
 				log.LogDebugf("deleteMarkedInodes DecSplitEk mpID %v inode[%v]", mpID, inode.Inode)
-				if dOK, last = dIno.DecSplitEk(mpID, ext); !dOK {
+				if dOK, last = dIno.DecSplitEk(mpID, &ek); !dOK {
 					return false
 				}
 				if !last {
-					log.LogDebugf("deleteMarkedInodes. GetAllExtsOfflineInode.mp[%v] inode[%v] ek [%v] be removed", mpID, inode.Inode, ext)
+					log.LogDebugf("deleteMarkedInodes. GetAllExtsOfflineInode.mp[%v] inode[%v] ek [%v] be removed", mpID, inode.Inode, ek)
 					return true
 				}
 
-				log.LogDebugf("deleteMarkedInodes. GetAllExtsOfflineInode.mp[%v] inode[%v] ek [%v] be removed", mpID, inode.Inode, ext)
-				ext.SetSplit(false)
-				ext.ExtentOffset = 0
-				ext.Size = 0
+				log.LogDebugf("deleteMarkedInodes. GetAllExtsOfflineInode.mp[%v] inode[%v] ek [%v] be removed", mpID, inode.Inode, ek)
 			}
-			extInfo[ext.PartitionId] = append(extInfo[ext.PartitionId], ext)
-			log.LogWritef("GetAllExtsOfflineInode. mp[%v] ino(%v) deleteExtent(%v)", mpID, inode.Inode, ext.String())
+			extInfo[ek.PartitionId] = append(extInfo[ek.PartitionId], &ek)
+			// NOTE: unnecessary to set ext
+			log.LogWritef("GetAllExtsOfflineInode. mp[%v] ino(%v) deleteExtent(%v)", mpID, inode.Inode, ek.String())
 			return true
 		})
+		// NOTE: clear all extents in this layer
+		dIno.Extents = NewSortedExtents()
 	}
 	return
 }
@@ -1283,8 +1282,9 @@ func (i *Inode) ShouldDelVer(delVer uint64, mpVer uint64) (ok bool, err error) {
 	return false, fmt.Errorf("not found")
 }
 
+// idx need calc include nclude top layer. index in multiSnap.multiVersions need add by 1
+//
 //note:search all layers.
-//idx need calc include nclude top layer. index in multiSnap.multiVersions need add by 1
 func (ino *Inode) getInoByVer(verSeq uint64, equal bool) (i *Inode, idx int) {
 	ino.RLock()
 	defer ino.RUnlock()

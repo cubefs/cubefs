@@ -556,12 +556,12 @@ func (se *SortedExtents) Size() uint64 {
 	return se.eks[last-1].FileOffset + uint64(se.eks[last-1].Size)
 }
 
-func (se *SortedExtents) Range(f func(ek proto.ExtentKey) bool) {
+func (se *SortedExtents) Range(f func(index int, ek proto.ExtentKey) bool) {
 	se.RLock()
 	defer se.RUnlock()
 
-	for _, ek := range se.eks {
-		if !f(ek) {
+	for i, ek := range se.eks {
+		if !f(i, ek) {
 			break
 		}
 	}
