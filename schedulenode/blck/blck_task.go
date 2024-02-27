@@ -13,6 +13,7 @@ import (
 	"github.com/cubefs/cubefs/util/connpool"
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/log"
+	"github.com/cubefs/cubefs/util/topology"
 	"io/fs"
 	"io/ioutil"
 	"net"
@@ -479,7 +480,7 @@ func (t *BlockCheckTask) getExtentsFromMetaPartition(mpId uint64, leaderAddr str
 	return
 }
 
-func batchDeleteExtent(host string, dp *metanode.DataPartition, eks []*proto.ExtentKey) (err error) {
+func batchDeleteExtent(host string, dp *topology.DataPartition, eks []*proto.MetaDelExtentKey) (err error) {
 	var conn *net.TCPConn
 	conn, err = gConnPool.GetConnect(host)
 	defer func() {
@@ -542,7 +543,7 @@ func (t *BlockCheckTask) doCheckGarbageInBatches() (err error) {
 	log.LogInfof("doCheckGarbageInBatches %s %s start check garbage in batches", t.Cluster, t.VolName)
 	garbageBlock := make(map[uint64]*bitset.ByteSliceBitSet, 0)
 	var dpsView *proto.DataPartitionsView
-	dpsView, err = t. masterClient.ClientAPI().GetDataPartitions(t.VolName)
+	dpsView, err = t. masterClient.ClientAPI().GetDataPartitions(t.VolName, nil)
 	if err != nil {
 		log.LogErrorf("action[doCheckGarbageInBatches] get cluster[%s] volume[%s] data partition failed: %v",
 			t.Cluster, t.VolName, err)
@@ -601,7 +602,7 @@ func (t *BlockCheckTask) doCheckGarbageInBatches() (err error) {
 
 func (t *BlockCheckTask) doCheckGarbage() (err error) {
 	var dpsView *proto.DataPartitionsView
-	dpsView, err = t. masterClient.ClientAPI().GetDataPartitions(t.VolName)
+	dpsView, err = t. masterClient.ClientAPI().GetDataPartitions(t.VolName, nil)
 	if err != nil {
 		log.LogErrorf("action[doCheckGarbageInBatches] get cluster[%s] volume[%s] data partition failed: %v",
 			t.Cluster, t.VolName, err)
@@ -651,16 +652,18 @@ func (t *BlockCheckTask) doCleanGarbage() (err error) {
 			continue
 		}
 
-		dp := &metanode.DataPartition{
+		dp := &topology.DataPartition{
 			PartitionID: dpID,
 			Hosts:       dpInfo.Hosts,
 		}
 
-		var eks []*proto.ExtentKey
+		var eks []*proto.MetaDelExtentKey
 		for _, extentID := range extentsID {
-			ek := &proto.ExtentKey{
-				PartitionId: dpID,
-				ExtentId:    extentID,
+			ek := &proto.MetaDelExtentKey{
+				ExtentKey: proto.ExtentKey{
+					PartitionId:  dpID,
+					ExtentId:     extentID,
+				},
 			}
 			eks = append(eks, ek)
 		}
