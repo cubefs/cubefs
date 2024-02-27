@@ -86,6 +86,7 @@ func replyInfo(info *proto.InodeInfo, ino *Inode, quotaInfos map[uint32]*proto.M
 	if ino.HybridCouldExtentsMigration.storageClass != proto.StorageClass_Unspecified {
 		info.HasMigrationEk = true
 	}
+	info.MigrationExtentKeyExpiredTime = time.Unix(ino.HybridCouldExtentsMigration.expiredTime, 0).Format("2006-01-02 15:04:05")
 	return true
 }
 

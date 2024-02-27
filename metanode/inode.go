@@ -34,10 +34,9 @@ import (
 )
 
 const (
-	DeleteMarkFlag                          = 1 << 0
-	InodeDelTop                             = 1 << 1
-	DeleteMigrationExtentKeyFlag            = 1 << 2 //only delete migration ek by delay
-	DeleteMigrationExtentKeyImmediatelyFlag = 1 << 3
+	DeleteMarkFlag               = 1 << 0
+	InodeDelTop                  = 1 << 1
+	DeleteMigrationExtentKeyFlag = 1 << 2 //only delete migration ek by delay
 )
 
 var (
@@ -2298,15 +2297,15 @@ func (i *Inode) SetDeleteMigrationExtentKey() {
 }
 func (i *Inode) SetDeleteMigrationExtentKeyImmediately() {
 	i.Lock()
-	i.Flag |= DeleteMigrationExtentKeyImmediatelyFlag
+	i.Flag |= DeleteMigrationExtentKeyFlag
+	i.HybridCouldExtentsMigration.expiredTime = time.Now().Unix()
 	i.Unlock()
 }
 
 func (i *Inode) IsDeleteMigrationExtentKeyOnly() bool {
 	i.Lock()
 	defer i.Unlock()
-	return (i.Flag&DeleteMigrationExtentKeyImmediatelyFlag == DeleteMigrationExtentKeyImmediatelyFlag) ||
-		(i.Flag&DeleteMigrationExtentKeyFlag == DeleteMigrationExtentKeyFlag)
+	return i.Flag&DeleteMigrationExtentKeyFlag == DeleteMigrationExtentKeyFlag
 }
 
 // ShouldDelete returns if the inode has been marked as deleted.
@@ -2329,12 +2328,12 @@ func (i *Inode) ShouldDelayDelete() (ok bool) {
 		return false
 	}
 
-	if i.Flag&DeleteMigrationExtentKeyImmediatelyFlag == DeleteMigrationExtentKeyImmediatelyFlag {
-		return false
-	}
-
-	if (i.Flag&DeleteMigrationExtentKeyFlag == DeleteMigrationExtentKeyFlag) && time.Now().Unix()-i.HybridCouldExtentsMigration.expiredTime <= 0 {
-		return false
+	if i.Flag&DeleteMigrationExtentKeyFlag == DeleteMigrationExtentKeyFlag {
+		if time.Now().Unix() <= i.HybridCouldExtentsMigration.expiredTime {
+			return true
+		} else {
+			return false
+		}
 	}
 
 	return i.NLink == 0 && time.Now().Unix()-i.AccessTime < InodeNLink0DelayDeleteSeconds
@@ -2344,7 +2343,7 @@ func (i *Inode) ShouldDeleteMigrationExtentKey(isMigration bool) (ok bool) {
 	i.RLock()
 	defer i.RUnlock()
 
-	ok = isMigration && (i.Flag&DeleteMigrationExtentKeyImmediatelyFlag == DeleteMigrationExtentKeyImmediatelyFlag)
+	ok = isMigration && (i.Flag&DeleteMigrationExtentKeyFlag == DeleteMigrationExtentKeyFlag)
 	return
 }
 
