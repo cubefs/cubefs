@@ -716,6 +716,8 @@ func (mp *metaPartition) checkAndInsertFreeList(ino *Inode) {
 	} else if ino.IsTempFile() {
 		ino.AccessTime = time.Now().Unix()
 		mp.freeList.Push(ino.Inode)
+	} else if ino.ShouldDeleteMigrationExtentKey(true) {
+		mp.freeList.Push(ino.Inode)
 	}
 }
 
