@@ -16,6 +16,7 @@ package proto
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/cubefs/cubefs/util"
@@ -442,6 +443,7 @@ type CreateDataPartitionRequest struct {
 	DecommissionedDisks []string
 	IsMultiVer          bool
 	VerSeq              uint64
+	MediaType           uint32
 }
 
 // CreateDataPartitionResponse defines the response to the request of creating a data partition.
@@ -1174,6 +1176,10 @@ var mediaTypeStringMap = map[uint32]string{
 	MediaType_SSD:         "SSD",
 	MediaType_HDD:         "HDD",
 }
+var String2mediaTypeMap = map[string]uint32{
+	"SSD": 1,
+	"HDD": 2,
+}
 
 func MediaTypeString(mediaType uint32) (value string) {
 	value, ok := mediaTypeStringMap[mediaType]
@@ -1181,6 +1187,18 @@ func MediaTypeString(mediaType uint32) (value string) {
 		value = fmt.Sprintf("InvalidValue(%v)", mediaType)
 	}
 	return
+}
+
+func MediaTypesString(mediaTypes []uint32) (value string) {
+	if len(mediaTypes) == 0 {
+		return "N/A"
+	}
+
+	var zoneMediaTypesStr []string
+	for _, mediaType := range mediaTypes {
+		zoneMediaTypesStr = append(zoneMediaTypesStr, MediaTypeString(mediaType))
+	}
+	return strings.Join(zoneMediaTypesStr, ",")
 }
 
 func IsValidMediaType(mediaType uint32) bool {

@@ -16,6 +16,7 @@ package datanode
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
@@ -123,8 +124,6 @@ const (
 	ConfigKeyDiskUnavailableErrorCount = "diskUnavailableErrorCount"
 	// disk status becomes unavailable if disk error partition count reaches this value
 	ConfigKeyDiskUnavailablePartitionErrorCount = "diskUnavailablePartitionErrorCount"
-
-	ConfigMediaType = "mediaType" //storage media type, for hybrid cloud, in string: SDD or HDD
 )
 
 const cpuSampleDuration = 1 * time.Second
@@ -186,7 +185,7 @@ type DataNode struct {
 	diskUnavailableErrorCount          uint64 // disk status becomes unavailable when disk error count reaches this value
 	diskUnavailablePartitionErrorCount uint64 // disk status becomes unavailable when disk error partition count reaches this value
 
-	mediaType uint32 // type of storage hardware media
+	disksConf []proto.DiskConf
 }
 
 type verOp2Phase struct {
@@ -373,24 +372,71 @@ func (s *DataNode) parseConfig(cfg *config.Config) (err error) {
 	s.diskUnavailablePartitionErrorCount = uint64(diskUnavailablePartitionErrorCount)
 	log.LogDebugf("action[parseConfig] load diskUnavailablePartitionErrorCount(%v)", s.diskUnavailablePartitionErrorCount)
 
-	var mediaType uint32
-	if err, mediaType = cfg.GetUint32(ConfigMediaType); err != nil {
-		err = fmt.Errorf("parseConfig: invalid mediaType, err: %v", err.Error())
-		log.LogError(err.Error())
-		return err
-	}
-	if !proto.IsValidMediaType(mediaType) {
-		err = fmt.Errorf("parseConfig: invalid mediaType(%v)", mediaType)
-		log.LogError(err.Error())
-		return err
-	}
-	s.mediaType = mediaType
+	s.parseDiskConf(cfg)
 
 	log.LogDebugf("action[parseConfig] load masterAddrs(%v).", MasterClient.Nodes())
 	log.LogDebugf("action[parseConfig] load port(%v).", s.port)
 	log.LogDebugf("action[parseConfig] load zoneName(%v).", s.zoneName)
-	log.LogDebugf("action[parseConfig] load mediaType(%v)(%v)", s.mediaType, proto.MediaTypeString(s.mediaType))
 	return
+}
+
+func (s *DataNode) parseDiskConf(cfg *config.Config) (err error) {
+	paths := make([]string, 0)
+	diskPath := cfg.GetString(ConfigKeyDiskPath)
+	if diskPath != "" {
+		paths, err = parseDiskPath(diskPath)
+		if err != nil {
+			log.LogErrorf("parse diskpath failed, Path %s, err %s", diskPath, err.Error())
+			return err
+		}
+	} else {
+		for _, p := range cfg.GetSlice(ConfigKeyDisks) {
+			paths = append(paths, p.(string))
+		}
+	}
+
+	for _, d := range paths {
+		// format "PATH:RESET_SIZE:MEDIA_TYPE
+		arr := strings.Split(d, ":")
+		if len(arr) != 2 && len(arr) != 3 {
+			return errors.New("Invalid disk configuration. Example: PATH:RESERVE_SIZE[:MEDIA_TYPE]")
+		}
+		if len(arr) == 2 {
+			arr = append(arr, "SSD")
+		}
+
+		path := arr[0]
+		fileInfo, err := os.Stat(path)
+		if err != nil {
+			log.LogErrorf("Stat disk Path [%v] error: [%s]", path, err)
+			continue
+		}
+		if !fileInfo.IsDir() {
+			return errors.New("Disk Path is not dir")
+		}
+		if s.clusterUuidEnable {
+			if err = config.CheckOrStoreClusterUuid(path, s.clusterUuid, false); err != nil {
+				log.LogErrorf("CheckOrStoreClusterUuid failed: %v", err)
+				return fmt.Errorf("CheckOrStoreClusterUuid failed: %v", err.Error())
+			}
+		}
+		reservedSpace, err := strconv.ParseUint(arr[1], 10, 64)
+		if err != nil {
+			return fmt.Errorf("Invalid disk reserved space. Error: %s", err.Error())
+		}
+
+		if reservedSpace < DefaultDiskRetainMin {
+			reservedSpace = DefaultDiskRetainMin
+		}
+
+		mediaType, exists := proto.String2mediaTypeMap[arr[2]]
+		if !exists {
+			return fmt.Errorf("Invalid disk media type %s, current only support SSD or HDD", arr[2])
+		}
+
+		s.disksConf = append(s.disksConf, proto.DiskConf{Path: path, ReservedSpace: reservedSpace, MediaType: mediaType})
+	}
+	return nil
 }
 
 func (s *DataNode) initQosLimit(cfg *config.Config) {
@@ -437,7 +483,7 @@ func (s *DataNode) startSpaceManager(cfg *config.Config) (err error) {
 	if diskPath != "" {
 		paths, err = parseDiskPath(diskPath)
 		if err != nil {
-			log.LogErrorf("parse diskpath failed, path %s, err %s", diskPath, err.Error())
+			log.LogErrorf("parse diskpath failed, Path %s, err %s", diskPath, err.Error())
 			return err
 		}
 	} else {
@@ -447,43 +493,12 @@ func (s *DataNode) startSpaceManager(cfg *config.Config) (err error) {
 	}
 
 	var wg sync.WaitGroup
-	for _, d := range paths {
-		log.LogDebugf("action[startSpaceManager] load disk raw config(%v).", d)
-
-		// format "PATH:RESET_SIZE
-		arr := strings.Split(d, ":")
-		if len(arr) != 2 {
-			return errors.New("Invalid disk configuration. Example: PATH:RESERVE_SIZE")
-		}
-		path := arr[0]
-		fileInfo, err := os.Stat(path)
-		if err != nil {
-			log.LogErrorf("Stat disk path [%v] error: [%s]", path, err)
-			continue
-		}
-		if !fileInfo.IsDir() {
-			return errors.New("Disk path is not dir")
-		}
-		if s.clusterUuidEnable {
-			if err = config.CheckOrStoreClusterUuid(path, s.clusterUuid, false); err != nil {
-				log.LogErrorf("CheckOrStoreClusterUuid failed: %v", err)
-				return fmt.Errorf("CheckOrStoreClusterUuid failed: %v", err.Error())
-			}
-		}
-		reservedSpace, err := strconv.ParseUint(arr[1], 10, 64)
-		if err != nil {
-			return fmt.Errorf("Invalid disk reserved space. Error: %s", err.Error())
-		}
-
-		if reservedSpace < DefaultDiskRetainMin {
-			reservedSpace = DefaultDiskRetainMin
-		}
-
+	for _, conf := range s.disksConf {
 		wg.Add(1)
-		go func(wg *sync.WaitGroup, path string, reservedSpace uint64) {
+		go func(wg *sync.WaitGroup, path string, reservedSpace uint64, mediaType uint32) {
 			defer wg.Done()
-			s.space.LoadDisk(path, reservedSpace, diskRdonlySpace, DefaultDiskMaxErr)
-		}(&wg, path, reservedSpace)
+			s.space.LoadDisk(path, reservedSpace, mediaType, diskRdonlySpace, DefaultDiskMaxErr)
+		}(&wg, conf.Path, conf.ReservedSpace, conf.MediaType)
 	}
 
 	wg.Wait()
@@ -527,8 +542,13 @@ func parseDiskPath(pathStr string) (disks []string, err error) {
 
 // registers the data node on the master to report the information such as IsIPV4 address.
 // The startup of a data node will be blocked until the registration succeeds.
-func (s *DataNode) register(cfg *config.Config) {
+func (s *DataNode) register(cfg *config.Config) error {
 	var err error
+	var disksJsonData []byte
+	if disksJsonData, err = json.Marshal(s.disksConf); err != nil {
+		return fmt.Errorf("error when marshal disk conf %s", err.Error())
+	}
+	disksJsonString := fmt.Sprintf(`%v`, string(disksJsonData))
 
 	timer := time.NewTimer(0)
 
@@ -561,7 +581,7 @@ func (s *DataNode) register(cfg *config.Config) {
 			// register this data node on the master
 			var nodeID uint64
 			if nodeID, err = MasterClient.NodeAPI().AddDataNodeWithAuthNode(fmt.Sprintf("%s:%v", LocalIP, s.port),
-				s.zoneName, s.serviceIDKey, s.mediaType); err != nil {
+				s.zoneName, s.serviceIDKey, disksJsonString); err != nil {
 				log.LogErrorf("action[registerToMaster] cannot register this node to master[%v] err(%v).",
 					masterAddr, err)
 				timer.Reset(2 * time.Second)
@@ -570,10 +590,10 @@ func (s *DataNode) register(cfg *config.Config) {
 			exporter.RegistConsul(s.clusterID, ModuleName, cfg)
 			s.nodeID = nodeID
 			log.LogDebugf("register: register DataNode: nodeID(%v)", s.nodeID)
-			return
+			return nil
 		case <-s.stopC:
 			timer.Stop()
-			return
+			return nil
 		}
 	}
 }
@@ -634,12 +654,12 @@ func (s *DataNode) checkPartitionInMemoryMatchWithInDisk() (lackPartitions []uin
 		stat, err := os.Stat(dp.path)
 		if err != nil {
 			lackPartitions = append(lackPartitions, dp.partitionID)
-			log.LogErrorf("action[checkPartitionInMemoryMatchWithInDisk] stat dataPartition[%v] fail, path[%v], err[%v]", dp.partitionID, dp.Path(), err)
+			log.LogErrorf("action[checkPartitionInMemoryMatchWithInDisk] stat dataPartition[%v] fail, Path[%v], err[%v]", dp.partitionID, dp.Path(), err)
 			continue
 		}
 		if !stat.IsDir() {
 			lackPartitions = append(lackPartitions, dp.partitionID)
-			log.LogErrorf("action[checkPartitionInMemoryMatchWithInDisk] dataPartition[%v] is not directory, path[%v]", dp.partitionID, dp.Path())
+			log.LogErrorf("action[checkPartitionInMemoryMatchWithInDisk] dataPartition[%v] is not directory, Path[%v]", dp.partitionID, dp.Path())
 			continue
 		}
 	}

@@ -92,14 +92,14 @@ func formatNodeViewTableHeader() string {
 func formatNodeView(view *proto.NodeView, tableRow bool) string {
 	if tableRow {
 		return fmt.Sprintf(nodeViewTableRowPattern, view.ID, formatAddr(view.Addr, view.DomainAddr),
-			formatYesNo(view.IsWritable), formatNodeStatus(view.Status), formatNodeMediaType(view.MediaType))
+			formatYesNo(view.IsWritable), formatNodeStatus(view.Status), formatNodeMediaType(view.MediaTypes))
 	}
 	sb := strings.Builder{}
 	sb.WriteString(fmt.Sprintf("  ID      : %v\n", view.ID))
 	sb.WriteString(fmt.Sprintf("  Address : %v\n", formatAddr(view.Addr, view.DomainAddr)))
 	sb.WriteString(fmt.Sprintf("  Writable: %v\n", formatYesNo(view.IsWritable)))
 	sb.WriteString(fmt.Sprintf("  Status  : %v", formatNodeStatus(view.Status)))
-	sb.WriteString(fmt.Sprintf("  MEDIA   : %v", formatNodeMediaType(view.MediaType)))
+	sb.WriteString(fmt.Sprintf("  MEDIA   : %v", formatNodeMediaType(view.MediaTypes)))
 	return sb.String()
 }
 
@@ -609,11 +609,8 @@ func formatNodeStatus(status bool) string {
 	return "Inactive"
 }
 
-func formatNodeMediaType(mediaType uint32) string {
-	if mediaType == proto.MediaType_Unspecified {
-		return "N/A"
-	}
-	return proto.MediaTypeString(mediaType)
+func formatNodeMediaType(mediaTypes []uint32) string {
+	return proto.MediaTypesString(mediaTypes)
 }
 
 var (
@@ -749,7 +746,7 @@ func formatDataNodeDetail(dn *proto.DataNodeInfo, rowTable bool) string {
 	sb.WriteString(fmt.Sprintf("  Available           : %v\n", formatSize(dn.AvailableSpace)))
 	sb.WriteString(fmt.Sprintf("  Total               : %v\n", formatSize(dn.Total)))
 	sb.WriteString(fmt.Sprintf("  Zone                : %v\n", dn.ZoneName))
-	sb.WriteString(fmt.Sprintf("  MediaType           : %v\n", proto.MediaTypeString(dn.MediaType)))
+	sb.WriteString(fmt.Sprintf("  MediaType           : %v\n", proto.MediaTypesString(dn.MediaTypes)))
 	sb.WriteString(fmt.Sprintf("  IsActive            : %v\n", formatNodeStatus(dn.IsActive)))
 	sb.WriteString(fmt.Sprintf("  Report time         : %v\n", formatTimeToString(dn.ReportTime)))
 	sb.WriteString(fmt.Sprintf("  Partition count     : %v\n", dn.DataPartitionCount))

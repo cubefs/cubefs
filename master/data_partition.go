@@ -1498,7 +1498,7 @@ func (partition *DataPartition) TryAcquireDecommissionToken(c *Cluster) bool {
 			goto errHandler
 		}
 
-		targetHosts, _, err = ns.getAvailDataNodeHosts(partition.Hosts, 1, partition.MediaType)
+		targetHosts, _, err = ns.getAvailDataNodeHosts(partition.Hosts, 1)
 		if err != nil {
 			log.LogWarnf("action[TryAcquireDecommissionToken] dp %v choose from src nodeset failed:%v",
 				partition.PartitionID, err.Error())

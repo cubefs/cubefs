@@ -945,7 +945,7 @@ func (c *Cluster) addMetaNode(nodeAddr, zoneName string, nodesetId uint64) (id u
 	metaNode = newMetaNode(nodeAddr, zoneName, c.Name)
 	zone, err := c.t.getZone(zoneName)
 	if err != nil {
-		zone = c.t.putZoneIfAbsent(newZone(zoneName, proto.MediaType_Unspecified))
+		zone = c.t.putZoneIfAbsent(newZone(zoneName, nil))
 	}
 
 	var ns *nodeSet
@@ -993,13 +993,13 @@ errHandler:
 	return
 }
 
-func (c *Cluster) addDataNode(nodeAddr, zoneName string, nodesetId uint64, mediaType uint32) (id uint64, err error) {
+func (c *Cluster) addDataNode(nodeAddr, zoneName string, nodesetId uint64, disksJsonString string) (id uint64, err error) {
 	c.dnMutex.Lock()
 	defer c.dnMutex.Unlock()
 	var dataNode *DataNode
 	var needPersistZone bool
-	log.LogInfof("[addDataNode] to add: datanode(%v) zone(%v) nodesetId(%v) mediaType(%v)",
-		nodeAddr, zoneName, nodesetId, mediaType)
+	log.LogInfof("[addDataNode] to add: datanode(%v) zone(%v) nodesetId(%v) disksJsonString(%v)",
+		nodeAddr, zoneName, nodesetId, disksJsonString)
 
 	if node, ok := c.dataNodes.Load(nodeAddr); ok {
 		dataNode = node.(*DataNode)
@@ -1009,48 +1009,39 @@ func (c *Cluster) addDataNode(nodeAddr, zoneName string, nodesetId uint64, media
 			log.LogErrorf("[addDataNode] %v", err.Error())
 			return dataNode.ID, err
 		}
-
-		if dataNode.MediaType != mediaType {
-			err = fmt.Errorf("datanode(%v) already in cluster, but datanode mediaType not match, existMediaType(%v) toAdd(%v)",
-				nodeAddr, proto.MediaTypeString(dataNode.MediaType), proto.MediaTypeString(mediaType))
+		var existDisksJsonData []byte
+		if existDisksJsonData, err = json.Marshal(dataNode.DisksConf); err != nil {
+			return id, fmt.Errorf("error when marshal exist disks conf %s", err.Error())
+		}
+		existDisksJsonString := string(existDisksJsonData)
+		if existDisksJsonString != disksJsonString {
+			err = fmt.Errorf("datanode(%v) already in cluster, but datanode sisksJsonString not match, exists (%v) toAdd(%v)",
+				nodeAddr, existDisksJsonData, disksJsonString)
 			log.LogErrorf("[addDataNode] %v", err.Error())
 			return dataNode.ID, err
 		}
 
-		log.LogInfof("[addDataNode] already exist: datanode(%v) zone(%v) nodesetId(%v) mediaType(%v)",
-			nodeAddr, zoneName, nodesetId, mediaType)
+		log.LogInfof("[addDataNode] already exist: datanode(%v) zone(%v) nodesetId(%v) disksConf(%v)",
+			nodeAddr, zoneName, nodesetId, dataNode.DisksConf)
 		return dataNode.ID, nil
 	}
 
-	if !proto.IsValidMediaType(mediaType) {
-		err = fmt.Errorf("invalid mediaType(%v) when adding datanode(%v)", mediaType, nodeAddr)
-		log.LogErrorf("[addDataNode] %v", err.Error())
-		return
+	var disksConf proto.DisksConf
+	if err = json.Unmarshal([]byte(disksJsonString), &disksConf); err != nil {
+		return id, fmt.Errorf("error when unmarshal disk conf %s", err.Error())
 	}
-
-	dataNode = newDataNode(nodeAddr, zoneName, c.Name, mediaType)
+	mediaTypes := disksConf.MediaTypes()
+	dataNode = newDataNode(nodeAddr, zoneName, c.Name, disksConf)
 	dataNode.DpCntLimit = newDpCountLimiter(&c.cfg.MaxDpCntLimit)
 	zone, err := c.t.getZone(zoneName)
 	if err != nil {
 		log.LogInfof("[addDataNode] create zone(%v) by datanode(%v)", zoneName, nodeAddr)
-		zone = newZone(zoneName, mediaType)
+		zone = newZone(zoneName, mediaTypes)
 		needPersistZone = true
-	}
-
-	zoneMediaType := zone.GetDataMediaType()
-	if zoneMediaType != mediaType {
-		if zoneMediaType != proto.MediaType_Unspecified {
-			// zone.dataMediaType == proto.MediaType_Unspecified means has no datanode added into the zone yet
-			err = fmt.Errorf("datanode(%v) already in zone(%v) mediaType not match, existMediaType(%v) toAdd(%v)",
-				nodeAddr, zoneName, proto.MediaTypeString(zoneMediaType), proto.MediaTypeString(mediaType))
-			log.LogErrorf("[addDataNode] %v", err.Error())
-			return
-		} else {
-			zone.SetDataMediaType(mediaType)
-			log.LogInfof("[addDataNode] set zone(%v) mediaType(%v) by datanode(%v)",
-				zoneName, proto.MediaTypeString(mediaType), nodeAddr)
-			needPersistZone = true
-		}
+	} else {
+		needPersistZone = zone.SetDataMediaType(mediaTypes)
+		log.LogInfof("[addDataNode] set zone(%v) to mediaType(%v) by datanode(%v)",
+			zoneName, zone.GetDataMediaTypeString(), nodeAddr)
 	}
 
 	if needPersistZone {
@@ -1086,8 +1077,8 @@ func (c *Cluster) addDataNode(nodeAddr, zoneName string, nodesetId uint64, media
 	}
 	dataNode.ID = id
 	dataNode.NodeSetID = ns.ID
-	log.LogInfof("action[addDataNode] datanode id[%v] zonename[%v] MediaType[%v] add node to nodesetid[%v]",
-		id, zoneName, dataNode.MediaType, ns.ID)
+	log.LogInfof("action[addDataNode] datanode id[%v] zoneName[%v] DisksConf[%v] add node to nodesetId[%v]",
+		id, zoneName, dataNode.DisksConf, ns.ID)
 	if err = c.syncAddDataNode(dataNode); err != nil {
 		goto errHandler
 	}
@@ -1665,7 +1656,7 @@ func (c *Cluster) decideZoneNum(crossZone bool, mediaType uint32) (zoneNum int) 
 	if c.FaultDomain {
 		zoneLen = len(c.t.domainExcludeZones)
 	} else {
-		zoneLen = c.t.zoneLenOfDtaMediaType(mediaType)
+		zoneLen = c.t.zoneLenOfDataMediaType(mediaType)
 	}
 
 	if zoneLen < defaultReplicaNum {
@@ -1781,14 +1772,14 @@ func (c *Cluster) getHostFromNormalZoneByMediaType(nodeType uint32, excludeZones
 			}
 
 			if nodeType == TypeDataPartition && mediaType != proto.MediaType_Unspecified {
-				if zone.dataMediaType != mediaType {
+				if !zone.ContainsMediaType(mediaType) {
 					log.LogDebugf("[getHostFromNormalZoneByMediaType] skip zone(%v)(%v) for not match target mediaType(%v)",
-						zone.name, proto.MediaTypeString(zone.dataMediaType), proto.MediaTypeString(mediaType))
+						zone.name, proto.MediaTypeString(mediaType), proto.MediaTypeString(mediaType))
 					continue
 				}
 
 				log.LogDebugf("[getHostFromNormalZoneByMediaType] pick zone(%v)(%v) matching target mediaType(%v) for datanode",
-					zone.name, proto.MediaTypeString(zone.dataMediaType), proto.MediaTypeString(mediaType))
+					zone.name, proto.MediaTypeString(mediaType), proto.MediaTypeString(mediaType))
 			}
 
 			zones = append(zones, zone)
@@ -2271,7 +2262,7 @@ func (c *Cluster) autoAddDataReplica(dp *DataPartition) (success bool, err error
 		if ns, err = zone.getNodeSet(nodeSets[0]); err != nil {
 			goto errHandler
 		}
-		if targetHosts, _, err = ns.getAvailDataNodeHosts(dp.Hosts, 1, zone.dataMediaType); err != nil {
+		if targetHosts, _, err = ns.getAvailDataNodeHosts(dp.Hosts, 1); err != nil {
 			goto errHandler
 		}
 	}
@@ -2372,7 +2363,7 @@ func (c *Cluster) migrateDataPartition(srcAddr, targetAddr string, dp *DataParti
 
 	if targetAddr != "" {
 		targetHosts = []string{targetAddr}
-	} else if targetHosts, _, err = ns.getAvailDataNodeHosts(dp.Hosts, 1, dp.MediaType); err != nil {
+	} else if targetHosts, _, err = ns.getAvailDataNodeHosts(dp.Hosts, 1); err != nil {
 		if _, ok := c.vols[dp.VolName]; !ok {
 			log.LogWarnf("clusterID[%v] partitionID:%v  on node:%v offline failed,PersistenceHosts:[%v]",
 				c.Name, dp.PartitionID, srcAddr, dp.Hosts)
@@ -3543,7 +3534,7 @@ func (c *Cluster) allDataNodes() (dataNodes []proto.NodeView) {
 	c.dataNodes.Range(func(addr, node interface{}) bool {
 		dataNode := node.(*DataNode)
 		dataNodes = append(dataNodes, proto.NodeView{Addr: dataNode.Addr, DomainAddr: dataNode.DomainAddr,
-			Status: dataNode.isActive, ID: dataNode.ID, IsWritable: dataNode.isWriteAble(), MediaType: dataNode.MediaType})
+			Status: dataNode.isActive, ID: dataNode.ID, IsWritable: dataNode.isWriteAble(), MediaTypes: dataNode.DisksConf.MediaTypes()})
 		return true
 	})
 	return
@@ -3554,7 +3545,7 @@ func (c *Cluster) allMetaNodes() (metaNodes []proto.NodeView) {
 	c.metaNodes.Range(func(addr, node interface{}) bool {
 		metaNode := node.(*MetaNode)
 		metaNodes = append(metaNodes, proto.NodeView{ID: metaNode.ID, Addr: metaNode.Addr, DomainAddr: metaNode.DomainAddr,
-			Status: metaNode.IsActive, IsWritable: metaNode.isWritable(), MediaType: proto.MediaType_Unspecified})
+			Status: metaNode.IsActive, IsWritable: metaNode.isWritable(), MediaTypes: nil})
 		return true
 	})
 	return

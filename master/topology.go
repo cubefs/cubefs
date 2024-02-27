@@ -55,7 +55,7 @@ func (t *topology) zoneLen() int {
 	return len(t.zones)
 }
 
-func (t *topology) zoneLenOfDtaMediaType(mediaType uint32) (len int) {
+func (t *topology) zoneLenOfDataMediaType(mediaType uint32) (len int) {
 	t.zoneLock.RLock()
 	defer t.zoneLock.RUnlock()
 
@@ -65,7 +65,7 @@ func (t *topology) zoneLenOfDtaMediaType(mediaType uint32) (len int) {
 			continue
 		}
 
-		if zone.dataMediaType == mediaType {
+		if zone.ContainsMediaType(mediaType) {
 			len++
 		}
 	}
@@ -200,14 +200,15 @@ func (t *topology) getDataMediaTypeCanUse() (dataMediaTypeMap map[uint32]int) {
 
 	t.zoneMap.Range(func(zoneName, value interface{}) bool {
 		zone := value.(*Zone)
-		if mediaType, zoneMediaTypeDataCount := zone.GetDataMediaTypeCanUse(); mediaType != proto.MediaType_Unspecified {
-			if count, ok := dataMediaTypeMap[mediaType]; !ok {
-				dataMediaTypeMap[mediaType] = zoneMediaTypeDataCount
-			} else {
-				dataMediaTypeMap[mediaType] = count + zoneMediaTypeDataCount
+		if mediaTypes, zoneMediaTypeDataCount := zone.GetDataMediaTypeCanUse(); mediaTypes != nil {
+			for _, mediaType := range mediaTypes {
+				if count, ok := dataMediaTypeMap[mediaType]; !ok {
+					dataMediaTypeMap[mediaType] = zoneMediaTypeDataCount
+				} else {
+					dataMediaTypeMap[mediaType] = count + zoneMediaTypeDataCount
+				}
 			}
 		}
-
 		return true
 	})
 	return
@@ -585,7 +586,7 @@ func (nsgm *DomainManager) getHostFromNodeSetGrpSpecific(domainGrpManager *Domai
 				}
 
 				if createType == TypeDataPartition {
-					if host, peer, err = ns.getAvailDataNodeHosts(nil, needNum, mediaType); err != nil {
+					if host, peer, err = ns.getAvailDataNodeHosts(nil, needNum); err != nil {
 						log.LogErrorf("action[getHostFromNodeSetGrpSpecific] ns[%v] zone[%v] TypeDataPartition err[%v]", ns.ID, ns.zoneName, err)
 						//nsg.status = dataNodesUnAvailable
 						continue
@@ -689,7 +690,7 @@ func (nsgm *DomainManager) getHostFromNodeSetGrp(domainId uint64, replicaNum uin
 					log.LogWarnf("action[getHostFromNodeSetGrp] ns[%v] zone[%v] dataNodesUnAvailable", ns.ID, ns.zoneName)
 					continue
 				}
-				if host, peer, err = ns.getAvailDataNodeHosts(hosts, 1, mediaType); err != nil {
+				if host, peer, err = ns.getAvailDataNodeHosts(hosts, 1); err != nil {
 					log.LogWarnf("action[getHostFromNodeSetGrp] ns[%v] zone[%v] TypeDataPartition err[%v]", ns.ID, ns.zoneName, err)
 					//nsg.status = dataNodesUnAvailable
 					continue
@@ -1403,7 +1404,7 @@ func (t *topology) allocZonesForDataNode(zoneNum, replicaNum int, excludeZone []
 	if mediaType != proto.MediaType_Unspecified {
 		// pick up zones by mediaType
 		for _, zone := range zones {
-			if zone.dataMediaType == mediaType {
+			if zone.ContainsMediaType(mediaType) {
 				zonesOfMediaType = append(zonesOfMediaType, zone)
 			}
 		}
@@ -1479,7 +1480,10 @@ type Zone struct {
 	QosIopsWLimit           uint64
 	QosFlowRLimit           uint64
 	QosFlowWLimit           uint64
-	dataMediaType           uint32
+
+	dataMediaTypesLock sync.RWMutex
+	dataMediaTypes     []uint32
+	//dataMediaType           uint32
 	sync.RWMutex
 }
 type zoneValue struct {
@@ -1490,10 +1494,10 @@ type zoneValue struct {
 	QosFlowWLimit       uint64
 	DataNodesetSelector string
 	MetaNodesetSelector string
-	DataMediaType       uint32
+	DataMediaTypes      []uint32
 }
 
-func newZone(name string, dataMediaType uint32) (zone *Zone) {
+func newZone(name string, mediaTypes []uint32) (zone *Zone) {
 	zone = &Zone{name: name}
 	zone.status = normalZone
 	zone.dataNodes = new(sync.Map)
@@ -1501,7 +1505,7 @@ func newZone(name string, dataMediaType uint32) (zone *Zone) {
 	zone.nodeSetMap = make(map[uint64]*nodeSet)
 	zone.dataNodesetSelector = NewNodesetSelector(DefaultNodesetSelectorName, DataNodeType)
 	zone.metaNodesetSelector = NewNodesetSelector(DefaultNodesetSelectorName, MetaNodeType)
-	zone.SetDataMediaType(dataMediaType)
+	zone.SetDataMediaType(mediaTypes)
 	return
 }
 
@@ -1516,6 +1520,15 @@ func printZonesName(zones []*Zone) string {
 	}
 
 	return str
+}
+
+func (zone *Zone) ContainsMediaType(t uint32) bool {
+	for _, zoneMediaType := range zone.dataMediaTypes {
+		if t == zoneMediaType {
+			return true
+		}
+	}
+	return false
 }
 
 func (zone *Zone) GetDataNodesetSelector() string {
@@ -1551,7 +1564,7 @@ func (zone *Zone) getFsmValue() *zoneValue {
 		QosFlowWLimit:       zone.QosFlowWLimit,
 		DataNodesetSelector: zone.GetDataNodesetSelector(),
 		MetaNodesetSelector: zone.GetMetaNodesetSelector(),
-		DataMediaType:       zone.GetDataMediaType(),
+		DataMediaTypes:      zone.GetDataMediaType(),
 	}
 }
 
@@ -1939,7 +1952,7 @@ func (zone *Zone) getAvailNodeHosts(nodeType uint32, excludeNodeSets []uint64, e
 		if err != nil {
 			return nil, nil, errors.Trace(err, "zone[%v] alloc node set,replicaNum[%v]", zone.name, replicaNum)
 		}
-		return ns.getAvailDataNodeHosts(excludeHosts, replicaNum, zone.dataMediaType)
+		return ns.getAvailDataNodeHosts(excludeHosts, replicaNum)
 	}
 
 	ns, err := zone.allocNodeSetForMetaNode(excludeNodeSets, uint8(replicaNum))
@@ -2125,26 +2138,44 @@ func (zone *Zone) startDecommissionListTraverse(c *Cluster) (err error) {
 }
 
 func (zone *Zone) GetDataMediaTypeString() string {
-	return proto.MediaTypeString(atomic.LoadUint32(&zone.dataMediaType))
+	zone.dataMediaTypesLock.RLock()
+	defer zone.dataMediaTypesLock.RUnlock()
+	return proto.MediaTypesString(zone.dataMediaTypes)
 }
 
-func (zone *Zone) GetDataMediaType() uint32 {
-	return atomic.LoadUint32(&zone.dataMediaType)
+func (zone *Zone) GetDataMediaType() []uint32 {
+	zone.dataMediaTypesLock.RLock()
+	defer zone.dataMediaTypesLock.RUnlock()
+	return zone.dataMediaTypes
+
 }
 
-func (zone *Zone) SetDataMediaType(newMediaType uint32) {
-	atomic.StoreUint32(&zone.dataMediaType, newMediaType)
-}
+func (zone *Zone) SetDataMediaType(types []uint32) (updated bool) {
+	zone.dataMediaTypesLock.Lock()
+	defer zone.dataMediaTypesLock.Unlock()
 
-func (zone *Zone) GetDataMediaTypeCanUse() (dataMediaType uint32, dataCount int) {
-	dataMediaType = atomic.LoadUint32(&zone.dataMediaType)
-	if !proto.IsValidMediaType(dataMediaType) {
-		return proto.MediaType_Unspecified, 0
+	existsType := map[uint32]struct{}{}
+	for _, t := range zone.dataMediaTypes {
+		existsType[t] = struct{}{}
 	}
+	for _, t := range types {
+		if _, exist := existsType[t]; !exist {
+			zone.dataMediaTypes = append(zone.dataMediaTypes, t)
+			updated = true
+		}
+	}
+	return
+}
+
+func (zone *Zone) GetDataMediaTypeCanUse() (dataMediaType []uint32, dataCount int) {
+	zone.dataMediaTypesLock.RLock()
+	defer zone.dataMediaTypesLock.RUnlock()
+
+	dataMediaType = zone.dataMediaTypes
 
 	dataCount = zone.dataNodeCount()
 	if dataCount == 0 {
-		return proto.MediaType_Unspecified, 0
+		return nil, 0
 	}
 
 	return dataMediaType, dataCount

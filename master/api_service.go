@@ -344,14 +344,14 @@ func (m *Server) getTopology(w http.ResponseWriter, r *http.Request) {
 				dataNode := value.(*DataNode)
 				nsView.DataNodes = append(nsView.DataNodes, proto.NodeView{ID: dataNode.ID, Addr: dataNode.Addr,
 					DomainAddr: dataNode.DomainAddr, Status: dataNode.isActive, IsWritable: dataNode.isWriteAble(),
-					MediaType: dataNode.MediaType})
+					MediaTypes: dataNode.DisksConf.MediaTypes()})
 				return true
 			})
 			ns.metaNodes.Range(func(key, value interface{}) bool {
 				metaNode := value.(*MetaNode)
 				nsView.MetaNodes = append(nsView.MetaNodes, proto.NodeView{ID: metaNode.ID, Addr: metaNode.Addr,
 					DomainAddr: metaNode.DomainAddr, Status: metaNode.IsActive, IsWritable: metaNode.isWritable(),
-					MediaType: proto.MediaType_Unspecified})
+					MediaTypes: []uint32{proto.MediaType_Unspecified}})
 				return true
 			})
 		}
@@ -2683,19 +2683,19 @@ func checkIpPort(addr string) bool {
 
 func (m *Server) addDataNode(w http.ResponseWriter, r *http.Request) {
 	var (
-		nodeAddr  string
-		zoneName  string
-		mediaType uint32
-		id        uint64
-		err       error
-		nodesetId uint64
+		nodeAddr        string
+		zoneName        string
+		disksJsonString string
+		id              uint64
+		err             error
+		nodesetId       uint64
 	)
 	metric := exporter.NewTPCnt(apiToMetricsName(proto.AddDataNode))
 	defer func() {
 		doStatAndMetric(proto.AddDataNode, metric, err, nil)
 	}()
 
-	if nodeAddr, zoneName, mediaType, err = parseRequestForAddNode(r); err != nil {
+	if nodeAddr, zoneName, disksJsonString, err = parseRequestForAddDataNode(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
@@ -2712,7 +2712,7 @@ func (m *Server) addDataNode(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	if id, err = m.cluster.addDataNode(nodeAddr, zoneName, nodesetId, mediaType); err != nil {
+	if id, err = m.cluster.addDataNode(nodeAddr, zoneName, nodesetId, disksJsonString); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -2765,7 +2765,7 @@ func (m *Server) getDataNode(w http.ResponseWriter, r *http.Request) {
 		MaxDpCntLimit:             dataNode.GetDpCntLimit(),
 		CpuUtil:                   dataNode.CpuUtil.Load(),
 		IoUtils:                   dataNode.GetIoUtils(),
-		MediaType:                 dataNode.MediaType,
+		MediaTypes:                dataNode.DisksConf.MediaTypes(),
 	}
 
 	sendOkReply(w, r, newSuccessHTTPReply(dataNodeInfo))
@@ -4195,7 +4195,7 @@ func (m *Server) addMetaNode(w http.ResponseWriter, r *http.Request) {
 		doStatAndMetric(proto.AddMetaNode, metric, err, nil)
 	}()
 
-	if nodeAddr, zoneName, _, err = parseRequestForAddNode(r); err != nil {
+	if nodeAddr, zoneName, err = parseRequestForAddNode(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}

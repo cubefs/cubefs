@@ -390,7 +390,8 @@ type dataNodeValue struct {
 	ToBeOffline              bool
 	DecommissionDiskList     []string
 	DecommissionDpTotal      int
-	MediaType                uint32
+	//MediaType                uint32
+	DisksConf []proto.DiskConf
 }
 
 func newDataNodeValue(dataNode *DataNode) *dataNodeValue {
@@ -410,7 +411,7 @@ func newDataNodeValue(dataNode *DataNode) *dataNodeValue {
 		ToBeOffline:              dataNode.ToBeOffline,
 		DecommissionDiskList:     dataNode.DecommissionDiskList,
 		DecommissionDpTotal:      dataNode.DecommissionDpTotal,
-		MediaType:                dataNode.MediaType,
+		DisksConf:                dataNode.DisksConf,
 	}
 }
 
@@ -987,11 +988,11 @@ func (c *Cluster) loadZoneValue() (err error, updatedZones []*Zone) {
 			log.LogErrorf("action[loadZoneValue], unmarshal err:%v", err.Error())
 			continue
 		}
-		if cv.DataMediaType == proto.MediaType_Unspecified {
-			cv.DataMediaType = c.server.config.legacyDataMediaType
+		if len(cv.DataMediaTypes) == 0 {
+			cv.DataMediaTypes = append(cv.DataMediaTypes, c.server.config.legacyDataMediaType)
 			autoUpdated = true
 			log.LogWarnf("legacy zone(%v), set mediaType(%v) by config legacyDataMediaType",
-				cv.Name, proto.MediaTypeString(cv.DataMediaType))
+				cv.Name, proto.MediaTypeString(c.server.config.legacyDataMediaType))
 		}
 
 		var zoneInfo interface{}
@@ -1010,11 +1011,11 @@ func (c *Cluster) loadZoneValue() (err error, updatedZones []*Zone) {
 		if zone.GetMetaNodesetSelector() != cv.MetaNodesetSelector {
 			zone.metaNodesetSelector = NewNodesetSelector(cv.MetaNodesetSelector, MetaNodeType)
 		}
-		log.LogInfof("action[loadZoneValue] load zoneName[%v] with limit [%v,%v,%v,%v], dataMediaType:%v",
+		log.LogInfof("action[loadZoneValue] load zoneName[%v] with limit [%v,%v,%v,%v], dataMediaTypes:%v",
 			zone.name, cv.QosFlowRLimit, cv.QosIopsWLimit, cv.QosFlowWLimit, cv.QosIopsRLimit,
-			proto.MediaTypeString(cv.DataMediaType))
+			zone.GetDataMediaTypeString())
 		zone.loadDataNodeQosLimit()
-		zone.SetDataMediaType(cv.DataMediaType)
+		zone.SetDataMediaType(cv.DataMediaTypes)
 
 		if autoUpdated {
 			updatedZones = append(updatedZones, zone)
@@ -1163,7 +1164,7 @@ func (c *Cluster) loadNodeSets() (err error) {
 		zone, err := c.t.getZone(nsv.ZoneName)
 		if err != nil {
 			log.LogErrorf("action[loadNodeSets], getZone err:%v", err)
-			zone = newZone(nsv.ZoneName, proto.MediaType_Unspecified)
+			zone = newZone(nsv.ZoneName, nil)
 			c.t.putZoneIfAbsent(zone)
 		}
 
@@ -1339,14 +1340,14 @@ func (c *Cluster) loadDataNodes() (err error, updatedDataNodes []*DataNode) {
 			dnv.ZoneName = DefaultZoneName
 		}
 
-		if dnv.MediaType == proto.MediaType_Unspecified {
-			dnv.MediaType = c.server.config.legacyDataMediaType
-			updated = true
-			log.LogWarnf("legacy datanode(%v), set mediaType(%v) by config legacyDataMediaType",
-				dnv.Addr, proto.MediaTypeString(dnv.MediaType))
-		}
+		//if dnv.MediaType == proto.MediaType_Unspecified {
+		//	dnv.MediaType = c.server.config.legacyDataMediaType
+		//	updated = true
+		//	log.LogWarnf("legacy datanode(%v), set mediaType(%v) by config legacyDataMediaType",
+		//		dnv.Addr, proto.MediaTypeString(dnv.MediaType))
+		//}
 
-		dataNode := newDataNode(dnv.Addr, dnv.ZoneName, c.Name, dnv.MediaType)
+		dataNode := newDataNode(dnv.Addr, dnv.ZoneName, c.Name, dnv.DisksConf)
 		dataNode.DpCntLimit = newDpCountLimiter(&c.cfg.MaxDpCntLimit)
 		dataNode.ID = dnv.ID
 		dataNode.NodeSetID = dnv.NodeSetID
@@ -1375,8 +1376,8 @@ func (c *Cluster) loadDataNodes() (err error, updatedDataNodes []*DataNode) {
 			updatedDataNodes = append(updatedDataNodes, dataNode)
 		}
 
-		log.LogInfof("action[loadDataNodes],dataNode[%v],dataNodeID[%v],zone[%v],ns[%v],MediaType[%v]",
-			dataNode.Addr, dataNode.ID, dnv.ZoneName, dnv.NodeSetID, dataNode.MediaType)
+		log.LogInfof("action[loadDataNodes],dataNode[%v],dataNodeID[%v],zone[%v],ns[%v],DisksConf[%v]",
+			dataNode.Addr, dataNode.ID, dnv.ZoneName, dnv.NodeSetID, dataNode.DisksConf)
 	}
 	return
 }
