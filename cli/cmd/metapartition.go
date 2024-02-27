@@ -25,7 +25,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cubefs/cubefs/cli/api"
 	"github.com/cubefs/cubefs/metanode"
 
 	"github.com/cubefs/cubefs/proto"
@@ -903,7 +902,12 @@ func newMetaDataChecksum(mc *master.MasterClient) *cobra.Command {
 						return
 					}
 					addr := fmt.Sprintf("%s:%v", hostSplitArr[0], mc.MetaNodeProfPort)
-					metaHttpClient := api.NewMetaHttpClient(addr, false)
+					var metaHttpClient *meta.MetaHttpClient
+					if proto.IsDbBack {
+						metaHttpClient = meta.NewDBBackMetaHttpClient(addr, false)
+					} else {
+						metaHttpClient = meta.NewMetaHttpClient(addr, false)
+					}
 					r, e := metaHttpClient.GetMetaDataCrcSum(pid)
 					if e != nil {
 						errCh <- fmt.Errorf("get mp(%v) meta data crc sum from %s failed, error:%v", pid, addr, e)
@@ -1038,7 +1042,12 @@ func newCheckInodeTree(mc *master.MasterClient) *cobra.Command {
 						return
 					}
 					addr := fmt.Sprintf("%s:%v", hostSplitArr[0], mc.MetaNodeProfPort)
-					metaHttpClient := api.NewMetaHttpClient(addr, false)
+					var metaHttpClient *meta.MetaHttpClient
+					if proto.IsDbBack {
+						metaHttpClient = meta.NewDBBackMetaHttpClient(addr, false)
+					} else {
+						metaHttpClient = meta.NewMetaHttpClient(addr, false)
+					}
 					var (
 						r *proto.InodesCRCSumInfo
 						e error

@@ -49,13 +49,18 @@ func (r *request) addBody(body []byte) {
 
 type MetaHttpClient struct {
 	sync.RWMutex
-	useSSL bool
-	host   string
+	useSSL   bool
+	host     string
+	isDBBack bool
 }
 
 // NewMasterHelper returns a new MasterClient instance.
 func NewMetaHttpClient(host string, useSSL bool) *MetaHttpClient {
-	return &MetaHttpClient{host: host, useSSL: useSSL}
+	return &MetaHttpClient{host: host, useSSL: useSSL, isDBBack: false}
+}
+
+func NewDBBackMetaHttpClient(host string, useSSL bool) *MetaHttpClient {
+	return &MetaHttpClient{host: host, useSSL: useSSL, isDBBack: true}
 }
 
 func (c *MetaHttpClient) serveRequest(r *request) (respData []byte, err error) {
@@ -82,6 +87,9 @@ func (c *MetaHttpClient) serveRequest(r *request) (respData []byte, err error) {
 	}
 	switch stateCode {
 	case http.StatusOK:
+		if c.isDBBack && strings.Contains(r.path, "getExtents") {
+			return respData, nil
+		}
 		var body = &struct {
 			Code int32           `json:"code"`
 			Msg  string          `json:"msg"`
@@ -98,7 +106,12 @@ func (c *MetaHttpClient) serveRequest(r *request) (respData []byte, err error) {
 		}
 		return []byte(body.Data), nil
 	default:
+		if c.isDBBack && strings.Contains(r.path, "getExtents") && stateCode == http.StatusNotFound {
+			return nil, nil
+		}
 		log.LogErrorf("serveRequest: unknown status: host(%v) uri(%v) status(%v) body(%s).",
+			resp.Request.URL.String(), c.host, stateCode, strings.Replace(string(respData), "\n", "", -1))
+		err = fmt.Errorf("unknown status: host(%v) url(%v) status(%v) body(%s)",
 			resp.Request.URL.String(), c.host, stateCode, strings.Replace(string(respData), "\n", "", -1))
 	}
 	return
@@ -306,6 +319,7 @@ func (mc *MetaHttpClient) ListAllInodesId(pid uint64, mode uint32, stTime, endTi
 	resp = &proto.MpAllInodesId{}
 	req := newAPIRequest(http.MethodGet, "/getAllInodeId")
 	req.addParam("pid", fmt.Sprintf("%v", pid))
+	req.addParam("id", fmt.Sprintf("%v", pid))
 	if mode != 0 {
 		req.addParam("mode", fmt.Sprintf("%v", mode))
 	}
@@ -364,7 +378,12 @@ func (mc *MetaHttpClient) GetExtentKeyByInodeId(metaPartitionId, inode uint64) (
 		}
 	}()
 	var data []byte
-	req := newAPIRequest(http.MethodGet, "/getExtentsByInode")
+	var req *request
+	if mc.isDBBack {
+		req = newAPIRequest(http.MethodGet, "/getExtents")
+	} else {
+		req = newAPIRequest(http.MethodGet, "/getExtentsByInode")
+	}
 	req.params["pid"] = fmt.Sprintf("%v", metaPartitionId)
 	req.params["ino"] = fmt.Sprintf("%v", inode)
 	data, err = mc.serveRequest(req)
@@ -382,7 +401,16 @@ func (mc *MetaHttpClient) GetExtentKeyByInodeId(metaPartitionId, inode uint64) (
 		return
 	}
 
-	result = new(proto.GetExtentsResponse)
+	if mc.isDBBack {
+		getExtentsRespDBBck := new(proto.GetExtentsResponseDBBack)
+		if err = json.Unmarshal(data, &getExtentsRespDBBck); err != nil {
+			err = errors.NewErrorf("data:%s unmarshal extents key failed: %v", string(data), err)
+			return
+		}
+		result.Extents = getExtentsRespDBBck.Extents
+		return
+	}
+
 	if err = json.Unmarshal(data, &result); err != nil {
 		err = errors.NewErrorf("data:%s unmarshal extents key failed: %v", string(data), err)
 		return
@@ -439,5 +467,148 @@ func (mc *MetaHttpClient) GetInode(mpId uint64, inode uint64) (inodeInfoView *pr
 		Uid:         uint64(uid),
 		Mode:        uint64(dataInfo["mode"].(float64)),
 	}
+	return
+}
+
+
+func (mc *MetaHttpClient) ListAllInodesIDAndDelInodesID(pid uint64, mode uint32, stTime, endTime int64) (resp *proto.MpAllInodesId, err error) {
+	defer func() {
+		if err != nil {
+			log.LogErrorf("action[GetAllInodes],pid:%v,err:%v", pid, err)
+		}
+	}()
+
+	resp = &proto.MpAllInodesId{}
+	req := newAPIRequest(http.MethodGet, "/getAllInodeIdWithDeleted")
+	req.addParam("pid", fmt.Sprintf("%v", pid))
+	if mode != 0 {
+		req.addParam("mode", fmt.Sprintf("%v", mode))
+	}
+	if stTime != 0 {
+		req.addParam("start", fmt.Sprintf("%v", stTime))
+	}
+	if endTime != 0 {
+		req.addParam("end", fmt.Sprintf("%v", endTime))
+	}
+	respData, err := mc.serveRequest(req)
+	//fmt.Printf("err:%v,respData:%v\n", err, string(respData))
+	if err != nil {
+		return
+	}
+
+	err = json.Unmarshal(respData, resp)
+	if err != nil {
+		return
+	}
+
+	return
+}
+
+func (mc *MetaHttpClient) GetExtentKeyByDelInodeId(metaPartitionId, inode uint64) (result *proto.GetExtentsResponse, err error) {
+	defer func() {
+		if err != nil {
+			log.LogErrorf("GetExtentKeyByDelInodeId mp:%v, error:%v", metaPartitionId, err)
+		}
+	}()
+	var data []byte
+	req := newAPIRequest(http.MethodGet, "/getExtentsByDelIno")
+	req.params["pid"] = fmt.Sprintf("%v", metaPartitionId)
+	req.params["ino"] = fmt.Sprintf("%v", inode)
+	data, err = mc.serveRequest(req)
+	if err != nil {
+		err = errors.NewErrorf("get extent key by inode failed, error[%v]", err)
+		return
+	}
+
+	//log.LogInfof("mp id:%v, inode id:%v, resp info:%s", metaPartitionId, inode, string(data))
+
+	result = new(proto.GetExtentsResponse)
+	if len(data) == 0 {
+		result.Extents = make([]proto.ExtentKey, 0)
+		log.LogInfof("[getExtentKeyByInodeId] inode:%v not exist", inode)
+		return
+	}
+
+	result = new(proto.GetExtentsResponse)
+	if err = json.Unmarshal(data, &result); err != nil {
+		err = errors.NewErrorf("data:%s unmarshal extents key failed: %v", string(data), err)
+		return
+	}
+	return
+}
+
+func  (mc *MetaHttpClient) GetMetaDataCrcSum(pid uint64) (r *proto.MetaDataCRCSumInfo, err error) {
+	req := newAPIRequest(http.MethodGet, "/getMetaDataCrcSum")
+	req.params["pid"] = fmt.Sprintf("%v", pid)
+	var data []byte
+	data, err = mc.serveRequest(req)
+	if err != nil {
+		log.LogInfof("err:%v,respData:%v\n", err, string(data))
+		return
+	}
+	r = new(proto.MetaDataCRCSumInfo)
+	if err = json.Unmarshal(data, r); err != nil {
+		err = fmt.Errorf("unmarshal failed:%v", err)
+		return
+	}
+	return
+}
+
+func (mc *MetaHttpClient) GetInodesCrcSum(pid uint64) (result *proto.InodesCRCSumInfo, err error) {
+	req := newAPIRequest(http.MethodGet, "/getInodesCrcSum")
+	req.params["pid"] = fmt.Sprintf("%v", pid)
+	var respData []byte
+	respData, err = mc.serveRequest(req)
+	if err != nil {
+		log.LogErrorf("err:%v,respData:%v\n", err, string(respData))
+		return
+	}
+
+	dec := json.NewDecoder(bytes.NewBuffer(respData))
+	result = &proto.InodesCRCSumInfo{}
+	if err = dec.Decode(result); err != nil {
+		log.LogErrorf("decode failed:%v", err)
+		return
+	}
+	return
+}
+
+func (mc *MetaHttpClient) GetDelInodesCrcSum(pid uint64) (result *proto.InodesCRCSumInfo, err error) {
+	req := newAPIRequest(http.MethodGet, "/getDelInodesCrcSum")
+	req.params["pid"] = fmt.Sprintf("%v", pid)
+	var respData []byte
+	respData, err = mc.serveRequest(req)
+	if err != nil {
+		log.LogErrorf("err:%v,respData:%v\n", err, string(respData))
+		return
+	}
+
+	dec := json.NewDecoder(bytes.NewBuffer(respData))
+	result = &proto.InodesCRCSumInfo{}
+	if err = dec.Decode(result); err != nil {
+		log.LogErrorf("decode failed:%v", err)
+		return
+	}
+	return
+}
+
+func (mc *MetaHttpClient) GetInodeInfo(pid, ino uint64) (info *proto.InodeInfo, err error) {
+	req := newAPIRequest(http.MethodGet, "/getInode")
+	req.params["pid"] = fmt.Sprintf("%v", pid)
+	req.params["ino"] = fmt.Sprintf("%v", ino)
+	var respData []byte
+	respData, err = mc.serveRequest(req)
+	if err != nil {
+		log.LogErrorf("err:%v,respData:%v\n", err, string(respData))
+		return
+	}
+
+	dec := json.NewDecoder(bytes.NewBuffer(respData))
+	r := &proto.InodeGetResponse{}
+	if err = dec.Decode(r); err != nil {
+		log.LogErrorf("decode failed:%v", err)
+		return
+	}
+	info = r.Info
 	return
 }

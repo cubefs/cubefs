@@ -149,6 +149,79 @@ func SelectTaskHistory(cluster, volume string, dpId, mpId uint64, taskType, limi
 	return
 }
 
+func SelectLatestFinishFromTaskHistory(cluster, volume string, dpId, mpId uint64, taskType int) (t *proto.TaskHistory, err error) {
+	sqlCmd := fmt.Sprintf("select %s from task_history", taskHistoryColumns())
+	conditions := make([]string, 0)
+	values := make([]interface{}, 0)
+	if !stringutil.IsStrEmpty(cluster) {
+		conditions = append(conditions, " cluster_name = ?")
+		values = append(values, cluster)
+	}
+	if !stringutil.IsStrEmpty(volume) {
+		conditions = append(conditions, " vol_name = ?")
+		values = append(values, volume)
+	}
+	if taskType != 0 {
+		conditions = append(conditions, " task_type = ?")
+		values = append(values, taskType)
+	}
+	if dpId != 0 {
+		conditions = append(conditions, " dp_id = ?")
+		values = append(values, dpId)
+	}
+	if mpId != 0 {
+		conditions = append(conditions, " mp_id = ?")
+		values = append(values, mpId)
+	}
+	if len(conditions) > 0 {
+		sqlCmd += " where"
+		for index, condition := range conditions {
+			if index != 0 {
+				sqlCmd += " and"
+			}
+			sqlCmd += condition
+		}
+	}
+	sqlCmd += fmt.Sprintf(" order by create_time desc limit 1")
+
+	var rows *sql.Rows
+	rows, err = db.Query(sqlCmd, values...)
+	if rows == nil {
+		return
+	}
+	defer func() {
+		_ = rows.Close()
+	}()
+
+	for rows.Next() {
+		t = &proto.TaskHistory{}
+		var tct string
+		var tut string
+		var ct string
+		var taskCreateTime time.Time
+		var taskUpdateTime time.Time
+		var createTime time.Time
+		err = rows.Scan(&t.TaskId, &t.TaskType, &t.Cluster, &t.VolName, &t.DpId, &t.MpId, &t.TaskInfo, &t.WorkerAddr, &t.Status, &t.ExceptionInfo, &tct, &tut, &ct)
+		if err != nil {
+			return
+		}
+		if taskCreateTime, err = FormatTime(tct); err != nil {
+			return
+		}
+		if taskUpdateTime, err = FormatTime(tut); err != nil {
+			return
+		}
+		if createTime, err = FormatTime(ct); err != nil {
+			return
+		}
+		t.TaskCreateTime = taskCreateTime
+		t.TaskUpdateTime = taskUpdateTime
+		t.CreateTime = createTime
+		return
+	}
+	return
+}
+
 func DeleteTaskHistories(ths []*proto.TaskHistory) (err error) {
 	var (
 		rs   sql.Result

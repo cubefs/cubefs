@@ -362,6 +362,22 @@ type DataPartitionInfo struct {
 	DbBackMissNodes_        map[string]int64 `json:"MissNodes,omitempty"`
 }
 
+type DataPartitionInfoDBBack struct {
+	PartitionID      uint64
+	LastLoadTime     int64
+	ReplicaNum       uint8
+	Status           int8
+	IsRecover        bool
+	IsManual         bool
+	Replicas         []*DataReplica
+	PartitionType    string
+	PersistenceHosts []string
+	VolName         string
+	FileInCoreMap   map[string]*FileInCore
+	MissNodes       map[string]int64
+	FileMissReplica map[string]int64
+}
+
 // FileInCore define file in data partition
 type FileInCore struct {
 	Name          string

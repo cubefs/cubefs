@@ -72,6 +72,7 @@ const (
 	AdminClusterEcSet              = "/cluster/ecSet"
 	AdminClusterGetScrub           = "/scrub/get"
 	AdminListVols                  = "/vol/list"
+	AdminListVolsDBBack            = "/admin/listVols"
 	AdminSetNodeInfo               = "/admin/setNodeInfo"
 	AdminGetNodeInfo               = "/admin/getNodeInfo"
 	AdminSetNodeState              = "/admin/setNodeState"

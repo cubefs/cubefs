@@ -1,10 +1,10 @@
-package compact
+package common
 
 import (
 	"sync"
 )
 
-type concurrencyLimiter struct {
+type ConcurrencyLimiter struct {
 	limit       int32
 	runningNum  int32
 	blockingNum int32
@@ -14,16 +14,16 @@ type concurrencyLimiter struct {
 
 // NewConcurrencyLimiter Create a concurrency limiter. The limit is the number of concurrency limits. You can dynamically adjust the limit through Reset().
 // Each time you call Get() to get a resource, create a goroutine, and release the resource through Release() after completing the task.
-func NewConcurrencyLimiter(limit int32) *concurrencyLimiter {
+func NewConcurrencyLimiter(limit int32) *ConcurrencyLimiter {
 	mu := new(sync.RWMutex)
-	return &concurrencyLimiter{
+	return &ConcurrencyLimiter{
 		limit: limit,
 		cond:  sync.NewCond(mu),
 		mu:    mu,
 	}
 }
 
-func (c *concurrencyLimiter) Reset(limit int32) {
+func (c *ConcurrencyLimiter) Reset(limit int32) {
 	if limit <= 0 {
 		return
 	}
@@ -42,7 +42,7 @@ func (c *concurrencyLimiter) Reset(limit int32) {
 	}
 }
 
-func (c *concurrencyLimiter) Add() {
+func (c *ConcurrencyLimiter) Add() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -58,7 +58,7 @@ func (c *concurrencyLimiter) Add() {
 	c.blockingNum--
 }
 
-func (c *concurrencyLimiter) Done() {
+func (c *ConcurrencyLimiter) Done() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -70,7 +70,7 @@ func (c *concurrencyLimiter) Done() {
 	c.runningNum--
 }
 
-func (c *concurrencyLimiter) Limit() int32 {
+func (c *ConcurrencyLimiter) Limit() int32 {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return c.limit

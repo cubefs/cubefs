@@ -97,15 +97,25 @@ const (
 	WorkerTypeDiskReBalance
 	WorkerTypeCheckCrc
 	WorkerTypeInodeMigration
+	WorkerTypeFSCheck
+	WorkerTypeBlockCheck
+	WorkerTypeNormalExtentMistakeDelCheck
+	WorkerTypeTinyExtentPunchHoleCheck
+	WorkerTypeMetaDataCrcCheck
+	WorkerTypeExtentDoubleAllocateCheck
 )
 
 var workerTypeMap = map[WorkerType]string{
-	WorkerTypeSmartVolume:   "smartVolume",
-	WorkerTypeCompact:       "compact",
-	WorkerTypeDPReBalance:   "dpRebalance",
-	WorkerTypeDiskReBalance: "diskRebalance",
-	WorkerTypeCheckCrc:      "crcworker",
-	WorkerTypeInodeMigration: "inodeMigration",
+	WorkerTypeSmartVolume:                 "smartVolume",
+	WorkerTypeCompact:                     "compact",
+	WorkerTypeDPReBalance:                 "dpRebalance",
+	WorkerTypeDiskReBalance:               "diskRebalance",
+	WorkerTypeCheckCrc:                    "crcworker",
+	WorkerTypeInodeMigration:              "inodeMigration",
+	WorkerTypeFSCheck:                     "fsCheck",
+	WorkerTypeBlockCheck:                  "blockCheck",
+	WorkerTypeNormalExtentMistakeDelCheck: "normalEKCheck",
+	WorkerTypeMetaDataCrcCheck:            "metaDataCheck",
 }
 
 func WorkerTypeToName(wt WorkerType) string {
@@ -332,4 +342,47 @@ func NewScheduleConfig(ct ScheduleConfigType, ck, cv string) *ScheduleConfig {
 
 func (sc ScheduleConfig) Key() string {
 	return fmt.Sprintf("%v_%v", sc.ConfigType, sc.ConfigKey)
+}
+
+type CheckRule struct {
+	WorkerType        WorkerType
+	ClusterID         string
+	RuleType          string //check all:true,skip volumes/false,check volumes, special owner:owner_checkInterval_safeCleanInterval,
+	RuleValue         string
+}
+
+type MailToMemberInfo struct {
+	WorkerType   WorkerType
+	Members      string
+}
+
+type NotifyMembers struct {
+	WorkerType   WorkerType
+	EmailMembers string
+	AlarmMembers string
+	CallMembers  string
+}
+
+type MainCheckTaskStatus int
+
+const (
+	MainCheckTaskStatusRunning MainCheckTaskStatus = iota
+	MainCheckTaskStatusFinished
+)
+
+type MainCheckTask struct {
+	TaskId        uint64
+	TaskType      WorkerType
+	Cluster       string
+	Status        MainCheckTaskStatus
+	CreateTime    time.Time
+	FinishedTime  time.Time
+}
+
+func NewMainCheckTask(taskType WorkerType, clusterID string) *MainCheckTask {
+	return &MainCheckTask{
+		TaskType:     taskType,
+		Cluster:      clusterID,
+		Status:       MainCheckTaskStatusRunning,
+	}
 }

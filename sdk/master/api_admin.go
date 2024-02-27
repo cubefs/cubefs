@@ -103,6 +103,22 @@ func (api *AdminAPI) GetDataPartition(volName string, partitionID uint64) (parti
 		return
 	}
 	partition = &proto.DataPartitionInfo{}
+	if api.mc.IsDbBack || proto.IsDbBack {
+		partitionInfoDBBack := &proto.DataPartitionInfoDBBack{}
+		if err = json.Unmarshal(buf, partitionInfoDBBack); err != nil {
+			return
+		}
+		partition.VolName = partitionInfoDBBack.VolName
+		partition.PartitionID = partitionInfoDBBack.PartitionID
+		partition.Hosts = partitionInfoDBBack.PersistenceHosts
+		partition.Replicas = partitionInfoDBBack.Replicas
+		partition.Status = partitionInfoDBBack.Status
+		partition.ReplicaNum = partitionInfoDBBack.ReplicaNum
+		partition.IsManual = partitionInfoDBBack.IsManual
+		partition.MissingNodes = partitionInfoDBBack.MissNodes
+		return
+	}
+
 	if err = json.Unmarshal(buf, &partition); err != nil {
 		return
 	}
@@ -658,12 +674,26 @@ func (api *AdminAPI) CreateMetaPartition(volName string, inodeStart uint64) (err
 
 func (api *AdminAPI) ListVols(keywords string) (volsInfo []*proto.VolInfo, err error) {
 	var request = newAPIRequest(http.MethodGet, proto.AdminListVols)
+	if proto.IsDbBack || api.mc.IsDbBack {
+		request = newAPIRequest(http.MethodGet, proto.AdminListVolsDBBack)
+	}
 	request.addParam("keywords", keywords)
 	var data []byte
 	if data, _, err = api.mc.serveRequest(request); err != nil {
 		return
 	}
 	volsInfo = make([]*proto.VolInfo, 0)
+	if proto.IsDbBack || api.mc.IsDbBack {
+		volsName := make([]string, 0)
+		if err = json.Unmarshal(data, &volsName); err != nil {
+			return
+		}
+		for _, name := range volsName {
+			volsInfo = append(volsInfo, &proto.VolInfo{Name: name})
+		}
+		return
+	}
+
 	if err = json.Unmarshal(data, &volsInfo); err != nil {
 		return
 	}

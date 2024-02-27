@@ -1,4 +1,4 @@
-package compact
+package common
 
 import (
 	"sync"
