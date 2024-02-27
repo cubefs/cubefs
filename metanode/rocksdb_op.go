@@ -50,6 +50,7 @@ const (
 	TransactionRollbackInodeTable
 	TransactionRollbackDentryTable
 	DeletedExtentsTable
+	DeletedObjExtentsTable
 	MaxTable
 )
 
@@ -75,6 +76,8 @@ func getTableTypeKey(treeType TreeType) TableType {
 		return TransactionRollbackDentryTable
 	case DeletedExtentsType:
 		return DeletedExtentsTable
+	case DeletedObjExtentsType:
+		return DeletedObjExtentsTable
 	default:
 	}
 	panic("error tree type")

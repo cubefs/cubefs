@@ -298,7 +298,7 @@ func newMetaPartitionDecommissionCmd(client *master.MasterClient) *cobra.Command
 		},
 	}
 	cmd.Flags().StringVar(&clientIDKey, CliFlagClientIDKey, client.ClientIDKey(), CliUsageClientIDKey)
-	cmd.Flags().StringVar(&optStoreMode, CliFlagStoreMode, "", "specify volume default store mode [1:Mem, 2:Rocks]")
+	cmd.Flags().StringVar(&optStoreMode, CliFlagStoreMode, "", "specify volume default store mode")
 	return cmd
 }
 

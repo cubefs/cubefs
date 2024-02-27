@@ -40,6 +40,8 @@ const (
 	InodeNLink0DelayDeleteSeconds = 24 * 3600
 )
 
+// TODO(NaturalSelect): remove those code
+
 func (mp *metaPartition) startFreeList() (err error) {
 	if mp.delInodeFp, err = os.OpenFile(path.Join(mp.config.RootDir,
 		DeleteInodeFileExtension), OpenRWAppendOpt, 0o644); err != nil {
@@ -47,64 +49,15 @@ func (mp *metaPartition) startFreeList() (err error) {
 	}
 
 	// start vol update ticket
-	go mp.updateVolWorker()
 	go mp.deleteWorker()
 	mp.startToDeleteExtents()
 	return
 }
 
-func (mp *metaPartition) updateVolView(convert func(view *proto.DataPartitionsView) *DataPartitionsView) (err error) {
-	volName := mp.config.VolName
-	dataView, err := masterClient.ClientAPI().GetDataPartitions(volName)
-	if err != nil {
-		err = fmt.Errorf("updateVolWorker: get data partitions view fail: volume(%v) err(%v)",
-			volName, err)
-		log.LogErrorf(err.Error())
-		return
-	}
-	mp.vol.UpdatePartitions(convert(dataView))
+func (mp *metaPartition) UpdateVolView(volView *proto.SimpleVolView, dataView *DataPartitionsView) {
+	mp.vol.UpdatePartitions(dataView)
 
-	volView, err := masterClient.AdminAPI().GetVolumeSimpleInfo(volName)
-	if err != nil {
-		err = fmt.Errorf("updateVolWorker: get volumeinfo fail: volume(%v)  err(%v)", volName, err)
-		log.LogErrorf(err.Error())
-		return
-	}
 	mp.vol.volDeleteLockTime = volView.DeleteLockTime
-	return nil
-}
-
-func (mp *metaPartition) updateVolWorker() {
-	t := time.NewTicker(UpdateVolTicket)
-	convert := func(view *proto.DataPartitionsView) *DataPartitionsView {
-		newView := &DataPartitionsView{
-			DataPartitions: make([]*DataPartition, len(view.DataPartitions)),
-		}
-		for i := 0; i < len(view.DataPartitions); i++ {
-			if len(view.DataPartitions[i].Hosts) < 1 {
-				log.LogErrorf("updateVolWorker dp id(%v) is invalid, DataPartitionResponse detail[%v]",
-					view.DataPartitions[i].PartitionID, view.DataPartitions[i])
-				continue
-			}
-			newView.DataPartitions[i] = &DataPartition{
-				PartitionID: view.DataPartitions[i].PartitionID,
-				Status:      view.DataPartitions[i].Status,
-				Hosts:       view.DataPartitions[i].Hosts,
-				ReplicaNum:  view.DataPartitions[i].ReplicaNum,
-			}
-		}
-		return newView
-	}
-	mp.updateVolView(convert)
-	for {
-		select {
-		case <-mp.stopC:
-			t.Stop()
-			return
-		case <-t.C:
-			mp.updateVolView(convert)
-		}
-	}
 }
 
 const (
@@ -217,7 +170,7 @@ func (mp *metaPartition) batchDeleteExtentsByPartition(partitionDeleteExtents ma
 	for i := 0; i < len(allInodes); i++ {
 		successDeleteExtentCnt := 0
 		inode := allInodes[i]
-		inode.Extents.Range(func(ek proto.ExtentKey) bool {
+		inode.Extents.Range(func(_ int, ek proto.ExtentKey) bool {
 			if occurErrors[ek.PartitionId] == nil {
 				successDeleteExtentCnt++
 				return true

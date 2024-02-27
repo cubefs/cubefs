@@ -42,6 +42,7 @@ type MemSnapShot struct {
 	transactionRbInode  *TransactionRollbackInodeBTree
 	transactionRbDentry *TransactionRollbackDentryBTree
 	deletedExtents      *DeletedExtentsBTree
+	deletedObjExtents   *DeletedObjExtentsBTree
 	txID                uint64
 	deletedExtentId     uint64
 }
@@ -151,6 +152,18 @@ func (b *MemSnapShot) RangeWithScope(tp TreeType, start, end interface{}, cb fun
 			endDek = end.(*DeletedExtentKey)
 		}
 		return b.deletedExtents.Range(startDek, endDek, callbackFunc)
+	case DeletedObjExtentsType:
+		callbackFunc := func(doek *DeletedObjExtentKey) (bool, error) {
+			return cb(doek)
+		}
+		var startDoek, endDoek *DeletedObjExtentKey
+		if start != nil {
+			startDoek = start.(*DeletedObjExtentKey)
+		}
+		if end != nil {
+			endDoek = start.(*DeletedObjExtentKey)
+		}
+		return b.deletedObjExtents.Range(startDoek, endDoek, callbackFunc)
 	default:
 	}
 	panic("out of type")
@@ -176,6 +189,8 @@ func (b *MemSnapShot) Count(tp TreeType) uint64 {
 		return b.transactionRbDentry.Count()
 	case DeletedExtentsType:
 		return b.deletedExtents.Count()
+	case DeletedObjExtentsType:
+		return b.deletedObjExtents.Count()
 	default:
 	}
 	panic("out of type")
@@ -276,6 +291,17 @@ func (b *MemSnapShot) CrcSum(tp TreeType) (crcSum uint32, err error) {
 			return true, nil
 		}
 		err = b.deletedExtents.Range(nil, nil, cb)
+	case DeletedObjExtentsType:
+		cb := func(doek *DeletedObjExtentKey) (bool, error) {
+			if data, err = doek.Marshal(); err != nil {
+				return false, err
+			}
+			if _, err = crc.Write(data); err != nil {
+				return false, err
+			}
+			return true, nil
+		}
+		err = b.deletedObjExtents.Range(nil, nil, cb)
 	default:
 		panic("out of type")
 	}
@@ -336,6 +362,10 @@ type TransactionRollbackDentryBTree struct {
 }
 
 type DeletedExtentsBTree struct {
+	*BTree
+}
+
+type DeletedObjExtentsBTree struct {
 	*BTree
 }
 
@@ -520,6 +550,11 @@ func (i *DeletedExtentsBTree) Put(dbHandle interface{}, dek *DeletedExtentKey) e
 	return nil
 }
 
+func (i *DeletedObjExtentsBTree) Put(dbHandle interface{}, doek *DeletedObjExtentKey) error {
+	i.BTree.ReplaceOrInsert(doek, true)
+	return nil
+}
+
 func (i *TransactionRollbackInodeBTree) Update(dbHandle interface{}, inode *TxRollbackInode) error {
 	i.BTree.ReplaceOrInsert(inode, false)
 	return nil
@@ -640,6 +675,13 @@ func (i *TransactionRollbackDentryBTree) Delete(dbHandle interface{}, parentInod
 
 func (i *DeletedExtentsBTree) Delete(dbHandle interface{}, dek *DeletedExtentKey) (bool, error) {
 	if old := i.BTree.Delete(dek); old == nil {
+		return false, nil
+	}
+	return true, nil
+}
+
+func (i *DeletedObjExtentsBTree) Delete(dbHandle interface{}, doek *DeletedObjExtentKey) (bool, error) {
+	if old := i.BTree.Delete(doek); old == nil {
 		return false, nil
 	}
 	return true, nil
@@ -861,6 +903,34 @@ func (i *DeletedExtentsBTree) Range(start, end *DeletedExtentKey, cb func(dek *D
 }
 
 func (i *DeletedExtentsBTree) RangeWithPrefix(prefix, start, end *DeletedExtentKey, cb func(dek *DeletedExtentKey) (bool, error)) error {
+	return i.Range(start, end, cb)
+}
+
+func (i *DeletedObjExtentsBTree) Range(start, end *DeletedObjExtentKey, cb func(doek *DeletedObjExtentKey) (bool, error)) error {
+	var (
+		err  error
+		next bool
+	)
+	callback := func(i BtreeItem) bool {
+		next, err = cb(i.(*DeletedObjExtentKey))
+		if err != nil {
+			return false
+		}
+		return next
+	}
+	if start == nil {
+		start = &DeletedObjExtentKey{}
+	}
+
+	if end == nil {
+		i.BTree.AscendGreaterOrEqual(start, callback)
+	} else {
+		i.BTree.AscendRange(start, end, callback)
+	}
+	return err
+}
+
+func (i *DeletedObjExtentsBTree) RangeWithPrefix(prefix, start, end *DeletedObjExtentKey, cb func(dek *DeletedObjExtentKey) (bool, error)) error {
 	return i.Range(start, end, cb)
 }
 

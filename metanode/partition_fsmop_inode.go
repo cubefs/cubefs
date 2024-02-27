@@ -404,6 +404,13 @@ func (mp *metaPartition) fsmUnlinkInode(dbHandle interface{}, ino *Inode, unlink
 					}
 				}
 			}
+			for _, oek := range inode.ObjExtents.eks {
+				doek := NewDeletedObjExtentKey(&oek, inode.Inode, mp.AllocDeletedExtentId())
+				err = mp.deletedObjExtentsTree.Put(dbHandle, doek)
+				if err != nil {
+					return
+				}
+			}
 			// mp.freeList.Push(inode.Inode)
 		}
 	}
@@ -516,8 +523,8 @@ func (mp *metaPartition) internalDeleteInode(dbHandle interface{}, ino *Inode) (
 		return
 	}
 	var snap Snapshot
-	start := NewDeletedExtentKeyPrefix(mp.config.PartitionId, ino.Inode)
-	end := NewDeletedExtentKeyPrefix(mp.config.PartitionId, ino.Inode+1)
+	startDek := NewDeletedExtentKeyPrefix(ino.Inode)
+	endDek := NewDeletedExtentKeyPrefix(ino.Inode + 1)
 	snap, err = NewSnapshot(mp)
 	if err != nil {
 		log.LogErrorf("[internalDeleteInode] failed to get snapshot, mp(%v), err(%v)", mp.config.PartitionId, err)
@@ -525,19 +532,31 @@ func (mp *metaPartition) internalDeleteInode(dbHandle interface{}, ino *Inode) (
 	}
 	defer snap.Close()
 	// NOTE: delete from dek tree
-	err = snap.RangeWithScope(DeletedExtentsType, start, end, func(item interface{}) (bool, error) {
+	err = snap.RangeWithScope(DeletedExtentsType, startDek, endDek, func(item interface{}) (bool, error) {
 		dek := item.(*DeletedExtentKey)
 		if _, err = mp.deletedExtentsTree.Delete(dbHandle, dek); err != nil {
 			return false, err
 		}
 		return true, nil
 	})
-
 	if err != nil {
 		log.LogErrorf("[internalDeleteInode] failed to delete dek from dek tree, err(%v)", err)
 		return
 	}
-	// mp.freeList.Remove(ino.Inode)
+
+	startDoek := NewDeletedObjExtentKeyPrefix(ino.Inode)
+	endDoek := NewDeletedObjExtentKeyPrefix(ino.Inode)
+	err = snap.RangeWithScope(DeletedObjExtentsType, startDoek, endDoek, func(item interface{}) (bool, error) {
+		doek := item.(*DeletedObjExtentKey)
+		if _, err = mp.deletedObjExtentsTree.Delete(dbHandle, doek); err != nil {
+			return false, nil
+		}
+		return true, nil
+	})
+	if err != nil {
+		log.LogErrorf("[internalDeleteInode] failed to delete doek from doek tree, err(%v)", err)
+		return
+	}
 	_, err = mp.extendTree.Delete(dbHandle, ino.Inode) // Also delete extend attribute.
 	return
 }
@@ -859,6 +878,13 @@ func (mp *metaPartition) fsmEvictInode(dbHandle interface{}, ino *Inode) (resp *
 					if err != nil {
 						return
 					}
+				}
+			}
+			for _, oek := range i.ObjExtents.eks {
+				doek := NewDeletedObjExtentKey(&oek, i.Inode, mp.AllocDeletedExtentId())
+				err = mp.deletedObjExtentsTree.Put(dbHandle, doek)
+				if err != nil {
+					return
 				}
 			}
 			// mp.freeList.Push(i.Inode)

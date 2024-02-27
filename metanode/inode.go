@@ -232,8 +232,8 @@ func (inode *Inode) ClearAllExtsOfflineInode(mpID uint64) (extInfo map[uint64][]
 			dIno = inode.multiSnap.multiVersions[i-1]
 		}
 		log.LogDebugf("deleteMarkedInodes. GetAllExtsOfflineInode.mp[%v] inode[%v] dino[%v]", mpID, inode.Inode, dIno)
-		dIno.Extents.Range(func(ek proto.ExtentKey) bool {
-			ext := &ek
+		dIno.Extents.Range(func(index int, _ proto.ExtentKey) bool {
+			ext := &dIno.Extents.eks[index]
 			if ext.IsSplit() {
 				var (
 					dOK  bool
@@ -247,14 +247,14 @@ func (inode *Inode) ClearAllExtsOfflineInode(mpID uint64) (extInfo map[uint64][]
 					log.LogDebugf("deleteMarkedInodes. GetAllExtsOfflineInode.mp[%v] inode[%v] ek [%v] be removed", mpID, inode.Inode, ext)
 					return true
 				}
-
 				log.LogDebugf("deleteMarkedInodes. GetAllExtsOfflineInode.mp[%v] inode[%v] ek [%v] be removed", mpID, inode.Inode, ext)
+				// NOTE: unnecessary to set ext
 			}
 			extInfo[ext.PartitionId] = append(extInfo[ext.PartitionId], ext)
 			log.LogWritef("GetAllExtsOfflineInode. mp[%v] ino(%v) deleteExtent(%v)", mpID, inode.Inode, ext.String())
 			return true
 		})
-		// NOTE: remove all extents
+		// NOTE: remove all extents in this layer
 		dIno.Extents = NewSortedExtents()
 	}
 	return

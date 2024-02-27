@@ -19,13 +19,14 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
-	"github.com/cubefs/cubefs/util/errors"
 	"io"
 	"os"
 	"path"
 	"reflect"
 	"strings"
 	"sync"
+
+	"github.com/cubefs/cubefs/util/errors"
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/log"
@@ -145,6 +146,7 @@ type MetaItemIterator struct {
 	treeSnap          Snapshot
 	uniqChecker       *uniqChecker
 	verList           []*proto.VolVersionInfo
+	deletedExtentsId  uint64
 
 	filenames []string
 
@@ -163,6 +165,7 @@ const (
 	SiwKeyCursor
 	SiwKeyUniqId
 	SiwKeyVerList
+	SiwKeyDeletedExtentsId
 )
 
 type SnapItemWrapper struct {
@@ -197,6 +200,7 @@ func newMetaItemIterator(mp *metaPartition) (si *MetaItemIterator, err error) {
 	}
 	si.uniqChecker = mp.uniqChecker.clone()
 	si.verList = mp.GetAllVerList()
+	si.deletedExtentsId = mp.GetDeletedExtentId()
 	mp.nonIdempotent.Unlock()
 
 	if si.treeSnap == nil {
@@ -207,6 +211,7 @@ func newMetaItemIterator(mp *metaPartition) (si *MetaItemIterator, err error) {
 	si.errorCh = make(chan error, 1)
 	si.closeCh = make(chan struct{})
 
+	// TODO(NaturalSelect): check need or not
 	// collect extend del files
 	filenames := make([]string, 0)
 	var fileInfos []os.DirEntry
@@ -278,6 +283,10 @@ func newMetaItemIterator(mp *metaPartition) (si *MetaItemIterator, err error) {
 
 			verListWrapper := SnapItemWrapper{SiwKeyVerList, si.verList}
 			produceItem(verListWrapper)
+
+			// NOTE: process deleted extents id
+			deletedExtentsIdWrapper := SnapItemWrapper{SiwKeyDeletedExtentsId, si.deletedExtentsId}
+			produceItem(deletedExtentsIdWrapper)
 
 			log.LogDebugf("newMetaItemIterator: SnapFormatVersion_1, partitionId(%v) applyID(%v) txId(%v) cursor(%v) uniqID(%v) verList(%v)",
 				mp.config.PartitionId, si.applyID, si.txId, si.cursor, si.uniqID, si.verList)
@@ -355,7 +364,7 @@ func newMetaItemIterator(mp *metaPartition) (si *MetaItemIterator, err error) {
 			}
 
 			iter.treeSnap.Range(TransactionRollbackDentryType, func(i interface{}) (bool, error) {
-				log.LogDebugf("[newMetaItemIterator] sebd rb dentries")
+				log.LogDebugf("[newMetaItemIterator] send rb dentries")
 				return produceItem(i), nil
 			})
 			if checkClose() {
@@ -368,6 +377,11 @@ func newMetaItemIterator(mp *metaPartition) (si *MetaItemIterator, err error) {
 					return
 				}
 			}
+
+			iter.treeSnap.Range(DeletedExtentsType, func(item interface{}) (bool, error) {
+				log.LogDebugf("[newMetaItemIterator] send deleted extents")
+				return produceItem(item), nil
+			})
 		}
 
 		// process extent del files
@@ -461,6 +475,11 @@ func (si *MetaItemIterator) Next() (data []byte, err error) {
 			}
 			snap = NewMetaItem(opFSMVerListSnapShot, typedItem.MarshalKey(), verListBuf)
 			log.LogInfof("snapshot.fileRootDir %v verList %v", si.fileRootDir, verListBuf)
+		} else if typedItem.key == SiwKeyDeletedExtentsId {
+			deletedExtentsId := typedItem.value.(uint64)
+			deletedExtentsIdBuf := make([]byte, 8)
+			binary.BigEndian.PutUint64(deletedExtentsIdBuf, deletedExtentsId)
+			snap = NewMetaItem(opFSMDeletedExtentsId, typedItem.MarshalKey(), deletedExtentsIdBuf)
 		} else {
 			panic(fmt.Sprintf("MetaItemIterator.Next: unknown SnapItemWrapper key: %v", typedItem.key))
 		}
@@ -485,13 +504,31 @@ func (si *MetaItemIterator) Next() (data []byte, err error) {
 		}
 		snap = NewMetaItem(opFSMCreateMultipart, nil, raw)
 	case *proto.TransactionInfo:
-		val, _ := typedItem.Marshal()
+		var val []byte
+		val, err = typedItem.Marshal()
+		if err != nil {
+			si.err = err
+			si.Close()
+			return
+		}
 		snap = NewMetaItem(opFSMTxSnapshot, []byte(typedItem.TxID), val)
 	case *TxRollbackInode:
-		val, _ := typedItem.Marshal()
+		var val []byte
+		val, err = typedItem.Marshal()
+		if err != nil {
+			si.err = err
+			si.Close()
+			return
+		}
 		snap = NewMetaItem(opFSMTxRbInodeSnapshot, typedItem.inode.MarshalKey(), val)
 	case *TxRollbackDentry:
-		val, _ := typedItem.Marshal()
+		var val []byte
+		val, err = typedItem.Marshal()
+		if err != nil {
+			si.err = err
+			si.Close()
+			return
+		}
 		snap = NewMetaItem(opFSMTxRbDentrySnapshot, []byte(typedItem.txDentryInfo.GetKey()), val)
 	case *fileData:
 		snap = NewMetaItem(opExtentFileSnapshot, []byte(typedItem.filename), typedItem.data)
@@ -503,6 +540,24 @@ func (si *MetaItemIterator) Next() (data []byte, err error) {
 			return
 		}
 		snap = NewMetaItem(opFSMUniqCheckerSnap, nil, raw)
+	case *DeletedExtentKey:
+		var val []byte
+		val, err = typedItem.Marshal()
+		if err != nil {
+			si.err = err
+			si.Close()
+			return
+		}
+		snap = NewMetaItem(opFSMDeletedExtentsSnap, nil, val)
+	case *DeletedObjExtentKey:
+		var val []byte
+		val, err = typedItem.Marshal()
+		if err != nil {
+			si.err = err
+			si.Close()
+			return
+		}
+		snap = NewMetaItem(opFSMDeletedObjExtentsSnap, nil, val)
 	default:
 		panic(fmt.Sprintf("unknown item type: %v", reflect.TypeOf(item).Name()))
 	}

@@ -58,7 +58,6 @@ func TestMetaPartition_LoadSnapshot(t *testing.T) {
 	snap, err := mp.GetSnapShot()
 	require.NoError(t, err)
 	require.NotNil(t, snap)
-	defer snap.Close()
 	msg := &storeMsg{
 		command:     1,
 		snap:        snap,
@@ -70,6 +69,7 @@ func TestMetaPartition_LoadSnapshot(t *testing.T) {
 	mp.multiVersionList = &proto.VolVersionInfoList{}
 
 	err = mp.store(msg)
+	snap.Close()
 	require.NoError(t, err)
 	snapshotPath := path.Join(mp.config.RootDir, snapshotDir)
 	err = partition.LoadSnapshot(snapshotPath)
@@ -80,11 +80,14 @@ func TestMetaPartition_LoadSnapshot(t *testing.T) {
 
 	// add data to mp
 	ino := NewInode(0, 0)
-	mp.inodeTree.Put(handle, ino)
+	err = mp.inodeTree.Put(handle, ino)
+	require.NoError(t, err)
 	dentry := &Dentry{}
-	mp.dentryTree.Put(handle, dentry)
+	err = mp.dentryTree.Put(handle, dentry)
+	require.NoError(t, err)
 	extend := &Extend{}
-	mp.extendTree.Put(handle, extend)
+	err = mp.extendTree.Put(handle, extend)
+	require.NoError(t, err)
 
 	multipart := &Multipart{
 		id:       "id",
@@ -93,7 +96,17 @@ func TestMetaPartition_LoadSnapshot(t *testing.T) {
 		parts:    Parts{},
 		extend:   MultipartExtend{},
 	}
-	mp.multipartTree.Put(handle, multipart)
+	err = mp.multipartTree.Put(handle, multipart)
+	require.NoError(t, err)
+
+	dek := NewDeletedExtentKey(&proto.ExtentKey{
+		PartitionId:  0,
+		ExtentId:     0,
+		ExtentOffset: 0,
+		FileOffset:   0,
+	}, 0, mp.AllocDeletedExtentId())
+	err = mp.deletedExtentsTree.Put(handle, dek)
+	require.NoError(t, err)
 
 	err = mp.inodeTree.CommitAndReleaseBatchWriteHandle(handle, false)
 	require.NoError(t, err)
@@ -101,7 +114,6 @@ func TestMetaPartition_LoadSnapshot(t *testing.T) {
 	snap, err = mp.GetSnapShot()
 	require.NoError(t, err)
 	require.NotNil(t, snap)
-	defer snap.Close()
 	msg = &storeMsg{
 		command:     1,
 		snap:        snap,
@@ -109,10 +121,12 @@ func TestMetaPartition_LoadSnapshot(t *testing.T) {
 		uniqChecker: mp.uniqChecker,
 	}
 	err = mp.store(msg)
+	snap.Close()
 	require.Nil(t, err)
 	snapshotPath = path.Join(mp.config.RootDir, snapshotDir)
 	err = partition.LoadSnapshot(snapshotPath)
 	require.Nil(t, err)
+	require.EqualValues(t, 1, mp.deletedExtentsTree.Count())
 
 	// remove inode file
 	os.Rename(path.Join(snapshotPath, inodeFile), path.Join(snapshotPath, inodeFile+"1"))

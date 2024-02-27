@@ -187,6 +187,14 @@ const (
 	opFSMStoreTickV1  = 72
 
 	opFSMVerListSnapShot = 73
+
+	// NOTE: delete extents
+	opFSMDeletedExtentsId        = 74
+	opFSMDeleteExtentFromTree    = 75
+	opFSMDeletedExtentMoveToTree = 76
+	opFSMDeleteObjExtentFromTree = 77
+	opFSMDeletedExtentsSnap      = 78
+	opFSMDeletedObjExtentsSnap   = 79
 )
 
 var exporterKey string
@@ -229,8 +237,8 @@ const (
 	metaNodeDeleteBatchCountKey = "batchCount"
 	configNameResolveInterval   = "nameResolveInterval" // int
 
-	cfgRocksDirs                = "rocksDirs"
-	cfgDiskReservedSpace        = "diskReservedSpace"
+	cfgRocksDirs         = "rocksDirs"
+	cfgDiskReservedSpace = "diskReservedSpace"
 )
 
 const (
@@ -245,7 +253,7 @@ const (
 	DefaultRaftNumOfLogsToRetain = 20000 * 2
 
 	maximumApplyIdDifference = 1000
-	defaultDiskReservedSpace              = 5 *GB
+	defaultDiskReservedSpace = 5 * GB
 )
 
 const (

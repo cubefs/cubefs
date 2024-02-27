@@ -338,7 +338,7 @@ func (mp *metaPartition) GetExtentByVer(ino *Inode, req *proto.GetExtentsRequest
 		reqVer = 0
 	}
 	ino.DoReadFunc(func() {
-		ino.Extents.Range(func(ek proto.ExtentKey) bool {
+		ino.Extents.Range(func(_ int, ek proto.ExtentKey) bool {
 			if ek.GetSeq() <= reqVer {
 				rsp.Extents = append(rsp.Extents, ek)
 				log.LogInfof("action[GetExtentByVer] fresh layer.read ino[%v] readseq [%v] ino seq [%v] include ek [%v]", ino.Inode, reqVer, ino.getVer(), ek)
@@ -412,7 +412,7 @@ func (mp *metaPartition) ExtentsList(req *proto.GetExtentsRequest, p *Packet) (e
 			ino.DoReadFunc(func() {
 				resp.Generation = ino.Generation
 				resp.Size = ino.Size
-				ino.Extents.Range(func(ek proto.ExtentKey) bool {
+				ino.Extents.Range(func(_ int, ek proto.ExtentKey) bool {
 					resp.Extents = append(resp.Extents, ek)
 					log.LogInfof("action[ExtentsList] append ek [%v]", ek)
 					return true
@@ -447,7 +447,7 @@ func (mp *metaPartition) ObjExtentsList(req *proto.GetExtentsRequest, p *Packet)
 		ino.DoReadFunc(func() {
 			resp.Generation = ino.Generation
 			resp.Size = ino.Size
-			ino.Extents.Range(func(ek proto.ExtentKey) bool {
+			ino.Extents.Range(func(_ int, ek proto.ExtentKey) bool {
 				resp.Extents = append(resp.Extents, ek)
 				return true
 			})

@@ -18,16 +18,18 @@ import (
 	"bytes"
 	"container/list"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
 	"os"
 	"path"
+	"sort"
 	"strings"
-	"sync/atomic"
 	"time"
 
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/cubefs/cubefs/util/synclist"
 )
@@ -53,12 +55,6 @@ const (
 
 var extentsFileHeader = []byte{0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x08}
 
-func (mp *metaPartition) AllocDeletedExtentId() (id uint64) {
-	id = atomic.AddUint64(&mp.deletedExtentId, 1)
-	mp.deletedExtentsTree.SetDeletedExtentId(id)
-	return
-}
-
 func updateKeyToNowWithAdjust(data []byte, addHourFlag bool) {
 	now := time.Now()
 	now.Add(24 * time.Hour)
@@ -77,6 +73,8 @@ func updateKeyToNowWithAdjust(data []byte, addHourFlag bool) {
 func updateKeyToNow(data []byte) {
 	updateKeyToNowWithAdjust(data, false)
 }
+
+// TODO(NaturalSelect): remove those code
 
 // / start metapartition delete extents work
 // /
@@ -209,131 +207,6 @@ LOOP:
 			log.LogDebugf("action[appendDelExtentsToFile] filesize now %v", fileSize)
 		}
 	}
-}
-
-func (mp *metaPartition) getAllDeltedExtentsFromList(fileList *synclist.SyncList) (eks []*proto.ExtentKey, err error) {
-	eks = make([]*proto.ExtentKey, 0)
-	var (
-		fp       *os.File
-		fileInfo os.FileInfo
-	)
-	for {
-		element := fileList.Front()
-		if element == nil {
-			break
-		}
-		fileName := element.Value.(string)
-		file := path.Join(mp.config.RootDir, fileName)
-		if fileInfo, err = os.Stat(file); err != nil {
-			if os.IsNotExist(err) {
-				fileList.Remove(element)
-				continue
-			}
-			log.LogErrorf("[getAllDeltedExtentsFromList] mp(%v) deleted extents file stat error, disk broken? err(%v)", mp.config.PartitionId, err)
-			break
-		}
-
-		// NOTE: get version
-		extentV2 := false
-		extentKeyLen := uint64(proto.ExtentLength)
-		if strings.HasPrefix(fileName, prefixDelExtentV2) {
-			extentV2 = true
-			extentKeyLen = uint64(proto.ExtentV2Length)
-		}
-
-		// read delete extents from file
-		var cursor uint64
-		fp, err = os.OpenFile(file, os.O_RDWR, 0o644)
-		if err != nil {
-			log.LogErrorf("[getAllDeltedExtentsFromList] volname [%v] mp[%v] openFile %v error: %v", mp.GetVolName(), mp.config.PartitionId, file, err)
-			return
-		}
-
-		// get delete extents cursor at file header 8 bytes
-		if err = binary.Read(fp, binary.BigEndian, &cursor); err != nil {
-			log.LogWarnf("[getAllDeltedExtentsFromList] partitionId(%v), failed to read cursor", mp.config.PartitionId)
-			fp.Close()
-			return
-		}
-		log.LogDebugf("action[getAllDeltedExtentsFromList] get cursor %v", cursor)
-		fileSize := uint64(fileInfo.Size())
-
-		// NOTE: >= size, continue
-		if cursor >= fileSize {
-			continue
-		}
-
-		if fileSize-cursor < extentKeyLen {
-			log.LogErrorf("[getAllDeltedExtentsFromList] partitionId(%v), %v file corrupted!", mp.config.PartitionId, fileName)
-			fileList.Remove(element)
-			fp.Close()
-			continue
-		}
-
-		readLoop := func() (err error) {
-			// read extents from cursor
-			defer fp.Close()
-			readLen := 0
-			headerBuffer := make([]byte, proto.ExtentKeyHeaderSize)
-			ekBuffer := make([]byte, proto.ExtentV3Length)
-			for cursor < fileSize {
-				// NOTE: read header to check ek version
-				ekSize := extentKeyLen
-				if extentV2 {
-					// NOTE: check extent V3
-					readLen, err = fp.ReadAt(headerBuffer, int64(cursor))
-					if err != nil {
-						return
-					}
-					if readLen != len(headerBuffer) {
-						log.LogErrorf("[getAllDeltedExtentsFromList] partitionId(%v), %v file corrupted!", mp.config.PartitionId, fileName)
-						return
-					}
-					if extentV2 && bytes.Compare(headerBuffer, proto.ExtentKeyHeaderV3) == 0 {
-						// NOTE: is extent v3
-						ekSize = uint64(proto.ExtentV3Length)
-					}
-				}
-				// NOTE: read extent key
-				readLen, err = fp.ReadAt(ekBuffer, int64(cursor))
-				if err != nil {
-					return
-				}
-				if readLen != int(ekSize) {
-					log.LogErrorf("[getAllDeltedExtentsFromList] partitionId(%v), %v file corrupted!", mp.config.PartitionId, fileName)
-					return
-				}
-				cursor += uint64(readLen)
-				// NOTE: unmarshal extents
-				ek := &proto.ExtentKey{}
-				buff := bytes.NewBuffer(ekBuffer)
-				if extentV2 {
-					if err = ek.UnmarshalBinaryWithCheckSum(buff); err != nil {
-						if err == proto.InvalidKeyHeader || err == proto.InvalidKeyCheckSum {
-							log.LogErrorf("[getAllDeltedExtentsFromList] invalid extent key header %v, %v, %v", fileName, mp.config.PartitionId, err)
-							continue
-						}
-						log.LogErrorf("[getAllDeltedExtentsFromList] mp: %v Unmarshal extentkey from %v unresolved error: %v", mp.config.PartitionId, fileName, err)
-						return err
-					}
-				} else {
-					// ek for del no need to get version
-					if err = ek.UnmarshalBinary(buff, false); err != nil {
-						return err
-					}
-				}
-				// NOTE: append to result set
-				eks = append(eks, ek)
-			}
-			return
-		}
-		err = readLoop()
-		if err != nil {
-			return
-		}
-		fileList.Remove(element)
-	}
-	return
 }
 
 // Delete all the extents of a file.
@@ -555,3 +428,555 @@ func (mp *metaPartition) deleteExtentsFromList(fileList *synclist.SyncList) {
 // 	}
 // 	return
 // }
+
+// NOTE: new api
+
+type DeleteExtentsFromTreeRequest struct {
+	DeletedKeys []*DeletedExtentKey
+}
+
+func (r *DeleteExtentsFromTreeRequest) Marshal() (v []byte, err error) {
+	buff := bytes.NewBuffer([]byte{})
+	count := uint64(len(r.DeletedKeys))
+	err = binary.Write(buff, binary.BigEndian, count)
+	if err != nil {
+		return
+	}
+	for _, dek := range r.DeletedKeys {
+		v, err = dek.Marshal()
+		if err != nil {
+			return
+		}
+		_, err = buff.Write(v)
+		if err != nil {
+			return
+		}
+	}
+	return
+}
+
+func (r *DeleteExtentsFromTreeRequest) Unmarshal(v []byte) (err error) {
+	buff := bytes.NewBuffer(v)
+	count := uint64(0)
+	err = binary.Read(buff, binary.BigEndian, &count)
+	if err != nil {
+		return
+	}
+	r.DeletedKeys = make([]*DeletedExtentKey, 0, count)
+	for i := uint64(0); i < count; i++ {
+		dek := &DeletedExtentKey{}
+		err = dek.UnmarshalWithBuffer(buff)
+		if err != nil {
+			return
+		}
+		r.DeletedKeys = append(r.DeletedKeys, dek)
+	}
+	return
+}
+
+type DeleteObjExtentsFromTreeRequest struct {
+	DeletedObjKeys []*DeletedObjExtentKey
+}
+
+func (r *DeleteObjExtentsFromTreeRequest) Marshal() (v []byte, err error) {
+	buff := bytes.NewBuffer([]byte{})
+	count := uint64(len(r.DeletedObjKeys))
+	err = binary.Write(buff, binary.BigEndian, count)
+	if err != nil {
+		return
+	}
+	for _, doek := range r.DeletedObjKeys {
+		v, err = doek.Marshal()
+		if err != nil {
+			return
+		}
+		_, err = buff.Write(v)
+		if err != nil {
+			return
+		}
+	}
+	return
+}
+
+func (r *DeleteObjExtentsFromTreeRequest) Unmarshal(v []byte) (err error) {
+	buff := bytes.NewBuffer(v)
+	count := uint64(0)
+	err = binary.Read(buff, binary.BigEndian, &count)
+	if err != nil {
+		return
+	}
+	r.DeletedObjKeys = make([]*DeletedObjExtentKey, 0, count)
+	for i := uint64(0); i < count; i++ {
+		doek := &DeletedObjExtentKey{}
+		err = doek.UnmarshalWithBuffer(buff)
+		if err != nil {
+			return
+		}
+		r.DeletedObjKeys = append(r.DeletedObjKeys, doek)
+	}
+	return
+}
+
+var (
+	ErrDelExtentFileBroken      = errors.New("delete extent file broken")
+	ErrDataPartitionNotFound    = errors.New("data partition not found")
+	ErrInvalidDataPartition     = errors.New("invalid data partition")
+	ErrDataPartitionUnreachable = errors.New("data partition network error")
+	ErrFailedToDeleteExtents    = errors.New("failed to delete extents")
+)
+
+func (mp *metaPartition) batchDeleteExtentsHotVol(dpId uint64, deks []*DeletedExtentKey) (err error) {
+	log.LogDebugf("[batchDeleteExtentsHotVol] mp(%v) delete dp(%v) extents count(%v)", mp.config.PartitionId, dpId, len(deks))
+	// get the data node view
+	dp := mp.vol.GetPartition(dpId)
+	if dp == nil {
+		err = ErrDataPartitionNotFound
+		return
+	}
+
+	// delete the data node
+	if len(dp.Hosts) < 1 {
+		log.LogErrorf("[batchDeleteExtentsHotVol] dp id(%v) is invalid, detail[%v]", dpId, dp)
+		err = ErrInvalidDataPartition
+		return
+	}
+	addr := util.ShiftAddrPort(dp.Hosts[0], smuxPortShift)
+	conn, err := smuxPool.GetConnect(addr)
+	log.LogInfof("[batchDeleteExtentsHotVol] mp (%v) GetConnect (%v)", mp.config.PartitionId, addr)
+
+	ResultCode := proto.OpOk
+
+	defer func() {
+		smuxPool.PutConnect(conn, ForceClosedConnect)
+		log.LogInfof("[batchDeleteExtentsHotVol] mp (%v) PutConnect (%v)", mp.config.PartitionId, addr)
+	}()
+
+	if err != nil {
+		err = ErrDataPartitionUnreachable
+		return
+	}
+	eks := make([]*proto.ExtentKey, 0, len(deks))
+	for _, dek := range deks {
+		eks = append(eks, &dek.ExtentKey)
+	}
+	p := NewPacketToBatchDeleteExtent(dp, eks)
+	if err = p.WriteToConn(conn); err != nil {
+		err = ErrDataPartitionUnreachable
+		return
+	}
+	if err = p.ReadFromConnWithVer(conn, proto.BatchDeleteExtentReadDeadLineTime); err != nil {
+		err = ErrDataPartitionUnreachable
+		return
+	}
+
+	ResultCode = p.ResultCode
+
+	if ResultCode == proto.OpTryOtherAddr && proto.IsCold(mp.volType) {
+		log.LogInfof("[batchDeleteExtentsHotVol] deleteOp retrun tryOtherAddr code means dp is deleted for LF vol, dp(%d)", dpId)
+		return
+	}
+
+	if p.ResultCode != proto.OpOk {
+		err = ErrFailedToDeleteExtents
+		log.LogErrorf("[batchDeleteExtentsHotVol] failed to delete dp(%v) extents, result code(%v)", dpId, p.ResultCode)
+		return
+	}
+	return
+}
+
+func (mp *metaPartition) batchDeleteExtentsColdVol(doeks []*DeletedObjExtentKey) (err error) {
+	total := len(doeks)
+	oeks := make([]proto.ObjExtentKey, maxDelCntOnce)
+	for i := 0; i < total; i += maxDelCntOnce {
+		max := util.Min(i+maxDelCntOnce, total)
+		length := max - i
+		for j := 0; j < length; j++ {
+			oeks[j] = doeks[i+j].ObjExtentKey
+		}
+		err = mp.ebsClient.Delete(oeks[0:length])
+		if err != nil {
+			log.LogErrorf("[deleteObjExtents] delete ebs eks fail, cnt(%d), err(%s)", max-i, err.Error())
+			return err
+		}
+	}
+	return
+}
+
+func (mp *metaPartition) startDeleteExtentsTraveler() {
+	go func() {
+		for {
+			select {
+			case <-mp.stopC:
+				return
+			default:
+				err := mp.deletedExtentsTreeTraveler()
+				if err != nil {
+					log.LogErrorf("[startDeleteExtent] mp(%v) traveler exits, restart after 10 sec, err(%v)", mp.config.PartitionId, err)
+					time.Sleep(10 * time.Second)
+					continue
+				}
+			}
+		}
+	}()
+}
+
+func (mp *metaPartition) startDeleteObjExtentsTraveler() {
+	go func() {
+		for {
+			select {
+			case <-mp.stopC:
+				return
+			default:
+				err := mp.deletedObjExtentsTreeTravle()
+				if err != nil {
+					log.LogErrorf("[startDeleteObjExtentsTraveler] mp(%v) traveler exits, restart after 10 sec, err(%v)", mp.config.PartitionId, err)
+					time.Sleep(10 * time.Second)
+					continue
+				}
+			}
+		}
+	}()
+}
+
+func (mp *metaPartition) skipDeleteExtentKey(dek *DeletedExtentKey) (ok bool, err error) {
+	inTx, _, err := mp.txProcessor.txResource.isInodeInTransction(&Inode{Inode: dek.Inode})
+	if err != nil {
+		return false, err
+	}
+	// TODO(NaturalSelect): consider discard flag
+	ok = inTx
+	return
+}
+
+func (mp *metaPartition) skipDeleteObjExtentKey(doek *DeletedObjExtentKey) (ok bool, err error) {
+	inTx, _, err := mp.txProcessor.txResource.isInodeInTransction(&Inode{Inode: doek.Inode})
+	if err != nil {
+		return false, err
+	}
+	ok = inTx
+	return
+}
+
+func (mp *metaPartition) deletedExtentsTreeTraveler() (err error) {
+	timer := time.NewTimer(1 * time.Minute)
+	defer timer.Stop()
+	var snap Snapshot
+	const batchSize = 10000
+	for {
+		select {
+		case <-mp.stopC:
+			return
+		case <-timer.C:
+		}
+		if _, ok := mp.IsLeader(); !ok {
+			log.LogDebugf("[deletedExtentTreeTraveler] mp(%v) is not leader sleep", mp.config.PartitionId)
+			continue
+		}
+		func() {
+			log.LogDebugf("[deletedExtentTreeTraveler] mp(%v) start travel", mp.config.PartitionId)
+			snap, err = mp.GetSnapShot()
+			if err != nil {
+				log.LogErrorf("[deletedExtentTreeTraveler] mp(%v) failed to open snapshot, err(%v)", mp.config.PartitionId, err)
+				return
+			}
+			defer snap.Close()
+			count := 0
+			dekMap := make(map[uint64][]*DeletedExtentKey)
+			err = snap.Range(DeletedExtentsType, func(item interface{}) (bool, error) {
+				dek := item.(*DeletedExtentKey)
+				skip, err := mp.skipDeleteExtentKey(dek)
+				if err != nil {
+					return false, err
+				}
+				if skip {
+					return true, nil
+				}
+				count++
+				dpId := dek.ExtentKey.PartitionId
+				deks, ok := dekMap[dpId]
+				if !ok {
+					deks = make([]*DeletedExtentKey, 0)
+				}
+				deks = append(deks, dek)
+				dekMap[dpId] = deks
+				if count >= batchSize {
+					return false, nil
+				}
+				return true, nil
+			})
+			if err != nil || count == 0 {
+				return
+			}
+			// TODO(NaturalSelect): make it parallelism
+			for dpId, deks := range dekMap {
+				err = mp.batchDeleteExtentsHotVol(dpId, deks)
+				if err != nil {
+					log.LogErrorf("[deletedExtentTreeTraveler] failed to delete ek from dp(%v), err(%v)", dpId, err)
+					continue
+				}
+
+				request := &DeleteExtentsFromTreeRequest{
+					DeletedKeys: deks,
+				}
+
+				var v []byte
+				v, err = request.Marshal()
+				if err != nil {
+					log.LogErrorf("[deletedExtentTreeTraveler] failed to marshal remove request, err(%v)", err)
+					continue
+				}
+
+				log.LogErrorf("[deletedExtentTreeTraveler] mp(%v) delete deks", mp.config.PartitionId)
+				_, err = mp.submit(opFSMDeleteExtentFromTree, v)
+				if err != nil {
+					return
+				}
+			}
+		}()
+		// NOTE: err may modified in lambda
+		if err != nil {
+			return
+		}
+	}
+}
+
+func (mp *metaPartition) deletedObjExtentsTreeTravle() (err error) {
+	timer := time.NewTimer(1 * time.Minute)
+	defer timer.Stop()
+	var snap Snapshot
+	const batchSize = 10000
+	doeks := make([]*DeletedObjExtentKey, batchSize)
+	for {
+		select {
+		case <-mp.stopC:
+			return
+		case <-timer.C:
+		}
+		if _, ok := mp.IsLeader(); !ok {
+			log.LogDebugf("[deletedObjExtentsTreeTravle] mp(%v) is not leader sleep", mp.config.PartitionId)
+			continue
+		}
+		func() {
+			log.LogDebugf("[deletedObjExtentsTreeTravle] mp(%v) start travel", mp.config.PartitionId)
+			snap, err = mp.GetSnapShot()
+			if err != nil {
+				log.LogErrorf("[deletedObjExtentsTreeTravle] mp(%v) failed to open snapshot, err(%v)", mp.config.PartitionId, err)
+				return
+			}
+			defer snap.Close()
+			count := 0
+			err = snap.Range(DeletedObjExtentsType, func(item interface{}) (bool, error) {
+				doek := item.(*DeletedObjExtentKey)
+				skip, err := mp.skipDeleteObjExtentKey(doek)
+				if err != nil {
+					return false, err
+				}
+				if skip {
+					return true, nil
+				}
+				doeks[count] = doek
+				count++
+				if count >= batchSize {
+					return false, nil
+				}
+				return true, nil
+			})
+			if err != nil || count == 0 {
+				return
+			}
+			err = mp.batchDeleteExtentsColdVol(doeks[:count])
+			if err != nil {
+				log.LogErrorf("[deletedObjExtentsTreeTravle] failed to delete ek from cid(%v), err(%v)", doeks[0].ObjExtentKey.Cid, err)
+				return
+			}
+			request := &DeleteObjExtentsFromTreeRequest{
+				DeletedObjKeys: doeks[:count],
+			}
+			var v []byte
+			v, err = request.Marshal()
+			if err != nil {
+				log.LogErrorf("[deletedObjExtentsTreeTravle] failed to marshal remove request, err(%v)", err)
+				return
+			}
+			log.LogErrorf("[deletedObjExtentsTreeTravle] mp(%v) delete deks", mp.config.PartitionId)
+			_, err = mp.submit(opFSMDeleteObjExtentFromTree, v)
+			if err != nil {
+				return
+			}
+		}()
+		// NOTE: err may modified in lambda
+		if err != nil {
+			return
+		}
+	}
+}
+
+func (mp *metaPartition) sortExtentsForMove(eks []*proto.ExtentKey) {
+	// NOTE: sort it to keep consistent
+	sort.Slice(eks, func(i, j int) (ok bool) {
+		// NOTE: partition id
+		if eks[i].PartitionId != eks[j].PartitionId {
+			return eks[i].PartitionId < eks[j].PartitionId
+		}
+		// NOTE: extent id
+		if eks[i].ExtentId != eks[j].ExtentId {
+			return eks[i].ExtentId < eks[j].ExtentOffset
+		}
+		// NOTE: extent offset
+		return eks[i].ExtentOffset < eks[j].ExtentOffset
+	})
+}
+
+func (mp *metaPartition) moveDelExtentToTree(dbHandle interface{}) (files []string, err error) {
+	files, err = mp.getDelExtentFiles()
+	if err != nil {
+		return
+	}
+	eks := make([]*proto.ExtentKey, 0)
+	for _, file := range files {
+		eks, err = mp.getAllDeltedExtentsFromList(eks, file)
+		if err != nil {
+			return
+		}
+	}
+
+	mp.sortExtentsForMove(eks)
+	for _, ek := range eks {
+		dek := NewDeletedExtentKey(ek, 0, mp.AllocDeletedExtentId())
+		err = mp.deletedExtentsTree.Put(dbHandle, dek)
+		if err != nil {
+			return
+		}
+	}
+	return
+}
+
+func (mp *metaPartition) getDelExtentFiles() (files []string, err error) {
+	files = make([]string, 0)
+	dentries, err := os.ReadDir(mp.config.RootDir)
+	if err != nil {
+		return
+	}
+
+	for _, dentry := range dentries {
+		if dentry.Type().IsRegular() && strings.HasPrefix(dentry.Name(), prefixDelExtent) {
+			files = append(files, dentry.Name())
+		}
+	}
+
+	sort.Slice(files, func(i, j int) bool {
+		return getDelExtFileIdx(files[i]) < getDelExtFileIdx(files[j])
+	})
+	return
+}
+
+func (mp *metaPartition) getAllDeltedExtentsFromList(oldEks []*proto.ExtentKey, fileName string) (eks []*proto.ExtentKey, err error) {
+	eks = oldEks
+	if eks == nil {
+		eks = make([]*proto.ExtentKey, 0)
+	}
+	var (
+		fp       *os.File
+		fileInfo os.FileInfo
+	)
+	file := path.Join(mp.config.RootDir, fileName)
+	if fileInfo, err = os.Stat(file); err != nil {
+		if os.IsNotExist(err) {
+			err = nil
+			return
+		}
+		log.LogErrorf("[getAllDeltedExtentsFromList] mp(%v) deleted extents file stat error, disk broken? err(%v)", mp.config.PartitionId, err)
+		return
+	}
+
+	// NOTE: get version
+	extentV2 := false
+	extentKeyLen := uint64(proto.ExtentLength)
+	if strings.HasPrefix(fileName, prefixDelExtentV2) {
+		extentV2 = true
+		extentKeyLen = uint64(proto.ExtentV2Length)
+	}
+
+	// read delete extents from file
+	var cursor uint64
+	fp, err = os.OpenFile(file, os.O_RDWR, 0o644)
+	if err != nil {
+		log.LogErrorf("[getAllDeltedExtentsFromList] volname [%v] mp[%v] openFile %v error: %v", mp.GetVolName(), mp.config.PartitionId, file, err)
+		return
+	}
+	defer fp.Close()
+
+	// get delete extents cursor at file header 8 bytes
+	if err = binary.Read(fp, binary.BigEndian, &cursor); err != nil {
+		log.LogWarnf("[getAllDeltedExtentsFromList] partitionId(%v), failed to read cursor", mp.config.PartitionId)
+		return
+	}
+	log.LogDebugf("action[getAllDeltedExtentsFromList] get cursor %v", cursor)
+	fileSize := uint64(fileInfo.Size())
+
+	// NOTE: >= size, return
+	if cursor >= fileSize {
+		return
+	}
+
+	if fileSize-cursor < extentKeyLen {
+		log.LogErrorf("[getAllDeltedExtentsFromList] partitionId(%v), %v file corrupted!", mp.config.PartitionId, fileName)
+		err = ErrDelExtentFileBroken
+		return
+	}
+
+	readLen := 0
+	headerBuffer := make([]byte, proto.ExtentKeyHeaderSize)
+	ekBuffer := make([]byte, proto.ExtentV3Length)
+	for cursor < fileSize {
+		// NOTE: read header to check ek version
+		ekSize := extentKeyLen
+		if extentV2 {
+			// NOTE: check extent V3
+			readLen, err = fp.ReadAt(headerBuffer, int64(cursor))
+			if err != nil {
+				return
+			}
+			if readLen != len(headerBuffer) {
+				log.LogErrorf("[getAllDeltedExtentsFromList] partitionId(%v), %v file corrupted!", mp.config.PartitionId, fileName)
+				err = ErrDelExtentFileBroken
+				return
+			}
+			if extentV2 && bytes.Compare(headerBuffer, proto.ExtentKeyHeaderV3) == 0 {
+				// NOTE: is extent v3
+				ekSize = uint64(proto.ExtentV3Length)
+			}
+		}
+		// NOTE: read extent key
+		readLen, err = fp.ReadAt(ekBuffer, int64(cursor))
+		if err != nil {
+			return
+		}
+		if readLen != int(ekSize) {
+			log.LogErrorf("[getAllDeltedExtentsFromList] partitionId(%v), %v file corrupted!", mp.config.PartitionId, fileName)
+			return
+		}
+		cursor += uint64(readLen)
+		// NOTE: unmarshal extents
+		ek := &proto.ExtentKey{}
+		buff := bytes.NewBuffer(ekBuffer)
+		if extentV2 {
+			if err = ek.UnmarshalBinaryWithCheckSum(buff); err != nil {
+				if err == proto.InvalidKeyHeader || err == proto.InvalidKeyCheckSum {
+					log.LogErrorf("[getAllDeltedExtentsFromList] invalid extent key header %v, %v, %v", fileName, mp.config.PartitionId, err)
+					continue
+				}
+				log.LogErrorf("[getAllDeltedExtentsFromList] mp: %v Unmarshal extentkey from %v unresolved error: %v", mp.config.PartitionId, fileName, err)
+				return
+			}
+		} else {
+			// ek for del no need to get version
+			if err = ek.UnmarshalBinary(buff, false); err != nil {
+				return
+			}
+		}
+		// NOTE: append to result set
+		eks = append(eks, ek)
+	}
+	return
+}

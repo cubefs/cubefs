@@ -37,6 +37,7 @@ const (
 	TransactionRollbackInodeType
 	TransactionRollbackDentryType
 	DeletedExtentsType
+	DeletedObjExtentsType
 	MaxType
 )
 
@@ -58,6 +59,8 @@ func (t TreeType) String() string {
 		return "transaction rollback dentry tree"
 	case DeletedExtentsType:
 		return "deleted extents"
+	case DeletedObjExtentsType:
+		return "deleted obj extents"
 	default:
 		return "unknown"
 	}
@@ -81,7 +84,8 @@ func NewSnapshot(mp *metaPartition) (snap Snapshot, err error) {
 			transactionRbInode:  &TransactionRollbackInodeBTree{mp.txProcessor.txResource.txRbInodeTree.(*TransactionRollbackInodeBTree).GetTree()},
 			transactionRbDentry: &TransactionRollbackDentryBTree{mp.txProcessor.txResource.txRbDentryTree.(*TransactionRollbackDentryBTree).GetTree()},
 			deletedExtents:      &DeletedExtentsBTree{mp.deletedExtentsTree.(*DeletedExtentsBTree).GetTree()},
-			deletedExtentId:     mp.GetDeletedExtenId(),
+			deletedObjExtents:   &DeletedObjExtentsBTree{mp.deletedObjExtentsTree.(*DeletedObjExtentsBTree).GetTree()},
+			deletedExtentId:     mp.GetDeletedExtentId(),
 		}
 	}
 
@@ -243,6 +247,17 @@ type DeletedExtentsTree interface {
 	Delete(dbHandle interface{}, dek *DeletedExtentKey) (bool, error)
 	Range(start, end *DeletedExtentKey, cb func(dek *DeletedExtentKey) (bool, error)) error
 	RangeWithPrefix(prefix, start, end *DeletedExtentKey, cb func(dek *DeletedExtentKey) (bool, error)) error
+	RealCount() uint64
+	Count() uint64
+	Len() int
+}
+
+type DeletedObjExtentsTree interface {
+	Tree
+	Put(dbHandle interface{}, doek *DeletedObjExtentKey) error
+	Delete(dbHandle interface{}, doek *DeletedObjExtentKey) (bool, error)
+	Range(start, end *DeletedObjExtentKey, cb func(doek *DeletedObjExtentKey) (bool, error)) error
+	RangeWithPrefix(prefix, start, end *DeletedObjExtentKey, cb func(doek *DeletedObjExtentKey) (bool, error)) error
 	RealCount() uint64
 	Count() uint64
 	Len() int

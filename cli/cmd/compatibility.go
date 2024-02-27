@@ -198,7 +198,7 @@ func verifyInode(client *api.MetaHttpClient, mp metanode.MetaPartition) (err err
 			Reserved:   inode.Reserved,
 			Extents:    make([]proto.ExtentKey, 0),
 		}
-		inode.Extents.Range(func(ek proto.ExtentKey) bool {
+		inode.Extents.Range(func(_ int, ek proto.ExtentKey) bool {
 			localInode.Extents = append(localInode.Extents, ek)
 			return true
 		})

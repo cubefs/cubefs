@@ -472,7 +472,7 @@ func mockAddTxDentry(mp *metaPartition, t *testing.T) *TxRollbackDentry {
 	require.NoError(t, err)
 	_, err = txRsc.addTxRollbackDentry(handle, rbDentry)
 	require.NoError(t, err)
-	err = txRsc.txRbDentryTree.CommitBatchWrite(handle, false)
+	err = txRsc.txRbDentryTree.CommitAndReleaseBatchWriteHandle(handle, false)
 	require.NoError(t, err)
 
 	handle, err = mp.inodeTree.CreateBatchWriteHandle()

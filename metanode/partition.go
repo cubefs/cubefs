@@ -272,6 +272,7 @@ type OpPartition interface {
 	CanRemoveRaftMember(peer proto.Peer) error
 	IsEquareCreateMetaPartitionRequst(request *proto.CreateMetaPartitionRequest) (err error)
 	GetUniqID(p *Packet, num uint32) (err error)
+	UpdateVolView(volView *proto.SimpleVolView, dataView *DataPartitionsView)
 }
 
 type MetaPartitionDebug interface {
@@ -505,14 +506,15 @@ type OpQuota interface {
 //	+-----+             +-------+
 type metaPartition struct {
 	config                 *MetaPartitionConfig
-	size                   uint64             // For partition all file size
-	applyID                uint64             // Inode/Dentry max applyID, this index will be update after restoring from the dumped data.
-	storedApplyId          uint64             // update after store snapshot to disk
-	dentryTree             DentryTree         // btree for dentries
-	inodeTree              InodeTree          // btree for inodes
-	extendTree             ExtendTree         // btree for inode extend (XAttr) management
-	multipartTree          MultipartTree      // collection for multipart management
-	deletedExtentsTree     DeletedExtentsTree // deleted extents
+	size                   uint64                // For partition all file size
+	applyID                uint64                // Inode/Dentry max applyID, this index will be update after restoring from the dumped data.
+	storedApplyId          uint64                // update after store snapshot to disk
+	dentryTree             DentryTree            // btree for dentries
+	inodeTree              InodeTree             // btree for inodes
+	extendTree             ExtendTree            // btree for inode extend (XAttr) management
+	multipartTree          MultipartTree         // collection for multipart management
+	deletedExtentsTree     DeletedExtentsTree    // deleted extents
+	deletedObjExtentsTree  DeletedObjExtentsTree // deleted obj extents
 	deletedExtentId        uint64
 	db                     *RocksDbInfo
 	txProcessor            *TransactionProcessor // transction processor
@@ -753,11 +755,8 @@ func (mp *metaPartition) onStart(isCreate bool) (err error) {
 		return
 	}
 	mp.startScheduleTask()
-	// if err = mp.startFreeList(); err != nil {
-	// 	err = errors.NewErrorf("[onStart] start free list id=%d: %s",
-	// 		mp.config.PartitionId, err.Error())
-	// 	return
-	// }
+	mp.startDeleteExtentsTraveler()
+	mp.startDeleteObjExtentsTraveler()
 
 	// set EBS Client
 	if clusterInfo, err = masterClient.AdminAPI().GetClusterInfo(); err != nil {
@@ -938,6 +937,7 @@ func (mp *metaPartition) initMemoryTree() {
 	mp.extendTree = &ExtendBTree{NewBtree()}
 	mp.multipartTree = &MultipartBTree{NewBtree()}
 	mp.deletedExtentsTree = &DeletedExtentsBTree{NewBtree()}
+	mp.deletedObjExtentsTree = &DeletedObjExtentsBTree{NewBtree()}
 	return
 }
 
@@ -973,6 +973,9 @@ func (mp *metaPartition) initRocksDBTree() (err error) {
 		return
 	}
 	if mp.deletedExtentsTree, err = NewDeletedExtentsRocks(tree); err != nil {
+		return
+	}
+	if mp.deletedObjExtentsTree, err = NewDeletedObjExtentsRocks(tree); err != nil {
 		return
 	}
 	return
@@ -1141,10 +1144,11 @@ func (mp *metaPartition) parseCrcFromFile() ([]uint32, error) {
 }
 
 const (
-	CRC_COUNT_BASIC      int = 4
-	CRC_COUNT_TX_STUFF   int = 7
-	CRC_COUNT_UINQ_STUFF int = 8
-	CRC_COUNT_MULTI_VER  int = 9
+	CRC_COUNT_BASIC           int = 4
+	CRC_COUNT_TX_STUFF        int = 7
+	CRC_COUNT_UINQ_STUFF      int = 8
+	CRC_COUNT_MULTI_VER       int = 9
+	CRC_COUNT_DELETED_EXTENTS int = 10
 )
 
 func (mp *metaPartition) LoadDataFromRocksDb() (err error) {
@@ -1172,7 +1176,8 @@ func (mp *metaPartition) LoadSnapshot(snapshotPath string) (err error) {
 	}
 
 	crc_count := len(crcs)
-	if crc_count != CRC_COUNT_BASIC && crc_count != CRC_COUNT_TX_STUFF && crc_count != CRC_COUNT_UINQ_STUFF && crc_count != CRC_COUNT_MULTI_VER {
+	if crc_count != CRC_COUNT_BASIC && crc_count != CRC_COUNT_TX_STUFF && crc_count != CRC_COUNT_UINQ_STUFF && crc_count != CRC_COUNT_MULTI_VER &&
+		crc_count != CRC_COUNT_DELETED_EXTENTS {
 		log.LogErrorf("action[LoadSnapshot] crc array length %d not match", len(crcs))
 		return ErrSnapshotCrcMismatch
 	}
@@ -1191,12 +1196,18 @@ func (mp *metaPartition) LoadSnapshot(snapshotPath string) (err error) {
 		loadFuncs = append(loadFuncs, mp.loadUniqChecker)
 	}
 
-	if crc_count == CRC_COUNT_MULTI_VER {
+	if crc_count >= CRC_COUNT_MULTI_VER {
 		if err = mp.loadMultiVer(snapshotPath, crcs[CRC_COUNT_MULTI_VER-1]); err != nil {
 			return
 		}
+		// loadFuncs = append(loadFuncs, mp.loadMultiVer)
 	} else {
 		mp.storeMultiVersion(snapshotPath, &storeMsg{multiVerList: mp.multiVersionList.VerList})
+	}
+
+	if crc_count >= CRC_COUNT_DELETED_EXTENTS {
+		loadFuncs = append(loadFuncs, nil)
+		loadFuncs = append(loadFuncs, mp.loadDeletedExtents)
 	}
 
 	// NOTE: load inodes first
@@ -1360,6 +1371,7 @@ func (mp *metaPartition) load(isCreate bool) (err error) {
 		log.LogDebugf("[load] mp(%v) tx rb dentry real len(%v)", mp.config.PartitionId, txRbDenTree.RealCount())
 		log.LogDebugf("[load] mp(%v) deleted extent id(%v)", mp.config.PartitionId, mp.deletedExtentsTree.GetDeletedExtentId())
 		log.LogDebugf("[load] mp(%v) deleted extents real len(%v)", mp.config.PartitionId, mp.deletedExtentsTree.RealCount())
+		log.LogDebugf("[load] mp(%v) deleted obj extents real len(%v)", mp.config.PartitionId, mp.deletedObjExtentsTree.RealCount())
 	}
 
 	return
@@ -1399,6 +1411,7 @@ func (mp *metaPartition) store(sm *storeMsg) (err error) {
 		mp.storeTxRbDentry,
 		mp.storeUniqChecker,
 		mp.storeMultiVersion,
+		mp.storeDeletedExtents,
 	}
 	for _, storeFunc := range storeFuncs {
 		var crc uint32
@@ -2061,10 +2074,6 @@ func (mp *metaPartition) GetAppliedID() uint64 {
 	return atomic.LoadUint64(&mp.applyID)
 }
 
-func (mp *metaPartition) GetDeletedExtenId() uint64 {
-	return atomic.LoadUint64(&mp.deletedExtentId)
-}
-
 // NOTE: for debug
 func (mp *metaPartition) GetInodeRealCount() (count uint64, err error) {
 	snap, err := mp.GetSnapShot()
@@ -2138,6 +2147,19 @@ func (mp *metaPartition) GetDeletedExtentsRealCount() (count uint64, err error) 
 	}
 	defer snap.Close()
 	err = snap.Range(DeletedExtentsType, func(item interface{}) (bool, error) {
+		count++
+		return true, nil
+	})
+	return
+}
+
+func (mp *metaPartition) GetDeletedObjExtentsRealCount() (count uint64, err error) {
+	snap, err := mp.GetSnapShot()
+	if err != nil {
+		return
+	}
+	defer snap.Close()
+	err = snap.Range(DeletedObjExtentsType, func(item interface{}) (bool, error) {
 		count++
 		return true, nil
 	})

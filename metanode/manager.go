@@ -91,6 +91,7 @@ type metadataManager struct {
 	stopC                chan struct{}
 	volUpdating          *sync.Map // map[string]*verOp2Phase
 	verUpdateChan        chan string
+	volViewUpdaer        VolViewUpdater
 
 	rocksDBDirs []string
 }
@@ -358,6 +359,8 @@ func (m *metadataManager) startSnapshotVersionPromote() {
 
 // onStart creates the connection pool and loads the partitions.
 func (m *metadataManager) onStart() (err error) {
+	// NOTE: start vol view updater
+	m.volViewUpdaer = NewVolViewUpdater()
 	m.connPool = util.NewConnectPool()
 	err = m.loadPartitions()
 	if err != nil {
@@ -379,7 +382,8 @@ func (m *metadataManager) onStop() {
 		// stop sampler
 		close(m.stopC)
 	}
-	return
+	m.volViewUpdaer.Stop()
+	m.volViewUpdaer = nil
 }
 
 // LoadMetaPartition returns the meta partition with the specified volName.
@@ -527,14 +531,26 @@ func (m *metadataManager) attachPartition(id uint64, partition MetaPartition) (e
 	msg := fmt.Sprintf("load meta partition %v success", id)
 	log.LogInfof(msg)
 	syslog.Println(msg)
+	err = m.volViewUpdaer.Register(partition)
+	if err != nil {
+		log.LogErrorf("[attachPartition] failed to register mp(%v) to vol view updater, err(%v)", partition.GetBaseConfig().PartitionId, err)
+		if err != ErrMpExistsInVolViewUpdater {
+			delete(m.partitions, id)
+			return
+		}
+	}
 	return
 }
 
 func (m *metadataManager) detachPartition(id uint64) (err error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if _, has := m.partitions[id]; has {
+	if mp, has := m.partitions[id]; has {
 		delete(m.partitions, id)
+		err = m.volViewUpdaer.Unregister(mp)
+		if err != nil {
+			log.LogErrorf("[detachPartition] failed to detach mp(%v), err(%v)", id, err)
+		}
 	} else {
 		err = fmt.Errorf("unknown partition: %d", id)
 	}

@@ -17,35 +17,49 @@ package metanode
 import (
 	"bytes"
 	"encoding/binary"
+	"sync/atomic"
 
 	"github.com/cubefs/cubefs/proto"
 )
 
 type DeletedExtentKey struct {
-	proto.ExtentKey
+	ExtentKey       proto.ExtentKey
 	Inode           uint64
 	DeletedExtentId uint64
 }
 
+var _ BtreeItem = &DeletedExtentKey{}
+
 func (dek *DeletedExtentKey) Less(than BtreeItem) (ok bool) {
 	// NOTE: partition id
 	other := than.(*DeletedExtentKey)
-	if dek.PartitionId != other.PartitionId {
-		return dek.PartitionId < other.PartitionId
-	}
 	// NOTE: inode
 	if dek.Inode != other.Inode {
 		return dek.Inode < other.Inode
 	}
+	// NOTE: partition
+	if dek.ExtentKey.PartitionId != other.ExtentKey.PartitionId {
+		return dek.ExtentKey.PartitionId < other.ExtentKey.PartitionId
+	}
 	// NOTE: extent id
-	if dek.ExtentId != other.ExtentId {
-		return dek.ExtentId < other.ExtentId
+	if dek.ExtentKey.ExtentId != other.ExtentKey.ExtentId {
+		return dek.ExtentKey.ExtentId < other.ExtentKey.ExtentId
 	}
-	// NOTE: unique id
-	if dek.DeletedExtentId != other.DeletedExtentId {
-		return dek.DeletedExtentId < other.DeletedExtentId
+	// NOTE: extent offset
+	if dek.ExtentKey.ExtentOffset != other.ExtentKey.ExtentOffset {
+		return dek.ExtentKey.ExtentOffset < other.ExtentKey.ExtentOffset
 	}
-	return
+	// NOTE: deleted extent id
+	return dek.DeletedExtentId < other.DeletedExtentId
+}
+
+func (dek *DeletedExtentKey) Copy() (other BtreeItem) {
+	other = &DeletedExtentKey{
+		ExtentKey:       dek.ExtentKey,
+		Inode:           dek.Inode,
+		DeletedExtentId: dek.DeletedExtentId,
+	}
+	return other
 }
 
 func (dek *DeletedExtentKey) Marshal() (v []byte, err error) {
@@ -68,6 +82,11 @@ func (dek *DeletedExtentKey) Marshal() (v []byte, err error) {
 
 func (dek *DeletedExtentKey) Unmarshal(v []byte) (err error) {
 	buf := bytes.NewBuffer(v)
+	err = dek.UnmarshalWithBuffer(buf)
+	return
+}
+
+func (dek *DeletedExtentKey) UnmarshalWithBuffer(buf *bytes.Buffer) (err error) {
 	err = dek.ExtentKey.UnmarshalBinary(buf, true)
 	if err != nil {
 		return
@@ -91,12 +110,126 @@ func NewDeletedExtentKey(ek *proto.ExtentKey, ino, deletedExtentId uint64) (dek 
 	}
 }
 
-func NewDeletedExtentKeyPrefix(partitionId uint64, ino uint64) (dek *DeletedExtentKey) {
+func NewDeletedExtentKeyPrefix(ino uint64) (dek *DeletedExtentKey) {
 	return &DeletedExtentKey{
-		ExtentKey: proto.ExtentKey{
-			PartitionId: partitionId,
-		},
+		ExtentKey:       proto.ExtentKey{},
 		Inode:           ino,
 		DeletedExtentId: 0,
 	}
+}
+
+func (mp *metaPartition) AllocDeletedExtentId() (id uint64) {
+	id = atomic.AddUint64(&mp.deletedExtentId, 1)
+	mp.deletedExtentsTree.SetDeletedExtentId(id)
+	return
+}
+
+func (mp *metaPartition) GetDeletedExtentId() (id uint64) {
+	id = atomic.LoadUint64(&mp.deletedExtentId)
+	return
+}
+
+func (mp *metaPartition) SetDeletedExtentId(id uint64) {
+	// NOTE: dek id is increase only
+	now := atomic.LoadUint64(&mp.deletedExtentId)
+	for now < id {
+		if atomic.CompareAndSwapUint64(&mp.deletedExtentId, now, id) {
+			return
+		}
+		now = atomic.LoadUint64(&mp.deletedExtentId)
+	}
+}
+
+type DeletedObjExtentKey struct {
+	ObjExtentKey    proto.ObjExtentKey
+	Inode           uint64
+	DeletedExtentId uint64
+}
+
+var _ BtreeItem = &DeletedObjExtentKey{}
+
+func (doek *DeletedObjExtentKey) Less(than BtreeItem) (ok bool) {
+	other := than.(*DeletedObjExtentKey)
+	// NOTE: inode
+	if doek.Inode != other.Inode {
+		return doek.Inode < other.Inode
+	}
+	// NOTE: cid
+	if doek.ObjExtentKey.Cid != other.ObjExtentKey.Cid {
+		return doek.ObjExtentKey.Cid < other.ObjExtentKey.Cid
+	}
+	// NOTE: file offset
+	if doek.ObjExtentKey.FileOffset != other.ObjExtentKey.FileOffset {
+		return doek.ObjExtentKey.FileOffset < other.ObjExtentKey.FileOffset
+	}
+	return doek.DeletedExtentId < other.DeletedExtentId
+}
+
+func (doek *DeletedObjExtentKey) Copy() (other BtreeItem) {
+	other = &DeletedObjExtentKey{
+		ObjExtentKey:    doek.ObjExtentKey,
+		Inode:           doek.Inode,
+		DeletedExtentId: doek.DeletedExtentId,
+	}
+	return
+}
+
+func (doek *DeletedObjExtentKey) Marshal() (v []byte, err error) {
+	buff := bytes.NewBuffer([]byte{})
+	if v, err = doek.ObjExtentKey.MarshalBinary(); err != nil {
+		return
+	}
+	_, err = buff.Write(v)
+	if err != nil {
+		return
+	}
+	err = binary.Write(buff, binary.BigEndian, doek.Inode)
+	if err != nil {
+		return
+	}
+	err = binary.Write(buff, binary.BigEndian, doek.DeletedExtentId)
+	if err != nil {
+		return
+	}
+	v = buff.Bytes()
+	return
+}
+
+func (doek *DeletedObjExtentKey) Unmarshal(v []byte) (err error) {
+	buf := bytes.NewBuffer(v)
+	doek.UnmarshalWithBuffer(buf)
+	return
+}
+
+func (doek *DeletedObjExtentKey) UnmarshalWithBuffer(buf *bytes.Buffer) (err error) {
+	err = doek.ObjExtentKey.UnmarshalBinary(buf)
+	if err != nil {
+		return
+	}
+	err = binary.Read(buf, binary.BigEndian, &doek.Inode)
+	if err != nil {
+		return
+	}
+	err = binary.Read(buf, binary.BigEndian, &doek.DeletedExtentId)
+	if err != nil {
+		return
+	}
+	return
+}
+
+func NewDeletedObjExtentKey(oek *proto.ObjExtentKey, ino, deletedExtentId uint64) (doek *DeletedObjExtentKey) {
+	doek = &DeletedObjExtentKey{
+		ObjExtentKey:    *oek,
+		Inode:           ino,
+		DeletedExtentId: deletedExtentId,
+	}
+	return
+}
+
+func NewDeletedObjExtentKeyPrefix(ino uint64) (doek *DeletedObjExtentKey) {
+	doek = &DeletedObjExtentKey{
+		ObjExtentKey: proto.ObjExtentKey{},
+		Inode:        ino,
+	}
+	return
 }

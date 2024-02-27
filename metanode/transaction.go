@@ -1469,16 +1469,17 @@ func (tr *TransactionResource) rollbackInodeInternal(dbHandle interface{}, rbIno
 
 		if ino == nil || ino.IsTempFile() || ino.ShouldDelete() {
 			var snap Snapshot
-			start := NewDeletedExtentKeyPrefix(mp.config.PartitionId, rbInode.inode.Inode)
-			end := NewDeletedExtentKeyPrefix(mp.config.PartitionId, rbInode.inode.Inode+1)
+			startDek := NewDeletedExtentKeyPrefix(rbInode.inode.Inode)
+			endDek := NewDeletedExtentKeyPrefix(rbInode.inode.Inode + 1)
 			snap, err = NewSnapshot(mp)
 			if err != nil {
 				log.LogErrorf("[rollbackInodeInternal] failed to get snapshot, mp(%v), err(%v)", mp.config.PartitionId, err)
 				return
 			}
 			defer snap.Close()
-			// NOTE: delete from dek tree
-			err = snap.RangeWithScope(DeletedExtentsType, start, end, func(item interface{}) (bool, error) {
+			// NOTE: delete from dek tree directly
+			// invoke a rpc is unnecessary, we already in fsm
+			err = snap.RangeWithScope(DeletedExtentsType, startDek, endDek, func(item interface{}) (bool, error) {
 				dek := item.(*DeletedExtentKey)
 				if _, err = mp.deletedExtentsTree.Delete(dbHandle, dek); err != nil {
 					return false, err
@@ -1488,6 +1489,19 @@ func (tr *TransactionResource) rollbackInodeInternal(dbHandle interface{}, rbIno
 
 			if err != nil {
 				log.LogErrorf("[rollbackInodeInternal] failed to delete dek from dek tree, err(%v)", err)
+				return
+			}
+			startDoek := NewDeletedObjExtentKeyPrefix(rbInode.inode.Inode)
+			endDoek := NewDeletedObjExtentKeyPrefix(rbInode.inode.Inode + 1)
+			err = snap.RangeWithScope(DeletedObjExtentsType, startDoek, endDoek, func(item interface{}) (bool, error) {
+				doek := item.(*DeletedObjExtentKey)
+				if _, err = mp.deletedObjExtentsTree.Delete(dbHandle, doek); err != nil {
+					return false, err
+				}
+				return true, nil
+			})
+			if err != nil {
+				log.LogErrorf("[rollbackInodeInternal] failed to delete doek from doek tree, err(%v)", err)
 				return
 			}
 
