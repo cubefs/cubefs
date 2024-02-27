@@ -220,7 +220,7 @@ func (mp *metaPartition) batchDeleteExtentsByPartition(partitionDeleteExtents ma
 	for i := 0; i < len(allInodes); i++ {
 		successDeleteExtentCnt := 0
 		inode := allInodes[i]
-		inode.Extents.Range(func(ek proto.ExtentKey) bool {
+		inode.Extents.Range(func(_ int, ek proto.ExtentKey) bool {
 			if occurErrors[ek.PartitionId] != nil {
 				log.LogWarnf("deleteInode inode[%v] error(%v)", inode.Inode, occurErrors[ek.PartitionId])
 				return false
