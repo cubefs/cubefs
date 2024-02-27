@@ -92,7 +92,7 @@ func (s *SyncSet) Clear() {
 }
 
 func (s *Set) Range(fun func(key interface{}) bool) {
-	for k, _ := range s.m {
+	for k := range s.m {
 		if !fun(k) {
 			return
 		}
