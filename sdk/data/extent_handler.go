@@ -719,31 +719,36 @@ func (eh *ExtentHandler) ehCreateExtent(ctx context.Context, conn *net.TCPConn, 
 
 func CreateExtent(ctx context.Context, conn *net.TCPConn, inode uint64, dp *DataPartition, quorum int) (extID int, status uint8, err error) {
 	allHosts := dp.GetAllHosts()
-	p := common.NewCreateExtentPacket(ctx, dp.PartitionID, allHosts, quorum, inode)
-	if err = p.WriteToConnNs(conn, dp.ClientWrapper.connConfig.WriteTimeoutNs); err != nil {
-		errors.Trace(err, "createExtent: failed to WriteToConn, packet(%v) host(%v)", p, allHosts[0])
-		return 0, p.ResultCode, err
+	reqPacket := common.NewCreateExtentPacket(ctx, dp.PartitionID, allHosts, quorum, inode)
+	if err = reqPacket.WriteToConnNs(conn, dp.ClientWrapper.connConfig.WriteTimeoutNs); err != nil {
+		errors.Trace(err, "createExtent: failed to WriteToConn, packet(%v) host(%v)", reqPacket, allHosts[0])
+		return 0, reqPacket.ResultCode, err
 	}
 
-	if err = p.ReadFromConnNs(conn, dp.ClientWrapper.connConfig.ReadTimeoutNs); err != nil {
-		err = errors.Trace(err, "createExtent: failed to ReadFromConn, packet(%v) host(%v)", p, allHosts[0])
-		return 0, p.ResultCode, err
+	replyPacket := new(common.Packet)
+	if err = replyPacket.ReadFromConnNs(conn, dp.ClientWrapper.connConfig.ReadTimeoutNs); err != nil {
+		err = errors.Trace(err, "createExtent: failed to ReadFromConn, packet(%v) host(%v)", reqPacket, allHosts[0])
+		return 0, reqPacket.ResultCode, err
 	}
 
-	if p.ResultCode != proto.OpOk {
+	if !replyPacket.IsValidWriteReply(reqPacket) {
+		err = errors.New(fmt.Sprintf("createExtent: mismatch packet req(%v) and reply(%v) host(%v)", reqPacket, replyPacket, allHosts[0]))
+		return 0, reqPacket.ResultCode, err
+	}
+	if replyPacket.ResultCode != proto.OpOk {
 		err = errors.New(fmt.Sprintf("createExtent: ResultCode NOK, packet(%v) quorum(%v) host(%v) ResultCode(%v)",
-			p, quorum, allHosts[0], p.GetResultMsg()))
-		dp.checkAddrNotExist(allHosts[0], p)
-		return 0, p.ResultCode, err
+			reqPacket, quorum, allHosts[0], replyPacket.GetResultMsg()))
+		dp.checkAddrNotExist(allHosts[0], replyPacket)
+		return 0, replyPacket.ResultCode, err
 	}
 
-	extID = int(p.ExtentID)
+	extID = int(replyPacket.ExtentID)
 	if extID <= 0 {
 		err = errors.New(fmt.Sprintf("createExtent: illegal extID(%v) from (%v), quorum(%v)", extID, allHosts[0], quorum))
 		return
 	}
 
-	return extID, p.ResultCode, nil
+	return extID, replyPacket.ResultCode, nil
 }
 
 // Handler lock is held by the caller.

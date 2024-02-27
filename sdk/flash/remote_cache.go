@@ -182,6 +182,11 @@ func (rc *RemoteCache) getReadReply(conn *net.TCPConn, reqPacket *common.Packet,
 			log.LogWarnf("getReadReply: failed to read from connect, req(%v) readBytes(%v) err(%v)", reqPacket, readBytes, err)
 			return
 		}
+		if replyPacket.ReqID != reqPacket.ReqID {
+			err = fmt.Errorf("mismatch packet")
+			log.LogWarnf("getReadReply: err(%v) req(%v) reply(%v)", err, reqPacket, replyPacket)
+			return
+		}
 		if replyPacket.ResultCode != proto.OpOk {
 			err = fmt.Errorf("ResultCode NOK (%v)", replyPacket.ResultCode)
 			log.LogWarnf("getReadReply: ResultCode NOK, req(%v) reply(%v) ResultCode(%v)", reqPacket, replyPacket, replyPacket.ResultCode)
@@ -236,6 +241,11 @@ func (rc *RemoteCache) Prepare(ctx context.Context, fg *FlashGroup, inode uint64
 	replyPacket := common.NewCacheReply(reqPacket.Ctx())
 	if err = replyPacket.ReadFromConnNs(conn, rc.connConfig.ReadTimeoutNs); err != nil {
 		log.LogWarnf("FlashGroup Prepare: failed to ReadFromConn, replyPacket(%v), fg host(%v) moved(%v), err(%v)", replyPacket, addr, moved, err)
+		return
+	}
+	if replyPacket.ReqID != reqPacket.ReqID {
+		err = fmt.Errorf("mismatch packet")
+		log.LogWarnf("FlashGroup prepare: err(%v) req(%v) reply(%v)", err, reqPacket, replyPacket)
 		return
 	}
 	if replyPacket.ResultCode != proto.OpOk {

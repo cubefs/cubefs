@@ -526,6 +526,11 @@ func (dp *DataPartition) OverWriteToDataPartitionLeader(sc *StreamConn, req *com
 		log.LogWarnf("OverWriteToDataPartitionLeader: getReply error and RETURN, addr(%v) reqPacket(%v) err(%v)", sc.currAddr, req, err)
 		return
 	}
+	if !reply.IsValidWriteReply(req) || reply.CRC != req.CRC {
+		err = fmt.Errorf("mismatch packet")
+		log.LogWarnf("OverWriteToDataPartitionLeader: err(%v) req(%v) reply(%v)", err, req, reply)
+		return
+	}
 	dp.checkAddrNotExist(sc.currAddr, reply)
 	return
 }
