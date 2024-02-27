@@ -18,6 +18,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	syslog "log"
 	"math"
 	"os"
 	"path"
@@ -1029,6 +1030,28 @@ func (vo *VolMap) getSimpleVolView(VolumeID string) (vv *proto.SimpleVolView, er
 	return
 }
 
+func (vo *VolMap) getSimpleVolViewWithRetry(dp *DataPartition) (vv *proto.SimpleVolView, err error) {
+	const intervalSecond = time.Second * 10
+	const myMaxRetry = 6 * 30 // wait for 30 minute
+
+	for retryCnt := 1; retryCnt < myMaxRetry; retryCnt++ {
+		vv, err = volViews.getSimpleVolView(dp.volumeID)
+		if err == nil {
+			return
+		}
+
+		log.LogErrorf("[getSimpleVolViewWithRetry] dpId(%v) get vol(%s) info failed, retryCnt(%v), err %s",
+			dp.partitionID, dp.volumeID, retryCnt, err.Error())
+
+		time.Sleep(intervalSecond)
+	}
+
+	err = fmt.Errorf("[getSimpleVolViewWithRetry] dpId(%v) get vol(%s) info failed and exhausted all retry attempts(%v), err: %s",
+		dp.partitionID, dp.volumeID, myMaxRetry, err.Error())
+	log.LogError(err)
+	return
+}
+
 func (dp *DataPartition) doExtentTtl(ttl int) {
 	if ttl <= 0 {
 		log.LogWarn("[doTTL] ttl is 0, set default 30", ttl)
@@ -1118,11 +1141,15 @@ func (dp *DataPartition) startEvict() {
 
 	log.LogDebugf("[startEvict] start do dp(%d) evict op", dp.partitionID)
 
-	vv, err := volViews.getSimpleVolView(dp.volumeID)
+	vv, err := volViews.getSimpleVolViewWithRetry(dp)
 	if err != nil {
-		err := fmt.Errorf("[startEvict] get vol [%s] info error, err %s", dp.volumeID, err.Error())
+		err := fmt.Errorf("[startEvict] dp(%v) stop, get vol [%s] info error, dp stop, err: %s",
+			dp.partitionID, dp.volumeID, err.Error())
 		log.LogError(err)
-		panic(err)
+		exporter.Warning(err.Error())
+		syslog.Println(err.Error())
+		dp.Stop()
+		return
 	}
 
 	lruInterval := getWithDefault(vv.CacheLruInterval, 5)
