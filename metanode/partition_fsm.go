@@ -698,12 +698,19 @@ func (mp *metaPartition) ResetDbByNewDir(newDBDir string) (err error) {
 	}
 
 	tmpDir := strings.TrimSuffix(mp.getRocksDbRootDir(), "/")
-	tmpDir = fmt.Sprintf("%v_tmp", tmpDir)
-	err = os.RemoveAll(tmpDir)
-	if err != nil && !os.IsNotExist(err) {
-		log.LogErrorf("[ResetDbByNewDir] failed to remove tmp dir, err(%v)", err)
+	tmpDir = fmt.Sprintf("%v_garbage", tmpDir)
+	err = os.MkdirAll(tmpDir, 0o755)
+	if err != nil && !os.IsExist(err) {
+		log.LogErrorf("[ResetDbByNewDir] failed to create garbage dir, err(%v)", err)
 		return
 	}
+	tmpDir, err = os.MkdirTemp(tmpDir, "")
+	if err != nil {
+		log.LogErrorf("[ResetDbByNewDir] failed to get tmp dir, err(%v)", err)
+		return
+	}
+	garbageDir := tmpDir
+	tmpDir = path.Join(tmpDir, "remove_by_rename")
 	// NOTE: atomic rename dir
 	if err = os.Rename(mp.getRocksDbRootDir(), tmpDir); err != nil && os.IsNotExist(err) {
 		log.LogErrorf("[ResetDbByNewDir] failed to rename dir, err(%v)", err)
@@ -715,8 +722,8 @@ func (mp *metaPartition) ResetDbByNewDir(newDBDir string) (err error) {
 		return
 	}
 
-	if err = os.RemoveAll(tmpDir); err != nil {
-		log.LogErrorf("[ResetDbByNewDir] failed to remove garbage, err(%v)", err)
+	if err = os.RemoveAll(garbageDir); err != nil {
+		log.LogErrorf("[ResetDbByNewDir] failed to remove garbage(%v) please remove it manually, err(%v)", garbageDir, err)
 		err = nil
 	}
 
@@ -900,6 +907,12 @@ func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.Sn
 			log.LogDebugf("[ApplySnapshot] mp(%v) apply snapshot finish!", mp.config.PartitionId)
 			// NOTE: reset db
 			if db != nil {
+				// NOTE: set some rocksdb data before renew db
+				metaTree.InodeTree.SetApplyID(appIndexID)
+				metaTree.InodeTree.SetCursor(cursor)
+				txTree.SetTxId(txID)
+				deletedExtentsTree.SetDeletedExtentId(deletedExtentsId)
+
 				if err = db.CloseDb(); err != nil {
 					log.LogErrorf("ApplyBaseSnapshot: metaPartition(%v) recover from snap failed; Close new db(dir:%s) failed:%s", mp.config.PartitionId, db.dir, err.Error())
 					return
@@ -921,11 +934,9 @@ func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.Sn
 				return
 			}
 			mp.config.Cursor = cursor
-			mp.inodeTree.SetCursor(cursor)
 			mp.txProcessor.txManager.txTree = txTree
 			mp.txProcessor.txResource.txRbInodeTree = txRbInodeTree
 			mp.txProcessor.txResource.txRbDentryTree = txRbDentryTree
-			mp.txProcessor.txManager.txTree.SetTxId(txID)
 			mp.uniqChecker = uniqChecker
 			mp.multiVersionList.VerList = make([]*proto.VolVersionInfo, len(verList))
 			copy(mp.multiVersionList.VerList, verList)
