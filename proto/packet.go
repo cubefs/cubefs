@@ -219,6 +219,8 @@ const (
 	OpTxCommitErr             uint8 = 0xEC
 	OpTxRollbackErr           uint8 = 0xED
 	OpTxUnknownOp             uint8 = 0xEE
+
+	OpReadRepairExtentAgain uint8 = 0xEF
 )
 
 const (

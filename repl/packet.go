@@ -312,6 +312,8 @@ func (p *Packet) identificationErrorResultCode(errLog string, errMsg string) {
 		p.ResultCode = proto.OpTryOtherAddr
 	} else if strings.Contains(errMsg, raft.ErrStopped.Error()) {
 		p.ResultCode = proto.OpTryOtherAddr
+	} else if strings.Contains(errMsg, storage.NoDiskReadRepairExtentTokenError.Error()) {
+		p.ResultCode = proto.OpReadRepairExtentAgain
 	} else {
 		p.ResultCode = proto.OpIntraGroupNetErr
 	}
