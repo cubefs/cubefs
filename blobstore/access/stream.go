@@ -27,6 +27,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/access/controller"
 	"github.com/cubefs/cubefs/blobstore/api/access"
 	"github.com/cubefs/cubefs/blobstore/api/blobnode"
+	cmapi "github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/api/proxy"
 	"github.com/cubefs/cubefs/blobstore/common/codemode"
 	"github.com/cubefs/cubefs/blobstore/common/ec"
@@ -475,7 +476,16 @@ const (
 	releaseTypeSealed // 2: other write fail, need sealed release volume. and the scheduler will inspect this volume
 )
 
-func (h *Handler) releaseVolume(cid proto.ClusterID, md codemode.CodeMode, tp releaseType, vid proto.Vid) {
+// 1. aggregate the volume that needs to be released at background; 2. discard volume cache immediately
+func (h *Handler) releaseVolume(ctx context.Context, cid proto.ClusterID, md codemode.CodeMode, tp releaseType, vid proto.Vid) {
+	span := trace.SpanFromContextSafe(ctx)
+	allocMgr, err := h.clusterController.GetVolumeAllocator(cid)
+	if err != nil {
+		span.Warnf("fail to get alloc mgr, when releaseVolume. err[%+v]", err)
+		return
+	}
+
+	// aggregate the volume that needs to be released
 	if v, ok := h.releaseVids.Load(cid); ok {
 		vol := v.(*releaseVids)
 		vol.md = md
@@ -486,7 +496,17 @@ func (h *Handler) releaseVolume(cid proto.ClusterID, md codemode.CodeMode, tp re
 		case releaseTypeSealed:
 			vol.sealedVids.addVid(vid)
 		default:
+			return
 		}
+	}
+
+	// discard volume cache immediately
+	err = allocMgr.Discard(ctx, &cmapi.DiscardVolsArgs{
+		CodeMode: md,
+		Discards: []proto.Vid{vid},
+	})
+	if err != nil {
+		span.Warnf("fail to discard volume cache. err[%+v]", err)
 	}
 }
 

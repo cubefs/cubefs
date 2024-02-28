@@ -404,14 +404,14 @@ func (h *Handler) writeToBlobnodes(ctx context.Context,
 		}
 		if failIdxes.Len() > tactic.M {
 			if _, ok := h.failVids.LoadAndDelete(vid); ok { // prevent duplicate marking sealed
-				h.releaseVolume(clusterID, volume.CodeMode, releaseTypeSealed, vid)
+				h.releaseVolume(ctx, clusterID, volume.CodeMode, releaseTypeSealed, vid)
 			}
 		}
 	}(writeDone)
 
 	defer func() {
 		if release > releaseTypeInit {
-			h.releaseVolume(clusterID, volume.CodeMode, release, vid)
+			h.releaseVolume(ctx, clusterID, volume.CodeMode, release, vid)
 		}
 	}()
 

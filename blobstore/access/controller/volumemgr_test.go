@@ -454,7 +454,12 @@ func TestReleaseVolume(t *testing.T) {
 
 	vm.modeInfos[codemode.EC6P6] = info
 	vm.allocChs[codemode.EC6P6] = make(chan *allocArgs)
-	err := vm.Release(ctx, &cm.ReleaseVolumes{
+	err := vm.Discard(ctx, &cm.DiscardVolsArgs{
+		CodeMode: codemode.EC6P6,
+		Discards: []proto.Vid{1, 2, 3},
+	})
+	require.NoError(t, err)
+	err = vm.Release(ctx, &cm.ReleaseVolumes{
 		CodeMode:   codemode.EC6P6,
 		NormalVids: []proto.Vid{1, 2, 3},
 	})
