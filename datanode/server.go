@@ -591,6 +591,8 @@ func (s *DataNode) registerHandler() {
 	http.HandleFunc("/setDiskQos", s.setDiskQos)
 	http.HandleFunc("/getDiskQos", s.getDiskQos)
 	http.HandleFunc("/reloadDataPartition", s.reloadDataPartition)
+	http.HandleFunc("/setDiskExtentReadLimitStatus", s.setDiskExtentReadLimitStatus)
+	http.HandleFunc("/queryDiskExtentReadLimitStatus", s.queryDiskExtentReadLimitStatus)
 }
 
 func (s *DataNode) startTCPService() (err error) {
