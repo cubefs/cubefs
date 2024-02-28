@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path"
 	"strconv"
 
 	"github.com/cubefs/cubefs/depends/tiglabs/raft"
@@ -206,6 +207,7 @@ func (mf *MetadataFsm) ApplySnapshot(peers []proto.Peer, iterator proto.SnapIter
 	}
 	rocksdbOpened := true
 	removeDir := ""
+	garbageDir := ""
 	// open temp rocksdb
 	tempDb, err := raftstore.NewRocksDBStore(recoveryDir, mf.store.GetLruCacheSize(), mf.store.GetWriteBufferSize())
 	if err != nil {
@@ -216,12 +218,19 @@ func (mf *MetadataFsm) ApplySnapshot(peers []proto.Peer, iterator proto.SnapIter
 	mf.store.Close()
 	rocksdbOpened = false
 	// remove by rename
-	removeDir, err = os.MkdirTemp("", "remove_by_rename")
-	if err != nil {
-		log.LogErrorf("failed to get temp dir %v", err.Error())
+	removeDir = raftstore.GetRocksDBStoreGarbageDir(mf.store.GetDir())
+	err = os.MkdirAll(removeDir, 0o755)
+	if err != nil && !os.IsExist(err) {
+		log.LogErrorf("[ApplySnapshot] failed to create garbage dir, err(%v)", err)
 		goto errHandler
 	}
-	removeDir = fmt.Sprintf("%s/remove", removeDir)
+	removeDir, err = os.MkdirTemp(removeDir, "")
+	if err != nil {
+		log.LogErrorf("[ApplySnapshot] failed to get temp dir %v", err.Error())
+		goto errHandler
+	}
+	garbageDir = removeDir
+	removeDir = path.Join(removeDir, "remove_by_rename")
 	log.LogWarnf(fmt.Sprintf("action[ApplySnapshot] begin,applied[%v]", mf.applied))
 	for err == nil {
 		bgTime := stat.BeginStat()
@@ -256,9 +265,9 @@ func (mf *MetadataFsm) ApplySnapshot(peers []proto.Peer, iterator proto.SnapIter
 	if err = os.Rename(mf.store.GetDir(), removeDir); err != nil {
 		goto errHandler
 	}
-	if err = os.RemoveAll(removeDir); err != nil {
+	if err = os.RemoveAll(garbageDir); err != nil {
 		err = nil
-		log.LogErrorf("failed to remove directory %v", err.Error())
+		log.LogErrorf("[ApplySnapshot] failed to remove directory(%v) please try to remove it manually, err(%v)", garbageDir, err.Error())
 	}
 	// rename new dir to raft store dir
 	if err = os.Rename(tempDb.GetDir(), mf.store.GetDir()); err != nil {
