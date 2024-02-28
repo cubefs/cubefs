@@ -17,6 +17,7 @@ package datanode
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/cubefs/cubefs/util/log"
 	"net/http"
 	"os"
 	"path"
@@ -556,4 +557,45 @@ func (s *DataNode) getAllExtent(w http.ResponseWriter, r *http.Request) {
 
 	s.buildSuccessResp(w, gcExtents)
 	return
+}
+
+func (s *DataNode) reloadDataPartition(w http.ResponseWriter, r *http.Request) {
+	const (
+		paramID = "id"
+	)
+	if err := r.ParseForm(); err != nil {
+		err = fmt.Errorf("parse form fail: %v", err)
+		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	partitionID, err := strconv.ParseUint(r.FormValue(paramID), 10, 64)
+	if err != nil {
+		err = fmt.Errorf("parse param %v fail: %v", paramID, err)
+		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	partition := s.space.Partition(partitionID)
+	if partition == nil {
+		s.buildFailureResp(w, http.StatusNotFound, "partition not exist")
+		return
+	}
+	//store disk path and root of dp
+	disk := partition.disk
+	rootDir := partition.path
+	log.LogDebugf("data partition disk %v rootDir %v", disk, rootDir)
+
+	s.space.partitionMutex.Lock()
+	delete(s.space.partitions, partitionID)
+	s.space.partitionMutex.Unlock()
+	partition.Stop()
+	partition.Disk().DetachDataPartition(partition)
+
+	log.LogDebugf("data partition %v is detached", partitionID)
+	_, err = LoadDataPartition(rootDir, disk)
+	if err != nil {
+		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
+	} else {
+		s.buildSuccessResp(w, "success")
+	}
+
 }
