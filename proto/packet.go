@@ -221,9 +221,9 @@ const (
 	OpTxCommitErr             uint8 = 0xEC
 	OpTxRollbackErr           uint8 = 0xED
 	OpTxUnknownOp             uint8 = 0xEE
-
 	// io speed limit
-	OpLimitedIoErr uint8 = 0xB1
+	OpLimitedIoErr          uint8 = 0xB1
+	OpReadRepairExtentAgain uint8 = 0xEF
 )
 
 const (

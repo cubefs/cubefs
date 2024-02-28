@@ -19,6 +19,7 @@ import (
 	"encoding/json"
 	"math"
 	"net"
+	"strings"
 	"sync"
 	"time"
 
@@ -250,8 +251,13 @@ func (dp *DataPartition) DoRepair(repairTasks []*DataPartitionRepairTask) {
 		}
 	}
 	for _, extentInfo := range repairTasks[0].ExtentsToBeRepaired {
+	RETRY:
 		err := dp.streamRepairExtent(extentInfo)
 		if err != nil {
+			if strings.Contains(err.Error(), storage.NoDiskReadRepairExtentTokenError.Error()) {
+				log.LogDebugf("action[DoRepair] retry dp(%v) extent(%v).", dp.partitionID, extentInfo.FileID)
+				goto RETRY
+			}
 			err = errors.Trace(err, "doStreamExtentFixRepair %v", dp.applyRepairKey(int(extentInfo.FileID)))
 			localExtentInfo, opErr := dp.ExtentStore().Watermark(uint64(extentInfo.FileID))
 			if opErr != nil {
@@ -465,10 +471,14 @@ func (dp *DataPartition) NotifyExtentRepair(members []*DataPartitionRepairTask) 
 // DoStreamExtentFixRepair executes the repair on the followers.
 func (dp *DataPartition) doStreamExtentFixRepair(wg *sync.WaitGroup, remoteExtentInfo *storage.ExtentInfo) {
 	defer wg.Done()
-
+RETRY:
 	err := dp.streamRepairExtent(remoteExtentInfo)
 
 	if err != nil {
+		if strings.Contains(err.Error(), storage.NoDiskReadRepairExtentTokenError.Error()) {
+			log.LogWarnf("action[DoRepair] retry dp(%v) extent(%v).", dp.partitionID, remoteExtentInfo.FileID)
+			goto RETRY
+		}
 		err = errors.Trace(err, "doStreamExtentFixRepair %v", dp.applyRepairKey(int(remoteExtentInfo.FileID)))
 		localExtentInfo, opErr := dp.ExtentStore().Watermark(uint64(remoteExtentInfo.FileID))
 		if opErr != nil {
@@ -486,7 +496,7 @@ func (dp *DataPartition) applyRepairKey(extentID int) (m string) {
 
 // The actual repair of an extent happens here.
 func (dp *DataPartition) streamRepairExtent(remoteExtentInfo *storage.ExtentInfo) (err error) {
-	log.LogDebugf("streamRepairExtent dp %v extent %v remote info %v", dp.partitionID, remoteExtentInfo)
+	log.LogDebugf("streamRepairExtent dp %v extent %v remote info %v", dp.partitionID, remoteExtentInfo.FileID, remoteExtentInfo)
 	store := dp.ExtentStore()
 	if !store.HasExtent(remoteExtentInfo.FileID) {
 		return
@@ -548,6 +558,7 @@ func (dp *DataPartition) streamRepairExtent(remoteExtentInfo *storage.ExtentInfo
 	for currFixOffset < remoteExtentInfo.Size {
 
 		if !dp.Disk().CanWrite() {
+			log.LogWarnf("streamRepairExtent dp %v extent %v disk is full", dp.partitionID, remoteExtentInfo.FileID)
 			return fmt.Errorf("disk is full, can't do repair write any more")
 		}
 
@@ -561,14 +572,23 @@ func (dp *DataPartition) streamRepairExtent(remoteExtentInfo *storage.ExtentInfo
 			err = errors.Trace(err, "streamRepairExtent dp %v extent %v receive data error,localExtentSize(%v) remoteExtentSize(%v)",
 				dp.partitionID, remoteExtentInfo.FileID, currFixOffset, remoteExtentInfo.Size)
 			isNetError = true
+			log.LogWarnf("%v", err.Error())
 			return
 		}
 
 		if reply.ResultCode != proto.OpOk {
-			err = errors.Trace(fmt.Errorf("unknow result code"),
-				"streamRepairExtent dp %v extent %v receive opcode error(%v) ,localExtentSize(%v) remoteExtentSize(%v)",
-				dp.partitionID, remoteExtentInfo.FileID, string(reply.Data[:intMin(len(reply.Data), int(reply.Size))]), currFixOffset, remoteExtentInfo.Size)
-			return
+			if reply.ResultCode == proto.OpReadRepairExtentAgain {
+				log.LogDebugf("streamRepairExtent dp %v extent %v wait for token", dp.partitionID, remoteExtentInfo.FileID)
+				time.Sleep(time.Second * 1)
+				isNetError = true
+				return storage.NoDiskReadRepairExtentTokenError
+			} else {
+				err = errors.Trace(fmt.Errorf("unknow result code"),
+					"streamRepairExtent dp %v extent %v receive opcode error(%v) ,localExtentSize(%v) remoteExtentSize(%v)",
+					dp.partitionID, remoteExtentInfo.FileID, string(reply.Data[:intMin(len(reply.Data), int(reply.Size))]), currFixOffset, remoteExtentInfo.Size)
+				log.LogWarnf("%v", err.Error())
+				return
+			}
 		}
 
 		if reply.ReqID != request.ReqID || reply.PartitionID != request.PartitionID ||
@@ -576,6 +596,7 @@ func (dp *DataPartition) streamRepairExtent(remoteExtentInfo *storage.ExtentInfo
 			err = errors.Trace(fmt.Errorf("unavali reply"), "streamRepairExtent dp %v extent %v receive invalid "+
 				"request(%v) reply(%v) ,localExtentSize(%v) remoteExtentSize(%v)", dp.partitionID, remoteExtentInfo.FileID,
 				request.GetUniqueLogId(), reply.GetUniqueLogId(), currFixOffset, remoteExtentInfo.Size)
+			log.LogWarnf("%v", err.Error())
 			return
 		}
 
@@ -583,6 +604,7 @@ func (dp *DataPartition) streamRepairExtent(remoteExtentInfo *storage.ExtentInfo
 			err = errors.Trace(fmt.Errorf("unavali reply"), "streamRepairExtent dp %v extent %v receive invalid "+
 				"request(%v) reply(%v) localExtentSize(%v) remoteExtentSize(%v)", dp.partitionID, remoteExtentInfo.FileID,
 				request.GetUniqueLogId(), reply.GetUniqueLogId(), currFixOffset, remoteExtentInfo.Size)
+			log.LogWarnf("%v", err.Error())
 			return
 		}
 		if loopTimes%100 == 0 {
