@@ -633,7 +633,7 @@ func (mp *metaPartition) startDeleteObjExtentsTraveler() {
 			case <-mp.stopC:
 				return
 			default:
-				err := mp.deletedObjExtentsTreeTravle()
+				err := mp.deletedObjExtentsTreeTravler()
 				if err != nil {
 					log.LogErrorf("[startDeleteObjExtentsTraveler] mp(%v) traveler exits, restart after %v, err(%v)", mp.config.PartitionId, deleteExtentsTravlerRestartTicket, err)
 					time.Sleep(deleteExtentsTravlerRestartTicket)
@@ -750,7 +750,7 @@ func (mp *metaPartition) deletedExtentsTreeTraveler() (err error) {
 	}
 }
 
-func (mp *metaPartition) deletedObjExtentsTreeTravle() (err error) {
+func (mp *metaPartition) deletedObjExtentsTreeTravler() (err error) {
 	timer := time.NewTimer(1 * time.Minute)
 	defer timer.Stop()
 	var snap Snapshot
@@ -763,14 +763,14 @@ func (mp *metaPartition) deletedObjExtentsTreeTravle() (err error) {
 		case <-timer.C:
 		}
 		if _, ok := mp.IsLeader(); !ok {
-			log.LogDebugf("[deletedObjExtentsTreeTravle] mp(%v) is not leader sleep", mp.config.PartitionId)
+			log.LogDebugf("[deletedObjExtentsTreeTravler] mp(%v) is not leader sleep", mp.config.PartitionId)
 			continue
 		}
 		func() {
-			log.LogDebugf("[deletedObjExtentsTreeTravle] mp(%v) start travel", mp.config.PartitionId)
+			log.LogDebugf("[deletedObjExtentsTreeTravler] mp(%v) start travel", mp.config.PartitionId)
 			snap, err = mp.GetSnapShot()
 			if err != nil {
-				log.LogErrorf("[deletedObjExtentsTreeTravle] mp(%v) failed to open snapshot, err(%v)", mp.config.PartitionId, err)
+				log.LogErrorf("[deletedObjExtentsTreeTravler] mp(%v) failed to open snapshot, err(%v)", mp.config.PartitionId, err)
 				return
 			}
 			defer snap.Close()
@@ -796,7 +796,7 @@ func (mp *metaPartition) deletedObjExtentsTreeTravle() (err error) {
 			}
 			err = mp.batchDeleteExtentsColdVol(doeks[:count])
 			if err != nil {
-				log.LogErrorf("[deletedObjExtentsTreeTravle] failed to delete ek from cid(%v), err(%v)", doeks[0].ObjExtentKey.Cid, err)
+				log.LogErrorf("[deletedObjExtentsTreeTravler] failed to delete ek from cid(%v), err(%v)", doeks[0].ObjExtentKey.Cid, err)
 				return
 			}
 			request := &DeleteObjExtentsFromTreeRequest{
@@ -805,10 +805,10 @@ func (mp *metaPartition) deletedObjExtentsTreeTravle() (err error) {
 			var v []byte
 			v, err = request.Marshal()
 			if err != nil {
-				log.LogErrorf("[deletedObjExtentsTreeTravle] failed to marshal remove request, err(%v)", err)
+				log.LogErrorf("[deletedObjExtentsTreeTravler] failed to marshal remove request, err(%v)", err)
 				return
 			}
-			log.LogErrorf("[deletedObjExtentsTreeTravle] mp(%v) delete deks", mp.config.PartitionId)
+			log.LogErrorf("[deletedObjExtentsTreeTravler] mp(%v) delete deks", mp.config.PartitionId)
 			_, err = mp.submit(opFSMDeleteObjExtentFromTree, v)
 			if err != nil {
 				log.LogErrorf("[deletedObjExtentTreeTraveler] mp(%v) failed to remove doeks, err(%v)", mp.config.PartitionId, err)
