@@ -15,7 +15,6 @@
 package master
 
 import (
-	"math"
 	"sync"
 	"time"
 
@@ -110,8 +109,6 @@ func newLcSnapshotVerStatus() *lcSnapshotVerStatus {
 }
 
 func (vs *lcSnapshotVerStatus) GetOneTask() (task *proto.SnapshotVerDelTask) {
-	var min int64 = math.MaxInt64
-
 	vs.Lock()
 	defer vs.Unlock()
 	if len(vs.VerInfos) == 0 {
@@ -119,10 +116,11 @@ func (vs *lcSnapshotVerStatus) GetOneTask() (task *proto.SnapshotVerDelTask) {
 	}
 
 	for _, i := range vs.VerInfos {
-		if i.VolVersionInfo.DelTime < min {
-			min = i.VolVersionInfo.DelTime
-			task = i
-		}
+		task = i
+		break
+	}
+	if task == nil {
+		return
 	}
 
 	delete(vs.VerInfos, task.Id)
@@ -148,6 +146,9 @@ func (vs *lcSnapshotVerStatus) RedoTask(task *proto.SnapshotVerDelTask) {
 func (vs *lcSnapshotVerStatus) AddVerInfo(task *proto.SnapshotVerDelTask) {
 	vs.Lock()
 	defer vs.Unlock()
+	if len(vs.VerInfos) > 10000 {
+		return
+	}
 
 	if _, ok := vs.TaskResults[task.Id]; ok {
 		log.LogDebugf("VerInfo: %v is in TaskResults, already in processing", task)

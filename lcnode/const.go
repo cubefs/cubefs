@@ -48,11 +48,6 @@ const (
 	maxDirChanNum              = 1000000
 	defaultReadDirLimit        = 1000
 
-	defaultMasterIntervalToCheckHeartbeat = 6
-	noHeartBeatTimes                      = 3 // number of times that no heartbeat reported
-	defaultLcNodeTimeOutSec               = noHeartBeatTimes * defaultMasterIntervalToCheckHeartbeat
-	defaultIntervalToCheckRegister        = 2 * defaultLcNodeTimeOutSec
-
 	defaultUnboundedChanInitCapacity = 10000
 	defaultLcNodeTaskCountLimit      = 1
 	maxLcNodeTaskCountLimit          = 20

@@ -262,14 +262,14 @@ func (l *LcNode) register() {
 
 func (l *LcNode) checkRegister() {
 	for {
-		if time.Since(l.lastHeartbeat) > time.Second*time.Duration(defaultLcNodeTimeOutSec) {
+		if time.Since(l.lastHeartbeat) > time.Minute*10 {
 			log.LogWarnf("lcnode might be deregistered from master, stop scanners...")
 			l.stopScanners()
 			log.LogWarnf("lcnode might be deregistered from master, retry registering...")
 			l.register()
 			l.lastHeartbeat = time.Now()
 		}
-		time.Sleep(time.Second * defaultIntervalToCheckRegister)
+		time.Sleep(time.Minute)
 	}
 }
 
