@@ -72,8 +72,10 @@ func (v *volViewUpdater) getVol(volName string) (view *proto.SimpleVolView, dpVi
 }
 
 func (v *volViewUpdater) updateVol(volName string) (err error) {
+	log.LogDebugf("[updateVol] update volume(%v)", volName)
 	value, ok := v.metaPartitions.Load(volName)
 	if !ok {
+		log.LogErrorf("[updateVol] volume(%v) is unregistered", volName)
 		return
 	}
 	mps := value.(*sync.Map)
@@ -83,6 +85,7 @@ func (v *volViewUpdater) updateVol(volName string) (err error) {
 		return false
 	})
 	if empty {
+		log.LogDebugf("[updateVol] volume(%v) mp count is 0", volName)
 		return
 	}
 	volView, dpView, err := v.getVol(volName)
@@ -157,6 +160,7 @@ func (v *volViewUpdater) Register(mp MetaPartition) (err error) {
 		return
 	}
 	// NOTE: we need to update volume
+	log.LogDebugf("[Register] force update volume(%v)", mp.GetBaseConfig().VolName)
 	v.forceUpdateC <- mp.GetBaseConfig().VolName
 	return
 }
@@ -177,7 +181,6 @@ func (v *volViewUpdater) Unregister(mp MetaPartition) (err error) {
 
 func (v *volViewUpdater) start() (err error) {
 	v.wg.Add(1)
-	v.forceUpdateC = make(chan string)
 	go v.updater()
 	return
 }

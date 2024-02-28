@@ -431,6 +431,10 @@ func (mp *metaPartition) deleteExtentsFromList(fileList *synclist.SyncList) {
 
 // NOTE: new api
 
+const (
+	deleteExtentsTravlerRestartTicket = 10 * time.Second
+)
+
 type DeleteExtentsFromTreeRequest struct {
 	DeletedKeys []*DeletedExtentKey
 }
@@ -611,8 +615,8 @@ func (mp *metaPartition) startDeleteExtentsTraveler() {
 			default:
 				err := mp.deletedExtentsTreeTraveler()
 				if err != nil {
-					log.LogErrorf("[startDeleteExtent] mp(%v) traveler exits, restart after 10 sec, err(%v)", mp.config.PartitionId, err)
-					time.Sleep(10 * time.Second)
+					log.LogErrorf("[startDeleteExtent] mp(%v) traveler exits, restart after %v, err(%v)", mp.config.PartitionId, deleteExtentsTravlerRestartTicket, err)
+					time.Sleep(deleteExtentsTravlerRestartTicket)
 					continue
 				}
 			}
@@ -629,8 +633,8 @@ func (mp *metaPartition) startDeleteObjExtentsTraveler() {
 			default:
 				err := mp.deletedObjExtentsTreeTravle()
 				if err != nil {
-					log.LogErrorf("[startDeleteObjExtentsTraveler] mp(%v) traveler exits, restart after 10 sec, err(%v)", mp.config.PartitionId, err)
-					time.Sleep(10 * time.Second)
+					log.LogErrorf("[startDeleteObjExtentsTraveler] mp(%v) traveler exits, restart after %v, err(%v)", mp.config.PartitionId, deleteExtentsTravlerRestartTicket, err)
+					time.Sleep(deleteExtentsTravlerRestartTicket)
 					continue
 				}
 			}

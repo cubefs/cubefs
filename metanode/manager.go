@@ -517,7 +517,7 @@ func (m *metadataManager) loadPartitions() (err error) {
 }
 
 func (m *metadataManager) attachPartition(id uint64, partition MetaPartition) (err error) {
-	syslog.Println(fmt.Sprintf("start load metaPartition %v", id))
+	syslog.Printf("start load metaPartition %v", id)
 	partition.ForceSetMetaPartitionToLoadding()
 	if err = partition.Start(false); err != nil {
 		msg := fmt.Sprintf("load meta partition %v fail: %v", id, err)
@@ -526,15 +526,19 @@ func (m *metadataManager) attachPartition(id uint64, partition MetaPartition) (e
 		return
 	}
 	m.mu.Lock()
-	defer m.mu.Unlock()
 	m.partitions[id] = partition
+	m.mu.Unlock()
 	msg := fmt.Sprintf("load meta partition %v success", id)
 	log.LogInfof(msg)
 	syslog.Println(msg)
 	err = m.volViewUpdaer.Register(partition)
 	if err != nil {
-		log.LogErrorf("[attachPartition] failed to register mp(%v) to vol view updater, err(%v)", partition.GetBaseConfig().PartitionId, err)
+		msg := fmt.Sprintf("[attachPartition] failed to register mp(%v) to vol view updater, err(%v)", partition.GetBaseConfig().PartitionId, err)
+		log.LogErrorf(msg)
+		syslog.Print(msg)
 		if err != ErrMpExistsInVolViewUpdater {
+			m.mu.Lock()
+			defer m.mu.Unlock()
 			delete(m.partitions, id)
 			return
 		}
@@ -544,15 +548,18 @@ func (m *metadataManager) attachPartition(id uint64, partition MetaPartition) (e
 
 func (m *metadataManager) detachPartition(id uint64) (err error) {
 	m.mu.Lock()
-	defer m.mu.Unlock()
-	if mp, has := m.partitions[id]; has {
+	mp, has := m.partitions[id]
+	if has {
 		delete(m.partitions, id)
-		err = m.volViewUpdaer.Unregister(mp)
-		if err != nil {
-			log.LogErrorf("[detachPartition] failed to detach mp(%v), err(%v)", id, err)
-		}
 	} else {
+		m.mu.Unlock()
 		err = fmt.Errorf("unknown partition: %d", id)
+		return
+	}
+	m.mu.Unlock()
+	err = m.volViewUpdaer.Unregister(mp)
+	if err != nil {
+		log.LogErrorf("[detachPartition] failed to detach mp(%v), err(%v)", id, err)
 	}
 	return
 }

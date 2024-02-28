@@ -755,6 +755,7 @@ func (mp *metaPartition) onStart(isCreate bool) (err error) {
 		return
 	}
 	mp.startScheduleTask()
+	log.LogDebugf("[onStart] mp(%v) start deleted extents traveler", mp.config.PartitionId)
 	mp.startDeleteExtentsTraveler()
 	mp.startDeleteObjExtentsTraveler()
 
