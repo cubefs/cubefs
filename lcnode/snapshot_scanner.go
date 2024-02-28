@@ -110,6 +110,11 @@ func (s *SnapshotScanner) getTaskVerSeq() uint64 {
 }
 
 func (s *SnapshotScanner) Stop() {
+	defer func() {
+		if r := recover(); r != nil {
+			log.LogErrorf("SnapshotScanner Stop err:%v", r)
+		}
+	}()
 	close(s.stopC)
 	s.rPoll.WaitAndClose()
 	close(s.inodeChan.In)

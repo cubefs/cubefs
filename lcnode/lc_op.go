@@ -22,7 +22,6 @@ import (
 	"time"
 
 	"github.com/cubefs/cubefs/proto"
-	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/log"
 )
 
@@ -138,22 +137,16 @@ func (l *LcNode) opLcScan(conn net.Conn, p *proto.Packet) (err error) {
 	return
 }
 
-func (l *LcNode) respondToMaster(task *proto.AdminTask) (err error) {
+func (l *LcNode) respondToMaster(task *proto.AdminTask) {
 	// handle panic
 	defer func() {
 		if r := recover(); r != nil {
-			switch data := r.(type) {
-			case error:
-				err = data
-			default:
-				err = errors.New(data.(string))
-			}
+			log.LogErrorf("respondToMaster err: %v", r)
 		}
 	}()
-	if err = l.mc.NodeAPI().ResponseLcNodeTask(task); err != nil {
-		err = errors.Trace(err, "try respondToMaster failed")
+	if err := l.mc.NodeAPI().ResponseLcNodeTask(task); err != nil {
+		log.LogErrorf("respondToMaster err: %v, task: %v", err, task)
 	}
-	return
 }
 
 func (l *LcNode) opSnapshotVerDel(conn net.Conn, p *proto.Packet) (err error) {
