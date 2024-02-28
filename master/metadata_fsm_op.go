@@ -541,6 +541,10 @@ func (m *RaftCmd) setOpType() {
 		m.Op = opSyncAddAKUser
 	case volUserAcronym:
 		m.Op = opSyncAddVolUser
+	case lcNodeAcronym:
+		m.Op = opSyncAddLcNode
+	case lcConfigurationAcronym:
+		m.Op = opSyncAddLcConf
 	default:
 		log.LogWarnf("action[setOpType] unknown opCode[%v]", keyArr[1])
 	}
