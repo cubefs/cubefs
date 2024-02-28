@@ -67,6 +67,11 @@ func GetRocksDBStoreRecoveryDir(dir string) string {
 	return fmt.Sprintf("%v_temp", dir)
 }
 
+func GetRocksDBStoreGarbageDir(dir string) string {
+	dir = strings.TrimSuffix(dir, "/")
+	return fmt.Sprintf("%v_garbage", dir)
+}
+
 // NewRocksDBStoreAndRecovery returns a new RocksDB instance after execute recovery.
 func NewRocksDBStoreAndRecovery(dir string, lruCacheSize, writeBufferSize int) (store *RocksDBStore, err error) {
 	// start recovery
