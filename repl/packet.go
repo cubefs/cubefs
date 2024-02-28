@@ -316,6 +316,8 @@ func (p *Packet) identificationErrorResultCode(errLog string, errMsg string) {
 	} else if strings.Contains(errMsg, storage.VerNotConsistentError.Error()) {
 		p.ResultCode = proto.ErrCodeVersionOpError
 		// log.LogDebugf("action[identificationErrorResultCode] not change ver erro code, (%v)", string(debug.Stack()))
+	} else if strings.Contains(errMsg, storage.NoDiskReadRepairExtentTokenError.Error()) {
+		p.ResultCode = proto.OpReadRepairExtentAgain
 	} else {
 		log.LogErrorf("action[identificationErrorResultCode] error %v, errmsg %v", errLog, errMsg)
 		p.ResultCode = proto.OpIntraGroupNetErr

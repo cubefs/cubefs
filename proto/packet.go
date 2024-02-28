@@ -238,11 +238,11 @@ const (
 	OpTxCommitErr             uint8 = 0xEC
 	OpTxRollbackErr           uint8 = 0xED
 	OpTxUnknownOp             uint8 = 0xEE
-
 	// multiVersion to dp/mp
-	OpVersionOperation uint8 = 0xD5
-	OpSplitMarkDelete  uint8 = 0xD6
-	OpTryOtherExtent   uint8 = 0xD7
+	OpVersionOperation      uint8 = 0xD5
+	OpSplitMarkDelete       uint8 = 0xD6
+	OpTryOtherExtent        uint8 = 0xD7
+	OpReadRepairExtentAgain uint8 = 0xEF
 )
 
 const (

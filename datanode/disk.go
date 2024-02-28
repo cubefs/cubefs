@@ -83,13 +83,16 @@ type Disk struct {
 	limitWrite  *ioLimiter
 
 	// diskPartition info
-	diskPartition       *disk.PartitionStat
-	DiskErrPartitionSet map[uint64]struct{}
-	decommission        bool
+	diskPartition               *disk.PartitionStat
+	DiskErrPartitionSet         map[uint64]struct{}
+	decommission                bool
+	extentRepairReadLimit       chan struct{}
+	enableExtentRepairReadLimit bool
 }
 
 const (
 	SyncTinyDeleteRecordFromLeaderOnEveryDisk = 5
+	MaxExtentRepairReadLimit                  = 1 //
 )
 
 type PartitionVisitor func(dp *DataPartition)
@@ -138,6 +141,8 @@ func NewDisk(path string, reservedSpace, diskRdonlySpace uint64, maxErrCnt int, 
 		// NOTE: continue execution
 		err = nil
 	}
+	d.extentRepairReadLimit = make(chan struct{}, MaxExtentRepairReadLimit)
+	d.extentRepairReadLimit <- struct{}{}
 	return
 }
 
@@ -745,4 +750,43 @@ func isExpiredPartition(id uint64, partitions []uint64) bool {
 		}
 	}
 	return true
+}
+
+func (d *Disk) RequireReadExtentToken() bool {
+	d.RLock()
+	if !d.enableExtentRepairReadLimit {
+		d.RUnlock()
+		return true
+	}
+	d.RUnlock()
+	hasToken := false
+	select {
+	case <-d.extentRepairReadLimit:
+		hasToken = true
+	default:
+		hasToken = false
+	}
+	return hasToken
+}
+
+func (d *Disk) ReleaseReadExtentToken() {
+	d.RLock()
+	if !d.enableExtentRepairReadLimit {
+		d.RUnlock()
+		return
+	}
+	d.RUnlock()
+	d.extentRepairReadLimit <- struct{}{}
+}
+
+func (d *Disk) SetExtentRepairReadLimitStatus(status bool) {
+	d.Lock()
+	defer d.Unlock()
+	d.enableExtentRepairReadLimit = status
+}
+
+func (d *Disk) QueryExtentRepairReadLimitStatus() bool {
+	d.RLock()
+	defer d.RUnlock()
+	return d.enableExtentRepairReadLimit
 }
