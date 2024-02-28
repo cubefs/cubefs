@@ -723,19 +723,23 @@ func (dp *DataPartition) getLeaderMaxExtentIDAndPartitionSize() (maxExtentID, Pa
 }
 
 func (dp *DataPartition) broadcastMinAppliedID(minAppliedID uint64) (err error) {
-	for i := 0; i < dp.getReplicaLen(); i++ {
-		p := NewPacketToBroadcastMinAppliedID(dp.partitionID, minAppliedID)
-		replicaHostParts := strings.Split(dp.getReplicaAddr(i), ":")
+	allReplica := dp.getReplicaCopy()
+
+	for i := 0; i < len(allReplica); i++ {
+		targetReplica := allReplica[i]
+
+		replicaHostParts := strings.Split(targetReplica, ":")
 		replicaHost := strings.TrimSpace(replicaHostParts[0])
 		if LocalIP == replicaHost {
-			log.LogDebugf("partition(%v) local no send msg. localIP(%v) replicaHost(%v) appliedId(%v)",
+			log.LogDebugf("[broadcastMinAppliedID] partition(%v) local no send msg. localIP(%v) replicaHost(%v) appliedId(%v)",
 				dp.partitionID, LocalIP, replicaHost, dp.appliedID)
 			dp.minAppliedID = minAppliedID
 			continue
 		}
-		target := dp.getReplicaAddr(i)
+
+		p := NewPacketToBroadcastMinAppliedID(dp.partitionID, minAppliedID)
 		var conn *net.TCPConn
-		conn, err = gConnPool.GetConnect(target)
+		conn, err = gConnPool.GetConnect(targetReplica)
 		if err != nil {
 			return
 		}
@@ -750,7 +754,8 @@ func (dp *DataPartition) broadcastMinAppliedID(minAppliedID uint64) (err error) 
 			return
 		}
 		gConnPool.PutConnect(conn, false)
-		log.LogDebugf("partition(%v) minAppliedID(%v)", dp.partitionID, minAppliedID)
+		log.LogDebugf("[broadcastMinAppliedID] partition(%v) minAppliedID(%v) has sent to replica(%v)",
+			dp.partitionID, minAppliedID, targetReplica)
 	}
 
 	return
@@ -758,10 +763,12 @@ func (dp *DataPartition) broadcastMinAppliedID(minAppliedID uint64) (err error) 
 
 // Get all replica applied ids
 func (dp *DataPartition) getAllReplicaAppliedID() (allAppliedID []uint64, replyNum uint8) {
-	allAppliedID = make([]uint64, dp.getReplicaLen())
-	for i := 0; i < dp.getReplicaLen(); i++ {
-		p := NewPacketToGetAppliedID(dp.partitionID)
-		replicaHostParts := strings.Split(dp.getReplicaAddr(i), ":")
+	allReplica := dp.getReplicaCopy()
+	allAppliedID = make([]uint64, len(allReplica))
+
+	for i := 0; i < len(allReplica); i++ {
+		targetReplica := allReplica[i]
+		replicaHostParts := strings.Split(targetReplica, ":")
 		replicaHost := strings.TrimSpace(replicaHostParts[0])
 		if LocalIP == replicaHost {
 			log.LogDebugf("partition(%v) local no send msg. localIP(%v) replicaHost(%v) appliedId(%v)",
@@ -770,10 +777,11 @@ func (dp *DataPartition) getAllReplicaAppliedID() (allAppliedID []uint64, replyN
 			replyNum++
 			continue
 		}
-		target := dp.getReplicaAddr(i)
-		appliedID, err := dp.getRemoteAppliedID(target, p)
+
+		p := NewPacketToGetAppliedID(dp.partitionID)
+		appliedID, err := dp.getRemoteAppliedID(targetReplica, p)
 		if err != nil {
-			log.LogErrorf("partition(%v) getRemoteAppliedID Failed(%v).", dp.partitionID, err)
+			log.LogErrorf("partition(%v) getRemoteAppliedID from replica(%v) Failed(%v).", dp.partitionID, targetReplica, err)
 			continue
 		}
 		if appliedID == 0 {
