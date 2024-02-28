@@ -606,6 +606,7 @@ func (s *DataNode) registerHandler() {
 	http.HandleFunc("/getAllExtent", s.getAllExtent)
 	http.HandleFunc("/setDiskQos", s.setDiskQos)
 	http.HandleFunc("/getDiskQos", s.getDiskQos)
+	http.HandleFunc("/reloadDataPartition", s.reloadDataPartition)
 }
 
 func (s *DataNode) startTCPService() (err error) {
