@@ -188,7 +188,8 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 		}
 		resp, err = mp.fsmEvictInode(dbWriteHandle, ino)
 	case opFSMEvictInodeBatch:
-		inodes, err := InodeBatchUnmarshal(msg.V)
+		var inodes InodeBatch
+		inodes, err = InodeBatchUnmarshal(msg.V)
 		if err != nil {
 			return nil, err
 		}
@@ -235,7 +236,8 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 
 		resp, err = mp.fsmDeleteDentry(dbWriteHandle, den, false)
 	case opFSMDeleteDentryBatch:
-		db, err := DentryBatchUnmarshal(msg.V)
+		var db DentryBatch
+		db, err = DentryBatchUnmarshal(msg.V)
 		if err != nil {
 			return nil, err
 		}
@@ -943,9 +945,12 @@ func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.Sn
 			mp.verSeq = mp.multiVersionList.GetLastVer()
 			log.LogInfof("mp[%v] updateVerList (%v) seq [%v]", mp.config.PartitionId, mp.multiVersionList.VerList, mp.verSeq)
 			mp.SetDeletedExtentId(deletedExtentsId)
+			mp.deletedExtentsTree = deletedExtentsTree
+			mp.deletedObjExtentsTree = deletedObjExtentsTree
 			err = nil
 			// store message
-			snap, err := mp.GetSnapShot()
+			var snap Snapshot
+			snap, err = mp.GetSnapShot()
 			if err != nil {
 				log.LogErrorf("[ApplySnapshot]: failed to open snapshot for mp(%v), store(%v), err(%v)", mp.config.PartitionId, mp.config.StoreMode, err)
 				return
@@ -1150,6 +1155,7 @@ func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.Sn
 			if err != nil {
 				return
 			}
+			log.LogDebugf("[ApplySnapshot] mp(%v) create dek", mp.config.PartitionId)
 		case opFSMDeletedObjExtentsSnap:
 			doek := &DeletedObjExtentKey{}
 			if err = doek.Unmarshal(snap.V); err != nil {
@@ -1160,6 +1166,7 @@ func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.Sn
 			if err != nil {
 				return
 			}
+			log.LogDebugf("[ApplySnapshot] mp(%v) create doek", mp.config.PartitionId)
 		default:
 			if leaderSnapFormatVer != math.MaxUint32 && leaderSnapFormatVer > mp.manager.metaNode.raftSyncSnapFormatVersion {
 				log.LogWarnf("ApplySnapshot: unknown op=%d, leaderSnapFormatVer:%v, mySnapFormatVer:%v, skip it",

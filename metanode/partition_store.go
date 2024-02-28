@@ -62,6 +62,7 @@ const (
 	verdataInitFile         = "multiVerInitFile"
 	deletedExtentsIdFile    = "deletedExtentsId"
 	deletedExtentsFile      = "deletedExtents"
+	deletedObjExtentsFile   = "deletedObjExtents"
 )
 
 func (mp *metaPartition) loadMetadataFromFile() (mConf *MetaPartitionConfig, err error) {
@@ -1556,7 +1557,6 @@ func (mp *metaPartition) storeDeletedExtentId(rootDir string, sm *storeMsg) (err
 }
 
 func (mp *metaPartition) loadDeletedExtents(rootDir string, crc uint32) (err error) {
-
 	handler, _ := mp.deletedExtentsTree.CreateBatchWriteHandle()
 	defer func() {
 		_ = mp.deletedExtentsTree.CommitAndReleaseBatchWriteHandle(handler, false)
@@ -1662,6 +1662,118 @@ func (mp *metaPartition) storeDeletedExtents(rootDir string, sm *storeMsg) (crc 
 		}
 		return true, nil
 	})
+	log.LogDebugf("[storeDeletedExtents] store dek count(%v)", sm.snap.Count(DeletedExtentsType))
+	crc = sign.Sum32()
+	return
+}
+
+func (mp *metaPartition) loadDeletedObjExtents(rootDir string, crc uint32) (err error) {
+	handler, _ := mp.deletedObjExtentsTree.CreateBatchWriteHandle()
+	defer func() {
+		_ = mp.deletedObjExtentsTree.CommitAndReleaseBatchWriteHandle(handler, false)
+	}()
+	filename := path.Join(rootDir, deletedObjExtentsFile)
+	if _, err = os.Stat(filename); err != nil {
+		err = errors.NewErrorf("[loadDeletedObjExtents] Stat: %s", err.Error())
+		return
+	}
+	fp, err := os.OpenFile(filename, os.O_RDONLY, 0o644)
+	if err != nil {
+		err = errors.NewErrorf("[loadDeletedObjExtents] OpenFile: %s", err.Error())
+		return
+	}
+	defer fp.Close()
+	reader := bufio.NewReaderSize(fp, 4*1024*1024)
+	lenBuf := make([]byte, 4)
+	buff := make([]byte, 0)
+	crcCheck := crc32.NewIEEE()
+	for {
+		// first read length
+		_, err = io.ReadFull(reader, lenBuf)
+		if err != nil {
+			if err == io.EOF {
+				err = nil
+				if res := crcCheck.Sum32(); res != crc {
+					log.LogErrorf("[loadDeletedObjExtents]: check crc mismatch, expected[%d], actual[%d]", crc, res)
+					err = ErrSnapshotCrcMismatch
+				}
+				return
+			}
+			err = errors.NewErrorf("[loadDeletedObjExtents] ReadHeader: %s", err.Error())
+			return
+		}
+		// length crc
+		if _, err = crcCheck.Write(lenBuf); err != nil {
+			return err
+		}
+
+		length := binary.BigEndian.Uint32(lenBuf)
+
+		// next read body
+		if len(buff) < int(length) {
+			buff = make([]byte, length)
+		}
+		_, err = io.ReadFull(reader, buff)
+		if err != nil {
+			err = errors.NewErrorf("[loadDeletedObjExtents] ReadBody: %s ", err.Error())
+			return
+		}
+		if _, err = crcCheck.Write(buff[:length]); err != nil {
+			return
+		}
+		doek := &DeletedObjExtentKey{}
+		err = doek.Unmarshal(buff[:length])
+		if err != nil {
+			err = errors.NewErrorf("[loadDeletedObjExtents] Unmarshal: %s", err.Error())
+			return
+		}
+		err = mp.deletedObjExtentsTree.Put(handler, doek)
+		if err != nil {
+			return
+		}
+	}
+}
+
+func (mp *metaPartition) storeDeletedObjExtents(rootDir string, sm *storeMsg) (crc uint32, err error) {
+	filename := path.Join(rootDir, deletedObjExtentsFile)
+	fp, err := os.OpenFile(filename, os.O_RDWR|os.O_TRUNC|os.O_APPEND|os.
+		O_CREATE, 0o755)
+	if err != nil {
+		return
+	}
+	defer func() {
+		err = fp.Sync()
+		// TODO Unhandled errors
+		fp.Close()
+	}()
+	var data []byte
+	lenBuf := make([]byte, 4)
+	sign := crc32.NewIEEE()
+	sm.snap.Range(DeletedObjExtentsType, func(item interface{}) (bool, error) {
+		doek := item.(*DeletedObjExtentKey)
+
+		if data, err = doek.Marshal(); err != nil {
+			return false, nil
+		}
+
+		// set length
+		binary.BigEndian.PutUint32(lenBuf, uint32(len(data)))
+		if _, err = fp.Write(lenBuf); err != nil {
+			return false, nil
+		}
+		if _, err = sign.Write(lenBuf); err != nil {
+			return false, nil
+		}
+		// set body
+		if _, err = fp.Write(data); err != nil {
+			return false, nil
+		}
+		if _, err = sign.Write(data); err != nil {
+			return false, nil
+		}
+		return true, nil
+	})
+	log.LogDebugf("[storeDeletedObjExtents] store dek count(%v)", sm.snap.Count(DeletedObjExtentsType))
 	crc = sign.Sum32()
 	return
 }

@@ -1145,11 +1145,12 @@ func (mp *metaPartition) parseCrcFromFile() ([]uint32, error) {
 }
 
 const (
-	CRC_COUNT_BASIC           int = 4
-	CRC_COUNT_TX_STUFF        int = 7
-	CRC_COUNT_UINQ_STUFF      int = 8
-	CRC_COUNT_MULTI_VER       int = 9
-	CRC_COUNT_DELETED_EXTENTS int = 10
+	CRC_COUNT_BASIC               int = 4
+	CRC_COUNT_TX_STUFF            int = 7
+	CRC_COUNT_UINQ_STUFF          int = 8
+	CRC_COUNT_MULTI_VER           int = 9
+	CRC_COUNT_DELETED_EXTENTS     int = 10
+	CRC_COUNT_DELETED_OBJ_EXTENTS int = 11
 )
 
 func (mp *metaPartition) LoadDataFromRocksDb() (err error) {
@@ -1178,7 +1179,8 @@ func (mp *metaPartition) LoadSnapshot(snapshotPath string) (err error) {
 
 	crc_count := len(crcs)
 	if crc_count != CRC_COUNT_BASIC && crc_count != CRC_COUNT_TX_STUFF && crc_count != CRC_COUNT_UINQ_STUFF && crc_count != CRC_COUNT_MULTI_VER &&
-		crc_count != CRC_COUNT_DELETED_EXTENTS {
+		crc_count != CRC_COUNT_DELETED_EXTENTS &&
+		crc_count != CRC_COUNT_DELETED_OBJ_EXTENTS {
 		log.LogErrorf("action[LoadSnapshot] crc array length %d not match", len(crcs))
 		return ErrSnapshotCrcMismatch
 	}
@@ -1209,6 +1211,10 @@ func (mp *metaPartition) LoadSnapshot(snapshotPath string) (err error) {
 	if crc_count >= CRC_COUNT_DELETED_EXTENTS {
 		loadFuncs = append(loadFuncs, nil)
 		loadFuncs = append(loadFuncs, mp.loadDeletedExtents)
+	}
+
+	if crc_count >= CRC_COUNT_DELETED_OBJ_EXTENTS {
+		loadFuncs = append(loadFuncs, mp.loadDeletedObjExtents)
 	}
 
 	// NOTE: load inodes first
@@ -1384,6 +1390,7 @@ func (mp *metaPartition) store(sm *storeMsg) (err error) {
 		// NOTE: after reviewed, there no need to execute flush
 		return nil
 	}
+	log.LogDebugf("[store] mp(%v) store snapshot", mp.config.PartitionId)
 	log.LogWarnf("metaPartition %d store apply %v", mp.config.PartitionId, sm.snap.ApplyID())
 	tmpDir := path.Join(mp.config.RootDir, snapshotDirTmp)
 	if _, err = os.Stat(tmpDir); err == nil {
@@ -1413,8 +1420,9 @@ func (mp *metaPartition) store(sm *storeMsg) (err error) {
 		mp.storeUniqChecker,
 		mp.storeMultiVersion,
 		mp.storeDeletedExtents,
+		mp.storeDeletedObjExtents,
 	}
-	for _, storeFunc := range storeFuncs {
+	for i, storeFunc := range storeFuncs {
 		var crc uint32
 		if crc, err = storeFunc(tmpDir, sm); err != nil {
 			return
@@ -1423,6 +1431,7 @@ func (mp *metaPartition) store(sm *storeMsg) (err error) {
 			crcBuffer.WriteString(" ")
 		}
 		crcBuffer.WriteString(fmt.Sprintf("%d", crc))
+		log.LogDebugf("[store] mp(%v) store snapshot part(%v) crc(%v)", mp.config.PartitionId, i, crc)
 	}
 	log.LogWarnf("metaPartition %d store apply %v", mp.config.PartitionId, sm.snap.ApplyID())
 	if err = mp.storeApplyID(tmpDir, sm); err != nil {
