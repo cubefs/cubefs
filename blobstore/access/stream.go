@@ -172,8 +172,7 @@ type Handler struct {
 	maxObjectSize int64
 
 	failVids       sync.Map
-	releaseNormal  sync.Map
-	releaseSealed  sync.Map
+	releaseVids    sync.Map
 	discardVidChan chan discardVid
 	stopCh         <-chan struct{}
 
@@ -345,29 +344,29 @@ func (h *Handler) deleteOneBlob(ctx context.Context, location *access.Location, 
 		}
 	}()
 
-	dontUpdate := true
+	notFlush := true
 	volume := &controller.VolumePhy{}
 	if err = retry.Timed(3, 200).On(func() error {
-		volume, err = h.getVolume(ctx, location.ClusterID, blob.Vid, dontUpdate)
+		volume, err = h.getVolume(ctx, location.ClusterID, blob.Vid, notFlush)
 		if err != nil {
-			dontUpdate = false
+			notFlush = false
 		}
 		return err
 	}); err != nil {
 		return err
 	}
 
-	err = h.deleteBlob(ctx, location.ClusterID, blob, volume)
+	err = h.deleteShards(ctx, location.ClusterID, blob, volume)
 	return err
 }
 
 // If fail to delete, dont need handle it. and then background inspection on scheduler
-func (h *Handler) deleteBlob(ctx context.Context, clusterID proto.ClusterID, blob access.Blob, volume *controller.VolumePhy) error {
+func (h *Handler) deleteShards(ctx context.Context, clusterID proto.ClusterID, blob access.Blob, volume *controller.VolumePhy) error {
 	span := trace.SpanFromContextSafe(ctx)
-	quorum := int32(volume.CodeMode.Tactic().PutQuorum)
-	statusCh := make(chan bool, len(volume.Units))
+	quorum := volume.CodeMode.Tactic().PutQuorum
+	okCh := make(chan bool, len(volume.Units))
 
-	sendDelBlobBgFn := func(idx int, unit controller.Unit) {
+	delShardFunc := func(idx int, unit controller.Unit) {
 		args := blobnode.DeleteShardArgs{
 			DiskID: unit.DiskID,
 			Vuid:   unit.Vuid,
@@ -376,15 +375,15 @@ func (h *Handler) deleteBlob(ctx context.Context, clusterID proto.ClusterID, blo
 		}
 
 		go func() {
-			status := false
+			ok := false
 			defer func() {
-				statusCh <- status
+				okCh <- ok
 			}()
 
 			delErr := retry.ExponentialBackoff(3, 200).RuptOn(func() (bool, error) {
 				err := h.blobnodeClient.DeleteShard(ctx, unit.Host, &args)
 				if err == nil {
-					status = true
+					ok = true
 					return true, nil
 				}
 
@@ -416,31 +415,30 @@ func (h *Handler) deleteBlob(ctx context.Context, clusterID proto.ClusterID, blo
 		}()
 	}
 
-	for i, unitI := range volume.Units {
-		sendDelBlobBgFn(i, unitI)
+	for i, unit := range volume.Units {
+		delShardFunc(i, unit)
 	}
 
-	successNum := int32(0)
+	okCnt := 0
 	for range volume.Units {
-		if successNum >= quorum {
+		if okCnt >= quorum {
 			return nil
 		}
-		st := <-statusCh
-		if st {
-			successNum++
+		if ok := <-okCh; ok {
+			okCnt++
 		}
 	}
-	return fmt.Errorf("fail to delete blobs[%+v], quorum (%d < %d)", blob, successNum, quorum)
+	return fmt.Errorf("fail to delete blobs[%+v], quorum (%d < %d)", blob, okCnt, quorum)
 }
 
 // getVolume get volume info
-func (h *Handler) getVolume(ctx context.Context, clusterID proto.ClusterID, vid proto.Vid, dontUpdate bool) (*controller.VolumePhy, error) {
+func (h *Handler) getVolume(ctx context.Context, clusterID proto.ClusterID, vid proto.Vid, notFlush bool) (*controller.VolumePhy, error) {
 	volumeGetter, err := h.clusterController.GetVolumeGetter(clusterID)
 	if err != nil {
 		return nil, err
 	}
 
-	volume := volumeGetter.Get(ctx, vid, dontUpdate)
+	volume := volumeGetter.Get(ctx, vid, notFlush)
 	if volume == nil {
 		return nil, errors.Newf("not found volume of (%d %d)", clusterID, vid)
 	}
@@ -469,25 +467,26 @@ func (h *Handler) punishDiskWith(ctx context.Context, clusterID proto.ClusterID,
 	}
 }
 
-type ReleaseVolume uint8
+type releaseType uint8
 
 const (
-	releaseVolumeInit   = ReleaseVolume(iota)
-	releaseVolumeNormal // 1: If and only if it has broken disk, need normal release volume
-	releaseVolumeSealed // 2: other write fail, need sealed release volume
+	releaseTypeInit   = releaseType(iota)
+	releaseTypeNormal // 1: If and only if it has broken disk, need normal release volume
+	releaseTypeSealed // 2: other write fail, need sealed release volume. and the scheduler will inspect this volume
 )
 
-func (h *Handler) releaseVolume(cid proto.ClusterID, md codemode.CodeMode, tp ReleaseVolume, vid ...proto.Vid) {
-	switch tp {
-	case releaseVolumeNormal:
-		v, _ := h.releaseNormal.LoadOrStore(cid, &releaseVids{})
-		normalVol := v.(*releaseVids)
-		normalVol.addVid(md, vid...)
-	case releaseVolumeSealed:
-		v, _ := h.releaseSealed.LoadOrStore(cid, &releaseVids{})
-		sealedVol := v.(*releaseVids)
-		sealedVol.addVid(md, vid...)
-	default:
+func (h *Handler) releaseVolume(cid proto.ClusterID, md codemode.CodeMode, tp releaseType, vid proto.Vid) {
+	if v, ok := h.releaseVids.Load(cid); ok {
+		vol := v.(*releaseVids)
+		vol.md = md
+
+		switch tp {
+		case releaseTypeNormal:
+			vol.normalVids.addVid(vid)
+		case releaseTypeSealed:
+			vol.sealedVids.addVid(vid)
+		default:
+		}
 	}
 }
 

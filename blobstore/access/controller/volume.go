@@ -66,7 +66,7 @@ type VolumePhy struct {
 //	otherwise reading from memcache -> proxy -> cluster
 type VolumeGetter interface {
 	// Get returns volume physical location of vid
-	Get(ctx context.Context, vid proto.Vid, dontUpdate bool) *VolumePhy
+	Get(ctx context.Context, vid proto.Vid, notFlush bool) *VolumePhy
 	// Punish punish vid with interval seconds
 	Punish(ctx context.Context, vid proto.Vid, punishIntervalS int)
 }
@@ -160,7 +160,8 @@ func NewVolumeGetter(clusterID proto.ClusterID, service ServiceController,
 //
 //	1.top level cache from local
 //	2.second level cache from proxy cluster
-func (v *volumeGetterImpl) Get(ctx context.Context, vid proto.Vid, dontUpdate bool) (phy *VolumePhy) {
+//  $notFlush is false: means need update/flush cache, get volume from cm/proxy; is true: get volume from local cache
+func (v *volumeGetterImpl) Get(ctx context.Context, vid proto.Vid, notFlush bool) (phy *VolumePhy) {
 	span := trace.SpanFromContextSafe(ctx)
 	cid := v.cid.ToString()
 	id := addCVid(v.cid, vid)
@@ -187,7 +188,7 @@ func (v *volumeGetterImpl) Get(ctx context.Context, vid proto.Vid, dontUpdate bo
 	}()
 
 	phy = v.getFromLocalCache(ctx, id)
-	if phy != nil && dontUpdate {
+	if phy != nil && notFlush {
 		if v.memExpiration == 0 {
 			if phy.Timestamp < 0 {
 				phy = nil
@@ -223,7 +224,7 @@ func (v *volumeGetterImpl) Get(ctx context.Context, vid proto.Vid, dontUpdate bo
 		ver = phy.Version
 	}
 	val, err, _ := v.singleRun.Do(singleID, func() (interface{}, error) {
-		return v.getFromProxy(ctx, vid, !dontUpdate, ver)
+		return v.getFromProxy(ctx, vid, !notFlush, ver)
 	})
 	if err != nil {
 		cacheMetric.WithLabelValues(cid, "proxy", "miss").Inc()

@@ -129,6 +129,7 @@ type ClusterConfig struct {
 	RegionMagic       string       `json:"region_magic"`
 	ClusterReloadSecs int          `json:"cluster_reload_secs"`
 	ServiceReloadSecs int          `json:"service_reload_secs"`
+	VolumeReleaseSecs int          `json:"volume_release_secs"`
 	CMClientConfig    cmapi.Config `json:"clustermgr_client_config"`
 
 	ServicePunishThreshold      uint32 `json:"service_punish_threshold"`

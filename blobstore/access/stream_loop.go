@@ -24,6 +24,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/codemode"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
+	"github.com/cubefs/cubefs/blobstore/util/defaulter"
 )
 
 func (h *Handler) loopDiscardVids() {
@@ -83,81 +84,118 @@ func (h *Handler) tryDiscardVidOnAllocator(cid proto.ClusterID, args *clustermgr
 }
 
 func (h *Handler) loopReleaseVids() {
-	go func() {
-		span, ctx := trace.StartSpanFromContext(context.Background(), "")
+	span, ctx := trace.StartSpanFromContext(context.Background(), "")
+	defaulter.LessOrEqual(&h.ClusterConfig.VolumeReleaseSecs, 60)
 
-		allCm := h.clusterController.All()
-		for _, cm := range allCm {
-			cid := cm.ClusterID
-			allocMgr, err := h.clusterController.GetVolumeAllocator(cid)
-			if err != nil {
-				span.Warnf("fail to get alloc mgr, when releaseVolume. err[%+v]", err)
-				return
+	allCm := h.clusterController.All()
+	for _, cm := range allCm {
+		cid := cm.ClusterID
+		allocMgr, err := h.clusterController.GetVolumeAllocator(cid)
+		if err != nil {
+			span.Warnf("fail to get alloc mgr, when releaseVolume. err[%+v]", err)
+			continue
+		}
+
+		go h.releaseClusterVids(ctx, cid, allocMgr)
+	}
+}
+
+func (h *Handler) releaseClusterVids(ctx context.Context, cid proto.ClusterID, allocMgr controller.VolumeMgr) {
+	span := trace.SpanFromContextSafe(ctx)
+	tk := time.NewTicker(time.Second * time.Duration(h.ClusterConfig.VolumeReleaseSecs))
+	defer tk.Stop()
+	h.releaseVids.Store(cid, &releaseVids{
+		normalVids: newVolumeMap(),
+		sealedVids: newVolumeMap(),
+	})
+
+	for {
+		select {
+		case <-h.stopCh:
+			return
+
+		case <-tk.C:
+			v, ok := h.releaseVids.Load(cid)
+			if !ok {
+				continue
 			}
 
-			go func(cid proto.ClusterID, allocMgr controller.VolumeMgr) {
-				tk := time.NewTicker(time.Second * 60)
-				defer tk.Stop()
+			vol := v.(*releaseVids)
+			if vol.normalVids.len() == 0 && vol.sealedVids.len() == 0 {
+				continue
+			}
 
-				for {
-					select {
-					case <-h.stopCh:
-						return
-					case <-tk.C:
-						var normalVol, sealedVol *releaseVids
-						if v, ok := h.releaseNormal.Load(cid); ok {
-							normalVol = v.(*releaseVids)
-						}
-						if v, ok := h.releaseSealed.Load(cid); ok {
-							sealedVol = v.(*releaseVids)
-						}
-						if normalVol.len() == 0 && sealedVol.len() == 0 {
-							continue
-						}
-
-						normal := normalVol.getVids()
-						sealed := sealedVol.getVids()
-						err = allocMgr.Release(ctx, &clustermgr.ReleaseVolumes{
-							CodeMode:   normalVol.md,
-							NormalVids: normal,
-							SealedVids: sealed,
-						})
-						if err == nil {
-							h.releaseNormal.Delete(cid)
-							h.releaseSealed.Delete(cid)
-						}
-						span.Warnf("We released normal volume:%v, sealed volume:%v, err[%+v]", normal, sealed, err)
-					}
-				}
-			}(cid, allocMgr)
+			normal, sealed := vol.getAll()
+			err := allocMgr.Release(ctx, &clustermgr.ReleaseVolumes{
+				CodeMode:   vol.md,
+				NormalVids: normal,
+				SealedVids: sealed,
+			})
+			if err == nil {
+				// may be mark sealed volume in the PUT process, after call Release and before deleteAll
+				vol.deleteAll(normal, sealed)
+			}
+			span.Warnf("We released normal volume:%v, sealed volume:%v, err[%+v]", normal, sealed, err)
 		}
-	}()
+	}
 }
 
 type releaseVids struct {
-	md   codemode.CodeMode
-	vids []proto.Vid
+	md         codemode.CodeMode
+	normalVids *vidMap
+	sealedVids *vidMap
+}
+
+func (v *releaseVids) getAll() ([]proto.Vid, []proto.Vid) {
+	return v.normalVids.getVid(), v.sealedVids.getVid()
+}
+
+func (v *releaseVids) deleteAll(normal, sealed []proto.Vid) {
+	v.normalVids.delete(normal)
+	v.sealedVids.delete(sealed)
+}
+
+type vidMap struct {
+	vids map[proto.Vid]struct{}
 	lck  sync.RWMutex
 }
 
-func (v *releaseVids) getVids() []proto.Vid {
-	v.lck.RLock()
-	defer v.lck.RUnlock()
-
-	return v.vids
+func newVolumeMap() *vidMap {
+	return &vidMap{
+		vids: make(map[proto.Vid]struct{}),
+	}
 }
 
-func (v *releaseVids) len() int {
+func (v *vidMap) len() int {
 	v.lck.RLock()
 	defer v.lck.RUnlock()
 
 	return len(v.vids)
 }
 
-func (v *releaseVids) addVid(md codemode.CodeMode, vid ...proto.Vid) {
+func (v *vidMap) getVid() []proto.Vid {
+	v.lck.RLock()
+	defer v.lck.RUnlock()
+
+	vids := make([]proto.Vid, 0, len(v.vids))
+	for vid := range v.vids {
+		vids = append(vids, vid)
+	}
+	return vids
+}
+
+func (v *vidMap) addVid(vid proto.Vid) {
 	v.lck.Lock()
 	defer v.lck.Unlock()
 
-	v.md = md
-	v.vids = append(v.vids, vid...)
+	v.vids[vid] = struct{}{}
+}
+
+func (v *vidMap) delete(vids []proto.Vid) {
+	v.lck.Lock()
+	defer v.lck.Unlock()
+
+	for _, vid := range vids {
+		delete(v.vids, vid)
+	}
 }
