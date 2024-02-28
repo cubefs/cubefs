@@ -114,6 +114,7 @@ func (v *volViewUpdater) updateVol(volName string) (err error) {
 	}
 	mps.Range(func(key, value interface{}) bool {
 		mp := value.(MetaPartition)
+		log.LogDebugf("[updateVol] update volume(%v) for mp(%v)", volName, mp.GetBaseConfig().PartitionId)
 		mp.UpdateVolView(volView, convert(dpView))
 		return true
 	})
@@ -121,8 +122,9 @@ func (v *volViewUpdater) updateVol(volName string) (err error) {
 }
 
 func (v *volViewUpdater) updater() {
+	defer log.LogDebugf("[updater] updater exit!")
 	defer v.wg.Done()
-	for !v.timer.Stop() {
+	for {
 		select {
 		case _, ok := <-v.timer.C:
 			if !ok {

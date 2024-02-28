@@ -456,6 +456,7 @@ func (r *DeleteExtentsFromTreeRequest) Marshal() (v []byte, err error) {
 			return
 		}
 	}
+	v = buff.Bytes()
 	return
 }
 
@@ -499,6 +500,7 @@ func (r *DeleteObjExtentsFromTreeRequest) Marshal() (v []byte, err error) {
 			return
 		}
 	}
+	v = buff.Bytes()
 	return
 }
 
@@ -548,7 +550,7 @@ func (mp *metaPartition) batchDeleteExtentsHotVol(dpId uint64, deks []*DeletedEx
 	conn, err := smuxPool.GetConnect(addr)
 	log.LogInfof("[batchDeleteExtentsHotVol] mp (%v) GetConnect (%v)", mp.config.PartitionId, addr)
 
-	ResultCode := proto.OpOk
+	resultCode := proto.OpOk
 
 	defer func() {
 		smuxPool.PutConnect(conn, ForceClosedConnect)
@@ -573,9 +575,9 @@ func (mp *metaPartition) batchDeleteExtentsHotVol(dpId uint64, deks []*DeletedEx
 		return
 	}
 
-	ResultCode = p.ResultCode
+	resultCode = p.ResultCode
 
-	if ResultCode == proto.OpTryOtherAddr && proto.IsCold(mp.volType) {
+	if resultCode == proto.OpTryOtherAddr && proto.IsCold(mp.volType) {
 		log.LogInfof("[batchDeleteExtentsHotVol] deleteOp retrun tryOtherAddr code means dp is deleted for LF vol, dp(%d)", dpId)
 		return
 	}
@@ -599,7 +601,7 @@ func (mp *metaPartition) batchDeleteExtentsColdVol(doeks []*DeletedObjExtentKey)
 		}
 		err = mp.ebsClient.Delete(oeks[0:length])
 		if err != nil {
-			log.LogErrorf("[deleteObjExtents] delete ebs eks fail, cnt(%d), err(%s)", max-i, err.Error())
+			log.LogErrorf("[batchDeleteExtentsColdVol] delete ebs eks fail, cnt(%d), err(%s)", max-i, err.Error())
 			return err
 		}
 	}
@@ -716,6 +718,7 @@ func (mp *metaPartition) deletedExtentsTreeTraveler() (err error) {
 				err = mp.batchDeleteExtentsHotVol(dpId, deks)
 				if err != nil {
 					log.LogErrorf("[deletedExtentTreeTraveler] failed to delete ek from dp(%v), err(%v)", dpId, err)
+					err = nil
 					continue
 				}
 
@@ -727,13 +730,16 @@ func (mp *metaPartition) deletedExtentsTreeTraveler() (err error) {
 				v, err = request.Marshal()
 				if err != nil {
 					log.LogErrorf("[deletedExtentTreeTraveler] failed to marshal remove request, err(%v)", err)
+					err = nil
 					continue
 				}
 
-				log.LogErrorf("[deletedExtentTreeTraveler] mp(%v) delete deks", mp.config.PartitionId)
+				log.LogDebugf("[deletedExtentTreeTraveler] mp(%v) delete deks", mp.config.PartitionId)
 				_, err = mp.submit(opFSMDeleteExtentFromTree, v)
 				if err != nil {
-					return
+					log.LogErrorf("[deletedExtentTreeTraveler] mp(%v) failed to remove deks, err(%v)", mp.config.PartitionId, err)
+					err = nil
+					continue
 				}
 			}
 		}()
@@ -805,6 +811,7 @@ func (mp *metaPartition) deletedObjExtentsTreeTravle() (err error) {
 			log.LogErrorf("[deletedObjExtentsTreeTravle] mp(%v) delete deks", mp.config.PartitionId)
 			_, err = mp.submit(opFSMDeleteObjExtentFromTree, v)
 			if err != nil {
+				log.LogErrorf("[deletedObjExtentTreeTraveler] mp(%v) failed to remove doeks, err(%v)", mp.config.PartitionId, err)
 				return
 			}
 		}()

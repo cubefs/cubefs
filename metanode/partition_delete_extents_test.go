@@ -347,3 +347,109 @@ func TestMutliUpgradeDelExtMp_Rocksdb(t *testing.T) {
 	}
 	testMutliUpgradeDelExtMp(t, mp)
 }
+
+func testDeleteExtentsFromTree(t *testing.T, mp *metaPartition) {
+	handle, err := mp.deletedExtentsTree.CreateBatchWriteHandle()
+	require.NoError(t, err)
+	const testEkCount = 10
+	deks := make([]*DeletedExtentKey, 0)
+	for i := 0; i < testEkCount; i++ {
+		dek := NewDeletedExtentKey(&proto.ExtentKey{
+			PartitionId:  0,
+			ExtentId:     uint64(i),
+			ExtentOffset: 0,
+		}, 0, mp.AllocDeletedExtentId())
+		deks = append(deks, dek)
+		err = mp.deletedExtentsTree.Put(handle, dek)
+		require.NoError(t, err)
+	}
+	err = mp.deletedExtentsTree.CommitAndReleaseBatchWriteHandle(handle, false)
+	require.NoError(t, err)
+
+	req := &DeleteExtentsFromTreeRequest{
+		DeletedKeys: deks[1:],
+	}
+
+	v, err := req.Marshal()
+	require.NoError(t, err)
+	_, err = mp.submit(opFSMDeleteExtentFromTree, v)
+	require.NoError(t, err)
+
+	require.EqualValues(t, 1, mp.deletedExtentsTree.RealCount())
+}
+
+func TestDeleteExtentsFromTree(t *testing.T) {
+	mockCtrl := gomock.NewController(t)
+	defer mockCtrl.Finish()
+	mp := mockPartitionRaftForDelExtTest(t, mockCtrl, proto.StoreModeMem)
+	mp.manager = &metadataManager{
+		metaNode: &MetaNode{
+			localAddr: "",
+		},
+	}
+	testDeleteExtentsFromTree(t, mp)
+}
+
+func TestDeleteExtentsFromTree_Rocksdb(t *testing.T) {
+	mockCtrl := gomock.NewController(t)
+	defer mockCtrl.Finish()
+	mp := mockPartitionRaftForDelExtTest(t, mockCtrl, proto.StoreModeRocksDb)
+	mp.manager = &metadataManager{
+		metaNode: &MetaNode{
+			localAddr: "",
+		},
+	}
+	testDeleteExtentsFromTree(t, mp)
+}
+
+func testDeleteObjExtentsFromTree(t *testing.T, mp *metaPartition) {
+	handle, err := mp.deletedObjExtentsTree.CreateBatchWriteHandle()
+	require.NoError(t, err)
+	const testEkCount = 10
+	doeks := make([]*DeletedObjExtentKey, 0)
+	for i := 0; i < testEkCount; i++ {
+		doek := NewDeletedObjExtentKey(&proto.ObjExtentKey{
+			Cid: 0,
+		}, 0, mp.AllocDeletedExtentId())
+		doeks = append(doeks, doek)
+		err = mp.deletedObjExtentsTree.Put(handle, doek)
+		require.NoError(t, err)
+	}
+	err = mp.deletedObjExtentsTree.CommitAndReleaseBatchWriteHandle(handle, false)
+	require.NoError(t, err)
+
+	req := &DeleteObjExtentsFromTreeRequest{
+		DeletedObjKeys: doeks[1:],
+	}
+
+	v, err := req.Marshal()
+	require.NoError(t, err)
+	_, err = mp.submit(opFSMDeleteObjExtentFromTree, v)
+	require.NoError(t, err)
+
+	require.EqualValues(t, 1, mp.deletedObjExtentsTree.RealCount())
+}
+
+func TestDeleteObjExtentsFromTree(t *testing.T) {
+	mockCtrl := gomock.NewController(t)
+	defer mockCtrl.Finish()
+	mp := mockPartitionRaftForDelExtTest(t, mockCtrl, proto.StoreModeMem)
+	mp.manager = &metadataManager{
+		metaNode: &MetaNode{
+			localAddr: "",
+		},
+	}
+	testDeleteObjExtentsFromTree(t, mp)
+}
+
+func TestDeleteObjExtentsFromTree_Rocksdb(t *testing.T) {
+	mockCtrl := gomock.NewController(t)
+	defer mockCtrl.Finish()
+	mp := mockPartitionRaftForDelExtTest(t, mockCtrl, proto.StoreModeRocksDb)
+	mp.manager = &metadataManager{
+		metaNode: &MetaNode{
+			localAddr: "",
+		},
+	}
+	testDeleteObjExtentsFromTree(t, mp)
+}

@@ -40,6 +40,12 @@ const (
 	InodeNLink0DelayDeleteSeconds = 24 * 3600
 )
 
+func (mp *metaPartition) UpdateVolView(volView *proto.SimpleVolView, dataView *DataPartitionsView) {
+	mp.vol.UpdatePartitions(dataView)
+
+	mp.vol.volDeleteLockTime = volView.DeleteLockTime
+}
+
 // TODO(NaturalSelect): remove those code
 
 func (mp *metaPartition) startFreeList() (err error) {
@@ -52,12 +58,6 @@ func (mp *metaPartition) startFreeList() (err error) {
 	go mp.deleteWorker()
 	mp.startToDeleteExtents()
 	return
-}
-
-func (mp *metaPartition) UpdateVolView(volView *proto.SimpleVolView, dataView *DataPartitionsView) {
-	mp.vol.UpdatePartitions(dataView)
-
-	mp.vol.volDeleteLockTime = volView.DeleteLockTime
 }
 
 const (
