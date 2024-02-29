@@ -73,11 +73,11 @@ func NewMockEbsClient() *MockEbsClient {
 	return &MockEbsClient{}
 }
 
-func (m *MockEbsClient) Put(ctx context.Context, volName string, f io.Reader, size uint64) (oek proto.ObjExtentKey, _md5 []byte, err error) {
+func (m *MockEbsClient) Put(ctx context.Context, volName string, f io.Reader, size uint64) (oek []proto.ObjExtentKey, _md5 [][]byte, err error) {
 	m.data, _ = ioutil.ReadAll(f)
 	md5Hash := md5.New()
 	md5Hash.Write(m.data)
-	_md5 = md5Hash.Sum(nil)
+	_md5 = append(_md5, md5Hash.Sum(nil))
 	return
 }
 
