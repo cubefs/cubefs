@@ -3,13 +3,15 @@ package datanode
 import (
 	"encoding/json"
 	"fmt"
-	"golang.org/x/time/rate"
 	"io/ioutil"
 	"os"
 	"path"
 	"sort"
 	"sync/atomic"
 	"time"
+
+	"github.com/cubefs/cubefs/util/infra"
+	"golang.org/x/time/rate"
 
 	"github.com/cubefs/cubefs/util/log"
 )
@@ -24,8 +26,43 @@ func (dp *DataPartition) lockPersist() (release func()) {
 	return
 }
 
+// Deprecated: Flush is deprecated, use Flusher instead.
 func (dp *DataPartition) Flush() (err error) {
 	return dp.persist(nil, true)
+}
+
+func (dp *DataPartition) Flusher() infra.Flusher {
+	var (
+		status       = dp.applyStatus.Snap()
+		storeFlusher = dp.extentStore.Flusher()
+	)
+	var flushFunc = func(ln func(size int64)) error {
+		var release = dp.lockPersist()
+		defer release()
+
+		var err error
+		if err = storeFlusher.Flush(ln); err != nil {
+			return err
+		}
+		if dp.raftPartition != nil {
+			if err = dp.raftPartition.FlushWAL(false); err != nil {
+				return err
+			}
+		}
+		if err = dp.persistAppliedID(status); err != nil {
+			return err
+		}
+
+		if err = dp.persistMetadata(status); err != nil {
+			return err
+		}
+		return nil
+	}
+	var countFunc = func() int {
+		return storeFlusher.Count() + 2
+
+	}
+	return infra.NewFuncFlusher(flushFunc, countFunc)
 }
 
 // Persist 方法会执行以下操作:
@@ -185,6 +222,7 @@ func (dp *DataPartition) persistMetadata(snap *WALApplyStatus) (err error) {
 	return
 }
 
+// Deprecated: forceFlushAllFD is deprecated, please use Flusher instead.
 func (dp *DataPartition) forceFlushAllFD(limiter *rate.Limiter) (error error) {
 	return dp.extentStore.Flush(limiter)
 }

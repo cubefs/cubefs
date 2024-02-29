@@ -32,7 +32,6 @@ import (
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/cubefs/cubefs/util/unit"
-	"golang.org/x/time/rate"
 )
 
 const (
@@ -293,7 +292,11 @@ func (e *Extent) ModifyTime() int64 {
 }
 
 func (e *Extent) Modified() bool {
-	return atomic.LoadInt32(&e.modified) != 0
+	return atomic.LoadInt32(&e.modified) > 0
+}
+
+func (e *Extent) Modifies() int64 {
+	return atomic.LoadInt64(&e.modifies)
 }
 
 func IsRandomWrite(writeType int) bool {
@@ -555,16 +558,9 @@ func (e *Extent) checkTinyWriteParameter(offset, size int64, writeType int) erro
 }
 
 // Flush synchronizes data to the disk.
-func (e *Extent) Flush(limiter *rate.Limiter) (err error) {
+// bwlimiter: bandwidth limit
+func (e *Extent) Flush() (err error) {
 	if atomic.CompareAndSwapInt32(&e.modified, 1, 0) {
-		var modifies = int(atomic.LoadInt64(&e.modifies))
-		if limiter != nil {
-			var burst = limiter.Burst()
-			if modifies > burst {
-				modifies = burst
-			}
-			_ = limiter.WaitN(context.Background(), modifies)
-		}
 		var interceptor = e.interceptors.Get(IOSync)
 		var ctx context.Context
 		if ctx, err = interceptor.Before(); err != nil {

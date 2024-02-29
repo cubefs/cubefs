@@ -20,6 +20,7 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
+	"github.com/cubefs/cubefs/util/infra"
 	"hash/crc32"
 	"io"
 	"math"
@@ -737,7 +738,7 @@ func (s *ExtentStore) Close() {
 
 	// Release cache
 	s.deletionQueue.Close()
-	s.cache.Flush(nil)
+	_ = s.cache.Flusher().Flush(nil)
 	s.cache.Close()
 	s.tinyExtentDeleteFp.Sync()
 	s.tinyExtentDeleteFp.Close()
@@ -1407,6 +1408,7 @@ func (s *ExtentStore) ForceEvictCache(ratio unit.Ratio) {
 }
 
 // Flush 强制下刷存储引擎当前所有打开的FD，保证这些FD的数据在内核PageCache里的脏页全部回写.
+// Deprecated: use Flusher instead.
 func (s *ExtentStore) Flush(limiter *rate.Limiter) (err error) {
 	if err = s.inodeIndex.Flush(); err != nil {
 		return
@@ -1416,6 +1418,28 @@ func (s *ExtentStore) Flush(limiter *rate.Limiter) (err error) {
 	}
 	s.cache.Flush(limiter)
 	return
+}
+
+func (s *ExtentStore) __innerFpFlusher() infra.Flusher {
+	var flushFunc = func(ln func(size int64)) (err error) {
+		ln(0)
+		if err = s.inodeIndex.Flush(); err != nil {
+			return
+		}
+		ln(0)
+		if err = s.metadataFp.Sync(); err != nil {
+			return
+		}
+		return nil
+	}
+	var countFunc = func() int {
+		return 2
+	}
+	return infra.NewFuncFlusher(flushFunc, countFunc)
+}
+
+func (s *ExtentStore) Flusher() infra.Flusher {
+	return infra.NewMultiFlusher(s.__innerFpFlusher(), s.cache.Flusher())
 }
 
 func (s *ExtentStore) EvictExpiredNormalExtentDeleteCache(expireTime int64) {
