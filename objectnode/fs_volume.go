@@ -914,8 +914,10 @@ func (v *Volume) CompleteMultipart(path, multipartID string, multipartInfo *prot
 		log.LogDebugf("CompleteMultipart: meta inode create: volume(%v) path(%v) multipartID(%v) inode(%v)",
 			v.name, path, multipartID, completeInodeInfo.Inode)
 	}
+
+	var deleteFinalInode = false
 	defer func() {
-		if err != nil {
+		if err != nil && deleteFinalInode {
 			log.LogWarnf("CompleteMultipart: destroy inode: volume(%v) path(%v) multipartID(%v) inode(%v)",
 				v.name, path, multipartID, completeInodeInfo.Inode)
 			if deleteErr := v.mw.InodeDelete_ll(context.Background(), completeInodeInfo.Inode); deleteErr != nil {
@@ -924,6 +926,13 @@ func (v *Volume) CompleteMultipart(path, multipartID string, multipartInfo *prot
 			}
 		}
 	}()
+
+	if err = v.mw.XAttrSet_ll(context.Background(), completeInodeInfo.Inode, []byte(XAttrKeyOSSMultipart), []byte{1}); err != nil {
+		log.LogErrorf("CompleteMultipart: save multipart flag fail: volume(%v) inode(%v) err(%v)",
+			v.name, completeInodeInfo, err)
+		deleteFinalInode = true
+		return
+	}
 
 	// merge complete extent keys
 	var size uint64
@@ -934,6 +943,7 @@ func (v *Volume) CompleteMultipart(path, multipartID string, multipartInfo *prot
 		if _, _, eks, err = v.mw.GetExtents(context.Background(), part.Inode); err != nil {
 			log.LogErrorf("CompleteMultipart: meta get extents fail: volume(%v) path(%v) multipartID(%v) partID(%v) inode(%v) err(%v)",
 				v.name, path, multipartID, part.ID, part.Inode, err)
+			deleteFinalInode = true
 			return
 		}
 
@@ -948,7 +958,9 @@ func (v *Volume) CompleteMultipart(path, multipartID string, multipartInfo *prot
 		if part.Size != eksSize {
 			log.LogErrorf("CompleteMultipart: part extents length not match with part size: volume(%v) path(%v) multipartID(%v) partID(%v) inode(%v) partSize(%v) eksSize(%v) eksLength(%v)",
 				v.name, path, multipartID, part.ID, part.Inode, part.Size, eksSize, len(eks))
-			return nil, errors.New("part extents length not match with part size")
+			err = errors.New("part extents length not match with part size")
+			deleteFinalInode = true
+			return
 		}
 		size += part.Size
 	}
@@ -998,6 +1010,7 @@ func (v *Volume) CompleteMultipart(path, multipartID string, multipartInfo *prot
 		PartNum: len(parts),
 		TS:      finalInode.ModifyTime,
 	}
+
 	if err = v.mw.XAttrSet_ll(context.Background(), finalInode.Inode, []byte(XAttrKeyOSSETag), []byte(etagValue.Encode())); err != nil {
 		log.LogErrorf("CompleteMultipart: save ETag fail: volume(%v) inode(%v) err(%v)",
 			v.name, completeInodeInfo, err)

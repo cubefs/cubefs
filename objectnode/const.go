@@ -165,6 +165,8 @@ const (
 
 	// Deprecated
 	XAttrKeyOSSETagDeprecated = "oss:tag"
+
+	XAttrKeyOSSMultipart = "oss:multipart"
 )
 
 const (
