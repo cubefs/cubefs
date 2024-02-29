@@ -25,6 +25,7 @@ const (
 	defIntervalSecToForceFetchDataPartitionView = 300 //second
 	forceFetchDataPartitionViewChSize           = 1024
 	defPostByDomainMaxErrorCount                = 1000
+	updateDataPartitionsCountPerBatch           = 128
 )
 
 type ForceFetchDataPartition struct {
@@ -270,14 +271,9 @@ func (f *TopologyManager) getAllVolumesName() []string {
 	return allVolsName
 }
 
-func (f *TopologyManager) updateDataPartitions(volName string, dpIDs []uint64) {
-	partitionsInfo, err := f.fetchDataPartitionsView(volName, dpIDs)
-	if err != nil {
-		log.LogErrorf("fetch vol(%s) data partition(%v) view failed: %v", volName, dpIDs, err)
-		return
-	}
-	partitions := make([]*DataPartition, 0, len(partitionsInfo.DataPartitions))
-	for _, item := range partitionsInfo.DataPartitions {
+func (f *TopologyManager) updateDataPartitionsViewByResp(volName string, dpsViewResp []*proto.DataPartitionResponse) {
+	partitions := make([]*DataPartition, 0, len(dpsViewResp))
+	for _, item := range dpsViewResp {
 		info := &DataPartition{
 			PartitionID:     item.PartitionID,
 			Hosts:           item.Hosts,
@@ -292,6 +288,41 @@ func (f *TopologyManager) updateDataPartitions(volName string, dpIDs []uint64) {
 	volTopologyInfo.updateDataPartitionsView(partitions)
 }
 
+func (f *TopologyManager) updateDataPartitions(volName string) {
+	partitionsInfo, err := f.fetchDataPartitionsView(volName, nil)
+	if err != nil {
+		log.LogErrorf("fetch vol(%s) data partitions view failed: %v", volName, err)
+		return
+	}
+	f.updateDataPartitionsViewByResp(volName, partitionsInfo.DataPartitions)
+}
+
+func (f *TopologyManager) updateDataPartitionsInBatches(volName string, dpIDs []uint64) {
+	if len(dpIDs) == 0 {
+		f.updateDataPartitions(volName)
+		return
+	}
+
+	start := 0
+	for {
+		if start >= len(dpIDs) {
+			break
+		}
+
+		end := start + updateDataPartitionsCountPerBatch
+		if end > len(dpIDs) {
+			end = len(dpIDs)
+		}
+		partitionsInfo, err := f.fetchDataPartitionsView(volName, dpIDs[start:end])
+		if err != nil {
+			log.LogErrorf("fetch vol(%s) data partition(%v) view failed: %v", volName, dpIDs, err)
+			return
+		}
+		f.updateDataPartitionsViewByResp(volName, partitionsInfo.DataPartitions)
+		start = end
+	}
+}
+
 func (f *TopologyManager) backGroundFetchDataPartitions() {
 	fetchAllTickerValue := atomic.LoadInt64(&f.fetchTimerIntervalMin)
 	tickerValue := atomic.LoadInt64(&f.forceFetchTimerIntervalSec)
@@ -302,7 +333,7 @@ func (f *TopologyManager) backGroundFetchDataPartitions() {
 		allVolsName := f.getAllVolumesName()
 		for _, volName := range allVolsName {
 			log.LogDebugf("backGroundFetchDataPartitions start fetch volume(%s) view", volName)
-			f.updateDataPartitions(volName, nil)
+			f.updateDataPartitions(volName)
 		}
 	}
 
@@ -323,7 +354,7 @@ func (f *TopologyManager) backGroundFetchDataPartitions() {
 			allVolsName := f.getAllVolumesName()
 			for _, volName := range allVolsName {
 				log.LogDebugf("backGroundFetchDataPartitions start fetch volume(%s) view", volName)
-				f.updateDataPartitions(volName, nil)
+				f.updateDataPartitions(volName)
 			}
 
 			newFetchAllTickerValue := atomic.LoadInt64(&f.fetchTimerIntervalMin)
@@ -346,7 +377,7 @@ func (f *TopologyManager) backGroundFetchDataPartitions() {
 
 			for volName, dpsID := range forceFetchInfo {
 				log.LogDebugf("backGroundFetchDataPartitions start force fetch volume(%s) dpIDs(%v) view", volName, dpsID)
-				f.updateDataPartitions(volName, dpsID)
+				f.updateDataPartitionsInBatches(volName, dpsID)
 			}
 			needForceFetchDataPartitionsMap = make(map[string]map[uint64]bool, 0)
 
