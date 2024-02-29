@@ -41,14 +41,8 @@ func NewVolumeTopologyInfo(name string) *VolumeTopologyInfo {
 	}
 }
 
-func (volumeTopo *VolumeTopologyInfo) DataPartitionsView() (dataPartitionsView DataPartitionsView) {
-	dataPartitionsView = make(map[uint64]*DataPartition)
-	volumeTopo.dataPartitionsView.Range(func(key, value interface{}) bool {
-		dataPartition := value.(*DataPartition)
-		dataPartitionsView[dataPartition.PartitionID] = dataPartition
-		return true
-	})
-	return
+func (volumeTopo *VolumeTopologyInfo) DataPartitionsView() (dataPartitionsView *sync.Map) {
+	return &volumeTopo.dataPartitionsView
 }
 
 func (volumeTopo *VolumeTopologyInfo) Config() *VolumeConfig {

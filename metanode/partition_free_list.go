@@ -168,7 +168,6 @@ func (mp *metaPartition) deleteWorker() {
 // delete Extents by Partition,and find all successDelete inode
 func (mp *metaPartition) batchDeleteExtentsByPartition(ctx context.Context, partitionDeleteExtents map[uint64][]*proto.MetaDelExtentKey,
 	allInodes []*Inode, truncateCount int) (shouldCommit []*Inode) {
-	dpsView := mp.topoManager.GetVolume(mp.config.VolName).DataPartitionsView()
 	occurErrors := make(map[uint64]error)
 	shouldCommit = make([]*Inode, 0, DeleteBatchCount())
 	var (
@@ -187,7 +186,7 @@ func (mp *metaPartition) batchDeleteExtentsByPartition(ctx context.Context, part
 					end = len(extents)
 				}
 				mp.deleteEKWithRateLimit(end-start)
-				perr := mp.doBatchDeleteExtentsByPartition(ctx, dpsView, partitionID, extents[start:end])
+				perr := mp.doBatchDeleteExtentsByPartition(ctx, partitionID, extents[start:end])
 				lock.Lock()
 				occurErrors[partitionID] = perr
 				lock.Unlock()
@@ -434,13 +433,13 @@ func (mp *metaPartition) notifyRaftFollowerToFreeInodes(ctx context.Context, wg 
 	return
 }
 
-func (mp *metaPartition) doDeleteMarkedInodes(ctx context.Context, dataPartitionsView topology.DataPartitionsView, ext *proto.MetaDelExtentKey) (err error) {
+func (mp *metaPartition) doDeleteMarkedInodes(ctx context.Context, ext *proto.MetaDelExtentKey) (err error) {
 	// get the data node view
 	tpObj := exporter.NewNodeAndVolTP(MetaPartitionDeleteEKUmpKey, mp.config.VolName)
 	defer tpObj.SetWithCount(1, err)
 	log.LogDebugf("doDeleteMarkedInodes mp(%v) ext(%v)", mp.config.PartitionId, ext)
-	dp, ok := dataPartitionsView[ext.PartitionId]
-	if !ok || dp == nil {
+	dp := mp.topoManager.GetPartitionFromCache(mp.config.VolName, ext.PartitionId)
+	if dp == nil {
 		mp.topoManager.FetchDataPartitionView(mp.config.VolName, ext.PartitionId)
 		log.LogDebugf("doDeleteMarkedInodes find dataPartition(%v) in vol(%s) failed," +
 			" force fetch data partition view", ext.PartitionId, mp.config.VolName)
@@ -499,14 +498,13 @@ func (mp *metaPartition) doDeleteMarkedInodes(ctx context.Context, dataPartition
 	return
 }
 
-func (mp *metaPartition) doBatchDeleteExtentsByPartition(ctx context.Context,
-	dataPartitionsView topology.DataPartitionsView, partitionID uint64, exts []*proto.MetaDelExtentKey) (err error) {
+func (mp *metaPartition) doBatchDeleteExtentsByPartition(ctx context.Context, partitionID uint64, exts []*proto.MetaDelExtentKey) (err error) {
 	tpObj := exporter.NewNodeAndVolTP(MetaPartitionDeleteEKUmpKey, mp.config.VolName)
 	defer tpObj.SetWithCount(int64(len(exts)), err)
 	log.LogDebugf("doBatchDeleteExtentsByPartition mp(%v) dp(%v), extentCnt(%v)", mp.config.PartitionId, partitionID, len(exts))
 	// get the data node view
-	dp, ok := dataPartitionsView[partitionID]
-	if !ok || dp == nil {
+	dp := mp.topoManager.GetPartitionFromCache(mp.config.VolName, partitionID)
+	if dp == nil {
 		mp.topoManager.FetchDataPartitionView(mp.config.VolName, partitionID)
 		log.LogDebugf("doBatchDeleteExtentsByPartition find dataPartition(%v) in vol(%s) failed," +
 			" force fetch data partition view", partitionID, mp.config.VolName)
