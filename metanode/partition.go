@@ -1604,15 +1604,18 @@ func (mp *metaPartition) Reset() (err error) {
 	mp.config.UniqId = 0
 	mp.applyID = 0
 	mp.txProcessor.Reset()
+	mp.deletedExtentsTree.Release()
+	mp.deletedObjExtentsTree.Release()
 	mp.db.CloseDb()
 
 	// remove files
 	filenames := []string{applyIDFile, dentryFile, inodeFile, extendFile, multipartFile, verdataFile, txInfoFile, txRbInodeFile, txRbDentryFile, TxIDFile}
 	for _, filename := range filenames {
 		filepath := path.Join(mp.config.RootDir, filename)
-		if err = os.Remove(filepath); err != nil {
+		if err = os.Remove(filepath); err != nil && !os.IsNotExist(err) {
 			return
 		}
+		err = nil
 	}
 	mp.cleanRocksDbTreeResource()
 	mp.cleanMemoryTreeResource()

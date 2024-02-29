@@ -308,9 +308,11 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 		}
 	case opFSMStoreTick:
 		log.LogInfof("MP [%d] store tick wait:%d, water level:%d", mp.config.PartitionId, mp.waitPersistCommitCnt, GetDumpWaterLevel())
-		if mp.waitPersistCommitCnt > GetDumpWaterLevel() {
-			mp.waitPersistCommitCnt = 0
+		if mp.waitPersistCommitCnt < GetDumpWaterLevel() {
+			log.LogDebugf("[Apply] mp(%v) opFSMStoreTick store snapshot, but apply id(%v) not reach water mark(%v)", mp.config.PartitionId, mp.waitPersistCommitCnt, GetDumpWaterLevel())
+			return
 		}
+		mp.waitPersistCommitCnt = 0
 		quotaRebuild := mp.mqMgr.statisticRebuildStart()
 		uidRebuild := mp.acucumRebuildStart()
 		uniqChecker := mp.uniqChecker.clone()

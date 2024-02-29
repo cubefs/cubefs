@@ -52,13 +52,18 @@ func updateDirChildrenNumLimit(val uint32) {
 	atomic.StoreUint32(&dirChildrenNumLimit, val)
 }
 
+func getDeleteWorkerSleepMs() (duration time.Duration) {
+	val := atomic.LoadUint64(&deleteWorkerSleepMs)
+	duration = time.Millisecond * time.Duration(val)
+	return
+}
+
 func DeleteWorkerSleepMs() {
 	val := atomic.LoadUint64(&deleteWorkerSleepMs)
 	if val > 0 {
 		time.Sleep(time.Duration(val) * time.Millisecond)
 	}
 }
-
 
 func updateRocksDBModeMaxFsUsedPercent(val float32) {
 	if val <= 0 || val >= 1 {

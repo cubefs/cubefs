@@ -459,7 +459,6 @@ func (dbInfo *RocksDbInfo) ReleaseSnap(snap *gorocksdb.Snapshot) {
 	defer dbInfo.releaseDb()
 
 	dbInfo.db.ReleaseSnapshot(snap)
-	return
 }
 
 func (dbInfo *RocksDbInfo) RangeWithSnap(start, end []byte, snap *gorocksdb.Snapshot, cb func(k, v []byte) (bool, error)) (err error) {
