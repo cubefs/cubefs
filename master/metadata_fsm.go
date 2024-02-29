@@ -18,15 +18,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"os"
-	"path"
 	"strconv"
 
 	"github.com/cubefs/cubefs/depends/tiglabs/raft"
 	"github.com/cubefs/cubefs/depends/tiglabs/raft/proto"
 	raftstore "github.com/cubefs/cubefs/raftstore/raftstore_db"
 	"github.com/cubefs/cubefs/util"
-	"github.com/cubefs/cubefs/util/fileutil"
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/cubefs/cubefs/util/stat"
 )
@@ -107,6 +104,7 @@ func (mf *MetadataFsm) restoreApplied() {
 
 // Apply implements the interface of raft.StateMachine
 func (mf *MetadataFsm) Apply(command []byte, index uint64) (resp interface{}, err error) {
+	log.LogDebugf("[Apply] apply index(%v)", index)
 	cmd := new(RaftCmd)
 	if err = cmd.Unmarshal(command); err != nil {
 		log.LogErrorf("action[fsmApply],unmarshal data:%v, err:%v", command, err.Error())
@@ -193,45 +191,43 @@ func (mf *MetadataFsm) Snapshot() (proto.Snapshot, error) {
 func (mf *MetadataFsm) ApplySnapshot(peers []proto.Peer, iterator proto.SnapIterator) (err error) {
 	log.LogWarnf("action[ApplySnapshot] reset rocksdb before applying snapshot")
 	mf.onSnapshot = true
+
 	defer func() {
 		mf.onSnapshot = false
 	}()
-	var data []byte
-	// clear recovery dir
-	recoveryDir := raftstore.GetRocksDBStoreRecoveryDir(mf.store.GetDir())
-	if fileutil.ExistDir(recoveryDir) {
-		if err = os.RemoveAll(recoveryDir); err != nil {
-			log.LogErrorf("failed to remove temp dir %v, error %v", recoveryDir, err.Error())
-			return
-		}
+
+	if log.EnableDebug() {
+		func() {
+			snap := mf.store.RocksDBSnapshot()
+			defer mf.store.ReleaseSnapshot(snap)
+			iter := mf.store.Iterator(snap)
+			defer iter.Close()
+			cnt := 0
+			for iter.SeekToFirst(); iter.Valid(); iter.Next() {
+				cnt++
+			}
+			log.LogDebugf("[ApplySnapshot] scan %v keys before clear", cnt)
+		}()
 	}
-	rocksdbOpened := true
-	removeDir := ""
-	garbageDir := ""
-	// open temp rocksdb
-	tempDb, err := raftstore.NewRocksDBStore(recoveryDir, mf.store.GetLruCacheSize(), mf.store.GetWriteBufferSize())
-	if err != nil {
-		log.LogErrorf("failed to open temp rocksdb %v", err.Error())
-		goto errHandler
+
+	mf.store.Clear()
+
+	if log.EnableDebug() {
+		func() {
+			snap := mf.store.RocksDBSnapshot()
+			defer mf.store.ReleaseSnapshot(snap)
+			iter := mf.store.Iterator(snap)
+			defer iter.Close()
+			cnt := 0
+			for iter.SeekToFirst(); iter.Valid(); iter.Next() {
+				cnt++
+			}
+			log.LogDebugf("[ApplySnapshot] scan %v keys after clear", cnt)
+		}()
 	}
-	// close rocksdb
-	mf.store.Close()
-	rocksdbOpened = false
-	// remove by rename
-	removeDir = raftstore.GetRocksDBStoreGarbageDir(mf.store.GetDir())
-	err = os.MkdirAll(removeDir, 0o755)
-	if err != nil && !os.IsExist(err) {
-		log.LogErrorf("[ApplySnapshot] failed to create garbage dir, err(%v)", err)
-		goto errHandler
-	}
-	removeDir, err = os.MkdirTemp(removeDir, "")
-	if err != nil {
-		log.LogErrorf("[ApplySnapshot] failed to get temp dir %v", err.Error())
-		goto errHandler
-	}
-	garbageDir = removeDir
-	removeDir = path.Join(removeDir, "remove_by_rename")
+
 	log.LogWarnf(fmt.Sprintf("action[ApplySnapshot] begin,applied[%v]", mf.applied))
+	var data []byte
 	for err == nil {
 		bgTime := stat.BeginStat()
 		if data, err = iterator.Next(); err != nil {
@@ -240,52 +236,27 @@ func (mf *MetadataFsm) ApplySnapshot(peers []proto.Peer, iterator proto.SnapIter
 		stat.EndStat("ApplySnapshot-Next", err, bgTime, 1)
 		cmd := &RaftCmd{}
 		if err = json.Unmarshal(data, cmd); err != nil {
-			tempDb.Close()
 			goto errHandler
 		}
 		bgTime = stat.BeginStat()
-		if _, err = tempDb.Put(cmd.K, cmd.V, false); err != nil {
-			tempDb.Close()
+		if _, err = mf.store.Put(cmd.K, cmd.V, false); err != nil {
 			goto errHandler
 		}
 		stat.EndStat("ApplySnapshot-Put", err, bgTime, 1)
 	}
 	if err != nil && err != io.EOF {
-		tempDb.Close()
 		goto errHandler
 	}
 
-	if err = tempDb.Flush(); err != nil {
+	if err = mf.store.Flush(); err != nil {
 		log.LogError(fmt.Sprintf("action[ApplySnapshot] Flush failed,err:%v", err.Error()))
-		tempDb.Close()
 		goto errHandler
 	}
-	tempDb.Close()
-	// commit point, remove by rename
-	if err = os.Rename(mf.store.GetDir(), removeDir); err != nil {
-		goto errHandler
-	}
-	if err = os.RemoveAll(garbageDir); err != nil {
-		err = nil
-		log.LogErrorf("[ApplySnapshot] failed to remove directory(%v) please try to remove it manually, err(%v)", garbageDir, err.Error())
-	}
-	// rename new dir to raft store dir
-	if err = os.Rename(tempDb.GetDir(), mf.store.GetDir()); err != nil {
-		goto errHandler
-	}
-	// finish snapshot
-	err = mf.store.Open()
-	if err != nil {
-		log.LogErrorf("failed to open rocksdb %v", err.Error())
-		return err
-	}
+
 	mf.snapshotHandler()
 	log.LogWarnf(fmt.Sprintf("action[ApplySnapshot] success,applied[%v]", mf.applied))
 	return nil
 errHandler:
-	if !rocksdbOpened {
-		mf.store.Open()
-	}
 	log.LogError(fmt.Sprintf("action[ApplySnapshot] failed,err:%v", err.Error()))
 	return err
 }
