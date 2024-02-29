@@ -45,6 +45,7 @@ var (
 	ErrNoValidMaster = errors.New("no valid master")
 	UmpKeyErrNoSuchHost = "ErrNoSuchHost"
 	UmpErrNoSuchHostAlarmMsg = "request to master with 'no such host'"
+	UmpKeyErrBadRequest = "ErrBadRequest"
 )
 
 type ClientType int
@@ -238,10 +239,13 @@ func (c *MasterClient) serveRequest(r *request) (respData []byte, contentType st
 			if proto.IsDbBack && stateCode == http.StatusBadRequest {
 				return nil, "", fmt.Errorf(string(respData))
 			}
-			log.LogWarnf("serveRequest: unknown status: host(%v) uri(%v) status(%v) body(%s).",
-				resp.Request.URL.String(), host, stateCode, strings.Replace(string(respData), "\n", "", -1))
-			err = fmt.Errorf("serveRequest: unknown status(%v) host(%v) uri(%v) body(%s), errMsg(%s)", stateCode, host, resp.Request.URL.String(),
-				 strings.Replace(string(respData), "\n", "", -1), http.StatusText(stateCode))
+			errMsg := fmt.Sprintf("serveRequest: unknown status(%v) host(%v) uri(%v) body(%s), errMsg(%s)", stateCode, host, resp.Request.URL.String(),
+				strings.Replace(string(respData), "\n", "", -1), http.StatusText(stateCode))
+			if stateCode == http.StatusBadRequest {
+				exporter.WarningAppendKey(UmpKeyErrBadRequest, errMsg)
+			}
+			log.LogWarnf(errMsg)
+			err = fmt.Errorf(errMsg)
 			continue
 		}
 	}
