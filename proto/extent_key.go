@@ -56,9 +56,10 @@ type ExtentKey struct {
 // MarkDelExtentKey defines the extent key struct.
 type MetaDelExtentKey struct {
 	ExtentKey
-	InodeId   uint64
-	TimeStamp int64
-	SrcType   uint64
+	InodeId      uint64
+	TimeStamp    int64
+	SrcType      uint64
+	InodeIDInner uint64 `json:"-"`
 }
 
 func (k *MetaDelExtentKey) String() string {

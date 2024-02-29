@@ -210,9 +210,9 @@ func (mp *metaPartition) batchDeleteExtentsByPartition(ctx context.Context, part
 
 		errorEKs, _ := partitionDeleteExtents[dpID]
 		for _, ek := range errorEKs {
-			mp.freeLaterInodes[ek.InodeId] = 0
+			mp.freeLaterInodes[ek.InodeIDInner] = 0
 			log.LogWarnf("deleteInode metaPartition(%v) Inode(%v) ek(%v) delete error(%v)",mp.config.PartitionId,
-				ek.InodeId, ek, perr)
+				ek.InodeIDInner, ek, perr)
 		}
 	}
 
@@ -343,6 +343,11 @@ func (mp *metaPartition) deleteMarkedInodes(ctx context.Context, inoSlice []uint
 			continue
 		}
 
+		inodeID := inodeVal.Inode
+		if exist, _ := mp.hasXAttr(inodeID, proto.XAttrKeyOSSMultipart); exist {
+			inodeID = 0
+		}
+
 		truncateIndexOffset := inodeVal.Extents.Len() - truncateEKCount
 		if truncateIndexOffset < 0 || mp.HasRocksDBStore() {
 			truncateIndexOffset = 0
@@ -360,8 +365,9 @@ func (mp *metaPartition) deleteMarkedInodes(ctx context.Context, inoSlice []uint
 				exts = make([]*proto.MetaDelExtentKey, 0)
 			}
 			exts = append(exts, &proto.MetaDelExtentKey{
-				ExtentKey: ek,
-				InodeId:   inodeVal.Inode,
+				ExtentKey:    ek,
+				InodeId:      inodeID,
+				InodeIDInner: inodeVal.Inode,
 			})
 			deleteExtentsByPartition[ext.PartitionId] = exts
 			return true

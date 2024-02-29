@@ -261,3 +261,21 @@ func (mp *metaPartition) getInodeXAttr(inodeID uint64, keys []string) (extendAtt
 	}
 	return
 }
+
+func (mp *metaPartition) hasXAttr(inodeID uint64, key string) (exist bool, err error){
+	var extend *Extend
+	if extend, err = mp.extendTree.RefGet(inodeID); err != nil {
+		if err == rocksDBError {
+			exporter.WarningRocksdbError(fmt.Sprintf("action[hasXAttr] clusterID[%s] volumeName[%s] partitionID[%v]" +
+				" get extend failed witch rocksdb error[Inode:%v]", mp.manager.metaNode.clusterId, mp.config.VolName,
+				mp.config.PartitionId, inodeID))
+		}
+		return
+	}
+
+	if extend == nil {
+		return
+	}
+	_, exist = extend.Get([]byte(key))
+	return
+}
