@@ -504,7 +504,7 @@ func (l *LcNode) debugServiceGetFile(w http.ResponseWriter, r *http.Request) {
 		Inode:        ino,
 		StorageClass: uint32(sc),
 	}
-	if err = t.readFromExtentClient(e, w, true); err != nil {
+	if err = t.readFromExtentClient(e, w, true, 0, 0); err != nil {
 		http.Error(w, fmt.Sprintf("readFromExtentClient err: %v", err.Error()), http.StatusBadRequest)
 		return
 	}

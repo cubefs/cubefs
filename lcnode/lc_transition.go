@@ -19,6 +19,7 @@ import (
 	"crypto/md5"
 	"encoding/hex"
 	"io"
+	"strings"
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util"
@@ -36,7 +37,7 @@ type ExtentApi interface {
 }
 
 type EbsApi interface {
-	Put(ctx context.Context, volName string, f io.Reader, size uint64) (oek proto.ObjExtentKey, md5 []byte, err error)
+	Put(ctx context.Context, volName string, f io.Reader, size uint64) (oek []proto.ObjExtentKey, md5 [][]byte, err error)
 	Get(ctx context.Context, volName string, offset uint64, size uint64, oek proto.ObjExtentKey) (body io.ReadCloser, err error)
 }
 
@@ -122,7 +123,7 @@ func (t *TransitionMgr) migrate(e *proto.ScanDentry) (err error) {
 
 	//check read from src extent
 	srcMd5Hash := md5.New()
-	err = t.readFromExtentClient(e, srcMd5Hash, false)
+	err = t.readFromExtentClient(e, srcMd5Hash, false, 0, 0)
 	if err != nil {
 		log.LogErrorf("check: read from src extent err: %v, inode(%v)", err, e.Inode)
 		return
@@ -137,7 +138,7 @@ func (t *TransitionMgr) migrate(e *proto.ScanDentry) (err error) {
 
 	//check read from dst migration extent
 	dstMd5Hash := md5.New()
-	err = t.readFromExtentClient(e, dstMd5Hash, true)
+	err = t.readFromExtentClient(e, dstMd5Hash, true, 0, 0)
 	if err != nil {
 		log.LogErrorf("check: read from dst extent err: %v, inode(%v)", err, e.Inode)
 		return
@@ -154,7 +155,7 @@ func (t *TransitionMgr) migrate(e *proto.ScanDentry) (err error) {
 	return
 }
 
-func (t *TransitionMgr) readFromExtentClient(e *proto.ScanDentry, writer io.Writer, isMigrationExtent bool) (err error) {
+func (t *TransitionMgr) readFromExtentClient(e *proto.ScanDentry, writer io.Writer, isMigrationExtent bool, from, size int) (err error) {
 	var (
 		readN      int
 		readOffset int
@@ -163,8 +164,14 @@ func (t *TransitionMgr) readFromExtentClient(e *proto.ScanDentry, writer io.Writ
 		buf        = make([]byte, 2*util.BlockSize)
 	)
 
+	if size > 0 {
+		readOffset = from
+	} else {
+		size = int(e.Size)
+	}
+
 	for {
-		if rest = int(e.Size) - readOffset; rest <= 0 {
+		if rest = (from + size) - readOffset; rest <= 0 {
 			break
 		}
 		readSize = len(buf)
@@ -196,7 +203,7 @@ func (t *TransitionMgr) readFromExtentClient(e *proto.ScanDentry, writer io.Writ
 	return
 }
 
-func (t *TransitionMgr) migrateToEbs(e *proto.ScanDentry) (oeks []proto.ObjExtentKey, err error) {
+func (t *TransitionMgr) migrateToEbs(e *proto.ScanDentry) (oek []proto.ObjExtentKey, err error) {
 	if err = t.ec.OpenStream(e.Inode, false, false); err != nil {
 		log.LogErrorf("migrateToEbs: OpenStream fail, inode(%v) err: %v", e.Inode, err)
 		return
@@ -209,7 +216,7 @@ func (t *TransitionMgr) migrateToEbs(e *proto.ScanDentry) (oeks []proto.ObjExten
 
 	r, w := io.Pipe()
 	go func() {
-		err = t.readFromExtentClient(e, w, false)
+		err = t.readFromExtentClient(e, w, false, 0, 0)
 		if err != nil {
 			log.LogErrorf("migrateToEbs: read from extent err: %v, inode(%v)", err, e.Inode)
 		}
@@ -217,31 +224,48 @@ func (t *TransitionMgr) migrateToEbs(e *proto.ScanDentry) (oeks []proto.ObjExten
 	}()
 
 	ctx := context.Background()
-	oek, m, err := t.ebsClient.Put(ctx, t.volume, r, e.Size)
+	oek, _md5, err := t.ebsClient.Put(ctx, t.volume, r, e.Size)
 	if err != nil {
 		log.LogErrorf("migrateToEbs: ebs put err: %v, inode(%v)", err, e.Inode)
 		r.Close()
 		return
 	}
 	r.Close()
-	md5Value := hex.EncodeToString(m)
+
+	var md5Value []string
+	for _, m := range _md5 {
+		md5Value = append(md5Value, hex.EncodeToString(m))
+	}
 	log.LogDebugf("migrateToEbs finished, inode(%v), oek: %v, md5Value: %v", e.Inode, oek, md5Value)
 
 	//check read from extent
-	srcMd5Hash := md5.New()
-	err = t.readFromExtentClient(e, srcMd5Hash, false)
-	if err != nil {
-		log.LogErrorf("migrateToEbs: check err: %v, inode(%v)", err, e.Inode)
-		return
+	var srcMd5 []string
+	var from int
+	var part uint64 = util.ExtentSize
+	var rest = e.Size
+	for rest > 0 {
+		var getSize uint64
+		if rest > part {
+			getSize = part
+		} else {
+			getSize = rest
+		}
+		rest -= getSize
+		srcMd5Hash := md5.New()
+		err = t.readFromExtentClient(e, srcMd5Hash, false, from, int(getSize))
+		if err != nil {
+			log.LogErrorf("migrateToEbs: check err: %v, inode(%v)", err, e.Inode)
+			return
+		}
+		srcMd5 = append(srcMd5, hex.EncodeToString(srcMd5Hash.Sum(nil)))
+		from += int(getSize)
 	}
-	srcMd5 := hex.EncodeToString(srcMd5Hash.Sum(nil))
 	log.LogDebugf("migrateToEbs check finished, inode(%v), srcmd5: %v", e.Inode, srcMd5)
 
-	if srcMd5 != md5Value {
+	if strings.Join(srcMd5, ",") != strings.Join(md5Value, ",") {
 		err = errors.NewErrorf("migrateToEbs check md5 inconsistent, srcMd5: %v, md5Value: %v", srcMd5, md5Value)
 		return
 	}
-	oeks = []proto.ObjExtentKey{oek}
 	log.LogInfof("migrateToEbs and check finished, inode(%v)", e.Inode)
 	return
 }
