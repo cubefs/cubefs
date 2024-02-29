@@ -66,11 +66,6 @@ func GetRocksDBStoreRecoveryDir(dir string) string {
 	return fmt.Sprintf("%v_temp", dir)
 }
 
-func GetRocksDBStoreGarbageDir(dir string) string {
-	dir = strings.TrimSuffix(dir, "/")
-	return fmt.Sprintf("%v_garbage", dir)
-}
-
 // NewRocksDBStoreAndRecovery returns a new RocksDB instance after execute recovery.
 func NewRocksDBStoreAndRecovery(dir string, lruCacheSize, writeBufferSize int) (store *RocksDBStore, err error) {
 	// start recovery
@@ -290,4 +285,18 @@ func (rs *RocksDBStore) Iterator(snapshot *gorocksdb.Snapshot) *gorocksdb.Iterat
 	ro.SetSnapshot(snapshot)
 
 	return rs.db.NewIterator(ro)
+}
+
+func (rs *RocksDBStore) Clear() (err error) {
+	wo := gorocksdb.NewDefaultWriteOptions()
+	wo.SetSync(true)
+	wb := gorocksdb.NewWriteBatch()
+	defer func() {
+		wo.Destroy()
+		wb.Destroy()
+	}()
+	// NOTE: 0 - 255 include all keys
+	wb.DeleteRange([]byte{0}, []byte{255})
+	err = rs.db.Write(wo, wb)
+	return
 }
