@@ -872,6 +872,10 @@ func ReadFull(c net.Conn, buf *[]byte, readSize int) (err error) {
 	return
 }
 
+func (p *Packet) IsWriteOperation() bool {
+	return p.Opcode == OpWrite || p.Opcode == OpSyncWrite
+}
+
 func (p *Packet) IsReadOperation() bool {
 	return p.Opcode == OpStreamRead || p.Opcode == OpRead ||
 		p.Opcode == OpExtentRepairRead || p.Opcode == OpReadTinyDeleteRecord ||
@@ -944,7 +948,13 @@ func (p *Packet) ReadFromConnWithVer(c net.Conn, timeoutSec int) (err error) {
 	if p.IsReadOperation() && p.ResultCode == OpInitResultCode {
 		size = 0
 	}
-	p.Data = make([]byte, size)
+
+	if p.IsWriteOperation() && size == util.BlockSize {
+		p.Data, _ = Buffers.Get(int(size))
+	} else {
+		p.Data = make([]byte, size)
+	}
+
 	if n, err = io.ReadFull(c, p.Data[:size]); err != nil {
 		return err
 	}
