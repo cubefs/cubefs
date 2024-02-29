@@ -696,39 +696,18 @@ func (mp *metaPartition) ResetDbByNewDir(newDBDir string) (err error) {
 		return
 	}
 
-	if err = mp.db.ReleaseRocksDb(); err != nil {
+	garbage, err := mp.db.ReleaseRocksDb()
+	if err != nil {
 		log.LogErrorf("[ResetDbByNewDir] release db dir failed:%v", err.Error())
 		return
 	}
-
-	tmpDir := strings.TrimSuffix(mp.getRocksDbRootDir(), "/")
-	tmpDir = fmt.Sprintf("%v_garbage", tmpDir)
-	err = os.MkdirAll(tmpDir, 0o755)
-	if err != nil && !os.IsExist(err) {
-		log.LogErrorf("[ResetDbByNewDir] failed to create garbage dir, err(%v)", err)
-		return
-	}
-	tmpDir, err = os.MkdirTemp(tmpDir, "")
-	if err != nil {
-		log.LogErrorf("[ResetDbByNewDir] failed to get tmp dir, err(%v)", err)
-		return
-	}
-	garbageDir := tmpDir
-	tmpDir = path.Join(tmpDir, "remove_by_rename")
-	// NOTE: atomic rename dir
-	if err = os.Rename(mp.getRocksDbRootDir(), tmpDir); err != nil && os.IsNotExist(err) {
-		log.LogErrorf("[ResetDbByNewDir] failed to rename dir, err(%v)", err)
-		return
+	if garbage != "" {
+		log.LogErrorf("[ResetDbByNewDir] mp(%v) failed to clear up garbage(%v), please remove it manually", mp.config.PartitionId, garbage)
 	}
 
 	if err = os.Rename(newDBDir, mp.getRocksDbRootDir()); err != nil {
 		log.LogErrorf("[ResetDbByNewDir] rename db dir[%s --> %s] failed:%v", newDBDir, mp.getRocksDbRootDir(), err.Error())
 		return
-	}
-
-	if err = os.RemoveAll(garbageDir); err != nil {
-		log.LogErrorf("[ResetDbByNewDir] failed to remove garbage(%v) please remove it manually, err(%v)", garbageDir, err)
-		err = nil
 	}
 
 	if err = mp.db.ReOpenDb(mp.getRocksDbRootDir(), mp.config.RocksWalFileSize, mp.config.RocksWalMemSize,

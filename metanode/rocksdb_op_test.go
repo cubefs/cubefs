@@ -8,6 +8,8 @@ import (
 	"runtime"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 )
 
 const (
@@ -31,8 +33,9 @@ func TestOpenDb(t *testing.T) {
 	}
 
 	db.CloseDb()
-	db.ReleaseRocksDb()
-	_, err := os.Stat(path)
+	_, err := db.ReleaseRocksDb()
+	require.NoError(t, err)
+	_, err = os.Stat(path)
 	if err == nil || !os.IsNotExist(err) {
 		t.Errorf("os error, rm dir[db] failed")
 		return
@@ -50,7 +53,8 @@ func TestOpenDb(t *testing.T) {
 	}
 
 	db.CloseDb()
-	db.ReleaseRocksDb()
+	_, err = db.ReleaseRocksDb()
+	require.NoError(t, err)
 }
 
 func TestReopneDb(t *testing.T) {
@@ -63,8 +67,9 @@ func TestReopneDb(t *testing.T) {
 	}
 
 	db.CloseDb()
-	db.ReleaseRocksDb()
-	_, err := os.Stat(path)
+	_, err := db.ReleaseRocksDb()
+	require.NoError(t, err)
+	_, err = os.Stat(path)
 	if err == nil || !os.IsNotExist(err) {
 		t.Errorf("os error, rm dir[db] failed")
 		return
@@ -82,7 +87,8 @@ func TestReopneDb(t *testing.T) {
 	}
 
 	db.CloseDb()
-	db.ReleaseRocksDb()
+	_, err = db.ReleaseRocksDb()
+	require.NoError(t, err)
 }
 
 func insertByItem(t *testing.T, db *RocksDbInfo) {
@@ -390,14 +396,16 @@ func TestOps(t *testing.T) {
 
 	db2.CloseDb()
 	_ = db.CloseDb()
-	db.ReleaseRocksDb()
+	_, err := db.ReleaseRocksDb()
+	require.NoError(t, err)
 	os.Rename(path2, path)
 	db.ReOpenDb(path, 0, 0, 0, 0, 0, 0)
 	t.Logf("reopen db delete used:%v \n", time.Since(start))
 	rangeTest(t, db)
 	deleteDataByMultiItems(t, db)
 	db.CloseDb()
-	db.ReleaseRocksDb()
+	_, err = db.ReleaseRocksDb()
+	require.NoError(t, err)
 
 	return
 }
@@ -469,7 +477,8 @@ func TestAbortOps(t *testing.T) {
 	time.Sleep(time.Millisecond * 50)
 	db.CloseDb()
 	_ = db.OpenSnap()
-	db.ReleaseRocksDb()
+	_, err := db.ReleaseRocksDb()
+	require.NoError(t, err)
 }
 
 func TestRocksDB_accessDB(t *testing.T) {

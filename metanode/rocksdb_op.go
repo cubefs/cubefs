@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"path"
 	"runtime/debug"
 	"strings"
 	"sync"
@@ -132,14 +133,36 @@ func NewRocksDb() (dbInfo *RocksDbInfo) {
 	return
 }
 
-func (dbInfo *RocksDbInfo) ReleaseRocksDb() error {
+func (dbInfo *RocksDbInfo) ReleaseRocksDb() (garbageDir string, err error) {
 	dbInfo.mutex.Lock()
 	defer dbInfo.mutex.Unlock()
 	if dbInfo.db != nil || atomic.LoadUint32(&dbInfo.state) != dbClosedSt {
-		return fmt.Errorf("rocks db is using, can not release")
+		return "", fmt.Errorf("rocks db is using, can not release")
 	}
 
-	return os.RemoveAll(dbInfo.dir)
+	tmpDir := strings.TrimSuffix(dbInfo.dir, "/")
+	tmpDir = fmt.Sprintf("%v_garbage", tmpDir)
+	err = os.MkdirAll(tmpDir, 0o755)
+	if err != nil && !os.IsExist(err) {
+		return
+	}
+	tmpDir, err = os.MkdirTemp(tmpDir, "")
+	if err != nil {
+		return
+	}
+	garbageDir = tmpDir
+	tmpDir = path.Join(tmpDir, "remove_by_rename")
+	// NOTE: atomic rename dir
+	if err = os.Rename(dbInfo.dir, tmpDir); err != nil {
+		return
+	}
+
+	if err = os.RemoveAll(garbageDir); err != nil {
+		err = nil
+		return
+	}
+	garbageDir = ""
+	return
 }
 
 func (dbInfo *RocksDbInfo) CloseDb() (err error) {
