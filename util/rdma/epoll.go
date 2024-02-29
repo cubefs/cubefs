@@ -2,6 +2,7 @@ package rdma
 
 import "C"
 import (
+	"golang.org/x/sys/unix"
 	"sync"
 	"syscall"
 )
@@ -52,7 +53,7 @@ func (e *EPoll) getContext(fd int) *EpollWorker {
 
 func (e *EPoll) EpollAdd(fd int, ctx ReadAble) {
 	event := syscall.EpollEvent{}
-	event.Events = syscall.EPOLLIN
+	event.Events = unix.EPOLLIN | unix.EPOLLET
 	event.Fd = int32(fd)
 	lock.Lock()
 	ew := &EpollWorker{}
@@ -71,8 +72,9 @@ func (e *EPoll) EpollDel(fd int) {
 }
 
 func (e *EPoll) epollLoop() error {
+	events := make([]syscall.EpollEvent, 100)
 	for {
-		events := make([]syscall.EpollEvent, 100)
+
 		n, err := syscall.EpollWait(e.epollFd, events, -1)
 		if err != nil {
 			if err == syscall.EINTR {

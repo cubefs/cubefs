@@ -67,7 +67,7 @@ func NewRdmaConnectPool() (rcp *RdmaConnectPool) {
 	InitRdmaEnv()
 	rcp = &RdmaConnectPool{
 		clientPools:    make(map[string]*ClientPool),
-		mincap:         5,
+		mincap:         1,
 		maxcap:         500,
 		timeout:        int64(time.Second * RdmaConnectIdleTime),
 		connectTimeout: defaultRdmaConnectTimeout,
