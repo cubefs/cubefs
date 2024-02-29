@@ -534,9 +534,7 @@ func (s *ExtentStore) __markDeleteOne(inode, extentID uint64, offset, size int64
 		}
 		if ei, exists := s.getExtentInfoByExtentID(extentID); exists {
 			if inode != 0 && ei[Inode] != 0 && inode != ei[Inode] {
-				if log.IsWarnEnabled() {
-					log.LogWarnf("inode mismatch: expected %v, actual %v", ei[Inode], inode)
-				}
+				return NewParameterMismatchErr(fmt.Sprintf("inode mismatch: expected %v, actual %v", ei[Inode], inode))
 			}
 			s.cache.Del(extentID)
 			s.infoStore.Delete(extentID)
