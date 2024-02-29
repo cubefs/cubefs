@@ -238,7 +238,7 @@ func createOPMetricBySize(size uint64, tag string) string {
 	return tag + "1G_"
 }
 
-func (ebs *BlobStoreClient) Put(ctx context.Context, volName string, f io.Reader, size uint64) (oek proto.ObjExtentKey, md5 []byte, err error) {
+func (ebs *BlobStoreClient) Put(ctx context.Context, volName string, f io.Reader, size uint64) (oek []proto.ObjExtentKey, md5 [][]byte, err error) {
 	bgTime := stat.BeginStat()
 	defer func() {
 		stat.EndStat("ebs-write", err, bgTime, 1)
@@ -253,22 +253,45 @@ func (ebs *BlobStoreClient) Put(ctx context.Context, volName string, f io.Reader
 		metric.SetWithLabels(err, map[string]string{exporter.Vol: volName})
 	}()
 
-	location, hash, err := ebs.client.Put(ctx, &access.PutArgs{
-		Size:   int64(size),
-		Hashes: access.HashAlgMD5,
-		Body:   f,
-	})
-	if err != nil {
-		log.LogErrorf("TRACE Ebs Put, err(%v),requestId(%v)", err.Error(), requestId)
-		return
+	var part uint64 = util.ExtentSize
+	var rest = size
+	for rest > 0 {
+		var putSize uint64
+		if rest > part {
+			putSize = part
+		} else {
+			putSize = rest
+		}
+		rest -= putSize
+		var location access.Location
+		var hash access.HashSumMap
+		location, hash, err = ebs.client.Put(ctx, &access.PutArgs{
+			Size:   int64(putSize),
+			Hashes: access.HashAlgMD5,
+			Body:   f,
+		})
+		if err != nil {
+			log.LogErrorf("TRACE Ebs Put, err(%v),requestId(%v)", err.Error(), requestId)
+			return
+		}
+
+		var _md5 []byte
+		_md5, err = hex.DecodeString(hash.GetSumVal(access.HashAlgMD5).(string))
+		if err != nil {
+			log.LogErrorf("decode md5 %v, err %v", hash.GetSumVal(access.HashAlgMD5).(string), err)
+			return
+		}
+		oek = append(oek, locationToObjExtentKey(location))
+		md5 = append(md5, _md5)
+		log.LogDebugf("TRACE Ebs Put, requestId(%v) loc(%v) putSize(%v)", requestId, location, putSize)
 	}
 
-	md5, err = hex.DecodeString(hash.GetSumVal(access.HashAlgMD5).(string))
-	if err != nil {
-		log.LogErrorf("decode md5 %v, err %v", hash.GetSumVal(access.HashAlgMD5).(string), err)
-		return
-	}
+	elapsed := time.Since(start)
+	log.LogDebugf("TRACE Ebs Put Exit, requestId(%v) oek(%v) md5(%v) size(%v) consume(%v)ns", requestId, oek, md5, size, elapsed.Nanoseconds())
+	return
+}
 
+func locationToObjExtentKey(location access.Location) (oek proto.ObjExtentKey) {
 	blobs := make([]proto.Blob, 0)
 	for _, info := range location.Blobs {
 		blob := proto.Blob{
@@ -288,8 +311,6 @@ func (ebs *BlobStoreClient) Put(ctx context.Context, volName string, f io.Reader
 		FileOffset: 0,
 		Crc:        location.Crc,
 	}
-	elapsed := time.Since(start)
-	log.LogDebugf("TRACE Ebs Put Exit, requestId(%v) loc(%v) oek(%v) md5(%v) size(%v) consume(%v)ns", requestId, location, oek, string(md5), size, elapsed.Nanoseconds())
 	return
 }
 
