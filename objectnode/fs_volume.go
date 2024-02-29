@@ -915,9 +915,9 @@ func (v *Volume) CompleteMultipart(path, multipartID string, multipartInfo *prot
 			v.name, path, multipartID, completeInodeInfo.Inode)
 	}
 
-	var deleteFinalInode = false
+	var deleteFinalInodeOnFail = false
 	defer func() {
-		if err != nil && deleteFinalInode {
+		if err != nil && deleteFinalInodeOnFail {
 			log.LogWarnf("CompleteMultipart: destroy inode: volume(%v) path(%v) multipartID(%v) inode(%v)",
 				v.name, path, multipartID, completeInodeInfo.Inode)
 			if deleteErr := v.mw.InodeDelete_ll(context.Background(), completeInodeInfo.Inode); deleteErr != nil {
@@ -930,7 +930,7 @@ func (v *Volume) CompleteMultipart(path, multipartID string, multipartInfo *prot
 	if err = v.mw.XAttrSet_ll(context.Background(), completeInodeInfo.Inode, []byte(XAttrKeyOSSMultipart), []byte{1}); err != nil {
 		log.LogErrorf("CompleteMultipart: save multipart flag fail: volume(%v) inode(%v) err(%v)",
 			v.name, completeInodeInfo, err)
-		deleteFinalInode = true
+		deleteFinalInodeOnFail = true
 		return
 	}
 
@@ -943,7 +943,7 @@ func (v *Volume) CompleteMultipart(path, multipartID string, multipartInfo *prot
 		if _, _, eks, err = v.mw.GetExtents(context.Background(), part.Inode); err != nil {
 			log.LogErrorf("CompleteMultipart: meta get extents fail: volume(%v) path(%v) multipartID(%v) partID(%v) inode(%v) err(%v)",
 				v.name, path, multipartID, part.ID, part.Inode, err)
-			deleteFinalInode = true
+			deleteFinalInodeOnFail = true
 			return
 		}
 
@@ -959,7 +959,7 @@ func (v *Volume) CompleteMultipart(path, multipartID string, multipartInfo *prot
 			log.LogErrorf("CompleteMultipart: part extents length not match with part size: volume(%v) path(%v) multipartID(%v) partID(%v) inode(%v) partSize(%v) eksSize(%v) eksLength(%v)",
 				v.name, path, multipartID, part.ID, part.Inode, part.Size, eksSize, len(eks))
 			err = errors.New("part extents length not match with part size")
-			deleteFinalInode = true
+			deleteFinalInodeOnFail = true
 			return
 		}
 		size += part.Size

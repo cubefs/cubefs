@@ -51,3 +51,7 @@ const (
 const (
     AuthFilePath = "/usr/local/cubefs/"
 )
+
+const (
+    XAttrKeyOSSMultipart = "oss:multipart"
+)
