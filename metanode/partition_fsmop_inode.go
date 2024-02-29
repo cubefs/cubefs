@@ -411,6 +411,11 @@ func (mp *metaPartition) fsmUnlinkInode(dbHandle interface{}, ino *Inode, unlink
 					return
 				}
 			}
+			_, err = mp.inodeTree.Delete(dbHandle, inode.Inode)
+			if err != nil {
+				return
+			}
+			deleted = true
 			// mp.freeList.Push(inode.Inode)
 		}
 	}
@@ -424,6 +429,11 @@ func (mp *metaPartition) fsmUnlinkInode(dbHandle interface{}, ino *Inode, unlink
 		}
 		// mp.extDelCh <- ext2Del
 	}
+
+	if log.EnableDebug() && deleted {
+		log.LogDebugf("[fsmUnlinkInode] mp(%v) delete inode(%v)", mp.config.PartitionId, inode)
+	}
+
 	if !deleted {
 		if err = mp.inodeTree.Update(dbHandle, inode); err != nil {
 			resp.Status = proto.OpErr
@@ -517,6 +527,7 @@ func (mp *metaPartition) internalDeleteBatch(dbHandle interface{}, val []byte) e
 }
 
 func (mp *metaPartition) internalDeleteInode(dbHandle interface{}, ino *Inode) (err error) {
+	log.LogDebugf("[internalDeleteInode] mp(%v) receive old rpc, the leader using free list", mp.config.PartitionId)
 	log.LogDebugf("action[internalDeleteInode] ino[%v] really be deleted", ino)
 	_, err = mp.inodeTree.Delete(dbHandle, ino.Inode)
 	if err != nil {
@@ -846,6 +857,7 @@ func (mp *metaPartition) fsmExtentsTruncate(dbHandle interface{}, ino *Inode) (r
 }
 
 func (mp *metaPartition) fsmEvictInode(dbHandle interface{}, ino *Inode) (resp *InodeResponse, err error) {
+	// TODO: remove this rpc, evict should implment in client side
 	resp = NewInodeResponse()
 	var i *Inode
 	log.LogDebugf("action[fsmEvictInode] inode[%v]", ino)
@@ -863,10 +875,7 @@ func (mp *metaPartition) fsmEvictInode(dbHandle interface{}, ino *Inode) (resp *
 		if i.IsEmptyDirAndNoSnapshot() {
 			i.SetDeleteMark()
 		}
-		return
-	}
-
-	if i.IsTempFile() {
+	} else if i.IsTempFile() {
 		log.LogDebugf("action[fsmEvictInode] inode[%v] already linke zero and be set mark delete and be put to freelist", ino)
 		if i.isEmptyVerList() {
 			i.SetDeleteMark()
@@ -888,9 +897,19 @@ func (mp *metaPartition) fsmEvictInode(dbHandle interface{}, ino *Inode) (resp *
 				}
 			}
 			// mp.freeList.Push(i.Inode)
+			_, err = mp.inodeTree.Delete(dbHandle, i.Inode)
+			if err != nil {
+				log.LogErrorf("[fsmEvictInode] mp(%v) failed to evict inode(%v), err(%v)", mp.config.PartitionId, i, err)
+				return
+			}
+			return
 		}
 	}
-	mp.inodeTree.Put(dbHandle, i)
+	err = mp.inodeTree.Update(dbHandle, i)
+	if err != nil {
+		log.LogErrorf("[fsmEvictInode] mp(%v) failed to evict inode(%v), err(%v)", mp.config.PartitionId, i, err)
+		return
+	}
 	return
 }
 

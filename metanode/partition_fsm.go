@@ -926,7 +926,6 @@ func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.Sn
 					return
 				}
 			}
-			mp.freeList = newFreeList()
 
 			mp.applyID = appIndexID
 			mp.config.UniqId = uniqID
@@ -962,14 +961,14 @@ func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.Sn
 				multiVerList: mp.GetVerList(),
 			}
 			select {
-			case mp.extReset <- struct{}{}:
-				log.LogDebugf("ApplySnapshot: finish with EOF: partitionID(%v) applyID(%v), txID(%v), uniqID(%v), cursor(%v)",
-					mp.config.PartitionId, mp.applyID, mp.txProcessor.txManager.txIdAlloc.getTransactionID(), mp.config.UniqId, mp.config.Cursor)
-				blockUntilStoreSnapshot()
-				return
 			case <-mp.stopC:
 				log.LogWarnf("ApplySnapshot: revice stop signal, exit now, partition(%d), applyId(%d)", mp.config.PartitionId, mp.applyID)
 				err = errors.New("server has been shutdown")
+				return
+			default:
+				log.LogDebugf("ApplySnapshot: finish with EOF: partitionID(%v) applyID(%v), txID(%v), uniqID(%v), cursor(%v)",
+					mp.config.PartitionId, mp.applyID, mp.txProcessor.txManager.txIdAlloc.getTransactionID(), mp.config.UniqId, mp.config.Cursor)
+				blockUntilStoreSnapshot()
 				return
 			}
 		}

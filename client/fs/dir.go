@@ -260,6 +260,7 @@ func (d *Dir) Remove(ctx context.Context, req *fuse.RemoveRequest) error {
 		auditlog.LogClientOp("Remove", fullPath, "nil", err, time.Since(start).Microseconds(), deletedInode, 0)
 	}()
 
+	log.LogDebugf("[Remove] remove fullpath(%v)", fullPath)
 	info, err := d.super.mw.Delete_ll(d.info.Inode, req.Name, req.Dir, fullPath)
 	if err != nil {
 		log.LogErrorf("Remove: parent(%v) name(%v) err(%v)", d.info.Inode, req.Name, err)

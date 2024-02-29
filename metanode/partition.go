@@ -505,27 +505,31 @@ type OpQuota interface {
 //	| New | → Restore → | Ready |
 //	+-----+             +-------+
 type metaPartition struct {
-	config                 *MetaPartitionConfig
-	size                   uint64                // For partition all file size
-	applyID                uint64                // Inode/Dentry max applyID, this index will be update after restoring from the dumped data.
-	storedApplyId          uint64                // update after store snapshot to disk
-	dentryTree             DentryTree            // btree for dentries
-	inodeTree              InodeTree             // btree for inodes
-	extendTree             ExtendTree            // btree for inode extend (XAttr) management
-	multipartTree          MultipartTree         // collection for multipart management
-	deletedExtentsTree     DeletedExtentsTree    // deleted extents
-	deletedObjExtentsTree  DeletedObjExtentsTree // deleted obj extents
-	deletedExtentId        uint64
-	db                     *RocksDbInfo
-	txProcessor            *TransactionProcessor // transction processor
-	raftPartition          raftstore.Partition
-	stopC                  chan bool
-	storeChan              chan *storeMsg
-	state                  uint32
-	delInodeFp             *os.File
-	freeList               *freeList // free inode list
-	extDelCh               chan []proto.ExtentKey
-	extReset               chan struct{}
+	config                *MetaPartitionConfig
+	size                  uint64                // For partition all file size
+	applyID               uint64                // Inode/Dentry max applyID, this index will be update after restoring from the dumped data.
+	storedApplyId         uint64                // update after store snapshot to disk
+	dentryTree            DentryTree            // btree for dentries
+	inodeTree             InodeTree             // btree for inodes
+	extendTree            ExtendTree            // btree for inode extend (XAttr) management
+	multipartTree         MultipartTree         // collection for multipart management
+	deletedExtentsTree    DeletedExtentsTree    // deleted extents
+	deletedObjExtentsTree DeletedObjExtentsTree // deleted obj extents
+	deletedExtentId       uint64
+	db                    *RocksDbInfo
+	txProcessor           *TransactionProcessor // transction processor
+	raftPartition         raftstore.Partition
+	stopC                 chan bool
+	storeChan             chan *storeMsg
+	state                 uint32
+
+	// TODO(NaturalSelect): remove those members, always nil
+	// NOTE: old delete api
+	delInodeFp *os.File
+	freeList   *freeList // free inode list
+	extDelCh   chan []proto.ExtentKey
+	extReset   chan struct{}
+
 	vol                    *Vol
 	manager                *metadataManager
 	isLoadingMetaPartition bool
@@ -665,7 +669,7 @@ func (mp *metaPartition) DataSize() uint64 {
 }
 
 func (mp *metaPartition) GetFreeListLen() int {
-	return mp.freeList.Len()
+	return 0
 }
 
 // Start starts a meta partition.
@@ -837,10 +841,6 @@ func (mp *metaPartition) startScheduleTask() {
 func (mp *metaPartition) onStop() {
 	mp.stopRaft()
 	mp.stop()
-	if mp.delInodeFp != nil {
-		mp.delInodeFp.Sync()
-		mp.delInodeFp.Close()
-	}
 }
 
 func (mp *metaPartition) startRaft() (err error) {
@@ -916,9 +916,6 @@ func NewMetaPartition(conf *MetaPartitionConfig, manager *metadataManager) MetaP
 		config:      conf,
 		stopC:       make(chan bool),
 		storeChan:   make(chan *storeMsg, 100),
-		freeList:    newFreeList(),
-		extDelCh:    make(chan []proto.ExtentKey, defaultDelExtentsCnt),
-		extReset:    make(chan struct{}),
 		vol:         NewVol(),
 		manager:     manager,
 		uniqChecker: newUniqChecker(),

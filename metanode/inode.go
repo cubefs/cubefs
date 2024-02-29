@@ -216,13 +216,13 @@ func (i *Inode) getTailVerInList() (verSeq uint64, found bool) {
 
 // freelist clean inode get all exist extents info, deal special case for split key
 func (inode *Inode) ClearAllExtsOfflineInode(mpID uint64) (extInfo map[uint64][]*proto.ExtentKey) {
-	log.LogDebugf("deleteMarkedInodes. GetAllExtsOfflineInode.mp[%v] inode[%v] inode.Extents: %v, ino verList: %v",
+	log.LogDebugf("deleteMarkedInodes. ClearAllExtsOfflineInode.mp[%v] inode[%v] inode.Extents: %v, ino verList: %v",
 		mpID, inode.Inode, inode.Extents, inode.GetMultiVerString())
 
 	extInfo = make(map[uint64][]*proto.ExtentKey)
 
 	if inode.getLayerLen() > 0 {
-		log.LogWarnf("deleteMarkedInodes. GetAllExtsOfflineInode.mp[%v] inode[%v] verlist len %v should not drop",
+		log.LogWarnf("deleteMarkedInodes. ClearAllExtsOfflineInode.mp[%v] inode[%v] verlist len %v should not drop",
 			mpID, inode.Inode, inode.getLayerLen())
 	}
 
@@ -231,7 +231,7 @@ func (inode *Inode) ClearAllExtsOfflineInode(mpID uint64) (extInfo map[uint64][]
 		if i > 0 {
 			dIno = inode.multiSnap.multiVersions[i-1]
 		}
-		log.LogDebugf("deleteMarkedInodes. GetAllExtsOfflineInode.mp[%v] inode[%v] dino[%v]", mpID, inode.Inode, dIno)
+		log.LogDebugf("deleteMarkedInodes. ClearAllExtsOfflineInode.mp[%v] inode[%v] dino[%v]", mpID, inode.Inode, dIno)
 		dIno.Extents.Range(func(_ int, ek proto.ExtentKey) bool {
 			if ek.IsSplit() {
 				var (
@@ -243,15 +243,15 @@ func (inode *Inode) ClearAllExtsOfflineInode(mpID uint64) (extInfo map[uint64][]
 					return false
 				}
 				if !last {
-					log.LogDebugf("deleteMarkedInodes. GetAllExtsOfflineInode.mp[%v] inode[%v] ek [%v] be removed", mpID, inode.Inode, ek)
+					log.LogDebugf("deleteMarkedInodes. ClearAllExtsOfflineInode.mp[%v] inode[%v] ek [%v] be removed", mpID, inode.Inode, ek)
 					return true
 				}
 
-				log.LogDebugf("deleteMarkedInodes. GetAllExtsOfflineInode.mp[%v] inode[%v] ek [%v] be removed", mpID, inode.Inode, ek)
+				log.LogDebugf("deleteMarkedInodes. ClearAllExtsOfflineInode.mp[%v] inode[%v] ek [%v] be removed", mpID, inode.Inode, ek)
 			}
 			extInfo[ek.PartitionId] = append(extInfo[ek.PartitionId], &ek)
 			// NOTE: unnecessary to set ext
-			log.LogWritef("GetAllExtsOfflineInode. mp[%v] ino(%v) deleteExtent(%v)", mpID, inode.Inode, ek.String())
+			log.LogWritef("ClearAllExtsOfflineInode. mp[%v] ino(%v) deleteExtent(%v)", mpID, inode.Inode, ek.String())
 			return true
 		})
 		// NOTE: clear all extents in this layer

@@ -196,6 +196,7 @@ func (f *File) Forget() {
 		return
 	}
 	fullPath := f.getParentPath() + f.name
+	log.LogDebugf("[Forget] evict fullpath(%v)", fullPath)
 	if err := f.super.mw.Evict(ino, fullPath); err != nil {
 		log.LogWarnf("Forget Evict: ino(%v) err(%v)", ino, err)
 	}

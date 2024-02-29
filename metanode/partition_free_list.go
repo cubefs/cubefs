@@ -31,7 +31,6 @@ import (
 
 const (
 	AsyncDeleteInterval           = 10 * time.Second
-	UpdateVolTicket               = 2 * time.Minute
 	BatchCounts                   = 128
 	OpenRWAppendOpt               = os.O_CREATE | os.O_RDWR | os.O_APPEND
 	TempFileValidTime             = 86400 // units: sec

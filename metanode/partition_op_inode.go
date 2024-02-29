@@ -847,12 +847,6 @@ func (mp *metaPartition) DeleteInodeBatch(req *proto.DeleteInodeBatchRequest, p 
 
 // ClearInodeCache clear a inode's cbfs extent but keep ebs extent.
 func (mp *metaPartition) ClearInodeCache(req *proto.ClearInodeCacheRequest, p *Packet) (err error) {
-	if len(mp.extDelCh) > defaultDelExtentsCnt-100 {
-		err = fmt.Errorf("extent del chan full")
-		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
-		return
-	}
-
 	ino := NewInode(req.Inode, 0)
 	val, err := ino.Marshal()
 	if err != nil {

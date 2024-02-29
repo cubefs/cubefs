@@ -23,6 +23,8 @@ import (
 	"github.com/cubefs/cubefs/util/log"
 )
 
+const UpdateVolTicket = 2 * time.Minute
+
 var (
 	ErrMpExistsInVolViewUpdater   = errors.New("mp already exists in updater")
 	ErrMpNotFoundInVolViewUpdater = errors.New("mp not found in updater")
@@ -196,7 +198,7 @@ func (v *volViewUpdater) Stop() {
 func NewVolViewUpdater() VolViewUpdater {
 	updater := &volViewUpdater{
 		metaPartitions: &sync.Map{},
-		timer:          *time.NewTimer(UpdateNodeInfoTicket),
+		timer:          *time.NewTimer(UpdateVolTicket),
 		forceUpdateC:   make(chan string, 1000),
 		wg:             sync.WaitGroup{},
 	}
