@@ -435,6 +435,15 @@ var VolsConf = map[string]*proto.VolInfo{
 	},
 }
 
+func genNewDataPartitionAndAddToVol(volName string) (newDataPartition *DataPartition) {
+	newDataPartition = &DataPartition{
+		PartitionID: genPartitionID(),
+		Hosts:       selectNewHost(3),
+	}
+	addDataPartitionForVol(volName, newDataPartition)
+	return
+}
+
 func TestFetchTopologyManager_FetchDPView(t *testing.T) {
 	topoManager := NewTopologyManager(0, 1, masterClient, masterClient,
 		true, false)
@@ -460,11 +469,7 @@ func TestFetchTopologyManager_FetchDPView(t *testing.T) {
 
 	fmt.Printf("start add new partition for test_vol1\n")
 	//add data partition
-	newDataPartition := &DataPartition{
-		PartitionID: genPartitionID(),
-		Hosts:       selectNewHost(3),
-	}
-	addDataPartitionForVol("test_vol1", newDataPartition)
+	newDataPartition := genNewDataPartitionAndAddToVol("test_vol1")
 
 	//get and for fetch
 	if partition := topoManager.GetPartitionFromCache("test_vol1", maxPartitionID+1); partition == nil {
@@ -516,11 +521,7 @@ func TestFetchTopologyManager_FetchDPView(t *testing.T) {
 
 	fmt.Printf("start add new partition for test_vol2\n")
 	//add data partition
-	newDataPartition = &DataPartition{
-		PartitionID: genPartitionID(),
-		Hosts:       selectNewHost(3),
-	}
-	addDataPartitionForVol("test_vol2", newDataPartition)
+	newDataPartition = genNewDataPartitionAndAddToVol("test_vol2")
 	if partition, err = topoManager.GetPartition("test_vol2", newDataPartition.PartitionID); err != nil || partition == nil {
 		t.Errorf("get partition failed, expect get success\n")
 		t.FailNow()
@@ -537,6 +538,35 @@ func TestFetchTopologyManager_FetchDPView(t *testing.T) {
 		topoManager.FetchDataPartitionView(volName, uint64(rand.Intn(int(maxDataPartitionID))))
 	}
 	fmt.Printf("force fetch dp view finish\n")
+
+	needForceFetchDPIDs := make([]uint64, 0, 128)
+	for index := 0; index < 128; index++ {
+		newDataPartition = genNewDataPartitionAndAddToVol("test_vol1")
+		needForceFetchDPIDs = append(needForceFetchDPIDs, newDataPartition.PartitionID)
+	}
+
+	for _, dpID := range needForceFetchDPIDs {
+		topoManager.FetchDataPartitionView("test_vol1", dpID)
+	}
+
+	for index := 0; index < 64; index++ {
+		newDataPartition = genNewDataPartitionAndAddToVol("test_vol1")
+		needForceFetchDPIDs = append(needForceFetchDPIDs, newDataPartition.PartitionID)
+	}
+
+	for _, dpID := range needForceFetchDPIDs {
+		topoManager.FetchDataPartitionView("test_vol1", dpID)
+	}
+
+	time.Sleep(time.Duration(topoManager.forceFetchTimerIntervalSec*2) * time.Second)
+
+	for _, dpID := range needForceFetchDPIDs {
+		dpInfo := topoManager.GetPartitionFromCache("test_vol1", dpID)
+		if dpInfo == nil {
+			t.Errorf("force fetch dp %v info failed, expect not nil", dpID)
+			return
+		}
+	}
 }
 
 func TestFetchTopologyManager_UpdateVolConf(t *testing.T) {
