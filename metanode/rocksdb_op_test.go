@@ -6,6 +6,7 @@ import (
 	"math"
 	"os"
 	"runtime"
+	"sync"
 	"testing"
 	"time"
 
@@ -503,4 +504,31 @@ func TestRocksDB_accessDB(t *testing.T) {
 	if err != nil {
 		t.Errorf("expect nil, but actual error:%v", err)
 	}
+}
+
+func TestSnapshotWhenRelease(t *testing.T) {
+	path := getRocksdbPathForTest()
+	os.RemoveAll(path)
+	defer os.RemoveAll(path)
+	db := NewRocksDb()
+	_ = db.OpenDb(path, 0, 0, 0, 0, 0, 0)
+	genenerData(t, db)
+	dbSnap := db.OpenSnap()
+	if dbSnap == nil {
+		t.Errorf("open db snap failed, snap is nil")
+	}
+	wg := sync.WaitGroup{}
+	wg.Add(1)
+	var err error
+	go func() {
+		defer wg.Done()
+		err = db.CloseDb()
+		if err != nil {
+			return
+		}
+		_, err = db.ReleaseRocksDb()
+	}()
+	db.ReleaseSnap(dbSnap)
+	wg.Wait()
+	require.NoError(t, err)
 }

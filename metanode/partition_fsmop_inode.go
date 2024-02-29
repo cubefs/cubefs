@@ -536,7 +536,7 @@ func (mp *metaPartition) internalDeleteInode(dbHandle interface{}, ino *Inode) (
 	var snap Snapshot
 	startDek := NewDeletedExtentKeyPrefix(ino.Inode)
 	endDek := NewDeletedExtentKeyPrefix(ino.Inode + 1)
-	snap, err = NewSnapshot(mp)
+	snap, err = mp.GetSnapShot()
 	if err != nil {
 		log.LogErrorf("[internalDeleteInode] failed to get snapshot, mp(%v), err(%v)", mp.config.PartitionId, err)
 		return

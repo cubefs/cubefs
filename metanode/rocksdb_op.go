@@ -457,26 +457,26 @@ func (dbInfo *RocksDbInfo) accessDb() error {
 
 func (dbInfo *RocksDbInfo) releaseDb() {
 	dbInfo.mutex.RUnlock()
-	return
 }
 
+// NOTE: hold the lock while using snapshot
 func (dbInfo *RocksDbInfo) OpenSnap() *gorocksdb.Snapshot {
 	if err := dbInfo.accessDb(); err != nil {
 		log.LogErrorf("[RocksDB Op] OpenSnap failed:%v", err)
 		return nil
 	}
-	defer dbInfo.releaseDb()
 
-	return dbInfo.db.NewSnapshot()
+	snap := dbInfo.db.NewSnapshot()
+	if snap == nil {
+		dbInfo.releaseDb()
+	}
+	return snap
 }
 
 func (dbInfo *RocksDbInfo) ReleaseSnap(snap *gorocksdb.Snapshot) {
 	defer recoverRocksDBPanic()
 
 	if snap == nil {
-		return
-	}
-	if err := dbInfo.accessDb(); err != nil {
 		return
 	}
 	defer dbInfo.releaseDb()

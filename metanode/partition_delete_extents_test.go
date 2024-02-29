@@ -125,6 +125,7 @@ func testLoadFromDelExtentFile(t *testing.T, mp *metaPartition) {
 	eks := make([]*proto.ExtentKey, 0)
 	snap, err := mp.GetSnapShot()
 	require.NoError(t, err)
+	defer snap.Close()
 	snap.Range(DeletedExtentsType, func(item interface{}) (bool, error) {
 		dek := item.(*DeletedExtentKey)
 		eks = append(eks, &dek.ExtentKey)
