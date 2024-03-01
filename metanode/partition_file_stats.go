@@ -76,7 +76,7 @@ func (mp *metaPartition) fileStats(ino *Inode) {
 	}
 	fileRange := mp.fileRange
 	if ino.NLink > 0 && proto.IsRegular(ino.Type) {
-		if 0 <= ino.Size && ino.Size < Size1K {
+		if ino.Size < Size1K {
 			fileRange[LessThan1K] += 1
 		} else if Size1K <= ino.Size && ino.Size < Size1M {
 			fileRange[LessThan1M] += 1

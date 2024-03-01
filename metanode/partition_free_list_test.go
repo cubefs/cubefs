@@ -29,8 +29,8 @@ import (
 
 func TestPersistInodesFreeList(t *testing.T) {
 	rootDir, err := os.MkdirTemp("", "")
-	defer os.RemoveAll(rootDir)
 	require.NoError(t, err)
+	defer os.RemoveAll(rootDir)
 	config := &MetaPartitionConfig{
 		PartitionId:   10001,
 		VolName:       VolNameForTest,
@@ -38,16 +38,18 @@ func TestPersistInodesFreeList(t *testing.T) {
 		RootDir:       rootDir,
 	}
 	mp := newPartition(config, &metadataManager{partitions: make(map[uint64]MetaPartition), volUpdating: new(sync.Map)})
-	const testCount = DeleteInodeFileRollingSize/8 + 1000
-	inodes := make([]uint64, 0, testCount)
-	for i := 0; i < testCount; i++ {
-		inodes = append(inodes, uint64(i))
-	}
 	mp.persistDeletedInodes([]uint64{0})
 	fileName := path.Join(config.RootDir, DeleteInodeFileExtension)
 	oldIno, err := fileutil.Stat(fileName)
 	require.NoError(t, err)
-	mp.persistDeletedInodes(inodes)
+	const testCount = DeleteInodeFileRollingSize/8 + 1000
+	for i := 1; i < testCount; i += 1000 {
+		inodes := make([]uint64, 1000)
+		for idx := range inodes {
+			inodes[idx] = uint64(i + idx)
+		}
+		mp.persistDeletedInodes(inodes)
+	}
 	dentries, err := os.ReadDir(rootDir)
 	require.NoError(t, err)
 	// NOTE: rolling must happend once

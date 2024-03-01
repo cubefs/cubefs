@@ -68,8 +68,7 @@ func (mp *metaPartition) fsmTxCreateDentry(txDentry *TxDentry) (status uint8) {
 }
 
 // Insert a dentry into the dentry tree.
-func (mp *metaPartition) fsmCreateDentry(dentry *Dentry,
-	forceUpdate bool) (status uint8) {
+func (mp *metaPartition) fsmCreateDentry(dentry *Dentry, forceUpdate bool) (status uint8) {
 	status = proto.OpOk
 	var parIno *Inode
 	if !forceUpdate {
@@ -265,7 +264,7 @@ func (mp *metaPartition) fsmDeleteDentry(denParm *Dentry, checkInode bool) (resp
 		}
 	}
 
-	if item != nil && (clean == true || (item.(*Dentry).getSnapListLen() == 0 && item.(*Dentry).isDeleted())) {
+	if item != nil && (clean || (item.(*Dentry).getSnapListLen() == 0 && item.(*Dentry).isDeleted())) {
 		log.LogDebugf("action[fsmDeleteDentry] mp[%v] dnetry %v really be deleted", mp.config.PartitionId, item.(*Dentry))
 		item = mp.dentryTree.Delete(item.(*Dentry))
 	}
@@ -359,8 +358,7 @@ func (mp *metaPartition) fsmTxUpdateDentry(txUpDateDentry *TxUpdateDentry) (resp
 	return
 }
 
-func (mp *metaPartition) fsmUpdateDentry(dentry *Dentry) (
-	resp *DentryResponse) {
+func (mp *metaPartition) fsmUpdateDentry(dentry *Dentry) (resp *DentryResponse) {
 	resp = NewDentryResponse()
 	resp.Status = proto.OpOk
 	mp.dentryTree.CopyFind(dentry, func(item BtreeItem) {
@@ -446,7 +444,6 @@ func (mp *metaPartition) readDir(req *ReadDirReq) (resp *ReadDirResp) {
 // else if req.Marker != "" and req.Limit == 0, return dentries from pid:name to pid+1
 // else if req.Marker == "" and req.Limit != 0, return dentries from pid with limit count
 // else if req.Marker != "" and req.Limit != 0, return dentries from pid:marker to pid:xxxx with limit count
-//
 func (mp *metaPartition) readDirLimit(req *ReadDirLimitReq) (resp *ReadDirLimitResp) {
 	log.LogDebugf("action[readDirLimit] mp[%v] req %v", mp.config.PartitionId, req)
 	resp = &ReadDirLimitResp{}

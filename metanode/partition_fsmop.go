@@ -15,10 +15,10 @@
 package metanode
 
 import (
+	"context"
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path"
 	"strings"
@@ -56,7 +56,7 @@ func (mp *metaPartition) initInode(ino *Inode) {
 				log.LogFatalf("[initInode] marshal: %s", err.Error())
 			}
 			// put first root inode
-			resp, err := mp.submit(opFSMCreateInode, data)
+			resp, err := mp.submit(context.TODO(), opFSMCreateInode, data)
 			if err != nil {
 				log.LogFatalf("[initInode] raft sync: %s", err.Error())
 			}
@@ -74,8 +74,7 @@ func (mp *metaPartition) decommissionPartition() (err error) {
 	return
 }
 
-func (mp *metaPartition) fsmUpdatePartition(end uint64) (status uint8,
-	err error) {
+func (mp *metaPartition) fsmUpdatePartition(end uint64) (status uint8, err error) {
 	status = proto.OpOk
 	oldEnd := mp.config.End
 	mp.config.End = end
@@ -156,12 +155,11 @@ func (mp *metaPartition) delOldExtentFile(buf []byte) (err error) {
 	fileName := string(buf)
 	log.LogWarnf("[delOldExtentFile] del extent file(%s), mp[%v]", fileName, mp.config.PartitionId)
 
-	infos, err := ioutil.ReadDir(mp.config.RootDir)
+	entries, err := os.ReadDir(mp.config.RootDir)
 	if err != nil {
 		return
 	}
-
-	infos = sortDelExtFileInfo(infos)
+	infos := sortDelExtFileInfo(entries)
 	tgtIdx := getDelExtFileIdx(fileName)
 
 	for _, f := range infos {
@@ -177,7 +175,6 @@ func (mp *metaPartition) delOldExtentFile(buf []byte) (err error) {
 	return
 }
 
-//
 func (mp *metaPartition) setExtentDeleteFileCursor(buf []byte) (err error) {
 	str := string(buf)
 	var (

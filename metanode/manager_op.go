@@ -45,7 +45,6 @@ func (m *metadataManager) checkFollowerRead(volNames []string, partition MetaPar
 		}
 	}
 	partition.SetFollowerRead(false)
-	return
 }
 
 func (m *metadataManager) checkForbiddenVolume(volNames []string, partition MetaPartition) {
@@ -57,7 +56,6 @@ func (m *metadataManager) checkForbiddenVolume(volNames []string, partition Meta
 		}
 	}
 	partition.SetForbidden(false)
-	return
 }
 
 func (m *metadataManager) checkDisableAuditLogVolume(volNames []string, partition MetaPartition) {
@@ -69,7 +67,6 @@ func (m *metadataManager) checkDisableAuditLogVolume(volNames []string, partitio
 		}
 	}
 	partition.SetEnableAuditLog(true)
-	return
 }
 
 func (m *metadataManager) opMasterHeartbeat(conn net.Conn, p *Packet, remoteAddr string) (err error) {
@@ -1396,7 +1393,7 @@ func (m *metadataManager) opUpdateMetaPartition(conn net.Conn, p *Packet, remote
 		PartitionID: req.PartitionID,
 		End:         req.End,
 	}
-	err = mp.UpdatePartition(req, resp)
+	err = mp.UpdatePartition(p.Context(), req, resp)
 	adminTask.Response = resp
 	adminTask.Request = nil
 	m.respondToMaster(adminTask)
@@ -2482,7 +2479,6 @@ func (m *metadataManager) updatePackRspSeq(mp MetaPartition, p *Packet) {
 		p.VerList = make([]*proto.VolVersionInfo, len(mp.GetVerList()))
 		copy(p.VerList, mp.GetVerList())
 	}
-	return
 }
 
 func (m *metadataManager) checkMultiVersionStatus(mp MetaPartition, p *Packet) (err error) {
