@@ -978,8 +978,8 @@ func newNodeSet(c *Cluster, id uint64, cap int, zoneName string) *nodeSet {
 		autoDecommissionDiskList:          NewDecommissionDiskList(),
 		doneDecommissionDiskListTraverse:  make(chan struct{}, 1),
 		startDecommissionDiskListTraverse: make(chan struct{}, 1),
-		dataNodeSelector:                  NewNodeSelector(DefaultNodeSelectorName, DataNodeType),
-		metaNodeSelector:                  NewNodeSelector(DefaultNodeSelectorName, MetaNodeType),
+		dataNodeSelector:                  NewNodeSelector(DefaultNodeSelectorName, DataNodeDisk),
+		metaNodeSelector:                  NewNodeSelector(DefaultNodeSelectorName, MetaNodeMemory),
 	}
 	go ns.traverseDecommissionDisk(c)
 	return ns
@@ -994,7 +994,7 @@ func (ns *nodeSet) GetDataNodeSelector() string {
 func (ns *nodeSet) SetDataNodeSelector(name string) {
 	ns.dataNodeSelectorLock.Lock()
 	defer ns.dataNodeSelectorLock.Unlock()
-	ns.dataNodeSelector = NewNodeSelector(name, DataNodeType)
+	ns.dataNodeSelector = NewNodeSelector(name, DataNodeDisk)
 }
 
 func (ns *nodeSet) GetMetaNodeSelector() string {
@@ -1006,7 +1006,7 @@ func (ns *nodeSet) GetMetaNodeSelector() string {
 func (ns *nodeSet) SetMetaNodeSelector(name string) {
 	ns.metaNodeSelectorLock.Lock()
 	defer ns.metaNodeSelectorLock.Unlock()
-	ns.metaNodeSelector = NewNodeSelector(name, MetaNodeType)
+	ns.metaNodeSelector = NewNodeSelector(name, MetaNodeMemory)
 }
 
 func (ns *nodeSet) metaNodeLen() (count int) {
@@ -1059,11 +1059,11 @@ func (ns *nodeSet) canWriteForDataNode(replicaNum int) bool {
 	return count >= replicaNum
 }
 
-func (ns *nodeSet) canWriteForMetaNode(replicaNum int) bool {
+func (ns *nodeSet) canWriteForMetaNode(replicaNum int, storeMode proto.StoreMode) bool {
 	var count int
 	ns.metaNodes.Range(func(key, value interface{}) bool {
 		node := value.(*MetaNode)
-		if node.isWritable(proto.StoreModeMem) {
+		if node.isWritable(storeMode) {
 			count++
 		}
 		if count >= replicaNum {
@@ -1450,8 +1450,8 @@ func newZone(name string) (zone *Zone) {
 	zone.dataNodes = new(sync.Map)
 	zone.metaNodes = new(sync.Map)
 	zone.nodeSetMap = make(map[uint64]*nodeSet)
-	zone.dataNodesetSelector = NewNodesetSelector(DefaultNodesetSelectorName, DataNodeType)
-	zone.metaNodesetSelector = NewNodesetSelector(DefaultNodesetSelectorName, MetaNodeType)
+	zone.dataNodesetSelector = NewNodesetSelector(DefaultNodesetSelectorName, DataNodeDisk)
+	zone.metaNodesetSelector = NewNodesetSelector(DefaultNodesetSelectorName, MetaNodeMemory)
 	return
 }
 
@@ -1477,7 +1477,7 @@ func (zone *Zone) GetDataNodesetSelector() string {
 func (zone *Zone) SetDataNodesetSelector(name string) {
 	zone.dataNodesetSelectorLock.Lock()
 	defer zone.dataNodesetSelectorLock.Unlock()
-	zone.dataNodesetSelector = NewNodesetSelector(name, DataNodeType)
+	zone.dataNodesetSelector = NewNodesetSelector(name, DataNodeDisk)
 }
 
 func (zone *Zone) GetMetaNodesetSelector() string {
@@ -1489,7 +1489,7 @@ func (zone *Zone) GetMetaNodesetSelector() string {
 func (zone *Zone) SetMetaNodeSelector(name string) {
 	zone.metaNodesetSelectorLock.Lock()
 	defer zone.metaNodesetSelectorLock.Unlock()
-	zone.metaNodesetSelector = NewNodesetSelector(name, MetaNodeType)
+	zone.metaNodesetSelector = NewNodesetSelector(name, MetaNodeMemory)
 }
 
 func (zone *Zone) getFsmValue() *zoneValue {

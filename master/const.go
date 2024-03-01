@@ -346,9 +346,10 @@ const (
 )
 
 // NOTE: selector enum
-type NodeType int
+type NodeResourceType int
 
 const (
-	DataNodeType = NodeType(0)
-	MetaNodeType = NodeType(iota)
+	DataNodeDisk    NodeResourceType = 0
+	MetaNodeMemory  NodeResourceType = iota
+	MetaNodeRocksdb NodeResourceType = iota
 )

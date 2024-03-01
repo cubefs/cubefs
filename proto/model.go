@@ -38,8 +38,8 @@ type MetaNodeInfo struct {
 	MaxMemAvailWeight         uint64 `json:"MaxMemAvailWeight"`
 	Total                     uint64 `json:"TotalWeight"`
 	Used                      uint64 `json:"UsedWeight"`
-	DiskTotal                 uint64
-	DiskUsed                  uint64
+	RocksdbTotal              uint64
+	RocksdbUsed               uint64
 	Ratio                     float64
 	SelectCount               uint64
 	Threshold                 float32
@@ -216,22 +216,29 @@ type NodeSetStatInfo struct {
 	ID               uint64
 	Capacity         int
 	Zone             string
-	MetaNodes        []*NodeStatView
+	MetaNodes        []*MetaNodeStatView
 	DataNodes        []*NodeStatView
 	DataNodeSelector string
 	MetaNodeSelector string
 }
 
 type NodeStatView struct {
-	Addr           string
-	Status         bool
-	DomainAddr     string
-	ID             uint64
-	IsWritable     bool
-	IsDiskWritable bool
-	Total          uint64
-	Used           uint64
-	Avail          uint64
+	Addr       string
+	Status     bool
+	DomainAddr string
+	ID         uint64
+	IsWritable bool
+	Total      uint64
+	Used       uint64
+	Avail      uint64
+}
+
+type MetaNodeStatView struct {
+	NodeStatView
+	IsRocksdbWritable bool
+	RocksdbTotal      uint64
+	RocksdbUsed       uint64
+	RocksdbAvali      uint64
 }
 
 type NodeStatInfo struct {

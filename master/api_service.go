@@ -495,30 +495,34 @@ func (m *Server) getNodeSet(w http.ResponseWriter, r *http.Request) {
 	ns.dataNodes.Range(func(key, value interface{}) bool {
 		dn := value.(*DataNode)
 		nsStat.DataNodes = append(nsStat.DataNodes, &proto.NodeStatView{
-			Addr:           dn.Addr,
-			Status:         dn.isActive,
-			DomainAddr:     dn.DomainAddr,
-			ID:             dn.ID,
-			IsWritable:     dn.isWriteAble(),
-			IsDiskWritable: dn.isWriteAble(),
-			Total:          dn.Total,
-			Used:           dn.Used,
-			Avail:          dn.Total - dn.Used,
+			Addr:       dn.Addr,
+			Status:     dn.isActive,
+			DomainAddr: dn.DomainAddr,
+			ID:         dn.ID,
+			IsWritable: dn.isWriteAble(),
+			Total:      dn.Total,
+			Used:       dn.Used,
+			Avail:      dn.Total - dn.Used,
 		})
 		return true
 	})
 	ns.metaNodes.Range(func(key, value interface{}) bool {
 		mn := value.(*MetaNode)
-		nsStat.MetaNodes = append(nsStat.MetaNodes, &proto.NodeStatView{
-			Addr:           mn.Addr,
-			Status:         mn.IsActive,
-			DomainAddr:     mn.DomainAddr,
-			ID:             mn.ID,
-			IsWritable:     mn.isWritable(proto.StoreModeMem),
-			IsDiskWritable: mn.isWritable(proto.StoreModeRocksDb),
-			Total:          mn.Total,
-			Used:           mn.Used,
-			Avail:          mn.Total - mn.Used,
+		nsStat.MetaNodes = append(nsStat.MetaNodes, &proto.MetaNodeStatView{
+			NodeStatView: proto.NodeStatView{
+				Addr:       mn.Addr,
+				Status:     mn.IsActive,
+				DomainAddr: mn.DomainAddr,
+				ID:         mn.ID,
+				IsWritable: mn.isWritable(proto.StoreModeMem),
+				Total:      mn.Total,
+				Used:       mn.Used,
+				Avail:      mn.Total - mn.Used,
+			},
+			IsRocksdbWritable: mn.isWritable(proto.StoreModeRocksDb),
+			RocksdbTotal:      mn.GetRocksdbTotal(),
+			RocksdbUsed:       mn.GetRocksdbUsed(),
+			RocksdbAvali:      mn.GetRocksdbTotal() - mn.GetRocksdbUsed(),
 		})
 		return true
 	})
@@ -3222,8 +3226,8 @@ func (m *Server) buildNodeSetGrpInfo(nsg *nodeSetGroup) *proto.SimpleNodeSetGrpI
 				MaxMemAvailWeight:  node.MaxMemAvailWeight,
 				Total:              node.Total,
 				Used:               node.Used,
-				DiskTotal:          node.GetDiskTotal(),
-				DiskUsed:           node.GetDiskUsed(),
+				RocksdbTotal:       node.GetRocksdbTotal(),
+				RocksdbUsed:        node.GetRocksdbUsed(),
 				Ratio:              node.Ratio,
 				SelectCount:        node.SelectCount,
 				Threshold:          node.Threshold,
@@ -4169,8 +4173,8 @@ func (m *Server) getMetaNode(w http.ResponseWriter, r *http.Request) {
 		MaxMemAvailWeight:         metaNode.MaxMemAvailWeight,
 		Total:                     metaNode.Total,
 		Used:                      metaNode.Used,
-		DiskTotal:                 metaNode.GetDiskTotal(),
-		DiskUsed:                  metaNode.GetDiskUsed(),
+		RocksdbTotal:              metaNode.GetRocksdbTotal(),
+		RocksdbUsed:               metaNode.GetRocksdbUsed(),
 		Ratio:                     metaNode.Ratio,
 		SelectCount:               metaNode.SelectCount,
 		Threshold:                 metaNode.Threshold,

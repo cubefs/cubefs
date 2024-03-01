@@ -15,11 +15,12 @@
 package metanode
 
 import (
+	"os"
+	"time"
+
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/diskmon"
 	"github.com/cubefs/cubefs/util/log"
-	"os"
-	"time"
 )
 
 const (
@@ -159,10 +160,8 @@ func (m *MetaNode) getSingleDiskStat(path string) *diskmon.FsCapMon {
 	return disk
 }
 
-
-
-func (m *MetaNode) getRocksDBDiskStat() []*proto.MetaNodeDiskInfo {
-	disks := make([]*proto.MetaNodeDiskInfo, 0, len(m.disks))
+func (m *MetaNode) getRocksDBDiskStat() []*proto.MetaNodeRocksdbInfo {
+	disks := make([]*proto.MetaNodeRocksdbInfo, 0, len(m.disks))
 	for _, d := range m.disks {
 		if !d.IsRocksDBDisk {
 			continue
@@ -174,7 +173,7 @@ func (m *MetaNode) getRocksDBDiskStat() []*proto.MetaNodeDiskInfo {
 		} else if d.Used > d.Total {
 			ratio = 1
 		}
-		disks = append(disks, &proto.MetaNodeDiskInfo{
+		disks = append(disks, &proto.MetaNodeRocksdbInfo{
 			Path:       d.Path,
 			Total:      total,
 			Used:       uint64(d.Used),

@@ -84,7 +84,7 @@ func (m *metadataManager) opMasterHeartbeat(conn net.Conn, p *Packet,
 		adminTask = &proto.AdminTask{
 			Request: req,
 		}
-		diskStat []*proto.MetaNodeDiskInfo
+		diskStat []*proto.MetaNodeRocksdbInfo
 	)
 
 	log.LogDebugf("[opMasterHeartbeat] handle heartbeat begin")

@@ -782,6 +782,8 @@ func formatMetaNodeDetail(mn *proto.MetaNodeInfo, rowTable bool) string {
 	sb.WriteString(fmt.Sprintf("  MaxMemAvailWeight   : %v\n", formatSize(mn.MaxMemAvailWeight)))
 	sb.WriteString(fmt.Sprintf("  Allocated           : %v\n", formatSize(mn.Used)))
 	sb.WriteString(fmt.Sprintf("  Total               : %v\n", formatSize(mn.Total)))
+	sb.WriteString(fmt.Sprintf("  RocksdbAllocated    : %v\n", formatSize(mn.RocksdbUsed)))
+	sb.WriteString(fmt.Sprintf("  RocksdbTotal        : %v\n", formatSize(mn.RocksdbTotal)))
 	sb.WriteString(fmt.Sprintf("  Zone                : %v\n", mn.ZoneName))
 	sb.WriteString(fmt.Sprintf("  IsActive            : %v\n", formatNodeStatus(mn.IsActive)))
 	sb.WriteString(fmt.Sprintf("  Report time         : %v\n", formatTimeToString(mn.ReportTime)))
@@ -793,28 +795,45 @@ func formatMetaNodeDetail(mn *proto.MetaNodeInfo, rowTable bool) string {
 
 func formatNodeSetView(ns *proto.NodeSetStatInfo) string {
 	sb := strings.Builder{}
-	sb.WriteString(fmt.Sprintf("NodeSet ID:       %v\n", ns.ID))
-	sb.WriteString(fmt.Sprintf("Capacity:         %v\n", ns.Capacity))
-	sb.WriteString(fmt.Sprintf("Zone:             %v\n", ns.Zone))
-	sb.WriteString(fmt.Sprintf("DataNodeSelector: %v\n", ns.DataNodeSelector))
-	sb.WriteString(fmt.Sprintf("MetaNodeSelector: %v\n", ns.MetaNodeSelector))
-	var dataTotal, dataUsed, dataAvail, metaTotal, metaUsed, metaAvail uint64
+	sb.WriteString(fmt.Sprintf("NodeSet ID:        %v\n", ns.ID))
+	sb.WriteString(fmt.Sprintf("Capacity:          %v\n", ns.Capacity))
+	sb.WriteString(fmt.Sprintf("Zone:              %v\n", ns.Zone))
+	sb.WriteString(fmt.Sprintf("DataNodeSelector:  %v\n", ns.DataNodeSelector))
+	sb.WriteString(fmt.Sprintf("MetaNodeSelector:  %v\n", ns.MetaNodeSelector))
+	var (
+		dataTotal        uint64
+		dataUsed         uint64
+		dataAvail        uint64
+		metaMemTotal     uint64
+		metaMemUsed      uint64
+		metaMemAvail     uint64
+		metaRocksdbTotal uint64
+		metaRocksdbUsed  uint64
+		metaRocksdbAvali uint64
+	)
 	for _, dn := range ns.DataNodes {
 		dataTotal += dn.Total
 		dataUsed += dn.Used
 		dataAvail += dn.Avail
 	}
 	for _, mn := range ns.MetaNodes {
-		metaTotal += mn.Total
-		metaUsed += mn.Used
-		metaAvail += mn.Avail
+		metaMemTotal += mn.Total
+		metaMemUsed += mn.Used
+		metaMemAvail += mn.Avail
+
+		metaRocksdbTotal += mn.RocksdbTotal
+		metaRocksdbUsed += mn.RocksdbUsed
+		metaRocksdbAvali += mn.RocksdbAvali
 	}
-	sb.WriteString(fmt.Sprintf("DataTotal:     %v\n", formatSize(dataTotal)))
-	sb.WriteString(fmt.Sprintf("DataUsed:      %v\n", formatSize(dataUsed)))
-	sb.WriteString(fmt.Sprintf("DataAvail:     %v\n", formatSize(dataAvail)))
-	sb.WriteString(fmt.Sprintf("MetaTotal:     %v\n", formatSize(metaTotal)))
-	sb.WriteString(fmt.Sprintf("MetaUsed:      %v\n", formatSize(metaUsed)))
-	sb.WriteString(fmt.Sprintf("MetaAvail:     %v\n", formatSize(metaAvail)))
+	sb.WriteString(fmt.Sprintf("DataTotal:         %v\n", formatSize(dataTotal)))
+	sb.WriteString(fmt.Sprintf("DataUsed:          %v\n", formatSize(dataUsed)))
+	sb.WriteString(fmt.Sprintf("DataAvail:         %v\n", formatSize(dataAvail)))
+	sb.WriteString(fmt.Sprintf("MetaTotal:         %v\n", formatSize(metaMemTotal)))
+	sb.WriteString(fmt.Sprintf("MetaUsed:          %v\n", formatSize(metaMemUsed)))
+	sb.WriteString(fmt.Sprintf("MetaAvail:         %v\n", formatSize(metaMemAvail)))
+	sb.WriteString(fmt.Sprintf("MetaRocksdbTotal:  %v\n", formatSize(metaRocksdbTotal)))
+	sb.WriteString(fmt.Sprintf("MetaRocksdbUsed:   %v\n", formatSize(metaRocksdbUsed)))
+	sb.WriteString(fmt.Sprintf("MetaRocksdbAvali:  %v\n", formatSize(metaRocksdbAvali)))
 	sb.WriteString("\n")
 	sb.WriteString(fmt.Sprintf("DataNodes[%v]:\n", len(ns.DataNodes)))
 	sb.WriteString(fmt.Sprintf("  %v\n", formatNodeViewTableHeaderForNodeSet()))
@@ -825,7 +844,7 @@ func formatNodeSetView(ns *proto.NodeSetStatInfo) string {
 	sb.WriteString(fmt.Sprintf("MetaNodes[%v]:\n", len(ns.MetaNodes)))
 	sb.WriteString(fmt.Sprintf("  %v\n", formatNodeViewTableHeaderForNodeSet()))
 	for _, mn := range ns.MetaNodes {
-		sb.WriteString(fmt.Sprintf("  %v\n", formatNodeViewForNodeSet(mn)))
+		sb.WriteString(fmt.Sprintf("  %v\n", formatNodeViewForNodeSet(&mn.NodeStatView)))
 	}
 	return sb.String()
 }

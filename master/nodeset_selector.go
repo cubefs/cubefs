@@ -22,7 +22,6 @@ import (
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util"
-	"github.com/cubefs/cubefs/util/errors"
 )
 
 const RoundRobinNodesetSelectorName = "RoundRobin"
@@ -44,10 +43,19 @@ func (ns *nodeSet) getDataNodeTotalSpace() (toalSpace uint64) {
 	return
 }
 
-func (ns *nodeSet) getMetaNodeTotalSpace() (toalSpace uint64) {
+func (ns *nodeSet) getMetaNodeMemoryTotalSpace() (toalSpace uint64) {
 	ns.metaNodes.Range(func(key, value interface{}) bool {
 		metaNode := value.(*MetaNode)
 		toalSpace += metaNode.Total
+		return true
+	})
+	return
+}
+
+func (ns *nodeSet) getMetaNodeRocksdbTotalSpace() (totalSpace uint64) {
+	ns.metaNodes.Range(func(key, value interface{}) bool {
+		metaNode := value.(*MetaNode)
+		totalSpace += metaNode.GetRocksdbTotal()
 		return true
 	})
 	return
@@ -64,7 +72,7 @@ func (ns *nodeSet) getDataNodeTotalAvailableSpace() (space uint64) {
 	return
 }
 
-func (ns *nodeSet) getMetaNodeTotalAvailableSpace() (space uint64) {
+func (ns *nodeSet) getMetaNodeMemoryTotalAvailableSpace() (space uint64) {
 	ns.metaNodes.Range(func(key, value interface{}) bool {
 		metaNode := value.(*MetaNode)
 		if !metaNode.ToBeOffline {
@@ -75,34 +83,51 @@ func (ns *nodeSet) getMetaNodeTotalAvailableSpace() (space uint64) {
 	return
 }
 
-func (ns *nodeSet) canWriteFor(nodeType NodeType, replica int) bool {
+func (ns *nodeSet) getMetaNodeRocksdbTotalAvailableSpace() (space uint64) {
+	ns.metaNodes.Range(func(key, value interface{}) bool {
+		metaNode := value.(*MetaNode)
+		if !metaNode.ToBeOffline {
+			space += metaNode.GetRocksdbTotal() - metaNode.GetRocksdbUsed()
+		}
+		return true
+	})
+	return
+}
+
+func (ns *nodeSet) canWriteFor(nodeType NodeResourceType, replica int) bool {
 	switch nodeType {
-	case DataNodeType:
+	case DataNodeDisk:
 		return ns.canWriteForDataNode(replica)
-	case MetaNodeType:
-		return ns.canWriteForMetaNode(replica)
+	case MetaNodeMemory:
+		return ns.canWriteForMetaNode(replica, proto.StoreModeMem)
+	case MetaNodeRocksdb:
+		return ns.canWriteForMetaNode(replica, proto.StoreModeRocksDb)
 	default:
 		panic("unknow node type")
 	}
 }
 
-func (ns *nodeSet) getTotalSpaceOf(nodeType NodeType) uint64 {
+func (ns *nodeSet) getTotalSpaceOf(nodeType NodeResourceType) uint64 {
 	switch nodeType {
-	case DataNodeType:
+	case DataNodeDisk:
 		return ns.getDataNodeTotalSpace()
-	case MetaNodeType:
-		return ns.getMetaNodeTotalSpace()
+	case MetaNodeMemory:
+		return ns.getMetaNodeMemoryTotalSpace()
+	case MetaNodeRocksdb:
+		return ns.getMetaNodeRocksdbTotalSpace()
 	default:
 		panic("unknow node type")
 	}
 }
 
-func (ns *nodeSet) getTotalAvailableSpaceOf(nodeType NodeType) uint64 {
+func (ns *nodeSet) getTotalAvailableSpaceOf(nodeType NodeResourceType) uint64 {
 	switch nodeType {
-	case DataNodeType:
+	case DataNodeDisk:
 		return ns.getDataNodeTotalAvailableSpace()
-	case MetaNodeType:
-		return ns.getMetaNodeTotalAvailableSpace()
+	case MetaNodeMemory:
+		return ns.getMetaNodeMemoryTotalAvailableSpace()
+	case MetaNodeRocksdb:
+		return ns.getMetaNodeRocksdbTotalAvailableSpace()
 	default:
 		panic("unknow node type")
 	}
@@ -116,7 +141,7 @@ type NodesetSelector interface {
 type RoundRobinNodesetSelector struct {
 	index int
 
-	nodeType NodeType
+	nodeType NodeResourceType
 }
 
 func (s *RoundRobinNodesetSelector) Select(nsc nodeSetCollection, excludeNodeSets []uint64, replicaNum uint8) (ns *nodeSet, err error) {
@@ -142,10 +167,10 @@ func (s *RoundRobinNodesetSelector) Select(nsc nodeSetCollection, excludeNodeSet
 	}
 
 	switch s.nodeType {
-	case DataNodeType:
-		err = errors.NewError(proto.ErrNoNodeSetToCreateDataPartition)
-	case MetaNodeType:
-		err = errors.NewError(proto.ErrNoNodeSetToCreateMetaPartition)
+	case DataNodeDisk:
+		err = proto.ErrNoNodeSetToCreateDataPartition
+	case MetaNodeMemory, MetaNodeRocksdb:
+		err = proto.ErrNoNodeSetToCreateMetaPartition
 	default:
 		panic("unknow node type")
 	}
@@ -156,7 +181,7 @@ func (s *RoundRobinNodesetSelector) GetName() string {
 	return RoundRobinNodesetSelectorName
 }
 
-func NewRoundRobinNodesetSelector(nodeType NodeType) *RoundRobinNodesetSelector {
+func NewRoundRobinNodesetSelector(nodeType NodeResourceType) *RoundRobinNodesetSelector {
 	return &RoundRobinNodesetSelector{
 		nodeType: nodeType,
 	}
@@ -165,7 +190,7 @@ func NewRoundRobinNodesetSelector(nodeType NodeType) *RoundRobinNodesetSelector 
 type CarryWeightNodesetSelector struct {
 	carrys map[uint64]float64
 
-	nodeType NodeType
+	nodeType NodeResourceType
 }
 
 func (s *CarryWeightNodesetSelector) GetName() string {
@@ -264,17 +289,17 @@ func (s *CarryWeightNodesetSelector) Select(nsc nodeSetCollection, excludeNodeSe
 	return
 err:
 	switch s.nodeType {
-	case DataNodeType:
-		err = errors.NewError(proto.ErrNoNodeSetToCreateDataPartition)
-	case MetaNodeType:
-		err = errors.NewError(proto.ErrNoNodeSetToCreateMetaPartition)
+	case DataNodeDisk:
+		err = proto.ErrNoNodeSetToCreateDataPartition
+	case MetaNodeMemory, MetaNodeRocksdb:
+		err = proto.ErrNoNodeSetToCreateMetaPartition
 	default:
 		panic("unknow node type")
 	}
 	return
 }
 
-func NewCarryWeightNodesetSelector(nodeType NodeType) *CarryWeightNodesetSelector {
+func NewCarryWeightNodesetSelector(nodeType NodeResourceType) *CarryWeightNodesetSelector {
 	return &CarryWeightNodesetSelector{
 		carrys:   make(map[uint64]float64),
 		nodeType: nodeType,
@@ -282,7 +307,7 @@ func NewCarryWeightNodesetSelector(nodeType NodeType) *CarryWeightNodesetSelecto
 }
 
 type AvailableSpaceFirstNodesetSelector struct {
-	nodeType NodeType
+	nodeType NodeResourceType
 }
 
 func (s *AvailableSpaceFirstNodesetSelector) GetName() string {
@@ -302,17 +327,17 @@ func (s *AvailableSpaceFirstNodesetSelector) Select(nsc nodeSetCollection, exclu
 		}
 	}
 	switch s.nodeType {
-	case DataNodeType:
-		err = errors.NewError(proto.ErrNoNodeSetToCreateDataPartition)
-	case MetaNodeType:
-		err = errors.NewError(proto.ErrNoNodeSetToCreateMetaPartition)
+	case DataNodeDisk:
+		err = proto.ErrNoNodeSetToCreateDataPartition
+	case MetaNodeMemory, MetaNodeRocksdb:
+		err = proto.ErrNoNodeSetToCreateMetaPartition
 	default:
 		panic("unknow node type")
 	}
 	return
 }
 
-func NewAvailableSpaceFirstNodesetSelector(nodeType NodeType) *AvailableSpaceFirstNodesetSelector {
+func NewAvailableSpaceFirstNodesetSelector(nodeType NodeResourceType) *AvailableSpaceFirstNodesetSelector {
 	return &AvailableSpaceFirstNodesetSelector{
 		nodeType: nodeType,
 	}
@@ -324,7 +349,7 @@ const (
 
 // NOTE: this nodeset selector inspired by Straw2 algorithm, which is widely used in ceph
 type StrawNodesetSelector struct {
-	nodeType NodeType
+	nodeType NodeResourceType
 	rand     *rand.Rand
 }
 
@@ -346,10 +371,10 @@ func (s *StrawNodesetSelector) Select(nsc nodeSetCollection, excludeNodeSets []u
 	nsc = tmp
 	if len(nsc) < 1 {
 		switch s.nodeType {
-		case DataNodeType:
-			err = errors.NewError(proto.ErrNoNodeSetToCreateDataPartition)
-		case MetaNodeType:
-			err = errors.NewError(proto.ErrNoNodeSetToCreateMetaPartition)
+		case DataNodeDisk:
+			err = proto.ErrNoNodeSetToCreateDataPartition
+		case MetaNodeMemory, MetaNodeRocksdb:
+			err = proto.ErrNoNodeSetToCreateMetaPartition
 		default:
 			panic("unknow node type")
 		}
@@ -367,14 +392,14 @@ func (s *StrawNodesetSelector) Select(nsc nodeSetCollection, excludeNodeSets []u
 	return
 }
 
-func NewStrawNodesetSelector(nodeType NodeType) *StrawNodesetSelector {
+func NewStrawNodesetSelector(nodeType NodeResourceType) *StrawNodesetSelector {
 	return &StrawNodesetSelector{
 		nodeType: nodeType,
 		rand:     rand.New(rand.NewSource(time.Now().Unix())),
 	}
 }
 
-func NewNodesetSelector(name string, nodeType NodeType) NodesetSelector {
+func NewNodesetSelector(name string, nodeType NodeResourceType) NodesetSelector {
 	switch name {
 	case CarryWeightNodesetSelectorName:
 		return NewCarryWeightNodesetSelector(nodeType)

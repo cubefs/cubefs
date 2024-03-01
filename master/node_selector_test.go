@@ -25,6 +25,7 @@ import (
 	"time"
 
 	"github.com/cubefs/cubefs/master/mocktest"
+	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util"
 )
 
@@ -40,6 +41,8 @@ func writeMetaNode(sb *strings.Builder, node *MetaNode) {
 	sb.WriteString(fmt.Sprintf("Meta Node %v\n", node.ID))
 	sb.WriteString(fmt.Sprintf("\tTotal Space:%v MB\n", node.Total/util.MB))
 	sb.WriteString(fmt.Sprintf("\tAvaliable Space:%v MB\n", (node.Total-node.Used)/util.MB))
+	sb.WriteString(fmt.Sprintf("\tRocksdb Total Space: %v MB\n", node.GetRocksdbTotal()/util.MB))
+	sb.WriteString(fmt.Sprintf("\tRocksdb Avaliable Space:%v MB\n", (node.GetRocksdbTotal()-node.GetRocksdbUsed())/util.MB))
 }
 
 func printDataNode(t *testing.T, node *DataNode) {
@@ -249,7 +252,7 @@ func TestCarryWeightNodeSelector(t *testing.T) {
 	dataNode.Total += dataNode.AvailableSpace
 	dataNode.AvailableSpace *= 2
 	// select test
-	selector := NewCarryWeightNodeSelector(DataNodeType)
+	selector := NewCarryWeightNodeSelector(DataNodeDisk)
 	for i := 0; i != loopNodeSelectorTestCount; i++ {
 		expected := dataNode
 		if i != 0 {
@@ -259,13 +262,13 @@ func TestCarryWeightNodeSelector(t *testing.T) {
 		if node == nil {
 			return
 		}
-		count, _ := dataSelectTimes[node.ID]
+		count := dataSelectTimes[node.ID]
 		count += 1
 		dataSelectTimes[node.ID] = count
 	}
 	t.Logf("%v data node select times:\n", selector.GetName())
 	printNodeSelectTimes(t, dataSelectTimes)
-	count, _ := dataSelectTimes[dataNode.ID]
+	count := dataSelectTimes[dataNode.ID]
 	for _, c := range dataSelectTimes {
 		if count < c {
 			t.Errorf("%v failed to select data nodes", selector.GetName())
@@ -280,7 +283,7 @@ func TestCarryWeightNodeSelector(t *testing.T) {
 	tmp = metaNode.Total
 	metaNode.Total *= 2
 	// select test
-	selector = NewCarryWeightNodeSelector(MetaNodeType)
+	selector = NewCarryWeightNodeSelector(MetaNodeMemory)
 	for i := 0; i != loopNodeSelectorTestCount; i++ {
 		expected := metaNode
 		if i != 0 {
@@ -290,13 +293,13 @@ func TestCarryWeightNodeSelector(t *testing.T) {
 		if node == nil {
 			return
 		}
-		count, _ := metaSelectTimes[node.ID]
+		count := metaSelectTimes[node.ID]
 		count += 1
 		metaSelectTimes[node.ID] = count
 	}
 	t.Logf("%v meta node select times:\n", selector.GetName())
 	printNodeSelectTimes(t, metaSelectTimes)
-	count, _ = metaSelectTimes[metaNode.ID]
+	count = metaSelectTimes[metaNode.ID]
 	for _, c := range metaSelectTimes {
 		if count < c {
 			t.Errorf("%v failed to select meta nodes", selector.GetName())
@@ -305,6 +308,36 @@ func TestCarryWeightNodeSelector(t *testing.T) {
 	}
 	// restore status
 	metaNode.Total = tmp
+
+	// prepare for metanode
+	tmp = metaNode.RocksdbDisks[0].Total
+	metaNode.RocksdbDisks[0].Total *= 2
+	// select test
+	selector = NewCarryWeightNodeSelector(MetaNodeRocksdb)
+	for i := 0; i != loopNodeSelectorTestCount; i++ {
+		expected := metaNode
+		if i != 0 {
+			expected = nil
+		}
+		node := MetaNodeSelectorTest(t, selector, expected)
+		if node == nil {
+			return
+		}
+		count := metaSelectTimes[node.ID]
+		count += 1
+		metaSelectTimes[node.ID] = count
+	}
+	t.Logf("%v meta node select times:\n", selector.GetName())
+	printNodeSelectTimes(t, metaSelectTimes)
+	count = metaSelectTimes[metaNode.ID]
+	for _, c := range metaSelectTimes {
+		if count < c {
+			t.Errorf("%v failed to select meta nodes", selector.GetName())
+			return
+		}
+	}
+	// restore status
+	metaNode.RocksdbDisks[0].Total = tmp
 }
 
 func TestRoundRobinNodeSelector(t *testing.T) {
@@ -316,14 +349,21 @@ func TestRoundRobinNodeSelector(t *testing.T) {
 	if metaNodes == nil {
 		return
 	}
-	selector := NewRoundRobinNodeSelector(DataNodeType)
+	selector := NewRoundRobinNodeSelector(DataNodeDisk)
 	for i, node := range dataNodes {
 		mocktest.Log(t, "Select DataNode Round", i)
 		if DataNodeSelectorTest(t, selector, node) == nil {
 			return
 		}
 	}
-	selector = NewRoundRobinNodeSelector(MetaNodeType)
+	selector = NewRoundRobinNodeSelector(MetaNodeMemory)
+	for i, node := range metaNodes {
+		mocktest.Log(t, "Select MetaNode Round", i)
+		if MetaNodeSelectorTest(t, selector, node) == nil {
+			return
+		}
+	}
+	selector = NewRoundRobinNodeSelector(MetaNodeRocksdb)
 	for i, node := range metaNodes {
 		mocktest.Log(t, "Select MetaNode Round", i)
 		if MetaNodeSelectorTest(t, selector, node) == nil {
@@ -342,7 +382,7 @@ func TestAvailableSpaceFirstNodeSelector(t *testing.T) {
 	dataNode.Total += dataNode.AvailableSpace
 	dataNode.AvailableSpace *= 2
 	// select test
-	selector := NewAvailableSpaceFirstNodeSelector(DataNodeType)
+	selector := NewAvailableSpaceFirstNodeSelector(DataNodeDisk)
 	if DataNodeSelectorTest(t, selector, dataNode) == nil {
 		return
 	}
@@ -354,12 +394,23 @@ func TestAvailableSpaceFirstNodeSelector(t *testing.T) {
 	tmp = metaNode.Total
 	metaNode.Total *= 2
 	// select test
-	selector = NewAvailableSpaceFirstNodeSelector(MetaNodeType)
+	selector = NewAvailableSpaceFirstNodeSelector(MetaNodeMemory)
 	if MetaNodeSelectorTest(t, selector, metaNode) == nil {
 		return
 	}
 	// restore status
 	metaNode.Total = tmp
+
+	// prepare for metanode
+	tmp = metaNode.RocksdbDisks[0].Total
+	metaNode.RocksdbDisks[0].Total *= 2
+	// select test
+	selector = NewAvailableSpaceFirstNodeSelector(MetaNodeRocksdb)
+	if MetaNodeSelectorTest(t, selector, metaNode) == nil {
+		return
+	}
+	// restore status
+	metaNode.RocksdbDisks[0].Total = tmp
 }
 
 func TestStrawNodeSelector(t *testing.T) {
@@ -373,19 +424,19 @@ func TestStrawNodeSelector(t *testing.T) {
 	dataNode.Total += dataNode.AvailableSpace
 	dataNode.AvailableSpace *= 2
 	// select test
-	selector := NewStrawNodeSelector(DataNodeType)
+	selector := NewStrawNodeSelector(DataNodeDisk)
 	for i := 0; i != loopNodeSelectorTestCount; i++ {
 		node := DataNodeSelectorTest(t, selector, nil)
 		if node == nil {
 			return
 		}
-		count, _ := dataSelectTimes[node.ID]
+		count := dataSelectTimes[node.ID]
 		count += 1
 		dataSelectTimes[node.ID] = count
 	}
 	t.Logf("%v data node select times:\n", selector.GetName())
 	printNodeSelectTimes(t, dataSelectTimes)
-	count, _ := dataSelectTimes[dataNode.ID]
+	count := dataSelectTimes[dataNode.ID]
 	for _, c := range dataSelectTimes {
 		if count < c {
 			t.Errorf("%v failed to select data nodes", selector.GetName())
@@ -400,19 +451,19 @@ func TestStrawNodeSelector(t *testing.T) {
 	tmp = metaNode.Total
 	metaNode.Total *= 2
 	// select test
-	selector = NewStrawNodeSelector(MetaNodeType)
+	selector = NewStrawNodeSelector(MetaNodeMemory)
 	for i := 0; i != loopNodeSelectorTestCount; i++ {
 		node := MetaNodeSelectorTest(t, selector, nil)
 		if node == nil {
 			return
 		}
-		count, _ := metaSelectTimes[node.ID]
+		count := metaSelectTimes[node.ID]
 		count += 1
 		metaSelectTimes[node.ID] = count
 	}
 	t.Logf("%v meta node select times:\n", selector.GetName())
 	printNodeSelectTimes(t, metaSelectTimes)
-	count, _ = metaSelectTimes[metaNode.ID]
+	count = metaSelectTimes[metaNode.ID]
 	for _, c := range metaSelectTimes {
 		if count < c {
 			t.Errorf("%v failed to select meta nodes", selector.GetName())
@@ -421,6 +472,32 @@ func TestStrawNodeSelector(t *testing.T) {
 	}
 	// restore status
 	metaNode.Total = tmp
+
+	// prepare for metanode
+	tmp = metaNode.RocksdbDisks[0].Total
+	metaNode.RocksdbDisks[0].Total *= 2
+	// select test
+	selector = NewStrawNodeSelector(MetaNodeMemory)
+	for i := 0; i != loopNodeSelectorTestCount; i++ {
+		node := MetaNodeSelectorTest(t, selector, nil)
+		if node == nil {
+			return
+		}
+		count := metaSelectTimes[node.ID]
+		count += 1
+		metaSelectTimes[node.ID] = count
+	}
+	t.Logf("%v meta node select times:\n", selector.GetName())
+	printNodeSelectTimes(t, metaSelectTimes)
+	count = metaSelectTimes[metaNode.ID]
+	for _, c := range metaSelectTimes {
+		if count < c {
+			t.Errorf("%v failed to select meta nodes", selector.GetName())
+			return
+		}
+	}
+	// restore status
+	metaNode.RocksdbDisks[0].Total = tmp
 }
 
 func prepareDataNodesForBench(count int, initTotal uint64, grow uint64) (ns *nodeSet) {
@@ -430,8 +507,8 @@ func prepareDataNodesForBench(count int, initTotal uint64, grow uint64) (ns *nod
 		zoneName:         testZone1,
 		metaNodes:        new(sync.Map),
 		dataNodes:        new(sync.Map),
-		dataNodeSelector: NewNodeSelector(DefaultNodeSelectorName, DataNodeType),
-		metaNodeSelector: NewNodeSelector(DefaultNodeSelectorName, MetaNodeType),
+		dataNodeSelector: NewNodeSelector(DefaultNodeSelectorName, DataNodeDisk),
+		metaNodeSelector: NewNodeSelector(DefaultNodeSelectorName, MetaNodeMemory),
 	}
 	for i := 0; i < count; i++ {
 		space := initTotal + uint64(i)*grow
@@ -454,8 +531,8 @@ func prepareMetaNodesForBench(count int, initTotal uint64, grow uint64) (ns *nod
 		zoneName:         testZone1,
 		metaNodes:        new(sync.Map),
 		dataNodes:        new(sync.Map),
-		dataNodeSelector: NewNodeSelector(DefaultNodeSelectorName, DataNodeType),
-		metaNodeSelector: NewNodeSelector(DefaultNodeSelectorName, MetaNodeType),
+		dataNodeSelector: NewNodeSelector(DefaultNodeSelectorName, DataNodeDisk),
+		metaNodeSelector: NewNodeSelector(DefaultNodeSelectorName, MetaNodeMemory),
 	}
 	for i := 0; i < count; i++ {
 		space := initTotal + uint64(i)*grow
@@ -466,7 +543,15 @@ func prepareMetaNodesForBench(count int, initTotal uint64, grow uint64) (ns *nod
 			Total:             space,
 			IsActive:          true,
 			MaxMemAvailWeight: math.MaxUint64,
+			RocksdbDisks:      make([]*proto.MetaNodeRocksdbInfo, 0),
 		}
+		node.RocksdbDisks = append(node.RocksdbDisks, &proto.MetaNodeRocksdbInfo{
+			Path:       "",
+			Total:      space,
+			Used:       0,
+			UsageRatio: 0,
+			MPCount:    0,
+		})
 		ns.putMetaNode(node)
 	}
 	return
@@ -480,7 +565,7 @@ func nodeSelectorBench(selector NodeSelector, nset *nodeSet, onSelect func(addr 
 			return nil, err
 		}
 		for _, peer := range peers {
-			count, _ := times[peer.ID]
+			count := times[peer.ID]
 			count += 1
 			times[peer.ID] = count
 			if onSelect != nil {
@@ -518,7 +603,9 @@ func metaNodeSelectorBench(t *testing.T, selector NodeSelector) error {
 	times, err := nodeSelectorBench(selector, nset, func(addr string) {
 		val, _ := nset.metaNodes.Load(addr)
 		node := val.(*MetaNode)
-		node.Used += uint64(random.Float64() * util.GB * 10)
+		tmp := random.Float64() * util.GB * 10
+		node.Used += uint64(tmp)
+		node.RocksdbDisks[0].Used += uint64(tmp)
 	})
 	if err != nil {
 		t.Errorf("%v failed to Bench %v", selector.GetName(), err)
@@ -534,15 +621,19 @@ func metaNodeSelectorBench(t *testing.T, selector NodeSelector) error {
 }
 
 func TestBenchCarryWeightNodeSelector(t *testing.T) {
-	selector := NewCarryWeightNodeSelector(DataNodeType)
+	selector := NewCarryWeightNodeSelector(DataNodeDisk)
 	dataNodeSelectorBench(t, selector)
-	selector = NewCarryWeightNodeSelector(MetaNodeType)
+	selector = NewCarryWeightNodeSelector(MetaNodeMemory)
+	metaNodeSelectorBench(t, selector)
+	selector = NewCarryWeightNodeSelector(MetaNodeRocksdb)
 	metaNodeSelectorBench(t, selector)
 }
 
 func TestBenchStrawNodeSelector(t *testing.T) {
-	selector := NewStrawNodeSelector(DataNodeType)
+	selector := NewStrawNodeSelector(DataNodeDisk)
 	dataNodeSelectorBench(t, selector)
-	selector = NewStrawNodeSelector(MetaNodeType)
+	selector = NewStrawNodeSelector(MetaNodeMemory)
+	metaNodeSelectorBench(t, selector)
+	selector = NewStrawNodeSelector(MetaNodeRocksdb)
 	metaNodeSelectorBench(t, selector)
 }

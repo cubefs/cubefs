@@ -714,7 +714,7 @@ type BadDiskStat struct {
 	DiskErrPartitionList []uint64
 }
 
-type MetaNodeDiskInfo struct {
+type MetaNodeRocksdbInfo struct {
 	Path       string
 	Total      uint64
 	Used       uint64
@@ -773,7 +773,7 @@ type MetaNodeHeartbeatResponse struct {
 	Status               uint8
 	Result               string
 	CpuUtil              float64 `json:"cpuUtil"`
-	RocksDBDiskInfo      []*MetaNodeDiskInfo
+	RocksDBDiskInfo      []*MetaNodeRocksdbInfo
 }
 
 // LcNodeHeartbeatResponse defines the response to the lc node heartbeat.

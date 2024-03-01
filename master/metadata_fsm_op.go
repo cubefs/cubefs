@@ -1026,10 +1026,10 @@ func (c *Cluster) loadZoneValue() (err error) {
 		zone.QosFlowWLimit = cv.QosFlowWLimit
 		zone.QosIopsRLimit = cv.QosIopsRLimit
 		if zone.GetDataNodesetSelector() != cv.DataNodesetSelector {
-			zone.dataNodesetSelector = NewNodesetSelector(cv.DataNodesetSelector, DataNodeType)
+			zone.dataNodesetSelector = NewNodesetSelector(cv.DataNodesetSelector, DataNodeDisk)
 		}
 		if zone.GetMetaNodesetSelector() != cv.MetaNodesetSelector {
-			zone.metaNodesetSelector = NewNodesetSelector(cv.MetaNodesetSelector, MetaNodeType)
+			zone.metaNodesetSelector = NewNodesetSelector(cv.MetaNodesetSelector, MetaNodeMemory)
 		}
 		log.LogInfof("action[loadZoneValue] load zonename[%v] with limit [%v,%v,%v,%v]",
 			zone.name, cv.QosFlowRLimit, cv.QosIopsWLimit, cv.QosFlowWLimit, cv.QosIopsRLimit)
