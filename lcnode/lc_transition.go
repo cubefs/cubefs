@@ -49,6 +49,10 @@ type TransitionMgr struct {
 }
 
 func (t *TransitionMgr) migrate(e *proto.ScanDentry) (err error) {
+	if e.Size == 0 {
+		log.LogInfof("skip migration, size=0, inode(%v)", e.Inode)
+		return
+	}
 	if err = t.ec.OpenStream(e.Inode, false, false); err != nil {
 		log.LogErrorf("migrate: ec OpenStream fail, inode(%v) err: %v", e.Inode, err)
 		return
@@ -204,6 +208,10 @@ func (t *TransitionMgr) readFromExtentClient(e *proto.ScanDentry, writer io.Writ
 }
 
 func (t *TransitionMgr) migrateToEbs(e *proto.ScanDentry) (oek []proto.ObjExtentKey, err error) {
+	if e.Size == 0 {
+		log.LogInfof("skip migration, size=0, inode(%v)", e.Inode)
+		return
+	}
 	if err = t.ec.OpenStream(e.Inode, false, false); err != nil {
 		log.LogErrorf("migrateToEbs: OpenStream fail, inode(%v) err: %v", e.Inode, err)
 		return

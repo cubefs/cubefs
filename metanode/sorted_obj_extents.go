@@ -37,6 +37,12 @@ func (se *SortedObjExtents) String() string {
 	return string(data)
 }
 
+func (se *SortedObjExtents) IsEmpty() bool {
+	se.RLock()
+	defer se.RUnlock()
+	return len(se.eks) == 0
+}
+
 func (se *SortedObjExtents) MarshalBinary() ([]byte, error) {
 	var data []byte
 
