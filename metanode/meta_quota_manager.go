@@ -194,7 +194,6 @@ func (mqMgr *MetaQuotaManager) setQuotaHbInfo(infos []*proto.QuotaHeartBeatInfo)
 		}
 		return true
 	})
-	return
 }
 
 func (mqMgr *MetaQuotaManager) getQuotaReportInfos() (infos []*proto.QuotaReportInfo) {
@@ -331,7 +330,6 @@ func (mqMgr *MetaQuotaManager) updateUsedInfo(size int64, files int64, quotaId u
 		mqMgr.statisticRebuildTemp.Store(quotaId, baseTemp)
 	}
 	log.LogDebugf("updateUsedInfo mpId [%v] quotaId [%v] baseInfo [%v] baseTemp[%v]", mqMgr.mpID, quotaId, baseInfo, baseTemp)
-	return
 }
 
 func (mqMgr *MetaQuotaManager) EnableQuota() bool {

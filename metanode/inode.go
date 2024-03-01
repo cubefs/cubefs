@@ -704,8 +704,6 @@ func (i *Inode) MarshalInodeValue(buff *bytes.Buffer) {
 	if err = binary.Write(buff, binary.BigEndian, i.getVer()); err != nil {
 		panic(err)
 	}
-
-	return
 }
 
 // MarshalValue marshals the value to bytes.

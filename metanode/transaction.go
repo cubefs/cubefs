@@ -16,6 +16,7 @@ package metanode
 
 import (
 	"bytes"
+	"context"
 	"encoding/binary"
 	"encoding/json"
 	"errors"
@@ -394,7 +395,6 @@ func (tm *TransactionManager) processExpiredTransactions() {
 		log.LogWarnf("processExpiredTransactions for mp[%v] exit", mpId)
 		txCheckTimer.Stop()
 		clearTimer.Stop()
-		return
 	}()
 
 	for {
@@ -756,7 +756,7 @@ func (tm *TransactionManager) setTransactionState(txId string, state int32) (sta
 	}
 	val, _ = json.Marshal(stateReq)
 
-	resp, err = tm.txProcessor.mp.submit(opFSMTxSetState, val)
+	resp, err = tm.txProcessor.mp.submit(context.TODO(), opFSMTxSetState, val)
 	if err != nil {
 		log.LogWarnf("setTransactionState: set transaction[%v] state to [%v] failed, err[%v]", txId, state, err)
 		return proto.OpAgain, err
@@ -780,7 +780,7 @@ func (tm *TransactionManager) delTxFromRM(txId string) (status uint8, err error)
 		return
 	}
 
-	resp, err := tm.txProcessor.mp.submit(opFSMTxDelete, val)
+	resp, err := tm.txProcessor.mp.submit(context.TODO(), opFSMTxDelete, val)
 	if err != nil {
 		log.LogWarnf("delTxFromRM: delTxFromRM transaction[%v] failed, err[%v]", txId, err)
 		return proto.OpAgain, err
@@ -830,7 +830,6 @@ func (tm *TransactionManager) clearOrphanTx(tx *proto.TransactionInfo) {
 	err = tm.txProcessor.mp.TxRollbackRM(aReq, newPkt)
 	log.LogWarnf("clearOrphanTx: finally rollback tx in rm, tx %v, status %s, err %v",
 		tx, newPkt.GetResultMsg(), err)
-	return
 }
 
 func (tm *TransactionManager) commitTx(txId string, skipSetStat bool) (status uint8, err error) {
@@ -871,7 +870,7 @@ func (tm *TransactionManager) commitTx(txId string, skipSetStat bool) (status ui
 		return
 	}
 
-	resp, err := tm.txProcessor.mp.submit(opFSMTxCommit, val)
+	resp, err := tm.txProcessor.mp.submit(context.TODO(), opFSMTxCommit, val)
 	if err != nil {
 		log.LogWarnf("commitTx: commit transaction[%v] failed, err[%v]", txId, err)
 		return proto.OpAgain, err
@@ -993,7 +992,7 @@ func (tm *TransactionManager) rollbackTx(txId string, skipSetStat bool) (status 
 		return
 	}
 
-	resp, err := tm.txProcessor.mp.submit(opFSMTxRollback, val)
+	resp, err := tm.txProcessor.mp.submit(context.TODO(), opFSMTxRollback, val)
 	if err != nil {
 		log.LogWarnf("commitTx: rollback transaction[%v]  failed, err[%v]", txId, err)
 		return proto.OpAgain, err
@@ -1016,7 +1015,7 @@ func (tm *TransactionManager) sendPacketToMP(addr string, p *proto.Packet) (err 
 	defer func() {
 		connPool.PutConnect(mConn, err != nil)
 		if err != nil {
-			p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+			p.PacketErrorOpErr(err)
 			log.LogErrorf("[sendPacketToMP]: req: %d - %v, %v, packet(%v)", p.GetReqID(),
 				p.GetOpMsg(), err, p)
 			return

@@ -72,7 +72,7 @@ func (mp *metaPartition) TxCreateDentry(req *proto.TxCreateDentryRequest, p *Pac
 		return
 	}
 
-	status, err := mp.submit(opFSMTxCreateDentry, val)
+	status, err := mp.submit(p.Context(), opFSMTxCreateDentry, val)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return
@@ -122,7 +122,7 @@ func (mp *metaPartition) CreateDentry(req *CreateDentryReq, p *Packet, remoteAdd
 	if err != nil {
 		return
 	}
-	resp, err := mp.submit(opFSMCreateDentry, val)
+	resp, err := mp.submit(p.Context(), opFSMCreateDentry, val)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return
@@ -179,7 +179,7 @@ func (mp *metaPartition) QuotaCreateDentry(req *proto.QuotaCreateDentryRequest, 
 	if err != nil {
 		return
 	}
-	resp, err := mp.submit(opFSMCreateDentry, val)
+	resp, err := mp.submit(p.Context(), opFSMCreateDentry, val)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return
@@ -253,7 +253,7 @@ func (mp *metaPartition) TxDeleteDentry(req *proto.TxDeleteDentryRequest, p *Pac
 		return
 	}
 
-	r, err := mp.submit(opFSMTxDeleteDentry, val)
+	r, err := mp.submit(p.Context(), opFSMTxDeleteDentry, val)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return
@@ -298,7 +298,7 @@ func (mp *metaPartition) DeleteDentry(req *DeleteDentryReq, p *Packet, remoteAdd
 		return
 	}
 	log.LogDebugf("action[DeleteDentry] submit!")
-	r, err := mp.submit(opFSMDeleteDentry, val)
+	r, err := mp.submit(p.Context(), opFSMDeleteDentry, val)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return
@@ -345,7 +345,7 @@ func (mp *metaPartition) DeleteDentryBatch(req *BatchDeleteDentryReq, p *Packet,
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return
 	}
-	r, err := mp.submit(opFSMDeleteDentryBatch, val)
+	r, err := mp.submit(p.Context(), opFSMDeleteDentryBatch, val)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return err
@@ -449,7 +449,7 @@ func (mp *metaPartition) TxUpdateDentry(req *proto.TxUpdateDentryRequest, p *Pac
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return
 	}
-	resp, err := mp.submit(opFSMTxUpdateDentry, val)
+	resp, err := mp.submit(p.Context(), opFSMTxUpdateDentry, val)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return
@@ -485,7 +485,7 @@ func (mp *metaPartition) UpdateDentry(req *UpdateDentryReq, p *Packet, remoteAdd
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return
 	}
-	resp, err := mp.submit(opFSMUpdateDentry, val)
+	resp, err := mp.submit(p.Context(), opFSMUpdateDentry, val)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return
