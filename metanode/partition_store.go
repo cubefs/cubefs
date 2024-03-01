@@ -356,8 +356,7 @@ func (mp *metaPartition) loadMultipart(rootDir string, crc uint32) (err error) {
 		if _, err = crcCheck.Write(mem[offset-n : offset]); err != nil {
 			return err
 		}
-		var multipart *Multipart
-		multipart = MultipartFromBytes(mem[offset : offset+int(numBytes)])
+		multipart := MultipartFromBytes(mem[offset : offset+int(numBytes)])
 		log.LogDebugf("loadMultipart: create multipart from bytes: partitionID（%v) multipartID(%v)", mp.config.PartitionId, multipart.id)
 		mp.fsmCreateMultipart(multipart)
 		offset += int(numBytes)

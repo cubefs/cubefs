@@ -259,7 +259,6 @@ func (m *MetaNode) getSplitKeyHandler(w http.ResponseWriter, r *http.Request) {
 	} else {
 		span.Debug("end")
 	}
-	return
 }
 
 func (m *MetaNode) getInodeHandler(w http.ResponseWriter, r *http.Request) {
@@ -309,7 +308,6 @@ func (m *MetaNode) getInodeHandler(w http.ResponseWriter, r *http.Request) {
 	if len(p.Data) > 0 {
 		resp.Data = json.RawMessage(p.Data)
 	}
-	return
 }
 
 func (m *MetaNode) getRaftStatusHandler(w http.ResponseWriter, r *http.Request) {
@@ -364,7 +362,6 @@ func (m *MetaNode) getEbsExtentsByInodeHandler(w http.ResponseWriter, r *http.Re
 	if len(p.Data) > 0 {
 		resp.Data = json.RawMessage(p.Data)
 	}
-	return
 }
 
 func (m *MetaNode) getExtentsByInodeHandler(w http.ResponseWriter, r *http.Request) {
@@ -412,7 +409,6 @@ func (m *MetaNode) getExtentsByInodeHandler(w http.ResponseWriter, r *http.Reque
 	if len(p.Data) > 0 {
 		resp.Data = json.RawMessage(p.Data)
 	}
-	return
 }
 
 func (m *MetaNode) getDentryHandler(w http.ResponseWriter, r *http.Request) {
@@ -465,7 +461,6 @@ func (m *MetaNode) getDentryHandler(w http.ResponseWriter, r *http.Request) {
 	if len(p.Data) > 0 {
 		resp.Data = json.RawMessage(p.Data)
 	}
-	return
 }
 
 func (m *MetaNode) getTxHandler(w http.ResponseWriter, r *http.Request) {
@@ -509,7 +504,6 @@ func (m *MetaNode) getTxHandler(w http.ResponseWriter, r *http.Request) {
 	if len(p.Data) > 0 {
 		resp.Data = json.RawMessage(p.Data)
 	}
-	return
 }
 
 func (m *MetaNode) getRealVerSeq(w http.ResponseWriter, r *http.Request) (verSeq uint64, err error) {
@@ -594,7 +588,6 @@ func (m *MetaNode) getAllDentriesHandler(w http.ResponseWriter, r *http.Request)
 	if _, err = w.Write(buff.Bytes()); err != nil {
 		httpSpan(r).Errorf("response %s", err.Error())
 	}
-	return
 }
 
 func (m *MetaNode) getAllTxHandler(w http.ResponseWriter, r *http.Request) {
@@ -640,17 +633,11 @@ func (m *MetaNode) getAllTxHandler(w http.ResponseWriter, r *http.Request) {
 
 		if ino, ok := i.(*TxRollbackInode); ok {
 			_, err = w.Write([]byte(ino.ToString()))
-			if err != nil {
-				return false
-			}
-			return true
+			return err == nil
 		}
 		if den, ok := i.(*TxRollbackDentry); ok {
 			_, err = w.Write([]byte(den.ToString()))
-			if err != nil {
-				return false
-			}
-			return true
+			return err == nil
 		}
 
 		val, err = json.Marshal(i)
@@ -675,7 +662,6 @@ func (m *MetaNode) getAllTxHandler(w http.ResponseWriter, r *http.Request) {
 	if _, err = w.Write(buff.Bytes()); err != nil {
 		httpSpan(r).Errorf("response %s", err.Error())
 	}
-	return
 }
 
 func (m *MetaNode) getDirectoryHandler(w http.ResponseWriter, r *http.Request) {
@@ -720,7 +706,6 @@ func (m *MetaNode) getDirectoryHandler(w http.ResponseWriter, r *http.Request) {
 	if len(p.Data) > 0 {
 		resp.Data = json.RawMessage(p.Data)
 	}
-	return
 }
 
 func (m *MetaNode) genClusterVersionFileHandler(w http.ResponseWriter, r *http.Request) {
@@ -743,7 +728,6 @@ func (m *MetaNode) genClusterVersionFileHandler(w http.ResponseWriter, r *http.R
 			return
 		}
 	}
-	return
 }
 
 func (m *MetaNode) getInodeSnapshotHandler(w http.ResponseWriter, r *http.Request) {

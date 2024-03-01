@@ -15,6 +15,7 @@
 package metanode
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -79,7 +80,7 @@ func (mp *metaPartition) ExtentAppend(req *proto.AppendExtentKeyRequest, p *Pack
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return
 	}
-	resp, err := mp.submit(opFSMExtentsAdd, val)
+	resp, err := mp.submit(p.Context(), opFSMExtentsAdd, val)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return
@@ -148,7 +149,7 @@ func (mp *metaPartition) ExtentAppendWithCheck(req *proto.AppendExtentKeyWithChe
 	if req.IsSplit {
 		opFlag = opFSMExtentSplit
 	}
-	resp, err := mp.submit(opFlag, val)
+	resp, err := mp.submit(p.Context(), opFlag, val)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return
@@ -308,7 +309,7 @@ func (mp *metaPartition) HandleVersionOp(op uint8, verSeq uint64, verList []*pro
 	}
 	data, _ := json.Marshal(verData)
 	if sync {
-		_, err = mp.submit(opFSMVersionOp, data)
+		_, err = mp.submit(context.TODO(), opFSMVersionOp, data)
 		return
 	}
 	select {
@@ -364,8 +365,6 @@ func (mp *metaPartition) GetExtentByVer(ino *Inode, req *proto.GetExtentsRequest
 			return rsp.Extents[i].FileOffset < rsp.Extents[j].FileOffset
 		})
 	})
-
-	return
 }
 
 func (mp *metaPartition) SetUidLimit(info []*proto.UidSpaceInfo) {
@@ -503,7 +502,7 @@ func (mp *metaPartition) ExtentsTruncate(req *ExtentsTruncateReq, p *Packet, rem
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return
 	}
-	resp, err := mp.submit(opFSMExtentTruncate, val)
+	resp, err := mp.submit(p.Context(), opFSMExtentTruncate, val)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return
@@ -535,7 +534,7 @@ func (mp *metaPartition) BatchExtentAppend(req *proto.AppendExtentKeysRequest, p
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return
 	}
-	resp, err := mp.submit(opFSMExtentsAdd, val)
+	resp, err := mp.submit(p.Context(), opFSMExtentsAdd, val)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return
@@ -564,7 +563,7 @@ func (mp *metaPartition) BatchObjExtentAppend(req *proto.AppendObjExtentKeysRequ
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return
 	}
-	resp, err := mp.submit(opFSMObjExtentsAdd, val)
+	resp, err := mp.submit(p.Context(), opFSMObjExtentsAdd, val)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return
@@ -602,7 +601,7 @@ func (mp *metaPartition) ExtentsOp(p *Packet, ino *Inode, op uint32) (err error)
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return
 	}
-	resp, err := mp.submit(op, val)
+	resp, err := mp.submit(p.Context(), op, val)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return
@@ -611,18 +610,15 @@ func (mp *metaPartition) ExtentsOp(p *Packet, ino *Inode, op uint32) (err error)
 	return
 }
 
-func (mp *metaPartition) sendExtentsToChan(eks []proto.ExtentKey) (err error) {
+func (mp *metaPartition) sendExtentsToChan(ctx context.Context, eks []proto.ExtentKey) (err error) {
 	if len(eks) == 0 {
 		return
 	}
-
 	sortExts := NewSortedExtentsFromEks(eks)
 	val, err := sortExts.MarshalBinary(true)
 	if err != nil {
 		return fmt.Errorf("[delExtents] marshal binary fail, %s", err.Error())
 	}
-
-	_, err = mp.submit(opFSMSentToChan, val)
-
+	_, err = mp.submit(ctx, opFSMSentToChan, val)
 	return
 }

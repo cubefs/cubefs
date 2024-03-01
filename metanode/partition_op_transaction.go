@@ -112,7 +112,6 @@ func (mp *metaPartition) txInitToRm(txInfo *proto.TransactionInfo, p *Packet) {
 	}
 
 	p.ResultCode = proto.OpOk
-	return
 }
 
 func canRetry(status uint8) bool {
@@ -138,7 +137,7 @@ func (mp *metaPartition) txInit(txInfo *proto.TransactionInfo, p *Packet) (ifo *
 		return nil, err
 	}
 
-	status, err := mp.submit(opFSMTxInit, val)
+	status, err := mp.submit(p.Context(), opFSMTxInit, val)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return nil, err
@@ -182,7 +181,7 @@ func (mp *metaPartition) TxCommitRM(req *proto.TxApplyRMRequest, p *Packet) erro
 		return err
 	}
 
-	status, err := mp.submit(opFSMTxCommitRM, val)
+	status, err := mp.submit(p.Context(), opFSMTxCommitRM, val)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return err
@@ -215,7 +214,7 @@ func (mp *metaPartition) TxRollbackRM(req *proto.TxApplyRMRequest, p *Packet) er
 		return err
 	}
 
-	status, err := mp.submit(opFSMTxRollbackRM, val)
+	status, err := mp.submit(p.Context(), opFSMTxRollbackRM, val)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return err

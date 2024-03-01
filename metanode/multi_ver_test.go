@@ -15,6 +15,7 @@
 package metanode
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"math"
@@ -64,10 +65,6 @@ var cfgJSON = `{
 	}`
 var tlog *testing.T
 
-func tLogf(format string, args ...interface{}) {
-	tlog.Log(fmt.Sprintf(format, args...))
-}
-
 func newPartition(conf *MetaPartitionConfig, manager *metadataManager) (mp *metaPartition) {
 	mp = &metaPartition{
 		config:        conf,
@@ -102,7 +99,6 @@ func init() {
 		return
 	}
 	log.LogDebugf("action start")
-	return
 }
 
 func initMp(t *testing.T) {
@@ -605,8 +601,7 @@ func TestAppendList(t *testing.T) {
 	mp.verSeq = iTmp.getVer()
 	mp.fsmAppendExtentsWithCheck(iTmp, true)
 
-	getExtRsp = testGetExtList(t, ino, ino.getLayerVer(0))
-
+	testGetExtList(t, ino, ino.getLayerVer(0))
 	assert.True(t, len(ino.Extents.eks) == lastTopEksLen+2)
 	assert.True(t, checkOffSetInSequnce(t, ino.Extents.eks))
 }
@@ -988,7 +983,6 @@ func testDeleteDirTree(t *testing.T, parentId uint64, verSeq uint64) {
 		log.LogDebugf("action[testDeleteDirTree] seq [%v] delete children %v", verSeq, child)
 		testDeleteFile(t, verSeq, parentId, &child)
 	}
-	return
 }
 
 func testCleanSnapshot(t *testing.T, verSeq uint64) {
@@ -999,7 +993,6 @@ func testCleanSnapshot(t *testing.T, verSeq uint64) {
 		verSeq = math.MaxUint64
 	}
 	testDeleteDirTree(t, 1, verSeq)
-	return
 }
 
 // create
@@ -1267,7 +1260,7 @@ func TestCheckVerList(t *testing.T) {
 	var verData []byte
 	mp.checkVerList(masterList, false)
 	verData = <-mp.verUpdateChan
-	mp.submit(opFSMVersionOp, verData)
+	mp.submit(context.Background(), opFSMVersionOp, verData)
 	assert.True(t, mp.verSeq == 50)
 	assert.True(t, mp.multiVersionList.VerList[len(mp.multiVersionList.VerList)-1].Ver == 50)
 
@@ -1575,10 +1568,7 @@ func TestGetAllVerList(t *testing.T) {
 	tmp = append(tmp, &proto.VolVersionInfo{Ver: 30, Status: proto.VersionNormal})
 
 	sort.SliceStable(tmp, func(i, j int) bool {
-		if tmp[i].Ver < tmp[j].Ver {
-			return true
-		}
-		return false
+		return tmp[i].Ver < tmp[j].Ver
 	})
 
 	t.Logf("tmp[%v]", tmp)

@@ -19,7 +19,7 @@ type NodeInfo struct {
 
 var (
 	nodeInfo                   = &NodeInfo{}
-	nodeInfoStopC              = make(chan struct{}, 0)
+	nodeInfoStopC              = make(chan struct{})
 	deleteWorkerSleepMs uint64 = 0
 	dirChildrenNumLimit uint32 = proto.DefaultDirChildrenNumLimit
 )

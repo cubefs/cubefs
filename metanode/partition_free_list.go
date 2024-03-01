@@ -15,6 +15,7 @@
 package metanode
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"os"
@@ -198,8 +199,8 @@ func (mp *metaPartition) deleteWorker() {
 }
 
 // delete Extents by Partition,and find all successDelete inode
-func (mp *metaPartition) batchDeleteExtentsByPartition(partitionDeleteExtents map[uint64][]*proto.ExtentKey,
-	allInodes []*Inode) (shouldCommit []*Inode, shouldPushToFreeList []*Inode) {
+func (mp *metaPartition) batchDeleteExtentsByPartition(partitionDeleteExtents map[uint64][]*proto.ExtentKey, allInodes []*Inode,
+) (shouldCommit []*Inode, shouldPushToFreeList []*Inode) {
 	occurErrors := make(map[uint64]error)
 	shouldCommit = make([]*Inode, 0, len(allInodes))
 	shouldPushToFreeList = make([]*Inode, 0)
@@ -266,8 +267,6 @@ func (mp *metaPartition) deleteMarkedInodes(inoSlice []uint64) {
 		return
 	}
 	log.LogDebugf("[deleteMarkedInodes] . mp[%v] inoSlice [%v]", mp.config.PartitionId, inoSlice)
-	shouldCommit := make([]*Inode, 0, DeleteBatchCount())
-	shouldRePushToFreeList := make([]*Inode, 0)
 	deleteExtentsByPartition := make(map[uint64][]*proto.ExtentKey)
 	allInodes := make([]*Inode, 0)
 	for _, ino := range inoSlice {
@@ -306,6 +305,8 @@ func (mp *metaPartition) deleteMarkedInodes(inoSlice []uint64) {
 		allInodes = append(allInodes, inode)
 	}
 
+	var shouldCommit []*Inode
+	var shouldRePushToFreeList []*Inode
 	if proto.IsCold(mp.volType) {
 		// delete ebs obj extents
 		shouldCommit, shouldRePushToFreeList = mp.doBatchDeleteObjExtentsInEBS(allInodes)
@@ -353,8 +354,7 @@ func (mp *metaPartition) syncToRaftFollowersFreeInode(hasDeleteInodes []byte) (e
 	if len(hasDeleteInodes) == 0 {
 		return
 	}
-	_, err = mp.submit(opFSMInternalDeleteInode, hasDeleteInodes)
-
+	_, err = mp.submit(context.TODO(), opFSMInternalDeleteInode, hasDeleteInodes)
 	return
 }
 
