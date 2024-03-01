@@ -246,6 +246,27 @@ func (o *ObjectNode) validateAuthInfo(r *http.Request, auth Auther) (err error) 
 		}
 	}
 
+	if stsInfo != nil {
+		if o.stsNotAllowedActions.Contains(param.action) {
+			log.LogErrorf("validateAuthInfo: action not allowed by sts user: requestID(%v) action(%v)",
+				GetRequestID(r), param.action)
+			return AccessDeniedBySTS
+		}
+		userPolicy := stsInfo.UserInfo.Policy
+		if !IsAccountLevelApi(param.apiName) && param.bucket != "" && userPolicy != nil && !userPolicy.IsOwn(param.
+			bucket) {
+			log.LogErrorf("validateAuthInfo: sts user access non-owner vol: requestID(%v) reqVol(%v) ownVols(%v)",
+				GetRequestID(r), param.bucket, userPolicy.OwnVols)
+			return AccessDenied
+		}
+		action := "s3:" + param.apiName
+		if !stsInfo.Policy.IsAllow(action, param.bucket, param.object) {
+			log.LogErrorf("validateAuthInfo: sts policy not allow: requestID(%v) policy(%v) api(%v) resource(%v)",
+				GetRequestID(r), *stsInfo.Policy, param.apiName, param.resource)
+			return AccessDenied
+		}
+	}
+
 	return nil
 }
 
