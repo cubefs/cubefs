@@ -83,10 +83,10 @@ func replyInfo(info *proto.InodeInfo, ino *Inode, quotaInfos map[uint32]*proto.M
 		info.ForbiddenLc = true
 	}
 	info.MigrationStorageClass = ino.HybridCouldExtentsMigration.storageClass
-	if ino.HybridCouldExtentsMigration.storageClass != proto.StorageClass_Unspecified {
+	if ino.HybridCouldExtentsMigration.sortedEks != nil {
 		info.HasMigrationEk = true
 	}
-	info.MigrationExtentKeyExpiredTime = time.Unix(ino.HybridCouldExtentsMigration.expiredTime, 0).Format("2006-01-02 15:04:05")
+	info.MigrationExtentKeyExpiredTime = time.Unix(ino.HybridCouldExtentsMigration.expiredTime, 0)
 	return true
 }
 
@@ -1137,15 +1137,23 @@ func (mp *metaPartition) UpdateExtentKeyAfterMigration(req *proto.UpdateExtentKe
 	ino.HybridCouldExtentsMigration.storageClass = req.StorageClass
 	ino.HybridCouldExtentsMigration.expiredTime = time.Now().Add(time.Duration(req.DelayDeleteMinute) * time.Minute).Unix()
 	if req.StorageClass == proto.StorageClass_BlobStore {
+		//may be
 		ino.HybridCouldExtentsMigration.sortedEks = NewSortedObjExtentsFromObjEks(req.NewObjExtentKeys)
-	} else if req.StorageClass == proto.MediaType_HDD {
-		if item.(*Inode).HybridCouldExtentsMigration.storageClass != proto.MediaType_HDD {
-			err = fmt.Errorf("mp %v inode %v migration class now is %v",
-				mp.config.PartitionId, ino.Inode, item.(*Inode).HybridCouldExtentsMigration.storageClass)
-			log.LogErrorf("action[UpdateExtentKeyAfterMigration] %v", err)
-			p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+	} else if req.StorageClass == proto.StorageClass_Replica_HDD {
+		if item.(*Inode).HybridCouldExtentsMigration.sortedEks == nil &&
+			item.(*Inode).HybridCouldExtentsMigration.storageClass == proto.StorageClass_Unspecified {
+			log.LogDebugf("action[UpdateExtentKeyAfterMigration] ino %v has no migration data", ino.Inode)
+			ino.HybridCouldExtentsMigration.sortedEks = NewSortedExtents()
+		} else {
+			if item.(*Inode).HybridCouldExtentsMigration.storageClass != proto.StorageClass_Replica_HDD {
+				err = fmt.Errorf("mp %v inode %v migration class now is %v",
+					mp.config.PartitionId, ino.Inode, item.(*Inode).HybridCouldExtentsMigration.storageClass)
+				log.LogErrorf("action[UpdateExtentKeyAfterMigration] %v", err)
+				p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+				return
+			}
+			ino.HybridCouldExtentsMigration.sortedEks = item.(*Inode).HybridCouldExtentsMigration.sortedEks
 		}
-		ino.HybridCouldExtentsMigration.sortedEks = item.(*Inode).HybridCouldExtentsMigration.sortedEks
 	} else {
 		err = fmt.Errorf("mp %v inode %v unsupport new migration storage class %v",
 			mp.config.PartitionId, ino.Inode, req.StorageClass)

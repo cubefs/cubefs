@@ -30,6 +30,12 @@ func NewSortedExtentsFromEks(eks []proto.ExtentKey) *SortedExtents {
 	}
 }
 
+func (se *SortedExtents) IsEmpty() bool {
+	se.RLock()
+	defer se.RUnlock()
+	return len(se.eks) == 0
+}
+
 func (se *SortedExtents) String() string {
 	se.RLock()
 	data, err := json.Marshal(se.eks)

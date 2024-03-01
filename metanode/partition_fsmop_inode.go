@@ -719,6 +719,10 @@ func (mp *metaPartition) checkAndInsertFreeList(ino *Inode) {
 	} else if ino.ShouldDeleteMigrationExtentKey(true) {
 		mp.freeList.Push(ino.Inode)
 	}
+	if atomic.LoadUint32(&ino.ForbiddenMigration) == ForbiddenToMigration {
+		mp.fmList.Put(ino.Inode)
+		log.LogDebugf("action[checkAndInsertFreeList] put ino %v to forbidden migration check list", ino.Inode)
+	}
 }
 
 func (mp *metaPartition) fsmSetAttr(req *SetattrRequest) (err error) {
@@ -1067,7 +1071,7 @@ func (mp *metaPartition) fsmUpdateExtentKeyAfterMigration(inoParam *Inode) (resp
 
 func logCurrentExtentKeys(storageClass uint32, sortedEks interface{}, inode uint64) {
 	if sortedEks == nil {
-		log.LogErrorf("action[fsmUpdateExtentKeyAfterMigration] inode %v current ek empty", inode)
+		log.LogInfof("action[fsmUpdateExtentKeyAfterMigration] inode %v current ek empty", inode)
 	} else {
 		if proto.IsStorageClassReplica(storageClass) {
 			log.LogInfof("action[fsmUpdateExtentKeyAfterMigration] inode %v current ek %v",
