@@ -15,6 +15,7 @@
 package metanode
 
 import (
+	"context"
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
@@ -26,7 +27,7 @@ import (
 func (mp *metaPartition) GetUniqID(p *Packet, num uint32) (err error) {
 	idBuf := make([]byte, 4)
 	binary.BigEndian.PutUint32(idBuf, num)
-	resp, err := mp.submit(opFSMUniqID, idBuf)
+	resp, err := mp.submit(p.Context(), opFSMUniqID, idBuf)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return
@@ -80,7 +81,7 @@ func (mp *metaPartition) uniqCheckerEvict() (left int, evict int, err error) {
 	if err != nil {
 		panic(err)
 	}
-	_, err = mp.submit(opFSMUniqCheckerEvict, reqBytes)
+	_, err = mp.submit(context.TODO(), opFSMUniqCheckerEvict, reqBytes)
 	return left, idx + 1, err
 }
 
