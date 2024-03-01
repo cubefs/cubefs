@@ -23,12 +23,13 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
+	"github.com/gorilla/mux"
+
 	"github.com/cubefs/cubefs/blobstore/common/rpc/auditlog"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
-	"github.com/google/uuid"
-	"github.com/gorilla/mux"
 )
 
 const StatusServerPanic = 597
@@ -187,17 +188,10 @@ func (o *ObjectNode) authMiddleware(next http.Handler) http.Handler {
 }
 
 // PolicyCheckMiddleware returns a pre-handle middleware handler to process policy check.
-// If action is configured in signatureIgnoreActions, then skip policy check.
 func (o *ObjectNode) policyCheckMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(
 		func(w http.ResponseWriter, r *http.Request) {
-			action := ActionFromRouteName(mux.CurrentRoute(r).GetName())
-			if !action.IsNone() && o.signatureIgnoredActions.Contains(action) {
-				next.ServeHTTP(w, r)
-				return
-			}
-			wrappedNext := o.policyCheck(next.ServeHTTP)
-			wrappedNext.ServeHTTP(w, r)
+			o.policyCheck(next.ServeHTTP).ServeHTTP(w, r)
 			return
 		})
 }
