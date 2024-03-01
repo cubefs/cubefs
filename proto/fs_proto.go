@@ -94,12 +94,12 @@ type InodeInfo struct {
 	QuotaInfos                    map[uint32]*MetaQuotaInfo `json:"qifs"`
 	VerSeq                        uint64                    `json:"seq"`
 	expiration                    int64
-	StorageClass                  uint32 `json:"storageClass"`
-	WriteGen                      uint64 `json:"writeGen"`
-	ForbiddenLc                   bool   `json:"forbiddenLc"`
-	MigrationStorageClass         uint32 `json:"migrationStorageClass"`
-	HasMigrationEk                bool   `json:"hasMigrationEk"`
-	MigrationExtentKeyExpiredTime string `json:"mekExpiredTime"`
+	StorageClass                  uint32    `json:"storageClass"`
+	WriteGen                      uint64    `json:"writeGen"`
+	ForbiddenLc                   bool      `json:"forbiddenLc"`
+	MigrationStorageClass         uint32    `json:"migrationStorageClass"`
+	HasMigrationEk                bool      `json:"hasMigrationEk"`
+	MigrationExtentKeyExpiredTime time.Time `json:"mekExpiredTime"`
 }
 
 type SimpleExtInfo struct {
