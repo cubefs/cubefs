@@ -49,9 +49,7 @@ type VolVarargs struct {
 	txConflictRetryNum      int64
 	txConflictRetryInterval int64
 	txOpLimit               int
-	convertState            proto.VolConvertState
 	DefaultStoreMode        proto.StoreMode
-	MpLayout                proto.MetaPartitionLayout
 }
 
 // Vol represents a set of meta partitionMap and data partitionMap
@@ -116,9 +114,7 @@ type Vol struct {
 	Forbidden               bool
 	mpsLock                 *mpsLockManager
 	EnableAuditLog          bool
-	convertState            proto.VolConvertState
 	DefaultStoreMode        proto.StoreMode
-	MpLayout                proto.MetaPartitionLayout
 }
 
 func newVol(vv volValue) (vol *Vol) {
@@ -188,7 +184,6 @@ func newVol(vv volValue) (vol *Vol) {
 	vol.mpsLock = newMpsLockManager(vol)
 	vol.EnableAuditLog = true
 	vol.DefaultStoreMode = vv.DefaultStoreMode
-	vol.MpLayout = vv.MpLayout
 	return
 }
 
@@ -211,7 +206,6 @@ func newVolFromVolValue(vv *volValue) (vol *Vol) {
 	}
 	vol.Forbidden = vv.Forbidden
 	vol.EnableAuditLog = vv.EnableAuditLog
-	vol.MpLayout = vv.MpLayout
 	vol.DefaultStoreMode = vv.DefaultStoreMode
 	return vol
 }
@@ -1481,7 +1475,6 @@ func setVolFromArgs(args *VolVarargs, vol *Vol) {
 
 	vol.dpSelectorName = args.dpSelectorName
 	vol.dpSelectorParm = args.dpSelectorParm
-	vol.MpLayout = args.MpLayout
 	vol.DefaultStoreMode = args.DefaultStoreMode
 }
 
@@ -1518,7 +1511,6 @@ func getVolVarargs(vol *Vol) *VolVarargs {
 		coldArgs:                args,
 		dpReadOnlyWhenVolFull:   vol.DpReadOnlyWhenVolFull,
 		DefaultStoreMode:        vol.DefaultStoreMode,
-		MpLayout:                vol.MpLayout,
 	}
 }
 

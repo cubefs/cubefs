@@ -401,7 +401,6 @@ type updateVolReq struct {
 	dpReadOnlyWhenVolFull   bool
 	enableQuota             bool
 	storeMode               int
-	mpLayout                proto.MetaPartitionLayout
 }
 
 func parseColdVolUpdateArgs(r *http.Request, vol *Vol) (args *coldVolArgs, err error) {
@@ -577,7 +576,7 @@ func parseBoolFieldToUpdateVol(r *http.Request, vol *Vol) (followerRead, authent
 	return
 }
 
-func parseRocksDbFieldToUpdateVol(r *http.Request, vol *Vol) (storeMode int, layout proto.MetaPartitionLayout, err error) {
+func parseRocksDbFieldToUpdateVol(r *http.Request, vol *Vol) (storeMode int, err error) {
 	if storeModeStr := r.FormValue(StoreModeKey); storeModeStr != "" {
 		if storeMode, err = strconv.Atoi(storeModeStr); err != nil {
 			err = unmatchedKey(StoreModeKey)
@@ -586,17 +585,6 @@ func parseRocksDbFieldToUpdateVol(r *http.Request, vol *Vol) (storeMode int, lay
 	} else {
 		storeMode = int(vol.DefaultStoreMode)
 	}
-
-	if mpLayoutStr := r.FormValue(volMetaLayoutKey); mpLayoutStr != "" {
-		num, tmpErr := fmt.Sscanf(mpLayoutStr, "%d,%d", &layout.PercentOfMP, &layout.PercentOfReplica)
-		if tmpErr != nil || num != 2 {
-			err = unmatchedKey(volMetaLayoutKey)
-			return
-		}
-	} else {
-		layout = vol.MpLayout
-	}
-
 	return
 }
 
@@ -715,9 +703,8 @@ type createVolReq struct {
 	qosLimitArgs                         *qosArgs
 	clientReqPeriod, clientHitTriggerCnt uint32
 	// cold vol args
-	coldArgs coldVolArgs
-	storeMode                            proto.StoreMode
-	layout								 proto.MetaPartitionLayout
+	coldArgs  coldVolArgs
+	storeMode proto.StoreMode
 }
 
 func checkCacheAction(action int) error {
@@ -894,15 +881,6 @@ func parseRequestToCreateVol(r *http.Request, req *createVolReq) (err error) {
 		}
 	}
 	req.storeMode = proto.StoreMode(storeMode)
-
-	if mpLayoutStr := r.FormValue(volMetaLayoutKey); mpLayoutStr != "" {
-		num, tmpErr := fmt.Sscanf(mpLayoutStr, "%d,%d", &req.layout.PercentOfMP, &req.layout.PercentOfReplica)
-		if tmpErr != nil || num != 2 {
-			err = unmatchedKey(StoreModeKey)
-			return
-		}
-	}
-
 	return
 }
 

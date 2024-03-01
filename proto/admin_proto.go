@@ -49,7 +49,6 @@ const (
 	AdminVolExpand                            = "/vol/expand"
 	AdminVolForbidden                         = "/vol/forbidden"
 	AdminVolEnableAuditLog                    = "/vol/auditlog"
-	AdminSetVolConvertSt                      = "/vol/setConvertSate"
 	AdminCreateVol                            = "/admin/createVol"
 	AdminGetVol                               = "/admin/getVol"
 	AdminClusterFreeze                        = "/cluster/freeze"
@@ -1101,8 +1100,6 @@ type SimpleVolView struct {
 	Forbidden        bool
 	EnableAuditLog   bool
 	DefaultStoreMode StoreMode
-	ConvertState     VolConvertState
-	MpLayout         MetaPartitionLayout
 }
 
 type NodeSetInfo struct {

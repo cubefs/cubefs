@@ -133,7 +133,6 @@ const (
 	Periodic                   = "periodic"
 	DecommissionType           = "decommissionType"
 	decommissionDiskFactor     = "decommissionDiskFactor"
-	volMetaLayoutKey           = "metaLayout"
 	StoreModeKey               = "storeMode"
 )
 

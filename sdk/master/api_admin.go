@@ -1038,14 +1038,3 @@ func (api *AdminAPI) SelectMetaReplicaReplaceNodeAddr(metaPartitionID uint64, no
 	}
 	return
 }
-
-func (api *AdminAPI) SetVolumeConvertTaskState(volName, authKey string, st int) (err error) {
-	var request = newAPIRequest(http.MethodGet, proto.AdminSetVolConvertSt)
-	request.addParam("name", volName)
-	request.addParam("authKey", authKey)
-	request.addParam("state", strconv.Itoa(st))
-	if _, err = api.mc.serveRequest(request); err != nil {
-		return
-	}
-	return
-}

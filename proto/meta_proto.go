@@ -142,3 +142,32 @@ func (quotaInfo *QuotaInfo) IsOverQuotaBytes() (isOver bool) {
 	}
 	return
 }
+
+type StoreMode uint8
+
+const StoreModeDef StoreMode = 0
+const (
+	StoreModeMem StoreMode = 1 << iota
+	StoreModeRocksDb
+	StoreModeMax
+)
+
+func (mode *StoreMode) Str() string {
+	switch *mode {
+	case StoreModeMem:
+		return "Mem"
+	case StoreModeRocksDb:
+		return "Rocks Db"
+	case StoreModeMem | StoreModeRocksDb:
+		return "Mem&Rocks"
+	default:
+	}
+	return "Unknown"
+}
+
+type SelectMetaNodeInfo struct {
+	PartitionID uint64 `json:"partition_id"`
+	OldNodeAddr string `json:"old_node_addr"`
+	NewNodeAddr string `json:"new_node_addr"`
+	StoreMode   uint8  `json:"store_mode"`
+}

@@ -377,9 +377,6 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 		Path(proto.AdminVolExpand).
 		HandlerFunc(m.volExpand)
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
-		Path(proto.AdminSetVolConvertSt).
-		HandlerFunc(m.setVolConvertTaskState)
-	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.ClientVol).
 		HandlerFunc(m.getVol)
 	router.NewRoute().Methods(http.MethodGet).

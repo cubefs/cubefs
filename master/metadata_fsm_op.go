@@ -286,8 +286,7 @@ type volValue struct {
 	Forbidden                                              bool
 	EnableAuditLog                                         bool
 
-	DefaultStoreMode           bsProto.StoreMode
-	MpLayout                   bsProto.MetaPartitionLayout
+	DefaultStoreMode bsProto.StoreMode
 }
 
 func (v *volValue) Bytes() (raw []byte, err error) {

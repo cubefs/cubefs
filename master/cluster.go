@@ -2992,40 +2992,6 @@ func (c *Cluster) deleteMetaNodeFromCache(metaNode *MetaNode) {
 	go metaNode.clean()
 }
 
-func (c *Cluster) volStMachineWithOutLock(vol *Vol, oldState, newState proto.VolConvertState) (err error) {
-
-	err = fmt.Errorf("convert vol state: %v --> %v failed", oldState.Str(), newState.Str())
-	switch oldState {
-	case proto.VolConvertStInit:
-		if newState == proto.VolConvertStPrePared {
-			err = nil
-		}
-	case proto.VolConvertStPrePared:
-		if newState == proto.VolConvertStRunning || newState == proto.VolConvertStStopped {
-			err = nil
-		}
-	case proto.VolConvertStRunning:
-		if newState == proto.VolConvertStStopped || newState == proto.VolConvertStFinished {
-			err = nil
-		}
-	case proto.VolConvertStStopped:
-		if newState == proto.VolConvertStRunning || newState == proto.VolConvertStPrePared {
-			err = nil
-		}
-	case proto.VolConvertStFinished:
-		if newState == proto.VolConvertStPrePared {
-			err = nil
-		}
-	default:
-	}
-
-	if err == nil {
-		vol.convertState = newState
-	}
-
-	return
-}
-
 func (c *Cluster) updateVol(name, authKey string, newArgs *VolVarargs) (err error) {
 	var (
 		vol           *Vol
@@ -3071,13 +3037,6 @@ func (c *Cluster) updateVol(name, authKey string, newArgs *VolVarargs) (err erro
 		goto errHandler
 	}
 
-	if vol.MpLayout != newArgs.MpLayout {
-		if err = c.volStMachineWithOutLock(vol, vol.convertState, proto.VolConvertStPrePared); err != nil {
-			err = fmt.Errorf("set meta layout must stop convert task, err:%v", err.Error())
-			goto errHandler
-		}
-	}
-
 	oldArgs = getVolVarargs(vol)
 	setVolFromArgs(newArgs, vol)
 	if err = c.syncUpdateVol(vol); err != nil {
@@ -3091,51 +3050,6 @@ func (c *Cluster) updateVol(name, authKey string, newArgs *VolVarargs) (err erro
 
 errHandler:
 	err = fmt.Errorf("action[updateVol], clusterID[%v] name:%v, err:%v ", c.Name, name, err.Error())
-	log.LogError(errors.Stack(err))
-	Warn(c.Name, err.Error())
-	return
-}
-
-func (c *Cluster) setVolConvertTaskState(name, authKey string, newState proto.VolConvertState) (err error) {
-	var (
-		vol           *Vol
-		oldState      proto.VolConvertState
-		serverAuthKey string
-	)
-
-	if vol, err = c.getVol(name); err != nil {
-		log.LogErrorf("action[setVolConvertTaskState] err[%v]", err)
-		err = proto.ErrVolNotExists
-		err = fmt.Errorf("action[setVolConvertTaskState], clusterID[%v] name:%v, err:%v ", c.Name, name, err.Error())
-		goto errHandler
-	}
-
-	vol.volLock.Lock()
-	defer vol.volLock.Unlock()
-	serverAuthKey = vol.Owner
-	if !matchKey(serverAuthKey, authKey) {
-		return proto.ErrVolAuthKeyNotMatch
-	}
-
-	oldState = vol.convertState
-	if oldState == newState {
-		return nil
-	}
-
-	if err = c.volStMachineWithOutLock(vol, oldState, newState); err != nil {
-		goto errHandler
-	}
-
-	if err = c.syncUpdateVol(vol); err != nil {
-		vol.convertState = oldState
-		log.LogErrorf("action[setVolConvertTaskState] vol[%v] err[%v]", name, err)
-		err = proto.ErrPersistenceByRaft
-		goto errHandler
-	}
-	return
-
-errHandler:
-	err = fmt.Errorf("action[setVolConvertTaskState], clusterID[%v] name:%v, err:%v ", c.Name, name, err.Error())
 	log.LogError(errors.Stack(err))
 	Warn(c.Name, err.Error())
 	return
@@ -3363,7 +3277,6 @@ func (c *Cluster) doCreateVol(req *createVolReq) (vol *Vol, err error) {
 
 		DpReadOnlyWhenVolFull: req.DpReadOnlyWhenVolFull,
 		DefaultStoreMode:      req.storeMode,
-		MpLayout:              req.layout,
 	}
 
 	log.LogInfof("[doCreateVol] volView, %v", vv)
