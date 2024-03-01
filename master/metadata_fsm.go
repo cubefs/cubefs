@@ -219,6 +219,7 @@ func (mf *MetadataFsm) ApplySnapshot(peers []proto.Peer, iterator proto.SnapIter
 
 	log.LogWarnf(fmt.Sprintf("action[ApplySnapshot] begin,applied[%v]", mf.applied))
 	var data []byte
+	var appliedIndex []byte
 	for err == nil {
 		bgTime := stat.BeginStat()
 		if data, err = iterator.Next(); err != nil {
@@ -230,8 +231,12 @@ func (mf *MetadataFsm) ApplySnapshot(peers []proto.Peer, iterator proto.SnapIter
 			goto errHandler
 		}
 		bgTime = stat.BeginStat()
-		if _, err = mf.store.Put(cmd.K, cmd.V, false); err != nil {
-			goto errHandler
+		if cmd.K != applied {
+			if _, err = mf.store.Put(cmd.K, cmd.V, false); err != nil {
+				goto errHandler
+			}
+		} else {
+			appliedIndex = cmd.V
 		}
 		stat.EndStat("ApplySnapshot-Put", err, bgTime, 1)
 	}
@@ -242,6 +247,16 @@ func (mf *MetadataFsm) ApplySnapshot(peers []proto.Peer, iterator proto.SnapIter
 	if err = mf.store.Flush(); err != nil {
 		log.LogError(fmt.Sprintf("action[ApplySnapshot] Flush failed,err:%v", err.Error()))
 		goto errHandler
+	}
+
+	// NOTE: we write applied index at last
+	log.LogDebugf("[ApplySnapshot] find applied index(%v)", appliedIndex)
+	if appliedIndex != nil {
+		if _, err = mf.store.Put(applied, appliedIndex, true); err != nil {
+			goto errHandler
+		}
+	} else {
+		log.LogErrorf("[ApplySnapshot] not found applied index in snapshot")
 	}
 
 	mf.snapshotHandler()
