@@ -19,9 +19,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/gorilla/mux"
+
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/log"
-	"github.com/gorilla/mux"
 )
 
 // https://docs.aws.amazon.com/AmazonS3/latest/dev/RESTAuthentication.html#ConstructingTheAuthenticationHeader
@@ -184,6 +185,7 @@ func (o *ObjectNode) validateAuthInfo(r *http.Request, auth Auther) (err error) 
 	reqAK := auth.Credential().AccessKey
 
 	var uid, ak, sk, token string
+	var stsInfo *FedDecodeResult
 	if token = getSecurityToken(r); token == "" {
 		ak = reqAK
 		if uid, sk, err = o.getUidSecretKeyWithCheckVol(r, ak, true); err != nil {
@@ -192,54 +194,56 @@ func (o *ObjectNode) validateAuthInfo(r *http.Request, auth Auther) (err error) 
 			return err
 		}
 	} else {
-		if o.stsNotAllowedActions.Contains(param.action) {
-			log.LogErrorf("validateAuthInfo: action not allowed by sts user: requestID(%v) action(%v)",
-				GetRequestID(r), param.action)
-			return AccessDeniedBySTS
-		}
-		sts, err := DecodeFedSessionToken(reqAK, token, o.getUserInfoByAccessKeyV2)
+		stsInfo, err = DecodeFedSessionToken(reqAK, token, o.getUserInfoByAccessKeyV2)
 		if err != nil {
 			log.LogErrorf("validateAuthInfo: decode session token fail: requestID(%v) ak(%v) token(%v) err(%v)",
 				GetRequestID(r), reqAK, token, err)
 			return err
 		}
-		action := "s3:" + param.apiName
-		if !sts.Policy.IsAllow(action, param.bucket, param.object) {
-			log.LogErrorf("validateAuthInfo: sts policy not allow: requestID(%v) policy(%v) api(%v) resource(%v)",
-				GetRequestID(r), *sts.Policy, param.apiName, param.resource)
-			return AccessDenied
-		}
-		userPolicy := sts.UserInfo.Policy
-		if param.bucket != "" && userPolicy != nil && !userPolicy.IsOwn(param.bucket) {
-			log.LogErrorf("validateAuthInfo: sts user access non-owner vol: requestID(%v) reqVol(%v) ownVols(%v)",
-				GetRequestID(r), param.bucket, userPolicy.OwnVols)
-			return AccessDenied
-		}
-		uid, ak, sk = sts.UserInfo.UserID, sts.UserInfo.AccessKey, sts.FedSK
+		uid, ak, sk = stsInfo.UserInfo.UserID, stsInfo.UserInfo.AccessKey, stsInfo.FedSK
 	}
 
 	mux.Vars(r)[ContextKeyAccessKey] = ak
 	mux.Vars(r)[ContextKeyRequester] = uid
 
-	if !param.action.IsNone() && o.signatureIgnoredActions.Contains(param.action) {
-		return nil
+	if !o.signatureIgnoredActions.Contains(param.action) {
+		cred := auth.Credential()
+		if auth.IsSkewed() {
+			log.LogErrorf("validateAuthInfo: request skewed: requestID(%v) reqTime(%v) servTime(%v)",
+				GetRequestID(r), cred.TimeStamp, time.Now().UTC().Format(ISO8601Format))
+			return RequestTimeTooSkewed
+		}
+		if auth.IsExpired() {
+			log.LogErrorf("validateAuthInfo: signature has expired: requestID(%v) servTime(%v) reqDate(%v) expires(%v)",
+				GetRequestID(r), time.Now().UTC().Format(ISO8601Format), cred.Date, cred.Expires)
+			return ExpiredToken
+		}
+		if !auth.SignatureMatch(sk, o.wildcards) {
+			log.LogErrorf("validateAuthInfo: signature not match: requestID(%v) AccessKeyId(%v)\nstringToSign=(\n%v\n)\ncanonialRequest=(\n%v\n)",
+				GetRequestID(r), reqAK, auth.StringToSign(), auth.CanonicalRequest())
+			return SignatureDoesNotMatch
+		}
 	}
 
-	cred := auth.Credential()
-	if auth.IsSkewed() {
-		log.LogErrorf("validateAuthInfo: request skewed: requestID(%v) reqTime(%v) servTime(%v)",
-			GetRequestID(r), cred.TimeStamp, time.Now().UTC().Format(ISO8601Format))
-		return RequestTimeTooSkewed
-	}
-	if auth.IsExpired() {
-		log.LogErrorf("validateAuthInfo: signature has expired: requestID(%v) servTime(%v) reqDate(%v) expires(%v)",
-			GetRequestID(r), time.Now().UTC().Format(ISO8601Format), cred.Date, cred.Expires)
-		return ExpiredToken
-	}
-	if !auth.SignatureMatch(sk, o.wildcards) {
-		log.LogErrorf("validateAuthInfo: signature not match: requestID(%v) AccessKeyId(%v)\nstringToSign=(\n%v\n)\ncanonialRequest=(\n%v\n)",
-			GetRequestID(r), reqAK, auth.StringToSign(), auth.CanonicalRequest())
-		return SignatureDoesNotMatch
+	if stsInfo != nil {
+		if o.stsNotAllowedActions.Contains(param.action) {
+			log.LogErrorf("validateAuthInfo: action not allowed by sts user: requestID(%v) action(%v)",
+				GetRequestID(r), param.action)
+			return AccessDeniedBySTS
+		}
+		userPolicy := stsInfo.UserInfo.Policy
+		if !IsAccountLevelApi(param.apiName) && param.bucket != "" && userPolicy != nil && !userPolicy.IsOwn(param.
+			bucket) {
+			log.LogErrorf("validateAuthInfo: sts user access non-owner vol: requestID(%v) reqVol(%v) ownVols(%v)",
+				GetRequestID(r), param.bucket, userPolicy.OwnVols)
+			return AccessDenied
+		}
+		action := "s3:" + param.apiName
+		if !stsInfo.Policy.IsAllow(action, param.bucket, param.object) {
+			log.LogErrorf("validateAuthInfo: sts policy not allow: requestID(%v) policy(%v) api(%v) resource(%v)",
+				GetRequestID(r), *stsInfo.Policy, param.apiName, param.resource)
+			return AccessDenied
+		}
 	}
 
 	return nil
