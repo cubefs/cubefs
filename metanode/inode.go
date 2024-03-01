@@ -703,12 +703,12 @@ func (i *Inode) MarshalInodeValue(buff *bytes.Buffer) {
 	log.LogDebugf("MarshalInodeValue ino(%v) storageClass(%v) Reserved(%v)", i.Inode, i.StorageClass, i.Reserved)
 	//reset reserved, V4EBSExtentsFlag maybe changed after migration .eg
 	i.Reserved = 0
-	defer func() {
-		if err := recover(); err != nil {
-			log.LogErrorf("MarshalInodeValue ino(%v)  storageClass(%v) Recovered from panic:%v",
-				i.Inode, i.StorageClass, err)
-		}
-	}()
+	//defer func() {
+	//	if err := recover(); err != nil {
+	//		log.LogErrorf("MarshalInodeValue ino(%v)  storageClass(%v) Recovered from panic:%v",
+	//			i.Inode, i.StorageClass, err)
+	//	}
+	//}()
 	if err = binary.Write(buff, binary.BigEndian, &i.Type); err != nil {
 		panic(err)
 	}
@@ -859,44 +859,42 @@ func (i *Inode) MarshalInodeValue(buff *bytes.Buffer) {
 		if err = binary.Write(buff, binary.BigEndian, &i.HybridCouldExtentsMigration.expiredTime); err != nil {
 			panic(err)
 		}
-		if i.HybridCouldExtentsMigration.sortedEks == nil {
-			panic(errors.New(fmt.Sprintf("MarshalInodeValue failed,HybridCouldExtentsMigration class %v ek should not be nil",
-				i.HybridCouldExtentsMigration.storageClass)))
-		}
-		if proto.IsStorageClassReplica(i.HybridCouldExtentsMigration.storageClass) {
-			log.LogDebugf("MarshalInodeValue ino(%v) migrationStorageClass(%v) marshall V4MigrationExtentsFlag SortedExtents Reserved(%v)",
-				i.Inode, i.HybridCouldExtentsMigration.storageClass, i.Reserved)
-			replicaExtents := i.HybridCouldExtentsMigration.sortedEks.(*SortedExtents)
-			extData, err := replicaExtents.MarshalBinary(true)
-			if err != nil {
-				panic(err)
-			}
-			if err = binary.Write(buff, binary.BigEndian, uint32(len(extData))); err != nil {
-				panic(err)
-			}
-			if _, err = buff.Write(extData); err != nil {
-				panic(err)
-			}
+		//empty file after migration, it's mek is nil
+		if i.HybridCouldExtentsMigration.sortedEks != nil {
+			if proto.IsStorageClassReplica(i.HybridCouldExtentsMigration.storageClass) {
+				log.LogDebugf("MarshalInodeValue ino(%v) migrationStorageClass(%v) marshall V4MigrationExtentsFlag SortedExtents Reserved(%v)",
+					i.Inode, i.HybridCouldExtentsMigration.storageClass, i.Reserved)
+				replicaExtents := i.HybridCouldExtentsMigration.sortedEks.(*SortedExtents)
+				extData, err := replicaExtents.MarshalBinary(true)
+				if err != nil {
+					panic(err)
+				}
+				if err = binary.Write(buff, binary.BigEndian, uint32(len(extData))); err != nil {
+					panic(err)
+				}
+				if _, err = buff.Write(extData); err != nil {
+					panic(err)
+				}
 
-		} else if proto.IsStorageClassBlobStore(i.HybridCouldExtentsMigration.storageClass) {
-			log.LogDebugf("MarshalInodeValue ino(%v)migrationStorageClass(%v)   marshall V4MigrationExtentsFlag SortedObjExtents Reserved(%v) ",
-				i.Inode, i.HybridCouldExtentsMigration.storageClass, i.Reserved)
-			ObjExtents := i.HybridCouldExtentsMigration.sortedEks.(*SortedObjExtents)
-			objExtData, err := ObjExtents.MarshalBinary()
-			if err != nil {
-				panic(err)
+			} else if proto.IsStorageClassBlobStore(i.HybridCouldExtentsMigration.storageClass) {
+				log.LogDebugf("MarshalInodeValue ino(%v)migrationStorageClass(%v)   marshall V4MigrationExtentsFlag SortedObjExtents Reserved(%v) ",
+					i.Inode, i.HybridCouldExtentsMigration.storageClass, i.Reserved)
+				ObjExtents := i.HybridCouldExtentsMigration.sortedEks.(*SortedObjExtents)
+				objExtData, err := ObjExtents.MarshalBinary()
+				if err != nil {
+					panic(err)
+				}
+				if err = binary.Write(buff, binary.BigEndian, uint32(len(objExtData))); err != nil {
+					panic(err)
+				}
+				if _, err = buff.Write(objExtData); err != nil {
+					panic(err)
+				}
+			} else {
+				panic(errors.New(fmt.Sprintf("MarshalInodeValue failed, unsupport migrate StorageClass %v",
+					i.HybridCouldExtentsMigration.storageClass)))
 			}
-			if err = binary.Write(buff, binary.BigEndian, uint32(len(objExtData))); err != nil {
-				panic(err)
-			}
-			if _, err = buff.Write(objExtData); err != nil {
-				panic(err)
-			}
-		} else {
-			panic(errors.New(fmt.Sprintf("MarshalInodeValue failed, unsupport migrate StorageClass %v",
-				i.HybridCouldExtentsMigration.storageClass)))
 		}
-
 	}
 
 	if err = binary.Write(buff, binary.BigEndian, i.getVer()); err != nil {
