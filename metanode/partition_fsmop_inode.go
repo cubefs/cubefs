@@ -181,7 +181,7 @@ func (mp *metaPartition) getInode(ino *Inode, listAll bool) (resp *InodeResponse
 	resp.Status = proto.OpOk
 
 	i := mp.getInodeByVer(ino)
-	if i == nil || (listAll == false && i.ShouldDelete()) {
+	if i == nil || (!listAll && i.ShouldDelete()) {
 		log.LogDebugf("action[getInode] ino  %v not found", ino)
 		resp.Status = proto.OpNotExistErr
 		return
@@ -416,7 +416,6 @@ func (mp *metaPartition) internalDeleteInode(ino *Inode) {
 	mp.inodeTree.Delete(ino)
 	mp.freeList.Remove(ino.Inode)
 	mp.extendTree.Delete(&Extend{inode: ino.Inode}) // Also delete extend attribute.
-	return
 }
 
 func (mp *metaPartition) fsmAppendExtents(ino *Inode) (status uint8) {

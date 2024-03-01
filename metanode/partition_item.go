@@ -378,7 +378,6 @@ func (si *MetaItemIterator) Close() {
 	si.closeOnce.Do(func() {
 		close(si.closeCh)
 	})
-	return
 }
 
 // Next returns the next item.

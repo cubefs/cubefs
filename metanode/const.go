@@ -189,8 +189,6 @@ const (
 	opFSMVerListSnapShot = 73
 )
 
-var exporterKey string
-
 var (
 	ErrNoLeader   = errors.New("no leader")
 	ErrNotALeader = errors.New("not a leader")
