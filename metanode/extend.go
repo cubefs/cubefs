@@ -180,7 +180,6 @@ func (e *Extend) Remove(key []byte) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	delete(e.dataMap, string(key))
-	return
 }
 
 func (e *Extend) Range(visitor func(key, value []byte) bool) {

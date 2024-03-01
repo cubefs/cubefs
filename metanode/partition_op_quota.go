@@ -15,6 +15,7 @@
 package metanode
 
 import (
+	"context"
 	"encoding/json"
 
 	"github.com/cubefs/cubefs/proto"
@@ -22,7 +23,8 @@ import (
 )
 
 func (mp *metaPartition) batchSetInodeQuota(req *proto.BatchSetMetaserverQuotaReuqest,
-	resp *proto.BatchSetMetaserverQuotaResponse) (err error) {
+	resp *proto.BatchSetMetaserverQuotaResponse,
+) (err error) {
 	if len(req.Inodes) == 0 {
 		return nil
 	}
@@ -33,7 +35,7 @@ func (mp *metaPartition) batchSetInodeQuota(req *proto.BatchSetMetaserverQuotaRe
 		return
 	}
 
-	r, err := mp.submit(opFSMSetInodeQuotaBatch, val)
+	r, err := mp.submit(context.TODO(), opFSMSetInodeQuotaBatch, val)
 	if err != nil {
 		log.LogErrorf("batchSetInodeQuota submit req [%v] failed [%v]", req, err)
 		return
@@ -45,7 +47,8 @@ func (mp *metaPartition) batchSetInodeQuota(req *proto.BatchSetMetaserverQuotaRe
 }
 
 func (mp *metaPartition) batchDeleteInodeQuota(req *proto.BatchDeleteMetaserverQuotaReuqest,
-	resp *proto.BatchDeleteMetaserverQuotaResponse) (err error) {
+	resp *proto.BatchDeleteMetaserverQuotaResponse,
+) (err error) {
 	if len(req.Inodes) == 0 {
 		return nil
 	}
@@ -56,7 +59,7 @@ func (mp *metaPartition) batchDeleteInodeQuota(req *proto.BatchDeleteMetaserverQ
 		return
 	}
 
-	r, err := mp.submit(opFSMDeleteInodeQuotaBatch, val)
+	r, err := mp.submit(context.TODO(), opFSMDeleteInodeQuotaBatch, val)
 	if err != nil {
 		log.LogErrorf("batchDeleteInodeQuota submit req [%v] failed [%v]", req, err)
 		return
@@ -69,7 +72,6 @@ func (mp *metaPartition) batchDeleteInodeQuota(req *proto.BatchDeleteMetaserverQ
 
 func (mp *metaPartition) setQuotaHbInfo(infos []*proto.QuotaHeartBeatInfo) {
 	mp.mqMgr.setQuotaHbInfo(infos)
-	return
 }
 
 func (mp *metaPartition) getQuotaReportInfos() (infos []*proto.QuotaReportInfo) {
@@ -106,7 +108,6 @@ func (mp *metaPartition) statisticExtendByLoad(extend *Extend) {
 		}
 	}
 	log.LogInfof("statisticExtendByLoad ino[%v] isFind [%v].", ino.Inode, isFind)
-	return
 }
 
 func (mp *metaPartition) statisticExtendByStore(extend *Extend, inodeTree *BTree) {
@@ -149,7 +150,6 @@ func (mp *metaPartition) statisticExtendByStore(extend *Extend, inodeTree *BTree
 			mp.config.PartitionId, quotaId, extend.GetInode(), baseInfo)
 	}
 	log.LogDebugf("statisticExtendByStore mp[%v] inode[%v] success.", mp.config.PartitionId, extend.GetInode())
-	return
 }
 
 func (mp *metaPartition) updateUsedInfo(size int64, files int64, ino uint64) {
@@ -160,7 +160,6 @@ func (mp *metaPartition) updateUsedInfo(size int64, files int64, ino uint64) {
 			mp.mqMgr.updateUsedInfo(size, files, quotaId)
 		}
 	}
-	return
 }
 
 func (mp *metaPartition) isExistQuota(ino uint64) (quotaIds []uint32, isFind bool) {
@@ -294,5 +293,4 @@ func (mp *metaPartition) setInodeQuota(quotaIds []uint32, inode uint64) {
 	}
 
 	log.LogInfof("setInodeQuota inode[%v] quota [%v] success.", inode, quotaIds)
-	return
 }

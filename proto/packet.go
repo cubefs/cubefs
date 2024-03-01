@@ -1087,6 +1087,18 @@ func (p *Packet) PacketErrorWithBody(code uint8, reply []byte) {
 	p.ArgLen = 0
 }
 
+func (p *Packet) PacketErrorWithError(code uint8, err error) {
+	p.PacketErrorWithBody(code, []byte(err.Error()))
+}
+
+func (p *Packet) PacketErrorOpErr(err error) {
+	p.PacketErrorWithError(OpErr, err)
+}
+
+func (p *Packet) PacketErrorOpAgain(err error) {
+	p.PacketErrorWithError(OpAgain, err)
+}
+
 func (p *Packet) SetPacketHasPrepare() {
 	p.setPacketPrefix()
 	p.HasPrepare = true

@@ -15,6 +15,7 @@
 package metanode
 
 import (
+	"context"
 	"encoding/binary"
 	"encoding/json"
 	"errors"
@@ -27,6 +28,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/cubefs/cubefs/blobstore/common/trace"
 	"github.com/cubefs/cubefs/depends/tiglabs/raft"
 	raftproto "github.com/cubefs/cubefs/depends/tiglabs/raft/proto"
 	"github.com/cubefs/cubefs/proto"
@@ -454,7 +456,7 @@ func (mp *metaPartition) runVersionOp() {
 	for {
 		select {
 		case verData := <-mp.verUpdateChan:
-			mp.submit(opFSMVersionOp, verData)
+			mp.submit(context.Background(), opFSMVersionOp, verData)
 		case <-mp.stopC:
 			log.LogWarnf("runVersionOp exit!")
 			return
@@ -910,8 +912,9 @@ func (mp *metaPartition) HandleLeaderChange(leader uint64) {
 }
 
 // Put puts the given key-value pair (operation key and operation request) into the raft store.
-func (mp *metaPartition) submit(op uint32, data []byte) (resp interface{}, err error) {
-	log.LogDebugf("submit. op [%v]", op)
+func (mp *metaPartition) submit(ctx context.Context, op uint32, data []byte) (resp interface{}, err error) {
+	span := trace.SpanFromContextSafe(ctx)
+	span.Debugf("submit op [%d] ...", op)
 	snap := NewMetaItem(0, nil, nil)
 	snap.Op = op
 	if data != nil {
@@ -919,12 +922,13 @@ func (mp *metaPartition) submit(op uint32, data []byte) (resp interface{}, err e
 	}
 	cmd, err := snap.MarshalJson()
 	if err != nil {
+		span.Warnf("submit op [%d] %s", op, err.Error())
 		return
 	}
 
 	// submit to the raft store
 	resp, err = mp.raftPartition.Submit(cmd)
-	log.LogDebugf("submit. op [%v] done", op)
+	span.Debugf("submit op [%d] done", op)
 	return
 }
 
