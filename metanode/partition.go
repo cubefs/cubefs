@@ -16,6 +16,7 @@ package metanode
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"math"
@@ -105,10 +106,6 @@ func (c *MetaPartitionConfig) checkMeta() (err error) {
 	if c.PartitionId <= 0 {
 		err = errors.NewErrorf("[checkMeta]: partition id at least 1, "+
 			"now partition id is: %d", c.PartitionId)
-		return
-	}
-	if c.Start < 0 {
-		err = errors.NewErrorf("[checkMeta]: start at least 0")
 		return
 	}
 	if c.End <= c.Start {
@@ -257,7 +254,7 @@ type OpPartition interface {
 	RenameStaleMetadata() (err error)
 	ChangeMember(changeType raftproto.ConfChangeType, peer raftproto.Peer, context []byte) (resp interface{}, err error)
 	Reset() (err error)
-	UpdatePartition(req *UpdatePartitionReq, resp *UpdatePartitionResp) (err error)
+	UpdatePartition(_ context.Context, req *UpdatePartitionReq, resp *UpdatePartitionResp) (err error)
 	DeleteRaft() error
 	IsExsitPeer(peer proto.Peer) bool
 	TryToLeader(groupID uint64) error
@@ -574,10 +571,7 @@ func (mp *metaPartition) GetAllVerList() (verList []*proto.VolVersionInfo) {
 		verList = append(verList, verInfo)
 	}
 	sort.SliceStable(verList, func(i, j int) bool {
-		if verList[i].Ver < verList[j].Ver {
-			return true
-		}
-		return false
+		return verList[i].Ver < verList[j].Ver
 	})
 	return
 }
@@ -839,7 +833,6 @@ func (mp *metaPartition) stopRaft() {
 		// TODO Unhandled errors
 		// mp.raftPartition.Stop()
 	}
-	return
 }
 
 func (mp *metaPartition) getRaftPort() (heartbeat, replica int, err error) {
@@ -905,7 +898,6 @@ func (mp *metaPartition) SetFollowerRead(fRead bool) {
 		return
 	}
 	mp.isFollowerRead = fRead
-	return
 }
 
 // IsLeader returns the raft leader address and if the current meta partition is the leader.
@@ -1142,7 +1134,6 @@ func (mp *metaPartition) store(sm *storeMsg) (err error) {
 		// TODO Unhandled errors
 		os.RemoveAll(tmpDir)
 	}
-	err = nil
 	if err = os.MkdirAll(tmpDir, 0o775); err != nil {
 		return
 	}
@@ -1260,15 +1251,14 @@ func (mp *metaPartition) GetBaseConfig() MetaPartitionConfig {
 }
 
 // UpdatePartition updates the meta partition. TODO remove? no usage?
-func (mp *metaPartition) UpdatePartition(req *UpdatePartitionReq,
-	resp *UpdatePartitionResp) (err error) {
+func (mp *metaPartition) UpdatePartition(ctx context.Context, req *UpdatePartitionReq, resp *UpdatePartitionResp) (err error) {
 	reqData, err := json.Marshal(req)
 	if err != nil {
 		resp.Status = proto.TaskFailed
 		resp.Result = err.Error()
 		return
 	}
-	r, err := mp.submit(opFSMUpdatePartition, reqData)
+	r, err := mp.submit(ctx, opFSMUpdatePartition, reqData)
 	if err != nil {
 		resp.Status = proto.TaskFailed
 		resp.Result = err.Error()
@@ -1276,17 +1266,15 @@ func (mp *metaPartition) UpdatePartition(req *UpdatePartitionReq,
 	}
 	if status := r.(uint8); status != proto.OpOk {
 		resp.Status = proto.TaskFailed
-		p := &Packet{}
-		p.ResultCode = status
-		err = errors.NewErrorf("[UpdatePartition]: %s", p.GetResultMsg())
-		resp.Result = p.GetResultMsg()
+		resp.Result = proto.GetStatusStr(status)
+		err = errors.NewErrorf("[UpdatePartition]: %s", resp.Result)
 	}
 	resp.Status = proto.TaskSucceeds
 	return
 }
 
-func (mp *metaPartition) DecommissionPartition(req []byte) (err error) {
-	_, err = mp.submit(opFSMDecommissionPartition, req)
+func (mp *metaPartition) DecommissionPartition(ctx context.Context, req []byte) (err error) {
+	_, err = mp.submit(ctx, opFSMDecommissionPartition, req)
 	return
 }
 
@@ -1425,8 +1413,6 @@ func (mp *metaPartition) multiVersionTTLWork(dur time.Duration) {
 			return
 		}
 	}
-
-	return
 }
 
 func (mp *metaPartition) delPartitionVersion(verSeq uint64) {
@@ -1566,8 +1552,6 @@ func (mp *metaPartition) delPartitionInodesVersion(verSeq uint64, wg *sync.WaitG
 		}
 		return true
 	})
-
-	return
 }
 
 // cacheTTLWork only happen in datalake situation

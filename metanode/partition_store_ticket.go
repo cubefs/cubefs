@@ -15,6 +15,7 @@
 package metanode
 
 import (
+	"context"
 	"encoding/binary"
 	"sync/atomic"
 	"time"
@@ -136,7 +137,7 @@ func (mp *metaPartition) startSchedule(curIndex uint64) {
 					timer.Reset(intervalToPersistData)
 					continue
 				}
-				if _, err := mp.submit(opFSMStoreTick, nil); err != nil {
+				if _, err := mp.submit(context.TODO(), opFSMStoreTick, nil); err != nil {
 					log.LogErrorf("[startSchedule] raft submit: %s", err.Error())
 					if _, ok := mp.IsLeader(); ok {
 						timer.Reset(intervalToPersistData)
@@ -156,12 +157,12 @@ func (mp *metaPartition) startSchedule(curIndex uint64) {
 				}
 				Buf := make([]byte, 8)
 				binary.BigEndian.PutUint64(Buf, curCursor)
-				if _, err := mp.submit(opFSMSyncCursor, Buf); err != nil {
+				if _, err := mp.submit(context.TODO(), opFSMSyncCursor, Buf); err != nil {
 					log.LogErrorf("[startSchedule] raft submit: %s", err.Error())
 				}
 
 				binary.BigEndian.PutUint64(Buf, mp.txProcessor.txManager.txIdAlloc.getTransactionID())
-				if _, err := mp.submit(opFSMSyncTxID, Buf); err != nil {
+				if _, err := mp.submit(context.TODO(), opFSMSyncTxID, Buf); err != nil {
 					log.LogErrorf("[startSchedule] raft submit: %s", err.Error())
 				}
 				lastCursor = curCursor
