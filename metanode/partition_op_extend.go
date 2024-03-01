@@ -15,6 +15,7 @@
 package metanode
 
 import (
+	"context"
 	"encoding/json"
 	"strconv"
 	"strings"
@@ -224,6 +225,6 @@ func (mp *metaPartition) putExtend(op uint32, extend *Extend) (resp interface{},
 	if marshaled, err = extend.Bytes(); err != nil {
 		return
 	}
-	resp, err = mp.submit(op, marshaled)
+	resp, err = mp.submit(context.TODO(), op, marshaled)
 	return
 }
