@@ -53,7 +53,7 @@ func (ns *nodeSet) getNodes(nodeType NodeType) *sync.Map {
 type NodeSelector interface {
 	GetName() string
 
-	Select(ns *nodeSet, excludeHosts []string, replicaNum int) (newHosts []string, peers []proto.Peer, err error)
+	Select(ns *nodeSet, excludeHosts []string, replicaNum int, preferredHosts map[string]struct{}) (newHosts []string, peers []proto.Peer, err error)
 }
 
 type weightedNode struct {
@@ -277,7 +277,7 @@ func (s *CarryWeightNodeSelector) selectNodeForWrite(node Node) {
 	s.carry[node.GetID()] -= 1.0
 }
 
-func (s *CarryWeightNodeSelector) Select(ns *nodeSet, excludeHosts []string, replicaNum int) (newHosts []string, peers []proto.Peer, err error) {
+func (s *CarryWeightNodeSelector) Select(ns *nodeSet, excludeHosts []string, replicaNum int, preferredHosts map[string]struct{}) (newHosts []string, peers []proto.Peer, err error) {
 	nodes := ns.getNodes(s.nodeType)
 	total := s.getTotalMax(nodes)
 	// prepare carry for every nodes
@@ -301,14 +301,29 @@ func (s *CarryWeightNodeSelector) Select(ns *nodeSet, excludeHosts []string, rep
 	s.setNodeCarry(weightedNodes, count, replicaNum)
 	// sort nodes by weight
 	sort.Sort(weightedNodes)
+
 	// pick first N nodes
-	for i := 0; i < replicaNum; i++ {
+	weightedNodesLen := len(weightedNodes)
+	var candidateNodes []Node
+	var finalNodes []Node
+	for i := 0; i < weightedNodesLen; i++ {
 		node := weightedNodes[i].Ptr
+
+		if _, isPreferred := preferredHosts[node.GetAddr()]; isPreferred {
+			finalNodes = append(finalNodes, node)
+		} else {
+			candidateNodes = append(candidateNodes, node)
+		}
+	}
+
+	finalNodes = append(finalNodes, candidateNodes...)[:replicaNum]
+	for _, node := range finalNodes {
 		s.selectNodeForWrite(node)
 		orderHosts = append(orderHosts, node.GetAddr())
 		peer := proto.Peer{ID: node.GetID(), Addr: node.GetAddr()}
 		peers = append(peers, peer)
 	}
+
 	log.LogInfof("action[%vNodeSelector::Select] peers[%v]", s.GetName(), peers)
 	// reshuffle for primary-backup replication
 	if newHosts, err = reshuffleHosts(orderHosts); err != nil {
@@ -346,7 +361,7 @@ func (s *AvailableSpaceFirstNodeSelector) GetName() string {
 	return AvailableSpaceFirstNodeSelectorName
 }
 
-func (s *AvailableSpaceFirstNodeSelector) Select(ns *nodeSet, excludeHosts []string, replicaNum int) (newHosts []string, peers []proto.Peer, err error) {
+func (s *AvailableSpaceFirstNodeSelector) Select(ns *nodeSet, excludeHosts []string, replicaNum int, preferredHosts map[string]struct{}) (newHosts []string, peers []proto.Peer, err error) {
 	newHosts = make([]string, 0)
 	peers = make([]proto.Peer, 0)
 	// if replica == 0, return
@@ -425,7 +440,7 @@ func (s *RoundRobinNodeSelector) GetName() string {
 	return RoundRobinNodeSelectorName
 }
 
-func (s *RoundRobinNodeSelector) Select(ns *nodeSet, excludeHosts []string, replicaNum int) (newHosts []string, peers []proto.Peer, err error) {
+func (s *RoundRobinNodeSelector) Select(ns *nodeSet, excludeHosts []string, replicaNum int, preferredHosts map[string]struct{}) (newHosts []string, peers []proto.Peer, err error) {
 	newHosts = make([]string, 0)
 	peers = make([]proto.Peer, 0)
 	// if replica == 0, return
@@ -554,7 +569,7 @@ func (s *TicketNodeSelector) GetNodeByTicket(ticket uint64, nodes []Node, exclud
 	return
 }
 
-func (s *TicketNodeSelector) Select(ns *nodeSet, excludeHosts []string, replicaNum int) (newHosts []string, peers []proto.Peer, err error) {
+func (s *TicketNodeSelector) Select(ns *nodeSet, excludeHosts []string, replicaNum int, preferredHosts map[string]struct{}) (newHosts []string, peers []proto.Peer, err error) {
 	newHosts = make([]string, 0)
 	peers = make([]proto.Peer, 0)
 	// if replica == 0, return
@@ -653,7 +668,7 @@ func (s *StrawNodeSelector) selectOneNode(nodes []Node) (index int, maxNode Node
 	return
 }
 
-func (s *StrawNodeSelector) Select(ns *nodeSet, excludeHosts []string, replicaNum int) (newHosts []string, peers []proto.Peer, err error) {
+func (s *StrawNodeSelector) Select(ns *nodeSet, excludeHosts []string, replicaNum int, preferredHosts map[string]struct{}) (newHosts []string, peers []proto.Peer, err error) {
 
 	nodes := make([]Node, 0)
 	ns.getNodes(s.nodeType).Range(func(key, value interface{}) bool {
@@ -726,14 +741,14 @@ func (ns *nodeSet) getAvailMetaNodeHosts(excludeHosts []string, replicaNum int) 
 	// we need a read lock to block the modify of node selector
 	ns.metaNodeSelectorLock.RLock()
 	defer ns.metaNodeSelectorLock.RUnlock()
-	return ns.metaNodeSelector.Select(ns, excludeHosts, replicaNum)
+	return ns.metaNodeSelector.Select(ns, excludeHosts, replicaNum, map[string]struct{}{})
 }
 
-func (ns *nodeSet) getAvailDataNodeHosts(excludeHosts []string, replicaNum int) (hosts []string, peers []proto.Peer, err error) {
+func (ns *nodeSet) getAvailDataNodeHosts(excludeHosts []string, replicaNum int, preferredHosts map[string]struct{}) (hosts []string, peers []proto.Peer, err error) {
 	ns.nodeSelectLock.Lock()
 	defer ns.nodeSelectLock.Unlock()
 	// we need a read lock to block the modification of node selector
 	ns.dataNodeSelectorLock.Lock()
 	defer ns.dataNodeSelectorLock.Unlock()
-	return ns.dataNodeSelector.Select(ns, excludeHosts, replicaNum)
+	return ns.dataNodeSelector.Select(ns, excludeHosts, replicaNum, preferredHosts)
 }

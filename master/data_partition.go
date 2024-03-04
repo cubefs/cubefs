@@ -1498,7 +1498,7 @@ func (partition *DataPartition) TryAcquireDecommissionToken(c *Cluster) bool {
 			goto errHandler
 		}
 
-		targetHosts, _, err = ns.getAvailDataNodeHosts(partition.Hosts, 1)
+		targetHosts, _, err = ns.getAvailDataNodeHosts(partition.Hosts, 1, map[string]struct{}{})
 		if err != nil {
 			log.LogWarnf("action[TryAcquireDecommissionToken] dp %v choose from src nodeset failed:%v",
 				partition.PartitionID, err.Error())
@@ -1514,7 +1514,7 @@ func (partition *DataPartition) TryAcquireDecommissionToken(c *Cluster) bool {
 				goto errHandler
 			}
 			excludeNodeSets = append(excludeNodeSets, ns.ID)
-			if targetHosts, _, err = zone.getAvailNodeHosts(TypeDataPartition, excludeNodeSets, partition.Hosts, 1); err != nil {
+			if targetHosts, _, err = zone.getAvailNodeHosts(TypeDataPartition, excludeNodeSets, partition.Hosts, 1, NewEmptyDataPartitionPreferredConfig()); err != nil {
 				// select data nodes from the other zone
 				zones = partition.getLiveZones(partition.DecommissionSrcAddr)
 				var excludeZone []string

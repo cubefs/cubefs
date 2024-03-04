@@ -405,8 +405,8 @@ const (
 	TypeDataPartition uint32 = 0x02
 )
 
-func (c *Cluster) getHostFromDomainZone(domainId uint64, createType uint32, replicaNum uint8, mediaType uint32) (hosts []string, peers []proto.Peer, err error) {
-	hosts, peers, err = c.domainManager.getHostFromNodeSetGrp(domainId, replicaNum, createType, mediaType)
+func (c *Cluster) getHostFromDomainZone(domainId uint64, createType uint32, replicaNum uint8, mediaType uint32, preferredConfig *DataPartitionPreferredConfig) (hosts []string, peers []proto.Peer, err error) {
+	hosts, peers, err = c.domainManager.getHostFromNodeSetGrp(domainId, replicaNum, createType, mediaType, preferredConfig)
 	return
 }
 
@@ -1401,7 +1401,7 @@ func (c *Cluster) batchCreatePreLoadDataPartition(vol *Vol, preload *DataPartiti
 	for i := 0; i < int(reqCreateCount); i++ {
 		log.LogInfof("create preload data partition (%v) total (%v)", i, reqCreateCount)
 		var dp *DataPartition
-		if dp, err = c.createDataPartition(vol.Name, preload, vol.cacheDpStorageClass); err != nil {
+		if dp, err = c.createDataPartition(vol.Name, preload, vol.cacheDpStorageClass, NewEmptyDataPartitionPreferredConfig()); err != nil {
 			log.LogErrorf("create preload data partition fail: volume(%v) err(%v)", vol.Name, err)
 			return err, nil
 		}
@@ -1412,7 +1412,7 @@ func (c *Cluster) batchCreatePreLoadDataPartition(vol *Vol, preload *DataPartiti
 	return
 }
 
-func (c *Cluster) batchCreateDataPartition(vol *Vol, reqCount int, init bool, mediaType uint32) (err error) {
+func (c *Cluster) batchCreateDataPartition(vol *Vol, reqCount int, init bool, mediaTypes []uint32) (err error) {
 	if !init {
 		if _, err = vol.needCreateDataPartition(); err != nil {
 			log.LogWarnf("action[batchCreateDataPartition] create data partition failed, err[%v]", err)
@@ -1420,7 +1420,7 @@ func (c *Cluster) batchCreateDataPartition(vol *Vol, reqCount int, init bool, me
 		}
 	}
 
-	var createdCnt int
+	mediaTypeDpCreatedCnt := map[uint32]int{}
 	for i := 0; i < reqCount; i++ {
 		if c.DisableAutoAllocate && !init {
 			log.LogWarn("disable auto allocate dataPartition")
@@ -1432,16 +1432,41 @@ func (c *Cluster) batchCreateDataPartition(vol *Vol, reqCount int, init bool, me
 			return fmt.Errorf("volume is forbidden")
 		}
 
-		if _, err = c.createDataPartition(vol.Name, nil, mediaType); err != nil {
-			log.LogErrorf("action[batchCreateDataPartition] after create [%v] data partition, occurred error,err[%v]", i, err)
-			break
+		var dpPrev *DataPartition
+		preferredConfig := NewEmptyDataPartitionPreferredConfig()
+		for _, mediaType := range mediaTypes {
+
+			if dpPrev != nil {
+				preferredConfig = NewDataPartitionPreferredConfig(dpPrev.Hosts, dpPrev.getNodeSets(), dpPrev.getZones())
+			}
+			var dp *DataPartition
+			if dp, err = c.createDataPartition(vol.Name, nil, mediaType, preferredConfig); err != nil {
+				log.LogErrorf("action[batchCreateDataPartition] after create [%v] data partition, occurred error,err[%v]", i, err)
+				break
+			}
+
+			if dpPrev != nil {
+				for _, host := range dp.Hosts {
+					if _, contain := preferredConfig.Hosts[host]; !contain {
+						log.LogDebugf("dp %v hosts %v doesn't match dp %v hosts %v", dpPrev.PartitionID, dpPrev.Hosts, dp.PartitionID, dp.Hosts)
+					}
+				}
+			}
+			dpPrev = dp
+
+			if _, exist := mediaTypeDpCreatedCnt[mediaType]; !exist {
+				mediaTypeDpCreatedCnt[mediaType] = 1
+			} else {
+				mediaTypeDpCreatedCnt[mediaType] = mediaTypeDpCreatedCnt[mediaType] + 1
+			}
 		}
-		createdCnt++
 	}
 
-	log.LogInfof("action[batchCreateDataPartition] vol(%v), created data partition count:%v, mediaType:%v",
-		vol.Name, createdCnt, proto.MediaTypeString(mediaType))
-	vol.dataPartitions.IncReadWriteDataPartitionCntByMediaType(createdCnt, mediaType)
+	for mediaType, cnt := range mediaTypeDpCreatedCnt {
+		log.LogInfof("action[batchCreateDataPartition] vol(%v), created data partition count:%v, mediaType:%v",
+			vol.Name, cnt, proto.MediaTypeString(mediaType))
+		vol.dataPartitions.IncReadWriteDataPartitionCntByMediaType(cnt, mediaType)
+	}
 	return
 }
 
@@ -1478,7 +1503,7 @@ func (c *Cluster) isFaultDomain(vol *Vol) bool {
 // - If succeeded, replicate the data through raft and persist it to RocksDB.
 // - Otherwise, throw errors
 
-func (c *Cluster) createDataPartition(volName string, preload *DataPartitionPreLoad, mediaType uint32) (dp *DataPartition, err error) {
+func (c *Cluster) createDataPartition(volName string, preload *DataPartitionPreLoad, mediaType uint32, preferredConfig *DataPartitionPreferredConfig) (dp *DataPartition, err error) {
 	var (
 		vol          *Vol
 		partitionID  uint64
@@ -1522,13 +1547,13 @@ func (c *Cluster) createDataPartition(volName string, preload *DataPartitionPreL
 	errChannel := make(chan error, dpReplicaNum)
 
 	if c.isFaultDomain(vol) {
-		if targetHosts, targetPeers, err = c.getHostFromDomainZone(vol.domainId, TypeDataPartition, dpReplicaNum, mediaType); err != nil {
+		if targetHosts, targetPeers, err = c.getHostFromDomainZone(vol.domainId, TypeDataPartition, dpReplicaNum, mediaType, NewEmptyDataPartitionPreferredConfig()); err != nil {
 			goto errHandler
 		}
 	} else {
 		zoneNum := c.decideZoneNum(vol.crossZone, mediaType)
 		if targetHosts, targetPeers, err = c.getHostFromNormalZoneByMediaType(TypeDataPartition, nil, nil, nil,
-			int(dpReplicaNum), zoneNum, zoneName, mediaType); err != nil {
+			int(dpReplicaNum), zoneNum, zoneName, mediaType, preferredConfig); err != nil {
 			goto errHandler
 		}
 	}
@@ -1669,7 +1694,7 @@ func (c *Cluster) decideZoneNum(crossZone bool, mediaType uint32) (zoneNum int) 
 }
 
 func (c *Cluster) chooseZone2Plus1(zones []*Zone, excludeNodeSets []uint64, excludeHosts []string,
-	nodeType uint32, replicaNum int) (hosts []string, peers []proto.Peer, err error) {
+	nodeType uint32, replicaNum int, preferredConfig *DataPartitionPreferredConfig) (hosts []string, peers []proto.Peer, err error) {
 
 	if replicaNum < 2 || replicaNum > 3 {
 		return nil, nil, fmt.Errorf("action[chooseZone2Plus1] replicaNum [%v]", replicaNum)
@@ -1699,7 +1724,7 @@ func (c *Cluster) chooseZone2Plus1(zones []*Zone, excludeNodeSets []uint64, excl
 
 	num := 1
 	for _, zone := range zoneList {
-		selectedHosts, selectedPeers, e := zone.getAvailNodeHosts(nodeType, excludeNodeSets, excludeHosts, num)
+		selectedHosts, selectedPeers, e := zone.getAvailNodeHosts(nodeType, excludeNodeSets, excludeHosts, num, preferredConfig)
 		if e != nil {
 			log.LogErrorf("action[getHostFromNormalZone] error [%v]", e)
 			return nil, nil, e
@@ -1718,7 +1743,7 @@ func (c *Cluster) chooseZone2Plus1(zones []*Zone, excludeNodeSets []uint64, excl
 }
 
 func (c *Cluster) chooseZoneNormal(zones []*Zone, excludeNodeSets []uint64, excludeHosts []string,
-	nodeType uint32, replicaNum int) (hosts []string, peers []proto.Peer, err error) {
+	nodeType uint32, replicaNum int, preferredConfig *DataPartitionPreferredConfig) (hosts []string, peers []proto.Peer, err error) {
 	log.LogInfof("action[chooseZoneNormal] zones[%s] nodeType[%d] replicaNum[%d]", printZonesName(zones), nodeType, replicaNum)
 
 	c.zoneIdxMux.Lock()
@@ -1727,7 +1752,7 @@ func (c *Cluster) chooseZoneNormal(zones []*Zone, excludeNodeSets []uint64, excl
 	for i := 0; i < replicaNum; i++ {
 		zone := zones[c.lastZoneIdxForNode]
 		c.lastZoneIdxForNode = (c.lastZoneIdxForNode + 1) % len(zones)
-		selectedHosts, selectedPeers, err := zone.getAvailNodeHosts(nodeType, excludeNodeSets, excludeHosts, 1)
+		selectedHosts, selectedPeers, err := zone.getAvailNodeHosts(nodeType, excludeNodeSets, excludeHosts, 1, preferredConfig)
 		if err != nil {
 			log.LogErrorf("action[chooseZoneNormal] error [%v]", err)
 			return nil, nil, err
@@ -1745,11 +1770,11 @@ func (c *Cluster) getHostFromNormalZone(nodeType uint32, excludeZones []string, 
 	mediaType uint32) (hosts []string, peers []proto.Peer, err error) {
 
 	return c.getHostFromNormalZoneByMediaType(nodeType, excludeZones, excludeNodeSets, excludeHosts, replicaNum,
-		zoneNum, specifiedZone, mediaType)
+		zoneNum, specifiedZone, mediaType, NewEmptyDataPartitionPreferredConfig())
 }
 
-func (c *Cluster) getHostFromNormalZoneByMediaType(nodeType uint32, excludeZones []string, excludeNodeSets []uint64,
-	excludeHosts []string, replicaNum int, zoneNum int, specifiedZone string, mediaType uint32) (hosts []string, peers []proto.Peer, err error) {
+func (c *Cluster) getHostFromNormalZoneByMediaType(nodeType uint32, excludeZones []string, excludeNodeSets []uint64, excludeHosts []string,
+	replicaNum int, zoneNum int, specifiedZone string, mediaType uint32, preferredConfig *DataPartitionPreferredConfig) (hosts []string, peers []proto.Peer, err error) {
 
 	var zones []*Zone
 	zones = make([]*Zone, 0)
@@ -1786,7 +1811,7 @@ func (c *Cluster) getHostFromNormalZoneByMediaType(nodeType uint32, excludeZones
 		}
 	} else {
 		if nodeType == TypeDataPartition {
-			if zones, err = c.t.allocZonesForDataNode(zoneNum, replicaNum, excludeZones, mediaType); err != nil {
+			if zones, err = c.t.allocZonesForDataNode(zoneNum, replicaNum, excludeZones, mediaType, preferredConfig); err != nil {
 				return
 			}
 		} else {
@@ -1805,7 +1830,7 @@ func (c *Cluster) getHostFromNormalZoneByMediaType(nodeType uint32, excludeZones
 	if len(zones) == 1 {
 		log.LogInfof("action[getHostFromNormalZoneByMediaType] zones [%v] mediaType(%v)",
 			zones[0].name, proto.MediaTypeString(mediaType))
-		if hosts, peers, err = zones[0].getAvailNodeHosts(nodeType, excludeNodeSets, excludeHosts, replicaNum); err != nil {
+		if hosts, peers, err = zones[0].getAvailNodeHosts(nodeType, excludeNodeSets, excludeHosts, replicaNum, preferredConfig); err != nil {
 			log.LogErrorf("action[getHostFromNormalZoneByMediaType],err[%v]", err.Error())
 			return
 		}
@@ -1819,11 +1844,11 @@ func (c *Cluster) getHostFromNormalZoneByMediaType(nodeType uint32, excludeZones
 	}
 
 	if c.cfg.DefaultNormalZoneCnt == defaultNormalCrossZoneCnt && len(zones) >= defaultNormalCrossZoneCnt {
-		if hosts, peers, err = c.chooseZoneNormal(zones, excludeNodeSets, excludeHosts, nodeType, replicaNum); err != nil {
+		if hosts, peers, err = c.chooseZoneNormal(zones, excludeNodeSets, excludeHosts, nodeType, replicaNum, preferredConfig); err != nil {
 			return
 		}
 	} else {
-		if hosts, peers, err = c.chooseZone2Plus1(zones, excludeNodeSets, excludeHosts, nodeType, replicaNum); err != nil {
+		if hosts, peers, err = c.chooseZone2Plus1(zones, excludeNodeSets, excludeHosts, nodeType, replicaNum, preferredConfig); err != nil {
 			return
 		}
 	}
@@ -2262,7 +2287,7 @@ func (c *Cluster) autoAddDataReplica(dp *DataPartition) (success bool, err error
 		if ns, err = zone.getNodeSet(nodeSets[0]); err != nil {
 			goto errHandler
 		}
-		if targetHosts, _, err = ns.getAvailDataNodeHosts(dp.Hosts, 1); err != nil {
+		if targetHosts, _, err = ns.getAvailDataNodeHosts(dp.Hosts, 1, map[string]struct{}{}); err != nil {
 			goto errHandler
 		}
 	}
@@ -2363,7 +2388,7 @@ func (c *Cluster) migrateDataPartition(srcAddr, targetAddr string, dp *DataParti
 
 	if targetAddr != "" {
 		targetHosts = []string{targetAddr}
-	} else if targetHosts, _, err = ns.getAvailDataNodeHosts(dp.Hosts, 1); err != nil {
+	} else if targetHosts, _, err = ns.getAvailDataNodeHosts(dp.Hosts, 1, map[string]struct{}{}); err != nil {
 		if _, ok := c.vols[dp.VolName]; !ok {
 			log.LogWarnf("clusterID[%v] partitionID:%v  on node:%v offline failed,PersistenceHosts:[%v]",
 				c.Name, dp.PartitionID, srcAddr, dp.Hosts)
@@ -2376,7 +2401,7 @@ func (c *Cluster) migrateDataPartition(srcAddr, targetAddr string, dp *DataParti
 		}
 		// select data nodes from the other node set in same zone
 		excludeNodeSets = append(excludeNodeSets, ns.ID)
-		if targetHosts, _, err = zone.getAvailNodeHosts(TypeDataPartition, excludeNodeSets, dp.Hosts, 1); err != nil {
+		if targetHosts, _, err = zone.getAvailNodeHosts(TypeDataPartition, excludeNodeSets, dp.Hosts, 1, NewEmptyDataPartitionPreferredConfig()); err != nil {
 			// select data nodes from the other zone
 			zones = dp.getLiveZones(srcAddr)
 			var excludeZone []string
@@ -3252,36 +3277,40 @@ func (c *Cluster) GetFastReplicaStorageClassFromCluster(resourceChecker *Storage
 	return
 }
 
-func (c *Cluster) initDataPartitionsForCreateVol(vol *Vol, mediaType uint32) (readWriteDpCountOfMediaType int, err error) {
-	for retryCount := 0; readWriteDpCountOfMediaType < defaultInitMetaPartitionCount && retryCount < 3; retryCount++ {
-		err = vol.initDataPartitions(c, mediaType)
-		readWriteDpCountOfMediaType = vol.dataPartitions.getReadWriteDataPartitionCntByMediaType(mediaType)
-		if err != nil {
-			log.LogError("[initDataPartitionsForCreateVol] init dataPartition failed, vol(%v) mediaType(%v)"+
-				" retryCount(%v) readWriteDpCountOfMediaType(%v), error:",
-				vol.Name, proto.MediaTypeString(mediaType), retryCount, readWriteDpCountOfMediaType, err.Error())
-		}
+func (c *Cluster) initDataPartitionsForCreateVol(vol *Vol, mediaTypes []uint32) (err error) {
+	err = vol.initDataPartitions(c, mediaTypes)
+	if err != nil {
+		log.LogError("[initDataPartitionsForCreateVol] init dataPartition failed, vol(%v) , error:",
+			vol.Name, err.Error())
+		goto errHandle
 	}
 
-	if readWriteDpCountOfMediaType < defaultInitMetaPartitionCount {
-		err = fmt.Errorf("[initDataPartitionsForCreateVol] init dataPartition failed, vol(%v) mediaType(%v),                                     "+
-			"readWriteDpCountOfMediaType(%v) less than %d",
-			vol.Name, proto.MediaTypeString(mediaType), readWriteDpCountOfMediaType, defaultInitMetaPartitionCount)
-		log.LogError(err.Error())
-
-		oldVolStatus := vol.Status
-		vol.Status = markDelete
-		if errSync := c.syncUpdateVol(vol); errSync != nil {
-			log.LogErrorf("[initDataPartitionsForCreateVol] vol[%v] after init dataPartition error, mark vol delete persist failed", vol.Name)
-			vol.Status = oldVolStatus
-		} else {
-			log.LogErrorf("[initDataPartitionsForCreateVol] vol[%v] mark vol delete after init dataPartition error", vol.Name)
+	for _, mediaType := range mediaTypes {
+		readWriteDpCountOfMediaType := vol.dataPartitions.getReadWriteDataPartitionCntByMediaType(mediaType)
+		if readWriteDpCountOfMediaType < defaultInitMetaPartitionCount {
+			err = fmt.Errorf("[initDataPartitionsForCreateVol] init dataPartition failed, vol(%v) mediaType(%v),                                     "+
+				"readWriteDpCountOfMediaType(%v) less than %d",
+				vol.Name, proto.MediaTypeString(mediaType), readWriteDpCountOfMediaType, defaultInitMetaPartitionCount)
+			log.LogError(err.Error())
+			goto errHandle
 		}
-
-		return readWriteDpCountOfMediaType, err
+		log.LogInfof("action[initDataPartitionsForCreateVol] vol[%v] created dp cnt[%v] mediaType(%v)",
+			vol.Name, readWriteDpCountOfMediaType, proto.MediaTypeString(mediaType))
 	}
 
-	return readWriteDpCountOfMediaType, nil
+	return
+
+errHandle:
+	oldVolStatus := vol.Status
+	vol.Status = markDelete
+	if errSync := c.syncUpdateVol(vol); errSync != nil {
+		log.LogErrorf("[initDataPartitionsForCreateVol] vol[%v] after init dataPartition error, mark vol delete persist failed", vol.Name)
+		vol.Status = oldVolStatus
+	} else {
+		log.LogErrorf("[initDataPartitionsForCreateVol] vol[%v] mark vol delete after init dataPartition error", vol.Name)
+	}
+
+	return
 }
 
 // Create a new volume.
@@ -3291,10 +3320,6 @@ func (c *Cluster) createVol(req *createVolReq) (vol *Vol, err error) {
 		log.LogWarn("the cluster is frozen")
 		return nil, fmt.Errorf("the cluster is frozen, can not create volume")
 	}
-
-	var (
-		readWriteDpCountOfMediaType int
-	)
 
 	if req.zoneName, err = c.checkZoneName(req.name, req.crossZone, req.normalZonesFirst, req.zoneName, req.domainId); err != nil {
 		return
@@ -3325,28 +3350,25 @@ func (c *Cluster) createVol(req *createVolReq) (vol *Vol, err error) {
 
 	// init data partitions according to vol parameters
 	if proto.IsStorageClassReplica(vol.volStorageClass) {
+		var chosenMediaTypes []uint32
 		for _, acs := range req.allowedStorageClass {
 			if !proto.IsStorageClassReplica(acs) {
 				continue
 			}
+			chosenMediaTypes = append(chosenMediaTypes, proto.GetMediaTypeByStorageClass(acs))
+		}
 
-			chosenMediaType := proto.GetMediaTypeByStorageClass(acs)
-			if readWriteDpCountOfMediaType, err = c.initDataPartitionsForCreateVol(vol, chosenMediaType); err != nil {
-				goto errHandler
-			}
-			log.LogInfof("action[createVol] vol[%v] created dp cnt[%v] mediaType(%v) for replica",
-				req.name, readWriteDpCountOfMediaType, proto.MediaTypeString(chosenMediaType))
+		if err = c.initDataPartitionsForCreateVol(vol, chosenMediaTypes); err != nil {
+			goto errHandler
 		}
 	} else if proto.IsStorageClassBlobStore(vol.volStorageClass) && vol.CacheCapacity > 0 {
 		chosenMediaType := proto.GetMediaTypeByStorageClass(vol.cacheDpStorageClass)
 
 		log.LogInfof("action[createVol] vol[%v] to create cache dp with storageClass(%v) for blobStore",
 			req.name, proto.StorageClassString(vol.cacheDpStorageClass))
-		if readWriteDpCountOfMediaType, err = c.initDataPartitionsForCreateVol(vol, chosenMediaType); err != nil {
+		if err = c.initDataPartitionsForCreateVol(vol, []uint32{chosenMediaType}); err != nil {
 			goto errHandler
 		}
-		log.LogInfof("action[createVol] vol[%v] created dp cnt[%v] mediaType(%v) for blobStore",
-			req.name, readWriteDpCountOfMediaType, proto.MediaTypeString(chosenMediaType))
 	}
 
 	vol.dataPartitions.updateResponseCache(true, 0, vol.VolType)

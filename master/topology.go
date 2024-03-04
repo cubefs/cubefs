@@ -538,7 +538,7 @@ func (nsgm *DomainManager) buildNodeSetGrp(domainGrpManager *DomainNodeSetGrpMan
 }
 
 func (nsgm *DomainManager) getHostFromNodeSetGrpSpecific(domainGrpManager *DomainNodeSetGrpManager, replicaNum uint8,
-	createType uint32, mediaType uint32) (
+	createType uint32, mediaType uint32, preferredHosts map[string]struct{}) (
 	hosts []string,
 	peers []proto.Peer,
 	err error) {
@@ -586,7 +586,7 @@ func (nsgm *DomainManager) getHostFromNodeSetGrpSpecific(domainGrpManager *Domai
 				}
 
 				if createType == TypeDataPartition {
-					if host, peer, err = ns.getAvailDataNodeHosts(nil, needNum); err != nil {
+					if host, peer, err = ns.getAvailDataNodeHosts(nil, needNum, preferredHosts); err != nil {
 						log.LogErrorf("action[getHostFromNodeSetGrpSpecific] ns[%v] zone[%v] TypeDataPartition err[%v]", ns.ID, ns.zoneName, err)
 						//nsg.status = dataNodesUnAvailable
 						continue
@@ -615,7 +615,7 @@ func (nsgm *DomainManager) getHostFromNodeSetGrpSpecific(domainGrpManager *Domai
 	return nil, nil, fmt.Errorf("action[getHostFromNodeSetGrpSpecific] cann't alloc host")
 }
 
-func (nsgm *DomainManager) getHostFromNodeSetGrp(domainId uint64, replicaNum uint8, createType uint32, mediaType uint32) (
+func (nsgm *DomainManager) getHostFromNodeSetGrp(domainId uint64, replicaNum uint8, createType uint32, mediaType uint32, preferredConfig *DataPartitionPreferredConfig) (
 	hosts []string,
 	peers []proto.Peer,
 	err error) {
@@ -633,7 +633,7 @@ func (nsgm *DomainManager) getHostFromNodeSetGrp(domainId uint64, replicaNum uin
 
 	// this scenario is abnormal  may be caused by zone unavailable in high probability
 	if domainGrpManager.status != normal {
-		return nsgm.getHostFromNodeSetGrpSpecific(domainGrpManager, replicaNum, createType, mediaType)
+		return nsgm.getHostFromNodeSetGrpSpecific(domainGrpManager, replicaNum, createType, mediaType, preferredConfig.Hosts)
 	}
 
 	// grp map be build with three zone on standard,no grp if zone less than three,here will build
@@ -690,7 +690,7 @@ func (nsgm *DomainManager) getHostFromNodeSetGrp(domainId uint64, replicaNum uin
 					log.LogWarnf("action[getHostFromNodeSetGrp] ns[%v] zone[%v] dataNodesUnAvailable", ns.ID, ns.zoneName)
 					continue
 				}
-				if host, peer, err = ns.getAvailDataNodeHosts(hosts, 1); err != nil {
+				if host, peer, err = ns.getAvailDataNodeHosts(hosts, 1, preferredConfig.Hosts); err != nil {
 					log.LogWarnf("action[getHostFromNodeSetGrp] ns[%v] zone[%v] TypeDataPartition err[%v]", ns.ID, ns.zoneName, err)
 					//nsg.status = dataNodesUnAvailable
 					continue
@@ -1391,7 +1391,7 @@ func (t *topology) allocZonesForMetaNode(zoneNum, replicaNum int, excludeZone []
 	return
 }
 
-func (t *topology) allocZonesForDataNode(zoneNum, replicaNum int, excludeZone []string, mediaType uint32) (zones []*Zone, err error) {
+func (t *topology) allocZonesForDataNode(zoneNum, replicaNum int, excludeZone []string, mediaType uint32, preferredConfig *DataPartitionPreferredConfig) (zones []*Zone, err error) {
 	// domain enabled and have old zones to be used
 	if len(t.domainExcludeZones) > 0 {
 		zones = t.getDomainExcludeZones()
@@ -1421,7 +1421,8 @@ func (t *topology) allocZonesForDataNode(zoneNum, replicaNum int, excludeZone []
 
 	demandWriteNodes := calculateDemandWriteNodes(zoneNum, replicaNum)
 	candidateZones := make([]*Zone, 0)
-
+	preferredZones := make([]*Zone, 0)
+	preferredZonesLen := len(preferredConfig.Zones)
 	for i := 0; i < len(zones); i++ {
 		if t.zoneIndexForDataNode >= len(zones) {
 			t.zoneIndexForDataNode = 0
@@ -1437,9 +1438,17 @@ func (t *topology) allocZonesForDataNode(zoneNum, replicaNum int, excludeZone []
 			continue
 		}
 		if zone.canWriteForDataNode(uint8(demandWriteNodes)) {
-			candidateZones = append(candidateZones, zone)
+			if _, isPreferred := preferredConfig.Zones[zone.name]; isPreferred {
+				preferredZones = append(preferredZones, zone)
+			} else {
+				candidateZones = append(candidateZones, zone)
+			}
 		}
-		if len(candidateZones) >= zoneNum {
+
+		if preferredZonesLen == 0 && len(candidateZones) >= zoneNum {
+			break
+		}
+		if preferredZonesLen >= zoneNum {
 			break
 		}
 	}
@@ -1450,7 +1459,7 @@ func (t *topology) allocZonesForDataNode(zoneNum, replicaNum int, excludeZone []
 			zoneNum, len(candidateZones), demandWriteNodes, mediaType, proto.ErrNoZoneToCreateDataPartition))
 		return nil, errors.NewError(proto.ErrNoZoneToCreateDataPartition)
 	}
-	zones = candidateZones
+	zones = append(preferredZones, candidateZones...)[:zoneNum]
 	err = nil
 	return
 }
@@ -1758,7 +1767,7 @@ func (zone *Zone) deleteMetaNode(metaNode *MetaNode) (err error) {
 	return
 }
 
-func (zone *Zone) allocNodeSetForDataNode(excludeNodeSets []uint64, replicaNum uint8) (ns *nodeSet, err error) {
+func (zone *Zone) allocNodeSetForDataNode(excludeNodeSets []uint64, replicaNum uint8, preferredNodeSets map[uint64]struct{}) (ns *nodeSet, err error) {
 
 	nset := zone.getAllNodeSet()
 	if nset == nil {
@@ -1771,7 +1780,7 @@ func (zone *Zone) allocNodeSetForDataNode(excludeNodeSets []uint64, replicaNum u
 	zone.dataNodesetSelectorLock.RLock()
 	defer zone.dataNodesetSelectorLock.RUnlock()
 
-	ns, err = zone.dataNodesetSelector.Select(nset, excludeNodeSets, replicaNum)
+	ns, err = zone.dataNodesetSelector.Select(nset, excludeNodeSets, replicaNum, preferredNodeSets)
 
 	if err != nil {
 		log.LogErrorf("action[allocNodeSetForDataNode],nset len[%v],excludeNodeSets[%v],rNum[%v] err:%v",
@@ -1792,7 +1801,7 @@ func (zone *Zone) allocNodeSetForMetaNode(excludeNodeSets []uint64, replicaNum u
 	// we need a read lock to block the modify of nodeset selector
 	zone.metaNodesetSelectorLock.RLock()
 	defer zone.metaNodesetSelectorLock.RUnlock()
-	ns, err = zone.metaNodesetSelector.Select(nset, excludeNodeSets, replicaNum)
+	ns, err = zone.metaNodesetSelector.Select(nset, excludeNodeSets, replicaNum, map[uint64]struct{}{})
 
 	if err != nil {
 		log.LogError(fmt.Sprintf("action[allocNodeSetForMetaNode],zone[%v],excludeNodeSets[%v],rNum[%v],err:%v",
@@ -1940,7 +1949,7 @@ func (zone *Zone) getDataNodeMaxTotal() (maxTotal uint64) {
 	return
 }
 
-func (zone *Zone) getAvailNodeHosts(nodeType uint32, excludeNodeSets []uint64, excludeHosts []string, replicaNum int) (newHosts []string, peers []proto.Peer, err error) {
+func (zone *Zone) getAvailNodeHosts(nodeType uint32, excludeNodeSets []uint64, excludeHosts []string, replicaNum int, preferredConfig *DataPartitionPreferredConfig) (newHosts []string, peers []proto.Peer, err error) {
 	if replicaNum == 0 {
 		return
 	}
@@ -1948,11 +1957,11 @@ func (zone *Zone) getAvailNodeHosts(nodeType uint32, excludeNodeSets []uint64, e
 	log.LogDebugf("[x] get node host, zone(%s), nodeType(%d)", zone.name, nodeType)
 
 	if nodeType == TypeDataPartition {
-		ns, err := zone.allocNodeSetForDataNode(excludeNodeSets, uint8(replicaNum))
+		ns, err := zone.allocNodeSetForDataNode(excludeNodeSets, uint8(replicaNum), preferredConfig.NodeSets)
 		if err != nil {
 			return nil, nil, errors.Trace(err, "zone[%v] alloc node set,replicaNum[%v]", zone.name, replicaNum)
 		}
-		return ns.getAvailDataNodeHosts(excludeHosts, replicaNum)
+		return ns.getAvailDataNodeHosts(excludeHosts, replicaNum, preferredConfig.Hosts)
 	}
 
 	ns, err := zone.allocNodeSetForMetaNode(excludeNodeSets, uint8(replicaNum))
@@ -2469,4 +2478,33 @@ func (l *DecommissionDiskList) PopMarkDecommissionDisk(limit int) (count int, co
 		log.LogDebugf("action[PopMarkDecommissionDisk] pop disk[%v]", disk)
 	}
 	return count, collection
+}
+
+type DataPartitionPreferredConfig struct {
+	Zones    map[string]struct{}
+	NodeSets map[uint64]struct{}
+	Hosts    map[string]struct{}
+}
+
+func NewEmptyDataPartitionPreferredConfig() *DataPartitionPreferredConfig {
+	return NewDataPartitionPreferredConfig(nil, nil, nil)
+}
+
+func NewDataPartitionPreferredConfig(hosts []string, nodeSets []uint64, zones []string) *DataPartitionPreferredConfig {
+	cfg := &DataPartitionPreferredConfig{
+		Zones:    make(map[string]struct{}),
+		NodeSets: make(map[uint64]struct{}),
+		Hosts:    make(map[string]struct{}),
+	}
+
+	for _, host := range hosts {
+		cfg.Hosts[host] = struct{}{}
+	}
+	for _, nodeset := range nodeSets {
+		cfg.NodeSets[nodeset] = struct{}{}
+	}
+	for _, zone := range zones {
+		cfg.Zones[zone] = struct{}{}
+	}
+	return cfg
 }
