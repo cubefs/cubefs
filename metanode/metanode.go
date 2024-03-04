@@ -25,6 +25,7 @@ import (
 
 	"github.com/xtaci/smux"
 
+	"github.com/cubefs/cubefs/blobstore/common/trace"
 	"github.com/cubefs/cubefs/cmd/common"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/raftstore"
@@ -45,6 +46,9 @@ var (
 	smuxPortShift  int
 	smuxPool       *util.SmuxConnectPool
 	smuxPoolCfg    = util.DefaultSmuxConnPoolConfig()
+
+	getSpan     = trace.SpanFromContextSafe
+	spanContext = trace.StartSpanFromContext
 )
 
 // The MetaNode manages the dentry and inode information of the meta partitions on a meta node.

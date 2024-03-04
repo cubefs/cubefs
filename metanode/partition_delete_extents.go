@@ -26,7 +26,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cubefs/cubefs/blobstore/common/trace"
 	"github.com/cubefs/cubefs/blobstore/util/log"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/synclist"
@@ -52,7 +51,7 @@ func (mp *metaPartition) startToDeleteExtents() {
 func (mp *metaPartition) createExtentDeleteFile(ctx context.Context, prefix string, idx int64, fileList *synclist.SyncList) (
 	fp *os.File, fileName string, fileSize int64, err error,
 ) {
-	span := trace.SpanFromContextSafe(ctx)
+	span := getSpan(ctx)
 	fileName = fmt.Sprintf("%s_%d", prefix, idx)
 	fp, err = os.OpenFile(path.Join(mp.config.RootDir, fileName), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
 	if err != nil {
@@ -61,7 +60,7 @@ func (mp *metaPartition) createExtentDeleteFile(ctx context.Context, prefix stri
 	}
 	if _, err = fp.Write(extentsFileHeader); err != nil {
 		span.Errorf("Write %v %v error %v", mp.config.RootDir, fileName, err)
-		// TODO: return ???
+		// TODO ???: return
 	}
 	fileSize = int64(len(extentsFileHeader))
 	fileList.PushBack(fileName)
@@ -95,7 +94,7 @@ LOOP:
 		fileSize = info.Size()
 	}
 
-	span, ctx := trace.StartSpanFromContext(context.Background(), "")
+	span, ctx := spanContext(context.Background(), "")
 	// check
 	lastItem := fileList.Back()
 	if lastItem != nil {
@@ -134,7 +133,7 @@ LOOP:
 			fileList.Init()
 			goto LOOP
 		case eks := <-mp.extDelCh:
-			span, ctx = trace.StartSpanFromContext(context.Background(), "")
+			span, ctx = spanContext(context.Background(), "")
 			span = span.WithOperation(fmt.Sprintf("vol(%s)pid(%d)", mp.GetVolName(), mp.config.PartitionId))
 
 			var data []byte
@@ -211,7 +210,7 @@ func (mp *metaPartition) deleteExtentsFromList(fileList *synclist.SyncList) {
 			goto LOOP
 		}
 
-		span, ctx := trace.StartSpanFromContext(context.Background(), "")
+		span, ctx := spanContext(context.Background(), "")
 		span = span.WithOperation(fmt.Sprintf("vol(%s)pid(%d)", mp.GetVolName(), mp.config.PartitionId))
 		// if not leader, ignore delete
 		if _, ok := mp.IsLeader(); !ok {
