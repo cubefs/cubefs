@@ -15,6 +15,7 @@
 package metanode
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	syslog "log"
@@ -384,7 +385,7 @@ func (m *metadataManager) getPartition(id uint64) (mp MetaPartition, err error) 
 	if ok {
 		return
 	}
-	err = errors.New(fmt.Sprintf("unknown meta partition: %d", id))
+	err = errors.Newf("unknown meta partition: %d", id)
 	return
 }
 
@@ -535,9 +536,10 @@ func (m *metadataManager) detachPartition(id uint64) (err error) {
 	return
 }
 
-func (m *metadataManager) createPartition(request *proto.CreateMetaPartitionRequest) (err error) {
-	partitionId := fmt.Sprintf("%d", request.PartitionID)
-	log.LogInfof("start create meta Partition, partition %s", partitionId)
+func (m *metadataManager) createPartition(ctx context.Context, request *proto.CreateMetaPartitionRequest) (err error) {
+	pid := util.Any2String(request.PartitionID)
+	span := getSpan(ctx)
+	span.Infof("start create meta Partition, partition", pid)
 
 	mpc := &MetaPartitionConfig{
 		PartitionId: request.PartitionID,
@@ -549,7 +551,7 @@ func (m *metadataManager) createPartition(request *proto.CreateMetaPartitionRequ
 		Peers:       request.Members,
 		RaftStore:   m.raftStore,
 		NodeId:      m.nodeId,
-		RootDir:     path.Join(m.rootDir, partitionPrefix+partitionId),
+		RootDir:     path.Join(m.rootDir, partitionPrefix+pid),
 		ConnPool:    m.connPool,
 		VerSeq:      request.VerSeq,
 	}
@@ -565,6 +567,7 @@ func (m *metadataManager) createPartition(request *proto.CreateMetaPartitionRequ
 
 	if err = partition.RenameStaleMetadata(); err != nil {
 		err = errors.NewErrorf("[createPartition]->%s", err.Error())
+		// TODO ???: return
 	}
 
 	if err = partition.PersistMetadata(); err != nil {
@@ -574,7 +577,7 @@ func (m *metadataManager) createPartition(request *proto.CreateMetaPartitionRequ
 
 	if err = partition.Start(true); err != nil {
 		os.RemoveAll(mpc.RootDir)
-		log.LogErrorf("load meta partition %v fail: %v", request.PartitionID, err)
+		span.Errorf("load meta partition %v fail: %v", request.PartitionID, err)
 		err = errors.NewErrorf("[createPartition]->%s", err.Error())
 		return
 	}
@@ -590,8 +593,7 @@ func (m *metadataManager) createPartition(request *proto.CreateMetaPartitionRequ
 	}
 
 	m.partitions[request.PartitionID] = partition
-	log.LogInfof("load meta partition %v success", request.PartitionID)
-
+	span.Infof("load meta partition %v success", request.PartitionID)
 	return
 }
 
