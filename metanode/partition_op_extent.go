@@ -70,7 +70,7 @@ func (mp *metaPartition) ExtentAppend(req *proto.AppendExtentKeyRequest, p *Pack
 	}
 	ino := NewInode(req.Inode, 0)
 	if _, _, err = mp.CheckQuota(req.Inode, p); err != nil {
-		log.LogErrorf("ExtentAppend fail status [%v]", err)
+		p.Span().Errorf("ExtentAppend fail status [%v]", err)
 		return
 	}
 	ext := req.Extent
@@ -92,9 +92,10 @@ func (mp *metaPartition) ExtentAppend(req *proto.AppendExtentKeyRequest, p *Pack
 // ExtentAppendWithCheck appends an extent with discard extents check.
 // Format: one valid extent key followed by non or several discard keys.
 func (mp *metaPartition) ExtentAppendWithCheck(req *proto.AppendExtentKeyWithCheckRequest, p *Packet) (err error) {
+	span := p.Span()
 	status := mp.isOverQuota(req.Inode, true, false)
 	if status != 0 {
-		log.LogErrorf("ExtentAppendWithCheck fail status [%v]", status)
+		span.Errorf("fail status [%v]", status)
 		err = errors.New("ExtentAppendWithCheck is over quota")
 		reply := []byte(err.Error())
 		p.PacketErrorWithBody(status, reply)
@@ -105,7 +106,7 @@ func (mp *metaPartition) ExtentAppendWithCheck(req *proto.AppendExtentKeyWithChe
 		i       *Inode
 	)
 	if inoParm, i, err = mp.CheckQuota(req.Inode, p); err != nil {
-		log.LogErrorf("ExtentAppendWithCheck CheckQuota fail err [%v]", err)
+		span.Errorf("CheckQuota fail err [%v]", err)
 		return
 	}
 
@@ -134,7 +135,7 @@ func (mp *metaPartition) ExtentAppendWithCheck(req *proto.AppendExtentKeyWithChe
 	// use inode verSeq instead
 	inoParm.setVer(mp.verSeq)
 	inoParm.Extents.Append(ext)
-	log.LogDebugf("ExtentAppendWithCheck: ino(%v) mp[%v] verSeq (%v)", req.Inode, req.PartitionID, mp.verSeq)
+	span.Debugf("ino(%v) mp[%v] verSeq (%v)", req.Inode, req.PartitionID, mp.verSeq)
 
 	// Store discard extents right after the append extent key.
 	if len(req.DiscardExtents) != 0 {
@@ -155,8 +156,7 @@ func (mp *metaPartition) ExtentAppendWithCheck(req *proto.AppendExtentKeyWithChe
 		return
 	}
 
-	log.LogDebugf("ExtentAppendWithCheck: ino(%v) mp[%v] verSeq (%v) req.VerSeq(%v) rspcode(%v)", req.Inode, req.PartitionID, mp.verSeq, req.VerSeq, resp.(uint8))
-
+	span.Debugf("ino(%v) mp[%v] verSeq (%v) req.VerSeq(%v) rspcode(%v)", req.Inode, req.PartitionID, mp.verSeq, req.VerSeq, resp.(uint8))
 	if mp.verSeq > req.VerSeq {
 		// reuse ExtentType to identify flag of version inconsistent between metanode and client
 		// will resp to client and make client update all streamer's extent and it's verSeq
@@ -378,7 +378,8 @@ func (mp *metaPartition) GetUidInfo() (info []*proto.UidReportSpaceInfo) {
 
 // ExtentsList returns the list of extents.
 func (mp *metaPartition) ExtentsList(req *proto.GetExtentsRequest, p *Packet) (err error) {
-	log.LogDebugf("action[ExtentsList] inode[%v] verseq [%v]", req.Inode, req.VerSeq)
+	span := p.Span()
+	span.Debugf("inode[%v] verseq [%v]", req.Inode, req.VerSeq)
 
 	// note:don't need set reqSeq, extents get be done in next step
 	ino := NewInode(req.Inode, 0)
@@ -393,7 +394,7 @@ func (mp *metaPartition) ExtentsList(req *proto.GetExtentsRequest, p *Packet) (e
 
 	if status == proto.OpOk {
 		resp := &proto.GetExtentsResponse{}
-		log.LogInfof("action[ExtentsList] inode[%v] request verseq [%v] ino ver [%v] extent size %v ino.Size %v ino[%v] hist len %v",
+		span.Infof("inode[%v] request verseq [%v] ino ver [%v] extent size %v ino.Size %v ino[%v] hist len %v",
 			req.Inode, req.VerSeq, ino.getVer(), len(ino.Extents.eks), ino.Size, ino, ino.getLayerLen())
 
 		if req.VerSeq > 0 && ino.getVer() > 0 && (req.VerSeq < ino.getVer() || isInitSnapVer(req.VerSeq)) {
@@ -410,7 +411,7 @@ func (mp *metaPartition) ExtentsList(req *proto.GetExtentsRequest, p *Packet) (e
 				resp.Size = ino.Size
 				ino.Extents.Range(func(_ int, ek proto.ExtentKey) bool {
 					resp.Extents = append(resp.Extents, ek)
-					log.LogInfof("action[ExtentsList] append ek [%v]", ek)
+					span.Infof("append ek [%v]", ek)
 					return true
 				})
 			})
@@ -487,7 +488,7 @@ func (mp *metaPartition) ExtentsTruncate(req *ExtentsTruncateReq, p *Packet, rem
 	i := item.(*Inode)
 	status := mp.isOverQuota(req.Inode, req.Size > i.Size, false)
 	if status != 0 {
-		log.LogErrorf("ExtentsTruncate fail status [%v]", status)
+		p.Span().Errorf("fail status [%v]", status)
 		err = errors.New("ExtentsTruncate is over quota")
 		reply := []byte(err.Error())
 		p.PacketErrorWithBody(status, reply)
@@ -521,7 +522,7 @@ func (mp *metaPartition) BatchExtentAppend(req *proto.AppendExtentKeysRequest, p
 
 	var ino *Inode
 	if ino, _, err = mp.CheckQuota(req.Inode, p); err != nil {
-		log.LogErrorf("BatchExtentAppend fail err [%v]", err)
+		p.Span().Error(err)
 		return
 	}
 
@@ -546,7 +547,7 @@ func (mp *metaPartition) BatchExtentAppend(req *proto.AppendExtentKeysRequest, p
 func (mp *metaPartition) BatchObjExtentAppend(req *proto.AppendObjExtentKeysRequest, p *Packet) (err error) {
 	var ino *Inode
 	if ino, _, err = mp.CheckQuota(req.Inode, p); err != nil {
-		log.LogErrorf("BatchObjExtentAppend fail status [%v]", err)
+		p.Span().Error(err)
 		return
 	}
 

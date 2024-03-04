@@ -23,7 +23,6 @@ import (
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/auditlog"
 	"github.com/cubefs/cubefs/util/errors"
-	"github.com/cubefs/cubefs/util/log"
 )
 
 func (mp *metaPartition) TxCreateDentry(req *proto.TxCreateDentryRequest, p *Packet, remoteAddr string) (err error) {
@@ -174,7 +173,7 @@ func (mp *metaPartition) QuotaCreateDentry(req *proto.QuotaCreateDentryRequest, 
 		Type:     req.Mode,
 	}
 	dentry.setVerSeq(mp.verSeq)
-	log.LogDebugf("action[CreateDentry] mp[%v] with seq [%v],dentry [%v]", mp.config.PartitionId, mp.verSeq, dentry)
+	p.Span().Debugf("mp[%v] with seq [%v],dentry [%v]", mp.config.PartitionId, mp.verSeq, dentry)
 	val, err := dentry.Marshal()
 	if err != nil {
 		return
@@ -216,12 +215,12 @@ func (mp *metaPartition) TxDeleteDentry(req *proto.TxDeleteDentryRequest, p *Pac
 	if status != proto.OpOk {
 		if mp.txDentryInRb(req.ParentID, req.Name, req.TxInfo.TxID) {
 			p.ResultCode = proto.OpOk
-			log.LogWarnf("TxDeleteDentry: dentry is already been deleted before, req %v", req)
+			p.Span().Warnf("dentry is already been deleted before, req %v", req)
 			return
 		}
 
 		err = fmt.Errorf("dentry[%v] not exists", den)
-		log.LogWarn(err)
+		p.Span().Warn(err)
 		p.PacketErrorWithBody(status, []byte(err.Error()))
 		return
 	}
@@ -229,7 +228,7 @@ func (mp *metaPartition) TxDeleteDentry(req *proto.TxDeleteDentryRequest, p *Pac
 	if dentry.Inode != req.Ino {
 		err = fmt.Errorf("target name ino is not right, par %d, name %s, want %d, got %d",
 			req.PartitionID, req.Name, req.Ino, dentry.Inode)
-		log.LogWarn(err)
+		p.Span().Warn(err)
 		p.PacketErrorWithBody(proto.OpExistErr, []byte(err.Error()))
 		return
 	}
@@ -267,6 +266,7 @@ func (mp *metaPartition) TxDeleteDentry(req *proto.TxDeleteDentryRequest, p *Pac
 // DeleteDentry deletes a dentry.
 func (mp *metaPartition) DeleteDentry(req *DeleteDentryReq, p *Packet, remoteAddr string) (err error) {
 	start := time.Now()
+	span := p.Span()
 	if mp.IsEnableAuditLog() {
 		defer func() {
 			auditlog.LogDentryOp(remoteAddr, mp.GetVolName(), p.GetOpMsg(), req.Name, req.GetFullPath(), err, time.Since(start).Milliseconds(), 0, req.ParentID)
@@ -275,7 +275,8 @@ func (mp *metaPartition) DeleteDentry(req *DeleteDentryReq, p *Packet, remoteAdd
 	if req.InodeCreateTime > 0 {
 		if mp.vol.volDeleteLockTime > 0 && req.InodeCreateTime+mp.vol.volDeleteLockTime*60*60 > time.Now().Unix() {
 			err = errors.NewErrorf("the current Inode[%v] is still locked for deletion", req.Name)
-			log.LogDebugf("DeleteDentry: the current Inode is still locked for deletion, inode[%v] createTime(%v) mw.volDeleteLockTime(%v) now(%v)", req.Name, req.InodeCreateTime, mp.vol.volDeleteLockTime, time.Now().Unix())
+			span.Debugf("the current Inode is still locked for deletion, inode[%v] createTime(%v) mw.volDeleteLockTime(%v) now(%v)",
+				req.Name, req.InodeCreateTime, mp.vol.volDeleteLockTime, time.Now().Unix())
 			p.PacketErrorWithBody(proto.OpNotPerm, []byte(err.Error()))
 			return
 		}
@@ -285,7 +286,7 @@ func (mp *metaPartition) DeleteDentry(req *DeleteDentryReq, p *Packet, remoteAdd
 		Name:     req.Name,
 	}
 	dentry.setVerSeq(req.Verseq)
-	log.LogDebugf("action[DeleteDentry] den param(%v)", dentry)
+	span.Debugf("den param(%v)", dentry)
 
 	val, err := dentry.Marshal()
 	if err != nil {
@@ -297,7 +298,7 @@ func (mp *metaPartition) DeleteDentry(req *DeleteDentryReq, p *Packet, remoteAdd
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return
 	}
-	log.LogDebugf("action[DeleteDentry] submit!")
+	span.Debugf("submit!")
 	r, err := mp.submit(p.Context(), opFSMDeleteDentry, val)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
@@ -317,7 +318,7 @@ func (mp *metaPartition) DeleteDentry(req *DeleteDentryReq, p *Packet, remoteAdd
 	return
 }
 
-// DeleteDentry deletes a dentry.
+// DeleteDentryBatch deletes a dentry.
 func (mp *metaPartition) DeleteDentryBatch(req *BatchDeleteDentryReq, p *Packet, remoteAddr string) (err error) {
 	db := make(DentryBatch, 0, len(req.Dens))
 	start := time.Now()
@@ -386,7 +387,6 @@ func (mp *metaPartition) DeleteDentryBatch(req *BatchDeleteDentryReq, p *Packet,
 		return err
 	}
 	p.PacketOkWithBody(reply)
-
 	return
 }
 
@@ -425,7 +425,7 @@ func (mp *metaPartition) TxUpdateDentry(req *proto.TxUpdateDentryRequest, p *Pac
 	if status != proto.OpOk {
 		if mp.txDentryInRb(req.ParentID, req.Name, req.TxInfo.TxID) {
 			p.ResultCode = proto.OpOk
-			log.LogWarnf("TxDeleteDentry: dentry is already been deleted before, req %v", req)
+			p.Span().Warnf("dentry is already been deleted before, req %v", req)
 			return
 		}
 		err = fmt.Errorf("oldDentry[%v] not exists", oldDentry)
@@ -527,7 +527,7 @@ func (mp *metaPartition) ReadDir(req *ReadDirReq, p *Packet) (err error) {
 }
 
 func (mp *metaPartition) ReadDirLimit(req *ReadDirLimitReq, p *Packet) (err error) {
-	log.LogInfof("action[ReadDirLimit] read seq [%v], request[%v]", req.VerSeq, req)
+	p.Span().Infof("read seq [%v], request[%v]", req.VerSeq, req)
 	resp := mp.readDirLimit(req)
 	reply, err := json.Marshal(resp)
 	if err != nil {
