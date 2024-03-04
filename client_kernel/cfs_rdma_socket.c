@@ -110,6 +110,10 @@ int cfs_rdma_send_packet(struct cfs_socket *csk, struct cfs_packet *packet)
 	int i;
 	int ret = 0;
 	ssize_t len = 0;
+	ssize_t count = 0;
+	struct BufferItem *pDataBuf = NULL;
+	char *pStart = NULL;
+	int index = 0;
 
 	cfs_buffer_reset(csk->tx_buffer);
 	switch (packet->request.hdr.opcode) {
@@ -153,37 +157,50 @@ int cfs_rdma_send_packet(struct cfs_socket *csk, struct cfs_packet *packet)
 	case CFS_OP_STREAM_WRITE:
 	case CFS_OP_STREAM_RANDOM_WRITE:
 		frags = packet->request.data.write.frags;
+		count = 0;
 		for (i = 0; i < packet->request.data.write.nr; i++) {
-			// copy the data into rdma register memory.
-			frags[i].rdma_addr = ib_dma_map_page(
-				csk->ibvsock->cm_id->device,
-				frags[i].page->page, frags[i].offset,
-				frags[i].size, DMA_TO_DEVICE);
-			packet->request.hdr_padding.RdmaAddr = frags[i].rdma_addr;
-			packet->request.hdr_padding.RdmaLength = htonl(frags[i].size);
-			len = IBVSocket_send(csk->ibvsock, &iter);
-			if (len < 0) {
-				cfs_log_error(csk->log, "IBVSocket_send error: %ld\n", len);
-				break;
-			}
+			count += frags[i].size;
+		}
+		index = IBVSocket_get_data_buf(csk->ibvsock, count);
+		if (index < 0) {
+			printk("failed to allocate data buffer. size=%ld\n", count);
+			return -ENOMEM;
+		}
+		packet->data_buf_index = index;
+		pDataBuf = &csk->ibvsock->data_buf[index];
+		// copy the data into data buffer.
+		len = 0;
+		for (i = 0; i < packet->request.data.write.nr; i++) {
+			pStart = pDataBuf->pBuff+len;
+			memcpy(pStart, kmap(frags[i].page->page) + frags[i].offset, frags[i].size);
+			kunmap(frags[i].page->page);
+			len += frags[i].size;
+		}
+		packet->request.hdr_padding.RdmaAddr = pDataBuf->dma_addr;
+		packet->request.hdr_padding.RdmaLength = htonl(count);
+		len = IBVSocket_send(csk->ibvsock, &iter);
+		if (len < 0) {
+			cfs_log_error(csk->log, "IBVSocket_send error: %ld\n", len);
 		}
 		break;
 	case CFS_OP_STREAM_READ:
 	case CFS_OP_STREAM_FOLLOWER_READ:
 		frags = packet->reply.data.read.frags;
+		count = 0;
 		for (i = 0; i < packet->reply.data.read.nr; i++) {
-			// copy the data into rdma register memory.
-			frags[i].rdma_addr = ib_dma_map_page(
-				csk->ibvsock->cm_id->device,
-				frags[i].page->page, frags[i].offset,
-				frags[i].size, DMA_FROM_DEVICE);
-			packet->request.hdr_padding.RdmaAddr = frags[i].rdma_addr;
-			packet->request.hdr_padding.RdmaLength = htonl(frags[i].size);
-			len = IBVSocket_send(csk->ibvsock, &iter);
-			if (len < 0) {
-				cfs_log_error(csk->log, "IBVSocket_send error: %ld\n", len);
-				break;
-			}
+			count += frags[i].size;
+		}
+		index = IBVSocket_get_data_buf(csk->ibvsock, count);
+		if (index < 0) {
+			printk("failed to allocate data buffer. size=%ld\n", count);
+			return -ENOMEM;
+		}
+		pDataBuf = &csk->ibvsock->data_buf[index];
+		packet->request.hdr_padding.RdmaAddr = pDataBuf->dma_addr;
+		packet->request.hdr_padding.RdmaLength = htonl(count);
+		len = IBVSocket_send(csk->ibvsock, &iter);
+		if (len < 0) {
+			cfs_log_error(csk->log, "IBVSocket_send error: %ld\n", len);
 		}
 		break;
 	default:
@@ -208,6 +225,9 @@ int cfs_rdma_recv_packet(struct cfs_socket *csk, struct cfs_packet *packet)
 	int i, ret = 0;
 	ssize_t len = 0;
 	int arglen;
+	ssize_t count = 0;
+	char *pStart = NULL;
+	int index = 0;
 
 	iov.iov_base = &packet->reply;
 	iov.iov_len = sizeof(struct cfs_packet_hdr) + sizeof(struct reply_hdr_padding);
@@ -239,23 +259,30 @@ int cfs_rdma_recv_packet(struct cfs_socket *csk, struct cfs_packet *packet)
 	switch (packet->request.hdr.opcode) {
 	case CFS_OP_STREAM_WRITE:
 	case CFS_OP_STREAM_RANDOM_WRITE:
-		frags = packet->request.data.write.frags;
-		for (i = 0; i < packet->request.data.write.nr; i++) {
-			// unmap rdma address.
-			ib_dma_unmap_page(csk->ibvsock->cm_id->device,
-					  frags[i].rdma_addr, frags[i].size,
-					  DMA_TO_DEVICE);
-		}
+		IBVSocket_free_data_buf(csk->ibvsock, packet->data_buf_index);
 		break;
 	case CFS_OP_STREAM_READ:
 	case CFS_OP_STREAM_FOLLOWER_READ:
+		// copy data from buffer.
 		frags = packet->reply.data.read.frags;
-		for (i = 0; i < packet->reply.data.read.nr; i++) {
-			// unmap rdma address.
-			ib_dma_unmap_page(csk->ibvsock->cm_id->device,
-					  frags[i].rdma_addr, frags[i].size,
-					  DMA_FROM_DEVICE);
+		count = 0;
+		index = packet->data_buf_index;
+		if (index < 0 || index >= DATA_BUF_NUM) {
+			printk("error: invalid data_buf_index=%d\n", index);
+			return -EINVAL;
 		}
+		if (!csk->ibvsock->data_buf[index].used) {
+			printk("error: data_buf[%d] used is false\n", index);
+			return -EINVAL;
+		}
+		for (i = 0; i < packet->reply.data.read.nr && count < csk->ibvsock->data_buf[index].size; i++) {
+			pStart = csk->ibvsock->data_buf[index].pBuff + count;
+			memcpy(kmap(frags[i].page->page) + frags[i].offset, pStart, frags[i].size);
+			kunmap(frags[i].page->page);
+			count += frags[i].size;
+		}
+		// release the data buffer.
+		IBVSocket_free_data_buf(csk->ibvsock, index);
 		break;
 	default:
 		break;

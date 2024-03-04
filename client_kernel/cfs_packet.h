@@ -970,6 +970,7 @@ struct cfs_packet {
 	union {
 		struct cfs_page_frag frags[CFS_PAGE_VEC_NUM];
 	} rw;
+	int data_buf_index;
 };
 
 struct cfs_packet *cfs_packet_new(u8 op, u64 pid,

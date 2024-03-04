@@ -23,62 +23,62 @@ int verify_rdma_event_handler(struct rdma_cm_id *cm_id,
 		printk("event is null\n");
 		return 0;
 	}
-	printk("rdma event: %i, status: %i\n", event->event, event->status);
+	ibv_print_debug("rdma event: %i, status: %i\n", event->event, event->status);
 
 	switch (event->event) {
 	case RDMA_CM_EVENT_ADDR_RESOLVED:
 		this->connState = IBVSOCKETCONNSTATE_ADDRESSRESOLVED;
-		printk("receive event RDMA_CM_EVENT_ADDR_RESOLVED\n");
+		ibv_print_debug("receive event RDMA_CM_EVENT_ADDR_RESOLVED\n");
 		break;
 	case RDMA_CM_EVENT_ADDR_ERROR:
 	case RDMA_CM_EVENT_UNREACHABLE:
 		retVal = -ENETUNREACH;
 		this->connState = IBVSOCKETCONNSTATE_FAILED;
-		printk("receive event RDMA_CM_EVENT_ADDR_ERROR or UNREACHABLE = %d\n", event->event);
+		ibv_print_debug("receive event RDMA_CM_EVENT_ADDR_ERROR or UNREACHABLE = %d\n", event->event);
 		break;
 
 	case RDMA_CM_EVENT_ROUTE_RESOLVED:
 		this->connState = IBVSOCKETCONNSTATE_ROUTERESOLVED;
-		printk("receive event RDMA_CM_EVENT_ROUTE_RESOLVED\n");
+		ibv_print_debug("receive event RDMA_CM_EVENT_ROUTE_RESOLVED\n");
 		break;
 
 	case RDMA_CM_EVENT_ROUTE_ERROR:
 	case RDMA_CM_EVENT_CONNECT_ERROR:
 		retVal = -ETIMEDOUT;
 		this->connState = IBVSOCKETCONNSTATE_FAILED;
-		printk("receive event RDMA_CM_EVENT_ROUTE_ERROR or CONNECT_ERROR = %d\n", event->event);
+		ibv_print_debug("receive event RDMA_CM_EVENT_ROUTE_ERROR or CONNECT_ERROR = %d\n", event->event);
 		break;
 
 	case RDMA_CM_EVENT_CONNECT_REQUEST:
-		printk("receive event RDMA_CM_EVENT_CONNECT_REQUEST\n");
+		ibv_print_debug("receive event RDMA_CM_EVENT_CONNECT_REQUEST\n");
 		break;
 
 	case RDMA_CM_EVENT_CONNECT_RESPONSE:
-		printk("receive event RDMA_CM_EVENT_CONNECT_RESPONSE\n");
+		ibv_print_debug("receive event RDMA_CM_EVENT_CONNECT_RESPONSE\n");
 		break;
 
 	case RDMA_CM_EVENT_REJECTED:
 		this->connState = IBVSOCKETCONNSTATE_REJECTED_STALE;
-		printk("receive event RDMA_CM_EVENT_REJECTED: %s\n", rdma_reject_msg(cm_id, event->status));
+		ibv_print_debug("receive event RDMA_CM_EVENT_REJECTED: %s\n", rdma_reject_msg(cm_id, event->status));
 		break;
 
 	case RDMA_CM_EVENT_ESTABLISHED:
 		this->connState = IBVSOCKETCONNSTATE_ESTABLISHED;
-		printk("receive event RDMA_CM_EVENT_ESTABLISHED\n");
+		ibv_print_debug("receive event RDMA_CM_EVENT_ESTABLISHED\n");
 		break;
 
 	case RDMA_CM_EVENT_DISCONNECTED:
 		this->connState = IBVSOCKETCONNSTATE_UNCONNECTED;
-		printk("receive event RDMA_CM_EVENT_DISCONNECTED\n");
+		ibv_print_debug("receive event RDMA_CM_EVENT_DISCONNECTED\n");
 		break;
 
 	case RDMA_CM_EVENT_DEVICE_REMOVAL:
 		this->connState = IBVSOCKETCONNSTATE_UNCONNECTED;
-		printk("receive event RDMA_CM_EVENT_DEVICE_REMOVAL\n");
+		ibv_print_debug("receive event RDMA_CM_EVENT_DEVICE_REMOVAL\n");
 		break;
 
 	default:
-		printk("Ignoring RDMA_CMA event: %d\n", event->event);
+		ibv_print_debug("Ignoring RDMA_CMA event: %d\n", event->event);
 		break;
 	}
 
@@ -88,27 +88,27 @@ int verify_rdma_event_handler(struct rdma_cm_id *cm_id,
 
 void __IBVSocket_recvCompletionHandler(struct ib_cq *cq, void *cq_context)
 {
-	printk("recvCompletionHandler\n");
+	ibv_print_debug("recvCompletionHandler\n");
 }
 
 void __IBVSocket_cqRecvEventHandler(struct ib_event *event, void *data)
 {
-	printk("__IBVSocket_cqRecvEventHandler\n");
+	ibv_print_debug("__IBVSocket_cqRecvEventHandler\n");
 }
 
 void __IBVSocket_qpEventHandler(struct ib_event *event, void *data)
 {
-	printk("__IBVSocket_qpEventHandler\n");
+	ibv_print_debug("__IBVSocket_qpEventHandler\n");
 }
 
 void __IBVSocket_sendCompletionHandler(struct ib_cq *cq, void *cq_context)
 {
-	printk("sendCompletionHandler\n");
+	ibv_print_debug("sendCompletionHandler\n");
 }
 
 void __IBVSocket_cqSendEventHandler(struct ib_event *event, void *data)
 {
-	printk("__IBVSocket_cqSendEventHandler\n");
+	ibv_print_debug("__IBVSocket_cqSendEventHandler\n");
 }
 
 void print_ip_addr(u32 addr) {
@@ -175,6 +175,12 @@ int RingBuffer_init(struct IBVSocket *this) {
 	this->recvBufIndex = 0;
 	this->sendBufIndex = 0;
 
+	for (i=0; i<DATA_BUF_NUM; i++) {
+		this->data_buf[i].pBuff = NULL;
+		this->data_buf[i].size = 0;
+		this->data_buf[i].used = false;
+	}
+
 	return 0;
 }
 
@@ -183,6 +189,14 @@ void RingBuffer_free(struct IBVSocket *this) {
 
 	if (!this)
 		return;
+
+	for (i=0; i<DATA_BUF_NUM; i++) {
+		if (this->data_buf[i].pBuff != NULL) {
+			ib_dma_unmap_single(this->cm_id->device, this->data_buf[i].dma_addr, this->data_buf[i].size, DMA_TO_DEVICE);
+			kfree(this->data_buf[i].pBuff);
+			this->data_buf[i].pBuff = NULL;
+		}
+	}
 
 	for (i=0; i<BLOCK_NUM; i++) {
 		if (this->recvBuf[i].pBuff) {
@@ -246,13 +260,12 @@ int RingBuffer_alloc(struct IBVSocket *this, bool send) {
 void RingBuffer_dealloc(struct IBVSocket *this, bool send, int index) {
 	if (index < 0 || index >= BLOCK_NUM)
 		return;
-	mutex_lock(&this->lock);
+
 	if (send) {
 		this->sendBuf[index].used = false;
 	} else {
 		this->recvBuf[index].used = false;
 	}
-	mutex_unlock(&this->lock);
 }
 
 struct IBVSocket *IBVSocket_construct(struct sockaddr_in *sin) {
@@ -271,6 +284,7 @@ struct IBVSocket *IBVSocket_construct(struct sockaddr_in *sin) {
 
 	this->connState = IBVSOCKETCONNSTATE_CONNECTING;
 	init_waitqueue_head(&this->eventWaitQ);
+	init_waitqueue_head(&this->wait_buf_queue);
 
 	this->cm_id = rdma_create_id(&init_net, verify_rdma_event_handler, this, RDMA_PS_TCP, IB_QPT_RC);
 	if (IS_ERR(this->cm_id)) {
@@ -300,7 +314,7 @@ struct IBVSocket *IBVSocket_construct(struct sockaddr_in *sin) {
 		goto err_destroy_cm_id;
 	}
 
-	attrs.cqe = 128;
+	attrs.cqe = BLOCK_NUM;
 	attrs.comp_vector = 0;
 	attrs.flags = 0;
 
@@ -323,8 +337,8 @@ struct IBVSocket *IBVSocket_construct(struct sockaddr_in *sin) {
 	qpInitAttr.qp_type = IB_QPT_RC;
 	//qpInitAttr.sq_sig_type = IB_SIGNAL_REQ_WR;
 	qpInitAttr.sq_sig_type = IB_SIGNAL_ALL_WR;
-	qpInitAttr.cap.max_send_wr = 128;
-	qpInitAttr.cap.max_recv_wr = 128;
+	qpInitAttr.cap.max_send_wr = BLOCK_NUM;
+	qpInitAttr.cap.max_recv_wr = BLOCK_NUM;
 	qpInitAttr.cap.max_send_sge = 1;
 	qpInitAttr.cap.max_recv_sge = 1;
 	qpInitAttr.cap.max_inline_data = 0;
@@ -344,12 +358,12 @@ struct IBVSocket *IBVSocket_construct(struct sockaddr_in *sin) {
 	}
 
 	if (ib_req_notify_cq(this->recvCQ, IB_CQ_NEXT_COMP)) {
-		printk("couldn't request CQ notification\n");
+		printk("couldn't request recv CQ notification\n");
 		goto err_destroy_qp;
 	}
 
 	if (ib_req_notify_cq(this->sendCQ, IB_CQ_NEXT_COMP)) {
-		printk("couldn't request CQ notification\n");
+		printk("couldn't request send CQ notification\n");
 		goto err_destroy_qp;
 	}
 
@@ -391,6 +405,11 @@ err_free_this:
 }
 
 bool IBVSocket_destruct(struct IBVSocket *this) {
+	if (this == NULL) {
+		return false;
+	}
+	this->connState = IBVSOCKETCONNSTATE_DESTROYED;
+
     if (this->cm_id != NULL) {
         rdma_disconnect(this->cm_id);
     }
@@ -421,6 +440,9 @@ bool IBVSocket_destruct(struct IBVSocket *this) {
         rdma_destroy_id(this->cm_id);
         this->cm_id = NULL;
     }
+
+	kfree(this);
+	this = NULL;
 
     return true;
 }
@@ -460,17 +482,17 @@ ssize_t IBVSocket_copy_restore(struct IBVSocket *this, struct iov_iter *iter, in
 ssize_t IBVSocket_recvT(struct IBVSocket *this, struct iov_iter *iter) {
 	struct ib_wc wc[8];
 	int numElements;
-	int i;
+	int i, j;
 	int index = -1;
 
-    do {
+    for(j=0; j< MAX_RETRY_COUNT; j++) {
 		if (this->connState != IBVSOCKETCONNSTATE_ESTABLISHED) {
 			return -EIO;
 		}
         numElements = ib_poll_cq(this->recvCQ, 8, wc);
         if (numElements > 0) {
             for (i = 0; i < numElements; i++) {
-                //printk("recv status: %d, opcode: %d, wr_id: %lld\n", wc[i].status, wc[i].opcode, wc[i].wr_id);
+                ibv_print_debug("recv status: %d, opcode: %d, wr_id: %lld\n", wc[i].status, wc[i].opcode, wc[i].wr_id);
 				index = wc[i].wr_id;
 				this->recvBuf[index].used = true;
             }
@@ -483,7 +505,13 @@ ssize_t IBVSocket_recvT(struct IBVSocket *this, struct iov_iter *iter) {
 		if (index >= 0) {
 			break;
 		}
-    } while(true);
+		usleep_range(1000, 20000);
+    }
+
+	if (index < 0) {
+		printk("Timeout waiting for receive buffer\n");
+		return -ENOMEM;
+	}
 
     return IBVSocket_copy_restore(this, iter, index);
 }
@@ -495,11 +523,11 @@ ssize_t IBVSocket_send(struct IBVSocket *this, struct iov_iter *iter) {
     int ret = 0;
 	struct ib_wc wc[8];
 	int numElements;
-    int i = 0;
+    int i = 0, j;
     ssize_t isize = 0;
 	int index = -1;
 
-	do {
+	for (j=0; j< MAX_RETRY_COUNT; j++) {
 		if (this->connState != IBVSOCKETCONNSTATE_ESTABLISHED) {
 			return -EIO;
 		}
@@ -507,7 +535,7 @@ ssize_t IBVSocket_send(struct IBVSocket *this, struct iov_iter *iter) {
 		numElements = ib_poll_cq(this->sendCQ, 8, wc);
 		if (numElements > 0) {
 			for (i = 0; i < numElements; i++) {
-				printk("send status: %d, opcode: %d, wr_id: %lld\n", wc[i].status, wc[i].opcode, wc[i].wr_id);
+				ibv_print_debug("send status: %d, opcode: %d, wr_id: %lld\n", wc[i].status, wc[i].opcode, wc[i].wr_id);
 				RingBuffer_dealloc(this, true, wc[i].wr_id);
 			}
 		} else if (numElements < 0) {
@@ -519,7 +547,13 @@ ssize_t IBVSocket_send(struct IBVSocket *this, struct iov_iter *iter) {
 		if (index >= 0) {
 			break;
 		}
-	} while(true);
+		usleep_range(1000, 20000);
+	}
+
+	if (index < 0) {
+		printk("Timeout waiting for send buffer\n");
+		return -ENOMEM;
+	}
 
     isize = MIN(MSG_LEN, iter->iov->iov_len);
     memcpy(this->sendBuf[index].pBuff, iter->iov->iov_base, isize);
@@ -540,4 +574,76 @@ ssize_t IBVSocket_send(struct IBVSocket *this, struct iov_iter *iter) {
     }
 
     return isize;
+}
+
+int IBVSocket_lock_data_buf(struct IBVSocket *this) {
+	int ret = -1;
+	int i;
+
+	mutex_lock(&this->lock);
+	for (i=0; i<DATA_BUF_NUM; i++) {
+		if (!this->data_buf[i].used) {
+			this->data_buf[i].used = true;
+			ret = i;
+			break;
+		}
+	}
+	mutex_unlock(&this->lock);
+
+	return ret;
+}
+
+int IBVSocket_get_data_buf(struct IBVSocket *this, size_t size) {
+	int index = -1, j;
+
+	for (j=0; j< MAX_RETRY_COUNT; j++) {
+		if (this->connState != IBVSOCKETCONNSTATE_ESTABLISHED) {
+			return -EIO;
+		}
+
+		index = IBVSocket_lock_data_buf(this);
+		if (index >= 0) {
+			// Get the data buffer.
+			break;
+		}
+		wait_event_timeout(this->wait_buf_queue, true, 50);
+	}
+
+	if (index < 0) {
+		printk("Timeout for waiting for data buffer\n");
+		return -ENOMEM;
+	}
+
+	if (this->data_buf[index].size >= size) {
+		return index;
+	}
+
+	// Free the old buffer. Allocate a larger one.
+	if (this->data_buf[index].pBuff != NULL) {
+		ib_dma_unmap_single(this->cm_id->device, this->data_buf[index].dma_addr, this->data_buf[index].size, DMA_TO_DEVICE);
+		kfree(this->data_buf[index].pBuff);
+		this->data_buf[index].pBuff = NULL;
+		this->data_buf[index].size = 0;
+	}
+
+	this->data_buf[index].pBuff = kmalloc(size, GFP_KERNEL);
+	if (this->data_buf[index].pBuff == NULL) {
+		printk("Failed to allocate data buffer with size: %ld\n", size);
+		this->data_buf[index].used = false;
+		wake_up(&this->wait_buf_queue);
+		return -ENOMEM;
+	}
+	this->data_buf[index].size = size;
+	this->data_buf[index].dma_addr = ib_dma_map_single(this->cm_id->device, this->data_buf[index].pBuff, size, DMA_TO_DEVICE);
+
+	return index;
+}
+
+void IBVSocket_free_data_buf(struct IBVSocket *this, int index) {
+	if (index < 0 || index >= DATA_BUF_NUM) {
+		return;
+	}
+
+	this->data_buf[index].used = false;
+	wake_up(&this->wait_buf_queue);
 }

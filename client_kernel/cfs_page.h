@@ -37,11 +37,9 @@ struct cfs_page_frag {
 #if (BITS_PER_LONG > 32) || (PAGE_SIZE >= 65536)
 	u32 offset;
 	u32 size;
-	u64 rdma_addr;
 #else
 	u16 offset;
 	u16 size;
-	u64 rdma_addr;
 #endif
 };
 
