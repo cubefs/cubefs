@@ -12,7 +12,7 @@ func TestForbiddenMigrationList(t *testing.T) {
 	// Test Put and getAllForbiddenMigrationInodes methods
 	fmList.Put(1)
 	fmList.Put(2)
-	allInos := fmList.getAllForbiddenMigrationInodes()
+	allInos := fmList.getAllForbiddenMigrationInodes(2)
 	expectedInos := []uint64{1, 2}
 	if !equalSlices(allInos, expectedInos) {
 		t.Errorf("getAllForbiddenMigrationInodes: expected %v, got %v", expectedInos, allInos)
@@ -20,7 +20,7 @@ func TestForbiddenMigrationList(t *testing.T) {
 
 	// Test Delete and getAllForbiddenMigrationInodes methods
 	fmList.Delete(1)
-	allInos = fmList.getAllForbiddenMigrationInodes()
+	allInos = fmList.getAllForbiddenMigrationInodes(2)
 	expectedInos = []uint64{2}
 	if !equalSlices(allInos, expectedInos) {
 		t.Errorf("getAllForbiddenMigrationInodes: expected %v, got %v", expectedInos, allInos)
@@ -28,7 +28,7 @@ func TestForbiddenMigrationList(t *testing.T) {
 
 	// Test getExpiredForbiddenMigrationInodes method
 	time.Sleep(expiration) // Wait for expiration
-	expiredInos := fmList.getExpiredForbiddenMigrationInodes()
+	expiredInos := fmList.getExpiredForbiddenMigrationInodes(2)
 	expectedExpiredInos := []uint64{2}
 	if !equalSlices(expiredInos, expectedExpiredInos) {
 		t.Errorf("getExpiredForbiddenMigrationInodes: expected %v, got %v", expectedExpiredInos, expiredInos)
