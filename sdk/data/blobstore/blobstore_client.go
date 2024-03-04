@@ -253,6 +253,7 @@ func (ebs *BlobStoreClient) Put(ctx context.Context, volName string, f io.Reader
 		metric.SetWithLabels(err, map[string]string{exporter.Vol: volName})
 	}()
 
+	var from uint64
 	var part uint64 = util.ExtentSize
 	var rest = size
 	for rest > 0 {
@@ -281,8 +282,9 @@ func (ebs *BlobStoreClient) Put(ctx context.Context, volName string, f io.Reader
 			log.LogErrorf("decode md5 %v, err %v", hash.GetSumVal(access.HashAlgMD5).(string), err)
 			return
 		}
-		oek = append(oek, locationToObjExtentKey(location))
+		oek = append(oek, locationToObjExtentKey(location, from))
 		md5 = append(md5, _md5)
+		from += putSize
 		log.LogDebugf("TRACE Ebs Put, requestId(%v) loc(%v) putSize(%v)", requestId, location, putSize)
 	}
 
@@ -291,7 +293,7 @@ func (ebs *BlobStoreClient) Put(ctx context.Context, volName string, f io.Reader
 	return
 }
 
-func locationToObjExtentKey(location access.Location) (oek proto.ObjExtentKey) {
+func locationToObjExtentKey(location access.Location, from uint64) (oek proto.ObjExtentKey) {
 	blobs := make([]proto.Blob, 0)
 	for _, info := range location.Blobs {
 		blob := proto.Blob{
@@ -308,7 +310,7 @@ func locationToObjExtentKey(location access.Location) (oek proto.ObjExtentKey) {
 		BlobSize:   location.BlobSize,
 		Blobs:      blobs,
 		BlobsLen:   uint32(len(blobs)),
-		FileOffset: 0,
+		FileOffset: from,
 		Crc:        location.Crc,
 	}
 	return
