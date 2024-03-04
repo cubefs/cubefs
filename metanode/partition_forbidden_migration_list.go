@@ -21,6 +21,7 @@ func (mp *metaPartition) checkForbiddenMigrationWorker() {
 		isLeader bool
 	)
 	defer t.Stop()
+	log.LogDebugf("[checkForbiddenMigrationWorker] mp %v run", mp.config.PartitionId)
 	for {
 		select {
 		case <-mp.stopC:

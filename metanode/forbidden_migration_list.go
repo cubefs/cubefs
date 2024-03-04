@@ -3,7 +3,6 @@ package metanode
 import (
 	"container/list"
 	"github.com/cubefs/cubefs/util/log"
-	"runtime/debug"
 	"sync"
 	"time"
 )
@@ -46,8 +45,6 @@ func (fmList *forbiddenMigrationList) Put(ino uint64) {
 	element := fmList.list.PushFront(info)
 	fmList.index[ino] = element
 	fmList.Unlock()
-	log.LogDebugf("action[forbiddenMigrationList put] inode %v expiration %v %v: %v", ino, expiration,
-		fmList.index[ino], string(debug.Stack()))
 }
 
 func (fmList *forbiddenMigrationList) Delete(ino uint64) {
