@@ -758,16 +758,23 @@ func (mp *metaPartition) deletedExtentsTreeTraveler() (err error) {
 }
 
 func (mp *metaPartition) deletedObjExtentsTreeTravler() (err error) {
-	timer := time.NewTimer(1 * time.Minute)
+	sleepDuration := getDeleteWorkerSleepMs()
+	batchSize := DeleteBatchCount()
+	timer := time.NewTimer(sleepDuration)
 	defer timer.Stop()
 	var snap Snapshot
-	const batchSize = 10000
 	doeks := make([]*DeletedObjExtentKey, batchSize)
 	for {
 		select {
 		case <-mp.stopC:
 			return
 		case <-timer.C:
+			if sleepDuration != getDeleteWorkerSleepMs() {
+				timer.Reset(sleepDuration)
+			}
+			if batchSize != DeleteBatchCount() {
+				batchSize = DeleteBatchCount()
+			}
 		}
 		if _, ok := mp.IsLeader(); !ok {
 			log.LogDebugf("[deletedObjExtentsTreeTravler] mp(%v) is not leader sleep", mp.config.PartitionId)
@@ -781,7 +788,7 @@ func (mp *metaPartition) deletedObjExtentsTreeTravler() (err error) {
 				return
 			}
 			defer snap.Close()
-			count := 0
+			count := uint64(0)
 			err = snap.Range(DeletedObjExtentsType, func(item interface{}) (bool, error) {
 				doek := item.(*DeletedObjExtentKey)
 				skip, err := mp.skipDeleteObjExtentKey(doek)

@@ -55,6 +55,10 @@ func updateDirChildrenNumLimit(val uint32) {
 func getDeleteWorkerSleepMs() (duration time.Duration) {
 	val := atomic.LoadUint64(&deleteWorkerSleepMs)
 	duration = time.Millisecond * time.Duration(val)
+	const minDuration = 10 * time.Second
+	if duration < minDuration {
+		duration = minDuration
+	}
 	return
 }
 
