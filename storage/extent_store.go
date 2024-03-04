@@ -210,13 +210,12 @@ func NewExtentStore(dataDir string, partitionID uint64, storeSize int,
 		return
 	}
 
-	if err = s.loadRecentDeletedExtents(); err != nil {
-		return
-	}
-
 	s.cache = NewExtentCache(cacheCapacity, time.Minute*5, ln)
 	if err = s.initBaseFileID(); err != nil {
 		err = fmt.Errorf("init base field ID: %v", err)
+		return
+	}
+	if err = s.loadRecentDeletedExtents(); err != nil {
 		return
 	}
 	s.hasAllocSpaceExtentIDOnVerfiyFile = s.allocatedExtentHeader()
@@ -372,10 +371,16 @@ func (s *ExtentStore) initBaseFileID() (err error) {
 func (s *ExtentStore) loadRecentDeletedExtents() (err error) {
 	var nowUnixSec = time.Now().Unix()
 	err = s.deletionQueue.Walk(WalkAll, func(ino, extent uint64, offset, size, timestamp int64) (goon bool, err error) {
-		if !proto.IsTinyExtent(extent) && nowUnixSec-timestamp < 3600*24 {
-			s.recentDeletedExtents.Store(extent, timestamp)
-			if log.IsDebugEnabled() {
-				log.LogDebugf("Store(%v) register recent deleted NormalExtent: extent=%v, ino=%v, deletetime=%v", s.partitionID, extent, ino, timestamp)
+		if !proto.IsTinyExtent(extent) {
+			if s.IsExists(extent) {
+				s.cache.Del(extent)
+				s.infoStore.Delete(extent)
+			}
+			if nowUnixSec-timestamp < 3600*24 {
+				s.recentDeletedExtents.Store(extent, timestamp)
+				if log.IsDebugEnabled() {
+					log.LogDebugf("Store(%v) register recent deleted NormalExtent: extent=%v, ino=%v, deletetime=%v", s.partitionID, extent, ino, timestamp)
+				}
 			}
 		}
 		return true, nil
