@@ -16,6 +16,7 @@ package metanode
 
 import (
 	"bytes"
+	"context"
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
@@ -372,12 +373,13 @@ func (mp *metaPartition) internalHasInode(ino *Inode) bool {
 	return mp.inodeTree.Has(ino)
 }
 
-func (mp *metaPartition) internalDelete(val []byte) (err error) {
+func (mp *metaPartition) internalDelete(ctx context.Context, val []byte) (err error) {
 	if len(val) == 0 {
 		return
 	}
 	buf := bytes.NewBuffer(val)
 	ino := NewInode(0, 0)
+	span := getSpan(ctx)
 	for {
 		err = binary.Read(buf, binary.BigEndian, &ino.Inode)
 		if err != nil {
@@ -387,7 +389,7 @@ func (mp *metaPartition) internalDelete(val []byte) (err error) {
 			}
 			return
 		}
-		log.LogDebugf("internalDelete: received internal delete: partitionID(%v) inode[%v]",
+		span.Debugf("internalDelete: received internal delete: partitionID(%v) inode[%v]",
 			mp.config.PartitionId, ino.Inode)
 		mp.internalDeleteInode(ino)
 	}
