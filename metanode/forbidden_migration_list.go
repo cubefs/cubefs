@@ -57,37 +57,40 @@ func (fmList *forbiddenMigrationList) Delete(ino uint64) {
 	fmList.Unlock()
 }
 
-func (fmList *forbiddenMigrationList) getExpiredForbiddenMigrationInodes() []uint64 {
-	fmList.RLock()
-	defer fmList.RUnlock()
+func (fmList *forbiddenMigrationList) getExpiredForbiddenMigrationInodes(id uint64) []uint64 {
+	fmList.Lock()
+	defer fmList.Unlock()
 	var expiredInos []uint64
 	currentTime := time.Now().Unix()
-	for e := fmList.list.Back(); e != nil; e = e.Prev() {
+	log.LogDebugf("[getExpiredForbiddenMigrationInodes] mp(%v) len(%v)", id, fmList.list.Len())
+	for e := fmList.list.Back(); e != nil; {
 		info := e.Value.(*forbiddenInodeInfo)
 		//the first one that has not expired
 		if info.expiration > currentTime {
-			log.LogDebugf("[getExpiredForbiddenMigrationInodes] ino %v is not expired:%v", info.ino, info.expiration)
+			log.LogDebugf("[getExpiredForbiddenMigrationInodes] mp(%v) ino %v is not expired:%v", id, info.ino, info.expiration)
 			return expiredInos
 		}
 		//reset
 		expiredInos = append(expiredInos, info.ino)
+		next := e.Prev()
 		fmList.list.Remove(e)
 		delete(fmList.index, info.ino)
-		log.LogDebugf("[getExpiredForbiddenMigrationInodes] remove expired ino %v[%v]", info.ino, info.expiration)
+		log.LogDebugf("[getExpiredForbiddenMigrationInodes] mp(%v) remove expired ino %v[%v]", id, info.ino, info.expiration)
+		e = next
 	}
 	return expiredInos
 }
 
-func (fmList *forbiddenMigrationList) getAllForbiddenMigrationInodes() []uint64 {
+func (fmList *forbiddenMigrationList) getAllForbiddenMigrationInodes(mpId uint64) []uint64 {
 	fmList.RLock()
 	defer fmList.RUnlock()
 	var allInos []uint64
-	log.LogDebugf("[getAllForbiddenMigrationInodes] len %v:", fmList.list.Len())
+	log.LogDebugf("[getAllForbiddenMigrationInodes] mp %v len %v:", mpId, fmList.list.Len())
 	for e := fmList.list.Back(); e != nil; e = e.Prev() {
 		if info, ok := e.Value.(*forbiddenInodeInfo); ok {
 			allInos = append(allInos, info.ino)
 		} else {
-			log.LogWarnf("[getAllForbiddenMigrationInodes] %v", e.Value)
+			log.LogWarnf("[getAllForbiddenMigrationInodes] mp %v value %v", mpId, e.Value)
 		}
 
 	}

@@ -34,7 +34,9 @@ func (mp *metaPartition) checkForbiddenMigrationWorker() {
 					mp.config.PartitionId)
 				return
 			}
-			inos := mp.fmList.getExpiredForbiddenMigrationInodes()
+			log.LogDebugf("[checkForbiddenMigrationWorker] mp %v getExpiredForbiddenMigrationInodes begin", mp.config.PartitionId)
+			inos := mp.fmList.getExpiredForbiddenMigrationInodes(mp.config.PartitionId)
+			log.LogDebugf("[checkForbiddenMigrationWorker] mp %v getExpiredForbiddenMigrationInodes end", mp.config.PartitionId)
 			//
 			freeInodes := make([]*Inode, 0)
 			for _, ino := range inos {
@@ -73,7 +75,7 @@ func (mp *metaPartition) checkForbiddenMigrationWorker() {
 func (mp *metaPartition) refreshForbiddenMigrationList() {
 	log.LogDebugf("[refreshForbiddenMigrationList] pid: %v HandleLeaderChange become leader "+
 		" nodeId: %v ", mp.config.PartitionId, mp.config.NodeId)
-	allInos := mp.fmList.getAllForbiddenMigrationInodes()
+	allInos := mp.fmList.getAllForbiddenMigrationInodes(mp.config.PartitionId)
 	for _, ino := range allInos {
 		mp.fmList.Put(ino)
 	}
