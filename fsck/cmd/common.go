@@ -27,7 +27,7 @@ var (
 	InodeID    uint64
 	DataPort   string
 	CleanS     bool
-	// CleanStr   string
+	CleanFlag  string
 )
 
 const (
