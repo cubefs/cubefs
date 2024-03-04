@@ -548,7 +548,7 @@ func (d *Disk) managementScheduler() {
 }
 
 func (d *Disk) flushDeleteScheduler() {
-	var ticker = time.NewTicker(time.Second * 30)
+	var ticker = time.NewTicker(time.Second * 15)
 	for {
 		select {
 		case <-ticker.C:
