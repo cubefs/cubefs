@@ -365,8 +365,24 @@ func (d *Dir) Lookup(ctx context.Context, req *fuse.LookupRequest, resp *fuse.Lo
 			child = NewDir(d.super, info, d.info.Inode, req.Name)
 		} else {
 			child = NewFile(d.super, info, DefaultFlag, d.info.Inode, req.Name)
+			log.LogDebugf("Lookup: new file nodeCache parent(%v) name(%v) ino(%v) storageClass(%v)",
+				d.info.Inode, req.Name, ino, child.(*File).info.StorageClass)
 		}
 		d.super.nodeCache[ino] = child
+	} else {
+		//maybe not happen
+		if mode.IsDir() {
+			if child.(*Dir).info.StorageClass != info.StorageClass {
+				child = NewDir(d.super, info, d.info.Inode, req.Name)
+			}
+		} else {
+			if child.(*File).info.StorageClass != info.StorageClass {
+				child = NewFile(d.super, info, DefaultFlag, d.info.Inode, req.Name)
+			}
+			log.LogDebugf("Lookup: update nodeCache parent(%v) name(%v) ino(%v) storageClass(%v)",
+				d.info.Inode, req.Name, ino, child.(*File).info.StorageClass)
+			d.super.nodeCache[ino] = child
+		}
 	}
 	d.super.fslock.Unlock()
 
@@ -485,6 +501,14 @@ func (d *Dir) ReadDir(ctx context.Context, req *fuse.ReadRequest, resp *fuse.Rea
 
 	infos := d.super.mw.BatchInodeGet(inodes)
 	for _, info := range infos {
+		cacheInfo := d.super.ic.Get(info.Inode)
+		if cacheInfo != nil {
+			//if storage class has been changed. delete the
+			if cacheInfo.StorageClass != info.StorageClass {
+				delete(d.super.nodeCache, info.Inode)
+			}
+		}
+		// update inode cache
 		d.super.ic.Put(info)
 	}
 
