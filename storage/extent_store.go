@@ -125,7 +125,7 @@ type ExtentStore struct {
 	hasAllocSpaceExtentIDOnVerifyFile uint64
 	hasDeleteNormalExtentsCache       sync.Map
 	partitionType                     int
-	extentLockMap                     map[uint64]bool
+	extentLockMap                     map[uint64]proto.GcFlag
 	elMutex                           sync.RWMutex
 	extentLock                        bool
 }
@@ -186,7 +186,7 @@ func NewExtentStore(dataDir string, partitionID uint64, storeSize, dpType int, i
 	}
 
 	s.extentInfoMap = make(map[uint64]*ExtentInfo, 0)
-	s.extentLockMap = make(map[uint64]bool, 0)
+	s.extentLockMap = make(map[uint64]proto.GcFlag, 0)
 	s.cache = NewExtentCache(100)
 	if err = s.initBaseFileID(); err != nil {
 		err = fmt.Errorf("init base field ID: %v", err)
@@ -363,11 +363,13 @@ func (s *ExtentStore) Write(extentID uint64, offset, size int64, data []byte, cr
 		}
 	} else {
 		if s.extentLock {
-			if _, ok := s.extentLockMap[extentID]; ok {
-				// s.elMutex.RUnlock()
-				// err = fmt.Errorf("extent(%v) is locked", extentID)
-				log.LogErrorf("[Write] gc_extent[%d] is locked, path %s", extentID, s.dataPath)
-				// return
+			if flag, ok := s.extentLockMap[extentID]; ok {
+				log.LogErrorf("[Write] gc_extent_lock[%d] is locked, path %s", extentID, s.dataPath)
+				if flag == proto.GcDeleteFlag {
+					s.elMutex.RUnlock()
+					err = fmt.Errorf("extent(%v) is locked", extentID)
+					return
+				}
 			}
 		}
 	}
@@ -487,7 +489,7 @@ func (s *ExtentStore) tinyDelete(extentID uint64, offset, size int64) (err error
 	return
 }
 
-func (s *ExtentStore) IsMarkGc(extId uint64) bool {
+func (s *ExtentStore) CanGcDelete(extId uint64) bool {
 	s.eiMutex.RLock()
 	ei := s.extentInfoMap[extId]
 	s.eiMutex.RUnlock()
@@ -498,8 +500,19 @@ func (s *ExtentStore) IsMarkGc(extId uint64) bool {
 	s.elMutex.RLock()
 	defer s.elMutex.RUnlock()
 
-	_, ok := s.extentLockMap[extId]
-	return ok
+	flag, ok := s.extentLockMap[extId]
+	return ok && flag == proto.GcDeleteFlag
+}
+
+func (s *ExtentStore) GetGcFlag(extId uint64) proto.GcFlag {
+	s.elMutex.RLock()
+	defer s.elMutex.RUnlock()
+
+	flag, ok := s.extentLockMap[extId]
+	if !ok {
+		return proto.GcNormal
+	}
+	return flag
 }
 
 // MarkDelete marks the given extent as deleted.
@@ -1234,17 +1247,11 @@ func (s *ExtentStore) ExtentBatchLockNormalExtent(gcLockEks *proto.GcLockExtents
 
 	if gcLockEks.IsCreate {
 		for _, e := range gcLockEks.Eks {
-			s.extentLockMap[e.ExtentId] = true
+			s.extentLockMap[e.ExtentId] = gcLockEks.Flag
 			log.LogDebugf("[ExtentBatchLockNormalExtent] lock extent(%v)", e.ExtentId)
 		}
 		return nil
 	}
-
-	// beforeTime, err := strconv.ParseInt(gcLockEks.BeforeTime, 10, 64)
-	// if err != nil {
-	// 	log.LogWarnf("[ExtentBatchLockNormalExtent] parse beforeTime error(%v)", err)
-	// 	return
-	// }
 
 	// return all extents
 	exts, err := s.GetAllExtents(time.Now().Unix() + 1000)
@@ -1264,13 +1271,6 @@ func (s *ExtentStore) ExtentBatchLockNormalExtent(gcLockEks *proto.GcLockExtents
 			continue
 		}
 
-		// if extent.ModifyTime > beforeTime {
-		// 	err = fmt.Errorf("extent modify time(%v) >= gcLockEks.BeforeTime(%v), path %s, id %d",
-		// 		extent.ModifyTime, gcLockEks.BeforeTime, s.dataPath, e.ExtentId)
-		// 	log.LogWarnf("[ExtentBatchLockNormalExtent] %s", err.Error())
-		// 	return err
-		// }
-
 		if e.Size != uint32(extent.Size) {
 			err = fmt.Errorf("extent size not match, path %s, extentID(%v), extentSize(%v), extentKeySize(%v)",
 				s.dataPath, e.ExtentId, extent.Size, e.Size)
@@ -1278,7 +1278,7 @@ func (s *ExtentStore) ExtentBatchLockNormalExtent(gcLockEks *proto.GcLockExtents
 			return err
 		}
 
-		s.extentLockMap[e.ExtentId] = true
+		s.extentLockMap[e.ExtentId] = gcLockEks.Flag
 		if log.EnableDebug() {
 			log.LogDebugf("[ExtentBatchLockNormalExtent] path %s, lock extent(%v)", s.dataPath, e.ExtentId)
 		}
@@ -1289,13 +1289,7 @@ func (s *ExtentStore) ExtentBatchLockNormalExtent(gcLockEks *proto.GcLockExtents
 func (s *ExtentStore) ExtentBatchUnlockNormalExtent(ext []*proto.ExtentKey) {
 	s.elMutex.Lock()
 	defer s.elMutex.Unlock()
-	for _, e := range ext {
-		delete(s.extentLockMap, e.ExtentId)
-	}
 
-	if len(s.extentLockMap) == 0 {
-		s.extentLock = false
-	}
-
-	return
+	s.extentLockMap = make(map[uint64]proto.GcFlag)
+	s.extentLock = false
 }
