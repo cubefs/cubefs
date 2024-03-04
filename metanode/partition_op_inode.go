@@ -145,6 +145,7 @@ func (mp *metaPartition) CreateInode(req *CreateInoReq, p *Packet, remoteAddr st
 			status = proto.OpOk
 			reply, err = json.Marshal(resp)
 			if err != nil {
+				// TODO ???: create success?
 				status = proto.OpErr
 				reply = []byte(err.Error())
 			}
@@ -194,12 +195,12 @@ func (mp *metaPartition) QuotaCreateInode(req *proto.QuotaCreateInodeRequest, p 
 	}
 	val, err := qinode.Marshal()
 	if err != nil {
-		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+		p.PacketErrorOpErr(err)
 		return err
 	}
 	resp, err = mp.submit(p.Context(), opFSMCreateInodeQuota, val)
 	if err != nil {
-		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
+		p.PacketErrorOpAgain(err)
 		return err
 	}
 
@@ -217,13 +218,14 @@ func (mp *metaPartition) QuotaCreateInode(req *proto.QuotaCreateInodeRequest, p 
 			status = proto.OpOk
 			reply, err = json.Marshal(resp)
 			if err != nil {
+				// TODO ???: create success?
 				status = proto.OpErr
 				reply = []byte(err.Error())
 			}
 		}
 	}
 	p.PacketErrorWithBody(status, reply)
-	log.LogInfof("QuotaCreateInode req [%v] qinode[%v] success.", req, qinode)
+	p.Span().Infof("QuotaCreateInode req [%v] qinode[%v] success.", req, qinode)
 	return
 }
 
@@ -267,7 +269,7 @@ func (mp *metaPartition) TxUnlinkInode(req *proto.TxUnlinkInodeRequest, p *Packe
 			}
 
 			p.ResultCode = status
-			log.LogWarnf("TxUnlinkInode: inode is already unlink before, req %v, rbino[%v], item %v", req, respIno, item)
+			p.Span().Warnf("inode is already unlink before, req %v, rbino[%v], item %v", req, respIno, item)
 			return nil
 		}
 
@@ -281,7 +283,8 @@ func (mp *metaPartition) TxUnlinkInode(req *proto.TxUnlinkInodeRequest, p *Packe
 	deleteLockTime := mp.vol.volDeleteLockTime * 60 * 60
 	if deleteLockTime > 0 && createTime+deleteLockTime > time.Now().Unix() {
 		err = fmt.Errorf("the current Inode[%v] is still locked for deletion", req.Inode)
-		log.LogDebugf("TxUnlinkInode: the current Inode is still locked for deletion, inode[%v] createTime(%v) mw.volDeleteLockTime(%v) now(%v)", respIno.Inode, createTime, deleteLockTime, time.Now())
+		p.Span().Debugf("the current Inode is still locked for deletion, inode[%v] createTime(%v) mw.volDeleteLockTime(%v) now(%v)",
+			respIno.Inode, createTime, deleteLockTime, time.Now())
 		p.PacketErrorWithBody(proto.OpNotPerm, []byte(err.Error()))
 		return
 	}
@@ -321,6 +324,7 @@ func (mp *metaPartition) UnlinkInode(req *UnlinkInoReq, p *Packet, remoteAddr st
 		val   []byte
 	)
 	start := time.Now()
+	span := p.Span()
 	if mp.IsEnableAuditLog() {
 		defer func() {
 			auditlog.LogInodeOp(remoteAddr, mp.GetVolName(), p.GetOpMsg(), req.GetFullPath(), err, time.Since(start).Milliseconds(), req.Inode, 0)
@@ -343,7 +347,7 @@ func (mp *metaPartition) UnlinkInode(req *UnlinkInoReq, p *Packet, remoteAddr st
 	ino := NewInode(req.Inode, 0)
 	if item := mp.inodeTree.Get(ino); item == nil {
 		err = fmt.Errorf("mp[%v] inode[%v] reqeust cann't found", mp.config.PartitionId, ino)
-		log.LogErrorf("action[UnlinkInode] %v", err)
+		span.Error(err)
 		p.PacketErrorWithBody(proto.OpNotExistErr, []byte(err.Error()))
 		return
 	}
@@ -353,13 +357,13 @@ func (mp *metaPartition) UnlinkInode(req *UnlinkInoReq, p *Packet, remoteAddr st
 		r, err = mp.submit(p.Context(), opFSMUnlinkInodeOnce, val)
 	} else {
 		ino.setVer(req.VerSeq)
-		log.LogDebugf("action[UnlinkInode] mp[%v] verseq [%v] ino[%v]", mp.config.PartitionId, req.VerSeq, ino)
+		span.Debugf("mp[%v] verseq [%v] ino[%v]", mp.config.PartitionId, req.VerSeq, ino)
 		val, err = ino.Marshal()
 		if err != nil {
 			p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 			return
 		}
-		log.LogDebugf("action[UnlinkInode] mp[%v] ino[%v] submit", mp.config.PartitionId, ino)
+		span.Debugf("mp[%v] ino[%v] submit", mp.config.PartitionId, ino)
 		r, err = mp.submit(p.Context(), opFSMUnlinkInode, val)
 	}
 
@@ -370,7 +374,6 @@ func (mp *metaPartition) UnlinkInode(req *UnlinkInoReq, p *Packet, remoteAddr st
 
 	msg = r.(*InodeResponse)
 	makeRspFunc()
-
 	return
 }
 
@@ -600,13 +603,13 @@ func (mp *metaPartition) TxCreateInodeLink(req *proto.TxLinkInodeRequest, p *Pac
 
 	val, err := ti.Marshal()
 	if err != nil {
-		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+		p.PacketErrorOpErr(err)
 		return
 	}
 
 	resp, err := mp.submit(p.Context(), opFSMTxCreateLinkInode, val)
 	if err != nil {
-		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
+		p.PacketErrorOpAgain(err)
 		return
 	}
 
@@ -648,17 +651,16 @@ func (mp *metaPartition) CreateInodeLink(req *LinkInodeReq, p *Packet, remoteAdd
 		ino.setVer(mp.verSeq)
 		val, err = ino.Marshal()
 		if err != nil {
-			p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+			p.PacketErrorOpErr(err)
 			return
 		}
 		r, err = mp.submit(p.Context(), opFSMCreateLinkInode, val)
-
 	}
-
 	if err != nil {
-		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
+		p.PacketErrorOpAgain(err)
 		return
 	}
+
 	retMsg := r.(*InodeResponse)
 	status := proto.OpNotExistErr
 	var reply []byte
@@ -674,7 +676,6 @@ func (mp *metaPartition) CreateInodeLink(req *LinkInodeReq, p *Packet, remoteAdd
 				reply = []byte(err.Error())
 			}
 		}
-
 	}
 	p.PacketErrorWithBody(status, reply)
 	return
@@ -755,7 +756,7 @@ func (mp *metaPartition) SetAttr(req *SetattrRequest, reqData []byte, p *Packet)
 		req.VerSeq = mp.GetVerSeq()
 		reqData, err = json.Marshal(req)
 		if err != nil {
-			log.LogErrorf("setattr: marshal err(%v)", err)
+			p.Span().Errorf("setattr: marshal err(%v)", err)
 			return
 		}
 	}
@@ -764,7 +765,7 @@ func (mp *metaPartition) SetAttr(req *SetattrRequest, reqData []byte, p *Packet)
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return
 	}
-	log.LogDebugf("action[SetAttr] inode[%v] ver [%v] exit", req.Inode, req.VerSeq)
+	p.Span().Debugf("inode[%v] ver [%v] exit", req.Inode, req.VerSeq)
 	p.PacketOkReply()
 	return
 }
@@ -889,11 +890,12 @@ func (mp *metaPartition) TxCreateInode(req *proto.TxCreateInodeRequest, p *Packe
 		return
 	}
 
+	span := p.Span()
 	createResp := &proto.TxCreateResponse{}
 	err = json.Unmarshal(p.Data, createResp)
 	if err != nil || createResp.TxInfo == nil {
 		err = fmt.Errorf("TxCreateInode: unmarshal txInfo failed, data %s, err %v", string(p.Data), err)
-		log.LogWarn(err)
+		span.Warn(err)
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return
 	}
@@ -903,9 +905,7 @@ func (mp *metaPartition) TxCreateInode(req *proto.TxCreateInodeRequest, p *Packe
 	txIno.Inode.Gid = req.Gid
 	txIno.Inode.LinkTarget = req.Target
 
-	if log.EnableDebug() {
-		log.LogDebugf("NewTxInode: TxInode: %v", txIno)
-	}
+	span.Debug("NewTxInode: TxInode:", txIno)
 
 	if defaultQuotaSwitch {
 		for _, quotaId := range req.QuotaIds {
