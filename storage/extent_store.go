@@ -20,7 +20,6 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
-	"github.com/cubefs/cubefs/util/infra"
 	"hash/crc32"
 	"io"
 	"math"
@@ -36,6 +35,7 @@ import (
 	"time"
 
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util/infra"
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/cubefs/cubefs/util/ttlstore"
 	"github.com/cubefs/cubefs/util/unit"
