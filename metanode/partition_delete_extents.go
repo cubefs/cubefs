@@ -40,8 +40,7 @@ const (
 
 var extentsFileHeader = []byte{0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x08}
 
-// / start metapartition delete extents work
-// /
+// start metapartition delete extents work
 func (mp *metaPartition) startToDeleteExtents() {
 	fileList := synclist.New()
 	go mp.appendDelExtentsToFile(fileList)
