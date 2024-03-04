@@ -312,7 +312,6 @@ func (mp *metaPartition) deleteMarkedInodes(inoSlice []uint64) {
 		allInodes = append(allInodes, inode)
 	}
 
-	var shouldCommit, shouldRePushToFreeList []*Inode
 	if proto.IsCold(mp.volType) {
 		// delete ebs obj extents
 		shouldCommit, shouldRePushToFreeList = mp.doBatchDeleteObjExtentsInEBS(allInodes)

@@ -175,19 +175,30 @@ LOOP:
 	}
 }
 
-func (mp *metaPartition) batchDeleteExtentsByDp(dpId uint64, extents []*proto.ExtentKey) (err error) {
+func (mp *metaPartition) batchDeleteExtentsByDp(dpId uint64, extents []*proto.DelExtentParam) (retryExtents []*proto.DelExtentParam, err error) {
 	dp := mp.vol.GetPartition(dpId)
 	if dp == nil {
 		log.LogErrorf("[batchDeleteExtentsByDp] mp(%v) dp(%v) not found", mp.config.PartitionId, dpId)
 		err = fmt.Errorf("dp %v is not found", dpId)
+		retryExtents = extents
 		return
 	}
-	if dp.IsDiscard {
-		log.LogDebugf("[batchDeleteExtentsByDp] mp(%v) dp(%v) is discard", mp.config.PartitionId, dpId)
-		return
+	batchCnt := DeleteBatchCount()
+	for i := uint64(0); i < uint64(len(extents)); i += batchCnt {
+		limit := i + batchCnt
+		if limit > uint64(len(extents)) {
+			limit = uint64(len(extents))
+		}
+		batchEk := extents[i:limit]
+		err = mp.doBatchDeleteExtentsByPartition(dpId, batchEk)
+		if err != nil {
+			err = nil
+			log.LogErrorf("[batchDeleteExtentsByDp] vol(%v) mp(%v) failed to delete dp(%v) extents cnt(%v)", mp.GetVolName(), mp.config.PartitionId, dp.PartitionID, len(batchEk))
+			retryExtents = append(retryExtents, batchEk...)
+			continue
+		}
+		log.LogDebugf("[batchDeleteExtentsByDp] vol(%v) mp(%v) delete eks cnt(%v) from dp(%v)", mp.GetVolName(), mp.config.PartitionId, len(extents), dpId)
 	}
-	log.LogDebugf("[batchDeleteExtentsByDp] mp(%v) delete eks from dp(%v)", mp.config.PartitionId, dpId)
-	err = mp.doBatchDeleteExtentsByPartition(dpId, extents)
 	return
 }
 
@@ -198,7 +209,6 @@ func (mp *metaPartition) deleteExtentsFromList(fileList *synclist.SyncList) {
 			log.LogErrorf(fmt.Sprintf("deleteExtentsFromList(%v) deleteExtentsFromList panic (%v)", mp.config.PartitionId, r))
 		}
 	}()
-
 	var (
 		element  *list.Element
 		fileName string
@@ -282,48 +292,45 @@ func (mp *metaPartition) deleteExtentsFromList(fileList *synclist.SyncList) {
 			continue
 		}
 
-		var deleteCnt uint64
+		deleteCnt := 0
 		errExts := make([]proto.ExtentKey, 0)
-		needDeleteExtents := make(map[uint64][]*proto.ExtentKey)
-		buf = make([]byte, util.MB)
+		needDeleteExtents := make(map[uint64][]*proto.DelExtentParam)
+		buf = make([]byte, 512*util.KB)
 		err = func() (err error) {
 			// read extents from cursor
 			defer fp.Close()
-			// NOTE: read 1 MB at once
+			// NOTE: read 256kb at once
 			rLen, err := fp.ReadAt(buf, int64(cursor))
 			log.LogDebugf("[deleteExtentsFromList] mp(%v) read len(%v) cursor(%v), err(%v)", mp.config.PartitionId, rLen, cursor, err)
 			if err != nil {
-				if err == io.EOF {
-					err = nil
-					if rLen == 0 {
-						log.LogDebugf("[deleteExtentsFromList] mp(%v) file list cnt(%v)", mp.config.PartitionId, fileList.Len())
-						if fileList.Len() <= 1 {
-							log.LogDebugf("[deleteExtentsFromList] mp(%v) skip delete file(%v), free list count(%v)", mp.config.PartitionId, fileName, fileList.Len())
-							return
-						}
-						status := mp.raftPartition.Status()
-						_, isLeader := mp.IsLeader()
-						if isLeader && !status.RestoringSnapshot {
-							// delete old delete extents file for metapartition
-							if _, err = mp.submit(opFSMInternalDelExtentFile, []byte(fileName)); err != nil {
-								log.LogErrorf("[deleteExtentsFromList] mp(%v), delete old file(%v), err(%v)", mp.config.PartitionId, fileName, err)
-								return
-							}
-							log.LogDebugf("[deleteExtentsFromList] mp(%v), delete old file(%v)", mp.config.PartitionId, fileName)
-							return
-						}
-						log.LogDebugf("[deleteExtentsFromList] partitionId=%d,delete"+
-							" old file status: %s", mp.config.PartitionId, status.State)
-					}
-				} else {
+				if err != io.EOF {
 					log.LogErrorf("[deleteExtentsFromList] mp(%v) failed to read file(%v), err(%v)", mp.config.PartitionId, fileName, err)
 					return
+				}
+				err = nil
+				if rLen == 0 {
+					log.LogDebugf("[deleteExtentsFromList] mp(%v) file list cnt(%v)", mp.config.PartitionId, fileList.Len())
+					if fileList.Len() <= 1 {
+						log.LogDebugf("[deleteExtentsFromList] mp(%v) skip delete file(%v), free list count(%v)", mp.config.PartitionId, fileName, fileList.Len())
+						return
+					}
+					status := mp.raftPartition.Status()
+					_, isLeader := mp.IsLeader()
+					if isLeader && !status.RestoringSnapshot {
+						// delete old delete extents file for metapartition
+						if _, err = mp.submit(opFSMInternalDelExtentFile, []byte(fileName)); err != nil {
+							log.LogErrorf("[deleteExtentsFromList] mp(%v), delete old file(%v), err(%v)", mp.config.PartitionId, fileName, err)
+							return
+						}
+						log.LogDebugf("[deleteExtentsFromList] mp(%v), delete old file(%v)", mp.config.PartitionId, fileName)
+						return
+					}
+					log.LogDebugf("[deleteExtentsFromList] partitionId=%d, delete old file status: %s", mp.config.PartitionId, status.State)
 				}
 			}
 			cursor += uint64(rLen)
 			buff := bytes.NewBuffer(buf[:rLen])
-			batchCount := DeleteBatchCount() * 5
-			for buff.Len() != 0 && deleteCnt < batchCount {
+			for buff.Len() != 0 {
 				lastUnread := buff.Len()
 				// NOTE: audjust cursor
 				if uint64(buff.Len()) < extentKeyLen {
@@ -359,14 +366,15 @@ func (mp *metaPartition) deleteExtentsFromList(fileList *synclist.SyncList) {
 				dpId := ek.PartitionId
 				eks := needDeleteExtents[dpId]
 				if eks == nil {
-					eks = make([]*proto.ExtentKey, 0)
+					eks = make([]*proto.DelExtentParam, 0)
 				}
-				eks = append(eks, &ek)
-				needDeleteExtents[dpId] = eks
-
-				// NOTE: limit batch count
+				eks = append(eks, &proto.DelExtentParam{
+					ExtentKey:          &ek,
+					IsSnapshotDeletion: ek.IsSplit(),
+				})
 				deleteCnt++
-				log.LogDebugf("[deleteExtentsFromList] mp(%v) append extent(%v) to batch, count limit(%v), cnt(%v)", mp.config.PartitionId, ek, batchCount, deleteCnt)
+				needDeleteExtents[dpId] = eks
+				log.LogDebugf("[deleteExtentsFromList] mp(%v) append extent(%v) to batch, cnt(%v)", mp.config.PartitionId, ek, deleteCnt)
 			}
 			log.LogDebugf("[deleteExtentsFromList] mp(%v) reach the end of buffer", mp.config.PartitionId)
 			return
@@ -386,15 +394,14 @@ func (mp *metaPartition) deleteExtentsFromList(fileList *synclist.SyncList) {
 
 		for dpId, eks := range needDeleteExtents {
 			log.LogDebugf("[deleteExtentsFromList] mp(%v) delete dp(%v) eks count(%v)", mp.config.PartitionId, dpId, len(eks))
-			err = mp.batchDeleteExtentsByDp(dpId, eks)
+			var retry []*proto.DelExtentParam
+			retry, err = mp.batchDeleteExtentsByDp(dpId, eks)
 			if err != nil {
-				log.LogErrorf("[deleteExtentsFromList] mp(%v) failed to delete dp(%v) extents", mp.config.PartitionId, dpId)
-				err = nil
-				for _, ek := range eks {
-					errExts = append(errExts, *ek)
-				}
-			} else {
-				successCnt += len(eks)
+				log.LogErrorf("[deleteExtentsFromList] mp(%v) failed to delete dp(%v) err(%v)", mp.config.PartitionId, dpId, err)
+			}
+			successCnt += len(eks) - len(retry)
+			for _, dek := range retry {
+				errExts = append(errExts, *dek.ExtentKey)
 			}
 		}
 
