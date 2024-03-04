@@ -28,7 +28,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/cubefs/cubefs/blobstore/common/trace"
 	"github.com/cubefs/cubefs/depends/tiglabs/raft"
 	raftproto "github.com/cubefs/cubefs/depends/tiglabs/raft/proto"
 	"github.com/cubefs/cubefs/proto"
@@ -273,7 +272,7 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 		log.LogDebugf("opFSMStoreTick: quotaRebuild [%v] uidRebuild [%v]", quotaRebuild, uidRebuild)
 		mp.storeChan <- msg
 	case opFSMInternalDeleteInode:
-		err = mp.internalDelete(msg.V)
+		err = mp.internalDelete(context.TODO(), msg.V)
 	case opFSMInternalDeleteInodeBatch:
 		err = mp.internalDeleteBatch(msg.V)
 	case opFSMInternalDelExtentFile:
@@ -913,7 +912,7 @@ func (mp *metaPartition) HandleLeaderChange(leader uint64) {
 
 // Put puts the given key-value pair (operation key and operation request) into the raft store.
 func (mp *metaPartition) submit(ctx context.Context, op uint32, data []byte) (resp interface{}, err error) {
-	span := trace.SpanFromContextSafe(ctx)
+	span := getSpan(ctx)
 	span.Debugf("submit op [%d] ...", op)
 	snap := NewMetaItem(0, nil, nil)
 	snap.Op = op

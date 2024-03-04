@@ -44,11 +44,12 @@ func (s *MetaItem) MarshalJson() ([]byte, error) {
 
 // MarshalBinary marshals MetaItem to binary data.
 // Binary frame structure:
-//  +------+----+------+------+------+------+
-//  | Item | Op | LenK |   K  | LenV |   V  |
-//  +------+----+------+------+------+------+
-//  | byte | 4  |  4   | LenK |  4   | LenV |
-//  +------+----+------+------+------+------+
+//
+//	+------+----+------+------+------+------+
+//	| Item | Op | LenK |   K  | LenV |   V  |
+//	+------+----+------+------+------+------+
+//	| byte | 4  |  4   | LenK |  4   | LenV |
+//	+------+----+------+------+------+------+
 func (s *MetaItem) MarshalBinary() (result []byte, err error) {
 	buff := bytes.NewBuffer(make([]byte, 0))
 	buff.Grow(4 + len(s.K) + len(s.V))
@@ -78,11 +79,12 @@ func (s *MetaItem) UnmarshalJson(data []byte) error {
 
 // MarshalBinary unmarshal this MetaItem entity from binary data.
 // Binary frame structure:
-//  +------+----+------+------+------+------+
-//  | Item | Op | LenK |   K  | LenV |   V  |
-//  +------+----+------+------+------+------+
-//  | byte | 4  |  4   | LenK |  4   | LenV |
-//  +------+----+------+------+------+------+
+//
+//	+------+----+------+------+------+------+
+//	| Item | Op | LenK |   K  | LenV |   V  |
+//	+------+----+------+------+------+------+
+//	| byte | 4  |  4   | LenK |  4   | LenV |
+//	+------+----+------+------+------+------+
 func (s *MetaItem) UnmarshalBinary(raw []byte) (err error) {
 	var (
 		lenK uint32
