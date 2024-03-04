@@ -297,10 +297,17 @@ func (cache *ExtentCache) Flusher() infra.Flusher {
 		}
 	}
 	cache.lock.RUnlock()
-	var flushFunc = func(onFlush func(size int64)) error {
+	var flushFunc = func(opsLimiter, bpsLimiter *rate.Limiter) error {
 		for _, e := range extents[:i] {
-			if onFlush != nil {
-				onFlush(e.Modifies())
+			if opsLimiter != nil {
+				_ = opsLimiter.Wait(context.Background())
+			}
+			if bpsLimiter != nil {
+				var modifies = int(e.Modifies())
+				if modifies > bpsLimiter.Burst() {
+					modifies = bpsLimiter.Burst()
+				}
+				_ = bpsLimiter.WaitN(context.Background(), modifies)
 			}
 			_ = e.Flush()
 			atomic.StoreInt64(&e.modifies, 0)

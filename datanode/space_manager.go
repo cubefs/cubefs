@@ -599,8 +599,8 @@ func (manager *SpaceManager) SetPartitionConsistencyMode(mode proto.ConsistencyM
 const (
 	DefaultForceFlushFDSecond              = 10
 	DefaultForceFlushFDParallelismOnDisk   = 5
-	DefaultForceFlushDataSizeOnEachHDDDisk = 2 * util.MB
-	DefaultForceFlushDataSizeOnEachSSDDisk = 10 * util.MB
+	DefaultForceFlushDataSizeOnEachHDDDisk = 10 * util.MB
+	DefaultForceFlushDataSizeOnEachSSDDisk = 50 * util.MB
 	DefaultDeletionConcurrencyOnDisk       = 2
 	DefaultIssueFixConcurrencyOnDisk       = 16
 )

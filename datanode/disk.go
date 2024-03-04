@@ -1099,36 +1099,20 @@ func (d *Disk) __flushInWindow(parallelism int, ew time.Duration) {
 		flushers = append(flushers, flusher)
 		return true
 	})
-	var hms = time.Millisecond * 100         // hms: one hundred milliseconds
-	var hmss = ew / (time.Millisecond * 100) // hms: number of hundred milliseconds
-	var ophms = total / int64(hmss)          // ophms: operation per hundred milliseconds
-	if total%int64(hmss) != 0 {
-		ophms += 1
-	}
-	if ophms == 0 {
-		ophms = 1
-	}
-	var opsLimiter = rate.NewLimiter(rate.Every(hms), int(ophms))
-	var bandwidthLimiter = d.createFlushExtentsRater(uint64(parallelism))
-	var ln = func(size int64) {
-		_ = opsLimiter.Wait(context.Background())
-		if size > int64(bandwidthLimiter.Burst()) {
-			size = int64(bandwidthLimiter.Burst())
-		}
-		_ = bandwidthLimiter.WaitN(context.Background(), int(size))
-	}
-	var flushc = make(chan infra.Flusher, len(flushers)) // 用于并发flush
+	var opsLimiter = newFlushOpsLimiter(total, ew)                               // Limit operations per second
+	var bpsLimiter = newFlushBpsLimiter(uint64(parallelism), d.isSSDMediaType()) // Limit bytes per second
+	var flusherc = make(chan infra.Flusher, len(flushers))                       // 用于并发flush
 	var failures int64
 	var wg = new(sync.WaitGroup)
 	var flushWorker async.WorkerFunc = func() {
 		defer wg.Done()
 		var err error
 		for {
-			var flusher = <-flushc
+			var flusher = <-flusherc
 			if flusher == nil {
 				return
 			}
-			if err = flusher.Flush(ln); err != nil {
+			if err = flusher.Flush(opsLimiter, bpsLimiter); err != nil {
 				err = errors.NewErrorf("__flushInWindow: flush failed: %v", err.Error())
 				log.LogErrorf(err.Error())
 				atomic.AddInt64(&failures, 1)
@@ -1140,9 +1124,9 @@ func (d *Disk) __flushInWindow(parallelism int, ew time.Duration) {
 		async.RunWorker(flushWorker)
 	}
 	for _, flusher := range flushers {
-		flushc <- flusher
+		flusherc <- flusher
 	}
-	close(flushc)
+	close(flusherc)
 	wg.Wait()
 	if atomic.LoadInt64(&failures) == 0 {
 		if err := d.persistLatestFlushTime(flushTime.Unix()); err != nil {
@@ -1150,8 +1134,8 @@ func (d *Disk) __flushInWindow(parallelism int, ew time.Duration) {
 		}
 	}
 	if log.IsWarnEnabled() {
-		log.LogWarnf("Disk %v: schedule flush complete, parallelism %v, dps %v, fds %v, rate %v/hms elapsed %v",
-			d.Path, parallelism, len(flushers), total, ophms, time.Now().Sub(flushTime))
+		log.LogWarnf("Disk %v: schedule flush complete, parallelism %v, dps %v, fds %v, ops limit %v, bps limit %v, elapsed %v",
+			d.Path, parallelism, len(flushers), total, opsLimiter.Limit(), bpsLimiter.Limit(), time.Now().Sub(flushTime))
 	}
 }
 
@@ -1205,18 +1189,23 @@ func (d *Disk) forcePersistPartitions(partitions []*DataPartition) {
 	}
 }
 
-func (d *Disk) createFlushExtentsRater(parallelism uint64) *rate.Limiter {
+func newFlushBpsLimiter(parallelism uint64, isSSD bool) *rate.Limiter {
 	if parallelism <= 0 {
 		parallelism = DefaultForceFlushFDParallelismOnDisk
 	}
-	var flushFDQps uint64
-	if d.isSSDMediaType() {
-		flushFDQps = parallelism * DefaultForceFlushDataSizeOnEachSSDDisk
+	var bps uint64
+	if isSSD {
+		bps = parallelism * DefaultForceFlushDataSizeOnEachSSDDisk
 	} else {
-		flushFDQps = parallelism * DefaultForceFlushDataSizeOnEachHDDDisk
+		bps = parallelism * DefaultForceFlushDataSizeOnEachHDDDisk
 	}
-	flushExtentsRater := rate.NewLimiter(rate.Limit(flushFDQps), int(flushFDQps))
-	return flushExtentsRater
+	bpsLimiter := rate.NewLimiter(rate.Limit(bps), int(bps))
+	return bpsLimiter
+}
+
+func newFlushOpsLimiter(total int64, ew time.Duration) *rate.Limiter {
+	var opsLimiter = rate.NewLimiter(rate.Every(ew/time.Duration(total)), 1)
+	return opsLimiter
 }
 
 func (d *Disk) isSSDMediaType() bool {

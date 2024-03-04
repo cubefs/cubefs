@@ -1,6 +1,7 @@
 package datanode
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -11,9 +12,8 @@ import (
 	"time"
 
 	"github.com/cubefs/cubefs/util/infra"
-	"golang.org/x/time/rate"
-
 	"github.com/cubefs/cubefs/util/log"
+	"golang.org/x/time/rate"
 )
 
 type PersistFlag int
@@ -36,33 +36,38 @@ func (dp *DataPartition) Flusher() infra.Flusher {
 		status       = dp.applyStatus.Snap()
 		storeFlusher = dp.extentStore.Flusher()
 	)
-	var flushFunc = func(ln func(size int64)) error {
-		var release = dp.lockPersist()
-		defer release()
+	return infra.NewFuncFlusher(
+		func(opsLimiter, bpsLimiter *rate.Limiter) error {
+			var release = dp.lockPersist()
+			defer release()
 
-		var err error
-		if err = storeFlusher.Flush(ln); err != nil {
-			return err
-		}
-		if dp.raftPartition != nil {
-			if err = dp.raftPartition.FlushWAL(false); err != nil {
+			var err error
+			if err = storeFlusher.Flush(opsLimiter, bpsLimiter); err != nil {
 				return err
 			}
-		}
-		if err = dp.persistAppliedID(status); err != nil {
-			return err
-		}
+			if dp.raftPartition != nil {
+				if err = dp.raftPartition.FlushWAL(false); err != nil {
+					return err
+				}
+			}
+			if opsLimiter != nil {
+				_ = opsLimiter.Wait(context.Background())
+			}
+			if err = dp.persistAppliedID(status); err != nil {
+				return err
+			}
 
-		if err = dp.persistMetadata(status); err != nil {
-			return err
-		}
-		return nil
-	}
-	var countFunc = func() int {
-		return storeFlusher.Count() + 2
-
-	}
-	return infra.NewFuncFlusher(flushFunc, countFunc)
+			if opsLimiter != nil {
+				_ = opsLimiter.Wait(context.Background())
+			}
+			if err = dp.persistMetadata(status); err != nil {
+				return err
+			}
+			return nil
+		},
+		func() int {
+			return storeFlusher.Count() + 2
+		})
 }
 
 // Persist 方法会执行以下操作:
@@ -81,7 +86,7 @@ func (dp *DataPartition) persist(status *WALApplyStatus, useFlushExtentsRateLimi
 	}
 	var flushExtentsLimitRater *rate.Limiter
 	if useFlushExtentsRateLimiter {
-		flushExtentsLimitRater = dp.disk.createFlushExtentsRater(atomic.LoadUint64(&dp.disk.forceFlushFDParallelism))
+		flushExtentsLimitRater = newFlushBpsLimiter(atomic.LoadUint64(&dp.disk.forceFlushFDParallelism), dp.disk.isSSDMediaType())
 	}
 	_ = dp.forceFlushAllFD(flushExtentsLimitRater)
 

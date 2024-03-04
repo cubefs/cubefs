@@ -1,9 +1,12 @@
 package infra
 
+import "golang.org/x/time/rate"
+
 type Flusher interface {
 	// Flush flushes the data to the underlying storage.
-	// ln is the callback function to notify the size of the flushed data.
-	Flush(ln func(size int64)) error
+	// opsLimiter (operation per second limiter): the rate limiter for the operation.
+	// bpsLimiter (bytes pers second limiter): the rate limiter for the bytes.
+	Flush(opsLimiter, bpsLimiter *rate.Limiter) error
 
 	// Count returns the number of items to be flushed.
 	Count() int
@@ -11,9 +14,9 @@ type Flusher interface {
 
 type multiFlusher []Flusher
 
-func (m multiFlusher) Flush(ln func(size int64)) error {
+func (m multiFlusher) Flush(opsLimiter, bpsLimiter *rate.Limiter) error {
 	for _, f := range m {
-		if err := f.Flush(ln); err != nil {
+		if err := f.Flush(opsLimiter, bpsLimiter); err != nil {
 			return err
 		}
 	}
@@ -33,18 +36,18 @@ func NewMultiFlusher(flushers ...Flusher) Flusher {
 }
 
 type funcFlusher struct {
-	flushFunc func(ln func(size int64)) error
+	flushFunc func(opsLimiter, bpsLimiter *rate.Limiter) error
 	countFunc func() int
 }
 
-func (f funcFlusher) Flush(ln func(size int64)) error {
-	return f.flushFunc(ln)
+func (f funcFlusher) Flush(opsLimiter, bpsLimiter *rate.Limiter) error {
+	return f.flushFunc(opsLimiter, bpsLimiter)
 }
 
 func (f funcFlusher) Count() int {
 	return f.countFunc()
 }
 
-func NewFuncFlusher(flushFunc func(ln func(size int64)) error, countFunc func() int) Flusher {
+func NewFuncFlusher(flushFunc func(opsLimiter, bpsLimiter *rate.Limiter) error, countFunc func() int) Flusher {
 	return funcFlusher{flushFunc, countFunc}
 }

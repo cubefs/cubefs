@@ -743,7 +743,7 @@ func (s *ExtentStore) Close() {
 
 	// Release cache
 	s.deletionQueue.Close()
-	_ = s.cache.Flusher().Flush(nil)
+	_ = s.cache.Flusher().Flush(nil, nil)
 	s.cache.Close()
 	s.tinyExtentDeleteFp.Sync()
 	s.tinyExtentDeleteFp.Close()
@@ -1426,12 +1426,17 @@ func (s *ExtentStore) Flush(limiter *rate.Limiter) (err error) {
 }
 
 func (s *ExtentStore) __innerFpFlusher() infra.Flusher {
-	var flushFunc = func(ln func(size int64)) (err error) {
-		ln(0)
+	var flushFunc = func(opsLimiter, bpsLimiter *rate.Limiter) (err error) {
+		if opsLimiter != nil {
+			_ = opsLimiter.Wait(context.Background())
+		}
 		if err = s.inodeIndex.Flush(); err != nil {
 			return
 		}
-		ln(0)
+
+		if opsLimiter != nil {
+			_ = opsLimiter.Wait(context.Background())
+		}
 		if err = s.metadataFp.Sync(); err != nil {
 			return
 		}
