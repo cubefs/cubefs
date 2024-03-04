@@ -54,6 +54,6 @@ func NewRootCmd() *cobra.Command {
 	c.PersistentFlags().StringVarP(&DataPort, "dport", "", "", "prof port of detanode")
 	c.PersistentFlags().Uint64VarP(&InodeID, "inode", "", 0, "inode id of a file")
 	c.Flags().BoolVarP(&optShowVersion, "version", "v", false, "Show version information")
-	// c.PersistentFlags().StringVarP(&CleanStr, "clean", "", "false", "whether clean gc data.")
+	c.PersistentFlags().StringVarP(&CleanFlag, "clean", "", "false", "whether clean gc data.")
 	return c
 }
