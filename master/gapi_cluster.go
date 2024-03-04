@@ -259,8 +259,9 @@ func (m *ClusterService) loadMetaPartition(ctx context.Context, args struct {
 }
 
 func (m *ClusterService) decommissionMetaPartition(ctx context.Context, args struct {
-	PartitionID uint64
-	NodeAddr    string
+	PartitionID  uint64
+	NodeAddr     string
+	dstStoreMode proto.StoreMode
 }) (*proto.GeneralResp, error) {
 	if _, _, err := permissions(ctx, ADMIN); err != nil {
 		return nil, err
@@ -269,7 +270,21 @@ func (m *ClusterService) decommissionMetaPartition(ctx context.Context, args str
 	if err != nil {
 		return nil, err
 	}
-	if err := m.cluster.decommissionMetaPartition(args.NodeAddr, mp, proto.StoreModeMem); err != nil {
+	vol, err := m.cluster.getVol(mp.volName)
+	if err != nil {
+		return nil, err
+	}
+	dstStoreMode := args.dstStoreMode
+	if dstStoreMode == proto.StoreModeDef {
+		dstStoreMode = vol.DefaultStoreMode
+		for _, replica := range mp.Replicas {
+			if replica.Addr == args.NodeAddr {
+				dstStoreMode = replica.StoreMode
+				break
+			}
+		}
+	}
+	if err := m.cluster.decommissionMetaPartition(args.NodeAddr, mp, dstStoreMode); err != nil {
 		return nil, err
 	}
 	log.LogInfof(proto.AdminDecommissionMetaPartition+" partitionID :%v  decommissionMetaPartition successfully", args.PartitionID)
@@ -310,12 +325,20 @@ func (m *ClusterService) getTopology(ctx context.Context, args struct{}) (*proto
 			cv.NodeSet[ns.ID] = nsView
 			ns.dataNodes.Range(func(key, value interface{}) bool {
 				dataNode := value.(*DataNode)
-				nsView.DataNodes = append(nsView.DataNodes, proto.NodeView{ID: dataNode.ID, Addr: dataNode.Addr, IsActive: dataNode.isActive, IsWritable: dataNode.isWriteAble(), IsDiskWritable: dataNode.isWriteAble()})
+				nsView.DataNodes = append(nsView.DataNodes, proto.NodeView{ID: dataNode.ID, Addr: dataNode.Addr, IsActive: dataNode.isActive, IsWritable: dataNode.isWriteAble()})
 				return true
 			})
 			ns.metaNodes.Range(func(key, value interface{}) bool {
 				metaNode := value.(*MetaNode)
-				nsView.MetaNodes = append(nsView.MetaNodes, proto.NodeView{ID: metaNode.ID, Addr: metaNode.Addr, IsActive: metaNode.IsActive, IsWritable: metaNode.isWritable(proto.StoreModeMem), IsDiskWritable: metaNode.isWritable(proto.StoreModeRocksDb)})
+				nsView.MetaNodes = append(nsView.MetaNodes, proto.MetaNodeView{
+					NodeView: proto.NodeView{
+						ID:         metaNode.ID,
+						Addr:       metaNode.Addr,
+						IsActive:   metaNode.IsActive,
+						IsWritable: metaNode.isWritable(proto.StoreModeMem),
+					},
+					IsRocksdbWritable: metaNode.isWritable(proto.StoreModeRocksDb),
+				})
 				return true
 			})
 		}
@@ -615,7 +638,7 @@ func (m *ClusterService) makeClusterView() *proto.ClusterView {
 		MaxDataPartitionID:   m.cluster.idAlloc.dataPartitionID,
 		MaxMetaNodeID:        m.cluster.idAlloc.commonID,
 		MaxMetaPartitionID:   m.cluster.idAlloc.metaPartitionID,
-		MetaNodes:            make([]proto.NodeView, 0),
+		MetaNodes:            make([]proto.MetaNodeView, 0),
 		DataNodes:            make([]proto.NodeView, 0),
 		VolStatInfo:          make([]*proto.VolStatInfo, 0),
 		BadPartitionIDs:      make([]proto.BadPartitionView, 0),

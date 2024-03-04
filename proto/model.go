@@ -33,7 +33,7 @@ type MetaNodeInfo struct {
 	DomainAddr                string
 	IsActive                  bool
 	IsWriteAble               bool
-	IsDiskWritable            bool
+	IsRocksdbWritable         bool
 	ZoneName                  string `json:"Zone"`
 	MaxMemAvailWeight         uint64 `json:"MaxMemAvailWeight"`
 	Total                     uint64 `json:"TotalWeight"`
@@ -99,7 +99,8 @@ type MetaPartitionInfo struct {
 	LoadResponse  []*MetaPartitionLoadResponse
 	Forbidden     bool
 	MemStoreCnt   uint8
-	RcokStoreCnt  uint8
+	RockStoreCnt  uint8
+	StoreMode     StoreMode
 }
 
 // MetaReplica defines the replica of a meta partition
@@ -134,7 +135,7 @@ type ClusterView struct {
 	BadPartitionIDs      []BadPartitionView
 	BadMetaPartitionIDs  []BadPartitionView
 	MasterNodes          []NodeView
-	MetaNodes            []NodeView
+	MetaNodes            []MetaNodeView
 	DataNodes            []NodeView
 }
 
@@ -160,12 +161,16 @@ type ClusterIP struct {
 
 // NodeView provides the view of the data or meta node.
 type NodeView struct {
-	Addr           string
-	IsActive       bool
-	DomainAddr     string
-	ID             uint64
-	IsWritable     bool
-	IsDiskWritable bool
+	Addr       string
+	IsActive   bool
+	DomainAddr string
+	ID         uint64
+	IsWritable bool
+}
+
+type MetaNodeView struct {
+	NodeView
+	IsRocksdbWritable bool
 }
 
 type DpRepairInfo struct {
@@ -191,17 +196,21 @@ type ClusterStatInfo struct {
 
 type ZoneStat struct {
 	DataNodeStat *ZoneNodesStat
-	MetaNodeStat *ZoneNodesStat
+	MetaNodeStat *ZoneMetaNodesStat
 }
 
 type ZoneNodesStat struct {
-	Total             float64 `json:"TotalGB"`
-	Used              float64 `json:"UsedGB"`
-	Avail             float64 `json:"AvailGB"`
-	UsedRatio         float64
-	TotalNodes        int
-	WritableNodes     int
-	DiskWritableNodes int
+	Total         float64 `json:"TotalGB"`
+	Used          float64 `json:"UsedGB"`
+	Avail         float64 `json:"AvailGB"`
+	UsedRatio     float64
+	TotalNodes    int
+	WritableNodes int
+}
+
+type ZoneMetaNodesStat struct {
+	ZoneNodesStat
+	RocksdbWritableNodes int
 }
 
 type NodeSetStat struct {

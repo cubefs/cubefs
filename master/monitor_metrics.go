@@ -93,48 +93,49 @@ const (
 var WarnMetrics *warningMetrics
 
 type monitorMetrics struct {
-	cluster                  *Cluster
-	dataNodesCount           *exporter.Gauge
-	metaNodesCount           *exporter.Gauge
-	volCount                 *exporter.Gauge
-	dataNodesTotal           *exporter.Gauge
-	dataNodesUsed            *exporter.Gauge
-	dataNodeIncreased        *exporter.Gauge
-	metaNodesTotal           *exporter.Gauge
-	metaNodesUsed            *exporter.Gauge
-	metaNodesIncreased       *exporter.Gauge
-	volTotalSpace            *exporter.GaugeVec
-	volUsedSpace             *exporter.GaugeVec
-	volUsage                 *exporter.GaugeVec
-	volMetaCount             *exporter.GaugeVec
-	badMpCount               *exporter.Gauge
-	badDpCount               *exporter.Gauge
-	diskError                *exporter.GaugeVec
-	dataNodesNotWritable     *exporter.Gauge
-	metaNodesNotWritable     *exporter.Gauge
-	dataNodesInactive        *exporter.Gauge
-	InactiveDataNodeInfo     *exporter.GaugeVec
-	metaNodesInactive        *exporter.Gauge
-	InactiveMataNodeInfo     *exporter.GaugeVec
-	dataPartitionCount       *exporter.Gauge
-	ReplicaMissingDPCount    *exporter.Gauge
-	DpMissingLeaderCount     *exporter.Gauge
-	MpMissingLeaderCount     *exporter.Gauge
-	dataNodesetInactiveCount *exporter.GaugeVec
-	metaNodesetInactiveCount *exporter.GaugeVec
-	metaEqualCheckFail       *exporter.GaugeVec
-	masterNoLeader           *exporter.Gauge
-	masterNoCache            *exporter.GaugeVec
-	masterSnapshot           *exporter.Gauge
-	nodesetMetaTotal         *exporter.GaugeVec
-	nodesetMetaUsed          *exporter.GaugeVec
-	nodesetMetaUsageRatio    *exporter.GaugeVec
-	nodesetDataTotal         *exporter.GaugeVec
-	nodesetDataUsed          *exporter.GaugeVec
-	nodesetDataUsageRatio    *exporter.GaugeVec
-	nodesetMpReplicaCount    *exporter.GaugeVec
-	nodesetDpReplicaCount    *exporter.GaugeVec
-	nodeStat                 *exporter.GaugeVec
+	cluster                     *Cluster
+	dataNodesCount              *exporter.Gauge
+	metaNodesCount              *exporter.Gauge
+	volCount                    *exporter.Gauge
+	dataNodesTotal              *exporter.Gauge
+	dataNodesUsed               *exporter.Gauge
+	dataNodeIncreased           *exporter.Gauge
+	metaNodesTotal              *exporter.Gauge
+	metaNodesUsed               *exporter.Gauge
+	metaNodesIncreased          *exporter.Gauge
+	volTotalSpace               *exporter.GaugeVec
+	volUsedSpace                *exporter.GaugeVec
+	volUsage                    *exporter.GaugeVec
+	volMetaCount                *exporter.GaugeVec
+	badMpCount                  *exporter.Gauge
+	badDpCount                  *exporter.Gauge
+	diskError                   *exporter.GaugeVec
+	dataNodesNotWritable        *exporter.Gauge
+	metaNodesNotWritable        *exporter.Gauge
+	metaNodesNotRocksdbWritable *exporter.Gauge
+	dataNodesInactive           *exporter.Gauge
+	InactiveDataNodeInfo        *exporter.GaugeVec
+	metaNodesInactive           *exporter.Gauge
+	InactiveMataNodeInfo        *exporter.GaugeVec
+	dataPartitionCount          *exporter.Gauge
+	ReplicaMissingDPCount       *exporter.Gauge
+	DpMissingLeaderCount        *exporter.Gauge
+	MpMissingLeaderCount        *exporter.Gauge
+	dataNodesetInactiveCount    *exporter.GaugeVec
+	metaNodesetInactiveCount    *exporter.GaugeVec
+	metaEqualCheckFail          *exporter.GaugeVec
+	masterNoLeader              *exporter.Gauge
+	masterNoCache               *exporter.GaugeVec
+	masterSnapshot              *exporter.Gauge
+	nodesetMetaTotal            *exporter.GaugeVec
+	nodesetMetaUsed             *exporter.GaugeVec
+	nodesetMetaUsageRatio       *exporter.GaugeVec
+	nodesetDataTotal            *exporter.GaugeVec
+	nodesetDataUsed             *exporter.GaugeVec
+	nodesetDataUsageRatio       *exporter.GaugeVec
+	nodesetMpReplicaCount       *exporter.GaugeVec
+	nodesetDpReplicaCount       *exporter.GaugeVec
+	nodeStat                    *exporter.GaugeVec
 
 	volNames                      map[string]struct{}
 	badDisks                      map[string]string
@@ -538,6 +539,7 @@ func (mm *monitorMetrics) doStat() {
 	mm.setDiskErrorMetric()
 	mm.setNotWritableDataNodesCount()
 	mm.setNotWritableMetaNodesCount()
+	mm.setNotRocksdbWritableMetaNodesCount()
 	mm.setMpInconsistentErrorMetric()
 	mm.setMpAndDpMetrics()
 	mm.setNodesetMetrics()
@@ -793,6 +795,7 @@ func (mm *monitorMetrics) updateMetaNodesStat() {
 		mm.nodeStat.SetWithLabelValues(float64(metaNode.Threshold), MetricRoleMetaNode, metaNode.Addr, "threshold")
 		mm.nodeStat.SetBoolWithLabelValues(metaNode.isWritable(proto.StoreModeMem), MetricRoleMetaNode, metaNode.Addr, "writable")
 		mm.nodeStat.SetBoolWithLabelValues(metaNode.IsActive, MetricRoleMetaNode, metaNode.Addr, "active")
+		mm.nodeStat.SetBoolWithLabelValues(metaNode.isWritable(proto.StoreModeRocksDb), MetricRoleMetaNode, metaNode.Addr, "rocksdbWritable")
 
 		return true
 	})
@@ -861,19 +864,28 @@ func (mm *monitorMetrics) clearInactiveDataNodesCountMetric() {
 	}
 }
 
-func (mm *monitorMetrics) setNotWritableMetaNodesCount() {
-	var notWritabelMetaNodesCount int64
-	mm.cluster.metaNodes.Range(func(addr, node interface{}) bool {
-		metaNode, ok := node.(*MetaNode)
+func (mm *monitorMetrics) getNotWritableMetaNodesCount(storeMode proto.StoreMode) (count int64) {
+	mm.cluster.metaNodes.Range(func(key, value interface{}) bool {
+		metaNode, ok := value.(*MetaNode)
 		if !ok {
 			return true
 		}
-		if !metaNode.isWritable(proto.StoreModeMem) {
-			notWritabelMetaNodesCount++
+		if !metaNode.isWritable(storeMode) {
+			count++
 		}
 		return true
 	})
+	return
+}
+
+func (mm *monitorMetrics) setNotWritableMetaNodesCount() {
+	notWritabelMetaNodesCount := mm.getNotWritableMetaNodesCount(proto.StoreModeMem)
 	mm.metaNodesNotWritable.Set(float64(notWritabelMetaNodesCount))
+}
+
+func (mm *monitorMetrics) setNotRocksdbWritableMetaNodesCount() {
+	count := mm.getNotWritableMetaNodesCount(proto.StoreModeRocksDb)
+	mm.metaNodesNotRocksdbWritable.Set(float64(count))
 }
 
 func (mm *monitorMetrics) setNotWritableDataNodesCount() {

@@ -48,7 +48,7 @@ func newVolStatInfo(name string, total, used, cacheTotal, cacheUsed, inodeCount 
 }
 
 func newZoneStatInfo() *proto.ZoneStat {
-	return &proto.ZoneStat{DataNodeStat: new(proto.ZoneNodesStat), MetaNodeStat: new(proto.ZoneNodesStat)}
+	return &proto.ZoneStat{DataNodeStat: new(proto.ZoneNodesStat), MetaNodeStat: new(proto.ZoneMetaNodesStat)}
 }
 
 // Check the total space, available space, and daily-used space in data nodes,  meta nodes, and volumes
@@ -95,7 +95,7 @@ func (c *Cluster) updateZoneStatInfo() {
 					zs.MetaNodeStat.WritableNodes++
 				}
 				if node.isWritable(proto.StoreModeRocksDb) {
-					zs.MetaNodeStat.DiskWritableNodes++
+					zs.MetaNodeStat.RocksdbWritableNodes++
 				}
 			}
 			zs.MetaNodeStat.Total += float64(node.Total) / float64(util.GB)

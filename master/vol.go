@@ -693,7 +693,7 @@ func (vol *Vol) checkSplitMetaPartition(c *Cluster, metaPartitionInodeStep uint6
 		log.LogInfof("Not all volume[%s] mp heartbeat is done, skip mp split", vol.Name)
 		return
 	}
-	if maxMP.memUsedReachThreshold(c.Name, vol.Name) || RWMPNum < lowerLimitRWMetaPartition ||
+	if maxMP.resourceUsedReachThreshold(c.Name, vol.Name) || RWMPNum < lowerLimitRWMetaPartition ||
 		maxMPInodeUsedRatio > metaPartitionInodeUsageThreshold {
 		end := maxMP.MaxInodeID + metaPartitionInodeStep/4
 		if RWMPNum < lowerLimitRWMetaPartition {
@@ -710,7 +710,7 @@ func (vol *Vol) checkSplitMetaPartition(c *Cluster, metaPartitionInodeStep uint6
 	return
 }
 
-func (mp *MetaPartition) memUsedReachThreshold(clusterName, volName string) bool {
+func (mp *MetaPartition) resourceUsedReachThreshold(clusterName, volName string) bool {
 	liveReplicas := mp.getLiveReplicas()
 	foundReadonlyReplica := false
 	var readonlyReplica *MetaReplica
@@ -724,7 +724,7 @@ func (mp *MetaPartition) memUsedReachThreshold(clusterName, volName string) bool
 	if !foundReadonlyReplica || readonlyReplica == nil {
 		return false
 	}
-	if readonlyReplica.metaNode.isWritable(proto.StoreModeMem) {
+	if readonlyReplica.metaNode.isWritable(readonlyReplica.StoreMode) {
 		msg := fmt.Sprintf("action[checkSplitMetaPartition] vol[%v],max meta parition[%v] status is readonly\n",
 			volName, mp.PartitionID)
 		Warn(clusterName, msg)
@@ -1364,12 +1364,16 @@ func (vol *Vol) doCreateMetaPartition(c *Cluster, start, end uint64) (mp *MetaPa
 		partitionID uint64
 		peers       []proto.Peer
 		wg          sync.WaitGroup
+		nodeType    NodeResourceType
 	)
 
 	errChannel := make(chan error, vol.mpReplicaNum)
-
+	nodeType = MetaNodeMemory
+	if vol.DefaultStoreMode == proto.StoreModeRocksDb {
+		nodeType = MetaNodeRocksdb
+	}
 	if c.isFaultDomain(vol) {
-		if hosts, peers, err = c.getHostFromDomainZone(vol.domainId, TypeMetaPartition, vol.mpReplicaNum); err != nil {
+		if hosts, peers, err = c.getHostFromDomainZone(vol.domainId, nodeType, vol.mpReplicaNum); err != nil {
 			log.LogErrorf("action[doCreateMetaPartition] getHostFromDomainZone err[%v]", err)
 			return nil, errors.NewError(err)
 		}
@@ -1377,7 +1381,7 @@ func (vol *Vol) doCreateMetaPartition(c *Cluster, start, end uint64) (mp *MetaPa
 		var excludeZone []string
 		zoneNum := c.decideZoneNum(vol.crossZone)
 
-		if hosts, peers, err = c.getHostFromNormalZone(TypeMetaPartition, excludeZone, nil, nil, int(vol.mpReplicaNum), zoneNum, vol.zoneName); err != nil {
+		if hosts, peers, err = c.getHostFromNormalZone(nodeType, excludeZone, nil, nil, int(vol.mpReplicaNum), zoneNum, vol.zoneName); err != nil {
 			log.LogErrorf("action[doCreateMetaPartition] getHostFromNormalZone err[%v]", err)
 			return nil, errors.NewError(err)
 		}

@@ -350,6 +350,7 @@ func newVolValue(vol *Vol) (vv *volValue) {
 		DpReadOnlyWhenVolFull: vol.DpReadOnlyWhenVolFull,
 		Forbidden:             vol.Forbidden,
 		EnableAuditLog:        vol.EnableAuditLog,
+		DefaultStoreMode:      vol.DefaultStoreMode,
 	}
 
 	return
@@ -1026,10 +1027,10 @@ func (c *Cluster) loadZoneValue() (err error) {
 		zone.QosFlowWLimit = cv.QosFlowWLimit
 		zone.QosIopsRLimit = cv.QosIopsRLimit
 		if zone.GetDataNodesetSelector() != cv.DataNodesetSelector {
-			zone.dataNodesetSelector = NewNodesetSelector(cv.DataNodesetSelector, DataNodeDisk)
+			zone.SetDataNodesetSelector(cv.DataNodesetSelector)
 		}
 		if zone.GetMetaNodesetSelector() != cv.MetaNodesetSelector {
-			zone.metaNodesetSelector = NewNodesetSelector(cv.MetaNodesetSelector, MetaNodeMemory)
+			zone.SetMetaNodeSelector(cv.MetaNodesetSelector)
 		}
 		log.LogInfof("action[loadZoneValue] load zonename[%v] with limit [%v,%v,%v,%v]",
 			zone.name, cv.QosFlowRLimit, cv.QosIopsWLimit, cv.QosFlowWLimit, cv.QosIopsRLimit)

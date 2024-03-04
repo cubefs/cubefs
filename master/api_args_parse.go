@@ -875,7 +875,12 @@ func parseRequestToCreateVol(r *http.Request, req *createVolReq) (err error) {
 
 	storeMode := int(proto.StoreModeMem)
 	if storeModeStr := r.FormValue(StoreModeKey); storeModeStr != "" {
-		if storeMode, err = strconv.Atoi(storeModeStr); err != nil {
+		storeMode, err = strconv.Atoi(storeModeStr)
+		if err != nil {
+			err = unmatchedKey(StoreModeKey)
+			return
+		}
+		if storeMode != int(proto.StoreModeMem) && storeMode != int(proto.StoreModeRocksDb) {
 			err = unmatchedKey(StoreModeKey)
 			return
 		}

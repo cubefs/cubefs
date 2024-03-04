@@ -299,11 +299,11 @@ const (
 	MaxSnapshotCount = 30
 )
 
-func (verMgr *VolVersionManager) handleTaskRsp(resp *proto.MultiVersionOpResponse, partitionType uint32) {
+func (verMgr *VolVersionManager) handleTaskRsp(resp *proto.MultiVersionOpResponse, nodeType NodeType) {
 	verMgr.RLock()
 	defer verMgr.RUnlock()
 	log.LogInfof("action[handleTaskRsp] vol %v node %v partitionType %v,op %v, inner op %v", verMgr.vol.Name,
-		resp.Addr, partitionType, resp.Op, verMgr.prepareCommit.op)
+		resp.Addr, nodeType, resp.Op, verMgr.prepareCommit.op)
 
 	if resp.Op != verMgr.prepareCommit.op {
 		log.LogWarnf("action[handleTaskRsp] vol %v op %v, inner op %v", verMgr.vol.Name, resp.Op, verMgr.prepareCommit.op)
@@ -316,11 +316,11 @@ func (verMgr *VolVersionManager) handleTaskRsp(resp *proto.MultiVersionOpRespons
 		return
 	}
 	var needCommit bool
-	dFunc := func(pType uint32, array *sync.Map) {
+	dFunc := func(pType NodeType, array *sync.Map) {
 		if val, ok := array.Load(resp.Addr); ok {
 			if rType, rok := val.(int); rok && rType == TypeNoReply {
 				log.LogInfof("action[handleTaskRsp] vol %v node %v partitionType %v,op %v, inner op %v", verMgr.vol.Name,
-					resp.Addr, partitionType, resp.Op, verMgr.prepareCommit.op)
+					resp.Addr, nodeType, resp.Op, verMgr.prepareCommit.op)
 				array.Store(resp.Addr, TypeReply)
 
 				if resp.Status != proto.TaskSucceeds || resp.Result != "" {
@@ -351,10 +351,10 @@ func (verMgr *VolVersionManager) handleTaskRsp(resp *proto.MultiVersionOpRespons
 		}
 	}
 
-	if partitionType == TypeDataPartition {
-		dFunc(partitionType, verMgr.prepareCommit.dataNodeArray)
+	if nodeType == DataNodeType {
+		dFunc(nodeType, verMgr.prepareCommit.dataNodeArray)
 	} else {
-		dFunc(partitionType, verMgr.prepareCommit.metaNodeArray)
+		dFunc(nodeType, verMgr.prepareCommit.metaNodeArray)
 	}
 
 	log.LogInfof("action[handleTaskRsp] vol %v commit cnt %v, node cnt %v, operation %v", verMgr.vol.Name,

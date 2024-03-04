@@ -105,6 +105,7 @@ func (c *Cluster) migrateMetaPartition(srcAddr, targetAddr string, mp *MetaParti
 		oldHosts        []string
 		zones           []string
 		vol             *Vol
+		nodeType        NodeResourceType
 	)
 
 	log.LogWarnf("action[migrateMetaPartition],volName[%v], migrate from src[%s] to target[%s],partitionID[%v] begin",
@@ -149,12 +150,16 @@ func (c *Cluster) migrateMetaPartition(srcAddr, targetAddr string, mp *MetaParti
 	if ns, err = zone.getNodeSet(metaNode.NodeSetID); err != nil {
 		goto errHandler
 	}
+	nodeType = MetaNodeMemory
+	if dstStoreMode == proto.StoreModeRocksDb {
+		nodeType = MetaNodeRocksdb
+	}
 
 	if targetAddr != "" {
 		newPeers = []proto.Peer{{
 			Addr: targetAddr,
 		}}
-	} else if _, newPeers, err = ns.getAvailMetaNodeHosts(oldHosts, 1); err != nil {
+	} else if _, newPeers, err = ns.getAvailMetaNodeHosts(oldHosts, 1, dstStoreMode); err != nil {
 		if _, ok := c.vols[mp.volName]; !ok {
 			log.LogWarnf("[migrateMetaPartition] clusterID[%v] partitionID:%v  on node:[%v]",
 				c.Name, mp.PartitionID, mp.Hosts)
@@ -167,7 +172,7 @@ func (c *Cluster) migrateMetaPartition(srcAddr, targetAddr string, mp *MetaParti
 		}
 		// choose a meta node in other node set in the same zone
 		excludeNodeSets = append(excludeNodeSets, ns.ID)
-		if _, newPeers, err = zone.getAvailNodeHosts(TypeMetaPartition, excludeNodeSets, oldHosts, 1); err != nil {
+		if _, newPeers, err = zone.getAvailNodeHosts(nodeType, excludeNodeSets, oldHosts, 1); err != nil {
 			zones = mp.getLiveZones(srcAddr)
 			var excludeZone []string
 			if len(zones) == 0 {
@@ -176,7 +181,7 @@ func (c *Cluster) migrateMetaPartition(srcAddr, targetAddr string, mp *MetaParti
 				excludeZone = append(excludeZone, zones[0])
 			}
 			// choose a meta node in other zone
-			if _, newPeers, err = c.getHostFromNormalZone(TypeMetaPartition, excludeZone, excludeNodeSets, oldHosts, 1, 1, ""); err != nil {
+			if _, newPeers, err = c.getHostFromNormalZone(nodeType, excludeZone, excludeNodeSets, oldHosts, 1, 1, ""); err != nil {
 				goto errHandler
 			}
 		}
@@ -763,7 +768,7 @@ func (c *Cluster) dealOpMetaNodeMultiVerResp(nodeAddr string, resp *proto.MultiV
 	if vol, err = c.getVol(resp.VolumeID); err != nil {
 		return
 	}
-	vol.VersionMgr.handleTaskRsp(resp, TypeMetaPartition)
+	vol.VersionMgr.handleTaskRsp(resp, MetaNodeType)
 	return
 }
 
@@ -778,7 +783,7 @@ func (c *Cluster) dealOpDataNodeMultiVerResp(nodeAddr string, resp *proto.MultiV
 	if vol, err = c.getVol(resp.VolumeID); err != nil {
 		return
 	}
-	vol.VersionMgr.handleTaskRsp(resp, TypeDataPartition)
+	vol.VersionMgr.handleTaskRsp(resp, DataNodeType)
 	return
 }
 

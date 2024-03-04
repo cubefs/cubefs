@@ -502,13 +502,14 @@ func TestStrawNodeSelector(t *testing.T) {
 
 func prepareDataNodesForBench(count int, initTotal uint64, grow uint64) (ns *nodeSet) {
 	ns = &nodeSet{
-		ID:               1,
-		Capacity:         4,
-		zoneName:         testZone1,
-		metaNodes:        new(sync.Map),
-		dataNodes:        new(sync.Map),
-		dataNodeSelector: NewNodeSelector(DefaultNodeSelectorName, DataNodeDisk),
-		metaNodeSelector: NewNodeSelector(DefaultNodeSelectorName, MetaNodeMemory),
+		ID:                      1,
+		Capacity:                4,
+		zoneName:                testZone1,
+		metaNodes:               new(sync.Map),
+		dataNodes:               new(sync.Map),
+		dataNodeDiskSelector:    NewNodeSelector(DefaultNodeSelectorName, DataNodeDisk),
+		metaNodeMemorySelector:  NewNodeSelector(DefaultNodeSelectorName, MetaNodeMemory),
+		metaNodeRocksdbSelector: NewNodeSelector(DefaultNodeSelectorName, MetaNodeRocksdb),
 	}
 	for i := 0; i < count; i++ {
 		space := initTotal + uint64(i)*grow
@@ -526,13 +527,14 @@ func prepareDataNodesForBench(count int, initTotal uint64, grow uint64) (ns *nod
 
 func prepareMetaNodesForBench(count int, initTotal uint64, grow uint64) (ns *nodeSet) {
 	ns = &nodeSet{
-		ID:               1,
-		Capacity:         4,
-		zoneName:         testZone1,
-		metaNodes:        new(sync.Map),
-		dataNodes:        new(sync.Map),
-		dataNodeSelector: NewNodeSelector(DefaultNodeSelectorName, DataNodeDisk),
-		metaNodeSelector: NewNodeSelector(DefaultNodeSelectorName, MetaNodeMemory),
+		ID:                      1,
+		Capacity:                4,
+		zoneName:                testZone1,
+		metaNodes:               new(sync.Map),
+		dataNodes:               new(sync.Map),
+		dataNodeDiskSelector:    NewNodeSelector(DefaultNodeSelectorName, DataNodeDisk),
+		metaNodeMemorySelector:  NewNodeSelector(DefaultNodeSelectorName, MetaNodeMemory),
+		metaNodeRocksdbSelector: NewNodeSelector(DefaultNodeSelectorName, MetaNodeRocksdb),
 	}
 	for i := 0; i < count; i++ {
 		space := initTotal + uint64(i)*grow

@@ -61,15 +61,6 @@ func doStatAndMetric(statName string, metric *exporter.TimePointCount, err error
 	stat.EndStat(statName, err, &startTime, 1)
 }
 
-// NodeView provides the view of the data or meta node.
-type NodeView struct {
-	Addr       string
-	Status     bool
-	ID         uint64
-	IsWritable bool
-}
-
-// NodeView provides the view of the data or meta node.
 type InvalidNodeView struct {
 	Addr     string
 	ID       uint64
@@ -85,12 +76,12 @@ type TopologyView struct {
 type NodeSetView struct {
 	DataNodeLen int
 	MetaNodeLen int
-	MetaNodes   []proto.NodeView
+	MetaNodes   []proto.MetaNodeView
 	DataNodes   []proto.NodeView
 }
 
 func newNodeSetView(dataNodeLen, metaNodeLen int) *NodeSetView {
-	return &NodeSetView{DataNodes: make([]proto.NodeView, 0), MetaNodes: make([]proto.NodeView, 0), DataNodeLen: dataNodeLen, MetaNodeLen: metaNodeLen}
+	return &NodeSetView{DataNodes: make([]proto.NodeView, 0), MetaNodes: make([]proto.MetaNodeView, 0), DataNodeLen: dataNodeLen, MetaNodeLen: metaNodeLen}
 }
 
 // ZoneView define the view of zone
@@ -340,14 +331,21 @@ func (m *Server) getTopology(w http.ResponseWriter, r *http.Request) {
 				dataNode := value.(*DataNode)
 				nsView.DataNodes = append(nsView.DataNodes, proto.NodeView{
 					ID: dataNode.ID, Addr: dataNode.Addr,
-					DomainAddr: dataNode.DomainAddr, IsActive: dataNode.isActive, IsWritable: dataNode.isWriteAble(),
-					IsDiskWritable: dataNode.isWriteAble()})
+					DomainAddr: dataNode.DomainAddr, IsActive: dataNode.isActive, IsWritable: dataNode.isWriteAble()})
 				return true
 			})
 			ns.metaNodes.Range(func(key, value interface{}) bool {
 				metaNode := value.(*MetaNode)
-				nsView.MetaNodes = append(nsView.MetaNodes, proto.NodeView{ID: metaNode.ID, Addr: metaNode.Addr,
-					DomainAddr: metaNode.DomainAddr, IsActive: metaNode.IsActive, IsWritable: metaNode.isWritable(proto.StoreModeMem), IsDiskWritable: metaNode.isWritable(proto.StoreModeRocksDb)})
+				nsView.MetaNodes = append(nsView.MetaNodes, proto.MetaNodeView{
+					NodeView: proto.NodeView{
+						ID:         metaNode.ID,
+						Addr:       metaNode.Addr,
+						DomainAddr: metaNode.DomainAddr,
+						IsActive:   metaNode.IsActive,
+						IsWritable: metaNode.isWritable(proto.StoreModeMem),
+					},
+					IsRocksdbWritable: metaNode.isWritable(proto.StoreModeRocksDb),
+				})
 				return true
 			})
 		}
@@ -760,7 +758,7 @@ func (m *Server) getCluster(w http.ResponseWriter, r *http.Request) {
 		MaxMetaNodeID:        m.cluster.idAlloc.commonID,
 		MaxMetaPartitionID:   m.cluster.idAlloc.metaPartitionID,
 		MasterNodes:          make([]proto.NodeView, 0),
-		MetaNodes:            make([]proto.NodeView, 0),
+		MetaNodes:            make([]proto.MetaNodeView, 0),
 		DataNodes:            make([]proto.NodeView, 0),
 		VolStatInfo:          make([]*proto.VolStatInfo, 0),
 		BadPartitionIDs:      make([]proto.BadPartitionView, 0),
@@ -2888,16 +2886,15 @@ func (m *Server) updateExcludeZoneUseRatio(ratio float64) (err error) {
 	return
 }
 
-func (m *Server) updateNodesetId(zoneName string, destNodesetId uint64, nodeType uint64, addr string) (err error) {
+func (m *Server) updateNodesetId(zoneName string, destNodesetId uint64, nodeType NodeType, addr string) (err error) {
 	var (
-		nsId           uint64
-		dstNs          *nodeSet
-		srcNs          *nodeSet
-		ok             bool
-		value          interface{}
-		metaNode       *MetaNode
-		dataNode       *DataNode
-		nodeTypeUint32 uint32
+		nsId     uint64
+		dstNs    *nodeSet
+		srcNs    *nodeSet
+		ok       bool
+		value    interface{}
+		metaNode *MetaNode
+		dataNode *DataNode
 	)
 	defer func() {
 		log.LogInfof("action[updateNodesetId] step out")
@@ -2912,13 +2909,13 @@ func (m *Server) updateNodesetId(zoneName string, destNodesetId uint64, nodeType
 	if dstNs, ok = zone.nodeSetMap[destNodesetId]; !ok {
 		return fmt.Errorf("%v destNodesetId not found", destNodesetId)
 	}
-	if nodeType == uint64(TypeDataPartition) {
+	if nodeType == DataNodeType {
 		value, ok = zone.dataNodes.Load(addr)
 		if !ok {
 			return fmt.Errorf("addr %v not found", addr)
 		}
 		nsId = value.(*DataNode).NodeSetID
-	} else if nodeType == uint64(TypeMetaPartition) {
+	} else if nodeType == MetaNodeType {
 		value, ok = zone.metaNodes.Load(addr)
 		if !ok {
 			return fmt.Errorf("addr %v not found", addr)
@@ -2948,12 +2945,7 @@ func (m *Server) updateNodesetId(zoneName string, destNodesetId uint64, nodeType
 
 	// the nodeset capcity not enlarged if node be added,capacity can be adjust by
 	// AdminUpdateNodeSetCapcity
-	if nodeType <= math.MaxUint32 {
-		nodeTypeUint32 = uint32(nodeType)
-	} else {
-		nodeTypeUint32 = math.MaxUint32
-	}
-	if nodeTypeUint32 == TypeDataPartition {
+	if nodeType == DataNodeType {
 		if value, ok = srcNs.dataNodes.Load(addr); !ok {
 			return fmt.Errorf("addr not found in srcNs.dataNodes")
 		}
@@ -3082,8 +3074,8 @@ func (m *Server) setDpRdOnly(partitionID uint64, rdOnly bool) (err error) {
 	return
 }
 
-func (m *Server) setNodeRdOnly(addr string, nodeType uint32, rdOnly bool) (err error) {
-	if nodeType == TypeDataPartition {
+func (m *Server) setNodeRdOnly(addr string, nodeType NodeType, rdOnly bool) (err error) {
+	if nodeType == DataNodeType {
 		m.cluster.dnMutex.Lock()
 		defer m.cluster.dnMutex.Unlock()
 		value, ok := m.cluster.dataNodes.Load(addr)
@@ -3221,7 +3213,7 @@ func (m *Server) buildNodeSetGrpInfo(nsg *nodeSetGroup) *proto.SimpleNodeSetGrpI
 				Addr:               node.Addr,
 				IsActive:           node.IsActive,
 				IsWriteAble:        node.isWritable(proto.StoreModeMem),
-				IsDiskWritable:     node.isWritable(proto.StoreModeRocksDb),
+				IsRocksdbWritable:  node.isWritable(proto.StoreModeRocksDb),
 				ZoneName:           node.ZoneName,
 				MaxMemAvailWeight:  node.MaxMemAvailWeight,
 				Total:              node.Total,
@@ -3248,7 +3240,7 @@ func (m *Server) buildNodeSetGrpInfo(nsg *nodeSetGroup) *proto.SimpleNodeSetGrpI
 	return nsgStat
 }
 
-func parseSetNodeRdOnlyParam(r *http.Request) (addr string, nodeType uint32, rdOnly bool, err error) {
+func parseSetNodeRdOnlyParam(r *http.Request) (addr string, nodeType NodeType, rdOnly bool, err error) {
 	if err = r.ParseForm(); err != nil {
 		return
 	}
@@ -3300,7 +3292,7 @@ func parseSetDpRdOnlyParam(r *http.Request) (dpId uint64, rdOnly bool, err error
 	return
 }
 
-func parseNodeType(r *http.Request) (nodeType uint32, err error) {
+func parseNodeType(r *http.Request) (nodeType NodeType, err error) {
 	var val string
 	var nodeTypeUint64 uint64
 	if val = r.FormValue(nodeTypeKey); val == "" {
@@ -3312,11 +3304,11 @@ func parseNodeType(r *http.Request) (nodeType uint32, err error) {
 		err = fmt.Errorf("parseSetNodeRdOnlyParam %s is not number, err %s", nodeTypeKey, err.Error())
 		return
 	}
-	nodeType = uint32(nodeTypeUint64)
-	if nodeType != TypeDataPartition && nodeType != TypeMetaPartition {
-		err = fmt.Errorf("parseSetNodeRdOnlyParam %s is not legal, must be %d or %d", nodeTypeKey, TypeDataPartition, TypeMetaPartition)
+	if nodeTypeUint64 != uint64(DataNodeType) && nodeTypeUint64 != uint64(MetaNodeType) {
+		err = fmt.Errorf("parseSetNodeRdOnlyParam %s is not legal, must be %d or %d", nodeTypeKey, DataNodeType, MetaNodeType)
 		return
 	}
+	nodeType = NodeType(nodeTypeUint64)
 
 	return
 }
@@ -3324,7 +3316,7 @@ func parseNodeType(r *http.Request) (nodeType uint32, err error) {
 func (m *Server) setNodeRdOnlyHandler(w http.ResponseWriter, r *http.Request) {
 	var (
 		addr     string
-		nodeType uint32
+		nodeType NodeType
 		rdOnly   bool
 		err      error
 	)
@@ -3505,7 +3497,12 @@ func (m *Server) updateNodeSetIdHandler(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	if err = m.updateNodesetId(zoneName, id, nodeType, nodeAddr); err != nil {
+	if nodeType != uint64(DataNodeType) && nodeType != uint64(MetaNodeType) {
+		err = fmt.Errorf("unkonown node type")
+		return
+	}
+
+	if err = m.updateNodesetId(zoneName, id, NodeType(nodeType), nodeAddr); err != nil {
 		return
 	}
 
@@ -4168,7 +4165,7 @@ func (m *Server) getMetaNode(w http.ResponseWriter, r *http.Request) {
 		DomainAddr:                metaNode.DomainAddr,
 		IsActive:                  metaNode.IsActive,
 		IsWriteAble:               metaNode.isWritable(proto.StoreModeMem),
-		IsDiskWritable:            metaNode.isWritable(proto.StoreModeRocksDb),
+		IsRocksdbWritable:         metaNode.isWritable(proto.StoreModeRocksDb),
 		ZoneName:                  metaNode.ZoneName,
 		MaxMemAvailWeight:         metaNode.MaxMemAvailWeight,
 		Total:                     metaNode.Total,
@@ -4856,6 +4853,7 @@ func (m *Server) getMetaPartition(w http.ResponseWriter, r *http.Request) {
 		}
 		memCnt := uint8(0)
 		rocksCnt := uint8(0)
+		storeMode := proto.StoreModeDef
 		for i := 0; i < len(replicas); i++ {
 			replicas[i] = &proto.MetaReplicaInfo{
 				Addr:        mp.Replicas[i].Addr,
@@ -4876,6 +4874,7 @@ func (m *Server) getMetaPartition(w http.ResponseWriter, r *http.Request) {
 			if mp.Replicas[i].StoreMode == proto.StoreModeRocksDb {
 				rocksCnt++
 			}
+			storeMode |= mp.Replicas[i].StoreMode
 		}
 		forbidden := true
 		vol, err := m.cluster.getVol(mp.volName)
@@ -4905,7 +4904,8 @@ func (m *Server) getMetaPartition(w http.ResponseWriter, r *http.Request) {
 			LoadResponse:  mp.LoadResponse,
 			Forbidden:     forbidden,
 			MemStoreCnt:   memCnt,
-			RcokStoreCnt:  rocksCnt,
+			RockStoreCnt:  rocksCnt,
+			StoreMode:     storeMode,
 		}
 		return mpInfo
 	}

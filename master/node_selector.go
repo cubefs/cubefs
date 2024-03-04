@@ -660,13 +660,16 @@ func NewNodeSelector(name string, nodeType NodeResourceType) NodeSelector {
 	}
 }
 
-func (ns *nodeSet) getAvailMetaNodeHosts(excludeHosts []string, replicaNum int) (newHosts []string, peers []proto.Peer, err error) {
+func (ns *nodeSet) getAvailMetaNodeHosts(excludeHosts []string, replicaNum int, storeMode proto.StoreMode) (newHosts []string, peers []proto.Peer, err error) {
 	ns.nodeSelectLock.Lock()
 	defer ns.nodeSelectLock.Unlock()
 	// we need a read lock to block the modify of node selector
 	ns.metaNodeSelectorLock.RLock()
 	defer ns.metaNodeSelectorLock.RUnlock()
-	return ns.metaNodeSelector.Select(ns, excludeHosts, replicaNum)
+	if storeMode == proto.StoreModeRocksDb {
+		return ns.metaNodeRocksdbSelector.Select(ns, excludeHosts, replicaNum)
+	}
+	return ns.metaNodeMemorySelector.Select(ns, excludeHosts, replicaNum)
 }
 
 func (ns *nodeSet) getAvailDataNodeHosts(excludeHosts []string, replicaNum int) (hosts []string, peers []proto.Peer, err error) {
@@ -675,5 +678,5 @@ func (ns *nodeSet) getAvailDataNodeHosts(excludeHosts []string, replicaNum int) 
 	// we need a read lock to block the modify of node selector
 	ns.dataNodeSelectorLock.Lock()
 	defer ns.dataNodeSelectorLock.Unlock()
-	return ns.dataNodeSelector.Select(ns, excludeHosts, replicaNum)
+	return ns.dataNodeDiskSelector.Select(ns, excludeHosts, replicaNum)
 }

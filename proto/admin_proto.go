@@ -1177,7 +1177,7 @@ type ZoneView struct {
 type NodeSetView struct {
 	DataNodeLen int
 	MetaNodeLen int
-	MetaNodes   []NodeView
+	MetaNodes   []MetaNodeView
 	DataNodes   []NodeView
 }
 

@@ -1524,7 +1524,7 @@ func (partition *DataPartition) TryAcquireDecommissionToken(c *Cluster) bool {
 				goto errHandler
 			}
 			excludeNodeSets = append(excludeNodeSets, ns.ID)
-			if targetHosts, _, err = zone.getAvailNodeHosts(TypeDataPartition, excludeNodeSets, partition.Hosts, 1); err != nil {
+			if targetHosts, _, err = zone.getAvailNodeHosts(DataNodeDisk, excludeNodeSets, partition.Hosts, 1); err != nil {
 				// select data nodes from the other zone
 				zones = partition.getLiveZones(partition.DecommissionSrcAddr)
 				var excludeZone []string
@@ -1533,7 +1533,7 @@ func (partition *DataPartition) TryAcquireDecommissionToken(c *Cluster) bool {
 				} else {
 					excludeZone = append(excludeZone, zones[0])
 				}
-				if targetHosts, _, err = c.getHostFromNormalZone(TypeDataPartition, excludeZone, excludeNodeSets, partition.Hosts, 1, 1, ""); err != nil {
+				if targetHosts, _, err = c.getHostFromNormalZone(DataNodeDisk, excludeZone, excludeNodeSets, partition.Hosts, 1, 1, ""); err != nil {
 					log.LogWarnf("action[TryAcquireDecommissionToken] dp %v getHostFromNormalZone failed:%v",
 						partition.PartitionID, err.Error())
 					goto errHandler

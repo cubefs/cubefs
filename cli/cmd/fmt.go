@@ -112,10 +112,24 @@ func formatNodeView(view *proto.NodeView, tableRow bool) string {
 			formatYesNo(view.IsWritable), formatNodeStatus(view.IsActive))
 	}
 	sb := strings.Builder{}
-	sb.WriteString(fmt.Sprintf("  ID      : %v\n", view.ID))
-	sb.WriteString(fmt.Sprintf("  Address : %v\n", formatAddr(view.Addr, view.DomainAddr)))
-	sb.WriteString(fmt.Sprintf("  Writable: %v\n", formatYesNo(view.IsWritable)))
-	sb.WriteString(fmt.Sprintf("  Active  : %v", formatNodeStatus(view.IsActive)))
+	sb.WriteString(fmt.Sprintf("  ID              : %v\n", view.ID))
+	sb.WriteString(fmt.Sprintf("  Address         : %v\n", formatAddr(view.Addr, view.DomainAddr)))
+	sb.WriteString(fmt.Sprintf("  Writable        : %v\n", formatYesNo(view.IsWritable)))
+	sb.WriteString(fmt.Sprintf("  Active          : %v", formatNodeStatus(view.IsActive)))
+	return sb.String()
+}
+
+func formatMetaNodeView(view *proto.MetaNodeView, tableRow bool) string {
+	if tableRow {
+		return fmt.Sprintf(nodeViewTableRowPattern, view.ID, formatAddr(view.Addr, view.DomainAddr),
+			formatYesNo(view.IsWritable), formatNodeStatus(view.IsActive))
+	}
+	sb := strings.Builder{}
+	sb.WriteString(fmt.Sprintf("  ID              : %v\n", view.ID))
+	sb.WriteString(fmt.Sprintf("  Address         : %v\n", formatAddr(view.Addr, view.DomainAddr)))
+	sb.WriteString(fmt.Sprintf("  Writable        : %v\n", formatYesNo(view.IsWritable)))
+	sb.WriteString(fmt.Sprintf("  RocksdbWritable : %v\n", formatYesNo(view.IsRocksdbWritable)))
+	sb.WriteString(fmt.Sprintf("  Active          : %v", formatNodeStatus(view.IsActive)))
 	return sb.String()
 }
 
@@ -475,43 +489,46 @@ func formatDataPartitionInfo(partition *proto.DataPartitionInfo) string {
 func formatMetaPartitionInfo(partition *proto.MetaPartitionInfo) string {
 	sb := strings.Builder{}
 	sb.WriteString("\n")
-	sb.WriteString(fmt.Sprintf("volume name   : %v\n", partition.VolName))
-	sb.WriteString(fmt.Sprintf("PartitionID   : %v\n", partition.PartitionID))
-	sb.WriteString(fmt.Sprintf("Status        : %v\n", formatMetaPartitionStatus(partition.Status)))
-	sb.WriteString(fmt.Sprintf("Recovering    : %v\n", formatIsRecover(partition.IsRecover)))
-	sb.WriteString(fmt.Sprintf("Start         : %v\n", partition.Start))
-	sb.WriteString(fmt.Sprintf("End           : %v\n", partition.End))
-	sb.WriteString(fmt.Sprintf("MaxInodeID    : %v\n", partition.MaxInodeID))
-	sb.WriteString(fmt.Sprintf("Forbidden     : %v\n", partition.Forbidden))
+	sb.WriteString(fmt.Sprintf("volume name      : %v\n", partition.VolName))
+	sb.WriteString(fmt.Sprintf("PartitionID      : %v\n", partition.PartitionID))
+	sb.WriteString(fmt.Sprintf("Status           : %v\n", formatMetaPartitionStatus(partition.Status)))
+	sb.WriteString(fmt.Sprintf("Recovering       : %v\n", formatIsRecover(partition.IsRecover)))
+	sb.WriteString(fmt.Sprintf("Start            : %v\n", partition.Start))
+	sb.WriteString(fmt.Sprintf("End              : %v\n", partition.End))
+	sb.WriteString(fmt.Sprintf("MaxInodeID       : %v\n", partition.MaxInodeID))
+	sb.WriteString(fmt.Sprintf("Forbidden        : %v\n", partition.Forbidden))
+	sb.WriteString(fmt.Sprintf("Store mode       : %v\n", partition.StoreMode.Str()))
+	sb.WriteString(fmt.Sprintf("Memory Replicas  : %v\n", partition.MemStoreCnt))
+	sb.WriteString(fmt.Sprintf("Rocksdb Replicas : %v\n", partition.RockStoreCnt))
 	sb.WriteString("\n")
-	sb.WriteString("Replicas : \n")
+	sb.WriteString("Replicas         : \n")
 	sb.WriteString(fmt.Sprintf("%v\n", formatMetaReplicaTableHeader()))
 	for _, replica := range partition.Replicas {
 		sb.WriteString(fmt.Sprintf("%v\n", formatMetaReplica("", replica, true)))
 	}
 	sb.WriteString("\n")
-	sb.WriteString("Peers :\n")
+	sb.WriteString("Peers            :\n")
 	for _, peer := range partition.Peers {
 		sb.WriteString(fmt.Sprintf("%v\n", formatPeer(peer)))
 	}
 	sb.WriteString("\n")
-	sb.WriteString("Hosts :\n")
+	sb.WriteString("Hosts            :\n")
 	for _, host := range partition.Hosts {
 		sb.WriteString(fmt.Sprintf("  [%v]", host))
 	}
 	sb.WriteString("\n")
-	sb.WriteString("Zones :\n")
+	sb.WriteString("Zones            :\n")
 	for _, zone := range partition.Zones {
 		sb.WriteString(fmt.Sprintf("  [%v]", zone))
 	}
 	sb.WriteString("\n")
-	sb.WriteString("NodeSets :\n")
+	sb.WriteString("NodeSets         :\n")
 	for _, nodeSet := range partition.NodeSets {
 		sb.WriteString(fmt.Sprintf("  [%v]", nodeSet))
 	}
 	sb.WriteString("\n")
 	sb.WriteString("\n")
-	sb.WriteString("MissingNodes :\n")
+	sb.WriteString("MissingNodes     :\n")
 	for partitionHost, id := range partition.MissNodes {
 		sb.WriteString(fmt.Sprintf("  [%v, %v]\n", partitionHost, id))
 	}
@@ -868,7 +885,7 @@ func formatZoneView(zv *proto.ZoneView) string {
 		sb.WriteString(fmt.Sprintf("  MetaNodes[%v]:\n", ns.MetaNodeLen))
 		sb.WriteString(fmt.Sprintf("    %v\n", formatNodeViewTableHeader()))
 		for _, nv := range ns.MetaNodes {
-			sb.WriteString(fmt.Sprintf("    %v\n", formatNodeView(&nv, true)))
+			sb.WriteString(fmt.Sprintf("    %v\n", formatMetaNodeView(&nv, true)))
 		}
 	}
 	return sb.String()

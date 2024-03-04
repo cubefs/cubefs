@@ -394,12 +394,14 @@ func (c *Cluster) addNodeSetGrp(ns *nodeSet, load bool) (err error) {
 	return
 }
 
+type NodeType uint8
+
 const (
-	TypeMetaPartition uint32 = 0x01
-	TypeDataPartition uint32 = 0x02
+	MetaNodeType NodeType = 0x01
+	DataNodeType NodeType = 0x02
 )
 
-func (c *Cluster) getHostFromDomainZone(domainId uint64, createType uint32, replicaNum uint8) (hosts []string, peers []proto.Peer, err error) {
+func (c *Cluster) getHostFromDomainZone(domainId uint64, createType NodeResourceType, replicaNum uint8) (hosts []string, peers []proto.Peer, err error) {
 	hosts, peers, err = c.domainManager.getHostFromNodeSetGrp(domainId, replicaNum, createType)
 	return
 }
@@ -503,7 +505,7 @@ func (c *Cluster) scheduleToCheckVolQos() {
 func (c *Cluster) scheduleToCheckNodeSetGrpManagerStatus() {
 	go func() {
 		for {
-			if c.FaultDomain == false || !c.partition.IsRaftLeader() {
+			if !c.FaultDomain || !c.partition.IsRaftLeader() {
 				time.Sleep(time.Minute)
 				continue
 			}
@@ -1474,12 +1476,12 @@ func (c *Cluster) createDataPartition(volName string, preload *DataPartitionPreL
 	errChannel := make(chan error, dpReplicaNum)
 
 	if c.isFaultDomain(vol) {
-		if targetHosts, targetPeers, err = c.getHostFromDomainZone(vol.domainId, TypeDataPartition, dpReplicaNum); err != nil {
+		if targetHosts, targetPeers, err = c.getHostFromDomainZone(vol.domainId, DataNodeDisk, dpReplicaNum); err != nil {
 			goto errHandler
 		}
 	} else {
 		zoneNum := c.decideZoneNum(vol.crossZone)
-		if targetHosts, targetPeers, err = c.getHostFromNormalZone(TypeDataPartition, nil, nil, nil,
+		if targetHosts, targetPeers, err = c.getHostFromNormalZone(DataNodeDisk, nil, nil, nil,
 			int(dpReplicaNum), zoneNum, zoneName); err != nil {
 			goto errHandler
 		}
@@ -1619,7 +1621,7 @@ func (c *Cluster) decideZoneNum(crossZone bool) (zoneNum int) {
 }
 
 func (c *Cluster) chooseZone2Plus1(zones []*Zone, excludeNodeSets []uint64, excludeHosts []string,
-	nodeType uint32, replicaNum int) (hosts []string, peers []proto.Peer, err error,
+	nodeType NodeResourceType, replicaNum int) (hosts []string, peers []proto.Peer, err error,
 ) {
 	if replicaNum < 2 || replicaNum > 3 {
 		return nil, nil, fmt.Errorf("action[chooseZone2Plus1] replicaNum [%v]", replicaNum)
@@ -1668,7 +1670,7 @@ func (c *Cluster) chooseZone2Plus1(zones []*Zone, excludeNodeSets []uint64, excl
 }
 
 func (c *Cluster) chooseZoneNormal(zones []*Zone, excludeNodeSets []uint64, excludeHosts []string,
-	nodeType uint32, replicaNum int) (hosts []string, peers []proto.Peer, err error) {
+	nodeType NodeResourceType, replicaNum int) (hosts []string, peers []proto.Peer, err error) {
 	log.LogInfof("action[chooseZoneNormal] zones[%s] nodeType[%d] replicaNum[%d]", printZonesName(zones), nodeType, replicaNum)
 
 	c.zoneIdxMux.Lock()
@@ -1690,7 +1692,7 @@ func (c *Cluster) chooseZoneNormal(zones []*Zone, excludeNodeSets []uint64, excl
 	return
 }
 
-func (c *Cluster) getHostFromNormalZone(nodeType uint32, excludeZones []string, excludeNodeSets []uint64,
+func (c *Cluster) getHostFromNormalZone(nodeType NodeResourceType, excludeZones []string, excludeNodeSets []uint64,
 	excludeHosts []string, replicaNum int,
 	zoneNum int, specifiedZone string) (hosts []string, peers []proto.Peer, err error,
 ) {
@@ -1716,12 +1718,16 @@ func (c *Cluster) getHostFromNormalZone(nodeType uint32, excludeZones []string, 
 			zones = append(zones, zone)
 		}
 	} else {
-		if nodeType == TypeDataPartition {
+		if nodeType == DataNodeDisk {
 			if zones, err = c.t.allocZonesForDataNode(zoneNum, replicaNum, excludeZones); err != nil {
 				return
 			}
+		} else if nodeType == MetaNodeMemory {
+			if zones, err = c.t.allocZonesForMetaNode(zoneNum, replicaNum, excludeZones, proto.StoreModeMem); err != nil {
+				return
+			}
 		} else {
-			if zones, err = c.t.allocZonesForMetaNode(zoneNum, replicaNum, excludeZones); err != nil {
+			if zones, err = c.t.allocZonesForMetaNode(zoneNum, replicaNum, excludeZones, proto.StoreModeRocksDb); err != nil {
 				return
 			}
 		}
@@ -2168,7 +2174,7 @@ func (c *Cluster) autoAddDataReplica(dp *DataPartition) (success bool, err error
 
 	if vol.crossZone {
 		zones := dp.getZones()
-		if targetHosts, _, err = c.getHostFromNormalZone(TypeDataPartition, zones, nil, dp.Hosts, 1, 1, ""); err != nil {
+		if targetHosts, _, err = c.getHostFromNormalZone(DataNodeDisk, zones, nil, dp.Hosts, 1, 1, ""); err != nil {
 			goto errHandler
 		}
 	} else {
@@ -2300,7 +2306,7 @@ func (c *Cluster) migrateDataPartition(srcAddr, targetAddr string, dp *DataParti
 		}
 		// select data nodes from the other node set in same zone
 		excludeNodeSets = append(excludeNodeSets, ns.ID)
-		if targetHosts, _, err = zone.getAvailNodeHosts(TypeDataPartition, excludeNodeSets, dp.Hosts, 1); err != nil {
+		if targetHosts, _, err = zone.getAvailNodeHosts(DataNodeDisk, excludeNodeSets, dp.Hosts, 1); err != nil {
 			// select data nodes from the other zone
 			zones = dp.getLiveZones(srcAddr)
 			var excludeZone []string
@@ -2309,7 +2315,7 @@ func (c *Cluster) migrateDataPartition(srcAddr, targetAddr string, dp *DataParti
 			} else {
 				excludeZone = append(excludeZone, zones[0])
 			}
-			if targetHosts, _, err = c.getHostFromNormalZone(TypeDataPartition, excludeZone, excludeNodeSets, dp.Hosts, 1, 1, ""); err != nil {
+			if targetHosts, _, err = c.getHostFromNormalZone(DataNodeDisk, excludeZone, excludeNodeSets, dp.Hosts, 1, 1, ""); err != nil {
 				goto errHandler
 			}
 		}
@@ -2948,7 +2954,19 @@ func (c *Cluster) migrateMetaNode(srcAddr, targetAddr string, limit int) (err er
 		wg.Add(1)
 		go func(mp *MetaPartition) {
 			defer wg.Done()
-			if err1 := c.migrateMetaPartition(srcAddr, targetAddr, mp, proto.StoreModeMem); err1 != nil {
+			vol, err1 := c.getVol(mp.volName)
+			if err1 != nil {
+				errChannel <- err1
+				return
+			}
+			storeMode := vol.DefaultStoreMode
+			for _, replica := range mp.Replicas {
+				if replica.Addr == srcAddr {
+					storeMode = replica.StoreMode
+					break
+				}
+			}
+			if err1 = c.migrateMetaPartition(srcAddr, targetAddr, mp, storeMode); err1 != nil {
 				errChannel <- err1
 			}
 		}(toBeOfflineMps[idx])
@@ -3391,21 +3409,26 @@ func (c *Cluster) allDataNodes() (dataNodes []proto.NodeView) {
 		dataNode := node.(*DataNode)
 		dataNodes = append(dataNodes, proto.NodeView{
 			Addr: dataNode.Addr, DomainAddr: dataNode.DomainAddr,
-			IsActive: dataNode.isActive, ID: dataNode.ID, IsWritable: dataNode.isWriteAble(),
-			IsDiskWritable: dataNode.isWriteAble()})
+			IsActive: dataNode.isActive, ID: dataNode.ID, IsWritable: dataNode.isWriteAble()})
 		return true
 	})
 	return
 }
 
-func (c *Cluster) allMetaNodes() (metaNodes []proto.NodeView) {
-	metaNodes = make([]proto.NodeView, 0)
+func (c *Cluster) allMetaNodes() (metaNodes []proto.MetaNodeView) {
+	metaNodes = make([]proto.MetaNodeView, 0)
 	c.metaNodes.Range(func(addr, node interface{}) bool {
 		metaNode := node.(*MetaNode)
-		metaNodes = append(metaNodes, proto.NodeView{
-			ID: metaNode.ID, Addr: metaNode.Addr, DomainAddr: metaNode.DomainAddr,
-			IsActive: metaNode.IsActive, IsWritable: metaNode.isWritable(proto.StoreModeMem),
-			IsDiskWritable: metaNode.isWritable(proto.StoreModeRocksDb)})
+		metaNodes = append(metaNodes, proto.MetaNodeView{
+			NodeView: proto.NodeView{
+				ID:         metaNode.ID,
+				Addr:       metaNode.Addr,
+				DomainAddr: metaNode.DomainAddr,
+				IsActive:   metaNode.IsActive,
+				IsWritable: metaNode.isWritable(proto.StoreModeMem),
+			},
+			IsRocksdbWritable: metaNode.isWritable(proto.StoreModeRocksDb),
+		})
 		return true
 	})
 	return
