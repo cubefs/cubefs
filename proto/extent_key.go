@@ -225,8 +225,27 @@ type TinyExtentDeleteRecord struct {
 	CRC          uint32
 }
 
+type GcFlag uint8
+
+const (
+	GcNormal GcFlag = iota
+	GcMarkFlag
+	GcDeleteFlag
+)
+
+func (g GcFlag) String() string {
+	if g == GcMarkFlag {
+		return "gc_mark"
+	}
+	if g == GcDeleteFlag {
+		return "gc_delete"
+	}
+	return "normal"
+}
+
 type GcLockExtents struct {
 	IsCreate   bool
 	BeforeTime string
 	Eks        []*ExtentKey
+	Flag       GcFlag
 }
