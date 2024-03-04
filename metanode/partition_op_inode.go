@@ -1111,14 +1111,6 @@ func (mp *metaPartition) UpdateExtentKeyAfterMigration(req *proto.UpdateExtentKe
 		}
 	}()
 
-	if !proto.IsStorageClassReplica(ino.StorageClass) && req.NewObjExtentKeys == nil {
-		err = fmt.Errorf("mp %v inode %v new extentKey for storageClass %v  can not be nil",
-			mp.config.PartitionId, ino.Inode, req.StorageClass)
-		log.LogErrorf("action[UpdateExtentKeyAfterMigration] %v", err)
-		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
-		return
-	}
-
 	if atomic.LoadUint32(&ino.ForbiddenMigration) == ForbiddenToMigration {
 		err = fmt.Errorf("mp %v inode %v is forbidden to migration", mp.config.PartitionId, ino.Inode)
 		log.LogErrorf("action[UpdateExtentKeyAfterMigration] %v", err)
