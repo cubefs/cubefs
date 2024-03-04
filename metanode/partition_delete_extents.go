@@ -26,7 +26,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cubefs/cubefs/blobstore/common/trace"
 	"github.com/cubefs/cubefs/blobstore/util/log"
 	"github.com/cubefs/cubefs/depends/tiglabs/raft/util"
 	"github.com/cubefs/cubefs/proto"
@@ -53,7 +52,7 @@ func (mp *metaPartition) startToDeleteExtents() {
 func (mp *metaPartition) createExtentDeleteFile(ctx context.Context, prefix string, idx int64, fileList *synclist.SyncList) (
 	fp *os.File, fileName string, fileSize int64, err error,
 ) {
-	span := trace.SpanFromContextSafe(ctx)
+	span := getSpan(ctx)
 	fileName = fmt.Sprintf("%s_%d", prefix, idx)
 	fp, err = os.OpenFile(path.Join(mp.config.RootDir, fileName),
 		os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
@@ -63,7 +62,7 @@ func (mp *metaPartition) createExtentDeleteFile(ctx context.Context, prefix stri
 	}
 	if _, err = fp.Write(extentsFileHeader); err != nil {
 		span.Errorf("Write %v %v error %v", mp.config.RootDir, fileName, err)
-		// TODO: return ???
+		// TODO ???: return
 	}
 	fileSize = int64(len(extentsFileHeader))
 	fileList.PushBack(fileName)
@@ -97,7 +96,7 @@ LOOP:
 		fileSize = info.Size()
 	}
 
-	span, ctx := trace.StartSpanFromContext(context.Background(), "")
+	span, ctx := spanContext(context.Background(), "")
 	// check
 	lastItem := fileList.Back()
 	if lastItem != nil {
@@ -136,7 +135,7 @@ LOOP:
 			fileList.Init()
 			goto LOOP
 		case eks := <-mp.extDelCh:
-			span, ctx = trace.StartSpanFromContext(context.Background(), "")
+			span, ctx = spanContext(context.Background(), "")
 			span = span.WithOperation(fmt.Sprintf("appendDelExtentsToFile-vol(%s)mp(%d)",
 				mp.GetVolName(), mp.config.PartitionId))
 
@@ -184,7 +183,7 @@ LOOP:
 }
 
 func (mp *metaPartition) batchDeleteExtentsByDp(ctx context.Context, dpId uint64, extents []*proto.ExtentKey) (err error) {
-	span := trace.SpanFromContextSafe(ctx).WithOperation("batchDeleteExtentsByDp")
+	span := getSpan(ctx).WithOperation("batchDeleteExtentsByDp")
 	dp := mp.vol.GetPartition(dpId)
 	if dp == nil {
 		span.Errorf("mp(%v) dp(%v) not found", mp.config.PartitionId, dpId)
@@ -228,7 +227,7 @@ func (mp *metaPartition) deleteExtentsFromList(fileList *synclist.SyncList) {
 			continue
 		}
 
-		span, ctx := trace.StartSpanFromContext(context.Background(), "")
+		span, ctx := spanContext(context.Background(), "")
 		span = span.WithOperation(fmt.Sprintf("deleteExtentsFromList-vol(%s)mp(%d)",
 			mp.GetVolName(), mp.config.PartitionId))
 
@@ -240,6 +239,7 @@ func (mp *metaPartition) deleteExtentsFromList(fileList *synclist.SyncList) {
 			continue
 		}
 		span.Debugf("mp(%v) reading file(%v)", mp.config.PartitionId, fileName)
+
 		// if not leader, ignore delete
 		if _, ok := mp.IsLeader(); !ok {
 			span.Debug("is not raft leader, ignore")
