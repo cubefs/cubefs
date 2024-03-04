@@ -71,7 +71,8 @@ func (ic *InodeCache) Put(info *proto.InodeInfo) {
 	element := ic.lruList.PushFront(info)
 	ic.cache[info.Inode] = element
 	ic.Unlock()
-	// log.LogDebugf("InodeCache put inode: inode(%v)", info.Inode)
+	log.LogDebugf("InodeCache put inode: inode(%v) expire(%v)",
+		info.Inode, info.Expiration())
 }
 
 // Get returns the inode info based on the given inode number.
@@ -80,22 +81,28 @@ func (ic *InodeCache) Get(ino uint64) *proto.InodeInfo {
 	element, ok := ic.cache[ino]
 	if !ok {
 		ic.RUnlock()
+		log.LogDebugf("Inode Cache not found %v", ino)
 		return nil
 	}
 
 	info := element.Value.(*proto.InodeInfo)
 	if inodeExpired(info) && DisableMetaCache {
 		ic.RUnlock()
-		// log.LogDebugf("InodeCache GetConnect expired: now(%v) inode(%v), expired(%d)", time.Now().Format(LogTimeFormat), info.Inode, info.Expiration())
+		log.LogDebugf("Inode Cache %v expired", ino)
 		return nil
 	}
 	ic.RUnlock()
+
+	if info != nil {
+		log.LogDebugf("Inode Cache found ino(%v) storageClass(%v)",
+			ino, info.StorageClass)
+	}
 	return info
 }
 
 // Delete deletes the inode info based on the given inode number.
 func (ic *InodeCache) Delete(ino uint64) {
-	// log.LogDebugf("InodeCache Delete: ino(%v)", ino)
+	log.LogDebugf("InodeCache Delete: ino(%v)", ino)
 	ic.Lock()
 	element, ok := ic.cache[ino]
 	if ok {
@@ -121,11 +128,14 @@ func (ic *InodeCache) evict(foreground bool) {
 		// But for foreground eviction, we need to evict at least MinInodeCacheEvictNum inodes.
 		// The foreground eviction, does not need to care if the inode has expired or not.
 		info := element.Value.(*proto.InodeInfo)
+		log.LogDebugf("InodeCache check inode(%v)", info.Inode)
 		if !foreground && !inodeExpired(info) {
+			log.LogDebugf("InodeCache check inode(%v) expired(%v)",
+				info.Inode, inodeExpired(info))
 			return
 		}
 
-		// log.LogDebugf("InodeCache GetConnect expired: now(%v) inode(%v)", time.Now().Format(LogTimeFormat), info.Inode)
+		log.LogDebugf("InodeCache remove inode(%v)", info.Inode)
 		ic.lruList.Remove(element)
 		delete(ic.cache, info.Inode)
 		count++
@@ -143,9 +153,11 @@ func (ic *InodeCache) evict(foreground bool) {
 		}
 		info := element.Value.(*proto.InodeInfo)
 		if !inodeExpired(info) {
+			log.LogDebugf("InodeCache check inode(%v) expired(%v)",
+				info.Inode, inodeExpired(info))
 			break
 		}
-		// log.LogDebugf("InodeCache GetConnect expired: now(%v) inode(%v)", time.Now().Format(LogTimeFormat), info.Inode)
+		log.LogDebugf("InodeCache remove inode(%v)", info.Inode)
 		ic.lruList.Remove(element)
 		delete(ic.cache, info.Inode)
 		count++
