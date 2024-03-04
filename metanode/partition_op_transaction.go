@@ -41,7 +41,7 @@ func (mp *metaPartition) TxCreate(req *proto.TxCreateRequest, p *Packet) error {
 	}
 
 	if ifo.State != proto.TxStatePreCommit {
-		log.LogWarnf("TxCreate: tx is already init, txInfo %s", ifo.String())
+		p.Span().Warn("TxCreate: tx is already init, txInfo", ifo.String())
 		p.PacketOkReply()
 		return nil
 	}
@@ -164,13 +164,13 @@ func (mp *metaPartition) TxCommitRM(req *proto.TxApplyRMRequest, p *Packet) erro
 
 	ifo := mp.txProcessor.txManager.getTransaction(txInfo.TxID)
 	if ifo == nil {
-		log.LogWarnf("TxCommitRM: can't find tx, already rollback or commit, ifo %v", req.TransactionInfo)
+		p.Span().Warnf("can't find tx, already rollback or commit, ifo %v", req.TransactionInfo)
 		p.PacketErrorWithBody(proto.OpTxInfoNotExistErr, []byte(fmt.Sprintf("tx %s is not exist", txInfo.TxID)))
 		return nil
 	}
 
 	if ifo.Finish() {
-		log.LogWarnf("TxCommitRM: tx already commit before in rm, tx %v", ifo)
+		p.Span().Warnf("tx already commit before in rm, tx %v", ifo)
 		p.ResultCode = proto.OpOk
 		return nil
 	}
@@ -197,13 +197,13 @@ func (mp *metaPartition) TxRollbackRM(req *proto.TxApplyRMRequest, p *Packet) er
 
 	ifo := mp.txProcessor.txManager.getTransaction(txInfo.TxID)
 	if ifo == nil {
-		log.LogWarnf("TxRollbackRM: can't find tx, already rollback or commit, ifo %v", req.TransactionInfo)
+		p.Span().Warnf("can't find tx, already rollback or commit, ifo %v", req.TransactionInfo)
 		p.PacketErrorWithBody(proto.OpTxInfoNotExistErr, []byte(fmt.Sprintf("tx %s is not exist", txInfo.TxID)))
 		return nil
 	}
 
 	if ifo.Finish() {
-		log.LogWarnf("TxRollbackRM: tx already commit before in rm, tx %v", ifo)
+		p.Span().Warnf("tx already commit before in rm, tx %v", ifo)
 		p.ResultCode = proto.OpOk
 		return nil
 	}
