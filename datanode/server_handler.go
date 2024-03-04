@@ -547,18 +547,11 @@ func (s *DataNode) getAllExtent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	getGcStatus := func(extId uint64) string {
-		if store.IsMarkGc(extId) {
-			return "mark_gc"
-		}
-		return "normal"
-	}
-
 	gcExtents := make([]*GcExtent, len(extents))
 	for idx, e := range extents {
 		gcExtents[idx] = &GcExtent{
 			ExtentInfo: e,
-			GcStatus:   getGcStatus(e.FileID),
+			GcStatus:   store.GetGcFlag(e.FileID).String(),
 		}
 	}
 
