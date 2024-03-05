@@ -583,8 +583,20 @@ func cfs_close(id C.int64_t, fd C.int) {
 	if !exist {
 		return
 	}
-	f := c.releaseFD(uint(fd))
-	if f != nil {
+
+	f := c.getFile(uint(fd))
+	if f == nil {
+		return
+	}
+
+	info := c.ic.Get(f.ino)
+	if info == nil {
+		info, _ = c.mw.InodeGet_ll(f.ino)
+	}
+
+	f = c.releaseFD(uint(fd))
+	// Consistent with cfs open, do close and closeStream only if f is regular file
+	if f != nil && info != nil && proto.IsRegular(info.Mode) {
 		c.flush(f)
 		c.closeStream(f)
 	}
