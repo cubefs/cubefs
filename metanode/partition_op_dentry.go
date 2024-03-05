@@ -211,7 +211,7 @@ func (mp *metaPartition) TxDeleteDentry(req *proto.TxDeleteDentryRequest, p *Pac
 		}
 	}()
 
-	dentry, status := mp.getDentry(den)
+	dentry, status := mp.getDentry(p.Context(), den)
 	if status != proto.OpOk {
 		if mp.txDentryInRb(req.ParentID, req.Name, req.TxInfo.TxID) {
 			p.ResultCode = proto.OpOk
@@ -421,7 +421,7 @@ func (mp *metaPartition) TxUpdateDentry(req *proto.TxUpdateDentryRequest, p *Pac
 		Name:     req.Name,
 		Inode:    req.Inode,
 	}
-	oldDentry, status := mp.getDentry(newDentry)
+	oldDentry, status := mp.getDentry(p.Context(), newDentry)
 	if status != proto.OpOk {
 		if mp.txDentryInRb(req.ParentID, req.Name, req.TxInfo.TxID) {
 			p.ResultCode = proto.OpOk
@@ -504,7 +504,7 @@ func (mp *metaPartition) UpdateDentry(req *UpdateDentryReq, p *Packet, remoteAdd
 }
 
 func (mp *metaPartition) ReadDirOnly(req *ReadDirOnlyReq, p *Packet) (err error) {
-	resp := mp.readDirOnly(req)
+	resp := mp.readDirOnly(p.Context(), req)
 	reply, err := json.Marshal(resp)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
@@ -516,7 +516,7 @@ func (mp *metaPartition) ReadDirOnly(req *ReadDirOnlyReq, p *Packet) (err error)
 
 // ReadDir reads the directory based on the given request.
 func (mp *metaPartition) ReadDir(req *ReadDirReq, p *Packet) (err error) {
-	resp := mp.readDir(req)
+	resp := mp.readDir(p.Context(), req)
 	reply, err := json.Marshal(resp)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
@@ -528,7 +528,7 @@ func (mp *metaPartition) ReadDir(req *ReadDirReq, p *Packet) (err error) {
 
 func (mp *metaPartition) ReadDirLimit(req *ReadDirLimitReq, p *Packet) (err error) {
 	p.Span().Infof("read seq [%v], request[%v]", req.VerSeq, req)
-	resp := mp.readDirLimit(req)
+	resp := mp.readDirLimit(p.Context(), req)
 	reply, err := json.Marshal(resp)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
@@ -549,7 +549,7 @@ func (mp *metaPartition) Lookup(req *LookupReq, p *Packet) (err error) {
 	if req.VerAll {
 		denList = mp.getDentryList(dentry)
 	}
-	dentry, status := mp.getDentry(dentry)
+	dentry, status := mp.getDentry(p.Context(), dentry)
 
 	var reply []byte
 	if status == proto.OpOk || req.VerAll {

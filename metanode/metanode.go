@@ -25,6 +25,7 @@ import (
 
 	"github.com/xtaci/smux"
 
+	"github.com/cubefs/cubefs/blobstore/util/log"
 	"github.com/cubefs/cubefs/cmd/common"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/raftstore"
@@ -33,7 +34,6 @@ import (
 	"github.com/cubefs/cubefs/util/config"
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/exporter"
-	"github.com/cubefs/cubefs/util/log"
 )
 
 var (
@@ -97,12 +97,11 @@ func (m *MetaNode) checkLocalPartitionMatchWithMaster() (err error) {
 	var metaNodeInfo *proto.MetaNodeInfo
 	for i := 0; i < 3; i++ {
 		if metaNodeInfo, err = masterClient.NodeAPI().GetMetaNode(fmt.Sprintf("%s:%s", m.localAddr, m.listen)); err != nil {
-			log.LogErrorf("checkLocalPartitionMatchWithMaster: get MetaNode info fail: err(%v)", err)
+			log.Errorf("get MetaNode info fail: err(%v)", err)
 			continue
 		}
 		break
 	}
-
 	if err != nil {
 		return
 	}
@@ -125,7 +124,7 @@ func (m *MetaNode) checkLocalPartitionMatchWithMaster() (err error) {
 		"node":    m.localAddr + ":" + m.listen,
 		"nodeid":  fmt.Sprintf("%d", m.nodeId),
 	})
-	log.LogErrorf("LackPartitions %v on metanode %v, please deal quickly", lackPartitions, m.localAddr+":"+m.listen)
+	log.Errorf("LackPartitions %v on metanode %v:%v, please deal quickly", lackPartitions, m.localAddr, m.listen)
 	return
 }
 
@@ -221,7 +220,7 @@ func (m *MetaNode) parseConfig(cfg *config.Config) (err error) {
 
 	total, _, err := util.GetMemInfo()
 	if err != nil {
-		log.LogErrorf("get total mem failed, err %s", err.Error())
+		log.Errorf("get total mem failed, err %s", err.Error())
 	}
 
 	ratioStr := cfg.GetString(cfgMemRatio)
@@ -232,7 +231,7 @@ func (m *MetaNode) parseConfig(cfg *config.Config) (err error) {
 		}
 
 		configTotalMem = total * uint64(ratio) / 100
-		log.LogInfof("configTotalMem by ratio is: mem [%d], ratio[%d]", configTotalMem, ratio)
+		log.Infof("configTotalMem by ratio is: mem [%d], ratio[%d]", configTotalMem, ratio)
 	} else {
 		configTotalMem, _ = strconv.ParseUint(cfg.GetString(cfgTotalMem), 10, 64)
 		if configTotalMem == 0 {
@@ -270,23 +269,23 @@ func (m *MetaNode) parseConfig(cfg *config.Config) (err error) {
 		m.raftRetainLogs = DefaultRaftNumOfLogsToRetain
 	}
 	syslog.Println("conf raftRetainLogs=", m.raftRetainLogs)
-	log.LogInfof("[parseConfig] raftRetainLogs[%v]", m.raftRetainLogs)
+	log.Infof("[parseConfig] raftRetainLogs[%v]", m.raftRetainLogs)
 
 	if cfg.HasKey(cfgRaftSyncSnapFormatVersion) {
 		raftSyncSnapFormatVersion := uint32(cfg.GetInt64(cfgRaftSyncSnapFormatVersion))
 		if raftSyncSnapFormatVersion > SnapFormatVersion_1 {
 			m.raftSyncSnapFormatVersion = SnapFormatVersion_1
-			log.LogInfof("invalid config raftSyncSnapFormatVersion, using default[%v]", m.raftSyncSnapFormatVersion)
+			log.Infof("invalid config raftSyncSnapFormatVersion, using default[%v]", m.raftSyncSnapFormatVersion)
 		} else {
 			m.raftSyncSnapFormatVersion = raftSyncSnapFormatVersion
-			log.LogInfof("by config raftSyncSnapFormatVersion:[%v]", m.raftSyncSnapFormatVersion)
+			log.Infof("by config raftSyncSnapFormatVersion:[%v]", m.raftSyncSnapFormatVersion)
 		}
 	} else {
 		m.raftSyncSnapFormatVersion = SnapFormatVersion_1
-		log.LogInfof("using default raftSyncSnapFormatVersion[%v]", m.raftSyncSnapFormatVersion)
+		log.Infof("using default raftSyncSnapFormatVersion[%v]", m.raftSyncSnapFormatVersion)
 	}
 	syslog.Println("conf raftSyncSnapFormatVersion=", m.raftSyncSnapFormatVersion)
-	log.LogInfof("[parseConfig] raftSyncSnapFormatVersion[%v]", m.raftSyncSnapFormatVersion)
+	log.Infof("[parseConfig] raftSyncSnapFormatVersion[%v]", m.raftSyncSnapFormatVersion)
 
 	constCfg := config.ConstConfig{
 		Listen:           m.listen,
@@ -295,22 +294,22 @@ func (m *MetaNode) parseConfig(cfg *config.Config) (err error) {
 	}
 	ok := false
 	if ok, err = config.CheckOrStoreConstCfg(m.metadataDir, config.DefaultConstConfigFile, &constCfg); !ok {
-		log.LogErrorf("constCfg check failed %v %v %v %v", m.metadataDir, config.DefaultConstConfigFile, constCfg, err)
+		log.Errorf("constCfg check failed %v %v %v %v", m.metadataDir, config.DefaultConstConfigFile, constCfg, err)
 		return fmt.Errorf("constCfg check failed %v %v %v %v", m.metadataDir, config.DefaultConstConfigFile, constCfg, err)
 	}
 
-	log.LogInfof("[parseConfig] load localAddr[%v].", m.localAddr)
-	log.LogInfof("[parseConfig] load listen[%v].", m.listen)
-	log.LogInfof("[parseConfig] load metadataDir[%v].", m.metadataDir)
-	log.LogInfof("[parseConfig] load raftDir[%v].", m.raftDir)
-	log.LogInfof("[parseConfig] load raftHeartbeatPort[%v].", m.raftHeartbeatPort)
-	log.LogInfof("[parseConfig] load raftReplicatePort[%v].", m.raftReplicatePort)
-	log.LogInfof("[parseConfig] load zoneName[%v].", m.zoneName)
+	log.Infof("[parseConfig] load localAddr[%v].", m.localAddr)
+	log.Infof("[parseConfig] load listen[%v].", m.listen)
+	log.Infof("[parseConfig] load metadataDir[%v].", m.metadataDir)
+	log.Infof("[parseConfig] load raftDir[%v].", m.raftDir)
+	log.Infof("[parseConfig] load raftHeartbeatPort[%v].", m.raftHeartbeatPort)
+	log.Infof("[parseConfig] load raftReplicatePort[%v].", m.raftReplicatePort)
+	log.Infof("[parseConfig] load zoneName[%v].", m.zoneName)
 
 	if err = m.parseSmuxConfig(cfg); err != nil {
 		return fmt.Errorf("parseSmuxConfig fail err %v", err)
 	} else {
-		log.LogInfof("Start: init smux conn pool (%v).", smuxPoolCfg)
+		log.Infof("start: init smux conn pool (%v).", smuxPoolCfg)
 		smuxPool = util.NewSmuxConnectPool(smuxPoolCfg)
 	}
 
@@ -322,7 +321,7 @@ func (m *MetaNode) parseConfig(cfg *config.Config) (err error) {
 
 	updateInterval := cfg.GetInt(configNameResolveInterval)
 	if updateInterval <= 0 || updateInterval > 60 {
-		log.LogWarnf("name resolving interval[1-60] is set to default: %v", DefaultNameResolveInterval)
+		log.Warnf("name resolving interval[1-60] is set to default: %v", DefaultNameResolveInterval)
 		updateInterval = DefaultNameResolveInterval
 	}
 
@@ -330,7 +329,7 @@ func (m *MetaNode) parseConfig(cfg *config.Config) (err error) {
 	masterClient = masterSDK.NewMasterCLientWithResolver(masters, false, updateInterval)
 	if masterClient == nil {
 		err = fmt.Errorf("parseConfig: masters addrs format err[%v]", masters)
-		log.LogErrorf("parseConfig: masters addrs format err[%v]", masters)
+		log.Errorf("parseConfig: masters addrs format err[%v]", masters)
 		return err
 	}
 	if err = masterClient.Start(); err != nil {
@@ -374,7 +373,7 @@ func (m *MetaNode) parseSmuxConfig(cfg *config.Config) error {
 		return err
 	}
 
-	log.LogDebugf("[parseSmuxConfig] cfg %v.", smuxPoolCfg)
+	log.Debugf("[parseSmuxConfig] cfg %v.", smuxPoolCfg)
 	return nil
 }
 
@@ -405,7 +404,7 @@ func (m *MetaNode) newMetaManager() (err error) {
 
 	if m.clusterUuidEnable {
 		if err = config.CheckOrStoreClusterUuid(m.metadataDir, m.clusterUuid, false); err != nil {
-			log.LogErrorf("CheckOrStoreClusterUuid failed: %v", err)
+			log.Errorf("CheckOrStoreClusterUuid failed: %v", err)
 			return fmt.Errorf("CheckOrStoreClusterUuid failed: %v", err)
 		}
 	}
@@ -417,7 +416,7 @@ func (m *MetaNode) newMetaManager() (err error) {
 	}
 	ok := false
 	if ok, err = config.CheckOrStoreConstCfg(m.metadataDir, config.DefaultConstConfigFile, &constCfg); !ok {
-		log.LogErrorf("constCfg check failed %v %v %v %v", m.metadataDir, config.DefaultConstConfigFile, constCfg, err)
+		log.Errorf("constCfg check failed %v %v %v %v", m.metadataDir, config.DefaultConstConfigFile, constCfg, err)
 		return fmt.Errorf("constCfg check failed %v %v %v %v", m.metadataDir, config.DefaultConstConfigFile, constCfg, err)
 	}
 
@@ -434,7 +433,7 @@ func (m *MetaNode) newMetaManager() (err error) {
 
 func (m *MetaNode) startMetaManager() (err error) {
 	if err = m.metadataManager.Start(); err == nil {
-		log.LogInfof("[startMetaManager] manager start finish.")
+		log.Infof("[startMetaManager] manager start finish.")
 	}
 	return
 }
@@ -452,7 +451,7 @@ func (m *MetaNode) register() (err error) {
 		if step < 1 {
 			clusterInfo, err = getClusterInfo()
 			if err != nil {
-				log.LogErrorf("[register] %s", err.Error())
+				log.Errorf("[register] %s", err.Error())
 				continue
 			}
 			if m.localAddr == "" {
@@ -466,7 +465,7 @@ func (m *MetaNode) register() (err error) {
 		}
 		var nodeID uint64
 		if nodeID, err = masterClient.NodeAPI().AddMetaNodeWithAuthNode(nodeAddress, m.zoneName, m.serviceIDKey); err != nil {
-			log.LogErrorf("register: register to master fail: address(%v) err(%s)", nodeAddress, err)
+			log.Errorf("[register] to master fail: address(%v) err(%s)", nodeAddress, err)
 			time.Sleep(3 * time.Second)
 			continue
 		}

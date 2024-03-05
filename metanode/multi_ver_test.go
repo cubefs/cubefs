@@ -39,6 +39,8 @@ var (
 	partitionId uint64 = 10
 	manager            = &metadataManager{partitions: make(map[uint64]MetaPartition), volUpdating: new(sync.Map)}
 	mp          *metaPartition
+
+	newCtx = func() context.Context { return context.Background() }
 )
 
 // PartitionId   uint64              `json:"partition_id"`
@@ -236,7 +238,7 @@ func testCreateDentry(t *testing.T, parentId uint64, inodeId uint64, name string
 	}
 
 	t.Logf("createDentry dentry %v", dentry)
-	ret := mp.fsmCreateDentry(dentry, false)
+	ret := mp.fsmCreateDentry(newCtx(), dentry, false)
 	assert.True(t, proto.OpOk == ret)
 	if ret != proto.OpOk {
 		panic(nil)
@@ -409,7 +411,7 @@ func testReadDirAll(t *testing.T, verSeq uint64, parentId uint64) (resp *ReadDir
 		Limit:       math.MaxUint64,
 		VerSeq:      verSeq,
 	}
-	return mp.readDirLimit(req)
+	return mp.readDirLimit(newCtx(), req)
 }
 
 func testVerListRemoveVer(t *testing.T, verSeq uint64) bool {
@@ -662,6 +664,7 @@ func testDelDirSnapshotVersion(t *testing.T, verSeq uint64, dirIno *Inode, dirDe
 	if verSeq != 0 {
 		assert.True(t, testVerListRemoveVer(t, verSeq))
 	}
+	ctx := newCtx()
 
 	rspReadDir := testReadDirAll(t, verSeq, dirIno.Inode)
 	// testPrintAllDentry(t)
@@ -678,7 +681,7 @@ func testDelDirSnapshotVersion(t *testing.T, verSeq uint64, dirIno *Inode, dirDe
 	}
 	rDirDentry := dirDentry.Copy().(*Dentry)
 	rDirDentry.setVerSeq(verSeq)
-	rspDelDen := mp.fsmDeleteDentry(rDirDentry, false)
+	rspDelDen := mp.fsmDeleteDentry(ctx, rDirDentry, false)
 	assert.True(t, rspDelDen.Status == proto.OpOk)
 
 	for idx, info := range rspReadDir.Children {
@@ -717,7 +720,7 @@ func testDelDirSnapshotVersion(t *testing.T, verSeq uint64, dirIno *Inode, dirDe
 		}
 		log.LogDebugf("test.testDelDirSnapshotVersion: dentry param %v ", dentry)
 		// testPrintAllDentry(t)
-		iden, st := mp.getDentry(dentry)
+		iden, st := mp.getDentry(ctx, dentry)
 		if st != proto.OpOk {
 			t.Logf("testDelDirSnapshotVersion: dentry %v return st %v", dentry, proto.ParseErrorCode(int32(st)))
 		}
@@ -726,7 +729,7 @@ func testDelDirSnapshotVersion(t *testing.T, verSeq uint64, dirIno *Inode, dirDe
 
 		rDen := iden.Copy().(*Dentry)
 		rDen.multiSnap = NewDentrySnap(verSeq)
-		rspDelDen = mp.fsmDeleteDentry(rDen, false)
+		rspDelDen = mp.fsmDeleteDentry(ctx, rDen, false)
 		assert.True(t, rspDelDen.Status == proto.OpOk)
 	}
 }
@@ -953,7 +956,7 @@ func testDeleteFile(t *testing.T, verSeq uint64, parentId uint64, child *proto.D
 		multiSnap: NewDentrySnap(verSeq),
 	}
 	t.Logf("testDeleteFile seq [%v] %v dentry %v", verSeq, fsmDentry.getSeqFiled(), fsmDentry)
-	assert.True(t, nil != mp.fsmDeleteDentry(fsmDentry, false))
+	assert.True(t, nil != mp.fsmDeleteDentry(newCtx(), fsmDentry, false))
 
 	rino := &Inode{
 		Inode: child.Inode,
@@ -1058,6 +1061,7 @@ func testSnapshotDeletion(t *testing.T, topFirst bool) {
 		log.LogDebugf("PrintALl verseq [%v] get dirCnt %v, fCnt %v mp verlist size %v", ver, dCnt, fCnt, len(mp.multiVersionList.VerList))
 	}
 
+	ctx := newCtx()
 	t.Logf("---------------------------------------------------------------------")
 	t.Logf("--------testPrintDirTree by ver -------------------------------------")
 	t.Logf("---------------------------------------------------------------------")
@@ -1073,12 +1077,12 @@ func testSnapshotDeletion(t *testing.T, topFirst bool) {
 	t.Logf("------------rename dir ----------------------")
 	if renameDen != nil {
 		t.Logf("try to move dir %v", renameDen)
-		assert.True(t, nil != mp.fsmDeleteDentry(renameDen, false))
+		assert.True(t, nil != mp.fsmDeleteDentry(ctx, renameDen, false))
 		renameDen.Name = fmt.Sprintf("rename_from_%v", renameDen.Name)
 		renameDen.ParentId = renameDstIno
 
 		t.Logf("try to move to dir %v", renameDen)
-		assert.True(t, mp.fsmCreateDentry(renameDen, false) == proto.OpOk)
+		assert.True(t, mp.fsmCreateDentry(ctx, renameDen, false) == proto.OpOk)
 		testPrintDirTree(t, 1, "root", 0)
 	}
 	delSnapshotList := func() {
@@ -1467,7 +1471,7 @@ func TestUpdateDenty(t *testing.T) {
 	mp.UpdateDentry(&UpdateDentryReq{Name: "testfile", ParentID: 1, Inode: 2000}, &Packet{}, localAddrForAudit)
 	den := &Dentry{Name: "testfile", ParentId: 1}
 	den.setVerSeq(math.MaxUint64)
-	denRsp, status := mp.getDentry(den)
+	denRsp, status := mp.getDentry(newCtx(), den)
 	assert.True(t, status == proto.OpOk)
 	assert.True(t, denRsp.Inode == 1000)
 }
