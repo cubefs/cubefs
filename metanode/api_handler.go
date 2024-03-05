@@ -32,7 +32,7 @@ import (
 )
 
 func httpSpan(r *http.Request) trace.Span {
-	return trace.SpanFromContextSafe(r.Context())
+	return proto.SpanFromContext(r.Context())
 }
 
 // APIResponse defines the structure of the response to an HTTP request
