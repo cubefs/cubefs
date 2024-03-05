@@ -38,7 +38,6 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/trace"
 	"github.com/cubefs/cubefs/blobstore/util/defaulter"
 	"github.com/cubefs/cubefs/blobstore/util/errors"
-	"github.com/cubefs/cubefs/blobstore/util/log"
 	"github.com/cubefs/cubefs/blobstore/util/retry"
 )
 
@@ -172,20 +171,20 @@ type Handler struct {
 	allCodeModes  CodeModePairs
 	maxObjectSize int64
 
-	failVids       sync.Map
 	releaseVids    sync.Map
+	failVids       sync.Map
 	discardVidChan chan discardVid
 	stopCh         <-chan struct{}
 
 	StreamConfig
 }
 
-func confCheck(cfg *StreamConfig) {
+func confCheck(cfg *StreamConfig) error {
 	if cfg.IDC == "" {
-		log.Fatal("idc config can not be null")
+		return errors.New("idc config can not be null")
 	}
 	if cfg.ClusterConfig.ConsulAgentAddr == "" && len(cfg.ClusterConfig.Clusters) == 0 {
-		log.Panic("consul or clusters can not all be empty")
+		return errors.New("consul or clusters can not all be empty")
 	}
 	cfg.ClusterConfig.IDC = cfg.IDC
 
@@ -196,7 +195,7 @@ func confCheck(cfg *StreamConfig) {
 	for mode, quorum := range cfg.CodeModesPutQuorums {
 		tactic := mode.Tactic()
 		if quorum < tactic.N+tactic.L+1 || quorum > mode.GetShardNum() {
-			log.Fatalf("invalid put quorum(%d) in codemode(%d): %+v", quorum, mode, tactic)
+			return errors.Newf("invalid put quorum(%d) in codemode(%d): %+v", quorum, mode, tactic)
 		}
 	}
 
@@ -230,15 +229,20 @@ func confCheck(cfg *StreamConfig) {
 	defaulter.LessOrEqual(&hc.SleepWindow, defaultBlobnodeSleepWindow)
 	defaulter.LessOrEqual(&hc.ErrorPercentThreshold, defaultBlobnodeErrorPercentThreshold)
 	cfg.RWCommandConfig = hc
+
+	return nil
 }
 
 // NewStreamHandler returns a stream handler
-func NewStreamHandler(cfg *StreamConfig, stopCh <-chan struct{}) StreamHandler {
-	confCheck(cfg)
+func NewStreamHandler(cfg *StreamConfig, stopCh <-chan struct{}) (h StreamHandler, e error) {
+	if e = confCheck(cfg); e != nil {
+		return nil, e
+	}
 	proxyClient := proxy.New(&cfg.ProxyConfig)
 	clusterController, err := controller.NewClusterController(&cfg.ClusterConfig, proxyClient, stopCh)
 	if err != nil {
-		log.Fatalf("new cluster controller failed, err: %v", err)
+		e = errors.Newf("new cluster controller failed, err: %v", err)
+		return
 	}
 
 	handler := &Handler{
@@ -254,15 +258,18 @@ func NewStreamHandler(cfg *StreamConfig, stopCh <-chan struct{}) StreamHandler {
 
 	rawCodeModePolicies, err := handler.clusterController.GetConfig(context.Background(), proto.CodeModeConfigKey)
 	if err != nil {
-		log.Fatal("get codemode policy from cluster manager failed, err: ", err)
+		e = errors.Newf("get codemode policy from cluster manager failed, err: %+v", err)
+		return
 	}
 	codeModePolicies := make([]codemode.Policy, 0)
 	err = json.Unmarshal([]byte(rawCodeModePolicies), &codeModePolicies)
 	if err != nil {
-		log.Fatal("json decode codemode policy failed, err: ", err)
+		e = errors.Newf("json decode codemode policy failed, err: %+v", err)
+		return
 	}
 	if len(codeModePolicies) <= 0 {
-		log.Fatal("invalid codemode policy raw: ", rawCodeModePolicies)
+		e = errors.Newf("invalid codemode policy raw: %s", rawCodeModePolicies)
+		return
 	}
 
 	allCodeModes := make(CodeModePairs)
@@ -284,7 +291,8 @@ func NewStreamHandler(cfg *StreamConfig, stopCh <-chan struct{}) StreamHandler {
 			Concurrency:  cfg.EncoderConcurrency,
 		})
 		if err != nil {
-			log.Fatalf("new encoder failed, err: %v", err)
+			e = errors.Newf("new encoder failed, err: %v", err)
+			return
 		}
 		encoders[codeMode] = encoder
 	}
@@ -301,7 +309,7 @@ func NewStreamHandler(cfg *StreamConfig, stopCh <-chan struct{}) StreamHandler {
 	handler.stopCh = stopCh
 	handler.loopDiscardVids()
 	handler.loopReleaseVids()
-	return handler
+	return handler, nil
 }
 
 // Delete delete all blobs in this location
@@ -508,6 +516,7 @@ func (h *Handler) releaseVolume(ctx context.Context, cid proto.ClusterID, md cod
 	if err != nil {
 		span.Warnf("fail to discard volume cache. err[%+v]", err)
 	}
+	span.Warnf("We released volume %d, type:%d, err[%+v]", vid, tp, err)
 }
 
 // blobCount blobSize > 0 is certain

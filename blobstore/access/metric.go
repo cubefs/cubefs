@@ -52,3 +52,7 @@ func reportUnhealth(cid proto.ClusterID, action, module, host, reason string) {
 func reportDownload(cid proto.ClusterID, way, reason string) {
 	downloadMetric.WithLabelValues(cid.ToString(), way, reason).Inc()
 }
+
+func ReportDownloadWrap(cid proto.ClusterID, way, reason string) {
+	reportDownload(cid, way, reason)
+}

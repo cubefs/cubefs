@@ -68,6 +68,18 @@ func calcCrc(loc *access.Location) (uint32, error) {
 	return crcWriter.Sum32(), nil
 }
 
+func FillCrcWrap(loc *access.Location) error {
+	return fillCrc(loc)
+}
+
+func VerifyCrcWrap(loc *access.Location) bool {
+	return verifyCrc(loc)
+}
+
+func CalcCrcWrap(loc *access.Location) (uint32, error) {
+	return calcCrc(loc)
+}
+
 func fillCrc(loc *access.Location) error {
 	crc, err := calcCrc(loc)
 	if err != nil {

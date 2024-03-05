@@ -72,3 +72,7 @@ func withReqidContext(ctx context.Context) context.Context {
 	_, ctx = trace.StartSpanFromContext(ctx, _operationName)
 	return ctx
 }
+
+func WithReqidContextWrap(ctx context.Context) context.Context {
+	return withReqidContext(ctx)
+}

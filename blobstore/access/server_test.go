@@ -36,6 +36,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/rpc"
 	"github.com/cubefs/cubefs/blobstore/common/uptoken"
+	"github.com/cubefs/cubefs/blobstore/testing/mocks"
 )
 
 var (
@@ -66,7 +67,7 @@ func runMockService(s *Service) string {
 
 func newService() *Service {
 	ctr := gomock.NewController(&testing.T{})
-	s := NewMockStreamHandler(ctr)
+	s := mocks.NewMockStreamHandler(ctr)
 
 	s.EXPECT().Alloc(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes().DoAndReturn(
 		func(ctx context.Context, size uint64, blobSize uint32,

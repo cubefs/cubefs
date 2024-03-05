@@ -223,12 +223,12 @@ type API interface {
 
 var _ API = (*client)(nil)
 
-type noopBody struct{}
+type NoopBody struct{}
 
-var _ io.ReadCloser = (*noopBody)(nil)
+var _ io.ReadCloser = (*NoopBody)(nil)
 
-func (rc noopBody) Read(p []byte) (n int, err error) { return 0, io.EOF }
-func (rc noopBody) Close() error                     { return nil }
+func (rc NoopBody) Read(p []byte) (n int, err error) { return 0, io.EOF }
+func (rc NoopBody) Close() error                     { return nil }
 
 var memPool *resourcepool.MemPool
 
@@ -725,7 +725,7 @@ func (c *client) Get(ctx context.Context, args *GetArgs) (body io.ReadCloser, er
 
 	ctx = withReqidContext(ctx)
 	if args.Location.Size == 0 || args.ReadSize == 0 {
-		return noopBody{}, nil
+		return NoopBody{}, nil
 	}
 
 	resp, err := rpcClient.Post(ctx, "/get", args)

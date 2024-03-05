@@ -31,6 +31,9 @@ package testing
 //go:generate mockgen -destination=./mocks/api_scheduler.go -package=mocks -mock_names IScheduler=MockIScheduler github.com/cubefs/cubefs/blobstore/api/scheduler IScheduler
 //go:generate mockgen -destination=./mocks/api_proxy.go -package=mocks -mock_names Client=MockProxyClient github.com/cubefs/cubefs/blobstore/api/proxy Client
 
+// github.com/cubefs/cubefs/blobstore/access/... api interfaces
+//go:generate mockgen -destination=./mocks/access_stream.go -package=mocks -mock_names StreamHandler=MockStreamHandler github.com/cubefs/cubefs/blobstore/access StreamHandler
+
 import (
 	// add package to go.mod for `go generate`
 	_ "github.com/golang/mock/mockgen/model"
