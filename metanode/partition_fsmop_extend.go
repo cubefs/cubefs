@@ -15,10 +15,9 @@
 package metanode
 
 import (
+	"context"
 	"fmt"
 	"math"
-
-	"github.com/cubefs/cubefs/util/log"
 )
 
 type ExtendOpResult struct {
@@ -26,7 +25,7 @@ type ExtendOpResult struct {
 	Extend *Extend
 }
 
-func (mp *metaPartition) fsmSetXAttr(extend *Extend) (err error) {
+func (mp *metaPartition) fsmSetXAttr(ctx context.Context, extend *Extend) (err error) {
 	extend.verSeq = mp.GetVerSeq()
 	treeItem := mp.extendTree.CopyGet(extend)
 	var e *Extend
@@ -44,12 +43,11 @@ func (mp *metaPartition) fsmSetXAttr(extend *Extend) (err error) {
 		}
 		e.Merge(extend, true)
 	}
-
 	return
 }
 
 // todo(leon chang):check snapshot delete relation with attr
-func (mp *metaPartition) fsmRemoveXAttr(reqExtend *Extend) (err error) {
+func (mp *metaPartition) fsmRemoveXAttr(ctx context.Context, reqExtend *Extend) (err error) {
 	treeItem := mp.extendTree.CopyGet(reqExtend)
 	if treeItem == nil {
 		return
@@ -90,7 +88,7 @@ func (mp *metaPartition) fsmRemoveXAttr(reqExtend *Extend) (err error) {
 	} else if reqExtend.verSeq == e.verSeq {
 		var globalNewVer uint64
 		if globalNewVer, err = mp.multiVersionList.GetNextNewerVer(reqExtend.verSeq); err != nil {
-			log.LogErrorf("fsmRemoveXAttr. mp[%v] seq [%v] req ver [%v] not found newer seq", mp.config.PartitionId, mp.verSeq, reqExtend.verSeq)
+			getSpan(ctx).Errorf("mp[%v] seq [%v] req ver [%v] not found newer seq", mp.config.PartitionId, mp.verSeq, reqExtend.verSeq)
 			return err
 		}
 		e.verSeq = globalNewVer
@@ -108,7 +106,7 @@ func (mp *metaPartition) fsmRemoveXAttr(reqExtend *Extend) (err error) {
 					return err
 				}
 				if globalNewVer < innerLastVer {
-					log.LogDebugf("mp[%v] inode[%v] extent layer %v update seq [%v] to %v",
+					getSpan(ctx).Debugf("mp[%v] inode[%v] extent layer %v update seq [%v] to %v",
 						mp.config.PartitionId, ele.inode, id, ele.verSeq, globalNewVer)
 					ele.verSeq = globalNewVer
 					return
@@ -118,6 +116,5 @@ func (mp *metaPartition) fsmRemoveXAttr(reqExtend *Extend) (err error) {
 			}
 		}
 	}
-
 	return
 }

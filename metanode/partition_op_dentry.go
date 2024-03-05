@@ -38,8 +38,9 @@ func (mp *metaPartition) TxCreateDentry(req *proto.TxCreateDentryRequest, p *Pac
 		return
 	}
 
+	ctx := p.Context()
 	for _, quotaId := range req.QuotaIds {
-		status := mp.mqMgr.IsOverQuota(false, true, quotaId)
+		status := mp.mqMgr.IsOverQuota(ctx, false, true, quotaId)
 		if status != 0 {
 			err = errors.New("create dentry is over quota")
 			reply := []byte(err.Error())
@@ -71,7 +72,7 @@ func (mp *metaPartition) TxCreateDentry(req *proto.TxCreateDentryRequest, p *Pac
 		return
 	}
 
-	status, err := mp.submit(p.Context(), opFSMTxCreateDentry, val)
+	status, err := mp.submit(ctx, opFSMTxCreateDentry, val)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return
@@ -142,8 +143,10 @@ func (mp *metaPartition) QuotaCreateDentry(req *proto.QuotaCreateDentryRequest, 
 		p.PacketErrorWithBody(proto.OpExistErr, []byte(err.Error()))
 		return
 	}
+
+	ctx := p.Context()
 	for _, quotaId := range req.QuotaIds {
-		status := mp.mqMgr.IsOverQuota(false, true, quotaId)
+		status := mp.mqMgr.IsOverQuota(ctx, false, true, quotaId)
 		if status != 0 {
 			err = errors.New("create dentry is over quota")
 			reply := []byte(err.Error())
@@ -178,7 +181,7 @@ func (mp *metaPartition) QuotaCreateDentry(req *proto.QuotaCreateDentryRequest, 
 	if err != nil {
 		return
 	}
-	resp, err := mp.submit(p.Context(), opFSMCreateDentry, val)
+	resp, err := mp.submit(ctx, opFSMCreateDentry, val)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return
@@ -211,7 +214,8 @@ func (mp *metaPartition) TxDeleteDentry(req *proto.TxDeleteDentryRequest, p *Pac
 		}
 	}()
 
-	dentry, status := mp.getDentry(den)
+	ctx := p.Context()
+	dentry, status := mp.getDentry(ctx, den)
 	if status != proto.OpOk {
 		if mp.txDentryInRb(req.ParentID, req.Name, req.TxInfo.TxID) {
 			p.ResultCode = proto.OpOk
@@ -233,7 +237,7 @@ func (mp *metaPartition) TxDeleteDentry(req *proto.TxDeleteDentryRequest, p *Pac
 		return
 	}
 	parIno := NewInode(req.ParentID, 0)
-	inoResp := mp.getInode(parIno, false)
+	inoResp := mp.getInode(ctx, parIno, false)
 	if inoResp.Status != proto.OpOk {
 		err = fmt.Errorf("parIno[%v] not exists", parIno.Inode)
 		p.PacketErrorWithBody(inoResp.Status, []byte(err.Error()))
@@ -252,7 +256,7 @@ func (mp *metaPartition) TxDeleteDentry(req *proto.TxDeleteDentryRequest, p *Pac
 		return
 	}
 
-	r, err := mp.submit(p.Context(), opFSMTxDeleteDentry, val)
+	r, err := mp.submit(ctx, opFSMTxDeleteDentry, val)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return
@@ -421,7 +425,7 @@ func (mp *metaPartition) TxUpdateDentry(req *proto.TxUpdateDentryRequest, p *Pac
 		Name:     req.Name,
 		Inode:    req.Inode,
 	}
-	oldDentry, status := mp.getDentry(newDentry)
+	oldDentry, status := mp.getDentry(p.Context(), newDentry)
 	if status != proto.OpOk {
 		if mp.txDentryInRb(req.ParentID, req.Name, req.TxInfo.TxID) {
 			p.ResultCode = proto.OpOk
@@ -504,7 +508,7 @@ func (mp *metaPartition) UpdateDentry(req *UpdateDentryReq, p *Packet, remoteAdd
 }
 
 func (mp *metaPartition) ReadDirOnly(req *ReadDirOnlyReq, p *Packet) (err error) {
-	resp := mp.readDirOnly(req)
+	resp := mp.readDirOnly(p.Context(), req)
 	reply, err := json.Marshal(resp)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
@@ -516,7 +520,7 @@ func (mp *metaPartition) ReadDirOnly(req *ReadDirOnlyReq, p *Packet) (err error)
 
 // ReadDir reads the directory based on the given request.
 func (mp *metaPartition) ReadDir(req *ReadDirReq, p *Packet) (err error) {
-	resp := mp.readDir(req)
+	resp := mp.readDir(p.Context(), req)
 	reply, err := json.Marshal(resp)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
@@ -528,7 +532,7 @@ func (mp *metaPartition) ReadDir(req *ReadDirReq, p *Packet) (err error) {
 
 func (mp *metaPartition) ReadDirLimit(req *ReadDirLimitReq, p *Packet) (err error) {
 	p.Span().Infof("read seq [%v], request[%v]", req.VerSeq, req)
-	resp := mp.readDirLimit(req)
+	resp := mp.readDirLimit(p.Context(), req)
 	reply, err := json.Marshal(resp)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
@@ -549,7 +553,7 @@ func (mp *metaPartition) Lookup(req *LookupReq, p *Packet) (err error) {
 	if req.VerAll {
 		denList = mp.getDentryList(dentry)
 	}
-	dentry, status := mp.getDentry(dentry)
+	dentry, status := mp.getDentry(p.Context(), dentry)
 
 	var reply []byte
 	if status == proto.OpOk || req.VerAll {

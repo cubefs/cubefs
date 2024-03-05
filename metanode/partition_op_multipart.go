@@ -121,7 +121,7 @@ func (mp *metaPartition) AppendMultipart(req *proto.AddMultipartPartRequest, p *
 		},
 	}
 	var resp interface{}
-	if resp, err = mp.putMultipart(opFSMAppendMultipart, multipart); err != nil {
+	if resp, err = mp.putMultipart(p.Context(), opFSMAppendMultipart, multipart); err != nil {
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return
 	}
@@ -145,7 +145,7 @@ func (mp *metaPartition) RemoveMultipart(req *proto.RemoveMultipartRequest, p *P
 		key: req.Path,
 	}
 	var resp interface{}
-	if resp, err = mp.putMultipart(opFSMRemoveMultipart, multipart); err != nil {
+	if resp, err = mp.putMultipart(p.Context(), opFSMRemoveMultipart, multipart); err != nil {
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return
 	}
@@ -174,7 +174,7 @@ func (mp *metaPartition) CreateMultipart(req *proto.CreateMultipartRequest, p *P
 		initTime: time.Now().Local(),
 		extend:   req.Extend,
 	}
-	if _, err = mp.putMultipart(opFSMCreateMultipart, multipart); err != nil {
+	if _, err = mp.putMultipart(p.Context(), opFSMCreateMultipart, multipart); err != nil {
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return
 	}
@@ -258,11 +258,11 @@ func (mp *metaPartition) ListMultipart(req *proto.ListMultipartRequest, p *Packe
 }
 
 // SendMultipart replicate specified multipart operation to raft.
-func (mp *metaPartition) putMultipart(op uint32, multipart *Multipart) (resp interface{}, err error) {
+func (mp *metaPartition) putMultipart(ctx context.Context, op uint32, multipart *Multipart) (resp interface{}, err error) {
 	var encoded []byte
 	if encoded, err = multipart.Bytes(); err != nil {
 		return
 	}
-	resp, err = mp.submit(context.TODO(), op, encoded)
+	resp, err = mp.submit(ctx, op, encoded)
 	return
 }
