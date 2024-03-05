@@ -891,6 +891,10 @@ func (dp *DataPartition) DoExtentStoreRepair(repairTask *DataPartitionRepairTask
 	)
 	wg = new(sync.WaitGroup)
 	for _, extentInfo := range repairTask.ExtentsToBeRepaired {
+		if dp.dataNode.space.Partition(dp.partitionID) == nil {
+			log.LogWarnf("DoExtentStoreRepair dp %v is detached, quit repair",
+				dp.partitionID)
+		}
 		if dp.stopRecover && dp.isDecommissionRecovering() {
 			log.LogWarnf("DoExtentStoreRepair %v receive stop signal", dp.partitionID)
 			return

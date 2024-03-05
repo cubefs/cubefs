@@ -957,13 +957,17 @@ func (s *DataNode) handleExtentRepairReadPacket(p *repl.Packet, connect net.Conn
 		return
 	}
 	partition := p.Object.(*DataPartition)
-	if !partition.disk.RequireReadExtentToken() {
+	if !partition.disk.RequireReadExtentToken(partition.partitionID) {
 		err = storage.NoDiskReadRepairExtentTokenError
 		log.LogDebugf("dp(%v) disk(%v) extent(%v) wait for read extent token",
 			p.PartitionID, partition.disk.Path, p.ExtentID)
 		return
 	}
-	defer partition.disk.ReleaseReadExtentToken()
+	defer func() {
+		partition.disk.ReleaseReadExtentToken()
+		log.LogDebugf("dp(%v) disk(%v) extent(%v) release read extent token",
+			p.PartitionID, partition.disk.Path, p.ExtentID)
+	}()
 	log.LogDebugf("dp(%v) disk(%v) extent(%v) get read extent token",
 		p.PartitionID, partition.disk.Path, p.ExtentID)
 	s.extentRepairReadPacket(p, connect, isRepairRead)
@@ -1138,9 +1142,7 @@ func (s *DataNode) tinyExtentRepairRead(request *repl.Packet, connect net.Conn) 
 	}
 	avaliReplySize := uint64(needReplySize)
 
-	var (
-		newOffset, newEnd int64
-	)
+	var newOffset, newEnd int64
 	log.LogDebugf("tinyExtentRepairRead read dp(%v) disk(%v) extent(%v)", request.PartitionID,
 		partition.disk.Path, request.ExtentID)
 	for {
@@ -1176,7 +1178,7 @@ func (s *DataNode) tinyExtentRepairRead(request *repl.Packet, connect net.Conn) 
 		if err != nil {
 			return
 		}
-		//log.LogDebugf("tinyExtentRepairRead read dp(%v) disk(%v) extent(%v) data size(%v)", request.PartitionID,
+		// log.LogDebugf("tinyExtentRepairRead read dp(%v) disk(%v) extent(%v) data size(%v)", request.PartitionID,
 		//	partition.disk.Path, request.ExtentID, currReadSize)
 		reply.Size = uint32(currReadSize)
 		reply.ResultCode = proto.OpOk
