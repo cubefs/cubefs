@@ -275,12 +275,12 @@ func (d *Dentry) cleanDeletedVersion(ctx context.Context, index int) (bDrop bool
 
 	span := getSpan(ctx)
 	// del the dentry before
-	span.Debugf("ction[cleanDeleteVersion] dentry (%v) delete the last seq [%v] which set deleted before",
+	span.Debugf("action[cleanDeleteVersion] dentry (%v) delete the last seq [%v] which set deleted before",
 		d, d.multiSnap.dentryList[delIdx].getVerSeq())
 	d.multiSnap.dentryList = append(d.multiSnap.dentryList[:delIdx], d.multiSnap.dentryList[:delIdx+1]...)
 
 	if len(d.multiSnap.dentryList) == 0 && d.isDeleted() {
-		span.Debugf("ction[cleanDeleteVersion] dentry (%v) require to be deleted", d)
+		span.Debugf("action[cleanDeleteVersion] dentry (%v) require to be deleted", d)
 		bDrop = true
 	}
 	return
@@ -334,7 +334,8 @@ func (d *Dentry) deleteVerSnapshot(ctx context.Context, delVerSeq uint64, mpVerS
 				span.Debugf("action[deleteVerSnapshotInList.inSnapList_del_%v] inode[%v] dir layer idx %v include snapshot %v.don't drop",
 					delVerSeq, den.Inode, realIdx, info.Ver)
 				// there's some snapshot depends on the version trying to be deleted,
-				// keep it,all the snapshots which depends on this version will reach here when make snapshot delete, and found the scope is minimized
+				// keep it,all the snapshots which depends on this version will reach here when make snapshot delete,
+				// and found the scope is minimized
 				// other versions depends upon this version will be found zero finally after deletions and do clean
 				den.setVerSeq(info.Ver)
 				return den, false, false

@@ -167,6 +167,7 @@ func (mp *metaPartition) getDentry(ctx context.Context, dentry *Dentry) (*Dentry
 		status = proto.OpNotExistErr
 		return nil, status
 	}
+	getSpan(ctx).Debugf("action[getDentry] get dentry[%v] by req dentry %v", item.(*Dentry), dentry)
 	den := mp.getDentryByVerSeq(ctx, item.(*Dentry), dentry.getSeqFiled())
 	if den != nil {
 		return den, proto.OpOk
