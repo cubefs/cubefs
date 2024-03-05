@@ -292,6 +292,7 @@ func (eh *ExtentHandler) sender() {
 				eh.setRecovery()
 			}
 			packet.SendT = time.Now().UnixNano()
+			eh.lastAccessTime = time.Now().Unix()
 
 			var p string
 			if log.IsDebugEnabled() {
@@ -383,7 +384,6 @@ func (eh *ExtentHandler) processReply(packet *common.Packet) {
 		return
 	}
 
-	eh.lastAccessTime = time.Now().Unix()
 	if log.IsDebugEnabled() {
 		log.LogDebugf("processReply: get reply, eh(%v) packet(%v) reply(%v)", eh, packet, reply)
 	}
