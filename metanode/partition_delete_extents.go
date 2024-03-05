@@ -720,7 +720,6 @@ func (mp *metaPartition) deletedExtentsTreeTraveler() (err error) {
 			if err != nil || count == 0 {
 				return
 			}
-			// TODO(NaturalSelect): make it parallelism
 			for dpId, deks := range dekMap {
 				err = mp.batchDeleteExtentsHotVol(dpId, deks)
 				if err != nil {
@@ -741,7 +740,7 @@ func (mp *metaPartition) deletedExtentsTreeTraveler() (err error) {
 					continue
 				}
 
-				log.LogDebugf("[deletedExtentTreeTraveler] mp(%v) delete deks", mp.config.PartitionId)
+				log.LogDebugf("[deletedExtentTreeTraveler] mp(%v) delete deks cnt(%v)", mp.config.PartitionId, len(deks))
 				_, err = mp.submit(opFSMDeleteExtentFromTree, v)
 				if err != nil {
 					log.LogErrorf("[deletedExtentTreeTraveler] mp(%v) failed to remove deks, err(%v)", mp.config.PartitionId, err)
@@ -822,7 +821,7 @@ func (mp *metaPartition) deletedObjExtentsTreeTravler() (err error) {
 				log.LogErrorf("[deletedObjExtentsTreeTravler] failed to marshal remove request, err(%v)", err)
 				return
 			}
-			log.LogErrorf("[deletedObjExtentsTreeTravler] mp(%v) delete deks", mp.config.PartitionId)
+			log.LogErrorf("[deletedObjExtentsTreeTravler] mp(%v) delete doeks cnt(%v)", mp.config.PartitionId, count)
 			_, err = mp.submit(opFSMDeleteObjExtentFromTree, v)
 			if err != nil {
 				log.LogErrorf("[deletedObjExtentTreeTraveler] mp(%v) failed to remove doeks, err(%v)", mp.config.PartitionId, err)
@@ -967,7 +966,7 @@ func (mp *metaPartition) getAllDeltedExtentsFromList(oldEks []*proto.ExtentKey, 
 				err = ErrDelExtentFileBroken
 				return
 			}
-			if extentV2 && bytes.Compare(headerBuffer, proto.ExtentKeyHeaderV3) == 0 {
+			if extentV2 && bytes.Equal(headerBuffer, proto.ExtentKeyHeaderV3) {
 				// NOTE: is extent v3
 				ekSize = uint64(proto.ExtentV3Length)
 			}

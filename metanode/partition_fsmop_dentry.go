@@ -505,20 +505,22 @@ func (mp *metaPartition) fsmUpdateDentry(dbHandle interface{}, dentry *Dentry) (
 	resp *DentryResponse, err error) {
 	resp = NewDentryResponse()
 	resp.Status = proto.OpOk
-	var item *Dentry
-	item, err = mp.dentryTree.Get(dentry.ParentId, dentry.Name)
+	var d *Dentry
+	d, err = mp.dentryTree.Get(dentry.ParentId, dentry.Name)
 	if err != nil {
 		resp.Status = proto.OpErr
 		return
 	}
 
-	if item == nil || item.Inode != dentry.Inode {
+	if d == nil {
 		resp.Status = proto.OpNotExistErr
-		log.LogWarnf("fsmTxUpdateDentry: find dentry is not right, want %v, got %v", dentry, item)
+		log.LogWarnf("fsmTxUpdateDentry: find dentry is not right, want %v, got %v", dentry, d)
+		return
+	}
+	if d.Inode == dentry.Inode {
 		return
 	}
 
-	d := item
 	if d.getVerSeq() < mp.GetVerSeq() {
 		dn := d.CopyDirectly()
 		dn.(*Dentry).setVerSeq(d.getVerSeq())
