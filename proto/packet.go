@@ -295,6 +295,35 @@ const (
 	DecommissionedCreateDataPartition = 1
 )
 
+type (
+	spanContextKey struct{}
+	// carry span in struct,
+	// asserting trace.Span is inefficient.
+	spanCarrier struct {
+		span trace.Span
+	}
+)
+
+var activeSpanKey = spanContextKey{}
+
+var (
+	StartSpanFromContext            = trace.StartSpanFromContext
+	StartSpanFromContextWithTraceID = trace.StartSpanFromContextWithTraceID
+)
+
+// ContextWithSpan returns context within span.
+func ContextWithSpan(ctx context.Context, span trace.Span) context.Context {
+	return context.WithValue(ctx, activeSpanKey, &spanCarrier{span: span})
+}
+
+// SpanFromContext try to load span from context.
+func SpanFromContext(ctx context.Context) trace.Span {
+	if spanVal := ctx.Value(activeSpanKey); spanVal != nil {
+		return spanVal.(*spanCarrier).span
+	}
+	return trace.SpanFromContextSafe(ctx)
+}
+
 // Packet defines the packet structure.
 type Packet struct {
 	Magic              uint8
@@ -345,13 +374,16 @@ func NewPacketReqID() *Packet {
 	return p
 }
 
-// SetTraceID new a trace context.
+// SetTraceID new a trace context, store span into p.ctx.
 func (p *Packet) SetTraceID(traceID string) *Packet {
+	var span trace.Span
+	var ctx context.Context
 	if traceID != "" {
-		_, p.ctx = trace.StartSpanFromContextWithTraceID(context.Background(), "", traceID)
+		span, ctx = StartSpanFromContextWithTraceID(context.Background(), "", traceID)
 	} else {
-		_, p.ctx = trace.StartSpanFromContext(context.Background(), "")
+		span, ctx = StartSpanFromContext(context.Background(), "")
 	}
+	p.ctx = ContextWithSpan(ctx, span)
 	return p
 }
 
@@ -384,7 +416,7 @@ func (p *Packet) WithContext(ctx context.Context) *Packet {
 // Span returns trace span.
 // It's better to call after reading Packet's Header.
 func (p *Packet) Span() trace.Span {
-	return trace.SpanFromContextSafe(p.Context())
+	return SpanFromContext(p.Context())
 }
 
 func (p *Packet) GetCopy() *Packet {
