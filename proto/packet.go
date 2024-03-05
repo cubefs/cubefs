@@ -21,6 +21,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"hash/maphash"
 	"io"
 	"net"
 	"strconv"
@@ -310,6 +311,14 @@ var (
 	StartSpanFromContext            = trace.StartSpanFromContext
 	StartSpanFromContextWithTraceID = trace.StartSpanFromContextWithTraceID
 )
+
+func RandomID() int64 {
+	return int64(new(maphash.Hash).Sum64())
+}
+
+func TraceID() string {
+	return fmt.Sprintf("%016x", RandomID())
+}
 
 // ContextWithSpan returns context within span.
 func ContextWithSpan(ctx context.Context, span trace.Span) context.Context {

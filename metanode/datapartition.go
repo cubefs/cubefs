@@ -15,11 +15,11 @@
 package metanode
 
 import (
+	"context"
 	"strings"
 	"sync"
 
 	"github.com/cubefs/cubefs/proto"
-	"github.com/cubefs/cubefs/util/log"
 )
 
 // DataPartition defines the struct of data partition that will be used on the meta node.
@@ -68,9 +68,10 @@ func (v *Vol) GetPartition(partitionID uint64) *DataPartition {
 }
 
 // UpdatePartitions updates the data partition.
-func (v *Vol) UpdatePartitions(partitions *DataPartitionsView) {
+func (v *Vol) UpdatePartitions(ctx context.Context, partitions *DataPartitionsView) {
+	span := getSpan(ctx)
 	for _, dp := range partitions.DataPartitions {
-		log.LogDebugf("action[UpdatePartitions] dp (id:%v,status:%v)", dp.PartitionID, dp.Status)
+		span.Debugf("to update dp(%v) status(%v)", dp.PartitionID, dp.Status)
 		v.replaceOrInsert(dp)
 	}
 }
