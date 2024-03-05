@@ -177,6 +177,7 @@ func (m *MetaNode) getAllInodesHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	ctx := r.Context()
 	var inode *Inode
 	f := func(i BtreeItem) bool {
 		var (
@@ -191,7 +192,7 @@ func (m *MetaNode) getAllInodesHandler(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
-		inode, _ = i.(*Inode).getInoByVer(verSeq, false)
+		inode, _ = i.(*Inode).getInoByVer(ctx, verSeq, false)
 		if inode == nil {
 			return true
 		}
@@ -559,8 +560,9 @@ func (m *MetaNode) getAllDentriesHandler(w http.ResponseWriter, r *http.Request)
 		isFirst   = true
 	)
 
+	ctx := r.Context()
 	mp.GetDentryTree().Ascend(func(i BtreeItem) bool {
-		den, _ := i.(*Dentry).getDentryFromVerList(verSeq, false)
+		den, _ := i.(*Dentry).getDentryFromVerList(ctx, verSeq, false)
 		if den == nil || den.isDeleted() {
 			return true
 		}

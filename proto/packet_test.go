@@ -10,6 +10,7 @@ import (
 func TestPacketContext(t *testing.T) {
 	t.Log(NewPacket().Span().TraceID())
 	p1 := NewPacketReqID()
+	p1.ReqID = RandomID()
 	ctx1 := p1.Context()
 	span1 := p1.Span()
 	var nilCtx context.Context
@@ -22,7 +23,7 @@ func TestPacketContext(t *testing.T) {
 	span2 := p2.Span()
 	require.Equal(t, span1.TraceID(), span2.TraceID())
 
-	ctx3 := context.WithValue(context.Background(), userValue{}, "user-context")
+	ctx3 := context.WithValue(context.Background(), userValue{}, TraceID())
 	p3 := p1.WithContext(ctx3)
 	span3 := p3.Span()
 	require.NotEqual(t, span1.TraceID(), span3.TraceID())

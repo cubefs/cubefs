@@ -16,12 +16,12 @@ package metanode
 
 import (
 	"bytes"
+	"context"
 	"encoding/binary"
 	"fmt"
 	"math"
 
 	"github.com/cubefs/cubefs/proto"
-	"github.com/cubefs/cubefs/util/log"
 )
 
 // Dentry wraps necessary properties of the `dentry` information in file system.
@@ -120,12 +120,13 @@ func (d *Dentry) isDeleted() bool {
 	return (d.multiSnap.VerSeq >> 63) != 0
 }
 
-func (d *Dentry) setDeleted() {
+func (d *Dentry) setDeleted(ctx context.Context) {
+	span := getSpan(ctx)
 	if d.multiSnap == nil {
-		log.LogErrorf("action[setDeleted] d %v be set deleted not found multiSnap", d)
+		span.Errorf("action[setDeleted] d %v be set deleted not found multiSnap", d)
 		return
 	}
-	log.LogDebugf("action[setDeleted] d %v be set deleted", d)
+	span.Debugf("action[setDeleted] d %v be set deleted", d)
 	d.multiSnap.VerSeq |= uint64(1) << 63
 }
 
@@ -148,10 +149,10 @@ func (d *Dentry) isEffective(verSeq uint64) bool {
 }
 
 // isHit return the right version or else return the version can be seen
-func (d *Dentry) getDentryFromVerList(verSeq uint64, isHit bool) (den *Dentry, idx int) {
+func (d *Dentry) getDentryFromVerList(ctx context.Context, verSeq uint64, isHit bool) (den *Dentry, idx int) {
 	if verSeq == 0 || (verSeq >= d.getVerSeq() && !isInitSnapVer(verSeq)) {
 		if d.isDeleted() {
-			log.LogDebugf("action[getDentryFromVerList] tmp dentry %v, is deleted, seq [%v]", d, d.getVerSeq())
+			getSpan(ctx).Debugf("action[getDentryFromVerList] tmp dentry %v, is deleted, seq [%v]", d, d.getVerSeq())
 			return
 		}
 		return d, 0
@@ -177,24 +178,24 @@ func (d *Dentry) getDentryFromVerList(verSeq uint64, isHit bool) (den *Dentry, i
 	}
 	for id, lDen := range d.multiSnap.dentryList {
 		if verSeq < lDen.getVerSeq() {
-			log.LogDebugf("action[getDentryFromVerList] den in ver list %v, return nil, request seq [%v], history ver seq [%v]", lDen, verSeq, lDen.getVerSeq())
+			getSpan(ctx).Debugf("action[getDentryFromVerList] den in ver list %v, return nil, request seq [%v], history ver seq [%v]", lDen, verSeq, lDen.getVerSeq())
 		} else {
 			if lDen.isDeleted() {
-				log.LogDebugf("action[getDentryFromVerList] den in ver list %v, return nil due to latest is deleted", lDen)
+				getSpan(ctx).Debugf("action[getDentryFromVerList] den in ver list %v, return nil due to latest is deleted", lDen)
 				return
 			}
 			if isHit && lDen.getVerSeq() != verSeq {
-				log.LogDebugf("action[getDentryFromVerList] den in ver list %v, return nil due to ver not equal %v vs %v", lDen, lDen.getVerSeq(), verSeq)
+				getSpan(ctx).Debugf("action[getDentryFromVerList] den in ver list %v, return nil due to ver not equal %v vs %v", lDen, lDen.getVerSeq(), verSeq)
 				return
 			}
 			return lDen, id + 1
 		}
 	}
-	log.LogDebugf("action[getDentryFromVerList] den in ver list not found right dentry with seq [%v]", verSeq)
+	getSpan(ctx).Debugf("action[getDentryFromVerList] den in ver list not found right dentry with seq [%v]", verSeq)
 	return
 }
 
-func (d *Dentry) getLastestVer(reqVerSeq uint64, commit bool, verlist []*proto.VolVersionInfo) (uint64, bool) {
+func (d *Dentry) getLastestVer(ctx context.Context, reqVerSeq uint64, commit bool, verlist []*proto.VolVersionInfo) (uint64, bool) {
 	if len(verlist) == 0 {
 		return 0, false
 	}
@@ -206,15 +207,15 @@ func (d *Dentry) getLastestVer(reqVerSeq uint64, commit bool, verlist []*proto.V
 			return info.Ver, true
 		}
 	}
-
-	log.LogDebugf("action[getLastestVer] inode[%v] reqVerseq [%v] not found, the largetst one %v",
+	getSpan(ctx).Debugf("action[getLastestVer] inode[%v] reqVerseq [%v] not found, the largetst one %v",
 		d.Inode, reqVerSeq, verlist[len(verlist)-1].Ver)
 	return 0, false
 }
 
-func (d *Dentry) deleteTopLayer(mpVerSeq uint64) (rd *Dentry, dmore bool, clean bool) {
+func (d *Dentry) deleteTopLayer(ctx context.Context, mpVerSeq uint64) (rd *Dentry, dmore bool, clean bool) {
+	span := getSpan(ctx).WithOperation("deleteTopLayer.delSeq_0")
 	if d.isDeleted() {
-		log.LogDebugf("action[deleteTopLayer.delSeq_0] do noting dentry %v seq 0 be deleted before", d)
+		span.Debugf("do noting dentry %v seq 0 be deleted before", d)
 		return nil, false, false
 	}
 
@@ -223,7 +224,7 @@ func (d *Dentry) deleteTopLayer(mpVerSeq uint64) (rd *Dentry, dmore bool, clean 
 	if d.getSnapListLen() == 0 {
 		if d.getVerSeq() == mpVerSeq {
 			// operate dentry directly
-			log.LogDebugf("action[deleteTopLayer.delSeq_0] no snapshot depend on this dentry,could drop seq 0 dentry %v", d)
+			span.Debugf("no snapshot depend on this dentry,could drop seq 0 dentry %v", d)
 			return d, true, true
 		}
 	}
@@ -233,21 +234,22 @@ func (d *Dentry) deleteTopLayer(mpVerSeq uint64) (rd *Dentry, dmore bool, clean 
 		dn.(*Dentry).setVerSeq(d.getVerSeq())
 		d.setVerSeq(mpVerSeq)
 		d.multiSnap.dentryList = append([]*Dentry{dn.(*Dentry)}, d.multiSnap.dentryList...)
-		log.LogDebugf("action[deleteTopLayer.delSeq_0] create version and push to dentry list. dentry %v", dn.(*Dentry))
+		span.Debugf("create version and push to dentry list. dentry %v", dn.(*Dentry))
 	} else {
 		d.setVerSeq(mpVerSeq)
 	}
-	d.setVerSeq(mpVerSeq)
-	d.setDeleted() // denParm create at the same version.no need to push to history list
-	log.LogDebugf("action[deleteTopLayer.delSeq_0] den %v be set deleted at version seq [%v]", d, mpVerSeq)
 
+	d.setVerSeq(mpVerSeq)
+	d.setDeleted(ctx) // denParm create at the same version.no need to push to history list
+	span.Debugf("den %v be set deleted at version seq [%v]", d, mpVerSeq)
 	return d, true, false
 }
 
-func (d *Dentry) updateTopLayerSeq(delVerSeq uint64, verlist []*proto.VolVersionInfo) (rd *Dentry, dmore bool, clean bool) {
+func (d *Dentry) updateTopLayerSeq(ctx context.Context, delVerSeq uint64, verlist []*proto.VolVersionInfo,
+) (rd *Dentry, dmore bool, clean bool) {
 	if !isSeqEqual(delVerSeq, d.getVerSeq()) {
 		// header layer do nothing and be depends on should not be dropped
-		log.LogDebugf("action[updateTopLayerSeq.inSnapList_del_%v] den %v first layer do nothing", delVerSeq, d)
+		getSpan(ctx).Debugf("action[updateTopLayerSeq.inSnapList_del_%v] den %v first layer do nothing", delVerSeq, d)
 		return d, false, false
 	}
 	for _, info := range verlist {
@@ -259,7 +261,7 @@ func (d *Dentry) updateTopLayerSeq(delVerSeq uint64, verlist []*proto.VolVersion
 	return d, true, true
 }
 
-func (d *Dentry) cleanDeletedVersion(index int) (bDrop bool) {
+func (d *Dentry) cleanDeletedVersion(ctx context.Context, index int) (bDrop bool) {
 	if index == 0 {
 		if len(d.multiSnap.dentryList) == 0 && d.isDeleted() {
 			bDrop = true
@@ -271,13 +273,14 @@ func (d *Dentry) cleanDeletedVersion(index int) (bDrop bool) {
 		return
 	}
 
+	span := getSpan(ctx)
 	// del the dentry before
-	log.LogDebugf("ction[cleanDeleteVersion] dentry (%v) delete the last seq [%v] which set deleted before",
+	span.Debugf("action[cleanDeleteVersion] dentry (%v) delete the last seq [%v] which set deleted before",
 		d, d.multiSnap.dentryList[delIdx].getVerSeq())
 	d.multiSnap.dentryList = append(d.multiSnap.dentryList[:delIdx], d.multiSnap.dentryList[:delIdx+1]...)
 
 	if len(d.multiSnap.dentryList) == 0 && d.isDeleted() {
-		log.LogDebugf("ction[cleanDeleteVersion] dentry (%v) require to be deleted", d)
+		span.Debugf("action[cleanDeleteVersion] dentry (%v) require to be deleted", d)
 		bDrop = true
 	}
 	return
@@ -287,27 +290,29 @@ func (d *Dentry) cleanDeletedVersion(index int) (bDrop bool) {
 // the scope of  deleted happened from the DentryDeleted flag owner(include in) to the file with the same name be created is invisible,
 // if create anther dentry with larger verSeq, put the deleted dentry to the history list.
 // return doMore bool.True means need do next step on caller such as unlink parentIO
-func (d *Dentry) deleteVerSnapshot(delVerSeq uint64, mpVerSeq uint64, verlist []*proto.VolVersionInfo) (rd *Dentry, dmore bool, clean bool) { // bool is doMore
-	log.LogDebugf("action[deleteVerSnapshot] enter.dentry %v delVerseq [%v] mpver [%v] verList %v", d, delVerSeq, mpVerSeq, verlist)
+func (d *Dentry) deleteVerSnapshot(ctx context.Context, delVerSeq uint64, mpVerSeq uint64, verlist []*proto.VolVersionInfo,
+) (rd *Dentry, dmore bool, clean bool) { // bool is doMore
+	span := getSpan(ctx)
+	span.Debugf("action[deleteVerSnapshot] dentry %v delVerseq [%v] mpver [%v] verList %v", d, delVerSeq, mpVerSeq, verlist)
 	// create denParm version
 	if !isInitSnapVer(delVerSeq) && delVerSeq > mpVerSeq {
 		panic(fmt.Sprintf("Dentry version %v large than mp[%v]", delVerSeq, mpVerSeq))
 	}
 
 	if delVerSeq == 0 {
-		return d.deleteTopLayer(mpVerSeq)
+		return d.deleteTopLayer(ctx, mpVerSeq)
 	} else {
 		var (
 			idx    int
 			den    *Dentry
 			endSeq uint64
 		)
-		if den, idx = d.getDentryFromVerList(delVerSeq, true); den == nil {
-			log.LogDebugf("action[deleteVerSnapshot.inSnapList_del_%v] den %v not found", delVerSeq, d)
+		if den, idx = d.getDentryFromVerList(ctx, delVerSeq, true); den == nil {
+			span.Debugf("action[deleteVerSnapshot.inSnapList_del_%v] den %v not found", delVerSeq, d)
 			return nil, false, false
 		}
 		if idx == 0 { // top layer
-			return d.updateTopLayerSeq(delVerSeq, verlist)
+			return d.updateTopLayerSeq(ctx, delVerSeq, verlist)
 		}
 		// if any alive snapshot in mp dimension exist in seq scope from den to next ascend neighbor, dio snapshot be keep or else drop
 		startSeq := den.getVerSeq()
@@ -317,19 +322,20 @@ func (d *Dentry) deleteVerSnapshot(delVerSeq uint64, mpVerSeq uint64, verlist []
 		} else {
 			endSeq = d.multiSnap.dentryList[realIdx-1].getVerSeq()
 			if d.multiSnap.dentryList[realIdx-1].isDeleted() {
-				log.LogInfof("action[deleteVerSnapshot.inSnapList_del_%v] inode[%v] layer %v name %v be deleted already!",
+				span.Infof("action[deleteVerSnapshot.inSnapList_del_%v] inode[%v] layer %v name %v be deleted already!",
 					delVerSeq, d.Inode, realIdx, d.multiSnap.dentryList[realIdx-1].Name)
 			}
 		}
 
-		log.LogDebugf("action[deleteVerSnapshot.inSnapList_del_%v] inode[%v] try drop multiVersion idx %v effective seq scope [%v,%v) ", delVerSeq,
-			d.Inode, realIdx, den.getVerSeq(), endSeq)
-
+		span.Debugf("action[deleteVerSnapshot.inSnapList_del_%v] inode[%v] try drop multiVersion idx %v effective seq scope [%v,%v) ",
+			delVerSeq, d.Inode, realIdx, den.getVerSeq(), endSeq)
 		for _, info := range verlist {
 			if info.Ver >= startSeq && info.Ver < endSeq { // the version itself not include in
-				log.LogDebugf("action[deleteVerSnapshotInList.inSnapList_del_%v] inode[%v] dir layer idx %v include snapshot %v.don't drop", delVerSeq, den.Inode, realIdx, info.Ver)
+				span.Debugf("action[deleteVerSnapshotInList.inSnapList_del_%v] inode[%v] dir layer idx %v include snapshot %v.don't drop",
+					delVerSeq, den.Inode, realIdx, info.Ver)
 				// there's some snapshot depends on the version trying to be deleted,
-				// keep it,all the snapshots which depends on this version will reach here when make snapshot delete, and found the scope is minimized
+				// keep it,all the snapshots which depends on this version will reach here when make snapshot delete,
+				// and found the scope is minimized
 				// other versions depends upon this version will be found zero finally after deletions and do clean
 				den.setVerSeq(info.Ver)
 				return den, false, false
@@ -337,13 +343,13 @@ func (d *Dentry) deleteVerSnapshot(delVerSeq uint64, mpVerSeq uint64, verlist []
 			if info.Ver >= endSeq {
 				break
 			}
-			log.LogDebugf("action[deleteVerSnapshotInList.inSnapList_del_%v] inode[%v] try drop scope [%v, %v), mp ver [%v] not suitable",
+			span.Debugf("action[deleteVerSnapshotInList.inSnapList_del_%v] inode[%v] try drop scope [%v, %v), mp ver [%v] not suitable",
 				delVerSeq, den.Inode, den.getVerSeq(), endSeq, info.Ver)
 		}
 
-		log.LogDebugf("action[deleteVerSnapshotInList.inSnapList_del_%v] inode[%v] try drop multiVersion idx %v", delVerSeq, den.Inode, realIdx)
+		span.Debugf("action[deleteVerSnapshotInList.inSnapList_del_%v] inode[%v] try drop multiVersion idx %v", delVerSeq, den.Inode, realIdx)
 		d.multiSnap.dentryList = append(d.multiSnap.dentryList[:realIdx], d.multiSnap.dentryList[realIdx+1:]...)
-		if d.cleanDeletedVersion(realIdx) {
+		if d.cleanDeletedVersion(ctx, realIdx) {
 			return den, true, true
 		}
 		return den, false, false

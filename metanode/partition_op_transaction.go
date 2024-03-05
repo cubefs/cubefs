@@ -22,7 +22,6 @@ import (
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/auditlog"
-	"github.com/cubefs/cubefs/util/log"
 )
 
 func (mp *metaPartition) TxCreate(req *proto.TxCreateRequest, p *Packet) error {
@@ -89,7 +88,7 @@ func (mp *metaPartition) txInitToRm(txInfo *proto.TransactionInfo, p *Packet) {
 			defer wg.Done()
 			status := mp.txProcessor.txManager.txSendToMpWithAddrs(members, pkt)
 			if status != proto.OpOk {
-				log.LogWarnf("txInitRm: send to rm failed, addr %s, pkt %s, status %s",
+				p.Span().Warnf("txInitRm: send to rm failed, addr %s, pkt %s, status %s",
 					members, string(pkt.Data), proto.GetStatusStr(status))
 			}
 			statusCh <- status
@@ -125,7 +124,7 @@ func (mp *metaPartition) txInit(txInfo *proto.TransactionInfo, p *Packet) (ifo *
 	if uint64(txInfo.TmID) == mp.config.PartitionId {
 		err = mp.initTxInfo(txInfo)
 		if err != nil {
-			log.LogWarnf("init tx limited, ifo %v", txInfo)
+			p.Span().Warnf("init tx limited, ifo %v", txInfo)
 			p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 			return
 		}
@@ -150,7 +149,7 @@ func (mp *metaPartition) txInit(txInfo *proto.TransactionInfo, p *Packet) (ifo *
 
 	ifo = mp.txProcessor.txManager.getTransaction(txInfo.TxID)
 	if ifo == nil {
-		log.LogWarnf("TxCreate: tx is still not exist, info %s", txInfo.String())
+		p.Span().Warnf("TxCreate: tx is still not exist, info %s", txInfo.String())
 		p.ResultCode = proto.OpTxInfoNotExistErr
 		return nil, nil
 	}
@@ -232,7 +231,7 @@ func (mp *metaPartition) TxCommit(req *proto.TxApplyRequest, p *Packet, remoteAd
 			auditlog.LogTxOp(remoteAddr, mp.GetVolName(), p.GetOpMsg(), req.TxID, err, time.Since(start).Milliseconds())
 		}()
 	}
-	status, err := mp.txProcessor.txManager.commitTx(req.TxID, false)
+	status, err := mp.txProcessor.txManager.commitTx(p.Context(), req.TxID, false)
 	if err != nil {
 		p.PacketErrorWithBody(status, []byte(err.Error()))
 		return err
@@ -249,7 +248,7 @@ func (mp *metaPartition) TxRollback(req *proto.TxApplyRequest, p *Packet, remote
 			auditlog.LogTxOp(remoteAddr, mp.GetVolName(), p.GetOpMsg(), req.TxID, err, time.Since(start).Milliseconds())
 		}()
 	}
-	status, err := mp.txProcessor.txManager.rollbackTx(req.TxID, false)
+	status, err := mp.txProcessor.txManager.rollbackTx(p.Context(), req.TxID, false)
 	if err != nil {
 		p.PacketErrorWithBody(status, []byte(err.Error()))
 		return err
