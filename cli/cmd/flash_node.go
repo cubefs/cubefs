@@ -73,7 +73,7 @@ func newFlashNodeDecommissionCmd(client *master.MasterClient) *cobra.Command {
 }
 
 func newFlashNodeListCmd(client *master.MasterClient) *cobra.Command {
-	var showAllFlashNodes bool
+	var detail, showAllFlashNodes bool
 	var cmd = &cobra.Command{
 		Use:   CliOpList,
 		Short: "list all flash nodes",
@@ -102,7 +102,7 @@ func newFlashNodeListCmd(client *master.MasterClient) *cobra.Command {
 						evicts  = "N/A"
 						limit   = "N/A"
 					)
-					if fn.IsActive && fn.IsEnable {
+					if detail && fn.IsActive && fn.IsEnable {
 						stat, err1 := getFlashNodeStat(fn.Addr, client.FlashNodeProfPort)
 						if err1 == nil {
 							hitRate = fmt.Sprintf("%.2f%%", stat.CacheStatus.HitRate*100)
@@ -125,6 +125,7 @@ func newFlashNodeListCmd(client *master.MasterClient) *cobra.Command {
 		},
 	}
 	cmd.Flags().BoolVar(&showAllFlashNodes, "showAllFlashNodes", true, fmt.Sprintf("show all flashNodes contain notActive or notEnable"))
+	cmd.Flags().BoolVar(&detail, "detail", false, "show detail info")
 	return cmd
 }
 
