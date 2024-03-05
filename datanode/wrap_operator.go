@@ -704,13 +704,17 @@ func (s *DataNode) handleExtentRepairReadPacket(p *repl.Packet, connect net.Conn
 		return
 	}
 	partition := p.Object.(*DataPartition)
-	if !partition.disk.RequireReadExtentToken() {
+	if !partition.disk.RequireReadExtentToken(partition.partitionID) {
 		err = storage.NoDiskReadRepairExtentTokenError
 		log.LogDebugf("dp(%v) disk(%v) extent(%v) wait for read extent token",
 			p.PartitionID, partition.disk.Path, p.ExtentID)
 		return
 	}
-	defer partition.disk.ReleaseReadExtentToken()
+	defer func() {
+		partition.disk.ReleaseReadExtentToken()
+		log.LogDebugf("dp(%v) disk(%v) extent(%v) release read extent token",
+			p.PartitionID, partition.disk.Path, p.ExtentID)
+	}()
 	log.LogDebugf("dp(%v) disk(%v) extent(%v) get read extent token",
 		p.PartitionID, partition.disk.Path, p.ExtentID)
 	s.extentRepairReadPacket(p, connect, isRepairRead)
