@@ -29,10 +29,10 @@ import (
 
 	"golang.org/x/time/rate"
 
+	"github.com/cubefs/cubefs/blobstore/util/log"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/btree"
-	"github.com/cubefs/cubefs/util/log"
 )
 
 // Rollback Type
@@ -227,9 +227,6 @@ func (d *TxRollbackDentry) Marshal() (result []byte, err error) {
 		return nil, err
 	}
 
-	log.LogDebugf("TxRollbackDentry Marshal dentry %v", d.dentry)
-
-	log.LogDebugf("TxRollbackDentry Marshal txDentryInfo %v", d.ToString())
 	bs, err = d.txDentryInfo.Marshal()
 	if err != nil {
 		return nil, err
@@ -252,7 +249,6 @@ func (d *TxRollbackDentry) Unmarshal(raw []byte) (err error) {
 	if err = binary.Read(buff, binary.BigEndian, &dataLen); err != nil {
 		return
 	}
-	log.LogDebugf("TxRollbackDentry Unmarshal len %v", dataLen)
 	data := make([]byte, int(dataLen))
 	if _, err = buff.Read(data); err != nil {
 		return
@@ -262,9 +258,6 @@ func (d *TxRollbackDentry) Unmarshal(raw []byte) (err error) {
 	if err = dentry.Unmarshal(data); err != nil {
 		return
 	}
-
-	log.LogDebugf("TxRollbackDentry Unmarshal dentry %v", dentry)
-
 	d.dentry = dentry
 
 	if err = binary.Read(buff, binary.BigEndian, &dataLen); err != nil {
@@ -385,14 +378,14 @@ var test = false
 
 func (tm *TransactionManager) processExpiredTransactions() {
 	mpId := tm.txProcessor.mp.config.PartitionId
-	log.LogInfof("processExpiredTransactions for mp[%v] started", mpId)
+	log.Infof("processExpiredTransactions for mp[%v] started", mpId)
 	clearInterval := time.Second * 60
 	clearTimer := time.NewTimer(clearInterval)
 	txCheckVal := time.Second * 3
 	txCheckTimer := time.NewTimer(txCheckVal)
 
 	defer func() {
-		log.LogWarnf("processExpiredTransactions for mp[%v] exit", mpId)
+		log.Warnf("processExpiredTransactions for mp[%v] exit", mpId)
 		txCheckTimer.Stop()
 		clearTimer.Stop()
 	}()
@@ -400,42 +393,45 @@ func (tm *TransactionManager) processExpiredTransactions() {
 	for {
 		select {
 		case <-tm.txProcessor.mp.stopC:
-			log.LogDebugf("[processExpiredTransactions] deleteWorker stop partition: %v", mpId)
+			log.Debugf("[processExpiredTransactions] deleteWorker stop partition: %v", mpId)
 			return
 		default:
 		}
 
+		span, ctx := spanContextPrefix("tx-")
+
 		if _, ok := tm.txProcessor.mp.IsLeader(); !ok && !test {
-			log.LogDebugf("processExpiredTransactions: not leader sleep 1s, mp %d", mpId)
+			span.Debugf("processExpiredTransactions: not leader sleep 1s, mp %d", mpId)
 			time.Sleep(time.Second * 10)
 			continue
 		}
 
 		select {
 		case <-tm.txProcessor.mp.stopC:
-			log.LogWarnf("processExpiredTransactions for mp[%v] stopped", mpId)
+			span.Warnf("processExpiredTransactions for mp[%v] stopped", mpId)
 			return
 		case <-clearTimer.C:
 			tm.blacklist.Clear()
 			clearTimer.Reset(clearInterval)
-			log.LogDebugf("processExpiredTransactions: blacklist cleared, mp %d", mpId)
+			span.Debugf("processExpiredTransactions: blacklist cleared, mp %d", mpId)
 		case <-txCheckTimer.C:
 			if tm.txProcessor.Pause() {
 				txCheckTimer.Reset(txCheckVal)
 				continue
 			}
-			tm.processTx()
+			tm.processTx(ctx)
 			txCheckTimer.Reset(txCheckVal)
 		}
 	}
 }
 
-func (tm *TransactionManager) processTx() {
+func (tm *TransactionManager) processTx(ctx context.Context) {
 	mpId := tm.txProcessor.mp.config.PartitionId
 	start := time.Now()
-	log.LogDebugf("processTx: mp[%v] mask %v", mpId, proto.GetMaskString(tm.txProcessor.mask))
+	span := getSpan(ctx)
+	span.Debugf("processTx: mp[%v] mask %v", mpId, proto.GetMaskString(tm.txProcessor.mask))
 	defer func() {
-		log.LogDebugf("processTx: mp %d total cost %s", mpId, time.Since(start).String())
+		span.Debugf("processTx: mp %d total cost %s", mpId, time.Since(start).String())
 	}()
 
 	limitCh := make(chan struct{}, 32)
@@ -455,7 +451,7 @@ func (tm *TransactionManager) processTx() {
 		idx++
 		if idx%100 == 0 {
 			if _, ok := tm.txProcessor.mp.IsLeader(); !ok {
-				log.LogWarnf("processExpiredTransactions for mp[%v] already not leader and break tx tree traverse",
+				span.Warnf("processExpiredTransactions for mp[%v] already not leader and break tx tree traverse",
 					tm.txProcessor.mp.config.PartitionId)
 				return false
 			}
@@ -464,92 +460,72 @@ func (tm *TransactionManager) processTx() {
 		tx := i.(*proto.TransactionInfo)
 		rollbackFunc := func(skipSetStat bool) {
 			defer put()
-			status, err := tm.rollbackTx(tx.TxID, skipSetStat)
+			status, err := tm.rollbackTx(ctx, tx.TxID, skipSetStat)
 
 			if err != nil || status != proto.OpOk {
-				log.LogWarnf("processExpiredTransactions: transaction (%v) expired, rolling back failed, status(%v), err(%v)",
+				span.Warnf("processExpiredTransactions: transaction (%v) expired, rolling back failed, status(%v), err(%v)",
 					tx, status, err)
 				return
 			}
-
-			if log.EnableDebug() {
-				log.LogDebugf("processExpiredTransactions: transaction (%v) expired, rolling back done", tx)
-			}
+			span.Debugf("processExpiredTransactions: transaction (%v) expired, rolling back done", tx)
 		}
 
 		commitFunc := func() {
 			defer put()
-			status, err := tm.commitTx(tx.TxID, true)
+			status, err := tm.commitTx(ctx, tx.TxID, true)
 			if err != nil || status != proto.OpOk {
-				log.LogWarnf("processExpiredTransactions: transaction (%v) expired, commit failed, status(%v), err(%v)",
+				span.Warnf("processExpiredTransactions: transaction (%v) expired, commit failed, status(%v), err(%v)",
 					tx, status, err)
 				return
 			}
-
-			if log.EnableDebug() {
-				log.LogDebugf("processExpiredTransactions: transaction (%v) expired, commit done", tx)
-			}
+			span.Debugf("processExpiredTransactions: transaction (%v) expired, commit done", tx)
 		}
 
 		delFunc := func() {
 			defer put()
-			status, err := tm.delTxFromRM(tx.TxID)
+			status, err := tm.delTxFromRM(ctx, tx.TxID)
 			if err != nil || status != proto.OpOk {
-				log.LogWarnf("processExpiredTransactions: delTxFromRM (%v) expired, commit failed, status(%v), err(%v)",
+				span.Warnf("processExpiredTransactions: delTxFromRM (%v) expired, commit failed, status(%v), err(%v)",
 					tx, status, err)
 				return
 			}
-			if log.EnableDebug() {
-				log.LogDebugf("processExpiredTransactions: transaction (%v) delTxFromRM, commit done", tx)
-			}
+			span.Debugf("processExpiredTransactions: transaction (%v) delTxFromRM, commit done", tx)
 		}
 
 		clearOrphan := func() {
 			defer put()
-			tm.clearOrphanTx(tx)
-			if log.EnableDebug() {
-				log.LogDebugf("processExpiredTransactions: transaction (%v) clearOrphanTx", tx)
-			}
+			tm.clearOrphanTx(ctx, tx)
+			span.Debugf("processExpiredTransactions: transaction (%v) clearOrphanTx", tx)
 		}
 
 		if tx.TmID != int64(mpId) {
 			if tx.CanDelete() {
-				if log.EnableDebug() {
-					log.LogDebugf("processExpiredTransactions: transaction (%v) can be deleted", tx)
-				}
+				span.Debugf("processExpiredTransactions: transaction (%v) can be deleted", tx)
 				get()
 				go delFunc()
 				return true
 			}
 
 			if tx.NeedClearOrphan() {
-				if log.EnableDebug() {
-					log.LogDebugf("processExpiredTransactions: orphan transaction (%v) can be clear", tx)
-				}
+				span.Debugf("processExpiredTransactions: orphan transaction (%v) can be clear", tx)
 				get()
 				go clearOrphan()
 				return true
 			}
 
-			if log.EnableDebug() {
-				log.LogDebugf("processExpiredTransactions: RM transaction (%v) is ongoing", tx)
-			}
+			span.Debugf("processExpiredTransactions: RM transaction (%v) is ongoing", tx)
 			return true
 		}
 
 		if tx.State == proto.TxStateCommit {
-			if log.EnableDebug() {
-				log.LogDebugf("processExpiredTransactions: transaction (%v) continue to commit...", tx)
-			}
+			span.Debugf("processExpiredTransactions: transaction (%v) continue to commit...", tx)
 			get()
 			go commitFunc()
 			return true
 		}
 
 		if tx.State == proto.TxStateRollback {
-			if log.EnableDebug() {
-				log.LogDebugf("processExpiredTransactions: transaction (%v) continue to roll back...", tx)
-			}
+			span.Debugf("processExpiredTransactions: transaction (%v) continue to roll back...", tx)
 			get()
 			go rollbackFunc(true)
 			return true
@@ -560,9 +536,7 @@ func (tm *TransactionManager) processTx() {
 				return true
 			}
 
-			if log.EnableDebug() {
-				log.LogDebugf("processExpiredTransactions: transaction (%v) expired, rolling back...", tx)
-			}
+			span.Debugf("processExpiredTransactions: transaction (%v) expired, rolling back...", tx)
 			get()
 			go rollbackFunc(false)
 			return true
@@ -570,21 +544,17 @@ func (tm *TransactionManager) processTx() {
 
 		if tx.IsDone() {
 			if !tx.CanDelete() {
-				if log.EnableDebug() {
-					log.LogDebugf("processExpiredTransactions: transaction (%v) is ongoing", tx)
-				}
+				span.Debugf("processExpiredTransactions: transaction (%v) is ongoing", tx)
 				return true
 			}
 
-			if log.EnableDebug() {
-				log.LogDebugf("processExpiredTransactions: transaction (%v) can be deleted", tx)
-			}
+			span.Debugf("processExpiredTransactions: transaction (%v) can be deleted", tx)
 			get()
 			go delFunc()
 			return true
 		}
 
-		log.LogCriticalf("processExpiredTransactions: transaction (%v) is in state failed", tx)
+		span.Errorf("processExpiredTransactions: transaction (%v) is in state failed", tx)
 		return true
 	}
 
@@ -595,14 +565,12 @@ func (tm *TransactionManager) processTx() {
 func (tm *TransactionManager) nextTxID() string {
 	id := tm.txIdAlloc.allocateTransactionID()
 	txId := fmt.Sprintf("%d_%d", tm.txProcessor.mp.config.PartitionId, id)
-	log.LogDebugf("nextTxID: txId:%v", txId)
 	return txId
 }
 
 func (tm *TransactionManager) txInRMDone(txId string) bool {
 	ifo := tm.getTransaction(txId)
 	if ifo == nil || ifo.Finish() {
-		log.LogWarnf("txInRMDone: tx in rm already done, txId %s, ifo %v", txId, ifo)
 		return true
 	}
 	return false
@@ -649,10 +617,11 @@ func (tm *TransactionManager) addTxInfo(txInfo *proto.TransactionInfo) {
 }
 
 // TM register a transaction, process client transaction
-func (tm *TransactionManager) registerTransaction(txInfo *proto.TransactionInfo) (err error) {
+func (tm *TransactionManager) registerTransaction(ctx context.Context, txInfo *proto.TransactionInfo) (err error) {
+	span := getSpan(ctx)
 	if uint64(txInfo.TmID) == tm.txProcessor.mp.config.PartitionId {
 		if err := tm.updateTxIdCursor(txInfo.TxID); err != nil {
-			log.LogErrorf("updateTxIdCursor failed, txInfo %s, err %s", txInfo.String(), err.Error())
+			span.Errorf("updateTxIdCursor failed, txInfo %s, err %s", txInfo.String(), err.Error())
 			return err
 		}
 
@@ -670,32 +639,26 @@ func (tm *TransactionManager) registerTransaction(txInfo *proto.TransactionInfo)
 	}
 
 	if info := tm.getTransaction(txInfo.TxID); info != nil {
-		log.LogWarnf("tx is already exist, txId %s, info %v", txInfo.TxID, info.String())
+		span.Warnf("tx is already exist, txId %s, info %v", txInfo.TxID, info.String())
 		return nil
 	}
 
 	tm.addTxInfo(txInfo)
-
-	if log.EnableDebug() {
-		log.LogDebugf("registerTransaction: txInfo(%v)", txInfo)
-	}
-
+	span.Debugf("registerTransaction: txInfo(%v)", txInfo)
 	return
 }
 
-func (tm *TransactionManager) deleteTxInfo(txId string) (status uint8) {
+func (tm *TransactionManager) deleteTxInfo(ctx context.Context, txId string) (status uint8) {
 	tm.Lock()
 	defer tm.Unlock()
 	status = proto.OpOk
 	txItem := proto.NewTxInfoBItem(txId)
 	item := tm.txTree.Delete(txItem)
-	if log.EnableDebug() {
-		log.LogDebugf("deleteTxInfo: tx[%v] is deleted, item %v", txId, item)
-	}
+	getSpan(ctx).Debugf("deleteTxInfo: tx[%v] is deleted, item %v", txId, item)
 	return
 }
 
-func (tm *TransactionManager) rollbackTxInfo(txId string) (status uint8) {
+func (tm *TransactionManager) rollbackTxInfo(ctx context.Context, txId string) (status uint8) {
 	tm.Lock()
 	defer tm.Unlock()
 	status = proto.OpOk
@@ -703,17 +666,17 @@ func (tm *TransactionManager) rollbackTxInfo(txId string) (status uint8) {
 	tx := tm.getTransaction(txId)
 	if tx == nil {
 		status = proto.OpTxInfoNotExistErr
-		log.LogWarnf("rollbackTxInfo: rollback tx[%v] failed, not found", txId)
+		getSpan(ctx).Warnf("rollbackTxInfo: rollback tx[%v] failed, not found", txId)
 		return
 	}
 
 	tx.State = proto.TxStateRollbackDone
 	tx.DoneTime = time.Now().Unix()
-	log.LogDebugf("rollbackTxInfo: tx[%v] is rolled back", tx)
+	getSpan(ctx).Debugf("rollbackTxInfo: tx[%v] is rolled back", tx)
 	return
 }
 
-func (tm *TransactionManager) commitTxInfo(txId string) (status uint8, err error) {
+func (tm *TransactionManager) commitTxInfo(ctx context.Context, txId string) (status uint8, err error) {
 	tm.Lock()
 	defer tm.Unlock()
 	status = proto.OpOk
@@ -726,7 +689,7 @@ func (tm *TransactionManager) commitTxInfo(txId string) (status uint8, err error
 
 	tx.State = proto.TxStateCommitDone
 	tx.DoneTime = time.Now().Unix()
-	log.LogDebugf("commitTxInfo: tx[%v] is committed", tx)
+	getSpan(ctx).Debugf("commitTxInfo: tx[%v] is committed", tx)
 	return
 }
 
@@ -738,14 +701,12 @@ func buildTxPacket(data interface{}, mp uint64, op uint8) (pkt *proto.Packet, er
 	if err != nil {
 		errInfo := fmt.Sprintf("buildTxPacket: marshal txInfo [%v] failed", data)
 		err = errors.New(errInfo)
-		log.LogErrorf("%v", errInfo)
 		return nil, err
 	}
-
 	return
 }
 
-func (tm *TransactionManager) setTransactionState(txId string, state int32) (status uint8, err error) {
+func (tm *TransactionManager) setTransactionState(ctx context.Context, txId string, state int32) (status uint8, err error) {
 	var val []byte
 	var resp interface{}
 	status = proto.OpOk
@@ -756,9 +717,9 @@ func (tm *TransactionManager) setTransactionState(txId string, state int32) (sta
 	}
 	val, _ = json.Marshal(stateReq)
 
-	resp, err = tm.txProcessor.mp.submit(context.TODO(), opFSMTxSetState, val)
+	resp, err = tm.txProcessor.mp.submit(ctx, opFSMTxSetState, val)
 	if err != nil {
-		log.LogWarnf("setTransactionState: set transaction[%v] state to [%v] failed, err[%v]", txId, state, err)
+		getSpan(ctx).Warnf("setTransactionState: set transaction[%v] state to [%v] failed, err[%v]", txId, state, err)
 		return proto.OpAgain, err
 	}
 	status = resp.(uint8)
@@ -766,12 +727,12 @@ func (tm *TransactionManager) setTransactionState(txId string, state int32) (sta
 	if status != proto.OpOk {
 		errInfo := fmt.Sprintf("setTransactionState: set transaction[%v] state to [%v] failed", txId, state)
 		err = errors.New(errInfo)
-		log.LogWarnf("%v", errInfo)
+		getSpan(ctx).Warn(errInfo)
 	}
 	return
 }
 
-func (tm *TransactionManager) delTxFromRM(txId string) (status uint8, err error) {
+func (tm *TransactionManager) delTxFromRM(ctx context.Context, txId string) (status uint8, err error) {
 	req := proto.TxApplyRequest{
 		TxID: txId,
 	}
@@ -780,22 +741,20 @@ func (tm *TransactionManager) delTxFromRM(txId string) (status uint8, err error)
 		return
 	}
 
-	resp, err := tm.txProcessor.mp.submit(context.TODO(), opFSMTxDelete, val)
+	resp, err := tm.txProcessor.mp.submit(ctx, opFSMTxDelete, val)
 	if err != nil {
-		log.LogWarnf("delTxFromRM: delTxFromRM transaction[%v] failed, err[%v]", txId, err)
+		getSpan(ctx).Warnf("delTxFromRM: delTxFromRM transaction[%v] failed, err[%v]", txId, err)
 		return proto.OpAgain, err
 	}
 
 	status = resp.(uint8)
-	if log.EnableDebug() {
-		log.LogDebugf("delTxFromRM: tx[%v] is deleted successfully, status (%s)", txId, proto.GetStatusStr(status))
-	}
-
+	getSpan(ctx).Debugf("delTxFromRM: tx[%v] is deleted successfully, status (%s)", txId, proto.GetStatusStr(status))
 	return
 }
 
-func (tm *TransactionManager) clearOrphanTx(tx *proto.TransactionInfo) {
-	log.LogWarnf("clearOrphanTx: start to clearOrphanTx, tx %v", tx)
+func (tm *TransactionManager) clearOrphanTx(ctx context.Context, tx *proto.TransactionInfo) {
+	span := getSpan(ctx)
+	span.Warnf("clearOrphanTx: start to clearOrphanTx, tx %v", tx)
 	// check txInfo whether exist in tm
 	req := &proto.TxGetInfoRequest{
 		Pid:  uint64(tx.TmID),
@@ -810,17 +769,17 @@ func (tm *TransactionManager) clearOrphanTx(tx *proto.TransactionInfo) {
 	mps := tx.GroupByMp()
 	tmpMp, ok := mps[req.Pid]
 	if !ok {
-		log.LogErrorf("clearOrphanTx: can't get tm Mp info from tx, tx %v", tx)
+		span.Errorf("clearOrphanTx: can't get tm Mp info from tx, tx %v", tx)
 		return
 	}
 
 	status := tm.txSendToMpWithAddrs(tmpMp.Members, pkt)
 	if status != proto.OpTxInfoNotExistErr {
-		log.LogWarnf("clearOrphanTx: tx is still exist, tx %v, status %s", tx, proto.GetStatusStr(status))
+		span.Warnf("clearOrphanTx: tx is still exist, tx %v, status %s", tx, proto.GetStatusStr(status))
 		return
 	}
 
-	log.LogWarnf("clearOrphanTx: find tx in tm already not exist, start clear it from rm, tx %v", tx)
+	span.Warnf("clearOrphanTx: find tx in tm already not exist, start clear it from rm, tx %v", tx)
 
 	aReq := &proto.TxApplyRMRequest{
 		PartitionID:     req.Pid,
@@ -828,35 +787,36 @@ func (tm *TransactionManager) clearOrphanTx(tx *proto.TransactionInfo) {
 	}
 	newPkt := &Packet{}
 	err = tm.txProcessor.mp.TxRollbackRM(aReq, newPkt)
-	log.LogWarnf("clearOrphanTx: finally rollback tx in rm, tx %v, status %s, err %v",
+	span.Warnf("clearOrphanTx: finally rollback tx in rm, tx %v, status %s, err %v",
 		tx, newPkt.GetResultMsg(), err)
 }
 
-func (tm *TransactionManager) commitTx(txId string, skipSetStat bool) (status uint8, err error) {
+func (tm *TransactionManager) commitTx(ctx context.Context, txId string, skipSetStat bool) (status uint8, err error) {
+	span := getSpan(ctx)
 	tx := tm.getTransaction(txId)
 	if tx == nil {
 		status = proto.OpTxInfoNotExistErr
-		log.LogWarnf("commitTx: tx[%v] not found, already success", txId)
+		span.Warnf("commitTx: tx[%v] not found, already success", txId)
 		return
 	}
 
 	if tx.State == proto.TxStateCommitDone {
 		status = proto.OpOk
-		log.LogWarnf("commitTx: tx[%v] is already commit", txId)
+		span.Warnf("commitTx: tx[%v] is already commit", txId)
 		return
 	}
 
 	// 1.set transaction to TxStateCommit
 	if !skipSetStat && tx.State != proto.TxStateCommit {
-		status, err = tm.setTransactionState(txId, proto.TxStateCommit)
+		status, err = tm.setTransactionState(ctx, txId, proto.TxStateCommit)
 		if status != proto.OpOk {
-			log.LogWarnf("commitTx: set transaction[%v] state to TxStateCommit failed", tx)
+			span.Warnf("commitTx: set transaction[%v] state to TxStateCommit failed", tx)
 			return
 		}
 	}
 
 	// 2. notify all related RMs that a transaction is completed
-	status = tm.sendToRM(tx, proto.OpTxCommitRM)
+	status = tm.sendToRM(ctx, tx, proto.OpTxCommitRM)
 	if status != proto.OpOk {
 		return
 	}
@@ -870,25 +830,26 @@ func (tm *TransactionManager) commitTx(txId string, skipSetStat bool) (status ui
 		return
 	}
 
-	resp, err := tm.txProcessor.mp.submit(context.TODO(), opFSMTxCommit, val)
+	resp, err := tm.txProcessor.mp.submit(ctx, opFSMTxCommit, val)
 	if err != nil {
-		log.LogWarnf("commitTx: commit transaction[%v] failed, err[%v]", txId, err)
+		span.Warnf("commitTx: commit transaction[%v] failed, err[%v]", txId, err)
 		return proto.OpAgain, err
 	}
 
 	status = resp.(uint8)
-	log.LogDebugf("commitTx: tx[%v] is commited successfully", txId)
+	span.Debugf("commitTx: tx[%v] is commited successfully", txId)
 
 	return
 }
 
-func (tm *TransactionManager) sendToRM(txInfo *proto.TransactionInfo, op uint8) (status uint8) {
+func (tm *TransactionManager) sendToRM(ctx context.Context, txInfo *proto.TransactionInfo, op uint8) (status uint8) {
 	status = proto.OpOk
 	mpIfos := txInfo.GroupByMp()
 	statusCh := make(chan uint8, len(mpIfos))
 	wg := sync.WaitGroup{}
 	mp := tm.txProcessor.mp
 
+	span := getSpan(ctx)
 	for mpId, ifo := range mpIfos {
 		req := &proto.TxApplyRMRequest{
 			VolName:         mp.config.VolName,
@@ -911,7 +872,7 @@ func (tm *TransactionManager) sendToRM(txInfo *proto.TransactionInfo, op uint8) 
 				}
 				statusCh <- pt.ResultCode
 				if pt.ResultCode != proto.OpOk {
-					log.LogWarnf("sendToRM: invoke TxCommitRM failed, ifo %v, pkt %s, err %v", txInfo, pt.GetResultMsg(), err)
+					span.Warnf("sendToRM: invoke TxCommitRM failed, ifo %v, pkt %s, err %v", txInfo, pt.GetResultMsg(), err)
 				}
 			}()
 			continue
@@ -922,7 +883,7 @@ func (tm *TransactionManager) sendToRM(txInfo *proto.TransactionInfo, op uint8) 
 			defer wg.Done()
 			status := tm.txSendToMpWithAddrs(members, pkt)
 			if status != proto.OpOk {
-				log.LogWarnf("sendToRM: send to rm failed, addr %s, pkt %s, status %s",
+				span.Warnf("sendToRM: send to rm failed, addr %s, pkt %s, status %s",
 					members, string(pkt.Data), proto.GetStatusStr(status))
 			}
 			statusCh <- status
@@ -934,10 +895,10 @@ func (tm *TransactionManager) sendToRM(txInfo *proto.TransactionInfo, op uint8) 
 
 	updateStatus := func(st uint8) uint8 {
 		if st == proto.OpTxConflictErr || st == proto.OpTxInfoNotExistErr {
-			log.LogWarnf("sendToRM: might have already been committed, tx[%v], status (%s)", txInfo, proto.GetStatusStr(st))
+			span.Warnf("sendToRM: might have already been committed, tx[%v], status (%s)", txInfo, proto.GetStatusStr(st))
 			return proto.OpOk
 		} else if st == proto.OpTxRbInodeNotExistErr || st == proto.OpTxRbDentryNotExistErr {
-			log.LogWarnf("sendToRM: already done before or not add, tx[%v], status (%s)", txInfo, proto.GetStatusStr(st))
+			span.Warnf("sendToRM: already done before or not add, tx[%v], status (%s)", txInfo, proto.GetStatusStr(st))
 			return proto.OpOk
 		} else {
 			return st
@@ -954,32 +915,33 @@ func (tm *TransactionManager) sendToRM(txInfo *proto.TransactionInfo, op uint8) 
 	return status
 }
 
-func (tm *TransactionManager) rollbackTx(txId string, skipSetStat bool) (status uint8, err error) {
+func (tm *TransactionManager) rollbackTx(ctx context.Context, txId string, skipSetStat bool) (status uint8, err error) {
 	status = proto.OpOk
 
+	span := getSpan(ctx)
 	tx := tm.getTransaction(txId)
 	if tx == nil {
-		log.LogWarnf("commitTx: tx[%v] not found, already success", txId)
+		span.Warnf("commitTx: tx[%v] not found, already success", txId)
 		return
 	}
 
 	if tx.State == proto.TxStateRollbackDone {
 		status = proto.OpOk
-		log.LogWarnf("commitTx: tx[%v] is already rollback", txId)
+		span.Warnf("commitTx: tx[%v] is already rollback", txId)
 		return
 	}
 
 	// 1.set transaction to TxStateRollback
 	if !skipSetStat && tx.State != proto.TxStateRollback {
-		status, err = tm.setTransactionState(txId, proto.TxStateRollback)
+		status, err = tm.setTransactionState(ctx, txId, proto.TxStateRollback)
 		if status != proto.OpOk {
-			log.LogWarnf("commitTransaction: set transaction[%v] state to TxStateCommit failed", tx)
+			span.Warnf("commitTransaction: set transaction[%v] state to TxStateCommit failed", tx)
 			return
 		}
 	}
 
 	// 2. notify all related RMs that a transaction is completed
-	status = tm.sendToRM(tx, proto.OpTxRollbackRM)
+	status = tm.sendToRM(ctx, tx, proto.OpTxRollbackRM)
 	if status != proto.OpOk {
 		return
 	}
@@ -992,14 +954,14 @@ func (tm *TransactionManager) rollbackTx(txId string, skipSetStat bool) (status 
 		return
 	}
 
-	resp, err := tm.txProcessor.mp.submit(context.TODO(), opFSMTxRollback, val)
+	resp, err := tm.txProcessor.mp.submit(ctx, opFSMTxRollback, val)
 	if err != nil {
-		log.LogWarnf("commitTx: rollback transaction[%v]  failed, err[%v]", txId, err)
+		span.Warnf("commitTx: rollback transaction[%v]  failed, err[%v]", txId, err)
 		return proto.OpAgain, err
 	}
 
 	status = resp.(uint8)
-	log.LogDebugf("commitTx: tx[%v] is rollback successfully, msg %s", txId, proto.GetStatusStr(status))
+	span.Debugf("commitTx: tx[%v] is rollback successfully, msg %s", txId, proto.GetStatusStr(status))
 
 	return
 }
@@ -1016,7 +978,7 @@ func (tm *TransactionManager) sendPacketToMP(addr string, p *proto.Packet) (err 
 		connPool.PutConnect(mConn, err != nil)
 		if err != nil {
 			p.PacketErrorOpErr(err)
-			log.LogErrorf("[sendPacketToMP]: req: %d - %v, %v, packet(%v)", p.GetReqID(),
+			p.Span().Errorf("[sendPacketToMP]: req: %d - %v, %v, packet(%v)", p.GetReqID(),
 				p.GetOpMsg(), err, p)
 			return
 		}
@@ -1042,10 +1004,8 @@ func (tm *TransactionManager) sendPacketToMP(addr string, p *proto.Packet) (err 
 		return
 	}
 
-	if log.EnableDebug() {
-		log.LogDebugf("[sendPacketToMP] req: %d - %v, resp: %v, packet(%v)", p.GetReqID(), p.GetOpMsg(),
-			p.GetResultMsg(), p)
-	}
+	p.Span().Debugf("[sendPacketToMP] req: %d - %v, resp: %v, packet(%v)",
+		p.GetReqID(), p.GetOpMsg(), p.GetResultMsg(), p)
 
 	return
 }
@@ -1054,10 +1014,11 @@ func (tm *TransactionManager) txSendToMpWithAddrs(addrStr string, p *proto.Packe
 	addrs := strings.Split(addrStr, ",")
 	var err error
 
+	span := p.Span()
 	skippedAddrs := make([]string, 0)
 	for _, addr := range addrs {
 		if tm.blacklist.Has(addr) {
-			log.LogWarnf("txSendToMpWithAddrs: addr[%v] is already blacklisted, retry another addr, p %s", addr, string(p.Data))
+			span.Warnf("txSendToMpWithAddrs: addr[%v] is already blacklisted, retry another addr, p %s", addr, string(p.Data))
 			skippedAddrs = append(skippedAddrs, addr)
 			continue
 		}
@@ -1066,28 +1027,26 @@ func (tm *TransactionManager) txSendToMpWithAddrs(addrStr string, p *proto.Packe
 		err = tm.sendPacketToMP(addr, newPkt)
 		if err != nil {
 			tm.blacklist.Add(addr)
-			log.LogWarnf("txSendToMpWithAddrs: send to %v failed, err(%s), add to blacklist and retry another addr, p %s",
+			span.Warnf("txSendToMpWithAddrs: send to %v failed, err(%s), add to blacklist and retry another addr, p %s",
 				addr, err.Error(), string(p.Data))
 			continue
 		}
 
 		status := newPkt.ResultCode
 		if status == proto.OpErr || status == proto.OpAgain {
-			log.LogWarnf("txSendToMpWithAddrs: sendPacketToMp failed, addr %s, msg %s, data %s, status(%s)",
+			span.Warnf("txSendToMpWithAddrs: sendPacketToMp failed, addr %s, msg %s, data %s, status(%s)",
 				addr, newPkt.GetResultMsg(), string(p.Data), proto.GetStatusStr(status))
 			continue
 		}
 
 		if status == proto.OpOk {
-			if log.EnableDebug() {
-				log.LogDebugf("txSendToMpWithAddrs: send to %v done with status[%v], tx[%s]",
-					addr, status, string(p.Data))
-			}
+			span.Debugf("txSendToMpWithAddrs: send to %v done with status[%v], tx[%s]",
+				addr, status, string(p.Data))
 			err = nil
 			return status
 		}
 
-		log.LogWarnf("txSendToMpWithAddrs: sendPacketToMp failed, addr %s, msg %s, data %s, status %s",
+		span.Warnf("txSendToMpWithAddrs: sendPacketToMp failed, addr %s, msg %s, data %s, status %s",
 			addr, newPkt.GetResultMsg(), string(p.Data), proto.GetStatusStr(status))
 		return status
 	}
@@ -1097,38 +1056,37 @@ func (tm *TransactionManager) txSendToMpWithAddrs(addrStr string, p *proto.Packe
 		newPkt := p.GetCopy()
 		err = tm.sendPacketToMP(addr, newPkt)
 		if err != nil {
-			log.LogWarnf("txSendToMpWithAddrs: send to %v failed, err(%s), add to blacklist and retry another addr, p %s",
+			span.Warnf("txSendToMpWithAddrs: send to %v failed, err(%s), add to blacklist and retry another addr, p %s",
 				addr, err.Error(), string(p.Data))
 			continue
 		}
 
 		status := newPkt.ResultCode
 		if status == proto.OpErr || status == proto.OpAgain {
-			log.LogWarnf("txSendToMpWithAddrs: sendPacketToMp failed, addr %s, msg %s, data %s, status(%s)",
+			span.Warnf("txSendToMpWithAddrs: sendPacketToMp failed, addr %s, msg %s, data %s, status(%s)",
 				addr, newPkt.GetResultMsg(), string(p.Data), proto.GetStatusStr(status))
 			continue
 		}
 
 		if status == proto.OpOk {
-			if log.EnableDebug() {
-				log.LogDebugf("txSendToMpWithAddrs: send to %v done with status[%v], tx[%s]",
-					addr, status, string(p.Data))
-			}
+			span.Debugf("txSendToMpWithAddrs: send to %v done with status[%v], tx[%s]",
+				addr, status, string(p.Data))
 			err = nil
 			return status
 		}
 
-		log.LogWarnf("txSendToMpWithAddrs: sendPacketToMp failed, addr %s, msg %s, data %s, status %s",
+		span.Warnf("txSendToMpWithAddrs: sendPacketToMp failed, addr %s, msg %s, data %s, status %s",
 			addr, newPkt.GetResultMsg(), string(p.Data), proto.GetStatusStr(status))
 		return status
 	}
 
-	log.LogWarnf("txSendToMpWithAddrs: after retry still failed, return opAgain, pkt %s, addrs %v, err %v, status %s",
+	span.Warnf("txSendToMpWithAddrs: after retry still failed, return opAgain, pkt %s, addrs %v, err %v, status %s",
 		string(p.Data), addrs, err, proto.GetStatusStr(status))
 	return proto.OpAgain
 }
 
-func (tm *TransactionManager) txSetState(req *proto.TxSetStateRequest) (status uint8, err error) {
+func (tm *TransactionManager) txSetState(ctx context.Context, req *proto.TxSetStateRequest) (status uint8, err error) {
+	span := getSpan(ctx)
 	tm.Lock()
 	defer tm.Unlock()
 	status = proto.OpOk
@@ -1139,13 +1097,13 @@ func (tm *TransactionManager) txSetState(req *proto.TxSetStateRequest) (status u
 		status = proto.OpTxInfoNotExistErr
 		errInfo := fmt.Sprintf("txSetState: set state failed, req[%v] tx not existed", req)
 		err = errors.New(errInfo)
-		log.LogErrorf("%v", errInfo)
+		span.Errorf("%v", errInfo)
 		return
 	}
 	txInfo := item.(*proto.TransactionInfo)
 
 	if req.State == proto.TxStateCommit && txInfo.State == proto.TxStateCommitDone {
-		log.LogWarnf("txSetState: tx is already success before set commit state, tx %v", txInfo)
+		span.Warnf("txSetState: tx is already success before set commit state, tx %v", txInfo)
 		status = proto.OpOk
 		return
 	}
@@ -1154,7 +1112,7 @@ func (tm *TransactionManager) txSetState(req *proto.TxSetStateRequest) (status u
 		status = proto.OpTxSetStateErr
 		errInfo := fmt.Sprintf("txSetState: set state failed, wrong state, req[%v]", req)
 		err = errors.New(errInfo)
-		log.LogErrorf("%v", errInfo)
+		span.Errorf("%v", errInfo)
 		return
 	}
 
@@ -1163,7 +1121,7 @@ func (tm *TransactionManager) txSetState(req *proto.TxSetStateRequest) (status u
 		errInfo := fmt.Sprintf("txSetState: set state failed, wrong state, tx state[%v], req state[%v], tx[%v]",
 			txInfo.State, req.State, req.TxID)
 		err = errors.New(errInfo)
-		log.LogErrorf("%v", errInfo)
+		span.Errorf("%v", errInfo)
 		return
 	}
 
@@ -1172,11 +1130,11 @@ func (tm *TransactionManager) txSetState(req *proto.TxSetStateRequest) (status u
 		errInfo := fmt.Sprintf("txSetState: set state failed, wrong state, tx state[%v], req state[%v], tx[%v]",
 			txInfo.State, req.State, req.TxID)
 		err = errors.New(errInfo)
-		log.LogErrorf("%v", errInfo)
+		span.Errorf("%v", errInfo)
 		return
 	}
 
-	log.LogDebugf("txSetState: set tx state from [%v] to [%v], tx[%v]", txInfo.State, req.State, req.TxID)
+	span.Debugf("txSetState: set tx state from [%v] to [%v], tx[%v]", txInfo.State, req.State, req.TxID)
 	txInfo.State = req.State
 	return
 }
@@ -1243,7 +1201,8 @@ func (tr *TransactionResource) copyGetTxRbInode(ino uint64) (rbInode *TxRollback
 	return
 }
 
-func (tr *TransactionResource) deleteTxRollbackInode(ino uint64, txId string) (status uint8) {
+func (tr *TransactionResource) deleteTxRollbackInode(ctx context.Context, ino uint64, txId string) (status uint8) {
+	span := getSpan(ctx)
 	tr.Lock()
 	defer tr.Unlock()
 
@@ -1253,13 +1212,13 @@ func (tr *TransactionResource) deleteTxRollbackInode(ino uint64, txId string) (s
 
 	item := tr.txRbInodeTree.Get(keyNode)
 	if item == nil {
-		log.LogWarnf("deleteTxRollbackInode: rollback inode may be already been deleted, inode %d, txId %s",
+		span.Warnf("deleteTxRollbackInode: rollback inode may be already been deleted, inode %d, txId %s",
 			ino, txId)
 		return proto.OpTxRbInodeNotExistErr
 	}
 
 	if item.(*TxRollbackInode).txInodeInfo.TxID != txId {
-		log.LogWarnf("deleteTxRollbackInode: rollback dentry is already been update by other, txId %s, item %v",
+		span.Warnf("deleteTxRollbackInode: rollback dentry is already been update by other, txId %s, item %v",
 			txId, item)
 		return proto.OpTxRbDentryNotExistErr
 	}
@@ -1269,18 +1228,19 @@ func (tr *TransactionResource) deleteTxRollbackInode(ino uint64, txId string) (s
 }
 
 // RM add an `TxRollbackInode` into `txRollbackInodes`
-func (tr *TransactionResource) addTxRollbackInode(rbInode *TxRollbackInode) (status uint8) {
+func (tr *TransactionResource) addTxRollbackInode(ctx context.Context, rbInode *TxRollbackInode) (status uint8) {
+	span := getSpan(ctx)
 	tr.Lock()
 	defer tr.Unlock()
 
 	oldRbInode := tr.getTxRbInode(rbInode.inode.Inode)
 	if oldRbInode != nil {
 		if oldRbInode.txInodeInfo.TxID == rbInode.txInodeInfo.TxID {
-			log.LogWarnf("addTxRollbackInode: rollback inode [ino(%v) txID(%v)] is already exists",
+			span.Warnf("addTxRollbackInode: rollback inode [ino(%v) txID(%v)] is already exists",
 				rbInode.inode.Inode, rbInode.txInodeInfo.TxID)
 			return proto.OpExistErr
 		} else {
-			log.LogErrorf("addTxRollbackInode: rollback inode [ino(%v) txID(%v)] "+
+			span.Errorf("addTxRollbackInode: rollback inode [ino(%v) txID(%v)] "+
 				"is conflicted with inode [ino(%v) txID(%v)]",
 				rbInode.inode.Inode, rbInode.txInodeInfo.TxID, oldRbInode.inode.Inode, oldRbInode.txInodeInfo.TxID)
 			return proto.OpTxConflictErr
@@ -1288,7 +1248,7 @@ func (tr *TransactionResource) addTxRollbackInode(rbInode *TxRollbackInode) (sta
 	}
 
 	tr.txRbInodeTree.ReplaceOrInsert(rbInode, true)
-	log.LogDebugf("addTxRollbackInode: rollback inode [ino(%v) txID(%v)] is added", rbInode.inode.Inode, rbInode.txInodeInfo.TxID)
+	span.Debugf("addTxRollbackInode: rollback inode [ino(%v) txID(%v)] is added", rbInode.inode.Inode, rbInode.txInodeInfo.TxID)
 	return proto.OpOk
 }
 
@@ -1300,11 +1260,10 @@ func (tr *TransactionResource) getTxRbDentry(pId uint64, name string) *TxRollbac
 	if item == nil {
 		return nil
 	}
-
 	return item.(*TxRollbackDentry)
 }
 
-func (tr *TransactionResource) deleteTxRollbackDentry(pid uint64, name, txId string) (status uint8) {
+func (tr *TransactionResource) deleteTxRollbackDentry(ctx context.Context, pid uint64, name, txId string) (status uint8) {
 	tr.Lock()
 	defer tr.Unlock()
 
@@ -1314,13 +1273,13 @@ func (tr *TransactionResource) deleteTxRollbackDentry(pid uint64, name, txId str
 
 	item := tr.txRbDentryTree.Get(keyNode)
 	if item == nil {
-		log.LogWarnf("deleteTxRollbackDentry: rollback dentry may be already been deleted, pid %d, name %s, txId %s",
+		getSpan(ctx).Warnf("deleteTxRollbackDentry: rollback dentry may be already been deleted, pid %d, name %s, txId %s",
 			pid, name, txId)
 		return proto.OpTxRbDentryNotExistErr
 	}
 
 	if item.(*TxRollbackDentry).txDentryInfo.TxID != txId {
-		log.LogWarnf("deleteTxRollbackDentry: rollback dentry is already been update by other, txId %s, item %v",
+		getSpan(ctx).Warnf("deleteTxRollbackDentry: rollback dentry is already been update by other, txId %s, item %v",
 			txId, name)
 		return proto.OpTxRbDentryNotExistErr
 	}
@@ -1330,18 +1289,19 @@ func (tr *TransactionResource) deleteTxRollbackDentry(pid uint64, name, txId str
 }
 
 // RM add a `TxRollbackDentry` into `txRollbackDentries`
-func (tr *TransactionResource) addTxRollbackDentry(rbDentry *TxRollbackDentry) (status uint8) {
+func (tr *TransactionResource) addTxRollbackDentry(ctx context.Context, rbDentry *TxRollbackDentry) (status uint8) {
+	span := getSpan(ctx)
 	tr.Lock()
 	defer tr.Unlock()
 
 	oldRbDentry := tr.getTxRbDentry(rbDentry.txDentryInfo.ParentId, rbDentry.dentry.Name)
 	if oldRbDentry != nil {
 		if oldRbDentry.txDentryInfo.TxID == rbDentry.txDentryInfo.TxID {
-			log.LogWarnf("addTxRollbackDentry: rollback dentry [pino(%v) name(%v) txID(%v)] is already exists",
+			span.Warnf("addTxRollbackDentry: rollback dentry [pino(%v) name(%v) txID(%v)] is already exists",
 				rbDentry.dentry.ParentId, rbDentry.dentry.Name, rbDentry.txDentryInfo.TxID)
 			return proto.OpExistErr
 		}
-		log.LogWarnf("addTxRollbackDentry: rollback dentry [pino(%v) name(%v) txID(%v) rbType(%v)] "+
+		span.Warnf("addTxRollbackDentry: rollback dentry [pino(%v) name(%v) txID(%v) rbType(%v)] "+
 			"is conflicted with dentry [pino(%v) name(%v)  txID(%v) rbType(%v)]",
 			rbDentry.dentry.ParentId, rbDentry.dentry.Name, rbDentry.txDentryInfo.TxID, rbDentry.rbType,
 			oldRbDentry.dentry.ParentId, oldRbDentry.dentry.Name, oldRbDentry.txDentryInfo.TxID, oldRbDentry.rbType)
@@ -1349,12 +1309,12 @@ func (tr *TransactionResource) addTxRollbackDentry(rbDentry *TxRollbackDentry) (
 	}
 
 	tr.txRbDentryTree.ReplaceOrInsert(rbDentry, true)
-	log.LogDebugf("addTxRollbackDentry: rollback dentry [pino(%v) name(%v) txID(%v) rbType(%v)] is added",
+	span.Debugf("addTxRollbackDentry: rollback dentry [pino(%v) name(%v) txID(%v) rbType(%v)] is added",
 		rbDentry.dentry.ParentId, rbDentry.dentry.Name, rbDentry.txDentryInfo.TxID, rbDentry.rbType)
 	return proto.OpOk
 }
 
-func (tr *TransactionResource) rollbackInodeInternal(rbInode *TxRollbackInode) (status uint8, err error) {
+func (tr *TransactionResource) rollbackInodeInternal(ctx context.Context, rbInode *TxRollbackInode) (status uint8, err error) {
 	status = proto.OpOk
 	mp := tr.txProcessor.mp
 	switch rbInode.rbType {
@@ -1371,29 +1331,29 @@ func (tr *TransactionResource) rollbackInodeInternal(rbInode *TxRollbackInode) (
 				mp.uidManager.addUidSpace(rbInode.inode.Uid, rbInode.inode.Inode, rbInode.inode.Extents.eks)
 			}
 			if mp.mqMgr != nil && len(rbInode.quotaIds) > 0 && item == nil {
-				mp.setInodeQuota(rbInode.quotaIds, rbInode.inode.Inode)
+				mp.setInodeQuota(ctx, rbInode.quotaIds, rbInode.inode.Inode)
 				for _, quotaId := range rbInode.quotaIds {
-					mp.mqMgr.updateUsedInfo(int64(rbInode.inode.Size), 1, quotaId)
+					mp.mqMgr.updateUsedInfo(ctx, int64(rbInode.inode.Size), 1, quotaId)
 				}
 			}
 			mp.inodeTree.ReplaceOrInsert(rbInode.inode, true)
 		} else {
-			ino.IncNLink(mp.verSeq)
+			ino.IncNLink(ctx, mp.verSeq)
 		}
 
 	case TxDelete:
-		if rsp := tr.txProcessor.mp.getInode(rbInode.inode, false); rsp.Status == proto.OpOk {
+		if rsp := tr.txProcessor.mp.getInode(ctx, rbInode.inode, false); rsp.Status == proto.OpOk {
 			if tr.txProcessor.mp.uidManager != nil {
 				tr.txProcessor.mp.uidManager.doMinusUidSpace(rbInode.inode.Uid, rbInode.inode.Inode, rbInode.inode.Size)
 			}
 
 			if tr.txProcessor.mp.mqMgr != nil && len(rbInode.quotaIds) > 0 {
 				for _, quotaId := range rbInode.quotaIds {
-					tr.txProcessor.mp.mqMgr.updateUsedInfo(-1*int64(rbInode.inode.Size), -1, quotaId)
+					tr.txProcessor.mp.mqMgr.updateUsedInfo(ctx, -1*int64(rbInode.inode.Size), -1, quotaId)
 				}
 			}
-			tr.txProcessor.mp.fsmUnlinkInode(rbInode.inode, 0)
-			tr.txProcessor.mp.fsmEvictInode(rbInode.inode)
+			tr.txProcessor.mp.fsmUnlinkInode(ctx, rbInode.inode, 0)
+			tr.txProcessor.mp.fsmEvictInode(ctx, rbInode.inode)
 		}
 
 	default:
@@ -1406,7 +1366,8 @@ func (tr *TransactionResource) rollbackInodeInternal(rbInode *TxRollbackInode) (
 }
 
 // RM roll back an inode, retry if error occours
-func (tr *TransactionResource) rollbackInode(req *proto.TxInodeApplyRequest) (status uint8, err error) {
+func (tr *TransactionResource) rollbackInode(ctx context.Context, req *proto.TxInodeApplyRequest) (status uint8, err error) {
+	span := getSpan(ctx)
 	tr.Lock()
 	defer tr.Unlock()
 	status = proto.OpOk
@@ -1415,7 +1376,7 @@ func (tr *TransactionResource) rollbackInode(req *proto.TxInodeApplyRequest) (st
 		status = proto.OpTxRbInodeNotExistErr
 		errInfo := fmt.Sprintf("rollbackInode: roll back inode[%v] failed, txID[%v], rb inode not found", req.Inode, req.TxID)
 		err = errors.New(errInfo)
-		log.LogErrorf("%v", errInfo)
+		span.Errorf("%v", errInfo)
 		return
 	}
 
@@ -1423,36 +1384,36 @@ func (tr *TransactionResource) rollbackInode(req *proto.TxInodeApplyRequest) (st
 		status = proto.OpTxConflictErr
 		errInfo := fmt.Sprintf("rollbackInode: txID %v is not matching txInodeInfo txID %v", req.TxID, rbInode.txInodeInfo.TxID)
 		err = errors.New(errInfo)
-		log.LogErrorf("%v", errInfo)
+		span.Errorf("%v", errInfo)
 		return
 	}
 
-	status, err = tr.rollbackInodeInternal(rbInode)
+	status, err = tr.rollbackInodeInternal(ctx, rbInode)
 	if err != nil {
-		log.LogErrorf("rollbackInode: inode[%v] roll back failed in tx[%v], rbType[%v]", req.Inode, req.TxID, rbInode.rbType)
+		span.Errorf("rollbackInode: inode[%v] roll back failed in tx[%v], rbType[%v]", req.Inode, req.TxID, rbInode.rbType)
 	} else {
-		log.LogDebugf("rollbackInode: inode[%v] is rolled back in tx[%v], rbType[%v]", req.Inode, req.TxID, rbInode.rbType)
+		span.Debugf("rollbackInode: inode[%v] is rolled back in tx[%v], rbType[%v]", req.Inode, req.TxID, rbInode.rbType)
 	}
 
 	return
 }
 
-func (tr *TransactionResource) rollbackDentryInternal(rbDentry *TxRollbackDentry) (status uint8, err error) {
+func (tr *TransactionResource) rollbackDentryInternal(ctx context.Context, rbDentry *TxRollbackDentry) (status uint8, err error) {
 	defer func() {
 		if status != proto.OpOk {
-			log.LogErrorf("rollbackDentryInternal: rollback dentry failed, ifo %v", rbDentry.txDentryInfo)
+			getSpan(ctx).Errorf("rollbackDentryInternal: rollback dentry failed, ifo %v", rbDentry.txDentryInfo)
 		}
 	}()
 	status = proto.OpOk
 	switch rbDentry.rbType {
 	case TxAdd:
 		// need to be true to assert link not change.
-		status = tr.txProcessor.mp.fsmCreateDentry(rbDentry.dentry, true)
+		status = tr.txProcessor.mp.fsmCreateDentry(ctx, rbDentry.dentry, true)
 	case TxDelete:
-		resp := tr.txProcessor.mp.fsmDeleteDentry(rbDentry.dentry, true)
+		resp := tr.txProcessor.mp.fsmDeleteDentry(ctx, rbDentry.dentry, true)
 		status = resp.Status
 	case TxUpdate:
-		resp := tr.txProcessor.mp.fsmUpdateDentry(rbDentry.dentry)
+		resp := tr.txProcessor.mp.fsmUpdateDentry(ctx, rbDentry.dentry)
 		status = resp.Status
 	default:
 		status = proto.OpTxRollbackUnknownRbType
@@ -1465,7 +1426,8 @@ func (tr *TransactionResource) rollbackDentryInternal(rbDentry *TxRollbackDentry
 }
 
 // RM roll back a dentry, retry if error occours
-func (tr *TransactionResource) rollbackDentry(req *proto.TxDentryApplyRequest) (status uint8, err error) {
+func (tr *TransactionResource) rollbackDentry(ctx context.Context, req *proto.TxDentryApplyRequest) (status uint8, err error) {
+	span := getSpan(ctx)
 	tr.Lock()
 	defer tr.Unlock()
 	status = proto.OpOk
@@ -1475,7 +1437,7 @@ func (tr *TransactionResource) rollbackDentry(req *proto.TxDentryApplyRequest) (
 		errInfo := fmt.Sprintf("rollbackDentry: roll back dentry[%v_%v] failed, rb inode not found, txID[%v]",
 			req.Pid, req.Name, req.TxID)
 		err = errors.New(errInfo)
-		log.LogWarnf("%v", errInfo)
+		span.Warnf("%v", errInfo)
 		return
 	}
 
@@ -1483,16 +1445,16 @@ func (tr *TransactionResource) rollbackDentry(req *proto.TxDentryApplyRequest) (
 		status = proto.OpTxConflictErr
 		errInfo := fmt.Sprintf("rollbackDentry: txID %v is not matching txInodeInfo txID %v", req.TxID, rbDentry.txDentryInfo.TxID)
 		err = errors.New(errInfo)
-		log.LogWarnf("%v", errInfo)
+		span.Warnf("%v", errInfo)
 		return
 	}
 
-	status, err = tr.rollbackDentryInternal(rbDentry)
+	status, err = tr.rollbackDentryInternal(ctx, rbDentry)
 	if err != nil {
-		log.LogErrorf("rollbackDentry: denKey[%v] roll back failed in tx[%v], rbType[%v]",
+		span.Errorf("rollbackDentry: denKey[%v] roll back failed in tx[%v], rbType[%v]",
 			rbDentry.txDentryInfo.GetKey(), req.TxID, rbDentry.rbType)
 	} else {
-		log.LogDebugf("rollbackDentry: denKey[%v] is rolled back in tx[%v], rbType[%v]",
+		span.Debugf("rollbackDentry: denKey[%v] is rolled back in tx[%v], rbType[%v]",
 			rbDentry.txDentryInfo.GetKey(), req.TxID, rbDentry.rbType)
 	}
 
@@ -1500,7 +1462,8 @@ func (tr *TransactionResource) rollbackDentry(req *proto.TxDentryApplyRequest) (
 }
 
 // RM simplely remove the inode from TransactionResource
-func (tr *TransactionResource) commitInode(txID string, inode uint64) (status uint8, err error) {
+func (tr *TransactionResource) commitInode(ctx context.Context, txID string, inode uint64) (status uint8, err error) {
+	span := getSpan(ctx)
 	tr.Lock()
 	defer tr.Unlock()
 	status = proto.OpOk
@@ -1509,7 +1472,7 @@ func (tr *TransactionResource) commitInode(txID string, inode uint64) (status ui
 		status = proto.OpTxRbInodeNotExistErr
 		errInfo := fmt.Sprintf("commitInode: commit inode[%v] failed, rb inode not found", inode)
 		err = errors.New(errInfo)
-		log.LogWarnf("%v", errInfo)
+		span.Warnf("%v", errInfo)
 		return
 	}
 
@@ -1517,17 +1480,18 @@ func (tr *TransactionResource) commitInode(txID string, inode uint64) (status ui
 		status = proto.OpTxConflictErr
 		errInfo := fmt.Sprintf("commitInode: txID %v is not matching txInodeInfo txID %v", txID, rbInode.txInodeInfo.TxID)
 		err = errors.New(errInfo)
-		log.LogErrorf("%v", errInfo)
+		span.Errorf("%v", errInfo)
 		return
 	}
 
 	tr.txRbInodeTree.Delete(rbInode)
-	log.LogDebugf("commitInode: inode[%v] is committed", inode)
+	span.Debugf("commitInode: inode[%v] is committed", inode)
 	return
 }
 
 // RM simplely remove the dentry from TransactionResource
-func (tr *TransactionResource) commitDentry(txID string, pId uint64, name string) (status uint8, err error) {
+func (tr *TransactionResource) commitDentry(ctx context.Context, txID string, pId uint64, name string) (status uint8, err error) {
+	span := getSpan(ctx)
 	tr.Lock()
 	defer tr.Unlock()
 	status = proto.OpOk
@@ -1537,7 +1501,7 @@ func (tr *TransactionResource) commitDentry(txID string, pId uint64, name string
 		status = proto.OpTxRbDentryNotExistErr
 		errInfo := fmt.Sprintf("commitDentry: commit dentry[%v_%v] failed, rb dentry not found", pId, name)
 		err = errors.New(errInfo)
-		log.LogWarnf("%v", errInfo)
+		span.Warnf("%v", errInfo)
 		return
 	}
 
@@ -1545,7 +1509,7 @@ func (tr *TransactionResource) commitDentry(txID string, pId uint64, name string
 		status = proto.OpTxConflictErr
 		errInfo := fmt.Sprintf("commitDentry: txID %v is not matching txDentryInfo txID %v", txID, rbDentry.txDentryInfo.TxID)
 		err = errors.New(errInfo)
-		log.LogWarnf("%v", errInfo)
+		span.Warnf("%v", errInfo)
 		return
 	}
 
@@ -1553,13 +1517,13 @@ func (tr *TransactionResource) commitDentry(txID string, pId uint64, name string
 	// unlink parent inode
 	if rbDentry.rbType == TxAdd {
 		parInode := NewInode(pId, 0)
-		st := tr.txProcessor.mp.fsmUnlinkInode(parInode, 0)
+		st := tr.txProcessor.mp.fsmUnlinkInode(ctx, parInode, 0)
 		if st.Status != proto.OpOk {
-			log.LogWarnf("commitDentry: try unlink parent inode failed, txId %s, inode[%v]", txID, parInode)
+			span.Warnf("commitDentry: try unlink parent inode failed, txId %s, inode[%v]", txID, parInode)
 			return
 		}
 	}
 
-	log.LogDebugf("commitDentry: dentry[%v] is committed", rbDentry.txDentryInfo.GetKey())
+	span.Debugf("commitDentry: dentry[%v] is committed", rbDentry.txDentryInfo.GetKey())
 	return
 }

@@ -66,7 +66,7 @@ func (mp *metaPartition) allocateUniqID(num uint32) (start, end uint64) {
 	}
 }
 
-func (mp *metaPartition) uniqCheckerEvict() (left int, evict int, err error) {
+func (mp *metaPartition) uniqCheckerEvict(ctx context.Context) (left int, evict int, err error) {
 	checker := mp.uniqChecker
 	left, idx, op := checker.evictIndex()
 	if op == nil {
@@ -81,7 +81,7 @@ func (mp *metaPartition) uniqCheckerEvict() (left int, evict int, err error) {
 	if err != nil {
 		panic(err)
 	}
-	_, err = mp.submit(context.TODO(), opFSMUniqCheckerEvict, reqBytes)
+	_, err = mp.submit(ctx, opFSMUniqCheckerEvict, reqBytes)
 	return left, idx + 1, err
 }
 

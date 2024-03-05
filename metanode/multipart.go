@@ -16,13 +16,13 @@ package metanode
 
 import (
 	"bytes"
+	"context"
 	"encoding/binary"
 	"sort"
 	"sync"
 	"time"
 
 	"github.com/cubefs/cubefs/util/btree"
-	"github.com/cubefs/cubefs/util/log"
 )
 
 // Part defined necessary fields for multipart part management.
@@ -131,7 +131,7 @@ func (m *Parts) Hash(part *Part) (has bool) {
 	return
 }
 
-func (m *Parts) UpdateOrStore(part *Part) (oldInode uint64, update, conflict bool) {
+func (m *Parts) UpdateOrStore(ctx context.Context, part *Part) (oldInode uint64, update, conflict bool) {
 	i := sort.Search(len(*m), func(i int) bool {
 		return (*m)[i].ID >= part.ID
 	})
@@ -139,11 +139,11 @@ func (m *Parts) UpdateOrStore(part *Part) (oldInode uint64, update, conflict boo
 		oldPart := (*m)[i]
 		oldInode = oldPart.Inode
 		if part.Inode == oldInode {
-			log.LogWarnf("Request already success,the same partinode[%d] must not be overwritten.", oldInode)
+			getSpan(ctx).Warnf("Request already success,the same partinode[%d] must not be overwritten.", oldInode)
 			return
 		}
 		if part.UploadTime.Before(oldPart.UploadTime) {
-			log.LogWarnf("Request part putTime[%v] is less than old part putTime[%v], partNumber[%v]",
+			getSpan(ctx).Warnf("Request part putTime[%v] is less than old part putTime[%v], partNumber[%v]",
 				part.UploadTime.UnixNano(), oldPart.UploadTime.UnixNano(), part.ID)
 			conflict = true
 			return
@@ -336,13 +336,13 @@ func (m *Multipart) ID() string {
 	return m.id
 }
 
-func (m *Multipart) UpdateOrStorePart(part *Part) (oldInode uint64, updated, conflict bool) {
+func (m *Multipart) UpdateOrStorePart(ctx context.Context, part *Part) (oldInode uint64, updated, conflict bool) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.parts == nil {
 		m.parts = PartsFromBytes(nil)
 	}
-	oldInode, updated, conflict = m.parts.UpdateOrStore(part)
+	oldInode, updated, conflict = m.parts.UpdateOrStore(ctx, part)
 	return
 }
 

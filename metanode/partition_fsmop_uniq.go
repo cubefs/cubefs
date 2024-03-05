@@ -15,6 +15,7 @@
 package metanode
 
 import (
+	"context"
 	"encoding/binary"
 
 	"github.com/cubefs/cubefs/proto"
@@ -31,7 +32,7 @@ type UniqIdResp struct {
 	Status uint8
 }
 
-func (mp *metaPartition) fsmUniqID(val []byte) (resp *UniqIdResp) {
+func (mp *metaPartition) fsmUniqID(ctx context.Context, val []byte) (resp *UniqIdResp) {
 	resp = &UniqIdResp{
 		Status: proto.OpOk,
 	}
@@ -41,7 +42,7 @@ func (mp *metaPartition) fsmUniqID(val []byte) (resp *UniqIdResp) {
 	return resp
 }
 
-func (mp *metaPartition) fsmUniqCheckerEvict(req *fsmEvictUniqCheckerRequest) error {
+func (mp *metaPartition) fsmUniqCheckerEvict(ctx context.Context, req *fsmEvictUniqCheckerRequest) error {
 	mp.uniqChecker.doEvict(req.UniqID)
 	return nil
 }

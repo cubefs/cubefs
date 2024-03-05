@@ -96,7 +96,7 @@ LOOP:
 		fileSize = info.Size()
 	}
 
-	span, ctx := spanContext(context.Background(), "")
+	span, ctx := spanContext()
 	// check
 	lastItem := fileList.Back()
 	if lastItem != nil {
@@ -135,7 +135,7 @@ LOOP:
 			fileList.Init()
 			goto LOOP
 		case eks := <-mp.extDelCh:
-			span, ctx = spanContext(context.Background(), "")
+			span, ctx = spanContext()
 			span = span.WithOperation(fmt.Sprintf("appendDelExtentsToFile-vol(%s)mp(%d)",
 				mp.GetVolName(), mp.config.PartitionId))
 
@@ -195,7 +195,7 @@ func (mp *metaPartition) batchDeleteExtentsByDp(ctx context.Context, dpId uint64
 		return
 	}
 	span.Debugf("mp(%v) delete eks from dp(%v)", mp.config.PartitionId, dpId)
-	err = mp.doBatchDeleteExtentsByPartition(dpId, extents)
+	err = mp.doBatchDeleteExtentsByPartition(ctx, dpId, extents)
 	return
 }
 
@@ -227,7 +227,7 @@ func (mp *metaPartition) deleteExtentsFromList(fileList *synclist.SyncList) {
 			continue
 		}
 
-		span, ctx := spanContext(context.Background(), "")
+		span, ctx := spanContext()
 		span = span.WithOperation(fmt.Sprintf("deleteExtentsFromList-vol(%s)mp(%d)",
 			mp.GetVolName(), mp.config.PartitionId))
 

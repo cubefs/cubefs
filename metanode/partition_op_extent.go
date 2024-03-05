@@ -26,14 +26,13 @@ import (
 	"github.com/cubefs/cubefs/util/auditlog"
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/exporter"
-	"github.com/cubefs/cubefs/util/log"
 )
 
 func (mp *metaPartition) CheckQuota(inodeId uint64, p *Packet) (iParm *Inode, inode *Inode, err error) {
 	iParm = NewInode(inodeId, 0)
-	status := mp.isOverQuota(inodeId, true, false)
+	status := mp.isOverQuota(p.Context(), inodeId, true, false)
 	if status != 0 {
-		log.LogErrorf("CheckQuota dir quota fail inode[%v] status [%v]", inodeId, status)
+		p.Span().Errorf("CheckQuota dir quota fail inode[%v] status [%v]", inodeId, status)
 		err = errors.New("CheckQuota dir quota is over quota")
 		reply := []byte(err.Error())
 		p.PacketErrorWithBody(status, reply)
@@ -49,7 +48,7 @@ func (mp *metaPartition) CheckQuota(inodeId uint64, p *Packet) (iParm *Inode, in
 	inode = item.(*Inode)
 	mp.uidManager.acLock.Lock()
 	if mp.uidManager.getUidAcl(inode.Uid) {
-		log.LogWarnf("CheckQuota UidSpace.volname [%v] mp[%v] uid %v be set full", mp.uidManager.mpID, mp.uidManager.volName, inode.Uid)
+		p.Span().Warnf("CheckQuota UidSpace.volname [%v] mp[%v] uid %v be set full", mp.uidManager.mpID, mp.uidManager.volName, inode.Uid)
 		mp.uidManager.acLock.Unlock()
 		status = proto.OpNoSpaceErr
 		err = errors.New("CheckQuota UidSpace is over quota")
@@ -92,8 +91,9 @@ func (mp *metaPartition) ExtentAppend(req *proto.AppendExtentKeyRequest, p *Pack
 // ExtentAppendWithCheck appends an extent with discard extents check.
 // Format: one valid extent key followed by non or several discard keys.
 func (mp *metaPartition) ExtentAppendWithCheck(req *proto.AppendExtentKeyWithCheckRequest, p *Packet) (err error) {
+	ctx := p.Context()
 	span := p.Span()
-	status := mp.isOverQuota(req.Inode, true, false)
+	status := mp.isOverQuota(ctx, req.Inode, true, false)
 	if status != 0 {
 		span.Errorf("fail status [%v]", status)
 		err = errors.New("ExtentAppendWithCheck is over quota")
@@ -150,7 +150,7 @@ func (mp *metaPartition) ExtentAppendWithCheck(req *proto.AppendExtentKeyWithChe
 	if req.IsSplit {
 		opFlag = opFSMExtentSplit
 	}
-	resp, err := mp.submit(p.Context(), opFlag, val)
+	resp, err := mp.submit(ctx, opFlag, val)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return
@@ -167,14 +167,15 @@ func (mp *metaPartition) ExtentAppendWithCheck(req *proto.AppendExtentKeyWithChe
 	return
 }
 
-func (mp *metaPartition) SetTxInfo(info []*proto.TxInfo) {
+func (mp *metaPartition) SetTxInfo(ctx context.Context, info []*proto.TxInfo) {
+	span := getSpan(ctx)
 	for _, txInfo := range info {
 		if txInfo.Volume != mp.config.VolName {
 			continue
 		}
 		mp.txProcessor.mask = txInfo.Mask
 		mp.txProcessor.txManager.setLimit(txInfo.OpLimitVal)
-		log.LogInfof("SetTxInfo mp[%v] mask %v limit %v", mp.config.PartitionId, proto.GetMaskString(txInfo.Mask), txInfo.OpLimitVal)
+		span.Infof("SetTxInfo mp[%v] mask %v limit %v", mp.config.PartitionId, proto.GetMaskString(txInfo.Mask), txInfo.OpLimitVal)
 	}
 }
 
@@ -184,13 +185,16 @@ type VerOpData struct {
 	VerList []*proto.VolVersionInfo
 }
 
-func (mp *metaPartition) checkByMasterVerlist(mpVerList *proto.VolVersionInfoList, masterVerList *proto.VolVersionInfoList) (err error) {
+func (mp *metaPartition) checkByMasterVerlist(ctx context.Context,
+	mpVerList *proto.VolVersionInfoList, masterVerList *proto.VolVersionInfoList,
+) (err error) {
+	span := getSpan(ctx)
 	currMasterSeq := masterVerList.GetLastVer()
 	verMapMaster := make(map[uint64]*proto.VolVersionInfo)
 	for _, ver := range masterVerList.VerList {
 		verMapMaster[ver.Ver] = ver
 	}
-	log.LogDebugf("checkVerList. volname [%v] mp[%v] masterVerList %v mpVerList.VerList %v", mp.config.VolName, mp.config.PartitionId, masterVerList, mpVerList.VerList)
+	span.Debugf("checkVerList. volname [%v] mp[%v] masterVerList %v mpVerList.VerList %v", mp.config.VolName, mp.config.PartitionId, masterVerList, mpVerList.VerList)
 	mp.multiVersionList.RWLock.Lock()
 	defer mp.multiVersionList.RWLock.Unlock()
 	vlen := len(mpVerList.VerList)
@@ -198,11 +202,11 @@ func (mp *metaPartition) checkByMasterVerlist(mpVerList *proto.VolVersionInfoLis
 		if id == vlen-1 {
 			break
 		}
-		log.LogDebugf("checkVerList. volname [%v] mp[%v] ver info %v currMasterseq [%v]", mp.config.VolName, mp.config.PartitionId, info2, currMasterSeq)
+		span.Debugf("checkVerList. volname [%v] mp[%v] ver info %v currMasterseq [%v]", mp.config.VolName, mp.config.PartitionId, info2, currMasterSeq)
 		_, exist := verMapMaster[info2.Ver]
 		if !exist {
 			if _, ok := mp.multiVersionList.TemporaryVerMap[info2.Ver]; !ok {
-				log.LogInfof("checkVerList. volname [%v] mp[%v] ver info %v be consider as TemporaryVer", mp.config.VolName, mp.config.PartitionId, info2)
+				span.Infof("checkVerList. volname [%v] mp[%v] ver info %v be consider as TemporaryVer", mp.config.VolName, mp.config.PartitionId, info2)
 				mp.multiVersionList.TemporaryVerMap[info2.Ver] = info2
 			}
 		}
@@ -211,17 +215,17 @@ func (mp *metaPartition) checkByMasterVerlist(mpVerList *proto.VolVersionInfoLis
 	for verSeq := range mp.multiVersionList.TemporaryVerMap {
 		for index, verInfo := range mp.multiVersionList.VerList {
 			if verInfo.Ver == verSeq {
-				log.LogInfof("checkVerList.updateVerList volname [%v] mp[%v] ver info %v be consider as TemporaryVer and do deletion verlist %v",
+				span.Infof("checkVerList.updateVerList volname [%v] mp[%v] ver info %v be consider as TemporaryVer and do deletion verlist %v",
 					mp.config.VolName, mp.config.PartitionId, verInfo, mp.multiVersionList.VerList)
 				if index == len(mp.multiVersionList.VerList)-1 {
-					log.LogInfof("checkVerList.updateVerList volname [%v] mp[%v] last ver info %v should not be consider as TemporaryVer and do deletion verlist %v",
+					span.Infof("checkVerList.updateVerList volname [%v] mp[%v] last ver info %v should not be consider as TemporaryVer and do deletion verlist %v",
 						mp.config.VolName, mp.config.PartitionId, verInfo, mp.multiVersionList.VerList)
 					return
 				} else {
 					mp.multiVersionList.VerList = append(mp.multiVersionList.VerList[:index], mp.multiVersionList.VerList[index+1:]...)
 				}
 
-				log.LogInfof("checkVerList.updateVerList volname [%v] mp[%v] verlist %v", mp.config.VolName, mp.config.PartitionId, mp.multiVersionList.VerList)
+				span.Infof("checkVerList.updateVerList volname [%v] mp[%v] verlist %v", mp.config.VolName, mp.config.PartitionId, mp.multiVersionList.VerList)
 				break
 			}
 		}
@@ -229,7 +233,8 @@ func (mp *metaPartition) checkByMasterVerlist(mpVerList *proto.VolVersionInfoLis
 	return
 }
 
-func (mp *metaPartition) checkVerList(reqVerListInfo *proto.VolVersionInfoList, sync bool) (needUpdate bool, err error) {
+func (mp *metaPartition) checkVerList(ctx context.Context, reqVerListInfo *proto.VolVersionInfoList, sync bool) (needUpdate bool, err error) {
+	span := getSpan(ctx)
 	mp.multiVersionList.RWLock.RLock()
 	verMapLocal := make(map[uint64]*proto.VolVersionInfo)
 	verMapReq := make(map[uint64]*proto.VolVersionInfo)
@@ -240,13 +245,13 @@ func (mp *metaPartition) checkVerList(reqVerListInfo *proto.VolVersionInfoList, 
 	var VerList []*proto.VolVersionInfo
 
 	for _, info2 := range mp.multiVersionList.VerList {
-		log.LogDebugf("checkVerList. volname [%v] mp[%v] ver info %v", mp.config.VolName, mp.config.PartitionId, info2)
+		span.Debugf("checkVerList. volname [%v] mp[%v] ver info %v", mp.config.VolName, mp.config.PartitionId, info2)
 		vms, exist := verMapReq[info2.Ver]
 		if !exist {
-			log.LogWarnf("checkVerList. volname [%v] mp[%v] version info(%v) not exist in master (%v)",
+			span.Warnf("checkVerList. volname [%v] mp[%v] version info(%v) not exist in master (%v)",
 				mp.config.VolName, mp.config.PartitionId, info2, reqVerListInfo.VerList)
 		} else if info2.Status != proto.VersionNormal && info2.Status != vms.Status {
-			log.LogWarnf("checkVerList. volname [%v] mp[%v] ver [%v] status abnormal %v", mp.config.VolName, mp.config.PartitionId, info2.Ver, info2.Status)
+			span.Warnf("checkVerList. volname [%v] mp[%v] ver [%v] status abnormal %v", mp.config.VolName, mp.config.PartitionId, info2.Ver, info2.Status)
 			info2.Status = vms.Status
 			needUpdate = true
 		}
@@ -260,14 +265,14 @@ func (mp *metaPartition) checkVerList(reqVerListInfo *proto.VolVersionInfoList, 
 
 	for _, vInfo := range reqVerListInfo.VerList {
 		if vInfo.Status != proto.VersionNormal && vInfo.Status != proto.VersionPrepare {
-			log.LogDebugf("checkVerList. volname [%v] mp[%v] master info %v", mp.config.VolName, mp.config.PartitionId, vInfo)
+			span.Debugf("checkVerList. volname [%v] mp[%v] master info %v", mp.config.VolName, mp.config.PartitionId, vInfo)
 			continue
 		}
 		ver, exist := verMapLocal[vInfo.Ver]
 		if !exist {
 			expStr := fmt.Sprintf("checkVerList.volname [%v] mp[%v] not found %v in mp list and append version %v",
 				mp.config.VolName, mp.config.PartitionId, vInfo.Ver, vInfo)
-			log.LogWarnf("[checkVerList] volname [%v]", expStr)
+			span.Warnf("[checkVerList] volname [%v]", expStr)
 			if vInfo.Ver < mp.multiVersionList.GetLastVer() {
 				continue
 			}
@@ -280,7 +285,7 @@ func (mp *metaPartition) checkVerList(reqVerListInfo *proto.VolVersionInfoList, 
 		if ver.Status != vInfo.Status {
 			warn := fmt.Sprintf("checkVerList.volname [%v] mp[%v] ver [%v] inoraml.local status [%v] update to %v",
 				mp.config.VolName, mp.config.PartitionId, vInfo.Status, vInfo.Ver, vInfo.Status)
-			log.LogWarn(warn)
+			span.Warn(warn)
 			ver.Status = vInfo.Status
 		}
 	}
@@ -294,14 +299,14 @@ func (mp *metaPartition) checkVerList(reqVerListInfo *proto.VolVersionInfoList, 
 			lastSeq = VerList[i].Ver
 			return false
 		})
-		if err = mp.HandleVersionOp(proto.SyncBatchVersionList, lastSeq, VerList, sync); err != nil {
+		if err = mp.HandleVersionOp(ctx, proto.SyncBatchVersionList, lastSeq, VerList, sync); err != nil {
 			return
 		}
 	}
 	return
 }
 
-func (mp *metaPartition) HandleVersionOp(op uint8, verSeq uint64, verList []*proto.VolVersionInfo, sync bool) (err error) {
+func (mp *metaPartition) HandleVersionOp(ctx context.Context, op uint8, verSeq uint64, verList []*proto.VolVersionInfo, sync bool) (err error) {
 	verData := &VerOpData{
 		Op:      op,
 		VerSeq:  verSeq,
@@ -309,28 +314,29 @@ func (mp *metaPartition) HandleVersionOp(op uint8, verSeq uint64, verList []*pro
 	}
 	data, _ := json.Marshal(verData)
 	if sync {
-		_, err = mp.submit(context.TODO(), opFSMVersionOp, data)
+		_, err = mp.submit(ctx, opFSMVersionOp, data)
 		return
 	}
 	select {
 	case mp.verUpdateChan <- data:
-		log.LogDebugf("mp[%v] verseq [%v] op [%v] be pushed to queue", mp.config.PartitionId, verSeq, op)
+		getSpan(ctx).Debugf("mp[%v] verseq [%v] op [%v] be pushed to queue", mp.config.PartitionId, verSeq, op)
 	default:
 		err = fmt.Errorf("mp[%v] version update channel full, verdata %v not be executed", mp.config.PartitionId, string(data))
 	}
 	return
 }
 
-func (mp *metaPartition) GetAllVersionInfo(req *proto.MultiVersionOpRequest, p *Packet) (err error) {
+func (mp *metaPartition) GetAllVersionInfo(ctx context.Context, req *proto.MultiVersionOpRequest, p *Packet) (err error) {
 	return
 }
 
-func (mp *metaPartition) GetSpecVersionInfo(req *proto.MultiVersionOpRequest, p *Packet) (err error) {
+func (mp *metaPartition) GetSpecVersionInfo(ctx context.Context, req *proto.MultiVersionOpRequest, p *Packet) (err error) {
 	return
 }
 
-func (mp *metaPartition) GetExtentByVer(ino *Inode, req *proto.GetExtentsRequest, rsp *proto.GetExtentsResponse) {
-	log.LogInfof("action[GetExtentByVer] read ino[%v] readseq [%v] ino seq [%v] hist len %v", ino.Inode, req.VerSeq, ino.getVer(), ino.getLayerLen())
+func (mp *metaPartition) GetExtentByVer(ctx context.Context, ino *Inode, req *proto.GetExtentsRequest, rsp *proto.GetExtentsResponse) {
+	span := getSpan(ctx)
+	span.Infof("action[GetExtentByVer] read ino[%v] readseq [%v] ino seq [%v] hist len %v", ino.Inode, req.VerSeq, ino.getVer(), ino.getLayerLen())
 	reqVer := req.VerSeq
 	if isInitSnapVer(req.VerSeq) {
 		reqVer = 0
@@ -339,24 +345,24 @@ func (mp *metaPartition) GetExtentByVer(ino *Inode, req *proto.GetExtentsRequest
 		ino.Extents.Range(func(_ int, ek proto.ExtentKey) bool {
 			if ek.GetSeq() <= reqVer {
 				rsp.Extents = append(rsp.Extents, ek)
-				log.LogInfof("action[GetExtentByVer] fresh layer.read ino[%v] readseq [%v] ino seq [%v] include ek [%v]", ino.Inode, reqVer, ino.getVer(), ek)
+				span.Infof("action[GetExtentByVer] fresh layer.read ino[%v] readseq [%v] ino seq [%v] include ek [%v]", ino.Inode, reqVer, ino.getVer(), ek)
 			} else {
-				log.LogInfof("action[GetExtentByVer] fresh layer.read ino[%v] readseq [%v] ino seq [%v] exclude ek [%v]", ino.Inode, reqVer, ino.getVer(), ek)
+				span.Infof("action[GetExtentByVer] fresh layer.read ino[%v] readseq [%v] ino seq [%v] exclude ek [%v]", ino.Inode, reqVer, ino.getVer(), ek)
 			}
 			return true
 		})
 		ino.RangeMultiVer(func(idx int, snapIno *Inode) bool {
-			log.LogInfof("action[GetExtentByVer] read ino[%v] readseq [%v] snapIno ino seq [%v]", ino.Inode, reqVer, snapIno.getVer())
+			span.Infof("action[GetExtentByVer] read ino[%v] readseq [%v] snapIno ino seq [%v]", ino.Inode, reqVer, snapIno.getVer())
 			for _, ek := range snapIno.Extents.eks {
 				if reqVer >= ek.GetSeq() {
-					log.LogInfof("action[GetExtentByVer] get extent ino[%v] readseq [%v] snapIno ino seq [%v], include ek (%v)", ino.Inode, reqVer, snapIno.getVer(), ek.String())
+					span.Infof("action[GetExtentByVer] get extent ino[%v] readseq [%v] snapIno ino seq [%v], include ek (%v)", ino.Inode, reqVer, snapIno.getVer(), ek.String())
 					rsp.Extents = append(rsp.Extents, ek)
 				} else {
-					log.LogInfof("action[GetExtentByVer] not get extent ino[%v] readseq [%v] snapIno ino seq [%v], exclude ek (%v)", ino.Inode, reqVer, snapIno.getVer(), ek.String())
+					span.Infof("action[GetExtentByVer] not get extent ino[%v] readseq [%v] snapIno ino seq [%v], exclude ek (%v)", ino.Inode, reqVer, snapIno.getVer(), ek.String())
 				}
 			}
 			if reqVer >= snapIno.getVer() {
-				log.LogInfof("action[GetExtentByVer] finish read ino[%v] readseq [%v] snapIno ino seq [%v]", ino.Inode, reqVer, snapIno.getVer())
+				span.Infof("action[GetExtentByVer] finish read ino[%v] readseq [%v] snapIno ino seq [%v]", ino.Inode, reqVer, snapIno.getVer())
 				return false
 			}
 			return true
@@ -372,8 +378,8 @@ func (mp *metaPartition) SetUidLimit(info []*proto.UidSpaceInfo) {
 	mp.uidManager.setUidAcl(info)
 }
 
-func (mp *metaPartition) GetUidInfo() (info []*proto.UidReportSpaceInfo) {
-	return mp.uidManager.getAllUidSpace()
+func (mp *metaPartition) GetUidInfo(ctx context.Context) (info []*proto.UidReportSpaceInfo) {
+	return mp.uidManager.getAllUidSpace(ctx)
 }
 
 // ExtentsList returns the list of extents.
@@ -398,10 +404,10 @@ func (mp *metaPartition) ExtentsList(req *proto.GetExtentsRequest, p *Packet) (e
 			req.Inode, req.VerSeq, ino.getVer(), len(ino.Extents.eks), ino.Size, ino, ino.getLayerLen())
 
 		if req.VerSeq > 0 && ino.getVer() > 0 && (req.VerSeq < ino.getVer() || isInitSnapVer(req.VerSeq)) {
-			mp.GetExtentByVer(ino, req, resp)
+			mp.GetExtentByVer(p.Context(), ino, req, resp)
 			vIno := ino.Copy().(*Inode)
 			vIno.setVerNoCheck(req.VerSeq)
-			if vIno = mp.getInodeByVer(vIno); vIno != nil {
+			if vIno = mp.getInodeByVer(p.Context(), vIno); vIno != nil {
 				resp.Generation = vIno.Generation
 				resp.Size = vIno.Size
 			}
@@ -433,7 +439,7 @@ func (mp *metaPartition) ExtentsList(req *proto.GetExtentsRequest, p *Packet) (e
 func (mp *metaPartition) ObjExtentsList(req *proto.GetExtentsRequest, p *Packet) (err error) {
 	ino := NewInode(req.Inode, 0)
 	ino.setVer(req.VerSeq)
-	retMsg := mp.getInode(ino, false)
+	retMsg := mp.getInode(p.Context(), ino, false)
 	ino = retMsg.Msg
 	var (
 		reply  []byte
@@ -486,7 +492,7 @@ func (mp *metaPartition) ExtentsTruncate(req *ExtentsTruncateReq, p *Packet, rem
 		return
 	}
 	i := item.(*Inode)
-	status := mp.isOverQuota(req.Inode, req.Size > i.Size, false)
+	status := mp.isOverQuota(p.Context(), req.Inode, req.Size > i.Size, false)
 	if status != 0 {
 		p.Span().Errorf("fail status [%v]", status)
 		err = errors.New("ExtentsTruncate is over quota")

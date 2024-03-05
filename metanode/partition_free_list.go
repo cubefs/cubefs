@@ -24,10 +24,11 @@ import (
 	"sync"
 	"time"
 
+	"github.com/cubefs/cubefs/blobstore/util/log"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/errors"
-	"github.com/cubefs/cubefs/util/log"
+	clog "github.com/cubefs/cubefs/util/log"
 )
 
 const (
@@ -42,10 +43,12 @@ const (
 	DeleteInodeFileRollingSize    = 500 * util.MB
 )
 
+var _deleteInodeFileRollingSize uint64 = DeleteInodeFileRollingSize
+
 func (mp *metaPartition) openDeleteInodeFile() (err error) {
 	if mp.delInodeFp, err = os.OpenFile(path.Join(mp.config.RootDir,
 		DeleteInodeFileExtension), OpenRWAppendOpt, 0o644); err != nil {
-		log.LogErrorf("[openDeleteInodeFile] failed to open delete inode file, err(%v)", err)
+		log.Errorf("[openDeleteInodeFile] failed to open delete inode file, err(%v)", err)
 		return
 	}
 	return
@@ -63,21 +66,18 @@ func (mp *metaPartition) startFreeList() (err error) {
 	return
 }
 
-func (mp *metaPartition) updateVolView(convert func(view *proto.DataPartitionsView) *DataPartitionsView) (err error) {
+func (mp *metaPartition) updateVolView(ctx context.Context, convert func(view *proto.DataPartitionsView) *DataPartitionsView) (err error) {
 	volName := mp.config.VolName
 	dataView, err := masterClient.ClientAPI().EncodingGzip().GetDataPartitions(volName)
 	if err != nil {
-		err = fmt.Errorf("updateVolWorker: get data partitions view fail: volume(%v) err(%v)",
-			volName, err)
-		log.LogErrorf(err.Error())
+		err = fmt.Errorf("updateVolWorker: get data partitions view fail: volume(%v) err(%v)", volName, err)
 		return
 	}
-	mp.vol.UpdatePartitions(convert(dataView))
+	mp.vol.UpdatePartitions(ctx, convert(dataView))
 
 	volView, err := masterClient.AdminAPI().GetVolumeSimpleInfo(volName)
 	if err != nil {
 		err = fmt.Errorf("updateVolWorker: get volumeinfo fail: volume(%v)  err(%v)", volName, err)
-		log.LogErrorf(err.Error())
 		return
 	}
 	mp.vol.volDeleteLockTime = volView.DeleteLockTime
@@ -92,7 +92,7 @@ func (mp *metaPartition) updateVolWorker() {
 		}
 		for i := 0; i < len(view.DataPartitions); i++ {
 			if len(view.DataPartitions[i].Hosts) < 1 {
-				log.LogErrorf("updateVolWorker dp id(%v) is invalid, DataPartitionResponse detail[%v]",
+				log.Errorf("updateVolWorker dp id(%v) is invalid, DataPartitionResponse detail[%v]",
 					view.DataPartitions[i].PartitionID, view.DataPartitions[i])
 				continue
 			}
@@ -106,14 +106,17 @@ func (mp *metaPartition) updateVolWorker() {
 		}
 		return newView
 	}
-	mp.updateVolView(convert)
 	for {
+		span, ctx := spanContextPrefix("update-")
+		if err := mp.updateVolView(ctx, convert); err != nil {
+			span.Error(err)
+		}
+
 		select {
 		case <-mp.stopC:
 			t.Stop()
 			return
 		case <-t.C:
-			mp.updateVolView(convert)
 		}
 	}
 }
@@ -134,7 +137,7 @@ func (mp *metaPartition) deleteWorker() {
 		buffSlice = buffSlice[:0]
 		select {
 		case <-mp.stopC:
-			log.LogDebugf("[metaPartition] deleteWorker stop partition: %v", mp.config)
+			log.Infof("deleteWorker stop partition: %v", mp.config)
 			return
 		default:
 		}
@@ -160,6 +163,8 @@ func (mp *metaPartition) deleteWorker() {
 			continue
 		}
 
+		span, ctx := spanContextPrefix("delete-")
+
 		batchCount := DeleteBatchCount()
 		delayDeleteInos := make([]uint64, 0)
 		for idx = 0; idx < int(batchCount); idx++ {
@@ -168,13 +173,13 @@ func (mp *metaPartition) deleteWorker() {
 			if ino == 0 {
 				break
 			}
-			log.LogDebugf("action[deleteWorker]: remove inode(%v)", ino)
+			span.Debugf("deleteWorker remove inode(%v)", ino)
 
 			// check inode nlink == 0 and deleteMarkFlag unset
 			if inode, ok := mp.inodeTree.Get(&Inode{Inode: ino}).(*Inode); ok {
 				inTx, _ := mp.txProcessor.txResource.isInodeInTransction(inode)
 				if inode.ShouldDelayDelete() || inTx {
-					log.LogDebugf("[metaPartition] deleteWorker delay to remove inode: %v as NLink is 0, inTx %v", inode, inTx)
+					span.Debugf("[metaPartition] deleteWorker delay to remove inode: %v as NLink is 0, inTx %v", inode, inTx)
 					delayDeleteInos = append(delayDeleteInos, ino)
 					continue
 				}
@@ -187,17 +192,18 @@ func (mp *metaPartition) deleteWorker() {
 		for _, delayDeleteIno := range delayDeleteInos {
 			mp.freeList.Push(delayDeleteIno)
 		}
-		log.LogDebugf("metaPartition. buff slice [%v]", buffSlice)
+		span.Debugf("metaPartition. buff slice [%v]", buffSlice)
 
-		mp.persistDeletedInodes(buffSlice)
-		mp.deleteMarkedInodes(buffSlice)
+		mp.persistDeletedInodes(ctx, buffSlice)
+		mp.deleteMarkedInodes(ctx, buffSlice)
 		sleepCnt++
 	}
 }
 
 // delete Extents by Partition,and find all successDelete inode
-func (mp *metaPartition) batchDeleteExtentsByPartition(partitionDeleteExtents map[uint64][]*proto.ExtentKey, allInodes []*Inode,
+func (mp *metaPartition) batchDeleteExtentsByPartition(ctx context.Context, partitionDeleteExtents map[uint64][]*proto.ExtentKey, allInodes []*Inode,
 ) (shouldCommit []*Inode, shouldPushToFreeList []*Inode) {
+	span := getSpan(ctx).WithOperation("batchDeleteExtentsByPartition")
 	occurErrors := make(map[uint64]error)
 	shouldCommit = make([]*Inode, 0, len(allInodes))
 	shouldPushToFreeList = make([]*Inode, 0)
@@ -211,14 +217,14 @@ func (mp *metaPartition) batchDeleteExtentsByPartition(partitionDeleteExtents ma
 		dp := mp.vol.GetPartition(partitionID)
 		// NOTE: if dp is discard, skip it
 		if dp.IsDiscard {
-			log.LogWarnf("action[batchDeleteExtentsByPartition] dp(%v) is discard, skip extents count(%v)", partitionID, len(extents))
+			span.Warnf("dp(%v) is discard, skip extents count(%v)", partitionID, len(extents))
 			continue
 		}
-		log.LogDebugf("batchDeleteExtentsByPartition partitionID %v extents %v", partitionID, extents)
+		span.Debugf("partitionID %v extents %v", partitionID, extents)
 		wg.Add(1)
 		go func(partitionID uint64, extents []*proto.ExtentKey) {
 			defer wg.Done()
-			perr := mp.doBatchDeleteExtentsByPartition(partitionID, extents)
+			perr := mp.doBatchDeleteExtentsByPartition(ctx, partitionID, extents)
 			lock.Lock()
 			occurErrors[partitionID] = perr
 			lock.Unlock()
@@ -232,7 +238,7 @@ func (mp *metaPartition) batchDeleteExtentsByPartition(partitionDeleteExtents ma
 		inode := allInodes[i]
 		inode.Extents.Range(func(_ int, ek proto.ExtentKey) bool {
 			if occurErrors[ek.PartitionId] != nil {
-				log.LogWarnf("deleteInode inode[%v] error(%v)", inode.Inode, occurErrors[ek.PartitionId])
+				span.Warnf("deleteInode inode[%v] error(%v)", inode.Inode, occurErrors[ek.PartitionId])
 				return false
 			}
 			successDeleteExtentCnt++
@@ -240,62 +246,58 @@ func (mp *metaPartition) batchDeleteExtentsByPartition(partitionDeleteExtents ma
 		})
 		if successDeleteExtentCnt == inode.Extents.Len() {
 			shouldCommit = append(shouldCommit, inode)
-			log.LogDebugf("action[batchDeleteExtentsByPartition]: delete inode(%v) success", inode)
+			span.Debugf("delete inode(%v) success", inode)
 		} else {
 			shouldPushToFreeList = append(shouldPushToFreeList, inode)
-			log.LogDebugf("action[batchDeleteExtentsByPartition]: delete inode(%v) fail", inode)
+			span.Debugf("delete inode(%v) fail", inode)
 		}
 	}
-
 	return
 }
 
 // Delete the marked inodes.
-func (mp *metaPartition) deleteMarkedInodes(inoSlice []uint64) {
+func (mp *metaPartition) deleteMarkedInodes(ctx context.Context, inoSlice []uint64) {
+	span := getSpan(ctx).WithOperation(fmt.Sprintf("deleteMarkedInodes-mp(%d)", mp.config.PartitionId))
 	defer func() {
 		if r := recover(); r != nil {
 			stack := string(debug.Stack())
-			log.LogErrorf(fmt.Sprintf("metaPartition(%v) deleteMarkedInodes panic (%v)\nstack:%v",
-				mp.config.PartitionId, r, stack))
+			span.Errorf("panic (%v)\nstack:%v", r, stack)
 		}
 	}()
 
 	if len(inoSlice) == 0 {
 		return
 	}
-	log.LogDebugf("[deleteMarkedInodes] . mp[%v] inoSlice [%v]", mp.config.PartitionId, inoSlice)
+	span.Debugf("inoSlice [%v]", inoSlice)
 	deleteExtentsByPartition := make(map[uint64][]*proto.ExtentKey)
 	allInodes := make([]*Inode, 0)
 	for _, ino := range inoSlice {
 		ref := &Inode{Inode: ino}
 		inode, ok := mp.inodeTree.Get(ref).(*Inode)
 		if !ok {
-			log.LogDebugf("[deleteMarkedInodes] . mp[%v] inode[%v] not found", mp.config.PartitionId, ino)
+			span.Debugf("inode[%v] not found", ino)
 			continue
 		}
 
 		if !inode.ShouldDelete() {
-			log.LogWarnf("[deleteMarkedInodes] : inode should not be deleted, ino %s", inode.String())
+			span.Warnf("inode should not be deleted, ino %s", inode.String())
 			continue
 		}
 
-		log.LogDebugf("[deleteMarkedInodes] . mp[%v] inode[%v] inode.Extents: %v, ino verList: %v",
-			mp.config.PartitionId, ino, inode.Extents, inode.GetMultiVerString())
-
+		span.Debugf("inode[%v] inode.Extents: %v, ino verList: %v", ino, inode.Extents, inode.GetMultiVerString())
 		if inode.getLayerLen() > 0 {
-			log.LogErrorf("[deleteMarkedInodes] deleteMarkedInodes. mp[%v] inode[%v] verlist len %v should not drop",
-				mp.config.PartitionId, ino, inode.getLayerLen())
+			span.Errorf("inode[%v] verlist len %v should not drop", ino, inode.getLayerLen())
 			return
 		}
 
-		extInfo := inode.GetAllExtsOfflineInode(mp.config.PartitionId)
+		extInfo := inode.GetAllExtsOfflineInode(ctx, mp.config.PartitionId)
 		for dpID, inodeExts := range extInfo {
 			exts, ok := deleteExtentsByPartition[dpID]
 			if !ok {
 				exts = make([]*proto.ExtentKey, 0)
 			}
 			exts = append(exts, inodeExts...)
-			log.LogWritef("[deleteMarkedInodes] mp[%v] ino(%v) deleteExtent(%v)", mp.config.PartitionId, inode.Inode, len(inodeExts))
+			span.Infof("ino(%v) deleteExtent(%v)", inode.Inode, len(inodeExts))
 			deleteExtentsByPartition[dpID] = exts
 		}
 
@@ -306,26 +308,23 @@ func (mp *metaPartition) deleteMarkedInodes(inoSlice []uint64) {
 	var shouldRePushToFreeList []*Inode
 	if proto.IsCold(mp.volType) {
 		// delete ebs obj extents
-		shouldCommit, shouldRePushToFreeList = mp.doBatchDeleteObjExtentsInEBS(allInodes)
-		log.LogInfof("[deleteMarkedInodes] metaPartition(%v) deleteInodeCnt(%d) shouldRePush(%d)",
-			mp.config.PartitionId, len(shouldCommit), len(shouldRePushToFreeList))
+		shouldCommit, shouldRePushToFreeList = mp.doBatchDeleteObjExtentsInEBS(ctx, allInodes)
+		span.Infof("deleteInodeCnt(%d) shouldRePush(%d)", len(shouldCommit), len(shouldRePushToFreeList))
 		for _, inode := range shouldRePushToFreeList {
 			mp.freeList.Push(inode.Inode)
 		}
 		allInodes = shouldCommit
 	}
-	log.LogInfof("[deleteMarkedInodes] metaPartition(%v) deleteExtentsByPartition(%v) allInodes(%v)",
-		mp.config.PartitionId, deleteExtentsByPartition, allInodes)
-	shouldCommit, shouldRePushToFreeList = mp.batchDeleteExtentsByPartition(deleteExtentsByPartition, allInodes)
+	span.Infof("deleteExtentsByPartition(%v) allInodes(%v)", deleteExtentsByPartition, allInodes)
+	shouldCommit, shouldRePushToFreeList = mp.batchDeleteExtentsByPartition(ctx, deleteExtentsByPartition, allInodes)
 	bufSlice := make([]byte, 0, 8*len(shouldCommit))
 	for _, inode := range shouldCommit {
 		bufSlice = append(bufSlice, inode.MarshalKey()...)
 	}
 
-	err := mp.syncToRaftFollowersFreeInode(bufSlice)
+	err := mp.syncToRaftFollowersFreeInode(ctx, bufSlice)
 	if err != nil {
-		log.LogWarnf("[deleteMarkedInodes] raft commit inode list: %v, "+
-			"response %s", shouldCommit, err.Error())
+		span.Warnf("raft commit inode list: %v, response %s", shouldCommit, err.Error())
 	}
 
 	for _, inode := range shouldCommit {
@@ -336,7 +335,7 @@ func (mp *metaPartition) deleteMarkedInodes(inoSlice []uint64) {
 		}
 	}
 
-	log.LogInfof("[deleteMarkedInodes] metaPartition(%v) deleteInodeCnt(%v) inodeCnt(%v)", mp.config.PartitionId, len(shouldCommit), mp.inodeTree.Len())
+	span.Infof("deleteInodeCnt(%v) inodeCnt(%v)", len(shouldCommit), mp.inodeTree.Len())
 	for _, inode := range shouldRePushToFreeList {
 		mp.freeList.Push(inode.Inode)
 	}
@@ -347,11 +346,11 @@ func (mp *metaPartition) deleteMarkedInodes(inoSlice []uint64) {
 	}
 }
 
-func (mp *metaPartition) syncToRaftFollowersFreeInode(hasDeleteInodes []byte) (err error) {
+func (mp *metaPartition) syncToRaftFollowersFreeInode(ctx context.Context, hasDeleteInodes []byte) (err error) {
 	if len(hasDeleteInodes) == 0 {
 		return
 	}
-	_, err = mp.submit(context.TODO(), opFSMInternalDeleteInode, hasDeleteInodes)
+	_, err = mp.submit(ctx, opFSMInternalDeleteInode, hasDeleteInodes)
 	return
 }
 
@@ -361,7 +360,7 @@ func (mp *metaPartition) notifyRaftFollowerToFreeInodes(wg *sync.WaitGroup, targ
 	defer func() {
 		wg.Done()
 		if err != nil {
-			log.LogWarnf(err.Error())
+			log.Warn(err.Error())
 			mp.config.ConnPool.PutConnect(conn, ForceClosedConnect)
 		} else {
 			mp.config.ConnPool.PutConnect(conn, NoClosedConnect)
@@ -378,32 +377,29 @@ func (mp *metaPartition) notifyRaftFollowerToFreeInodes(wg *sync.WaitGroup, targ
 	if err = request.ReadFromConnWithVer(conn, proto.NoReadDeadlineTime); err != nil {
 		return
 	}
-
 	if request.ResultCode != proto.OpOk {
 		err = fmt.Errorf("request(%v) error(%v)", request.GetUniqueLogId(), string(request.Data[:request.Size]))
 	}
-
 	return
 }
 
-func (mp *metaPartition) doDeleteMarkedInodes(ext *proto.ExtentKey) (err error) {
+func (mp *metaPartition) doDeleteMarkedInodes(ctx context.Context, ext *proto.ExtentKey) (err error) {
+	span := getSpan(ctx).WithOperation("doDeleteMarkedInodes")
 	// get the data node view
 	dp := mp.vol.GetPartition(ext.PartitionId)
-	log.LogDebugf("action[doDeleteMarkedInodes] dp(%v) status (%v)", dp.PartitionID, dp.Status)
+	span.Debugf("dp(%v) status (%v)", dp.PartitionID, dp.Status)
 	if dp == nil {
 		if proto.IsCold(mp.volType) {
-			log.LogInfof("[doDeleteMarkedInodes] ext(%s) is already been deleted, not delete any more", ext.String())
+			span.Infof("ext(%s) is already been deleted, not delete any more", ext.String())
 			return
 		}
-
-		err = errors.NewErrorf("unknown dataPartitionID=%d in vol",
-			ext.PartitionId)
+		err = errors.NewErrorf("unknown dataPartitionID=%d in vol", ext.PartitionId)
 		return
 	}
 
 	// delete the data node
 	if len(dp.Hosts) < 1 {
-		log.LogErrorf("doBatchDeleteExtentsByPartition dp id(%v) is invalid, detail[%v]", ext.PartitionId, dp)
+		span.Errorf("dp id(%v) is invalid, detail[%v]", ext.PartitionId, dp)
 		err = errors.NewErrorf("dp id(%v) is invalid", ext.PartitionId)
 		return
 	}
@@ -414,62 +410,56 @@ func (mp *metaPartition) doDeleteMarkedInodes(ext *proto.ExtentKey) (err error) 
 	}
 	addr := util.ShiftAddrPort(dp.Hosts[0], smuxPortShift)
 	conn, err := smuxPool.GetConnect(addr)
-	log.LogInfof("doDeleteMarkedInodes mp (%v) GetConnect (%v), ext(%s)", mp.config.PartitionId, addr, ext.String())
+	span.Infof("mp(%v) GetConnect (%v), ext(%s)", mp.config.PartitionId, addr, ext.String())
 
 	defer func() {
 		smuxPool.PutConnect(conn, ForceClosedConnect)
-		log.LogInfof("doDeleteMarkedInodes mp (%v) PutConnect (%v), ext(%s)", mp.config.PartitionId, addr, ext.String())
+		span.Infof("mp(%v) PutConnect (%v), ext(%s)", mp.config.PartitionId, addr, ext.String())
 	}()
 
 	if err != nil {
-		err = errors.NewErrorf("get conn from pool %s, "+
-			"extent(%s))",
-			err.Error(), ext.String())
+		err = errors.NewErrorf("get conn from pool %s, extent(%s))", err.Error(), ext.String())
 		return
 	}
 	var (
 		p       *Packet
 		invalid bool
 	)
-	if p, invalid = NewPacketToDeleteExtent(dp, ext); invalid {
+	if p, invalid = NewPacketToDeleteExtent(ctx, dp, ext); invalid {
 		p.ResultCode = proto.OpOk
 		return
 	}
 	if err = p.WriteToConn(conn); err != nil {
-		err = errors.NewErrorf("write to dataNode %s, %s", p.GetUniqueLogId(),
-			err.Error())
+		err = errors.NewErrorf("write to dataNode %s, %s", p.GetUniqueLogId(), err.Error())
 		return
 	}
 
 	if err = p.ReadFromConnWithVer(conn, proto.ReadDeadlineTime); err != nil {
-		err = errors.NewErrorf("read response from dataNode %s, %s",
-			p.GetUniqueLogId(), err.Error())
+		err = errors.NewErrorf("read response from dataNode %s, %s", p.GetUniqueLogId(), err.Error())
 		return
 	}
 
 	if p.ResultCode == proto.OpTryOtherAddr && proto.IsCold(mp.volType) {
-		log.LogInfof("[doBatchDeleteExtentsByPartition] deleteOp retrun tryOtherAddr code means dp is deleted for LF vol, ext(%s)", ext.String())
+		span.Infof("deleteOp retrun tryOtherAddr code means dp is deleted for LF vol, ext(%s)", ext.String())
 		return
 	}
 
 	if p.ResultCode != proto.OpOk {
-		err = errors.NewErrorf("[deleteMarkedInodes] %s response: %s", p.GetUniqueLogId(),
-			p.GetResultMsg())
+		err = errors.NewErrorf("[deleteMarkedInodes] %s response: %s", p.GetUniqueLogId(), p.GetResultMsg())
 	}
 	return
 }
 
-func (mp *metaPartition) doBatchDeleteExtentsByPartition(partitionID uint64, exts []*proto.ExtentKey) (err error) {
+func (mp *metaPartition) doBatchDeleteExtentsByPartition(ctx context.Context, partitionID uint64, exts []*proto.ExtentKey) (err error) {
 	// get the data node view
+	span := getSpan(ctx).WithOperation("doBatchDeleteExtentsByPartition")
 	dp := mp.vol.GetPartition(partitionID)
 	if dp == nil {
 		if proto.IsCold(mp.volType) {
-			log.LogInfof("[doBatchDeleteExtentsByPartition] dp(%d) is already been deleted, not delete any more", partitionID)
+			span.Infof("dp(%d) is already been deleted, not delete any more", partitionID)
 			return
 		}
-
-		err = errors.NewErrorf("unknown dataPartitionID=%d in vol",
-			partitionID)
+		err = errors.NewErrorf("unknown dataPartitionID=%d in vol", partitionID)
 		return
 	}
 
@@ -482,57 +472,49 @@ func (mp *metaPartition) doBatchDeleteExtentsByPartition(partitionID uint64, ext
 
 	// delete the data node
 	if len(dp.Hosts) < 1 {
-		log.LogErrorf("doBatchDeleteExtentsByPartition dp id(%v) is invalid, detail[%v]", partitionID, dp)
+		span.Errorf("dp id(%v) is invalid, detail[%v]", partitionID, dp)
 		err = errors.NewErrorf("dp id(%v) is invalid", partitionID)
 		return
 	}
 	addr := util.ShiftAddrPort(dp.Hosts[0], smuxPortShift)
 	conn, err := smuxPool.GetConnect(addr)
-	log.LogInfof("doBatchDeleteExtentsByPartition mp (%v) GetConnect (%v)", mp.config.PartitionId, addr)
+	span.Infof("mp(%v) GetConnect (%v)", mp.config.PartitionId, addr)
 
 	ResultCode := proto.OpOk
-
 	defer func() {
 		smuxPool.PutConnect(conn, ForceClosedConnect)
-		log.LogInfof("doBatchDeleteExtentsByPartition mp (%v) PutConnect (%v)", mp.config.PartitionId, addr)
+		span.Infof("mp(%v) PutConnect (%v)", mp.config.PartitionId, addr)
 	}()
 
 	if err != nil {
-		err = errors.NewErrorf("get conn from pool %s, "+
-			"extents partitionId=%d",
-			err.Error(), partitionID)
+		err = errors.NewErrorf("get conn from pool %s, extents partitionId=%d", err.Error(), partitionID)
 		return
 	}
 	p := NewPacketToBatchDeleteExtent(dp, exts)
 	if err = p.WriteToConn(conn); err != nil {
-		err = errors.NewErrorf("write to dataNode %s, %s", p.GetUniqueLogId(),
-			err.Error())
+		err = errors.NewErrorf("write to dataNode %s, %s", p.GetUniqueLogId(), err.Error())
 		return
 	}
 	if err = p.ReadFromConnWithVer(conn, proto.BatchDeleteExtentReadDeadLineTime); err != nil {
-		err = errors.NewErrorf("read response from dataNode %s, %s",
-			p.GetUniqueLogId(), err.Error())
+		err = errors.NewErrorf("read response from dataNode %s, %s", p.GetUniqueLogId(), err.Error())
 		return
 	}
 
 	ResultCode = p.ResultCode
-
 	if ResultCode == proto.OpTryOtherAddr && proto.IsCold(mp.volType) {
-		log.LogInfof("[doBatchDeleteExtentsByPartition] deleteOp retrun tryOtherAddr code means dp is deleted for LF vol, dp(%d)", partitionID)
+		span.Infof("deleteOp retrun tryOtherAddr code means dp is deleted for LF vol, dp(%d)", partitionID)
 		return
 	}
-
 	if p.ResultCode != proto.OpOk {
-		err = errors.NewErrorf("[deleteMarkedInodes] %s response: %s", p.GetUniqueLogId(),
-			p.GetResultMsg())
+		err = errors.NewErrorf("[deleteMarkedInodes] %s response: %s", p.GetUniqueLogId(), p.GetResultMsg())
 	}
-
 	return
 }
 
 const maxDelCntOnce = 512
 
-func (mp *metaPartition) doBatchDeleteObjExtentsInEBS(allInodes []*Inode) (shouldCommit []*Inode, shouldPushToFreeList []*Inode) {
+func (mp *metaPartition) doBatchDeleteObjExtentsInEBS(ctx context.Context, allInodes []*Inode) (shouldCommit []*Inode, shouldPushToFreeList []*Inode) {
+	span := getSpan(ctx).WithOperation("doBatchDeleteObjExtentsInEBS")
 	shouldCommit = make([]*Inode, 0, len(allInodes))
 	shouldPushToFreeList = make([]*Inode, 0)
 	var (
@@ -547,13 +529,13 @@ func (mp *metaPartition) doBatchDeleteObjExtentsInEBS(allInodes []*Inode) (shoul
 		inode.ObjExtents.RLock()
 		go func(ino *Inode, oeks []proto.ObjExtentKey) {
 			defer wg.Done()
-			log.LogDebugf("[doBatchDeleteObjExtentsInEBS] ino(%d) delObjEks[%d]", ino.Inode, len(oeks))
-			err := mp.deleteObjExtents(oeks)
+			span.Debugf("ino(%d) delObjEks[%d]", ino.Inode, len(oeks))
+			err := mp.deleteObjExtents(ctx, oeks)
 
 			lock.Lock()
 			if err != nil {
 				shouldPushToFreeList = append(shouldPushToFreeList, ino)
-				log.LogErrorf("[doBatchDeleteObjExtentsInEBS] delete ebs eks fail, ino(%d), cnt(%d), err(%s)", ino.Inode, len(oeks), err.Error())
+				span.Errorf("delete ebs eks fail, ino(%d), cnt(%d), err(%s)", ino.Inode, len(oeks), err.Error())
 			} else {
 				shouldCommit = append(shouldCommit, ino)
 			}
@@ -569,26 +551,26 @@ func (mp *metaPartition) doBatchDeleteObjExtentsInEBS(allInodes []*Inode) (shoul
 	return
 }
 
-func (mp *metaPartition) deleteObjExtents(oeks []proto.ObjExtentKey) (err error) {
+func (mp *metaPartition) deleteObjExtents(ctx context.Context, oeks []proto.ObjExtentKey) (err error) {
+	span := getSpan(ctx).WithOperation("deleteObjExtents")
 	total := len(oeks)
-
 	for i := 0; i < total; i += maxDelCntOnce {
 		max := util.Min(i+maxDelCntOnce, total)
 		err = mp.ebsClient.Delete(oeks[i:max])
 		if err != nil {
-			log.LogErrorf("[deleteObjExtents] delete ebs eks fail, cnt(%d), err(%s)", max-i, err.Error())
+			span.Errorf("delete ebs eks fail, cnt(%d), err(%s)", max-i, err.Error())
 			return err
 		}
 	}
-
 	return err
 }
 
-func (mp *metaPartition) persistDeletedInode(ino uint64, currentSize *uint64) {
-	if *currentSize >= DeleteInodeFileRollingSize {
-		fileName := fmt.Sprintf("%v.%v.%v", DeleteInodeFileExtension, time.Now().Format(log.FileNameDateFormat), "old")
+func (mp *metaPartition) persistDeletedInode(ctx context.Context, ino uint64, currentSize *uint64) {
+	span := getSpan(ctx).WithOperation("persistDeletedInode")
+	if *currentSize >= _deleteInodeFileRollingSize {
+		fileName := fmt.Sprintf("%v.%v.%v", DeleteInodeFileExtension, time.Now().Format(clog.FileNameDateFormat), "old")
 		if err := mp.delInodeFp.Sync(); err != nil {
-			log.LogErrorf("[persistDeletedInode] failed to sync delete inode file, err(%v), inode(%v)", err, ino)
+			span.Errorf("failed to sync delete inode file, err(%v), inode(%v)", err, ino)
 			return
 		}
 		mp.delInodeFp.Close()
@@ -598,40 +580,41 @@ func (mp *metaPartition) persistDeletedInode(ino uint64, currentSize *uint64) {
 		fileName = path.Join(mp.config.RootDir, fileName)
 		err := os.Rename(path.Join(mp.config.RootDir, DeleteInodeFileExtension), fileName)
 		if err != nil {
-			log.LogErrorf("[persistDeletedInode] failed to rename delete inode file, err(%v)", err)
+			span.Errorf("failed to rename delete inode file, err(%v)", err)
 		} else {
 			*currentSize = 0
 		}
 		if err = mp.openDeleteInodeFile(); err != nil {
-			log.LogErrorf("[persistDeletedInode] failed to open delete inode file, err(%v), inode(%v)", err, ino)
+			span.Errorf("failed to open delete inode file, err(%v), inode(%v)", err, ino)
 			return
 		}
 	}
 	// NOTE: += sizeof(uint64)
 	*currentSize += 8
 	if _, err := mp.delInodeFp.WriteString(fmt.Sprintf("%v\n", ino)); err != nil {
-		log.LogErrorf("[persistDeletedInode] failed to persist ino(%v), err(%v)", ino, err)
+		span.Errorf("failed to persist ino(%v), err(%v)", ino, err)
 		return
 	}
 }
 
-func (mp *metaPartition) persistDeletedInodes(inos []uint64) {
-	log.LogDebugf("persistDeletedInodes. inos [%v]", inos)
+func (mp *metaPartition) persistDeletedInodes(ctx context.Context, inos []uint64) {
+	span := getSpan(ctx).WithOperation("persistDeletedInodes")
+	span.Debugf("inos [%v]", inos)
 	if mp.delInodeFp == nil {
 		// NOTE: hope it can re-open file
 		if err := mp.openDeleteInodeFile(); err != nil {
-			log.LogErrorf("[persistDeletedInodes] delete inode file is not open, err(%v), inodes(%v)", err, inos)
+			span.Errorf("delete inode file is not open, err(%v), inodes(%v)", err, inos)
 			return
 		}
-		log.LogWarnf("[persistDeletedInodes] re-open file success")
+		span.Warn("re-open file success")
 	}
 	info, err := mp.delInodeFp.Stat()
 	if err != nil {
-		log.LogErrorf("[persistDeletedInodes] failed to get size of delete inode file, err(%v), inodes(%v)", err, inos)
+		span.Errorf("failed to get size of delete inode file, err(%v), inodes(%v)", err, inos)
 		return
 	}
 	currSize := uint64(info.Size())
 	for _, ino := range inos {
-		mp.persistDeletedInode(ino, &currSize)
+		mp.persistDeletedInode(ctx, ino, &currSize)
 	}
 }

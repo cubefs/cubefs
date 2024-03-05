@@ -24,7 +24,6 @@ import (
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/exporter"
-	"github.com/cubefs/cubefs/util/log"
 )
 
 type storeMsg struct {
@@ -51,20 +50,19 @@ func (mp *metaPartition) startSchedule(curIndex uint64) {
 	timerCursor := time.NewTimer(intervalToSyncCursor)
 	scheduleState := common.StateStopped
 	lastCursor := mp.GetCursor()
-	dumpFunc := func(msg *storeMsg) {
-		log.LogWarnf("[startSchedule] partitionId=%d: nowAppID"+
-			"=%d, applyID=%d", mp.config.PartitionId, curIndex,
-			msg.applyIndex)
-		if err := mp.store(msg); err == nil {
+	dumpFunc := func(ctx context.Context, msg *storeMsg) {
+		span := getSpan(ctx)
+		span.Warnf("[startSchedule] partitionId=%d: nowAppID=%d, applyID=%d",
+			mp.config.PartitionId, curIndex, msg.applyIndex)
+		if err := mp.store(ctx, msg); err == nil {
 			// truncate raft log
 			if mp.raftPartition != nil {
-				log.LogWarnf("[startSchedule] start trunc, partitionId=%d: nowAppID"+
-					"=%d, applyID=%d", mp.config.PartitionId, curIndex,
-					msg.applyIndex)
+				span.Warnf("[startSchedule] start trunc, partitionId=%d: nowAppID=%d, applyID=%d",
+					mp.config.PartitionId, curIndex, msg.applyIndex)
 				mp.raftPartition.Truncate(curIndex)
 			} else {
 				// maybe happen when start load dentry
-				log.LogWarnf("[startSchedule] raftPartition is nil so skip" +
+				span.Warnf("[startSchedule] raftPartition is nil so skip" +
 					" truncate raft log")
 			}
 			curIndex = msg.applyIndex
@@ -73,7 +71,7 @@ func (mp *metaPartition) startSchedule(curIndex uint64) {
 			mp.storeChan <- msg
 			err = errors.NewErrorf("[startSchedule]: dump partition id=%d: %v",
 				mp.config.PartitionId, err.Error())
-			log.LogErrorf(err.Error())
+			span.Error(err.Error())
 			exporter.Warning(err.Error())
 		}
 
@@ -92,6 +90,8 @@ func (mp *metaPartition) startSchedule(curIndex uint64) {
 					readyChan <- struct{}{}
 				}
 			}
+
+			span, ctx := spanContextPrefix("scheduler-")
 			select {
 			case <-stopC:
 				timer.Stop()
@@ -112,7 +112,7 @@ func (mp *metaPartition) startSchedule(curIndex uint64) {
 					}
 				}
 				if maxMsg != nil {
-					go dumpFunc(maxMsg)
+					go dumpFunc(ctx, maxMsg)
 				} else {
 					if _, ok := mp.IsLeader(); ok {
 						timer.Reset(intervalToPersistData)
@@ -132,13 +132,13 @@ func (mp *metaPartition) startSchedule(curIndex uint64) {
 					// do nothing
 				}
 			case <-timer.C:
-				log.LogDebugf("[startSchedule] intervalToPersistData curIndex: %v,apply:%v", curIndex, mp.applyID)
+				span.Debugf("[startSchedule] intervalToPersistData curIndex: %v,apply:%v", curIndex, mp.applyID)
 				if mp.applyID <= curIndex {
 					timer.Reset(intervalToPersistData)
 					continue
 				}
-				if _, err := mp.submit(context.TODO(), opFSMStoreTick, nil); err != nil {
-					log.LogErrorf("[startSchedule] raft submit: %s", err.Error())
+				if _, err := mp.submit(ctx, opFSMStoreTick, nil); err != nil {
+					span.Errorf("[startSchedule] raft submit: %s", err.Error())
 					if _, ok := mp.IsLeader(); ok {
 						timer.Reset(intervalToPersistData)
 					}
@@ -150,20 +150,20 @@ func (mp *metaPartition) startSchedule(curIndex uint64) {
 				}
 				curCursor := mp.GetCursor()
 				if curCursor == lastCursor {
-					log.LogDebugf("[startSchedule] partitionId=%d: curCursor[%v]=lastCursor[%v]",
+					span.Debugf("[startSchedule] partitionId=%d: curCursor[%v]=lastCursor[%v]",
 						mp.config.PartitionId, curCursor, lastCursor)
 					timerCursor.Reset(intervalToSyncCursor)
 					continue
 				}
 				Buf := make([]byte, 8)
 				binary.BigEndian.PutUint64(Buf, curCursor)
-				if _, err := mp.submit(context.TODO(), opFSMSyncCursor, Buf); err != nil {
-					log.LogErrorf("[startSchedule] raft submit: %s", err.Error())
+				if _, err := mp.submit(ctx, opFSMSyncCursor, Buf); err != nil {
+					span.Errorf("[startSchedule] raft submit: %s", err.Error())
 				}
 
 				binary.BigEndian.PutUint64(Buf, mp.txProcessor.txManager.txIdAlloc.getTransactionID())
-				if _, err := mp.submit(context.TODO(), opFSMSyncTxID, Buf); err != nil {
-					log.LogErrorf("[startSchedule] raft submit: %s", err.Error())
+				if _, err := mp.submit(ctx, opFSMSyncTxID, Buf); err != nil {
+					span.Errorf("[startSchedule] raft submit: %s", err.Error())
 				}
 				lastCursor = curCursor
 				timerCursor.Reset(intervalToSyncCursor)
