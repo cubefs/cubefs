@@ -49,6 +49,6 @@ func reportUnhealth(cid proto.ClusterID, action, module, host, reason string) {
 	unhealthMetric.WithLabelValues(cid.ToString(), action, module, host, reason).Inc()
 }
 
-func reportDownload(cid proto.ClusterID, way, reason string) {
+func ReportDownload(cid proto.ClusterID, way, reason string) {
 	downloadMetric.WithLabelValues(cid.ToString(), way, reason).Inc()
 }

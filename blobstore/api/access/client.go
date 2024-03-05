@@ -223,12 +223,12 @@ type API interface {
 
 var _ API = (*client)(nil)
 
-type noopBody struct{}
+type NoopBody struct{}
 
-var _ io.ReadCloser = (*noopBody)(nil)
+var _ io.ReadCloser = (*NoopBody)(nil)
 
-func (rc noopBody) Read(p []byte) (n int, err error) { return 0, io.EOF }
-func (rc noopBody) Close() error                     { return nil }
+func (rc NoopBody) Read(p []byte) (n int, err error) { return 0, io.EOF }
+func (rc NoopBody) Close() error                     { return nil }
 
 var memPool *resourcepool.MemPool
 
@@ -394,7 +394,7 @@ func (c *client) Put(ctx context.Context, args *PutArgs) (location Location, has
 		return Location{Blobs: make([]SliceInfo, 0)}, hashSumMap, nil
 	}
 
-	ctx = withReqidContext(ctx)
+	ctx = WithReqidContext(ctx)
 	if args.Size <= c.config.MaxSizePutOnce {
 		return c.putObject(ctx, args)
 	}
@@ -723,9 +723,9 @@ func (c *client) Get(ctx context.Context, args *GetArgs) (body io.ReadCloser, er
 	}
 	rpcClient := c.rpcClient.Load().(rpc.Client)
 
-	ctx = withReqidContext(ctx)
+	ctx = WithReqidContext(ctx)
 	if args.Location.Size == 0 || args.ReadSize == 0 {
-		return noopBody{}, nil
+		return NoopBody{}, nil
 	}
 
 	resp, err := rpcClient.Post(ctx, "/get", args)
@@ -748,7 +748,7 @@ func (c *client) Delete(ctx context.Context, args *DeleteArgs) ([]Location, erro
 	}
 	rpcClient := c.rpcClient.Load().(rpc.Client)
 
-	ctx = withReqidContext(ctx)
+	ctx = WithReqidContext(ctx)
 	locations := make([]Location, 0, len(args.Locations))
 	for _, loc := range args.Locations {
 		if loc.Size > 0 {

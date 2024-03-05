@@ -215,7 +215,7 @@ func handleAlloc(c *rpc.Context) {
 		}
 	}
 
-	fillCrc(&loc)
+	FillCrc(&loc)
 	c.RespondJSON(access.AllocResp{
 		Location: loc,
 		Tokens:   tokens,
@@ -252,7 +252,7 @@ func handlePut(c *rpc.Context) {
 	}
 
 	loc := access.Location{Size: uint64(args.Size)}
-	fillCrc(&loc)
+	FillCrc(&loc)
 	c.RespondJSON(access.PutResp{
 		Location:   loc,
 		HashSumMap: hashSumMap,
@@ -303,7 +303,7 @@ func handleGet(c *rpc.Context) {
 		return
 	}
 
-	if !verifyCrc(&args.Location) {
+	if !VerifyCrc(&args.Location) {
 		c.RespondStatus(http.StatusForbidden)
 		return
 	}
@@ -331,7 +331,7 @@ func handleDelete(c *rpc.Context) {
 		return
 	}
 	for _, loc := range args.Locations {
-		if !verifyCrc(&loc) {
+		if !VerifyCrc(&loc) {
 			c.RespondStatus(http.StatusBadRequest)
 			return
 		}
@@ -359,7 +359,7 @@ func handleSign(c *rpc.Context) {
 	c.RespondJSON(access.SignResp{Location: args.Location})
 }
 
-func calcCrc(loc *access.Location) (uint32, error) {
+func CalcCrc(loc *access.Location) (uint32, error) {
 	crcWriter := crc32.New(crc32.IEEETable)
 
 	buf := bytespool.Alloc(1024)
@@ -377,8 +377,8 @@ func calcCrc(loc *access.Location) (uint32, error) {
 	return crcWriter.Sum32(), nil
 }
 
-func fillCrc(loc *access.Location) error {
-	crc, err := calcCrc(loc)
+func FillCrc(loc *access.Location) error {
+	crc, err := CalcCrc(loc)
 	if err != nil {
 		return err
 	}
@@ -386,8 +386,8 @@ func fillCrc(loc *access.Location) error {
 	return nil
 }
 
-func verifyCrc(loc *access.Location) bool {
-	crc, err := calcCrc(loc)
+func VerifyCrc(loc *access.Location) bool {
+	crc, err := CalcCrc(loc)
 	if err != nil {
 		return false
 	}
@@ -405,7 +405,7 @@ func signCrc(loc *access.Location, locs []access.Location) error {
 	}
 
 	for _, l := range locs {
-		if !verifyCrc(&l) {
+		if !VerifyCrc(&l) {
 			return fmt.Errorf("not equal in crc %d", l.Crc)
 		}
 
@@ -432,7 +432,7 @@ func signCrc(loc *access.Location, locs []access.Location) error {
 		}
 	}
 
-	return fillCrc(loc)
+	return FillCrc(loc)
 }
 
 type stringid struct{ id string }
@@ -501,7 +501,7 @@ func TestAccessClientConnectionMode(t *testing.T) {
 			continue
 		}
 		loc := access.Location{Size: uint64(mrand.Int63n(cs.size))}
-		fillCrc(&loc)
+		FillCrc(&loc)
 		_, err = cli.Delete(randCtx(), &access.DeleteArgs{
 			Locations: []access.Location{loc},
 		})
@@ -808,7 +808,7 @@ func TestAccessClientDelete(t *testing.T) {
 	}
 	{
 		loc := access.Location{Size: 100, Blobs: make([]access.SliceInfo, 0)}
-		fillCrc(&loc)
+		FillCrc(&loc)
 		args := &access.DeleteArgs{
 			Locations: make([]access.Location, 0, access.MaxDeleteLocations),
 		}

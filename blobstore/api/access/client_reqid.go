@@ -61,7 +61,7 @@ func reqidFromContext(ctx context.Context) (string, bool) {
 	return "", false
 }
 
-func withReqidContext(ctx context.Context) context.Context {
+func WithReqidContext(ctx context.Context) context.Context {
 	if rid, ok := reqidFromContext(ctx); ok {
 		_, ctx := trace.StartSpanFromContextWithTraceID(ctx, _operationName, rid)
 		return ctx
