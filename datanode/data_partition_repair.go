@@ -505,7 +505,7 @@ func (dp *DataPartition) streamRepairExtent(remoteExtentInfo *storage.ExtentInfo
 	log.LogDebugf("streamRepairExtent dp %v extent %v remote info %v", dp.partitionID, remoteExtentInfo.FileID, remoteExtentInfo)
 	store := dp.ExtentStore()
 	if !store.HasExtent(remoteExtentInfo.FileID) {
-		log.LogDebugf("streamRepairExtent dp %v extent %v not exist", remoteExtentInfo)
+		log.LogDebugf("streamRepairExtent dp %v extent %v not exist", dp.partitionID, remoteExtentInfo)
 		return
 	}
 	if !AutoRepairStatus && !storage.IsTinyExtent(remoteExtentInfo.FileID) {
@@ -548,11 +548,14 @@ func (dp *DataPartition) streamRepairExtent(remoteExtentInfo *storage.ExtentInfo
 		}
 		log.LogDebugf("streamRepairExtent dp %v extent %v currFixOffset %v dstOffset %v, request %v", dp.partitionID,
 			remoteExtentInfo.FileID, currFixOffset, dstOffset, request)
-		var (
-			hasRecoverySize uint64
-		)
+		var hasRecoverySize uint64
 		var loopTimes uint64
 		for currFixOffset < dstOffset {
+			if dp.dataNode.space.Partition(dp.partitionID) == nil {
+				log.LogWarnf("streamRepairExtent dp %v is detached, quit repair",
+					dp.partitionID)
+				return
+			}
 			if currFixOffset >= dstOffset {
 				break
 			}
@@ -570,7 +573,7 @@ func (dp *DataPartition) streamRepairExtent(remoteExtentInfo *storage.ExtentInfo
 			if reply.ResultCode != proto.OpOk {
 				if reply.ResultCode == proto.OpReadRepairExtentAgain {
 					log.LogDebugf("streamRepairExtent dp %v extent %v wait for token", dp.partitionID, remoteExtentInfo.FileID)
-					time.Sleep(time.Second * 1)
+					time.Sleep(time.Second * 5)
 					isNetError = true
 					return storage.NoDiskReadRepairExtentTokenError
 				} else {
@@ -621,7 +624,7 @@ func (dp *DataPartition) streamRepairExtent(remoteExtentInfo *storage.ExtentInfo
 				if reply.ArgLen == TinyExtentRepairReadResponseArgLen {
 					remoteAvaliSize = binary.BigEndian.Uint64(reply.Arg[9:TinyExtentRepairReadResponseArgLen])
 				}
-				if reply.Arg != nil { //compact v1.2.0 recovery
+				if reply.Arg != nil { // compact v1.2.0 recovery
 					isEmptyResponse = reply.Arg[0] == EmptyResponse
 				}
 				if isEmptyResponse {
@@ -639,7 +642,7 @@ func (dp *DataPartition) streamRepairExtent(remoteExtentInfo *storage.ExtentInfo
 				log.LogDebugf("streamRepairExtent reply size %v, currFixoffset %v, reply %v ", reply.Size, currFixOffset, reply)
 				_, err = store.Write(uint64(localExtentInfo.FileID), int64(currFixOffset), int64(reply.Size), reply.Data, reply.CRC, wType, BufferWrite)
 			}
-			//log.LogDebugf("streamRepairExtent reply size %v, currFixoffset %v, reply %v err %v", reply.Size, currFixOffset, reply, err)
+			// log.LogDebugf("streamRepairExtent reply size %v, currFixoffset %v, reply %v err %v", reply.Size, currFixOffset, reply, err)
 			// write to the local extent file
 			if err != nil {
 				err = errors.Trace(err, "streamRepairExtent repair data error ")
