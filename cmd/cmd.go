@@ -347,7 +347,7 @@ func main() {
 				} else {
 					span, ctx := trace.StartSpanFromHTTPHeaderSafe(req, "")
 					defer span.Finish()
-					req = req.WithContext(ctx)
+					req = req.WithContext(proto.ContextWithSpan(ctx, span))
 					http.DefaultServeMux.ServeHTTP(w, req)
 				}
 			})
