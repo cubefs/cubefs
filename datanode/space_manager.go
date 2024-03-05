@@ -46,6 +46,7 @@ type SpaceManager struct {
 	createPartitionMutex sync.RWMutex
 	diskUtils            map[string]*atomicutil.Float64
 	samplerDone          chan struct{}
+	allDisksLoaded       bool
 }
 
 const diskSampleDuration = 1 * time.Second
@@ -218,7 +219,8 @@ func (manager *SpaceManager) Stats() *Stats {
 	return manager.stats
 }
 
-func (manager *SpaceManager) LoadDisk(path string, reservedSpace, diskRdonlySpace uint64, maxErrCnt int) (err error) {
+func (manager *SpaceManager) LoadDisk(path string, reservedSpace, diskRdonlySpace uint64, maxErrCnt int,
+	diskEnableReadRepairExtentLimit bool) (err error) {
 	var (
 		disk    *Disk
 		visitor PartitionVisitor
@@ -239,7 +241,7 @@ func (manager *SpaceManager) LoadDisk(path string, reservedSpace, diskRdonlySpac
 	}
 
 	if _, err = manager.GetDisk(path); err != nil {
-		disk, err = NewDisk(path, reservedSpace, diskRdonlySpace, maxErrCnt, manager)
+		disk, err = NewDisk(path, reservedSpace, diskRdonlySpace, maxErrCnt, manager, diskEnableReadRepairExtentLimit)
 		if err != nil {
 			log.LogErrorf("NewDisk fail err:[%v]", err)
 			return
