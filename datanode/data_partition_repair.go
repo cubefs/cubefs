@@ -557,6 +557,12 @@ func (dp *DataPartition) streamRepairExtent(remoteExtentInfo *storage.ExtentInfo
 	var loopTimes uint64
 	for currFixOffset < remoteExtentInfo.Size {
 
+		if dp.dataNode.space.Partition(dp.partitionID) == nil {
+			log.LogWarnf("streamRepairExtent dp %v is detached, quit repair",
+				dp.partitionID)
+			return
+		}
+
 		if !dp.Disk().CanWrite() {
 			log.LogWarnf("streamRepairExtent dp %v extent %v disk is full", dp.partitionID, remoteExtentInfo.FileID)
 			return fmt.Errorf("disk is full, can't do repair write any more")
@@ -579,7 +585,7 @@ func (dp *DataPartition) streamRepairExtent(remoteExtentInfo *storage.ExtentInfo
 		if reply.ResultCode != proto.OpOk {
 			if reply.ResultCode == proto.OpReadRepairExtentAgain {
 				log.LogDebugf("streamRepairExtent dp %v extent %v wait for token", dp.partitionID, remoteExtentInfo.FileID)
-				time.Sleep(time.Second * 1)
+				time.Sleep(time.Second * 5)
 				isNetError = true
 				return storage.NoDiskReadRepairExtentTokenError
 			} else {

@@ -77,6 +77,8 @@ type Disk struct {
 	limitWrite                  *ioLimiter
 	extentRepairReadLimit       chan struct{}
 	enableExtentRepairReadLimit bool
+	extentRepairReadMutex       sync.RWMutex
+	extentRepairReadDp          uint64
 }
 
 const (
@@ -86,7 +88,8 @@ const (
 
 type PartitionVisitor func(dp *DataPartition)
 
-func NewDisk(path string, reservedSpace, diskRdonlySpace uint64, maxErrCnt int, space *SpaceManager) (d *Disk, err error) {
+func NewDisk(path string, reservedSpace, diskRdonlySpace uint64, maxErrCnt int, space *SpaceManager,
+	diskEnableReadRepairExtentLimit bool) (d *Disk, err error) {
 	d = new(Disk)
 	d.Path = path
 	d.ReservedSpace = reservedSpace
@@ -116,6 +119,7 @@ func NewDisk(path string, reservedSpace, diskRdonlySpace uint64, maxErrCnt int, 
 	d.limitWrite = newIOLimiter(space.dataNode.diskWriteFlow, space.dataNode.diskWriteIocc)
 	d.extentRepairReadLimit = make(chan struct{}, MaxExtentRepairReadLimit)
 	d.extentRepairReadLimit <- struct{}{}
+	d.enableExtentRepairReadLimit = diskEnableReadRepairExtentLimit
 	return
 }
 
@@ -608,17 +612,17 @@ func isExpiredPartition(id uint64, partitions []uint64) bool {
 	return true
 }
 
-func (d *Disk) RequireReadExtentToken() bool {
-	d.RLock()
+func (d *Disk) RequireReadExtentToken(id uint64) bool {
+	d.extentRepairReadMutex.Lock()
+	defer d.extentRepairReadMutex.Unlock()
 	if !d.enableExtentRepairReadLimit {
-		d.RUnlock()
 		return true
 	}
-	d.RUnlock()
 	hasToken := false
 	select {
 	case <-d.extentRepairReadLimit:
 		hasToken = true
+		d.extentRepairReadDp = id
 	default:
 		hasToken = false
 	}
@@ -626,23 +630,28 @@ func (d *Disk) RequireReadExtentToken() bool {
 }
 
 func (d *Disk) ReleaseReadExtentToken() {
-	d.RLock()
+	d.extentRepairReadMutex.Lock()
+	defer d.extentRepairReadMutex.Unlock()
 	if !d.enableExtentRepairReadLimit {
-		d.RUnlock()
 		return
 	}
-	d.RUnlock()
-	d.extentRepairReadLimit <- struct{}{}
+	select {
+	case d.extentRepairReadLimit <- struct{}{}:
+		d.extentRepairReadDp = 0
+	default:
+		log.LogDebugf("extentRepairReadLimit channel is full, still release token")
+		d.extentRepairReadDp = 0
+	}
 }
 
 func (d *Disk) SetExtentRepairReadLimitStatus(status bool) {
-	d.Lock()
-	defer d.Unlock()
+	d.extentRepairReadMutex.Lock()
+	defer d.extentRepairReadMutex.Unlock()
 	d.enableExtentRepairReadLimit = status
 }
 
-func (d *Disk) QueryExtentRepairReadLimitStatus() bool {
-	d.RLock()
-	defer d.RUnlock()
-	return d.enableExtentRepairReadLimit
+func (d *Disk) QueryExtentRepairReadLimitStatus() (bool, uint64) {
+	d.extentRepairReadMutex.RLock()
+	defer d.extentRepairReadMutex.RUnlock()
+	return d.enableExtentRepairReadLimit, d.extentRepairReadDp
 }

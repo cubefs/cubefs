@@ -112,6 +112,9 @@ const (
 	ConfigDiskWriteIocc = "diskWriteIocc" // int
 	ConfigDiskWriteIops = "diskWriteIops" // int
 	ConfigDiskWriteFlow = "diskWriteFlow" // int
+
+	//disk read extent limit
+	ConfigEnableDiskReadExtentLimit = "enableDiskReadRepairExtentLimit" //bool
 )
 
 // DataNode defines the structure of a data node.
@@ -355,7 +358,7 @@ func (s *DataNode) startSpaceManager(cfg *config.Config) (err error) {
 	if diskRdonlySpace < DefaultDiskRetainMin {
 		diskRdonlySpace = DefaultDiskRetainMin
 	}
-
+	diskEnableReadRepairExtentLimit := cfg.GetBoolWithDefault(ConfigEnableDiskReadExtentLimit, false)
 	log.LogInfof("startSpaceManager preReserveSpace %d", diskRdonlySpace)
 
 	paths := make([]string, 0)
@@ -408,13 +411,26 @@ func (s *DataNode) startSpaceManager(cfg *config.Config) (err error) {
 		wg.Add(1)
 		go func(wg *sync.WaitGroup, path string, reservedSpace uint64) {
 			defer wg.Done()
-			s.space.LoadDisk(path, reservedSpace, diskRdonlySpace, DefaultDiskMaxErr)
+			s.space.LoadDisk(path, reservedSpace, diskRdonlySpace, DefaultDiskMaxErr, diskEnableReadRepairExtentLimit)
 		}(&wg, path, reservedSpace)
 	}
 
 	wg.Wait()
 	s.updateQosLimit() // load from config
+	s.markAllDiskLoaded()
 	return nil
+}
+
+func (s *DataNode) markAllDiskLoaded() {
+	s.space.diskMutex.Lock()
+	defer s.space.diskMutex.Unlock()
+	s.space.allDisksLoaded = true
+}
+
+func (s *DataNode) checkAllDiskLoaded() bool {
+	s.space.diskMutex.RLock()
+	defer s.space.diskMutex.RUnlock()
+	return s.space.allDisksLoaded
 }
 
 // execute shell to find all paths
@@ -593,6 +609,9 @@ func (s *DataNode) registerHandler() {
 	http.HandleFunc("/reloadDataPartition", s.reloadDataPartition)
 	http.HandleFunc("/setDiskExtentReadLimitStatus", s.setDiskExtentReadLimitStatus)
 	http.HandleFunc("/queryDiskExtentReadLimitStatus", s.queryDiskExtentReadLimitStatus)
+	//http.HandleFunc("/detachDataPartition", s.detachDataPartition)
+	//http.HandleFunc("/loadDataPartition", s.loadDataPartition)
+	http.HandleFunc("/releaseDiskExtentReadLimitToken", s.releaseDiskExtentReadLimitToken)
 }
 
 func (s *DataNode) startTCPService() (err error) {
