@@ -2110,23 +2110,33 @@ func (m *Server) markDeleteVol(w http.ResponseWriter, r *http.Request) {
 		vol.authKey = authKey
 		vol.DeleteExecTime = time.Now().Add(time.Duration(m.config.volDelayDeleteTimeHour) * time.Hour)
 		vol.user = m.user
+		m.cluster.deleteVolMutex.Lock()
+		m.cluster.delayDeleteVolsInfo = append(m.cluster.delayDeleteVolsInfo, &delayDeleteVolInfo{volName: name, authKey: authKey, execTime: vol.DeleteExecTime, user: m.user})
+		m.cluster.deleteVolMutex.Unlock()
 		defer func() {
 			if err != nil {
 				vol.Forbidden = oldForbiden
 				vol.authKey = ""
 				vol.DeleteExecTime = time.Time{}
 				vol.user = nil
+				var index int
+				var value *delayDeleteVolInfo
+				for index, value = range m.cluster.delayDeleteVolsInfo {
+					if value.volName == name {
+						break
+					}
+				}
+				m.cluster.delayDeleteVolsInfo = append(m.cluster.delayDeleteVolsInfo[:index], m.cluster.delayDeleteVolsInfo[index+1:]...)
 			}
 		}()
+
 		if err = m.cluster.markDeleteVol(name, authKey, false, true); err != nil {
 			sendErrReply(w, r, newErrHTTPReply(err))
 			return
 		}
 		vol.setDpForbid()
 		vol.setMpForbid()
-		m.cluster.deleteVolMutex.Lock()
-		m.cluster.delayDeleteVolsInfo = append(m.cluster.delayDeleteVolsInfo, &delayDeleteVolInfo{volName: name, authKey: authKey, execTime: vol.DeleteExecTime, user: m.user})
-		m.cluster.deleteVolMutex.Unlock()
+
 		log.LogDebugf("action[markDeleteVol] delayDeleteVolsInfo[%v]", m.cluster.delayDeleteVolsInfo)
 		msg = fmt.Sprintf("delete vol: forbid vol[%v] successfully,from[%v]", name, r.RemoteAddr)
 		log.LogWarn(msg)
