@@ -54,9 +54,8 @@ func TestAccessStreamConfig(t *testing.T) {
 func TestAccessStreamNew(t *testing.T) {
 	require.Equal(t, idc, streamer.IDC)
 
-	require.Panics(t, func() {
-		NewStreamHandler(&StreamConfig{IDC: "idc"}, nil)
-	})
+	_, err := NewStreamHandler(&StreamConfig{IDC: "idc"}, nil)
+	require.NotNil(t, err)
 }
 
 func TestAccessStreamDelete(t *testing.T) {
@@ -77,17 +76,17 @@ func TestAccessStreamAdmin(t *testing.T) {
 		sa := handler.Admin()
 		require.NotNil(t, sa)
 
-		admin := sa.(*streamAdmin)
-		require.Nil(t, admin.memPool)
+		admin := sa.(*StreamAdmin)
+		require.Nil(t, admin.MemPool)
 		require.Nil(t, admin.controller)
 	}
 	{
 		sa := streamer.Admin()
 		require.NotNil(t, sa)
 
-		admin := sa.(*streamAdmin)
-		require.NotNil(t, admin.memPool)
-		t.Log("mempool status:", admin.memPool.Status())
+		admin := sa.(*StreamAdmin)
+		require.NotNil(t, admin.MemPool)
+		t.Log("mempool status:", admin.MemPool.Status())
 
 		ctr := admin.controller
 		require.NotNil(t, ctr)

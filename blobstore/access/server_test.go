@@ -36,6 +36,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/rpc"
 	"github.com/cubefs/cubefs/blobstore/common/uptoken"
+	"github.com/cubefs/cubefs/blobstore/testing/mocks"
 )
 
 var (
@@ -66,7 +67,7 @@ func runMockService(s *Service) string {
 
 func newService() *Service {
 	ctr := gomock.NewController(&testing.T{})
-	s := NewMockStreamHandler(ctr)
+	s := mocks.NewMockStreamHandler(ctr)
 
 	s.EXPECT().Alloc(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes().DoAndReturn(
 		func(ctx context.Context, size uint64, blobSize uint32,
@@ -76,7 +77,7 @@ func newService() *Service {
 			}
 			loc := location.Copy()
 			loc.Size = uint64(size)
-			fillCrc(&loc)
+			FillCrc(&loc)
 			return &loc, nil
 		})
 
@@ -98,7 +99,7 @@ func newService() *Service {
 			}
 			loc := location.Copy()
 			loc.Size = uint64(size)
-			fillCrc(&loc)
+			FillCrc(&loc)
 			return &loc, nil
 		})
 
@@ -303,7 +304,7 @@ func TestAccessServiceGet(t *testing.T) {
 	{
 		args.Location.Size = 1023
 		args.ReadSize = 1023
-		fillCrc(&args.Location)
+		FillCrc(&args.Location)
 		resp, err := cli.Post(ctx, url(), args)
 		require.NoError(t, err)
 		resp.Body.Close()
@@ -312,7 +313,7 @@ func TestAccessServiceGet(t *testing.T) {
 	{
 		args.Location.Size = 1024
 		args.ReadSize = 1024
-		fillCrc(&args.Location)
+		FillCrc(&args.Location)
 		resp, err := cli.Post(ctx, url(), args)
 		require.NoError(t, err)
 		resp.Body.Close()
@@ -322,7 +323,7 @@ func TestAccessServiceGet(t *testing.T) {
 		args.Location.Size = 10240
 		args.Offset = 1000
 		args.ReadSize = 1024
-		fillCrc(&args.Location)
+		FillCrc(&args.Location)
 		resp, err := cli.Post(ctx, url(), args)
 		require.NoError(t, err)
 		resp.Body.Close()
@@ -375,7 +376,7 @@ func TestAccessServiceDelete(t *testing.T) {
 		require.Equal(t, 400, code)
 	}
 	{
-		fillCrc(&args.Locations[0])
+		FillCrc(&args.Locations[0])
 		code, resp, err := deleteRequest(args)
 		require.NoError(t, err)
 		require.Equal(t, 226, code)
@@ -384,7 +385,7 @@ func TestAccessServiceDelete(t *testing.T) {
 	{
 		loc := &args.Locations[0]
 		loc.Size = 1024
-		fillCrc(loc)
+		FillCrc(loc)
 		code, _, err := deleteRequest(args)
 		require.NoError(t, err)
 		require.Equal(t, 200, code)
@@ -392,7 +393,7 @@ func TestAccessServiceDelete(t *testing.T) {
 	{
 		loc := location.Copy()
 		loc.Size = 1024
-		fillCrc(&loc)
+		FillCrc(&loc)
 		locs := make([]access.Location, access.MaxDeleteLocations)
 		for idx := range locs {
 			locs[idx] = loc
@@ -405,7 +406,7 @@ func TestAccessServiceDelete(t *testing.T) {
 	{
 		loc := location.Copy()
 		loc.Size = 1024
-		fillCrc(&loc)
+		FillCrc(&loc)
 		locs := make([]access.Location, access.MaxDeleteLocations+1)
 		for idx := range locs {
 			locs[idx] = loc
@@ -418,7 +419,7 @@ func TestAccessServiceDelete(t *testing.T) {
 		loc := location.Copy()
 		loc.Size = 1024
 		loc.ClusterID = proto.ClusterID(11)
-		fillCrc(&loc)
+		FillCrc(&loc)
 		code, resp, err := deleteRequest(access.DeleteArgs{Locations: []access.Location{loc}})
 		require.NoError(t, err)
 		require.Equal(t, 226, code)
@@ -431,7 +432,7 @@ func TestAccessServiceDelete(t *testing.T) {
 			loc := location.Copy()
 			loc.Size = 1024
 			loc.ClusterID = proto.ClusterID(idx % 11)
-			fillCrc(&loc)
+			FillCrc(&loc)
 			locs[idx] = loc
 		}
 		code, resp, err := deleteRequest(access.DeleteArgs{Locations: locs})
@@ -516,7 +517,7 @@ func TestAccessServiceSign(t *testing.T) {
 		assertErrorCode(t, 400, err)
 	}
 	{
-		fillCrc(&args.Locations[0])
+		FillCrc(&args.Locations[0])
 		resp := &access.SignResp{}
 		err := cli.PostWith(ctx, url(), resp, args)
 		require.NoError(t, err)
