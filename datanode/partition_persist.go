@@ -1,9 +1,9 @@
 package datanode
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
-	"golang.org/x/time/rate"
 	"io/ioutil"
 	"os"
 	"path"
@@ -11,7 +11,9 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/cubefs/cubefs/util/infra"
 	"github.com/cubefs/cubefs/util/log"
+	"golang.org/x/time/rate"
 )
 
 type PersistFlag int
@@ -24,8 +26,48 @@ func (dp *DataPartition) lockPersist() (release func()) {
 	return
 }
 
+// Deprecated: Flush is deprecated, use Flusher instead.
 func (dp *DataPartition) Flush() (err error) {
 	return dp.persist(nil, true)
+}
+
+func (dp *DataPartition) Flusher() infra.Flusher {
+	var (
+		status       = dp.applyStatus.Snap()
+		storeFlusher = dp.extentStore.Flusher()
+	)
+	return infra.NewFuncFlusher(
+		func(opsLimiter, bpsLimiter *rate.Limiter) error {
+			var release = dp.lockPersist()
+			defer release()
+
+			var err error
+			if err = storeFlusher.Flush(opsLimiter, bpsLimiter); err != nil {
+				return err
+			}
+			if dp.raftPartition != nil {
+				if err = dp.raftPartition.FlushWAL(false); err != nil {
+					return err
+				}
+			}
+			if opsLimiter != nil {
+				_ = opsLimiter.Wait(context.Background())
+			}
+			if err = dp.persistAppliedID(status); err != nil {
+				return err
+			}
+
+			if opsLimiter != nil {
+				_ = opsLimiter.Wait(context.Background())
+			}
+			if err = dp.persistMetadata(status); err != nil {
+				return err
+			}
+			return nil
+		},
+		func() int {
+			return storeFlusher.Count() + 2
+		})
 }
 
 // Persist 方法会执行以下操作:
@@ -44,7 +86,7 @@ func (dp *DataPartition) persist(status *WALApplyStatus, useFlushExtentsRateLimi
 	}
 	var flushExtentsLimitRater *rate.Limiter
 	if useFlushExtentsRateLimiter {
-		flushExtentsLimitRater = dp.disk.createFlushExtentsRater(atomic.LoadUint64(&dp.disk.forceFlushFDParallelism))
+		flushExtentsLimitRater = newFlushBpsLimiter(atomic.LoadUint64(&dp.disk.forceFlushFDParallelism), dp.disk.isSSDMediaType())
 	}
 	_ = dp.forceFlushAllFD(flushExtentsLimitRater)
 
@@ -185,6 +227,7 @@ func (dp *DataPartition) persistMetadata(snap *WALApplyStatus) (err error) {
 	return
 }
 
+// Deprecated: forceFlushAllFD is deprecated, please use Flusher instead.
 func (dp *DataPartition) forceFlushAllFD(limiter *rate.Limiter) (error error) {
 	return dp.extentStore.Flush(limiter)
 }

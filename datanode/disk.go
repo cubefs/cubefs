@@ -31,6 +31,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/cubefs/cubefs/util/infra"
+
 	"github.com/cubefs/cubefs/util/topology"
 
 	"github.com/cubefs/cubefs/proto"
@@ -454,13 +456,18 @@ func (d *Disk) flushFPScheduler() {
 	if flushFDSecond == 0 {
 		flushFDSecond = DefaultForceFlushFDSecond
 	}
-	forceFlushFDTicker := time.NewTicker(time.Duration(flushFDSecond) * time.Second)
+
+	var (
+		flushTicker = time.NewTicker(time.Duration(flushFDSecond) * time.Second)
+		flushWindow = time.Duration(flushFDSecond) * time.Second
+	)
+
 	defer func() {
-		forceFlushFDTicker.Stop()
+		flushTicker.Stop()
 	}()
 	for {
 		select {
-		case <-forceFlushFDTicker.C:
+		case <-flushTicker.C:
 			if !gHasLoadDataPartition {
 				continue
 			}
@@ -475,23 +482,19 @@ func (d *Disk) flushFPScheduler() {
 				}
 				continue
 			}
-			d.RLock()
-			var partitions = make([]*DataPartition, 0, len(d.partitionMap))
-			for _, partition := range d.partitionMap {
-				partitions = append(partitions, partition)
+			var parallelism = d.forceFlushFDParallelism
+			if parallelism <= 0 {
+				parallelism = DefaultForceFlushFDParallelismOnDisk
 			}
-			d.RUnlock()
-			d.forcePersistPartitions(partitions)
-			if flushFDSecond > 0 {
-				forceFlushFDTicker.Reset(time.Duration(flushFDSecond) * time.Second)
-			}
+			d.__flushInWindow(int(parallelism), flushWindow)
 		}
 		if d.maybeUpdateFlushFDInterval(flushFDSecond) {
 			log.LogDebugf("action[startFlushFPScheduler] disk(%v) update ticker from(%v) to (%v)", d.Path, flushFDSecond, d.space.flushFDIntervalSec)
 			oldFlushFDSecond := flushFDSecond
 			flushFDSecond = d.space.flushFDIntervalSec
 			if flushFDSecond > 0 {
-				forceFlushFDTicker.Reset(time.Duration(flushFDSecond) * time.Second)
+				flushTicker.Reset(time.Duration(flushFDSecond) * time.Second)
+				flushWindow = time.Duration(flushFDSecond) * time.Second
 			} else {
 				flushFDSecond = oldFlushFDSecond
 			}
@@ -545,7 +548,7 @@ func (d *Disk) managementScheduler() {
 }
 
 func (d *Disk) flushDeleteScheduler() {
-	var ticker = time.NewTicker(time.Second * 30)
+	var ticker = time.NewTicker(time.Second * 15)
 	for {
 		select {
 		case <-ticker.C:
@@ -1081,6 +1084,61 @@ func (d *Disk) evictExpiredExtentDeleteCache() {
 	log.LogDebugf("action[evictExpiredExtentDeleteCache] disk(%v) evict end", d.Path)
 }
 
+// __flushInWindow flushes the data partitions in the window.
+// ew: the window duration
+func (d *Disk) __flushInWindow(parallelism int, ew time.Duration) {
+	if !gHasLoadDataPartition {
+		return
+	}
+	var flushTime = time.Now()
+	var flushers = make([]infra.Flusher, 0, d.PartitionCount())
+	var total int64
+	d.WalkPartitions(func(partition *DataPartition) bool {
+		var flusher = partition.Flusher()
+		total += int64(flusher.Count())
+		flushers = append(flushers, flusher)
+		return true
+	})
+	var opsLimiter = newFlushOpsLimiter(total, ew)                               // Limit operations per second
+	var bpsLimiter = newFlushBpsLimiter(uint64(parallelism), d.isSSDMediaType()) // Limit bytes per second
+	var flusherc = make(chan infra.Flusher, len(flushers))                       // 用于并发flush
+	var failures int64
+	var wg = new(sync.WaitGroup)
+	var flushWorker async.WorkerFunc = func() {
+		defer wg.Done()
+		var err error
+		for {
+			var flusher = <-flusherc
+			if flusher == nil {
+				return
+			}
+			if err = flusher.Flush(opsLimiter, bpsLimiter); err != nil {
+				err = errors.NewErrorf("__flushInWindow: flush failed: %v", err.Error())
+				log.LogErrorf(err.Error())
+				atomic.AddInt64(&failures, 1)
+			}
+		}
+	}
+	for i := 0; i < parallelism; i++ {
+		wg.Add(1)
+		async.RunWorker(flushWorker)
+	}
+	for _, flusher := range flushers {
+		flusherc <- flusher
+	}
+	close(flusherc)
+	wg.Wait()
+	if atomic.LoadInt64(&failures) == 0 {
+		if err := d.persistLatestFlushTime(flushTime.Unix()); err != nil {
+			log.LogErrorf("disk[%v] persist latest flush time failed: %v", d.Path, err)
+		}
+	}
+	if log.IsWarnEnabled() {
+		log.LogWarnf("Disk %v: schedule flush complete, parallelism %v, dps %v, fds %v, ops limit %v, bps limit %v, elapsed %v",
+			d.Path, parallelism, len(flushers), total, opsLimiter.Limit(), bpsLimiter.Limit(), time.Now().Sub(flushTime))
+	}
+}
+
 func (d *Disk) forcePersistPartitions(partitions []*DataPartition) {
 	if log.IsDebugEnabled() {
 		log.LogDebugf("action[forcePersistPartitions] disk(%v) partition count(%v) begin",
@@ -1131,18 +1189,23 @@ func (d *Disk) forcePersistPartitions(partitions []*DataPartition) {
 	}
 }
 
-func (d *Disk) createFlushExtentsRater(parallelism uint64) *rate.Limiter {
+func newFlushBpsLimiter(parallelism uint64, isSSD bool) *rate.Limiter {
 	if parallelism <= 0 {
 		parallelism = DefaultForceFlushFDParallelismOnDisk
 	}
-	var flushFDQps uint64
-	if d.isSSDMediaType() {
-		flushFDQps = parallelism * DefaultForceFlushDataSizeOnEachSSDDisk
+	var bps uint64
+	if isSSD {
+		bps = parallelism * DefaultForceFlushDataSizeOnEachSSDDisk
 	} else {
-		flushFDQps = parallelism * DefaultForceFlushDataSizeOnEachHDDDisk
+		bps = parallelism * DefaultForceFlushDataSizeOnEachHDDDisk
 	}
-	flushExtentsRater := rate.NewLimiter(rate.Limit(flushFDQps), int(flushFDQps))
-	return flushExtentsRater
+	bpsLimiter := rate.NewLimiter(rate.Limit(bps), int(bps))
+	return bpsLimiter
+}
+
+func newFlushOpsLimiter(total int64, ew time.Duration) *rate.Limiter {
+	var opsLimiter = rate.NewLimiter(rate.Every(ew/time.Duration(total)), 1)
+	return opsLimiter
 }
 
 func (d *Disk) isSSDMediaType() bool {

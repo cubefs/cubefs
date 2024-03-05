@@ -16,9 +16,12 @@ package storage
 
 import (
 	"container/list"
+	"context"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/cubefs/cubefs/util/infra"
 
 	"github.com/cubefs/cubefs/util/unit"
 	"golang.org/x/time/rate"
@@ -256,6 +259,7 @@ func (cache *ExtentCache) ForceEvict(ratio unit.Ratio) {
 	}
 }
 
+// Deprecated: Flush is deprecated, use Flusher instead.
 func (cache *ExtentCache) Flush(limiter *rate.Limiter) {
 	cache.lock.RLock()
 	var extents = make([]*Extent, cache.extentList.Len())
@@ -268,8 +272,50 @@ func (cache *ExtentCache) Flush(limiter *rate.Limiter) {
 	}
 	cache.lock.RUnlock()
 	for _, e := range extents[:i] {
-		_ = e.Flush(limiter)
+		if limiter != nil {
+			var burst = limiter.Burst()
+			var modifies = int(e.Modifies())
+			if modifies > burst {
+				modifies = burst
+			}
+			_ = limiter.WaitN(context.Background(), modifies)
+		}
+		_ = e.Flush()
 		atomic.StoreInt64(&e.modifies, 0)
 	}
 	return
+}
+
+func (cache *ExtentCache) Flusher() infra.Flusher {
+	cache.lock.RLock()
+	var extents = make([]*Extent, cache.extentList.Len())
+	var i int
+	for element := cache.extentList.Front(); element != nil; element = element.Next() {
+		if extent, is := element.Value.(*Extent); is && extent.Modified() {
+			extents[i] = extent
+			i++
+		}
+	}
+	cache.lock.RUnlock()
+	var flushFunc = func(opsLimiter, bpsLimiter *rate.Limiter) error {
+		for _, e := range extents[:i] {
+			if opsLimiter != nil {
+				_ = opsLimiter.Wait(context.Background())
+			}
+			if bpsLimiter != nil {
+				var modifies = int(e.Modifies())
+				if modifies > bpsLimiter.Burst() {
+					modifies = bpsLimiter.Burst()
+				}
+				_ = bpsLimiter.WaitN(context.Background(), modifies)
+			}
+			_ = e.Flush()
+			atomic.StoreInt64(&e.modifies, 0)
+		}
+		return nil
+	}
+	var countFunc = func() int {
+		return i
+	}
+	return infra.NewFuncFlusher(flushFunc, countFunc)
 }

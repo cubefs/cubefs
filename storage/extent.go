@@ -32,7 +32,6 @@ import (
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/cubefs/cubefs/util/unit"
-	"golang.org/x/time/rate"
 )
 
 const (
@@ -158,7 +157,10 @@ type Extent struct {
 	dataSize   int64
 	modified   int32
 	modifies   int64
-	header     []byte
+
+	header []byte
+	hdirty int32
+
 	sync.Mutex
 
 	headerHandler HeaderHandler
@@ -293,7 +295,11 @@ func (e *Extent) ModifyTime() int64 {
 }
 
 func (e *Extent) Modified() bool {
-	return atomic.LoadInt32(&e.modified) != 0
+	return atomic.LoadInt32(&e.modified) > 0
+}
+
+func (e *Extent) Modifies() int64 {
+	return atomic.LoadInt64(&e.modifies)
 }
 
 func IsRandomWrite(writeType int) bool {
@@ -392,15 +398,13 @@ func (e *Extent) Write(data []byte, offset, size int64, crc uint32, writeType in
 	)
 	if blkOffset == 0 && size == unit.BlockSize {
 		// 当本次写入的数据位置完全对齐一个完整的Block(128KB), 更新该Block的CRC记录信息
-		e.setBlkCRC(blkNo, crc)
-		err = e.saveHeader(blkNo)
+		_, err = e.chBlkCRC(blkNo, crc)
 		return
 	}
 
 	// 将数据变更涉及Block的CRC信息置0以触发重新计算
 	for cursor := blkNo; cursor <= int(offset+size-1)/unit.BlockSize; cursor++ {
-		e.setBlkCRC(cursor, 0)
-		if err = e.saveHeader(cursor); err != nil {
+		if _, err = e.chBlkCRC(cursor, 0); err != nil {
 			return
 		}
 	}
@@ -477,13 +481,6 @@ func (e *Extent) Fingerprint(offset, size int64, strict bool) (fingerprint Finge
 		cursor += readSize
 	}
 
-	switch {
-	case len(updatedBlkNos) == 0:
-	case len(updatedBlkNos) <= 4:
-		err = e.saveHeader(updatedBlkNos...)
-	default:
-		err = e.saveHeader()
-	}
 	return
 }
 
@@ -497,6 +494,28 @@ func (e *Extent) saveHeader(blkNos ...int) (err error) {
 		if err = e.headerHandler.Save(e.header[hOff:hOff+unit.PerBlockCrcSize], hOff, unit.PerBlockCrcSize); err != nil {
 			return
 		}
+	}
+	return
+}
+
+// chBlkCRC change block crc value.
+func (e *Extent) chBlkCRC(blkNo int, crc uint32) (changed bool, err error) {
+	switch e.getBlkCRC(blkNo) {
+	case crc: // no change
+	case 0: // crc changed but no previous crc
+		e.setBlkCRC(blkNo, crc)
+		atomic.StoreInt32(&e.hdirty, 1) // mark header dirty
+		changed = true
+	default: // crc changed and previous crc exists
+		e.setBlkCRC(blkNo, crc)
+		if atomic.CompareAndSwapInt32(&e.hdirty, 1, 0) {
+			// header already dirty, then save all header
+			err = e.saveHeader()
+		} else {
+			// save only the changed crc
+			err = e.saveHeader(blkNo)
+		}
+		changed = true
 	}
 	return
 }
@@ -555,16 +574,14 @@ func (e *Extent) checkTinyWriteParameter(offset, size int64, writeType int) erro
 }
 
 // Flush synchronizes data to the disk.
-func (e *Extent) Flush(limiter *rate.Limiter) (err error) {
-	if atomic.CompareAndSwapInt32(&e.modified, 1, 0) {
-		var modifies = int(atomic.LoadInt64(&e.modifies))
-		if limiter != nil {
-			var burst = limiter.Burst()
-			if modifies > burst {
-				modifies = burst
-			}
-			_ = limiter.WaitN(context.Background(), modifies)
+func (e *Extent) Flush() (err error) {
+	if atomic.CompareAndSwapInt32(&e.hdirty, 1, 0) {
+		// header already dirty, then save all header
+		if err = e.saveHeader(); err != nil {
+			return
 		}
+	}
+	if atomic.CompareAndSwapInt32(&e.modified, 1, 0) {
 		var interceptor = e.interceptors.Get(IOSync)
 		var ctx context.Context
 		if ctx, err = interceptor.Before(); err != nil {
@@ -602,13 +619,6 @@ func (e *Extent) autoComputeExtentCrc() (crc uint32, err error) {
 	}
 	crc = crc32.ChecksumIEEE(crcData)
 
-	switch {
-	case len(updatedBlkNos) == 0:
-	case len(updatedBlkNos) <= 4:
-		err = e.saveHeader(updatedBlkNos...)
-	default:
-		err = e.saveHeader()
-	}
 	return
 }
 
@@ -626,8 +636,7 @@ func (e *Extent) computeBlkCRC(blkNo int, force bool) (crc uint32, updated bool,
 	}
 	err = nil
 	crc = crc32.ChecksumIEEE(blkdata[:readN])
-	e.setBlkCRC(blkNo, crc)
-	updated = true
+	updated, err = e.chBlkCRC(blkNo, crc)
 	return
 }
 
