@@ -7,11 +7,12 @@ import (
 )
 
 func TestAppend01(t *testing.T) {
+	ctx := newCtx()
 	se := NewSortedExtents()
-	se.AppendWithCheck(0, proto.ExtentKey{FileOffset: 0, Size: 1000, ExtentId: 1}, nil, nil)
-	se.AppendWithCheck(0, proto.ExtentKey{FileOffset: 2000, Size: 1000, ExtentId: 2}, nil, nil)
-	se.AppendWithCheck(0, proto.ExtentKey{FileOffset: 4000, Size: 1000, ExtentId: 3}, nil, nil)
-	se.AppendWithCheck(0, proto.ExtentKey{FileOffset: 3000, Size: 500, ExtentId: 4}, nil, nil)
+	se.AppendWithCheck(ctx, 0, proto.ExtentKey{FileOffset: 0, Size: 1000, ExtentId: 1}, nil, nil)
+	se.AppendWithCheck(ctx, 0, proto.ExtentKey{FileOffset: 2000, Size: 1000, ExtentId: 2}, nil, nil)
+	se.AppendWithCheck(ctx, 0, proto.ExtentKey{FileOffset: 4000, Size: 1000, ExtentId: 3}, nil, nil)
+	se.AppendWithCheck(ctx, 0, proto.ExtentKey{FileOffset: 3000, Size: 500, ExtentId: 4}, nil, nil)
 	t.Logf("\neks: %v\n", se.eks)
 	if se.Size() != 5000 || len(se.eks) != 4 || se.eks[2].ExtentId != 4 {
 		t.Fail()
@@ -21,20 +22,21 @@ func TestAppend01(t *testing.T) {
 
 // The same extent file is extended
 func TestAppend02(t *testing.T) {
+	ctx := newCtx()
 	se := NewSortedExtents()
-	delExtents, status := se.AppendWithCheck(0, proto.ExtentKey{FileOffset: 0, Size: 1000, ExtentId: 1}, nil, nil)
+	delExtents, status := se.AppendWithCheck(ctx, 0, proto.ExtentKey{FileOffset: 0, Size: 1000, ExtentId: 1}, nil, nil)
 	t.Logf("\ndel: %v\nstatus: %v\neks: %v", delExtents, status, se.eks)
 	if status != proto.OpOk || len(delExtents) != 0 {
 		t.Fail()
 	}
-	delExtents, status = se.AppendWithCheck(0, proto.ExtentKey{FileOffset: 0, Size: 2000, ExtentId: 1}, nil, nil)
+	delExtents, status = se.AppendWithCheck(ctx, 0, proto.ExtentKey{FileOffset: 0, Size: 2000, ExtentId: 1}, nil, nil)
 	t.Logf("\ndel: %v\nstatus: %v\neks: %v", delExtents, status, se.eks)
 	if status != proto.OpOk || len(delExtents) != 0 || se.Size() != 2000 {
 		t.Fail()
 	}
 	discard := make([]proto.ExtentKey, 0)
 	discard = append(discard, proto.ExtentKey{FileOffset: 0, Size: 2000, ExtentId: 1})
-	delExtents, status = se.AppendWithCheck(0, proto.ExtentKey{FileOffset: 0, Size: 2000, ExtentId: 2}, nil, discard)
+	delExtents, status = se.AppendWithCheck(ctx, 0, proto.ExtentKey{FileOffset: 0, Size: 2000, ExtentId: 2}, nil, discard)
 	t.Logf("\ndel: %v\nstatus: %v\neks: %v", delExtents, status, se.eks)
 	if status != proto.OpOk || len(delExtents) != 1 || delExtents[0].ExtentId != 1 || se.eks[0].ExtentId != 2 {
 		t.Fail()
@@ -43,12 +45,13 @@ func TestAppend02(t *testing.T) {
 }
 
 func TestAppend03(t *testing.T) {
+	ctx := newCtx()
 	se := NewSortedExtents()
-	delExtents, status := se.AppendWithCheck(0, proto.ExtentKey{FileOffset: 0, Size: 1000, ExtentId: 1}, nil, nil)
+	delExtents, status := se.AppendWithCheck(ctx, 0, proto.ExtentKey{FileOffset: 0, Size: 1000, ExtentId: 1}, nil, nil)
 	t.Logf("\ndel: %v\nstatus: %v\neks: %v", delExtents, status, se.eks)
 	discard := make([]proto.ExtentKey, 0)
 	discard = append(discard, proto.ExtentKey{FileOffset: 0, Size: 1000, ExtentId: 1})
-	delExtents, status = se.AppendWithCheck(0, proto.ExtentKey{FileOffset: 0, Size: 1000, ExtentId: 2}, nil, discard)
+	delExtents, status = se.AppendWithCheck(ctx, 0, proto.ExtentKey{FileOffset: 0, Size: 1000, ExtentId: 2}, nil, discard)
 	t.Logf("\ndel: %v\nstatus: %v\neks: %v", delExtents, status, se.eks)
 	if status != proto.OpOk || len(delExtents) != 1 || delExtents[0].ExtentId != 1 ||
 		se.eks[0].ExtentId != 2 || se.Size() != 1000 {
@@ -60,16 +63,17 @@ func TestAppend03(t *testing.T) {
 // with an overlapping file range. The final file data is not guaranteed
 // for such case, but we should be aware of what the extents look like.
 func TestAppend04(t *testing.T) {
+	ctx := newCtx()
 	se := NewSortedExtents()
-	delExtents, status := se.AppendWithCheck(0, proto.ExtentKey{FileOffset: 0, Size: 1000, ExtentId: 1}, nil, nil)
+	delExtents, status := se.AppendWithCheck(ctx, 0, proto.ExtentKey{FileOffset: 0, Size: 1000, ExtentId: 1}, nil, nil)
 	t.Logf("\nstatus: %v\ndel: %v\neks: %v", status, delExtents, se.eks)
-	delExtents, status = se.AppendWithCheck(0, proto.ExtentKey{FileOffset: 1000, Size: 1000, ExtentId: 2}, nil, nil)
+	delExtents, status = se.AppendWithCheck(ctx, 0, proto.ExtentKey{FileOffset: 1000, Size: 1000, ExtentId: 2}, nil, nil)
 	t.Logf("\nstatus: %v\ndel: %v\neks: %v", status, delExtents, se.eks)
-	delExtents, status = se.AppendWithCheck(0, proto.ExtentKey{FileOffset: 1500, Size: 4000, ExtentId: 3}, nil, nil)
+	delExtents, status = se.AppendWithCheck(ctx, 0, proto.ExtentKey{FileOffset: 1500, Size: 4000, ExtentId: 3}, nil, nil)
 	t.Logf("\nstatus: %v\ndel: %v\neks: %v", status, delExtents, se.eks)
 	discard := make([]proto.ExtentKey, 0)
 	discard = append(discard, proto.ExtentKey{FileOffset: 1000, Size: 1000, ExtentId: 2})
-	delExtents, status = se.AppendWithCheck(0, proto.ExtentKey{FileOffset: 500, Size: 4000, ExtentId: 4}, nil, discard)
+	delExtents, status = se.AppendWithCheck(ctx, 0, proto.ExtentKey{FileOffset: 500, Size: 4000, ExtentId: 4}, nil, discard)
 	t.Logf("\nstatus: %v\ndel: %v\neks: %v", status, delExtents, se.eks)
 	if len(delExtents) != 1 || delExtents[0].ExtentId != 2 ||
 		len(se.eks) != 3 || se.Size() != 5500 ||
@@ -81,12 +85,13 @@ func TestAppend04(t *testing.T) {
 }
 
 func TestTruncate01(t *testing.T) {
+	ctx := newCtx()
 	se := NewSortedExtents()
-	delExtents, _ := se.AppendWithCheck(0, proto.ExtentKey{FileOffset: 0, Size: 1000, ExtentId: 1}, nil, nil)
+	delExtents, _ := se.AppendWithCheck(ctx, 0, proto.ExtentKey{FileOffset: 0, Size: 1000, ExtentId: 1}, nil, nil)
 	t.Logf("\ndel: %v\neks: %v", delExtents, se.eks)
-	delExtents, _ = se.AppendWithCheck(0, proto.ExtentKey{FileOffset: 2000, Size: 1000, ExtentId: 2}, nil, nil)
+	delExtents, _ = se.AppendWithCheck(ctx, 0, proto.ExtentKey{FileOffset: 2000, Size: 1000, ExtentId: 2}, nil, nil)
 	t.Logf("\ndel: %v\neks: %v", delExtents, se.eks)
-	delExtents = se.Truncate(500, nil, nil)
+	delExtents = se.Truncate(ctx, 500, nil, nil)
 	t.Logf("\ndel: %v\neks: %v", delExtents, se.eks)
 	if len(delExtents) != 2 || delExtents[1].ExtentId != 2 ||
 		len(se.eks) != 1 || se.eks[0].ExtentId != 1 ||
