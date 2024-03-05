@@ -335,7 +335,7 @@ func (mp *metaPartition) deleteExtentsFromList(fileList *synclist.SyncList) {
 			// delete extent from dataPartition
 			dp := mp.vol.GetPartition(ek.PartitionId)
 			if !dp.IsDiscard {
-				if err = mp.doDeleteMarkedInodes(&ek); err != nil {
+				if err = mp.doDeleteMarkedInodes(ctx, &ek); err != nil {
 					errExts = append(errExts, ek)
 					span.Warnf("extent: %v, %s", ek.String(), err.Error())
 				}

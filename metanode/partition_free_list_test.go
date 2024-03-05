@@ -43,7 +43,7 @@ func TestPersistInodesFreeList(t *testing.T) {
 		for idx := range inodes {
 			inodes[idx] = uint64(i + idx)
 		}
-		mp.persistDeletedInodes(inodes)
+		mp.persistDeletedInodes(newCtx(), inodes)
 	}
 	dentries, err := os.ReadDir(rootDir)
 	require.NoError(t, err)
