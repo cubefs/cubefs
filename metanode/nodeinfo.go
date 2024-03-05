@@ -1,11 +1,11 @@
 package metanode
 
 import (
+	"context"
 	"sync/atomic"
 	"time"
 
 	"github.com/cubefs/cubefs/proto"
-	"github.com/cubefs/cubefs/util/log"
 )
 
 const (
@@ -55,13 +55,14 @@ func (m *MetaNode) startUpdateNodeInfo() {
 	ticker := time.NewTicker(UpdateNodeInfoTicket)
 	defer ticker.Stop()
 	for {
+		span, ctx := spanContextPrefix("nodeinfo-")
 		select {
 		case <-nodeInfoStopC:
-			log.LogInfo("metanode nodeinfo gorutine stopped")
+			span.Info("metanode nodeinfo gorutine stopped")
 			return
 		case <-ticker.C:
-			m.updateNodeInfo()
-			m.metadataManager.checkVolVerList()
+			m.updateNodeInfo(ctx)
+			m.metadataManager.checkVolVerList(ctx)
 		}
 	}
 }
@@ -70,23 +71,23 @@ func (m *MetaNode) stopUpdateNodeInfo() {
 	nodeInfoStopC <- struct{}{}
 }
 
-func (m *MetaNode) updateNodeInfo() {
+func (m *MetaNode) updateNodeInfo(ctx context.Context) {
+	span := getSpan(ctx).WithOperation("updateNodeInfo")
 	// clusterInfo, err := getClusterInfo()
 	clusterInfo, err := masterClient.AdminAPI().GetClusterInfo()
 	if err != nil {
-		log.LogErrorf("[updateNodeInfo] %s", err.Error())
+		span.Error(err)
 		return
 	}
 	updateDeleteBatchCount(clusterInfo.MetaNodeDeleteBatchCount)
 	updateDeleteWorkerSleepMs(clusterInfo.MetaNodeDeleteWorkerSleepMs)
 
 	if clusterInfo.DirChildrenNumLimit < proto.MinDirChildrenNumLimit {
-		log.LogWarnf("updateNodeInfo: DirChildrenNumLimit probably not enabled on master, set to default value(%v)",
-			proto.DefaultDirChildrenNumLimit)
+		span.Warnf("DirChildrenNumLimit not enabled on master, set to default value(%v)", proto.DefaultDirChildrenNumLimit)
 		atomic.StoreUint32(&dirChildrenNumLimit, proto.DefaultDirChildrenNumLimit)
 	} else {
 		atomic.StoreUint32(&dirChildrenNumLimit, clusterInfo.DirChildrenNumLimit)
-		log.LogInfof("updateNodeInfo: DirChildrenNumLimit(%v)", clusterInfo.DirChildrenNumLimit)
+		span.Infof("DirChildrenNumLimit(%v)", clusterInfo.DirChildrenNumLimit)
 	}
 
 	// updateDirChildrenNumLimit(clusterInfo.DirChildrenNumLimit)

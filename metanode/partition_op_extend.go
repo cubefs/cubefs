@@ -29,6 +29,7 @@ func (mp *metaPartition) UpdateXAttr(req *proto.UpdateXAttrRequest, p *Packet) (
 	dirsInc, _ := strconv.ParseInt(newValueList[1], 10, 64)
 	bytesInc, _ := strconv.ParseInt(newValueList[2], 10, 64)
 
+	ctx := p.Context()
 	mp.xattrLock.Lock()
 	defer mp.xattrLock.Unlock()
 	treeItem := mp.extendTree.Get(NewExtend(req.Inode))
@@ -47,7 +48,7 @@ func (mp *metaPartition) UpdateXAttr(req *proto.UpdateXAttrRequest, p *Packet) (
 				strconv.FormatInt(int64(newBytes), 10)
 			extend := NewExtend(req.Inode)
 			extend.Put([]byte(req.Key), []byte(newValue), mp.verSeq)
-			if _, err = mp.putExtend(opFSMUpdateXAttr, extend); err != nil {
+			if _, err = mp.putExtend(ctx, opFSMUpdateXAttr, extend); err != nil {
 				p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 				return
 			}
@@ -55,7 +56,7 @@ func (mp *metaPartition) UpdateXAttr(req *proto.UpdateXAttrRequest, p *Packet) (
 			return
 		} else {
 			extend.Put([]byte(req.Key), []byte(req.Value), mp.verSeq)
-			if _, err = mp.putExtend(opFSMUpdateXAttr, extend); err != nil {
+			if _, err = mp.putExtend(ctx, opFSMUpdateXAttr, extend); err != nil {
 				p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 				return
 			}
@@ -65,7 +66,7 @@ func (mp *metaPartition) UpdateXAttr(req *proto.UpdateXAttrRequest, p *Packet) (
 	} else {
 		extend := NewExtend(req.Inode)
 		extend.Put([]byte(req.Key), []byte(req.Value), mp.verSeq)
-		if _, err = mp.putExtend(opFSMUpdateXAttr, extend); err != nil {
+		if _, err = mp.putExtend(ctx, opFSMUpdateXAttr, extend); err != nil {
 			p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 			return
 		}
@@ -77,7 +78,7 @@ func (mp *metaPartition) UpdateXAttr(req *proto.UpdateXAttrRequest, p *Packet) (
 func (mp *metaPartition) SetXAttr(req *proto.SetXAttrRequest, p *Packet) (err error) {
 	extend := NewExtend(req.Inode)
 	extend.Put([]byte(req.Key), []byte(req.Value), mp.verSeq)
-	if _, err = mp.putExtend(opFSMSetXAttr, extend); err != nil {
+	if _, err = mp.putExtend(p.Context(), opFSMSetXAttr, extend); err != nil {
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return
 	}
@@ -91,7 +92,7 @@ func (mp *metaPartition) BatchSetXAttr(req *proto.BatchSetXAttrRequest, p *Packe
 		extend.Put([]byte(key), []byte(val), mp.verSeq)
 	}
 
-	if _, err = mp.putExtend(opFSMSetXAttr, extend); err != nil {
+	if _, err = mp.putExtend(p.Context(), opFSMSetXAttr, extend); err != nil {
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return
 	}
@@ -186,7 +187,7 @@ func (mp *metaPartition) BatchGetXAttr(req *proto.BatchGetXAttrRequest, p *Packe
 func (mp *metaPartition) RemoveXAttr(req *proto.RemoveXAttrRequest, p *Packet) (err error) {
 	extend := NewExtend(req.Inode)
 	extend.Put([]byte(req.Key), nil, req.VerSeq)
-	if _, err = mp.putExtend(opFSMRemoveXAttr, extend); err != nil {
+	if _, err = mp.putExtend(p.Context(), opFSMRemoveXAttr, extend); err != nil {
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return
 	}
@@ -220,11 +221,11 @@ func (mp *metaPartition) ListXAttr(req *proto.ListXAttrRequest, p *Packet) (err 
 	return
 }
 
-func (mp *metaPartition) putExtend(op uint32, extend *Extend) (resp interface{}, err error) {
+func (mp *metaPartition) putExtend(ctx context.Context, op uint32, extend *Extend) (resp interface{}, err error) {
 	var marshaled []byte
 	if marshaled, err = extend.Bytes(); err != nil {
 		return
 	}
-	resp, err = mp.submit(context.TODO(), op, marshaled)
+	resp, err = mp.submit(ctx, op, marshaled)
 	return
 }

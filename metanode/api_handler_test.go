@@ -84,7 +84,7 @@ func createMetaPartition(rootDir string, t *testing.T) (mp *metaPartition) {
 	dentry := &Dentry{ParentId: 0, Name: "/", Inode: 1}
 	mp.dentryTree.ReplaceOrInsert(dentry, true)
 
-	err := mp.store(msg)
+	err := mp.store(newCtx(), msg)
 	require.NoError(t, err)
 	return
 }

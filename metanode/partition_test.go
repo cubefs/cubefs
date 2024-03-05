@@ -70,10 +70,11 @@ func TestMetaPartition_LoadSnapshot(t *testing.T) {
 	mp.mqMgr = NewQuotaManager(mpC.VolName, mpC.PartitionId)
 	mp.multiVersionList = &proto.VolVersionInfoList{}
 
-	err := mp.store(msg)
+	ctx := newCtx()
+	err := mp.store(ctx, msg)
 	require.NoError(t, err)
 	snapshotPath := path.Join(mp.config.RootDir, snapshotDir)
-	err = partition.LoadSnapshot(snapshotPath)
+	err = partition.LoadSnapshot(ctx, snapshotPath)
 	require.Nil(t, err)
 
 	// add data to mp
@@ -107,21 +108,21 @@ func TestMetaPartition_LoadSnapshot(t *testing.T) {
 		uniqId:         mp.GetUniqId(),
 		uniqChecker:    mp.uniqChecker,
 	}
-	err = mp.store(msg)
+	err = mp.store(ctx, msg)
 	require.Nil(t, err)
 	snapshotPath = path.Join(mp.config.RootDir, snapshotDir)
-	err = partition.LoadSnapshot(snapshotPath)
+	err = partition.LoadSnapshot(ctx, snapshotPath)
 	require.Nil(t, err)
 
 	// remove inode file
 	os.Rename(path.Join(snapshotPath, inodeFile), path.Join(snapshotPath, inodeFile+"1"))
-	err = partition.LoadSnapshot(snapshotPath)
+	err = partition.LoadSnapshot(ctx, snapshotPath)
 	require.Error(t, err)
 	os.Rename(path.Join(snapshotPath, inodeFile+"1"), path.Join(snapshotPath, inodeFile))
 
 	// remove dentry file
 	os.Rename(path.Join(snapshotPath, dentryFile), path.Join(snapshotPath, dentryFile+"1"))
-	err = partition.LoadSnapshot(snapshotPath)
+	err = partition.LoadSnapshot(ctx, snapshotPath)
 	require.Error(t, err)
 	os.Rename(path.Join(snapshotPath, dentryFile+"1"), path.Join(snapshotPath, dentryFile))
 
@@ -133,6 +134,6 @@ func TestMetaPartition_LoadSnapshot(t *testing.T) {
 	crcData[1] = '1'
 	err = os.WriteFile(path.Join(snapshotPath, SnapshotSign), crcData, 0o644)
 	require.Nil(t, err)
-	err = partition.LoadSnapshot(snapshotPath)
+	err = partition.LoadSnapshot(ctx, snapshotPath)
 	require.Equal(t, ErrSnapshotCrcMismatch, err)
 }

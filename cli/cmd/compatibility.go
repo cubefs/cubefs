@@ -15,6 +15,7 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"reflect"
 	"strconv"
@@ -81,7 +82,7 @@ func newMetaCompatibilityCmd() *cobra.Command {
 			if mp == nil {
 				return
 			}
-			err = mp.LoadSnapshot(snapshotPath)
+			err = mp.LoadSnapshot(context.TODO(), snapshotPath)
 			if err != nil {
 				return
 			}

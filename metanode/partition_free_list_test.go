@@ -27,6 +27,11 @@ import (
 )
 
 func TestPersistInodesFreeList(t *testing.T) {
+	_deleteInodeFileRollingSize = 8 * util.MB
+	defer func() {
+		_deleteInodeFileRollingSize = DeleteInodeFileRollingSize
+	}()
+
 	rootDir, err := os.MkdirTemp("", "")
 	require.NoError(t, err)
 	defer os.RemoveAll(rootDir)
@@ -37,13 +42,13 @@ func TestPersistInodesFreeList(t *testing.T) {
 		RootDir:       rootDir,
 	}
 	mp := newPartition(config, &metadataManager{partitions: make(map[uint64]MetaPartition), volUpdating: new(sync.Map)})
-	const testCount = DeleteInodeFileRollingSize/8 + 1000
-	for i := 1; i < testCount; i += 1000 {
+	testCount := _deleteInodeFileRollingSize/8*2 + 1000
+	for i := uint64(1); i < testCount; i += 1000 {
 		inodes := make([]uint64, 1000)
 		for idx := range inodes {
-			inodes[idx] = uint64(i + idx)
+			inodes[idx] = i + uint64(idx)
 		}
-		mp.persistDeletedInodes(inodes)
+		mp.persistDeletedInodes(newCtx(), inodes)
 	}
 	dentries, err := os.ReadDir(rootDir)
 	require.NoError(t, err)

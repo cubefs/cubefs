@@ -22,7 +22,6 @@ import (
 	"github.com/cubefs/cubefs/raftstore"
 	"github.com/cubefs/cubefs/util/config"
 	"github.com/cubefs/cubefs/util/errors"
-	"github.com/cubefs/cubefs/util/log"
 )
 
 // StartRaftServer initializes the address resolver and the raftStore server instance.
@@ -40,7 +39,6 @@ func (m *MetaNode) startRaftServer(cfg *config.Config) (err error) {
 
 	if m.clusterUuidEnable {
 		if err = config.CheckOrStoreClusterUuid(m.raftDir, m.clusterUuid, false); err != nil {
-			log.LogErrorf("CheckOrStoreClusterUuid failed: %v", err)
 			return fmt.Errorf("CheckOrStoreClusterUuid failed: %v", err)
 		}
 	}
