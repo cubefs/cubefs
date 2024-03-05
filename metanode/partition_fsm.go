@@ -47,6 +47,10 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 		return
 	}
 
+	// TODO: apply with traceid.
+	span, ctx := proto.StartSpanFromContext(context.TODO(), "")
+	ctx = proto.ContextWithSpan(ctx, span)
+
 	mp.nonIdempotent.Lock()
 	defer mp.nonIdempotent.Unlock()
 
@@ -164,7 +168,7 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 			return
 		}
 
-		resp = mp.fsmCreateDentry(den, false)
+		resp = mp.fsmCreateDentry(ctx, den, false)
 	case opFSMDeleteDentry:
 		den := &Dentry{}
 		if err = den.Unmarshal(msg.V); err != nil {
@@ -177,13 +181,13 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 			return
 		}
 
-		resp = mp.fsmDeleteDentry(den, false)
+		resp = mp.fsmDeleteDentry(ctx, den, false)
 	case opFSMDeleteDentryBatch:
 		db, err := DentryBatchUnmarshal(msg.V)
 		if err != nil {
 			return nil, err
 		}
-		resp = mp.fsmBatchDeleteDentry(db)
+		resp = mp.fsmBatchDeleteDentry(ctx, db)
 	case opFSMUpdateDentry:
 		den := &Dentry{}
 		if err = den.Unmarshal(msg.V); err != nil {
@@ -196,7 +200,7 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 			return
 		}
 
-		resp = mp.fsmUpdateDentry(den)
+		resp = mp.fsmUpdateDentry(ctx, den)
 	case opFSMUpdatePartition:
 		req := &UpdatePartitionReq{}
 		if err = json.Unmarshal(msg.V, req); err != nil {
@@ -359,7 +363,7 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 		if err = txDen.Unmarshal(msg.V); err != nil {
 			return
 		}
-		resp = mp.fsmTxCreateDentry(txDen)
+		resp = mp.fsmTxCreateDentry(ctx, txDen)
 	case opFSMTxSetState:
 		req := &proto.TxSetStateRequest{}
 		if err = json.Unmarshal(msg.V, req); err != nil {
@@ -401,7 +405,7 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 		if err = txDen.Unmarshal(msg.V); err != nil {
 			return
 		}
-		resp = mp.fsmTxDeleteDentry(txDen)
+		resp = mp.fsmTxDeleteDentry(ctx, txDen)
 	case opFSMTxUnlinkInode:
 		txIno := NewTxInode(0, 0, nil)
 		if err = txIno.Unmarshal(msg.V); err != nil {
@@ -414,7 +418,7 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 		if err = txUpdateDen.Unmarshal(msg.V); err != nil {
 			return
 		}
-		resp = mp.fsmTxUpdateDentry(txUpdateDen)
+		resp = mp.fsmTxUpdateDentry(ctx, txUpdateDen)
 	case opFSMTxCreateLinkInode:
 		txIno := NewTxInode(0, 0, nil)
 		if err = txIno.Unmarshal(msg.V); err != nil {

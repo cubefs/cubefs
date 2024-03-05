@@ -1444,15 +1444,16 @@ func (tr *TransactionResource) rollbackDentryInternal(rbDentry *TxRollbackDentry
 		}
 	}()
 	status = proto.OpOk
+	ctx := context.TODO()
 	switch rbDentry.rbType {
 	case TxAdd:
 		// need to be true to assert link not change.
-		status = tr.txProcessor.mp.fsmCreateDentry(rbDentry.dentry, true)
+		status = tr.txProcessor.mp.fsmCreateDentry(ctx, rbDentry.dentry, true)
 	case TxDelete:
-		resp := tr.txProcessor.mp.fsmDeleteDentry(rbDentry.dentry, true)
+		resp := tr.txProcessor.mp.fsmDeleteDentry(ctx, rbDentry.dentry, true)
 		status = resp.Status
 	case TxUpdate:
-		resp := tr.txProcessor.mp.fsmUpdateDentry(rbDentry.dentry)
+		resp := tr.txProcessor.mp.fsmUpdateDentry(ctx, rbDentry.dentry)
 		status = resp.Status
 	default:
 		status = proto.OpTxRollbackUnknownRbType

@@ -16,6 +16,7 @@ package metanode
 
 import (
 	"bufio"
+	"context"
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
@@ -236,7 +237,7 @@ func (mp *metaPartition) loadDentry(rootDir string, crc uint32) (err error) {
 			err = errors.NewErrorf("[loadDentry] Unmarshal: %s", err.Error())
 			return
 		}
-		if status := mp.fsmCreateDentry(dentry, true); status != proto.OpOk {
+		if status := mp.fsmCreateDentry(context.TODO(), dentry, true); status != proto.OpOk {
 			err = errors.NewErrorf("[loadDentry] createDentry dentry: %v, resp code: %d", dentry, status)
 			return
 		}
