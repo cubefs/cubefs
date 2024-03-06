@@ -8,7 +8,6 @@ import (
 	"sort"
 
 	"github.com/cubefs/cubefs/proto"
-	"github.com/cubefs/cubefs/util/log"
 	"github.com/samsarahq/thunder/graphql"
 	"github.com/samsarahq/thunder/graphql/schemabuilder"
 )
@@ -87,7 +86,7 @@ func (m *UserService) getUserAKInfo(ctx context.Context, args struct {
 	AccessKey string
 }) (*proto.UserInfo, error) {
 	uid, perm, err := permissions(ctx, ADMIN|USER)
-	userInfo, err := m.user.getKeyInfo(args.AccessKey)
+	userInfo, err := m.user.getKeyInfo(ctx, args.AccessKey)
 	if err != nil {
 		return nil, err
 	}
@@ -131,13 +130,13 @@ func (m *UserService) transferUserVol(ctx context.Context, args proto.UserTransf
 		return nil, fmt.Errorf("force param need validate user name for vol:[%s]", args.Volume)
 	}
 
-	userInfo, err := m.user.transferVol(&args)
+	userInfo, err := m.user.transferVol(ctx, &args)
 	if err != nil {
 		return nil, err
 	}
 	owner := vol.Owner
 	vol.Owner = userInfo.UserID
-	if err = m.cluster.syncUpdateVol(vol); err != nil {
+	if err = m.cluster.syncUpdateVol(ctx, vol); err != nil {
 		vol.Owner = owner
 		return nil, err
 	}
@@ -165,7 +164,7 @@ func (s *UserService) updateUserPolicy(ctx context.Context, args proto.UserPermU
 	if _, err := s.cluster.getVol(args.Volume); err != nil {
 		return nil, err
 	}
-	userInfo, err := s.user.updatePolicy(&args)
+	userInfo, err := s.user.updatePolicy(ctx, &args)
 	if err != nil {
 		return nil, err
 	}
@@ -177,7 +176,7 @@ func (s *UserService) removeUserPolicy(ctx context.Context, args proto.UserPermR
 	if _, err := s.cluster.getVol(args.Volume); err != nil {
 		return nil, err
 	}
-	userInfo, err := s.user.removePolicy(&args)
+	userInfo, err := s.user.removePolicy(ctx, &args)
 	if err != nil {
 		return nil, err
 	}
@@ -196,8 +195,8 @@ func (s *UserService) createUser(ctx context.Context, args proto.UserCreateParam
 	if args.Type == proto.UserTypeRoot {
 		return nil, fmt.Errorf("user type:[%s] can not to root", args.Type)
 	}
-
-	log.LogInfof("create user:[%s] by admin:[%s]", args.ID, uid)
+	span := proto.SpanFromContext(ctx)
+	span.Infof("create user:[%s] by admin:[%s]", args.ID, uid)
 	return s.user.createKey(&args)
 }
 
@@ -207,7 +206,7 @@ func (s *UserService) updateUser(ctx context.Context, args proto.UserUpdateParam
 		return nil, err
 	}
 
-	old, err := s.user.getUserInfo(args.UserID)
+	old, err := s.user.getUserInfo(ctx, args.UserID)
 	if err != nil {
 		return nil, err
 	}
@@ -215,9 +214,9 @@ func (s *UserService) updateUser(ctx context.Context, args proto.UserUpdateParam
 	if old.UserType != args.Type && args.Type == proto.UserTypeRoot {
 		return nil, fmt.Errorf("user type:[%s] can not to root", args.Type)
 	}
-
-	log.LogInfof("update user:[%s] by admin:[%s]", args.UserID, uid)
-	return s.user.updateKey(&args)
+	span := proto.SpanFromContext(ctx)
+	span.Infof("update user:[%s] by admin:[%s]", args.UserID, uid)
+	return s.user.updateKey(ctx, &args)
 }
 
 func (s *UserService) deleteUser(ctx context.Context, args struct {
@@ -229,8 +228,9 @@ func (s *UserService) deleteUser(ctx context.Context, args struct {
 	}
 
 	// TODO : make sure can delete self? can delete other admin ??
-	log.LogInfof("delete user:[%s] by admin:[%s]", args.UserID, uid)
-	if err := s.user.deleteKey(args.UserID); err != nil {
+	span := proto.SpanFromContext(ctx)
+	span.Infof("delete user:[%s] by admin:[%s]", args.UserID, uid)
+	if err := s.user.deleteKey(ctx, args.UserID); err != nil {
 		return nil, err
 	}
 
@@ -251,7 +251,7 @@ func (s *UserService) getUserInfo(ctx context.Context, args struct {
 		}
 	}
 
-	return s.user.getUserInfo(args.UserID)
+	return s.user.getUserInfo(ctx, args.UserID)
 }
 
 func (s *UserService) listUserInfo(ctx context.Context, args struct{}) ([]*proto.UserInfo, error) {
@@ -335,7 +335,7 @@ func (s *UserService) validatePassword(ctx context.Context, args struct {
 	UserID   string
 	Password string
 }) (*proto.UserInfo, error) {
-	ui, err := s.user.getUserInfo(args.UserID)
+	ui, err := s.user.getUserInfo(ctx, args.UserID)
 	if err != nil {
 		return nil, err
 	}
@@ -349,9 +349,9 @@ func (s *UserService) validatePassword(ctx context.Context, args struct {
 
 	hashedPassword_ := sha256.Sum256([]byte(ak.Password))
 	hashedPasswordStr_ := hex.EncodeToString(hashedPassword_[:])
-
+	span := proto.SpanFromContext(ctx)
 	if hashedPasswordStr != hashedPasswordStr_ {
-		log.LogWarnf("user:[%s] login pass word has err", args.UserID)
+		span.Warnf("user:[%s] login pass word has err", args.UserID)
 		return nil, fmt.Errorf("user or password has err")
 	}
 	return ui, nil

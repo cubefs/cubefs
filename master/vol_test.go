@@ -1,6 +1,7 @@
 package master
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -11,12 +12,14 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
+	"github.com/cubefs/cubefs/blobstore/common/trace"
+	"github.com/cubefs/cubefs/blobstore/util/log"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util"
-	"github.com/cubefs/cubefs/util/log"
 )
 
 func TestAutoCreateDataPartitions(t *testing.T) {
+	_, ctx := trace.StartSpanFromContextWithTraceID(context.Background(), "", "vol-test-auto-create-data-partition")
 	commonVol, err := server.cluster.getVol(commonVolName)
 	if err != nil {
 		t.Error(err)
@@ -32,7 +35,7 @@ func TestAutoCreateDataPartitions(t *testing.T) {
 	t.Logf("status[%v],disableAutoAlloc[%v],cap[%v]\n",
 		commonVol.Status, server.cluster.DisableAutoAllocate, commonVol.Capacity)
 
-	commonVol.checkAutoDataPartitionCreation(server.cluster)
+	commonVol.checkAutoDataPartitionCreation(ctx, server.cluster)
 	newDpCount := len(commonVol.dataPartitions.partitions)
 	if dpCount == newDpCount {
 		t.Errorf("autoCreateDataPartitions failed,expand 0 data partitions,oldCount[%v],curCount[%v]", dpCount, newDpCount)
@@ -41,38 +44,40 @@ func TestAutoCreateDataPartitions(t *testing.T) {
 }
 
 func TestCheckVol(t *testing.T) {
-	commonVol.checkStatus(server.cluster)
-	commonVol.checkMetaPartitions(server.cluster)
-	commonVol.checkDataPartitions(server.cluster)
-	log.LogFlush()
+	_, ctx := trace.StartSpanFromContextWithTraceID(context.Background(), "", "vol-test-check-vol")
+	commonVol.checkStatus(ctx, server.cluster)
+	commonVol.checkMetaPartitions(ctx, server.cluster)
+	commonVol.checkDataPartitions(ctx, server.cluster)
+	// log.Flush()
 	t.Logf("writable data partitions[%v]\n", commonVol.dataPartitions.readableAndWritableCnt)
 }
 
 func TestVol(t *testing.T) {
+	_, ctx := trace.StartSpanFromContextWithTraceID(context.Background(), "", "vol-test")
 	name := "test1"
-	createVol(map[string]interface{}{nameKey: name}, t)
+	createVol(ctx, map[string]interface{}{nameKey: name}, t)
 	// report mp/dp info to master
-	server.cluster.checkDataNodeHeartbeat()
-	server.cluster.checkDataNodeHeartbeat()
+	server.cluster.checkDataNodeHeartbeat(ctx)
+	server.cluster.checkDataNodeHeartbeat(ctx)
 	time.Sleep(5 * time.Second)
 	// check status
-	server.cluster.checkMetaPartitions()
-	server.cluster.checkDataPartitions()
-	server.cluster.checkLoadMetaPartitions()
-	server.cluster.doLoadDataPartitions()
+	server.cluster.checkMetaPartitions(ctx)
+	server.cluster.checkDataPartitions(ctx)
+	server.cluster.checkLoadMetaPartitions(ctx)
+	server.cluster.doLoadDataPartitions(ctx)
 	vol, err := server.cluster.getVol(name)
 	if err != nil {
 		t.Errorf("err is %v", err)
 		return
 	}
 
-	vol.checkStatus(server.cluster)
+	vol.checkStatus(ctx, server.cluster)
 	getVol(name, t)
 	statVol(name, t)
 	delVol(name, t)
 	getSimpleVol(name, true, t)
-	vol.checkStatus(server.cluster)
-	err = vol.deleteVolFromStore(server.cluster)
+	vol.checkStatus(ctx, server.cluster)
+	err = vol.deleteVolFromStore(ctx, server.cluster)
 	if err != nil {
 		panic(err)
 	}
@@ -208,7 +213,7 @@ func checkWithDefault(kv map[string]interface{}, key string, val interface{}) {
 
 const testOwner = "cfs"
 
-func createVol(kv map[string]interface{}, t *testing.T) {
+func createVol(ctx context.Context, kv map[string]interface{}, t *testing.T) {
 	checkWithDefault(kv, volTypeKey, proto.VolumeTypeHot)
 	checkWithDefault(kv, volOwnerKey, testOwner)
 	checkWithDefault(kv, zoneNameKey, testZone2)
@@ -237,11 +242,11 @@ func createVol(kv map[string]interface{}, t *testing.T) {
 	dpReplicaNum := kv[replicaNumKey].(int)
 	assert.True(t, dpReplicaNum == int(vol.dpReplicaNum))
 
-	checkDataPartitionsWritableTest(vol, t)
-	checkMetaPartitionsWritableTest(vol, t)
+	checkDataPartitionsWritableTest(ctx, vol, t)
+	checkMetaPartitionsWritableTest(ctx, vol, t)
 }
 
-func checkDataPartitionsWritableTest(vol *Vol, t *testing.T) {
+func checkDataPartitionsWritableTest(ctx context.Context, vol *Vol, t *testing.T) {
 	if len(vol.dataPartitions.partitions) == 0 {
 		return
 	}
@@ -253,7 +258,7 @@ func checkDataPartitionsWritableTest(vol *Vol, t *testing.T) {
 	}
 
 	// after check data partitions ,the status must be writable
-	vol.checkDataPartitions(server.cluster)
+	vol.checkDataPartitions(ctx, server.cluster)
 	partition = vol.dataPartitions.partitions[0]
 	if partition.Status != proto.ReadWrite {
 		t.Errorf("expect partition status[%v],real status[%v]\n", proto.ReadWrite, partition.Status)
@@ -261,7 +266,7 @@ func checkDataPartitionsWritableTest(vol *Vol, t *testing.T) {
 	}
 }
 
-func checkMetaPartitionsWritableTest(vol *Vol, t *testing.T) {
+func checkMetaPartitionsWritableTest(ctx context.Context, vol *Vol, t *testing.T) {
 	if len(vol.MetaPartitions) == 0 {
 		t.Error("no meta partition")
 		return
@@ -277,7 +282,7 @@ func checkMetaPartitionsWritableTest(vol *Vol, t *testing.T) {
 	maxPartitionID := vol.maxPartitionID()
 	maxMp := vol.MetaPartitions[maxPartitionID]
 	// after check meta partitions ,the status must be writable
-	maxMp.checkStatus(server.cluster.Name, false, int(vol.mpReplicaNum), maxPartitionID, 4194304, vol.Forbidden)
+	maxMp.checkStatus(ctx, server.cluster.Name, false, int(vol.mpReplicaNum), maxPartitionID, 4194304, vol.Forbidden)
 	if maxMp.Status != proto.ReadWrite {
 		t.Errorf("expect partition status[%v],real status[%v]\n", proto.ReadWrite, maxMp.Status)
 		return
@@ -316,7 +321,7 @@ func TestVolMpsLock(t *testing.T) {
 	name := "TestVolMpsLock"
 	var volID uint64 = 1
 	createTime := time.Now().Unix()
-
+	_, ctx := trace.StartSpanFromContextWithTraceID(context.Background(), "", "vol-test-mps-lock")
 	vv := volValue{
 		ID:                volID,
 		Name:              name,
@@ -334,7 +339,7 @@ func TestVolMpsLock(t *testing.T) {
 		Description:       "",
 	}
 	expireTime := time.Microsecond * 50
-	vol := newVol(vv)
+	vol := newVol(ctx, vv)
 	if vol.mpsLock.enable == 0 {
 		return
 	}
@@ -346,7 +351,7 @@ func TestVolMpsLock(t *testing.T) {
 	time.Sleep(time.Microsecond * 100)
 	tm := time.Now()
 	if tm.After(mpsLock.lockTime.Add(expireTime)) {
-		log.LogWarnf("vol %v mpsLock hang more than %v since time %v stack(%v)",
+		log.Warnf("vol %v mpsLock hang more than %v since time %v stack(%v)",
 			mpsLock.vol.Name, expireTime, mpsLock.lockTime, mpsLock.lastEffectStack)
 		mpsLock.hang = true
 	}
@@ -369,6 +374,7 @@ func TestVolMpsLock(t *testing.T) {
 }
 
 func TestConcurrentReadWriteDataPartitionMap(t *testing.T) {
+	_, ctx := trace.StartSpanFromContextWithTraceID(context.Background(), "", "vol-test-concurrent-rw-dp-map")
 	name := "TestConcurrentReadWriteDataPartitionMap"
 	var volID uint64 = 1
 	createTime := time.Now().Unix()
@@ -390,15 +396,15 @@ func TestConcurrentReadWriteDataPartitionMap(t *testing.T) {
 		Description:       "",
 	}
 
-	vol := newVol(vv)
+	vol := newVol(ctx, vv)
 	// unavailable mp
 	mp1 := newMetaPartition(1, 1, defaultMaxMetaPartitionInodeID, 3, name, volID, 0)
-	vol.addMetaPartition(mp1)
+	vol.addMetaPartition(ctx, mp1)
 	// readonly mp
 	mp2 := newMetaPartition(2, 1, defaultMaxMetaPartitionInodeID, 3, name, volID, 0)
 	mp2.Status = proto.ReadOnly
-	vol.addMetaPartition(mp2)
-	vol.updateViewCache(server.cluster)
+	vol.addMetaPartition(ctx, mp2)
+	vol.updateViewCache(ctx, server.cluster)
 	for id := 0; id < 30000; id++ {
 		dp := newDataPartition(uint64(id), 3, name, volID, 0, 0)
 		vol.dataPartitions.put(dp)
@@ -414,6 +420,6 @@ func TestConcurrentReadWriteDataPartitionMap(t *testing.T) {
 	}()
 	for i := 0; i < 10; i++ {
 		time.Sleep(time.Second)
-		vol.updateViewCache(server.cluster)
+		vol.updateViewCache(ctx, server.cluster)
 	}
 }

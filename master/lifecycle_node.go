@@ -15,11 +15,11 @@
 package master
 
 import (
+	"context"
 	"sync"
 	"time"
 
 	"github.com/cubefs/cubefs/proto"
-	"github.com/cubefs/cubefs/util/log"
 )
 
 type LcNode struct {
@@ -31,12 +31,12 @@ type LcNode struct {
 	sync.RWMutex
 }
 
-func newLcNode(addr, clusterID string) (lcNode *LcNode) {
+func newLcNode(ctx context.Context, addr, clusterID string) (lcNode *LcNode) {
 	lcNode = new(LcNode)
 	lcNode.Addr = addr
 	lcNode.IsActive = true
 	lcNode.ReportTime = time.Now()
-	lcNode.TaskManager = newAdminTaskManager(lcNode.Addr, clusterID)
+	lcNode.TaskManager = newAdminTaskManager(ctx, lcNode.Addr, clusterID)
 	return
 }
 
@@ -44,10 +44,11 @@ func (lcNode *LcNode) clean() {
 	lcNode.TaskManager.exitCh <- struct{}{}
 }
 
-func (lcNode *LcNode) checkLiveness() {
+func (lcNode *LcNode) checkLiveness(ctx context.Context) {
 	lcNode.Lock()
 	defer lcNode.Unlock()
-	log.LogInfof("action[checkLiveness] lcnode[%v, %v, %v] report time[%v], since report time[%v], need gap[%v]",
+	span := proto.SpanFromContext(ctx)
+	span.Infof("action[checkLiveness] lcnode[%v, %v, %v] report time[%v], since report time[%v], need gap[%v]",
 		lcNode.ID, lcNode.Addr, lcNode.IsActive, lcNode.ReportTime, time.Since(lcNode.ReportTime), time.Second*time.Duration(defaultNodeTimeOutSec))
 	if time.Since(lcNode.ReportTime) > time.Second*time.Duration(defaultNodeTimeOutSec) {
 		lcNode.IsActive = false
