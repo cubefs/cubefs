@@ -167,3 +167,13 @@ func (se *SortedObjExtents) FindOffsetExist(fileOffset uint64) (bool, int) {
 	}
 	return false, 0
 }
+
+func (se *SortedObjExtents) Find(oek *proto.ObjExtentKey) (extent proto.ObjExtentKey, ok bool) {
+	for _, extent = range se.eks {
+		if extent.IsEquals(oek) {
+			ok = true
+			return
+		}
+	}
+	return
+}

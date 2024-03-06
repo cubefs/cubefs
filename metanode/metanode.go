@@ -186,6 +186,7 @@ func doShutdown(s common.Server) {
 	if !ok {
 		return
 	}
+	m.stopDiskStat()
 	m.stopUpdateNodeInfo()
 	// shutdown node and release the resource
 	m.stopStat()

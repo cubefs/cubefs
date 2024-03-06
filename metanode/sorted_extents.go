@@ -635,6 +635,16 @@ func (se *SortedExtents) doCopyTinyExtents() []proto.ExtentKey {
 	return eks
 }
 
+func (se *SortedExtents) Find(ek *proto.ExtentKey) (extent proto.ExtentKey, ok bool) {
+	for _, extent = range se.eks {
+		if extent.Equals(ek) {
+			ok = true
+			return
+		}
+	}
+	return
+}
+
 // discard code
 func (se *SortedExtents) Delete(delEks []proto.ExtentKey) (curEks []proto.ExtentKey) {
 	se.RLock()

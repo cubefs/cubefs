@@ -1468,7 +1468,6 @@ func (tr *TransactionResource) rollbackInodeInternal(dbHandle interface{}, rbIno
 		}
 
 		if ino == nil || ino.IsTempFile() || ino.ShouldDelete() {
-
 			err = func() (err error) {
 				var snap Snapshot
 				startDek := NewDeletedExtentKeyPrefix(rbInode.inode.Inode)
@@ -1483,6 +1482,14 @@ func (tr *TransactionResource) rollbackInodeInternal(dbHandle interface{}, rbIno
 				// invoke a rpc is unnecessary, we already in fsm
 				err = snap.RangeWithScope(DeletedExtentsType, startDek, endDek, func(item interface{}) (bool, error) {
 					dek := item.(*DeletedExtentKey)
+					_, ok := rbInode.inode.Extents.Find(&dek.ExtentKey)
+					// NOTE: if not found in rb inode
+					// the extent is remove by truncate operation
+					// rollback it is unnecessary
+					if !ok {
+						log.LogDebugf("[rollbackInodeInternal] mp(%v) dek(%v) not found in rb inode(%v), skip", mp.config.PartitionId, dek, rbInode.inode.Inode)
+						return true, nil
+					}
 					if _, err = mp.deletedExtentsTree.Delete(dbHandle, dek); err != nil {
 						return false, err
 					}
@@ -1497,6 +1504,11 @@ func (tr *TransactionResource) rollbackInodeInternal(dbHandle interface{}, rbIno
 				endDoek := NewDeletedObjExtentKeyPrefix(rbInode.inode.Inode + 1)
 				err = snap.RangeWithScope(DeletedObjExtentsType, startDoek, endDoek, func(item interface{}) (bool, error) {
 					doek := item.(*DeletedObjExtentKey)
+					_, ok := rbInode.inode.ObjExtents.Find(&doek.ObjExtentKey)
+					if !ok {
+						log.LogDebugf("[rollbackInodeInternal] mp(%v) doek(%v) not found in rb inode(%v), skip", mp.config.PartitionId, doek, rbInode.inode.Inode)
+						return true, nil
+					}
 					if _, err = mp.deletedObjExtentsTree.Delete(dbHandle, doek); err != nil {
 						return false, err
 					}

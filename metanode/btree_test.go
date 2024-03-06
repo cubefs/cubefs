@@ -52,6 +52,12 @@ func mockTree(rocksTree *RocksTree, treeType TreeType) (memModeTree, rocksModeTr
 	case TransactionRollbackDentryType:
 		memModeTree = &TransactionBTree{NewBtree()}
 		rocksModeTree, _ = NewTransactionRollbackDentryRocks(rocksTree)
+	case DeletedExtentsType:
+		memModeTree = &DeletedExtentsBTree{NewBtree()}
+		rocksModeTree, _ = NewDeletedExtentsRocks(rocksTree)
+	case DeletedObjExtentsType:
+		memModeTree = &DeletedObjExtentsBTree{NewBtree()}
+		rocksModeTree, _ = NewDeletedObjExtentsRocks(rocksTree)
 	default:
 		fmt.Printf("error tree type(%v)\n", treeType)
 		os.Exit(1)
