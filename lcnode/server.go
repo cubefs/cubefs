@@ -496,7 +496,7 @@ func (l *LcNode) debugServiceGetFile(w http.ResponseWriter, r *http.Request) {
 	}
 	defer extentClient.CloseStream(ino)
 
-	t := &TransitionMgr{
+	t := &RemoteTransitionMgr{
 		ecForW: extentClient,
 	}
 	e := &proto.ScanDentry{

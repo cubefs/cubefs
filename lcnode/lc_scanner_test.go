@@ -35,7 +35,7 @@ func TestLcScanner(t *testing.T) {
 		Volume: "test_vol",
 		mw:     NewMockMetaWrapper(),
 		lcnode: &LcNode{},
-		transitionMgr: &TransitionMgr{
+		remoteTransitionMgr: &RemoteTransitionMgr{
 			volume:    "test_vol",
 			ec:        NewMockExtentClient(),
 			ecForW:    NewMockExtentClient(),

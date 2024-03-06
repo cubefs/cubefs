@@ -17,15 +17,12 @@ package lcnode
 import (
 	"context"
 	"os"
-	"path"
 	"strings"
 	"sync/atomic"
 	"syscall"
 	"time"
 
-	"github.com/cubefs/cubefs/blobstore/api/access"
 	"github.com/cubefs/cubefs/proto"
-	"github.com/cubefs/cubefs/sdk/data/blobstore"
 	"github.com/cubefs/cubefs/sdk/data/stream"
 	"github.com/cubefs/cubefs/sdk/meta"
 	"github.com/cubefs/cubefs/util/log"
@@ -39,22 +36,23 @@ const (
 )
 
 type LcScanner struct {
-	ID            string
-	Volume        string
-	mw            MetaWrapper
-	lcnode        *LcNode
-	transitionMgr *TransitionMgr
-	adminTask     *proto.AdminTask
-	rule          *proto.Rule
-	dirChan       *unboundedchan.UnboundedChan
-	fileChan      *unboundedchan.UnboundedChan
-	dirRPoll      *routinepool.RoutinePool
-	fileRPoll     *routinepool.RoutinePool
-	batchDentries *proto.BatchDentries
-	currentStat   *proto.LcNodeRuleTaskStatistics
-	limiter       *rate.Limiter
-	now           time.Time
-	stopC         chan bool
+	ID                  string
+	Volume              string
+	mw                  MetaWrapper
+	lcnode              *LcNode
+	remoteTransitionMgr *RemoteTransitionMgr
+	localTransitionMgr  *LocalTransitionMgr
+	adminTask           *proto.AdminTask
+	rule                *proto.Rule
+	dirChan             *unboundedchan.UnboundedChan
+	fileChan            *unboundedchan.UnboundedChan
+	dirRPoll            *routinepool.RoutinePool
+	fileRPoll           *routinepool.RoutinePool
+	batchDentries       *proto.BatchDentries
+	currentStat         *proto.LcNodeRuleTaskStatistics
+	limiter             *rate.Limiter
+	now                 time.Time
+	stopC               chan bool
 }
 
 func NewS3Scanner(adminTask *proto.AdminTask, l *LcNode) (*LcScanner, error) {
@@ -92,21 +90,21 @@ func NewS3Scanner(adminTask *proto.AdminTask, l *LcNode) (*LcScanner, error) {
 		stopC:         make(chan bool, 0),
 	}
 
-	var ebsConfig = access.Config{
-		ConnMode: access.NoLimitConnMode,
-		Consul: access.ConsulConfig{
-			Address: l.ebsAddr,
-		},
-		MaxSizePutOnce: MaxSizePutOnce,
-		Logger: &access.Logger{
-			Filename: path.Join(l.logDir, "ebs.log"),
-		},
-	}
-	var ebsClient *blobstore.BlobStoreClient
-	if ebsClient, err = blobstore.NewEbsClient(ebsConfig); err != nil {
-		log.LogErrorf("NewEbsClient err: %v", err)
-		return nil, err
-	}
+	//var ebsConfig = access.Config{
+	//	ConnMode: access.NoLimitConnMode,
+	//	Consul: access.ConsulConfig{
+	//		Address: l.ebsAddr,
+	//	},
+	//	MaxSizePutOnce: MaxSizePutOnce,
+	//	Logger: &access.Logger{
+	//		Filename: path.Join(l.logDir, "ebs.log"),
+	//	},
+	//}
+	//var ebsClient *blobstore.BlobStoreClient
+	//if ebsClient, err = blobstore.NewEbsClient(ebsConfig); err != nil {
+	//	log.LogErrorf("NewEbsClient err: %v", err)
+	//	return nil, err
+	//}
 
 	var volumeInfo *proto.SimpleVolView
 	volumeInfo, err = l.mc.AdminAPI().GetVolumeSimpleInfo(scanner.Volume)
@@ -142,11 +140,21 @@ func NewS3Scanner(adminTask *proto.AdminTask, l *LcNode) (*LcScanner, error) {
 		return nil, err
 	}
 
-	scanner.transitionMgr = &TransitionMgr{
-		volume:    scanner.Volume,
-		ec:        extentClient,
-		ecForW:    extentClientForW,
-		ebsClient: ebsClient,
+	scanner.remoteTransitionMgr = &RemoteTransitionMgr{
+		volume: scanner.Volume,
+		ec:     extentClient,
+		ecForW: extentClientForW,
+		//ebsClient: ebsClient,
+	}
+
+	scanner.localTransitionMgr = &LocalTransitionMgr{
+		Volume:                 scanner.Volume,
+		Masters:                l.masters,
+		AppendExtentKey:        metaWrapper.AppendExtentKey,
+		GetExtents:             metaWrapper.GetExtents,
+		VolStorageClass:        volumeInfo.VolStorageClass,
+		VolAllowedStorageClass: volumeInfo.AllowedStorageClass,
+		DpWrapper:              extentClient.DpWrapper,
 	}
 
 	return scanner, nil
@@ -384,7 +392,7 @@ func (s *LcScanner) handleFile(dentry *proto.ScanDentry) {
 			}
 			return
 		}
-		err := s.transitionMgr.migrate(dentry)
+		err := s.migrate(dentry)
 		if err != nil {
 			atomic.AddInt64(&s.currentStat.ErrorSkippedNum, 1)
 			log.LogErrorf("migrate err: %v, dentry: %+v, skip it", err, dentry)
@@ -407,7 +415,7 @@ func (s *LcScanner) handleFile(dentry *proto.ScanDentry) {
 			}
 			return
 		}
-		oeks, err := s.transitionMgr.migrateToEbs(dentry)
+		oeks, err := s.migrateToEbs(dentry)
 		if err != nil {
 			atomic.AddInt64(&s.currentStat.ErrorSkippedNum, 1)
 			log.LogErrorf("migrateToEbs err: %v, dentry: %+v, skip it", err, dentry)
@@ -430,6 +438,21 @@ func (s *LcScanner) handleFile(dentry *proto.ScanDentry) {
 			s.batchHandleFile()
 		}
 	}
+}
+
+func (s *LcScanner) migrate(e *proto.ScanDentry) (err error) {
+	log.LogInfof("try to use local transitionMgr to migrate inode %v , path %v", e.Inode, e.Path)
+	if err = s.localTransitionMgr.migrate(e); err == nil {
+		return
+	}
+
+	log.LogInfof("local transitionMgr can't do migration process , try to use remote transitionMgr to migrate inode %v , path %v", e.Inode, e.Path)
+	return s.remoteTransitionMgr.migrate(e)
+}
+
+func (s *LcScanner) migrateToEbs(e *proto.ScanDentry) (oeks []proto.ObjExtentKey, err error) {
+	// todo try local migration first
+	return s.remoteTransitionMgr.migrateToEbs(e)
 }
 
 func (s *LcScanner) batchHandleFile() {
@@ -698,7 +721,7 @@ func (s *LcScanner) Stop() {
 	close(s.dirChan.In)
 	close(s.fileChan.In)
 	s.mw.Close()
-	s.transitionMgr.ec.Close()
-	s.transitionMgr.ecForW.Close()
+	s.remoteTransitionMgr.ec.Close()
+	s.remoteTransitionMgr.ecForW.Close()
 	log.LogInfof("scanner(%v) stopped", s.ID)
 }

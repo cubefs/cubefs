@@ -18,13 +18,16 @@ import (
 	"context"
 	"crypto/md5"
 	"encoding/hex"
-	"io"
 	"strings"
 
+	"fmt"
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/sdk/data/stream"
+	"github.com/cubefs/cubefs/sdk/data/wrapper"
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/log"
+	"io"
 )
 
 type ExtentApi interface {
@@ -41,33 +44,38 @@ type EbsApi interface {
 	Get(ctx context.Context, volName string, offset uint64, size uint64, oek proto.ObjExtentKey) (body io.ReadCloser, err error)
 }
 
-type TransitionMgr struct {
+type TransitionInterface interface {
+	migrate(e *proto.ScanDentry) (err error)
+	migrateToEbs(e *proto.ScanDentry) (oeks []proto.ObjExtentKey, err error)
+}
+
+type RemoteTransitionMgr struct {
 	volume    string
 	ec        ExtentApi // extent client for read
 	ecForW    ExtentApi // extent client for write
 	ebsClient EbsApi
 }
 
-func (t *TransitionMgr) migrate(e *proto.ScanDentry) (err error) {
+func (rtm *RemoteTransitionMgr) migrate(e *proto.ScanDentry) (err error) {
 	if e.Size == 0 {
 		log.LogInfof("skip migration, size=0, inode(%v)", e.Inode)
 		return
 	}
-	if err = t.ec.OpenStream(e.Inode, false, false); err != nil {
+	if err = rtm.ec.OpenStream(e.Inode, false, false); err != nil {
 		log.LogErrorf("migrate: ec OpenStream fail, inode(%v) err: %v", e.Inode, err)
 		return
 	}
 	defer func() {
-		if closeErr := t.ec.CloseStream(e.Inode); closeErr != nil {
+		if closeErr := rtm.ec.CloseStream(e.Inode); closeErr != nil {
 			log.LogErrorf("migrate: ec CloseStream fail, inode(%v) err: %v", e.Inode, closeErr)
 		}
 	}()
-	if err = t.ecForW.OpenStream(e.Inode, false, false); err != nil {
+	if err = rtm.ecForW.OpenStream(e.Inode, false, false); err != nil {
 		log.LogErrorf("migrate: ecForW OpenStream fail, inode(%v) err: %v", e.Inode, err)
 		return
 	}
 	defer func() {
-		if closeErr := t.ecForW.CloseStream(e.Inode); closeErr != nil {
+		if closeErr := rtm.ecForW.CloseStream(e.Inode); closeErr != nil {
 			log.LogErrorf("migrate: ecForW CloseStream fail, inode(%v) err: %v", e.Inode, closeErr)
 		}
 	}()
@@ -95,12 +103,12 @@ func (t *TransitionMgr) migrate(e *proto.ScanDentry) (err error) {
 		}
 		buf = buf[:readSize]
 
-		readN, err = t.ec.Read(e.Inode, buf, readOffset, readSize, e.StorageClass, false)
+		readN, err = rtm.ec.Read(e.Inode, buf, readOffset, readSize, e.StorageClass, false)
 		if err != nil && err != io.EOF {
 			return
 		}
 		if readN > 0 {
-			writeN, err = t.ecForW.Write(e.Inode, writeOffset, buf[:readN], 0, nil, proto.OpTypeToStorageType(e.Op), true)
+			writeN, err = rtm.ecForW.Write(e.Inode, writeOffset, buf[:readN], 0, nil, proto.OpTypeToStorageType(e.Op), true)
 			if err != nil {
 				log.LogErrorf("migrate: ecForW write err: %v, inode(%v), target offset(%v)", err, e.Inode, writeOffset)
 				return
@@ -117,7 +125,7 @@ func (t *TransitionMgr) migrate(e *proto.ScanDentry) (err error) {
 		}
 	}
 
-	if err = t.ecForW.Flush(e.Inode); err != nil {
+	if err = rtm.ecForW.Flush(e.Inode); err != nil {
 		log.LogErrorf("migrate: ecForW flush err: %v, inode(%v)", err, e.Inode)
 		return
 	}
@@ -127,7 +135,7 @@ func (t *TransitionMgr) migrate(e *proto.ScanDentry) (err error) {
 
 	//check read from src extent
 	srcMd5Hash := md5.New()
-	err = t.readFromExtentClient(e, srcMd5Hash, false, 0, 0)
+	err = rtm.readFromExtentClient(e, srcMd5Hash, false, 0, 0)
 	if err != nil {
 		log.LogErrorf("check: read from src extent err: %v, inode(%v)", err, e.Inode)
 		return
@@ -142,7 +150,7 @@ func (t *TransitionMgr) migrate(e *proto.ScanDentry) (err error) {
 
 	//check read from dst migration extent
 	dstMd5Hash := md5.New()
-	err = t.readFromExtentClient(e, dstMd5Hash, true, 0, 0)
+	err = rtm.readFromExtentClient(e, dstMd5Hash, true, 0, 0)
 	if err != nil {
 		log.LogErrorf("check: read from dst extent err: %v, inode(%v)", err, e.Inode)
 		return
@@ -159,7 +167,7 @@ func (t *TransitionMgr) migrate(e *proto.ScanDentry) (err error) {
 	return
 }
 
-func (t *TransitionMgr) readFromExtentClient(e *proto.ScanDentry, writer io.Writer, isMigrationExtent bool, from, size int) (err error) {
+func (rtm *RemoteTransitionMgr) readFromExtentClient(e *proto.ScanDentry, writer io.Writer, isMigrationExtent bool, from, size int) (err error) {
 	var (
 		readN      int
 		readOffset int
@@ -185,9 +193,9 @@ func (t *TransitionMgr) readFromExtentClient(e *proto.ScanDentry, writer io.Writ
 		buf = buf[:readSize]
 
 		if isMigrationExtent {
-			readN, err = t.ecForW.Read(e.Inode, buf, readOffset, readSize, e.StorageClass, isMigrationExtent)
+			readN, err = rtm.ecForW.Read(e.Inode, buf, readOffset, readSize, e.StorageClass, isMigrationExtent)
 		} else {
-			readN, err = t.ec.Read(e.Inode, buf, readOffset, readSize, e.StorageClass, isMigrationExtent)
+			readN, err = rtm.ec.Read(e.Inode, buf, readOffset, readSize, e.StorageClass, isMigrationExtent)
 		}
 
 		if err != nil && err != io.EOF {
@@ -207,24 +215,24 @@ func (t *TransitionMgr) readFromExtentClient(e *proto.ScanDentry, writer io.Writ
 	return
 }
 
-func (t *TransitionMgr) migrateToEbs(e *proto.ScanDentry) (oek []proto.ObjExtentKey, err error) {
+func (rtm *RemoteTransitionMgr) migrateToEbs(e *proto.ScanDentry) (oek []proto.ObjExtentKey, err error) {
 	if e.Size == 0 {
 		log.LogInfof("skip migration, size=0, inode(%v)", e.Inode)
 		return
 	}
-	if err = t.ec.OpenStream(e.Inode, false, false); err != nil {
+	if err = rtm.ec.OpenStream(e.Inode, false, false); err != nil {
 		log.LogErrorf("migrateToEbs: OpenStream fail, inode(%v) err: %v", e.Inode, err)
 		return
 	}
 	defer func() {
-		if closeErr := t.ec.CloseStream(e.Inode); closeErr != nil {
+		if closeErr := rtm.ec.CloseStream(e.Inode); closeErr != nil {
 			log.LogErrorf("migrateToEbs: CloseStream fail, inode(%v) err: %v", e.Inode, closeErr)
 		}
 	}()
 
 	r, w := io.Pipe()
 	go func() {
-		err = t.readFromExtentClient(e, w, false, 0, 0)
+		err = rtm.readFromExtentClient(e, w, false, 0, 0)
 		if err != nil {
 			log.LogErrorf("migrateToEbs: read from extent err: %v, inode(%v)", err, e.Inode)
 		}
@@ -232,7 +240,7 @@ func (t *TransitionMgr) migrateToEbs(e *proto.ScanDentry) (oek []proto.ObjExtent
 	}()
 
 	ctx := context.Background()
-	oek, _md5, err := t.ebsClient.Put(ctx, t.volume, r, e.Size)
+	oek, _md5, err := rtm.ebsClient.Put(ctx, rtm.volume, r, e.Size)
 	if err != nil {
 		log.LogErrorf("migrateToEbs: ebs put err: %v, inode(%v)", err, e.Inode)
 		r.Close()
@@ -260,7 +268,7 @@ func (t *TransitionMgr) migrateToEbs(e *proto.ScanDentry) (oek []proto.ObjExtent
 		}
 		rest -= getSize
 		srcMd5Hash := md5.New()
-		err = t.readFromExtentClient(e, srcMd5Hash, false, from, int(getSize))
+		err = rtm.readFromExtentClient(e, srcMd5Hash, false, from, int(getSize))
 		if err != nil {
 			log.LogErrorf("migrateToEbs: check err: %v, inode(%v)", err, e.Inode)
 			return
@@ -276,4 +284,71 @@ func (t *TransitionMgr) migrateToEbs(e *proto.ScanDentry) (oek []proto.ObjExtent
 	}
 	log.LogInfof("migrateToEbs and check finished, inode(%v)", e.Inode)
 	return
+}
+
+type DpLocalTransitionInfo struct {
+	Hosts   []string
+	SrcDp   uint64
+	DstDp   uint64
+	Extents []proto.ExtentKey
+}
+
+type LocalTransitionMgr struct {
+	Volume                 string
+	Masters                []string
+	AppendExtentKey        stream.AppendExtentKeyFunc
+	GetExtents             stream.GetExtentsFunc
+	VolStorageClass        uint32
+	VolAllowedStorageClass []uint32
+	DpWrapper              *wrapper.DataPartitionWrapper
+}
+
+func (ltm *LocalTransitionMgr) migrate(e *proto.ScanDentry) (err error) {
+
+	gen, size, extents, err := ltm.GetExtents(e.Inode, false, false, false)
+	if err != nil {
+		return err
+	}
+
+	log.LogErrorf("%v %v %v", gen, size, extents)
+
+	// group by data partition
+	dp2Extents := map[uint64][]proto.ExtentKey{}
+	for _, extent := range extents {
+		dpId := extent.PartitionId
+		dp2Extents[dpId] = append(dp2Extents[dpId], extent)
+	}
+	log.LogErrorf("grouped extents %v ", dp2Extents)
+
+	var dpLocalTransitionInfoList []DpLocalTransitionInfo
+	for dpId, dpExtents := range dp2Extents {
+
+		dp, ok := ltm.DpWrapper.TryGetPartition(dpId)
+		if !ok {
+			errMsg := fmt.Sprintf("can't get dp [%v] information when using local transition mgr to migrate file %v", dpId, e.Path)
+			log.LogErrorf(errMsg)
+			return errors.New(errMsg)
+		}
+
+		hostsStr := dp.GetHostsString()
+		preferredLocalDp, err := ltm.DpWrapper.GetDataPartitionForWrite(map[string]struct{}{}, hostsStr, proto.OpTypeToStorageType(e.Op), 0)
+		if err != nil {
+			errMsg := fmt.Sprintf("can't get another local dp for dp[%v] when using local transition mgr to migrate file %v", dpId, e.Path)
+			log.LogErrorf(errMsg)
+			return errors.New(errMsg)
+		}
+		if preferredLocalDp.GetHostsString() != hostsStr {
+			errMsg := fmt.Sprintf("dp [%v][%v] and dp[%v][%v] hove different hosts ", dpId, hostsStr, preferredLocalDp.PartitionID, preferredLocalDp.GetHostsString())
+			log.LogErrorf(errMsg)
+			return errors.New(errMsg)
+		}
+
+		dpLocalTransitionInfoList = append(dpLocalTransitionInfoList, DpLocalTransitionInfo{SrcDp: dpId, DstDp: preferredLocalDp.PartitionID, Extents: dpExtents, Hosts: dp.Hosts})
+	}
+
+	log.LogErrorf("%v", dpLocalTransitionInfoList)
+	//todo
+	//conn, err := StreamConnPool.GetConnect(dp.Hosts[0])
+
+	return errors.New("not implemented yet !")
 }

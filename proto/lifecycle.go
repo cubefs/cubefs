@@ -194,7 +194,7 @@ func validTransition(t *Transition, dateMap map[string]*time.Time, daysMap map[s
 	if t.Date != nil {
 		date := t.Date.In(time.UTC)
 		if !(date.Hour() == 0 && date.Minute() == 0 && date.Second() == 0 && date.Nanosecond() == 0) {
-			return LifeCycleErrDateType
+			//return LifeCycleErrDateType
 		}
 		dateMap[t.StorageClass] = t.Date
 	} else if t.Days != nil {

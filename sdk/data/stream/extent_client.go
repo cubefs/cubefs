@@ -150,7 +150,7 @@ type ExtentClient struct {
 	BcacheHealth              bool
 	preload                   bool
 	LimitManager              *manager.LimitManager
-	dataWrapper               *wrapper.Wrapper
+	DpWrapper                 *wrapper.DataPartitionWrapper
 	appendExtentKey           AppendExtentKeyFunc
 	splitExtentKey            SplitExtentKeyFunc
 	getExtents                GetExtentsFunc
@@ -167,9 +167,9 @@ type ExtentClient struct {
 }
 
 func (client *ExtentClient) UidIsLimited(uid uint32) bool {
-	client.dataWrapper.UidLock.RLock()
-	defer client.dataWrapper.UidLock.RUnlock()
-	if uInfo, ok := client.dataWrapper.Uids[uid]; ok {
+	client.DpWrapper.UidLock.RLock()
+	defer client.DpWrapper.UidLock.RUnlock()
+	if uInfo, ok := client.DpWrapper.Uids[uid]; ok {
 		if uInfo.Limited {
 			log.LogDebugf("uid %v is limited", uid)
 			return true
@@ -250,7 +250,7 @@ retry:
 		return
 	}
 
-	client.dataWrapper, err = wrapper.NewDataPartitionWrapper(client, config.Volume, config.Masters, config.Preload,
+	client.DpWrapper, err = wrapper.NewDataPartitionWrapper(client, config.Volume, config.Masters, config.Preload,
 		config.MinWriteAbleDataPartitionCnt, config.VerReadSeq, config.VolStorageClass, config.VolAllowedStorageClass)
 	if err != nil {
 		log.LogErrorf("NewExtentClient: new data partition wrapper failed: volume(%v) mayRetry(%v) err(%v)",
@@ -275,15 +275,15 @@ retry:
 	client.getExtents = config.OnGetExtents
 	client.truncate = config.OnTruncate
 	client.evictIcache = config.OnEvictIcache
-	client.dataWrapper.InitFollowerRead(config.FollowerRead)
-	client.dataWrapper.SetNearRead(config.NearRead)
+	client.DpWrapper.InitFollowerRead(config.FollowerRead)
+	client.DpWrapper.SetNearRead(config.NearRead)
 	client.loadBcache = config.OnLoadBcache
 	client.cacheBcache = config.OnCacheBcache
 	client.evictBcache = config.OnEvictBcache
 	client.volumeName = config.Volume
 	client.bcacheEnable = config.BcacheEnable
 	client.bcacheDir = config.BcacheDir
-	client.multiVerMgr.verReadSeq = client.dataWrapper.GetReadVerSeq()
+	client.multiVerMgr.verReadSeq = client.DpWrapper.GetReadVerSeq()
 	client.BcacheHealth = true
 	client.preload = config.Preload
 	client.disableMetaCache = config.DisableMetaCache
@@ -329,7 +329,7 @@ retry:
 }
 
 func (client *ExtentClient) GetEnablePosixAcl() bool {
-	return client.dataWrapper.EnablePosixAcl
+	return client.DpWrapper.EnablePosixAcl
 }
 
 func (client *ExtentClient) GetFlowInfo() (*proto.ClientReportLimitInfo, bool) {
@@ -747,27 +747,27 @@ func (client *ExtentClient) Close() error {
 	for _, inode := range inodes {
 		_ = client.EvictStream(inode)
 	}
-	client.dataWrapper.Stop()
+	client.DpWrapper.Stop()
 	return nil
 }
 
 func (client *ExtentClient) AllocatePreLoadDataPartition(volName string, count int, capacity, ttl uint64, zones string) (err error) {
-	return client.dataWrapper.AllocatePreLoadDataPartition(volName, count, capacity, ttl, zones)
+	return client.DpWrapper.AllocatePreLoadDataPartition(volName, count, capacity, ttl, zones)
 }
 
 func (client *ExtentClient) CheckDataPartitionExsit(partitionID uint64) error {
-	_, err := client.dataWrapper.GetDataPartition(partitionID)
+	_, err := client.DpWrapper.GetDataPartition(partitionID)
 	return err
 }
 
 func (client *ExtentClient) GetDataPartitionForWrite(mediaType uint32) error {
 	exclude := make(map[string]struct{})
-	_, err := client.dataWrapper.GetDataPartitionForWrite(exclude, mediaType, 0)
+	_, err := client.DpWrapper.GetDataPartitionForWrite(exclude, "", mediaType, 0)
 	return err
 }
 
 func (client *ExtentClient) UpdateDataPartitionForColdVolume() error {
-	return client.dataWrapper.UpdateDataPartition()
+	return client.DpWrapper.UpdateDataPartition()
 }
 
 func (client *ExtentClient) IsPreloadMode() bool {
@@ -775,5 +775,5 @@ func (client *ExtentClient) IsPreloadMode() bool {
 }
 
 func (client *ExtentClient) UploadFlowInfo(clientInfo wrapper.SimpleClientInfo) error {
-	return client.dataWrapper.UploadFlowInfo(clientInfo, false)
+	return client.DpWrapper.UploadFlowInfo(clientInfo, false)
 }

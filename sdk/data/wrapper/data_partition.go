@@ -17,6 +17,7 @@ package wrapper
 import (
 	"fmt"
 	"net"
+	"sort"
 	"strings"
 	"sync"
 	"syscall"
@@ -33,7 +34,7 @@ type DataPartition struct {
 	proto.DataPartitionResponse
 	RandomWrite   bool
 	NearHosts     []string
-	ClientWrapper *Wrapper
+	ClientWrapper *DataPartitionWrapper
 	Metrics       *DataPartitionMetrics
 }
 
@@ -98,6 +99,13 @@ func (dp *DataPartition) GetAvgWrite() int64 {
 	defer dp.Metrics.RUnlock()
 
 	return dp.Metrics.AvgWriteLatencyNano
+}
+
+func (dp *DataPartition) GetHostsString() string {
+	dpHostsCopied := make([]string, len(dp.Hosts))
+	copy(dpHostsCopied, dp.Hosts)
+	sort.Sort(sort.StringSlice(dpHostsCopied))
+	return strings.Join(dpHostsCopied, "-")
 }
 
 type DataPartitionSorter []*DataPartition

@@ -478,7 +478,7 @@ func (s *Streamer) doDirectWriteByAppend(req *ExtentRequest, direct bool, op uin
 		return
 	}
 
-	if dp, err = s.client.dataWrapper.GetDataPartition(req.ExtentKey.PartitionId); err != nil {
+	if dp, err = s.client.DpWrapper.GetDataPartition(req.ExtentKey.PartitionId); err != nil {
 		// TODO unhandled error
 		errors.Trace(err, "doDirectWriteByAppend: ino(%v) failed to get datapartition, ek(%v)", s.inode, req.ExtentKey)
 		return
@@ -633,7 +633,7 @@ func (s *Streamer) doOverwrite(req *ExtentRequest, direct bool, storageClass uin
 		return
 	}
 
-	if dp, err = s.client.dataWrapper.GetDataPartition(req.ExtentKey.PartitionId); err != nil {
+	if dp, err = s.client.DpWrapper.GetDataPartition(req.ExtentKey.PartitionId); err != nil {
 		// TODO unhandled error
 		errors.Trace(err, "doOverwrite: ino(%v) failed to get datapartition, ek(%v)", s.inode, req.ExtentKey)
 		return
@@ -741,7 +741,7 @@ func (s *Streamer) tryInitExtentHandlerByLastEk(offset, size int, isMigration bo
 		checkVerFunc(currentEK)
 		log.LogDebugf("tryInitExtentHandlerByLastEk: found ek in ExtentCache, extent_id(%v) req_offset(%v) req_size(%v), currentEK [%v] streamer seq %v",
 			currentEK.ExtentId, offset, size, currentEK, s.verSeq)
-		dp, pidErr := s.client.dataWrapper.GetDataPartition(currentEK.PartitionId)
+		dp, pidErr := s.client.DpWrapper.GetDataPartition(currentEK.PartitionId)
 		if pidErr == nil {
 			seq := currentEK.GetSeq()
 			if isLastEkVerNotEqual {

@@ -45,6 +45,7 @@ type DefaultRandomSelector struct {
 	sync.RWMutex
 	localLeaderPartitions []*DataPartition
 	partitions            []*DataPartition
+	hosts2PartitionMap    map[string][]*DataPartition
 }
 
 func (s *DefaultRandomSelector) Name() string {
@@ -53,13 +54,17 @@ func (s *DefaultRandomSelector) Name() string {
 
 func (s *DefaultRandomSelector) Refresh(partitions []*DataPartition) (err error) {
 	var localLeaderPartitions []*DataPartition
-	for i := 0; i < len(partitions); i++ {
+	hosts2PartitionMap := map[string][]*DataPartition{}
+	dpLen := len(partitions)
+	for i := 0; i < dpLen; i++ {
+		dp := partitions[i]
 		//TODO:tangjingyu test only
 		log.LogInfof("############ DefaultRandomSelector[Refresh] dpId(%v) mediaType(%v)",
-			partitions[i].PartitionID, proto.MediaTypeString(partitions[i].MediaType))
-		if strings.Split(partitions[i].Hosts[0], ":")[0] == LocalIP {
-			localLeaderPartitions = append(localLeaderPartitions, partitions[i])
+			dp.PartitionID, proto.MediaTypeString(dp.MediaType))
+		if strings.Split(dp.Hosts[0], ":")[0] == LocalIP {
+			localLeaderPartitions = append(localLeaderPartitions, dp)
 		}
+		hosts2PartitionMap[dp.GetHostsString()] = append(hosts2PartitionMap[dp.GetHostsString()], dp)
 	}
 
 	s.Lock()
@@ -67,12 +72,28 @@ func (s *DefaultRandomSelector) Refresh(partitions []*DataPartition) (err error)
 
 	s.localLeaderPartitions = localLeaderPartitions
 	s.partitions = partitions
+	s.hosts2PartitionMap = hosts2PartitionMap
 	log.LogDebugf("DefaultRandomSelector[Refresh] complete: localLeaderPartitions(%v) partitions(%v)",
 		len(s.localLeaderPartitions), len(s.partitions))
 	return
 }
 
-func (s *DefaultRandomSelector) Select(exclude map[string]struct{}, mediaType uint32, ehID uint64) (dp *DataPartition, err error) {
+func (s *DefaultRandomSelector) Select(exclude map[string]struct{}, preferredHosts string, mediaType uint32, ehID uint64) (dp *DataPartition, err error) {
+	if len(preferredHosts) > 0 {
+		s.RLock()
+		hosts2PartitionMap := s.hosts2PartitionMap
+		s.RUnlock()
+
+		preferredDps, exists := hosts2PartitionMap[preferredHosts]
+		if exists {
+			for _, preferredDp := range preferredDps {
+				if !isExcluded(preferredDp, exclude) && preferredDp.MediaType == mediaType {
+					return preferredDp, nil
+				}
+			}
+		}
+	}
+
 	dp = s.getLocalLeaderDataPartition(exclude, mediaType, ehID)
 	if dp != nil {
 		return dp, nil
@@ -100,6 +121,7 @@ func (s *DefaultRandomSelector) RemoveDP(partitionID uint64) {
 	s.RLock()
 	rwPartitionGroups := s.partitions
 	localLeaderPartitions := s.localLeaderPartitions
+	hosts2PartitionMap := s.hosts2PartitionMap
 	s.RUnlock()
 
 	var i int
@@ -111,6 +133,18 @@ func (s *DefaultRandomSelector) RemoveDP(partitionID uint64) {
 	if i >= len(rwPartitionGroups) {
 		return
 	}
+
+	dpToDelete := rwPartitionGroups[i]
+	if dpsWithHosts, exists := hosts2PartitionMap[dpToDelete.GetHostsString()]; exists {
+		var newDpsWithHosts []*DataPartition
+		for _, dp := range dpsWithHosts {
+			if dp.PartitionID != dpToDelete.PartitionID {
+				newDpsWithHosts = append(newDpsWithHosts, dp)
+			}
+		}
+		hosts2PartitionMap[dpToDelete.GetHostsString()] = newDpsWithHosts
+	}
+
 	newRwPartition := make([]*DataPartition, 0)
 	newRwPartition = append(newRwPartition, rwPartitionGroups[:i]...)
 	newRwPartition = append(newRwPartition, rwPartitionGroups[i+1:]...)
