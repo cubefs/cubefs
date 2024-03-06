@@ -15,12 +15,12 @@
 package master
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/errors"
-	"github.com/cubefs/cubefs/util/log"
 )
 
 func (u *User) submit(metadata *RaftCmd) (err error) {
@@ -103,12 +103,13 @@ func (u *User) syncPutVolUser(opType uint32, volUser *proto.VolUser) (err error)
 	return u.submit(userInfo)
 }
 
-func (u *User) loadUserStore() (err error) {
+func (u *User) loadUserStore(ctx context.Context) (err error) {
 	result, err := u.fsm.store.SeekForPrefix([]byte(userPrefix))
 	if err != nil {
 		err = fmt.Errorf("action[loadUserKeyInfo], err: %v", err.Error())
 		return err
 	}
+	span := proto.SpanFromContext(ctx)
 	for _, value := range result {
 		userInfo := &proto.UserInfo{}
 		if err = json.Unmarshal(value, userInfo); err != nil {
@@ -116,17 +117,18 @@ func (u *User) loadUserStore() (err error) {
 			return err
 		}
 		u.userStore.Store(userInfo.UserID, userInfo)
-		log.LogInfof("action[loadUserKeyInfo], userID[%v]", userInfo.UserID)
+		span.Infof("action[loadUserKeyInfo], userID[%v]", userInfo.UserID)
 	}
 	return
 }
 
-func (u *User) loadAKStore() (err error) {
+func (u *User) loadAKStore(ctx context.Context) (err error) {
 	result, err := u.fsm.store.SeekForPrefix([]byte(akPrefix))
 	if err != nil {
 		err = fmt.Errorf("action[loadAKStore], err: %v", err.Error())
 		return err
 	}
+	span := proto.SpanFromContext(ctx)
 	for _, value := range result {
 		akUser := &proto.AKUser{}
 		if err = json.Unmarshal(value, akUser); err != nil {
@@ -134,17 +136,18 @@ func (u *User) loadAKStore() (err error) {
 			return err
 		}
 		u.AKStore.Store(akUser.AccessKey, akUser)
-		log.LogInfof("action[loadAKStore], ak[%v], userID[%v]", akUser.AccessKey, akUser.UserID)
+		span.Infof("action[loadAKStore], ak[%v], userID[%v]", akUser.AccessKey, akUser.UserID)
 	}
 	return
 }
 
-func (u *User) loadVolUsers() (err error) {
+func (u *User) loadVolUsers(ctx context.Context) (err error) {
 	result, err := u.fsm.store.SeekForPrefix([]byte(volUserPrefix))
 	if err != nil {
 		err = fmt.Errorf("action[loadVolUsers], err: %v", err.Error())
 		return err
 	}
+	span := proto.SpanFromContext(ctx)
 	for _, value := range result {
 		volUser := &proto.VolUser{}
 		if err = json.Unmarshal(value, volUser); err != nil {
@@ -152,7 +155,7 @@ func (u *User) loadVolUsers() (err error) {
 			return err
 		}
 		u.volUser.Store(volUser.Vol, volUser)
-		log.LogInfof("action[loadVolUsers], vol[%v]", volUser.Vol)
+		span.Infof("action[loadVolUsers], vol[%v]", volUser.Vol)
 	}
 	return
 }

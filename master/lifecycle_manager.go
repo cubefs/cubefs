@@ -15,12 +15,14 @@
 package master
 
 import (
+	"context"
+	"fmt"
 	"math"
 	"sync"
 	"time"
 
+	"github.com/cubefs/cubefs/blobstore/common/trace"
 	"github.com/cubefs/cubefs/proto"
-	"github.com/cubefs/cubefs/util/log"
 )
 
 type lifecycleManager struct {
@@ -33,8 +35,9 @@ type lifecycleManager struct {
 	exitCh           chan struct{}
 }
 
-func newLifecycleManager() *lifecycleManager {
-	log.LogInfof("action[newLifecycleManager] construct")
+func newLifecycleManager(ctx context.Context) *lifecycleManager {
+	span := proto.SpanFromContext(ctx)
+	span.Infof("action[newLifecycleManager] construct")
 	lcMgr := &lifecycleManager{
 		lcConfigurations: make(map[string]*proto.LcConfiguration),
 		lcNodeStatus:     newLcNodeStatus(),
@@ -45,19 +48,20 @@ func newLifecycleManager() *lifecycleManager {
 	return lcMgr
 }
 
-func (lcMgr *lifecycleManager) startLcScan() {
+func (lcMgr *lifecycleManager) startLcScan(ctx context.Context) {
+	span := proto.SpanFromContext(ctx)
 	// stop if already scanning
-	if lcMgr.scanning() {
-		log.LogWarnf("rescheduleScanRoutine: scanning is not completed, lcRuleTaskStatus(%v)", lcMgr.lcRuleTaskStatus)
+	if lcMgr.scanning(ctx) {
+		span.Warnf("rescheduleScanRoutine: scanning is not completed, lcRuleTaskStatus(%v)", lcMgr.lcRuleTaskStatus)
 		return
 	}
 
 	tasks := lcMgr.genEnabledRuleTasks()
 	if len(tasks) <= 0 {
-		log.LogDebugf("startLcScan: no enabled lifecycle rule task to schedule!")
+		span.Debugf("startLcScan: no enabled lifecycle rule task to schedule!")
 		return
 	} else {
-		log.LogDebugf("startLcScan: %v lifecycle rule tasks to schedule!", len(tasks))
+		span.Debugf("startLcScan: %v lifecycle rule tasks to schedule!", len(tasks))
 	}
 
 	// start scan init
@@ -66,7 +70,7 @@ func (lcMgr *lifecycleManager) startLcScan() {
 		lcMgr.lcRuleTaskStatus.ToBeScanned[r.Id] = r
 	}
 
-	go lcMgr.process()
+	go lcMgr.process(ctx)
 }
 
 // generate tasks for every bucket
@@ -83,8 +87,9 @@ func (lcMgr *lifecycleManager) genEnabledRuleTasks() []*proto.RuleTask {
 	return tasks
 }
 
-func (lcMgr *lifecycleManager) scanning() bool {
-	log.LogInfof("decide scanning, lcNodeStatus: %v, lcRuleTaskStatus: %v", lcMgr.lcNodeStatus, lcMgr.lcRuleTaskStatus)
+func (lcMgr *lifecycleManager) scanning(ctx context.Context) bool {
+	span := proto.SpanFromContext(ctx)
+	span.Infof("decide scanning, lcNodeStatus: %v, lcRuleTaskStatus: %v", lcMgr.lcNodeStatus, lcMgr.lcRuleTaskStatus)
 	if len(lcMgr.lcRuleTaskStatus.ToBeScanned) > 0 {
 		return true
 	}
@@ -101,40 +106,42 @@ func (lcMgr *lifecycleManager) scanning() bool {
 		}
 	}
 
-	log.LogInfof("decide scanning, scanning stop!")
+	span.Infof("decide scanning, scanning stop!")
 	return false
 }
 
-func (lcMgr *lifecycleManager) process() {
-	log.LogInfof("lifecycleManager process start, rule num(%v)", len(lcMgr.lcRuleTaskStatus.ToBeScanned))
+func (lcMgr *lifecycleManager) process(ctx context.Context) {
+	span := proto.SpanFromContext(ctx)
+	span.Infof("lifecycleManager process start, rule num(%v)", len(lcMgr.lcRuleTaskStatus.ToBeScanned))
 	now := time.Now()
 	lcMgr.lcRuleTaskStatus.StartTime = &now
-	for lcMgr.scanning() {
-		log.LogDebugf("wait idleLcNodeCh... ToBeScanned num(%v)", len(lcMgr.lcRuleTaskStatus.ToBeScanned))
+	for lcMgr.scanning(ctx) {
+		span, ctx := trace.StartSpanFromContextWithTraceID(context.Background(), "", fmt.Sprintf("lc-process-%v", proto.GenerateRequestID()))
+		span.Debugf("wait idleLcNodeCh... ToBeScanned num(%v)", len(lcMgr.lcRuleTaskStatus.ToBeScanned))
 		select {
 		case <-lcMgr.exitCh:
-			log.LogInfo("exitCh notified, lifecycleManager process exit")
+			span.Info("exitCh notified, lifecycleManager process exit")
 			return
 		case <-lcMgr.idleLcNodeCh:
-			log.LogDebug("idleLcNodeCh notified")
+			span.Debug("idleLcNodeCh notified")
 
 			// ToBeScanned -> Scanning
 			task := lcMgr.lcRuleTaskStatus.GetOneTask()
 			if task == nil {
-				log.LogDebugf("lcRuleTaskStatus.GetOneTask, no task")
+				span.Debugf("lcRuleTaskStatus.GetOneTask, no task")
 				continue
 			}
 
 			nodeAddr := lcMgr.lcNodeStatus.GetIdleNode()
 			if nodeAddr == "" {
-				log.LogWarn("no idle lcnode, redo task")
+				span.Warn("no idle lcnode, redo task")
 				lcMgr.lcRuleTaskStatus.RedoTask(task)
 				continue
 			}
 
 			val, ok := lcMgr.cluster.lcNodes.Load(nodeAddr)
 			if !ok {
-				log.LogErrorf("lcNodes.Load, nodeAddr(%v) is not available, redo task", nodeAddr)
+				span.Errorf("lcNodes.Load, nodeAddr(%v) is not available, redo task", nodeAddr)
 				lcMgr.lcNodeStatus.RemoveNode(nodeAddr)
 				lcMgr.lcRuleTaskStatus.RedoTask(task)
 				continue
@@ -142,21 +149,22 @@ func (lcMgr *lifecycleManager) process() {
 
 			node := val.(*LcNode)
 			adminTask := node.createLcScanTask(lcMgr.cluster.masterAddr(), task)
-			lcMgr.cluster.addLcNodeTasks([]*proto.AdminTask{adminTask})
-			log.LogDebugf("add lifecycle scan task(%v) to lcnode(%v)", *task, nodeAddr)
+			lcMgr.cluster.addLcNodeTasks(ctx, []*proto.AdminTask{adminTask})
+			span.Debugf("add lifecycle scan task(%v) to lcnode(%v)", *task, nodeAddr)
 		}
 	}
 	end := time.Now()
 	lcMgr.lcRuleTaskStatus.EndTime = &end
-	log.LogInfof("lifecycleManager process finish, lcRuleTaskStatus results(%v)", lcMgr.lcRuleTaskStatus.Results)
+	span.Infof("lifecycleManager process finish, lcRuleTaskStatus results(%v)", lcMgr.lcRuleTaskStatus.Results)
 }
 
-func (lcMgr *lifecycleManager) notifyIdleLcNode() {
+func (lcMgr *lifecycleManager) notifyIdleLcNode(ctx context.Context) {
+	span := proto.SpanFromContext(ctx)
 	select {
 	case lcMgr.idleLcNodeCh <- struct{}{}:
-		log.LogDebug("action[handleLcNodeHeartbeatResp], lifecycleManager scan routine notified!")
+		span.Debug("action[handleLcNodeHeartbeatResp], lifecycleManager scan routine notified!")
 	default:
-		log.LogDebug("action[handleLcNodeHeartbeatResp], lifecycleManager skipping notify!")
+		span.Debug("action[handleLcNodeHeartbeatResp], lifecycleManager skipping notify!")
 	}
 }
 

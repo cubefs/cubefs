@@ -1,6 +1,7 @@
 package master
 
 import (
+	"context"
 	"crypto/sha1"
 	"encoding/hex"
 	"io"
@@ -11,7 +12,6 @@ import (
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/raftstore"
 	"github.com/cubefs/cubefs/util"
-	"github.com/cubefs/cubefs/util/log"
 )
 
 const (
@@ -112,7 +112,7 @@ func (u *User) createKey(param *proto.UserCreateParam) (userInfo *proto.UserInfo
 	return
 }
 
-func (u *User) deleteKey(userID string) (err error) {
+func (u *User) deleteKey(ctx context.Context, userID string) (err error) {
 	var (
 		akUser   *proto.AKUser
 		userInfo *proto.UserInfo
@@ -151,12 +151,13 @@ func (u *User) deleteKey(userID string) (err error) {
 	u.userStore.Delete(userID)
 	u.AKStore.Delete(akUser.AccessKey)
 	// delete userID from related policy in volUserStore
-	u.removeUserFromAllVol(userID)
-	log.LogInfof("action[deleteUser], userID: %v, accesskey[%v]", userID, userInfo.AccessKey)
+	span := proto.SpanFromContext(ctx)
+	u.removeUserFromAllVol(ctx, userID)
+	span.Infof("action[deleteUser], userID: %v, accesskey[%v]", userID, userInfo.AccessKey)
 	return
 }
 
-func (u *User) updateKey(param *proto.UserUpdateParam) (userInfo *proto.UserInfo, err error) {
+func (u *User) updateKey(ctx context.Context, param *proto.UserUpdateParam) (userInfo *proto.UserInfo, err error) {
 	if param.UserID == "" {
 		err = proto.ErrInvalidUserID
 		return
@@ -251,36 +252,38 @@ func (u *User) updateKey(param *proto.UserUpdateParam) (userInfo *proto.UserInfo
 	}
 	u.AKStore.Delete(formerAK)
 	u.AKStore.Store(akUserAft.AccessKey, akUserAft)
-
-	log.LogInfof("action[updateUser], userID: %v, accesskey[%v], secretkey[%v]", userInfo.UserID, userInfo.AccessKey, userInfo.SecretKey)
+	span := proto.SpanFromContext(ctx)
+	span.Infof("action[updateUser], userID: %v, accesskey[%v], secretkey[%v]", userInfo.UserID, userInfo.AccessKey, userInfo.SecretKey)
 	return
 }
 
-func (u *User) getKeyInfo(ak string) (userInfo *proto.UserInfo, err error) {
+func (u *User) getKeyInfo(ctx context.Context, ak string) (userInfo *proto.UserInfo, err error) {
 	var akUser *proto.AKUser
 	if akUser, err = u.getAKUser(ak); err != nil {
 		return
 	}
-	if userInfo, err = u.getUserInfo(akUser.UserID); err != nil {
+	if userInfo, err = u.getUserInfo(ctx, akUser.UserID); err != nil {
 		return
 	}
-	log.LogInfof("action[getKeyInfo], accesskey[%v]", ak)
+	span := proto.SpanFromContext(ctx)
+	span.Infof("action[getKeyInfo], accesskey[%v]", ak)
 	return
 }
 
-func (u *User) getUserInfo(userID string) (userInfo *proto.UserInfo, err error) {
+func (u *User) getUserInfo(ctx context.Context, userID string) (userInfo *proto.UserInfo, err error) {
 	if value, exist := u.userStore.Load(userID); exist {
 		userInfo = value.(*proto.UserInfo)
 	} else {
 		err = proto.ErrUserNotExists
 		return
 	}
-	log.LogInfof("action[getUserInfo], userID: %v", userID)
+	span := proto.SpanFromContext(ctx)
+	span.Infof("action[getUserInfo], userID: %v", userID)
 	return
 }
 
-func (u *User) updatePolicy(params *proto.UserPermUpdateParam) (userInfo *proto.UserInfo, err error) {
-	if userInfo, err = u.getUserInfo(params.UserID); err != nil {
+func (u *User) updatePolicy(ctx context.Context, params *proto.UserPermUpdateParam) (userInfo *proto.UserInfo, err error) {
+	if userInfo, err = u.getUserInfo(ctx, params.UserID); err != nil {
 		return
 	}
 	userInfo.Mu.Lock()
@@ -297,12 +300,13 @@ func (u *User) updatePolicy(params *proto.UserPermUpdateParam) (userInfo *proto.
 	if err = u.addUserToVol(params.UserID, params.Volume); err != nil {
 		return
 	}
-	log.LogInfof("action[updatePolicy], userID: %v, volume: %v", params.UserID, params.Volume)
+	span := proto.SpanFromContext(ctx)
+	span.Infof("action[updatePolicy], userID: %v, volume: %v", params.UserID, params.Volume)
 	return
 }
 
-func (u *User) removePolicy(params *proto.UserPermRemoveParam) (userInfo *proto.UserInfo, err error) {
-	if userInfo, err = u.getUserInfo(params.UserID); err != nil {
+func (u *User) removePolicy(ctx context.Context, params *proto.UserPermRemoveParam) (userInfo *proto.UserInfo, err error) {
+	if userInfo, err = u.getUserInfo(ctx, params.UserID); err != nil {
 		return
 	}
 	userInfo.Mu.Lock()
@@ -319,16 +323,18 @@ func (u *User) removePolicy(params *proto.UserPermRemoveParam) (userInfo *proto.
 	if err = u.removeUserFromVol(params.UserID, params.Volume); err != nil {
 		return
 	}
-	log.LogInfof("action[removePolicy], userID: %v, volume: %v", params.UserID, params.Volume)
+	span := proto.SpanFromContext(ctx)
+	span.Infof("action[removePolicy], userID: %v, volume: %v", params.UserID, params.Volume)
 	return
 }
 
-func (u *User) addOwnVol(userID, volName string) (userInfo *proto.UserInfo, err error) {
-	if userInfo, err = u.getUserInfo(userID); err != nil {
+func (u *User) addOwnVol(ctx context.Context, userID, volName string) (userInfo *proto.UserInfo, err error) {
+	if userInfo, err = u.getUserInfo(ctx, userID); err != nil {
 		return
 	}
 	userInfo.Mu.Lock()
 	defer userInfo.Mu.Unlock()
+	span := proto.SpanFromContext(ctx)
 	userInfo.Policy.AddOwnVol(volName)
 	userInfo.Policy.RemoveAuthorizedVol(volName)
 	if err = u.syncUpdateUserInfo(userInfo); err != nil {
@@ -338,16 +344,17 @@ func (u *User) addOwnVol(userID, volName string) (userInfo *proto.UserInfo, err 
 	if err = u.addUserToVol(userID, volName); err != nil {
 		return
 	}
-	log.LogInfof("action[addOwnVol], userID: %v, volume: %v", userID, volName)
+	span.Infof("action[addOwnVol], userID: %v, volume: %v", userID, volName)
 	return
 }
 
-func (u *User) removeOwnVol(userID, volName string) (userInfo *proto.UserInfo, err error) {
-	if userInfo, err = u.getUserInfo(userID); err != nil {
+func (u *User) removeOwnVol(ctx context.Context, userID, volName string) (userInfo *proto.UserInfo, err error) {
+	if userInfo, err = u.getUserInfo(ctx, userID); err != nil {
 		return
 	}
 	userInfo.Mu.Lock()
 	defer userInfo.Mu.Unlock()
+	span := proto.SpanFromContext(ctx)
 	userInfo.Policy.RemoveOwnVol(volName)
 	if err = u.syncUpdateUserInfo(userInfo); err != nil {
 		err = proto.ErrPersistenceByRaft
@@ -356,26 +363,27 @@ func (u *User) removeOwnVol(userID, volName string) (userInfo *proto.UserInfo, e
 	if err = u.removeUserFromVol(userID, volName); err != nil {
 		return
 	}
-	log.LogInfof("action[removeOwnVol], userID: %v, volume: %v", userID, volName)
+	span.Infof("action[removeOwnVol], userID: %v, volume: %v", userID, volName)
 	return
 }
 
-func (u *User) deleteVolPolicy(volName string) (err error) {
+func (u *User) deleteVolPolicy(ctx context.Context, volName string) (err error) {
 	var (
 		volUser  *proto.VolUser
 		userInfo *proto.UserInfo
 	)
+	span := proto.SpanFromContext(ctx)
 	// delete policy
 	deletedUsers := make([]string, 0)
 	var userIDs []string
-	if userIDs, err = u.getUsersOfVol(volName); err != nil {
+	if userIDs, err = u.getUsersOfVol(ctx, volName); err != nil {
 		return
 	}
 	for _, userID := range userIDs {
-		if userInfo, err = u.getUserInfo(userID); err != nil {
+		if userInfo, err = u.getUserInfo(ctx, userID); err != nil {
 			if err == proto.ErrUserNotExists {
 				deletedUsers = append(deletedUsers, userID)
-				log.LogWarnf("action[deleteVolPolicy], userID: %v does not exist", userID)
+				span.Warnf("action[deleteVolPolicy], userID: %v does not exist", userID)
 				continue
 			}
 			return
@@ -404,18 +412,19 @@ func (u *User) deleteVolPolicy(volName string) (err error) {
 	u.volUser.Delete(volUser.Vol)
 	volUser.Mu.Unlock()
 	for _, deletedUser := range deletedUsers {
-		u.removeUserFromAllVol(deletedUser)
+		u.removeUserFromAllVol(ctx, deletedUser)
 	}
-	log.LogInfof("action[deleteVolPolicy], volName: %v", volName)
+	span.Infof("action[deleteVolPolicy], volName: %v", volName)
 	return
 }
 
-func (u *User) transferVol(params *proto.UserTransferVolParam) (targetUserInfo *proto.UserInfo, err error) {
+func (u *User) transferVol(ctx context.Context, params *proto.UserTransferVolParam) (targetUserInfo *proto.UserInfo, err error) {
 	var userInfo *proto.UserInfo
-	userInfo, err = u.getUserInfo(params.UserSrc)
+	userInfo, err = u.getUserInfo(ctx, params.UserSrc)
 	if (err != nil && err != proto.ErrUserNotExists) || (!params.Force && err == proto.ErrUserNotExists) {
 		return
 	}
+	span := proto.SpanFromContext(ctx)
 	if err == nil {
 		isOwned := userInfo.Policy.IsOwn(params.Volume)
 		if !isOwned && !params.Force && params.UserSrc != params.UserDst {
@@ -423,20 +432,20 @@ func (u *User) transferVol(params *proto.UserTransferVolParam) (targetUserInfo *
 			return
 		}
 		if isOwned {
-			if _, err = u.removeOwnVol(params.UserSrc, params.Volume); err != nil {
+			if _, err = u.removeOwnVol(ctx, params.UserSrc, params.Volume); err != nil {
 				return
 			}
 		}
 	}
 
-	if targetUserInfo, err = u.addOwnVol(params.UserDst, params.Volume); err != nil {
+	if targetUserInfo, err = u.addOwnVol(ctx, params.UserDst, params.Volume); err != nil {
 		return
 	}
-	log.LogInfof("action[transferVol], volName: %v, userSrc: %v, userDst: %v", params.Volume, params.UserSrc, params.UserDst)
+	span.Infof("action[transferVol], volName: %v, userSrc: %v, userDst: %v", params.Volume, params.UserSrc, params.UserDst)
 	return
 }
 
-func (u *User) getAllUserInfo(keywords string) (users []*proto.UserInfo) {
+func (u *User) getAllUserInfo(ctx context.Context, keywords string) (users []*proto.UserInfo) {
 	users = make([]*proto.UserInfo, 0)
 	u.userStore.Range(func(key, value interface{}) bool {
 		userInfo := value.(*proto.UserInfo)
@@ -445,11 +454,12 @@ func (u *User) getAllUserInfo(keywords string) (users []*proto.UserInfo) {
 		}
 		return true
 	})
-	log.LogInfof("action[getAllUserInfo], keywords: %v, total numbers: %v", keywords, len(users))
+	span := proto.SpanFromContext(ctx)
+	span.Infof("action[getAllUserInfo], keywords: %v, total numbers: %v", keywords, len(users))
 	return
 }
 
-func (u *User) getUsersOfVol(volName string) (userIDs []string, err error) {
+func (u *User) getUsersOfVol(ctx context.Context, volName string) (userIDs []string, err error) {
 	var volUser *proto.VolUser
 	userIDs = make([]string, 0)
 	if value, exist := u.volUser.Load(volName); exist {
@@ -460,10 +470,11 @@ func (u *User) getUsersOfVol(volName string) (userIDs []string, err error) {
 	}
 	volUser.Mu.RLock()
 	defer volUser.Mu.RUnlock()
+	span := proto.SpanFromContext(ctx)
 	for _, userID := range volUser.UserIDs {
 		userIDs = append(userIDs, userID)
 	}
-	log.LogInfof("action[getUsersOfVol], vol: %v, user numbers: %v", volName, len(userIDs))
+	span.Infof("action[getUsersOfVol], vol: %v, user numbers: %v", volName, len(userIDs))
 	return
 }
 
@@ -517,7 +528,8 @@ func (u *User) removeUserFromVol(userID, volName string) (err error) {
 	return
 }
 
-func (u *User) removeUserFromAllVol(userID string) {
+func (u *User) removeUserFromAllVol(ctx context.Context, userID string) {
+	span := proto.SpanFromContext(ctx)
 	u.volUser.Range(func(key, value interface{}) bool {
 		volUser := value.(*proto.VolUser)
 		volUser.Mu.Lock()
@@ -526,7 +538,7 @@ func (u *User) removeUserFromAllVol(userID string) {
 		if exist {
 			if err := u.syncUpdateVolUser(volUser); err != nil {
 				err = proto.ErrPersistenceByRaft
-				log.LogErrorf("action[deleteUser], userID: %v, volUser: %v, err: %v", userID, volUser, err)
+				span.Errorf("action[deleteUser], userID: %v, volUser: %v, err: %v", userID, volUser, err)
 			}
 		}
 		volUser.Mu.Unlock()
