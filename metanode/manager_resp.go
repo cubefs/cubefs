@@ -15,6 +15,7 @@
 package metanode
 
 import (
+	"context"
 	"net"
 
 	"github.com/cubefs/cubefs/proto"
@@ -22,7 +23,7 @@ import (
 )
 
 // Reply operation results to the master.
-func (m *metadataManager) respondToMaster(task *proto.AdminTask) (err error) {
+func (m *metadataManager) respondToMaster(ctx context.Context, task *proto.AdminTask) (err error) {
 	// handle panic
 	defer func() {
 		if r := recover(); r != nil {
@@ -34,7 +35,7 @@ func (m *metadataManager) respondToMaster(task *proto.AdminTask) (err error) {
 			}
 		}
 	}()
-	if err = masterClient.NodeAPI().ResponseMetaNodeTask(task); err != nil {
+	if err = masterClient.NodeAPI().ResponseMetaNodeTask(ctx, task); err != nil {
 		err = errors.Trace(err, "try respondToMaster failed")
 	}
 	return

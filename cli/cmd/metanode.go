@@ -15,6 +15,7 @@
 package cmd
 
 import (
+	"context"
 	"sort"
 	"strings"
 
@@ -63,7 +64,7 @@ func newMetaNodeListCmd(client *master.MasterClient) *cobra.Command {
 				errout(err)
 			}()
 			var view *proto.ClusterView
-			if view, err = client.AdminAPI().GetCluster(); err != nil {
+			if view, err = client.AdminAPI().GetCluster(context.TODO()); err != nil {
 				return
 			}
 			sort.SliceStable(view.MetaNodes, func(i, j int) bool {
@@ -102,7 +103,7 @@ func newMetaNodeInfoCmd(client *master.MasterClient) *cobra.Command {
 				errout(err)
 			}()
 			nodeAddr = args[0]
-			if metanodeInfo, err = client.NodeAPI().GetMetaNode(nodeAddr); err != nil {
+			if metanodeInfo, err = client.NodeAPI().GetMetaNode(context.TODO(), nodeAddr); err != nil {
 				return
 			}
 			stdout("[Meta node info]\n")
@@ -138,7 +139,7 @@ func newMetaNodeDecommissionCmd(client *master.MasterClient) *cobra.Command {
 				stdout("Migrate mp count should >= 0\n")
 				return
 			}
-			if err = client.NodeAPI().MetaNodeDecommission(nodeAddr, optCount, clientIDKey); err != nil {
+			if err = client.NodeAPI().MetaNodeDecommission(context.TODO(), nodeAddr, optCount, clientIDKey); err != nil {
 				return
 			}
 			stdout("Decommission meta node successfully\n")
@@ -176,7 +177,7 @@ func newMetaNodeMigrateCmd(client *master.MasterClient) *cobra.Command {
 				stdout("Migrate mp count should between [1-15]\n")
 				return
 			}
-			if err = client.NodeAPI().MetaNodeMigrate(src, dst, optCount, clientIDKey); err != nil {
+			if err = client.NodeAPI().MetaNodeMigrate(context.TODO(), src, dst, optCount, clientIDKey); err != nil {
 				return
 			}
 			stdout("Migrate meta node successfully\n")

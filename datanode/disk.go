@@ -564,7 +564,7 @@ func (d *Disk) RestorePartition(visitor PartitionVisitor) (err error) {
 	}
 	var dataNode *proto.DataNodeInfo
 	for i := 0; i < 3; i++ {
-		dataNode, err = MasterClient.NodeAPI().GetDataNode(d.space.dataNode.localServerAddr)
+		dataNode, err = MasterClient.NodeAPI().GetDataNode(context.TODO(), d.space.dataNode.localServerAddr)
 		if err != nil {
 			log.Errorf("action[RestorePartition]: getDataNode error %v", err)
 			continue
