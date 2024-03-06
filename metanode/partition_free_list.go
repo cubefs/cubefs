@@ -335,6 +335,7 @@ func (mp *metaPartition) deleteMarkedInodes(inoSlice []uint64) {
 			leftInodes = append(leftInodes, ino)
 		}
 	}
+	allInodes = make([]*Inode, 0)
 	allInodes = append(allInodes, leftInodes...)
 	if len(replicaInodes) > 0 {
 		shouldCommitReplicaInode, shouldRePushToFreeListReplicaInode :=
