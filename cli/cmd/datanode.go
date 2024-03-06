@@ -15,6 +15,7 @@
 package cmd
 
 import (
+	"context"
 	"sort"
 	"strings"
 
@@ -56,7 +57,7 @@ func newDataNodeListCmd(client *master.MasterClient) *cobra.Command {
 		Short:   cmdDataNodeListShort,
 		Aliases: []string{"ls"},
 		RunE: func(cmd *cobra.Command, args []string) error {
-			view, err := client.AdminAPI().GetCluster()
+			view, err := client.AdminAPI().GetCluster(context.TODO())
 			if err != nil {
 				return err
 			}
@@ -90,7 +91,7 @@ func newDataNodeInfoCmd(client *master.MasterClient) *cobra.Command {
 		Short: cmdDataNodeInfoShort,
 		Args:  cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			datanodeInfo, err := client.NodeAPI().GetDataNode(args[0])
+			datanodeInfo, err := client.NodeAPI().GetDataNode(context.TODO(), args[0])
 			if err != nil {
 				return err
 			}
@@ -122,7 +123,7 @@ func newDataNodeDecommissionCmd(client *master.MasterClient) *cobra.Command {
 				stdoutln("Migrate dp count should >= 0")
 				return nil
 			}
-			if err := client.NodeAPI().DataNodeDecommission(args[0], optCount, clientIDKey); err != nil {
+			if err := client.NodeAPI().DataNodeDecommission(context.TODO(), args[0], optCount, clientIDKey); err != nil {
 				return err
 			}
 			stdoutln("Decommission data node successfully")
@@ -154,7 +155,7 @@ func newDataNodeMigrateCmd(client *master.MasterClient) *cobra.Command {
 				return nil
 			}
 
-			if err := client.NodeAPI().DataNodeMigrate(src, dst, optCount, clientIDKey); err != nil {
+			if err := client.NodeAPI().DataNodeMigrate(context.TODO(), src, dst, optCount, clientIDKey); err != nil {
 				return err
 			}
 			stdoutln("Migrate data node successfully")

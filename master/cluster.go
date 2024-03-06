@@ -171,7 +171,7 @@ func (mgr *followerReadManager) getVolumeDpView(ctx context.Context) {
 		}
 
 		span.Debugf("followerReadManager.getVolumeDpView %v", vv.Name)
-		if view, err = mgr.c.masterClient.ClientAPI().GetDataPartitions(vv.Name); err != nil {
+		if view, err = mgr.c.masterClient.ClientAPI().GetDataPartitions(context.TODO(), vv.Name); err != nil {
 			span.Errorf("followerReadManager.getVolumeDpView %v GetDataPartitions err %v", vv.Name, err)
 			continue
 		}
@@ -198,7 +198,7 @@ func (mgr *followerReadManager) sendFollowerVolumeDpView(ctx context.Context) {
 				continue
 			}
 			mgr.c.masterClient.SetLeader(addr)
-			if err = mgr.c.masterClient.AdminAPI().PutDataPartitions(vol.Name, body); err != nil {
+			if err = mgr.c.masterClient.AdminAPI().PutDataPartitions(context.TODO(), vol.Name, body); err != nil {
 				mgr.c.masterClient.SetLeader("")
 				span.Errorf("followerReadManager.sendFollowerVolumeDpView PutDataPartitions name %v addr %v err %v", vol.Name, addr, err)
 				continue

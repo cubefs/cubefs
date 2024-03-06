@@ -16,6 +16,7 @@ package datanode
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"net"
@@ -507,7 +508,7 @@ func (s *DataNode) register(cfg *config.Config) {
 		select {
 		case <-timer.C:
 			var ci *proto.ClusterInfo
-			if ci, err = MasterClient.AdminAPI().GetClusterInfo(); err != nil {
+			if ci, err = MasterClient.AdminAPI().GetClusterInfo(context.TODO()); err != nil {
 				log.Errorf("action[registerToMaster] cannot get ip from master(%v) err(%v).",
 					MasterClient.Leader(), err)
 				timer.Reset(2 * time.Second)
@@ -530,7 +531,7 @@ func (s *DataNode) register(cfg *config.Config) {
 
 			// register this data node on the master
 			var nodeID uint64
-			if nodeID, err = MasterClient.NodeAPI().AddDataNodeWithAuthNode(fmt.Sprintf("%s:%v", LocalIP, s.port),
+			if nodeID, err = MasterClient.NodeAPI().AddDataNodeWithAuthNode(context.TODO(), fmt.Sprintf("%s:%v", LocalIP, s.port),
 				s.zoneName, s.serviceIDKey); err != nil {
 				log.Errorf("action[registerToMaster] cannot register this node to master[%v] err(%v).",
 					masterAddr, err)
@@ -562,7 +563,7 @@ func (s *DataNode) checkLocalPartitionMatchWithMaster() (lackPartitions []uint64
 	}
 	var dataNode *proto.DataNodeInfo
 	for i := 0; i < 3; i++ {
-		if dataNode, err = MasterClient.NodeAPI().GetDataNode(s.localServerAddr); err != nil {
+		if dataNode, err = MasterClient.NodeAPI().GetDataNode(context.TODO(), s.localServerAddr); err != nil {
 			log.Errorf("checkLocalPartitionMatchWithMaster error %v", err)
 			continue
 		}

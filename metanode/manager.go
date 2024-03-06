@@ -394,7 +394,7 @@ func (m *metadataManager) loadPartitions() (err error) {
 	span, ctx := spanContextPrefix("loadPartitions-")
 	var metaNodeInfo *proto.MetaNodeInfo
 	for i := 0; i < 3; i++ {
-		if metaNodeInfo, err = masterClient.NodeAPI().GetMetaNode(fmt.Sprintf("%s:%s", m.metaNode.localAddr,
+		if metaNodeInfo, err = masterClient.NodeAPI().GetMetaNode(ctx, fmt.Sprintf("%s:%s", m.metaNode.localAddr,
 			m.metaNode.listen)); err != nil {
 			span.Warnf("loadPartitions: get MetaNode info fail: err(%v)", err)
 			continue

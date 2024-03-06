@@ -15,6 +15,7 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
@@ -115,7 +116,7 @@ func newUserCreateCmd(client *master.MasterClient) *cobra.Command {
 				Type:      userType,
 			}
 			var userInfo *proto.UserInfo
-			if userInfo, err = client.UserAPI().CreateUser(&param, clientIDKey); err != nil {
+			if userInfo, err = client.UserAPI().CreateUser(context.TODO(), &param, clientIDKey); err != nil {
 				err = fmt.Errorf("Create user failed: %v\n", err)
 				return
 			}
@@ -203,7 +204,7 @@ func newUserUpdateCmd(client *master.MasterClient) *cobra.Command {
 				Type:      userType,
 			}
 			var userInfo *proto.UserInfo
-			if userInfo, err = client.UserAPI().UpdateUser(&param, clientIDKey); err != nil {
+			if userInfo, err = client.UserAPI().UpdateUser(context.TODO(), &param, clientIDKey); err != nil {
 				return
 			}
 
@@ -248,7 +249,7 @@ func newUserDeleteCmd(client *master.MasterClient) *cobra.Command {
 				}
 			}
 
-			if err = client.UserAPI().DeleteUser(userID, clientIDKey); err != nil {
+			if err = client.UserAPI().DeleteUser(context.TODO(), userID, clientIDKey); err != nil {
 				err = fmt.Errorf("Delete user failed:\n%v\n", err)
 				return
 			}
@@ -284,7 +285,7 @@ func newUserInfoCmd(client *master.MasterClient) *cobra.Command {
 			defer func() {
 				errout(err)
 			}()
-			if userInfo, err = client.UserAPI().GetUserInfo(userID); err != nil {
+			if userInfo, err = client.UserAPI().GetUserInfo(context.TODO(), userID); err != nil {
 				err = fmt.Errorf("Get user info failed: %v\n", err)
 				return
 			}
@@ -353,16 +354,16 @@ func newUserPermCmd(client *master.MasterClient) *cobra.Command {
 				return
 			}
 			var userInfo *proto.UserInfo
-			if _, err = client.UserAPI().GetUserInfo(userID); err != nil {
+			if _, err = client.UserAPI().GetUserInfo(context.TODO(), userID); err != nil {
 				return
 			}
 			if perm.IsNone() {
 				param := proto.NewUserPermRemoveParam(userID, volume)
-				userInfo, err = client.UserAPI().RemovePolicy(param, clientIDKey)
+				userInfo, err = client.UserAPI().RemovePolicy(context.TODO(), param, clientIDKey)
 			} else {
 				param := proto.NewUserPermUpdateParam(userID, volume)
 				param.SetPolicy(perm.String())
-				userInfo, err = client.UserAPI().UpdatePolicy(param, clientIDKey)
+				userInfo, err = client.UserAPI().UpdatePolicy(context.TODO(), param, clientIDKey)
 			}
 			if err != nil {
 				return
@@ -397,7 +398,7 @@ func newUserListCmd(client *master.MasterClient) *cobra.Command {
 			defer func() {
 				errout(err)
 			}()
-			if users, err = client.UserAPI().ListUsers(optKeyword); err != nil {
+			if users, err = client.UserAPI().ListUsers(context.TODO(), optKeyword); err != nil {
 				return
 			}
 			stdout("%v\n", userInfoTableHeader)

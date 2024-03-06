@@ -15,6 +15,7 @@
 package lcnode
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"net"
@@ -225,7 +226,7 @@ func (l *LcNode) register() {
 		select {
 		case <-timer.C:
 			var ci *proto.ClusterInfo
-			if ci, err = l.mc.AdminAPI().GetClusterInfo(); err != nil {
+			if ci, err = l.mc.AdminAPI().GetClusterInfo(context.TODO()); err != nil {
 				log.LogErrorf("action[registerToMaster] cannot get ip from master(%v) err(%v).",
 					l.mc.Leader(), err)
 				timer.Reset(2 * time.Second)
@@ -244,7 +245,7 @@ func (l *LcNode) register() {
 
 			// register this lcnode on the master
 			var nodeID uint64
-			if nodeID, err = l.mc.NodeAPI().AddLcNode(l.localServerAddr); err != nil {
+			if nodeID, err = l.mc.NodeAPI().AddLcNode(context.TODO(), l.localServerAddr); err != nil {
 				log.LogErrorf("action[registerToMaster] cannot register this node to master[%v] err(%v).",
 					masterAddr, err)
 				timer.Reset(2 * time.Second)
