@@ -39,6 +39,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/cubefs/cubefs/blobstore/util/log"
 	"github.com/cubefs/cubefs/blockcache/bcache"
 	cfs "github.com/cubefs/cubefs/client/fs"
 	"github.com/cubefs/cubefs/depends/bazil.org/fuse"
@@ -51,12 +52,12 @@ import (
 	"github.com/cubefs/cubefs/util/config"
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/exporter"
-	"github.com/cubefs/cubefs/util/log"
 	"github.com/cubefs/cubefs/util/stat"
 	sysutil "github.com/cubefs/cubefs/util/sys"
 	"github.com/cubefs/cubefs/util/ump"
 	"github.com/jacobsa/daemonize"
 	_ "go.uber.org/automaxprocs"
+	"gopkg.in/natefinch/lumberjack.v2"
 )
 
 const (
@@ -111,21 +112,21 @@ func init() {
 func createUDS(sockAddr string) (listener net.Listener, err error) {
 	var addr *net.UnixAddr
 
-	log.LogInfof("sockaddr: %s\n", sockAddr)
+	log.Infof("sockaddr: %s\n", sockAddr)
 
 	os.Remove(sockAddr)
 	if addr, err = net.ResolveUnixAddr("unix", sockAddr); err != nil {
-		log.LogErrorf("cannot resolve unix addr: %v\n", err)
+		log.Errorf("cannot resolve unix addr: %v\n", err)
 		return
 	}
 
 	if listener, err = net.ListenUnix("unix", addr); err != nil {
-		log.LogErrorf("cannot create unix domain: %v\n", err)
+		log.Errorf("cannot create unix domain: %v\n", err)
 		return
 	}
 
 	if err = os.Chmod(sockAddr, 0o666); err != nil {
-		log.LogErrorf("failed to chmod socket file: %v\n", err)
+		log.Errorf("failed to chmod socket file: %v\n", err)
 		listener.Close()
 		return
 	}
@@ -144,25 +145,25 @@ func recvFuseFdFromOldClient(udsListener net.Listener) (file *os.File, err error
 	var socket *os.File
 
 	if conn, err = udsListener.Accept(); err != nil {
-		log.LogErrorf("unix domain accepts fail: %v\n", err)
+		log.Errorf("unix domain accepts fail: %v\n", err)
 		return
 	}
 	defer conn.Close()
 
-	log.LogInfof("a new connection accepted\n")
+	log.Infof("a new connection accepted\n")
 	unixconn := conn.(*net.UnixConn)
 	if socket, err = unixconn.File(); err != nil {
-		log.LogErrorf("failed to get socket file: %v\n", err)
+		log.Errorf("failed to get socket file: %v\n", err)
 		return
 	}
 	defer socket.Close()
 
 	if file, err = util.RecvFd(socket); err != nil {
-		log.LogErrorf("failed to receive fd: %v\n", err)
+		log.Errorf("failed to receive fd: %v\n", err)
 		return
 	}
 
-	log.LogInfof("Received file %s fd %v\n", file.Name(), file.Fd())
+	log.Infof("Received file %s fd %v\n", file.Name(), file.Fd())
 	return
 }
 
@@ -176,7 +177,7 @@ func sendSuspendRequest(port string, udsListener net.Listener) (err error) {
 
 	url := fmt.Sprintf("http://%s:%s/suspend?sock=%s", DefaultIP, port, udsFilePath)
 	if req, err = http.NewRequest("POST", url, nil); err != nil {
-		log.LogErrorf("Failed to get new request: %v\n", err)
+		log.Errorf("Failed to get new request: %v\n", err)
 		return err
 	}
 	req.Header.Set("Content-Type", "application/text")
@@ -184,20 +185,20 @@ func sendSuspendRequest(port string, udsListener net.Listener) (err error) {
 	client := http.DefaultClient
 	client.Timeout = 120 * time.Second
 	if resp, err = client.Do(req); err != nil {
-		log.LogErrorf("Failed to post request: %v\n", err)
+		log.Errorf("Failed to post request: %v\n", err)
 		return err
 	}
 	defer resp.Body.Close()
 
 	if data, err = io.ReadAll(resp.Body); err != nil {
-		log.LogErrorf("Failed to read response: %v\n", err)
+		log.Errorf("Failed to read response: %v\n", err)
 		return err
 	}
 
 	if resp.StatusCode == http.StatusOK {
-		log.LogInfof("\n==> %s\n==> Could restore cfs-client now with -r option.\n\n", string(data))
+		log.Infof("\n==> %s\n==> Could restore cfs-client now with -r option.\n\n", string(data))
 	} else {
-		log.LogErrorf("\n==> %s\n==> Status: %s\n\n", string(data), resp.Status)
+		log.Errorf("\n==> %s\n==> Status: %s\n\n", string(data), resp.Status)
 		return fmt.Errorf(resp.Status)
 	}
 
@@ -213,24 +214,24 @@ func sendResumeRequest(port string) (err error) {
 
 	url := fmt.Sprintf("http://%s:%s/resume", DefaultIP, port)
 	if req, err = http.NewRequest("POST", url, nil); err != nil {
-		log.LogErrorf("Failed to get new request: %v\n", err)
+		log.Errorf("Failed to get new request: %v\n", err)
 		return err
 	}
 	req.Header.Set("Content-Type", "application/text")
 
 	client := http.DefaultClient
 	if resp, err = client.Do(req); err != nil {
-		log.LogErrorf("Failed to post request: %v\n", err)
+		log.Errorf("Failed to post request: %v\n", err)
 		return err
 	}
 	defer resp.Body.Close()
 
 	if data, err = io.ReadAll(resp.Body); err != nil {
-		log.LogErrorf("Failed to read response: %v\n", err)
+		log.Errorf("Failed to read response: %v\n", err)
 		return err
 	}
 
-	log.LogInfof("data: %s\n", string(data))
+	log.Infof("data: %s\n", string(data))
 	return nil
 }
 
@@ -239,7 +240,7 @@ func doSuspend(uds string, port string) (*os.File, error) {
 
 	udsListener, err := createUDS(uds)
 	if err != nil {
-		log.LogErrorf("doSuspend: failed to create UDS: %v\n", err)
+		log.Errorf("doSuspend: failed to create UDS: %v\n", err)
 		return nil, err
 	}
 	defer destroyUDS(udsListener)
@@ -308,14 +309,20 @@ func main() {
 	// use uber automaxprocs: get real cpu number to k8s pod"
 
 	level := parseLogLevel(opt.Loglvl)
-	_, err = log.InitLog(opt.Logpath, opt.Volname, level, nil, log.DefaultLogLeftSpaceLimit)
+	log.SetOutputLevel(level)
+	log.SetOutput(&lumberjack.Logger{
+		Filename:   path.Join(opt.Logpath, opt.Volname, opt.Volname+".log"),
+		MaxSize:    1024,
+		MaxAge:     7,
+		MaxBackups: 7,
+		LocalTime:  true,
+	})
 	if err != nil {
 		err = errors.NewErrorf("Init log dir fail: %v\n", err)
 		fmt.Println(err)
 		daemonize.SignalOutcome(err)
 		os.Exit(1)
 	}
-	defer log.LogFlush()
 
 	if _, err = os.Stat(opt.MountPoint); err != nil {
 		if err = os.Mkdir(opt.MountPoint, os.ModePerm); err != nil {
@@ -400,14 +407,13 @@ func main() {
 	if err != nil {
 		err = errors.NewErrorf("check permission failed: %v", err)
 		syslog.Println(err)
-		log.LogFlush()
 		_ = daemonize.SignalOutcome(err)
 		os.Exit(1)
 	}
 
 	var fud *os.File
 	if opt.NeedRestoreFuse && *configFuseHttpPort != "" {
-		log.LogInfof("Suspend/Restore by self\n")
+		log.Infof("Suspend/Restore by self\n")
 		var udsName string
 		if *configDynamicUDSName {
 			udsName = fmt.Sprintf(DynamicUDSNameFormat, os.Getpid())
@@ -419,9 +425,8 @@ func main() {
 		// before mount() to avoid pprof port conflict between old and
 		// new cfs-clients.
 		if fud, err = doSuspend(udsName, *configFuseHttpPort); err != nil {
-			log.LogErrorf("Failed to tell old cfs-client to suspend: %v\n", err)
+			log.Errorf("Failed to tell old cfs-client to suspend: %v\n", err)
 			syslog.Printf("Error: Failed to tell old cfs-client to suspend: %v\n", err)
-			log.LogFlush()
 			_ = daemonize.SignalOutcome(err)
 			os.Exit(1)
 		}
@@ -431,7 +436,6 @@ func main() {
 	if err != nil {
 		err = errors.NewErrorf("mount failed: %v", err)
 		syslog.Println(err)
-		log.LogFlush()
 		_ = daemonize.SignalOutcome(err)
 		os.Exit(1)
 	} else {
@@ -453,13 +457,6 @@ func main() {
 	exporter.Init(ModuleName, cfg)
 	exporter.RegistConsul(super.ClusterName(), ModuleName, cfg)
 
-	err = log.OutputPid(opt.Logpath, ModuleName)
-	if err != nil {
-		log.LogFlush()
-		syslog.Printf("output pid err(%v)", err)
-		os.Exit(1)
-	}
-
 	if opt.NeedRestoreFuse {
 		if fud == nil {
 			if *configRestoreFuseUDS == "" {
@@ -473,14 +470,12 @@ func main() {
 	}
 
 	if err = fs.Serve(fsConn, super, opt); err != nil {
-		log.LogFlush()
 		syslog.Printf("fs Serve returns err(%v)", err)
 		os.Exit(1)
 	}
 
 	<-fsConn.Ready
 	if fsConn.MountError != nil {
-		log.LogFlush()
 		syslog.Printf("fs Serve returns err(%v)\n", err)
 		os.Exit(1)
 	}
@@ -598,15 +593,15 @@ func waitListenAndServe(statusCh chan error, addr string, handler http.Handler) 
 func mount(opt *proto.MountOptions) (fsConn *fuse.Conn, super *cfs.Super, err error) {
 	super, err = cfs.NewSuper(opt)
 	if err != nil {
-		log.LogError(errors.Stack(err))
+		log.Error(errors.Stack(err))
 		return
 	}
 
 	http.HandleFunc(ControlCommandSetRate, super.SetRate)
 	http.HandleFunc(ControlCommandGetRate, super.GetRate)
-	http.HandleFunc(log.SetLogLevelPath, log.SetLogLevel)
+	http.HandleFunc(log.ChangeDefaultLevelHandler())
 	http.HandleFunc(ControlCommandFreeOSMemory, freeOSMemory)
-	http.HandleFunc(log.GetLogPath, log.GetLog)
+	// http.HandleFunc(log.GetLogPath, log.GetLog)
 	http.HandleFunc(ControlCommandSuspend, super.SetSuspend)
 	http.HandleFunc(ControlCommandResume, super.SetResume)
 	// auditlog
@@ -647,13 +642,12 @@ func mount(opt *proto.MountOptions) (fsConn *fuse.Conn, super *cfs.Super, err er
 		t := time.NewTicker(UpdateConfInterval)
 		defer t.Stop()
 		for range t.C {
-			log.LogDebugf("UpdateVolConf: load conf from master")
+			log.Debugf("UpdateVolConf: load conf from master")
 			var volumeInfo *proto.SimpleVolView
 			volumeInfo, err = mc.AdminAPI().GetVolumeSimpleInfo(opt.Volname)
 			if err != nil {
-				log.LogErrorf("UpdateVolConf: get vol info from master failed, err %s", err.Error())
+				log.Errorf("UpdateVolConf: get vol info from master failed, err %s", err.Error())
 				if err == proto.ErrVolNotExists {
-					log.LogFlush()
 					daemonize.SignalOutcome(err)
 					os.Exit(1)
 				}
@@ -661,8 +655,7 @@ func mount(opt *proto.MountOptions) (fsConn *fuse.Conn, super *cfs.Super, err er
 			}
 			if volumeInfo.Status == proto.VolStatusMarkDelete {
 				err = fmt.Errorf("vol [%s] has been deleted, stop client", volumeInfo.Name)
-				log.LogError(err)
-				log.LogFlush()
+				log.Error(err)
 				daemonize.SignalOutcome(err)
 				os.Exit(1)
 			}
@@ -799,7 +792,7 @@ func parseMountOption(cfg *config.Config) (*proto.MountOptions, error) {
 		} else {
 			opt.VerReadSeq = uint64(verReadSeq)
 		}
-		log.LogDebugf("oonfig.verReadSeq %v opt.VerReadSeq %v", verReadSeq, opt.VerReadSeq)
+		log.Debugf("oonfig.verReadSeq %v opt.VerReadSeq %v", verReadSeq, opt.VerReadSeq)
 	}
 	opt.MetaSendTimeout = GlobalMountOptions[proto.MetaSendTimeout].GetInt64()
 
@@ -866,15 +859,15 @@ func parseLogLevel(loglvl string) log.Level {
 	var level log.Level
 	switch strings.ToLower(loglvl) {
 	case "debug":
-		level = log.DebugLevel
+		level = log.Ldebug
 	case "info":
-		level = log.InfoLevel
+		level = log.Linfo
 	case "warn":
-		level = log.WarnLevel
+		level = log.Lwarn
 	case "error":
-		level = log.ErrorLevel
+		level = log.Lerror
 	default:
-		level = log.ErrorLevel
+		level = log.Lerror
 	}
 	return level
 }

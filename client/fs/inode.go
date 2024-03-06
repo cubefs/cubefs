@@ -19,8 +19,8 @@ import (
 
 	"github.com/cubefs/cubefs/depends/bazil.org/fuse"
 
+	"github.com/cubefs/cubefs/blobstore/util/log"
 	"github.com/cubefs/cubefs/proto"
-	"github.com/cubefs/cubefs/util/log"
 )
 
 const (
@@ -35,7 +35,7 @@ func (s *Super) InodeGet(ino uint64) (*proto.InodeInfo, error) {
 
 	info, err := s.mw.InodeGet_ll(ino)
 	if err != nil || info == nil {
-		log.LogErrorf("InodeGet: ino(%v) err(%v) info(%v)", ino, err, info)
+		log.Errorf("InodeGet: ino(%v) err(%v) info(%v)", ino, err, info)
 		if err != nil {
 			return nil, ParseError(err)
 		} else {
