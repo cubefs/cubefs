@@ -76,6 +76,7 @@ const (
 	SnapshotReadVerSeq
 
 	DisableMountSubtype
+	DisableMountSubtype
 	MaxMountOption
 )
 
