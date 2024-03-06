@@ -50,7 +50,7 @@ func TestBatchSetInodeQuota(t *testing.T) {
 		IsRoot:      false,
 	}
 	resp := &proto.BatchSetMetaserverQuotaResponse{}
-	mp.batchSetInodeQuota(req, resp)
+	mp.batchSetInodeQuota(newCtx(), req, resp)
 	size, files := mp.mqMgr.getUsedInfoForTest(quotaId1)
 	require.Equal(t, int64(300), size)
 	require.Equal(t, int64(2), files)
@@ -63,7 +63,7 @@ func TestBatchSetInodeQuota(t *testing.T) {
 		IsRoot:      false,
 	}
 	resp = &proto.BatchSetMetaserverQuotaResponse{}
-	mp.batchSetInodeQuota(req, resp)
+	mp.batchSetInodeQuota(newCtx(), req, resp)
 	size, files = mp.mqMgr.getUsedInfoForTest(quotaId2)
 	require.Equal(t, int64(300), size)
 	require.Equal(t, int64(2), files)
@@ -74,7 +74,7 @@ func TestBatchSetInodeQuota(t *testing.T) {
 		QuotaId:     quotaId1,
 	}
 	resp2 := &proto.BatchDeleteMetaserverQuotaResponse{}
-	mp.batchDeleteInodeQuota(req2, resp2)
+	mp.batchDeleteInodeQuota(newCtx(), req2, resp2)
 	size, files = mp.mqMgr.getUsedInfoForTest(quotaId1)
 	require.Equal(t, int64(0), size)
 	require.Equal(t, int64(0), files)

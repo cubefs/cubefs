@@ -50,7 +50,7 @@ func (mp *metaPartition) fsmTxCreateDentry(ctx context.Context, txDentry *TxDent
 	}
 
 	rbDentry := NewTxRollbackDentry(txDentry.Dentry, txDenInfo, TxDelete)
-	status = mp.txProcessor.txResource.addTxRollbackDentry(rbDentry)
+	status = mp.txProcessor.txResource.addTxRollbackDentry(ctx, rbDentry)
 	if status == proto.OpExistErr {
 		return proto.OpOk
 	}
@@ -61,7 +61,7 @@ func (mp *metaPartition) fsmTxCreateDentry(ctx context.Context, txDentry *TxDent
 
 	defer func() {
 		if status != proto.OpOk {
-			mp.txProcessor.txResource.deleteTxRollbackDentry(txDenInfo.ParentId, txDenInfo.Name, txDenInfo.TxID)
+			mp.txProcessor.txResource.deleteTxRollbackDentry(ctx, txDenInfo.ParentId, txDenInfo.Name, txDenInfo.TxID)
 		}
 	}()
 
@@ -116,7 +116,7 @@ func (mp *metaPartition) fsmCreateDentry(ctx context.Context, dentry *Dentry, fo
 			span.Debugf("latest dentry already deleted.Now create new one [%v]", dentry)
 
 			if !forceUpdate {
-				parIno.IncNLink(mp.verSeq)
+				parIno.IncNLink(ctx, mp.verSeq)
 				parIno.SetMtime()
 			}
 			return
@@ -135,7 +135,7 @@ func (mp *metaPartition) fsmCreateDentry(ctx context.Context, dentry *Dentry, fo
 	}
 
 	if !forceUpdate {
-		parIno.IncNLink(mp.verSeq)
+		parIno.IncNLink(ctx, mp.verSeq)
 		parIno.SetMtime()
 	}
 	return
@@ -193,7 +193,7 @@ func (mp *metaPartition) fsmTxDeleteDentry(ctx context.Context, txDentry *TxDent
 	}
 
 	rbDentry := NewTxRollbackDentry(tmpDen, txDenInfo, TxAdd)
-	resp.Status = mp.txProcessor.txResource.addTxRollbackDentry(rbDentry)
+	resp.Status = mp.txProcessor.txResource.addTxRollbackDentry(ctx, rbDentry)
 	if resp.Status == proto.OpExistErr {
 		resp.Status = proto.OpOk
 		return
@@ -205,7 +205,7 @@ func (mp *metaPartition) fsmTxDeleteDentry(ctx context.Context, txDentry *TxDent
 
 	defer func() {
 		if resp.Status != proto.OpOk {
-			mp.txProcessor.txResource.deleteTxRollbackDentry(txDenInfo.ParentId, txDenInfo.Name, txDenInfo.TxID)
+			mp.txProcessor.txResource.deleteTxRollbackDentry(ctx, txDenInfo.ParentId, txDenInfo.Name, txDenInfo.TxID)
 		}
 	}()
 
@@ -309,7 +309,7 @@ func (mp *metaPartition) fsmDeleteDentry(ctx context.Context, denParm *Dentry, c
 func (mp *metaPartition) fsmBatchDeleteDentry(ctx context.Context, db DentryBatch) []*DentryResponse {
 	result := make([]*DentryResponse, 0, len(db))
 	for _, dentry := range db {
-		status := mp.dentryInTx(dentry.ParentId, dentry.Name)
+		status := mp.dentryInTx(ctx, dentry.ParentId, dentry.Name)
 		if status != proto.OpOk {
 			result = append(result, &DentryResponse{Status: status})
 			continue
@@ -347,7 +347,7 @@ func (mp *metaPartition) fsmTxUpdateDentry(ctx context.Context, txUpDateDentry *
 	}
 
 	rbDentry := NewTxRollbackDentry(txUpDateDentry.OldDentry, txDenInfo, TxUpdate)
-	resp.Status = mp.txProcessor.txResource.addTxRollbackDentry(rbDentry)
+	resp.Status = mp.txProcessor.txResource.addTxRollbackDentry(ctx, rbDentry)
 	if resp.Status == proto.OpExistErr {
 		resp.Status = proto.OpOk
 		return

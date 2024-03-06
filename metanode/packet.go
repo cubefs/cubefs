@@ -15,12 +15,12 @@
 package metanode
 
 import (
+	"context"
 	"encoding/json"
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/storage"
 	"github.com/cubefs/cubefs/util"
-	"github.com/cubefs/cubefs/util/log"
 )
 
 type Packet struct {
@@ -28,7 +28,7 @@ type Packet struct {
 }
 
 // NewPacketToDeleteExtent returns a new packet to delete the extent.
-func NewPacketToDeleteExtent(dp *DataPartition, ext *proto.ExtentKey) (p *Packet, invalid bool) {
+func NewPacketToDeleteExtent(ctx context.Context, dp *DataPartition, ext *proto.ExtentKey) (p *Packet, invalid bool) {
 	p = new(Packet)
 	p.Magic = proto.ProtoMagic
 	p.Opcode = proto.OpMarkDelete
@@ -37,19 +37,20 @@ func NewPacketToDeleteExtent(dp *DataPartition, ext *proto.ExtentKey) (p *Packet
 	if storage.IsTinyExtent(ext.ExtentId) {
 		p.ExtentType = proto.TinyExtentType
 	}
-	log.LogDebugf("NewPacketToDeleteExtent. ext %v", ext)
+
+	span := getSpan(ctx)
+	span.Debugf("NewPacketToDeleteExtent. ext %v", ext)
 	if ext.IsSplit() {
 		var (
 			newOff  = ext.ExtentOffset
 			newSize = ext.Size
 		)
 		if int(ext.ExtentOffset)%util.PageSize != 0 {
-			log.LogDebugf("NewPacketToDeleteExtent. ext %v", ext)
+			span.Debugf("NewPacketToDeleteExtent. ext %v", ext)
 			newOff = ext.ExtentOffset + util.PageSize - ext.ExtentOffset%util.PageSize
 			if ext.Size <= uint32(newOff-ext.ExtentOffset) {
 				invalid = true
-				log.LogDebugf("NewPacketToDeleteExtent. ext %v invalid to punch hole newOff %v",
-					ext, newOff)
+				span.Debugf("NewPacketToDeleteExtent. ext %v invalid to punch hole newOff %v", ext, newOff)
 				return
 			}
 			newSize = ext.Size - uint32(newOff-ext.ExtentOffset)
@@ -61,16 +62,17 @@ func NewPacketToDeleteExtent(dp *DataPartition, ext *proto.ExtentKey) (p *Packet
 
 		if newSize == 0 {
 			invalid = true
-			log.LogDebugf("NewPacketToDeleteExtent. ext %v invalid to punch hole", ext)
+			span.Debugf("NewPacketToDeleteExtent. ext %v invalid to punch hole", ext)
 			return
 		}
 		ext.Size = newSize
 		ext.ExtentOffset = newOff
-		log.LogDebugf("ext [%v] delete be set split flag", ext)
+		span.Debugf("ext [%v] delete be set split flag", ext)
 		p.Opcode = proto.OpSplitMarkDelete
 	} else {
-		log.LogDebugf("ext [%v] delete normal ext", ext)
+		span.Debugf("ext [%v] delete normal ext", ext)
 	}
+
 	p.Data, _ = json.Marshal(ext)
 	p.Size = uint32(len(p.Data))
 	p.ExtentID = ext.ExtentId
@@ -79,10 +81,8 @@ func NewPacketToDeleteExtent(dp *DataPartition, ext *proto.ExtentKey) (p *Packet
 	if len(dp.Hosts) == 1 {
 		p.RemainingFollowers = 127
 	}
-
 	p.Arg = ([]byte)(dp.GetAllAddrs())
 	p.ArgLen = uint32(len(p.Arg))
-
 	return
 }
 
@@ -102,7 +102,6 @@ func NewPacketToBatchDeleteExtent(dp *DataPartition, exts []*proto.ExtentKey) *P
 	}
 	p.Arg = ([]byte)(dp.GetAllAddrs())
 	p.ArgLen = uint32(len(p.Arg))
-
 	return p
 }
 
@@ -117,6 +116,5 @@ func NewPacketToFreeInodeOnRaftFollower(partitionID uint64, freeInodes []byte) *
 	p.Data = make([]byte, len(freeInodes))
 	copy(p.Data, freeInodes)
 	p.Size = uint32(len(p.Data))
-
 	return p
 }

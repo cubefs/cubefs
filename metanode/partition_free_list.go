@@ -43,6 +43,8 @@ const (
 	DeleteInodeFileRollingSize    = 500 * util.MB
 )
 
+var _deleteInodeFileRollingSize uint64 = DeleteInodeFileRollingSize
+
 func (mp *metaPartition) openDeleteInodeFile() (err error) {
 	if mp.delInodeFp, err = os.OpenFile(path.Join(mp.config.RootDir,
 		DeleteInodeFileExtension), OpenRWAppendOpt, 0o644); err != nil {
@@ -288,7 +290,7 @@ func (mp *metaPartition) deleteMarkedInodes(ctx context.Context, inoSlice []uint
 			return
 		}
 
-		extInfo := inode.GetAllExtsOfflineInode(mp.config.PartitionId)
+		extInfo := inode.GetAllExtsOfflineInode(ctx, mp.config.PartitionId)
 		for dpID, inodeExts := range extInfo {
 			exts, ok := deleteExtentsByPartition[dpID]
 			if !ok {
@@ -423,7 +425,7 @@ func (mp *metaPartition) doDeleteMarkedInodes(ctx context.Context, ext *proto.Ex
 		p       *Packet
 		invalid bool
 	)
-	if p, invalid = NewPacketToDeleteExtent(dp, ext); invalid {
+	if p, invalid = NewPacketToDeleteExtent(ctx, dp, ext); invalid {
 		p.ResultCode = proto.OpOk
 		return
 	}
@@ -565,7 +567,7 @@ func (mp *metaPartition) deleteObjExtents(ctx context.Context, oeks []proto.ObjE
 
 func (mp *metaPartition) persistDeletedInode(ctx context.Context, ino uint64, currentSize *uint64) {
 	span := getSpan(ctx).WithOperation("persistDeletedInode")
-	if *currentSize >= DeleteInodeFileRollingSize {
+	if *currentSize >= _deleteInodeFileRollingSize {
 		fileName := fmt.Sprintf("%v.%v.%v", DeleteInodeFileExtension, time.Now().Format(clog.FileNameDateFormat), "old")
 		if err := mp.delInodeFp.Sync(); err != nil {
 			span.Errorf("failed to sync delete inode file, err(%v), inode(%v)", err, ino)

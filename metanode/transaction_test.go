@@ -224,19 +224,19 @@ func TestTxMgrOp(t *testing.T) {
 	id := txMgr.txIdAlloc.getTransactionID()
 	expectedId := fmt.Sprintf("%d_%d", mp1.config.PartitionId, id)
 	assert.Equal(t, expectedId, txId)
-	txMgr.registerTransaction(txInfo)
+	txMgr.registerTransaction(newCtx(), txInfo)
 
 	// get
 	gotTxInfo := txMgr.getTransaction(txId)
 	assert.Equal(t, txInfo, gotTxInfo)
 
 	// rollback
-	txMgr.rollbackTxInfo(txId)
+	txMgr.rollbackTxInfo(newCtx(), txId)
 	gotTxInfo = txMgr.getTransaction(txId)
 	assert.True(t, gotTxInfo.IsDone())
 
 	// commit
-	status, _ := txMgr.commitTxInfo("dummy_txId")
+	status, _ := txMgr.commitTxInfo(newCtx(), "dummy_txId")
 	assert.Equal(t, proto.OpTxInfoNotExistErr, status)
 }
 
@@ -259,15 +259,15 @@ func TestTxRscOp(t *testing.T) {
 	rbInode2 := NewTxRollbackInode(inode1, []uint32{}, txInodeInfo2, TxAdd)
 
 	txRsc := mp1.txProcessor.txResource
-	status := txRsc.addTxRollbackInode(rbInode1)
+	status := txRsc.addTxRollbackInode(newCtx(), rbInode1)
 	assert.Equal(t, proto.OpOk, status)
-	status = txRsc.addTxRollbackInode(rbInode1)
+	status = txRsc.addTxRollbackInode(newCtx(), rbInode1)
 	assert.Equal(t, proto.OpExistErr, status)
 
 	inTx, _ := txRsc.isInodeInTransction(inode1)
 	assert.True(t, inTx)
 
-	status = txRsc.addTxRollbackInode(rbInode2)
+	status = txRsc.addTxRollbackInode(newCtx(), rbInode2)
 	assert.Equal(t, proto.OpTxConflictErr, status)
 
 	// rbDentry
@@ -289,15 +289,15 @@ func TestTxRscOp(t *testing.T) {
 	txDentryInfo2.CreateTime = time.Now().Unix()
 	rbDentry2 := NewTxRollbackDentry(dentry, txDentryInfo2, TxAdd)
 
-	status = txRsc.addTxRollbackDentry(rbDentry1)
+	status = txRsc.addTxRollbackDentry(newCtx(), rbDentry1)
 	assert.Equal(t, proto.OpOk, status)
-	status = txRsc.addTxRollbackDentry(rbDentry1)
+	status = txRsc.addTxRollbackDentry(newCtx(), rbDentry1)
 	assert.Equal(t, proto.OpExistErr, status)
 
 	inTx, _ = txRsc.isDentryInTransction(dentry)
 	assert.True(t, inTx)
 
-	status = txRsc.addTxRollbackDentry(rbDentry2)
+	status = txRsc.addTxRollbackDentry(newCtx(), rbDentry2)
 	assert.Equal(t, proto.OpTxConflictErr, status)
 }
 
@@ -310,7 +310,7 @@ func mockAddTxInode(mp *metaPartition) *TxRollbackInode {
 	inode1 := NewInode(inodeNum, FileModeType)
 	rbInode := NewTxRollbackInode(inode1, []uint32{}, txInodeInfo1, TxDelete)
 	txRsc := mp.txProcessor.txResource
-	txRsc.addTxRollbackInode(rbInode)
+	txRsc.addTxRollbackInode(newCtx(), rbInode)
 
 	mp.inodeTree.ReplaceOrInsert(inode1, true)
 	return rbInode
@@ -327,7 +327,7 @@ func mockDeleteTxInode(mp *metaPartition) *TxRollbackInode {
 	txInodeInfo2.CreateTime = time.Now().UnixNano()
 	rbInode := NewTxRollbackInode(inode2, []uint32{}, txInodeInfo2, TxAdd)
 	txRsc := mp.txProcessor.txResource
-	txRsc.addTxRollbackInode(rbInode)
+	txRsc.addTxRollbackInode(newCtx(), rbInode)
 
 	mp.inodeTree.Delete(inode2)
 	return rbInode
@@ -357,7 +357,7 @@ func mockAddTxDentry(mp *metaPartition) *TxRollbackDentry {
 	}
 	rbDentry := NewTxRollbackDentry(dentry1, txDentryInfo1, TxDelete)
 	txRsc := mp.txProcessor.txResource
-	txRsc.addTxRollbackDentry(rbDentry)
+	txRsc.addTxRollbackDentry(newCtx(), rbDentry)
 
 	mp.dentryTree.ReplaceOrInsert(dentry1, true)
 	return rbDentry
@@ -379,7 +379,7 @@ func mockDeleteTxDentry(mp *metaPartition) *TxRollbackDentry {
 	txDentryInfo2.CreateTime = time.Now().Unix()
 	rbDentry := NewTxRollbackDentry(dentry2, txDentryInfo2, TxAdd)
 	txRsc := mp.txProcessor.txResource
-	txRsc.addTxRollbackDentry(rbDentry)
+	txRsc.addTxRollbackDentry(newCtx(), rbDentry)
 
 	mp.dentryTree.Delete(dentry2)
 	return rbDentry
@@ -394,7 +394,7 @@ func TestTxRscRollback(t *testing.T) {
 		TxID:  rbInode1.txInodeInfo.TxID,
 		Inode: rbInode1.inode.Inode,
 	}
-	status, err := txRsc.rollbackInode(req1)
+	status, err := txRsc.rollbackInode(newCtx(), req1)
 	assert.True(t, status == proto.OpOk && err == nil)
 
 	// roll back delete inode
@@ -403,7 +403,7 @@ func TestTxRscRollback(t *testing.T) {
 		TxID:  rbInode2.txInodeInfo.TxID,
 		Inode: rbInode2.inode.Inode,
 	}
-	status, err = txRsc.rollbackInode(req2)
+	status, err = txRsc.rollbackInode(newCtx(), req2)
 	assert.True(t, status == proto.OpOk && err == nil)
 
 	// roll back add dentry
@@ -413,7 +413,7 @@ func TestTxRscRollback(t *testing.T) {
 		Pid:  rbDentry1.txDentryInfo.ParentId,
 		Name: rbDentry1.txDentryInfo.Name,
 	}
-	status, err = txRsc.rollbackDentry(req3)
+	status, err = txRsc.rollbackDentry(newCtx(), req3)
 	assert.True(t, status == proto.OpOk && err == nil)
 
 	// roll back delete dentry
@@ -423,7 +423,7 @@ func TestTxRscRollback(t *testing.T) {
 		Pid:  rbDentry2.txDentryInfo.ParentId,
 		Name: rbDentry2.txDentryInfo.Name,
 	}
-	status, err = txRsc.rollbackDentry(req4)
+	status, err = txRsc.rollbackDentry(newCtx(), req4)
 	assert.True(t, status == proto.OpOk && err == nil)
 }
 
@@ -432,22 +432,22 @@ func TestTxRscCommit(t *testing.T) {
 	// commit add inode
 	rbInode1 := mockAddTxInode(mp1)
 	txRsc := mp1.txProcessor.txResource
-	status, err := txRsc.commitInode(rbInode1.txInodeInfo.TxID, rbInode1.inode.Inode)
+	status, err := txRsc.commitInode(newCtx(), rbInode1.txInodeInfo.TxID, rbInode1.inode.Inode)
 	assert.True(t, status == proto.OpOk && err == nil)
 
 	// commit delete inode
 	rbInode2 := mockDeleteTxInode(mp1)
-	status, err = txRsc.commitInode(rbInode2.txInodeInfo.TxID, rbInode2.inode.Inode)
+	status, err = txRsc.commitInode(newCtx(), rbInode2.txInodeInfo.TxID, rbInode2.inode.Inode)
 	assert.True(t, status == proto.OpOk && err == nil)
 
 	// commit add dentry
 	rbDentry1 := mockAddTxDentry(mp1)
-	status, err = txRsc.commitDentry(rbDentry1.txDentryInfo.TxID, rbDentry1.txDentryInfo.ParentId, rbDentry1.txDentryInfo.Name)
+	status, err = txRsc.commitDentry(newCtx(), rbDentry1.txDentryInfo.TxID, rbDentry1.txDentryInfo.ParentId, rbDentry1.txDentryInfo.Name)
 	assert.True(t, status == proto.OpOk && err == nil)
 
 	// commit delete dentry
 	rbDentry2 := mockDeleteTxDentry(mp1)
-	status, err = txRsc.commitDentry(rbDentry2.txDentryInfo.TxID, rbDentry2.txDentryInfo.ParentId, rbDentry2.txDentryInfo.Name)
+	status, err = txRsc.commitDentry(newCtx(), rbDentry2.txDentryInfo.TxID, rbDentry2.txDentryInfo.ParentId, rbDentry2.txDentryInfo.Name)
 	assert.True(t, status == proto.OpOk && err == nil)
 }
 
@@ -469,9 +469,9 @@ func TestTxTreeRollback(t *testing.T) {
 	id := txMgr.txIdAlloc.getTransactionID()
 	expectedId := fmt.Sprintf("%d_%d", mp1.config.PartitionId, id)
 	assert.Equal(t, expectedId, txId)
-	txMgr.registerTransaction(txInfo)
+	txMgr.registerTransaction(newCtx(), txInfo)
 
-	txMgr.registerTransaction(txInfo)
+	txMgr.registerTransaction(newCtx(), txInfo)
 	txMgr.txProcessor.mask |= proto.TxPause
 	time.Sleep(2 * time.Second)
 	assert.True(t, txMgr.txTree.Len() == 1)
@@ -506,7 +506,7 @@ func TestGetTxHandler(t *testing.T) {
 	}
 
 	// register
-	txMgr.registerTransaction(txInfo)
+	txMgr.registerTransaction(newCtx(), txInfo)
 	var (
 		req = &proto.TxGetInfoRequest{
 			TxID: txInfo.TxID,

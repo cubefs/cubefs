@@ -214,7 +214,8 @@ func (mp *metaPartition) TxDeleteDentry(req *proto.TxDeleteDentryRequest, p *Pac
 		}
 	}()
 
-	dentry, status := mp.getDentry(p.Context(), den)
+	ctx := p.Context()
+	dentry, status := mp.getDentry(ctx, den)
 	if status != proto.OpOk {
 		if mp.txDentryInRb(req.ParentID, req.Name, req.TxInfo.TxID) {
 			p.ResultCode = proto.OpOk
@@ -236,7 +237,7 @@ func (mp *metaPartition) TxDeleteDentry(req *proto.TxDeleteDentryRequest, p *Pac
 		return
 	}
 	parIno := NewInode(req.ParentID, 0)
-	inoResp := mp.getInode(parIno, false)
+	inoResp := mp.getInode(ctx, parIno, false)
 	if inoResp.Status != proto.OpOk {
 		err = fmt.Errorf("parIno[%v] not exists", parIno.Inode)
 		p.PacketErrorWithBody(inoResp.Status, []byte(err.Error()))
@@ -255,7 +256,7 @@ func (mp *metaPartition) TxDeleteDentry(req *proto.TxDeleteDentryRequest, p *Pac
 		return
 	}
 
-	r, err := mp.submit(p.Context(), opFSMTxDeleteDentry, val)
+	r, err := mp.submit(ctx, opFSMTxDeleteDentry, val)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return

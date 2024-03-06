@@ -23,7 +23,6 @@ import (
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/auditlog"
 	"github.com/cubefs/cubefs/util/errors"
-	"github.com/cubefs/cubefs/util/log"
 )
 
 func replyInfoNoCheck(info *proto.InodeInfo, ino *Inode) bool {
@@ -258,7 +257,7 @@ func (mp *metaPartition) TxUnlinkInode(req *proto.TxUnlinkInodeRequest, p *Packe
 	}()
 
 	ino := NewInode(req.Inode, 0)
-	inoResp := mp.getInode(ino, true)
+	inoResp := mp.getInode(p.Context(), ino, true)
 	if inoResp.Status != proto.OpOk {
 		if rbIno := mp.txInodeInRb(req.Inode, req.TxInfo.TxID); rbIno != nil {
 			respIno = rbIno.inode
@@ -444,9 +443,10 @@ func (mp *metaPartition) InodeGetSplitEk(req *InodeGetSplitReq, p *Packet) (err 
 	ino.setVer(req.VerSeq)
 
 	getAllVerInfo := req.VerAll
-	retMsg := mp.getInode(ino, getAllVerInfo)
+	retMsg := mp.getInode(p.Context(), ino, getAllVerInfo)
 
-	log.LogDebugf("action[InodeGetSplitEk] %v seq [%v] retMsg.status [%v], getAllVerInfo %v",
+	span := p.Span()
+	span.Debugf("action[InodeGetSplitEk] %v seq [%v] retMsg.status [%v], getAllVerInfo %v",
 		ino.Inode, req.VerSeq, retMsg.Status, getAllVerInfo)
 
 	ino = retMsg.Msg
@@ -473,20 +473,20 @@ func (mp *metaPartition) InodeGetSplitEk(req *InodeGetSplitReq, p *Packet) (err 
 				return true
 			})
 		}
-		log.LogDebugf("action[InodeGetSplitEk] %v seq [%v] retMsg.status [%v], getAllVerInfo %v",
+		span.Debugf("action[InodeGetSplitEk] %v seq [%v] retMsg.status [%v], getAllVerInfo %v",
 			ino.Inode, req.VerSeq, retMsg.Status, getAllVerInfo)
 		status = proto.OpOk
 		reply, err = json.Marshal(resp)
 		if err != nil {
-			log.LogDebugf("action[InodeGetSplitEk] %v seq [%v] retMsg.status [%v], getAllVerInfo %v",
+			span.Debugf("action[InodeGetSplitEk] %v seq [%v] retMsg.status [%v], getAllVerInfo %v",
 				ino.Inode, req.VerSeq, retMsg.Status, getAllVerInfo)
 			status = proto.OpErr
 			reply = []byte(err.Error())
 		}
-		log.LogDebugf("action[InodeGetSplitEk] %v seq [%v] retMsg.status [%v], getAllVerInfo %v",
+		span.Debugf("action[InodeGetSplitEk] %v seq [%v] retMsg.status [%v], getAllVerInfo %v",
 			ino.Inode, req.VerSeq, retMsg.Status, getAllVerInfo)
 	}
-	log.LogDebugf("action[InodeGetSplitEk] %v seq [%v] retMsg.status [%v], getAllVerInfo %v",
+	span.Debugf("action[InodeGetSplitEk] %v seq [%v] retMsg.status [%v], getAllVerInfo %v",
 		ino.Inode, req.VerSeq, retMsg.Status, getAllVerInfo)
 	p.PacketErrorWithBody(status, reply)
 	return
@@ -497,9 +497,10 @@ func (mp *metaPartition) InodeGet(req *InodeGetReq, p *Packet) (err error) {
 	ino := NewInode(req.Inode, 0)
 	ino.setVer(req.VerSeq)
 	getAllVerInfo := req.VerAll
-	retMsg := mp.getInode(ino, getAllVerInfo)
+	retMsg := mp.getInode(p.Context(), ino, getAllVerInfo)
 
-	log.LogDebugf("action[Inode] %v seq [%v] retMsg.status [%v], getAllVerInfo %v",
+	span := p.Span()
+	span.Debugf("action[Inode] %v seq [%v] retMsg.status [%v], getAllVerInfo %v",
 		ino.Inode, req.VerSeq, retMsg.Status, getAllVerInfo)
 
 	var (
@@ -508,7 +509,7 @@ func (mp *metaPartition) InodeGet(req *InodeGetReq, p *Packet) (err error) {
 		quotaInfos map[uint32]*proto.MetaQuotaInfo
 	)
 	if mp.mqMgr.EnableQuota() {
-		quotaInfos, err = mp.getInodeQuotaInfos(req.Inode)
+		quotaInfos, err = mp.getInodeQuotaInfos(p.Context(), req.Inode)
 		if err != nil {
 			status = proto.OpErr
 			reply = []byte(err.Error())
@@ -535,7 +536,7 @@ func (mp *metaPartition) InodeGet(req *InodeGetReq, p *Packet) (err error) {
 		status = proto.OpOk
 		if getAllVerInfo {
 			inode := mp.getInodeTopLayer(ino)
-			log.LogDebugf("req ino[%v], toplayer ino[%v]", retMsg.Msg, inode)
+			span.Debugf("req ino[%v], toplayer ino[%v]", retMsg.Msg, inode)
 			resp.LayAll = inode.Msg.getAllInodesInfo()
 		}
 		reply, err = json.Marshal(resp)
@@ -553,13 +554,14 @@ func (mp *metaPartition) InodeGet(req *InodeGetReq, p *Packet) (err error) {
 func (mp *metaPartition) InodeGetBatch(req *InodeGetReqBatch, p *Packet) (err error) {
 	resp := &proto.BatchInodeGetResponse{}
 	ino := NewInode(0, 0)
+	ctx := p.Context()
 	for _, inoId := range req.Inodes {
 		var quotaInfos map[uint32]*proto.MetaQuotaInfo
 		ino.Inode = inoId
 		ino.setVer(req.VerSeq)
-		retMsg := mp.getInode(ino, false)
+		retMsg := mp.getInode(ctx, ino, false)
 		if mp.mqMgr.EnableQuota() {
-			quotaInfos, err = mp.getInodeQuotaInfos(inoId)
+			quotaInfos, err = mp.getInodeQuotaInfos(ctx, inoId)
 			if err != nil {
 				p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 				return
@@ -590,7 +592,7 @@ func (mp *metaPartition) TxCreateInodeLink(req *proto.TxLinkInodeRequest, p *Pac
 	}
 	txInfo := req.TxInfo.GetCopy()
 	ino := NewInode(req.Inode, 0)
-	inoResp := mp.getInode(ino, true)
+	inoResp := mp.getInode(p.Context(), ino, true)
 	if inoResp.Status != proto.OpOk {
 		err = fmt.Errorf("ino[%v] not exists", ino.Inode)
 		p.PacketErrorWithBody(inoResp.Status, []byte(err.Error()))

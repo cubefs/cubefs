@@ -26,8 +26,8 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/cubefs/cubefs/blobstore/util/log"
 	"github.com/cubefs/cubefs/proto"
-	"github.com/cubefs/cubefs/util/log"
 )
 
 // MetaItem defines the structure of the metadata operations.
@@ -260,7 +260,7 @@ func newMetaItemIterator(mp *metaPartition) (si *MetaItemIterator, err error) {
 		if si.SnapFormatVersion == SnapFormatVersion_0 {
 			// process index ID
 			produceItem(si.applyID)
-			log.LogDebugf("newMetaItemIterator: SnapFormatVersion_0, partitionId(%v), applyID(%v)",
+			log.Debugf("newMetaItemIterator: SnapFormatVersion_0, partitionId(%v), applyID(%v)",
 				mp.config.PartitionId, si.applyID)
 		} else if si.SnapFormatVersion == SnapFormatVersion_1 {
 			// process snapshot format version
@@ -282,7 +282,7 @@ func newMetaItemIterator(mp *metaPartition) (si *MetaItemIterator, err error) {
 			verListWrapper := SnapItemWrapper{SiwKeyVerList, si.verList}
 			produceItem(verListWrapper)
 
-			log.LogDebugf("newMetaItemIterator: SnapFormatVersion_1, partitionId(%v) applyID(%v) txId(%v) cursor(%v) uniqID(%v) verList(%v)",
+			log.Debugf("newMetaItemIterator: SnapFormatVersion_1, partitionId(%v) applyID(%v) txId(%v) cursor(%v) uniqID(%v) verList(%v)",
 				mp.config.PartitionId, si.applyID, si.txId, si.cursor, si.uniqID, si.verList)
 
 			if si.uniqID != 0 {
@@ -441,7 +441,7 @@ func (si *MetaItemIterator) Next() (data []byte, err error) {
 				return
 			}
 			snap = NewMetaItem(opFSMVerListSnapShot, typedItem.MarshalKey(), verListBuf)
-			log.LogInfof("snapshot.fileRootDir %v verList %v", si.fileRootDir, verListBuf)
+			log.Infof("snapshot.fileRootDir %v verList %v", si.fileRootDir, verListBuf)
 		} else {
 			panic(fmt.Sprintf("MetaItemIterator.Next: unknown SnapItemWrapper key: %v", typedItem.key))
 		}

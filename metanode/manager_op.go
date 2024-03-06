@@ -26,12 +26,12 @@ import (
 	"sync/atomic"
 	"time"
 
-	blog "github.com/cubefs/cubefs/blobstore/util/log"
+	"github.com/cubefs/cubefs/blobstore/util/log"
 	raftProto "github.com/cubefs/cubefs/depends/tiglabs/raft/proto"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/errors"
-	"github.com/cubefs/cubefs/util/log"
+	clog "github.com/cubefs/cubefs/util/log"
 )
 
 const (
@@ -181,7 +181,7 @@ func (m *metadataManager) opMasterHeartbeat(conn net.Conn, p *Packet, remoteAddr
 			m.checkForbiddenVolume(req.ForbiddenVols, partition)
 			m.checkDisableAuditLogVolume(req.DisableAuditVols, partition)
 			partition.SetUidLimit(req.UidLimitInfo)
-			partition.SetTxInfo(req.TxInfo)
+			partition.SetTxInfo(ctx, req.TxInfo)
 			partition.setQuotaHbInfo(ctx, req.QuotaHbInfos)
 			mConf := partition.GetBaseConfig()
 
@@ -196,7 +196,7 @@ func (m *metadataManager) opMasterHeartbeat(conn net.Conn, p *Packet, remoteAddr
 				InodeCnt:         uint64(partition.GetInodeTreeLen()),
 				DentryCnt:        uint64(partition.GetDentryTreeLen()),
 				FreeListLen:      uint64(partition.GetFreeListLen()),
-				UidInfo:          partition.GetUidInfo(),
+				UidInfo:          partition.GetUidInfo(ctx),
 				QuotaReportInfos: partition.getQuotaReportInfos(ctx),
 			}
 			mpr.TxCnt, mpr.TxRbInoCnt, mpr.TxRbDenCnt = partition.TxGetCnt()
@@ -752,7 +752,7 @@ func (m *metadataManager) opMetaExtentsList(conn net.Conn, p *Packet, remoteAddr
 	err = mp.ExtentsList(req, p)
 	m.respondToClient(conn, p)
 	p.Span().Debugf("%s [opMetaExtentsList] req: %d - %v; resp: %v, body: %s",
-		remoteAddr, p.GetReqID(), req, p.GetResultMsg(), log.TruncMsg(string(p.Data)))
+		remoteAddr, p.GetReqID(), req, p.GetResultMsg(), clog.TruncMsg(string(p.Data)))
 	return
 }
 
@@ -1392,7 +1392,7 @@ func (m *metadataManager) opMetaBatchSetInodeQuota(conn net.Conn, p *Packet, rem
 		return err
 	}
 	resp := &proto.BatchSetMetaserverQuotaResponse{}
-	err = mp.batchSetInodeQuota(req, resp)
+	err = mp.batchSetInodeQuota(p.Context(), req, resp)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
 		m.respondToClient(conn, p)
@@ -1417,7 +1417,7 @@ func (m *metadataManager) opMetaBatchDeleteInodeQuota(conn net.Conn, p *Packet, 
 		return err
 	}
 	resp := &proto.BatchDeleteMetaserverQuotaResponse{}
-	err = mp.batchDeleteInodeQuota(req, resp)
+	err = mp.batchDeleteInodeQuota(p.Context(), req, resp)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
 		m.respondToClient(conn, p)
@@ -1441,7 +1441,7 @@ func (m *metadataManager) opMetaGetInodeQuota(conn net.Conn, p *Packet, remote s
 	if err != nil {
 		return err
 	}
-	err = mp.getInodeQuota(req.Inode, p)
+	err = mp.getInodeQuota(p.Context(), req.Inode, p)
 	_ = m.respondToClient(conn, p)
 	p.Span().Infof("[opMetaGetInodeQuota] get inode[%v] quota success.", req.Inode)
 	return
@@ -1526,11 +1526,11 @@ func (m *metadataManager) checkVolVerList(ctx context.Context) (err error) {
 			}
 			span.Debugf("info %v id[%v] ", info, id)
 			if _, exist := mpsVerlist[id]; exist {
-				if err = partition.checkByMasterVerlist(mpsVerlist[id], info); err != nil {
+				if err = partition.checkByMasterVerlist(ctx, mpsVerlist[id], info); err != nil {
 					return true
 				}
 			}
-			if _, err = partition.checkVerList(info, false); err != nil {
+			if _, err = partition.checkVerList(ctx, info, false); err != nil {
 				span.Error(err)
 			}
 			return true
@@ -1558,7 +1558,7 @@ func (m *metadataManager) commitCreateVersion(ctx context.Context, VolumeID stri
 		go func(mpId uint64, mp MetaPartition) {
 			defer wg.Done()
 			span.Infof("mp %v do HandleVersionOp verseq [%v]", mpId, VerSeq)
-			if err := mp.HandleVersionOp(Op, VerSeq, nil, synchronize); err != nil {
+			if err := mp.HandleVersionOp(ctx, Op, VerSeq, nil, synchronize); err != nil {
 				span.Errorf("mp %v do HandleVersionOp verseq [%v] err %v", mpId, VerSeq, err)
 				resultCh <- err
 				return
@@ -1642,7 +1642,7 @@ func (m *metadataManager) checkMultiVersionStatus(mp MetaPartition, p *Packet) (
 		return
 	}
 	if p.IsVersionList() {
-		_, err = mp.checkVerList(&proto.VolVersionInfoList{VerList: p.VerList}, true)
+		_, err = mp.checkVerList(p.Context(), &proto.VolVersionInfoList{VerList: p.VerList}, true)
 		return
 	}
 	p.ResultCode = proto.OpAgainVerionList
@@ -1767,7 +1767,7 @@ end:
 			remoteAddr, p.String(), req, adminTask, resp, errRsp, err)
 	}
 
-	if blog.GetOutputLevel() >= blog.Linfo {
+	if log.GetOutputLevel() >= log.Linfo {
 		rspData, _ := json.Marshal(resp)
 		span.Infof("%s [opMultiVersionOp] pkt %s, req: %v; respAdminTask: %v, resp: %v, cost %s",
 			remoteAddr, p.String(), req, adminTask, string(rspData), time.Since(start).String())
