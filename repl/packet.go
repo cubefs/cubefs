@@ -399,6 +399,10 @@ func (p *Packet) IsMarkDeleteExtentOperation() bool {
 	return p.Opcode == proto.OpMarkDelete || p.Opcode == proto.OpSplitMarkDelete
 }
 
+func (p *Packet) IsExtentsLocalTransition() bool {
+	return p.Opcode == proto.OpExtentsLocalTransition
+}
+
 func (p *Packet) IsMarkSplitExtentOperation() bool {
 	return p.Opcode == proto.OpSplitMarkDelete
 }

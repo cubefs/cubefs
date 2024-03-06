@@ -150,7 +150,7 @@ func NewS3Scanner(adminTask *proto.AdminTask, l *LcNode) (*LcScanner, error) {
 	scanner.localTransitionMgr = &LocalTransitionMgr{
 		Volume:                 scanner.Volume,
 		Masters:                l.masters,
-		AppendExtentKey:        metaWrapper.AppendExtentKey,
+		AppendExtentKeys:       metaWrapper.AppendExtentKeys,
 		GetExtents:             metaWrapper.GetExtents,
 		VolStorageClass:        volumeInfo.VolStorageClass,
 		VolAllowedStorageClass: volumeInfo.AllowedStorageClass,

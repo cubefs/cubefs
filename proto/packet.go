@@ -256,6 +256,7 @@ const (
 	//hybridCloud
 	OpMismatchStorageClass     uint8 = 0xD8
 	OpDeleteMigrationExtentKey uint8 = 0xD9
+	OpExtentsLocalTransition   uint8 = 0xDA
 )
 
 const (

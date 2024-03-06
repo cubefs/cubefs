@@ -15,6 +15,7 @@
 package datanode
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"hash/crc32"
@@ -171,6 +172,12 @@ func (s *DataNode) addExtentInfo(p *repl.Packet) error {
 		}
 		p.Data, _ = json.Marshal(record)
 		p.Size = uint32(len(p.Data))
+	} else if p.IsExtentsLocalTransition() {
+		if p.IsForwardPacket() {
+			if err = s.prepareDstExtent(p); err != nil {
+				return err
+			}
+		}
 	}
 
 	if (p.IsCreateExtentOperation() || p.IsWriteOperation()) && p.ExtentID == 0 {
@@ -178,6 +185,82 @@ func (s *DataNode) addExtentInfo(p *repl.Packet) error {
 	}
 
 	p.OrgBuffer = p.Data
+
+	return nil
+}
+
+func (s *DataNode) prepareDstExtent(p *repl.Packet) error {
+	var (
+		err  error
+		info = &proto.ExtentsLocalTransitionRequest{}
+	)
+
+	decode := json.NewDecoder(bytes.NewBuffer(p.Data))
+	decode.UseNumber()
+	if err = decode.Decode(info); err != nil {
+		return err
+	}
+	log.LogDebugf(" prepareExtentsLocalTransition : %v", info)
+
+	dstDp := s.space.Partition(info.DstDp)
+	if dstDp == nil {
+		return proto.ErrDataPartitionNotExists
+	}
+	if dstDp.disk.Status == proto.Unavailable {
+		return storage.BrokenDiskError
+	}
+	if dstDp.IsForbidden() {
+		return ErrForbiddenDataPartition
+	}
+	if dstDp.Available() <= 0 || !dstDp.disk.CanWrite() || dstDp.GetExtentCount() >= storage.MaxExtentCount-len(info.SrcExtents) {
+		return storage.NoSpaceError
+	}
+
+	dstStore := dstDp.ExtentStore()
+	var dstTinyExtentId uint64 // for all tiny extents use
+	var dstExtents []proto.ExtentKey
+	for _, extent := range info.SrcExtents {
+		var dstExtentId uint64
+		var dstExtentOffset int64
+
+		if storage.IsTinyExtent(extent.ExtentId) {
+			if !storage.IsTinyExtent(dstTinyExtentId) {
+				dstTinyExtentId, err = dstStore.GetAvailableTinyExtent()
+				if err != nil {
+					return fmt.Errorf("prepareExtentsLocalTransition partition %v GetAvailableTinyExtent error %v", dstDp.partitionID, err.Error())
+				}
+			}
+			dstExtentId = dstTinyExtentId
+			//dstExtentOffset, err = dstStore.GetTinyExtentOffset(dstExtentId) // todo remove
+			//if err != nil {
+			//	return fmt.Errorf("prepareExtentsLocalTransition partition %v  extent %v GetTinyExtentOffset error %v", dstDp.partitionID, dstExtentId, err.Error())
+			//
+			//}
+		} else {
+			dstExtentOffset = 0
+			dstExtentId, err = dstStore.NextExtentID()
+			if err != nil {
+				return fmt.Errorf("prepareExtentsLocalTransition partition %v get NextExtentId error %v", dstDp.partitionID, err)
+			}
+		}
+
+		// extent location after transition
+		dstExtents = append(dstExtents, proto.ExtentKey{
+			FileOffset:   extent.FileOffset,
+			PartitionId:  info.DstDp,
+			ExtentId:     dstExtentId,
+			ExtentOffset: uint64(dstExtentOffset),
+			Size:         extent.Size,
+		})
+	}
+
+	info.DstExtents = dstExtents
+	body, err := json.Marshal(info)
+	if err != nil {
+		return err
+	}
+	p.Size = uint32(len(body))
+	p.Data = body
 
 	return nil
 }

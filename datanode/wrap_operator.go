@@ -185,6 +185,8 @@ func (s *DataNode) OperatePacket(p *repl.Packet, c net.Conn) (err error) {
 		s.handleBatchLockNormalExtent(p, c)
 	case proto.OpBatchUnlockNormalExtent:
 		s.handleBatchUnlockNormalExtent(p, c)
+	case proto.OpExtentsLocalTransition:
+		s.handleExtentsLocalTransition(p)
 	default:
 		p.PackErrorBody(repl.ErrorUnknownOp.Error(), repl.ErrorUnknownOp.Error()+strconv.Itoa(int(p.Opcode)))
 	}
@@ -1661,4 +1663,155 @@ func (s *DataNode) handleBatchUnlockNormalExtent(p *repl.Packet, connect net.Con
 
 	log.LogInfof("action[handleBatchUnlockNormalExtent] success len: %v", len(exts))
 	return
+}
+
+func (s *DataNode) handleExtentsLocalTransition(p *repl.Packet) {
+	var (
+		err   error
+		info  = &proto.ExtentsLocalTransitionRequest{}
+		reply []byte
+	)
+
+	defer func() {
+		if err != nil {
+			p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		} else {
+			reply, err = json.Marshal(info)
+			if err != nil {
+				p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+				return
+			}
+			p.PacketOkWithBody(reply)
+		}
+	}()
+
+	decode := json.NewDecoder(bytes.NewBuffer(p.Data))
+	decode.UseNumber()
+	if err = decode.Decode(info); err != nil {
+		return
+	}
+	log.LogDebugf("handleExtentsLocalTransition : %v", info)
+
+	srcDp := s.space.Partition(info.SrcDp)
+	dstDp := s.space.Partition(info.DstDp)
+	if srcDp == nil || dstDp == nil {
+		err = proto.ErrDataPartitionNotExists
+		return
+	}
+	if srcDp.disk.Status == proto.Unavailable || dstDp.disk.Status == proto.Unavailable {
+		err = storage.BrokenDiskError
+		return
+	}
+
+	if dstDp.IsForbidden() {
+		err = ErrForbiddenDataPartition
+		return
+	}
+	if dstDp.Available() <= 0 || !dstDp.disk.CanWrite() || dstDp.GetExtentCount() >= storage.MaxExtentCount-len(info.SrcExtents) {
+		err = storage.NoSpaceError
+		return
+	}
+	extLen := len(info.SrcExtents)
+	for i := 0; i < extLen; i++ {
+		err = s.doExtentLocalTransition(srcDp, dstDp, &info.SrcExtents[i], &info.DstExtents[i])
+		if err != nil {
+			return
+		}
+	}
+}
+
+func (s *DataNode) doExtentLocalTransition(srcDp, dstDp *DataPartition, srcExtent, dstExtent *proto.ExtentKey) (err error) {
+	dstStore := dstDp.ExtentStore()
+	var dstExtentOffset int64
+	if storage.IsTinyExtent(dstExtent.ExtentId) {
+		dstExtentOffset, err = dstStore.GetTinyExtentOffset(dstExtent.ExtentId)
+		if err != nil {
+			err = fmt.Errorf("handleExtentsLocalTransition partition %v  extent %v GetTinyExtentOffset error %v", dstDp.partitionID, dstExtent.ExtentId, err.Error())
+			return
+		}
+	} else {
+		dstExtentOffset = 0
+		dstDp.disk.allocCheckLimit(proto.IopsWriteType, 1)
+		dstDp.disk.limitWrite.Run(0, func() {
+			_ = dstDp.ExtentStore().Create(dstExtent.ExtentId)
+		})
+	}
+
+	if err = s.doTransition(srcDp, dstDp, srcExtent, dstExtent.ExtentId, dstExtentOffset); err == nil {
+		dstExtent.ExtentOffset = uint64(dstExtentOffset)
+	}
+
+	return
+}
+
+func (s *DataNode) doTransition(srcDp *DataPartition, dstDp *DataPartition, srcExtent *proto.ExtentKey, dstExtentId uint64, dstExtentOffset int64) error {
+	var (
+		err      error
+		buf      []byte
+		crc      uint32
+		extId    = srcExtent.ExtentId
+		srcStore = srcDp.ExtentStore()
+		dstStore = dstDp.ExtentStore()
+
+		sizeNeedTransition = int64(srcExtent.Size)
+		srcExtentOffset    = int64(srcExtent.ExtentOffset)
+	)
+
+	for {
+		if sizeNeedTransition <= 0 {
+			break
+		}
+		err = nil
+		currReadSize := int64(util.Min(int(sizeNeedTransition), util.ReadBlockSize))
+		if currReadSize == util.ReadBlockSize {
+			buf, _ = proto.Buffers.Get(util.ReadBlockSize)
+		} else {
+			buf = make([]byte, currReadSize)
+		}
+
+		srcDp.Disk().allocCheckLimit(proto.IopsReadType, 1)
+		srcDp.Disk().allocCheckLimit(proto.FlowReadType, uint32(currReadSize))
+
+		srcDp.disk.limitRead.Run(int(currReadSize), func() {
+			crc, err = srcStore.Read(extId, srcExtentOffset, currReadSize, buf, false)
+		})
+
+		srcDp.checkIsDiskError(err, ReadFlag)
+		if err != nil {
+			log.LogErrorf("action[doExtentLocalTransition] err when read srcExtent %v in dp %v , %v", extId, srcDp.partitionID, err)
+			return err
+		}
+
+		// start write to dstDp
+		dstDp.disk.allocCheckLimit(proto.FlowWriteType, uint32(currReadSize))
+		dstDp.disk.allocCheckLimit(proto.IopsWriteType, 1)
+
+		retryCnt := 5
+		for {
+			if writable := dstDp.disk.limitWrite.TryRun(int(currReadSize), func() {
+				_, err = dstStore.Write(dstExtentId, dstExtentOffset, currReadSize, buf, crc, storage.AppendWriteType, currReadSize != util.ReadBlockSize)
+			}); !writable {
+				log.LogWarnf("action[doExtentLocalTransition] dstStore is not writable, dp %v ,extId %v", dstDp.partitionID, dstExtentId)
+				retryCnt--
+				if retryCnt <= 0 {
+					return errors.NewErrorf("action[doExtentLocalTransition] dstStore is not writable, dp %v ,extId %v , exceed retry limit")
+				}
+				time.Sleep(500 * time.Millisecond)
+			} else {
+				break
+			}
+		}
+
+		dstExtentOffset += currReadSize
+		dstDp.checkIsDiskError(err, WriteFlag)
+		// write to dstDp end
+
+		sizeNeedTransition -= currReadSize
+		srcExtentOffset += currReadSize
+		if currReadSize == util.ReadBlockSize {
+			proto.Buffers.Put(buf)
+		}
+	}
+
+	return nil
 }

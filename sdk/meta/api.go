@@ -1437,7 +1437,7 @@ func (mw *MetaWrapper) AppendExtentKey(parentInode, inode uint64, ek proto.Exten
 }
 
 // AppendExtentKeys append multiple extent key into specified inode with single request.
-func (mw *MetaWrapper) AppendExtentKeys(inode uint64, eks []proto.ExtentKey, storageClass uint32) error {
+func (mw *MetaWrapper) AppendExtentKeys(inode uint64, eks []proto.ExtentKey, storageClass uint32, isMigration bool) error {
 	if storageClass != proto.MediaType_SSD && storageClass != proto.MediaType_HDD {
 		return errors.New(fmt.Sprintf("Current storage class %v do not support AppendExtentKeys",
 			storageClass))
@@ -1447,7 +1447,7 @@ func (mw *MetaWrapper) AppendExtentKeys(inode uint64, eks []proto.ExtentKey, sto
 		return syscall.ENOENT
 	}
 
-	status, err := mw.appendExtentKeys(mp, inode, eks, storageClass)
+	status, err := mw.appendExtentKeys(mp, inode, eks, storageClass, isMigration)
 	if err != nil || status != statusOK {
 		log.LogErrorf("AppendExtentKeys: inode(%v) extentKeys(%v) err(%v) status(%v)", inode, eks, err, status)
 		return statusToErrno(status)

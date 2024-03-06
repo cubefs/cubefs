@@ -1908,7 +1908,7 @@ func (mw *MetaWrapper) removeMultipart(mp *MetaPartition, path, multipartId stri
 	return statusOK, nil
 }
 
-func (mw *MetaWrapper) appendExtentKeys(mp *MetaPartition, inode uint64, extents []proto.ExtentKey, storageClass uint32) (status int, err error) {
+func (mw *MetaWrapper) appendExtentKeys(mp *MetaPartition, inode uint64, extents []proto.ExtentKey, storageClass uint32, isMigration bool) (status int, err error) {
 	bgTime := stat.BeginStat()
 	defer func() {
 		stat.EndStat("appendExtentKeys", err, bgTime, 1)
@@ -1920,6 +1920,7 @@ func (mw *MetaWrapper) appendExtentKeys(mp *MetaPartition, inode uint64, extents
 		Inode:        inode,
 		Extents:      extents,
 		StorageClass: storageClass,
+		IsMigration:  isMigration,
 	}
 
 	packet := proto.NewPacketReqID()

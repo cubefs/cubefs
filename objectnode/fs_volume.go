@@ -1246,7 +1246,7 @@ func (v *Volume) CompleteMultipart(path, multipartID string, multipartInfo *prot
 			}
 			size += part.Size
 		}
-		if err = v.mw.AppendExtentKeys(completeInodeInfo.Inode, completeExtentKeys, completeInodeInfo.StorageClass); err != nil {
+		if err = v.mw.AppendExtentKeys(completeInodeInfo.Inode, completeExtentKeys, completeInodeInfo.StorageClass, false); err != nil {
 			log.LogErrorf("CompleteMultipart: meta append extent keys fail: volume(%v) path(%v) multipartID(%v) inode(%v) err(%v)",
 				v.name, path, multipartID, completeInodeInfo.Inode, err)
 			return

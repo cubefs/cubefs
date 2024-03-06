@@ -20,6 +20,7 @@ import (
 	"encoding/hex"
 	"strings"
 
+	"encoding/json"
 	"fmt"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/sdk/data/stream"
@@ -286,17 +287,10 @@ func (rtm *RemoteTransitionMgr) migrateToEbs(e *proto.ScanDentry) (oek []proto.O
 	return
 }
 
-type DpLocalTransitionInfo struct {
-	Hosts   []string
-	SrcDp   uint64
-	DstDp   uint64
-	Extents []proto.ExtentKey
-}
-
 type LocalTransitionMgr struct {
 	Volume                 string
 	Masters                []string
-	AppendExtentKey        stream.AppendExtentKeyFunc
+	AppendExtentKeys       stream.AppendExtentKeysFunc
 	GetExtents             stream.GetExtentsFunc
 	VolStorageClass        uint32
 	VolAllowedStorageClass []uint32
@@ -304,13 +298,11 @@ type LocalTransitionMgr struct {
 }
 
 func (ltm *LocalTransitionMgr) migrate(e *proto.ScanDentry) (err error) {
-
 	gen, size, extents, err := ltm.GetExtents(e.Inode, false, false, false)
 	if err != nil {
 		return err
 	}
-
-	log.LogErrorf("%v %v %v", gen, size, extents)
+	log.LogDebugf("local transition mgr: get extents of inode %v,  %v %v %v", e.Inode, gen, size, extents)
 
 	// group by data partition
 	dp2Extents := map[uint64][]proto.ExtentKey{}
@@ -318,37 +310,145 @@ func (ltm *LocalTransitionMgr) migrate(e *proto.ScanDentry) (err error) {
 		dpId := extent.PartitionId
 		dp2Extents[dpId] = append(dp2Extents[dpId], extent)
 	}
-	log.LogErrorf("grouped extents %v ", dp2Extents)
+	log.LogDebugf("grouped extents %v ", dp2Extents)
 
-	var dpLocalTransitionInfoList []DpLocalTransitionInfo
+	var extentsLocalTransitionReqList []proto.ExtentsLocalTransitionRequest
 	for dpId, dpExtents := range dp2Extents {
 
-		dp, ok := ltm.DpWrapper.TryGetPartition(dpId)
+		srcDp, ok := ltm.DpWrapper.TryGetPartition(dpId)
 		if !ok {
 			errMsg := fmt.Sprintf("can't get dp [%v] information when using local transition mgr to migrate file %v", dpId, e.Path)
 			log.LogErrorf(errMsg)
 			return errors.New(errMsg)
 		}
 
-		hostsStr := dp.GetHostsString()
-		preferredLocalDp, err := ltm.DpWrapper.GetDataPartitionForWrite(map[string]struct{}{}, hostsStr, proto.OpTypeToStorageType(e.Op), 0)
+		hostsStr := srcDp.GetHostsString()
+		preferredLocalDstDp, err := ltm.DpWrapper.GetDataPartitionForWrite(map[string]struct{}{}, hostsStr, proto.OpTypeToStorageType(e.Op), 0)
 		if err != nil {
 			errMsg := fmt.Sprintf("can't get another local dp for dp[%v] when using local transition mgr to migrate file %v", dpId, e.Path)
 			log.LogErrorf(errMsg)
 			return errors.New(errMsg)
 		}
-		if preferredLocalDp.GetHostsString() != hostsStr {
-			errMsg := fmt.Sprintf("dp [%v][%v] and dp[%v][%v] hove different hosts ", dpId, hostsStr, preferredLocalDp.PartitionID, preferredLocalDp.GetHostsString())
+		if preferredLocalDstDp.GetHostsString() != hostsStr {
+			errMsg := fmt.Sprintf("dp [%v][%v] and dp[%v][%v] hove different hosts ", dpId, hostsStr, preferredLocalDstDp.PartitionID, preferredLocalDstDp.GetHostsString())
 			log.LogErrorf(errMsg)
 			return errors.New(errMsg)
 		}
 
-		dpLocalTransitionInfoList = append(dpLocalTransitionInfoList, DpLocalTransitionInfo{SrcDp: dpId, DstDp: preferredLocalDp.PartitionID, Extents: dpExtents, Hosts: dp.Hosts})
+		extentsLocalTransitionReqList = append(extentsLocalTransitionReqList,
+			proto.ExtentsLocalTransitionRequest{SrcDp: srcDp.PartitionID, DstDp: preferredLocalDstDp.PartitionID, SrcExtents: dpExtents, Hosts: preferredLocalDstDp.Hosts})
 	}
 
-	log.LogErrorf("%v", dpLocalTransitionInfoList)
-	//todo
-	//conn, err := StreamConnPool.GetConnect(dp.Hosts[0])
+	log.LogDebugf("%v", extentsLocalTransitionReqList)
 
-	return errors.New("not implemented yet !")
+	var dpLocalTransitionRespList []proto.ExtentsLocalTransitionResponse
+	if dpLocalTransitionRespList, err = ltm.sendDpLocalTransitionInfoToDataNode(extentsLocalTransitionReqList); err != nil {
+		return err
+	}
+
+	if err = ltm.updateInodeMetaInfo(e, dpLocalTransitionRespList); err != nil {
+		return err
+	}
+
+	log.LogDebugf("local transition mgr :file [%v,%v] local transition (%v -> %v) success ! ", e.Inode, e.Path,
+		proto.StorageClassString(e.StorageClass), proto.StorageClassString(proto.OpTypeToStorageType(e.Op)))
+	return nil
+}
+
+func (ltm *LocalTransitionMgr) sendDpLocalTransitionInfoToDataNode(dpLocalTransitionReqList []proto.ExtentsLocalTransitionRequest) ([]proto.ExtentsLocalTransitionResponse, error) {
+	var dpLocalTransitionRespList []proto.ExtentsLocalTransitionResponse
+	for _, req := range dpLocalTransitionReqList {
+		// todo add concurrency
+		if resp, err := ltm.doSend(req.Hosts[0], req); err != nil { // send to first replica of dst dp
+			return nil, err
+		} else {
+			dpLocalTransitionRespList = append(dpLocalTransitionRespList, *resp)
+		}
+	}
+
+	return dpLocalTransitionRespList, nil
+}
+
+func (ltm *LocalTransitionMgr) doSend(host string, request proto.ExtentsLocalTransitionRequest) (*proto.ExtentsLocalTransitionResponse, error) {
+	conn, err := stream.StreamConnPool.GetConnect(host)
+	if err != nil {
+		errMsg := fmt.Sprintf("can't get conn of host %v when using local transition mgr", host)
+		log.LogErrorf(errMsg)
+		return nil, errors.New(errMsg)
+	}
+	defer func() {
+		if err != nil {
+			stream.StreamConnPool.PutConnect(conn, true)
+		} else {
+			stream.StreamConnPool.PutConnect(conn, false)
+		}
+	}()
+
+	p, err := ltm.newExtentsLocalTransitionPacket(request)
+	if err != nil {
+		return nil, err
+	}
+	log.LogDebugf("local transition mgr : send request[%v] to data node %v, req: %v ", p.ReqID, host, request)
+	if err = p.WriteToConn(conn); err != nil {
+		errMsg := fmt.Sprintf("local transition mgr : failed to WriteToConn, packet(%v) host(%v)", p, host)
+		log.LogErrorf(errMsg)
+		return nil, errors.New(errMsg)
+	}
+
+	if err = p.ReadFromConnWithVer(conn, proto.SyncSendTaskDeadlineTime); err != nil {
+		return nil, errors.Trace(err, "local transition mgr : failed to ReadFromConn, packet(%v) host(%v)", p, host)
+	}
+	if p.ResultCode != proto.OpOk {
+		return nil, errors.New(fmt.Sprintf("local transition mgr : ResultCode NOK, packet(%v) host(%v) ResultCode(%v)", p, host, p.GetResultMsg()))
+	}
+
+	resp := &proto.ExtentsLocalTransitionResponse{}
+	if err = json.Unmarshal(p.Data, resp); err != nil {
+		errMsg := fmt.Sprintf("local transition mgr : failed to unmarshal resp, packet(%v) err %v", p, err)
+		log.LogErrorf(errMsg)
+		return nil, errors.New(errMsg)
+	}
+	log.LogDebugf("local transition mgr : receive resp[%v] from data node %v, resp: %v ", p.ReqID, host, resp)
+
+	return resp, nil
+}
+
+func (ltm *LocalTransitionMgr) newExtentsLocalTransitionPacket(info proto.ExtentsLocalTransitionRequest) (*proto.Packet, error) {
+	p := new(proto.Packet)
+	p.ReqID = proto.GenerateRequestID()
+	p.Magic = proto.ProtoMagic
+	p.Opcode = proto.OpExtentsLocalTransition
+	p.PartitionID = info.SrcDp
+	p.ExtentType = proto.NormalExtentType
+
+	body, err := json.Marshal(info)
+	if err != nil {
+		return nil, err
+	}
+	p.Size = uint32(len(body))
+	p.Data = body
+
+	p.Arg = ([]byte)(strings.Join(info.Hosts[1:], proto.AddrSplit) + proto.AddrSplit)
+	p.ArgLen = uint32(len(p.Arg))
+	p.RemainingFollowers = uint8(len(info.Hosts) - 1)
+	if len(info.Hosts) == 1 {
+		p.RemainingFollowers = 127
+	}
+
+	return p, nil
+}
+
+func (ltm *LocalTransitionMgr) updateInodeMetaInfo(e *proto.ScanDentry, extentsTransited []proto.ExtentsLocalTransitionResponse) error {
+	var allExtentsTransited []proto.ExtentKey
+	for _, response := range extentsTransited {
+		allExtentsTransited = append(allExtentsTransited, response.DstExtents...)
+	}
+
+	if err := ltm.AppendExtentKeys(e.Inode, allExtentsTransited, proto.OpTypeToStorageType(e.Op), true); err != nil {
+		errMsg := fmt.Sprintf("local transition mgr : update migrated extents of file [%v,%v] to meta node , err %v", e.Inode, e.Path, err)
+		log.LogErrorf(errMsg)
+		return errors.New(errMsg)
+	}
+
+	return nil
 }
