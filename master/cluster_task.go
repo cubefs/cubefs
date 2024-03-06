@@ -37,7 +37,7 @@ func (c *Cluster) addDataNodeTask(task *proto.AdminTask) {
 		return
 	}
 	if node, err := c.dataNode(task.OperatorAddr); err != nil {
-		log.LogWarn(fmt.Sprintf("action[putTasks],nodeAddr:%v,taskID:%v,err:%v", task.OperatorAddr, task.ID, err))
+		log.LogWarnf("action[putTasks],nodeAddr:%s,taskID:%s,err:%v", task.OperatorAddr, task.ID, err)
 	} else {
 		node.TaskManager.AddTask(task)
 	}
@@ -49,7 +49,7 @@ func (c *Cluster) addMetaNodeTasks(tasks []*proto.AdminTask) {
 			continue
 		}
 		if node, err := c.metaNode(t.OperatorAddr); err != nil {
-			log.LogWarn(fmt.Sprintf("action[putTasks],nodeAddr:%v,taskID:%v,err:%v", t.OperatorAddr, t.ID, err.Error()))
+			log.LogWarnf("action[putTasks],nodeAddr:%s,taskID:%s,err:%v", t.OperatorAddr, t.ID, err)
 		} else {
 			node.Sender.AddTask(t)
 		}
@@ -62,7 +62,7 @@ func (c *Cluster) addLcNodeTasks(tasks []*proto.AdminTask) {
 			continue
 		}
 		if node, err := c.lcNode(t.OperatorAddr); err != nil {
-			log.LogWarn(fmt.Sprintf("action[putTasks],nodeAddr:%v,taskID:%v,err:%v", t.OperatorAddr, t.ID, err.Error()))
+			log.LogWarnf("action[putTasks],nodeAddr:%s,taskID:%s,err:%v", t.OperatorAddr, t.ID, err)
 		} else {
 			node.TaskManager.AddTask(t)
 		}
@@ -80,7 +80,7 @@ func (c *Cluster) waitForResponseToLoadDataPartition(partitions []*DataPartition
 					const size = runtimeStackBufSize
 					buf := make([]byte, size)
 					buf = buf[:runtime.Stack(buf, false)]
-					log.LogError(fmt.Sprintf("doLoadDataPartition panic %v: %s\n", err, buf))
+					log.LogErrorf("doLoadDataPartition panic %v: %s", err, buf)
 				}
 			}()
 			c.doLoadDataPartition(dp)
@@ -651,9 +651,9 @@ func (c *Cluster) doLoadMetaPartition(mp *MetaPartition) {
 }
 
 func (c *Cluster) doLoadDataPartition(dp *DataPartition) {
-	log.LogInfo(fmt.Sprintf("action[doLoadDataPartition],partitionID:%v", dp.PartitionID))
+	log.LogInfof("action[doLoadDataPartition],partitionID:%d", dp.PartitionID)
 	if !dp.needsToCompareCRC() {
-		log.LogInfo(fmt.Sprintf("action[doLoadDataPartition],partitionID:%v isRecover[%v] don't need compare", dp.PartitionID, dp.isRecover))
+		log.LogInfof("action[doLoadDataPartition],partitionID:%d isRecover[%t] don't need compare", dp.PartitionID, dp.isRecover)
 		return
 	}
 	dp.resetFilesWithMissingReplica()
@@ -685,7 +685,7 @@ func (c *Cluster) handleMetaNodeTaskResponse(nodeAddr string, task *proto.AdminT
 	if task == nil {
 		return
 	}
-	log.LogDebugf(fmt.Sprintf("action[handleMetaNodeTaskResponse] receive Task response:%v from %v now:%v", task.IdString(), nodeAddr, time.Now().Unix()))
+	log.LogDebugf("action[handleMetaNodeTaskResponse] receive Task response:%s from %s now:%d", task.IdString(), nodeAddr, time.Now().Unix())
 	var metaNode *MetaNode
 
 	if metaNode, err = c.metaNode(nodeAddr); err != nil {
@@ -715,14 +715,14 @@ func (c *Cluster) handleMetaNodeTaskResponse(nodeAddr string, task *proto.AdminT
 	}
 
 	if err != nil {
-		log.LogError(fmt.Sprintf("process task[%v] failed", task.ToString()))
+		log.LogErrorf("process task[%s] failed", task.ToString())
 	} else {
-		log.LogInfof("process task:%v status:%v success", task.IdString(), task.Status)
+		log.LogInfof("process task:%s status:%d success", task.IdString(), task.Status)
 	}
 	return
 errHandler:
-	log.LogError(fmt.Sprintf("action[handleMetaNodeTaskResponse],nodeAddr %v,taskId %v,err %v",
-		nodeAddr, task.IdString(), err.Error()))
+	log.LogErrorf("action[handleMetaNodeTaskResponse],nodeAddr %s,taskId %s,err %v",
+		nodeAddr, task.IdString(), err)
 	return
 }
 
@@ -788,7 +788,7 @@ func (c *Cluster) dealDeleteMetaPartitionResp(nodeAddr string, resp *proto.Delet
 	return
 
 errHandler:
-	log.LogError(fmt.Sprintf("dealDeleteMetaPartitionResp %v", err))
+	log.LogErrorf("dealDeleteMetaPartitionResp %v", err)
 	return
 }
 
@@ -922,7 +922,7 @@ func (c *Cluster) handleDataNodeTaskResponse(nodeAddr string, task *proto.AdminT
 		response := task.Response.(*proto.MultiVersionOpResponse)
 		err = c.dealOpDataNodeMultiVerResp(task.OperatorAddr, response)
 	default:
-		err = fmt.Errorf(fmt.Sprintf("unknown operate code %v", task.OpCode))
+		err = fmt.Errorf("unknown operate code %d", task.OpCode)
 		goto errHandler
 	}
 
