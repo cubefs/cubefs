@@ -269,7 +269,7 @@ const (
 	OpReachMaxExtentsErr uint8 = 0xB3
 
 	// hybirdCloud
-	OpDismatchStorageClass              uint8 = 0x82
+	OpMismatchStorageClass              uint8 = 0x82
 	OpMetaRenewalForbiddenMigration     uint8 = 0x83
 	OpMetaUpdateExtentKeyAfterMigration uint8 = 0x84
 	OpDeleteMigrationExtentKey          uint8 = 0x85
@@ -739,8 +739,8 @@ func (p *Packet) GetResultMsg() (m string) {
 		return "OpStoreClosed"
 	case OpReachMaxExtentsErr:
 		return "OpReachMaxExtentsErr"
-	case OpDismatchStorageClass:
-		m = "OpDismatchStorageClass"
+	case OpMismatchStorageClass:
+		m = "OpMismatchStorageClass:" + string(p.Data)
 	default:
 		return fmt.Sprintf("Unknown ResultCode(%v)", p.ResultCode)
 	}
