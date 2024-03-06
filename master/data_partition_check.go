@@ -15,39 +15,40 @@
 package master
 
 import (
+	"context"
 	"fmt"
 	"math"
 	"strconv"
 	"time"
 
+	// "github.com/cubefs/cubefs/blobstore/util/log"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util"
-	"github.com/cubefs/cubefs/util/log"
 )
 
-func (partition *DataPartition) checkStatus(clusterName string, needLog bool, dpTimeOutSec int64, c *Cluster,
+func (partition *DataPartition) checkStatus(ctx context.Context, clusterName string, needLog bool, dpTimeOutSec int64, c *Cluster,
 	shouldDpInhibitWriteByVolFull bool, forbiddenVol bool) {
 	partition.Lock()
 	defer partition.Unlock()
 	var liveReplicas []*DataReplica
-
+	span := proto.SpanFromContext(ctx)
 	if proto.IsNormalDp(partition.PartitionType) {
-		liveReplicas = partition.getLiveReplicasFromHosts(dpTimeOutSec)
+		liveReplicas = partition.getLiveReplicasFromHosts(ctx, dpTimeOutSec)
 		if len(partition.Replicas) > len(partition.Hosts) {
 			partition.Status = proto.ReadOnly
 			msg := fmt.Sprintf("action[extractStatus],partitionID:%v has exceed repica, replicaNum:%v  liveReplicas:%v   Status:%v  RocksDBHost:%v ",
 				partition.PartitionID, partition.ReplicaNum, len(liveReplicas), partition.Status, partition.Hosts)
-			Warn(clusterName, msg)
+			Warn(ctx, clusterName, msg)
 			return
 		}
 	} else {
-		liveReplicas = partition.getLiveReplicas(dpTimeOutSec)
+		liveReplicas = partition.getLiveReplicas(ctx, dpTimeOutSec)
 	}
 
 	switch len(liveReplicas) {
 	case (int)(partition.ReplicaNum):
 		partition.Status = proto.ReadOnly
-		if partition.checkReplicaEqualStatus(liveReplicas, proto.ReadWrite) &&
+		if partition.checkReplicaEqualStatus(ctx, liveReplicas, proto.ReadWrite) &&
 			partition.hasEnoughAvailableSpace() &&
 			!shouldDpInhibitWriteByVolFull {
 
@@ -71,22 +72,22 @@ func (partition *DataPartition) checkStatus(clusterName string, needLog bool, dp
 	}
 	// keep readonly if special replica is still decommission
 	if partition.isSpecialReplicaCnt() && partition.GetSpecialReplicaDecommissionStep() > 0 {
-		log.LogInfof("action[checkStatus] partition %v with Special replica cnt %v on decommison status %v, live replicacnt %v",
+		span.Infof("action[checkStatus] partition %v with Special replica cnt %v on decommison status %v, live replicacnt %v",
 			partition.PartitionID, partition.ReplicaNum, partition.Status, len(liveReplicas))
 		partition.Status = proto.ReadOnly
 	}
 
-	if partition.checkReplicaEqualStatus(liveReplicas, proto.Unavailable) {
-		log.LogWarnf("action[checkStatus] partition %v bet set Unavailable", partition.PartitionID)
+	if partition.checkReplicaEqualStatus(ctx, liveReplicas, proto.Unavailable) {
+		span.Warnf("action[checkStatus] partition %v bet set Unavailable", partition.PartitionID)
 		partition.Status = proto.Unavailable
 	}
 
 	if needLog == true && len(liveReplicas) != int(partition.ReplicaNum) {
 		msg := fmt.Sprintf("action[extractStatus],partitionID:%v  replicaNum:%v  liveReplicas:%v   Status:%v  RocksDBHost:%v ",
 			partition.PartitionID, partition.ReplicaNum, len(liveReplicas), partition.Status, partition.Hosts)
-		log.LogInfo(msg)
+		span.Info(msg)
 		if time.Now().Unix()-partition.lastWarnTime > intervalToWarnDataPartition {
-			Warn(clusterName, msg)
+			Warn(ctx, clusterName, msg)
 			partition.lastWarnTime = time.Now().Unix()
 		}
 	}
@@ -100,10 +101,11 @@ func (partition *DataPartition) hasEnoughAvailableSpace() bool {
 	return false
 }
 
-func (partition *DataPartition) checkReplicaNotHaveStatus(liveReplicas []*DataReplica, status int8) (equal bool) {
+func (partition *DataPartition) checkReplicaNotHaveStatus(ctx context.Context, liveReplicas []*DataReplica, status int8) (equal bool) {
+	span := proto.SpanFromContext(ctx)
 	for _, replica := range liveReplicas {
 		if replica.Status == status {
-			log.LogInfof("action[checkReplicaNotHaveStatus] partition %v replica %v status %v dst status %v",
+			span.Infof("action[checkReplicaNotHaveStatus] partition %v replica %v status %v dst status %v",
 				partition.PartitionID, replica.Addr, replica.Status, status)
 			return
 		}
@@ -112,10 +114,11 @@ func (partition *DataPartition) checkReplicaNotHaveStatus(liveReplicas []*DataRe
 	return true
 }
 
-func (partition *DataPartition) checkReplicaEqualStatus(liveReplicas []*DataReplica, status int8) (equal bool) {
+func (partition *DataPartition) checkReplicaEqualStatus(ctx context.Context, liveReplicas []*DataReplica, status int8) (equal bool) {
+	span := proto.SpanFromContext(ctx)
 	for _, replica := range liveReplicas {
 		if replica.Status != status {
-			log.LogDebugf("action[checkReplicaEqualStatus] partition %v replica %v status %v dst status %v",
+			span.Debugf("action[checkReplicaEqualStatus] partition %v replica %v status %v dst status %v",
 				partition.PartitionID, replica.Addr, replica.Status, status)
 			return
 		}
@@ -124,12 +127,13 @@ func (partition *DataPartition) checkReplicaEqualStatus(liveReplicas []*DataRepl
 	return true
 }
 
-func (partition *DataPartition) checkReplicaStatus(timeOutSec int64) {
+func (partition *DataPartition) checkReplicaStatus(ctx context.Context, timeOutSec int64) {
 	partition.Lock()
 	defer partition.Unlock()
+	span := proto.SpanFromContext(ctx)
 	for _, replica := range partition.Replicas {
-		if !replica.isLive(timeOutSec) {
-			log.LogInfof("action[checkReplicaStatus] partition %v replica %v be set status ReadOnly", partition.PartitionID, replica.Addr)
+		if !replica.isLive(ctx, timeOutSec) {
+			span.Infof("action[checkReplicaStatus] partition %v replica %v be set status ReadOnly", partition.PartitionID, replica.Addr)
 			if replica.Status == proto.ReadWrite {
 				replica.Status = proto.ReadOnly
 			}
@@ -145,11 +149,11 @@ func (partition *DataPartition) checkReplicaStatus(timeOutSec int64) {
 	}
 }
 
-func (partition *DataPartition) checkLeader(clusterID string, timeOut int64) {
+func (partition *DataPartition) checkLeader(ctx context.Context, clusterID string, timeOut int64) {
 	partition.Lock()
 	defer partition.Unlock()
 	for _, dr := range partition.Replicas {
-		if !dr.isLive(timeOut) {
+		if !dr.isLive(ctx, timeOut) {
 			dr.IsLeader = false
 		}
 	}
@@ -169,7 +173,7 @@ func (partition *DataPartition) checkLeader(clusterID string, timeOut int64) {
 }
 
 // Check if there is any missing replica for a data partition.
-func (partition *DataPartition) checkMissingReplicas(clusterID, leaderAddr string, dataPartitionMissSec, dataPartitionWarnInterval int64) {
+func (partition *DataPartition) checkMissingReplicas(ctx context.Context, clusterID, leaderAddr string, dataPartitionMissSec, dataPartitionWarnInterval int64) {
 	partition.Lock()
 	defer partition.Unlock()
 
@@ -194,19 +198,19 @@ func (partition *DataPartition) checkMissingReplicas(clusterID, leaderAddr strin
 					"miss time > %v  lastRepostTime:%v   dnodeLastReportTime:%v  nodeisActive:%v So Migrate by manual",
 					clusterID, partition.PartitionID, replica.Addr, dataPartitionMissSec, replica.ReportTime, lastReportTime, isActive)
 				// msg = msg + fmt.Sprintf(" decommissionDataPartitionURL is http://%v/dataPartition/decommission?id=%v&addr=%v", leaderAddr, partition.PartitionID, replica.Addr)
-				Warn(clusterID, msg)
+				Warn(ctx, clusterID, msg)
 				if WarnMetrics != nil {
-					WarnMetrics.WarnMissingDp(clusterID, replica.Addr, partition.PartitionID, true)
+					WarnMetrics.WarnMissingDp(ctx, clusterID, replica.Addr, partition.PartitionID, true)
 				}
 			}
 		} else {
 			if WarnMetrics != nil {
-				WarnMetrics.WarnMissingDp(clusterID, replica.Addr, partition.PartitionID, false)
+				WarnMetrics.WarnMissingDp(ctx, clusterID, replica.Addr, partition.PartitionID, false)
 			}
 		}
 	}
 	if WarnMetrics != nil {
-		WarnMetrics.CleanObsoleteDpMissing(clusterID, partition)
+		WarnMetrics.CleanObsoleteDpMissing(ctx, clusterID, partition)
 	}
 
 	WarnMetrics.dpMissingReplicaMutex.Lock()
@@ -240,7 +244,7 @@ func (partition *DataPartition) checkMissingReplicas(clusterID, leaderAddr strin
 			msg := fmt.Sprintf("action[checkMissErr],clusterID[%v] partitionID:%v  on node:%v  "+
 				"miss time  > :%v  but server not exsit So Migrate", clusterID, partition.PartitionID, addr, dataPartitionMissSec)
 			msg = msg + fmt.Sprintf(" decommissionDataPartitionURL is http://%v/dataPartition/decommission?id=%v&addr=%v", leaderAddr, partition.PartitionID, addr)
-			Warn(clusterID, msg)
+			Warn(ctx, clusterID, msg)
 		}
 	}
 }
@@ -270,12 +274,12 @@ func (partition *DataPartition) hasMissingDataPartition(addr string) (isMissing 
 	return
 }
 
-func (partition *DataPartition) checkDiskError(clusterID, leaderAddr string) {
+func (partition *DataPartition) checkDiskError(ctx context.Context, clusterID, leaderAddr string) {
 	diskErrorAddrs := make(map[string]string, 0)
 
 	partition.Lock()
 	defer partition.Unlock()
-
+	span := proto.SpanFromContext(ctx)
 	for _, addr := range partition.Hosts {
 		replica, ok := partition.hasReplica(addr)
 		if !ok {
@@ -284,7 +288,7 @@ func (partition *DataPartition) checkDiskError(clusterID, leaderAddr string) {
 
 		if replica.Status == proto.Unavailable {
 			if partition.isSpecialReplicaCnt() && len(partition.Hosts) > 1 {
-				log.LogWarnf("action[%v],clusterID[%v],partitionID:%v  On :%v status Unavailable",
+				span.Warnf("action[%v],clusterID[%v],partitionID:%v  On :%v status Unavailable",
 					checkDataPartitionDiskErr, clusterID, partition.PartitionID, addr)
 				continue
 			}
@@ -299,21 +303,21 @@ func (partition *DataPartition) checkDiskError(clusterID, leaderAddr string) {
 	for addr, diskPath := range diskErrorAddrs {
 		msg := fmt.Sprintf("action[%v],clusterID[%v],partitionID:%v  On :%v  Disk Error,So Remove it From RocksDBHost, decommissionDiskURL is http://%v/disk/decommission?addr=%v&disk=%v",
 			checkDataPartitionDiskErr, clusterID, partition.PartitionID, addr, leaderAddr, addr, diskPath)
-		Warn(clusterID, msg)
+		Warn(ctx, clusterID, msg)
 	}
 
 	return
 }
 
-func (partition *DataPartition) checkReplicationTask(clusterID string, dataPartitionSize uint64) {
+func (partition *DataPartition) checkReplicationTask(ctx context.Context, clusterID string, dataPartitionSize uint64) {
 	var msg string
 
 	if excessAddr, excessErr := partition.deleteIllegalReplica(); excessErr != nil {
 		msg = fmt.Sprintf("action[%v], partitionID:%v  Excess Replication On :%v  Err:%v  rocksDBRecords:%v",
 			deleteIllegalReplicaErr, partition.PartitionID, excessAddr, excessErr.Error(), partition.Hosts)
-		Warn(clusterID, msg)
+		Warn(ctx, clusterID, msg)
 		partition.Lock()
-		partition.removeReplicaByAddr(excessAddr)
+		partition.removeReplicaByAddr(ctx, excessAddr)
 		partition.Unlock()
 	}
 
@@ -321,10 +325,10 @@ func (partition *DataPartition) checkReplicationTask(clusterID string, dataParti
 		return
 	}
 
-	if lackAddr, lackErr := partition.missingReplicaAddress(dataPartitionSize); lackErr != nil {
+	if lackAddr, lackErr := partition.missingReplicaAddress(ctx, dataPartitionSize); lackErr != nil {
 		msg = fmt.Sprintf("action[%v], partitionID:%v  Lack Replication On :%v  Err:%v  Hosts:%v  new task to create DataReplica",
 			addMissingReplicaErr, partition.PartitionID, lackAddr, lackErr.Error(), partition.Hosts)
-		Warn(clusterID, msg)
+		Warn(ctx, clusterID, msg)
 	}
 
 	return
@@ -346,18 +350,18 @@ func (partition *DataPartition) deleteIllegalReplica() (excessAddr string, err e
 	return
 }
 
-func (partition *DataPartition) missingReplicaAddress(dataPartitionSize uint64) (addr string, err error) {
+func (partition *DataPartition) missingReplicaAddress(ctx context.Context, dataPartitionSize uint64) (addr string, err error) {
 	partition.Lock()
 	defer partition.Unlock()
 
 	if time.Now().Unix()-partition.createTime < 120 {
 		return
 	}
-
+	span := proto.SpanFromContext(ctx)
 	// go through all the hosts to find the missing replica
 	for _, host := range partition.Hosts {
 		if _, ok := partition.hasReplica(host); !ok {
-			log.LogError(fmt.Sprintf("action[missingReplicaAddress],partitionID:%v lack replication:%v",
+			span.Error(fmt.Sprintf("action[missingReplicaAddress],partitionID:%v lack replication:%v",
 				partition.PartitionID, host))
 			err = proto.ErrMissingReplica
 			addr = host
@@ -368,7 +372,7 @@ func (partition *DataPartition) missingReplicaAddress(dataPartitionSize uint64) 
 	return
 }
 
-func (partition *DataPartition) checkReplicaSize(clusterID string, diffSpaceUsage uint64) {
+func (partition *DataPartition) checkReplicaSize(ctx context.Context, clusterID string, diffSpaceUsage uint64) {
 	partition.RLock()
 	defer partition.RUnlock()
 	if len(partition.Replicas) == 0 {
@@ -388,6 +392,6 @@ func (partition *DataPartition) checkReplicaSize(clusterID string, diffSpaceUsag
 		for _, dr := range partition.Replicas {
 			msg = msg + fmt.Sprintf("replica[%v],used[%v];", dr.Addr, dr.Used)
 		}
-		Warn(clusterID, msg)
+		Warn(ctx, clusterID, msg)
 	}
 }
