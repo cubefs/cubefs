@@ -33,7 +33,7 @@ static int do_extent_request_rdma(struct cfs_extent_stream *es,
 	int err;
 
 	err = cfs_rdma_create(host, es->ec->log, &sock, es->rdma_port);
-	if (err) {
+	if (err < 0) {
 		cfs_log_error(es->ec->log, "rdma(%s) create error %d\n",
 			      cfs_pr_addr(host), err);
 		return err;

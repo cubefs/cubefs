@@ -60,7 +60,7 @@ void cfs_extent_writer_release(struct cfs_extent_writer *writer)
 	cancel_work_sync(&writer->rx_work);
 	cfs_data_partition_release(writer->dp);
 	if (writer->sock->enable_rdma) {
-		cfs_rdma_release(writer->sock, true);
+		cfs_rdma_release(writer->sock, false);
 	} else {
 		cfs_socket_release(writer->sock, true);
 	}

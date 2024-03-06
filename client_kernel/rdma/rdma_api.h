@@ -16,6 +16,7 @@
 #define BLOCK_NUM 32
 #define DATA_BUF_NUM 4
 #define MAX_RETRY_COUNT 100
+#define TIMEOUT_JS 1000
 
 enum IBVSocketConnState {
 	IBVSOCKETCONNSTATE_UNCONNECTED = 0,

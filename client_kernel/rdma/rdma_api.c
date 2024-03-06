@@ -378,7 +378,11 @@ struct IBVSocket *IBVSocket_construct(struct sockaddr_in *sin) {
 		goto err_destroy_qp;
 	}
 
-	wait_event_interruptible(this->eventWaitQ, this->connState != IBVSOCKETCONNSTATE_ROUTERESOLVED);
+	wait_event_interruptible_timeout(this->eventWaitQ, this->connState != IBVSOCKETCONNSTATE_ROUTERESOLVED, TIMEOUT_JS);
+	if (this->connState != IBVSOCKETCONNSTATE_ESTABLISHED) {
+		printk("connection not established\n");
+		goto err_destroy_qp;
+	}
 
     return this;
 

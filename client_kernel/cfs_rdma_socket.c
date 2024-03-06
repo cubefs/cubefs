@@ -297,12 +297,12 @@ static void rdma_pool_lru_work_cb(struct work_struct *work)
 	struct cfs_socket *sock;
 	struct cfs_socket *tmp;
 
-	schedule_delayed_work(delayed_work,
-			      msecs_to_jiffies(SOCK_POOL_LRU_INTERVAL_MS));
+	schedule_delayed_work(delayed_work, CFS_RDMA_SOCKET_TIMEOUT);
 	mutex_lock(&rdma_sock_pool->lock);
 	list_for_each_entry_safe(sock, tmp, &rdma_sock_pool->lru, list) {
-		if (is_sock_valid(sock))
-			break;
+		if (sock->jiffies + CFS_RDMA_SOCKET_TIMEOUT > jiffies) {
+			continue;
+		}
 		hash_del(&sock->hash);
 		list_del(&sock->list);
 		cfs_rdma_release(sock, true);
