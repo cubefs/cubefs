@@ -15,6 +15,8 @@
 package cmd
 
 import (
+	"context"
+
 	"github.com/cubefs/cubefs/proto"
 	sdk "github.com/cubefs/cubefs/sdk/master"
 )
@@ -27,7 +29,7 @@ func validVols(client, complete interface{}) []string {
 	)
 	clientSdk := client.(*sdk.MasterClient)
 	completeStr := complete.(string)
-	if vols, err = clientSdk.AdminAPI().ListVols(completeStr); err != nil {
+	if vols, err = clientSdk.AdminAPI().ListVols(context.TODO(), completeStr); err != nil {
 		errout(err)
 	}
 	for _, vol := range vols {
@@ -43,7 +45,7 @@ func validDataNodes(client *sdk.MasterClient, toComplete string) []string {
 
 		err error
 	)
-	if clusterView, err = client.AdminAPI().GetCluster(); err != nil {
+	if clusterView, err = client.AdminAPI().GetCluster(context.TODO()); err != nil {
 		errout(err)
 	}
 	for _, dn := range clusterView.DataNodes {
@@ -58,7 +60,7 @@ func validMetaNodes(client *sdk.MasterClient, toComplete string) []string {
 		clusterView    *proto.ClusterView
 		err            error
 	)
-	if clusterView, err = client.AdminAPI().GetCluster(); err != nil {
+	if clusterView, err = client.AdminAPI().GetCluster(context.TODO()); err != nil {
 		errout(err)
 	}
 	for _, mn := range clusterView.MetaNodes {
@@ -73,7 +75,7 @@ func validUsers(client *sdk.MasterClient, toComplete string) []string {
 		users      []*proto.UserInfo
 		err        error
 	)
-	if users, err = client.UserAPI().ListUsers(toComplete); err != nil {
+	if users, err = client.UserAPI().ListUsers(context.TODO(), toComplete); err != nil {
 		errout(err)
 	}
 	for _, user := range users {
@@ -88,7 +90,7 @@ func validZones(client *sdk.MasterClient, toComplete string) []string {
 		zones      []*proto.ZoneView
 		err        error
 	)
-	if zones, err = client.AdminAPI().ListZones(); err != nil {
+	if zones, err = client.AdminAPI().ListZones(context.TODO()); err != nil {
 		errout(err)
 	}
 	for _, zone := range zones {

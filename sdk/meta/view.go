@@ -15,6 +15,7 @@
 package meta
 
 import (
+	"context"
 	"crypto/md5"
 	"encoding/base64"
 	"encoding/hex"
@@ -73,16 +74,16 @@ func (mw *MetaWrapper) fetchVolumeView() (view *VolumeView, err error) {
 			var decoder master.Decoder = func(raw []byte) ([]byte, error) {
 				return mw.parseAndVerifyResp(raw, ts)
 			}
-			if vv, err = mw.mc.ClientAPI().GetVolumeWithAuthnode(mw.volname, authKey, tokenMessage, decoder); err != nil {
+			if vv, err = mw.mc.ClientAPI().GetVolumeWithAuthnode(context.TODO(), mw.volname, authKey, tokenMessage, decoder); err != nil {
 				return
 			}
 		} else {
-			if vv, err = mw.mc.ClientAPI().GetVolume(mw.volname, authKey); err != nil {
+			if vv, err = mw.mc.ClientAPI().GetVolume(context.TODO(), mw.volname, authKey); err != nil {
 				return
 			}
 		}
 	} else {
-		if vv, err = mw.mc.ClientAPI().GetVolumeWithoutAuthKey(mw.volname); err != nil {
+		if vv, err = mw.mc.ClientAPI().GetVolumeWithoutAuthKey(context.TODO(), mw.volname); err != nil {
 			return
 		}
 	}
@@ -123,7 +124,7 @@ func (mw *MetaWrapper) fetchVolumeView() (view *VolumeView, err error) {
 // fetch and update cluster info if successful
 func (mw *MetaWrapper) updateClusterInfo() (err error) {
 	var info *proto.ClusterInfo
-	if info, err = mw.mc.AdminAPI().GetClusterInfo(); err != nil {
+	if info, err = mw.mc.AdminAPI().GetClusterInfo(context.TODO()); err != nil {
 		log.LogWarnf("updateClusterInfo: get cluster info fail: err(%v) volume(%v)", err, mw.volname)
 		return
 	}
@@ -136,7 +137,7 @@ func (mw *MetaWrapper) updateClusterInfo() (err error) {
 
 func (mw *MetaWrapper) updateDirChildrenNumLimit() (err error) {
 	var clusterInfo *proto.ClusterInfo
-	clusterInfo, err = mw.mc.AdminAPI().GetClusterInfo()
+	clusterInfo, err = mw.mc.AdminAPI().GetClusterInfo(context.TODO())
 	if err != nil {
 		return
 	}
@@ -155,7 +156,7 @@ func (mw *MetaWrapper) updateDirChildrenNumLimit() (err error) {
 
 func (mw *MetaWrapper) updateVolStatInfo() (err error) {
 	var info *proto.VolStatInfo
-	if info, err = mw.mc.ClientAPI().GetVolumeStat(mw.volname); err != nil {
+	if info, err = mw.mc.ClientAPI().GetVolumeStat(context.TODO(), mw.volname); err != nil {
 		log.LogWarnf("updateVolStatInfo: get volume status fail: volume(%v) err(%v)", mw.volname, err)
 		return
 	}
@@ -390,7 +391,7 @@ func (mw *MetaWrapper) updateQuotaInfoTick() {
 
 func (mw *MetaWrapper) updateQuotaInfo() {
 	var volumeInfo *proto.SimpleVolView
-	volumeInfo, err := mw.mc.AdminAPI().GetVolumeSimpleInfo(mw.volname)
+	volumeInfo, err := mw.mc.AdminAPI().GetVolumeSimpleInfo(context.TODO(), mw.volname)
 	if err != nil {
 		return
 	}
@@ -399,7 +400,7 @@ func (mw *MetaWrapper) updateQuotaInfo() {
 		return
 	}
 
-	quotaInfos, err := mw.mc.AdminAPI().ListQuota(mw.volname)
+	quotaInfos, err := mw.mc.AdminAPI().ListQuota(context.TODO(), mw.volname)
 	if err != nil {
 		log.LogWarnf("updateQuotaInfo get quota info fail: vol [%v] err [%v]", mw.volname, err)
 		return
