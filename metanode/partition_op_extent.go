@@ -447,7 +447,7 @@ func (mp *metaPartition) ExtentsList(req *proto.GetExtentsRequest, p *Packet) (e
 	)
 
 	if !proto.IsStorageClassReplica(ino.StorageClass) && (req.IsCache != true && req.IsMigration != true) {
-		status = proto.OpErr
+		status = proto.OpMismatchStorageClass
 		reply = []byte(fmt.Sprintf("ino(%v) storageClass(%v) IsCache(%v) IsMigration(%v) do not support ExtentsList",
 			ino.Inode, ino.StorageClass, req.IsCache, req.IsMigration))
 		p.PacketErrorWithBody(status, reply)
@@ -564,7 +564,7 @@ func (mp *metaPartition) ObjExtentsList(req *proto.GetExtentsRequest, p *Packet)
 	)
 	if status == proto.OpOk {
 		if ino.StorageClass != proto.StorageClass_BlobStore {
-			status = proto.OpDismatchStorageClass
+			status = proto.OpMismatchStorageClass
 			reply = []byte(fmt.Sprintf("Dismatch storage type, current storage type is %s",
 				proto.StorageClassString(ino.StorageClass)))
 			p.PacketErrorWithBody(status, reply)
