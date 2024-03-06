@@ -30,6 +30,7 @@ func TestPacketContext(t *testing.T) {
 
 	ctx4 := ContextWithOperation(ctx3, "test")
 	require.NotEqual(t, span3.TraceID(), SpanFromContext(ctx4).TraceID())
+	require.NotEqual(t, SpanFromContext(ctx3).TraceID(), SpanFromContext(ctx4).TraceID())
 
 	ctx5 := ContextWithOperationf(ctx3, "test %v", 1)
 	require.NotEqual(t, span3.TraceID(), SpanFromContext(ctx5).TraceID())
@@ -37,7 +38,7 @@ func TestPacketContext(t *testing.T) {
 	span6, ctx6 := SpanContext()
 	require.Equal(t, span6.TraceID(), SpanFromContext(ctx6).TraceID())
 
-	span7, ctx7 := SpanContextPrefix("test hello")
+	span7, ctx7 := SpanContextPrefix("test-")
 	require.Equal(t, span7.TraceID(), SpanFromContext(ctx7).TraceID())
 }
 

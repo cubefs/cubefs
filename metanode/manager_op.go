@@ -221,7 +221,7 @@ func (m *metadataManager) opMasterHeartbeat(conn net.Conn, p *Packet, remoteAddr
 	end:
 		adminTask.Request = nil
 		adminTask.Response = resp
-		m.respondToMaster(adminTask)
+		m.respondToMaster(ctx, adminTask)
 		p.Span().Infof("%s pkt %s, resp success req:%v; respAdminTask: %v, cost %s",
 			remoteAddr, p.String(), req, adminTask, time.Since(start).String())
 	}()
@@ -876,7 +876,7 @@ func (m *metadataManager) opUpdateMetaPartition(conn net.Conn, p *Packet, remote
 	err = mp.UpdatePartition(p.Context(), req, resp)
 	adminTask.Response = resp
 	adminTask.Request = nil
-	m.respondToMaster(adminTask)
+	m.respondToMaster(p.Context(), adminTask)
 	p.Span().Infof("%s [opUpdateMetaPartition] req[%v], response[%v].", remoteAddr, req, adminTask)
 	return
 }
@@ -1513,7 +1513,7 @@ func (m *metadataManager) checkVolVerList(ctx context.Context) (err error) {
 			return true
 		})
 		var info *proto.VolVersionInfoList
-		if info, err = masterClient.AdminAPI().GetVerList(volName); err != nil {
+		if info, err = masterClient.AdminAPI().GetVerList(ctx, volName); err != nil {
 			span.Error(err)
 			return
 		}
@@ -1683,7 +1683,7 @@ func (m *metadataManager) checkAndPromoteVersion(ctx context.Context, volName st
 				return
 			}
 
-			if info, err = masterClient.AdminAPI().GetVerInfo(volName); err != nil {
+			if info, err = masterClient.AdminAPI().GetVerInfo(ctx, volName); err != nil {
 				span.Errorf("status [%v] step %v %v", atomic.LoadUint32(&ver2Phase.status), atomic.LoadUint32(&ver2Phase.step), err)
 				return
 			}
@@ -1761,7 +1761,7 @@ end:
 	}
 	adminTask.Request = nil
 	adminTask.Response = resp
-	if errRsp := m.respondToMaster(adminTask); errRsp != nil {
+	if errRsp := m.respondToMaster(ctx, adminTask); errRsp != nil {
 		span.Infof("%s [opMultiVersionOp] pkt %s, req: %v; respAdminTask: %v, resp: %v, errRsp %v err %v",
 			remoteAddr, p.String(), req, adminTask, resp, errRsp, err)
 	}

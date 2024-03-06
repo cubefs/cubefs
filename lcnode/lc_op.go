@@ -16,6 +16,7 @@ package lcnode
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net"
 	"sync/atomic"
@@ -144,7 +145,7 @@ func (l *LcNode) respondToMaster(task *proto.AdminTask) {
 			log.LogErrorf("respondToMaster err: %v", r)
 		}
 	}()
-	if err := l.mc.NodeAPI().ResponseLcNodeTask(task); err != nil {
+	if err := l.mc.NodeAPI().ResponseLcNodeTask(context.TODO(), task); err != nil {
 		log.LogErrorf("respondToMaster err: %v, task: %v", err, task)
 	}
 }
