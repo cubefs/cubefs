@@ -28,6 +28,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/cubefs/cubefs/blobstore/util/log"
 	"github.com/cubefs/cubefs/cmd/common"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/raftstore"
@@ -36,7 +37,6 @@ import (
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/loadutil"
-	"github.com/cubefs/cubefs/util/log"
 )
 
 const (
@@ -54,7 +54,7 @@ type MetadataManager interface {
 	HandleMetadataOperation(conn net.Conn, p *Packet, remoteAddr string) error
 	GetPartition(id uint64) (MetaPartition, error)
 	GetLeaderPartitions() map[uint64]MetaPartition
-	checkVolVerList() (err error)
+	checkVolVerList(context.Context) (err error)
 }
 
 // MetadataManagerConfig defines the configures in the metadata manager.
@@ -106,7 +106,7 @@ func (m *metadataManager) getPacketLabels(p *Packet) (labels map[string]string) 
 
 	mp, err := m.getPartition(p.PartitionID)
 	if err != nil {
-		log.LogInfof("[metaManager] getPacketLabels metric packet: %v", p)
+		p.Span().Infof("[metaManager] getPacketLabels metric packet: %v", p)
 		return
 	}
 
@@ -344,7 +344,8 @@ func (m *metadataManager) startSnapshotVersionPromote() {
 		for {
 			select {
 			case volName := <-m.verUpdateChan:
-				m.checkAndPromoteVersion(volName)
+				_, ctx := spanContextPrefix("snapver-")
+				m.checkAndPromoteVersion(ctx, volName)
 			case <-m.stopC:
 				return
 			}
@@ -394,17 +395,17 @@ func (m *metadataManager) loadPartitions() (err error) {
 	for i := 0; i < 3; i++ {
 		if metaNodeInfo, err = masterClient.NodeAPI().GetMetaNode(fmt.Sprintf("%s:%s", m.metaNode.localAddr,
 			m.metaNode.listen)); err != nil {
-			log.LogWarnf("loadPartitions: get MetaNode info fail: err(%v)", err)
+			log.Warnf("loadPartitions: get MetaNode info fail: err(%v)", err)
 			continue
 		}
 		break
 	}
 	if err != nil {
-		log.LogErrorf("loadPartitions: get MetaNode info fail: err(%v)", err)
+		log.Errorf("loadPartitions: get MetaNode info fail: err(%v)", err)
 		return
 	}
 	if len(metaNodeInfo.PersistenceMetaPartitions) == 0 {
-		log.LogWarnf("loadPartitions: length of PersistenceMetaPartitions is 0, ExpiredPartition check without effect")
+		log.Warnf("loadPartitions: length of PersistenceMetaPartitions is 0, ExpiredPartition check without effect")
 	}
 
 	// Check metadataDir directory
@@ -429,7 +430,7 @@ func (m *metadataManager) loadPartitions() (err error) {
 		if fileInfo.IsDir() && strings.HasPrefix(fileInfo.Name(), partitionPrefix) {
 
 			if isExpiredPartition(fileInfo.Name(), metaNodeInfo.PersistenceMetaPartitions) {
-				log.LogErrorf("loadPartitions: find expired partition[%s], rename it and you can delete it manually",
+				log.Errorf("loadPartitions: find expired partition[%s], rename it and you can delete it manually",
 					fileInfo.Name())
 				oldName := path.Join(m.rootDir, fileInfo.Name())
 				newName := path.Join(m.rootDir, ExpiredPartitionPrefix+fileInfo.Name())
@@ -443,25 +444,25 @@ func (m *metadataManager) loadPartitions() (err error) {
 
 				defer func() {
 					if r := recover(); r != nil {
-						log.LogWarnf("action[loadPartitions] recovered when load partition, skip it,"+
+						log.Warnf("action[loadPartitions] recovered when load partition, skip it,"+
 							" partition: %s, error: %s, failed: %v", fileName, errload, r)
 						syslog.Printf("load meta partition %v fail: %v", fileName, r)
 					} else if errload != nil {
-						log.LogWarnf("action[loadPartitions] failed to load partition, skip it, partition: %s, error: %s",
+						log.Warnf("action[loadPartitions] failed to load partition, skip it, partition: %s, error: %s",
 							fileName, errload)
 					}
 				}()
 
 				defer wg.Done()
 				if len(fileName) < 10 {
-					log.LogWarnf("ignore unknown partition dir: %s", fileName)
+					log.Warnf("ignore unknown partition dir: %s", fileName)
 					return
 				}
 				var id uint64
 				partitionId := fileName[len(partitionPrefix):]
 				id, errload = strconv.ParseUint(partitionId, 10, 64)
 				if errload != nil {
-					log.LogWarnf("action[loadPartitions] ignore path: %s, not partition", partitionId)
+					log.Warnf("action[loadPartitions] ignore path: %s, not partition", partitionId)
 					return
 				}
 
@@ -491,12 +492,12 @@ func (m *metadataManager) loadPartitions() (err error) {
 				}
 				partition := NewMetaPartition(partitionConfig, m)
 				if partition == nil {
-					log.LogErrorf("action[loadPartitions]: NewMetaPartition is nil")
+					log.Errorf("action[loadPartitions]: NewMetaPartition is nil")
 					return
 				}
 				errload = m.attachPartition(id, partition)
 				if errload != nil {
-					log.LogErrorf("action[loadPartitions] load partition id=%d failed: %s.",
+					log.Errorf("action[loadPartitions] load partition id=%d failed: %s.",
 						id, errload.Error())
 				}
 			}(fileInfo.Name())
@@ -512,7 +513,7 @@ func (m *metadataManager) attachPartition(id uint64, partition MetaPartition) (e
 	partition.ForceSetMetaPartitionToLoadding()
 	if err = partition.Start(false); err != nil {
 		msg := fmt.Sprintf("load meta partition %v fail: %v", id, err)
-		log.LogError(msg)
+		log.Error(msg)
 		syslog.Println(msg)
 		return
 	}
@@ -520,7 +521,7 @@ func (m *metadataManager) attachPartition(id uint64, partition MetaPartition) (e
 	defer m.mu.Unlock()
 	m.partitions[id] = partition
 	msg := fmt.Sprintf("load meta partition %v success", id)
-	log.LogInfof(msg)
+	log.Infof(msg)
 	syslog.Println(msg)
 	return
 }
@@ -636,7 +637,7 @@ func (m *metadataManager) MarshalJSON() (data []byte, err error) {
 }
 
 func (m *metadataManager) QuotaGoroutineIsOver() (lsOver bool) {
-	log.LogInfof("QuotaGoroutineIsOver cur [%v] max [%v]", m.curQuotaGoroutineNum, m.maxQuotaGoroutineNum)
+	log.Infof("QuotaGoroutineIsOver cur [%v] max [%v]", m.curQuotaGoroutineNum, m.maxQuotaGoroutineNum)
 	return atomic.LoadInt32(&m.curQuotaGoroutineNum) >= m.maxQuotaGoroutineNum
 }
 
@@ -682,7 +683,7 @@ func isExpiredPartition(fileName string, partitions []uint64) (expiredPartition 
 	partitionId := fileName[len(partitionPrefix):]
 	id, err := strconv.ParseUint(partitionId, 10, 64)
 	if err != nil {
-		log.LogWarnf("isExpiredPartition: %s, check error [%v], skip this check", partitionId, err)
+		log.Warnf("isExpiredPartition: %s, check error [%v], skip this check", partitionId, err)
 		return true
 	}
 

@@ -38,8 +38,9 @@ func (mp *metaPartition) TxCreateDentry(req *proto.TxCreateDentryRequest, p *Pac
 		return
 	}
 
+	ctx := p.Context()
 	for _, quotaId := range req.QuotaIds {
-		status := mp.mqMgr.IsOverQuota(false, true, quotaId)
+		status := mp.mqMgr.IsOverQuota(ctx, false, true, quotaId)
 		if status != 0 {
 			err = errors.New("create dentry is over quota")
 			reply := []byte(err.Error())
@@ -71,7 +72,7 @@ func (mp *metaPartition) TxCreateDentry(req *proto.TxCreateDentryRequest, p *Pac
 		return
 	}
 
-	status, err := mp.submit(p.Context(), opFSMTxCreateDentry, val)
+	status, err := mp.submit(ctx, opFSMTxCreateDentry, val)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return
@@ -142,8 +143,10 @@ func (mp *metaPartition) QuotaCreateDentry(req *proto.QuotaCreateDentryRequest, 
 		p.PacketErrorWithBody(proto.OpExistErr, []byte(err.Error()))
 		return
 	}
+
+	ctx := p.Context()
 	for _, quotaId := range req.QuotaIds {
-		status := mp.mqMgr.IsOverQuota(false, true, quotaId)
+		status := mp.mqMgr.IsOverQuota(ctx, false, true, quotaId)
 		if status != 0 {
 			err = errors.New("create dentry is over quota")
 			reply := []byte(err.Error())
@@ -178,7 +181,7 @@ func (mp *metaPartition) QuotaCreateDentry(req *proto.QuotaCreateDentryRequest, 
 	if err != nil {
 		return
 	}
-	resp, err := mp.submit(p.Context(), opFSMCreateDentry, val)
+	resp, err := mp.submit(ctx, opFSMCreateDentry, val)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return

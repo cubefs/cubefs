@@ -16,11 +16,13 @@ package metanode
 
 import (
 	"bytes"
+	"context"
 	"encoding/binary"
+	"fmt"
 	"sync"
 
+	"github.com/cubefs/cubefs/blobstore/util/log"
 	"github.com/cubefs/cubefs/proto"
-	"github.com/cubefs/cubefs/util/log"
 )
 
 type MetaQuotaManager struct {
@@ -59,7 +61,7 @@ func NewQuotaManager(volName string, mpId uint64) (mqMgr *MetaQuotaManager) {
 	return
 }
 
-func (qInode *MetaQuotaInode) Marshal() (result []byte, err error) {
+func (qInode *MetaQuotaInode) Marshal(ctx context.Context) (result []byte, err error) {
 	var inodeBytes []byte
 	quotaBytes := bytes.NewBuffer(make([]byte, 0, 128))
 	buff := bytes.NewBuffer(make([]byte, 0, 128))
@@ -79,11 +81,11 @@ func (qInode *MetaQuotaInode) Marshal() (result []byte, err error) {
 	}
 	buff.Write(quotaBytes.Bytes())
 	result = buff.Bytes()
-	log.LogDebugf("MetaQuotaInode Marshal inode[%v] inodeLen [%v] size [%v]", qInode.inode.Inode, inodeLen, len(result))
+	getSpan(ctx).Debugf("MetaQuotaInode Marshal inode[%v] inodeLen [%v] size [%v]", qInode.inode.Inode, inodeLen, len(result))
 	return
 }
 
-func (qInode *MetaQuotaInode) Unmarshal(raw []byte) (err error) {
+func (qInode *MetaQuotaInode) Unmarshal(ctx context.Context, raw []byte) (err error) {
 	var inodeLen uint32
 	var quotaId uint32
 	buff := bytes.NewBuffer(raw)
@@ -94,7 +96,7 @@ func (qInode *MetaQuotaInode) Unmarshal(raw []byte) (err error) {
 	if _, err = buff.Read(inodeBytes); err != nil {
 		return
 	}
-	log.LogDebugf("MetaQuotaInode Unmarshal inodeLen [%v] size [%v]", inodeBytes, len(raw))
+	getSpan(ctx).Debugf("MetaQuotaInode Unmarshal inodeLen [%v] size [%v]", inodeBytes, len(raw))
 	qInode.inode = NewInode(0, 0)
 	if err = qInode.inode.Unmarshal(inodeBytes); err != nil {
 		return
@@ -111,7 +113,7 @@ func (qInode *MetaQuotaInode) Unmarshal(raw []byte) (err error) {
 	return
 }
 
-func (qInode *TxMetaQuotaInode) Marshal() (result []byte, err error) {
+func (qInode *TxMetaQuotaInode) Marshal(ctx context.Context) (result []byte, err error) {
 	var inodeBytes []byte
 	quotaBytes := bytes.NewBuffer(make([]byte, 0, 128))
 	buff := bytes.NewBuffer(make([]byte, 0, 128))
@@ -131,11 +133,11 @@ func (qInode *TxMetaQuotaInode) Marshal() (result []byte, err error) {
 	}
 	buff.Write(quotaBytes.Bytes())
 	result = buff.Bytes()
-	log.LogDebugf("TxMetaQuotaInode Marshal inode[%v] inodeLen [%v] size [%v]", qInode.txinode.Inode.Inode, inodeLen, len(result))
+	getSpan(ctx).Debugf("TxMetaQuotaInode Marshal inode[%v] inodeLen [%v] size [%v]", qInode.txinode.Inode.Inode, inodeLen, len(result))
 	return
 }
 
-func (qInode *TxMetaQuotaInode) Unmarshal(raw []byte) (err error) {
+func (qInode *TxMetaQuotaInode) Unmarshal(ctx context.Context, raw []byte) (err error) {
 	var inodeLen uint32
 	var quotaId uint32
 	buff := bytes.NewBuffer(raw)
@@ -146,7 +148,7 @@ func (qInode *TxMetaQuotaInode) Unmarshal(raw []byte) (err error) {
 	if _, err = buff.Read(inodeBytes); err != nil {
 		return
 	}
-	log.LogDebugf("TxMetaQuotaInode Unmarshal inodeLen [%v] size [%v]", inodeBytes, len(raw))
+	getSpan(ctx).Debugf("TxMetaQuotaInode Unmarshal inodeLen [%v] size [%v]", inodeBytes, len(raw))
 	qInode.txinode = NewTxInode(0, 0, nil)
 	if err = qInode.txinode.Unmarshal(inodeBytes); err != nil {
 		return
@@ -163,17 +165,18 @@ func (qInode *TxMetaQuotaInode) Unmarshal(raw []byte) (err error) {
 	return
 }
 
-func (mqMgr *MetaQuotaManager) setQuotaHbInfo(infos []*proto.QuotaHeartBeatInfo) {
+func (mqMgr *MetaQuotaManager) setQuotaHbInfo(ctx context.Context, infos []*proto.QuotaHeartBeatInfo) {
 	mqMgr.rwlock.Lock()
 	defer mqMgr.rwlock.Unlock()
 
+	span := getSpan(ctx)
 	for _, info := range infos {
 		if mqMgr.volName != info.VolName {
 			continue
 		}
 		mqMgr.enable = info.Enable
 		mqMgr.limitedMap.Store(info.QuotaId, info.LimitedInfo)
-		log.LogDebugf("mp[%v] quotaId [%v] limitedInfo [%v]", mqMgr.mpID, info.QuotaId, info.LimitedInfo)
+		span.Debugf("mp[%v] quotaId [%v] limitedInfo [%v]", mqMgr.mpID, info.QuotaId, info.LimitedInfo)
 	}
 	mqMgr.limitedMap.Range(func(key, value interface{}) bool {
 		quotaId := key.(uint32)
@@ -196,23 +199,23 @@ func (mqMgr *MetaQuotaManager) setQuotaHbInfo(infos []*proto.QuotaHeartBeatInfo)
 	})
 }
 
-func (mqMgr *MetaQuotaManager) getQuotaReportInfos() (infos []*proto.QuotaReportInfo) {
+func (mqMgr *MetaQuotaManager) getQuotaReportInfos(ctx context.Context) (infos []*proto.QuotaReportInfo) {
 	mqMgr.rwlock.Lock()
 	defer mqMgr.rwlock.Unlock()
 	var usedInfo proto.QuotaUsedInfo
+	span := getSpan(ctx).WithOperation(fmt.Sprintf("getQuotaReportInfos-mp.%d", mqMgr.mpID))
 	mqMgr.statisticTemp.Range(func(key, value interface{}) bool {
 		usedInfo = value.(proto.QuotaUsedInfo)
 		if value, isFind := mqMgr.statisticBase.Load(key.(uint32)); isFind {
 			baseInfo := value.(proto.QuotaUsedInfo)
-			log.LogDebugf("[getQuotaReportInfos] statisticTemp mp[%v] key [%v] usedInfo [%v] baseInfo [%v]", mqMgr.mpID,
-				key.(uint32), usedInfo, baseInfo)
+			span.Debugf("statisticTemp key [%v] usedInfo [%v] baseInfo [%v]", key.(uint32), usedInfo, baseInfo)
 			usedInfo.Add(&baseInfo)
 			if usedInfo.UsedFiles < 0 {
-				log.LogWarnf("[getQuotaReportInfos] statisticTemp mp[%v] key [%v] usedInfo [%v]", mqMgr.mpID, key.(uint32), usedInfo)
+				span.Warnf("statisticTemp key [%v] usedInfo [%v]", key.(uint32), usedInfo)
 				usedInfo.UsedFiles = 0
 			}
 			if usedInfo.UsedBytes < 0 {
-				log.LogWarnf("[getQuotaReportInfos] statisticTemp mp[%v] key [%v] usedInfo [%v]", mqMgr.mpID, key.(uint32), usedInfo)
+				span.Warnf("statisticTemp key [%v] usedInfo [%v]", key.(uint32), usedInfo)
 				usedInfo.UsedBytes = 0
 			}
 		}
@@ -231,7 +234,7 @@ func (mqMgr *MetaQuotaManager) getQuotaReportInfos() (infos []*proto.QuotaReport
 			UsedInfo: usedInfo,
 		}
 		infos = append(infos, reportInfo)
-		log.LogDebugf("[getQuotaReportInfos] statisticBase mp[%v] key [%v] usedInfo [%v]", mqMgr.mpID, key.(uint32), usedInfo)
+		span.Debugf("statisticBase key [%v] usedInfo [%v]", key.(uint32), usedInfo)
 		return true
 	})
 	return
@@ -251,7 +254,7 @@ func (mqMgr *MetaQuotaManager) statisticRebuildStart() bool {
 	return true
 }
 
-func (mqMgr *MetaQuotaManager) statisticRebuildFin(rebuild bool) {
+func (mqMgr *MetaQuotaManager) statisticRebuildFin(ctx context.Context, rebuild bool) {
 	mqMgr.rwlock.Lock()
 	defer mqMgr.rwlock.Unlock()
 	mqMgr.rbuilding = false
@@ -265,28 +268,29 @@ func (mqMgr *MetaQuotaManager) statisticRebuildFin(rebuild bool) {
 	mqMgr.statisticRebuildBase = new(sync.Map)
 	mqMgr.statisticRebuildTemp = new(sync.Map)
 
-	if log.EnableInfo() {
+	if log.GetOutputLevel() >= log.Linfo {
+		span := getSpan(ctx)
 		mqMgr.statisticTemp.Range(func(key, value interface{}) bool {
 			quotaId := key.(uint32)
 			usedInfo := value.(proto.QuotaUsedInfo)
-			log.LogInfof("statisticRebuildFin statisticTemp  mp[%v] quotaId [%v] usedInfo [%v]", mqMgr.mpID, quotaId, usedInfo)
+			span.Infof("statisticRebuildFin statisticTemp mp[%v] quotaId [%v] usedInfo [%v]", mqMgr.mpID, quotaId, usedInfo)
 			return true
 		})
 		mqMgr.statisticBase.Range(func(key, value interface{}) bool {
 			quotaId := key.(uint32)
 			usedInfo := value.(proto.QuotaUsedInfo)
-			log.LogInfof("statisticRebuildFin statisticBase  mp[%v] quotaId [%v] usedInfo [%v]", mqMgr.mpID, quotaId, usedInfo)
+			span.Infof("statisticRebuildFin statisticBase mp[%v] quotaId [%v] usedInfo [%v]", mqMgr.mpID, quotaId, usedInfo)
 			return true
 		})
 	}
 }
 
-func (mqMgr *MetaQuotaManager) IsOverQuota(size bool, files bool, quotaId uint32) (status uint8) {
+func (mqMgr *MetaQuotaManager) IsOverQuota(ctx context.Context, size bool, files bool, quotaId uint32) (status uint8) {
 	var limitedInfo proto.QuotaLimitedInfo
 	mqMgr.rwlock.RLock()
 	defer mqMgr.rwlock.RUnlock()
 	if !mqMgr.enable {
-		log.LogInfof("IsOverQuota quota [%v] is disable.", quotaId)
+		getSpan(ctx).Infof("IsOverQuota quota [%v] is disable.", quotaId)
 		return
 	}
 	value, isFind := mqMgr.limitedMap.Load(quotaId)
@@ -300,11 +304,11 @@ func (mqMgr *MetaQuotaManager) IsOverQuota(size bool, files bool, quotaId uint32
 			status = proto.OpNoSpaceErr
 		}
 	}
-	log.LogInfof("IsOverQuota quotaId [%v] limitedInfo[%v] status [%v] isFind [%v]", quotaId, limitedInfo, status, isFind)
+	getSpan(ctx).Infof("IsOverQuota quotaId [%v] limitedInfo[%v] status [%v] isFind [%v]", quotaId, limitedInfo, status, isFind)
 	return
 }
 
-func (mqMgr *MetaQuotaManager) updateUsedInfo(size int64, files int64, quotaId uint32) {
+func (mqMgr *MetaQuotaManager) updateUsedInfo(ctx context.Context, size int64, files int64, quotaId uint32) {
 	var baseInfo proto.QuotaUsedInfo
 	var baseTemp proto.QuotaUsedInfo
 	mqMgr.rwlock.Lock()
@@ -329,7 +333,7 @@ func (mqMgr *MetaQuotaManager) updateUsedInfo(size int64, files int64, quotaId u
 		baseTemp.UsedFiles += files
 		mqMgr.statisticRebuildTemp.Store(quotaId, baseTemp)
 	}
-	log.LogDebugf("updateUsedInfo mpId [%v] quotaId [%v] baseInfo [%v] baseTemp[%v]", mqMgr.mpID, quotaId, baseInfo, baseTemp)
+	getSpan(ctx).Debugf("updateUsedInfo mpId [%v] quotaId [%v] baseInfo [%v] baseTemp[%v]", mqMgr.mpID, quotaId, baseInfo, baseTemp)
 }
 
 func (mqMgr *MetaQuotaManager) EnableQuota() bool {

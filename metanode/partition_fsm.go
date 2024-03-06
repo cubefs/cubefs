@@ -66,7 +66,7 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 		resp = mp.fsmCreateInode(ino)
 	case opFSMCreateInodeQuota:
 		qinode := &MetaQuotaInode{}
-		if err = qinode.Unmarshal(msg.V); err != nil {
+		if err = qinode.Unmarshal(ctx, msg.V); err != nil {
 			return
 		}
 		ino := qinode.inode
@@ -79,7 +79,7 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 		resp = mp.fsmCreateInode(ino)
 		if resp == proto.OpOk {
 			for _, quotaId := range qinode.quotaIds {
-				mp.mqMgr.updateUsedInfo(0, 1, quotaId)
+				mp.mqMgr.updateUsedInfo(ctx, 0, 1, quotaId)
 			}
 		}
 	case opFSMUnlinkInode:
@@ -342,7 +342,7 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 		resp = mp.fsmTxCreateInode(txIno, []uint32{})
 	case opFSMTxCreateInodeQuota:
 		qinode := &TxMetaQuotaInode{}
-		if err = qinode.Unmarshal(msg.V); err != nil {
+		if err = qinode.Unmarshal(ctx, msg.V); err != nil {
 			return
 		}
 		txIno := qinode.txinode
@@ -355,7 +355,7 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 		resp = mp.fsmTxCreateInode(txIno, qinode.quotaIds)
 		if resp == proto.OpOk {
 			for _, quotaId := range qinode.quotaIds {
-				mp.mqMgr.updateUsedInfo(0, 1, quotaId)
+				mp.mqMgr.updateUsedInfo(ctx, 0, 1, quotaId)
 			}
 		}
 	case opFSMTxCreateDentry:

@@ -84,6 +84,7 @@ func TestBatchSetInodeQuota(t *testing.T) {
 }
 
 func TestQuotaHbInfo(t *testing.T) {
+	ctx := newCtx()
 	partition := NewMetaPartitionForQuotaTest()
 	var hbInfos []*proto.QuotaHeartBeatInfo
 	var quotaId uint32 = 1
@@ -95,9 +96,9 @@ func TestQuotaHbInfo(t *testing.T) {
 		Enable:      true,
 	}
 	hbInfos = append(hbInfos, hbInfo)
-	partition.mqMgr.setQuotaHbInfo(hbInfos)
+	partition.mqMgr.setQuotaHbInfo(ctx, hbInfos)
 	require.Equal(t, true, partition.mqMgr.EnableQuota())
-	require.Equal(t, proto.OpNoSpaceErr, partition.mqMgr.IsOverQuota(true, true, quotaId))
+	require.Equal(t, proto.OpNoSpaceErr, partition.mqMgr.IsOverQuota(ctx, true, true, quotaId))
 
 	hbInfo = &proto.QuotaHeartBeatInfo{
 		VolName:     VolNameForTest,
@@ -106,24 +107,25 @@ func TestQuotaHbInfo(t *testing.T) {
 		Enable:      false,
 	}
 	hbInfos = append(hbInfos, hbInfo)
-	partition.mqMgr.setQuotaHbInfo(hbInfos)
+	partition.mqMgr.setQuotaHbInfo(ctx, hbInfos)
 	require.Equal(t, false, partition.mqMgr.EnableQuota())
-	require.Equal(t, uint8(0), partition.mqMgr.IsOverQuota(true, true, quotaId2))
+	require.Equal(t, uint8(0), partition.mqMgr.IsOverQuota(ctx, true, true, quotaId2))
 }
 
 func TestGetQuotaReportInfos(t *testing.T) {
 	partition := NewMetaPartitionForQuotaTest()
 	var quotaId uint32 = 1
 	// var infos []*proto.QuotaReportInfo
-	partition.mqMgr.updateUsedInfo(100, 1, quotaId)
-	partition.mqMgr.updateUsedInfo(200, 2, quotaId)
+	ctx := newCtx()
+	partition.mqMgr.updateUsedInfo(ctx, 100, 1, quotaId)
+	partition.mqMgr.updateUsedInfo(ctx, 200, 2, quotaId)
 	partition.mqMgr.limitedMap.Store(quotaId, proto.QuotaLimitedInfo{})
 	info := &proto.QuotaReportInfo{
 		QuotaId:  quotaId,
 		UsedInfo: proto.QuotaUsedInfo{UsedFiles: 3, UsedBytes: 300},
 	}
 
-	infos := partition.mqMgr.getQuotaReportInfos()
+	infos := partition.mqMgr.getQuotaReportInfos(newCtx())
 	require.Equal(t, info, infos[0])
 }
 

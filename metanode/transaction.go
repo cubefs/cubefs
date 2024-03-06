@@ -1373,7 +1373,7 @@ func (tr *TransactionResource) rollbackInodeInternal(rbInode *TxRollbackInode) (
 			if mp.mqMgr != nil && len(rbInode.quotaIds) > 0 && item == nil {
 				mp.setInodeQuota(rbInode.quotaIds, rbInode.inode.Inode)
 				for _, quotaId := range rbInode.quotaIds {
-					mp.mqMgr.updateUsedInfo(int64(rbInode.inode.Size), 1, quotaId)
+					mp.mqMgr.updateUsedInfo(context.TODO(), int64(rbInode.inode.Size), 1, quotaId)
 				}
 			}
 			mp.inodeTree.ReplaceOrInsert(rbInode.inode, true)
@@ -1389,7 +1389,7 @@ func (tr *TransactionResource) rollbackInodeInternal(rbInode *TxRollbackInode) (
 
 			if tr.txProcessor.mp.mqMgr != nil && len(rbInode.quotaIds) > 0 {
 				for _, quotaId := range rbInode.quotaIds {
-					tr.txProcessor.mp.mqMgr.updateUsedInfo(-1*int64(rbInode.inode.Size), -1, quotaId)
+					tr.txProcessor.mp.mqMgr.updateUsedInfo(context.TODO(), -1*int64(rbInode.inode.Size), -1, quotaId)
 				}
 			}
 			tr.txProcessor.mp.fsmUnlinkInode(rbInode.inode, 0)

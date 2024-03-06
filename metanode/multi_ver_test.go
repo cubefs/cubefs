@@ -1298,10 +1298,10 @@ func TestCheckMod(t *testing.T) {
 }
 
 func managerVersionPrepare(req *proto.MultiVersionOpRequest) (err error) {
-	if err, _ = manager.prepareCreateVersion(req); err != nil {
+	if err, _ = manager.prepareCreateVersion(newCtx(), req); err != nil {
 		return
 	}
-	return manager.commitCreateVersion(req.VolumeID, req.VerSeq, req.Op, true)
+	return manager.commitCreateVersion(newCtx(), req.VolumeID, req.VerSeq, req.Op, true)
 }
 
 func newMpWithMock(t *testing.T) {
@@ -1331,6 +1331,7 @@ func TestOpCommitVersion(t *testing.T) {
 		mp.manager.partitions[mp.config.PartitionId] = mp
 		mp.config.NodeId = 1
 	}
+	ctx := newCtx()
 
 	err := managerVersionPrepare(&proto.MultiVersionOpRequest{VolumeID: VolNameForTest, Op: proto.CreateVersionPrepare, VerSeq: 10000})
 	assert.True(t, err == nil)
@@ -1340,7 +1341,7 @@ func TestOpCommitVersion(t *testing.T) {
 		assert.True(t, mList[0].Ver == 10000)
 		assert.True(t, mList[0].Status == proto.VersionPrepare)
 	}
-	err = manager.commitCreateVersion(VolNameForTest, 10000, proto.CreateVersionPrepare, true)
+	err = manager.commitCreateVersion(ctx, VolNameForTest, 10000, proto.CreateVersionPrepare, true)
 	assert.True(t, err == nil)
 	for _, m := range manager.partitions {
 		mList := m.GetVerList()
@@ -1366,7 +1367,7 @@ func TestOpCommitVersion(t *testing.T) {
 		assert.True(t, mList[1].Ver == 20000)
 		assert.True(t, mList[1].Status == proto.VersionPrepare)
 	}
-	err = manager.commitCreateVersion(VolNameForTest, 20000, proto.CreateVersionCommit, true)
+	err = manager.commitCreateVersion(ctx, VolNameForTest, 20000, proto.CreateVersionCommit, true)
 	assert.True(t, err == nil)
 	for _, m := range manager.partitions {
 		mList := m.GetVerList()

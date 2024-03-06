@@ -463,8 +463,8 @@ func (uMgr *UidManager) accumInoUidSize(ino *Inode, accum *sync.Map) {
 }
 
 type OpQuota interface {
-	setQuotaHbInfo(infos []*proto.QuotaHeartBeatInfo)
-	getQuotaReportInfos() (infos []*proto.QuotaReportInfo)
+	setQuotaHbInfo(_ context.Context, infos []*proto.QuotaHeartBeatInfo)
+	getQuotaReportInfos(_ context.Context) (infos []*proto.QuotaReportInfo)
 	batchSetInodeQuota(req *proto.BatchSetMetaserverQuotaReuqest,
 		resp *proto.BatchSetMetaserverQuotaResponse) (err error)
 	batchDeleteInodeQuota(req *proto.BatchDeleteMetaserverQuotaReuqest,

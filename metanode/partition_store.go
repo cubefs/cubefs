@@ -1201,7 +1201,7 @@ func (mp *metaPartition) storeExtend(rootDir string, sm *storeMsg) (crc uint32, 
 	})
 	log.LogInfof("storeExtend: write data ok: partitoinID(%v) volume(%v) numInodes(%v) extends(%v) quotaRebuild(%v)",
 		mp.config.PartitionId, mp.config.VolName, sm.inodeTree.Len(), sm.extendTree.Len(), sm.quotaRebuild)
-	mp.mqMgr.statisticRebuildFin(sm.quotaRebuild)
+	mp.mqMgr.statisticRebuildFin(context.TODO(), sm.quotaRebuild)
 	if err != nil {
 		return
 	}

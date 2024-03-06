@@ -284,6 +284,8 @@ func (mp *metaPartition) fsmUnlinkInode(ino *Inode, uniqID uint64) (resp *InodeR
 	log.LogDebugf("action[fsmUnlinkInode] mp[%v] ino[%v]", mp.config.PartitionId, ino)
 	var ext2Del []proto.ExtentKey
 
+	ctx := context.TODO()
+
 	resp = NewInodeResponse()
 	resp.Status = proto.OpOk
 
@@ -333,12 +335,12 @@ func (mp *metaPartition) fsmUnlinkInode(ino *Inode, uniqID uint64) (resp *InodeR
 		if ino.NLink < 2 { // snapshot deletion
 			log.LogDebugf("action[fsmUnlinkInode] mp[%v] ino[%v] really be deleted, empty dir", mp.config.PartitionId, inode)
 			mp.inodeTree.Delete(inode)
-			mp.updateUsedInfo(0, -1, inode.Inode)
+			mp.updateUsedInfo(ctx, 0, -1, inode.Inode)
 		}
 	} else if inode.IsTempFile() {
 		// all snapshot between create to last deletion cleaned
 		if inode.NLink == 0 && inode.getLayerLen() == 0 {
-			mp.updateUsedInfo(-1*int64(inode.Size), -1, inode.Inode)
+			mp.updateUsedInfo(ctx, -1*int64(inode.Size), -1, inode.Inode)
 			log.LogDebugf("action[fsmUnlinkInode] mp[%v] unlink inode[%v] and push to freeList", mp.config.PartitionId, inode)
 			inode.AccessTime = time.Now().Unix()
 			mp.freeList.Push(inode.Inode)
@@ -438,7 +440,7 @@ func (mp *metaPartition) fsmAppendExtents(ino *Inode) (status uint8) {
 		return
 	}
 	delExtents := ino2.AppendExtents(eks, ino.ModifyTime, mp.volType)
-	mp.updateUsedInfo(int64(ino2.Size)-oldSize, 0, ino2.Inode)
+	mp.updateUsedInfo(context.TODO(), int64(ino2.Size)-oldSize, 0, ino2.Inode)
 	log.LogInfof("fsmAppendExtents mpId[%v].inode[%v] deleteExtents(%v)", mp.config.PartitionId, ino2.Inode, delExtents)
 	mp.uidManager.minusUidSpace(ino2.Uid, ino2.Inode, delExtents)
 
@@ -534,7 +536,7 @@ func (mp *metaPartition) fsmAppendExtentsWithCheck(ino *Inode, isSplit bool) (st
 		log.LogDebugf("fsmAppendExtentsWithCheck mp[%v] delExtents inode[%v] ek(%v)", mp.config.PartitionId, fsmIno.Inode, delExtents)
 	}
 
-	mp.updateUsedInfo(int64(fsmIno.Size)-oldSize, 0, fsmIno.Inode)
+	mp.updateUsedInfo(context.TODO(), int64(fsmIno.Size)-oldSize, 0, fsmIno.Inode)
 	log.LogInfof("fsmAppendExtentWithCheck mp[%v] inode[%v] ek(%v) deleteExtents(%v) discardExtents(%v) status(%v)",
 		mp.config.PartitionId, fsmIno.Inode, eks[0], delExtents, discardExtentKey, status)
 
@@ -614,7 +616,7 @@ func (mp *metaPartition) fsmExtentsTruncate(ino *Inode) (resp *InodeResponse) {
 	if delExtents, err = i.RestoreExts2NextLayer(mp.config.PartitionId, delExtents, mp.verSeq, 0); err != nil {
 		panic("RestoreExts2NextLayer should not be error")
 	}
-	mp.updateUsedInfo(int64(i.Size)-oldSize, 0, i.Inode)
+	mp.updateUsedInfo(context.TODO(), int64(i.Size)-oldSize, 0, i.Inode)
 
 	// now we should delete the extent
 	log.LogInfof("fsmExtentsTruncate.mp (%v) inode[%v] DecSplitExts exts(%v)", mp.config.PartitionId, i.Inode, delExtents)
@@ -854,7 +856,7 @@ func (mp *metaPartition) fsmSetInodeQuotaBatch(req *proto.BatchSetMetaserverQuot
 			bytes += int64(inode.Size)
 		}
 	}
-	mp.mqMgr.updateUsedInfo(bytes, files, req.QuotaId)
+	mp.mqMgr.updateUsedInfo(context.TODO(), bytes, files, req.QuotaId)
 	log.LogInfof("fsmSetInodeQuotaBatch quotaId [%v] resp [%v] success.", req.QuotaId, resp)
 	return
 }
@@ -923,7 +925,7 @@ func (mp *metaPartition) fsmDeleteInodeQuotaBatch(req *proto.BatchDeleteMetaserv
 		files -= 1
 		bytes -= int64(inode.Size)
 	}
-	mp.mqMgr.updateUsedInfo(bytes, files, req.QuotaId)
+	mp.mqMgr.updateUsedInfo(context.TODO(), bytes, files, req.QuotaId)
 	log.LogInfof("fsmDeleteInodeQuotaBatch quotaId [%v] resp [%v] success.", req.QuotaId, resp)
 	return
 }

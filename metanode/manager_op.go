@@ -16,6 +16,7 @@ package metanode
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -154,6 +155,7 @@ func (m *metadataManager) opMasterHeartbeat(conn net.Conn, p *Packet, remoteAddr
 		}
 	)
 
+	ctx := p.Context()
 	go func() {
 		start := time.Now()
 		decode := json.NewDecoder(bytes.NewBuffer(data))
@@ -180,7 +182,7 @@ func (m *metadataManager) opMasterHeartbeat(conn net.Conn, p *Packet, remoteAddr
 			m.checkDisableAuditLogVolume(req.DisableAuditVols, partition)
 			partition.SetUidLimit(req.UidLimitInfo)
 			partition.SetTxInfo(req.TxInfo)
-			partition.setQuotaHbInfo(req.QuotaHbInfos)
+			partition.setQuotaHbInfo(ctx, req.QuotaHbInfos)
 			mConf := partition.GetBaseConfig()
 
 			mpr := &proto.MetaPartitionReport{
@@ -195,7 +197,7 @@ func (m *metadataManager) opMasterHeartbeat(conn net.Conn, p *Packet, remoteAddr
 				DentryCnt:        uint64(partition.GetDentryTreeLen()),
 				FreeListLen:      uint64(partition.GetFreeListLen()),
 				UidInfo:          partition.GetUidInfo(),
-				QuotaReportInfos: partition.getQuotaReportInfos(),
+				QuotaReportInfos: partition.getQuotaReportInfos(ctx),
 			}
 			mpr.TxCnt, mpr.TxRbInoCnt, mpr.TxRbDenCnt = partition.TxGetCnt()
 
@@ -1462,7 +1464,7 @@ func (m *metadataManager) opMetaGetUniqID(conn net.Conn, p *Packet, remoteAddr s
 	return
 }
 
-func (m *metadataManager) prepareCreateVersion(req *proto.MultiVersionOpRequest) (err error, opAagin bool) {
+func (m *metadataManager) prepareCreateVersion(ctx context.Context, req *proto.MultiVersionOpRequest) (err error, opAagin bool) {
 	var ver2Phase *verOp2Phase
 	if value, ok := m.volUpdating.Load(req.VolumeID); ok {
 		ver2Phase = value.(*verOp2Phase)
@@ -1483,51 +1485,53 @@ func (m *metadataManager) prepareCreateVersion(req *proto.MultiVersionOpRequest)
 
 	m.volUpdating.Store(req.VolumeID, ver2Phase)
 
-	log.LogWarnf("action[prepareCreateVersion] volume %v update to ver [%v] step %v",
+	getSpan(ctx).Warnf("action[prepareCreateVersion] volume %v update to ver [%v] step %v",
 		req.VolumeID, req.VerSeq, ver2Phase.step)
 	return
 }
 
-func (m *metadataManager) checkVolVerList() (err error) {
+func (m *metadataManager) checkVolVerList(ctx context.Context) (err error) {
+	spanRoot := getSpan(ctx).WithOperation("checkVolVerList")
 	volumeArr := make(map[string]bool)
 
-	log.LogDebugf("checkVolVerList start")
+	spanRoot.Debugf("start ...")
 	m.Range(true, func(id uint64, partition MetaPartition) bool {
 		volumeArr[partition.GetVolName()] = true
 		return true
 	})
 
 	for volName := range volumeArr {
+		span := spanRoot.WithOperation("volume-" + volName)
 		mpsVerlist := make(map[uint64]*proto.VolVersionInfoList)
 		// need get first or else the mp verlist may be change in the follower process
 		m.Range(true, func(id uint64, partition MetaPartition) bool {
 			if partition.GetVolName() != volName {
 				return true
 			}
-			log.LogDebugf("action[checkVolVerList] volumeName %v id[%v] dp verlist %v partition.GetBaseConfig().PartitionId %v",
-				volName, id, partition.GetVerList(), partition.GetBaseConfig().PartitionId)
+			span.Debugf("id[%v] dp verlist %v partition.GetBaseConfig().PartitionId %v",
+				id, partition.GetVerList(), partition.GetBaseConfig().PartitionId)
 			mpsVerlist[id] = &proto.VolVersionInfoList{VerList: partition.GetVerList()}
 			return true
 		})
 		var info *proto.VolVersionInfoList
 		if info, err = masterClient.AdminAPI().GetVerList(volName); err != nil {
-			log.LogErrorf("action[checkVolVerList] volumeName %v err %v", volName, err)
+			span.Error(err)
 			return
 		}
 
-		log.LogDebugf("action[checkVolVerList] volumeName %v info %v", volName, info)
+		span.Debugf("info %v", info)
 		m.Range(true, func(id uint64, partition MetaPartition) bool {
 			if partition.GetVolName() != volName {
 				return true
 			}
-			log.LogDebugf("action[checkVolVerList] volumeName %v info %v id[%v] ", volName, info, id)
+			span.Debugf("info %v id[%v] ", info, id)
 			if _, exist := mpsVerlist[id]; exist {
 				if err = partition.checkByMasterVerlist(mpsVerlist[id], info); err != nil {
 					return true
 				}
 			}
 			if _, err = partition.checkVerList(info, false); err != nil {
-				log.LogErrorf("[checkVolVerList] volumeName %v err %v", volName, err)
+				span.Error(err)
 			}
 			return true
 		})
@@ -1535,8 +1539,9 @@ func (m *metadataManager) checkVolVerList() (err error) {
 	return
 }
 
-func (m *metadataManager) commitCreateVersion(VolumeID string, VerSeq uint64, Op uint8, synchronize bool) (err error) {
-	log.LogWarnf("action[commitCreateVersion] volume %v seq [%v]", VolumeID, VerSeq)
+func (m *metadataManager) commitCreateVersion(ctx context.Context, VolumeID string, VerSeq uint64, Op uint8, synchronize bool) (err error) {
+	span := getSpan(ctx).WithOperation("commitCreateVersion-volume." + VolumeID)
+	span.Warnf("volume %v seq [%v]", VolumeID, VerSeq)
 	var wg sync.WaitGroup
 	// wg.Add(len(m.partitions))
 	resultCh := make(chan error, len(m.partitions))
@@ -1552,9 +1557,9 @@ func (m *metadataManager) commitCreateVersion(VolumeID string, VerSeq uint64, Op
 		wg.Add(1)
 		go func(mpId uint64, mp MetaPartition) {
 			defer wg.Done()
-			log.LogInfof("action[commitCreateVersion] volume %v mp  %v do HandleVersionOp verseq [%v]", VolumeID, mpId, VerSeq)
+			span.Infof("mp %v do HandleVersionOp verseq [%v]", mpId, VerSeq)
 			if err := mp.HandleVersionOp(Op, VerSeq, nil, synchronize); err != nil {
-				log.LogErrorf("action[commitCreateVersion] volume %v mp  %v do HandleVersionOp verseq [%v] err %v", VolumeID, mpId, VerSeq, err)
+				span.Errorf("mp %v do HandleVersionOp verseq [%v] err %v", mpId, VerSeq, err)
 				resultCh <- err
 				return
 			}
@@ -1570,7 +1575,7 @@ func (m *metadataManager) commitCreateVersion(VolumeID string, VerSeq uint64, Op
 			return
 		}
 	default:
-		log.LogInfof("action[commitCreateVersion] volume %v do HandleVersionOp verseq [%v] finished", VolumeID, VerSeq)
+		span.Infof("do HandleVersionOp verseq [%v] finished", VerSeq)
 	}
 	close(resultCh)
 
@@ -1583,29 +1588,26 @@ func (m *metadataManager) commitCreateVersion(VolumeID string, VerSeq uint64, Op
 
 	if value, ok := m.volUpdating.Load(VolumeID); ok {
 		ver2Phase := value.(*verOp2Phase)
-		log.LogWarnf("action[commitCreateVersion] try commit volume %v prepare seq [%v] with commit seq [%v]",
-			VolumeID, ver2Phase.verPrepare, VerSeq)
+		span.Warnf("try commit prepare seq [%v] with commit seq [%v]", ver2Phase.verPrepare, VerSeq)
 		if VerSeq < ver2Phase.verSeq {
 			err = fmt.Errorf("volname [%v] seq [%v] create less than loal %v", VolumeID, VerSeq, ver2Phase.verSeq)
-			log.LogErrorf("action[commitCreateVersion] err %v", err)
+			span.Error(err)
 			return
 		}
 		if ver2Phase.step != proto.CreateVersionPrepare {
 			err = fmt.Errorf("volname [%v] step not prepare", VolumeID)
-			log.LogErrorf("action[commitCreateVersion] err %v", err)
+			span.Error(err)
 			return
 		}
 		ver2Phase.verSeq = VerSeq
 		ver2Phase.step = proto.CreateVersionCommit
 		ver2Phase.status = proto.VersionWorkingFinished
-		log.LogWarnf("action[commitCreateVersion] commit volume %v prepare seq [%v] with commit seq [%v]",
-			VolumeID, ver2Phase.verPrepare, VerSeq)
+		span.Warnf("commit prepare seq [%v] with commit seq [%v]", ver2Phase.verPrepare, VerSeq)
 		return
 	}
 
 	err = fmt.Errorf("volname [%v] not found", VolumeID)
-	log.LogErrorf("action[commitCreateVersion] err %v", err)
-
+	span.Error(err)
 	return
 }
 
@@ -1661,8 +1663,9 @@ func (m *metadataManager) checkMultiVersionStatus(mp MetaPartition, p *Packet) (
 	return
 }
 
-func (m *metadataManager) checkAndPromoteVersion(volName string) (err error) {
-	log.LogInfof("action[checkmultiSnap.multiVersionstatus] volumeName %v", volName)
+func (m *metadataManager) checkAndPromoteVersion(ctx context.Context, volName string) (err error) {
+	span := getSpan(ctx).WithOperation("checkmultiSnap.multiVersionstatus-volume." + volName)
+	span.Info("check ...")
 	var info *proto.VolumeVerInfo
 	if value, ok := m.volUpdating.Load(volName); ok {
 		ver2Phase := value.(*verOp2Phase)
@@ -1677,32 +1680,30 @@ func (m *metadataManager) checkAndPromoteVersion(volName string) (err error) {
 			if atomic.LoadUint32(&ver2Phase.status) == proto.VersionWorkingAbnormal ||
 				atomic.LoadUint32(&ver2Phase.step) != proto.CreateVersionPrepare {
 
-				log.LogWarnf("action[checkmultiSnap.multiVersionstatus] volumeName %v status [%v] step %v",
-					volName, atomic.LoadUint32(&ver2Phase.status), atomic.LoadUint32(&ver2Phase.step))
+				span.Warnf("status [%v] step %v", atomic.LoadUint32(&ver2Phase.status), atomic.LoadUint32(&ver2Phase.step))
 				return
 			}
 
 			if info, err = masterClient.AdminAPI().GetVerInfo(volName); err != nil {
-				log.LogErrorf("action[checkmultiSnap.multiVersionstatus] volumeName %v status [%v] step %v err %v",
-					volName, atomic.LoadUint32(&ver2Phase.status), atomic.LoadUint32(&ver2Phase.step), err)
+				span.Errorf("status [%v] step %v %v", atomic.LoadUint32(&ver2Phase.status), atomic.LoadUint32(&ver2Phase.step), err)
 				return
 			}
 			if info.VerSeqPrepare != ver2Phase.verPrepare {
 				atomic.StoreUint32(&ver2Phase.status, proto.VersionWorkingAbnormal)
 				err = fmt.Errorf("volumeName %v status [%v] step %v",
 					volName, atomic.LoadUint32(&ver2Phase.status), atomic.LoadUint32(&ver2Phase.step))
-				log.LogErrorf("action[checkmultiSnap.multiVersionstatus] err %v", err)
+				span.Error(err)
 				return
 			}
 			if info.VerPrepareStatus == proto.CreateVersionCommit {
-				if err = m.commitCreateVersion(volName, info.VerSeqPrepare, proto.CreateVersionCommit, false); err != nil {
-					log.LogErrorf("action[checkmultiSnap.multiVersionstatus] err %v", err)
+				if err = m.commitCreateVersion(ctx, volName, info.VerSeqPrepare, proto.CreateVersionCommit, false); err != nil {
+					span.Error(err)
 					return
 				}
 			}
 		}
 	} else {
-		log.LogErrorf("action[checkmultiSnap.multiVersionstatus] volumeName %v not found", volName)
+		span.Errorf("volumeName %v not found", volName)
 	}
 	return
 }
@@ -1720,6 +1721,7 @@ func (m *metadataManager) opMultiVersionOp(conn net.Conn, p *Packet, remoteAddr 
 		}
 		opAgain bool
 	)
+	ctx := p.Context()
 	span := p.Span()
 	span.Debugf("volume %v op [%v]", req.VolumeID, req.Op)
 
@@ -1740,16 +1742,16 @@ func (m *metadataManager) opMultiVersionOp(conn net.Conn, p *Packet, remoteAddr 
 	resp.Op = req.Op
 
 	if req.Op == proto.CreateVersionPrepare {
-		if err, opAgain = m.prepareCreateVersion(req); err != nil || opAgain {
+		if err, opAgain = m.prepareCreateVersion(ctx, req); err != nil || opAgain {
 			span.Errorf("%v mp err %v do Decoder", req.VolumeID, err)
 			goto end
 		}
-		if err = m.commitCreateVersion(req.VolumeID, req.VerSeq, req.Op, true); err != nil {
+		if err = m.commitCreateVersion(p.Context(), req.VolumeID, req.VerSeq, req.Op, true); err != nil {
 			span.Errorf("%v mp err %v do commitCreateVersion", req.VolumeID, err.Error())
 			goto end
 		}
 	} else if req.Op == proto.CreateVersionCommit || req.Op == proto.DeleteVersion {
-		if err = m.commitCreateVersion(req.VolumeID, req.VerSeq, req.Op, false); err != nil {
+		if err = m.commitCreateVersion(p.Context(), req.VolumeID, req.VerSeq, req.Op, false); err != nil {
 			span.Errorf("%v mp err %v do commitCreateVersion", req.VolumeID, err.Error())
 			goto end
 		}

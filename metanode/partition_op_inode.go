@@ -180,8 +180,9 @@ func (mp *metaPartition) QuotaCreateInode(req *proto.QuotaCreateInodeRequest, p 
 	ino.Gid = req.Gid
 	ino.LinkTarget = req.Target
 
+	ctx := p.Context()
 	for _, quotaId := range req.QuotaIds {
-		status = mp.mqMgr.IsOverQuota(false, true, quotaId)
+		status = mp.mqMgr.IsOverQuota(ctx, false, true, quotaId)
 		if status != 0 {
 			err = errors.New("create inode is over quota")
 			reply = []byte(err.Error())
@@ -193,12 +194,12 @@ func (mp *metaPartition) QuotaCreateInode(req *proto.QuotaCreateInodeRequest, p 
 		inode:    ino,
 		quotaIds: req.QuotaIds,
 	}
-	val, err := qinode.Marshal()
+	val, err := qinode.Marshal(ctx)
 	if err != nil {
 		p.PacketErrorOpErr(err)
 		return err
 	}
-	resp, err = mp.submit(p.Context(), opFSMCreateInodeQuota, val)
+	resp, err = mp.submit(ctx, opFSMCreateInodeQuota, val)
 	if err != nil {
 		p.PacketErrorOpAgain(err)
 		return err
@@ -890,6 +891,7 @@ func (mp *metaPartition) TxCreateInode(req *proto.TxCreateInodeRequest, p *Packe
 		return
 	}
 
+	ctx := p.Context()
 	span := p.Span()
 	createResp := &proto.TxCreateResponse{}
 	err = json.Unmarshal(p.Data, createResp)
@@ -909,7 +911,7 @@ func (mp *metaPartition) TxCreateInode(req *proto.TxCreateInodeRequest, p *Packe
 
 	if defaultQuotaSwitch {
 		for _, quotaId := range req.QuotaIds {
-			status = mp.mqMgr.IsOverQuota(false, true, quotaId)
+			status = mp.mqMgr.IsOverQuota(ctx, false, true, quotaId)
 			if status != 0 {
 				err = errors.New("tx create inode is over quota")
 				reply = []byte(err.Error())
@@ -922,12 +924,12 @@ func (mp *metaPartition) TxCreateInode(req *proto.TxCreateInodeRequest, p *Packe
 			txinode:  txIno,
 			quotaIds: req.QuotaIds,
 		}
-		val, err := qinode.Marshal()
+		val, err := qinode.Marshal(ctx)
 		if err != nil {
 			p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 			return err
 		}
-		resp, err = mp.submit(p.Context(), opFSMTxCreateInodeQuota, val)
+		resp, err = mp.submit(ctx, opFSMTxCreateInodeQuota, val)
 		if err != nil {
 			p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 			return err
@@ -938,7 +940,7 @@ func (mp *metaPartition) TxCreateInode(req *proto.TxCreateInodeRequest, p *Packe
 			p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 			return err
 		}
-		resp, err = mp.submit(p.Context(), opFSMTxCreateInode, val)
+		resp, err = mp.submit(ctx, opFSMTxCreateInode, val)
 		if err != nil {
 			p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 			return err

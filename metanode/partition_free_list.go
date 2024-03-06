@@ -105,8 +105,7 @@ func (mp *metaPartition) updateVolWorker() {
 		return newView
 	}
 	for {
-		span, ctx := proto.StartSpanFromContextWithTraceID(context.Background(), "", "update-"+proto.TraceID())
-		ctx = proto.ContextWithSpan(ctx, span)
+		span, ctx := spanContextPrefix("update-")
 		if err := mp.updateVolView(ctx, convert); err != nil {
 			span.Error(err)
 		}
@@ -162,8 +161,7 @@ func (mp *metaPartition) deleteWorker() {
 			continue
 		}
 
-		span, ctx := proto.StartSpanFromContextWithTraceID(context.Background(), "", "delete-"+proto.TraceID())
-		ctx = proto.ContextWithSpan(ctx, span)
+		span, ctx := spanContextPrefix("delete-")
 
 		batchCount := DeleteBatchCount()
 		delayDeleteInos := make([]uint64, 0)

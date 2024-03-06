@@ -31,7 +31,7 @@ import (
 
 func (mp *metaPartition) CheckQuota(inodeId uint64, p *Packet) (iParm *Inode, inode *Inode, err error) {
 	iParm = NewInode(inodeId, 0)
-	status := mp.isOverQuota(inodeId, true, false)
+	status := mp.isOverQuota(p.Context(), inodeId, true, false)
 	if status != 0 {
 		log.LogErrorf("CheckQuota dir quota fail inode[%v] status [%v]", inodeId, status)
 		err = errors.New("CheckQuota dir quota is over quota")
@@ -93,7 +93,7 @@ func (mp *metaPartition) ExtentAppend(req *proto.AppendExtentKeyRequest, p *Pack
 // Format: one valid extent key followed by non or several discard keys.
 func (mp *metaPartition) ExtentAppendWithCheck(req *proto.AppendExtentKeyWithCheckRequest, p *Packet) (err error) {
 	span := p.Span()
-	status := mp.isOverQuota(req.Inode, true, false)
+	status := mp.isOverQuota(p.Context(), req.Inode, true, false)
 	if status != 0 {
 		span.Errorf("fail status [%v]", status)
 		err = errors.New("ExtentAppendWithCheck is over quota")
@@ -486,7 +486,7 @@ func (mp *metaPartition) ExtentsTruncate(req *ExtentsTruncateReq, p *Packet, rem
 		return
 	}
 	i := item.(*Inode)
-	status := mp.isOverQuota(req.Inode, req.Size > i.Size, false)
+	status := mp.isOverQuota(p.Context(), req.Inode, req.Size > i.Size, false)
 	if status != 0 {
 		p.Span().Errorf("fail status [%v]", status)
 		err = errors.New("ExtentsTruncate is over quota")

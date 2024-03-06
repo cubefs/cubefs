@@ -15,6 +15,7 @@
 package metanode
 
 import (
+	"context"
 	"fmt"
 	syslog "log"
 	"os"
@@ -25,6 +26,7 @@ import (
 
 	"github.com/xtaci/smux"
 
+	"github.com/cubefs/cubefs/blobstore/common/trace"
 	"github.com/cubefs/cubefs/blobstore/util/log"
 	"github.com/cubefs/cubefs/cmd/common"
 	"github.com/cubefs/cubefs/proto"
@@ -46,9 +48,20 @@ var (
 	smuxPool       *util.SmuxConnectPool
 	smuxPoolCfg    = util.DefaultSmuxConnPoolConfig()
 
-	getSpan     = proto.SpanFromContext
-	spanContext = proto.StartSpanFromContext
+	getSpan = proto.SpanFromContext
 )
+
+func spanContext() (trace.Span, context.Context) {
+	span, ctx := proto.StartSpanFromContext(context.Background(), "")
+	ctx = proto.ContextWithSpan(ctx, span)
+	return span, ctx
+}
+
+func spanContextPrefix(prefix string) (trace.Span, context.Context) {
+	span, ctx := proto.StartSpanFromContextWithTraceID(context.Background(), "", prefix+proto.TraceID())
+	ctx = proto.ContextWithSpan(ctx, span)
+	return span, ctx
+}
 
 // The MetaNode manages the dentry and inode information of the meta partitions on a meta node.
 // The data consistency is ensured by Raft.

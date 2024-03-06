@@ -70,12 +70,12 @@ func (mp *metaPartition) batchDeleteInodeQuota(req *proto.BatchDeleteMetaserverQ
 	return
 }
 
-func (mp *metaPartition) setQuotaHbInfo(infos []*proto.QuotaHeartBeatInfo) {
-	mp.mqMgr.setQuotaHbInfo(infos)
+func (mp *metaPartition) setQuotaHbInfo(ctx context.Context, infos []*proto.QuotaHeartBeatInfo) {
+	mp.mqMgr.setQuotaHbInfo(ctx, infos)
 }
 
-func (mp *metaPartition) getQuotaReportInfos() (infos []*proto.QuotaReportInfo) {
-	return mp.mqMgr.getQuotaReportInfos()
+func (mp *metaPartition) getQuotaReportInfos(ctx context.Context) (infos []*proto.QuotaReportInfo) {
+	return mp.mqMgr.getQuotaReportInfos(ctx)
 }
 
 func (mp *metaPartition) statisticExtendByLoad(extend *Extend) {
@@ -152,12 +152,12 @@ func (mp *metaPartition) statisticExtendByStore(extend *Extend, inodeTree *BTree
 	log.LogDebugf("statisticExtendByStore mp[%v] inode[%v] success.", mp.config.PartitionId, extend.GetInode())
 }
 
-func (mp *metaPartition) updateUsedInfo(size int64, files int64, ino uint64) {
+func (mp *metaPartition) updateUsedInfo(ctx context.Context, size int64, files int64, ino uint64) {
 	quotaIds, isFind := mp.isExistQuota(ino)
 	if isFind {
-		log.LogInfof("updateUsedInfo ino[%v] quotaIds [%v] size [%v] files [%v]", ino, quotaIds, size, files)
+		getSpan(ctx).Infof("updateUsedInfo ino[%v] quotaIds [%v] size [%v] files [%v]", ino, quotaIds, size, files)
 		for _, quotaId := range quotaIds {
-			mp.mqMgr.updateUsedInfo(size, files, quotaId)
+			mp.mqMgr.updateUsedInfo(ctx, size, files, quotaId)
 		}
 	}
 }
@@ -193,13 +193,13 @@ func (mp *metaPartition) isExistQuota(ino uint64) (quotaIds []uint32, isFind boo
 	return
 }
 
-func (mp *metaPartition) isOverQuota(ino uint64, size bool, files bool) (status uint8) {
+func (mp *metaPartition) isOverQuota(ctx context.Context, ino uint64, size bool, files bool) (status uint8) {
 	quotaIds, isFind := mp.isExistQuota(ino)
 	if isFind {
 		for _, quotaId := range quotaIds {
-			status = mp.mqMgr.IsOverQuota(size, files, quotaId)
+			status = mp.mqMgr.IsOverQuota(ctx, size, files, quotaId)
 			if status != 0 {
-				log.LogWarnf("isOverQuota ino[%v] quotaId [%v] size [%v] files[%v] status[%v]", ino, quotaId, size, files, status)
+				getSpan(ctx).Warnf("isOverQuota ino[%v] quotaId [%v] size [%v] files[%v] status[%v]", ino, quotaId, size, files, status)
 				return
 			}
 		}
