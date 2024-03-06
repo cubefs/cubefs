@@ -1243,7 +1243,7 @@ func (c *client) checkPermission() (err error) {
 	// checkPermission
 	mc := masterSDK.NewMasterClientFromString(c.masterAddr, false)
 	var userInfo *proto.UserInfo
-	if userInfo, err = mc.UserAPI().GetAKInfo(c.accessKey); err != nil {
+	if userInfo, err = mc.UserAPI().GetAKInfo(context.TODO(), c.accessKey); err != nil {
 		return
 	}
 	if userInfo.SecretKey != c.secretKey {
@@ -1457,7 +1457,7 @@ func (c *client) ctx(cid int64, ino uint64) context.Context {
 func (c *client) loadConfFromMaster(masters []string) (err error) {
 	mc := masterSDK.NewMasterClient(masters, false)
 	var volumeInfo *proto.SimpleVolView
-	volumeInfo, err = mc.AdminAPI().GetVolumeSimpleInfo(c.volName)
+	volumeInfo, err = mc.AdminAPI().GetVolumeSimpleInfo(context.TODO(), c.volName)
 	if err != nil {
 		return
 	}
@@ -1468,7 +1468,7 @@ func (c *client) loadConfFromMaster(masters []string) (err error) {
 	c.cacheThreshold = volumeInfo.CacheThreshold
 
 	var clusterInfo *proto.ClusterInfo
-	clusterInfo, err = mc.AdminAPI().GetClusterInfo()
+	clusterInfo, err = mc.AdminAPI().GetClusterInfo(context.TODO())
 	if err != nil {
 		return
 	}
