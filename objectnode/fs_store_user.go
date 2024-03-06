@@ -15,6 +15,7 @@
 package objectnode
 
 import (
+	"context"
 	"fmt"
 	"hash/crc32"
 	"sync"
@@ -43,7 +44,7 @@ type StrictUserInfoStore struct {
 
 func (s *StrictUserInfoStore) LoadUser(accessKey string) (*proto.UserInfo, error) {
 	// if error occurred when loading user, and error is not NotExist, output an ump log
-	userInfo, err := s.mc.UserAPI().GetAKInfo(accessKey)
+	userInfo, err := s.mc.UserAPI().GetAKInfo(context.TODO(), accessKey)
 	if err != nil && err != proto.ErrUserNotExists && err != proto.ErrAccessKeyNotExists {
 		log.LogErrorf("LoadUser: fetch user info fail: err(%v)", err)
 		exporter.Warning(fmt.Sprintf("StrictUserInfoStore load user fail: accessKey(%v) err(%v)", accessKey, err))
@@ -153,7 +154,7 @@ func (us *CacheUserInfoLoader) scheduleUpdate() {
 		}
 		us.akInfoMutex.RUnlock()
 		for _, ak := range aks {
-			akPolicy, err := us.mc.UserAPI().GetAKInfo(ak)
+			akPolicy, err := us.mc.UserAPI().GetAKInfo(context.TODO(), ak)
 			if err == proto.ErrUserNotExists || err == proto.ErrAccessKeyNotExists {
 				us.akInfoMutex.Lock()
 				delete(us.akInfoStore, ak)
@@ -214,7 +215,7 @@ func (us *CacheUserInfoLoader) LoadUser(accessKey string) (*proto.UserInfo, erro
 		}
 		us.akInfoMutex.RUnlock()
 
-		userInfo, err = us.mc.UserAPI().GetAKInfo(accessKey)
+		userInfo, err = us.mc.UserAPI().GetAKInfo(context.TODO(), accessKey)
 		if err != nil {
 			if err != proto.ErrUserNotExists && err != proto.ErrAccessKeyNotExists {
 				log.LogErrorf("LoadUser: fetch user info fail: err(%v)", err)

@@ -15,6 +15,7 @@
 package metanode
 
 import (
+	"context"
 	"fmt"
 	syslog "log"
 	"os"
@@ -102,7 +103,7 @@ func (m *MetaNode) Shutdown() {
 func (m *MetaNode) checkLocalPartitionMatchWithMaster() (err error) {
 	var metaNodeInfo *proto.MetaNodeInfo
 	for i := 0; i < 3; i++ {
-		if metaNodeInfo, err = masterClient.NodeAPI().GetMetaNode(fmt.Sprintf("%s:%s", m.localAddr, m.listen)); err != nil {
+		if metaNodeInfo, err = masterClient.NodeAPI().GetMetaNode(context.TODO(), fmt.Sprintf("%s:%s", m.localAddr, m.listen)); err != nil {
 			log.Errorf("get metanode info fail: err(%v)", err)
 			continue
 		}
@@ -470,7 +471,7 @@ func (m *MetaNode) register() (err error) {
 			step++
 		}
 		var nodeID uint64
-		if nodeID, err = masterClient.NodeAPI().AddMetaNodeWithAuthNode(nodeAddress, m.zoneName, m.serviceIDKey); err != nil {
+		if nodeID, err = masterClient.NodeAPI().AddMetaNodeWithAuthNode(context.TODO(), nodeAddress, m.zoneName, m.serviceIDKey); err != nil {
 			log.Errorf("[register] to master fail: address(%v) err(%s)", nodeAddress, err)
 			time.Sleep(3 * time.Second)
 			continue
@@ -486,7 +487,7 @@ func NewServer() *MetaNode {
 }
 
 func getClusterInfo() (ci *proto.ClusterInfo, err error) {
-	ci, err = masterClient.AdminAPI().GetClusterInfo()
+	ci, err = masterClient.AdminAPI().GetClusterInfo(context.TODO())
 	return
 }
 

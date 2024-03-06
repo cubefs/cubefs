@@ -206,7 +206,7 @@ func (c *PreLoadClient) newEBSClient(masters []string, logDir string) (err error
 		clusterInfo *proto.ClusterInfo
 		ebsc        *blobstore.BlobStoreClient
 	)
-	volumeInfo, err = c.mc.AdminAPI().GetVolumeSimpleInfo(c.vol)
+	volumeInfo, err = c.mc.AdminAPI().GetVolumeSimpleInfo(context.TODO(), c.vol)
 	if err != nil {
 		return
 	}
@@ -214,7 +214,7 @@ func (c *PreLoadClient) newEBSClient(masters []string, logDir string) (err error
 	c.cacheAction = volumeInfo.CacheAction
 	c.cacheThreshold = volumeInfo.CacheThreshold
 
-	clusterInfo, err = c.mc.AdminAPI().GetClusterInfo()
+	clusterInfo, err = c.mc.AdminAPI().GetClusterInfo(context.TODO())
 	if err != nil {
 		return
 	}
@@ -547,7 +547,7 @@ func (c *PreLoadClient) CheckColdVolume() bool {
 		view *proto.SimpleVolView
 	)
 
-	if view, err = c.mc.AdminAPI().GetVolumeSimpleInfo(c.vol); err != nil {
+	if view, err = c.mc.AdminAPI().GetVolumeSimpleInfo(context.TODO(), c.vol); err != nil {
 		log.LogErrorf("getSimpleVolView: get volume simple info fail: volume(%v) err(%v)", c.vol, err)
 		return false
 	}
@@ -560,7 +560,7 @@ func (c *PreLoadClient) getVolumeCacheCapacity() (total uint64, used uint64) {
 		view *proto.SimpleVolView
 	)
 
-	if view, err = c.mc.AdminAPI().GetVolumeSimpleInfo(c.vol); err != nil {
+	if view, err = c.mc.AdminAPI().GetVolumeSimpleInfo(context.TODO(), c.vol); err != nil {
 		log.LogErrorf("getSimpleVolView: get volume simple info fail: volume(%v) err(%v)", c.vol, err)
 		return 0, 0
 	}

@@ -1513,7 +1513,7 @@ func (m *metadataManager) checkVolVerList(ctx context.Context) (err error) {
 			return true
 		})
 		var info *proto.VolVersionInfoList
-		if info, err = masterClient.AdminAPI().GetVerList(volName); err != nil {
+		if info, err = masterClient.AdminAPI().GetVerList(context.TODO(), volName); err != nil {
 			span.Error(err)
 			return
 		}
@@ -1683,7 +1683,7 @@ func (m *metadataManager) checkAndPromoteVersion(ctx context.Context, volName st
 				return
 			}
 
-			if info, err = masterClient.AdminAPI().GetVerInfo(volName); err != nil {
+			if info, err = masterClient.AdminAPI().GetVerInfo(context.TODO(), volName); err != nil {
 				span.Errorf("status [%v] step %v %v", atomic.LoadUint32(&ver2Phase.status), atomic.LoadUint32(&ver2Phase.step), err)
 				return
 			}

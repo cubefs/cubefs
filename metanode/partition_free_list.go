@@ -67,14 +67,14 @@ func (mp *metaPartition) startFreeList() (err error) {
 
 func (mp *metaPartition) updateVolView(ctx context.Context, convert func(view *proto.DataPartitionsView) *DataPartitionsView) (err error) {
 	volName := mp.config.VolName
-	dataView, err := masterClient.ClientAPI().EncodingGzip().GetDataPartitions(volName)
+	dataView, err := masterClient.ClientAPI().EncodingGzip().GetDataPartitions(context.TODO(), volName)
 	if err != nil {
 		err = fmt.Errorf("updateVolWorker: get data partitions view fail: volume(%v) err(%v)", volName, err)
 		return
 	}
 	mp.vol.UpdatePartitions(ctx, convert(dataView))
 
-	volView, err := masterClient.AdminAPI().GetVolumeSimpleInfo(volName)
+	volView, err := masterClient.AdminAPI().GetVolumeSimpleInfo(context.TODO(), volName)
 	if err != nil {
 		err = fmt.Errorf("updateVolWorker: get volumeinfo fail: volume(%v)  err(%v)", volName, err)
 		return

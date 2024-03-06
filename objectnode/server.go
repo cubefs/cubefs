@@ -381,7 +381,7 @@ func handleStart(s common.Server, cfg *config.Config) (err error) {
 	}
 	// Get cluster info from master
 	var ci *proto.ClusterInfo
-	if ci, err = o.mc.AdminAPI().GetClusterInfo(); err != nil {
+	if ci, err = o.mc.AdminAPI().GetClusterInfo(context.TODO()); err != nil {
 		return
 	}
 	o.updateRegion(ci.Cluster)
