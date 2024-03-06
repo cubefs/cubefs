@@ -71,6 +71,7 @@ const (
 	LocallyProf
 	MinWriteAbleDataPartitionCnt
 	FileSystemName
+	DisableMountSubtype
 	MaxMountOption
 )
 
@@ -160,6 +161,7 @@ func InitMountOptions(opts []MountOption) {
 		"Min writeable data partition count retained int dpSelector when update DataPartitionsView from master",
 		"", int64(10)}
 	opts[FileSystemName] = MountOption{"fileSystemName", "The explicit name of the filesystem", "", ""}
+	opts[DisableMountSubtype] = MountOption{"disableMountSubtype", "Disable Mount Subtype", "", false}
 
 	for i := 0; i < MaxMountOption; i++ {
 		flag.StringVar(&opts[i].cmdlineValue, opts[i].keyword, "", opts[i].description)
@@ -321,4 +323,6 @@ type MountOptions struct {
 	//TrashInterval                       int64
 	TrashDeleteExpiredDirGoroutineLimit int64
 	TrashRebuildGoroutineLimit          int64
+	//disable mount subtype
+	DisableMountSubtype bool
 }
