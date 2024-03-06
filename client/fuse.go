@@ -21,6 +21,7 @@ package main
 //
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"io"
@@ -891,9 +892,12 @@ func freeOSMemory(w http.ResponseWriter, r *http.Request) {
 }
 
 func loadConfFromMaster(opt *proto.MountOptions) (err error) {
+	span, ctxTemp := proto.StartSpanFromContext(context.Background(), "")
+	ctx := proto.ContextWithSpan(ctxTemp, span)
+
 	mc := master.NewMasterClientFromString(opt.Master, false)
 	var volumeInfo *proto.SimpleVolView
-	volumeInfo, err = mc.AdminAPI().GetVolumeSimpleInfo(opt.Volname)
+	volumeInfo, err = mc.AdminAPI().GetVolumeSimpleInfo(ctx, opt.Volname)
 	if err != nil {
 		return
 	}
@@ -908,7 +912,7 @@ func loadConfFromMaster(opt *proto.MountOptions) (err error) {
 	opt.TxConflictRetryInterval = volumeInfo.TxConflictRetryInterval
 
 	var clusterInfo *proto.ClusterInfo
-	clusterInfo, err = mc.AdminAPI().GetClusterInfo()
+	clusterInfo, err = mc.AdminAPI().GetClusterInfo(ctx)
 	if err != nil {
 		return
 	}
