@@ -600,14 +600,16 @@ func (a *Audit) shiftFiles() error {
 		a.logFile.Close()
 		a.writer = nil
 		a.logFile = nil
-
-		if err := os.Rename(a.logFileName, logNewFileName); err != nil {
+		if err = os.Rename(a.logFileName, logNewFileName); err != nil {
 			log.LogErrorf("RenameFile failed, logFileName: %s, logNewFileName: %s, err: %v\n",
 				a.logFileName, logNewFileName, err)
 			return fmt.Errorf("action[shiftFiles] renameFile failed, logFileName %s, logNewFileName %s",
 				a.logFileName, logNewFileName)
 		}
 	}
+
+	// NOTE: try to recycle space when shift file
+	a.removeLogFile()
 
 	return a.newWriterSize(a.writerBufSize)
 }
