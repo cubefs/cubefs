@@ -20,10 +20,10 @@ import (
 	"hash/crc32"
 	"sync/atomic"
 
+	"github.com/cubefs/cubefs/blobstore/util/log"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/repl"
 	"github.com/cubefs/cubefs/storage"
-	"github.com/cubefs/cubefs/util/log"
 )
 
 func (s *DataNode) Prepare(p *repl.Packet) (err error) {
@@ -67,7 +67,7 @@ func (s *DataNode) checkStoreMode(p *repl.Packet) (err error) {
 	if proto.IsTinyExtentType(p.ExtentType) || proto.IsNormalExtentType(p.ExtentType) {
 		return
 	}
-	log.LogErrorf("action[checkStoreMode] dp [%v] reqId [%v] extent type %v", p.PartitionID, p.ReqID, p.ExtentType)
+	log.Errorf("action[checkStoreMode] dp [%v] reqId [%v] extent type %v", p.PartitionID, p.ReqID, p.ExtentType)
 	return ErrIncorrectStoreType
 }
 
@@ -112,7 +112,7 @@ func (s *DataNode) checkPacketAndPrepare(p *repl.Packet) error {
 		err      error
 	)
 
-	log.LogDebugf("action[prepare.checkPacketAndPrepare] pack opcode (%v) p.IsLeaderPacket(%v) p (%v)", p.Opcode, p.IsLeaderPacket(), p)
+	log.Debugf("action[prepare.checkPacketAndPrepare] pack opcode (%v) p.IsLeaderPacket(%v) p (%v)", p.Opcode, p.IsLeaderPacket(), p)
 	if p.IsRandomWrite() || p.IsSnapshotModWriteAppendOperation() || p.IsNormalWriteOperation() {
 		if err = partition.CheckWriteVer(p); err != nil {
 			return err
@@ -132,22 +132,22 @@ func (s *DataNode) checkPacketAndPrepare(p *repl.Packet) error {
 		if proto.IsTinyExtentType(p.ExtentType) {
 			extentID, err = store.GetAvailableTinyExtent()
 			if err != nil {
-				log.LogErrorf("err %v", err)
+				log.Errorf("err %v", err)
 				return fmt.Errorf("checkPacketAndPrepare partition %v GetAvailableTinyExtent error %v", p.PartitionID, err.Error())
 			}
 			p.ExtentID = extentID
 			p.ExtentOffset, err = store.GetTinyExtentOffset(p.ExtentID)
 			if err != nil {
 				err = fmt.Errorf("checkPacketAndPrepare partition %v  %v GetTinyExtentOffset error %v", p.PartitionID, extentID, err.Error())
-				log.LogErrorf("err %v", err)
+				log.Errorf("err %v", err)
 			}
-			log.LogDebugf("action[prepare.checkPacketAndPrepare] dp %v append randomWrite p.ExtentOffset %v Kernel(file)Offset %v",
+			log.Debugf("action[prepare.checkPacketAndPrepare] dp %v append randomWrite p.ExtentOffset %v Kernel(file)Offset %v",
 				p.PartitionID, p.ExtentOffset, p.KernelOffset)
 			return err
 		}
 
 		p.ExtentOffset, err = store.GetExtentSnapshotModOffset(p.ExtentID, p.Size)
-		log.LogDebugf("action[prepare.checkPacketAndPrepare] pack (%v) partition %v %v", p, p.PartitionID, extentID)
+		log.Debugf("action[prepare.checkPacketAndPrepare] pack (%v) partition %v %v", p, p.PartitionID, extentID)
 		if err != nil {
 			return fmt.Errorf("checkPacketAndPrepare partition %v  %v GetSnapshotModExtentOffset error %v", p.PartitionID, extentID, err.Error())
 		}
@@ -163,7 +163,7 @@ func (s *DataNode) checkPacketAndPrepare(p *repl.Packet) error {
 		((p.IsMarkDeleteExtentOperation() && proto.IsTinyExtentType(p.ExtentType)) ||
 			(p.IsMarkSplitExtentOperation() && !proto.IsTinyExtentType(p.ExtentType))) {
 
-		log.LogDebugf("checkPacketAndPrepare. packet opCode %v p.ExtentType %v", p.Opcode, p.ExtentType)
+		log.Debugf("checkPacketAndPrepare. packet opCode %v p.ExtentType %v", p.Opcode, p.ExtentType)
 
 		record := new(proto.TinyExtentDeleteRecord)
 		if err := json.Unmarshal(p.Data[:p.Size], record); err != nil {

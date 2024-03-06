@@ -23,11 +23,11 @@ import (
 	"strconv"
 	"sync/atomic"
 
+	"github.com/cubefs/cubefs/blobstore/util/log"
 	"github.com/cubefs/cubefs/depends/tiglabs/raft"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/storage"
 	"github.com/cubefs/cubefs/util/config"
-	"github.com/cubefs/cubefs/util/log"
 )
 
 var AutoRepairStatus = true
@@ -515,33 +515,33 @@ func (s *DataNode) setDiskBadAPI(w http.ResponseWriter, r *http.Request) {
 
 	if err = r.ParseForm(); err != nil {
 		err = fmt.Errorf("parse form fail: %v", err)
-		log.LogErrorf("[setDiskBadAPI] %v", err.Error())
+		log.Errorf("[setDiskBadAPI] %v", err.Error())
 		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
 	if diskPath = r.FormValue(paramDiskPath); diskPath == "" {
 		err = fmt.Errorf("param(%v) is empty", paramDiskPath)
-		log.LogErrorf("[setDiskBadAPI] %v", err.Error())
+		log.Errorf("[setDiskBadAPI] %v", err.Error())
 		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
 	if disk, err = s.space.GetDisk(diskPath); err != nil {
 		err = fmt.Errorf("not exit such dissk, path: %v", diskPath)
-		log.LogErrorf("[setDiskBadAPI] %v", err.Error())
+		log.Errorf("[setDiskBadAPI] %v", err.Error())
 		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
 	if disk.Status == proto.Unavailable {
 		msg := fmt.Sprintf("disk(%v) status was already unavailable, nothing to do", disk.Path)
-		log.LogInfof("[setDiskBadAPI] %v", msg)
+		log.Infof("[setDiskBadAPI] %v", msg)
 		s.buildSuccessResp(w, msg)
 		return
 	}
 
-	log.LogWarnf("[setDiskBadAPI] set bad disk, path: %v", disk.Path)
+	log.Warnf("[setDiskBadAPI] set bad disk, path: %v", disk.Path)
 	disk.doDiskError()
 
 	s.buildSuccessResp(w, "OK")
