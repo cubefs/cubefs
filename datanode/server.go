@@ -31,6 +31,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/cubefs/cubefs/blobstore/util/log"
 	"github.com/cubefs/cubefs/cmd/common"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/raftstore"
@@ -41,7 +42,6 @@ import (
 	"github.com/cubefs/cubefs/util/config"
 	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/loadutil"
-	"github.com/cubefs/cubefs/util/log"
 
 	"github.com/xtaci/smux"
 )
@@ -250,7 +250,7 @@ func doStart(server common.Server, cfg *config.Config) (err error) {
 
 	// check local partition compare with master ,if lack,then not start
 	if _, err = s.checkLocalPartitionMatchWithMaster(); err != nil {
-		log.LogError(err)
+		log.Error(err)
 		exporter.Warning(err.Error())
 		return
 	}
@@ -318,7 +318,7 @@ func (s *DataNode) parseConfig(cfg *config.Config) (err error) {
 
 	updateInterval := cfg.GetInt(configNameResolveInterval)
 	if updateInterval <= 0 || updateInterval > 60 {
-		log.LogWarnf("name resolving interval[1-60] is set to default: %v", DefaultNameResolveInterval)
+		log.Warnf("name resolving interval[1-60] is set to default: %v", DefaultNameResolveInterval)
 		updateInterval = DefaultNameResolveInterval
 	}
 
@@ -333,7 +333,7 @@ func (s *DataNode) parseConfig(cfg *config.Config) (err error) {
 	MasterClient = masterSDK.NewMasterCLientWithResolver(masters, false, updateInterval)
 	if MasterClient == nil {
 		err = fmt.Errorf("parseConfig: masters addrs format err[%v]", masters)
-		log.LogErrorf("parseConfig: masters addrs format err[%v]", masters)
+		log.Errorf("parseConfig: masters addrs format err[%v]", masters)
 		return err
 	}
 	if err = MasterClient.Start(); err != nil {
@@ -351,15 +351,15 @@ func (s *DataNode) parseConfig(cfg *config.Config) (err error) {
 	diskUnavailablePartitionErrorCount := cfg.GetInt64(ConfigKeyDiskUnavailablePartitionErrorCount)
 	if diskUnavailablePartitionErrorCount <= 0 || diskUnavailablePartitionErrorCount > 100 {
 		diskUnavailablePartitionErrorCount = DefaultDiskUnavailablePartitionErrorCount
-		log.LogDebugf("action[parseConfig] ConfigKeyDiskUnavailablePartitionErrorCount(%v) out of range, set as default(%v)",
+		log.Debugf("action[parseConfig] ConfigKeyDiskUnavailablePartitionErrorCount(%v) out of range, set as default(%v)",
 			diskUnavailablePartitionErrorCount, DefaultDiskUnavailablePartitionErrorCount)
 	}
 	s.diskUnavailablePartitionErrorCount = uint64(diskUnavailablePartitionErrorCount)
-	log.LogDebugf("action[parseConfig] load diskUnavailablePartitionErrorCount(%v)", s.diskUnavailablePartitionErrorCount)
+	log.Debugf("action[parseConfig] load diskUnavailablePartitionErrorCount(%v)", s.diskUnavailablePartitionErrorCount)
 
-	log.LogDebugf("action[parseConfig] load masterAddrs(%v).", MasterClient.Nodes())
-	log.LogDebugf("action[parseConfig] load port(%v).", s.port)
-	log.LogDebugf("action[parseConfig] load zoneName(%v).", s.zoneName)
+	log.Debugf("action[parseConfig] load masterAddrs(%v).", MasterClient.Nodes())
+	log.Debugf("action[parseConfig] load port(%v).", s.port)
+	log.Debugf("action[parseConfig] load zoneName(%v).", s.zoneName)
 	return
 }
 
@@ -372,7 +372,7 @@ func (s *DataNode) initQosLimit(cfg *config.Config) {
 	dn.diskWriteIocc = cfg.GetInt(ConfigDiskWriteIocc)
 	dn.diskWriteIops = cfg.GetInt(ConfigDiskWriteIops)
 	dn.diskWriteFlow = cfg.GetInt(ConfigDiskWriteFlow)
-	log.LogWarnf("action[initQosLimit] set qos [%v], read(iocc:%d iops:%d flow:%d) write(iocc:%d iops:%d flow:%d)",
+	log.Warnf("action[initQosLimit] set qos [%v], read(iocc:%d iops:%d flow:%d) write(iocc:%d iops:%d flow:%d)",
 		dn.diskQosEnable, dn.diskReadIocc, dn.diskReadIops, dn.diskReadFlow, dn.diskWriteIocc, dn.diskWriteIops, dn.diskWriteFlow)
 }
 
@@ -400,14 +400,14 @@ func (s *DataNode) startSpaceManager(cfg *config.Config) (err error) {
 		diskRdonlySpace = DefaultDiskRetainMin
 	}
 
-	log.LogInfof("startSpaceManager preReserveSpace %d", diskRdonlySpace)
+	log.Infof("startSpaceManager preReserveSpace %d", diskRdonlySpace)
 
 	paths := make([]string, 0)
 	diskPath := cfg.GetString(ConfigKeyDiskPath)
 	if diskPath != "" {
 		paths, err = parseDiskPath(diskPath)
 		if err != nil {
-			log.LogErrorf("parse diskpath failed, path %s, err %s", diskPath, err.Error())
+			log.Errorf("parse diskpath failed, path %s, err %s", diskPath, err.Error())
 			return err
 		}
 	} else {
@@ -418,7 +418,7 @@ func (s *DataNode) startSpaceManager(cfg *config.Config) (err error) {
 
 	var wg sync.WaitGroup
 	for _, d := range paths {
-		log.LogDebugf("action[startSpaceManager] load disk raw config(%v).", d)
+		log.Debugf("action[startSpaceManager] load disk raw config(%v).", d)
 
 		// format "PATH:RESET_SIZE
 		arr := strings.Split(d, ":")
@@ -428,7 +428,7 @@ func (s *DataNode) startSpaceManager(cfg *config.Config) (err error) {
 		path := arr[0]
 		fileInfo, err := os.Stat(path)
 		if err != nil {
-			log.LogErrorf("Stat disk path [%v] error: [%s]", path, err)
+			log.Errorf("Stat disk path [%v] error: [%s]", path, err)
 			continue
 		}
 		if !fileInfo.IsDir() {
@@ -436,7 +436,7 @@ func (s *DataNode) startSpaceManager(cfg *config.Config) (err error) {
 		}
 		if s.clusterUuidEnable {
 			if err = config.CheckOrStoreClusterUuid(path, s.clusterUuid, false); err != nil {
-				log.LogErrorf("CheckOrStoreClusterUuid failed: %v", err)
+				log.Errorf("CheckOrStoreClusterUuid failed: %v", err)
 				return fmt.Errorf("CheckOrStoreClusterUuid failed: %v", err.Error())
 			}
 		}
@@ -466,7 +466,7 @@ func (s *DataNode) startSpaceManager(cfg *config.Config) (err error) {
 // execute shell to find all paths
 // out: like, /disk1:1024, /disk2:1024
 func parseDiskPath(pathStr string) (disks []string, err error) {
-	log.LogInfof("parse diskpath, %s", pathStr)
+	log.Infof("parse diskpath, %s", pathStr)
 
 	arr := strings.Split(pathStr, ":")
 	if len(arr) != 2 {
@@ -475,7 +475,7 @@ func parseDiskPath(pathStr string) (disks []string, err error) {
 
 	shell := fmt.Sprintf("mount | grep %s | awk '{print $3}'", arr[0])
 	cmd := exec.Command("/bin/sh", "-c", shell)
-	log.LogWarnf("execute diskPath shell, %s", shell)
+	log.Warnf("execute diskPath shell, %s", shell)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return disks, fmt.Errorf("execute shell failed, %s", err.Error())
@@ -508,7 +508,7 @@ func (s *DataNode) register(cfg *config.Config) {
 		case <-timer.C:
 			var ci *proto.ClusterInfo
 			if ci, err = MasterClient.AdminAPI().GetClusterInfo(); err != nil {
-				log.LogErrorf("action[registerToMaster] cannot get ip from master(%v) err(%v).",
+				log.Errorf("action[registerToMaster] cannot get ip from master(%v) err(%v).",
 					MasterClient.Leader(), err)
 				timer.Reset(2 * time.Second)
 				continue
@@ -522,7 +522,7 @@ func (s *DataNode) register(cfg *config.Config) {
 			}
 			s.localServerAddr = fmt.Sprintf("%s:%v", LocalIP, s.port)
 			if !util.IsIPV4(LocalIP) {
-				log.LogErrorf("action[registerToMaster] got an invalid local ip(%v) from master(%v).",
+				log.Errorf("action[registerToMaster] got an invalid local ip(%v) from master(%v).",
 					LocalIP, masterAddr)
 				timer.Reset(2 * time.Second)
 				continue
@@ -532,14 +532,14 @@ func (s *DataNode) register(cfg *config.Config) {
 			var nodeID uint64
 			if nodeID, err = MasterClient.NodeAPI().AddDataNodeWithAuthNode(fmt.Sprintf("%s:%v", LocalIP, s.port),
 				s.zoneName, s.serviceIDKey); err != nil {
-				log.LogErrorf("action[registerToMaster] cannot register this node to master[%v] err(%v).",
+				log.Errorf("action[registerToMaster] cannot register this node to master[%v] err(%v).",
 					masterAddr, err)
 				timer.Reset(2 * time.Second)
 				continue
 			}
 			exporter.RegistConsul(s.clusterID, ModuleName, cfg)
 			s.nodeID = nodeID
-			log.LogDebugf("register: register DataNode: nodeID(%v)", s.nodeID)
+			log.Debugf("register: register DataNode: nodeID(%v)", s.nodeID)
 			return
 		case <-s.stopC:
 			timer.Stop()
@@ -563,7 +563,7 @@ func (s *DataNode) checkLocalPartitionMatchWithMaster() (lackPartitions []uint64
 	var dataNode *proto.DataNodeInfo
 	for i := 0; i < 3; i++ {
 		if dataNode, err = MasterClient.NodeAPI().GetDataNode(s.localServerAddr); err != nil {
-			log.LogErrorf("checkLocalPartitionMatchWithMaster error %v", err)
+			log.Errorf("checkLocalPartitionMatchWithMaster error %v", err)
 			continue
 		}
 		break
@@ -585,9 +585,9 @@ func (s *DataNode) checkLocalPartitionMatchWithMaster() (lackPartitions []uint64
 	}
 
 	if len(lackPartitions) == 0 {
-		log.LogInfo("checkLocalPartitionMatchWithMaster no lack")
+		log.Info("checkLocalPartitionMatchWithMaster no lack")
 	} else {
-		log.LogErrorf("checkLocalPartitionMatchWithMaster lack ids [%v]", lackPartitions)
+		log.Errorf("checkLocalPartitionMatchWithMaster lack ids [%v]", lackPartitions)
 	}
 	return
 }
@@ -604,12 +604,12 @@ func (s *DataNode) checkPartitionInMemoryMatchWithInDisk() (lackPartitions []uin
 		stat, err := os.Stat(dp.path)
 		if err != nil {
 			lackPartitions = append(lackPartitions, dp.partitionID)
-			log.LogErrorf("action[checkPartitionInMemoryMatchWithInDisk] stat dataPartition[%v] fail, path[%v], err[%v]", dp.partitionID, dp.Path(), err)
+			log.Errorf("action[checkPartitionInMemoryMatchWithInDisk] stat dataPartition[%v] fail, path[%v], err[%v]", dp.partitionID, dp.Path(), err)
 			continue
 		}
 		if !stat.IsDir() {
 			lackPartitions = append(lackPartitions, dp.partitionID)
-			log.LogErrorf("action[checkPartitionInMemoryMatchWithInDisk] dataPartition[%v] is not directory, path[%v]", dp.partitionID, dp.Path())
+			log.Errorf("action[checkPartitionInMemoryMatchWithInDisk] dataPartition[%v] is not directory, path[%v]", dp.partitionID, dp.Path())
 			continue
 		}
 	}
@@ -638,15 +638,15 @@ func (s *DataNode) registerHandler() {
 }
 
 func (s *DataNode) startTCPService() (err error) {
-	log.LogInfo("Start: startTCPService")
+	log.Info("Start: startTCPService")
 	addr := fmt.Sprintf(":%v", s.port)
 	if s.bindIp {
 		addr = fmt.Sprintf("%s:%v", LocalIP, s.port)
 	}
 	l, err := net.Listen(NetworkProtocol, addr)
-	log.LogDebugf("action[startTCPService] listen %v address(%v).", NetworkProtocol, addr)
+	log.Debugf("action[startTCPService] listen %v address(%v).", NetworkProtocol, addr)
 	if err != nil {
-		log.LogError("failed to listen, err:", err)
+		log.Error("failed to listen, err:", err)
 		return
 	}
 	s.tcpListener = l
@@ -654,10 +654,10 @@ func (s *DataNode) startTCPService() (err error) {
 		for {
 			conn, err := ln.Accept()
 			if err != nil {
-				log.LogErrorf("action[startTCPService] failed to accept, err:%s", err.Error())
+				log.Errorf("action[startTCPService] failed to accept, err:%s", err.Error())
 				break
 			}
-			log.LogDebugf("action[startTCPService] accept connection from %s.", conn.RemoteAddr().String())
+			log.Debugf("action[startTCPService] accept connection from %s.", conn.RemoteAddr().String())
 			go s.serveConn(conn)
 		}
 	}(l)
@@ -668,7 +668,7 @@ func (s *DataNode) stopTCPService() (err error) {
 	if s.tcpListener != nil {
 
 		s.tcpListener.Close()
-		log.LogDebugf("action[stopTCPService] stop tcp service.")
+		log.Debugf("action[stopTCPService] stop tcp service.")
 	}
 	return
 }
@@ -685,19 +685,19 @@ func (s *DataNode) serveConn(conn net.Conn) {
 }
 
 func (s *DataNode) startSmuxService(cfg *config.Config) (err error) {
-	log.LogInfo("Start: startSmuxService")
+	log.Info("Start: startSmuxService")
 	addr := fmt.Sprintf(":%v", s.port)
 	if s.bindIp {
 		addr = fmt.Sprintf("%s:%v", LocalIP, s.port)
 	}
 	addr = util.ShiftAddrPort(addr, s.smuxPortShift)
-	log.LogInfof("SmuxListenAddr: (%v)", addr)
+	log.Infof("SmuxListenAddr: (%v)", addr)
 
 	// server
 	l, err := net.Listen(NetworkProtocol, addr)
-	log.LogDebugf("action[startSmuxService] listen %v address(%v).", NetworkProtocol, addr)
+	log.Debugf("action[startSmuxService] listen %v address(%v).", NetworkProtocol, addr)
 	if err != nil {
-		log.LogError("failed to listen smux addr, err:", err)
+		log.Error("failed to listen smux addr, err:", err)
 		return
 	}
 	s.smuxListener = l
@@ -705,10 +705,10 @@ func (s *DataNode) startSmuxService(cfg *config.Config) (err error) {
 		for {
 			conn, err := ln.Accept()
 			if err != nil {
-				log.LogErrorf("action[startSmuxService] failed to accept, err:%s", err.Error())
+				log.Errorf("action[startSmuxService] failed to accept, err:%s", err.Error())
 				break
 			}
-			log.LogDebugf("action[startSmuxService] accept connection from %s.", conn.RemoteAddr().String())
+			log.Debugf("action[startSmuxService] accept connection from %s.", conn.RemoteAddr().String())
 			go s.serveSmuxConn(conn)
 		}
 	}(l)
@@ -718,7 +718,7 @@ func (s *DataNode) startSmuxService(cfg *config.Config) (err error) {
 func (s *DataNode) stopSmuxService() (err error) {
 	if s.smuxListener != nil {
 		s.smuxListener.Close()
-		log.LogDebugf("action[stopSmuxService] stop smux service.")
+		log.Debugf("action[stopSmuxService] stop smux service.")
 	}
 	return
 }
@@ -733,7 +733,7 @@ func (s *DataNode) serveSmuxConn(conn net.Conn) {
 	var err error
 	sess, err = smux.Server(conn, s.smuxServerConfig)
 	if err != nil {
-		log.LogErrorf("action[serveSmuxConn] failed to serve smux connection, addr(%v), err(%v)", c.RemoteAddr(), err)
+		log.Errorf("action[serveSmuxConn] failed to serve smux connection, addr(%v), err(%v)", c.RemoteAddr(), err)
 		return
 	}
 	defer func() {
@@ -744,9 +744,9 @@ func (s *DataNode) serveSmuxConn(conn net.Conn) {
 		stream, err := sess.AcceptStream()
 		if err != nil {
 			if util.FilterSmuxAcceptError(err) != nil {
-				log.LogErrorf("action[startSmuxService] failed to accept, err: %s", err)
+				log.Errorf("action[startSmuxService] failed to accept, err: %s", err)
 			} else {
-				log.LogInfof("action[startSmuxService] accept done, err: %s", err)
+				log.Infof("action[startSmuxService] accept done, err: %s", err)
 			}
 			break
 		}
@@ -808,33 +808,33 @@ func (s *DataNode) parseSmuxConfig(cfg *config.Config) error {
 			return err
 		}
 	}
-	log.LogDebugf("[parseSmuxConfig] load smuxPortShift(%v).", s.smuxPortShift)
-	log.LogDebugf("[parseSmuxConfig] load enableSmuxConnPool(%v).", s.enableSmuxConnPool)
-	log.LogDebugf("[parseSmuxConfig] load smuxServerConfig(%v).", s.smuxServerConfig)
-	log.LogDebugf("[parseSmuxConfig] load smuxConnPoolConfig(%v).", s.smuxConnPoolConfig)
+	log.Debugf("[parseSmuxConfig] load smuxPortShift(%v).", s.smuxPortShift)
+	log.Debugf("[parseSmuxConfig] load enableSmuxConnPool(%v).", s.enableSmuxConnPool)
+	log.Debugf("[parseSmuxConfig] load smuxServerConfig(%v).", s.smuxServerConfig)
+	log.Debugf("[parseSmuxConfig] load smuxConnPoolConfig(%v).", s.smuxConnPoolConfig)
 	return nil
 }
 
 func (s *DataNode) initConnPool() {
 	if s.enableSmuxConnPool {
-		log.LogInfof("Start: init smux conn pool")
+		log.Infof("Start: init smux conn pool")
 		s.smuxConnPool = util.NewSmuxConnectPool(s.smuxConnPoolConfig)
 		s.getRepairConnFunc = func(target string) (net.Conn, error) {
 			addr := util.ShiftAddrPort(target, s.smuxPortShift)
-			log.LogDebugf("[dataNode.getRepairConnFunc] get smux conn, addr(%v)", addr)
+			log.Debugf("[dataNode.getRepairConnFunc] get smux conn, addr(%v)", addr)
 			return s.smuxConnPool.GetConnect(addr)
 		}
 		s.putRepairConnFunc = func(conn net.Conn, forceClose bool) {
-			log.LogDebugf("[dataNode.putRepairConnFunc] put smux conn, addr(%v), forceClose(%v)", conn.RemoteAddr().String(), forceClose)
+			log.Debugf("[dataNode.putRepairConnFunc] put smux conn, addr(%v), forceClose(%v)", conn.RemoteAddr().String(), forceClose)
 			s.smuxConnPool.PutConnect(conn.(*smux.Stream), forceClose)
 		}
 	} else {
 		s.getRepairConnFunc = func(target string) (conn net.Conn, err error) {
-			log.LogDebugf("[dataNode.getRepairConnFunc] get tcp conn, addr(%v)", target)
+			log.Debugf("[dataNode.getRepairConnFunc] get tcp conn, addr(%v)", target)
 			return gConnPool.GetConnect(target)
 		}
 		s.putRepairConnFunc = func(conn net.Conn, forceClose bool) {
-			log.LogDebugf("[dataNode.putRepairConnFunc] put tcp conn, addr(%v), forceClose(%v)", conn.RemoteAddr().String(), forceClose)
+			log.Debugf("[dataNode.putRepairConnFunc] put tcp conn, addr(%v), forceClose(%v)", conn.RemoteAddr().String(), forceClose)
 			gConnPool.PutConnect(conn.(*net.TCPConn), forceClose)
 		}
 	}
@@ -843,7 +843,7 @@ func (s *DataNode) initConnPool() {
 func (s *DataNode) closeSmuxConnPool() {
 	if s.smuxConnPool != nil {
 		s.smuxConnPool.Close()
-		log.LogDebugf("action[stopSmuxService] stop smux conn pool")
+		log.Debugf("action[stopSmuxService] stop smux conn pool")
 	}
 }
 
@@ -887,12 +887,12 @@ func (s *DataNode) scheduleToCheckLackPartitions() {
 		for {
 			lackPartitionsInMem, err := s.checkLocalPartitionMatchWithMaster()
 			if err != nil {
-				log.LogError(err)
+				log.Error(err)
 			}
 			if len(lackPartitionsInMem) > 0 {
 				err = fmt.Errorf("action[scheduleToLackDataPartitions] lackPartitions %v in datanode %v memory",
 					lackPartitionsInMem, s.localServerAddr)
-				log.LogErrorf(err.Error())
+				log.Errorf(err.Error())
 			}
 			s.space.stats.updateMetricLackPartitionsInMem(uint64(len(lackPartitionsInMem)))
 
@@ -900,7 +900,7 @@ func (s *DataNode) scheduleToCheckLackPartitions() {
 			if len(lackPartitionsInDisk) > 0 {
 				err = fmt.Errorf("action[scheduleToLackDataPartitions] lackPartitions %v in datanode %v disk",
 					lackPartitionsInDisk, s.localServerAddr)
-				log.LogErrorf(err.Error())
+				log.Errorf(err.Error())
 			}
 			s.space.stats.updateMetricLackPartitionsInDisk(uint64(len(lackPartitionsInDisk)))
 

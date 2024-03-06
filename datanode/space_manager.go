@@ -21,11 +21,11 @@ import (
 	"sync"
 	"time"
 
+	"github.com/cubefs/cubefs/blobstore/util/log"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/raftstore"
 	"github.com/cubefs/cubefs/util/atomicutil"
 	"github.com/cubefs/cubefs/util/loadutil"
-	"github.com/cubefs/cubefs/util/log"
 	"github.com/shirou/gopsutil/disk"
 )
 
@@ -143,7 +143,7 @@ func (manager *SpaceManager) StartDiskSample() {
 				partitions := manager.GetAllDiskPartitions()
 				samples, err := loadutil.GetDisksIoSample(partitions, diskSampleDuration)
 				if err != nil {
-					log.LogErrorf("failed to sample disk %v\n", err.Error())
+					log.Errorf("failed to sample disk %v\n", err.Error())
 					return
 				}
 				manager.FillIoUtils(samples)
@@ -228,25 +228,25 @@ func (manager *SpaceManager) LoadDisk(path string, reservedSpace, diskRdonlySpac
 		diskRdonlySpace = reservedSpace
 	}
 
-	log.LogDebugf("action[LoadDisk] load disk from path(%v).", path)
+	log.Debugf("action[LoadDisk] load disk from path(%v).", path)
 	visitor = func(dp *DataPartition) {
 		manager.partitionMutex.Lock()
 		defer manager.partitionMutex.Unlock()
 		if _, has := manager.partitions[dp.partitionID]; !has {
 			manager.partitions[dp.partitionID] = dp
-			log.LogDebugf("action[LoadDisk] put partition(%v) to manager manager.", dp.partitionID)
+			log.Debugf("action[LoadDisk] put partition(%v) to manager manager.", dp.partitionID)
 		}
 	}
 
 	if _, err = manager.GetDisk(path); err != nil {
 		disk, err = NewDisk(path, reservedSpace, diskRdonlySpace, maxErrCnt, manager)
 		if err != nil {
-			log.LogErrorf("NewDisk fail err:[%v]", err)
+			log.Errorf("NewDisk fail err:[%v]", err)
 			return
 		}
 		err = disk.RestorePartition(visitor)
 		if err != nil {
-			log.LogErrorf("RestorePartition fail err:[%v]", err)
+			log.Errorf("RestorePartition fail err:[%v]", err)
 			return
 		}
 		manager.putDisk(disk)
@@ -289,7 +289,7 @@ func (manager *SpaceManager) updateMetrics() {
 	maxCapacityToCreatePartition = 0
 	for _, d := range manager.disks {
 		if d.Status == proto.Unavailable {
-			log.LogInfof("disk is broken, not stat disk useage, diskpath %s", d.Path)
+			log.Infof("disk is broken, not stat disk useage, diskpath %s", d.Path)
 			continue
 		}
 
@@ -304,7 +304,7 @@ func (manager *SpaceManager) updateMetrics() {
 		}
 	}
 	manager.diskMutex.RUnlock()
-	log.LogDebugf("action[updateMetrics] total(%v) used(%v) available(%v) totalPartitionSize(%v)  remainingCapacityToCreatePartition(%v) "+
+	log.Debugf("action[updateMetrics] total(%v) used(%v) available(%v) totalPartitionSize(%v)  remainingCapacityToCreatePartition(%v) "+
 		"partitionCnt(%v) maxCapacityToCreatePartition(%v) ", total, used, available, totalPartitionSize, remainingCapacityToCreatePartition, partitionCnt, maxCapacityToCreatePartition)
 	manager.stats.updateMetrics(total, used, available, totalPartitionSize,
 		remainingCapacityToCreatePartition, maxCapacityToCreatePartition, partitionCnt)
@@ -324,7 +324,7 @@ func (manager *SpaceManager) minPartitionCnt(decommissionedDisks []string) (d *D
 	minWeight = math.MaxFloat64
 	for _, disk := range manager.disks {
 		if _, ok := decommissionedDiskMap[disk.Path]; ok {
-			log.LogInfof("action[minPartitionCnt] exclude decommissioned disk[%v]", disk.Path)
+			log.Infof("action[minPartitionCnt] exclude decommissioned disk[%v]", disk.Path)
 			continue
 		}
 		if disk.Status != proto.ReadWrite {
@@ -399,7 +399,7 @@ func (manager *SpaceManager) CreatePartition(request *proto.CreateDataPartitionR
 		CreateType:    request.CreateType,
 		Forbidden:     false,
 	}
-	log.LogInfof("action[CreatePartition] dp %v dpCfg.Peers %v request.Members %v",
+	log.Infof("action[CreatePartition] dp %v dpCfg.Peers %v request.Members %v",
 		dpCfg.PartitionID, dpCfg.Peers, request.Members)
 	dp = manager.partitions[dpCfg.PartitionID]
 	if dp != nil {
@@ -469,7 +469,7 @@ func (s *DataNode) buildHeartBeatResponse(response *proto.DataNodeHeartbeatRespo
 			NeedCompare:                true,
 			DecommissionRepairProgress: partition.decommissionRepairProgress,
 		}
-		log.LogDebugf("action[Heartbeats] dpid(%v), status(%v) total(%v) used(%v) leader(%v) isLeader(%v).", vr.PartitionID, vr.PartitionStatus, vr.Total, vr.Used, leaderAddr, vr.IsLeader)
+		log.Debugf("action[Heartbeats] dpid(%v), status(%v) total(%v) used(%v) leader(%v) isLeader(%v).", vr.PartitionID, vr.PartitionStatus, vr.Total, vr.Used, leaderAddr, vr.IsLeader)
 		response.PartitionReports = append(response.PartitionReports, vr)
 		return true
 	})
