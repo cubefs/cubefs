@@ -253,8 +253,8 @@ const (
 	OpSplitMarkDelete  uint8 = 0xD6
 	OpTryOtherExtent   uint8 = 0xD7
 
-	//hybirdCloud
-	OpDismatchStorageClass     uint8 = 0xD8
+	//hybridCloud
+	OpMismatchStorageClass     uint8 = 0xD8
 	OpDeleteMigrationExtentKey uint8 = 0xD9
 )
 
@@ -703,8 +703,8 @@ func (p *Packet) GetResultMsg() (m string) {
 		m = "OpTxRollbackErr"
 	case OpUploadPartConflictErr:
 		m = "OpUploadPartConflictErr"
-	case OpDismatchStorageClass:
-		m = "OpDismatchStorageClass"
+	case OpMismatchStorageClass:
+		m = "OpMismatchStorageClass:" + string(p.Data)
 	default:
 		return fmt.Sprintf("Unknown ResultCode(%v)", p.ResultCode)
 	}

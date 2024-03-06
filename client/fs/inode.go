@@ -54,8 +54,8 @@ func (s *Super) InodeGet(ino uint64) (*proto.InodeInfo, error) {
 			node.(*File).info = info
 		}
 	}
-	s.ec.RefreshExtentsCache(ino)
-	return info, nil
+	err = s.ec.RefreshExtentsCache(ino)
+	return info, err
 }
 
 func setattr(info *proto.InodeInfo, req *fuse.SetattrRequest) (valid uint32) {

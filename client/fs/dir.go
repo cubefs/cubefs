@@ -349,13 +349,26 @@ func (d *Dir) Lookup(ctx context.Context, req *fuse.LookupRequest, resp *fuse.Lo
 		}
 		ino = cino
 	}
-
-	info, err := d.super.InodeGet(ino)
-	if err != nil {
-		log.LogErrorf("Lookup: parent(%v) name(%v) ino(%v) err(%v)", d.info.Inode, req.Name, ino, err)
-		dummyInodeInfo := &proto.InodeInfo{Inode: ino}
-		dummyChild := NewFile(d.super, dummyInodeInfo, DefaultFlag, d.info.Inode, req.Name)
-		return dummyChild, nil
+	var info *proto.InodeInfo
+	for {
+		info, err = d.super.InodeGet(ino)
+		if err != nil {
+			//if OpMismatchStorageClass ,clear nodeCache and inode cache
+			if strings.Contains(err.Error(), "OpMismatchStorageClass") {
+				d.super.fslock.Lock()
+				delete(d.super.nodeCache, ino)
+				d.super.fslock.Unlock()
+				d.super.ic.Delete(ino)
+				info, err = d.super.InodeGet(ino)
+				if err == nil {
+					break
+				}
+			}
+			log.LogErrorf("Lookup: parent(%v) name(%v) ino(%v) err(%v)", d.info.Inode, req.Name, ino, err)
+			dummyInodeInfo := &proto.InodeInfo{Inode: ino}
+			dummyChild := NewFile(d.super, dummyInodeInfo, DefaultFlag, d.info.Inode, req.Name)
+			return dummyChild, nil
+		}
 	}
 	mode := proto.OsMode(info.Mode)
 	d.super.fslock.Lock()
