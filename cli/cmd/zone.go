@@ -15,6 +15,7 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/cubefs/cubefs/proto"
@@ -58,7 +59,7 @@ func newZoneListCmd(client *sdk.MasterClient) *cobra.Command {
 			defer func() {
 				errout(err)
 			}()
-			if zones, err = client.AdminAPI().ListZones(); err != nil {
+			if zones, err = client.AdminAPI().ListZones(context.TODO()); err != nil {
 				return
 			}
 			zoneTablePattern := "%-8v    %-10v\n"
@@ -87,7 +88,7 @@ func newZoneInfoCmd(client *sdk.MasterClient) *cobra.Command {
 				errout(err)
 			}()
 			zoneName = args[0]
-			if topo, err = client.AdminAPI().Topo(); err != nil {
+			if topo, err = client.AdminAPI().Topo(context.TODO()); err != nil {
 				return
 			}
 
@@ -128,7 +129,7 @@ func newZoneUpdateCmd(client *sdk.MasterClient) *cobra.Command {
 				errout(err)
 			}()
 			zoneName := args[0]
-			if err = client.AdminAPI().UpdateZone(zoneName, enable, dataNodesetSelector, metaNodesetSelector, dataNodeSelector, metaNodeSelector); err != nil {
+			if err = client.AdminAPI().UpdateZone(context.TODO(), zoneName, enable, dataNodesetSelector, metaNodesetSelector, dataNodeSelector, metaNodeSelector); err != nil {
 				return
 			}
 			stdout(fmt.Sprintf("Zone %v has been update successfully!\n", zoneName))

@@ -15,6 +15,7 @@
 package objectnode
 
 import (
+	"context"
 	"crypto/md5"
 	"encoding/hex"
 	"encoding/json"
@@ -120,7 +121,7 @@ func (o *ObjectNode) createBucketHandler(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	if err = o.mc.AdminAPI().CreateDefaultVolume(bucket, userInfo.UserID); err != nil {
+	if err = o.mc.AdminAPI().CreateDefaultVolume(context.TODO(), bucket, userInfo.UserID); err != nil {
 		log.LogErrorf("createBucketHandler: create bucket fail: requestID(%v) volume(%v) accessKey(%v) err(%v)",
 			GetRequestID(r), bucket, param.AccessKey(), err)
 		return
@@ -196,7 +197,7 @@ func (o *ObjectNode) deleteBucketHandler(w http.ResponseWriter, r *http.Request)
 			GetRequestID(r), bucket, userInfo.UserID, err)
 		return
 	}
-	if err = o.mc.AdminAPI().DeleteVolume(bucket, authKey); err != nil {
+	if err = o.mc.AdminAPI().DeleteVolume(context.TODO(), bucket, authKey); err != nil {
 		log.LogErrorf("deleteBucketHandler: delete volume fail: requestID(%v) volume(%v) accessKey(%v) err(%v)",
 			GetRequestID(r), bucket, param.AccessKey(), err)
 		return

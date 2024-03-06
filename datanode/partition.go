@@ -15,6 +15,7 @@
 package datanode
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"hash/crc32"
@@ -422,7 +423,7 @@ func (partition *DataPartition) fsmVersionOp(opItem *RaftCmdItem) (err error) {
 
 func (dp *DataPartition) getVerListFromMaster() (err error) {
 	var verList *proto.VolVersionInfoList
-	verList, err = MasterClient.AdminAPI().GetVerList(dp.volumeID)
+	verList, err = MasterClient.AdminAPI().GetVerList(context.TODO(), dp.volumeID)
 	if err != nil {
 		log.Errorf("action[onStart] GetVerList err[%v]", err)
 		return
@@ -807,7 +808,7 @@ func (dp *DataPartition) fetchReplicasFromMaster() (isLeader bool, replicas []st
 	var partition *proto.DataPartitionInfo
 	retry := 0
 	for {
-		if partition, err = MasterClient.AdminAPI().GetDataPartition(dp.volumeID, dp.partitionID); err != nil {
+		if partition, err = MasterClient.AdminAPI().GetDataPartition(context.TODO(), dp.volumeID, dp.partitionID); err != nil {
 			retry++
 			if retry > 5 {
 				isLeader = false
@@ -1022,7 +1023,7 @@ func (dp *DataPartition) canRemoveSelf() (canRemove bool, err error) {
 	var partition *proto.DataPartitionInfo
 	retry := 0
 	for {
-		if partition, err = MasterClient.AdminAPI().GetDataPartition(dp.volumeID, dp.partitionID); err != nil {
+		if partition, err = MasterClient.AdminAPI().GetDataPartition(context.TODO(), dp.volumeID, dp.partitionID); err != nil {
 			log.Errorf("action[canRemoveSelf] err[%v]", err)
 			retry++
 			if retry > 60 {
@@ -1093,7 +1094,7 @@ func (vo *VolMap) getSimpleVolView(VolumeID string) (vv *proto.SimpleVolView, er
 		lastUpdateTime: time.Time{},
 	}
 
-	if vv, err = MasterClient.AdminAPI().GetVolumeSimpleInfo(VolumeID); err != nil {
+	if vv, err = MasterClient.AdminAPI().GetVolumeSimpleInfo(context.TODO(), VolumeID); err != nil {
 		log.Errorf("action[GetVolumeSimpleInfo] cannot get vol(%v) from master(%v) err(%v).",
 			VolumeID, MasterClient.Leader(), err)
 		return nil, err

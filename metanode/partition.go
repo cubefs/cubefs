@@ -658,7 +658,7 @@ func (mp *metaPartition) versionInit(ctx context.Context, isCreate bool) (err er
 		return
 	}
 	var verList *proto.VolVersionInfoList
-	verList, err = masterClient.AdminAPI().GetVerList(mp.config.VolName)
+	verList, err = masterClient.AdminAPI().GetVerList(ctx, mp.config.VolName)
 
 	if err != nil {
 		getSpan(ctx).Errorf("action[onStart] GetVerList err[%v]", err)
@@ -704,13 +704,13 @@ func (mp *metaPartition) onStart(ctx context.Context, isCreate bool) (err error)
 	}
 
 	// set EBS Client
-	if clusterInfo, err = masterClient.AdminAPI().GetClusterInfo(); err != nil {
+	if clusterInfo, err = masterClient.AdminAPI().GetClusterInfo(ctx); err != nil {
 		span.Errorf("action[onStart] GetClusterInfo err[%v]", err)
 		return
 	}
 
 	var volumeInfo *proto.SimpleVolView
-	if volumeInfo, err = masterClient.AdminAPI().GetVolumeSimpleInfo(mp.config.VolName); err != nil {
+	if volumeInfo, err = masterClient.AdminAPI().GetVolumeSimpleInfo(ctx, mp.config.VolName); err != nil {
 		span.Errorf("action[onStart] GetVolumeSimpleInfo err[%v]", err)
 		return
 	}
@@ -761,7 +761,7 @@ func (mp *metaPartition) onStart(ctx context.Context, isCreate bool) (err error)
 		return
 	}
 	// do cache TTL die out process
-	if err = mp.cacheTTLWork(); err != nil {
+	if err = mp.cacheTTLWork(ctx); err != nil {
 		err = errors.NewErrorf("[onStart] start CacheTTLWork id=%d: %s",
 			mp.config.PartitionId, err.Error())
 		return
@@ -1331,7 +1331,7 @@ func (mp *metaPartition) Reset() (err error) {
 
 func (mp *metaPartition) canRemoveSelf(ctx context.Context) (canRemove bool, err error) {
 	var partition *proto.MetaPartitionInfo
-	if partition, err = masterClient.ClientAPI().GetMetaPartition(mp.config.PartitionId); err != nil {
+	if partition, err = masterClient.ClientAPI().GetMetaPartition(ctx, mp.config.PartitionId); err != nil {
 		getSpan(ctx).Errorf("action[canRemoveSelf] err[%v]", err)
 		return
 	}
@@ -1540,9 +1540,9 @@ func (mp *metaPartition) delPartitionInodesVersion(ctx context.Context, verSeq u
 }
 
 // cacheTTLWork only happen in datalake situation
-func (mp *metaPartition) cacheTTLWork() (err error) {
+func (mp *metaPartition) cacheTTLWork(ctx context.Context) (err error) {
 	// check volume type, only Cold volume will do the cache ttl.
-	volView, mcErr := masterClient.ClientAPI().GetVolumeWithoutAuthKey(mp.config.VolName)
+	volView, mcErr := masterClient.ClientAPI().GetVolumeWithoutAuthKey(ctx, mp.config.VolName)
 	if mcErr != nil {
 		err = fmt.Errorf("cacheTTLWork: can't get volume info: partitoinID(%v) volume(%v)",
 			mp.config.PartitionId, mp.config.VolName)
@@ -1553,7 +1553,7 @@ func (mp *metaPartition) cacheTTLWork() (err error) {
 	}
 
 	if mp.verSeq > 0 {
-		log.Warnf("[doCacheTTL] volume [%v] enable snapshot.exit cache ttl, mp[%v]", mp.GetVolName(), mp.config.PartitionId)
+		getSpan(ctx).Warnf("[doCacheTTL] volume [%v] enable snapshot.exit cache ttl, mp[%v]", mp.GetVolName(), mp.config.PartitionId)
 		return
 	}
 
@@ -1586,7 +1586,7 @@ func (mp *metaPartition) doCacheTTL(cacheTTL int) (err error) {
 			}
 
 			// get the last cacheTTL
-			volView, mcErr := masterClient.ClientAPI().GetVolumeWithoutAuthKey(mp.config.VolName)
+			volView, mcErr := masterClient.ClientAPI().GetVolumeWithoutAuthKey(ctx, mp.config.VolName)
 			if mcErr != nil {
 				err = fmt.Errorf("[doCacheTTL]: can't get volume info: partitoinID(%v) volume(%v)",
 					mp.config.PartitionId, mp.config.VolName)

@@ -85,7 +85,7 @@ type NameResolver struct {
 // and PORT must be the same
 func NewNameResolver(addrPorts []string) (ns *NameResolver, err error) {
 	if len(addrPorts) == 0 {
-		log.LogErrorf("NameResolver: empty addresses for name resolver")
+		log.Errorf("NameResolver: empty addresses for name resolver")
 		return nil, fmt.Errorf("empty addresses for name resolver")
 	}
 	var domains []string
@@ -106,21 +106,21 @@ func NewNameResolver(addrPorts []string) (ns *NameResolver, err error) {
 		if arrNum == 2 {
 			p, err = strconv.ParseUint(arr[1], 10, 64)
 			if err != nil {
-				log.LogErrorf("NameResolver: wrong addr format [%v]", ap)
+				log.Errorf("NameResolver: wrong addr format [%v]", ap)
 				return nil, fmt.Errorf("wrong addr format [%v]", ap)
 			}
 
 		} else if arrNum == 1 {
 			p = 80
 		} else {
-			log.LogErrorf("NameResolver: wrong addr format [%v]", ap)
+			log.Errorf("NameResolver: wrong addr format [%v]", ap)
 			return nil, fmt.Errorf("wrong addr format [%v]", ap)
 		}
 
 		if port == 0 {
 			port = p
 		} else if port != p {
-			log.LogErrorf("NameResolver: ports are not the same")
+			log.Errorf("NameResolver: ports are not the same")
 			return nil, fmt.Errorf("ports are not the same")
 		}
 
@@ -129,7 +129,7 @@ func NewNameResolver(addrPorts []string) (ns *NameResolver, err error) {
 			if IsValidDomain(arr[0]) {
 				domains = append(domains, arr[0])
 			} else {
-				log.LogErrorf("NameResolver: wrong addr format [%v]", ap)
+				log.Errorf("NameResolver: wrong addr format [%v]", ap)
 				return nil, fmt.Errorf("wrong addr format [%v]", ap)
 			}
 		} else {
@@ -144,7 +144,7 @@ func NewNameResolver(addrPorts []string) (ns *NameResolver, err error) {
 		port:    port,
 		ic:      ic,
 	}
-	log.LogDebugf("NameResolver: add ip[%v], domain[%v], port[%v]", ips, domains, port)
+	log.Debugf("NameResolver: add ip[%v], domain[%v], port[%v]", ips, domains, port)
 	return ns, nil
 }
 
@@ -196,7 +196,7 @@ func (ns *NameResolver) Resolve() (changed bool, err error) {
 		for _, domain := range ns.domains {
 			addrs, err = net.LookupIP(domain)
 			if err != nil {
-				log.LogWarnf("domain [%v] resolved failed", domain)
+				log.Warnf("domain [%v] resolved failed", domain)
 				continue
 			} else {
 				for _, ip := range addrs {
@@ -220,10 +220,10 @@ func (ns *NameResolver) Resolve() (changed bool, err error) {
 	}
 	changed = ns.isChanged(ipSet)
 	if changed {
-		log.LogInfof("Resolve: resolving result is changed from %v to %v", ns.ic.Ips, ips)
+		log.Infof("Resolve: resolving result is changed from %v to %v", ns.ic.Ips, ips)
 		ns.ic.SetIps(ips)
 	} else {
-		log.LogDebugf("Resolve: resolving result is not changed %v", ns.ic.Ips)
+		log.Debugf("Resolve: resolving result is not changed %v", ns.ic.Ips)
 	}
 
 	ns.ic.UpdateTs()

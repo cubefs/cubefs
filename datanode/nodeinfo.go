@@ -1,6 +1,7 @@
 package datanode
 
 import (
+	"context"
 	"sync/atomic"
 	"time"
 
@@ -39,7 +40,7 @@ func (m *DataNode) stopUpdateNodeInfo() {
 }
 
 func (m *DataNode) updateNodeInfo() {
-	clusterInfo, err := MasterClient.AdminAPI().GetClusterInfo()
+	clusterInfo, err := MasterClient.AdminAPI().GetClusterInfo(context.TODO())
 	if err != nil {
 		log.Errorf("[updateDataNodeInfo] %s", err.Error())
 		return
