@@ -37,6 +37,7 @@ const (
 	obsoleteDentryDumpFileName string = "dentry.dump.obsolete"
 	pathDumpFileName           string = "path.dump"
 	normalDir                  string = "normal"
+	migrateDir                 string = "migrate"
 	beforeTimeFile             string = "before_time"
 	verifyInfoFile             string = "verify_info"
 )
