@@ -451,7 +451,7 @@ func getExtentsByMpId(dir string, volname string, mpId string) {
 				log.LogDebugf("inode:%v, extent:%v", ino.Inode, eks)
 			}
 
-			walkFunc := func(i int, ek proto.ExtentKey) bool {
+			walkFunc := func(_ int, ek proto.ExtentKey) bool {
 				if storage.IsTinyExtent(ek.ExtentId) {
 					return true
 				}
