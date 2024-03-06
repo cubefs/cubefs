@@ -31,15 +31,15 @@ import (
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/config"
 	"github.com/cubefs/cubefs/util/exporter"
-	"github.com/cubefs/cubefs/util/log"
 )
 
-func (m *Server) startHTTPService(modulename string, cfg *config.Config) {
+func (m *Server) startHTTPService(ctx context.Context, modulename string, cfg *config.Config) {
+	span := proto.SpanFromContext(ctx)
 	router := mux.NewRouter().SkipClean(true)
-	m.registerAPIRoutes(router)
-	m.registerAPIMiddleware(router)
+	m.registerAPIRoutes(ctx, router)
+	m.registerAPIMiddleware(ctx, router)
 	if m.cluster.authenticate {
-		m.registerAuthenticationMiddleware(router)
+		m.registerAuthenticationMiddleware(ctx, router)
 	}
 	exporter.InitWithRouter(modulename, cfg, router, m.port)
 	addr := fmt.Sprintf(":%s", m.port)
@@ -56,7 +56,7 @@ func (m *Server) startHTTPService(modulename string, cfg *config.Config) {
 
 	serveAPI := func() {
 		if err := server.ListenAndServe(); err != nil {
-			log.LogErrorf("serveAPI: serve http server failed: err(%v)", err)
+			span.Errorf("serveAPI: serve http server failed: err(%v)", err)
 			return
 		}
 	}
@@ -69,14 +69,14 @@ func (m *Server) isClientPartitionsReq(r *http.Request) bool {
 	return r.URL.Path == proto.ClientDataPartitions
 }
 
-func (m *Server) isFollowerRead(r *http.Request) (followerRead bool) {
+func (m *Server) isFollowerRead(ctx context.Context, r *http.Request) (followerRead bool) {
 	followerRead = false
-
+	span := proto.SpanFromContext(ctx)
 	if r.URL.Path == proto.ClientDataPartitions && !m.partition.IsRaftLeader() {
 		if volName, err := parseAndExtractName(r); err == nil {
-			log.LogInfof("action[interceptor] followerRead vol[%v]", volName)
+			span.Infof("action[interceptor] followerRead vol[%v]", volName)
 			if followerRead = m.cluster.followerReadManager.IsVolViewReady(volName); followerRead {
-				log.LogInfof("action[interceptor] vol [%v] followerRead [%v], GetName[%v] IsRaftLeader[%v]",
+				span.Infof("action[interceptor] vol [%v] followerRead [%v], GetName[%v] IsRaftLeader[%v]",
 					volName, followerRead, r.URL.Path, m.partition.IsRaftLeader())
 				return
 			}
@@ -90,23 +90,24 @@ func (m *Server) isFollowerRead(r *http.Request) (followerRead bool) {
 	return
 }
 
-func (m *Server) registerAPIMiddleware(route *mux.Router) {
+func (m *Server) registerAPIMiddleware(ctx context.Context, route *mux.Router) {
+	span := proto.SpanFromContext(ctx)
 	var interceptor mux.MiddlewareFunc = func(next http.Handler) http.Handler {
 		return http.HandlerFunc(
 			func(w http.ResponseWriter, r *http.Request) {
-				log.LogDebugf("action[interceptor] request, method[%v] path[%v] query[%v]", r.Method, r.URL.Path, r.URL.Query())
+				span.Debugf("action[interceptor] request, method[%v] path[%v] query[%v]", r.Method, r.URL.Path, r.URL.Query())
 
 				if m.partition.IsRaftLeader() {
-					if err := m.cluster.apiLimiter.Wait(r.URL.Path); err != nil {
-						log.LogWarnf("action[interceptor] too many requests, path[%v]", r.URL.Path)
+					if err := m.cluster.apiLimiter.Wait(ctx, r.URL.Path); err != nil {
+						span.Warnf("action[interceptor] too many requests, path[%v]", r.URL.Path)
 						errMsg := fmt.Sprintf("too many requests for api: %s", html.EscapeString(r.URL.Path))
 						http.Error(w, errMsg, http.StatusTooManyRequests)
 						return
 					}
 				} else {
 					if m.cluster.apiLimiter.IsFollowerLimiter(r.URL.Path) {
-						if err := m.cluster.apiLimiter.Wait(r.URL.Path); err != nil {
-							log.LogWarnf("action[interceptor] too many requests, path[%v]", r.URL.Path)
+						if err := m.cluster.apiLimiter.Wait(ctx, r.URL.Path); err != nil {
+							span.Warnf("action[interceptor] too many requests, path[%v]", r.URL.Path)
 							errMsg := fmt.Sprintf("too many requests for api: %s", html.EscapeString(r.URL.Path))
 							http.Error(w, errMsg, http.StatusTooManyRequests)
 							return
@@ -114,32 +115,32 @@ func (m *Server) registerAPIMiddleware(route *mux.Router) {
 					}
 				}
 
-				log.LogInfof("action[interceptor] request, remote[%v] method[%v] path[%v] query[%v]",
+				span.Infof("action[interceptor] request, remote[%v] method[%v] path[%v] query[%v]",
 					r.RemoteAddr, r.Method, r.URL.Path, r.URL.Query())
 				if mux.CurrentRoute(r).GetName() == proto.AdminGetIP {
 					next.ServeHTTP(w, r)
 					return
 				}
 
-				isFollowerRead := m.isFollowerRead(r)
+				isFollowerRead := m.isFollowerRead(ctx, r)
 				if m.partition.IsRaftLeader() || isFollowerRead {
 					if m.metaReady || isFollowerRead {
-						log.LogDebugf("action[interceptor] request, method[%v] path[%v] query[%v]", r.Method, r.URL.Path, r.URL.Query())
+						span.Debugf("action[interceptor] request, method[%v] path[%v] query[%v]", r.Method, r.URL.Path, r.URL.Query())
 						next.ServeHTTP(w, r)
 						return
 					}
-					log.LogWarnf("action[interceptor] leader meta has not ready")
+					span.Warnf("action[interceptor] leader meta has not ready")
 					http.Error(w, m.leaderInfo.addr, http.StatusBadRequest)
 					return
 				} else if m.leaderInfo.addr != "" {
 					if m.isClientPartitionsReq(r) {
-						log.LogErrorf("action[interceptor] request, method[%v] path[%v] query[%v] status [%v]", r.Method, r.URL.Path, r.URL.Query(), isFollowerRead)
+						span.Errorf("action[interceptor] request, method[%v] path[%v] query[%v] status [%v]", r.Method, r.URL.Path, r.URL.Query(), isFollowerRead)
 						http.Error(w, m.leaderInfo.addr, http.StatusBadRequest)
 						return
 					}
 					m.proxy(w, r)
 				} else {
-					log.LogErrorf("action[interceptor] no leader,request[%v]", r.URL)
+					span.Errorf("action[interceptor] no leader,request[%v]", r.URL)
 					http.Error(w, "no leader", http.StatusBadRequest)
 					return
 				}
@@ -217,7 +218,8 @@ var AuthenticationUri2MsgTypeMap = map[string]proto.MsgType{
 	proto.UpdateZone: proto.MsgMasterUpdateZoneReq,
 }
 
-func (m *Server) registerAuthenticationMiddleware(router *mux.Router) {
+func (m *Server) registerAuthenticationMiddleware(ctx context.Context, router *mux.Router) {
+	span := proto.SpanFromContext(ctx)
 	authenticationInterceptor := func(next http.Handler) http.Handler {
 		return http.HandlerFunc(
 			func(w http.ResponseWriter, r *http.Request) {
@@ -226,7 +228,7 @@ func (m *Server) registerAuthenticationMiddleware(router *mux.Router) {
 				msgType, match := AuthenticationUri2MsgTypeMap[uriPath]
 				if match {
 					if err := m.cluster.parseAndCheckClientIDKey(r, msgType); err != nil {
-						log.LogInfof("action[AuthenticationInterceptor] parseAndCheckClientKey failed, RequestURI[%v], err[%v]",
+						span.Infof("action[AuthenticationInterceptor] parseAndCheckClientKey failed, RequestURI[%v], err[%v]",
 							r.RequestURI, err)
 						sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeInvalidClientIDKey, Msg: err.Error()})
 						return
@@ -238,13 +240,13 @@ func (m *Server) registerAuthenticationMiddleware(router *mux.Router) {
 	router.Use(authenticationInterceptor)
 }
 
-func (m *Server) registerAPIRoutes(router *mux.Router) {
+func (m *Server) registerAPIRoutes(ctx context.Context, router *mux.Router) {
 	// graphql api for cluster
 	cs := &ClusterService{user: m.user, cluster: m.cluster, conf: m.config, leaderInfo: m.leaderInfo}
-	m.registerHandler(router, proto.AdminClusterAPI, cs.Schema())
+	m.registerHandler(ctx, router, proto.AdminClusterAPI, cs.Schema())
 
 	us := &UserService{user: m.user, cluster: m.cluster}
-	m.registerHandler(router, proto.AdminUserAPI, us.Schema())
+	m.registerHandler(ctx, router, proto.AdminUserAPI, us.Schema())
 
 	// vs := &VolumeService{user: m.user, cluster: m.cluster}
 	// m.registerHandler(router, proto.AdminVolumeAPI, vs.Schema())
@@ -751,19 +753,19 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 		HandlerFunc(m.S3QosDelete)
 }
 
-func (m *Server) registerHandler(router *mux.Router, model string, schema *graphql.Schema) {
+func (m *Server) registerHandler(ctx context.Context, router *mux.Router, model string, schema *graphql.Schema) {
 	introspection.AddIntrospectionToSchema(schema)
 
 	gHandler := graphql.HTTPHandler(schema)
 	router.NewRoute().Name(model).Methods(http.MethodGet, http.MethodPost).Path(model).HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		userID := request.Header.Get(proto.UserKey)
 		if userID == "" {
-			ErrResponse(writer, fmt.Errorf("not found [%s] in header", proto.UserKey))
+			ErrResponse(ctx, writer, fmt.Errorf("not found [%s] in header", proto.UserKey))
 			return
 		}
 
-		if ui, err := m.user.getUserInfo(userID); err != nil {
-			ErrResponse(writer, fmt.Errorf("user:[%s] not found ", userID))
+		if ui, err := m.user.getUserInfo(ctx, userID); err != nil {
+			ErrResponse(ctx, writer, fmt.Errorf("user:[%s] not found ", userID))
 			return
 		} else {
 			request = request.WithContext(context.WithValue(request.Context(), proto.UserInfoKey, ui))
@@ -773,13 +775,13 @@ func (m *Server) registerHandler(router *mux.Router, model string, schema *graph
 	})
 }
 
-func ErrResponse(w http.ResponseWriter, err error) {
+func ErrResponse(ctx context.Context, w http.ResponseWriter, err error) {
 	response := struct {
 		Errors []string `json:"errors"`
 	}{
 		Errors: []string{err.Error()},
 	}
-
+	span := proto.SpanFromContext(ctx)
 	responseJSON, err := json.Marshal(response)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -789,7 +791,7 @@ func ErrResponse(w http.ResponseWriter, err error) {
 		w.Header().Set("Content-Type", "application/json")
 	}
 	if _, e := w.Write(responseJSON); e != nil {
-		log.LogErrorf("send response has err:[%s]", e)
+		span.Errorf("send response has err:[%s]", e)
 	}
 }
 

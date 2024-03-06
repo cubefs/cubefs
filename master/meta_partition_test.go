@@ -1,34 +1,37 @@
 package master
 
 import (
+	"context"
 	"fmt"
 	"testing"
 	"time"
 
+	"github.com/cubefs/cubefs/blobstore/common/trace"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestMetaPartition(t *testing.T) {
-	server.cluster.checkDataNodeHeartbeat()
-	server.cluster.checkMetaNodeHeartbeat()
+	_, ctx := trace.StartSpanFromContextWithTraceID(context.Background(), "", "meta-partition-test")
+	server.cluster.checkDataNodeHeartbeat(ctx)
+	server.cluster.checkMetaNodeHeartbeat(ctx)
 	time.Sleep(5 * time.Second)
-	server.cluster.checkMetaPartitions()
+	server.cluster.checkMetaPartitions(ctx)
 	commonVol, err := server.cluster.getVol(commonVolName)
 	if err != nil {
 		t.Error(err)
 		return
 	}
-	createMetaPartition(commonVol, t)
+	createMetaPartition(ctx, commonVol, t)
 	maxPartitionID := commonVol.maxPartitionID()
 	getMetaPartition(commonVol.Name, maxPartitionID, t)
 	loadMetaPartitionTest(commonVol, maxPartitionID, t)
-	server.cluster.checkMetaNodeHeartbeat()
+	server.cluster.checkMetaNodeHeartbeat(ctx)
 	time.Sleep(5 * time.Second)
-	decommissionMetaPartition(commonVol, maxPartitionID, t)
+	decommissionMetaPartition(ctx, commonVol, maxPartitionID, t)
 }
 
-func createMetaPartition(vol *Vol, t *testing.T) {
+func createMetaPartition(ctx context.Context, vol *Vol, t *testing.T) {
 	count := 3
 	vol.mpsLock.RLock()
 	oldPartitionCount := len(vol.MetaPartitions)
@@ -61,7 +64,7 @@ func createMetaPartition(vol *Vol, t *testing.T) {
 	}
 	vol.mpsLock.RUnlock()
 
-	server.cluster.checkMetaNodeHeartbeat()
+	server.cluster.checkMetaNodeHeartbeat(ctx)
 }
 
 func getMetaPartition(volName string, id uint64, t *testing.T) {
@@ -75,8 +78,8 @@ func loadMetaPartitionTest(vol *Vol, id uint64, t *testing.T) {
 	process(reqURL, t)
 }
 
-func decommissionMetaPartition(vol *Vol, id uint64, t *testing.T) {
-	server.cluster.checkMetaNodeHeartbeat()
+func decommissionMetaPartition(ctx context.Context, vol *Vol, id uint64, t *testing.T) {
+	server.cluster.checkMetaNodeHeartbeat(ctx)
 	time.Sleep(5 * time.Second)
 	reqURL := fmt.Sprintf("%v%v", hostAddr, proto.AdminGetCluster)
 	process(reqURL, t)

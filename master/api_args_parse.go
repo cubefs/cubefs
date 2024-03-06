@@ -30,7 +30,6 @@ import (
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/compressor"
 	"github.com/cubefs/cubefs/util/cryptoutil"
-	"github.com/cubefs/cubefs/util/log"
 )
 
 // Parse the request that adds/deletes a raft node.
@@ -246,24 +245,25 @@ func parseVolName(r *http.Request) (name string, err error) {
 }
 
 func parseVolVerStrategy(r *http.Request) (strategy proto.VolumeVerStrategy, isForce bool, err error) {
+	span := proto.SpanFromContext(r.Context())
 	var value string
 	if value = r.FormValue(enableKey); value == "" {
 		strategy.Enable = true
 	} else {
 		if strategy.Enable, err = strconv.ParseBool(value); err != nil {
-			log.LogErrorf("parseVolVerStrategy. strategy.Enable %v strategy %v", strategy.Enable, strategy)
+			span.Errorf("parseVolVerStrategy. strategy.Enable %v strategy %v", strategy.Enable, strategy)
 			return
 		}
 	}
 
 	strategy.KeepVerCnt, err = parseUintParam(r, countKey)
 	if strategy.Enable && err != nil {
-		log.LogErrorf("parseVolVerStrategy. strategy.Enable %v strategy %v", strategy.Enable, strategy)
+		span.Errorf("parseVolVerStrategy. strategy.Enable %v strategy %v", strategy.Enable, strategy)
 		return
 	}
 	strategy.Periodic, err = parseUintParam(r, Periodic)
 	if strategy.Enable && err != nil {
-		log.LogErrorf("parseVolVerStrategy. strategy.Enable %v strategy %v", strategy.Enable, strategy)
+		span.Errorf("parseVolVerStrategy. strategy.Enable %v strategy %v", strategy.Enable, strategy)
 		return
 	}
 
@@ -272,7 +272,7 @@ func parseVolVerStrategy(r *http.Request) (strategy proto.VolumeVerStrategy, isF
 		strategy.ForceUpdate, _ = strconv.ParseBool(value)
 	}
 
-	log.LogDebugf("parseVolVerStrategy. strategy %v", strategy)
+	span.Debugf("parseVolVerStrategy. strategy %v", strategy)
 	return
 }
 
@@ -1173,7 +1173,6 @@ func parseAndExtractSetNodeSetInfoParams(r *http.Request) (params map[string]int
 		nodesetId, err = strconv.ParseUint(value, 10, 64)
 		if err != nil {
 			err = unmatchedKey(idKey)
-			err = unmatchedKey(idKey)
 			return
 		}
 		params[idKey] = nodesetId
@@ -1181,7 +1180,7 @@ func parseAndExtractSetNodeSetInfoParams(r *http.Request) (params map[string]int
 		return nil, fmt.Errorf("not found %v", idKey)
 	}
 
-	log.LogInfof("action[parseAndExtractSetNodeSetInfoParams]%v,%v,%v", params[zoneNameKey], params[idKey], params[countKey])
+	proto.SpanFromContext(r.Context()).Infof("action[parseAndExtractSetNodeSetInfoParams]%v,%v,%v", params[zoneNameKey], params[idKey], params[countKey])
 
 	return
 }
@@ -1623,7 +1622,7 @@ func sendOkReply(w http.ResponseWriter, r *http.Request, httpReply *proto.HTTPRe
 
 	reply, err := json.Marshal(httpReply)
 	if err != nil {
-		log.LogErrorf("fail to marshal http reply. URL[%v],remoteAddr[%v] err:[%v]", r.URL, r.RemoteAddr, err)
+		proto.SpanFromContext(r.Context()).Errorf("fail to marshal http reply. URL[%v],remoteAddr[%v] err:[%v]", r.URL, r.RemoteAddr, err)
 		http.Error(w, "fail to marshal http reply", http.StatusBadRequest)
 		return
 	}
@@ -1643,18 +1642,19 @@ func send(w http.ResponseWriter, r *http.Request, reply []byte) {
 	w.Header().Set("content-type", "application/json")
 	w.Header().Set("Content-Length", strconv.Itoa(len(reply)))
 	if _, err := w.Write(reply); err != nil {
-		log.LogErrorf("fail to write http len[%d].URL[%v],remoteAddr[%v] err:[%v]", len(reply), r.URL, r.RemoteAddr, err)
+		proto.SpanFromContext(r.Context()).Errorf("fail to write http len[%d].URL[%v],remoteAddr[%v] err:[%v]", len(reply), r.URL, r.RemoteAddr, err)
 		return
 	}
-	log.LogInfof("URL[%v],remoteAddr[%v],response ok", r.URL, r.RemoteAddr)
+	proto.SpanFromContext(r.Context()).Infof("URL[%v],remoteAddr[%v],response ok", r.URL, r.RemoteAddr)
 	return
 }
 
 func sendErrReply(w http.ResponseWriter, r *http.Request, httpReply *proto.HTTPReply) {
-	log.LogInfof("URL[%v],remoteAddr[%v],response", r.URL, r.RemoteAddr)
+	span := proto.SpanFromContext(r.Context())
+	span.Infof("URL[%v],remoteAddr[%v],response", r.URL, r.RemoteAddr)
 	reply, err := json.Marshal(httpReply)
 	if err != nil {
-		log.LogErrorf("fail to marshal http reply. URL[%v],remoteAddr[%v] err:[%v]", r.URL, r.RemoteAddr, err)
+		span.Errorf("fail to marshal http reply. URL[%v],remoteAddr[%v] err:[%v]", r.URL, r.RemoteAddr, err)
 		http.Error(w, "fail to marshal http reply", http.StatusBadRequest)
 		return
 	}
@@ -1662,7 +1662,7 @@ func sendErrReply(w http.ResponseWriter, r *http.Request, httpReply *proto.HTTPR
 	w.Header().Set("content-type", "application/json")
 	w.Header().Set("Content-Length", strconv.Itoa(len(reply)))
 	if _, err = w.Write(reply); err != nil {
-		log.LogErrorf("fail to write http len[%d].URL[%v],remoteAddr[%v] err:[%v]", len(reply), r.URL, r.RemoteAddr, err)
+		span.Errorf("fail to write http len[%d].URL[%v],remoteAddr[%v] err:[%v]", len(reply), r.URL, r.RemoteAddr, err)
 	}
 
 	return
@@ -1696,7 +1696,7 @@ func parseSetConfigParam(r *http.Request) (key string, value string, err error) 
 		return
 	}
 	key = cfgmetaPartitionInodeIdStep
-	log.LogInfo("parseSetConfigParam success.")
+	proto.SpanFromContext(r.Context()).Info("parseSetConfigParam success.")
 	return
 }
 
@@ -1708,7 +1708,7 @@ func parseGetConfigParam(r *http.Request) (key string, err error) {
 		err = keyNotFound("config")
 		return
 	}
-	log.LogInfo("parseGetConfigParam success.")
+	proto.SpanFromContext(r.Context()).Info("parseGetConfigParam success.")
 	return
 }
 
@@ -1737,7 +1737,7 @@ func parserSetQuotaParam(r *http.Request, req *proto.SetMasterQuotaReuqest) (err
 		return
 	}
 
-	log.LogInfo("parserSetQuotaParam success.")
+	proto.SpanFromContext(r.Context()).Info("parserSetQuotaParam success.")
 	return
 }
 
@@ -1761,7 +1761,7 @@ func parserUpdateQuotaParam(r *http.Request, req *proto.UpdateMasterQuotaReuqest
 	if req.MaxBytes, err = extractUint64WithDefault(r, MaxBytesKey, math.MaxUint64); err != nil {
 		return
 	}
-	log.LogInfo("parserUpdateQuotaParam success.")
+	proto.SpanFromContext(r.Context()).Info("parserUpdateQuotaParam success.")
 	return
 }
 
@@ -1846,6 +1846,6 @@ func parseS3QosReq(r *http.Request, req *proto.S3QosRequest) (err error) {
 		return
 	}
 
-	log.LogInfo("parseS3QosReq success.")
+	proto.SpanFromContext(r.Context()).Info("parseS3QosReq success.")
 	return
 }

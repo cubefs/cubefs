@@ -16,6 +16,7 @@ package master
 
 import (
 	"container/list"
+	"context"
 	"fmt"
 	"sort"
 	"strings"
@@ -23,10 +24,10 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/cubefs/cubefs/blobstore/util/log"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/errors"
-	"github.com/cubefs/cubefs/util/log"
 )
 
 type topology struct {
@@ -199,13 +200,13 @@ type nodeSetGroup struct {
 	sync.RWMutex
 }
 
-func newNodeSetGrp(c *Cluster) *nodeSetGroup {
+func newNodeSetGrp(ctx context.Context, c *Cluster) *nodeSetGroup {
 	var id uint64
 	var err error
-	if id, err = c.idAlloc.allocateCommonID(); err != nil {
+	if id, err = c.idAlloc.allocateCommonID(ctx); err != nil {
 		return nil
 	}
-	log.LogInfof("action[newNodeSetGrp] construct,id[%v]", id)
+	log.Infof("action[newNodeSetGrp] construct,id[%v]", id)
 	nsg := &nodeSetGroup{
 		ID:     id,
 		status: normal,
@@ -237,7 +238,7 @@ type DomainManager struct {
 }
 
 func newDomainNodeSetGrpManager() *DomainNodeSetGrpManager {
-	log.LogInfof("action[newDomainManager] construct")
+	log.Infof("action[newDomainManager] construct")
 	ns := &DomainNodeSetGrpManager{
 		nsgIndex:             0,
 		zoneAvailableNodeSet: make(map[string]*list.List),
@@ -248,7 +249,7 @@ func newDomainNodeSetGrpManager() *DomainNodeSetGrpManager {
 }
 
 func newDomainManager(cls *Cluster) *DomainManager {
-	log.LogInfof("action[newDomainManager] construct")
+	log.Infof("action[newDomainManager] construct")
 	ns := &DomainManager{
 		c:                     cls,
 		domainId2IndexMap:     make(map[uint64]int),
@@ -261,18 +262,18 @@ func newDomainManager(cls *Cluster) *DomainManager {
 }
 
 func (nsgm *DomainManager) start() {
-	log.LogInfof("action[DomainManager:start] start")
+	log.Infof("action[DomainManager:start] start")
 	nsgm.init = true
 }
 
-func (nsgm *DomainManager) createDomain(zoneName string) (err error) {
+func (nsgm *DomainManager) createDomain(ctx context.Context, zoneName string) (err error) {
 	if nsgm.init == false {
 		return fmt.Errorf("createDomain err [%v]", err)
 	}
-	log.LogInfof("zone name [%v] createDomain", zoneName)
+	log.Infof("zone name [%v] createDomain", zoneName)
 	zoneList := strings.Split(zoneName, ",")
 	grpRegion := newDomainNodeSetGrpManager()
-	if grpRegion.domainId, err = nsgm.c.idAlloc.allocateCommonID(); err != nil {
+	if grpRegion.domainId, err = nsgm.c.idAlloc.allocateCommonID(ctx); err != nil {
 		return fmt.Errorf("createDomain err [%v]", err)
 	}
 	nsgm.Lock()
@@ -286,23 +287,24 @@ func (nsgm *DomainManager) createDomain(zoneName string) (err error) {
 	for i := 0; i < len(zoneList); i++ {
 		nsgm.ZoneName2DomainIdMap[zoneList[i]] = grpRegion.domainId
 		nsgm.domainId2IndexMap[grpRegion.domainId] = len(nsgm.domainNodeSetGrpVec) - 1
-		log.LogInfof("action[createDomain] domainid [%v] zonename [%v] index [%v]", grpRegion.domainId, zoneList[i], len(nsgm.domainNodeSetGrpVec)-1)
+		log.Infof("action[createDomain] domainid [%v] zonename [%v] index [%v]", grpRegion.domainId, zoneList[i], len(nsgm.domainNodeSetGrpVec)-1)
 	}
 
 	nsgm.Unlock()
-	if err = nsgm.c.putZoneDomain(false); err != nil {
+	if err = nsgm.c.putZoneDomain(ctx, false); err != nil {
 		return fmt.Errorf("putZoneDomain err [%v]", err)
 	}
 	return
 }
 
-func (nsgm *DomainManager) checkExcludeZoneState() {
+func (nsgm *DomainManager) checkExcludeZoneState(ctx context.Context) {
+	span := proto.SpanFromContext(ctx)
 	if len(nsgm.excludeZoneListDomain) == 0 {
-		log.LogInfof("action[checkExcludeZoneState] no excludeZoneList for Domain,size zero")
+		span.Infof("action[checkExcludeZoneState] no excludeZoneList for Domain,size zero")
 		return
 	}
 	excludeNeedDomain := true
-	log.LogInfof("action[checkExcludeZoneState] excludeZoneList size[%v]", len(nsgm.excludeZoneListDomain))
+	span.Infof("action[checkExcludeZoneState] excludeZoneList size[%v]", len(nsgm.excludeZoneListDomain))
 	for zoneNm := range nsgm.excludeZoneListDomain {
 		if value, ok := nsgm.c.t.zoneMap.Load(zoneNm); ok {
 			zone := value.(*Zone)
@@ -311,48 +313,49 @@ func (nsgm *DomainManager) checkExcludeZoneState() {
 			}
 			if zone.isUsedRatio(nsgm.excludeZoneUseRatio) {
 				if zone.status == normalZone {
-					log.LogInfof("action[checkExcludeZoneState] zone[%v] be set unavailableZone", zone.name)
+					span.Infof("action[checkExcludeZoneState] zone[%v] be set unavailableZone", zone.name)
 				}
 				zone.status = unavailableZone
 			} else {
 				excludeNeedDomain = false
 				if zone.status == unavailableZone {
-					log.LogInfof("action[checkExcludeZoneState] zone[%v] be set normalZone", zone.name)
+					span.Infof("action[checkExcludeZoneState] zone[%v] be set normalZone", zone.name)
 				}
 				zone.status = normalZone
 			}
 		}
 	}
 	if excludeNeedDomain {
-		log.LogInfof("action[checkExcludeZoneState] exclude zone cann't be used since now!excludeNeedDomain[%v]",
+		span.Infof("action[checkExcludeZoneState] exclude zone cann't be used since now!excludeNeedDomain[%v]",
 			excludeNeedDomain)
 		nsgm.c.needFaultDomain = true
 	} else {
 		if nsgm.c.needFaultDomain == true {
-			log.LogInfof("action[checkExcludeZoneState] needFaultDomain be set false")
+			span.Infof("action[checkExcludeZoneState] needFaultDomain be set false")
 		}
 		nsgm.c.needFaultDomain = false
 	}
 }
 
-func (nsgm *DomainManager) checkAllGrpState() {
+func (nsgm *DomainManager) checkAllGrpState(ctx context.Context) {
 	for i := 0; i < len(nsgm.domainNodeSetGrpVec); i++ {
-		nsgm.checkGrpState(nsgm.domainNodeSetGrpVec[i])
+		nsgm.checkGrpState(ctx, nsgm.domainNodeSetGrpVec[i])
 	}
 }
 
-func (nsgm *DomainManager) checkGrpState(domainGrpManager *DomainNodeSetGrpManager) {
+func (nsgm *DomainManager) checkGrpState(ctx context.Context, domainGrpManager *DomainNodeSetGrpManager) {
 	nsgm.RLock()
 	defer nsgm.RUnlock()
+	span := proto.SpanFromContext(ctx)
 	if len(domainGrpManager.nodeSetGrpMap) == 0 {
-		log.LogInfof("action[checkGrpState] leave,size zero")
+		span.Infof("action[checkGrpState] leave,size zero")
 		return
 	}
-	log.LogInfof("action[checkGrpState] nodeSetGrpMap size [%v]", len(domainGrpManager.nodeSetGrpMap))
+	span.Infof("action[checkGrpState] nodeSetGrpMap size [%v]", len(domainGrpManager.nodeSetGrpMap))
 	metaUnAvailableCnt := 0
 	dataUnAvailableCnt := 0
 	for i := 0; i < len(domainGrpManager.nodeSetGrpMap); i++ {
-		log.LogInfof("action[checkGrpState] nodesetgrp index[%v], id[%v], status[%v]",
+		span.Infof("action[checkGrpState] nodesetgrp index[%v], id[%v], status[%v]",
 			i, domainGrpManager.nodeSetGrpMap[i].ID, domainGrpManager.nodeSetGrpMap[i].status)
 		grpStatus := normal
 		grpMetaUnAvailableCnt := 0
@@ -374,7 +377,7 @@ func (nsgm *DomainManager) checkGrpState(domainGrpManager *DomainNodeSetGrpManag
 				}
 				total = total + node.Total
 
-				log.LogInfof("action[checkGrpState] nodeid[%v] zonename[%v] used [%v] total [%v] UsageRatio [%v] got available metanode",
+				span.Infof("action[checkGrpState] nodeid[%v] zonename[%v] used [%v] total [%v] UsageRatio [%v] got available metanode",
 					node.ID, node.ZoneName, node.Used, node.Total, node.UsageRatio)
 				return true
 			})
@@ -386,27 +389,27 @@ func (nsgm *DomainManager) checkGrpState(domainGrpManager *DomainNodeSetGrpManag
 				node := value.(*MetaNode)
 				if node.isWritable() {
 					metaWorked = true
-					log.LogInfof("action[checkGrpState] nodeset[%v] zonename[%v] used [%v] total [%v] threshold [%v] got available metanode",
+					span.Infof("action[checkGrpState] nodeset[%v] zonename[%v] used [%v] total [%v] threshold [%v] got available metanode",
 						node.ID, node.ZoneName, node.Used, node.Total, node.Threshold)
 					return false
 				}
-				log.LogInfof("action[checkGrpState] nodeset[%v] zonename[%v] used [%v] total [%v] threshold [%v] got available metanode",
+				span.Infof("action[checkGrpState] nodeset[%v] zonename[%v] used [%v] total [%v] threshold [%v] got available metanode",
 					node.ID, node.ZoneName, node.Used, node.Total, node.Threshold)
 				return true
 			})
 			if !metaWorked || !dataWorked {
-				log.LogInfof("action[checkGrpState] nodesetgrp index[%v], id[%v], status[%v] be set metaWorked[%v] dataWorked[%v]",
+				span.Infof("action[checkGrpState] nodesetgrp index[%v], id[%v], status[%v] be set metaWorked[%v] dataWorked[%v]",
 					i, domainGrpManager.nodeSetGrpMap[i].ID, domainGrpManager.nodeSetGrpMap[i].status, metaWorked, dataWorked)
 				if !metaWorked {
 					grpMetaUnAvailableCnt++
 					if grpMetaUnAvailableCnt == 2 { // meta can be used if one node is not active
 						if grpStatus == dataNodesUnAvailable {
-							log.LogInfof("action[checkGrpState] nodesetgrp index[%v], id[%v], grp status change from dataNodesUnAvailable to unavailable",
+							span.Infof("action[checkGrpState] nodesetgrp index[%v], id[%v], grp status change from dataNodesUnAvailable to unavailable",
 								i, domainGrpManager.nodeSetGrpMap[i].ID)
 							grpStatus = unavailableZone
 							break
 						}
-						log.LogInfof("action[checkGrpState] nodesetgrp index[%v], id[%v], grp status be set metaNodesUnAvailable",
+						span.Infof("action[checkGrpState] nodesetgrp index[%v], id[%v], grp status be set metaNodesUnAvailable",
 							i, domainGrpManager.nodeSetGrpMap[i].ID)
 						grpStatus = metaNodesUnAvailable
 						metaUnAvailableCnt++
@@ -414,12 +417,12 @@ func (nsgm *DomainManager) checkGrpState(domainGrpManager *DomainNodeSetGrpManag
 				}
 				if !dataWorked && grpStatus != dataNodesUnAvailable {
 					if grpStatus == metaNodesUnAvailable {
-						log.LogInfof("action[checkGrpState] nodesetgrp index[%v], id[%v], grp status change from metaNodesUnAvailable to unavailable",
+						span.Infof("action[checkGrpState] nodesetgrp index[%v], id[%v], grp status change from metaNodesUnAvailable to unavailable",
 							i, domainGrpManager.nodeSetGrpMap[i].ID)
 						grpStatus = unavailableZone
 						break
 					}
-					log.LogInfof("action[checkGrpState] nodesetgrp index[%v], id[%v], grp status be set dataNodesUnAvailable",
+					span.Infof("action[checkGrpState] nodesetgrp index[%v], id[%v], grp status be set dataNodesUnAvailable",
 						i, domainGrpManager.nodeSetGrpMap[i].ID)
 					grpStatus = dataNodesUnAvailable
 					dataUnAvailableCnt++
@@ -427,7 +430,7 @@ func (nsgm *DomainManager) checkGrpState(domainGrpManager *DomainNodeSetGrpManag
 			}
 		}
 		domainGrpManager.nodeSetGrpMap[i].status = grpStatus
-		log.LogInfof("action[checkGrpState] nodesetgrp index[%v], id[%v], status[%v] be set normal",
+		span.Infof("action[checkGrpState] nodesetgrp index[%v], id[%v], status[%v] be set normal",
 			i, domainGrpManager.nodeSetGrpMap[i].ID, domainGrpManager.nodeSetGrpMap[i].status)
 	}
 
@@ -442,17 +445,17 @@ func (nsgm *DomainManager) checkGrpState(domainGrpManager *DomainNodeSetGrpManag
 			domainGrpManager.status = metaNodesUnAvailable
 		}
 	}
-	log.LogInfof("action[checkGrpState] nodesetgrp size [%v] dataUnAvailableCnt [%v] metaUnAvailableCnt [%v] nsgm.status now[%v]",
+	span.Infof("action[checkGrpState] nodesetgrp size [%v] dataUnAvailableCnt [%v] metaUnAvailableCnt [%v] nsgm.status now[%v]",
 		len(domainGrpManager.nodeSetGrpMap), dataUnAvailableCnt, metaUnAvailableCnt, domainGrpManager.status)
 }
 
-type buildNodeSetGrpMethod func(nsgm *DomainManager, domainGrpManager *DomainNodeSetGrpManager) (err error)
+type buildNodeSetGrpMethod func(ctx context.Context, nsgm *DomainManager, domainGrpManager *DomainNodeSetGrpManager) (err error)
 
-func (nsgm *DomainManager) buildNodeSetGrp(domainGrpManager *DomainNodeSetGrpManager) (err error) {
-	log.LogInfof("action[buildNodeSetGrp] available zone [%v]", len(domainGrpManager.zoneAvailableNodeSet))
+func (nsgm *DomainManager) buildNodeSetGrp(ctx context.Context, domainGrpManager *DomainNodeSetGrpManager) (err error) {
+	log.Infof("action[buildNodeSetGrp] available zone [%v]", len(domainGrpManager.zoneAvailableNodeSet))
 	if len(domainGrpManager.zoneAvailableNodeSet) == 0 {
 		err = fmt.Errorf("action[buildNodeSetGrp] failed zone available zero")
-		log.LogErrorf("[%v]", err)
+		log.Errorf("[%v]", err)
 		return
 	}
 
@@ -464,26 +467,26 @@ func (nsgm *DomainManager) buildNodeSetGrp(domainGrpManager *DomainNodeSetGrpMan
 	step := defaultNodeSetGrpStep
 
 	zoneCnt := nsgm.c.cfg.DefaultNormalZoneCnt
-	log.LogInfof("action[buildNodeSetGrp] zoncnt [%v]", zoneCnt)
+	log.Infof("action[buildNodeSetGrp] zoncnt [%v]", zoneCnt)
 	if zoneCnt >= 3 {
 		zoneCnt = 3
 	}
 
 	if zoneCnt > len(domainGrpManager.zoneAvailableNodeSet) {
 		if nsgm.c.cfg.DomainBuildAsPossible || domainGrpManager.domainId > 0 {
-			log.LogInfof("action[buildNodeSetGrp] zoncnt [%v]", zoneCnt)
+			log.Infof("action[buildNodeSetGrp] zoncnt [%v]", zoneCnt)
 			zoneCnt = len(domainGrpManager.zoneAvailableNodeSet)
 		} else {
 			err = fmt.Errorf("action[buildNodeSetGrp] failed zone available [%v] need [%v]", zoneCnt, len(domainGrpManager.zoneAvailableNodeSet))
-			log.LogErrorf("[%v]", err)
+			log.Errorf("[%v]", err)
 			return
 		}
 	}
 	for {
-		log.LogInfof("action[buildNodeSetGrp] zoneCnt [%v] step [%v]", zoneCnt, step)
-		err = method[zoneCnt](nsgm, domainGrpManager)
+		log.Infof("action[buildNodeSetGrp] zoneCnt [%v] step [%v]", zoneCnt, step)
+		err = method[zoneCnt](ctx, nsgm, domainGrpManager)
 		if err != nil {
-			log.LogInfof("action[buildNodeSetGrp] err [%v]", err)
+			log.Infof("action[buildNodeSetGrp] err [%v]", err)
 			break
 		}
 		step--
@@ -498,15 +501,15 @@ func (nsgm *DomainManager) buildNodeSetGrp(domainGrpManager *DomainNodeSetGrpMan
 	return nil
 }
 
-func (nsgm *DomainManager) getHostFromNodeSetGrpSpecific(domainGrpManager *DomainNodeSetGrpManager, replicaNum uint8, createType uint32) (
+func (nsgm *DomainManager) getHostFromNodeSetGrpSpecific(ctx context.Context, domainGrpManager *DomainNodeSetGrpManager, replicaNum uint8, createType uint32) (
 	hosts []string,
 	peers []proto.Peer,
 	err error,
 ) {
-	log.LogErrorf("action[getHostFromNodeSetGrpSpecific]  replicaNum[%v],type[%v], nsg cnt[%v], nsg status[%v]",
+	log.Errorf("action[getHostFromNodeSetGrpSpecific]  replicaNum[%v],type[%v], nsg cnt[%v], nsg status[%v]",
 		replicaNum, createType, len(domainGrpManager.nodeSetGrpMap), domainGrpManager.status)
 	if len(domainGrpManager.nodeSetGrpMap) == 0 {
-		log.LogErrorf("action[getHostFromNodeSetGrpSpecific] [%v] nodeSetGrpMap zero", domainGrpManager.domainId)
+		log.Errorf("action[getHostFromNodeSetGrpSpecific] [%v] nodeSetGrpMap zero", domainGrpManager.domainId)
 		return nil, nil, fmt.Errorf("nodeSetGrpMap zero")
 	}
 
@@ -519,7 +522,7 @@ func (nsgm *DomainManager) getHostFromNodeSetGrpSpecific(domainGrpManager *Domai
 
 	for {
 		if cnt >= len(domainGrpManager.nodeSetGrpMap) {
-			log.LogInfof("action[getHostFromNodeSetGrpSpecific] failed all nsGrp unavailable,cnt[%v]", cnt)
+			log.Infof("action[getHostFromNodeSetGrpSpecific] failed all nsGrp unavailable,cnt[%v]", cnt)
 			err = fmt.Errorf("action[getHostFromNodeSetGrpSpecific],err:no nsGrp status normal,cnt[%v]", cnt)
 			break
 		}
@@ -537,7 +540,7 @@ func (nsgm *DomainManager) getHostFromNodeSetGrpSpecific(domainGrpManager *Domai
 			for i := 0; i < defaultFaultDomainZoneCnt; i++ {
 				ns := nsg.nodeSets[nsg.nsgInnerIndex]
 				nsg.nsgInnerIndex = (nsg.nsgInnerIndex + 1) % defaultFaultDomainZoneCnt
-				log.LogInfof("action[getHostFromNodeSetGrpSpecific]  nodesetid[%v],zonename[%v], datanode len[%v],metanode len[%v],capacity[%v]",
+				log.Infof("action[getHostFromNodeSetGrpSpecific]  nodesetid[%v],zonename[%v], datanode len[%v],metanode len[%v],capacity[%v]",
 					ns.ID, ns.zoneName, ns.dataNodeLen(), ns.metaNodeLen(), ns.Capacity)
 
 				needNum := needReplicaNum
@@ -546,14 +549,14 @@ func (nsgm *DomainManager) getHostFromNodeSetGrpSpecific(domainGrpManager *Domai
 				}
 
 				if createType == TypeDataPartition {
-					if host, peer, err = ns.getAvailDataNodeHosts(nil, needNum); err != nil {
-						log.LogErrorf("action[getHostFromNodeSetGrpSpecific] ns[%v] zone[%v] TypeDataPartition err[%v]", ns.ID, ns.zoneName, err)
+					if host, peer, err = ns.getAvailDataNodeHosts(ctx, nil, needNum); err != nil {
+						log.Errorf("action[getHostFromNodeSetGrpSpecific] ns[%v] zone[%v] TypeDataPartition err[%v]", ns.ID, ns.zoneName, err)
 						// nsg.status = dataNodesUnAvailable
 						continue
 					}
 				} else {
-					if host, peer, err = ns.getAvailMetaNodeHosts(nil, needNum); err != nil {
-						log.LogErrorf("action[getHostFromNodeSetGrpSpecific]  ns[%v] zone[%v] TypeMetaPartition err[%v]", ns.ID, ns.zoneName, err)
+					if host, peer, err = ns.getAvailMetaNodeHosts(ctx, nil, needNum); err != nil {
+						log.Errorf("action[getHostFromNodeSetGrpSpecific]  ns[%v] zone[%v] TypeMetaPartition err[%v]", ns.ID, ns.zoneName, err)
 						// nsg.status = metaNodesUnAvailable
 						continue
 					}
@@ -562,7 +565,7 @@ func (nsgm *DomainManager) getHostFromNodeSetGrpSpecific(domainGrpManager *Domai
 				hosts = append(hosts, host...)
 				peers = append(peers, peer...)
 				if int(replicaNum) == len(hosts) {
-					log.LogInfof("action[getHostFromNodeSetGrpSpecific]  ngGrp[%v] unable support type[%v] replicaNum[%v]", nsg.ID, createType, replicaNum)
+					log.Infof("action[getHostFromNodeSetGrpSpecific]  ngGrp[%v] unable support type[%v] replicaNum[%v]", nsg.ID, createType, replicaNum)
 					return
 				}
 			}
@@ -575,7 +578,7 @@ func (nsgm *DomainManager) getHostFromNodeSetGrpSpecific(domainGrpManager *Domai
 	return nil, nil, fmt.Errorf("action[getHostFromNodeSetGrpSpecific] cann't alloc host")
 }
 
-func (nsgm *DomainManager) getHostFromNodeSetGrp(domainId uint64, replicaNum uint8, createType uint32) (
+func (nsgm *DomainManager) getHostFromNodeSetGrp(ctx context.Context, domainId uint64, replicaNum uint8, createType uint32) (
 	hosts []string,
 	peers []proto.Peer,
 	err error) {
@@ -588,25 +591,25 @@ func (nsgm *DomainManager) getHostFromNodeSetGrp(domainId uint64, replicaNum uin
 	}
 	domainGrpManager := nsgm.domainNodeSetGrpVec[index]
 
-	log.LogInfof("action[getHostFromNodeSetGrp] domainId [%v] index [%v] replicaNum[%v],type[%v], nsg cnt[%v], nsg status[%v]",
+	log.Infof("action[getHostFromNodeSetGrp] domainId [%v] index [%v] replicaNum[%v],type[%v], nsg cnt[%v], nsg status[%v]",
 		domainId, index, replicaNum, createType, len(domainGrpManager.nodeSetGrpMap), domainGrpManager.status)
 
 	// this scenario is abnormal  may be caused by zone unavailable in high probability
 	if domainGrpManager.status != normal {
-		return nsgm.getHostFromNodeSetGrpSpecific(domainGrpManager, replicaNum, createType)
+		return nsgm.getHostFromNodeSetGrpSpecific(ctx, domainGrpManager, replicaNum, createType)
 	}
 
 	// grp map be build with three zone on standard,no grp if zone less than three,here will build
 	// nodesetGrp with zones less than three,because offer service is much more important than high available
 	if len(domainGrpManager.zoneAvailableNodeSet) != 0 {
-		if nsgm.buildNodeSetGrp(domainGrpManager); len(domainGrpManager.nodeSetGrpMap) == 0 {
+		if nsgm.buildNodeSetGrp(ctx, domainGrpManager); len(domainGrpManager.nodeSetGrpMap) == 0 {
 			err = fmt.Errorf("no usable group")
-			log.LogErrorf("action[getHostFromNodeSetGrp] no usable group build failed,err[%v]", err)
+			log.Errorf("action[getHostFromNodeSetGrp] no usable group build failed,err[%v]", err)
 			return
 		}
 	} else if len(domainGrpManager.nodeSetGrpMap) == 0 {
 		err = fmt.Errorf("no usable group")
-		log.LogInfof("action[getHostFromNodeSetGrp] err[%v]", err)
+		log.Infof("action[getHostFromNodeSetGrp] err[%v]", err)
 		return
 	}
 
@@ -621,7 +624,7 @@ func (nsgm *DomainManager) getHostFromNodeSetGrp(domainId uint64, replicaNum uin
 		if cnt >= len(domainGrpManager.nodeSetGrpMap) {
 			err = fmt.Errorf("action[getHostFromNodeSetGrp] need replica cnt [%v] but get host cnt [%v] from nodesetgrps count[%v]",
 				replicaNum, len(hosts), cnt)
-			log.LogErrorf(err.Error())
+			log.Errorf(err.Error())
 			return nil, nil, err
 		}
 		cnt++
@@ -638,37 +641,37 @@ func (nsgm *DomainManager) getHostFromNodeSetGrp(domainId uint64, replicaNum uin
 
 		for i := 0; i < defaultMaxReplicaCnt*len(nsg.nodeSets); i++ {
 			ns := nsg.nodeSets[nsg.nsgInnerIndex]
-			log.LogInfof("action[getHostFromNodeSetGrp]  nodesetid[%v],zonename[%v], datanode len[%v],metanode len[%v],capacity[%v]",
+			log.Infof("action[getHostFromNodeSetGrp]  nodesetid[%v],zonename[%v], datanode len[%v],metanode len[%v],capacity[%v]",
 				ns.ID, ns.zoneName, ns.dataNodeLen(), ns.metaNodeLen(), ns.Capacity)
 			nsg.nsgInnerIndex = (nsg.nsgInnerIndex + 1) % defaultFaultDomainZoneCnt
 			if nsg.status == unavailableZone {
-				log.LogWarnf("action[getHostFromNodeSetGrp] ns[%v] zone[%v] unavailableZone", ns.ID, ns.zoneName)
+				log.Warnf("action[getHostFromNodeSetGrp] ns[%v] zone[%v] unavailableZone", ns.ID, ns.zoneName)
 				continue
 			}
 			if createType == TypeDataPartition {
 				if nsg.status == dataNodesUnAvailable {
-					log.LogWarnf("action[getHostFromNodeSetGrp] ns[%v] zone[%v] dataNodesUnAvailable", ns.ID, ns.zoneName)
+					log.Warnf("action[getHostFromNodeSetGrp] ns[%v] zone[%v] dataNodesUnAvailable", ns.ID, ns.zoneName)
 					continue
 				}
-				if host, peer, err = ns.getAvailDataNodeHosts(hosts, 1); err != nil {
-					log.LogWarnf("action[getHostFromNodeSetGrp] ns[%v] zone[%v] TypeDataPartition err[%v]", ns.ID, ns.zoneName, err)
+				if host, peer, err = ns.getAvailDataNodeHosts(ctx, hosts, 1); err != nil {
+					log.Warnf("action[getHostFromNodeSetGrp] ns[%v] zone[%v] TypeDataPartition err[%v]", ns.ID, ns.zoneName, err)
 					// nsg.status = dataNodesUnAvailable
 					continue
 				}
 			} else {
 				if nsg.status == metaNodesUnAvailable {
-					log.LogWarnf("action[getHostFromNodeSetGrp] ns[%v] zone[%v] metaNodesUnAvailable", ns.ID, ns.zoneName)
+					log.Warnf("action[getHostFromNodeSetGrp] ns[%v] zone[%v] metaNodesUnAvailable", ns.ID, ns.zoneName)
 					continue
 				}
-				if host, peer, err = ns.getAvailMetaNodeHosts(hosts, 1); err != nil {
-					log.LogWarnf("action[getHostFromNodeSetGrp]  ns[%v] zone[%v] TypeMetaPartition err[%v]", ns.ID, ns.zoneName, err)
+				if host, peer, err = ns.getAvailMetaNodeHosts(ctx, hosts, 1); err != nil {
+					log.Warnf("action[getHostFromNodeSetGrp]  ns[%v] zone[%v] TypeMetaPartition err[%v]", ns.ID, ns.zoneName, err)
 					// nsg.status = metaNodesUnAvailable
 					continue
 				}
 			}
 			hosts = append(hosts, host[0])
 			peers = append(peers, peer[0])
-			log.LogInfof("action[getHostFromNodeSetGrp]  get host[%v] peer[%v], nsg id[%v] nsgInnerIndex[%v]", host[0], peer[0], nsg.ID, nsg.nsgInnerIndex)
+			log.Infof("action[getHostFromNodeSetGrp]  get host[%v] peer[%v], nsg id[%v] nsgInnerIndex[%v]", host[0], peer[0], nsg.ID, nsg.nsgInnerIndex)
 
 			if len(hosts) == int(replicaNum) {
 				return hosts, peers, nil
@@ -702,17 +705,17 @@ func (nsgm *DomainManager) buildNodeSetGrpPrepare(domainGrpManager *DomainNodeSe
 }
 
 func (nsgm *DomainManager) buildNodeSetGrpDoWork(zoneName string, nodeList *list.List, needCnt int) (resList []nsList, err error) {
-	log.LogInfof("action[buildNodeSetGrpDoWork] step in")
+	log.Infof("action[buildNodeSetGrpDoWork] step in")
 	var tmpList []nsList
 	ele := nodeList.Front()
 	for {
 		if ele == nil {
-			log.LogInfof("action[buildNodeSetGrpDoWork] zone [%v] can't create nodeset group nodeList not qualified", zoneName)
+			log.Infof("action[buildNodeSetGrpDoWork] zone [%v] can't create nodeset group nodeList not qualified", zoneName)
 			err = fmt.Errorf("action[buildNodeSetGrpDoWork] zone [%v] can't create nodeset group nodeList not qualified", zoneName)
 			return
 		}
 		nst := ele.Value.(*nodeSet)
-		log.LogInfof("action[buildNodeSetGrpDoWork] nodeset [%v] zonename [%v] ,metacnt[%v],datacnt[%v]",
+		log.Infof("action[buildNodeSetGrpDoWork] nodeset [%v] zonename [%v] ,metacnt[%v],datacnt[%v]",
 			nst.ID, nst.zoneName, nst.metaNodeLen(), nst.dataNodeLen())
 		if nst.dataNodeLen() > 0 && nst.metaNodeLen() > 0 {
 			var nsl nsList
@@ -720,7 +723,7 @@ func (nsgm *DomainManager) buildNodeSetGrpDoWork(zoneName string, nodeList *list
 			nsl.ele = ele
 			nsl.zoneName = zoneName
 			tmpList = append(tmpList, nsl)
-			log.LogInfof("action[buildNodeSetGrpDoWork] nodeset [%v] zonename [%v] qualified be put in,metacnt[%v],datacnt[%v]",
+			log.Infof("action[buildNodeSetGrpDoWork] nodeset [%v] zonename [%v] qualified be put in,metacnt[%v],datacnt[%v]",
 				nst.ID, nst.zoneName, nst.metaNodeLen(), nst.dataNodeLen())
 			needCnt = needCnt - 1
 			if needCnt == 0 {
@@ -737,37 +740,37 @@ func (nsgm *DomainManager) buildNodeSetGrpDoWork(zoneName string, nodeList *list
 	return
 }
 
-func (nsgm *DomainManager) buildNodeSetGrpCommit(resList []nsList, domainGrpManager *DomainNodeSetGrpManager) {
-	nodeSetGrp := newNodeSetGrp(nsgm.c)
+func (nsgm *DomainManager) buildNodeSetGrpCommit(ctx context.Context, resList []nsList, domainGrpManager *DomainNodeSetGrpManager) {
+	nodeSetGrp := newNodeSetGrp(ctx, nsgm.c)
 	nodeSetGrp.domainId = domainGrpManager.domainId
 	for i := 0; i < len(resList); i++ {
 		nst := resList[i].ele.Value.(*nodeSet)
 		nodeSetGrp.nodeSets = append(nodeSetGrp.nodeSets, nst)
 		nodeSetGrp.nodeSetsIds = append(nodeSetGrp.nodeSetsIds, nst.ID)
-		log.LogInfof("action[buildNodeSetGrpCommit] build nodesetGrp id[%v] with append nst id [%v] zoneName [%v]", nodeSetGrp.ID, nst.ID, nst.zoneName)
+		log.Infof("action[buildNodeSetGrpCommit] build nodesetGrp id[%v] with append nst id [%v] zoneName [%v]", nodeSetGrp.ID, nst.ID, nst.zoneName)
 		resList[i].lst.Remove(resList[i].ele)
 		domainGrpManager.nsId2NsGrpMap[nst.ID] = len(domainGrpManager.nodeSetGrpMap)
 		if resList[i].lst.Len() == 0 {
 			delete(domainGrpManager.zoneAvailableNodeSet, resList[i].zoneName)
-			log.LogInfof("action[buildNodeSetGrpCommit] after grp build no nodeset available for zone[%v],nodesetid:[%v], zonelist size[%v]",
+			log.Infof("action[buildNodeSetGrpCommit] after grp build no nodeset available for zone[%v],nodesetid:[%v], zonelist size[%v]",
 				nst.zoneName, nst.ID, len(domainGrpManager.zoneAvailableNodeSet))
 		}
 	}
 
-	log.LogInfof("action[buildNodeSetGrpCommit] success build nodesetgrp zonelist size[%v], nodesetids[%v]",
+	log.Infof("action[buildNodeSetGrpCommit] success build nodesetgrp zonelist size[%v], nodesetids[%v]",
 		len(domainGrpManager.zoneAvailableNodeSet), nodeSetGrp.nodeSetsIds)
 	domainGrpManager.nodeSetGrpMap = append(domainGrpManager.nodeSetGrpMap, nodeSetGrp)
-	nsgm.c.putNodeSetGrpInfo(opSyncNodeSetGrp, nodeSetGrp)
+	nsgm.c.putNodeSetGrpInfo(ctx, opSyncNodeSetGrp, nodeSetGrp)
 	domainGrpManager.status = normal
 }
 
 // policy of build zone if zone count large then three
-func buildNodeSetGrp3Zone(nsgm *DomainManager, domainGrpManager *DomainNodeSetGrpManager) (err error) {
+func buildNodeSetGrp3Zone(ctx context.Context, nsgm *DomainManager, domainGrpManager *DomainNodeSetGrpManager) (err error) {
 	nsgm.Lock()
 	defer nsgm.Unlock()
-	log.LogInfof("action[buildNodeSetGrp3Zone step in")
+	log.Infof("action[buildNodeSetGrp3Zone step in")
 	if len(domainGrpManager.zoneAvailableNodeSet) < defaultFaultDomainZoneCnt {
-		log.LogInfof("action[DomainManager::buildNodeSetGrp3Zone] size error,can't create group zone cnt[%v]",
+		log.Infof("action[DomainManager::buildNodeSetGrp3Zone] size error,can't create group zone cnt[%v]",
 			len(domainGrpManager.zoneAvailableNodeSet))
 		return fmt.Errorf("defaultFaultDomainZoneCnt not satisfied")
 	}
@@ -780,7 +783,7 @@ func buildNodeSetGrp3Zone(nsgm *DomainManager, domainGrpManager *DomainNodeSetGr
 			buildIndex = (buildIndex + 1) % len(zoneAvaVec)
 		}
 		if cnt == len(zoneAvaVec) || len(resList) == defaultReplicaNum {
-			log.LogInfof("step out inner loop in buildNodeSetGrp3Zone cnt [%v], inner index [%v]", cnt, buildIndex)
+			log.Infof("step out inner loop in buildNodeSetGrp3Zone cnt [%v], inner index [%v]", cnt, buildIndex)
 			break
 		}
 		cnt++
@@ -793,26 +796,26 @@ func buildNodeSetGrp3Zone(nsgm *DomainManager, domainGrpManager *DomainNodeSetGr
 		resList = append(resList, tmpList...)
 	}
 	if len(resList) < defaultReplicaNum {
-		log.LogInfof("action[DomainManager::buildNodeSetGrp3Zone] can't create nodeset group nodeset qualified count [%v]", len(resList))
+		log.Infof("action[DomainManager::buildNodeSetGrp3Zone] can't create nodeset group nodeset qualified count [%v]", len(resList))
 		return fmt.Errorf("defaultFaultDomainZoneCnt not satisfied")
 	}
-	nsgm.buildNodeSetGrpCommit(resList, domainGrpManager)
+	nsgm.buildNodeSetGrpCommit(ctx, resList, domainGrpManager)
 	return nil
 }
 
-func buildNodeSetGrpOneZone(nsgm *DomainManager, domainGrpManager *DomainNodeSetGrpManager) (err error) {
+func buildNodeSetGrpOneZone(ctx context.Context, nsgm *DomainManager, domainGrpManager *DomainNodeSetGrpManager) (err error) {
 	nsgm.Lock()
 	defer nsgm.Unlock()
-	log.LogInfof("action[buildNodeSetGrpOneZone] step in")
+	log.Infof("action[buildNodeSetGrpOneZone] step in")
 	if len(domainGrpManager.zoneAvailableNodeSet) != 1 {
-		log.LogErrorf("action[buildNodeSetGrpOneZone] available zone cnt[%v]", len(domainGrpManager.zoneAvailableNodeSet))
+		log.Errorf("action[buildNodeSetGrpOneZone] available zone cnt[%v]", len(domainGrpManager.zoneAvailableNodeSet))
 		err = fmt.Errorf("available zone cnt[%v]", len(domainGrpManager.zoneAvailableNodeSet))
 		return
 	}
 	buildIndex, zoneAvaVec := nsgm.buildNodeSetGrpPrepare(domainGrpManager)
 
 	if zoneAvaVec[buildIndex].lst.Len() < defaultReplicaNum {
-		log.LogErrorf("action[buildNodeSetGrpOneZone] not enough nodeset in available list")
+		log.Errorf("action[buildNodeSetGrpOneZone] not enough nodeset in available list")
 		return fmt.Errorf("not enough nodeset in available list")
 	}
 	var resList []nsList
@@ -820,16 +823,16 @@ func buildNodeSetGrpOneZone(nsgm *DomainManager, domainGrpManager *DomainNodeSet
 		zoneAvaVec[buildIndex].lst, defaultReplicaNum); err != nil {
 		return err
 	}
-	nsgm.buildNodeSetGrpCommit(resList, domainGrpManager)
+	nsgm.buildNodeSetGrpCommit(ctx, resList, domainGrpManager)
 
 	return nil
 }
 
 // build 2 plus 1 nodesetGrp with 2zone or larger
-func buildNodeSetGrp2Plus1(nsgm *DomainManager, domainGrpManager *DomainNodeSetGrpManager) (err error) {
+func buildNodeSetGrp2Plus1(ctx context.Context, nsgm *DomainManager, domainGrpManager *DomainNodeSetGrpManager) (err error) {
 	nsgm.Lock()
 	defer nsgm.Unlock()
-	log.LogInfof("step in buildNodeSetGrp2Plus1")
+	log.Infof("step in buildNodeSetGrp2Plus1")
 
 	cnt := 0
 	var resList []nsList
@@ -854,7 +857,7 @@ func buildNodeSetGrp2Plus1(nsgm *DomainManager, domainGrpManager *DomainNodeSetG
 		}
 	}
 	if zoneAvaVec[np1].lst.Len() < 1 || zoneAvaVec[np2].lst.Len() < 2 {
-		log.LogInfof("step out buildNodeSetGrp2Plus1 np1 [%v] np2 [%v] cnt [%v], inner index [%v]",
+		log.Infof("step out buildNodeSetGrp2Plus1 np1 [%v] np2 [%v] cnt [%v], inner index [%v]",
 			np1, np2, cnt, domainGrpManager.lastBuildIndex)
 		return fmt.Errorf("action[buildNodeSetGrp2Plus1] failed")
 	}
@@ -868,7 +871,7 @@ func buildNodeSetGrp2Plus1(nsgm *DomainManager, domainGrpManager *DomainNodeSetG
 		return
 	}
 	resList = append(resList, tmpList...)
-	nsgm.buildNodeSetGrpCommit(resList, domainGrpManager)
+	nsgm.buildNodeSetGrpCommit(ctx, resList, domainGrpManager)
 
 	return
 }
@@ -883,7 +886,7 @@ func (nsgm *DomainManager) putNodeSet(ns *nodeSet, load bool) (err error) {
 		domainId uint64
 	)
 	if _, ok = nsgm.excludeZoneListDomain[ns.zoneName]; ok {
-		log.LogInfof("action[DomainManager::putNodeSet] zone[%v],nodesetid:[%v], domain vec size[%v]",
+		log.Infof("action[DomainManager::putNodeSet] zone[%v],nodesetid:[%v], domain vec size[%v]",
 			ns.zoneName, ns.ID, len(nsgm.domainNodeSetGrpVec))
 		return
 	}
@@ -895,7 +898,7 @@ func (nsgm *DomainManager) putNodeSet(ns *nodeSet, load bool) (err error) {
 	if index, ok = nsgm.domainId2IndexMap[domainId]; !ok {
 		if domainId > 0 && load == false { // domainId 0 can be created through nodeset create,others be created by createDomain
 			err = fmt.Errorf("inconsistent domainid exist in name map but node exist in index map")
-			log.LogErrorf("action[putNodeSet]  %v", err)
+			log.Errorf("action[putNodeSet]  %v", err)
 			return
 		}
 		grpRegion := newDomainNodeSetGrpManager()
@@ -904,32 +907,32 @@ func (nsgm *DomainManager) putNodeSet(ns *nodeSet, load bool) (err error) {
 		grpRegion.domainId = domainId
 		index = len(nsgm.domainNodeSetGrpVec) - 1
 		nsgm.domainId2IndexMap[domainId] = index
-		log.LogInfof("action[putNodeSet] build domainId[%v] zoneName [%v] index [%v]", domainId, ns.zoneName, index)
+		log.Infof("action[putNodeSet] build domainId[%v] zoneName [%v] index [%v]", domainId, ns.zoneName, index)
 	}
 	nsGrp = nsgm.domainNodeSetGrpVec[index]
 
 	if _, ok = nsGrp.nsIdMap[ns.ID]; ok {
-		log.LogInfof("action[DomainManager::putNodeSet]  zone[%v],nodesetid:[%v] already be put before load[%v]",
+		log.Infof("action[DomainManager::putNodeSet]  zone[%v],nodesetid:[%v] already be put before load[%v]",
 			ns.zoneName, ns.ID, load)
 		return
 	}
 	nsGrp.nsIdMap[ns.ID] = 0
-	log.LogInfof("action[DomainManager::putNodeSet]  zone[%v],nodesetid:[%v], domain vec size[%v], load[%v]",
+	log.Infof("action[DomainManager::putNodeSet]  zone[%v],nodesetid:[%v], domain vec size[%v], load[%v]",
 		ns.zoneName, ns.ID, len(nsgm.domainNodeSetGrpVec), load)
 
 	// nodeset already be put into grp,this should be happened at condition of load == true
 	// here hosts in ns should be nullptr and wait node register
 	if grpidx, ok := nsGrp.nsId2NsGrpMap[ns.ID]; ok {
 		nsGrp.nodeSetGrpMap[grpidx].nodeSets = append(nsGrp.nodeSetGrpMap[grpidx].nodeSets, ns)
-		log.LogInfof("action[DomainManager::putNodeSet]  zone[%v],nodesetid:[%v] already be put before grp index[%v], grp id[%v] load[%v]",
+		log.Infof("action[DomainManager::putNodeSet]  zone[%v],nodesetid:[%v] already be put before grp index[%v], grp id[%v] load[%v]",
 			ns.zoneName, ns.ID, grpidx, nsGrp.nodeSetGrpMap[grpidx].ID, load)
 		return
 	}
 	if _, ok := nsGrp.zoneAvailableNodeSet[ns.zoneName]; !ok {
 		nsGrp.zoneAvailableNodeSet[ns.zoneName] = list.New()
-		log.LogInfof("action[DomainManager::putNodeSet] init list for zone[%v],zonelist size[%v]", ns.zoneName, len(nsGrp.zoneAvailableNodeSet))
+		log.Infof("action[DomainManager::putNodeSet] init list for zone[%v],zonelist size[%v]", ns.zoneName, len(nsGrp.zoneAvailableNodeSet))
 	}
-	log.LogInfof("action[DomainManager::putNodeSet] domainid [%v] ns id[%v] be put in zone[%v]", nsGrp.domainId, ns.ID, ns.zoneName)
+	log.Infof("action[DomainManager::putNodeSet] domainid [%v] ns id[%v] be put in zone[%v]", nsGrp.domainId, ns.ID, ns.zoneName)
 	nsGrp.zoneAvailableNodeSet[ns.zoneName].PushBack(ns)
 
 	return
@@ -965,15 +968,15 @@ type nodeSetDecommissionParallelStatus struct {
 	RunningDp   []uint64
 }
 
-func newNodeSet(c *Cluster, id uint64, cap int, zoneName string) *nodeSet {
-	log.LogInfof("action[newNodeSet] id[%v]", id)
+func newNodeSet(ctx context.Context, c *Cluster, id uint64, cap int, zoneName string) *nodeSet {
+	log.Infof("action[newNodeSet] id[%v]", id)
 	ns := &nodeSet{
 		ID:                                id,
 		Capacity:                          cap,
 		zoneName:                          zoneName,
 		metaNodes:                         new(sync.Map),
 		dataNodes:                         new(sync.Map),
-		decommissionDataPartitionList:     NewDecommissionDataPartitionList(c),
+		decommissionDataPartitionList:     NewDecommissionDataPartitionList(ctx, c),
 		manualDecommissionDiskList:        NewDecommissionDiskList(),
 		autoDecommissionDiskList:          NewDecommissionDiskList(),
 		doneDecommissionDiskListTraverse:  make(chan struct{}, 1),
@@ -981,7 +984,7 @@ func newNodeSet(c *Cluster, id uint64, cap int, zoneName string) *nodeSet {
 		dataNodeSelector:                  NewNodeSelector(DefaultNodeSelectorName, DataNodeType),
 		metaNodeSelector:                  NewNodeSelector(DefaultNodeSelectorName, MetaNodeType),
 	}
-	go ns.traverseDecommissionDisk(c)
+	go ns.traverseDecommissionDisk(ctx, c)
 	return ns
 }
 
@@ -1054,7 +1057,7 @@ func (ns *nodeSet) canWriteForDataNode(replicaNum int) bool {
 		}
 		return true
 	})
-	log.LogInfof("canWriteForDataNode zone[%v], ns[%v],count[%v], replicaNum[%v]",
+	log.Infof("canWriteForDataNode zone[%v], ns[%v],count[%v], replicaNum[%v]",
 		ns.zoneName, ns.ID, count, replicaNum)
 	return count >= replicaNum
 }
@@ -1071,7 +1074,7 @@ func (ns *nodeSet) canWriteForMetaNode(replicaNum int) bool {
 		}
 		return true
 	})
-	log.LogInfof("canWriteForMetaNode zone[%v], ns[%v],count[%v] replicaNum[%v]",
+	log.Infof("canWriteForMetaNode zone[%v], ns[%v],count[%v] replicaNum[%v]",
 		ns.zoneName, ns.ID, count, replicaNum)
 	return count >= replicaNum
 }
@@ -1084,18 +1087,18 @@ func (ns *nodeSet) deleteDataNode(dataNode *DataNode) {
 	ns.dataNodes.Delete(dataNode.Addr)
 }
 
-func (ns *nodeSet) AddToDecommissionDataPartitionList(dp *DataPartition, c *Cluster) {
-	ns.decommissionDataPartitionList.Put(ns.ID, dp, c)
+func (ns *nodeSet) AddToDecommissionDataPartitionList(ctx context.Context, dp *DataPartition, c *Cluster) {
+	ns.decommissionDataPartitionList.Put(ctx, ns.ID, dp, c)
 }
 
 func (ns *nodeSet) UpdateMaxParallel(maxParallel int32) {
 	ns.decommissionDataPartitionList.updateMaxParallel(maxParallel)
-	log.LogDebugf("action[UpdateMaxParallel]nodeSet[%v] decommission limit update to [%v]", ns.ID, maxParallel)
+	log.Debugf("action[UpdateMaxParallel]nodeSet[%v] decommission limit update to [%v]", ns.ID, maxParallel)
 	atomic.StoreInt32(&ns.decommissionParallelLimit, maxParallel)
 }
 
 func (ns *nodeSet) UpdateDecommissionDiskFactor(factor float64) {
-	log.LogDebugf("action[UpdateDecommissionFactor]nodeSet[%v] decommission disk factor update to [%v]", ns.ID, factor)
+	log.Debugf("action[UpdateDecommissionFactor]nodeSet[%v] decommission disk factor update to [%v]", ns.ID, factor)
 	ns.diskParallelFactorLk.Lock()
 	defer ns.diskParallelFactorLk.Unlock()
 	ns.decommissionDiskParallelFactor = factor
@@ -1104,7 +1107,7 @@ func (ns *nodeSet) UpdateDecommissionDiskFactor(factor float64) {
 func (ns *nodeSet) QueryDecommissionDiskLimit() int {
 	ns.diskParallelFactorLk.Lock()
 	defer ns.diskParallelFactorLk.Unlock()
-	log.LogDebugf("action[QueryDecommissionDiskLimit]nodeSet[%v] decommission disk limit to [%v]",
+	log.Debugf("action[QueryDecommissionDiskLimit]nodeSet[%v] decommission disk limit to [%v]",
 		ns.ID, int(ns.decommissionDiskParallelFactor*float64(ns.dataNodeLen())))
 	return int(ns.decommissionDiskParallelFactor * float64(ns.dataNodeLen()))
 }
@@ -1128,7 +1131,7 @@ func (ns *nodeSet) AddDecommissionDisk(dd *DecommissionDisk) {
 	} else {
 		ns.addAutoDecommissionDisk(dd)
 	}
-	log.LogInfof("action[AddDecommissionDisk] add disk %v type %v to  ns %v", dd.GenerateKey(), dd.Type, ns.ID)
+	log.Infof("action[AddDecommissionDisk] add disk %v type %v to  ns %v", dd.GenerateKey(), dd.Type, ns.ID)
 }
 
 func (ns *nodeSet) RemoveDecommissionDisk(dd *DecommissionDisk) {
@@ -1138,7 +1141,7 @@ func (ns *nodeSet) RemoveDecommissionDisk(dd *DecommissionDisk) {
 	} else {
 		ns.removeAutoDecommissionDisk(dd)
 	}
-	log.LogInfof("action[RemoveDecommissionDisk] remove disk %v type %v  from  ns %v", dd.GenerateKey(), dd.Type, ns.ID)
+	log.Infof("action[RemoveDecommissionDisk] remove disk %v type %v  from  ns %v", dd.GenerateKey(), dd.Type, ns.ID)
 }
 
 func (ns *nodeSet) addManualDecommissionDisk(dd *DecommissionDisk) {
@@ -1157,33 +1160,33 @@ func (ns *nodeSet) removeAutoDecommissionDisk(dd *DecommissionDisk) {
 	ns.autoDecommissionDiskList.Remove(ns.ID, dd)
 }
 
-func (ns *nodeSet) traverseDecommissionDisk(c *Cluster) {
+func (ns *nodeSet) traverseDecommissionDisk(ctx context.Context, c *Cluster) {
 	t := time.NewTicker(DecommissionInterval)
 	// wait for loading all decommissionDisk when reload metadata
-	log.LogInfof("action[traverseDecommissionDisk]wait %v", ns.ID)
+	log.Infof("action[traverseDecommissionDisk]wait %v", ns.ID)
 	<-ns.startDecommissionDiskListTraverse
-	log.LogInfof("action[traverseDecommissionDisk] traverseDecommissionDisk start %v", ns.ID)
+	log.Infof("action[traverseDecommissionDisk] traverseDecommissionDisk start %v", ns.ID)
 	defer t.Stop()
 	for {
 		select {
 		case <-ns.doneDecommissionDiskListTraverse:
-			log.LogWarnf("traverse stopped")
+			log.Warnf("traverse stopped")
 			return
 		case <-t.C:
 			if c.partition != nil && !c.partition.IsRaftLeader() {
-				log.LogWarnf("Leader changed, stop traverse!")
+				log.Warnf("Leader changed, stop traverse!")
 				continue
 			}
 			runningCnt := 0
 			ns.DecommissionDisks.Range(func(key, value interface{}) bool {
 				disk := value.(*DecommissionDisk)
-				disk.updateDecommissionStatus(c, false)
+				disk.updateDecommissionStatus(ctx, c, false)
 				status := disk.GetDecommissionStatus()
 				if status == DecommissionRunning {
 					runningCnt++
 				} else if status == DecommissionSuccess || status == DecommissionFail || status == DecommissionPause {
 					// remove from decommission disk list
-					log.LogWarnf("traverseDecommissionDisk remove disk %v status %v",
+					log.Warnf("traverseDecommissionDisk remove disk %v status %v",
 						disk.GenerateKey(), disk.GetDecommissionStatus())
 					ns.RemoveDecommissionDisk(disk)
 				}
@@ -1194,43 +1197,43 @@ func (ns *nodeSet) traverseDecommissionDisk(c *Cluster) {
 			ns.diskParallelFactorLk.Unlock()
 			if maxDiskDecommissionCnt == 0 && ns.dataNodeLen() != 0 {
 				manualCnt, manualDisks := ns.manualDecommissionDiskList.PopMarkDecommissionDisk(0)
-				log.LogDebugf("traverseDecommissionDisk traverse manualCnt %v",
+				log.Debugf("traverseDecommissionDisk traverse manualCnt %v",
 					manualCnt)
 				if manualCnt > 0 {
 					for _, disk := range manualDisks {
-						c.TryDecommissionDisk(disk)
+						c.TryDecommissionDisk(ctx, disk)
 					}
 				}
 				if c.AutoDecommissionDiskIsEnabled() {
 					autoCnt, autoDisks := ns.autoDecommissionDiskList.PopMarkDecommissionDisk(0)
-					log.LogDebugf("traverseDecommissionDisk traverse autoCnt %v",
+					log.Debugf("traverseDecommissionDisk traverse autoCnt %v",
 						autoCnt)
 					if autoCnt > 0 {
 						for _, disk := range autoDisks {
-							c.TryDecommissionDisk(disk)
+							c.TryDecommissionDisk(ctx, disk)
 						}
 					}
 				}
 			} else {
 				newDiskDecommissionCnt := maxDiskDecommissionCnt - runningCnt
-				log.LogDebugf("traverseDecommissionDisk traverse DiskDecommissionCnt %v",
+				log.Debugf("traverseDecommissionDisk traverse DiskDecommissionCnt %v",
 					newDiskDecommissionCnt)
 				if newDiskDecommissionCnt > 0 {
 					manualCnt, manualDisks := ns.manualDecommissionDiskList.PopMarkDecommissionDisk(newDiskDecommissionCnt)
-					log.LogDebugf("traverseDecommissionDisk traverse manualCnt %v",
+					log.Debugf("traverseDecommissionDisk traverse manualCnt %v",
 						manualCnt)
 					if manualCnt > 0 {
 						for _, disk := range manualDisks {
-							c.TryDecommissionDisk(disk)
+							c.TryDecommissionDisk(ctx, disk)
 						}
 					}
 					if newDiskDecommissionCnt-manualCnt > 0 && c.AutoDecommissionDiskIsEnabled() {
 						autoCnt, autoDisks := ns.autoDecommissionDiskList.PopMarkDecommissionDisk(newDiskDecommissionCnt - manualCnt)
-						log.LogDebugf("traverseDecommissionDisk traverse autoCnt %v",
+						log.Debugf("traverseDecommissionDisk traverse autoCnt %v",
 							autoCnt)
 						if autoCnt > 0 {
 							for _, disk := range autoDisks {
-								c.TryDecommissionDisk(disk)
+								c.TryDecommissionDisk(ctx, disk)
 							}
 						}
 					}
@@ -1258,7 +1261,7 @@ func (t *topology) getDomainExcludeZones() (zones []*Zone) {
 	for i := 0; i < len(t.domainExcludeZones); i++ {
 		if value, ok := t.zoneMap.Load(t.domainExcludeZones[i]); ok {
 			zones = append(zones, value.(*Zone))
-			log.LogInfof("action[getDomainExcludeZones] append zone name:[%v]_[%v]", t.domainExcludeZones[i], value.(*Zone).name)
+			log.Infof("action[getDomainExcludeZones] append zone name:[%v]_[%v]", t.domainExcludeZones[i], value.(*Zone).name)
 		}
 	}
 	return
@@ -1309,7 +1312,7 @@ func calculateDemandWriteNodes(zoneNum int, replicaNum int) (demandWriteNodes in
 func (t *topology) allocZonesForMetaNode(zoneNum, replicaNum int, excludeZone []string) (zones []*Zone, err error) {
 	if len(t.domainExcludeZones) > 0 {
 		zones = t.getDomainExcludeZones()
-		log.LogInfof("action[allocZonesForMetaNode] getDomainExcludeZones zones [%v]", t.domainExcludeZones)
+		log.Infof("action[allocZonesForMetaNode] getDomainExcludeZones zones [%v]", t.domainExcludeZones)
 	} else {
 		// if domain enable, will not enter here
 		zones = t.getAllZones()
@@ -1344,7 +1347,7 @@ func (t *topology) allocZonesForMetaNode(zoneNum, replicaNum int, excludeZone []
 
 	// if across zone,candidateZones must be larger than or equal with 2,otherwise,must have a candidate zone
 	if (zoneNum >= 2 && len(candidateZones) < 2) || len(candidateZones) < 1 {
-		log.LogError(fmt.Sprintf("action[allocZonesForMetaNode],reqZoneNum[%v],candidateZones[%v],demandWriteNodes[%v],err:%v",
+		log.Error(fmt.Sprintf("action[allocZonesForMetaNode],reqZoneNum[%v],candidateZones[%v],demandWriteNodes[%v],err:%v",
 			zoneNum, len(candidateZones), demandWriteNodes, proto.ErrNoZoneToCreateMetaPartition))
 		return nil, proto.ErrNoZoneToCreateMetaPartition
 	}
@@ -1362,7 +1365,7 @@ func (t *topology) allocZonesForDataNode(zoneNum, replicaNum int, excludeZone []
 		zones = t.getAllZones()
 	}
 
-	log.LogInfof("len(zones) = %v \n", len(zones))
+	log.Infof("len(zones) = %v \n", len(zones))
 	if t.isSingleZone() {
 		return zones, nil
 	}
@@ -1397,7 +1400,7 @@ func (t *topology) allocZonesForDataNode(zoneNum, replicaNum int, excludeZone []
 
 	// if across zone,candidateZones must be larger than or equal with 2,otherwise,must have one candidate zone
 	if (zoneNum >= 2 && len(candidateZones) < 2) || len(candidateZones) < 1 {
-		log.LogError(fmt.Sprintf("action[allocZonesForDataNode],reqZoneNum[%v],candidateZones[%v],demandWriteNodes[%v],err:%v",
+		log.Error(fmt.Sprintf("action[allocZonesForDataNode],reqZoneNum[%v],candidateZones[%v],demandWriteNodes[%v],err:%v",
 			zoneNum, len(candidateZones), demandWriteNodes, proto.ErrNoZoneToCreateDataPartition))
 		return nil, errors.NewError(proto.ErrNoZoneToCreateDataPartition)
 	}
@@ -1547,10 +1550,10 @@ func (zone *Zone) putNodeSet(ns *nodeSet) (err error) {
 	return
 }
 
-func (zone *Zone) createNodeSet(c *Cluster) (ns *nodeSet, err error) {
+func (zone *Zone) createNodeSet(ctx context.Context, c *Cluster) (ns *nodeSet, err error) {
 	cnt := 1
 	allNodeSet := zone.getAllNodeSet()
-	log.LogInfof("action[createNodeSet] zone[%v] FaultDomain:[%v] init[%v] DefaultNormalZoneCnt[%v] nodeset cnt[%v]",
+	log.Infof("action[createNodeSet] zone[%v] FaultDomain:[%v] init[%v] DefaultNormalZoneCnt[%v] nodeset cnt[%v]",
 		zone.name, c.FaultDomain, c.domainManager.init, c.cfg.DefaultNormalZoneCnt, len(allNodeSet))
 
 	if c.FaultDomain && c.domainManager.init && c.cfg.DefaultNormalZoneCnt < defaultReplicaNum {
@@ -1562,12 +1565,12 @@ func (zone *Zone) createNodeSet(c *Cluster) (ns *nodeSet, err error) {
 				dstNsCnt = 2 // two zone construct domain need 2 nodeset for each
 			}
 			if len(allNodeSet) < dstNsCnt {
-				log.LogInfof("action[createNodeSet] zone[%v] nodeset len:[%v] less then 3,create to 3 one time",
+				log.Infof("action[createNodeSet] zone[%v] nodeset len:[%v] less then 3,create to 3 one time",
 					zone.name, len(allNodeSet))
 				cnt = dstNsCnt - len(allNodeSet)
 			}
 		} else {
-			log.LogInfof("action[createNodeSet] zone[%v] get in excludeZoneListDomain", zone.name)
+			log.Infof("action[createNodeSet] zone[%v] get in excludeZoneListDomain", zone.name)
 		}
 	}
 
@@ -1576,22 +1579,22 @@ func (zone *Zone) createNodeSet(c *Cluster) (ns *nodeSet, err error) {
 			break
 		}
 		cnt--
-		id, err := c.idAlloc.allocateCommonID()
+		id, err := c.idAlloc.allocateCommonID(ctx)
 		if err != nil {
 			return nil, err
 		}
-		ns = newNodeSet(c, id, c.cfg.nodeSetCapacity, zone.name)
+		ns = newNodeSet(ctx, c, id, c.cfg.nodeSetCapacity, zone.name)
 		ns.UpdateMaxParallel(int32(c.DecommissionLimit))
 		ns.UpdateDecommissionDiskFactor(c.DecommissionDiskFactor)
 		ns.startDecommissionSchedule()
-		log.LogInfof("action[createNodeSet] syncAddNodeSet[%v] zonename[%v]", ns.ID, zone.name)
-		if err = c.syncAddNodeSet(ns); err != nil {
+		log.Infof("action[createNodeSet] syncAddNodeSet[%v] zonename[%v]", ns.ID, zone.name)
+		if err = c.syncAddNodeSet(ctx, ns); err != nil {
 			return nil, err
 		}
 		if err = zone.putNodeSet(ns); err != nil {
 			return nil, err
 		}
-		log.LogInfof("action[createNodeSet] nodeSet[%v]", ns.ID)
+		log.Infof("action[createNodeSet] nodeSet[%v]", ns.ID)
 	}
 	return
 }
@@ -1645,7 +1648,7 @@ func (zone *Zone) getAvailNodeSetForDataNode() (nset *nodeSet) {
 func (zone *Zone) putDataNode(dataNode *DataNode) (err error) {
 	var ns *nodeSet
 	if ns, err = zone.getNodeSet(dataNode.NodeSetID); err != nil {
-		log.LogErrorf("action[putDataNode] nodeSet[%v] not found", dataNode.NodeSetID)
+		log.Errorf("action[putDataNode] nodeSet[%v] not found", dataNode.NodeSetID)
 		return
 	}
 	ns.putDataNode(dataNode)
@@ -1665,7 +1668,7 @@ func (zone *Zone) getDataNode(addr string) (dataNode *DataNode, err error) {
 func (zone *Zone) deleteDataNode(dataNode *DataNode) {
 	ns, err := zone.getNodeSet(dataNode.NodeSetID)
 	if err != nil {
-		log.LogErrorf("action[zoneDeleteDataNode] nodeSet[%v] not found", dataNode.NodeSetID)
+		log.Errorf("action[zoneDeleteDataNode] nodeSet[%v] not found", dataNode.NodeSetID)
 		return
 	}
 	ns.deleteDataNode(dataNode)
@@ -1675,7 +1678,7 @@ func (zone *Zone) deleteDataNode(dataNode *DataNode) {
 func (zone *Zone) putMetaNode(metaNode *MetaNode) (err error) {
 	var ns *nodeSet
 	if ns, err = zone.getNodeSet(metaNode.NodeSetID); err != nil {
-		log.LogErrorf("action[zonePutMetaNode] nodeSet[%v] not found", metaNode.NodeSetID)
+		log.Errorf("action[zonePutMetaNode] nodeSet[%v] not found", metaNode.NodeSetID)
 		return
 	}
 	ns.putMetaNode(metaNode)
@@ -1686,7 +1689,7 @@ func (zone *Zone) putMetaNode(metaNode *MetaNode) (err error) {
 func (zone *Zone) deleteMetaNode(metaNode *MetaNode) (err error) {
 	ns, err := zone.getNodeSet(metaNode.NodeSetID)
 	if err != nil {
-		log.LogErrorf("action[zoneDeleteMetaNode] nodeSet[%v] not found", metaNode.NodeSetID)
+		log.Errorf("action[zoneDeleteMetaNode] nodeSet[%v] not found", metaNode.NodeSetID)
 		return
 	}
 	ns.deleteMetaNode(metaNode)
@@ -1709,7 +1712,7 @@ func (zone *Zone) allocNodeSetForDataNode(excludeNodeSets []uint64, replicaNum u
 	ns, err = zone.dataNodesetSelector.Select(nset, excludeNodeSets, replicaNum)
 
 	if err != nil {
-		log.LogErrorf("action[allocNodeSetForDataNode],nset len[%v],excludeNodeSets[%v],rNum[%v] err:%v",
+		log.Errorf("action[allocNodeSetForDataNode],nset len[%v],excludeNodeSets[%v],rNum[%v] err:%v",
 			nset.Len(), excludeNodeSets, replicaNum, proto.ErrNoNodeSetToCreateDataPartition)
 		return nil, errors.NewError(proto.ErrNoNodeSetToCreateDataPartition)
 	}
@@ -1730,7 +1733,7 @@ func (zone *Zone) allocNodeSetForMetaNode(excludeNodeSets []uint64, replicaNum u
 	ns, err = zone.metaNodesetSelector.Select(nset, excludeNodeSets, replicaNum)
 
 	if err != nil {
-		log.LogError(fmt.Sprintf("action[allocNodeSetForMetaNode],zone[%v],excludeNodeSets[%v],rNum[%v],err:%v",
+		log.Error(fmt.Sprintf("action[allocNodeSetForMetaNode],zone[%v],excludeNodeSets[%v],rNum[%v],err:%v",
 			zone.name, excludeNodeSets, replicaNum, proto.ErrNoNodeSetToCreateMetaPartition))
 		return nil, proto.ErrNoNodeSetToCreateMetaPartition
 	}
@@ -1755,7 +1758,7 @@ func (zone *Zone) canWriteForDataNode(replicaNum uint8) (can bool) {
 		}
 		return true
 	})
-	log.LogInfof("canWriteForDataNode leastAlive[%v],replicaNum[%v],count[%v]\n", leastAlive, replicaNum, zone.dataNodeCount())
+	log.Infof("canWriteForDataNode leastAlive[%v],replicaNum[%v],count[%v]\n", leastAlive, replicaNum, zone.dataNodeCount())
 	return
 }
 
@@ -1780,7 +1783,7 @@ func (zone *Zone) isUsedRatio(ratio float64) (can bool) {
 	})
 
 	if float64(dataNodeUsed)/float64(dataNodeTotal) > ratio {
-		log.LogInfof("action[isUsedRatio] zone[%v] dataNodeUsed [%v] total [%v], ratio[%v]", zone.name, dataNodeUsed, dataNodeTotal, ratio)
+		log.Infof("action[isUsedRatio] zone[%v] dataNodeUsed [%v] total [%v], ratio[%v]", zone.name, dataNodeUsed, dataNodeTotal, ratio)
 		return true
 	}
 
@@ -1796,7 +1799,7 @@ func (zone *Zone) isUsedRatio(ratio float64) (can bool) {
 	})
 
 	if float64(metaNodeUsed)/float64(metaNodeTotal) > ratio {
-		log.LogInfof("action[isUsedRatio] zone[%v] metaNodeUsed [%v] total [%v], ratio[%v]", zone.name, metaNodeUsed, metaNodeTotal, ratio)
+		log.Infof("action[isUsedRatio] zone[%v] metaNodeUsed [%v] total [%v], ratio[%v]", zone.name, metaNodeUsed, metaNodeTotal, ratio)
 		return true
 	}
 
@@ -1876,19 +1879,19 @@ func (zone *Zone) getDataNodeMaxTotal() (maxTotal uint64) {
 	return
 }
 
-func (zone *Zone) getAvailNodeHosts(nodeType uint32, excludeNodeSets []uint64, excludeHosts []string, replicaNum int) (newHosts []string, peers []proto.Peer, err error) {
+func (zone *Zone) getAvailNodeHosts(ctx context.Context, nodeType uint32, excludeNodeSets []uint64, excludeHosts []string, replicaNum int) (newHosts []string, peers []proto.Peer, err error) {
 	if replicaNum == 0 {
 		return
 	}
 
-	log.LogDebugf("[x] get node host, zone(%s), nodeType(%d)", zone.name, nodeType)
+	log.Debugf("[x] get node host, zone(%s), nodeType(%d)", zone.name, nodeType)
 
 	if nodeType == TypeDataPartition {
 		ns, err := zone.allocNodeSetForDataNode(excludeNodeSets, uint8(replicaNum))
 		if err != nil {
 			return nil, nil, errors.Trace(err, "zone[%v] alloc node set,replicaNum[%v]", zone.name, replicaNum)
 		}
-		return ns.getAvailDataNodeHosts(excludeHosts, replicaNum)
+		return ns.getAvailDataNodeHosts(ctx, excludeHosts, replicaNum)
 	}
 
 	ns, err := zone.allocNodeSetForMetaNode(excludeNodeSets, uint8(replicaNum))
@@ -1896,10 +1899,10 @@ func (zone *Zone) getAvailNodeHosts(nodeType uint32, excludeNodeSets []uint64, e
 		return nil, nil, errors.NewErrorf("zone[%v],err[%v]", zone.name, err)
 	}
 
-	return ns.getAvailMetaNodeHosts(excludeHosts, replicaNum)
+	return ns.getAvailMetaNodeHosts(ctx, excludeHosts, replicaNum)
 }
 
-func (zone *Zone) updateNodesetSelector(cluster *Cluster, dataNodesetSelector string, metaNodesetSelector string) error {
+func (zone *Zone) updateNodesetSelector(ctx context.Context, cluster *Cluster, dataNodesetSelector string, metaNodesetSelector string) error {
 	needSync := false
 	if dataNodesetSelector != "" && dataNodesetSelector != zone.GetDataNodesetSelector() {
 		needSync = true
@@ -1912,10 +1915,10 @@ func (zone *Zone) updateNodesetSelector(cluster *Cluster, dataNodesetSelector st
 	if !needSync {
 		return nil
 	}
-	return cluster.sycnPutZoneInfo(zone)
+	return cluster.sycnPutZoneInfo(ctx, zone)
 }
 
-func (zone *Zone) updateDataNodeQosLimit(cluster *Cluster, qosParam *qosArgs) error {
+func (zone *Zone) updateDataNodeQosLimit(ctx context.Context, cluster *Cluster, qosParam *qosArgs) error {
 	var err error
 	if qosParam.flowRVal > 0 {
 		zone.QosFlowRLimit = qosParam.flowRVal
@@ -1930,7 +1933,7 @@ func (zone *Zone) updateDataNodeQosLimit(cluster *Cluster, qosParam *qosArgs) er
 		zone.QosIopsWLimit = qosParam.iopsWVal
 	}
 
-	if err = cluster.sycnPutZoneInfo(zone); err != nil {
+	if err = cluster.sycnPutZoneInfo(ctx, zone); err != nil {
 		return err
 	}
 	zone.dataNodes.Range(func(key, value interface{}) bool {
@@ -1979,41 +1982,41 @@ func (zone *Zone) dataNodeCount() (len int) {
 	return
 }
 
-func (zone *Zone) updateDecommissionLimit(limit int32, c *Cluster) (err error) {
+func (zone *Zone) updateDecommissionLimit(ctx context.Context, limit int32, c *Cluster) (err error) {
 	nodeSets := zone.getAllNodeSet()
 
 	if nodeSets == nil {
-		log.LogWarnf("Nodeset form %v is nil", zone.name)
+		log.Warnf("Nodeset form %v is nil", zone.name)
 		return proto.ErrNoNodeSetToUpdateDecommissionLimit
 	}
 
 	for _, ns := range nodeSets {
 		ns.UpdateMaxParallel(limit)
-		if err = c.syncUpdateNodeSet(ns); err != nil {
-			log.LogWarnf("UpdateMaxParallel nodeset [%v] failed,err:%v", ns.ID, err.Error())
+		if err = c.syncUpdateNodeSet(ctx, ns); err != nil {
+			log.Warnf("UpdateMaxParallel nodeset [%v] failed,err:%v", ns.ID, err.Error())
 			continue
 		}
 	}
-	log.LogInfof("All nodeset from %v set decommission limit to %v", zone.name, limit)
+	log.Infof("All nodeset from %v set decommission limit to %v", zone.name, limit)
 	return
 }
 
-func (zone *Zone) updateDecommissionDiskFactor(factor float64, c *Cluster) (err error) {
+func (zone *Zone) updateDecommissionDiskFactor(ctx context.Context, factor float64, c *Cluster) (err error) {
 	nodeSets := zone.getAllNodeSet()
 
 	if nodeSets == nil {
-		log.LogWarnf("Nodeset form %v is nil", zone.name)
+		log.Warnf("Nodeset form %v is nil", zone.name)
 		return proto.ErrNoNodeSetToUpdateDecommissionDiskFactor
 	}
 
 	for _, ns := range nodeSets {
 		ns.UpdateDecommissionDiskFactor(factor)
-		if err = c.syncUpdateNodeSet(ns); err != nil {
-			log.LogWarnf("updateDecommissionDiskFactor nodeset [%v] failed,err:%v", ns.ID, err.Error())
+		if err = c.syncUpdateNodeSet(ctx, ns); err != nil {
+			log.Warnf("updateDecommissionDiskFactor nodeset [%v] failed,err:%v", ns.ID, err.Error())
 			continue
 		}
 	}
-	log.LogInfof("All nodeset from %v set decommission disk factor to %v", zone.name, factor)
+	log.Infof("All nodeset from %v set decommission disk factor to %v", zone.name, factor)
 	return
 }
 
@@ -2021,7 +2024,7 @@ func (zone *Zone) queryDecommissionDiskLimit() (err error, diskLimit []proto.Dec
 	nodeSets := zone.getAllNodeSet()
 	diskLimit = make([]proto.DecommissionDiskLimitDetail, 0)
 	if nodeSets == nil {
-		log.LogWarnf("Nodeset form %v is nil", zone.name)
+		log.Warnf("Nodeset form %v is nil", zone.name)
 		return proto.ErrNoNodeSetToQueryDecommissionDiskLimit, nil
 	}
 
@@ -2029,7 +2032,7 @@ func (zone *Zone) queryDecommissionDiskLimit() (err error, diskLimit []proto.Dec
 		limit := ns.QueryDecommissionDiskLimit()
 		diskLimit = append(diskLimit, proto.DecommissionDiskLimitDetail{NodeSetId: ns.ID, Limit: limit})
 	}
-	log.LogInfof("All nodeset from %v set decommission disk limit  %v", zone.name, diskLimit)
+	log.Infof("All nodeset from %v set decommission disk limit  %v", zone.name, diskLimit)
 	return
 }
 
@@ -2037,7 +2040,7 @@ func (zone *Zone) queryDecommissionParallelStatus() (err error, stats []nodeSetD
 	nodeSets := zone.getAllNodeSet()
 
 	if nodeSets == nil {
-		log.LogWarnf("Nodeset form %v is nil", zone.name)
+		log.Warnf("Nodeset form %v is nil", zone.name)
 		return proto.ErrNoNodeSetToQueryDecommissionLimitStatus, stats
 	}
 
@@ -2051,23 +2054,23 @@ func (zone *Zone) queryDecommissionParallelStatus() (err error, stats []nodeSetD
 		}
 		stats = append(stats, stat)
 	}
-	log.LogInfof("All nodeset from %v  decommission limit status %v", zone.name, stats)
+	log.Infof("All nodeset from %v  decommission limit status %v", zone.name, stats)
 	return
 }
 
 func (zone *Zone) startDecommissionListTraverse(c *Cluster) (err error) {
 	nodeSets := zone.getAllNodeSet()
-	log.LogDebugf("startDecommissionListTraverse nodeSets len %v ", len(nodeSets))
+	log.Debugf("startDecommissionListTraverse nodeSets len %v ", len(nodeSets))
 	if len(nodeSets) == 0 {
-		log.LogWarnf("action[startDecommissionListTraverse] Nodeset form %v is nil", zone.name)
+		log.Warnf("action[startDecommissionListTraverse] Nodeset form %v is nil", zone.name)
 		return nil
 	}
 
 	for _, ns := range nodeSets {
-		log.LogInfof("action[startDecommissionListTraverse] ns[%v] from zone %v", ns.ID, zone.name)
+		log.Infof("action[startDecommissionListTraverse] ns[%v] from zone %v", ns.ID, zone.name)
 		ns.startDecommissionSchedule()
 	}
-	log.LogInfof("action[startDecommissionListTraverse] All nodeset from %v start decommission schedule", zone.name)
+	log.Infof("action[startDecommissionListTraverse] All nodeset from %v start decommission schedule", zone.name)
 	return
 }
 
@@ -2095,7 +2098,7 @@ type DecommissionDataPartitionCacheValue struct {
 
 const DecommissionInterval = 5 * time.Second
 
-func NewDecommissionDataPartitionList(c *Cluster) *DecommissionDataPartitionList {
+func NewDecommissionDataPartitionList(ctx context.Context, c *Cluster) *DecommissionDataPartitionList {
 	l := new(DecommissionDataPartitionList)
 	l.mu = sync.Mutex{}
 	l.cacheMap = make(map[uint64]*list.Element)
@@ -2105,7 +2108,7 @@ func NewDecommissionDataPartitionList(c *Cluster) *DecommissionDataPartitionList
 	l.runningMap = make(map[uint64]struct{})
 	atomic.StoreInt32(&l.curParallel, 0)
 	atomic.StoreInt32(&l.parallelLimit, defaultDecommissionParallelLimit)
-	go l.traverse(c)
+	go l.traverse(ctx, c)
 	return l
 }
 
@@ -2120,14 +2123,14 @@ func (l *DecommissionDataPartitionList) Length() int {
 	return l.decommissionList.Len()
 }
 
-func (l *DecommissionDataPartitionList) Put(id uint64, value *DataPartition, c *Cluster) {
+func (l *DecommissionDataPartitionList) Put(ctx context.Context, id uint64, value *DataPartition, c *Cluster) {
 	if value == nil {
-		log.LogWarnf("action[DecommissionDataPartitionListPut] ns[%v] cannot put nil value", id)
+		log.Warnf("action[DecommissionDataPartitionListPut] ns[%v] cannot put nil value", id)
 		return
 	}
 	// can only add running or mark or prepare
 	if !value.canAddToDecommissionList() {
-		log.LogWarnf("action[DecommissionDataPartitionListPut] ns[%v] put wrong dp[%v] status[%v]",
+		log.Warnf("action[DecommissionDataPartitionListPut] ns[%v] put wrong dp[%v] status[%v]",
 			id, value.PartitionID, value.GetDecommissionStatus())
 		return
 	}
@@ -2146,15 +2149,15 @@ func (l *DecommissionDataPartitionList) Put(id uint64, value *DataPartition, c *
 	l.mu.Unlock()
 	// restore from rocksdb
 	if value.checkConsumeToken() {
-		value.TryAcquireDecommissionToken(c)
+		value.TryAcquireDecommissionToken(ctx, c)
 	}
-	log.LogInfof("action[DecommissionDataPartitionListPut] ns[%v] add dp[%v] status[%v] isRecover[%v]",
+	log.Infof("action[DecommissionDataPartitionListPut] ns[%v] add dp[%v] status[%v] isRecover[%v]",
 		id, value.PartitionID, value.GetDecommissionStatus(), value.isRecover)
 }
 
 func (l *DecommissionDataPartitionList) Remove(value *DataPartition) {
 	if value == nil {
-		log.LogWarnf("Cannot remove nil value")
+		log.Warnf("Cannot remove nil value")
 		return
 	}
 	l.mu.Lock()
@@ -2162,7 +2165,7 @@ func (l *DecommissionDataPartitionList) Remove(value *DataPartition) {
 	if elm, ok := l.cacheMap[value.PartitionID]; ok {
 		delete(l.cacheMap, value.PartitionID)
 		l.decommissionList.Remove(elm)
-		log.LogDebugf("Remove dp[%v]", value.PartitionID)
+		log.Debugf("Remove dp[%v]", value.PartitionID)
 	}
 }
 
@@ -2224,7 +2227,7 @@ func (l *DecommissionDataPartitionList) startTraverse() {
 	l.start <- struct{}{}
 }
 
-func (l *DecommissionDataPartitionList) traverse(c *Cluster) {
+func (l *DecommissionDataPartitionList) traverse(ctx context.Context, c *Cluster) {
 	t := time.NewTicker(DecommissionInterval)
 	// wait for loading all ap when reload metadata
 	<-l.start
@@ -2232,47 +2235,47 @@ func (l *DecommissionDataPartitionList) traverse(c *Cluster) {
 	for {
 		select {
 		case <-l.done:
-			log.LogWarnf("traverse stopped!")
+			log.Warnf("traverse stopped!")
 			return
 		case <-t.C:
 			if c.partition != nil && !c.partition.IsRaftLeader() {
-				log.LogWarnf("Leader changed, stop traverse!")
+				log.Warnf("Leader changed, stop traverse!")
 				continue
 			}
 			allDecommissionDP := l.GetAllDecommissionDataPartitions()
 			for _, dp := range allDecommissionDP {
 				if dp.IsDecommissionSuccess() {
-					log.LogDebugf("action[DecommissionListTraverse]Remove dp[%v] for success",
+					log.Debugf("action[DecommissionListTraverse]Remove dp[%v] for success",
 						dp.PartitionID)
 					l.Remove(dp)
-					dp.ReleaseDecommissionToken(c)
+					dp.ReleaseDecommissionToken(ctx, c)
 					dp.ResetDecommissionStatus()
-					c.syncUpdateDataPartition(dp)
+					c.syncUpdateDataPartition(ctx, dp)
 				} else if dp.IsDecommissionFailed() {
-					if !dp.tryRollback(c) {
-						dp.restoreReplica(c)
-						log.LogDebugf("action[DecommissionListTraverse]Remove dp[%v] for fail",
+					if !dp.tryRollback(ctx, c) {
+						dp.restoreReplica(ctx, c)
+						log.Debugf("action[DecommissionListTraverse]Remove dp[%v] for fail",
 							dp.PartitionID)
 						l.Remove(dp)
 					}
 					// rollback fail/success need release token
-					dp.ReleaseDecommissionToken(c)
+					dp.ReleaseDecommissionToken(ctx, c)
 				} else if dp.IsDecommissionPaused() {
-					log.LogDebugf("action[DecommissionListTraverse]Remove dp[%v] for paused ",
+					log.Debugf("action[DecommissionListTraverse]Remove dp[%v] for paused ",
 						dp.PartitionID)
-					dp.ReleaseDecommissionToken(c)
+					dp.ReleaseDecommissionToken(ctx, c)
 					l.Remove(dp)
 				} else if dp.IsDecommissionInitial() { // fixed done ,not release token
 					l.Remove(dp)
 					dp.ResetDecommissionStatus()
-					c.syncUpdateDataPartition(dp)
-				} else if dp.IsMarkDecommission() && dp.TryAcquireDecommissionToken(c) {
+					c.syncUpdateDataPartition(ctx, dp)
+				} else if dp.IsMarkDecommission() && dp.TryAcquireDecommissionToken(ctx, c) {
 					// TODO: decommission in here
 					go func(dp *DataPartition) {
-						if !dp.TryToDecommission(c) {
+						if !dp.TryToDecommission(ctx, c) {
 							// retry should release token
 							if dp.IsMarkDecommission() {
-								dp.ReleaseDecommissionToken(c)
+								dp.ReleaseDecommissionToken(ctx, c)
 							}
 						}
 					}(dp) // special replica cnt cost some time from prepare to running
@@ -2298,12 +2301,12 @@ func NewDecommissionDiskList() *DecommissionDiskList {
 
 func (l *DecommissionDiskList) Put(nsId uint64, value *DecommissionDisk) {
 	if value == nil {
-		log.LogWarnf("action[DecommissionDataPartitionListPut] ns[%v] cannot put nil value", nsId)
+		log.Warnf("action[DecommissionDataPartitionListPut] ns[%v] cannot put nil value", nsId)
 		return
 	}
 	// can only add running or mark
 	if !value.canAddToDecommissionList() {
-		log.LogWarnf("action[DecommissionDataPartitionListPut] ns[%v] put wrong disk[%v] status[%v]",
+		log.Warnf("action[DecommissionDataPartitionListPut] ns[%v] put wrong disk[%v] status[%v]",
 			nsId, value.GenerateKey(), value.GetDecommissionStatus())
 		return
 	}
@@ -2316,13 +2319,13 @@ func (l *DecommissionDiskList) Put(nsId uint64, value *DecommissionDisk) {
 	elm := l.decommissionList.PushBack(value)
 	l.cacheMap[value.GenerateKey()] = elm
 
-	log.LogDebugf("action[DecommissionDataPartitionListPut] ns[%v] add disk[%v] status[%v] type[%v]",
+	log.Debugf("action[DecommissionDataPartitionListPut] ns[%v] add disk[%v] status[%v] type[%v]",
 		nsId, value.GenerateKey(), value.GetDecommissionStatus(), value.Type)
 }
 
 func (l *DecommissionDiskList) Remove(nsId uint64, value *DecommissionDisk) {
 	if value == nil {
-		log.LogWarnf("action[DecommissionDataPartitionListRemove] ns[%v]Cannot remove nil value", nsId)
+		log.Warnf("action[DecommissionDataPartitionListRemove] ns[%v]Cannot remove nil value", nsId)
 		return
 	}
 	l.mu.Lock()
@@ -2330,7 +2333,7 @@ func (l *DecommissionDiskList) Remove(nsId uint64, value *DecommissionDisk) {
 	if elm, ok := l.cacheMap[value.GenerateKey()]; ok {
 		delete(l.cacheMap, value.GenerateKey())
 		l.decommissionList.Remove(elm)
-		log.LogDebugf("action[DecommissionDataPartitionListRemove] ns[%v] remove disk[%v]", nsId, value.GenerateKey())
+		log.Debugf("action[DecommissionDataPartitionListRemove] ns[%v] remove disk[%v]", nsId, value.GenerateKey())
 	}
 }
 
@@ -2356,7 +2359,7 @@ func (l *DecommissionDiskList) PopMarkDecommissionDisk(limit int) (count int, co
 		}
 		collection = append(collection, disk)
 		count++
-		log.LogDebugf("action[PopMarkDecommissionDisk] pop disk[%v]", disk)
+		log.Debugf("action[PopMarkDecommissionDisk] pop disk[%v]", disk)
 	}
 	return count, collection
 }
