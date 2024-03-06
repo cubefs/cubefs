@@ -369,6 +369,7 @@ func (d *Dir) Lookup(ctx context.Context, req *fuse.LookupRequest, resp *fuse.Lo
 			dummyChild := NewFile(d.super, dummyInodeInfo, DefaultFlag, d.info.Inode, req.Name)
 			return dummyChild, nil
 		}
+		break
 	}
 	mode := proto.OsMode(info.Mode)
 	d.super.fslock.Lock()
