@@ -27,6 +27,7 @@ import (
 	"time"
 
 	"github.com/cubefs/cubefs/blobstore/api/access"
+	"github.com/cubefs/cubefs/blobstore/util/log"
 	"github.com/cubefs/cubefs/blockcache/bcache"
 	"github.com/cubefs/cubefs/client/common"
 	"github.com/cubefs/cubefs/depends/bazil.org/fuse"
@@ -38,7 +39,6 @@ import (
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/auditlog"
 	"github.com/cubefs/cubefs/util/errors"
-	"github.com/cubefs/cubefs/util/log"
 	"github.com/cubefs/cubefs/util/ump"
 )
 
@@ -279,7 +279,7 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 		atomic.StoreUint32((*uint32)(&s.state), uint32(fs.FSStatRestore))
 	}
 
-	log.LogInfof("NewSuper: cluster(%v) volname(%v) icacheExpiration(%v) LookupValidDuration(%v) AttrValidDuration(%v) state(%v)",
+	log.Infof("NewSuper: cluster(%v) volname(%v) icacheExpiration(%v) LookupValidDuration(%v) AttrValidDuration(%v) state(%v)",
 		s.cluster, s.volname, inodeExpiration, LookupValidDuration, AttrValidDuration, s.state)
 
 	go s.loopSyncMeta()
@@ -407,7 +407,7 @@ func (s *Super) umpKey(act string) string {
 }
 
 func (s *Super) handleError(op, msg string) {
-	log.LogError(msg)
+	log.Error(msg)
 	ump.Alarm(s.umpKey(op), msg)
 }
 
@@ -647,17 +647,17 @@ func (s *Super) syncMeta() <-chan struct{} {
 	for ino := range mergeChanged(batCh) {
 		inode := ino
 		changeCnt++
-		log.LogDebugf("sync meta,inode:%d changed", inode)
+		log.Debugf("sync meta,inode:%d changed", inode)
 		s.ic.Delete(inode)
 		s.taskPool[1].Run(func() {
 			common.Timed(3, 100).On(func() error {
 				extents := s.ec.GetExtents(inode)
 				if err := s.ec.ForceRefreshExtentsCache(inode); err != nil {
 					if err != os.ErrNotExist {
-						log.LogErrorf("ForceRefreshExtentsCache failed:%v", err)
+						log.Errorf("ForceRefreshExtentsCache failed:%v", err)
 					}
 				}
-				log.LogDebugf("inode:%d,extents is :%v", inode, extents)
+				log.Debugf("inode:%d,extents is :%v", inode, extents)
 				for _, extent := range extents {
 					cacheKey := util.GenerateRepVolKey(s.volname, inode, extent.PartitionId, extent.ExtentId, extent.FileOffset)
 					// retry to make possible evict success
@@ -673,7 +673,7 @@ func (s *Super) syncMeta() <-chan struct{} {
 		})
 	}
 
-	log.LogDebugf("total cache cnt:%d,changedCnt:%d,sync meta cost:%v", cacheLen, changeCnt, time.Since(start))
+	log.Debugf("total cache cnt:%d,changedCnt:%d,sync meta cost:%v", cacheLen, changeCnt, time.Since(start))
 	close(finishC)
 
 	return finishC
@@ -685,7 +685,7 @@ func (s *Super) getModifyInodes(inodes []uint64) (changedNodes []uint64) {
 	// get deleted files
 	if len(inodeInfos) != len(inodes) {
 		changedNodes = append(changedNodes, getDelInodes(inodes, inodeInfos)...)
-		log.LogDebugf("len inodes is %d, len get inode infos is :%d, del inodes is:%v", len(inodes), len(inodeInfos), changedNodes)
+		log.Debugf("len inodes is %d, len get inode infos is :%d, del inodes is:%v", len(inodes), len(inodeInfos), changedNodes)
 	}
 
 	for _, newInfo := range inodeInfos {
@@ -694,10 +694,10 @@ func (s *Super) getModifyInodes(inodes []uint64) (changedNodes []uint64) {
 			continue
 		}
 		if !oldInfo.ModifyTime.Equal(newInfo.ModifyTime) || newInfo.Generation != s.ec.GetExtentCacheGen(newInfo.Inode) {
-			log.LogDebugf("oldInfo:ino(%d) modifyTime(%v) gen(%d),newInfo:ino(%d) modifyTime(%d) gen(%d)", oldInfo.Inode, oldInfo.ModifyTime.Unix(), s.ec.GetExtentCacheGen(newInfo.Inode), newInfo.Inode, newInfo.ModifyTime.Unix(), newInfo.Generation)
+			log.Debugf("oldInfo:ino(%d) modifyTime(%v) gen(%d),newInfo:ino(%d) modifyTime(%d) gen(%d)", oldInfo.Inode, oldInfo.ModifyTime.Unix(), s.ec.GetExtentCacheGen(newInfo.Inode), newInfo.Inode, newInfo.ModifyTime.Unix(), newInfo.Generation)
 			changedNodes = append(changedNodes, newInfo.Inode)
 		} else {
-			log.LogDebugf("oldInfo:ino(%d) modifyTime(%v) gen(%d),newInfo:ino(%d) modifyTime(%d) gen(%d)", oldInfo.Inode, oldInfo.ModifyTime.Unix(), s.ec.GetExtentCacheGen(newInfo.Inode), newInfo.Inode, newInfo.ModifyTime.Unix(), newInfo.Generation)
+			log.Debugf("oldInfo:ino(%d) modifyTime(%v) gen(%d),newInfo:ino(%d) modifyTime(%d) gen(%d)", oldInfo.Inode, oldInfo.ModifyTime.Unix(), s.ec.GetExtentCacheGen(newInfo.Inode), newInfo.Inode, newInfo.ModifyTime.Unix(), newInfo.Generation)
 		}
 	}
 	return
@@ -725,7 +725,7 @@ func (s *Super) SetTransaction(txMaskStr string, timeout int64, retryNum int64, 
 	// maskStr := proto.GetMaskString(txMask)
 	mask, err := proto.GetMaskFromString(txMaskStr)
 	if err != nil {
-		log.LogErrorf("SetTransaction: err[%v], op[%v], timeout[%v]", err, txMaskStr, timeout)
+		log.Errorf("SetTransaction: err[%v], op[%v], timeout[%v]", err, txMaskStr, timeout)
 		return
 	}
 
@@ -744,6 +744,6 @@ func (s *Super) SetTransaction(txMaskStr string, timeout int64, retryNum int64, 
 		retryInterval = proto.DefaultTxConflictRetryInterval
 	}
 	s.mw.TxConflictRetryInterval = retryInterval
-	log.LogDebugf("SetTransaction: mask[%v], op[%v], timeout[%v], retryNum[%v], retryInterval[%v ms]",
+	log.Debugf("SetTransaction: mask[%v], op[%v], timeout[%v], retryNum[%v], retryInterval[%v ms]",
 		mask, txMaskStr, timeout, retryNum, retryInterval)
 }
