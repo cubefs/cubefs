@@ -1486,8 +1486,10 @@ func (mw *MetaWrapper) GetExtents(inode uint64, isCache, openForWrite, isMigrati
 
 	resp, err := mw.getExtents(mp, inode, isCache, openForWrite, isMigration)
 	if err != nil {
-		if resp != nil {
-			err = statusToErrno(resp.Status)
+		if !strings.Contains(err.Error(), "OpMismatchStorageClass") {
+			if resp != nil {
+				err = statusToErrno(resp.Status)
+			}
 		}
 		log.LogErrorf("GetExtents: ino(%v) err(%v)", inode, err)
 		return 0, 0, nil, err
