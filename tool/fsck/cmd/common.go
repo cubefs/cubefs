@@ -39,6 +39,7 @@ const (
 	pathDumpFileName           string = "path.dump"
 	tinyDir                    string = "tiny"
 	normalDir                  string = "normal"
+	migrateDir                 string = "migrate"
 	beforeTimeFile             string = "before_time"
 	verifyInfoFile             string = "verify_info"
 )
