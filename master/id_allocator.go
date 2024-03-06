@@ -15,15 +15,16 @@
 package master
 
 import (
+	"context"
 	"fmt"
 	"math"
 	"strconv"
 	"sync"
 	"sync/atomic"
 
+	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/raftstore"
 	"github.com/cubefs/cubefs/raftstore/raftstore_db"
-	"github.com/cubefs/cubefs/util/log"
 )
 
 // IDAllocator generates and allocates ids
@@ -51,15 +52,15 @@ func newIDAllocator(store *raftstore_db.RocksDBStore, partition raftstore.Partit
 	return
 }
 
-func (alloc *IDAllocator) restore() {
-	alloc.restoreMaxDataPartitionID()
-	alloc.restoreMaxMetaPartitionID()
-	alloc.restoreMaxCommonID()
-	alloc.restoreMaxQuotaID()
-	alloc.restoreClientID()
+func (alloc *IDAllocator) restore(ctx context.Context) {
+	alloc.restoreMaxDataPartitionID(ctx)
+	alloc.restoreMaxMetaPartitionID(ctx)
+	alloc.restoreMaxCommonID(ctx)
+	alloc.restoreMaxQuotaID(ctx)
+	alloc.restoreClientID(ctx)
 }
 
-func (alloc *IDAllocator) restoreMaxDataPartitionID() {
+func (alloc *IDAllocator) restoreMaxDataPartitionID(ctx context.Context) {
 	value, err := alloc.store.Get(maxDataPartitionIDKey)
 	if err != nil {
 		panic(fmt.Sprintf("Failed to restore maxDataPartitionID,err:%v ", err.Error()))
@@ -73,11 +74,12 @@ func (alloc *IDAllocator) restoreMaxDataPartitionID() {
 	if err != nil {
 		panic(fmt.Sprintf("Failed to restore maxDataPartitionID,err:%v ", err.Error()))
 	}
+	span := proto.SpanFromContext(ctx)
 	alloc.dataPartitionID = maxDataPartitionID
-	log.LogInfof("action[restoreMaxDataPartitionID] maxDpID[%v]", alloc.dataPartitionID)
+	span.Infof("action[restoreMaxDataPartitionID] maxDpID[%v]", alloc.dataPartitionID)
 }
 
-func (alloc *IDAllocator) restoreMaxMetaPartitionID() {
+func (alloc *IDAllocator) restoreMaxMetaPartitionID(ctx context.Context) {
 	value, err := alloc.store.Get(maxMetaPartitionIDKey)
 	if err != nil {
 		panic(fmt.Sprintf("Failed to restore maxPartitionID,err:%v ", err.Error()))
@@ -92,11 +94,12 @@ func (alloc *IDAllocator) restoreMaxMetaPartitionID() {
 		panic(fmt.Sprintf("Failed to restore maxPartitionID,err:%v ", err.Error()))
 	}
 	alloc.metaPartitionID = maxPartitionID
-	log.LogInfof("action[restoreMaxMetaPartitionID] maxMpID[%v]", alloc.metaPartitionID)
+	span := proto.SpanFromContext(ctx)
+	span.Infof("action[restoreMaxMetaPartitionID] maxMpID[%v]", alloc.metaPartitionID)
 }
 
 // The data node, meta node, and node set share the same ID allocator.
-func (alloc *IDAllocator) restoreMaxCommonID() {
+func (alloc *IDAllocator) restoreMaxCommonID(ctx context.Context) {
 	value, err := alloc.store.Get(maxCommonIDKey)
 	if err != nil {
 		panic(fmt.Sprintf("Failed to restore maxCommonID,err:%v ", err.Error()))
@@ -111,10 +114,11 @@ func (alloc *IDAllocator) restoreMaxCommonID() {
 		panic(fmt.Sprintf("Failed to restore maxCommonID,err:%v ", err.Error()))
 	}
 	alloc.commonID = maxMetaNodeID
-	log.LogInfof("action[restoreMaxCommonID] maxCommonID[%v]", alloc.commonID)
+	span := proto.SpanFromContext(ctx)
+	span.Infof("action[restoreMaxCommonID] maxCommonID[%v]", alloc.commonID)
 }
 
-func (alloc *IDAllocator) restoreMaxQuotaID() {
+func (alloc *IDAllocator) restoreMaxQuotaID(ctx context.Context) {
 	value, err := alloc.store.Get(maxQuotaIDKey)
 	if err != nil {
 		panic(fmt.Sprintf("Failed to restore maxQuotaID,err:%v ", err.Error()))
@@ -134,8 +138,8 @@ func (alloc *IDAllocator) restoreMaxQuotaID() {
 	} else {
 		alloc.quotaID = math.MaxInt32
 	}
-
-	log.LogInfof("action[restoreMaxCommonID] maxQuotaID[%v]", alloc.quotaID)
+	span := proto.SpanFromContext(ctx)
+	span.Infof("action[restoreMaxCommonID] maxQuotaID[%v]", alloc.quotaID)
 }
 
 func (alloc *IDAllocator) setDataPartitionID(id uint64) {
@@ -150,7 +154,7 @@ func (alloc *IDAllocator) setCommonID(id uint64) {
 	atomic.StoreUint64(&alloc.commonID, id)
 }
 
-func (alloc *IDAllocator) restoreClientID() {
+func (alloc *IDAllocator) restoreClientID(ctx context.Context) {
 	alloc.mpIDLock.Lock()
 	defer alloc.mpIDLock.Unlock()
 	value, err := alloc.store.Get(maxClientIDKey)
@@ -172,7 +176,7 @@ func (alloc *IDAllocator) setQuotaID(id uint32) {
 	atomic.StoreUint32(&alloc.quotaID, id)
 }
 
-func (alloc *IDAllocator) allocateDataPartitionID() (partitionID uint64, err error) {
+func (alloc *IDAllocator) allocateDataPartitionID(ctx context.Context) (partitionID uint64, err error) {
 	alloc.dpIDLock.Lock()
 	defer alloc.dpIDLock.Unlock()
 	var cmd []byte
@@ -192,11 +196,12 @@ func (alloc *IDAllocator) allocateDataPartitionID() (partitionID uint64, err err
 	alloc.setDataPartitionID(partitionID)
 	return
 errHandler:
-	log.LogErrorf("action[allocateDataPartitionID] err:%v", err.Error())
+	span := proto.SpanFromContext(ctx)
+	span.Errorf("action[allocateDataPartitionID] err:%v", err.Error())
 	return
 }
 
-func (alloc *IDAllocator) allocateMetaPartitionID() (partitionID uint64, err error) {
+func (alloc *IDAllocator) allocateMetaPartitionID(ctx context.Context) (partitionID uint64, err error) {
 	alloc.mpIDLock.Lock()
 	defer alloc.mpIDLock.Unlock()
 	var cmd []byte
@@ -216,11 +221,12 @@ func (alloc *IDAllocator) allocateMetaPartitionID() (partitionID uint64, err err
 	alloc.setMetaPartitionID(partitionID)
 	return
 errHandler:
-	log.LogErrorf("action[allocateMetaPartitionID] err:%v", err.Error())
+	span := proto.SpanFromContext(ctx)
+	span.Errorf("action[allocateMetaPartitionID] err:%v", err.Error())
 	return
 }
 
-func (alloc *IDAllocator) allocateClientID() (clientID uint64, err error) {
+func (alloc *IDAllocator) allocateClientID(ctx context.Context) (clientID uint64, err error) {
 	alloc.mpIDLock.Lock()
 	defer alloc.mpIDLock.Unlock()
 	clientID = alloc.clientID + 1
@@ -244,11 +250,12 @@ func (alloc *IDAllocator) allocateClientID() (clientID uint64, err error) {
 	alloc.clientID = clientID
 	return
 errHandler:
-	log.LogErrorf("action[allocateClientID] err:%v", err.Error())
+	span := proto.SpanFromContext(ctx)
+	span.Errorf("action[allocateClientID] err:%v", err.Error())
 	return
 }
 
-func (alloc *IDAllocator) allocateCommonID() (id uint64, err error) {
+func (alloc *IDAllocator) allocateCommonID(ctx context.Context) (id uint64, err error) {
 	alloc.mnIDLock.Lock()
 	defer alloc.mnIDLock.Unlock()
 	var cmd []byte
@@ -268,11 +275,12 @@ func (alloc *IDAllocator) allocateCommonID() (id uint64, err error) {
 	alloc.setCommonID(id)
 	return
 errHandler:
-	log.LogErrorf("action[allocateCommonID] err:%v", err.Error())
+	span := proto.SpanFromContext(ctx)
+	span.Errorf("action[allocateCommonID] err:%v", err.Error())
 	return
 }
 
-func (alloc *IDAllocator) allocateQuotaID() (id uint32, err error) {
+func (alloc *IDAllocator) allocateQuotaID(ctx context.Context) (id uint32, err error) {
 	alloc.qaIDLock.Lock()
 	defer alloc.qaIDLock.Unlock()
 	var cmd []byte
@@ -292,6 +300,7 @@ func (alloc *IDAllocator) allocateQuotaID() (id uint32, err error) {
 	alloc.setQuotaID(id)
 	return
 errHandler:
-	log.LogErrorf("action[allocateQuotaID] err:%v", err.Error())
+	span := proto.SpanFromContext(ctx)
+	span.Errorf("action[allocateQuotaID] err:%v", err.Error())
 	return
 }
