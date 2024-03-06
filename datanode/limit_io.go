@@ -21,7 +21,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/cubefs/cubefs/util/log"
+	"github.com/cubefs/cubefs/blobstore/util/log"
 	"golang.org/x/time/rate"
 )
 
@@ -78,7 +78,7 @@ func (l *ioLimiter) ResetIO(ioConcurrency int) {
 func (l *ioLimiter) Run(size int, taskFn func()) {
 	if size > 0 {
 		if err := l.flow.WaitN(context.Background(), size); err != nil {
-			log.LogWarnf("action[limitio] run wait flow with %d %s", size, err.Error())
+			log.Warnf("action[limitio] run wait flow with %d %s", size, err.Error())
 		}
 	}
 	l.getIO().Run(taskFn)
@@ -90,7 +90,7 @@ func (l *ioLimiter) TryRun(size int, taskFn func()) bool {
 	}
 	if size > 0 {
 		if err := l.flow.WaitN(context.Background(), size); err != nil {
-			log.LogWarnf("action[limitio] tryrun wait flow with %d %s", size, err.Error())
+			log.Warnf("action[limitio] tryrun wait flow with %d %s", size, err.Error())
 			return false
 		}
 	}
