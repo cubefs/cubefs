@@ -15,6 +15,7 @@
 package master
 
 import (
+	"context"
 	"fmt"
 	"math"
 	"math/rand"
@@ -24,7 +25,6 @@ import (
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util"
-	"github.com/cubefs/cubefs/util/log"
 )
 
 const RoundRobinNodeSelectorName = "RoundRobin"
@@ -50,7 +50,7 @@ func (ns *nodeSet) getNodes(nodeType NodeType) *sync.Map {
 
 type NodeSelector interface {
 	GetName() string
-	Select(ns *nodeSet, excludeHosts []string, replicaNum int) (newHosts []string, peers []proto.Peer, err error)
+	Select(ctx context.Context, ns *nodeSet, excludeHosts []string, replicaNum int) (newHosts []string, peers []proto.Peer, err error)
 }
 
 type weightedNode struct {
@@ -82,11 +82,11 @@ func (nodes SortedWeightedNodes) Swap(i, j int) {
 	nodes[i], nodes[j] = nodes[j], nodes[i]
 }
 
-func canAllocPartition(node interface{}, nodeType NodeType) bool {
+func canAllocPartition(ctx context.Context, node interface{}, nodeType NodeType) bool {
 	switch nodeType {
 	case DataNodeType:
 		dataNode := node.(*DataNode)
-		return dataNode.canAlloc() && dataNode.canAllocDp()
+		return dataNode.canAlloc() && dataNode.canAllocDp(ctx)
 	case MetaNodeType:
 		metaNode := node.(*MetaNode)
 		return metaNode.isWritable()
@@ -183,22 +183,23 @@ func (s *CarryWeightNodeSelector) getTotalMax(nodes *sync.Map) (total uint64) {
 	return
 }
 
-func (s *CarryWeightNodeSelector) getCarryDataNodes(maxTotal uint64, excludeHosts []string, dataNodes *sync.Map) (nodeTabs SortedWeightedNodes, availCount int) {
+func (s *CarryWeightNodeSelector) getCarryDataNodes(ctx context.Context, maxTotal uint64, excludeHosts []string, dataNodes *sync.Map) (nodeTabs SortedWeightedNodes, availCount int) {
 	nodeTabs = make(SortedWeightedNodes, 0)
+	span := proto.SpanFromContext(ctx)
 	dataNodes.Range(func(key, value interface{}) bool {
 		dataNode := value.(*DataNode)
 		if contains(excludeHosts, dataNode.Addr) {
-			// log.LogDebugf("[getAvailCarryDataNodeTab] dataNode [%v] is excludeHosts", dataNode.Addr)
+			// span.Debugf("[getAvailCarryDataNodeTab] dataNode [%v] is excludeHosts", dataNode.Addr)
 			return true
 		}
-		if !dataNode.canAllocDp() {
-			log.LogDebugf("[getAvailCarryDataNodeTab] dataNode [%v] is not writeable, offline %v, dpCnt %d",
+		if !dataNode.canAllocDp(ctx) {
+			span.Debugf("[getAvailCarryDataNodeTab] dataNode [%v] is not writeable, offline %v, dpCnt %d",
 				dataNode.Addr, dataNode.ToBeOffline, dataNode.DataPartitionCount)
 			return true
 		}
 
 		if !dataNode.canAlloc() {
-			log.LogWarnf("[getAvailCarryDataNodeTab] dataNode [%v] is overSold", dataNode.Addr)
+			span.Warnf("[getAvailCarryDataNodeTab] dataNode [%v] is overSold", dataNode.Addr)
 			return true
 		}
 		if s.carry[dataNode.ID] >= 1.0 {
@@ -215,7 +216,7 @@ func (s *CarryWeightNodeSelector) getCarryDataNodes(maxTotal uint64, excludeHost
 	return
 }
 
-func (s *CarryWeightNodeSelector) getCarryMetaNodes(maxTotal uint64, excludeHosts []string, metaNodes *sync.Map) (nodes SortedWeightedNodes, availCount int) {
+func (s *CarryWeightNodeSelector) getCarryMetaNodes(ctx context.Context, maxTotal uint64, excludeHosts []string, metaNodes *sync.Map) (nodes SortedWeightedNodes, availCount int) {
 	nodes = make(SortedWeightedNodes, 0)
 	metaNodes.Range(func(key, value interface{}) bool {
 		metaNode := value.(*MetaNode)
@@ -238,12 +239,12 @@ func (s *CarryWeightNodeSelector) getCarryMetaNodes(maxTotal uint64, excludeHost
 	return
 }
 
-func (s *CarryWeightNodeSelector) getCarryNodes(nset *nodeSet, maxTotal uint64, excludeHosts []string) (SortedWeightedNodes, int) {
+func (s *CarryWeightNodeSelector) getCarryNodes(ctx context.Context, nset *nodeSet, maxTotal uint64, excludeHosts []string) (SortedWeightedNodes, int) {
 	switch s.nodeType {
 	case DataNodeType:
-		return s.getCarryDataNodes(maxTotal, excludeHosts, nset.dataNodes)
+		return s.getCarryDataNodes(ctx, maxTotal, excludeHosts, nset.dataNodes)
 	case MetaNodeType:
-		return s.getCarryMetaNodes(maxTotal, excludeHosts, nset.metaNodes)
+		return s.getCarryMetaNodes(ctx, maxTotal, excludeHosts, nset.metaNodes)
 	default:
 		panic("unknown node type")
 	}
@@ -274,7 +275,7 @@ func (s *CarryWeightNodeSelector) selectNodeForWrite(node Node) {
 	s.carry[node.GetID()] -= 1.0
 }
 
-func (s *CarryWeightNodeSelector) Select(ns *nodeSet, excludeHosts []string, replicaNum int) (newHosts []string, peers []proto.Peer, err error) {
+func (s *CarryWeightNodeSelector) Select(ctx context.Context, ns *nodeSet, excludeHosts []string, replicaNum int) (newHosts []string, peers []proto.Peer, err error) {
 	nodes := ns.getNodes(s.nodeType)
 	total := s.getTotalMax(nodes)
 	// prepare carry for every nodes
@@ -282,12 +283,13 @@ func (s *CarryWeightNodeSelector) Select(ns *nodeSet, excludeHosts []string, rep
 	orderHosts := make([]string, 0)
 	newHosts = make([]string, 0)
 	peers = make([]proto.Peer, 0)
+	span := proto.SpanFromContext(ctx)
 	// if replica == 0, return
 	if replicaNum == 0 {
 		return
 	}
 	// if we cannot get enough writable nodes, return error
-	weightedNodes, count := s.getCarryNodes(ns, total, excludeHosts)
+	weightedNodes, count := s.getCarryNodes(ctx, ns, total, excludeHosts)
 	if len(weightedNodes) < replicaNum {
 		err = fmt.Errorf("action[%vNodeSelector::Select] no enough writable hosts,replicaNum:%v  MatchNodeCount:%v  ",
 			s.GetName(), replicaNum, len(weightedNodes))
@@ -306,9 +308,9 @@ func (s *CarryWeightNodeSelector) Select(ns *nodeSet, excludeHosts []string, rep
 		peer := proto.Peer{ID: node.GetID(), Addr: node.GetAddr()}
 		peers = append(peers, peer)
 	}
-	log.LogInfof("action[%vNodeSelector::Select] peers[%v]", s.GetName(), peers)
+	span.Infof("action[%vNodeSelector::Select] peers[%v]", s.GetName(), peers)
 	// reshuffle for primary-backup replication
-	if newHosts, err = reshuffleHosts(orderHosts); err != nil {
+	if newHosts, err = reshuffleHosts(ctx, orderHosts); err != nil {
 		err = fmt.Errorf("action[%vNodeSelector::Select] err:%v  orderHosts is nil", s.GetName(), err.Error())
 		return
 	}
@@ -343,13 +345,14 @@ func (s *AvailableSpaceFirstNodeSelector) GetName() string {
 	return AvailableSpaceFirstNodeSelectorName
 }
 
-func (s *AvailableSpaceFirstNodeSelector) Select(ns *nodeSet, excludeHosts []string, replicaNum int) (newHosts []string, peers []proto.Peer, err error) {
+func (s *AvailableSpaceFirstNodeSelector) Select(ctx context.Context, ns *nodeSet, excludeHosts []string, replicaNum int) (newHosts []string, peers []proto.Peer, err error) {
 	newHosts = make([]string, 0)
 	peers = make([]proto.Peer, 0)
 	// if replica == 0, return
 	if replicaNum == 0 {
 		return
 	}
+	span := proto.SpanFromContext(ctx)
 	orderHosts := make([]string, 0)
 	nodes := ns.getNodes(s.nodeType)
 	sortedNodes := make([]Node, 0)
@@ -375,7 +378,7 @@ func (s *AvailableSpaceFirstNodeSelector) Select(ns *nodeSet, excludeHosts []str
 		for nodeIndex < len(sortedNodes) {
 			node := sortedNodes[nodeIndex]
 			nodeIndex += 1
-			if canAllocPartition(node, s.nodeType) {
+			if canAllocPartition(ctx, node, s.nodeType) {
 				if excludeHosts == nil || !contains(excludeHosts, node.GetAddr()) {
 					selectedIndex = nodeIndex - 1
 					break
@@ -397,9 +400,9 @@ func (s *AvailableSpaceFirstNodeSelector) Select(ns *nodeSet, excludeHosts []str
 			s.GetName(), replicaNum, len(orderHosts))
 		return
 	}
-	log.LogInfof("action[%vNodeSelector::Select] peers[%v]", s.GetName(), peers)
+	span.Infof("action[%vNodeSelector::Select] peers[%v]", s.GetName(), peers)
 	// reshuffle for primary-backup replication
-	if newHosts, err = reshuffleHosts(orderHosts); err != nil {
+	if newHosts, err = reshuffleHosts(ctx, orderHosts); err != nil {
 		err = fmt.Errorf("action[%vNodeSelector::Select] err:%v  orderHosts is nil", s.GetName(), err.Error())
 		return
 	}
@@ -422,13 +425,14 @@ func (s *RoundRobinNodeSelector) GetName() string {
 	return RoundRobinNodeSelectorName
 }
 
-func (s *RoundRobinNodeSelector) Select(ns *nodeSet, excludeHosts []string, replicaNum int) (newHosts []string, peers []proto.Peer, err error) {
+func (s *RoundRobinNodeSelector) Select(ctx context.Context, ns *nodeSet, excludeHosts []string, replicaNum int) (newHosts []string, peers []proto.Peer, err error) {
 	newHosts = make([]string, 0)
 	peers = make([]proto.Peer, 0)
 	// if replica == 0, return
 	if replicaNum == 0 {
 		return
 	}
+	span := proto.SpanFromContext(ctx)
 	orderHosts := make([]string, 0)
 	nodes := ns.getNodes(s.nodeType)
 	sortedNodes := make([]Node, 0)
@@ -454,7 +458,7 @@ func (s *RoundRobinNodeSelector) Select(ns *nodeSet, excludeHosts []string, repl
 		for nodeIndex < len(sortedNodes) {
 			node := sortedNodes[(nodeIndex+s.index)%len(sortedNodes)]
 			nodeIndex += 1
-			if canAllocPartition(node, s.nodeType) {
+			if canAllocPartition(ctx, node, s.nodeType) {
 				if excludeHosts == nil || !contains(excludeHosts, node.GetAddr()) {
 					selectedIndex = nodeIndex - 1
 					break
@@ -478,9 +482,9 @@ func (s *RoundRobinNodeSelector) Select(ns *nodeSet, excludeHosts []string, repl
 	}
 	// move the index of selector
 	s.index += nodeIndex
-	log.LogInfof("action[%vNodeSelector::Select] peers[%v]", s.GetName(), peers)
+	span.Infof("action[%vNodeSelector::Select] peers[%v]", s.GetName(), peers)
 	// reshuffle for primary-backup replication
-	if newHosts, err = reshuffleHosts(orderHosts); err != nil {
+	if newHosts, err = reshuffleHosts(ctx, orderHosts); err != nil {
 		err = fmt.Errorf("action[%vNodeSelector::Select] err:%v  orderHosts is nil", s.GetName(), err.Error())
 		return
 	}
@@ -535,8 +539,9 @@ func (s *StrawNodeSelector) selectOneNode(nodes []Node) (index int, maxNode Node
 	return
 }
 
-func (s *StrawNodeSelector) Select(ns *nodeSet, excludeHosts []string, replicaNum int) (newHosts []string, peers []proto.Peer, err error) {
+func (s *StrawNodeSelector) Select(ctx context.Context, ns *nodeSet, excludeHosts []string, replicaNum int) (newHosts []string, peers []proto.Peer, err error) {
 	nodes := make([]Node, 0)
+	span := proto.SpanFromContext(ctx)
 	ns.getNodes(s.nodeType).Range(func(key, value interface{}) bool {
 		node := asNodeWrap(value, s.nodeType)
 		if !contains(excludeHosts, node.GetAddr()) {
@@ -554,7 +559,7 @@ func (s *StrawNodeSelector) Select(ns *nodeSet, excludeHosts []string, replicaNu
 			nodes[0], nodes[index] = node, nodes[0]
 		}
 		nodes = nodes[1:]
-		if !canAllocPartition(node, s.nodeType) {
+		if !canAllocPartition(ctx, node, s.nodeType) {
 			continue
 		}
 		orderHosts = append(orderHosts, node.GetAddr())
@@ -568,9 +573,9 @@ func (s *StrawNodeSelector) Select(ns *nodeSet, excludeHosts []string, replicaNu
 			s.GetName(), replicaNum, len(orderHosts))
 		return
 	}
-	log.LogInfof("action[%vNodeSelector::Select] peers[%v]", s.GetName(), peers)
+	span.Infof("action[%vNodeSelector::Select] peers[%v]", s.GetName(), peers)
 	// reshuffle for primary-backup replication
-	if newHosts, err = reshuffleHosts(orderHosts); err != nil {
+	if newHosts, err = reshuffleHosts(ctx, orderHosts); err != nil {
 		err = fmt.Errorf("action[%vNodeSelector::Select] err:%v  orderHosts is nil", s.GetName(), err.Error())
 		return
 	}
@@ -599,20 +604,20 @@ func NewNodeSelector(name string, nodeType NodeType) NodeSelector {
 	}
 }
 
-func (ns *nodeSet) getAvailMetaNodeHosts(excludeHosts []string, replicaNum int) (newHosts []string, peers []proto.Peer, err error) {
+func (ns *nodeSet) getAvailMetaNodeHosts(ctx context.Context, excludeHosts []string, replicaNum int) (newHosts []string, peers []proto.Peer, err error) {
 	ns.nodeSelectLock.Lock()
 	defer ns.nodeSelectLock.Unlock()
 	// we need a read lock to block the modify of node selector
 	ns.metaNodeSelectorLock.RLock()
 	defer ns.metaNodeSelectorLock.RUnlock()
-	return ns.metaNodeSelector.Select(ns, excludeHosts, replicaNum)
+	return ns.metaNodeSelector.Select(ctx, ns, excludeHosts, replicaNum)
 }
 
-func (ns *nodeSet) getAvailDataNodeHosts(excludeHosts []string, replicaNum int) (hosts []string, peers []proto.Peer, err error) {
+func (ns *nodeSet) getAvailDataNodeHosts(ctx context.Context, excludeHosts []string, replicaNum int) (hosts []string, peers []proto.Peer, err error) {
 	ns.nodeSelectLock.Lock()
 	defer ns.nodeSelectLock.Unlock()
 	// we need a read lock to block the modify of node selector
 	ns.dataNodeSelectorLock.Lock()
 	defer ns.dataNodeSelectorLock.Unlock()
-	return ns.dataNodeSelector.Select(ns, excludeHosts, replicaNum)
+	return ns.dataNodeSelector.Select(ctx, ns, excludeHosts, replicaNum)
 }

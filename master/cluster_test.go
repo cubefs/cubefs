@@ -1,23 +1,25 @@
 package master
 
 import (
+	"context"
 	"fmt"
 	"testing"
 	"time"
 
+	"github.com/cubefs/cubefs/blobstore/common/trace"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/stretchr/testify/require"
 )
 
-func buildPanicCluster() *Cluster {
-	c := newCluster(server.cluster.Name, server.cluster.leaderInfo, server.cluster.fsm, server.cluster.partition, server.config)
-	v := buildPanicVol()
+func buildPanicCluster(ctx context.Context) *Cluster {
+	c := newCluster(ctx, server.cluster.Name, server.cluster.leaderInfo, server.cluster.fsm, server.cluster.partition, server.config)
+	v := buildPanicVol(ctx)
 	c.putVol(v)
 	return c
 }
 
-func buildPanicVol() *Vol {
-	id, err := server.cluster.idAlloc.allocateCommonID()
+func buildPanicVol(ctx context.Context) *Vol {
+	id, err := server.cluster.idAlloc.allocateCommonID(ctx)
 	if err != nil {
 		return nil
 	}
@@ -40,104 +42,119 @@ func buildPanicVol() *Vol {
 		Description:       "",
 	}
 
-	vol := newVol(vv)
+	vol := newVol(ctx, vv)
 	vol.dataPartitions = nil
 	return vol
 }
 
 func TestCheckDataPartitions(t *testing.T) {
-	server.cluster.checkDataPartitions()
+	_, ctx := trace.StartSpanFromContextWithTraceID(context.Background(), "", "cluster-test-check-data-partition")
+	server.cluster.checkDataPartitions(ctx)
 }
 
 func TestPanicCheckDataPartitions(t *testing.T) {
-	c := buildPanicCluster()
-	c.checkDataPartitions()
+	_, ctx := trace.StartSpanFromContextWithTraceID(context.Background(), "", "cluster-test-panic-check-data-partition")
+	c := buildPanicCluster(ctx)
+	c.checkDataPartitions(ctx)
 	t.Logf("catched panic")
 }
 
 func TestCheckBackendLoadDataPartitions(t *testing.T) {
-	server.cluster.scheduleToLoadDataPartitions()
+	_, ctx := trace.StartSpanFromContextWithTraceID(context.Background(), "", "cluster-test-check-backendload-data-partition")
+	server.cluster.scheduleToLoadDataPartitions(ctx)
 }
 
 func TestPanicBackendLoadDataPartitions(t *testing.T) {
-	c := buildPanicCluster()
-	c.scheduleToLoadDataPartitions()
+	_, ctx := trace.StartSpanFromContextWithTraceID(context.Background(), "", "cluster-test-panic-backendload-data-partition")
+	c := buildPanicCluster(ctx)
+	c.scheduleToLoadDataPartitions(ctx)
 	t.Logf("catched panic")
 }
 
 func TestCheckReleaseDataPartitions(t *testing.T) {
-	server.cluster.releaseDataPartitionAfterLoad()
+	_, ctx := trace.StartSpanFromContextWithTraceID(context.Background(), "", "cluster-test-check-release-data-partition")
+	server.cluster.releaseDataPartitionAfterLoad(ctx)
 }
 
 func TestPanicCheckReleaseDataPartitions(t *testing.T) {
-	c := buildPanicCluster()
-	c.releaseDataPartitionAfterLoad()
+	_, ctx := trace.StartSpanFromContextWithTraceID(context.Background(), "", "cluster-test-panic-check-release-data-partition")
+	c := buildPanicCluster(ctx)
+	c.releaseDataPartitionAfterLoad(ctx)
 	t.Logf("catched panic")
 }
 
 func TestCheckHeartbeat(t *testing.T) {
-	server.cluster.checkDataNodeHeartbeat()
-	server.cluster.checkMetaNodeHeartbeat()
+	_, ctx := trace.StartSpanFromContextWithTraceID(context.Background(), "", "cluster-test-check-heartbeat")
+	server.cluster.checkDataNodeHeartbeat(ctx)
+	server.cluster.checkMetaNodeHeartbeat(ctx)
 }
 
 func TestCheckMetaPartitions(t *testing.T) {
-	server.cluster.checkMetaPartitions()
+	_, ctx := trace.StartSpanFromContextWithTraceID(context.Background(), "", "cluster-test-check-meta-partition")
+	server.cluster.checkMetaPartitions(ctx)
 }
 
 func TestPanicCheckMetaPartitions(t *testing.T) {
-	c := buildPanicCluster()
+	_, ctx := trace.StartSpanFromContextWithTraceID(context.Background(), "", "cluster-test-panic-check-meta-partition")
+	c := buildPanicCluster(ctx)
 	vol, err := c.getVol(commonVolName)
 	if err != nil {
 		t.Error(err)
 	}
-	partitionID, err := server.cluster.idAlloc.allocateMetaPartitionID()
+	partitionID, err := server.cluster.idAlloc.allocateMetaPartitionID(ctx)
 	if err != nil {
 		t.Error(err)
 	}
 	mp := newMetaPartition(partitionID, 1, defaultMaxMetaPartitionInodeID, vol.mpReplicaNum, vol.Name, vol.ID, 0)
-	vol.addMetaPartition(mp)
+	vol.addMetaPartition(ctx, mp)
 	mp = nil
-	c.checkMetaPartitions()
+	c.checkMetaPartitions(ctx)
 	t.Logf("catched panic")
 }
 
 func TestCheckAvailSpace(t *testing.T) {
-	server.cluster.scheduleToUpdateStatInfo()
+	_, ctx := trace.StartSpanFromContextWithTraceID(context.Background(), "", "cluster-test-check-avail-space")
+	server.cluster.scheduleToUpdateStatInfo(ctx)
 }
 
 func TestPanicCheckAvailSpace(t *testing.T) {
-	c := buildPanicCluster()
+	_, ctx := trace.StartSpanFromContextWithTraceID(context.Background(), "", "cluster-test-panic-check-available-space")
+	c := buildPanicCluster(ctx)
 	c.dataNodeStatInfo = nil
-	c.scheduleToUpdateStatInfo()
+	c.scheduleToUpdateStatInfo(ctx)
 }
 
 func TestCheckCreateDataPartitions(t *testing.T) {
-	server.cluster.scheduleToManageDp()
+	_, ctx := trace.StartSpanFromContextWithTraceID(context.Background(), "", "cluster-test-check-create-data-partition")
+	server.cluster.scheduleToManageDp(ctx)
 	// time.Sleep(150 * time.Second)
 }
 
 func TestPanicCheckCreateDataPartitions(t *testing.T) {
-	c := buildPanicCluster()
-	c.scheduleToManageDp()
+	_, ctx := trace.StartSpanFromContextWithTraceID(context.Background(), "", "cluster-test-panic-check-create-data-partition")
+	c := buildPanicCluster(ctx)
+	c.scheduleToManageDp(ctx)
 }
 
 func TestPanicCheckBadDiskRecovery(t *testing.T) {
-	c := buildPanicCluster()
+	_, ctx := trace.StartSpanFromContextWithTraceID(context.Background(), "", "cluster-test-panic-check-bad-disk-recovery")
+	c := buildPanicCluster(ctx)
 	vol, err := c.getVol(commonVolName)
 	if err != nil {
 		t.Error(err)
 	}
-	partitionID, err := server.cluster.idAlloc.allocateDataPartitionID()
+	partitionID, err := server.cluster.idAlloc.allocateDataPartitionID(ctx)
 	if err != nil {
 		t.Error(err)
 	}
 	dp := newDataPartition(partitionID, vol.dpReplicaNum, vol.Name, vol.ID, proto.PartitionTypeNormal, 0)
 	c.BadDataPartitionIds.Store(fmt.Sprintf("%v", dp.PartitionID), dp)
-	c.scheduleToCheckDiskRecoveryProgress()
+	c.scheduleToCheckDiskRecoveryProgress(ctx)
 }
 
 func TestCheckBadDiskRecovery(t *testing.T) {
-	server.cluster.checkDataNodeHeartbeat()
+	_, ctx := trace.StartSpanFromContextWithTraceID(context.Background(), "", "cluster-test-check-bad-disk-recovery")
+	server.cluster.checkDataNodeHeartbeat(ctx)
 	time.Sleep(5 * time.Second)
 	// clear
 	server.cluster.BadDataPartitionIds.Range(func(key, value interface{}) bool {
@@ -184,7 +201,7 @@ func TestCheckBadDiskRecovery(t *testing.T) {
 		return
 	}
 	// check recovery
-	server.cluster.checkDiskRecoveryProgress()
+	server.cluster.checkDiskRecoveryProgress(ctx)
 
 	count = 0
 	server.cluster.BadDataPartitionIds.Range(func(key, value interface{}) bool {
@@ -198,22 +215,24 @@ func TestCheckBadDiskRecovery(t *testing.T) {
 }
 
 func TestPanicCheckBadMetaPartitionRecovery(t *testing.T) {
-	c := buildPanicCluster()
+	_, ctx := trace.StartSpanFromContextWithTraceID(context.Background(), "", "cluster-test-check-bad-meta-partition-recovery")
+	c := buildPanicCluster(ctx)
 	vol, err := c.getVol(commonVolName)
 	if err != nil {
 		t.Error(err)
 	}
-	partitionID, err := server.cluster.idAlloc.allocateMetaPartitionID()
+	partitionID, err := server.cluster.idAlloc.allocateMetaPartitionID(ctx)
 	if err != nil {
 		t.Error(err)
 	}
 	dp := newMetaPartition(partitionID, 0, defaultMaxMetaPartitionInodeID, vol.mpReplicaNum, vol.Name, vol.ID, 0)
 	c.BadMetaPartitionIds.Store(fmt.Sprintf("%v", dp.PartitionID), dp)
-	c.scheduleToCheckMetaPartitionRecoveryProgress()
+	c.scheduleToCheckMetaPartitionRecoveryProgress(ctx)
 }
 
 func TestCheckBadMetaPartitionRecovery(t *testing.T) {
-	server.cluster.checkMetaNodeHeartbeat()
+	_, ctx := trace.StartSpanFromContextWithTraceID(context.Background(), "", "cluster-test-check-bad-meta-partition-recovery")
+	server.cluster.checkMetaNodeHeartbeat(ctx)
 	time.Sleep(5 * time.Second)
 	// clear
 	server.cluster.BadMetaPartitionIds.Range(func(key, value interface{}) bool {
@@ -245,7 +264,7 @@ func TestCheckBadMetaPartitionRecovery(t *testing.T) {
 			return
 		}
 		addr := mp.Replicas[0].metaNode.Addr
-		server.cluster.putBadMetaPartitions(addr, mp.PartitionID)
+		server.cluster.putBadMetaPartitions(ctx, addr, mp.PartitionID)
 		mp.RUnlock()
 	}
 	count := 0
@@ -260,7 +279,7 @@ func TestCheckBadMetaPartitionRecovery(t *testing.T) {
 		return
 	}
 	// check recovery
-	server.cluster.checkMetaPartitionRecoveryProgress()
+	server.cluster.checkMetaPartitionRecoveryProgress(ctx)
 
 	count = 0
 	server.cluster.BadMetaPartitionIds.Range(func(key, value interface{}) bool {
@@ -274,6 +293,7 @@ func TestCheckBadMetaPartitionRecovery(t *testing.T) {
 }
 
 func TestUpdateInodeIDUpperBound(t *testing.T) {
+	_, ctx := trace.StartSpanFromContextWithTraceID(context.Background(), "", "cluster-test-update-inode-id-upper-bound")
 	vol, err := server.cluster.getVol(commonVolName)
 	if err != nil {
 		t.Error(err)
@@ -298,7 +318,7 @@ func TestUpdateInodeIDUpperBound(t *testing.T) {
 		t.Error(err)
 		return
 	}
-	if err = server.cluster.updateInodeIDUpperBound(mp, mr, true, metaNode); err != nil {
+	if err = server.cluster.updateInodeIDUpperBound(ctx, mp, mr, true, metaNode); err != nil {
 		t.Error(err)
 		return
 	}
@@ -311,6 +331,7 @@ func TestUpdateInodeIDUpperBound(t *testing.T) {
 func TestBalanceMetaPartition(t *testing.T) {
 	// create volume and metaNode will create mp,sleep some time to wait cluster get latest meteNode info
 	// cluster normal volume has 3 mps , total 3*3 =9 mp in metaNode
+	_, ctx := trace.StartSpanFromContextWithTraceID(context.Background(), "", "cluster-test-balance-meta-partition")
 	req := &createVolReq{
 		name:             commonVolName + "1",
 		owner:            "cfs",
@@ -326,20 +347,20 @@ func TestBalanceMetaPartition(t *testing.T) {
 		description:      "",
 		qosLimitArgs:     &qosArgs{},
 	}
-	_, err := server.cluster.createVol(req)
+	_, err := server.cluster.createVol(ctx, req)
 	require.NoError(t, err)
-	server.cluster.checkMetaNodeHeartbeat()
+	server.cluster.checkMetaNodeHeartbeat(ctx)
 	time.Sleep(time.Second * 2)
 
 	zoneM := make(map[string]struct{})
 	nodeSetM := make(map[uint64]struct{})
 	// get all metaNodes
-	sortNodes := server.cluster.getSortLeaderMetaNodes(zoneM, nodeSetM)
+	sortNodes := server.cluster.getSortLeaderMetaNodes(ctx, zoneM, nodeSetM)
 	require.Equal(t, len(sortNodes.nodes), server.cluster.metaNodeCount())
 
 	// get noeExist zone metaNodes, should has 0 node
 	zoneM["noeExist"] = struct{}{}
-	sortNodes = server.cluster.getSortLeaderMetaNodes(zoneM, nodeSetM)
+	sortNodes = server.cluster.getSortLeaderMetaNodes(ctx, zoneM, nodeSetM)
 	// if there are no nodes selected, sortNodes is nil
 	if sortNodes != nil {
 		require.Equal(t, len(sortNodes.nodes), 0)
@@ -347,26 +368,26 @@ func TestBalanceMetaPartition(t *testing.T) {
 
 	// get testZone2 metaNodes, should has 4 node
 	zoneM[testZone2] = struct{}{}
-	sortNodes = server.cluster.getSortLeaderMetaNodes(zoneM, nodeSetM)
+	sortNodes = server.cluster.getSortLeaderMetaNodes(ctx, zoneM, nodeSetM)
 	require.Equal(t, len(sortNodes.nodes), 4)
 	// get testZone1 metaNodes, should has 2 node
 	delete(zoneM, testZone2)
 	zoneM[testZone1] = struct{}{}
-	sortNodes = server.cluster.getSortLeaderMetaNodes(zoneM, nodeSetM)
+	sortNodes = server.cluster.getSortLeaderMetaNodes(ctx, zoneM, nodeSetM)
 	require.Equal(t, len(sortNodes.nodes), 2)
 
 	// zoneM has testZone1 and testZone2, should has all 6 node
 	zoneM[testZone2] = struct{}{}
-	sortNodes = server.cluster.getSortLeaderMetaNodes(zoneM, nodeSetM)
+	sortNodes = server.cluster.getSortLeaderMetaNodes(ctx, zoneM, nodeSetM)
 	require.Equal(t, len(sortNodes.nodes), 6)
 
-	sortNodes.balanceLeader()
+	sortNodes.balanceLeader(ctx)
 }
 
 func TestCreateVolWithDpCount(t *testing.T) {
 	// create volume and metaNode will create mp,sleep some time to wait cluster get latest meteNode info
 	// cluster normal volume has 3 mps , total 3*3 =9 mp in metaNode
-
+	_, ctx := trace.StartSpanFromContextWithTraceID(context.Background(), "", "cluster-test-check-create-vol-with-dp-count")
 	t.Run("dpCount != default count", func(t *testing.T) {
 		req := &createVolReq{
 			name:             commonVolName + "001",
@@ -384,7 +405,7 @@ func TestCreateVolWithDpCount(t *testing.T) {
 			description:      "",
 			qosLimitArgs:     &qosArgs{},
 		}
-		_, err := server.cluster.createVol(req)
+		_, err := server.cluster.createVol(ctx, req)
 		require.NoError(t, err)
 
 		vol, err := server.cluster.getVol(req.name)
@@ -411,7 +432,7 @@ func TestCreateVolWithDpCount(t *testing.T) {
 			description:      "",
 			qosLimitArgs:     &qosArgs{},
 		}
-		_, err := server.cluster.createVol(req)
+		_, err := server.cluster.createVol(ctx, req)
 		require.Error(t, err)
 	})
 }

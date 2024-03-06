@@ -15,6 +15,7 @@
 package master
 
 import (
+	"context"
 	"fmt"
 	"math"
 	"strings"
@@ -23,7 +24,6 @@ import (
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/errors"
-	"github.com/cubefs/cubefs/util/log"
 )
 
 // MetaReplica defines the replica of a meta partition
@@ -154,16 +154,17 @@ func (mp *MetaPartition) updateInodeIDRangeForAllReplicas() {
 }
 
 // canSplit caller must be add lock
-func (mp *MetaPartition) canSplit(end uint64, metaPartitionInodeIdStep uint64, ignoreNoLeader bool) (err error) {
+func (mp *MetaPartition) canSplit(ctx context.Context, end uint64, metaPartitionInodeIdStep uint64, ignoreNoLeader bool) (err error) {
 	if end < mp.Start {
 		err = fmt.Errorf("end[%v] less than mp.start[%v]", end, mp.Start)
 		return
 	}
+	span := proto.SpanFromContext(ctx)
 	// overflow
 	if end > (defaultMaxMetaPartitionInodeID - metaPartitionInodeIdStep) {
 		msg := fmt.Sprintf("action[updateInodeIDRange] vol[%v] partitionID[%v] nextStart[%v] "+
 			"to prevent overflow ,not update end", mp.volName, mp.PartitionID, end)
-		log.LogWarn(msg)
+		span.Warn(msg)
 		err = fmt.Errorf(msg)
 		return
 	}
@@ -178,24 +179,25 @@ func (mp *MetaPartition) canSplit(end uint64, metaPartitionInodeIdStep uint64, i
 	}
 
 	if _, err = mp.getMetaReplicaLeader(); err != nil {
-		log.LogWarnf("action[updateInodeIDRange] vol[%v] id[%v] no leader", mp.volName, mp.PartitionID)
+		span.Warnf("action[updateInodeIDRange] vol[%v] id[%v] no leader", mp.volName, mp.PartitionID)
 		return
 	}
 
 	return
 }
 
-func (mp *MetaPartition) addUpdateMetaReplicaTask(c *Cluster) (err error) {
+func (mp *MetaPartition) addUpdateMetaReplicaTask(ctx context.Context, c *Cluster) (err error) {
 	tasks := make([]*proto.AdminTask, 0)
-	t := mp.createTaskToUpdateMetaReplica(c.Name, mp.PartitionID, mp.End)
+	t := mp.createTaskToUpdateMetaReplica(ctx, c.Name, mp.PartitionID, mp.End)
 	// if no leader,don't update end
 	if t == nil {
 		err = proto.ErrNoLeader
 		return
 	}
 	tasks = append(tasks, t)
-	c.addMetaNodeTasks(tasks)
-	log.LogWarnf("action[addUpdateMetaReplicaTask] partitionID[%v] end[%v] success", mp.PartitionID, mp.End)
+	c.addMetaNodeTasks(ctx, tasks)
+	span := proto.SpanFromContext(ctx)
+	span.Warnf("action[addUpdateMetaReplicaTask] partitionID[%v] end[%v] success", mp.PartitionID, mp.End)
 	return
 }
 
@@ -210,13 +212,14 @@ func (mp *MetaPartition) dataSize() uint64 {
 	return maxSize
 }
 
-func (mp *MetaPartition) checkEnd(c *Cluster, maxPartitionID uint64) {
+func (mp *MetaPartition) checkEnd(ctx context.Context, c *Cluster, maxPartitionID uint64) {
 	if mp.PartitionID < maxPartitionID {
 		return
 	}
+	span := proto.SpanFromContext(ctx)
 	vol, err := c.getVol(mp.volName)
 	if err != nil {
-		log.LogWarnf("action[checkEnd] vol[%v] not exist", mp.volName)
+		span.Warnf("action[checkEnd] vol[%v] not exist", mp.volName)
 		return
 	}
 
@@ -225,29 +228,29 @@ func (mp *MetaPartition) checkEnd(c *Cluster, maxPartitionID uint64) {
 
 	curMaxPartitionID := vol.maxPartitionID()
 	if mp.PartitionID != curMaxPartitionID {
-		log.LogWarnf("action[checkEnd] partition[%v] not max partition[%v]", mp.PartitionID, curMaxPartitionID)
+		span.Warnf("action[checkEnd] partition[%v] not max partition[%v]", mp.PartitionID, curMaxPartitionID)
 		return
 	}
 
 	mp.Lock()
 	defer mp.Unlock()
 	if _, err = mp.getMetaReplicaLeader(); err != nil {
-		log.LogWarnf("action[checkEnd] partition[%v] no leader", mp.PartitionID)
+		span.Warnf("action[checkEnd] partition[%v] no leader", mp.PartitionID)
 		return
 	}
 	if mp.End != defaultMaxMetaPartitionInodeID {
 		oldEnd := mp.End
 		mp.End = defaultMaxMetaPartitionInodeID
-		if err := c.syncUpdateMetaPartition(mp); err != nil {
+		if err := c.syncUpdateMetaPartition(ctx, mp); err != nil {
 			mp.End = oldEnd
-			log.LogErrorf("action[checkEnd] partitionID[%v] err[%v]", mp.PartitionID, err)
+			span.Errorf("action[checkEnd] partitionID[%v] err[%v]", mp.PartitionID, err)
 			return
 		}
-		if err = mp.addUpdateMetaReplicaTask(c); err != nil {
+		if err = mp.addUpdateMetaReplicaTask(ctx, c); err != nil {
 			mp.End = oldEnd
 		}
 	}
-	log.LogDebugf("action[checkEnd] partitionID[%v] end[%v]", mp.PartitionID, mp.End)
+	span.Debugf("action[checkEnd] partitionID[%v] end[%v]", mp.PartitionID, mp.End)
 }
 
 func (mp *MetaPartition) getMetaReplica(addr string) (mr *MetaReplica, err error) {
@@ -295,10 +298,11 @@ func (mp *MetaPartition) checkLeader(clusterID string) {
 	return
 }
 
-func (mp *MetaPartition) checkStatus(clusterID string, writeLog bool, replicaNum int, maxPartitionID uint64, metaPartitionInodeIdStep uint64, forbiddenVol bool) (doSplit bool) {
+func (mp *MetaPartition) checkStatus(ctx context.Context, clusterID string, writeLog bool, replicaNum int, maxPartitionID uint64, metaPartitionInodeIdStep uint64, forbiddenVol bool) (doSplit bool) {
 	mp.Lock()
 	defer mp.Unlock()
 
+	span := proto.SpanFromContext(ctx)
 	mp.checkReplicas()
 	liveReplicas := mp.getLiveReplicas()
 
@@ -308,7 +312,7 @@ func (mp *MetaPartition) checkStatus(clusterID string, writeLog bool, replicaNum
 		mr, err := mp.getMetaReplicaLeader()
 		if err != nil {
 			mp.Status = proto.Unavailable
-			log.LogErrorf("[checkStatus] mp %v getMetaReplicaLeader err:%v", mp.PartitionID, err)
+			span.Errorf("[checkStatus] mp %v getMetaReplicaLeader err:%v", mp.PartitionID, err)
 		}
 
 		mp.Status = mr.Status
@@ -326,11 +330,11 @@ func (mp *MetaPartition) checkStatus(clusterID string, writeLog bool, replicaNum
 			}
 
 			if mp.PartitionID == maxPartitionID {
-				log.LogInfof("split[checkStatus] need split,id:%v,status:%v,replicaNum:%v,InodeCount:%v", mp.PartitionID, mp.Status, mp.ReplicaNum, mp.InodeCount)
+				span.Infof("split[checkStatus] need split,id:%v,status:%v,replicaNum:%v,InodeCount:%v", mp.PartitionID, mp.Status, mp.ReplicaNum, mp.InodeCount)
 				doSplit = true
 			} else {
 				if mr.metaNode.reachesThreshold() || mp.End-mp.MaxInodeID > 2*metaPartitionInodeIdStep {
-					log.LogInfof("split[checkStatus],change state,id:%v,status:%v,replicaNum:%v,replicas:%v,persistenceHosts:%v, inodeCount:%v, MaxInodeID:%v, start:%v, end:%v",
+					span.Infof("split[checkStatus],change state,id:%v,status:%v,replicaNum:%v,replicas:%v,persistenceHosts:%v, inodeCount:%v, MaxInodeID:%v, start:%v, end:%v",
 						mp.PartitionID, mp.Status, mp.ReplicaNum, len(liveReplicas), mp.Hosts, mp.InodeCount, mp.MaxInodeID, mp.Start, mp.End)
 					mp.Status = proto.ReadOnly
 				}
@@ -345,8 +349,8 @@ func (mp *MetaPartition) checkStatus(clusterID string, writeLog bool, replicaNum
 	if writeLog && len(liveReplicas) != int(mp.ReplicaNum) {
 		msg := fmt.Sprintf("action[checkMPStatus],id:%v,status:%v,replicaNum:%v,replicas:%v,persistenceHosts:%v",
 			mp.PartitionID, mp.Status, mp.ReplicaNum, len(liveReplicas), mp.Hosts)
-		log.LogInfo(msg)
-		Warn(clusterID, msg)
+		span.Info(msg)
+		Warn(ctx, clusterID, msg)
 	}
 
 	return
@@ -362,13 +366,13 @@ func (mp *MetaPartition) getMetaReplicaLeader() (mr *MetaReplica, err error) {
 	return
 }
 
-func (mp *MetaPartition) checkReplicaNum(c *Cluster, volName string, replicaNum uint8) {
+func (mp *MetaPartition) checkReplicaNum(ctx context.Context, c *Cluster, volName string, replicaNum uint8) {
 	mp.RLock()
 	defer mp.RUnlock()
 	if mp.ReplicaNum != replicaNum {
 		msg := fmt.Sprintf("FIX MetaPartition replicaNum clusterID[%v] vol[%v] replica num[%v],current num[%v]",
 			c.Name, volName, replicaNum, mp.ReplicaNum)
-		Warn(c.Name, msg)
+		Warn(ctx, c.Name, msg)
 	}
 }
 
@@ -441,7 +445,7 @@ func (mp *MetaPartition) canBeOffline(nodeAddr string, replicaNum int) (err erro
 }
 
 // Check if there is a replica missing or not, exclude addr
-func (mp *MetaPartition) hasMissingOneReplica(addr string, replicaNum int) (err error) {
+func (mp *MetaPartition) hasMissingOneReplica(ctx context.Context, addr string, replicaNum int) (err error) {
 	inReplicas := false
 	for _, rep := range mp.Replicas {
 		if rep.Addr == addr {
@@ -449,10 +453,10 @@ func (mp *MetaPartition) hasMissingOneReplica(addr string, replicaNum int) (err 
 			break
 		}
 	}
-
+	span := proto.SpanFromContext(ctx)
 	hostNum := len(mp.Replicas)
 	if hostNum <= replicaNum-1 && inReplicas {
-		log.LogError(fmt.Sprintf("action[%v],partitionID:%v,err:%v",
+		span.Error(fmt.Sprintf("action[%v],partitionID:%v,err:%v",
 			"hasMissingOneReplica", mp.PartitionID, proto.ErrHasOneMissingReplica))
 		err = proto.ErrHasOneMissingReplica
 	}
@@ -486,21 +490,22 @@ func (mp *MetaPartition) checkReplicas() {
 	return
 }
 
-func (mp *MetaPartition) persistToRocksDB(action, volName string, newHosts []string, newPeers []proto.Peer, c *Cluster) (err error) {
+func (mp *MetaPartition) persistToRocksDB(ctx context.Context, action, volName string, newHosts []string, newPeers []proto.Peer, c *Cluster) (err error) {
 	oldHosts := make([]string, len(mp.Hosts))
 	copy(oldHosts, mp.Hosts)
 	oldPeers := make([]proto.Peer, len(mp.Peers))
 	copy(oldPeers, mp.Peers)
 	mp.Hosts = newHosts
 	mp.Peers = newPeers
-	if err = c.syncUpdateMetaPartition(mp); err != nil {
+	span := proto.SpanFromContext(ctx)
+	if err = c.syncUpdateMetaPartition(ctx, mp); err != nil {
 		mp.Hosts = oldHosts
 		mp.Peers = oldPeers
-		log.LogWarnf("action[%v_persist] failed,vol[%v] partitionID:%v  old hosts:%v new hosts:%v oldPeers:%v  newPeers:%v",
+		span.Warnf("action[%v_persist] failed,vol[%v] partitionID:%v  old hosts:%v new hosts:%v oldPeers:%v  newPeers:%v",
 			action, volName, mp.PartitionID, mp.Hosts, newHosts, mp.Peers, newPeers)
 		return
 	}
-	log.LogWarnf("action[%v_persist] success,vol[%v] partitionID:%v  old hosts:%v  new hosts:%v oldPeers:%v  newPeers:%v ",
+	span.Warnf("action[%v_persist] success,vol[%v] partitionID:%v  old hosts:%v  new hosts:%v oldPeers:%v  newPeers:%v ",
 		action, volName, mp.PartitionID, oldHosts, mp.Hosts, oldPeers, mp.Peers)
 	return
 }
@@ -532,7 +537,7 @@ func (mp *MetaPartition) shouldReportMissingReplica(addr string, interval int64)
 	// return false
 }
 
-func (mp *MetaPartition) reportMissingReplicas(clusterID, leaderAddr string, seconds, interval int64) {
+func (mp *MetaPartition) reportMissingReplicas(ctx context.Context, clusterID, leaderAddr string, seconds, interval int64) {
 	mp.Lock()
 	defer mp.Unlock()
 	for _, replica := range mp.Replicas {
@@ -549,48 +554,49 @@ func (mp *MetaPartition) reportMissingReplicas(clusterID, leaderAddr string, sec
 				msg := fmt.Sprintf("action[reportMissingReplicas], clusterID[%v] volName[%v] partition:%v  on node:%v  "+
 					"miss time > :%v  vlocLastRepostTime:%v   dnodeLastReportTime:%v  nodeisActive:%v",
 					clusterID, mp.volName, mp.PartitionID, replica.Addr, seconds, replica.ReportTime, lastReportTime, isActive)
-				Warn(clusterID, msg)
+				Warn(ctx, clusterID, msg)
 				// msg = fmt.Sprintf("decommissionMetaPartitionURL is http://%v/dataPartition/decommission?id=%v&addr=%v", leaderAddr, mp.PartitionID, replica.Addr)
 				// Warn(clusterID, msg)
 				if WarnMetrics != nil {
-					WarnMetrics.WarnMissingMp(clusterID, replica.Addr, mp.PartitionID, true)
+					WarnMetrics.WarnMissingMp(ctx, clusterID, replica.Addr, mp.PartitionID, true)
 				}
 			}
 		} else {
 			if WarnMetrics != nil {
-				WarnMetrics.WarnMissingMp(clusterID, replica.Addr, mp.PartitionID, false)
+				WarnMetrics.WarnMissingMp(ctx, clusterID, replica.Addr, mp.PartitionID, false)
 			}
 		}
 	}
 	if WarnMetrics != nil {
-		WarnMetrics.CleanObsoleteMpMissing(clusterID, mp)
+		WarnMetrics.CleanObsoleteMpMissing(ctx, clusterID, mp)
 	}
 	for _, addr := range mp.Hosts {
 		if mp.isMissingReplica(addr) && mp.shouldReportMissingReplica(addr, interval) {
 			msg := fmt.Sprintf("action[reportMissingReplicas],clusterID[%v] volName[%v] partition:%v  on node:%v  "+
 				"miss time  > %v ",
 				clusterID, mp.volName, mp.PartitionID, addr, defaultMetaPartitionTimeOutSec)
-			Warn(clusterID, msg)
+			Warn(ctx, clusterID, msg)
 			msg = fmt.Sprintf("decommissionMetaPartitionURL is http://%v/dataPartition/decommission?id=%v&addr=%v", leaderAddr, mp.PartitionID, addr)
-			Warn(clusterID, msg)
+			Warn(ctx, clusterID, msg)
 		}
 	}
 }
 
-func (mp *MetaPartition) replicaCreationTasks(clusterID, volName string) (tasks []*proto.AdminTask) {
+func (mp *MetaPartition) replicaCreationTasks(ctx context.Context, clusterID, volName string) (tasks []*proto.AdminTask) {
 	var msg string
 	tasks = make([]*proto.AdminTask, 0)
+	span := proto.SpanFromContext(ctx)
 	if addr, _, err := mp.removeIllegalReplica(); err != nil {
 		msg = fmt.Sprintf("action[%v],clusterID[%v] metaPartition:%v  excess replication"+
 			" on :%v  err:%v  persistenceHosts:%v",
 			deleteIllegalReplicaErr, clusterID, mp.PartitionID, addr, err.Error(), mp.Hosts)
-		log.LogWarn(msg)
+		span.Warn(msg)
 	}
 	if addrs := mp.missingReplicaAddrs(); addrs != nil {
 		msg = fmt.Sprintf("action[missingReplicaAddrs],clusterID[%v] metaPartition:%v  lack replication"+
 			" on :%v Hosts:%v",
 			clusterID, mp.PartitionID, addrs, mp.Hosts)
-		Warn(clusterID, msg)
+		Warn(ctx, clusterID, msg)
 	}
 
 	return
@@ -622,18 +628,18 @@ func (mp *MetaPartition) buildNewMetaPartitionTasks(specifyAddrs []string, peers
 	return
 }
 
-func (mp *MetaPartition) tryToChangeLeader(c *Cluster, metaNode *MetaNode) (err error) {
+func (mp *MetaPartition) tryToChangeLeader(ctx context.Context, c *Cluster, metaNode *MetaNode) (err error) {
 	task, err := mp.createTaskToTryToChangeLeader(metaNode.Addr)
 	if err != nil {
 		return
 	}
-	if _, err = metaNode.Sender.syncSendAdminTask(task); err != nil {
+	if _, err = metaNode.Sender.syncSendAdminTask(ctx, task); err != nil {
 		return
 	}
 	return
 }
 
-func (mp *MetaPartition) tryToChangeLeaderByHost(host string) (err error) {
+func (mp *MetaPartition) tryToChangeLeaderByHost(ctx context.Context, host string) (err error) {
 	var metaNode *MetaNode
 	for _, r := range mp.Replicas {
 		if host == r.Addr {
@@ -648,7 +654,7 @@ func (mp *MetaPartition) tryToChangeLeaderByHost(host string) (err error) {
 	if err != nil {
 		return
 	}
-	if _, err = metaNode.Sender.syncSendAdminTask(task); err != nil {
+	if _, err = metaNode.Sender.syncSendAdminTask(ctx, task); err != nil {
 		return
 	}
 	return
@@ -708,12 +714,12 @@ func resetMetaPartitionTaskID(t *proto.AdminTask, partitionID uint64) {
 	t.PartitionID = partitionID
 }
 
-func (mp *MetaPartition) createTaskToUpdateMetaReplica(clusterID string, partitionID uint64, end uint64) (t *proto.AdminTask) {
+func (mp *MetaPartition) createTaskToUpdateMetaReplica(ctx context.Context, clusterID string, partitionID uint64, end uint64) (t *proto.AdminTask) {
 	mr, err := mp.getMetaReplicaLeader()
 	if err != nil {
 		msg := fmt.Sprintf("action[createTaskToUpdateMetaReplica] clusterID[%v] meta partition %v no leader",
 			clusterID, mp.PartitionID)
-		Warn(clusterID, msg)
+		Warn(ctx, clusterID, msg)
 		return
 	}
 	req := &proto.UpdateMetaPartitionRequest{PartitionID: partitionID, End: end, VolName: mp.volName}

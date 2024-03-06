@@ -15,6 +15,7 @@
 package master
 
 import (
+	"context"
 	"fmt"
 	"sort"
 	"strconv"
@@ -22,14 +23,13 @@ import (
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/storage"
-	"github.com/cubefs/cubefs/util/log"
 )
 
 // Recover a file if it has bad CRC or it has been timed out before.
-func (partition *DataPartition) validateCRC(clusterID string) {
+func (partition *DataPartition) validateCRC(ctx context.Context, clusterID string) {
 	partition.Lock()
 	defer partition.Unlock()
-	liveReplicas := partition.liveReplicas(defaultDataPartitionTimeOutSec)
+	liveReplicas := partition.liveReplicas(ctx, defaultDataPartitionTimeOutSec)
 	if len(liveReplicas) == 0 {
 		return
 	}
@@ -45,13 +45,13 @@ func (partition *DataPartition) validateCRC(clusterID string) {
 				inactiveAddrs = append(inactiveAddrs, host)
 			}
 		}
-		Warn(clusterID, fmt.Sprintf("vol[%v],dpId[%v],liveAddrs[%v],inactiveAddrs[%v]", partition.VolName, partition.PartitionID, liveAddrs, inactiveAddrs))
+		Warn(ctx, clusterID, fmt.Sprintf("vol[%v],dpId[%v],liveAddrs[%v],inactiveAddrs[%v]", partition.VolName, partition.PartitionID, liveAddrs, inactiveAddrs))
 	}
-	partition.doValidateCRC(liveReplicas, clusterID)
+	partition.doValidateCRC(ctx, liveReplicas, clusterID)
 	return
 }
 
-func (partition *DataPartition) doValidateCRC(liveReplicas []*DataReplica, clusterID string) {
+func (partition *DataPartition) doValidateCRC(ctx context.Context, liveReplicas []*DataReplica, clusterID string) {
 	if !proto.IsNormalDp(partition.PartitionType) {
 		return
 	}
@@ -65,18 +65,19 @@ func (partition *DataPartition) doValidateCRC(liveReplicas []*DataReplica, clust
 			return fmt.Sprintf("partition[%v] extentID %v, isTiny %v", partition.PartitionID, extentID, storage.IsTinyExtent(extentID))
 		}
 		if storage.IsTinyExtent(extentID) {
-			partition.checkTinyExtentFile(fc, liveReplicas, clusterID, infoFunc)
+			partition.checkTinyExtentFile(ctx, fc, liveReplicas, clusterID, infoFunc)
 		} else {
-			partition.checkExtentFile(fc, liveReplicas, clusterID, infoFunc)
+			partition.checkExtentFile(ctx, fc, liveReplicas, clusterID, infoFunc)
 		}
 	}
 }
 
-func (partition *DataPartition) checkTinyExtentFile(fc *FileInCore, liveReplicas []*DataReplica, clusterID string, getInfoCallback func() string) {
+func (partition *DataPartition) checkTinyExtentFile(ctx context.Context, fc *FileInCore, liveReplicas []*DataReplica, clusterID string, getInfoCallback func() string) {
 	if fc.shouldCheckCrc() == false {
 		return
 	}
-	fms, needRepair := fc.needCrcRepair(liveReplicas, getInfoCallback)
+	span := proto.SpanFromContext(ctx)
+	fms, needRepair := fc.needCrcRepair(ctx, liveReplicas, getInfoCallback)
 	if !needRepair {
 		return
 	}
@@ -85,34 +86,35 @@ func (partition *DataPartition) checkTinyExtentFile(fc *FileInCore, liveReplicas
 		for _, fm := range fms {
 			msg = msg + fmt.Sprintf("fm[%v]:size[%v]\n", fm.locIndex, fm.Size)
 		}
-		log.LogWarn(msg)
+		span.Warn(msg)
 		return
 	}
 	msg := fmt.Sprintf("CheckFileError crc not match,cluster[%v],dpID[%v]", clusterID, partition.PartitionID)
 	for _, fm := range fms {
 		msg = msg + fmt.Sprintf("fm[%v]:%v\n", fm.locIndex, fm)
 	}
-	Warn(clusterID, msg)
+	Warn(ctx, clusterID, msg)
 	return
 }
 
-func (partition *DataPartition) checkExtentFile(fc *FileInCore, liveReplicas []*DataReplica, clusterID string, getInfoCallback func() string) {
+func (partition *DataPartition) checkExtentFile(ctx context.Context, fc *FileInCore, liveReplicas []*DataReplica, clusterID string, getInfoCallback func() string) {
 	if fc.shouldCheckCrc() == false {
 		return
 	}
-	fms, needRepair := fc.needCrcRepair(liveReplicas, getInfoCallback)
+	span := proto.SpanFromContext(ctx)
+	fms, needRepair := fc.needCrcRepair(ctx, liveReplicas, getInfoCallback)
 	if !hasSameSize(fms) {
 		msg := fmt.Sprintf("CheckFileError size not match,cluster[%v],dpID[%v],", clusterID, partition.PartitionID)
 		for _, fm := range fms {
 			msg = msg + fmt.Sprintf("fm[%v]:size[%v]\n", fm.locIndex, fm.Size)
 		}
-		log.LogWarn(msg)
+		span.Warn(msg)
 		return
 	}
 	if len(fms) < len(liveReplicas) && (time.Now().Unix()-fc.LastModify) > intervalToCheckMissingReplica {
 		lastReportTime, ok := partition.FilesWithMissingReplica[fc.Name]
 		if len(partition.FilesWithMissingReplica) > 400 {
-			Warn(clusterID, fmt.Sprintf("partitionid[%v] has [%v] files missed replica", partition.PartitionID, len(partition.FilesWithMissingReplica)))
+			Warn(ctx, clusterID, fmt.Sprintf("partitionid[%v] has [%v] files missed replica", partition.PartitionID, len(partition.FilesWithMissingReplica)))
 			return
 		}
 
@@ -128,10 +130,10 @@ func (partition *DataPartition) checkExtentFile(fc *FileInCore, liveReplicas []*
 		for _, replica := range liveReplicas {
 			liveAddrs = append(liveAddrs, replica.Addr)
 		}
-		Warn(clusterID, fmt.Sprintf("partitionid[%v],file[%v],fms[%v],liveAddr[%v]", partition.PartitionID, fc.Name, fc.getFileMetaAddrs(), liveAddrs))
+		Warn(ctx, clusterID, fmt.Sprintf("partitionid[%v],file[%v],fms[%v],liveAddr[%v]", partition.PartitionID, fc.Name, fc.getFileMetaAddrs(), liveAddrs))
 	}
 	if !needRepair {
-		log.LogDebugf("checkExtentFile. partition %v all equal so no need compare in details", partition.PartitionID)
+		span.Debugf("checkExtentFile. partition %v all equal so no need compare in details", partition.PartitionID)
 		return
 	}
 
@@ -142,7 +144,7 @@ func (partition *DataPartition) checkExtentFile(fc *FileInCore, liveReplicas []*
 		msg := fmt.Sprintf("checkFileCrcTaskErr clusterID[%v] partitionID:%v  File:%v  ExtentOffset different between all node  "+
 			" it can not repair it ", clusterID, partition.PartitionID, fc.Name)
 		msg += (fileCrcSorter)(fileCrcArr).log()
-		Warn(clusterID, msg)
+		Warn(ctx, clusterID, msg)
 		return
 	}
 
@@ -152,7 +154,7 @@ func (partition *DataPartition) checkExtentFile(fc *FileInCore, liveReplicas []*
 			msg := fmt.Sprintf("checkFileCrcTaskErr clusterID[%v] partitionID:%v  File:%v  badCrc On :%v  ",
 				clusterID, partition.PartitionID, fc.Name, badNode.getLocationAddr())
 			msg += (fileCrcSorter)(fileCrcArr).log()
-			Warn(clusterID, msg)
+			Warn(ctx, clusterID, msg)
 		}
 	}
 	return
