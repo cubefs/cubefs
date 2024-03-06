@@ -1039,7 +1039,6 @@ func (i *Inode) UnmarshalInodeValue(buff *bytes.Buffer) (err error) {
 			if err = binary.Read(buff, binary.BigEndian, &extSize); err != nil {
 				return
 			}
-			fmt.Printf("ino %v extSize %v\n", i.Inode, extSize)
 			log.LogDebugf("UnmarshalInodeValue ino(%v) extSize(%v) ", i.Inode, extSize)
 			if extSize > 0 {
 				extBytes := make([]byte, extSize)
