@@ -25,9 +25,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/cubefs/cubefs/blobstore/util/log"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/compressor"
-	"github.com/cubefs/cubefs/util/log"
 )
 
 // TODO: re-use response body.
@@ -147,14 +147,14 @@ func (c *MasterClient) serveRequest(r *request) (repsData []byte, err error) {
 		url := fmt.Sprintf("%s://%s%s", schema, host, r.path)
 		resp, err = c.httpRequest(r.method, url, r)
 		if err != nil {
-			log.LogErrorf("serveRequest: send http request fail: method(%v) url(%v) err(%v)", r.method, url, err)
+			r.Span().Errorf("serveRequest: send http request fail: method(%v) url(%v) err(%v)", r.method, url, err)
 			continue
 		}
 		stateCode := resp.StatusCode
 		repsData, err = io.ReadAll(resp.Body)
 		_ = resp.Body.Close()
 		if err != nil {
-			log.LogErrorf("serveRequest: read http response body fail: err(%v)", err)
+			r.Span().Errorf("serveRequest: read http response body fail: err(%v)", err)
 			continue
 		}
 
@@ -163,7 +163,7 @@ func (c *MasterClient) serveRequest(r *request) (repsData []byte, err error) {
 			curMasterAddr := strings.TrimSpace(string(repsData))
 			curMasterAddr = strings.Replace(curMasterAddr, "\n", "", -1)
 			if len(curMasterAddr) == 0 {
-				log.LogWarnf("serveRequest: server response status 403: request(%s) status"+
+				r.Span().Warnf("serveRequest: server response status 403: request(%s) status"+
 					"(403), body is empty", host)
 				err = ErrNoValidMaster
 				return
@@ -172,22 +172,22 @@ func (c *MasterClient) serveRequest(r *request) (repsData []byte, err error) {
 			return
 		case http.StatusOK:
 			if leaderAddr != host {
-				log.LogDebugf("server Request resp new master[%v] old [%v]", host, leaderAddr)
+				r.Span().Debugf("server Request resp new master[%v] old [%v]", host, leaderAddr)
 				c.SetLeader(host)
 			}
 			repsData, err = compressor.New(resp.Header.Get(headerContentEncoding)).Decompress(repsData)
 			if err != nil {
-				log.LogErrorf("serveRequest: decompress response body fail: err(%v)", err)
+				r.Span().Errorf("serveRequest: decompress response body fail: err(%v)", err)
 				return nil, fmt.Errorf("decompress response body err:%v", err)
 			}
 			body := new(proto.HTTPReplyRaw)
 			if err := body.Unmarshal(repsData); err != nil {
-				log.LogErrorf("unmarshal response body err:%v", err)
+				r.Span().Errorf("unmarshal response body err:%v", err)
 				return nil, fmt.Errorf("unmarshal response body err:%v", err)
 
 			}
 			if body.Code != proto.ErrCodeSuccess {
-				log.LogWarnf("serveRequest: code[%v], msg[%v], data[%v] ", body.Code, body.Msg, body.Data)
+				r.Span().Warnf("serveRequest: code[%v], msg[%v], data[%v] ", body.Code, body.Msg, body.Data)
 				if body.Code == proto.ErrCodeInternalError && len(body.Msg) > 0 {
 					return nil, errors.New(body.Msg)
 				}
@@ -198,7 +198,7 @@ func (c *MasterClient) serveRequest(r *request) (repsData []byte, err error) {
 			msg := fmt.Sprintf("serveRequest: unknown status: host(%v) uri(%v) status(%v) body(%s).",
 				resp.Request.URL.String(), host, stateCode, strings.Replace(string(repsData), "\n", "", -1))
 			err = errors.New(msg)
-			log.LogErrorf(msg)
+			r.Span().Errorf(msg)
 			continue
 		}
 	}
@@ -249,7 +249,7 @@ func (c *MasterClient) httpRequest(method, url string, r *request) (resp *http.R
 	reader := bytes.NewReader(r.body)
 	var req *http.Request
 	fullUrl := c.mergeRequestUrl(url, r.params)
-	log.LogDebugf("httpRequest: method(%v) url(%v) bodyLength[%v].", method, fullUrl, len(r.body))
+	r.Span().Debugf("httpRequest: method(%v) url(%v) bodyLength[%v].", method, fullUrl, len(r.body))
 	if req, err = http.NewRequest(method, fullUrl, reader); err != nil {
 		return
 	}
@@ -328,19 +328,19 @@ func (mc *MasterCLientWithResolver) Start() (err error) {
 				failed = false
 				break
 			} else {
-				log.LogWarnf("MasterCLientWithResolver: Resolve failed: %v, retry %v", err, i)
+				log.Warnf("MasterCLientWithResolver: Resolve failed: %v, retry %v", err, i)
 			}
 		}
 	}
 
 	if failed {
 		err = errors.New("MasterCLientWithResolver: Resolve failed")
-		log.LogErrorf("MasterCLientWithResolver: Resolve failed")
+		log.Errorf("MasterCLientWithResolver: Resolve failed")
 		return
 	}
 
 	if len(mc.resolver.domains) == 0 {
-		log.LogDebugf("MasterCLientWithResolver: No domains found, skipping resolving timely")
+		log.Debugf("MasterCLientWithResolver: No domains found, skipping resolving timely")
 		return
 	}
 
@@ -351,7 +351,7 @@ func (mc *MasterCLientWithResolver) Start() (err error) {
 		for {
 			select {
 			case <-mc.stopC:
-				log.LogInfo("MasterCLientWithResolver goroutine stopped")
+				log.Info("MasterCLientWithResolver goroutine stopped")
 				return
 			case <-ticker.C:
 				changed, err := mc.resolver.Resolve()
@@ -372,9 +372,9 @@ func (mc *MasterCLientWithResolver) Start() (err error) {
 func (mc *MasterCLientWithResolver) Stop() {
 	select {
 	case mc.stopC <- struct{}{}:
-		log.LogDebugf("stop resolver, notified!")
+		log.Debugf("stop resolver, notified!")
 	default:
-		log.LogDebugf("stop resolver, skipping notify!")
+		log.Debugf("stop resolver, skipping notify!")
 	}
 }
 

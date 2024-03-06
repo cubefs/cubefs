@@ -15,6 +15,7 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"sort"
 	"strconv"
@@ -69,7 +70,7 @@ func newMetaPartitionGetCmd(client *master.MasterClient) *cobra.Command {
 			if partitionID, err = strconv.ParseUint(args[0], 10, 64); err != nil {
 				return
 			}
-			if partition, err = client.ClientAPI().GetMetaPartition(partitionID); err != nil {
+			if partition, err = client.ClientAPI().GetMetaPartition(context.TODO(), partitionID); err != nil {
 				return
 			}
 			stdout(formatMetaPartitionInfo(partition))
@@ -97,7 +98,7 @@ the corrupt nodes, the few remaining replicas can not reach an agreement with on
 			defer func() {
 				errout(err)
 			}()
-			if diagnosis, err = client.AdminAPI().DiagnoseMetaPartition(); err != nil {
+			if diagnosis, err = client.AdminAPI().DiagnoseMetaPartition(context.TODO()); err != nil {
 				return
 			}
 			stdout("[Inactive Meta nodes]:\n")
@@ -107,7 +108,7 @@ the corrupt nodes, the few remaining replicas can not reach an agreement with on
 			})
 			for _, addr := range diagnosis.InactiveMetaNodes {
 				var node *proto.MetaNodeInfo
-				node, err = client.NodeAPI().GetMetaNode(addr)
+				node, err = client.NodeAPI().GetMetaNode(context.TODO(), addr)
 				metaNodes = append(metaNodes, node)
 			}
 			sort.SliceStable(metaNodes, func(i, j int) bool {
@@ -125,7 +126,7 @@ the corrupt nodes, the few remaining replicas can not reach an agreement with on
 			})
 			for _, pid := range diagnosis.CorruptMetaPartitionIDs {
 				var partition *proto.MetaPartitionInfo
-				if partition, err = client.ClientAPI().GetMetaPartition(pid); err != nil {
+				if partition, err = client.ClientAPI().GetMetaPartition(context.TODO(), pid); err != nil {
 					err = fmt.Errorf("Partition not found, err:[%v] ", err)
 					return
 				}
@@ -140,7 +141,7 @@ the corrupt nodes, the few remaining replicas can not reach an agreement with on
 			})
 			for _, pid := range diagnosis.LackReplicaMetaPartitionIDs {
 				var partition *proto.MetaPartitionInfo
-				if partition, err = client.ClientAPI().GetMetaPartition(pid); err != nil {
+				if partition, err = client.ClientAPI().GetMetaPartition(context.TODO(), pid); err != nil {
 					err = fmt.Errorf("Partition not found, err:[%v] ", err)
 					return
 				}
@@ -170,7 +171,7 @@ the corrupt nodes, the few remaining replicas can not reach an agreement with on
 			})
 			for _, pid := range diagnosis.BadReplicaMetaPartitionIDs {
 				var partition *proto.MetaPartitionInfo
-				if partition, err = client.ClientAPI().GetMetaPartition(pid); err != nil {
+				if partition, err = client.ClientAPI().GetMetaPartition(context.TODO(), pid); err != nil {
 					err = fmt.Errorf("Partition not found, err:[%v] ", err)
 					return
 				}
@@ -190,7 +191,7 @@ the corrupt nodes, the few remaining replicas can not reach an agreement with on
 			})
 			for _, pid := range diagnosis.InodeCountNotEqualReplicaMetaPartitionIDs {
 				var partition *proto.MetaPartitionInfo
-				if partition, err = client.ClientAPI().GetMetaPartition(pid); err != nil {
+				if partition, err = client.ClientAPI().GetMetaPartition(context.TODO(), pid); err != nil {
 					err = fmt.Errorf("Partition not found, err:[%v] ", err)
 					return
 				}
@@ -207,7 +208,7 @@ the corrupt nodes, the few remaining replicas can not reach an agreement with on
 			})
 			for _, pid := range diagnosis.MaxInodeNotEqualReplicaMetaPartitionIDs {
 				var partition *proto.MetaPartitionInfo
-				if partition, err = client.ClientAPI().GetMetaPartition(pid); err != nil {
+				if partition, err = client.ClientAPI().GetMetaPartition(context.TODO(), pid); err != nil {
 					err = fmt.Errorf("Partition not found, err:[%v] ", err)
 					return
 				}
@@ -224,7 +225,7 @@ the corrupt nodes, the few remaining replicas can not reach an agreement with on
 			})
 			for _, pid := range diagnosis.DentryCountNotEqualReplicaMetaPartitionIDs {
 				var partition *proto.MetaPartitionInfo
-				if partition, err = client.ClientAPI().GetMetaPartition(pid); err != nil {
+				if partition, err = client.ClientAPI().GetMetaPartition(context.TODO(), pid); err != nil {
 					err = fmt.Errorf("Partition not found, err:[%v] ", err)
 					return
 				}
@@ -241,7 +242,7 @@ the corrupt nodes, the few remaining replicas can not reach an agreement with on
 			})
 			for _, pid := range diagnosis.ExcessReplicaMetaPartitionIDs {
 				var partition *proto.MetaPartitionInfo
-				if partition, err = client.ClientAPI().GetMetaPartition(pid); err != nil {
+				if partition, err = client.ClientAPI().GetMetaPartition(context.TODO(), pid); err != nil {
 					err = fmt.Errorf("Partition not found, err:[%v] ", err)
 					return
 				}
@@ -270,7 +271,7 @@ func newMetaPartitionDecommissionCmd(client *master.MasterClient) *cobra.Command
 			}()
 			address := args[0]
 			partitionID, err = strconv.ParseUint(args[1], 10, 64)
-			if err = client.AdminAPI().DecommissionMetaPartition(partitionID, address, clientIDKey); err != nil {
+			if err = client.AdminAPI().DecommissionMetaPartition(context.TODO(), partitionID, address, clientIDKey); err != nil {
 				return
 			}
 			stdout("Decommission meta partition successfully\n")
@@ -302,7 +303,7 @@ func newMetaPartitionReplicateCmd(client *master.MasterClient) *cobra.Command {
 			}()
 			address := args[0]
 			partitionID, err = strconv.ParseUint(args[1], 10, 64)
-			if err = client.AdminAPI().AddMetaReplica(partitionID, address, clientIDKey); err != nil {
+			if err = client.AdminAPI().AddMetaReplica(context.TODO(), partitionID, address, clientIDKey); err != nil {
 				return
 			}
 			stdout("Add replication successfully\n")
@@ -337,7 +338,7 @@ func newMetaPartitionDeleteReplicaCmd(client *master.MasterClient) *cobra.Comman
 			if err != nil {
 				return
 			}
-			if err = client.AdminAPI().DeleteMetaReplica(partitionID, address, clientIDKey); err != nil {
+			if err = client.AdminAPI().DeleteMetaReplica(context.TODO(), partitionID, address, clientIDKey); err != nil {
 				return
 			}
 			stdout("Delete replication successfully\n")
