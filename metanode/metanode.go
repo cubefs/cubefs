@@ -15,6 +15,7 @@
 package metanode
 
 import (
+	"context"
 	"fmt"
 	syslog "log"
 	"os"
@@ -99,11 +100,12 @@ func (m *MetaNode) Shutdown() {
 	m.control.Shutdown(m, doShutdown)
 }
 
-func (m *MetaNode) checkLocalPartitionMatchWithMaster() (err error) {
+func (m *MetaNode) checkLocalPartitionMatchWithMaster(ctx context.Context) (err error) {
+	span := getSpan(ctx)
 	var metaNodeInfo *proto.MetaNodeInfo
 	for i := 0; i < 3; i++ {
-		if metaNodeInfo, err = masterClient.NodeAPI().GetMetaNode(fmt.Sprintf("%s:%s", m.localAddr, m.listen)); err != nil {
-			log.Errorf("get metanode info fail: err(%v)", err)
+		if metaNodeInfo, err = masterClient.NodeAPI().GetMetaNode(ctx, fmt.Sprintf("%s:%s", m.localAddr, m.listen)); err != nil {
+			span.Errorf("get metanode info fail: err(%v)", err)
 			continue
 		}
 		break
@@ -130,7 +132,7 @@ func (m *MetaNode) checkLocalPartitionMatchWithMaster() (err error) {
 		"node":    m.localAddr + ":" + m.listen,
 		"nodeid":  fmt.Sprintf("%d", m.nodeId),
 	})
-	log.Errorf("LackPartitions %v on metanode %v:%v, please deal quickly", lackPartitions, m.localAddr, m.listen)
+	span.Errorf("LackPartitions %v on metanode %v:%v, please deal quickly", lackPartitions, m.localAddr, m.listen)
 	return
 }
 
@@ -142,7 +144,8 @@ func doStart(s common.Server, cfg *config.Config) (err error) {
 	if err = m.parseConfig(cfg); err != nil {
 		return
 	}
-	if err = m.register(); err != nil {
+	span, ctx := spanContextPrefix("start-")
+	if err = m.register(ctx); err != nil {
 		return
 	}
 
@@ -171,8 +174,9 @@ func doStart(s common.Server, cfg *config.Config) (err error) {
 	m.startStat()
 
 	// check local partition compare with master ,if lack,then not start
-	if err = m.checkLocalPartitionMatchWithMaster(); err != nil {
+	if err = m.checkLocalPartitionMatchWithMaster(ctx); err != nil {
 		syslog.Println(err)
+		span.Error(err)
 		exporter.Warning(err.Error())
 		return
 	}
@@ -450,14 +454,15 @@ func (m *MetaNode) stopMetaManager() {
 	}
 }
 
-func (m *MetaNode) register() (err error) {
+func (m *MetaNode) register(ctx context.Context) (err error) {
 	step := 0
 	var nodeAddress string
+	span := getSpan(ctx)
 	for {
 		if step < 1 {
-			clusterInfo, err = getClusterInfo()
+			clusterInfo, err = masterClient.AdminAPI().GetClusterInfo(ctx)
 			if err != nil {
-				log.Errorf("[register] %s", err.Error())
+				span.Errorf("[register] %s", err.Error())
 				continue
 			}
 			if m.localAddr == "" {
@@ -470,8 +475,8 @@ func (m *MetaNode) register() (err error) {
 			step++
 		}
 		var nodeID uint64
-		if nodeID, err = masterClient.NodeAPI().AddMetaNodeWithAuthNode(nodeAddress, m.zoneName, m.serviceIDKey); err != nil {
-			log.Errorf("[register] to master fail: address(%v) err(%s)", nodeAddress, err)
+		if nodeID, err = masterClient.NodeAPI().AddMetaNodeWithAuthNode(ctx, nodeAddress, m.zoneName, m.serviceIDKey); err != nil {
+			span.Errorf("[register] to master fail: address(%v) err(%s)", nodeAddress, err)
 			time.Sleep(3 * time.Second)
 			continue
 		}
@@ -483,11 +488,6 @@ func (m *MetaNode) register() (err error) {
 // NewServer creates a new meta node instance.
 func NewServer() *MetaNode {
 	return &MetaNode{}
-}
-
-func getClusterInfo() (ci *proto.ClusterInfo, err error) {
-	ci, err = masterClient.AdminAPI().GetClusterInfo()
-	return
 }
 
 // AddConnection adds a connection.

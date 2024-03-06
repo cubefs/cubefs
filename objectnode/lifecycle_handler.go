@@ -15,6 +15,7 @@
 package objectnode
 
 import (
+	"context"
 	"encoding/xml"
 	"io"
 	"net/http"
@@ -43,7 +44,7 @@ func (o *ObjectNode) getBucketLifecycleConfigurationHandler(w http.ResponseWrite
 	}
 
 	var lcConf *proto.LcConfiguration
-	if lcConf, err = o.mc.AdminAPI().GetBucketLifecycle(param.Bucket()); err != nil {
+	if lcConf, err = o.mc.AdminAPI().GetBucketLifecycle(context.TODO(), param.Bucket()); err != nil {
 		log.LogErrorf("getBucketLifecycle failed: bucket[%v] err(%v)", param.Bucket(), err)
 		errorCode = NoSuchLifecycleConfiguration
 		return
@@ -159,7 +160,7 @@ func (o *ObjectNode) putBucketLifecycleConfigurationHandler(w http.ResponseWrite
 		req.Rules = append(req.Rules, rule)
 	}
 
-	if err = o.mc.AdminAPI().SetBucketLifecycle(&req); err != nil {
+	if err = o.mc.AdminAPI().SetBucketLifecycle(context.TODO(), &req); err != nil {
 		log.LogErrorf("putBucketLifecycle failed: SetBucketLifecycle err: bucket[%v] err(%v)", param.Bucket(), err)
 		return
 	}
@@ -187,7 +188,7 @@ func (o *ObjectNode) deleteBucketLifecycleConfigurationHandler(w http.ResponseWr
 		return
 	}
 
-	if err = o.mc.AdminAPI().DelBucketLifecycle(param.Bucket()); err != nil {
+	if err = o.mc.AdminAPI().DelBucketLifecycle(context.TODO(), param.Bucket()); err != nil {
 		log.LogErrorf("deleteBucketLifecycle failed: bucket[%v] err(%v)", param.Bucket(), err)
 		return
 	}

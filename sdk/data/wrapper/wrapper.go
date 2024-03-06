@@ -15,6 +15,7 @@
 package wrapper
 
 import (
+	"context"
 	"fmt"
 	syslog "log"
 	"math"
@@ -136,7 +137,7 @@ func NewDataPartitionWrapper(client SimpleClientInfo, volName string, masters []
 	w.verConfReadSeq = verReadSeq
 	if verReadSeq > 0 {
 		var verList *proto.VolVersionInfoList
-		if verList, err = w.mc.AdminAPI().GetVerList(volName); err != nil {
+		if verList, err = w.mc.AdminAPI().GetVerList(context.TODO(), volName); err != nil {
 			return
 		}
 		if verReadSeq, err = w.CheckReadVerSeq(volName, verReadSeq, verList); err != nil {
@@ -175,7 +176,7 @@ func (w *Wrapper) tryGetPartition(index uint64) (partition *DataPartition, ok bo
 
 func (w *Wrapper) updateClusterInfo() (err error) {
 	var info *proto.ClusterInfo
-	if info, err = w.mc.AdminAPI().GetClusterInfo(); err != nil {
+	if info, err = w.mc.AdminAPI().GetClusterInfo(context.TODO()); err != nil {
 		log.LogWarnf("UpdateClusterInfo: get cluster info fail: err(%v)", err)
 		return
 	}
@@ -201,7 +202,7 @@ func (w *Wrapper) UpdateUidsView(view *proto.SimpleVolView) {
 func (w *Wrapper) GetSimpleVolView() (err error) {
 	var view *proto.SimpleVolView
 
-	if view, err = w.mc.AdminAPI().GetVolumeSimpleInfo(w.volName); err != nil {
+	if view, err = w.mc.AdminAPI().GetVolumeSimpleInfo(context.TODO(), w.volName); err != nil {
 		log.LogWarnf("GetSimpleVolView: get volume simple info fail: volume(%v) err(%v)", w.volName, err)
 		return
 	}
@@ -269,7 +270,7 @@ func (w *Wrapper) UploadFlowInfo(clientInfo SimpleClientInfo, init bool) (err er
 		return nil
 	}
 
-	if limitRsp, err = w.mc.AdminAPI().UploadFlowInfo(w.volName, flowInfo); err != nil {
+	if limitRsp, err = w.mc.AdminAPI().UploadFlowInfo(context.TODO(), w.volName, flowInfo); err != nil {
 		log.LogWarnf("UpdateSimpleVolView: get volume simple info fail: volume(%v) err(%v)", w.volName, err)
 		return
 	}
@@ -288,7 +289,7 @@ func (w *Wrapper) UploadFlowInfo(clientInfo SimpleClientInfo, init bool) (err er
 }
 
 func (w *Wrapper) CheckPermission() {
-	if info, err := w.mc.UserAPI().AclOperation(w.volName, w.LocalIp, util.AclCheckIP); err != nil {
+	if info, err := w.mc.UserAPI().AclOperation(context.TODO(), w.volName, w.LocalIp, util.AclCheckIP); err != nil {
 		syslog.Println(err)
 	} else if !info.OK {
 		syslog.Println(err)
@@ -297,7 +298,7 @@ func (w *Wrapper) CheckPermission() {
 }
 
 func (w *Wrapper) updateVerlist(client SimpleClientInfo) (err error) {
-	verList, err := w.mc.AdminAPI().GetVerList(w.volName)
+	verList, err := w.mc.AdminAPI().GetVerList(context.TODO(), w.volName)
 	if err != nil {
 		log.LogErrorf("CheckReadVerSeq: get cluster fail: err(%v)", err)
 		return err
@@ -326,7 +327,7 @@ func (w *Wrapper) updateVerlist(client SimpleClientInfo) (err error) {
 
 func (w *Wrapper) updateSimpleVolView() (err error) {
 	var view *proto.SimpleVolView
-	if view, err = w.mc.AdminAPI().GetVolumeSimpleInfo(w.volName); err != nil {
+	if view, err = w.mc.AdminAPI().GetVolumeSimpleInfo(context.TODO(), w.volName); err != nil {
 		log.LogWarnf("updateSimpleVolView: get volume simple info fail: volume(%v) err(%v)", w.volName, err)
 		return
 	}
@@ -406,7 +407,7 @@ func (w *Wrapper) updateDataPartition(isInit bool) (err error) {
 		return
 	}
 	var dpv *proto.DataPartitionsView
-	if dpv, err = w.mc.ClientAPI().EncodingGzip().GetDataPartitions(w.volName); err != nil {
+	if dpv, err = w.mc.ClientAPI().EncodingGzip().GetDataPartitions(context.TODO(), w.volName); err != nil {
 		log.LogErrorf("updateDataPartition: get data partitions fail: volume(%v) err(%v)", w.volName, err)
 		return
 	}
@@ -422,7 +423,7 @@ func (w *Wrapper) UpdateDataPartition() (err error) {
 // updateDataPartition which may not take effect if nginx be placed for reduce the pressure of master
 func (w *Wrapper) getDataPartitionFromMaster(isInit bool, dpId uint64) (err error) {
 	var dpInfo *proto.DataPartitionInfo
-	if dpInfo, err = w.mc.AdminAPI().GetDataPartition(w.volName, dpId); err != nil {
+	if dpInfo, err = w.mc.AdminAPI().GetDataPartition(context.TODO(), w.volName, dpId); err != nil {
 		log.LogErrorf("getDataPartitionFromMaster: get data partitions fail: volume(%v) dpId(%v) err(%v)",
 			w.volName, dpId, err)
 		return
@@ -460,7 +461,7 @@ func (w *Wrapper) clearPartitions() {
 func (w *Wrapper) AllocatePreLoadDataPartition(volName string, count int, capacity, ttl uint64, zones string) (err error) {
 	var dpv *proto.DataPartitionsView
 
-	if dpv, err = w.mc.AdminAPI().CreatePreLoadDataPartition(volName, count, capacity, ttl, zones); err != nil {
+	if dpv, err = w.mc.AdminAPI().CreatePreLoadDataPartition(context.TODO(), volName, count, capacity, ttl, zones); err != nil {
 		log.LogWarnf("CreatePreLoadDataPartition fail: err(%v)", err)
 		return
 	}
@@ -582,7 +583,7 @@ func (w *Wrapper) WarningMsg() string {
 
 func (w *Wrapper) updateDataNodeStatus() (err error) {
 	var cv *proto.ClusterView
-	cv, err = w.mc.AdminAPI().GetCluster()
+	cv, err = w.mc.AdminAPI().GetCluster(context.TODO())
 	if err != nil {
 		log.LogErrorf("updateDataNodeStatus: get cluster fail: err(%v)", err)
 		return

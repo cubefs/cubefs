@@ -3002,7 +3002,7 @@ func NewVolume(config *VolumeConfig) (*Volume, error) {
 
 	mc := master.NewMasterClient(config.Masters, false)
 	var volumeInfo *proto.SimpleVolView
-	volumeInfo, err = mc.AdminAPI().GetVolumeSimpleInfo(config.Volume)
+	volumeInfo, err = mc.AdminAPI().GetVolumeSimpleInfo(context.TODO(), config.Volume)
 	if err != nil {
 		log.LogErrorf("NewVolume: get volume info from master failed: volume(%v) err(%v)", config.Volume, err)
 		return nil, err
