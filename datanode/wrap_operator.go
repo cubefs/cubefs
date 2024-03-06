@@ -16,6 +16,7 @@ package datanode
 
 import (
 	"bytes"
+	"context"
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
@@ -458,7 +459,7 @@ end:
 	}
 	task.Response = response
 	log.Infof("action[handleUpdateVerPacket] rsp to client,req vol %v, verseq %v, op %v", request.VolumeID, request.VerSeq, request.Op)
-	if err = MasterClient.NodeAPI().ResponseDataNodeTask(task); err != nil {
+	if err = MasterClient.NodeAPI().ResponseDataNodeTask(context.TODO(), task); err != nil {
 		err = errors.Trace(err, "handleUpdateVerPacket to master failed.")
 		log.Errorf(err.Error())
 		return
@@ -566,7 +567,7 @@ func (s *DataNode) handleHeartbeatPacket(p *repl.Packet) {
 			response.Result = err.Error()
 		}
 		task.Response = response
-		if err = MasterClient.NodeAPI().ResponseDataNodeTask(task); err != nil {
+		if err = MasterClient.NodeAPI().ResponseDataNodeTask(context.TODO(), task); err != nil {
 			err = errors.Trace(err, "heartbeat to master(%v) failed.", request.MasterAddr)
 			log.Errorf(err.Error())
 			return
@@ -649,7 +650,7 @@ func (s *DataNode) asyncLoadDataPartition(task *proto.AdminTask) {
 		response.Result = err.Error()
 	}
 	task.Response = response
-	if err = MasterClient.NodeAPI().ResponseDataNodeTask(task); err != nil {
+	if err = MasterClient.NodeAPI().ResponseDataNodeTask(context.TODO(), task); err != nil {
 		err = errors.Trace(err, "load DataPartition failed,PartitionID(%v)", request.PartitionId)
 		log.Error(errors.Stack(err))
 	}

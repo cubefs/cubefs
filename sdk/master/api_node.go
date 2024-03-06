@@ -15,6 +15,7 @@
 package master
 
 import (
+	"context"
 	"strconv"
 
 	"github.com/cubefs/cubefs/proto"
@@ -37,8 +38,9 @@ func (api *NodeAPI) EncodingGzip() *NodeAPI {
 	return api.EncodingWith(encodingGzip)
 }
 
-func (api *NodeAPI) AddDataNode(serverAddr, zoneName string) (id uint64, err error) {
-	request := newRequest(get, proto.AddDataNode).Header(api.h)
+func (api *NodeAPI) AddDataNode(ctx context.Context, serverAddr, zoneName string) (id uint64, err error) {
+	ctx = proto.ContextWithOperation(ctx, "AddDataNode")
+	request := newRequest(ctx, get, proto.AddDataNode).Header(api.h)
 	request.addParam("addr", serverAddr)
 	request.addParam("zoneName", zoneName)
 	var data []byte
@@ -49,33 +51,9 @@ func (api *NodeAPI) AddDataNode(serverAddr, zoneName string) (id uint64, err err
 	return
 }
 
-func (api *NodeAPI) AddDataNodeWithAuthNode(serverAddr, zoneName, clientIDKey string) (id uint64, err error) {
-	request := newRequest(get, proto.AddDataNode).Header(api.h)
-	request.addParam("addr", serverAddr)
-	request.addParam("zoneName", zoneName)
-	request.addParam("clientIDKey", clientIDKey)
-	var data []byte
-	if data, err = api.mc.serveRequest(request); err != nil {
-		return
-	}
-	id, err = strconv.ParseUint(string(data), 10, 64)
-	return
-}
-
-func (api *NodeAPI) AddMetaNode(serverAddr, zoneName string) (id uint64, err error) {
-	request := newRequest(get, proto.AddMetaNode).Header(api.h)
-	request.addParam("addr", serverAddr)
-	request.addParam("zoneName", zoneName)
-	var data []byte
-	if data, err = api.mc.serveRequest(request); err != nil {
-		return
-	}
-	id, err = strconv.ParseUint(string(data), 10, 64)
-	return
-}
-
-func (api *NodeAPI) AddMetaNodeWithAuthNode(serverAddr, zoneName, clientIDKey string) (id uint64, err error) {
-	request := newRequest(get, proto.AddMetaNode).Header(api.h)
+func (api *NodeAPI) AddDataNodeWithAuthNode(ctx context.Context, serverAddr, zoneName, clientIDKey string) (id uint64, err error) {
+	ctx = proto.ContextWithOperation(ctx, "AddDataNodeWithAuthNode")
+	request := newRequest(ctx, get, proto.AddDataNode).Header(api.h)
 	request.addParam("addr", serverAddr)
 	request.addParam("zoneName", zoneName)
 	request.addParam("clientIDKey", clientIDKey)
@@ -87,28 +65,60 @@ func (api *NodeAPI) AddMetaNodeWithAuthNode(serverAddr, zoneName, clientIDKey st
 	return
 }
 
-func (api *NodeAPI) GetDataNode(serverHost string) (node *proto.DataNodeInfo, err error) {
+func (api *NodeAPI) AddMetaNode(ctx context.Context, serverAddr, zoneName string) (id uint64, err error) {
+	ctx = proto.ContextWithOperation(ctx, "AddMetaNode")
+	request := newRequest(ctx, get, proto.AddMetaNode).Header(api.h)
+	request.addParam("addr", serverAddr)
+	request.addParam("zoneName", zoneName)
+	var data []byte
+	if data, err = api.mc.serveRequest(request); err != nil {
+		return
+	}
+	id, err = strconv.ParseUint(string(data), 10, 64)
+	return
+}
+
+func (api *NodeAPI) AddMetaNodeWithAuthNode(ctx context.Context, serverAddr, zoneName, clientIDKey string) (id uint64, err error) {
+	ctx = proto.ContextWithOperation(ctx, "AddMetaNodeWithAuthNode")
+	request := newRequest(ctx, get, proto.AddMetaNode).Header(api.h)
+	request.addParam("addr", serverAddr)
+	request.addParam("zoneName", zoneName)
+	request.addParam("clientIDKey", clientIDKey)
+	var data []byte
+	if data, err = api.mc.serveRequest(request); err != nil {
+		return
+	}
+	id, err = strconv.ParseUint(string(data), 10, 64)
+	return
+}
+
+func (api *NodeAPI) GetDataNode(ctx context.Context, serverHost string) (node *proto.DataNodeInfo, err error) {
 	node = &proto.DataNodeInfo{}
-	err = api.mc.requestWith(node, newRequest(get, proto.GetDataNode).Header(api.h).addParam("addr", serverHost))
+	ctx = proto.ContextWithOperation(ctx, "GetDataNode")
+	err = api.mc.requestWith(node, newRequest(ctx, get, proto.GetDataNode).Header(api.h).addParam("addr", serverHost))
 	return
 }
 
-func (api *NodeAPI) GetMetaNode(serverHost string) (node *proto.MetaNodeInfo, err error) {
+func (api *NodeAPI) GetMetaNode(ctx context.Context, serverHost string) (node *proto.MetaNodeInfo, err error) {
 	node = &proto.MetaNodeInfo{}
-	err = api.mc.requestWith(node, newRequest(get, proto.GetMetaNode).Header(api.h).addParam("addr", serverHost))
+	ctx = proto.ContextWithOperation(ctx, "GetMetaNode")
+	err = api.mc.requestWith(node, newRequest(ctx, get, proto.GetMetaNode).Header(api.h).addParam("addr", serverHost))
 	return
 }
 
-func (api *NodeAPI) ResponseMetaNodeTask(task *proto.AdminTask) (err error) {
-	return api.mc.request(newRequest(post, proto.GetMetaNodeTaskResponse).Header(api.h).Body(task))
+func (api *NodeAPI) ResponseMetaNodeTask(ctx context.Context, task *proto.AdminTask) (err error) {
+	ctx = proto.ContextWithOperation(ctx, "ResponseMetaNodeTask")
+	return api.mc.request(newRequest(ctx, post, proto.GetMetaNodeTaskResponse).Header(api.h).Body(task))
 }
 
-func (api *NodeAPI) ResponseDataNodeTask(task *proto.AdminTask) (err error) {
-	return api.mc.request(newRequest(post, proto.GetDataNodeTaskResponse).Header(api.h).Body(task))
+func (api *NodeAPI) ResponseDataNodeTask(ctx context.Context, task *proto.AdminTask) (err error) {
+	ctx = proto.ContextWithOperation(ctx, "ResponseDataNodeTask")
+	return api.mc.request(newRequest(ctx, post, proto.GetDataNodeTaskResponse).Header(api.h).Body(task))
 }
 
-func (api *NodeAPI) DataNodeDecommission(nodeAddr string, count int, clientIDKey string) (err error) {
-	request := newRequest(get, proto.DecommissionDataNode).Header(api.h).NoTimeout()
+func (api *NodeAPI) DataNodeDecommission(ctx context.Context, nodeAddr string, count int, clientIDKey string) (err error) {
+	ctx = proto.ContextWithOperation(ctx, "DataNodeDecommission")
+	request := newRequest(ctx, get, proto.DecommissionDataNode).Header(api.h).NoTimeout()
 	request.addParam("addr", nodeAddr)
 	request.addParam("count", strconv.Itoa(count))
 	request.addParam("clientIDKey", clientIDKey)
@@ -118,8 +128,9 @@ func (api *NodeAPI) DataNodeDecommission(nodeAddr string, count int, clientIDKey
 	return
 }
 
-func (api *NodeAPI) MetaNodeDecommission(nodeAddr string, count int, clientIDKey string) (err error) {
-	request := newRequest(get, proto.DecommissionMetaNode).Header(api.h).NoTimeout()
+func (api *NodeAPI) MetaNodeDecommission(ctx context.Context, nodeAddr string, count int, clientIDKey string) (err error) {
+	ctx = proto.ContextWithOperation(ctx, "MetaNodeDecommission")
+	request := newRequest(ctx, get, proto.DecommissionMetaNode).Header(api.h).NoTimeout()
 	request.addParam("addr", nodeAddr)
 	request.addParam("count", strconv.Itoa(count))
 	request.addParam("clientIDKey", clientIDKey)
@@ -129,8 +140,9 @@ func (api *NodeAPI) MetaNodeDecommission(nodeAddr string, count int, clientIDKey
 	return
 }
 
-func (api *NodeAPI) MetaNodeMigrate(srcAddr, targetAddr string, count int, clientIDKey string) (err error) {
-	request := newRequest(get, proto.MigrateMetaNode).Header(api.h).NoTimeout()
+func (api *NodeAPI) MetaNodeMigrate(ctx context.Context, srcAddr, targetAddr string, count int, clientIDKey string) (err error) {
+	ctx = proto.ContextWithOperation(ctx, "MetaNodeMigrate")
+	request := newRequest(ctx, get, proto.MigrateMetaNode).Header(api.h).NoTimeout()
 	request.addParam("srcAddr", srcAddr)
 	request.addParam("targetAddr", targetAddr)
 	request.addParam("count", strconv.Itoa(count))
@@ -141,8 +153,9 @@ func (api *NodeAPI) MetaNodeMigrate(srcAddr, targetAddr string, count int, clien
 	return
 }
 
-func (api *NodeAPI) DataNodeMigrate(srcAddr, targetAddr string, count int, clientIDKey string) (err error) {
-	request := newRequest(get, proto.MigrateDataNode).Header(api.h).NoTimeout()
+func (api *NodeAPI) DataNodeMigrate(ctx context.Context, srcAddr, targetAddr string, count int, clientIDKey string) (err error) {
+	ctx = proto.ContextWithOperation(ctx, "DataNodeMigrate")
+	request := newRequest(ctx, get, proto.MigrateDataNode).Header(api.h).NoTimeout()
 	request.addParam("srcAddr", srcAddr)
 	request.addParam("targetAddr", targetAddr)
 	request.addParam("count", strconv.Itoa(count))
@@ -153,8 +166,9 @@ func (api *NodeAPI) DataNodeMigrate(srcAddr, targetAddr string, count int, clien
 	return
 }
 
-func (api *NodeAPI) AddLcNode(serverAddr string) (id uint64, err error) {
-	request := newRequest(get, proto.AddLcNode).Header(api.h).addParam("addr", serverAddr)
+func (api *NodeAPI) AddLcNode(ctx context.Context, serverAddr string) (id uint64, err error) {
+	ctx = proto.ContextWithOperation(ctx, "AddLcNode")
+	request := newRequest(ctx, get, proto.AddLcNode).Header(api.h).addParam("addr", serverAddr)
 	var data []byte
 	if data, err = api.mc.serveRequest(request); err != nil {
 		return
@@ -163,6 +177,7 @@ func (api *NodeAPI) AddLcNode(serverAddr string) (id uint64, err error) {
 	return
 }
 
-func (api *NodeAPI) ResponseLcNodeTask(task *proto.AdminTask) (err error) {
-	return api.mc.request(newRequest(post, proto.GetLcNodeTaskResponse).Header(api.h).Body(task))
+func (api *NodeAPI) ResponseLcNodeTask(ctx context.Context, task *proto.AdminTask) (err error) {
+	ctx = proto.ContextWithOperation(ctx, "ResponseLcNodeTask")
+	return api.mc.request(newRequest(ctx, post, proto.GetLcNodeTaskResponse).Header(api.h).Body(task))
 }

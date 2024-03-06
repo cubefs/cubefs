@@ -15,6 +15,7 @@
 package objectnode
 
 import (
+	"context"
 	"encoding/json"
 	"io"
 	"strconv"
@@ -304,7 +305,7 @@ func (o *ObjectNode) Reload(data []byte) error {
 }
 
 func (o *ObjectNode) requestRemote() (data []byte, err error) {
-	data, err = o.mc.AdminAPI().GetS3QoSInfo()
+	data, err = o.mc.AdminAPI().GetS3QoSInfo(context.TODO())
 	if err != nil {
 		return nil, err
 	}

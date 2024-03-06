@@ -15,6 +15,7 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"strconv"
 
@@ -68,18 +69,18 @@ func newClusterInfoCmd(client *master.MasterClient) *cobra.Command {
 			var cn *proto.ClusterNodeInfo
 			var cp *proto.ClusterIP
 			var clusterPara map[string]string
-			if cv, err = client.AdminAPI().GetCluster(); err != nil {
+			if cv, err = client.AdminAPI().GetCluster(context.TODO()); err != nil {
 				errout(err)
 			}
-			if cn, err = client.AdminAPI().GetClusterNodeInfo(); err != nil {
+			if cn, err = client.AdminAPI().GetClusterNodeInfo(context.TODO()); err != nil {
 				errout(err)
 			}
-			if cp, err = client.AdminAPI().GetClusterIP(); err != nil {
+			if cp, err = client.AdminAPI().GetClusterIP(context.TODO()); err != nil {
 				errout(err)
 			}
 			stdout("[Cluster]\n")
 			stdout("%v", formatClusterView(cv, cn, cp))
-			if clusterPara, err = client.AdminAPI().GetClusterParas(); err != nil {
+			if clusterPara, err = client.AdminAPI().GetClusterParas(context.TODO()); err != nil {
 				errout(err)
 			}
 
@@ -108,7 +109,7 @@ func newClusterStatCmd(client *master.MasterClient) *cobra.Command {
 					errout(err)
 				}
 			}()
-			if cs, err = client.AdminAPI().GetClusterStat(); err != nil {
+			if cs, err = client.AdminAPI().GetClusterStat(context.TODO()); err != nil {
 				err = fmt.Errorf("Get cluster info fail:\n%v\n", err)
 				return
 			}
@@ -145,7 +146,7 @@ If 'freeze=true', CubeFS WILL NOT automatically allocate new data partitions `,
 				err = fmt.Errorf("Parse bool fail: %v\n", err)
 				return
 			}
-			if err = client.AdminAPI().IsFreezeCluster(enable, clientIDKey); err != nil {
+			if err = client.AdminAPI().IsFreezeCluster(context.TODO(), enable, clientIDKey); err != nil {
 				return
 			}
 			if enable {
@@ -183,7 +184,7 @@ If the memory usage reaches this threshold, all the meta partition will be readO
 				err = fmt.Errorf("Threshold too big\n")
 				return
 			}
-			if err = client.AdminAPI().SetMetaNodeThreshold(threshold, clientIDKey); err != nil {
+			if err = client.AdminAPI().SetMetaNodeThreshold(context.TODO(), threshold, clientIDKey); err != nil {
 				return
 			}
 			stdout("MetaNode threshold is set to %v!\n", threshold)
@@ -209,7 +210,7 @@ func newClusterSetParasCmd(client *master.MasterClient) *cobra.Command {
 				errout(err)
 			}()
 
-			if err = client.AdminAPI().SetClusterParas(optDelBatchCount, optMarkDeleteRate, optDelWorkerSleepMs,
+			if err = client.AdminAPI().SetClusterParas(context.TODO(), optDelBatchCount, optMarkDeleteRate, optDelWorkerSleepMs,
 				optAutoRepairRate, optLoadFactor, opMaxDpCntLimit, clientIDKey,
 				dataNodesetSelector, metaNodesetSelector,
 				dataNodeSelector, metaNodeSelector); err != nil {
@@ -254,7 +255,7 @@ If 'forbid=true', MetaPartition decommission/migrate and MetaNode decommission i
 				err = fmt.Errorf("Parse bool fail: %v\n", err)
 				return
 			}
-			if err = client.AdminAPI().SetForbidMpDecommission(forbid); err != nil {
+			if err = client.AdminAPI().SetForbidMpDecommission(context.TODO(), forbid); err != nil {
 				return
 			}
 			if forbid {
