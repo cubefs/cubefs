@@ -15,6 +15,7 @@
 package master
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"math/rand"
@@ -45,23 +46,23 @@ func (api *ClientAPI) EncodingGzip() *ClientAPI {
 	return api.EncodingWith(encodingGzip)
 }
 
-func (api *ClientAPI) GetVolume(volName string, authKey string) (vv *proto.VolView, err error) {
+func (api *ClientAPI) GetVolume(ctx context.Context, volName string, authKey string) (vv *proto.VolView, err error) {
 	vv = &proto.VolView{}
-	err = api.mc.requestWith(vv, newRequest(post, proto.ClientVol).
+	err = api.mc.requestWith(vv, newRequest(ctx, post, proto.ClientVol).
 		Header(api.h).Param(anyParam{"name", volName}, anyParam{"authKey", authKey}))
 	return
 }
 
-func (api *ClientAPI) GetVolumeWithoutAuthKey(volName string) (vv *proto.VolView, err error) {
+func (api *ClientAPI) GetVolumeWithoutAuthKey(ctx context.Context, volName string) (vv *proto.VolView, err error) {
 	vv = &proto.VolView{}
-	err = api.mc.requestWith(vv, newRequest(post, proto.ClientVol).
+	err = api.mc.requestWith(vv, newRequest(ctx, post, proto.ClientVol).
 		Header(api.h, proto.SkipOwnerValidation, "true").addParam("name", volName))
 	return
 }
 
-func (api *ClientAPI) GetVolumeWithAuthnode(volName string, authKey string, token string, decoder Decoder) (vv *proto.VolView, err error) {
+func (api *ClientAPI) GetVolumeWithAuthnode(ctx context.Context, volName string, authKey string, token string, decoder Decoder) (vv *proto.VolView, err error) {
 	var body []byte
-	request := newRequest(post, proto.ClientVol).Header(api.h)
+	request := newRequest(ctx, post, proto.ClientVol).Header(api.h)
 	request.addParam("name", volName)
 	request.addParam("authKey", authKey)
 	request.addParam(proto.ClientMessage, token)
@@ -80,29 +81,29 @@ func (api *ClientAPI) GetVolumeWithAuthnode(volName string, authKey string, toke
 	return
 }
 
-func (api *ClientAPI) GetVolumeStat(volName string) (info *proto.VolStatInfo, err error) {
+func (api *ClientAPI) GetVolumeStat(ctx context.Context, volName string) (info *proto.VolStatInfo, err error) {
 	info = &proto.VolStatInfo{}
-	err = api.mc.requestWith(info, newRequest(get, proto.ClientVolStat).
+	err = api.mc.requestWith(info, newRequest(ctx, get, proto.ClientVolStat).
 		Header(api.h).Param(anyParam{"name", volName}, anyParam{"version", proto.LFClient}))
 	return
 }
 
-func (api *ClientAPI) GetMetaPartition(partitionID uint64) (partition *proto.MetaPartitionInfo, err error) {
+func (api *ClientAPI) GetMetaPartition(ctx context.Context, partitionID uint64) (partition *proto.MetaPartitionInfo, err error) {
 	partition = &proto.MetaPartitionInfo{}
-	err = api.mc.requestWith(partition, newRequest(get, proto.ClientMetaPartition).
+	err = api.mc.requestWith(partition, newRequest(ctx, get, proto.ClientMetaPartition).
 		Header(api.h).addParamAny("id", partitionID))
 	return
 }
 
-func (api *ClientAPI) GetMetaPartitions(volName string) (views []*proto.MetaPartitionView, err error) {
+func (api *ClientAPI) GetMetaPartitions(ctx context.Context, volName string) (views []*proto.MetaPartitionView, err error) {
 	views = make([]*proto.MetaPartitionView, 0)
-	err = api.mc.requestWith(&views, newRequest(get, proto.ClientMetaPartitions).
+	err = api.mc.requestWith(&views, newRequest(ctx, get, proto.ClientMetaPartitions).
 		Header(api.h).addParam("name", volName))
 	return
 }
 
-func (api *ClientAPI) GetDataPartitions(volName string) (view *proto.DataPartitionsView, err error) {
-	request := newRequest(get, proto.ClientDataPartitions).Header(api.h).addParam("name", volName)
+func (api *ClientAPI) GetDataPartitions(ctx context.Context, volName string) (view *proto.DataPartitionsView, err error) {
+	request := newRequest(ctx, get, proto.ClientDataPartitions).Header(api.h).addParam("name", volName)
 
 	lastLeader := api.mc.leaderAddr
 	defer api.mc.SetLeader(lastLeader)
@@ -123,9 +124,9 @@ func (api *ClientAPI) GetDataPartitions(volName string) (view *proto.DataPartiti
 	return
 }
 
-func (api *ClientAPI) GetPreLoadDataPartitions(volName string) (view *proto.DataPartitionsView, err error) {
+func (api *ClientAPI) GetPreLoadDataPartitions(ctx context.Context, volName string) (view *proto.DataPartitionsView, err error) {
 	view = &proto.DataPartitionsView{}
-	err = api.mc.requestWith(view, newRequest(get, proto.ClientDataPartitions).
+	err = api.mc.requestWith(view, newRequest(ctx, get, proto.ClientDataPartitions).
 		Header(api.h).addParam("name", volName))
 	return
 }
