@@ -18,8 +18,8 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/cubefs/cubefs/blobstore/util/log"
 	"github.com/cubefs/cubefs/util/exporter"
-	"github.com/cubefs/cubefs/util/log"
 )
 
 const (
@@ -62,12 +62,12 @@ func (d *DataNode) registerMetrics() {
 
 func (d *DataNode) startMetrics() {
 	go d.metrics.statMetrics()
-	log.LogInfof("startMetrics")
+	log.Infof("startMetrics")
 }
 
 func (d *DataNode) closeMetrics() {
 	close(d.metrics.stopC)
-	log.LogInfof("closeMetrics")
+	log.Infof("closeMetrics")
 }
 
 func GetIoMetricLabels(partition *DataPartition, tp string) map[string]string {
@@ -89,7 +89,7 @@ func (dm *DataNodeMetrics) statMetrics() {
 		select {
 		case <-dm.stopC:
 			ticker.Stop()
-			log.LogInfof("stop metrics ticker")
+			log.Infof("stop metrics ticker")
 			return
 		case <-ticker.C:
 			dm.doStat()
