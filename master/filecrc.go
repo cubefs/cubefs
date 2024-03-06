@@ -15,10 +15,11 @@
 package master
 
 import (
+	"context"
 	"fmt"
 	"time"
 
-	"github.com/cubefs/cubefs/util/log"
+	"github.com/cubefs/cubefs/proto"
 )
 
 // FileCrc defines the crc of a file
@@ -67,7 +68,7 @@ func (fc *FileInCore) shouldCheckCrc() bool {
 	return time.Now().Unix()-fc.LastModify > defaultIntervalToCheckCrc
 }
 
-func (fc *FileInCore) needCrcRepair(liveReplicas []*DataReplica, getInfoCallback func() string) (fms []*FileMetadata, needRepair bool) {
+func (fc *FileInCore) needCrcRepair(ctx context.Context, liveReplicas []*DataReplica, getInfoCallback func() string) (fms []*FileMetadata, needRepair bool) {
 	var baseCrc uint32
 	fms = make([]*FileMetadata, 0)
 
@@ -80,7 +81,7 @@ func (fc *FileInCore) needCrcRepair(liveReplicas []*DataReplica, getInfoCallback
 	if len(fms) == 0 {
 		return
 	}
-
+	span := proto.SpanFromContext(ctx)
 	baseCrc = fms[0].Crc
 	baseApplyId := fms[0].ApplyID
 	for _, fm := range fms {
@@ -89,7 +90,7 @@ func (fc *FileInCore) needCrcRepair(liveReplicas []*DataReplica, getInfoCallback
 			return
 		}
 		if fm.ApplyID == baseApplyId && fm.getFileCrc() != baseCrc {
-			log.LogErrorf("needCrcRepair. getInfoCallback %v, extent %v, applyID(%v:%v), crc %v",
+			span.Errorf("needCrcRepair. getInfoCallback %v, extent %v, applyID(%v:%v), crc %v",
 				getInfoCallback(), fc.Name, fm.ApplyID, baseApplyId, baseCrc)
 			needRepair = true
 			return

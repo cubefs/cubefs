@@ -15,13 +15,15 @@
 package master
 
 import (
+	"context"
 	"fmt"
 	syslog "log"
 	"strings"
 
+	"github.com/cubefs/cubefs/blobstore/common/trace"
+	"github.com/cubefs/cubefs/blobstore/util/log"
 	"github.com/cubefs/cubefs/depends/tiglabs/raft/proto"
 	cfsProto "github.com/cubefs/cubefs/proto"
-	"github.com/cubefs/cubefs/util/log"
 )
 
 // LeaderInfo represents the leader's information
@@ -31,7 +33,7 @@ type LeaderInfo struct {
 
 func (m *Server) handleLeaderChange(leader uint64) {
 	if leader == 0 {
-		log.LogWarnf("action[handleLeaderChange] but no leader")
+		log.Warnf("action[handleLeaderChange] but no leader")
 		if WarnMetrics != nil {
 			WarnMetrics.reset()
 		}
@@ -40,26 +42,26 @@ func (m *Server) handleLeaderChange(leader uint64) {
 
 	oldLeaderAddr := m.leaderInfo.addr
 	m.leaderInfo.addr = AddrDatabase[leader]
-	log.LogWarnf("action[handleLeaderChange]  [%v] ", m.leaderInfo.addr)
+	log.Warnf("action[handleLeaderChange]  [%v] ", m.leaderInfo.addr)
 	m.reverseProxy = m.newReverseProxy()
-
+	_, ctx := trace.StartSpanFromContextWithTraceID(context.Background(), "", "leader-change")
 	if m.id == leader {
-		Warn(m.clusterName, fmt.Sprintf("clusterID[%v] leader is changed to %v",
+		Warn(ctx, m.clusterName, fmt.Sprintf("clusterID[%v] leader is changed to %v",
 			m.clusterName, m.leaderInfo.addr))
 		if oldLeaderAddr != m.leaderInfo.addr {
-			m.cluster.checkPersistClusterValue()
+			m.cluster.checkPersistClusterValue(ctx)
 
-			m.loadMetadata()
+			m.loadMetadata(ctx)
 			m.cluster.metaReady = true
 			m.metaReady = true
 		}
-		m.cluster.checkDataNodeHeartbeat()
-		m.cluster.checkMetaNodeHeartbeat()
-		m.cluster.checkLcNodeHeartbeat()
+		m.cluster.checkDataNodeHeartbeat(ctx)
+		m.cluster.checkMetaNodeHeartbeat(ctx)
+		m.cluster.checkLcNodeHeartbeat(ctx)
 		m.cluster.followerReadManager.reSet()
 
 	} else {
-		Warn(m.clusterName, fmt.Sprintf("clusterID[%v] leader is changed to %v",
+		Warn(ctx, m.clusterName, fmt.Sprintf("clusterID[%v] leader is changed to %v",
 			m.clusterName, m.leaderInfo.addr))
 		m.clearMetadata()
 		m.metaReady = false
@@ -75,6 +77,7 @@ func (m *Server) handleLeaderChange(leader uint64) {
 func (m *Server) handlePeerChange(confChange *proto.ConfChange) (err error) {
 	var msg string
 	addr := string(confChange.Context)
+	_, ctx := trace.StartSpanFromContextWithTraceID(context.Background(), "", "peer-change")
 	switch confChange.Type {
 	case proto.ConfAddNode:
 		var arr []string
@@ -91,51 +94,53 @@ func (m *Server) handlePeerChange(confChange *proto.ConfChange) (err error) {
 	default:
 		// do nothing
 	}
-	Warn(m.clusterName, msg)
+	Warn(ctx, m.clusterName, msg)
 	return
 }
 
 func (m *Server) handleApplySnapshot() {
+	_, ctx := trace.StartSpanFromContextWithTraceID(context.Background(), "", "snapshot-apply")
 	m.fsm.restore()
-	m.restoreIDAlloc()
+	m.restoreIDAlloc(ctx)
 	return
 }
 
 func (m *Server) handleRaftUserCmd(opt uint32, key string, cmdMap map[string][]byte) (err error) {
-	log.LogInfof("action[handleRaftUserCmd] opt %v, key %v, map len %v", opt, key, len(cmdMap))
+	log.Infof("action[handleRaftUserCmd] opt %v, key %v, map len %v", opt, key, len(cmdMap))
 	switch opt {
 	case opSyncPutFollowerApiLimiterInfo, opSyncPutApiLimiterInfo:
 		if m.cluster != nil && !m.partition.IsRaftLeader() {
 			m.cluster.apiLimiter.updateLimiterInfoFromLeader(cmdMap[key])
 		}
 	default:
-		log.LogErrorf("action[handleRaftUserCmd] opt %v not supported,key %v, map len %v", opt, key, len(cmdMap))
+		log.Errorf("action[handleRaftUserCmd] opt %v not supported,key %v, map len %v", opt, key, len(cmdMap))
 	}
 	return nil
 }
 
-func (m *Server) restoreIDAlloc() {
-	m.cluster.idAlloc.restore()
+func (m *Server) restoreIDAlloc(ctx context.Context) {
+	m.cluster.idAlloc.restore(ctx)
 }
 
 // Load stored metadata into the memory
-func (m *Server) loadMetadata() {
-	log.LogInfo("action[loadMetadata] begin")
+func (m *Server) loadMetadata(ctx context.Context) {
+	span := cfsProto.SpanFromContext(ctx)
+	span.Info("action[loadMetadata] begin")
 	syslog.Println("action[loadMetadata] begin")
 	m.clearMetadata()
-	m.restoreIDAlloc()
+	m.restoreIDAlloc(ctx)
 	m.cluster.fsm.restore()
 	var err error
-	if err = m.cluster.loadClusterValue(); err != nil {
+	if err = m.cluster.loadClusterValue(ctx); err != nil {
 		panic(err)
 	}
 	var loadDomain bool
 	if m.cluster.FaultDomain { // try load exclude
-		if loadDomain, err = m.cluster.loadZoneDomain(); err != nil {
-			log.LogInfof("action[putZoneDomain] err[%v]", err)
+		if loadDomain, err = m.cluster.loadZoneDomain(ctx); err != nil {
+			span.Infof("action[putZoneDomain] err[%v]", err)
 			panic(err)
 		}
-		if err = m.cluster.loadNodeSetGrps(); err != nil {
+		if err = m.cluster.loadNodeSetGrps(ctx); err != nil {
 			panic(err)
 		}
 		if loadDomain {
@@ -145,99 +150,99 @@ func (m *Server) loadMetadata() {
 		}
 	}
 
-	if err = m.cluster.loadNodeSets(); err != nil {
+	if err = m.cluster.loadNodeSets(ctx); err != nil {
 		panic(err)
 	}
 
 	if m.cluster.FaultDomain {
-		log.LogInfof("action[FaultDomain] set")
+		span.Infof("action[FaultDomain] set")
 		if !loadDomain { // first restart after domain item be added
-			if err = m.cluster.putZoneDomain(true); err != nil {
-				log.LogInfof("action[putZoneDomain] err[%v]", err)
+			if err = m.cluster.putZoneDomain(ctx, true); err != nil {
+				span.Infof("action[putZoneDomain] err[%v]", err)
 				panic(err)
 			}
 			m.cluster.domainManager.start()
 		}
 	}
 
-	if err = m.cluster.loadDataNodes(); err != nil {
+	if err = m.cluster.loadDataNodes(ctx); err != nil {
 		panic(err)
 	}
 
-	if err = m.cluster.loadMetaNodes(); err != nil {
+	if err = m.cluster.loadMetaNodes(ctx); err != nil {
 		panic(err)
 	}
 
-	if err = m.cluster.loadZoneValue(); err != nil {
+	if err = m.cluster.loadZoneValue(ctx); err != nil {
 		panic(err)
 	}
 
-	if err = m.cluster.loadVols(); err != nil {
+	if err = m.cluster.loadVols(ctx); err != nil {
 		panic(err)
 	}
 
-	if err = m.cluster.loadMetaPartitions(); err != nil {
+	if err = m.cluster.loadMetaPartitions(ctx); err != nil {
 		panic(err)
 	}
-	if err = m.cluster.loadDataPartitions(); err != nil {
+	if err = m.cluster.loadDataPartitions(ctx); err != nil {
 		panic(err)
 	}
-	if err = m.cluster.loadDecommissionDiskList(); err != nil {
+	if err = m.cluster.loadDecommissionDiskList(ctx); err != nil {
 		panic(err)
 	}
-	if err = m.cluster.startDecommissionListTraverse(); err != nil {
+	if err = m.cluster.startDecommissionListTraverse(ctx); err != nil {
 		panic(err)
 	}
-	log.LogInfo("action[loadMetadata] end")
+	span.Info("action[loadMetadata] end")
 
-	log.LogInfo("action[loadUserInfo] begin")
-	if err = m.user.loadUserStore(); err != nil {
+	span.Info("action[loadUserInfo] begin")
+	if err = m.user.loadUserStore(ctx); err != nil {
 		panic(err)
 	}
-	if err = m.user.loadAKStore(); err != nil {
+	if err = m.user.loadAKStore(ctx); err != nil {
 		panic(err)
 	}
-	if err = m.user.loadVolUsers(); err != nil {
+	if err = m.user.loadVolUsers(ctx); err != nil {
 		panic(err)
 	}
-	log.LogInfo("action[loadUserInfo] end")
+	span.Info("action[loadUserInfo] end")
 
-	log.LogInfo("action[refreshUser] begin")
-	if err = m.refreshUser(); err != nil {
+	span.Info("action[refreshUser] begin")
+	if err = m.refreshUser(ctx); err != nil {
 		panic(err)
 	}
-	log.LogInfo("action[refreshUser] end")
+	span.Info("action[refreshUser] end")
 
-	log.LogInfo("action[loadApiLimiterInfo] begin")
-	if err = m.cluster.loadApiLimiterInfo(); err != nil {
+	span.Info("action[loadApiLimiterInfo] begin")
+	if err = m.cluster.loadApiLimiterInfo(ctx); err != nil {
 		panic(err)
 	}
-	log.LogInfo("action[loadApiLimiterInfo] end")
+	span.Info("action[loadApiLimiterInfo] end")
 
-	log.LogInfo("action[loadQuota] begin")
-	if err = m.cluster.loadQuota(); err != nil {
+	span.Info("action[loadQuota] begin")
+	if err = m.cluster.loadQuota(ctx); err != nil {
 		panic(err)
 	}
-	log.LogInfo("action[loadQuota] end")
+	span.Info("action[loadQuota] end")
 
-	log.LogInfo("action[loadLcConfs] begin")
-	if err = m.cluster.loadLcConfs(); err != nil {
+	span.Info("action[loadLcConfs] begin")
+	if err = m.cluster.loadLcConfs(ctx); err != nil {
 		panic(err)
 	}
-	log.LogInfo("action[loadLcConfs] end")
+	span.Info("action[loadLcConfs] end")
 
-	log.LogInfo("action[loadLcNodes] begin")
-	if err = m.cluster.loadLcNodes(); err != nil {
+	span.Info("action[loadLcNodes] begin")
+	if err = m.cluster.loadLcNodes(ctx); err != nil {
 		panic(err)
 	}
-	log.LogInfo("action[loadLcNodes] end")
+	span.Info("action[loadLcNodes] end")
 	syslog.Println("action[loadMetadata] end")
 
-	log.LogInfo("action[loadS3QoSInfo] begin")
-	if err = m.cluster.loadS3ApiQosInfo(); err != nil {
+	span.Info("action[loadS3QoSInfo] begin")
+	if err = m.cluster.loadS3ApiQosInfo(ctx); err != nil {
 		panic(err)
 	}
-	log.LogInfo("action[loadS3QoSInfo] end")
+	span.Info("action[loadS3QoSInfo] end")
 }
 
 func (m *Server) clearMetadata() {
@@ -258,7 +263,7 @@ func (m *Server) clearMetadata() {
 	// m.cluster.apiLimiter.Clear()
 }
 
-func (m *Server) refreshUser() (err error) {
+func (m *Server) refreshUser(ctx context.Context) (err error) {
 	/* todo create user automatically
 	var userInfo *cfsProto.UserInfo
 	for volName, vol := range m.cluster.allVols() {
@@ -293,7 +298,7 @@ func (m *Server) refreshUser() (err error) {
 			}
 		}
 	}*/
-	if _, err = m.user.getUserInfo(RootUserID); err != nil {
+	if _, err = m.user.getUserInfo(ctx, RootUserID); err != nil {
 		param := cfsProto.UserCreateParam{
 			ID:       RootUserID,
 			Password: DefaultRootPasswd,

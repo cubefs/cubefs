@@ -15,6 +15,7 @@
 package master
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"strconv"
@@ -24,10 +25,10 @@ import (
 
 	"golang.org/x/time/rate"
 
+	"github.com/cubefs/cubefs/blobstore/util/log"
 	"github.com/cubefs/cubefs/depends/tiglabs/raft/proto"
 	bsProto "github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/errors"
-	"github.com/cubefs/cubefs/util/log"
 )
 
 /* We defines several "values" such as clusterValue, metaPartitionValue, dataPartitionValue, volValue, dataNodeValue,
@@ -157,7 +158,7 @@ type dataPartitionValue struct {
 	DecommissionWaitTimes          int
 }
 
-func (dpv *dataPartitionValue) Restore(c *Cluster) (dp *DataPartition) {
+func (dpv *dataPartitionValue) Restore(ctx context.Context, c *Cluster) (dp *DataPartition) {
 	for i := 0; i < len(dpv.Peers); i++ {
 		dn, ok := c.dataNodes.Load(dpv.Peers[i].Addr)
 		if ok && dn.(*DataNode).ID != dpv.Peers[i].ID {
@@ -188,7 +189,7 @@ func (dpv *dataPartitionValue) Restore(c *Cluster) (dp *DataPartition) {
 		if !contains(dp.Hosts, rv.Addr) {
 			continue
 		}
-		dp.afterCreation(rv.Addr, rv.DiskPath, c)
+		dp.afterCreation(ctx, rv.Addr, rv.DiskPath, c)
 	}
 	return dp
 }
@@ -492,7 +493,7 @@ func (m *RaftCmd) Unmarshal(data []byte) (err error) {
 func (m *RaftCmd) setOpType() {
 	keyArr := strings.Split(m.K, keySeparator)
 	if len(keyArr) < 2 {
-		log.LogWarnf("action[setOpType] invalid length[%v]", keyArr)
+		log.Warnf("action[setOpType] invalid length[%v]", keyArr)
 		return
 	}
 	switch keyArr[1] {
@@ -523,25 +524,26 @@ func (m *RaftCmd) setOpType() {
 	case volUserAcronym:
 		m.Op = opSyncAddVolUser
 	default:
-		log.LogWarnf("action[setOpType] unknown opCode[%v]", keyArr[1])
+		log.Warnf("action[setOpType] unknown opCode[%v]", keyArr[1])
 	}
 }
 
 // key=#c#name
-func (c *Cluster) syncPutCluster() (err error) {
+func (c *Cluster) syncPutCluster(ctx context.Context) (err error) {
+	span := bsProto.SpanFromContext(ctx)
 	metadata := new(RaftCmd)
 	metadata.Op = opSyncPutCluster
 	metadata.K = clusterPrefix + c.Name
 	cv := newClusterValue(c)
-	log.LogInfof("action[syncPutCluster] cluster value:[%+v]", cv)
+	span.Infof("action[syncPutCluster] cluster value:[%+v]", cv)
 	metadata.V, err = json.Marshal(cv)
 	if err != nil {
 		return
 	}
-	return c.submit(metadata)
+	return c.submit(ctx, metadata)
 }
 
-func (c *Cluster) syncPutApiLimiterInfo(followerLimiter bool) (err error) {
+func (c *Cluster) syncPutApiLimiterInfo(ctx context.Context, followerLimiter bool) (err error) {
 	metadata := new(RaftCmd)
 	if followerLimiter {
 		metadata.Op = opSyncPutFollowerApiLimiterInfo
@@ -556,10 +558,11 @@ func (c *Cluster) syncPutApiLimiterInfo(followerLimiter bool) (err error) {
 	if err != nil {
 		return
 	}
-	return c.submit(metadata)
+	return c.submit(ctx, metadata)
 }
 
-func (c *Cluster) loadApiLimiterInfo() (err error) {
+func (c *Cluster) loadApiLimiterInfo(ctx context.Context) (err error) {
+	span := bsProto.SpanFromContext(ctx)
 	result, err := c.fsm.store.SeekForPrefix([]byte(apiLimiterPrefix))
 	if err != nil {
 		err = fmt.Errorf("action[loadApiLimiterInfo],err:%v", err.Error())
@@ -569,7 +572,7 @@ func (c *Cluster) loadApiLimiterInfo() (err error) {
 		// cv := &clusterValue{}
 		limiterInfos := make(map[string]*ApiLimitInfo)
 		if err = json.Unmarshal(value, &limiterInfos); err != nil {
-			log.LogErrorf("action[loadApiLimiterInfo], unmarshal err:%v", err.Error())
+			span.Errorf("action[loadApiLimiterInfo], unmarshal err:%v", err.Error())
 			return err
 		}
 		for _, v := range limiterInfos {
@@ -580,22 +583,23 @@ func (c *Cluster) loadApiLimiterInfo() (err error) {
 		c.apiLimiter.limiterInfos = limiterInfos
 		c.apiLimiter.m.Unlock()
 		// c.apiLimiter.Replace(limiterInfos)
-		log.LogInfof("action[loadApiLimiterInfo], limiter info[%v]", value)
+		span.Infof("action[loadApiLimiterInfo], limiter info[%v]", value)
 	}
 	return
 }
 
 // key=#s#id
-func (c *Cluster) syncAddNodeSet(nset *nodeSet) (err error) {
-	return c.putNodeSetInfo(opSyncAddNodeSet, nset)
+func (c *Cluster) syncAddNodeSet(ctx context.Context, nset *nodeSet) (err error) {
+	return c.putNodeSetInfo(ctx, opSyncAddNodeSet, nset)
 }
 
-func (c *Cluster) syncUpdateNodeSet(nset *nodeSet) (err error) {
-	return c.putNodeSetInfo(opSyncUpdateNodeSet, nset)
+func (c *Cluster) syncUpdateNodeSet(ctx context.Context, nset *nodeSet) (err error) {
+	return c.putNodeSetInfo(ctx, opSyncUpdateNodeSet, nset)
 }
 
-func (c *Cluster) putNodeSetInfo(opType uint32, nset *nodeSet) (err error) {
-	log.LogInfof("action[putNodeSetInfo], type:[%v], gridId:[%v], name:[%v]", opType, nset.ID, nset.zoneName)
+func (c *Cluster) putNodeSetInfo(ctx context.Context, opType uint32, nset *nodeSet) (err error) {
+	span := bsProto.SpanFromContext(ctx)
+	span.Infof("action[putNodeSetInfo], type:[%v], gridId:[%v], name:[%v]", opType, nset.ID, nset.zoneName)
 	metadata := new(RaftCmd)
 	metadata.Op = opType
 	metadata.K = nodeSetPrefix + strconv.FormatUint(nset.ID, 10)
@@ -604,34 +608,35 @@ func (c *Cluster) putNodeSetInfo(opType uint32, nset *nodeSet) (err error) {
 	if err != nil {
 		return
 	}
-	return c.submit(metadata)
+	return c.submit(ctx, metadata)
 }
 
-func (c *Cluster) putNodeSetGrpInfo(opType uint32, nsg *nodeSetGroup) (err error) {
+func (c *Cluster) putNodeSetGrpInfo(ctx context.Context, opType uint32, nsg *nodeSetGroup) (err error) {
+	span := bsProto.SpanFromContext(ctx)
 	metadata := new(RaftCmd)
 	metadata.Op = opType
 	metadata.K = nodeSetGrpPrefix + strconv.FormatUint(nsg.ID, 10)
-	log.LogInfof("action[putNodeSetGrpInfo] nsg id[%v] status[%v] ids[%v]", nsg.ID, nsg.status, nsg.nodeSetsIds)
+	span.Infof("action[putNodeSetGrpInfo] nsg id[%v] status[%v] ids[%v]", nsg.ID, nsg.status, nsg.nodeSetsIds)
 	nsv := newNodeSetGrpValue(nsg)
-	log.LogInfof("action[putNodeSetGrpInfo] nsv id[%v] status[%v] ids[%v]", nsv.ID, nsv.Status, nsv.NodeSetsIds)
+	span.Infof("action[putNodeSetGrpInfo] nsv id[%v] status[%v] ids[%v]", nsv.ID, nsv.Status, nsv.NodeSetsIds)
 	metadata.V, err = json.Marshal(nsv)
 	if err != nil {
 		return
 	}
-	return c.submit(metadata)
+	return c.submit(ctx, metadata)
 }
 
 // key=#dp#volID#partitionID,value=json.Marshal(dataPartitionValue)
-func (c *Cluster) syncAddDataPartition(dp *DataPartition) (err error) {
-	return c.putDataPartitionInfo(opSyncAddDataPartition, dp)
+func (c *Cluster) syncAddDataPartition(ctx context.Context, dp *DataPartition) (err error) {
+	return c.putDataPartitionInfo(ctx, opSyncAddDataPartition, dp)
 }
 
-func (c *Cluster) syncUpdateDataPartition(dp *DataPartition) (err error) {
-	return c.putDataPartitionInfo(opSyncUpdateDataPartition, dp)
+func (c *Cluster) syncUpdateDataPartition(ctx context.Context, dp *DataPartition) (err error) {
+	return c.putDataPartitionInfo(ctx, opSyncUpdateDataPartition, dp)
 }
 
-func (c *Cluster) syncDeleteDataPartition(dp *DataPartition) (err error) {
-	return c.putDataPartitionInfo(opSyncDeleteDataPartition, dp)
+func (c *Cluster) syncDeleteDataPartition(ctx context.Context, dp *DataPartition) (err error) {
+	return c.putDataPartitionInfo(ctx, opSyncDeleteDataPartition, dp)
 }
 
 func (c *Cluster) buildDataPartitionRaftCmd(opType uint32, dp *DataPartition) (metadata *RaftCmd, err error) {
@@ -646,15 +651,15 @@ func (c *Cluster) buildDataPartitionRaftCmd(opType uint32, dp *DataPartition) (m
 	return
 }
 
-func (c *Cluster) putDataPartitionInfo(opType uint32, dp *DataPartition) (err error) {
+func (c *Cluster) putDataPartitionInfo(ctx context.Context, opType uint32, dp *DataPartition) (err error) {
 	metadata, err := c.buildDataPartitionRaftCmd(opType, dp)
 	if err != nil {
 		return
 	}
-	return c.submit(metadata)
+	return c.submit(ctx, metadata)
 }
 
-func (c *Cluster) submit(metadata *RaftCmd) (err error) {
+func (c *Cluster) submit(ctx context.Context, metadata *RaftCmd) (err error) {
 	cmd, err := metadata.Marshal()
 	if err != nil {
 		return errors.New(err.Error())
@@ -667,19 +672,19 @@ func (c *Cluster) submit(metadata *RaftCmd) (err error) {
 }
 
 // key=#vol#volID,value=json.Marshal(vv)
-func (c *Cluster) syncAddVol(vol *Vol) (err error) {
-	return c.syncPutVolInfo(opSyncAddVol, vol)
+func (c *Cluster) syncAddVol(ctx context.Context, vol *Vol) (err error) {
+	return c.syncPutVolInfo(ctx, opSyncAddVol, vol)
 }
 
-func (c *Cluster) syncUpdateVol(vol *Vol) (err error) {
-	return c.syncPutVolInfo(opSyncUpdateVol, vol)
+func (c *Cluster) syncUpdateVol(ctx context.Context, vol *Vol) (err error) {
+	return c.syncPutVolInfo(ctx, opSyncUpdateVol, vol)
 }
 
-func (c *Cluster) syncDeleteVol(vol *Vol) (err error) {
-	return c.syncPutVolInfo(opSyncDeleteVol, vol)
+func (c *Cluster) syncDeleteVol(ctx context.Context, vol *Vol) (err error) {
+	return c.syncPutVolInfo(ctx, opSyncDeleteVol, vol)
 }
 
-func (c *Cluster) sycnPutZoneInfo(zone *Zone) error {
+func (c *Cluster) sycnPutZoneInfo(ctx context.Context, zone *Zone) error {
 	var err error
 	metadata := new(RaftCmd)
 	metadata.Op = opSyncUpdateZone
@@ -688,11 +693,12 @@ func (c *Cluster) sycnPutZoneInfo(zone *Zone) error {
 	if vv.Name == "" {
 		vv.Name = DefaultZoneName
 	}
-	log.LogInfof("action[sycnPutZoneInfo] zone name %v", vv.Name)
+	span := bsProto.SpanFromContext(ctx)
+	span.Infof("action[sycnPutZoneInfo] zone name %v", vv.Name)
 	if metadata.V, err = json.Marshal(vv); err != nil {
 		return errors.New(err.Error())
 	}
-	return c.submit(metadata)
+	return c.submit(ctx, metadata)
 }
 
 func (c *Cluster) buildVolInfoRaftCmd(opType uint32, vol *Vol) (metadata *RaftCmd, err error) {
@@ -706,122 +712,128 @@ func (c *Cluster) buildVolInfoRaftCmd(opType uint32, vol *Vol) (metadata *RaftCm
 	return
 }
 
-func (c *Cluster) syncPutVolInfo(opType uint32, vol *Vol) (err error) {
+func (c *Cluster) syncPutVolInfo(ctx context.Context, opType uint32, vol *Vol) (err error) {
 	metadata, err := c.buildVolInfoRaftCmd(opType, vol)
 	if err != nil {
 		return
 	}
-	return c.submit(metadata)
+	return c.submit(ctx, metadata)
 }
 
-func (c *Cluster) syncAclList(vol *Vol, val []byte) (err error) {
-	log.LogDebugf("syncAclList vol %v vallen %v", vol.Name, len(val))
+func (c *Cluster) syncAclList(ctx context.Context, vol *Vol, val []byte) (err error) {
+	span := bsProto.SpanFromContext(ctx)
+	span.Debugf("syncAclList vol %v vallen %v", vol.Name, len(val))
 	metadata := new(RaftCmd)
 	metadata.Op = opSyncAcl
 	metadata.K = AclPrefix + strconv.FormatUint(vol.ID, 10)
 	metadata.V = val
 
-	return c.submit(metadata)
+	return c.submit(ctx, metadata)
 }
 
-func (c *Cluster) syncMultiVersion(vol *Vol, val []byte) (err error) {
+func (c *Cluster) syncMultiVersion(ctx context.Context, vol *Vol, val []byte) (err error) {
 	metadata := new(RaftCmd)
 	metadata.Op = opSyncMulitVersion
 	metadata.K = MultiVerPrefix + strconv.FormatUint(vol.ID, 10)
 	metadata.V = val
 	if c == nil {
-		log.LogErrorf("syncMultiVersion c is nil")
+		span := bsProto.SpanFromContext(ctx)
+		span.Errorf("syncMultiVersion c is nil")
 		return fmt.Errorf("vol %v but cluster is nil", vol.Name)
 	}
-	return c.submit(metadata)
+	return c.submit(ctx, metadata)
 }
 
-func (c *Cluster) loadAclList(vol *Vol) (err error) {
+func (c *Cluster) loadAclList(ctx context.Context, vol *Vol) (err error) {
+	span := bsProto.SpanFromContext(ctx)
 	key := AclPrefix + strconv.FormatUint(vol.ID, 10)
 	result, err := c.fsm.store.SeekForPrefix([]byte(key))
 	if err != nil {
-		log.LogErrorf("action[loadAclList] err %v", err)
+		span.Errorf("action[loadAclList] err %v", err)
 		return
 	}
 
-	log.LogDebugf("loadAclList vol %v rocksdb value count %v", vol.Name, len(result))
+	span.Debugf("loadAclList vol %v rocksdb value count %v", vol.Name, len(result))
 
 	vol.aclMgr.init(c, vol)
 	for _, value := range result {
-		return vol.aclMgr.load(c, value)
+		return vol.aclMgr.load(ctx, c, value)
 	}
 	return
 }
 
-func (c *Cluster) syncUidSpaceList(vol *Vol, val []byte) (err error) {
-	log.LogDebugf("syncUidSpaceList vol %v vallen %v", vol.Name, len(val))
+func (c *Cluster) syncUidSpaceList(ctx context.Context, vol *Vol, val []byte) (err error) {
+	span := bsProto.SpanFromContext(ctx)
+	span.Debugf("syncUidSpaceList vol %v vallen %v", vol.Name, len(val))
 	metadata := new(RaftCmd)
 	metadata.Op = opSyncUid
 	metadata.K = UidPrefix + strconv.FormatUint(vol.ID, 10)
 	metadata.V = val
 
-	return c.submit(metadata)
+	return c.submit(ctx, metadata)
 }
 
-func (c *Cluster) loadUidSpaceList(vol *Vol) (err error) {
+func (c *Cluster) loadUidSpaceList(ctx context.Context, vol *Vol) (err error) {
+	span := bsProto.SpanFromContext(ctx)
 	key := UidPrefix + strconv.FormatUint(vol.ID, 10)
 	result, err := c.fsm.store.SeekForPrefix([]byte(key))
 	if err != nil {
-		log.LogErrorf("action[loadUidSpaceList] err %v", err)
+		span.Errorf("action[loadUidSpaceList] err %v", err)
 		return
 	}
 
-	log.LogDebugf("loadUidSpaceList vol %v rocksdb value count %v", vol.Name, len(result))
+	span.Debugf("loadUidSpaceList vol %v rocksdb value count %v", vol.Name, len(result))
 
 	vol.initUidSpaceManager(c)
 	for _, value := range result {
-		return vol.uidSpaceManager.load(c, value)
+		return vol.uidSpaceManager.load(ctx, c, value)
 	}
 	return
 }
 
-func (c *Cluster) loadMultiVersion(vol *Vol) (err error) {
+func (c *Cluster) loadMultiVersion(ctx context.Context, vol *Vol) (err error) {
+	span := bsProto.SpanFromContext(ctx)
 	key := MultiVerPrefix + strconv.FormatUint(vol.ID, 10)
 	result, err := c.fsm.store.SeekForPrefix([]byte(key))
 	if err != nil {
-		log.LogErrorf("action[loadMultiVersion] err %v", err)
+		span.Errorf("action[loadMultiVersion] err %v", err)
 		return
 	}
 	if len(result) == 0 {
-		log.LogWarnf("action[loadMultiVersion] MultiVersion zero and do init")
-		return vol.VersionMgr.init(c)
+		span.Warnf("action[loadMultiVersion] MultiVersion zero and do init")
+		return vol.VersionMgr.init(ctx, c)
 	}
 	vol.VersionMgr.c = c
-	log.LogWarnf("action[loadMultiVersion] vol %v loadMultiVersion set cluster %v vol.VersionMgr %v", vol.Name, c, vol.VersionMgr)
+	span.Warnf("action[loadMultiVersion] vol %v loadMultiVersion set cluster %v vol.VersionMgr %v", vol.Name, c, vol.VersionMgr)
 	for _, value := range result {
 		if err = vol.VersionMgr.loadMultiVersion(c, value); err != nil {
-			log.LogErrorf("action[loadMultiVersion] vol %v err %v", vol.Name, err)
+			span.Errorf("action[loadMultiVersion] vol %v err %v", vol.Name, err)
 			return
 		}
-		log.LogWarnf("action[loadMultiVersion] vol %v MultiVersion zero and do init, verlist %v", vol.Name, vol.VersionMgr)
+		span.Warnf("action[loadMultiVersion] vol %v MultiVersion zero and do init, verlist %v", vol.Name, vol.VersionMgr)
 	}
 	return
 }
 
 // key=#mp#volID#metaPartitionID,value=json.Marshal(metaPartitionValue)
-func (c *Cluster) syncAddMetaPartition(mp *MetaPartition) (err error) {
-	return c.putMetaPartitionInfo(opSyncAddMetaPartition, mp)
+func (c *Cluster) syncAddMetaPartition(ctx context.Context, mp *MetaPartition) (err error) {
+	return c.putMetaPartitionInfo(ctx, opSyncAddMetaPartition, mp)
 }
 
-func (c *Cluster) syncUpdateMetaPartition(mp *MetaPartition) (err error) {
-	return c.putMetaPartitionInfo(opSyncUpdateMetaPartition, mp)
+func (c *Cluster) syncUpdateMetaPartition(ctx context.Context, mp *MetaPartition) (err error) {
+	return c.putMetaPartitionInfo(ctx, opSyncUpdateMetaPartition, mp)
 }
 
-func (c *Cluster) syncDeleteMetaPartition(mp *MetaPartition) (err error) {
-	return c.putMetaPartitionInfo(opSyncDeleteMetaPartition, mp)
+func (c *Cluster) syncDeleteMetaPartition(ctx context.Context, mp *MetaPartition) (err error) {
+	return c.putMetaPartitionInfo(ctx, opSyncDeleteMetaPartition, mp)
 }
 
-func (c *Cluster) putMetaPartitionInfo(opType uint32, mp *MetaPartition) (err error) {
+func (c *Cluster) putMetaPartitionInfo(ctx context.Context, opType uint32, mp *MetaPartition) (err error) {
 	metadata, err := c.buildMetaPartitionRaftCmd(opType, mp)
 	if err != nil {
 		return
 	}
-	return c.submit(metadata)
+	return c.submit(ctx, metadata)
 }
 
 func (c *Cluster) buildMetaPartitionRaftCmd(opType uint32, mp *MetaPartition) (metadata *RaftCmd, err error) {
@@ -836,7 +848,7 @@ func (c *Cluster) buildMetaPartitionRaftCmd(opType uint32, mp *MetaPartition) (m
 	return
 }
 
-func (c *Cluster) syncBatchCommitCmd(cmdMap map[string]*RaftCmd) (err error) {
+func (c *Cluster) syncBatchCommitCmd(ctx context.Context, cmdMap map[string]*RaftCmd) (err error) {
 	value, err := json.Marshal(cmdMap)
 	if err != nil {
 		return
@@ -846,20 +858,20 @@ func (c *Cluster) syncBatchCommitCmd(cmdMap map[string]*RaftCmd) (err error) {
 		K:  "batch_put",
 		V:  value,
 	}
-	return c.submit(cmd)
+	return c.submit(ctx, cmd)
 }
 
 // key=#mn#id#addr,value = nil
-func (c *Cluster) syncAddMetaNode(metaNode *MetaNode) (err error) {
-	return c.syncPutMetaNode(opSyncAddMetaNode, metaNode)
+func (c *Cluster) syncAddMetaNode(ctx context.Context, metaNode *MetaNode) (err error) {
+	return c.syncPutMetaNode(ctx, opSyncAddMetaNode, metaNode)
 }
 
-func (c *Cluster) syncDeleteMetaNode(metaNode *MetaNode) (err error) {
-	return c.syncPutMetaNode(opSyncDeleteMetaNode, metaNode)
+func (c *Cluster) syncDeleteMetaNode(ctx context.Context, metaNode *MetaNode) (err error) {
+	return c.syncPutMetaNode(ctx, opSyncDeleteMetaNode, metaNode)
 }
 
-func (c *Cluster) syncUpdateMetaNode(metaNode *MetaNode) (err error) {
-	return c.syncPutMetaNode(opSyncUpdateMetaNode, metaNode)
+func (c *Cluster) syncUpdateMetaNode(ctx context.Context, metaNode *MetaNode) (err error) {
+	return c.syncPutMetaNode(ctx, opSyncUpdateMetaNode, metaNode)
 }
 
 func (c *Cluster) buildPutMetaNodeCmd(opType uint32, metaNode *MetaNode) (metadata *RaftCmd, err error) {
@@ -886,25 +898,25 @@ func (c *Cluster) buildUpdateMetaNodeCmd(metaNode *MetaNode) (metadata *RaftCmd,
 	return
 }
 
-func (c *Cluster) syncPutMetaNode(opType uint32, metaNode *MetaNode) (err error) {
+func (c *Cluster) syncPutMetaNode(ctx context.Context, opType uint32, metaNode *MetaNode) (err error) {
 	metadata, err := c.buildPutMetaNodeCmd(opType, metaNode)
 	if err != nil {
 		return errors.New(err.Error())
 	}
-	return c.submit(metadata)
+	return c.submit(ctx, metadata)
 }
 
 // key=#dn#id#Addr,value = json.Marshal(dnv)
-func (c *Cluster) syncAddDataNode(dataNode *DataNode) (err error) {
-	return c.syncPutDataNode(opSyncAddDataNode, dataNode)
+func (c *Cluster) syncAddDataNode(ctx context.Context, dataNode *DataNode) (err error) {
+	return c.syncPutDataNode(ctx, opSyncAddDataNode, dataNode)
 }
 
-func (c *Cluster) syncDeleteDataNode(dataNode *DataNode) (err error) {
-	return c.syncPutDataNode(opSyncDeleteDataNode, dataNode)
+func (c *Cluster) syncDeleteDataNode(ctx context.Context, dataNode *DataNode) (err error) {
+	return c.syncPutDataNode(ctx, opSyncDeleteDataNode, dataNode)
 }
 
-func (c *Cluster) syncUpdateDataNode(dataNode *DataNode) (err error) {
-	return c.syncPutDataNode(opSyncUpdateDataNode, dataNode)
+func (c *Cluster) syncUpdateDataNode(ctx context.Context, dataNode *DataNode) (err error) {
+	return c.syncPutDataNode(ctx, opSyncUpdateDataNode, dataNode)
 }
 
 func (c *Cluster) buildAddDataNodeCmd(dataNode *DataNode) (metadata *RaftCmd, err error) {
@@ -934,16 +946,17 @@ func (c *Cluster) buildPutDataNodeCmd(opType uint32, dataNode *DataNode) (metada
 	return
 }
 
-func (c *Cluster) syncPutDataNode(opType uint32, dataNode *DataNode) (err error) {
+func (c *Cluster) syncPutDataNode(ctx context.Context, opType uint32, dataNode *DataNode) (err error) {
 	metadata, err := c.buildPutDataNodeCmd(opType, dataNode)
 	if err != nil {
 		return
 	}
-	return c.submit(metadata)
+	return c.submit(ctx, metadata)
 }
 
-func (c *Cluster) addRaftNode(nodeID uint64, addr string) (err error) {
-	log.LogInfof("action[addRaftNode] nodeID: %v, addr: %v:", nodeID, addr)
+func (c *Cluster) addRaftNode(ctx context.Context, nodeID uint64, addr string) (err error) {
+	span := bsProto.SpanFromContext(ctx)
+	span.Infof("action[addRaftNode] nodeID: %v, addr: %v:", nodeID, addr)
 
 	peer := proto.Peer{ID: nodeID}
 	_, err = c.partition.ChangeMember(proto.ConfAddNode, peer, []byte(addr))
@@ -953,8 +966,9 @@ func (c *Cluster) addRaftNode(nodeID uint64, addr string) (err error) {
 	return nil
 }
 
-func (c *Cluster) removeRaftNode(nodeID uint64, addr string) (err error) {
-	log.LogInfof("action[removeRaftNode] nodeID: %v, addr: %v:", nodeID, addr)
+func (c *Cluster) removeRaftNode(ctx context.Context, nodeID uint64, addr string) (err error) {
+	span := bsProto.SpanFromContext(ctx)
+	span.Infof("action[removeRaftNode] nodeID: %v, addr: %v:", nodeID, addr)
 
 	peer := proto.Peer{ID: nodeID}
 	_, err = c.partition.ChangeMember(proto.ConfRemoveNode, peer, []byte(addr))
@@ -1003,22 +1017,23 @@ func (c *Cluster) updateInodeIdStep(val uint64) {
 	atomic.StoreUint64(&c.cfg.MetaPartitionInodeIdStep, val)
 }
 
-func (c *Cluster) loadZoneValue() (err error) {
+func (c *Cluster) loadZoneValue(ctx context.Context) (err error) {
 	var ok bool
 	result, err := c.fsm.store.SeekForPrefix([]byte(zonePrefix))
 	if err != nil {
 		err = fmt.Errorf("action[loadZoneValue],err:%v", err.Error())
 		return err
 	}
+	span := bsProto.SpanFromContext(ctx)
 	for _, value := range result {
 		cv := &zoneValue{}
 		if err = json.Unmarshal(value, cv); err != nil {
-			log.LogErrorf("action[loadZoneValue], unmarshal err:%v", err.Error())
+			span.Errorf("action[loadZoneValue], unmarshal err:%v", err.Error())
 			continue
 		}
 		var zoneInfo interface{}
 		if zoneInfo, ok = c.t.zoneMap.Load(cv.Name); !ok {
-			log.LogErrorf("action[loadZoneValue], zonename [%v] not found", cv.Name)
+			span.Errorf("action[loadZoneValue], zonename [%v] not found", cv.Name)
 			continue
 		}
 		zone := zoneInfo.(*Zone)
@@ -1032,7 +1047,7 @@ func (c *Cluster) loadZoneValue() (err error) {
 		if zone.GetMetaNodesetSelector() != cv.MetaNodesetSelector {
 			zone.metaNodesetSelector = NewNodesetSelector(cv.MetaNodesetSelector, MetaNodeType)
 		}
-		log.LogInfof("action[loadZoneValue] load zonename[%v] with limit [%v,%v,%v,%v]",
+		span.Infof("action[loadZoneValue] load zonename[%v] with limit [%v,%v,%v,%v]",
 			zone.name, cv.QosFlowRLimit, cv.QosIopsWLimit, cv.QosFlowWLimit, cv.QosIopsRLimit)
 		zone.loadDataNodeQosLimit()
 	}
@@ -1045,14 +1060,15 @@ func (c *Cluster) updateMaxConcurrentLcNodes(val uint64) {
 }
 
 // persist cluster value if not persisted; set create time for cluster being created.
-func (c *Cluster) checkPersistClusterValue() {
+func (c *Cluster) checkPersistClusterValue(ctx context.Context) {
+	span := bsProto.SpanFromContext(ctx)
 	result, err := c.fsm.store.SeekForPrefix([]byte(clusterPrefix))
 	if err != nil {
 		err = fmt.Errorf("action[checkPersistClusterValue] seek cluster value err: %v", err.Error())
 		panic(err)
 	}
 	if len(result) != 0 {
-		log.LogInfo("action[checkPersistClusterValue] already has cluster value record, need to do nothing")
+		span.Info("action[checkPersistClusterValue] already has cluster value record, need to do nothing")
 		return
 	}
 	/* when cluster value not persisted, it could be:
@@ -1072,17 +1088,18 @@ func (c *Cluster) checkPersistClusterValue() {
 		scenarioMsg = "cluster being created"
 		c.CreateTime = time.Now().Unix()
 	}
-	log.LogInfo("action[checkPersistClusterValue] to add cluster value record for " + scenarioMsg)
-	if err = c.syncPutCluster(); err != nil {
+	span.Info("action[checkPersistClusterValue] to add cluster value record for " + scenarioMsg)
+	if err = c.syncPutCluster(ctx); err != nil {
 		c.CreateTime = oldVal
-		log.LogErrorf("action[checkPersistClusterValue] put err[%v]", err.Error())
+		span.Errorf("action[checkPersistClusterValue] put err[%v]", err.Error())
 		panic(err)
 	}
-	log.LogInfo("action[checkPersistClusterValue] add cluster value record")
+	span.Info("action[checkPersistClusterValue] add cluster value record")
 	return
 }
 
-func (c *Cluster) loadClusterValue() (err error) {
+func (c *Cluster) loadClusterValue(ctx context.Context) (err error) {
+	span := bsProto.SpanFromContext(ctx)
 	result, err := c.fsm.store.SeekForPrefix([]byte(clusterPrefix))
 	if err != nil {
 		err = fmt.Errorf("action[loadClusterValue],err:%v", err.Error())
@@ -1091,16 +1108,16 @@ func (c *Cluster) loadClusterValue() (err error) {
 	for _, value := range result {
 		cv := &clusterValue{}
 		if err = json.Unmarshal(value, cv); err != nil {
-			log.LogErrorf("action[loadClusterValue], unmarshal err:%v", err.Error())
+			span.Errorf("action[loadClusterValue], unmarshal err:%v", err.Error())
 			return err
 		}
 
 		if cv.Name != c.Name {
-			log.LogErrorf("action[loadClusterValue] loaded cluster value: %+v", cv)
+			span.Errorf("action[loadClusterValue] loaded cluster value: %+v", cv)
 			continue
 		}
 
-		log.LogDebugf("action[loadClusterValue] loaded cluster value: %+v", cv)
+		span.Debugf("action[loadClusterValue] loaded cluster value: %+v", cv)
 		c.CreateTime = cv.CreateTime
 
 		if cv.MaxConcurrentLcNodes == 0 {
@@ -1125,7 +1142,7 @@ func (c *Cluster) loadClusterValue() (err error) {
 			c.cfg.QosMasterAcceptLimit = QosMasterAcceptCnt
 		}
 		c.QosAcceptLimit.SetLimit(rate.Limit(c.cfg.QosMasterAcceptLimit))
-		log.LogInfof("action[loadClusterValue] qos limit %v", c.cfg.QosMasterAcceptLimit)
+		span.Infof("action[loadClusterValue] qos limit %v", c.cfg.QosMasterAcceptLimit)
 
 		c.updateDirChildrenNumLimit(cv.DirChildrenNumLimit)
 		c.updateMetaNodeDeleteBatchCount(cv.MetaNodeDeleteBatchCount)
@@ -1141,14 +1158,15 @@ func (c *Cluster) loadClusterValue() (err error) {
 		c.updateInodeIdStep(cv.MetaPartitionInodeIdStep)
 
 		c.updateMaxConcurrentLcNodes(cv.MaxConcurrentLcNodes)
-		log.LogInfof("action[loadClusterValue], metaNodeThreshold[%v]", cv.Threshold)
+		span.Infof("action[loadClusterValue], metaNodeThreshold[%v]", cv.Threshold)
 
 		c.checkDataReplicasEnable = cv.CheckDataReplicasEnable
 	}
 	return
 }
 
-func (c *Cluster) loadNodeSets() (err error) {
+func (c *Cluster) loadNodeSets(ctx context.Context) (err error) {
+	span := bsProto.SpanFromContext(ctx)
 	result, err := c.fsm.store.SeekForPrefix([]byte(nodeSetPrefix))
 	if err != nil {
 		err = fmt.Errorf("action[loadNodeSets],err:%v", err.Error())
@@ -1157,7 +1175,7 @@ func (c *Cluster) loadNodeSets() (err error) {
 	for _, value := range result {
 		nsv := &nodeSetValue{}
 		if err = json.Unmarshal(value, nsv); err != nil {
-			log.LogErrorf("action[loadNodeSets], unmarshal err:%v", err.Error())
+			span.Errorf("action[loadNodeSets], unmarshal err:%v", err.Error())
 			return err
 		}
 		if nsv.ZoneName == "" {
@@ -1168,7 +1186,7 @@ func (c *Cluster) loadNodeSets() (err error) {
 			cap = c.cfg.nodeSetCapacity
 		}
 
-		ns := newNodeSet(c, nsv.ID, cap, nsv.ZoneName)
+		ns := newNodeSet(ctx, c, nsv.ID, cap, nsv.ZoneName)
 		ns.UpdateMaxParallel(int32(c.DecommissionLimit))
 		ns.UpdateDecommissionDiskFactor(c.DecommissionDiskFactor)
 		if nsv.DataNodeSelector != "" && ns.GetDataNodeSelector() != nsv.DataNodeSelector {
@@ -1179,25 +1197,26 @@ func (c *Cluster) loadNodeSets() (err error) {
 		}
 		zone, err := c.t.getZone(nsv.ZoneName)
 		if err != nil {
-			log.LogErrorf("action[loadNodeSets], getZone err:%v", err)
+			span.Errorf("action[loadNodeSets], getZone err:%v", err)
 			zone = newZone(nsv.ZoneName)
 			c.t.putZoneIfAbsent(zone)
 		}
 
 		zone.putNodeSet(ns)
-		log.LogInfof("action[addNodeSetGrp] nodeSet[%v]", ns.ID)
-		if err = c.addNodeSetGrp(ns, true); err != nil {
-			log.LogErrorf("action[createNodeSet] nodeSet[%v] err[%v]", ns.ID, err)
+		span.Infof("action[addNodeSetGrp] nodeSet[%v]", ns.ID)
+		if err = c.addNodeSetGrp(ctx, ns, true); err != nil {
+			span.Errorf("action[createNodeSet] nodeSet[%v] err[%v]", ns.ID, err)
 			return err
 		}
-		log.LogInfof("action[loadNodeSets], nsId[%v],zone[%v]", ns.ID, zone.name)
+		span.Infof("action[loadNodeSets], nsId[%v],zone[%v]", ns.ID, zone.name)
 	}
 	return nil
 }
 
 // put exclude zone only be used one time when master update and restart
-func (c *Cluster) putZoneDomain(init bool) (err error) {
-	log.LogInfof("action[putZoneDomain]")
+func (c *Cluster) putZoneDomain(ctx context.Context, init bool) (err error) {
+	span := bsProto.SpanFromContext(ctx)
+	span.Infof("action[putZoneDomain]")
 	metadata := new(RaftCmd)
 	metadata.Op = opSyncExclueDomain
 	metadata.K = DomainPrefix
@@ -1220,7 +1239,7 @@ func (c *Cluster) putZoneDomain(init bool) (err error) {
 	domainValue.domainNodeSetGrpVec = c.domainManager.domainNodeSetGrpVec
 	domainValue.DomainZoneName2IdMap = c.domainManager.ZoneName2DomainIdMap
 	if c.domainManager.dataRatioLimit > 0 {
-		log.LogInfof("action[putZoneDomain] ratio %v", c.domainManager.dataRatioLimit)
+		span.Infof("action[putZoneDomain] ratio %v", c.domainManager.dataRatioLimit)
 		domainValue.DataRatio = c.domainManager.dataRatioLimit
 	} else {
 		domainValue.DataRatio = defaultDomainUsageThreshold
@@ -1235,29 +1254,30 @@ func (c *Cluster) putZoneDomain(init bool) (err error) {
 	if err != nil {
 		return
 	}
-	return c.submit(metadata)
+	return c.submit(ctx, metadata)
 }
 
-func (c *Cluster) loadZoneDomain() (ok bool, err error) {
-	log.LogInfof("action[loadZoneDomain]")
+func (c *Cluster) loadZoneDomain(ctx context.Context) (ok bool, err error) {
+	span := bsProto.SpanFromContext(ctx)
+	span.Infof("action[loadZoneDomain]")
 	result, err := c.fsm.store.SeekForPrefix([]byte(DomainPrefix))
 	if err != nil {
 		err = fmt.Errorf("action[loadZoneDomain],err:%v", err.Error())
-		log.LogInfof("action[loadZoneDomain] err[%v]", err)
+		span.Infof("action[loadZoneDomain] err[%v]", err)
 		return false, err
 	}
 	if len(result) == 0 {
 		err = fmt.Errorf("action[loadZoneDomain],err:not found")
-		log.LogInfof("action[loadZoneDomain] err[%v]", err)
+		span.Infof("action[loadZoneDomain] err[%v]", err)
 		return false, nil
 	}
 	for _, value := range result {
 		nsv := &zoneDomainValue{}
 		if err = json.Unmarshal(value, nsv); err != nil {
-			log.LogErrorf("action[loadNodeSets], unmarshal err:%v", err.Error())
+			span.Errorf("action[loadNodeSets], unmarshal err:%v", err.Error())
 			return true, err
 		}
-		log.LogInfof("action[loadZoneDomain] get value!exclue map[%v],need domain[%v] ratio [%v]", nsv.ExcludeZoneMap, nsv.NeedFaultDomain, nsv.DataRatio)
+		span.Infof("action[loadZoneDomain] get value!exclue map[%v],need domain[%v] ratio [%v]", nsv.ExcludeZoneMap, nsv.NeedFaultDomain, nsv.DataRatio)
 		c.domainManager.excludeZoneListDomain = nsv.ExcludeZoneMap
 		for zoneName := range nsv.ExcludeZoneMap {
 			c.t.domainExcludeZones = append(c.t.domainExcludeZones, zoneName)
@@ -1269,9 +1289,9 @@ func (c *Cluster) loadZoneDomain() (ok bool, err error) {
 		c.domainManager.excludeZoneUseRatio = nsv.ExcludeZoneUseRatio
 
 		for zoneName, domainId := range c.domainManager.ZoneName2DomainIdMap {
-			log.LogInfof("action[loadZoneDomain] zoneName %v domainid %v", zoneName, domainId)
+			span.Infof("action[loadZoneDomain] zoneName %v domainid %v", zoneName, domainId)
 			if domainIndex, ok := c.domainManager.domainId2IndexMap[domainId]; !ok {
-				log.LogInfof("action[loadZoneDomain] zoneName %v domainid %v build new domainnodesetgrp manager", zoneName, domainId)
+				span.Infof("action[loadZoneDomain] zoneName %v domainid %v build new domainnodesetgrp manager", zoneName, domainId)
 				domainGrp := newDomainNodeSetGrpManager()
 				domainGrp.domainId = domainId
 				c.domainManager.domainNodeSetGrpVec = append(c.domainManager.domainNodeSetGrpVec, domainGrp)
@@ -1282,32 +1302,33 @@ func (c *Cluster) loadZoneDomain() (ok bool, err error) {
 
 		break
 	}
-	log.LogInfof("action[loadZoneDomain] success!")
+	span.Infof("action[loadZoneDomain] success!")
 	return true, nil
 }
 
-func (c *Cluster) loadNodeSetGrps() (err error) {
-	log.LogInfof("action[loadNodeSetGrps]")
+func (c *Cluster) loadNodeSetGrps(ctx context.Context) (err error) {
+	span := bsProto.SpanFromContext(ctx)
+	span.Infof("action[loadNodeSetGrps]")
 	result, err := c.fsm.store.SeekForPrefix([]byte(nodeSetGrpPrefix))
 	if err != nil {
 		err = fmt.Errorf("action[loadNodeSets],err:%v", err.Error())
-		log.LogInfof("action[loadNodeSetGrps] seek failed, nsgId[%v]", err)
+		span.Infof("action[loadNodeSetGrps] seek failed, nsgId[%v]", err)
 		return err
 	}
 	if len(result) > 0 {
-		log.LogInfof("action[loadNodeSetGrps] get result len[%v]", len(result))
+		span.Infof("action[loadNodeSetGrps] get result len[%v]", len(result))
 		c.domainManager.start()
 	}
-	log.LogInfof("action[loadNodeSetGrps] get result len[%v] before decode", len(result))
+	span.Infof("action[loadNodeSetGrps] get result len[%v] before decode", len(result))
 	for _, value := range result {
 		domainInfoLoad := &domainNodeSetGrpValue{}
 		if err = json.Unmarshal(value, domainInfoLoad); err != nil {
-			log.LogFatalf("action[loadNodeSets], unmarshal err:%v", err.Error())
+			span.Fatalf("action[loadNodeSets], unmarshal err:%v", err.Error())
 			return err
 		}
-		log.LogInfof("action[loadNodeSetGrps] get result domainid [%v] domainInfoLoad id[%v],status[%v],ids[%v]",
+		span.Infof("action[loadNodeSetGrps] get result domainid [%v] domainInfoLoad id[%v],status[%v],ids[%v]",
 			domainInfoLoad.DomainId, domainInfoLoad.ID, domainInfoLoad.Status, domainInfoLoad.NodeSetsIds)
-		nsg := newNodeSetGrp(c)
+		nsg := newNodeSetGrp(ctx, c)
 		nsg.nodeSetsIds = domainInfoLoad.NodeSetsIds
 		nsg.ID = domainInfoLoad.ID
 		nsg.status = domainInfoLoad.Status
@@ -1329,21 +1350,21 @@ func (c *Cluster) loadNodeSetGrps() (err error) {
 		var j int
 		for j = 0; j < len(domainInfoLoad.NodeSetsIds); j++ {
 			domainGrp.nsId2NsGrpMap[domainInfoLoad.NodeSetsIds[j]] = len(domainGrp.nodeSetGrpMap) - 1
-			log.LogInfof("action[loadNodeSetGrps] get result index[%v] nodesetid[%v] nodesetgrp index [%v]",
+			span.Infof("action[loadNodeSetGrps] get result index[%v] nodesetid[%v] nodesetgrp index [%v]",
 				domainInfoLoad.ID, domainInfoLoad.NodeSetsIds[j], domainInfoLoad.Status)
 		}
-		log.LogInfof("action[loadNodeSetGrps], nsgId[%v],status[%v]", nsg.ID, nsg.status)
+		span.Infof("action[loadNodeSetGrps], nsgId[%v],status[%v]", nsg.ID, nsg.status)
 	}
 	return
 }
 
-func (c *Cluster) loadDataNodes() (err error) {
+func (c *Cluster) loadDataNodes(ctx context.Context) (err error) {
 	result, err := c.fsm.store.SeekForPrefix([]byte(dataNodePrefix))
 	if err != nil {
 		err = fmt.Errorf("action[loadDataNodes],err:%v", err.Error())
 		return err
 	}
-
+	span := bsProto.SpanFromContext(ctx)
 	for _, value := range result {
 		dnv := &dataNodeValue{}
 		if err = json.Unmarshal(value, dnv); err != nil {
@@ -1353,13 +1374,13 @@ func (c *Cluster) loadDataNodes() (err error) {
 		if dnv.ZoneName == "" {
 			dnv.ZoneName = DefaultZoneName
 		}
-		dataNode := newDataNode(dnv.Addr, dnv.ZoneName, c.Name)
+		dataNode := newDataNode(ctx, dnv.Addr, dnv.ZoneName, c.Name)
 		dataNode.DpCntLimit = newDpCountLimiter(&c.cfg.MaxDpCntLimit)
 		dataNode.ID = dnv.ID
 		dataNode.NodeSetID = dnv.NodeSetID
 		dataNode.RdOnly = dnv.RdOnly
 		for _, disk := range dnv.DecommissionedDisks {
-			dataNode.addDecommissionedDisk(disk)
+			dataNode.addDecommissionedDisk(ctx, disk)
 		}
 		dataNode.DecommissionStatus = dnv.DecommissionStatus
 		dataNode.DecommissionDstAddr = dnv.DecommissionDstAddr
@@ -1373,17 +1394,18 @@ func (c *Cluster) loadDataNodes() (err error) {
 		olddn, ok := c.dataNodes.Load(dataNode.Addr)
 		if ok {
 			if olddn.(*DataNode).ID <= dataNode.ID {
-				log.LogDebugf("action[loadDataNodes]: skip addr %v old %v current %v", dataNode.Addr, olddn.(*DataNode).ID, dataNode.ID)
+				span.Debugf("action[loadDataNodes]: skip addr %v old %v current %v", dataNode.Addr, olddn.(*DataNode).ID, dataNode.ID)
 				continue
 			}
 		}
 		c.dataNodes.Store(dataNode.Addr, dataNode)
-		log.LogInfof("action[loadDataNodes],dataNode[%v],dataNodeID[%v],zone[%v],ns[%v]", dataNode.Addr, dataNode.ID, dnv.ZoneName, dnv.NodeSetID)
+		span.Infof("action[loadDataNodes],dataNode[%v],dataNodeID[%v],zone[%v],ns[%v]", dataNode.Addr, dataNode.ID, dnv.ZoneName, dnv.NodeSetID)
 	}
 	return
 }
 
-func (c *Cluster) loadMetaNodes() (err error) {
+func (c *Cluster) loadMetaNodes(ctx context.Context) (err error) {
+	span := bsProto.SpanFromContext(ctx)
 	result, err := c.fsm.store.SeekForPrefix([]byte(metaNodePrefix))
 	if err != nil {
 		err = fmt.Errorf("action[loadMetaNodes],err:%v", err.Error())
@@ -1398,7 +1420,7 @@ func (c *Cluster) loadMetaNodes() (err error) {
 		if mnv.ZoneName == "" {
 			mnv.ZoneName = DefaultZoneName
 		}
-		metaNode := newMetaNode(mnv.Addr, mnv.ZoneName, c.Name)
+		metaNode := newMetaNode(ctx, mnv.Addr, mnv.ZoneName, c.Name)
 		metaNode.ID = mnv.ID
 		metaNode.NodeSetID = mnv.NodeSetID
 		metaNode.RdOnly = mnv.RdOnly
@@ -1410,17 +1432,18 @@ func (c *Cluster) loadMetaNodes() (err error) {
 			}
 		}
 		c.metaNodes.Store(metaNode.Addr, metaNode)
-		log.LogInfof("action[loadMetaNodes],metaNode[%v], metaNodeID[%v],zone[%v],ns[%v]", metaNode.Addr, metaNode.ID, mnv.ZoneName, mnv.NodeSetID)
+		span.Infof("action[loadMetaNodes],metaNode[%v], metaNodeID[%v],zone[%v],ns[%v]", metaNode.Addr, metaNode.ID, mnv.ZoneName, mnv.NodeSetID)
 	}
 	return
 }
 
-func (c *Cluster) loadVolsViews() (err error, volViews []*volValue) {
+func (c *Cluster) loadVolsViews(ctx context.Context) (err error, volViews []*volValue) {
 	result, err := c.fsm.store.SeekForPrefix([]byte(volPrefix))
 	if err != nil {
 		err = fmt.Errorf("action[loadVols],err:%v", err.Error())
 		return
 	}
+	span := bsProto.SpanFromContext(ctx)
 	for _, value := range result {
 		var vv *volValue
 		if vv, err = newVolValueFromBytes(value); err != nil {
@@ -1429,54 +1452,55 @@ func (c *Cluster) loadVolsViews() (err error, volViews []*volValue) {
 		}
 
 		volViews = append(volViews, vv)
-		log.LogInfof("action[loadVols],vol[%v]", vv.Name)
+		span.Infof("action[loadVols],vol[%v]", vv.Name)
 	}
 	return
 }
 
-func (c *Cluster) loadVols() (err error) {
+func (c *Cluster) loadVols(ctx context.Context) (err error) {
 	result, err := c.fsm.store.SeekForPrefix([]byte(volPrefix))
 	if err != nil {
 		err = fmt.Errorf("action[loadVols],err:%v", err.Error())
 		return err
 	}
+	span := bsProto.SpanFromContext(ctx)
 	for _, value := range result {
 		var vv *volValue
 		if vv, err = newVolValueFromBytes(value); err != nil {
 			err = fmt.Errorf("action[loadVols],value:%v,unmarshal err:%v", string(value), err)
 			return err
 		}
-		vol := newVolFromVolValue(vv)
+		vol := newVolFromVolValue(ctx, vv)
 		vol.Status = vv.Status
 
-		if err = c.loadAclList(vol); err != nil {
-			log.LogInfof("action[loadVols],vol[%v] load acl manager error %v", vol.Name, err)
+		if err = c.loadAclList(ctx, vol); err != nil {
+			span.Infof("action[loadVols],vol[%v] load acl manager error %v", vol.Name, err)
 			continue
 		}
 
-		if err = c.loadUidSpaceList(vol); err != nil {
-			log.LogInfof("action[loadVols],vol[%v] load uid manager error %v", vol.Name, err)
+		if err = c.loadUidSpaceList(ctx, vol); err != nil {
+			span.Infof("action[loadVols],vol[%v] load uid manager error %v", vol.Name, err)
 			continue
 		}
 
-		if err = c.loadMultiVersion(vol); err != nil {
-			log.LogInfof("action[loadVols],vol[%v] load ver manager error %v c %v", vol.Name, err, c)
+		if err = c.loadMultiVersion(ctx, vol); err != nil {
+			span.Infof("action[loadVols],vol[%v] load ver manager error %v c %v", vol.Name, err, c)
 			continue
 		}
 
 		c.putVol(vol)
-		log.LogInfof("action[loadVols],vol[%v]", vol.Name)
+		span.Infof("action[loadVols],vol[%v]", vol.Name)
 	}
 	return
 }
 
-func (c *Cluster) loadMetaPartitions() (err error) {
+func (c *Cluster) loadMetaPartitions(ctx context.Context) (err error) {
 	result, err := c.fsm.store.SeekForPrefix([]byte(metaPartitionPrefix))
 	if err != nil {
 		err = fmt.Errorf("action[loadMetaPartitions],err:%v", err.Error())
 		return err
 	}
-
+	span := bsProto.SpanFromContext(ctx)
 	for _, value := range result {
 		mpv := &metaPartitionValue{}
 		if err = json.Unmarshal(value, mpv); err != nil {
@@ -1485,11 +1509,11 @@ func (c *Cluster) loadMetaPartitions() (err error) {
 		}
 		vol, err1 := c.getVol(mpv.VolName)
 		if err1 != nil {
-			log.LogErrorf("action[loadMetaPartitions] err:%v", err1.Error())
+			span.Errorf("action[loadMetaPartitions] err:%v", err1.Error())
 			continue
 		}
 		if vol.ID != mpv.VolID {
-			Warn(c.Name, fmt.Sprintf("action[loadMetaPartitions] has duplicate vol[%v],vol.gridId[%v],mpv.VolID[%v]", mpv.VolName, vol.ID, mpv.VolID))
+			Warn(ctx, c.Name, fmt.Sprintf("action[loadMetaPartitions] has duplicate vol[%v],vol.gridId[%v],mpv.VolID[%v]", mpv.VolName, vol.ID, mpv.VolID))
 			continue
 		}
 		for i := 0; i < len(mpv.Peers); i++ {
@@ -1503,27 +1527,28 @@ func (c *Cluster) loadMetaPartitions() (err error) {
 		mp.setPeers(mpv.Peers)
 		mp.OfflinePeerID = mpv.OfflinePeerID
 		mp.IsRecover = mpv.IsRecover
-		vol.addMetaPartition(mp)
-		c.addBadMetaParitionIdMap(mp)
-		log.LogInfof("action[loadMetaPartitions],vol[%v],mp[%v]", vol.Name, mp.PartitionID)
+		vol.addMetaPartition(ctx, mp)
+		c.addBadMetaParitionIdMap(ctx, mp)
+		span.Infof("action[loadMetaPartitions],vol[%v],mp[%v]", vol.Name, mp.PartitionID)
 	}
 	return
 }
 
-func (c *Cluster) addBadMetaParitionIdMap(mp *MetaPartition) {
+func (c *Cluster) addBadMetaParitionIdMap(ctx context.Context, mp *MetaPartition) {
 	if !mp.IsRecover {
 		return
 	}
 
-	c.putBadMetaPartitions(mp.Hosts[0], mp.PartitionID)
+	c.putBadMetaPartitions(ctx, mp.Hosts[0], mp.PartitionID)
 }
 
-func (c *Cluster) loadDataPartitions() (err error) {
+func (c *Cluster) loadDataPartitions(ctx context.Context) (err error) {
 	result, err := c.fsm.store.SeekForPrefix([]byte(dataPartitionPrefix))
 	if err != nil {
 		err = fmt.Errorf("action[loadDataPartitions],err:%v", err.Error())
 		return err
 	}
+	span := bsProto.SpanFromContext(ctx)
 	for _, value := range result {
 
 		dpv := &dataPartitionValue{}
@@ -1533,30 +1558,31 @@ func (c *Cluster) loadDataPartitions() (err error) {
 		}
 		vol, err1 := c.getVol(dpv.VolName)
 		if err1 != nil {
-			log.LogErrorf("action[loadDataPartitions] err:%v %v", dpv.VolName, err1.Error())
+			span.Errorf("action[loadDataPartitions] err:%v %v", dpv.VolName, err1.Error())
 			continue
 		}
 		if vol.ID != dpv.VolID {
-			Warn(c.Name, fmt.Sprintf("action[loadDataPartitions] has duplicate vol[%v],vol.gridId[%v],mpv.VolID[%v]", dpv.VolName, vol.ID, dpv.VolID))
+			Warn(ctx, c.Name, fmt.Sprintf("action[loadDataPartitions] has duplicate vol[%v],vol.gridId[%v],mpv.VolID[%v]", dpv.VolName, vol.ID, dpv.VolID))
 			continue
 		}
 
-		dp := dpv.Restore(c)
+		dp := dpv.Restore(ctx, c)
 		vol.dataPartitions.put(dp)
 		c.addBadDataPartitionIdMap(dp)
 		// add to nodeset decommission list
-		go dp.addToDecommissionList(c)
-		log.LogInfof("action[loadDataPartitions],vol[%v],dp[%v] ", vol.Name, dp.PartitionID)
+		go dp.addToDecommissionList(ctx, c)
+		span.Infof("action[loadDataPartitions],vol[%v],dp[%v] ", vol.Name, dp.PartitionID)
 	}
 	return
 }
 
-func (c *Cluster) loadQuota() (err error) {
+func (c *Cluster) loadQuota(ctx context.Context) (err error) {
 	c.volMutex.RLock()
 	defer c.volMutex.RUnlock()
+	span := bsProto.SpanFromContext(ctx)
 	for name, vol := range c.vols {
-		if err = vol.loadQuotaManager(c); err != nil {
-			log.LogErrorf("loadQuota loadQuotaManager vol [%v] fail err [%v]", name, err.Error())
+		if err = vol.loadQuotaManager(ctx, c); err != nil {
+			span.Errorf("loadQuota loadQuotaManager vol [%v] fail err [%v]", name, err.Error())
 			return err
 		}
 	}
@@ -1564,20 +1590,20 @@ func (c *Cluster) loadQuota() (err error) {
 }
 
 // load s3api qos info to memory cache
-func (c *Cluster) loadS3ApiQosInfo() (err error) {
+func (c *Cluster) loadS3ApiQosInfo(ctx context.Context) (err error) {
 	keyPrefix := S3QoSPrefix
 	result, err := c.fsm.store.SeekForPrefix([]byte(keyPrefix))
 	if err != nil {
 		err = fmt.Errorf("loadS3ApiQosInfo get failed, err [%v]", err)
 		return err
 	}
-
+	span := bsProto.SpanFromContext(ctx)
 	for key, value := range result {
 		s3qosQuota, err := strconv.ParseUint(string(value), 10, 64)
 		if err != nil {
 			return err
 		}
-		log.LogDebugf("loadS3ApiQosInfo key[%v] value[%v]", key, s3qosQuota)
+		span.Debugf("loadS3ApiQosInfo key[%v] value[%v]", key, s3qosQuota)
 		c.S3ApiQosQuota.Store(key, s3qosQuota)
 	}
 	return
@@ -1590,19 +1616,19 @@ func (c *Cluster) addBadDataPartitionIdMap(dp *DataPartition) {
 	c.putBadDataPartitionIDsByDiskPath(dp.DecommissionSrcDiskPath, dp.DecommissionSrcAddr, dp.PartitionID)
 }
 
-func (c *Cluster) syncAddDecommissionDisk(disk *DecommissionDisk) (err error) {
-	return c.syncPutDecommissionDiskInfo(opSyncAddDecommissionDisk, disk)
+func (c *Cluster) syncAddDecommissionDisk(ctx context.Context, disk *DecommissionDisk) (err error) {
+	return c.syncPutDecommissionDiskInfo(ctx, opSyncAddDecommissionDisk, disk)
 }
 
-func (c *Cluster) syncDeleteDecommissionDisk(disk *DecommissionDisk) (err error) {
-	return c.syncPutDecommissionDiskInfo(opSyncDeleteDecommissionDisk, disk)
+func (c *Cluster) syncDeleteDecommissionDisk(ctx context.Context, disk *DecommissionDisk) (err error) {
+	return c.syncPutDecommissionDiskInfo(ctx, opSyncDeleteDecommissionDisk, disk)
 }
 
-func (c *Cluster) syncUpdateDecommissionDisk(disk *DecommissionDisk) (err error) {
-	return c.syncPutDecommissionDiskInfo(opSyncUpdateDecommissionDisk, disk)
+func (c *Cluster) syncUpdateDecommissionDisk(ctx context.Context, disk *DecommissionDisk) (err error) {
+	return c.syncPutDecommissionDiskInfo(ctx, opSyncUpdateDecommissionDisk, disk)
 }
 
-func (c *Cluster) syncPutDecommissionDiskInfo(opType uint32, disk *DecommissionDisk) (err error) {
+func (c *Cluster) syncPutDecommissionDiskInfo(ctx context.Context, opType uint32, disk *DecommissionDisk) (err error) {
 	metadata := new(RaftCmd)
 	metadata.Op = opType
 	metadata.K = DecommissionDiskPrefix + disk.SrcAddr + keySeparator + disk.DiskPath
@@ -1611,7 +1637,7 @@ func (c *Cluster) syncPutDecommissionDiskInfo(opType uint32, disk *DecommissionD
 	if err != nil {
 		return errors.New(err.Error())
 	}
-	return c.submit(metadata)
+	return c.submit(ctx, metadata)
 }
 
 type decommissionDiskValue struct {
@@ -1660,12 +1686,13 @@ func (ddv *decommissionDiskValue) Restore() *DecommissionDisk {
 	}
 }
 
-func (c *Cluster) loadDecommissionDiskList() (err error) {
+func (c *Cluster) loadDecommissionDiskList(ctx context.Context) (err error) {
 	result, err := c.fsm.store.SeekForPrefix([]byte(DecommissionDiskPrefix))
 	if err != nil {
 		err = fmt.Errorf("action[loadDataPartitions],err:%v", err.Error())
 		return err
 	}
+	span := bsProto.SpanFromContext(ctx)
 	for _, value := range result {
 
 		ddv := &decommissionDiskValue{}
@@ -1676,20 +1703,21 @@ func (c *Cluster) loadDecommissionDiskList() (err error) {
 
 		dd := ddv.Restore()
 		c.DecommissionDisks.Store(dd.GenerateKey(), dd)
-		log.LogInfof("action[loadDecommissionDiskList],decommissionDisk[%v] type %v dst[%v] status[%v] raftForce[%v]"+
+		span.Infof("action[loadDecommissionDiskList],decommissionDisk[%v] type %v dst[%v] status[%v] raftForce[%v]"+
 			"dpTotal[%v] term[%v]",
 			dd.GenerateKey(), dd.Type, dd.DstAddr, dd.GetDecommissionStatus(), dd.DecommissionRaftForce,
 			dd.DecommissionDpTotal, dd.DecommissionTerm)
-		c.addDecommissionDiskToNodeset(dd)
+		c.addDecommissionDiskToNodeset(ctx, dd)
 	}
 	return
 }
 
-func (c *Cluster) startDecommissionListTraverse() (err error) {
+func (c *Cluster) startDecommissionListTraverse(ctx context.Context) (err error) {
 	zones := c.t.getAllZones()
-	log.LogDebugf("startDecommissionListTraverse zones len %v", len(zones))
+	span := bsProto.SpanFromContext(ctx)
+	span.Debugf("startDecommissionListTraverse zones len %v", len(zones))
 	for _, zone := range zones {
-		log.LogDebugf("startDecommissionListTraverse zone %v ", zone.name)
+		span.Debugf("startDecommissionListTraverse zone %v ", zone.name)
 		err = zone.startDecommissionListTraverse(c)
 		if err != nil {
 			return
@@ -1698,19 +1726,19 @@ func (c *Cluster) startDecommissionListTraverse() (err error) {
 	return
 }
 
-func (c *Cluster) syncAddLcNode(ln *LcNode) (err error) {
-	return c.syncPutLcNodeInfo(opSyncAddLcNode, ln)
+func (c *Cluster) syncAddLcNode(ctx context.Context, ln *LcNode) (err error) {
+	return c.syncPutLcNodeInfo(ctx, opSyncAddLcNode, ln)
 }
 
-func (c *Cluster) syncDeleteLcNode(ln *LcNode) (err error) {
-	return c.syncPutLcNodeInfo(opSyncDeleteLcNode, ln)
+func (c *Cluster) syncDeleteLcNode(ctx context.Context, ln *LcNode) (err error) {
+	return c.syncPutLcNodeInfo(ctx, opSyncDeleteLcNode, ln)
 }
 
-func (c *Cluster) syncUpdateLcNode(ln *LcNode) (err error) {
-	return c.syncPutLcNodeInfo(opSyncUpdateLcNode, ln)
+func (c *Cluster) syncUpdateLcNode(ctx context.Context, ln *LcNode) (err error) {
+	return c.syncPutLcNodeInfo(ctx, opSyncUpdateLcNode, ln)
 }
 
-func (c *Cluster) syncPutLcNodeInfo(opType uint32, ln *LcNode) (err error) {
+func (c *Cluster) syncPutLcNodeInfo(ctx context.Context, opType uint32, ln *LcNode) (err error) {
 	metadata := new(RaftCmd)
 	metadata.Op = opType
 	metadata.K = lcNodePrefix + ln.Addr
@@ -1719,7 +1747,7 @@ func (c *Cluster) syncPutLcNodeInfo(opType uint32, ln *LcNode) (err error) {
 	if err != nil {
 		return errors.New(err.Error())
 	}
-	return c.submit(metadata)
+	return c.submit(ctx, metadata)
 }
 
 type lcNodeValue struct {
@@ -1734,41 +1762,42 @@ func newLcNodeValue(lcNode *LcNode) *lcNodeValue {
 	}
 }
 
-func (c *Cluster) loadLcNodes() (err error) {
+func (c *Cluster) loadLcNodes(ctx context.Context) (err error) {
 	result, err := c.fsm.store.SeekForPrefix([]byte(lcNodePrefix))
 	if err != nil {
 		err = fmt.Errorf("action[loadLcNodes],err:%v", err.Error())
 		return err
 	}
-	log.LogInfof("action[loadLcNodes], result count %v", len(result))
+	span := bsProto.SpanFromContext(ctx)
+	span.Infof("action[loadLcNodes], result count %v", len(result))
 	for _, value := range result {
 		lnv := &lcNodeValue{}
 		if err = json.Unmarshal(value, lnv); err != nil {
 			err = fmt.Errorf("action[loadLcNodes],value:%v,unmarshal err:%v", string(value), err)
 			return
 		}
-		log.LogInfof("action[loadLcNodes], load lcNode[%v], lcNodeID[%v]", lnv.Addr, lnv.ID)
-		lcNode := newLcNode(lnv.Addr, c.Name)
+		span.Infof("action[loadLcNodes], load lcNode[%v], lcNodeID[%v]", lnv.Addr, lnv.ID)
+		lcNode := newLcNode(ctx, lnv.Addr, c.Name)
 		lcNode.ID = lnv.ID
 		c.lcNodes.Store(lcNode.Addr, lcNode)
-		log.LogInfof("action[loadLcNodes], store lcNode[%v], lcNodeID[%v]", lcNode.Addr, lcNode.ID)
+		span.Infof("action[loadLcNodes], store lcNode[%v], lcNodeID[%v]", lcNode.Addr, lcNode.ID)
 	}
 	return
 }
 
-func (c *Cluster) syncAddLcConf(lcConf *bsProto.LcConfiguration) (err error) {
-	return c.syncPutLcConfInfo(opSyncAddLcConf, lcConf)
+func (c *Cluster) syncAddLcConf(ctx context.Context, lcConf *bsProto.LcConfiguration) (err error) {
+	return c.syncPutLcConfInfo(ctx, opSyncAddLcConf, lcConf)
 }
 
-func (c *Cluster) syncDeleteLcConf(lcConf *bsProto.LcConfiguration) (err error) {
-	return c.syncPutLcConfInfo(opSyncDeleteLcConf, lcConf)
+func (c *Cluster) syncDeleteLcConf(ctx context.Context, lcConf *bsProto.LcConfiguration) (err error) {
+	return c.syncPutLcConfInfo(ctx, opSyncDeleteLcConf, lcConf)
 }
 
-func (c *Cluster) syncUpdateLcConf(lcConf *bsProto.LcConfiguration) (err error) {
-	return c.syncPutLcConfInfo(opSyncUpdateLcConf, lcConf)
+func (c *Cluster) syncUpdateLcConf(ctx context.Context, lcConf *bsProto.LcConfiguration) (err error) {
+	return c.syncPutLcConfInfo(ctx, opSyncUpdateLcConf, lcConf)
 }
 
-func (c *Cluster) syncPutLcConfInfo(opType uint32, lcConf *bsProto.LcConfiguration) (err error) {
+func (c *Cluster) syncPutLcConfInfo(ctx context.Context, opType uint32, lcConf *bsProto.LcConfiguration) (err error) {
 	metadata := new(RaftCmd)
 	metadata.Op = opType
 	metadata.K = lcConfPrefix + lcConf.VolName
@@ -1776,16 +1805,16 @@ func (c *Cluster) syncPutLcConfInfo(opType uint32, lcConf *bsProto.LcConfigurati
 	if err != nil {
 		return errors.New(err.Error())
 	}
-	return c.submit(metadata)
+	return c.submit(ctx, metadata)
 }
 
-func (c *Cluster) loadLcConfs() (err error) {
+func (c *Cluster) loadLcConfs(ctx context.Context) (err error) {
 	result, err := c.fsm.store.SeekForPrefix([]byte(lcConfPrefix))
 	if err != nil {
 		err = fmt.Errorf("action[loadLcConfs],err:%v", err.Error())
 		return err
 	}
-
+	span := bsProto.SpanFromContext(ctx)
 	for _, value := range result {
 		lcConf := &bsProto.LcConfiguration{}
 		if err = json.Unmarshal(value, lcConf); err != nil {
@@ -1793,7 +1822,7 @@ func (c *Cluster) loadLcConfs() (err error) {
 			return
 		}
 		_ = c.lcMgr.SetS3BucketLifecycle(lcConf)
-		log.LogInfof("action[loadLcConfs],vol[%v]", lcConf.VolName)
+		span.Infof("action[loadLcConfs],vol[%v]", lcConf.VolName)
 	}
 	return
 }

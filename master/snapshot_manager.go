@@ -15,12 +15,14 @@
 package master
 
 import (
+	"context"
+	"fmt"
 	"math"
 	"sync"
 	"time"
 
+	"github.com/cubefs/cubefs/blobstore/common/trace"
 	"github.com/cubefs/cubefs/proto"
-	"github.com/cubefs/cubefs/util/log"
 )
 
 type snapshotDelManager struct {
@@ -31,8 +33,8 @@ type snapshotDelManager struct {
 	exitCh               chan struct{}
 }
 
-func newSnapshotManager() *snapshotDelManager {
-	log.LogInfof("action[newSnapshotManager] construct")
+func newSnapshotManager(ctx context.Context) *snapshotDelManager {
+	proto.SpanFromContext(ctx).Infof("action[newSnapshotManager] construct")
 	snapshotMgr := &snapshotDelManager{
 		lcSnapshotTaskStatus: newLcSnapshotVerStatus(),
 		lcNodeStatus:         newLcNodeStatus(),
@@ -42,31 +44,32 @@ func newSnapshotManager() *snapshotDelManager {
 	return snapshotMgr
 }
 
-func (m *snapshotDelManager) process() {
+func (m *snapshotDelManager) process(ctx context.Context) {
 	for {
+		span, ctx := trace.StartSpanFromContextWithTraceID(context.Background(), "", fmt.Sprintf("snap-del-%v", proto.GenerateRequestID()))
 		select {
 		case <-m.exitCh:
-			log.LogInfo("exitCh notified, snapshotDelManager process exit")
+			span.Info("exitCh notified, snapshotDelManager process exit")
 			return
 		case <-m.idleNodeCh:
-			log.LogDebug("idleLcNodeCh notified")
+			span.Debug("idleLcNodeCh notified")
 
-			task := m.lcSnapshotTaskStatus.GetOneTask()
+			task := m.lcSnapshotTaskStatus.GetOneTask(ctx)
 			if task == nil {
-				log.LogDebugf("lcSnapshotTaskStatus.GetOneTask, no task")
+				span.Debugf("lcSnapshotTaskStatus.GetOneTask, no task")
 				continue
 			}
 
 			nodeAddr := m.lcNodeStatus.GetIdleNode()
 			if nodeAddr == "" {
-				log.LogWarn("no idle lcnode, redo task")
+				span.Warn("no idle lcnode, redo task")
 				m.lcSnapshotTaskStatus.RedoTask(task)
 				continue
 			}
 
 			val, ok := m.cluster.lcNodes.Load(nodeAddr)
 			if !ok {
-				log.LogErrorf("lcNodes.Load, nodeAddr(%v) is not available, redo task", nodeAddr)
+				span.Errorf("lcNodes.Load, nodeAddr(%v) is not available, redo task", nodeAddr)
 				m.lcNodeStatus.RemoveNode(nodeAddr)
 				m.lcSnapshotTaskStatus.RedoTask(task)
 				continue
@@ -74,22 +77,22 @@ func (m *snapshotDelManager) process() {
 
 			node := val.(*LcNode)
 			adminTask := node.createSnapshotVerDelTask(m.cluster.masterAddr(), task)
-			m.cluster.addLcNodeTasks([]*proto.AdminTask{adminTask})
-			log.LogDebugf("add snapshot version del task(%v) to lcnode(%v)", *task, nodeAddr)
+			m.cluster.addLcNodeTasks(ctx, []*proto.AdminTask{adminTask})
+			span.Debugf("add snapshot version del task(%v) to lcnode(%v)", *task, nodeAddr)
 		}
 	}
 }
 
-func (m *snapshotDelManager) notifyIdleLcNode() {
+func (m *snapshotDelManager) notifyIdleLcNode(ctx context.Context) {
 	m.lcSnapshotTaskStatus.RLock()
 	defer m.lcSnapshotTaskStatus.RUnlock()
-
+	span := proto.SpanFromContext(ctx)
 	if len(m.lcSnapshotTaskStatus.VerInfos) > 0 {
 		select {
 		case m.idleNodeCh <- struct{}{}:
-			log.LogDebug("action[handleLcNodeHeartbeatResp], snapshotDelManager scan routine notified!")
+			span.Debug("action[handleLcNodeHeartbeatResp], snapshotDelManager scan routine notified!")
 		default:
-			log.LogDebug("action[handleLcNodeHeartbeatResp], snapshotDelManager skipping notify!")
+			span.Debug("action[handleLcNodeHeartbeatResp], snapshotDelManager skipping notify!")
 		}
 	}
 }
@@ -109,7 +112,7 @@ func newLcSnapshotVerStatus() *lcSnapshotVerStatus {
 	}
 }
 
-func (vs *lcSnapshotVerStatus) GetOneTask() (task *proto.SnapshotVerDelTask) {
+func (vs *lcSnapshotVerStatus) GetOneTask(ctx context.Context) (task *proto.SnapshotVerDelTask) {
 	var min int64 = math.MaxInt64
 
 	vs.Lock()
@@ -131,7 +134,7 @@ func (vs *lcSnapshotVerStatus) GetOneTask() (task *proto.SnapshotVerDelTask) {
 		ID:         task.Id,
 		UpdateTime: &t,
 	}
-	log.LogDebugf("GetOneTask(%v) and add TaskResults", task)
+	proto.SpanFromContext(ctx).Debugf("GetOneTask(%v) and add TaskResults", task)
 	return
 }
 
@@ -145,22 +148,22 @@ func (vs *lcSnapshotVerStatus) RedoTask(task *proto.SnapshotVerDelTask) {
 	vs.VerInfos[task.Id] = task
 }
 
-func (vs *lcSnapshotVerStatus) AddVerInfo(task *proto.SnapshotVerDelTask) {
+func (vs *lcSnapshotVerStatus) AddVerInfo(ctx context.Context, task *proto.SnapshotVerDelTask) {
 	vs.Lock()
 	defer vs.Unlock()
-
+	span := proto.SpanFromContext(ctx)
 	if _, ok := vs.TaskResults[task.Id]; ok {
-		log.LogDebugf("VerInfo: %v is in TaskResults, already in processing", task)
+		span.Debugf("VerInfo: %v is in TaskResults, already in processing", task)
 		return
 	}
 	vs.VerInfos[task.Id] = task
-	log.LogDebugf("AddVerInfo task: %v, now num: %v", task, len(vs.VerInfos))
+	span.Debugf("AddVerInfo task: %v, now num: %v", task, len(vs.VerInfos))
 }
 
-func (vs *lcSnapshotVerStatus) ResetVerInfos() {
+func (vs *lcSnapshotVerStatus) ResetVerInfos(ctx context.Context) {
 	vs.Lock()
 	defer vs.Unlock()
-	log.LogDebugf("ResetVerInfos remove num %v", len(vs.VerInfos))
+	proto.SpanFromContext(ctx).Debugf("ResetVerInfos remove num %v", len(vs.VerInfos))
 	vs.VerInfos = make(map[string]*proto.SnapshotVerDelTask)
 }
 
@@ -170,19 +173,20 @@ func (vs *lcSnapshotVerStatus) AddResult(resp *proto.SnapshotVerDelTaskResponse)
 	vs.TaskResults[resp.ID] = resp
 }
 
-func (vs *lcSnapshotVerStatus) DeleteOldResult() {
+func (vs *lcSnapshotVerStatus) DeleteOldResult(ctx context.Context) {
 	vs.Lock()
 	defer vs.Unlock()
+	span := proto.SpanFromContext(ctx)
 	for k, v := range vs.TaskResults {
 		// delete result that already done
 		if v.Done == true && time.Now().After(v.EndTime.Add(time.Minute*10)) {
 			delete(vs.TaskResults, k)
-			log.LogDebugf("delete result already done: %v", v)
+			span.Debugf("delete result already done: %v", v)
 		}
 		// delete result that not done but no updating
 		if v.Done != true && time.Now().After(v.UpdateTime.Add(time.Minute*10)) {
 			delete(vs.TaskResults, k)
-			log.LogWarnf("delete result that not done but no updating: %v", v)
+			span.Warnf("delete result that not done but no updating: %v", v)
 		}
 	}
 }

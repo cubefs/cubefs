@@ -25,6 +25,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/cubefs/cubefs/blobstore/common/trace"
+	"github.com/cubefs/cubefs/blobstore/util/log"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/raftstore"
 	"github.com/cubefs/cubefs/raftstore/raftstore_db"
@@ -32,7 +34,6 @@ import (
 	"github.com/cubefs/cubefs/util/cryptoutil"
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/exporter"
-	"github.com/cubefs/cubefs/util/log"
 	"github.com/cubefs/cubefs/util/stat"
 )
 
@@ -137,12 +138,13 @@ func NewServer() *Server {
 
 // Start starts a server
 func (m *Server) Start(cfg *config.Config) (err error) {
+	span, ctx := trace.StartSpanFromContextWithTraceID(context.Background(), "", "server-start")
 	m.config = newClusterConfig()
 	gConfig = m.config
 	m.leaderInfo = &LeaderInfo{}
 	m.reverseProxy = m.newReverseProxy()
 	if err = m.checkConfig(cfg); err != nil {
-		log.LogError(errors.Stack(err))
+		span.Error(errors.Stack(err))
 		return
 	}
 
@@ -151,11 +153,11 @@ func (m *Server) Start(cfg *config.Config) (err error) {
 	}
 
 	if err = m.createRaftServer(cfg); err != nil {
-		log.LogError(errors.Stack(err))
+		span.Error(errors.Stack(err))
 		return
 	}
-	m.initCluster()
-	m.initUser()
+	m.initCluster(ctx)
+	m.initUser(ctx)
 	m.cluster.partition = m.partition
 	m.cluster.idAlloc.partition = m.partition
 	MasterSecretKey := cfg.GetString(SecretKey)
@@ -167,12 +169,12 @@ func (m *Server) Start(cfg *config.Config) (err error) {
 		m.cluster.initAuthentication(cfg)
 	}
 
-	m.cluster.scheduleTask()
-	m.startHTTPService(ModuleName, cfg)
+	m.cluster.scheduleTask(ctx)
+	m.startHTTPService(ctx, ModuleName, cfg)
 	exporter.RegistConsul(m.clusterName, ModuleName, cfg)
 	WarnMetrics = newWarningMetrics(m.cluster)
 	metricsService := newMonitorMetrics(m.cluster)
-	metricsService.start()
+	metricsService.start(ctx)
 
 	_, err = stat.NewStatistic(m.logDir, Stat, int64(stat.DefaultStatLogSize),
 		stat.DefaultTimeOutUs, true)
@@ -186,7 +188,7 @@ func (m *Server) Shutdown() {
 	var err error
 	if m.apiServer != nil {
 		if err = m.apiServer.Shutdown(context.Background()); err != nil {
-			log.LogErrorf("action[Shutdown] failed, err: %v", err)
+			log.Errorf("action[Shutdown] failed, err: %v", err)
 		}
 	}
 	stat.CloseStat()
@@ -412,20 +414,22 @@ func (m *Server) initFsm() {
 	m.fsm.restore()
 }
 
-func (m *Server) initCluster() {
-	log.LogInfo("action[initCluster] begin")
-	m.cluster = newCluster(m.clusterName, m.leaderInfo, m.fsm, m.partition, m.config)
+func (m *Server) initCluster(ctx context.Context) {
+	span := proto.SpanFromContext(ctx)
+	span.Info("action[initCluster] begin")
+	m.cluster = newCluster(ctx, m.clusterName, m.leaderInfo, m.fsm, m.partition, m.config)
 	m.cluster.retainLogs = m.retainLogs
-	log.LogInfo("action[initCluster] end")
+	span.Info("action[initCluster] end")
 
 	// incase any limiter on follower
-	log.LogInfo("action[loadApiLimiterInfo] begin")
-	m.cluster.loadApiLimiterInfo()
-	log.LogInfo("action[loadApiLimiterInfo] end")
+	span.Info("action[loadApiLimiterInfo] begin")
+	m.cluster.loadApiLimiterInfo(ctx)
+	span.Info("action[loadApiLimiterInfo] end")
 }
 
-func (m *Server) initUser() {
-	log.LogInfo("action[initUser] begin")
+func (m *Server) initUser(ctx context.Context) {
+	span := proto.SpanFromContext(ctx)
+	span.Info("action[initUser] begin")
 	m.user = newUser(m.fsm, m.partition)
-	log.LogInfo("action[initUser] end")
+	span.Info("action[initUser] end")
 }

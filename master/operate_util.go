@@ -15,6 +15,7 @@
 package master
 
 import (
+	"context"
 	"crypto/md5"
 	"encoding/hex"
 	"encoding/json"
@@ -26,7 +27,6 @@ import (
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/exporter"
-	"github.com/cubefs/cubefs/util/log"
 )
 
 func newCreateDataPartitionRequest(volName string, ID uint64, replicaNum int, members []proto.Peer,
@@ -86,7 +86,7 @@ func newStopDataPartitionRepairRequest(ID uint64, stop bool) (req *proto.StopDat
 	return
 }
 
-func unmarshalTaskResponse(task *proto.AdminTask) (err error) {
+func unmarshalTaskResponse(ctx context.Context, task *proto.AdminTask) (err error) {
 	bytes, err := json.Marshal(task.Response)
 	if err != nil {
 		return
@@ -119,7 +119,7 @@ func unmarshalTaskResponse(task *proto.AdminTask) (err error) {
 		response = &proto.SnapshotVerDelTaskResponse{}
 
 	default:
-		log.LogError(fmt.Sprintf("unknown operate code(%v)", task.OpCode))
+		proto.SpanFromContext(ctx).Error(fmt.Sprintf("unknown operate code(%v)", task.OpCode))
 	}
 
 	if response == nil {
@@ -160,9 +160,9 @@ func containsID(arr []uint64, element uint64) bool {
 	return false
 }
 
-func reshuffleHosts(oldHosts []string) (newHosts []string, err error) {
+func reshuffleHosts(ctx context.Context, oldHosts []string) (newHosts []string, err error) {
 	if oldHosts == nil || len(oldHosts) == 0 {
-		log.LogError(fmt.Sprintf("action[reshuffleHosts],err:%v", proto.ErrReshuffleArray))
+		proto.SpanFromContext(ctx).Error(fmt.Sprintf("action[reshuffleHosts],err:%v", proto.ErrReshuffleArray))
 		err = proto.ErrReshuffleArray
 		return
 	}
@@ -184,14 +184,14 @@ func reshuffleHosts(oldHosts []string) (newHosts []string, err error) {
 }
 
 // Warn provides warnings when exits
-func Warn(clusterID, msg string) {
+func Warn(ctx context.Context, clusterID, msg string) {
 	key := fmt.Sprintf("%s_%s", clusterID, ModuleName)
-	WarnBySpecialKey(key, msg)
+	WarnBySpecialKey(ctx, key, msg)
 }
 
 // WarnBySpecialKey provides warnings when exits
-func WarnBySpecialKey(key, msg string) {
-	log.LogWarn(msg)
+func WarnBySpecialKey(ctx context.Context, key, msg string) {
+	proto.SpanFromContext(ctx).Warn(msg)
 	exporter.Warning(msg)
 }
 
@@ -251,11 +251,11 @@ func volNotFound(name string) (err error) {
 	return notFoundMsg(fmt.Sprintf("vol[%v]", name))
 }
 
-func matchKey(serverKey, clientKey string) bool {
+func matchKey(ctx context.Context, serverKey, clientKey string) bool {
 	h := md5.New()
 	_, err := h.Write([]byte(serverKey))
 	if err != nil {
-		log.LogWarnf("action[matchKey] write server key[%v] failed,err[%v]", serverKey, err)
+		proto.SpanFromContext(ctx).Warnf("action[matchKey] write server key[%v] failed,err[%v]", serverKey, err)
 		return false
 	}
 	cipherStr := h.Sum(nil)
