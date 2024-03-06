@@ -1,6 +1,7 @@
 package master
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"sync"
@@ -8,7 +9,6 @@ import (
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util"
-	"github.com/cubefs/cubefs/util/log"
 )
 
 type UidSpaceManager struct {
@@ -34,7 +34,7 @@ func (vol *Vol) initUidSpaceManager(c *Cluster) {
 	}
 }
 
-func (uMgr *UidSpaceManager) addUid(uid uint32, size uint64) bool {
+func (uMgr *UidSpaceManager) addUid(ctx context.Context, uid uint32, size uint64) bool {
 	uMgr.Lock()
 	uMgr.uidInfo[uid] = &proto.UidSpaceInfo{
 		LimitSize: size,
@@ -42,25 +42,25 @@ func (uMgr *UidSpaceManager) addUid(uid uint32, size uint64) bool {
 		Uid:       uid,
 		Enabled:   true,
 	}
-	uMgr.persist()
+	uMgr.persist(ctx)
 	uMgr.Unlock()
 
-	uMgr.listAll()
+	uMgr.listAll(ctx)
 	return true
 }
 
-func (uMgr *UidSpaceManager) removeUid(uid uint32) bool {
+func (uMgr *UidSpaceManager) removeUid(ctx context.Context, uid uint32) bool {
 	uMgr.Lock()
 	defer uMgr.Unlock()
-
+	span := proto.SpanFromContext(ctx)
 	if _, ok := uMgr.uidInfo[uid]; !ok {
-		log.LogErrorf("UidSpaceManager.vol %v del %v failed", uMgr.volName, uid)
+		span.Errorf("UidSpaceManager.vol %v del %v failed", uMgr.volName, uid)
 		return true
 	}
 	uMgr.uidInfo[uid].Enabled = false
 	uMgr.uidInfo[uid].Limited = false
-	uMgr.persist()
-	log.LogDebugf("UidSpaceManager.vol %v del %v success", uMgr.volName, uid)
+	uMgr.persist(ctx)
+	span.Debugf("UidSpaceManager.vol %v del %v success", uMgr.volName, uid)
 	return true
 }
 
@@ -71,20 +71,21 @@ func (uMgr *UidSpaceManager) checkUid(uid uint32) (ok bool, uidInfo *proto.UidSp
 	return
 }
 
-func (uMgr *UidSpaceManager) listAll() (rsp []*proto.UidSpaceInfo) {
+func (uMgr *UidSpaceManager) listAll(ctx context.Context) (rsp []*proto.UidSpaceInfo) {
 	uMgr.RLock()
 	defer uMgr.RUnlock()
-
-	log.LogDebugf("UidSpaceManager. listAll vol %v, info %v", uMgr.volName, len(uMgr.uidInfo))
+	span := proto.SpanFromContext(ctx)
+	span.Debugf("UidSpaceManager. listAll vol %v, info %v", uMgr.volName, len(uMgr.uidInfo))
 	for _, t := range uMgr.uidInfo {
-		log.LogDebugf("UidSpaceManager. listAll vol %v, uid %v, info %v", t.VolName, t.Uid, t)
+		span.Debugf("UidSpaceManager. listAll vol %v, uid %v, info %v", t.VolName, t.Uid, t)
 		rsp = append(rsp, t)
 	}
 	return
 }
 
-func (uMgr *UidSpaceManager) persist() (err error) {
-	log.LogDebugf("vol %v UidSpaceManager persist", uMgr.volName)
+func (uMgr *UidSpaceManager) persist(ctx context.Context) (err error) {
+	span := proto.SpanFromContext(ctx)
+	span.Debugf("vol %v UidSpaceManager persist", uMgr.volName)
 	var uidFsm UidSpaceFsm
 	for _, t := range uMgr.uidInfo {
 		uidFsm.UidSpaceArr = append(uidFsm.UidSpaceArr, t)
@@ -92,50 +93,53 @@ func (uMgr *UidSpaceManager) persist() (err error) {
 
 	var val []byte
 	if val, err = json.Marshal(uidFsm); err != nil {
-		log.LogErrorf("UidSpaceManager vol %v uid persist error %v", uMgr.vol.Name, err)
+		span.Errorf("UidSpaceManager vol %v uid persist error %v", uMgr.vol.Name, err)
 		return
 	}
-	if err = uMgr.c.syncUidSpaceList(uMgr.vol, val); err != nil {
-		log.LogErrorf("UidSpaceManager vol %v uid persist syncUidList error %v", uMgr.vol.Name, err)
+	if err = uMgr.c.syncUidSpaceList(ctx, uMgr.vol, val); err != nil {
+		span.Errorf("UidSpaceManager vol %v uid persist syncUidList error %v", uMgr.vol.Name, err)
 		return
 	}
 	return
 }
 
-func (uMgr *UidSpaceManager) load(c *Cluster, val []byte) (err error) {
-	log.LogDebugf("vol %v UidSpaceManager load", uMgr.volName)
+func (uMgr *UidSpaceManager) load(ctx context.Context, c *Cluster, val []byte) (err error) {
+	span := proto.SpanFromContext(ctx)
+	span.Debugf("vol %v UidSpaceManager load", uMgr.volName)
 	uMgr.c = c
 	uidFsm := &UidSpaceFsm{}
 	if err = json.Unmarshal(val, uidFsm); err != nil {
-		log.LogErrorf("UidSpaceManager vol %v Unmarshal error %v", uMgr.volName, err)
+		span.Errorf("UidSpaceManager vol %v Unmarshal error %v", uMgr.volName, err)
 		return
 	}
 	for _, info := range uidFsm.UidSpaceArr {
 		uMgr.uidInfo[info.Uid] = info
-		log.LogDebugf("vol %v uid %v load usedSize %v limit %v enabled %v", uMgr.volName, info.Uid, info.UsedSize, info.LimitSize, info.Limited)
+		span.Debugf("vol %v uid %v load usedSize %v limit %v enabled %v", uMgr.volName, info.Uid, info.UsedSize, info.LimitSize, info.Limited)
 	}
 	return
 }
 
-func (uMgr *UidSpaceManager) getSpaceOp() (rsp []*proto.UidSpaceInfo) {
+func (uMgr *UidSpaceManager) getSpaceOp(ctx context.Context) (rsp []*proto.UidSpaceInfo) {
 	uMgr.RLock()
 	defer uMgr.RUnlock()
+	span := proto.SpanFromContext(ctx)
 	for _, info := range uMgr.uidInfo {
 		rsp = append(rsp, info)
-		log.LogDebugf("getSpaceOp. vol %v uid %v enabled %v", info.VolName, info.Uid, info.Limited)
+		span.Debugf("getSpaceOp. vol %v uid %v enabled %v", info.VolName, info.Uid, info.Limited)
 	}
 	return
 }
 
-func (uMgr *UidSpaceManager) volUidUpdate(report *proto.MetaPartitionReport) {
+func (uMgr *UidSpaceManager) volUidUpdate(ctx context.Context, report *proto.MetaPartitionReport) {
 	if !report.IsLeader {
 		return
 	}
 	uMgr.Lock()
 	defer uMgr.Unlock()
+	span := proto.SpanFromContext(ctx)
 	id := report.PartitionID
 	uMgr.mpSpaceMetrics[id] = report.UidInfo
-	log.LogDebugf("vol %v volUidUpdate.mpID %v set uid %v. uid list size %v", uMgr.volName, id, report.UidInfo, len(uMgr.uidInfo))
+	span.Debugf("vol %v volUidUpdate.mpID %v set uid %v. uid list size %v", uMgr.volName, id, report.UidInfo, len(uMgr.uidInfo))
 
 	for _, info := range uMgr.uidInfo {
 		info.UsedSize = 0
@@ -143,10 +147,10 @@ func (uMgr *UidSpaceManager) volUidUpdate(report *proto.MetaPartitionReport) {
 
 	uidInfo := make(map[uint32]*proto.UidSpaceInfo)
 	for mpId, info := range uMgr.mpSpaceMetrics {
-		log.LogDebugf("vol %v volUidUpdate. reCalc mpId %v info %v", uMgr.volName, mpId, len(info))
+		span.Debugf("vol %v volUidUpdate. reCalc mpId %v info %v", uMgr.volName, mpId, len(info))
 		for _, space := range info {
 			if _, ok := uMgr.uidInfo[space.Uid]; !ok {
-				log.LogDebugf("vol %v volUidUpdate.uid %v not found", uMgr.volName, space.Uid)
+				span.Debugf("vol %v volUidUpdate.uid %v not found", uMgr.volName, space.Uid)
 				uMgr.uidInfo[space.Uid] = &proto.UidSpaceInfo{
 					VolName: uMgr.volName,
 					Uid:     space.Uid,
@@ -157,7 +161,7 @@ func (uMgr *UidSpaceManager) volUidUpdate(report *proto.MetaPartitionReport) {
 				uidInfo[space.Uid] = &(*uMgr.uidInfo[space.Uid])
 			}
 
-			log.LogDebugf("volUidUpdate.vol %v uid %v from mpId %v useSize %v add %v", uMgr.vol, space.Uid, mpId, uidInfo[space.Uid].UsedSize, space.Size)
+			span.Debugf("volUidUpdate.vol %v uid %v from mpId %v useSize %v add %v", uMgr.vol, space.Uid, mpId, uidInfo[space.Uid].UsedSize, space.Size)
 			uidInfo[space.Uid].UsedSize += space.Size
 			if !uidInfo[space.Uid].Enabled {
 				uidInfo[space.Uid].Limited = false
@@ -165,18 +169,18 @@ func (uMgr *UidSpaceManager) volUidUpdate(report *proto.MetaPartitionReport) {
 			}
 			if uidInfo[space.Uid].UsedSize > uMgr.uidInfo[space.Uid].LimitSize {
 				uidInfo[space.Uid].Limited = true
-				log.LogWarnf("volUidUpdate.vol %v uid %v from mpId %v useSize %v add %v", uMgr.vol, space.Uid, mpId, uidInfo[space.Uid].UsedSize, space.Size)
+				span.Warnf("volUidUpdate.vol %v uid %v from mpId %v useSize %v add %v", uMgr.vol, space.Uid, mpId, uidInfo[space.Uid].UsedSize, space.Size)
 			} else {
 				uidInfo[space.Uid].Limited = false
-				log.LogWarnf("volUidUpdate.vol %v uid %v from mpId %v useSize %v add %v", uMgr.vol, space.Uid, mpId, uidInfo[space.Uid].UsedSize, space.Size)
+				span.Warnf("volUidUpdate.vol %v uid %v from mpId %v useSize %v add %v", uMgr.vol, space.Uid, mpId, uidInfo[space.Uid].UsedSize, space.Size)
 			}
 		}
 	}
 
-	log.LogDebugf("vol %v volUidUpdate.mpID %v set uid %v. uid list size %v", uMgr.volName, id, report.UidInfo, len(uMgr.uidInfo))
+	span.Debugf("vol %v volUidUpdate.mpID %v set uid %v. uid list size %v", uMgr.volName, id, report.UidInfo, len(uMgr.uidInfo))
 	for _, info := range uidInfo {
 		if _, ok := uMgr.uidInfo[info.Uid]; !ok {
-			log.LogErrorf("volUidUpdate.uid %v not found", info.Uid)
+			span.Errorf("volUidUpdate.uid %v not found", info.Uid)
 			continue
 		}
 		uMgr.uidInfo[info.Uid] = info
@@ -186,7 +190,7 @@ func (uMgr *UidSpaceManager) volUidUpdate(report *proto.MetaPartitionReport) {
 			info.Limited = false
 		}
 	}
-	log.LogDebugf("volUidUpdate.mpID %v set uid %v. uid list size %v", id, report.UidInfo, len(uMgr.uidInfo))
+	span.Debugf("volUidUpdate.mpID %v set uid %v. uid list size %v", id, report.UidInfo, len(uMgr.uidInfo))
 }
 
 type ServerFactorLimit struct {
@@ -258,11 +262,11 @@ type QosCtrlManager struct {
 	sync.RWMutex
 }
 
-func (qosManager *QosCtrlManager) volUpdateMagnify(magnifyArgs *qosArgs) {
+func (qosManager *QosCtrlManager) volUpdateMagnify(ctx context.Context, magnifyArgs *qosArgs) {
 	defer qosManager.Unlock()
 	qosManager.Lock()
-
-	log.LogWarnf("action[volUpdateMagnify] vol %v try set magnify iopsRVal[%v],iopsWVal[%v],flowRVal[%v],flowWVal[%v]",
+	span := proto.SpanFromContext(ctx)
+	span.Warnf("action[volUpdateMagnify] vol %v try set magnify iopsRVal[%v],iopsWVal[%v],flowRVal[%v],flowWVal[%v]",
 		qosManager.vol.Name, magnifyArgs.iopsRVal, magnifyArgs.iopsWVal, magnifyArgs.flowRVal, magnifyArgs.flowWVal)
 
 	arrMagnify := [4]uint64{magnifyArgs.iopsRVal, magnifyArgs.iopsWVal, magnifyArgs.flowRVal, magnifyArgs.flowWVal}
@@ -270,17 +274,17 @@ func (qosManager *QosCtrlManager) volUpdateMagnify(magnifyArgs *qosArgs) {
 		magnify := qosManager.serverFactorLimitMap[i].magnify
 		if uint64(magnify) != arrMagnify[i-1] && arrMagnify[i-1] > 0 {
 			qosManager.serverFactorLimitMap[i].magnify = uint32(arrMagnify[i-1])
-			log.LogWarnf("action[volUpdateMagnify] vol %v  after update type [%v] magnify [%v] to [%v]",
+			span.Warnf("action[volUpdateMagnify] vol %v  after update type [%v] magnify [%v] to [%v]",
 				qosManager.vol.Name, proto.QosTypeString(i), magnify, arrMagnify[i-1])
 		}
 	}
 }
 
-func (qosManager *QosCtrlManager) volUpdateLimit(limitArgs *qosArgs) {
+func (qosManager *QosCtrlManager) volUpdateLimit(ctx context.Context, limitArgs *qosArgs) {
 	defer qosManager.Unlock()
 	qosManager.Lock()
-
-	log.LogWarnf("action[volUpdateLimit] vol %v try set limit iopsrlimit[%v],iopswlimit[%v],flowrlimit[%v],flowwlimit[%v]",
+	span := proto.SpanFromContext(ctx)
+	span.Warnf("action[volUpdateLimit] vol %v try set limit iopsrlimit[%v],iopswlimit[%v],flowrlimit[%v],flowwlimit[%v]",
 		qosManager.vol.Name, limitArgs.iopsRVal, limitArgs.iopsWVal, limitArgs.flowRVal, limitArgs.flowWVal)
 
 	//if limitArgs.iopsWVal != 0 {
@@ -304,7 +308,7 @@ func (qosManager *QosCtrlManager) volUpdateLimit(limitArgs *qosArgs) {
 
 	for i := proto.IopsReadType; i <= proto.FlowWriteType; i++ {
 		limitf := qosManager.serverFactorLimitMap[i]
-		log.LogWarnf("action[volUpdateLimit] vol [%v] after set type [%v] [%v,%v,%v,%v]",
+		span.Warnf("action[volUpdateLimit] vol [%v] after set type [%v] [%v,%v,%v,%v]",
 			qosManager.vol.Name, proto.QosTypeString(i), limitf.Allocated, limitf.NeedAfterAlloc, limitf.Total, limitf.Buffer)
 	}
 }
@@ -317,8 +321,9 @@ func (qosManager *QosCtrlManager) getQosLimit(factorTYpe uint32) uint64 {
 	return qosManager.serverFactorLimitMap[factorTYpe].Total
 }
 
-func (qosManager *QosCtrlManager) initClientQosInfo(clientID uint64, host string) (limitRsp2Client *proto.LimitRsp2Client, err error) {
-	log.QosWriteDebugf("action[initClientQosInfo] vol %v clientID %v Host %v", qosManager.vol.Name, clientID, host)
+func (qosManager *QosCtrlManager) initClientQosInfo(ctx context.Context, clientID uint64, host string) (limitRsp2Client *proto.LimitRsp2Client, err error) {
+	span := proto.SpanFromContext(ctx)
+	span.Debugf("action[initClientQosInfo] vol %v clientID %v Host %v", qosManager.vol.Name, clientID, host)
 	clientInitInfo := proto.NewClientReportLimitInfo()
 	cliCnt := qosManager.defaultClientCnt
 	if cliCnt <= proto.QosDefaultClientCnt {
@@ -373,7 +378,7 @@ func (qosManager *QosCtrlManager) initClientQosInfo(clientID uint64, host string
 		limitRsp2Client.Magnify[factorType] = serverLimit.magnify
 		limitRsp2Client.FactorMap[factorType] = clientInitInfo.FactorMap[factorType]
 
-		log.QosWriteDebugf("action[initClientQosInfo] vol [%v] clientID [%v] factorType [%v] init client info and set limitRsp2Client [%v]"+
+		span.Debugf("action[initClientQosInfo] vol [%v] clientID [%v] factorType [%v] init client info and set limitRsp2Client [%v]"+
 			"server total[%v] used [%v] buffer [%v]",
 			qosManager.vol.Name, clientID, proto.QosTypeString(factorType),
 			initLimit, serverLimit.Total, serverLimit.Allocated, serverLimit.Buffer)
@@ -387,7 +392,7 @@ func (qosManager *QosCtrlManager) initClientQosInfo(clientID uint64, host string
 		ID:     clientID,
 		Host:   host,
 	}
-	log.QosWriteDebugf("action[initClientQosInfo] vol [%v] clientID [%v] Assign [%v]", qosManager.vol.Name, clientID, limitRsp2Client)
+	span.Debugf("action[initClientQosInfo] vol [%v] clientID [%v] Assign [%v]", qosManager.vol.Name, clientID, limitRsp2Client)
 	return
 }
 
@@ -430,20 +435,21 @@ func (serverLimit *ServerFactorLimit) getDstLimit(factorType uint32, used, need 
 	return
 }
 
-func (serverLimit *ServerFactorLimit) dispatch() {
+func (serverLimit *ServerFactorLimit) dispatch(ctx context.Context) {
+	span := proto.SpanFromContext(ctx)
 	for {
 		select {
 		case request := <-serverLimit.requestCh:
-			serverLimit.updateLimitFactor(request)
+			serverLimit.updateLimitFactor(ctx, request)
 		case <-serverLimit.done:
-			log.LogErrorf("done ServerFactorLimit type (%v)", serverLimit.Type)
+			span.Errorf("done ServerFactorLimit type (%v)", serverLimit.Type)
 			return
 		}
 	}
 }
 
 // handle client request and rsp with much more if buffer is enough according rules of allocate
-func (serverLimit *ServerFactorLimit) updateLimitFactor(req interface{}) {
+func (serverLimit *ServerFactorLimit) updateLimitFactor(ctx context.Context, req interface{}) {
 	request := req.(*qosRequestArgs)
 	clientID := request.clientID
 	factorType := request.factorType
@@ -451,8 +457,8 @@ func (serverLimit *ServerFactorLimit) updateLimitFactor(req interface{}) {
 	assignInfo := request.assignInfo
 	rsp2Client := request.rsp2Client
 	lastClientInfo := request.lastClientInfo
-
-	log.QosWriteDebugf("action[updateLimitFactor] vol [%v] clientID [%v] type [%v],client report [%v,%v,%v,%v] last client report [%v,%v,%v,%v] periodically cal Assign [%v,%v]",
+	span := proto.SpanFromContext(ctx)
+	span.Debugf("action[updateLimitFactor] vol [%v] clientID [%v] type [%v],client report [%v,%v,%v,%v] last client report [%v,%v,%v,%v] periodically cal Assign [%v,%v]",
 		serverLimit.qosManager.vol.Name, clientID, proto.QosTypeString(factorType),
 		clientReq.Used, clientReq.Need, clientReq.UsedLimit, clientReq.UsedBuffer,
 		lastClientInfo.Used, lastClientInfo.Need, lastClientInfo.UsedLimit, lastClientInfo.UsedBuffer,
@@ -463,7 +469,7 @@ func (serverLimit *ServerFactorLimit) updateLimitFactor(req interface{}) {
 
 	// flow limit and buffer not enough,client need more
 	if (clientReq.Need + clientReq.Used) > (assignInfo.UsedLimit + assignInfo.UsedBuffer) {
-		log.QosWriteDebugf("action[updateLimitFactor] vol [%v] clientID [%v] type [%v], need [%v] used [%v], used limit [%v]",
+		span.Debugf("action[updateLimitFactor] vol [%v] clientID [%v] type [%v], need [%v] used [%v], used limit [%v]",
 			serverLimit.qosManager.vol.Name, clientID, proto.QosTypeString(factorType), clientReq.Need, clientReq.Used, clientReq.UsedLimit)
 
 		dstLimit := serverLimit.getDstLimit(factorType, clientReq.Used, clientReq.Need)
@@ -473,7 +479,7 @@ func (serverLimit *ServerFactorLimit) updateLimitFactor(req interface{}) {
 			additionBuffer := dstLimit - assignInfo.UsedLimit - assignInfo.UsedBuffer
 			// if buffer is available then balance must not effect, try use buffer as possible as can
 			if serverLimit.Buffer > 0 {
-				log.QosWriteDebugf("action[updateLimitFactor] vol [%v] clientID [%v] type [%v] client need more buffer [%v] serverlimit buffer [%v] used [%v]",
+				span.Debugf("action[updateLimitFactor] vol [%v] clientID [%v] type [%v] client need more buffer [%v] serverlimit buffer [%v] used [%v]",
 					serverLimit.qosManager.vol.Name, clientID, proto.QosTypeString(factorType),
 					additionBuffer, serverLimit.Buffer, serverLimit.Allocated)
 
@@ -506,30 +512,32 @@ func (serverLimit *ServerFactorLimit) updateLimitFactor(req interface{}) {
 			}
 		}
 	}
-	log.QosWriteDebugf("action[updateLimitFactor] vol [%v] [clientID [%v] type [%v] rsp2Client.UsedLimit [%v], UsedBuffer [%v]",
+	span.Debugf("action[updateLimitFactor] vol [%v] [clientID [%v] type [%v] rsp2Client.UsedLimit [%v], UsedBuffer [%v]",
 		serverLimit.qosManager.vol.Name, clientID, proto.QosTypeString(factorType), rsp2Client.UsedLimit, rsp2Client.UsedBuffer)
 	request.wg.Done()
 }
 
-func (qosManager *QosCtrlManager) init(cluster *Cluster, host string) (limit *proto.LimitRsp2Client, err error) {
-	log.QosWriteDebugf("action[qosManage.init] vol [%v] Host %v", qosManager.vol.Name, host)
+func (qosManager *QosCtrlManager) init(ctx context.Context, cluster *Cluster, host string) (limit *proto.LimitRsp2Client, err error) {
+	span := proto.SpanFromContext(ctx)
+	span.Debugf("action[qosManage.init] vol [%v] Host %v", qosManager.vol.Name, host)
 	var id uint64
-	if id, err = cluster.idAlloc.allocateClientID(); err == nil {
-		return qosManager.initClientQosInfo(id, host)
+	if id, err = cluster.idAlloc.allocateClientID(ctx); err == nil {
+		return qosManager.initClientQosInfo(ctx, id, host)
 	}
 	return
 }
 
-func (qosManager *QosCtrlManager) HandleClientQosReq(reqClientInfo *proto.ClientReportLimitInfo, clientID uint64) (limitRsp *proto.LimitRsp2Client, err error) {
-	log.QosWriteDebugf("action[HandleClientQosReq] vol [%v] reqClientInfo from [%v], enable [%v]",
+func (qosManager *QosCtrlManager) HandleClientQosReq(ctx context.Context, reqClientInfo *proto.ClientReportLimitInfo, clientID uint64) (limitRsp *proto.LimitRsp2Client, err error) {
+	span := proto.SpanFromContext(ctx)
+	span.Debugf("action[HandleClientQosReq] vol [%v] reqClientInfo from [%v], enable [%v]",
 		qosManager.vol.Name, clientID, qosManager.qosEnable)
 
 	qosManager.RLock()
 	clientInfo, lastExist := qosManager.cliInfoMgrMap[clientID]
 	if !lastExist || reqClientInfo == nil {
 		qosManager.RUnlock()
-		log.LogWarnf("action[HandleClientQosReq] vol [%v] id [%v] addr [%v] not exist", qosManager.vol.Name, clientID, reqClientInfo.Host)
-		return qosManager.initClientQosInfo(clientID, reqClientInfo.Host)
+		span.Warnf("action[HandleClientQosReq] vol [%v] id [%v] addr [%v] not exist", qosManager.vol.Name, clientID, reqClientInfo.Host)
+		return qosManager.initClientQosInfo(ctx, clientID, reqClientInfo.Host)
 	}
 	qosManager.RUnlock()
 
@@ -548,7 +556,7 @@ func (qosManager *QosCtrlManager) HandleClientQosReq(reqClientInfo *proto.Client
 			reqClientInfo.FactorMap[i].UsedLimit = reqClientInfo.FactorMap[i].Used
 			reqClientInfo.FactorMap[i].UsedBuffer = reqClientInfo.FactorMap[i].Need
 
-			log.QosWriteDebugf("action[HandleClientQosReq] vol [%v] [%v,%v,%v,%v]", qosManager.vol.Name,
+			span.Debugf("action[HandleClientQosReq] vol [%v] [%v,%v,%v,%v]", qosManager.vol.Name,
 				reqClientInfo.FactorMap[i].Used,
 				reqClientInfo.FactorMap[i].Need,
 				reqClientInfo.FactorMap[i].UsedLimit,
@@ -585,15 +593,15 @@ func (qosManager *QosCtrlManager) HandleClientQosReq(reqClientInfo *proto.Client
 	return
 }
 
-func (qosManager *QosCtrlManager) updateServerLimitByClientsInfo(factorType uint32) {
+func (qosManager *QosCtrlManager) updateServerLimitByClientsInfo(ctx context.Context, factorType uint32) {
 	var (
 		cliSum                      proto.ClientLimitInfo
 		nextStageNeed, nextStageUse uint64
 	)
 	qosManager.RLock()
 	serverLimit := qosManager.serverFactorLimitMap[factorType]
-
-	log.QosWriteDebugf("action[updateServerLimitByClientsInfo] vol [%v] type [%v] last limitInfo(%v)",
+	span := proto.SpanFromContext(ctx)
+	span.Debugf("action[updateServerLimitByClientsInfo] vol [%v] type [%v] last limitInfo(%v)",
 		qosManager.vol.Name, proto.QosTypeString(factorType), serverLimit)
 
 	// get sum of data from all clients reports
@@ -603,7 +611,7 @@ func (qosManager *QosCtrlManager) updateServerLimitByClientsInfo(factorType uint
 		cliSum.Need += cliFactor.Need
 		cliSum.UsedLimit += cliFactor.UsedLimit
 		cliSum.UsedBuffer += cliFactor.UsedBuffer
-		log.QosWriteDebugf("action[updateServerLimitByClientsInfo] vol [%v] Host [%v] type [%v] used [%v] need [%v] limit [%v] buffer [%v]",
+		span.Debugf("action[updateServerLimitByClientsInfo] vol [%v] Host [%v] type [%v] used [%v] need [%v] limit [%v] buffer [%v]",
 			qosManager.vol.Name, host, proto.QosTypeString(factorType),
 			cliFactor.Used, cliFactor.Need, cliFactor.UsedLimit, cliFactor.UsedBuffer)
 	}
@@ -621,23 +629,23 @@ func (qosManager *QosCtrlManager) updateServerLimitByClientsInfo(factorType uint
 	nextStageNeed = cliSum.Need
 	if serverLimit.Total >= nextStageUse {
 		serverLimit.Buffer = serverLimit.Total - nextStageUse
-		log.QosWriteDebugf("action[updateServerLimitByClientsInfo] vol [%v] reset server buffer [%v] all clients nextStageUse [%v]",
+		span.Debugf("action[updateServerLimitByClientsInfo] vol [%v] reset server buffer [%v] all clients nextStageUse [%v]",
 			qosManager.vol.Name, serverLimit.Buffer, nextStageUse)
 		if nextStageNeed > serverLimit.Buffer {
 			nextStageNeed -= serverLimit.Buffer
 			nextStageUse += serverLimit.Buffer
 			serverLimit.Buffer = 0
-			log.QosWriteDebugf("action[updateServerLimitByClientsInfo] vol [%v] reset server buffer [%v] all clients nextStageNeed [%v] too much",
+			span.Debugf("action[updateServerLimitByClientsInfo] vol [%v] reset server buffer [%v] all clients nextStageNeed [%v] too much",
 				qosManager.vol.Name, serverLimit.Buffer, nextStageNeed)
 		} else {
 			serverLimit.Buffer -= nextStageNeed
-			log.QosWriteDebugf("action[updateServerLimitByClientsInfo] vol [%v] reset server buffer [%v] all clients nextStageNeed [%v]",
+			span.Debugf("action[updateServerLimitByClientsInfo] vol [%v] reset server buffer [%v] all clients nextStageNeed [%v]",
 				qosManager.vol.Name, serverLimit.Buffer, nextStageNeed)
 			nextStageUse += nextStageNeed
 			nextStageNeed = 0
 		}
 	} else { // usage large than limitation
-		log.QosWriteDebugf("action[updateServerLimitByClientsInfo] vol[%v] type [%v] clients needs [%v] plus overuse [%v],get nextStageNeed [%v]",
+		span.Debugf("action[updateServerLimitByClientsInfo] vol[%v] type [%v] clients needs [%v] plus overuse [%v],get nextStageNeed [%v]",
 			qosManager.vol.Name, proto.QosTypeString(factorType), nextStageNeed, nextStageUse-serverLimit.Total,
 			nextStageNeed+nextStageUse-serverLimit.Total)
 		nextStageNeed += nextStageUse - serverLimit.Total
@@ -652,7 +660,7 @@ func (qosManager *QosCtrlManager) updateServerLimitByClientsInfo(factorType uint
 	if serverLimit.NeedAfterAlloc > 0 {
 		serverLimit.LimitRate = float32(float64(serverLimit.NeedAfterAlloc) / float64(serverLimit.Allocated+serverLimit.NeedAfterAlloc))
 
-		log.QosWriteDebugf("action[updateServerLimitByClientsInfo] vol [%v] type [%v] alloc not enough need limitRatio serverLimit:(%v)",
+		span.Debugf("action[updateServerLimitByClientsInfo] vol [%v] type [%v] alloc not enough need limitRatio serverLimit:(%v)",
 			qosManager.vol.Name, proto.QosTypeString(factorType), serverLimit)
 
 		lastMagnify := serverLimit.LastMagnify
@@ -674,22 +682,23 @@ func (qosManager *QosCtrlManager) updateServerLimitByClientsInfo(factorType uint
 			}
 		}
 		serverLimit.LimitRate = serverLimit.LimitRate * float32(1-float64(serverLimit.LastMagnify)/float64(serverLimit.Allocated+serverLimit.NeedAfterAlloc))
-		log.QosWriteDebugf("action[updateServerLimitByClientsInfo] vol [%v] type [%v] limitRatio [%v] updated to limitRatio [%v] by magnify [%v] lastMagnify [%v]",
+		span.Debugf("action[updateServerLimitByClientsInfo] vol [%v] type [%v] limitRatio [%v] updated to limitRatio [%v] by magnify [%v] lastMagnify [%v]",
 			qosManager.vol.Name, proto.QosTypeString(factorType),
 			lastLimitRatio, serverLimit.LimitRate, serverLimit.LastMagnify, lastMagnify)
 	} else {
 		serverLimit.LastMagnify = 0
 	}
-	log.QosWriteDebugf("action[updateServerLimitByClientsInfo] vol [%v] type [%v] after adjust limitRatio serverLimit:(%v)",
+	span.Debugf("action[updateServerLimitByClientsInfo] vol [%v] type [%v] after adjust limitRatio serverLimit:(%v)",
 		qosManager.vol.Name, proto.QosTypeString(factorType), serverLimit)
 	return
 }
 
-func (qosManager *QosCtrlManager) assignClientsNewQos(factorType uint32) {
+func (qosManager *QosCtrlManager) assignClientsNewQos(ctx context.Context, factorType uint32) {
 	qosManager.RLock()
 	if !qosManager.qosEnable {
 		return
 	}
+	span := proto.SpanFromContext(ctx)
 	serverLimit := qosManager.serverFactorLimitMap[factorType]
 	var bufferAllocated uint64
 
@@ -722,22 +731,23 @@ func (qosManager *QosCtrlManager) assignClientsNewQos(factorType uint32) {
 		serverLimit.Buffer -= bufferAllocated
 	} else {
 		serverLimit.Buffer = 0
-		log.LogWarnf("action[assignClientsNewQos] vol [%v] type [%v] clients buffer [%v] and server buffer used up trigger flow limit overall",
+		span.Warnf("action[assignClientsNewQos] vol [%v] type [%v] clients buffer [%v] and server buffer used up trigger flow limit overall",
 			qosManager.vol.Name, proto.QosTypeString(factorType), bufferAllocated)
 	}
 
-	log.QosWriteDebugf("action[assignClientsNewQos] vol [%v]  type [%v] serverLimit buffer:[%v] used:[%v] need:[%v] total:[%v]",
+	span.Debugf("action[assignClientsNewQos] vol [%v]  type [%v] serverLimit buffer:[%v] used:[%v] need:[%v] total:[%v]",
 		qosManager.vol.Name, proto.QosTypeString(factorType),
 		serverLimit.Buffer, serverLimit.Allocated, serverLimit.NeedAfterAlloc, serverLimit.Total)
 }
 
-func (vol *Vol) checkQos() {
+func (vol *Vol) checkQos(ctx context.Context) {
 	vol.qosManager.Lock()
+	span := proto.SpanFromContext(ctx)
 	// check expire client and delete from map
 	tTime := time.Now()
 	for id, cli := range vol.qosManager.cliInfoMgrMap {
 		if cli.Time.Add(20 * time.Second).Before(tTime) {
-			log.LogWarnf("action[checkQos] vol [%v] Id [%v] addr [%v] be delete in case of long time no request",
+			span.Warnf("action[checkQos] vol [%v] Id [%v] addr [%v] be delete in case of long time no request",
 				vol.Name, id, cli.Host)
 			delete(vol.qosManager.cliInfoMgrMap, id)
 		}
@@ -749,16 +759,16 @@ func (vol *Vol) checkQos() {
 	// with last report info from client and qos control info
 	for factorType := proto.IopsReadType; factorType <= proto.FlowWriteType; factorType++ {
 		// calc all clients and get real used and need value , used value should less then total
-		vol.qosManager.updateServerLimitByClientsInfo(factorType)
+		vol.qosManager.updateServerLimitByClientsInfo(ctx, factorType)
 		// update client assign info by result above
 		if !vol.qosManager.qosEnable {
 			continue
 		}
 
-		vol.qosManager.assignClientsNewQos(factorType)
+		vol.qosManager.assignClientsNewQos(ctx, factorType)
 
 		serverLimit := vol.qosManager.serverFactorLimitMap[factorType]
-		log.QosWriteDebugf("action[UpdateAllQosInfo] vol name [%v] type [%v] after updateServerLimitByClientsInfo get limitRate:[%v] "+
+		span.Debugf("action[UpdateAllQosInfo] vol name [%v] type [%v] after updateServerLimitByClientsInfo get limitRate:[%v] "+
 			"server total [%v] beAllocated [%v] NeedAfterAlloc [%v] buffer [%v]",
 			vol.Name, proto.QosTypeString(factorType), serverLimit.LimitRate,
 			serverLimit.Total, serverLimit.Allocated, serverLimit.NeedAfterAlloc, serverLimit.Buffer)
@@ -790,8 +800,9 @@ func (vol *Vol) getQosStatus(cluster *Cluster) interface{} {
 	}
 }
 
-func (vol *Vol) getClientLimitInfo(id uint64, ip string) (interface{}, error) {
-	log.QosWriteDebugf("action[getClientLimitInfo] vol [%v] id [%v] ip [%v]", vol.Name, id, ip)
+func (vol *Vol) getClientLimitInfo(ctx context.Context, id uint64, ip string) (interface{}, error) {
+	span := proto.SpanFromContext(ctx)
+	span.Debugf("action[getClientLimitInfo] vol [%v] id [%v] ip [%v]", vol.Name, id, ip)
 	vol.qosManager.RLock()
 	defer vol.qosManager.RUnlock()
 
@@ -850,8 +861,9 @@ func (vol *Vol) getClientLimitInfo(id uint64, ip string) (interface{}, error) {
 	return nil, fmt.Errorf("not found")
 }
 
-func (vol *Vol) volQosEnable(c *Cluster, enable bool) error {
-	log.LogWarnf("action[qosEnable] vol %v, set qos enable [%v], qosmgr[%v]", vol.Name, enable, vol.qosManager)
+func (vol *Vol) volQosEnable(ctx context.Context, c *Cluster, enable bool) error {
+	span := proto.SpanFromContext(ctx)
+	span.Warnf("action[qosEnable] vol %v, set qos enable [%v], qosmgr[%v]", vol.Name, enable, vol.qosManager)
 	vol.qosManager.qosEnable = enable
 	vol.qosManager.Lock()
 	defer vol.qosManager.Unlock()
@@ -863,18 +875,18 @@ func (vol *Vol) volQosEnable(c *Cluster, enable bool) error {
 			}
 		}
 	}
-	return c.syncUpdateVol(vol)
+	return c.syncUpdateVol(ctx, vol)
 }
 
-func (vol *Vol) updateClientParam(c *Cluster, period, triggerCnt uint32) error {
+func (vol *Vol) updateClientParam(ctx context.Context, c *Cluster, period, triggerCnt uint32) error {
 	vol.qosManager.ClientHitTriggerCnt = triggerCnt
 	vol.qosManager.ClientReqPeriod = period
-	return c.syncUpdateVol(vol)
+	return c.syncUpdateVol(ctx, vol)
 }
 
-func (vol *Vol) volQosUpdateLimit(c *Cluster, limitArgs *qosArgs) error {
-	vol.qosManager.volUpdateLimit(limitArgs)
-	return c.syncUpdateVol(vol)
+func (vol *Vol) volQosUpdateLimit(ctx context.Context, c *Cluster, limitArgs *qosArgs) error {
+	vol.qosManager.volUpdateLimit(ctx, limitArgs)
+	return c.syncUpdateVol(ctx, vol)
 }
 
 type AclManager struct {
@@ -894,46 +906,49 @@ func (acl *AclManager) init(c *Cluster, vol *Vol) {
 	acl.aclIps = make(map[string]*proto.AclIpInfo)
 }
 
-func (acl *AclManager) aclOperate(op uint64, ip string) interface{} {
+func (acl *AclManager) aclOperate(ctx context.Context, op uint64, ip string) interface{} {
 	acl.Lock()
 	defer acl.Unlock()
 
 	switch op {
 	case util.AclAddIP:
-		return acl.addIp(ip)
+		return acl.addIp(ctx, ip)
 	case util.AclDelIP:
-		return acl.removeIp(ip)
+		return acl.removeIp(ctx, ip)
 	case util.AclCheckIP:
-		return acl.checkIp(ip)
+		return acl.checkIp(ctx, ip)
 	case util.AclListIP:
-		return acl.listAll()
+		return acl.listAll(ctx)
 	default:
 		err := fmt.Errorf("aclOperate op %v not found", op)
 		return err
 	}
 }
 
-func (acl *AclManager) listAll() (val []*proto.AclIpInfo) {
-	log.LogDebugf("vol %v listAll", acl.vol.Name)
+func (acl *AclManager) listAll(ctx context.Context) (val []*proto.AclIpInfo) {
+	span := proto.SpanFromContext(ctx)
+	span.Debugf("vol %v listAll", acl.vol.Name)
 	for ip, info := range acl.aclIps {
-		log.LogDebugf("vol %v listAll ip %v", ip, acl.vol.Name)
+		span.Debugf("vol %v listAll ip %v", ip, acl.vol.Name)
 		val = append(val, info)
 	}
 
 	return
 }
 
-func (acl *AclManager) checkIp(ip string) (val []*proto.AclIpInfo) {
-	log.LogDebugf("vol %v checkIp %v", ip, acl.vol.Name)
+func (acl *AclManager) checkIp(ctx context.Context, ip string) (val []*proto.AclIpInfo) {
+	span := proto.SpanFromContext(ctx)
+	span.Debugf("vol %v checkIp %v", ip, acl.vol.Name)
 	if info, ok := acl.aclIps[ip]; ok {
-		log.LogDebugf("vol %v checkIp ip %v", ip, acl.vol.Name)
+		span.Debugf("vol %v checkIp ip %v", ip, acl.vol.Name)
 		val = append(val, info)
 	}
 	return
 }
 
-func (acl *AclManager) addIp(ip string) (err error) {
-	log.LogDebugf("vol %v acl addIp %v", acl.vol.Name, ip)
+func (acl *AclManager) addIp(ctx context.Context, ip string) (err error) {
+	span := proto.SpanFromContext(ctx)
+	span.Debugf("vol %v acl addIp %v", acl.vol.Name, ip)
 	if _, ok := acl.aclIps[ip]; ok {
 		return
 	}
@@ -942,17 +957,19 @@ func (acl *AclManager) addIp(ip string) (err error) {
 		CTime: time.Now().Unix(),
 	}
 
-	return acl.persist()
+	return acl.persist(ctx)
 }
 
-func (acl *AclManager) removeIp(ip string) (err error) {
-	log.LogDebugf("vol %v acl removeIp %v", acl.vol.Name, ip)
+func (acl *AclManager) removeIp(ctx context.Context, ip string) (err error) {
+	span := proto.SpanFromContext(ctx)
+	span.Debugf("vol %v acl removeIp %v", acl.vol.Name, ip)
 	delete(acl.aclIps, ip)
-	return acl.persist()
+	return acl.persist(ctx)
 }
 
-func (acl *AclManager) persist() (err error) {
-	log.LogDebugf("vol %v acl persist", acl.vol.Name)
+func (acl *AclManager) persist(ctx context.Context) (err error) {
+	span := proto.SpanFromContext(ctx)
+	span.Debugf("vol %v acl persist", acl.vol.Name)
 	var aclFsm AclFsm
 	for _, t := range acl.aclIps {
 		aclFsm.AclIpArr = append(aclFsm.AclIpArr, t)
@@ -960,27 +977,28 @@ func (acl *AclManager) persist() (err error) {
 
 	var val []byte
 	if val, err = json.Marshal(aclFsm); err != nil {
-		log.LogErrorf("vol %v acl persist error %v", acl.vol.Name, err)
+		span.Errorf("vol %v acl persist error %v", acl.vol.Name, err)
 		return
 	}
-	if err = acl.c.syncAclList(acl.vol, val); err != nil {
-		log.LogErrorf("vol %v acl persist syncAclList error %v", acl.vol.Name, err)
+	if err = acl.c.syncAclList(ctx, acl.vol, val); err != nil {
+		span.Errorf("vol %v acl persist syncAclList error %v", acl.vol.Name, err)
 		return
 	}
 	return
 }
 
-func (acl *AclManager) load(c *Cluster, val []byte) (err error) {
-	log.LogDebugf("vol %v acl load meta", acl.vol.Name)
+func (acl *AclManager) load(ctx context.Context, c *Cluster, val []byte) (err error) {
+	span := proto.SpanFromContext(ctx)
+	span.Debugf("vol %v acl load meta", acl.vol.Name)
 	acl.c = c
 	aclFsm := &AclFsm{}
 	if err = json.Unmarshal(val, aclFsm); err != nil {
-		log.LogErrorf("vol %v acl load %v", acl.vol.Name, err)
+		span.Errorf("vol %v acl load %v", acl.vol.Name, err)
 		return
 	}
 	for _, info := range aclFsm.AclIpArr {
 		acl.aclIps[info.Ip] = info
-		log.LogDebugf("vol %v acl load %v", acl.vol.Name, info.Ip)
+		span.Debugf("vol %v acl load %v", acl.vol.Name, info.Ip)
 	}
 	return
 }

@@ -20,11 +20,11 @@ import (
 	"io"
 	"strconv"
 
+	"github.com/cubefs/cubefs/blobstore/util/log"
 	"github.com/cubefs/cubefs/depends/tiglabs/raft"
 	"github.com/cubefs/cubefs/depends/tiglabs/raft/proto"
 	raftstore "github.com/cubefs/cubefs/raftstore/raftstore_db"
 	"github.com/cubefs/cubefs/util"
-	"github.com/cubefs/cubefs/util/log"
 	"github.com/cubefs/cubefs/util/stat"
 )
 
@@ -104,10 +104,10 @@ func (mf *MetadataFsm) restoreApplied() {
 
 // Apply implements the interface of raft.StateMachine
 func (mf *MetadataFsm) Apply(command []byte, index uint64) (resp interface{}, err error) {
-	log.LogDebugf("[Apply] apply index(%v)", index)
+	log.Debugf("[Apply] apply index(%v)", index)
 	cmd := new(RaftCmd)
 	if err = cmd.Unmarshal(command); err != nil {
-		log.LogErrorf("action[fsmApply],unmarshal data:%v, err:%v", command, err.Error())
+		log.Errorf("action[fsmApply],unmarshal data:%v, err:%v", command, err.Error())
 		panic(err)
 	}
 
@@ -119,7 +119,7 @@ func (mf *MetadataFsm) Apply(command []byte, index uint64) (resp interface{}, er
 	} else {
 		nestedCmdMap := make(map[string]*RaftCmd)
 		if err = json.Unmarshal(cmd.V, &nestedCmdMap); err != nil {
-			log.LogErrorf("action[fsmApply],unmarshal nested cmd data:%v, err:%v", command, err.Error())
+			log.Errorf("action[fsmApply],unmarshal nested cmd data:%v, err:%v", command, err.Error())
 			panic(err)
 		}
 		for cmdK, cmd := range nestedCmdMap {
@@ -159,7 +159,7 @@ func (mf *MetadataFsm) Apply(command []byte, index uint64) (resp interface{}, er
 	mf.applied = index
 
 	if mf.applied > 0 && (mf.applied%mf.retainLogs) == 0 {
-		log.LogWarnf("action[Apply],truncate raft log,retainLogs[%v],index[%v]", mf.retainLogs, mf.applied)
+		log.Warnf("action[Apply],truncate raft log,retainLogs[%v],index[%v]", mf.retainLogs, mf.applied)
 		mf.rs.Truncate(GroupID, mf.applied)
 	}
 	return
@@ -189,14 +189,14 @@ func (mf *MetadataFsm) Snapshot() (proto.Snapshot, error) {
 
 // ApplySnapshot implements the interface of raft.StateMachine
 func (mf *MetadataFsm) ApplySnapshot(peers []proto.Peer, iterator proto.SnapIterator) (err error) {
-	log.LogWarnf("action[ApplySnapshot] reset rocksdb before applying snapshot")
+	log.Warnf("action[ApplySnapshot] reset rocksdb before applying snapshot")
 	mf.onSnapshot = true
 
 	defer func() {
 		mf.onSnapshot = false
 	}()
 
-	if log.EnableDebug() {
+	if log.GetOutputLevel() == log.Ldebug {
 		func() {
 			snap := mf.store.RocksDBSnapshot()
 			defer mf.store.ReleaseSnapshot(snap)
@@ -206,13 +206,13 @@ func (mf *MetadataFsm) ApplySnapshot(peers []proto.Peer, iterator proto.SnapIter
 			for iter.SeekToFirst(); iter.Valid(); iter.Next() {
 				cnt++
 			}
-			log.LogDebugf("[ApplySnapshot] scan %v keys before clear", cnt)
+			log.Debugf("[ApplySnapshot] scan %v keys before clear", cnt)
 		}()
 	}
 
 	mf.store.Clear()
 
-	if log.EnableDebug() {
+	if log.GetOutputLevel() == log.Ldebug {
 		func() {
 			snap := mf.store.RocksDBSnapshot()
 			defer mf.store.ReleaseSnapshot(snap)
@@ -222,11 +222,11 @@ func (mf *MetadataFsm) ApplySnapshot(peers []proto.Peer, iterator proto.SnapIter
 			for iter.SeekToFirst(); iter.Valid(); iter.Next() {
 				cnt++
 			}
-			log.LogDebugf("[ApplySnapshot] scan %v keys after clear", cnt)
+			log.Debugf("[ApplySnapshot] scan %v keys after clear", cnt)
 		}()
 	}
 
-	log.LogWarnf(fmt.Sprintf("action[ApplySnapshot] begin,applied[%v]", mf.applied))
+	log.Warnf(fmt.Sprintf("action[ApplySnapshot] begin,applied[%v]", mf.applied))
 	var data []byte
 	var appliedIndex []byte
 	for err == nil {
@@ -254,25 +254,25 @@ func (mf *MetadataFsm) ApplySnapshot(peers []proto.Peer, iterator proto.SnapIter
 	}
 
 	if err = mf.store.Flush(); err != nil {
-		log.LogError(fmt.Sprintf("action[ApplySnapshot] Flush failed,err:%v", err.Error()))
+		log.Error(fmt.Sprintf("action[ApplySnapshot] Flush failed,err:%v", err.Error()))
 		goto errHandler
 	}
 
 	// NOTE: we write applied index at last
-	log.LogDebugf("[ApplySnapshot] find applied index(%v)", appliedIndex)
+	log.Debugf("[ApplySnapshot] find applied index(%v)", appliedIndex)
 	if appliedIndex != nil {
 		if _, err = mf.store.Put(applied, appliedIndex, true); err != nil {
 			goto errHandler
 		}
 	} else {
-		log.LogErrorf("[ApplySnapshot] not found applied index in snapshot")
+		log.Errorf("[ApplySnapshot] not found applied index in snapshot")
 	}
 
 	mf.snapshotHandler()
-	log.LogWarnf(fmt.Sprintf("action[ApplySnapshot] success,applied[%v]", mf.applied))
+	log.Warnf(fmt.Sprintf("action[ApplySnapshot] success,applied[%v]", mf.applied))
 	return nil
 errHandler:
-	log.LogError(fmt.Sprintf("action[ApplySnapshot] failed,err:%v", err.Error()))
+	log.Error(fmt.Sprintf("action[ApplySnapshot] failed,err:%v", err.Error()))
 	return err
 }
 

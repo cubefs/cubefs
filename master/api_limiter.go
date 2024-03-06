@@ -8,8 +8,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/cubefs/cubefs/blobstore/util/log"
 	"github.com/cubefs/cubefs/proto"
-	"github.com/cubefs/cubefs/util/log"
 	"golang.org/x/time/rate"
 )
 
@@ -61,18 +61,19 @@ func (l *ApiLimiter) Replace(limiterInfos map[string]*ApiLimitInfo) {
 	}
 }
 
-func (l *ApiLimiter) SetLimiter(apiName string, Limit uint32, LimiterTimeout uint32) (err error) {
+func (l *ApiLimiter) SetLimiter(ctx context.Context, apiName string, limit uint32, limiterTimeout uint32) (err error) {
 	var normalizedName string
 	var qPath string
 	if err, normalizedName, qPath = l.IsApiNameValid(apiName); err != nil {
 		return err
 	}
-
+	span := proto.SpanFromContext(ctx)
+	span.Infof("api[%v] set limit %v LimiterTimeout %v", apiName, limit, limiterTimeout)
 	lInfo := &ApiLimitInfo{
 		ApiName:        normalizedName,
 		QueryPath:      qPath,
-		Limit:          Limit,
-		LimiterTimeout: LimiterTimeout,
+		Limit:          limit,
+		LimiterTimeout: limiterTimeout,
 	}
 	lInfo.InitLimiter()
 
@@ -82,25 +83,27 @@ func (l *ApiLimiter) SetLimiter(apiName string, Limit uint32, LimiterTimeout uin
 	return nil
 }
 
-func (l *ApiLimiter) RmLimiter(apiName string) (err error) {
+func (l *ApiLimiter) RmLimiter(ctx context.Context, apiName string) (err error) {
 	var qPath string
 	if err, _, qPath = l.IsApiNameValid(apiName); err != nil {
 		return err
 	}
-
+	span := proto.SpanFromContext(ctx)
+	span.Infof("api[%v] rm", apiName)
 	l.m.Lock()
 	delete(l.limiterInfos, qPath)
 	l.m.Unlock()
 	return nil
 }
 
-func (l *ApiLimiter) Wait(qPath string) (err error) {
+func (l *ApiLimiter) Wait(ctx context.Context, qPath string) (err error) {
 	var lInfo *ApiLimitInfo
 	var ok bool
 	l.m.RLock()
+	span := proto.SpanFromContext(ctx)
 	if lInfo, ok = l.limiterInfos[qPath]; !ok {
 		l.m.RUnlock()
-		log.LogDebugf("no api limiter for api[%v]", qPath)
+		span.Debugf("no api limiter for api[%v]", qPath)
 		return nil
 	}
 	l.m.RUnlock()
@@ -108,10 +111,10 @@ func (l *ApiLimiter) Wait(qPath string) (err error) {
 	defer cancel()
 	err = lInfo.Limiter.Wait(ctx)
 	if err != nil {
-		log.LogErrorf("wait api limiter for api[%v] failed: %v", qPath, err)
+		span.Errorf("wait api limiter for api[%v] failed: %v", qPath, err)
 		return err
 	}
-	log.LogDebugf("wait api limiter for api[%v]", qPath)
+	span.Debugf("wait api limiter for api[%v]", qPath)
 	return nil
 }
 
@@ -134,7 +137,7 @@ func (l *ApiLimiter) IsFollowerLimiter(qPath string) bool {
 func (l *ApiLimiter) updateLimiterInfoFromLeader(value []byte) {
 	limiterInfos := make(map[string]*ApiLimitInfo)
 	if err := json.Unmarshal(value, &limiterInfos); err != nil {
-		log.LogErrorf("action[updateLimiterInfoFromLeader], unmarshal err:%v", err.Error())
+		log.Errorf("action[updateLimiterInfoFromLeader], unmarshal err:%v", err.Error())
 		return
 	}
 
@@ -145,5 +148,5 @@ func (l *ApiLimiter) updateLimiterInfoFromLeader(value []byte) {
 	l.m.Lock()
 	l.limiterInfos = limiterInfos
 	l.m.Unlock()
-	log.LogInfof("action[updateLimiterInfoFromLeader], limiter info[%v]", value)
+	log.Infof("action[updateLimiterInfoFromLeader], limiter info[%v]", value)
 }

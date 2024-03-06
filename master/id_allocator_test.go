@@ -14,11 +14,16 @@
 
 package master
 
-import "testing"
+import (
+	"context"
+	"testing"
+
+	"github.com/cubefs/cubefs/blobstore/common/trace"
+)
 
 const idallocTestCount = 1010
 
-func SelfIncreaseIdAllocTest(t *testing.T, allocator *IDAllocator, allocFunc func() (uint64, error)) {
+func SelfIncreaseIdAllocTest(ctx context.Context, t *testing.T, allocator *IDAllocator, allocFunc func() (uint64, error)) {
 	var id uint64
 	for i := 0; i != idallocTestCount; i++ {
 		newId, err := allocFunc()
@@ -30,7 +35,7 @@ func SelfIncreaseIdAllocTest(t *testing.T, allocator *IDAllocator, allocFunc fun
 		}
 		id = newId
 	}
-	allocator.restore()
+	allocator.restore(ctx)
 	newId, err := allocFunc()
 	if err != nil {
 		t.Errorf("failed to allocate id %v", err.Error())
@@ -42,26 +47,27 @@ func SelfIncreaseIdAllocTest(t *testing.T, allocator *IDAllocator, allocFunc fun
 }
 
 func TestIdAlloc(t *testing.T) {
+	_, ctx := trace.StartSpanFromContextWithTraceID(context.Background(), "", "id-allocator-test")
 	allocator := newIDAllocator(server.rocksDBStore, server.partition)
 	t.Logf("testing client id alloc")
-	SelfIncreaseIdAllocTest(t, allocator, func() (uint64, error) {
-		return allocator.allocateClientID()
+	SelfIncreaseIdAllocTest(ctx, t, allocator, func() (uint64, error) {
+		return allocator.allocateClientID(ctx)
 	})
 	t.Logf("testing common id alloc")
-	SelfIncreaseIdAllocTest(t, allocator, func() (uint64, error) {
-		return allocator.allocateCommonID()
+	SelfIncreaseIdAllocTest(ctx, t, allocator, func() (uint64, error) {
+		return allocator.allocateCommonID(ctx)
 	})
 	t.Logf("testing data partition id alloc")
-	SelfIncreaseIdAllocTest(t, allocator, func() (uint64, error) {
-		return allocator.allocateDataPartitionID()
+	SelfIncreaseIdAllocTest(ctx, t, allocator, func() (uint64, error) {
+		return allocator.allocateDataPartitionID(ctx)
 	})
 	t.Logf("testing meta partition id alloc")
-	SelfIncreaseIdAllocTest(t, allocator, func() (uint64, error) {
-		return allocator.allocateMetaPartitionID()
+	SelfIncreaseIdAllocTest(ctx, t, allocator, func() (uint64, error) {
+		return allocator.allocateMetaPartitionID(ctx)
 	})
 	t.Logf("testing quota id alloc")
-	SelfIncreaseIdAllocTest(t, allocator, func() (uint64, error) {
-		id, err := allocator.allocateQuotaID()
+	SelfIncreaseIdAllocTest(ctx, t, allocator, func() (uint64, error) {
+		id, err := allocator.allocateQuotaID(ctx)
 		return uint64(id), err
 	})
 }
