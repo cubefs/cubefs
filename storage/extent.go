@@ -27,9 +27,9 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/cubefs/cubefs/blobstore/util/log"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util"
-	"github.com/cubefs/cubefs/util/log"
 )
 
 const (
@@ -175,21 +175,21 @@ func (e *Extent) GetDataSize(statSize int64) (dataSize int64) {
 		// curOff if the hold start and the data end
 		curOff, err = e.file.Seek(holStart, SEEK_DATA)
 		if err != nil || curOff >= util.ExtentSize || (holStart > 0 && holStart == curOff) {
-			log.LogDebugf("GetDataSize statSize %v curOff %v dataStart %v holStart %v, err %v,path %v", statSize, curOff, dataStart, holStart, err, e.filePath)
+			log.Debugf("GetDataSize statSize %v curOff %v dataStart %v holStart %v, err %v,path %v", statSize, curOff, dataStart, holStart, err, e.filePath)
 			break
 		}
-		log.LogDebugf("GetDataSize statSize %v curOff %v dataStart %v holStart %v, err %v,path %v", statSize, curOff, dataStart, holStart, err, e.filePath)
+		log.Debugf("GetDataSize statSize %v curOff %v dataStart %v holStart %v, err %v,path %v", statSize, curOff, dataStart, holStart, err, e.filePath)
 		dataStart = curOff
 
 		curOff, err = e.file.Seek(dataStart, SEEK_HOLE)
 		if err != nil || curOff >= util.ExtentSize || dataStart == curOff {
-			log.LogDebugf("GetDataSize statSize %v curOff %v dataStart %v holStart %v, err %v,path %v", statSize, curOff, dataStart, holStart, err, e.filePath)
+			log.Debugf("GetDataSize statSize %v curOff %v dataStart %v holStart %v, err %v,path %v", statSize, curOff, dataStart, holStart, err, e.filePath)
 			break
 		}
-		log.LogDebugf("GetDataSize statSize %v curOff %v dataStart %v holStart %v, err %v,path %v", statSize, curOff, dataStart, holStart, err, e.filePath)
+		log.Debugf("GetDataSize statSize %v curOff %v dataStart %v holStart %v, err %v,path %v", statSize, curOff, dataStart, holStart, err, e.filePath)
 		holStart = curOff
 	}
-	log.LogDebugf("GetDataSize statSize %v curOff %v dataStart %v holStart %v, err %v,path %v", statSize, curOff, dataStart, holStart, err, e.filePath)
+	log.Debugf("GetDataSize statSize %v curOff %v dataStart %v holStart %v, err %v,path %v", statSize, curOff, dataStart, holStart, err, e.filePath)
 	if holStart == 0 {
 		if statSize > util.ExtentSize {
 			return util.ExtentSize
@@ -292,7 +292,7 @@ func (e *Extent) WriteTiny(data []byte, offset, size int64, crc uint32, writeTyp
 
 // Write writes data to an extent.
 func (e *Extent) Write(data []byte, offset, size int64, crc uint32, writeType int, isSync bool, crcFunc UpdateCrcFunc, ei *ExtentInfo) (status uint8, err error) {
-	log.LogDebugf("action[Extent.Write] path %v offset %v size %v writeType %v", e.filePath, offset, size, writeType)
+	log.Debugf("action[Extent.Write] path %v offset %v size %v writeType %v", e.filePath, offset, size, writeType)
 	status = proto.OpOk
 	if IsTinyExtent(e.extentID) {
 		err = e.WriteTiny(data, offset, size, crc, writeType, isSync)
@@ -300,77 +300,77 @@ func (e *Extent) Write(data []byte, offset, size int64, crc uint32, writeType in
 	}
 
 	if err = e.checkWriteOffsetAndSize(writeType, offset, size); err != nil {
-		log.LogErrorf("action[Extent.Write] checkWriteOffsetAndSize offset %v size %v writeType %v err %v",
+		log.Errorf("action[Extent.Write] checkWriteOffsetAndSize offset %v size %v writeType %v err %v",
 			offset, size, writeType, err)
 		err = newParameterError("extent current size=%d write offset=%d write size=%d", e.dataSize, offset, size)
-		log.LogInfof("action[Extent.Write] newParameterError path %v offset %v size %v writeType %v err %v", e.filePath,
+		log.Infof("action[Extent.Write] newParameterError path %v offset %v size %v writeType %v err %v", e.filePath,
 			offset, size, writeType, err)
 		status = proto.OpTryOtherExtent
 		return
 	}
 
-	log.LogDebugf("action[Extent.Write] path %v offset %v size %v writeType %v", e.filePath, offset, size, writeType)
+	log.Debugf("action[Extent.Write] path %v offset %v size %v writeType %v", e.filePath, offset, size, writeType)
 	// Check if extent file size matches the write offset just in case
 	// multiple clients are writing concurrently.
 	e.Lock()
 	defer e.Unlock()
-	log.LogDebugf("action[Extent.Write] offset %v size %v writeType %v path %v", offset, size, writeType, e.filePath)
+	log.Debugf("action[Extent.Write] offset %v size %v writeType %v path %v", offset, size, writeType, e.filePath)
 	if IsAppendWrite(writeType) && e.dataSize != offset {
 		err = newParameterError("extent current size=%d write offset=%d write size=%d", e.dataSize, offset, size)
-		log.LogInfof("action[Extent.Write] newParameterError path %v offset %v size %v writeType %v err %v", e.filePath,
+		log.Infof("action[Extent.Write] newParameterError path %v offset %v size %v writeType %v err %v", e.filePath,
 			offset, size, writeType, err)
 		status = proto.OpTryOtherExtent
 		return
 	}
 	if IsAppendRandomWrite(writeType) {
 		if e.snapshotDataOff <= util.ExtentSize {
-			log.LogInfof("action[Extent.Write] truncate extent %v offset %v size %v writeType %v truncate err %v", e, offset, size, writeType, err)
+			log.Infof("action[Extent.Write] truncate extent %v offset %v size %v writeType %v truncate err %v", e, offset, size, writeType, err)
 			if err = e.file.Truncate(util.ExtentSize); err != nil {
-				log.LogErrorf("action[Extent.Write] offset %v size %v writeType %v truncate err %v", offset, size, writeType, err)
+				log.Errorf("action[Extent.Write] offset %v size %v writeType %v truncate err %v", offset, size, writeType, err)
 				return
 			}
 		}
 	}
 	if _, err = e.file.WriteAt(data[:size], int64(offset)); err != nil {
-		log.LogErrorf("action[Extent.Write] offset %v size %v writeType %v err %v", offset, size, writeType, err)
+		log.Errorf("action[Extent.Write] offset %v size %v writeType %v err %v", offset, size, writeType, err)
 		return
 	}
 
 	blockNo := offset / util.BlockSize
 	offsetInBlock := offset % util.BlockSize
 	defer func() {
-		log.LogDebugf("action[Extent.Write] offset %v size %v writeType %v path %v", offset, size, writeType, e.filePath)
+		log.Debugf("action[Extent.Write] offset %v size %v writeType %v path %v", offset, size, writeType, e.filePath)
 		if IsAppendWrite(writeType) {
 			atomic.StoreInt64(&e.modifyTime, time.Now().Unix())
 			e.dataSize = int64(math.Max(float64(e.dataSize), float64(offset+size)))
-			log.LogDebugf("action[Extent.Write] e %v offset %v size %v writeType %v", e, offset, size, writeType)
+			log.Debugf("action[Extent.Write] e %v offset %v size %v writeType %v", e, offset, size, writeType)
 		} else if IsAppendRandomWrite(writeType) {
 			atomic.StoreInt64(&e.modifyTime, time.Now().Unix())
 			e.snapshotDataOff = uint64(math.Max(float64(e.snapshotDataOff), float64(offset+size)))
 		}
-		log.LogDebugf("action[Extent.Write] offset %v size %v writeType %v dataSize %v snapshotDataOff %v",
+		log.Debugf("action[Extent.Write] offset %v size %v writeType %v dataSize %v snapshotDataOff %v",
 			offset, size, writeType, e.dataSize, e.snapshotDataOff)
 	}()
 
 	if isSync {
 		if err = e.file.Sync(); err != nil {
-			log.LogDebugf("action[Extent.Write] offset %v size %v writeType %v err %v",
+			log.Debugf("action[Extent.Write] offset %v size %v writeType %v err %v",
 				offset, size, writeType, err)
 			return
 		}
 	}
 	if offsetInBlock == 0 && size == util.BlockSize {
 		err = crcFunc(e, int(blockNo), crc)
-		log.LogDebugf("action[Extent.Write] offset %v size %v writeType %v err %v", offset, size, writeType, err)
+		log.Debugf("action[Extent.Write] offset %v size %v writeType %v err %v", offset, size, writeType, err)
 		return
 	}
 
 	if offsetInBlock+size <= util.BlockSize {
 		err = crcFunc(e, int(blockNo), 0)
-		log.LogDebugf("action[Extent.Write]  offset %v size %v writeType %v err %v", offset, size, writeType, err)
+		log.Debugf("action[Extent.Write]  offset %v size %v writeType %v err %v", offset, size, writeType, err)
 		return
 	}
-	log.LogDebugf("action[Extent.Write] offset %v size %v writeType %v", offset, size, writeType)
+	log.Debugf("action[Extent.Write] offset %v size %v writeType %v", offset, size, writeType)
 	if err = crcFunc(e, int(blockNo), 0); err == nil {
 		err = crcFunc(e, int(blockNo+1), 0)
 	}
@@ -379,19 +379,19 @@ func (e *Extent) Write(data []byte, offset, size int64, crc uint32, writeType in
 
 // Read reads data from an extent.
 func (e *Extent) Read(data []byte, offset, size int64, isRepairRead bool) (crc uint32, err error) {
-	log.LogDebugf("action[Extent.read] offset %v size %v extent %v", offset, size, e)
+	log.Debugf("action[Extent.read] offset %v size %v extent %v", offset, size, e)
 	if IsTinyExtent(e.extentID) {
 		return e.ReadTiny(data, offset, size, isRepairRead)
 	}
 
 	if err = e.checkReadOffsetAndSize(offset, size); err != nil {
-		log.LogErrorf("action[Extent.Read] offset %d size %d err %v", offset, size, err)
+		log.Errorf("action[Extent.Read] offset %d size %d err %v", offset, size, err)
 		return
 	}
 
 	var rSize int
 	if rSize, err = e.file.ReadAt(data[:size], offset); err != nil {
-		log.LogErrorf("action[Extent.Read] offset %v size %v err %v realsize %v", offset, size, err, rSize)
+		log.Errorf("action[Extent.Read] offset %v size %v err %v realsize %v", offset, size, err, rSize)
 		return
 	}
 	crc = crc32.ChecksumIEEE(data)
@@ -424,7 +424,7 @@ func (e *Extent) checkWriteOffsetAndSize(writeType int, offset, size int64) erro
 			return err
 		}
 	} else if IsAppendRandomWrite(writeType) {
-		log.LogDebugf("action[checkOffsetAndSize] offset %v size %v", offset, size)
+		log.Debugf("action[checkOffsetAndSize] offset %v size %v", offset, size)
 		if offset < util.ExtentSize || size == 0 {
 			return err
 		}
@@ -455,7 +455,7 @@ func (e *Extent) autoComputeExtentCrc(crcFunc UpdateCrcFunc) (crc uint32, err er
 	if extSize%util.BlockSize != 0 {
 		blockCnt += 1
 	}
-	log.LogDebugf("autoComputeExtentCrc. path %v extent %v extent size %v,blockCnt %v", e.filePath, e.extentID, extSize, blockCnt)
+	log.Debugf("autoComputeExtentCrc. path %v extent %v extent size %v,blockCnt %v", e.filePath, e.extentID, extSize, blockCnt)
 	crcData := make([]byte, blockCnt*util.PerBlockCrcSize)
 	for blockNo := 0; blockNo < blockCnt; blockNo++ {
 		blockCrc := binary.BigEndian.Uint32(e.header[blockNo*util.PerBlockCrcSize : (blockNo+1)*util.PerBlockCrcSize])
@@ -467,26 +467,26 @@ func (e *Extent) autoComputeExtentCrc(crcFunc UpdateCrcFunc) (crc uint32, err er
 		offset := int64(blockNo * util.BlockSize)
 		readN, err := e.file.ReadAt(bdata[:util.BlockSize], offset)
 		if readN == 0 && err != nil {
-			log.LogErrorf("autoComputeExtentCrc. path %v extent %v blockNo %v, readN %v err %v", e.filePath, e.extentID, blockNo, readN, err)
+			log.Errorf("autoComputeExtentCrc. path %v extent %v blockNo %v, readN %v err %v", e.filePath, e.extentID, blockNo, readN, err)
 			break
 		}
 		blockCrc = crc32.ChecksumIEEE(bdata[:readN])
 		err = crcFunc(e, blockNo, blockCrc)
 		if err != nil {
-			log.LogErrorf("autoComputeExtentCrc. path %v extent %v blockNo %v, err %v", e.filePath, e.extentID, blockNo, err)
+			log.Errorf("autoComputeExtentCrc. path %v extent %v blockNo %v, err %v", e.filePath, e.extentID, blockNo, err)
 			return 0, nil
 		}
-		log.LogDebugf("autoComputeExtentCrc. path %v extent %v blockCrc %v,blockNo %v", e.filePath, e.extentID, blockCrc, blockNo)
+		log.Debugf("autoComputeExtentCrc. path %v extent %v blockCrc %v,blockNo %v", e.filePath, e.extentID, blockCrc, blockNo)
 		binary.BigEndian.PutUint32(crcData[blockNo*util.PerBlockCrcSize:(blockNo+1)*util.PerBlockCrcSize], blockCrc)
 	}
 	crc = crc32.ChecksumIEEE(crcData)
-	log.LogDebugf("autoComputeExtentCrc. path %v extent %v crc %v", e.filePath, e.extentID, crc)
+	log.Debugf("autoComputeExtentCrc. path %v extent %v crc %v", e.filePath, e.extentID, crc)
 	return crc, err
 }
 
 // DeleteTiny deletes a tiny extent.
 func (e *Extent) punchDelete(offset, size int64) (hasDelete bool, err error) {
-	log.LogDebugf("punchDelete extent %v offset %v, size %v", e, offset, size)
+	log.Debugf("punchDelete extent %v offset %v, size %v", e, offset, size)
 	if int(offset)%util.PageSize != 0 {
 		return false, ParameterMismatchError
 	}
@@ -504,7 +504,7 @@ func (e *Extent) punchDelete(offset, size int64) (hasDelete bool, err error) {
 	if newOffset-offset >= size {
 		return true, nil
 	}
-	log.LogDebugf("punchDelete offset %v size %v", offset, size)
+	log.Debugf("punchDelete offset %v size %v", offset, size)
 	err = fallocate(int(e.file.Fd()), util.FallocFLPunchHole|util.FallocFLKeepSize, offset, size)
 	return
 }
@@ -525,7 +525,7 @@ func (e *Extent) TinyExtentRecover(data []byte, offset, size int64, crc uint32, 
 		return fmt.Errorf("error empty packet on (%v) offset(%v) size(%v)"+
 			" isEmptyPacket(%v)  e.dataSize(%v)", e.file.Name(), offset, size, isEmptyPacket, e.dataSize)
 	}
-	log.LogDebugf("before file (%v) getRealBlockNo (%v) isEmptyPacket(%v)"+
+	log.Debugf("before file (%v) getRealBlockNo (%v) isEmptyPacket(%v)"+
 		"offset(%v) size(%v) e.datasize(%v)", e.filePath, e.getRealBlockCnt(), isEmptyPacket, offset, size, e.dataSize)
 	if isEmptyPacket {
 		var finfo os.FileInfo
@@ -552,7 +552,7 @@ func (e *Extent) TinyExtentRecover(data []byte, offset, size int64, crc uint32, 
 		watermark = watermark + (util.PageSize - watermark%util.PageSize)
 	}
 	e.dataSize = watermark
-	log.LogDebugf("after file (%v) getRealBlockNo (%v) isEmptyPacket(%v)"+
+	log.Debugf("after file (%v) getRealBlockNo (%v) isEmptyPacket(%v)"+
 		"offset(%v) size(%v) e.datasize(%v)", e.filePath, e.getRealBlockCnt(), isEmptyPacket, offset, size, e.dataSize)
 
 	return

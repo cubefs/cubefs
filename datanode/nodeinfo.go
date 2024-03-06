@@ -4,7 +4,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/cubefs/cubefs/util/log"
+	"github.com/cubefs/cubefs/blobstore/util/log"
 	"golang.org/x/time/rate"
 )
 
@@ -26,7 +26,7 @@ func (m *DataNode) startUpdateNodeInfo() {
 	for {
 		select {
 		case <-nodeInfoStopC:
-			log.LogInfo("datanode nodeinfo goroutine stopped")
+			log.Info("datanode nodeinfo goroutine stopped")
 			return
 		case <-ticker.C:
 			m.updateNodeInfo()
@@ -41,7 +41,7 @@ func (m *DataNode) stopUpdateNodeInfo() {
 func (m *DataNode) updateNodeInfo() {
 	clusterInfo, err := MasterClient.AdminAPI().GetClusterInfo()
 	if err != nil {
-		log.LogErrorf("[updateDataNodeInfo] %s", err.Error())
+		log.Errorf("[updateDataNodeInfo] %s", err.Error())
 		return
 	}
 
@@ -51,7 +51,7 @@ func (m *DataNode) updateNodeInfo() {
 
 	atomic.StoreUint64(&m.dpMaxRepairErrCnt, clusterInfo.DpMaxRepairErrCnt)
 
-	log.LogInfof("updateNodeInfo from master:"+
+	log.Infof("updateNodeInfo from master:"+
 		"deleteLimite(%v), autoRepairLimit(%v), dpMaxRepairErrCnt(%v)",
 		clusterInfo.DataNodeDeleteLimitRate, clusterInfo.DataNodeAutoRepairLimitRate,
 		clusterInfo.DpMaxRepairErrCnt)
