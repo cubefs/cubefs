@@ -517,10 +517,6 @@ func (o *ObjectNode) checkReqParts(param *RequestParam, reqParts *CompleteMultip
 	}
 
 	for idx, reqPart := range reqParts.Parts {
-		if reqPart.PartNumber > len(multipartInfo.Parts) {
-			err = InvalidPart
-			return
-		}
 		if multipartInfo.Parts[reqPart.PartNumber-1].Size < MinPartSizeBytes && idx < len(reqParts.Parts)-1 {
 			err = EntityTooSmall
 			return
@@ -617,7 +613,7 @@ func (o *ObjectNode) completeMultipartUploadHandler(w http.ResponseWriter, r *ht
 	}
 	previousPartNum := 0
 	for _, p := range multipartUploadRequest.Parts {
-		if p.PartNumber < 1 {
+		if p.PartNumber < MinPartNumberValid || p.PartNumber > MaxPartNumberValid {
 			log.LogErrorf("completeMultipartUploadHandler: invalid part number: requestID(%v) partNum=%d",
 				GetRequestID(r), p.PartNumber)
 			errorCode = InvalidPartNumber
