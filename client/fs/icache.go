@@ -19,8 +19,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/cubefs/cubefs/blobstore/util/log"
 	"github.com/cubefs/cubefs/proto"
-	"github.com/cubefs/cubefs/util/log"
 )
 
 const (
@@ -157,9 +157,9 @@ func (ic *InodeCache) backgroundEviction() {
 	defer t.Stop()
 
 	for range t.C {
-		log.LogInfof("InodeCache: start BG evict")
+		log.Infof("InodeCache: start BG evict")
 		if !DisableMetaCache {
-			log.LogInfof("InodeCache: no need to do BG evict")
+			log.Infof("InodeCache: no need to do BG evict")
 			continue
 		}
 		start := time.Now()
@@ -167,6 +167,6 @@ func (ic *InodeCache) backgroundEviction() {
 		ic.evict(false)
 		ic.Unlock()
 		elapsed := time.Since(start)
-		log.LogInfof("InodeCache: total inode cache(%d), cost(%d)ns", ic.lruList.Len(), elapsed.Nanoseconds())
+		log.Infof("InodeCache: total inode cache(%d), cost(%d)ns", ic.lruList.Len(), elapsed.Nanoseconds())
 	}
 }
