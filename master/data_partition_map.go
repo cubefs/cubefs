@@ -15,6 +15,7 @@
 package master
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"runtime"
@@ -23,7 +24,6 @@ import (
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/compressor"
-	"github.com/cubefs/cubefs/util/log"
 )
 
 // DataPartitionMap stores all the data partitionMap
@@ -154,8 +154,9 @@ func (dpMap *DataPartitionMap) setDataPartitionCompressCache(responseCompress []
 	}
 }
 
-func (dpMap *DataPartitionMap) updateResponseCache(needsUpdate bool, minPartitionID uint64, volType int) (body []byte, err error) {
+func (dpMap *DataPartitionMap) updateResponseCache(ctx context.Context, needsUpdate bool, minPartitionID uint64, volType int) (body []byte, err error) {
 	responseCache := dpMap.getDataPartitionResponseCache()
+	span := proto.SpanFromContext(ctx)
 	if responseCache == nil || needsUpdate || len(responseCache) == 0 {
 		dpMap.readMutex.Lock()
 		defer dpMap.readMutex.Unlock()
@@ -164,9 +165,9 @@ func (dpMap *DataPartitionMap) updateResponseCache(needsUpdate bool, minPartitio
 			body = responseCache
 			return
 		}
-		dpResps := dpMap.getDataPartitionsView(minPartitionID)
+		dpResps := dpMap.getDataPartitionsView(ctx, minPartitionID)
 		if len(dpResps) == 0 && proto.IsHot(volType) {
-			log.LogError(fmt.Sprintf("action[updateDpResponseCache],volName[%v] minPartitionID:%v,err:%v",
+			span.Error(fmt.Sprintf("action[updateDpResponseCache],volName[%v] minPartitionID:%v,err:%v",
 				dpMap.volName, minPartitionID, proto.ErrNoAvailDataPartition))
 			return nil, proto.ErrNoAvailDataPartition
 		}
@@ -174,7 +175,7 @@ func (dpMap *DataPartitionMap) updateResponseCache(needsUpdate bool, minPartitio
 		cv.DataPartitions = dpResps
 		reply := newSuccessHTTPReply(cv)
 		if body, err = json.Marshal(reply); err != nil {
-			log.LogError(fmt.Sprintf("action[updateDpResponseCache],minPartitionID:%v,err:%v",
+			span.Error(fmt.Sprintf("action[updateDpResponseCache],minPartitionID:%v,err:%v",
 				minPartitionID, err.Error()))
 			return nil, proto.ErrMarshalData
 		}
@@ -186,17 +187,19 @@ func (dpMap *DataPartitionMap) updateResponseCache(needsUpdate bool, minPartitio
 	return
 }
 
-func (dpMap *DataPartitionMap) updateCompressCache(needsUpdate bool, minPartitionID uint64, volType int) (body []byte, err error) {
+func (dpMap *DataPartitionMap) updateCompressCache(ctx context.Context, needsUpdate bool, minPartitionID uint64, volType int) (body []byte, err error) {
+	span := proto.SpanFromContext(ctx)
 	body = dpMap.getDataPartitionCompressCache()
 	if len(body) > 0 {
 		return
 	}
-	if body, err = dpMap.updateResponseCache(needsUpdate, minPartitionID, volType); err != nil {
-		log.LogErrorf("action[updateCompressCache]updateResponseCache failed,err:%+v", err)
+
+	if body, err = dpMap.updateResponseCache(ctx, needsUpdate, minPartitionID, volType); err != nil {
+		span.Errorf("action[updateCompressCache]updateResponseCache failed,err:%+v", err)
 		return
 	}
 	if body, err = compressor.New(compressor.EncodingGzip).Compress(body); err != nil {
-		log.LogErrorf("action[updateCompressCache]GzipCompressor.Compress failed,err:%+v", err)
+		span.Errorf("action[updateCompressCache]GzipCompressor.Compress failed,err:%+v", err)
 		err = proto.ErrCompressFailed
 		return
 	}
@@ -204,16 +207,17 @@ func (dpMap *DataPartitionMap) updateCompressCache(needsUpdate bool, minPartitio
 	return
 }
 
-func (dpMap *DataPartitionMap) getDataPartitionsView(minPartitionID uint64) (dpResps []*proto.DataPartitionResponse) {
+func (dpMap *DataPartitionMap) getDataPartitionsView(ctx context.Context, minPartitionID uint64) (dpResps []*proto.DataPartitionResponse) {
 	dpResps = make([]*proto.DataPartitionResponse, 0)
-	log.LogDebugf("volName[%v] DataPartitionMapLen[%v],DataPartitionsLen[%v],minPartitionID[%v]",
+	span := proto.SpanFromContext(ctx)
+	span.Debugf("volName[%v] DataPartitionMapLen[%v],DataPartitionsLen[%v],minPartitionID[%v]",
 		dpMap.volName, len(dpMap.partitionMap), len(dpMap.partitions), minPartitionID)
 
 	dpMap.RLock()
 	defer dpMap.RUnlock()
 	for _, dp := range dpMap.partitionMap {
 		if len(dp.Hosts) == 0 {
-			log.LogErrorf("getDataPartitionsView. dp %v host nil", dp.PartitionID)
+			span.Errorf("getDataPartitionsView. dp %v host nil", dp.PartitionID)
 			continue
 		}
 		if dp.PartitionID <= minPartitionID {
@@ -253,8 +257,9 @@ func (dpMap *DataPartitionMap) getDataPartitionsToBeReleased(numberOfDataPartiti
 	return
 }
 
-func (dpMap *DataPartitionMap) freeMemOccupiedByDataPartitions(partitions []*DataPartition) {
+func (dpMap *DataPartitionMap) freeMemOccupiedByDataPartitions(ctx context.Context, partitions []*DataPartition) {
 	var wg sync.WaitGroup
+	span := proto.SpanFromContext(ctx)
 	for _, dp := range partitions {
 		wg.Add(1)
 		go func(dp *DataPartition) {
@@ -264,10 +269,10 @@ func (dpMap *DataPartitionMap) freeMemOccupiedByDataPartitions(partitions []*Dat
 					const size = runtimeStackBufSize
 					buf := make([]byte, size)
 					buf = buf[:runtime.Stack(buf, false)]
-					log.LogError(fmt.Sprintf("[%v] freeMemOccupiedByDataPartitions panic %v: %s\n", dpMap.volName, err, buf))
+					span.Error(fmt.Sprintf("[%v] freeMemOccupiedByDataPartitions panic %v: %s\n", dpMap.volName, err, buf))
 				}
 			}()
-			dp.releaseDataPartition()
+			dp.releaseDataPartition(ctx)
 		}(dp)
 	}
 	wg.Wait()
@@ -313,17 +318,18 @@ func (dpMap *DataPartitionMap) totalUsedSpace() (totalUsed uint64) {
 	return
 }
 
-func (dpMap *DataPartitionMap) setAllDataPartitionsToReadOnly() {
+func (dpMap *DataPartitionMap) setAllDataPartitionsToReadOnly(ctx context.Context) {
 	dpMap.Lock()
 	defer dpMap.Unlock()
 	changedCnt := 0
+	span := proto.SpanFromContext(ctx)
 	for _, dp := range dpMap.partitions {
 		if proto.ReadWrite == dp.Status {
 			dp.Status = proto.ReadOnly
 			changedCnt++
 		}
 	}
-	log.LogDebugf("action[setAllDataPartitionsToReadOnly] ReadWrite->ReadOnly dp cnt: %v", changedCnt)
+	span.Debugf("action[setAllDataPartitionsToReadOnly] ReadWrite->ReadOnly dp cnt: %v", changedCnt)
 }
 
 func (dpMap *DataPartitionMap) checkBadDiskDataPartitions(diskPath, nodeAddr string) (partitions []*DataPartition) {
