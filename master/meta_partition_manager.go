@@ -15,19 +15,20 @@
 package master
 
 import (
+	"context"
 	"fmt"
 	"math"
 	"time"
 
-	"github.com/cubefs/cubefs/util/log"
+	"github.com/cubefs/cubefs/proto"
 )
 
-func (c *Cluster) scheduleToLoadMetaPartitions() {
+func (c *Cluster) scheduleToLoadMetaPartitions(ctx context.Context) {
 	go func() {
 		for {
 			if c.partition != nil && c.partition.IsRaftLeader() {
 				if c.vols != nil {
-					c.checkLoadMetaPartitions()
+					c.checkLoadMetaPartitions(ctx)
 				}
 			}
 			time.Sleep(2 * time.Second * defaultIntervalToCheckDataPartition)
@@ -35,11 +36,12 @@ func (c *Cluster) scheduleToLoadMetaPartitions() {
 	}()
 }
 
-func (c *Cluster) checkLoadMetaPartitions() {
+func (c *Cluster) checkLoadMetaPartitions(ctx context.Context) {
+	span := proto.SpanFromContext(ctx)
 	defer func() {
 		if r := recover(); r != nil {
-			log.LogWarnf("checkDiskRecoveryProgress occurred panic,err[%v]", r)
-			WarnBySpecialKey(fmt.Sprintf("%v_%v_scheduling_job_panic", c.Name, ModuleName),
+			span.Warnf("checkDiskRecoveryProgress occurred panic,err[%v]", r)
+			WarnBySpecialKey(ctx, fmt.Sprintf("%v_%v_scheduling_job_panic", c.Name, ModuleName),
 				"checkDiskRecoveryProgress occurred panic")
 		}
 	}()
@@ -47,12 +49,12 @@ func (c *Cluster) checkLoadMetaPartitions() {
 	for _, vol := range vols {
 		mps := vol.cloneMetaPartitionMap()
 		for _, mp := range mps {
-			c.doLoadMetaPartition(mp)
+			c.doLoadMetaPartition(ctx, mp)
 		}
 	}
 }
 
-func (mp *MetaPartition) checkSnapshot(c *Cluster) {
+func (mp *MetaPartition) checkSnapshot(ctx context.Context, c *Cluster) {
 	if len(mp.LoadResponse) == 0 {
 		return
 	}
@@ -62,8 +64,8 @@ func (mp *MetaPartition) checkSnapshot(c *Cluster) {
 	if !mp.isSameApplyID() {
 		return
 	}
-	ckInode := mp.checkInodeCount(c)
-	ckDentry := mp.checkDentryCount(c)
+	ckInode := mp.checkInodeCount(ctx, c)
+	ckDentry := mp.checkDentryCount(ctx, c)
 	if ckInode && ckDentry {
 		mp.EqualCheckPass = true
 	} else {
@@ -91,7 +93,7 @@ func (mp *MetaPartition) isSameApplyID() bool {
 	return rst
 }
 
-func (mp *MetaPartition) checkInodeCount(c *Cluster) (isEqual bool) {
+func (mp *MetaPartition) checkInodeCount(ctx context.Context, c *Cluster) (isEqual bool) {
 	isEqual = true
 	maxInode := mp.LoadResponse[0].MaxInode
 	maxInodeCount := mp.LoadResponse[0].InodeCount
@@ -118,7 +120,7 @@ func (mp *MetaPartition) checkInodeCount(c *Cluster) (isEqual bool) {
 		msg := fmt.Sprintf("inode count is not equal,vol[%v],mpID[%v],", mp.volName, mp.PartitionID)
 		for _, lr := range mp.LoadResponse {
 			lrMsg := fmt.Sprintf(msg+lr.Addr, "applyId[%d],committedId[%d],maxInode[%d],InodeCnt[%d]", lr.ApplyID, lr.CommittedID, lr.MaxInode, lr.InodeCount)
-			Warn(c.Name, lrMsg)
+			Warn(ctx, c.Name, lrMsg)
 		}
 		if !maxInodeEqual {
 			c.inodeCountNotEqualMP.Store(mp.PartitionID, mp)
@@ -138,7 +140,7 @@ func (mp *MetaPartition) checkInodeCount(c *Cluster) (isEqual bool) {
 	return
 }
 
-func (mp *MetaPartition) checkDentryCount(c *Cluster) (isEqual bool) {
+func (mp *MetaPartition) checkDentryCount(ctx context.Context, c *Cluster) (isEqual bool) {
 	isEqual = true
 	if mp.IsRecover {
 		return
@@ -155,7 +157,7 @@ func (mp *MetaPartition) checkDentryCount(c *Cluster) (isEqual bool) {
 		msg := fmt.Sprintf("dentry count is not equal,vol[%v],mpID[%v],", mp.volName, mp.PartitionID)
 		for _, lr := range mp.LoadResponse {
 			lrMsg := fmt.Sprintf(msg+lr.Addr, "applyId[%d],committedId[%d],dentryCount[%d]", lr.ApplyID, lr.CommittedID, lr.DentryCount)
-			Warn(c.Name, lrMsg)
+			Warn(ctx, c.Name, lrMsg)
 		}
 		c.dentryCountNotEqualMP.Store(mp.PartitionID, mp)
 	} else {
@@ -166,12 +168,12 @@ func (mp *MetaPartition) checkDentryCount(c *Cluster) (isEqual bool) {
 	return
 }
 
-func (c *Cluster) scheduleToCheckMetaPartitionRecoveryProgress() {
+func (c *Cluster) scheduleToCheckMetaPartitionRecoveryProgress(ctx context.Context) {
 	go func() {
 		for {
 			if c.partition != nil && c.partition.IsRaftLeader() {
 				if c.vols != nil {
-					c.checkMetaPartitionRecoveryProgress()
+					c.checkMetaPartitionRecoveryProgress(ctx)
 				}
 			}
 			time.Sleep(time.Second * defaultIntervalToCheckDataPartition)
@@ -179,11 +181,12 @@ func (c *Cluster) scheduleToCheckMetaPartitionRecoveryProgress() {
 	}()
 }
 
-func (c *Cluster) checkMetaPartitionRecoveryProgress() {
+func (c *Cluster) checkMetaPartitionRecoveryProgress(ctx context.Context) {
+	span := proto.SpanFromContext(ctx)
 	defer func() {
 		if r := recover(); r != nil {
-			log.LogWarnf("checkMetaPartitionRecoveryProgress occurred panic,err[%v]", r)
-			WarnBySpecialKey(fmt.Sprintf("%v_%v_scheduling_job_panic", c.Name, ModuleName),
+			span.Warnf("checkMetaPartitionRecoveryProgress occurred panic,err[%v]", r)
+			WarnBySpecialKey(ctx, fmt.Sprintf("%v_%v_scheduling_job_panic", c.Name, ModuleName),
 				"checkMetaPartitionRecoveryProgress occurred panic")
 		}
 	}()
@@ -197,13 +200,13 @@ func (c *Cluster) checkMetaPartitionRecoveryProgress() {
 		for _, partitionID := range badMetaPartitionIds {
 			partition, err := c.getMetaPartitionByID(partitionID)
 			if err != nil {
-				Warn(c.Name, fmt.Sprintf("checkMetaPartitionRecoveryProgress clusterID[%v], partitionID[%v] is not exist", c.Name, partitionID))
+				Warn(ctx, c.Name, fmt.Sprintf("checkMetaPartitionRecoveryProgress clusterID[%v], partitionID[%v] is not exist", c.Name, partitionID))
 				continue
 			}
 
 			vol, err := c.getVol(partition.volName)
 			if err != nil {
-				Warn(c.Name, fmt.Sprintf("checkMetaPartitionRecoveryProgress clusterID[%v],vol[%v] partitionID[%v]is not exist",
+				Warn(ctx, c.Name, fmt.Sprintf("checkMetaPartitionRecoveryProgress clusterID[%v],vol[%v] partitionID[%v]is not exist",
 					c.Name, partition.volName, partitionID))
 				continue
 			}
@@ -216,9 +219,9 @@ func (c *Cluster) checkMetaPartitionRecoveryProgress() {
 			if partition.getMinusOfMaxInodeID() < defaultMinusOfMaxInodeID {
 				partition.IsRecover = false
 				partition.RLock()
-				c.syncUpdateMetaPartition(partition)
+				c.syncUpdateMetaPartition(ctx, partition)
 				partition.RUnlock()
-				Warn(c.Name, fmt.Sprintf("checkMetaPartitionRecoveryProgress clusterID[%v],vol[%v] partitionID[%v] has recovered success",
+				Warn(ctx, c.Name, fmt.Sprintf("checkMetaPartitionRecoveryProgress clusterID[%v],vol[%v] partitionID[%v] has recovered success",
 					c.Name, partition.volName, partitionID))
 			} else {
 				newBadMpIds = append(newBadMpIds, partitionID)
@@ -226,11 +229,11 @@ func (c *Cluster) checkMetaPartitionRecoveryProgress() {
 		}
 
 		if len(newBadMpIds) == 0 {
-			Warn(c.Name, fmt.Sprintf("checkMetaPartitionRecoveryProgress clusterID[%v],node[%v] has recovered success", c.Name, key))
+			Warn(ctx, c.Name, fmt.Sprintf("checkMetaPartitionRecoveryProgress clusterID[%v],node[%v] has recovered success", c.Name, key))
 			c.BadMetaPartitionIds.Delete(key)
 		} else {
 			c.BadMetaPartitionIds.Store(key, newBadMpIds)
-			log.LogInfof("checkMetaPartitionRecoveryProgress BadMetaPartitionIds there is still (%d) mp in recover, addr (%s)", len(newBadMpIds), key)
+			span.Infof("checkMetaPartitionRecoveryProgress BadMetaPartitionIds there is still (%d) mp in recover, addr (%s)", len(newBadMpIds), key)
 		}
 
 		return true

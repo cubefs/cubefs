@@ -15,6 +15,7 @@
 package master
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"runtime"
@@ -23,54 +24,57 @@ import (
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/errors"
-	"github.com/cubefs/cubefs/util/log"
 )
 
-func (c *Cluster) addDataNodeTasks(tasks []*proto.AdminTask) {
+func (c *Cluster) addDataNodeTasks(ctx context.Context, tasks []*proto.AdminTask) {
 	for _, t := range tasks {
-		c.addDataNodeTask(t)
+		c.addDataNodeTask(ctx, t)
 	}
 }
 
-func (c *Cluster) addDataNodeTask(task *proto.AdminTask) {
+func (c *Cluster) addDataNodeTask(ctx context.Context, task *proto.AdminTask) {
 	if task == nil {
 		return
 	}
+	span := proto.SpanFromContext(ctx)
 	if node, err := c.dataNode(task.OperatorAddr); err != nil {
-		log.LogWarn(fmt.Sprintf("action[putTasks],nodeAddr:%v,taskID:%v,err:%v", task.OperatorAddr, task.ID, err))
+		span.Warn(fmt.Sprintf("action[putTasks],nodeAddr:%v,taskID:%v,err:%v", task.OperatorAddr, task.ID, err))
 	} else {
 		node.TaskManager.AddTask(task)
 	}
 }
 
-func (c *Cluster) addMetaNodeTasks(tasks []*proto.AdminTask) {
+func (c *Cluster) addMetaNodeTasks(ctx context.Context, tasks []*proto.AdminTask) {
+	span := proto.SpanFromContext(ctx)
 	for _, t := range tasks {
 		if t == nil {
 			continue
 		}
 		if node, err := c.metaNode(t.OperatorAddr); err != nil {
-			log.LogWarn(fmt.Sprintf("action[putTasks],nodeAddr:%v,taskID:%v,err:%v", t.OperatorAddr, t.ID, err.Error()))
+			span.Warn(fmt.Sprintf("action[putTasks],nodeAddr:%v,taskID:%v,err:%v", t.OperatorAddr, t.ID, err.Error()))
 		} else {
 			node.Sender.AddTask(t)
 		}
 	}
 }
 
-func (c *Cluster) addLcNodeTasks(tasks []*proto.AdminTask) {
+func (c *Cluster) addLcNodeTasks(ctx context.Context, tasks []*proto.AdminTask) {
+	span := proto.SpanFromContext(ctx)
 	for _, t := range tasks {
 		if t == nil {
 			continue
 		}
 		if node, err := c.lcNode(t.OperatorAddr); err != nil {
-			log.LogWarn(fmt.Sprintf("action[putTasks],nodeAddr:%v,taskID:%v,err:%v", t.OperatorAddr, t.ID, err.Error()))
+			span.Warn(fmt.Sprintf("action[putTasks],nodeAddr:%v,taskID:%v,err:%v", t.OperatorAddr, t.ID, err.Error()))
 		} else {
 			node.TaskManager.AddTask(t)
 		}
 	}
 }
 
-func (c *Cluster) waitForResponseToLoadDataPartition(partitions []*DataPartition) {
+func (c *Cluster) waitForResponseToLoadDataPartition(ctx context.Context, partitions []*DataPartition) {
 	var wg sync.WaitGroup
+	span := proto.SpanFromContext(ctx)
 	for _, dp := range partitions {
 		wg.Add(1)
 		go func(dp *DataPartition) {
@@ -80,22 +84,22 @@ func (c *Cluster) waitForResponseToLoadDataPartition(partitions []*DataPartition
 					const size = runtimeStackBufSize
 					buf := make([]byte, size)
 					buf = buf[:runtime.Stack(buf, false)]
-					log.LogError(fmt.Sprintf("doLoadDataPartition panic %v: %s\n", err, buf))
+					span.Error(fmt.Sprintf("doLoadDataPartition panic %v: %s\n", err, buf))
 				}
 			}()
-			c.doLoadDataPartition(dp)
+			c.doLoadDataPartition(ctx, dp)
 		}(dp)
 	}
 	wg.Wait()
 }
 
-func (c *Cluster) loadDataPartition(dp *DataPartition) {
+func (c *Cluster) loadDataPartition(ctx context.Context, dp *DataPartition) {
 	go func() {
-		c.doLoadDataPartition(dp)
+		c.doLoadDataPartition(ctx, dp)
 	}()
 }
 
-func (c *Cluster) migrateMetaPartition(srcAddr, targetAddr string, mp *MetaPartition) (err error) {
+func (c *Cluster) migrateMetaPartition(ctx context.Context, srcAddr, targetAddr string, mp *MetaPartition) (err error) {
 	var (
 		newPeers        []proto.Peer
 		metaNode        *MetaNode
@@ -105,21 +109,21 @@ func (c *Cluster) migrateMetaPartition(srcAddr, targetAddr string, mp *MetaParti
 		oldHosts        []string
 		zones           []string
 	)
-
-	log.LogWarnf("action[migrateMetaPartition],volName[%v], migrate from src[%s] to target[%s],partitionID[%v] begin",
+	span := proto.SpanFromContext(ctx)
+	span.Warnf("action[migrateMetaPartition],volName[%v], migrate from src[%s] to target[%s],partitionID[%v] begin",
 		mp.volName, srcAddr, targetAddr, mp.PartitionID)
 
 	mp.RLock()
 	if !contains(mp.Hosts, srcAddr) {
 		mp.RUnlock()
-		log.LogErrorf("action[migrateMetaPartition],volName[%v], src[%s] not exist, partitionID[%v]",
+		span.Errorf("action[migrateMetaPartition],volName[%v], src[%s] not exist, partitionID[%v]",
 			mp.volName, srcAddr, mp.PartitionID)
 		return fmt.Errorf("migrateMetaPartition src [%s] is not exist in mp(%d)", srcAddr, mp.PartitionID)
 	}
 	oldHosts = mp.Hosts
 	mp.RUnlock()
 
-	if err = c.validateDecommissionMetaPartition(mp, srcAddr, false); err != nil {
+	if err = c.validateDecommissionMetaPartition(ctx, mp, srcAddr, false); err != nil {
 		goto errHandler
 	}
 
@@ -139,20 +143,20 @@ func (c *Cluster) migrateMetaPartition(srcAddr, targetAddr string, mp *MetaParti
 		newPeers = []proto.Peer{{
 			Addr: targetAddr,
 		}}
-	} else if _, newPeers, err = ns.getAvailMetaNodeHosts(oldHosts, 1); err != nil {
+	} else if _, newPeers, err = ns.getAvailMetaNodeHosts(ctx, oldHosts, 1); err != nil {
 		if _, ok := c.vols[mp.volName]; !ok {
-			log.LogWarnf("[migrateMetaPartition] clusterID[%v] partitionID:%v  on node:[%v]",
+			span.Warnf("[migrateMetaPartition] clusterID[%v] partitionID:%v  on node:[%v]",
 				c.Name, mp.PartitionID, mp.Hosts)
 			return
 		}
-		if c.isFaultDomain(c.vols[mp.volName]) {
-			log.LogWarnf("[migrateMetaPartition] clusterID[%v] partitionID:%v  on node:[%v]",
+		if c.isFaultDomain(ctx, c.vols[mp.volName]) {
+			span.Warnf("[migrateMetaPartition] clusterID[%v] partitionID:%v  on node:[%v]",
 				c.Name, mp.PartitionID, mp.Hosts)
 			return
 		}
 		// choose a meta node in other node set in the same zone
 		excludeNodeSets = append(excludeNodeSets, ns.ID)
-		if _, newPeers, err = zone.getAvailNodeHosts(TypeMetaPartition, excludeNodeSets, oldHosts, 1); err != nil {
+		if _, newPeers, err = zone.getAvailNodeHosts(ctx, TypeMetaPartition, excludeNodeSets, oldHosts, 1); err != nil {
 			zones = mp.getLiveZones(srcAddr)
 			var excludeZone []string
 			if len(zones) == 0 {
@@ -161,35 +165,35 @@ func (c *Cluster) migrateMetaPartition(srcAddr, targetAddr string, mp *MetaParti
 				excludeZone = append(excludeZone, zones[0])
 			}
 			// choose a meta node in other zone
-			if _, newPeers, err = c.getHostFromNormalZone(TypeMetaPartition, excludeZone, excludeNodeSets, oldHosts, 1, 1, ""); err != nil {
+			if _, newPeers, err = c.getHostFromNormalZone(ctx, TypeMetaPartition, excludeZone, excludeNodeSets, oldHosts, 1, 1, ""); err != nil {
 				goto errHandler
 			}
 		}
 	}
 
-	if err = c.deleteMetaReplica(mp, srcAddr, false, false); err != nil {
+	if err = c.deleteMetaReplica(ctx, mp, srcAddr, false, false); err != nil {
 		goto errHandler
 	}
 
-	if err = c.addMetaReplica(mp, newPeers[0].Addr); err != nil {
+	if err = c.addMetaReplica(ctx, mp, newPeers[0].Addr); err != nil {
 		goto errHandler
 	}
 
 	mp.IsRecover = true
-	c.putBadMetaPartitions(srcAddr, mp.PartitionID)
+	c.putBadMetaPartitions(ctx, srcAddr, mp.PartitionID)
 
 	mp.RLock()
-	c.syncUpdateMetaPartition(mp)
+	c.syncUpdateMetaPartition(ctx, mp)
 	mp.RUnlock()
 
-	Warn(c.Name, fmt.Sprintf("action[migrateMetaPartition] clusterID[%v] vol[%v] meta partition[%v] "+
-		"migrate addr[%v] success,new addr[%v]", c.Name, mp.volName, mp.PartitionID, srcAddr, newPeers[0].Addr))
+	span.Warnf("action[migrateMetaPartition] clusterID[%v] vol[%v] meta partition[%v] "+
+		"migrate addr[%v] success,new addr[%v]", c.Name, mp.volName, mp.PartitionID, srcAddr, newPeers[0].Addr)
 	return
 
 errHandler:
 	msg := fmt.Sprintf("action[migrateMetaPartition],volName: %v,partitionID: %v,err: %v", mp.volName, mp.PartitionID, errors.Stack(err))
-	log.LogError(msg)
-	Warn(c.Name, msg)
+	span.Error(msg)
+	Warn(ctx, c.Name, msg)
 
 	if err != nil {
 		err = fmt.Errorf("action[migrateMetaPartition] vol[%v],partition[%v],err[%v]", mp.volName, mp.PartitionID, err)
@@ -206,18 +210,18 @@ errHandler:
 // 3. synchronized decommission meta partition
 // 4. synchronized create a new meta partition
 // 5. persistent the new host list
-func (c *Cluster) decommissionMetaPartition(nodeAddr string, mp *MetaPartition) (err error) {
+func (c *Cluster) decommissionMetaPartition(ctx context.Context, nodeAddr string, mp *MetaPartition) (err error) {
 	if c.ForbidMpDecommission {
 		err = fmt.Errorf("cluster mataPartition decommission switch is disabled")
 		return
 	}
-	return c.migrateMetaPartition(nodeAddr, "", mp)
+	return c.migrateMetaPartition(ctx, nodeAddr, "", mp)
 }
 
-func (c *Cluster) validateDecommissionMetaPartition(mp *MetaPartition, nodeAddr string, forceDel bool) (err error) {
+func (c *Cluster) validateDecommissionMetaPartition(ctx context.Context, mp *MetaPartition, nodeAddr string, forceDel bool) (err error) {
 	mp.RLock()
 	defer mp.RUnlock()
-
+	span := proto.SpanFromContext(ctx)
 	var vol *Vol
 	if vol, err = c.getVol(mp.volName); err != nil {
 		return
@@ -228,11 +232,11 @@ func (c *Cluster) validateDecommissionMetaPartition(mp *MetaPartition, nodeAddr 
 	}
 
 	if forceDel {
-		log.LogWarnf("action[validateDecommissionMetaPartition] mp relica be force delete without check missing and recovery status")
+		span.Warnf("action[validateDecommissionMetaPartition] mp relica be force delete without check missing and recovery status")
 		return
 	}
 
-	if err = mp.hasMissingOneReplica(nodeAddr, int(vol.mpReplicaNum)); err != nil {
+	if err = mp.hasMissingOneReplica(ctx, nodeAddr, int(vol.mpReplicaNum)); err != nil {
 		return
 	}
 
@@ -243,9 +247,9 @@ func (c *Cluster) validateDecommissionMetaPartition(mp *MetaPartition, nodeAddr 
 	return
 }
 
-func (c *Cluster) checkInactiveMetaNodes() (inactiveMetaNodes []string, err error) {
+func (c *Cluster) checkInactiveMetaNodes(ctx context.Context) (inactiveMetaNodes []string, err error) {
 	inactiveMetaNodes = make([]string, 0)
-
+	span := proto.SpanFromContext(ctx)
 	c.metaNodes.Range(func(addr, node interface{}) bool {
 		metaNode := node.(*MetaNode)
 		if !metaNode.IsActive {
@@ -254,12 +258,12 @@ func (c *Cluster) checkInactiveMetaNodes() (inactiveMetaNodes []string, err erro
 		return true
 	})
 
-	log.LogInfof("clusterID[%v] inactiveMetaNodes:%v", c.Name, inactiveMetaNodes)
+	span.Infof("clusterID[%v] inactiveMetaNodes:%v", c.Name, inactiveMetaNodes)
 	return
 }
 
 // check corrupt partitions related to this meta node
-func (c *Cluster) checkCorruptMetaNode(metaNode *MetaNode) (corruptPartitions []*MetaPartition, err error) {
+func (c *Cluster) checkCorruptMetaNode(ctx context.Context, metaNode *MetaNode) (corruptPartitions []*MetaPartition, err error) {
 	var (
 		partition         *MetaPartition
 		mn                *MetaNode
@@ -268,6 +272,7 @@ func (c *Cluster) checkCorruptMetaNode(metaNode *MetaNode) (corruptPartitions []
 	)
 	metaNode.RLock()
 	defer metaNode.RUnlock()
+	span := proto.SpanFromContext(ctx)
 	for _, pid := range metaNode.PersistenceMetaPartitions {
 		corruptReplicaNum = 0
 		if partition, err = c.getMetaPartitionByID(pid); err != nil {
@@ -286,14 +291,14 @@ func (c *Cluster) checkCorruptMetaNode(metaNode *MetaNode) (corruptPartitions []
 			corruptPids = append(corruptPids, pid)
 		}
 	}
-	log.LogInfof("action[checkCorruptMetaNode],clusterID[%v] metaNodeAddr:[%v], corrupt partitions%v",
+	span.Infof("action[checkCorruptMetaNode],clusterID[%v] metaNodeAddr:[%v], corrupt partitions%v",
 		c.Name, metaNode.Addr, corruptPids)
 	return
 }
 
 type VolNameSet map[string]struct{}
 
-func (c *Cluster) checkReplicaMetaPartitions() (
+func (c *Cluster) checkReplicaMetaPartitions(ctx context.Context) (
 	lackReplicaMetaPartitions []*MetaPartition, noLeaderMetaPartitions []*MetaPartition,
 	unavailableReplicaMPs []*MetaPartition, excessReplicaMetaPartitions, inodeCountNotEqualMPs, maxInodeNotEqualMPs, dentryCountNotEqualMPs []*MetaPartition, err error) {
 	lackReplicaMetaPartitions = make([]*MetaPartition, 0)
@@ -304,7 +309,7 @@ func (c *Cluster) checkReplicaMetaPartitions() (
 	dentryCountNotEqualMPs = make([]*MetaPartition, 0)
 
 	markDeleteVolNames := make(VolNameSet)
-
+	span := proto.SpanFromContext(ctx)
 	vols := c.copyVols()
 	for _, vol := range vols {
 		if vol.Status == proto.VolStatusMarkDelete {
@@ -356,22 +361,23 @@ func (c *Cluster) checkReplicaMetaPartitions() (
 		}
 		return true
 	})
-	log.LogInfof("clusterID[%v], lackReplicaMetaPartitions count:[%v], noLeaderMetaPartitions count[%v]"+
+	span.Infof("clusterID[%v], lackReplicaMetaPartitions count:[%v], noLeaderMetaPartitions count[%v]"+
 		"unavailableReplicaMPs count:[%v], excessReplicaMp count:[%v]",
 		c.Name, len(lackReplicaMetaPartitions), len(noLeaderMetaPartitions),
 		len(unavailableReplicaMPs), len(excessReplicaMetaPartitions))
 	return
 }
 
-func (c *Cluster) deleteMetaReplica(partition *MetaPartition, addr string, validate bool, forceDel bool) (err error) {
+func (c *Cluster) deleteMetaReplica(ctx context.Context, partition *MetaPartition, addr string, validate bool, forceDel bool) (err error) {
+	span := proto.SpanFromContext(ctx)
 	defer func() {
 		if err != nil {
-			log.LogErrorf("action[deleteMetaReplica],vol[%v],data partition[%v],err[%v]", partition.volName, partition.PartitionID, err)
+			span.Errorf("action[deleteMetaReplica],vol[%v],data partition[%v],err[%v]", partition.volName, partition.PartitionID, err)
 		}
 	}()
 
 	if validate {
-		if err = c.validateDecommissionMetaPartition(partition, addr, forceDel); err != nil {
+		if err = c.validateDecommissionMetaPartition(ctx, partition, addr, forceDel); err != nil {
 			return
 		}
 	}
@@ -382,44 +388,45 @@ func (c *Cluster) deleteMetaReplica(partition *MetaPartition, addr string, valid
 	}
 
 	removePeer := proto.Peer{ID: metaNode.ID, Addr: addr}
-	if err = c.removeMetaPartitionRaftMember(partition, removePeer); err != nil {
+	if err = c.removeMetaPartitionRaftMember(ctx, partition, removePeer); err != nil {
 		return
 	}
 
-	if err = c.deleteMetaPartition(partition, metaNode); err != nil {
+	if err = c.deleteMetaPartition(ctx, partition, metaNode); err != nil {
 		return
 	}
 	return
 }
 
-func (c *Cluster) deleteMetaPartition(partition *MetaPartition, removeMetaNode *MetaNode) (err error) {
+func (c *Cluster) deleteMetaPartition(ctx context.Context, partition *MetaPartition, removeMetaNode *MetaNode) (err error) {
 	partition.Lock()
 	mr, err := partition.getMetaReplica(removeMetaNode.Addr)
+	span := proto.SpanFromContext(ctx)
 	if err != nil {
 		partition.Unlock()
-		log.LogErrorf("action[deleteMetaPartition] vol[%v],meta partition[%v], err[%v]", partition.volName, partition.PartitionID, err)
+		span.Errorf("action[deleteMetaPartition] vol[%v],meta partition[%v], err[%v]", partition.volName, partition.PartitionID, err)
 		return nil
 	}
 	task := mr.createTaskToDeleteReplica(partition.PartitionID)
 	partition.removeReplicaByAddr(removeMetaNode.Addr)
 	partition.removeMissingReplica(removeMetaNode.Addr)
 	partition.Unlock()
-	_, err = removeMetaNode.Sender.syncSendAdminTask(task)
+	_, err = removeMetaNode.Sender.syncSendAdminTask(ctx, task)
 	if err != nil {
-		log.LogErrorf("action[deleteMetaPartition] vol[%v],meta partition[%v],err[%v]", partition.volName, partition.PartitionID, err)
+		span.Errorf("action[deleteMetaPartition] vol[%v],meta partition[%v],err[%v]", partition.volName, partition.PartitionID, err)
 	}
 	return nil
 }
 
-func (c *Cluster) removeMetaPartitionRaftMember(partition *MetaPartition, removePeer proto.Peer) (err error) {
+func (c *Cluster) removeMetaPartitionRaftMember(ctx context.Context, partition *MetaPartition, removePeer proto.Peer) (err error) {
 	partition.offlineMutex.Lock()
 	defer partition.offlineMutex.Unlock()
 	defer func() {
-		if err1 := c.updateMetaPartitionOfflinePeerIDWithLock(partition, 0); err1 != nil {
+		if err1 := c.updateMetaPartitionOfflinePeerIDWithLock(ctx, partition, 0); err1 != nil {
 			err = errors.Trace(err, "updateMetaPartitionOfflinePeerIDWithLock failed, err[%v]", err1)
 		}
 	}()
-	if err = c.updateMetaPartitionOfflinePeerIDWithLock(partition, removePeer.ID); err != nil {
+	if err = c.updateMetaPartitionOfflinePeerIDWithLock(ctx, partition, removePeer.ID); err != nil {
 		return
 	}
 	mr, err := partition.getMetaReplicaLeader()
@@ -438,7 +445,7 @@ func (c *Cluster) removeMetaPartitionRaftMember(partition *MetaPartition, remove
 			return
 		}
 	}
-	if _, err = leaderMetaNode.Sender.syncSendAdminTask(t); err != nil {
+	if _, err = leaderMetaNode.Sender.syncSendAdminTask(ctx, t); err != nil {
 		return
 	}
 	newHosts := make([]string, 0, len(partition.Hosts)-1)
@@ -455,7 +462,7 @@ func (c *Cluster) removeMetaPartitionRaftMember(partition *MetaPartition, remove
 		}
 		newPeers = append(newPeers, peer)
 	}
-	if err = partition.persistToRocksDB("removeMetaPartitionRaftMember", partition.volName, newHosts, newPeers, c); err != nil {
+	if err = partition.persistToRocksDB(ctx, "removeMetaPartitionRaftMember", partition.volName, newHosts, newPeers, c); err != nil {
 		return
 	}
 	if mr.Addr != removePeer.Addr {
@@ -465,26 +472,27 @@ func (c *Cluster) removeMetaPartitionRaftMember(partition *MetaPartition, remove
 	if err != nil {
 		return
 	}
-	if err = partition.tryToChangeLeader(c, metaNode); err != nil {
+	if err = partition.tryToChangeLeader(ctx, c, metaNode); err != nil {
 		return
 	}
 	return
 }
 
-func (c *Cluster) updateMetaPartitionOfflinePeerIDWithLock(mp *MetaPartition, peerID uint64) (err error) {
+func (c *Cluster) updateMetaPartitionOfflinePeerIDWithLock(ctx context.Context, mp *MetaPartition, peerID uint64) (err error) {
 	mp.Lock()
 	defer mp.Unlock()
 	mp.OfflinePeerID = peerID
-	if err = mp.persistToRocksDB("updateMetaPartitionOfflinePeerIDWithLock", mp.volName, mp.Hosts, mp.Peers, c); err != nil {
+	if err = mp.persistToRocksDB(ctx, "updateMetaPartitionOfflinePeerIDWithLock", mp.volName, mp.Hosts, mp.Peers, c); err != nil {
 		return
 	}
 	return
 }
 
-func (c *Cluster) addMetaReplica(partition *MetaPartition, addr string) (err error) {
+func (c *Cluster) addMetaReplica(ctx context.Context, partition *MetaPartition, addr string) (err error) {
+	span := proto.SpanFromContext(ctx)
 	defer func() {
 		if err != nil {
-			log.LogErrorf("action[addMetaReplica],vol[%v],data partition[%v],err[%v]", partition.volName, partition.PartitionID, err)
+			span.Errorf("action[addMetaReplica],vol[%v],data partition[%v],err[%v]", partition.volName, partition.PartitionID, err)
 		}
 	}()
 	partition.Lock()
@@ -498,17 +506,17 @@ func (c *Cluster) addMetaReplica(partition *MetaPartition, addr string) (err err
 		return
 	}
 	addPeer := proto.Peer{ID: metaNode.ID, Addr: addr}
-	if err = c.addMetaPartitionRaftMember(partition, addPeer); err != nil {
+	if err = c.addMetaPartitionRaftMember(ctx, partition, addPeer); err != nil {
 		return
 	}
 	newHosts := make([]string, 0, len(partition.Hosts)+1)
 	newPeers := make([]proto.Peer, 0, len(partition.Hosts)+1)
 	newHosts = append(partition.Hosts, addPeer.Addr)
 	newPeers = append(partition.Peers, addPeer)
-	if err = partition.persistToRocksDB("addMetaReplica", partition.volName, newHosts, newPeers, c); err != nil {
+	if err = partition.persistToRocksDB(ctx, "addMetaReplica", partition.volName, newHosts, newPeers, c); err != nil {
 		return
 	}
-	if err = c.createMetaReplica(partition, addPeer); err != nil {
+	if err = c.createMetaReplica(ctx, partition, addPeer); err != nil {
 		return
 	}
 	if err = partition.afterCreation(addPeer.Addr, c); err != nil {
@@ -517,7 +525,7 @@ func (c *Cluster) addMetaReplica(partition *MetaPartition, addr string) (err err
 	return
 }
 
-func (c *Cluster) createMetaReplica(partition *MetaPartition, addPeer proto.Peer) (err error) {
+func (c *Cluster) createMetaReplica(ctx context.Context, partition *MetaPartition, addPeer proto.Peer) (err error) {
 	task, err := partition.createTaskToCreateReplica(addPeer.Addr)
 	if err != nil {
 		return
@@ -526,13 +534,14 @@ func (c *Cluster) createMetaReplica(partition *MetaPartition, addPeer proto.Peer
 	if err != nil {
 		return
 	}
-	if _, err = metaNode.Sender.syncSendAdminTask(task); err != nil {
+	if _, err = metaNode.Sender.syncSendAdminTask(ctx, task); err != nil {
 		return
 	}
 	return
 }
 
-func (c *Cluster) buildAddMetaPartitionRaftMemberTaskAndSyncSend(mp *MetaPartition, addPeer proto.Peer, leaderAddr string) (resp *proto.Packet, err error) {
+func (c *Cluster) buildAddMetaPartitionRaftMemberTaskAndSyncSend(ctx context.Context, mp *MetaPartition, addPeer proto.Peer, leaderAddr string) (resp *proto.Packet, err error) {
+	span := proto.SpanFromContext(ctx)
 	defer func() {
 		var resultCode uint8
 		if resp != nil {
@@ -540,10 +549,10 @@ func (c *Cluster) buildAddMetaPartitionRaftMemberTaskAndSyncSend(mp *MetaPartiti
 		}
 
 		if err != nil {
-			log.LogErrorf("action[addMetaRaftMemberAndSend],vol[%v],meta partition[%v],resultCode[%v],err[%v]",
+			span.Errorf("action[addMetaRaftMemberAndSend],vol[%v],meta partition[%v],resultCode[%v],err[%v]",
 				mp.volName, mp.PartitionID, resultCode, err)
 		} else {
-			log.LogWarnf("action[addMetaRaftMemberAndSend],vol[%v],meta partition[%v],resultCode[%v]",
+			span.Warnf("action[addMetaRaftMemberAndSend],vol[%v],meta partition[%v],resultCode[%v]",
 				mp.volName, mp.PartitionID, resultCode)
 		}
 	}()
@@ -556,13 +565,13 @@ func (c *Cluster) buildAddMetaPartitionRaftMemberTaskAndSyncSend(mp *MetaPartiti
 	if err != nil {
 		return
 	}
-	if resp, err = leaderMetaNode.Sender.syncSendAdminTask(t); err != nil {
+	if resp, err = leaderMetaNode.Sender.syncSendAdminTask(ctx, t); err != nil {
 		return
 	}
 	return
 }
 
-func (c *Cluster) addMetaPartitionRaftMember(partition *MetaPartition, addPeer proto.Peer) (err error) {
+func (c *Cluster) addMetaPartitionRaftMember(ctx context.Context, partition *MetaPartition, addPeer proto.Peer) (err error) {
 	var (
 		candidateAddrs []string
 		leaderAddr     string
@@ -589,7 +598,7 @@ func (c *Cluster) addMetaPartitionRaftMember(partition *MetaPartition, addPeer p
 		if leaderAddr == "" && len(candidateAddrs) < int(partition.ReplicaNum) {
 			time.Sleep(retrySendSyncTaskInternal)
 		}
-		_, err = c.buildAddMetaPartitionRaftMemberTaskAndSyncSend(partition, addPeer, host)
+		_, err = c.buildAddMetaPartitionRaftMemberTaskAndSyncSend(ctx, partition, addPeer, host)
 		if err == nil {
 			break
 		}
@@ -600,13 +609,13 @@ func (c *Cluster) addMetaPartitionRaftMember(partition *MetaPartition, addPeer p
 	return
 }
 
-func (c *Cluster) loadMetaPartitionAndCheckResponse(mp *MetaPartition) {
+func (c *Cluster) loadMetaPartitionAndCheckResponse(ctx context.Context, mp *MetaPartition) {
 	go func() {
-		c.doLoadMetaPartition(mp)
+		c.doLoadMetaPartition(ctx, mp)
 	}()
 }
 
-func (c *Cluster) doLoadMetaPartition(mp *MetaPartition) {
+func (c *Cluster) doLoadMetaPartition(ctx context.Context, mp *MetaPartition) {
 	var wg sync.WaitGroup
 	mp.Lock()
 	hosts := make([]string, len(mp.Hosts))
@@ -626,7 +635,7 @@ func (c *Cluster) doLoadMetaPartition(mp *MetaPartition) {
 				return
 			}
 			task := mr.createTaskToLoadMetaPartition(mp.PartitionID)
-			response, err := mr.metaNode.Sender.syncSendAdminTask(task)
+			response, err := mr.metaNode.Sender.syncSendAdminTask(ctx, task)
 			if err != nil {
 				errChannel <- err
 				return
@@ -644,25 +653,26 @@ func (c *Cluster) doLoadMetaPartition(mp *MetaPartition) {
 	select {
 	case err := <-errChannel:
 		msg := fmt.Sprintf("action[doLoadMetaPartition] vol[%v],mpID[%v],err[%v]", mp.volName, mp.PartitionID, err.Error())
-		Warn(c.Name, msg)
+		Warn(ctx, c.Name, msg)
 		return
 	default:
 	}
-	mp.checkSnapshot(c)
+	mp.checkSnapshot(ctx, c)
 }
 
-func (c *Cluster) doLoadDataPartition(dp *DataPartition) {
-	log.LogInfo(fmt.Sprintf("action[doLoadDataPartition],partitionID:%v", dp.PartitionID))
+func (c *Cluster) doLoadDataPartition(ctx context.Context, dp *DataPartition) {
+	span := proto.SpanFromContext(ctx)
+	span.Info(fmt.Sprintf("action[doLoadDataPartition],partitionID:%v", dp.PartitionID))
 	if !dp.needsToCompareCRC() {
-		log.LogInfo(fmt.Sprintf("action[doLoadDataPartition],partitionID:%v isRecover[%v] don't need compare", dp.PartitionID, dp.isRecover))
+		span.Info(fmt.Sprintf("action[doLoadDataPartition],partitionID:%v isRecover[%v] don't need compare", dp.PartitionID, dp.isRecover))
 		return
 	}
 	dp.resetFilesWithMissingReplica()
-	loadTasks := dp.createLoadTasks()
-	c.addDataNodeTasks(loadTasks)
+	loadTasks := dp.createLoadTasks(ctx)
+	c.addDataNodeTasks(ctx, loadTasks)
 	success := false
 	for i := 0; i < timeToWaitForResponse; i++ {
-		if dp.checkLoadResponse(c.cfg.DataPartitionTimeOutSec) {
+		if dp.checkLoadResponse(ctx, c.cfg.DataPartitionTimeOutSec) {
 			success = true
 			break
 		}
@@ -675,104 +685,108 @@ func (c *Cluster) doLoadDataPartition(dp *DataPartition) {
 
 	dp.getFileCount()
 	if proto.IsNormalDp(dp.PartitionType) {
-		dp.validateCRC(c.Name)
-		dp.checkReplicaSize(c.Name, c.cfg.diffReplicaSpaceUsage)
+		dp.validateCRC(ctx, c.Name)
+		dp.checkReplicaSize(ctx, c.Name, c.cfg.diffReplicaSpaceUsage)
 	}
 
 	dp.setToNormal()
 }
 
-func (c *Cluster) handleMetaNodeTaskResponse(nodeAddr string, task *proto.AdminTask) (err error) {
+func (c *Cluster) handleMetaNodeTaskResponse(ctx context.Context, nodeAddr string, task *proto.AdminTask) (err error) {
 	if task == nil {
 		return
 	}
-	log.LogDebugf(fmt.Sprintf("action[handleMetaNodeTaskResponse] receive Task response:%v from %v now:%v", task.IdString(), nodeAddr, time.Now().Unix()))
+	span := proto.SpanFromContext(ctx)
+	span.Debugf("action[handleMetaNodeTaskResponse] receive Task response:%v from %v now:%v", task.IdString(), nodeAddr, time.Now().Unix())
 	var metaNode *MetaNode
 
 	if metaNode, err = c.metaNode(nodeAddr); err != nil {
 		goto errHandler
 	}
-	metaNode.Sender.DelTask(task)
-	if err = unmarshalTaskResponse(task); err != nil {
+	metaNode.Sender.DelTask(ctx, task)
+	if err = unmarshalTaskResponse(ctx, task); err != nil {
 		goto errHandler
 	}
 
 	switch task.OpCode {
 	case proto.OpMetaNodeHeartbeat:
 		response := task.Response.(*proto.MetaNodeHeartbeatResponse)
-		err = c.dealMetaNodeHeartbeatResp(task.OperatorAddr, response)
+		err = c.dealMetaNodeHeartbeatResp(ctx, task.OperatorAddr, response)
 	case proto.OpDeleteMetaPartition:
 		response := task.Response.(*proto.DeleteMetaPartitionResponse)
-		err = c.dealDeleteMetaPartitionResp(task.OperatorAddr, response)
+		err = c.dealDeleteMetaPartitionResp(ctx, task.OperatorAddr, response)
 	case proto.OpUpdateMetaPartition:
 		response := task.Response.(*proto.UpdateMetaPartitionResponse)
-		err = c.dealUpdateMetaPartitionResp(task.OperatorAddr, response)
+		err = c.dealUpdateMetaPartitionResp(ctx, task.OperatorAddr, response)
 	case proto.OpVersionOperation:
 		response := task.Response.(*proto.MultiVersionOpResponse)
-		err = c.dealOpMetaNodeMultiVerResp(task.OperatorAddr, response)
+		err = c.dealOpMetaNodeMultiVerResp(ctx, task.OperatorAddr, response)
 	default:
-		err := fmt.Errorf("unknown operate code %v", task.OpCode)
-		log.LogError(err)
+		span.Errorf("unknown operate code %v", task.OpCode)
 	}
 
 	if err != nil {
-		log.LogError(fmt.Sprintf("process task[%v] failed", task.ToString()))
+		span.Errorf("process task[%v] failed", task.ToString())
 	} else {
-		log.LogInfof("process task:%v status:%v success", task.IdString(), task.Status)
+		span.Infof("process task:%v status:%v success", task.IdString(), task.Status)
 	}
 	return
 errHandler:
-	log.LogError(fmt.Sprintf("action[handleMetaNodeTaskResponse],nodeAddr %v,taskId %v,err %v",
-		nodeAddr, task.IdString(), err.Error()))
+	span.Errorf("action[handleMetaNodeTaskResponse],nodeAddr %v,taskId %v,err %v",
+		nodeAddr, task.IdString(), err.Error())
 	return
 }
 
-func (c *Cluster) dealUpdateMetaPartitionResp(nodeAddr string, resp *proto.UpdateMetaPartitionResponse) (err error) {
+func (c *Cluster) dealUpdateMetaPartitionResp(ctx context.Context, nodeAddr string, resp *proto.UpdateMetaPartitionResponse) (err error) {
+	span := proto.SpanFromContext(ctx)
 	if resp.Status == proto.TaskFailed {
 		msg := fmt.Sprintf("action[dealUpdateMetaPartitionResp],clusterID[%v] nodeAddr %v update meta partition failed,err %v",
 			c.Name, nodeAddr, resp.Result)
-		log.LogError(msg)
-		Warn(c.Name, msg)
+		span.Error(msg)
+		Warn(ctx, c.Name, msg)
 	}
 	return
 }
 
-func (c *Cluster) dealOpMetaNodeMultiVerResp(nodeAddr string, resp *proto.MultiVersionOpResponse) (err error) {
+func (c *Cluster) dealOpMetaNodeMultiVerResp(ctx context.Context, nodeAddr string, resp *proto.MultiVersionOpResponse) (err error) {
+	span := proto.SpanFromContext(ctx)
 	if resp.Status == proto.TaskFailed {
 		msg := fmt.Sprintf("action[dealOpMetaNodeMultiVerResp],clusterID[%v] volume [%v] nodeAddr %v operate meta partition snapshot version,err %v",
 			c.Name, resp.VolumeID, nodeAddr, resp.Result)
-		log.LogError(msg)
-		Warn(c.Name, msg)
+		span.Error(msg)
+		Warn(ctx, c.Name, msg)
 	}
 	var vol *Vol
 	if vol, err = c.getVol(resp.VolumeID); err != nil {
 		return
 	}
-	vol.VersionMgr.handleTaskRsp(resp, TypeMetaPartition)
+	vol.VersionMgr.handleTaskRsp(ctx, resp, TypeMetaPartition)
 	return
 }
 
-func (c *Cluster) dealOpDataNodeMultiVerResp(nodeAddr string, resp *proto.MultiVersionOpResponse) (err error) {
+func (c *Cluster) dealOpDataNodeMultiVerResp(ctx context.Context, nodeAddr string, resp *proto.MultiVersionOpResponse) (err error) {
+	span := proto.SpanFromContext(ctx)
 	if resp.Status == proto.TaskFailed {
 		msg := fmt.Sprintf("action[dealOpMetaNodeMultiVerResp],clusterID[%v] volume [%v] nodeAddr %v operate meta partition snapshot version,err %v",
 			c.Name, resp.VolumeID, nodeAddr, resp.Result)
-		log.LogError(msg)
-		Warn(c.Name, msg)
+		span.Error(msg)
+		Warn(ctx, c.Name, msg)
 	}
 	var vol *Vol
 	if vol, err = c.getVol(resp.VolumeID); err != nil {
 		return
 	}
-	vol.VersionMgr.handleTaskRsp(resp, TypeDataPartition)
+	vol.VersionMgr.handleTaskRsp(ctx, resp, TypeDataPartition)
 	return
 }
 
-func (c *Cluster) dealDeleteMetaPartitionResp(nodeAddr string, resp *proto.DeleteMetaPartitionResponse) (err error) {
+func (c *Cluster) dealDeleteMetaPartitionResp(ctx context.Context, nodeAddr string, resp *proto.DeleteMetaPartitionResponse) (err error) {
+	span := proto.SpanFromContext(ctx)
 	if resp.Status == proto.TaskFailed {
 		msg := fmt.Sprintf("action[dealDeleteMetaPartitionResp],clusterID[%v] nodeAddr %v "+
 			"delete meta partition failed,err %v", c.Name, nodeAddr, resp.Result)
-		log.LogError(msg)
-		Warn(c.Name, msg)
+		span.Error(msg)
+		Warn(ctx, c.Name, msg)
 		return
 	}
 	var mr *MetaReplica
@@ -789,22 +803,22 @@ func (c *Cluster) dealDeleteMetaPartitionResp(nodeAddr string, resp *proto.Delet
 	return
 
 errHandler:
-	log.LogError(fmt.Sprintf("dealDeleteMetaPartitionResp %v", err))
+	span.Error(fmt.Sprintf("dealDeleteMetaPartitionResp %v", err))
 	return
 }
 
-func (c *Cluster) dealMetaNodeHeartbeatResp(nodeAddr string, resp *proto.MetaNodeHeartbeatResponse) (err error) {
+func (c *Cluster) dealMetaNodeHeartbeatResp(ctx context.Context, nodeAddr string, resp *proto.MetaNodeHeartbeatResponse) (err error) {
 	var (
 		metaNode *MetaNode
 		logMsg   string
 	)
-
-	log.LogInfof("action[dealMetaNodeHeartbeatResp],clusterID[%v] receive nodeAddr[%v] heartbeat", c.Name, nodeAddr)
+	span := proto.SpanFromContext(ctx)
+	span.Infof("action[dealMetaNodeHeartbeatResp],clusterID[%v] receive nodeAddr[%v] heartbeat", c.Name, nodeAddr)
 	if resp.Status == proto.TaskFailed {
 		msg := fmt.Sprintf("action[dealMetaNodeHeartbeatResp],clusterID[%v] nodeAddr %v heartbeat failed,err %v",
 			c.Name, nodeAddr, resp.Result)
-		log.LogError(msg)
-		Warn(c.Name, msg)
+		span.Errorf(msg)
+		Warn(ctx, c.Name, msg)
 		return
 	}
 
@@ -813,7 +827,7 @@ func (c *Cluster) dealMetaNodeHeartbeatResp(nodeAddr string, resp *proto.MetaNod
 	}
 
 	if metaNode.ToBeOffline {
-		log.LogInfof("action[dealMetaNodeHeartbeatResp] dataNode is toBeOffline, addr[%s]", nodeAddr)
+		span.Infof("action[dealMetaNodeHeartbeatResp] dataNode is toBeOffline, addr[%s]", nodeAddr)
 		return
 	}
 
@@ -825,8 +839,8 @@ func (c *Cluster) dealMetaNodeHeartbeatResp(nodeAddr string, resp *proto.MetaNod
 		c.t.deleteMetaNode(metaNode)
 		oldZoneName := metaNode.ZoneName
 		metaNode.ZoneName = resp.ZoneName
-		c.adjustMetaNode(metaNode)
-		log.LogWarnf("metaNode zone changed from [%v] to [%v]", oldZoneName, resp.ZoneName)
+		c.adjustMetaNode(ctx, metaNode)
+		span.Warnf("metaNode zone changed from [%v] to [%v]", oldZoneName, resp.ZoneName)
 	}
 
 	// change cpu util and io used
@@ -835,30 +849,31 @@ func (c *Cluster) dealMetaNodeHeartbeatResp(nodeAddr string, resp *proto.MetaNod
 	metaNode.setNodeActive()
 
 	if err = c.t.putMetaNode(metaNode); err != nil {
-		log.LogErrorf("action[dealMetaNodeHeartbeatResp],metaNode[%v] error[%v]", metaNode.Addr, err)
+		span.Errorf("action[dealMetaNodeHeartbeatResp],metaNode[%v] error[%v]", metaNode.Addr, err)
 	}
-	c.updateMetaNode(metaNode, resp.MetaPartitionReports, metaNode.reachesThreshold())
+	c.updateMetaNode(ctx, metaNode, resp.MetaPartitionReports, metaNode.reachesThreshold())
 	// todo remove, this no need set metaNode.metaPartitionInfos = nil
 	// metaNode.metaPartitionInfos = nil
 	logMsg = fmt.Sprintf("action[dealMetaNodeHeartbeatResp],metaNode:%v,zone[%v], ReportTime:%v  success", metaNode.Addr, metaNode.ZoneName, time.Now().Unix())
-	log.LogInfof(logMsg)
+	span.Infof(logMsg)
 	return
 errHandler:
 	logMsg = fmt.Sprintf("nodeAddr %v heartbeat error :%v", nodeAddr, errors.Stack(err))
-	log.LogError(logMsg)
+	span.Error(logMsg)
 	return
 }
 
-func (c *Cluster) adjustMetaNode(metaNode *MetaNode) {
+func (c *Cluster) adjustMetaNode(ctx context.Context, metaNode *MetaNode) {
 	c.mnMutex.Lock()
 	defer c.mnMutex.Unlock()
+	span := proto.SpanFromContext(ctx)
 	oldNodeSetID := metaNode.NodeSetID
 	var err error
 	defer func() {
 		if err != nil {
 			err = fmt.Errorf("action[adjustMetaNode],clusterID[%v] addr:%v,zone[%v] err:%v ", c.Name, metaNode.Addr, metaNode.ZoneName, err.Error())
-			log.LogError(errors.Stack(err))
-			Warn(c.Name, err.Error())
+			span.Error(errors.Stack(err))
+			Warn(ctx, c.Name, err.Error())
 		}
 	}()
 	var zone *Zone
@@ -870,7 +885,7 @@ func (c *Cluster) adjustMetaNode(metaNode *MetaNode) {
 	c.nsMutex.Lock()
 	ns := zone.getAvailNodeSetForMetaNode()
 	if ns == nil {
-		if ns, err = zone.createNodeSet(c); err != nil {
+		if ns, err = zone.createNodeSet(ctx, c); err != nil {
 			c.nsMutex.Unlock()
 			return
 		}
@@ -878,25 +893,25 @@ func (c *Cluster) adjustMetaNode(metaNode *MetaNode) {
 	c.nsMutex.Unlock()
 
 	metaNode.NodeSetID = ns.ID
-	if err = c.syncUpdateMetaNode(metaNode); err != nil {
+	if err = c.syncUpdateMetaNode(ctx, metaNode); err != nil {
 		metaNode.NodeSetID = oldNodeSetID
 		return
 	}
-	if err = c.syncUpdateNodeSet(ns); err != nil {
+	if err = c.syncUpdateNodeSet(ctx, ns); err != nil {
 		return
 	}
 	err = c.t.putMetaNode(metaNode)
 	return
 }
 
-func (c *Cluster) handleDataNodeTaskResponse(nodeAddr string, task *proto.AdminTask) {
+func (c *Cluster) handleDataNodeTaskResponse(ctx context.Context, nodeAddr string, task *proto.AdminTask) {
+	span := proto.SpanFromContext(ctx)
 	if task == nil {
-		log.LogInfof("action[handleDataNodeTaskResponse] receive addr[%v] task response,but task is nil", nodeAddr)
+		span.Infof("action[handleDataNodeTaskResponse] receive addr[%v] task response,but task is nil", nodeAddr)
 		return
 	}
-	if log.EnableDebug() {
-		log.LogDebugf("action[handleDataNodeTaskResponse] receive addr[%v] task response:%v", nodeAddr, task.ToString())
-	}
+	span.Debugf("action[handleDataNodeTaskResponse] receive addr[%v] task response:%v", nodeAddr, task.ToString())
+
 	var (
 		err      error
 		dataNode *DataNode
@@ -905,24 +920,24 @@ func (c *Cluster) handleDataNodeTaskResponse(nodeAddr string, task *proto.AdminT
 	if dataNode, err = c.dataNode(nodeAddr); err != nil {
 		goto errHandler
 	}
-	dataNode.TaskManager.DelTask(task)
-	if err = unmarshalTaskResponse(task); err != nil {
+	dataNode.TaskManager.DelTask(ctx, task)
+	if err = unmarshalTaskResponse(ctx, task); err != nil {
 		goto errHandler
 	}
 
 	switch task.OpCode {
 	case proto.OpDeleteDataPartition:
 		response := task.Response.(*proto.DeleteDataPartitionResponse)
-		err = c.dealDeleteDataPartitionResponse(task.OperatorAddr, response)
+		err = c.dealDeleteDataPartitionResponse(ctx, task.OperatorAddr, response)
 	case proto.OpLoadDataPartition:
 		response := task.Response.(*proto.LoadDataPartitionResponse)
-		err = c.handleResponseToLoadDataPartition(task.OperatorAddr, response)
+		err = c.handleResponseToLoadDataPartition(ctx, task.OperatorAddr, response)
 	case proto.OpDataNodeHeartbeat:
 		response := task.Response.(*proto.DataNodeHeartbeatResponse)
-		err = c.handleDataNodeHeartbeatResp(task.OperatorAddr, response)
+		err = c.handleDataNodeHeartbeatResp(ctx, task.OperatorAddr, response)
 	case proto.OpVersionOperation:
 		response := task.Response.(*proto.MultiVersionOpResponse)
-		err = c.dealOpDataNodeMultiVerResp(task.OperatorAddr, response)
+		err = c.dealOpDataNodeMultiVerResp(ctx, task.OperatorAddr, response)
 	default:
 		err = fmt.Errorf(fmt.Sprintf("unknown operate code %v", task.OpCode))
 		goto errHandler
@@ -934,11 +949,11 @@ func (c *Cluster) handleDataNodeTaskResponse(nodeAddr string, task *proto.AdminT
 	return
 
 errHandler:
-	log.LogErrorf("process task[%v] failed,err:%v", task.ToString(), err)
+	span.Errorf("process task[%v] failed,err:%v", task.ToString(), err)
 	return
 }
 
-func (c *Cluster) dealDeleteDataPartitionResponse(nodeAddr string, resp *proto.DeleteDataPartitionResponse) (err error) {
+func (c *Cluster) dealDeleteDataPartitionResponse(ctx context.Context, nodeAddr string, resp *proto.DeleteDataPartitionResponse) (err error) {
 	var dp *DataPartition
 	if resp.Status == proto.TaskSucceeds {
 		if dp, err = c.getDataPartitionByID(resp.PartitionId); err != nil {
@@ -946,16 +961,16 @@ func (c *Cluster) dealDeleteDataPartitionResponse(nodeAddr string, resp *proto.D
 		}
 		dp.Lock()
 		defer dp.Unlock()
-		dp.removeReplicaByAddr(nodeAddr)
+		dp.removeReplicaByAddr(ctx, nodeAddr)
 
 	} else {
-		Warn(c.Name, fmt.Sprintf("clusterID[%v] delete data partition[%v] failed,err[%v]", c.Name, nodeAddr, resp.Result))
+		Warn(ctx, c.Name, fmt.Sprintf("clusterID[%v] delete data partition[%v] failed,err[%v]", c.Name, nodeAddr, resp.Result))
 	}
 
 	return
 }
 
-func (c *Cluster) handleResponseToLoadDataPartition(nodeAddr string, resp *proto.LoadDataPartitionResponse) (err error) {
+func (c *Cluster) handleResponseToLoadDataPartition(ctx context.Context, nodeAddr string, resp *proto.LoadDataPartitionResponse) (err error) {
 	if resp.Status == proto.TaskFailed || resp.PartitionSnapshot == nil {
 		return
 	}
@@ -979,19 +994,20 @@ func (c *Cluster) handleResponseToLoadDataPartition(nodeAddr string, resp *proto
 	if err != nil {
 		return
 	}
-	dp.loadFile(dataNode, resp)
+	dp.loadFile(ctx, dataNode, resp)
 
 	return
 }
 
-func (c *Cluster) handleDataNodeHeartbeatResp(nodeAddr string, resp *proto.DataNodeHeartbeatResponse) (err error) {
+func (c *Cluster) handleDataNodeHeartbeatResp(ctx context.Context, nodeAddr string, resp *proto.DataNodeHeartbeatResponse) (err error) {
 	var (
 		dataNode *DataNode
 		logMsg   string
 	)
-	log.LogInfof("action[handleDataNodeHeartbeatResp] clusterID[%v] receive dataNode[%v] heartbeat, ", c.Name, nodeAddr)
+	span := proto.SpanFromContext(ctx)
+	span.Infof("action[handleDataNodeHeartbeatResp] clusterID[%v] receive dataNode[%v] heartbeat, ", c.Name, nodeAddr)
 	if resp.Status != proto.TaskSucceeds {
-		Warn(c.Name, fmt.Sprintf("action[handleDataNodeHeartbeatResp] clusterID[%v] dataNode[%v] heartbeat task failed",
+		Warn(ctx, c.Name, fmt.Sprintf("action[handleDataNodeHeartbeatResp] clusterID[%v] dataNode[%v] heartbeat task failed",
 			c.Name, nodeAddr))
 		return
 	}
@@ -1000,7 +1016,7 @@ func (c *Cluster) handleDataNodeHeartbeatResp(nodeAddr string, resp *proto.DataN
 		goto errHandler
 	}
 	if dataNode.ToBeOffline {
-		log.LogInfof("action[handleDataNodeHeartbeatResp] dataNode is toBeOffline, addr[%s]", nodeAddr)
+		span.Infof("action[handleDataNodeHeartbeatResp] dataNode is toBeOffline, addr[%s]", nodeAddr)
 		// return
 	}
 	if resp.ZoneName == "" {
@@ -1010,37 +1026,38 @@ func (c *Cluster) handleDataNodeHeartbeatResp(nodeAddr string, resp *proto.DataN
 		c.t.deleteDataNode(dataNode)
 		oldZoneName := dataNode.ZoneName
 		dataNode.ZoneName = resp.ZoneName
-		c.adjustDataNode(dataNode)
-		log.LogWarnf("dataNode [%v] zone changed from [%v] to [%v]", dataNode.Addr, oldZoneName, resp.ZoneName)
+		c.adjustDataNode(ctx, dataNode)
+		span.Warnf("dataNode [%v] zone changed from [%v] to [%v]", dataNode.Addr, oldZoneName, resp.ZoneName)
 	}
 	// change cpu util and io used
 	dataNode.CpuUtil.Store(resp.CpuUtil)
 	dataNode.SetIoUtils(resp.IoUtils)
 
-	dataNode.updateNodeMetric(resp)
+	dataNode.updateNodeMetric(ctx, resp)
 	if err = c.t.putDataNode(dataNode); err != nil {
-		log.LogErrorf("action[handleDataNodeHeartbeatResp] dataNode[%v],zone[%v],node set[%v], err[%v]", dataNode.Addr, dataNode.ZoneName, dataNode.NodeSetID, err)
+		span.Errorf("action[handleDataNodeHeartbeatResp] dataNode[%v],zone[%v],node set[%v], err[%v]", dataNode.Addr, dataNode.ZoneName, dataNode.NodeSetID, err)
 	}
-	c.updateDataNode(dataNode, resp.PartitionReports)
+	c.updateDataNode(ctx, dataNode, resp.PartitionReports)
 	logMsg = fmt.Sprintf("action[handleDataNodeHeartbeatResp],dataNode:%v,zone[%v], ReportTime:%v  success", dataNode.Addr, dataNode.ZoneName, time.Now().Unix())
-	log.LogInfof(logMsg)
+	span.Infof(logMsg)
 	return
 errHandler:
 	logMsg = fmt.Sprintf("nodeAddr %v heartbeat error :%v", nodeAddr, err.Error())
-	log.LogError(logMsg)
+	span.Error(logMsg)
 	return
 }
 
-func (c *Cluster) adjustDataNode(dataNode *DataNode) {
+func (c *Cluster) adjustDataNode(ctx context.Context, dataNode *DataNode) {
 	c.dnMutex.Lock()
 	defer c.dnMutex.Unlock()
+	span := proto.SpanFromContext(ctx)
 	oldNodeSetID := dataNode.NodeSetID
 	var err error
 	defer func() {
 		if err != nil {
 			err = fmt.Errorf("action[adjustDataNode],clusterID[%v] dataNodeAddr:%v,zone[%v] err:%v ", c.Name, dataNode.Addr, dataNode.ZoneName, err.Error())
-			log.LogError(errors.Stack(err))
-			Warn(c.Name, err.Error())
+			span.Error(errors.Stack(err))
+			Warn(ctx, c.Name, err.Error())
 		}
 	}()
 	var zone *Zone
@@ -1053,7 +1070,7 @@ func (c *Cluster) adjustDataNode(dataNode *DataNode) {
 	c.nsMutex.Lock()
 	ns := zone.getAvailNodeSetForDataNode()
 	if ns == nil {
-		if ns, err = zone.createNodeSet(c); err != nil {
+		if ns, err = zone.createNodeSet(ctx, c); err != nil {
 			c.nsMutex.Unlock()
 			return
 		}
@@ -1061,11 +1078,11 @@ func (c *Cluster) adjustDataNode(dataNode *DataNode) {
 	c.nsMutex.Unlock()
 
 	dataNode.NodeSetID = ns.ID
-	if err = c.syncUpdateDataNode(dataNode); err != nil {
+	if err = c.syncUpdateDataNode(ctx, dataNode); err != nil {
 		dataNode.NodeSetID = oldNodeSetID
 		return
 	}
-	if err = c.syncUpdateNodeSet(ns); err != nil {
+	if err = c.syncUpdateNodeSet(ctx, ns); err != nil {
 		return
 	}
 	err = c.t.putDataNode(dataNode)
@@ -1073,7 +1090,7 @@ func (c *Cluster) adjustDataNode(dataNode *DataNode) {
 }
 
 /*if node report data partition infos,so range data partition infos,then update data partition info*/
-func (c *Cluster) updateDataNode(dataNode *DataNode, dps []*proto.DataPartitionReport) {
+func (c *Cluster) updateDataNode(ctx context.Context, dataNode *DataNode, dps []*proto.DataPartitionReport) {
 	for _, vr := range dps {
 		if vr == nil {
 			continue
@@ -1087,17 +1104,17 @@ func (c *Cluster) updateDataNode(dataNode *DataNode, dps []*proto.DataPartitionR
 				continue
 			}
 			if dp, err := vol.getDataPartitionByID(vr.PartitionID); err == nil {
-				dp.updateMetric(vr, dataNode, c)
+				dp.updateMetric(ctx, vr, dataNode, c)
 			}
 		} else {
 			if dp, err := c.getDataPartitionByID(vr.PartitionID); err == nil {
-				dp.updateMetric(vr, dataNode, c)
+				dp.updateMetric(ctx, vr, dataNode, c)
 			}
 		}
 	}
 }
 
-func (c *Cluster) updateMetaNode(metaNode *MetaNode, metaPartitions []*proto.MetaPartitionReport, threshold bool) {
+func (c *Cluster) updateMetaNode(ctx context.Context, metaNode *MetaNode, metaPartitions []*proto.MetaPartitionReport, threshold bool) {
 	var (
 		vol *Vol
 		err error
@@ -1132,23 +1149,24 @@ func (c *Cluster) updateMetaNode(metaNode *MetaNode, metaPartitions []*proto.Met
 
 		// send latest end to replica metanode, including updating the end after MaxMP split when the old MaxMP is unavailable
 		if mr.End != mp.End {
-			mp.addUpdateMetaReplicaTask(c)
+			mp.addUpdateMetaReplicaTask(ctx, c)
 		}
 
 		mp.updateMetaPartition(mr, metaNode)
-		vol.uidSpaceManager.volUidUpdate(mr)
-		vol.quotaManager.quotaUpdate(mr)
-		c.updateInodeIDUpperBound(mp, mr, threshold, metaNode)
+		vol.uidSpaceManager.volUidUpdate(ctx, mr)
+		vol.quotaManager.quotaUpdate(ctx, mr)
+		c.updateInodeIDUpperBound(ctx, mp, mr, threshold, metaNode)
 	}
 }
 
-func (c *Cluster) updateInodeIDUpperBound(mp *MetaPartition, mr *proto.MetaPartitionReport, hasArriveThreshold bool, metaNode *MetaNode) (err error) {
+func (c *Cluster) updateInodeIDUpperBound(ctx context.Context, mp *MetaPartition, mr *proto.MetaPartitionReport, hasArriveThreshold bool, metaNode *MetaNode) (err error) {
 	if !hasArriveThreshold {
 		return
 	}
 	var vol *Vol
+	span := proto.SpanFromContext(ctx)
 	if vol, err = c.getVol(mp.volName); err != nil {
-		log.LogWarnf("action[updateInodeIDRange] vol[%v] not found", mp.volName)
+		span.Warnf("action[updateInodeIDRange] vol[%v] not found", mp.volName)
 		return
 	}
 
@@ -1163,13 +1181,13 @@ func (c *Cluster) updateInodeIDUpperBound(mp *MetaPartition, mr *proto.MetaParti
 	} else {
 		end = mr.MaxInodeID + metaPartitionInodeIdStep
 	}
-	log.LogWarnf("mpId[%v],start[%v],end[%v],addr[%v],used[%v]", mp.PartitionID, mp.Start, mp.End, metaNode.Addr, metaNode.Used)
+	span.Warnf("mpId[%v],start[%v],end[%v],addr[%v],used[%v]", mp.PartitionID, mp.Start, mp.End, metaNode.Addr, metaNode.Used)
 	if c.cfg.DisableAutoCreate {
-		log.LogWarnf("updateInodeIDUpperBound: disable auto create meta partition, mp %d", mp.PartitionID)
+		span.Warnf("updateInodeIDUpperBound: disable auto create meta partition, mp %d", mp.PartitionID)
 		return
 	}
-	if err = vol.splitMetaPartition(c, mp, end, metaPartitionInodeIdStep, false); err != nil {
-		log.LogError(err)
+	if err = vol.splitMetaPartition(ctx, c, mp, end, metaPartitionInodeIdStep, false); err != nil {
+		span.Error(err)
 	}
 	return
 }

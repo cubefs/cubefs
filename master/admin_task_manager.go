@@ -15,16 +15,17 @@
 package master
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net"
 	"sync"
 	"time"
 
+	"github.com/cubefs/cubefs/blobstore/common/trace"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/errors"
-	"github.com/cubefs/cubefs/util/log"
 )
 
 // const
@@ -47,7 +48,7 @@ type AdminTaskManager struct {
 	connPool *util.ConnectPool
 }
 
-func newAdminTaskManager(targetAddr, clusterID string) (sender *AdminTaskManager) {
+func newAdminTaskManager(ctx context.Context, targetAddr, clusterID string) (sender *AdminTaskManager) {
 	proto.InitBufferPool(int64(32768))
 
 	sender = &AdminTaskManager{
@@ -57,47 +58,49 @@ func newAdminTaskManager(targetAddr, clusterID string) (sender *AdminTaskManager
 		exitCh:     make(chan struct{}, 1),
 		connPool:   util.NewConnectPoolWithTimeout(idleConnTimeout, connectTimeout),
 	}
-	go sender.process()
+	go sender.process(ctx)
 
 	return
 }
 
-func (sender *AdminTaskManager) process() {
+func (sender *AdminTaskManager) process(ctx context.Context) {
 	ticker := time.NewTicker(TaskWorkerInterval)
 	defer func() {
 		ticker.Stop()
-		Warn(sender.clusterID, fmt.Sprintf("clusterID[%v] %v sender stop", sender.clusterID, sender.targetAddr))
+		Warn(ctx, sender.clusterID, fmt.Sprintf("clusterID[%v] %v sender stop", sender.clusterID, sender.targetAddr))
 	}()
+
 	for {
+		_, ctx := trace.StartSpanFromContextWithTraceID(context.Background(), "", fmt.Sprintf("master-task-%v", proto.GenerateRequestID()))
 		select {
 		case <-sender.exitCh:
 			return
 		case <-ticker.C:
-			sender.doDeleteTasks()
-			sender.doSendTasks()
+			sender.doDeleteTasks(ctx)
+			sender.doSendTasks(ctx)
 		}
 	}
 }
 
-func (sender *AdminTaskManager) doDeleteTasks() {
-	delTasks := sender.getToBeDeletedTasks()
+func (sender *AdminTaskManager) doDeleteTasks(ctx context.Context) {
+	delTasks := sender.getToBeDeletedTasks(ctx)
 	for _, t := range delTasks {
-		sender.DelTask(t)
+		sender.DelTask(ctx, t)
 	}
 	return
 }
 
-func (sender *AdminTaskManager) getToBeDeletedTasks() (delTasks []*proto.AdminTask) {
+func (sender *AdminTaskManager) getToBeDeletedTasks(ctx context.Context) (delTasks []*proto.AdminTask) {
 	sender.RLock()
 	defer sender.RUnlock()
 	delTasks = make([]*proto.AdminTask, 0)
-
+	span := proto.SpanFromContext(ctx)
 	for _, task := range sender.TaskMap {
 		if task.CheckTaskTimeOut() {
-			log.LogWarnf(fmt.Sprintf("clusterID[%v] %v has no response until time out",
+			span.Warnf(fmt.Sprintf("clusterID[%v] %v has no response until time out",
 				sender.clusterID, task.ID))
 			if task.SendTime > 0 {
-				Warn(sender.clusterID, fmt.Sprintf("clusterID[%v] %v has no response until time out",
+				Warn(ctx, sender.clusterID, fmt.Sprintf("clusterID[%v] %v has no response until time out",
 					sender.clusterID, task.ID))
 			}
 
@@ -108,12 +111,12 @@ func (sender *AdminTaskManager) getToBeDeletedTasks() (delTasks []*proto.AdminTa
 	return
 }
 
-func (sender *AdminTaskManager) doSendTasks() {
-	tasks := sender.getToDoTasks()
+func (sender *AdminTaskManager) doSendTasks(ctx context.Context) {
+	tasks := sender.getToDoTasks(ctx)
 	if len(tasks) == 0 {
 		return
 	}
-	sender.sendTasks(tasks)
+	sender.sendTasks(ctx, tasks)
 }
 
 func (sender *AdminTaskManager) getConn() (conn *net.TCPConn, err error) {
@@ -136,21 +139,22 @@ func (sender *AdminTaskManager) putConn(conn *net.TCPConn, forceClose bool) {
 	}
 }
 
-func (sender *AdminTaskManager) sendTasks(tasks []*proto.AdminTask) {
+func (sender *AdminTaskManager) sendTasks(ctx context.Context, tasks []*proto.AdminTask) {
+	span := proto.SpanFromContext(ctx)
 	for _, task := range tasks {
 		if task.OpCode == proto.OpVersionOperation {
-			log.LogInfof("action[sendTasks] get task to addr [%v]", task.OperatorAddr)
+			span.Infof("action[sendTasks] get task to addr [%v]", task.OperatorAddr)
 		}
 		conn, err := sender.getConn()
 		if err != nil {
 			msg := fmt.Sprintf("clusterID[%v] get connection to %v,err,%v", sender.clusterID, sender.targetAddr, errors.Stack(err))
-			WarnBySpecialKey(fmt.Sprintf("%v_%v_sendTask", sender.clusterID, ModuleName), msg)
+			WarnBySpecialKey(ctx, fmt.Sprintf("%v_%v_sendTask", sender.clusterID, ModuleName), msg)
 			sender.putConn(conn, true)
 			sender.updateTaskInfo(task, false)
 			break
 		}
-		if err = sender.sendAdminTask(task, conn); err != nil {
-			log.LogError(fmt.Sprintf("send task %v to %v err %v,errStack,%v", task.ID, sender.targetAddr, err, errors.Stack(err)))
+		if err = sender.sendAdminTask(ctx, task, conn); err != nil {
+			span.Error(fmt.Sprintf("send task %v to %v err %v,errStack,%v", task.ID, sender.targetAddr, err, errors.Stack(err)))
 			sender.putConn(conn, true)
 			sender.updateTaskInfo(task, true)
 			continue
@@ -181,29 +185,31 @@ func (sender *AdminTaskManager) buildPacket(task *proto.AdminTask) (packet *prot
 	return packet, nil
 }
 
-func (sender *AdminTaskManager) sendAdminTask(task *proto.AdminTask, conn net.Conn) (err error) {
+func (sender *AdminTaskManager) sendAdminTask(ctx context.Context, task *proto.AdminTask, conn net.Conn) (err error) {
 	packet, err := sender.buildPacket(task)
 	if err != nil {
 		return errors.Trace(err, "action[sendAdminTask build packet failed,task:%v]", task.ID)
 	}
+	span, _ := trace.StartSpanFromContextWithTraceID(ctx, "", fmt.Sprintf("%v", packet.ReqID))
 	if err = packet.WriteToConn(conn); err != nil {
 		return errors.Trace(err, "action[sendAdminTask],WriteToConn failed,task:%v", task.ID)
 	}
 	if err = packet.ReadFromConnWithVer(conn, proto.ReadDeadlineTime); err != nil {
 		return errors.Trace(err, "action[sendAdminTask],ReadFromConn failed task:%v", task.ID)
 	}
-	log.LogDebugf(fmt.Sprintf("action[sendAdminTask] sender task:%v success", task.ToString()))
+	span.Debugf(fmt.Sprintf("action[sendAdminTask] sender task:%v success", task.ToString()))
 	sender.updateTaskInfo(task, true)
 
 	return nil
 }
 
-func (sender *AdminTaskManager) syncSendAdminTask(task *proto.AdminTask) (packet *proto.Packet, err error) {
+func (sender *AdminTaskManager) syncSendAdminTask(ctx context.Context, task *proto.AdminTask) (packet *proto.Packet, err error) {
 	packet, err = sender.buildPacket(task)
 	if err != nil {
 		return nil, errors.Trace(err, "action[syncSendAdminTask build packet failed,task:%v]", task.ID)
 	}
-	log.LogInfof("action[syncSendAdminTask],task[%s], op %s, reqId %d", task.ToString(), packet.GetOpMsg(), packet.GetReqID())
+	span, _ := trace.StartSpanFromContextWithTraceID(ctx, "", fmt.Sprintf("%v", packet.ReqID))
+	span.Infof("action[syncSendAdminTask],task[%s], op %s, reqId %d", task.ToString(), packet.GetOpMsg(), packet.GetReqID())
 	conn, err := sender.getConn()
 	if err != nil {
 		return nil, errors.Trace(err, "action[syncSendAdminTask get conn failed,task:%v]", task.ID)
@@ -223,22 +229,23 @@ func (sender *AdminTaskManager) syncSendAdminTask(task *proto.AdminTask) (packet
 	}
 	if packet.ResultCode != proto.OpOk {
 		err = fmt.Errorf("result code[%v],msg[%v]", packet.ResultCode, string(packet.Data))
-		log.LogErrorf("action[syncSendAdminTask],task:%v,reqID[%v],err[%v],", task.ID, packet.ReqID, err)
+		span.Errorf("action[syncSendAdminTask],task:%v,reqID[%v],err[%v],", task.ID, packet.ReqID, err)
 		return
 	}
 	return packet, nil
 }
 
 // DelTask deletes the to-be-deleted tasks.
-func (sender *AdminTaskManager) DelTask(t *proto.AdminTask) {
+func (sender *AdminTaskManager) DelTask(ctx context.Context, t *proto.AdminTask) {
 	sender.Lock()
 	defer sender.Unlock()
 	_, ok := sender.TaskMap[t.ID]
 	if !ok {
 		return
 	}
+	span := proto.SpanFromContext(ctx)
 	if t.OpCode != proto.OpMetaNodeHeartbeat && t.OpCode != proto.OpDataNodeHeartbeat && t.OpCode != proto.OpLcNodeHeartbeat {
-		log.LogDebugf("action[DelTask] delete task[%v]", t.ToString())
+		span.Debugf("action[DelTask] delete task[%v]", t.ToString())
 	}
 	delete(sender.TaskMap, t.ID)
 }
@@ -253,11 +260,11 @@ func (sender *AdminTaskManager) AddTask(t *proto.AdminTask) {
 	}
 }
 
-func (sender *AdminTaskManager) getToDoTasks() (tasks []*proto.AdminTask) {
+func (sender *AdminTaskManager) getToDoTasks(ctx context.Context) (tasks []*proto.AdminTask) {
 	sender.RLock()
 	defer sender.RUnlock()
 	tasks = make([]*proto.AdminTask, 0)
-
+	span := proto.SpanFromContext(ctx)
 	// send heartbeat task first
 	for _, t := range sender.TaskMap {
 		if t.IsHeartbeatTask() && t.CheckTaskNeedSend() == true {
@@ -277,7 +284,7 @@ func (sender *AdminTaskManager) getToDoTasks() (tasks []*proto.AdminTask) {
 			tasks = append(tasks, task)
 			task.SendTime = time.Now().Unix()
 			if task.OpCode == proto.OpVersionOperation {
-				log.LogInfof("action[getToDoTasks] get task to addr [%v]", task.OperatorAddr)
+				span.Infof("action[getToDoTasks] get task to addr [%v]", task.OperatorAddr)
 				continue
 			}
 		}

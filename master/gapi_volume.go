@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/cubefs/cubefs/proto"
-	"github.com/cubefs/cubefs/util/log"
 	"github.com/samsarahq/thunder/graphql"
 	"github.com/samsarahq/thunder/graphql/schemabuilder"
 )
@@ -132,7 +131,7 @@ func (s *VolumeService) volPermission(ctx context.Context, args struct {
 	if err != nil {
 		return nil, err
 	}
-
+	span := proto.SpanFromContext(ctx)
 	var volUser *proto.VolUser
 	if value, exist := s.user.volUser.Load(args.VolName); exist {
 		volUser = value.(*proto.VolUser)
@@ -145,9 +144,9 @@ func (s *VolumeService) volPermission(ctx context.Context, args struct {
 	userMap := make(map[string]bool)
 
 	for _, u := range volUser.UserIDs {
-		v, e := s.user.getUserInfo(u)
+		v, e := s.user.getUserInfo(ctx, u)
 		if e != nil {
-			log.LogWarnf("get user info by vol has err:[%s]", e.Error())
+			span.Warnf("get user info by vol has err:[%s]", e.Error())
 			continue
 		}
 		if arr, exist := v.Policy.AuthorizedVols[args.VolName]; exist {
@@ -161,7 +160,7 @@ func (s *VolumeService) volPermission(ctx context.Context, args struct {
 				Edit:   uid == vol.Owner,
 			})
 		} else {
-			log.LogWarnf("get vol:[%s] author:[%s] by user policy has err ", args.VolName, u)
+			span.Warnf("get vol:[%s] author:[%s] by user policy has err ", args.VolName, u)
 		}
 	}
 
@@ -215,12 +214,12 @@ func (s *VolumeService) createVolume(ctx context.Context, args struct {
 		zoneName:         args.ZoneName,
 		description:      args.Description,
 	}
-	vol, err := s.cluster.createVol(req)
+	vol, err := s.cluster.createVol(ctx, req)
 	if err != nil {
 		return nil, err
 	}
 
-	userInfo, err := s.user.getUserInfo(args.Owner)
+	userInfo, err := s.user.getUserInfo(ctx, args.Owner)
 	if err != nil {
 		if err != proto.ErrUserNotExists {
 			return nil, err
@@ -236,7 +235,7 @@ func (s *VolumeService) createVolume(ctx context.Context, args struct {
 		}
 	}
 
-	if _, err = s.user.addOwnVol(userInfo.UserID, args.Name); err != nil {
+	if _, err = s.user.addOwnVol(ctx, userInfo.UserID, args.Name); err != nil {
 		return nil, err
 	}
 
@@ -262,15 +261,15 @@ func (s *VolumeService) markDeleteVol(ctx context.Context, args struct {
 		}
 	}
 
-	if err = s.user.deleteVolPolicy(args.Name); err != nil {
+	if err = s.user.deleteVolPolicy(ctx, args.Name); err != nil {
 		return nil, err
 	}
 
-	if err = s.cluster.markDeleteVol(args.Name, args.AuthKey, false); err != nil {
+	if err = s.cluster.markDeleteVol(ctx, args.Name, args.AuthKey, false); err != nil {
 		return nil, err
 	}
-
-	log.LogWarnf("delete vol[%s] successfully,from[%s]", args.Name, uid)
+	span := proto.SpanFromContext(ctx)
+	span.Warnf("delete vol[%s] successfully,from[%s]", args.Name, uid)
 
 	return proto.Success("success"), nil
 }
@@ -328,11 +327,11 @@ func (s *VolumeService) updateVolume(ctx context.Context, args struct {
 		newArgs.description = *args.Description
 	}
 
-	if err = s.cluster.updateVol(args.Name, args.AuthKey, newArgs); err != nil {
+	if err = s.cluster.updateVol(ctx, args.Name, args.AuthKey, newArgs); err != nil {
 		return nil, err
 	}
-
-	log.LogInfof("update vol[%v] successfully\n", args.Name)
+	span := proto.SpanFromContext(ctx)
+	span.Infof("update vol[%v] successfully\n", args.Name)
 
 	vol, err = s.cluster.getVol(args.Name)
 	if err != nil {
