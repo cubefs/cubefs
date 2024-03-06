@@ -53,10 +53,11 @@ const (
 )
 
 var (
-	gBloomFilter   *util.BloomFilter
-	smuxPoolCfg    = util.DefaultSmuxConnPoolConfig()
-	smuxPool       *util.SmuxConnectPool
-	streamConnPool *util.ConnectPool
+	gBloomFilter        *util.BloomFilter
+	gMigrateBloomFilter *util.BloomFilter
+	smuxPoolCfg         = util.DefaultSmuxConnPoolConfig()
+	smuxPool            *util.SmuxConnectPool
+	streamConnPool      *util.ConnectPool
 )
 
 type ExtentForGc struct {
@@ -347,27 +348,43 @@ func getExtentsByMpId(dir string, volname string, mpId string) {
 		slog.Fatalf("Get meta partition info failed, err: %v", err)
 	}
 
-	_, NormalFilePath, err := InitLocalDir(dir, volname, mpId, MpDir)
+	_, NormalFilePath, normalMigratePath, err := InitLocalDir(dir, volname, mpId, MpDir)
 	if err != nil {
 		slog.Fatalf("Init local dir failed, mpId %s, err: %v", mpId, err)
 	}
 
 	normalFile, err := os.OpenFile(NormalFilePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
-		slog.Fatalf("Open file failed, mp %s, err: %v", mpId, err)
+		slog.Fatalf("Open normalFile failed, mp %s, err: %v", mpId, err)
 	}
+
+	normalMigrateFile, err := os.OpenFile(normalMigratePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		slog.Fatalf("Open normalMigrateFile failed, mp %s, err: %v", mpId, err)
+	}
+
 	defer func() {
 		err = normalFile.Sync()
 		if err != nil {
-			slog.Fatalf("sync file failed, mp %s, err %s", mpId, err.Error())
+			slog.Fatalf("sync normalFile failed, mp %s, err %s", mpId, err.Error())
 		}
 		err = normalFile.Close()
 		if err != nil {
-			slog.Fatalf("sync file failed, mp %s, err %s", mpId, err.Error())
+			slog.Fatalf("sync normalFile failed, mp %s, err %s", mpId, err.Error())
+		}
+
+		err = normalMigrateFile.Sync()
+		if err != nil {
+			slog.Fatalf("sync normalMigrateFile failed, mp %s, err %s", mpId, err.Error())
+		}
+		err = normalMigrateFile.Close()
+		if err != nil {
+			slog.Fatalf("sync normalMigrateFile failed, mp %s, err %s", mpId, err.Error())
 		}
 	}()
 
 	normalData := make([]byte, 0)
+	normalMigrateData := make([]byte, 0)
 	// tinyBuf := bytes.NewBuffer(make([]byte, 0, 1024*1024*256))
 
 	var leaderAddr string
@@ -388,14 +405,19 @@ func getExtentsByMpId(dir string, volname string, mpId string) {
 
 		startIn := time.Now()
 		normalBuf := bytes.NewBuffer(make([]byte, 0, 1024*1024*32))
+		normalMigrateBuf := bytes.NewBuffer(make([]byte, 0, 1024*1024*32))
 		resp, err := http.Get(fmt.Sprintf("http://%s:%s/getInodeSnapshot?pid=%s", strings.Split(addr, ":")[0], MetaPort, mpId))
 		if err != nil {
 			slog.Fatalf("Get inode snapshot failed, mp %s, addr %s, err: %v", mpId, addr, err)
+			log.LogWarnf("Get inode snapshot failed, mp %s, addr %s, err: %v", mpId, addr, err)
+			return
 		}
 		defer resp.Body.Close()
 
 		if resp.StatusCode != http.StatusOK {
-			slog.Fatalf("Invalid status code: %v, mpId %s, addr %s", resp.StatusCode, mpId, addr)
+			slog.Fatalf("[getExtentsByMpId] Invalid status code: %v, mpId %s, addr %s", resp.StatusCode, mpId, addr)
+			log.LogWarnf("[getExtentsByMpId] Invalid status code: %v, mpId %s, addr %s", resp.StatusCode, mpId, addr)
+			return
 		}
 
 		reader := bufio.NewReaderSize(resp.Body, 16*1024*1024)
@@ -408,6 +430,9 @@ func getExtentsByMpId(dir string, volname string, mpId string) {
 				if err == io.EOF {
 					if len(normalData) < normalBuf.Len() {
 						normalData = normalBuf.Bytes()
+					}
+					if len(normalMigrateData) < normalMigrateBuf.Len() {
+						normalMigrateData = normalMigrateBuf.Bytes()
 					}
 					log.LogWarnf("read snapshot from mp success, mp %s, host %s, cost %d ms",
 						mpId, addr, time.Since(startIn).Milliseconds())
@@ -442,6 +467,7 @@ func getExtentsByMpId(dir string, volname string, mpId string) {
 				HybridCouldExtents:          metanode.NewSortedHybridCloudExtents(),
 				HybridCouldExtentsMigration: metanode.NewSortedHybridCloudExtentsMigration(),
 			}
+			slog.Printf("[getExtentsByMpId] host(%v) mpId(%v) get inode(%v): %v", addr, mpId, ino.Inode, ino.String())
 			if err = ino.Unmarshal(inoBuf); err != nil {
 				slog.Fatalf("loadInode failed, unmarshal error, mp %s, host %s, err %s", mpId, addr, err.Error())
 			}
@@ -451,7 +477,11 @@ func getExtentsByMpId(dir string, volname string, mpId string) {
 				log.LogDebugf("inode:%v, extent:%v", ino.Inode, eks)
 			}
 
+			var walkBuf *bytes.Buffer
 			walkFunc := func(ek proto.ExtentKey) bool {
+				slog.Printf("[getExtentsByMpId.walkFunc] ######## mpId(%v) dpId(%v) extentId(%v) size(%v)",
+					mpId, ek.PartitionId, ek.ExtentId, ek.Size)
+
 				if storage.IsTinyExtent(ek.ExtentId) {
 					return true
 				}
@@ -464,12 +494,42 @@ func getExtentsByMpId(dir string, volname string, mpId string) {
 				if err != nil {
 					slog.Fatalf("Marshal extents failed,  mp %s, host %s, err: %v", mpId, addr, err)
 				}
-				log.LogDebugf("normal extent:%v, data:%v", ek.ExtentId, len(data))
-				normalBuf.Write(append(data, '\n'))
+				log.LogDebugf("normal extent:%v, dataSize:%v", ek.ExtentId, len(data))
+				walkBuf.Write(append(data, '\n'))
 				return true
 			}
 
-			ino.Extents.Range(walkFunc)
+			// handle  extents
+			if proto.IsStorageClassReplica(ino.StorageClass) {
+				slog.Printf("[getExtentsByMpId] ######## mpId(%v) inode(%v) size(%v) storageClass(%v)",
+					mpId, ino.Inode, ino.Size, proto.StorageClassString(ino.StorageClass))
+
+				se := ino.HybridCouldExtents.GetSortedEks()
+				if se != nil {
+					replicaExtents := se.(*metanode.SortedExtents)
+					walkBuf = normalBuf
+					replicaExtents.Range(walkFunc)
+				} else {
+					slog.Printf("[getExtentsByMpId] ######## HybridCouldExtents is nil, mpId(%v) inode(%v) replica(%v): (%v)",
+						mpId, ino.Inode, addr, proto.StorageClassString(ino.StorageClass)) //TODO:tangjingyu
+					log.LogErrorf("HybridCouldExtents is nil, mpId(%v) inode(%v) host(%v)", mpId, ino.Inode, addr)
+				}
+			}
+
+			// handle migrate extents
+			sme := ino.HybridCouldExtentsMigration.GetSortedEks()
+			if sme != nil {
+				if proto.IsStorageClassReplica(ino.HybridCouldExtentsMigration.GetStorageClass()) {
+					replicaMigrateExtents := sme.(*metanode.SortedExtents)
+					walkBuf = normalMigrateBuf
+					replicaMigrateExtents.Range(walkFunc)
+				}
+				//TODO: handle other impl type of HybridCouldExtentsMigration
+			} else {
+				slog.Printf("[getExtentsByMpId] ######## HybridCouldExtentsMigration is nil, mpId(%v) inode(%v) replica(%v): (%v)",
+					mpId, ino.Inode, addr, proto.StorageClassString(ino.HybridCouldExtentsMigration.GetStorageClass())) //TODO:tangjingyu
+				log.LogDebugf("HybridCouldExtentsMigration is nil, mpId(%v) inode(%v) host(%v)", mpId, ino.Inode, addr)
+			}
 		}
 	}
 
@@ -481,9 +541,17 @@ func getExtentsByMpId(dir string, volname string, mpId string) {
 	if err != nil {
 		slog.Fatalf("write normal extent file failed, mp %s, err %s", mpId, err.Error())
 	}
+
+	_, err = normalMigrateFile.Write(normalMigrateData)
+	if err != nil {
+		slog.Fatalf("write normal mirate extent file failed, mp %s, err %s", mpId, err.Error())
+	}
 }
 
-func InitLocalDir(dir string, volname string, partitionId string, dirType string) (tinyFilePath string, normalFilePath string, err error) {
+func InitLocalDir(dir string, volname string, partitionId string, dirType string) (tinyFilePath string,
+	normalFilePath string, normalMigrateFilePath string, err error) {
+	var file *os.File
+
 	// tinyPath := filepath.Join(dir, volname, dirType, tinyDir)
 	// if _, err = os.Stat(tinyPath); os.IsNotExist(err) {
 	// 	if err = os.MkdirAll(tinyPath, 0755); err != nil {
@@ -520,22 +588,52 @@ func InitLocalDir(dir string, volname string, partitionId string, dirType string
 
 	normalFilePath = filepath.Join(normalPath, partitionId)
 	if _, err = os.Stat(normalFilePath); os.IsNotExist(err) {
-		file, err := os.Create(normalFilePath)
+		file, err = os.Create(normalFilePath)
 		if err != nil {
 			log.LogErrorf("create normal file failed:%v", err)
-			return "", "", err
+			return "", "", "", err
 		}
 		defer file.Close()
 	} else {
 		err = os.WriteFile(normalFilePath, []byte{}, os.ModePerm)
 		if err != nil {
 			log.LogErrorf("clear normal file failed:%v", err)
-			return "", "", err
+			return "", "", "", err
 		}
 		log.LogInfof("normal file contents have been cleared successfully: %v", normalFilePath)
 	}
 
-	return tinyFilePath, normalFilePath, nil
+	if dirType != MpDir {
+		return
+	}
+
+	normalMigratePath := filepath.Join(dir, volname, dirType, normalDir, migrateDir)
+	_, err = os.Stat(normalMigratePath)
+	if os.IsNotExist(err) {
+		if err = os.MkdirAll(normalMigratePath, 0755); err != nil {
+			slog.Fatalf("create dir failed, path %s, err : %v", normalMigratePath, err)
+			return
+		}
+	}
+
+	normalMigrateFilePath = filepath.Join(normalMigratePath, partitionId)
+	if _, err = os.Stat(normalMigrateFilePath); os.IsNotExist(err) {
+		file, err = os.Create(normalMigrateFilePath)
+		if err != nil {
+			log.LogErrorf("create normalMigrate file failed:%v", err)
+			return "", "", "", err
+		}
+		defer file.Close()
+	} else {
+		err = os.WriteFile(normalMigrateFilePath, []byte{}, os.ModePerm)
+		if err != nil {
+			log.LogErrorf("clear normalMigrate file failed:%v", err)
+			return "", "", "", err
+		}
+		log.LogInfof("normalMigrate file contents have been cleared successfully: %v", normalMigrateFilePath)
+	}
+
+	return tinyFilePath, normalFilePath, normalMigrateFilePath, nil
 }
 
 func newGetDpExtentsCmd() *cobra.Command {
@@ -567,10 +665,16 @@ func newGetDpExtentsCmd() *cobra.Command {
 			log.LogInfof("beforeTime: %v", beforeTime)
 			currentTimeUnix := time.Now().Unix()
 			beforeTimeUnix := t.Unix()
-			threeHours := int64(3600 * 3)
-
-			if currentTimeUnix-beforeTimeUnix < threeHours {
-				slog.Fatalf("beforeTime should be at least 3 hours earlier than current time %v %v", currentTimeUnix, beforeTimeUnix)
+			//TODO:tangjingyu
+			//threeHours := int64(3600 * 3)
+			//
+			//if currentTimeUnix-beforeTimeUnix < threeHours {
+			//	slog.Fatalf("beforeTime should be at least 3 hours earlier than current time %v %v", currentTimeUnix, beforeTimeUnix)
+			//	return
+			//}
+			oneMinute := int64(1)
+			if currentTimeUnix-beforeTimeUnix < oneMinute {
+				slog.Fatalf("beforeTime should be at least 1 minute earlier than current time %v %v", currentTimeUnix, beforeTimeUnix)
 				return
 			}
 
@@ -652,8 +756,13 @@ func getExtentsByDpId(dir string, volname string, dpId string, beforeTime string
 	totalSize := 0
 
 	defer func() {
-		log.LogWarnf("getExtentsByDpId: get extents by dp success, vol %s, dp %s, time %s, cost %d ms, totalCnt %d, totalSize %d, err %v",
-			volname, dpId, beforeTime, time.Since(start).Milliseconds(), totalCnt, totalSize, err)
+		if err == nil {
+			log.LogWarnf("getExtentsByDpId: get extents by dp success, vol %s, dp %s, time %s, cost %d ms, totalCnt %d, totalSize %d",
+				volname, dpId, beforeTime, time.Since(start).Milliseconds(), totalCnt, totalSize)
+		} else {
+			log.LogWarnf("getExtentsByDpId: get extents by dp failed, vol %s, dp %s, time %s, cost %d ms, totalCnt %d, totalSize %d, err %v",
+				volname, dpId, beforeTime, time.Since(start).Milliseconds(), totalCnt, totalSize, err)
+		}
 	}()
 
 	dpInfo, err := getDpInfoById(dpId)
@@ -713,7 +822,7 @@ func getExtentsByDpId(dir string, volname string, dpId string, beforeTime string
 		return
 	}
 
-	_, normalFilePath, err := InitLocalDir(dir, volname, dpId, DpDir)
+	_, normalFilePath, _, err := InitLocalDir(dir, volname, dpId, DpDir)
 	if err != nil {
 		log.LogErrorf("Init local dir failed, dpId %s, err: %v", dpId, err)
 		return
@@ -963,6 +1072,8 @@ func calcBadNormalExtents(volname, dir string, concurrency int) (err error) {
 	gBloomFilter = util.NewBloomFilter(MaxBloomFilterSize, calcFNVHash, calcCRC64Hash)
 	normalMpDir := filepath.Join(dir, volname, MpDir, normalDir)
 
+	gMigrateBloomFilter = util.NewBloomFilter(MaxBloomFilterSize, calcFNVHash, calcCRC64Hash)
+
 	err = addMpExtentToBF(normalMpDir)
 	if err != nil {
 		slog.Fatalf("Add normal extents to bloom filter failed, dir %s, err: %v", normalMpDir, err.Error())
@@ -996,15 +1107,9 @@ func addMpExtentToBF(mpDir string) (err error) {
 		log.LogWarnf("addMpExtentToBF: add all mp to BF success, dir %s, cost %d ms", mpDir, time.Since(totalStart).Milliseconds())
 	}()
 
-	fileInfos, err := os.ReadDir(mpDir)
-	if err != nil {
-		slog.Fatalf("Read mp dir failed, dir %s, err: %v", mpDir, err)
-		return
-	}
-
-	walkMp := func(fileName string) {
+	var walkBloomFilter *util.BloomFilter
+	walkMp := func(filePath string) {
 		stat := time.Now()
-		filePath := filepath.Join(mpDir, fileName)
 		file, err := os.Open(filePath)
 		if err != nil {
 			slog.Fatalf("Open file failed, path %s, err: %v", filePath, err.Error())
@@ -1034,23 +1139,48 @@ func addMpExtentToBF(mpDir string) (err error) {
 				slog.Fatalf("Unmarshal extent failed, err: %v", err)
 			}
 
-			gBloomFilter.Add([]byte(eksForGc.Id)) // add extent id to bloom filter
+			walkBloomFilter.Add([]byte(eksForGc.Id)) // add extent id to bloom filter
 			cnt++
 		}
 	}
 
-	for _, fileInfo := range fileInfos {
-		if fileInfo.IsDir() {
+	normalFileInfos, err := os.ReadDir(mpDir)
+	if err != nil {
+		slog.Fatalf("Read mp dir failed, dir %s, err: %v", mpDir, err)
+		return
+	}
+
+	walkBloomFilter = gBloomFilter
+	for _, nromalFileInfo := range normalFileInfos {
+		if nromalFileInfo.IsDir() {
 			continue
 		}
 
-		fileName := fileInfo.Name()
+		fileName := nromalFileInfo.Name()
 		if fileName == verifyInfoFile {
 			continue
 		}
-
-		walkMp(fileName)
+		filePath := filepath.Join(mpDir, fileName)
+		walkMp(filePath)
 	}
+
+	migrateDirPath := filepath.Join(mpDir, migrateDir)
+	migrateFileInfos, err := os.ReadDir(migrateDirPath)
+	if err != nil {
+		slog.Fatalf("Read mp migrate dir failed, dir %s, err: %v", mpDir, err)
+		return
+	}
+	walkBloomFilter = gMigrateBloomFilter
+	for _, migrateFileInfo := range migrateFileInfos {
+		if migrateFileInfo.IsDir() {
+			continue
+		}
+		fileName := migrateFileInfo.Name()
+		filePath := filepath.Join(migrateDirPath, fileName)
+		log.LogInfof("########### add migrate bloom filter: %v", fileName)
+		walkMp(filePath)
+	}
+
 	return
 }
 
@@ -1114,14 +1244,24 @@ func calcDpBadNormalExtentByBF(vol, dpDir, badDir string, concurrency int) (err 
 				if err != nil {
 					slog.Fatalf("Unmarshal extent failed, path %s, err: %v", filePath, err)
 				}
+				parts := strings.Split(eksForGc.Id, "_")
+				dpId := parts[0]
 
-				if !gBloomFilter.Contains([]byte(eksForGc.Id)) {
+				inMpNormalEks := gBloomFilter.Contains([]byte(eksForGc.Id))
+				if inMpNormalEks {
+					log.LogInfof("extentId(%v) dpId(%v) in mp normal eks", eksForGc.Id, dpId)
+				}
+
+				inMpMigrateEks := gMigrateBloomFilter.Contains([]byte(eksForGc.Id))
+				if inMpMigrateEks {
+					log.LogInfof("extentId(%v) dpId(%v) in mp migrate Eks", eksForGc.Id, dpId)
+				}
+
+				if !inMpNormalEks && !inMpMigrateEks {
 					atomic.AddUint64(&badCount, 1)
 					atomic.AddUint64(&badSize, uint64(eksForGc.Size))
 
 					var badExtent BadNornalExtent
-					parts := strings.Split(eksForGc.Id, "_")
-					dpId := parts[0]
 					badExtent.ExtentId = parts[1]
 					badExtent.Size = eksForGc.Size
 
