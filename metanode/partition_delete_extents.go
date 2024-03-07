@@ -590,6 +590,8 @@ func (mp *metaPartition) batchDeleteExtentsHotVol(dpId uint64, deks []*DeletedEx
 	return
 }
 
+const maxDelCntOnce = 512
+
 func (mp *metaPartition) batchDeleteExtentsColdVol(doeks []*DeletedObjExtentKey) (err error) {
 	total := len(doeks)
 	oeks := make([]proto.ObjExtentKey, maxDelCntOnce)

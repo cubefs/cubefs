@@ -756,6 +756,19 @@ func (dbInfo *RocksDbInfo) DelItemToBatch(handle interface{}, key []byte) (err e
 	return nil
 }
 
+func (dbInfo *RocksDbInfo) DelRangeToBatch(handle interface{}, start []byte, end []byte) (err error) {
+	batch, ok := handle.(*gorocksdb.WriteBatch)
+	if !ok {
+		return fmt.Errorf("handle is invalid, not write batch")
+	}
+	if err = dbInfo.accessDb(); err != nil {
+		return
+	}
+	defer dbInfo.releaseDb()
+	batch.DeleteRange(start, end)
+	return nil
+}
+
 func (dbInfo *RocksDbInfo) CommitBatchAndRelease(handle interface{}) (err error) {
 	defer recoverRocksDBPanic()
 	defer func() {

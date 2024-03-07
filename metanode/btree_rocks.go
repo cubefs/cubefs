@@ -199,25 +199,37 @@ func (info *RocksBaseInfo) Unmarshal(raw []byte) (err error) {
 }
 
 type RocksTree struct {
-	db       *RocksDbInfo
-	latch    [MaxTable]sync.Mutex
-	baseInfo RocksBaseInfo
+	partitionId uint64
+	db          *RocksDbInfo
+	latch       [MaxTable]sync.Mutex
+	baseInfo    RocksBaseInfo
 }
 
-func DefaultRocksTree(dbInfo *RocksDbInfo) (*RocksTree, error) {
-	return NewRocksTree(dbInfo)
+func DefaultRocksTree(dbInfo *RocksDbInfo, partitionId uint64) (*RocksTree, error) {
+	return NewRocksTree(dbInfo, partitionId)
 }
 
-func NewRocksTree(dbInfo *RocksDbInfo) (*RocksTree, error) {
+func NewRocksTree(dbInfo *RocksDbInfo, partitionId uint64) (*RocksTree, error) {
 	if dbInfo == nil {
 		return nil, errors.NewErrorf("dbInfo is null")
 	}
-	tree := &RocksTree{db: dbInfo}
+	tree := &RocksTree{
+		partitionId: partitionId,
+		db:          dbInfo,
+	}
 	_ = tree.LoadBaseInfo()
 	if tree.baseInfo.length == 0 {
 		tree.baseInfo.length = uint32(unsafe.Sizeof(tree.baseInfo))
 	}
 	return tree, nil
+}
+
+func (r *RocksTree) warpKey(key []byte) []byte {
+	buf := bytes.NewBuffer([]byte{})
+	binary.Write(buf, binary.BigEndian, r.partitionId)
+	buf.WriteByte(0)
+	buf.Write(key)
+	return buf.Bytes()
 }
 
 func (r *RocksTree) LoadBaseInfo() error {
@@ -274,18 +286,34 @@ func (r *RocksTree) CreateBatchWriteHandle() (interface{}, error) {
 	return r.db.CreateBatchHandler()
 }
 
+func (r *RocksTree) ReleaseBatchHandle(handle interface{}) (err error) {
+	return r.db.ReleaseBatchHandle(handle)
+}
+
+func (r *RocksTree) AddItemToBatch(handle interface{}, key []byte, value []byte) error {
+	return r.db.AddItemToBatch(handle, r.warpKey(key), value)
+}
+
+func (r *RocksTree) HandleBatchCount(handle interface{}) (count int, err error) {
+	return r.db.HandleBatchCount(handle)
+}
+
+func (r *RocksTree) CommitBatch(handle interface{}) (err error) {
+	return r.db.CommitBatch(handle)
+}
+
 func (r *RocksTree) CommitBatchWrite(handle interface{}, needCommitApplyID bool) error {
 	var (
 		count        int
 		err          error
 		buffBaseInfo []byte
 	)
-	if count, err = r.db.HandleBatchCount(handle); err != nil {
+	if count, err = r.HandleBatchCount(handle); err != nil {
 		return err
 	}
 
 	//no need to commit
-	if count == 0 {
+	if count == 0 && !needCommitApplyID {
 		return nil
 	}
 
@@ -299,10 +327,10 @@ func (r *RocksTree) CommitBatchWrite(handle interface{}, needCommitApplyID bool)
 		}
 	}
 
-	if err = r.db.AddItemToBatch(handle, baseInfoKey, buffBaseInfo); err != nil {
+	if err = r.AddItemToBatch(handle, baseInfoKey, buffBaseInfo); err != nil {
 		return err
 	}
-	return r.db.CommitBatch(handle)
+	return r.CommitBatch(handle)
 }
 
 func (r *RocksTree) ReleaseBatchWriteHandle(handle interface{}) error {
@@ -314,18 +342,18 @@ func (r *RocksTree) BatchWriteCount(handle interface{}) (int, error) {
 }
 
 func (r *RocksTree) CommitAndReleaseBatchWriteHandle(handle interface{}, needCommitApplyID bool) error {
-	defer r.db.ReleaseBatchHandle(handle)
+	defer r.ReleaseBatchHandle(handle)
 	var (
 		count        int
 		err          error
 		buffBaseInfo []byte
 	)
-	if count, err = r.db.HandleBatchCount(handle); err != nil {
+	if count, err = r.HandleBatchCount(handle); err != nil {
 		return err
 	}
 
 	//no need to commit
-	if count == 0 {
+	if count == 0 && !needCommitApplyID {
 		return nil
 	}
 
@@ -339,10 +367,10 @@ func (r *RocksTree) CommitAndReleaseBatchWriteHandle(handle interface{}, needCom
 		}
 	}
 
-	if err = r.db.AddItemToBatch(handle, baseInfoKey, buffBaseInfo); err != nil {
+	if err = r.AddItemToBatch(handle, baseInfoKey, buffBaseInfo); err != nil {
 		return err
 	}
-	if err = r.db.CommitBatch(handle); err != nil {
+	if err = r.CommitBatch(handle); err != nil {
 		return err
 	}
 	return nil
@@ -352,6 +380,10 @@ func (r *RocksTree) ClearBatchWriteHandle(handle interface{}) error {
 	return r.db.ClearBatchWriteHandle(handle)
 }
 
+func (r *RocksTree) CreateBatchHandler() (handle interface{}, err error) {
+	return r.db.CreateBatchHandler()
+}
+
 func (r *RocksTree) PersistBaseInfo() error {
 	var handle interface{}
 	buffBaseInfo, err := r.baseInfo.Marshal()
@@ -359,18 +391,18 @@ func (r *RocksTree) PersistBaseInfo() error {
 		return err
 	}
 
-	if handle, err = r.db.CreateBatchHandler(); err != nil {
+	if handle, err = r.CreateBatchHandler(); err != nil {
 		return err
 	}
 	defer func() {
-		_ = r.db.ReleaseBatchHandle(handle)
+		_ = r.ReleaseBatchHandle(handle)
 	}()
 
-	if err = r.db.AddItemToBatch(handle, baseInfoKey, buffBaseInfo); err != nil {
+	if err = r.AddItemToBatch(handle, baseInfoKey, buffBaseInfo); err != nil {
 		return err
 	}
 
-	if err = r.db.CommitBatch(handle); err != nil {
+	if err = r.CommitBatch(handle); err != nil {
 		log.LogErrorf("action[UpdateBaseInfo] commit batch err:%v", err)
 		return err
 	}
@@ -428,16 +460,34 @@ func (r *RocksTree) Count(tp TreeType) (uint64, error) {
 }
 
 // This requires global traversal to call carefully
+func (r *RocksTree) RangeWithSnap(start []byte, end []byte, snap *gorocksdb.Snapshot, iter func(k, v []byte) (bool, error)) (err error) {
+	err = r.db.RangeWithSnap(r.warpKey(start), r.warpKey(end), snap, iter)
+	return
+}
+
+func (r *RocksTree) DescRangeWithSnap(start []byte, end []byte, snap *gorocksdb.Snapshot, iter func(k, v []byte) (bool, error)) (err error) {
+	err = r.db.DescRangeWithSnap(r.warpKey(start), r.warpKey(end), snap, iter)
+	return
+}
+
+func (r *RocksTree) OpenSnap() (snap *gorocksdb.Snapshot) {
+	return r.db.OpenSnap()
+}
+
+func (r *RocksTree) ReleaseSnap(snap *gorocksdb.Snapshot) {
+	r.db.ReleaseSnap(snap)
+}
+
 func (r *RocksTree) IteratorCount(tableType TableType) uint64 {
 	start, end := []byte{byte(tableType)}, []byte{byte(tableType) + 1}
 	var count uint64
-	dbSnap := r.db.OpenSnap()
+	dbSnap := r.OpenSnap()
 	if dbSnap == nil {
 		log.LogErrorf("IteratorCount openSnap failed.")
 		return 0
 	}
-	defer r.db.ReleaseSnap(dbSnap)
-	if err := r.db.RangeWithSnap(start, end, dbSnap, func(k, v []byte) (bool, error) {
+	defer r.ReleaseSnap(dbSnap)
+	if err := r.RangeWithSnap(start, end, dbSnap, func(k, v []byte) (bool, error) {
 		count++
 		return true, nil
 	}); err != nil {
@@ -448,27 +498,32 @@ func (r *RocksTree) IteratorCount(tableType TableType) uint64 {
 }
 
 func (r *RocksTree) Range(start, end []byte, cb func(v []byte) (bool, error)) error {
-	snapshot := r.db.OpenSnap()
+	snapshot := r.OpenSnap()
 	if snapshot == nil {
 		return errors.NewErrorf("open snap failed")
 	}
-	defer r.db.ReleaseSnap(snapshot)
+	defer r.ReleaseSnap(snapshot)
 	callbackFunc := func(k, v []byte) (bool, error) {
 		return cb(v)
 	}
-	return r.db.RangeWithSnap(start, end, snapshot, callbackFunc)
+	return r.RangeWithSnap(start, end, snapshot, callbackFunc)
+}
+
+func (r *RocksTree) RangeWithSnapByPrefix(prefix, start, end []byte, snap *gorocksdb.Snapshot, cb func(k, v []byte) (bool, error)) (err error) {
+	err = r.db.RangeWithSnapByPrefix(r.warpKey(prefix), r.warpKey(start), r.warpKey(end), snap, cb)
+	return
 }
 
 func (r *RocksTree) RangeWithPrefix(prefix, start, end []byte, cb func(v []byte) (bool, error)) error {
-	snapshot := r.db.OpenSnap()
+	snapshot := r.OpenSnap()
 	if snapshot == nil {
 		return errors.NewErrorf("open snap failed")
 	}
-	defer r.db.ReleaseSnap(snapshot)
+	defer r.ReleaseSnap(snapshot)
 	callbackFunc := func(k, v []byte) (bool, error) {
 		return cb(v)
 	}
-	return r.db.RangeWithSnapByPrefix(prefix, start, end, snapshot, callbackFunc)
+	return r.RangeWithSnapByPrefix(prefix, start, end, snapshot, callbackFunc)
 }
 
 func (r *RocksTree) HasKey(key []byte) (bool, error) {
@@ -480,7 +535,11 @@ func (r *RocksTree) HasKey(key []byte) (bool, error) {
 }
 
 func (r *RocksTree) GetBytes(key []byte) ([]byte, error) {
-	return r.db.GetBytes(key)
+	return r.db.GetBytes(r.warpKey(key))
+}
+
+func (r *RocksTree) GetBytesWithSnap(snap *gorocksdb.Snapshot, key []byte) ([]byte, error) {
+	return r.db.GetBytesWithSnap(snap, r.warpKey(key))
 }
 
 func (r *RocksTree) Put(handle interface{}, count *uint64, key []byte, value []byte) error {
@@ -499,7 +558,7 @@ func (r *RocksTree) Put(handle interface{}, count *uint64, key []byte, value []b
 		}
 	}
 
-	if err = r.db.AddItemToBatch(handle, key, value); err != nil {
+	if err = r.AddItemToBatch(handle, key, value); err != nil {
 		return err
 	}
 	return nil
@@ -510,7 +569,7 @@ func (r *RocksTree) Update(handle interface{}, key []byte, value []byte) (err er
 	lock.Lock()
 	defer lock.Unlock()
 
-	if err = r.db.AddItemToBatch(handle, key, value); err != nil {
+	if err = r.AddItemToBatch(handle, key, value); err != nil {
 		return
 	}
 	return
@@ -537,11 +596,16 @@ func (r *RocksTree) Create(handle interface{}, count *uint64, key []byte, value 
 		}
 	}
 
-	if err = r.db.AddItemToBatch(handle, key, value); err != nil {
+	if err = r.AddItemToBatch(handle, key, value); err != nil {
 		return
 	}
 	ok = true
 	v = value
+	return
+}
+
+func (r *RocksTree) DelItemToBatch(handle interface{}, key []byte) (err error) {
+	err = r.db.DelItemToBatch(handle, r.warpKey(key))
 	return
 }
 
@@ -563,7 +627,7 @@ func (r *RocksTree) Delete(handle interface{}, count *uint64, key []byte) (ok bo
 	}
 
 	atomic.AddUint64(count, ^uint64(0))
-	if err = r.db.DelItemToBatch(handle, key); err != nil {
+	if err = r.DelItemToBatch(handle, key); err != nil {
 		return
 	}
 	ok = true
@@ -582,6 +646,16 @@ func (r *RocksTree) Execute(fn func(tree interface{}) interface{}) interface{} {
 	}
 	defer r.db.releaseDb()
 	return fn(r)
+}
+
+func (r *RocksTree) DelRangeToBatch(handle interface{}, start []byte, end []byte) (err error) {
+	err = r.db.DelRangeToBatch(handle, r.warpKey(start), r.warpKey(end))
+	return
+}
+
+func (r *RocksTree) DeleteMetadata(handle interface{}) (err error) {
+	err = r.DelItemToBatch(handle, baseInfoKey)
+	return
 }
 
 var _ InodeTree = &InodeRocks{}
@@ -695,6 +769,7 @@ func dentryEncodingKey(parentId uint64, name string) []byte {
 	buff := new(bytes.Buffer)
 	buff.WriteByte(byte(DentryTable))
 	_ = binary.Write(buff, binary.BigEndian, parentId)
+	buff.WriteByte(0)
 	buff.WriteString(name)
 	return buff.Bytes()
 }
@@ -703,6 +778,7 @@ func dentryEncodingPrefix(parentId uint64, name string) []byte {
 	buff := new(bytes.Buffer)
 	buff.WriteByte(byte(DentryTable))
 	_ = binary.Write(buff, binary.BigEndian, parentId)
+	buff.WriteByte(0)
 	if name != "" {
 		buff.WriteString(name)
 	}
@@ -729,6 +805,10 @@ func multipartEncodingPrefix(key string, id string) []byte {
 	buff := new(bytes.Buffer)
 	buff.WriteByte(byte(MultipartTable))
 	buff.WriteString(key)
+	buff.WriteByte(0)
+	if id != "" {
+		buff.WriteString(id)
+	}
 	return buff.Bytes()
 }
 
@@ -807,13 +887,13 @@ func deletedObjExtentsEncodingPrefix(inode uint64) []byte {
 }
 
 func (b *InodeRocks) GetMaxInode() (uint64, error) {
-	snapshot := b.RocksTree.db.OpenSnap()
+	snapshot := b.RocksTree.OpenSnap()
 	if snapshot == nil {
 		return 0, errors.NewErrorf("open snapshot failed")
 	}
-	defer b.RocksTree.db.ReleaseSnap(snapshot)
+	defer b.RocksTree.ReleaseSnap(snapshot)
 	var maxInode uint64 = 0
-	err := b.db.DescRangeWithSnap([]byte{byte(InodeTable)}, []byte{byte(InodeTable) + 1}, snapshot, func(k, v []byte) (bool, error) {
+	err := b.DescRangeWithSnap([]byte{byte(InodeTable)}, []byte{byte(InodeTable) + 1}, snapshot, func(k, v []byte) (bool, error) {
 		inode := NewInode(0, 0)
 		if e := inode.Unmarshal(v); e != nil {
 			return false, e
@@ -1907,13 +1987,13 @@ func (b *DeletedObjExtentsRocks) RangeWithPrefix(prefix, start, end *DeletedObjE
 
 func (b *InodeRocks) MaxItem() *Inode {
 	var maxItem *Inode
-	snapshot := b.RocksTree.db.OpenSnap()
+	snapshot := b.RocksTree.OpenSnap()
 	if snapshot == nil {
 		log.LogErrorf("InodeRocks MaxItem snap is nil")
 		return nil
 	}
-	defer b.RocksTree.db.ReleaseSnap(snapshot)
-	err := b.db.DescRangeWithSnap([]byte{byte(InodeTable)}, []byte{byte(InodeTable) + 1}, snapshot, func(k, v []byte) (bool, error) {
+	defer b.RocksTree.ReleaseSnap(snapshot)
+	err := b.DescRangeWithSnap([]byte{byte(InodeTable)}, []byte{byte(InodeTable) + 1}, snapshot, func(k, v []byte) (bool, error) {
 		inode := NewInode(0, 0)
 		if e := inode.Unmarshal(v); e != nil {
 			return false, e
@@ -1925,6 +2005,52 @@ func (b *InodeRocks) MaxItem() *Inode {
 		return nil
 	}
 	return maxItem
+}
+
+// NOTE: clear
+func (b *InodeRocks) Clear(handle interface{}) (err error) {
+	err = b.DelRangeToBatch(handle, []byte{byte(InodeTable)}, []byte{byte(InodeTable + 1)})
+	return
+}
+
+func (b *DentryRocks) Clear(handle interface{}) (err error) {
+	err = b.DelRangeToBatch(handle, []byte{byte(DentryTable)}, []byte{byte(DentryTable + 1)})
+	return
+}
+
+func (b *ExtendRocks) Clear(handle interface{}) (err error) {
+	err = b.DelRangeToBatch(handle, []byte{byte(ExtendTable)}, []byte{byte(ExtendTable + 1)})
+	return
+}
+
+func (b *MultipartRocks) Clear(handle interface{}) (err error) {
+	err = b.DelRangeToBatch(handle, []byte{byte(MultipartTable)}, []byte{byte(MultipartTable + 1)})
+	return
+}
+
+func (b *TransactionRocks) Clear(handle interface{}) (err error) {
+	err = b.DelRangeToBatch(handle, []byte{byte(TransactionTable)}, []byte{byte(TransactionTable + 1)})
+	return
+}
+
+func (b *TransactionRollbackInodeRocks) Clear(handle interface{}) (err error) {
+	err = b.DelRangeToBatch(handle, []byte{byte(TransactionRollbackInodeTable)}, []byte{byte(TransactionRollbackInodeTable + 1)})
+	return
+}
+
+func (b *TransactionRollbackDentryRocks) Clear(handle interface{}) (err error) {
+	err = b.DelRangeToBatch(handle, []byte{byte(TransactionRollbackDentryTable)}, []byte{byte(TransactionRollbackDentryTable + 1)})
+	return
+}
+
+func (b *DeletedExtentsRocks) Clear(handle interface{}) (err error) {
+	err = b.DelRangeToBatch(handle, []byte{byte(DeletedExtentsTable)}, []byte{byte(DeletedExtentsTable + 1)})
+	return
+}
+
+func (b *DeletedObjExtentsRocks) Clear(handle interface{}) (err error) {
+	err = b.DelRangeToBatch(handle, []byte{byte(DeletedObjExtentsTable)}, []byte{byte(DeletedObjExtentsTable + 1)})
+	return
 }
 
 var _ Snapshot = &RocksSnapShot{}
@@ -1946,15 +2072,15 @@ func NewRocksSnapShot(mp *metaPartition) Snapshot {
 			mp.db.ReleaseSnap(s)
 		}
 	}()
-	v, err := mp.db.GetBytesWithSnap(s, baseInfoKey)
+	rocksTree := mp.inodeTree.(*InodeRocks).RocksTree
+	v, err := rocksTree.GetBytesWithSnap(s, baseInfoKey)
 	if err != nil {
 		log.LogErrorf("[NewRocksSnapShot] failed to get base info")
 		return nil
 	}
 	snap := &RocksSnapShot{
-		snap:     s,
-		tree:     mp.inodeTree.(*InodeRocks).RocksTree,
-		baseInfo: mp.inodeTree.(*InodeRocks).baseInfo,
+		snap: s,
+		tree: rocksTree,
 	}
 	if len(v) != 0 {
 		err = snap.baseInfo.Unmarshal(v)
@@ -2101,14 +2227,14 @@ func (r *RocksSnapShot) RangeWithScope(tp TreeType, start, end interface{}, cb f
 			return err
 		}
 	}
-	return r.tree.db.RangeWithSnap(startBytes, endBytes, r.snap, callbackFunc)
+	return r.tree.RangeWithSnap(startBytes, endBytes, r.snap, callbackFunc)
 }
 
 func (r *RocksSnapShot) Close() {
 	if r.snap == nil {
 		return
 	}
-	r.tree.db.ReleaseSnap(r.snap)
+	r.tree.ReleaseSnap(r.snap)
 }
 
 func (r *RocksSnapShot) CrcSum(tp TreeType) (crcSum uint32, err error) {
@@ -2127,7 +2253,7 @@ func (r *RocksSnapShot) CrcSum(tp TreeType) (crcSum uint32, err error) {
 		return true, nil
 	}
 
-	if err = r.tree.db.RangeWithSnap([]byte{byte(tableType)}, []byte{byte(tableType) + 1}, r.snap, cb); err != nil {
+	if err = r.tree.RangeWithSnap([]byte{byte(tableType)}, []byte{byte(tableType) + 1}, r.snap, cb); err != nil {
 		return
 	}
 	crcSum = crc.Sum32()

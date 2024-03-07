@@ -151,3 +151,134 @@ func TestMetaPartition_LoadSnapshot(t *testing.T) {
 	err = partition.LoadSnapshot(snapshotPath)
 	require.Equal(t, ErrSnapshotCrcMismatch, err)
 }
+
+func prepareDataForMpTest(t *testing.T, mp *metaPartition) {
+	handle, err := mp.inodeTree.CreateBatchWriteHandle()
+	require.NoError(t, err)
+
+	ino := NewInode(0, DirModeType)
+	err = mp.inodeTree.Put(handle, ino)
+	require.NoError(t, err)
+
+	den := &Dentry{
+		ParentId: 0,
+		Name:     "test",
+		Inode:    1,
+	}
+	err = mp.dentryTree.Put(handle, den)
+	require.NoError(t, err)
+
+	err = mp.extendTree.Put(handle, &Extend{})
+	require.NoError(t, err)
+
+	err = mp.multipartTree.Put(handle, &Multipart{})
+	require.NoError(t, err)
+
+	err = mp.txProcessor.txManager.txTree.Put(handle, &proto.TransactionInfo{})
+	require.NoError(t, err)
+
+	err = mp.txProcessor.txResource.txRbInodeTree.Put(handle, NewTxRollbackInode(ino, []uint32{}, proto.NewTxInodeInfo("", 0, 0), 0))
+	require.NoError(t, err)
+
+	err = mp.txProcessor.txResource.txRbDentryTree.Put(handle, NewTxRollbackDentry(den, proto.NewTxDentryInfo("", 0, "", 0), 0))
+	require.NoError(t, err)
+
+	err = mp.deletedExtentsTree.Put(handle, &DeletedExtentKey{})
+	require.NoError(t, err)
+
+	err = mp.deletedObjExtentsTree.Put(handle, &DeletedObjExtentKey{})
+	require.NoError(t, err)
+
+	err = mp.inodeTree.CommitAndReleaseBatchWriteHandle(handle, true)
+	require.NoError(t, err)
+}
+
+func checkTreeCntForMpTest(t *testing.T, mp *metaPartition) {
+	cnt, err := mp.GetInodeRealCount()
+	require.NoError(t, err)
+	require.EqualValues(t, 1, cnt)
+
+	cnt, err = mp.GetDentryRealCount()
+	require.NoError(t, err)
+	require.EqualValues(t, 1, cnt)
+
+	cnt, err = mp.GetExtendRealCount()
+	require.NoError(t, err)
+	require.EqualValues(t, 1, cnt)
+
+	cnt, err = mp.GetMultipartRealCount()
+	require.NoError(t, err)
+	require.EqualValues(t, 1, cnt)
+
+	cnt, err = mp.GetTxRealCount()
+	require.NoError(t, err)
+	require.EqualValues(t, 1, cnt)
+
+	cnt, err = mp.GetTxRbInodeRealCount()
+	require.NoError(t, err)
+	require.EqualValues(t, 1, cnt)
+
+	cnt, err = mp.GetTxRbDentryRealCount()
+	require.NoError(t, err)
+	require.EqualValues(t, 1, cnt)
+
+	cnt, err = mp.GetDeletedExtentsRealCount()
+	require.NoError(t, err)
+	require.EqualValues(t, 1, cnt)
+
+	cnt, err = mp.GetDeletedObjExtentsRealCount()
+	require.NoError(t, err)
+	require.EqualValues(t, 1, cnt)
+}
+
+func TestMultiPartitionOnDisk(t *testing.T) {
+	dbManager := NewRocksdbManager()
+	dbDir, err := os.MkdirTemp("", "")
+	require.NoError(t, err)
+	t.Logf("db dir is %v", dbDir)
+	err = dbManager.Register(dbDir)
+	require.NoError(t, err)
+
+	mp1C := MetaPartitionConfig{
+		PartitionId:   1,
+		VolName:       "test_vol",
+		Start:         0,
+		End:           100,
+		PartitionType: 1,
+		Peers:         nil,
+		RootDir:       "",
+		StoreMode:     proto.StoreModeRocksDb,
+		RocksDBDir:    dbDir,
+	}
+	mp2C := mp1C
+	mp2C.PartitionId = 2
+	metaM := &metadataManager{
+		nodeId:         1,
+		zoneName:       "test",
+		raftStore:      nil,
+		partitions:     make(map[uint64]MetaPartition),
+		metaNode:       &MetaNode{},
+		rocksdbManager: dbManager,
+	}
+	partition := NewMetaPartition(&mp1C, metaM)
+	require.NotNil(t, partition)
+	mp1 := partition.(*metaPartition)
+	partition = NewMetaPartition(&mp2C, metaM)
+	require.NotNil(t, partition)
+	mp2 := partition.(*metaPartition)
+
+	err = mp1.initObjects(true)
+	require.NoError(t, err)
+	err = mp2.initObjects(true)
+	require.NoError(t, err)
+
+	prepareDataForMpTest(t, mp1)
+	prepareDataForMpTest(t, mp2)
+
+	checkTreeCntForMpTest(t, mp1)
+	checkTreeCntForMpTest(t, mp2)
+
+	mp2.Clear()
+
+	checkTreeCntForMpTest(t, mp1)
+}

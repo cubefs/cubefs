@@ -21,7 +21,7 @@ func newTestRocksTree(dir string) (rocksTree *RocksTree) {
 		fmt.Printf("open db without exist dir(%s) failed:%v\n", dir, err)
 		os.Exit(1)
 	}
-	rocksTree, err = DefaultRocksTree(rocksdbHandle)
+	rocksTree, err = DefaultRocksTree(rocksdbHandle, 0)
 	if err != nil {
 		fmt.Printf("new rocks tree in dir(%s) failed:%v\n", dir, err)
 		os.Exit(1)

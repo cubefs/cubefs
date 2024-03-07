@@ -130,6 +130,8 @@ type Tree interface {
 	GetTxId() uint64
 	GetDeletedExtentId() uint64
 	SetDeletedExtentId(id uint64)
+	Clear(handle interface{}) (err error)
+	DeleteMetadata(handle interface{}) (err error)
 }
 
 type InodeTree interface {
@@ -261,37 +263,4 @@ type DeletedObjExtentsTree interface {
 	RealCount() uint64
 	Count() uint64
 	Len() int
-}
-
-type MetaTree struct {
-	InodeTree
-	DentryTree
-	ExtendTree
-	MultipartTree
-}
-
-func newMetaTree(storeMode proto.StoreMode, db *RocksDbInfo) *MetaTree {
-	if (storeMode & proto.StoreModeMem) != 0 {
-		return &MetaTree{
-			InodeTree:     &InodeBTree{NewBtree()},
-			DentryTree:    &DentryBTree{NewBtree()},
-			ExtendTree:    &ExtendBTree{NewBtree()},
-			MultipartTree: &MultipartBTree{NewBtree()},
-		}
-	} else {
-		tree, err := DefaultRocksTree(db)
-		if err != nil {
-			return nil
-		}
-		inodeTree, _ := NewInodeRocks(tree)
-		dentryTree, _ := NewDentryRocks(tree)
-		extendTree, _ := NewExtendRocks(tree)
-		multipartTree, _ := NewMultipartRocks(tree)
-		return &MetaTree{
-			InodeTree:     inodeTree,
-			DentryTree:    dentryTree,
-			ExtendTree:    extendTree,
-			MultipartTree: multipartTree,
-		}
-	}
 }

@@ -1160,3 +1160,12 @@ func (b *BTree) Len() (size int) {
 	b.RUnlock()
 	return
 }
+
+func (b *BTree) Clear(handle interface{}) (err error) {
+	b.tree.Clear(false)
+	return
+}
+
+func (b *BTree) DeleteMetadata(handle interface{}) (err error) {
+	return
+}

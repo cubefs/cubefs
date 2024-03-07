@@ -236,13 +236,13 @@ func SelectDisk(dirs []string, fsUsedFactor float64) (string, error) {
 	for _, dir := range dirs {
 		fs := syscall.Statfs_t{}
 		if err := syscall.Statfs(dir, &fs); err != nil {
-			log.LogErrorf("statfs dir:[%s] has err:[%s]", dir, err.Error())
+			log.LogErrorf("[SelectDisk] statfs dir:[%s] has err:[%s]", dir, err.Error())
 			continue
 		}
 		total := float64(fs.Blocks * uint64(fs.Bsize))
 		avail := float64(fs.Bavail * uint64(fs.Bsize))
 		if (total - avail) > total*fsUsedFactor {
-			log.LogWarnf("dir:[%s] not enough space:[%v] of disk so skip", dir, avail)
+			log.LogWarnf("[SelectDisk] dir:[%s] not enough space:[%v] of disk so skip", dir, avail)
 			continue
 		}
 

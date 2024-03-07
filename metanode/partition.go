@@ -516,6 +516,7 @@ type metaPartition struct {
 	deletedExtentsTree    DeletedExtentsTree    // deleted extents
 	deletedObjExtentsTree DeletedObjExtentsTree // deleted obj extents
 	deletedExtentId       uint64
+	rocksdbManager        RocksdbManager
 	db                    *RocksDbInfo
 	txProcessor           *TransactionProcessor // transction processor
 	raftPartition         raftstore.Partition
@@ -924,7 +925,9 @@ func NewMetaPartition(conf *MetaPartitionConfig, manager *metadataManager) MetaP
 			TemporaryVerMap: make(map[uint64]*proto.VolVersionInfo),
 		},
 		enableAuditLog: true,
-		db:             NewRocksDb(),
+	}
+	if manager != nil {
+		mp.rocksdbManager = manager.rocksdbManager
 	}
 	return mp
 }
@@ -936,25 +939,13 @@ func (mp *metaPartition) initMemoryTree() {
 	mp.multipartTree = &MultipartBTree{NewBtree()}
 	mp.deletedExtentsTree = &DeletedExtentsBTree{NewBtree()}
 	mp.deletedObjExtentsTree = &DeletedObjExtentsBTree{NewBtree()}
-	return
-}
-
-func (mp *metaPartition) getRocksDbRootDir() string {
-	partitionId := strconv.FormatUint(mp.config.PartitionId, 10)
-	return path.Join(mp.config.RocksDBDir, partitionPrefix+partitionId, "db")
-}
-
-func (mp *metaPartition) cleanRocksDbTreeResource() {
-	if mp.HasMemStore() {
-		log.LogWarnf("mp[%v] remove rocks dir,but has memory store mode", mp.config.PartitionId)
-	}
-	os.RemoveAll(mp.getRocksDbRootDir())
 }
 
 func (mp *metaPartition) initRocksDBTree() (err error) {
 	var tree *RocksTree
 
-	if tree, err = DefaultRocksTree(mp.db); err != nil {
+	// TODO(NaturalSelect): init db using meta node
+	if tree, err = DefaultRocksTree(mp.db, mp.config.PartitionId); err != nil {
 		log.LogErrorf("[initRocksDBTree] default rocks tree dir: %v, id: %v error %v ", mp.config.RocksDBDir, mp.config.PartitionId, err)
 		return
 	}
@@ -989,33 +980,13 @@ func (mp *metaPartition) cleanMemoryTreeResource() {
 }
 
 func (mp *metaPartition) selectRocksDBDir() (err error) {
-	var (
-		dir         string
-		partitionId = strconv.FormatUint(mp.config.PartitionId, 10)
-	)
 	maxUsedPercent := getMemModeMaxFsUsedPercent()
 	if mp.HasRocksDBStore() {
 		maxUsedPercent = getRocksDBModeMaxFsUsedPercent()
 	}
 	factor := float64(maxUsedPercent) / float64(100)
 
-	//clean
-	for _, dir = range mp.manager.rocksDBDirs {
-		rocksdbDir := path.Join(dir, partitionPrefix+partitionId)
-		if _, err = os.Stat(rocksdbDir); err != nil {
-			if os.IsNotExist(err) {
-				continue
-			} else {
-				return
-			}
-		} else {
-			if err = os.RemoveAll(path.Join(rocksdbDir, "db")); err != nil {
-				return
-			}
-		}
-	}
-
-	dir, err = diskmon.SelectDisk(mp.manager.rocksDBDirs, factor)
+	dir, err := diskmon.SelectDisk(mp.manager.rocksDBDirs, factor)
 	if err != nil {
 		log.LogErrorf("selectRocksDBDir, mp[%v] select failed(%v), so set root dir(%s) as rocksdb dir",
 			mp.config.PartitionId, err, mp.manager.rootDir)
@@ -1267,20 +1238,78 @@ func (mp *metaPartition) LoadSnapshot(snapshotPath string) (err error) {
 	return
 }
 
+func (mp *metaPartition) Clear() (err error) {
+	log.LogDebugf("[Clear] mp(%v) clear data", mp.config.PartitionId)
+	handle, err := mp.inodeTree.CreateBatchWriteHandle()
+	if err != nil {
+		log.LogErrorf("[Clear] mp(%v) failed to open write handle, err(%v)", mp.config.PartitionId, err)
+		return
+	}
+	if err = mp.inodeTree.Clear(handle); err != nil {
+		log.LogErrorf("[Clear] mp(%v) failed to clear inode tree, err(%v)", mp.config.PartitionId, err)
+		return
+	}
+	if err = mp.dentryTree.Clear(handle); err != nil {
+		log.LogErrorf("[Clear] mp(%v) failed to clear dentry tree, err(%v)", mp.config.PartitionId, err)
+		return
+	}
+	if err = mp.extendTree.Clear(handle); err != nil {
+		log.LogErrorf("[Clear] mp(%v) failed to clear extend tree, err(%v)", mp.config.PartitionId, err)
+		return
+	}
+	if err = mp.multipartTree.Clear(handle); err != nil {
+		log.LogErrorf("[Clear] mp(%v) failed to clear multipart tree, err(%v)", mp.config.PartitionId, err)
+		return
+	}
+	txTree := mp.txProcessor.txManager.txTree
+	txRbInoTree := mp.txProcessor.txResource.txRbInodeTree
+	txRbDenTree := mp.txProcessor.txResource.txRbDentryTree
+	if err = txTree.Clear(handle); err != nil {
+		log.LogErrorf("[Clear] mp(%v) failed to clear transaction tree, err(%v)", mp.config.PartitionId, err)
+		return
+	}
+	if err = txRbInoTree.Clear(handle); err != nil {
+		log.LogErrorf("[Clear] mp(%v) failed to clear transaction rollback inode tree, err(%v)", mp.config.PartitionId, err)
+		return
+	}
+	if err = txRbDenTree.Clear(handle); err != nil {
+		log.LogErrorf("[Clear] mp(%v) failed to clear transaction rollback dentry tree, err(%v)", mp.config.PartitionId, err)
+		return
+	}
+	if err = mp.deletedExtentsTree.Clear(handle); err != nil {
+		log.LogErrorf("[Clear] mp(%v) failed to clear deleted extents tree, err(%v)", mp.config.PartitionId, err)
+		return
+	}
+	if err = mp.deletedObjExtentsTree.Clear(handle); err != nil {
+		log.LogErrorf("[Clear] mp(%v) failed to clear deleted obj extents tree, err(%v)", mp.config.PartitionId, err)
+		return
+	}
+	// NOTE: delete metadata
+	if err = mp.inodeTree.DeleteMetadata(handle); err != nil {
+		log.LogErrorf("[Clear] mp(%v) failed to delete metadata, err(%v)", mp.config.PartitionId, err)
+		return
+	}
+	err = mp.inodeTree.CommitAndReleaseBatchWriteHandle(handle, false)
+	mp.applyID = 0
+	mp.txProcessor.txManager.txIdAlloc.setTransactionID(0)
+	mp.deletedExtentId = 0
+	mp.config.Cursor = 0
+	mp.config.UniqId = 0
+	return
+}
+
 func (mp *metaPartition) initObjects(isCreate bool) (err error) {
 	mp.uidManager = NewUidMgr(mp.config.VolName, mp.config.PartitionId)
 	mp.mqMgr = NewQuotaManager(mp.config.VolName, mp.config.PartitionId)
 
 	if mp.HasMemStore() {
 		mp.initMemoryTree()
-		if isCreate {
-			mp.cleanRocksDbTreeResource()
-		}
 	}
 
 	if mp.HasRocksDBStore() {
-		if err = mp.db.OpenDb(mp.getRocksDbRootDir(), mp.config.RocksWalFileSize, mp.config.RocksWalMemSize,
-			mp.config.RocksLogFileSize, mp.config.RocksLogReversedTime, mp.config.RocksLogReVersedCnt, mp.config.RocksWalTTL); err != nil {
+		mp.db, err = mp.rocksdbManager.OpenRocksdb(mp.config.RocksDBDir)
+		if err != nil {
+			log.LogErrorf("[initObjects] mp(%v) failed to open rocksdb, err(%v)", mp.config.PartitionId, err)
 			return
 		}
 		if err = mp.initRocksDBTree(); err != nil {
@@ -1593,20 +1622,23 @@ func (mp *metaPartition) MarshalJSON() ([]byte, error) {
 	return json.Marshal(mp.config)
 }
 
-// TODO remove? no usage?
 // Reset resets the meta partition.
 func (mp *metaPartition) Reset() (err error) {
 	mp.inodeTree.Release()
 	mp.dentryTree.Release()
 	mp.extendTree.Release()
 	mp.multipartTree.Release()
-	mp.config.Cursor = 0
-	mp.config.UniqId = 0
-	mp.applyID = 0
 	mp.txProcessor.Reset()
 	mp.deletedExtentsTree.Release()
 	mp.deletedObjExtentsTree.Release()
-	mp.db.CloseDb()
+	// NOTE: close rocksdb
+	err = mp.Clear()
+	if err != nil {
+		log.LogErrorf("[Reset] mp(%v) failed to clear mp data", mp.config.PartitionId)
+		return
+	}
+	mp.rocksdbManager.CloseRocksdb(mp.db)
+	mp.db = nil
 
 	// remove files
 	filenames := []string{applyIDFile, dentryFile, inodeFile, extendFile, multipartFile, verdataFile, txInfoFile, txRbInodeFile, txRbDentryFile, TxIDFile}
@@ -1617,9 +1649,9 @@ func (mp *metaPartition) Reset() (err error) {
 		}
 		err = nil
 	}
-	mp.cleanRocksDbTreeResource()
-	mp.cleanMemoryTreeResource()
-
+	if mp.HasMemStore() {
+		mp.cleanMemoryTreeResource()
+	}
 	return
 }
 
@@ -2170,6 +2202,32 @@ func (mp *metaPartition) GetDeletedObjExtentsRealCount() (count uint64, err erro
 	}
 	defer snap.Close()
 	err = snap.Range(DeletedObjExtentsType, func(item interface{}) (bool, error) {
+		count++
+		return true, nil
+	})
+	return
+}
+
+func (mp *metaPartition) GetExtendRealCount() (count uint64, err error) {
+	snap, err := mp.GetSnapShot()
+	if err != nil {
+		return
+	}
+	defer snap.Close()
+	err = snap.Range(ExtendType, func(item interface{}) (bool, error) {
+		count++
+		return true, nil
+	})
+	return
+}
+
+func (mp *metaPartition) GetMultipartRealCount() (count uint64, err error) {
+	snap, err := mp.GetSnapShot()
+	if err != nil {
+		return
+	}
+	defer snap.Close()
+	err = snap.Range(MultipartType, func(item interface{}) (bool, error) {
 		count++
 		return true, nil
 	})

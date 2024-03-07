@@ -46,18 +46,28 @@ const (
 )
 
 func newManager() *metadataManager {
-	return &metadataManager{partitions: make(map[uint64]MetaPartition), volUpdating: new(sync.Map)}
+	return &metadataManager{
+		partitions:     make(map[uint64]MetaPartition),
+		volUpdating:    new(sync.Map),
+		rocksdbManager: NewRocksdbManager(),
+	}
 }
 
 func newPartition(conf *MetaPartitionConfig, manager *metadataManager) (mp *metaPartition) {
 	mp = &metaPartition{
-		config:    conf,
-		stopC:     make(chan bool),
-		storeChan: make(chan *storeMsg, 100),
-		vol:       NewVol(),
-		manager:   manager,
-		verSeq:    conf.VerSeq,
-		db:        NewRocksDb(),
+		config:         conf,
+		stopC:          make(chan bool),
+		storeChan:      make(chan *storeMsg, 100),
+		vol:            NewVol(),
+		manager:        manager,
+		verSeq:         conf.VerSeq,
+		rocksdbManager: manager.rocksdbManager,
+	}
+	if conf.StoreMode == proto.StoreModeRocksDb {
+		err := mp.rocksdbManager.Register(conf.RocksDBDir)
+		if err != nil {
+			panic(err)
+		}
 	}
 	mp.config.Cursor = 0
 	mp.config.End = 100000
@@ -1482,7 +1492,12 @@ func NewMetaPartitionForTest(storeMode proto.StoreMode) *metaPartition {
 		os.RemoveAll(mpC.RocksDBDir)
 	}
 	partition := NewMetaPartition(mpC, nil).(*metaPartition)
-	err := partition.initObjects(true)
+	partition.rocksdbManager = NewRocksdbManager()
+	err := partition.rocksdbManager.Register(mpC.RocksDBDir)
+	if err != nil {
+		panic(err)
+	}
+	err = partition.initObjects(true)
 	if err != nil {
 		panic(err)
 	}

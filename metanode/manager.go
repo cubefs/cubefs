@@ -93,7 +93,8 @@ type metadataManager struct {
 	verUpdateChan        chan string
 	volViewUpdaer        VolViewUpdater
 
-	rocksDBDirs []string
+	rocksDBDirs    []string
+	rocksdbManager RocksdbManager
 }
 
 func (m *metadataManager) getPacketLabels(p *Packet) (labels map[string]string) {
@@ -596,13 +597,10 @@ func (m *metadataManager) createPartition(request *proto.CreateMetaPartitionRequ
 	}
 
 	partition := NewMetaPartition(mpc, m)
-	if partition == nil {
-		err = errors.NewErrorf("[createPartition] partition is nil")
-		return
-	}
 
 	if err = partition.RenameStaleMetadata(); err != nil {
 		err = errors.NewErrorf("[createPartition]->%s", err.Error())
+		return
 	}
 
 	if err = partition.PersistMetadata(); err != nil {
@@ -618,10 +616,22 @@ func (m *metadataManager) createPartition(request *proto.CreateMetaPartitionRequ
 	}
 
 	m.mu.Lock()
-	defer m.mu.Unlock()
 	m.partitions[request.PartitionID] = partition
-	log.LogInfof("load meta partition %v success", request.PartitionID)
+	m.mu.Unlock()
 
+	err = m.volViewUpdaer.Register(partition)
+	if err != nil {
+		log.LogErrorf("[createPartition] failed to register mp(%v) to vol view updater, err(%v)", partition.GetBaseConfig().PartitionId, err)
+
+		// NOTE: stop partition
+		m.mu.Lock()
+		delete(m.partitions, request.PartitionID)
+		m.mu.Unlock()
+
+		partition.Stop()
+		return
+	}
+	log.LogInfof("load meta partition %v success", request.PartitionID)
 	return
 }
 
@@ -701,6 +711,7 @@ func NewMetadataManager(conf MetadataManagerConfig, metaNode *MetaNode) Metadata
 		maxQuotaGoroutineNum: defaultMaxQuotaGoroutine,
 		volUpdating:          new(sync.Map),
 		rocksDBDirs:          metaNode.rocksDirs,
+		rocksdbManager:       metaNode.rocksdbManager,
 	}
 }
 

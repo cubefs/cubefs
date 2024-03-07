@@ -16,13 +16,16 @@ package metanode
 
 import (
 	"fmt"
-	"github.com/cubefs/cubefs/util/diskmon"
 	syslog "log"
 	"os"
+	"path"
 	"strconv"
 	"strings"
 	"sync/atomic"
 	"time"
+
+	"github.com/cubefs/cubefs/util/diskmon"
+	"github.com/cubefs/cubefs/util/fileutil"
 
 	"github.com/xtaci/smux"
 
@@ -75,7 +78,8 @@ type MetaNode struct {
 	clusterUuidEnable         bool
 	serviceIDKey              string
 
-	rocksDirs []string
+	rocksDirs      []string
+	rocksdbManager RocksdbManager
 
 	control           common.Control
 	diskStopCh        chan struct{}
@@ -132,6 +136,18 @@ func (m *MetaNode) checkLocalPartitionMatchWithMaster() (err error) {
 	return
 }
 
+func (m *MetaNode) newRocksdbManager() (err error) {
+	m.rocksdbManager = NewRocksdbManager()
+	for _, dbPath := range m.rocksDirs {
+		err = m.rocksdbManager.Register(dbPath)
+		if err != nil {
+			log.LogErrorf("[initRocksdbProvider] failed to init rocksdb provider")
+			return
+		}
+	}
+	return
+}
+
 func doStart(s common.Server, cfg *config.Config) (err error) {
 	m, ok := s.(*MetaNode)
 	if !ok {
@@ -141,6 +157,9 @@ func doStart(s common.Server, cfg *config.Config) (err error) {
 		return
 	}
 	if err = m.startDiskStat(); err != nil {
+		return
+	}
+	if err = m.newRocksdbManager(); err != nil {
 		return
 	}
 	if err = m.register(); err != nil {
@@ -281,7 +300,7 @@ func (m *MetaNode) parseConfig(cfg *config.Config) (err error) {
 
 	if cfg.HasKey(cfgRaftSyncSnapFormatVersion) {
 		raftSyncSnapFormatVersion := uint32(cfg.GetInt64(cfgRaftSyncSnapFormatVersion))
-		if raftSyncSnapFormatVersion < 0 || raftSyncSnapFormatVersion > SnapFormatVersion_1 {
+		if raftSyncSnapFormatVersion > SnapFormatVersion_1 {
 			m.raftSyncSnapFormatVersion = SnapFormatVersion_1
 			log.LogInfof("invalid config raftSyncSnapFormatVersion, using default[%v]", m.raftSyncSnapFormatVersion)
 		} else {
@@ -297,9 +316,22 @@ func (m *MetaNode) parseConfig(cfg *config.Config) (err error) {
 
 	m.rocksDirs = cfg.GetStringSlice(cfgRocksDirs)
 	if len(m.rocksDirs) == 0 {
-		log.LogInfof("conf do not have rocks db dir, now use meta data dir")
-		m.rocksDirs = append(m.rocksDirs, m.metadataDir)
+		dbDir := path.Join(m.metadataDir, "db")
+		log.LogInfof("[parseConfig] rocksdb dir not found, using meta dir(%v)", dbDir)
+		m.rocksDirs = append(m.rocksDirs, dbDir)
 	}
+
+	// NOTE: create db dir
+	for _, dbDir := range m.rocksDirs {
+		if !fileutil.ExistDir(dbDir) {
+			err = os.MkdirAll(dbDir, 0o755)
+			if err != nil {
+				log.LogErrorf("[parseConfig] failed to create rocksdb db dir(%v), err(%v)", dbDir, err)
+				return
+			}
+		}
+	}
+
 	m.diskReservedSpace, _ = strconv.ParseUint(cfg.GetString(cfgDiskReservedSpace), 10, 64)
 	if m.diskReservedSpace == 0 || m.diskReservedSpace < defaultDiskReservedSpace {
 		m.diskReservedSpace = defaultDiskReservedSpace

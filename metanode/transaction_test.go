@@ -60,17 +60,21 @@ func newMetaPartition(PartitionId uint64, manager *metadataManager, storeMode pr
 	metaConf.RocksDBDir = fmt.Sprintf("%v/%v_%v", "/tmp/cfs/tx_test", partitionId, time.Now().UnixMilli())
 
 	mp = &metaPartition{
-		config:    metaConf,
-		stopC:     make(chan bool),
-		storeChan: make(chan *storeMsg, 100),
-		vol:       NewVol(),
-		manager:   manager,
-		db:        NewRocksDb(),
+		config:         metaConf,
+		stopC:          make(chan bool),
+		storeChan:      make(chan *storeMsg, 100),
+		vol:            NewVol(),
+		manager:        manager,
+		rocksdbManager: NewRocksdbManager(),
+	}
+	err := mp.rocksdbManager.Register(metaConf.RocksDBDir)
+	if err != nil {
+		panic(err)
 	}
 	mp.config.Cursor = 1000
 	mp.config.End = 100000
 
-	err := mp.initObjects(true)
+	err = mp.initObjects(true)
 	if err != nil {
 		panic(err)
 	}
