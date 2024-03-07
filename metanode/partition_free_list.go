@@ -602,10 +602,10 @@ func (mp *metaPartition) persistDeletedInode(ino uint64, currentSize *uint64) {
 			return
 		}
 	}
-	// NOTE: += sizeof(uint64)
-	*currentSize += 8
-	if _, err := mp.delInodeFp.WriteString(fmt.Sprintf("%v\n", ino)); err != nil {
-		log.LogErrorf("[persistDeletedInode] vol(%v) mp(%v) failed to persist ino(%v), err(%v)", mp.config.VolName, mp.config.PartitionId, ino, err)
+	content := fmt.Sprintf("%v\n", ino)
+	*currentSize += uint64(len(content))
+	if _, err := mp.delInodeFp.WriteString(content); err != nil {
+		log.LogErrorf("[persistDeletedInode] failed to persist ino(%v), err(%v)", ino, err)
 		return
 	}
 }
