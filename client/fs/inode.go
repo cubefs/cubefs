@@ -55,6 +55,9 @@ func (s *Super) InodeGet(ino uint64) (info *proto.InodeInfo, err error) {
 			node.(*File).info = info
 		}
 	}
+	if proto.IsStorageClassBlobStore(info.StorageClass) {
+		return info, nil
+	}
 	if err = s.ec.RefreshExtentsCache(ino); err != nil {
 		log.LogErrorf("[InodeGet] get ino(%v) inode(%v) err: %v", ino, info, err)
 		//TODO:tangjingyu return ParseError(err)?
