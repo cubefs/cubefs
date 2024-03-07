@@ -20,12 +20,15 @@ import (
 	"os"
 	"path"
 	"runtime/debug"
+	"sort"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/errors"
+	"github.com/cubefs/cubefs/util/fileutil"
 	"github.com/cubefs/cubefs/util/log"
 )
 
@@ -584,6 +587,49 @@ func (mp *metaPartition) deleteObjExtents(oeks []proto.ObjExtentKey) (err error)
 	return err
 }
 
+func (mp *metaPartition) recycleInodeDelFile() {
+	// NOTE: get all files
+	dentries, err := os.ReadDir(mp.config.RootDir)
+	if err != nil {
+		log.LogErrorf("[recycleInodeDelFile] mp(%v) failed to read dir(%v)", mp.config.PartitionId, mp.config.RootDir)
+		return
+	}
+	inodeDelFiles := make([]string, 0)
+	for _, dentry := range dentries {
+		if strings.HasPrefix(dentry.Name(), DeleteInodeFileExtension) && strings.HasSuffix(dentry.Name(), ".old") {
+			inodeDelFiles = append(inodeDelFiles, dentry.Name())
+		}
+	}
+	// NOTE: sort files
+	sort.Slice(inodeDelFiles, func(i, j int) bool {
+		// NOTE: date format satisfies dictionary order
+		return inodeDelFiles[i] < inodeDelFiles[j]
+	})
+
+	// NOTE: check disk space and recycle files
+	for len(inodeDelFiles) > 0 {
+		diskSpaceLeft := int64(0)
+		stat, err := fileutil.Statfs(mp.config.RootDir)
+		if err != nil {
+			log.LogErrorf("[recycleInodeDelFile] mp(%v) failed to get fs info", mp.config.PartitionId)
+			return
+		}
+		diskSpaceLeft = int64(stat.Bavail * uint64(stat.Bsize))
+		if diskSpaceLeft >= 50*util.GB && len(inodeDelFiles) < 5 {
+			log.LogDebugf("[recycleInodeDelFile] mp(%v) not need to recycle, return", mp.config.PartitionId)
+			return
+		}
+		// NOTE: delete a file and pop an item
+		oldestFile := inodeDelFiles[len(inodeDelFiles)-1]
+		inodeDelFiles = inodeDelFiles[:len(inodeDelFiles)-1]
+		err = os.Remove(oldestFile)
+		if err != nil {
+			log.LogErrorf("[recycleInodeDelFile] mp(%v) failed to remove file(%v)", mp.config.PartitionId, oldestFile)
+			return
+		}
+	}
+}
+
 func (mp *metaPartition) persistDeletedInode(ino uint64, currentSize *uint64) {
 	if *currentSize >= DeleteInodeFileRollingSize {
 		fileName := fmt.Sprintf("%v.%v.%v", DeleteInodeFileExtension, time.Now().Format(log.FileNameDateFormat), "old")
@@ -601,6 +647,7 @@ func (mp *metaPartition) persistDeletedInode(ino uint64, currentSize *uint64) {
 			log.LogErrorf("[persistDeletedInode] failed to rename delete inode file, err(%v)", err)
 		} else {
 			*currentSize = 0
+			mp.recycleInodeDelFile()
 		}
 		if err = mp.openDeleteInodeFile(); err != nil {
 			log.LogErrorf("[persistDeletedInode] failed to open delete inode file, err(%v), inode(%v)", err, ino)
