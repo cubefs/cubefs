@@ -22,6 +22,7 @@ import (
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util"
+	"github.com/cubefs/cubefs/util/fileutil"
 	"github.com/stretchr/testify/require"
 )
 
@@ -67,9 +68,14 @@ func TestPersistInodesFreeList(t *testing.T) {
 	for i := 0; i < testCount; i++ {
 		inodes = append(inodes, uint64(i))
 	}
+	mp.persistDeletedInodes([]uint64{0})
+	fileName := path.Join(config.RootDir, DeleteInodeFileExtension)
+	oldIno, err := fileutil.Stat(fileName)
+	require.NoError(t, err)
 	mp.persistDeletedInodes(inodes)
 	dentries, err := os.ReadDir(rootDir)
 	require.NoError(t, err)
+	// NOTE: rolling must happend once
 	cnt := 0
 	for _, dentry := range dentries {
 		if strings.HasPrefix(dentry.Name(), DeleteInodeFileExtension) {
@@ -78,6 +84,12 @@ func TestPersistInodesFreeList(t *testing.T) {
 			require.NoError(t, err)
 			t.Logf("found delete inode file %v size %v MB", dentry.Name(), info.Size()/util.MB)
 		}
+	}
+	if cnt < 2 {
+		nowIno, err := fileutil.Stat(fileName)
+		require.NoError(t, err)
+		require.NotEqual(t, oldIno.Ino, nowIno.Ino)
+		return
 	}
 	require.Greater(t, cnt, 1)
 }
