@@ -81,6 +81,7 @@ func TestPersistInodesFreeList(t *testing.T) {
 	}
 	dentries, err := fileutil.ReadDir(rootDir)
 	require.NoError(t, err)
+	// NOTE: rolling must happend once
 	cnt := 0
 	for _, dentry := range dentries {
 		if strings.HasPrefix(dentry, DeleteInodeFileExtension) {
