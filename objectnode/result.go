@@ -18,11 +18,14 @@ import (
 	"encoding/xml"
 	"net/url"
 	"regexp"
-
-	"github.com/cubefs/cubefs/util/log"
+	"strings"
+	"unicode/utf8"
 )
 
-var regexKeyValue = regexp.MustCompile(`^[0-9a-zA-Z+=._ :/@-]+$`)
+var (
+	regexTagKeyValue    = regexp.MustCompile(`^[0-9a-zA-Z+=._ :/@-]+$`)
+	invalidTagKeyPrefix = []string{"cfs", "cubefs"}
+)
 
 func MarshalXMLEntity(entity interface{}) ([]byte, error) {
 	var err error
@@ -257,6 +260,31 @@ type Tag struct {
 	Value string `xml:"Value" json:"v"`
 }
 
+func (t Tag) isValid() bool {
+	if len(t.Key) < 1 || len(t.Key) > TaggingKeyMaxLength {
+		return false
+	}
+	if len(t.Value) < 1 || len(t.Value) > TaggingValueMaxLength {
+		return false
+	}
+
+	if !regexTagKeyValue.MatchString(t.Key) || !regexTagKeyValue.MatchString(t.Value) {
+		return false
+	}
+
+	if !utf8.ValidString(t.Key) || !utf8.ValidString(t.Value) {
+		return false
+	}
+
+	for _, pre := range invalidTagKeyPrefix {
+		if strings.HasPrefix(t.Key, pre) {
+			return false
+		}
+	}
+
+	return true
+}
+
 type Tagging struct {
 	XMLName xml.Name `json:"-"`
 	TagSet  []Tag    `xml:"TagSet>Tag,omitempty" json:"ts"`
@@ -270,24 +298,38 @@ func (t Tagging) Encode() string {
 	return values.Encode()
 }
 
-func (t Tagging) Validate() (bool, *ErrorCode) {
-	var errorCode *ErrorCode
+func (t Tagging) hasDuplicateKey() bool {
+	m := make(map[string]struct{})
+	for _, ts := range t.TagSet {
+		if _, ok := m[ts.Key]; ok {
+			return true
+		}
+		m[ts.Key] = struct{}{}
+	}
+
+	return false
+}
+
+func (t Tagging) Validate() error {
 	if len(t.TagSet) == 0 {
-		return false, InvalidTagError
+		return MissingTagInBody
 	}
+
 	if len(t.TagSet) > TaggingCounts {
-		return false, ExceedTagLimit
+		return TooManyTags
 	}
+
+	if t.hasDuplicateKey() {
+		return DuplicateTagKey
+	}
+
 	for _, tag := range t.TagSet {
-		log.LogDebugf("Validate: key : (%v), value : (%v)", tag.Key, tag.Value)
-		if len(tag.Key) > TaggingKeyMaxLength || !regexKeyValue.MatchString(tag.Key) {
-			return false, InvalidTagKey
-		}
-		if len(tag.Value) > TaggingValueMaxLength || !regexKeyValue.MatchString(tag.Value) {
-			return false, InvalidTagValue
+		if !tag.isValid() {
+			return InvalidTag
 		}
 	}
-	return true, errorCode
+
+	return nil
 }
 
 func NewTagging() *Tagging {
