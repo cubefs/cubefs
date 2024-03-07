@@ -17,6 +17,7 @@ package stream
 import (
 	"fmt"
 	"net"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -175,6 +176,11 @@ func (sc *StreamConn) sendToConn(conn *net.TCPConn, req *Packet, getReply GetRep
 				log.LogWarnf("sendToConn: getReply error and RETURN, addr(%v) reqPacket(%v) err(%v)", sc.currAddr, req, err)
 			}
 			break
+		}
+		// NOTE: if we meet an try again error
+		// add loop count
+		if strings.Contains(err.Error(), "TryAgain") {
+			i -= 1
 		}
 
 		log.LogWarnf("sendToConn: getReply error and will RETRY, sc(%v) err(%v)", sc, err)

@@ -17,6 +17,7 @@ package stream
 import (
 	"fmt"
 	"net"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -324,6 +325,12 @@ func (eh *ExtentHandler) processReply(packet *Packet) {
 		verUpdate = true
 	}
 	if reply.ResultCode != proto.OpOk {
+		// NOTE: try again
+		if reply.ResultCode == proto.OpAgain {
+			log.LogWarnf("[processReply] eh(%v) packet(%v) reply(%v) try again", eh, packet, reply)
+			eh.pushToRequest(packet)
+			return
+		}
 		if reply.ResultCode != proto.ErrCodeVersionOpError {
 			errmsg := fmt.Sprintf("reply NOK: reply(%v)", reply)
 			log.LogDebugf("processReply packet (%v) errmsg (%v)", packet, errmsg)
@@ -380,7 +387,6 @@ func (eh *ExtentHandler) processReply(packet *Packet) {
 	proto.Buffers.Put(packet.Data)
 	packet.Data = nil
 	eh.dirty = true
-	return
 }
 
 func (eh *ExtentHandler) processReplyError(packet *Packet, errmsg string) {
@@ -588,6 +594,12 @@ func (eh *ExtentHandler) allocateExtent() (err error) {
 				extID, err = eh.createExtent(dp)
 			}
 			if err != nil {
+				// NOTE: try again
+				if strings.Contains(err.Error(), "Again") {
+					log.LogWarnf("[allocateExtent] eh(%v) try agagin", eh)
+					i -= 1
+					continue
+				}
 				log.LogWarnf("allocateExtent: exclude dp[%v] for write caused by create extent failed, eh(%v) err(%v) exclude(%v)",
 					dp, eh, err, exclude)
 				eh.stream.client.dataWrapper.RemoveDataPartitionForWrite(dp.PartitionID)
@@ -672,6 +684,9 @@ func (eh *ExtentHandler) createExtent(dp *wrapper.DataPartition) (extID int, err
 	}
 
 	if p.ResultCode != proto.OpOk {
+		if p.ResultCode == proto.OpDiskNoSpaceErr {
+			log.LogWarnf("[createExtent] dp(%v) disk full or tiny extent runs out", dp.PartitionID)
+		}
 		return extID, errors.New(fmt.Sprintf("createExtent: ResultCode NOK, packet(%v) datapartionHosts(%v) ResultCode(%v)", p, dp.Hosts[0], p.GetResultMsg()))
 	}
 

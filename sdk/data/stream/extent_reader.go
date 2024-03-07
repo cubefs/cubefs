@@ -78,7 +78,8 @@ func (reader *ExtentReader) Read(req *ExtentRequest) (readBytes int, err error) 
 			}
 
 			if replyPacket.ResultCode == proto.OpAgain {
-				return nil, true
+				// NOTE: use special errors to retry
+				return errors.NewErrorf("TryAgain"), true
 			}
 
 			e = reader.checkStreamReply(reqPacket, replyPacket)
