@@ -134,6 +134,8 @@ typedef struct Connection {
 
     Queue *freeList;
 
+    Queue *msgList;
+
     void* csContext;
 
     ConnectionState state;
@@ -141,6 +143,8 @@ typedef struct Connection {
     void* connContext;
 
     int cFd;
+
+    int mFd;
 
     struct WaitGroup wg;
     

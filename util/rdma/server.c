@@ -221,7 +221,8 @@ struct RdmaListener* StartServer(const char* ip, uint16_t port, char* serverAddr
 
     server->conn_ev = conn_ev;
 
-    EpollAddConnectEvent(server->listen_id->channel->fd, conn_ev);
+    //EpollAddConnectEvent(server->listen_id->channel->fd, conn_ev);
+    epoll_rdma_event_add(server->listen_id->channel->fd, conn_ev, connection_event_cb);
 
     //printf("start server %p \n", server);
     //sprintf(buffer,"start server %p \n", server);

@@ -244,7 +244,8 @@ struct RdmaContext* Connect(const char* ip, const char* port, char* remoteAddr) 
 
     client->conn_ev = conn_ev;
 
-    EpollAddConnectEvent(client->listen_id->channel->fd, conn_ev);
+    //EpollAddConnectEvent(client->listen_id->channel->fd, conn_ev);
+    epoll_rdma_event_add(client->listen_id->channel->fd, conn_ev, connection_event_cb);
 
     //printf("start client %p \n", client);
     //sprintf(buffer,"start client %p \n", client);

@@ -705,7 +705,7 @@ func (conn *Connection) Read([]byte) (int, error) { //*Buffer
 	//if value := C.wait_event(conn.rFd); value <= 0 {
 	//	return -1, fmt.Errorf("conn(%p) read failed")
 	//}
-	<-conn.rFd
+	//<-conn.rFd
 
 	//println("server conn read before");
 	return 0, nil
@@ -737,19 +737,27 @@ func (conn *Connection) GetRecvMsgBuffer() ([]byte, []byte, error) { //*Buffer, 
 	}
 	conn.mu.RLock()
 	defer conn.mu.RUnlock()
-	if conn.recvMsgList.Len() == 0 {
-		return nil, nil, fmt.Errorf("conn(%p) can not get any recv msg", conn)
-	}
+	/*
+		if conn.recvMsgList.Len() == 0 {
+			return nil, nil, fmt.Errorf("conn(%p) can not get any recv msg", conn)
+		}
 
-	msgElem := conn.recvMsgList.Front()
-	conn.recvMsgList.Remove(msgElem)
-	msg := msgElem.Value.(*RecvMsg)
-	//headerBuffer := &Buffer{conn: conn, buffer: msg.headerPtr}
-	//dataBuffer := &Buffer{conn: conn, buffer: msg.dataPtr}
-	//atomic.StoreInt32(&headerBuffer.btype,BUFFER_HEADER)
-	//atomic.StoreInt32(&dataBuffer.btype,BUFFER_DATA)
-	return msg.headerPtr, msg.dataPtr, nil
-	//return headerBuffer, dataBuffer, nil
+		msgElem := conn.recvMsgList.Front()
+		conn.recvMsgList.Remove(msgElem)
+		msg := msgElem.Value.(*RecvMsg)
+		//headerBuffer := &Buffer{conn: conn, buffer: msg.headerPtr}
+		//dataBuffer := &Buffer{conn: conn, buffer: msg.dataPtr}
+		//atomic.StoreInt32(&headerBuffer.btype,BUFFER_HEADER)
+		//atomic.StoreInt32(&dataBuffer.btype,BUFFER_DATA)
+		return msg.headerPtr, msg.dataPtr, nil
+		//return headerBuffer, dataBuffer, nil
+	*/
+
+	entry := C.getRecvMsgBuffer((*C.Connection)(conn.cConn))
+	recvHeaderBuff := CbuffToSlice(entry.header_buff, int(entry.header_len))
+	recvDataBuff := CbuffToSlice(entry.data_buff, int(entry.data_len))
+	C.free(unsafe.Pointer(entry))
+	return recvHeaderBuff, recvDataBuff, nil
 }
 
 func (conn *Connection) RdmaPostRecvHeader(headerBuffer []byte) error {
@@ -795,7 +803,7 @@ func (conn *Connection) RecvResp([]byte) error { // //TODO *Buffer
 	//if value := C.wait_event(conn.rFd); value <= 0 {
 	//	return fmt.Errorf("conn(%p) recv resp failed", conn)
 	//}
-	<-conn.rFd
+	//<-conn.rFd
 
 	return nil
 }
@@ -806,17 +814,25 @@ func (conn *Connection) GetRecvResponseBuffer() ([]byte, error) { //*Buffer
 	}
 	conn.mu.RLock()
 	defer conn.mu.RUnlock()
-	if conn.recvMsgList.Len() == 0 {
-		return nil, fmt.Errorf("conn(%p) can not get any recv msg", conn)
-	}
+	/*
+		if conn.recvMsgList.Len() == 0 {
+			return nil, fmt.Errorf("conn(%p) can not get any recv msg", conn)
+		}
 
-	msgElem := conn.recvMsgList.Front()
-	conn.recvMsgList.Remove(msgElem)
-	msg := msgElem.Value.(*RecvMsg)
-	//responseBuffer := &Buffer{conn: conn, buffer: msg.responsePtr}
-	//atomic.StoreInt32(&(responseBuffer.btype),BUFFER_RESPONSE)
-	return msg.responsePtr, nil
-	//return responseBuffer, nil
+		msgElem := conn.recvMsgList.Front()
+		conn.recvMsgList.Remove(msgElem)
+		msg := msgElem.Value.(*RecvMsg)
+		//responseBuffer := &Buffer{conn: conn, buffer: msg.responsePtr}
+		//atomic.StoreInt32(&(responseBuffer.btype),BUFFER_RESPONSE)
+		return msg.responsePtr, nil
+		//return responseBuffer, nil
+	*/
+	entry := C.getRecvResponseBuffer((*C.Connection)(conn.cConn))
+	recvResponseBuff := CbuffToSlice(entry.response_buff, int(entry.response_len))
+
+	C.free(unsafe.Pointer(entry))
+
+	return recvResponseBuff, nil
 }
 
 func (conn *Connection) RdmaPostRecvResponse(responseBuffer []byte) error {

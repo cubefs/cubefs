@@ -236,6 +236,8 @@ Connection* AllocConnection(struct rdma_cm_id *cm_id, struct ConnectionEvent *co
 
     conn->freeList = InitQueue();
 
+    conn->msgList = InitQueue();
+
     conn->conntype = conntype;
     
     conn->cm_id = cm_id;
@@ -244,7 +246,7 @@ Connection* AllocConnection(struct rdma_cm_id *cm_id, struct ConnectionEvent *co
 
     conn->cFd = open_event_fd();
 
-
+    conn->mFd = open_event_fd();
 
     int ret = wait_group_init(&conn->wg);
     if(ret) {
@@ -429,8 +431,8 @@ int ReConnect(Connection* conn) {
     conn->cm_id = id;
     client->listen_id = id;
     conn_ev->cm_id = id;
-    EpollAddConnectEvent(client->listen_id->channel->fd,conn_ev);
-
+    //EpollAddConnectEvent(client->listen_id->channel->fd,conn_ev);
+    epoll_rdma_event_add(client->listen_id->channel->fd, conn_ev, connection_event_cb);
 
     ((struct RdmaContext*)conn->csContext)->isReConnect = true;
     ret = rdma_resolve_addr(conn->cm_id, NULL, addr->ai_addr, TIMEOUT_IN_MS);
@@ -825,6 +827,47 @@ void* getHeaderBuffer(Connection *conn, int64_t timeout_us, int32_t *ret_size) {
     }
 }
 
+MemoryEntry* getRecvMsgBuffer(Connection *conn) {
+    if(wait_event(conn->mFd) <= 0) {//TODO error handler
+        return NULL;
+    }
+
+    MemoryEntry *entry;
+    //因为是串行获取连接的，所以不需要加锁
+
+    DeQueue(conn->msgList, &entry);
+    if(entry == NULL) {//TODO
+
+    }
+
+
+    //printf("conn msgList waitMsg size: %d\n",GetSize(conn->msgList));
+    //sprintf(buffer,"conn msgList waitMsg size: %d\n",GetSize(conn->msgList));
+    //PrintCallback(buffer);
+    return entry;
+}
+
+MemoryEntry* getRecvResponseBuffer(Connection *conn) {
+    if(wait_event(conn->mFd) <= 0) {//TODO error handler
+        return NULL;
+    }
+
+    MemoryEntry *entry;
+    //因为是串行获取连接的，所以不需要加锁
+
+    DeQueue(conn->msgList, &entry);
+    if(entry == NULL) {//TODO
+
+    }
+
+
+    //printf("conn msgList waitMsg size: %d\n",GetSize(conn->msgList));
+    //sprintf(buffer,"conn msgList waitMsg size: %d\n",GetSize(conn->msgList));
+    //PrintCallback(buffer);
+    return entry;
+}
+
+
 void setConnContext(Connection* conn, void* connContext) {
     //sprintf(buffer,"setConnContext: conn %d\n",conn);
     //PrintCallback(buffer);
@@ -841,7 +884,9 @@ void setConnContext(Connection* conn, void* connContext) {
     //PrintCallback(buffer);
     //sprintf(buffer,"setConnContext: conn->comp_channel->fd %d\n",conn->comp_channel->fd);
     //PrintCallback(buffer);
-    EpollAddSendAndRecvEvent(conn->comp_channel->fd, conn);
+    //EpollAddSendAndRecvEvent(conn->comp_channel->fd, conn);
+    epoll_rdma_event_add(conn->comp_channel->fd, conn, transport_sendAndRecv_event_cb);
+
     //pthread_spin_unlock(&conn->lock);
     return;
 }

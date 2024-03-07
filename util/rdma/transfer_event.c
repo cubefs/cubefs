@@ -38,8 +38,20 @@ int connRdmaHandleRecv(Connection *conn, void *block, uint32_t byte_len) {//, in
         entry->response_len = sizeof(Response);
         entry->isResponse = true;
 
-        RecvMessageCallback(conn->connContext, entry);
-        free(entry);
+        //RecvMessageCallback(conn->connContext, entry);
+
+        if(EnQueue(conn->msgList, entry) == NULL) { //TODO error handler
+            printf("conn msgList enQueue failed, no more memory can be malloced\n");
+            sprintf(buffer,"conn msgList enQueue failed, no more memory can be malloced\n");
+            PrintCallback(buffer);
+        };
+        //printf("conn msgList enQueue success, waitMsg size: %d\n",GetSize(conn->msgList));
+        //sprintf(buffer,"conn msgList enQueue success, waitMsg size: %d\n",GetSize(conn->msgList));
+        //PrintCallback(buffer);
+
+        //free(entry);
+
+        notify_event(conn->mFd, 0);
 
         break;
 
@@ -55,8 +67,20 @@ int connRdmaHandleRecv(Connection *conn, void *block, uint32_t byte_len) {//, in
 
 int connRdmaHandleRead(Connection *conn, MemoryEntry* entry, uint32_t byte_len) {//, int64_t now
 
-    RecvMessageCallback(conn->connContext, entry);
-    free(entry);
+    //RecvMessageCallback(conn->connContext, entry);
+
+
+    if(EnQueue(conn->msgList, entry) == NULL) { //TODO error handler
+        printf("conn msgList enQueue failed, no more memory can be malloced\n");
+        sprintf(buffer,"conn msgList enQueue failed, no more memory can be malloced\n");
+        PrintCallback(buffer);
+    };
+    //printf("conn msgList enQueue success, waitMsg size: %d\n",GetSize(conn->msgList));
+    //sprintf(buffer,"conn msgList enQueue success, waitMsg size: %d\n",GetSize(conn->msgList));
+    //PrintCallback(buffer);
+    notify_event(conn->mFd, 0);
+
+    //free(entry);
 
     return C_OK;
 }
