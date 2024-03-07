@@ -137,7 +137,7 @@ extern int cfs_getattr(int64_t id, char* path, struct cfs_stat_info* stat);
 extern int cfs_setattr(int64_t id, char* path, struct cfs_stat_info* stat, int valid);
 extern int cfs_open(int64_t id, char* path, int flags, mode_t mode);
 extern int cfs_flush(int64_t id, int fd);
-extern void cfs_close(int64_t id, int fd);
+extern int cfs_close(int64_t id, int fd);
 extern ssize_t cfs_write(int64_t id, int fd, void* buf, size_t size, off_t off);
 extern ssize_t cfs_read(int64_t id, int fd, void* buf, size_t size, off_t off);
 extern int cfs_batch_get_inodes(int64_t id, int fd, void* iids, GoSlice stats, int count);
