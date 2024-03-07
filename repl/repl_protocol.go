@@ -149,7 +149,7 @@ func (ft *FollowerTransport) readFollowerResult(request *FollowerPacket) (err er
 	reply := NewPacket()
 	defer func() {
 		if conn, ok := ft.conn.(*rdma.Connection); ok {
-			log.LogDebugf("readFollowerResult: packet(%v)", reply)
+			//log.LogDebugf("readFollowerResult: packet(%v)", reply)
 			reply.clean()
 			request.respCh <- err
 			if err != nil {

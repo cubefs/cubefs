@@ -28,7 +28,7 @@ static int epoll_fd  = -1;
 static pthread_mutex_t mutex;
 static pthread_t epoll_thread;
 static struct EpollEvent all_event[1024] = {};
-static int all_fds[1024] = {}
+static int all_fds[1024] = {};
 
 static void * epoll_worker(void *ctx) {
     struct epoll_event ready_ev[128];//申请空间来放就绪的事件。

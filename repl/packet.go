@@ -351,8 +351,8 @@ func (p *Packet) ReadFromConnFromCli(c net.Conn, deadlineTime time.Duration) (er
 	*/
 
 	if conn, ok := c.(*rdma.Connection); ok {
-		log.LogDebugf("rdma conn read start")
-		println("rdma conn read start")
+		//log.LogDebugf("rdma conn read start")
+		//println("rdma conn read start")
 		var headerBuff []byte
 		var dataBuff []byte
 		var offset int
@@ -392,7 +392,7 @@ func (p *Packet) ReadFromConnFromCli(c net.Conn, deadlineTime time.Duration) (er
 		//conn.Buffs[&dataBuff[0]] = dataBuff
 
 		p.IsRdma = true
-		log.LogDebugf("rdma conn read exit")
+		//log.LogDebugf("rdma conn read exit")
 		return
 	} else {
 		var header []byte
