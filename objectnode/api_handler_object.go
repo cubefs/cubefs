@@ -1311,10 +1311,9 @@ func (o *ObjectNode) putObjectHandler(w http.ResponseWriter, r *http.Request) {
 			errorCode = InvalidArgument
 			return
 		}
-		var validateRes bool
-		if validateRes, errorCode = tagging.Validate(); !validateRes {
+		if err = tagging.Validate(); err != nil {
 			log.LogErrorf("putObjectHandler: tagging validate fail: requestID(%v) volume(%v) path(%v) tagging(%v) err(%v)",
-				GetRequestID(r), vol.Name(), param.Object(), tagging, errorCode)
+				GetRequestID(r), vol.Name(), param.Object(), tagging, err)
 			return
 		}
 	}
@@ -1519,9 +1518,9 @@ func (o *ObjectNode) postObjectHandler(w http.ResponseWriter, r *http.Request) {
 			errorCode.ErrorMessage = fmt.Sprintf("%s (%s)", errorCode.ErrorMessage, "Invalid tagging")
 			return
 		}
-		if _, erc := tagging.Validate(); erc != nil {
+		if err = tagging.Validate(); err != nil {
 			errorCode = MalformedPOSTRequest.Copy()
-			errorCode.ErrorMessage = fmt.Sprintf("%s (%v)", errorCode.ErrorMessage, erc)
+			errorCode.ErrorMessage = fmt.Sprintf("%s (%v)", errorCode.ErrorMessage, err)
 			return
 		}
 	}
@@ -1854,10 +1853,9 @@ func (o *ObjectNode) putObjectTaggingHandler(w http.ResponseWriter, r *http.Requ
 		errorCode = InvalidArgument
 		return
 	}
-	validateRes, errorCode := tagging.Validate()
-	if !validateRes {
+	if err = tagging.Validate(); err != nil {
 		log.LogErrorf("putObjectTaggingHandler: tagging validate fail: requestID(%v) tagging(%v) err(%v)",
-			GetRequestID(r), tagging, errorCode.Error())
+			GetRequestID(r), tagging, err)
 		return
 	}
 
@@ -1918,6 +1916,9 @@ func (o *ObjectNode) deleteObjectTaggingHandler(w http.ResponseWriter, r *http.R
 	if err != nil {
 		log.LogErrorf("deleteObjectTaggingHandler: volume delete tagging fail: requestID(%v) volume(%v) object(%v) err(%v)",
 			GetRequestID(r), param.Bucket(), param.Object(), err)
+		if err == syscall.ENOENT {
+			errorCode = NoSuchKey
+		}
 		return
 	}
 
