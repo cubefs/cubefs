@@ -337,6 +337,7 @@ func (f *File) Read(ctx context.Context, req *fuse.ReadRequest, resp *fuse.ReadR
 		size, err = f.fReader.Read(ctx, resp.Data[fuse.OutHeaderSize:], int(req.Offset), req.Size)
 	}
 	if err != nil && err != io.EOF {
+		log.LogErrorf("[Read] failed to read ino(%v) req(%v) err(%v) size(%v)", f.info.Inode, req, err, size)
 		msg := fmt.Sprintf("Read: ino(%v) req(%v) err(%v) size(%v)", f.info.Inode, req, err, size)
 		f.super.handleError("Read", msg)
 		errMetric := exporter.NewCounter("fileReadFailed")

@@ -158,6 +158,8 @@ func (sc *StreamConn) sendToDataPartition(req *Packet, retry *bool, getReply Get
 	return errors.New(fmt.Sprintf("sendToPatition Failed: sc(%v) reqPacket(%v)", sc, req))
 }
 
+var ErrLimitedIo = errors.New("limited io error")
+
 func (sc *StreamConn) sendToConn(conn *net.TCPConn, req *Packet, getReply GetReplyFunc) (err error) {
 	for i := 0; i < StreamSendMaxRetry; i++ {
 		log.LogDebugf("sendToConn: send to addr(%v), reqPacket(%v)", sc.currAddr, req)
@@ -175,6 +177,10 @@ func (sc *StreamConn) sendToConn(conn *net.TCPConn, req *Packet, getReply GetRep
 				log.LogWarnf("sendToConn: getReply error and RETURN, addr(%v) reqPacket(%v) err(%v)", sc.currAddr, req, err)
 			}
 			break
+		}
+		// NOTE: if we meet an try again error
+		if err == ErrLimitedIo {
+			i -= 1
 		}
 
 		log.LogWarnf("sendToConn: getReply error and will RETRY, sc(%v) err(%v)", sc, err)

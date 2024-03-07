@@ -911,7 +911,7 @@ func (s *DataNode) handleRandomWritePacket(p *repl.Packet) {
 	if err == nil && p.ResultCode != proto.OpOk && p.ResultCode != proto.OpTryOtherExtent {
 		log.LogErrorf("action[handleRandomWritePacket] opcod %v seq %v dpid %v dpseq %v extid %v ResultCode %v",
 			p.Opcode, p.VerSeq, p.PartitionID, partition.verSeq, p.ExtentID, p.ResultCode)
-		err = storage.TryAgainError
+		err = raft.ErrRetryLater
 		return
 	}
 	log.LogDebugf("action[handleRandomWritePacket] opcod %v seq %v dpid %v dpseq %v after raft submit err %v resultCode %v",

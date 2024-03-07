@@ -74,11 +74,7 @@ func (p *FollowerPacket) IsErrPacket() bool {
 }
 
 func (p *FollowerPacket) identificationErrorResultCode(errLog string, errMsg string) {
-	if strings.Contains(errLog, ActionReceiveFromFollower) || strings.Contains(errLog, ActionSendToFollowers) ||
-		strings.Contains(errLog, ConnIsNullErr) {
-		p.ResultCode = proto.OpIntraGroupNetErr
-		log.LogErrorf("action[identificationErrorResultCode] error %v, errmsg %v", errLog, errMsg)
-	} else if strings.Contains(errMsg, storage.ParameterMismatchError.Error()) ||
+	if strings.Contains(errMsg, storage.ParameterMismatchError.Error()) ||
 		strings.Contains(errMsg, ErrorUnknownOp.Error()) {
 		p.ResultCode = proto.OpArgMismatchErr
 	} else if strings.Contains(errMsg, proto.ErrDataPartitionNotExists.Error()) {
@@ -89,11 +85,17 @@ func (p *FollowerPacket) identificationErrorResultCode(errLog string, errMsg str
 	} else if strings.Contains(errMsg, storage.NoSpaceError.Error()) {
 		p.ResultCode = proto.OpDiskNoSpaceErr
 	} else if strings.Contains(errMsg, storage.TryAgainError.Error()) {
+		p.ResultCode = proto.OpLimitedIoErr
+	} else if strings.Contains(errMsg, raft.ErrRetryLater.Error()) {
 		p.ResultCode = proto.OpAgain
 	} else if strings.Contains(errMsg, raft.ErrNotLeader.Error()) {
 		p.ResultCode = proto.OpTryOtherAddr
 	} else if strings.Contains(errMsg, raft.ErrStopped.Error()) {
 		p.ResultCode = proto.OpTryOtherAddr
+	} else if strings.Contains(errLog, ActionReceiveFromFollower) || strings.Contains(errLog, ActionSendToFollowers) ||
+		strings.Contains(errLog, ConnIsNullErr) {
+		p.ResultCode = proto.OpIntraGroupNetErr
+		log.LogErrorf("action[identificationErrorResultCode] error %v, errmsg %v", errLog, errMsg)
 	} else {
 		log.LogErrorf("action[identificationErrorResultCode] error %v, errmsg %v", errLog, errMsg)
 		p.ResultCode = proto.OpIntraGroupNetErr
@@ -292,10 +294,7 @@ var ErrorUnknownOp = errors.New("unknown opcode")
 
 func (p *Packet) identificationErrorResultCode(errLog string, errMsg string) {
 	log.LogDebugf("action[identificationErrorResultCode] error %v, errmsg %v", errLog, errMsg)
-	if strings.Contains(errLog, ActionReceiveFromFollower) || strings.Contains(errLog, ActionSendToFollowers) ||
-		strings.Contains(errLog, ConnIsNullErr) {
-		p.ResultCode = proto.OpIntraGroupNetErr
-	} else if strings.Contains(errMsg, storage.ParameterMismatchError.Error()) ||
+	if strings.Contains(errMsg, storage.ParameterMismatchError.Error()) ||
 		strings.Contains(errMsg, ErrorUnknownOp.Error()) {
 		p.ResultCode = proto.OpArgMismatchErr
 	} else if strings.Contains(errMsg, proto.ErrDataPartitionNotExists.Error()) {
@@ -305,9 +304,13 @@ func (p *Packet) identificationErrorResultCode(errLog string, errMsg string) {
 		p.ResultCode = proto.OpNotExistErr
 	} else if strings.Contains(errMsg, storage.NoSpaceError.Error()) {
 		p.ResultCode = proto.OpDiskNoSpaceErr
+	} else if strings.Contains(errMsg, "GetAvailableTinyExtent") {
+		p.ResultCode = proto.OpDiskNoSpaceErr
 	} else if strings.Contains(errMsg, storage.BrokenDiskError.Error()) {
 		p.ResultCode = proto.OpDiskErr
 	} else if strings.Contains(errMsg, storage.TryAgainError.Error()) {
+		p.ResultCode = proto.OpLimitedIoErr
+	} else if strings.Contains(errMsg, raft.ErrRetryLater.Error()) {
 		p.ResultCode = proto.OpAgain
 	} else if strings.Contains(errMsg, raft.ErrNotLeader.Error()) {
 		p.ResultCode = proto.OpTryOtherAddr
@@ -316,6 +319,9 @@ func (p *Packet) identificationErrorResultCode(errLog string, errMsg string) {
 	} else if strings.Contains(errMsg, storage.VerNotConsistentError.Error()) {
 		p.ResultCode = proto.ErrCodeVersionOpError
 		// log.LogDebugf("action[identificationErrorResultCode] not change ver erro code, (%v)", string(debug.Stack()))
+	} else if strings.Contains(errLog, ActionReceiveFromFollower) || strings.Contains(errLog, ActionSendToFollowers) ||
+		strings.Contains(errLog, ConnIsNullErr) {
+		p.ResultCode = proto.OpIntraGroupNetErr
 	} else {
 		log.LogErrorf("action[identificationErrorResultCode] error %v, errmsg %v", errLog, errMsg)
 		p.ResultCode = proto.OpIntraGroupNetErr

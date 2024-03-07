@@ -57,6 +57,17 @@ func extentStoreNormalRwTest(t *testing.T, s *storage.ExtentStore, id uint64) {
 	require.NotEqualValues(t, s.GetStoreUsedSize(), 0)
 }
 
+func extentSkipWriteTest(t *testing.T, s *storage.ExtentStore, id uint64) {
+	if storage.IsTinyExtent(id) {
+		return
+	}
+	data := []byte(dataStr)
+	crc := crc32.ChecksumIEEE(data)
+	// append write
+	_, err := s.Write(id, int64(len(data))+100, int64(len(data)), data, crc, storage.AppendWriteType, true)
+	require.Error(t, err)
+}
+
 func extentStoreMarkDeleteTiny(t *testing.T, s *storage.ExtentStore, id uint64, offset int64, size int64) {
 	err := s.MarkDelete(id, offset, int64(size))
 	require.NoError(t, err)
@@ -138,6 +149,7 @@ func extentStoreLogicalTest(t *testing.T, s *storage.ExtentStore) {
 	for _, id := range ids {
 		extentStoreNormalRwTest(t, s, id)
 		extentStoreSizeTest(t, s)
+		extentSkipWriteTest(t, s, id)
 		extentStoreMarkDeleteTest(t, s, id)
 		extentStoreSizeTest(t, s)
 	}
