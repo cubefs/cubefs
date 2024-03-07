@@ -20,13 +20,36 @@ import (
 	"strings"
 
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util/errors"
+	"github.com/cubefs/cubefs/util/log"
 )
 
 func (mp *metaPartition) UpdateXAttr(req *proto.UpdateXAttrRequest, p *Packet) (err error) {
 	newValueList := strings.Split(req.Value, ",")
-	filesInc, _ := strconv.ParseInt(newValueList[0], 10, 64)
-	dirsInc, _ := strconv.ParseInt(newValueList[1], 10, 64)
-	bytesInc, _ := strconv.ParseInt(newValueList[2], 10, 64)
+	if len(newValueList) < 3 {
+		err = errors.New("Wrong number of parameters")
+		log.LogErrorf("action[UpdateXAttr],Wrong number of parameters")
+		p.PacketErrorWithBody(proto.OpArgMismatchErr, []byte(err.Error()))
+		return
+	}
+	filesInc, err := strconv.ParseInt(newValueList[0], 10, 64)
+	if err != nil {
+		log.LogErrorf("action[UpdateXAttr],The parameter must be an integer: err(%v)", err)
+		p.PacketErrorWithBody(proto.OpArgMismatchErr, []byte(err.Error()))
+		return
+	}
+	dirsInc, err := strconv.ParseInt(newValueList[1], 10, 64)
+	if err != nil {
+		log.LogErrorf("action[UpdateXAttr],The parameter must be an integer: err(%v)", err)
+		p.PacketErrorWithBody(proto.OpArgMismatchErr, []byte(err.Error()))
+		return
+	}
+	bytesInc, err := strconv.ParseInt(newValueList[2], 10, 64)
+	if err != nil {
+		log.LogErrorf("action[UpdateXAttr],The parameter must be an integer: err(%v)", err)
+		p.PacketErrorWithBody(proto.OpArgMismatchErr, []byte(err.Error()))
+		return
+	}
 
 	mp.xattrLock.Lock()
 	defer mp.xattrLock.Unlock()
