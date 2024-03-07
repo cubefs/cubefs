@@ -1916,7 +1916,11 @@ func (l *DecommissionDataPartitionList) updateMaxParallel(maxParallel int32) {
 	atomic.StoreInt32(&l.parallelLimit, maxParallel)
 }
 
-func (l *DecommissionDataPartitionList) acquireDecommissionToken() bool {
+func (l *DecommissionDataPartitionList) acquireDecommissionToken(dp *DataPartition) bool {
+	//cache dp is delete directly
+	if !proto.IsNormalDp(dp.PartitionType) {
+		return true
+	}
 	if atomic.LoadInt32(&l.parallelLimit) == 0 {
 		atomic.AddInt32(&l.curParallel, 1)
 		return true
@@ -1928,7 +1932,10 @@ func (l *DecommissionDataPartitionList) acquireDecommissionToken() bool {
 	return true
 }
 
-func (l *DecommissionDataPartitionList) releaseDecommissionToken() {
+func (l *DecommissionDataPartitionList) releaseDecommissionToken(dp *DataPartition) {
+	if !proto.IsNormalDp(dp.PartitionType) {
+		return
+	}
 	if atomic.LoadInt32(&l.curParallel) > 0 {
 		atomic.AddInt32(&l.curParallel, -1)
 	}
@@ -1974,14 +1981,14 @@ func (l *DecommissionDataPartitionList) traverse(c *Cluster) {
 					log.LogDebugf("action[DecommissionListTraverse]Remove dp[%v] for success",
 						dp.PartitionID)
 					l.Remove(dp)
-					l.releaseDecommissionToken()
+					l.releaseDecommissionToken(dp)
 					dp.ResetDecommissionStatus()
 					c.syncUpdateDataPartition(dp)
 				} else if dp.IsDecommissionFailed() {
 					log.LogDebugf("action[DecommissionListTraverse]Remove dp[%v] for fail",
 						dp.PartitionID)
 					l.Remove(dp)
-					l.releaseDecommissionToken()
+					l.releaseDecommissionToken(dp)
 				} else if dp.IsDecommissionStopped() {
 					log.LogDebugf("action[DecommissionListTraverse]Remove dp[%v] for stop",
 						dp.PartitionID)
@@ -1991,10 +1998,10 @@ func (l *DecommissionDataPartitionList) traverse(c *Cluster) {
 					l.Remove(dp)
 					dp.ResetDecommissionStatus()
 					c.syncUpdateDataPartition(dp)
-				} else if dp.IsMarkDecommission() && l.acquireDecommissionToken() {
+				} else if dp.IsMarkDecommission() && l.acquireDecommissionToken(dp) {
 					go func(dp *DataPartition) {
 						if !dp.TryToDecommission(c) {
-							l.releaseDecommissionToken()
+							l.releaseDecommissionToken(dp)
 						}
 					}(dp) // special replica cnt cost some time from prepare to running
 				}
