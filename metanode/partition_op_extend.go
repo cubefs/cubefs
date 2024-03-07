@@ -24,9 +24,25 @@ import (
 
 func (mp *metaPartition) UpdateXAttr(req *proto.UpdateXAttrRequest, p *Packet) (err error) {
 	newValueList := strings.Split(req.Value, ",")
-	filesInc, _ := strconv.ParseInt(newValueList[0], 10, 64)
-	dirsInc, _ := strconv.ParseInt(newValueList[1], 10, 64)
-	bytesInc, _ := strconv.ParseInt(newValueList[2], 10, 64)
+	if len(newValueList) < 3 {
+		p.PacketErrorWithBody(proto.OpArgMismatchErr, []byte("value should have three part, filesInc + dirsInc + bytesInc"))
+		return
+	}
+	filesInc, err := strconv.ParseInt(newValueList[0], 10, 64)
+	if err != nil {
+		p.PacketErrorWithBody(proto.OpArgMismatchErr, []byte(err.Error()))
+		return
+	}
+	dirsInc, err := strconv.ParseInt(newValueList[1], 10, 64)
+	if err != nil {
+		p.PacketErrorWithBody(proto.OpArgMismatchErr, []byte(err.Error()))
+		return
+	}
+	bytesInc, err := strconv.ParseInt(newValueList[2], 10, 64)
+	if err != nil {
+		p.PacketErrorWithBody(proto.OpArgMismatchErr, []byte(err.Error()))
+		return
+	}
 
 	mp.xattrLock.Lock()
 	defer mp.xattrLock.Unlock()
