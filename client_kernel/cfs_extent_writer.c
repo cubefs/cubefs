@@ -232,7 +232,7 @@ recover_packet:
 				es, dp,
 				be64_to_cpu(packet->request.hdr.kernel_offset),
 				ext_id, 0, 0);
-			if (!recover) {
+			if (IS_ERR(recover)) {
 				cfs_data_partition_release(dp);
 				writer->flags |= EXTENT_WRITER_F_ERROR;
 				packet->error = -ENOMEM;

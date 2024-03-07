@@ -275,7 +275,7 @@ extent_stream_get_writer(struct cfs_extent_stream *es, loff_t offset,
 		writer = cfs_extent_writer_new(es, dp, extent.file_offset,
 					       extent.ext_id, extent.ext_offset,
 					       extent.size);
-		if (!writer) {
+		if (IS_ERR(writer)) {
 			cfs_data_partition_release(dp);
 			return ERR_PTR(-ENOMEM);
 		}
@@ -288,7 +288,7 @@ extent_stream_get_writer(struct cfs_extent_stream *es, loff_t offset,
 		if (ret < 0)
 			return ERR_PTR(ret);
 		writer = cfs_extent_writer_new(es, dp, offset, ext_id, 0, 0);
-		if (!writer) {
+		if (IS_ERR(writer)) {
 			cfs_data_partition_release(dp);
 			return ERR_PTR(-ENOMEM);
 		}
