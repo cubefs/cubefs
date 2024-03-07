@@ -284,7 +284,6 @@ struct IBVSocket *IBVSocket_construct(struct sockaddr_in *sin) {
 
 	this->connState = IBVSOCKETCONNSTATE_CONNECTING;
 	init_waitqueue_head(&this->eventWaitQ);
-	init_waitqueue_head(&this->wait_buf_queue);
 
 	this->cm_id = rdma_create_id(&init_net, verify_rdma_event_handler, this, RDMA_PS_TCP, IB_QPT_RC);
 	if (IS_ERR(this->cm_id)) {
@@ -380,7 +379,7 @@ struct IBVSocket *IBVSocket_construct(struct sockaddr_in *sin) {
 
 	wait_event_interruptible_timeout(this->eventWaitQ, this->connState != IBVSOCKETCONNSTATE_ROUTERESOLVED, TIMEOUT_JS);
 	if (this->connState != IBVSOCKETCONNSTATE_ESTABLISHED) {
-		printk("connection not established\n");
+		printk("connection not established. state=%d\n", this->connState);
 		goto err_destroy_qp;
 	}
 
@@ -511,7 +510,6 @@ ssize_t IBVSocket_recvT(struct IBVSocket *this, struct iov_iter *iter) {
 		}
 		usleep_range(1000, 20000);
     }
-
 	if (index < 0) {
 		printk("Timeout waiting for receive buffer\n");
 		return -ENOMEM;
@@ -580,37 +578,44 @@ ssize_t IBVSocket_send(struct IBVSocket *this, struct iov_iter *iter) {
     return isize;
 }
 
-int IBVSocket_lock_data_buf(struct IBVSocket *this) {
-	int ret = -1;
+int IBVSocket_lock_data_buf(struct IBVSocket *this, size_t size) {
 	int i;
 
 	mutex_lock(&this->lock);
 	for (i=0; i<DATA_BUF_NUM; i++) {
+		if (!this->data_buf[i].used && this->data_buf[i].size >= size) {
+			this->data_buf[i].used = true;
+			mutex_unlock(&this->lock);
+			return i;
+		}
+	}
+
+	for (i=0; i<DATA_BUF_NUM; i++) {
 		if (!this->data_buf[i].used) {
 			this->data_buf[i].used = true;
-			ret = i;
-			break;
+			mutex_unlock(&this->lock);
+			return i;
 		}
 	}
 	mutex_unlock(&this->lock);
-
-	return ret;
+	return -1;
 }
 
 int IBVSocket_get_data_buf(struct IBVSocket *this, size_t size) {
 	int index = -1, j;
+	size_t alloc_size = PAGE_ALIGN(size);
 
 	for (j=0; j< MAX_RETRY_COUNT; j++) {
 		if (this->connState != IBVSOCKETCONNSTATE_ESTABLISHED) {
 			return -EIO;
 		}
 
-		index = IBVSocket_lock_data_buf(this);
+		index = IBVSocket_lock_data_buf(this, alloc_size);
 		if (index >= 0) {
 			// Get the data buffer.
 			break;
 		}
-		wait_event_timeout(this->wait_buf_queue, true, 50);
+		usleep_range(1000, 20000);
 	}
 
 	if (index < 0) {
@@ -630,15 +635,14 @@ int IBVSocket_get_data_buf(struct IBVSocket *this, size_t size) {
 		this->data_buf[index].size = 0;
 	}
 
-	this->data_buf[index].pBuff = kmalloc(size, GFP_KERNEL);
+	this->data_buf[index].pBuff = kmalloc(alloc_size, GFP_KERNEL);
 	if (this->data_buf[index].pBuff == NULL) {
-		printk("Failed to allocate data buffer with size: %ld\n", size);
+		printk("Failed to allocate data buffer with size: %ld\n", alloc_size);
 		this->data_buf[index].used = false;
-		wake_up(&this->wait_buf_queue);
 		return -ENOMEM;
 	}
-	this->data_buf[index].size = size;
-	this->data_buf[index].dma_addr = ib_dma_map_single(this->cm_id->device, this->data_buf[index].pBuff, size, DMA_TO_DEVICE);
+	this->data_buf[index].size = alloc_size;
+	this->data_buf[index].dma_addr = ib_dma_map_single(this->cm_id->device, this->data_buf[index].pBuff, alloc_size, DMA_TO_DEVICE);
 
 	return index;
 }
@@ -649,5 +653,4 @@ void IBVSocket_free_data_buf(struct IBVSocket *this, int index) {
 	}
 
 	this->data_buf[index].used = false;
-	wake_up(&this->wait_buf_queue);
 }

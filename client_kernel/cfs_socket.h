@@ -62,7 +62,6 @@ int cfs_socket_recv_iovec(struct cfs_socket *csk, struct iovec *iov,
 			  size_t nr_segs);
 int cfs_socket_send_packet(struct cfs_socket *csk, struct cfs_packet *packet);
 int cfs_socket_recv_packet(struct cfs_socket *csk, struct cfs_packet *packet);
-inline bool is_sock_valid(struct cfs_socket *sock);
 int cfs_socket_module_init(void);
 void cfs_socket_module_exit(void);
 #endif

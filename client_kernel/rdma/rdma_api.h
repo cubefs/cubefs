@@ -14,9 +14,9 @@
 #define IBVSOCKET_CONN_TIMEOUT_MS 5000
 #define MSG_LEN 4096
 #define BLOCK_NUM 32
-#define DATA_BUF_NUM 4
-#define MAX_RETRY_COUNT 100
-#define TIMEOUT_JS 1000
+#define DATA_BUF_NUM 32
+#define MAX_RETRY_COUNT 5000
+#define TIMEOUT_JS 5000
 
 enum IBVSocketConnState {
 	IBVSOCKETCONNSTATE_UNCONNECTED = 0,
@@ -51,7 +51,6 @@ struct IBVSocket {
 	struct mutex lock;
 	volatile IBVSocketConnState_t connState;
 	struct BufferItem data_buf[DATA_BUF_NUM];
-	wait_queue_head_t wait_buf_queue;
 };
 
 extern struct IBVSocket *IBVSocket_construct(struct sockaddr_in *sin);

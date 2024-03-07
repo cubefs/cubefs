@@ -590,7 +590,7 @@ int cfs_socket_recv_packet(struct cfs_socket *csk, struct cfs_packet *packet)
 	return ret < 0 ? ret : 0;
 }
 
-inline bool is_sock_valid(struct cfs_socket *sock)
+static inline bool is_sock_valid(struct cfs_socket *sock)
 {
 	return sock->jiffies + msecs_to_jiffies(SOCK_POOL_LRU_INTERVAL_MS) >
 	       jiffies;
