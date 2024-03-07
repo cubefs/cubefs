@@ -54,6 +54,9 @@ func (s *Super) InodeGet(ino uint64) (*proto.InodeInfo, error) {
 			node.(*File).info = info
 		}
 	}
+	if proto.IsStorageClassBlobStore(info.StorageClass) {
+		return info, nil
+	}
 	err = s.ec.RefreshExtentsCache(ino)
 	return info, err
 }
