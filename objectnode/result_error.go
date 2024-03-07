@@ -54,9 +54,9 @@ var (
 	InvalidPartNumber                   = &ErrorCode{ErrorCode: "InvalidPartNumber", ErrorMessage: "The specified partNumber must be greater than 0.", StatusCode: http.StatusBadRequest}
 	InvalidPart                         = &ErrorCode{ErrorCode: "InvalidPart", ErrorMessage: "One or more of the specified parts could not be found. The part might not have been uploaded, or the specified entity tag might not have matched the part's entity tag.", StatusCode: http.StatusBadRequest}
 	InvalidCacheArgument                = &ErrorCode{ErrorCode: "InvalidCacheArgument", ErrorMessage: "Invalid Cache-Control or Expires Argument", StatusCode: http.StatusBadRequest}
-	ExceedTagLimit                      = &ErrorCode{ErrorCode: "InvalidTagError", ErrorMessage: "Object tags cannot be greater than 10", StatusCode: http.StatusBadRequest}
-	InvalidTagKey                       = &ErrorCode{ErrorCode: "InvalidTag", ErrorMessage: "The TagKey you have provided is invalid", StatusCode: http.StatusBadRequest}
-	InvalidTagValue                     = &ErrorCode{ErrorCode: "InvalidTag", ErrorMessage: "The TagValue you have provided is invalid", StatusCode: http.StatusBadRequest}
+	TooManyTags                         = &ErrorCode{ErrorCode: "TooManyTags", ErrorMessage: "The number of tags exceeds the limit of 10 tags.", StatusCode: http.StatusBadRequest}
+	InvalidTag                          = &ErrorCode{ErrorCode: "InvalidTag", ErrorMessage: "This request contains a tag key or value that isn't valid.", StatusCode: http.StatusBadRequest}
+	DuplicateTagKey                     = &ErrorCode{ErrorCode: "InvalidTag", ErrorMessage: "Cannot provide multiple Tags with the same key.", StatusCode: http.StatusBadRequest}
 	MissingContentMD5                   = &ErrorCode{ErrorCode: "InvalidRequest", ErrorMessage: "Missing required header for this request: Content-MD5.", StatusCode: http.StatusBadRequest}
 	UnexpectedContent                   = &ErrorCode{ErrorCode: "UnexpectedContent", ErrorMessage: "This request does not support content.", StatusCode: http.StatusBadRequest}
 	AccessDeniedBySTS                   = &ErrorCode{ErrorCode: "AccessDeniedBySTS", ErrorMessage: "Access Denied by STS.", StatusCode: http.StatusForbidden}
@@ -65,7 +65,7 @@ var (
 	MissingSecurityElement              = &ErrorCode{ErrorCode: "MissingSecurityElement", ErrorMessage: "The request is missing a security element.", StatusCode: http.StatusBadRequest}
 	RequestTimeTooSkewed                = &ErrorCode{ErrorCode: "RequestTimeTooSkewed", ErrorMessage: "The difference between the request time and the server's time is too large.", StatusCode: http.StatusBadRequest}
 	NoSuchTagSetError                   = &ErrorCode{ErrorCode: "NoSuchTagSetError", ErrorMessage: "The TagSet does not exist.", StatusCode: http.StatusNotFound}
-	InvalidTagError                     = &ErrorCode{ErrorCode: "InvalidTagError", ErrorMessage: "Missing tag in body.", StatusCode: http.StatusBadRequest}
+	MissingTagInBody                    = &ErrorCode{ErrorCode: "MissingTagInBody", ErrorMessage: "Missing tag in body.", StatusCode: http.StatusBadRequest}
 	NoSuchCORSConfiguration             = &ErrorCode{ErrorCode: "NoSuchCORSConfiguration", ErrorMessage: "The CORS configuration does not exist.", StatusCode: http.StatusNotFound}
 	CORSRuleNotMatch                    = &ErrorCode{ErrorCode: "AccessForbidden", ErrorMessage: "CORSResponse: This CORS request is not allowed.", StatusCode: http.StatusForbidden}
 	ErrCORSNotEnabled                   = &ErrorCode{ErrorCode: "AccessForbidden", ErrorMessage: "CORSResponse: CORS is not enabled for this bucket.", StatusCode: http.StatusForbidden}

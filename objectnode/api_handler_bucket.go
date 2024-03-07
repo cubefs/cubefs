@@ -372,10 +372,9 @@ func (o *ObjectNode) putBucketTaggingHandler(w http.ResponseWriter, r *http.Requ
 		errorCode = InvalidArgument
 		return
 	}
-	validateRes, errorCode := tagging.Validate()
-	if !validateRes {
+	if err = tagging.Validate(); err != nil {
 		log.LogErrorf("putBucketTaggingHandler: tagging validate fail: requestID(%v) tagging(%v) err(%v)",
-			GetRequestID(r), tagging, errorCode.Error())
+			GetRequestID(r), tagging, err)
 		return
 	}
 
