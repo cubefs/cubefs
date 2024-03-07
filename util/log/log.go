@@ -19,8 +19,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"log"
+	syslog "log"
 	"math"
 	"net/http"
 	"os"
@@ -33,9 +33,6 @@ import (
 	"sync/atomic"
 	"syscall"
 	"time"
-
-	blog "github.com/cubefs/cubefs/blobstore/util/log"
-	syslog "log"
 )
 
 type Level uint8
@@ -87,20 +84,20 @@ func (f RotatedFile) Swap(i, j int) {
 }
 
 func setBlobLogLevel(loglevel Level) {
-	blevel := blog.Lwarn
+	blevel := Lwarn
 	switch loglevel {
 	case DebugLevel:
-		blevel = blog.Ldebug
+		blevel = Ldebug
 	case InfoLevel:
-		blevel = blog.Linfo
+		blevel = Linfo
 	case WarnLevel:
-		blevel = blog.Lwarn
+		blevel = Lwarn
 	case ErrorLevel:
-		blevel = blog.Lerror
+		blevel = Lerror
 	default:
-		blevel = blog.Lwarn
+		blevel = Lwarn
 	}
-	blog.SetOutputLevel(blevel)
+	SetOutputLevel(blevel)
 }
 
 type asyncWriter struct {
@@ -822,13 +819,17 @@ func DeleteFileFilter(info os.FileInfo, diskSpaceLeft int64, module string) bool
 
 func (l *Log) removeLogFile(logDir string, diskSpaceLeft int64, module string) (err error) {
 	// collect free file list
-	fInfos, err := ioutil.ReadDir(logDir)
+	fEntries, err := os.ReadDir(logDir)
 	if err != nil {
 		LogErrorf("error read log directory files: %s", err.Error())
 		return
 	}
 	var needDelFiles RotatedFile
-	for _, info := range fInfos {
+	for _, entry := range fEntries {
+		info, errInfo := entry.Info()
+		if errInfo != nil {
+			continue
+		}
 		if DeleteFileFilter(info, diskSpaceLeft, module) {
 			LogDebugf("%v will be put into needDelFiles", info.Name())
 			needDelFiles = append(needDelFiles, info)

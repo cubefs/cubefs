@@ -18,7 +18,6 @@ import (
 	"bufio"
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path"
 	"regexp"
@@ -129,14 +128,14 @@ func (st *Statistic) flushScheduler() {
 
 		err := WriteStat()
 		if err != nil {
-			log.LogErrorf("WriteStat error: %v", err)
+			log.Errorf("WriteStat error: %v", err)
 		}
 
 		timer.Reset(DefaultStatInterval)
 
 		fs := syscall.Statfs_t{}
 		if err := syscall.Statfs(st.logDir, &fs); err != nil {
-			log.LogErrorf("Get fs stat failed, err: %v", err)
+			log.Errorf("Get fs stat failed, err: %v", err)
 			continue
 		}
 		diskSpaceLeft := int64(fs.Bavail * uint64(fs.Bsize))
@@ -146,13 +145,17 @@ func (st *Statistic) flushScheduler() {
 }
 
 func removeLogFile(diskSpaceLeft int64, module string) {
-	fInfos, err := ioutil.ReadDir(gSt.logDir)
+	fEntries, err := os.ReadDir(gSt.logDir)
 	if err != nil {
-		log.LogErrorf("ReadDir failed, logDir: %s, err: %v", gSt.logDir, err)
+		log.Errorf("ReadDir failed, logDir: %s, err: %v", gSt.logDir, err)
 		return
 	}
 	var needDelFiles ShiftedFile
-	for _, info := range fInfos {
+	for _, entry := range fEntries {
+		info, errInfo := entry.Info()
+		if errInfo != nil {
+			continue
+		}
 		if deleteFileFilter(info, diskSpaceLeft, module) {
 			needDelFiles = append(needDelFiles, info)
 		}
@@ -160,7 +163,7 @@ func removeLogFile(diskSpaceLeft int64, module string) {
 	sort.Sort(needDelFiles)
 	for _, info := range needDelFiles {
 		if err = os.Remove(path.Join(gSt.logDir, info.Name())); err != nil {
-			log.LogErrorf("Remove log file failed, logFileName: %s, err: %v", info.Name(), err)
+			log.Errorf("Remove log file failed, logFileName: %s, err: %v", info.Name(), err)
 			continue
 		}
 		diskSpaceLeft += info.Size()
@@ -230,7 +233,7 @@ func WriteStat() error {
 	logFileName := gSt.logBaseName + ".log"
 	statFile, err := os.OpenFile(logFileName, os.O_RDWR|os.O_APPEND|os.O_CREATE, 0o666)
 	if err != nil {
-		log.LogErrorf("OpenLogFile failed, logFileName: %s, err: %v\n", logFileName, err)
+		log.Errorf("OpenLogFile failed, logFileName: %s, err: %v\n", logFileName, err)
 		return fmt.Errorf("OpenLogFile failed, logFileName %s\n", logFileName)
 	}
 	defer statFile.Close()
@@ -243,7 +246,7 @@ func WriteStat() error {
 		statSpan, time.Now().Format("2006-01-02 15:04:05"))
 
 	if virt, res, err := GetProcessMemory(gSt.pid); err != nil {
-		log.LogErrorf("Get process memory failed, err: %v", err)
+		log.Errorf("Get process memory failed, err: %v", err)
 		fmt.Fprintf(ioStream, "Get Mem Failed.\n")
 	} else {
 		fmt.Fprintf(ioStream, "Mem Allocated(kB): VIRT %-10d   RES %-10d\n", virt, res)
@@ -381,7 +384,7 @@ func shiftFiles() error {
 		logNewFileName := logFileName + "." + time.Now().Format(
 			FileNameDateFormat) + ShiftedExtension
 		if syscall.Rename(logFileName, logNewFileName) != nil {
-			log.LogErrorf("RenameFile failed, logFileName: %s, logNewFileName: %s, err: %v\n",
+			log.Errorf("RenameFile failed, logFileName: %s, logNewFileName: %s, err: %v\n",
 				logFileName, logNewFileName, err)
 			return fmt.Errorf("RenameFile failed, logFileName %s, logNewFileName %s\n",
 				logFileName, logNewFileName)
