@@ -17,6 +17,7 @@ package datanode
 import (
 	"fmt"
 	"math"
+	"math/rand"
 	"os"
 	"path"
 	"sync"
@@ -25,6 +26,7 @@ import (
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/raftstore"
+	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/atomicutil"
 	"github.com/cubefs/cubefs/util/loadutil"
 	"github.com/cubefs/cubefs/util/log"
@@ -33,20 +35,23 @@ import (
 
 // SpaceManager manages the disk space.
 type SpaceManager struct {
-	clusterID      string
-	disks          map[string]*Disk
-	partitions     map[uint64]*DataPartition
-	raftStore      raftstore.RaftStore
-	nodeID         uint64
-	diskMutex      sync.RWMutex
-	partitionMutex sync.RWMutex
-	stats          *Stats
-	stopC          chan bool
-	diskList       []string
-	dataNode       *DataNode
-	diskUtils      map[string]*atomicutil.Float64
-	samplerDone    chan struct{}
-	allDisksLoaded bool
+	clusterID            string
+	disks                map[string]*Disk
+	partitions           map[uint64]*DataPartition
+	raftStore            raftstore.RaftStore
+	nodeID               uint64
+	diskMutex            sync.RWMutex
+	partitionMutex       sync.RWMutex
+	stats                *Stats
+	stopC                chan bool
+	selectedIndex        int // TODO what is selected index
+	diskList             []string
+	dataNode             *DataNode
+	createPartitionMutex sync.RWMutex
+	rand                 *rand.Rand
+	diskUtils            map[string]*atomicutil.Float64
+	samplerDone          chan struct{}
+	allDisksLoaded       bool
 }
 
 const diskSampleDuration = 1 * time.Second
@@ -60,6 +65,7 @@ func NewSpaceManager(dataNode *DataNode) *SpaceManager {
 	space.stats = NewStats(dataNode.zoneName)
 	space.stopC = make(chan bool)
 	space.dataNode = dataNode
+	space.rand = rand.New(rand.NewSource(time.Now().Unix()))
 	space.diskUtils = make(map[string]*atomicutil.Float64)
 	go space.statUpdateScheduler()
 
@@ -325,39 +331,37 @@ func (manager *SpaceManager) updateMetrics() {
 		remainingCapacityToCreatePartition, maxCapacityToCreatePartition, partitionCnt)
 }
 
-func (manager *SpaceManager) minPartitionCnt(decommissionedDisks []string) (d *Disk) {
+const DiskSelectMaxStraw = 65536
+
+func (manager *SpaceManager) selectDisk(decommissionedDisks []string) (d *Disk) {
 	manager.diskMutex.Lock()
 	defer manager.diskMutex.Unlock()
-	var (
-		minWeight     float64
-		minWeightDisk *Disk
-	)
 	decommissionedDiskMap := make(map[string]struct{})
 	for _, disk := range decommissionedDisks {
 		decommissionedDiskMap[disk] = struct{}{}
 	}
-	minWeight = math.MaxFloat64
+	maxStraw := float64(0)
 	for _, disk := range manager.disks {
 		if _, ok := decommissionedDiskMap[disk.Path]; ok {
 			log.LogInfof("action[minPartitionCnt] exclude decommissioned disk[%v]", disk.Path)
 			continue
 		}
 		if disk.Status != proto.ReadWrite {
+			log.LogInfof("[minPartitionCnt] disk(%v) is not writable", disk.Path)
 			continue
 		}
-		diskWeight := disk.getSelectWeight()
-		if diskWeight < minWeight {
-			minWeight = diskWeight
-			minWeightDisk = disk
+
+		straw := float64(manager.rand.Intn(DiskSelectMaxStraw))
+		straw = math.Log(straw/float64(DiskSelectMaxStraw)) / (float64(atomic.LoadUint64(&disk.Available)) / util.GB)
+		if d == nil || straw > maxStraw {
+			maxStraw = straw
+			d = disk
 		}
 	}
-	if minWeightDisk == nil {
+	if d != nil && d.Status != proto.ReadWrite {
+		d = nil
 		return
 	}
-	if minWeightDisk.Status != proto.ReadWrite {
-		return
-	}
-	d = minWeightDisk
 	return d
 }
 
@@ -423,8 +427,9 @@ func (manager *SpaceManager) CreatePartition(request *proto.CreateDataPartitionR
 		}
 		return
 	}
-	disk := manager.minPartitionCnt(request.DecommissionedDisks)
+	disk := manager.selectDisk(request.DecommissionedDisks)
 	if disk == nil {
+		log.LogErrorf("[CreatePartition] dp(%v) failed to select disk", dpCfg.PartitionID)
 		return nil, ErrNoSpaceToCreatePartition
 	}
 	if dp, err = CreateDataPartition(dpCfg, disk, request); err != nil {

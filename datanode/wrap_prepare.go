@@ -93,6 +93,7 @@ func (s *DataNode) checkPartition(p *repl.Packet) (err error) {
 	p.Object = dp
 	if p.IsNormalWriteOperation() || p.IsCreateExtentOperation() {
 		if dp.Available() <= 0 {
+			log.LogErrorf("[checkPartition] dp(%v) disk no space available(%v) can write(%v)", dp.partitionID, dp.Available(), dp.disk.CanWrite())
 			err = storage.NoSpaceError
 			return
 		}
