@@ -23,6 +23,7 @@ import (
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/repl"
 	"github.com/cubefs/cubefs/storage"
+	"github.com/cubefs/cubefs/util/log"
 )
 
 func (s *DataNode) Prepare(p *repl.Packet) (err error) {
@@ -90,6 +91,7 @@ func (s *DataNode) checkPartition(p *repl.Packet) (err error) {
 	p.Object = dp
 	if p.IsWriteOperation() || p.IsCreateExtentOperation() {
 		if dp.Available() <= 0 {
+			log.LogErrorf("[checkPartition] dp(%v) disk no space available(%v) can write(%v)", dp.partitionID, dp.Available(), dp.disk.CanWrite())
 			err = storage.NoSpaceError
 			return
 		}
