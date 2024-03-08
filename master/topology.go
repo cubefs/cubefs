@@ -24,10 +24,10 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/cubefs/cubefs/blobstore/util/log"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/errors"
+	"github.com/cubefs/cubefs/util/log"
 )
 
 type topology struct {
@@ -581,7 +581,8 @@ func (nsgm *DomainManager) getHostFromNodeSetGrpSpecific(ctx context.Context, do
 func (nsgm *DomainManager) getHostFromNodeSetGrp(ctx context.Context, domainId uint64, replicaNum uint8, createType uint32) (
 	hosts []string,
 	peers []proto.Peer,
-	err error) {
+	err error,
+) {
 	var ok bool
 	var index int
 
