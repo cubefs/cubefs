@@ -637,13 +637,19 @@ func (m *metadataManager) createPartition(request *proto.CreateMetaPartitionRequ
 
 func (m *metadataManager) deletePartition(id uint64) (err error) {
 	m.mu.Lock()
-	defer m.mu.Unlock()
 	mp, has := m.partitions[id]
 	if !has {
+		m.mu.Unlock()
 		return
 	}
-	mp.Reset()
 	delete(m.partitions, id)
+	m.mu.Unlock()
+	err = m.volViewUpdaer.Unregister(mp)
+	if err != nil {
+		log.LogErrorf("[deletePartition] failed to remove mp(%v) from vol view updater, force remove", id)
+		err = nil
+	}
+	mp.Reset()
 	return
 }
 

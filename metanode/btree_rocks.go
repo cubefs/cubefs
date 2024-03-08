@@ -634,11 +634,6 @@ func (r *RocksTree) Delete(handle interface{}, count *uint64, key []byte) (ok bo
 	return
 }
 
-// drop the current btree.
-func (r *RocksTree) Release() {
-	//do nothing, db will be closed in the outside
-}
-
 // todo:execute unuse, so remove?
 func (r *RocksTree) Execute(fn func(tree interface{}) interface{}) interface{} {
 	if err := r.db.accessDb(); err != nil {

@@ -1624,19 +1624,13 @@ func (mp *metaPartition) MarshalJSON() ([]byte, error) {
 
 // Reset resets the meta partition.
 func (mp *metaPartition) Reset() (err error) {
-	mp.inodeTree.Release()
-	mp.dentryTree.Release()
-	mp.extendTree.Release()
-	mp.multipartTree.Release()
-	mp.txProcessor.Reset()
-	mp.deletedExtentsTree.Release()
-	mp.deletedObjExtentsTree.Release()
 	// NOTE: close rocksdb
 	err = mp.Clear()
 	if err != nil {
 		log.LogErrorf("[Reset] mp(%v) failed to clear mp data", mp.config.PartitionId)
 		return
 	}
+	mp.txProcessor.Reset()
 	mp.rocksdbManager.CloseRocksdb(mp.db)
 	mp.db = nil
 

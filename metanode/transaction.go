@@ -389,7 +389,6 @@ func (tm *TransactionManager) Reset() {
 	tm.blacklist.Clear()
 	tm.Lock()
 	tm.txIdAlloc.Reset()
-	tm.txTree.Release()
 	tm.opLimiter.SetLimit(0)
 	tm.Unlock()
 }
@@ -1253,8 +1252,6 @@ func (tm *TransactionManager) txSetState(dbHandle interface{}, req *proto.TxSetS
 func (tr *TransactionResource) Reset() {
 	tr.Lock()
 	defer tr.Unlock()
-	tr.txRbInodeTree.Release()
-	tr.txRbDentryTree.Release()
 	tr.txProcessor = nil
 }
 

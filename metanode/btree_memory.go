@@ -1075,10 +1075,6 @@ func (b *BTree) Reset() {
 	b.Unlock()
 }
 
-func (i *BTree) Release() {
-	i.Reset()
-}
-
 func (i *BTree) SetApplyID(index uint64) {
 }
 
@@ -1162,7 +1158,7 @@ func (b *BTree) Len() (size int) {
 }
 
 func (b *BTree) Clear(handle interface{}) (err error) {
-	b.tree.Clear(false)
+	b.Reset()
 	return
 }
 
