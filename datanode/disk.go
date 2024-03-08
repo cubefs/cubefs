@@ -169,6 +169,7 @@ func (d *Disk) CanWrite() bool {
 		return true
 	}
 
+	log.LogErrorf("[CanWrite] disk(%v) not writable, status(%v) reject write(%v) total space(%v) disk rdonly space(%v) used(%v) reserved space(%v)", d.Path, d.Status, d.RejectWrite, d.Total, d.DiskRdonlySpace, d.Used, d.ReservedSpace)
 	return false
 }
 
