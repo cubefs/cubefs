@@ -32,7 +32,6 @@ import (
 	"time"
 
 	"github.com/cubefs/cubefs/blobstore/api/access"
-	"github.com/cubefs/cubefs/blobstore/util/log"
 	"github.com/cubefs/cubefs/cmd/common"
 	raftproto "github.com/cubefs/cubefs/depends/tiglabs/raft/proto"
 	"github.com/cubefs/cubefs/proto"
@@ -40,7 +39,7 @@ import (
 	"github.com/cubefs/cubefs/sdk/data/blobstore"
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/errors"
-	clog "github.com/cubefs/cubefs/util/log"
+	"github.com/cubefs/cubefs/util/log"
 	"github.com/cubefs/cubefs/util/timeutil"
 )
 
@@ -730,7 +729,7 @@ func (mp *metaPartition) onStart(ctx context.Context, isCreate bool) (err error)
 					Address: clusterInfo.EbsAddr,
 				},
 				MaxSizePutOnce: int64(volumeInfo.ObjBlockSize),
-				Logger:         &access.Logger{Filename: path.Join(clog.LogDir, "ebs.log")},
+				Logger:         &access.Logger{Filename: path.Join(log.LogDir, "ebs.log")},
 			},
 		)
 		if err != nil {

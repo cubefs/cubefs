@@ -159,7 +159,8 @@ func (dp *DataPartition) HandleFatalEvent(err *raft.FatalError) {
 	if isRaftApplyError(err.Err.Error()) {
 		dp.stopRaft()
 		dp.checkIsDiskError(err.Err, 0)
-		log.Fatalf("action[HandleFatalEvent] raft apply err(%v), partitionId:%v", err, dp.partitionID)
+		// NOTICE: log.LogCriticalf
+		log.Errorf("[CRITICAL] action[HandleFatalEvent] raft apply err(%v), partitionId:%v", err, dp.partitionID)
 	} else {
 		log.Fatalf("action[HandleFatalEvent] err(%v), partitionId:%v", err, dp.partitionID)
 	}
