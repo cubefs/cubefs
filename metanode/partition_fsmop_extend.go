@@ -87,7 +87,7 @@ func (mp *metaPartition) fsmRemoveXAttr(ctx context.Context, reqExtend *Extend) 
 		})
 	} else if reqExtend.verSeq == e.verSeq {
 		var globalNewVer uint64
-		if globalNewVer, err = mp.multiVersionList.GetNextNewerVer(reqExtend.verSeq); err != nil {
+		if globalNewVer, err = mp.multiVersionList.GetNextNewerVer(ctx, reqExtend.verSeq); err != nil {
 			getSpan(ctx).Errorf("mp[%v] seq [%v] req ver [%v] not found newer seq", mp.config.PartitionId, mp.verSeq, reqExtend.verSeq)
 			return err
 		}
@@ -102,7 +102,7 @@ func (mp *metaPartition) fsmRemoveXAttr(ctx context.Context, reqExtend *Extend) 
 				return
 			} else {
 				var globalNewVer uint64
-				if globalNewVer, err = mp.multiVersionList.GetNextNewerVer(ele.verSeq); err != nil {
+				if globalNewVer, err = mp.multiVersionList.GetNextNewerVer(ctx, ele.verSeq); err != nil {
 					return err
 				}
 				if globalNewVer < innerLastVer {

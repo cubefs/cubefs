@@ -25,7 +25,6 @@ import (
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util"
-	"github.com/cubefs/cubefs/util/log"
 )
 
 var gConnPool = util.NewConnectPool()
@@ -93,7 +92,7 @@ func (ft *FollowerTransport) serverWriteToFollower() {
 			if err := p.WriteToConn(ft.conn); err != nil {
 				p.PackErrorBody(ActionSendToFollowers, err.Error())
 				p.respCh <- fmt.Errorf(string(p.Data[:p.Size]))
-				log.LogErrorf("serverWriteToFollower ft.addr(%v), err (%v)", ft.addr, err.Error())
+				p.Span().Errorf("serverWriteToFollower ft.addr(%v), err (%v)", ft.addr, err.Error())
 				ft.conn.Close()
 				continue
 			}
@@ -146,7 +145,7 @@ func (ft *FollowerTransport) readFollowerResult(request *FollowerPacket) (err er
 		timeOut = proto.BatchDeleteExtentReadDeadLineTime
 	}
 	if err = reply.ReadFromConnWithVer(ft.conn, timeOut); err != nil {
-		log.LogErrorf("readFollowerResult ft.addr(%v), err(%v)", ft.addr, err.Error())
+		request.Span().Errorf("readFollowerResult ft.addr(%v), err(%v)", ft.addr, err.Error())
 		return
 	}
 
@@ -161,7 +160,7 @@ func (ft *FollowerTransport) readFollowerResult(request *FollowerPacket) (err er
 		err = fmt.Errorf(string(reply.Data[:reply.Size]))
 		return
 	}
-	log.LogDebugf("action[ActionReceiveFromFollower] %v.", reply.LogMessage(ActionReceiveFromFollower,
+	request.Span().Debugf("action[ActionReceiveFromFollower] %v.", reply.LogMessage(ActionReceiveFromFollower,
 		ft.addr, request.StartT, err))
 	return
 }
@@ -186,7 +185,8 @@ func (ft *FollowerTransport) Write(p *FollowerPacket) {
 }
 
 func NewReplProtocol(inConn net.Conn, prepareFunc func(p *Packet) error,
-	operatorFunc func(p *Packet, c net.Conn) error, postFunc func(p *Packet) error) *ReplProtocol {
+	operatorFunc func(p *Packet, c net.Conn) error, postFunc func(p *Packet) error,
+) *ReplProtocol {
 	rp := new(ReplProtocol)
 	rp.packetList = list.New()
 	rp.ackCh = make(chan struct{}, RequestChanSize)
@@ -268,8 +268,8 @@ func (rp *ReplProtocol) readPkgAndPrepare() (err error) {
 	if err = request.ReadFromConnWithVer(rp.sourceConn, proto.NoReadDeadlineTime); err != nil {
 		return
 	}
-	// log.LogDebugf("action[readPkgAndPrepare] packet(%v) op %v from remote(%v) conn(%v) ",
-	//	request.GetUniqueLogId(), request.Opcode, rp.sourceConn.RemoteAddr().String(), rp.sourceConn)
+	// request.Span().Debugf("action[readPkgAndPrepare] packet(%v) op %v from remote(%v) conn(%v) ",
+	// request.GetUniqueLogId(), request.Opcode, rp.sourceConn.RemoteAddr().String(), rp.sourceConn)
 
 	if err = request.resolveFollowersAddr(); err != nil {
 		err = rp.putResponse(request)
@@ -303,11 +303,11 @@ func (rp *ReplProtocol) sendRequestToAllFollowers(request *Packet) (index int, e
 }
 
 // OperatorAndForwardPktGoRoutine reads packets from the to-be-processed channel and writes responses to the client.
-// 1. Read a packet from toBeProcessCh, and determine if it needs to be forwarded or not. If the answer is no, then
-// 	  process the packet locally and put it into responseCh.
-// 2. If the packet needs to be forwarded, the first send it to the followers, and execute the operator function.
-//    Then notify receiveResponse to read the followers' responses.
-// 3. Read a reply from responseCh, and write to the client.
+//  1. Read a packet from toBeProcessCh, and determine if it needs to be forwarded or not. If the answer is no, then
+//     process the packet locally and put it into responseCh.
+//  2. If the packet needs to be forwarded, the first send it to the followers, and execute the operator function.
+//     Then notify receiveResponse to read the followers' responses.
+//  3. Read a reply from responseCh, and write to the client.
 func (rp *ReplProtocol) OperatorAndForwardPktGoRoutine() {
 	for {
 		select {
@@ -400,23 +400,24 @@ func (rp *ReplProtocol) writeResponse(reply *Packet) {
 	defer func() {
 		reply.clean()
 	}()
-	log.LogDebugf("writeResponse.opcode %v reply %v conn(%v)", reply.Opcode, reply.GetUniqueLogId(), rp.sourceConn.RemoteAddr().String())
+	span := reply.Span()
+	span.Debugf("writeResponse.opcode %v reply %v conn(%v)", reply.Opcode, reply.GetUniqueLogId(), rp.sourceConn.RemoteAddr().String())
 	if reply.IsErrPacket() {
 		err = fmt.Errorf(reply.LogMessage(ActionWriteToClient, rp.sourceConn.RemoteAddr().String(),
 			reply.StartT, fmt.Errorf(string(reply.Data[:reply.Size]))))
 		if reply.ResultCode == proto.OpNotExistErr || reply.ResultCode == proto.ErrCodeVersionOpError {
-			log.LogInfof(err.Error())
+			span.Info(err.Error())
 		} else {
-			log.LogErrorf(err.Error())
+			span.Error(err.Error())
 		}
 		rp.Stop()
 	}
-	log.LogDebugf("try rsp opcode %v %v %v", rp.replId, reply.Opcode, rp.sourceConn.RemoteAddr().String())
+	span.Debugf("try rsp opcode %v %v %v", rp.replId, reply.Opcode, rp.sourceConn.RemoteAddr().String())
 	// execute the post-processing function
 	rp.postFunc(reply)
 	if !reply.NeedReply {
 		if reply.Opcode == proto.OpTryWriteAppend || reply.Opcode == proto.OpSyncTryWriteAppend {
-			log.LogDebugf("try rsp opcode %v", reply.Opcode)
+			span.Debugf("try rsp opcode %v", reply.Opcode)
 		}
 		return
 	}
@@ -424,11 +425,10 @@ func (rp *ReplProtocol) writeResponse(reply *Packet) {
 	if err = reply.WriteToConn(rp.sourceConn); err != nil {
 		err = fmt.Errorf(reply.LogMessage(ActionWriteToClient, fmt.Sprintf("local(%v)->remote(%v)", rp.sourceConn.LocalAddr().String(),
 			rp.sourceConn.RemoteAddr().String()), reply.StartT, err))
-		log.LogErrorf(err.Error())
+		span.Error(err.Error())
 		rp.Stop()
 	}
-	log.LogDebugf(reply.LogMessage(ActionWriteToClient,
-		rp.sourceConn.RemoteAddr().String(), reply.StartT, err))
+	span.Debug(reply.LogMessage(ActionWriteToClient, rp.sourceConn.RemoteAddr().String(), reply.StartT, err))
 }
 
 // Stop stops the replication protocol.
