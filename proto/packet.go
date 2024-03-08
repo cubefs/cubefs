@@ -942,12 +942,12 @@ func (p *Packet) WriteToConn(c net.Conn) (err error) {
 	if p.Opcode == OpRandomWriteVer || p.ExtentType&MultiVersionFlag > 0 {
 		headSize = util.PacketHeaderVerSize
 	}
-	// log.LogDebugf("packet opcode %v header size %v extentype %v conn %v", p.Opcode, headSize, p.ExtentType, c)
+	// log.Debugf("packet opcode %v header size %v extentype %v conn %v", p.Opcode, headSize, p.ExtentType, c)
 	header, err := Buffers.Get(headSize)
 	if err != nil {
 		header = make([]byte, headSize)
 	}
-	// log.LogErrorf("action[WriteToConn] buffer get nil,opcode %v head len [%v]", p.Opcode, len(header))
+	// log.Errorf("action[WriteToConn] buffer get nil,opcode %v head len [%v]", p.Opcode, len(header))
 	defer Buffers.Put(header)
 	c.SetWriteDeadline(time.Now().Add(WriteDeadlineTime * time.Second))
 	p.MarshalHeader(header)

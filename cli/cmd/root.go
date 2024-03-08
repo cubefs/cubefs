@@ -84,7 +84,11 @@ func NewRootCmd(client *master.MasterClient) *CubeFSCmd {
 	return cmd
 }
 
-var stdout = stdoutf
+var (
+	stdout = stdoutf
+
+	spanContextPrefix = proto.SpanContextPrefix
+)
 
 func stdoutln(a ...interface{}) {
 	fmt.Fprintln(os.Stdout, a...)
@@ -104,7 +108,6 @@ func errout(err error) {
 		return
 	}
 	fmt.Fprintln(os.Stderr, "Error:", err)
-	log.LogError("Error:", err)
-	log.LogFlush()
+	log.Error("Error:", err)
 	os.Exit(1)
 }
