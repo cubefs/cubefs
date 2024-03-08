@@ -175,7 +175,7 @@ func TestRefreshEbsExtents(t *testing.T) {
 			panic(fmt.Sprintf("Hook advance instance method failed:%s", err.Error()))
 		}
 		reader.mw = mw
-		reader.refreshEbsExtents()
+		reader.refreshEbsExtents(context.TODO())
 		assert.Equal(t, reader.valid, tc.expectValid)
 	}
 }
@@ -205,7 +205,7 @@ func TestPrepareEbsSlice(t *testing.T) {
 		reader := Reader{}
 		reader.limitManager = manager.NewLimitManager(nil)
 		reader.mw = mw
-		_, got := reader.prepareEbsSlice(tc.offset, tc.size)
+		_, got := reader.prepareEbsSlice(context.TODO(), tc.offset, tc.size)
 		assert.Equal(t, tc.expectError, got)
 	}
 }
@@ -217,7 +217,7 @@ func TestRead(t *testing.T) {
 		getObjFunc       func(*meta.MetaWrapper, uint64) (uint64, uint64, []proto.ExtentKey, []proto.ObjExtentKey, error)
 		bcacheGetFunc    func(*bcache.BcacheClient, string, []byte, uint64, uint32) (int, error)
 		checkDpExistFunc func(*stream.ExtentClient, uint64) error
-		readExtentFunc   func(*stream.ExtentClient, uint64, *proto.ExtentKey, []byte, int, int) (int, error, bool)
+		readExtentFunc   func(*stream.ExtentClient, context.Context, uint64, *proto.ExtentKey, []byte, int, int) (int, error, bool)
 		ebsReadFunc      func(*BlobStoreClient, context.Context, string, []byte, uint64, uint64, proto.ObjExtentKey) (int, error)
 		expectError      error
 	}{
@@ -387,7 +387,7 @@ func TestReadSliceRange(t *testing.T) {
 		extentKey        proto.ExtentKey
 		bcacheGetFunc    func(*bcache.BcacheClient, string, []byte, uint64, uint32) (int, error)
 		checkDpExistFunc func(*stream.ExtentClient, uint64) error
-		readExtentFunc   func(*stream.ExtentClient, uint64, *proto.ExtentKey, []byte, int, int) (int, error, bool)
+		readExtentFunc   func(*stream.ExtentClient, context.Context, uint64, *proto.ExtentKey, []byte, int, int) (int, error, bool)
 		ebsReadFunc      func(*BlobStoreClient, context.Context, string, []byte, uint64, uint64, proto.ObjExtentKey) (int, error)
 		expectError      error
 	}{
@@ -502,7 +502,7 @@ func MockEbscReadFalse(ebsc *BlobStoreClient, ctx context.Context, volName strin
 	return 0, syscall.EIO
 }
 
-func MockReadExtentTrue(client *stream.ExtentClient, inode uint64, ek *proto.ExtentKey,
+func MockReadExtentTrue(client *stream.ExtentClient, ctx context.Context, inode uint64, ek *proto.ExtentKey,
 	data []byte, offset int, size int) (read int, err error, b bool) {
 	return len("Hello world"), nil, true
 }
