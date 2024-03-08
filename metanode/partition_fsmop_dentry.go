@@ -16,7 +16,6 @@ package metanode
 
 import (
 	"context"
-	"fmt"
 	"strings"
 
 	"github.com/cubefs/cubefs/proto"
@@ -70,7 +69,7 @@ func (mp *metaPartition) fsmTxCreateDentry(ctx context.Context, txDentry *TxDent
 
 // Insert a dentry into the dentry tree.
 func (mp *metaPartition) fsmCreateDentry(ctx context.Context, dentry *Dentry, forceUpdate bool) (status uint8) {
-	span := getSpan(ctx).WithOperation(fmt.Sprintf("fsmCreateDentry-mp(%d)", mp.config.PartitionId))
+	span := spanOperationf(getSpan(ctx), "fsmCreateDentry-mp(%d)", mp.config.PartitionId)
 	status = proto.OpOk
 	var parIno *Inode
 	if !forceUpdate {
@@ -224,8 +223,7 @@ func (mp *metaPartition) fsmTxDeleteDentry(ctx context.Context, txDentry *TxDent
 
 // Delete dentry from the dentry tree.
 func (mp *metaPartition) fsmDeleteDentry(ctx context.Context, denParm *Dentry, checkInode bool) (resp *DentryResponse) {
-	span := getSpan(ctx).WithOperation(fmt.Sprintf("fsmDeleteDentry-mp(%d)", mp.config.PartitionId))
-
+	span := spanOperationf(getSpan(ctx), "fsmDeleteDentry-mp(%d)", mp.config.PartitionId)
 	span.Debugf("delete param (%v) seq [%v]", denParm, denParm.getSeqFiled())
 	resp = NewDentryResponse()
 	resp.Status = proto.OpOk

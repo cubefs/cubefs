@@ -16,12 +16,10 @@ package master
 
 import (
 	"context"
-	"fmt"
 	"math"
 	"sync"
 	"time"
 
-	"github.com/cubefs/cubefs/blobstore/common/trace"
 	"github.com/cubefs/cubefs/proto"
 )
 
@@ -116,7 +114,7 @@ func (lcMgr *lifecycleManager) process(ctx context.Context) {
 	now := time.Now()
 	lcMgr.lcRuleTaskStatus.StartTime = &now
 	for lcMgr.scanning(ctx) {
-		span, ctx := trace.StartSpanFromContextWithTraceID(context.Background(), "", fmt.Sprintf("lc-process-%v", proto.GenerateRequestID()))
+		span, ctx := proto.SpanContextPrefix("lc-process-")
 		span.Debugf("wait idleLcNodeCh... ToBeScanned num(%v)", len(lcMgr.lcRuleTaskStatus.ToBeScanned))
 		select {
 		case <-lcMgr.exitCh:

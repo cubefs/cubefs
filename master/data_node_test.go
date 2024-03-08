@@ -1,12 +1,10 @@
 package master
 
 import (
-	"context"
 	"fmt"
 	"testing"
 	"time"
 
-	"github.com/cubefs/cubefs/blobstore/common/trace"
 	"github.com/cubefs/cubefs/proto"
 )
 
@@ -19,7 +17,7 @@ func TestDataNode(t *testing.T) {
 		defer mockServerLock.Unlock()
 		mockDataServers = append(mockDataServers, addDataServer(addr, DefaultZoneName))
 	}()
-	_, ctx := trace.StartSpanFromContextWithTraceID(context.Background(), "", "data-node-test")
+	_, ctx := proto.SpanContextPrefix("data-node-test-")
 	server.cluster.checkDataNodeHeartbeat(ctx)
 	time.Sleep(5 * time.Second)
 	getDataNodeInfo(addr, t)

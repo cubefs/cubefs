@@ -71,7 +71,7 @@ func (sender *AdminTaskManager) process(ctx context.Context) {
 	}()
 
 	for {
-		_, ctx := trace.StartSpanFromContextWithTraceID(context.Background(), "", fmt.Sprintf("master-task-%v", proto.GenerateRequestID()))
+		_, ctx := proto.SpanContextPrefix("master-task-")
 		select {
 		case <-sender.exitCh:
 			return
