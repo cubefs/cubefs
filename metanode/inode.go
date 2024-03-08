@@ -27,8 +27,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cubefs/cubefs/blobstore/util/log"
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util/log"
 	"github.com/cubefs/cubefs/util/timeutil"
 )
 
@@ -250,8 +250,8 @@ func (inode *Inode) GetAllExtsOfflineInode(ctx context.Context, mpID uint64) (ex
 			}
 			extInfo[ek.PartitionId] = append(extInfo[ek.PartitionId], &ek)
 			// NOTE: unnecessary to set ext
-			// TODO: origin is log.LogWritef.
-			span.Infof("ino(%v) deleteExtent(%v)", inode.Inode, ek.String())
+			// NOTICE: log.LogWritef
+			span.Infof("[WRITE] ino(%v) deleteExtent(%v)", inode.Inode, ek.String())
 			return true
 		})
 		// NOTE: clear all extents in this layer

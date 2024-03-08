@@ -57,11 +57,11 @@ func DoConsulRegisterProc(addr, app, role, cluster, meta, host string, port int6
 	if len(addr) <= 0 {
 		return
 	}
-	log.LogInfof("metrics consul register %v %v %v", addr, cluster, port)
+	log.Infof("metrics consul register %v %v %v", addr, cluster, port)
 	ticker := time.NewTicker(RegisterPeriod)
 	defer func() {
 		if err := recover(); err != nil {
-			log.LogErrorf("RegisterConsul panic,err[%v]", err)
+			log.Errorf("RegisterConsul panic,err[%v]", err)
 		}
 		ticker.Stop()
 	}()
@@ -69,7 +69,7 @@ func DoConsulRegisterProc(addr, app, role, cluster, meta, host string, port int6
 	client := &http.Client{}
 	req := makeRegisterReq(host, addr, app, role, cluster, meta, port)
 	if req == nil {
-		log.LogErrorf("make register req error")
+		log.Errorf("make register req error")
 		return
 	}
 
@@ -81,7 +81,7 @@ func DoConsulRegisterProc(addr, app, role, cluster, meta, host string, port int6
 	for range ticker.C {
 		req := makeRegisterReq(host, addr, app, role, cluster, meta, port)
 		if req == nil {
-			log.LogErrorf("make register req error")
+			log.Errorf("make register req error")
 			return
 		}
 		if resp, _ := client.Do(req); resp != nil {
@@ -95,7 +95,7 @@ func DoConsulRegisterProc(addr, app, role, cluster, meta, host string, port int6
 func GetLocalIpAddr(filter string) (ipaddr string, err error) {
 	addrs, err := net.InterfaceAddrs()
 	if err != nil {
-		log.LogError("consul register get local ip failed, ", err)
+		log.Error("consul register get local ip failed, ", err)
 		return
 	}
 	for _, addr := range addrs {
@@ -157,18 +157,18 @@ func makeRegisterReq(host, addr, app, role, cluster, meta string, port int64) (r
 		cInfo.Meta["commit"] = proto.CommitID
 		if len(cInfo.Meta["metric_path"]) == 0 {
 			cInfo.Meta["metric_path"] = "/metrics"
-			log.LogInfo("metric_path is empty, use default /metrics")
+			log.Info("metric_path is empty, use default /metrics")
 		}
 	}
 
 	cInfoBytes, err := json.Marshal(cInfo)
 	if err != nil {
-		log.LogErrorf("marshal error, %v", err.Error())
+		log.Errorf("marshal error, %v", err.Error())
 		return nil
 	}
 	req, err = http.NewRequest(http.MethodPut, url, bytes.NewBuffer(cInfoBytes))
 	if err != nil {
-		log.LogErrorf("new request error, %v", err.Error())
+		log.Errorf("new request error, %v", err.Error())
 		return nil
 	}
 	req.Header.Set("Content-Type", "application/json; charset=utf-8")
@@ -180,7 +180,7 @@ func makeRegisterReq(host, addr, app, role, cluster, meta string, port int64) (r
 // parse k1=v1;k2=v2 as a map
 func parseMetaStr(meta string) (bool, map[string]string) {
 	if len(meta) == 0 {
-		log.LogInfo("meta is empty, use default")
+		log.Info("meta is empty, use default")
 		meta = "dataset=custom;category=custom;app=cfs;role=fuseclient;metric_path=/metrics"
 	}
 
@@ -190,7 +190,7 @@ func parseMetaStr(meta string) (bool, map[string]string) {
 	for _, kv := range kvs {
 		arr := strings.Split(kv, "=")
 		if len(arr) != 2 {
-			log.LogInfof("meta is invalid, can't use %s", meta)
+			log.Infof("meta is invalid, can't use %s", meta)
 			return false, m
 		}
 

@@ -30,7 +30,6 @@ import (
 	"github.com/google/uuid"
 	"golang.org/x/time/rate"
 
-	// "github.com/cubefs/cubefs/blobstore/util/log"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/raftstore"
@@ -1150,7 +1149,8 @@ func (c *Cluster) checkLackReplicaDataPartitions(ctx context.Context) (lackRepli
 
 func (c *Cluster) checkReplicaOfDataPartitions(ctx context.Context, ignoreDiscardDp bool) (
 	lackReplicaDPs []*DataPartition, unavailableReplicaDPs []*DataPartition, repFileCountDifferDps []*DataPartition,
-	repUsedSizeDifferDps []*DataPartition, excessReplicaDPs []*DataPartition, noLeaderDPs []*DataPartition, err error) {
+	repUsedSizeDifferDps []*DataPartition, excessReplicaDPs []*DataPartition, noLeaderDPs []*DataPartition, err error,
+) {
 	noLeaderDPs = make([]*DataPartition, 0)
 	lackReplicaDPs = make([]*DataPartition, 0)
 	unavailableReplicaDPs = make([]*DataPartition, 0)
@@ -1599,7 +1599,8 @@ errHandler:
 }
 
 func (c *Cluster) syncCreateDataPartitionToDataNode(ctx context.Context, host string, size uint64, dp *DataPartition,
-	peers []proto.Peer, hosts []string, createType int, partitionType int, needRollBack bool) (diskPath string, err error) {
+	peers []proto.Peer, hosts []string, createType int, partitionType int, needRollBack bool,
+) (diskPath string, err error) {
 	span := proto.SpanFromContext(ctx)
 	span.Infof("action[syncCreateDataPartitionToDataNode] dp [%v] createtype[%v], partitionType[%v]", dp.PartitionID, createType, partitionType)
 	dataNode, err := c.dataNode(host)
@@ -1709,7 +1710,8 @@ func (c *Cluster) chooseZone2Plus1(ctx context.Context, zones []*Zone, excludeNo
 }
 
 func (c *Cluster) chooseZoneNormal(ctx context.Context, zones []*Zone, excludeNodeSets []uint64, excludeHosts []string,
-	nodeType uint32, replicaNum int) (hosts []string, peers []proto.Peer, err error) {
+	nodeType uint32, replicaNum int,
+) (hosts []string, peers []proto.Peer, err error) {
 	span := proto.SpanFromContext(ctx)
 	span.Infof("action[chooseZoneNormal] zones[%s] nodeType[%d] replicaNum[%d]", printZonesName(zones), nodeType, replicaNum)
 

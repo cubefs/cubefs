@@ -18,9 +18,8 @@ import (
 	"time"
 
 	"github.com/cubefs/cubefs/depends/bazil.org/fuse"
-
-	"github.com/cubefs/cubefs/blobstore/util/log"
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util/log"
 )
 
 const (
