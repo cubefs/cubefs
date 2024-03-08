@@ -30,7 +30,6 @@ import (
 	"github.com/cubefs/cubefs/sdk/meta"
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/exporter"
-	"github.com/cubefs/cubefs/util/log"
 	"github.com/cubefs/cubefs/util/stat"
 )
 
@@ -128,10 +127,11 @@ func NewReader(config ClientConfig) (reader *Reader) {
 }
 
 func (reader *Reader) Read(ctx context.Context, buf []byte, offset int, size int) (int, error) {
+	span := proto.SpanFromContext(ctx)
 	if reader == nil {
 		return 0, fmt.Errorf("reader is not opened yet")
 	}
-	log.LogDebugf("TRACE reader Read Enter. ino(%v) offset(%v) len(%v)", reader.ino, offset, size)
+	span.Debugf("TRACE reader Read Enter. ino(%v) offset(%v) len(%v)", reader.ino, offset, size)
 	var (
 		read = 0
 		err  error
@@ -148,8 +148,8 @@ func (reader *Reader) Read(ctx context.Context, buf []byte, offset int, size int
 		size = len(buf)
 	}
 
-	rSlices, err = reader.prepareEbsSlice(offset, uint32(size))
-	log.LogDebugf("TRACE reader Read. ino(%v)  rSlices-length(%v) ", reader.ino, len(rSlices))
+	rSlices, err = reader.prepareEbsSlice(ctx, offset, uint32(size))
+	span.Debugf("TRACE reader Read. ino(%v)  rSlices-length(%v) ", reader.ino, len(rSlices))
 
 	if err != nil {
 		return 0, err
@@ -177,7 +177,7 @@ func (reader *Reader) Read(ctx context.Context, buf []byte, offset int, size int
 	for i := 0; i < sliceSize; i++ {
 		read += copy(buf[read:], rSlices[i].Data)
 	}
-	log.LogDebugf("TRACE reader Read Exit. ino(%v)  readN(%v) buf-len(%v)", reader.ino, read, len(buf))
+	span.Debugf("TRACE reader Read Exit. ino(%v)  readN(%v) buf-len(%v)", reader.ino, read, len(buf))
 	return read, nil
 }
 
@@ -187,7 +187,8 @@ func (reader *Reader) Close(ctx context.Context) {
 	reader.Unlock()
 }
 
-func (reader *Reader) prepareEbsSlice(offset int, size uint32) ([]*rwSlice, error) {
+func (reader *Reader) prepareEbsSlice(ctx context.Context, offset int, size uint32) ([]*rwSlice, error) {
+	span := proto.SpanFromContext(ctx)
 	if offset < 0 {
 		return nil, syscall.EIO
 	}
@@ -196,16 +197,16 @@ func (reader *Reader) prepareEbsSlice(offset int, size uint32) ([]*rwSlice, erro
 	selected := false
 
 	reader.once.Do(func() {
-		reader.refreshEbsExtents()
+		reader.refreshEbsExtents(ctx)
 	})
 	fileSize, valid := reader.fileSize()
 	reader.fileLength = fileSize
-	log.LogDebugf("TRACE blobStore prepareEbsSlice Enter. ino(%v)  fileSize(%v) ", reader.ino, fileSize)
+	span.Debugf("TRACE blobStore prepareEbsSlice Enter. ino(%v)  fileSize(%v) ", reader.ino, fileSize)
 	if !valid {
-		log.LogErrorf("Reader: invoke fileSize fail. ino(%v)  offset(%v) size(%v)", reader.ino, offset, size)
+		span.Errorf("Reader: invoke fileSize fail. ino(%v)  offset(%v) size(%v)", reader.ino, offset, size)
 		return nil, syscall.EIO
 	}
-	log.LogDebugf("TRACE blobStore prepareEbsSlice. ino(%v)  offset(%v) size(%v)", reader.ino, offset, size)
+	span.Debugf("TRACE blobStore prepareEbsSlice. ino(%v)  offset(%v) size(%v)", reader.ino, offset, size)
 	if uint64(offset) >= fileSize {
 		return nil, io.EOF
 	}
@@ -236,13 +237,13 @@ func (reader *Reader) prepareEbsSlice(offset int, size uint32) ([]*rwSlice, erro
 			rs.Data = make([]byte, rs.rSize)
 			start = oek.FileOffset + oek.Size
 			chunks = append(chunks, rs)
-			log.LogDebugf("TRACE blobStore prepareEbsSlice. ino(%v)  offset(%v) size(%v) rwSlice(%v)", reader.ino, offset, size, rs)
+			span.Debugf("TRACE blobStore prepareEbsSlice. ino(%v)  offset(%v) size(%v) rwSlice(%v)", reader.ino, offset, size, rs)
 		}
 		if endflag {
 			break
 		}
 	}
-	log.LogDebugf("TRACE blobStore prepareEbsSlice Exit. ino(%v)  offset(%v) size(%v) rwSlices(%v)", reader.ino, offset, size, chunks)
+	span.Debugf("TRACE blobStore prepareEbsSlice Exit. ino(%v)  offset(%v) size(%v) rwSlices(%v)", reader.ino, offset, size, chunks)
 	return chunks, nil
 }
 
@@ -269,10 +270,11 @@ func (reader *Reader) buildExtentKey(rs *rwSlice) {
 }
 
 func (reader *Reader) readSliceRange(ctx context.Context, rs *rwSlice) (err error) {
+	span := proto.SpanFromContext(ctx)
 	defer reader.wg.Done()
-	log.LogDebugf("TRACE blobStore readSliceRange Enter. ino(%v)  rs.fileOffset(%v),rs.rOffset(%v),rs.rSize(%v) ", reader.ino, rs.fileOffset, rs.rOffset, rs.rSize)
+	span.Debugf("TRACE blobStore readSliceRange Enter. ino(%v)  rs.fileOffset(%v),rs.rOffset(%v),rs.rSize(%v) ", reader.ino, rs.fileOffset, rs.rOffset, rs.rSize)
 	cacheKey := util.GenerateKey(reader.volName, reader.ino, rs.fileOffset)
-	log.LogDebugf("TRACE blobStore readSliceRange. ino(%v)  cacheKey(%v) ", reader.ino, cacheKey)
+	span.Debugf("TRACE blobStore readSliceRange. ino(%v)  cacheKey(%v) ", reader.ino, cacheKey)
 	buf := make([]byte, rs.rSize)
 	var readN int
 
@@ -312,7 +314,7 @@ func (reader *Reader) readSliceRange(ctx context.Context, rs *rwSlice) (err erro
 		// check if dp is exist in preload sence
 		err = reader.ec.CheckDataPartitionExsit(rs.extentKey.PartitionId)
 		if err == nil || ctx.Value("objectnode") != nil {
-			readN, err, readLimitOn = reader.ec.ReadExtent(reader.ino, &rs.extentKey, buf, int(rs.rOffset), int(rs.rSize))
+			readN, err, readLimitOn = reader.ec.ReadExtent(ctx, reader.ino, &rs.extentKey, buf, int(rs.rOffset), int(rs.rSize))
 			if err == nil && readN == int(rs.rSize) {
 
 				// L2 cache hit.
@@ -327,9 +329,9 @@ func (reader *Reader) readSliceRange(ctx context.Context, rs *rwSlice) (err erro
 				return
 			}
 		} else {
-			log.LogDebugf("checkDataPartitionExsit failed (%v)", err)
+			span.Debugf("checkDataPartitionExsit failed (%v)", err)
 		}
-		log.LogDebugf("TRACE blobStore readSliceRange. cfs block miss.extentKey=%v,err=%v", rs.extentKey, err)
+		span.Debugf("TRACE blobStore readSliceRange. cfs block miss.extentKey=%v,err=%v", rs.extentKey, err)
 	}
 	if !readLimitOn {
 		reader.limitManager.ReadAlloc(ctx, int(rs.rSize))
@@ -345,25 +347,26 @@ func (reader *Reader) readSliceRange(ctx context.Context, rs *rwSlice) (err erro
 
 	// cache full block
 	if !reader.needCacheL1() && !reader.needCacheL2() || reader.ec.IsPreloadMode() {
-		log.LogDebugf("TRACE blobStore readSliceRange exit without cache. read counter=%v", read)
+		span.Debugf("TRACE blobStore readSliceRange exit without cache. read counter=%v", read)
 		return nil
 	}
 
 	asyncCtx := context.Background()
 	go reader.asyncCache(asyncCtx, cacheKey, rs.objExtentKey)
 
-	log.LogDebugf("TRACE blobStore readSliceRange exit with cache. read counter=%v", read)
+	span.Debugf("TRACE blobStore readSliceRange exit with cache. read counter=%v", read)
 	return nil
 }
 
 func (reader *Reader) asyncCache(ctx context.Context, cacheKey string, objExtentKey proto.ObjExtentKey) {
+	span := proto.SpanFromContext(ctx)
 	var err error
 	bgTime := stat.BeginStat()
 	defer func() {
 		stat.EndStat("read-async-cache", err, bgTime, 1)
 	}()
 
-	log.LogDebugf("TRACE blobStore asyncCache Enter. cacheKey=%v", cacheKey)
+	span.Debugf("TRACE blobStore asyncCache Enter. cacheKey=%v", cacheKey)
 
 	// block is go loading.
 	if _, ok := reader.inflightL2cache.Load(cacheKey); ok {
@@ -376,14 +379,14 @@ func (reader *Reader) asyncCache(ctx context.Context, cacheKey string, objExtent
 	buf := make([]byte, objExtentKey.Size)
 	read, err := reader.ebs.Read(ctx, reader.volName, buf, 0, uint64(len(buf)), objExtentKey)
 	if err != nil || read != len(buf) {
-		log.LogErrorf("ERROR blobStore asyncCache fail, size no match. cacheKey=%v, objExtentKey.size=%v, read=%v",
+		span.Debugf("ERROR blobStore asyncCache fail, size no match. cacheKey=%v, objExtentKey.size=%v, read=%v",
 			cacheKey, len(buf), read)
 		return
 	}
 
 	if reader.needCacheL2() {
 		reader.ec.Write(reader.ino, int(objExtentKey.FileOffset), buf, proto.FlagsCache, nil)
-		log.LogDebugf("TRACE blobStore asyncCache(L2) Exit. cacheKey=%v", cacheKey)
+		span.Debugf("TRACE blobStore asyncCache(L2) Exit. cacheKey=%v", cacheKey)
 		return
 	}
 
@@ -391,7 +394,7 @@ func (reader *Reader) asyncCache(ctx context.Context, cacheKey string, objExtent
 		reader.bc.Put(cacheKey, buf)
 	}
 
-	log.LogDebugf("TRACE blobStore asyncCache(L1) Exit. cacheKey=%v", cacheKey)
+	span.Debugf("TRACE blobStore asyncCache(L1) Exit. cacheKey=%v", cacheKey)
 }
 
 func (reader *Reader) needCacheL2() bool {
@@ -405,17 +408,18 @@ func (reader *Reader) needCacheL1() bool {
 	return reader.enableBcache
 }
 
-func (reader *Reader) refreshEbsExtents() {
+func (reader *Reader) refreshEbsExtents(ctx context.Context) {
+	span := proto.SpanFromContext(ctx)
 	_, _, eks, oeks, err := reader.mw.GetObjExtents(reader.ino)
 	if err != nil {
 		reader.valid = false
-		log.LogErrorf("TRACE blobStore refreshEbsExtents error. ino(%v)  err(%v) ", reader.ino, err)
+		span.Errorf("TRACE blobStore refreshEbsExtents error. ino(%v)  err(%v) ", reader.ino, err)
 		return
 	}
 	reader.valid = true
 	reader.extentKeys = eks
 	reader.objExtentKeys = oeks
-	log.LogDebugf("TRACE blobStore refreshEbsExtents ok. extentKeys(%v)  objExtentKeys(%v) ", reader.extentKeys, reader.objExtentKeys)
+	span.Debugf("TRACE blobStore refreshEbsExtents ok. extentKeys(%v)  objExtentKeys(%v) ", reader.extentKeys, reader.objExtentKeys)
 }
 
 func (reader *Reader) fileSize() (uint64, bool) {
