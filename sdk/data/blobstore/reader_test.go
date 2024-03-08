@@ -175,7 +175,7 @@ func TestRefreshEbsExtents(t *testing.T) {
 			panic(fmt.Sprintf("Hook advance instance method failed:%s", err.Error()))
 		}
 		reader.mw = mw
-		reader.refreshEbsExtents()
+		reader.refreshEbsExtents(context.TODO())
 		assert.Equal(t, reader.valid, tc.expectValid)
 	}
 }
@@ -205,7 +205,7 @@ func TestPrepareEbsSlice(t *testing.T) {
 		reader := Reader{}
 		reader.limitManager = manager.NewLimitManager(nil)
 		reader.mw = mw
-		_, got := reader.prepareEbsSlice(tc.offset, tc.size)
+		_, got := reader.prepareEbsSlice(context.TODO(), tc.offset, tc.size)
 		assert.Equal(t, tc.expectError, got)
 	}
 }

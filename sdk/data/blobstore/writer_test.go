@@ -246,7 +246,7 @@ func TestCacheL2(t *testing.T) {
 		writer.cacheThreshold = tc.cacheThreshold
 		writer.fileCache = tc.fileCache
 		wSlice.fileOffset = tc.fileOffset
-		writer.cacheLevel2(wSlice)
+		writer.cacheLevel2(context.TODO(), wSlice)
 	}
 }
 
@@ -267,7 +267,7 @@ func TestWriterAsyncCache(t *testing.T) {
 	}
 	writer.ec = ec
 	for _, tc := range testCase {
-		writer.asyncCache(tc.ino, tc.offset, tc.data)
+		writer.asyncCache(context.TODO(), tc.ino, tc.offset, tc.data)
 	}
 }
 
