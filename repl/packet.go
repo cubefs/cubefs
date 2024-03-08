@@ -27,7 +27,6 @@ import (
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/exporter"
-	"github.com/cubefs/cubefs/util/log"
 )
 
 var (
@@ -77,7 +76,7 @@ func (p *FollowerPacket) identificationErrorResultCode(errLog string, errMsg str
 	if strings.Contains(errLog, ActionReceiveFromFollower) || strings.Contains(errLog, ActionSendToFollowers) ||
 		strings.Contains(errLog, ConnIsNullErr) {
 		p.ResultCode = proto.OpIntraGroupNetErr
-		log.Errorf("action[identificationErrorResultCode] error %v, errmsg %v", errLog, errMsg)
+		p.Span().Errorf("action[identificationErrorResultCode] error %v, errmsg %v", errLog, errMsg)
 	} else if strings.Contains(errMsg, storage.ParameterMismatchError.Error()) ||
 		strings.Contains(errMsg, ErrorUnknownOp.Error()) {
 		p.ResultCode = proto.OpArgMismatchErr
@@ -95,7 +94,7 @@ func (p *FollowerPacket) identificationErrorResultCode(errLog string, errMsg str
 	} else if strings.Contains(errMsg, raft.ErrStopped.Error()) {
 		p.ResultCode = proto.OpTryOtherAddr
 	} else {
-		log.Errorf("action[identificationErrorResultCode] error %v, errmsg %v", errLog, errMsg)
+		p.Span().Errorf("action[identificationErrorResultCode] error %v, errmsg %v", errLog, errMsg)
 		p.ResultCode = proto.OpIntraGroupNetErr
 	}
 }
@@ -165,7 +164,7 @@ func (p *Packet) resolveFollowersAddr() (err error) {
 	p.OrgBuffer = p.Data
 	if followerNum > 0 {
 		p.followersAddrs = followerAddrs[:int(followerNum)]
-		log.Infof("action[resolveFollowersAddr] %v", p.followersAddrs)
+		p.Span().Infof("action[resolveFollowersAddr] %v", p.followersAddrs)
 	}
 	if p.RemainingFollowers < 0 {
 		err = ErrBadNodes
@@ -291,7 +290,8 @@ func (p *Packet) getErrMessage() (m string) {
 var ErrorUnknownOp = errors.New("unknown opcode")
 
 func (p *Packet) identificationErrorResultCode(errLog string, errMsg string) {
-	log.Debugf("action[identificationErrorResultCode] error %v, errmsg %v", errLog, errMsg)
+	span := p.Span()
+	span.Debugf("action[identificationErrorResultCode] error %v, errmsg %v", errLog, errMsg)
 	if strings.Contains(errLog, ActionReceiveFromFollower) || strings.Contains(errLog, ActionSendToFollowers) ||
 		strings.Contains(errLog, ConnIsNullErr) {
 		p.ResultCode = proto.OpIntraGroupNetErr
@@ -315,9 +315,9 @@ func (p *Packet) identificationErrorResultCode(errLog string, errMsg string) {
 		p.ResultCode = proto.OpTryOtherAddr
 	} else if strings.Contains(errMsg, storage.VerNotConsistentError.Error()) {
 		p.ResultCode = proto.ErrCodeVersionOpError
-		// log.Debugf("action[identificationErrorResultCode] not change ver erro code, (%v)", string(debug.Stack()))
+		// span.Debugf("action[identificationErrorResultCode] not change ver erro code, (%v)", string(debug.Stack()))
 	} else {
-		log.Errorf("action[identificationErrorResultCode] error %v, errmsg %v", errLog, errMsg)
+		span.Errorf("action[identificationErrorResultCode] error %v, errmsg %v", errLog, errMsg)
 		p.ResultCode = proto.OpIntraGroupNetErr
 	}
 }

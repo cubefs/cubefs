@@ -17,11 +17,13 @@ package main
 import (
 	"fmt"
 	"os"
+	"path"
 
 	"github.com/cubefs/cubefs/cli/cmd"
 	"github.com/cubefs/cubefs/sdk/master"
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/spf13/cobra"
+	"gopkg.in/natefinch/lumberjack.v2"
 )
 
 //TODO: remove this later.
@@ -74,17 +76,19 @@ func setupCommands(cfg *cmd.Config) *cobra.Command {
 }
 
 func main() {
-	var err error
-	_, err = log.InitLog("/tmp/cfs", "cli", log.DebugLevel, nil, log.DefaultLogLeftSpaceLimit)
-	if err != nil {
+	log.SetOutputLevel(log.Ldebug)
+	log.SetOutput(&lumberjack.Logger{
+		Filename:   path.Join(path.Join(os.TempDir(), "cfs"), "cli", "cli.log"),
+		MaxSize:    128,
+		MaxAge:     7,
+		MaxBackups: 7,
+		LocalTime:  true,
+		Compress:   true,
+	})
+
+	if err := runCLI(); err != nil {
 		fmt.Fprintln(os.Stderr, "Error:", err)
+		log.Error("Error:", err)
 		os.Exit(1)
 	}
-	if err = runCLI(); err != nil {
-		fmt.Fprintln(os.Stderr, "Error:", err)
-		log.LogError("Error:", err)
-		log.LogFlush()
-		os.Exit(1)
-	}
-	log.LogFlush()
 }
