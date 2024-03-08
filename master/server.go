@@ -25,7 +25,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cubefs/cubefs/blobstore/common/trace"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/raftstore"
 	"github.com/cubefs/cubefs/raftstore/raftstore_db"
@@ -138,7 +137,7 @@ func NewServer() *Server {
 
 // Start starts a server
 func (m *Server) Start(cfg *config.Config) (err error) {
-	span, ctx := trace.StartSpanFromContextWithTraceID(context.Background(), "", "server-start")
+	span, ctx := proto.SpanContextPrefix("server-start-")
 	m.config = newClusterConfig()
 	gConfig = m.config
 	m.leaderInfo = &LeaderInfo{}

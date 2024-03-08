@@ -18,7 +18,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/cubefs/cubefs/blobstore/common/trace"
+	"github.com/cubefs/cubefs/proto"
 )
 
 const idallocTestCount = 1010
@@ -47,7 +47,7 @@ func SelfIncreaseIdAllocTest(ctx context.Context, t *testing.T, allocator *IDAll
 }
 
 func TestIdAlloc(t *testing.T) {
-	_, ctx := trace.StartSpanFromContextWithTraceID(context.Background(), "", "id-allocator-test")
+	_, ctx := proto.SpanContextPrefix("id-allocator-test-")
 	allocator := newIDAllocator(server.rocksDBStore, server.partition)
 	t.Logf("testing client id alloc")
 	SelfIncreaseIdAllocTest(ctx, t, allocator, func() (uint64, error) {
