@@ -15,13 +15,13 @@
 package stream
 
 import (
+	"context"
 	"fmt"
 	"sync"
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/btree"
-	"github.com/cubefs/cubefs/util/log"
 )
 
 // ExtentRequest defines the struct for the request of read or write an extent.
@@ -67,27 +67,30 @@ func NewExtentCache(inode uint64) *ExtentCache {
 	}
 }
 
-func (cache *ExtentCache) LogOutPut() {
+func (cache *ExtentCache) LogOutPut(ctx context.Context) {
+	span := proto.SpanFromContext(ctx)
 	cache.root.Ascend(func(bi btree.Item) bool {
 		ek := bi.(*proto.ExtentKey)
-		log.LogDebugf("ExtentCache update: local ino(%v) ek(%v)", cache.inode, ek)
+		span.Debugf("ExtentCache update: local ino(%v) ek(%v)", cache.inode, ek)
 		return true
 	})
 }
 
-func (cache *ExtentCache) RefreshForce(inode uint64, getExtents GetExtentsFunc) error {
+func (cache *ExtentCache) RefreshForce(ctx context.Context, inode uint64, getExtents GetExtentsFunc) error {
+	span := proto.SpanFromContext(ctx)
 	gen, size, extents, err := getExtents(inode)
 	if err != nil {
 		return err
 	}
 	// log.LogDebugf("Local ExtentCache before update: ino(%v) gen(%v) size(%v) extents(%v)", inode, cache.gen, cache.size, cache.List())
-	cache.update(gen, size, true, extents)
-	log.LogDebugf("Local ExtentCache after update: ino(%v) gen(%v) size(%v) extents(%v)", inode, cache.gen, cache.size, cache.List())
+	cache.update(ctx, gen, size, true, extents)
+	span.Debugf("Local ExtentCache after update: ino(%v) gen(%v) size(%v) extents(%v)", inode, cache.gen, cache.size, cache.List())
 	return nil
 }
 
 // Refresh refreshes the extent cache.
-func (cache *ExtentCache) Refresh(inode uint64, getExtents GetExtentsFunc) error {
+func (cache *ExtentCache) Refresh(ctx context.Context, inode uint64, getExtents GetExtentsFunc) error {
+	span := proto.SpanFromContext(ctx)
 	if cache.root.Len() > 0 {
 		return nil
 	}
@@ -97,18 +100,19 @@ func (cache *ExtentCache) Refresh(inode uint64, getExtents GetExtentsFunc) error
 		return err
 	}
 	// log.LogDebugf("Local ExtentCache before update: ino(%v) gen(%v) size(%v) extents(%v)", inode, cache.gen, cache.size, cache.List())
-	cache.update(gen, size, false, extents)
-	log.LogDebugf("Local ExtentCache after update: ino(%v) gen(%v) size(%v)", inode, cache.gen, cache.size)
+	cache.update(ctx, gen, size, false, extents)
+	span.Debugf("Local ExtentCache after update: ino(%v) gen(%v) size(%v)", inode, cache.gen, cache.size)
 	return nil
 }
 
-func (cache *ExtentCache) update(gen, size uint64, force bool, eks []proto.ExtentKey) {
+func (cache *ExtentCache) update(ctx context.Context, gen, size uint64, force bool, eks []proto.ExtentKey) {
+	span := proto.SpanFromContext(ctx)
 	cache.Lock()
 	defer cache.Unlock()
 
-	log.LogDebugf("ExtentCache update: ino(%v) cache.gen(%v) cache.size(%v) gen(%v) size(%v)", cache.inode, cache.gen, cache.size, gen, size)
+	span.Debugf("ExtentCache update: ino(%v) cache.gen(%v) cache.size(%v) gen(%v) size(%v)", cache.inode, cache.gen, cache.size, gen, size)
 	if !force && cache.gen != 0 && cache.gen >= gen {
-		log.LogDebugf("ExtentCache update: no need to update, ino(%v) gen(%v) size(%v)", cache.inode, gen, size)
+		span.Debugf("ExtentCache update: no need to update, ino(%v) gen(%v) size(%v)", cache.inode, gen, size)
 		return
 	}
 
@@ -117,13 +121,15 @@ func (cache *ExtentCache) update(gen, size uint64, force bool, eks []proto.Exten
 	cache.root.Clear(false)
 	for _, ek := range eks {
 		extent := ek
-		log.LogDebugf("action[update] update cache replace or insert ek [%v]", ek.String())
+		span.Debugf("action[update] update cache replace or insert ek [%v]", ek.String())
 		cache.root.ReplaceOrInsert(&extent)
 	}
 }
 
 // Split extent key.
-func (cache *ExtentCache) SplitExtentKey(inodeID uint64, ekPivot *proto.ExtentKey) (err error) {
+func (cache *ExtentCache) SplitExtentKey(ctx context.Context, inodeID uint64, ekPivot *proto.ExtentKey) (err error) {
+	span := proto.SpanFromContext(ctx)
+
 	cache.Lock()
 	defer cache.Unlock()
 
@@ -137,17 +143,17 @@ func (cache *ExtentCache) SplitExtentKey(inodeID uint64, ekPivot *proto.ExtentKe
 	cache.root.DescendLessOrEqual(ekPivot, func(i btree.Item) bool {
 		if ekFind == nil {
 			ekFind = i.(*proto.ExtentKey)
-			log.LogDebugf("action[ExtentCache.SplitExtentKey] inode %v ek [%v]", inodeID, ekFind)
+			span.Debugf("action[ExtentCache.SplitExtentKey] inode %v ek [%v]", inodeID, ekFind)
 			return true
 		}
 		ekLeft = i.(*proto.ExtentKey)
-		log.LogDebugf("action[ExtentCache.SplitExtentKey] inode %v ekLeft [%v]", inodeID, ekLeft)
+		span.Debugf("action[ExtentCache.SplitExtentKey] inode %v ekLeft [%v]", inodeID, ekLeft)
 		return false
 	})
 
 	cache.root.AscendGreaterThan(ekPivot, func(i btree.Item) bool {
 		ekRight = i.(*proto.ExtentKey)
-		log.LogDebugf("action[ExtentCache.SplitExtentKey] inode %v ekRight [%v]", inodeID, ekRight)
+		span.Debugf("action[ExtentCache.SplitExtentKey] inode %v ekRight [%v]", inodeID, ekRight)
 		return false
 	})
 
@@ -159,30 +165,30 @@ func (cache *ExtentCache) SplitExtentKey(inodeID uint64, ekPivot *proto.ExtentKe
 	*ek = *ekFind
 	cache.root.Delete(ekFind)
 	if nil != cache.root.Get(ekFind) {
-		log.LogDebugf("ExtentCache Delete: ino(%v) ek(%v) ", cache.inode, ekFind)
+		span.Debugf("ExtentCache Delete: ino(%v) ek(%v) ", cache.inode, ekFind)
 		panic(nil)
 	}
-	log.LogDebugf("ExtentCache Delete: ino(%v) ek(%v) ", cache.inode, ekFind)
+	span.Debugf("ExtentCache Delete: ino(%v) ek(%v) ", cache.inode, ekFind)
 	ek.AddModGen()
-	log.LogDebugf("action[SplitExtentKey] inode %v ek [%v] ekPivot [%v] ekLeft [%v]", inodeID, ek, ekPivot, ekLeft)
+	span.Debugf("action[SplitExtentKey] inode %v ek [%v] ekPivot [%v] ekLeft [%v]", inodeID, ek, ekPivot, ekLeft)
 	// begin
 	if ek.FileOffset == ekPivot.FileOffset {
 		ek.Size = ek.Size - ekPivot.Size
 		ek.FileOffset = ek.FileOffset + uint64(ekPivot.Size)
 		ek.ExtentOffset = ek.ExtentOffset + uint64(ekPivot.Size)
 		if ekLeft != nil && ekLeft.IsSequenceWithSameSeq(ekPivot) {
-			log.LogDebugf("SplitExtentKey.merge.begin. ekLeft %v and %v", ekLeft, ekPivot)
+			span.Debugf("SplitExtentKey.merge.begin. ekLeft %v and %v", ekLeft, ekPivot)
 			ekLeft.Size += ekPivot.Size
-			log.LogDebugf("action[SplitExtentKey] inode %v ek [%v], ekPivot[%v] ekLeft[%v]", inodeID, ek, ekPivot, ekLeft)
+			span.Debugf("action[SplitExtentKey] inode %v ek [%v], ekPivot[%v] ekLeft[%v]", inodeID, ek, ekPivot, ekLeft)
 			cache.root.ReplaceOrInsert(ekLeft)
 			cache.root.ReplaceOrInsert(ek)
 			cache.gen++
 			return
 		}
-		log.LogDebugf("action[SplitExtentKey] inode %v ek [%v]", inodeID, ek)
+		span.Debugf("action[SplitExtentKey] inode %v ek [%v]", inodeID, ek)
 	} else if ek.FileOffset+uint64(ek.Size) == ekPivot.FileOffset+uint64(ekPivot.Size) { // end
 		ek.Size = ek.Size - ekPivot.Size
-		log.LogDebugf("action[SplitExtentKey] inode %v ek [%v]", inodeID, ek)
+		span.Debugf("action[SplitExtentKey] inode %v ek [%v]", inodeID, ek)
 		if ekRight != nil && ekPivot.IsSequenceWithSameSeq(ekRight) {
 			cache.root.Delete(ekRight)
 			ekRight.FileOffset = ekPivot.FileOffset
@@ -190,7 +196,7 @@ func (cache *ExtentCache) SplitExtentKey(inodeID uint64, ekPivot *proto.ExtentKe
 			ekRight.Size += ekPivot.Size
 			cache.root.ReplaceOrInsert(ekRight)
 			cache.root.ReplaceOrInsert(ek)
-			log.LogDebugf("SplitExtentKey.merge.end. ek %v and %v", ekPivot, ekRight)
+			span.Debugf("SplitExtentKey.merge.end. ek %v and %v", ekPivot, ekRight)
 			cache.gen++
 			return
 		}
@@ -207,16 +213,16 @@ func (cache *ExtentCache) SplitExtentKey(inodeID uint64, ekPivot *proto.ExtentKe
 				ModGen: ek.GetModGen(),
 			},
 		}
-		log.LogDebugf("action[SplitExtentKey] inode %v add ekEnd [%v] after split size(%v,%v,%v)", inodeID, ekEnd, newSize, ekPivot.Size, ekEnd.Size)
+		span.Debugf("action[SplitExtentKey] inode %v add ekEnd [%v] after split size(%v,%v,%v)", inodeID, ekEnd, newSize, ekPivot.Size, ekEnd.Size)
 		cache.root.ReplaceOrInsert(ekEnd)
-		log.LogDebugf("ExtentCache ReplaceOrInsert: ino(%v) ek(%v) ", cache.inode, ekEnd)
+		span.Debugf("ExtentCache ReplaceOrInsert: ino(%v) ek(%v) ", cache.inode, ekEnd)
 		ek.Size = newSize
 	}
 
 	cache.root.ReplaceOrInsert(ek)
 	cache.root.ReplaceOrInsert(ekPivot)
 
-	log.LogDebugf("action[SplitExtentKey] inode %v ek [%v], ekPivot[%v]", inodeID, ek, ekPivot)
+	span.Debugf("action[SplitExtentKey] inode %v ek [%v], ekPivot[%v]", inodeID, ek, ekPivot)
 	cache.gen++
 
 	// log.LogDebugf("before cache output")
@@ -225,8 +231,9 @@ func (cache *ExtentCache) SplitExtentKey(inodeID uint64, ekPivot *proto.ExtentKe
 }
 
 // Append appends an extent key.
-func (cache *ExtentCache) Append(ek *proto.ExtentKey, sync bool) (discardExtents []proto.ExtentKey) {
-	log.LogDebugf("action[ExtentCache.Append] ek %v", ek)
+func (cache *ExtentCache) Append(ctx context.Context, ek *proto.ExtentKey, sync bool) (discardExtents []proto.ExtentKey) {
+	span := proto.SpanFromContext(ctx)
+	span.Debugf("action[ExtentCache.Append] ek %v", ek)
 	ekEnd := ek.FileOffset + uint64(ek.Size)
 	lower := &proto.ExtentKey{FileOffset: ek.FileOffset}
 	upper := &proto.ExtentKey{FileOffset: ekEnd}
@@ -253,7 +260,7 @@ func (cache *ExtentCache) Append(ek *proto.ExtentKey, sync bool) (discardExtents
 	// After deleting the data between lower and upper, we will do the append
 	for _, key := range discard {
 		cache.root.Delete(key)
-		log.LogDebugf("ExtentCache del: ino(%v) ek(%v) ", cache.inode, key)
+		span.Debugf("ExtentCache del: ino(%v) ek(%v) ", cache.inode, key)
 		if key.PartitionId != 0 && key.ExtentId != 0 && (key.PartitionId != ek.PartitionId || key.ExtentId != ek.ExtentId || ek.ExtentOffset != key.ExtentOffset) {
 			if sync || (ek.PartitionId == 0 && ek.ExtentId == 0) {
 				cache.discard.ReplaceOrInsert(key)
@@ -278,7 +285,7 @@ func (cache *ExtentCache) Append(ek *proto.ExtentKey, sync bool) (discardExtents
 		cache.size = ekEnd
 	}
 
-	log.LogDebugf("ExtentCache Append: ino(%v) sync(%v) ek(%v) local discard(%v) discardExtents(%v), seq(%v)",
+	span.Debugf("ExtentCache Append: ino(%v) sync(%v) ek(%v) local discard(%v) discardExtents(%v), seq(%v)",
 		cache.inode, sync, ek, discard, discardExtents, ek.GetSeq())
 	return
 }
@@ -292,7 +299,8 @@ func (cache *ExtentCache) RemoveDiscard(discardExtents []proto.ExtentKey) {
 	}
 }
 
-func (cache *ExtentCache) TruncDiscard(size uint64) {
+func (cache *ExtentCache) TruncDiscard(ctx context.Context, size uint64) {
+	span := proto.SpanFromContext(ctx)
 	cache.Lock()
 	defer cache.Unlock()
 	if size >= cache.size {
@@ -308,7 +316,7 @@ func (cache *ExtentCache) TruncDiscard(size uint64) {
 	for _, key := range discardExtents {
 		cache.discard.Delete(&key)
 	}
-	log.LogDebugf("truncate ExtentCache discard: ino(%v) size(%v) discard(%v)", cache.inode, size, discardExtents)
+	span.Debugf("truncate ExtentCache discard: ino(%v) size(%v) discard(%v)", cache.inode, size, discardExtents)
 }
 
 // Max returns the max extent key in the cache.
@@ -369,7 +377,8 @@ func (cache *ExtentCache) Get(offset uint64) (ret *proto.ExtentKey) {
 }
 
 // GetEndForAppendWrite returns the extent key whose end offset equals the given offset.
-func (cache *ExtentCache) GetEndForAppendWrite(offset uint64, verSeq uint64, needCheck bool) (ret *proto.ExtentKey) {
+func (cache *ExtentCache) GetEndForAppendWrite(ctx context.Context, offset uint64, verSeq uint64, needCheck bool) (ret *proto.ExtentKey) {
+	span := proto.SpanFromContext(ctx)
 	pivot := &proto.ExtentKey{FileOffset: offset}
 	cache.RLock()
 	defer cache.RUnlock()
@@ -387,22 +396,22 @@ func (cache *ExtentCache) GetEndForAppendWrite(offset uint64, verSeq uint64, nee
 		if offset == ek.FileOffset+uint64(ek.Size) {
 			if !needCheck || ek.GetSeq() == verSeq {
 				if int(ek.ExtentOffset)+int(ek.Size) >= util.ExtentSize {
-					log.LogDebugf("action[ExtentCache.GetEndForAppendWrite] inode %v req offset %v verseq %v not found, exist ek [%v]",
+					span.Debugf("action[ExtentCache.GetEndForAppendWrite] inode %v req offset %v verseq %v not found, exist ek [%v]",
 						cache.inode, offset, verSeq, ek.String())
 					ret = nil
 					return false
 				}
 				//?? should not have the neighbor extent in the next
 				if lastExistEk != nil && ek.IsFileInSequence(lastExistEk) {
-					log.LogErrorf("action[ExtentCache.GetEndForAppendWrite] ek %v is InSequence exist sequence extent %v", ek, lastExistEk)
+					span.Debugf("action[ExtentCache.GetEndForAppendWrite] ek %v is InSequence exist sequence extent %v", ek, lastExistEk)
 					ret = nil
 					return false
 				}
-				log.LogDebugf("action[ExtentCache.GetEndForAppendWrite] inode %v offset %v verseq %v found,ek [%v] lastExistEk[%v], lastExistEkTest[%v]",
+				span.Debugf("action[ExtentCache.GetEndForAppendWrite] inode %v offset %v verseq %v found,ek [%v] lastExistEk[%v], lastExistEkTest[%v]",
 					cache.inode, offset, verSeq, ek.String(), lastExistEk, lastExistEkTest)
 				ret = ek
 			} else {
-				log.LogDebugf("action[ExtentCache.GetEndForAppendWrite] inode %v req offset %v verseq %v not found, exist ek [%v]", cache.inode, offset, verSeq, ek.String())
+				span.Debugf("action[ExtentCache.GetEndForAppendWrite] inode %v req offset %v verseq %v not found, exist ek [%v]", cache.inode, offset, verSeq, ek.String())
 			}
 
 			return false
@@ -414,7 +423,8 @@ func (cache *ExtentCache) GetEndForAppendWrite(offset uint64, verSeq uint64, nee
 }
 
 // PrepareReadRequests classifies the incoming request.
-func (cache *ExtentCache) PrepareReadRequests(offset, size int, data []byte) []*ExtentRequest {
+func (cache *ExtentCache) PrepareReadRequests(ctx context.Context, offset, size int, data []byte) []*ExtentRequest {
+	span := proto.SpanFromContext(ctx)
 	requests := make([]*ExtentRequest, 0)
 	pivot := &proto.ExtentKey{FileOffset: uint64(offset)}
 	upper := &proto.ExtentKey{FileOffset: uint64(offset + size)}
@@ -436,7 +446,7 @@ func (cache *ExtentCache) PrepareReadRequests(offset, size int, data []byte) []*
 		ekStart := int(ek.FileOffset)
 		ekEnd := int(ek.FileOffset) + int(ek.Size)
 
-		log.LogDebugf("PrepareReadRequests: req[ino(%v) start(%v) end(%v)] ek[extentID(%v),FileOffset(Start(%v) End(%v))]",
+		span.Debugf("PrepareReadRequests: req[ino(%v) start(%v) end(%v)] ek[extentID(%v),FileOffset(Start(%v) End(%v))]",
 			cache.inode, start, end, ek.ExtentId, ekStart, ekEnd)
 
 		if start < ekStart {
@@ -482,7 +492,7 @@ func (cache *ExtentCache) PrepareReadRequests(offset, size int, data []byte) []*
 		}
 	})
 
-	log.LogDebugf("PrepareReadRequests: ino(%v) start(%v) end(%v)", cache.inode, start, end)
+	span.Debugf("PrepareReadRequests: ino(%v) start(%v) end(%v)", cache.inode, start, end)
 	if start < end {
 		// add hole (start, end)
 		req := NewExtentRequest(start, end-start, data[start-offset:end-offset], nil)
@@ -493,7 +503,8 @@ func (cache *ExtentCache) PrepareReadRequests(offset, size int, data []byte) []*
 }
 
 // PrepareWriteRequests TODO explain
-func (cache *ExtentCache) PrepareWriteRequests(offset, size int, data []byte) []*ExtentRequest {
+func (cache *ExtentCache) PrepareWriteRequests(ctx context.Context, offset, size int, data []byte) []*ExtentRequest {
+	span := proto.SpanFromContext(ctx)
 	requests := make([]*ExtentRequest, 0)
 	pivot := &proto.ExtentKey{FileOffset: uint64(offset)}
 	upper := &proto.ExtentKey{FileOffset: uint64(offset + size)}
@@ -507,7 +518,7 @@ func (cache *ExtentCache) PrepareWriteRequests(offset, size int, data []byte) []
 	cache.root.DescendLessOrEqual(pivot, func(i btree.Item) bool {
 		ek := i.(*proto.ExtentKey)
 		lower.FileOffset = ek.FileOffset
-		log.LogDebugf("action[ExtentCache.PrepareWriteRequests] ek [%v], pivot[%v]", ek, pivot)
+		span.Debugf("action[ExtentCache.PrepareWriteRequests] ek [%v], pivot[%v]", ek, pivot)
 		return false
 	})
 
@@ -516,7 +527,7 @@ func (cache *ExtentCache) PrepareWriteRequests(offset, size int, data []byte) []
 		ekStart := int(ek.FileOffset)
 		ekEnd := int(ek.FileOffset) + int(ek.Size)
 
-		log.LogDebugf("action[ExtentCache.PrepareWriteRequests]: ino(%v) start(%v) end(%v) ekStart(%v) ekEnd(%v)", cache.inode, start, end, ekStart, ekEnd)
+		span.Debugf("action[ExtentCache.PrepareWriteRequests]: ino(%v) start(%v) end(%v) ekStart(%v) ekEnd(%v)", cache.inode, start, end, ekStart, ekEnd)
 
 		if start <= ekStart {
 			if end <= ekStart {
@@ -555,7 +566,7 @@ func (cache *ExtentCache) PrepareWriteRequests(offset, size int, data []byte) []
 		}
 	})
 
-	log.LogDebugf("PrepareWriteRequests: ino(%v) start(%v) end(%v)", cache.inode, start, end)
+	span.Debugf("PrepareWriteRequests: ino(%v) start(%v) end(%v)", cache.inode, start, end)
 	if start < end {
 		// add hole (start, end)
 		req := NewExtentRequest(start, end-start, data[start-offset:end-offset], nil)
