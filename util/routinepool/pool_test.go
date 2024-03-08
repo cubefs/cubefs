@@ -12,16 +12,20 @@
 // implied. See the License for the specific language governing
 // permissions and limitations under the License.
 
-package routinepool
+package routinepool_test
 
 import (
+	"runtime"
 	"sync"
 	"testing"
+
+	"github.com/cubefs/cubefs/util/routinepool"
+	"github.com/stretchr/testify/require"
 )
 
-func TestExample(t *testing.T) {
+func TestRoutinePool(t *testing.T) {
 	maxRoutineNum := 10
-	pool := NewRoutinePool(maxRoutineNum)
+	pool := routinepool.NewRoutinePool(maxRoutineNum)
 
 	var max int32 = 0
 	totalRoutineNum := 100
@@ -31,11 +35,14 @@ func TestExample(t *testing.T) {
 
 	for i := 0; i < totalRoutineNum; i++ {
 		pool.Submit(func() {
-			currentNum := pool.RunningNum()
 			lock.Lock()
 			value++
-			if currentNum > max {
-				max = currentNum
+			for i := 0; i < 200; i++ {
+				currentNum := pool.RunningNum()
+				if currentNum > max {
+					max = currentNum
+				}
+				runtime.Gosched()
 			}
 			lock.Unlock()
 		})
@@ -43,11 +50,7 @@ func TestExample(t *testing.T) {
 
 	pool.WaitAndClose()
 
-	if max != int32(maxRoutineNum) {
-		t.Fatalf("expected max running num(%v), got(%v)", maxRoutineNum, max)
-	}
+	require.EqualValues(t, max, maxRoutineNum)
 
-	if value != totalRoutineNum {
-		t.Fatalf("expected value(%v), got(%v)", totalRoutineNum, value)
-	}
+	require.EqualValues(t, totalRoutineNum, value)
 }
