@@ -21,13 +21,13 @@ import (
 	"strconv"
 	"time"
 
-	// "github.com/cubefs/cubefs/blobstore/util/log"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util"
 )
 
 func (partition *DataPartition) checkStatus(ctx context.Context, clusterName string, needLog bool, dpTimeOutSec int64, c *Cluster,
-	shouldDpInhibitWriteByVolFull bool, forbiddenVol bool) {
+	shouldDpInhibitWriteByVolFull bool, forbiddenVol bool,
+) {
 	partition.Lock()
 	defer partition.Unlock()
 	var liveReplicas []*DataReplica

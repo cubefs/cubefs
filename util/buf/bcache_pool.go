@@ -21,7 +21,7 @@ func newBlockCachePool(blockSize int) *sync.Pool {
 	return &sync.Pool{
 		New: func() interface{} {
 			if atomic.LoadInt64(&bcacheCount) >= bcacheTotalLimit {
-				log.LogWarnf("FileBCachePool: bcacheCount=(%v),bcacheTotalLimit=(%v)", atomic.LoadInt64(&bcacheCount), bcacheTotalLimit)
+				log.Warnf("FileBCachePool: bcacheCount=(%v),bcacheTotalLimit=(%v)", atomic.LoadInt64(&bcacheCount), bcacheTotalLimit)
 				ctx := context.Background()
 				bcacheRateLimit.Wait(ctx)
 			}

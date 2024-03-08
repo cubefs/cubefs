@@ -26,11 +26,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cubefs/cubefs/blobstore/util/log"
 	raftstoremock "github.com/cubefs/cubefs/metanode/mocktest/raftstore"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/config"
+	"github.com/cubefs/cubefs/util/log"
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/assert"
 )

@@ -27,6 +27,18 @@ func TestPacketContext(t *testing.T) {
 	p3 := p1.WithContext(ctx3)
 	span3 := p3.Span()
 	require.NotEqual(t, span1.TraceID(), span3.TraceID())
+
+	ctx4 := ContextWithOperation(ctx3, "test")
+	require.NotEqual(t, span3.TraceID(), SpanFromContext(ctx4).TraceID())
+
+	ctx5 := ContextWithOperationf(ctx3, "test %v", 1)
+	require.NotEqual(t, span3.TraceID(), SpanFromContext(ctx5).TraceID())
+
+	span6, ctx6 := SpanContext()
+	require.Equal(t, span6.TraceID(), SpanFromContext(ctx6).TraceID())
+
+	span7, ctx7 := SpanContextPrefix("test hello")
+	require.Equal(t, span7.TraceID(), SpanFromContext(ctx7).TraceID())
 }
 
 func BenchmarkPacketSpan(b *testing.B) {

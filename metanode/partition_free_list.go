@@ -26,12 +26,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cubefs/cubefs/blobstore/util/log"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/fileutil"
-	clog "github.com/cubefs/cubefs/util/log"
+	"github.com/cubefs/cubefs/util/log"
 )
 
 const (
@@ -300,7 +299,8 @@ func (mp *metaPartition) deleteMarkedInodes(ctx context.Context, inoSlice []uint
 				exts = make([]*proto.ExtentKey, 0)
 			}
 			exts = append(exts, inodeExts...)
-			span.Infof("ino(%v) deleteExtent(%v)", inode.Inode, len(inodeExts))
+			// NOTICE: log.LogWritef
+			span.Infof("[WRITE] ino(%v) deleteExtent(%v)", inode.Inode, len(inodeExts))
 			deleteExtentsByPartition[dpID] = exts
 		}
 
@@ -615,7 +615,7 @@ func (mp *metaPartition) recycleInodeDelFile(ctx context.Context) {
 func (mp *metaPartition) persistDeletedInode(ctx context.Context, ino uint64, currentSize *uint64) {
 	span := getSpan(ctx).WithOperation("persistDeletedInode")
 	if *currentSize >= _deleteInodeFileRollingSize {
-		fileName := fmt.Sprintf("%v.%v.%v", DeleteInodeFileExtension, time.Now().Format(clog.FileNameDateFormat), "old")
+		fileName := fmt.Sprintf("%v.%v.%v", DeleteInodeFileExtension, time.Now().Format(log.FileNameDateFormat), "old")
 		if err := mp.delInodeFp.Sync(); err != nil {
 			span.Errorf("failed to sync delete inode file, err(%v), inode(%v)", err, ino)
 			return
