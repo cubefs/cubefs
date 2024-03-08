@@ -238,6 +238,7 @@ func (d *Disk) CanWrite() bool {
 		return true
 	}
 
+	log.LogErrorf("[CanWrite] disk(%v) not writable, status(%v) reject write(%v) total space(%v) disk rdonly space(%v) used(%v) reserved space(%v)", d.Path, d.Status, d.RejectWrite, d.Total, d.DiskRdonlySpace, d.Used, d.ReservedSpace)
 	return false
 }
 
@@ -708,10 +709,6 @@ func (d *Disk) updateDisk(allocSize uint64) {
 		return
 	}
 	d.Available = d.Available - allocSize
-}
-
-func (d *Disk) getSelectWeight() float64 {
-	return float64(atomic.LoadUint64(&d.Allocated)) / float64(d.Total)
 }
 
 func (d *Disk) AddDiskErrPartition(dpId uint64) {

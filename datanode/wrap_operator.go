@@ -201,6 +201,7 @@ func (s *DataNode) handlePacketToCreateExtent(p *repl.Packet) {
 	}()
 	partition := p.Object.(*DataPartition)
 	if partition.Available() <= 0 || !partition.disk.CanWrite() {
+		log.LogErrorf("[handlePacketToCreateExtent] dp(%v) disk no space available(%v) can write(%v)", partition.partitionID, partition.Available(), partition.disk.CanWrite())
 		err = storage.NoSpaceError
 		return
 	} else if partition.disk.Status == proto.Unavailable {
@@ -210,6 +211,7 @@ func (s *DataNode) handlePacketToCreateExtent(p *repl.Packet) {
 
 	// in case too many extents
 	if partition.GetExtentCount() >= storage.MaxExtentCount+10 {
+		log.LogErrorf("[handlePacketToCreateExtent] dp(%v) disk no space too many extents(%v)", partition.partitionID, partition.GetExtentCount())
 		err = storage.NoSpaceError
 		return
 	}
