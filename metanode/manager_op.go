@@ -26,12 +26,11 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/cubefs/cubefs/blobstore/util/log"
 	raftProto "github.com/cubefs/cubefs/depends/tiglabs/raft/proto"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/errors"
-	clog "github.com/cubefs/cubefs/util/log"
+	"github.com/cubefs/cubefs/util/log"
 )
 
 const (
@@ -752,7 +751,7 @@ func (m *metadataManager) opMetaExtentsList(conn net.Conn, p *Packet, remoteAddr
 	err = mp.ExtentsList(req, p)
 	m.respondToClient(conn, p)
 	p.Span().Debugf("%s [opMetaExtentsList] req: %d - %v; resp: %v, body: %s",
-		remoteAddr, p.GetReqID(), req, p.GetResultMsg(), clog.TruncMsg(string(p.Data)))
+		remoteAddr, p.GetReqID(), req, p.GetResultMsg(), log.TruncMsg(string(p.Data)))
 	return
 }
 
