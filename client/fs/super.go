@@ -652,7 +652,7 @@ func (s *Super) syncMeta() <-chan struct{} {
 		s.taskPool[1].Run(func() {
 			common.Timed(3, 100).On(func() error {
 				extents := s.ec.GetExtents(inode)
-				if err := s.ec.ForceRefreshExtentsCache(inode); err != nil {
+				if err := s.ec.ForceRefreshExtentsCache(context.TODO(), inode); err != nil {
 					if err != os.ErrNotExist {
 						log.Errorf("ForceRefreshExtentsCache failed:%v", err)
 					}
