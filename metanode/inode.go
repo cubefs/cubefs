@@ -1114,7 +1114,7 @@ func (inode *Inode) unlinkTopLayer(ctx context.Context, mpId uint64, ino *Inode,
 
 	span.Debugf("action[unlinkTopLayer] need create version.ino[%v] withseq [%v] not equal mp seq [%v], verlist %v", ino, inode.getVer(), mpVer, verlist)
 	if proto.IsDir(inode.Type) { // dir is whole info but inode is partition,which is quit different
-		_, err := verlist.GetNextOlderVer(mpVer)
+		_, err := verlist.GetNextOlderVer(ctx, mpVer)
 		if err == nil {
 			span.Debugf("action[unlinkTopLayer] inode[%v] cann't get next older ver [%v] err %v", inode.Inode, mpVer, err)
 			inode.CreateVer(ctx, mpVer)
@@ -1123,7 +1123,7 @@ func (inode *Inode) unlinkTopLayer(ctx context.Context, mpId uint64, ino *Inode,
 		span.Debugf("action[unlinkTopLayer] inode[%v] be unlinked, Dir create ver 1st layer", ino.Inode)
 		doMore = true
 	} else {
-		ver, err := verlist.GetNextOlderVer(mpVer)
+		ver, err := verlist.GetNextOlderVer(ctx, mpVer)
 		if err != nil {
 			if err.Error() == "not found" {
 				delFunc()
@@ -1373,7 +1373,7 @@ func (i *Inode) getAndDelVerInList(ctx context.Context, mpId uint64, dVer uint64
 			// 2. get next version should according to verList but not only self multi list
 
 			var nVerSeq uint64
-			if nVerSeq, err = verlist.GetNextNewerVer(dVer); err != nil {
+			if nVerSeq, err = verlist.GetNextNewerVer(ctx, dVer); err != nil {
 				span.Debugf("action[getAndDelVerInList] get next version failed, err %v", err)
 				return
 			}
@@ -1386,7 +1386,7 @@ func (i *Inode) getAndDelVerInList(ctx context.Context, mpId uint64, dVer uint64
 				span.Debugf("action[getAndDelVerInList] ino[%v] idx %v be dropped", i.Inode, inoVerLen)
 				return mIno.Extents.eks, mIno
 			}
-			if nVerSeq, err = verlist.GetNextOlderVer(dVer); err != nil {
+			if nVerSeq, err = verlist.GetNextOlderVer(ctx, dVer); err != nil {
 				span.Debugf("action[getAndDelVerInList] get next version failed, err %v", err)
 				return
 			}
