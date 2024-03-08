@@ -579,7 +579,7 @@ func (txInfo *TransactionInfo) IsExpired() (expired bool) {
 	now := time.Now().Unix()
 	expired = txInfo.Timeout*60+txInfo.CreateTime < now
 	if expired {
-		log.LogWarnf("IsExpired: transaction [%v] is expired, now[%v], CreateTime[%v]", txInfo, now, txInfo.CreateTime)
+		log.Warnf("IsExpired: transaction [%v] is expired, now[%v], CreateTime[%v]", txInfo, now, txInfo.CreateTime)
 	}
 	return expired
 }

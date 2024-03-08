@@ -61,6 +61,7 @@ func newMetaCompatibilityCmd() *cobra.Command {
 				host         = args[1]
 				pid          = args[2]
 			)
+			_, ctx := spanContextPrefix("cli-meta-")
 			client := api.NewMetaHttpClient(host, false)
 			defer func() {
 				errout(err)
@@ -70,7 +71,7 @@ func newMetaCompatibilityCmd() *cobra.Command {
 				err = fmt.Errorf("parse pid[%v] failed: %v\n", pid, err)
 				return
 			}
-			cursor, err := client.GetMetaPartition(id)
+			cursor, err := client.GetMetaPartition(ctx, id)
 			if err != nil {
 				return
 			}
@@ -82,15 +83,15 @@ func newMetaCompatibilityCmd() *cobra.Command {
 			if mp == nil {
 				return
 			}
-			err = mp.LoadSnapshot(context.TODO(), snapshotPath)
+			err = mp.LoadSnapshot(ctx, snapshotPath)
 			if err != nil {
 				return
 			}
 			stdout("[Meta partition is %v, verify result]\n", id)
-			if err = verifyDentry(client, mp); err != nil {
+			if err = verifyDentry(ctx, client, mp); err != nil {
 				return
 			}
-			if err = verifyInode(client, mp); err != nil {
+			if err = verifyInode(ctx, client, mp); err != nil {
 				return
 			}
 			stdout("All meta has checked\n")
@@ -99,8 +100,8 @@ func newMetaCompatibilityCmd() *cobra.Command {
 	return cmd
 }
 
-func verifyDentry(client *api.MetaHttpClient, mp metanode.MetaPartition) (err error) {
-	dentryMap, err := client.GetAllDentry(mp.GetBaseConfig().PartitionId)
+func verifyDentry(ctx context.Context, client *api.MetaHttpClient, mp metanode.MetaPartition) (err error) {
+	dentryMap, err := client.GetAllDentry(ctx, mp.GetBaseConfig().PartitionId)
 	if err != nil {
 		return
 	}
@@ -131,8 +132,8 @@ func verifyDentry(client *api.MetaHttpClient, mp metanode.MetaPartition) (err er
 	return
 }
 
-func verifyInode(client *api.MetaHttpClient, mp metanode.MetaPartition) (err error) {
-	inodesMap, err := client.GetAllInodes(mp.GetBaseConfig().PartitionId)
+func verifyInode(ctx context.Context, client *api.MetaHttpClient, mp metanode.MetaPartition) (err error) {
+	inodesMap, err := client.GetAllInodes(ctx, mp.GetBaseConfig().PartitionId)
 	if err != nil {
 		return
 	}
