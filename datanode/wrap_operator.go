@@ -192,6 +192,7 @@ func (s *DataNode) handlePacketToCreateExtent(p *repl.Packet) {
 	}()
 	partition := p.Object.(*DataPartition)
 	if partition.Available() <= 0 || !partition.disk.CanWrite() {
+		log.LogErrorf("[handlePacketToCreateExtent] dp(%v) disk no space available(%v) can write(%v)", partition.partitionID, partition.Available(), partition.disk.CanWrite())
 		err = storage.NoSpaceError
 		return
 	} else if partition.disk.Status == proto.Unavailable {
