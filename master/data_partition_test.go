@@ -6,13 +6,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cubefs/cubefs/blobstore/common/trace"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util"
 )
 
 func TestDataPartition(t *testing.T) {
-	_, ctx := trace.StartSpanFromContextWithTraceID(context.Background(), "", "data-partition-test")
+	_, ctx := proto.SpanContextPrefix("data-partition-test-")
 	server.cluster.checkDataNodeHeartbeat(ctx)
 	server.cluster.checkMetaNodeHeartbeat(ctx)
 	time.Sleep(5 * time.Second)

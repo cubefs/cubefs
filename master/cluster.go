@@ -30,7 +30,6 @@ import (
 	"github.com/google/uuid"
 	"golang.org/x/time/rate"
 
-	"github.com/cubefs/cubefs/blobstore/common/trace"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/raftstore"
 	authSDK "github.com/cubefs/cubefs/sdk/auth"
@@ -4556,7 +4555,7 @@ func (c *Cluster) scheduleToSnapshotDelVerScan(ctx context.Context) {
 	waited := false
 	go func() {
 		for {
-			span, ctx := trace.StartSpanFromContextWithTraceID(context.Background(), "", fmt.Sprintf("snap-del-ver-scan-%v", proto.GenerateRequestID()))
+			span, ctx := proto.SpanContextPrefix("snap-del-ver-scan-")
 			if c.partition != nil && c.partition.IsRaftLeader() {
 				if !waited {
 					span.Infof("wait for %v seconds once after becoming leader to make sure all the ver deleting tasks are resumed",

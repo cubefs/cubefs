@@ -217,7 +217,7 @@ func (i *Inode) getTailVerInList(ctx context.Context) (verSeq uint64, found bool
 
 // freelist clean inode get all exist extents info, deal special case for split key
 func (inode *Inode) GetAllExtsOfflineInode(ctx context.Context, mpID uint64) (extInfo map[uint64][]*proto.ExtentKey) {
-	span := getSpan(ctx).WithOperation(fmt.Sprintf("deleteMarkedInodes.GetAllExtsOfflineInode.mp(%d)", mpID))
+	span := spanOperationf(getSpan(ctx), "deleteMarkedInodes.GetAllExtsOfflineInode.mp(%d)", mpID)
 	span.Debugf("inode[%v] inode.Extents: %v, ino verList: %v", inode.Inode, inode.Extents, inode.GetMultiVerString())
 
 	extInfo = make(map[uint64][]*proto.ExtentKey)
