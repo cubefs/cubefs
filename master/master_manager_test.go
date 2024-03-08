@@ -1,14 +1,12 @@
 package master
 
 import (
-	"context"
 	"fmt"
 	"io"
 	"net/http"
 	"testing"
 	"time"
 
-	"github.com/cubefs/cubefs/blobstore/common/trace"
 	rproto "github.com/cubefs/cubefs/depends/tiglabs/raft/proto"
 	"github.com/cubefs/cubefs/master/mocktest"
 	"github.com/cubefs/cubefs/proto"
@@ -72,7 +70,7 @@ const volForSnapshotCount = 300
 
 func BenchmarkSnapshot(b *testing.B) {
 	var err error
-	_, ctx := trace.StartSpanFromContextWithTraceID(context.Background(), "", "master-manager-test")
+	_, ctx := proto.SpanContextPrefix("master-manager-test-")
 	// perpare status
 	req := &createVolReq{
 		name:             "",

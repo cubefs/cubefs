@@ -944,19 +944,19 @@ func (m *Server) createMetaPartition(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if vol.status() == proto.VolStatusMarkDelete {
-		log.LogErrorf("action[createMetaPartition] vol[%s] is marked delete ", vol.Name)
+		log.Errorf("action[createMetaPartition] vol[%s] is marked delete ", vol.Name)
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
 
 	if vol.Forbidden {
-		log.LogErrorf("action[createMetaPartition] vol[%s] is forbidden", vol.Name)
+		log.Errorf("action[createMetaPartition] vol[%s] is forbidden", vol.Name)
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
 
 	if err = vol.addMetaPartitions(r.Context(), m.cluster, count); err != nil {
-		log.LogErrorf("create meta partition fail: volume(%v) err(%v)", volName, err)
+		log.Errorf("create meta partition fail: volume(%v) err(%v)", volName, err)
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}

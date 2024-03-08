@@ -20,7 +20,6 @@ import (
 	syslog "log"
 	"strings"
 
-	"github.com/cubefs/cubefs/blobstore/common/trace"
 	"github.com/cubefs/cubefs/depends/tiglabs/raft/proto"
 	cfsProto "github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/log"
@@ -44,7 +43,7 @@ func (m *Server) handleLeaderChange(leader uint64) {
 	m.leaderInfo.addr = AddrDatabase[leader]
 	log.Warnf("action[handleLeaderChange]  [%v] ", m.leaderInfo.addr)
 	m.reverseProxy = m.newReverseProxy()
-	_, ctx := trace.StartSpanFromContextWithTraceID(context.Background(), "", "leader-change")
+	_, ctx := cfsProto.SpanContextPrefix("leader-change-")
 	if m.id == leader {
 		Warn(ctx, m.clusterName, fmt.Sprintf("clusterID[%v] leader is changed to %v",
 			m.clusterName, m.leaderInfo.addr))
@@ -77,7 +76,7 @@ func (m *Server) handleLeaderChange(leader uint64) {
 func (m *Server) handlePeerChange(confChange *proto.ConfChange) (err error) {
 	var msg string
 	addr := string(confChange.Context)
-	_, ctx := trace.StartSpanFromContextWithTraceID(context.Background(), "", "peer-change")
+	_, ctx := cfsProto.SpanContextPrefix("peer-change-")
 	switch confChange.Type {
 	case proto.ConfAddNode:
 		var arr []string
@@ -99,7 +98,7 @@ func (m *Server) handlePeerChange(confChange *proto.ConfChange) (err error) {
 }
 
 func (m *Server) handleApplySnapshot() {
-	_, ctx := trace.StartSpanFromContextWithTraceID(context.Background(), "", "snapshot-apply")
+	_, ctx := cfsProto.SpanContextPrefix("snapshot-apply-")
 	m.fsm.restore()
 	m.restoreIDAlloc(ctx)
 	return

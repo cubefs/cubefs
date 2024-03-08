@@ -23,6 +23,7 @@ import (
 	"fmt"
 	"hash/maphash"
 	"io"
+	"math"
 	"net"
 	"strconv"
 	"sync/atomic"
@@ -313,7 +314,7 @@ var (
 )
 
 func RandomID() int64 {
-	return int64(new(maphash.Hash).Sum64())
+	return int64(new(maphash.Hash).Sum64() & math.MaxInt64)
 }
 
 func TraceID() string {

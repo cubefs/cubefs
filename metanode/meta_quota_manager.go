@@ -18,7 +18,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
-	"fmt"
 	"sync"
 
 	"github.com/cubefs/cubefs/proto"
@@ -200,10 +199,10 @@ func (mqMgr *MetaQuotaManager) setQuotaHbInfo(ctx context.Context, infos []*prot
 }
 
 func (mqMgr *MetaQuotaManager) getQuotaReportInfos(ctx context.Context) (infos []*proto.QuotaReportInfo) {
+	span := spanOperationf(getSpan(ctx), "getQuotaReportInfos-mp.%d", mqMgr.mpID)
 	mqMgr.rwlock.Lock()
 	defer mqMgr.rwlock.Unlock()
 	var usedInfo proto.QuotaUsedInfo
-	span := getSpan(ctx).WithOperation(fmt.Sprintf("getQuotaReportInfos-mp.%d", mqMgr.mpID))
 	mqMgr.statisticTemp.Range(func(key, value interface{}) bool {
 		usedInfo = value.(proto.QuotaUsedInfo)
 		if value, isFind := mqMgr.statisticBase.Load(key.(uint32)); isFind {
