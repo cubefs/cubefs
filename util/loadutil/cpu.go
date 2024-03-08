@@ -26,17 +26,17 @@ import (
 func GetCpuUtilPercent(sampleDuration time.Duration) (used float64, err error) {
 	utils, err := cpu.Percent(sampleDuration, false)
 	if err != nil {
-		log.LogErrorf("[GetCpuUtilPercent] err: %v", err.Error())
+		log.Errorf("[GetCpuUtilPercent] err: %v", err.Error())
 		return
 	}
 	if utils == nil {
 		err = fmt.Errorf("got nil result")
-		log.LogErrorf("[GetCpuUtilPercent] err: %v", err.Error())
+		log.Errorf("[GetCpuUtilPercent] err: %v", err.Error())
 		return
 	}
 	if len(utils) == 0 {
 		err = fmt.Errorf("got result len is 0")
-		log.LogErrorf("[GetCpuUtilPercent] err: %v", err.Error())
+		log.Errorf("[GetCpuUtilPercent] err: %v", err.Error())
 		return
 	}
 

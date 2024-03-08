@@ -75,24 +75,24 @@ func metricsName(name string) string {
 func Init(role string, cfg *config.Config) {
 	modulename = role
 	if !cfg.GetBoolWithDefault(ConfigKeyExporterEnable, true) {
-		log.LogInfof("%v exporter disabled", role)
+		log.Infof("%v exporter disabled", role)
 		return
 	}
 
 	EnablePid = cfg.GetBoolWithDefault(ConfigKeyEnablePid, false)
-	log.LogInfo("enable report partition id info? ", EnablePid)
+	log.Info("enable report partition id info? ", EnablePid)
 
 	port := cfg.GetInt64(ConfigKeyExporterPort)
 
 	if port < 0 {
-		log.LogInfof("%v exporter port set random default", port)
+		log.Infof("%v exporter port set random default", port)
 	}
 
 	exporterPort = port
 	enabledPrometheus = true
 
 	pushAddr = cfg.GetString(ConfigKeyPushAddr)
-	log.LogInfof("pushAddr %v ", pushAddr)
+	log.Infof("pushAddr %v ", pushAddr)
 	if pushAddr != "" {
 		enablePush = true
 	}
@@ -105,7 +105,7 @@ func Init(role string, cfg *config.Config) {
 	addr := fmt.Sprintf(":%d", port)
 	l, err := net.Listen("tcp", addr)
 	if err != nil {
-		log.LogError("exporter tcp listen error: ", err)
+		log.Error("exporter tcp listen error: ", err)
 		return
 	}
 
@@ -114,7 +114,7 @@ func Init(role string, cfg *config.Config) {
 	go func() {
 		err = http.Serve(l, nil)
 		if err != nil {
-			log.LogError("exporter http serve error: ", err)
+			log.Error("exporter http serve error: ", err)
 			return
 		}
 	}()
@@ -124,14 +124,14 @@ func Init(role string, cfg *config.Config) {
 	m := NewGauge("start_time")
 	m.Set(float64(time.Now().Unix() * 1000))
 
-	log.LogInfof("exporter Start: %v", exporterPort)
+	log.Infof("exporter Start: %v", exporterPort)
 }
 
 // Init initializes the exporter.
 func InitWithRouter(role string, cfg *config.Config, router *mux.Router, exPort string) {
 	modulename = role
 	if !cfg.GetBoolWithDefault(ConfigKeyExporterEnable, true) {
-		log.LogInfof("%v metrics exporter disabled", role)
+		log.Infof("%v metrics exporter disabled", role)
 		return
 	}
 	exporterPort, _ = strconv.ParseInt(exPort, 10, 64)
@@ -149,14 +149,14 @@ func InitWithRouter(role string, cfg *config.Config, router *mux.Router, exPort 
 	m := NewGauge("start_time")
 	m.Set(float64(time.Now().Unix() * 1000))
 
-	log.LogInfof("exporter Start: %v %v", exporterPort, m)
+	log.Infof("exporter Start: %v %v", exporterPort, m)
 }
 
 func RegistConsul(cluster string, role string, cfg *config.Config) {
 	ipFilter := cfg.GetString(ConfigKeyIpFilter)
 	host, err := GetLocalIpAddr(ipFilter)
 	if err != nil {
-		log.LogErrorf("get local ip error, %v", err.Error())
+		log.Errorf("get local ip error, %v", err.Error())
 		return
 	}
 
@@ -165,9 +165,9 @@ func RegistConsul(cluster string, role string, cfg *config.Config) {
 		rawmnt = "/"
 	}
 	mountPoint, _ := filepath.Abs(rawmnt)
-	log.LogInfof("RegistConsul:%v", enablePush)
+	log.Infof("RegistConsul:%v", enablePush)
 	if enablePush {
-		log.LogWarnf("[RegisterConsul] use auto push data strategy, not register consul")
+		log.Warnf("[RegisterConsul] use auto push data strategy, not register consul")
 		autoPush(pushAddr, role, cluster, host, mountPoint)
 		return
 	}
@@ -181,7 +181,7 @@ func RegistConsul(cluster string, role string, cfg *config.Config) {
 	}
 
 	if exporterPort == 0 {
-		log.LogInfo("config export port is 0, use default 17510")
+		log.Info("config export port is 0, use default 17510")
 		exporterPort = 17510
 	}
 
@@ -202,7 +202,7 @@ func autoPush(pushAddr, role, cluster, ip, mountPoint string) {
 
 	hostname, err := os.Hostname()
 	if err != nil {
-		log.LogWarnf("get host name failed %v", err)
+		log.Warnf("get host name failed %v", err)
 	}
 
 	pusher := push.New(pushAddr, "cbfs").
@@ -217,14 +217,14 @@ func autoPush(pushAddr, role, cluster, ip, mountPoint string) {
 		Grouping("mountPoint", mountPoint).
 		Grouping("hostName", hostname)
 
-	log.LogInfof("start push data, ip %s, addr %s, role %s, cluster %s, mountPoint %s, hostName %s",
+	log.Infof("start push data, ip %s, addr %s, role %s, cluster %s, mountPoint %s, hostName %s",
 		ip, pushAddr, role, cluster, mountPoint, hostname)
 
 	ticker := time.NewTicker(time.Second * 15)
 	go func() {
 		for range ticker.C {
 			if err := pusher.Push(); err != nil {
-				log.LogWarnf("push monitor data to %s err, %s", pushAddr, err.Error())
+				log.Warnf("push monitor data to %s err, %s", pushAddr, err.Error())
 			}
 		}
 	}()

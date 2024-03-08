@@ -91,7 +91,7 @@ func (c *Counter) Metric() prometheus.Counter {
 
 	err := prometheus.Register(actualMetric.(prometheus.Collector))
 	if err == nil {
-		log.LogInfo("register metric ", c.name)
+		log.Info("register metric ", c.name)
 	}
 
 	return actualMetric.(prometheus.Counter)
