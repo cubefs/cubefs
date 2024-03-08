@@ -21,8 +21,8 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/cubefs/cubefs/blobstore/util/log"
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util/log"
 )
 
 type MetaQuotaManager struct {

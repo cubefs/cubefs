@@ -29,10 +29,10 @@ import (
 
 	"golang.org/x/time/rate"
 
-	"github.com/cubefs/cubefs/blobstore/util/log"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/btree"
+	"github.com/cubefs/cubefs/util/log"
 )
 
 // Rollback Type
@@ -554,7 +554,8 @@ func (tm *TransactionManager) processTx(ctx context.Context) {
 			return true
 		}
 
-		span.Errorf("processExpiredTransactions: transaction (%v) is in state failed", tx)
+		// NOTICE: log.LogCriticalf
+		span.Errorf("[CRITICAL] processExpiredTransactions: transaction (%v) is in state failed", tx)
 		return true
 	}
 

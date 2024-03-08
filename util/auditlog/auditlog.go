@@ -19,7 +19,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"net"
 	"net/http"
 	"os"
@@ -129,14 +128,14 @@ func getAddr() (HostName, IPAddr string) {
 	hostName, err := os.Hostname()
 	if err != nil {
 		HostName = "Unknown"
-		log.LogWarnf("Get host name failed, replaced by unknown. err(%v)", err)
+		log.Warnf("Get host name failed, replaced by unknown. err(%v)", err)
 	} else {
 		HostName = hostName
 	}
 	addrs, err := net.InterfaceAddrs()
 	if err != nil {
 		IPAddr = "Unknown"
-		log.LogWarnf("Get ip address failed, replaced by unknown. err(%v)", err)
+		log.Warnf("Get ip address failed, replaced by unknown. err(%v)", err)
 	} else {
 		var ip_addrs []string
 		for _, addr := range addrs {
@@ -148,7 +147,7 @@ func getAddr() (HostName, IPAddr string) {
 			IPAddr = strings.Join(ip_addrs, ",")
 		} else {
 			IPAddr = "Unknown"
-			log.LogWarnf("Get ip address failed, replaced by unknown. err(%v)", err)
+			log.Warnf("Get ip address failed, replaced by unknown. err(%v)", err)
 		}
 	}
 	return
@@ -341,7 +340,7 @@ func (a *Audit) AddLog(content string) {
 	case a.bufferC <- content:
 		return
 	default:
-		log.LogErrorf("async audit log failed, audit:[%s]", content)
+		log.Errorf("async audit log failed, audit:[%s]", content)
 	}
 }
 
@@ -449,7 +448,7 @@ func StopAudit() {
 
 func (a *Audit) flushAuditLog() {
 	cleanTimer := time.NewTimer(DefaultCleanInterval)
-
+	defer cleanTimer.Stop()
 	for {
 		select {
 		case <-a.stopC:
@@ -475,13 +474,13 @@ func (a *Audit) newWriterSize(size int) error {
 	if a.logFile == nil {
 		logFile, err := os.OpenFile(a.logFileName, os.O_RDWR|os.O_APPEND|os.O_CREATE, 0o666)
 		if err != nil {
-			log.LogErrorf("newWriterSize failed, logFileName: %s, err: %v\n", a.logFileName, err)
+			log.Errorf("newWriterSize failed, logFileName: %s, err: %v", a.logFileName, err)
 			return fmt.Errorf("OpenLogFile failed, logFileName %s", a.logFileName)
 		}
 
 		a.logFile = logFile
 		if size <= 0 {
-			log.LogDebugf("newWriterSize : buffer for logFileName: %s is disabled", a.logFileName)
+			log.Debugf("newWriterSize : buffer for logFileName: %s is disabled", a.logFileName)
 			a.writer = bufio.NewWriter(logFile)
 		} else {
 			a.writer = bufio.NewWriterSize(logFile, size)
@@ -491,7 +490,7 @@ func (a *Audit) newWriterSize(size int) error {
 		_, err := a.logFile.Stat()
 		if err == nil {
 			if size <= 0 {
-				log.LogErrorf("newWriterSize : buffer for logFileName is disabled")
+				log.Errorf("newWriterSize : buffer for logFileName is disabled")
 				a.writer = bufio.NewWriter(a.logFile)
 			} else {
 				a.writer = bufio.NewWriterSize(a.logFile, size)
@@ -508,19 +507,23 @@ func (a *Audit) newWriterSize(size int) error {
 func (a *Audit) removeLogFile() {
 	fs := syscall.Statfs_t{}
 	if err := syscall.Statfs(a.logDir, &fs); err != nil {
-		log.LogErrorf("Get fs stat failed, err: %v", err)
+		log.Errorf("Get fs stat failed, err: %v", err)
 		return
 	}
 	diskSpaceLeft := int64(fs.Bavail * uint64(fs.Bsize))
 	diskSpaceLeft -= DefaultHeadRoom * 1024 * 1024
 
-	fInfos, err := ioutil.ReadDir(a.logDir)
+	fEntries, err := os.ReadDir(a.logDir)
 	if err != nil {
-		log.LogErrorf("ReadDir failed, logDir: %s, err: %v", a.logDir, err)
+		log.Errorf("ReadDir failed, logDir: %s, err: %v", a.logDir, err)
 		return
 	}
 	var needDelFiles ShiftedFile
-	for _, info := range fInfos {
+	for _, entry := range fEntries {
+		info, errInfo := entry.Info()
+		if errInfo != nil {
+			continue
+		}
 		if a.shouldDelete(info, diskSpaceLeft, Audit_Module) {
 			needDelFiles = append(needDelFiles, info)
 		}
@@ -528,7 +531,7 @@ func (a *Audit) removeLogFile() {
 	sort.Sort(needDelFiles)
 	for _, info := range needDelFiles {
 		if err = os.Remove(path.Join(a.logDir, info.Name())); err != nil {
-			log.LogErrorf("Remove log file failed, logFileName: %s, err: %v", info.Name(), err)
+			log.Errorf("Remove log file failed, logFileName: %s, err: %v", info.Name(), err)
 			continue
 		}
 		diskSpaceLeft += info.Size()
@@ -583,7 +586,7 @@ func (a *Audit) shiftFiles() error {
 		a.writer = nil
 		a.logFile = nil
 		if err = os.Rename(a.logFileName, logNewFileName); err != nil {
-			log.LogErrorf("RenameFile failed, logFileName: %s, logNewFileName: %s, err: %v\n",
+			log.Errorf("RenameFile failed, logFileName: %s, logNewFileName: %s, err: %v",
 				a.logFileName, logNewFileName, err)
 			return fmt.Errorf("action[shiftFiles] renameFile failed, logFileName %s, logNewFileName %s",
 				a.logFileName, logNewFileName)

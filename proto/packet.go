@@ -333,6 +333,27 @@ func SpanFromContext(ctx context.Context) trace.Span {
 	return trace.SpanFromContextSafe(ctx)
 }
 
+// ContextWithOperation create child span with operation and child span will be in the context
+func ContextWithOperation(ctx context.Context, operation string) context.Context {
+	return ContextWithSpan(ctx, SpanFromContext(ctx).WithOperation(operation))
+}
+
+func ContextWithOperationf(ctx context.Context, format string, a ...interface{}) context.Context {
+	return ContextWithOperation(ctx, fmt.Sprintf(format, a...))
+}
+
+func SpanContext() (trace.Span, context.Context) {
+	span, ctx := StartSpanFromContext(context.Background(), "")
+	ctx = ContextWithSpan(ctx, span)
+	return span, ctx
+}
+
+func SpanContextPrefix(prefix string) (trace.Span, context.Context) {
+	span, ctx := StartSpanFromContextWithTraceID(context.Background(), "", prefix+TraceID())
+	ctx = ContextWithSpan(ctx, span)
+	return span, ctx
+}
+
 // Packet defines the packet structure.
 type Packet struct {
 	Magic              uint8

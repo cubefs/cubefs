@@ -20,11 +20,11 @@ import (
 	"io"
 	"strconv"
 
-	"github.com/cubefs/cubefs/blobstore/util/log"
 	"github.com/cubefs/cubefs/depends/tiglabs/raft"
 	"github.com/cubefs/cubefs/depends/tiglabs/raft/proto"
 	raftstore "github.com/cubefs/cubefs/raftstore/raftstore_db"
 	"github.com/cubefs/cubefs/util"
+	"github.com/cubefs/cubefs/util/log"
 	"github.com/cubefs/cubefs/util/stat"
 )
 
