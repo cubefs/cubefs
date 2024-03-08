@@ -1391,7 +1391,7 @@ func parseQosInfo(r *http.Request) (info *proto.ClientReportLimitInfo, err error
 	if body, err = io.ReadAll(r.Body); err != nil {
 		return
 	}
-	// log.LogInfof("action[parseQosInfo] body len:[%v],crc:[%v]", len(body), crc32.ChecksumIEEE(body))
+	// log.Infof("action[parseQosInfo] body len:[%v],crc:[%v]", len(body), crc32.ChecksumIEEE(body))
 	err = json.Unmarshal(body, info)
 	return
 }
