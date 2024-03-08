@@ -468,7 +468,7 @@ func (mp *metaPartition) runVersionOp() {
 }
 
 func (mp *metaPartition) fsmVersionOp(ctx context.Context, reqData []byte) (err error) {
-	span := getSpan(ctx).WithOperation(fmt.Sprintf("fsmVersionOp-vol(%s)mp(%d)", mp.config.VolName, mp.config.PartitionId))
+	span := spanOperationf(getSpan(ctx), "fsmVersionOp-vol(%s)mp(%d)", mp.config.VolName, mp.config.PartitionId)
 	mp.multiVersionList.RWLock.Lock()
 	defer mp.multiVersionList.RWLock.Unlock()
 

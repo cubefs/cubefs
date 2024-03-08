@@ -256,7 +256,7 @@ func (mp *metaPartition) batchDeleteExtentsByPartition(ctx context.Context, part
 
 // Delete the marked inodes.
 func (mp *metaPartition) deleteMarkedInodes(ctx context.Context, inoSlice []uint64) {
-	span := getSpan(ctx).WithOperation(fmt.Sprintf("deleteMarkedInodes-mp(%d)", mp.config.PartitionId))
+	span := spanOperationf(getSpan(ctx), "deleteMarkedInodes-mp(%d)", mp.config.PartitionId)
 	defer func() {
 		if r := recover(); r != nil {
 			stack := string(debug.Stack())
