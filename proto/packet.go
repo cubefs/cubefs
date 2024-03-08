@@ -260,15 +260,16 @@ const (
 )
 
 const (
-	WriteDeadlineTime                         = 5
-	ReadDeadlineTime                          = 5
-	SyncSendTaskDeadlineTime                  = 30
-	NoReadDeadlineTime                        = -1
-	BatchDeleteExtentReadDeadLineTime         = 120
-	GetAllWatermarksDeadLineTime              = 60
-	DefaultClusterLoadFactor          float64 = 10
-	MultiVersionFlag                          = 0x80
-	VersionListFlag                           = 0x40
+	WriteDeadlineTime                          = 5
+	ReadDeadlineTime                           = 5
+	SyncSendTaskDeadlineTime                   = 30
+	NoReadDeadlineTime                         = -1
+	BatchDeleteExtentReadDeadLineTime          = 120
+	ExtentsLocalTransitionDeadLineTime         = 180
+	GetAllWatermarksDeadLineTime               = 60
+	DefaultClusterLoadFactor           float64 = 10
+	MultiVersionFlag                           = 0x80
+	VersionListFlag                            = 0x40
 )
 
 // multi version operation
@@ -1194,6 +1195,10 @@ func (p *Packet) ShouldRetry() bool {
 
 func (p *Packet) IsBatchDeleteExtents() bool {
 	return p.Opcode == OpBatchDeleteExtent || p.Opcode == OpGcBatchDeleteExtent
+}
+
+func (p *Packet) IsExtentsLocalTransition() bool {
+	return p.Opcode == OpExtentsLocalTransition
 }
 
 func InitBufferPool(bufLimit int64) {

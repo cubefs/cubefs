@@ -146,6 +146,8 @@ func (ft *FollowerTransport) readFollowerResult(request *FollowerPacket) (err er
 	timeOut := proto.ReadDeadlineTime
 	if request.IsBatchDeleteExtents() || request.IsBatchLockNormalExtents() || request.IsBatchUnlockNormalExtents() {
 		timeOut = proto.BatchDeleteExtentReadDeadLineTime
+	} else if request.IsExtentsLocalTransition() {
+		timeOut = proto.ExtentsLocalTransitionDeadLineTime
 	}
 	if err = reply.ReadFromConnWithVer(ft.conn, timeOut); err != nil {
 		log.LogErrorf("readFollowerResult ft.addr(%v), err(%v)", ft.addr, err.Error())
@@ -308,11 +310,11 @@ func (rp *ReplProtocol) sendRequestToAllFollowers(request *Packet) (index int, e
 }
 
 // OperatorAndForwardPktGoRoutine reads packets from the to-be-processed channel and writes responses to the client.
-// 1. Read a packet from toBeProcessCh, and determine if it needs to be forwarded or not. If the answer is no, then
-// 	  process the packet locally and put it into responseCh.
-// 2. If the packet needs to be forwarded, the first send it to the followers, and execute the operator function.
-//    Then notify receiveResponse to read the followers' responses.
-// 3. Read a reply from responseCh, and write to the client.
+//  1. Read a packet from toBeProcessCh, and determine if it needs to be forwarded or not. If the answer is no, then
+//     process the packet locally and put it into responseCh.
+//  2. If the packet needs to be forwarded, the first send it to the followers, and execute the operator function.
+//     Then notify receiveResponse to read the followers' responses.
+//  3. Read a reply from responseCh, and write to the client.
 func (rp *ReplProtocol) OperatorAndForwardPktGoRoutine() {
 	for {
 		select {

@@ -1773,7 +1773,7 @@ func (s *DataNode) doTransition(srcDp *DataPartition, dstDp *DataPartition, srcE
 		srcDp.Disk().allocCheckLimit(proto.FlowReadType, uint32(currReadSize))
 
 		srcDp.disk.limitRead.Run(int(currReadSize), func() {
-			crc, err = srcStore.Read(extId, srcExtentOffset, currReadSize, buf, false)
+			crc, err = srcStore.Read(extId, srcExtentOffset, currReadSize, buf, false, false)
 		})
 
 		srcDp.checkIsDiskError(err, ReadFlag)
@@ -1789,7 +1789,7 @@ func (s *DataNode) doTransition(srcDp *DataPartition, dstDp *DataPartition, srcE
 		retryCnt := 5
 		for {
 			if writable := dstDp.disk.limitWrite.TryRun(int(currReadSize), func() {
-				_, err = dstStore.Write(dstExtentId, dstExtentOffset, currReadSize, buf, crc, storage.AppendWriteType, currReadSize != util.ReadBlockSize)
+				_, err = dstStore.Write(dstExtentId, dstExtentOffset, currReadSize, buf, crc, storage.AppendWriteType, currReadSize != util.ReadBlockSize, false)
 			}); !writable {
 				log.LogWarnf("action[doExtentLocalTransition] dstStore is not writable, dp %v ,extId %v", dstDp.partitionID, dstExtentId)
 				retryCnt--

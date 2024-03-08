@@ -441,13 +441,21 @@ func (s *LcScanner) handleFile(dentry *proto.ScanDentry) {
 }
 
 func (s *LcScanner) migrate(e *proto.ScanDentry) (err error) {
-	log.LogInfof("try to use local transitionMgr to migrate inode %v , path %v", e.Inode, e.Path)
+	fromDevType := proto.StorageClassString(e.StorageClass)
+	toDevType := proto.StorageClassString(proto.OpTypeToStorageType(e.Op))
+	log.LogDebugf("try to use local transitionMgr to migrate (%v -> %v ) inode %v , vol %s, path %v", fromDevType, toDevType, e.Inode, s.Volume, e.Path)
 	if err = s.localTransitionMgr.migrate(e); err == nil {
+		log.LogDebugf("local transitionMgr migrated inode %v , vol %s, path %v successfully !", e.Inode, s.Volume, e.Path)
 		return
 	}
 
-	log.LogInfof("local transitionMgr can't do migration process , try to use remote transitionMgr to migrate inode %v , path %v", e.Inode, e.Path)
-	return s.remoteTransitionMgr.migrate(e)
+	log.LogDebugf("local transitionMgr can't finish migration err %v, try to use remote transitionMgr to migrate (%v -> %v ) vol %s, inode %v , path %v",
+		err, fromDevType, toDevType, s.Volume, e.Inode, e.Path)
+	if err = s.remoteTransitionMgr.migrate(e); err == nil {
+		log.LogDebugf("remote transitionMgr migrated inode %v ,vol %s, path %v successfully !", e.Inode, s.Volume, e.Path)
+	}
+
+	return err
 }
 
 func (s *LcScanner) migrateToEbs(e *proto.ScanDentry) (oeks []proto.ObjExtentKey, err error) {

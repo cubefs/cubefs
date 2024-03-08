@@ -29,6 +29,7 @@ import (
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/log"
 	"io"
+	"sync"
 )
 
 type ExtentApi interface {
@@ -298,20 +299,21 @@ type LocalTransitionMgr struct {
 }
 
 func (ltm *LocalTransitionMgr) migrate(e *proto.ScanDentry) (err error) {
+	// 1. get inode extents info
 	gen, size, extents, err := ltm.GetExtents(e.Inode, false, false, false)
 	if err != nil {
 		return err
 	}
 	log.LogDebugf("local transition mgr: get extents of inode %v,  %v %v %v", e.Inode, gen, size, extents)
 
-	// group by data partition
+	// 2. group extents by data partition
 	dp2Extents := map[uint64][]proto.ExtentKey{}
 	for _, extent := range extents {
 		dpId := extent.PartitionId
 		dp2Extents[dpId] = append(dp2Extents[dpId], extent)
 	}
-	log.LogDebugf("grouped extents %v ", dp2Extents)
 
+	// 3. for each srcDp , select a dstDp (a dp which is co-located to srcDp is preferred )  and build extentsLocalTransitionReq for each dp
 	var extentsLocalTransitionReqList []proto.ExtentsLocalTransitionRequest
 	for dpId, dpExtents := range dp2Extents {
 
@@ -339,34 +341,50 @@ func (ltm *LocalTransitionMgr) migrate(e *proto.ScanDentry) (err error) {
 			proto.ExtentsLocalTransitionRequest{SrcDp: srcDp.PartitionID, DstDp: preferredLocalDstDp.PartitionID, SrcExtents: dpExtents, Hosts: preferredLocalDstDp.Hosts})
 	}
 
-	log.LogDebugf("%v", extentsLocalTransitionReqList)
+	log.LogDebugf("extentsLocalTransitionReqList len(%v) to send %v", len(extentsLocalTransitionReqList), extentsLocalTransitionReqList)
 
+	// 4. send request to target datanode on which the srcDp and dstDp located
 	var dpLocalTransitionRespList []proto.ExtentsLocalTransitionResponse
 	if dpLocalTransitionRespList, err = ltm.sendDpLocalTransitionInfoToDataNode(extentsLocalTransitionReqList); err != nil {
 		return err
 	}
 
+	// 5. update inode metadata with new extent list
 	if err = ltm.updateInodeMetaInfo(e, dpLocalTransitionRespList); err != nil {
 		return err
 	}
 
-	log.LogDebugf("local transition mgr :file [%v,%v] local transition (%v -> %v) success ! ", e.Inode, e.Path,
-		proto.StorageClassString(e.StorageClass), proto.StorageClassString(proto.OpTypeToStorageType(e.Op)))
 	return nil
 }
 
 func (ltm *LocalTransitionMgr) sendDpLocalTransitionInfoToDataNode(dpLocalTransitionReqList []proto.ExtentsLocalTransitionRequest) ([]proto.ExtentsLocalTransitionResponse, error) {
-	var dpLocalTransitionRespList []proto.ExtentsLocalTransitionResponse
+	wg := sync.WaitGroup{}
+	wg.Add(len(dpLocalTransitionReqList))
+	responseC := make(chan proto.ExtentsLocalTransitionResponse, len(dpLocalTransitionReqList))
+
 	for _, req := range dpLocalTransitionReqList {
-		// todo add concurrency
-		if resp, err := ltm.doSend(req.Hosts[0], req); err != nil { // send to first replica of dst dp
-			return nil, err
-		} else {
-			dpLocalTransitionRespList = append(dpLocalTransitionRespList, *resp)
-		}
+		go func(req proto.ExtentsLocalTransitionRequest) {
+
+			defer wg.Done()
+			if resp, e := ltm.doSend(req.Hosts[0], req); e != nil { // send to first replica of dst dp
+				log.LogErrorf("error when send ExtentsLocalTransitionRequest to %v, err %v,req :%v ", req.Hosts[0], e, req)
+			} else {
+				responseC <- *resp
+			}
+		}(req)
+	}
+	wg.Wait()
+
+	close(responseC)
+	if len(dpLocalTransitionReqList) != len(responseC) {
+		return nil, errors.NewErrorf("error occurred when sendDpLocalTransitionInfoToDataNode")
+	}
+	var extentsLocalTransitionResponses []proto.ExtentsLocalTransitionResponse
+	for resp := range responseC {
+		extentsLocalTransitionResponses = append(extentsLocalTransitionResponses, resp)
 	}
 
-	return dpLocalTransitionRespList, nil
+	return extentsLocalTransitionResponses, nil
 }
 
 func (ltm *LocalTransitionMgr) doSend(host string, request proto.ExtentsLocalTransitionRequest) (*proto.ExtentsLocalTransitionResponse, error) {
@@ -395,7 +413,7 @@ func (ltm *LocalTransitionMgr) doSend(host string, request proto.ExtentsLocalTra
 		return nil, errors.New(errMsg)
 	}
 
-	if err = p.ReadFromConnWithVer(conn, proto.SyncSendTaskDeadlineTime); err != nil {
+	if err = p.ReadFromConnWithVer(conn, proto.ExtentsLocalTransitionDeadLineTime); err != nil {
 		return nil, errors.Trace(err, "local transition mgr : failed to ReadFromConn, packet(%v) host(%v)", p, host)
 	}
 	if p.ResultCode != proto.OpOk {
