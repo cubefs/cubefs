@@ -277,7 +277,7 @@ func (mp *metaPartition) fsmTxUnlinkInode(ctx context.Context, txIno *TxInode) (
 // fsmUnlinkInode delete the specified inode from inode tree.
 
 func (mp *metaPartition) fsmUnlinkInode(ctx context.Context, ino *Inode, uniqID uint64) (resp *InodeResponse) {
-	span := getSpan(ctx).WithOperation(fmt.Sprintf("fsmUnlinkInode-mp.%d", mp.config.PartitionId))
+	span := spanOperationf(getSpan(ctx), "fsmUnlinkInode-mp.%d", mp.config.PartitionId)
 	span.Debugf("ino[%v]", ino)
 	var ext2Del []proto.ExtentKey
 

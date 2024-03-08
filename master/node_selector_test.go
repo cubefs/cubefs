@@ -25,8 +25,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cubefs/cubefs/blobstore/common/trace"
 	"github.com/cubefs/cubefs/master/mocktest"
+	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util"
 )
 
@@ -241,7 +241,7 @@ func printNodeSelectTimes(t *testing.T, times map[uint64]int) {
 }
 
 func TestCarryWeightNodeSelector(t *testing.T) {
-	_, ctx := trace.StartSpanFromContextWithTraceID(context.Background(), "", "test-carry-weight-node-selector")
+	_, ctx := proto.SpanContextPrefix("test-carry-weight-node-selector-")
 	// get first node
 	dataNode := getFirstDataNodeForTest(t, testZone2)
 	metaNode := getFirstMetaNodeForTest(t, testZone2)
@@ -311,7 +311,7 @@ func TestCarryWeightNodeSelector(t *testing.T) {
 }
 
 func TestRoundRobinNodeSelector(t *testing.T) {
-	_, ctx := trace.StartSpanFromContextWithTraceID(context.Background(), "", "test-roundrobin-node-selector")
+	_, ctx := proto.SpanContextPrefix("test-roundrobin-node-selector-")
 	dataNodes := getAllDataNodesForTest(t, testZone2)
 	if dataNodes == nil {
 		return
@@ -337,7 +337,7 @@ func TestRoundRobinNodeSelector(t *testing.T) {
 }
 
 func TestAvailableSpaceFirstNodeSelector(t *testing.T) {
-	_, ctx := trace.StartSpanFromContextWithTraceID(context.Background(), "", "test-avail-space-first-node-selector")
+	_, ctx := proto.SpanContextPrefix("test-avail-space-first-node-selector-")
 	// get first node
 	dataNode := getFirstDataNodeForTest(t, testZone2)
 	metaNode := getFirstMetaNodeForTest(t, testZone2)
@@ -368,7 +368,7 @@ func TestAvailableSpaceFirstNodeSelector(t *testing.T) {
 }
 
 func TestStrawNodeSelector(t *testing.T) {
-	_, ctx := trace.StartSpanFromContextWithTraceID(context.Background(), "", "test-straw-node-selector")
+	_, ctx := proto.SpanContextPrefix("test-straw-node-selector-")
 	// get first node
 	dataNode := getFirstDataNodeForTest(t, testZone2)
 	metaNode := getFirstMetaNodeForTest(t, testZone2)
@@ -540,7 +540,7 @@ func metaNodeSelectorBench(ctx context.Context, t *testing.T, selector NodeSelec
 }
 
 func TestBenchCarryWeightNodeSelector(t *testing.T) {
-	_, ctx := trace.StartSpanFromContextWithTraceID(context.Background(), "", "bench-test-carry-weight-node-selector")
+	_, ctx := proto.SpanContextPrefix("bench-test-carry-weight-node-selector-")
 	selector := NewCarryWeightNodeSelector(DataNodeType)
 	dataNodeSelectorBench(ctx, t, selector)
 	selector = NewCarryWeightNodeSelector(MetaNodeType)
@@ -548,7 +548,7 @@ func TestBenchCarryWeightNodeSelector(t *testing.T) {
 }
 
 func TestBenchStrawNodeSelector(t *testing.T) {
-	_, ctx := trace.StartSpanFromContextWithTraceID(context.Background(), "", "bench-test-straw-node-selector")
+	_, ctx := proto.SpanContextPrefix("bench-test-straw-node-selector-")
 	selector := NewStrawNodeSelector(DataNodeType)
 	dataNodeSelectorBench(ctx, t, selector)
 	selector = NewStrawNodeSelector(MetaNodeType)
