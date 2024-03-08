@@ -225,13 +225,13 @@ func (f *File) Open(ctx context.Context, req *fuse.OpenRequest, resp *fuse.OpenR
 		}
 	}
 	if needBCache {
-		f.super.ec.OpenStreamWithCache(ino, needBCache)
+		f.super.ec.OpenStreamWithCache(ctx, ino, needBCache)
 	} else {
 		f.super.ec.OpenStream(ino)
 	}
 	log.LogDebugf("TRACE open ino(%v) f.super.bcacheDir(%v) needBCache(%v)", ino, f.super.bcacheDir, needBCache)
 
-	f.super.ec.RefreshExtentsCache(ino)
+	f.super.ec.RefreshExtentsCache(ctx, ino)
 
 	if f.super.keepCache && resp != nil {
 		resp.Flags |= fuse.OpenKeepCache
@@ -575,7 +575,7 @@ func (f *File) Setattr(ctx context.Context, req *fuse.SetattrRequest, resp *fuse
 			return ParseError(err)
 		}
 		f.super.ic.Delete(ino)
-		f.super.ec.RefreshExtentsCache(ino)
+		f.super.ec.RefreshExtentsCache(ctx, ino)
 	}
 
 	info, err := f.super.InodeGet(ino)
