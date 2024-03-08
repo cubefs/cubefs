@@ -22,23 +22,20 @@ import (
 	"testing"
 	"time"
 
+	_ "github.com/cubefs/cubefs/blobstore/testing/nolog"
 	"github.com/cubefs/cubefs/util/auditlog"
 	"github.com/stretchr/testify/require"
 )
 
-const testLogModule = "test"
-
-const testLogMax = 1024
-
-const testLogCount = 1024000
-
-const testBufSize = 0
-
-const testResetBufSize = 1024
-
-const testPrefix = "test"
-
-const testSleepTime = 5 * time.Second
+const (
+	testLogModule    = "test"
+	testLogMax       = 1024
+	testLogCount     = 1024000
+	testBufSize      = 0
+	testResetBufSize = 1024
+	testPrefix       = "test"
+	testSleepTime    = 2 * time.Second
+)
 
 func getFileSize(t *testing.T, file string) (size uint64) {
 	tmp, err := os.Stat(file)
@@ -53,7 +50,7 @@ func getFileSize(t *testing.T, file string) (size uint64) {
 func AuditLogTest(audit *auditlog.Audit, baseDir string, t *testing.T) {
 	audit.ResetWriterBufferSize(testBufSize)
 	dir, module, max := audit.GetInfo()
-	t.Logf("log dir in %v\n", dir)
+	t.Logf("log dir in %v", dir)
 	require.Equal(t, path.Join(baseDir, testLogModule), dir)
 	require.Equal(t, testLogModule, module)
 	require.EqualValues(t, testLogMax, max)
@@ -85,7 +82,7 @@ func AuditLogTest(audit *auditlog.Audit, baseDir string, t *testing.T) {
 	dentries, err := os.ReadDir(dir)
 	require.NoError(t, err)
 	for _, dentry := range dentries {
-		t.Logf("log file %v, size %v\n", dentry.Name(), getFileSize(t, dentry.Name()))
+		t.Logf("log file %v, size %v", dentry.Name(), getFileSize(t, dentry.Name()))
 	}
 	// NOTE: we have prefix, so shiftfile()
 	// must be invoked once
@@ -98,6 +95,7 @@ func AuditLogTest(audit *auditlog.Audit, baseDir string, t *testing.T) {
 func TestAuditLog(t *testing.T) {
 	tmpDir, err := os.MkdirTemp("", "")
 	require.NoError(t, err)
+	defer os.RemoveAll(tmpDir)
 	audit, err := auditlog.NewAuditWithPrefix(tmpDir, testLogModule, testLogMax, auditlog.NewAuditPrefix(testPrefix))
 	require.NoError(t, err)
 	defer audit.Stop()
@@ -107,6 +105,7 @@ func TestAuditLog(t *testing.T) {
 func TestGlobalAuditLog(t *testing.T) {
 	tmpDir, err := os.MkdirTemp("", "")
 	require.NoError(t, err)
+	defer os.RemoveAll(tmpDir)
 	_, err = auditlog.InitAuditWithPrefix(tmpDir, testLogModule, testLogMax, auditlog.NewAuditPrefix(testPrefix))
 	require.NoError(t, err)
 	defer auditlog.StopAudit()
@@ -144,7 +143,7 @@ func TestGlobalAuditLog(t *testing.T) {
 	dentries, err := os.ReadDir(dir)
 	require.NoError(t, err)
 	for _, dentry := range dentries {
-		t.Logf("log file %v, size %v\n", dentry.Name(), getFileSize(t, auditLogName))
+		t.Logf("log file %v, size %v", dentry.Name(), getFileSize(t, auditLogName))
 	}
 	nowSize := getFileSize(t, auditLogName)
 	require.Less(t, nowSize, maxSize)

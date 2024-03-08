@@ -110,13 +110,15 @@ func (s *DataNode) OperatePacket(p *repl.Packet, c net.Conn) (err error) {
 			switch p.Opcode {
 			case proto.OpStreamRead, proto.OpRead, proto.OpExtentRepairRead, proto.OpStreamFollowerRead:
 			case proto.OpReadTinyDeleteRecord:
-				log.Info(logContent)
+				// NOTICE: log.LogRead
+				log.Info("[READ] " + logContent)
 			case proto.OpWrite, proto.OpRandomWrite,
 				proto.OpRandomWriteVer, proto.OpSyncRandomWriteVer,
 				proto.OpRandomWriteAppend, proto.OpSyncRandomWriteAppend,
 				proto.OpTryWriteAppend, proto.OpSyncTryWriteAppend,
 				proto.OpSyncRandomWrite, proto.OpSyncWrite, proto.OpMarkDelete, proto.OpSplitMarkDelete:
-				log.Info(logContent)
+				// NOTICE: log.LogWrite
+				log.Info("[WRITE] " + logContent)
 			default:
 				log.Info(logContent)
 			}
@@ -1038,7 +1040,8 @@ func (s *DataNode) extentRepairReadPacket(p *repl.Packet, connect net.Conn, isRe
 		}
 		logContent := fmt.Sprintf("action[operatePacket] %v.",
 			reply.LogMessage(reply.GetOpMsg(), connect.RemoteAddr().String(), reply.StartT, err))
-		log.Infof(logContent)
+		// NOTICE: log.LogRead
+		log.Info("[READ] " + logContent)
 	}
 	p.PacketOkReply()
 }
@@ -1085,8 +1088,8 @@ func (s *DataNode) writeEmptyPacketOnTinyExtentRepairRead(reply *repl.Packet, ne
 	reply.Size = uint32(replySize)
 	logContent := fmt.Sprintf("action[operatePacket] %v.",
 		reply.LogMessage(reply.GetOpMsg(), connect.RemoteAddr().String(), reply.StartT, err))
-	log.Infof(logContent)
-
+	// NOTICE: log.LogRead
+	log.Info("[READ] " + logContent)
 	return
 }
 
@@ -1173,7 +1176,7 @@ func (s *DataNode) tinyExtentRepairRead(request *repl.Packet, connect net.Conn) 
 		}
 		logContent := fmt.Sprintf("action[operatePacket] %v.",
 			reply.LogMessage(reply.GetOpMsg(), connect.RemoteAddr().String(), reply.StartT, err))
-		log.Infof(logContent)
+		log.Info("[READ] " + logContent)
 	}
 
 	request.PacketOkReply()

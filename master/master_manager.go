@@ -21,9 +21,9 @@ import (
 	"strings"
 
 	"github.com/cubefs/cubefs/blobstore/common/trace"
-	"github.com/cubefs/cubefs/blobstore/util/log"
 	"github.com/cubefs/cubefs/depends/tiglabs/raft/proto"
 	cfsProto "github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util/log"
 )
 
 // LeaderInfo represents the leader's information
