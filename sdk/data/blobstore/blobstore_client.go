@@ -26,7 +26,6 @@ import (
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/exporter"
-	"github.com/cubefs/cubefs/util/log"
 	"github.com/cubefs/cubefs/util/stat"
 	"github.com/google/uuid"
 )
@@ -48,13 +47,14 @@ func NewEbsClient(cfg access.Config) (*BlobStoreClient, error) {
 }
 
 func (ebs *BlobStoreClient) Read(ctx context.Context, volName string, buf []byte, offset uint64, size uint64, oek proto.ObjExtentKey) (readN int, err error) {
+	span := proto.SpanFromContext(ctx)
 	bgTime := stat.BeginStat()
 	defer func() {
 		stat.EndStat("ebs-read", err, bgTime, 1)
 	}()
 
 	requestId := uuid.New().String()
-	log.LogDebugf("TRACE Ebs Read Enter requestId(%v), oek(%v)", requestId, oek)
+	span.Debugf("TRACE Ebs Read Enter requestId(%v), oek(%v)", requestId, oek)
 	ctx = access.WithRequestID(ctx, requestId)
 	start := time.Now()
 
@@ -81,7 +81,7 @@ func (ebs *BlobStoreClient) Read(ctx context.Context, volName string, buf []byte
 		Blobs:     sliceInfos,
 	}
 	// func get has retry
-	log.LogDebugf("TRACE Ebs Read,oek(%v) loc(%v)", oek, loc)
+	span.Debugf("TRACE Ebs Read,oek(%v) loc(%v)", oek, loc)
 	var body io.ReadCloser
 	defer func() {
 		if body != nil {
@@ -93,32 +93,33 @@ func (ebs *BlobStoreClient) Read(ctx context.Context, volName string, buf []byte
 		if err == nil {
 			break
 		}
-		log.LogWarnf("TRACE Ebs Read,oek(%v), err(%v), requestId(%v),retryTimes(%v)", oek, err, requestId, i)
+		span.Warnf("TRACE Ebs Read,oek(%v), err(%v), requestId(%v),retryTimes(%v)", oek, err, requestId, i)
 		time.Sleep(RetrySleepInterval)
 	}
 	if err != nil {
-		log.LogErrorf("TRACE Ebs Read,oek(%v), err(%v), requestId(%v)", oek, err, requestId)
+		span.Errorf("TRACE Ebs Read,oek(%v), err(%v), requestId(%v)", oek, err, requestId)
 		return 0, err
 	}
 
 	readN, err = io.ReadFull(body, buf)
 	if err != nil {
-		log.LogErrorf("TRACE Ebs Read,oek(%v), err(%v), requestId(%v)", oek, err, requestId)
+		span.Errorf("TRACE Ebs Read,oek(%v), err(%v), requestId(%v)", oek, err, requestId)
 		return 0, err
 	}
 	elapsed := time.Since(start)
-	log.LogDebugf("TRACE Ebs Read Exit,oek(%v) readN(%v),bufLen(%v),consume(%v)ns", oek, readN, len(buf), elapsed.Nanoseconds())
+	span.Debugf("TRACE Ebs Read Exit,oek(%v) readN(%v),bufLen(%v),consume(%v)ns", oek, readN, len(buf), elapsed.Nanoseconds())
 	return readN, nil
 }
 
 func (ebs *BlobStoreClient) Write(ctx context.Context, volName string, data []byte, size uint32) (location access.Location, err error) {
+	span := proto.SpanFromContext(ctx)
 	bgTime := stat.BeginStat()
 	defer func() {
 		stat.EndStat("ebs-write", err, bgTime, 1)
 	}()
 
 	requestId := uuid.New().String()
-	log.LogDebugf("TRACE Ebs Write Enter,requestId(%v)  len(%v)", requestId, size)
+	span.Debugf("TRACE Ebs Write Enter,requestId(%v)  len(%v)", requestId, size)
 	start := time.Now()
 	ctx = access.WithRequestID(ctx, requestId)
 	metric := exporter.NewTPCnt(createOPMetric(data, "ebswrite"))
@@ -134,25 +135,27 @@ func (ebs *BlobStoreClient) Write(ctx context.Context, volName string, data []by
 		if err == nil {
 			break
 		}
-		log.LogWarnf("TRACE Ebs write, err(%v), requestId(%v),retryTimes(%v)", err, requestId, i)
+		span.Warnf("TRACE Ebs write, err(%v), requestId(%v),retryTimes(%v)", err, requestId, i)
 		time.Sleep(RetrySleepInterval)
 	}
 	if err != nil {
-		log.LogErrorf("TRACE Ebs write,err(%v),requestId(%v)", err.Error(), requestId)
+		span.Errorf("TRACE Ebs write,err(%v),requestId(%v)", err.Error(), requestId)
 		return location, err
 	}
 	elapsed := time.Since(start)
-	log.LogDebugf("TRACE Ebs Write Exit,requestId(%v)  len(%v) consume(%v)ns", requestId, len(data), elapsed.Nanoseconds())
+	span.Errorf("TRACE Ebs Write Exit,requestId(%v)  len(%v) consume(%v)ns", requestId, len(data), elapsed.Nanoseconds())
 	return location, nil
 }
 
 func (ebs *BlobStoreClient) Delete(oeks []proto.ObjExtentKey) (err error) {
+	ctx := context.TODO()
+	span := proto.SpanFromContext(ctx)
 	bgTime := stat.BeginStat()
 	defer func() {
 		stat.EndStat("ebs-delete", err, bgTime, 1)
 	}()
 
-	ctx, cancel := context.WithTimeout(context.TODO(), time.Second*3)
+	ctx, cancel := context.WithTimeout(ctx, time.Second*3)
 	defer cancel()
 
 	locs := make([]access.Location, 0)
@@ -180,7 +183,7 @@ func (ebs *BlobStoreClient) Delete(oeks []proto.ObjExtentKey) (err error) {
 	}
 
 	requestId := uuid.New().String()
-	log.LogDebugf("start Ebs delete Enter,requestId(%v)  len(%v)", requestId, len(oeks))
+	span.Debugf("start Ebs delete Enter,requestId(%v)  len(%v)", requestId, len(oeks))
 	start := time.Now()
 	ctx = access.WithRequestID(ctx, requestId)
 	metric := exporter.NewTPCnt("ebsdel")
@@ -191,11 +194,11 @@ func (ebs *BlobStoreClient) Delete(oeks []proto.ObjExtentKey) (err error) {
 	elapsed := time.Since(start)
 	_, err = ebs.client.Delete(ctx, &access.DeleteArgs{Locations: locs})
 	if err != nil {
-		log.LogErrorf("[EbsDelete] Ebs delete error, id(%v), consume(%v)ns, err(%v)", requestId, elapsed.Nanoseconds(), err.Error())
+		span.Errorf("[EbsDelete] Ebs delete error, id(%v), consume(%v)ns, err(%v)", requestId, elapsed.Nanoseconds(), err.Error())
 		return err
 	}
 
-	log.LogDebugf("Ebs delete Exit,requestId(%v)  len(%v) consume(%v)ns", requestId, len(oeks), elapsed.Nanoseconds())
+	span.Debugf("Ebs delete Exit,requestId(%v)  len(%v) consume(%v)ns", requestId, len(oeks), elapsed.Nanoseconds())
 
 	return err
 }
