@@ -15,6 +15,7 @@
 package stream
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"sync/atomic"
@@ -24,7 +25,6 @@ import (
 	"github.com/cubefs/cubefs/sdk/data/wrapper"
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/errors"
-	"github.com/cubefs/cubefs/util/log"
 )
 
 var (
@@ -48,7 +48,7 @@ type StreamConn struct {
 var StreamConnPool = util.NewConnectPool()
 
 // NewStreamConn returns a new stream connection.
-func NewStreamConn(dp *wrapper.DataPartition, follower bool) (sc *StreamConn) {
+func NewStreamConn(ctx context.Context, dp *wrapper.DataPartition, follower bool) (sc *StreamConn) {
 	if !follower {
 		sc = &StreamConn{
 			dp:       dp,
@@ -81,7 +81,7 @@ func NewStreamConn(dp *wrapper.DataPartition, follower bool) (sc *StreamConn) {
 	}
 
 	epoch := atomic.AddUint64(&dp.Epoch, 1)
-	hosts := sortByStatus(dp, false)
+	hosts := sortByStatus(ctx, dp, false)
 	choice := len(hosts)
 	currAddr := dp.LeaderAddr
 	if choice > 0 {
@@ -103,48 +103,50 @@ func (sc *StreamConn) String() string {
 
 // Send send the given packet over the network through the stream connection until success
 // or the maximum number of retries is reached.
-func (sc *StreamConn) Send(retry *bool, req *Packet, getReply GetReplyFunc) (err error) {
+func (sc *StreamConn) Send(ctx context.Context, retry *bool, req *Packet, getReply GetReplyFunc) (err error) {
+	span := proto.SpanFromContext(ctx)
 	for i := 0; i < StreamSendMaxRetry; i++ {
-		err = sc.sendToDataPartition(req, retry, getReply)
+		err = sc.sendToDataPartition(ctx, req, retry, getReply)
 		if err == nil || err == proto.ErrCodeVersionOp || !*retry || err == TryOtherAddrError {
 			return
 		}
-		log.LogWarnf("StreamConn Send: err(%v)", err)
+		span.Warnf("StreamConn Send: err(%v)", err)
 		time.Sleep(StreamSendSleepInterval)
 	}
 	return errors.New(fmt.Sprintf("StreamConn Send: retried %v times and still failed, sc(%v) reqPacket(%v)", StreamSendMaxRetry, sc, req))
 }
 
-func (sc *StreamConn) sendToDataPartition(req *Packet, retry *bool, getReply GetReplyFunc) (err error) {
+func (sc *StreamConn) sendToDataPartition(ctx context.Context, req *Packet, retry *bool, getReply GetReplyFunc) (err error) {
+	span := proto.SpanFromContext(ctx)
 	conn, err := StreamConnPool.GetConnect(sc.currAddr)
 	if err == nil {
-		log.LogDebugf("req opcode %v, conn %v", req.Opcode, conn)
-		err = sc.sendToConn(conn, req, getReply)
+		span.Debugf("req opcode %v, conn %v", req.Opcode, conn)
+		err = sc.sendToConn(ctx, conn, req, getReply)
 		if err == nil {
 			StreamConnPool.PutConnect(conn, false)
 			return
 		}
-		log.LogWarnf("sendToDataPartition: send to curr addr failed, addr(%v) reqPacket(%v) err(%v)", sc.currAddr, req, err)
+		span.Warnf("sendToDataPartition: send to curr addr failed, addr(%v) reqPacket(%v) err(%v)", sc.currAddr, req, err)
 		StreamConnPool.PutConnect(conn, true)
 		if err != TryOtherAddrError || !*retry {
 			return
 		}
 	} else {
-		log.LogWarnf("sendToDataPartition: get connection to curr addr failed, addr(%v) reqPacket(%v) err(%v)", sc.currAddr, req, err)
+		span.Warnf("sendToDataPartition: get connection to curr addr failed, addr(%v) reqPacket(%v) err(%v)", sc.currAddr, req, err)
 	}
 
-	hosts := sortByStatus(sc.dp, true)
+	hosts := sortByStatus(ctx, sc.dp, true)
 
 	for _, addr := range hosts {
-		log.LogWarnf("sendToDataPartition: try addr(%v) reqPacket(%v)", addr, req)
+		span.Warnf("sendToDataPartition: try addr(%v) reqPacket(%v)", addr, req)
 		conn, err = StreamConnPool.GetConnect(addr)
 		if err != nil {
-			log.LogWarnf("sendToDataPartition: failed to get connection to addr(%v) reqPacket(%v) err(%v)", addr, req, err)
+			span.Warnf("sendToDataPartition: failed to get connection to addr(%v) reqPacket(%v) err(%v)", addr, req, err)
 			continue
 		}
 		sc.currAddr = addr
 		sc.dp.LeaderAddr = addr
-		err = sc.sendToConn(conn, req, getReply)
+		err = sc.sendToConn(ctx, conn, req, getReply)
 		if err == nil {
 			StreamConnPool.PutConnect(conn, false)
 			return
@@ -153,18 +155,19 @@ func (sc *StreamConn) sendToDataPartition(req *Packet, retry *bool, getReply Get
 		if err != TryOtherAddrError {
 			return
 		}
-		log.LogWarnf("sendToDataPartition: try addr(%v) failed! reqPacket(%v) err(%v)", addr, req, err)
+		span.Warnf("sendToDataPartition: try addr(%v) failed! reqPacket(%v) err(%v)", addr, req, err)
 	}
 	return errors.New(fmt.Sprintf("sendToPatition Failed: sc(%v) reqPacket(%v)", sc, req))
 }
 
-func (sc *StreamConn) sendToConn(conn *net.TCPConn, req *Packet, getReply GetReplyFunc) (err error) {
+func (sc *StreamConn) sendToConn(ctx context.Context, conn *net.TCPConn, req *Packet, getReply GetReplyFunc) (err error) {
+	span := proto.SpanFromContext(ctx)
 	for i := 0; i < StreamSendMaxRetry; i++ {
-		log.LogDebugf("sendToConn: send to addr(%v), reqPacket(%v)", sc.currAddr, req)
+		span.Debugf("sendToConn: send to addr(%v), reqPacket(%v)", sc.currAddr, req)
 		err = req.WriteToConn(conn)
 		if err != nil {
 			msg := fmt.Sprintf("sendToConn: failed to write to addr(%v) err(%v)", sc.currAddr, err)
-			log.LogWarn(msg)
+			span.Warn(msg)
 			break
 		}
 
@@ -172,23 +175,24 @@ func (sc *StreamConn) sendToConn(conn *net.TCPConn, req *Packet, getReply GetRep
 		err, again = getReply(conn)
 		if !again {
 			if err != nil {
-				log.LogWarnf("sendToConn: getReply error and RETURN, addr(%v) reqPacket(%v) err(%v)", sc.currAddr, req, err)
+				span.Warnf("sendToConn: getReply error and RETURN, addr(%v) reqPacket(%v) err(%v)", sc.currAddr, req, err)
 			}
 			break
 		}
 
-		log.LogWarnf("sendToConn: getReply error and will RETRY, sc(%v) err(%v)", sc, err)
+		span.Warnf("sendToConn: getReply error and will RETRY, sc(%v) err(%v)", sc, err)
 		time.Sleep(StreamSendSleepInterval)
 	}
 
-	log.LogDebugf("sendToConn exit: send to addr(%v) reqPacket(%v) err(%v)", sc.currAddr, req, err)
+	span.Debugf("sendToConn exit: send to addr(%v) reqPacket(%v) err(%v)", sc.currAddr, req, err)
 	return
 }
 
 // sortByStatus will return hosts list sort by host status for DataPartition.
 // If param selectAll is true, hosts with status(true) is in front and hosts with status(false) is in behind.
 // If param selectAll is false, only return hosts with status(true).
-func sortByStatus(dp *wrapper.DataPartition, selectAll bool) (hosts []string) {
+func sortByStatus(ctx context.Context, dp *wrapper.DataPartition, selectAll bool) (hosts []string) {
+	span := proto.SpanFromContext(ctx)
 	var failedHosts []string
 	hostsStatus := dp.ClientWrapper.HostsStatus
 	var dpHosts []string
@@ -211,7 +215,7 @@ func sortByStatus(dp *wrapper.DataPartition, selectAll bool) (hosts []string) {
 			}
 		} else {
 			failedHosts = append(failedHosts, addr)
-			log.LogWarnf("sortByStatus: can not find host[%v] in HostsStatus, dp[%d]", addr, dp.PartitionID)
+			span.Warnf("sortByStatus: can not find host[%v] in HostsStatus, dp[%d]", addr, dp.PartitionID)
 		}
 	}
 
