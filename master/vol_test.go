@@ -12,14 +12,13 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/cubefs/cubefs/blobstore/common/trace"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/log"
 )
 
 func TestAutoCreateDataPartitions(t *testing.T) {
-	_, ctx := trace.StartSpanFromContextWithTraceID(context.Background(), "", "vol-test-auto-create-data-partition")
+	_, ctx := proto.SpanContextPrefix("vol-test-auto-create-data-partition-")
 	commonVol, err := server.cluster.getVol(commonVolName)
 	if err != nil {
 		t.Error(err)
@@ -44,7 +43,7 @@ func TestAutoCreateDataPartitions(t *testing.T) {
 }
 
 func TestCheckVol(t *testing.T) {
-	_, ctx := trace.StartSpanFromContextWithTraceID(context.Background(), "", "vol-test-check-vol")
+	_, ctx := proto.SpanContextPrefix("vol-test-check-vol-")
 	commonVol.checkStatus(ctx, server.cluster)
 	commonVol.checkMetaPartitions(ctx, server.cluster)
 	commonVol.checkDataPartitions(ctx, server.cluster)
@@ -53,7 +52,7 @@ func TestCheckVol(t *testing.T) {
 }
 
 func TestVol(t *testing.T) {
-	_, ctx := trace.StartSpanFromContextWithTraceID(context.Background(), "", "vol-test")
+	_, ctx := proto.SpanContextPrefix("vol-test-")
 	name := "test1"
 	createVol(ctx, map[string]interface{}{nameKey: name}, t)
 	// report mp/dp info to master
@@ -321,7 +320,7 @@ func TestVolMpsLock(t *testing.T) {
 	name := "TestVolMpsLock"
 	var volID uint64 = 1
 	createTime := time.Now().Unix()
-	_, ctx := trace.StartSpanFromContextWithTraceID(context.Background(), "", "vol-test-mps-lock")
+	_, ctx := proto.SpanContextPrefix("vol-test-mps-lock-")
 	vv := volValue{
 		ID:                volID,
 		Name:              name,
@@ -374,7 +373,7 @@ func TestVolMpsLock(t *testing.T) {
 }
 
 func TestConcurrentReadWriteDataPartitionMap(t *testing.T) {
-	_, ctx := trace.StartSpanFromContextWithTraceID(context.Background(), "", "vol-test-concurrent-rw-dp-map")
+	_, ctx := proto.SpanContextPrefix("vol-test-concurrent-rw-dp-map-")
 	name := "TestConcurrentReadWriteDataPartitionMap"
 	var volID uint64 = 1
 	createTime := time.Now().Unix()

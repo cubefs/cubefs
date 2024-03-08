@@ -15,7 +15,6 @@
 package metanode
 
 import (
-	"context"
 	"fmt"
 	syslog "log"
 	"os"
@@ -48,19 +47,13 @@ var (
 	smuxPool       *util.SmuxConnectPool
 	smuxPoolCfg    = util.DefaultSmuxConnPoolConfig()
 
-	getSpan = proto.SpanFromContext
+	getSpan           = proto.SpanFromContext
+	spanContext       = proto.SpanContext
+	spanContextPrefix = proto.SpanContextPrefix
 )
 
-func spanContext() (trace.Span, context.Context) {
-	span, ctx := proto.StartSpanFromContext(context.Background(), "")
-	ctx = proto.ContextWithSpan(ctx, span)
-	return span, ctx
-}
-
-func spanContextPrefix(prefix string) (trace.Span, context.Context) {
-	span, ctx := proto.StartSpanFromContextWithTraceID(context.Background(), "", prefix+proto.TraceID())
-	ctx = proto.ContextWithSpan(ctx, span)
-	return span, ctx
+func spanOperationf(span trace.Span, format string, a ...interface{}) trace.Span {
+	return span.WithOperation(fmt.Sprintf(format, a...))
 }
 
 // The MetaNode manages the dentry and inode information of the meta partitions on a meta node.
