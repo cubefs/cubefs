@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cubefs/cubefs/blobstore/common/trace"
+	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util"
 )
 
@@ -22,7 +22,7 @@ func createDataNodeForTopo(ctx context.Context, addr, zoneName string, ns *nodeS
 }
 
 func TestSingleZone(t *testing.T) {
-	_, ctx := trace.StartSpanFromContextWithTraceID(context.Background(), "", "topology-test-single-zone")
+	_, ctx := proto.SpanContextPrefix("topology-test-single-zone-")
 	topo := newTopology()
 	zoneName := "test"
 	zone := newZone(zoneName)
@@ -70,7 +70,7 @@ func TestSingleZone(t *testing.T) {
 }
 
 func TestAllocZones(t *testing.T) {
-	_, ctx := trace.StartSpanFromContextWithTraceID(context.Background(), "", "topology-test-alloc-zone")
+	_, ctx := proto.SpanContextPrefix("topology-test-alloc-zone-")
 	topo := newTopology()
 	c := new(Cluster)
 	zoneCount := 3

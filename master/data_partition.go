@@ -1543,7 +1543,7 @@ func (partition *DataPartition) TryAcquireDecommissionToken(ctx context.Context,
 	if partition.DecommissionRetry > 0 {
 		partition.DecommissionWaitTimes++
 		if partition.DecommissionWaitTimes < MaxRetryDecommissionWait {
-			// log.LogDebugf("action[TryAcquireDecommissionToken] dp %v wait %v", partition.PartitionID, partition.DecommissionWaitTimes)
+			// log.Debugf("action[TryAcquireDecommissionToken] dp %v wait %v", partition.PartitionID, partition.DecommissionWaitTimes)
 			return false
 		} else {
 			partition.DecommissionWaitTimes = 0

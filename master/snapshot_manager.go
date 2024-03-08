@@ -16,11 +16,9 @@ package master
 
 import (
 	"context"
-	"fmt"
 	"sync"
 	"time"
 
-	"github.com/cubefs/cubefs/blobstore/common/trace"
 	"github.com/cubefs/cubefs/proto"
 )
 
@@ -45,7 +43,7 @@ func newSnapshotManager(ctx context.Context) *snapshotDelManager {
 
 func (m *snapshotDelManager) process(ctx context.Context) {
 	for {
-		span, ctx := trace.StartSpanFromContextWithTraceID(context.Background(), "", fmt.Sprintf("snap-del-%v", proto.GenerateRequestID()))
+		span, ctx := proto.SpanContextPrefix("snap-del-")
 		select {
 		case <-m.exitCh:
 			span.Info("exitCh notified, snapshotDelManager process exit")

@@ -1,12 +1,10 @@
 package master
 
 import (
-	"context"
 	"fmt"
 	"testing"
 	"time"
 
-	"github.com/cubefs/cubefs/blobstore/common/trace"
 	"github.com/cubefs/cubefs/proto"
 )
 
@@ -18,7 +16,7 @@ func TestMetaNode(t *testing.T) {
 		defer mockServerLock.Unlock()
 		mockMetaServers = append(mockMetaServers, addMetaServer(addr, testZone3))
 	}()
-	_, ctx := trace.StartSpanFromContextWithTraceID(context.Background(), "", "metanode-test")
+	_, ctx := proto.SpanContextPrefix("metanode-test-")
 	server.cluster.checkMetaNodeHeartbeat(ctx)
 	time.Sleep(5 * time.Second)
 	getMetaNodeInfo(addr, t)

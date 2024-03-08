@@ -6,7 +6,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cubefs/cubefs/blobstore/common/trace"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/stretchr/testify/require"
 )
@@ -48,54 +47,54 @@ func buildPanicVol(ctx context.Context) *Vol {
 }
 
 func TestCheckDataPartitions(t *testing.T) {
-	_, ctx := trace.StartSpanFromContextWithTraceID(context.Background(), "", "cluster-test-check-data-partition")
+	_, ctx := proto.SpanContextPrefix("cluster-test-check-data-partition-")
 	server.cluster.checkDataPartitions(ctx)
 }
 
 func TestPanicCheckDataPartitions(t *testing.T) {
-	_, ctx := trace.StartSpanFromContextWithTraceID(context.Background(), "", "cluster-test-panic-check-data-partition")
+	_, ctx := proto.SpanContextPrefix("cluster-test-panic-check-data-partition-")
 	c := buildPanicCluster(ctx)
 	c.checkDataPartitions(ctx)
 	t.Logf("catched panic")
 }
 
 func TestCheckBackendLoadDataPartitions(t *testing.T) {
-	_, ctx := trace.StartSpanFromContextWithTraceID(context.Background(), "", "cluster-test-check-backendload-data-partition")
+	_, ctx := proto.SpanContextPrefix("cluster-test-check-backendload-data-partition-")
 	server.cluster.scheduleToLoadDataPartitions(ctx)
 }
 
 func TestPanicBackendLoadDataPartitions(t *testing.T) {
-	_, ctx := trace.StartSpanFromContextWithTraceID(context.Background(), "", "cluster-test-panic-backendload-data-partition")
+	_, ctx := proto.SpanContextPrefix("cluster-test-panic-backendload-data-partition-")
 	c := buildPanicCluster(ctx)
 	c.scheduleToLoadDataPartitions(ctx)
 	t.Logf("catched panic")
 }
 
 func TestCheckReleaseDataPartitions(t *testing.T) {
-	_, ctx := trace.StartSpanFromContextWithTraceID(context.Background(), "", "cluster-test-check-release-data-partition")
+	_, ctx := proto.SpanContextPrefix("cluster-test-check-release-data-partition-")
 	server.cluster.releaseDataPartitionAfterLoad(ctx)
 }
 
 func TestPanicCheckReleaseDataPartitions(t *testing.T) {
-	_, ctx := trace.StartSpanFromContextWithTraceID(context.Background(), "", "cluster-test-panic-check-release-data-partition")
+	_, ctx := proto.SpanContextPrefix("cluster-test-panic-check-release-data-partition-")
 	c := buildPanicCluster(ctx)
 	c.releaseDataPartitionAfterLoad(ctx)
 	t.Logf("catched panic")
 }
 
 func TestCheckHeartbeat(t *testing.T) {
-	_, ctx := trace.StartSpanFromContextWithTraceID(context.Background(), "", "cluster-test-check-heartbeat")
+	_, ctx := proto.SpanContextPrefix("cluster-test-check-heartbeat-")
 	server.cluster.checkDataNodeHeartbeat(ctx)
 	server.cluster.checkMetaNodeHeartbeat(ctx)
 }
 
 func TestCheckMetaPartitions(t *testing.T) {
-	_, ctx := trace.StartSpanFromContextWithTraceID(context.Background(), "", "cluster-test-check-meta-partition")
+	_, ctx := proto.SpanContextPrefix("cluster-test-check-meta-partition-")
 	server.cluster.checkMetaPartitions(ctx)
 }
 
 func TestPanicCheckMetaPartitions(t *testing.T) {
-	_, ctx := trace.StartSpanFromContextWithTraceID(context.Background(), "", "cluster-test-panic-check-meta-partition")
+	_, ctx := proto.SpanContextPrefix("cluster-test-panic-check-meta-partition-")
 	c := buildPanicCluster(ctx)
 	vol, err := c.getVol(commonVolName)
 	if err != nil {
@@ -113,31 +112,31 @@ func TestPanicCheckMetaPartitions(t *testing.T) {
 }
 
 func TestCheckAvailSpace(t *testing.T) {
-	_, ctx := trace.StartSpanFromContextWithTraceID(context.Background(), "", "cluster-test-check-avail-space")
+	_, ctx := proto.SpanContextPrefix("cluster-test-check-avail-space-")
 	server.cluster.scheduleToUpdateStatInfo(ctx)
 }
 
 func TestPanicCheckAvailSpace(t *testing.T) {
-	_, ctx := trace.StartSpanFromContextWithTraceID(context.Background(), "", "cluster-test-panic-check-available-space")
+	_, ctx := proto.SpanContextPrefix("cluster-test-panic-check-available-space-")
 	c := buildPanicCluster(ctx)
 	c.dataNodeStatInfo = nil
 	c.scheduleToUpdateStatInfo(ctx)
 }
 
 func TestCheckCreateDataPartitions(t *testing.T) {
-	_, ctx := trace.StartSpanFromContextWithTraceID(context.Background(), "", "cluster-test-check-create-data-partition")
+	_, ctx := proto.SpanContextPrefix("cluster-test-check-create-data-partition-")
 	server.cluster.scheduleToManageDp(ctx)
 	// time.Sleep(150 * time.Second)
 }
 
 func TestPanicCheckCreateDataPartitions(t *testing.T) {
-	_, ctx := trace.StartSpanFromContextWithTraceID(context.Background(), "", "cluster-test-panic-check-create-data-partition")
+	_, ctx := proto.SpanContextPrefix("cluster-test-panic-check-create-data-partition-")
 	c := buildPanicCluster(ctx)
 	c.scheduleToManageDp(ctx)
 }
 
 func TestPanicCheckBadDiskRecovery(t *testing.T) {
-	_, ctx := trace.StartSpanFromContextWithTraceID(context.Background(), "", "cluster-test-panic-check-bad-disk-recovery")
+	_, ctx := proto.SpanContextPrefix("cluster-test-panic-check-bad-disk-recovery-")
 	c := buildPanicCluster(ctx)
 	vol, err := c.getVol(commonVolName)
 	if err != nil {
@@ -153,7 +152,7 @@ func TestPanicCheckBadDiskRecovery(t *testing.T) {
 }
 
 func TestCheckBadDiskRecovery(t *testing.T) {
-	_, ctx := trace.StartSpanFromContextWithTraceID(context.Background(), "", "cluster-test-check-bad-disk-recovery")
+	_, ctx := proto.SpanContextPrefix("cluster-test-check-bad-disk-recovery-")
 	server.cluster.checkDataNodeHeartbeat(ctx)
 	time.Sleep(5 * time.Second)
 	// clear
@@ -215,7 +214,7 @@ func TestCheckBadDiskRecovery(t *testing.T) {
 }
 
 func TestPanicCheckBadMetaPartitionRecovery(t *testing.T) {
-	_, ctx := trace.StartSpanFromContextWithTraceID(context.Background(), "", "cluster-test-check-bad-meta-partition-recovery")
+	_, ctx := proto.SpanContextPrefix("cluster-test-check-bad-meta-partition-recovery-")
 	c := buildPanicCluster(ctx)
 	vol, err := c.getVol(commonVolName)
 	if err != nil {
@@ -231,7 +230,7 @@ func TestPanicCheckBadMetaPartitionRecovery(t *testing.T) {
 }
 
 func TestCheckBadMetaPartitionRecovery(t *testing.T) {
-	_, ctx := trace.StartSpanFromContextWithTraceID(context.Background(), "", "cluster-test-check-bad-meta-partition-recovery")
+	_, ctx := proto.SpanContextPrefix("cluster-test-check-bad-meta-partition-recovery-")
 	server.cluster.checkMetaNodeHeartbeat(ctx)
 	time.Sleep(5 * time.Second)
 	// clear
@@ -293,7 +292,7 @@ func TestCheckBadMetaPartitionRecovery(t *testing.T) {
 }
 
 func TestUpdateInodeIDUpperBound(t *testing.T) {
-	_, ctx := trace.StartSpanFromContextWithTraceID(context.Background(), "", "cluster-test-update-inode-id-upper-bound")
+	_, ctx := proto.SpanContextPrefix("cluster-test-update-inode-id-upper-bound-")
 	vol, err := server.cluster.getVol(commonVolName)
 	if err != nil {
 		t.Error(err)
@@ -331,7 +330,7 @@ func TestUpdateInodeIDUpperBound(t *testing.T) {
 func TestBalanceMetaPartition(t *testing.T) {
 	// create volume and metaNode will create mp,sleep some time to wait cluster get latest meteNode info
 	// cluster normal volume has 3 mps , total 3*3 =9 mp in metaNode
-	_, ctx := trace.StartSpanFromContextWithTraceID(context.Background(), "", "cluster-test-balance-meta-partition")
+	_, ctx := proto.SpanContextPrefix("cluster-test-balance-meta-partition-")
 	req := &createVolReq{
 		name:             commonVolName + "1",
 		owner:            "cfs",
@@ -387,7 +386,7 @@ func TestBalanceMetaPartition(t *testing.T) {
 func TestCreateVolWithDpCount(t *testing.T) {
 	// create volume and metaNode will create mp,sleep some time to wait cluster get latest meteNode info
 	// cluster normal volume has 3 mps , total 3*3 =9 mp in metaNode
-	_, ctx := trace.StartSpanFromContextWithTraceID(context.Background(), "", "cluster-test-check-create-vol-with-dp-count")
+	_, ctx := proto.SpanContextPrefix("cluster-test-check-create-vol-with-dp-count-")
 	t.Run("dpCount != default count", func(t *testing.T) {
 		req := &createVolReq{
 			name:             commonVolName + "001",
