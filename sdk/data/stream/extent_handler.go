@@ -15,6 +15,7 @@
 package stream
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"sync"
@@ -26,7 +27,6 @@ import (
 	"github.com/cubefs/cubefs/sdk/meta"
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/errors"
-	"github.com/cubefs/cubefs/util/log"
 	"github.com/cubefs/cubefs/util/stat"
 )
 
@@ -114,7 +114,7 @@ type ExtentHandler struct {
 }
 
 // NewExtentHandler returns a new extent handler.
-func NewExtentHandler(stream *Streamer, offset int, storeMode int, size int) *ExtentHandler {
+func NewExtentHandler(ctx context.Context, stream *Streamer, offset int, storeMode int, size int) *ExtentHandler {
 	// log.LogDebugf("NewExtentHandler stack(%v)", string(debug.Stack()))
 	eh := &ExtentHandler{
 		stream:       stream,
@@ -130,8 +130,8 @@ func NewExtentHandler(stream *Streamer, offset int, storeMode int, size int) *Ex
 		doneReceiver: make(chan struct{}),
 	}
 
-	go eh.receiver()
-	go eh.sender()
+	go eh.receiver(ctx)
+	go eh.sender(ctx)
 
 	return eh
 }
@@ -142,7 +142,7 @@ func (eh *ExtentHandler) String() string {
 		eh.id, eh.inode, eh.fileOffset, eh.size, eh.storeMode, eh.status, eh.dp, eh.stream.verSeq, eh.key, eh.lastKey)
 }
 
-func (eh *ExtentHandler) write(data []byte, offset, size int, direct bool) (ek *proto.ExtentKey, err error) {
+func (eh *ExtentHandler) write(ctx context.Context, data []byte, offset, size int, direct bool) (ek *proto.ExtentKey, err error) {
 	var total, write int
 
 	status := eh.getStatus()
@@ -202,31 +202,32 @@ func (eh *ExtentHandler) write(data []byte, offset, size int, direct bool) (ek *
 	return ek, nil
 }
 
-func (eh *ExtentHandler) sender() {
+func (eh *ExtentHandler) sender(ctx context.Context) {
+	span := proto.SpanFromContext(ctx)
 	var err error
 
 	for {
 		select {
 		case packet := <-eh.request:
-			log.LogDebugf("ExtentHandler sender begin: eh(%v) packet(%v)", eh, packet)
+			span.Debugf("ExtentHandler sender begin: eh(%v) packet(%v)", eh, packet)
 			if eh.getStatus() >= ExtentStatusRecovery {
-				log.LogWarnf("sender in recovery: eh(%v) packet(%v)", eh, packet)
+				span.Warnf("sender in recovery: eh(%v) packet(%v)", eh, packet)
 				eh.reply <- packet
 				continue
 			}
 
 			// Initialize dp, conn, and extID
 			if eh.dp == nil {
-				if err = eh.allocateExtent(); err != nil {
+				if err = eh.allocateExtent(ctx); err != nil {
 					eh.setClosed()
 					eh.setRecovery()
 					// if dp is not specified and yet we failed, then error out.
 					// otherwise, just try to recover.
 					if eh.key == nil {
 						eh.setError()
-						log.LogErrorf("sender: eh(%v) err(%v)", eh, err)
+						span.Errorf("sender: eh(%v) err(%v)", eh, err)
 					} else {
-						log.LogWarnf("sender: eh(%v) err(%v)", eh, err)
+						span.Errorf("sender: eh(%v) err(%v)", eh, err)
 					}
 					eh.reply <- packet
 					continue
@@ -254,35 +255,37 @@ func (eh *ExtentHandler) sender() {
 			}
 			packet.StartT = time.Now().UnixNano()
 
-			log.LogDebugf("ExtentHandler sender: extent allocated, eh(%v) dp(%v) extID(%v) packet(%v)", eh, eh.dp, eh.extID, packet.GetUniqueLogId())
+			span.Debugf("ExtentHandler sender: extent allocated, eh(%v) dp(%v) extID(%v) packet(%v)", eh, eh.dp, eh.extID, packet.GetUniqueLogId())
 
 			if err = packet.writeToConn(eh.conn); err != nil {
-				log.LogWarnf("sender writeTo: failed, eh(%v) err(%v) packet(%v)", eh, err, packet)
+				span.Warnf("sender writeTo: failed, eh(%v) err(%v) packet(%v)", eh, err, packet)
 				eh.setClosed()
 				eh.setRecovery()
 			}
 			eh.reply <- packet
 		case <-eh.doneSender:
 			eh.setClosed()
-			log.LogDebugf("sender: done, eh(%v) size(%v) ek(%v)", eh, eh.size, eh.key)
+			span.Debugf("sender: done, eh(%v) size(%v) ek(%v)", eh, eh.size, eh.key)
 			return
 		}
 	}
 }
 
-func (eh *ExtentHandler) receiver() {
+func (eh *ExtentHandler) receiver(ctx context.Context) {
+	span := proto.SpanFromContext(ctx)
 	for {
 		select {
 		case packet := <-eh.reply:
-			eh.processReply(packet)
+			eh.processReply(ctx, packet)
 		case <-eh.doneReceiver:
-			log.LogDebugf("receiver done: eh(%v) size(%v) ek(%v)", eh, eh.size, eh.key)
+			span.Debugf("receiver done: eh(%v) size(%v) ek(%v)", eh, eh.size, eh.key)
 			return
 		}
 	}
 }
 
-func (eh *ExtentHandler) processReply(packet *Packet) {
+func (eh *ExtentHandler) processReply(ctx context.Context, packet *Packet) {
+	span := proto.SpanFromContext(ctx)
 	defer func() {
 		if atomic.AddInt32(&eh.inflight, -1) <= 0 {
 			eh.empty <- struct{}{}
@@ -292,32 +295,32 @@ func (eh *ExtentHandler) processReply(packet *Packet) {
 	status := eh.getStatus()
 	if status >= ExtentStatusError {
 		eh.discardPacket(packet)
-		log.LogErrorf("processReply discard packet: handler is in error status, inflight(%v) eh(%v) packet(%v)", atomic.LoadInt32(&eh.inflight), eh, packet)
+		span.Errorf("processReply discard packet: handler is in error status, inflight(%v) eh(%v) packet(%v)", atomic.LoadInt32(&eh.inflight), eh, packet)
 		return
 	} else if status >= ExtentStatusRecovery {
-		if err := eh.recoverPacket(packet); err != nil {
+		if err := eh.recoverPacket(ctx, packet); err != nil {
 			eh.discardPacket(packet)
-			log.LogErrorf("processReply discard packet: handler is in recovery status, inflight(%v) eh(%v) packet(%v) err(%v)", atomic.LoadInt32(&eh.inflight), eh, packet, err)
+			span.Errorf("processReply discard packet: handler is in recovery status, inflight(%v) eh(%v) packet(%v) err(%v)", atomic.LoadInt32(&eh.inflight), eh, packet, err)
 		}
-		log.LogDebugf("processReply recover packet: handler is in recovery status, inflight(%v) from eh(%v) to recoverHandler(%v) packet(%v)", atomic.LoadInt32(&eh.inflight), eh, eh.recoverHandler, packet)
+		span.Debugf("processReply recover packet: handler is in recovery status, inflight(%v) from eh(%v) to recoverHandler(%v) packet(%v)", atomic.LoadInt32(&eh.inflight), eh, eh.recoverHandler, packet)
 		return
 	}
 	var verUpdate bool
 	reply := NewReply(packet.ReqID, packet.PartitionID, packet.ExtentID)
 	err := reply.ReadFromConnWithVer(eh.conn, proto.ReadDeadlineTime)
 	if err != nil {
-		eh.processReplyError(packet, err.Error())
+		eh.processReplyError(ctx, packet, err.Error())
 		return
 	}
 
 	if reply.VerSeq > atomic.LoadUint64(&eh.stream.verSeq) || (eh.key != nil && reply.VerSeq > eh.key.GetSeq()) {
-		log.LogDebugf("processReply.UpdateLatestVer update verseq according to data rsp from version %v to %v", eh.stream.verSeq, reply.VerSeq)
+		span.Debugf("processReply.UpdateLatestVer update verseq according to data rsp from version %v to %v", eh.stream.verSeq, reply.VerSeq)
 		if err = eh.stream.client.UpdateLatestVer(&proto.VolVersionInfoList{VerList: reply.VerList}); err != nil {
-			eh.processReplyError(packet, err.Error())
+			eh.processReplyError(ctx, packet, err.Error())
 			return
 		}
-		if err = eh.appendExtentKey(); err != nil {
-			eh.processReplyError(packet, err.Error())
+		if err = eh.appendExtentKey(ctx); err != nil {
+			eh.processReplyError(ctx, packet, err.Error())
 			return
 		}
 		eh.key = nil
@@ -326,24 +329,24 @@ func (eh *ExtentHandler) processReply(packet *Packet) {
 	if reply.ResultCode != proto.OpOk {
 		if reply.ResultCode != proto.ErrCodeVersionOpError {
 			errmsg := fmt.Sprintf("reply NOK: reply(%v)", reply)
-			log.LogDebugf("processReply packet (%v) errmsg (%v)", packet, errmsg)
-			eh.processReplyError(packet, errmsg)
+			span.Debugf("processReply packet (%v) errmsg (%v)", packet, errmsg)
+			eh.processReplyError(ctx, packet, errmsg)
 			return
 		}
 		// todo(leonchang) need check safety
-		log.LogWarnf("processReply: get reply, eh(%v) packet(%v) reply(%v)", eh, packet, reply)
-		eh.stream.GetExtentsForce()
+		span.Warnf("processReply: get reply, eh(%v) packet(%v) reply(%v)", eh, packet, reply)
+		eh.stream.GetExtentsForce(ctx)
 	}
 
 	if !packet.isValidWriteReply(reply) {
 		errmsg := fmt.Sprintf("request and reply does not match: reply(%v)", reply)
-		eh.processReplyError(packet, errmsg)
+		eh.processReplyError(ctx, packet, errmsg)
 		return
 	}
 
 	if reply.CRC != packet.CRC {
 		errmsg := fmt.Sprintf("inconsistent CRC: reqCRC(%v) replyCRC(%v) reply(%v) ", packet.CRC, reply.CRC, reply)
-		eh.processReplyError(packet, errmsg)
+		eh.processReplyError(ctx, packet, errmsg)
 		return
 	}
 
@@ -383,19 +386,20 @@ func (eh *ExtentHandler) processReply(packet *Packet) {
 	return
 }
 
-func (eh *ExtentHandler) processReplyError(packet *Packet, errmsg string) {
+func (eh *ExtentHandler) processReplyError(ctx context.Context, packet *Packet, errmsg string) {
+	span := proto.SpanFromContext(ctx)
 	eh.setClosed()
 	eh.setRecovery()
-	if err := eh.recoverPacket(packet); err != nil {
+	if err := eh.recoverPacket(ctx, packet); err != nil {
 		eh.discardPacket(packet)
-		log.LogErrorf("processReplyError discard packet: eh(%v) packet(%v) err(%v) errmsg(%v)", eh, packet, err, errmsg)
+		span.Errorf("processReplyError discard packet: eh(%v) packet(%v) err(%v) errmsg(%v)", eh, packet, err, errmsg)
 	}
 }
 
-func (eh *ExtentHandler) flush() (err error) {
+func (eh *ExtentHandler) flush(ctx context.Context) (err error) {
 	eh.flushPacket()
 	eh.waitForFlush()
-	err = eh.appendExtentKey()
+	err = eh.appendExtentKey(ctx)
 	if err != nil {
 		return
 	}
@@ -428,7 +432,8 @@ func (eh *ExtentHandler) cleanup() (err error) {
 }
 
 // can ONLY be called when the handler is not open any more
-func (eh *ExtentHandler) appendExtentKey() (err error) {
+func (eh *ExtentHandler) appendExtentKey(ctx context.Context) (err error) {
+	span := proto.SpanFromContext(ctx)
 	eh.appendLK.Lock()
 	defer eh.appendLK.Unlock()
 
@@ -444,11 +449,11 @@ func (eh *ExtentHandler) appendExtentKey() (err error) {
 
 			ekey := *eh.key
 			doAppend := func() (err error) {
-				discard = eh.stream.extents.Append(&ekey, true)
+				discard = eh.stream.extents.Append(ctx, &ekey, true)
 				status, err = eh.stream.client.appendExtentKey(eh.stream.parentInode, eh.inode, ekey, discard)
 				if atomic.LoadInt32(&eh.stream.needUpdateVer) > 0 {
-					if errUpdateExtents := eh.stream.GetExtentsForce(); errUpdateExtents != nil {
-						log.LogErrorf("action[appendExtentKey] inode %v GetExtents err %v errUpdateExtents %v", eh.stream.inode, err, errUpdateExtents)
+					if errUpdateExtents := eh.stream.GetExtentsForce(ctx); errUpdateExtents != nil {
+						span.Errorf("action[appendExtentKey] inode %v GetExtents err %v errUpdateExtents %v", eh.stream.inode, err, errUpdateExtents)
 						return
 					}
 				}
@@ -460,7 +465,7 @@ func (eh *ExtentHandler) appendExtentKey() (err error) {
 			if err = doAppend(); err == nil {
 				eh.dirty = false
 				eh.lastKey = *eh.key
-				log.LogDebugf("action[appendExtentKey] status %v, needUpdateVer %v, eh{%v}", status, eh.stream.needUpdateVer, eh)
+				span.Debugf("action[appendExtentKey] status %v, needUpdateVer %v, eh{%v}", status, eh.stream.needUpdateVer, eh)
 				return
 			}
 			// Due to the asynchronous synchronization of version numbers, the extent cache version of the client is updated first before being written to the meta.
@@ -468,11 +473,11 @@ func (eh *ExtentHandler) appendExtentKey() (err error) {
 			// For example, if the version remains unchanged in the client,
 			// the append-write principle is to reuse the extent key while changing the length. But if the meta has already changed its version,
 			// a new extent key information needs to be constructed for retrying the operation.
-			log.LogWarnf("action[appendExtentKey] status %v, handler %v, err %v", status, eh, err)
+			span.Warnf("action[appendExtentKey] status %v, handler %v, err %v", status, eh, err)
 			if status == meta.StatusConflictExtents &&
 				(atomic.LoadInt32(&eh.stream.needUpdateVer) > 0 || eh.stream.verSeq > 0) &&
 				eh.lastKey.PartitionId != 0 {
-				log.LogDebugf("action[appendExtentKey] do append again err %v, key %v", err, ekey)
+				span.Debugf("action[appendExtentKey] do append again err %v, key %v", err, ekey)
 				if eh.lastKey.IsSameExtent(&ekey) &&
 					eh.lastKey.FileOffset == ekey.FileOffset &&
 					eh.lastKey.ExtentOffset == ekey.ExtentOffset &&
@@ -488,7 +493,7 @@ func (eh *ExtentHandler) appendExtentKey() (err error) {
 					} else {
 						*eh.key = ekey
 					}
-					log.LogDebugf("action[appendExtentKey] do append again err %v, key %v", err, ekey)
+					span.Debugf("action[appendExtentKey] do append again err %v, key %v", err, ekey)
 				}
 			}
 		} else {
@@ -498,13 +503,13 @@ func (eh *ExtentHandler) appendExtentKey() (err error) {
 			 * a temp one with dpid 0, especially when current eh failed and
 			 * create a new eh to do recovery.
 			 */
-			_ = eh.stream.extents.Append(eh.key, false)
+			_ = eh.stream.extents.Append(ctx, eh.key, false)
 		}
 	}
 	if err == nil {
 		eh.dirty = false
 	} else {
-		log.LogErrorf("action[appendExtentKey] %v do append again err %v", eh, err)
+		span.Errorf("action[appendExtentKey] %v do append again err %v", eh, err)
 		eh.lastKey.PartitionId = 0
 	}
 	return
@@ -534,7 +539,7 @@ func (eh *ExtentHandler) waitForFlush() {
 	}
 }
 
-func (eh *ExtentHandler) recoverPacket(packet *Packet) error {
+func (eh *ExtentHandler) recoverPacket(ctx context.Context, packet *Packet) error {
 	packet.errCount++
 	if packet.errCount >= MaxPacketErrorCount || proto.IsCold(eh.stream.client.volumeType) {
 		return errors.New(fmt.Sprintf("recoverPacket failed: reach max error limit, eh(%v) packet(%v)", eh, packet))
@@ -545,7 +550,7 @@ func (eh *ExtentHandler) recoverPacket(packet *Packet) error {
 		// Always use normal extent store mode for recovery.
 		// Because tiny extent files are limited, tiny store
 		// failures might due to lack of tiny extent file.
-		handler = NewExtentHandler(eh.stream, int(packet.KernelOffset), proto.NormalExtentType, 0)
+		handler = NewExtentHandler(ctx, eh.stream, int(packet.KernelOffset), proto.NormalExtentType, 0)
 		handler.setClosed()
 	}
 	handler.pushToRequest(packet)
@@ -564,21 +569,22 @@ func (eh *ExtentHandler) discardPacket(packet *Packet) {
 	eh.setError()
 }
 
-func (eh *ExtentHandler) allocateExtent() (err error) {
+func (eh *ExtentHandler) allocateExtent(ctx context.Context) (err error) {
+	span := proto.SpanFromContext(ctx)
 	var (
 		dp    *wrapper.DataPartition
 		conn  *net.TCPConn
 		extID int
 	)
 
-	log.LogDebugf("ExtentHandler allocateExtent enter: eh(%v)", eh)
+	span.Debugf("ExtentHandler allocateExtent enter: eh(%v)", eh)
 
 	exclude := make(map[string]struct{})
 
 	for i := 0; i < MaxSelectDataPartitionForWrite; i++ {
 		if eh.key == nil {
 			if dp, err = eh.stream.client.dataWrapper.GetDataPartitionForWrite(exclude); err != nil {
-				log.LogWarnf("allocateExtent: failed to get write data partition, eh(%v) exclude(%v), clear exclude and try again!", eh, exclude)
+				span.Warnf("allocateExtent: failed to get write data partition, eh(%v) exclude(%v), clear exclude and try again!", eh, exclude)
 				exclude = make(map[string]struct{})
 				continue
 			}
@@ -588,7 +594,7 @@ func (eh *ExtentHandler) allocateExtent() (err error) {
 				extID, err = eh.createExtent(dp)
 			}
 			if err != nil {
-				log.LogWarnf("allocateExtent: exclude dp[%v] for write caused by create extent failed, eh(%v) err(%v) exclude(%v)",
+				span.Warnf("allocateExtent: exclude dp[%v] for write caused by create extent failed, eh(%v) err(%v) exclude(%v)",
 					dp, eh, err, exclude)
 				eh.stream.client.dataWrapper.RemoveDataPartitionForWrite(dp.PartitionID)
 				dp.CheckAllHostsIsAvail(exclude)
@@ -596,14 +602,14 @@ func (eh *ExtentHandler) allocateExtent() (err error) {
 			}
 		} else {
 			if dp, err = eh.stream.client.dataWrapper.GetDataPartition(eh.key.PartitionId); err != nil {
-				log.LogWarnf("allocateExtent: failed to get write data partition, eh(%v)", eh)
+				span.Warnf("allocateExtent: failed to get write data partition, eh(%v)", eh)
 				break
 			}
 			extID = int(eh.key.ExtentId)
 		}
 
 		if conn, err = StreamConnPool.GetConnect(dp.Hosts[0]); err != nil {
-			log.LogWarnf("allocateExtent: failed to create connection, eh(%v) err(%v) dp(%v) exclude(%v)",
+			span.Warnf("allocateExtent: failed to create connection, eh(%v) err(%v) dp(%v) exclude(%v)",
 				eh, err, dp, exclude)
 			// If storeMode is tinyExtentType and can't create connection, we also check host status.
 			dp.CheckAllHostsIsAvail(exclude)
