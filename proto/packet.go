@@ -734,7 +734,7 @@ func (p *Packet) WriteToRDMAConn(conn *rdma.Connection) (err error) {
 	//}
 	//combined := append(headerBuffByte, p.Data...)
 
-	if _, err = conn.WriteBuffer(headerBuff, p.Data); err != nil {
+	if _, err = conn.WriteBuffer(headerBuff, p.Data, int(p.Size)); err != nil {
 		//log.LogDebugf("rdma write error %v", err)
 		return
 	}
@@ -758,7 +758,7 @@ func (p *Packet) WriteToFollowerRDMAConn(conn *rdma.Connection) (err error) {
 	p.MarshalHeader(headerBuff)
 
 	//combined := append(p.Data,headerBuffByte...)
-	if _, err = conn.WriteBuffer(headerBuff, p.Data); err != nil {
+	if _, err = conn.WriteBuffer(headerBuff, p.Data, int(p.Size)); err != nil {
 		return
 	}
 	return

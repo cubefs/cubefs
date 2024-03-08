@@ -65,10 +65,12 @@ func (e *EPoll) EpollAdd(fd int, ctx ReadAble) {
 
 func (e *EPoll) EpollDel(fd int) {
 	//println(fd)
-	lock.Lock()
-	delete(e.fds, fd)
-	lock.Unlock()
-	syscall.EpollCtl(e.epollFd, syscall.EPOLL_CTL_DEL, fd, nil)
+	/*
+		lock.Lock()
+		delete(e.fds, fd)
+		lock.Unlock()
+		syscall.EpollCtl(e.epollFd, syscall.EPOLL_CTL_DEL, fd, nil)
+	*/
 }
 
 func (e *EPoll) epollLoop() error {

@@ -106,7 +106,7 @@ static int epoll_rdma_event_add(int fd, void* ctx, EventCallBack cb) {
     all_fds[ev->index] = fd;
 
     struct epoll_event ep_ev;
-    ep_ev.events = EPOLLIN | EPOLLET;
+    ep_ev.events = EPOLLIN; //| EPOLLET;
     ep_ev.data.fd = ev->index;
 
     if(epoll_ctl(epoll_fd, EPOLL_CTL_ADD, fd, &ep_ev) < 0){

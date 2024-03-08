@@ -671,7 +671,7 @@ func (conn *Connection) Write(data []byte) (int, error) {
 	return 0, nil
 }
 
-func (conn *Connection) WriteBuffer(headerBuffer []byte, dataBuffer []byte) (int, error) { //dataBuffer []byte, headerBuffer []byte //,*Buffer *Buffer
+func (conn *Connection) WriteBuffer(headerBuffer []byte, dataBuffer []byte, dataBufferSize int) (int, error) { //dataBuffer []byte, headerBuffer []byte //,*Buffer *Buffer
 	//if conn != dataBuffer.conn || conn != headerBuffer.conn {
 	//	return -1,fmt.Errorf("there is no association between conn(%p) and dataBuffer(%p) and headerBuffer(%p)",conn,dataBuffer,headerBuffer)
 	//}
@@ -680,7 +680,7 @@ func (conn *Connection) WriteBuffer(headerBuffer []byte, dataBuffer []byte) (int
 	}
 	//headerBuffer := buffer[:57+8+40]
 	//dataBuffer := buffer[57+8+40:]
-	ret := C.connAppWrite((*C.Connection)(conn.cConn), unsafe.Pointer(&dataBuffer[0]), unsafe.Pointer(&headerBuffer[0]), C.int32_t(len(dataBuffer)))
+	ret := C.connAppWrite((*C.Connection)(conn.cConn), unsafe.Pointer(&dataBuffer[0]), unsafe.Pointer(&headerBuffer[0]), C.int32_t(dataBufferSize)) //C.int32_t(len(dataBuffer))
 	//println(ret);
 	if ret == 0 { //TODO 错误码分情况(only one case),OK
 		return -1, fmt.Errorf("conn(%p) write failed", conn)

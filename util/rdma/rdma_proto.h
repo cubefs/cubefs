@@ -69,7 +69,7 @@ typedef struct Response {
     uint64_t             KernelOffset;
     uint64_t             VerSeq;// only used in mod request to datanode
     unsigned char        Arg[40];// for create or append ops, the data contains the address            
-    unsigned char        data[500];
+    unsigned char        data[40];
     unsigned char        list[40];
     uint8_t              RdmaVersion;//rdma协议版本
     uint64_t             RdmaAddr;
