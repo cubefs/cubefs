@@ -15,6 +15,7 @@
 package fs
 
 import (
+	"context"
 	"time"
 
 	"github.com/cubefs/cubefs/depends/bazil.org/fuse"
@@ -53,7 +54,7 @@ func (s *Super) InodeGet(ino uint64) (*proto.InodeInfo, error) {
 			node.(*File).info = info
 		}
 	}
-	s.ec.RefreshExtentsCache(ino)
+	s.ec.RefreshExtentsCache(context.TODO(), ino)
 	return info, nil
 }
 
