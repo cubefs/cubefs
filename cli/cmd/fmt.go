@@ -883,7 +883,7 @@ func formatQuotaInfo(info *proto.QuotaInfo) string {
 	return ret
 }
 
-func formatBadDisks(disks []proto.BadDiskInfo) string {
+func formatBadDisks(disks []proto.DiskInfo) string {
 	if len(disks) == 0 {
 		return ""
 	}
@@ -894,6 +894,48 @@ func formatBadDisks(disks []proto.BadDiskInfo) string {
 		diskRows = diskRows.append(arow(d.Address, d.Path, d.TotalPartitionCnt, len(d.DiskErrPartitionList), d.DiskErrPartitionList))
 	}
 	return alignTable(diskRows...)
+}
+
+func formatDiskList(disks []proto.DiskInfo) string {
+	if len(disks) == 0 {
+		return ""
+	}
+	diskRows := table{
+		arow("NodeId", "Address", "Path", "Status", "TotalPartitionCnt"),
+	}
+	for _, d := range disks {
+		diskRows = diskRows.append(arow(d.NodeId, d.Address, d.Path, d.Status, d.TotalPartitionCnt))
+	}
+	return alignTable(diskRows...)
+}
+
+func formatDiskDetailSummary(detail *proto.DiskInfo) string {
+	errDataPartitions := fmt.Sprintf("%v", detail.DiskErrPartitionList)
+	sb := strings.Builder{}
+	sb.WriteString(fmt.Sprintf("  NodeId              : %v\n", detail.NodeId))
+	sb.WriteString(fmt.Sprintf("  Address             : %v\n", detail.Address))
+	sb.WriteString(fmt.Sprintf("  Path                : %v\n", detail.Path))
+	sb.WriteString(fmt.Sprintf("  Status              : %v\n", detail.Status))
+	sb.WriteString(fmt.Sprintf("  Total               : %v\n", formatSize(detail.Total)))
+	sb.WriteString(fmt.Sprintf("  Used                : %v\n", formatSize(detail.Used)))
+	sb.WriteString(fmt.Sprintf("  Available           : %v\n", formatSize(detail.Available)))
+	sb.WriteString(fmt.Sprintf("  IOUtil              : %v\n", fmt.Sprintf("%.1f%%", detail.IOUtil)))
+	sb.WriteString(fmt.Sprintf("  DataPartitionCnt    : %v\n", detail.TotalPartitionCnt))
+	sb.WriteString(fmt.Sprintf("  ErrDataPartitions   : %v\n", errDataPartitions))
+
+	return sb.String()
+}
+
+var (
+	diskDataPartitionTablePattern = "%-8v    %-8v    %-8v    %-8v    %-8v    %-8v    %-8v    %-8v    %-8v"
+	diskDataPartitionTableHeader  = fmt.Sprintf(diskDataPartitionTablePattern,
+		"DpID", "Vol", "Stat", "Total", "Used", "IsLeader", "ExtentCnt", "NeedCompare", "DecommRepairProgress")
+)
+
+func formatDiskDataPartitionTableRow(view *proto.DataPartitionReport) string {
+	return fmt.Sprintf(diskDataPartitionTablePattern,
+		view.PartitionID, view.VolName, formatDataPartitionStatus(int8(view.PartitionStatus)),
+		formatSize(view.Total), formatSize(view.Used), view.IsLeader, view.ExtentCount, view.NeedCompare, view.DecommissionRepairProgress)
 }
 
 func formatDecommissionProgress(progress *proto.DecommissionProgress) string {

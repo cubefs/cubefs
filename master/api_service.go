@@ -4011,7 +4011,7 @@ func (m *Server) recommissionDisk(w http.ResponseWriter, r *http.Request) {
 		doStatAndMetric(proto.RecommissionDisk, metric, err, nil)
 	}()
 
-	if onLineAddr, diskPath, err = parseReqToRecoDisk(r); err != nil {
+	if onLineAddr, diskPath, err = parseNodeAddrAndDisk(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
@@ -4697,7 +4697,7 @@ func parseReqToDecoDisk(r *http.Request) (nodeAddr, diskPath string, diskDisable
 	return
 }
 
-func parseReqToRecoDisk(r *http.Request) (nodeAddr, diskPath string, err error) {
+func parseNodeAddrAndDisk(r *http.Request) (nodeAddr, diskPath string, err error) {
 	if err = r.ParseForm(); err != nil {
 		return
 	}
@@ -4866,6 +4866,39 @@ func (m *Server) getDataPartitions(w http.ResponseWriter, r *http.Request) {
 		w.Header().Add(proto.HeaderContentEncoding, compressor.EncodingGzip)
 	}
 	send(w, r, body)
+}
+
+// Obtain all the data partitions in a volume.
+func (m *Server) getDiskDataPartitions(w http.ResponseWriter, r *http.Request) {
+	var (
+		nodeAddr string
+		diskPath string
+		dataNode *DataNode
+		err      error
+	)
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.ClientDiskDataPartitions))
+	defer func() {
+		doStatAndMetric(proto.ClientDiskDataPartitions, metric, err, map[string]string{exporter.Disk: diskPath})
+	}()
+
+	if nodeAddr, diskPath, err = parseNodeAddrAndDisk(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	if dataNode, err = m.cluster.dataNode(nodeAddr); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(proto.ErrDataNodeNotExists))
+		return
+	}
+	diskDataPartitionsView := &proto.DiskDataPartitionsView{}
+	for _, dp := range dataNode.DataPartitionReports {
+		if dp.DiskPath != diskPath {
+			continue
+		}
+		diskDataPartitionsView.DataPartitions = append(diskDataPartitionsView.DataPartitions, dp)
+	}
+
+	sendOkReply(w, r, newSuccessHTTPReply(diskDataPartitionsView))
 }
 
 func (m *Server) getVol(w http.ResponseWriter, r *http.Request) {
@@ -6186,7 +6219,7 @@ func (m *Server) getDiscardDpHandler(w http.ResponseWriter, r *http.Request) {
 func (m *Server) queryBadDisks(w http.ResponseWriter, r *http.Request) {
 	var (
 		err   error
-		infos proto.BadDiskInfos
+		infos proto.DiskInfos
 	)
 
 	metric := exporter.NewTPCnt("req_queryBadDisks")
@@ -6200,19 +6233,124 @@ func (m *Server) queryBadDisks(w http.ResponseWriter, r *http.Request) {
 			return true
 		}
 
-		for _, bds := range dataNode.BadDiskStats {
-			info := proto.BadDiskInfo{
-				Address:              dataNode.Addr,
-				Path:                 bds.DiskPath,
-				TotalPartitionCnt:    bds.TotalPartitionCnt,
-				DiskErrPartitionList: bds.DiskErrPartitionList,
+		for _, ds := range dataNode.DiskStats {
+			if ds.Status != proto.Unavailable {
+				continue
 			}
-			infos.BadDisks = append(infos.BadDisks, info)
+			info := proto.DiskInfo{
+				Address:              dataNode.Addr,
+				Path:                 ds.DiskPath,
+				TotalPartitionCnt:    ds.TotalPartitionCnt,
+				DiskErrPartitionList: ds.DiskErrPartitionList,
+			}
+			infos.Disks = append(infos.Disks, info)
 		}
 		return true
 	})
 
 	sendOkReply(w, r, newSuccessHTTPReply(infos))
+}
+
+func (m *Server) queryDisks(w http.ResponseWriter, r *http.Request) {
+	var (
+		err      error
+		nodeAddr string
+		infos    proto.DiskInfos
+	)
+
+	metric := exporter.NewTPCnt("req_queryDisks")
+	defer func() {
+		metric.Set(err)
+	}()
+
+	nodeAddr = r.FormValue(addrKey)
+	if len(nodeAddr) > 0 {
+		if !checkIp(nodeAddr) {
+			sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: fmt.Errorf("addr not legal").Error()})
+			return
+		}
+	}
+
+	m.cluster.dataNodes.Range(func(addr, node interface{}) bool {
+		dataNode, ok := node.(*DataNode)
+		if !ok {
+			return true
+		}
+		if len(nodeAddr) > 0 && nodeAddr != dataNode.Addr {
+			return true
+		}
+
+		for _, ds := range dataNode.DiskStats {
+			info := proto.DiskInfo{
+				NodeId:               dataNode.ID,
+				Address:              dataNode.Addr,
+				Path:                 ds.DiskPath,
+				Status:               proto.DiskStatusMap[ds.Status],
+				TotalPartitionCnt:    ds.TotalPartitionCnt,
+				DiskErrPartitionList: ds.DiskErrPartitionList,
+			}
+			infos.Disks = append(infos.Disks, info)
+		}
+		return true
+	})
+
+	sendOkReply(w, r, newSuccessHTTPReply(infos))
+}
+
+func (m *Server) queryDiskDetail(w http.ResponseWriter, r *http.Request) {
+	var (
+		err        error
+		nodeAddr   string
+		diskPath   string
+		dataNode   *DataNode
+		diskDetail proto.DiskInfo
+	)
+
+	metric := exporter.NewTPCnt("req_queryDiskDetail")
+	defer func() {
+		metric.Set(err)
+	}()
+
+	if nodeAddr, diskPath, err = parseNodeAddrAndDisk(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	if dataNode, err = m.cluster.dataNode(nodeAddr); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(proto.ErrDataNodeNotExists))
+		return
+	}
+
+	targetDisk := proto.DiskStat{}
+	diskExist := false
+	for _, ds := range dataNode.DiskStats {
+		if ds.DiskPath == diskPath {
+			targetDisk = ds
+			diskExist = true
+			break
+		}
+	}
+	if !diskExist {
+		sendErrReply(w, r, newErrHTTPReply(proto.ErrDiskNotExists))
+		return
+	}
+
+	diskDetail = proto.DiskInfo{
+		NodeId:  dataNode.ID,
+		Address: dataNode.Addr,
+		Path:    targetDisk.DiskPath,
+		Status:  proto.DiskStatusMap[targetDisk.Status],
+
+		Total:     targetDisk.Total,
+		Used:      targetDisk.Used,
+		Available: targetDisk.Available,
+		IOUtil:    targetDisk.IOUtil,
+
+		TotalPartitionCnt:    targetDisk.TotalPartitionCnt,
+		DiskErrPartitionList: targetDisk.DiskErrPartitionList,
+	}
+
+	sendOkReply(w, r, newSuccessHTTPReply(diskDetail))
 }
 
 func (m *Server) addLcNode(w http.ResponseWriter, r *http.Request) {
