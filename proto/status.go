@@ -22,6 +22,13 @@ const (
 	Unavailable = -1
 )
 
+var DiskStatusMap = map[int]string{
+	0: "Recovering",
+	1: "ReadOnly",
+	2: "ReadWrite",
+	3: "Unavailable",
+}
+
 // volume status
 const (
 	VolStatusNormal     uint8 = 0

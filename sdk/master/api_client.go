@@ -127,6 +127,15 @@ func (api *ClientAPI) GetDataPartitions(volName string) (view *proto.DataPartiti
 	return
 }
 
+func (api *ClientAPI) GetDiskDataPartitions(addr string, diskPath string) (view *proto.DiskDataPartitionsView, err error) {
+	view = &proto.DiskDataPartitionsView{}
+	err = api.mc.requestWith(view, newRequest(get, proto.ClientDiskDataPartitions).
+		Header(api.h).
+		addParam("addr", addr).
+		addParam("disk", diskPath))
+	return
+}
+
 func (api *ClientAPI) GetPreLoadDataPartitions(volName string) (view *proto.DataPartitionsView, err error) {
 	view = &proto.DataPartitionsView{}
 	err = api.mc.requestWith(view, newRequest(get, proto.ClientDataPartitions).
