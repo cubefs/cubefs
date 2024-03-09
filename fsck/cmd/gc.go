@@ -28,6 +28,7 @@ import (
 	slog "log"
 	"net/http"
 	"os"
+	"path"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -47,9 +48,10 @@ import (
 const (
 	MaxBloomFilterSize uint64 = 50 * 1024 * 1024 * 1024
 	// MaxBloomFilterSize uint64 = 50 * 1024 * 1024
-	MpDir  string = "mp"
-	DpDir  string = "dp"
-	BadDir string = "bad"
+	MpDir      string = "mp"
+	DpDir      string = "dp"
+	BadDir     string = "bad"
+	BackSuffix string = ".succ"
 )
 
 var (
@@ -85,15 +87,13 @@ func setHostCntLimit(cnt int) {
 }
 
 func getToken(host string) {
-	hostLk.RLock()
-	ch, ok := hostLimit[host]
-	hostLk.RUnlock()
+	hostLk.Lock()
+	defer hostLk.Unlock()
 
+	ch, ok := hostLimit[host]
 	if !ok {
 		ch = make(chan struct{}, cntLimit)
-		hostLk.Lock()
 		hostLimit[host] = ch
-		hostLk.Unlock()
 	}
 
 	ch <- struct{}{}
@@ -101,8 +101,9 @@ func getToken(host string) {
 
 func releaseToken(host string) {
 	hostLk.RLock()
+	defer hostLk.RUnlock()
+
 	ch, ok := hostLimit[host]
-	hostLk.RUnlock()
 
 	if !ok {
 		slog.Fatalf("not find chan for host %s, can't release", host)
@@ -144,16 +145,15 @@ func newGCCommand() *cobra.Command {
 }
 
 func setCleanStatus() {
-	CleanS = true
-	// switch CleanStr {
-	// case "true":
-	// 	CleanS = true
-	// 	return
-	// case "false":
-	// 	CleanS = false
-	// default:
-	// 	slog.Fatalf("clean arg is not legal, clean %s", CleanStr)
-	// }
+	switch CleanFlag {
+	case "true":
+		CleanS = true
+		return
+	case "false":
+		CleanS = false
+	default:
+		slog.Fatalf("clean arg is not legal, clean %s", CleanFlag)
+	}
 }
 
 func backOldDir(dir, volname, dirType string) {
@@ -915,6 +915,8 @@ func newCalcBadExtentsCmd() *cobra.Command {
 			extType := args[1]
 			dir := args[2]
 
+			backOldDir(dir, volname, BadDir)
+
 			start := time.Now()
 			if extType == "normal" {
 				err := checkNormalVerfyInfo(dir, volname, MpDir)
@@ -1313,10 +1315,15 @@ func batchLockBadNormalExtent(dpIdStr string, exts []*BadNornalExtent, IsCreate 
 		eks = append(eks, ek)
 	}
 
+	flag := proto.GcMarkFlag
+	if CleanS {
+		flag = proto.GcDeleteFlag
+	}
 	gcLockEks := &proto.GcLockExtents{
 		IsCreate:   IsCreate,
 		BeforeTime: beforeTime,
 		Eks:        eks,
+		Flag:       flag,
 	}
 
 	addr := dpInfo.Hosts[0]
@@ -1548,6 +1555,12 @@ func cleanBadNormalExtent(volname, dir, backupDir, dpIdStr, extentStr string) (e
 			volname, dpIdStr, extentStr, time.Since(start).Milliseconds(), err)
 	}()
 
+	beforeTimeFilePath := filepath.Join(dir, volname, "dp", normalDir, beforeTimeFile)
+	data, err := os.ReadFile(beforeTimeFilePath)
+	if err != nil {
+		slog.Fatalf("Read before time file failed, path %s, err: %v", badNormalDpFile, err)
+	}
+
 	reader := bufio.NewReaderSize(file, 512*1024)
 	for {
 		line, err := reader.ReadBytes('\n')
@@ -1574,24 +1587,19 @@ func cleanBadNormalExtent(volname, dir, backupDir, dpIdStr, extentStr string) (e
 		}
 
 		var exts = []*BadNornalExtent{&badExtent}
-		beforeTimeFilePath := filepath.Join(dir, volname, "dp", normalDir, beforeTimeFile)
-		data, err := os.ReadFile(beforeTimeFilePath)
-		if err != nil {
-			slog.Fatalf("Read before time file failed, path %s, err: %v", badNormalDpFile, err)
-		}
 
 		err = batchLockBadNormalExtent(dpIdStr, exts, false, string(data))
 		if err != nil {
 			slog.Fatalf("Batch lock bad normal extent failed, err: %v", err)
 		}
 
-		err = copyBadNormalExtentToBackup(volname, backupDir, dpIdStr, badExtent)
-		if err != nil {
-			log.LogErrorf("Copy bad extent failed, err: %v", err)
-			return err
-		}
-
 		if CleanS {
+			err = copyBadNormalExtentToBackup(volname, backupDir, dpIdStr, badExtent)
+			if err != nil {
+				log.LogErrorf("Copy bad extent failed, err: %v", err)
+				return err
+			}
+
 			slog.Printf("gc clean switch is open, start clean data, dp %s, ext %s", dpIdStr, extentStr)
 			err = batchDeleteBadExtent(dpIdStr, exts)
 			if err != nil {
@@ -1623,14 +1631,16 @@ func copyBadNormalExtentToBackup(volname, backupDir, dpIdStr string, badExtent B
 		return
 	}
 
-	data, readBytes, err := readBadExtentFromDp(dpIdStr, extentId, badExtent.Size)
+	var readBytes int
+	var data []byte
+	data, readBytes, err = readBadExtentFromDp(dpIdStr, extentId, badExtent.Size)
 	if err != nil {
 		log.LogErrorf("Read bad extent from dp failed, err: %v", err)
-		return
+		return err
 	}
 
-	if data == nil {
-		return
+	if len(data) != int(badExtent.Size) {
+		return fmt.Errorf("dp(%s)_ext(%s) data is empty, size(%d), expect(%d)", dpIdStr, badExtent.ExtentId, len(data), badExtent.Size)
 	}
 
 	err = writeBadNormalExtentToBackup(backupDir, volname, dpIdStr, badExtent, data, readBytes)
@@ -1640,6 +1650,20 @@ func copyBadNormalExtentToBackup(volname, backupDir, dpIdStr string, badExtent B
 	}
 
 	return
+}
+
+func renameSucceExts(backUpDir, vol, dp string, exts []*BadNornalExtent) {
+	dpDir := filepath.Join(backUpDir, vol, normalDir, dp)
+	start := time.Now()
+	for _, e := range exts {
+		oldDir := path.Join(dpDir, e.ExtentId)
+		newDir := path.Join(dpDir, fmt.Sprintf("%s%s", e.ExtentId, BackSuffix))
+		err := os.Rename(oldDir, newDir)
+		if err != nil {
+			log.LogErrorf("rename dir failed, old (%s), new (%s)", oldDir, newDir)
+		}
+	}
+	log.LogInfof("finish rename all succ exts, path (%s), count(%d), cost(%d)", dpDir, len(exts), time.Since(start).Milliseconds())
 }
 
 func batchDeleteBadExtent(dpIdStr string, exts []*BadNornalExtent) (err error) {
@@ -1713,6 +1737,11 @@ func batchDeleteBadExtent(dpIdStr string, exts []*BadNornalExtent) (err error) {
 }
 
 func readBadExtentFromDp(dpIdStr string, extentId uint64, size uint32) (data []byte, readBytes int, err error) {
+	start := time.Now()
+	defer func() {
+		log.LogInfof("read data from datanode success, dpId %s, ext %d, cost %d, size(%d)",
+			dpIdStr, extentId, time.Since(start).Milliseconds(), len(data))
+	}()
 	dpId, err := strconv.ParseUint(dpIdStr, 10, 64)
 	if err != nil {
 		log.LogErrorf("Parse dp id failed, err: %v", err)
@@ -1791,8 +1820,8 @@ func writeBadNormalExtentToBackup(backupDir, volname, dpIdStr string, badExtent 
 	dpDir := filepath.Join(backupDir, volname, normalDir, dpIdStr)
 	start := time.Now()
 	defer func() {
-		log.LogInfof("writeBadNormalExtentToBackup: after Write bad extent to dest dir: %s, cost %d ms",
-			dpDir, time.Since(start).Milliseconds())
+		log.LogInfof("writeBadNormalExtentToBackup: after Write bad extent to dest dir: %s, extId %s, cost %d ms",
+			dpDir, badExtent.ExtentId, time.Since(start).Milliseconds())
 	}()
 	_, err = os.Stat(dpDir)
 	if os.IsNotExist(err) {
@@ -1869,29 +1898,30 @@ func cleanBadNormalExtentOfDp(volname, dir, backupDir, dpIdStr string) (err erro
 
 	log.LogInfof("cleanBadNormalExtentOfDp: batchLockBadNormalExtent success, dp %s, cost %d ms", dpIdStr, time.Since(start).Milliseconds())
 
-	succExts := make([]*BadNornalExtent, 0, len(exts))
-	for _, badExtent := range exts {
-		err = copyBadNormalExtentToBackup(volname, backupDir, dpIdStr, *badExtent)
-		if err != nil {
-			log.LogErrorf("Clean bad normal extent failed, dp %v, extent %v, err: %v", dpIdStr, badExtent.ExtentId, err)
-			err = nil
-			continue
-		}
-		succExts = append(succExts, badExtent)
-	}
-
-	log.LogInfof("cleanBadNormalExtentOfDp: copyBadNormalExtentToBackup success, dp %s, cost %d ms, befor %d, after %d",
-		dpIdStr, len(exts), len(succExts), time.Since(start).Milliseconds())
-
 	if CleanS {
-		log.LogWarnf("cleanBadNormalExtentOfDp: clean switch is open, start delete gc data, dp %s", dpIdStr)
+		succExts := make([]*BadNornalExtent, 0, len(exts))
+		for _, badExtent := range exts {
+			err = copyBadNormalExtentToBackup(volname, backupDir, dpIdStr, *badExtent)
+			if err != nil {
+				log.LogErrorf("Clean bad normal extent failed, dp %v, extent %v, err: %v", dpIdStr, badExtent.ExtentId, err)
+				err = nil
+				continue
+			}
+			succExts = append(succExts, badExtent)
+		}
+
+		log.LogInfof("cleanBadNormalExtentOfDp: copyBadNormalExtentToBackup success, dp %s, cost %d ms, befor %d, after %d",
+			dpIdStr, len(exts), len(succExts), time.Since(start).Milliseconds())
+
 		err = batchDeleteBadExtent(dpIdStr, succExts)
 		if err != nil {
 			log.LogErrorf("Batch delete bad extent failed, dp %v, err: %v", dpIdStr, err)
 			return err
 		}
-
 		log.LogInfof("cleanBadNormalExtentOfDp: batchDeleteBadExtent success, dp %s, cost %d ms", dpIdStr, time.Since(start).Milliseconds())
+
+		renameSucceExts(backupDir, volname, dpIdStr, succExts)
+
 		err = batchUnlockBadNormalExtent(dpIdStr, exts)
 		if err != nil {
 			log.LogErrorf("Batch unlock bad normal extent failed, err: %v", err)
@@ -1970,7 +2000,7 @@ func newRollbackBadExtentsCmd() *cobra.Command {
 			extType := args[1]
 			backupDir := args[2]
 			start := time.Now()
-			setCleanStatus()
+			CleanS = true
 
 			if extType == "normal" {
 				if dpId != "" {
@@ -1982,6 +2012,7 @@ func newRollbackBadExtentsCmd() *cobra.Command {
 						}
 						slog.Printf("rollbackBadNormalExtent success, vol %s, dp %s, ext %s, cost %d ms",
 							volname, dpId, extent, time.Since(start).Milliseconds())
+						return
 					} else {
 						rollbackBadNormalExtentInDpId(volname, backupDir, dpId)
 						return
@@ -2018,6 +2049,10 @@ func rollbackBadNormalExtentInDpId(volname, backupDir, dpId string) {
 
 	for _, fileInfo := range fileInfos {
 		extent := fileInfo.Name()
+		if !strings.HasSuffix(extent, BackSuffix) {
+			continue
+		}
+
 		err := rollbackBadNormalExtent(volname, backupDir, dpId, extent)
 		if err != nil {
 			err = fmt.Errorf("Rollback bad normal dp %v extent %v failed, err: %v", dpId, extent, err.Error())
@@ -2029,30 +2064,34 @@ func rollbackBadNormalExtentInDpId(volname, backupDir, dpId string) {
 }
 
 func rollbackBadNormalExtent(volname, backupDir, dpId, extent string) (err error) {
+	var badExtent BadNornalExtent
+	var data []byte
+
 	rollbackFilePath := filepath.Join(backupDir, volname, normalDir, dpId, extent)
 	log.LogInfof("Rollback bad normal extent: %s", rollbackFilePath)
-	data, err := os.ReadFile(rollbackFilePath)
+
+	data, err = os.ReadFile(rollbackFilePath)
 	if err != nil {
 		log.LogErrorf("Read bad extent failed, dp %v, extent %v, err: %v", dpId, extent, err)
 		return
 	}
 
-	var badExtent BadNornalExtent
-	badExtent.ExtentId = extent
+	if strings.HasSuffix(extent, BackSuffix) {
+		extent = strings.TrimSuffix(extent, BackSuffix)
+	}
+
 	badExtent.Size = uint32(len(data))
+	badExtent.ExtentId = extent
+	err = batchLockBadNormalExtent(dpId, []*BadNornalExtent{&badExtent}, true, "")
+	if err != nil {
+		log.LogErrorf("Batch lock bad normal extent failed, dp %v, extent %v, err: %v", dpId, extent, err)
+		return
+	}
 
-	if CleanS {
-		err = batchLockBadNormalExtent(dpId, []*BadNornalExtent{&badExtent}, true, "")
-		if err != nil {
-			log.LogErrorf("Batch lock bad normal extent failed, dp %v, extent %v, err: %v", dpId, extent, err)
-			return
-		}
-
-		err = writeBadNormalExtentToDp(data, volname, dpId, extent)
-		if err != nil {
-			log.LogErrorf("Write bad extent to dp failed, dp %v, extent %v, err: %v", dpId, extent, err)
-			return
-		}
+	err = writeBadNormalExtentToDp(data, volname, dpId, extent)
+	if err != nil {
+		log.LogErrorf("Write bad extent to dp failed, dp %v, extent %v, err: %v", dpId, extent, err)
+		return
 	}
 
 	err = batchUnlockBadNormalExtent(dpId, []*BadNornalExtent{&badExtent})
@@ -2074,9 +2113,11 @@ func writeBadNormalExtentToDp(data []byte, volname, dpId, extent string) (err er
 	var leaderAddr string = dpInfo.Hosts[0]
 	conn, err := streamConnPool.GetConnect(leaderAddr)
 
+	start := time.Now()
 	defer func() {
 		streamConnPool.PutConnect(conn, true)
-		log.LogInfof("writeBadNormalExtentToDp PutConnect (%v)", leaderAddr)
+		log.LogInfof("writeBadNormalExtentToDp finish write. PutConnect (%v), dp (%s), ext (%s), cost(%d)",
+			leaderAddr, dpId, extent, time.Since(start).Milliseconds())
 	}()
 
 	if err != nil {
