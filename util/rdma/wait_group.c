@@ -3,12 +3,10 @@
 
 int wait_group_init(struct WaitGroup* wg) {
     if(pthread_mutex_init(&(wg->mutex), NULL)) {
-        //printf("Failed to initialize mutex\n");
         wg->wgInitialized = 0;
         return 1;
     }
     if(pthread_cond_init(&(wg->cond), NULL)) {
-        //printf("Failed to initialize cond\n");
         pthread_mutex_destroy(&wg->mutex);
         wg->wgInitialized = 0;
         return 1;

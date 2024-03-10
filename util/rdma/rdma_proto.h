@@ -26,7 +26,6 @@ typedef int (*RejectedCb)(struct rdma_cm_id *id, void* ctx);
 
 extern void PrintCallback(char*);
 static char buffer[100];
-//extern int RDMA_MAX_WQE;
 extern int WQ_DEPTH;
 extern int MIN_CQE_NUM;
 
@@ -113,48 +112,30 @@ typedef struct Connection {
     int     conntype;
     void    *buf;
     int     buf_len;
-
     struct rdma_cm_id * cm_id;
-
     struct ibv_pd *pd;
     struct ibv_comp_channel *comp_channel;
     struct ibv_cq *cq;
-
     struct ibv_mr *mr;
     MemoryPool *pool;
-
     ObjectPool* header_pool;
     ObjectPool* response_pool;
-
     Header *header_buf;
     struct ibv_mr *header_mr;
-    
     Response *response_buf;
     struct ibv_mr *response_mr;
-
     Queue *freeList;
-
     Queue *msgList;
-
     void* csContext;
-
     ConnectionState state;
-
     void* connContext;
-
     int cFd;
-
     int mFd;
-
     struct WaitGroup wg;
-    
-
     pthread_spinlock_t lock;
     int lockInitialized;
-
     int64_t send_timeout_ns;
     int64_t recv_timeout_ns;
-
 } Connection;
 
 typedef struct RdmaContext {
@@ -166,7 +147,6 @@ typedef struct RdmaContext {
     struct ConnectionEvent *conn_ev;
     int cFd;
     int state;
-
     bool isReConnect;
 };
 

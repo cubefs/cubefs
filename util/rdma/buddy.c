@@ -220,22 +220,22 @@ static void
 _dump(struct buddy * self, int index , int level) {
 	switch (self->tree[index]) {
 	case NODE_UNUSED:
-		//printf("(%d:%d)", _index_offset(index, level, self->level) , 1 << (self->level - level));
+		printf("(%d:%d)", _index_offset(index, level, self->level) , 1 << (self->level - level));
 		break;
 	case NODE_USED:
-		//printf("[%d:%d]", _index_offset(index, level, self->level) , 1 << (self->level - level));
+		printf("[%d:%d]", _index_offset(index, level, self->level) , 1 << (self->level - level));
 		break;
 	case NODE_FULL:
-		//printf("{");
+		printf("{");
 		_dump(self, index * 2 + 1 , level+1);
 		_dump(self, index * 2 + 2 , level+1);
-		//printf("}");
+		printf("}");
 		break;
 	default:
-		//printf("(");
+		printf("(");
 		_dump(self, index * 2 + 1 , level+1);
 		_dump(self, index * 2 + 2 , level+1);
-		//printf(")");
+		printf(")");
 		break;
 	}
 }
@@ -243,5 +243,5 @@ _dump(struct buddy * self, int index , int level) {
 void
 buddy_dump(struct buddy * self) {
 	_dump(self, 0 , 0);
-	//printf("\n");
+	printf("\n");
 }

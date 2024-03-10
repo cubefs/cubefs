@@ -64,7 +64,6 @@ func (e *EPoll) EpollAdd(fd int, ctx ReadAble) {
 }
 
 func (e *EPoll) EpollDel(fd int) {
-	//println(fd)
 	/*
 		lock.Lock()
 		delete(e.fds, fd)
@@ -76,7 +75,6 @@ func (e *EPoll) EpollDel(fd int) {
 func (e *EPoll) epollLoop() error {
 	events := make([]syscall.EpollEvent, 100)
 	for {
-
 		n, err := syscall.EpollWait(e.epollFd, events, -1)
 		if err != nil {
 			if err == syscall.EINTR {
@@ -84,17 +82,7 @@ func (e *EPoll) epollLoop() error {
 			}
 			return err
 		}
-		//println(n)
 		for i := 0; i < n; i++ {
-			//print(i)
-			//print("->")
-			//println(n)
-
-			//print("event.Fd")
-			//println(int(events[i].Fd))
-
-			//e.getContext(int(events[i].Fd))()
-
 			/* serial
 			if eventFunction := e.getContext(int(events[i].Fd)); eventFunction != nil {
 				eventFunction()
@@ -104,7 +92,6 @@ func (e *EPoll) epollLoop() error {
 			if epollWorker := e.getContext(int(events[i].Fd)); epollWorker != nil {
 				epollWorker.epollWorkerAddJob()
 			}
-			//go e.getContext(int(events[i].Fd))()
 		}
 	}
 }

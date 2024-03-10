@@ -1,8 +1,6 @@
 #ifndef RDMA_POOL_H
 #define RDMA_POOL_H
 
-//#include "memory_pool.h"
-//#include "object_pool.h"
 #include "rdma_proto.h"
 
 #define C_OK 1
