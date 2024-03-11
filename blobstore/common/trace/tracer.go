@@ -30,6 +30,7 @@ import (
 const (
 	defaultRootSpanName   = ""
 	defaultMaxLogsPerSpan = 50
+	defaultInternalTrack  = 64
 )
 
 // ChildOf is the alias of opentracing.ChildOf
@@ -73,7 +74,8 @@ type Tag = opentracing.Tag
 
 // Options tracer options
 type Options struct {
-	maxLogsPerSpan int
+	maxLogsPerSpan   int
+	maxInternalTrack int
 }
 
 // Tracer implements opentracing.Tracer
@@ -100,6 +102,9 @@ func NewTracer(serviceName string, opts ...TracerOption) *Tracer {
 
 	if t.options.maxLogsPerSpan <= 0 {
 		t.options.maxLogsPerSpan = defaultMaxLogsPerSpan
+	}
+	if t.options.maxInternalTrack <= 0 {
+		t.options.maxInternalTrack = defaultInternalTrack
 	}
 
 	return t
