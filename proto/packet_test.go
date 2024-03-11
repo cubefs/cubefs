@@ -30,6 +30,9 @@ func TestPacketContext(t *testing.T) {
 
 	ctx4 := ContextWithOperation(ctx3, "test")
 	require.NotEqual(t, span3.TraceID(), SpanFromContext(ctx4).TraceID())
+	require.NotEqual(t, SpanFromContext(ctx3).TraceID(), SpanFromContext(ctx4).TraceID())
+	//SpanFromContext(ctx3).Error("--> ctx3 span")
+	//SpanFromContext(ctx4).Error("--> ctx4 span")
 
 	ctx5 := ContextWithOperationf(ctx3, "test %v", 1)
 	require.NotEqual(t, span3.TraceID(), SpanFromContext(ctx5).TraceID())
@@ -37,8 +40,22 @@ func TestPacketContext(t *testing.T) {
 	span6, ctx6 := SpanContext()
 	require.Equal(t, span6.TraceID(), SpanFromContext(ctx6).TraceID())
 
-	span7, ctx7 := SpanContextPrefix("test hello")
+	span7, ctx7 := SpanContextPrefix("test-")
 	require.Equal(t, span7.TraceID(), SpanFromContext(ctx7).TraceID())
+	/*
+		span7.Errorf("--> ctx7 span %v", span7.TraceID())
+
+		span8 := SpanFromContext(ctx7)
+		span8.Errorf("--> ctx8 span %v", span8.TraceID())
+
+		ctx9 := ContextWithOperation(ctx7, "test-operation")
+		span9 := SpanFromContext(ctx9)
+		span9.Errorf("--> ctx9 span %v", span9.TraceID())
+
+		ctx10 := ContextWithOperation(ctx7, "test-operation2")
+		span10 := SpanFromContext(ctx10)
+		span10.Errorf("--> ctx9 span %v %v", span10.TraceID(), span10.)
+	*/
 }
 
 func BenchmarkPacketSpan(b *testing.B) {

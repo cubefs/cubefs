@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/sdk/master"
 	"github.com/cubefs/cubefs/util"
@@ -54,7 +55,7 @@ func newAclAddCmd(client *master.MasterClient) *cobra.Command {
 				errout(err)
 			}()
 			var aclInfo *proto.AclRsp
-			if aclInfo, err = client.UserAPI().AclOperation(args[0], args[1], util.AclAddIP); err != nil || !aclInfo.OK {
+			if aclInfo, err = client.UserAPI().AclOperation(context.TODO(), args[0], args[1], util.AclAddIP); err != nil || !aclInfo.OK {
 				return
 			}
 			stdout("success!\n")
@@ -81,7 +82,7 @@ func newAclListCmd(client *master.MasterClient) *cobra.Command {
 				errout(err)
 			}()
 			var aclInfo *proto.AclRsp
-			if aclInfo, err = client.UserAPI().AclOperation(volumeName, "", util.AclListIP); err != nil || !aclInfo.OK {
+			if aclInfo, err = client.UserAPI().AclOperation(context.TODO(), volumeName, "", util.AclListIP); err != nil || !aclInfo.OK {
 				stdout("AclOperation return \n")
 				return
 			}
@@ -112,7 +113,7 @@ func newAclDelCmd(client *master.MasterClient) *cobra.Command {
 				errout(err)
 			}()
 			var aclInfo *proto.AclRsp
-			if aclInfo, err = client.UserAPI().AclOperation(args[0], args[1], util.AclDelIP); err != nil || !aclInfo.OK {
+			if aclInfo, err = client.UserAPI().AclOperation(context.TODO(), args[0], args[1], util.AclDelIP); err != nil || !aclInfo.OK {
 				return
 			}
 			stdout("success!\n")
@@ -139,7 +140,7 @@ func newAclCheckCmd(client *master.MasterClient) *cobra.Command {
 				errout(err)
 			}()
 			var aclInfo *proto.AclRsp
-			if aclInfo, err = client.UserAPI().AclOperation(args[0], args[1], util.AclCheckIP); err != nil || !aclInfo.OK {
+			if aclInfo, err = client.UserAPI().AclOperation(context.TODO(), args[0], args[1], util.AclCheckIP); err != nil || !aclInfo.OK {
 				return
 			}
 			stdout("%v\n", volumeAclTableHeader)

@@ -74,7 +74,7 @@ func (m *MetaNode) stopUpdateNodeInfo() {
 func (m *MetaNode) updateNodeInfo(ctx context.Context) {
 	span := getSpan(ctx).WithOperation("updateNodeInfo")
 	// clusterInfo, err := getClusterInfo()
-	clusterInfo, err := masterClient.AdminAPI().GetClusterInfo()
+	clusterInfo, err := masterClient.AdminAPI().GetClusterInfo(context.TODO())
 	if err != nil {
 		span.Error(err)
 		return

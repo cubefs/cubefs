@@ -21,7 +21,6 @@ package main
 //
 
 import (
-	"context"
 	"flag"
 	"fmt"
 	"io"
@@ -483,8 +482,9 @@ func main() {
 }
 
 func getPushAddrFromMaster(masterAddr string) (addr string, err error) {
+	_, ctx := proto.SpanContextPrefix("getPushAddrFromMaster-")
 	mc := master.NewMasterClientFromString(masterAddr, false)
-	addr, err = mc.AdminAPI().GetMonitorPushAddr()
+	addr, err = mc.AdminAPI().GetMonitorPushAddr(ctx)
 	return
 }
 
@@ -644,8 +644,9 @@ func mount(opt *proto.MountOptions) (fsConn *fuse.Conn, super *cfs.Super, err er
 		defer t.Stop()
 		for range t.C {
 			log.Debugf("UpdateVolConf: load conf from master")
+			_, ctx := proto.SpanContextPrefix("mount-")
 			var volumeInfo *proto.SimpleVolView
-			volumeInfo, err = mc.AdminAPI().GetVolumeSimpleInfo(opt.Volname)
+			volumeInfo, err = mc.AdminAPI().GetVolumeSimpleInfo(ctx, opt.Volname)
 			if err != nil {
 				log.Errorf("UpdateVolConf: get vol info from master failed, err %s", err.Error())
 				if err == proto.ErrVolNotExists {
@@ -825,16 +826,17 @@ func parseMountOption(cfg *config.Config) (*proto.MountOptions, error) {
 }
 
 func checkPermission(opt *proto.MountOptions) (err error) {
+	_, ctx := proto.SpanContextPrefix("checkPermission-")
 	mc := master.NewMasterClientFromString(opt.Master, false)
 	localIP, _ := ump.GetLocalIpAddr()
-	if info, err := mc.UserAPI().AclOperation(opt.Volname, localIP, util.AclCheckIP); err != nil || !info.OK {
+	if info, err := mc.UserAPI().AclOperation(ctx, opt.Volname, localIP, util.AclCheckIP); err != nil || !info.OK {
 		syslog.Println(err)
 		return proto.ErrNoAclPermission
 	}
 	// Check user access policy is enabled
 	if opt.AccessKey != "" {
 		var userInfo *proto.UserInfo
-		if userInfo, err = mc.UserAPI().GetAKInfo(opt.AccessKey); err != nil {
+		if userInfo, err = mc.UserAPI().GetAKInfo(ctx, opt.AccessKey); err != nil {
 			return
 		}
 		if userInfo.SecretKey != opt.SecretKey {
@@ -892,8 +894,7 @@ func freeOSMemory(w http.ResponseWriter, r *http.Request) {
 }
 
 func loadConfFromMaster(opt *proto.MountOptions) (err error) {
-	span, ctxTemp := proto.StartSpanFromContext(context.Background(), "")
-	ctx := proto.ContextWithSpan(ctxTemp, span)
+	_, ctx := proto.SpanContextPrefix("loadConfFromMaster-")
 
 	mc := master.NewMasterClientFromString(opt.Master, false)
 	var volumeInfo *proto.SimpleVolView

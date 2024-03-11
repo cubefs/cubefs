@@ -48,21 +48,24 @@ func (api *ClientAPI) EncodingGzip() *ClientAPI {
 
 func (api *ClientAPI) GetVolume(ctx context.Context, volName string, authKey string) (vv *proto.VolView, err error) {
 	vv = &proto.VolView{}
-	err = api.mc.requestWith(vv, newRequest(ctx, post, proto.ClientVol).
+	ctxChild := proto.ContextWithOperation(ctx, "GetVolume")
+	err = api.mc.requestWith(vv, newRequest(ctxChild, post, proto.ClientVol).
 		Header(api.h).Param(anyParam{"name", volName}, anyParam{"authKey", authKey}))
 	return
 }
 
 func (api *ClientAPI) GetVolumeWithoutAuthKey(ctx context.Context, volName string) (vv *proto.VolView, err error) {
 	vv = &proto.VolView{}
-	err = api.mc.requestWith(vv, newRequest(ctx, post, proto.ClientVol).
+	ctxChild := proto.ContextWithOperation(ctx, "GetVolumeWithoutAuthKey")
+	err = api.mc.requestWith(vv, newRequest(ctxChild, post, proto.ClientVol).
 		Header(api.h, proto.SkipOwnerValidation, "true").addParam("name", volName))
 	return
 }
 
 func (api *ClientAPI) GetVolumeWithAuthnode(ctx context.Context, volName string, authKey string, token string, decoder Decoder) (vv *proto.VolView, err error) {
 	var body []byte
-	request := newRequest(ctx, post, proto.ClientVol).Header(api.h)
+	ctxChild := proto.ContextWithOperation(ctx, "GetVolumeWithAuthnode")
+	request := newRequest(ctxChild, post, proto.ClientVol).Header(api.h)
 	request.addParam("name", volName)
 	request.addParam("authKey", authKey)
 	request.addParam(proto.ClientMessage, token)
@@ -83,27 +86,31 @@ func (api *ClientAPI) GetVolumeWithAuthnode(ctx context.Context, volName string,
 
 func (api *ClientAPI) GetVolumeStat(ctx context.Context, volName string) (info *proto.VolStatInfo, err error) {
 	info = &proto.VolStatInfo{}
-	err = api.mc.requestWith(info, newRequest(ctx, get, proto.ClientVolStat).
+	ctxChild := proto.ContextWithOperation(ctx, "GetVolumeStat")
+	err = api.mc.requestWith(info, newRequest(ctxChild, get, proto.ClientVolStat).
 		Header(api.h).Param(anyParam{"name", volName}, anyParam{"version", proto.LFClient}))
 	return
 }
 
 func (api *ClientAPI) GetMetaPartition(ctx context.Context, partitionID uint64) (partition *proto.MetaPartitionInfo, err error) {
 	partition = &proto.MetaPartitionInfo{}
-	err = api.mc.requestWith(partition, newRequest(ctx, get, proto.ClientMetaPartition).
+	ctxChild := proto.ContextWithOperation(ctx, "GetMetaPartition")
+	err = api.mc.requestWith(partition, newRequest(ctxChild, get, proto.ClientMetaPartition).
 		Header(api.h).addParamAny("id", partitionID))
 	return
 }
 
 func (api *ClientAPI) GetMetaPartitions(ctx context.Context, volName string) (views []*proto.MetaPartitionView, err error) {
 	views = make([]*proto.MetaPartitionView, 0)
-	err = api.mc.requestWith(&views, newRequest(ctx, get, proto.ClientMetaPartitions).
+	ctxChild := proto.ContextWithOperation(ctx, "GetMetaPartitions")
+	err = api.mc.requestWith(&views, newRequest(ctxChild, get, proto.ClientMetaPartitions).
 		Header(api.h).addParam("name", volName))
 	return
 }
 
 func (api *ClientAPI) GetDataPartitions(ctx context.Context, volName string) (view *proto.DataPartitionsView, err error) {
-	request := newRequest(ctx, get, proto.ClientDataPartitions).Header(api.h).addParam("name", volName)
+	ctxChild := proto.ContextWithOperation(ctx, "GetDataPartitions")
+	request := newRequest(ctxChild, get, proto.ClientDataPartitions).Header(api.h).addParam("name", volName)
 
 	lastLeader := api.mc.leaderAddr
 	defer api.mc.SetLeader(lastLeader)
@@ -126,7 +133,8 @@ func (api *ClientAPI) GetDataPartitions(ctx context.Context, volName string) (vi
 
 func (api *ClientAPI) GetPreLoadDataPartitions(ctx context.Context, volName string) (view *proto.DataPartitionsView, err error) {
 	view = &proto.DataPartitionsView{}
-	err = api.mc.requestWith(view, newRequest(ctx, get, proto.ClientDataPartitions).
+	ctxChild := proto.ContextWithOperation(ctx, "GetPreLoadDataPartitions")
+	err = api.mc.requestWith(view, newRequest(ctxChild, get, proto.ClientDataPartitions).
 		Header(api.h).addParam("name", volName))
 	return
 }

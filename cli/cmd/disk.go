@@ -1,11 +1,11 @@
 package cmd
 
 import (
-	"sort"
-
+	"context"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/sdk/master"
 	"github.com/spf13/cobra"
+	"sort"
 )
 
 const (
@@ -45,7 +45,7 @@ func newListBadDiskCmd(client *master.MasterClient) *cobra.Command {
 			defer func() {
 				errout(err)
 			}()
-			if infos, err = client.AdminAPI().QueryBadDisks(); err != nil {
+			if infos, err = client.AdminAPI().QueryBadDisks(context.TODO()); err != nil {
 				return
 			}
 			stdout("(partitionID=0 means detected by datanode disk checking, not associated with any partition)\n\n[Unavaliable disks]:\n")
@@ -76,7 +76,7 @@ func newDecommissionDiskCmd(client *master.MasterClient) *cobra.Command {
 			defer func() {
 				errout(err)
 			}()
-			if err = client.AdminAPI().DecommissionDisk(args[0], args[1]); err != nil {
+			if err = client.AdminAPI().DecommissionDisk(context.TODO(), args[0], args[1]); err != nil {
 				return
 			}
 			stdout("Mark disk %v:%v to be decommissioned", args[0], args[1])
@@ -99,7 +99,7 @@ func newRecommissionDiskCmd(client *master.MasterClient) *cobra.Command {
 			defer func() {
 				errout(err)
 			}()
-			if err = client.AdminAPI().RecommissionDisk(args[0], args[1]); err != nil {
+			if err = client.AdminAPI().RecommissionDisk(context.TODO(), args[0], args[1]); err != nil {
 				return
 			}
 			stdout("Mark disk %v:%v to be recommissioned", args[0], args[1])
@@ -122,7 +122,7 @@ func newQueryDecommissionDiskCmd(client *master.MasterClient) *cobra.Command {
 			defer func() {
 				errout(err)
 			}()
-			progress, err := client.AdminAPI().QueryDecommissionDiskProgress(args[0], args[1])
+			progress, err := client.AdminAPI().QueryDecommissionDiskProgress(context.TODO(), args[0], args[1])
 			if err != nil {
 				return
 			}

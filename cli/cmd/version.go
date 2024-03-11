@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/sdk/master"
 	"github.com/spf13/cobra"
@@ -48,11 +49,11 @@ func newVersionCreateCmd(client *master.MasterClient) *cobra.Command {
 			defer func() {
 				errout(err)
 			}()
-			if _, err = client.AdminAPI().CreateVersion(volumeName); err != nil {
+			if _, err = client.AdminAPI().CreateVersion(context.TODO(), volumeName); err != nil {
 				return
 			}
 			stdout("create command be received by master and it's a asynchronous command,now try get the latest list\n")
-			if verList, err = client.AdminAPI().GetVerList(volumeName); err != nil {
+			if verList, err = client.AdminAPI().GetVerList(context.TODO(), volumeName); err != nil {
 				return
 			}
 			stdout("%v\n\n", volumeVersionTableHeader)
@@ -87,7 +88,7 @@ func newVersionListCmd(client *master.MasterClient) *cobra.Command {
 			defer func() {
 				errout(err)
 			}()
-			if verList, err = client.AdminAPI().GetVerList(volumeName); err != nil {
+			if verList, err = client.AdminAPI().GetVerList(context.TODO(), volumeName); err != nil {
 				return
 			}
 			stdout("%v\n", volumeVersionTableHeader)
@@ -119,7 +120,7 @@ func newVersionDelCmd(client *master.MasterClient) *cobra.Command {
 			defer func() {
 				errout(err)
 			}()
-			if err = client.AdminAPI().DeleteVersion(args[0], args[1]); err != nil {
+			if err = client.AdminAPI().DeleteVersion(context.TODO(), args[0], args[1]); err != nil {
 				return
 			}
 		},
@@ -144,7 +145,7 @@ func newVersionStrategyCmd(client *master.MasterClient) *cobra.Command {
 			defer func() {
 				errout(err)
 			}()
-			if err = client.AdminAPI().SetStrategy(args[0], args[1], args[2], args[3], args[4]); err != nil {
+			if err = client.AdminAPI().SetStrategy(context.TODO(), args[0], args[1], args[2], args[3], args[4]); err != nil {
 				return
 			}
 		},
