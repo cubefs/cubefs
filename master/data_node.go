@@ -156,7 +156,7 @@ func (dataNode *DataNode) isWriteAble() (ok bool) {
 	dataNode.RLock()
 	defer dataNode.RUnlock()
 
-	if dataNode.isActive && dataNode.AvailableSpace > 10*util.GB && !dataNode.RdOnly {
+	if dataNode.isActive && (dataNode.Total-dataNode.Used > 10*util.GB) && !dataNode.RdOnly {
 		ok = true
 	}
 
