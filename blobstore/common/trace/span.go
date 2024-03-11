@@ -58,13 +58,13 @@ type Span interface {
 	AppendRPCTrackLog(logs []string)
 	// AppendTrackLog records cost time with startTime (duration=time.Since(startTime)) for a calling to a module and
 	// appends to baggage with default key fieldTrackLogKey.
-	AppendTrackLog(module string, startTime time.Time, err error)
+	AppendTrackLog(module string, startTime time.Time, err error, opts ...SpanOption)
 	// AppendTrackLogWithDuration records cost time with duration for a calling to a module and
 	// appends to baggage with default key fieldTrackLogKey.
-	AppendTrackLogWithDuration(module string, duration time.Duration, err error)
+	AppendTrackLogWithDuration(module string, duration time.Duration, err error, opts ...SpanOption)
 	// AppendTrackLogWithFunc records cost time for the function calling to a module and
 	// appends to baggage with default key fieldTrackLogKey.
-	AppendTrackLogWithFunc(module string, fn func() error)
+	AppendTrackLogWithFunc(module string, fn func() error, opts ...SpanOption)
 	// TrackLog returns track log, calls BaggageItem with default key fieldTrackLogKey.
 	TrackLog() []string
 
@@ -248,21 +248,32 @@ func (s *spanImpl) Logs() []opentracing.LogRecord {
 
 // AppendTrackLog records cost time with startTime (duration=time.Since(startTime)) for a calling to a module and
 // appends to baggage with default key fieldTrackLogKey.
-func (s *spanImpl) AppendTrackLog(module string, startTime time.Time, err error) {
-	s.AppendTrackLogWithDuration(module, time.Since(startTime), err)
+func (s *spanImpl) AppendTrackLog(module string, startTime time.Time, err error, opts ...SpanOption) {
+	s.AppendTrackLogWithDuration(module, time.Since(startTime), err, opts...)
 }
 
 // AppendTrackLogWithDuration records cost time with duration for a calling to a module and
 // appends to baggage with default key fieldTrackLogKey.
-func (s *spanImpl) AppendTrackLogWithDuration(module string, duration time.Duration, err error) {
-	durMs := duration.Nanoseconds() / 1e6
-	if durMs > 0 {
-		module += ":" + strconv.FormatInt(durMs, 10)
+func (s *spanImpl) AppendTrackLogWithDuration(module string, duration time.Duration, err error, opts ...SpanOption) {
+	spanOpt := &spanOptions{duration: durationMs, errorLength: maxErrorLen} // compatibility
+	for _, opt := range opts {
+		opt(spanOpt)
 	}
+
+	if spanOpt.duration == durationAny {
+		module += ":" + duration.String()
+	} else if dur := spanOpt.duration.Value(duration); dur > 0 {
+		module += ":" + strconv.FormatInt(dur, 10)
+		if spanOpt.durationUnit {
+			module += spanOpt.duration.Unit(duration)
+		}
+	}
+
 	if err != nil {
 		msg := err.Error()
-		if len(msg) > maxErrorLen {
-			msg = msg[:maxErrorLen]
+		errLen := spanOpt.errorLength
+		if len(msg) > errLen {
+			msg = msg[:errLen]
 		}
 		module += "/" + msg
 	}
@@ -270,10 +281,10 @@ func (s *spanImpl) AppendTrackLogWithDuration(module string, duration time.Durat
 }
 
 // AppendTrackLogWithFunc records cost time for the function calling to a module.
-func (s *spanImpl) AppendTrackLogWithFunc(module string, fn func() error) {
+func (s *spanImpl) AppendTrackLogWithFunc(module string, fn func() error, opts ...SpanOption) {
 	startTime := time.Now()
 	err := fn()
-	s.AppendTrackLog(module, startTime, err)
+	s.AppendTrackLog(module, startTime, err, opts...)
 }
 
 // AppendRPCTrackLog appends RPC track logs to baggage with default key fieldTrackLogKey.

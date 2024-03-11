@@ -246,6 +246,30 @@ func TestSpan_TrackLogWithFunc(t *testing.T) {
 	require.Equal(t, 5, len(span.TrackLog()))
 }
 
+func TestSpan_TrackLogWithOption(t *testing.T) {
+	span, _ := StartSpanFromContext(context.Background(), "test trackLog options")
+	defer span.Finish()
+
+	duration := time.Hour + 2*time.Minute + 3*time.Second + 4*time.Millisecond + 5*time.Microsecond + 6
+	err := errors.New("err length")
+	for _, f := range []func() SpanOption{
+		OptSpanDurationAny,
+		OptSpanDurationNs,
+		OptSpanDurationUs,
+		OptSpanDurationMs,
+		OptSpanDurationSecond,
+		OptSpanDurationMinute,
+		OptSpanDurationHour,
+	} {
+		span.AppendTrackLogWithDuration("m", duration, nil, f(), OptSpanDurationUnit())
+		t.Log(span.TrackLog())
+	}
+	span.AppendTrackLogWithDuration("e", duration, err, OptSpanDurationNone(), OptSpanErrorLength(3))
+	t.Log(span.TrackLog())
+	span.AppendTrackLogWithDuration("em", duration, err, OptSpanDurationAny(), OptSpanErrorLength(3))
+	t.Log(span.TrackLog())
+}
+
 func TestSpan_BaseLogger(t *testing.T) {
 	originLevel := log.GetOutputLevel()
 	defer log.SetOutputLevel(originLevel)
@@ -348,4 +372,27 @@ func Benchmark_RandomID_Maphash(b *testing.B) {
 	for ii := 0; ii < b.N; ii++ {
 		new(maphash.Hash).Sum64()
 	}
+}
+
+func Benchmark_Span_TrackLog(b *testing.B) {
+	span, _ := StartSpanFromContext(context.Background(), "")
+	module := "m"
+	duration := time.Minute + time.Second + time.Millisecond*3
+	err := errors.New("loooooooooooooooong length")
+	b.ResetTimer()
+	b.Run("duration-any", func(b *testing.B) {
+		for ii := 0; ii < b.N; ii++ {
+			span.AppendTrackLogWithDuration(module, duration, nil, OptSpanDurationAny())
+		}
+	})
+	b.Run("duration-second", func(b *testing.B) {
+		for ii := 0; ii < b.N; ii++ {
+			span.AppendTrackLogWithDuration(module, duration, nil, OptSpanDurationSecond())
+		}
+	})
+	b.Run("duration-error", func(b *testing.B) {
+		for ii := 0; ii < b.N; ii++ {
+			span.AppendTrackLogWithDuration(module, duration, err, OptSpanErrorLength(13))
+		}
+	})
 }
