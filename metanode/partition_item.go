@@ -382,6 +382,11 @@ func newMetaItemIterator(mp *metaPartition) (si *MetaItemIterator, err error) {
 				log.LogDebugf("[newMetaItemIterator] send deleted extents")
 				return produceItem(item), nil
 			})
+
+			iter.treeSnap.Range(DeletedObjExtentsType, func(item interface{}) (bool, error) {
+				log.LogDebugf("[newMetaItemIterator] send deleted obj extents")
+				return produceItem(item), nil
+			})
 		}
 
 		// process extent del files

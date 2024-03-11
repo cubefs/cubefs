@@ -944,7 +944,6 @@ func (mp *metaPartition) initMemoryTree() {
 func (mp *metaPartition) initRocksDBTree() (err error) {
 	var tree *RocksTree
 
-	// TODO(NaturalSelect): init db using meta node
 	if tree, err = DefaultRocksTree(mp.db, mp.config.PartitionId); err != nil {
 		log.LogErrorf("[initRocksDBTree] default rocks tree dir: %v, id: %v error %v ", mp.config.RocksDBDir, mp.config.PartitionId, err)
 		return
@@ -1412,6 +1411,7 @@ func (mp *metaPartition) load(isCreate bool) (err error) {
 
 func (mp *metaPartition) store(sm *storeMsg) (err error) {
 	if mp.HasRocksDBStore() {
+		mp.storedApplyId = sm.snap.ApplyID()
 		log.LogInfof("[store] mp(%v) using rocksdb, nothing to do", mp.config.PartitionId)
 		// NOTE: after reviewed, there no need to execute flush
 		return nil

@@ -252,7 +252,7 @@ func TestInodeTree_Create(t *testing.T) {
 			if test.storeMode == proto.StoreModeRocksDb {
 				rocksTree = newTestRocksTree(test.rocksDBDir)
 				defer func() {
-					rocksTree.Release()
+					rocksTree.db.CloseDb()
 					_ = os.RemoveAll(test.rocksDBDir)
 				}()
 			}
@@ -325,7 +325,7 @@ func TestInodeTreeCreate(t *testing.T) {
 	rocksDir := "./test_inode_tree_create"
 	rocksTree := newTestRocksTree(rocksDir)
 	defer func() {
-		rocksTree.Release()
+		rocksTree.db.CloseDb()
 		_ = os.RemoveAll(rocksDir)
 	}()
 	memInodeTree, rocksInodeTree := InitInodeTree(rocksTree)
@@ -379,7 +379,7 @@ func TestInodeTreeGet(t *testing.T) {
 	rocksDir := "./test_inode_tree_get"
 	rocksTree := newTestRocksTree(rocksDir)
 	defer func() {
-		rocksTree.Release()
+		rocksTree.db.CloseDb()
 		_ = os.RemoveAll(rocksDir)
 	}()
 	memInodeTree, rocksInodeTree := InitInodeTree(rocksTree)
@@ -452,7 +452,7 @@ func TestInodeTreeGetMaxInode(t *testing.T) {
 	rocksDir := "./test_inode_tree_getMaxInode"
 	rocksTree := newTestRocksTree(rocksDir)
 	defer func() {
-		rocksTree.Release()
+		rocksTree.db.CloseDb()
 		_ = os.RemoveAll(rocksDir)
 	}()
 	memInodeTree, rocksInodeTree := InitInodeTree(rocksTree)
@@ -483,7 +483,7 @@ func TestInodeTreeRange(t *testing.T) {
 	rocksDir := "./test_inode_tree_range"
 	rocksTree := newTestRocksTree(rocksDir)
 	defer func() {
-		rocksTree.Release()
+		rocksTree.db.CloseDb()
 		_ = os.RemoveAll(rocksDir)
 	}()
 	memInodeTree, rocksInodeTree := InitInodeTree(rocksTree)
@@ -527,7 +527,7 @@ func TestInodeTreeMaxItem(t *testing.T) {
 	rocksDir := "./test_inode_tree_MaxItem"
 	rocksTree := newTestRocksTree(rocksDir)
 	defer func() {
-		rocksTree.Release()
+		rocksTree.db.CloseDb()
 		_ = os.RemoveAll(rocksDir)
 	}()
 	memInodeTree, rocksInodeTree := InitInodeTree(rocksTree)
@@ -554,7 +554,7 @@ func TestDentryTreeRange(t *testing.T) {
 	rocksDir := "./test_dentry_tree_range"
 	rocksTree := newTestRocksTree(rocksDir)
 	defer func() {
-		rocksTree.Release()
+		rocksTree.db.CloseDb()
 		_ = os.RemoveAll(rocksDir)
 	}()
 	memDentryTree, rocksDentryTree := InitDentryTree(rocksTree)

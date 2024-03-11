@@ -174,7 +174,7 @@ func prepareDataForMpTest(t *testing.T, mp *metaPartition) {
 	err = mp.multipartTree.Put(handle, &Multipart{})
 	require.NoError(t, err)
 
-	err = mp.txProcessor.txManager.txTree.Put(handle, &proto.TransactionInfo{})
+	err = mp.txProcessor.txManager.txTree.Put(handle, proto.NewTransactionInfo(0, 0))
 	require.NoError(t, err)
 
 	err = mp.txProcessor.txResource.txRbInodeTree.Put(handle, NewTxRollbackInode(ino, []uint32{}, proto.NewTxInodeInfo("", 0, 0), 0))
