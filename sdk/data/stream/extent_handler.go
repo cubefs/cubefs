@@ -241,12 +241,12 @@ func (eh *ExtentHandler) sender() {
 			if eh.key != nil {
 				extOffset += int(eh.key.ExtentOffset)
 			}
+			packet.ExtentOffset = int64(extOffset)
 
 			// fill the packet according to the extent
 			packet.PartitionID = eh.dp.PartitionID
 			packet.ExtentType = uint8(eh.storeMode)
 			packet.ExtentID = uint64(eh.extID)
-			packet.ExtentOffset = int64(extOffset)
 			packet.Arg = ([]byte)(eh.dp.GetAllAddrs())
 			packet.ArgLen = uint32(len(packet.Arg))
 			packet.RemainingFollowers = uint8(len(eh.dp.Hosts) - 1)
@@ -595,7 +595,7 @@ func (eh *ExtentHandler) allocateExtent() (err error) {
 			}
 			if err != nil {
 				// NOTE: try again
-				if strings.Contains(err.Error(), "Again") {
+				if strings.Contains(err.Error(), "Again") || strings.Contains(err.Error(), "DiskNoSpaceErr") {
 					log.LogWarnf("[allocateExtent] eh(%v) try agagin", eh)
 					i -= 1
 					continue

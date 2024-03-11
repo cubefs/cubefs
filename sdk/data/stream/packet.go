@@ -65,6 +65,7 @@ func NewWritePacket(inode uint64, fileOffset, storeMode int) *Packet {
 	} else {
 		p.Data, _ = proto.Buffers.Get(util.BlockSize)
 	}
+	p.ExtentOffset = 0
 	return p
 }
 
