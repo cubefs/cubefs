@@ -186,10 +186,19 @@ func TestStartSpanFromHTTPHeaderSafe(t *testing.T) {
 func TestNewTracer(t *testing.T) {
 	tracer := NewTracer("blobstore")
 	require.Equal(t, defaultMaxLogsPerSpan, tracer.options.maxLogsPerSpan)
+	require.Equal(t, defaultInternalTrack, tracer.options.maxInternalTrack)
 	tracer.Close()
 
-	tracer = NewTracer("blobstore", TracerOptions.MaxLogsPerSpan(10))
+	tracer = NewTracer("blobstore", TracerOptions.MaxLogsPerSpan(10),
+		TracerOptions.MaxInternalTrackLog(4))
 	require.Equal(t, 10, tracer.options.maxLogsPerSpan)
+	require.Equal(t, 4, tracer.options.maxInternalTrack)
+
+	span := tracer.StartSpan("", Tag{Key: "key", Value: 777}).(Span)
+	for range [8]struct{}{} {
+		span.AppendTrackLogWithFunc("tag", func() error { return nil })
+	}
+	require.Equal(t, 4, len(span.TrackLog()))
 	tracer.Close()
 }
 

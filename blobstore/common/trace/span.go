@@ -289,14 +289,15 @@ func (s *spanImpl) TrackLog() []string {
 }
 
 func (s *spanImpl) track(value string) {
+	maxTracks := s.tracer.options.maxInternalTrack
 	for _, ref := range s.references {
 		spanCtx, ok := ref.ReferencedContext.(*SpanContext)
 		if !ok {
 			continue
 		}
-		spanCtx.append(value)
+		spanCtx.append(maxTracks, value)
 	}
-	s.context.append(value)
+	s.context.append(maxTracks, value)
 }
 
 // String returns traceID:spanID.
