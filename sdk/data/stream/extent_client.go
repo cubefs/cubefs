@@ -358,6 +358,7 @@ func (client *ExtentClient) GetVerMgr() *proto.VolVersionInfoList {
 func (client *ExtentClient) UpdateLatestVer(verList *proto.VolVersionInfoList) (err error) {
 	ctx := context.TODO()
 	span := proto.SpanFromContext(ctx)
+	ctx = proto.ContextWithOperationf(ctx, "UpdateLatestVer")
 	verSeq := verList.GetLastVer()
 	span.Debugf("action[UpdateLatestVer] verSeq %v verList[%v] mgr seq %v", verSeq, verList, client.multiVerMgr.latestVerSeq)
 	if verSeq == 0 || verSeq <= atomic.LoadUint64(&client.multiVerMgr.latestVerSeq) {
@@ -408,6 +409,7 @@ func (client *ExtentClient) OpenStream(inode uint64) error {
 // Open request shall grab the lock until request is sent to the request channel
 func (client *ExtentClient) OpenStreamWithCache(ctx context.Context, inode uint64, needBCache bool) error {
 	span := proto.SpanFromContext(ctx)
+	ctx = proto.ContextWithOperation(ctx, "OpenStreamWithCache")
 	client.streamerLock.Lock()
 	s, ok := client.streamers[inode]
 	if !ok {
@@ -465,6 +467,7 @@ func (client *ExtentClient) EvictStream(inode uint64) error {
 
 // RefreshExtentsCache refreshes the extent cache.
 func (client *ExtentClient) RefreshExtentsCache(ctx context.Context, inode uint64) error {
+	ctx = proto.ContextWithOperation(ctx, "RefreshExtentsCache")
 	s := client.GetStreamer(inode)
 	if s == nil {
 		return nil
@@ -473,6 +476,7 @@ func (client *ExtentClient) RefreshExtentsCache(ctx context.Context, inode uint6
 }
 
 func (client *ExtentClient) ForceRefreshExtentsCache(ctx context.Context, inode uint64) error {
+	ctx = proto.ContextWithOperation(ctx, "ForceRefreshExtentsCache")
 	s := client.GetStreamer(inode)
 	if s == nil {
 		return nil
@@ -522,6 +526,7 @@ func (client *ExtentClient) SetFileSize(ctx context.Context, inode uint64, size 
 func (client *ExtentClient) Write(inode uint64, offset int, data []byte, flags int, checkFunc func() error) (write int, err error) {
 	ctx := context.TODO()
 	span := proto.SpanFromContext(ctx)
+	ctx = proto.ContextWithOperation(ctx, "Write")
 	prefix := fmt.Sprintf("Write{ino(%v)offset(%v)size(%v)}", inode, offset, len(data))
 	s := client.GetStreamer(inode)
 	if s == nil {
@@ -545,6 +550,7 @@ func (client *ExtentClient) Write(inode uint64, offset int, data []byte, flags i
 func (client *ExtentClient) Truncate(mw *meta.MetaWrapper, parentIno uint64, inode uint64, size int, fullPath string) error {
 	ctx := context.TODO()
 	span := proto.SpanFromContext(ctx)
+	ctx = proto.ContextWithOperation(ctx, "Truncate")
 	prefix := fmt.Sprintf("Truncate{ino(%v)size(%v)}", inode, size)
 	s := client.GetStreamer(inode)
 	if s == nil {
@@ -573,6 +579,7 @@ func (client *ExtentClient) Truncate(mw *meta.MetaWrapper, parentIno uint64, ino
 func (client *ExtentClient) Flush(inode uint64) error {
 	ctx := context.TODO()
 	span := proto.SpanFromContext(ctx)
+	ctx = proto.ContextWithOperation(ctx, "Flush")
 	s := client.GetStreamer(inode)
 	if s == nil {
 		span.Errorf("Flush: stream is not opened yet, ino(%v)", inode)
@@ -586,6 +593,7 @@ func (client *ExtentClient) Read(inode uint64, data []byte, offset int, size int
 	// t1 := time.Now()
 	ctx := context.TODO()
 	span := proto.SpanFromContext(ctx)
+	ctx = proto.ContextWithOperation(ctx, "Read")
 
 	if size == 0 {
 		return
@@ -613,6 +621,7 @@ func (client *ExtentClient) Read(inode uint64, data []byte, offset int, size int
 
 func (client *ExtentClient) ReadExtent(ctx context.Context, inode uint64, ek *proto.ExtentKey, data []byte, offset int, size int) (read int, err error, isStream bool) {
 	span := proto.SpanFromContext(ctx)
+	ctx = proto.ContextWithOperation(ctx, "ReadExtent")
 	bgTime := stat.BeginStat()
 	defer func() {
 		stat.EndStat("read-extent", err, bgTime, 1)
@@ -689,6 +698,7 @@ func (client *ExtentClient) ReadExtent(ctx context.Context, inode uint64, ek *pr
 // GetStreamer returns the streamer.
 func (client *ExtentClient) GetStreamer(inode uint64) *Streamer {
 	ctx := context.TODO()
+	ctx = proto.ContextWithOperation(ctx, "GetStreamer")
 	client.streamerLock.Lock()
 	defer client.streamerLock.Unlock()
 	s, ok := client.streamers[inode]
