@@ -85,28 +85,27 @@ func (s *SpanContext) trackLogs() []string {
 	return s.baggageItemDeepCopy(internalTrackLogKey)
 }
 
-func (s *SpanContext) append(value string) {
+func (s *SpanContext) append(maxTracks int, value string) {
 	s.Lock()
-	defer s.Unlock()
-
 	if s.baggage == nil {
-		s.baggage = map[string][]string{internalTrackLogKey: {value}}
-		return
+		s.baggage = make(map[string][]string)
 	}
-	s.baggage[internalTrackLogKey] = append(s.baggage[internalTrackLogKey], value)
+	if len(s.baggage[internalTrackLogKey]) < maxTracks {
+		s.baggage[internalTrackLogKey] = append(s.baggage[internalTrackLogKey], value)
+	}
+	s.Unlock()
 }
 
 func (s *SpanContext) baggageItem(key string) []string {
 	s.RLock()
 	defer s.RUnlock()
-
 	return s.baggage[key]
 }
 
 func (s *SpanContext) baggageItemDeepCopy(key string) (item []string) {
 	s.RLock()
-	defer s.RUnlock()
 	item = append(item, s.baggage[key]...)
+	s.RUnlock()
 	return
 }
 

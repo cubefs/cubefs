@@ -27,3 +27,9 @@ func (tracerOptions) MaxLogsPerSpan(maxLogsPerSpan int) TracerOption {
 		tracer.options.maxLogsPerSpan = maxLogsPerSpan
 	}
 }
+
+func (tracerOptions) MaxInternalTrackLog(internalTrack int) TracerOption {
+	return func(tracer *Tracer) {
+		tracer.options.maxInternalTrack = internalTrack
+	}
+}
