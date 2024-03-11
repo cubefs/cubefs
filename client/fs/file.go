@@ -91,7 +91,7 @@ func NewFile(s *Super, i *proto.InodeInfo, flag uint32, pino uint64, filename st
 			FileSize:        i.Size,
 			CacheThreshold:  s.CacheThreshold,
 		}
-		log.LogDebugf("Trace NewFile:flag(%v). clientConf(%v)", flag, clientConf)
+		log.Debugf("Trace NewFile:flag(%v). clientConf(%v)", flag, clientConf)
 
 		switch flag {
 		case syscall.O_RDONLY:
@@ -104,7 +104,7 @@ func NewFile(s *Super, i *proto.InodeInfo, flag uint32, pino uint64, filename st
 		default:
 			// no thing
 		}
-		log.LogDebugf("Trace NewFile:fReader(%v) fWriter(%v) ", fReader, fWriter)
+		log.Debugf("Trace NewFile:fReader(%v) fWriter(%v) ", fReader, fWriter)
 		return &File{super: s, info: i, fWriter: fWriter, fReader: fReader, parentIno: pino, name: filename}
 	}
 	return &File{super: s, info: i, parentIno: pino, name: filename}
@@ -120,12 +120,12 @@ func (f *File) getParentPath() string {
 	node, ok := f.super.nodeCache[f.parentIno]
 	f.super.fslock.Unlock()
 	if !ok {
-		log.LogErrorf("Get node cache failed: ino(%v)", f.parentIno)
+		log.Errorf("Get node cache failed: ino(%v)", f.parentIno)
 		return "unknown"
 	}
 	parentDir, ok := node.(*Dir)
 	if !ok {
-		log.LogErrorf("Type error: Can not convert node -> *Dir, ino(%v)", f.parentIno)
+		log.Errorf("Type error: Can not convert node -> *Dir, ino(%v)", f.parentIno)
 		return "unknown"
 	}
 	return parentDir.getCwd()
@@ -142,7 +142,7 @@ func (f *File) Attr(ctx context.Context, a *fuse.Attr) error {
 	ino := f.info.Inode
 	info, err := f.super.InodeGet(ino)
 	if err != nil {
-		log.LogErrorf("Attr: ino(%v) err(%v)", ino, err)
+		log.Errorf("Attr: ino(%v) err(%v)", ino, err)
 		if err == fuse.ENOENT {
 			a.Inode = ino
 			return nil
@@ -153,14 +153,14 @@ func (f *File) Attr(ctx context.Context, a *fuse.Attr) error {
 	fillAttr(info, a)
 	a.ParentIno = f.parentIno
 	fileSize, gen := f.fileSizeVersion2(ino)
-	log.LogDebugf("Attr: ino(%v) fileSize(%v) gen(%v) inode.gen(%v)", ino, fileSize, gen, info.Generation)
+	log.Debugf("Attr: ino(%v) fileSize(%v) gen(%v) inode.gen(%v)", ino, fileSize, gen, info.Generation)
 	if gen >= info.Generation {
 		a.Size = uint64(fileSize)
 	}
 	if proto.IsSymlink(info.Mode) {
 		a.Size = uint64(len(info.Target))
 	}
-	log.LogDebugf("TRACE Attr: inode(%v) attr(%v)", info, a)
+	log.Debugf("TRACE Attr: inode(%v) attr(%v)", info, a)
 	return nil
 }
 
@@ -172,11 +172,11 @@ func (f *File) Forget() {
 	ino := f.info.Inode
 	defer func() {
 		stat.EndStat("Forget", err, bgTime, 1)
-		log.LogDebugf("TRACE Forget: ino(%v)", ino)
+		log.Debugf("TRACE Forget: ino(%v)", ino)
 	}()
 
 	//TODO:why cannot close fwriter
-	//log.LogErrorf("TRACE Forget: ino(%v)", ino)
+	//log.Errorf("TRACE Forget: ino(%v)", ino)
 	//if f.fWriter != nil {
 	//	f.fWriter.Close()
 	//}
@@ -187,7 +187,7 @@ func (f *File) Forget() {
 		delete(f.super.nodeCache, ino)
 		f.super.fslock.Unlock()
 		if err := f.super.ec.EvictStream(ino); err != nil {
-			log.LogWarnf("Forget: stream not ready to evict, ino(%v) err(%v)", ino, err)
+			log.Warnf("Forget: stream not ready to evict, ino(%v) err(%v)", ino, err)
 			return
 		}
 	}
@@ -197,12 +197,14 @@ func (f *File) Forget() {
 	}
 	fullPath := f.getParentPath() + f.name
 	if err := f.super.mw.Evict(ino, fullPath); err != nil {
-		log.LogWarnf("Forget Evict: ino(%v) err(%v)", ino, err)
+		log.Warnf("Forget Evict: ino(%v) err(%v)", ino, err)
 	}
 }
 
 // Open handles the open request.
 func (f *File) Open(ctx context.Context, req *fuse.OpenRequest, resp *fuse.OpenResponse) (handle fs.Handle, err error) {
+	span := proto.SpanFromContext(ctx)
+	ctx = proto.ContextWithSpan(ctx, span)
 	bgTime := stat.BeginStat()
 	var needBCache bool
 
@@ -211,7 +213,7 @@ func (f *File) Open(ctx context.Context, req *fuse.OpenRequest, resp *fuse.OpenR
 	}()
 
 	ino := f.info.Inode
-	log.LogDebugf("TRACE open ino(%v) info(%v)", ino, f.info)
+	span.Debugf("TRACE open ino(%v) info(%v)", ino, f.info)
 	start := time.Now()
 
 	if f.super.bcacheDir != "" && !f.filterFilesSuffix(f.super.bcacheFilterFiles) {
@@ -219,7 +221,7 @@ func (f *File) Open(ctx context.Context, req *fuse.OpenRequest, resp *fuse.OpenR
 		if parentPath != "" && !strings.HasSuffix(parentPath, "/") {
 			parentPath = parentPath + "/"
 		}
-		log.LogDebugf("TRACE open ino(%v) parentPath(%v)", ino, parentPath)
+		span.Debugf("TRACE open ino(%v) parentPath(%v)", ino, parentPath)
 		if strings.HasPrefix(parentPath, f.super.bcacheDir) {
 			needBCache = true
 		}
@@ -229,7 +231,7 @@ func (f *File) Open(ctx context.Context, req *fuse.OpenRequest, resp *fuse.OpenR
 	} else {
 		f.super.ec.OpenStream(ino)
 	}
-	log.LogDebugf("TRACE open ino(%v) f.super.bcacheDir(%v) needBCache(%v)", ino, f.super.bcacheDir, needBCache)
+	span.Debugf("TRACE open ino(%v) f.super.bcacheDir(%v) needBCache(%v)", ino, f.super.bcacheDir, needBCache)
 
 	f.super.ec.RefreshExtentsCache(ctx, ino)
 
@@ -237,7 +239,7 @@ func (f *File) Open(ctx context.Context, req *fuse.OpenRequest, resp *fuse.OpenR
 		resp.Flags |= fuse.OpenKeepCache
 	}
 	if proto.IsCold(f.super.volType) {
-		log.LogDebugf("TRANCE open ino(%v) info(%v)", ino, f.info)
+		span.Debugf("TRANCE open ino(%v) info(%v)", ino, f.info)
 		fileSize, _ := f.fileSizeVersion2(ino)
 		clientConf := blobstore.ClientConfig{
 			VolName:         f.super.volname,
@@ -271,58 +273,62 @@ func (f *File) Open(ctx context.Context, req *fuse.OpenRequest, resp *fuse.OpenR
 			f.fWriter = blobstore.NewWriter(clientConf)
 			f.fReader = nil
 		}
-		log.LogDebugf("TRACE file open,ino(%v)  req.Flags(%v) reader(%v)  writer(%v)", ino, req.Flags, f.fReader, f.fWriter)
+		span.Debugf("TRACE file open,ino(%v)  req.Flags(%v) reader(%v)  writer(%v)", ino, req.Flags, f.fReader, f.fWriter)
 	}
 
 	elapsed := time.Since(start)
-	log.LogDebugf("TRACE Open: ino(%v) req(%v) resp(%v) (%v)ns", ino, req, resp, elapsed.Nanoseconds())
+	span.Debugf("TRACE Open: ino(%v) req(%v) resp(%v) (%v)ns", ino, req, resp, elapsed.Nanoseconds())
 
 	return f, nil
 }
 
 // Release handles the release request.
 func (f *File) Release(ctx context.Context, req *fuse.ReleaseRequest) (err error) {
+	span := proto.SpanFromContext(ctx)
+	ctx = proto.ContextWithSpan(ctx, span)
 	ino := f.info.Inode
 	bgTime := stat.BeginStat()
 
 	defer func() {
 		stat.EndStat("Release", err, bgTime, 1)
-		log.LogInfof("action[Release] %v", f.fWriter)
+		span.Infof("action[Release] %v", f.fWriter)
 		f.fWriter.FreeCache()
 		if DisableMetaCache {
 			f.super.ic.Delete(ino)
 		}
 	}()
 
-	log.LogDebugf("TRACE Release enter: ino(%v) req(%v)", ino, req)
+	span.Debugf("TRACE Release enter: ino(%v) req(%v)", ino, req)
 
 	start := time.Now()
 
-	//log.LogErrorf("TRACE Release close stream: ino(%v) req(%v)", ino, req)
+	//log.Errorf("TRACE Release close stream: ino(%v) req(%v)", ino, req)
 	//if f.fWriter != nil {
 	//	f.fWriter.Close()
 	//}
 
 	err = f.super.ec.CloseStream(ino)
 	if err != nil {
-		log.LogErrorf("Release: close writer failed, ino(%v) req(%v) err(%v)", ino, req, err)
+		span.Errorf("Release: close writer failed, ino(%v) req(%v) err(%v)", ino, req, err)
 		return ParseError(err)
 	}
 	elapsed := time.Since(start)
-	log.LogDebugf("TRACE Release: ino(%v) req(%v) (%v)ns", ino, req, elapsed.Nanoseconds())
+	span.Debugf("TRACE Release: ino(%v) req(%v) (%v)ns", ino, req, elapsed.Nanoseconds())
 
 	return nil
 }
 
 // Read handles the read request.
 func (f *File) Read(ctx context.Context, req *fuse.ReadRequest, resp *fuse.ReadResponse) (err error) {
+	span := proto.SpanFromContext(ctx)
+	ctx = proto.ContextWithSpan(ctx, span)
 	bgTime := stat.BeginStat()
 	defer func() {
 		stat.EndStat("Read", err, bgTime, 1)
 		stat.StatBandWidth("Read", uint32(req.Size))
 	}()
 
-	log.LogDebugf("TRACE Read enter: ino(%v) offset(%v) reqsize(%v) req(%v)", f.info.Inode, req.Offset, req.Size, req)
+	span.Debugf("TRACE Read enter: ino(%v) offset(%v) reqsize(%v) req(%v)", f.info.Inode, req.Offset, req.Size, req)
 
 	start := time.Now()
 
@@ -356,17 +362,19 @@ func (f *File) Read(ctx context.Context, req *fuse.ReadRequest, resp *fuse.ReadR
 		resp.Data = resp.Data[:size+fuse.OutHeaderSize]
 	} else if size <= 0 {
 		resp.Data = resp.Data[:fuse.OutHeaderSize]
-		log.LogWarnf("Read: ino(%v) offset(%v) reqsize(%v) req(%v) size(%v)", f.info.Inode, req.Offset, req.Size, req, size)
+		span.Warnf("Read: ino(%v) offset(%v) reqsize(%v) req(%v) size(%v)", f.info.Inode, req.Offset, req.Size, req, size)
 	}
 
 	elapsed := time.Since(start)
-	log.LogDebugf("TRACE Read: ino(%v) offset(%v) reqsize(%v) req(%v) size(%v) (%v)ns", f.info.Inode, req.Offset, req.Size, req, size, elapsed.Nanoseconds())
+	span.Debugf("TRACE Read: ino(%v) offset(%v) reqsize(%v) req(%v) size(%v) (%v)ns", f.info.Inode, req.Offset, req.Size, req, size, elapsed.Nanoseconds())
 
 	return nil
 }
 
 // Write handles the write request.
 func (f *File) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.WriteResponse) (err error) {
+	span := proto.SpanFromContext(ctx)
+	ctx = proto.ContextWithSpan(ctx, span)
 	bgTime := stat.BeginStat()
 	defer func() {
 		stat.EndStat("Write", err, bgTime, 1)
@@ -375,7 +383,7 @@ func (f *File) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.Wri
 
 	ino := f.info.Inode
 	reqlen := len(req.Data)
-	log.LogDebugf("TRACE Write enter: ino(%v) offset(%v) len(%v)  flags(%v) fileflags(%v) quotaIds(%v) req(%v)",
+	span.Debugf("TRACE Write enter: ino(%v) offset(%v) len(%v)  flags(%v) fileflags(%v) quotaIds(%v) req(%v)",
 		ino, req.Offset, reqlen, req.Flags, req.FileFlags, f.info.QuotaInfos, req)
 	if proto.IsHot(f.super.volType) {
 		filesize, _ := f.fileSize(ino)
@@ -387,7 +395,7 @@ func (f *File) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.Wri
 			if err == nil {
 				resp.Size = reqlen
 			}
-			log.LogDebugf("fallocate: ino(%v) origFilesize(%v) req(%v) err(%v)", f.info.Inode, filesize, req, err)
+			span.Debugf("fallocate: ino(%v) origFilesize(%v) req(%v) err(%v)", f.info.Inode, filesize, req, err)
 			return
 		}
 	}
@@ -459,7 +467,7 @@ func (f *File) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.Wri
 
 	resp.Size = size
 	if size != reqlen {
-		log.LogErrorf("Write: ino(%v) offset(%v) len(%v) size(%v)", ino, req.Offset, reqlen, size)
+		span.Errorf("Write: ino(%v) offset(%v) len(%v) size(%v)", ino, req.Offset, reqlen, size)
 	}
 
 	// only hot volType need to wait flush
@@ -474,13 +482,15 @@ func (f *File) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.Wri
 		}
 	}
 	elapsed := time.Since(start)
-	log.LogDebugf("TRACE Write: ino(%v) offset(%v) len(%v) flags(%v) fileflags(%v) req(%v) (%v)ns ",
+	span.Debugf("TRACE Write: ino(%v) offset(%v) len(%v) flags(%v) fileflags(%v) req(%v) (%v)ns ",
 		ino, req.Offset, reqlen, req.Flags, req.FileFlags, req, elapsed.Nanoseconds())
 	return nil
 }
 
 // Flush only when fsyncOnClose is enabled.
 func (f *File) Flush(ctx context.Context, req *fuse.FlushRequest) (err error) {
+	span := proto.SpanFromContext(ctx)
+	ctx = proto.ContextWithSpan(ctx, span)
 	bgTime := stat.BeginStat()
 	defer func() {
 		stat.EndStat("Flush", err, bgTime, 1)
@@ -489,7 +499,7 @@ func (f *File) Flush(ctx context.Context, req *fuse.FlushRequest) (err error) {
 	if !f.super.fsyncOnClose {
 		return fuse.ENOSYS
 	}
-	log.LogDebugf("TRACE Flush enter: ino(%v)", f.info.Inode)
+	span.Debugf("TRACE Flush enter: ino(%v)", f.info.Inode)
 	start := time.Now()
 
 	metric := exporter.NewTPCnt("filesync")
@@ -503,11 +513,11 @@ func (f *File) Flush(ctx context.Context, req *fuse.FlushRequest) (err error) {
 		err = f.fWriter.Flush(f.info.Inode, ctx)
 		f.Unlock()
 	}
-	log.LogDebugf("TRACE Flush: ino(%v) err(%v)", f.info.Inode, err)
+	span.Debugf("TRACE Flush: ino(%v) err(%v)", f.info.Inode, err)
 	if err != nil {
 		msg := fmt.Sprintf("Flush: ino(%v) err(%v)", f.info.Inode, err)
 		f.super.handleError("Flush", msg)
-		log.LogErrorf("TRACE Flush err: ino(%v) err(%v)", f.info.Inode, err)
+		span.Errorf("TRACE Flush err: ino(%v) err(%v)", f.info.Inode, err)
 		return ParseError(err)
 	}
 
@@ -516,19 +526,21 @@ func (f *File) Flush(ctx context.Context, req *fuse.FlushRequest) (err error) {
 	}
 
 	elapsed := time.Since(start)
-	log.LogDebugf("TRACE Flush: ino(%v) (%v)ns", f.info.Inode, elapsed.Nanoseconds())
+	span.Debugf("TRACE Flush: ino(%v) (%v)ns", f.info.Inode, elapsed.Nanoseconds())
 
 	return nil
 }
 
 // Fsync hanldes the fsync request.
 func (f *File) Fsync(ctx context.Context, req *fuse.FsyncRequest) (err error) {
+	span := proto.SpanFromContext(ctx)
+	ctx = proto.ContextWithSpan(ctx, span)
 	bgTime := stat.BeginStat()
 	defer func() {
 		stat.EndStat("Fsync", err, bgTime, 1)
 	}()
 
-	log.LogDebugf("TRACE Fsync enter: ino(%v)", f.info.Inode)
+	span.Debugf("TRACE Fsync enter: ino(%v)", f.info.Inode)
 	start := time.Now()
 	if proto.IsHot(f.super.volType) {
 		err = f.super.ec.Flush(f.info.Inode)
@@ -542,12 +554,14 @@ func (f *File) Fsync(ctx context.Context, req *fuse.FsyncRequest) (err error) {
 	}
 	f.super.ic.Delete(f.info.Inode)
 	elapsed := time.Since(start)
-	log.LogDebugf("TRACE Fsync: ino(%v) (%v)ns", f.info.Inode, elapsed.Nanoseconds())
+	span.Debugf("TRACE Fsync: ino(%v) (%v)ns", f.info.Inode, elapsed.Nanoseconds())
 	return nil
 }
 
 // Setattr handles the setattr request.
 func (f *File) Setattr(ctx context.Context, req *fuse.SetattrRequest, resp *fuse.SetattrResponse) error {
+	span := proto.SpanFromContext(ctx)
+	ctx = proto.ContextWithSpan(ctx, span)
 	var err error
 	bgTime := stat.BeginStat()
 	defer func() {
@@ -560,18 +574,18 @@ func (f *File) Setattr(ctx context.Context, req *fuse.SetattrRequest, resp *fuse
 		// when use trunc param in open request through nfs client and mount on cfs mountPoint, cfs client may not recv open message but only setAttr,
 		// the streamer may not open and cause io error finally,so do a open no matter the stream be opened or not
 		if err := f.super.ec.OpenStream(ino); err != nil {
-			log.LogErrorf("Setattr: OpenStream ino(%v) size(%v) err(%v)", ino, req.Size, err)
+			span.Errorf("Setattr: OpenStream ino(%v) size(%v) err(%v)", ino, req.Size, err)
 			return ParseError(err)
 		}
 		defer f.super.ec.CloseStream(ino)
 
 		if err := f.super.ec.Flush(ino); err != nil {
-			log.LogErrorf("Setattr: truncate wait for flush ino(%v) size(%v) err(%v)", ino, req.Size, err)
+			span.Errorf("Setattr: truncate wait for flush ino(%v) size(%v) err(%v)", ino, req.Size, err)
 			return ParseError(err)
 		}
 		fullPath := path.Join(f.getParentPath(), f.name)
 		if err := f.super.ec.Truncate(f.super.mw, f.parentIno, ino, int(req.Size), fullPath); err != nil {
-			log.LogErrorf("Setattr: truncate ino(%v) size(%v) err(%v)", ino, req.Size, err)
+			span.Errorf("Setattr: truncate ino(%v) size(%v) err(%v)", ino, req.Size, err)
 			return ParseError(err)
 		}
 		f.super.ic.Delete(ino)
@@ -580,13 +594,13 @@ func (f *File) Setattr(ctx context.Context, req *fuse.SetattrRequest, resp *fuse
 
 	info, err := f.super.InodeGet(ino)
 	if err != nil {
-		log.LogErrorf("Setattr: InodeGet failed, ino(%v) err(%v)", ino, err)
+		span.Errorf("Setattr: InodeGet failed, ino(%v) err(%v)", ino, err)
 		return ParseError(err)
 	}
 
 	if req.Valid.Size() && proto.IsHot(f.super.volType) {
 		if req.Size != info.Size {
-			log.LogWarnf("Setattr: truncate ino(%v) reqSize(%v) inodeSize(%v)", ino, req.Size, info.Size)
+			span.Warnf("Setattr: truncate ino(%v) reqSize(%v) inodeSize(%v)", ino, req.Size, info.Size)
 		}
 	}
 
@@ -602,7 +616,7 @@ func (f *File) Setattr(ctx context.Context, req *fuse.SetattrRequest, resp *fuse
 	fillAttr(info, &resp.Attr)
 
 	elapsed := time.Since(start)
-	log.LogDebugf("TRACE Setattr: ino(%v) req(%v) (%v)ns", ino, req, elapsed.Nanoseconds())
+	span.Debugf("TRACE Setattr: ino(%v) req(%v) (%v)ns", ino, req, elapsed.Nanoseconds())
 	return nil
 }
 
@@ -617,10 +631,10 @@ func (f *File) Readlink(ctx context.Context, req *fuse.ReadlinkRequest) (string,
 	ino := f.info.Inode
 	info, err := f.super.InodeGet(ino)
 	if err != nil {
-		log.LogErrorf("Readlink: ino(%v) err(%v)", ino, err)
+		log.Errorf("Readlink: ino(%v) err(%v)", ino, err)
 		return "", ParseError(err)
 	}
-	log.LogDebugf("TRACE Readlink: ino(%v) target(%v)", ino, string(info.Target))
+	log.Debugf("TRACE Readlink: ino(%v) target(%v)", ino, string(info.Target))
 	return string(info.Target), nil
 }
 
@@ -641,7 +655,7 @@ func (f *File) Getxattr(ctx context.Context, req *fuse.GetxattrRequest, resp *fu
 	pos := req.Position
 	info, err := f.super.mw.XAttrGet_ll(ino, name)
 	if err != nil {
-		log.LogErrorf("GetXattr: ino(%v) name(%v) err(%v)", ino, name, err)
+		log.Errorf("GetXattr: ino(%v) name(%v) err(%v)", ino, name, err)
 		return ParseError(err)
 	}
 	value := info.Get(name)
@@ -652,7 +666,7 @@ func (f *File) Getxattr(ctx context.Context, req *fuse.GetxattrRequest, resp *fu
 		value = value[:size]
 	}
 	resp.Xattr = value
-	log.LogDebugf("TRACE GetXattr: ino(%v) name(%v)", ino, name)
+	log.Debugf("TRACE GetXattr: ino(%v) name(%v)", ino, name)
 	return nil
 }
 
@@ -673,13 +687,13 @@ func (f *File) Listxattr(ctx context.Context, req *fuse.ListxattrRequest, resp *
 
 	keys, err := f.super.mw.XAttrsList_ll(ino)
 	if err != nil {
-		log.LogErrorf("ListXattr: ino(%v) err(%v)", ino, err)
+		log.Errorf("ListXattr: ino(%v) err(%v)", ino, err)
 		return ParseError(err)
 	}
 	for _, key := range keys {
 		resp.Append(key)
 	}
-	log.LogDebugf("TRACE Listxattr: ino(%v)", ino)
+	log.Debugf("TRACE Listxattr: ino(%v)", ino)
 	return nil
 }
 
@@ -699,10 +713,10 @@ func (f *File) Setxattr(ctx context.Context, req *fuse.SetxattrRequest) error {
 	value := req.Xattr
 	// TODO： implement flag to improve compatible (Mofei Zhang)
 	if err = f.super.mw.XAttrSet_ll(ino, []byte(name), []byte(value)); err != nil {
-		log.LogErrorf("Setxattr: ino(%v) name(%v) err(%v)", ino, name, err)
+		log.Errorf("Setxattr: ino(%v) name(%v) err(%v)", ino, name, err)
 		return ParseError(err)
 	}
-	log.LogDebugf("TRACE Setxattr: ino(%v) name(%v)", ino, name)
+	log.Debugf("TRACE Setxattr: ino(%v) name(%v)", ino, name)
 	return nil
 }
 
@@ -720,10 +734,10 @@ func (f *File) Removexattr(ctx context.Context, req *fuse.RemovexattrRequest) er
 	ino := f.info.Inode
 	name := req.Name
 	if err = f.super.mw.XAttrDel_ll(ino, name); err != nil {
-		log.LogErrorf("Removexattr: ino(%v) name(%v) err(%v)", ino, name, err)
+		log.Errorf("Removexattr: ino(%v) name(%v) err(%v)", ino, name, err)
 		return ParseError(err)
 	}
-	log.LogDebugf("TRACE RemoveXattr: ino(%v) name(%v)", ino, name)
+	log.Debugf("TRACE RemoveXattr: ino(%v) name(%v)", ino, name)
 	return nil
 }
 
@@ -736,7 +750,7 @@ func (f *File) fileSize(ino uint64) (size int, gen uint64) {
 		}
 	}
 
-	log.LogDebugf("TRANCE fileSize: ino(%v) fileSize(%v) gen(%v) valid(%v)", ino, size, gen, valid)
+	log.Debugf("TRANCE fileSize: ino(%v) fileSize(%v) gen(%v) valid(%v)", ino, size, gen, valid)
 	return
 }
 
@@ -758,14 +772,14 @@ func (f *File) fileSizeVersion2(ino uint64) (size int, gen uint64) {
 		}
 	}
 
-	log.LogDebugf("TRACE fileSizeVersion2: ino(%v) fileSize(%v) gen(%v) valid(%v)", ino, size, gen, valid)
+	log.Debugf("TRACE fileSizeVersion2: ino(%v) fileSize(%v) gen(%v) valid(%v)", ino, size, gen, valid)
 	return
 }
 
 // return true mean this file will not cache in block cache
 func (f *File) filterFilesSuffix(filterFiles string) bool {
 	if f.name == "" {
-		log.LogWarnf("this file inode[%v], name is nil", f.info)
+		log.Warnf("this file inode[%v], name is nil", f.info)
 		return true
 	}
 	if filterFiles == "" {
@@ -776,7 +790,7 @@ func (f *File) filterFilesSuffix(filterFiles string) bool {
 		//.py means one type of file
 		suffix = "." + suffix
 		if suffix != "." && strings.Contains(f.name, suffix) {
-			log.LogDebugf("fileName:%s,filter:%s,suffix:%s,suffixs:%v", f.name, filterFiles, suffix, suffixs)
+			log.Debugf("fileName:%s,filter:%s,suffix:%s,suffixs:%v", f.name, filterFiles, suffix, suffixs)
 			return true
 		}
 	}
