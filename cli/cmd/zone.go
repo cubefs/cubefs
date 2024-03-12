@@ -15,7 +15,6 @@
 package cmd
 
 import (
-	"context"
 	"fmt"
 
 	"github.com/cubefs/cubefs/proto"
@@ -56,10 +55,9 @@ func newZoneListCmd(client *sdk.MasterClient) *cobra.Command {
 		Run: func(cmd *cobra.Command, args []string) {
 			var zones []*proto.ZoneView
 			var err error
-			defer func() {
-				errout(err)
-			}()
-			if zones, err = client.AdminAPI().ListZones(context.TODO()); err != nil {
+			span, ctx := spanContext()
+			defer func() { errout(span, err) }()
+			if zones, err = client.AdminAPI().ListZones(ctx); err != nil {
 				return
 			}
 			zoneTablePattern := "%-8v    %-10v\n"
@@ -73,6 +71,7 @@ func newZoneListCmd(client *sdk.MasterClient) *cobra.Command {
 }
 
 func newZoneInfoCmd(client *sdk.MasterClient) *cobra.Command {
+	span, ctx := spanContext()
 	cmd := &cobra.Command{
 		Use:   CliOpInfo + " [NAME]",
 		Short: cmdZoneInfoShort,
@@ -84,11 +83,9 @@ func newZoneInfoCmd(client *sdk.MasterClient) *cobra.Command {
 				zoneName string
 				zoneView *proto.ZoneView
 			)
-			defer func() {
-				errout(err)
-			}()
+			defer func() { errout(span, err) }()
 			zoneName = args[0]
-			if topo, err = client.AdminAPI().Topo(context.TODO()); err != nil {
+			if topo, err = client.AdminAPI().Topo(ctx); err != nil {
 				return
 			}
 
@@ -107,7 +104,7 @@ func newZoneInfoCmd(client *sdk.MasterClient) *cobra.Command {
 			if len(args) != 0 {
 				return nil, cobra.ShellCompDirectiveNoFileComp
 			}
-			return validZones(client, toComplete), cobra.ShellCompDirectiveNoFileComp
+			return validZones(ctx, client, toComplete), cobra.ShellCompDirectiveNoFileComp
 		},
 	}
 	return cmd
@@ -125,11 +122,10 @@ func newZoneUpdateCmd(client *sdk.MasterClient) *cobra.Command {
 		Args:  cobra.MinimumNArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
 			var err error
-			defer func() {
-				errout(err)
-			}()
+			span, ctx := spanContext()
+			defer func() { errout(span, err) }()
 			zoneName := args[0]
-			if err = client.AdminAPI().UpdateZone(context.TODO(), zoneName, enable, dataNodesetSelector, metaNodesetSelector, dataNodeSelector, metaNodeSelector); err != nil {
+			if err = client.AdminAPI().UpdateZone(ctx, zoneName, enable, dataNodesetSelector, metaNodesetSelector, dataNodeSelector, metaNodeSelector); err != nil {
 				return
 			}
 			stdout(fmt.Sprintf("Zone %v has been update successfully!\n", zoneName))

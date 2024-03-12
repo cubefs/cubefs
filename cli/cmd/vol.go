@@ -15,7 +15,6 @@
 package cmd
 
 import (
-	"context"
 	"fmt"
 	"sort"
 	"strconv"
@@ -69,10 +68,9 @@ func newVolListCmd(client *master.MasterClient) *cobra.Command {
 		Run: func(cmd *cobra.Command, args []string) {
 			var vols []*proto.VolInfo
 			var err error
-			defer func() {
-				errout(err)
-			}()
-			if vols, err = client.AdminAPI().ListVols(context.TODO(), optKeyword); err != nil {
+			span, ctx := spanContext()
+			defer func() { errout(span, err) }()
+			if vols, err = client.AdminAPI().ListVols(ctx, optKeyword); err != nil {
 				return
 			}
 			stdout("%v\n", volumeInfoTableHeader)
@@ -146,9 +144,8 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 			var err error
 			volumeName := args[0]
 			userID := args[1]
-			defer func() {
-				errout(err)
-			}()
+			span, ctx := spanContext()
+			defer func() { errout(span, err) }()
 			crossZone, _ := strconv.ParseBool(optCrossZone)
 			followerRead, _ := strconv.ParseBool(optFollowerRead)
 			normalZonesFirst, _ := strconv.ParseBool(optNormalZonesFirst)
@@ -210,7 +207,7 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 			}
 
 			err = client.AdminAPI().CreateVolName(
-				context.TODO(),
+				ctx,
 				volumeName, userID, optCapacity, optDeleteLockTime, crossZone, normalZonesFirst, optBusiness,
 				optMPCount, optDPCount, int(replicaNum), optDPSize, optVolType, followerRead,
 				optZoneName, optCacheRuleKey, optEbsBlkSize, optCacheCap,
@@ -291,6 +288,7 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 	var optEnableQuota string
 	confirmString := strings.Builder{}
 	var vv *proto.SimpleVolView
+	span, ctx := spanContext()
 	cmd := &cobra.Command{
 		Use:   CliOpUpdate + " [VOLUME NAME]",
 		Short: cmdVolUpdateShort,
@@ -299,10 +297,8 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 			var err error
 			volumeName := args[0]
 			isChange := false
-			defer func() {
-				errout(err)
-			}()
-			if vv, err = client.AdminAPI().GetVolumeSimpleInfo(context.TODO(), volumeName); err != nil {
+			defer func() { errout(span, err) }()
+			if vv, err = client.AdminAPI().GetVolumeSimpleInfo(ctx, volumeName); err != nil {
 				return
 			}
 			confirmString.WriteString("Volume configuration changes:\n")
@@ -591,7 +587,7 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 					return
 				}
 			}
-			err = client.AdminAPI().UpdateVolume(context.TODO(), vv, optTxTimeout, optTxMask, optTxForceReset, optTxConflictRetryNum,
+			err = client.AdminAPI().UpdateVolume(ctx, vv, optTxTimeout, optTxMask, optTxForceReset, optTxConflictRetryNum,
 				optTxConflictRetryInterval, optTxOpLimitVal, clientIDKey)
 			if err != nil {
 				return
@@ -602,7 +598,7 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 			if len(args) != 0 {
 				return nil, cobra.ShellCompDirectiveNoFileComp
 			}
-			return validVols(client, toComplete), cobra.ShellCompDirectiveNoFileComp
+			return validVols(ctx, client, toComplete), cobra.ShellCompDirectiveNoFileComp
 		},
 	}
 	cmd.Flags().StringVar(&optDescription, CliFlagDescription, "", "The description of volume")
@@ -645,6 +641,7 @@ func newVolInfoCmd(client *master.MasterClient) *cobra.Command {
 		optDataDetail bool
 	)
 
+	span, ctx := spanContext()
 	cmd := &cobra.Command{
 		Use:   cmdVolInfoUse,
 		Short: cmdVolInfoShort,
@@ -653,10 +650,8 @@ func newVolInfoCmd(client *master.MasterClient) *cobra.Command {
 			var err error
 			volumeName := args[0]
 			var svv *proto.SimpleVolView
-			defer func() {
-				errout(err)
-			}()
-			if svv, err = client.AdminAPI().GetVolumeSimpleInfo(context.TODO(), volumeName); err != nil {
+			defer func() { errout(span, err) }()
+			if svv, err = client.AdminAPI().GetVolumeSimpleInfo(ctx, volumeName); err != nil {
 				err = fmt.Errorf("Get volume info failed:\n%v\n", err)
 				return
 			}
@@ -666,7 +661,7 @@ func newVolInfoCmd(client *master.MasterClient) *cobra.Command {
 			// print metadata detail
 			if optMetaDetail {
 				var views []*proto.MetaPartitionView
-				if views, err = client.ClientAPI().GetMetaPartitions(context.TODO(), volumeName); err != nil {
+				if views, err = client.ClientAPI().GetMetaPartitions(ctx, volumeName); err != nil {
 					err = fmt.Errorf("Get volume metadata detail information failed:\n%v\n", err)
 					return
 				}
@@ -683,7 +678,7 @@ func newVolInfoCmd(client *master.MasterClient) *cobra.Command {
 			// print data detail
 			if optDataDetail {
 				var view *proto.DataPartitionsView
-				if view, err = client.ClientAPI().EncodingGzip().GetDataPartitions(context.TODO(), volumeName); err != nil {
+				if view, err = client.ClientAPI().EncodingGzip().GetDataPartitions(ctx, volumeName); err != nil {
 					err = fmt.Errorf("Get volume data detail information failed:\n%v\n", err)
 					return
 				}
@@ -701,7 +696,7 @@ func newVolInfoCmd(client *master.MasterClient) *cobra.Command {
 			if len(args) != 0 {
 				return nil, cobra.ShellCompDirectiveNoFileComp
 			}
-			return validVols(client, toComplete), cobra.ShellCompDirectiveNoFileComp
+			return validVols(ctx, client, toComplete), cobra.ShellCompDirectiveNoFileComp
 		},
 	}
 	cmd.Flags().BoolVarP(&optMetaDetail, "meta-partition", "m", false, "Display meta partition detail information")
@@ -719,6 +714,7 @@ func newVolDeleteCmd(client *master.MasterClient) *cobra.Command {
 		optYes      bool
 		clientIDKey string
 	)
+	span, ctx := spanContext()
 	cmd := &cobra.Command{
 		Use:   cmdVolDeleteUse,
 		Short: cmdVolDeleteShort,
@@ -726,9 +722,7 @@ func newVolDeleteCmd(client *master.MasterClient) *cobra.Command {
 		Run: func(cmd *cobra.Command, args []string) {
 			var err error
 			volumeName := args[0]
-			defer func() {
-				errout(err)
-			}()
+			defer func() { errout(span, err) }()
 			// ask user for confirm
 			if !optYes {
 				stdout("Delete volume [%v] (yes/no)[no]:", volumeName)
@@ -741,12 +735,12 @@ func newVolDeleteCmd(client *master.MasterClient) *cobra.Command {
 			}
 
 			var svv *proto.SimpleVolView
-			if svv, err = client.AdminAPI().GetVolumeSimpleInfo(context.TODO(), volumeName); err != nil {
+			if svv, err = client.AdminAPI().GetVolumeSimpleInfo(ctx, volumeName); err != nil {
 				err = fmt.Errorf("Delete volume failed:\n%v\n", err)
 				return
 			}
 
-			if err = client.AdminAPI().DeleteVolumeWithAuthNode(context.TODO(), volumeName, util.CalcAuthKey(svv.Owner), clientIDKey); err != nil {
+			if err = client.AdminAPI().DeleteVolumeWithAuthNode(ctx, volumeName, util.CalcAuthKey(svv.Owner), clientIDKey); err != nil {
 				err = fmt.Errorf("Delete volume failed:\n%v\n", err)
 				return
 			}
@@ -756,7 +750,7 @@ func newVolDeleteCmd(client *master.MasterClient) *cobra.Command {
 			if len(args) != 0 {
 				return nil, cobra.ShellCompDirectiveNoFileComp
 			}
-			return validVols(client, toComplete), cobra.ShellCompDirectiveNoFileComp
+			return validVols(ctx, client, toComplete), cobra.ShellCompDirectiveNoFileComp
 		},
 	}
 	cmd.Flags().BoolVarP(&optYes, "yes", "y", false, "Answer yes for all questions")
@@ -783,8 +777,9 @@ func newVolTransferCmd(client *master.MasterClient) *cobra.Command {
 			volume := args[0]
 			userID := args[1]
 
+			span, ctx := spanContext()
 			defer func() {
-				errout(err)
+				errout(span, err)
 			}()
 
 			// ask user for confirm
@@ -800,7 +795,7 @@ func newVolTransferCmd(client *master.MasterClient) *cobra.Command {
 
 			// check target user and volume
 			var volSimpleView *proto.SimpleVolView
-			if volSimpleView, err = client.AdminAPI().GetVolumeSimpleInfo(context.TODO(), volume); err != nil {
+			if volSimpleView, err = client.AdminAPI().GetVolumeSimpleInfo(ctx, volume); err != nil {
 				return
 			}
 			if volSimpleView.Status != 0 {
@@ -808,7 +803,7 @@ func newVolTransferCmd(client *master.MasterClient) *cobra.Command {
 				return
 			}
 			var userInfo *proto.UserInfo
-			if userInfo, err = client.UserAPI().GetUserInfo(context.TODO(), userID); err != nil {
+			if userInfo, err = client.UserAPI().GetUserInfo(ctx, userID); err != nil {
 				return
 			}
 			param := proto.UserTransferVolParam{
@@ -817,7 +812,7 @@ func newVolTransferCmd(client *master.MasterClient) *cobra.Command {
 				UserDst: userInfo.UserID,
 				Force:   optForce,
 			}
-			if _, err = client.UserAPI().TransferVol(context.TODO(), &param, clientIDKey); err != nil {
+			if _, err = client.UserAPI().TransferVol(ctx, &param, clientIDKey); err != nil {
 				return
 			}
 			stdout("Volume has been transferred successfully.\n")
@@ -836,6 +831,7 @@ const (
 
 func newVolAddDPCmd(client *master.MasterClient) *cobra.Command {
 	var clientIDKey string
+	span, ctx := spanContext()
 	cmd := &cobra.Command{
 		Use:   cmdVolAddDPCmdUse,
 		Short: cmdVolAddDPCmdShort,
@@ -844,9 +840,7 @@ func newVolAddDPCmd(client *master.MasterClient) *cobra.Command {
 			volume := args[0]
 			number := args[1]
 			var err error
-			defer func() {
-				errout(err)
-			}()
+			defer func() { errout(span, err) }()
 			var count int64
 			if count, err = strconv.ParseInt(number, 10, 64); err != nil {
 				return
@@ -855,7 +849,7 @@ func newVolAddDPCmd(client *master.MasterClient) *cobra.Command {
 				err = fmt.Errorf("number must be larger than 0")
 				return
 			}
-			if err = client.AdminAPI().CreateDataPartition(context.TODO(), volume, int(count), clientIDKey); err != nil {
+			if err = client.AdminAPI().CreateDataPartition(ctx, volume, int(count), clientIDKey); err != nil {
 				return
 			}
 			stdout("Add dp successfully.\n")
@@ -864,7 +858,7 @@ func newVolAddDPCmd(client *master.MasterClient) *cobra.Command {
 			if len(args) != 0 {
 				return nil, cobra.ShellCompDirectiveNoFileComp
 			}
-			return validVols(client, toComplete), cobra.ShellCompDirectiveNoFileComp
+			return validVols(ctx, client, toComplete), cobra.ShellCompDirectiveNoFileComp
 		},
 	}
 	cmd.Flags().StringVar(&clientIDKey, CliFlagClientIDKey, client.ClientIDKey(), CliUsageClientIDKey)
@@ -878,6 +872,7 @@ const (
 
 func newVolAddMPCmd(client *master.MasterClient) *cobra.Command {
 	var clientIDKey string
+	span, ctx := spanContext()
 	cmd := &cobra.Command{
 		Use:   cmdVolAddMPCmdUse,
 		Short: cmdVolAddMPCmdShort,
@@ -886,9 +881,7 @@ func newVolAddMPCmd(client *master.MasterClient) *cobra.Command {
 			volume := args[0]
 			number := args[1]
 			var err error
-			defer func() {
-				errout(err)
-			}()
+			defer func() { errout(span, err) }()
 			var count int64
 			if count, err = strconv.ParseInt(number, 10, 64); err != nil {
 				return
@@ -897,7 +890,7 @@ func newVolAddMPCmd(client *master.MasterClient) *cobra.Command {
 				err = fmt.Errorf("number must be larger than 0")
 				return
 			}
-			if err = client.AdminAPI().CreateMetaPartition(context.TODO(), volume, int(count), clientIDKey); err != nil {
+			if err = client.AdminAPI().CreateMetaPartition(ctx, volume, int(count), clientIDKey); err != nil {
 				return
 			}
 			stdout("Add mp successfully.\n")
@@ -906,7 +899,7 @@ func newVolAddMPCmd(client *master.MasterClient) *cobra.Command {
 			if len(args) != 0 {
 				return nil, cobra.ShellCompDirectiveNoFileComp
 			}
-			return validVols(client, toComplete), cobra.ShellCompDirectiveNoFileComp
+			return validVols(ctx, client, toComplete), cobra.ShellCompDirectiveNoFileComp
 		},
 	}
 	cmd.Flags().StringVar(&clientIDKey, CliFlagClientIDKey, client.ClientIDKey(), CliUsageClientIDKey)
@@ -930,6 +923,7 @@ func newVolShrinkCmd(client *master.MasterClient) *cobra.Command {
 
 func newVolSetCapacityCmd(use, short string, r clientHandler) *cobra.Command {
 	var clientIDKey string
+	span, ctx := spanContext()
 	cmd := &cobra.Command{
 		Use:   use + " [VOLUME] [CAPACITY]",
 		Short: short,
@@ -938,16 +932,14 @@ func newVolSetCapacityCmd(use, short string, r clientHandler) *cobra.Command {
 			name := args[0]
 			capacityStr := args[1]
 			var err error
-			defer func() {
-				errout(err)
-			}()
+			defer func() { errout(span, err) }()
 			volume := r.(*volumeClient)
 			if volume.capacity, err = strconv.ParseUint(capacityStr, 10, 64); err != nil {
 				return
 			}
 			volume.name = name
 			volume.clientIDKey = clientIDKey
-			if err = volume.excuteHttp(); err != nil {
+			if err = volume.excuteHttp(ctx); err != nil {
 				return
 			}
 			stdout("Volume capacity has been set successfully.\n")
@@ -957,7 +949,7 @@ func newVolSetCapacityCmd(use, short string, r clientHandler) *cobra.Command {
 				return nil, cobra.ShellCompDirectiveNoFileComp
 			}
 			volume := r.(*volumeClient)
-			return validVols(volume.client, toComplete), cobra.ShellCompDirectiveNoFileComp
+			return validVols(ctx, volume.client, toComplete), cobra.ShellCompDirectiveNoFileComp
 		},
 	}
 	cmd.Flags().StringVar(&clientIDKey, CliFlagClientIDKey, r.(*volumeClient).client.ClientIDKey(), CliUsageClientIDKey)
@@ -978,14 +970,13 @@ func newVolSetForbiddenCmd(client *master.MasterClient) *cobra.Command {
 			name := args[0]
 			settingStr := args[1]
 			var err error
-			defer func() {
-				errout(err)
-			}()
+			span, ctx := spanContext()
+			defer func() { errout(span, err) }()
 			forbidden, err := strconv.ParseBool(settingStr)
 			if err != nil {
 				return
 			}
-			if err = client.AdminAPI().SetVolumeForbidden(context.TODO(), name, forbidden); err != nil {
+			if err = client.AdminAPI().SetVolumeForbidden(ctx, name, forbidden); err != nil {
 				return
 			}
 			stdout("Volume forbidden property has been set successfully, please wait few minutes for the settings to take effect.\n")
@@ -1008,14 +999,13 @@ func newVolSetAuditLogCmd(client *master.MasterClient) *cobra.Command {
 			name := args[0]
 			settingStr := args[1]
 			var err error
-			defer func() {
-				errout(err)
-			}()
+			span, ctx := spanContext()
+			defer func() { errout(span, err) }()
 			enable, err := strconv.ParseBool(settingStr)
 			if err != nil {
 				return
 			}
-			if err = client.AdminAPI().SetVolumeAuditLog(context.TODO(), name, enable); err != nil {
+			if err = client.AdminAPI().SetVolumeAuditLog(ctx, name, enable); err != nil {
 				return
 			}
 			stdout("Volume audit log has been set successfully, please wait few minutes for the settings to take effect.\n")
