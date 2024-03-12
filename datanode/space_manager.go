@@ -405,7 +405,7 @@ func (manager *SpaceManager) CreatePartition(request *proto.CreateDataPartitionR
 		dpCfg.PartitionID, dpCfg.Peers, request.Members)
 	dp = manager.partitions[dpCfg.PartitionID]
 	if dp != nil {
-		if err = dp.IsEquareCreateDataPartitionRequst(request); err != nil {
+		if err = dp.IsEqualCreateDataPartitionRequest(request); err != nil {
 			return nil, err
 		}
 		return
