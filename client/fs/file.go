@@ -560,7 +560,7 @@ func (f *File) Fsync(ctx context.Context, req *fuse.FsyncRequest) (err error) {
 
 // Setattr handles the setattr request.
 func (f *File) Setattr(ctx context.Context, req *fuse.SetattrRequest, resp *fuse.SetattrResponse) error {
-	span, ctxNew := proto.SpanWithContextPrefix(ctx, "Setattr-")
+	span, ctxNew := proto.SpanWithContextPrefix(ctx, "File-Setattr-")
 	var err error
 	bgTime := stat.BeginStat()
 	defer func() {
