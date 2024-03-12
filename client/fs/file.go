@@ -560,8 +560,7 @@ func (f *File) Fsync(ctx context.Context, req *fuse.FsyncRequest) (err error) {
 
 // Setattr handles the setattr request.
 func (f *File) Setattr(ctx context.Context, req *fuse.SetattrRequest, resp *fuse.SetattrResponse) error {
-	span := proto.SpanFromContext(ctx)
-	ctx = proto.ContextWithSpan(ctx, span)
+	span, ctxNew := proto.SpanWithContextPrefix(ctx, "Setattr-")
 	var err error
 	bgTime := stat.BeginStat()
 	defer func() {
@@ -589,7 +588,7 @@ func (f *File) Setattr(ctx context.Context, req *fuse.SetattrRequest, resp *fuse
 			return ParseError(err)
 		}
 		f.super.ic.Delete(ino)
-		f.super.ec.RefreshExtentsCache(ctx, ino)
+		f.super.ec.RefreshExtentsCache(ctxNew, ino)
 	}
 
 	info, err := f.super.InodeGet(ino)
@@ -605,7 +604,7 @@ func (f *File) Setattr(ctx context.Context, req *fuse.SetattrRequest, resp *fuse
 	}
 
 	if valid := setattr(info, req); valid != 0 {
-		err = f.super.mw.Setattr(ino, valid, info.Mode, info.Uid, info.Gid, info.AccessTime.Unix(),
+		err = f.super.mw.Setattr(ctxNew, ino, valid, info.Mode, info.Uid, info.Gid, info.AccessTime.Unix(),
 			info.ModifyTime.Unix())
 		if err != nil {
 			f.super.ic.Delete(ino)
