@@ -189,6 +189,7 @@ func (m *Server) loadMetadata() {
 		panic(err)
 	}
 	log.LogInfo("action[loadMetadata] end")
+	syslog.Println("action[loadMetadata] end")
 
 	log.LogInfo("action[loadUserInfo] begin")
 	if err = m.user.loadUserStore(); err != nil {
