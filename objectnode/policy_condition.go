@@ -20,8 +20,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
-
-	"github.com/cubefs/cubefs/util/log"
 )
 
 var (
@@ -119,7 +117,6 @@ type Condition []Operation
 func (operations Condition) Evaluate(values map[string]string) bool {
 	for _, op := range operations {
 		if !op.evaluate(values) {
-			log.LogDebugf("cannot match a condition, operator:%v, conditionKV:%v, values: %v", op.operator(), op.toMap(), values)
 			return false
 		}
 	}

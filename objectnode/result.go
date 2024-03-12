@@ -20,8 +20,6 @@ import (
 	"encoding/xml"
 	"net/url"
 	"regexp"
-
-	"github.com/cubefs/cubefs/util/log"
 )
 
 var regexKeyValue = regexp.MustCompile(`^[0-9a-zA-Z+=._ :/@-]+$`)
@@ -291,7 +289,6 @@ func (t Tagging) Validate() (bool, *ErrorCode) {
 		return false, ExceedTagLimit
 	}
 	for _, tag := range t.TagSet {
-		log.LogDebugf("Validate: key : (%v), value : (%v)", tag.Key, tag.Value)
 		if len(tag.Key) > TaggingKeyMaxLength || !regexKeyValue.MatchString(tag.Key) {
 			return false, InvalidTagKey
 		}

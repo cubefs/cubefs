@@ -32,7 +32,6 @@ import (
 	"time"
 
 	"github.com/cubefs/cubefs/util"
-	"github.com/cubefs/cubefs/util/log"
 )
 
 const (
@@ -200,7 +199,6 @@ func isIPNetContainsIP(ipStr, ipnetStr string) (bool, error) {
 	}
 	_, ipnet, err := net.ParseCIDR(ipnetStr)
 	if err != nil {
-		log.LogInfof("parse ipnet error ipnet   %v", ipnetStr)
 		return false, err
 	}
 
@@ -221,7 +219,6 @@ func patternMatch(pattern, key string) bool {
 	}
 	matched, err := regexp.MatchString(pattern, key)
 	if err != nil {
-		log.LogErrorf("patternMatch error %v", err)
 		return false
 	}
 
@@ -311,10 +308,10 @@ func ValidateCacheControl(cacheControl string) bool {
 	cacheDirs := strings.Split(cacheControl, ",")
 	for _, dir := range cacheDirs {
 		if !contains(cacheControlDir, dir) && !maxAgeRegexp.MatchString(dir) {
-			log.LogErrorf("invalid cache-control directive: %v", dir)
 			return false
 		}
 	}
+
 	return true
 }
 
@@ -322,7 +319,6 @@ func ValidateCacheExpires(expires string) bool {
 	var err error
 	var stamp time.Time
 	if stamp, err = time.Parse(RFC1123Format, expires); err != nil {
-		log.LogErrorf("invalid expires: %v", expires)
 		return false
 	}
 	expiresInt := stamp.Unix()
@@ -330,7 +326,7 @@ func ValidateCacheExpires(expires string) bool {
 	if now < expiresInt {
 		return true
 	}
-	log.LogErrorf("Expires less than now: %v, now: %v", expires, now)
+
 	return false
 }
 

@@ -15,12 +15,11 @@
 package objectnode
 
 import (
+	"context"
 	"encoding/xml"
 	"errors"
 	"strconv"
 	"time"
-
-	"github.com/cubefs/cubefs/util/log"
 )
 
 var (
@@ -175,15 +174,13 @@ func (r RetentionDate) MarshalXML(e *xml.Encoder, startElement xml.StartElement)
 	return e.EncodeElement(r.Format(ISO8601Layout), startElement)
 }
 
-func storeObjectLock(bytes []byte, vol *Volume) (err error) {
-	return vol.store.Put(vol.name, bucketRootPath, XAttrKeyOSSLock, bytes)
+func storeObjectLock(ctx context.Context, bytes []byte, vol *Volume) (err error) {
+	return vol.store.Put(ctx, vol.name, bucketRootPath, XAttrKeyOSSLock, bytes)
 }
 
-func isObjectLocked(v *Volume, inode uint64, name, path string) error {
+func isObjectLocked(ctx context.Context, v *Volume, inode uint64, name, path string) error {
 	xattrInfo, err := v.mw.XAttrGet_ll(inode, XAttrKeyOSSLock)
 	if err != nil {
-		log.LogErrorf("isObjectLocked: check ObjectLock err(%v) volume(%v) path(%v) name(%v)",
-			err, v.name, path, name)
 		return err
 	}
 	retainUntilDate := xattrInfo.Get(XAttrKeyOSSLock)
@@ -193,8 +190,6 @@ func isObjectLocked(v *Volume, inode uint64, name, path string) error {
 			return err
 		}
 		if retainUntilDateInt64 > time.Now().UnixNano() {
-			log.LogWarnf("isObjectLocked: object is locked, retainUntilDate(%v) volume(%v) path(%v) name(%v)",
-				retainUntilDateInt64, v.name, path, name)
 			return AccessDenied
 		}
 	}

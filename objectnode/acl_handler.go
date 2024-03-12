@@ -20,9 +20,6 @@ import (
 	"net/http"
 	"syscall"
 	"time"
-
-	"github.com/cubefs/cubefs/blobstore/common/trace"
-	"github.com/cubefs/cubefs/util/log"
 )
 
 // https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetBucketAcl.html
@@ -31,6 +28,9 @@ func (o *ObjectNode) getBucketACLHandler(w http.ResponseWriter, r *http.Request)
 		err error
 		erc *ErrorCode
 	)
+
+	ctx := r.Context()
+	span := spanWithOperation(ctx, "GetBucketAcl")
 	defer func() {
 		o.errorResponse(w, r, err, erc)
 	}()
@@ -40,30 +40,29 @@ func (o *ObjectNode) getBucketACLHandler(w http.ResponseWriter, r *http.Request)
 		erc = InvalidBucketName
 		return
 	}
+
 	var vol *Volume
-	if vol, err = o.getVol(param.bucket); err != nil {
-		log.LogErrorf("getBucketACLHandler: load volume fail: requestID(%v) volume(%v) err(%v)",
-			GetRequestID(r), param.bucket, err)
+	if vol, err = o.getVol(ctx, param.Bucket()); err != nil {
+		span.Errorf("load volume fail: volume(%v) err(%v)", param.Bucket(), err)
 		return
 	}
+
 	var acl *AccessControlPolicy
-	if acl, err = vol.metaLoader.loadACL(); err != nil {
-		log.LogErrorf("getBucketACLHandler: load acl fail: requestID(%v) volume(%v) err(%v)",
-			GetRequestID(r), param.bucket, err)
+	if acl, err = vol.metaLoader.loadACL(ctx); err != nil {
+		span.Errorf("load ACL fail: volume(%v) err(%v)", vol.Name(), err)
 		return
 	}
 	if acl == nil || acl.IsEmpty() {
 		acl = CreateDefaultACL(vol.owner)
 	}
+
 	var data []byte
 	if data, err = acl.XmlMarshal(); err != nil {
-		log.LogErrorf("getBucketACLHandler: acl xml marshal fail: requestID(%v) volume(%v) acl(%+v) err(%v)",
-			GetRequestID(r), param.bucket, acl, err)
+		span.Errorf("marshal xml acl fail: acl(%+v) err(%v)", acl, err)
 		return
 	}
 
 	writeSuccessResponseXML(w, data)
-	return
 }
 
 // https://docs.aws.amazon.com/AmazonS3/latest/API/API_PutBucketAcl.html
@@ -72,6 +71,9 @@ func (o *ObjectNode) putBucketACLHandler(w http.ResponseWriter, r *http.Request)
 		err error
 		erc *ErrorCode
 	)
+
+	ctx := r.Context()
+	span := spanWithOperation(ctx, "PutBucketAcl")
 	defer func() {
 		o.errorResponse(w, r, err, erc)
 	}()
@@ -87,25 +89,22 @@ func (o *ObjectNode) putBucketACLHandler(w http.ResponseWriter, r *http.Request)
 	}
 
 	var vol *Volume
-	if vol, err = o.getVol(param.bucket); err != nil {
-		log.LogErrorf("putBucketACLHandler: load volume fail: requestID(%v) volume(%v) err(%v)",
-			GetRequestID(r), param.bucket, err)
+	if vol, err = o.getVol(ctx, param.Bucket()); err != nil {
+		span.Errorf("load volume fail: volume(%v) err(%v)", param.Bucket(), err)
 		return
 	}
+
 	var acl *AccessControlPolicy
 	if acl, err = ParseACL(r, vol.owner, r.ContentLength > 0, true); err != nil {
-		log.LogErrorf("putBucketACLHandler: parse acl fail: requestID(%v) volume(%v) err(%v)",
-			GetRequestID(r), param.bucket, err)
 		return
 	}
-	if err = putBucketACL(vol, acl); err != nil {
-		log.LogErrorf("putBucketACLHandler: put acl fail: requestID(%v) volume(%v) acl(%+v) err(%v)",
-			GetRequestID(r), param.bucket, acl, err)
-		return
-	}
-	vol.metaLoader.storeACL(acl)
 
-	return
+	if err = putBucketACL(ctx, vol, acl); err != nil {
+		span.Errorf("put acl fail: volume(%v) acl(%+v) err(%v)", vol.Name(), acl, err)
+		return
+	}
+
+	vol.metaLoader.storeACL(acl)
 }
 
 // https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObjectAcl.html
@@ -115,7 +114,8 @@ func (o *ObjectNode) getObjectACLHandler(w http.ResponseWriter, r *http.Request)
 		erc *ErrorCode
 	)
 
-	span := trace.SpanFromContextSafe(r.Context())
+	ctx := r.Context()
+	span := spanWithOperation(ctx, "GetObjectAcl")
 	defer func() {
 		o.errorResponse(w, r, err, erc)
 	}()
@@ -131,32 +131,29 @@ func (o *ObjectNode) getObjectACLHandler(w http.ResponseWriter, r *http.Request)
 	}
 
 	var vol *Volume
-	if vol, err = o.getVol(param.bucket); err != nil {
-		log.LogErrorf("getObjectACLHandler: load volume fail: requestID(%v) volume(%v) err(%v)",
-			GetRequestID(r), param.bucket, err)
+	if vol, err = o.getVol(ctx, param.Bucket()); err != nil {
+		span.Errorf("load volume fail: volume(%v) err(%v)", param.Bucket(), err)
 		return
 	}
 
 	start := time.Now()
-	acl, err := getObjectACL(vol, param.object, true)
+	acl, err := getObjectACL(ctx, vol, param.Object(), true)
 	span.AppendTrackLog("xattr.r", start, err)
 	if err != nil {
-		log.LogErrorf("getObjectACLHandler: get acl fail: requestID(%v) volume(%v) path(%v) err(%v)",
-			GetRequestID(r), param.bucket, param.object, err)
+		span.Errorf("get acl fail: volume(%v) path(%v) err(%v)", vol.Name(), param.Object(), err)
 		if err == syscall.ENOENT {
 			erc = NoSuchKey
 		}
 		return
 	}
+
 	var data []byte
 	if data, err = acl.XmlMarshal(); err != nil {
-		log.LogErrorf("getObjectACLHandler: xml marshal fail: requestID(%v) volume(%v) path(%v) acl(%+v) err(%v)",
-			GetRequestID(r), param.bucket, param.object, acl, err)
+		span.Errorf("marshal xml acl fail: acl(%+v) err(%v)", acl, err)
 		return
 	}
 
 	writeSuccessResponseXML(w, data)
-	return
 }
 
 // https://docs.aws.amazon.com/AmazonS3/latest/API/API_PutObjectAcl.html
@@ -166,7 +163,8 @@ func (o *ObjectNode) putObjectACLHandler(w http.ResponseWriter, r *http.Request)
 		erc *ErrorCode
 	)
 
-	span := trace.SpanFromContextSafe(r.Context())
+	ctx := r.Context()
+	span := spanWithOperation(ctx, "PutObjectAcl")
 	defer func() {
 		o.errorResponse(w, r, err, erc)
 	}()
@@ -186,18 +184,17 @@ func (o *ObjectNode) putObjectACLHandler(w http.ResponseWriter, r *http.Request)
 	}
 
 	var vol *Volume
-	if vol, err = o.getVol(param.bucket); err != nil {
-		log.LogErrorf("putObjectACLHandler: load volume fail: requestID(%v) volume(%v) err(%v)",
-			GetRequestID(r), param.bucket, err)
+	if vol, err = o.getVol(ctx, param.Bucket()); err != nil {
+		span.Errorf("load volume fail: volume(%v) err(%v)", param.Bucket(), err)
 		return
 	}
+
 	var acl, oldAcl *AccessControlPolicy
 	start := time.Now()
-	oldAcl, err = getObjectACL(vol, param.object, false)
+	oldAcl, err = getObjectACL(ctx, vol, param.Object(), false)
 	span.AppendTrackLog("xattr.r", start, err)
 	if err != nil {
-		log.LogErrorf("putObjectACLHandler: get acl fail: requestID(%v) volume(%v) path(%v) err(%v)",
-			GetRequestID(r), param.bucket, param.object, err)
+		span.Errorf("get acl fail: volume(%v) path(%v) err(%v)", vol.Name(), param.Object(), err)
 		if err == syscall.ENOENT {
 			erc = NoSuchKey
 		}
@@ -208,8 +205,6 @@ func (o *ObjectNode) putObjectACLHandler(w http.ResponseWriter, r *http.Request)
 		owner = oldAcl.GetOwner()
 	}
 	if acl, err = ParseACL(r, owner, r.ContentLength > 0, true); err != nil {
-		log.LogErrorf("putObjectACLHandler: parse acl fail: requestID(%v) volume(%v) path(%v) err(%v)",
-			GetRequestID(r), param.bucket, param.object, err)
 		return
 	}
 	if oldAcl != nil {
@@ -218,24 +213,22 @@ func (o *ObjectNode) putObjectACLHandler(w http.ResponseWriter, r *http.Request)
 			originalOwner = vol.owner
 		}
 		if originalOwner != acl.GetOwner() {
-			log.LogErrorf("putObjectACLHandler: owner cannot be modified: requestID(%v) volume(%v) path(%v) acl(%+v) err(%v)",
-				GetRequestID(r), param.bucket, param.object, oldAcl, err)
+			span.Errorf("owner cannot be modified: volume(%v) path(%v) oldACL(%+v) newACL(%+v)",
+				vol.Name(), param.Object(), oldAcl, acl)
 			erc = AccessDenied
 			return
 		}
 	}
 
 	start = time.Now()
-	err = putObjectACL(vol, param.object, acl)
+	err = putObjectACL(ctx, vol, param.Object(), acl)
 	span.AppendTrackLog("xattr.w", start, err)
 	if err != nil {
-		log.LogErrorf("putObjectACLHandler: store acl fail: requestID(%v) volume(%v) path(%v) acl(%+v) err(%v)",
-			GetRequestID(r), param.bucket, param.object, acl, err)
+		span.Errorf("put acl fail: volume(%v) path(%v) acl(%+v) err(%v)",
+			vol.Name(), param.Object(), acl, err)
 		if err == syscall.ENOENT {
 			erc = NoSuchKey
 		}
 		return
 	}
-
-	return
 }

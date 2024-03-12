@@ -21,10 +21,10 @@ import (
 	"sync"
 	"time"
 
+	"github.com/cubefs/cubefs/blobstore/common/trace"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/sdk/master"
 	"github.com/cubefs/cubefs/util/exporter"
-	"github.com/cubefs/cubefs/util/log"
 )
 
 const (
@@ -35,18 +35,19 @@ const (
 )
 
 type UserInfoStore interface {
-	LoadUser(accessKey string) (*proto.UserInfo, error)
+	LoadUser(ctx context.Context, accessKey string) (*proto.UserInfo, error)
 }
 
 type StrictUserInfoStore struct {
 	mc *master.MasterClient
 }
 
-func (s *StrictUserInfoStore) LoadUser(accessKey string) (*proto.UserInfo, error) {
+func (s *StrictUserInfoStore) LoadUser(ctx context.Context, accessKey string) (*proto.UserInfo, error) {
 	// if error occurred when loading user, and error is not NotExist, output an ump log
-	userInfo, err := s.mc.UserAPI().GetAKInfo(context.TODO(), accessKey)
+	userInfo, err := s.mc.UserAPI().GetAKInfo(ctx, accessKey)
 	if err != nil && err != proto.ErrUserNotExists && err != proto.ErrAccessKeyNotExists {
-		log.LogErrorf("LoadUser: fetch user info fail: err(%v)", err)
+		trace.SpanFromContextSafe(ctx).Errorf("get user info from master fail: accessKey(%v) err(%v)",
+			accessKey, err)
 		exporter.Warning(fmt.Sprintf("StrictUserInfoStore load user fail: accessKey(%v) err(%v)", accessKey, err))
 	}
 	return userInfo, err
@@ -68,8 +69,8 @@ func (s *CacheUserInfoStore) Close() {
 	}
 }
 
-func (s *CacheUserInfoStore) LoadUser(accessKey string) (*proto.UserInfo, error) {
-	return s.selectLoader(accessKey).LoadUser(accessKey)
+func (s *CacheUserInfoStore) LoadUser(ctx context.Context, accessKey string) (*proto.UserInfo, error) {
+	return s.selectLoader(accessKey).LoadUser(ctx, accessKey)
 }
 
 func NewUserInfoStore(masters []string, strict bool) UserInfoStore {
@@ -153,19 +154,22 @@ func (us *CacheUserInfoLoader) scheduleUpdate() {
 			aks = append(aks, ak)
 		}
 		us.akInfoMutex.RUnlock()
+
+		ctx := context.Background()
+		span := spanWithOperation(ctx, "CacheScheduleUpdate")
 		for _, ak := range aks {
-			akPolicy, err := us.mc.UserAPI().GetAKInfo(context.TODO(), ak)
+			akPolicy, err := us.mc.UserAPI().GetAKInfo(ctx, ak)
 			if err == proto.ErrUserNotExists || err == proto.ErrAccessKeyNotExists {
 				us.akInfoMutex.Lock()
 				delete(us.akInfoStore, ak)
 				us.akInfoMutex.Unlock()
 				us.blacklist.Store(ak, time.Now())
-				log.LogDebugf("scheduleUpdate: release user info: accessKey(%v)", ak)
+				span.Debugf("release user info and add to blacklist: accessKey(%v)", ak)
 				continue
 			}
 			// if error info is not empty, it means error occurred communication with master, output an ump log
 			if err != nil {
-				log.LogErrorf("scheduleUpdate: fetch user info fail: accessKey(%v), err(%v)", ak, err)
+				span.Errorf("get user info from master fail: accessKey(%v) err(%v)", ak, err)
 				exporter.Warning(fmt.Sprintf("CacheUserInfoLoader get user info fail when scheduling update: err(%v)", err))
 				break
 			}
@@ -181,58 +185,63 @@ func (us *CacheUserInfoLoader) syncUserInit(accessKey string) (releaseFunc func(
 	value, _ := us.akInitMap.LoadOrStore(accessKey, new(sync.Mutex))
 	initMu := value.(*sync.Mutex)
 	initMu.Lock()
-	log.LogDebugf("syncUserInit: get user init lock: accessKey(%v)", accessKey)
+
 	return func() {
 		initMu.Unlock()
 		us.akInitMap.Delete(accessKey)
-		log.LogDebugf("syncUserInit: release user init lock: accessKey(%v)", accessKey)
 	}
 }
 
-func (us *CacheUserInfoLoader) LoadUser(accessKey string) (*proto.UserInfo, error) {
-	var err error
+func (us *CacheUserInfoLoader) LoadUser(ctx context.Context, accessKey string) (userInfo *proto.UserInfo, err error) {
+	span := spanWithOperation(ctx, "LoadUser")
 	// Check if the access key is on the blacklist.
 	if val, exist := us.blacklist.Load(accessKey); exist {
 		if ts, is := val.(time.Time); is {
 			if time.Since(ts) <= userBlacklistTTL {
-				return nil, proto.ErrUserNotExists
+				span.Debugf("load user(%v) from blacklist and not expired, return ErrUserNotExists", accessKey)
+				err = proto.ErrUserNotExists
+				return
 			}
 		}
 	}
-	var userInfo *proto.UserInfo
-	var exist bool
+
 	us.akInfoMutex.RLock()
-	userInfo, exist = us.akInfoStore[accessKey]
+	userInfo, exist := us.akInfoStore[accessKey]
 	us.akInfoMutex.RUnlock()
 	if !exist {
 		release := us.syncUserInit(accessKey)
+		defer release()
+
 		us.akInfoMutex.RLock()
 		userInfo, exist = us.akInfoStore[accessKey]
 		if exist {
 			us.akInfoMutex.RUnlock()
-			release()
-			return userInfo, nil
+			return
 		}
 		us.akInfoMutex.RUnlock()
 
-		userInfo, err = us.mc.UserAPI().GetAKInfo(context.TODO(), accessKey)
+		userInfo, err = us.mc.UserAPI().GetAKInfo(ctx, accessKey)
 		if err != nil {
+			span.Debugf("get user info from master fail and add to blacklist: accessKey(%v) err(%v)",
+				accessKey, err)
 			if err != proto.ErrUserNotExists && err != proto.ErrAccessKeyNotExists {
-				log.LogErrorf("LoadUser: fetch user info fail: err(%v)", err)
+				span.Errorf("get user info from master fail and add to blacklist: accessKey(%v) err(%v)",
+					accessKey, err)
 				// if error occurred when loading user, and error is not NotExist, output an ump log
 				exporter.Warning(fmt.Sprintf("CacheUserInfoLoader load user info fail: accessKey(%v) err(%v)", accessKey, err))
 			}
-			release()
 			us.blacklist.Store(accessKey, time.Now())
-			return nil, err
+			return
 		}
 
 		us.akInfoMutex.Lock()
 		us.akInfoStore[accessKey] = userInfo
 		us.akInfoMutex.Unlock()
-		release()
+
+		span.Debugf("get user info success: accessKey(%v) userInfo(%+v)", accessKey, userInfo)
 	}
-	return userInfo, nil
+
+	return
 }
 
 func (us *CacheUserInfoLoader) Close() {

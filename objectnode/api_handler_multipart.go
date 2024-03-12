@@ -15,6 +15,7 @@
 package objectnode
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/xml"
@@ -25,9 +26,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/cubefs/cubefs/blobstore/common/trace"
 	"github.com/cubefs/cubefs/proto"
-	"github.com/cubefs/cubefs/util/log"
 )
 
 var (
@@ -44,6 +43,9 @@ func (o *ObjectNode) createMultipleUploadHandler(w http.ResponseWriter, r *http.
 		err       error
 		errorCode *ErrorCode
 	)
+
+	ctx := r.Context()
+	span := spanWithOperation(ctx, "CreateMultipartUpload")
 	defer func() {
 		o.errorResponse(w, r, err, errorCode)
 	}()
@@ -61,10 +63,10 @@ func (o *ObjectNode) createMultipleUploadHandler(w http.ResponseWriter, r *http.
 		errorCode = KeyTooLong
 		return
 	}
+
 	var vol *Volume
-	if vol, err = o.getVol(param.Bucket()); err != nil {
-		log.LogErrorf("createMultipleUploadHandler: load volume fail: requestID(%v) err(%v)",
-			GetRequestID(r), err)
+	if vol, err = o.getVol(ctx, param.Bucket()); err != nil {
+		span.Errorf("load volume fail: volume(%v) err(%v)", param.Bucket(), err)
 		return
 	}
 
@@ -76,9 +78,8 @@ func (o *ObjectNode) createMultipleUploadHandler(w http.ResponseWriter, r *http.
 	defer rateLimit.ReleaseLimitResource(vol.owner, param.apiName)
 
 	var userInfo *proto.UserInfo
-	if userInfo, err = o.getUserInfoByAccessKeyV2(param.AccessKey()); err != nil {
-		log.LogErrorf("createMultipleUploadHandler: get user info fail: requestID(%v) accessKey(%v) err(%v)",
-			GetRequestID(r), param.AccessKey(), err)
+	if userInfo, err = o.getUserInfoByAccessKey(ctx, param.AccessKey()); err != nil {
+		span.Errorf("get user info fail: accessKey(%v) err(%v)", param.AccessKey(), err)
 		return
 	}
 
@@ -107,14 +108,13 @@ func (o *ObjectNode) createMultipleUploadHandler(w http.ResponseWriter, r *http.
 			return
 		}
 	}
+
 	// Check ACL
-	var acl *AccessControlPolicy
-	acl, err = ParseACL(r, userInfo.UserID, false, vol.GetOwner() != userInfo.UserID)
+	acl, err := ParseACL(r, userInfo.UserID, false, vol.GetOwner() != userInfo.UserID)
 	if err != nil {
-		log.LogErrorf("createMultipleUploadHandler: parse acl fail: requestID(%v) acl(%+v) err(%v)",
-			GetRequestID(r), acl, err)
 		return
 	}
+
 	opt := &PutFileOption{
 		MIMEType:     contentType,
 		Disposition:  contentDisposition,
@@ -124,11 +124,10 @@ func (o *ObjectNode) createMultipleUploadHandler(w http.ResponseWriter, r *http.
 		Expires:      expires,
 		ACL:          acl,
 	}
-
 	var uploadID string
-	if uploadID, err = vol.InitMultipart(param.Object(), opt); err != nil {
-		log.LogErrorf("createMultipleUploadHandler: init multipart fail: requestID(%v) err(%v)",
-			GetRequestID(r), err)
+	if uploadID, err = vol.InitMultipart(ctx, param.Object(), opt); err != nil {
+		span.Errorf("init multipart fail: volume(%v) path(%v) option(%+v) err(%v)",
+			vol.Name(), param.Object(), opt, err)
 		return
 	}
 
@@ -139,13 +138,11 @@ func (o *ObjectNode) createMultipleUploadHandler(w http.ResponseWriter, r *http.
 	}
 	response, err := MarshalXMLEntity(initResult)
 	if err != nil {
-		log.LogErrorf("createMultipleUploadHandler: xml marshal result fail: requestID(%v) result(%v) err(%v)",
-			GetRequestID(r), initResult, err)
+		span.Errorf("marshal xml response fail: response(%v) err(%v)", initResult, err)
 		return
 	}
 
 	writeSuccessResponseXML(w, response)
-	return
 }
 
 // Upload part
@@ -157,26 +154,23 @@ func (o *ObjectNode) uploadPartHandler(w http.ResponseWriter, r *http.Request) {
 		errorCode *ErrorCode
 	)
 
-	span := trace.SpanFromContextSafe(r.Context())
+	ctx := r.Context()
+	span := spanWithOperation(ctx, "UploadPart")
 	defer func() {
 		o.errorResponse(w, r, err, errorCode)
 	}()
 
 	// check args
 	param := ParseRequestParam(r)
-	// get upload id and part number
 	uploadId := param.GetVar(ParamUploadId)
 	partNumber := param.GetVar(ParamPartNumber)
 	if uploadId == "" || partNumber == "" {
-		log.LogErrorf("uploadPartHandler: illegal uploadID or partNumber, requestID(%v)", GetRequestID(r))
 		errorCode = InvalidArgument
 		return
 	}
 
 	var partNumberInt uint16
 	if partNumberInt, err = safeConvertStrToUint16(partNumber); err != nil || partNumberInt < 1 {
-		log.LogErrorf("uploadPartHandler: parse part number fail, requestID(%v) raw(%v) err(%v)",
-			GetRequestID(r), partNumber, err)
 		errorCode = InvalidPartNumber
 		return
 	}
@@ -212,17 +206,15 @@ func (o *ObjectNode) uploadPartHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var vol *Volume
-	if vol, err = o.getVol(param.Bucket()); err != nil {
-		log.LogErrorf("uploadPartHandler: load volume fail: requestID(%v) err(%v)",
-			GetRequestID(r), err)
+	if vol, err = o.getVol(ctx, param.Bucket()); err != nil {
+		span.Errorf("load volume fail: volume(%v) err(%v)", param.Bucket(), err)
 		return
 	}
 
 	// ObjectLock  Config
-	objetLock, err := vol.metaLoader.loadObjectLock()
+	objetLock, err := vol.metaLoader.loadObjectLock(ctx)
 	if err != nil {
-		log.LogErrorf("putObjectHandler: load volume objetLock: requestID(%v)  volume(%v) err(%v)",
-			GetRequestID(r), param.Bucket(), err)
+		span.Errorf("load objetLock fail: volume(%v) err(%v)", vol.Name(), err)
 		return
 	}
 	if objetLock != nil && objetLock.ToRetention() != nil && requestMD5 == "" {
@@ -247,26 +239,23 @@ func (o *ObjectNode) uploadPartHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Write Part
 	start := time.Now()
-	fsFileInfo, err := vol.WritePart(param.Object(), uploadId, partNumberInt, reader)
+	fsFileInfo, err := vol.WritePart(ctx, param.Object(), uploadId, partNumberInt, reader)
 	span.AppendTrackLog("part.w", start, err)
 	if err != nil {
-		log.LogErrorf("uploadPartHandler: write part fail: requestID(%v) volume(%v) path(%v) uploadId(%v) part(%v) err(%v)",
-			GetRequestID(r), vol.Name(), param.Object(), uploadId, partNumberInt, err)
+		span.Errorf("write part fail: volume(%v) path(%v) uploadId(%v) partNum(%v) err(%v)",
+			vol.Name(), param.Object(), uploadId, partNumberInt, err)
 		err = handleWritePartErr(err)
 		return
 	}
 
 	// check content MD5
 	if requestMD5 != "" && requestMD5 != fsFileInfo.ETag {
-		log.LogErrorf("uploadPartHandler: MD5 validate fail: requestID(%v) volume(%v) path(%v) requestMD5(%v) serverMD5(%v)",
-			GetRequestID(r), vol.Name(), param.Object(), requestMD5, fsFileInfo.ETag)
 		errorCode = BadDigest
 		return
 	}
 
 	// write header to response
 	w.Header()[ETag] = []string{"\"" + fsFileInfo.ETag + "\""}
-	return
 }
 
 // Upload part copy
@@ -278,7 +267,8 @@ func (o *ObjectNode) uploadPartCopyHandler(w http.ResponseWriter, r *http.Reques
 		errorCode *ErrorCode
 	)
 
-	span := trace.SpanFromContextSafe(r.Context())
+	ctx := r.Context()
+	span := spanWithOperation(ctx, "UploadPartCopy")
 	defer func() {
 		o.errorResponse(w, r, err, errorCode)
 	}()
@@ -288,14 +278,11 @@ func (o *ObjectNode) uploadPartCopyHandler(w http.ResponseWriter, r *http.Reques
 	uploadId := param.GetVar(ParamUploadId)
 	partNumber := param.GetVar(ParamPartNumber)
 	if uploadId == "" || partNumber == "" {
-		log.LogErrorf("uploadPartCopyHandler: illegal uploadID or partNumber, requestID(%v)", GetRequestID(r))
 		errorCode = InvalidArgument
 		return
 	}
 	var partNumberInt uint16
 	if partNumberInt, err = safeConvertStrToUint16(partNumber); err != nil || partNumberInt < 1 {
-		log.LogErrorf("uploadPartCopyHandler: parse part number fail, requestID(%v) raw(%v) err(%v)",
-			GetRequestID(r), partNumber, err)
 		errorCode = InvalidPartNumber
 		return
 	}
@@ -307,10 +294,10 @@ func (o *ObjectNode) uploadPartCopyHandler(w http.ResponseWriter, r *http.Reques
 		errorCode = InvalidKey
 		return
 	}
+
 	var vol *Volume
-	if vol, err = o.getVol(param.Bucket()); err != nil {
-		log.LogErrorf("uploadPartCopyHandler: load volume fail: requestID(%v) volume(%v) err(%v)",
-			GetRequestID(r), param.Bucket(), err)
+	if vol, err = o.getVol(ctx, param.Bucket()); err != nil {
+		span.Errorf("load volume fail: volume(%v) err(%v)", param.Bucket(), err)
 		return
 	}
 
@@ -324,24 +311,22 @@ func (o *ObjectNode) uploadPartCopyHandler(w http.ResponseWriter, r *http.Reques
 	// step2: extract params from req
 	srcBucket, srcObject, _, err := extractSrcBucketKey(r)
 	if err != nil {
-		log.LogDebugf("uploadPartCopyHandler: copySource(%v) argument invalid: requestID(%v)",
-			r.Header.Get(XAmzCopySource), GetRequestID(r))
+		span.Errorf("invalid %v: %v", XAmzCopySource, r.Header.Get(XAmzCopySource))
 		return
 	}
 
 	// step3: get srcObject metadata
 	var srcVol *Volume
-	if srcVol, err = o.getVol(srcBucket); err != nil {
-		log.LogErrorf("uploadPartCopyHandler: load src volume fail: requestID(%v) volume(%v) err(%v)",
-			GetRequestID(r), srcBucket, err)
+	if srcVol, err = o.getVol(ctx, srcBucket); err != nil {
+		span.Errorf("load volume fail: volume(%v) err(%v)", srcBucket, err)
 		return
 	}
+
 	start := time.Now()
-	srcFileInfo, _, err := srcVol.ObjectMeta(srcObject)
+	srcFileInfo, _, err := srcVol.ObjectMeta(ctx, srcObject)
 	span.AppendTrackLog("meta.r", start, err)
 	if err != nil {
-		log.LogErrorf("uploadPartCopyHandler: get fileMeta fail: requestId(%v) srcVol(%v) path(%v) err(%v)",
-			GetRequestID(r), srcBucket, srcObject, err)
+		span.Errorf("get object meta fail: volume(%v) path(%v) err(%v)", srcBucket, srcObject, err)
 		if err == syscall.ENOENT {
 			errorCode = NoSuchKey
 		}
@@ -357,6 +342,7 @@ func (o *ObjectNode) uploadPartCopyHandler(w http.ResponseWriter, r *http.Reques
 	copyRange := r.Header.Get(XAmzCopySourceRange)
 	firstByte, copyLength, errorCode := determineCopyRange(copyRange, srcFileInfo.Size)
 	if errorCode != nil {
+		span.Errorf("invalid %v(%v) with fsize(%v): %v", XAmzCopySourceRange, copyRange, srcFileInfo.Size, err)
 		return
 	}
 	size, err := safeConvertInt64ToUint64(srcFileInfo.Size)
@@ -371,12 +357,13 @@ func (o *ObjectNode) uploadPartCopyHandler(w http.ResponseWriter, r *http.Reques
 	if err != nil {
 		return
 	}
+
 	reader, writer := io.Pipe()
 	go func() {
-		err = srcVol.readFile(srcFileInfo.Inode, size, srcObject, writer, fb, cl)
+		err = srcVol.readFile(ctx, srcFileInfo.Inode, size, srcObject, writer, fb, cl)
 		if err != nil {
-			log.LogErrorf("uploadPartCopyHandler: read srcObj err(%v): requestId(%v) srcVol(%v) path(%v)",
-				err, GetRequestID(r), srcBucket, srcObject)
+			span.Errorf("read src file fail: srcVol(%v) path(%v) inode(%v) err(%v)",
+				srcBucket, srcObject, srcFileInfo.Inode, err)
 		}
 		writer.CloseWithError(err)
 	}()
@@ -389,11 +376,11 @@ func (o *ObjectNode) uploadPartCopyHandler(w http.ResponseWriter, r *http.Reques
 		rd = reader
 	}
 	start = time.Now()
-	fsFileInfo, err := vol.WritePart(param.Object(), uploadId, partNumberInt, rd)
+	fsFileInfo, err := vol.WritePart(ctx, param.Object(), uploadId, partNumberInt, rd)
 	span.AppendTrackLog("part.w", start, err)
 	if err != nil {
-		log.LogErrorf("uploadPartCopyHandler: write part fail: requestID(%v) volume(%v) path(%v) uploadId(%v) part(%v) err(%v)",
-			GetRequestID(r), vol.Name(), param.Object(), uploadId, partNumberInt, err)
+		span.Errorf("write part fail: volume(%v) path(%v) uploadId(%v) partNum(%v) err(%v)",
+			vol.Name(), param.Object(), uploadId, partNumberInt, err)
 		if err == syscall.ENOENT {
 			errorCode = NoSuchUpload
 			return
@@ -413,7 +400,6 @@ func (o *ObjectNode) uploadPartCopyHandler(w http.ResponseWriter, r *http.Reques
 	response := NewS3CopyPartResult(Etag, fsFileInfo.CreateTime.UTC().Format(time.RFC3339)).String()
 
 	writeSuccessResponseXML(w, []byte(response))
-	return
 }
 
 func handleWritePartErr(err error) error {
@@ -437,51 +423,13 @@ func (o *ObjectNode) listPartsHandler(w http.ResponseWriter, r *http.Request) {
 		errorCode *ErrorCode
 	)
 
-	span := trace.SpanFromContextSafe(r.Context())
+	ctx := r.Context()
+	span := spanWithOperation(ctx, "ListParts")
 	defer func() {
 		o.errorResponse(w, r, err, errorCode)
 	}()
 
 	param := ParseRequestParam(r)
-	// get upload id and part number
-	uploadId := param.GetVar(ParamUploadId)
-	maxParts := param.GetVar(ParamMaxParts)
-	partNoMarker := param.GetVar(ParamPartNoMarker)
-
-	var maxPartsInt uint64
-	var partNoMarkerInt uint64
-
-	if uploadId == "" {
-		log.LogErrorf("listPartsHandler: illegal update ID, requestID(%v) err(%v)", GetRequestID(r), err)
-		errorCode = InvalidArgument
-		return
-	}
-
-	if maxParts == "" {
-		maxPartsInt = MaxParts
-	} else {
-		maxPartsInt, err = strconv.ParseUint(maxParts, 10, 64)
-		if err != nil {
-			log.LogErrorf("listPartsHandler: parse max parts fail: requestID(%v) raw(%v) err(%v)",
-				GetRequestID(r), maxParts, err)
-			errorCode = InvalidArgument
-			return
-		}
-		if maxPartsInt > MaxParts {
-			maxPartsInt = MaxParts
-		}
-	}
-	if partNoMarker != "" {
-		res, err := strconv.ParseUint(partNoMarker, 10, 64)
-		if err != nil {
-			log.LogErrorf("listPatsHandler: parse part number marker fail: requestID(%v) raw(%v) err(%v)",
-				GetRequestID(r), partNoMarker, err)
-			errorCode = InvalidArgument
-			return
-		}
-		partNoMarkerInt = res
-	}
-
 	if param.Bucket() == "" {
 		errorCode = InvalidBucketName
 		return
@@ -491,10 +439,41 @@ func (o *ObjectNode) listPartsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	uploadId := param.GetVar(ParamUploadId)
+	if uploadId == "" {
+		errorCode = InvalidArgument
+		return
+	}
+
+	var maxPartsInt uint64
+	maxParts := param.GetVar(ParamMaxParts)
+	if maxParts == "" {
+		maxPartsInt = MaxParts
+	} else {
+		maxPartsInt, err = strconv.ParseUint(maxParts, 10, 64)
+		if err != nil {
+			errorCode = InvalidArgument
+			return
+		}
+		if maxPartsInt > MaxParts {
+			maxPartsInt = MaxParts
+		}
+	}
+
+	var partNoMarkerInt uint64
+	partNoMarker := param.GetVar(ParamPartNoMarker)
+	if partNoMarker != "" {
+		res, err := strconv.ParseUint(partNoMarker, 10, 64)
+		if err != nil {
+			errorCode = InvalidArgument
+			return
+		}
+		partNoMarkerInt = res
+	}
+
 	var vol *Volume
-	if vol, err = o.getVol(param.Bucket()); err != nil {
-		log.LogErrorf("listPartsHandler: load volume fail: requestID(%v) err(%v)",
-			GetRequestID(r), err)
+	if vol, err = o.getVol(ctx, param.Bucket()); err != nil {
+		span.Errorf("load volume fail: volume(%v) err(%v)", param.Bucket(), err)
 		return
 	}
 
@@ -507,23 +486,16 @@ func (o *ObjectNode) listPartsHandler(w http.ResponseWriter, r *http.Request) {
 
 	// List Parts
 	start := time.Now()
-	fsParts, nextMarker, isTruncated, err := vol.ListParts(param.Object(), uploadId, maxPartsInt, partNoMarkerInt)
+	fsParts, nextMarker, isTruncated, err := vol.ListParts(ctx, param.Object(), uploadId, maxPartsInt, partNoMarkerInt)
 	span.AppendTrackLog("part.l", start, err)
 	if err != nil {
-		log.LogErrorf("listPartsHandler: list parts fail, requestID(%v) uploadID(%v) maxParts(%v) partNoMarker(%v) err(%v)",
-			GetRequestID(r), uploadId, maxPartsInt, partNoMarkerInt, err)
+		span.Errorf("list parts fail: volume(%v) path(%v) uploadID(%v) maxParts(%v) partNumMarker(%v) err(%v)",
+			vol.Name(), param.Object(), uploadId, maxPartsInt, partNoMarkerInt, err)
 		if err == syscall.ENOENT {
 			errorCode = NoSuchUpload
 		}
 		return
 	}
-
-	// get owner
-	bucketOwner := NewBucketOwner(vol)
-	initiator := NewInitiator(vol)
-
-	// get parts
-	parts := NewParts(fsParts)
 
 	listPartsResult := ListPartsResult{
 		Bucket:       param.Bucket(),
@@ -533,26 +505,27 @@ func (o *ObjectNode) listPartsHandler(w http.ResponseWriter, r *http.Request) {
 		NextMarker:   nextMarker,
 		MaxParts:     maxPartsInt,
 		IsTruncated:  isTruncated,
-		Parts:        parts,
-		Owner:        bucketOwner,
-		Initiator:    initiator,
+		Parts:        NewParts(fsParts),
+		Owner:        NewBucketOwner(vol),
+		Initiator:    NewInitiator(vol),
 	}
 	response, err := MarshalXMLEntity(listPartsResult)
 	if err != nil {
-		log.LogErrorf("listPartsHandler: xml marshal result fail: requestID(%v) err(%v)",
-			GetRequestID(r), err)
+		span.Errorf("marshal xml response fail: %v", err)
 		return
 	}
 
 	writeSuccessResponseXML(w, response)
-	return
 }
 
-func (o *ObjectNode) checkReqParts(param *RequestParam, reqParts *CompleteMultipartUploadRequest, multipartInfo *proto.MultipartInfo) (
-	discardedPartInodes map[uint64]uint16, committedPartInfo *proto.MultipartInfo, err error) {
+func (o *ObjectNode) checkReqParts(
+	ctx context.Context,
+	reqParts *CompleteMultipartUploadRequest,
+	multipartInfo *proto.MultipartInfo,
+) (discardedPartInodes map[uint64]uint16, committedPartInfo *proto.MultipartInfo, err error) {
+	span := spanWithOperation(ctx, "CheckParts")
 	if len(reqParts.Parts) <= 0 {
 		err = InvalidPart
-		log.LogErrorf("checkReqParts: upload part is empty: requestID(%v) volume(%v)", GetRequestID(param.r), param.Bucket())
 		return
 	}
 
@@ -574,8 +547,6 @@ func (o *ObjectNode) checkReqParts(param *RequestParam, reqParts *CompleteMultip
 	uploadedInfo := make(map[uint16]string, 0)
 	discardedPartInodes = make(map[uint64]uint16, 0)
 	for _, uploadedPart := range multipartInfo.Parts {
-		log.LogDebugf("checkReqParts: server save part check: requestID(%v) volume(%v) part(%v)",
-			GetRequestID(param.r), param.Bucket(), uploadedPart)
 		eTag := uploadedPart.MD5
 		if strings.Contains(eTag, "\"") {
 			eTag = strings.ReplaceAll(eTag, "\"", "")
@@ -590,27 +561,29 @@ func (o *ObjectNode) checkReqParts(param *RequestParam, reqParts *CompleteMultip
 
 	for idx, reqPart := range reqParts.Parts {
 		if multipartInfo.Parts[reqPart.PartNumber-1].Size < MinPartSizeBytes && idx < len(reqParts.Parts)-1 {
+			span.Errorf("size of uploaded part %v is smaller than the minimum: size(%v) minimum(%v)",
+				reqPart.PartNumber, multipartInfo.Parts[reqPart.PartNumber-1].Size, MinPartSizeBytes)
 			err = EntityTooSmall
 			return
 		}
-		if eTag, existed := uploadedInfo[uint16(reqPart.PartNumber)]; !existed {
-			log.LogErrorf("checkReqParts: request part not existed: requestID(%v) volume(%v) part(%v)",
-				GetRequestID(param.r), param.Bucket(), reqPart)
+		eTag, existed := uploadedInfo[uint16(reqPart.PartNumber)]
+		if !existed {
+			span.Errorf("request part not existed: part(%v)", reqPart)
 			err = InvalidPart
 			return
-		} else {
-			reqEtag := reqPart.ETag
-			if strings.Contains(reqEtag, "\"") {
-				reqEtag = strings.ReplaceAll(reqEtag, "\"", "")
-			}
-			if eTag != reqEtag {
-				log.LogErrorf("checkReqParts: part(%v) md5 not matched: requestID(%v) volume(%v) reqETag(%v) eTag(%v)",
-					reqPart.PartNumber, GetRequestID(param.r), param.Bucket(), reqEtag, eTag)
-				err = InvalidPart
-				return
-			}
+		}
+		reqEtag := reqPart.ETag
+		if strings.Contains(reqEtag, "\"") {
+			reqEtag = strings.ReplaceAll(reqEtag, "\"", "")
+		}
+		if eTag != reqEtag {
+			span.Errorf("md5 of part %v not matched: reqETag(%v) srvETag(%v)",
+				reqPart.PartNumber, reqEtag, eTag)
+			err = InvalidPart
+			return
 		}
 	}
+
 	return
 }
 
@@ -622,20 +595,18 @@ func (o *ObjectNode) completeMultipartUploadHandler(w http.ResponseWriter, r *ht
 		errorCode *ErrorCode
 	)
 
-	span := trace.SpanFromContextSafe(r.Context())
+	ctx := r.Context()
+	span := spanWithOperation(ctx, "CompleteMultipartUpload")
 	defer func() {
 		o.errorResponse(w, r, err, errorCode)
 	}()
 
 	param := ParseRequestParam(r)
-	// get upload id and part number
 	uploadId := param.GetVar(ParamUploadId)
 	if uploadId == "" {
-		log.LogErrorf("completeMultipartUploadHandler: non upload ID specified: requestID(%v)", GetRequestID(r))
 		errorCode = InvalidArgument
 		return
 	}
-
 	if param.Bucket() == "" {
 		errorCode = InvalidBucketName
 		return
@@ -650,9 +621,8 @@ func (o *ObjectNode) completeMultipartUploadHandler(w http.ResponseWriter, r *ht
 	}
 
 	var vol *Volume
-	if vol, err = o.getVol(param.Bucket()); err != nil {
-		log.LogErrorf("completeMultipartUploadHandler: load volume fail: requestID(%v) err(%v)",
-			GetRequestID(r), err)
+	if vol, err = o.getVol(ctx, param.Bucket()); err != nil {
+		span.Errorf("load volume fail: volume(%v) err(%v)", param.Bucket(), err)
 		return
 	}
 
@@ -670,15 +640,13 @@ func (o *ObjectNode) completeMultipartUploadHandler(w http.ResponseWriter, r *ht
 	}
 	requestBytes, err := io.ReadAll(r.Body)
 	if err != nil && err != io.EOF {
-		log.LogErrorf("completeMultipartUploadHandler: read request body fail: requestID(%v) err(%v)",
-			GetRequestID(r), err)
+		span.Errorf("read request body fail: %v", err)
 		return
 	}
 	multipartUploadRequest := &CompleteMultipartUploadRequest{}
 	err = UnmarshalXMLEntity(requestBytes, multipartUploadRequest)
 	if err != nil {
-		log.LogErrorf("completeMultipartUploadHandler: unmarshal xml fail: requestID(%v) err(%v)",
-			GetRequestID(r), err)
+		span.Errorf("unmarshal xml body fail: body(%v) err(%v)", string(requestBytes), err)
 		errorCode = MalformedXML
 		return
 	}
@@ -695,14 +663,10 @@ func (o *ObjectNode) completeMultipartUploadHandler(w http.ResponseWriter, r *ht
 	previousPartNum := 0
 	for _, p := range multipartUploadRequest.Parts {
 		if p.PartNumber < MinPartNumberValid || p.PartNumber > MaxPartNumberValid {
-			log.LogErrorf("completeMultipartUploadHandler: invalid part number: requestID(%v) partNum=%d",
-				GetRequestID(r), p.PartNumber)
 			errorCode = InvalidPartNumber
 			return
 		}
 		if p.PartNumber < previousPartNum {
-			log.LogErrorf("completeMultipartUploadHandler: invalid part order: requestID(%v) prevPartNum=%d partNum=%d",
-				GetRequestID(r), previousPartNum, p.PartNumber)
 			errorCode = InvalidPartOrder
 			return
 		}
@@ -716,11 +680,11 @@ func (o *ObjectNode) completeMultipartUploadHandler(w http.ResponseWriter, r *ht
 
 	// get multipart info
 	start := time.Now()
-	multipartInfo, err := vol.mw.GetMultipart_ll(param.object, uploadId)
+	multipartInfo, err := vol.mw.GetMultipart_ll(param.Object(), uploadId)
 	span.AppendTrackLog("part.r", start, err)
 	if err != nil {
-		log.LogErrorf("completeMultipartUploadHandler: meta get multipart fail: requestID(%v) path(%v) err(%v)",
-			GetRequestID(r), param.object, err)
+		span.Errorf("meta get multipart fail: volume(%v) path(%v) uploadId(%v) err(%v)",
+			vol.Name(), param.Object(), uploadId, err)
 		if err == syscall.ENOENT {
 			errorCode = NoSuchUpload
 			return
@@ -731,20 +695,18 @@ func (o *ObjectNode) completeMultipartUploadHandler(w http.ResponseWriter, r *ht
 		return
 	}
 
-	discardedInods, committedPartInfo, err := o.checkReqParts(param, multipartUploadRequest, multipartInfo)
+	discardedInods, committedPartInfo, err := o.checkReqParts(ctx, multipartUploadRequest, multipartInfo)
 	if err != nil {
-		log.LogWarnf("completeMultipartUploadHandler: check request parts fail: requestID(%v) path(%v) err(%v)",
-			GetRequestID(r), param.object, errorCode)
 		return
 	}
 
 	// complete multipart
 	start = time.Now()
-	fsFileInfo, err := vol.CompleteMultipart(param.Object(), uploadId, committedPartInfo, discardedInods)
+	fsFileInfo, err := vol.CompleteMultipart(ctx, param.Object(), uploadId, committedPartInfo, discardedInods)
 	span.AppendTrackLog("part.c", start, err)
 	if err != nil {
-		log.LogErrorf("completeMultipartUploadHandler: complete multipart fail: requestID(%v) volume(%v) uploadID(%v) err(%v)",
-			GetRequestID(r), param.Bucket(), uploadId, err)
+		span.Errorf("complete multipart fail: volume(%v) path(%v) uploadId(%v) err(%v)",
+			vol.Name(), param.Object(), uploadId, err)
 		if err == syscall.EINVAL {
 			errorCode = ObjectModeConflict
 		}
@@ -758,12 +720,10 @@ func (o *ObjectNode) completeMultipartUploadHandler(w http.ResponseWriter, r *ht
 	}
 	response, ierr := MarshalXMLEntity(completeResult)
 	if ierr != nil {
-		log.LogErrorf("completeMultipartUploadHandler: xml marshal result fail: requestID(%v) result(%v) err(%v)",
-			GetRequestID(r), completeResult, ierr)
+		span.Warnf("marshal xml response fail: response(%+v) err(%v)", completeResult, ierr)
 	}
 
 	writeSuccessResponseXML(w, response)
-	return
 }
 
 // Abort multipart
@@ -773,6 +733,9 @@ func (o *ObjectNode) abortMultipartUploadHandler(w http.ResponseWriter, r *http.
 		err       error
 		errorCode *ErrorCode
 	)
+
+	ctx := r.Context()
+	span := spanWithOperation(ctx, "AbortMultipartUpload")
 	defer func() {
 		o.errorResponse(w, r, err, errorCode)
 	}()
@@ -794,9 +757,8 @@ func (o *ObjectNode) abortMultipartUploadHandler(w http.ResponseWriter, r *http.
 	}
 
 	var vol *Volume
-	if vol, err = o.getVol(param.Bucket()); err != nil {
-		log.LogErrorf("abortMultipartUploadHandler: load volume fail: requestID(%v) err(%v)",
-			GetRequestID(r), err)
+	if vol, err = o.getVol(ctx, param.Bucket()); err != nil {
+		span.Errorf("load volume fail: volume(%v) err(%v)", param.Bucket(), err)
 		return
 	}
 
@@ -808,9 +770,9 @@ func (o *ObjectNode) abortMultipartUploadHandler(w http.ResponseWriter, r *http.
 	defer rateLimit.ReleaseLimitResource(vol.owner, param.apiName)
 
 	// Abort multipart upload
-	if err = vol.AbortMultipart(param.Object(), uploadId); err != nil {
-		log.LogErrorf("abortMultipartUploadHandler: abort multipart fail: requestID(%v) uploadID(%v) err(%v)",
-			GetRequestID(r), uploadId, err)
+	if err = vol.AbortMultipart(ctx, param.Object(), uploadId); err != nil {
+		span.Errorf("abort multipart fail: volume(%v) path(%v) uploadId(%v) err(%v)",
+			vol.Name(), param.Object(), uploadId, err)
 		if err == syscall.ENOENT {
 			errorCode = NoSuchUpload
 		}
@@ -818,7 +780,6 @@ func (o *ObjectNode) abortMultipartUploadHandler(w http.ResponseWriter, r *http.
 	}
 
 	w.WriteHeader(http.StatusNoContent)
-	return
 }
 
 // List multipart uploads
@@ -829,12 +790,18 @@ func (o *ObjectNode) listMultipartUploadsHandler(w http.ResponseWriter, r *http.
 		errorCode *ErrorCode
 	)
 
-	span := trace.SpanFromContextSafe(r.Context())
+	ctx := r.Context()
+	span := spanWithOperation(ctx, "ListMultipartUploads")
 	defer func() {
 		o.errorResponse(w, r, err, errorCode)
 	}()
 
 	param := ParseRequestParam(r)
+	if param.Bucket() == "" {
+		errorCode = InvalidBucketName
+		return
+	}
+
 	// get list uploads parameter
 	prefix := param.GetVar(ParamPrefix)
 	keyMarker := param.GetVar(ParamKeyMarker)
@@ -848,8 +815,6 @@ func (o *ObjectNode) listMultipartUploadsHandler(w http.ResponseWriter, r *http.
 	} else {
 		maxUploadsInt, err = strconv.ParseUint(maxUploads, 10, 64)
 		if err != nil {
-			log.LogErrorf("listMultipartUploadsHandler: parse max uploads fail: requestID(%v) raw(%v) err(%v)",
-				GetRequestID(r), maxUploads, err)
 			errorCode = InvalidArgument
 			return
 		}
@@ -858,15 +823,9 @@ func (o *ObjectNode) listMultipartUploadsHandler(w http.ResponseWriter, r *http.
 		}
 	}
 
-	if param.Bucket() == "" {
-		errorCode = InvalidBucketName
-		return
-	}
-
 	var vol *Volume
-	if vol, err = o.getVol(param.Bucket()); err != nil {
-		log.LogErrorf("listMultipartUploadsHandler: load volume fail: requestID(%v) vol(%v) err(%v)",
-			GetRequestID(r), param.Bucket(), err)
+	if vol, err = o.getVol(ctx, param.Bucket()); err != nil {
+		span.Errorf("load volume fail: volume(%v) err(%v)", param.Bucket(), err)
 		return
 	}
 
@@ -879,14 +838,15 @@ func (o *ObjectNode) listMultipartUploadsHandler(w http.ResponseWriter, r *http.
 
 	// List multipart uploads
 	start := time.Now()
-	fsUploads, nextKeyMarker, nextUploadIdMarker, IsTruncated, prefixes, err := vol.ListMultipartUploads(prefix, delimiter, keyMarker, uploadIdMarker, maxUploadsInt)
+	fsUploads, nextKeyMarker, nextUploadIdMarker, IsTruncated, prefixes, err := vol.ListMultipartUploads(ctx, prefix,
+		delimiter, keyMarker, uploadIdMarker, maxUploadsInt)
 	span.AppendTrackLog("part.l", start, err)
 	if err != nil {
-		log.LogErrorf("listMultipartUploadsHandler: list multipart uploads fail: requestID(%v) err(%v)",
-			GetRequestID(r), err)
+		span.Errorf("list multipart uploads fail: volume(%v) prefix(%v) delimiter(%v) keyMarker(%v) "+
+			"uploadIdMarker(%v) maxUploads(%v) err(%v)",
+			vol.Name(), prefix, delimiter, keyMarker, uploadIdMarker, maxUploadsInt, err)
 		return
 	}
-
 	uploads := NewUploads(fsUploads, param.AccessKey())
 
 	commonPrefixes := make([]*CommonPrefix, 0)
@@ -912,13 +872,11 @@ func (o *ObjectNode) listMultipartUploadsHandler(w http.ResponseWriter, r *http.
 	}
 	response, err := MarshalXMLEntity(listUploadsResult)
 	if err != nil {
-		log.LogErrorf("listMultipartUploadsHandler: xml marshal result fail: requestID(%v) result(%v) err(%v)",
-			GetRequestID(r), listUploadsResult, err)
+		span.Errorf("marshal xml response fail: response(%v) err(%v)", listUploadsResult, err)
 		return
 	}
 
 	writeSuccessResponseXML(w, response)
-	return
 }
 
 func determineCopyRange(copyRange string, fsize int64) (firstByte, copyLength int64, err *ErrorCode) {

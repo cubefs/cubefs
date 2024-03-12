@@ -15,11 +15,10 @@
 package objectnode
 
 import (
+	"context"
 	"strings"
 
 	"github.com/cubefs/cubefs/proto"
-
-	"github.com/cubefs/cubefs/util/log"
 )
 
 const (
@@ -34,8 +33,8 @@ func (s *xattrStore) Init(vm *VolumeManager) {
 	s.vm = vm
 }
 
-func (s *xattrStore) getInode(vol, path string) (*Volume, uint64, error) {
-	v, err := s.vm.Volume(vol)
+func (s *xattrStore) getInode(ctx context.Context, vol, path string) (*Volume, uint64, error) {
+	v, err := s.vm.Volume(ctx, vol)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -55,28 +54,23 @@ func (s *xattrStore) getInode(vol, path string) (*Volume, uint64, error) {
 	return v, inode, nil
 }
 
-func (s *xattrStore) Put(vol, path, key string, data []byte) (err error) {
-	v, err1 := s.vm.Volume(vol)
-	if err1 != nil {
-		err = err1
-		return
-	}
-	err = v.SetXAttr(path, key, data, false)
+func (s *xattrStore) Put(ctx context.Context, vol, path, key string, data []byte) error {
+	v, err := s.vm.Volume(ctx, vol)
 	if err != nil {
-		log.LogErrorf("put xattr failed: vol[%v], key[%v], data[%v]", vol, key, data)
+		return err
 	}
-	return
+
+	return v.SetXAttr(ctx, path, key, data, false)
 }
 
-func (s *xattrStore) Get(vol, path, key string) (val []byte, err error) {
+func (s *xattrStore) Get(ctx context.Context, vol, path, key string) (val []byte, err error) {
 	var v *Volume
-	v, err = s.vm.Volume(vol)
-	if err != nil {
+	if v, err = s.vm.Volume(ctx, vol); err != nil {
 		return
 	}
 
 	var xattrInfo *proto.XAttrInfo
-	if xattrInfo, err = v.GetXAttr(path, key); err != nil {
+	if xattrInfo, err = v.GetXAttr(ctx, path, key); err != nil {
 		return
 	}
 	if xattrInfo == nil {
@@ -87,23 +81,21 @@ func (s *xattrStore) Get(vol, path, key string) (val []byte, err error) {
 	strVal = xattrInfo.XAttrs[key]
 	if len(strVal) > 0 {
 		val = []byte(strVal)
-		return
 	}
+
 	return
 }
 
-func (s *xattrStore) Delete(vol, path, key string) (err error) {
-	var v *Volume
-	if v, err = s.vm.Volume(vol); err != nil {
-		return
+func (s *xattrStore) Delete(ctx context.Context, vol, path, key string) error {
+	v, err := s.vm.Volume(ctx, vol)
+	if err != nil {
+		return err
 	}
-	if err = v.DeleteXAttr(path, key); err != nil {
-		log.LogErrorf("delete xattr failed: vol[%v], key[%v]", vol, key)
-		return
-	}
-	return nil
+
+	return v.DeleteXAttr(ctx, path, key)
 }
 
-func (s *xattrStore) List(vol, obj string) (data [][]byte, err error) {
+func (s *xattrStore) List(ctx context.Context, vol, obj string) (data [][]byte, err error) {
+	// do nothing
 	return
 }

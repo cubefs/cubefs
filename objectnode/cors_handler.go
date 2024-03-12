@@ -20,7 +20,7 @@ import (
 	"io"
 	"net/http"
 
-	"github.com/cubefs/cubefs/util/log"
+	"github.com/cubefs/cubefs/blobstore/common/trace"
 )
 
 const (
@@ -33,6 +33,9 @@ func (o *ObjectNode) getBucketCorsHandler(w http.ResponseWriter, r *http.Request
 		err       error
 		errorCode *ErrorCode
 	)
+
+	ctx := r.Context()
+	span := spanWithOperation(ctx, "GetBucketCors")
 	defer func() {
 		o.errorResponse(w, r, err, errorCode)
 	}()
@@ -44,31 +47,28 @@ func (o *ObjectNode) getBucketCorsHandler(w http.ResponseWriter, r *http.Request
 	}
 
 	var vol *Volume
-	if vol, err = o.getVol(param.Bucket()); err != nil {
-		log.LogErrorf("getBucketCorsHandler: load volume fail: requestID(%v) volume(%v) err(%v)",
-			GetRequestID(r), param.Bucket(), err)
+	if vol, err = o.getVol(ctx, param.Bucket()); err != nil {
+		span.Errorf("load volume fail: volume(%v) err(%v)", param.Bucket(), err)
 		return
 	}
 
 	var cors *CORSConfiguration
-	if cors, err = vol.metaLoader.loadCORS(); err != nil {
-		log.LogErrorf("getBucketCorsHandler: load cors fail: requestID(%v) volume(%v) err(%v)",
-			GetRequestID(r), vol.Name(), err)
+	if cors, err = vol.metaLoader.loadCORS(ctx); err != nil {
+		span.Errorf("load cors fail: volume(%v) err(%v)", vol.Name(), err)
 		return
 	}
 	if cors == nil || len(cors.CORSRule) == 0 {
 		errorCode = NoSuchCORSConfiguration
 		return
 	}
+
 	var data []byte
 	if data, err = MarshalXMLEntity(cors); err != nil {
-		log.LogErrorf("getBucketCorsHandler: xml marshal fail: requestID(%v) volume(%v) cors(%+v) err(%v)",
-			GetRequestID(r), vol.Name(), cors, err)
+		span.Errorf("marshal xml response fail: response(%+v) err(%v)", cors, err)
 		return
 	}
 
 	writeSuccessResponseXML(w, data)
-	return
 }
 
 // https://docs.aws.amazon.com/AmazonS3/latest/API/API_PutBucketCors.html
@@ -77,6 +77,9 @@ func (o *ObjectNode) putBucketCorsHandler(w http.ResponseWriter, r *http.Request
 		err       error
 		errorCode *ErrorCode
 	)
+
+	ctx := r.Context()
+	span := spanWithOperation(ctx, "PutBucketCors")
 	defer func() {
 		o.errorResponse(w, r, err, errorCode)
 	}()
@@ -86,21 +89,22 @@ func (o *ObjectNode) putBucketCorsHandler(w http.ResponseWriter, r *http.Request
 		errorCode = InvalidBucketName
 		return
 	}
+
 	var vol *Volume
-	if vol, err = o.getVol(param.Bucket()); err != nil {
-		log.LogErrorf("putBucketCorsHandler: load volume fail: requestID(%v) volume(%v) err(%v)",
-			GetRequestID(r), param.Bucket(), err)
+	if vol, err = o.getVol(ctx, param.Bucket()); err != nil {
+		span.Errorf("load volume fail: volume(%v) err(%v)", param.Bucket(), err)
 		return
 	}
+
 	requestMD5 := r.Header.Get(ContentMD5)
 	if requestMD5 == "" {
 		errorCode = MissingContentMD5
 		return
 	}
+
 	var body []byte
 	if body, err = io.ReadAll(io.LimitReader(r.Body, MaxCORSSize+1)); err != nil {
-		log.LogErrorf("putBucketCorsHandler: read request body fail: requestID(%v) volume(%v) err(%v)",
-			GetRequestID(r), vol.Name(), err)
+		span.Errorf("read request body fail: %v", err)
 		return
 	}
 	if len(body) > MaxCORSSize {
@@ -111,20 +115,21 @@ func (o *ObjectNode) putBucketCorsHandler(w http.ResponseWriter, r *http.Request
 		errorCode = InvalidDigest
 		return
 	}
+
 	var corsConfig *CORSConfiguration
 	if corsConfig, errorCode = parseCorsConfig(body); errorCode != nil {
-		log.LogErrorf("putBucketCorsHandler: parse cors config fail: requestID(%v) volume(%v) config(%v) err(%v)",
-			GetRequestID(r), vol.Name(), string(body), errorCode)
+		span.Errorf("parse cors config fail: volume(%v) config(%v) err(%v)",
+			vol.Name(), string(body), errorCode)
 		return
 	}
-	if err = storeBucketCors(body, vol); err != nil {
-		log.LogErrorf("putBucketCorsHandler: store cors config fail: requestID(%v) volume(%v) config(%v) err(%v)",
-			GetRequestID(r), vol.Name(), string(body), err)
-		return
-	}
-	vol.metaLoader.storeCORS(corsConfig)
 
-	return
+	if err = storeBucketCors(ctx, body, vol); err != nil {
+		span.Errorf("store cors config fail: volume(%v) cors(%v) err(%v)",
+			vol.Name(), string(body), err)
+		return
+	}
+
+	vol.metaLoader.storeCORS(corsConfig)
 }
 
 // https://docs.aws.amazon.com/AmazonS3/latest/API/API_DeleteBucketCors.html
@@ -133,6 +138,9 @@ func (o *ObjectNode) deleteBucketCorsHandler(w http.ResponseWriter, r *http.Requ
 		err       error
 		errorCode *ErrorCode
 	)
+
+	ctx := r.Context()
+	span := spanWithOperation(ctx, "DeleteBucketCors")
 	defer func() {
 		o.errorResponse(w, r, err, errorCode)
 	}()
@@ -142,27 +150,27 @@ func (o *ObjectNode) deleteBucketCorsHandler(w http.ResponseWriter, r *http.Requ
 		errorCode = InvalidBucketName
 		return
 	}
+
 	var vol *Volume
-	if vol, err = o.getVol(param.Bucket()); err != nil {
-		log.LogErrorf("deleteBucketCorsHandler: load volume fail: requestID(%v) volume(%v) err(%v)",
-			GetRequestID(r), param.Bucket(), err)
+	if vol, err = o.getVol(ctx, param.Bucket()); err != nil {
+		span.Errorf("load volume fail: volume(%v) err(%v)", param.Bucket(), err)
 		return
 	}
-	if err = deleteBucketCors(vol); err != nil {
-		log.LogErrorf("deleteBucketCorsHandler: delete bucket cors fail: requestID(%v) volume(%v) err(%v)",
-			GetRequestID(r), vol.Name(), err)
+
+	if err = deleteBucketCors(ctx, vol); err != nil {
+		span.Errorf("delete bucket cors fail: volume(%v) err(%v)", vol.Name(), err)
 		return
 	}
 	vol.metaLoader.storeCORS(nil)
 
 	w.WriteHeader(http.StatusNoContent)
-	return
 }
 
 // Option object
 // Reference: https://docs.aws.amazon.com/AmazonS3/latest/API/RESTOPTIONSobject.html
 func (o *ObjectNode) optionsObjectHandler(w http.ResponseWriter, r *http.Request) {
-	log.LogInfof("optionsObjectHandler: OPTIONS object, requestID(%v) remote(%v)", GetRequestID(r), r.RemoteAddr)
+	span := trace.SpanFromContextSafe(r.Context()).WithOperation("OptionsObject")
+	span.Infof("remote: %v", r.RemoteAddr)
 	// Already done in methods 'corsMiddleware'.
 	return
 }
