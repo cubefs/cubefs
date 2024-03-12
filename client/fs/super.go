@@ -106,6 +106,7 @@ const (
 
 // NewSuper returns a new Super.
 func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
+	span, ctx := proto.StartSpanFromContext(context.Background(), "new-super")
 	s = new(Super)
 	masters := strings.Split(opt.Master, meta.HostsSeparator)
 	metaConfig := &meta.MetaConfig{
@@ -237,7 +238,7 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 		MinWriteAbleDataPartitionCnt: opt.MinWriteAbleDataPartitionCnt,
 	}
 
-	s.ec, err = stream.NewExtentClient(extentConfig)
+	s.ec, err = stream.NewExtentClient(ctx, extentConfig)
 	if err != nil {
 		return nil, errors.Trace(err, "NewExtentClient failed!")
 	}
@@ -279,10 +280,10 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 		atomic.StoreUint32((*uint32)(&s.state), uint32(fs.FSStatRestore))
 	}
 
-	log.Infof("NewSuper: cluster(%v) volname(%v) icacheExpiration(%v) LookupValidDuration(%v) AttrValidDuration(%v) state(%v)",
+	span.Infof("NewSuper: cluster(%v) volname(%v) icacheExpiration(%v) LookupValidDuration(%v) AttrValidDuration(%v) state(%v)",
 		s.cluster, s.volname, inodeExpiration, LookupValidDuration, AttrValidDuration, s.state)
 
-	go s.loopSyncMeta()
+	go s.loopSyncMeta(ctx)
 
 	return s, nil
 }
@@ -316,7 +317,8 @@ func (s *Super) scheduleFlush() {
 
 // Root returns the root directory where it resides.
 func (s *Super) Root() (fs.Node, error) {
-	inode, err := s.InodeGet(s.rootIno)
+	_, ctx := proto.StartSpanFromContext(context.Background(), "super-root")
+	inode, err := s.InodeGet(ctx, s.rootIno)
 	if err != nil {
 		return nil, err
 	}
@@ -563,12 +565,12 @@ func (s *Super) Notify(stat fs.FSStatType, msg interface{}) {
 	}
 }
 
-func (s *Super) loopSyncMeta() {
+func (s *Super) loopSyncMeta(ctx context.Context) {
 	if s.bcacheDir == "" {
 		return
 	}
 	for {
-		finishC := s.syncMeta()
+		finishC := s.syncMeta(ctx)
 		select {
 		case <-finishC:
 			time.Sleep(time.Second * time.Duration(s.bcacheCheckInterval))
@@ -578,7 +580,9 @@ func (s *Super) loopSyncMeta() {
 	}
 }
 
-func (s *Super) syncMeta() <-chan struct{} {
+func (s *Super) syncMeta(ctx context.Context) <-chan struct{} {
+	span := proto.SpanFromContext(ctx)
+	ctx = proto.ContextWithOperation(ctx, "sync-meta")
 	finishC := make(chan struct{})
 	start := time.Now()
 	cacheLen := s.ic.lruList.Len()
@@ -603,12 +607,12 @@ func (s *Super) syncMeta() <-chan struct{} {
 			for i := range in {
 				tmpInodes = append(tmpInodes, i)
 				if len(tmpInodes) == int(batchCnt) {
-					changed = append(changed, s.getModifyInodes(tmpInodes)...)
+					changed = append(changed, s.getModifyInodes(ctx, tmpInodes)...)
 					tmpInodes = tmpInodes[:0]
 				}
 			}
 			if len(tmpInodes) != 0 {
-				changed = append(changed, s.getModifyInodes(tmpInodes)...)
+				changed = append(changed, s.getModifyInodes(ctx, tmpInodes)...)
 			}
 			for i := range changed {
 				out <- changed[i]
@@ -647,17 +651,17 @@ func (s *Super) syncMeta() <-chan struct{} {
 	for ino := range mergeChanged(batCh) {
 		inode := ino
 		changeCnt++
-		log.Debugf("sync meta,inode:%d changed", inode)
+		span.Debugf("sync meta,inode:%d changed", inode)
 		s.ic.Delete(inode)
 		s.taskPool[1].Run(func() {
 			common.Timed(3, 100).On(func() error {
-				extents := s.ec.GetExtents(inode)
-				if err := s.ec.ForceRefreshExtentsCache(context.TODO(), inode); err != nil {
+				extents := s.ec.GetExtents(ctx, inode)
+				if err := s.ec.ForceRefreshExtentsCache(ctx, inode); err != nil {
 					if err != os.ErrNotExist {
-						log.Errorf("ForceRefreshExtentsCache failed:%v", err)
+						span.Errorf("ForceRefreshExtentsCache failed:%v", err)
 					}
 				}
-				log.Debugf("inode:%d,extents is :%v", inode, extents)
+				span.Debugf("inode:%d,extents is :%v", inode, extents)
 				for _, extent := range extents {
 					cacheKey := util.GenerateRepVolKey(s.volname, inode, extent.PartitionId, extent.ExtentId, extent.FileOffset)
 					// retry to make possible evict success
@@ -673,19 +677,20 @@ func (s *Super) syncMeta() <-chan struct{} {
 		})
 	}
 
-	log.Debugf("total cache cnt:%d,changedCnt:%d,sync meta cost:%v", cacheLen, changeCnt, time.Since(start))
+	span.Debugf("total cache cnt:%d,changedCnt:%d,sync meta cost:%v", cacheLen, changeCnt, time.Since(start))
 	close(finishC)
 
 	return finishC
 }
 
-func (s *Super) getModifyInodes(inodes []uint64) (changedNodes []uint64) {
+func (s *Super) getModifyInodes(ctx context.Context, inodes []uint64) (changedNodes []uint64) {
+	span := proto.SpanFromContext(ctx)
 	inodeInfos := s.mw.BatchInodeGet(inodes)
 
 	// get deleted files
 	if len(inodeInfos) != len(inodes) {
 		changedNodes = append(changedNodes, getDelInodes(inodes, inodeInfos)...)
-		log.Debugf("len inodes is %d, len get inode infos is :%d, del inodes is:%v", len(inodes), len(inodeInfos), changedNodes)
+		span.Debugf("len inodes is %d, len get inode infos is :%d, del inodes is:%v", len(inodes), len(inodeInfos), changedNodes)
 	}
 
 	for _, newInfo := range inodeInfos {
@@ -693,11 +698,11 @@ func (s *Super) getModifyInodes(inodes []uint64) (changedNodes []uint64) {
 		if oldInfo == nil {
 			continue
 		}
-		if !oldInfo.ModifyTime.Equal(newInfo.ModifyTime) || newInfo.Generation != s.ec.GetExtentCacheGen(newInfo.Inode) {
-			log.Debugf("oldInfo:ino(%d) modifyTime(%v) gen(%d),newInfo:ino(%d) modifyTime(%d) gen(%d)", oldInfo.Inode, oldInfo.ModifyTime.Unix(), s.ec.GetExtentCacheGen(newInfo.Inode), newInfo.Inode, newInfo.ModifyTime.Unix(), newInfo.Generation)
+		if !oldInfo.ModifyTime.Equal(newInfo.ModifyTime) || newInfo.Generation != s.ec.GetExtentCacheGen(ctx, newInfo.Inode) {
+			span.Debugf("oldInfo:ino(%d) modifyTime(%v) gen(%d),newInfo:ino(%d) modifyTime(%d) gen(%d)", oldInfo.Inode, oldInfo.ModifyTime.Unix(), s.ec.GetExtentCacheGen(ctx, newInfo.Inode), newInfo.Inode, newInfo.ModifyTime.Unix(), newInfo.Generation)
 			changedNodes = append(changedNodes, newInfo.Inode)
 		} else {
-			log.Debugf("oldInfo:ino(%d) modifyTime(%v) gen(%d),newInfo:ino(%d) modifyTime(%d) gen(%d)", oldInfo.Inode, oldInfo.ModifyTime.Unix(), s.ec.GetExtentCacheGen(newInfo.Inode), newInfo.Inode, newInfo.ModifyTime.Unix(), newInfo.Generation)
+			span.Debugf("oldInfo:ino(%d) modifyTime(%v) gen(%d),newInfo:ino(%d) modifyTime(%d) gen(%d)", oldInfo.Inode, oldInfo.ModifyTime.Unix(), s.ec.GetExtentCacheGen(ctx, newInfo.Inode), newInfo.Inode, newInfo.ModifyTime.Unix(), newInfo.Generation)
 		}
 	}
 	return

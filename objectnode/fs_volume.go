@@ -600,6 +600,7 @@ func (v *Volume) ListFilesV2(opt *ListFilesV2Option) (result *ListFilesV2Result,
 // An syscall.EINVAL error is returned indicating that a part of the target path expected to be a directory
 // but actual is a file.
 func (v *Volume) PutObject(path string, reader io.Reader, opt *PutFileOption) (fsInfo *FSFileInfo, err error) {
+	ctx := context.TODO()
 	defer func() {
 		// Audit behavior
 		log.LogInfof("Audit: PutObject: volume(%v) path(%v) err(%v)", v.name, path, err)
@@ -700,7 +701,7 @@ func (v *Volume) PutObject(path string, reader io.Reader, opt *PutFileOption) (f
 	}()
 
 	md5Hash := md5.New()
-	if err = v.ec.OpenStream(invisibleTempDataInode.Inode); err != nil {
+	if err = v.ec.OpenStream(ctx, invisibleTempDataInode.Inode); err != nil {
 		log.LogErrorf("PutObject: open stream fail: volume(%v) path(%v) inode(%v) err(%v)",
 			v.name, path, invisibleTempDataInode.Inode, err)
 		return
@@ -725,7 +726,7 @@ func (v *Volume) PutObject(path string, reader io.Reader, opt *PutFileOption) (f
 			return
 		}
 		// flush
-		if err = v.ec.Flush(invisibleTempDataInode.Inode); err != nil {
+		if err = v.ec.Flush(ctx, invisibleTempDataInode.Inode); err != nil {
 			log.LogErrorf("PutObject: data flush inode fail: volume(%v) path(%v) inode(%v) err(%v)",
 				v.name, path, invisibleTempDataInode.Inode, err)
 			return nil, err
@@ -987,6 +988,7 @@ func (v *Volume) InitMultipart(path string, opt *PutFileOption) (multipartID str
 }
 
 func (v *Volume) WritePart(path string, multipartId string, partId uint16, reader io.Reader) (*FSFileInfo, error) {
+	ctx := context.TODO()
 	var exist bool
 	var err error
 	defer func() {
@@ -1035,7 +1037,7 @@ func (v *Volume) WritePart(path string, multipartId string, partId uint16, reade
 		etag    string
 		md5Hash = md5.New()
 	)
-	if err = v.ec.OpenStream(tempInodeInfo.Inode); err != nil {
+	if err = v.ec.OpenStream(ctx, tempInodeInfo.Inode); err != nil {
 		log.LogErrorf("WritePart: data open stream fail: volume(%v) path(%v) multipartID(%v) partID(%v) inode(%v) err(%v)",
 			v.name, path, multipartId, partId, tempInodeInfo.Inode, err)
 		return nil, err
@@ -1060,7 +1062,7 @@ func (v *Volume) WritePart(path string, multipartId string, partId uint16, reade
 			return nil, err
 		}
 		// flush
-		if err = v.ec.Flush(tempInodeInfo.Inode); err != nil {
+		if err = v.ec.Flush(ctx, tempInodeInfo.Inode); err != nil {
 			log.LogErrorf("WritePart: data flush inode fail: volume(%v) inode(%v) err(%v)", v.name, tempInodeInfo.Inode, err)
 			return nil, err
 		}
@@ -1353,6 +1355,7 @@ func (v *Volume) ebsWrite(inode uint64, reader io.Reader, h hash.Hash) (size uin
 }
 
 func (v *Volume) streamWrite(inode uint64, reader io.Reader, h hash.Hash) (size uint64, err error) {
+	ctx := context.TODO()
 	var (
 		buf                   = make([]byte, 2*util.BlockSize)
 		readN, writeN, offset int
@@ -1369,7 +1372,7 @@ func (v *Volume) streamWrite(inode uint64, reader io.Reader, h hash.Hash) (size 
 					return nil
 				}
 
-				if ok := v.ec.UidIsLimited(0); ok {
+				if ok := v.ec.UidIsLimited(ctx, 0); ok {
 					return syscall.ENOSPC
 				}
 
@@ -1378,7 +1381,7 @@ func (v *Volume) streamWrite(inode uint64, reader io.Reader, h hash.Hash) (size 
 				}
 				return nil
 			}
-			if writeN, err = v.ec.Write(inode, offset, buf[:readN], 0, checkFunc); err != nil {
+			if writeN, err = v.ec.Write(ctx, inode, offset, buf[:readN], 0, checkFunc); err != nil {
 				log.LogErrorf("streamWrite: data write tmp file fail, inode(%v) offset(%v) err(%v)", inode, offset, err)
 				exporter.Warning(fmt.Sprintf("write data fail: volume(%v) inode(%v) offset(%v) size(%v) err(%v)",
 					v.name, inode, offset, readN, err))
@@ -1401,7 +1404,8 @@ func (v *Volume) streamWrite(inode uint64, reader io.Reader, h hash.Hash) (size 
 }
 
 func (v *Volume) appendInodeHash(h hash.Hash, inode uint64, total uint64, preAllocatedBuf []byte) (err error) {
-	if err = v.ec.OpenStream(inode); err != nil {
+	ctx := context.TODO()
+	if err = v.ec.OpenStream(ctx, inode); err != nil {
 		log.LogErrorf("appendInodeHash: data open stream fail: inode(%v) err(%v)",
 			inode, err)
 		return
@@ -1429,7 +1433,7 @@ func (v *Volume) appendInodeHash(h hash.Hash, inode uint64, total uint64, preAll
 		if uint64(size) > rest {
 			size = int(rest)
 		}
-		n, err = v.ec.Read(inode, buf, offset, size)
+		n, err = v.ec.Read(ctx, inode, buf, offset, size)
 		if err != nil && err != io.EOF {
 			log.LogErrorf("appendInodeHash: data read fail, inode(%v) offset(%v) size(%v) err(%v)", inode, offset, size, err)
 			return
@@ -1531,7 +1535,7 @@ func (v *Volume) loadUserDefinedMetadata(inode uint64) (metadata map[string]stri
 }
 
 func (v *Volume) readFile(inode, inodeSize uint64, path string, writer io.Writer, offset, size uint64) (err error) {
-	if err = v.ec.OpenStream(inode); err != nil {
+	if err = v.ec.OpenStream(context.TODO(), inode); err != nil {
 		log.LogErrorf("readFile: data open stream fail, Inode(%v) err(%v)", inode, err)
 		return err
 	}
@@ -1618,7 +1622,7 @@ func (v *Volume) read(inode, inodeSize uint64, path string, writer io.Writer, of
 		if err != nil {
 			return err
 		}
-		n, err = v.ec.Read(inode, tmp, off, readSize)
+		n, err = v.ec.Read(context.TODO(), inode, tmp, off, readSize)
 		if err != nil && err != io.EOF {
 			log.LogErrorf("ReadFile: data read fail: volume(%v) path(%v) inode(%v) offset(%v) size(%v) err(%v)",
 				v.name, path, inode, offset, size, err)
@@ -2575,6 +2579,7 @@ func (v *Volume) ListParts(path, uploadId string, maxParts, partNumberMarker uin
 }
 
 func (v *Volume) CopyFile(sv *Volume, sourcePath, targetPath, metaDirective string, opt *PutFileOption) (info *FSFileInfo, err error) {
+	ctx := context.TODO()
 	defer func() {
 		log.LogInfof("Audit: copy file: source path(%v) target path(%v) err(%v)",
 			sourcePath, targetPath, err)
@@ -2600,7 +2605,7 @@ func (v *Volume) CopyFile(sv *Volume, sourcePath, targetPath, metaDirective stri
 		log.LogErrorf("CopyFile: copy source path file size greater than 5GB, source path(%v), target path(%v)", sourcePath, targetPath)
 		return nil, syscall.EFBIG
 	}
-	if err = sv.ec.OpenStream(sInode); err != nil {
+	if err = sv.ec.OpenStream(ctx, sInode); err != nil {
 		log.LogErrorf("CopyFile: open source path stream fail, source path(%v) source path inode(%v) err(%v)",
 			sourcePath, sInode, err)
 		return
@@ -2762,7 +2767,7 @@ func (v *Volume) CopyFile(sv *Volume, sourcePath, targetPath, metaDirective stri
 			_ = v.mw.Evict(tInodeInfo.Inode, targetPath)
 		}
 	}()
-	if err = v.ec.OpenStream(tInodeInfo.Inode); err != nil {
+	if err = v.ec.OpenStream(ctx, tInodeInfo.Inode); err != nil {
 		return
 	}
 	defer func() {
@@ -2812,7 +2817,7 @@ func (v *Volume) CopyFile(sv *Volume, sourcePath, targetPath, metaDirective stri
 		if proto.IsCold(sv.volType) {
 			readN, err = ebsReader.Read(sctx, buf, readOffset, readSize)
 		} else {
-			readN, err = sv.ec.Read(sInode, buf, readOffset, readSize)
+			readN, err = sv.ec.Read(ctx, sInode, buf, readOffset, readSize)
 		}
 		if err != nil && err != io.EOF {
 			return
@@ -2821,7 +2826,7 @@ func (v *Volume) CopyFile(sv *Volume, sourcePath, targetPath, metaDirective stri
 			if proto.IsCold(v.volType) {
 				writeN, err = ebsWriter.WriteWithoutPool(tctx, writeOffset, buf[:readN])
 			} else {
-				writeN, err = v.ec.Write(tInodeInfo.Inode, writeOffset, buf[:readN], 0, nil)
+				writeN, err = v.ec.Write(ctx, tInodeInfo.Inode, writeOffset, buf[:readN], 0, nil)
 			}
 			if err != nil {
 				log.LogErrorf("CopyFile: write target path from source fail, volume(%v) path(%v) inode(%v) target offset(%v) err(%v)",
@@ -2843,7 +2848,7 @@ func (v *Volume) CopyFile(sv *Volume, sourcePath, targetPath, metaDirective stri
 	if proto.IsCold(v.volType) {
 		err = ebsWriter.FlushWithoutPool(tInodeInfo.Inode, tctx)
 	} else {
-		v.ec.Flush(tInodeInfo.Inode)
+		v.ec.Flush(ctx, tInodeInfo.Inode)
 	}
 	if err != nil {
 		log.LogErrorf("CopyFile: data flush inode fail, volume(%v) inode(%v), path (%v) err(%v)", v.name, tInodeInfo.Inode, targetPath, err)
@@ -2978,6 +2983,7 @@ func (v *Volume) copyFile(parentID uint64, newFileName string, sourceFileInode u
 }
 
 func NewVolume(config *VolumeConfig) (*Volume, error) {
+	ctx := context.TODO()
 	var err error
 	metaConfig := &meta.MetaConfig{
 		Volume:        config.Volume,
@@ -3002,7 +3008,7 @@ func NewVolume(config *VolumeConfig) (*Volume, error) {
 
 	mc := master.NewMasterClient(config.Masters, false)
 	var volumeInfo *proto.SimpleVolView
-	volumeInfo, err = mc.AdminAPI().GetVolumeSimpleInfo(context.TODO(), config.Volume)
+	volumeInfo, err = mc.AdminAPI().GetVolumeSimpleInfo(ctx, config.Volume)
 	if err != nil {
 		log.LogErrorf("NewVolume: get volume info from master failed: volume(%v) err(%v)", config.Volume, err)
 		return nil, err
@@ -3032,7 +3038,7 @@ func NewVolume(config *VolumeConfig) (*Volume, error) {
 		log.LogDebugf("%v is cold volume", config.Volume)
 	}
 	var extentClient *stream.ExtentClient
-	if extentClient, err = stream.NewExtentClient(extentConfig); err != nil {
+	if extentClient, err = stream.NewExtentClient(ctx, extentConfig); err != nil {
 		log.LogErrorf("NewVolume: new extent client failed: volume(%v) err(%v)", metaConfig.Volume, err)
 		return nil, err
 	}

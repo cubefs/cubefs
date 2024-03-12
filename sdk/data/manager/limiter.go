@@ -25,7 +25,7 @@ const (
 	defaultMagnifyFactor = 100
 )
 
-type UploadFlowInfoFunc func(clientInfo wrapper.SimpleClientInfo) error
+type UploadFlowInfoFunc func(ctx context.Context, clientInfo wrapper.SimpleClientInfo) error
 
 type GridElement struct {
 	time     time.Time
@@ -60,12 +60,14 @@ type LimitFactor struct {
 	isSetLimitZero     bool
 }
 
-func (factor *LimitFactor) getNeedByMagnify(allocCnt uint32, magnify uint32) uint64 {
+func (factor *LimitFactor) getNeedByMagnify(ctx context.Context, allocCnt uint32, magnify uint32) uint64 {
+	span := proto.SpanFromContext(ctx)
 	if magnify == 0 {
 		return 0
 	}
 	if allocCnt > 1000 {
-		log.QosWriteDebugf("action[getNeedByMagnify] allocCnt %v", allocCnt)
+		// NOTICE: log.QosWriteDebugf
+		span.Debugf("[QOS] action[getNeedByMagnify] allocCnt %v", allocCnt)
 		magnify = defaultMagnifyFactor
 	}
 
@@ -78,8 +80,10 @@ func (factor *LimitFactor) getNeedByMagnify(allocCnt uint32, magnify uint32) uin
 	return need
 }
 
-func (factor *LimitFactor) alloc(allocCnt uint32) (ret uint8, future *util.Future) {
-	log.QosWriteDebugf("action[alloc] type [%v] alloc [%v], tmp factor waitlist [%v] hitlimtcnt [%v] len [%v]", proto.QosTypeString(factor.factorType),
+func (factor *LimitFactor) alloc(ctx context.Context, allocCnt uint32) (ret uint8, future *util.Future) {
+	span := proto.SpanFromContext(ctx)
+	// NOTICE: log.QosWriteDebugf
+	span.Debugf("[QOS] action[alloc] type [%v] alloc [%v], tmp factor waitlist [%v] hitlimtcnt [%v] len [%v]", proto.QosTypeString(factor.factorType),
 		allocCnt, factor.waitList.Len(), factor.gidHitLimitCnt, factor.gridList.Len())
 	atomic.AddUint64(&factor.valAllocApply, uint64(allocCnt))
 	if !factor.mgr.enable {
@@ -133,13 +137,14 @@ func (factor *LimitFactor) alloc(allocCnt uint32) (ret uint8, future *util.Futur
 				tmpTime := time.Now()
 				if factor.mgr.lastReqTime.Add(time.Duration(factor.mgr.ReqPeriod) * time.Second).Before(tmpTime) {
 					factor.mgr.lastReqTime = tmpTime
-					log.QosWriteDebugf("CheckGrid factor [%v] unlock before active update simple vol view,gird id[%v] limit[%v] buffer [%v] used [%v]",
+					// NOTICE: log.QosWriteDebugf
+					span.Debugf("[QOS] CheckGrid factor [%v] unlock before active update simple vol view,gird id[%v] limit[%v] buffer [%v] used [%v]",
 						proto.QosTypeString(factor.factorType), grid.ID, grid.limit, grid.buffer, grid.used)
 					// unlock need call here,UpdateSimpleVolView will lock again
 					grid.hitLimit = true
 					factor.lock.Unlock()
 					activeState.activeUpdate = true
-					go factor.mgr.WrapperUpdate(factor.mgr.simpleClient)
+					go factor.mgr.WrapperUpdate(ctx, factor.mgr.simpleClient)
 				}
 			}
 		}
@@ -151,14 +156,16 @@ func (factor *LimitFactor) alloc(allocCnt uint32) (ret uint8, future *util.Futur
 	return runNow, future
 }
 
-func (factor *LimitFactor) SetLimit(limitVal uint64, bufferVal uint64) {
-	log.QosWriteDebugf("action[SetLimit] factor type [%v] limitVal [%v] bufferVal [%v]", proto.QosTypeString(factor.factorType), limitVal, bufferVal)
+func (factor *LimitFactor) SetLimit(ctx context.Context, limitVal uint64, bufferVal uint64) {
+	span := proto.SpanFromContext(ctx)
+	// NOTICE: log.QosWriteDebugf
+	span.Debugf("[QOS] action[SetLimit] factor type [%v] limitVal [%v] bufferVal [%v]", proto.QosTypeString(factor.factorType), limitVal, bufferVal)
 	var grid *GridElement
 	factor.mgr.lastTimeOfSetLimit = time.Now()
 	factor.lock.Lock()
 
 	defer func() {
-		factor.TryReleaseWaitList()
+		factor.TryReleaseWaitList(ctx)
 		factor.lock.Unlock()
 	}()
 
@@ -198,13 +205,15 @@ func (factor *LimitFactor) SetLimit(limitVal uint64, bufferVal uint64) {
 	}
 
 	grid = factor.gridList.Back().Value.(*GridElement)
-	log.QosWriteDebugf("action[SetLimit] factor type [%v] gird id %v limit %v buffer %v",
+	// NOTICE: log.QosWriteDebugf
+	span.Debugf("[QOS] action[SetLimit] factor type [%v] gird id %v limit %v buffer %v",
 		proto.QosTypeString(factor.factorType), grid.ID, grid.limit, grid.buffer)
 }
 
 // clean wait list if limit be enlrarged by master
 // no lock need for parallel,caller own the lock and will release it
-func (factor *LimitFactor) TryReleaseWaitList() {
+func (factor *LimitFactor) TryReleaseWaitList(ctx context.Context) {
+	span := proto.SpanFromContext(ctx)
 	gridIter := factor.gridList.Back()
 	tGrid := gridIter.Value.(*GridElement)
 	cnt := 0
@@ -216,7 +225,7 @@ func (factor *LimitFactor) TryReleaseWaitList() {
 		// log.LogDebugf("action[TryReleaseWaitList] type [%v] ele used [%v]", proto.QosTypeString(factor.factorType), ele.used)
 		for atomic.LoadUint64(&tGrid.used)+uint64(ele.used) > tGrid.limit+tGrid.buffer {
 
-			log.LogWarnf("action[TryReleaseWaitList] type [%v] new gird be used up.alloc in waitlist left cnt [%v],"+
+			span.Warnf("action[TryReleaseWaitList] type [%v] new gird be used up.alloc in waitlist left cnt [%v],"+
 				"grid be allocated [%v] grid limit [%v] and buffer[%v], gird id:[%v], use pregrid size[%v]",
 				proto.QosTypeString(factor.factorType), factor.waitList.Len(), tGrid.used, tGrid.limit, tGrid.buffer,
 				tGrid.ID, uint32(tGrid.limit+tGrid.buffer-tGrid.used))
@@ -225,7 +234,8 @@ func (factor *LimitFactor) TryReleaseWaitList() {
 			val := tGrid.limit + tGrid.buffer - tUsed                        // uint may out range
 			if tGrid.limit+tGrid.buffer > tUsed && ele.used >= uint32(val) { // not atomic pretect,grid used may larger than limit and buffer
 				ele.used -= uint32(val)
-				log.QosWriteDebugf("action[TryReleaseWaitList] type [%v] ele used reduce [%v] and left [%v]", proto.QosTypeString(factor.factorType), val, ele.used)
+				// NOTICE: log.QosWriteDebugf
+				span.Debugf("[QOS] action[TryReleaseWaitList] type [%v] ele used reduce [%v] and left [%v]", proto.QosTypeString(factor.factorType), val, ele.used)
 				// atomic.AddUint64(&curGrid.used, tGrid.limit+ tGrid.buffer)
 				atomic.AddUint64(&tGrid.used, val)
 			}
@@ -237,7 +247,8 @@ func (factor *LimitFactor) TryReleaseWaitList() {
 			tGrid = gridIter.Value.(*GridElement)
 		}
 		atomic.AddUint64(&tGrid.used, uint64(ele.used))
-		log.QosWriteDebugf("action[TryReleaseWaitList] type [%v] ele used [%v] consumed!", proto.QosTypeString(factor.factorType), ele.used)
+		// NOTICE: log.QosWriteDebugf
+		span.Debugf("[QOS] action[TryReleaseWaitList] type [%v] ele used [%v] consumed!", proto.QosTypeString(factor.factorType), ele.used)
 		ele.future.Respond(true, nil)
 
 		value = value.Next()
@@ -245,7 +256,8 @@ func (factor *LimitFactor) TryReleaseWaitList() {
 	}
 }
 
-func (factor *LimitFactor) CheckGrid() {
+func (factor *LimitFactor) CheckGrid(ctx context.Context) {
+	span := proto.SpanFromContext(ctx)
 	defer func() {
 		factor.lock.Unlock()
 	}()
@@ -262,11 +274,12 @@ func (factor *LimitFactor) CheckGrid() {
 	factor.gridId++
 
 	if factor.mgr.enable && factor.mgr.lastTimeOfSetLimit.Add(time.Second*qosExpireTime).Before(newGrid.time) {
-		log.LogWarnf("action[CheckGrid]. qos recv no command from master in long time, last time %v, grid time %v",
+		span.Warnf("action[CheckGrid]. qos recv no command from master in long time, last time %v, grid time %v",
 			factor.mgr.lastTimeOfSetLimit, newGrid.time)
 	}
 	if factor.mgr.enable {
-		log.QosWriteDebugf("action[CheckGrid] factor type:[%v] gridlistLen:[%v] waitlistLen:[%v] hitlimitcnt:[%v] "+
+		// NOTICE: log.QosWriteDebugf
+		span.Debugf("[QOS] action[CheckGrid] factor type:[%v] gridlistLen:[%v] waitlistLen:[%v] hitlimitcnt:[%v] "+
 			"add new grid info girdid[%v] used:[%v] limit:[%v] buffer:[%v] time:[%v]",
 			proto.QosTypeString(factor.factorType), factor.gridList.Len(), factor.waitList.Len(), factor.gidHitLimitCnt,
 			newGrid.ID, newGrid.used, newGrid.limit, newGrid.buffer, newGrid.time)
@@ -278,20 +291,22 @@ func (factor *LimitFactor) CheckGrid() {
 		if firstGrid.hitLimit {
 			factor.gidHitLimitCnt--
 			if factor.mgr.enable {
-				log.QosWriteDebugf("action[CheckGrid] factor [%v] after minus gidHitLimitCnt:[%v]",
+				// NOTICE: log.QosWriteDebugf
+				span.Debugf("[QOS] action[CheckGrid] factor [%v] after minus gidHitLimitCnt:[%v]",
 					proto.QosTypeString(factor.factorType), factor.gidHitLimitCnt)
 			}
 		}
 		if factor.mgr.enable {
-			log.QosWriteDebugf("action[CheckGrid] type:[%v] remove oldest grid id[%v] info buffer:[%v] limit:[%v] used[%v] from gridlist",
+			// NOTICE: log.QosWriteDebugf
+			span.Debugf("[QOS] action[CheckGrid] type:[%v] remove oldest grid id[%v] info buffer:[%v] limit:[%v] used[%v] from gridlist",
 				proto.QosTypeString(factor.factorType), firstGrid.ID, firstGrid.buffer, firstGrid.limit, firstGrid.used)
 		}
 		factor.gridList.Remove(factor.gridList.Front())
 	}
-	factor.TryReleaseWaitList()
+	factor.TryReleaseWaitList(ctx)
 }
 
-func newLimitFactor(mgr *LimitManager, factorType uint32) *LimitFactor {
+func newLimitFactor(ctx context.Context, mgr *LimitManager, factorType uint32) *LimitFactor {
 	limit := &LimitFactor{
 		mgr:        mgr,
 		factorType: factorType,
@@ -300,7 +315,7 @@ func newLimitFactor(mgr *LimitManager, factorType uint32) *LimitFactor {
 		magnify:    defaultMagnifyFactor,
 	}
 
-	limit.SetLimit(0, 0)
+	limit.SetLimit(ctx, 0, 0)
 	return limit
 }
 
@@ -319,7 +334,7 @@ type LimitManager struct {
 	once               sync.Once
 }
 
-func NewLimitManager(client wrapper.SimpleClientInfo) *LimitManager {
+func NewLimitManager(ctx context.Context, client wrapper.SimpleClientInfo) *LimitManager {
 	mgr := &LimitManager{
 		limitMap:      make(map[uint32]*LimitFactor, 0),
 		enable:        false, // assign from master
@@ -327,12 +342,12 @@ func NewLimitManager(client wrapper.SimpleClientInfo) *LimitManager {
 		HitTriggerCnt: gridHitLimitCnt,
 		ReqPeriod:     1,
 	}
-	mgr.limitMap[proto.IopsReadType] = newLimitFactor(mgr, proto.IopsReadType)
-	mgr.limitMap[proto.IopsWriteType] = newLimitFactor(mgr, proto.IopsWriteType)
-	mgr.limitMap[proto.FlowWriteType] = newLimitFactor(mgr, proto.FlowWriteType)
-	mgr.limitMap[proto.FlowReadType] = newLimitFactor(mgr, proto.FlowReadType)
+	mgr.limitMap[proto.IopsReadType] = newLimitFactor(ctx, mgr, proto.IopsReadType)
+	mgr.limitMap[proto.IopsWriteType] = newLimitFactor(ctx, mgr, proto.IopsWriteType)
+	mgr.limitMap[proto.FlowWriteType] = newLimitFactor(ctx, mgr, proto.FlowWriteType)
+	mgr.limitMap[proto.FlowReadType] = newLimitFactor(ctx, mgr, proto.FlowReadType)
 
-	mgr.ScheduleCheckGrid()
+	mgr.ScheduleCheckGrid(ctx)
 	return mgr
 }
 
@@ -370,7 +385,8 @@ func (limitManager *LimitManager) CalcNeedByPow(limitFactor *LimitFactor, used u
 	return
 }
 
-func (limitManager *LimitManager) GetFlowInfo() (*proto.ClientReportLimitInfo, bool) {
+func (limitManager *LimitManager) GetFlowInfo(ctx context.Context) (*proto.ClientReportLimitInfo, bool) {
+	span := proto.SpanFromContext(ctx)
 	info := &proto.ClientReportLimitInfo{
 		FactorMap: make(map[uint32]*proto.ClientLimitInfo, 0),
 	}
@@ -405,7 +421,8 @@ func (limitManager *LimitManager) GetFlowInfo() (*proto.ClientReportLimitInfo, b
 			//	reqUsed,
 			//	limit, limitFactor.gridList.Len())
 			if grid.Prev() == nil || griCnt >= girdCntOneSecond {
-				log.QosWriteDebugf("action[[GetFlowInfo] type [%v] grid count %v reqused %v list len %v",
+				// NOTICE: log.QosWriteDebugf
+				span.Debugf("[QOS] action[[GetFlowInfo] type [%v] grid count %v reqused %v list len %v",
 					proto.QosTypeString(factorType), griCnt, reqUsed, limitFactor.gridList.Len())
 				break
 			}
@@ -415,7 +432,7 @@ func (limitManager *LimitManager) GetFlowInfo() (*proto.ClientReportLimitInfo, b
 		if griCnt > 0 {
 			timeElapse := uint64(time.Second) * uint64(griCnt) / girdCntOneSecond
 			if timeElapse < uint64(qosReportMinGap) {
-				log.LogWarnf("action[GetFlowInfo] type [%v] timeElapse [%v] since last report",
+				span.Warnf("action[GetFlowInfo] type [%v] timeElapse [%v] since last report",
 					proto.QosTypeString(limitFactor.factorType), timeElapse)
 				timeElapse = uint64(qosReportMinGap) // time of interval get vol view from master todo:change to config time
 			}
@@ -438,13 +455,15 @@ func (limitManager *LimitManager) GetFlowInfo() (*proto.ClientReportLimitInfo, b
 		if limitFactor.waitList.Len() > 0 ||
 			!limitFactor.isSetLimitZero ||
 			factor.Used|factor.Need > 0 {
-			log.QosWriteDebugf("action[GetFlowInfo] type [%v]  len [%v] isSetLimitZero [%v] used [%v] need [%v]", proto.QosTypeString(limitFactor.factorType),
+			// NOTICE: log.QosWriteDebugf
+			log.Debugf("[QOS] action[GetFlowInfo] type [%v]  len [%v] isSetLimitZero [%v] used [%v] need [%v]", proto.QosTypeString(limitFactor.factorType),
 				limitFactor.waitList.Len(), limitFactor.isSetLimitZero, factor.Used, factor.Need)
 			validCliInfo = true
 		}
 
 		if griCnt > 0 {
-			log.QosWriteDebugf("action[GetFlowInfo] type [%v] last commit[%v] report to master "+
+			// NOTICE: log.QosWriteDebugf
+			log.Debugf("[QOS] action[GetFlowInfo] type [%v] last commit[%v] report to master "+
 				"with simpleClient limit info [%v,%v,%v,%v],host [%v], "+
 				"status [%v] grid [%v, %v, %v]",
 				proto.QosTypeString(limitFactor.factorType), limitFactor.valAllocLastCommit,
@@ -466,7 +485,8 @@ func (limitManager *LimitManager) GetFlowInfo() (*proto.ClientReportLimitInfo, b
 	return info, true
 }
 
-func (limitManager *LimitManager) ScheduleCheckGrid() {
+func (limitManager *LimitManager) ScheduleCheckGrid(ctx context.Context) {
+	span := proto.SpanFromContext(ctx)
 	go func() {
 		ticker := time.NewTicker(1000 / girdCntOneSecond * time.Millisecond)
 		defer func() {
@@ -480,9 +500,10 @@ func (limitManager *LimitManager) ScheduleCheckGrid() {
 			case <-ticker.C:
 				cnt++
 				for factorType, limitFactor := range limitManager.limitMap {
-					limitFactor.CheckGrid()
+					limitFactor.CheckGrid(ctx)
 					if cnt%girdCntOneSecond == 0 {
-						log.QosWriteDebugf("action[ScheduleCheckGrid] type [%v] factor apply val:[%v] commit val:[%v]",
+						// NOTICE: log.QosWriteDebugf
+						span.Debugf("[QOS] action[ScheduleCheckGrid] type [%v] factor apply val:[%v] commit val:[%v]",
 							proto.QosTypeString(factorType), atomic.LoadUint64(&limitFactor.valAllocApply), atomic.LoadUint64(&limitFactor.valAllocCommit))
 						limitFactor.valAllocLastApply = atomic.LoadUint64(&limitFactor.valAllocLastApply)
 						limitFactor.valAllocLastCommit = atomic.LoadUint64(&limitFactor.valAllocCommit)
@@ -495,31 +516,33 @@ func (limitManager *LimitManager) ScheduleCheckGrid() {
 	}()
 }
 
-func (limitManager *LimitManager) SetClientLimit(limit *proto.LimitRsp2Client) {
+func (limitManager *LimitManager) SetClientLimit(ctx context.Context, limit *proto.LimitRsp2Client) {
+	span := proto.SpanFromContext(ctx)
 	if limit == nil {
-		log.LogErrorf("action[SetClientLimit] limit info is nil")
+		span.Errorf("action[SetClientLimit] limit info is nil")
 		return
 	}
 
 	if limitManager.enable != limit.Enable {
-		log.LogWarnf("action[SetClientLimit] enable [%v]", limit.Enable)
+		span.Warnf("action[SetClientLimit] enable [%v]", limit.Enable)
 	}
 	limitManager.enable = limit.Enable
 	if limit.HitTriggerCnt > 0 {
-		log.LogWarnf("action[SetClientLimit] update to HitTriggerCnt [%v] from [%v]", limitManager.HitTriggerCnt, limit.HitTriggerCnt)
+		span.Warnf("action[SetClientLimit] update to HitTriggerCnt [%v] from [%v]", limitManager.HitTriggerCnt, limit.HitTriggerCnt)
 		limitManager.HitTriggerCnt = limit.HitTriggerCnt
 	}
 	if limit.ReqPeriod > 0 {
-		log.LogWarnf("action[SetClientLimit] update to ReqPeriod [%v] from [%v]", limitManager.ReqPeriod, limit.ReqPeriod)
+		span.Warnf("action[SetClientLimit] update to ReqPeriod [%v] from [%v]", limitManager.ReqPeriod, limit.ReqPeriod)
 		limitManager.ReqPeriod = limit.ReqPeriod
 	}
 
 	for factorType, clientLimitInfo := range limit.FactorMap {
-		limitManager.limitMap[factorType].SetLimit(clientLimitInfo.UsedLimit, clientLimitInfo.UsedBuffer)
+		limitManager.limitMap[factorType].SetLimit(ctx, clientLimitInfo.UsedLimit, clientLimitInfo.UsedBuffer)
 	}
 	for factorType, magnify := range limit.Magnify {
 		if magnify > 0 && magnify != limitManager.limitMap[factorType].magnify {
-			log.QosWriteDebugf("action[SetClientLimit] type [%v] update magnify [%v] to [%v]",
+			// NOTICE: log.QosWriteDebugf
+			span.Debugf("[QOS] action[SetClientLimit] type [%v] update magnify [%v] to [%v]",
 				proto.QosTypeString(factorType), limitManager.limitMap[factorType].magnify, magnify)
 			limitManager.limitMap[factorType].magnify = magnify
 		}
@@ -538,11 +561,13 @@ func (limitManager *LimitManager) WriteAlloc(ctx context.Context, size int) {
 
 // WaitN blocks until alloc success
 func (limitManager *LimitManager) WaitN(ctx context.Context, lim *LimitFactor, n int) (err error) {
+	span := proto.SpanFromContext(ctx)
 	var fut *util.Future
 	var ret uint8
-	if ret, fut = lim.alloc(uint32(n)); ret == runNow {
+	if ret, fut = lim.alloc(ctx, uint32(n)); ret == runNow {
 		atomic.AddUint64(&lim.valAllocCommit, uint64(n))
-		log.QosWriteDebugf("action[WaitN] type [%v] return now waitlistlen [%v]", proto.QosTypeString(lim.factorType), lim.waitList.Len())
+		// NOTICE: log.QosWriteDebugf
+		span.Debugf("[QOS] action[WaitN] type [%v] return now waitlistlen [%v]", proto.QosTypeString(lim.factorType), lim.waitList.Len())
 		return nil
 	}
 
@@ -550,10 +575,10 @@ func (limitManager *LimitManager) WaitN(ctx context.Context, lim *LimitFactor, n
 
 	select {
 	case <-ctx.Done():
-		log.LogWarnf("action[WaitN] type [%v] ctx done return waitlistlen [%v]", proto.QosTypeString(lim.factorType), lim.waitList.Len())
+		span.Warnf("action[WaitN] type [%v] ctx done return waitlistlen [%v]", proto.QosTypeString(lim.factorType), lim.waitList.Len())
 		return ctx.Err()
 	case err = <-errCh:
-		log.LogWarnf("action[WaitN] type [%v] err return waitlistlen [%v]", proto.QosTypeString(lim.factorType), lim.waitList.Len())
+		span.Warnf("action[WaitN] type [%v] err return waitlistlen [%v]", proto.QosTypeString(lim.factorType), lim.waitList.Len())
 		return
 	case <-respCh:
 		atomic.AddUint64(&lim.valAllocCommit, uint64(n))
@@ -563,8 +588,8 @@ func (limitManager *LimitManager) WaitN(ctx context.Context, lim *LimitFactor, n
 	}
 }
 
-func (limitManager *LimitManager) UpdateFlowInfo(limit *proto.LimitRsp2Client) {
-	limitManager.SetClientLimit(limit)
+func (limitManager *LimitManager) UpdateFlowInfo(ctx context.Context, limit *proto.LimitRsp2Client) {
+	limitManager.SetClientLimit(ctx, limit)
 }
 
 func (limitManager *LimitManager) SetClientID(id uint64) (err error) {

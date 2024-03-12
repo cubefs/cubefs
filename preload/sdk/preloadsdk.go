@@ -139,7 +139,7 @@ func NewClient(config PreloadConfig) *PreLoadClient {
 		return nil
 	}
 
-	if ec, err = stream.NewExtentClient(&stream.ExtentConfig{
+	if ec, err = stream.NewExtentClient(context.TODO(), &stream.ExtentConfig{
 		Volume:            config.Volume,
 		Masters:           config.Masters,
 		Preload:           true,
@@ -201,12 +201,13 @@ func convertLogLevel(level string) log.Level {
 }
 
 func (c *PreLoadClient) newEBSClient(masters []string, logDir string) (err error) {
+	ctx := context.TODO()
 	var (
 		volumeInfo  *proto.SimpleVolView
 		clusterInfo *proto.ClusterInfo
 		ebsc        *blobstore.BlobStoreClient
 	)
-	volumeInfo, err = c.mc.AdminAPI().GetVolumeSimpleInfo(context.TODO(), c.vol)
+	volumeInfo, err = c.mc.AdminAPI().GetVolumeSimpleInfo(ctx, c.vol)
 	if err != nil {
 		return
 	}
@@ -214,7 +215,7 @@ func (c *PreLoadClient) newEBSClient(masters []string, logDir string) (err error
 	c.cacheAction = volumeInfo.CacheAction
 	c.cacheThreshold = volumeInfo.CacheThreshold
 
-	clusterInfo, err = c.mc.AdminAPI().GetClusterInfo(context.TODO())
+	clusterInfo, err = c.mc.AdminAPI().GetClusterInfo(ctx)
 	if err != nil {
 		return
 	}
@@ -380,7 +381,7 @@ func (c *PreLoadClient) allocatePreloadDP(target string, count int, ttl uint64, 
 		log.LogErrorf("AllocatePreLoadDataPartition failed: need space (%v) GB, volume total(%v)GB used(%v)GB", need, total, used)
 		return errors.New(fmt.Sprintf("AllocatePreLoadDataPartition failed: need space (%v) GB, volume total(%v)GB used(%v)GB", need, total, used))
 	}
-	err = c.ec.AllocatePreLoadDataPartition(c.vol, count, need, ttl, zones)
+	err = c.ec.AllocatePreLoadDataPartition(context.TODO(), c.vol, count, need, ttl, zones)
 
 	if err != nil {
 		log.LogErrorf("AllocatePreLoadDataPartition failed:%v", err)
@@ -433,6 +434,7 @@ func (c *PreLoadClient) ClearPreloadDP(target string) (err error) {
 }
 
 func (c *PreLoadClient) preloadFileWorker(id int64, jobs <-chan fileInfo, wg *sync.WaitGroup) {
+	ctx := context.TODO()
 	defer wg.Done()
 	var total int64 = 0
 	var succeed int64 = 0
@@ -446,7 +448,7 @@ func (c *PreLoadClient) preloadFileWorker(id int64, jobs <-chan fileInfo, wg *sy
 		log.LogDebugf("worker %v ready to preload(%v)", id, job.name)
 		ino := job.ino
 		//#1 open
-		c.ec.OpenStream(ino)
+		c.ec.OpenStream(ctx, ino)
 		//#2 write
 		var (
 			objExtents []proto.ObjExtentKey
@@ -489,13 +491,13 @@ func (c *PreLoadClient) preloadFileWorker(id int64, jobs <-chan fileInfo, wg *sy
 				log.LogWarnf("Read (%v) wrong size:(%v)", objExtent, n)
 				continue
 			}
-			_, err = c.ec.Write(ino, int(objExtent.FileOffset), buf, 0, nil)
+			_, err = c.ec.Write(ctx, ino, int(objExtent.FileOffset), buf, 0, nil)
 			// in preload mode,onece extend_hander set to error, streamer is set to error
 			// so write should failed immediately
 			if err != nil {
 				subErr = true
 				log.LogWarnf("preload (%v) to cbfs failed (%v)", job.name, err)
-				if err = c.ec.GetDataPartitionForWrite(); err != nil {
+				if err = c.ec.GetDataPartitionForWrite(ctx); err != nil {
 					log.LogErrorf("worker %v end for %v", id, err)
 					noWritableDP = true
 				}
