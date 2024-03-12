@@ -30,9 +30,7 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/cubefs/cubefs/blobstore/common/trace"
 	"github.com/cubefs/cubefs/proto"
-	"github.com/cubefs/cubefs/util/log"
 )
 
 var (
@@ -48,7 +46,8 @@ func (o *ObjectNode) getObjectHandler(w http.ResponseWriter, r *http.Request) {
 		errorCode *ErrorCode
 	)
 
-	span := trace.SpanFromContextSafe(r.Context())
+	ctx := r.Context()
+	span := spanWithOperation(ctx, "GetObject")
 	defer func() {
 		o.errorResponse(w, r, err, errorCode)
 	}()
@@ -62,10 +61,10 @@ func (o *ObjectNode) getObjectHandler(w http.ResponseWriter, r *http.Request) {
 		errorCode = InvalidKey
 		return
 	}
+
 	var vol *Volume
-	if vol, err = o.getVol(param.Bucket()); err != nil {
-		log.LogErrorf("getObjectHandler: load volume fail: requestID(%v) volume(%v) path(%v) err(%v)",
-			GetRequestID(r), param.Bucket(), param.Object(), err)
+	if vol, err = o.getVol(ctx, param.Bucket()); err != nil {
+		span.Errorf("load volume fail: volume(%v) err(%v)", param.Bucket(), err)
 		return
 	}
 
@@ -88,15 +87,11 @@ func (o *ObjectNode) getObjectHandler(w http.ResponseWriter, r *http.Request) {
 	rangeOpt := strings.TrimSpace(r.Header.Get(Range))
 	if len(rangeOpt) > 0 {
 		if !rangeRegexp.MatchString(rangeOpt) {
-			log.LogErrorf("getObjectHandler: invalid range header: requestID(%v) volume(%v) path(%v) rangeOpt(%v)",
-				GetRequestID(r), param.Bucket(), param.Object(), rangeOpt)
 			errorCode = InvalidRange
 			return
 		}
 		hyphenIndex := strings.Index(rangeOpt, "-")
 		if hyphenIndex < 0 {
-			log.LogErrorf("getObjectHandler: invalid range header: requestID(%v) volume(%v) path(%v) rangeOpt(%v)",
-				GetRequestID(r), param.Bucket(), param.Object(), rangeOpt)
 			errorCode = InvalidRange
 			return
 		}
@@ -116,24 +111,17 @@ func (o *ObjectNode) getObjectHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		if len(lowerPart) > 0 {
 			if rangeLower, err = strconv.ParseUint(lowerPart, 10, 64); err != nil {
-				log.LogErrorf("getObjectHandler: parse range lower fail: requestID(%v) volume(%v) path(%v) rangeOpt(%v) err(%v)",
-					GetRequestID(r), param.Bucket(), param.Object(), rangeOpt, err)
 				errorCode = InvalidRange
 				return
 			}
 		}
 		if len(upperPart) > 0 {
 			if rangeUpper, err = strconv.ParseUint(upperPart, 10, 64); err != nil {
-				log.LogErrorf("getObjectHandler: parse range upper fail: requestID(%v) volume(%v) path(%v) rangeOpt(%v) err(%v)",
-					GetRequestID(r), param.Bucket(), param.Object(), rangeOpt, err)
 				errorCode = InvalidRange
 				return
 			}
 		}
 		if rangeUpper < rangeLower {
-			// upper enabled and lower than lower side
-			log.LogErrorf("getObjectHandler: invalid range header: requestID(%v) volume(%v) path(%v) rangeOpt(%v)",
-				GetRequestID(r), param.Bucket(), param.Object(), rangeOpt)
 			errorCode = InvalidRange
 			return
 		}
@@ -154,12 +142,10 @@ func (o *ObjectNode) getObjectHandler(w http.ResponseWriter, r *http.Request) {
 	responseContentDisposition := r.URL.Query().Get(ParamResponseContentDisposition)
 
 	// get object meta
-	start := time.Now()
-	fileInfo, xattr, err := vol.ObjectMeta(param.Object())
-	span.AppendTrackLog("meta.r", start, err)
+	fileInfo, xattr, err := vol.ObjectMeta(ctx, param.Object())
 	if err != nil {
-		log.LogErrorf("getObjectHandler: get file meta fail: requestId(%v) volume(%v) path(%v) err(%v)",
-			GetRequestID(r), vol.Name(), param.Object(), err)
+		span.Errorf("get object meta fail: volume(%v) path(%v) err(%v)",
+			vol.Name(), param.Object(), err)
 		if err == syscall.ENOENT {
 			errorCode = NoSuchKey
 		}
@@ -228,17 +214,15 @@ func (o *ObjectNode) getObjectHandler(w http.ResponseWriter, r *http.Request) {
 	if len(partNumber) > 0 && fileInfo.Size >= MinParallelDownloadFileSize {
 		partNumberInt, err := strconv.ParseUint(partNumber, 10, 64)
 		if err != nil {
-			log.LogErrorf("getObjectHandler: parse partNumber(%v) fail: requestID(%v) volume(%v) path(%v) err(%v)",
-				partNumber, GetRequestID(r), param.Bucket(), param.Object(), err)
+			span.Errorf("parse request partNumber(%s) fail: %v", partNumber, err)
 			errorCode = InvalidArgument
 			return
 		}
 		partSize, partCount, rangeLower, rangeUpper = parsePartInfo(partNumberInt, uint64(fileInfo.Size))
-		log.LogDebugf("getObjectHandler: partNumber(%v) fileSize(%v) parsed: partSize(%d) partCount(%d) rangeLower(%d) rangeUpper(%d)",
+		span.Debugf("partNumber(%v) fileSize(%v) parsed: partSize(%d) partCount(%d) rangeLower(%d) rangeUpper(%d)",
 			partNumberInt, fileInfo.Size, partSize, partCount, rangeLower, rangeUpper)
 		if partNumberInt > partCount {
-			log.LogErrorf("getObjectHandler: partNumber(%d) > partCount(%d): requestID(%v) volume(%v) path(%v)",
-				partNumberInt, partCount, GetRequestID(r), param.Bucket(), param.Object())
+			span.Errorf("invalid partNumber: partNumber(%d) > partCount(%d)", partNumberInt, partCount)
 			errorCode = NoSuchKey
 			return
 		}
@@ -289,22 +273,20 @@ func (o *ObjectNode) getObjectHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// read file
-	start = time.Now()
-	err = vol.readFile(fileInfo.Inode, fileSize, param.Object(), writer, offset, size)
-	span.AppendTrackLog("file.r", start, err)
+	err = vol.readFile(ctx, fileInfo.Inode, fileSize, param.Object(), writer, offset, size)
 	if err != nil {
-		log.LogErrorf("getObjectHandler: read file fail: requestID(%v) volume(%v) path(%v) offset(%v) size(%v) err(%v)",
-			GetRequestID(r), param.Bucket(), param.Object(), offset, size, err)
+		span.Errorf("read file fail: volume(%v) path(%v) inode(%v) offset(%v) size(%v) err(%v)",
+			vol.Name(), param.Object(), fileInfo.Inode, offset, size, err)
 		if err == syscall.ENOENT {
 			errorCode = NoSuchKey
 		}
 		return
 	}
-
-	return
 }
 
 func CheckConditionInHeader(r *http.Request, fileInfo *FSFileInfo) *ErrorCode {
+	span := spanWithOperation(r.Context(), "CheckConditionInHeader")
+
 	// parse request header
 	match := r.Header.Get(IfMatch)
 	noneMatch := r.Header.Get(IfNoneMatch)
@@ -314,10 +296,7 @@ func CheckConditionInHeader(r *http.Request, fileInfo *FSFileInfo) *ErrorCode {
 	// Reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObject.html#API_GetObject_RequestSyntax
 	if match != "" {
 		if matchEag := strings.Trim(match, "\""); matchEag != fileInfo.ETag {
-			log.LogDebugf("getObjectHandler: object eTag(%s) not match If-Match header value(%s), requestId(%v)",
-				fileInfo.ETag, matchEag, GetRequestID(r))
 			return PreconditionFailed
-
 		}
 	}
 	// Checking precondition: If-Modified-Since
@@ -326,11 +305,10 @@ func CheckConditionInHeader(r *http.Request, fileInfo *FSFileInfo) *ErrorCode {
 		fileModTime := fileInfo.ModifyTime
 		modifiedTime, err := parseTimeRFC1123(modified)
 		if err != nil {
-			log.LogErrorf("getObjectHandler: parse RFC1123 time fail: requestID(%v) err(%v)", GetRequestID(r), err)
+			span.Errorf("parse RFC1123 time for %v header fail: %v", IfModifiedSince, err)
 			return InvalidArgument
 		}
 		if !fileModTime.After(modifiedTime) {
-			log.LogInfof("getObjectHandler: file modified time not after than specified time: requestID(%v)", GetRequestID(r))
 			return NotModified
 		}
 	}
@@ -338,8 +316,6 @@ func CheckConditionInHeader(r *http.Request, fileInfo *FSFileInfo) *ErrorCode {
 	// Reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObject.html#API_GetObject_RequestSyntax
 	if noneMatch != "" {
 		if noneMatchEtag := strings.Trim(noneMatch, "\""); noneMatchEtag == fileInfo.ETag {
-			log.LogErrorf("getObjectHandler: object eTag(%s) match If-None-Match header value(%s), requestId(%v)",
-				fileInfo.ETag, noneMatchEtag, GetRequestID(r))
 			return NotModified
 		}
 	}
@@ -349,11 +325,10 @@ func CheckConditionInHeader(r *http.Request, fileInfo *FSFileInfo) *ErrorCode {
 		fileModTime := fileInfo.ModifyTime
 		modifiedTime, err := parseTimeRFC1123(unmodified)
 		if err != nil {
-			log.LogErrorf("getObjectHandler: parse RFC1123 time fail: requestID(%v) err(%v)", GetRequestID(r), err)
+			span.Errorf("parse RFC1123 time for %v header fail: %v", IfUnmodifiedSince, err)
 			return InvalidArgument
 		}
 		if fileModTime.After(modifiedTime) {
-			log.LogInfof("getObjectHandler: file modified time after than specified time: requestID(%v)", GetRequestID(r))
 			return PreconditionFailed
 		}
 	}
@@ -368,7 +343,8 @@ func (o *ObjectNode) headObjectHandler(w http.ResponseWriter, r *http.Request) {
 		errorCode *ErrorCode
 	)
 
-	span := trace.SpanFromContextSafe(r.Context())
+	ctx := r.Context()
+	span := spanWithOperation(ctx, "HeadObject")
 	defer func() {
 		o.errorResponse(w, r, err, errorCode)
 	}()
@@ -385,9 +361,8 @@ func (o *ObjectNode) headObjectHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var vol *Volume
-	if vol, err = o.getVol(param.Bucket()); err != nil {
-		log.LogErrorf("headObjectHandler: load volume fail: requestID(%v) err(%v)",
-			GetRequestID(r), err)
+	if vol, err = o.getVol(ctx, param.Bucket()); err != nil {
+		span.Errorf("load volume fail: volume(%v) err(%v)", param.Bucket(), err)
 		return
 	}
 
@@ -399,12 +374,10 @@ func (o *ObjectNode) headObjectHandler(w http.ResponseWriter, r *http.Request) {
 	defer rateLimit.ReleaseLimitResource(vol.owner, param.apiName)
 
 	// get object meta
-	start := time.Now()
-	fileInfo, _, err := vol.ObjectMeta(param.Object())
-	span.AppendTrackLog("meta.r", start, err)
+	fileInfo, _, err := vol.ObjectMeta(ctx, param.Object())
 	if err != nil {
-		log.LogErrorf("headObjectHandler: get file meta fail: requestId(%v) volume(%v) path(%v) err(%v)",
-			GetRequestID(r), vol.Name(), param.Object(), err)
+		span.Errorf("get object meta fail: volume(%v) path(%v) err(%v)",
+			vol.Name(), param.Object(), err)
 		if err == syscall.ENOENT {
 			errorCode = NoSuchKey
 		}
@@ -421,8 +394,6 @@ func (o *ObjectNode) headObjectHandler(w http.ResponseWriter, r *http.Request) {
 	// Reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_HeadObject.html#API_HeadObject_RequestSyntax
 	if match != "" {
 		if matchEag := strings.Trim(match, "\""); matchEag != fileInfo.ETag {
-			log.LogDebugf("headObjectHandler: object eTag(%s) not match If-Match header value(%s), requestId(%v)",
-				fileInfo.ETag, matchEag, GetRequestID(r))
 			errorCode = PreconditionFailed
 			return
 		}
@@ -433,12 +404,11 @@ func (o *ObjectNode) headObjectHandler(w http.ResponseWriter, r *http.Request) {
 		fileModTime := fileInfo.ModifyTime
 		modifiedTime, err := parseTimeRFC1123(modified)
 		if err != nil {
-			log.LogDebugf("headObjectHandler: parse RFC1123 time fail: requestID(%v) err(%v)", GetRequestID(r), err)
+			span.Errorf("parse RFC1123 time for %v header fail: %v", IfModifiedSince, err)
 			errorCode = InvalidArgument
 			return
 		}
 		if !fileModTime.After(modifiedTime) {
-			log.LogDebugf("headObjectHandler: file modified time not after than specified time: requestID(%v)", GetRequestID(r))
 			errorCode = NotModified
 			return
 		}
@@ -447,8 +417,6 @@ func (o *ObjectNode) headObjectHandler(w http.ResponseWriter, r *http.Request) {
 	// Reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_HeadObject.html#API_HeadObject_RequestSyntax
 	if noneMatch != "" {
 		if noneMatchEtag := strings.Trim(noneMatch, "\""); noneMatchEtag == fileInfo.ETag {
-			log.LogDebugf("headObjectHandler: object eTag(%s) match If-None-Match header value(%s), requestId(%v)",
-				fileInfo.ETag, noneMatchEtag, GetRequestID(r))
 			errorCode = NotModified
 			return
 		}
@@ -459,12 +427,11 @@ func (o *ObjectNode) headObjectHandler(w http.ResponseWriter, r *http.Request) {
 		fileModTime := fileInfo.ModifyTime
 		modifiedTime, err := parseTimeRFC1123(unmodified)
 		if err != nil {
-			log.LogDebugf("headObjectHandler: parse RFC1123 time fail: requestID(%v) err(%v)", GetRequestID(r), err)
+			span.Errorf("parse RFC1123 time for %v header fail: %v", IfUnmodifiedSince, err)
 			errorCode = InvalidArgument
 			return
 		}
 		if fileModTime.After(modifiedTime) {
-			log.LogDebugf("headObjectHandler: file modified time after than specified time: requestID(%v)", GetRequestID(r))
 			errorCode = PreconditionFailed
 			return
 		}
@@ -498,14 +465,15 @@ func (o *ObjectNode) headObjectHandler(w http.ResponseWriter, r *http.Request) {
 	if len(partNumber) > 0 && fileInfo.Size >= MinParallelDownloadFileSize {
 		partNumberInt, err := strconv.ParseUint(partNumber, 10, 64)
 		if err != nil {
-			log.LogErrorf("headObjectHandler: parse param partNumber(%s) fail: requestID(%v) err(%v)", partNumber, GetRequestID(r), err)
+			span.Errorf("parse request partNumber(%s) fail: %v", partNumber, err)
 			errorCode = InvalidArgument
 			return
 		}
 		partSize, partCount, rangeLower, rangeUpper := parsePartInfo(partNumberInt, uint64(fileInfo.Size))
-		log.LogDebugf("headObjectHandler: parsed partSize(%d), partCount(%d), rangeLower(%d), rangeUpper(%d)", partSize, partCount, rangeLower, rangeUpper)
+		span.Debugf("partNumber(%v) fileSize(%v) parsed: partSize(%d) partCount(%d) rangeLower(%d) rangeUpper(%d)",
+			partNumberInt, fileInfo.Size, partSize, partCount, rangeLower, rangeUpper)
 		if partNumberInt > partCount {
-			log.LogErrorf("headObjectHandler: param partNumber(%d) is more then partCount(%d): requestID(%v)", partNumberInt, partCount, GetRequestID(r))
+			span.Errorf("invalid partNumber: partNumber(%d) > partCount(%d)", partNumberInt, partCount)
 			errorCode = NoSuchKey
 			return
 		}
@@ -526,8 +494,6 @@ func (o *ObjectNode) headObjectHandler(w http.ResponseWriter, r *http.Request) {
 	for name, value := range fileInfo.Metadata {
 		w.Header().Set(XAmzMetaPrefix+name, value)
 	}
-
-	return
 }
 
 // Delete objects (multiple objects)
@@ -538,7 +504,8 @@ func (o *ObjectNode) deleteObjectsHandler(w http.ResponseWriter, r *http.Request
 		errorCode *ErrorCode
 	)
 
-	span := trace.SpanFromContextSafe(r.Context())
+	ctx := r.Context()
+	span := spanWithOperation(ctx, "DeleteObjects")
 	defer func() {
 		o.errorResponse(w, r, err, errorCode)
 	}()
@@ -550,9 +517,8 @@ func (o *ObjectNode) deleteObjectsHandler(w http.ResponseWriter, r *http.Request
 	}
 
 	var vol *Volume
-	if vol, err = o.getVol(param.Bucket()); err != nil {
-		log.LogErrorf("deleteObjectsHandler: load volume fail: requestID(%v) volume(%v) err(%v)",
-			GetRequestID(r), param.Bucket(), err)
+	if vol, err = o.getVol(ctx, param.Bucket()); err != nil {
+		span.Errorf("load volume fail: volume(%v) err(%v)", param.Bucket(), err)
 		return
 	}
 
@@ -568,8 +534,7 @@ func (o *ObjectNode) deleteObjectsHandler(w http.ResponseWriter, r *http.Request
 	}
 	bytes, err := io.ReadAll(r.Body)
 	if err != nil {
-		log.LogErrorf("deleteObjectsHandler: read request body fail: requestID(%v) volume(%v) err(%v)",
-			GetRequestID(r), param.Bucket(), err)
+		span.Errorf("read request body fail: %v", err)
 		errorCode = UnexpectedContent
 		return
 	}
@@ -581,8 +546,7 @@ func (o *ObjectNode) deleteObjectsHandler(w http.ResponseWriter, r *http.Request
 	deleteReq := DeleteRequest{}
 	err = UnmarshalXMLEntity(bytes, &deleteReq)
 	if err != nil {
-		log.LogErrorf("deleteObjectsHandler: unmarshal xml fail: requestID(%v) volume(%v) request(%v) err(%v)",
-			GetRequestID(r), param.Bucket(), string(bytes), err)
+		span.Errorf("unmarshal xml body fail: body(%v) err(%v)", string(bytes), err)
 		errorCode = MalformedXML
 		return
 	}
@@ -605,17 +569,15 @@ func (o *ObjectNode) deleteObjectsHandler(w http.ResponseWriter, r *http.Request
 		return deleteReq.Objects[i].Key > deleteReq.Objects[j].Key
 	})
 
-	vol, acl, policy, err := o.loadBucketMeta(param.Bucket())
+	vol, acl, policy, err := o.loadBucketMeta(ctx, param.Bucket())
 	if err != nil {
-		log.LogErrorf("deleteObjectsHandler: load bucket metadata fail: requestID(%v) volume(%v) err(%v)",
-			GetRequestID(r), param.Bucket(), err)
+		span.Errorf("load bucket metadata fail: volume(%v) err(%v)", param.Bucket(), err)
 		return
 	}
 
-	userInfo, err := o.getUserInfoByAccessKeyV2(param.AccessKey())
+	userInfo, err := o.getUserInfoByAccessKey(ctx, param.AccessKey())
 	if err != nil {
-		log.LogErrorf("deleteObjectsHandler: get userinfo fail: requestID(%v) volume(%v) accessKey(%v) err(%v)",
-			GetRequestID(r), param.Bucket(), param.AccessKey(), err)
+		span.Errorf("get user info fail: accessKey(%v) err(%v)", param.AccessKey(), err)
 		return
 	}
 
@@ -651,16 +613,15 @@ func (o *ObjectNode) deleteObjectsHandler(w http.ResponseWriter, r *http.Request
 			continue
 		}
 		objectKeys = append(objectKeys, object.Key)
-		log.LogWarnf("deleteObjectsHandler: delete path: requestID(%v) remote(%v) volume(%v) path(%v)",
-			GetRequestID(r), getRequestIP(r), vol.Name(), object.Key)
+		span.Warnf("delete object: reqUid(%v) remote(%v) volume(%v) path(%v)",
+			userInfo.UserID, getRequestIP(r), vol.Name(), object.Key)
 		// QPS and Concurrency Limit
 		rateLimit := o.AcquireRateLimiter()
 		if err = rateLimit.AcquireLimitResource(vol.owner, DELETE_OBJECT); err != nil {
 			return
 		}
-		if err1 := vol.DeletePath(object.Key); err1 != nil {
-			log.LogErrorf("deleteObjectsHandler: delete object failed: requestID(%v) volume(%v) path(%v) err(%v)",
-				GetRequestID(r), vol.Name(), object.Key, err1)
+		if err1 := vol.DeletePath(ctx, object.Key); err1 != nil {
+			span.Errorf("delete object failed: volume(%v) path(%v) err(%v)", vol.Name(), object.Key, err1)
 			if !strings.Contains(err1.Error(), AccessDenied.ErrorMessage) {
 				deletedErrors = append(deletedErrors, Error{Key: object.Key, Code: "InternalError", Message: err1.Error()})
 			} else {
@@ -679,19 +640,18 @@ func (o *ObjectNode) deleteObjectsHandler(w http.ResponseWriter, r *http.Request
 	}
 	response, err1 := MarshalXMLEntity(deleteResult)
 	if err1 != nil {
-		log.LogErrorf("deleteObjectsHandler: xml marshal fail: requestID(%v) volume(%v) result(%+v) err(%v)",
-			GetRequestID(r), param.Bucket(), deleteResult, err1)
+		span.Errorf("marshal xml response fail: response(%+v) err(%v)", deleteResult, err1)
 	}
 
 	writeSuccessResponseXML(w, response)
-	return
 }
 
 func extractSrcBucketKey(r *http.Request) (srcBucketId, srcKey, versionId string, err error) {
 	copySource := r.Header.Get(XAmzCopySource)
 	copySource, err = url.QueryUnescape(copySource)
 	if err != nil {
-		return "", "", "", InvalidArgument
+		err = InvalidArgument
+		return
 	}
 	// path could be /bucket/key or bucket/key
 	copySource = strings.TrimPrefix(copySource, "/")
@@ -703,12 +663,15 @@ func extractSrcBucketKey(r *http.Request) (srcBucketId, srcKey, versionId string
 	}
 	path := strings.SplitN(elements[0], "/", 2)
 	if len(path) == 1 {
-		return "", "", "", InvalidArgument
+		err = InvalidArgument
+		return
 	}
 	srcBucketId, srcKey = path[0], path[1]
 	if srcBucketId == "" || srcKey == "" {
-		return "", "", "", InvalidArgument
+		err = InvalidArgument
+		return
 	}
+
 	return
 }
 
@@ -720,7 +683,8 @@ func (o *ObjectNode) copyObjectHandler(w http.ResponseWriter, r *http.Request) {
 		errorCode *ErrorCode
 	)
 
-	span := trace.SpanFromContextSafe(r.Context())
+	ctx := r.Context()
+	span := spanWithOperation(ctx, "CopyObject")
 	defer func() {
 		o.errorResponse(w, r, err, errorCode)
 	}()
@@ -738,10 +702,10 @@ func (o *ObjectNode) copyObjectHandler(w http.ResponseWriter, r *http.Request) {
 		errorCode = KeyTooLong
 		return
 	}
+
 	var vol *Volume
-	if vol, err = o.getVol(param.Bucket()); err != nil {
-		log.LogErrorf("copyObjectHandler: load volume fail: requestID(%v) volume(%v) err(%v)",
-			GetRequestID(r), param.Bucket(), err)
+	if vol, err = o.getVol(ctx, param.Bucket()); err != nil {
+		span.Errorf("load volume fail: volume(%v) err(%v)", param.Bucket(), err)
 		return
 	}
 
@@ -773,48 +737,39 @@ func (o *ObjectNode) copyObjectHandler(w http.ResponseWriter, r *http.Request) {
 		metadataDirective = MetadataDirectiveCopy
 	}
 	if metadataDirective != MetadataDirectiveCopy && metadataDirective != MetadataDirectiveReplace {
-		log.LogErrorf("copyObjectHandler: x-amz-metadata-directive invalid: requestID(%v) volume(%v) x-amz-metadata-directive(%v) err(%v)",
-			GetRequestID(r), param.Bucket(), metadataDirective, err)
+		span.Errorf("invalid %v: %v", XAmzMetadataDirective, metadataDirective)
 		errorCode = InvalidArgument
 		return
 	}
 	// parse x-amz-copy-source header
 	sourceBucket, sourceObject, _, err := extractSrcBucketKey(r)
 	if err != nil {
-		log.LogErrorf("copyObjectHandler: copySource(%v) argument invalid: requestID(%v) volume(%v) err(%v)",
-			r.Header.Get(XAmzCopySource), GetRequestID(r), param.Bucket(), err)
+		span.Errorf("invalid %v: %v", XAmzCopySource, r.Header.Get(XAmzCopySource))
 		return
 	}
 
 	// check ACL
-	userInfo, err := o.getUserInfoByAccessKeyV2(param.AccessKey())
+	userInfo, err := o.getUserInfoByAccessKey(ctx, param.AccessKey())
 	if err != nil {
-		log.LogErrorf("copyObjectHandler: get user info fail: requestID(%v) volume(%v) accessKey(%v) err(%v)",
-			GetRequestID(r), param.Bucket(), param.AccessKey(), err)
+		span.Errorf("get user info fail: accessKey(%v) err(%v)", param.AccessKey(), err)
 		return
 	}
 	acl, err := ParseACL(r, userInfo.UserID, false, vol.GetOwner() != userInfo.UserID)
 	if err != nil {
-		log.LogErrorf("copyObjectHandler: parse acl fail: requestID(%v) volume(%v) acl(%+v) err(%v)",
-			GetRequestID(r), param.Bucket(), acl, err)
 		return
 	}
 
 	// get src object meta
 	var sourceVol *Volume
-	if sourceVol, err = o.getVol(sourceBucket); err != nil {
-		log.LogErrorf("copyObjectHandler: load source volume fail: requestID(%v) srcVolume(%v) err(%v)",
-			GetRequestID(r), sourceBucket, err)
+	if sourceVol, err = o.getVol(ctx, sourceBucket); err != nil {
+		span.Errorf("load volume fail: volume(%v) err(%v)", sourceBucket, err)
 		return
 	}
 
 	// get object meta
-	start := time.Now()
-	fileInfo, _, err := sourceVol.ObjectMeta(sourceObject)
-	span.AppendTrackLog("meta.r", start, err)
+	fileInfo, _, err := sourceVol.ObjectMeta(ctx, sourceObject)
 	if err != nil {
-		log.LogErrorf("copyObjectHandler: get object meta fail: requestID(%v) srcVolume(%v) srcObject(%v) err(%v)",
-			GetRequestID(r), sourceBucket, sourceObject, err)
+		span.Errorf("get object meta fail: volume(%v) path(%v) err(%v)", sourceBucket, sourceObject, err)
 		if err == syscall.ENOENT {
 			errorCode = NoSuchKey
 		}
@@ -840,12 +795,11 @@ func (o *ObjectNode) copyObjectHandler(w http.ResponseWriter, r *http.Request) {
 		fileModTime := fileInfo.ModifyTime
 		modifiedTime, err := parseTimeRFC1123(modified)
 		if err != nil {
-			log.LogErrorf("copyObjectHandler: parse RFC1123 time fail: requestID(%v) err(%v)", GetRequestID(r), err)
+			span.Errorf("parse RFC1123 time for %v header fail: %v", XAmzCopySourceIfModifiedSince, err)
 			errorCode = InvalidArgument
 			return
 		}
 		if fileModTime.Before(modifiedTime) {
-			log.LogInfof("copyObjectHandler: file modified time not after than specified time: requestID(%v)", GetRequestID(r))
 			errorCode = PreconditionFailed
 			return
 		}
@@ -854,32 +808,28 @@ func (o *ObjectNode) copyObjectHandler(w http.ResponseWriter, r *http.Request) {
 		fileModTime := fileInfo.ModifyTime
 		unmodifiedTime, err := parseTimeRFC1123(unModified)
 		if err != nil {
-			log.LogErrorf("copyObjectHandler: parse RFC1123 time fail: requestID(%v) err(%v)", GetRequestID(r), err)
+			span.Errorf("parse RFC1123 time for %v header fail: %v", XAmzCopySourceIfUnmodifiedSince, err)
 			errorCode = InvalidArgument
 			return
 		}
 		if fileModTime.After(unmodifiedTime) {
-			log.LogInfof("copyObjectHandler: file modified time not before than specified time: requestID(%v)", GetRequestID(r))
 			errorCode = PreconditionFailed
 			return
 		}
 	}
 	if copyMatch != "" && fileInfo.ETag != copyMatch {
-		log.LogInfof("copyObjectHandler: eTag mismatched with specified: requestID(%v)", GetRequestID(r))
 		errorCode = PreconditionFailed
 		return
 	}
 	if noneMatch != "" && fileInfo.ETag == noneMatch {
-		log.LogInfof("copyObjectHandler: eTag same with specified: requestID(%v)", GetRequestID(r))
 		errorCode = PreconditionFailed
 		return
 	}
 
 	// ObjectLock  Config
-	objetLock, err := vol.metaLoader.loadObjectLock()
+	objetLock, err := vol.metaLoader.loadObjectLock(ctx)
 	if err != nil {
-		log.LogErrorf("copyObjectHandler: load volume objetLock: requestID(%v)  volume(%v) err(%v)",
-			GetRequestID(r), param.Bucket(), err)
+		span.Errorf("load volume objetLock fail: volume(%v) err(%v)", vol.Name(), err)
 		return
 	}
 
@@ -896,23 +846,21 @@ func (o *ObjectNode) copyObjectHandler(w http.ResponseWriter, r *http.Request) {
 		ACL:          acl,
 		ObjectLock:   objetLock,
 	}
-	start = time.Now()
-	fsFileInfo, err := vol.CopyFile(sourceVol, sourceObject, param.Object(), metadataDirective, opt)
-	span.AppendTrackLog("file.c", start, err)
+	fsFileInfo, err := vol.CopyFile(ctx, sourceVol, sourceObject, param.Object(), metadataDirective, opt)
 	if err != nil && err != syscall.EINVAL && err != syscall.EFBIG {
-		log.LogErrorf("copyObjectHandler: Volume copy file fail: requestID(%v) Volume(%v) source(%v) target(%v) err(%v)",
-			GetRequestID(r), param.Bucket(), sourceObject, param.Object(), err)
+		span.Errorf("copy file fail: srcVol(%v) srcKey(%v) dstVol(%v) dstKey(%v) err(%v)",
+			sourceVol.Name(), sourceObject, vol.Name(), param.Object(), err)
 		return
 	}
 	if err == syscall.EINVAL {
-		log.LogErrorf("copyObjectHandler: target file existed, and mode conflict: requestID(%v) Volume(%v) source(%v) target(%v) err(%v)",
-			GetRequestID(r), param.Bucket(), sourceObject, param.Object(), err)
+		span.Errorf("target file existed and mode conflict: srcVol(%v) srcKey(%v) dstVol(%v) dstKey(%v) err(%v)",
+			sourceVol.Name(), sourceObject, vol.Name(), param.Object(), err)
 		errorCode = ObjectModeConflict
 		return
 	}
 	if err == syscall.EFBIG {
-		log.LogErrorf("copyObjectHandler: source file size greater than 5GB: requestID(%v) Volume(%v) source(%v) target(%v) err(%v)",
-			GetRequestID(r), param.Bucket(), sourceObject, param.Object(), err)
+		span.Errorf("source file size greater than 5GB: srcVol(%v) srcKey(%v) dstVol(%v) dstKey(%v) err(%v)",
+			sourceVol.Name(), sourceObject, vol.Name(), param.Object(), err)
 		errorCode = CopySourceSizeTooLarge
 		return
 	}
@@ -923,12 +871,10 @@ func (o *ObjectNode) copyObjectHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	response, ierr := MarshalXMLEntity(copyResult)
 	if ierr != nil {
-		log.LogErrorf("copyObjectHandler: marshal xml result fail: requestID(%v) result(%v) err(%v)",
-			GetRequestID(r), copyResult, ierr)
+		span.Errorf("marshal xml response fail: response(%+v) err(%v)", copyResult, ierr)
 	}
 
 	writeSuccessResponseXML(w, response)
-	return
 }
 
 // List objects v1
@@ -939,7 +885,8 @@ func (o *ObjectNode) getBucketV1Handler(w http.ResponseWriter, r *http.Request) 
 		errorCode *ErrorCode
 	)
 
-	span := trace.SpanFromContextSafe(r.Context())
+	ctx := r.Context()
+	span := spanWithOperation(ctx, "ListObjects")
 	defer func() {
 		o.errorResponse(w, r, err, errorCode)
 	}()
@@ -949,10 +896,10 @@ func (o *ObjectNode) getBucketV1Handler(w http.ResponseWriter, r *http.Request) 
 		errorCode = InvalidBucketName
 		return
 	}
+
 	var vol *Volume
-	if vol, err = o.getVol(param.Bucket()); err != nil {
-		log.LogErrorf("getBucketV1Handler: load volume fail: requestID(%v) volume(%v) err(%v)",
-			GetRequestID(r), param.Bucket(), err)
+	if vol, err = o.getVol(ctx, param.Bucket()); err != nil {
+		span.Errorf("load volume fail: volume(%v) err(%v)", param.Bucket(), err)
 		return
 	}
 
@@ -974,8 +921,6 @@ func (o *ObjectNode) getBucketV1Handler(w http.ResponseWriter, r *http.Request) 
 	if maxKeys != "" {
 		maxKeysInt, err = strconv.ParseUint(maxKeys, 10, 16)
 		if err != nil {
-			log.LogErrorf("getBucketV1Handler: parse max key fail: requestID(%v) volume(%v) maxKeys(%v) err(%v)",
-				GetRequestID(r), vol.Name(), maxKeys, err)
 			errorCode = InvalidArgument
 			return
 		}
@@ -1005,12 +950,9 @@ func (o *ObjectNode) getBucketV1Handler(w http.ResponseWriter, r *http.Request) 
 		MaxKeys:    maxKeysInt,
 		OnlyObject: true,
 	}
-	start := time.Now()
-	result, err := vol.ListFilesV1(option)
-	span.AppendTrackLog("file.l", start, err)
+	result, err := vol.ListFilesV1(ctx, option)
 	if err != nil {
-		log.LogErrorf("getBucketV1Handler: list files fail: requestID(%v) volume(%v) option(%v) err(%v)",
-			GetRequestID(r), vol.Name(), option, err)
+		span.Errorf("list files fail: volume(%v) option(%+v) err(%v)", vol.Name(), option, err)
 		return
 	}
 	// The result of next list request should not include nextMarker.
@@ -1020,14 +962,13 @@ func (o *ObjectNode) getBucketV1Handler(w http.ResponseWriter, r *http.Request) 
 
 	// get owner
 	bucketOwner := NewBucketOwner(vol)
-	log.LogDebugf("Owner: %v", bucketOwner)
 	contents := make([]*Content, 0, len(result.Files))
 	for _, file := range result.Files {
 		if file.Mode == 0 {
 			// Invalid file mode, which means that the inode of the file may not exist.
 			// Record and filter out the file.
-			log.LogWarnf("getBucketV1Handler: invalid file found: requestID(%v) volume(%v) path(%v) inode(%v)",
-				GetRequestID(r), vol.Name(), file.Path, file.Inode)
+			span.Warnf("invalid file found: volume(%v) path(%v) inode(%v)",
+				vol.Name(), file.Path, file.Inode)
 			continue
 		}
 		content := &Content{
@@ -1062,13 +1003,11 @@ func (o *ObjectNode) getBucketV1Handler(w http.ResponseWriter, r *http.Request) 
 	}
 	response, err := MarshalXMLEntity(listBucketResult)
 	if err != nil {
-		log.LogErrorf("getBucketV1Handler: xml marshal result fail: requestID(%v) volume(%v) err(%v)",
-			GetRequestID(r), vol.Name(), err)
+		span.Errorf("marshal xml response fail: %v", err)
 		return
 	}
 
 	writeSuccessResponseXML(w, response)
-	return
 }
 
 // List objects version 2
@@ -1079,7 +1018,8 @@ func (o *ObjectNode) getBucketV2Handler(w http.ResponseWriter, r *http.Request) 
 		errorCode *ErrorCode
 	)
 
-	span := trace.SpanFromContextSafe(r.Context())
+	ctx := r.Context()
+	span := spanWithOperation(ctx, "ListObjectsV2")
 	defer func() {
 		o.errorResponse(w, r, err, errorCode)
 	}()
@@ -1090,9 +1030,8 @@ func (o *ObjectNode) getBucketV2Handler(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	var vol *Volume
-	if vol, err = o.getVol(param.Bucket()); err != nil {
-		log.LogErrorf("getBucketV2Handler: load volume fail: requestID(%v) volume(%v) err(%v)",
-			GetRequestID(r), param.Bucket(), err)
+	if vol, err = o.getVol(ctx, param.Bucket()); err != nil {
+		span.Errorf("load volume fail: volume(%v) err(%v)", param.Bucket(), err)
 		return
 	}
 
@@ -1116,8 +1055,6 @@ func (o *ObjectNode) getBucketV2Handler(w http.ResponseWriter, r *http.Request) 
 	if maxKeys != "" {
 		maxKeysInt, err = strconv.ParseUint(maxKeys, 10, 16)
 		if err != nil {
-			log.LogErrorf("getBucketV2Handler: parse max keys fail: requestID(%v) volume(%v) maxKeys(%v) err(%v)",
-				GetRequestID(r), vol.Name(), maxKeys, err)
 			errorCode = InvalidArgument
 			return
 		}
@@ -1132,8 +1069,6 @@ func (o *ObjectNode) getBucketV2Handler(w http.ResponseWriter, r *http.Request) 
 	if fetchOwner != "" {
 		fetchOwnerBool, err = strconv.ParseBool(fetchOwner)
 		if err != nil {
-			log.LogErrorf("getBucketV2Handler: parse fetch owner fail: requestID(%v) volume(%v) fetchOwner(%v) err(%v)",
-				GetRequestID(r), vol.Name(), fetchOwner, err)
 			errorCode = InvalidArgument
 			return
 		}
@@ -1167,12 +1102,9 @@ func (o *ObjectNode) getBucketV2Handler(w http.ResponseWriter, r *http.Request) 
 		FetchOwner: fetchOwnerBool,
 		StartAfter: startAfter,
 	}
-	start := time.Now()
-	result, err := vol.ListFilesV2(option)
-	span.AppendTrackLog("file.l", start, err)
+	result, err := vol.ListFilesV2(ctx, option)
 	if err != nil {
-		log.LogErrorf("getBucketV2Handler: list files fail, requestID(%v) volume(%v) option(%v) err(%v)",
-			GetRequestID(r), vol.Name(), option, err)
+		span.Errorf("list files fail: volume(%v) option(%+v) err(%v)", vol.Name(), option, err)
 		return
 	}
 	// The result of next list request should not include continuationToken.
@@ -1192,8 +1124,8 @@ func (o *ObjectNode) getBucketV2Handler(w http.ResponseWriter, r *http.Request) 
 			if file.Mode == 0 {
 				// Invalid file mode, which means that the inode of the file may not exist.
 				// Record and filter out the file.
-				log.LogWarnf("getBucketV2Handler: invalid file found: requestID(%v) volume(%v) path(%v) inode(%v)",
-					GetRequestID(r), vol.Name(), file.Path, file.Inode)
+				span.Warnf("invalid file found: volume(%v) path(%v) inode(%v)",
+					vol.Name(), file.Path, file.Inode)
 				result.KeyCount--
 				continue
 			}
@@ -1231,13 +1163,11 @@ func (o *ObjectNode) getBucketV2Handler(w http.ResponseWriter, r *http.Request) 
 	}
 	response, err := MarshalXMLEntity(listBucketResult)
 	if err != nil {
-		log.LogErrorf("getBucketV2Handler: xml marshal result fail: requestID(%v) volume(%v) err(%v)",
-			GetRequestID(r), vol.Name(), err)
+		span.Errorf("marshal xml response fail: %v", err)
 		return
 	}
 
 	writeSuccessResponseXML(w, response)
-	return
 }
 
 // Put object
@@ -1248,7 +1178,8 @@ func (o *ObjectNode) putObjectHandler(w http.ResponseWriter, r *http.Request) {
 		errorCode *ErrorCode
 	)
 
-	span := trace.SpanFromContextSafe(r.Context())
+	ctx := r.Context()
+	span := spanWithOperation(ctx, "PutObject")
 	defer func() {
 		o.errorResponse(w, r, err, errorCode)
 	}()
@@ -1266,10 +1197,10 @@ func (o *ObjectNode) putObjectHandler(w http.ResponseWriter, r *http.Request) {
 		errorCode = KeyTooLong
 		return
 	}
+
 	var vol *Volume
-	if vol, err = o.getVol(param.Bucket()); err != nil {
-		log.LogErrorf("putObjectHandler: load volume fail: requestID(%v)  volume(%v) err(%v)",
-			GetRequestID(r), param.Bucket(), err)
+	if vol, err = o.getVol(ctx, param.Bucket()); err != nil {
+		span.Errorf("load volume fail: volume(%v) err(%v)", param.Bucket(), err)
 		return
 	}
 
@@ -1285,10 +1216,9 @@ func (o *ObjectNode) putObjectHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// ObjectLock  Config
-	objetLock, err := vol.metaLoader.loadObjectLock()
+	objetLock, err := vol.metaLoader.loadObjectLock(ctx)
 	if err != nil {
-		log.LogErrorf("putObjectHandler: load volume objetLock: requestID(%v)  volume(%v) err(%v)",
-			GetRequestID(r), param.Bucket(), err)
+		span.Errorf("load objetLock fail: volume(%v) err(%v)", vol.Name(), err)
 		return
 	}
 	if objetLock != nil && objetLock.ToRetention() != nil && requestMD5 == "" {
@@ -1312,24 +1242,19 @@ func (o *ObjectNode) putObjectHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if err = tagging.Validate(); err != nil {
-			log.LogErrorf("putObjectHandler: tagging validate fail: requestID(%v) volume(%v) path(%v) tagging(%v) err(%v)",
-				GetRequestID(r), vol.Name(), param.Object(), tagging, err)
 			return
 		}
 	}
 
 	var userInfo *proto.UserInfo
-	if userInfo, err = o.getUserInfoByAccessKeyV2(param.AccessKey()); err != nil {
-		log.LogErrorf("putObjectHandler: get user info fail: requestID(%v) volume(%v) accessKey(%v) err(%v)",
-			GetRequestID(r), param.Bucket(), param.AccessKey(), err)
+	if userInfo, err = o.getUserInfoByAccessKey(ctx, param.AccessKey()); err != nil {
+		span.Errorf("get user info fail: accessKey(%v) err(%v)", param.AccessKey(), err)
 		return
 	}
 
 	// Check ACL
 	acl, err := ParseACL(r, userInfo.UserID, false, vol.GetOwner() != userInfo.UserID)
 	if err != nil {
-		log.LogErrorf("putObjectHandler: parse acl fail: requestID(%v) volume(%v) path(%v) acl(%+v) err(%v)",
-			GetRequestID(r), vol.Name(), param.Object(), acl, err)
 		return
 	}
 
@@ -1364,9 +1289,6 @@ func (o *ObjectNode) putObjectHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	// Checking user-defined metadata
 	metadata := ParseUserDefinedMetadata(r.Header)
-	// Audit file write
-	log.LogInfof("Audit: put object: requestID(%v) remote(%v) volume(%v) path(%v) type(%v)",
-		GetRequestID(r), getRequestIP(r), vol.Name(), param.Object(), contentType)
 
 	// Flow Control
 	var reader io.Reader
@@ -1387,27 +1309,22 @@ func (o *ObjectNode) putObjectHandler(w http.ResponseWriter, r *http.Request) {
 		ACL:          acl,
 		ObjectLock:   objetLock,
 	}
-	start := time.Now()
-	fsFileInfo, err := vol.PutObject(param.Object(), reader, opt)
-	span.AppendTrackLog("file.w", start, err)
+	fsFileInfo, err := vol.PutObject(ctx, param.Object(), reader, opt)
 	if err != nil {
-		log.LogErrorf("putObjectHandler: put object fail: requestId(%v) volume(%v) path(%v) remote(%v) err(%v)",
-			GetRequestID(r), vol.Name(), param.Object(), getRequestIP(r), err)
+		span.Errorf("put object fail: volume(%v) path(%v) option(%+v) err(%v)",
+			vol.Name(), param.Object(), opt, err)
 		err = handlePutObjectErr(err)
 		return
 	}
 
 	// check content MD5
 	if requestMD5 != "" && requestMD5 != fsFileInfo.ETag {
-		log.LogErrorf("putObjectHandler: MD5 validate fail: requestID(%v) volume(%v) path(%v) requestMD5(%v) serverMD5(%v)",
-			GetRequestID(r), vol.Name(), param.Object(), requestMD5, fsFileInfo.ETag)
 		errorCode = BadDigest
 		return
 	}
 
 	// set response header
 	w.Header()[ETag] = []string{wrapUnescapedQuot(fsFileInfo.ETag)}
-	return
 }
 
 // Post object
@@ -1418,7 +1335,8 @@ func (o *ObjectNode) postObjectHandler(w http.ResponseWriter, r *http.Request) {
 		errorCode *ErrorCode
 	)
 
-	span := trace.SpanFromContextSafe(r.Context())
+	ctx := r.Context()
+	span := spanWithOperation(ctx, "PostObject")
 	defer func() {
 		o.errorResponse(w, r, err, errorCode)
 	}()
@@ -1430,16 +1348,14 @@ func (o *ObjectNode) postObjectHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var vol *Volume
-	if vol, err = o.getVol(param.Bucket()); err != nil {
-		log.LogErrorf("postObjectHandler: load volume fail: requestID(%v) volume(%v) err(%v)",
-			GetRequestID(r), param.Bucket(), err)
+	if vol, err = o.getVol(ctx, param.Bucket()); err != nil {
+		span.Errorf("load volume fail: volume(%v) err(%v)", param.Bucket(), err)
 		return
 	}
 
 	var userInfo *proto.UserInfo
-	if userInfo, err = o.getUserInfoByAccessKeyV2(param.AccessKey()); err != nil {
-		log.LogErrorf("postObjectHandler: get user info fail: requestID(%v) volume(%v) accessKey(%v) err(%v)",
-			GetRequestID(r), param.Bucket(), param.AccessKey(), err)
+	if userInfo, err = o.getUserInfoByAccessKey(ctx, param.AccessKey()); err != nil {
+		span.Errorf("get user info fail: accessKey(%v) err(%v)", param.AccessKey(), err)
 		return
 	}
 
@@ -1453,8 +1369,7 @@ func (o *ObjectNode) postObjectHandler(w http.ResponseWriter, r *http.Request) {
 	// parse the request form
 	formReq := NewFormRequest(r)
 	if err = formReq.ParseMultipartForm(); err != nil {
-		log.LogErrorf("postObjectHandler: parse form fail: requestID(%v) volume(%v) err(%v)",
-			GetRequestID(r), param.Bucket(), err)
+		span.Errorf("parse post form fail: volume(%v) err(%v)", param.Bucket(), err)
 		errorCode = MalformedPOSTRequest.Copy()
 		errorCode.ErrorMessage = fmt.Sprintf("%s (%v)", errorCode.ErrorMessage, err)
 		return
@@ -1473,10 +1388,9 @@ func (o *ObjectNode) postObjectHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// object lock check
-	objetLock, err := vol.metaLoader.loadObjectLock()
+	objetLock, err := vol.metaLoader.loadObjectLock(ctx)
 	if err != nil {
-		log.LogErrorf("postObjectHandler: load volume objetLock fail: requestID(%v) volume(%v) err(%v)",
-			GetRequestID(r), param.Bucket(), err)
+		span.Errorf("load objetLock fail: volume(%v) err(%v)", vol.Name(), err)
 		return
 	}
 	if objetLock != nil && objetLock.ToRetention() != nil && requestMD5 == "" {
@@ -1502,8 +1416,6 @@ func (o *ObjectNode) postObjectHandler(w http.ResponseWriter, r *http.Request) {
 	var aclInfo *AccessControlPolicy
 	if acl := formReq.MultipartFormValue("acl"); acl != "" {
 		if aclInfo, err = ParseCannedAcl(acl, userInfo.UserID); err != nil {
-			log.LogErrorf("postObjectHandler: parse canned acl fail: requestID(%v) volume(%v) acl(%v) err(%v)",
-				GetRequestID(r), param.Bucket(), acl, err)
 			errorCode = MalformedPOSTRequest.Copy()
 			errorCode.ErrorMessage = fmt.Sprintf("%s (%v)", errorCode.ErrorMessage, err)
 			return
@@ -1562,8 +1474,6 @@ func (o *ObjectNode) postObjectHandler(w http.ResponseWriter, r *http.Request) {
 	// read the file, the rest will be written to a temporary file if exceed
 	f, size, err := formReq.FormFile(10 << 20)
 	if err != nil {
-		log.LogErrorf("postObjectHandler: form file fail: requestID(%v) volume(%v) err(%v)",
-			GetRequestID(r), param.Bucket(), err)
 		errorCode = MalformedPOSTRequest.Copy()
 		errorCode.ErrorMessage = fmt.Sprintf("%s (%v)", errorCode.ErrorMessage, err)
 		return
@@ -1592,8 +1502,6 @@ func (o *ObjectNode) postObjectHandler(w http.ResponseWriter, r *http.Request) {
 
 	// policy condition check
 	if err = PolicyConditionMatch(policy, forms); err != nil {
-		log.LogErrorf("postObjectHandler: policy match fail: requestID(%v) volume(%v) forms(%v) err(%v)",
-			GetRequestID(r), param.Bucket(), forms, err)
 		return
 	}
 
@@ -1616,20 +1524,16 @@ func (o *ObjectNode) postObjectHandler(w http.ResponseWriter, r *http.Request) {
 		ACL:          aclInfo,
 		ObjectLock:   objetLock,
 	}
-	start := time.Now()
-	fsFileInfo, err := vol.PutObject(key, reader, putOpt)
-	span.AppendTrackLog("file.w", start, err)
+	fsFileInfo, err := vol.PutObject(ctx, key, reader, putOpt)
 	if err != nil {
-		log.LogErrorf("postObjectHandler: put object fail: requestId(%v) volume(%v) path(%v) err(%v)",
-			GetRequestID(r), vol.Name(), key, err)
+		span.Errorf("put object fail: volume(%v) path(%v) option(%+v) err(%v)",
+			vol.Name(), key, putOpt, err)
 		err = handlePutObjectErr(err)
 		return
 	}
 
 	// check content-md5 of actual data if specified in the request
 	if requestMD5 != "" && requestMD5 != fsFileInfo.ETag {
-		log.LogErrorf("postObjectHandler: MD5 validate fail: requestID(%v) volume(%v) path(%v) requestMD5(%v) serverMD5(%v)",
-			GetRequestID(r), vol.Name(), key, requestMD5, fsFileInfo.ETag)
 		errorCode = BadDigest
 		return
 	}
@@ -1685,7 +1589,8 @@ func (o *ObjectNode) deleteObjectHandler(w http.ResponseWriter, r *http.Request)
 		errorCode *ErrorCode
 	)
 
-	span := trace.SpanFromContextSafe(r.Context())
+	ctx := r.Context()
+	span := spanWithOperation(ctx, "DeleteObject")
 	defer func() {
 		o.errorResponse(w, r, err, errorCode)
 	}()
@@ -1701,9 +1606,8 @@ func (o *ObjectNode) deleteObjectHandler(w http.ResponseWriter, r *http.Request)
 	}
 
 	var vol *Volume
-	if vol, err = o.getVol(param.Bucket()); err != nil {
-		log.LogErrorf("deleteObjectHandler: load volume fail: requestID(%v) volume(%v) err(%v)",
-			GetRequestID(r), param.Bucket(), err)
+	if vol, err = o.getVol(ctx, param.Bucket()); err != nil {
+		span.Errorf("load volume fail: volume(%v) err(%v)", param.Bucket(), err)
 		return
 	}
 
@@ -1714,25 +1618,21 @@ func (o *ObjectNode) deleteObjectHandler(w http.ResponseWriter, r *http.Request)
 	}
 	defer rateLimit.ReleaseLimitResource(vol.owner, param.apiName)
 
-	// Audit deletion
-	log.LogInfof("Audit: delete object: requestID(%v) remote(%v) volume(%v) path(%v)",
-		GetRequestID(r), getRequestIP(r), vol.Name(), param.Object())
-
 	// Delete file
 	start := time.Now()
-	err = vol.DeletePath(param.Object())
+	err = vol.DeletePath(ctx, param.Object())
 	span.AppendTrackLog("file.d", start, err)
 	if err != nil {
-		log.LogErrorf("deleteObjectHandler: Volume delete file fail: "+
-			"requestID(%v) volume(%v) path(%v) err(%v)", GetRequestID(r), vol.Name(), param.Object(), err)
+		span.Errorf("delete file fail: volume(%v) path(%v) err(%v)", vol.Name(), param.Object(), err)
 		if strings.Contains(err.Error(), AccessDenied.ErrorMessage) {
 			err = AccessDenied
 		}
 		return
 	}
+	span.Warnf("delete object success: remote(%v) volume(%v) path(%v)",
+		getRequestIP(r), vol.Name(), param.Object())
 
 	w.WriteHeader(http.StatusNoContent)
-	return
 }
 
 // Get object tagging
@@ -1743,7 +1643,8 @@ func (o *ObjectNode) getObjectTaggingHandler(w http.ResponseWriter, r *http.Requ
 		errorCode *ErrorCode
 	)
 
-	span := trace.SpanFromContextSafe(r.Context())
+	ctx := r.Context()
+	span := spanWithOperation(ctx, "GetObjectTagging")
 	defer func() {
 		o.errorResponse(w, r, err, errorCode)
 	}()
@@ -1757,10 +1658,10 @@ func (o *ObjectNode) getObjectTaggingHandler(w http.ResponseWriter, r *http.Requ
 		errorCode = InvalidKey
 		return
 	}
+
 	var vol *Volume
-	if vol, err = o.getVol(param.Bucket()); err != nil {
-		log.LogErrorf("getObjectTaggingHandler: load volume fail: requestID(%v) volume(%v) err(%v)",
-			GetRequestID(r), param.Bucket(), err)
+	if vol, err = o.getVol(ctx, param.Bucket()); err != nil {
+		span.Errorf("load volume fail: volume(%v) err(%v)", param.Bucket(), err)
 		return
 	}
 
@@ -1772,29 +1673,24 @@ func (o *ObjectNode) getObjectTaggingHandler(w http.ResponseWriter, r *http.Requ
 	defer rateLimit.ReleaseLimitResource(vol.owner, param.apiName)
 
 	// get xattr
-	start := time.Now()
-	xattrInfo, err := vol.GetXAttr(param.object, XAttrKeyOSSTagging)
-	span.AppendTrackLog("xattr.r", start, err)
+	xattrInfo, err := vol.GetXAttr(ctx, param.object, XAttrKeyOSSTagging)
 	if err != nil {
-		log.LogErrorf("getObjectTaggingHandler: get volume XAttr fail: requestID(%v) err(%v)", GetRequestID(r), err)
+		span.Errorf("get volume XAttr fail: volume(%v) path(%v) err(%v)",
+			vol.Name(), param.Object(), err)
 		if err == syscall.ENOENT {
 			errorCode = NoSuchKey
 		}
 		return
 	}
 
-	ossTaggingData := xattrInfo.Get(XAttrKeyOSSTagging)
-
-	output, _ := ParseTagging(string(ossTaggingData))
+	output, _ := ParseTagging(string(xattrInfo.Get(XAttrKeyOSSTagging)))
 	response, err := MarshalXMLEntity(output)
 	if err != nil {
-		log.LogErrorf("getObjectTaggingHandler: xml marshal result fail: requestID(%v) result(%v) err(%v)",
-			GetRequestID(r), output, err)
+		span.Errorf("marshal xml response fail: response(%+v) err(%v)", output, err)
 		return
 	}
 
 	writeSuccessResponseXML(w, response)
-	return
 }
 
 // Put object tagging
@@ -1805,7 +1701,8 @@ func (o *ObjectNode) putObjectTaggingHandler(w http.ResponseWriter, r *http.Requ
 		errorCode *ErrorCode
 	)
 
-	span := trace.SpanFromContextSafe(r.Context())
+	ctx := r.Context()
+	span := spanWithOperation(ctx, "PutObjectTagging")
 	defer func() {
 		o.errorResponse(w, r, err, errorCode)
 	}()
@@ -1821,9 +1718,8 @@ func (o *ObjectNode) putObjectTaggingHandler(w http.ResponseWriter, r *http.Requ
 	}
 
 	var vol *Volume
-	if vol, err = o.getVol(param.Bucket()); err != nil {
-		log.LogErrorf("putObjectTaggingHandler: load volume fail: requestID(%v) err(%v)",
-			GetRequestID(r), err)
+	if vol, err = o.getVol(ctx, param.Bucket()); err != nil {
+		span.Errorf("load volume fail: volume(%v) err(%v)", param.Bucket(), err)
 		return
 	}
 
@@ -1840,38 +1736,30 @@ func (o *ObjectNode) putObjectTaggingHandler(w http.ResponseWriter, r *http.Requ
 	}
 	var requestBody []byte
 	if requestBody, err = io.ReadAll(r.Body); err != nil {
-		log.LogErrorf("putObjectTaggingHandler: read request body data fail: requestID(%v) err(%v)",
-			GetRequestID(r), err)
+		span.Errorf("read request body fail: %v", err)
 		errorCode = InvalidArgument
 		return
 	}
 
 	tagging := NewTagging()
 	if err = xml.Unmarshal(requestBody, tagging); err != nil {
-		log.LogWarnf("putObjectTaggingHandler: decode request body fail: requestID(%v) err(%v)",
-			GetRequestID(r), err)
+		span.Errorf("unmarshal xml body fail: body(%v) err(%v)", string(requestBody), err)
 		errorCode = InvalidArgument
 		return
 	}
 	if err = tagging.Validate(); err != nil {
-		log.LogErrorf("putObjectTaggingHandler: tagging validate fail: requestID(%v) tagging(%v) err(%v)",
-			GetRequestID(r), tagging, err)
 		return
 	}
 
-	start := time.Now()
-	err = vol.SetXAttr(param.object, XAttrKeyOSSTagging, []byte(tagging.Encode()), false)
-	span.AppendTrackLog("xattr.w", start, err)
+	err = vol.SetXAttr(ctx, param.object, XAttrKeyOSSTagging, []byte(tagging.Encode()), false)
 	if err != nil {
-		log.LogErrorf("pubObjectTaggingHandler: set tagging xattr fail: requestID(%v) volume(%v) object(%v) err(%v)",
-			GetRequestID(r), param.Bucket(), param.Object(), err)
+		span.Errorf("set tagging xattr fail: volume(%v) path(%v) err(%v)",
+			vol.Name(), param.Object(), err)
 		if err == syscall.ENOENT {
 			errorCode = NoSuchKey
 		}
 		return
 	}
-
-	return
 }
 
 // Delete object tagging
@@ -1882,7 +1770,8 @@ func (o *ObjectNode) deleteObjectTaggingHandler(w http.ResponseWriter, r *http.R
 		errorCode *ErrorCode
 	)
 
-	span := trace.SpanFromContextSafe(r.Context())
+	ctx := r.Context()
+	span := spanWithOperation(ctx, "DeleteObjectTagging")
 	defer func() {
 		o.errorResponse(w, r, err, errorCode)
 	}()
@@ -1896,10 +1785,10 @@ func (o *ObjectNode) deleteObjectTaggingHandler(w http.ResponseWriter, r *http.R
 		errorCode = InvalidKey
 		return
 	}
+
 	var vol *Volume
-	if vol, err = o.getVol(param.Bucket()); err != nil {
-		log.LogErrorf("deleteObjectTaggingHandler: load volume fail: requestID(%v) err(%v)",
-			GetRequestID(r), err)
+	if vol, err = o.getVol(ctx, param.Bucket()); err != nil {
+		span.Errorf("load volume fail: volume(%v) err(%v)", param.Bucket(), err)
 		return
 	}
 
@@ -1910,12 +1799,9 @@ func (o *ObjectNode) deleteObjectTaggingHandler(w http.ResponseWriter, r *http.R
 	}
 	defer rateLimit.ReleaseLimitResource(vol.owner, param.apiName)
 
-	start := time.Now()
-	err = vol.DeleteXAttr(param.object, XAttrKeyOSSTagging)
-	span.AppendTrackLog("xattr.d", start, err)
-	if err != nil {
-		log.LogErrorf("deleteObjectTaggingHandler: volume delete tagging fail: requestID(%v) volume(%v) object(%v) err(%v)",
-			GetRequestID(r), param.Bucket(), param.Object(), err)
+	if err = vol.DeleteXAttr(ctx, param.object, XAttrKeyOSSTagging); err != nil {
+		span.Errorf("delete tagging xAttr fail: volume(%v) path(%v) err(%v)",
+			vol.Name(), param.Object(), err)
 		if err == syscall.ENOENT {
 			errorCode = NoSuchKey
 		}
@@ -1923,7 +1809,6 @@ func (o *ObjectNode) deleteObjectTaggingHandler(w http.ResponseWriter, r *http.R
 	}
 
 	w.WriteHeader(http.StatusNoContent)
-	return
 }
 
 // Put object extend attribute (xattr)
@@ -1933,7 +1818,8 @@ func (o *ObjectNode) putObjectXAttrHandler(w http.ResponseWriter, r *http.Reques
 		errorCode *ErrorCode
 	)
 
-	span := trace.SpanFromContextSafe(r.Context())
+	ctx := r.Context()
+	span := spanWithOperation(ctx, "PutObjectXAttr")
 	defer func() {
 		o.errorResponse(w, r, err, errorCode)
 	}()
@@ -1947,10 +1833,10 @@ func (o *ObjectNode) putObjectXAttrHandler(w http.ResponseWriter, r *http.Reques
 		errorCode = InvalidKey
 		return
 	}
+
 	var vol *Volume
-	if vol, err = o.getVol(param.bucket); err != nil {
-		log.LogErrorf("pubObjectXAttrHandler: load volume fail: requestID(%v) err(%v)",
-			GetRequestID(r), err)
+	if vol, err = o.getVol(ctx, param.bucket); err != nil {
+		span.Errorf("load volume fail: volume(%v) err(%v)", param.Bucket(), err)
 		return
 	}
 
@@ -1967,6 +1853,7 @@ func (o *ObjectNode) putObjectXAttrHandler(w http.ResponseWriter, r *http.Reques
 	}
 	var requestBody []byte
 	if requestBody, err = io.ReadAll(r.Body); err != nil {
+		span.Errorf("read request body fail: %v", err)
 		errorCode = &ErrorCode{
 			ErrorCode:    "BadRequest",
 			ErrorMessage: err.Error(),
@@ -1974,8 +1861,10 @@ func (o *ObjectNode) putObjectXAttrHandler(w http.ResponseWriter, r *http.Reques
 		}
 		return
 	}
+
 	putXAttrRequest := PutXAttrRequest{}
 	if err = xml.Unmarshal(requestBody, &putXAttrRequest); err != nil {
+		span.Errorf("unmarshal xml body fail: body(%v) err(%v)", string(requestBody), err)
 		errorCode = &ErrorCode{
 			ErrorCode:    "BadRequest",
 			ErrorMessage: err.Error(),
@@ -1988,19 +1877,14 @@ func (o *ObjectNode) putObjectXAttrHandler(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	start := time.Now()
-	err = vol.SetXAttr(param.object, key, []byte(value), true)
-	span.AppendTrackLog("xattr.w", start, err)
-	if err != nil {
-		log.LogErrorf("pubObjectXAttrHandler: volume set extend attribute fail: requestID(%v) err(%v)",
-			GetRequestID(r), err)
+	if err = vol.SetXAttr(ctx, param.object, key, []byte(value), true); err != nil {
+		span.Errorf("set %v xAttr fail: volume(%v) path(%v) err(%v)",
+			key, vol.Name(), param.Object(), err)
 		if err == syscall.ENOENT {
 			errorCode = NoSuchKey
 		}
 		return
 	}
-
-	return
 }
 
 // Get object extend attribute (xattr)
@@ -2010,7 +1894,8 @@ func (o *ObjectNode) getObjectXAttrHandler(w http.ResponseWriter, r *http.Reques
 		errorCode *ErrorCode
 	)
 
-	span := trace.SpanFromContextSafe(r.Context())
+	ctx := r.Context()
+	span := spanWithOperation(ctx, "GetObjectXAttr")
 	defer func() {
 		o.errorResponse(w, r, err, errorCode)
 	}()
@@ -2024,10 +1909,10 @@ func (o *ObjectNode) getObjectXAttrHandler(w http.ResponseWriter, r *http.Reques
 		errorCode = InvalidKey
 		return
 	}
+
 	var vol *Volume
-	if vol, err = o.getVol(param.Bucket()); err != nil {
-		log.LogErrorf("getObjectXAttrHandler: load volume fail: requestID(%v) err(%v)",
-			GetRequestID(r), err)
+	if vol, err = o.getVol(ctx, param.Bucket()); err != nil {
+		span.Errorf("load volume fail: volume(%v) err(%v)", param.Bucket(), err)
 		return
 	}
 
@@ -2044,12 +1929,10 @@ func (o *ObjectNode) getObjectXAttrHandler(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	start := time.Now()
-	info, err := vol.GetXAttr(param.object, xattrKey)
-	span.AppendTrackLog("xattr.r", start, err)
+	info, err := vol.GetXAttr(ctx, param.object, xattrKey)
 	if err != nil {
-		log.LogErrorf("getObjectXAttrHandler: get extend attribute fail: requestID(%v) volume(%v) object(%v) key(%v) err(%v)",
-			GetRequestID(r), param.Bucket(), param.Object(), xattrKey, err)
+		span.Errorf("get %v xAttr fail: volume(%v) path(%v) err(%v)",
+			xattrKey, vol.Name(), param.Object(), err)
 		if err == syscall.ENOENT {
 			errorCode = NoSuchKey
 		}
@@ -2064,13 +1947,11 @@ func (o *ObjectNode) getObjectXAttrHandler(w http.ResponseWriter, r *http.Reques
 	}
 	response, err := MarshalXMLEntity(&output)
 	if err != nil {
-		log.LogErrorf("getObjectXAttrHandler: xml marshal result fail: requestID(%v) result(%v) err(%v)",
-			GetRequestID(r), output, err)
+		span.Errorf("marshal xml response fail: response(%+v) err(%v)", output, err)
 		return
 	}
 
 	writeSuccessResponseXML(w, response)
-	return
 }
 
 // Delete object extend attribute (xattr)
@@ -2080,7 +1961,8 @@ func (o *ObjectNode) deleteObjectXAttrHandler(w http.ResponseWriter, r *http.Req
 		errorCode *ErrorCode
 	)
 
-	span := trace.SpanFromContextSafe(r.Context())
+	ctx := r.Context()
+	span := spanWithOperation(ctx, "DeleteObjectXAttr")
 	defer func() {
 		o.errorResponse(w, r, err, errorCode)
 	}()
@@ -2094,10 +1976,10 @@ func (o *ObjectNode) deleteObjectXAttrHandler(w http.ResponseWriter, r *http.Req
 		errorCode = InvalidKey
 		return
 	}
+
 	var vol *Volume
-	if vol, err = o.getVol(param.Bucket()); err != nil {
-		log.LogErrorf("deleteObjectXAttrHandler: load volume fail: requestID(%v) err(%v)",
-			GetRequestID(r), err)
+	if vol, err = o.getVol(ctx, param.Bucket()); err != nil {
+		span.Errorf("load volume fail: volume(%v) err(%v)", param.Bucket(), err)
 		return
 	}
 
@@ -2114,19 +1996,14 @@ func (o *ObjectNode) deleteObjectXAttrHandler(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	start := time.Now()
-	err = vol.DeleteXAttr(param.object, xattrKey)
-	span.AppendTrackLog("xattr.d", start, err)
-	if err != nil {
-		log.LogErrorf("deleteObjectXAttrHandler: delete extend attribute fail: requestID(%v) err(%v)",
-			GetRequestID(r), err)
+	if err = vol.DeleteXAttr(ctx, param.object, xattrKey); err != nil {
+		span.Errorf("delete %v xAttr fail: volume(%v) path(%v) err(%v)",
+			xattrKey, vol.Name(), param.Object(), err)
 		if err == syscall.ENOENT {
 			errorCode = NoSuchKey
 		}
 		return
 	}
-
-	return
 }
 
 // List object xattrs
@@ -2136,7 +2013,8 @@ func (o *ObjectNode) listObjectXAttrs(w http.ResponseWriter, r *http.Request) {
 		errorCode *ErrorCode
 	)
 
-	span := trace.SpanFromContextSafe(r.Context())
+	ctx := r.Context()
+	span := spanWithOperation(ctx, "ListObjectXAttrs")
 	defer func() {
 		o.errorResponse(w, r, err, errorCode)
 	}()
@@ -2150,10 +2028,10 @@ func (o *ObjectNode) listObjectXAttrs(w http.ResponseWriter, r *http.Request) {
 		errorCode = InvalidKey
 		return
 	}
+
 	var vol *Volume
-	if vol, err = o.getVol(param.bucket); err != nil {
-		log.LogErrorf("listObjectXAttrs: load volume fail: requestID(%v) err(%v)",
-			GetRequestID(r), err)
+	if vol, err = o.getVol(ctx, param.bucket); err != nil {
+		span.Errorf("load volume fail: volume(%v) err(%v)", param.Bucket(), err)
 		return
 	}
 
@@ -2164,12 +2042,10 @@ func (o *ObjectNode) listObjectXAttrs(w http.ResponseWriter, r *http.Request) {
 	}
 	defer rateLimit.ReleaseLimitResource(vol.owner, param.apiName)
 
-	start := time.Now()
-	keys, err := vol.ListXAttrs(param.object)
-	span.AppendTrackLog("xattr.l", start, err)
+	keys, err := vol.ListXAttrs(ctx, param.object)
 	if err != nil {
-		log.LogErrorf("listObjectXAttrs: volume list extend attributes fail: requestID(%v) volume(%v) object(%v) err(%v)",
-			GetRequestID(r), param.Bucket(), param.Object(), err)
+		span.Errorf("list object xAttrs fail: volume(%v) object(%v) err(%v)",
+			vol.Name(), param.Object(), err)
 		if err == syscall.ENOENT {
 			errorCode = NoSuchKey
 		}
@@ -2181,13 +2057,11 @@ func (o *ObjectNode) listObjectXAttrs(w http.ResponseWriter, r *http.Request) {
 	}
 	response, err := MarshalXMLEntity(&output)
 	if err != nil {
-		log.LogErrorf("listObjectXAttrs: marshal response body fail: requestID(%v) volume(%v) object(%v) err(%v)",
-			GetRequestID(r), param.Bucket(), param.Object(), err)
+		span.Errorf("marshal xml response fail: response(%+v) err(%v)", output, err)
 		return
 	}
 
 	writeSuccessResponseXML(w, response)
-	return
 }
 
 // GetObjectRetention
@@ -2198,7 +2072,8 @@ func (o *ObjectNode) getObjectRetentionHandler(w http.ResponseWriter, r *http.Re
 		errorCode *ErrorCode
 	)
 
-	span := trace.SpanFromContextSafe(r.Context())
+	ctx := r.Context()
+	span := spanWithOperation(ctx, "GetObjectRetention")
 	defer func() {
 		o.errorResponse(w, r, err, errorCode)
 	}()
@@ -2213,20 +2088,18 @@ func (o *ObjectNode) getObjectRetentionHandler(w http.ResponseWriter, r *http.Re
 		errorCode = InvalidKey
 		return
 	}
+
 	var vol *Volume
-	if vol, err = o.getVol(param.Bucket()); err != nil {
-		log.LogErrorf("getObjectRetentionHandler: load volume fail: requestID(%v) err(%v)",
-			GetRequestID(r), err)
+	if vol, err = o.getVol(ctx, param.Bucket()); err != nil {
+		span.Errorf("load volume fail: volume(%v) err(%v)", param.Bucket(), err)
 		return
 	}
 
 	// get object meta
-	start := time.Now()
-	_, xattrs, err := vol.ObjectMeta(param.Object())
-	span.AppendTrackLog("meta.r", start, err)
+	_, xattrs, err := vol.ObjectMeta(ctx, param.Object())
 	if err != nil {
-		log.LogErrorf("getObjectRetentionHandler: get file meta fail: requestId(%v) volume(%v) path(%v) err(%v)",
-			GetRequestID(r), vol.Name(), param.Object(), err)
+		span.Errorf("get object meta fail: volume(%v) path(%v) err(%v)",
+			vol.Name(), param.Object(), err)
 		if err == syscall.ENOENT {
 			errorCode = NoSuchKey
 		}
@@ -2239,30 +2112,24 @@ func (o *ObjectNode) getObjectRetentionHandler(w http.ResponseWriter, r *http.Re
 	}
 	retainUntilDateInt64, err := strconv.ParseInt(retainUntilDate, 10, 64)
 	if err != nil {
-		log.LogErrorf("getObjectRetentionHandler: parse retainUntilDate fail: requestId(%v) volume(%v) path(%v) err(%v)",
-			GetRequestID(r), vol.Name(), param.Object(), err)
+		span.Errorf("parse save retainUntilDate fail: volume(%v) path(%v) retainUntilDate(%v) err(%v)",
+			vol.Name(), param.Object(), retainUntilDate, err)
 		return
 	}
+
 	var objectRetention ObjectRetention
 	objectRetention.Mode = ComplianceMode
 	objectRetention.RetainUntilDate = RetentionDate{Time: time.Unix(0, retainUntilDateInt64).UTC()}
 	b, err := xml.Marshal(objectRetention)
 	if err != nil {
-		log.LogErrorf("getObjectRetentionHandler: xml marshal fail: requestId(%v) volume(%v) result(%v) err(%v)",
-			GetRequestID(r), vol.Name(), objectRetention, err)
+		span.Errorf("marshal xml response fail: response(%+v) err(%v)", objectRetention, err)
 		return
 	}
 
 	writeSuccessResponseXML(w, b)
-	return
 }
 
-func parsePartInfo(partNumber uint64, fileSize uint64) (uint64, uint64, uint64, uint64) {
-	var partSize uint64
-	var partCount uint64
-	var rangeLower uint64
-	var rangeUpper uint64
-	// partSize, partCount, rangeLower, rangeUpper
+func parsePartInfo(partNumber uint64, fileSize uint64) (partSize, partCount, rangeLower, rangeUpper uint64) {
 	partSizeConst := ParallelDownloadPartSize
 	partCount = fileSize / uint64(partSizeConst)
 	lastSize := fileSize % uint64(partSizeConst)
@@ -2279,9 +2146,10 @@ func parsePartInfo(partNumber uint64, fileSize uint64) (uint64, uint64, uint64, 
 		rangeUpper = (partSize * partNumber) - 1
 	}
 	if partNumber > partCount {
-		return 0, 0, 0, 0
+		partSize, partCount, rangeLower, rangeUpper = 0, 0, 0, 0
 	}
-	return partSize, partCount, rangeLower, rangeUpper
+
+	return
 }
 
 func GetContentLength(r *http.Request) int64 {

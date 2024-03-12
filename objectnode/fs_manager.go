@@ -15,13 +15,13 @@
 package objectnode
 
 import (
+	"context"
 	"hash/crc32"
 	"sync"
 	"time"
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/sdk/master"
-	"github.com/cubefs/cubefs/util/log"
 )
 
 const (
@@ -62,63 +62,63 @@ func (loader *VolumeLoader) blacklistCleanup() {
 	}
 }
 
-func (loader *VolumeLoader) Release(volName string) {
+func (loader *VolumeLoader) Release(ctx context.Context, volName string) {
+	span := spanWithOperation(ctx, "ReleaseVolume")
+
 	loader.volMu.Lock()
 	vol, has := loader.volumes[volName]
 	if has {
 		delete(loader.volumes, volName)
-		log.LogDebugf("Release: release volume: volume(%v)", volName)
 	}
 	loader.volMu.Unlock()
 	if has && vol != nil {
 		if closeErr := vol.Close(); closeErr != nil {
-			log.LogErrorf("Release: close volume fail: volume(%v) err(%v)", volName, closeErr)
+			span.Errorf("volume close fail: volume(%v) err(%v)", volName, closeErr)
 		}
 	}
 }
 
-func (loader *VolumeLoader) Volume(volName string) (*Volume, error) {
-	return loader.loadVolume(volName)
+func (loader *VolumeLoader) Volume(ctx context.Context, volName string) (*Volume, error) {
+	return loader.loadVolume(ctx, volName)
 }
 
-func (loader *VolumeLoader) VolumeWithoutBlacklist(volName string) (*Volume, error) {
-	return loader.loadVolumeWithoutBlacklist(volName)
+func (loader *VolumeLoader) VolumeWithoutBlacklist(ctx context.Context, volName string) (*Volume, error) {
+	return loader.loadVolumeWithoutBlacklist(ctx, volName)
 }
 
 func (loader *VolumeLoader) syncVolumeInit(volume string) (releaseFunc func()) {
 	value, _ := loader.volInitMap.LoadOrStore(volume, new(sync.Mutex))
 	initMu := value.(*sync.Mutex)
 	initMu.Lock()
-	log.LogDebugf("syncVolumeInit: get volume init lock: volume(%v)", volume)
+
 	return func() {
 		initMu.Unlock()
 		loader.volInitMap.Delete(volume)
-		log.LogDebugf("syncVolumeInit: release volume init lock: volume(%v)", volume)
 	}
 }
 
-func (loader *VolumeLoader) loadVolumeWithoutBlacklist(volName string) (*Volume, error) {
-	var err error
-	var volume *Volume
-	var exist bool
+func (loader *VolumeLoader) loadVolumeWithoutBlacklist(ctx context.Context, volName string) (volume *Volume, err error) {
+	span := spanWithOperation(ctx, "LoadVolume")
+
 	loader.volMu.RLock()
-	volume, exist = loader.volumes[volName]
+	volume, exist := loader.volumes[volName]
 	loader.volMu.RUnlock()
 	if !exist {
 		release := loader.syncVolumeInit(volName)
+		defer release()
+
 		loader.volMu.RLock()
 		volume, exist = loader.volumes[volName]
 		if exist {
 			loader.volMu.RUnlock()
-			release()
-			return volume, nil
+			return
 		}
 		loader.volMu.RUnlock()
 
 		var onAsyncTaskError AsyncTaskErrorFunc = func(err error) {
 			switch err {
 			case proto.ErrVolNotExists:
-				loader.Release(volName)
+				loader.Release(ctx, volName)
 			default:
 			}
 		}
@@ -129,59 +129,57 @@ func (loader *VolumeLoader) loadVolumeWithoutBlacklist(volName string) (*Volume,
 			OnAsyncTaskError: onAsyncTaskError,
 			MetaStrict:       loader.metaStrict,
 		}
-		if volume, err = NewVolume(config); err != nil {
+		if volume, err = NewVolume(ctx, config); err != nil {
+			span.Debugf("new volume fail: volume(%v) err(%v)", volName, err)
 			if err != proto.ErrVolNotExists {
-				log.LogErrorf("loadVolume: init volume fail: volume(%v) err(%v)", volume, err)
+				span.Errorf("new volume fail: volume(%v) config(%+v) err(%v)", volume, config, err)
 			}
-			release()
-			return nil, err
+			return
 		}
-		ak, sk := volume.OSSSecure()
-		log.LogDebugf("[loadVolume] load Volume: Name[%v] AccessKey[%v] SecretKey[%v]", volName, ak, sk)
 
 		loader.volMu.Lock()
 		loader.volumes[volName] = volume
 		loader.volMu.Unlock()
-		release()
 
+		ak, sk := volume.OSSSecure()
+		span.Debugf("new volume success: volume(%+v) accessKey(%v) secretKey(%v)", volume, ak, sk)
 	}
 
-	return volume, nil
+	return
 }
 
-func (loader *VolumeLoader) loadVolume(volName string) (*Volume, error) {
-	var err error
+func (loader *VolumeLoader) loadVolume(ctx context.Context, volName string) (volume *Volume, err error) {
+	span := spanWithOperation(ctx, "LoadVolume")
 	// Check if the volume is on the blacklist.
 	if val, exist := loader.blacklist.Load(volName); exist {
-		log.LogDebugf("loadVolume: load volume from blacklist: volume(%v) val(%v)", volName, val)
 		if ts, is := val.(time.Time); is {
 			if time.Since(ts) <= volumeBlacklistTTL {
-				log.LogDebugf("loadVolume faild, blacklist")
-				return nil, proto.ErrVolNotExists
+				span.Debugf("load volume(%v) from blacklist and not expired, return ErrVolNotExists", volName)
+				err = proto.ErrVolNotExists
+				return
 			}
 		}
 	}
-	var volume *Volume
-	var exist bool
+
 	loader.volMu.RLock()
-	volume, exist = loader.volumes[volName]
+	volume, exist := loader.volumes[volName]
 	loader.volMu.RUnlock()
-	log.LogDebugf("loadVolume: load volume from volumes: name(%v) exist(%v) volume(%+v)", volName, exist, volume)
 	if !exist {
 		release := loader.syncVolumeInit(volName)
+		defer release()
+
 		loader.volMu.RLock()
 		volume, exist = loader.volumes[volName]
 		if exist {
 			loader.volMu.RUnlock()
-			release()
-			return volume, nil
+			return
 		}
 		loader.volMu.RUnlock()
 
 		var onAsyncTaskError AsyncTaskErrorFunc = func(err error) {
 			switch err {
 			case proto.ErrVolNotExists:
-				loader.Release(volName)
+				loader.Release(ctx, volName)
 				// Add to blacklist
 				loader.blacklist.Store(volName, time.Now())
 			default:
@@ -194,27 +192,26 @@ func (loader *VolumeLoader) loadVolume(volName string) (*Volume, error) {
 			OnAsyncTaskError: onAsyncTaskError,
 			MetaStrict:       loader.metaStrict,
 		}
-		if volume, err = NewVolume(config); err != nil {
-			log.LogDebugf("loadVolume: new volume fail, add to blacklist: volume(%v) err(%v)", volName, err)
+		if volume, err = NewVolume(ctx, config); err != nil {
+			span.Debugf("new volume fail and add to blacklist: volume(%v) err(%v)", volName, err)
 			if err != proto.ErrVolNotExists {
-				log.LogErrorf("loadVolume: new volume fail: volume(%v) config(%+v) err(%v)", volume, config, err)
+				span.Errorf("new volume fail and add to blacklist: volume(%v) config(%+v) err(%v)",
+					volume, config, err)
 			}
-			release()
 			// Add to blacklist
 			loader.blacklist.Store(volName, time.Now())
-			return nil, err
+			return
 		}
-		ak, sk := volume.OSSSecure()
-		log.LogDebugf("loadVolume: new volume success: volume(%v) accessKey(%v) secretKey(%v)", volName, ak, sk)
 
 		loader.volMu.Lock()
 		loader.volumes[volName] = volume
 		loader.volMu.Unlock()
-		release()
 
+		ak, sk := volume.OSSSecure()
+		span.Debugf("new volume success: volume(%+v) accessKey(%v) secretKey(%v)", volume, ak, sk)
 	}
 
-	return volume, nil
+	return
 }
 
 // Release all
@@ -222,9 +219,8 @@ func (loader *VolumeLoader) Close() {
 	loader.closeOnce.Do(func() {
 		loader.volMu.Lock()
 		defer loader.volMu.Unlock()
-		for volKey, vol := range loader.volumes {
+		for _, vol := range loader.volumes {
 			_ = vol.Close()
-			log.LogDebugf("release Volume %v", volKey)
 		}
 		loader.volumes = make(map[string]*Volume)
 		close(loader.closeCh)
@@ -258,12 +254,12 @@ func (m *VolumeManager) selectLoader(name string) *VolumeLoader {
 	return m.loaders[i]
 }
 
-func (m *VolumeManager) Volume(volName string) (*Volume, error) {
-	return m.selectLoader(volName).Volume(volName)
+func (m *VolumeManager) Volume(ctx context.Context, volName string) (*Volume, error) {
+	return m.selectLoader(volName).Volume(ctx, volName)
 }
 
-func (m *VolumeManager) VolumeWithoutBlacklist(volName string) (*Volume, error) {
-	return m.selectLoader(volName).VolumeWithoutBlacklist(volName)
+func (m *VolumeManager) VolumeWithoutBlacklist(ctx context.Context, volName string) (*Volume, error) {
+	return m.selectLoader(volName).VolumeWithoutBlacklist(ctx, volName)
 }
 
 // Release all
@@ -275,8 +271,8 @@ func (m *VolumeManager) Close() {
 	})
 }
 
-func (m *VolumeManager) Release(volName string) {
-	m.selectLoader(volName).Release(volName)
+func (m *VolumeManager) Release(ctx context.Context, volName string) {
+	m.selectLoader(volName).Release(ctx, volName)
 }
 
 func (m *VolumeManager) init() {

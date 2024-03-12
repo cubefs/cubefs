@@ -15,6 +15,7 @@
 package objectnode
 
 import (
+	"context"
 	"sync"
 	"sync/atomic"
 
@@ -22,14 +23,14 @@ import (
 )
 
 type ossMetaLoader interface {
-	loadPolicy() (p *Policy, err error)
-	loadACL() (p *AccessControlPolicy, err error)
-	loadCORS() (cors *CORSConfiguration, err error)
-	loadObjectLock() (config *ObjectLockConfig, err error)
-	storePolicy(p *Policy)
-	storeACL(p *AccessControlPolicy)
-	storeCORS(cors *CORSConfiguration)
-	storeObjectLock(config *ObjectLockConfig)
+	loadPolicy(context.Context) (*Policy, error)
+	loadACL(context.Context) (*AccessControlPolicy, error)
+	loadCORS(context.Context) (*CORSConfiguration, error)
+	loadObjectLock(context.Context) (*ObjectLockConfig, error)
+	storePolicy(*Policy)
+	storeACL(*AccessControlPolicy)
+	storeCORS(*CORSConfiguration)
+	storeObjectLock(*ObjectLockConfig)
 	setSynced()
 }
 
@@ -56,14 +57,13 @@ type OSSMeta struct {
 	objectLock sync.RWMutex
 }
 
-func (c *cacheMetaLoader) loadPolicy() (p *Policy, err error) {
+func (c *cacheMetaLoader) loadPolicy(ctx context.Context) (*Policy, error) {
 	c.om.policyLock.RLock()
-	p = c.om.policy
+	p := c.om.policy
 	c.om.policyLock.RUnlock()
 	if p == nil && atomic.LoadInt32(c.synced) == 0 {
 		ret, err, _ := c.sf.Do(XAttrKeyOSSPolicy, func() (interface{}, error) {
-			p, err := c.sml.loadPolicy()
-			return p, err
+			return c.sml.loadPolicy(ctx)
 		})
 		if err != nil {
 			return nil, err
@@ -71,7 +71,8 @@ func (c *cacheMetaLoader) loadPolicy() (p *Policy, err error) {
 		p = ret.(*Policy)
 		c.storePolicy(p)
 	}
-	return
+
+	return p, nil
 }
 
 func (c *cacheMetaLoader) storePolicy(p *Policy) {
@@ -81,22 +82,22 @@ func (c *cacheMetaLoader) storePolicy(p *Policy) {
 	return
 }
 
-func (c *cacheMetaLoader) loadACL() (p *AccessControlPolicy, err error) {
+func (c *cacheMetaLoader) loadACL(ctx context.Context) (*AccessControlPolicy, error) {
 	c.om.aclLock.RLock()
-	p = c.om.acl
+	acl := c.om.acl
 	c.om.aclLock.RUnlock()
-	if p == nil && atomic.LoadInt32(c.synced) == 0 {
+	if acl == nil && atomic.LoadInt32(c.synced) == 0 {
 		ret, err, _ := c.sf.Do(XAttrKeyOSSACL, func() (interface{}, error) {
-			a, err := c.sml.loadACL()
-			return a, err
+			return c.sml.loadACL(ctx)
 		})
 		if err != nil {
 			return nil, err
 		}
-		p = ret.(*AccessControlPolicy)
-		c.storeACL(p)
+		acl = ret.(*AccessControlPolicy)
+		c.storeACL(acl)
 	}
-	return
+
+	return acl, nil
 }
 
 func (c *cacheMetaLoader) storeACL(p *AccessControlPolicy) {
@@ -106,14 +107,13 @@ func (c *cacheMetaLoader) storeACL(p *AccessControlPolicy) {
 	return
 }
 
-func (c *cacheMetaLoader) loadCORS() (cors *CORSConfiguration, err error) {
+func (c *cacheMetaLoader) loadCORS(ctx context.Context) (*CORSConfiguration, error) {
 	c.om.corsLock.RLock()
-	cors = c.om.corsConfig
+	cors := c.om.corsConfig
 	c.om.corsLock.RUnlock()
 	if cors == nil && atomic.LoadInt32(c.synced) == 0 {
 		ret, err, _ := c.sf.Do(XAttrKeyOSSCORS, func() (interface{}, error) {
-			c, err := c.sml.loadCORS()
-			return c, err
+			return c.sml.loadCORS(ctx)
 		})
 		if err != nil {
 			return nil, err
@@ -121,7 +121,8 @@ func (c *cacheMetaLoader) loadCORS() (cors *CORSConfiguration, err error) {
 		cors = ret.(*CORSConfiguration)
 		c.storeCORS(cors)
 	}
-	return
+
+	return cors, nil
 }
 
 func (c *cacheMetaLoader) storeCORS(cors *CORSConfiguration) {
@@ -131,14 +132,13 @@ func (c *cacheMetaLoader) storeCORS(cors *CORSConfiguration) {
 	return
 }
 
-func (c *cacheMetaLoader) loadObjectLock() (config *ObjectLockConfig, err error) {
+func (c *cacheMetaLoader) loadObjectLock(ctx context.Context) (*ObjectLockConfig, error) {
 	c.om.objectLock.RLock()
-	config = c.om.lockConfig
+	config := c.om.lockConfig
 	c.om.objectLock.RUnlock()
 	if config == nil && atomic.LoadInt32(c.synced) == 0 {
 		ret, err, _ := c.sf.Do(XAttrKeyOSSLock, func() (interface{}, error) {
-			ol, err := c.sml.loadObjectLock()
-			return ol, err
+			return c.sml.loadObjectLock(ctx)
 		})
 		if err != nil {
 			return nil, err
@@ -146,7 +146,8 @@ func (c *cacheMetaLoader) loadObjectLock() (config *ObjectLockConfig, err error)
 		config = ret.(*ObjectLockConfig)
 		c.storeObjectLock(config)
 	}
-	return
+
+	return config, nil
 }
 
 func (c *cacheMetaLoader) storeObjectLock(config *ObjectLockConfig) {
@@ -160,32 +161,32 @@ func (c *cacheMetaLoader) setSynced() {
 	atomic.StoreInt32(c.synced, 1)
 }
 
-func (s *strictMetaLoader) loadPolicy() (p *Policy, err error) {
-	return s.v.loadBucketPolicy()
+func (s *strictMetaLoader) loadPolicy(ctx context.Context) (*Policy, error) {
+	return s.v.loadBucketPolicy(ctx)
 }
 
 func (s *strictMetaLoader) storePolicy(p *Policy) {
 	// do nothing
 }
 
-func (s *strictMetaLoader) loadACL() (acp *AccessControlPolicy, err error) {
-	return s.v.loadBucketACL()
+func (s *strictMetaLoader) loadACL(ctx context.Context) (*AccessControlPolicy, error) {
+	return s.v.loadBucketACL(ctx)
 }
 
 func (s *strictMetaLoader) storeACL(p *AccessControlPolicy) {
 	// do nothing
 }
 
-func (s *strictMetaLoader) loadCORS() (cors *CORSConfiguration, err error) {
-	return s.v.loadBucketCors()
+func (s *strictMetaLoader) loadCORS(ctx context.Context) (*CORSConfiguration, error) {
+	return s.v.loadBucketCors(ctx)
 }
 
 func (s *strictMetaLoader) storeCORS(cors *CORSConfiguration) {
 	// do nothing
 }
 
-func (s *strictMetaLoader) loadObjectLock() (o *ObjectLockConfig, err error) {
-	return s.v.loadObjectLock()
+func (s *strictMetaLoader) loadObjectLock(ctx context.Context) (*ObjectLockConfig, error) {
+	return s.v.loadObjectLock(ctx)
 }
 
 func (s *strictMetaLoader) storeObjectLock(cors *ObjectLockConfig) {

@@ -13,14 +13,15 @@ import (
 	"github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/s3"
+	"github.com/samsarahq/thunder/graphql"
+	"github.com/samsarahq/thunder/graphql/schemabuilder"
+
 	"github.com/cubefs/cubefs/console/cutil"
 	. "github.com/cubefs/cubefs/objectnode"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/sdk/graphql/client"
 	"github.com/cubefs/cubefs/sdk/graphql/client/user"
 	"github.com/cubefs/cubefs/util/log"
-	"github.com/samsarahq/thunder/graphql"
-	"github.com/samsarahq/thunder/graphql/schemabuilder"
 )
 
 type FileService struct {
@@ -82,12 +83,12 @@ func (fs *FileService) listFile(ctx context.Context, args struct {
 		return nil, err
 	}
 
-	volume, err := fs.manager.Volume(args.VolName)
+	volume, err := fs.manager.Volume(ctx, args.VolName)
 	if err != nil {
 		return nil, err
 	}
 
-	result, err := volume.ListFilesV1(&args.Request)
+	result, err := volume.ListFilesV1(ctx, &args.Request)
 	if err != nil {
 		return nil, err
 	}
@@ -114,12 +115,12 @@ func (fs *FileService) createDir(ctx context.Context, args struct {
 		return nil, err
 	}
 
-	volume, err := fs.manager.Volume(args.VolName)
+	volume, err := fs.manager.Volume(ctx, args.VolName)
 	if err != nil {
 		return nil, err
 	}
 
-	return volume.PutObject(args.Path, nil, &PutFileOption{
+	return volume.PutObject(ctx, args.Path, nil, &PutFileOption{
 		MIMEType: ValueContentTypeDirectory,
 		Tagging:  nil,
 		Metadata: nil,
@@ -140,7 +141,7 @@ func (fs *FileService) deleteDir(ctx context.Context, args struct {
 		return nil, err
 	}
 
-	volume, err := fs.manager.Volume(args.VolName)
+	volume, err := fs.manager.Volume(ctx, args.VolName)
 	if err != nil {
 		return nil, err
 	}
@@ -149,7 +150,7 @@ func (fs *FileService) deleteDir(ctx context.Context, args struct {
 		return nil, err
 	}
 
-	if err := volume.DeletePath(args.Path + "/"); err != nil {
+	if err := volume.DeletePath(ctx, args.Path+"/"); err != nil {
 		return nil, err
 	}
 
@@ -164,7 +165,7 @@ func _deleteDir(ctx context.Context, volume *Volume, path string, marker string)
 	}
 
 	for {
-		result, err := volume.ListFilesV1(&ListFilesV1Option{
+		result, err := volume.ListFilesV1(ctx, &ListFilesV1Option{
 			Prefix:    path,
 			Delimiter: "/",
 			Marker:    marker,
@@ -175,13 +176,13 @@ func _deleteDir(ctx context.Context, volume *Volume, path string, marker string)
 			if err := _deleteDir(ctx, volume, prefixe, ""); err != nil {
 				return err
 			}
-			if err := volume.DeletePath(prefixe + "/"); err != nil {
+			if err := volume.DeletePath(ctx, prefixe+"/"); err != nil {
 				return err
 			}
 		}
 
 		for _, info := range result.Files {
-			if err := volume.DeletePath(info.Path); err != nil {
+			if err := volume.DeletePath(ctx, info.Path); err != nil {
 				return err
 			}
 		}
@@ -212,12 +213,12 @@ func (fs *FileService) deleteFile(ctx context.Context, args struct {
 		return nil, err
 	}
 
-	volume, err := fs.manager.Volume(args.VolName)
+	volume, err := fs.manager.Volume(ctx, args.VolName)
 	if err != nil {
 		return nil, err
 	}
 
-	if err := volume.DeletePath(args.Path); err != nil {
+	if err := volume.DeletePath(ctx, args.Path); err != nil {
 		return nil, err
 	}
 
@@ -238,11 +239,11 @@ func (fs *FileService) fileMeta(ctx context.Context, args struct {
 		return nil, err
 	}
 
-	volume, err := fs.manager.Volume(args.VolName)
+	volume, err := fs.manager.Volume(ctx, args.VolName)
 	if err != nil {
 		return nil, err
 	}
-	info, _, err = volume.ObjectMeta(args.Path)
+	info, _, err = volume.ObjectMeta(ctx, args.Path)
 	return
 	// return volume.ObjectMeta(args.Path)
 }
@@ -320,12 +321,12 @@ func (fs *FileService) DownFile(writer http.ResponseWriter, request *http.Reques
 		return fmt.Errorf("not found path in get param ?path=[your path]")
 	}
 
-	volume, err := fs.manager.Volume(volName)
+	volume, err := fs.manager.Volume(ctx, volName)
 	if err != nil {
 		return err
 	}
 
-	meta, _, err := volume.ObjectMeta(path)
+	meta, _, err := volume.ObjectMeta(ctx, path)
 	if err != nil {
 		return err
 	}
@@ -333,7 +334,7 @@ func (fs *FileService) DownFile(writer http.ResponseWriter, request *http.Reques
 	writer.Header().Set("Content-Type", "application/octet-stream")
 	writer.Header().Set("Content-Length", strconv.FormatInt(meta.Size, 10))
 
-	if err := volume.ReadFile(path, writer, 0, uint64(meta.Size)); err != nil {
+	if err := volume.ReadFile(ctx, path, writer, 0, uint64(meta.Size)); err != nil {
 		return err
 	}
 
@@ -378,7 +379,7 @@ func (fs *FileService) UpLoadFile(writer http.ResponseWriter, request *http.Requ
 		return fmt.Errorf("not found path in get param ?path=[your path]")
 	}
 
-	volume, err := fs.manager.Volume(volName)
+	volume, err := fs.manager.Volume(ctx, volName)
 	if err != nil {
 		return err
 	}
@@ -390,7 +391,7 @@ func (fs *FileService) UpLoadFile(writer http.ResponseWriter, request *http.Requ
 
 	filepath := path + "/" + header.Filename
 
-	object, err := volume.PutObject(filepath, file, &PutFileOption{
+	object, err := volume.PutObject(ctx, filepath, file, &PutFileOption{
 		MIMEType: header.Header.Get("Content-Type"),
 		Tagging:  nil,
 		Metadata: nil,
