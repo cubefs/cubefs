@@ -15,7 +15,6 @@
 package cmd
 
 import (
-	"context"
 	"fmt"
 	"math"
 	"sort"
@@ -143,7 +142,7 @@ func newQuotaCreateCmd(client *master.MasterClient) *cobra.Command {
 				quotaPathInofs = append(quotaPathInofs, quotaPathInfo)
 			}
 			var quotaId uint32
-			if quotaId, err = client.AdminAPI().CreateQuota(context.TODO(), volName, quotaPathInofs, maxFiles, maxBytes); err != nil {
+			if quotaId, err = client.AdminAPI().CreateQuota(newCtx(), volName, quotaPathInofs, maxFiles, maxBytes); err != nil {
 				stdout("volName %v path %v quota create failed(%v)\n", volName, fullPath, err)
 				return
 			}
@@ -165,7 +164,7 @@ func newQuotaListCmd(client *master.MasterClient) *cobra.Command {
 			var quotas []*proto.QuotaInfo
 			var err error
 			volName := args[0]
-			if quotas, err = client.AdminAPI().ListQuota(context.TODO(), volName); err != nil {
+			if quotas, err = client.AdminAPI().ListQuota(newCtx(), volName); err != nil {
 				stdout("volName %v quota list failed(%v)\n", volName, err)
 				return
 			}
@@ -191,7 +190,7 @@ func newQuotaListAllCmd(client *master.MasterClient) *cobra.Command {
 			var err error
 			var vols []*proto.VolInfo
 
-			if vols, err = client.AdminAPI().ListQuotaAll(context.TODO()); err != nil {
+			if vols, err = client.AdminAPI().ListQuotaAll(newCtx()); err != nil {
 				stdout("quota list all failed(%v)\n", err)
 				return
 			}
@@ -217,7 +216,8 @@ func newQuotaUpdateCmd(client *master.MasterClient) *cobra.Command {
 			volName := args[0]
 			quotaId := args[1]
 
-			quotaInfo, err := client.AdminAPI().GetQuota(context.TODO(), volName, quotaId)
+			ctx := newCtx()
+			quotaInfo, err := client.AdminAPI().GetQuota(ctx, volName, quotaId)
 			if err != nil {
 				stdout("get quota vol: %v ,quotaId: %v failed err %v.\n", volName, quotaId, err)
 				return
@@ -228,7 +228,7 @@ func newQuotaUpdateCmd(client *master.MasterClient) *cobra.Command {
 			if maxBytes == 0 {
 				maxBytes = quotaInfo.MaxBytes
 			}
-			if err = client.AdminAPI().UpdateQuota(context.TODO(), volName, quotaId, maxFiles, maxBytes); err != nil {
+			if err = client.AdminAPI().UpdateQuota(ctx, volName, quotaId, maxFiles, maxBytes); err != nil {
 				stdout("volName %v quotaId %v quota update failed(%v)\n", volName, quotaId, err)
 				return
 			}
@@ -262,7 +262,7 @@ func newQuotaDelete(client *master.MasterClient) *cobra.Command {
 					return
 				}
 			}
-			if err = client.AdminAPI().DeleteQuota(context.TODO(), volName, quotaId); err != nil {
+			if err = client.AdminAPI().DeleteQuota(newCtx(), volName, quotaId); err != nil {
 				stdout("volName %v quotaId %v quota delete failed(%v)\n", volName, quotaId, err)
 				return
 			}
@@ -321,7 +321,7 @@ func newQuotaApplyCmd(client *master.MasterClient) *cobra.Command {
 			var err error
 			var quotaInfo *proto.QuotaInfo
 
-			if quotaInfo, err = client.AdminAPI().GetQuota(context.TODO(), volName, quotaId); err != nil {
+			if quotaInfo, err = client.AdminAPI().GetQuota(newCtx(), volName, quotaId); err != nil {
 				stdout("volName %v get quota %v failed(%v)\n", volName, quotaId, err)
 				return
 			}
@@ -391,7 +391,7 @@ func newQuotaRevokeCmd(client *master.MasterClient) *cobra.Command {
 			}
 			quotaIdNum = uint32(tmp)
 			if forceInode == 0 {
-				if quotaInfo, err = client.AdminAPI().GetQuota(context.TODO(), volName, quotaId); err != nil {
+				if quotaInfo, err = client.AdminAPI().GetQuota(newCtx(), volName, quotaId); err != nil {
 					stdout("volName %v get quota %v failed(%v)\n", volName, quotaId, err)
 					return
 				}

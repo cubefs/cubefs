@@ -10,7 +10,7 @@ import (
 )
 
 type clientHandler interface {
-	excuteHttp() (err error)
+	excuteHttp(_ context.Context) (err error)
 }
 
 type volumeClient struct {
@@ -28,28 +28,28 @@ func NewVolumeClient(opCode MasterOp, client *master.MasterClient) (vol *volumeC
 	return
 }
 
-func (vol *volumeClient) excuteHttp() (err error) {
+func (vol *volumeClient) excuteHttp(ctx context.Context) (err error) {
 	switch vol.opCode {
 	case OpExpandVol:
 		var vv *proto.SimpleVolView
-		if vv, err = vol.client.AdminAPI().GetVolumeSimpleInfo(context.TODO(), vol.name); err != nil {
+		if vv, err = vol.client.AdminAPI().GetVolumeSimpleInfo(ctx, vol.name); err != nil {
 			return
 		}
 		if vol.capacity <= vv.Capacity {
 			return fmt.Errorf("Expand capacity must larger than %v", vv.Capacity)
 		}
-		if err = vol.client.AdminAPI().VolExpand(context.TODO(), vol.name, vol.capacity, util.CalcAuthKey(vv.Owner), vol.clientIDKey); err != nil {
+		if err = vol.client.AdminAPI().VolExpand(ctx, vol.name, vol.capacity, util.CalcAuthKey(vv.Owner), vol.clientIDKey); err != nil {
 			return
 		}
 	case OpShrinkVol:
 		var vv *proto.SimpleVolView
-		if vv, err = vol.client.AdminAPI().GetVolumeSimpleInfo(context.TODO(), vol.name); err != nil {
+		if vv, err = vol.client.AdminAPI().GetVolumeSimpleInfo(ctx, vol.name); err != nil {
 			return
 		}
 		if vol.capacity >= vv.Capacity {
 			return fmt.Errorf("Expand capacity must less than %v", vv.Capacity)
 		}
-		if err = vol.client.AdminAPI().VolShrink(context.TODO(), vol.name, vol.capacity, util.CalcAuthKey(vv.Owner), vol.clientIDKey); err != nil {
+		if err = vol.client.AdminAPI().VolShrink(ctx, vol.name, vol.capacity, util.CalcAuthKey(vv.Owner), vol.clientIDKey); err != nil {
 			return
 		}
 	case OpDeleteVol:
