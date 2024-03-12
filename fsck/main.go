@@ -16,8 +16,9 @@ package main
 
 import (
 	"fmt"
+	"net/http"
+	_ "net/http/pprof"
 	"os"
-	"runtime/pprof"
 
 	"github.com/cubefs/cubefs/fsck/cmd"
 	"github.com/cubefs/cubefs/util/log"
@@ -32,13 +33,15 @@ func main() {
 	}
 	defer log.LogFlush()
 
-	f, err := os.Create("/tmp/cfs/fsck/cpu_profile")
-	pprof.StartCPUProfile(f)
-	defer pprof.StopCPUProfile()
+	go listenPprof()
 
 	c := cmd.NewRootCmd()
 	if err := c.Execute(); err != nil {
 		fmt.Fprintf(os.Stderr, "Failed: %v\n", err)
 		os.Exit(1)
 	}
+}
+
+func listenPprof() {
+	http.ListenAndServe("127.0.0.1:0", nil)
 }
