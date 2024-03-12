@@ -68,7 +68,7 @@ func (mw *MetaWrapper) fetchVolumeView() (view *VolumeView, err error) {
 			)
 			mw.accessToken.Type = proto.MsgMasterFetchVolViewReq
 			if tokenMessage, ts, err = genMasterToken(mw.accessToken, mw.sessionKey); err != nil {
-				log.LogWarnf("fetchVolumeView generate token failed: err(%v)", err)
+				log.Warnf("fetchVolumeView generate token failed: err(%v)", err)
 				return nil, err
 			}
 			var decoder master.Decoder = func(raw []byte) ([]byte, error) {
@@ -88,7 +88,7 @@ func (mw *MetaWrapper) fetchVolumeView() (view *VolumeView, err error) {
 		}
 	}
 	if vv.Status == 1 {
-		log.LogErrorf("fetchVolumeView: volume has been marked for deletion: volume(%v) status(%v - 0:normal/1:markDelete)",
+		log.Errorf("fetchVolumeView: volume has been marked for deletion: volume(%v) status(%v - 0:normal/1:markDelete)",
 			vv.Name, vv.Status)
 		return nil, proto.ErrVolNotExists
 	}
@@ -125,10 +125,10 @@ func (mw *MetaWrapper) fetchVolumeView() (view *VolumeView, err error) {
 func (mw *MetaWrapper) updateClusterInfo() (err error) {
 	var info *proto.ClusterInfo
 	if info, err = mw.mc.AdminAPI().GetClusterInfo(context.TODO()); err != nil {
-		log.LogWarnf("updateClusterInfo: get cluster info fail: err(%v) volume(%v)", err, mw.volname)
+		log.Warnf("updateClusterInfo: get cluster info fail: err(%v) volume(%v)", err, mw.volname)
 		return
 	}
-	log.LogInfof("updateClusterInfo: get cluster info: cluster(%v) localIP(%v) volume(%v)",
+	log.Infof("updateClusterInfo: get cluster info: cluster(%v) localIP(%v) volume(%v)",
 		info.Cluster, info.Ip, mw.volname)
 	mw.cluster = info.Cluster
 	mw.localIP = info.Ip
@@ -143,12 +143,12 @@ func (mw *MetaWrapper) updateDirChildrenNumLimit() (err error) {
 	}
 
 	if clusterInfo.DirChildrenNumLimit < proto.MinDirChildrenNumLimit {
-		log.LogWarnf("updateDirChildrenNumLimit: DirChildrenNumLimit probably not enabled on master, set to default value(%v)",
+		log.Warnf("updateDirChildrenNumLimit: DirChildrenNumLimit probably not enabled on master, set to default value(%v)",
 			proto.DefaultDirChildrenNumLimit)
 		atomic.StoreUint32(&mw.DirChildrenNumLimit, proto.DefaultDirChildrenNumLimit)
 	} else {
 		atomic.StoreUint32(&mw.DirChildrenNumLimit, clusterInfo.DirChildrenNumLimit)
-		log.LogInfof("updateDirChildrenNumLimit: DirChildrenNumLimit(%v)", mw.DirChildrenNumLimit)
+		log.Infof("updateDirChildrenNumLimit: DirChildrenNumLimit(%v)", mw.DirChildrenNumLimit)
 	}
 
 	return
@@ -157,12 +157,12 @@ func (mw *MetaWrapper) updateDirChildrenNumLimit() (err error) {
 func (mw *MetaWrapper) updateVolStatInfo() (err error) {
 	var info *proto.VolStatInfo
 	if info, err = mw.mc.ClientAPI().GetVolumeStat(context.TODO(), mw.volname); err != nil {
-		log.LogWarnf("updateVolStatInfo: get volume status fail: volume(%v) err(%v)", mw.volname, err)
+		log.Warnf("updateVolStatInfo: get volume status fail: volume(%v) err(%v)", mw.volname, err)
 		return
 	}
 
 	if info.UsedSize > info.TotalSize {
-		log.LogInfof("volume(%v) queried usedSize(%v) is larger than totalSize(%v), force set usedSize as totalSize",
+		log.Infof("volume(%v) queried usedSize(%v) is larger than totalSize(%v), force set usedSize as totalSize",
 			mw.volname, info.UsedSize, info.TotalSize)
 		info.UsedSize = info.TotalSize
 	}
@@ -170,27 +170,25 @@ func (mw *MetaWrapper) updateVolStatInfo() (err error) {
 	atomic.StoreUint64(&mw.totalSize, info.TotalSize)
 	atomic.StoreUint64(&mw.usedSize, info.UsedSize)
 	atomic.StoreUint64(&mw.inodeCount, info.InodeCount)
-	log.LogInfof("VolStatInfo: volume(%v) info(%v)", mw.volname, info)
+	log.Infof("VolStatInfo: volume(%v) info(%v)", mw.volname, info)
 	return
 }
 
 func (mw *MetaWrapper) updateMetaPartitions() error {
 	view, err := mw.fetchVolumeView()
 	if err != nil {
-		log.LogInfof("updateMetaPartition volume(%v) error: %v", mw.volname, err.Error())
+		log.Infof("updateMetaPartition volume(%v) error: %v", mw.volname, err.Error())
 		switch err {
 		case proto.ErrExpiredTicket:
 			// TODO: bad logic, remove later (Mofei Zhang)
 			if e := mw.updateTicket(); e != nil {
-				log.LogFlush()
 				daemonize.SignalOutcome(err)
 				os.Exit(1)
 			}
-			log.LogInfof("updateTicket: ok!")
+			log.Infof("updateTicket: ok!")
 			return err
 		case proto.ErrInvalidTicket:
 			// TODO: bad logic, remove later (Mofei Zhang)
-			log.LogFlush()
 			daemonize.SignalOutcome(err)
 			os.Exit(1)
 		default:
@@ -201,7 +199,7 @@ func (mw *MetaWrapper) updateMetaPartitions() error {
 	rwPartitions := make([]*MetaPartition, 0)
 	for _, mp := range view.MetaPartitions {
 		mw.replaceOrInsertPartition(mp)
-		log.LogInfof("updateMetaPartition: mp(%v)", mp)
+		log.Infof("updateMetaPartition: mp(%v)", mp)
 		if mp.Status == proto.ReadWrite {
 			rwPartitions = append(rwPartitions, mp)
 		}
@@ -211,7 +209,7 @@ func (mw *MetaWrapper) updateMetaPartitions() error {
 	mw.volDeleteLockTime = view.DeleteLockTime
 
 	if len(rwPartitions) == 0 {
-		log.LogInfof("updateMetaPartition: no rw partitions")
+		log.Infof("updateMetaPartition: no rw partitions")
 		return nil
 	}
 
@@ -252,19 +250,19 @@ func (mw *MetaWrapper) refresh() {
 		case <-t.C:
 			if err = mw.updateMetaPartitions(); err != nil {
 				mw.onAsyncTaskError.OnError(err)
-				log.LogErrorf("updateMetaPartition fail cause: %v", err)
+				log.Errorf("updateMetaPartition fail cause: %v", err)
 			}
 			if err = mw.updateVolStatInfo(); err != nil {
 				mw.onAsyncTaskError.OnError(err)
-				log.LogErrorf("updateVolStatInfo fail cause: %v", err)
+				log.Errorf("updateVolStatInfo fail cause: %v", err)
 			}
 			if err = mw.updateDirChildrenNumLimit(); err != nil {
 				mw.onAsyncTaskError.OnError(err)
-				log.LogErrorf("updateDirChildrenNumLimit fail cause: %v", err)
+				log.Errorf("updateDirChildrenNumLimit fail cause: %v", err)
 			}
 			t.Reset(RefreshMetaPartitionsInterval)
 		case <-mw.forceUpdate:
-			log.LogInfof("Start forceUpdateMetaPartitions")
+			log.Infof("Start forceUpdateMetaPartitions")
 			mw.partMutex.Lock()
 			if err = mw.forceUpdateMetaPartitions(); err == nil {
 				if err = mw.updateVolStatInfo(); err == nil {
@@ -273,7 +271,7 @@ func (mw *MetaWrapper) refresh() {
 			}
 			mw.partMutex.Unlock()
 			mw.partCond.Broadcast()
-			log.LogInfof("End forceUpdateMetaPartitions: err(%v)", err)
+			log.Infof("End forceUpdateMetaPartitions: err(%v)", err)
 		case <-mw.closeCh:
 			return
 		}
@@ -284,7 +282,7 @@ func calculateAuthKey(key string) (authKey string, err error) {
 	h := md5.New()
 	_, err = h.Write([]byte(key))
 	if err != nil {
-		log.LogErrorf("action[calculateAuthKey] calculate auth key[%v] failed,err[%v]", key, err)
+		log.Errorf("action[calculateAuthKey] calculate auth key[%v] failed,err[%v]", key, err)
 		return
 	}
 	cipherStr := h.Sum(nil)
@@ -326,11 +324,11 @@ func (mw *MetaWrapper) updateTicket() error {
 func (mw *MetaWrapper) parseAndVerifyResp(body []byte, ts int64) (dataBody []byte, err error) {
 	var resp proto.MasterAPIAccessResp
 	if resp, err = mw.parseRespWithAuth(body); err != nil {
-		log.LogWarnf("fetchVolumeView parse response failed: err(%v) body(%v)", err, string(body))
+		log.Warnf("fetchVolumeView parse response failed: err(%v) body(%v)", err, string(body))
 		return nil, err
 	}
 	if err = proto.VerifyAPIRespComm(&(resp.APIResp), mw.accessToken.Type, mw.owner, proto.MasterServiceID, ts); err != nil {
-		log.LogWarnf("fetchVolumeView verify response: err(%v)", err)
+		log.Warnf("fetchVolumeView verify response: err(%v)", err)
 		return nil, err
 	}
 	viewBody := &struct {
@@ -339,7 +337,7 @@ func (mw *MetaWrapper) parseAndVerifyResp(body []byte, ts int64) (dataBody []byt
 		Data json.RawMessage
 	}{}
 	if err = json.Unmarshal(resp.Data, viewBody); err != nil {
-		log.LogWarnf("VolViewCache unmarshal: err(%v) body(%v)", err, viewBody)
+		log.Warnf("VolViewCache unmarshal: err(%v) body(%v)", err, viewBody)
 		return nil, err
 	}
 	if viewBody.Code != 0 {
@@ -402,7 +400,7 @@ func (mw *MetaWrapper) updateQuotaInfo() {
 
 	quotaInfos, err := mw.mc.AdminAPI().ListQuota(context.TODO(), mw.volname)
 	if err != nil {
-		log.LogWarnf("updateQuotaInfo get quota info fail: vol [%v] err [%v]", mw.volname, err)
+		log.Warnf("updateQuotaInfo get quota info fail: vol [%v] err [%v]", mw.volname, err)
 		return
 	}
 	mw.QuotaLock.Lock()
@@ -410,7 +408,7 @@ func (mw *MetaWrapper) updateQuotaInfo() {
 	mw.QuotaInfoMap = make(map[uint32]*proto.QuotaInfo)
 	for _, info := range quotaInfos {
 		mw.QuotaInfoMap[info.QuotaId] = info
-		log.LogDebugf("updateQuotaInfo quotaInfo [%v]", info)
+		log.Debugf("updateQuotaInfo quotaInfo [%v]", info)
 	}
 }
 
@@ -420,11 +418,11 @@ func (mw *MetaWrapper) IsQuotaLimited(quotaIds []uint32) bool {
 	for _, quotaId := range quotaIds {
 		if info, isFind := mw.QuotaInfoMap[quotaId]; isFind {
 			if info.LimitedInfo.LimitedBytes {
-				log.LogDebugf("IsQuotaLimited quotaId [%v]", quotaId)
+				log.Debugf("IsQuotaLimited quotaId [%v]", quotaId)
 				return true
 			}
 		}
-		log.LogDebugf("IsQuotaLimited false quota [%v]", quotaId)
+		log.Debugf("IsQuotaLimited false quota [%v]", quotaId)
 	}
 	return false
 }
@@ -444,27 +442,27 @@ func (mw *MetaWrapper) GetQuotaFullPaths() (fullPaths []string) {
 func (mw *MetaWrapper) IsQuotaLimitedById(inodeId uint64, size bool, files bool) bool {
 	mp := mw.getPartitionByInode(inodeId)
 	if mp == nil {
-		log.LogErrorf("IsQuotaLimitedById: inodeId(%v)", inodeId)
+		log.Errorf("IsQuotaLimitedById: inodeId(%v)", inodeId)
 		return true
 	}
 	quotaInfos, err := mw.getInodeQuota(mp, inodeId)
 	if err != nil {
-		log.LogErrorf("IsQuotaLimitedById: get parent quota fail, inodeId(%v) err(%v)", inodeId, err)
+		log.Errorf("IsQuotaLimitedById: get parent quota fail, inodeId(%v) err(%v)", inodeId, err)
 		return true
 	}
 	for quotaId := range quotaInfos {
 		if info, isFind := mw.QuotaInfoMap[quotaId]; isFind {
 			if size && info.LimitedInfo.LimitedBytes {
-				log.LogDebugf("IsQuotaLimitedById quotaId [%v]", quotaId)
+				log.Debugf("IsQuotaLimitedById quotaId [%v]", quotaId)
 				return true
 			}
 
 			if files && info.LimitedInfo.LimitedFiles {
-				log.LogDebugf("IsQuotaLimitedById quotaId [%v]", quotaId)
+				log.Debugf("IsQuotaLimitedById quotaId [%v]", quotaId)
 				return true
 			}
 		}
-		log.LogDebugf("IsQuotaLimitedById false quota [%v]", quotaId)
+		log.Debugf("IsQuotaLimitedById false quota [%v]", quotaId)
 	}
 
 	return false

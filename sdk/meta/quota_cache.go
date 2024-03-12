@@ -133,11 +133,11 @@ func (qc *QuotaCache) backgroundEviction() {
 	defer t.Stop()
 
 	for range t.C {
-		log.LogInfof("QuotaCache: start BG evict")
+		log.Infof("QuotaCache: start BG evict")
 		qc.Lock()
 		qc.evict(false)
 		qc.Unlock()
-		log.LogInfof("QuotaCache: end BG evict")
+		log.Infof("QuotaCache: end BG evict")
 	}
 }
 
