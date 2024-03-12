@@ -218,7 +218,7 @@ func (manager *SpaceManager) Stats() *Stats {
 	return manager.stats
 }
 
-func (manager *SpaceManager) LoadDisk(path string, reservedSpace, diskRdonlySpace uint64, maxErrCnt int) (err error) {
+func (manager *SpaceManager) LoadDisk(path string, reservedSpace uint64, mediaType uint32, diskRdonlySpace uint64, maxErrCnt int) (err error) {
 	var (
 		disk    *Disk
 		visitor PartitionVisitor
@@ -239,7 +239,7 @@ func (manager *SpaceManager) LoadDisk(path string, reservedSpace, diskRdonlySpac
 	}
 
 	if _, err = manager.GetDisk(path); err != nil {
-		disk, err = NewDisk(path, reservedSpace, diskRdonlySpace, maxErrCnt, manager)
+		disk, err = NewDisk(path, reservedSpace, mediaType, diskRdonlySpace, maxErrCnt, manager)
 		if err != nil {
 			log.LogErrorf("NewDisk fail err:[%v]", err)
 			return
@@ -310,7 +310,7 @@ func (manager *SpaceManager) updateMetrics() {
 		remainingCapacityToCreatePartition, maxCapacityToCreatePartition, partitionCnt)
 }
 
-func (manager *SpaceManager) minPartitionCnt(decommissionedDisks []string) (d *Disk) {
+func (manager *SpaceManager) minPartitionCnt(decommissionedDisks []string, mediaType uint32) (d *Disk) {
 	manager.diskMutex.Lock()
 	defer manager.diskMutex.Unlock()
 	var (
@@ -330,6 +330,10 @@ func (manager *SpaceManager) minPartitionCnt(decommissionedDisks []string) (d *D
 		if disk.Status != proto.ReadWrite {
 			continue
 		}
+		if disk.MediaType != mediaType {
+			continue
+		}
+
 		diskWeight := disk.getSelectWeight()
 		if diskWeight < minWeight {
 			minWeight = diskWeight
@@ -386,6 +390,7 @@ func (manager *SpaceManager) CreatePartition(request *proto.CreateDataPartitionR
 	defer manager.partitionMutex.Unlock()
 	dpCfg := &dataPartitionCfg{
 		PartitionID:   request.PartitionId,
+		MediaType:     request.MediaType,
 		VolName:       request.VolumeId,
 		Peers:         request.Members,
 		Hosts:         request.Hosts,
@@ -408,7 +413,7 @@ func (manager *SpaceManager) CreatePartition(request *proto.CreateDataPartitionR
 		}
 		return
 	}
-	disk := manager.minPartitionCnt(request.DecommissionedDisks)
+	disk := manager.minPartitionCnt(request.DecommissionedDisks, request.MediaType)
 	if disk == nil {
 		return nil, ErrNoSpaceToCreatePartition
 	}

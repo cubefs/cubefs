@@ -793,6 +793,7 @@ type AppendExtentKeysRequest struct {
 	Inode        uint64      `json:"ino"`
 	Extents      []ExtentKey `json:"eks"`
 	StorageClass uint32      `json:"storageClass"`
+	IsMigration  bool        `json:"isMigration"`
 }
 
 type SetXAttrRequest struct {

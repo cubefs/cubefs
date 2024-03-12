@@ -70,7 +70,29 @@ type DataNodeInfo struct {
 	MaxDpCntLimit             uint32             `json:"maxDpCntLimit"`
 	CpuUtil                   float64            `json:"cpuUtil"`
 	IoUtils                   map[string]float64 `json:"ioUtil"`
-	MediaType                 uint32
+	MediaTypes                []uint32
+}
+
+type DiskConf struct {
+	Path          string `json:"Path"`
+	ReservedSpace uint64 `json:"ReservedSpace"`
+	MediaType     uint32 `json:"MediaType"`
+}
+
+type DisksConf []DiskConf
+
+func (d DisksConf) MediaTypes() (mediaTypes []uint32) {
+	mediaTypesMap := map[uint32]struct{}{}
+	for _, conf := range d {
+		if _, exist := mediaTypesMap[conf.MediaType]; !exist {
+			mediaTypesMap[conf.MediaType] = struct{}{}
+		}
+	}
+
+	for t, _ := range mediaTypesMap {
+		mediaTypes = append(mediaTypes, t)
+	}
+	return
 }
 
 // MetaPartition defines the structure of a meta partition
@@ -159,7 +181,7 @@ type NodeView struct {
 	DomainAddr string
 	ID         uint64
 	IsWritable bool
-	MediaType  uint32
+	MediaTypes []uint32
 }
 
 type DpRepairInfo struct {

@@ -39,12 +39,12 @@ func (api *NodeAPI) AddDataNode(serverAddr, zoneName string, mediaType uint32) (
 	return
 }
 
-func (api *NodeAPI) AddDataNodeWithAuthNode(serverAddr, zoneName, clientIDKey string, mediaType uint32) (id uint64, err error) {
+func (api *NodeAPI) AddDataNodeWithAuthNode(serverAddr, zoneName, clientIDKey string, disksJsonString string) (id uint64, err error) {
 	var request = newAPIRequest(http.MethodGet, proto.AddDataNode)
 	request.addParam("addr", serverAddr)
 	request.addParam("zoneName", zoneName)
 	request.addParam("clientIDKey", clientIDKey)
-	request.addParam("mediaType", strconv.Itoa(int(mediaType)))
+	request.addParam("disksJsonString", disksJsonString)
 	var data []byte
 	if data, err = api.mc.serveRequest(request); err != nil {
 		return

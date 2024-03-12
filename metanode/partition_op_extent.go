@@ -669,18 +669,29 @@ func (mp *metaPartition) BatchExtentAppend(req *proto.AppendExtentKeysRequest, p
 		log.LogErrorf("BatchExtentAppend fail err [%v]", err)
 		return
 	}
-	ino.StorageClass = req.StorageClass
-	if !proto.IsStorageClassReplica(ino.StorageClass) {
+
+	if !proto.IsStorageClassReplica(req.StorageClass) {
 		err = fmt.Errorf("ino %v storage type %v donot support BatchExtentAppend", ino.Inode, ino.StorageClass)
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return
 	}
 
-	extents := req.Extents
-	ino.HybridCouldExtents.sortedEks = NewSortedExtents()
-	for _, extent := range extents {
-		ino.HybridCouldExtents.sortedEks.(*SortedExtents).Append(extent)
+	if req.IsMigration {
+		ino.HybridCouldExtentsMigration.storageClass = req.StorageClass
+	} else {
+		ino.StorageClass = req.StorageClass
 	}
+
+	sortedEks := NewSortedExtents()
+	for _, extent := range req.Extents {
+		sortedEks.Append(extent)
+	}
+	if req.IsMigration {
+		ino.HybridCouldExtentsMigration.sortedEks = sortedEks
+	} else {
+		ino.HybridCouldExtents.sortedEks = sortedEks
+	}
+
 	val, err := ino.Marshal()
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))

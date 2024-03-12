@@ -34,7 +34,7 @@ type DataPartitionSelector interface {
 	Refresh(partitions []*DataPartition) error
 
 	// Select returns an data partition picked by selector.
-	Select(excludes map[string]struct{}, mediaType uint32, ehID uint64) (*DataPartition, error)
+	Select(excludes map[string]struct{}, preferredHosts string, mediaType uint32, ehID uint64) (*DataPartition, error)
 
 	// RemoveDP removes specified data partition.
 	RemoveDP(partitionID uint64)
@@ -70,7 +70,7 @@ func newDataPartitionSelector(name string, param string) (newDpSelector DataPart
 	return constructor(param)
 }
 
-func (w *Wrapper) initDpSelector() (err error) {
+func (w *DataPartitionWrapper) initDpSelector() (err error) {
 	w.dpSelectorChanged = false
 	var selectorName = w.dpSelectorName
 	if strings.TrimSpace(selectorName) == "" {
@@ -87,7 +87,7 @@ func (w *Wrapper) initDpSelector() (err error) {
 	return
 }
 
-func (w *Wrapper) refreshDpSelector(partitions []*DataPartition) {
+func (w *DataPartitionWrapper) refreshDpSelector(partitions []*DataPartition) {
 	w.Lock.RLock()
 	dpSelector := w.dpSelector
 	dpSelectorChanged := w.dpSelectorChanged
@@ -118,15 +118,15 @@ func (w *Wrapper) refreshDpSelector(partitions []*DataPartition) {
 }
 
 // getDataPartitionForWrite returns an available data partition for write.
-func (w *Wrapper) GetDataPartitionForWrite(exclude map[string]struct{}, mediaType uint32, ehID uint64) (*DataPartition, error) {
+func (w *DataPartitionWrapper) GetDataPartitionForWrite(exclude map[string]struct{}, preferredHosts string, mediaType uint32, ehID uint64) (*DataPartition, error) {
 	w.Lock.RLock()
 	dpSelector := w.dpSelector
 	w.Lock.RUnlock()
 
-	return dpSelector.Select(exclude, mediaType, ehID)
+	return dpSelector.Select(exclude, preferredHosts, mediaType, ehID)
 }
 
-func (w *Wrapper) RemoveDataPartitionForWrite(partitionID uint64) {
+func (w *DataPartitionWrapper) RemoveDataPartitionForWrite(partitionID uint64) {
 	w.Lock.RLock()
 	dpSelector := w.dpSelector
 	w.Lock.RUnlock()

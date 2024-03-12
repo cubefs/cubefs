@@ -16,6 +16,8 @@ package lcnode
 
 import (
 	"context"
+	"github.com/cubefs/cubefs/blobstore/api/access"
+	"github.com/cubefs/cubefs/sdk/data/blobstore"
 	"os"
 	"path"
 	"strings"
@@ -23,9 +25,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/cubefs/cubefs/blobstore/api/access"
 	"github.com/cubefs/cubefs/proto"
-	"github.com/cubefs/cubefs/sdk/data/blobstore"
 	"github.com/cubefs/cubefs/sdk/data/stream"
 	"github.com/cubefs/cubefs/sdk/meta"
 	"github.com/cubefs/cubefs/util/log"
@@ -39,22 +39,23 @@ const (
 )
 
 type LcScanner struct {
-	ID            string
-	Volume        string
-	mw            MetaWrapper
-	lcnode        *LcNode
-	transitionMgr *TransitionMgr
-	adminTask     *proto.AdminTask
-	rule          *proto.Rule
-	dirChan       *unboundedchan.UnboundedChan
-	fileChan      *unboundedchan.UnboundedChan
-	dirRPoll      *routinepool.RoutinePool
-	fileRPoll     *routinepool.RoutinePool
-	batchDentries *proto.BatchDentries
-	currentStat   *proto.LcNodeRuleTaskStatistics
-	limiter       *rate.Limiter
-	now           time.Time
-	stopC         chan bool
+	ID                  string
+	Volume              string
+	mw                  MetaWrapper
+	lcnode              *LcNode
+	remoteTransitionMgr *RemoteTransitionMgr
+	localTransitionMgr  *LocalTransitionMgr
+	adminTask           *proto.AdminTask
+	rule                *proto.Rule
+	dirChan             *unboundedchan.UnboundedChan
+	fileChan            *unboundedchan.UnboundedChan
+	dirRPoll            *routinepool.RoutinePool
+	fileRPoll           *routinepool.RoutinePool
+	batchDentries       *proto.BatchDentries
+	currentStat         *proto.LcNodeRuleTaskStatistics
+	limiter             *rate.Limiter
+	now                 time.Time
+	stopC               chan bool
 }
 
 func NewS3Scanner(adminTask *proto.AdminTask, l *LcNode) (*LcScanner, error) {
@@ -142,11 +143,21 @@ func NewS3Scanner(adminTask *proto.AdminTask, l *LcNode) (*LcScanner, error) {
 		return nil, err
 	}
 
-	scanner.transitionMgr = &TransitionMgr{
+	scanner.remoteTransitionMgr = &RemoteTransitionMgr{
 		volume:    scanner.Volume,
 		ec:        extentClient,
 		ecForW:    extentClientForW,
 		ebsClient: ebsClient,
+	}
+
+	scanner.localTransitionMgr = &LocalTransitionMgr{
+		Volume:                 scanner.Volume,
+		Masters:                l.masters,
+		AppendExtentKeys:       metaWrapper.AppendExtentKeys,
+		GetExtents:             metaWrapper.GetExtents,
+		VolStorageClass:        volumeInfo.VolStorageClass,
+		VolAllowedStorageClass: volumeInfo.AllowedStorageClass,
+		DpWrapper:              extentClient.DpWrapper,
 	}
 
 	return scanner, nil
@@ -384,7 +395,7 @@ func (s *LcScanner) handleFile(dentry *proto.ScanDentry) {
 			}
 			return
 		}
-		err := s.transitionMgr.migrate(dentry)
+		err := s.migrate(dentry)
 		if err != nil {
 			atomic.AddInt64(&s.currentStat.ErrorSkippedNum, 1)
 			log.LogErrorf("migrate err: %v, dentry: %+v, skip it", err, dentry)
@@ -407,7 +418,7 @@ func (s *LcScanner) handleFile(dentry *proto.ScanDentry) {
 			}
 			return
 		}
-		oeks, err := s.transitionMgr.migrateToEbs(dentry)
+		oeks, err := s.migrateToEbs(dentry)
 		if err != nil {
 			atomic.AddInt64(&s.currentStat.ErrorSkippedNum, 1)
 			log.LogErrorf("migrateToEbs err: %v, dentry: %+v, skip it", err, dentry)
@@ -430,6 +441,29 @@ func (s *LcScanner) handleFile(dentry *proto.ScanDentry) {
 			s.batchHandleFile()
 		}
 	}
+}
+
+func (s *LcScanner) migrate(e *proto.ScanDentry) (err error) {
+	fromDevType := proto.StorageClassString(e.StorageClass)
+	toDevType := proto.StorageClassString(proto.OpTypeToStorageType(e.Op))
+	log.LogDebugf("try to use local transitionMgr to migrate (%v -> %v ) inode %v , vol %s, path %v", fromDevType, toDevType, e.Inode, s.Volume, e.Path)
+	if err = s.localTransitionMgr.migrate(e); err == nil {
+		log.LogDebugf("local transitionMgr migrated inode %v , vol %s, path %v successfully !", e.Inode, s.Volume, e.Path)
+		return
+	}
+
+	log.LogDebugf("local transitionMgr can't finish migration err %v, try to use remote transitionMgr to migrate (%v -> %v ) vol %s, inode %v , path %v",
+		err, fromDevType, toDevType, s.Volume, e.Inode, e.Path)
+	if err = s.remoteTransitionMgr.migrate(e); err == nil {
+		log.LogDebugf("remote transitionMgr migrated inode %v ,vol %s, path %v successfully !", e.Inode, s.Volume, e.Path)
+	}
+
+	return err
+}
+
+func (s *LcScanner) migrateToEbs(e *proto.ScanDentry) (oeks []proto.ObjExtentKey, err error) {
+	// todo try local migration first
+	return s.remoteTransitionMgr.migrateToEbs(e)
 }
 
 func (s *LcScanner) batchHandleFile() {
@@ -698,7 +732,7 @@ func (s *LcScanner) Stop() {
 	close(s.dirChan.In)
 	close(s.fileChan.In)
 	s.mw.Close()
-	s.transitionMgr.ec.Close()
-	s.transitionMgr.ecForW.Close()
+	s.remoteTransitionMgr.ec.Close()
+	s.remoteTransitionMgr.ecForW.Close()
 	log.LogInfof("scanner(%v) stopped", s.ID)
 }

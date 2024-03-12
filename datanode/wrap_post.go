@@ -15,7 +15,10 @@
 package datanode
 
 import (
+	"bytes"
+	"encoding/json"
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util/log"
 	"sync/atomic"
 
 	"github.com/cubefs/cubefs/repl"
@@ -30,6 +33,7 @@ func (s *DataNode) Post(p *repl.Packet) error {
 		p.NeedReply = false
 	}
 	s.cleanupPkt(p)
+	s.tryReleaseExtentForLocalTransition(p)
 	s.addMetrics(p)
 	return nil
 }
@@ -62,6 +66,37 @@ func (s *DataNode) releaseExtent(p *repl.Packet) {
 		store.SendToAvailableTinyExtentC(p.ExtentID)
 	}
 	atomic.StoreInt32(&p.IsReleased, IsReleased)
+}
+
+func (s *DataNode) tryReleaseExtentForLocalTransition(p *repl.Packet) {
+	if p.Opcode != proto.OpExtentsLocalTransition || !p.IsForwardPacket() {
+		return
+	}
+
+	var (
+		err  error
+		info = &proto.ExtentsLocalTransitionRequest{}
+	)
+
+	decode := json.NewDecoder(bytes.NewBuffer(p.Data))
+	decode.UseNumber()
+	if err = decode.Decode(info); err != nil {
+		log.LogErrorf("error when releaseExtentForLocalTransition %v", err)
+		return
+	}
+	dstDp := s.space.Partition(info.DstDp)
+	dstStore := dstDp.ExtentStore()
+	for _, extent := range info.DstExtents {
+		if storage.IsTinyExtent(extent.ExtentId) {
+			if p.IsErrPacket() {
+				dstStore.SendToBrokenTinyExtentC(extent.ExtentId)
+			} else {
+				dstStore.SendToAvailableTinyExtentC(extent.ExtentId)
+			}
+			atomic.StoreInt32(&p.IsReleased, IsReleased)
+			break
+		}
+	}
 }
 
 func (s *DataNode) addMetrics(p *repl.Packet) {

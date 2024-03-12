@@ -506,8 +506,8 @@ func (vol *Vol) initMetaPartitions(c *Cluster, count int) (err error) {
 	return
 }
 
-func (vol *Vol) initDataPartitions(c *Cluster, mediaType uint32) (err error) {
-	err = c.batchCreateDataPartition(vol, defaultInitDataPartitionCnt, true, mediaType)
+func (vol *Vol) initDataPartitions(c *Cluster, mediaTypes []uint32) (err error) {
+	err = c.batchCreateDataPartition(vol, defaultInitDataPartitionCnt, true, mediaTypes)
 	return
 }
 
@@ -527,7 +527,7 @@ func (vol *Vol) checkDataPartitions(c *Cluster) (cnt int) {
 			if dpCntOfMediaType == 0 {
 				log.LogInfof("[checkDataPartitions] vol(%v) mediaType(%v) dp count is 0, try to create 1 dp",
 					vol.Name, proto.MediaTypeString(mediaType))
-				c.batchCreateDataPartition(vol, 1, false, mediaType)
+				c.batchCreateDataPartition(vol, 1, false, []uint32{mediaType})
 			}
 		}
 
@@ -966,17 +966,22 @@ func (vol *Vol) autoCreateDataPartitions(c *Cluster) {
 			return
 		}
 
-		for _, asc := range vol.allowedStorageClass {
-			if !proto.IsStorageClassReplica(asc) {
+		var chosenMediaTypes []uint32
+		for _, acs := range vol.allowedStorageClass {
+			if !proto.IsStorageClassReplica(acs) {
 				continue
 			}
-			mediaType := proto.GetMediaTypeByStorageClass(asc)
+			chosenMediaTypes = append(chosenMediaTypes, proto.GetMediaTypeByStorageClass(acs))
+		}
+
+		for _, mediaType := range chosenMediaTypes {
 			dpCntOfMediaType := vol.dataPartitions.getReadWriteDataPartitionCntByMediaType(mediaType)
 
 			if dpCntOfMediaType < minNumOfRWDataPartitions {
 				log.LogWarnf("autoCreateDataPartitions: vol(%v) mediaType(%v) readWrite less than %v, alloc new partitions",
 					vol.Name, proto.MediaTypeString(mediaType), minNumOfRWDataPartitions)
-				c.batchCreateDataPartition(vol, minNumOfRWDataPartitions, false, mediaType)
+				c.batchCreateDataPartition(vol, minNumOfRWDataPartitions, false, chosenMediaTypes)
+				break
 			}
 		}
 
@@ -1011,20 +1016,25 @@ func (vol *Vol) autoCreateDataPartitions(c *Cluster) {
 		log.LogInfof("action[autoCreateDataPartitions] vol[%v] count[%v] volStorageClass[%v], chosenMediaType(%v)",
 			vol.Name, count, proto.StorageClassString(vol.volStorageClass), proto.MediaTypeString(cacheMediaType))
 
-		c.batchCreateDataPartition(vol, int(count), false, cacheMediaType)
+		c.batchCreateDataPartition(vol, int(count), false, []uint32{cacheMediaType})
 		return
 	}
 
 	//check for hot vol
-	for _, asc := range vol.allowedStorageClass {
-		if !proto.IsStorageClassReplica(asc) {
+	var chosenMediaTypes []uint32
+	for _, acs := range vol.allowedStorageClass {
+		if !proto.IsStorageClassReplica(acs) {
 			continue
 		}
-		mediaType := proto.GetMediaTypeByStorageClass(asc)
+		chosenMediaTypes = append(chosenMediaTypes, proto.GetMediaTypeByStorageClass(acs))
+	}
+
+	for _, mediaType := range chosenMediaTypes {
 		rwDpCountOfMediaType := vol.dataPartitions.getReadWriteDataPartitionCntByMediaType(mediaType)
 		log.LogInfof("action[autoCreateDataPartitions] mediaType:%v, rwDpCountOfMediaType:%v",
 			mediaType, rwDpCountOfMediaType)
 		var createDpCount int
+		asc := proto.GetStorageClassByMediaType(mediaType)
 		if asc == vol.volStorageClass && vol.Capacity > 200000 && rwDpCountOfMediaType < 200 {
 			createDpCount = vol.calculateExpansionNum()
 			log.LogInfof("action[autoCreateDataPartitions] vol(%v) volStorageClass(%v), calculated createDpCount:%v",
@@ -1040,7 +1050,8 @@ func (vol *Vol) autoCreateDataPartitions(c *Cluster) {
 		vol.dataPartitions.lastAutoCreateTime = time.Now()
 		log.LogInfof("action[autoCreateDataPartitions] vol[%v] createDpCount[%v] for mediaType(%v)",
 			vol.Name, createDpCount, proto.MediaTypeString(mediaType))
-		c.batchCreateDataPartition(vol, createDpCount, false, mediaType)
+		c.batchCreateDataPartition(vol, createDpCount, false, chosenMediaTypes)
+		break
 	}
 }
 
@@ -1468,7 +1479,7 @@ func (vol *Vol) doCreateMetaPartition(c *Cluster, start, end uint64) (mp *MetaPa
 	errChannel := make(chan error, vol.mpReplicaNum)
 
 	if c.isFaultDomain(vol) {
-		if hosts, peers, err = c.getHostFromDomainZone(vol.domainId, TypeMetaPartition, vol.mpReplicaNum, proto.StorageClass_Unspecified); err != nil {
+		if hosts, peers, err = c.getHostFromDomainZone(vol.domainId, TypeMetaPartition, vol.mpReplicaNum, proto.StorageClass_Unspecified, NewEmptyDataPartitionPreferredConfig()); err != nil {
 			log.LogErrorf("action[doCreateMetaPartition] getHostFromDomainZone err[%v]", err)
 			return nil, errors.NewError(err)
 		}

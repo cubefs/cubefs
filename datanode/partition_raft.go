@@ -40,6 +40,7 @@ type dataPartitionCfg struct {
 	VolName       string              `json:"vol_name"`
 	ClusterID     string              `json:"cluster_id"`
 	PartitionID   uint64              `json:"partition_id"`
+	MediaType     uint32              `json:"media_type"`
 	PartitionSize int                 `json:"partition_size"`
 	PartitionType int                 `json:"partition_type"`
 	Peers         []proto.Peer        `json:"peers"`

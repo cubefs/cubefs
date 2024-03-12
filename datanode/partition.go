@@ -58,6 +58,7 @@ const (
 type DataPartitionMetadata struct {
 	VolumeID                string
 	PartitionID             uint64
+	MediaType               uint32
 	PartitionSize           int
 	PartitionType           int
 	CreateTime              string
@@ -89,6 +90,7 @@ type DataPartition struct {
 	clusterID       string
 	volumeID        string
 	partitionID     uint64
+	mediaType       uint32
 	partitionStatus int
 	partitionSize   int
 	partitionType   int
@@ -237,6 +239,7 @@ func LoadDataPartition(partitionDir string, disk *Disk) (dp *DataPartition, err 
 		PartitionSize: meta.PartitionSize,
 		PartitionType: meta.PartitionType,
 		PartitionID:   meta.PartitionID,
+		MediaType:     meta.MediaType,
 		ReplicaNum:    meta.ReplicaNum,
 		Peers:         meta.Peers,
 		Hosts:         meta.Hosts,
@@ -296,6 +299,7 @@ func newDataPartition(dpCfg *dataPartitionCfg, disk *Disk, isCreate bool) (dp *D
 		volumeID:                dpCfg.VolName,
 		clusterID:               dpCfg.ClusterID,
 		partitionID:             partitionID,
+		mediaType:               dpCfg.MediaType,
 		replicaNum:              dpCfg.ReplicaNum,
 		disk:                    disk,
 		dataNode:                disk.dataNode,
@@ -523,6 +527,7 @@ func (dp *DataPartition) PersistMetadata() (err error) {
 	md := &DataPartitionMetadata{
 		VolumeID:                dp.config.VolName,
 		PartitionID:             dp.config.PartitionID,
+		MediaType:               dp.config.MediaType,
 		ReplicaNum:              dp.config.ReplicaNum,
 		PartitionSize:           dp.config.PartitionSize,
 		PartitionType:           dp.config.PartitionType,

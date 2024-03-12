@@ -74,7 +74,7 @@ func (s *KFasterRandomSelector) Refresh(partitions []*DataPartition) (err error)
 	return
 }
 
-func (s *KFasterRandomSelector) Select(exclude map[string]struct{}, mediaType uint32, ehID uint64) (dp *DataPartition, err error) {
+func (s *KFasterRandomSelector) Select(exclude map[string]struct{}, preferredHosts string, mediaType uint32, ehID uint64) (dp *DataPartition, err error) {
 	s.RLock()
 	partitions := s.partitions
 	kValue := s.kValue

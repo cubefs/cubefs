@@ -110,7 +110,7 @@ func (s *Streamer) GetExtentsForce() error {
 // GetExtentReader returns the extent reader.
 // TODO: use memory pool
 func (s *Streamer) GetExtentReader(ek *proto.ExtentKey, storageClass uint32) (*ExtentReader, error) {
-	partition, err := s.client.dataWrapper.GetDataPartition(ek.PartitionId)
+	partition, err := s.client.DpWrapper.GetDataPartition(ek.PartitionId)
 	if err != nil {
 		return nil, err
 	}
@@ -125,7 +125,7 @@ func (s *Streamer) GetExtentReader(ek *proto.ExtentKey, storageClass uint32) (*E
 		retryRead = false
 	}
 
-	reader := NewExtentReader(s.inode, ek, partition, s.client.dataWrapper.FollowerRead(), retryRead)
+	reader := NewExtentReader(s.inode, ek, partition, s.client.DpWrapper.FollowerRead(), retryRead)
 	return reader, nil
 }
 

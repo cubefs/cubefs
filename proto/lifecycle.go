@@ -367,3 +367,13 @@ func (f *BatchDentries) BatchGetAndClear() (map[uint64]*ScanDentry, []uint64) {
 	f.dentries = make(map[uint64]*ScanDentry, 0)
 	return dentries, inodes
 }
+
+type ExtentsLocalTransitionRequest struct {
+	Hosts      []string
+	SrcDp      uint64
+	DstDp      uint64
+	SrcExtents []ExtentKey
+	DstExtents []ExtentKey
+}
+
+type ExtentsLocalTransitionResponse ExtentsLocalTransitionRequest

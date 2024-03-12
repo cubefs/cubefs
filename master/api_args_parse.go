@@ -165,7 +165,7 @@ func parseRequestForUpdateMetaNode(r *http.Request) (nodeAddr string, id uint64,
 	return
 }
 
-func parseRequestForAddNode(r *http.Request) (nodeAddr, zoneName string, mediaType uint32, err error) {
+func parseRequestForAddNode(r *http.Request) (nodeAddr, zoneName string, err error) {
 	if err = r.ParseForm(); err != nil {
 		return
 	}
@@ -175,7 +175,15 @@ func parseRequestForAddNode(r *http.Request) (nodeAddr, zoneName string, mediaTy
 	if zoneName = r.FormValue(zoneNameKey); zoneName == "" {
 		zoneName = DefaultZoneName
 	}
-	if mediaType, err = extractMediaType(r); err != nil {
+	return
+}
+func parseRequestForAddDataNode(r *http.Request) (nodeAddr, zoneName string, disksJsonString string, err error) {
+
+	if nodeAddr, zoneName, err = parseRequestForAddNode(r); err != nil {
+		return
+	}
+
+	if disksJsonString, err = extractDisksJsonString(r); err != nil {
 		return
 	}
 	return
@@ -1983,14 +1991,10 @@ func parseS3QosReq(r *http.Request, req *proto.S3QosRequest) (err error) {
 	return
 }
 
-func extractMediaType(r *http.Request) (mediaType uint32, err error) {
+func extractDisksJsonString(r *http.Request) (disksJsonString string, err error) {
 	var value string
-	if value = r.FormValue(mediaTypeKey); value == "" {
-		mediaType = proto.MediaType_Unspecified
-		return
+	if value = r.FormValue(disksJsonStringKey); value == "" {
+		return value, fmt.Errorf("missing disks conf json string! ")
 	}
-
-	parsedMediaType, err := strconv.ParseUint(value, 10, 32)
-	mediaType = uint32(parsedMediaType)
-	return
+	return value, nil
 }

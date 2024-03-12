@@ -57,6 +57,7 @@ const (
 // Disk represents the structure of the disk
 type Disk struct {
 	sync.RWMutex
+	MediaType   uint32
 	Path        string
 	ReadErrCnt  uint64 // number of read errors
 	WriteErrCnt uint64 // number of write errors
@@ -94,10 +95,11 @@ const (
 
 type PartitionVisitor func(dp *DataPartition)
 
-func NewDisk(path string, reservedSpace, diskRdonlySpace uint64, maxErrCnt int, space *SpaceManager) (d *Disk, err error) {
+func NewDisk(path string, reservedSpace uint64, meidaType uint32, diskRdonlySpace uint64, maxErrCnt int, space *SpaceManager) (d *Disk, err error) {
 	d = new(Disk)
 	d.Path = path
 	d.ReservedSpace = reservedSpace
+	d.MediaType = meidaType
 	d.DiskRdonlySpace = diskRdonlySpace
 	d.MaxErrCnt = maxErrCnt
 	d.RejectWrite = false

@@ -55,7 +55,7 @@ func (t *topology) zoneLen() int {
 	return len(t.zones)
 }
 
-func (t *topology) zoneLenOfDtaMediaType(mediaType uint32) (len int) {
+func (t *topology) zoneLenOfDataMediaType(mediaType uint32) (len int) {
 	t.zoneLock.RLock()
 	defer t.zoneLock.RUnlock()
 
@@ -65,7 +65,7 @@ func (t *topology) zoneLenOfDtaMediaType(mediaType uint32) (len int) {
 			continue
 		}
 
-		if zone.dataMediaType == mediaType {
+		if zone.ContainsMediaType(mediaType) {
 			len++
 		}
 	}
@@ -200,14 +200,15 @@ func (t *topology) getDataMediaTypeCanUse() (dataMediaTypeMap map[uint32]int) {
 
 	t.zoneMap.Range(func(zoneName, value interface{}) bool {
 		zone := value.(*Zone)
-		if mediaType, zoneMediaTypeDataCount := zone.GetDataMediaTypeCanUse(); mediaType != proto.MediaType_Unspecified {
-			if count, ok := dataMediaTypeMap[mediaType]; !ok {
-				dataMediaTypeMap[mediaType] = zoneMediaTypeDataCount
-			} else {
-				dataMediaTypeMap[mediaType] = count + zoneMediaTypeDataCount
+		if mediaTypes, zoneMediaTypeDataCount := zone.GetDataMediaTypeCanUse(); mediaTypes != nil {
+			for _, mediaType := range mediaTypes {
+				if count, ok := dataMediaTypeMap[mediaType]; !ok {
+					dataMediaTypeMap[mediaType] = zoneMediaTypeDataCount
+				} else {
+					dataMediaTypeMap[mediaType] = count + zoneMediaTypeDataCount
+				}
 			}
 		}
-
 		return true
 	})
 	return
@@ -537,7 +538,7 @@ func (nsgm *DomainManager) buildNodeSetGrp(domainGrpManager *DomainNodeSetGrpMan
 }
 
 func (nsgm *DomainManager) getHostFromNodeSetGrpSpecific(domainGrpManager *DomainNodeSetGrpManager, replicaNum uint8,
-	createType uint32, mediaType uint32) (
+	createType uint32, mediaType uint32, preferredHosts map[string]struct{}) (
 	hosts []string,
 	peers []proto.Peer,
 	err error) {
@@ -585,7 +586,7 @@ func (nsgm *DomainManager) getHostFromNodeSetGrpSpecific(domainGrpManager *Domai
 				}
 
 				if createType == TypeDataPartition {
-					if host, peer, err = ns.getAvailDataNodeHosts(nil, needNum, mediaType); err != nil {
+					if host, peer, err = ns.getAvailDataNodeHosts(nil, needNum, preferredHosts); err != nil {
 						log.LogErrorf("action[getHostFromNodeSetGrpSpecific] ns[%v] zone[%v] TypeDataPartition err[%v]", ns.ID, ns.zoneName, err)
 						//nsg.status = dataNodesUnAvailable
 						continue
@@ -614,7 +615,7 @@ func (nsgm *DomainManager) getHostFromNodeSetGrpSpecific(domainGrpManager *Domai
 	return nil, nil, fmt.Errorf("action[getHostFromNodeSetGrpSpecific] cann't alloc host")
 }
 
-func (nsgm *DomainManager) getHostFromNodeSetGrp(domainId uint64, replicaNum uint8, createType uint32, mediaType uint32) (
+func (nsgm *DomainManager) getHostFromNodeSetGrp(domainId uint64, replicaNum uint8, createType uint32, mediaType uint32, preferredConfig *DataPartitionPreferredConfig) (
 	hosts []string,
 	peers []proto.Peer,
 	err error) {
@@ -632,7 +633,7 @@ func (nsgm *DomainManager) getHostFromNodeSetGrp(domainId uint64, replicaNum uin
 
 	// this scenario is abnormal  may be caused by zone unavailable in high probability
 	if domainGrpManager.status != normal {
-		return nsgm.getHostFromNodeSetGrpSpecific(domainGrpManager, replicaNum, createType, mediaType)
+		return nsgm.getHostFromNodeSetGrpSpecific(domainGrpManager, replicaNum, createType, mediaType, preferredConfig.Hosts)
 	}
 
 	// grp map be build with three zone on standard,no grp if zone less than three,here will build
@@ -689,7 +690,7 @@ func (nsgm *DomainManager) getHostFromNodeSetGrp(domainId uint64, replicaNum uin
 					log.LogWarnf("action[getHostFromNodeSetGrp] ns[%v] zone[%v] dataNodesUnAvailable", ns.ID, ns.zoneName)
 					continue
 				}
-				if host, peer, err = ns.getAvailDataNodeHosts(hosts, 1, mediaType); err != nil {
+				if host, peer, err = ns.getAvailDataNodeHosts(hosts, 1, preferredConfig.Hosts); err != nil {
 					log.LogWarnf("action[getHostFromNodeSetGrp] ns[%v] zone[%v] TypeDataPartition err[%v]", ns.ID, ns.zoneName, err)
 					//nsg.status = dataNodesUnAvailable
 					continue
@@ -1390,7 +1391,7 @@ func (t *topology) allocZonesForMetaNode(zoneNum, replicaNum int, excludeZone []
 	return
 }
 
-func (t *topology) allocZonesForDataNode(zoneNum, replicaNum int, excludeZone []string, mediaType uint32) (zones []*Zone, err error) {
+func (t *topology) allocZonesForDataNode(zoneNum, replicaNum int, excludeZone []string, mediaType uint32, preferredConfig *DataPartitionPreferredConfig) (zones []*Zone, err error) {
 	// domain enabled and have old zones to be used
 	if len(t.domainExcludeZones) > 0 {
 		zones = t.getDomainExcludeZones()
@@ -1403,7 +1404,7 @@ func (t *topology) allocZonesForDataNode(zoneNum, replicaNum int, excludeZone []
 	if mediaType != proto.MediaType_Unspecified {
 		// pick up zones by mediaType
 		for _, zone := range zones {
-			if zone.dataMediaType == mediaType {
+			if zone.ContainsMediaType(mediaType) {
 				zonesOfMediaType = append(zonesOfMediaType, zone)
 			}
 		}
@@ -1420,7 +1421,8 @@ func (t *topology) allocZonesForDataNode(zoneNum, replicaNum int, excludeZone []
 
 	demandWriteNodes := calculateDemandWriteNodes(zoneNum, replicaNum)
 	candidateZones := make([]*Zone, 0)
-
+	preferredZones := make([]*Zone, 0)
+	preferredZonesLen := len(preferredConfig.Zones)
 	for i := 0; i < len(zones); i++ {
 		if t.zoneIndexForDataNode >= len(zones) {
 			t.zoneIndexForDataNode = 0
@@ -1436,9 +1438,17 @@ func (t *topology) allocZonesForDataNode(zoneNum, replicaNum int, excludeZone []
 			continue
 		}
 		if zone.canWriteForDataNode(uint8(demandWriteNodes)) {
-			candidateZones = append(candidateZones, zone)
+			if _, isPreferred := preferredConfig.Zones[zone.name]; isPreferred {
+				preferredZones = append(preferredZones, zone)
+			} else {
+				candidateZones = append(candidateZones, zone)
+			}
 		}
-		if len(candidateZones) >= zoneNum {
+
+		if preferredZonesLen == 0 && len(candidateZones) >= zoneNum {
+			break
+		}
+		if preferredZonesLen >= zoneNum {
 			break
 		}
 	}
@@ -1449,7 +1459,7 @@ func (t *topology) allocZonesForDataNode(zoneNum, replicaNum int, excludeZone []
 			zoneNum, len(candidateZones), demandWriteNodes, mediaType, proto.ErrNoZoneToCreateDataPartition))
 		return nil, errors.NewError(proto.ErrNoZoneToCreateDataPartition)
 	}
-	zones = candidateZones
+	zones = append(preferredZones, candidateZones...)[:zoneNum]
 	err = nil
 	return
 }
@@ -1479,7 +1489,10 @@ type Zone struct {
 	QosIopsWLimit           uint64
 	QosFlowRLimit           uint64
 	QosFlowWLimit           uint64
-	dataMediaType           uint32
+
+	dataMediaTypesLock sync.RWMutex
+	dataMediaTypes     []uint32
+	//dataMediaType           uint32
 	sync.RWMutex
 }
 type zoneValue struct {
@@ -1490,10 +1503,10 @@ type zoneValue struct {
 	QosFlowWLimit       uint64
 	DataNodesetSelector string
 	MetaNodesetSelector string
-	DataMediaType       uint32
+	DataMediaTypes      []uint32
 }
 
-func newZone(name string, dataMediaType uint32) (zone *Zone) {
+func newZone(name string, mediaTypes []uint32) (zone *Zone) {
 	zone = &Zone{name: name}
 	zone.status = normalZone
 	zone.dataNodes = new(sync.Map)
@@ -1501,7 +1514,7 @@ func newZone(name string, dataMediaType uint32) (zone *Zone) {
 	zone.nodeSetMap = make(map[uint64]*nodeSet)
 	zone.dataNodesetSelector = NewNodesetSelector(DefaultNodesetSelectorName, DataNodeType)
 	zone.metaNodesetSelector = NewNodesetSelector(DefaultNodesetSelectorName, MetaNodeType)
-	zone.SetDataMediaType(dataMediaType)
+	zone.SetDataMediaType(mediaTypes)
 	return
 }
 
@@ -1516,6 +1529,15 @@ func printZonesName(zones []*Zone) string {
 	}
 
 	return str
+}
+
+func (zone *Zone) ContainsMediaType(t uint32) bool {
+	for _, zoneMediaType := range zone.dataMediaTypes {
+		if t == zoneMediaType {
+			return true
+		}
+	}
+	return false
 }
 
 func (zone *Zone) GetDataNodesetSelector() string {
@@ -1551,7 +1573,7 @@ func (zone *Zone) getFsmValue() *zoneValue {
 		QosFlowWLimit:       zone.QosFlowWLimit,
 		DataNodesetSelector: zone.GetDataNodesetSelector(),
 		MetaNodesetSelector: zone.GetMetaNodesetSelector(),
-		DataMediaType:       zone.GetDataMediaType(),
+		DataMediaTypes:      zone.GetDataMediaType(),
 	}
 }
 
@@ -1745,7 +1767,7 @@ func (zone *Zone) deleteMetaNode(metaNode *MetaNode) (err error) {
 	return
 }
 
-func (zone *Zone) allocNodeSetForDataNode(excludeNodeSets []uint64, replicaNum uint8) (ns *nodeSet, err error) {
+func (zone *Zone) allocNodeSetForDataNode(excludeNodeSets []uint64, replicaNum uint8, preferredNodeSets map[uint64]struct{}) (ns *nodeSet, err error) {
 
 	nset := zone.getAllNodeSet()
 	if nset == nil {
@@ -1758,7 +1780,7 @@ func (zone *Zone) allocNodeSetForDataNode(excludeNodeSets []uint64, replicaNum u
 	zone.dataNodesetSelectorLock.RLock()
 	defer zone.dataNodesetSelectorLock.RUnlock()
 
-	ns, err = zone.dataNodesetSelector.Select(nset, excludeNodeSets, replicaNum)
+	ns, err = zone.dataNodesetSelector.Select(nset, excludeNodeSets, replicaNum, preferredNodeSets)
 
 	if err != nil {
 		log.LogErrorf("action[allocNodeSetForDataNode],nset len[%v],excludeNodeSets[%v],rNum[%v] err:%v",
@@ -1779,7 +1801,7 @@ func (zone *Zone) allocNodeSetForMetaNode(excludeNodeSets []uint64, replicaNum u
 	// we need a read lock to block the modify of nodeset selector
 	zone.metaNodesetSelectorLock.RLock()
 	defer zone.metaNodesetSelectorLock.RUnlock()
-	ns, err = zone.metaNodesetSelector.Select(nset, excludeNodeSets, replicaNum)
+	ns, err = zone.metaNodesetSelector.Select(nset, excludeNodeSets, replicaNum, map[uint64]struct{}{})
 
 	if err != nil {
 		log.LogError(fmt.Sprintf("action[allocNodeSetForMetaNode],zone[%v],excludeNodeSets[%v],rNum[%v],err:%v",
@@ -1927,7 +1949,7 @@ func (zone *Zone) getDataNodeMaxTotal() (maxTotal uint64) {
 	return
 }
 
-func (zone *Zone) getAvailNodeHosts(nodeType uint32, excludeNodeSets []uint64, excludeHosts []string, replicaNum int) (newHosts []string, peers []proto.Peer, err error) {
+func (zone *Zone) getAvailNodeHosts(nodeType uint32, excludeNodeSets []uint64, excludeHosts []string, replicaNum int, preferredConfig *DataPartitionPreferredConfig) (newHosts []string, peers []proto.Peer, err error) {
 	if replicaNum == 0 {
 		return
 	}
@@ -1935,11 +1957,11 @@ func (zone *Zone) getAvailNodeHosts(nodeType uint32, excludeNodeSets []uint64, e
 	log.LogDebugf("[x] get node host, zone(%s), nodeType(%d)", zone.name, nodeType)
 
 	if nodeType == TypeDataPartition {
-		ns, err := zone.allocNodeSetForDataNode(excludeNodeSets, uint8(replicaNum))
+		ns, err := zone.allocNodeSetForDataNode(excludeNodeSets, uint8(replicaNum), preferredConfig.NodeSets)
 		if err != nil {
 			return nil, nil, errors.Trace(err, "zone[%v] alloc node set,replicaNum[%v]", zone.name, replicaNum)
 		}
-		return ns.getAvailDataNodeHosts(excludeHosts, replicaNum, zone.dataMediaType)
+		return ns.getAvailDataNodeHosts(excludeHosts, replicaNum, preferredConfig.Hosts)
 	}
 
 	ns, err := zone.allocNodeSetForMetaNode(excludeNodeSets, uint8(replicaNum))
@@ -2125,26 +2147,44 @@ func (zone *Zone) startDecommissionListTraverse(c *Cluster) (err error) {
 }
 
 func (zone *Zone) GetDataMediaTypeString() string {
-	return proto.MediaTypeString(atomic.LoadUint32(&zone.dataMediaType))
+	zone.dataMediaTypesLock.RLock()
+	defer zone.dataMediaTypesLock.RUnlock()
+	return proto.MediaTypesString(zone.dataMediaTypes)
 }
 
-func (zone *Zone) GetDataMediaType() uint32 {
-	return atomic.LoadUint32(&zone.dataMediaType)
+func (zone *Zone) GetDataMediaType() []uint32 {
+	zone.dataMediaTypesLock.RLock()
+	defer zone.dataMediaTypesLock.RUnlock()
+	return zone.dataMediaTypes
+
 }
 
-func (zone *Zone) SetDataMediaType(newMediaType uint32) {
-	atomic.StoreUint32(&zone.dataMediaType, newMediaType)
-}
+func (zone *Zone) SetDataMediaType(types []uint32) (updated bool) {
+	zone.dataMediaTypesLock.Lock()
+	defer zone.dataMediaTypesLock.Unlock()
 
-func (zone *Zone) GetDataMediaTypeCanUse() (dataMediaType uint32, dataCount int) {
-	dataMediaType = atomic.LoadUint32(&zone.dataMediaType)
-	if !proto.IsValidMediaType(dataMediaType) {
-		return proto.MediaType_Unspecified, 0
+	existsType := map[uint32]struct{}{}
+	for _, t := range zone.dataMediaTypes {
+		existsType[t] = struct{}{}
 	}
+	for _, t := range types {
+		if _, exist := existsType[t]; !exist {
+			zone.dataMediaTypes = append(zone.dataMediaTypes, t)
+			updated = true
+		}
+	}
+	return
+}
+
+func (zone *Zone) GetDataMediaTypeCanUse() (dataMediaType []uint32, dataCount int) {
+	zone.dataMediaTypesLock.RLock()
+	defer zone.dataMediaTypesLock.RUnlock()
+
+	dataMediaType = zone.dataMediaTypes
 
 	dataCount = zone.dataNodeCount()
 	if dataCount == 0 {
-		return proto.MediaType_Unspecified, 0
+		return nil, 0
 	}
 
 	return dataMediaType, dataCount
@@ -2438,4 +2478,33 @@ func (l *DecommissionDiskList) PopMarkDecommissionDisk(limit int) (count int, co
 		log.LogDebugf("action[PopMarkDecommissionDisk] pop disk[%v]", disk)
 	}
 	return count, collection
+}
+
+type DataPartitionPreferredConfig struct {
+	Zones    map[string]struct{}
+	NodeSets map[uint64]struct{}
+	Hosts    map[string]struct{}
+}
+
+func NewEmptyDataPartitionPreferredConfig() *DataPartitionPreferredConfig {
+	return NewDataPartitionPreferredConfig(nil, nil, nil)
+}
+
+func NewDataPartitionPreferredConfig(hosts []string, nodeSets []uint64, zones []string) *DataPartitionPreferredConfig {
+	cfg := &DataPartitionPreferredConfig{
+		Zones:    make(map[string]struct{}),
+		NodeSets: make(map[uint64]struct{}),
+		Hosts:    make(map[string]struct{}),
+	}
+
+	for _, host := range hosts {
+		cfg.Hosts[host] = struct{}{}
+	}
+	for _, nodeset := range nodeSets {
+		cfg.NodeSets[nodeset] = struct{}{}
+	}
+	for _, zone := range zones {
+		cfg.Zones[zone] = struct{}{}
+	}
+	return cfg
 }

@@ -436,19 +436,34 @@ func (mp *metaPartition) fsmAppendExtents(ino *Inode) (status uint8) {
 		status = proto.OpNotExistErr
 		return
 	}
-	oldSize := int64(ino2.Size)
-	eks := ino.HybridCouldExtents.sortedEks.(*SortedExtents).CopyExtents()
-	if status = mp.uidManager.addUidSpace(ino2.Uid, ino2.Inode, eks); status != proto.OpOk {
-		return
-	}
-	delExtents := ino2.AppendExtents(eks, ino.ModifyTime, mp.volType)
-	mp.updateUsedInfo(int64(ino2.Size)-oldSize, 0, ino2.Inode)
-	log.LogInfof("fsmAppendExtents mpId[%v].inode(%v) deleteExtents(%v)", mp.config.PartitionId, ino2.Inode, delExtents)
-	mp.uidManager.minusUidSpace(ino2.Uid, ino2.Inode, delExtents)
 
-	log.LogInfof("fsmAppendExtents mpId[%v].inode(%v) DecSplitExts deleteExtents(%v)", mp.config.PartitionId, ino2.Inode, delExtents)
-	ino2.DecSplitExts(mp.config.PartitionId, delExtents)
-	mp.extDelCh <- delExtents
+	isMigration := false
+	if ino.HybridCouldExtentsMigration.sortedEks != nil && len(ino.HybridCouldExtentsMigration.sortedEks.(*SortedExtents).eks) != 0 {
+		isMigration = true
+	}
+
+	if isMigration {
+		if status = mp.uidManager.addUidSpace(ino2.Uid, ino2.Inode, ino.HybridCouldExtentsMigration.sortedEks.(*SortedExtents).eks); status != proto.OpOk {
+			return
+		}
+		ino2.HybridCouldExtentsMigration.storageClass = ino.HybridCouldExtentsMigration.storageClass
+		ino2.HybridCouldExtentsMigration.sortedEks = ino.HybridCouldExtentsMigration.sortedEks
+	} else {
+		oldSize := int64(ino2.Size)
+		eks := ino.HybridCouldExtents.sortedEks.(*SortedExtents).CopyExtents()
+		if status = mp.uidManager.addUidSpace(ino2.Uid, ino2.Inode, eks); status != proto.OpOk {
+			return
+		}
+		delExtents := ino2.AppendExtents(eks, ino.ModifyTime, mp.volType)
+		mp.updateUsedInfo(int64(ino2.Size)-oldSize, 0, ino2.Inode)
+		log.LogInfof("fsmAppendExtents mpId[%v].inode(%v) deleteExtents(%v)", mp.config.PartitionId, ino2.Inode, delExtents)
+		mp.uidManager.minusUidSpace(ino2.Uid, ino2.Inode, delExtents)
+
+		log.LogInfof("fsmAppendExtents mpId[%v].inode(%v) DecSplitExts deleteExtents(%v)", mp.config.PartitionId, ino2.Inode, delExtents)
+		ino2.DecSplitExts(mp.config.PartitionId, delExtents)
+		mp.extDelCh <- delExtents
+	}
+
 	return
 }
 

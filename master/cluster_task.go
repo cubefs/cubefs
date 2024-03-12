@@ -154,7 +154,7 @@ func (c *Cluster) migrateMetaPartition(srcAddr, targetAddr string, mp *MetaParti
 		}
 		// choose a meta node in other node set in the same zone
 		excludeNodeSets = append(excludeNodeSets, ns.ID)
-		if _, newPeers, err = zone.getAvailNodeHosts(TypeMetaPartition, excludeNodeSets, oldHosts, 1); err != nil {
+		if _, newPeers, err = zone.getAvailNodeHosts(TypeMetaPartition, excludeNodeSets, oldHosts, 1, NewEmptyDataPartitionPreferredConfig()); err != nil {
 			zones = mp.getLiveZones(srcAddr)
 			var excludeZone []string
 			if len(zones) == 0 {
@@ -869,7 +869,7 @@ func (c *Cluster) adjustMetaNode(metaNode *MetaNode) {
 	var zone *Zone
 	zone, err = c.t.getZone(metaNode.ZoneName)
 	if err != nil {
-		zone = newZone(metaNode.ZoneName, proto.MediaType_Unspecified)
+		zone = newZone(metaNode.ZoneName, []uint32{proto.MediaType_Unspecified})
 		c.t.putZone(zone)
 	}
 	c.nsMutex.Lock()
@@ -1054,7 +1054,7 @@ func (c *Cluster) adjustDataNode(dataNode *DataNode) {
 	var zone *Zone
 	zone, err = c.t.getZone(dataNode.ZoneName)
 	if err != nil {
-		zone = newZone(dataNode.ZoneName, dataNode.MediaType)
+		zone = newZone(dataNode.ZoneName, dataNode.DisksConf.MediaTypes())
 		c.t.putZone(zone)
 	}
 

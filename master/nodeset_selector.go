@@ -112,7 +112,7 @@ func (ns *nodeSet) getTotalAvailableSpaceOf(nodeType NodeType) uint64 {
 type NodesetSelector interface {
 	GetName() string
 
-	Select(nsc nodeSetCollection, excludeNodeSets []uint64, replicaNum uint8) (ns *nodeSet, err error)
+	Select(nsc nodeSetCollection, excludeNodeSets []uint64, replicaNum uint8, preferredNodeSets map[uint64]struct{}) (ns *nodeSet, err error)
 }
 
 type RoundRobinNodesetSelector struct {
@@ -121,11 +121,12 @@ type RoundRobinNodesetSelector struct {
 	nodeType NodeType
 }
 
-func (s *RoundRobinNodesetSelector) Select(nsc nodeSetCollection, excludeNodeSets []uint64, replicaNum uint8) (ns *nodeSet, err error) {
+func (s *RoundRobinNodesetSelector) Select(nsc nodeSetCollection, excludeNodeSets []uint64, replicaNum uint8, preferredNodeSets map[uint64]struct{}) (ns *nodeSet, err error) {
 	// sort nodesets by id, so we can get a node list that is as stable as possible
 	sort.Slice(nsc, func(i, j int) bool {
 		return nsc[i].ID < nsc[j].ID
 	})
+	var candidateNs *nodeSet
 	for i := 0; i < len(nsc); i++ {
 
 		if s.index >= len(nsc) {
@@ -139,8 +140,16 @@ func (s *RoundRobinNodesetSelector) Select(nsc nodeSetCollection, excludeNodeSet
 			continue
 		}
 		if ns.canWriteFor(s.nodeType, int(replicaNum)) {
-			return
+			candidateNs = ns
+			if _, isPreferred := preferredNodeSets[ns.ID]; len(preferredNodeSets) == 0 || isPreferred {
+				return
+			}
+
 		}
+	}
+
+	if candidateNs != nil {
+		return candidateNs, nil
 	}
 
 	switch s.nodeType {
@@ -236,7 +245,7 @@ func (s *CarryWeightNodesetSelector) setNodesetCarry(nsc nodeSetCollection, tota
 	return count
 }
 
-func (s *CarryWeightNodesetSelector) Select(nsc nodeSetCollection, excludeNodeSets []uint64, replicaNum uint8) (ns *nodeSet, err error) {
+func (s *CarryWeightNodesetSelector) Select(nsc nodeSetCollection, excludeNodeSets []uint64, replicaNum uint8, preferredNodeSets map[uint64]struct{}) (ns *nodeSet, err error) {
 	total := s.getMaxTotal(nsc)
 	// prepare weight of evert nodesets
 	s.prepareCarry(nsc, total)
@@ -291,7 +300,7 @@ func (s *AvailableSpaceFirstNodesetSelector) GetName() string {
 	return AvailableSpaceFirstNodesetSelectorName
 }
 
-func (s *AvailableSpaceFirstNodesetSelector) Select(nsc nodeSetCollection, excludeNodeSets []uint64, replicaNum uint8) (ns *nodeSet, err error) {
+func (s *AvailableSpaceFirstNodesetSelector) Select(nsc nodeSetCollection, excludeNodeSets []uint64, replicaNum uint8, preferredNodeSets map[uint64]struct{}) (ns *nodeSet, err error) {
 	// sort nodesets by available space
 	sort.Slice(nsc, func(i, j int) bool {
 		return nsc[i].getTotalAvailableSpaceOf(s.nodeType) > nsc[j].getTotalAvailableSpaceOf(s.nodeType)
@@ -359,7 +368,7 @@ func (s *TicketNodesetSelector) GetNodesetByTicket(ticket uint64, nsc nodeSetCol
 	return
 }
 
-func (s *TicketNodesetSelector) Select(nsc nodeSetCollection, excludeNodeSets []uint64, replicaNum uint8) (ns *nodeSet, err error) {
+func (s *TicketNodesetSelector) Select(nsc nodeSetCollection, excludeNodeSets []uint64, replicaNum uint8, preferredNodeSets map[uint64]struct{}) (ns *nodeSet, err error) {
 	// sort nodesets by id, so we can get a node list that is as stable as possible
 	sort.Slice(nsc, func(i, j int) bool {
 		return nsc[i].ID < nsc[j].ID
@@ -401,7 +410,7 @@ func (s *StrawNodesetSelector) GetName() string {
 	return StrawNodesetSelectorName
 }
 
-func (s *StrawNodesetSelector) Select(nsc nodeSetCollection, excludeNodeSets []uint64, replicaNum uint8) (ns *nodeSet, err error) {
+func (s *StrawNodesetSelector) Select(nsc nodeSetCollection, excludeNodeSets []uint64, replicaNum uint8, preferredNodeSets map[uint64]struct{}) (ns *nodeSet, err error) {
 	tmp := make(nodeSetCollection, 0)
 	for _, nodeset := range nsc {
 		if nodeset.canWriteFor(s.nodeType, int(replicaNum)) && !containsID(excludeNodeSets, nodeset.ID) {

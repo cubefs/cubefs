@@ -256,18 +256,20 @@ const (
 	//hybridCloud
 	OpMismatchStorageClass     uint8 = 0xD8
 	OpDeleteMigrationExtentKey uint8 = 0xD9
+	OpExtentsLocalTransition   uint8 = 0xDA
 )
 
 const (
-	WriteDeadlineTime                         = 5
-	ReadDeadlineTime                          = 5
-	SyncSendTaskDeadlineTime                  = 30
-	NoReadDeadlineTime                        = -1
-	BatchDeleteExtentReadDeadLineTime         = 120
-	GetAllWatermarksDeadLineTime              = 60
-	DefaultClusterLoadFactor          float64 = 10
-	MultiVersionFlag                          = 0x80
-	VersionListFlag                           = 0x40
+	WriteDeadlineTime                          = 5
+	ReadDeadlineTime                           = 5
+	SyncSendTaskDeadlineTime                   = 30
+	NoReadDeadlineTime                         = -1
+	BatchDeleteExtentReadDeadLineTime          = 120
+	ExtentsLocalTransitionDeadLineTime         = 180
+	GetAllWatermarksDeadLineTime               = 60
+	DefaultClusterLoadFactor           float64 = 10
+	MultiVersionFlag                           = 0x80
+	VersionListFlag                            = 0x40
 )
 
 // multi version operation
@@ -903,6 +905,10 @@ func ReadFull(c net.Conn, buf *[]byte, readSize int) (err error) {
 	return
 }
 
+func (p *Packet) IsWriteOperation() bool {
+	return p.Opcode == OpWrite || p.Opcode == OpSyncWrite
+}
+
 func (p *Packet) IsReadOperation() bool {
 	return p.Opcode == OpStreamRead || p.Opcode == OpRead ||
 		p.Opcode == OpExtentRepairRead || p.Opcode == OpReadTinyDeleteRecord ||
@@ -978,7 +984,13 @@ func (p *Packet) ReadFromConnWithVer(c net.Conn, timeoutSec int) (err error) {
 	if p.IsReadOperation() && p.ResultCode == OpInitResultCode {
 		size = 0
 	}
-	p.Data = make([]byte, size)
+
+	if p.IsWriteOperation() && size == util.BlockSize {
+		p.Data, _ = Buffers.Get(int(size))
+	} else {
+		p.Data = make([]byte, size)
+	}
+
 	if n, err = io.ReadFull(c, p.Data[:size]); err != nil {
 		return err
 	}
@@ -1183,6 +1195,10 @@ func (p *Packet) ShouldRetry() bool {
 
 func (p *Packet) IsBatchDeleteExtents() bool {
 	return p.Opcode == OpBatchDeleteExtent || p.Opcode == OpGcBatchDeleteExtent
+}
+
+func (p *Packet) IsExtentsLocalTransition() bool {
+	return p.Opcode == OpExtentsLocalTransition
 }
 
 func InitBufferPool(bufLimit int64) {

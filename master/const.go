@@ -132,6 +132,7 @@ const (
 	DecommissionType           = "decommissionType"
 	decommissionDiskFactor     = "decommissionDiskFactor"
 	mediaTypeKey               = "mediaType"
+	disksJsonStringKey         = "disksJsonString"
 	allowedStorageClassKey     = "allowedStorageClass"
 	volStorageClassKey         = "volStorageClass"
 )
