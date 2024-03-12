@@ -622,6 +622,10 @@ func (partition *DataPartition) getLiveReplicasFromHosts(timeOutSec int64) (repl
 		}
 		if replica.isLive(timeOutSec) == true {
 			replicas = append(replicas, replica)
+		} else {
+			replica.Status = proto.Unavailable
+			log.LogWarnf("action[getLiveReplicasFromHosts] vol %v dp %v replica %v is unavailable",
+				partition.VolName, partition.PartitionID, replica.Addr)
 		}
 	}
 
@@ -634,6 +638,10 @@ func (partition *DataPartition) getLiveReplicas(timeOutSec int64) (replicas []*D
 	for _, replica := range partition.Replicas {
 		if replica.isLive(timeOutSec) == true {
 			replicas = append(replicas, replica)
+		} else {
+			replica.Status = proto.Unavailable
+			log.LogWarnf("action[getLiveReplicas] vol %v dp %v replica %v is unavailable",
+				partition.VolName, partition.PartitionID, replica.Addr)
 		}
 	}
 
@@ -1230,7 +1238,7 @@ func (partition *DataPartition) Decommission(c *Cluster) bool {
 		}
 		return true
 	} else {
-		log.LogInfof("action[decommissionDataPartition]clusterID[%v] partitionID:%v "+
+		log.LogInfof("action[decommissionDataPartition]clusterID[%v] dp[%v] "+
 			"on node:%v offline success,newHost[%v],PersistenceHosts:[%v], SingleDecommissionStatus[%v]prepare consume[%v]seconds",
 			c.Name, partition.PartitionID, srcAddr, targetAddr, partition.Hosts, partition.GetSpecialReplicaDecommissionStep(), time.Since(begin).Seconds())
 		return true
