@@ -29,7 +29,6 @@ import (
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/iputil"
-	"github.com/cubefs/cubefs/util/log"
 	"github.com/cubefs/cubefs/util/ump"
 )
 
@@ -43,10 +42,10 @@ type DataPartitionView struct {
 }
 
 type SimpleClientInfo interface {
-	GetFlowInfo() (*proto.ClientReportLimitInfo, bool)
-	UpdateFlowInfo(limit *proto.LimitRsp2Client)
+	GetFlowInfo(ctx context.Context) (*proto.ClientReportLimitInfo, bool)
+	UpdateFlowInfo(ctx context.Context, limit *proto.LimitRsp2Client)
 	SetClientID(id uint64) error
-	UpdateLatestVer(verList *proto.VolVersionInfoList) error
+	UpdateLatestVer(ctx context.Context, verList *proto.VolVersionInfoList) error
 	GetReadVer() uint64
 	GetLatestVer() uint64
 	GetVerMgr() *proto.VolVersionInfoList
@@ -90,8 +89,9 @@ func (w *Wrapper) GetMasterClient() *masterSDK.MasterClient {
 }
 
 // NewDataPartitionWrapper returns a new data partition wrapper.
-func NewDataPartitionWrapper(client SimpleClientInfo, volName string, masters []string, preload bool, minWriteAbleDataPartitionCnt int, verReadSeq uint64) (w *Wrapper, err error) {
-	log.LogInfof("action[NewDataPartitionWrapper] verReadSeq %v", verReadSeq)
+func NewDataPartitionWrapper(ctx context.Context, client SimpleClientInfo, volName string, masters []string, preload bool, minWriteAbleDataPartitionCnt int, verReadSeq uint64) (w *Wrapper, err error) {
+	span := proto.SpanFromContext(ctx)
+	span.Infof("action[NewDataPartitionWrapper] verReadSeq %v", verReadSeq)
 
 	w = new(Wrapper)
 	w.stopC = make(chan struct{})
@@ -112,43 +112,43 @@ func NewDataPartitionWrapper(client SimpleClientInfo, volName string, masters []
 		return
 	}
 
-	if err = w.updateClusterInfo(); err != nil {
+	if err = w.updateClusterInfo(ctx); err != nil {
 		err = errors.Trace(err, "NewDataPartitionWrapper:")
 		return
 	}
 
-	if err = w.GetSimpleVolView(); err != nil {
+	if err = w.GetSimpleVolView(ctx); err != nil {
 		err = errors.Trace(err, "NewDataPartitionWrapper:")
 		return
 	}
 
-	w.UploadFlowInfo(client, true)
+	w.UploadFlowInfo(ctx, client, true)
 
-	if err = w.initDpSelector(); err != nil {
-		log.LogErrorf("NewDataPartitionWrapper: init initDpSelector failed, [%v]", err)
+	if err = w.initDpSelector(ctx); err != nil {
+		span.Errorf("NewDataPartitionWrapper: init initDpSelector failed, [%v]", err)
 	}
-	if err = w.updateDataPartition(true); err != nil {
+	if err = w.updateDataPartition(ctx, true); err != nil {
 		err = errors.Trace(err, "NewDataPartitionWrapper:")
 		return
 	}
-	if err = w.updateDataNodeStatus(); err != nil {
-		log.LogErrorf("NewDataPartitionWrapper: init DataNodeStatus failed, [%v]", err)
+	if err = w.updateDataNodeStatus(ctx); err != nil {
+		span.Errorf("NewDataPartitionWrapper: init DataNodeStatus failed, [%v]", err)
 	}
 	w.verConfReadSeq = verReadSeq
 	if verReadSeq > 0 {
 		var verList *proto.VolVersionInfoList
-		if verList, err = w.mc.AdminAPI().GetVerList(context.TODO(), volName); err != nil {
+		if verList, err = w.mc.AdminAPI().GetVerList(ctx, volName); err != nil {
 			return
 		}
-		if verReadSeq, err = w.CheckReadVerSeq(volName, verReadSeq, verList); err != nil {
-			log.LogErrorf("NewDataPartitionWrapper: init Read with ver [%v] error [%v]", verReadSeq, err)
+		if verReadSeq, err = w.CheckReadVerSeq(ctx, volName, verReadSeq, verList); err != nil {
+			span.Errorf("NewDataPartitionWrapper: init Read with ver [%v] error [%v]", verReadSeq, err)
 			return
 		}
 	}
 	w.verReadSeq = verReadSeq
 	w.SimpleClient = client
-	go w.uploadFlowInfoByTick(client)
-	go w.update(client)
+	go w.uploadFlowInfoByTick(ctx, client)
+	go w.update(ctx, client)
 	return
 }
 
@@ -174,19 +174,21 @@ func (w *Wrapper) tryGetPartition(index uint64) (partition *DataPartition, ok bo
 	return
 }
 
-func (w *Wrapper) updateClusterInfo() (err error) {
+func (w *Wrapper) updateClusterInfo(ctx context.Context) (err error) {
+	span := proto.SpanFromContext(ctx)
 	var info *proto.ClusterInfo
-	if info, err = w.mc.AdminAPI().GetClusterInfo(context.TODO()); err != nil {
-		log.LogWarnf("UpdateClusterInfo: get cluster info fail: err(%v)", err)
+	if info, err = w.mc.AdminAPI().GetClusterInfo(ctx); err != nil {
+		span.Warnf("UpdateClusterInfo: get cluster info fail: err(%v)", err)
 		return
 	}
-	log.LogInfof("UpdateClusterInfo: get cluster info: cluster(%v) localIP(%v)", info.Cluster, info.Ip)
+	span.Infof("UpdateClusterInfo: get cluster info: cluster(%v) localIP(%v)", info.Cluster, info.Ip)
 	w.clusterName = info.Cluster
 	LocalIP = info.Ip
 	return
 }
 
-func (w *Wrapper) UpdateUidsView(view *proto.SimpleVolView) {
+func (w *Wrapper) UpdateUidsView(ctx context.Context, view *proto.SimpleVolView) {
+	span := proto.SpanFromContext(ctx)
 	w.UidLock.Lock()
 	defer w.UidLock.Unlock()
 	w.Uids = make(map[uint32]*proto.UidSimpleInfo)
@@ -196,19 +198,20 @@ func (w *Wrapper) UpdateUidsView(view *proto.SimpleVolView) {
 		}
 		w.Uids[uid.UID] = &uid
 	}
-	log.LogDebugf("uid info be updated to %v", view.Uids)
+	span.Debugf("uid info be updated to %v", view.Uids)
 }
 
-func (w *Wrapper) GetSimpleVolView() (err error) {
+func (w *Wrapper) GetSimpleVolView(ctx context.Context) (err error) {
+	span := proto.SpanFromContext(ctx)
 	var view *proto.SimpleVolView
 
-	if view, err = w.mc.AdminAPI().GetVolumeSimpleInfo(context.TODO(), w.volName); err != nil {
-		log.LogWarnf("GetSimpleVolView: get volume simple info fail: volume(%v) err(%v)", w.volName, err)
+	if view, err = w.mc.AdminAPI().GetVolumeSimpleInfo(ctx, w.volName); err != nil {
+		span.Warnf("GetSimpleVolView: get volume simple info fail: volume(%v) err(%v)", w.volName, err)
 		return
 	}
 
 	if view.Status == 1 {
-		log.LogWarnf("GetSimpleVolView: volume has been marked for deletion: volume(%v) status(%v - 0:normal/1:markDelete)",
+		span.Warnf("GetSimpleVolView: volume has been marked for deletion: volume(%v) status(%v - 0:normal/1:markDelete)",
 			w.volName, view.Status)
 		return proto.ErrVolNotExists
 	}
@@ -218,9 +221,9 @@ func (w *Wrapper) GetSimpleVolView() (err error) {
 	w.dpSelectorParm = view.DpSelectorParm
 	w.volType = view.VolType
 	w.EnablePosixAcl = view.EnablePosixAcl
-	w.UpdateUidsView(view)
+	w.UpdateUidsView(ctx, view)
 
-	log.LogDebugf("GetSimpleVolView: get volume simple info: ID(%v) name(%v) owner(%v) status(%v) capacity(%v) "+
+	span.Debugf("GetSimpleVolView: get volume simple info: ID(%v) name(%v) owner(%v) status(%v) capacity(%v) "+
 		"metaReplicas(%v) dataReplicas(%v) mpCnt(%v) dpCnt(%v) followerRead(%v) createTime(%v) dpSelectorName(%v) "+
 		"dpSelectorParm(%v) uids(%v)",
 		view.ID, view.Name, view.Owner, view.Status, view.Capacity, view.MpReplicaNum, view.DpReplicaNum, view.MpCnt,
@@ -229,26 +232,27 @@ func (w *Wrapper) GetSimpleVolView() (err error) {
 	return
 }
 
-func (w *Wrapper) uploadFlowInfoByTick(clientInfo SimpleClientInfo) {
+func (w *Wrapper) uploadFlowInfoByTick(ctx context.Context, clientInfo SimpleClientInfo) {
 	ticker := time.NewTicker(5 * time.Second)
 	for {
 		select {
 		case <-ticker.C:
-			w.UploadFlowInfo(clientInfo, false)
+			w.UploadFlowInfo(ctx, clientInfo, false)
 		case <-w.stopC:
 			return
 		}
 	}
 }
 
-func (w *Wrapper) update(clientInfo SimpleClientInfo) {
+func (w *Wrapper) update(ctx context.Context, clientInfo SimpleClientInfo) {
+	ctx = proto.ContextWithOperation(ctx, "warpper-update")
 	ticker := time.NewTicker(time.Minute)
 	taskFunc := func() {
-		w.updateSimpleVolView()
-		w.updateDataPartition(false)
-		w.updateDataNodeStatus()
-		w.CheckPermission()
-		w.updateVerlist(clientInfo)
+		w.updateSimpleVolView(ctx)
+		w.updateDataPartition(ctx, false)
+		w.updateDataNodeStatus(ctx)
+		w.CheckPermission(ctx)
+		w.updateVerlist(ctx, clientInfo)
 	}
 	taskFunc()
 	for {
@@ -261,87 +265,91 @@ func (w *Wrapper) update(clientInfo SimpleClientInfo) {
 	}
 }
 
-func (w *Wrapper) UploadFlowInfo(clientInfo SimpleClientInfo, init bool) (err error) {
+func (w *Wrapper) UploadFlowInfo(ctx context.Context, clientInfo SimpleClientInfo, init bool) (err error) {
+	span := proto.SpanFromContext(ctx)
 	var limitRsp *proto.LimitRsp2Client
 
-	flowInfo, isNeedReport := clientInfo.GetFlowInfo()
+	flowInfo, isNeedReport := clientInfo.GetFlowInfo(ctx)
 	if !isNeedReport {
-		log.LogDebugf("action[UploadFlowInfo] no need report!")
+		span.Debugf("action[UploadFlowInfo] no need report!")
 		return nil
 	}
 
-	if limitRsp, err = w.mc.AdminAPI().UploadFlowInfo(context.TODO(), w.volName, flowInfo); err != nil {
-		log.LogWarnf("UpdateSimpleVolView: get volume simple info fail: volume(%v) err(%v)", w.volName, err)
+	if limitRsp, err = w.mc.AdminAPI().UploadFlowInfo(ctx, w.volName, flowInfo); err != nil {
+		span.Warnf("UpdateSimpleVolView: get volume simple info fail: volume(%v) err(%v)", w.volName, err)
 		return
 	}
 
 	if init {
 		if limitRsp.ID == 0 {
 			err = fmt.Errorf("init client get id 0")
-			log.LogInfof("action[UploadFlowInfo] err %v", err.Error())
+			span.Infof("action[UploadFlowInfo] err %v", err.Error())
 			return
 		}
-		log.LogInfof("action[UploadFlowInfo] get id %v", limitRsp.ID)
+		span.Infof("action[UploadFlowInfo] get id %v", limitRsp.ID)
 		clientInfo.SetClientID(limitRsp.ID)
 	}
-	clientInfo.UpdateFlowInfo(limitRsp)
+	clientInfo.UpdateFlowInfo(ctx, limitRsp)
 	return
 }
 
-func (w *Wrapper) CheckPermission() {
-	if info, err := w.mc.UserAPI().AclOperation(context.TODO(), w.volName, w.LocalIp, util.AclCheckIP); err != nil {
+func (w *Wrapper) CheckPermission(ctx context.Context) {
+	span := proto.SpanFromContext(ctx)
+	if info, err := w.mc.UserAPI().AclOperation(ctx, w.volName, w.LocalIp, util.AclCheckIP); err != nil {
 		syslog.Println(err)
 	} else if !info.OK {
 		syslog.Println(err)
-		log.LogFatal("Client Addr not allowed to access CubeFS Cluster!")
+		span.Fatalf("Client Addr not allowed to access CubeFS Cluster!")
 	}
 }
 
-func (w *Wrapper) updateVerlist(client SimpleClientInfo) (err error) {
-	verList, err := w.mc.AdminAPI().GetVerList(context.TODO(), w.volName)
+func (w *Wrapper) updateVerlist(ctx context.Context, client SimpleClientInfo) (err error) {
+	span := proto.SpanFromContext(ctx)
+	verList, err := w.mc.AdminAPI().GetVerList(ctx, w.volName)
 	if err != nil {
-		log.LogErrorf("CheckReadVerSeq: get cluster fail: err(%v)", err)
+		span.Errorf("CheckReadVerSeq: get cluster fail: err(%v)", err)
 		return err
 	}
 
 	if verList == nil {
 		msg := fmt.Sprintf("get verList nil, vol [%v] reqd seq [%v]", w.volName, w.verReadSeq)
-		log.LogErrorf("action[CheckReadVerSeq] %v", msg)
+		span.Errorf("action[CheckReadVerSeq] %v", msg)
 		return fmt.Errorf("%v", msg)
 	}
 
 	if w.verReadSeq > 0 {
-		if _, err = w.CheckReadVerSeq(w.volName, w.verConfReadSeq, verList); err != nil {
-			log.LogFatalf("updateSimpleVolView: readSeq abnormal %v", err)
+		if _, err = w.CheckReadVerSeq(ctx, w.volName, w.verConfReadSeq, verList); err != nil {
+			span.Fatalf("updateSimpleVolView: readSeq abnormal %v", err)
 		}
 		return
 	}
 
-	log.LogDebugf("updateSimpleVolView.UpdateLatestVer.try update to verlist[%v]", verList)
-	if err = client.UpdateLatestVer(verList); err != nil {
-		log.LogWarnf("updateSimpleVolView: UpdateLatestVer ver %v faile err %v", verList.GetLastVer(), err)
+	span.Debugf("updateSimpleVolView.UpdateLatestVer.try update to verlist[%v]", verList)
+	if err = client.UpdateLatestVer(ctx, verList); err != nil {
+		span.Warnf("updateSimpleVolView: UpdateLatestVer ver %v faile err %v", verList.GetLastVer(), err)
 		return
 	}
 	return
 }
 
-func (w *Wrapper) updateSimpleVolView() (err error) {
+func (w *Wrapper) updateSimpleVolView(ctx context.Context) (err error) {
+	span := proto.SpanFromContext(ctx)
 	var view *proto.SimpleVolView
-	if view, err = w.mc.AdminAPI().GetVolumeSimpleInfo(context.TODO(), w.volName); err != nil {
-		log.LogWarnf("updateSimpleVolView: get volume simple info fail: volume(%v) err(%v)", w.volName, err)
+	if view, err = w.mc.AdminAPI().GetVolumeSimpleInfo(ctx, w.volName); err != nil {
+		span.Warnf("updateSimpleVolView: get volume simple info fail: volume(%v) err(%v)", w.volName, err)
 		return
 	}
 
-	w.UpdateUidsView(view)
+	w.UpdateUidsView(ctx, view)
 
 	if w.followerRead != view.FollowerRead && !w.followerReadClientCfg {
-		log.LogDebugf("UpdateSimpleVolView: update followerRead from old(%v) to new(%v)",
+		span.Debugf("UpdateSimpleVolView: update followerRead from old(%v) to new(%v)",
 			w.followerRead, view.FollowerRead)
 		w.followerRead = view.FollowerRead
 	}
 
 	if w.dpSelectorName != view.DpSelectorName || w.dpSelectorParm != view.DpSelectorParm {
-		log.LogDebugf("UpdateSimpleVolView: update dpSelector from old(%v %v) to new(%v %v)",
+		span.Debugf("UpdateSimpleVolView: update dpSelector from old(%v %v) to new(%v %v)",
 			w.dpSelectorName, w.dpSelectorParm, view.DpSelectorName, view.DpSelectorParm)
 		w.Lock.Lock()
 		w.dpSelectorName = view.DpSelectorName
@@ -353,7 +361,8 @@ func (w *Wrapper) updateSimpleVolView() (err error) {
 	return nil
 }
 
-func (w *Wrapper) updateDataPartitionByRsp(isInit bool, DataPartitions []*proto.DataPartitionResponse) (err error) {
+func (w *Wrapper) updateDataPartitionByRsp(ctx context.Context, isInit bool, DataPartitions []*proto.DataPartitionResponse) (err error) {
+	span := proto.SpanFromContext(ctx)
 	convert := func(response *proto.DataPartitionResponse) *DataPartition {
 		return &DataPartition{
 			DataPartitionResponse: *response,
@@ -367,15 +376,15 @@ func (w *Wrapper) updateDataPartitionByRsp(isInit bool, DataPartitions []*proto.
 	rwPartitionGroups := make([]*DataPartition, 0)
 	for index, partition := range DataPartitions {
 		if partition == nil {
-			log.LogErrorf("action[updateDataPartitionByRsp] index [%v] is nil", index)
+			span.Errorf("action[updateDataPartitionByRsp] index [%v] is nil", index)
 			continue
 		}
 		dp := convert(partition)
 		if w.followerRead && w.nearRead {
 			dp.NearHosts = w.sortHostsByDistance(dp.Hosts)
 		}
-		log.LogInfof("updateDataPartition: dp(%v)", dp)
-		w.replaceOrInsertPartition(dp)
+		span.Infof("updateDataPartition: dp(%v)", dp)
+		w.replaceOrInsertPartition(ctx, dp)
 		// do not insert preload dp in cold vol
 		if proto.IsCold(w.volType) && proto.IsPreLoadDp(dp.PartitionType) {
 			continue
@@ -383,53 +392,55 @@ func (w *Wrapper) updateDataPartitionByRsp(isInit bool, DataPartitions []*proto.
 		if dp.Status == proto.ReadWrite {
 			dp.MetricsRefresh()
 			rwPartitionGroups = append(rwPartitionGroups, dp)
-			log.LogInfof("updateDataPartition: dp(%v) address(%p) insert to rwPartitionGroups", dp.PartitionID, dp)
+			span.Infof("updateDataPartition: dp(%v) address(%p) insert to rwPartitionGroups", dp.PartitionID, dp)
 		}
 	}
 
 	// isInit used to identify whether this call is caused by mount action
 	if isInit || len(rwPartitionGroups) >= w.minWriteAbleDataPartitionCnt || (proto.IsCold(w.volType) && (len(rwPartitionGroups) >= 1)) {
-		log.LogInfof("updateDataPartition: refresh dpSelector of volume(%v) with %v rw partitions(%v all), isInit(%v), minWriteAbleDataPartitionCnt(%v)",
+		span.Infof("updateDataPartition: refresh dpSelector of volume(%v) with %v rw partitions(%v all), isInit(%v), minWriteAbleDataPartitionCnt(%v)",
 			w.volName, len(rwPartitionGroups), len(DataPartitions), isInit, w.minWriteAbleDataPartitionCnt)
-		w.refreshDpSelector(rwPartitionGroups)
+		w.refreshDpSelector(ctx, rwPartitionGroups)
 	} else {
 		err = errors.New("updateDataPartition: no writable data partition")
-		log.LogWarnf("updateDataPartition: no enough writable data partitions, volume(%v) with %v rw partitions(%v all), isInit(%v), minWriteAbleDataPartitionCnt(%v)",
+		span.Warnf("updateDataPartition: no enough writable data partitions, volume(%v) with %v rw partitions(%v all), isInit(%v), minWriteAbleDataPartitionCnt(%v)",
 			w.volName, len(rwPartitionGroups), len(DataPartitions), isInit, w.minWriteAbleDataPartitionCnt)
 	}
 
-	log.LogInfof("updateDataPartition: finish")
+	span.Infof("updateDataPartition: finish")
 	return err
 }
 
-func (w *Wrapper) updateDataPartition(isInit bool) (err error) {
+func (w *Wrapper) updateDataPartition(ctx context.Context, isInit bool) (err error) {
+	span := proto.SpanFromContext(ctx)
 	if w.preload {
 		return
 	}
 	var dpv *proto.DataPartitionsView
-	if dpv, err = w.mc.ClientAPI().EncodingGzip().GetDataPartitions(context.TODO(), w.volName); err != nil {
-		log.LogErrorf("updateDataPartition: get data partitions fail: volume(%v) err(%v)", w.volName, err)
+	if dpv, err = w.mc.ClientAPI().EncodingGzip().GetDataPartitions(ctx, w.volName); err != nil {
+		span.Errorf("updateDataPartition: get data partitions fail: volume(%v) err(%v)", w.volName, err)
 		return
 	}
-	log.LogInfof("updateDataPartition: get data partitions: volume(%v) partitions(%v)", w.volName, len(dpv.DataPartitions))
-	return w.updateDataPartitionByRsp(isInit, dpv.DataPartitions)
+	span.Infof("updateDataPartition: get data partitions: volume(%v) partitions(%v)", w.volName, len(dpv.DataPartitions))
+	return w.updateDataPartitionByRsp(ctx, isInit, dpv.DataPartitions)
 }
 
-func (w *Wrapper) UpdateDataPartition() (err error) {
-	return w.updateDataPartition(false)
+func (w *Wrapper) UpdateDataPartition(ctx context.Context) (err error) {
+	return w.updateDataPartition(ctx, false)
 }
 
 // getDataPartitionFromMaster will call master to get data partition info which not include in  cache updated by
 // updateDataPartition which may not take effect if nginx be placed for reduce the pressure of master
-func (w *Wrapper) getDataPartitionFromMaster(isInit bool, dpId uint64) (err error) {
+func (w *Wrapper) getDataPartitionFromMaster(ctx context.Context, isInit bool, dpId uint64) (err error) {
+	span := proto.SpanFromContext(ctx)
 	var dpInfo *proto.DataPartitionInfo
-	if dpInfo, err = w.mc.AdminAPI().GetDataPartition(context.TODO(), w.volName, dpId); err != nil {
-		log.LogErrorf("getDataPartitionFromMaster: get data partitions fail: volume(%v) dpId(%v) err(%v)",
+	if dpInfo, err = w.mc.AdminAPI().GetDataPartition(ctx, w.volName, dpId); err != nil {
+		span.Errorf("getDataPartitionFromMaster: get data partitions fail: volume(%v) dpId(%v) err(%v)",
 			w.volName, dpId, err)
 		return
 	}
 
-	log.LogInfof("getDataPartitionFromMaster: get data partitions: volume(%v), dpId(%v)", w.volName, dpId)
+	span.Infof("getDataPartitionFromMaster: get data partitions: volume(%v), dpId(%v)", w.volName, dpId)
 	var leaderAddr string
 	for _, replica := range dpInfo.Replicas {
 		if replica.IsLeader {
@@ -449,7 +460,7 @@ func (w *Wrapper) getDataPartitionFromMaster(isInit bool, dpId uint64) (err erro
 
 	DataPartitions := make([]*proto.DataPartitionResponse, 1)
 	DataPartitions = append(DataPartitions, dpr)
-	return w.updateDataPartitionByRsp(isInit, DataPartitions)
+	return w.updateDataPartitionByRsp(ctx, isInit, DataPartitions)
 }
 
 func (w *Wrapper) clearPartitions() {
@@ -458,11 +469,12 @@ func (w *Wrapper) clearPartitions() {
 	w.partitions = make(map[uint64]*DataPartition)
 }
 
-func (w *Wrapper) AllocatePreLoadDataPartition(volName string, count int, capacity, ttl uint64, zones string) (err error) {
+func (w *Wrapper) AllocatePreLoadDataPartition(ctx context.Context, volName string, count int, capacity, ttl uint64, zones string) (err error) {
+	span := proto.SpanFromContext(ctx)
 	var dpv *proto.DataPartitionsView
 
-	if dpv, err = w.mc.AdminAPI().CreatePreLoadDataPartition(context.TODO(), volName, count, capacity, ttl, zones); err != nil {
-		log.LogWarnf("CreatePreLoadDataPartition fail: err(%v)", err)
+	if dpv, err = w.mc.AdminAPI().CreatePreLoadDataPartition(ctx, volName, count, capacity, ttl, zones); err != nil {
+		span.Warnf("CreatePreLoadDataPartition fail: err(%v)", err)
 		return
 	}
 	convert := func(response *proto.DataPartitionResponse) *DataPartition {
@@ -477,17 +489,18 @@ func (w *Wrapper) AllocatePreLoadDataPartition(volName string, count int, capaci
 		if proto.IsCold(w.volType) && !proto.IsPreLoadDp(dp.PartitionType) {
 			continue
 		}
-		log.LogInfof("updateDataPartition: dp(%v)", dp)
-		w.replaceOrInsertPartition(dp)
+		span.Infof("updateDataPartition: dp(%v)", dp)
+		w.replaceOrInsertPartition(ctx, dp)
 		dp.MetricsRefresh()
 		rwPartitionGroups = append(rwPartitionGroups, dp)
 	}
 
-	w.refreshDpSelector(rwPartitionGroups)
+	w.refreshDpSelector(ctx, rwPartitionGroups)
 	return nil
 }
 
-func (w *Wrapper) replaceOrInsertPartition(dp *DataPartition) {
+func (w *Wrapper) replaceOrInsertPartition(ctx context.Context, dp *DataPartition) {
+	span := proto.SpanFromContext(ctx)
 	var oldstatus int8
 	w.Lock.Lock()
 	old, ok := w.partitions[dp.PartitionID]
@@ -509,15 +522,15 @@ func (w *Wrapper) replaceOrInsertPartition(dp *DataPartition) {
 	w.Lock.Unlock()
 
 	if ok && oldstatus != dp.Status {
-		log.LogInfof("partition:dp[%v] address %p status change (%v) -> (%v)", dp.PartitionID, &old, oldstatus, dp.Status)
+		span.Infof("partition:dp[%v] address %p status change (%v) -> (%v)", dp.PartitionID, &old, oldstatus, dp.Status)
 	}
 }
 
 // GetDataPartition returns the data partition based on the given partition ID.
-func (w *Wrapper) GetDataPartition(partitionID uint64) (*DataPartition, error) {
+func (w *Wrapper) GetDataPartition(ctx context.Context, partitionID uint64) (*DataPartition, error) {
 	dp, ok := w.tryGetPartition(partitionID)
 	if !ok && !proto.IsCold(w.volType) { // cache miss && hot volume
-		err := w.getDataPartitionFromMaster(false, partitionID)
+		err := w.getDataPartitionFromMaster(ctx, false, partitionID)
 		if err == nil {
 			dp, ok = w.tryGetPartition(partitionID)
 			if !ok {
@@ -537,11 +550,12 @@ func (w *Wrapper) GetReadVerSeq() uint64 {
 	return w.verReadSeq
 }
 
-func (w *Wrapper) CheckReadVerSeq(volName string, verReadSeq uint64, verList *proto.VolVersionInfoList) (readReadVer uint64, err error) {
+func (w *Wrapper) CheckReadVerSeq(ctx context.Context, volName string, verReadSeq uint64, verList *proto.VolVersionInfoList) (readReadVer uint64, err error) {
+	span := proto.SpanFromContext(ctx)
 	w.Lock.RLock()
 	defer w.Lock.RUnlock()
 
-	log.LogInfof("action[CheckReadVerSeq] vol [%v] req seq [%v]", volName, verReadSeq)
+	span.Infof("action[CheckReadVerSeq] vol [%v] req seq [%v]", volName, verReadSeq)
 
 	readReadVer = verReadSeq
 	// Whether it is version 0 or any other version, there may be uncommitted versions between the requested version
@@ -560,14 +574,14 @@ func (w *Wrapper) CheckReadVerSeq(volName string, verReadSeq uint64, verList *pr
 			err = fmt.Errorf("action[CheckReadVerSeq] readReadVer %v not found", readReadVer)
 			break
 		}
-		log.LogInfof("action[CheckReadVerSeq] ver %v,%v", ver.Ver, ver.Status)
+		span.Infof("action[CheckReadVerSeq] ver %v,%v", ver.Ver, ver.Status)
 		if ver.Ver == verReadSeq {
 			if ver.Status != proto.VersionNormal {
 				err = fmt.Errorf("action[CheckReadVerSeq] status %v not right", ver.Status)
 				return
 			}
 			readReadVer = verList.VerList[id+1].Ver - 1
-			log.LogInfof("action[CheckReadVerSeq] get read ver %v", readReadVer)
+			span.Infof("action[CheckReadVerSeq] get read ver %v", readReadVer)
 			return
 		}
 	}
@@ -581,11 +595,12 @@ func (w *Wrapper) WarningMsg() string {
 	return fmt.Sprintf("%s_client_warning", w.clusterName)
 }
 
-func (w *Wrapper) updateDataNodeStatus() (err error) {
+func (w *Wrapper) updateDataNodeStatus(ctx context.Context) (err error) {
+	span := proto.SpanFromContext(ctx)
 	var cv *proto.ClusterView
-	cv, err = w.mc.AdminAPI().GetCluster(context.TODO())
+	cv, err = w.mc.AdminAPI().GetCluster(ctx)
 	if err != nil {
-		log.LogErrorf("updateDataNodeStatus: get cluster fail: err(%v)", err)
+		span.Errorf("updateDataNodeStatus: get cluster fail: err(%v)", err)
 		return
 	}
 
@@ -593,16 +608,17 @@ func (w *Wrapper) updateDataNodeStatus() (err error) {
 	for _, node := range cv.DataNodes {
 		newHostsStatus[node.Addr] = node.IsActive
 	}
-	log.LogInfof("updateDataNodeStatus: update %d hosts status", len(newHostsStatus))
+	span.Infof("updateDataNodeStatus: update %d hosts status", len(newHostsStatus))
 
 	w.HostsStatus = newHostsStatus
 
 	return
 }
 
-func (w *Wrapper) SetNearRead(nearRead bool) {
+func (w *Wrapper) SetNearRead(ctx context.Context, nearRead bool) {
+	span := proto.SpanFromContext(ctx)
 	w.nearRead = nearRead
-	log.LogInfof("SetNearRead: set nearRead to %v", w.nearRead)
+	span.Infof("SetNearRead: set nearRead to %v", w.nearRead)
 }
 
 func (w *Wrapper) NearRead() bool {

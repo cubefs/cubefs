@@ -140,7 +140,7 @@ func (f *File) Attr(ctx context.Context, a *fuse.Attr) error {
 	}()
 
 	ino := f.info.Inode
-	info, err := f.super.InodeGet(ino)
+	info, err := f.super.InodeGet(ctx, ino)
 	if err != nil {
 		log.Errorf("Attr: ino(%v) err(%v)", ino, err)
 		if err == fuse.ENOENT {
@@ -152,7 +152,7 @@ func (f *File) Attr(ctx context.Context, a *fuse.Attr) error {
 
 	fillAttr(info, a)
 	a.ParentIno = f.parentIno
-	fileSize, gen := f.fileSizeVersion2(ino)
+	fileSize, gen := f.fileSizeVersion2(ctx, ino)
 	log.Debugf("Attr: ino(%v) fileSize(%v) gen(%v) inode.gen(%v)", ino, fileSize, gen, info.Generation)
 	if gen >= info.Generation {
 		a.Size = uint64(fileSize)
@@ -229,7 +229,7 @@ func (f *File) Open(ctx context.Context, req *fuse.OpenRequest, resp *fuse.OpenR
 	if needBCache {
 		f.super.ec.OpenStreamWithCache(ctx, ino, needBCache)
 	} else {
-		f.super.ec.OpenStream(ino)
+		f.super.ec.OpenStream(ctx, ino)
 	}
 	span.Debugf("TRACE open ino(%v) f.super.bcacheDir(%v) needBCache(%v)", ino, f.super.bcacheDir, needBCache)
 
@@ -240,7 +240,7 @@ func (f *File) Open(ctx context.Context, req *fuse.OpenRequest, resp *fuse.OpenR
 	}
 	if proto.IsCold(f.super.volType) {
 		span.Debugf("TRANCE open ino(%v) info(%v)", ino, f.info)
-		fileSize, _ := f.fileSizeVersion2(ino)
+		fileSize, _ := f.fileSizeVersion2(ctx, ino)
 		clientConf := blobstore.ClientConfig{
 			VolName:         f.super.volname,
 			VolType:         f.super.volType,
@@ -338,7 +338,7 @@ func (f *File) Read(ctx context.Context, req *fuse.ReadRequest, resp *fuse.ReadR
 	}()
 	var size int
 	if proto.IsHot(f.super.volType) {
-		size, err = f.super.ec.Read(f.info.Inode, resp.Data[fuse.OutHeaderSize:], int(req.Offset), req.Size)
+		size, err = f.super.ec.Read(ctx, f.info.Inode, resp.Data[fuse.OutHeaderSize:], int(req.Offset), req.Size)
 	} else {
 		size, err = f.fReader.Read(ctx, resp.Data[fuse.OutHeaderSize:], int(req.Offset), req.Size)
 	}
@@ -386,12 +386,12 @@ func (f *File) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.Wri
 	span.Debugf("TRACE Write enter: ino(%v) offset(%v) len(%v)  flags(%v) fileflags(%v) quotaIds(%v) req(%v)",
 		ino, req.Offset, reqlen, req.Flags, req.FileFlags, f.info.QuotaInfos, req)
 	if proto.IsHot(f.super.volType) {
-		filesize, _ := f.fileSize(ino)
+		filesize, _ := f.fileSize(ctx, ino)
 		if req.Offset > int64(filesize) && reqlen == 1 && req.Data[0] == 0 {
 
 			// workaround: posix_fallocate would write 1 byte if fallocate is not supported.
 			fullPath := path.Join(f.getParentPath(), f.name)
-			err = f.super.ec.Truncate(f.super.mw, f.parentIno, ino, int(req.Offset)+reqlen, fullPath)
+			err = f.super.ec.Truncate(ctx, f.super.mw, f.parentIno, ino, int(req.Offset)+reqlen, fullPath)
 			if err == nil {
 				resp.Size = reqlen
 			}
@@ -432,7 +432,7 @@ func (f *File) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.Wri
 		if !f.super.mw.EnableQuota {
 			return nil
 		}
-		if ok := f.super.ec.UidIsLimited(req.Uid); ok {
+		if ok := f.super.ec.UidIsLimited(ctx, req.Uid); ok {
 			return ParseError(syscall.ENOSPC)
 		}
 		var quotaIds []uint32
@@ -446,8 +446,8 @@ func (f *File) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.Wri
 	}
 	var size int
 	if proto.IsHot(f.super.volType) {
-		f.super.ec.GetStreamer(ino).SetParentInode(f.parentIno)
-		if size, err = f.super.ec.Write(ino, int(req.Offset), req.Data, flags, checkFunc); err == ParseError(syscall.ENOSPC) {
+		f.super.ec.GetStreamer(ctx, ino).SetParentInode(f.parentIno)
+		if size, err = f.super.ec.Write(ctx, ino, int(req.Offset), req.Data, flags, checkFunc); err == ParseError(syscall.ENOSPC) {
 			return
 		}
 	} else {
@@ -472,7 +472,7 @@ func (f *File) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.Wri
 
 	// only hot volType need to wait flush
 	if waitForFlush {
-		err = f.super.ec.Flush(ino)
+		err = f.super.ec.Flush(ctx, ino)
 		if err != nil {
 			msg := fmt.Sprintf("Write: failed to wait for flush, ino(%v) offset(%v) len(%v) err(%v) req(%v)", ino, req.Offset, reqlen, err, req)
 			f.super.handleError("Wrtie", msg)
@@ -507,7 +507,7 @@ func (f *File) Flush(ctx context.Context, req *fuse.FlushRequest) (err error) {
 		metric.SetWithLabels(err, map[string]string{exporter.Vol: f.super.volname})
 	}()
 	if proto.IsHot(f.super.volType) {
-		err = f.super.ec.Flush(f.info.Inode)
+		err = f.super.ec.Flush(ctx, f.info.Inode)
 	} else {
 		f.Lock()
 		err = f.fWriter.Flush(f.info.Inode, ctx)
@@ -543,7 +543,7 @@ func (f *File) Fsync(ctx context.Context, req *fuse.FsyncRequest) (err error) {
 	span.Debugf("TRACE Fsync enter: ino(%v)", f.info.Inode)
 	start := time.Now()
 	if proto.IsHot(f.super.volType) {
-		err = f.super.ec.Flush(f.info.Inode)
+		err = f.super.ec.Flush(ctx, f.info.Inode)
 	} else {
 		err = f.fWriter.Flush(f.info.Inode, ctx)
 	}
@@ -572,18 +572,18 @@ func (f *File) Setattr(ctx context.Context, req *fuse.SetattrRequest, resp *fuse
 	if req.Valid.Size() && proto.IsHot(f.super.volType) {
 		// when use trunc param in open request through nfs client and mount on cfs mountPoint, cfs client may not recv open message but only setAttr,
 		// the streamer may not open and cause io error finally,so do a open no matter the stream be opened or not
-		if err := f.super.ec.OpenStream(ino); err != nil {
+		if err := f.super.ec.OpenStream(ctx, ino); err != nil {
 			span.Errorf("Setattr: OpenStream ino(%v) size(%v) err(%v)", ino, req.Size, err)
 			return ParseError(err)
 		}
 		defer f.super.ec.CloseStream(ino)
 
-		if err := f.super.ec.Flush(ino); err != nil {
+		if err := f.super.ec.Flush(ctx, ino); err != nil {
 			span.Errorf("Setattr: truncate wait for flush ino(%v) size(%v) err(%v)", ino, req.Size, err)
 			return ParseError(err)
 		}
 		fullPath := path.Join(f.getParentPath(), f.name)
-		if err := f.super.ec.Truncate(f.super.mw, f.parentIno, ino, int(req.Size), fullPath); err != nil {
+		if err := f.super.ec.Truncate(ctx, f.super.mw, f.parentIno, ino, int(req.Size), fullPath); err != nil {
 			span.Errorf("Setattr: truncate ino(%v) size(%v) err(%v)", ino, req.Size, err)
 			return ParseError(err)
 		}
@@ -591,7 +591,7 @@ func (f *File) Setattr(ctx context.Context, req *fuse.SetattrRequest, resp *fuse
 		f.super.ec.RefreshExtentsCache(ctxNew, ino)
 	}
 
-	info, err := f.super.InodeGet(ino)
+	info, err := f.super.InodeGet(ctx, ino)
 	if err != nil {
 		span.Errorf("Setattr: InodeGet failed, ino(%v) err(%v)", ino, err)
 		return ParseError(err)
@@ -628,7 +628,7 @@ func (f *File) Readlink(ctx context.Context, req *fuse.ReadlinkRequest) (string,
 	}()
 
 	ino := f.info.Inode
-	info, err := f.super.InodeGet(ino)
+	info, err := f.super.InodeGet(ctx, ino)
 	if err != nil {
 		log.Errorf("Readlink: ino(%v) err(%v)", ino, err)
 		return "", ParseError(err)
@@ -740,26 +740,28 @@ func (f *File) Removexattr(ctx context.Context, req *fuse.RemovexattrRequest) er
 	return nil
 }
 
-func (f *File) fileSize(ino uint64) (size int, gen uint64) {
-	size, gen, valid := f.super.ec.FileSize(ino)
+func (f *File) fileSize(ctx context.Context, ino uint64) (size int, gen uint64) {
+	span := proto.SpanFromContext(ctx)
+	size, gen, valid := f.super.ec.FileSize(ctx, ino)
 	if !valid {
-		if info, err := f.super.InodeGet(ino); err == nil {
+		if info, err := f.super.InodeGet(ctx, ino); err == nil {
 			size = int(info.Size)
 			gen = info.Generation
 		}
 	}
 
-	log.Debugf("TRANCE fileSize: ino(%v) fileSize(%v) gen(%v) valid(%v)", ino, size, gen, valid)
+	span.Debugf("TRANCE fileSize: ino(%v) fileSize(%v) gen(%v) valid(%v)", ino, size, gen, valid)
 	return
 }
 
-func (f *File) fileSizeVersion2(ino uint64) (size int, gen uint64) {
-	size, gen, valid := f.super.ec.FileSize(ino)
+func (f *File) fileSizeVersion2(ctx context.Context, ino uint64) (size int, gen uint64) {
+	span := proto.SpanFromContext(ctx)
+	size, gen, valid := f.super.ec.FileSize(ctx, ino)
 	if proto.IsCold(f.super.volType) {
 		valid = false
 	}
 	if !valid {
-		if info, err := f.super.InodeGet(ino); err == nil {
+		if info, err := f.super.InodeGet(ctx, ino); err == nil {
 			size = int(info.Size)
 			if f.fWriter != nil {
 				cacheSize := f.fWriter.CacheFileSize()
@@ -771,7 +773,7 @@ func (f *File) fileSizeVersion2(ino uint64) (size int, gen uint64) {
 		}
 	}
 
-	log.Debugf("TRACE fileSizeVersion2: ino(%v) fileSize(%v) gen(%v) valid(%v)", ino, size, gen, valid)
+	span.Debugf("TRACE fileSizeVersion2: ino(%v) fileSize(%v) gen(%v) valid(%v)", ino, size, gen, valid)
 	return
 }
 

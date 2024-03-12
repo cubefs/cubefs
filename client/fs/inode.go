@@ -27,7 +27,7 @@ const (
 	LogTimeFormat = "20060102150405000"
 )
 
-func (s *Super) InodeGet(ino uint64) (*proto.InodeInfo, error) {
+func (s *Super) InodeGet(ctx context.Context, ino uint64) (*proto.InodeInfo, error) {
 	info := s.ic.Get(ino)
 	if info != nil {
 		return info, nil
@@ -54,7 +54,7 @@ func (s *Super) InodeGet(ino uint64) (*proto.InodeInfo, error) {
 			node.(*File).info = info
 		}
 	}
-	s.ec.RefreshExtentsCache(context.TODO(), ino)
+	s.ec.RefreshExtentsCache(ctx, ino)
 	return info, nil
 }
 

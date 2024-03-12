@@ -103,6 +103,7 @@ type ClientConfig struct {
 }
 
 func NewReader(config ClientConfig) (reader *Reader) {
+	ctx := context.Background()
 	reader = new(Reader)
 
 	reader.volName = config.VolName
@@ -119,7 +120,7 @@ func NewReader(config ClientConfig) (reader *Reader) {
 	reader.cacheThreshold = config.CacheThreshold
 
 	if proto.IsCold(reader.volType) {
-		reader.ec.UpdateDataPartitionForColdVolume()
+		reader.ec.UpdateDataPartitionForColdVolume(ctx)
 	}
 
 	reader.limitManager = reader.ec.LimitManager
@@ -312,7 +313,7 @@ func (reader *Reader) readSliceRange(ctx context.Context, rs *rwSlice) (err erro
 	if rs.extentKey != (proto.ExtentKey{}) {
 
 		// check if dp is exist in preload sence
-		err = reader.ec.CheckDataPartitionExsit(rs.extentKey.PartitionId)
+		err = reader.ec.CheckDataPartitionExsit(ctx, rs.extentKey.PartitionId)
 		if err == nil || ctx.Value("objectnode") != nil {
 			readN, err, readLimitOn = reader.ec.ReadExtent(ctx, reader.ino, &rs.extentKey, buf, int(rs.rOffset), int(rs.rSize))
 			if err == nil && readN == int(rs.rSize) {
@@ -385,7 +386,7 @@ func (reader *Reader) asyncCache(ctx context.Context, cacheKey string, objExtent
 	}
 
 	if reader.needCacheL2() {
-		reader.ec.Write(reader.ino, int(objExtentKey.FileOffset), buf, proto.FlagsCache, nil)
+		reader.ec.Write(ctx, reader.ino, int(objExtentKey.FileOffset), buf, proto.FlagsCache, nil)
 		span.Debugf("TRACE blobStore asyncCache(L2) Exit. cacheKey=%v", cacheKey)
 		return
 	}

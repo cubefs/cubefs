@@ -61,8 +61,7 @@ type bcacheKey struct {
 }
 
 // NewStreamer returns a new streamer.
-func NewStreamer(client *ExtentClient, inode uint64) *Streamer {
-	ctx := context.TODO()
+func NewStreamer(ctx context.Context, client *ExtentClient, inode uint64) *Streamer {
 	s := new(Streamer)
 	s.client = client
 	s.inode = inode
@@ -106,7 +105,7 @@ func (s *Streamer) GetExtentsForce(ctx context.Context) error {
 // TODO: use memory pool
 func (s *Streamer) GetExtentReader(ctx context.Context, ek *proto.ExtentKey) (*ExtentReader, error) {
 	span := proto.SpanFromContext(ctx)
-	partition, err := s.client.dataWrapper.GetDataPartition(ek.PartitionId)
+	partition, err := s.client.dataWrapper.GetDataPartition(ctx, ek.PartitionId)
 	if err != nil {
 		return nil, err
 	}
