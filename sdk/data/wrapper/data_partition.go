@@ -15,6 +15,7 @@
 package wrapper
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"strings"
@@ -24,7 +25,6 @@ import (
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util"
-	"github.com/cubefs/cubefs/util/log"
 )
 
 // DataPartition defines the wrapper of the data partition.
@@ -48,9 +48,10 @@ type DataPartitionMetrics struct {
 	WriteOpNum          int64
 }
 
-func (dp *DataPartition) RecordWrite(startT int64) {
+func (dp *DataPartition) RecordWrite(ctx context.Context, startT int64) {
+	span := proto.SpanFromContext(ctx)
 	if startT == 0 {
-		log.LogWarnf("RecordWrite: invalid start time")
+		span.Warnf("RecordWrite: invalid start time")
 		return
 	}
 	cost := time.Now().UnixNano() - startT
@@ -126,7 +127,8 @@ func (dp *DataPartition) String() string {
 		dp.PartitionID, dp.PartitionType, dp.Status, dp.ReplicaNum, dp.Hosts, dp.NearHosts)
 }
 
-func (dp *DataPartition) CheckAllHostsIsAvail(exclude map[string]struct{}) {
+func (dp *DataPartition) CheckAllHostsIsAvail(ctx context.Context, exclude map[string]struct{}) {
+	span := proto.SpanFromContext(ctx)
 	var (
 		conn net.Conn
 		err  error
@@ -134,7 +136,7 @@ func (dp *DataPartition) CheckAllHostsIsAvail(exclude map[string]struct{}) {
 	for i := 0; i < len(dp.Hosts); i++ {
 		host := dp.Hosts[i]
 		if conn, err = util.DailTimeOut(host, proto.ReadDeadlineTime*time.Second); err != nil {
-			log.LogWarnf("CheckAllHostsIsAvail: dial host (%v) err(%v)", host, err)
+			span.Warnf("CheckAllHostsIsAvail: dial host (%v) err(%v)", host, err)
 			if strings.Contains(err.Error(), syscall.ECONNREFUSED.Error()) {
 				exclude[host] = struct{}{}
 			}

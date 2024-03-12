@@ -1209,7 +1209,7 @@ func (c *client) start() (err error) {
 		return err
 	}
 	var ec *stream.ExtentClient
-	if ec, err = stream.NewExtentClient(&stream.ExtentConfig{
+	if ec, err = stream.NewExtentClient(context.TODO(), &stream.ExtentConfig{
 		Volume:            c.volName,
 		VolumeType:        c.volType,
 		Masters:           masters,
@@ -1380,7 +1380,7 @@ func (c *client) mkdir(pino uint64, name string, mode uint32, fullPath string) (
 }
 
 func (c *client) openStream(f *file) {
-	_ = c.ec.OpenStream(f.ino)
+	_ = c.ec.OpenStream(context.TODO(), f.ino)
 }
 
 func (c *client) closeStream(f *file) {
@@ -1393,7 +1393,7 @@ func (c *client) closeStream(f *file) {
 
 func (c *client) flush(f *file) error {
 	if proto.IsHot(c.volType) {
-		return c.ec.Flush(f.ino)
+		return c.ec.Flush(context.TODO(), f.ino)
 	} else {
 		if f.fileWriter != nil {
 			return f.fileWriter.Flush(f.ino, c.ctx(c.id, f.ino))
@@ -1403,7 +1403,7 @@ func (c *client) flush(f *file) error {
 }
 
 func (c *client) truncate(f *file, size int) error {
-	err := c.ec.Truncate(c.mw, f.pino, f.ino, size, f.path)
+	err := c.ec.Truncate(context.TODO(), c.mw, f.pino, f.ino, size, f.path)
 	if err != nil {
 		return err
 	}
@@ -1411,14 +1411,15 @@ func (c *client) truncate(f *file, size int) error {
 }
 
 func (c *client) write(f *file, offset int, data []byte, flags int) (n int, err error) {
+	ctx := context.TODO()
 	if proto.IsHot(c.volType) {
-		c.ec.GetStreamer(f.ino).SetParentInode(f.pino) // set the parent inode
+		c.ec.GetStreamer(ctx, f.ino).SetParentInode(f.pino) // set the parent inode
 		checkFunc := func() error {
 			if !c.mw.EnableQuota {
 				return nil
 			}
 
-			if ok := c.ec.UidIsLimited(0); ok {
+			if ok := c.ec.UidIsLimited(ctx, 0); ok {
 				return syscall.ENOSPC
 			}
 
@@ -1427,7 +1428,7 @@ func (c *client) write(f *file, offset int, data []byte, flags int) (n int, err 
 			}
 			return nil
 		}
-		n, err = c.ec.Write(f.ino, offset, data, flags, checkFunc)
+		n, err = c.ec.Write(ctx, f.ino, offset, data, flags, checkFunc)
 	} else {
 		n, err = f.fileWriter.Write(c.ctx(c.id, f.ino), offset, data, flags)
 	}
@@ -1439,7 +1440,7 @@ func (c *client) write(f *file, offset int, data []byte, flags int) (n int, err 
 
 func (c *client) read(f *file, offset int, data []byte) (n int, err error) {
 	if proto.IsHot(c.volType) {
-		n, err = c.ec.Read(f.ino, data, offset, len(data))
+		n, err = c.ec.Read(context.TODO(), f.ino, data, offset, len(data))
 	} else {
 		n, err = f.fileReader.Read(c.ctx(c.id, f.ino), data, offset, len(data))
 	}
@@ -1455,9 +1456,10 @@ func (c *client) ctx(cid int64, ino uint64) context.Context {
 }
 
 func (c *client) loadConfFromMaster(masters []string) (err error) {
+	ctx := context.TODO()
 	mc := masterSDK.NewMasterClient(masters, false)
 	var volumeInfo *proto.SimpleVolView
-	volumeInfo, err = mc.AdminAPI().GetVolumeSimpleInfo(context.TODO(), c.volName)
+	volumeInfo, err = mc.AdminAPI().GetVolumeSimpleInfo(ctx, c.volName)
 	if err != nil {
 		return
 	}
@@ -1468,7 +1470,7 @@ func (c *client) loadConfFromMaster(masters []string) (err error) {
 	c.cacheThreshold = volumeInfo.CacheThreshold
 
 	var clusterInfo *proto.ClusterInfo
-	clusterInfo, err = mc.AdminAPI().GetClusterInfo(context.TODO())
+	clusterInfo, err = mc.AdminAPI().GetClusterInfo(ctx)
 	if err != nil {
 		return
 	}
@@ -1498,7 +1500,7 @@ func parseLogLevel(loglvl string) log.Level {
 }
 
 func (c *client) fileSize(ino uint64) (size int, gen uint64) {
-	size, gen, valid := c.ec.FileSize(ino)
+	size, gen, valid := c.ec.FileSize(context.TODO(), ino)
 	log.LogDebugf("fileSize: ino(%v) fileSize(%v) gen(%v) valid(%v)", ino, size, gen, valid)
 
 	if !valid {
