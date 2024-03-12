@@ -16,14 +16,13 @@ package objectnode
 
 import (
 	"container/list"
-	"os"
 	"strconv"
 	"sync"
 	"time"
 
+	"github.com/cubefs/cubefs/blobstore/util/log"
 	"github.com/cubefs/cubefs/metanode"
 	"github.com/cubefs/cubefs/proto"
-	"github.com/cubefs/cubefs/util/log"
 )
 
 const (
@@ -79,9 +78,6 @@ func (vac *VolumeInodeAttrsCache) putAttr(attr *AttrItem) {
 
 	old, ok := vac.cache[attr.Inode]
 	if ok {
-		oldAttr := old.Value.(*AttrItem)
-		log.LogDebugf("replace old attr: inode(%v) attr(%v) with new attr(%v)", attr.Inode, oldAttr, attr)
-
 		vac.lruList.Remove(old)
 		delete(vac.cache, attr.Inode)
 	}
@@ -127,7 +123,6 @@ func (vac *VolumeInodeAttrsCache) getAttr(inode uint64) *AttrItem {
 	vac.RLock()
 	element, ok := vac.cache[inode]
 	if !ok {
-		log.LogDebugf("cache Get inode(%v) attr not found", inode)
 		miss = true
 		vac.RUnlock()
 		return nil
@@ -139,7 +134,6 @@ func (vac *VolumeInodeAttrsCache) getAttr(inode uint64) *AttrItem {
 	vac.lruList.MoveToFront(element)
 	vac.Unlock()
 
-	log.LogDebugf("cache Get inode(%v) attrs(%v)", inode, attrs)
 	return attrs
 }
 
@@ -149,8 +143,6 @@ func (vac *VolumeInodeAttrsCache) deleteAttr(inode uint64) {
 
 	element, ok := vac.cache[inode]
 	if ok {
-		attr := element.Value.(*AttrItem)
-		log.LogDebugf("delete attr in cache: inode(%v) attr(%v) ", inode, attr)
 		vac.lruList.Remove(element)
 		delete(vac.cache, inode)
 	}
@@ -162,7 +154,6 @@ func (vac *VolumeInodeAttrsCache) deleteAttrWithKey(inode uint64, key string) {
 	element, ok := vac.cache[inode]
 	if ok {
 		attr = element.Value.(*AttrItem)
-		log.LogDebugf("delete key: %v in attrs of inode(%v) ", key, inode)
 		delete(attr.XAttrs, key)
 	}
 	vac.Unlock()
@@ -244,12 +235,6 @@ func (vdc *VolumeDentryCache) putDentry(dentry *DentryItem) {
 	key := dentry.Key()
 	old, ok := vdc.cache[key]
 	if ok {
-		oldDentry := old.Value.(*DentryItem)
-		log.LogDebugf("replace old dentry: parentID(%v) inode(%v) name(%v) mode(%v) "+
-			"with new one: parentID(%v) inode(%v) name(%v) mode(%v)",
-			oldDentry.ParentId, oldDentry.Inode, oldDentry.Name, os.FileMode(oldDentry.Type),
-			dentry.ParentId, dentry.Inode, dentry.Name, os.FileMode(dentry.Type))
-
 		vdc.lruList.Remove(old)
 		delete(vdc.cache, key)
 	}
@@ -297,8 +282,6 @@ func (vdc *VolumeDentryCache) deleteDentry(key string) {
 
 	element, ok := vdc.cache[key]
 	if ok {
-		dentry := element.Value.(*DentryItem)
-		log.LogDebugf("delete dentry in cache: key(%v) dentry(%v) ", key, dentry)
 		vdc.lruList.Remove(element)
 		delete(vdc.cache, key)
 	}
@@ -355,7 +338,6 @@ func (omc *ObjMetaCache) backGroundEvictItem() {
 	defer t.Stop()
 
 	for range t.C {
-		log.LogDebugf("ObjMetaCache: start backGround evict")
 		start := time.Now()
 		omc.RLock()
 		for _, vac := range omc.volumeInodeAttrsCache {
@@ -373,7 +355,7 @@ func (omc *ObjMetaCache) backGroundEvictItem() {
 		}
 
 		elapsed := time.Since(start)
-		log.LogDebugf("ObjMetaCache: finish backGround evict, dentryCache, cost(%d)ms", elapsed.Milliseconds())
+		log.Debugf("[ObjMetaCache] finish background evict cache, cost %d ms", elapsed.Milliseconds())
 		omc.RUnlock()
 	}
 }
@@ -390,13 +372,11 @@ func (omc *ObjMetaCache) PutAttr(volume string, item *AttrItem) {
 		for _, v := range omc.volumeInodeAttrsCache {
 			v.SetMaxElements(avgMaxNum)
 		}
-		log.LogDebugf("NewVolumeInodeAttrsCache: volume(%v), volumeNum(%v), avgMaxNum(%v)", volume, volumeNum, avgMaxNum)
 	}
 	omc.Unlock()
 
 	item.expiredTime = time.Now().Unix() + int64(omc.refreshIntervalSec)
 	vac.putAttr(item)
-	log.LogDebugf("ObjMetaCache PutAttr: volume(%v) attr(%v)", volume, item)
 }
 
 func (omc *ObjMetaCache) MergeAttr(volume string, item *AttrItem) {
@@ -411,27 +391,24 @@ func (omc *ObjMetaCache) MergeAttr(volume string, item *AttrItem) {
 		for _, v := range omc.volumeInodeAttrsCache {
 			v.SetMaxElements(avgMaxNum)
 		}
-		log.LogDebugf("NewVolumeInodeAttrsCache: volume(%v), volumeNum(%v), avgMaxNum(%v)", volume, volumeNum, avgMaxNum)
 	}
 	omc.Unlock()
-	log.LogDebugf("ObjMetaCache MergeAttr: volume(%v) attr(%v)", volume, item)
 	vac.mergeAttr(item)
 }
 
-func (omc *ObjMetaCache) GetAttr(volume string, inode uint64) (attr *AttrItem, needRefresh bool) {
+func (omc *ObjMetaCache) GetAttr(volume string, inode uint64) (*AttrItem, bool) {
 	omc.RLock()
 	vac, exist := omc.volumeInodeAttrsCache[volume]
 	omc.RUnlock()
 	if !exist {
-		log.LogDebugf("ObjMetaCache GetAttr: fail, volume(%v) inode(%v) ", volume, inode)
 		return nil, false
 	}
 
-	attr = vac.getAttr(inode)
+	attr := vac.getAttr(inode)
 	if attr == nil {
 		return nil, false
 	}
-	log.LogDebugf("ObjMetaCache GetAttr: volume(%v) inode(%v) attr(%v)", volume, inode, attr)
+
 	return attr, attr.IsExpired()
 }
 
@@ -443,7 +420,6 @@ func (omc *ObjMetaCache) DeleteAttr(volume string, inode uint64) {
 		return
 	}
 
-	log.LogDebugf("ObjMetaCache DeleteAttr: volume(%v), inode(%v)", volume, inode)
 	vac.deleteAttr(inode)
 }
 
@@ -455,7 +431,6 @@ func (omc *ObjMetaCache) DeleteAttrWithKey(volume string, inode uint64, key stri
 		return
 	}
 
-	log.LogDebugf("ObjMetaCache DeleteAttr: volume(%v), inode(%v)", volume, inode)
 	vac.deleteAttrWithKey(inode, key)
 }
 
@@ -488,16 +463,14 @@ func (omc *ObjMetaCache) PutDentry(volume string, item *DentryItem) {
 		for _, v := range omc.volumeDentryCache {
 			v.setMaxElements(avgMaxNum)
 		}
-		log.LogDebugf("NewVolumeDentryCache: volume(%v), volumeNum(%v), avgMaxNum(%v)", volume, volumeNum, avgMaxNum)
 	}
 	omc.Unlock()
 
 	item.expiredTime = time.Now().Unix() + int64(omc.refreshIntervalSec)
 	vdc.putDentry(item)
-	log.LogDebugf("ObjMetaCache PutDentry: volume(%v), DentryItem(%v)", volume, item)
 }
 
-func (omc *ObjMetaCache) GetDentry(volume string, key string) (dentry *DentryItem, needRefresh bool) {
+func (omc *ObjMetaCache) GetDentry(volume string, key string) (*DentryItem, bool) {
 	omc.RLock()
 	vdc, exist := omc.volumeDentryCache[volume]
 	omc.RUnlock()
@@ -505,11 +478,11 @@ func (omc *ObjMetaCache) GetDentry(volume string, key string) (dentry *DentryIte
 		return nil, false
 	}
 
-	dentry = vdc.getDentry(key)
+	dentry := vdc.getDentry(key)
 	if dentry == nil {
 		return nil, false
 	}
-	log.LogDebugf("ObjMetaCache GetDentry: volume(%v), key(%v), dentry:(%v)", volume, key, dentry)
+
 	return dentry, dentry.IsExpired()
 }
 
@@ -521,7 +494,6 @@ func (omc *ObjMetaCache) DeleteDentry(volume string, key string) {
 		return
 	}
 
-	log.LogDebugf("ObjMetaCache DeleteDentry: volume(%v), key(%v)", volume, key)
 	vdc.deleteDentry(key)
 }
 

@@ -15,13 +15,11 @@
 package objectnode
 
 import (
-	"context"
 	"encoding/xml"
 	"io"
 	"net/http"
 
 	"github.com/cubefs/cubefs/proto"
-	"github.com/cubefs/cubefs/util/log"
 )
 
 // API reference: https://docs.aws.amazon.com/zh_cn/AmazonS3/latest/API/API_GetBucketLifecycleConfiguration.html
@@ -29,6 +27,8 @@ func (o *ObjectNode) getBucketLifecycleConfigurationHandler(w http.ResponseWrite
 	var err error
 	var errorCode *ErrorCode
 
+	ctx := r.Context()
+	span := spanWithOperation(ctx, "GetBucketLifecycleConfiguration")
 	defer func() {
 		o.errorResponse(w, r, err, errorCode)
 	}()
@@ -38,14 +38,16 @@ func (o *ObjectNode) getBucketLifecycleConfigurationHandler(w http.ResponseWrite
 		errorCode = InvalidBucketName
 		return
 	}
-	if _, err = o.vm.Volume(param.Bucket()); err != nil {
+
+	if _, err = o.vm.Volume(ctx, param.Bucket()); err != nil {
+		span.Errorf("load volume fail: volume(%v) err(%v)", param.Bucket(), err)
 		errorCode = NoSuchBucket
 		return
 	}
 
 	var lcConf *proto.LcConfiguration
-	if lcConf, err = o.mc.AdminAPI().GetBucketLifecycle(context.TODO(), param.Bucket()); err != nil {
-		log.LogErrorf("getBucketLifecycle failed: bucket[%v] err(%v)", param.Bucket(), err)
+	if lcConf, err = o.mc.AdminAPI().GetBucketLifecycle(ctx, param.Bucket()); err != nil {
+		span.Errorf("get lifeCycle from master fail: volume(%v) err(%v)", param.Bucket(), err)
 		errorCode = NoSuchLifecycleConfiguration
 		return
 	}
@@ -77,13 +79,12 @@ func (o *ObjectNode) getBucketLifecycleConfigurationHandler(w http.ResponseWrite
 	var data []byte
 	data, err = xml.Marshal(lifeCycle)
 	if err != nil {
-		log.LogErrorf("getBucketLifecycle failed: bucket[%v] err(%v)", param.Bucket(), err)
+		span.Errorf("marshal xml response fail: response(%+v) err(%v)", lifeCycle, err)
 		errorCode = NoSuchLifecycleConfiguration
 		return
 	}
 
 	writeSuccessResponseXML(w, data)
-	return
 }
 
 // API reference: https://docs.aws.amazon.com/zh_cn/AmazonS3/latest/API/API_PutBucketLifecycleConfiguration.html
@@ -91,6 +92,8 @@ func (o *ObjectNode) putBucketLifecycleConfigurationHandler(w http.ResponseWrite
 	var err error
 	var errorCode *ErrorCode
 
+	ctx := r.Context()
+	span := spanWithOperation(ctx, "PutBucketLifecycleConfiguration")
 	defer func() {
 		o.errorResponse(w, r, err, errorCode)
 	}()
@@ -100,7 +103,9 @@ func (o *ObjectNode) putBucketLifecycleConfigurationHandler(w http.ResponseWrite
 		errorCode = InvalidBucketName
 		return
 	}
-	if _, err = o.vm.Volume(param.Bucket()); err != nil {
+
+	if _, err = o.vm.Volume(ctx, param.Bucket()); err != nil {
+		span.Errorf("load volume fail: volume(%v) err(%v)", param.Bucket(), err)
 		errorCode = NoSuchBucket
 		return
 	}
@@ -111,7 +116,7 @@ func (o *ObjectNode) putBucketLifecycleConfigurationHandler(w http.ResponseWrite
 	}
 	var requestBody []byte
 	if requestBody, err = io.ReadAll(r.Body); err != nil && err != io.EOF {
-		log.LogErrorf("putBucketLifecycle failed: read request body data err: requestID(%v) err(%v)", GetRequestID(r), err)
+		span.Errorf("read request body fail: %v", err)
 		errorCode = &ErrorCode{
 			ErrorCode:    http.StatusText(http.StatusBadRequest),
 			ErrorMessage: err.Error(),
@@ -122,14 +127,12 @@ func (o *ObjectNode) putBucketLifecycleConfigurationHandler(w http.ResponseWrite
 
 	lifeCycle := NewLifeCycle()
 	if err = UnmarshalXMLEntity(requestBody, lifeCycle); err != nil {
-		log.LogWarnf("putBucketLifecycle failed: decode request body err: requestID(%v) err(%v)", GetRequestID(r), err)
+		span.Errorf("marshal xml body fail: body(%v) err(%v)", string(requestBody), err)
 		errorCode = LifeCycleErrMalformedXML
 		return
 	}
-
 	ok, errorCode := lifeCycle.Validate()
 	if !ok {
-		log.LogErrorf("putBucketLifecycle failed: validate err: requestID(%v) lifeCycle(%v) err(%v)", GetRequestID(r), lifeCycle, errorCode)
 		return
 	}
 
@@ -137,7 +140,6 @@ func (o *ObjectNode) putBucketLifecycleConfigurationHandler(w http.ResponseWrite
 		VolName: param.Bucket(),
 		Rules:   make([]*proto.Rule, 0),
 	}
-
 	for _, lr := range lifeCycle.Rules {
 		rule := &proto.Rule{
 			ID:     lr.ID,
@@ -160,13 +162,11 @@ func (o *ObjectNode) putBucketLifecycleConfigurationHandler(w http.ResponseWrite
 		req.Rules = append(req.Rules, rule)
 	}
 
-	if err = o.mc.AdminAPI().SetBucketLifecycle(context.TODO(), &req); err != nil {
-		log.LogErrorf("putBucketLifecycle failed: SetBucketLifecycle err: bucket[%v] err(%v)", param.Bucket(), err)
+	if err = o.mc.AdminAPI().SetBucketLifecycle(ctx, &req); err != nil {
+		span.Errorf("set lifeCycle by master fail: volume(%v) lifeCycle(%+v) err(%v)",
+			param.Bucket(), req, err)
 		return
 	}
-
-	log.LogInfof("putBucketLifecycle success: requestID(%v) volume(%v) lifeCycle(%v)",
-		GetRequestID(r), param.Bucket(), lifeCycle)
 }
 
 // API reference: https://docs.aws.amazon.com/zh_cn/AmazonS3/latest/API/API_DeleteBucketLifecycle.html
@@ -174,6 +174,8 @@ func (o *ObjectNode) deleteBucketLifecycleConfigurationHandler(w http.ResponseWr
 	var err error
 	var errorCode *ErrorCode
 
+	ctx := r.Context()
+	span := spanWithOperation(ctx, "DeleteBucketLifecycle")
 	defer func() {
 		o.errorResponse(w, r, err, errorCode)
 	}()
@@ -183,14 +185,17 @@ func (o *ObjectNode) deleteBucketLifecycleConfigurationHandler(w http.ResponseWr
 		errorCode = InvalidBucketName
 		return
 	}
-	if _, err = o.vm.Volume(param.Bucket()); err != nil {
+
+	if _, err = o.vm.Volume(ctx, param.Bucket()); err != nil {
+		span.Errorf("load volume fail: volume(%v) err(%v)", param.Bucket(), err)
 		errorCode = NoSuchBucket
 		return
 	}
 
-	if err = o.mc.AdminAPI().DelBucketLifecycle(context.TODO(), param.Bucket()); err != nil {
-		log.LogErrorf("deleteBucketLifecycle failed: bucket[%v] err(%v)", param.Bucket(), err)
+	if err = o.mc.AdminAPI().DelBucketLifecycle(ctx, param.Bucket()); err != nil {
+		span.Errorf("delete lifeCycle by master fail: volume(%v) err(%v)", param.Bucket(), err)
 		return
 	}
+
 	w.WriteHeader(http.StatusNoContent)
 }

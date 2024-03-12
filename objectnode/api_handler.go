@@ -15,16 +15,21 @@
 package objectnode
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"strings"
 	"syscall"
 
-	"github.com/cubefs/cubefs/proto"
-	"github.com/cubefs/cubefs/util/log"
-
 	"github.com/gorilla/mux"
+
+	"github.com/cubefs/cubefs/blobstore/common/trace"
+	"github.com/cubefs/cubefs/proto"
 )
+
+func spanWithOperation(ctx context.Context, name string) trace.Span {
+	return proto.SpanFromContext(ctx).WithOperation(name)
+}
 
 type RequestParam struct {
 	resource  string
@@ -104,13 +109,13 @@ func ParseRequestParam(r *http.Request) *RequestParam {
 	return p
 }
 
-func (o *ObjectNode) getVol(bucket string) (vol *Volume, err error) {
+func (o *ObjectNode) getVol(ctx context.Context, bucket string) (vol *Volume, err error) {
 	if bucket == "" {
-		return nil, errors.New("bucket name is empty")
+		err = errors.New("bucket name is empty")
+		return
 	}
-	vol, err = o.vm.Volume(bucket)
-	if err != nil {
-		log.LogErrorf("getVol: load Volume fail, bucket(%v) err(%v)", bucket, err)
+
+	if vol, err = o.vm.Volume(ctx, bucket); err != nil {
 		if err == proto.ErrVolNotExists {
 			err = NoSuchBucket
 			return
@@ -118,33 +123,36 @@ func (o *ObjectNode) getVol(bucket string) (vol *Volume, err error) {
 		err = InternalErrorCode(err)
 		return
 	}
-	return vol, nil
+
+	return
 }
 
-func (o *ObjectNode) errorResponse(w http.ResponseWriter, r *http.Request, err error, ec *ErrorCode) {
-	if err != nil || ec != nil {
-		log.LogErrorf("errorResponse: found error: requestID(%v) err(%v) errCode(%v)", GetRequestID(r), err, ec)
-		if err == syscall.EDQUOT || err == syscall.ENOSPC {
-			ec = DiskQuotaExceeded
+func (o *ObjectNode) errorResponse(w http.ResponseWriter, r *http.Request, err error, erc *ErrorCode) {
+	if err != nil || erc != nil {
+		switch err {
+		case syscall.EDQUOT, syscall.ENOSPC:
+			erc = DiskQuotaExceeded
+		case syscall.EPERM:
+			erc = FileDeleteLock
+		default:
 		}
-		if err == syscall.EPERM {
-			ec = FileDeleteLock
+		if ec1, ok := err.(*ErrorCode); ok && erc == nil {
+			erc = ec1
 		}
-		if ec1, ok := err.(*ErrorCode); ok && ec == nil {
-			ec = ec1
+		if erc == nil {
+			erc = InternalErrorCode(err)
 		}
-		if ec == nil {
-			ec = InternalErrorCode(err)
-		}
-		ec.ServeResponse(w, r)
+
+		erc.ServeResponse(w, r)
 	}
 }
 
 func (o *ObjectNode) unsupportedOperationHandler(w http.ResponseWriter, r *http.Request) {
-	log.LogInfof("Audit: unsupported operation: requestID(%v) remote(%v) action(%v) userAgent(%v)",
-		GetRequestID(r),
-		getRequestIP(r),
+	span := spanWithOperation(r.Context(), "UnsupportedOperation")
+	span.Infof("unsupported operation: action(%v) url(%v) remote(%v) userAgent(%v)",
 		ActionFromRouteName(mux.CurrentRoute(r).GetName()),
+		r.URL.String(),
+		getRequestIP(r),
 		r.UserAgent())
 	UnsupportedOperation.ServeResponse(w, r)
 	return

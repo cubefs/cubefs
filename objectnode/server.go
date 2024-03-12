@@ -19,9 +19,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"path"
 	"regexp"
-	"strings"
 	"sync"
 	"time"
 
@@ -29,6 +27,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/rpc"
 	"github.com/cubefs/cubefs/blobstore/common/rpc/auditlog"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
+	"github.com/cubefs/cubefs/blobstore/util/log"
 	"github.com/cubefs/cubefs/blockcache/bcache"
 	"github.com/cubefs/cubefs/cmd/common"
 	"github.com/cubefs/cubefs/proto"
@@ -36,7 +35,6 @@ import (
 	"github.com/cubefs/cubefs/sdk/master"
 	"github.com/cubefs/cubefs/util/config"
 	"github.com/cubefs/cubefs/util/exporter"
-	"github.com/cubefs/cubefs/util/log"
 	"github.com/cubefs/cubefs/util/reloadconf"
 
 	"github.com/gorilla/mux"
@@ -230,7 +228,7 @@ func (o *ObjectNode) loadConfig(cfg *config.Config) (err error) {
 		return
 	}
 	o.listen = listen
-	log.LogInfof("loadConfig: setup config: %v(%v)", configListen, listen)
+	log.Infof("[loadConfig] load %v: %v", configListen, listen)
 
 	// parse domain
 	domains := cfg.GetStringSlice(configDomains)
@@ -238,14 +236,14 @@ func (o *ObjectNode) loadConfig(cfg *config.Config) (err error) {
 	if o.wildcards, err = NewWildcards(domains); err != nil {
 		return
 	}
-	log.LogInfof("loadConfig: setup config: %v(%v)", configDomains, domains)
+	log.Infof("[loadConfig] load %v: %v", configDomains, domains)
 
 	// parse master config
 	masters := cfg.GetStringSlice(configMasterAddr)
 	if len(masters) == 0 {
 		return config.NewIllegalConfigError(configMasterAddr)
 	}
-	log.LogInfof("loadConfig: setup config: %v(%v)", configMasterAddr, strings.Join(masters, ","))
+	log.Infof("[loadConfig] load %v: %v", configMasterAddr, masters)
 
 	// parse signature ignored actions
 	signatureIgnoredActionNames := cfg.GetStringSlice(configSignatureIgnoredActions)
@@ -253,7 +251,7 @@ func (o *ObjectNode) loadConfig(cfg *config.Config) (err error) {
 		action := proto.ParseAction(actionName)
 		if !action.IsNone() {
 			o.signatureIgnoredActions = append(o.signatureIgnoredActions, action)
-			log.LogInfof("loadConfig: signature ignored action: %v", action)
+			log.Infof("[loadConfig] load signatureIgnoredAction: '%v'", action)
 		}
 	}
 
@@ -263,7 +261,7 @@ func (o *ObjectNode) loadConfig(cfg *config.Config) (err error) {
 		action := proto.ParseAction(actionName)
 		if !action.IsNone() {
 			o.disabledActions = append(o.disabledActions, action)
-			log.LogInfof("loadConfig: disabled action: %v", action)
+			log.Infof("[loadConfig] load disabledAction: '%v'", action)
 		}
 	}
 
@@ -273,7 +271,7 @@ func (o *ObjectNode) loadConfig(cfg *config.Config) (err error) {
 		action := proto.ParseAction(actionName)
 		if !action.IsNone() {
 			o.stsNotAllowedActions = append(o.stsNotAllowedActions, action)
-			log.LogInfof("loadConfig: sts not allowed action: %v", action)
+			log.Infof("[loadConfig] load stsNotAllowedAction: '%v'", action)
 		}
 	}
 
@@ -283,13 +281,19 @@ func (o *ObjectNode) loadConfig(cfg *config.Config) (err error) {
 			err = fmt.Errorf("invalid %v configuration: %v", configAuditLog, err)
 			return
 		}
-		log.LogInfof("loadConfig: setup config: %v(%v)", configAuditLog, rawAuditLog)
+		log.Infof("[loadConfig] load %v: %v", configAuditLog, rawAuditLog)
 	}
 
 	// parse strict config
 	strict := cfg.GetBool(configStrict)
-	log.LogInfof("loadConfig: strict: %v", strict)
-	o.disableCreateBucketByS3 = cfg.GetBool(disableCreateBucketByS3)
+	log.Infof("[loadConfig] load %v: %v", configStrict, strict)
+
+	// parse disableCreateBucketByS3 config
+	disableCreateBktByS3 := cfg.GetBool(disableCreateBucketByS3)
+	if disableCreateBktByS3 {
+		o.disableCreateBucketByS3 = disableCreateBktByS3
+		log.Infof("[loadConfig] load %v: %v", disableCreateBucketByS3, disableCreateBktByS3)
+	}
 
 	o.mc = master.NewMasterClient(masters, false)
 	o.vm = NewVolumeManager(masters, strict)
@@ -313,8 +317,8 @@ func (o *ObjectNode) loadConfig(cfg *config.Config) (err error) {
 			maxInodeAttrCacheNum = defaultMaxInodeAttrCacheNum
 		}
 		objMetaCache = NewObjMetaCache(maxDentryCacheNum, maxInodeAttrCacheNum, cacheRefreshInterval)
-		log.LogDebugf("loadConfig: enableObjMetaCache, maxDentryCacheNum: %v, maxInodeAttrCacheNum: %v"+
-			", cacheRefreshIntervalSec: %v", maxDentryCacheNum, maxInodeAttrCacheNum, cacheRefreshInterval)
+		log.Infof("[loadConfig] load enableObjMetaCache: maxDentryCacheNum[%v], maxInodeAttrCacheNum[%v]"+
+			", cacheRefreshIntervalSec[%v]", maxDentryCacheNum, maxInodeAttrCacheNum, cacheRefreshInterval)
 	}
 
 	enableBlockcache = cfg.GetBool(enableBcache)
@@ -371,25 +375,27 @@ func (o *ObjectNode) setAuditLog(raw interface{}) error {
 }
 
 func handleStart(s common.Server, cfg *config.Config) (err error) {
+	_, ctx := proto.SpanContext()
 	o, ok := s.(*ObjectNode)
 	if !ok {
 		return errors.New("Invalid node Type!")
 	}
 	// parse config
 	if err = o.loadConfig(cfg); err != nil {
+		log.Errorf("[handleStart] load config failed: %v", err)
 		return
 	}
 	// Get cluster info from master
 	var ci *proto.ClusterInfo
-	if ci, err = o.mc.AdminAPI().GetClusterInfo(context.TODO()); err != nil {
+	if ci, err = o.mc.AdminAPI().GetClusterInfo(ctx); err != nil {
+		log.Errorf("[handleStart] get cluster info failed: %v", err)
 		return
 	}
 	o.updateRegion(ci.Cluster)
-	log.LogInfof("handleStart: get cluster information: region(%v)", o.region)
+	log.Infof("[handleStart] cluster region: %v", o.region)
 	if ci.EbsAddr != "" {
-		err = newEbsClient(ci, cfg)
-		if err != nil {
-			log.LogWarnf("handleStart: new ebsClient err(%v)", err)
+		if err = newEbsClient(ci, cfg); err != nil {
+			log.Errorf("[handleStart] new ebs client failed: %v", err)
 			return err
 		}
 		wt := cfg.GetInt(ebsWriteThreads)
@@ -410,7 +416,7 @@ func handleStart(s common.Server, cfg *config.Config) (err error) {
 
 	err = reloadconf.StartReload(reloadConf, o.Reload)
 	if err != nil {
-		log.LogWarnf("handleStart: GetS3QoSInfo err(%v)", err)
+		log.Warnf("[handleStart] GetS3QoSInfo failed: %v", err)
 		o.limitMutex.Lock()
 		o.rateLimit = &NullRateLimit{}
 		o.limitMutex.Unlock()
@@ -418,14 +424,14 @@ func handleStart(s common.Server, cfg *config.Config) (err error) {
 
 	// start rest api
 	if err = o.startMuxRestAPI(); err != nil {
-		log.LogInfof("handleStart: start rest api fail: err(%v)", err)
+		log.Errorf("[handleStart] start rest api failed: %v", err)
 		return
 	}
 
 	exporter.Init(cfg.GetString("role"), cfg)
 	exporter.RegistConsul(ci.Cluster, cfg.GetString("role"), cfg)
 
-	log.LogInfo("object subsystem start success")
+	log.Info("[handleStart] object subsystem start success")
 	return
 }
 
@@ -436,9 +442,6 @@ func newEbsClient(ci *proto.ClusterInfo, cfg *config.Config) (err error) {
 			Address: ci.EbsAddr,
 		},
 		MaxSizePutOnce: MaxSizePutOnce,
-		Logger: &access.Logger{
-			Filename: path.Join(cfg.GetString("logDir"), "ebs.log"),
-		},
 	})
 	return err
 }
@@ -473,7 +476,7 @@ func (o *ObjectNode) startMuxRestAPI() (err error) {
 
 	go func() {
 		if err = server.ListenAndServe(); err != nil {
-			log.LogErrorf("startMuxRestAPI: start http server fail, err(%v)", err)
+			log.Errorf("[startMuxRestAPI] listen http server failed: %v", err)
 			return
 		}
 	}()
