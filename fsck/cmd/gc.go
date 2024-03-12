@@ -88,13 +88,12 @@ func setHostCntLimit(cnt int) {
 
 func getToken(host string) {
 	hostLk.Lock()
-	defer hostLk.Unlock()
-
 	ch, ok := hostLimit[host]
 	if !ok {
 		ch = make(chan struct{}, cntLimit)
 		hostLimit[host] = ch
 	}
+	hostLk.Unlock()
 
 	ch <- struct{}{}
 }
