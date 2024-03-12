@@ -43,6 +43,8 @@ import (
 //TODO: remove this later.
 //go:generate golangci-lint run --issues-exit-code=1 -D errcheck -E bodyclose ./...
 
+// TODO: move to cmd/cmd.go
+
 const (
 	ConfigKeyLogDir     = "logDir"
 	ConfigKeyLogLevel   = "logLevel"
