@@ -639,6 +639,7 @@ func (d *Dir) Rename(ctx context.Context, req *fuse.RenameRequest, newDir fs.Nod
 
 // Setattr handles the setattr request.
 func (d *Dir) Setattr(ctx context.Context, req *fuse.SetattrRequest, resp *fuse.SetattrResponse) error {
+	span, ctxNew := proto.SpanWithContextPrefix(ctx, "Dir-Setattr-")
 	var err error
 	bgTime := stat.BeginStat()
 	defer func() {
@@ -649,12 +650,12 @@ func (d *Dir) Setattr(ctx context.Context, req *fuse.SetattrRequest, resp *fuse.
 	start := time.Now()
 	info, err := d.super.InodeGet(ino)
 	if err != nil {
-		log.Errorf("Setattr: ino(%v) err(%v)", ino, err)
+		span.Errorf("Setattr: ino(%v) err(%v)", ino, err)
 		return ParseError(err)
 	}
 
 	if valid := setattr(info, req); valid != 0 {
-		err = d.super.mw.Setattr(ino, valid, info.Mode, info.Uid, info.Gid, info.AccessTime.Unix(),
+		err = d.super.mw.Setattr(ctxNew, ino, valid, info.Mode, info.Uid, info.Gid, info.AccessTime.Unix(),
 			info.ModifyTime.Unix())
 		if err != nil {
 			d.super.ic.Delete(ino)
@@ -665,7 +666,7 @@ func (d *Dir) Setattr(ctx context.Context, req *fuse.SetattrRequest, resp *fuse.
 	fillAttr(info, &resp.Attr)
 
 	elapsed := time.Since(start)
-	log.Debugf("TRACE Setattr: ino(%v) req(%v) inodeSize(%v) (%v)ns", ino, req, info.Size, elapsed.Nanoseconds())
+	span.Debugf("TRACE Setattr: ino(%v) req(%v) inodeSize(%v) (%v)ns", ino, req, info.Size, elapsed.Nanoseconds())
 	return nil
 }
 
