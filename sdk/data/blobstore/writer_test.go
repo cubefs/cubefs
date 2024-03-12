@@ -73,7 +73,7 @@ func init() {
 	config.Ec = ec
 
 	buf.InitCachePool(8388608)
-	config.Ec.LimitManager = manager.NewLimitManager(nil)
+	config.Ec.LimitManager = manager.NewLimitManager(context.TODO(), nil)
 	writer = NewWriter(config)
 }
 
@@ -333,7 +333,7 @@ func TestNewWriter(t *testing.T) {
 	if err != nil {
 		panic(fmt.Sprintf("Hook advance instance method failed:%s", err.Error()))
 	}
-	config.Ec.LimitManager = manager.NewLimitManager(nil)
+	config.Ec.LimitManager = manager.NewLimitManager(context.TODO(), nil)
 	w := NewWriter(config)
 	_ = w.String()
 }

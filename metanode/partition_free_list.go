@@ -559,7 +559,7 @@ func (mp *metaPartition) deleteObjExtents(ctx context.Context, oeks []proto.ObjE
 	total := len(oeks)
 	for i := 0; i < total; i += maxDelCntOnce {
 		max := util.Min(i+maxDelCntOnce, total)
-		err = mp.ebsClient.Delete(oeks[i:max])
+		err = mp.ebsClient.Delete(ctx, oeks[i:max])
 		if err != nil {
 			span.Errorf("delete ebs eks fail, cnt(%d), err(%s)", max-i, err.Error())
 			return err

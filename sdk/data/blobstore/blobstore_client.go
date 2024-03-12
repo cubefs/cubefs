@@ -147,8 +147,7 @@ func (ebs *BlobStoreClient) Write(ctx context.Context, volName string, data []by
 	return location, nil
 }
 
-func (ebs *BlobStoreClient) Delete(oeks []proto.ObjExtentKey) (err error) {
-	ctx := context.TODO()
+func (ebs *BlobStoreClient) Delete(ctx context.Context, oeks []proto.ObjExtentKey) (err error) {
 	span := proto.SpanFromContext(ctx)
 	bgTime := stat.BeginStat()
 	defer func() {

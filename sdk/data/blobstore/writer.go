@@ -519,7 +519,7 @@ func (writer *Writer) asyncCache(ctx context.Context, ino uint64, offset int, da
 	}()
 
 	span.Debugf("TRACE asyncCache Enter,fileOffset(%v) len(%v)", offset, len(data))
-	write, err := writer.ec.Write(ino, offset, data, proto.FlagsCache, nil)
+	write, err := writer.ec.Write(ctx, ino, offset, data, proto.FlagsCache, nil)
 	span.Debugf("TRACE asyncCache Exit,write(%v) err(%v)", write, err)
 }
 

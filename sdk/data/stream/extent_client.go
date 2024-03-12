@@ -159,8 +159,7 @@ type ExtentClient struct {
 	multiVerMgr        *MultiVerMgr
 }
 
-func (client *ExtentClient) UidIsLimited(uid uint32) bool {
-	ctx := context.TODO()
+func (client *ExtentClient) UidIsLimited(ctx context.Context, uid uint32) bool {
 	span := proto.SpanFromContext(ctx)
 	client.dataWrapper.UidLock.RLock()
 	defer client.dataWrapper.UidLock.RUnlock()
@@ -232,16 +231,15 @@ func (client *ExtentClient) backgroundEvictStream(ctx context.Context) {
 }
 
 // NewExtentClient returns a new extent client.
-func NewExtentClient(config *ExtentConfig) (client *ExtentClient, err error) {
-	ctx := context.TODO()
+func NewExtentClient(ctx context.Context, config *ExtentConfig) (client *ExtentClient, err error) {
 	span := proto.SpanFromContext(ctx)
 	client = new(ExtentClient)
-	client.LimitManager = manager.NewLimitManager(client)
+	client.LimitManager = manager.NewLimitManager(ctx, client)
 	client.LimitManager.WrapperUpdate = client.UploadFlowInfo
 	limit := 0
 retry:
 
-	client.dataWrapper, err = wrapper.NewDataPartitionWrapper(client, config.Volume, config.Masters, config.Preload, config.MinWriteAbleDataPartitionCnt, config.VerReadSeq)
+	client.dataWrapper, err = wrapper.NewDataPartitionWrapper(ctx, client, config.Volume, config.Masters, config.Preload, config.MinWriteAbleDataPartitionCnt, config.VerReadSeq)
 	if err != nil {
 		span.Errorf("NewExtentClient: new data partition wrapper failed: volume(%v) mayRetry(%v) err(%v)",
 			config.Volume, limit, err)
@@ -266,7 +264,7 @@ retry:
 	client.truncate = config.OnTruncate
 	client.evictIcache = config.OnEvictIcache
 	client.dataWrapper.InitFollowerRead(config.FollowerRead)
-	client.dataWrapper.SetNearRead(config.NearRead)
+	client.dataWrapper.SetNearRead(ctx, config.NearRead)
 	client.loadBcache = config.OnLoadBcache
 	client.cacheBcache = config.OnCacheBcache
 	client.evictBcache = config.OnEvictBcache
@@ -319,18 +317,16 @@ func (client *ExtentClient) GetEnablePosixAcl() bool {
 	return client.dataWrapper.EnablePosixAcl
 }
 
-func (client *ExtentClient) GetFlowInfo() (*proto.ClientReportLimitInfo, bool) {
-	ctx := context.TODO()
+func (client *ExtentClient) GetFlowInfo(ctx context.Context) (*proto.ClientReportLimitInfo, bool) {
 	span := proto.SpanFromContext(ctx)
 	span.Info("action[ExtentClient.GetFlowInfo]")
-	return client.LimitManager.GetFlowInfo()
+	return client.LimitManager.GetFlowInfo(ctx)
 }
 
-func (client *ExtentClient) UpdateFlowInfo(limit *proto.LimitRsp2Client) {
-	ctx := context.TODO()
+func (client *ExtentClient) UpdateFlowInfo(ctx context.Context, limit *proto.LimitRsp2Client) {
 	span := proto.SpanFromContext(ctx)
 	span.Infof("action[UpdateFlowInfo.UpdateFlowInfo]")
-	client.LimitManager.SetClientLimit(limit)
+	client.LimitManager.SetClientLimit(ctx, limit)
 	return
 }
 
@@ -355,8 +351,7 @@ func (client *ExtentClient) GetVerMgr() *proto.VolVersionInfoList {
 	return client.multiVerMgr.verList
 }
 
-func (client *ExtentClient) UpdateLatestVer(verList *proto.VolVersionInfoList) (err error) {
-	ctx := context.TODO()
+func (client *ExtentClient) UpdateLatestVer(ctx context.Context, verList *proto.VolVersionInfoList) (err error) {
 	span := proto.SpanFromContext(ctx)
 	ctx = proto.ContextWithOperationf(ctx, "UpdateLatestVer")
 	verSeq := verList.GetLastVer()
@@ -396,11 +391,11 @@ func (client *ExtentClient) UpdateLatestVer(verList *proto.VolVersionInfoList) (
 }
 
 // Open request shall grab the lock until request is sent to the request channel
-func (client *ExtentClient) OpenStream(inode uint64) error {
+func (client *ExtentClient) OpenStream(ctx context.Context, inode uint64) error {
 	client.streamerLock.Lock()
 	s, ok := client.streamers[inode]
 	if !ok {
-		s = NewStreamer(client, inode)
+		s = NewStreamer(ctx, client, inode)
 		client.streamers[inode] = s
 	}
 	return s.IssueOpenRequest()
@@ -413,7 +408,7 @@ func (client *ExtentClient) OpenStreamWithCache(ctx context.Context, inode uint6
 	client.streamerLock.Lock()
 	s, ok := client.streamers[inode]
 	if !ok {
-		s = NewStreamer(client, inode)
+		s = NewStreamer(ctx, client, inode)
 		client.streamers[inode] = s
 		if !client.disableMetaCache && needBCache {
 			client.streamerList.PushFront(inode)
@@ -468,7 +463,7 @@ func (client *ExtentClient) EvictStream(inode uint64) error {
 // RefreshExtentsCache refreshes the extent cache.
 func (client *ExtentClient) RefreshExtentsCache(ctx context.Context, inode uint64) error {
 	ctx = proto.ContextWithOperation(ctx, "RefreshExtentsCache")
-	s := client.GetStreamer(inode)
+	s := client.GetStreamer(ctx, inode)
 	if s == nil {
 		return nil
 	}
@@ -477,7 +472,7 @@ func (client *ExtentClient) RefreshExtentsCache(ctx context.Context, inode uint6
 
 func (client *ExtentClient) ForceRefreshExtentsCache(ctx context.Context, inode uint64) error {
 	ctx = proto.ContextWithOperation(ctx, "ForceRefreshExtentsCache")
-	s := client.GetStreamer(inode)
+	s := client.GetStreamer(ctx, inode)
 	if s == nil {
 		return nil
 	}
@@ -485,16 +480,16 @@ func (client *ExtentClient) ForceRefreshExtentsCache(ctx context.Context, inode 
 }
 
 // GetExtentCacheGen return extent generation
-func (client *ExtentClient) GetExtentCacheGen(inode uint64) uint64 {
-	s := client.GetStreamer(inode)
+func (client *ExtentClient) GetExtentCacheGen(ctx context.Context, inode uint64) uint64 {
+	s := client.GetStreamer(ctx, inode)
 	if s == nil {
 		return 0
 	}
 	return s.extents.gen
 }
 
-func (client *ExtentClient) GetExtents(inode uint64) []*proto.ExtentKey {
-	s := client.GetStreamer(inode)
+func (client *ExtentClient) GetExtents(ctx context.Context, inode uint64) []*proto.ExtentKey {
+	s := client.GetStreamer(ctx, inode)
 	if s == nil {
 		return nil
 	}
@@ -502,8 +497,8 @@ func (client *ExtentClient) GetExtents(inode uint64) []*proto.ExtentKey {
 }
 
 // FileSize returns the file size.
-func (client *ExtentClient) FileSize(inode uint64) (size int, gen uint64, valid bool) {
-	s := client.GetStreamer(inode)
+func (client *ExtentClient) FileSize(ctx context.Context, inode uint64) (size int, gen uint64, valid bool) {
+	s := client.GetStreamer(ctx, inode)
 	if s == nil {
 		return
 	}
@@ -515,7 +510,7 @@ func (client *ExtentClient) FileSize(inode uint64) (size int, gen uint64, valid 
 // SetFileSize set the file size.
 func (client *ExtentClient) SetFileSize(ctx context.Context, inode uint64, size int) {
 	span := proto.SpanFromContext(ctx)
-	s := client.GetStreamer(inode)
+	s := client.GetStreamer(ctx, inode)
 	if s != nil {
 		span.Debugf("SetFileSize: ino(%v) size(%v)", inode, size)
 		s.extents.SetSize(uint64(size), true)
@@ -523,12 +518,11 @@ func (client *ExtentClient) SetFileSize(ctx context.Context, inode uint64, size 
 }
 
 // Write writes the data.
-func (client *ExtentClient) Write(inode uint64, offset int, data []byte, flags int, checkFunc func() error) (write int, err error) {
-	ctx := context.TODO()
+func (client *ExtentClient) Write(ctx context.Context, inode uint64, offset int, data []byte, flags int, checkFunc func() error) (write int, err error) {
 	span := proto.SpanFromContext(ctx)
 	ctx = proto.ContextWithOperation(ctx, "Write")
 	prefix := fmt.Sprintf("Write{ino(%v)offset(%v)size(%v)}", inode, offset, len(data))
-	s := client.GetStreamer(inode)
+	s := client.GetStreamer(ctx, inode)
 	if s == nil {
 		span.Errorf("Prefix(%v): stream is not opened yet", prefix)
 		return 0, syscall.EBADF
@@ -547,12 +541,11 @@ func (client *ExtentClient) Write(inode uint64, offset int, data []byte, flags i
 	return
 }
 
-func (client *ExtentClient) Truncate(mw *meta.MetaWrapper, parentIno uint64, inode uint64, size int, fullPath string) error {
-	ctx := context.TODO()
+func (client *ExtentClient) Truncate(ctx context.Context, mw *meta.MetaWrapper, parentIno uint64, inode uint64, size int, fullPath string) error {
 	span := proto.SpanFromContext(ctx)
 	ctx = proto.ContextWithOperation(ctx, "Truncate")
 	prefix := fmt.Sprintf("Truncate{ino(%v)size(%v)}", inode, size)
-	s := client.GetStreamer(inode)
+	s := client.GetStreamer(ctx, inode)
 	if s == nil {
 		span.Errorf("Prefix(%v): stream is not opened yet", prefix)
 		return syscall.EBADF
@@ -576,11 +569,10 @@ func (client *ExtentClient) Truncate(mw *meta.MetaWrapper, parentIno uint64, ino
 	return err
 }
 
-func (client *ExtentClient) Flush(inode uint64) error {
-	ctx := context.TODO()
+func (client *ExtentClient) Flush(ctx context.Context, inode uint64) error {
 	span := proto.SpanFromContext(ctx)
 	ctx = proto.ContextWithOperation(ctx, "Flush")
-	s := client.GetStreamer(inode)
+	s := client.GetStreamer(ctx, inode)
 	if s == nil {
 		span.Errorf("Flush: stream is not opened yet, ino(%v)", inode)
 		return syscall.EBADF
@@ -588,10 +580,9 @@ func (client *ExtentClient) Flush(inode uint64) error {
 	return s.IssueFlushRequest()
 }
 
-func (client *ExtentClient) Read(inode uint64, data []byte, offset int, size int) (read int, err error) {
+func (client *ExtentClient) Read(ctx context.Context, inode uint64, data []byte, offset int, size int) (read int, err error) {
 	// log.LogErrorf("======> ExtentClient Read Enter, inode(%v), len(data)=(%v), offset(%v), size(%v).", inode, len(data), offset, size)
 	// t1 := time.Now()
-	ctx := context.TODO()
 	span := proto.SpanFromContext(ctx)
 	ctx = proto.ContextWithOperation(ctx, "Read")
 
@@ -599,7 +590,7 @@ func (client *ExtentClient) Read(inode uint64, data []byte, offset int, size int
 		return
 	}
 
-	s := client.GetStreamer(inode)
+	s := client.GetStreamer(ctx, inode)
 	if s == nil {
 		span.Errorf("Read: stream is not opened yet, ino(%v) offset(%v) size(%v)", inode, offset, size)
 		return 0, syscall.EBADF
@@ -633,7 +624,7 @@ func (client *ExtentClient) ReadExtent(ctx context.Context, inode uint64, ek *pr
 		return
 	}
 
-	s := client.GetStreamer(inode)
+	s := client.GetStreamer(ctx, inode)
 	if s == nil {
 		err = fmt.Errorf("Read: stream is not opened yet, ino(%v) ek(%v)", inode, ek)
 		return
@@ -696,8 +687,7 @@ func (client *ExtentClient) ReadExtent(ctx context.Context, inode uint64, ek *pr
 }
 
 // GetStreamer returns the streamer.
-func (client *ExtentClient) GetStreamer(inode uint64) *Streamer {
-	ctx := context.TODO()
+func (client *ExtentClient) GetStreamer(ctx context.Context, inode uint64) *Streamer {
 	ctx = proto.ContextWithOperation(ctx, "GetStreamer")
 	client.streamerLock.Lock()
 	defer client.streamerLock.Unlock()
@@ -764,29 +754,29 @@ func (client *ExtentClient) Close() error {
 	return nil
 }
 
-func (client *ExtentClient) AllocatePreLoadDataPartition(volName string, count int, capacity, ttl uint64, zones string) (err error) {
-	return client.dataWrapper.AllocatePreLoadDataPartition(volName, count, capacity, ttl, zones)
+func (client *ExtentClient) AllocatePreLoadDataPartition(ctx context.Context, volName string, count int, capacity, ttl uint64, zones string) (err error) {
+	return client.dataWrapper.AllocatePreLoadDataPartition(ctx, volName, count, capacity, ttl, zones)
 }
 
-func (client *ExtentClient) CheckDataPartitionExsit(partitionID uint64) error {
-	_, err := client.dataWrapper.GetDataPartition(partitionID)
+func (client *ExtentClient) CheckDataPartitionExsit(ctx context.Context, partitionID uint64) error {
+	_, err := client.dataWrapper.GetDataPartition(ctx, partitionID)
 	return err
 }
 
-func (client *ExtentClient) GetDataPartitionForWrite() error {
+func (client *ExtentClient) GetDataPartitionForWrite(ctx context.Context) error {
 	exclude := make(map[string]struct{})
-	_, err := client.dataWrapper.GetDataPartitionForWrite(exclude)
+	_, err := client.dataWrapper.GetDataPartitionForWrite(ctx, exclude)
 	return err
 }
 
-func (client *ExtentClient) UpdateDataPartitionForColdVolume() error {
-	return client.dataWrapper.UpdateDataPartition()
+func (client *ExtentClient) UpdateDataPartitionForColdVolume(ctx context.Context) error {
+	return client.dataWrapper.UpdateDataPartition(ctx)
 }
 
 func (client *ExtentClient) IsPreloadMode() bool {
 	return client.preload
 }
 
-func (client *ExtentClient) UploadFlowInfo(clientInfo wrapper.SimpleClientInfo) error {
-	return client.dataWrapper.UploadFlowInfo(clientInfo, false)
+func (client *ExtentClient) UploadFlowInfo(ctx context.Context, clientInfo wrapper.SimpleClientInfo) error {
+	return client.dataWrapper.UploadFlowInfo(ctx, clientInfo, false)
 }
