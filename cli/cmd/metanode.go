@@ -15,7 +15,6 @@
 package cmd
 
 import (
-	"context"
 	"sort"
 	"strings"
 
@@ -60,11 +59,10 @@ func newMetaNodeListCmd(client *master.MasterClient) *cobra.Command {
 		Aliases: []string{"ls"},
 		Run: func(cmd *cobra.Command, args []string) {
 			var err error
-			defer func() {
-				errout(err)
-			}()
+			span, ctx := spanContext()
+			defer func() { errout(span, err) }()
 			var view *proto.ClusterView
-			if view, err = client.AdminAPI().GetCluster(context.TODO()); err != nil {
+			if view, err = client.AdminAPI().GetCluster(ctx); err != nil {
 				return
 			}
 			sort.SliceStable(view.MetaNodes, func(i, j int) bool {
@@ -91,6 +89,7 @@ func newMetaNodeListCmd(client *master.MasterClient) *cobra.Command {
 }
 
 func newMetaNodeInfoCmd(client *master.MasterClient) *cobra.Command {
+	span, ctx := spanContext()
 	cmd := &cobra.Command{
 		Use:   CliOpInfo + " [{HOST}:{PORT}]",
 		Short: cmdMetaNodeInfoShort,
@@ -99,11 +98,9 @@ func newMetaNodeInfoCmd(client *master.MasterClient) *cobra.Command {
 			var err error
 			var nodeAddr string
 			var metanodeInfo *proto.MetaNodeInfo
-			defer func() {
-				errout(err)
-			}()
+			defer func() { errout(span, err) }()
 			nodeAddr = args[0]
-			if metanodeInfo, err = client.NodeAPI().GetMetaNode(context.TODO(), nodeAddr); err != nil {
+			if metanodeInfo, err = client.NodeAPI().GetMetaNode(ctx, nodeAddr); err != nil {
 				return
 			}
 			stdout("[Meta node info]\n")
@@ -113,7 +110,7 @@ func newMetaNodeInfoCmd(client *master.MasterClient) *cobra.Command {
 			if len(args) != 0 {
 				return nil, cobra.ShellCompDirectiveNoFileComp
 			}
-			return validMetaNodes(client, toComplete), cobra.ShellCompDirectiveNoFileComp
+			return validMetaNodes(ctx, client, toComplete), cobra.ShellCompDirectiveNoFileComp
 		},
 	}
 	return cmd
@@ -124,6 +121,7 @@ func newMetaNodeDecommissionCmd(client *master.MasterClient) *cobra.Command {
 		optCount    int
 		clientIDKey string
 	)
+	span, ctx := spanContext()
 	cmd := &cobra.Command{
 		Use:   CliOpDecommission + " [{HOST}:{PORT}]",
 		Short: cmdMetaNodeDecommissionInfoShort,
@@ -131,15 +129,13 @@ func newMetaNodeDecommissionCmd(client *master.MasterClient) *cobra.Command {
 		Run: func(cmd *cobra.Command, args []string) {
 			var err error
 			var nodeAddr string
-			defer func() {
-				errout(err)
-			}()
+			defer func() { errout(span, err) }()
 			nodeAddr = args[0]
 			if optCount < 0 {
 				stdout("Migrate mp count should >= 0\n")
 				return
 			}
-			if err = client.NodeAPI().MetaNodeDecommission(context.TODO(), nodeAddr, optCount, clientIDKey); err != nil {
+			if err = client.NodeAPI().MetaNodeDecommission(ctx, nodeAddr, optCount, clientIDKey); err != nil {
 				return
 			}
 			stdout("Decommission meta node successfully\n")
@@ -148,7 +144,7 @@ func newMetaNodeDecommissionCmd(client *master.MasterClient) *cobra.Command {
 			if len(args) != 0 {
 				return nil, cobra.ShellCompDirectiveNoFileComp
 			}
-			return validMetaNodes(client, toComplete), cobra.ShellCompDirectiveNoFileComp
+			return validMetaNodes(ctx, client, toComplete), cobra.ShellCompDirectiveNoFileComp
 		},
 	}
 	cmd.Flags().IntVar(&optCount, CliFlagCount, 0, "MetaNode delete mp count")
@@ -161,6 +157,7 @@ func newMetaNodeMigrateCmd(client *master.MasterClient) *cobra.Command {
 		optCount    int
 		clientIDKey string
 	)
+	span, ctx := spanContext()
 	cmd := &cobra.Command{
 		Use:   CliOpMigrate + " src[{HOST}:{PORT}] dst[{HOST}:{PORT}]",
 		Short: cmdMetaNodeMigrateInfoShort,
@@ -168,16 +165,14 @@ func newMetaNodeMigrateCmd(client *master.MasterClient) *cobra.Command {
 		Run: func(cmd *cobra.Command, args []string) {
 			var err error
 			var src, dst string
-			defer func() {
-				errout(err)
-			}()
+			defer func() { errout(span, err) }()
 			src = args[0]
 			dst = args[1]
 			if optCount > mpMigrateMax || optCount <= 0 {
 				stdout("Migrate mp count should between [1-15]\n")
 				return
 			}
-			if err = client.NodeAPI().MetaNodeMigrate(context.TODO(), src, dst, optCount, clientIDKey); err != nil {
+			if err = client.NodeAPI().MetaNodeMigrate(ctx, src, dst, optCount, clientIDKey); err != nil {
 				return
 			}
 			stdout("Migrate meta node successfully\n")
@@ -186,7 +181,7 @@ func newMetaNodeMigrateCmd(client *master.MasterClient) *cobra.Command {
 			if len(args) != 0 {
 				return nil, cobra.ShellCompDirectiveNoFileComp
 			}
-			return validMetaNodes(client, toComplete), cobra.ShellCompDirectiveNoFileComp
+			return validMetaNodes(ctx, client, toComplete), cobra.ShellCompDirectiveNoFileComp
 		},
 	}
 	cmd.Flags().IntVar(&optCount, CliFlagCount, mpMigrateMax, "Migrate mp count")
