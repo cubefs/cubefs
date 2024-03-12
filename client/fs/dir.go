@@ -134,7 +134,7 @@ func (d *Dir) Attr(ctx context.Context, a *fuse.Attr) error {
 	}()
 
 	ino := d.info.Inode
-	info, err := d.super.InodeGet(ino)
+	info, err := d.super.InodeGet(ctx, ino)
 	if err != nil {
 		log.Errorf("Attr: ino(%v) err(%v)", ino, err)
 		return ParseError(err)
@@ -174,7 +174,7 @@ func (d *Dir) Create(ctx context.Context, req *fuse.CreateRequest, resp *fuse.Cr
 	child := NewFile(d.super, info, uint32(req.Flags&DefaultFlag), d.info.Inode, req.Name)
 	newInode = info.Inode
 
-	d.super.ec.OpenStream(info.Inode)
+	d.super.ec.OpenStream(ctx, info.Inode)
 	d.super.fslock.Lock()
 	d.super.nodeCache[info.Inode] = child
 	d.super.fslock.Unlock()
@@ -343,7 +343,7 @@ func (d *Dir) Lookup(ctx context.Context, req *fuse.LookupRequest, resp *fuse.Lo
 		ino = cino
 	}
 
-	info, err := d.super.InodeGet(ino)
+	info, err := d.super.InodeGet(ctx, ino)
 	if err != nil {
 		log.Errorf("Lookup: parent(%v) name(%v) ino(%v) err(%v)", d.info.Inode, req.Name, ino, err)
 		dummyInodeInfo := &proto.InodeInfo{Inode: ino}
@@ -648,7 +648,7 @@ func (d *Dir) Setattr(ctx context.Context, req *fuse.SetattrRequest, resp *fuse.
 
 	ino := d.info.Inode
 	start := time.Now()
-	info, err := d.super.InodeGet(ino)
+	info, err := d.super.InodeGet(ctx, ino)
 	if err != nil {
 		span.Errorf("Setattr: ino(%v) err(%v)", ino, err)
 		return ParseError(err)

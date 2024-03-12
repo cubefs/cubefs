@@ -315,7 +315,7 @@ func (eh *ExtentHandler) processReply(ctx context.Context, packet *Packet) {
 
 	if reply.VerSeq > atomic.LoadUint64(&eh.stream.verSeq) || (eh.key != nil && reply.VerSeq > eh.key.GetSeq()) {
 		span.Debugf("processReply.UpdateLatestVer update verseq according to data rsp from version %v to %v", eh.stream.verSeq, reply.VerSeq)
-		if err = eh.stream.client.UpdateLatestVer(&proto.VolVersionInfoList{VerList: reply.VerList}); err != nil {
+		if err = eh.stream.client.UpdateLatestVer(ctx, &proto.VolVersionInfoList{VerList: reply.VerList}); err != nil {
 			eh.processReplyError(ctx, packet, err.Error())
 			return
 		}
@@ -350,7 +350,7 @@ func (eh *ExtentHandler) processReply(ctx context.Context, packet *Packet) {
 		return
 	}
 
-	eh.dp.RecordWrite(packet.StartT)
+	eh.dp.RecordWrite(ctx, packet.StartT)
 
 	var extID, extOffset uint64
 
@@ -583,7 +583,7 @@ func (eh *ExtentHandler) allocateExtent(ctx context.Context) (err error) {
 
 	for i := 0; i < MaxSelectDataPartitionForWrite; i++ {
 		if eh.key == nil {
-			if dp, err = eh.stream.client.dataWrapper.GetDataPartitionForWrite(exclude); err != nil {
+			if dp, err = eh.stream.client.dataWrapper.GetDataPartitionForWrite(ctx, exclude); err != nil {
 				span.Warnf("allocateExtent: failed to get write data partition, eh(%v) exclude(%v), clear exclude and try again!", eh, exclude)
 				exclude = make(map[string]struct{})
 				continue
@@ -597,11 +597,11 @@ func (eh *ExtentHandler) allocateExtent(ctx context.Context) (err error) {
 				span.Warnf("allocateExtent: exclude dp[%v] for write caused by create extent failed, eh(%v) err(%v) exclude(%v)",
 					dp, eh, err, exclude)
 				eh.stream.client.dataWrapper.RemoveDataPartitionForWrite(dp.PartitionID)
-				dp.CheckAllHostsIsAvail(exclude)
+				dp.CheckAllHostsIsAvail(ctx, exclude)
 				continue
 			}
 		} else {
-			if dp, err = eh.stream.client.dataWrapper.GetDataPartition(eh.key.PartitionId); err != nil {
+			if dp, err = eh.stream.client.dataWrapper.GetDataPartition(ctx, eh.key.PartitionId); err != nil {
 				span.Warnf("allocateExtent: failed to get write data partition, eh(%v)", eh)
 				break
 			}
@@ -612,7 +612,7 @@ func (eh *ExtentHandler) allocateExtent(ctx context.Context) (err error) {
 			span.Warnf("allocateExtent: failed to create connection, eh(%v) err(%v) dp(%v) exclude(%v)",
 				eh, err, dp, exclude)
 			// If storeMode is tinyExtentType and can't create connection, we also check host status.
-			dp.CheckAllHostsIsAvail(exclude)
+			dp.CheckAllHostsIsAvail(ctx, exclude)
 			if eh.key != nil {
 				break
 			}
