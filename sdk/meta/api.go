@@ -15,6 +15,7 @@
 package meta
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	syslog "log"
@@ -1680,16 +1681,17 @@ func (mw *MetaWrapper) Evict(inode uint64, fullPath string) error {
 	return nil
 }
 
-func (mw *MetaWrapper) Setattr(inode uint64, valid, mode, uid, gid uint32, atime, mtime int64) error {
+func (mw *MetaWrapper) Setattr(ctx context.Context, inode uint64, valid, mode, uid, gid uint32, atime, mtime int64) error {
 	mp := mw.getPartitionByInode(inode)
+	span := proto.SpanFromContext(ctx)
 	if mp == nil {
-		log.LogErrorf("Setattr: No such partition, ino(%v)", inode)
+		span.Errorf("Setattr: No such partition, ino(%v)", inode)
 		return syscall.EINVAL
 	}
 
-	status, err := mw.setattr(mp, inode, valid, mode, uid, gid, atime, mtime)
+	status, err := mw.setattr(ctx, mp, inode, valid, mode, uid, gid, atime, mtime)
 	if err != nil || status != statusOK {
-		log.LogErrorf("Setattr: ino(%v) err(%v) status(%v)", inode, err, status)
+		span.Errorf("Setattr: ino(%v) err(%v) status(%v)", inode, err, status)
 		return statusToErrno(status)
 	}
 

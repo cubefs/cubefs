@@ -15,6 +15,7 @@
 package meta
 
 import (
+	"context"
 	"fmt"
 	"strconv"
 	"sync"
@@ -1543,7 +1544,7 @@ func (mw *MetaWrapper) ilinkWork(mp *MetaPartition, inode uint64, op uint8, full
 	return statusOK, resp.Info, nil
 }
 
-func (mw *MetaWrapper) setattr(mp *MetaPartition, inode uint64, valid, mode, uid, gid uint32, atime, mtime int64) (status int, err error) {
+func (mw *MetaWrapper) setattr(ctx context.Context, mp *MetaPartition, inode uint64, valid, mode, uid, gid uint32, atime, mtime int64) (status int, err error) {
 	bgTime := stat.BeginStat()
 	defer func() {
 		stat.EndStat("setattr", err, bgTime, 1)
@@ -1561,16 +1562,17 @@ func (mw *MetaWrapper) setattr(mp *MetaPartition, inode uint64, valid, mode, uid
 		ModifyTime:  mtime,
 	}
 
-	packet := proto.NewPacketReqID()
+	packet := proto.NewPacketReqID().WithContext(ctx)
+	span := packet.Span()
 	packet.Opcode = proto.OpMetaSetattr
 	packet.PartitionID = mp.PartitionID
 	err = packet.MarshalData(req)
 	if err != nil {
-		log.LogErrorf("setattr: err(%v)", err)
+		span.Errorf("setattr: err(%v)", err)
 		return
 	}
 
-	log.LogDebugf("setattr enter: packet(%v) mp(%v) req(%v)", packet, mp, string(packet.Data))
+	span.Debugf("setattr enter: packet(%v) mp(%v) req(%v)", packet, mp, string(packet.Data))
 
 	metric := exporter.NewTPCnt(packet.GetOpMsg())
 	defer func() {
@@ -1579,18 +1581,18 @@ func (mw *MetaWrapper) setattr(mp *MetaPartition, inode uint64, valid, mode, uid
 
 	packet, err = mw.sendToMetaPartition(mp, packet)
 	if err != nil {
-		log.LogErrorf("setattr: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
+		span.Errorf("setattr: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
 		return
 	}
 
 	status = parseStatus(packet.ResultCode)
 	if status != statusOK {
 		err = errors.New(packet.GetResultMsg())
-		log.LogErrorf("setattr: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
+		span.Errorf("setattr: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
 		return
 	}
 
-	log.LogDebugf("setattr exit: packet(%v) mp(%v) req(%v)", packet, mp, *req)
+	span.Debugf("setattr exit: packet(%v) mp(%v) req(%v)", packet, mp, *req)
 	return statusOK, nil
 }
 
