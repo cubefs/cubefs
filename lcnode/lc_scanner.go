@@ -16,7 +16,10 @@ package lcnode
 
 import (
 	"context"
+	"github.com/cubefs/cubefs/blobstore/api/access"
+	"github.com/cubefs/cubefs/sdk/data/blobstore"
 	"os"
+	"path"
 	"strings"
 	"sync/atomic"
 	"syscall"
@@ -90,21 +93,21 @@ func NewS3Scanner(adminTask *proto.AdminTask, l *LcNode) (*LcScanner, error) {
 		stopC:         make(chan bool, 0),
 	}
 
-	//var ebsConfig = access.Config{
-	//	ConnMode: access.NoLimitConnMode,
-	//	Consul: access.ConsulConfig{
-	//		Address: l.ebsAddr,
-	//	},
-	//	MaxSizePutOnce: MaxSizePutOnce,
-	//	Logger: &access.Logger{
-	//		Filename: path.Join(l.logDir, "ebs.log"),
-	//	},
-	//}
-	//var ebsClient *blobstore.BlobStoreClient
-	//if ebsClient, err = blobstore.NewEbsClient(ebsConfig); err != nil {
-	//	log.LogErrorf("NewEbsClient err: %v", err)
-	//	return nil, err
-	//}
+	var ebsConfig = access.Config{
+		ConnMode: access.NoLimitConnMode,
+		Consul: access.ConsulConfig{
+			Address: l.ebsAddr,
+		},
+		MaxSizePutOnce: MaxSizePutOnce,
+		Logger: &access.Logger{
+			Filename: path.Join(l.logDir, "ebs.log"),
+		},
+	}
+	var ebsClient *blobstore.BlobStoreClient
+	if ebsClient, err = blobstore.NewEbsClient(ebsConfig); err != nil {
+		log.LogErrorf("NewEbsClient err: %v", err)
+		return nil, err
+	}
 
 	var volumeInfo *proto.SimpleVolView
 	volumeInfo, err = l.mc.AdminAPI().GetVolumeSimpleInfo(scanner.Volume)
@@ -141,10 +144,10 @@ func NewS3Scanner(adminTask *proto.AdminTask, l *LcNode) (*LcScanner, error) {
 	}
 
 	scanner.remoteTransitionMgr = &RemoteTransitionMgr{
-		volume: scanner.Volume,
-		ec:     extentClient,
-		ecForW: extentClientForW,
-		//ebsClient: ebsClient,
+		volume:    scanner.Volume,
+		ec:        extentClient,
+		ecForW:    extentClientForW,
+		ebsClient: ebsClient,
 	}
 
 	scanner.localTransitionMgr = &LocalTransitionMgr{
