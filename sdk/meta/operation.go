@@ -2834,5 +2834,5 @@ func (mw *MetaWrapper) checkVerFromMeta(packet *proto.Packet) {
 	}
 
 	log.Debugf("checkVerFromMeta.UpdateLatestVer.try update meta wrapper verSeq from %v to %v verlist[%v]", mw.Client.GetLatestVer(), packet.VerSeq, packet.VerList)
-	mw.Client.UpdateLatestVer(&proto.VolVersionInfoList{VerList: packet.VerList})
+	mw.Client.UpdateLatestVer(context.TODO(), &proto.VolVersionInfoList{VerList: packet.VerList})
 }

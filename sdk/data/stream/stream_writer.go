@@ -273,24 +273,30 @@ func (s *Streamer) handleRequest(ctx context.Context, request interface{}) {
 
 	switch request := request.(type) {
 	case *OpenRequest:
+		ctx = proto.ContextWithOperation(ctx, "stream-open")
 		s.open(ctx)
 		request.done <- struct{}{}
 	case *WriteRequest:
+		ctx = proto.ContextWithOperation(ctx, "stream-write")
 		request.writeBytes, request.err = s.write(ctx, request.data, request.fileOffset, request.size, request.flags, request.checkFunc)
 		request.done <- struct{}{}
 	case *TruncRequest:
+		ctx = proto.ContextWithOperation(ctx, "stream-truncate")
 		request.err = s.truncate(ctx, request.size, request.fullPath)
 		request.done <- struct{}{}
 	case *FlushRequest:
+		ctx = proto.ContextWithOperation(ctx, "stream-flush")
 		request.err = s.flush(ctx)
 		request.done <- struct{}{}
 	case *ReleaseRequest:
+		ctx = proto.ContextWithOperation(ctx, "stream-release")
 		request.err = s.release(ctx)
 		request.done <- struct{}{}
 	case *EvictRequest:
 		request.err = s.evict()
 		request.done <- struct{}{}
 	case *VerUpdateRequest:
+		ctx = proto.ContextWithOperation(ctx, "stream-updateVer")
 		request.err = s.updateVer(ctx, request.verSeq)
 		request.done <- struct{}{}
 	default:
@@ -325,6 +331,7 @@ begin:
 		if req.ExtentKey == nil {
 			continue
 		}
+		ctx = proto.ContextWithOperation(ctx, req.ExtentKey.GetExtentKey())
 		err = s.flush(ctx)
 		if err != nil {
 			return
@@ -351,6 +358,7 @@ begin:
 			}
 			span.Debugf("action[streamer.write] inode [%v] latest seq [%v] extentkey seq [%v]  info [%v] before compare seq",
 				s.inode, s.verSeq, req.ExtentKey.GetSeq(), req.ExtentKey)
+			ctx = proto.ContextWithOperation(ctx, req.ExtentKey.GetExtentKey())
 			if req.ExtentKey.GetSeq() == s.verSeq {
 				writeSize, err = s.doOverwrite(ctx, req, direct)
 				if err == proto.ErrCodeVersionOp {
@@ -432,7 +440,7 @@ func (s *Streamer) doDirectWriteByAppend(ctx context.Context, req *ExtentRequest
 		return
 	}
 
-	if dp, err = s.client.dataWrapper.GetDataPartition(req.ExtentKey.PartitionId); err != nil {
+	if dp, err = s.client.dataWrapper.GetDataPartition(ctx, req.ExtentKey.PartitionId); err != nil {
 		// TODO unhandled error
 		errors.Trace(err, "doDirectWriteByAppend: ino(%v) failed to get datapartition, ek(%v)", s.inode, req.ExtentKey)
 		return
@@ -488,7 +496,7 @@ func (s *Streamer) doDirectWriteByAppend(ctx context.Context, req *ExtentRequest
 			}
 			span.Debugf("action[doDirectWriteByAppend] .UpdateLatestVer ino(%v) get replyPacket %v", s.inode, replyPacket)
 			if replyPacket.VerSeq > sc.dp.ClientWrapper.SimpleClient.GetLatestVer() {
-				err = sc.dp.ClientWrapper.SimpleClient.UpdateLatestVer(&proto.VolVersionInfoList{VerList: replyPacket.VerList})
+				err = sc.dp.ClientWrapper.SimpleClient.UpdateLatestVer(ctx, &proto.VolVersionInfoList{VerList: replyPacket.VerList})
 				if err != nil {
 					return err, false
 				}
@@ -536,7 +544,7 @@ func (s *Streamer) doDirectWriteByAppend(ctx context.Context, req *ExtentRequest
 		return
 	}
 	if replyPacket.VerSeq > s.verSeq {
-		s.client.UpdateLatestVer(&proto.VolVersionInfoList{VerList: replyPacket.VerList})
+		s.client.UpdateLatestVer(ctx, &proto.VolVersionInfoList{VerList: replyPacket.VerList})
 	}
 	extKey = &proto.ExtentKey{
 		FileOffset:   uint64(req.FileOffset),
@@ -605,7 +613,7 @@ func (s *Streamer) doOverwrite(ctx context.Context, req *ExtentRequest, direct b
 		return
 	}
 
-	if dp, err = s.client.dataWrapper.GetDataPartition(req.ExtentKey.PartitionId); err != nil {
+	if dp, err = s.client.dataWrapper.GetDataPartition(ctx, req.ExtentKey.PartitionId); err != nil {
 		// TODO unhandled error
 		errors.Trace(err, "doOverwrite: ino(%v) failed to get datapartition, ek(%v)", s.inode, req.ExtentKey)
 		return
@@ -659,7 +667,7 @@ func (s *Streamer) doOverwrite(ctx context.Context, req *ExtentRequest, direct b
 				span.Debugf("action[doOverwrite] .UpdateLatestVer verseq (%v) be updated by datanode rsp (%v) ", s.verSeq, replyPacket)
 				s.verSeq = replyPacket.VerSeq
 				s.extents.verSeq = s.verSeq
-				s.client.UpdateLatestVer(&proto.VolVersionInfoList{VerList: replyPacket.VerList})
+				s.client.UpdateLatestVer(ctx, &proto.VolVersionInfoList{VerList: replyPacket.VerList})
 				return e, false
 			}
 
@@ -715,7 +723,7 @@ func (s *Streamer) tryInitExtentHandlerByLastEk(ctx context.Context, offset, siz
 		checkVerFunc(currentEK)
 		span.Debugf("tryInitExtentHandlerByLastEk: found ek in ExtentCache, extent_id(%v) req_offset(%v) req_size(%v), currentEK [%v] streamer seq %v",
 			currentEK.ExtentId, offset, size, currentEK, s.verSeq)
-		_, pidErr := s.client.dataWrapper.GetDataPartition(currentEK.PartitionId)
+		_, pidErr := s.client.dataWrapper.GetDataPartition(ctx, currentEK.PartitionId)
 		if pidErr == nil {
 			seq := currentEK.GetSeq()
 			if isLastEkVerNotEqual {
