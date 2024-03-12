@@ -61,11 +61,9 @@ func newMetaCompatibilityCmd() *cobra.Command {
 				host         = args[1]
 				pid          = args[2]
 			)
-			_, ctx := spanContextPrefix("cli-meta-")
+			span, ctx := spanContext()
 			client := api.NewMetaHttpClient(host, false)
-			defer func() {
-				errout(err)
-			}()
+			defer func() { errout(span, err) }()
 			id, err := strconv.ParseUint(pid, 10, 64)
 			if err != nil {
 				err = fmt.Errorf("parse pid[%v] failed: %v\n", pid, err)

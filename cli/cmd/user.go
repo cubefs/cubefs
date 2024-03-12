@@ -15,7 +15,6 @@
 package cmd
 
 import (
-	"context"
 	"fmt"
 	"strings"
 
@@ -69,9 +68,8 @@ func newUserCreateCmd(client *master.MasterClient) *cobra.Command {
 			accessKey := optAccessKey
 			secretKey := optSecretKey
 			userType := proto.UserTypeFromString(optUserType)
-			defer func() {
-				errout(err)
-			}()
+			span, ctx := spanContext()
+			defer func() { errout(span, err) }()
 			if !userType.Valid() {
 				err = fmt.Errorf("Invalid user type. ")
 				return
@@ -116,7 +114,7 @@ func newUserCreateCmd(client *master.MasterClient) *cobra.Command {
 				Type:      userType,
 			}
 			var userInfo *proto.UserInfo
-			if userInfo, err = client.UserAPI().CreateUser(context.TODO(), &param, clientIDKey); err != nil {
+			if userInfo, err = client.UserAPI().CreateUser(ctx, &param, clientIDKey); err != nil {
 				err = fmt.Errorf("Create user failed: %v\n", err)
 				return
 			}
@@ -156,9 +154,8 @@ func newUserUpdateCmd(client *master.MasterClient) *cobra.Command {
 			accessKey := optAccessKey
 			secretKey := optSecretKey
 			var userType proto.UserType
-			defer func() {
-				errout(err)
-			}()
+			span, ctx := spanContext()
+			defer func() { errout(span, err) }()
 			if optUserType != "" {
 				userType = proto.UserTypeFromString(optUserType)
 				if !userType.Valid() {
@@ -204,7 +201,7 @@ func newUserUpdateCmd(client *master.MasterClient) *cobra.Command {
 				Type:      userType,
 			}
 			var userInfo *proto.UserInfo
-			if userInfo, err = client.UserAPI().UpdateUser(context.TODO(), &param, clientIDKey); err != nil {
+			if userInfo, err = client.UserAPI().UpdateUser(ctx, &param, clientIDKey); err != nil {
 				return
 			}
 
@@ -229,6 +226,7 @@ func newUserDeleteCmd(client *master.MasterClient) *cobra.Command {
 	var optYes bool
 	// var optForce bool
 	var clientIDKey string
+	span, ctx := spanContext()
 	cmd := &cobra.Command{
 		Use:   cmdUserDeleteUse,
 		Short: cmdUserDeleteShort,
@@ -236,9 +234,7 @@ func newUserDeleteCmd(client *master.MasterClient) *cobra.Command {
 		Run: func(cmd *cobra.Command, args []string) {
 			var err error
 			userID := args[0]
-			defer func() {
-				errout(err)
-			}()
+			defer func() { errout(span, err) }()
 			if !optYes {
 				stdout("Delete user [%v] (yes/no)[no]:", userID)
 				var userConfirm string
@@ -249,7 +245,7 @@ func newUserDeleteCmd(client *master.MasterClient) *cobra.Command {
 				}
 			}
 
-			if err = client.UserAPI().DeleteUser(context.TODO(), userID, clientIDKey); err != nil {
+			if err = client.UserAPI().DeleteUser(ctx, userID, clientIDKey); err != nil {
 				err = fmt.Errorf("Delete user failed:\n%v\n", err)
 				return
 			}
@@ -259,7 +255,7 @@ func newUserDeleteCmd(client *master.MasterClient) *cobra.Command {
 			if len(args) != 0 {
 				return nil, cobra.ShellCompDirectiveNoFileComp
 			}
-			return validUsers(client, toComplete), cobra.ShellCompDirectiveNoFileComp
+			return validUsers(ctx, client, toComplete), cobra.ShellCompDirectiveNoFileComp
 		},
 	}
 	cmd.Flags().BoolVarP(&optYes, "yes", "y", false, "Answer yes for all questions")
@@ -274,6 +270,7 @@ const (
 )
 
 func newUserInfoCmd(client *master.MasterClient) *cobra.Command {
+	span, ctx := spanContext()
 	cmd := &cobra.Command{
 		Use:   cmdUserInfoUse,
 		Short: cmdUserInfoShort,
@@ -282,10 +279,8 @@ func newUserInfoCmd(client *master.MasterClient) *cobra.Command {
 			var err error
 			userID := args[0]
 			var userInfo *proto.UserInfo
-			defer func() {
-				errout(err)
-			}()
-			if userInfo, err = client.UserAPI().GetUserInfo(context.TODO(), userID); err != nil {
+			defer func() { errout(span, err) }()
+			if userInfo, err = client.UserAPI().GetUserInfo(ctx, userID); err != nil {
 				err = fmt.Errorf("Get user info failed: %v\n", err)
 				return
 			}
@@ -295,7 +290,7 @@ func newUserInfoCmd(client *master.MasterClient) *cobra.Command {
 			if len(args) != 0 {
 				return nil, cobra.ShellCompDirectiveNoFileComp
 			}
-			return validUsers(client, toComplete), cobra.ShellCompDirectiveNoFileComp
+			return validUsers(ctx, client, toComplete), cobra.ShellCompDirectiveNoFileComp
 		},
 	}
 
@@ -310,6 +305,7 @@ const (
 func newUserPermCmd(client *master.MasterClient) *cobra.Command {
 	var subdir string
 	var clientIDKey string
+	span, ctx := spanContext()
 	cmd := &cobra.Command{
 		Use:   cmdUserPermUse,
 		Short: cmdUserPermShort,
@@ -319,9 +315,7 @@ func newUserPermCmd(client *master.MasterClient) *cobra.Command {
 			userID := args[0]
 			volume := args[1]
 			var perm proto.Permission
-			defer func() {
-				errout(err)
-			}()
+			defer func() { errout(span, err) }()
 
 			perm = proto.BuiltinPermissionPrefix
 			if subdir != "" && subdir != "/" {
@@ -354,16 +348,16 @@ func newUserPermCmd(client *master.MasterClient) *cobra.Command {
 				return
 			}
 			var userInfo *proto.UserInfo
-			if _, err = client.UserAPI().GetUserInfo(context.TODO(), userID); err != nil {
+			if _, err = client.UserAPI().GetUserInfo(ctx, userID); err != nil {
 				return
 			}
 			if perm.IsNone() {
 				param := proto.NewUserPermRemoveParam(userID, volume)
-				userInfo, err = client.UserAPI().RemovePolicy(context.TODO(), param, clientIDKey)
+				userInfo, err = client.UserAPI().RemovePolicy(ctx, param, clientIDKey)
 			} else {
 				param := proto.NewUserPermUpdateParam(userID, volume)
 				param.SetPolicy(perm.String())
-				userInfo, err = client.UserAPI().UpdatePolicy(context.TODO(), param, clientIDKey)
+				userInfo, err = client.UserAPI().UpdatePolicy(ctx, param, clientIDKey)
 			}
 			if err != nil {
 				return
@@ -374,7 +368,7 @@ func newUserPermCmd(client *master.MasterClient) *cobra.Command {
 			if len(args) != 0 {
 				return nil, cobra.ShellCompDirectiveNoFileComp
 			}
-			return validUsers(client, toComplete), cobra.ShellCompDirectiveNoFileComp
+			return validUsers(ctx, client, toComplete), cobra.ShellCompDirectiveNoFileComp
 		},
 	}
 	cmd.Flags().StringVar(&subdir, "subdir", "", "Subdir")
@@ -395,10 +389,9 @@ func newUserListCmd(client *master.MasterClient) *cobra.Command {
 		Run: func(cmd *cobra.Command, args []string) {
 			var users []*proto.UserInfo
 			var err error
-			defer func() {
-				errout(err)
-			}()
-			if users, err = client.UserAPI().ListUsers(context.TODO(), optKeyword); err != nil {
+			span, ctx := spanContext()
+			defer func() { errout(span, err) }()
+			if users, err = client.UserAPI().ListUsers(ctx, optKeyword); err != nil {
 				return
 			}
 			stdout("%v\n", userInfoTableHeader)
