@@ -23,7 +23,6 @@ import (
 	"time"
 
 	"github.com/cubefs/cubefs/blobstore/common/rpc/auditlog"
-	"github.com/cubefs/cubefs/util/log"
 )
 
 const (
@@ -115,6 +114,7 @@ func (a *ExternalAudit) getLoggers() []AuditLogger {
 }
 
 func (a *ExternalAudit) Logger(w http.ResponseWriter, r *http.Request) {
+	span := spanWithOperation(r.Context(), "AuditLogger")
 	loggers := a.getLoggers()
 	if len(loggers) <= 0 || w == nil || r == nil {
 		return
@@ -179,7 +179,7 @@ func (a *ExternalAudit) Logger(w http.ResponseWriter, r *http.Request) {
 
 	data, err := json.Marshal(entry)
 	if err != nil {
-		log.LogErrorf("audit entry json marshal failed: %v", err)
+		span.Errorf("audit entry json marshal failed: %v", err)
 		return
 	}
 
@@ -187,7 +187,7 @@ func (a *ExternalAudit) Logger(w http.ResponseWriter, r *http.Request) {
 		if logger != nil {
 			go func(logger AuditLogger) {
 				if err = logger.Send(data); err != nil {
-					log.LogErrorf("send to external '%s' failed: %v", logger.Name(), err)
+					span.Errorf("send to external '%s' failed: %v", logger.Name(), err)
 				}
 			}(logger)
 		}

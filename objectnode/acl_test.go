@@ -18,8 +18,9 @@ import (
 	"encoding/xml"
 	"testing"
 
-	"github.com/cubefs/cubefs/proto"
 	"github.com/stretchr/testify/require"
+
+	"github.com/cubefs/cubefs/proto"
 )
 
 func TestAccessControlPolicyXml(t *testing.T) {

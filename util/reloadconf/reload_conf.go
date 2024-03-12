@@ -16,6 +16,7 @@ package reloadconf
 
 import (
 	"bytes"
+	"context"
 	"crypto/md5"
 	"encoding/base64"
 	"fmt"
@@ -31,7 +32,7 @@ import (
 type ReloadConf struct {
 	ConfName      string
 	ReloadSec     int
-	RequestRemote func() ([]byte, error)
+	RequestRemote func(context.Context) ([]byte, error)
 
 	md5sum []byte
 	mutex  sync.Mutex
@@ -61,7 +62,8 @@ func (self *ReloadConf) reload(reload func(data []byte) error) error {
 }
 
 func (self *ReloadConf) remoteReload(reload func(data []byte) error) (err error) {
-	data, md5sum, err := fetchRemote(self.RequestRemote)
+	ctx := context.Background()
+	data, md5sum, err := fetchRemote(ctx, self.RequestRemote)
 	if err != nil {
 		err = errors.Info(err, "fetchRemote").Detail(err)
 		return
@@ -122,8 +124,8 @@ func (self *ReloadConf) localReload(reload func(data []byte) error) (err error) 
 	return
 }
 
-func fetchRemote(requestRemote func() ([]byte, error)) (data, md5sum []byte, err error) {
-	data, err = requestRemote()
+func fetchRemote(ctx context.Context, requestRemote func(context.Context) ([]byte, error)) (data, md5sum []byte, err error) {
+	data, err = requestRemote(ctx)
 	if err != nil {
 		err = errors.Info(err, "io.ReadAll")
 		return

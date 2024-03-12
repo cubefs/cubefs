@@ -23,13 +23,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/gorilla/mux"
 
 	"github.com/cubefs/cubefs/blobstore/common/rpc/auditlog"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/exporter"
-	"github.com/cubefs/cubefs/util/log"
 )
 
 const StatusServerPanic = 597
@@ -76,18 +74,12 @@ func (o *ObjectNode) auditMiddleware(next http.Handler) http.Handler {
 }
 
 // TraceMiddleware returns a middleware handler to trace request.
-// After receiving the request, the handler will assign a unique RequestID to
-// the request and record the processing time of the request.
+// After receiving the request, the handler will write a unique RequestID to
+// the request and record the processing status of the request.
 func (o *ObjectNode) traceMiddleware(next http.Handler) http.Handler {
-	generateRequestID := func() (string, error) {
-		var uUID uuid.UUID
-		var err error
-		if uUID, err = uuid.NewRandom(); err != nil {
-			return "", err
-		}
-		return strings.ReplaceAll(uUID.String(), "-", ""), nil
-	}
 	var handlerFunc http.HandlerFunc = func(w http.ResponseWriter, r *http.Request) {
+		var err error
+		span := proto.SpanFromContext(r.Context())
 		// wrapper for w to record its stats
 		w = NewResponseStater(w)
 		defer func() {
@@ -102,30 +94,22 @@ func (o *ObjectNode) traceMiddleware(next http.Handler) http.Handler {
 			}
 		}()
 
-		requestID, err := generateRequestID()
-		if err != nil {
-			log.LogErrorf("traceMiddleware: generate request ID fail, remote(%v) url(%v) err(%v)",
-				r.RemoteAddr, r.URL.String(), err)
-			InternalErrorCode(err).ServeResponse(w, r)
-			// export ump warn info
-			exporter.Warning(generateWarnDetail(r, err.Error()))
-			return
-		}
-
-		// store request ID to context and write to header
-		SetRequestID(r, requestID)
+		requestID := span.TraceID()
+		// write to response header
 		w.Header().Set(XAmzRequestId, requestID)
 		w.Header().Set(Server, ValueServer)
-
 		if connHeader := r.Header.Get(Connection); strings.EqualFold(connHeader, "close") {
 			w.Header().Set(Connection, "close")
 		} else {
 			w.Header().Set(Connection, "keep-alive")
 		}
 
+		// store request action and requestID to context
 		action := ActionFromRouteName(mux.CurrentRoute(r).GetName())
 		SetRequestAction(r, action)
+		SetRequestID(r, requestID)
 
+		// request monitor
 		startTime := time.Now()
 		metric := exporter.NewTPCnt(fmt.Sprintf("action_%v", action.Name()))
 		defer func() {
@@ -134,14 +118,13 @@ func (o *ObjectNode) traceMiddleware(next http.Handler) http.Handler {
 
 		// Check action is whether enabled.
 		if !action.IsNone() && !o.disabledActions.Contains(action) {
-			log.LogInfof("traceMiddleware: start with "+
-				"action(%v) requestID(%v) host(%v) method(%v) url(%v) header(%+v) remote(%v)",
-				action.Name(), requestID, r.Host, r.Method, r.URL.String(), r.Header, getRequestIP(r))
+			span.Debugf("%v start with: host(%v) method(%v) url(%v) header(%+v) remote(%v)",
+				action.Name(), r.Host, r.Method, r.URL.String(), r.Header, getRequestIP(r))
 			// next
 			next.ServeHTTP(w, r)
 		} else {
 			// If current action is disabled, return access denied in response.
-			log.LogDebugf("traceMiddleware: disabled action: requestID(%v) action(%v)", requestID, action.Name())
+			span.Warnf("request with disabled action: %v", action.Name())
 			AccessDenied.ServeResponse(w, r)
 		}
 
@@ -151,11 +134,8 @@ func (o *ObjectNode) traceMiddleware(next http.Handler) http.Handler {
 			exporter.NewTPCnt(fmt.Sprintf("failed_%v", statusCode)).Set(nil)
 			exporter.Warning(generateWarnDetail(r, getResponseErrorMessage(r)))
 		}
-
-		log.LogInfof("traceMiddleware: end with action(%v) requestID(%v) host(%v) method(%v) url(%v) "+
-			"reqHeader(%v) remote(%v) respHeader(%v) statusCode(%v) errorMsg(%v) cost(%v)",
-			action.Name(), requestID, r.Host, r.Method, r.URL.String(), r.Header, getRequestIP(r), w.Header(),
-			statusCode, getResponseErrorMessage(r), time.Since(startTime))
+		span.Debugf("%v end with: respHeader(%+v) statusCode(%v) errorMsg(%v) cost(%v)",
+			action.Name(), w.Header(), statusCode, getResponseErrorMessage(r), time.Since(startTime))
 	}
 	return handlerFunc
 }
@@ -164,6 +144,8 @@ func (o *ObjectNode) traceMiddleware(next http.Handler) http.Handler {
 func (o *ObjectNode) authMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(
 		func(w http.ResponseWriter, r *http.Request) {
+			span := proto.SpanFromContext(r.Context())
+
 			// parse authentication
 			auth, err := NewAuth(r)
 			if err != nil && err == MissingSecurityElement {
@@ -172,8 +154,7 @@ func (o *ObjectNode) authMiddleware(next http.Handler) http.Handler {
 				return
 			}
 			if err != nil {
-				log.LogErrorf("authMiddleware: parse auth fail: requestID(%v) err(%v)",
-					GetRequestID(r), err)
+				span.Errorf("parse request auth failed: auth(%+v) err(%v)", auth, err)
 				o.errorResponse(w, r, err, nil)
 				return
 			}
@@ -203,7 +184,6 @@ func (o *ObjectNode) contentMiddleware(next http.Handler) http.Handler {
 	var handlerFunc http.HandlerFunc = func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get(XAmzDecodedContentLength) != "" && r.Header.Get(ContentEncoding) != streamingContentEncoding {
 			r.Body = NewClosableChunkedReader(r.Body)
-			log.LogDebugf("contentMiddleware: chunk reader inited: requestID(%v)", GetRequestID(r))
 		}
 		next.ServeHTTP(w, r)
 	}
@@ -224,14 +204,16 @@ func (o *ObjectNode) contentMiddleware(next http.Handler) http.Handler {
 // needs to use the value of X-Forwarded-Expect.
 func (o *ObjectNode) expectMiddleware(next http.Handler) http.Handler {
 	var handlerFunc http.HandlerFunc = func(w http.ResponseWriter, r *http.Request) {
+		span := proto.SpanFromContext(r.Context())
 		defer func() {
 			// panic recover and response specific status to client
 			p := recover()
 			if p != nil {
-				log.LogErrorf("panic(%v): requestID(%v) stack(%v)", p, GetRequestID(r), string(debug.Stack()))
+				span.Errorf("panic(%v): %v", p, string(debug.Stack()))
 				w.WriteHeader(StatusServerPanic)
 			}
 		}()
+
 		if forwarded, origin := r.Header.Get(XForwardedExpect), r.Header.Get(Expect); forwarded != "" && origin == "" {
 			r.Header.Set(Expect, forwarded)
 		}
@@ -250,6 +232,9 @@ func (o *ObjectNode) expectMiddleware(next http.Handler) http.Handler {
 func (o *ObjectNode) corsMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var err error
+		ctx := r.Context()
+		span := proto.SpanFromContext(ctx)
+
 		param := ParseRequestParam(r)
 		if param.Bucket() == "" {
 			next.ServeHTTP(w, r)
@@ -258,12 +243,12 @@ func (o *ObjectNode) corsMiddleware(next http.Handler) http.Handler {
 
 		var vol *Volume
 		if param.action == proto.OSSCreateBucketAction {
-			if vol, err = o.vm.VolumeWithoutBlacklist(param.Bucket()); err != nil {
+			if vol, err = o.vm.VolumeWithoutBlacklist(ctx, param.Bucket()); err != nil {
 				next.ServeHTTP(w, r)
 				return
 			}
 		} else {
-			if vol, err = o.vm.Volume(param.Bucket()); err != nil {
+			if vol, err = o.vm.Volume(ctx, param.Bucket()); err != nil {
 				next.ServeHTTP(w, r)
 				return
 			}
@@ -277,9 +262,9 @@ func (o *ObjectNode) corsMiddleware(next http.Handler) http.Handler {
 
 		isPreflight := param.apiName == OPTIONS_OBJECT
 		w.Header().Add("Vary", "Origin,Access-Control-Request-Method,Access-Control-Request-Headers")
-		cors, err := vol.metaLoader.loadCORS()
+		cors, err := vol.metaLoader.loadCORS(ctx)
 		if err != nil {
-			log.LogErrorf("get cors fail: requestID(%v) err(%v)", GetRequestID(r), err)
+			span.Errorf("load cors failed: vol(%v) err(%v)", vol.name, err)
 			InternalErrorCode(err).ServeResponse(w, r)
 			return
 		}

@@ -22,7 +22,6 @@ import (
 	"github.com/gorilla/mux"
 
 	"github.com/cubefs/cubefs/proto"
-	"github.com/cubefs/cubefs/util/log"
 )
 
 // https://docs.aws.amazon.com/AmazonS3/latest/dev/RESTAuthentication.html#ConstructingTheAuthenticationHeader
@@ -181,6 +180,7 @@ func (c *Credential) ParseDate() (time.Time, error) {
 }
 
 func (o *ObjectNode) validateAuthInfo(r *http.Request, auth Auther) (err error) {
+	span := spanWithOperation(r.Context(), "validateAuthInfo")
 	param := ParseRequestParam(r)
 	reqAK := auth.Credential().AccessKey
 
@@ -189,15 +189,13 @@ func (o *ObjectNode) validateAuthInfo(r *http.Request, auth Auther) (err error) 
 	if token = getSecurityToken(r); token == "" {
 		ak = reqAK
 		if uid, sk, err = o.getUidSecretKeyWithCheckVol(r, ak, true); err != nil {
-			log.LogErrorf("validateAuthInfo: get user uid and sk fail: requestID(%v) ak(%v) err(%v)",
-				GetRequestID(r), ak, err)
+			span.Errorf("get uid and sk fail: ak(%v) err(%v)", ak, err)
 			return err
 		}
 	} else {
-		stsInfo, err = DecodeFedSessionToken(reqAK, token, o.getUserInfoByAccessKeyV2)
+		stsInfo, err = DecodeFedSessionToken(r.Context(), reqAK, token, o.getUserInfoByAccessKey)
 		if err != nil {
-			log.LogErrorf("validateAuthInfo: decode session token fail: requestID(%v) ak(%v) token(%v) err(%v)",
-				GetRequestID(r), reqAK, token, err)
+			span.Errorf("decode session token fail: ak(%v) token(%v) err(%v)", reqAK, token, err)
 			return err
 		}
 		uid, ak, sk = stsInfo.UserInfo.UserID, stsInfo.UserInfo.AccessKey, stsInfo.FedSK
@@ -209,39 +207,37 @@ func (o *ObjectNode) validateAuthInfo(r *http.Request, auth Auther) (err error) 
 	if !o.signatureIgnoredActions.Contains(param.action) {
 		cred := auth.Credential()
 		if auth.IsSkewed() {
-			log.LogErrorf("validateAuthInfo: request skewed: requestID(%v) reqTime(%v) servTime(%v)",
-				GetRequestID(r), cred.TimeStamp, time.Now().UTC().Format(ISO8601Format))
+			span.Errorf("request time skewed: reqTime(%v) servTime(%v)", cred.TimeStamp,
+				time.Now().UTC().Format(ISO8601Format))
 			return RequestTimeTooSkewed
 		}
 		if auth.IsExpired() {
-			log.LogErrorf("validateAuthInfo: signature has expired: requestID(%v) servTime(%v) reqDate(%v) expires(%v)",
-				GetRequestID(r), time.Now().UTC().Format(ISO8601Format), cred.Date, cred.Expires)
+			span.Errorf("request signature has expired: reqDate(%v) expires(%v) servTime(%v)",
+				cred.Date, cred.Expires, time.Now().UTC().Format(ISO8601Format))
 			return ExpiredToken
 		}
 		if !auth.SignatureMatch(sk, o.wildcards) {
-			log.LogErrorf("validateAuthInfo: signature not match: requestID(%v) AccessKeyId(%v)\nstringToSign=(\n%v\n)\ncanonialRequest=(\n%v\n)",
-				GetRequestID(r), reqAK, auth.StringToSign(), auth.CanonicalRequest())
+			span.Errorf("request signature does not match: AccessKeyId(%v)\nstringToSign=("+
+				"\n%v\n)\ncanonialRequest=(\n%v\n)", reqAK, auth.StringToSign(), auth.CanonicalRequest())
 			return SignatureDoesNotMatch
 		}
 	}
 
 	if stsInfo != nil {
 		if o.stsNotAllowedActions.Contains(param.action) {
-			log.LogErrorf("validateAuthInfo: action not allowed by sts user: requestID(%v) action(%v)",
-				GetRequestID(r), param.action)
+			span.Errorf("request action disallowed by sts user: action(%v)", param.action)
 			return AccessDeniedBySTS
 		}
 		userPolicy := stsInfo.UserInfo.Policy
-		if !IsAccountLevelApi(param.apiName) && param.bucket != "" && userPolicy != nil && !userPolicy.IsOwn(param.
-			bucket) {
-			log.LogErrorf("validateAuthInfo: sts user access non-owner vol: requestID(%v) reqVol(%v) ownVols(%v)",
-				GetRequestID(r), param.bucket, userPolicy.OwnVols)
+		if !IsAccountLevelApi(param.apiName) && param.bucket != "" && userPolicy != nil && !userPolicy.IsOwn(param.bucket) {
+			span.Errorf("sts users are prohibited from accessing non-owner vol: reqVol(%v) ownVols(%v)",
+				param.bucket, userPolicy.OwnVols)
 			return AccessDenied
 		}
 		action := "s3:" + param.apiName
 		if !stsInfo.Policy.IsAllow(action, param.bucket, param.object) {
-			log.LogErrorf("validateAuthInfo: sts policy not allow: requestID(%v) policy(%v) api(%v) resource(%v)",
-				GetRequestID(r), *stsInfo.Policy, param.apiName, param.resource)
+			span.Errorf("sts policy disallowed: policy(%v) api(%v) resource(%v)",
+				*stsInfo.Policy, param.apiName, param.resource)
 			return AccessDenied
 		}
 	}
@@ -250,7 +246,10 @@ func (o *ObjectNode) validateAuthInfo(r *http.Request, auth Auther) (err error) 
 }
 
 func (o *ObjectNode) getUidSecretKeyWithCheckVol(r *http.Request, ak string, ck bool) (uid, sk string, err error) {
-	info, err := o.getUserInfoByAccessKey(ak)
+	ctx := r.Context()
+	span := spanWithOperation(ctx, "getUidSecretKeyWithCheckVol")
+
+	info, err := o.userStore.LoadUser(ctx, ak)
 	if err == nil {
 		uid, sk = info.UserID, info.SecretKey
 		return
@@ -262,8 +261,11 @@ func (o *ObjectNode) getUidSecretKeyWithCheckVol(r *http.Request, ak string, ck 
 			// (each volume has its own access key and secret key), if the user does not exist and
 			// the request specifies a volume, try to use the access key and secret key bound in the
 			// volume information for verification.
+			span.Debugf("try to load volume oss ak/sk for verification: userAk(%v) bucket(%v)",
+				ak, bucket)
 			var vol *Volume
-			if vol, err = o.getVol(bucket); err != nil {
+			if vol, err = o.getVol(ctx, bucket); err != nil {
+				span.Errorf("load volume fail: bucket(%v) err(%v)", bucket, err)
 				return
 			}
 			if ossAk, ossSk := vol.OSSSecure(); ossAk == ak {

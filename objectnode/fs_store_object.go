@@ -15,7 +15,7 @@
 package objectnode
 
 import (
-	"github.com/cubefs/cubefs/util/log"
+	"context"
 )
 
 const (
@@ -31,20 +31,22 @@ func (s *objectStore) Init(vm *VolumeManager) {
 	// TODO: init meta dir
 }
 
-func (s *objectStore) Put(vol, obj, key string, data []byte) (err error) {
-	log.LogInfo("put object store")
-
+func (s *objectStore) Put(ctx context.Context, vol, obj, key string, data []byte) (err error) {
+	// do nothing
 	return
 }
 
-func (s *objectStore) Get(vol, obj, key string) (data []byte, err error) {
+func (s *objectStore) Get(ctx context.Context, vol, obj, key string) (data []byte, err error) {
+	// do nothing
 	return
 }
 
-func (s *objectStore) Delete(vol, obj, key string) (err error) {
+func (s *objectStore) Delete(ctx context.Context, vol, obj, key string) (err error) {
+	// do nothing
 	return
 }
 
-func (s *objectStore) List(vol, obj string) (data [][]byte, err error) {
+func (s *objectStore) List(ctx context.Context, vol, obj string) (data [][]byte, err error) {
+	// do nothing
 	return
 }
