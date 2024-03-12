@@ -88,6 +88,7 @@ func newDataNode(addr, zoneName, clusterID string) (dataNode *DataNode) {
 func (dataNode *DataNode) checkLiveness() {
 	dataNode.Lock()
 	defer dataNode.Unlock()
+
 	log.LogInfof("action[checkLiveness] datanode[%v] report time[%v],since report time[%v], need gap [%v]",
 		dataNode.Addr, dataNode.ReportTime, time.Since(dataNode.ReportTime), time.Second*time.Duration(defaultNodeTimeOutSec))
 	if time.Since(dataNode.ReportTime) > time.Second*time.Duration(defaultNodeTimeOutSec) {
