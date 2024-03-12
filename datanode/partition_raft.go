@@ -127,7 +127,7 @@ func (dp *DataPartition) StartRaft(isLoad bool) (err error) {
 	dp.raftPartition, err = dp.config.RaftStore.CreatePartition(pc)
 	if err == nil {
 		dp.ForceSetRaftRunning()
-		dp.ForceSetDataPartitionToFininshLoad()
+		dp.ForceSetDataPartitionToFinishLoad()
 	}
 	return
 }

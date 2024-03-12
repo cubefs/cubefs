@@ -33,8 +33,8 @@ import (
 )
 
 var (
-	LocalIP                             string
-	DefaultMinWriteAbleDataPartitionCnt = 10
+	LocalIP                            string
+	DefaultMinWritableDataPartitionCnt = 10
 )
 
 type DataPartitionView struct {
@@ -78,10 +78,10 @@ type Wrapper struct {
 	preload     bool
 	LocalIp     string
 
-	minWriteAbleDataPartitionCnt int
-	verConfReadSeq               uint64
-	verReadSeq                   uint64
-	SimpleClient                 SimpleClientInfo
+	minWritableDataPartitionCnt int
+	verConfReadSeq              uint64
+	verReadSeq                  uint64
+	SimpleClient                SimpleClientInfo
 }
 
 func (w *Wrapper) GetMasterClient() *masterSDK.MasterClient {
@@ -89,7 +89,7 @@ func (w *Wrapper) GetMasterClient() *masterSDK.MasterClient {
 }
 
 // NewDataPartitionWrapper returns a new data partition wrapper.
-func NewDataPartitionWrapper(client SimpleClientInfo, volName string, masters []string, preload bool, minWriteAbleDataPartitionCnt int, verReadSeq uint64) (w *Wrapper, err error) {
+func NewDataPartitionWrapper(client SimpleClientInfo, volName string, masters []string, preload bool, minWritableDataPartitionCnt int, verReadSeq uint64) (w *Wrapper, err error) {
 	log.LogInfof("action[NewDataPartitionWrapper] verReadSeq %v", verReadSeq)
 
 	w = new(Wrapper)
@@ -101,9 +101,9 @@ func NewDataPartitionWrapper(client SimpleClientInfo, volName string, masters []
 	w.HostsStatus = make(map[string]bool)
 	w.preload = preload
 
-	w.minWriteAbleDataPartitionCnt = minWriteAbleDataPartitionCnt
-	if w.minWriteAbleDataPartitionCnt < 0 {
-		w.minWriteAbleDataPartitionCnt = DefaultMinWriteAbleDataPartitionCnt
+	w.minWritableDataPartitionCnt = minWritableDataPartitionCnt
+	if w.minWritableDataPartitionCnt < 0 {
+		w.minWritableDataPartitionCnt = DefaultMinWritableDataPartitionCnt
 	}
 
 	if w.LocalIp, err = ump.GetLocalIpAddr(); err != nil {
@@ -387,14 +387,14 @@ func (w *Wrapper) updateDataPartitionByRsp(isInit bool, DataPartitions []*proto.
 	}
 
 	// isInit used to identify whether this call is caused by mount action
-	if isInit || len(rwPartitionGroups) >= w.minWriteAbleDataPartitionCnt || (proto.IsCold(w.volType) && (len(rwPartitionGroups) >= 1)) {
-		log.LogInfof("updateDataPartition: refresh dpSelector of volume(%v) with %v rw partitions(%v all), isInit(%v), minWriteAbleDataPartitionCnt(%v)",
-			w.volName, len(rwPartitionGroups), len(DataPartitions), isInit, w.minWriteAbleDataPartitionCnt)
+	if isInit || len(rwPartitionGroups) >= w.minWritableDataPartitionCnt || (proto.IsCold(w.volType) && (len(rwPartitionGroups) >= 1)) {
+		log.LogInfof("updateDataPartition: refresh dpSelector of volume(%v) with %v rw partitions(%v all), isInit(%v), minWritableDataPartitionCnt(%v)",
+			w.volName, len(rwPartitionGroups), len(DataPartitions), isInit, w.minWritableDataPartitionCnt)
 		w.refreshDpSelector(rwPartitionGroups)
 	} else {
 		err = errors.New("updateDataPartition: no writable data partition")
-		log.LogWarnf("updateDataPartition: no enough writable data partitions, volume(%v) with %v rw partitions(%v all), isInit(%v), minWriteAbleDataPartitionCnt(%v)",
-			w.volName, len(rwPartitionGroups), len(DataPartitions), isInit, w.minWriteAbleDataPartitionCnt)
+		log.LogWarnf("updateDataPartition: no enough writable data partitions, volume(%v) with %v rw partitions(%v all), isInit(%v), minWritableDataPartitionCnt(%v)",
+			w.volName, len(rwPartitionGroups), len(DataPartitions), isInit, w.minWritableDataPartitionCnt)
 	}
 
 	log.LogInfof("updateDataPartition: finish")

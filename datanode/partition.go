@@ -175,7 +175,7 @@ func CreateDataPartition(dpCfg *dataPartitionCfg, disk *Disk, request *proto.Cre
 	return
 }
 
-func (dp *DataPartition) IsEquareCreateDataPartitionRequst(request *proto.CreateDataPartitionRequest) (err error) {
+func (dp *DataPartition) IsEqualCreateDataPartitionRequest(request *proto.CreateDataPartitionRequest) (err error) {
 	if len(dp.config.Peers) != len(request.Members) {
 		return fmt.Errorf("exist partition(%v)  peers len(%v) members len(%v)",
 			dp.partitionID, len(dp.config.Peers), len(request.Members))
@@ -202,11 +202,11 @@ func (dp *DataPartition) IsEquareCreateDataPartitionRequst(request *proto.Create
 	return
 }
 
-func (dp *DataPartition) ForceSetDataPartitionToLoadding() {
+func (dp *DataPartition) ForceSetDataPartitionToLoading() {
 	atomic.StoreInt32(&dp.isLoadingDataPartition, 1)
 }
 
-func (dp *DataPartition) ForceSetDataPartitionToFininshLoad() {
+func (dp *DataPartition) ForceSetDataPartitionToFinishLoad() {
 	atomic.StoreInt32(&dp.isLoadingDataPartition, 2)
 }
 
@@ -256,7 +256,7 @@ func LoadDataPartition(partitionDir string, disk *Disk) (dp *DataPartition, err 
 	dp.stopRecover = meta.StopRecover
 	dp.metaAppliedID = meta.ApplyID
 	dp.computeUsage()
-	dp.ForceSetDataPartitionToLoadding()
+	dp.ForceSetDataPartitionToLoading()
 	disk.space.AttachPartition(dp)
 	if err = dp.LoadAppliedID(); err != nil {
 		log.LogErrorf("action[loadApplyIndex] %v", err)
