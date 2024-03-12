@@ -1,8 +1,6 @@
 package cmd
 
 import (
-	"context"
-
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/sdk/master"
 	"github.com/cubefs/cubefs/util"
@@ -55,11 +53,10 @@ func newUidAddCmd(client *master.MasterClient) *cobra.Command {
 				return
 			}
 			var err error
-			defer func() {
-				errout(err)
-			}()
+			span, ctx := spanContext()
+			defer func() { errout(span, err) }()
 			var uidInfo *proto.UidSpaceRsp
-			if uidInfo, err = client.UserAPI().UidOperation(context.TODO(), args[0], args[1], util.UidAddLimit, args[2]); err != nil || !uidInfo.OK {
+			if uidInfo, err = client.UserAPI().UidOperation(ctx, args[0], args[1], util.UidAddLimit, args[2]); err != nil || !uidInfo.OK {
 				return
 			}
 			stdout("success!\n")
@@ -90,11 +87,10 @@ func newUidListCmd(client *master.MasterClient) *cobra.Command {
 			}
 			volumeName := args[0]
 			var err error
-			defer func() {
-				errout(err)
-			}()
+			span, ctx := spanContext()
+			defer func() { errout(span, err) }()
 			var uidInfo *proto.UidSpaceRsp
-			if uidInfo, err = client.UserAPI().UidOperation(context.TODO(), volumeName, "", util.UidLimitList, ""); err != nil || !uidInfo.OK {
+			if uidInfo, err = client.UserAPI().UidOperation(ctx, volumeName, "", util.UidLimitList, ""); err != nil || !uidInfo.OK {
 				stdout("UidOperation return \n")
 				return
 			}
@@ -124,11 +120,10 @@ func newUidDelCmd(client *master.MasterClient) *cobra.Command {
 			}
 
 			var err error
-			defer func() {
-				errout(err)
-			}()
+			span, ctx := spanContext()
+			defer func() { errout(span, err) }()
 			var uidInfo *proto.UidSpaceRsp
-			if uidInfo, err = client.UserAPI().UidOperation(context.TODO(), args[0], args[1], util.UidDel, ""); err != nil || !uidInfo.OK {
+			if uidInfo, err = client.UserAPI().UidOperation(ctx, args[0], args[1], util.UidDel, ""); err != nil || !uidInfo.OK {
 				return
 			}
 			stdout("success!\n")
@@ -151,11 +146,10 @@ func newUidCheckCmd(client *master.MasterClient) *cobra.Command {
 			}
 
 			var err error
-			defer func() {
-				errout(err)
-			}()
+			span, ctx := spanContext()
+			defer func() { errout(span, err) }()
 			var uidInfo *proto.UidSpaceRsp
-			if uidInfo, err = client.UserAPI().UidOperation(context.TODO(), args[0], args[1], util.UidGetLimit, ""); err != nil || !uidInfo.OK {
+			if uidInfo, err = client.UserAPI().UidOperation(ctx, args[0], args[1], util.UidGetLimit, ""); err != nil || !uidInfo.OK {
 				return
 			}
 			stdout("%v\n", volumeUidTableHeader)

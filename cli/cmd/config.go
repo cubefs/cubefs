@@ -74,9 +74,8 @@ func newConfigSetCmd() *cobra.Command {
 		Long:  `Set the config file`,
 		Run: func(cmd *cobra.Command, args []string) {
 			var err error
-			defer func() {
-				errout(err)
-			}()
+			span, _ := spanContext()
+			defer func() { errout(span, err) }()
 			tmp, _ := strconv.Atoi(optTimeout)
 			if tmp > math.MaxUint16 {
 				stdoutln("Please reset timeout. Input less than math.MaxUint16")
@@ -113,7 +112,8 @@ func newConfigInfoCmd() *cobra.Command {
 		Short: cmdConfigInfoShort,
 		Run: func(cmd *cobra.Command, args []string) {
 			config, err := LoadConfig()
-			errout(err)
+			span, _ := spanContext()
+			errout(span, err)
 			printConfigInfo(config)
 		},
 	}
