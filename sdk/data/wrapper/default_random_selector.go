@@ -15,13 +15,13 @@
 package wrapper
 
 import (
+	"context"
 	"fmt"
+	"github.com/cubefs/cubefs/proto"
 	"math/rand"
 	"strings"
 	"sync"
 	"time"
-
-	"github.com/cubefs/cubefs/util/log"
 )
 
 const (
@@ -66,8 +66,9 @@ func (s *DefaultRandomSelector) Refresh(partitions []*DataPartition) (err error)
 	return
 }
 
-func (s *DefaultRandomSelector) Select(exclude map[string]struct{}) (dp *DataPartition, err error) {
-	dp = s.getLocalLeaderDataPartition(exclude)
+func (s *DefaultRandomSelector) Select(ctx context.Context, exclude map[string]struct{}) (dp *DataPartition, err error) {
+	span := proto.SpanFromContext(ctx)
+	dp = s.getLocalLeaderDataPartition(ctx, exclude)
 	if dp != nil {
 		return dp, nil
 	}
@@ -76,12 +77,12 @@ func (s *DefaultRandomSelector) Select(exclude map[string]struct{}) (dp *DataPar
 	partitions := s.partitions
 	s.RUnlock()
 
-	dp = s.getRandomDataPartition(partitions, exclude)
+	dp = s.getRandomDataPartition(ctx, partitions, exclude)
 
 	if dp != nil {
 		return dp, nil
 	}
-	log.LogErrorf("DefaultRandomSelector: no writable data partition with %v partitions and exclude(%v)",
+	span.Errorf("DefaultRandomSelector: no writable data partition with %v partitions and exclude(%v)",
 		len(partitions), exclude)
 	return nil, fmt.Errorf("no writable data partition")
 }
@@ -136,15 +137,16 @@ func (s *DefaultRandomSelector) Count() int {
 	return len(s.partitions)
 }
 
-func (s *DefaultRandomSelector) getLocalLeaderDataPartition(exclude map[string]struct{}) *DataPartition {
+func (s *DefaultRandomSelector) getLocalLeaderDataPartition(ctx context.Context, exclude map[string]struct{}) *DataPartition {
 	s.RLock()
 	localLeaderPartitions := s.localLeaderPartitions
 	s.RUnlock()
-	return s.getRandomDataPartition(localLeaderPartitions, exclude)
+	return s.getRandomDataPartition(ctx, localLeaderPartitions, exclude)
 }
 
-func (s *DefaultRandomSelector) getRandomDataPartition(partitions []*DataPartition, exclude map[string]struct{}) (
+func (s *DefaultRandomSelector) getRandomDataPartition(ctx context.Context, partitions []*DataPartition, exclude map[string]struct{}) (
 	dp *DataPartition) {
+	span := proto.SpanFromContext(ctx)
 	length := len(partitions)
 	if length == 0 {
 		return nil
@@ -154,17 +156,17 @@ func (s *DefaultRandomSelector) getRandomDataPartition(partitions []*DataPartiti
 	index := rand.Intn(length)
 	dp = partitions[index]
 	if !isExcluded(dp, exclude) {
-		log.LogDebugf("DefaultRandomSelector: select dp[%v] address[%p], index %v", dp, dp, index)
+		span.Debugf("DefaultRandomSelector: select dp[%v] address[%p], index %v", dp, dp, index)
 		return dp
 	}
 
-	log.LogWarnf("DefaultRandomSelector: first random partition was excluded, get partition from others")
+	span.Warnf("DefaultRandomSelector: first random partition was excluded, get partition from others")
 
 	var currIndex int
 	for i := 0; i < length; i++ {
 		currIndex = (index + i) % length
 		if !isExcluded(partitions[currIndex], exclude) {
-			log.LogDebugf("DefaultRandomSelector: select dp[%v], index %v", partitions[currIndex], currIndex)
+			span.Debugf("DefaultRandomSelector: select dp[%v], index %v", partitions[currIndex], currIndex)
 			return partitions[currIndex]
 		}
 	}

@@ -15,10 +15,10 @@
 package wrapper
 
 import (
+	"context"
 	"errors"
+	"github.com/cubefs/cubefs/proto"
 	"strings"
-
-	"github.com/cubefs/cubefs/util/log"
 )
 
 // This type defines the constructor used to create and initialize the selector.
@@ -34,7 +34,7 @@ type DataPartitionSelector interface {
 	Refresh(partitions []*DataPartition) error
 
 	// Select returns an data partition picked by selector.
-	Select(excludes map[string]struct{}) (*DataPartition, error)
+	Select(ctx context.Context, excludes map[string]struct{}) (*DataPartition, error)
 
 	// RemoveDP removes specified data partition.
 	RemoveDP(partitionID uint64)
@@ -70,16 +70,17 @@ func newDataPartitionSelector(name string, param string) (newDpSelector DataPart
 	return constructor(param)
 }
 
-func (w *Wrapper) initDpSelector() (err error) {
+func (w *Wrapper) initDpSelector(ctx context.Context) (err error) {
+	span := proto.SpanFromContext(ctx)
 	w.dpSelectorChanged = false
 	selectorName := w.dpSelectorName
 	if strings.TrimSpace(selectorName) == "" {
-		log.LogInfof("initDpSelector: can not find dp selector[%v], use default selector", w.dpSelectorName)
+		span.Infof("initDpSelector: can not find dp selector[%v], use default selector", w.dpSelectorName)
 		selectorName = DefaultRandomSelectorName
 	}
 	var selector DataPartitionSelector
 	if selector, err = newDataPartitionSelector(selectorName, w.dpSelectorParm); err != nil {
-		log.LogErrorf("initDpSelector: dpSelector[%v] init failed caused by [%v], use default selector", w.dpSelectorName,
+		span.Errorf("initDpSelector: dpSelector[%v] init failed caused by [%v], use default selector", w.dpSelectorName,
 			err)
 		return
 	}
@@ -87,7 +88,8 @@ func (w *Wrapper) initDpSelector() (err error) {
 	return
 }
 
-func (w *Wrapper) refreshDpSelector(partitions []*DataPartition) {
+func (w *Wrapper) refreshDpSelector(ctx context.Context, partitions []*DataPartition) {
+	span := proto.SpanFromContext(ctx)
 	w.Lock.RLock()
 	dpSelector := w.dpSelector
 	dpSelectorChanged := w.dpSelectorChanged
@@ -96,17 +98,17 @@ func (w *Wrapper) refreshDpSelector(partitions []*DataPartition) {
 	if dpSelectorChanged {
 		selectorName := w.dpSelectorName
 		if strings.TrimSpace(selectorName) == "" {
-			log.LogWarnf("refreshDpSelector: can not find dp selector[%v], use default selector", w.dpSelectorName)
+			span.Warnf("refreshDpSelector: can not find dp selector[%v], use default selector", w.dpSelectorName)
 			selectorName = DefaultRandomSelectorName
 		}
 		newDpSelector, err := newDataPartitionSelector(selectorName, w.dpSelectorParm)
 		if err != nil {
-			log.LogErrorf("refreshDpSelector: change dpSelector to [%v %v] failed caused by [%v],"+
+			span.Errorf("refreshDpSelector: change dpSelector to [%v %v] failed caused by [%v],"+
 				" use last valid selector. Please change dpSelector config through master.",
 				w.dpSelectorName, w.dpSelectorParm, err)
 		} else {
 			w.Lock.Lock()
-			log.LogInfof("refreshDpSelector: change dpSelector to [%v %v]", w.dpSelectorName, w.dpSelectorParm)
+			span.Infof("refreshDpSelector: change dpSelector to [%v %v]", w.dpSelectorName, w.dpSelectorParm)
 			w.dpSelector = newDpSelector
 			w.dpSelectorChanged = false
 			dpSelector = newDpSelector
@@ -118,12 +120,12 @@ func (w *Wrapper) refreshDpSelector(partitions []*DataPartition) {
 }
 
 // getDataPartitionForWrite returns an available data partition for write.
-func (w *Wrapper) GetDataPartitionForWrite(exclude map[string]struct{}) (*DataPartition, error) {
+func (w *Wrapper) GetDataPartitionForWrite(ctx context.Context, exclude map[string]struct{}) (*DataPartition, error) {
 	w.Lock.RLock()
 	dpSelector := w.dpSelector
 	w.Lock.RUnlock()
 
-	return dpSelector.Select(exclude)
+	return dpSelector.Select(ctx, exclude)
 }
 
 func (w *Wrapper) RemoveDataPartitionForWrite(partitionID uint64) {

@@ -15,7 +15,9 @@
 package wrapper
 
 import (
+	"context"
 	"fmt"
+	"github.com/cubefs/cubefs/proto"
 	"math/rand"
 	"strconv"
 	"sync"
@@ -46,7 +48,7 @@ func newKFasterRandomSelector(selectorParam string) (selector DataPartitionSelec
 		kValueHundred: param,
 		partitions:    make([]*DataPartition, 0),
 	}
-	log.LogInfof("KFasterRandomSelector: init selector success, kValueHundred is %v", param)
+	log.Infof("KFasterRandomSelector: init selector success, kValueHundred is %v", param)
 	return
 }
 
@@ -73,14 +75,15 @@ func (s *KFasterRandomSelector) Refresh(partitions []*DataPartition) (err error)
 	return
 }
 
-func (s *KFasterRandomSelector) Select(exclude map[string]struct{}) (dp *DataPartition, err error) {
+func (s *KFasterRandomSelector) Select(ctx context.Context, exclude map[string]struct{}) (dp *DataPartition, err error) {
+	span := proto.SpanFromContext(ctx)
 	s.RLock()
 	partitions := s.partitions
 	kValue := s.kValue
 	s.RUnlock()
 
 	if len(partitions) == 0 {
-		log.LogError("KFasterRandomSelector: no writable data partition with empty partitions")
+		span.Errorf("KFasterRandomSelector: no writable data partition with empty partitions")
 		return nil, fmt.Errorf("no writable data partition")
 	}
 
@@ -89,36 +92,36 @@ func (s *KFasterRandomSelector) Select(exclude map[string]struct{}) (dp *DataPar
 	index := rand.Intn(kValue)
 	dp = partitions[index]
 	if !isExcluded(dp, exclude) {
-		log.LogDebugf("KFasterRandomSelector: select faster dp[%v], index %v, kValue(%v/%v)",
+		span.Debugf("KFasterRandomSelector: select faster dp[%v], index %v, kValue(%v/%v)",
 			dp, index, kValue, len(partitions))
 		return dp, nil
 	}
 
-	log.LogWarnf("KFasterRandomSelector: first random fasterRwPartition was excluded, get partition from other faster")
+	span.Warnf("KFasterRandomSelector: first random fasterRwPartition was excluded, get partition from other faster")
 
 	// if partitions[index] is excluded, select next in fasterRwPartitions
 	for i := 1; i < kValue; i++ {
 		dp = partitions[(index+i)%kValue]
 		if !isExcluded(dp, exclude) {
-			log.LogDebugf("KFasterRandomSelector: select faster dp[%v], index %v, kValue(%v/%v)",
+			span.Debugf("KFasterRandomSelector: select faster dp[%v], index %v, kValue(%v/%v)",
 				dp, (index+i)%kValue, kValue, len(partitions))
 			return dp, nil
 		}
 	}
 
-	log.LogWarnf("KFasterRandomSelector: all fasterRwPartitions were excluded, get partition from slower")
+	span.Warnf("KFasterRandomSelector: all fasterRwPartitions were excluded, get partition from slower")
 
 	// if all fasterRwPartitions are excluded, select random dataPartition in slowerRwPartitions
 	slowerRwPartitionsNum := len(partitions) - kValue
 	for i := 0; i < slowerRwPartitionsNum; i++ {
 		dp = partitions[(index+i)%slowerRwPartitionsNum+kValue]
 		if !isExcluded(dp, exclude) {
-			log.LogDebugf("KFasterRandomSelector: select slower dp[%v], index %v, kValue(%v/%v)",
+			span.Debugf("KFasterRandomSelector: select slower dp[%v], index %v, kValue(%v/%v)",
 				dp, (index+i)%slowerRwPartitionsNum+kValue, kValue, len(partitions))
 			return dp, nil
 		}
 	}
-	log.LogErrorf("KFasterRandomSelector: no writable data partition with %v partitions and exclude(%v)",
+	span.Errorf("KFasterRandomSelector: no writable data partition with %v partitions and exclude(%v)",
 		len(partitions), exclude)
 	return nil, fmt.Errorf("no writable data partition")
 }
