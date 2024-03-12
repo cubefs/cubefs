@@ -291,7 +291,7 @@ int ReConnect(Connection* conn) {
     client->listen_id = id;
     conn_ev->cm_id = id;
     //EpollAddConnectEvent(client->listen_id->channel->fd,conn_ev);
-    epoll_rdma_event_add(client->listen_id->channel->fd, conn_ev, connection_event_cb);
+    epoll_rdma_connectEvent_add(client->listen_id->channel->fd, conn_ev, connection_event_cb);
 
     ((struct RdmaContext*)conn->csContext)->isReConnect = true;
     ret = rdma_resolve_addr(conn->cm_id, NULL, addr->ai_addr, TIMEOUT_IN_MS);
@@ -580,7 +580,7 @@ MemoryEntry* getRecvResponseBuffer(Connection *conn) {
 void setConnContext(Connection* conn, void* connContext) {
     conn->connContext = connContext;
     conn->state = CONN_STATE_CONNECTED;
-    epoll_rdma_event_add(conn->comp_channel->fd, conn, transport_sendAndRecv_event_cb);
+    epoll_rdma_transferEvent_add(conn->comp_channel->fd, conn, transport_sendAndRecv_event_cb);
     return;
 }
 

@@ -138,7 +138,7 @@ struct RdmaListener* StartServer(const char* ip, uint16_t port, char* serverAddr
     conn_ev->disconnected_callback = OnServerConnDisconnected;
     server->conn_ev = conn_ev;
     //EpollAddConnectEvent(server->listen_id->channel->fd, conn_ev);
-    epoll_rdma_event_add(server->listen_id->channel->fd, conn_ev, connection_event_cb);
+    epoll_rdma_connectEvent_add(server->listen_id->channel->fd, conn_ev, connection_event_cb);
     return server;
 }
 

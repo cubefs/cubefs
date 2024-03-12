@@ -49,7 +49,7 @@ MemoryPool* InitMemoryPool(int block_num, int block_size, int level) {
     struct ibv_mr* mr = NULL;
 
     MemoryPool * pool = (MemoryPool*)malloc(sizeof(MemoryPool));
-    pool->size = block_num * block_size;
+    pool->size = (int64_t)block_num * (int64_t)block_size;
     posix_memalign((void**)(&(pool->original_mem)), sysconf(_SC_PAGESIZE), pool->size);
     pool->allocation = buddy_new(level);
     pd = alloc_pd();

@@ -163,7 +163,7 @@ struct RdmaContext* Connect(const char* ip, const char* port, char* remoteAddr) 
     conn_ev->rejected_callback = OnClientConnRejected;
     client->conn_ev = conn_ev;
     //EpollAddConnectEvent(client->listen_id->channel->fd, conn_ev);
-    epoll_rdma_event_add(client->listen_id->channel->fd, conn_ev, connection_event_cb);
+    epoll_rdma_connectEvent_add(client->listen_id->channel->fd, conn_ev, connection_event_cb);
     return client;
 }
 

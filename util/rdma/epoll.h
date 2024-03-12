@@ -22,13 +22,15 @@ struct EpollEvent {
     uint32_t index;
     EventCallBack cb;
     void* ctx;
+    int fd;
+    int nFd;
 };
 
 static int epoll_fd  = -1;
 static pthread_mutex_t mutex;
 static pthread_t epoll_thread;
 static struct EpollEvent all_event[1024] = {};
-static int all_fds[1024] = {};
+static pthread_t all_threads[1024] = {};
 
 static void * epoll_worker(void *ctx) {
     struct epoll_event ready_ev[128];//申请空间来放就绪的事件。
@@ -45,7 +47,8 @@ static void * epoll_worker(void *ctx) {
         }
         for(int i = 0; i < ret; ++i) {
             uint32_t index = ready_ev[i].data.fd;
-            all_event[index].cb(all_event[index].ctx);
+            //all_event[index].cb(all_event[index].ctx);
+            notify_event(all_event[index].nFd,0);
         }
     }
 
@@ -85,15 +88,30 @@ static struct EpollEvent* GetEpollEvent() {
 
 static void DelEpollEvent(int fd) {
     for(int i = 0;i < 1024; i++) {
-        if (all_fds[i] == fd) {
-            all_fds[i] = 0;
+        if (all_event[i].fd == fd) {
+            notify_event(all_event[i].nFd,1);
+            pthread_cancel(all_threads[i]);
+            all_event[i].fd = 0;
             all_event[i].ctx = NULL;
             all_event[i].cb = NULL;
         }
     }
 }
 
-static int epoll_rdma_event_add(int fd, void* ctx, EventCallBack cb) {
+static void * epoll_subWorker(void *ctx) {
+    while(1) {
+        pthread_testcancel();
+        struct EpollEvent* ev = (struct EpollEvent*)ctx;
+        if (wait_event(ev->nFd) <= 0) {
+            break;
+        }
+        ev->cb(ev->ctx);
+    }
+
+    pthread_exit(NULL);
+}
+
+static int epoll_rdma_transferEvent_add(int fd, void* ctx, EventCallBack cb) {
     int epoll_fd = get_epoll_fd();
     if(epoll_fd < 0){
         return -1;
@@ -102,11 +120,36 @@ static int epoll_rdma_event_add(int fd, void* ctx, EventCallBack cb) {
     struct EpollEvent* ev = GetEpollEvent();
     ev->ctx = ctx;
     ev->cb = cb;
-
-    all_fds[ev->index] = fd;
+    ev->nFd = open_event_fd();
+    ev->fd = fd;
+    pthread_create(&all_threads[ev->index], NULL, epoll_subWorker, ev);
 
     struct epoll_event ep_ev;
-    ep_ev.events = EPOLLIN; //| EPOLLET;
+    ep_ev.events = EPOLLIN | EPOLLET;
+    ep_ev.data.fd = ev->index;
+
+    if(epoll_ctl(epoll_fd, EPOLL_CTL_ADD, fd, &ep_ev) < 0){
+        return -1;
+    }
+
+    return 0;
+}
+
+static int epoll_rdma_connectEvent_add(int fd, void* ctx, EventCallBack cb) {
+    int epoll_fd = get_epoll_fd();
+    if(epoll_fd < 0){
+        return -1;
+    }
+
+    struct EpollEvent* ev = GetEpollEvent();
+    ev->ctx = ctx;
+    ev->cb = cb;
+    ev->nFd = open_event_fd();
+    ev->fd = fd;
+    pthread_create(&all_threads[ev->index], NULL, epoll_subWorker, ev);
+
+    struct epoll_event ep_ev;
+    ep_ev.events = EPOLLIN;
     ep_ev.data.fd = ev->index;
 
     if(epoll_ctl(epoll_fd, EPOLL_CTL_ADD, fd, &ep_ev) < 0){
