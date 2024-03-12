@@ -4,11 +4,11 @@
 
 **Version: v3.3.1**
 
-| Node Type       | Number of Nodes | CPU | Memory | Storage        | Network | Remarks          |
-|-----------------|-----------------|-----|--------|----------------|---------|------------------|
-| Management Node | 3               | 8   | 32GiB  | 197GiB SSD     | 10 Gb/s | Docker container |
-| Metadata Node   | 5               | 80  | 377GiB | 4 x 3.7TiB SSD | 50 Gb/s | Mixed deployment |
-| Data Node       | 5               | 80  | 377GiB | 4 x 3.7TiB SSD | 50 Gb/s | Mixed deployment |
+| Node Type       | Number of Nodes | CPU                                           | Memory              | Storage             | Network | Remarks          |
+|-----------------|-----------------|-----------------------------------------------|---------------------|---------------------|---------|------------------|
+| Management Node | 3               | 8    Intel(R) Xeon(R) Gold 6130 CPU @ 2.10GHz | 32GiB DDR4 2666 MHz | 197GiB     HDD SCSI | 10 Gb/s | Docker container |
+| Metadata Node   | 5               | 80   Intel(R) Xeon(R) Gold 6230 CPU @ 2.10GHz | 377GiB DDR4 2933MHz | 4 x 3.7TiB SSD NVMe | 50 Gb/s | Mixed deployment |
+| Data Node       | 5               | 80   Intel(R) Xeon(R) Gold 6230 CPU @ 2.10GHz | 377GiB DDR4 2933MHz | 4 x 3.7TiB SSD NVMe | 50 Gb/s | Mixed deployment |
 
 ## Volume Settings
 
