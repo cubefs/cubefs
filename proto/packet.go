@@ -349,8 +349,20 @@ func SpanContext() (trace.Span, context.Context) {
 	return span, ctx
 }
 
+func SpanWithContext(ctx context.Context) (trace.Span, context.Context) {
+	span, ctx := StartSpanFromContext(ctx, "")
+	ctx = ContextWithSpan(ctx, span)
+	return span, ctx
+}
+
 func SpanContextPrefix(prefix string) (trace.Span, context.Context) {
 	span, ctx := StartSpanFromContextWithTraceID(context.Background(), "", prefix+TraceID())
+	ctx = ContextWithSpan(ctx, span)
+	return span, ctx
+}
+
+func SpanWithContextPrefix(ctx context.Context, prefix string) (trace.Span, context.Context) {
+	span, ctx := StartSpanFromContextWithTraceID(ctx, "", prefix+TraceID())
 	ctx = ContextWithSpan(ctx, span)
 	return span, ctx
 }

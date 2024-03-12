@@ -22,7 +22,6 @@ import (
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/errors"
-	"github.com/cubefs/cubefs/util/log"
 )
 
 const (
@@ -71,9 +70,9 @@ func (mw *MetaWrapper) sendToMetaPartition(mp *MetaPartition, req *proto.Packet)
 	} else {
 		sendTimeLimit = int(mw.metaSendTimeout) * 1000 // ms
 	}
-
+	span := req.Span()
 	delta := (sendTimeLimit*2/SendRetryLimit - SendRetryInterval*2) / SendRetryLimit // ms
-	log.LogDebugf("mw.metaSendTimeout: %v s, sendTimeLimit: %v ms, delta: %v ms, req %v", mw.metaSendTimeout, sendTimeLimit, delta, req)
+	span.Debugf("mw.metaSendTimeout: %v s, sendTimeLimit: %v ms, delta: %v ms, req %v", mw.metaSendTimeout, sendTimeLimit, delta, req)
 
 	req.ExtentType |= proto.MultiVersionFlag
 
@@ -87,7 +86,7 @@ func (mw *MetaWrapper) sendToMetaPartition(mp *MetaPartition, req *proto.Packet)
 	}
 	mc, err = mw.getConn(mp.PartitionID, addr)
 	if err != nil {
-		log.LogWarnf("sendToMetaPartition: getConn failed and goto retry, req(%v) mp(%v) addr(%v) err(%v)", req, mp, addr, err)
+		span.Warnf("sendToMetaPartition: getConn failed and goto retry, req(%v) mp(%v) addr(%v) err(%v)", req, mp, addr, err)
 		goto retry
 	}
 
@@ -110,7 +109,7 @@ sendWithList:
 		req.ExtentType |= proto.VersionListFlag
 		req.VerList = make([]*proto.VolVersionInfo, len(mw.Client.GetVerMgr().VerList))
 		copy(req.VerList, mw.Client.GetVerMgr().VerList)
-		log.LogWarnf("sendToMetaPartition: leader failed and goto retry, req(%v) mp(%v) mc(%v) err(%v) resp(%v)", req, mp, mc, err, resp)
+		span.Warnf("sendToMetaPartition: leader failed and goto retry, req(%v) mp(%v) mc(%v) err(%v) resp(%v)", req, mp, mc, err, resp)
 		goto sendWithList
 	}
 	mw.putConn(mc, err)
@@ -121,7 +120,7 @@ retry:
 			mc, err = mw.getConn(mp.PartitionID, addr)
 			errs[j] = err
 			if err != nil {
-				log.LogWarnf("sendToMetaPartition: getConn failed and continue to retry, req(%v) mp(%v) addr(%v) err(%v)", req, mp, addr, err)
+				span.Warnf("sendToMetaPartition: getConn failed and continue to retry, req(%v) mp(%v) addr(%v) err(%v)", req, mp, addr, err)
 				continue
 			}
 			resp, err = mc.send(req, lastSeq)
@@ -134,20 +133,20 @@ retry:
 			} else {
 				errs[j] = err
 			}
-			log.LogWarnf("sendToMetaPartition: retry failed req(%v) mp(%v) mc(%v) errs(%v) resp(%v)", req, mp, mc, errs, resp)
+			span.Warnf("sendToMetaPartition: retry failed req(%v) mp(%v) mc(%v) errs(%v) resp(%v)", req, mp, mc, errs, resp)
 		}
 		if time.Since(start) > time.Duration(sendTimeLimit)*time.Millisecond {
-			log.LogWarnf("sendToMetaPartition: retry timeout req(%v) mp(%v) time(%v)", req, mp, time.Since(start))
+			span.Warnf("sendToMetaPartition: retry timeout req(%v) mp(%v) time(%v)", req, mp, time.Since(start))
 			break
 		}
 		sendRetryInterval := time.Duration(SendRetryInterval+i*delta) * time.Millisecond
-		log.LogWarnf("sendToMetaPartition: req(%v) mp(%v) retry in (%v), retry_iteration (%v), retry_totalTime (%v)", req, mp,
+		span.Warnf("sendToMetaPartition: req(%v) mp(%v) retry in (%v), retry_iteration (%v), retry_totalTime (%v)", req, mp,
 			sendRetryInterval, i+1, time.Since(start))
 		time.Sleep(sendRetryInterval)
 	}
 
 out:
-	log.LogDebugf("sendToMetaPartition: succeed! req(%v) mc(%v) resp(%v)", req, mc, resp)
+	span.Debugf("sendToMetaPartition: succeed! req(%v) mc(%v) resp(%v)", req, mc, resp)
 	if mw.Client != nil && resp != nil { // For compatibility with LcNode, the client checks whether it is nil
 		mw.checkVerFromMeta(resp)
 	}
@@ -158,6 +157,7 @@ out:
 }
 
 func (mc *MetaConn) send(req *proto.Packet, verSeq uint64) (resp *proto.Packet, err error) {
+	span := req.Span()
 	req.ExtentType |= proto.MultiVersionFlag
 	req.VerSeq = verSeq
 
@@ -172,7 +172,7 @@ func (mc *MetaConn) send(req *proto.Packet, verSeq uint64) (resp *proto.Packet, 
 	}
 	// Check if the ID and OpCode of the response are consistent with the request.
 	if resp.ReqID != req.ReqID || resp.Opcode != req.Opcode {
-		log.LogErrorf("send: the response packet mismatch with request: conn(%v to %v) req(%v) resp(%v)",
+		span.Errorf("send: the response packet mismatch with request: conn(%v to %v) req(%v) resp(%v)",
 			mc.conn.LocalAddr(), mc.conn.RemoteAddr(), req, resp)
 		return nil, syscall.EBADMSG
 	}
