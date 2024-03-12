@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"context"
 	"sort"
 
 	"github.com/cubefs/cubefs/proto"
@@ -43,10 +42,9 @@ func newListBadDiskCmd(client *master.MasterClient) *cobra.Command {
 				infos *proto.BadDiskInfos
 				err   error
 			)
-			defer func() {
-				errout(err)
-			}()
-			if infos, err = client.AdminAPI().QueryBadDisks(context.TODO()); err != nil {
+			span, ctx := spanContext()
+			defer func() { errout(span, err) }()
+			if infos, err = client.AdminAPI().QueryBadDisks(ctx); err != nil {
 				return
 			}
 			stdout("(partitionID=0 means detected by datanode disk checking, not associated with any partition)\n\n[Unavaliable disks]:\n")
@@ -74,10 +72,9 @@ func newDecommissionDiskCmd(client *master.MasterClient) *cobra.Command {
 		Args:  cobra.MinimumNArgs(2),
 		Run: func(cmd *cobra.Command, args []string) {
 			var err error
-			defer func() {
-				errout(err)
-			}()
-			if err = client.AdminAPI().DecommissionDisk(context.TODO(), args[0], args[1]); err != nil {
+			span, ctx := spanContext()
+			defer func() { errout(span, err) }()
+			if err = client.AdminAPI().DecommissionDisk(ctx, args[0], args[1]); err != nil {
 				return
 			}
 			stdout("Mark disk %v:%v to be decommissioned", args[0], args[1])
@@ -97,10 +94,9 @@ func newRecommissionDiskCmd(client *master.MasterClient) *cobra.Command {
 		Args:  cobra.MinimumNArgs(2),
 		Run: func(cmd *cobra.Command, args []string) {
 			var err error
-			defer func() {
-				errout(err)
-			}()
-			if err = client.AdminAPI().RecommissionDisk(context.TODO(), args[0], args[1]); err != nil {
+			span, ctx := spanContext()
+			defer func() { errout(span, err) }()
+			if err = client.AdminAPI().RecommissionDisk(ctx, args[0], args[1]); err != nil {
 				return
 			}
 			stdout("Mark disk %v:%v to be recommissioned", args[0], args[1])
@@ -120,10 +116,9 @@ func newQueryDecommissionDiskCmd(client *master.MasterClient) *cobra.Command {
 		Args:  cobra.MinimumNArgs(2),
 		Run: func(cmd *cobra.Command, args []string) {
 			var err error
-			defer func() {
-				errout(err)
-			}()
-			progress, err := client.AdminAPI().QueryDecommissionDiskProgress(context.TODO(), args[0], args[1])
+			span, ctx := spanContext()
+			defer func() { errout(span, err) }()
+			progress, err := client.AdminAPI().QueryDecommissionDiskProgress(ctx, args[0], args[1])
 			if err != nil {
 				return
 			}
