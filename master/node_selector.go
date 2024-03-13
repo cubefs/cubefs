@@ -207,7 +207,7 @@ func (s *CarryWeightNodeSelector) getCarryDataNodes(maxTotal uint64, excludeHost
 
 		nt := new(weightedNode)
 		nt.Carry = s.carry[dataNode.ID]
-		nt.Weight = float64(dataNode.AvailableSpace) / float64(maxTotal)
+		nt.Weight = float64(dataNode.Total-dataNode.Used) / float64(maxTotal)
 		nt.Ptr = dataNode
 		nodeTabs = append(nodeTabs, nt)
 		return true
