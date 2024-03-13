@@ -615,7 +615,7 @@ func getDpInfoById(dpId string) (dpInfo *proto.DataPartitionInfo, err error) {
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		log.LogErrorf("Invalid status code: %v", resp.StatusCode)
-		return
+		return nil, fmt.Errorf("get dp failed, dp %s", dpId)
 	}
 
 	respData, err := io.ReadAll(resp.Body)
@@ -754,7 +754,11 @@ func getExtentsByDpId(dir string, volname string, dpId string, beforeTime string
 			log.LogErrorf("Create before time file failed, err: %v", err)
 			return
 		}
+	} else if err == nil {
+		log.LogInfof("beforeTime file path already exist, no need to create, path %s", beforeTimeFilePath)
+		return
 	}
+
 	err = os.WriteFile(beforeTimeFilePath, []byte(beforeTime), 0644)
 	if err != nil {
 		log.LogErrorf("Write before time file failed, err: %v", err)
@@ -806,7 +810,7 @@ func getClusterInfo() (clusterView *proto.ClusterView, err error) {
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		log.LogErrorf("Invalid status code: %v", resp.StatusCode)
-		return
+		return nil, fmt.Errorf("get cluster failed")
 	}
 
 	respData, err := ioutil.ReadAll(resp.Body)
@@ -1090,7 +1094,9 @@ func calcDpBadNormalExtentByBF(vol, dpDir, badDir string, concurrency int) (err 
 
 		walk := func() {
 			defer wg.Done()
-			filePath := filepath.Join(dpDir, fileName)
+
+			dpId := fileName
+			filePath := filepath.Join(dpDir, dpId)
 			file, err := os.Open(filePath)
 			if err != nil {
 				slog.Fatalf("Open file failed, path %s, err: %v", filePath, err.Error())
@@ -1099,6 +1105,18 @@ func calcDpBadNormalExtentByBF(vol, dpDir, badDir string, concurrency int) (err 
 
 			size := 512 * 1024
 			reader := bufio.NewReaderSize(file, size)
+			badExts := make([]BadNornalExtent, 0, 4096)
+			defer func() {
+				if len(badExts) == 0 {
+					return
+				}
+
+				err = writeBadNormalExtentoLocal(dpId, badDir, badExts)
+				if err != nil {
+					log.LogErrorf("writeBadNormalExtentoLocal: Write bad extent failed, err: %v", err)
+				}
+			}()
+
 			for {
 				line, err := reader.ReadBytes('\n')
 				if err != nil {
@@ -1106,7 +1124,8 @@ func calcDpBadNormalExtentByBF(vol, dpDir, badDir string, concurrency int) (err 
 						err = nil
 						break
 					}
-					slog.Fatalf("Read line failed, path %s, err: %v", filePath, err)
+					log.LogErrorf("read line failed, path %s, err: %v", filePath, err)
+					return
 				}
 
 				var eksForGc ExtentForGc
@@ -1121,14 +1140,12 @@ func calcDpBadNormalExtentByBF(vol, dpDir, badDir string, concurrency int) (err 
 
 					var badExtent BadNornalExtent
 					parts := strings.Split(eksForGc.Id, "_")
-					dpId := parts[0]
+					if parts[0] != dpId {
+						slog.Fatalf("dp id is not legal, dpId %s, ekId %s", dpId, eksForGc.Id)
+					}
 					badExtent.ExtentId = parts[1]
 					badExtent.Size = eksForGc.Size
-
-					err = writeBadNormalExtentoLocal(dpId, badDir, badExtent)
-					if err != nil {
-						slog.Fatalf("Write bad extent failed, err: %v", err)
-					}
+					badExts = append(badExts, badExtent)
 				}
 			}
 		}
@@ -1141,8 +1158,9 @@ func calcDpBadNormalExtentByBF(vol, dpDir, badDir string, concurrency int) (err 
 }
 
 // write bad extent to local
-func writeBadNormalExtentoLocal(dpId, badDir string, badExtent BadNornalExtent) (err error) {
-	log.LogInfof("Write dir %s, dpId: %s bad extent: %v", badDir, dpId, badExtent)
+func writeBadNormalExtentoLocal(dpId, badDir string, exts []BadNornalExtent) (err error) {
+	start := time.Now()
+	log.LogInfof("Write dir %s, dpId: %s bad extent: %d", badDir, dpId, len(exts))
 	filePath := filepath.Join(badDir, dpId)
 	file, err := os.OpenFile(filePath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
 	if err != nil {
@@ -1150,16 +1168,37 @@ func writeBadNormalExtentoLocal(dpId, badDir string, badExtent BadNornalExtent) 
 		return err
 	}
 
+	defer func() {
+		msg := fmt.Sprintf("perist bad extent finish, path %s, cost %d ms", filePath, time.Since(start))
+		if err != nil {
+			log.LogErrorf("%s_err(%s)", msg, err.Error())
+			return
+		}
+		log.LogInfo(msg)
+	}()
+
 	defer file.Close()
-	data, err := json.Marshal(&badExtent)
-	if err != nil {
-		slog.Fatalf("Marshal bad extent failed, path %s, err: %v", filePath, err)
-		return err
+
+	buf := bytes.NewBuffer(nil)
+	for _, ext := range exts {
+		data, err := json.Marshal(&ext)
+		if err != nil {
+			slog.Fatalf("Marshal bad extent failed, path %s, err: %v", filePath, err)
+			return err
+		}
+
+		_, err = buf.Write(data)
+		if err != nil {
+			return err
+		}
+		err = buf.WriteByte('\n')
+		if err != nil {
+			return err
+		}
 	}
 
-	_, err = file.Write(append(data, '\n'))
+	_, err = file.Write(buf.Bytes())
 	if err != nil {
-		slog.Fatalf("Write bad extent failed, path %s, err: %v", filePath, err.Error())
 		return err
 	}
 	return
