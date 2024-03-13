@@ -325,7 +325,7 @@ func (m *warningMetrics) WarnMissingMp(clusterName, addr string, partitionID uin
 
 	m.missingMp.SetWithLabelValues(1, clusterName, id, addr)
 	if _, ok := m.mpMissingReplicaInfo[id]; !ok {
-		m.dpMissingReplicaInfo[id] = addrSet{addrs: make(map[string]voidType)}
+		m.mpMissingReplicaInfo[id] = addrSet{addrs: make(map[string]voidType)}
 	}
 	m.mpMissingReplicaInfo[id].addrs[addr] = voidVal
 }
