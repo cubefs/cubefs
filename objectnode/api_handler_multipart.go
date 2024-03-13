@@ -21,6 +21,7 @@ import (
 	"io"
 	"io/ioutil"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 	"syscall"
@@ -171,12 +172,17 @@ func (o *ObjectNode) uploadPartHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var partNumberInt uint16
-	if partNumberInt, err = safeConvertStrToUint16(partNumber); err != nil || partNumberInt < 1 {
+	if partNumberInt, err = safeConvertStrToUint16(partNumber); err != nil {
 		log.LogErrorf("uploadPartHandler: parse part number fail, requestID(%v) raw(%v) err(%v)",
 			GetRequestID(r), partNumber, err)
 		errorCode = InvalidPartNumber
 		return
 	}
+	if partNumberInt < uint16(MinPartNumberValid) || partNumberInt > uint16(MaxPartNumberValid) {
+		errorCode = InvalidPartNumber
+		return
+	}
+
 	if param.Bucket() == "" {
 		errorCode = InvalidBucketName
 		return
@@ -246,12 +252,17 @@ func (o *ObjectNode) uploadPartCopyHandler(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	var partNumberInt uint16
-	if partNumberInt, err = safeConvertStrToUint16(partNumber); err != nil || partNumberInt < 1 {
+	if partNumberInt, err = safeConvertStrToUint16(partNumber); err != nil {
 		log.LogErrorf("uploadPartCopyHandler: parse part number fail, requestID(%v) raw(%v) err(%v)",
 			GetRequestID(r), partNumber, err)
 		errorCode = InvalidPartNumber
 		return
 	}
+	if partNumberInt < uint16(MinPartNumberValid) || partNumberInt > uint16(MaxPartNumberValid) {
+		errorCode = InvalidPartNumber
+		return
+	}
+
 	if param.Bucket() == "" {
 		errorCode = InvalidBucketName
 		return
@@ -499,6 +510,12 @@ func (o *ObjectNode) checkReqParts(param *RequestParam, reqParts *CompleteMultip
 	for key, val := range multipartInfo.Extend {
 		committedPartInfo.Extend[key] = val
 	}
+
+	saveParts := multipartInfo.Parts
+	sort.SliceStable(saveParts, func(i, j int) bool { return saveParts[i].ID < saveParts[j].ID })
+
+	maxPartNum := saveParts[len(saveParts)-1].ID
+	allSaveParts := make([]*proto.MultipartPartInfo, maxPartNum+1)
 	uploadedInfo := make(map[uint16]string, 0)
 	discardedPartInodes = make(map[uint64]uint16, 0)
 	for _, uploadedPart := range multipartInfo.Parts {
@@ -514,10 +531,15 @@ func (o *ObjectNode) checkReqParts(param *RequestParam, reqParts *CompleteMultip
 		} else {
 			committedPartInfo.Parts = append(committedPartInfo.Parts, uploadedPart)
 		}
+		allSaveParts[uploadedPart.ID] = uploadedPart
 	}
 
 	for idx, reqPart := range reqParts.Parts {
-		if multipartInfo.Parts[reqPart.PartNumber-1].Size < MinPartSizeBytes && idx < len(reqParts.Parts)-1 {
+		if reqPart.PartNumber >= len(allSaveParts) {
+			err = InvalidPart
+			return
+		}
+		if allSaveParts[reqPart.PartNumber].Size < MinPartSizeBytes && idx < len(reqParts.Parts)-1 {
 			err = EntityTooSmall
 			return
 		}
