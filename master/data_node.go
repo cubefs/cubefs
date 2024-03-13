@@ -156,11 +156,7 @@ func (dataNode *DataNode) isWriteAble() (ok bool) {
 	dataNode.RLock()
 	defer dataNode.RUnlock()
 
-	if dataNode.isActive && dataNode.AvailableSpace > 10*util.GB && !dataNode.RdOnly {
-		ok = true
-	}
-
-	return
+	return dataNode.isWriteAbleWithSizeNoLock(10 * util.GB)
 }
 
 func (dataNode *DataNode) canAllocDp() bool {
@@ -188,15 +184,20 @@ func (dataNode *DataNode) dpCntInLimit() bool {
 	return dataNode.DataPartitionCount <= dataNode.GetDpCntLimit()
 }
 
-func (dataNode *DataNode) isWriteAbleWithSize(size uint64) (ok bool) {
-	dataNode.RLock()
-	defer dataNode.RUnlock()
-
-	if dataNode.isActive == true && dataNode.AvailableSpace > size {
+func (dataNode *DataNode) isWriteAbleWithSizeNoLock(size uint64) (ok bool) {
+	if dataNode.isActive == true && dataNode.AvailableSpace > size && !dataNode.RdOnly &&
+		dataNode.Total > dataNode.Used && (dataNode.Total-dataNode.Used) > size {
 		ok = true
 	}
 
 	return
+}
+
+func (dataNode *DataNode) isWriteAbleWithSize(size uint64) (ok bool) {
+	dataNode.RLock()
+	defer dataNode.RUnlock()
+
+	return dataNode.isWriteAbleWithSizeNoLock(size)
 }
 
 func (dataNode *DataNode) isAvailCarryNode() (ok bool) {

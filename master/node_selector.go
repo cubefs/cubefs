@@ -178,12 +178,7 @@ func getAvailCarryDataNodeTab(maxTotal uint64, excludeHosts []string, dataNodes 
 
 		nt := new(weightedNode)
 		nt.Carry = dataNode.Carry
-
-		if dataNode.AvailableSpace < 0 {
-			nt.Weight = 0.0
-		} else {
-			nt.Weight = float64(dataNode.AvailableSpace) / float64(maxTotal)
-		}
+		nt.Weight = float64(dataNode.Total-dataNode.Used) / float64(maxTotal)
 
 		nt.Ptr = dataNode
 		nodeTabs = append(nodeTabs, nt)
