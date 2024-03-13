@@ -2361,7 +2361,7 @@ func (c *Cluster) updateDataNodeSize(addr string, dp *DataPartition) error {
 	dataNode.Lock()
 	defer dataNode.Unlock()
 
-	if dataNode.AvailableSpace < 10*util.GB {
+	if !dataNode.isWriteAbleWithSizeNoLock(10 * util.GB) {
 		return fmt.Errorf("new datanode %s is not writable %d", addr, dataNode.AvailableSpace)
 	}
 
