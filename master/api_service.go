@@ -1583,7 +1583,7 @@ func (m *Server) addDataReplica(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err = m.cluster.addDataReplica(dp, addr); err != nil {
+	if err = m.cluster.addDataReplica(dp, addr, false); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
