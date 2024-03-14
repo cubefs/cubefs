@@ -149,6 +149,7 @@ func (s *Streamer) read(data []byte, offset int, size int) (total int, err error
 		if req.ExtentKey.PartitionId == 0 || req.ExtentKey.ExtentId == 0 {
 			s.writeLock.Lock()
 			if err = s.IssueFlushRequest(); err != nil {
+				log.LogErrorf("[read] failed to issue flush request, ino(%v) offset(%v) size(%v) err(%v) req(%v)", s.inode, offset, size, err, req)
 				s.writeLock.Unlock()
 				return 0, err
 			}
