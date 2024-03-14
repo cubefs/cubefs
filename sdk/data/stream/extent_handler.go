@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"github.com/cubefs/cubefs/util/stat"
 	"net"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -321,6 +322,25 @@ func (eh *ExtentHandler) processReply(packet *Packet) {
 	log.LogDebugf("processReply: get reply, eh(%v) packet(%v) reply(%v)", eh, packet, reply)
 
 	if reply.ResultCode != proto.OpOk {
+		// NOTE: try again
+		if reply.ResultCode == proto.OpLimitedIoErr {
+			log.LogWarnf("[processReply] eh(%v) packet(%v) reply(%v) try again", eh, packet, reply)
+			for reply.ResultCode == proto.OpLimitedIoErr {
+				time.Sleep(StreamSendSleepInterval)
+				if err = packet.writeToConn(eh.conn); err != nil {
+					log.LogWarnf("sender writeTo: failed, eh(%v) err(%v) packet(%v)", eh, err, packet)
+					eh.processReplyError(packet, err.Error())
+					return
+				}
+				reply = NewReply(packet.ReqID, packet.PartitionID, packet.ExtentID)
+				err = reply.ReadFromConn(eh.conn, proto.ReadDeadlineTime)
+				if err != nil {
+					log.LogErrorf("[processReply] failed to read reply from connection, eh(%v) err(%v) packet(%v)", eh, err, packet)
+					eh.processReplyError(packet, err.Error())
+					return
+				}
+			}
+		}
 		errmsg := fmt.Sprintf("reply NOK: reply(%v)", reply)
 		eh.processReplyError(packet, errmsg)
 		return
@@ -367,7 +387,6 @@ func (eh *ExtentHandler) processReply(packet *Packet) {
 	proto.Buffers.Put(packet.Data)
 	packet.Data = nil
 	eh.dirty = true
-	return
 }
 
 func (eh *ExtentHandler) processReplyError(packet *Packet, errmsg string) {
@@ -525,6 +544,12 @@ func (eh *ExtentHandler) allocateExtent() (err error) {
 				extID, err = eh.createExtent(dp)
 			}
 			if err != nil {
+				// NOTE: try again
+				if strings.Contains(err.Error(), "Again") || strings.Contains(err.Error(), "DiskNoSpaceErr") {
+					log.LogWarnf("[allocateExtent] eh(%v) try agagin", eh)
+					i -= 1
+					continue
+				}
 				log.LogWarnf("allocateExtent: exclude dp[%v] for write caused by create extent failed, eh(%v) err(%v) exclude(%v)",
 					dp, eh, err, exclude)
 				eh.stream.client.dataWrapper.RemoveDataPartitionForWrite(dp.PartitionID)
@@ -609,6 +634,9 @@ func (eh *ExtentHandler) createExtent(dp *wrapper.DataPartition) (extID int, err
 	}
 
 	if p.ResultCode != proto.OpOk {
+		if p.ResultCode == proto.OpDiskNoSpaceErr {
+			log.LogWarnf("[createExtent] dp(%v) disk full or tiny extent runs out", dp.PartitionID)
+		}
 		return extID, errors.New(fmt.Sprintf("createExtent: ResultCode NOK, packet(%v) datapartionHosts(%v) ResultCode(%v)", p, dp.Hosts[0], p.GetResultMsg()))
 	}
 
