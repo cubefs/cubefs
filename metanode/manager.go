@@ -500,9 +500,12 @@ func (m *metadataManager) loadPartitions() (err error) {
 					errload = nil
 				}
 				partition := NewMetaPartition(partitionConfig, m)
-				if partition == nil {
-					log.LogErrorf("action[loadPartitions]: NewMetaPartition is nil")
-					return
+				if partition.GetBaseConfig().RocksDBDir != "" {
+					err = m.rocksdbManager.AttachPartition(partition.GetBaseConfig().RocksDBDir)
+					if err != nil {
+						log.LogWarnf("[loadPartitions] failed to attach partition to rocksdb manager, err(%v)", err)
+						err = nil
+					}
 				}
 				errload = m.attachPartition(id, partition)
 				if errload != nil {

@@ -362,6 +362,7 @@ func (m *metadataManager) opMetaLinkInode(conn net.Conn, p *Packet,
 // Handle OpCreate
 func (m *metadataManager) opFreeInodeOnRaftFollower(conn net.Conn, p *Packet,
 	remoteAddr string) (err error) {
+	log.LogWarnf("[opFreeInodeOnRaftFollower] addr(%v) run old version software", remoteAddr)
 	_, err = m.getPartition(p.PartitionID)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
@@ -1431,6 +1432,13 @@ func (m *metadataManager) opDeleteMetaPartition(conn net.Conn,
 	mp.DeleteRaft()
 	m.deletePartition(mp.GetBaseConfig().PartitionId)
 	os.RemoveAll(conf.RootDir)
+	if conf.RocksDBDir != "" {
+		err = m.rocksdbManager.DetachPartition(conf.RocksDBDir)
+		if err != nil {
+			log.LogWarnf("[opDeleteMetaPartition] failed to detach partition from rocksdb manager, err(%v)", err)
+			err = nil
+		}
+	}
 	p.PacketOkReply()
 	m.respondToClientWithVer(conn, p)
 	runtime.GC()

@@ -224,9 +224,6 @@ func (mp *metaPartition) ListMultipart(req *proto.ListMultipartRequest, p *Packe
 	prefix := req.Prefix
 	matches := make([]*Multipart, 0, max)
 	walkTreeFunc := func(multipart *Multipart) (bool, error) {
-		if multipart.key < keyMarker || (multipart.key == keyMarker && multipart.id < multipartIdMarker) {
-			return true, nil
-		}
 		if len(prefix) > 0 && !strings.HasPrefix(multipart.key, prefix) {
 			// skip and continue
 			return true, nil
@@ -234,8 +231,8 @@ func (mp *metaPartition) ListMultipart(req *proto.ListMultipartRequest, p *Packe
 		matches = append(matches, multipart.Copy().(*Multipart))
 		return !(len(matches) >= max), nil
 	}
-	if len(prefix) > 0 {
-		err = mp.multipartTree.RangeWithPrefix(&Multipart{key: prefix}, &Multipart{key: keyMarker, id: multipartIdMarker}, nil, walkTreeFunc)
+	if len(keyMarker) > 0 {
+		err = mp.multipartTree.Range(&Multipart{key: keyMarker, id: multipartIdMarker}, nil, walkTreeFunc)
 	} else {
 		err = mp.multipartTree.Range(nil, nil, walkTreeFunc)
 	}

@@ -15,11 +15,12 @@
 package metanode
 
 import (
-	"os"
+	"strings"
 	"time"
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/diskmon"
+	"github.com/cubefs/cubefs/util/fileutil"
 	"github.com/cubefs/cubefs/util/log"
 )
 
@@ -29,12 +30,6 @@ const (
 )
 
 // Compute the disk usage
-
-//
-//msg := fmt.Sprintf("disk path %v error(%s) on %v", d.Path, err.Error(), d.nodeInfo.localAddr)
-//exporter.Warning(msg)
-//log.LogErrorf(msg)
-
 func (m *MetaNode) startScheduleToUpdateSpaceInfo() {
 	go func() {
 		updateSpaceInfoTicker := time.NewTicker(UpdateDiskSpaceInterval)
@@ -46,20 +41,20 @@ func (m *MetaNode) startScheduleToUpdateSpaceInfo() {
 		for {
 			select {
 			case <-m.diskStopCh:
-				log.LogInfof("[MetaNode]stop disk stat  \n")
+				log.LogInfof("[startScheduleToUpdateSpaceInfo] stop disk stat  \n")
 				return
 			case <-updateSpaceInfoTicker.C:
 
 				for _, d := range m.disks {
-					d.ComputeUsage()
+					err := d.ComputeUsage()
+					if err != nil {
+						log.LogErrorf("[startScheduleToUpdateSpaceInfo] failed to compute usage for disk(%v), err(%v)", d.Path, err)
+					}
 				}
-
-				break
 			case <-checkStatusTicker.C:
 				for _, d := range m.disks {
 					d.UpdateDiskTick()
 				}
-				break
 			}
 		}
 	}()
@@ -74,90 +69,60 @@ func (m *MetaNode) startScheduleToCheckDiskStatus() {
 		for {
 			select {
 			case <-m.diskStopCh:
-				log.LogInfof("[MetaNode]stop disk stat  \n")
+				log.LogInfof("[startScheduleToCheckDiskStatus] stop disk stat")
 				return
 			case <-checkStatusTicker.C:
 				for _, d := range m.disks {
 					d.CheckDiskStatus(CheckDiskStatusInterval)
 				}
-				break
 			}
 		}
 	}()
 }
 
 func (m *MetaNode) addDisk(path string, isRocksDBDisk bool, reservedSpace uint64) *diskmon.FsCapMon {
-	//add disk when node start, can not add
 	if len(path) == 0 {
 		return nil
 	}
 
-	if _, err := os.Stat(path); err != nil {
-		log.LogInfof("add disk failed, no such dir/file:%v", path)
-		//dir may create after add mon, just add to map
-		//return nil
+	if !fileutil.ExistDir(path) {
+		// NOTE: dir may create after add mon, just add to map
+		log.LogWarnf("[addDisk] disk dir(%v) not exists", path)
 	}
 
-	disk, ok := m.disks[path]
-	if disk == nil || !ok {
+	disk := m.disks[path]
+	if disk == nil {
 		disk = diskmon.NewFsMon(path, isRocksDBDisk, reservedSpace)
 		m.disks[path] = disk
-		log.LogInfof("add disk:%v", disk)
+		log.LogInfof("[addDisk] add disk(%v) to diskmon", path)
 		return disk
 	}
 
-	log.LogInfof("already add disk:%v ", disk)
+	log.LogInfof("[addDisk] found disk(%v) in diskmon ", path)
 	return disk
 }
 
 func (m *MetaNode) startDiskStat() error {
-	rootDirIsRocksDBDisk := len(m.rocksDirs) == 0 || contains(m.rocksDirs, m.metadataDir)
 	m.disks = make(map[string]*diskmon.FsCapMon)
-	m.diskStopCh = make(chan struct{})
-	m.addDisk(m.metadataDir, rootDirIsRocksDBDisk, m.diskReservedSpace)
-	m.addDisk(m.raftDir, false, 0)
+	foundRootDir := false
 	for _, rocksDir := range m.rocksDirs {
+		if strings.HasPrefix(rocksDir, m.metadataDir) {
+			foundRootDir = true
+		}
 		m.addDisk(rocksDir, true, m.diskReservedSpace)
 	}
+	if !foundRootDir {
+		m.addDisk(m.metadataDir, false, m.diskReservedSpace)
+	}
+	m.addDisk(m.raftDir, false, 0)
 
 	m.startScheduleToUpdateSpaceInfo()
 	m.startScheduleToCheckDiskStatus()
 	return nil
 }
 
-func contains(arr []string, element string) (ok bool) {
-	if arr == nil || len(arr) == 0 {
-		return
-	}
-
-	for _, e := range arr {
-		if e == element {
-			ok = true
-			break
-		}
-	}
-	return
-}
-
 func (m *MetaNode) stopDiskStat() {
 	close(m.diskStopCh)
-}
-
-func (m *MetaNode) getDisks() []*diskmon.FsCapMon {
-	disks := make([]*diskmon.FsCapMon, 0, len(m.disks))
-	for _, d := range m.disks {
-		disks = append(disks, d)
-	}
-	return disks
-}
-
-func (m *MetaNode) getSingleDiskStat(path string) *diskmon.FsCapMon {
-	disk, ok := m.disks[path]
-	if !ok {
-		return nil
-	}
-
-	return disk
 }
 
 func (m *MetaNode) getRocksDBDiskStat() []*proto.MetaNodeRocksdbInfo {
@@ -179,7 +144,6 @@ func (m *MetaNode) getRocksDBDiskStat() []*proto.MetaNodeRocksdbInfo {
 			Used:       uint64(d.Used),
 			UsageRatio: ratio,
 			Status:     d.Status,
-			MPCount:    d.MPCount,
 		})
 	}
 	return disks

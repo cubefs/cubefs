@@ -17,6 +17,9 @@ package metanode
 import (
 	"errors"
 	"sync"
+
+	"github.com/cubefs/cubefs/util/diskmon"
+	"github.com/cubefs/cubefs/util/log"
 )
 
 var (
@@ -33,11 +36,20 @@ type RocksdbManager interface {
 	OpenRocksdb(dbPath string) (db *RocksDbInfo, err error)
 
 	CloseRocksdb(db *RocksDbInfo)
+
+	SelectRocksdbDisk(usableFactor float64) (disk string, err error)
+
+	AttachPartition(dbPath string) (err error)
+
+	DetachPartition(dbPath string) (err error)
+
+	GetPartitionCount(dbPath string) (count int, err error)
 }
 
 type RocksdbHandle struct {
-	db *RocksDbInfo
-	rc uint64
+	db         *RocksDbInfo
+	rc         uint64
+	partitions int
 }
 
 type rocksdbManager struct {
@@ -106,8 +118,74 @@ func (r *rocksdbManager) CloseRocksdb(db *RocksDbInfo) {
 	}
 	handle.rc -= 1
 	if handle.rc == 0 {
-		handle.db.CloseDb()
+		err := handle.db.CloseDb()
+		if err != nil {
+			log.LogErrorf("[CloseRocksdb] failed to close rocksdb(%v) err(%v)", dbPath, err)
+		}
 	}
+}
+
+func (r *rocksdbManager) SelectRocksdbDisk(usableFactor float64) (disk string, err error) {
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+	stats := make([]diskmon.DiskStat, 0)
+	for dir, handle := range r.dbs {
+		var stat diskmon.DiskStat
+		stat, err = diskmon.NewDiskStat(dir)
+		if err != nil {
+			log.LogErrorf("[SelectRocksdbDisk] failed to select rocksdb disk, err(%v)", err)
+			return
+		}
+		stat.PartitionCount = handle.partitions
+		stats = append(stats, stat)
+	}
+	d, err := diskmon.SelectDisk(stats, usableFactor)
+	if err != nil {
+		log.LogErrorf("[SelectRocksdbDisk] failed to select rocksdb disk, err(%v)", err)
+		return
+	}
+	disk = d.Path
+	handle := r.dbs[disk]
+	handle.partitions += 1
+	return
+}
+
+func (r *rocksdbManager) AttachPartition(dbPath string) (err error) {
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+	handle, ok := r.dbs[dbPath]
+	if !ok {
+		err = ErrUnregisteredRocksdbPath
+		return
+	}
+	handle.partitions += 1
+	return
+}
+
+func (r *rocksdbManager) DetachPartition(dbPath string) (err error) {
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+	handle, ok := r.dbs[dbPath]
+	if !ok {
+		err = ErrUnregisteredRocksdbPath
+		return
+	}
+	if handle.partitions != 0 {
+		handle.partitions -= 1
+	}
+	return
+}
+
+func (r *rocksdbManager) GetPartitionCount(dbPath string) (count int, err error) {
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+	handle, ok := r.dbs[dbPath]
+	if !ok {
+		err = ErrUnregisteredRocksdbPath
+		return
+	}
+	count = handle.partitions
+	return
 }
 
 var _ RocksdbManager = &rocksdbManager{}

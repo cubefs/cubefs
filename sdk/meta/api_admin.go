@@ -4,13 +4,14 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"github.com/cubefs/cubefs/proto"
-	"github.com/cubefs/cubefs/util/log"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util/log"
 )
 
 const (
@@ -73,7 +74,7 @@ func (c *MetaHttpClient) serveRequest(r *request) (respData []byte, err error) {
 		return
 	}
 	stateCode := resp.StatusCode
-	respData, err = ioutil.ReadAll(resp.Body)
+	respData, err = io.ReadAll(resp.Body)
 	_ = resp.Body.Close()
 	if err != nil {
 		log.LogErrorf("serveRequest: read http response body fail: err(%v)", err)
@@ -143,28 +144,19 @@ func (c *MetaHttpClient) mergeRequestUrl(url string, params map[string]string) s
 }
 
 type GetMPInfoResp struct {
-	LeaderAddr     string          `json:"leaderAddr"`
-	Peers          []proto.Peer    `json:"peers"`
-	NodeId         uint64          `json:"nodeId"`
-	Cursor         uint64          `json:"cursor"`
-	ApplyId        uint64          `json:"apply_id"`
-	InodeCount     uint64          `json:"inode_count"`
-	DentryCount    uint64          `json:"dentry_count"`
-	MultipartCount uint64          `json:"multipart_count"`
-	ExtentCount    uint64          `json:"extent_count"`
-	FreeListCount  int             `json:"free_list_count"`
-	Leader         bool            `json:"leader"`
+	LeaderAddr     string       `json:"leaderAddr"`
+	Peers          []proto.Peer `json:"peers"`
+	NodeId         uint64       `json:"nodeId"`
+	Cursor         uint64       `json:"cursor"`
+	ApplyId        uint64       `json:"apply_id"`
+	InodeCount     uint64       `json:"inode_count"`
+	DentryCount    uint64       `json:"dentry_count"`
+	MultipartCount uint64       `json:"multipart_count"`
+	ExtentCount    uint64       `json:"extent_count"`
+	FreeListCount  int          `json:"free_list_count"`
+	Leader         bool         `json:"leader"`
 }
-//msg["leaderAddr"] = leader
-//msg["leader_term"] = leaderTerm
-//msg["partition_id"] = conf.PartitionId
-//msg["partition_type"] = conf.PartitionType
-//msg["vol_name"] = conf.VolName
-//msg["start"] = conf.Start
-//msg["end"] = conf.End
-//msg["peers"] = conf.Peers
-//msg["nodeId"] = conf.NodeId
-//msg["cursor"] = conf.Cursor
+
 func (mc *MetaHttpClient) GetMetaPartition(pid uint64) (resp *GetMPInfoResp, err error) {
 	defer func() {
 		if err != nil {

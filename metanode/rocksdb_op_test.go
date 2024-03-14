@@ -1,4 +1,18 @@
-package metanode
+// Copyright 2024 The CubeFS Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
+// implied. See the License for the specific language governing
+// permissions and limitations under the License.
+
+package metanode_test
 
 import (
 	"encoding/binary"
@@ -6,16 +20,18 @@ import (
 	"math"
 	"os"
 	"runtime"
-	"sync"
 	"testing"
 	"time"
 
+	"github.com/cubefs/cubefs/metanode"
 	"github.com/stretchr/testify/require"
 )
 
 const (
 	MultiCountPerOp = 1000
 	TestCont        = 1000000
+	TestTable       = metanode.InodeTable
+	TestKeySize     = 9 // 1 + sizeof(uint64)
 )
 
 func getRocksdbPathForTest() (path string) {
@@ -26,164 +42,105 @@ func getRocksdbPathForTest() (path string) {
 func TestOpenDb(t *testing.T) {
 	path := getRocksdbPathForTest()
 	os.RemoveAll(path)
-	db := NewRocksDb()
+	db := metanode.NewRocksDb()
 	defer os.RemoveAll(path)
-	if err := db.OpenDb(path, 0, 0, 0, 0, 0, 0); err != nil {
-		t.Errorf("open db without exist dir failed, err:%v", err)
-		return
-	}
-
-	db.CloseDb()
-	_, err := db.ReleaseRocksDb()
+	err := db.OpenDb(path, 0, 0, 0, 0, 0, 0)
 	require.NoError(t, err)
-	_, err = os.Stat(path)
-	if err == nil || !os.IsNotExist(err) {
-		t.Errorf("os error, rm dir[db] failed")
-		return
-	}
 
-	os.MkdirAll(path, 0755)
-	_, err = os.Stat(path)
-	if err != nil && !os.IsExist(err) {
-		t.Errorf("os error, mk dir[db] failed:%v", err)
-		return
-	}
-
-	if err = db.OpenDb(path, 0, 0, 0, 0, 0, 0); err != nil {
-		t.Errorf("open db without exist dir failed")
-	}
-
-	db.CloseDb()
-	_, err = db.ReleaseRocksDb()
+	err = db.CloseDb()
 	require.NoError(t, err)
 }
 
 func TestReopneDb(t *testing.T) {
 	path := getRocksdbPathForTest()
 	os.RemoveAll(path)
-	db := NewRocksDb()
+	db := metanode.NewRocksDb()
 	defer os.RemoveAll(path)
-	if err := db.OpenDb(path, 0, 0, 0, 0, 0, 0); err != nil {
-		t.Errorf("open db without exist dir failed, err:%v", err)
-	}
-
-	db.CloseDb()
-	_, err := db.ReleaseRocksDb()
+	err := db.OpenDb(path, 0, 0, 0, 0, 0, 0)
 	require.NoError(t, err)
-	_, err = os.Stat(path)
-	if err == nil || !os.IsNotExist(err) {
-		t.Errorf("os error, rm dir[db] failed")
-		return
-	}
 
-	os.MkdirAll(path, 0755)
-	_, err = os.Stat(path)
-	if err != nil && !os.IsExist(err) {
-		t.Errorf("os error, mk dir[db] failed:%v", err)
-		return
-	}
+	err = db.CloseDb()
+	require.NoError(t, err)
 
-	if err = db.ReOpenDb(path, 0, 0, 0, 0, 0, 0); err != nil {
-		t.Errorf("open db without exist dir failed")
-	}
+	err = db.ReOpenDb(path, 0, 0, 0, 0, 0, 0)
+	require.NoError(t, err)
 
-	db.CloseDb()
-	_, err = db.ReleaseRocksDb()
+	err = db.CloseDb()
 	require.NoError(t, err)
 }
 
-func insertByItem(t *testing.T, db *RocksDbInfo) {
-	i := 0
-	key := make([]byte, dbExtentKeySize)
-	value := make([]byte, 1)
+func updateKey(t *testing.T, keyBuf []byte, id uint64) {
+	require.EqualValues(t, TestKeySize, len(keyBuf))
+	keyBuf[0] = byte(TestTable)
+	binary.BigEndian.PutUint64(keyBuf[1:], id)
+}
 
-	updateKeyToNow(key)
-
-	for ; i < TestCont; i++ {
-		id := make([]byte, 8)
-		binary.BigEndian.PutUint64(id, uint64(i))
-		copy(key[8:], id)
-		if err := db.Put(key, value); err != nil {
-			t.Errorf("insert item failed:%s", err.Error())
-			return
-		}
-	}
-
+func extractIdFromKey(t *testing.T, keyBuf []byte) (id uint64) {
+	require.EqualValues(t, TestKeySize, len(keyBuf))
+	require.EqualValues(t, TestTable, keyBuf[0])
+	id = binary.BigEndian.Uint64(keyBuf[1:])
 	return
 }
 
-func insertByMultiItem(t *testing.T, db *RocksDbInfo) {
+func insertByItem(t *testing.T, db *metanode.RocksDbInfo) {
 	i := 0
-	key := make([]byte, dbExtentKeySize)
+	key := make([]byte, 9)
+
 	value := make([]byte, 1)
-	keys := make([]byte, dbExtentKeySize*MultiCountPerOp)
-	handle, err := db.CreateBatchHandler()
-
-	if err != nil {
-		t.Errorf("insert multi failed:%s", err.Error())
-	}
-
-	updateKeyToNow(key)
-	key[0] = byte(ExtentDelTable)
 
 	for ; i < TestCont; i++ {
-		id := make([]byte, 8)
-		binary.BigEndian.PutUint64(id, uint64(i))
-		copy(key[8:], id)
+		updateKey(t, key, uint64(i))
+		err := db.Put(key, value)
+		require.NoError(t, err)
+	}
+}
+
+func insertByMultiItem(t *testing.T, db *metanode.RocksDbInfo) {
+	i := 0
+	key := make([]byte, TestKeySize)
+	value := make([]byte, 1)
+	keys := make([]byte, TestKeySize*MultiCountPerOp)
+	handle, err := db.CreateBatchHandler()
+	require.NoError(t, err)
+
+	for ; i < TestCont; i++ {
+		updateKey(t, key, uint64(i))
 
 		if i != 0 && i%MultiCountPerOp == 0 {
-			if err = db.CommitBatchAndRelease(handle); err != nil {
-				t.Errorf("insert multi failed:commit failed:%s", err.Error())
-				return
-			}
-			if handle, err = db.CreateBatchHandler(); err != nil {
-				t.Errorf("insert multi failed:create batch handle failed:%s", err.Error())
-				return
-			}
+			err = db.CommitBatchAndRelease(handle)
+			require.NoError(t, err)
+
+			handle, err = db.CreateBatchHandler()
+			require.NoError(t, err)
 		}
-		offset := (i % MultiCountPerOp) * dbExtentKeySize
-		copy(keys[offset:offset+dbExtentKeySize], key)
-		db.AddItemToBatch(handle, keys[offset:offset+dbExtentKeySize], value)
+		offset := (i % MultiCountPerOp) * TestKeySize
+		copy(keys[offset:offset+TestKeySize], key)
+		db.AddItemToBatch(handle, keys[offset:offset+TestKeySize], value)
 	}
-
-	if err != nil {
-		db.ReleaseBatchHandle(handle)
-		return
-	}
-
-	db.CommitBatchAndRelease(handle)
-
-	return
+	err = db.CommitBatchAndRelease(handle)
+	require.NoError(t, err)
 }
 
-func rangeTest(t *testing.T, db *RocksDbInfo) {
+func rangeTest(t *testing.T, db *metanode.RocksDbInfo) {
 	stKey := make([]byte, 1)
 	endKey := make([]byte, 1)
 	i := uint64(0)
 
-	stKey[0] = byte(ExtentDelTable)
-	endKey[0] = byte(ExtentDelTable + 1)
+	stKey[0] = byte(TestTable)
+	endKey[0] = byte(TestTable + 1)
 
 	db.Range(stKey, endKey, func(k, v []byte) (bool, error) {
-		if k[0] != byte(ExtentDelTable) {
-			t.Errorf("get out of range, cur key:%v\n", k)
-			return false, fmt.Errorf("get out of range, cur key:%v\n", k)
-		}
-		index := binary.BigEndian.Uint64(k[8:16])
-		if i != index {
-			t.Errorf("range failed, want:%d, now:%d, key:%v", i, index, k)
-			return false, fmt.Errorf("store data err")
-		}
+		require.EqualValues(t, TestTable, k[0])
+		index := extractIdFromKey(t, k)
+		require.EqualValues(t, index, i)
 		i++
 		return true, nil
 	})
 
-	if i > TestCont {
-		t.Errorf("range failed, total record:%d, but read:%d", TestCont, i)
-	}
+	require.LessOrEqual(t, i, uint64(TestCont))
 }
 
-func snapRangeTest(t *testing.T, db *RocksDbInfo) {
+func snapRangeTest(t *testing.T, db *metanode.RocksDbInfo) {
 	stKey := make([]byte, 1)
 	endKey := make([]byte, 1)
 	i := uint64(0)
@@ -191,47 +148,33 @@ func snapRangeTest(t *testing.T, db *RocksDbInfo) {
 	start := time.Now()
 	defer db.ReleaseSnap(snap)
 
-	stKey[0] = byte(ExtentDelTable)
-	endKey[0] = byte(ExtentDelTable + 1)
+	stKey[0] = byte(TestTable)
+	endKey[0] = byte(TestTable + 1)
 
 	db.RangeWithSnap(stKey, endKey, snap, func(k, v []byte) (bool, error) {
-		if k[0] != byte(ExtentDelTable) {
-			t.Errorf("get out of range, cur key:%v\n", k)
-			return false, fmt.Errorf("get out of range, cur key:%v\n", k)
-		}
-		index := binary.BigEndian.Uint64(k[8:16])
-		if i != index {
-			t.Errorf("range failed, want:%d, now:%d, key:%v", i, index, k)
-			return false, fmt.Errorf("store data err")
-		}
+		require.EqualValues(t, TestTable, k[0])
+		index := extractIdFromKey(t, k)
+		require.EqualValues(t, index, i)
 		i++
 		return true, nil
 	})
 
-	if i > TestCont {
-		t.Errorf("range failed, total record:%d, but read:%d", TestCont, i)
-	}
+	require.LessOrEqual(t, i, uint64(TestCont))
 	t.Logf("snap range %v items cost:%v", i, time.Since(start))
 }
 
-func descRangeTest(t *testing.T, db *RocksDbInfo) {
+func descRangeTest(t *testing.T, db *metanode.RocksDbInfo) {
 	stKey := make([]byte, 1)
 	endKey := make([]byte, 1)
 	i := uint64(TestCont - 1)
 
-	stKey[0] = byte(ExtentDelTable)
-	endKey[0] = byte(ExtentDelTable + 1)
+	stKey[0] = byte(TestTable)
+	endKey[0] = byte(TestTable + 1)
 
 	db.DescRange(stKey, endKey, func(k, v []byte) (bool, error) {
-		if k[0] != byte(ExtentDelTable) {
-			t.Errorf("get out of range, cur key:%v\n", k)
-			return false, fmt.Errorf("get out of range, cur key:%v\n", k)
-		}
-		index := binary.BigEndian.Uint64(k[8:16])
-		if i != index {
-			t.Errorf("range failed, want:%d, now:%d, key:%v", i, index, k)
-			return false, fmt.Errorf("store data err")
-		}
+		require.EqualValues(t, TestTable, k[0])
+		index := extractIdFromKey(t, k)
+		require.EqualValues(t, index, i)
 		i--
 		return true, nil
 	})
@@ -241,26 +184,20 @@ func descRangeTest(t *testing.T, db *RocksDbInfo) {
 	}
 }
 
-func snapDescRangeTest(t *testing.T, db *RocksDbInfo) {
+func snapDescRangeTest(t *testing.T, db *metanode.RocksDbInfo) {
 	stKey := make([]byte, 1)
 	endKey := make([]byte, 1)
 	i := uint64(TestCont - 1)
 	snap := db.OpenSnap()
 	defer db.ReleaseSnap(snap)
 
-	stKey[0] = byte(ExtentDelTable)
-	endKey[0] = byte(ExtentDelTable + 1)
+	stKey[0] = byte(TestTable)
+	endKey[0] = byte(TestTable + 1)
 
 	db.DescRangeWithSnap(stKey, endKey, snap, func(k, v []byte) (bool, error) {
-		if k[0] != byte(ExtentDelTable) {
-			t.Errorf("get out of range, cur key:%v\n", k)
-			return false, fmt.Errorf("get out of range, cur key:%v\n", k)
-		}
-		index := binary.BigEndian.Uint64(k[8:16])
-		if i != index {
-			t.Errorf("range failed, want:%d, now:%d, key:%v", i, index, k)
-			return false, fmt.Errorf("store data err")
-		}
+		require.EqualValues(t, TestTable, k[0])
+		index := extractIdFromKey(t, k)
+		require.EqualValues(t, index, i)
 		i--
 		return true, nil
 	})
@@ -270,53 +207,46 @@ func snapDescRangeTest(t *testing.T, db *RocksDbInfo) {
 	}
 }
 
-func genenerData(t *testing.T, db *RocksDbInfo) {
+func genenerData(t *testing.T, db *metanode.RocksDbInfo) {
 	start := time.Now()
 	insertByMultiItem(t, db)
 	t.Logf("insert by multi items cost:%v", time.Since(start))
-
-	return
 }
 
-func deleteDataByItem(t *testing.T, db *RocksDbInfo) {
+func deleteDataByItem(t *testing.T, db *metanode.RocksDbInfo) {
 	stKey := make([]byte, 1)
 	endKey := make([]byte, 1)
 
-	stKey[0] = byte(ExtentDelTable)
-	endKey[0] = byte(ExtentDelTable + 1)
+	stKey[0] = byte(TestTable)
+	endKey[0] = byte(TestTable + 1)
 	start := time.Now()
 	var i = 0
 
 	err := db.Range(stKey, endKey, func(k, v []byte) (bool, error) {
-
-		if k[0] != byte(ExtentDelTable) {
-			return false, nil
-		}
+		require.EqualValues(t, TestTable, k[0])
 		i++
 		db.Del(k)
 		return true, nil
 	})
 
 	t.Logf("********range %v items delete used:%v , err:%v\n", i, time.Since(start), err)
-	return
 }
 
-func deleteDataByMultiItems(t *testing.T, db *RocksDbInfo) {
+func deleteDataByMultiItems(t *testing.T, db *metanode.RocksDbInfo) {
 	stKey := make([]byte, 1)
 	endKey := make([]byte, 1)
 
-	keys := make([]byte, dbExtentKeySize*1000)
+	keys := make([]byte, TestKeySize*1000)
 
-	stKey[0] = byte(ExtentDelTable)
-	endKey[0] = byte(ExtentDelTable + 1)
+	stKey[0] = byte(TestTable)
+	endKey[0] = byte(TestTable + 1)
 	start := time.Now()
 	var i = 0
-	handle, _ := db.CreateBatchHandler()
+	handle, err := db.CreateBatchHandler()
+	require.NoError(t, err)
 
-	err := db.Range(stKey, endKey, func(k, v []byte) (bool, error) {
-		if k[0] != byte(ExtentDelTable) {
-			return false, nil
-		}
+	err = db.Range(stKey, endKey, func(k, v []byte) (bool, error) {
+		require.EqualValues(t, TestTable, k[0])
 		index := i % 1000
 		if i%1000 == 0 {
 			if i != 0 {
@@ -325,17 +255,17 @@ func deleteDataByMultiItems(t *testing.T, db *RocksDbInfo) {
 			}
 		}
 		i++
-		copy(keys[index*dbExtentKeySize:(index+1)*dbExtentKeySize], k)
-		db.DelItemToBatch(handle, keys[index*dbExtentKeySize:(index+1)*dbExtentKeySize])
+		copy(keys[index*TestKeySize:(index+1)*TestKeySize], k)
+		db.DelItemToBatch(handle, keys[index*TestKeySize:(index+1)*TestKeySize])
 		return true, nil
 	})
+	require.NoError(t, err)
 
 	if handle != nil {
 		db.CommitBatchAndRelease(handle)
 	}
 
 	t.Logf("********delete %v items by multi used:%v , err:%v\n", i, time.Since(start), err)
-	return
 }
 
 func TestOps(t *testing.T) {
@@ -347,7 +277,7 @@ func TestOps(t *testing.T) {
 	os.RemoveAll(path2)
 	defer os.RemoveAll(path)
 	defer os.RemoveAll(path2)
-	db := NewRocksDb()
+	db := metanode.NewRocksDb()
 	_ = db.OpenDb(path, 0, 0, 0, 0, 0, 0)
 
 	start := time.Now()
@@ -390,32 +320,28 @@ func TestOps(t *testing.T) {
 	deleteDataByItem(t, db)
 	runtime.GC()
 	time.Sleep(time.Second * 3)
-	db2 := NewRocksDb()
+	db2 := metanode.NewRocksDb()
 	_ = db2.OpenDb(path2, 0, 0, 0, 0, 0, 0)
 	genenerData(t, db2)
 	start = time.Now()
 
 	db2.CloseDb()
-	_ = db.CloseDb()
-	_, err := db.ReleaseRocksDb()
+	err := db.CloseDb()
 	require.NoError(t, err)
 	os.Rename(path2, path)
 	db.ReOpenDb(path, 0, 0, 0, 0, 0, 0)
 	t.Logf("reopen db delete used:%v \n", time.Since(start))
 	rangeTest(t, db)
 	deleteDataByMultiItems(t, db)
-	db.CloseDb()
-	_, err = db.ReleaseRocksDb()
+	err = db.CloseDb()
 	require.NoError(t, err)
-
-	return
 }
 
-func batchAbortTest(t *testing.T, db *RocksDbInfo) {
+func batchAbortTest(t *testing.T, db *metanode.RocksDbInfo) {
 	i := 0
-	key := make([]byte, dbExtentKeySize)
+	key := make([]byte, TestKeySize)
 	value := make([]byte, 1)
-	keys := make([]byte, dbExtentKeySize*MultiCountPerOp)
+	keys := make([]byte, TestKeySize*MultiCountPerOp)
 	var (
 		handle interface{}
 		err    error
@@ -433,13 +359,8 @@ func batchAbortTest(t *testing.T, db *RocksDbInfo) {
 		t.Errorf("insert multi failed:%s", err.Error())
 	}
 
-	updateKeyToNow(key)
-	key[0] = byte(ExtentDelTable)
-
 	for i = TestCont; i < TestCont+TestCont; i++ {
-		id := make([]byte, 8)
-		binary.BigEndian.PutUint64(id, uint64(i))
-		copy(key[8:], id)
+		updateKey(t, key, uint64(i))
 
 		if i != 0 && i%MultiCountPerOp == 0 {
 			if err = db.ReleaseBatchHandle(handle); err != nil {
@@ -451,9 +372,9 @@ func batchAbortTest(t *testing.T, db *RocksDbInfo) {
 				return
 			}
 		}
-		offset := (i % MultiCountPerOp) * dbExtentKeySize
-		copy(keys[offset:offset+dbExtentKeySize], key)
-		db.AddItemToBatch(handle, keys[offset:offset+dbExtentKeySize], value)
+		offset := (i % MultiCountPerOp) * TestKeySize
+		copy(keys[offset:offset+TestKeySize], key)
+		db.AddItemToBatch(handle, keys[offset:offset+TestKeySize], value)
 	}
 
 	db.ReleaseBatchHandle(handle)
@@ -465,7 +386,7 @@ func TestAbortOps(t *testing.T) {
 	path := getRocksdbPathForTest()
 	os.RemoveAll(path)
 	defer os.RemoveAll(path)
-	db := NewRocksDb()
+	db := metanode.NewRocksDb()
 	_ = db.OpenDb(path, 0, 0, 0, 0, 0, 0)
 	genenerData(t, db)
 	rangeTest(t, db)
@@ -475,62 +396,29 @@ func TestAbortOps(t *testing.T) {
 
 	go snapRangeTest(t, db)
 	go deleteDataByMultiItems(t, db)
-	time.Sleep(time.Millisecond * 50)
-	db.CloseDb()
-	_ = db.OpenSnap()
-	_, err := db.ReleaseRocksDb()
+	time.Sleep(50 * time.Millisecond)
+	err := db.CloseDb()
 	require.NoError(t, err)
+	snap := db.OpenSnap()
+	require.Nil(t, snap)
 }
 
 func TestRocksDB_accessDB(t *testing.T) {
 	path := getRocksdbPathForTest()
 	os.RemoveAll(path)
 	defer os.RemoveAll(path)
-	db := NewRocksDb()
+	db := metanode.NewRocksDb()
 	_ = db.OpenDb(path, 0, 0, 0, 0, 0, 0)
 	genenerData(t, db)
 	dbSnap := db.OpenSnap()
-	if dbSnap == nil {
-		t.Errorf("open db snap failed, snap is nil")
-	}
+	require.NotNil(t, dbSnap)
 	go func() {
 		time.Sleep(time.Millisecond * 1000)
 		db.CloseDb()
 	}()
-	startKey, endKey := []byte{byte(ExtentDelTable)}, []byte{byte(ExtentDelTable + 1)}
+	startKey, endKey := []byte{byte(TestTable)}, []byte{byte(TestTable + 1)}
 	err := db.RangeWithSnap(startKey, endKey, dbSnap, func(k, v []byte) (bool, error) {
 		return true, nil
 	})
-	if err != nil {
-		t.Errorf("expect nil, but actual error:%v", err)
-	}
-}
-
-func TestSnapshotWhenRelease(t *testing.T) {
-	path := getRocksdbPathForTest()
-	os.RemoveAll(path)
-	defer os.RemoveAll(path)
-	db := NewRocksDb()
-	testCount := 100
-	for i := 0; i < testCount; i++ {
-		_ = db.OpenDb(path, 0, 0, 0, 0, 0, 0)
-		genenerData(t, db)
-		dbSnap := db.OpenSnap()
-		require.NotNil(t, dbSnap)
-		wg := sync.WaitGroup{}
-		wg.Add(1)
-		var err error
-		go func() {
-			defer wg.Done()
-			err = db.CloseDb()
-			if err != nil {
-				return
-			}
-			_, err = db.ReleaseRocksDb()
-		}()
-		db.ReleaseSnap(dbSnap)
-		wg.Wait()
-		require.NoError(t, err)
-		db.CloseDb()
-	}
+	require.NoError(t, err)
 }

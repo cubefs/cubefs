@@ -1,12 +1,21 @@
+// Copyright 2024 The CubeFS Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
+// implied. See the License for the specific language governing
+// permissions and limitations under the License.
+
 package diskmon
 
 import (
 	"fmt"
-	"github.com/cubefs/cubefs/util"
-	"github.com/cubefs/cubefs/util/exporter"
-	"github.com/cubefs/cubefs/util/log"
-	"github.com/shirou/gopsutil/disk"
-	"io/ioutil"
 	"math"
 	"os"
 	"path"
@@ -14,6 +23,11 @@ import (
 	"sync"
 	"syscall"
 	"time"
+
+	"github.com/cubefs/cubefs/util"
+	"github.com/cubefs/cubefs/util/exporter"
+	"github.com/cubefs/cubefs/util/log"
+	"github.com/shirou/gopsutil/disk"
 )
 
 const (
@@ -21,13 +35,6 @@ const (
 	ReadWrite   = 2
 	Unavailable = -1
 )
-
-type diskScore struct {
-	path         string
-	avail        uint64
-	partitionNum int
-	score        float64
-}
 
 const (
 	DiskStatusFile           = ".diskStatus"
@@ -45,7 +52,6 @@ type FsCapMon struct {
 	Used          float64
 	Available     float64
 	Status        int8
-	MPCount       int
 	lastUpdate    time.Time
 }
 
@@ -94,17 +100,10 @@ func (d *FsCapMon) UpdateReversedSpace(space uint64) {
 	}
 	reservedSpace := uint64(math.Min(float64(space*util.MB), d.Total*DefReservedSpaceMaxRatio))
 	d.ReservedSpace = reservedSpace
-	return
 }
 
 // Compute the disk usage
 func (d *FsCapMon) ComputeUsage() (err error) {
-	defer func() {
-		if r := recover(); r != nil {
-			log.LogErrorf("update space info panic, recover: %v", r)
-			exporter.WarningAppendKey("RecoverPanic", "update space info panic")
-		}
-	}()
 	fs := syscall.Statfs_t{}
 	err = syscall.Statfs(d.Path, &fs)
 	if err != nil {
@@ -114,7 +113,6 @@ func (d *FsCapMon) ComputeUsage() (err error) {
 	d.Total = float64(fs.Blocks) * float64(fs.Bsize)
 	d.Available = float64(fs.Bavail) * float64(fs.Bsize)
 	d.Used = d.Total - d.Available
-	d.MPCount = d.GetPartitionCount()
 	log.LogDebugf("action[computeUsage] disk(%v) all(%v) available(%v) used(%v)", d.Path, d.Total, d.Available, d.Used)
 
 	return
@@ -135,8 +133,6 @@ func (d *FsCapMon) TriggerDiskError(err error) {
 	if d.isDiskErr(err.Error()) {
 		d.Status = Unavailable
 	}
-
-	return
 }
 
 func (d *FsCapMon) cleanDiskError() {
@@ -187,7 +183,6 @@ func (d *FsCapMon) UpdateDiskTick() {
 		return
 	}
 	d.updateCheckTick()
-	return
 }
 
 func (d *FsCapMon) CheckDiskStatus(interval time.Duration) {
@@ -206,76 +201,79 @@ func (d *FsCapMon) CheckDiskStatus(interval time.Duration) {
 	}
 }
 
-func (d *FsCapMon) GetPartitionCount() (mpCount int) {
-	dirs, _ := ioutil.ReadDir(d.Path)
-	for _, dir := range dirs {
-		if strings.HasPrefix(dir.Name(), "partition_") {
-			mpCount++
-		}
+type DiskStat struct {
+	Path           string
+	Total          uint64
+	Available      uint64
+	PartitionCount int
+}
+
+func (s *DiskStat) GetScore(totalAvailable uint64, totalPartition int) (score float64) {
+	// NOTE:
+	//	available ratio = available / total available
+	//	count ratio = partition count / total partition count
+	//	score = 1 / (1+exp(1 - free/allfree)) +  1 / (1 + exp(num/allnum))
+
+	avaliableRatio := float64(s.Available) / float64(totalAvailable)
+	countRatio := float64(0)
+	if totalPartition != 0 {
+		countRatio = float64(s.PartitionCount) / float64(totalPartition)
 	}
+	left := 1 / (1 + math.Exp(1-avaliableRatio))
+	right := 1 / (1 + math.Exp(countRatio))
+	score = left + right
 	return
 }
 
-// score = 1/(1+exp(1-free/allfree)) + 1/(1+exp(num/allnum))
-func (ds *diskScore) computeScore(diskTotalAvail uint64, num int) {
-	ds.score = 1/(1+math.Exp(1-float64(ds.avail)/float64(diskTotalAvail))) + 1/(1+math.Exp(float64(ds.partitionNum)/float64(num)))
+func NewDiskStat(dir string) (s DiskStat, err error) {
+	fs := syscall.Statfs_t{}
+	if err = syscall.Statfs(dir, &fs); err != nil {
+		log.LogErrorf("[NewDiskStat] statfs dir(%v) has err(%v)", dir, err.Error())
+		return
+	}
+	s.Path = dir
+	s.Total = fs.Blocks * uint64(fs.Bsize)
+	s.Available = fs.Bavail * uint64(fs.Bsize)
+	return
 }
 
-// select best dir by dirs , The reference parameters are the number of space remaining and partitions
-func SelectDisk(dirs []string, fsUsedFactor float64) (string, error) {
-	if fsUsedFactor <= 0 || fsUsedFactor >= 1 {
+func SelectDisk(stats []DiskStat, fsUsedFactor float64) (disk DiskStat, err error) {
+	if fsUsedFactor <= 0 || fsUsedFactor > 1 {
 		fsUsedFactor = DefaultMAXFsUsedFactor
 	}
-	result := make([]*diskScore, 0, len(dirs))
+	result := make([]DiskStat, 0, len(stats))
 
 	var (
 		sumAvail uint64
 		sumCount int
 	)
 
-	for _, dir := range dirs {
-		fs := syscall.Statfs_t{}
-		if err := syscall.Statfs(dir, &fs); err != nil {
-			log.LogErrorf("[SelectDisk] statfs dir:[%s] has err:[%s]", dir, err.Error())
-			continue
-		}
-		total := float64(fs.Blocks * uint64(fs.Bsize))
-		avail := float64(fs.Bavail * uint64(fs.Bsize))
-		if (total - avail) > total*fsUsedFactor {
-			log.LogWarnf("[SelectDisk] dir:[%s] not enough space:[%v] of disk so skip", dir, avail)
+	for _, stat := range stats {
+		space := float64(stat.Total) * fsUsedFactor
+		if (stat.Total - stat.Available) > uint64(space) {
+			log.LogWarnf("[SelectDiskByStat] dir(%v) not enough space(%v) of disk, skip", stat.Path, stat.Available)
 			continue
 		}
 
-		subDir, _ := ioutil.ReadDir(dir) //this only total all count in dir, so best to ensure the uniqueness of the directory
-		result = append(result, &diskScore{
-			path:         dir,
-			avail:        uint64(avail),
-			partitionNum: len(subDir),
-		})
+		result = append(result, stat)
 
-		sumAvail += uint64(avail)
-		sumCount += len(subDir)
+		sumAvail += uint64(stat.Available)
+		sumCount += stat.PartitionCount
 	}
 
 	if len(result) == 0 {
-		return "", fmt.Errorf("select disk got 0 result")
+		err = fmt.Errorf("select disk got 0 result")
+		return
 	}
 
-	var max *diskScore
+	maxScore := float64(0)
 	for _, ds := range result {
-		ds.computeScore(sumAvail, sumCount)
-		if max == nil {
-			max = ds
-		}
-
-		if max.score < ds.score {
-			max = ds
+		score := ds.GetScore(sumAvail, sumCount)
+		if score > maxScore {
+			disk = ds
+			maxScore = score
 		}
 	}
 
-	if max == nil {
-		panic("impossibility")
-	}
-
-	return max.path, nil
+	return
 }

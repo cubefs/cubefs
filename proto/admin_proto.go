@@ -720,7 +720,6 @@ type MetaNodeRocksdbInfo struct {
 	Used       uint64
 	UsageRatio float64
 	Status     int8
-	MPCount    int
 }
 
 // DataNodeHeartbeatResponse defines the response to the data node heartbeat.

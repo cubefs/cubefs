@@ -552,7 +552,6 @@ func prepareMetaNodesForBench(count int, initTotal uint64, grow uint64) (ns *nod
 			Total:      space,
 			Used:       0,
 			UsageRatio: 0,
-			MPCount:    0,
 		})
 		ns.putMetaNode(node)
 	}

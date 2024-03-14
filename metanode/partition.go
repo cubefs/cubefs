@@ -30,8 +30,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/cubefs/cubefs/util/diskmon"
-
 	"github.com/cubefs/cubefs/blobstore/api/access"
 	"github.com/cubefs/cubefs/cmd/common"
 	raftproto "github.com/cubefs/cubefs/depends/tiglabs/raft/proto"
@@ -985,9 +983,9 @@ func (mp *metaPartition) selectRocksDBDir() (err error) {
 	}
 	factor := float64(maxUsedPercent) / float64(100)
 
-	dir, err := diskmon.SelectDisk(mp.manager.rocksDBDirs, factor)
+	dir, err := mp.manager.rocksdbManager.SelectRocksdbDisk(factor)
 	if err != nil {
-		log.LogErrorf("selectRocksDBDir, mp[%v] select failed(%v), so set root dir(%s) as rocksdb dir",
+		log.LogErrorf("[selectRocksDBDir] mp(%v) select failed(%v), so set root dir(%s) as rocksdb dir",
 			mp.config.PartitionId, err, mp.manager.rootDir)
 		mp.config.RocksDBDir = mp.manager.rootDir
 		err = nil

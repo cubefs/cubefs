@@ -274,7 +274,6 @@ func (mms *MockMetaServer) handleHeartbeats(conn net.Conn, p *proto.Packet, admi
 			Used:       1 * util.GB,
 			UsageRatio: 0.1,
 			Status:     proto.ReadWrite,
-			MPCount:    10,
 		},
 	}
 	// every partition used

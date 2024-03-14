@@ -1,19 +1,34 @@
+// Copyright 2024 The CubeFS Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
+// implied. See the License for the specific language governing
+// permissions and limitations under the License.
+
 package metanode
 
 import (
 	"bytes"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io/fs"
 	"os"
-	"path"
-	"runtime/debug"
+
+	// "runtime/debug"
 	"strings"
 	"sync"
 	"sync/atomic"
 
 	"github.com/cubefs/cubefs/util"
-	"github.com/cubefs/cubefs/util/exporter"
+	// "github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/tecbot/gorocksdb"
 )
@@ -32,8 +47,11 @@ const (
 )
 
 var (
-	ErrRocksdbAccess    = fmt.Errorf("access rocksdb error")
-	ErrRocksdbOperation = fmt.Errorf("rocksdb operation error")
+	ErrRocksdbAccess             = errors.New("access rocksdb error")
+	ErrRocksdbOperation          = errors.New("rocksdb operation error")
+	ErrInvalidRocksdbWriteHandle = errors.New("invalid rocksdb write batch")
+	ErrInvalidRocksdbTableType   = errors.New("invalid rocksdb table type")
+	ErrInvalidRocksdbSnapshot    = errors.New("invalid rocksdb snapshot")
 )
 
 type TableType byte
@@ -44,9 +62,6 @@ const (
 	InodeTable
 	ExtendTable
 	MultipartTable
-	ExtentDelTableV1
-	ExtentDelTable
-	ReqRecordsTable
 	TransactionTable
 	TransactionRollbackInodeTable
 	TransactionRollbackDentryTable
@@ -81,7 +96,7 @@ func getTableTypeKey(treeType TreeType) TableType {
 		return DeletedObjExtentsTable
 	default:
 	}
-	panic("error tree type")
+	panic(ErrInvalidRocksdbTableType)
 }
 
 const (
@@ -100,15 +115,6 @@ func isRetryError(err error) bool {
 		return true
 	}
 	return false
-}
-
-func recoverRocksDBPanic() {
-	if err := recover(); err != nil {
-		log.LogCriticalf("recover panic, stack: %v", string(debug.Stack()))
-		exporter.WarningRocksdbError("recover rocksdb panic")
-		return
-	}
-	return
 }
 
 type RocksDbInfo struct {
@@ -130,38 +136,6 @@ func NewRocksDb() (dbInfo *RocksDbInfo) {
 	dbInfo = &RocksDbInfo{
 		state: dbInitSt,
 	}
-	return
-}
-
-func (dbInfo *RocksDbInfo) ReleaseRocksDb() (garbageDir string, err error) {
-	dbInfo.mutex.Lock()
-	defer dbInfo.mutex.Unlock()
-	if dbInfo.db != nil || atomic.LoadUint32(&dbInfo.state) != dbClosedSt {
-		return "", fmt.Errorf("rocks db is using, can not release")
-	}
-
-	tmpDir := strings.TrimSuffix(dbInfo.dir, "/")
-	tmpDir = fmt.Sprintf("%v_garbage", tmpDir)
-	err = os.MkdirAll(tmpDir, 0o755)
-	if err != nil && !os.IsExist(err) {
-		return
-	}
-	tmpDir, err = os.MkdirTemp(tmpDir, "")
-	if err != nil {
-		return
-	}
-	garbageDir = tmpDir
-	tmpDir = path.Join(tmpDir, "remove_by_rename")
-	// NOTE: atomic rename dir
-	if err = os.Rename(dbInfo.dir, tmpDir); err != nil {
-		return
-	}
-
-	if err = os.RemoveAll(garbageDir); err != nil {
-		err = nil
-		return
-	}
-	garbageDir = ""
 	return
 }
 
@@ -204,7 +178,6 @@ func (dbInfo *RocksDbInfo) CloseDb() (err error) {
 	return
 }
 func (dbInfo *RocksDbInfo) CommitEmptyRecordToSyncWal(flushWal bool) {
-	defer recoverRocksDBPanic()
 	var err error
 	dbInfo.syncCnt += 1
 	log.LogWarnf("db[%v] start sync, flush wal flag:%v", dbInfo.dir, flushWal)
@@ -474,8 +447,6 @@ func (dbInfo *RocksDbInfo) OpenSnap() *gorocksdb.Snapshot {
 }
 
 func (dbInfo *RocksDbInfo) ReleaseSnap(snap *gorocksdb.Snapshot) {
-	defer recoverRocksDBPanic()
-
 	if snap == nil {
 		return
 	}
@@ -485,9 +456,8 @@ func (dbInfo *RocksDbInfo) ReleaseSnap(snap *gorocksdb.Snapshot) {
 }
 
 func (dbInfo *RocksDbInfo) RangeWithSnap(start, end []byte, snap *gorocksdb.Snapshot, cb func(k, v []byte) (bool, error)) (err error) {
-	defer recoverRocksDBPanic()
 	if snap == nil {
-		return fmt.Errorf("invalid snapshot")
+		return ErrInvalidRocksdbSnapshot
 	}
 	if err = dbInfo.accessDb(); err != nil {
 		return
@@ -504,9 +474,8 @@ func (dbInfo *RocksDbInfo) RangeWithSnap(start, end []byte, snap *gorocksdb.Snap
 }
 
 func (dbInfo *RocksDbInfo) GetBytesWithSnap(snap *gorocksdb.Snapshot, key []byte) (value []byte, err error) {
-	defer recoverRocksDBPanic()
 	if snap == nil {
-		err = fmt.Errorf("invalid snapshot")
+		err = ErrInvalidRocksdbSnapshot
 		return
 	}
 	if err = dbInfo.accessDb(); err != nil {
@@ -535,9 +504,8 @@ func (dbInfo *RocksDbInfo) GetBytesWithSnap(snap *gorocksdb.Snapshot, key []byte
 }
 
 func (dbInfo *RocksDbInfo) RangeWithSnapByPrefix(prefix, start, end []byte, snap *gorocksdb.Snapshot, cb func(k, v []byte) (bool, error)) (err error) {
-	defer recoverRocksDBPanic()
 	if snap == nil {
-		return fmt.Errorf("invalid snapshot")
+		return ErrInvalidRocksdbSnapshot
 	}
 
 	if err = dbInfo.accessDb(); err != nil {
@@ -555,9 +523,8 @@ func (dbInfo *RocksDbInfo) RangeWithSnapByPrefix(prefix, start, end []byte, snap
 }
 
 func (dbInfo *RocksDbInfo) DescRangeWithSnap(start, end []byte, snap *gorocksdb.Snapshot, cb func(k, v []byte) (bool, error)) (err error) {
-	defer recoverRocksDBPanic()
 	if snap == nil {
-		return fmt.Errorf("invalid snapshot")
+		return ErrInvalidRocksdbSnapshot
 	}
 
 	if err = dbInfo.accessDb(); err != nil {
@@ -575,7 +542,6 @@ func (dbInfo *RocksDbInfo) DescRangeWithSnap(start, end []byte, snap *gorocksdb.
 }
 
 func (dbInfo *RocksDbInfo) Range(start, end []byte, cb func(k, v []byte) (bool, error)) (err error) {
-	defer recoverRocksDBPanic()
 	if err = dbInfo.accessDb(); err != nil {
 		return
 	}
@@ -593,7 +559,6 @@ func (dbInfo *RocksDbInfo) Range(start, end []byte, cb func(k, v []byte) (bool, 
 }
 
 func (dbInfo *RocksDbInfo) DescRange(start, end []byte, cb func(k, v []byte) (bool, error)) (err error) {
-	defer recoverRocksDBPanic()
 	if err = dbInfo.accessDb(); err != nil {
 		return err
 	}
@@ -611,7 +576,6 @@ func (dbInfo *RocksDbInfo) DescRange(start, end []byte, cb func(k, v []byte) (bo
 }
 
 func (dbInfo *RocksDbInfo) GetBytes(key []byte) (bytes []byte, err error) {
-	defer recoverRocksDBPanic()
 	defer func() {
 		if err != nil {
 			log.LogErrorf("[RocksDB Op] GetBytes failed, error:%v", err)
@@ -651,7 +615,6 @@ func (dbInfo *RocksDbInfo) HasKey(key []byte) (bool, error) {
 }
 
 func (dbInfo *RocksDbInfo) Put(key, value []byte) (err error) {
-	defer recoverRocksDBPanic()
 	defer func() {
 		if err != nil {
 			log.LogErrorf("[RocksDB Op] Put failed, error:%v", err)
@@ -683,7 +646,6 @@ func (dbInfo *RocksDbInfo) Put(key, value []byte) (err error) {
 }
 
 func (dbInfo *RocksDbInfo) Del(key []byte) (err error) {
-	defer recoverRocksDBPanic()
 	defer func() {
 		if err != nil {
 			log.LogErrorf("[RocksDB Op] Del failed, error:%v", err)
@@ -733,7 +695,7 @@ func (dbInfo *RocksDbInfo) CreateBatchHandler() (interface{}, error) {
 func (dbInfo *RocksDbInfo) AddItemToBatch(handle interface{}, key, value []byte) (err error) {
 	batch, ok := handle.(*gorocksdb.WriteBatch)
 	if !ok {
-		return fmt.Errorf("handle is invalid, not write batch")
+		return ErrInvalidRocksdbWriteHandle
 	}
 	if err = dbInfo.accessDb(); err != nil {
 		return
@@ -746,7 +708,7 @@ func (dbInfo *RocksDbInfo) AddItemToBatch(handle interface{}, key, value []byte)
 func (dbInfo *RocksDbInfo) DelItemToBatch(handle interface{}, key []byte) (err error) {
 	batch, ok := handle.(*gorocksdb.WriteBatch)
 	if !ok {
-		return fmt.Errorf("handle is invalid, not write batch")
+		return ErrInvalidRocksdbWriteHandle
 	}
 	if err = dbInfo.accessDb(); err != nil {
 		return
@@ -759,7 +721,7 @@ func (dbInfo *RocksDbInfo) DelItemToBatch(handle interface{}, key []byte) (err e
 func (dbInfo *RocksDbInfo) DelRangeToBatch(handle interface{}, start []byte, end []byte) (err error) {
 	batch, ok := handle.(*gorocksdb.WriteBatch)
 	if !ok {
-		return fmt.Errorf("handle is invalid, not write batch")
+		return ErrInvalidRocksdbWriteHandle
 	}
 	if err = dbInfo.accessDb(); err != nil {
 		return
@@ -770,7 +732,6 @@ func (dbInfo *RocksDbInfo) DelRangeToBatch(handle interface{}, start []byte, end
 }
 
 func (dbInfo *RocksDbInfo) CommitBatchAndRelease(handle interface{}) (err error) {
-	defer recoverRocksDBPanic()
 	defer func() {
 		if err != nil {
 			log.LogErrorf("[RocksDB Op] CommitBatchAndRelease failed, err:%v", err)
@@ -779,7 +740,7 @@ func (dbInfo *RocksDbInfo) CommitBatchAndRelease(handle interface{}) (err error)
 
 	batch, ok := handle.(*gorocksdb.WriteBatch)
 	if !ok {
-		err = fmt.Errorf("handle is invalid, not write batch")
+		err = ErrInvalidRocksdbWriteHandle
 		return
 	}
 
@@ -810,7 +771,6 @@ func (dbInfo *RocksDbInfo) CommitBatchAndRelease(handle interface{}) (err error)
 }
 
 func (dbInfo *RocksDbInfo) HandleBatchCount(handle interface{}) (count int, err error) {
-	defer recoverRocksDBPanic()
 	defer func() {
 		if err != nil {
 			log.LogErrorf("[RocksDB Op] CommitBatchAndRelease failed, err:%v", err)
@@ -819,7 +779,7 @@ func (dbInfo *RocksDbInfo) HandleBatchCount(handle interface{}) (count int, err 
 
 	batch, ok := handle.(*gorocksdb.WriteBatch)
 	if !ok {
-		err = fmt.Errorf("handle is invalid, not write batch")
+		err = ErrInvalidRocksdbWriteHandle
 		return
 	}
 	if err = dbInfo.accessDb(); err != nil {
@@ -831,7 +791,6 @@ func (dbInfo *RocksDbInfo) HandleBatchCount(handle interface{}) (count int, err 
 }
 
 func (dbInfo *RocksDbInfo) CommitBatch(handle interface{}) (err error) {
-	defer recoverRocksDBPanic()
 	defer func() {
 		if err != nil {
 			log.LogErrorf("[RocksDB Op] CommitBatch failed, err:%v", err)
@@ -840,7 +799,7 @@ func (dbInfo *RocksDbInfo) CommitBatch(handle interface{}) (err error) {
 
 	batch, ok := handle.(*gorocksdb.WriteBatch)
 	if !ok {
-		err = fmt.Errorf("handle is invalid, not write batch")
+		err = ErrInvalidRocksdbWriteHandle
 		return
 	}
 
@@ -870,7 +829,6 @@ func (dbInfo *RocksDbInfo) CommitBatch(handle interface{}) (err error) {
 }
 
 func (dbInfo *RocksDbInfo) ReleaseBatchHandle(handle interface{}) (err error) {
-	defer recoverRocksDBPanic()
 	defer func() {
 		if err != nil {
 			log.LogErrorf("[RocksDB Op] ReleaseBatchHandle failed, err:%v", err)
@@ -883,7 +841,7 @@ func (dbInfo *RocksDbInfo) ReleaseBatchHandle(handle interface{}) (err error) {
 
 	batch, ok := handle.(*gorocksdb.WriteBatch)
 	if !ok {
-		err = fmt.Errorf("handle is invalid, not write batch")
+		err = ErrInvalidRocksdbWriteHandle
 		return
 	}
 	if err = dbInfo.accessDb(); err != nil {
@@ -896,7 +854,6 @@ func (dbInfo *RocksDbInfo) ReleaseBatchHandle(handle interface{}) (err error) {
 }
 
 func (dbInfo *RocksDbInfo) ClearBatchWriteHandle(handle interface{}) (err error) {
-	defer recoverRocksDBPanic()
 	defer func() {
 		if err != nil {
 			log.LogErrorf("[RocksDB Op] ClearBatchWriteHandle failed, err:%v", err)
@@ -905,7 +862,7 @@ func (dbInfo *RocksDbInfo) ClearBatchWriteHandle(handle interface{}) (err error)
 
 	batch, ok := handle.(*gorocksdb.WriteBatch)
 	if !ok {
-		err = fmt.Errorf("handle is invalid, not write batch")
+		err = ErrInvalidRocksdbWriteHandle
 		return
 	}
 	if err = dbInfo.accessDb(); err != nil {
@@ -917,7 +874,6 @@ func (dbInfo *RocksDbInfo) ClearBatchWriteHandle(handle interface{}) (err error)
 }
 
 func (dbInfo *RocksDbInfo) Flush() (err error) {
-	defer recoverRocksDBPanic()
 	defer func() {
 		if err != nil {
 			log.LogErrorf("[RocksDB Op] ClearBatchWriteHandle failed, err:%v", err)

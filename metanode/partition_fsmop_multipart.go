@@ -40,9 +40,11 @@ func (mp *metaPartition) fsmRemoveMultipart(dbHandle interface{}, multipart *Mul
 		return
 	}
 	if !ok {
-		status =  proto.OpNotExistErr
+		status = proto.OpNotExistErr
+		return
 	}
-	return proto.OpOk, nil
+	status = proto.OpOk
+	return
 }
 
 func (mp *metaPartition) fsmAppendMultipart(dbHandle interface{}, multipart *Multipart) (resp proto.AppendMultipartResponse, err error) {
