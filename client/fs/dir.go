@@ -127,6 +127,7 @@ func NewDir(s *Super, i *proto.InodeInfo, pino uint64, dirName string) fs.Node {
 
 // Attr set the attributes of a directory.
 func (d *Dir) Attr(ctx context.Context, a *fuse.Attr) error {
+	span, ctxNew := proto.SpanWithContextPrefix(ctx, "Dir-Attr-")
 	var err error
 	bgTime := stat.BeginStat()
 	defer func() {
@@ -134,13 +135,13 @@ func (d *Dir) Attr(ctx context.Context, a *fuse.Attr) error {
 	}()
 
 	ino := d.info.Inode
-	info, err := d.super.InodeGet(ctx, ino)
+	info, err := d.super.InodeGet(ctxNew, ino)
 	if err != nil {
-		log.Errorf("Attr: ino(%v) err(%v)", ino, err)
+		span.Errorf("Attr: ino(%v) err(%v)", ino, err)
 		return ParseError(err)
 	}
 	fillAttr(info, a)
-	log.Debugf("TRACE Attr: inode(%v)", info)
+	span.Debugf("TRACE Attr: inode(%v)", info)
 	return nil
 }
 
@@ -151,6 +152,7 @@ func (d *Dir) Release(ctx context.Context, req *fuse.ReleaseRequest) (err error)
 
 // Create handles the create request.
 func (d *Dir) Create(ctx context.Context, req *fuse.CreateRequest, resp *fuse.CreateResponse) (fs.Node, fs.Handle, error) {
+	span, ctxNew := proto.SpanWithContextPrefix(ctx, "Dir-Create-")
 	start := time.Now()
 
 	bgTime := stat.BeginStat()
@@ -164,9 +166,9 @@ func (d *Dir) Create(ctx context.Context, req *fuse.CreateRequest, resp *fuse.Cr
 		auditlog.LogClientOp("Create", fullPath, "nil", err, time.Since(start).Microseconds(), newInode, 0)
 	}()
 
-	info, err := d.super.mw.Create_ll(d.info.Inode, req.Name, proto.Mode(req.Mode.Perm()), req.Uid, req.Gid, nil, fullPath)
+	info, err := d.super.mw.Create_ll(ctxNew, d.info.Inode, req.Name, proto.Mode(req.Mode.Perm()), req.Uid, req.Gid, nil, fullPath)
 	if err != nil {
-		log.Errorf("Create: parent(%v) req(%v) err(%v)", d.info.Inode, req, err)
+		span.Errorf("Create: parent(%v) req(%v) err(%v)", d.info.Inode, req, err)
 		return nil, nil, ParseError(err)
 	}
 
@@ -187,7 +189,7 @@ func (d *Dir) Create(ctx context.Context, req *fuse.CreateRequest, resp *fuse.Cr
 	d.super.ic.Delete(d.info.Inode)
 
 	elapsed := time.Since(start)
-	log.Debugf("TRACE Create: parent(%v) req(%v) resp(%v) ino(%v) (%v)ns", d.info.Inode, req, resp, info.Inode, elapsed.Nanoseconds())
+	span.Debugf("TRACE Create: parent(%v) req(%v) resp(%v) ino(%v) (%v)ns", d.info.Inode, req, resp, info.Inode, elapsed.Nanoseconds())
 	return child, child, nil
 }
 
@@ -209,6 +211,7 @@ func (d *Dir) Forget() {
 
 // Mkdir handles the mkdir request.
 func (d *Dir) Mkdir(ctx context.Context, req *fuse.MkdirRequest) (fs.Node, error) {
+	span, ctxNew := proto.SpanWithContextPrefix(ctx, "Dir-Mkdir-")
 	start := time.Now()
 
 	bgTime := stat.BeginStat()
@@ -222,9 +225,9 @@ func (d *Dir) Mkdir(ctx context.Context, req *fuse.MkdirRequest) (fs.Node, error
 		auditlog.LogClientOp("Mkdir", fullPath, "nil", err, time.Since(start).Microseconds(), newInode, 0)
 	}()
 
-	info, err := d.super.mw.Create_ll(d.info.Inode, req.Name, proto.Mode(os.ModeDir|req.Mode.Perm()), req.Uid, req.Gid, nil, fullPath)
+	info, err := d.super.mw.Create_ll(ctxNew, d.info.Inode, req.Name, proto.Mode(os.ModeDir|req.Mode.Perm()), req.Uid, req.Gid, nil, fullPath)
 	if err != nil {
-		log.Errorf("Mkdir: parent(%v) req(%v) err(%v)", d.info.Inode, req, err)
+		span.Errorf("Mkdir: parent(%v) req(%v) err(%v)", d.info.Inode, req, err)
 		return nil, ParseError(err)
 	}
 
@@ -238,12 +241,13 @@ func (d *Dir) Mkdir(ctx context.Context, req *fuse.MkdirRequest) (fs.Node, error
 	d.super.ic.Delete(d.info.Inode)
 
 	elapsed := time.Since(start)
-	log.Debugf("TRACE Mkdir: parent(%v) req(%v) ino(%v) (%v)ns", d.info.Inode, req, info.Inode, elapsed.Nanoseconds())
+	span.Debugf("TRACE Mkdir: parent(%v) req(%v) ino(%v) (%v)ns", d.info.Inode, req, info.Inode, elapsed.Nanoseconds())
 	return child, nil
 }
 
 // Remove handles the remove request.
 func (d *Dir) Remove(ctx context.Context, req *fuse.RemoveRequest) error {
+	span, ctxNew := proto.SpanWithContextPrefix(ctx, "Dir-Remove-")
 	start := time.Now()
 	d.dcache.Delete(req.Name)
 	dcacheKey := d.buildDcacheKey(d.info.Inode, req.Name)
@@ -260,9 +264,9 @@ func (d *Dir) Remove(ctx context.Context, req *fuse.RemoveRequest) error {
 		auditlog.LogClientOp("Remove", fullPath, "nil", err, time.Since(start).Microseconds(), deletedInode, 0)
 	}()
 
-	info, err := d.super.mw.Delete_ll(d.info.Inode, req.Name, req.Dir, fullPath)
+	info, err := d.super.mw.Delete_ll(ctxNew, d.info.Inode, req.Name, req.Dir, fullPath)
 	if err != nil {
-		log.Errorf("Remove: parent(%v) name(%v) err(%v)", d.info.Inode, req.Name, err)
+		span.Errorf("Remove: parent(%v) name(%v) err(%v)", d.info.Inode, req.Name, err)
 		return ParseError(err)
 	}
 
@@ -273,11 +277,11 @@ func (d *Dir) Remove(ctx context.Context, req *fuse.RemoveRequest) error {
 
 	if info != nil && info.Nlink == 0 && !proto.IsDir(info.Mode) {
 		d.super.orphan.Put(info.Inode)
-		log.Debugf("Remove: add to orphan inode list, ino(%v)", info.Inode)
+		span.Debugf("Remove: add to orphan inode list, ino(%v)", info.Inode)
 	}
 
 	elapsed := time.Since(start)
-	log.Debugf("TRACE Remove: parent(%v) req(%v) inode(%v) (%v)ns", d.info.Inode, req, info, elapsed.Nanoseconds())
+	span.Debugf("TRACE Remove: parent(%v) req(%v) inode(%v) (%v)ns", d.info.Inode, req, info, elapsed.Nanoseconds())
 	return nil
 }
 
@@ -287,6 +291,7 @@ func (d *Dir) Fsync(ctx context.Context, req *fuse.FsyncRequest) error {
 
 // Lookup handles the lookup request.
 func (d *Dir) Lookup(ctx context.Context, req *fuse.LookupRequest, resp *fuse.LookupResponse) (fs.Node, error) {
+	span, ctxNew := proto.SpanWithContextPrefix(ctx, "Dir-Lookup-")
 	var (
 		ino      uint64
 		err      error
@@ -298,8 +303,8 @@ func (d *Dir) Lookup(ctx context.Context, req *fuse.LookupRequest, resp *fuse.Lo
 		stat.EndStat("Lookup", err, bgTime, 1)
 	}()
 
-	log.Debugf("TRACE Lookup: parent(%v) req(%v)", d.info.Inode, req)
-	log.Debugf("TRACE Lookup: parent(%v) path(%v) d.super.bcacheDir(%v)", d.info.Inode, d.getCwd(), d.super.bcacheDir)
+	span.Debugf("TRACE Lookup: parent(%v) req(%v)", d.info.Inode, req)
+	span.Debugf("TRACE Lookup: parent(%v) path(%v) d.super.bcacheDir(%v)", d.info.Inode, d.getCwd(), d.super.bcacheDir)
 
 	if d.needDentrycache() {
 		dcachev2 = true
@@ -312,10 +317,10 @@ func (d *Dir) Lookup(ctx context.Context, req *fuse.LookupRequest, resp *fuse.Lo
 		if dentryInfo == nil {
 			lookupMetric := exporter.NewCounter("lookupDcacheMiss")
 			lookupMetric.AddWithLabels(1, map[string]string{exporter.Vol: d.super.volname})
-			ino, _, err = d.super.mw.Lookup_ll(d.info.Inode, req.Name)
+			ino, _, err = d.super.mw.Lookup_ll(ctxNew, d.info.Inode, req.Name)
 			if err != nil {
 				if err != syscall.ENOENT {
-					log.Errorf("Lookup: parent(%v) name(%v) err(%v)", d.info.Inode, req.Name, err)
+					span.Errorf("Lookup: parent(%v) name(%v) err(%v)", d.info.Inode, req.Name, err)
 				}
 				return nil, ParseError(err)
 			}
@@ -332,10 +337,10 @@ func (d *Dir) Lookup(ctx context.Context, req *fuse.LookupRequest, resp *fuse.Lo
 	} else {
 		cino, ok := d.dcache.Get(req.Name)
 		if !ok {
-			cino, _, err = d.super.mw.Lookup_ll(d.info.Inode, req.Name)
+			cino, _, err = d.super.mw.Lookup_ll(ctxNew, d.info.Inode, req.Name)
 			if err != nil {
 				if err != syscall.ENOENT {
-					log.Errorf("Lookup: parent(%v) name(%v) err(%v)", d.info.Inode, req.Name, err)
+					span.Errorf("Lookup: parent(%v) name(%v) err(%v)", d.info.Inode, req.Name, err)
 				}
 				return nil, ParseError(err)
 			}
@@ -343,9 +348,9 @@ func (d *Dir) Lookup(ctx context.Context, req *fuse.LookupRequest, resp *fuse.Lo
 		ino = cino
 	}
 
-	info, err := d.super.InodeGet(ctx, ino)
+	info, err := d.super.InodeGet(ctxNew, ino)
 	if err != nil {
-		log.Errorf("Lookup: parent(%v) name(%v) ino(%v) err(%v)", d.info.Inode, req.Name, ino, err)
+		span.Errorf("Lookup: parent(%v) name(%v) ino(%v) err(%v)", d.info.Inode, req.Name, ino, err)
 		dummyInodeInfo := &proto.InodeInfo{Inode: ino}
 		dummyChild := NewFile(d.super, dummyInodeInfo, DefaultFlag, d.info.Inode, req.Name)
 		return dummyChild, nil
@@ -365,7 +370,7 @@ func (d *Dir) Lookup(ctx context.Context, req *fuse.LookupRequest, resp *fuse.Lo
 
 	resp.EntryValid = LookupValidDuration
 
-	log.Debugf("TRACE Lookup exit: parent(%v) req(%v) cost (%d)", d.info.Inode, req, time.Since(*bgTime).Microseconds())
+	span.Debugf("TRACE Lookup exit: parent(%v) req(%v) cost (%d)", d.info.Inode, req, time.Since(*bgTime).Microseconds())
 	return child, nil
 }
 
@@ -374,6 +379,7 @@ func (d *Dir) buildDcacheKey(inode uint64, name string) string {
 }
 
 func (d *Dir) ReadDir(ctx context.Context, req *fuse.ReadRequest, resp *fuse.ReadResponse) ([]fuse.Dirent, error) {
+	span, ctxNew := proto.SpanWithContextPrefix(ctx, "Dir-ReadDir-")
 	var err error
 	var limit uint64 = DefaultReaddirLimit
 	start := time.Now()
@@ -391,9 +397,9 @@ func (d *Dir) ReadDir(ctx context.Context, req *fuse.ReadRequest, resp *fuse.Rea
 	} else {
 		dirCtx = DirContext{}
 	}
-	children, err := d.super.mw.ReadDirLimit_ll(d.info.Inode, dirCtx.Name, limit)
+	children, err := d.super.mw.ReadDirLimit_ll(ctxNew, d.info.Inode, dirCtx.Name, limit)
 	if err != nil {
-		log.Errorf("readdirlimit: Readdir: ino(%v) err(%v) offset %v", d.info.Inode, err, req.Offset)
+		span.Errorf("readdirlimit: Readdir: ino(%v) err(%v) offset %v", d.info.Inode, err, req.Offset)
 		return make([]fuse.Dirent, 0), ParseError(err)
 	}
 
@@ -445,7 +451,7 @@ func (d *Dir) ReadDir(ctx context.Context, req *fuse.ReadRequest, resp *fuse.Rea
 	inodes := make([]uint64, 0, len(children))
 	dirents := make([]fuse.Dirent, 0, len(children))
 
-	log.Debugf("Readdir ino(%v) path(%v) d.super.bcacheDir(%v)", d.info.Inode, d.getCwd(), d.super.bcacheDir)
+	span.Debugf("Readdir ino(%v) path(%v) d.super.bcacheDir(%v)", d.info.Inode, d.getCwd(), d.super.bcacheDir)
 	var dcache *DentryCache
 	if !d.super.disableDcache {
 		dcache = NewDentryCache()
@@ -476,19 +482,20 @@ func (d *Dir) ReadDir(ctx context.Context, req *fuse.ReadRequest, resp *fuse.Rea
 		}
 	}
 
-	infos := d.super.mw.BatchInodeGet(inodes)
+	infos := d.super.mw.BatchInodeGet(ctxNew, inodes)
 	for _, info := range infos {
 		d.super.ic.Put(info)
 	}
 
 	d.dcache = dcache
 	elapsed := time.Since(start)
-	log.Debugf("TRACE ReadDir exit: ino(%v) (%v)ns %v", d.info.Inode, elapsed.Nanoseconds(), req)
+	span.Debugf("TRACE ReadDir exit: ino(%v) (%v)ns %v", d.info.Inode, elapsed.Nanoseconds(), req)
 	return dirents, err
 }
 
 // ReadDirAll gets all the dentries in a directory and puts them into the cache.
 func (d *Dir) ReadDirAll(ctx context.Context) ([]fuse.Dirent, error) {
+	span, ctxNew := proto.SpanWithContextPrefix(ctx, "Dir-ReadDirAll-")
 	start := time.Now()
 	bgTime := stat.BeginStat()
 	var err error
@@ -503,9 +510,9 @@ func (d *Dir) ReadDirAll(ctx context.Context) ([]fuse.Dirent, error) {
 	from := ""
 	var children []proto.Dentry
 	for !noMore {
-		batches, err := d.super.mw.ReadDirLimit_ll(d.info.Inode, from, DefaultReaddirLimit)
+		batches, err := d.super.mw.ReadDirLimit_ll(ctxNew, d.info.Inode, from, DefaultReaddirLimit)
 		if err != nil {
-			log.Errorf("Readdir: ino(%v) err(%v) from(%v)", d.info.Inode, err, from)
+			span.Errorf("Readdir: ino(%v) err(%v) from(%v)", d.info.Inode, err, from)
 			return make([]fuse.Dirent, 0), ParseError(err)
 		}
 		batchNr := uint64(len(batches))
@@ -525,7 +532,7 @@ func (d *Dir) ReadDirAll(ctx context.Context) ([]fuse.Dirent, error) {
 	inodes := make([]uint64, 0, len(children))
 	dirents := make([]fuse.Dirent, 0, len(children))
 
-	log.Debugf("Readdir ino(%v) path(%v) d.super.bcacheDir(%v)", d.info.Inode, d.getCwd(), d.super.bcacheDir)
+	span.Debugf("Readdir ino(%v) path(%v) d.super.bcacheDir(%v)", d.info.Inode, d.getCwd(), d.super.bcacheDir)
 	var dcache *DentryCache
 	if !d.super.disableDcache {
 		dcache = NewDentryCache()
@@ -556,21 +563,22 @@ func (d *Dir) ReadDirAll(ctx context.Context) ([]fuse.Dirent, error) {
 		}
 	}
 
-	infos := d.super.mw.BatchInodeGet(inodes)
+	infos := d.super.mw.BatchInodeGet(ctxNew, inodes)
 	for _, info := range infos {
 		d.super.ic.Put(info)
 	}
 	d.dcache = dcache
 	elapsed := time.Since(start)
-	log.Debugf("TRACE ReadDirAll: ino(%v) (%v)ns", d.info.Inode, elapsed.Nanoseconds())
+	span.Debugf("TRACE ReadDirAll: ino(%v) (%v)ns", d.info.Inode, elapsed.Nanoseconds())
 	return dirents, nil
 }
 
 // Rename handles the rename request.
 func (d *Dir) Rename(ctx context.Context, req *fuse.RenameRequest, newDir fs.Node) error {
+	span, ctxNew := proto.SpanWithContextPrefix(ctx, "Dir-Rename-")
 	dstDir, ok := newDir.(*Dir)
 	if !ok {
-		log.Errorf("Rename: NOT DIR, parent(%v) req(%v)", d.info.Inode, req)
+		span.Errorf("Rename: NOT DIR, parent(%v) req(%v)", d.info.Inode, req)
 		return fuse.ENOTSUP
 	}
 	start := time.Now()
@@ -584,7 +592,7 @@ func (d *Dir) Rename(ctx context.Context, req *fuse.RenameRequest, newDir fs.Nod
 		srcInode = ino
 	} else {
 		// will not get there
-		if ino, _, err := d.super.mw.Lookup_ll(d.info.Inode, req.OldName); err == nil {
+		if ino, _, err := d.super.mw.Lookup_ll(ctxNew, d.info.Inode, req.OldName); err == nil {
 			srcInode = ino
 		}
 	}
@@ -621,9 +629,9 @@ func (d *Dir) Rename(ctx context.Context, req *fuse.RenameRequest, newDir fs.Nod
 			return fuse.EPERM
 		}
 	}
-	err = d.super.mw.Rename_ll(d.info.Inode, req.OldName, dstDir.info.Inode, req.NewName, srcPath, dstPath, true)
+	err = d.super.mw.Rename_ll(ctxNew, d.info.Inode, req.OldName, dstDir.info.Inode, req.NewName, srcPath, dstPath, true)
 	if err != nil {
-		log.Errorf("Rename: parent(%v) req(%v) err(%v)", d.info.Inode, req, err)
+		span.Errorf("Rename: parent(%v) req(%v) err(%v)", d.info.Inode, req, err)
 		return ParseError(err)
 	}
 	// if len(changePathMap) != 0 {
@@ -633,7 +641,7 @@ func (d *Dir) Rename(ctx context.Context, req *fuse.RenameRequest, newDir fs.Nod
 	d.super.ic.Delete(dstDir.info.Inode)
 
 	elapsed := time.Since(start)
-	log.Debugf("TRACE Rename: SrcParent(%v) OldName(%v) DstParent(%v) NewName(%v) (%v)ns", d.info.Inode, req.OldName, dstDir.info.Inode, req.NewName, elapsed.Nanoseconds())
+	span.Debugf("TRACE Rename: SrcParent(%v) OldName(%v) DstParent(%v) NewName(%v) (%v)ns", d.info.Inode, req.OldName, dstDir.info.Inode, req.NewName, elapsed.Nanoseconds())
 	return nil
 }
 
@@ -648,7 +656,7 @@ func (d *Dir) Setattr(ctx context.Context, req *fuse.SetattrRequest, resp *fuse.
 
 	ino := d.info.Inode
 	start := time.Now()
-	info, err := d.super.InodeGet(ctx, ino)
+	info, err := d.super.InodeGet(ctxNew, ino)
 	if err != nil {
 		span.Errorf("Setattr: ino(%v) err(%v)", ino, err)
 		return ParseError(err)
@@ -671,6 +679,7 @@ func (d *Dir) Setattr(ctx context.Context, req *fuse.SetattrRequest, resp *fuse.
 }
 
 func (d *Dir) Mknod(ctx context.Context, req *fuse.MknodRequest) (fs.Node, error) {
+	span, ctxNew := proto.SpanWithContextPrefix(ctx, "Dir-Mknode-")
 	if req.Rdev != 0 {
 		return nil, fuse.ENOSYS
 	}
@@ -685,9 +694,9 @@ func (d *Dir) Mknod(ctx context.Context, req *fuse.MknodRequest) (fs.Node, error
 		metric.SetWithLabels(err, map[string]string{exporter.Vol: d.super.volname})
 	}()
 	fullPath := path.Join(d.getCwd(), req.Name)
-	info, err := d.super.mw.Create_ll(d.info.Inode, req.Name, proto.Mode(req.Mode), req.Uid, req.Gid, nil, fullPath)
+	info, err := d.super.mw.Create_ll(ctxNew, d.info.Inode, req.Name, proto.Mode(req.Mode), req.Uid, req.Gid, nil, fullPath)
 	if err != nil {
-		log.Errorf("Mknod: parent(%v) req(%v) err(%v)", d.info.Inode, req, err)
+		span.Errorf("Mknod: parent(%v) req(%v) err(%v)", d.info.Inode, req, err)
 		return nil, ParseError(err)
 	}
 
@@ -699,12 +708,13 @@ func (d *Dir) Mknod(ctx context.Context, req *fuse.MknodRequest) (fs.Node, error
 	d.super.fslock.Unlock()
 
 	elapsed := time.Since(start)
-	log.Debugf("TRACE Mknod: parent(%v) req(%v) ino(%v) (%v)ns", d.info.Inode, req, info.Inode, elapsed.Nanoseconds())
+	span.Debugf("TRACE Mknod: parent(%v) req(%v) ino(%v) (%v)ns", d.info.Inode, req, info.Inode, elapsed.Nanoseconds())
 	return child, nil
 }
 
 // Symlink handles the symlink request.
 func (d *Dir) Symlink(ctx context.Context, req *fuse.SymlinkRequest) (fs.Node, error) {
+	span, ctxNew := proto.SpanWithContextPrefix(ctx, "Dir-Symlink-")
 	parentIno := d.info.Inode
 	start := time.Now()
 
@@ -716,9 +726,9 @@ func (d *Dir) Symlink(ctx context.Context, req *fuse.SymlinkRequest) (fs.Node, e
 		metric.SetWithLabels(err, map[string]string{exporter.Vol: d.super.volname})
 	}()
 	fullPath := path.Join(d.getCwd(), req.NewName)
-	info, err := d.super.mw.Create_ll(parentIno, req.NewName, proto.Mode(os.ModeSymlink|os.ModePerm), req.Uid, req.Gid, []byte(req.Target), fullPath)
+	info, err := d.super.mw.Create_ll(ctxNew, parentIno, req.NewName, proto.Mode(os.ModeSymlink|os.ModePerm), req.Uid, req.Gid, []byte(req.Target), fullPath)
 	if err != nil {
-		log.Errorf("Symlink: parent(%v) NewName(%v) err(%v)", parentIno, req.NewName, err)
+		span.Errorf("Symlink: parent(%v) NewName(%v) err(%v)", parentIno, req.NewName, err)
 		return nil, ParseError(err)
 	}
 
@@ -730,12 +740,13 @@ func (d *Dir) Symlink(ctx context.Context, req *fuse.SymlinkRequest) (fs.Node, e
 	d.super.fslock.Unlock()
 
 	elapsed := time.Since(start)
-	log.Debugf("TRACE Symlink: parent(%v) req(%v) ino(%v) (%v)ns", parentIno, req, info.Inode, elapsed.Nanoseconds())
+	span.Debugf("TRACE Symlink: parent(%v) req(%v) ino(%v) (%v)ns", parentIno, req, info.Inode, elapsed.Nanoseconds())
 	return child, nil
 }
 
 // Link handles the link request.
 func (d *Dir) Link(ctx context.Context, req *fuse.LinkRequest, old fs.Node) (fs.Node, error) {
+	span, ctxNew := proto.SpanWithContextPrefix(ctx, "Dir-Link-")
 	var oldInode *proto.InodeInfo
 	switch old := old.(type) {
 	case *File:
@@ -745,7 +756,7 @@ func (d *Dir) Link(ctx context.Context, req *fuse.LinkRequest, old fs.Node) (fs.
 	}
 
 	if !proto.IsRegular(oldInode.Mode) {
-		log.Errorf("Link: not regular, parent(%v) name(%v) ino(%v) mode(%v)", d.info.Inode, req.NewName, oldInode.Inode, proto.OsMode(oldInode.Mode))
+		span.Errorf("Link: not regular, parent(%v) name(%v) ino(%v) mode(%v)", d.info.Inode, req.NewName, oldInode.Inode, proto.OsMode(oldInode.Mode))
 		return nil, fuse.EPERM
 	}
 
@@ -759,9 +770,9 @@ func (d *Dir) Link(ctx context.Context, req *fuse.LinkRequest, old fs.Node) (fs.
 		metric.SetWithLabels(err, map[string]string{exporter.Vol: d.super.volname})
 	}()
 	fullPath := path.Join(d.getCwd(), req.NewName)
-	info, err := d.super.mw.Link(d.info.Inode, req.NewName, oldInode.Inode, fullPath)
+	info, err := d.super.mw.Link(ctxNew, d.info.Inode, req.NewName, oldInode.Inode, fullPath)
 	if err != nil {
-		log.Errorf("Link: parent(%v) name(%v) ino(%v) err(%v)", d.info.Inode, req.NewName, oldInode.Inode, err)
+		span.Errorf("Link: parent(%v) name(%v) ino(%v) err(%v)", d.info.Inode, req.NewName, oldInode.Inode, err)
 		return nil, ParseError(err)
 	}
 
@@ -776,12 +787,13 @@ func (d *Dir) Link(ctx context.Context, req *fuse.LinkRequest, old fs.Node) (fs.
 	d.super.fslock.Unlock()
 
 	elapsed := time.Since(start)
-	log.Debugf("TRACE Link: parent(%v) name(%v) ino(%v) (%v)ns", d.info.Inode, req.NewName, info.Inode, elapsed.Nanoseconds())
+	span.Debugf("TRACE Link: parent(%v) name(%v) ino(%v) (%v)ns", d.info.Inode, req.NewName, info.Inode, elapsed.Nanoseconds())
 	return newFile, nil
 }
 
 // Getxattr has not been implemented yet.
 func (d *Dir) Getxattr(ctx context.Context, req *fuse.GetxattrRequest, resp *fuse.GetxattrResponse) error {
+	span, ctxNew := proto.SpanWithContextPrefix(ctx, "Dir-Getxattr-")
 	if !d.super.enableXattr {
 		return fuse.ENOSYS
 	}
@@ -808,9 +820,9 @@ func (d *Dir) Getxattr(ctx context.Context, req *fuse.GetxattrRequest, resp *fus
 		if cacheSummaryInfo != nil {
 			summaryInfo = *cacheSummaryInfo
 		} else {
-			summaryInfo, err = d.super.mw.GetSummary_ll(ino, 20)
+			summaryInfo, err = d.super.mw.GetSummary_ll(ctxNew, ino, 20)
 			if err != nil {
-				log.Errorf("GetXattr: ino(%v) name(%v) err(%v)", ino, name, err)
+				span.Errorf("GetXattr: ino(%v) name(%v) err(%v)", ino, name, err)
 				return ParseError(err)
 			}
 			d.super.sc.Put(ino, &summaryInfo)
@@ -825,9 +837,9 @@ func (d *Dir) Getxattr(ctx context.Context, req *fuse.GetxattrRequest, resp *fus
 		value = []byte(summaryStr)
 
 	} else {
-		info, err = d.super.mw.XAttrGet_ll(ino, name)
+		info, err = d.super.mw.XAttrGet_ll(ctxNew, ino, name)
 		if err != nil {
-			log.Errorf("GetXattr: ino(%v) name(%v) err(%v)", ino, name, err)
+			span.Errorf("GetXattr: ino(%v) name(%v) err(%v)", ino, name, err)
 			return ParseError(err)
 		}
 		value = info.Get(name)
@@ -840,12 +852,13 @@ func (d *Dir) Getxattr(ctx context.Context, req *fuse.GetxattrRequest, resp *fus
 		value = value[:size]
 	}
 	resp.Xattr = value
-	log.Debugf("TRACE GetXattr: ino(%v) name(%v)", ino, name)
+	span.Debugf("TRACE GetXattr: ino(%v) name(%v)", ino, name)
 	return nil
 }
 
 // Listxattr has not been implemented yet.
 func (d *Dir) Listxattr(ctx context.Context, req *fuse.ListxattrRequest, resp *fuse.ListxattrResponse) error {
+	span, ctxNew := proto.SpanWithContextPrefix(ctx, "Dir-Listxattr-")
 	if !d.super.enableXattr {
 		return fuse.ENOSYS
 	}
@@ -860,7 +873,7 @@ func (d *Dir) Listxattr(ctx context.Context, req *fuse.ListxattrRequest, resp *f
 	_ = req.Size     // ignore currently
 	_ = req.Position // ignore currently
 
-	keys, err := d.super.mw.XAttrsList_ll(ino)
+	keys, err := d.super.mw.XAttrsList_ll(ctxNew, ino)
 	if err != nil {
 		log.Errorf("ListXattr: ino(%v) err(%v)", ino, err)
 		return ParseError(err)
@@ -868,12 +881,13 @@ func (d *Dir) Listxattr(ctx context.Context, req *fuse.ListxattrRequest, resp *f
 	for _, key := range keys {
 		resp.Append(key)
 	}
-	log.Debugf("TRACE Listxattr: ino(%v)", ino)
+	span.Debugf("TRACE Listxattr: ino(%v)", ino)
 	return nil
 }
 
 // Setxattr has not been implemented yet.
 func (d *Dir) Setxattr(ctx context.Context, req *fuse.SetxattrRequest) error {
+	span, ctxNew := proto.SpanWithContextPrefix(ctx, "Dir-Setxattr-")
 	if !d.super.enableXattr {
 		return fuse.ENOSYS
 	}
@@ -888,20 +902,21 @@ func (d *Dir) Setxattr(ctx context.Context, req *fuse.SetxattrRequest) error {
 	name := req.Name
 	value := req.Xattr
 	if name == meta.SummaryKey {
-		log.Errorf("Set 'DirStat' is not supported.")
+		span.Errorf("Set 'DirStat' is not supported.")
 		return fuse.ENOSYS
 	}
 	// TODO： implement flag to improve compatible (Mofei Zhang)
-	if err = d.super.mw.XAttrSet_ll(ino, []byte(name), []byte(value)); err != nil {
-		log.Errorf("Setxattr: ino(%v) name(%v) err(%v)", ino, name, err)
+	if err = d.super.mw.XAttrSet_ll(ctxNew, ino, []byte(name), []byte(value)); err != nil {
+		span.Errorf("Setxattr: ino(%v) name(%v) err(%v)", ino, name, err)
 		return ParseError(err)
 	}
-	log.Debugf("TRACE Setxattr: ino(%v) name(%v)", ino, name)
+	span.Debugf("TRACE Setxattr: ino(%v) name(%v)", ino, name)
 	return nil
 }
 
 // Removexattr has not been implemented yet.
 func (d *Dir) Removexattr(ctx context.Context, req *fuse.RemovexattrRequest) error {
+	span, ctxNew := proto.SpanWithContextPrefix(ctx, "Dir-Removexattr-")
 	if !d.super.enableXattr {
 		return fuse.ENOSYS
 	}
@@ -915,14 +930,14 @@ func (d *Dir) Removexattr(ctx context.Context, req *fuse.RemovexattrRequest) err
 	ino := d.info.Inode
 	name := req.Name
 	if name == meta.SummaryKey {
-		log.Errorf("Remove 'DirStat' is not supported.")
+		span.Errorf("Remove 'DirStat' is not supported.")
 		return fuse.ENOSYS
 	}
-	if err = d.super.mw.XAttrDel_ll(ino, name); err != nil {
-		log.Errorf("Removexattr: ino(%v) name(%v) err(%v)", ino, name, err)
+	if err = d.super.mw.XAttrDel_ll(ctxNew, ino, name); err != nil {
+		span.Errorf("Removexattr: ino(%v) name(%v) err(%v)", ino, name, err)
 		return ParseError(err)
 	}
-	log.Debugf("TRACE RemoveXattr: ino(%v) name(%v)", ino, name)
+	span.Debugf("TRACE RemoveXattr: ino(%v) name(%v)", ino, name)
 	return nil
 }
 

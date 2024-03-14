@@ -2,6 +2,7 @@ package proto
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -48,6 +49,20 @@ func TestPacketContext(t *testing.T) {
 	span9, ctx9 := SpanWithContextPrefix(ctx6, "test2-")
 	require.NotEqual(t, span6.TraceID(), SpanFromContext(ctx9).TraceID())
 	require.NotEqual(t, span6.TraceID(), span9.TraceID())
+}
+
+func TestPacketWithContext(t *testing.T) {
+	span1, ctx := SpanWithContextPrefix(context.Background(), "File-Setattr-")
+	t.Log("span1.TraceID()=", span1.TraceID())
+
+	p := NewPacketReqID().WithContext(ctx)
+	span2 := p.Span()
+	t.Log("span2.TraceID()=", span2.TraceID())
+	t.Log("p.ReqID=", p.ReqID)
+	reqID := fmt.Sprintf("%016x", p.ReqID)
+
+	require.Equal(t, span1.TraceID(), span2.TraceID())
+	require.NotEqual(t, span1.TraceID(), reqID)
 }
 
 func BenchmarkPacketSpan(b *testing.B) {

@@ -15,6 +15,7 @@
 package cmd
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -218,7 +219,7 @@ func doEvictInode(inode *Inode) error {
 	if inode.NLink != 0 || time.Since(time.Unix(inode.ModifyTime, 0)) < 24*time.Hour || !proto.IsRegular(inode.Type) {
 		return nil
 	}
-	err := gMetaWrapper.Evict(inode.Inode, inode.Path)
+	err := gMetaWrapper.Evict(context.TODO(), inode.Inode, inode.Path)
 	if err != nil {
 		if err != syscall.ENOENT {
 			return err

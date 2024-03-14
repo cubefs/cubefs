@@ -15,6 +15,7 @@
 package cmd
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"math"
@@ -210,7 +211,7 @@ func doEvictInode(inode *Inode) error {
 	if inode.NLink != 0 || time.Since(time.Unix(inode.ModifyTime, 0)) < 24*time.Hour || !proto.IsRegular(inode.Type) {
 		return nil
 	}
-	err := gMetaWrapper.Evict(inode.Inode, snapshotFullPath)
+	err := gMetaWrapper.Evict(context.TODO(), inode.Inode, snapshotFullPath)
 	if err != nil {
 		if err != syscall.ENOENT {
 			return err
@@ -232,7 +233,7 @@ func doUnlinkInode(inode *Inode) error {
 		return nil
 	}
 
-	_, err := gMetaWrapper.InodeUnlink_ll(inode.Inode, snapshotFullPath)
+	_, err := gMetaWrapper.InodeUnlink_ll(context.TODO(), inode.Inode, snapshotFullPath)
 	if err != nil {
 		if err != syscall.ENOENT {
 			return err
@@ -240,7 +241,7 @@ func doUnlinkInode(inode *Inode) error {
 		err = nil
 	}
 
-	err = gMetaWrapper.Evict(inode.Inode, snapshotFullPath)
+	err = gMetaWrapper.Evict(context.TODO(), inode.Inode, snapshotFullPath)
 	if err != nil {
 		if err != syscall.ENOENT {
 			return err
@@ -270,7 +271,7 @@ func readSnapshot() (err error) {
 	)
 
 	log.LogDebugf("action[readSnapshot] ReadDirLimit_ll parent root verSeq %v", VerSeq)
-	parents, err = gMetaWrapper.ReadDirLimitForSnapShotClean(1, "", math.MaxUint64, VerSeq, false) // one more for nextMarker
+	parents, err = gMetaWrapper.ReadDirLimitForSnapShotClean(context.TODO(), 1, "", math.MaxUint64, VerSeq, false) // one more for nextMarker
 	if err != nil && err != syscall.ENOENT {
 		log.LogErrorf("action[readSnapshot] parent root verSeq %v err %v", VerSeq, err)
 		return err
@@ -294,7 +295,7 @@ func cleanSnapshot() (err error) {
 	// return readSnapshot()
 
 	log.LogDebugf("action[cleanSnapshot] ReadDirLimit_ll parent root verSeq %v", VerSeq)
-	parents, err = gMetaWrapper.ReadDirLimitForSnapShotClean(1, "", math.MaxUint64, VerSeq, false) // one more for nextMarker
+	parents, err = gMetaWrapper.ReadDirLimitForSnapShotClean(context.TODO(), 1, "", math.MaxUint64, VerSeq, false) // one more for nextMarker
 	if err != nil && err != syscall.ENOENT {
 		log.LogErrorf("action[cleanSnapshot] parent root verSeq %v err %v", VerSeq, err)
 		return err
@@ -308,7 +309,7 @@ func cleanSnapshot() (err error) {
 	log.LogDebugf("action[cleanSnapshot]  parent root verSeq %v Delete_ll_EX children count %v", VerSeq, len(parents))
 	for _, child := range parents {
 		fullPath := "/" + child.Name
-		if ino, err = gMetaWrapper.Delete_Ver_ll(1, child.Name, proto.IsDir(child.Type), VerSeq, fullPath); err != nil {
+		if ino, err = gMetaWrapper.Delete_Ver_ll(context.TODO(), 1, child.Name, proto.IsDir(child.Type), VerSeq, fullPath); err != nil {
 			log.LogErrorf("action[cleanSnapshot] parent root Delete_ll_EX child name %v verSeq %v err %v", child.Name, VerSeq, err)
 		}
 		log.LogDebugf("action[cleanSnapshot] parent root Delete_ll_EX child name %v verSeq %v ino %v success", child.Name, VerSeq, ino)
@@ -318,7 +319,7 @@ func cleanSnapshot() (err error) {
 		parent := parents[idx]
 		if proto.IsDir(parent.Type) {
 			log.LogDebugf("action[cleanSnapshot] try loop delete dir %v %v with verSeq %v", parent.Inode, parent.Name, VerSeq)
-			children, err = gMetaWrapper.ReadDirLimitForSnapShotClean(parent.Inode, "", math.MaxUint64, VerSeq, false)
+			children, err = gMetaWrapper.ReadDirLimitForSnapShotClean(context.TODO(), parent.Inode, "", math.MaxUint64, VerSeq, false)
 			if err != nil && err != syscall.ENOENT {
 				log.LogErrorf("action[cleanSnapshot] parent %v verSeq %v err %v", parent.Name, VerSeq, err)
 				return err
@@ -328,7 +329,7 @@ func cleanSnapshot() (err error) {
 				continue
 			}
 			for _, child := range children {
-				if ino, err = gMetaWrapper.Delete_Ver_ll(parent.Inode, child.Name, proto.IsDir(child.Type), VerSeq, snapshotFullPath); err != nil || ino == nil {
+				if ino, err = gMetaWrapper.Delete_Ver_ll(context.TODO(), parent.Inode, child.Name, proto.IsDir(child.Type), VerSeq, snapshotFullPath); err != nil || ino == nil {
 					log.LogErrorf("action[cleanSnapshot] parent %v Delete_ll_EX child name %v verSeq %v err %v", parent.Name, child.Name, VerSeq, err)
 				} else {
 					log.LogDebugf("action[cleanSnapshot] parent %v Delete_ll_EX child name %v verSeq %v ino %v success", parent.Name, child.Name, VerSeq, ino)

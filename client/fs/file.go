@@ -133,6 +133,7 @@ func (f *File) getParentPath() string {
 
 // Attr sets the attributes of a file.
 func (f *File) Attr(ctx context.Context, a *fuse.Attr) error {
+	span, ctxNew := proto.SpanWithContextPrefix(ctx, "File-Attr-")
 	var err error
 	bgTime := stat.BeginStat()
 	defer func() {
@@ -140,9 +141,9 @@ func (f *File) Attr(ctx context.Context, a *fuse.Attr) error {
 	}()
 
 	ino := f.info.Inode
-	info, err := f.super.InodeGet(ctx, ino)
+	info, err := f.super.InodeGet(ctxNew, ino)
 	if err != nil {
-		log.Errorf("Attr: ino(%v) err(%v)", ino, err)
+		span.Errorf("Attr: ino(%v) err(%v)", ino, err)
 		if err == fuse.ENOENT {
 			a.Inode = ino
 			return nil
@@ -152,27 +153,28 @@ func (f *File) Attr(ctx context.Context, a *fuse.Attr) error {
 
 	fillAttr(info, a)
 	a.ParentIno = f.parentIno
-	fileSize, gen := f.fileSizeVersion2(ctx, ino)
-	log.Debugf("Attr: ino(%v) fileSize(%v) gen(%v) inode.gen(%v)", ino, fileSize, gen, info.Generation)
+	fileSize, gen := f.fileSizeVersion2(ctxNew, ino)
+	span.Debugf("Attr: ino(%v) fileSize(%v) gen(%v) inode.gen(%v)", ino, fileSize, gen, info.Generation)
 	if gen >= info.Generation {
 		a.Size = uint64(fileSize)
 	}
 	if proto.IsSymlink(info.Mode) {
 		a.Size = uint64(len(info.Target))
 	}
-	log.Debugf("TRACE Attr: inode(%v) attr(%v)", info, a)
+	span.Debugf("TRACE Attr: inode(%v) attr(%v)", info, a)
 	return nil
 }
 
 // Forget evicts the inode of the current file. This can only happen when the inode is on the orphan list.
 func (f *File) Forget() {
+	span, ctx := proto.SpanContextPrefix("File-Forget-")
 	var err error
 	bgTime := stat.BeginStat()
 
 	ino := f.info.Inode
 	defer func() {
 		stat.EndStat("Forget", err, bgTime, 1)
-		log.Debugf("TRACE Forget: ino(%v)", ino)
+		span.Debugf("TRACE Forget: ino(%v)", ino)
 	}()
 
 	//TODO:why cannot close fwriter
@@ -187,7 +189,7 @@ func (f *File) Forget() {
 		delete(f.super.nodeCache, ino)
 		f.super.fslock.Unlock()
 		if err := f.super.ec.EvictStream(ino); err != nil {
-			log.Warnf("Forget: stream not ready to evict, ino(%v) err(%v)", ino, err)
+			span.Warnf("Forget: stream not ready to evict, ino(%v) err(%v)", ino, err)
 			return
 		}
 	}
@@ -196,15 +198,14 @@ func (f *File) Forget() {
 		return
 	}
 	fullPath := f.getParentPath() + f.name
-	if err := f.super.mw.Evict(ino, fullPath); err != nil {
+	if err := f.super.mw.Evict(ctx, ino, fullPath); err != nil {
 		log.Warnf("Forget Evict: ino(%v) err(%v)", ino, err)
 	}
 }
 
 // Open handles the open request.
 func (f *File) Open(ctx context.Context, req *fuse.OpenRequest, resp *fuse.OpenResponse) (handle fs.Handle, err error) {
-	span := proto.SpanFromContext(ctx)
-	ctx = proto.ContextWithSpan(ctx, span)
+	span, ctxNew := proto.SpanWithContextPrefix(ctx, "File-Open-")
 	bgTime := stat.BeginStat()
 	var needBCache bool
 
@@ -227,13 +228,13 @@ func (f *File) Open(ctx context.Context, req *fuse.OpenRequest, resp *fuse.OpenR
 		}
 	}
 	if needBCache {
-		f.super.ec.OpenStreamWithCache(ctx, ino, needBCache)
+		f.super.ec.OpenStreamWithCache(ctxNew, ino, needBCache)
 	} else {
 		f.super.ec.OpenStream(ctx, ino)
 	}
 	span.Debugf("TRACE open ino(%v) f.super.bcacheDir(%v) needBCache(%v)", ino, f.super.bcacheDir, needBCache)
 
-	f.super.ec.RefreshExtentsCache(ctx, ino)
+	f.super.ec.RefreshExtentsCache(ctxNew, ino)
 
 	if f.super.keepCache && resp != nil {
 		resp.Flags |= fuse.OpenKeepCache
@@ -284,8 +285,7 @@ func (f *File) Open(ctx context.Context, req *fuse.OpenRequest, resp *fuse.OpenR
 
 // Release handles the release request.
 func (f *File) Release(ctx context.Context, req *fuse.ReleaseRequest) (err error) {
-	span := proto.SpanFromContext(ctx)
-	ctx = proto.ContextWithSpan(ctx, span)
+	span, _ := proto.SpanWithContextPrefix(ctx, "File-Release-")
 	ino := f.info.Inode
 	bgTime := stat.BeginStat()
 
@@ -320,8 +320,7 @@ func (f *File) Release(ctx context.Context, req *fuse.ReleaseRequest) (err error
 
 // Read handles the read request.
 func (f *File) Read(ctx context.Context, req *fuse.ReadRequest, resp *fuse.ReadResponse) (err error) {
-	span := proto.SpanFromContext(ctx)
-	ctx = proto.ContextWithSpan(ctx, span)
+	span, ctxNew := proto.SpanWithContextPrefix(ctx, "File-Read-")
 	bgTime := stat.BeginStat()
 	defer func() {
 		stat.EndStat("Read", err, bgTime, 1)
@@ -340,7 +339,7 @@ func (f *File) Read(ctx context.Context, req *fuse.ReadRequest, resp *fuse.ReadR
 	if proto.IsHot(f.super.volType) {
 		size, err = f.super.ec.Read(ctx, f.info.Inode, resp.Data[fuse.OutHeaderSize:], int(req.Offset), req.Size)
 	} else {
-		size, err = f.fReader.Read(ctx, resp.Data[fuse.OutHeaderSize:], int(req.Offset), req.Size)
+		size, err = f.fReader.Read(ctxNew, resp.Data[fuse.OutHeaderSize:], int(req.Offset), req.Size)
 	}
 	if err != nil && err != io.EOF {
 		msg := fmt.Sprintf("Read: ino(%v) req(%v) err(%v) size(%v)", f.info.Inode, req, err, size)
@@ -373,8 +372,7 @@ func (f *File) Read(ctx context.Context, req *fuse.ReadRequest, resp *fuse.ReadR
 
 // Write handles the write request.
 func (f *File) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.WriteResponse) (err error) {
-	span := proto.SpanFromContext(ctx)
-	ctx = proto.ContextWithSpan(ctx, span)
+	span, ctxNew := proto.SpanWithContextPrefix(ctx, "File-Write-")
 	bgTime := stat.BeginStat()
 	defer func() {
 		stat.EndStat("Write", err, bgTime, 1)
@@ -452,7 +450,7 @@ func (f *File) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.Wri
 		}
 	} else {
 		atomic.StoreInt32(&f.idle, 0)
-		size, err = f.fWriter.Write(ctx, int(req.Offset), req.Data, flags)
+		size, err = f.fWriter.Write(ctxNew, int(req.Offset), req.Data, flags)
 	}
 	if err != nil {
 		msg := fmt.Sprintf("Write: ino(%v) offset(%v) len(%v) err(%v)", ino, req.Offset, reqlen, err)
@@ -489,8 +487,7 @@ func (f *File) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.Wri
 
 // Flush only when fsyncOnClose is enabled.
 func (f *File) Flush(ctx context.Context, req *fuse.FlushRequest) (err error) {
-	span := proto.SpanFromContext(ctx)
-	ctx = proto.ContextWithSpan(ctx, span)
+	span, ctxNew := proto.SpanWithContextPrefix(ctx, "File-Flush-")
 	bgTime := stat.BeginStat()
 	defer func() {
 		stat.EndStat("Flush", err, bgTime, 1)
@@ -510,7 +507,7 @@ func (f *File) Flush(ctx context.Context, req *fuse.FlushRequest) (err error) {
 		err = f.super.ec.Flush(ctx, f.info.Inode)
 	} else {
 		f.Lock()
-		err = f.fWriter.Flush(f.info.Inode, ctx)
+		err = f.fWriter.Flush(f.info.Inode, ctxNew)
 		f.Unlock()
 	}
 	span.Debugf("TRACE Flush: ino(%v) err(%v)", f.info.Inode, err)
@@ -533,8 +530,7 @@ func (f *File) Flush(ctx context.Context, req *fuse.FlushRequest) (err error) {
 
 // Fsync hanldes the fsync request.
 func (f *File) Fsync(ctx context.Context, req *fuse.FsyncRequest) (err error) {
-	span := proto.SpanFromContext(ctx)
-	ctx = proto.ContextWithSpan(ctx, span)
+	span, ctxNew := proto.SpanWithContextPrefix(ctx, "File-Fsync-")
 	bgTime := stat.BeginStat()
 	defer func() {
 		stat.EndStat("Fsync", err, bgTime, 1)
@@ -545,7 +541,7 @@ func (f *File) Fsync(ctx context.Context, req *fuse.FsyncRequest) (err error) {
 	if proto.IsHot(f.super.volType) {
 		err = f.super.ec.Flush(ctx, f.info.Inode)
 	} else {
-		err = f.fWriter.Flush(f.info.Inode, ctx)
+		err = f.fWriter.Flush(f.info.Inode, ctxNew)
 	}
 	if err != nil {
 		msg := fmt.Sprintf("Fsync: ino(%v) err(%v)", f.info.Inode, err)
@@ -591,7 +587,7 @@ func (f *File) Setattr(ctx context.Context, req *fuse.SetattrRequest, resp *fuse
 		f.super.ec.RefreshExtentsCache(ctxNew, ino)
 	}
 
-	info, err := f.super.InodeGet(ctx, ino)
+	info, err := f.super.InodeGet(ctxNew, ino)
 	if err != nil {
 		span.Errorf("Setattr: InodeGet failed, ino(%v) err(%v)", ino, err)
 		return ParseError(err)
@@ -621,6 +617,7 @@ func (f *File) Setattr(ctx context.Context, req *fuse.SetattrRequest, resp *fuse
 
 // Readlink handles the readlink request.
 func (f *File) Readlink(ctx context.Context, req *fuse.ReadlinkRequest) (string, error) {
+	span, ctxNew := proto.SpanWithContextPrefix(ctx, "File-Readlink-")
 	var err error
 	bgTime := stat.BeginStat()
 	defer func() {
@@ -628,17 +625,18 @@ func (f *File) Readlink(ctx context.Context, req *fuse.ReadlinkRequest) (string,
 	}()
 
 	ino := f.info.Inode
-	info, err := f.super.InodeGet(ctx, ino)
+	info, err := f.super.InodeGet(ctxNew, ino)
 	if err != nil {
-		log.Errorf("Readlink: ino(%v) err(%v)", ino, err)
+		span.Errorf("Readlink: ino(%v) err(%v)", ino, err)
 		return "", ParseError(err)
 	}
-	log.Debugf("TRACE Readlink: ino(%v) target(%v)", ino, string(info.Target))
+	span.Debugf("TRACE Readlink: ino(%v) target(%v)", ino, string(info.Target))
 	return string(info.Target), nil
 }
 
 // Getxattr has not been implemented yet.
 func (f *File) Getxattr(ctx context.Context, req *fuse.GetxattrRequest, resp *fuse.GetxattrResponse) error {
+	span, ctxNew := proto.SpanWithContextPrefix(ctx, "File-Getxattr-")
 	var err error
 	bgTime := stat.BeginStat()
 	defer func() {
@@ -652,9 +650,9 @@ func (f *File) Getxattr(ctx context.Context, req *fuse.GetxattrRequest, resp *fu
 	name := req.Name
 	size := req.Size
 	pos := req.Position
-	info, err := f.super.mw.XAttrGet_ll(ino, name)
+	info, err := f.super.mw.XAttrGet_ll(ctxNew, ino, name)
 	if err != nil {
-		log.Errorf("GetXattr: ino(%v) name(%v) err(%v)", ino, name, err)
+		span.Errorf("GetXattr: ino(%v) name(%v) err(%v)", ino, name, err)
 		return ParseError(err)
 	}
 	value := info.Get(name)
@@ -665,12 +663,13 @@ func (f *File) Getxattr(ctx context.Context, req *fuse.GetxattrRequest, resp *fu
 		value = value[:size]
 	}
 	resp.Xattr = value
-	log.Debugf("TRACE GetXattr: ino(%v) name(%v)", ino, name)
+	span.Debugf("TRACE GetXattr: ino(%v) name(%v)", ino, name)
 	return nil
 }
 
 // Listxattr has not been implemented yet.
 func (f *File) Listxattr(ctx context.Context, req *fuse.ListxattrRequest, resp *fuse.ListxattrResponse) error {
+	span, ctxNew := proto.SpanWithContextPrefix(ctx, "File-Listxattr-")
 	var err error
 	bgTime := stat.BeginStat()
 	defer func() {
@@ -684,20 +683,21 @@ func (f *File) Listxattr(ctx context.Context, req *fuse.ListxattrRequest, resp *
 	_ = req.Size     // ignore currently
 	_ = req.Position // ignore currently
 
-	keys, err := f.super.mw.XAttrsList_ll(ino)
+	keys, err := f.super.mw.XAttrsList_ll(ctxNew, ino)
 	if err != nil {
-		log.Errorf("ListXattr: ino(%v) err(%v)", ino, err)
+		span.Errorf("ListXattr: ino(%v) err(%v)", ino, err)
 		return ParseError(err)
 	}
 	for _, key := range keys {
 		resp.Append(key)
 	}
-	log.Debugf("TRACE Listxattr: ino(%v)", ino)
+	span.Debugf("TRACE Listxattr: ino(%v)", ino)
 	return nil
 }
 
 // Setxattr has not been implemented yet.
 func (f *File) Setxattr(ctx context.Context, req *fuse.SetxattrRequest) error {
+	span, ctxNew := proto.SpanWithContextPrefix(ctx, "File-Setxattr-")
 	var err error
 	bgTime := stat.BeginStat()
 	defer func() {
@@ -711,16 +711,17 @@ func (f *File) Setxattr(ctx context.Context, req *fuse.SetxattrRequest) error {
 	name := req.Name
 	value := req.Xattr
 	// TODO： implement flag to improve compatible (Mofei Zhang)
-	if err = f.super.mw.XAttrSet_ll(ino, []byte(name), []byte(value)); err != nil {
-		log.Errorf("Setxattr: ino(%v) name(%v) err(%v)", ino, name, err)
+	if err = f.super.mw.XAttrSet_ll(ctxNew, ino, []byte(name), []byte(value)); err != nil {
+		span.Errorf("Setxattr: ino(%v) name(%v) err(%v)", ino, name, err)
 		return ParseError(err)
 	}
-	log.Debugf("TRACE Setxattr: ino(%v) name(%v)", ino, name)
+	span.Debugf("TRACE Setxattr: ino(%v) name(%v)", ino, name)
 	return nil
 }
 
 // Removexattr has not been implemented yet.
 func (f *File) Removexattr(ctx context.Context, req *fuse.RemovexattrRequest) error {
+	span, ctxNew := proto.SpanWithContextPrefix(ctx, "File-Removexattr-")
 	var err error
 	bgTime := stat.BeginStat()
 	defer func() {
@@ -732,11 +733,11 @@ func (f *File) Removexattr(ctx context.Context, req *fuse.RemovexattrRequest) er
 	}
 	ino := f.info.Inode
 	name := req.Name
-	if err = f.super.mw.XAttrDel_ll(ino, name); err != nil {
-		log.Errorf("Removexattr: ino(%v) name(%v) err(%v)", ino, name, err)
+	if err = f.super.mw.XAttrDel_ll(ctxNew, ino, name); err != nil {
+		span.Errorf("Removexattr: ino(%v) name(%v) err(%v)", ino, name, err)
 		return ParseError(err)
 	}
-	log.Debugf("TRACE RemoveXattr: ino(%v) name(%v)", ino, name)
+	span.Debugf("TRACE RemoveXattr: ino(%v) name(%v)", ino, name)
 	return nil
 }
 

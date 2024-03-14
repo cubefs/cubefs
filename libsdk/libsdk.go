@@ -691,7 +691,7 @@ func cfs_batch_get_inodes(id C.int64_t, fd C.int, iids unsafe.Pointer, stats []C
 	hdr.Len = int(count)
 	hdr.Cap = int(count)
 
-	infos := c.mw.BatchInodeGet(inodeIDS)
+	infos := c.mw.BatchInodeGet(context.TODO(), inodeIDS)
 	if len(infos) > int(count) {
 		return statusEINVAL
 	}
@@ -752,7 +752,7 @@ func cfs_refreshsummary(id C.int64_t, path *C.char, goroutine_num C.int) C.int {
 		ino = info.Inode
 	}
 	goroutineNum := int32(goroutine_num)
-	err = c.mw.RefreshSummary_ll(ino, goroutineNum)
+	err = c.mw.RefreshSummary_ll(context.TODO(), ino, goroutineNum)
 	if err != nil {
 		return errorToStatus(err)
 	}
@@ -777,7 +777,7 @@ func cfs_readdir(id C.int64_t, fd C.int, dirents []C.struct_cfs_dirent, count C.
 
 	if f.dirp == nil {
 		f.dirp = &dirStream{}
-		dentries, err := c.mw.ReadDir_ll(f.ino)
+		dentries, err := c.mw.ReadDir_ll(context.TODO(), f.ino)
 		if err != nil {
 			return errorToStatus(err)
 		}
@@ -831,7 +831,7 @@ func cfs_lsdir(id C.int64_t, fd C.int, direntsInfo []C.struct_cfs_dirent_info, c
 
 	if f.dirp == nil {
 		f.dirp = &dirStream{}
-		dentries, err := c.mw.ReadDir_ll(f.ino)
+		dentries, err := c.mw.ReadDir_ll(context.TODO(), f.ino)
 		if err != nil {
 			return errorToStatus(err)
 		}
@@ -871,7 +871,7 @@ func cfs_lsdir(id C.int64_t, fd C.int, direntsInfo []C.struct_cfs_dirent_info, c
 	if n == 0 {
 		return n
 	}
-	infos := c.mw.BatchInodeGet(inodeIDS)
+	infos := c.mw.BatchInodeGet(context.TODO(), inodeIDS)
 	if len(infos) != int(n) {
 		return statusEIO
 	}
@@ -933,7 +933,7 @@ func cfs_mkdirs(id C.int64_t, path *C.char, mode C.mode_t) C.int {
 		if dir == "/" || dir == "" {
 			continue
 		}
-		child, _, err := c.mw.Lookup_ll(pino, dir)
+		child, _, err := c.mw.Lookup_ll(context.TODO(), pino, dir)
 		if err != nil {
 			if err == syscall.ENOENT {
 				info, err := c.mkdir(pino, dir, uint32(mode), dirpath)
@@ -982,7 +982,7 @@ func cfs_rmdir(id C.int64_t, path *C.char) C.int {
 		return errorToStatus(err)
 	}
 
-	info, err = c.mw.Delete_ll(dirInfo.Inode, name, true, absPath)
+	info, err = c.mw.Delete_ll(context.TODO(), dirInfo.Inode, name, true, absPath)
 	c.ic.Delete(dirInfo.Inode)
 	c.dc.Delete(absPath)
 	return errorToStatus(err)
@@ -1014,7 +1014,7 @@ func cfs_unlink(id C.int64_t, path *C.char) C.int {
 		return errorToStatus(err)
 	}
 
-	_, mode, err := c.mw.Lookup_ll(dirInfo.Inode, name)
+	_, mode, err := c.mw.Lookup_ll(context.TODO(), dirInfo.Inode, name)
 	if err != nil {
 		return errorToStatus(err)
 	}
@@ -1022,13 +1022,13 @@ func cfs_unlink(id C.int64_t, path *C.char) C.int {
 		return statusEISDIR
 	}
 
-	info, err = c.mw.Delete_ll(dirInfo.Inode, name, false, absPath)
+	info, err = c.mw.Delete_ll(context.TODO(), dirInfo.Inode, name, false, absPath)
 	if err != nil {
 		return errorToStatus(err)
 	}
 
 	if info != nil {
-		_ = c.mw.Evict(info.Inode, absPath)
+		_ = c.mw.Evict(context.TODO(), info.Inode, absPath)
 		c.ic.Delete(info.Inode)
 	}
 	return 0
@@ -1063,7 +1063,7 @@ func cfs_rename(id C.int64_t, from *C.char, to *C.char) C.int {
 		return errorToStatus(err)
 	}
 
-	err = c.mw.Rename_ll(srcDirInfo.Inode, srcName, dstDirInfo.Inode, dstName, absFrom, absTo, false)
+	err = c.mw.Rename_ll(context.TODO(), srcDirInfo.Inode, srcName, dstDirInfo.Inode, dstName, absFrom, absTo, false)
 	c.ic.Delete(srcDirInfo.Inode)
 	c.ic.Delete(dstDirInfo.Inode)
 	c.dc.Delete(absFrom)
@@ -1082,7 +1082,7 @@ func cfs_fchmod(id C.int64_t, fd C.int, mode C.mode_t) C.int {
 		return statusEBADFD
 	}
 
-	info, err := c.mw.InodeGet_ll(f.ino)
+	info, err := c.mw.InodeGet_ll(context.TODO(), f.ino)
 	if err != nil {
 		return errorToStatus(err)
 	}
@@ -1121,7 +1121,7 @@ func cfs_getsummary(id C.int64_t, path *C.char, summary *C.struct_cfs_summary_in
 		return statusENOTDIR
 	}
 	goroutineNum := int32(goroutine_num)
-	summaryInfo, err := c.mw.GetSummary_ll(info.Inode, goroutineNum)
+	summaryInfo, err := c.mw.GetSummary_ll(context.TODO(), info.Inode, goroutineNum)
 	if err != nil {
 		return errorToStatus(err)
 	}
@@ -1338,7 +1338,7 @@ func (c *client) releaseFD(fd uint) *file {
 func (c *client) lookupPath(path string) (*proto.InodeInfo, error) {
 	ino, ok := c.dc.Get(gopath.Clean(path))
 	if !ok {
-		inoInterval, err := c.mw.LookupPath(gopath.Clean(path))
+		inoInterval, err := c.mw.LookupPath(context.TODO(), gopath.Clean(path))
 		if err != nil {
 			return nil, err
 		}
@@ -1349,7 +1349,7 @@ func (c *client) lookupPath(path string) (*proto.InodeInfo, error) {
 	if info != nil {
 		return info, nil
 	}
-	info, err := c.mw.InodeGet_ll(ino)
+	info, err := c.mw.InodeGet_ll(context.TODO(), ino)
 	if err != nil {
 		return nil, err
 	}
@@ -1370,13 +1370,13 @@ func (c *client) setattr(info *proto.InodeInfo, valid uint32, mode, uid, gid uin
 
 func (c *client) create(pino uint64, name string, mode uint32, fullPath string) (info *proto.InodeInfo, err error) {
 	fuseMode := mode & 0o777
-	return c.mw.Create_ll(pino, name, fuseMode, 0, 0, nil, fullPath)
+	return c.mw.Create_ll(context.TODO(), pino, name, fuseMode, 0, 0, nil, fullPath)
 }
 
 func (c *client) mkdir(pino uint64, name string, mode uint32, fullPath string) (info *proto.InodeInfo, err error) {
 	fuseMode := mode & 0o777
 	fuseMode |= uint32(os.ModeDir)
-	return c.mw.Create_ll(pino, name, fuseMode, 0, 0, nil, fullPath)
+	return c.mw.Create_ll(context.TODO(), pino, name, fuseMode, 0, 0, nil, fullPath)
 }
 
 func (c *client) openStream(f *file) {
@@ -1423,7 +1423,7 @@ func (c *client) write(f *file, offset int, data []byte, flags int) (n int, err 
 				return syscall.ENOSPC
 			}
 
-			if c.mw.IsQuotaLimitedById(f.ino, true, false) {
+			if c.mw.IsQuotaLimitedById(context.TODO(), f.ino, true, false) {
 				return syscall.ENOSPC
 			}
 			return nil
@@ -1508,7 +1508,7 @@ func (c *client) fileSize(ino uint64) (size int, gen uint64) {
 		if info != nil {
 			return int(info.Size), info.Generation
 		}
-		if info, err := c.mw.InodeGet_ll(ino); err == nil {
+		if info, err := c.mw.InodeGet_ll(context.TODO(), ino); err == nil {
 			size = int(info.Size)
 			gen = info.Generation
 		}

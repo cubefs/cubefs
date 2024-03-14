@@ -15,6 +15,7 @@
 package meta
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"sync"
@@ -106,7 +107,7 @@ func (tx *Transaction) SetOnRollback(job func()) {
 	// tx.onRollback = job
 }
 
-func (tx *Transaction) OnDone(err error, mw *MetaWrapper) (newErr error) {
+func (tx *Transaction) OnDone(ctx context.Context, err error, mw *MetaWrapper) (newErr error) {
 	// commit or rollback depending on status
 	newErr = err
 	if !tx.Started {
@@ -114,20 +115,21 @@ func (tx *Transaction) OnDone(err error, mw *MetaWrapper) (newErr error) {
 	}
 	if err != nil {
 		log.Debugf("OnDone: rollback, tx %s", tx.txInfo.TxID)
-		tx.Rollback(mw)
+		tx.Rollback(ctx, mw)
 	} else {
 		log.Debugf("OnDone: commit, tx %s", tx.txInfo.TxID)
-		newErr = tx.Commit(mw)
+		newErr = tx.Commit(ctx, mw)
 	}
 	return
 }
 
 // Commit will notify all the RM(related metapartitions) that transaction is completed successfully,
 // and corresponding transaction items can be removed
-func (tx *Transaction) Commit(mw *MetaWrapper) (err error) {
+func (tx *Transaction) Commit(ctx context.Context, mw *MetaWrapper) (err error) {
+	span := proto.SpanFromContext(ctx)
 	tmMP := mw.getPartitionByID(uint64(tx.txInfo.TmID))
 	if tmMP == nil {
-		log.Errorf("Transaction commit: No TM partition, TmID(%v), txID(%v)", tx.txInfo.TmID, tx.txInfo.TxID)
+		span.Errorf("Transaction commit: No TM partition, TmID(%v), txID(%v)", tx.txInfo.TmID, tx.txInfo.TxID)
 		return fmt.Errorf("transaction commit: can't find target mp for tx, mpId %d", tx.txInfo.TmID)
 	}
 
@@ -147,19 +149,19 @@ func (tx *Transaction) Commit(mw *MetaWrapper) (err error) {
 		// TxInfo:      tx.txInfo,
 	}
 
-	packet := proto.NewPacketReqID()
+	packet := proto.NewPacketReqID().WithContext(ctx)
 	packet.Opcode = proto.OpTxCommit
 	packet.PartitionID = tmMP.PartitionID
 	err = packet.MarshalData(req)
 	if err != nil {
-		log.Errorf("Transaction commit: TmID(%v), txID(%v), req(%v) err(%v)",
+		span.Errorf("Transaction commit: TmID(%v), txID(%v), req(%v) err(%v)",
 			tx.txInfo.TmID, tx.txInfo.TxID, *req, err)
 		return
 	}
 
 	packet, err = mw.sendToMetaPartition(tmMP, packet)
 	if err != nil {
-		log.Errorf("Transaction commit: txID(%v), packet(%v) mp(%v) req(%v) err(%v)",
+		span.Errorf("Transaction commit: txID(%v), packet(%v) mp(%v) req(%v) err(%v)",
 			tx.txInfo.TxID, packet, tmMP, *req, err)
 		return
 	}
@@ -167,7 +169,7 @@ func (tx *Transaction) Commit(mw *MetaWrapper) (err error) {
 	status := parseStatus(packet.ResultCode)
 	if status != statusOK {
 		err = errors.New(packet.GetResultMsg())
-		log.Errorf("Transaction commit failed: TmID(%v), txID(%v), packet(%v) mp(%v) req(%v) result(%v)",
+		span.Errorf("Transaction commit failed: TmID(%v), txID(%v), packet(%v) mp(%v) req(%v) result(%v)",
 			tx.txInfo.TmID, tx.txInfo.TxID, packet, tmMP, *req, packet.GetResultMsg())
 		return
 	}
@@ -176,20 +178,19 @@ func (tx *Transaction) Commit(mw *MetaWrapper) (err error) {
 		job()
 	}
 
-	if log.EnableDebug() {
-		log.Debugf("Transaction commit succesfully: TmID(%v), txID(%v), packet(%v) mp(%v) req(%v) result(%v)",
-			tx.txInfo.TmID, tx.txInfo.TxID, packet, tmMP, *req, packet.GetResultMsg())
-	}
+	span.Debugf("Transaction commit succesfully: TmID(%v), txID(%v), packet(%v) mp(%v) req(%v) result(%v)",
+		tx.txInfo.TmID, tx.txInfo.TxID, packet, tmMP, *req, packet.GetResultMsg())
 
 	return
 }
 
 // Rollback will notify all the RM(related metapartitions) that transaction is cancelled,
 // and corresponding transaction items should be rolled back to previous state(before transaction)
-func (tx *Transaction) Rollback(mw *MetaWrapper) {
+func (tx *Transaction) Rollback(ctx context.Context, mw *MetaWrapper) {
+	span := proto.SpanFromContext(ctx)
 	tmMP := mw.getPartitionByID(uint64(tx.txInfo.TmID))
 	if tmMP == nil {
-		log.Warnf("Transaction Rollback: No TM partition, TmID(%v), txID(%v)", tx.txInfo.TmID, tx.txInfo.TxID)
+		span.Warnf("Transaction Rollback: No TM partition, TmID(%v), txID(%v)", tx.txInfo.TmID, tx.txInfo.TxID)
 		return
 	}
 
@@ -206,12 +207,12 @@ func (tx *Transaction) Rollback(mw *MetaWrapper) {
 		// TxInfo:      tx.txInfo,
 	}
 
-	packet := proto.NewPacketReqID()
+	packet := proto.NewPacketReqID().WithContext(ctx)
 	packet.Opcode = proto.OpTxRollback
 	packet.PartitionID = tmMP.PartitionID
 	err = packet.MarshalData(req)
 	if err != nil {
-		log.Errorf("Transaction Rollback: TmID(%v), txID(%v), req(%v) err(%v)",
+		span.Errorf("Transaction Rollback: TmID(%v), txID(%v), req(%v) err(%v)",
 			tx.txInfo.TmID, tx.txInfo.TxID, *req, err)
 		return
 	}
@@ -223,14 +224,14 @@ func (tx *Transaction) Rollback(mw *MetaWrapper) {
 
 	packet, err = mw.sendToMetaPartition(tmMP, packet)
 	if err != nil {
-		log.Errorf("Transaction Rollback: txID(%v), packet(%v) mp(%v) req(%v) err(%v)",
+		span.Errorf("Transaction Rollback: txID(%v), packet(%v) mp(%v) req(%v) err(%v)",
 			tx.txInfo.TxID, packet, tmMP, *req, err)
 		return
 	}
 
 	status := parseStatus(packet.ResultCode)
 	if status != statusOK {
-		log.Errorf("Transaction Rollback failed: TmID(%v), txID(%v), packet(%v) mp(%v) req(%v) result(%v)",
+		span.Errorf("Transaction Rollback failed: TmID(%v), txID(%v), packet(%v) mp(%v) req(%v) result(%v)",
 			tx.txInfo.TmID, tx.txInfo.TxID, packet, tmMP, *req, packet.GetResultMsg())
 		return
 	}
@@ -239,8 +240,6 @@ func (tx *Transaction) Rollback(mw *MetaWrapper) {
 		job()
 	}
 
-	if log.EnableDebug() {
-		log.Debugf("Transaction Rollback successfully: TmID(%v), txID(%v), packet(%v) mp(%v) req(%v) result(%v)",
-			tx.txInfo.TmID, tx.txInfo.TxID, packet, tmMP, *req, packet.GetResultMsg())
-	}
+	span.Debugf("Transaction Rollback successfully: TmID(%v), txID(%v), packet(%v) mp(%v) req(%v) result(%v)",
+		tx.txInfo.TmID, tx.txInfo.TxID, packet, tmMP, *req, packet.GetResultMsg())
 }

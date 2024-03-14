@@ -411,7 +411,7 @@ func (reader *Reader) needCacheL1() bool {
 
 func (reader *Reader) refreshEbsExtents(ctx context.Context) {
 	span := proto.SpanFromContext(ctx)
-	_, _, eks, oeks, err := reader.mw.GetObjExtents(reader.ino)
+	_, _, eks, oeks, err := reader.mw.GetObjExtents(ctx, reader.ino)
 	if err != nil {
 		reader.valid = false
 		span.Errorf("TRACE blobStore refreshEbsExtents error. ino(%v)  err(%v) ", reader.ino, err)

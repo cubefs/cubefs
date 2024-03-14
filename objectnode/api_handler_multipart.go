@@ -15,6 +15,7 @@
 package objectnode
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/xml"
@@ -716,7 +717,7 @@ func (o *ObjectNode) completeMultipartUploadHandler(w http.ResponseWriter, r *ht
 
 	// get multipart info
 	start := time.Now()
-	multipartInfo, err := vol.mw.GetMultipart_ll(param.object, uploadId)
+	multipartInfo, err := vol.mw.GetMultipart_ll(context.TODO(), param.object, uploadId)
 	span.AppendTrackLog("part.r", start, err)
 	if err != nil {
 		log.LogErrorf("completeMultipartUploadHandler: meta get multipart fail: requestID(%v) path(%v) err(%v)",

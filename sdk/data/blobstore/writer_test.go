@@ -277,7 +277,7 @@ func TestFlush(t *testing.T) {
 		buf             []byte
 		dirty           bool
 		flushFlag       bool
-		appendObjEkFunc func(*meta.MetaWrapper, uint64, []proto.ObjExtentKey) error
+		appendObjEkFunc func(*meta.MetaWrapper, context.Context, uint64, []proto.ObjExtentKey) error
 		expectError     error
 	}{
 		{make([]byte, 0), true, true, MockAppendObjExtentKeysTrue, nil},
@@ -422,10 +422,10 @@ func MockEbscWriteFalse(ebs *BlobStoreClient, ctx context.Context, volName strin
 	return access.Location{}, syscall.EIO
 }
 
-func MockAppendObjExtentKeysTrue(mw *meta.MetaWrapper, inode uint64, eks []proto.ObjExtentKey) error {
+func MockAppendObjExtentKeysTrue(mw *meta.MetaWrapper, ctx context.Context, inode uint64, eks []proto.ObjExtentKey) error {
 	return nil
 }
 
-func MockAppendObjExtentKeysFalse(mw *meta.MetaWrapper, inode uint64, eks []proto.ObjExtentKey) error {
+func MockAppendObjExtentKeysFalse(mw *meta.MetaWrapper, ctx context.Context, inode uint64, eks []proto.ObjExtentKey) error {
 	return syscall.EIO
 }

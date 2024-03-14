@@ -15,6 +15,7 @@
 package objectnode
 
 import (
+	"context"
 	"strings"
 
 	"github.com/cubefs/cubefs/proto"
@@ -46,7 +47,7 @@ func (s *xattrStore) getInode(vol, path string) (*Volume, uint64, error) {
 			if item == "" {
 				continue
 			}
-			inode, _, err = v.mw.Lookup_ll(inode, item)
+			inode, _, err = v.mw.Lookup_ll(context.TODO(), inode, item)
 			if err != nil {
 				return v, inode, err
 			}

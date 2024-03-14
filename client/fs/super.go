@@ -106,7 +106,7 @@ const (
 
 // NewSuper returns a new Super.
 func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
-	span, ctx := proto.StartSpanFromContext(context.Background(), "new-super")
+	span, ctx := proto.SpanContextPrefix("new-super-")
 	s = new(Super)
 	masters := strings.Split(opt.Master, meta.HostsSeparator)
 	metaConfig := &meta.MetaConfig{
@@ -264,7 +264,7 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 		opt.EnablePosixACL = s.ec.GetEnablePosixAcl()
 	}
 
-	if s.rootIno, err = s.mw.GetRootIno(opt.SubDir); err != nil {
+	if s.rootIno, err = s.mw.GetRootIno(ctx, opt.SubDir); err != nil {
 		return nil, err
 	}
 
@@ -684,7 +684,7 @@ func (s *Super) syncMeta(ctx context.Context) <-chan struct{} {
 
 func (s *Super) getModifyInodes(ctx context.Context, inodes []uint64) (changedNodes []uint64) {
 	span := proto.SpanFromContext(ctx)
-	inodeInfos := s.mw.BatchInodeGet(inodes)
+	inodeInfos := s.mw.BatchInodeGet(ctx, inodes)
 
 	// get deleted files
 	if len(inodeInfos) != len(inodes) {
