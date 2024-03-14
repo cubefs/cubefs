@@ -37,10 +37,10 @@ import (
 )
 
 type (
-	SplitExtentKeyFunc  func(parentInode, inode uint64, key proto.ExtentKey) error
-	AppendExtentKeyFunc func(parentInode, inode uint64, key proto.ExtentKey, discard []proto.ExtentKey) (int, error)
-	GetExtentsFunc      func(inode uint64) (uint64, uint64, []proto.ExtentKey, error)
-	TruncateFunc        func(inode, size uint64, fullPath string) error
+	SplitExtentKeyFunc  func(ctx context.Context, parentInode, inode uint64, key proto.ExtentKey) error
+	AppendExtentKeyFunc func(ctx context.Context, parentInode, inode uint64, key proto.ExtentKey, discard []proto.ExtentKey) (int, error)
+	GetExtentsFunc      func(ctx context.Context, inode uint64) (uint64, uint64, []proto.ExtentKey, error)
+	TruncateFunc        func(ctx context.Context, inode, size uint64, fullPath string) error
 	EvictIcacheFunc     func(inode uint64)
 	LoadBcacheFunc      func(_ context.Context, key string, buf []byte, offset uint64, size uint32) (int, error)
 	CacheBcacheFunc     func(_ context.Context, key string, buf []byte) error
@@ -554,7 +554,7 @@ func (client *ExtentClient) Truncate(ctx context.Context, mw *meta.MetaWrapper, 
 	var err error
 	var oldSize uint64
 	if mw.EnableSummary {
-		info, err = mw.InodeGet_ll(inode)
+		info, err = mw.InodeGet_ll(ctx, inode)
 		oldSize = info.Size
 	}
 	err = s.IssueTruncRequest(size, fullPath)
@@ -563,7 +563,7 @@ func (client *ExtentClient) Truncate(ctx context.Context, mw *meta.MetaWrapper, 
 		span.Errorf(errors.Stack(err))
 	}
 	if mw.EnableSummary {
-		go mw.UpdateSummary_ll(parentIno, 0, 0, int64(size)-int64(oldSize))
+		go mw.UpdateSummary_ll(ctx, parentIno, 0, 0, int64(size)-int64(oldSize))
 	}
 
 	return err

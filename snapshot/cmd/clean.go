@@ -223,7 +223,7 @@ func doEvictInode(ctx context.Context, inode *Inode) error {
 	if inode.NLink != 0 || time.Since(time.Unix(inode.ModifyTime, 0)) < 24*time.Hour || !proto.IsRegular(inode.Type) {
 		return nil
 	}
-	err := gMetaWrapper.Evict(inode.Inode, snapshotFullPath)
+	err := gMetaWrapper.Evict(ctx, inode.Inode, snapshotFullPath)
 	if err != nil {
 		if err != syscall.ENOENT {
 			return err
@@ -245,7 +245,7 @@ func doUnlinkInode(ctx context.Context, inode *Inode) error {
 		return nil
 	}
 
-	_, err := gMetaWrapper.InodeUnlink_ll(inode.Inode, snapshotFullPath)
+	_, err := gMetaWrapper.InodeUnlink_ll(ctx, inode.Inode, snapshotFullPath)
 	if err != nil {
 		if err != syscall.ENOENT {
 			return err
@@ -253,7 +253,7 @@ func doUnlinkInode(ctx context.Context, inode *Inode) error {
 		err = nil
 	}
 
-	err = gMetaWrapper.Evict(inode.Inode, snapshotFullPath)
+	err = gMetaWrapper.Evict(ctx, inode.Inode, snapshotFullPath)
 	if err != nil {
 		if err != syscall.ENOENT {
 			return err
@@ -284,7 +284,7 @@ func readSnapshot(ctx context.Context) (err error) {
 	)
 
 	span.Debugf("ReadDirLimit_ll parent root verSeq %v", VerSeq)
-	parents, err = gMetaWrapper.ReadDirLimitForSnapShotClean(1, "", math.MaxUint64, VerSeq, false) // one more for nextMarker
+	parents, err = gMetaWrapper.ReadDirLimitForSnapShotClean(ctx, 1, "", math.MaxUint64, VerSeq, false) // one more for nextMarker
 	if err != nil && err != syscall.ENOENT {
 		span.Errorf("parent root verSeq %v err %v", VerSeq, err)
 		return err
@@ -309,7 +309,7 @@ func cleanSnapshot(ctx context.Context) (err error) {
 	// return readSnapshot()
 
 	span.Debugf("ReadDirLimit_ll parent root verSeq %v", VerSeq)
-	parents, err = gMetaWrapper.ReadDirLimitForSnapShotClean(1, "", math.MaxUint64, VerSeq, false) // one more for nextMarker
+	parents, err = gMetaWrapper.ReadDirLimitForSnapShotClean(ctx, 1, "", math.MaxUint64, VerSeq, false) // one more for nextMarker
 	if err != nil && err != syscall.ENOENT {
 		span.Errorf("parent root verSeq %v err %v", VerSeq, err)
 		return err
@@ -323,7 +323,7 @@ func cleanSnapshot(ctx context.Context) (err error) {
 	span.Debugf("parent root verSeq %v Delete_ll_EX children count %v", VerSeq, len(parents))
 	for _, child := range parents {
 		fullPath := "/" + child.Name
-		if ino, err = gMetaWrapper.Delete_Ver_ll(1, child.Name, proto.IsDir(child.Type), VerSeq, fullPath); err != nil {
+		if ino, err = gMetaWrapper.Delete_Ver_ll(ctx, 1, child.Name, proto.IsDir(child.Type), VerSeq, fullPath); err != nil {
 			span.Errorf("parent root Delete_ll_EX child name %v verSeq %v err %v", child.Name, VerSeq, err)
 		}
 		span.Debugf("parent root Delete_ll_EX child name %v verSeq %v ino %v success", child.Name, VerSeq, ino)
@@ -333,7 +333,7 @@ func cleanSnapshot(ctx context.Context) (err error) {
 		parent := parents[idx]
 		if proto.IsDir(parent.Type) {
 			span.Debugf("try loop delete dir %v %v with verSeq %v", parent.Inode, parent.Name, VerSeq)
-			children, err = gMetaWrapper.ReadDirLimitForSnapShotClean(parent.Inode, "", math.MaxUint64, VerSeq, false)
+			children, err = gMetaWrapper.ReadDirLimitForSnapShotClean(ctx, parent.Inode, "", math.MaxUint64, VerSeq, false)
 			if err != nil && err != syscall.ENOENT {
 				span.Errorf("parent %v verSeq %v err %v", parent.Name, VerSeq, err)
 				return err
@@ -343,7 +343,7 @@ func cleanSnapshot(ctx context.Context) (err error) {
 				continue
 			}
 			for _, child := range children {
-				if ino, err = gMetaWrapper.Delete_Ver_ll(parent.Inode, child.Name, proto.IsDir(child.Type), VerSeq, snapshotFullPath); err != nil || ino == nil {
+				if ino, err = gMetaWrapper.Delete_Ver_ll(ctx, parent.Inode, child.Name, proto.IsDir(child.Type), VerSeq, snapshotFullPath); err != nil || ino == nil {
 					span.Errorf("parent %v Delete_ll_EX child name %v verSeq %v err %v", parent.Name, child.Name, VerSeq, err)
 				} else {
 					span.Debugf("parent %v Delete_ll_EX child name %v verSeq %v ino %v success", parent.Name, child.Name, VerSeq, ino)

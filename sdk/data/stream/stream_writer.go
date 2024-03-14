@@ -563,14 +563,14 @@ func (s *Streamer) doDirectWriteByAppend(ctx context.Context, req *ExtentRequest
 			return
 		}
 		span.Debugf("action[doDirectWriteByAppend] inode %v meta extent split with ek (%v)", s.inode, extKey)
-		if err = s.client.splitExtentKey(s.parentInode, s.inode, *extKey); err != nil {
+		if err = s.client.splitExtentKey(ctx, s.parentInode, s.inode, *extKey); err != nil {
 			span.Errorf("action[doDirectWriteByAppend] inode %v meta extent split process err %v", s.inode, err)
 			return
 		}
 	} else {
 		discards := s.extents.Append(ctx, extKey, true)
 		var st int
-		if st, err = s.client.appendExtentKey(s.parentInode, s.inode, *extKey, discards); err != nil {
+		if st, err = s.client.appendExtentKey(ctx, s.parentInode, s.inode, *extKey, discards); err != nil {
 			status = int32(st)
 			span.Errorf("action[doDirectWriteByAppend] inode %v meta extent split process err %v", s.inode, err)
 			return
@@ -1030,7 +1030,7 @@ func (s *Streamer) truncate(ctx context.Context, size int, fullPath string) erro
 		return err
 	}
 
-	err = s.client.truncate(s.inode, uint64(size), fullPath)
+	err = s.client.truncate(ctx, s.inode, uint64(size), fullPath)
 	if err != nil {
 		return err
 	}

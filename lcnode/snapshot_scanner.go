@@ -15,6 +15,7 @@
 package lcnode
 
 import (
+	"context"
 	"os"
 	"sync/atomic"
 	"syscall"
@@ -218,7 +219,7 @@ func (s *SnapshotScanner) handlVerDelDepthFirst(dentry *proto.ScanDentry) {
 		done := false
 
 		for !done {
-			children, err = s.mw.ReadDirLimitForSnapShotClean(dentry.Inode, marker, uint64(defaultReadDirLimit), s.getTaskVerSeq(), onlyDir)
+			children, err = s.mw.ReadDirLimitForSnapShotClean(context.TODO(), dentry.Inode, marker, uint64(defaultReadDirLimit), s.getTaskVerSeq(), onlyDir)
 			if err != nil && err != syscall.ENOENT {
 				log.LogErrorf("action[handlVerDelDepthFirst] ReadDirLimitForSnapShotClean failed, parent[%v] maker[%v] verSeq[%v] err[%v]",
 					dentry.Inode, marker, s.getTaskVerSeq(), err)
@@ -267,7 +268,7 @@ func (s *SnapshotScanner) handlVerDelDepthFirst(dentry *proto.ScanDentry) {
 			}
 
 			for _, file := range files {
-				if ino, err = s.mw.Delete_Ver_ll(file.ParentId, file.Name, false, s.getTaskVerSeq(), file.Path); err != nil {
+				if ino, err = s.mw.Delete_Ver_ll(context.TODO(), file.ParentId, file.Name, false, s.getTaskVerSeq(), file.Path); err != nil {
 					log.LogErrorf("action[handlVerDelDepthFirst] Delete_Ver_ll failed, file(parent[%v] child name[%v]) verSeq[%v] err[%v]",
 						file.ParentId, file.Name, s.getTaskVerSeq(), err)
 					atomic.AddInt64(&s.currentStat.ErrorSkippedNum, 1)
@@ -298,7 +299,7 @@ func (s *SnapshotScanner) handlVerDelDepthFirst(dentry *proto.ScanDentry) {
 	}
 
 	if onlyDir {
-		if ino, err = s.mw.Delete_Ver_ll(dentry.ParentId, dentry.Name, os.FileMode(dentry.Type).IsDir(), s.getTaskVerSeq(), dentry.Path); err != nil {
+		if ino, err = s.mw.Delete_Ver_ll(context.TODO(), dentry.ParentId, dentry.Name, os.FileMode(dentry.Type).IsDir(), s.getTaskVerSeq(), dentry.Path); err != nil {
 			if dentry.ParentId >= 1 {
 				log.LogErrorf("action[handlVerDelDepthFirst] Delete_Ver_ll failed, dir(parent[%v] child name[%v]) verSeq[%v] err[%v]",
 					dentry.ParentId, dentry.Name, s.getTaskVerSeq(), err)
@@ -332,7 +333,7 @@ func (s *SnapshotScanner) handlVerDelBreadthFirst(dentry *proto.ScanDentry) {
 	done := false
 
 	for !done {
-		children, err = s.mw.ReadDirLimitForSnapShotClean(dentry.Inode, marker, uint64(defaultReadDirLimit), s.getTaskVerSeq(), false)
+		children, err = s.mw.ReadDirLimitForSnapShotClean(context.TODO(), dentry.Inode, marker, uint64(defaultReadDirLimit), s.getTaskVerSeq(), false)
 		if err != nil && err != syscall.ENOENT {
 			log.LogErrorf("action[handlVerDelBreadthFirst] ReadDirLimitForSnapShotClean failed, parent[%v] maker[%v] verSeq[%v] err[%v]",
 				dentry.Inode, marker, s.getTaskVerSeq(), err)
@@ -381,7 +382,7 @@ func (s *SnapshotScanner) handlVerDelBreadthFirst(dentry *proto.ScanDentry) {
 		}
 
 		for _, file := range scanDentries {
-			if ino, err = s.mw.Delete_Ver_ll(file.ParentId, file.Name, false, s.getTaskVerSeq(), dentry.Path); err != nil {
+			if ino, err = s.mw.Delete_Ver_ll(context.TODO(), file.ParentId, file.Name, false, s.getTaskVerSeq(), dentry.Path); err != nil {
 				log.LogErrorf("action[handlVerDelBreadthFirst] Delete_Ver_ll failed, file(parent[%v] child name[%v]) verSeq[%v] err[%v]",
 					file.ParentId, file.Name, s.getTaskVerSeq(), err)
 				atomic.AddInt64(&s.currentStat.ErrorSkippedNum, 1)

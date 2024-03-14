@@ -159,7 +159,7 @@ func TestFileSize(t *testing.T) {
 
 func TestRefreshEbsExtents(t *testing.T) {
 	testCase := []struct {
-		getObjFunc  func(*meta.MetaWrapper, uint64) (uint64, uint64, []proto.ExtentKey, []proto.ObjExtentKey, error)
+		getObjFunc  func(*meta.MetaWrapper, context.Context, uint64) (uint64, uint64, []proto.ExtentKey, []proto.ObjExtentKey, error)
 		expectValid bool
 	}{
 		{MockGetObjExtentsTrue, true},
@@ -182,7 +182,7 @@ func TestRefreshEbsExtents(t *testing.T) {
 
 func TestPrepareEbsSlice(t *testing.T) {
 	testCase := []struct {
-		getObjFunc  func(*meta.MetaWrapper, uint64) (uint64, uint64, []proto.ExtentKey, []proto.ObjExtentKey, error)
+		getObjFunc  func(*meta.MetaWrapper, context.Context, uint64) (uint64, uint64, []proto.ExtentKey, []proto.ObjExtentKey, error)
 		offset      int
 		size        uint32
 		expectError error
@@ -214,7 +214,7 @@ func TestRead(t *testing.T) {
 	testCase := []struct {
 		close            bool
 		readConcurrency  int
-		getObjFunc       func(*meta.MetaWrapper, uint64) (uint64, uint64, []proto.ExtentKey, []proto.ObjExtentKey, error)
+		getObjFunc       func(*meta.MetaWrapper, context.Context, uint64) (uint64, uint64, []proto.ExtentKey, []proto.ObjExtentKey, error)
 		bcacheGetFunc    func(*bcache.BcacheClient, context.Context, string, []byte, uint64, uint32) (int, error)
 		checkDpExistFunc func(*stream.ExtentClient, context.Context, uint64) error
 		readExtentFunc   func(*stream.ExtentClient, context.Context, uint64, *proto.ExtentKey, []byte, int, int) (int, error, bool)
@@ -470,9 +470,8 @@ func TestReadSliceRange(t *testing.T) {
 	}
 }
 
-func MockGetObjExtentsTrue(m *meta.MetaWrapper, inode uint64) (gen uint64, size uint64,
-	extents []proto.ExtentKey, objExtents []proto.ObjExtentKey, err error,
-) {
+func MockGetObjExtentsTrue(m *meta.MetaWrapper, ctx context.Context, inode uint64) (gen uint64, size uint64,
+	extents []proto.ExtentKey, objExtents []proto.ObjExtentKey, err error) {
 	objEks := make([]proto.ObjExtentKey, 0)
 	objEkLen := 5
 	expectedFileSize := 0
@@ -484,9 +483,8 @@ func MockGetObjExtentsTrue(m *meta.MetaWrapper, inode uint64) (gen uint64, size 
 	return 1, 1, nil, objEks, nil
 }
 
-func MockGetObjExtentsFalse(m *meta.MetaWrapper, inode uint64) (gen uint64, size uint64,
-	extents []proto.ExtentKey, objExtents []proto.ObjExtentKey, err error,
-) {
+func MockGetObjExtentsFalse(m *meta.MetaWrapper, ctx context.Context, inode uint64) (gen uint64, size uint64,
+	extents []proto.ExtentKey, objExtents []proto.ObjExtentKey, err error) {
 	return 1, 1, nil, nil, errors.New("Get objEks failed")
 }
 

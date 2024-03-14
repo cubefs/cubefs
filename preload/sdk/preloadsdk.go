@@ -257,12 +257,12 @@ func (c *PreLoadClient) walker(dir string, wg *sync.WaitGroup, currentGoroutineN
 		info *proto.InodeInfo
 	)
 
-	ino, err = c.mw.LookupPath(gopath.Clean(dir))
+	ino, err = c.mw.LookupPath(context.TODO(), gopath.Clean(dir))
 	if err != nil {
 		log.LogErrorf("LookupPath path(%v) faild(%v)", dir, err)
 		return err
 	}
-	info, err = c.mw.InodeGet_ll(ino)
+	info, err = c.mw.InodeGet_ll(context.TODO(), ino)
 
 	if err != nil {
 		log.LogErrorf("InodeGet_ll path(%v) faild(%v)", dir, err)
@@ -276,7 +276,7 @@ func (c *PreLoadClient) walker(dir string, wg *sync.WaitGroup, currentGoroutineN
 		return err
 	}
 
-	children, err := c.mw.ReadDir_ll(info.Inode)
+	children, err := c.mw.ReadDir_ll(context.TODO(), info.Inode)
 	if err != nil {
 		log.LogErrorf("ReadDir_ll path(%v) faild(%v)", dir, err)
 		return err
@@ -316,7 +316,7 @@ func (c *PreLoadClient) allocatePreloadDPWorker(ch <-chan fileInfo) uint64 {
 		if len(inodes) < 100 {
 			continue
 		}
-		infos := c.mw.BatchInodeGet(inodes)
+		infos := c.mw.BatchInodeGet(context.TODO(), inodes)
 		for _, info := range infos {
 			if int64(info.Size) <= c.limitParam.PreloadFileSizeLimit {
 				total += info.Size
@@ -334,7 +334,7 @@ func (c *PreLoadClient) allocatePreloadDPWorker(ch <-chan fileInfo) uint64 {
 	}
 	// flush cache
 	if len(inodes) != 0 {
-		infos := c.mw.BatchInodeGet(inodes)
+		infos := c.mw.BatchInodeGet(context.TODO(), inodes)
 
 		for _, info := range infos {
 			if int64(info.Size) <= c.limitParam.PreloadFileSizeLimit {
@@ -404,12 +404,12 @@ func (c *PreLoadClient) clearPreloadDPWorker(ch <-chan fileInfo) {
 					wg.Done()
 				}()
 				log.LogDebugf("clearPreloadDPWorker:clear file %v", f.name)
-				c.mw.InodeClearPreloadCache_ll(f.ino)
+				c.mw.InodeClearPreloadCache_ll(context.TODO(), f.ino)
 			}(fInfo)
 			atomic.AddInt64(&routineNum, 1)
 		} else {
 			log.LogDebugf("clearPreloadDPWorker:clear file %v", fInfo.name)
-			c.mw.InodeClearPreloadCache_ll(fInfo.ino)
+			c.mw.InodeClearPreloadCache_ll(context.TODO(), fInfo.ino)
 		}
 	}
 	wg.Wait()
@@ -454,7 +454,7 @@ func (c *PreLoadClient) preloadFileWorker(id int64, jobs <-chan fileInfo, wg *sy
 			objExtents []proto.ObjExtentKey
 			err        error
 		)
-		if _, _, _, objExtents, err = c.mw.GetObjExtents(ino); err != nil {
+		if _, _, _, objExtents, err = c.mw.GetObjExtents(context.TODO(), ino); err != nil {
 			log.LogWarnf("GetObjExtents (%v) faild(%v)", job.name, err)
 			continue
 		}

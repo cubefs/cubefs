@@ -87,6 +87,7 @@ func newQuotaCreateCmd(client *master.MasterClient) *cobra.Command {
 			volName := args[0]
 			fullPath := args[1]
 
+			ctx := newCtx()
 			metaConfig := &meta.MetaConfig{
 				Volume:  volName,
 				Masters: client.Nodes(),
@@ -116,13 +117,13 @@ func newQuotaCreateCmd(client *master.MasterClient) *cobra.Command {
 					return
 				}
 
-				inodeId, err := metaWrapper.LookupPath(path)
+				inodeId, err := metaWrapper.LookupPath(ctx, path)
 				if err != nil {
 					stdout("get inode by fullPath %v fail %v\n", path, err)
 					return
 				}
 				quotaPathInfo.RootInode = inodeId
-				inodeInfo, err := metaWrapper.InodeGet_ll(inodeId)
+				inodeInfo, err := metaWrapper.InodeGet_ll(ctx, inodeId)
 				if err != nil {
 					stdout("get inode %v info fail %v\n", inodeId, err)
 					return
@@ -133,7 +134,7 @@ func newQuotaCreateCmd(client *master.MasterClient) *cobra.Command {
 					return
 				}
 
-				mp := metaWrapper.GetPartitionByInodeId_ll(inodeId)
+				mp := metaWrapper.GetPartitionByInodeId_ll(ctx, inodeId)
 				if mp == nil {
 					stdout("can not find mp by inodeId: %v\n", inodeId)
 					return
@@ -296,7 +297,7 @@ func newQuotaGetInode(client *master.MasterClient) *cobra.Command {
 				return
 			}
 
-			quotaInfos, err := metaWrapper.GetInodeQuota_ll(inodeId)
+			quotaInfos, err := metaWrapper.GetInodeQuota_ll(newCtx(), inodeId)
 			if err != nil {
 				stdout("get indoe quota failed %v\n", err)
 				return
@@ -344,8 +345,9 @@ func newQuotaApplyCmd(client *master.MasterClient) *cobra.Command {
 				return
 			}
 			quotaIdNum = uint32(tmp)
+			ctx := newCtx()
 			for _, pathInfo := range quotaInfo.PathInfos {
-				inodeNums, err := metaWrapper.ApplyQuota_ll(pathInfo.RootInode, quotaIdNum, maxConcurrencyInode)
+				inodeNums, err := metaWrapper.ApplyQuota_ll(ctx, pathInfo.RootInode, quotaIdNum, maxConcurrencyInode)
 				if err != nil {
 					stdout("apply quota failed: %v\n", err)
 					return
@@ -373,6 +375,7 @@ func newQuotaRevokeCmd(client *master.MasterClient) *cobra.Command {
 			var quotaInfo *proto.QuotaInfo
 			var totalNums uint64
 
+			ctx := newCtx()
 			metaConfig := &meta.MetaConfig{
 				Volume:  volName,
 				Masters: client.Nodes(),
@@ -397,14 +400,14 @@ func newQuotaRevokeCmd(client *master.MasterClient) *cobra.Command {
 				}
 
 				for _, pathInfo := range quotaInfo.PathInfos {
-					inodeNums, err := metaWrapper.RevokeQuota_ll(pathInfo.RootInode, quotaIdNum, maxConcurrencyInode)
+					inodeNums, err := metaWrapper.RevokeQuota_ll(ctx, pathInfo.RootInode, quotaIdNum, maxConcurrencyInode)
 					if err != nil {
 						stdout("revoke quota inodeNums %v failed %v\n", inodeNums, err)
 					}
 					totalNums += inodeNums
 				}
 			} else {
-				totalNums, err = metaWrapper.RevokeQuota_ll(forceInode, quotaIdNum, maxConcurrencyInode)
+				totalNums, err = metaWrapper.RevokeQuota_ll(ctx, forceInode, quotaIdNum, maxConcurrencyInode)
 				if err != nil {
 					stdout("revoke quota inodeNums %v failed %v\n", totalNums, err)
 				}
