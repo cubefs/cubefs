@@ -187,16 +187,16 @@ func (m *Server) Start(cfg *config.Config) (err error) {
 	m.config = newClusterConfig()
 	m.leaderInfo = &LeaderInfo{}
 	if err = m.checkConfig(cfg); err != nil {
-		log.LogError(errors.Stack(err))
+		log.Error(errors.Stack(err))
 		return
 	}
 	if m.rocksDBStore, err = raftstore_db.NewRocksDBStore(m.storeDir, LRUCacheSize, WriteBufferSize); err != nil {
-		log.LogErrorf("Start: init RocksDB fail: err(%v)", err)
+		log.Errorf("Start: init RocksDB fail: err(%v)", err)
 		return
 	}
 
 	if err = m.createRaftServer(cfg); err != nil {
-		log.LogError(errors.Stack(err))
+		log.Error(errors.Stack(err))
 		return
 	}
 	m.initCluster()

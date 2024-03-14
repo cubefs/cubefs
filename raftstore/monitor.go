@@ -63,7 +63,7 @@ func setMonitorConf(cfg *config.Config) {
 		gMonConf.NoLeaderTooLongThreshold = time.Second * time.Duration(cfgNoLeaderTooLongThr)
 	}
 
-	log.LogInfof("set raft monitor cfg: zombieThreshold:[%v], zombieTooLongThreshold:[%v],"+
+	log.Infof("set raft monitor cfg: zombieThreshold:[%v], zombieTooLongThreshold:[%v],"+
 		" noLeaderThreshold:[%v], noLeaderTooLongThreshold:[%v]",
 		gMonConf.ZombieThreshold, gMonConf.ZombieTooLongThreshold,
 		gMonConf.NoLeaderThreshold, gMonConf.NoLeaderTooLongThreshold)
@@ -129,7 +129,7 @@ func (d *monitor) MonitorZombie(id uint64, peer proto.Peer, replicasMsg string, 
 	d.zombieDurationMutex.Lock()
 	d.zombieDurations[zombiePeer] = du
 	d.zombieDurationMutex.Unlock()
-	log.LogError(errMsg)
+	log.Error(errMsg)
 	exporter.Warning(errMsg)
 }
 
@@ -165,7 +165,7 @@ func (d *monitor) MonitorElection(id uint64, replicaMsg string, du time.Duration
 	d.noLeaderDurationsMutex.Lock()
 	d.noLeaderDurations[id] = du
 	d.noLeaderDurationsMutex.Unlock()
-	log.LogError(errMsg)
+	log.Error(errMsg)
 	exporter.Warning(errMsg)
 }
 
@@ -179,7 +179,7 @@ func (d *monitor) RemovePeer(id uint64, p proto.Peer) {
 	_, present := d.zombieDurations[zp]
 	if present {
 		delete(d.zombieDurations, zp)
-		log.LogInfof("remove peer from raft monitor, partitionID: %v, peer: %v", id, p)
+		log.Infof("remove peer from raft monitor, partitionID: %v, peer: %v", id, p)
 	}
 	d.zombieDurationMutex.Unlock()
 }
@@ -189,7 +189,7 @@ func (d *monitor) RemovePartition(id uint64, peers []proto.Peer) {
 	_, present := d.noLeaderDurations[id]
 	if present {
 		delete(d.noLeaderDurations, id)
-		log.LogInfof("remove partition from raft monitor, partitionID: %v, peers: %v", id, peers)
+		log.Infof("remove partition from raft monitor, partitionID: %v, peers: %v", id, peers)
 	}
 	d.noLeaderDurationsMutex.Unlock()
 

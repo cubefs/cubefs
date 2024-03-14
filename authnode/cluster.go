@@ -115,7 +115,7 @@ func (c *Cluster) CreateNewKey(id string, keyInfo *keystore.KeyInfo) (res *keyst
 	return
 errHandler:
 	err = fmt.Errorf("action[CreateNewKey], clusterID[%v] ID:%v, err:%v ", c.Name, keyInfo, err.Error())
-	log.LogError(errors.Stack(err))
+	log.Error(errors.Stack(err))
 	return
 }
 
@@ -141,7 +141,7 @@ func (c *Cluster) DeleteKey(id string) (res *keystore.KeyInfo, err error) {
 	return
 errHandler:
 	err = fmt.Errorf("action[DeleteKey], clusterID[%v] ID:%v, err:%v ", c.Name, id, err.Error())
-	log.LogError(errors.Stack(err))
+	log.Error(errors.Stack(err))
 	return
 }
 
@@ -154,7 +154,7 @@ func (c *Cluster) GetKey(id string) (res *keystore.KeyInfo, err error) {
 	return
 errHandler:
 	err = fmt.Errorf("action[GetKey], clusterID[%v] ID:%v, err:%v ", c.Name, id, err.Error())
-	log.LogError(errors.Stack(err))
+	log.Error(errors.Stack(err))
 	return
 }
 
@@ -167,7 +167,7 @@ func (c *Cluster) GetAKInfo(accessKey string) (akInfo *keystore.AccessKeyInfo, e
 	return
 errHandler:
 	err = fmt.Errorf("action[GetAKInfo], clusterID[%v] ID:%v, err:%v ", c.Name, accessKey, err.Error())
-	log.LogError(errors.Stack(err))
+	log.Error(errors.Stack(err))
 	return
 }
 
@@ -205,7 +205,7 @@ func (c *Cluster) AddCaps(id string, keyInfo *keystore.KeyInfo) (res *keystore.K
 	return
 errHandler:
 	err = fmt.Errorf("action[AddCaps], clusterID[%v] ID:%v, err:%v ", c.Name, keyInfo, err.Error())
-	log.LogError(errors.Stack(err))
+	log.Error(errors.Stack(err))
 	return
 }
 
@@ -245,6 +245,6 @@ func (c *Cluster) DeleteCaps(id string, keyInfo *keystore.KeyInfo) (res *keystor
 	return
 errHandler:
 	err = fmt.Errorf("action[DeleteCaps], clusterID[%v] ID:%v, err:%v ", c.Name, keyInfo, err.Error())
-	log.LogError(errors.Stack(err))
+	log.Error(errors.Stack(err))
 	return
 }

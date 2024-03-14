@@ -43,13 +43,13 @@ func (m *Server) startHTTPService() {
 				WriteTimeout: 5 * time.Minute,
 			}
 			if err := srv.ListenAndServeTLS("/app/server.crt", "/app/server.key"); err != nil {
-				log.LogErrorf("action[startHTTPService] failed,err[%v]", err)
+				log.Errorf("action[startHTTPService] failed,err[%v]", err)
 				panic(err)
 			}
 
 		} else {
 			if err := http.ListenAndServe(colonSplit+m.port, nil); err != nil {
-				log.LogErrorf("action[startHTTPService] failed,err[%v]", err)
+				log.Errorf("action[startHTTPService] failed,err[%v]", err)
 				panic(err)
 			}
 		}
@@ -78,7 +78,7 @@ func (m *Server) newAuthProxy() *AuthProxy {
 }
 
 func (m *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	log.LogInfof("URL[%v],remoteAddr[%v]", r.URL, r.RemoteAddr)
+	log.Infof("URL[%v],remoteAddr[%v]", r.URL, r.RemoteAddr)
 	switch r.URL.Path {
 	case proto.ClientGetTicket:
 		m.getTicket(w, r)
@@ -133,12 +133,12 @@ func (m *Server) handlerWithInterceptor() http.Handler {
 					m.ServeHTTP(w, r)
 					return
 				}
-				log.LogWarnf("action[handlerWithInterceptor] leader meta has not ready")
+				log.Warnf("action[handlerWithInterceptor] leader meta has not ready")
 				http.Error(w, m.leaderInfo.addr, http.StatusBadRequest)
 				return
 			}
 			if m.leaderInfo.addr == "" {
-				log.LogErrorf("action[handlerWithInterceptor] no leader,request[%v]", r.URL)
+				log.Errorf("action[handlerWithInterceptor] no leader,request[%v]", r.URL)
 				http.Error(w, "no leader", http.StatusBadRequest)
 				return
 			}
