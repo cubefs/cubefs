@@ -42,9 +42,9 @@ type (
 	GetExtentsFunc      func(inode uint64) (uint64, uint64, []proto.ExtentKey, error)
 	TruncateFunc        func(inode, size uint64, fullPath string) error
 	EvictIcacheFunc     func(inode uint64)
-	LoadBcacheFunc      func(key string, buf []byte, offset uint64, size uint32) (int, error)
-	CacheBcacheFunc     func(key string, buf []byte) error
-	EvictBacheFunc      func(key string) error
+	LoadBcacheFunc      func(_ context.Context, key string, buf []byte, offset uint64, size uint32) (int, error)
+	CacheBcacheFunc     func(_ context.Context, key string, buf []byte) error
+	EvictBacheFunc      func(_ context.Context, key string) error
 )
 
 const (
@@ -661,7 +661,7 @@ func (client *ExtentClient) ReadExtent(ctx context.Context, inode uint64, ek *pr
 			copy(buf, req.Data)
 			go func() {
 				span.Debugf("ReadExtent L2->L1 Enter cacheKey(%v),client.shouldBcache(%v),needCache(%v)", cacheKey, client.shouldBcache(), needCache)
-				if err := client.cacheBcache(cacheKey, buf); err != nil {
+				if err := client.cacheBcache(ctx, cacheKey, buf); err != nil {
 					client.BcacheHealth = false
 					span.Debugf("ReadExtent L2->L1 failed, err(%v), set BcacheHealth to false.", err)
 				}
