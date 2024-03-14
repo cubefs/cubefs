@@ -369,15 +369,6 @@ func (v *volumeMgr) Alloc(ctx context.Context, args *cmapi.AllocVolsArgs) (alloc
 }
 
 func (v *volumeMgr) Release(ctx context.Context, args *cmapi.ReleaseVolumes) error {
-	arg := &cmapi.DiscardVolsArgs{
-		CodeMode: args.CodeMode,
-		Discards: append(args.NormalVids, args.SealedVids...),
-	}
-
-	err := v.Discard(ctx, arg)
-	if err != nil {
-		return err
-	}
 	return v.clusterMgr.ReleaseVolume(ctx, args)
 }
 

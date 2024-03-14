@@ -16,11 +16,15 @@ package access
 
 import (
 	"context"
+	"sync"
 	"time"
 
+	"github.com/cubefs/cubefs/blobstore/access/controller"
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
+	"github.com/cubefs/cubefs/blobstore/common/codemode"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
+	"github.com/cubefs/cubefs/blobstore/util/defaulter"
 )
 
 func (h *Handler) loopDiscardVids() {
@@ -76,5 +80,136 @@ func (h *Handler) tryDiscardVidOnAllocator(cid proto.ClusterID, args *clustermgr
 	err = mgr.Discard(ctx, args)
 	if err != nil {
 		span.Warnf("discard vids %+v failed, err : %s", args, err)
+	}
+}
+
+// This function is used to release volume at background. It is recommended that a Handler has only one cluster configured
+// If consul is removed to ensure that only one cluster is configured, you can remove the clusterController.All() and pass in only one cid
+func (h *Handler) loopReleaseVids() {
+	go func() {
+		ctx := context.Background()
+		defaulter.LessOrEqual(&h.ClusterConfig.VolumeReleaseSecs, 60)
+		allocGroup := h.initReleaseVids(ctx)
+
+		tk := time.NewTicker(time.Second * time.Duration(h.ClusterConfig.VolumeReleaseSecs))
+		defer tk.Stop()
+		for {
+			select {
+			case <-h.stopCh:
+				return
+
+			case <-tk.C:
+				h.releaseClusterVids(ctx, allocGroup)
+			}
+		}
+	}()
+}
+
+func (h *Handler) initReleaseVids(ctx context.Context) map[proto.ClusterID]controller.VolumeMgr {
+	span := trace.SpanFromContextSafe(ctx)
+	allocGroup := make(map[proto.ClusterID]controller.VolumeMgr)
+
+	for _, cm := range h.clusterController.All() {
+		cid := cm.ClusterID
+		allocMgr, err := h.clusterController.GetVolumeAllocator(cid)
+		if err != nil {
+			span.Warnf("fail to get alloc mgr, when releaseVolume. err[%+v]", err)
+			continue
+		}
+		allocGroup[cid] = allocMgr
+		h.releaseVids.LoadOrStore(cid, &releaseVids{
+			normalVids: newVolumeMap(),
+			sealedVids: newVolumeMap(),
+		})
+	}
+
+	return allocGroup
+}
+
+func (h *Handler) releaseClusterVids(ctx context.Context, allocGroup map[proto.ClusterID]controller.VolumeMgr) {
+	span := trace.SpanFromContextSafe(ctx)
+
+	for cid, allocMgr := range allocGroup {
+		v, ok := h.releaseVids.Load(cid)
+		if !ok {
+			continue
+		}
+
+		vol := v.(*releaseVids)
+		if vol.normalVids.len() == 0 && vol.sealedVids.len() == 0 {
+			continue
+		}
+
+		normal, sealed := vol.getAll()
+		err := allocMgr.Release(ctx, &clustermgr.ReleaseVolumes{
+			CodeMode:   vol.md,
+			NormalVids: normal,
+			SealedVids: sealed,
+		})
+		if err == nil {
+			// may be mark sealed volume in the PUT process, after call Release and before deleteAll
+			vol.deleteAll(normal, sealed)
+		}
+		span.Warnf("We released normal volume:%v, sealed volume:%v, err[%+v]", normal, sealed, err)
+	}
+}
+
+type releaseVids struct {
+	md         codemode.CodeMode
+	normalVids *rVidGroup
+	sealedVids *rVidGroup
+}
+
+func (v *releaseVids) getAll() ([]proto.Vid, []proto.Vid) {
+	return v.normalVids.getVids(), v.sealedVids.getVids()
+}
+
+func (v *releaseVids) deleteAll(normal, sealed []proto.Vid) {
+	v.normalVids.delete(normal)
+	v.sealedVids.delete(sealed)
+}
+
+type rVidGroup struct {
+	vids map[proto.Vid]struct{}
+	lck  sync.RWMutex
+}
+
+func newVolumeMap() *rVidGroup {
+	return &rVidGroup{
+		vids: make(map[proto.Vid]struct{}),
+	}
+}
+
+func (v *rVidGroup) len() int {
+	v.lck.RLock()
+	defer v.lck.RUnlock()
+
+	return len(v.vids)
+}
+
+func (v *rVidGroup) getVids() []proto.Vid {
+	v.lck.RLock()
+	defer v.lck.RUnlock()
+
+	vids := make([]proto.Vid, 0, len(v.vids))
+	for vid := range v.vids {
+		vids = append(vids, vid)
+	}
+	return vids
+}
+
+func (v *rVidGroup) addVid(vid proto.Vid) {
+	v.lck.Lock()
+	defer v.lck.Unlock()
+
+	v.vids[vid] = struct{}{}
+}
+
+func (v *rVidGroup) delete(vids []proto.Vid) {
+	v.lck.Lock()
+	defer v.lck.Unlock()
+
+	for _, vid := range vids {
+		delete(v.vids, vid)
 	}
 }
