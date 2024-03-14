@@ -560,7 +560,8 @@ func (o *ObjectNode) listPartsHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (o *ObjectNode) checkReqParts(param *RequestParam, reqParts *CompleteMultipartUploadRequest, multipartInfo *proto.MultipartInfo) (
-	discardedPartInodes map[uint64]uint16, committedPartInfo *proto.MultipartInfo, err error) {
+	discardedPartInodes map[uint64]uint16, committedPartInfo *proto.MultipartInfo, err error,
+) {
 	if len(reqParts.Parts) <= 0 {
 		err = InvalidPart
 		log.LogErrorf("checkReqParts: upload part is empty: requestID(%v) volume(%v)", GetRequestID(param.r), param.Bucket())
@@ -738,7 +739,7 @@ func (o *ObjectNode) completeMultipartUploadHandler(w http.ResponseWriter, r *ht
 
 	// get multipart info
 	start := time.Now()
-	multipartInfo, err := vol.mw.GetMultipart_ll(param.object, uploadId)
+	multipartInfo, err := vol.mw.GetMultipart_ll(r.Context(), param.object, uploadId)
 	span.AppendTrackLog("part.r", start, err)
 	if err != nil {
 		log.LogErrorf("completeMultipartUploadHandler: meta get multipart fail: requestID(%v) path(%v) err(%v)",

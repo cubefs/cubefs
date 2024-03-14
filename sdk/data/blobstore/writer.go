@@ -185,7 +185,7 @@ func (writer *Writer) doParallelWrite(ctx context.Context, data []byte, offset i
 		oeks = append(oeks, wSlice.objExtentKey)
 	}
 	span.Debugf("TRACE blobStore appendObjExtentKeys: oeks(%v)", oeks)
-	if err = writer.mw.AppendObjExtentKeys(writer.ino, oeks); err != nil {
+	if err = writer.mw.AppendObjExtentKeys(ctx, writer.ino, oeks); err != nil {
 		span.Errorf("slice write error,meta append ebsc extent keys fail,ino(%v) fileOffset(%v) len(%v) err(%v)", writer.ino, offset, len(data), err)
 		return
 	}
@@ -322,7 +322,7 @@ LOOP:
 		return oeks[i].FileOffset < oeks[j].FileOffset
 	})
 	span.Debugf("WriteFromReader after sort: %v", oeks)
-	if err = writer.mw.AppendObjExtentKeys(writer.ino, oeks); err != nil {
+	if err = writer.mw.AppendObjExtentKeys(ctx, writer.ino, oeks); err != nil {
 		span.Errorf("WriteFromReader error,meta append ebsc extent keys fail,ino(%v), err(%v)", writer.ino, err)
 		return
 	}
@@ -566,7 +566,7 @@ func (writer *Writer) flushWithoutPool(inode uint64, ctx context.Context, flushF
 	oeks := make([]proto.ObjExtentKey, 0)
 	// update meta
 	oeks = append(oeks, wSlice.objExtentKey)
-	if err = writer.mw.AppendObjExtentKeys(writer.ino, oeks); err != nil {
+	if err = writer.mw.AppendObjExtentKeys(ctx, writer.ino, oeks); err != nil {
 		span.Errorf("slice write error,meta append ebsc extent keys fail,ino(%v) fileOffset(%v) len(%v) err(%v)", inode, wSlice.fileOffset, wSlice.size, err)
 		return
 	}
@@ -610,7 +610,7 @@ func (writer *Writer) flush(inode uint64, ctx context.Context, flushFlag bool) (
 	oeks := make([]proto.ObjExtentKey, 0)
 	// update meta
 	oeks = append(oeks, wSlice.objExtentKey)
-	if err = writer.mw.AppendObjExtentKeys(writer.ino, oeks); err != nil {
+	if err = writer.mw.AppendObjExtentKeys(ctx, writer.ino, oeks); err != nil {
 		span.Errorf("slice write error,meta append ebsc extent keys fail,ino(%v) fileOffset(%v) len(%v) err(%v)", inode, wSlice.fileOffset, wSlice.size, err)
 		return
 	}

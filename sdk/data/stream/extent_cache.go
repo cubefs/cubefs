@@ -78,7 +78,7 @@ func (cache *ExtentCache) LogOutPut(ctx context.Context) {
 
 func (cache *ExtentCache) RefreshForce(ctx context.Context, inode uint64, getExtents GetExtentsFunc) error {
 	span := proto.SpanFromContext(ctx)
-	gen, size, extents, err := getExtents(inode)
+	gen, size, extents, err := getExtents(ctx, inode)
 	if err != nil {
 		return err
 	}
@@ -95,7 +95,7 @@ func (cache *ExtentCache) Refresh(ctx context.Context, inode uint64, getExtents 
 		return nil
 	}
 
-	gen, size, extents, err := getExtents(inode)
+	gen, size, extents, err := getExtents(ctx, inode)
 	if err != nil {
 		return err
 	}

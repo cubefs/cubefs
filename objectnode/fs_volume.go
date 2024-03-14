@@ -295,7 +295,7 @@ func (v *Volume) getInodeFromPath(path string) (inode uint64, err error) {
 		log.LogDebugf("GetXAttr: lookup directories: path(%v) parentId(%v)", path, parentId)
 		// check file mode
 		var lookupMode uint32
-		inode, lookupMode, err = v.mw.Lookup_ll(parentId, filename)
+		inode, lookupMode, err = v.mw.Lookup_ll(context.TODO(), parentId, filename)
 		if err != nil {
 			return 0, err
 		}
@@ -324,13 +324,13 @@ func (v *Volume) SetXAttr(path string, key string, data []byte, autoCreate bool)
 			return err
 		}
 		var inodeInfo *proto.InodeInfo
-		if inodeInfo, err = v.mw.Create_ll(parentID, filename, DefaultFileMode, 0, 0, nil, path); err != nil {
+		if inodeInfo, err = v.mw.Create_ll(context.TODO(), parentID, filename, DefaultFileMode, 0, 0, nil, path); err != nil {
 			return err
 		}
 		inode = inodeInfo.Inode
 	}
 
-	err = v.mw.XAttrSet_ll(inode, []byte(key), data)
+	err = v.mw.XAttrSet_ll(context.TODO(), inode, []byte(key), data)
 	if err == nil {
 		updateAttrCache(inode, key, string(data), v.name)
 	}
@@ -344,7 +344,7 @@ func (v *Volume) getXAttr(path string, key string) (info *proto.XAttrInfo, err e
 	if err != nil {
 		return
 	}
-	if info, err = v.mw.XAttrGet_ll(inode, key); err != nil {
+	if info, err = v.mw.XAttrGet_ll(context.TODO(), inode, key); err != nil {
 		log.LogErrorf("getXAttr: meta get xattr fail: volume(%v) path(%v) inode(%v) err(%v)", v.name, path, inode, err)
 		return
 	}
@@ -352,7 +352,7 @@ func (v *Volume) getXAttr(path string, key string) (info *proto.XAttrInfo, err e
 }
 
 func (v *Volume) IsEmpty() bool {
-	children, err := v.mw.ReadDir_ll(proto.RootIno)
+	children, err := v.mw.ReadDir_ll(context.TODO(), proto.RootIno)
 	if err != nil {
 		log.LogErrorf("IsEmpty: parent ino(%v) err(%v)", proto.RootIno, err)
 		return false
@@ -376,7 +376,7 @@ func (v *Volume) GetXAttr(path string, key string) (info *proto.XAttrInfo, err e
 				return v.getXAttr(path, key)
 			}
 
-			_, err = v.mw.InodeGet_ll(inode)
+			_, err = v.mw.InodeGet_ll(context.TODO(), inode)
 			if err == syscall.ENOENT && retry < MaxRetry {
 				notUseCache = true
 				retry++
@@ -399,7 +399,7 @@ func (v *Volume) GetXAttr(path string, key string) (info *proto.XAttrInfo, err e
 		if attrItem == nil || needRefresh {
 			log.LogDebugf("GetXAttr: get attr in cache miss: volume(%v) inode(%v) attrItem(%v), needRefresh(%v)",
 				v.name, inode, attrItem, needRefresh)
-			if attr, err = v.mw.XAttrGetAll_ll(inode); err != nil {
+			if attr, err = v.mw.XAttrGetAll_ll(context.TODO(), inode); err != nil {
 				log.LogErrorf("XAttrGetAll_ll: meta get xattr fail: volume(%v) path(%v) inode(%v) err(%v)", v.name, path, inode, err)
 				return v.getXAttr(path, key)
 			}
@@ -417,7 +417,7 @@ func (v *Volume) GetXAttr(path string, key string) (info *proto.XAttrInfo, err e
 		}
 		val, ok := attrItem.XAttrs[key]
 		if !ok {
-			if attr, err = v.mw.XAttrGetAll_ll(inode); err != nil {
+			if attr, err = v.mw.XAttrGetAll_ll(context.TODO(), inode); err != nil {
 				log.LogErrorf("XAttrGetAll_ll: meta get xattr fail: volume(%v) path(%v) inode(%v) err(%v)", v.name, path, inode, err)
 				return v.getXAttr(path, key)
 			}
@@ -442,7 +442,7 @@ func (v *Volume) DeleteXAttr(path string, key string) (err error) {
 		err = err1
 		return
 	}
-	if err = v.mw.XAttrDel_ll(inode, key); err != nil {
+	if err = v.mw.XAttrDel_ll(context.TODO(), inode, key); err != nil {
 		log.LogErrorf("SetXAttr: meta set xattr fail: volume(%v) path(%v) inode(%v) err(%v)", v.name, path, inode, err)
 		return
 	}
@@ -458,7 +458,7 @@ func (v *Volume) listXAttrs(path string) (keys []string, err error) {
 	if err != nil {
 		return
 	}
-	if keys, err = v.mw.XAttrsList_ll(inode); err != nil {
+	if keys, err = v.mw.XAttrsList_ll(context.TODO(), inode); err != nil {
 		log.LogErrorf("GetXAttr: meta get xattr fail: volume(%v) path(%v) inode(%v) err(%v)", v.name, path, inode, err)
 		return
 	}
@@ -475,7 +475,7 @@ func (v *Volume) ListXAttrs(path string) (keys []string, err error) {
 			if _, inode, _, _, err = v.recursiveLookupTarget(path, notUseCache); err != nil {
 				return v.listXAttrs(path)
 			}
-			_, err = v.mw.InodeGet_ll(inode)
+			_, err = v.mw.InodeGet_ll(context.TODO(), inode)
 			if err == syscall.ENOENT && retry < MaxRetry {
 				notUseCache = true
 				retry++
@@ -493,7 +493,7 @@ func (v *Volume) ListXAttrs(path string) (keys []string, err error) {
 		if attrItem == nil || needRefresh {
 			log.LogDebugf("ListXAttrs: get attr in cache miss: volume(%v) inode(%v) attrItem(%v), needRefresh(%v)",
 				v.name, inode, attrItem, needRefresh)
-			if attr, err = v.mw.XAttrGetAll_ll(inode); err != nil {
+			if attr, err = v.mw.XAttrGetAll_ll(context.TODO(), inode); err != nil {
 				log.LogErrorf("XAttrGetAll_ll: meta get xattr fail: volume(%v) path(%v) inode(%v) err(%v)", v.name, path, inode, err)
 				return v.listXAttrs(path)
 			}
@@ -640,7 +640,7 @@ func (v *Volume) PutObject(path string, reader io.Reader, opt *PutFileOption) (f
 		// If the last path node is a directory, then it has been processed by the previous logic.
 		// Just get the information of this node and return.
 		var info *proto.InodeInfo
-		if info, err = v.mw.InodeGet_ll(parentId); err != nil {
+		if info, err = v.mw.InodeGet_ll(context.TODO(), parentId); err != nil {
 			log.LogErrorf("PutObject: inode get fail: volume(%v) path(%v) inode(%v) err(%v)",
 				v.name, path, parentId, err)
 			return
@@ -659,7 +659,7 @@ func (v *Volume) PutObject(path string, reader io.Reader, opt *PutFileOption) (f
 	}
 
 	// check file mode
-	oldInode, lookupMode, err := v.mw.Lookup_ll(parentId, lastPathItem.Name)
+	oldInode, lookupMode, err := v.mw.Lookup_ll(context.TODO(), parentId, lastPathItem.Name)
 	if err != nil && err != syscall.ENOENT {
 		log.LogErrorf("PutObject: lookup name fail: volume(%v) path(%v) parentInode(%v) name(%v) err(%v)",
 			v.name, path, parentId, lastPathItem.Name, err)
@@ -684,7 +684,7 @@ func (v *Volume) PutObject(path string, reader io.Reader, opt *PutFileOption) (f
 	// This file has only inode but no dentry. In this way, this temporary file can be made invisible
 	// in the true sense. In order to avoid the adverse impact of other user operations on temporary data.
 	var invisibleTempDataInode *proto.InodeInfo
-	if invisibleTempDataInode, err = v.mw.InodeCreate_ll(parentId, DefaultFileMode, 0, 0, nil, make([]uint64, 0), fixedPath); err != nil {
+	if invisibleTempDataInode, err = v.mw.InodeCreate_ll(context.TODO(), parentId, DefaultFileMode, 0, 0, nil, make([]uint64, 0), fixedPath); err != nil {
 		log.LogErrorf("PutObject: inode create fail: volume(%v) path(%v) err(%v)", v.name, path, err)
 		return
 	}
@@ -693,10 +693,10 @@ func (v *Volume) PutObject(path string, reader io.Reader, opt *PutFileOption) (f
 		if err != nil {
 			log.LogWarnf("PutObject: unlink temp inode: volume(%v) path(%v) inode(%v)",
 				v.name, path, invisibleTempDataInode.Inode)
-			_, _ = v.mw.InodeUnlink_ll(invisibleTempDataInode.Inode, fixedPath)
+			_, _ = v.mw.InodeUnlink_ll(context.TODO(), invisibleTempDataInode.Inode, fixedPath)
 			log.LogWarnf("PutObject: evict temp inode: volume(%v) path(%v) inode(%v)",
 				v.name, path, invisibleTempDataInode.Inode)
-			_ = v.mw.Evict(invisibleTempDataInode.Inode, fixedPath)
+			_ = v.mw.Evict(context.TODO(), invisibleTempDataInode.Inode, fixedPath)
 		}
 	}()
 
@@ -734,7 +734,7 @@ func (v *Volume) PutObject(path string, reader io.Reader, opt *PutFileOption) (f
 	}
 
 	var finalInode *proto.InodeInfo
-	if finalInode, err = v.mw.InodeGet_ll(invisibleTempDataInode.Inode); err != nil {
+	if finalInode, err = v.mw.InodeGet_ll(context.TODO(), invisibleTempDataInode.Inode); err != nil {
 		log.LogErrorf("PutObject: get final inode fail: volume(%v) path(%v) inode(%v) err(%v)",
 			v.name, path, invisibleTempDataInode.Inode, err)
 		return
@@ -786,7 +786,7 @@ func (v *Volume) PutObject(path string, reader io.Reader, opt *PutFileOption) (f
 		}
 	}
 
-	if err = v.mw.BatchSetXAttr_ll(invisibleTempDataInode.Inode, attr.XAttrs); err != nil {
+	if err = v.mw.BatchSetXAttr_ll(context.TODO(), invisibleTempDataInode.Inode, attr.XAttrs); err != nil {
 		log.LogErrorf("PutObject: BatchSetXAttr_ll fail: volume(%v) path(%v) inode(%v) attrs(%v) err(%v)",
 			v.name, path, invisibleTempDataInode.Inode, attr.XAttrs, err)
 		return nil, err
@@ -821,7 +821,7 @@ func (v *Volume) PutObject(path string, reader io.Reader, opt *PutFileOption) (f
 
 func (v *Volume) applyInodeToDEntry(parentId uint64, name string, inode uint64, isCompleteMultipart bool, fullPath string) (err error) {
 	var existMode uint32
-	_, existMode, err = v.mw.Lookup_ll(parentId, name) // exist object inode
+	_, existMode, err = v.mw.Lookup_ll(context.TODO(), parentId, name) // exist object inode
 	if err != nil && err != syscall.ENOENT {
 		log.LogErrorf("applyInodeToDEntry: meta lookup fail: parentID(%v) name(%v) err(%v)", parentId, name, err)
 		return
@@ -887,7 +887,7 @@ func (v *Volume) DeletePath(path string) (err error) {
 	if mode.IsDir() {
 		// Check if the directory is empty and cannot delete non-empty directories.
 		var dentries []proto.Dentry
-		dentries, err = v.mw.ReadDirLimit_ll(ino, "", 1)
+		dentries, err = v.mw.ReadDirLimit_ll(context.TODO(), ino, "", 1)
 		if err != nil || len(dentries) > 0 {
 			return
 		}
@@ -902,9 +902,9 @@ func (v *Volume) DeletePath(path string) (err error) {
 
 	// delete dentry with condition when objectlock is open
 	if objetLock != nil {
-		_, err = v.mw.DeleteWithCond_ll(parent, ino, name, mode.IsDir(), path)
+		_, err = v.mw.DeleteWithCond_ll(context.TODO(), parent, ino, name, mode.IsDir(), path)
 	} else {
-		_, err = v.mw.Delete_ll(parent, name, mode.IsDir(), path)
+		_, err = v.mw.Delete_ll(context.TODO(), parent, name, mode.IsDir(), path)
 	}
 	if err != nil {
 		return
@@ -920,7 +920,7 @@ func (v *Volume) DeletePath(path string) (err error) {
 
 	log.LogInfof("DeletePath: evict: volume(%v) path(%v) inode(%v)", v.name, path, ino)
 	// Evict inode
-	if err = v.mw.Evict(ino, path); err != nil {
+	if err = v.mw.Evict(context.TODO(), ino, path); err != nil {
 		log.LogWarnf("DeletePath Evict: path(%v) inode(%v)", path, ino)
 	}
 	err = nil
@@ -973,13 +973,13 @@ func (v *Volume) InitMultipart(path string, opt *PutFileOption) (multipartID str
 			return
 		}
 
-		if v.mw.IsQuotaLimitedById(parentId, true, true) {
+		if v.mw.IsQuotaLimitedById(context.TODO(), parentId, true, true) {
 			return "", syscall.ENOSPC
 		}
 	}
 
 	// Iterate all the meta partition to create multipart id
-	multipartID, err = v.mw.InitMultipart_ll(path, extend)
+	multipartID, err = v.mw.InitMultipart_ll(context.TODO(), path, extend)
 	if err != nil {
 		log.LogErrorf("InitMultipart: meta init multipart fail: path(%v) err(%v)", path, err)
 		return "", err
@@ -1002,7 +1002,7 @@ func (v *Volume) WritePart(path string, multipartId string, partId uint16, reade
 
 	// create temp file (inode only, invisible for user)
 	var tempInodeInfo *proto.InodeInfo
-	if tempInodeInfo, err = v.mw.InodeCreate_ll(0, DefaultFileMode, 0, 0, nil, make([]uint64, 0), path); err != nil {
+	if tempInodeInfo, err = v.mw.InodeCreate_ll(context.TODO(), 0, DefaultFileMode, 0, 0, nil, make([]uint64, 0), path); err != nil {
 		log.LogErrorf("WritePart: meta create inode fail: multipartID(%v) partID(%v) err(%v)",
 			multipartId, partId, err)
 		return nil, err
@@ -1016,19 +1016,19 @@ func (v *Volume) WritePart(path string, multipartId string, partId uint16, reade
 		if err != nil {
 			log.LogWarnf("WritePart: unlink part inode: volume(%v) path(%v) multipartID(%v) partID(%v) inode(%v)",
 				v.name, path, multipartId, partId, tempInodeInfo.Inode)
-			_, _ = v.mw.InodeUnlink_ll(tempInodeInfo.Inode, path)
+			_, _ = v.mw.InodeUnlink_ll(context.TODO(), tempInodeInfo.Inode, path)
 			log.LogWarnf("WritePart: evict part inode: volume(%v) path(%v) multipartID(%v) partID(%v) inode(%v)",
 				v.name, path, multipartId, partId, tempInodeInfo.Inode)
-			_ = v.mw.Evict(tempInodeInfo.Inode, path)
+			_ = v.mw.Evict(context.TODO(), tempInodeInfo.Inode, path)
 		}
 		// Delete the old inode and release the written data.
 		if exist {
 			log.LogWarnf("WritePart: unlink old part inode: volume(%v) path(%v) multipartID(%v) partID(%v) inode(%v)",
 				v.name, path, multipartId, partId, oldInode)
-			_, _ = v.mw.InodeUnlink_ll(oldInode, path)
+			_, _ = v.mw.InodeUnlink_ll(context.TODO(), oldInode, path)
 			log.LogWarnf("WritePart: evict old part inode: volume(%v) path(%v) multipartID(%v) partID(%v) inode(%v)",
 				v.name, path, multipartId, partId, oldInode)
-			_ = v.mw.Evict(oldInode, path)
+			_ = v.mw.Evict(context.TODO(), oldInode, path)
 		}
 	}()
 
@@ -1072,7 +1072,7 @@ func (v *Volume) WritePart(path string, multipartId string, partId uint16, reade
 	etag = hex.EncodeToString(md5Hash.Sum(nil))
 
 	// update temp file inode to meta with session, overwrite existing part can result in exist == true
-	oldInode, exist, err = v.mw.AddMultipartPart_ll(path, multipartId, partId, size, etag, tempInodeInfo)
+	oldInode, exist, err = v.mw.AddMultipartPart_ll(context.TODO(), path, multipartId, partId, size, etag, tempInodeInfo)
 	if err != nil {
 		log.LogErrorf("WritePart: meta add multipart part fail: volume(%v) path(%v) multipartID(%v) partID(%v) inode(%v) size(%v) MD5(%v) err(%v)",
 			v.name, path, multipartId, partId, tempInodeInfo.Inode, size, etag, err)
@@ -1101,7 +1101,7 @@ func (v *Volume) AbortMultipart(path string, multipartID string) (err error) {
 
 	// get multipart info
 	var multipartInfo *proto.MultipartInfo
-	if multipartInfo, err = v.mw.GetMultipart_ll(path, multipartID); err != nil {
+	if multipartInfo, err = v.mw.GetMultipart_ll(context.TODO(), path, multipartID); err != nil {
 		log.LogErrorf("AbortMultipart: meta get multipart fail: volume(%v) multipartID(%v) path(%v) err(%v)",
 			v.name, multipartID, path, err)
 		return
@@ -1111,7 +1111,7 @@ func (v *Volume) AbortMultipart(path string, multipartID string) (err error) {
 		for _, part := range multipartInfo.Parts {
 			log.LogWarnf("AbortMultipart: unlink part inode: volume(%v) path(%v) multipartID(%v) partID(%v) inode(%v)",
 				v.name, path, multipartID, part.ID, part.Inode)
-			if _, err = v.mw.InodeUnlink_ll(part.Inode, path); err != nil {
+			if _, err = v.mw.InodeUnlink_ll(context.TODO(), part.Inode, path); err != nil {
 				log.LogErrorf("AbortMultipart: meta inode unlink fail: volume(%v) path(%v) multipartID(%v) partID(%v) inode(%v) err(%v)",
 					v.name, path, multipartID, part.ID, part.Inode, err)
 			}
@@ -1119,7 +1119,7 @@ func (v *Volume) AbortMultipart(path string, multipartID string) (err error) {
 				v.name, path, multipartID, part.ID, part.Inode)
 		}
 	}()
-	if err = v.mw.RemoveMultipart_ll(path, multipartID); err != nil {
+	if err = v.mw.RemoveMultipart_ll(context.TODO(), path, multipartID); err != nil {
 		log.LogErrorf("AbortMultipart: meta abort multipart fail: volume(%v) path(%v) multipartID(%v) err(%v)",
 			v.name, path, multipartID, err)
 		return err
@@ -1146,7 +1146,7 @@ func (v *Volume) CompleteMultipart(path, multipartID string, multipartInfo *prot
 		return
 	}
 	// check file mode
-	oldInode, lookupMode, err := v.mw.Lookup_ll(parentId, filename)
+	oldInode, lookupMode, err := v.mw.Lookup_ll(context.TODO(), parentId, filename)
 	if err != nil && err != syscall.ENOENT {
 		log.LogErrorf("CompleteMultipart: lookup name fail: volume(%v) path(%v) parentInode(%v) name(%v) err(%v)",
 			v.name, path, parentId, filename, err)
@@ -1175,7 +1175,7 @@ func (v *Volume) CompleteMultipart(path, multipartID string, multipartInfo *prot
 
 	// create inode for complete data
 	var completeInodeInfo *proto.InodeInfo
-	if completeInodeInfo, err = v.mw.InodeCreate_ll(parentId, DefaultFileMode, 0, 0, nil, make([]uint64, 0), path); err != nil {
+	if completeInodeInfo, err = v.mw.InodeCreate_ll(context.TODO(), parentId, DefaultFileMode, 0, 0, nil, make([]uint64, 0), path); err != nil {
 		log.LogErrorf("CompleteMultipart: meta inode create fail: volume(%v) path(%v) multipartID(%v) err(%v)",
 			v.name, path, multipartID, err)
 		return
@@ -1186,7 +1186,7 @@ func (v *Volume) CompleteMultipart(path, multipartID string, multipartInfo *prot
 		if err != nil {
 			log.LogWarnf("CompleteMultipart: destroy inode: volume(%v) path(%v) multipartID(%v) inode(%v)",
 				v.name, path, multipartID, completeInodeInfo.Inode)
-			if deleteErr := v.mw.InodeDelete_ll(completeInodeInfo.Inode, path); deleteErr != nil {
+			if deleteErr := v.mw.InodeDelete_ll(context.TODO(), completeInodeInfo.Inode, path); deleteErr != nil {
 				log.LogErrorf("CompleteMultipart: meta delete complete inode fail: volume(%v) path(%v) multipartID(%v) inode(%v) err(%v)",
 					v.name, path, multipartID, completeInodeInfo.Inode, err)
 			}
@@ -1200,7 +1200,7 @@ func (v *Volume) CompleteMultipart(path, multipartID string, multipartInfo *prot
 		completeObjExtentKeys := make([]proto.ObjExtentKey, 0)
 		for _, part := range parts {
 			var objExtents []proto.ObjExtentKey
-			if _, _, _, objExtents, err = v.mw.GetObjExtents(part.Inode); err != nil {
+			if _, _, _, objExtents, err = v.mw.GetObjExtents(context.TODO(), part.Inode); err != nil {
 				log.LogErrorf("CompleteMultipart: meta get objextents fail: volume(%v) path(%v) multipartID(%v) partID(%v) inode(%v) err(%v)",
 					v.name, path, multipartID, part.ID, part.Inode, err)
 				return
@@ -1212,7 +1212,7 @@ func (v *Volume) CompleteMultipart(path, multipartID string, multipartInfo *prot
 			}
 			size += part.Size
 		}
-		if err = v.mw.AppendObjExtentKeys(completeInodeInfo.Inode, completeObjExtentKeys); err != nil {
+		if err = v.mw.AppendObjExtentKeys(context.TODO(), completeInodeInfo.Inode, completeObjExtentKeys); err != nil {
 			log.LogErrorf("CompleteMultipart: meta append extent keys fail: volume(%v) path(%v) multipartID(%v) inode(%v) err(%v)",
 				v.name, path, multipartID, completeInodeInfo.Inode, err)
 			return
@@ -1221,7 +1221,7 @@ func (v *Volume) CompleteMultipart(path, multipartID string, multipartInfo *prot
 		completeExtentKeys := make([]proto.ExtentKey, 0)
 		for _, part := range parts {
 			var eks []proto.ExtentKey
-			if _, _, eks, err = v.mw.GetExtents(part.Inode); err != nil {
+			if _, _, eks, err = v.mw.GetExtents(context.TODO(), part.Inode); err != nil {
 				log.LogErrorf("CompleteMultipart: meta get extents fail: volume(%v) path(%v) multipartID(%v) partID(%v) inode(%v) err(%v)",
 					v.name, path, multipartID, part.ID, part.Inode, err)
 				return
@@ -1234,7 +1234,7 @@ func (v *Volume) CompleteMultipart(path, multipartID string, multipartInfo *prot
 			}
 			size += part.Size
 		}
-		if err = v.mw.AppendExtentKeys(completeInodeInfo.Inode, completeExtentKeys); err != nil {
+		if err = v.mw.AppendExtentKeys(context.TODO(), completeInodeInfo.Inode, completeExtentKeys); err != nil {
 			log.LogErrorf("CompleteMultipart: meta append extent keys fail: volume(%v) path(%v) multipartID(%v) inode(%v) err(%v)",
 				v.name, path, multipartID, completeInodeInfo.Inode, err)
 			return
@@ -1256,7 +1256,7 @@ func (v *Volume) CompleteMultipart(path, multipartID string, multipartInfo *prot
 		v.name, path, multipartID, len(parts), md5Val)
 
 	var finalInode *proto.InodeInfo
-	if finalInode, err = v.mw.InodeGet_ll(completeInodeInfo.Inode); err != nil {
+	if finalInode, err = v.mw.InodeGet_ll(context.TODO(), completeInodeInfo.Inode); err != nil {
 		log.LogErrorf("CompleteMultipart: get inode fail: volume(%v) multipartID(%v) inode(%v) err(%v)",
 			v.name, multipartID, completeInodeInfo.Inode, err)
 		return
@@ -1286,7 +1286,7 @@ func (v *Volume) CompleteMultipart(path, multipartID string, multipartInfo *prot
 	if objectLock != nil && objectLock.ToRetention() != nil {
 		attrs[XAttrKeyOSSLock] = formatRetentionDateStr(finalInode.ModifyTime, objectLock.ToRetention())
 	}
-	if err = v.mw.BatchSetXAttr_ll(finalInode.Inode, attrs); err != nil {
+	if err = v.mw.BatchSetXAttr_ll(context.TODO(), finalInode.Inode, attrs); err != nil {
 		log.LogErrorf("CompleteMultipart: store multipart extend fail: volume(%v) multipartID(%v) inode(%v) "+
 			"attrs(%v) err(%v)", v.name, multipartID, finalInode.Inode, attrs, err)
 		return nil, err
@@ -1301,7 +1301,7 @@ func (v *Volume) CompleteMultipart(path, multipartID string, multipartInfo *prot
 
 	// remove multipart
 	var err2 error
-	if err2 = v.mw.RemoveMultipart_ll(path, multipartID); err2 != nil {
+	if err2 = v.mw.RemoveMultipart_ll(context.TODO(), path, multipartID); err2 != nil {
 		log.LogWarnf("CompleteMultipart: remove multipart fail: volume(%v) multipartID(%v) path(%v) err(%v)",
 			v.name, multipartID, path, err2)
 	}
@@ -1312,7 +1312,7 @@ func (v *Volume) CompleteMultipart(path, multipartID string, multipartInfo *prot
 		for _, part := range parts {
 			log.LogWarnf("CompleteMultipart: destroy part inode: volume(%v) multipartID(%v) partID(%v) inode(%v)",
 				v.name, multipartID, part.ID, part.Inode)
-			if err2 = v.mw.InodeDelete_ll(part.Inode, path); err2 != nil {
+			if err2 = v.mw.InodeDelete_ll(context.TODO(), part.Inode, path); err2 != nil {
 				log.LogWarnf("CompleteMultipart: delete part inode fail: volume(%v) multipartID(%v) part(%v) err(%v)",
 					v.name, multipartID, part, err2)
 			}
@@ -1321,7 +1321,7 @@ func (v *Volume) CompleteMultipart(path, multipartID string, multipartInfo *prot
 		for discardedInode, partNum := range discardedPartInodes {
 			log.LogWarnf("CompleteMultipart: discard part: volume(%v) multipartID(%v) partNum(%v) inode(%v)",
 				v.name, multipartID, partNum, discardedInode)
-			if _, err2 = v.mw.InodeUnlink_ll(discardedInode, path); err2 != nil {
+			if _, err2 = v.mw.InodeUnlink_ll(context.TODO(), discardedInode, path); err2 != nil {
 				log.LogWarnf("CompleteMultipart: unlink inode fail: volume(%v) multipartID(%v) inode(%v) err(%v)",
 					v.name, multipartID, discardedInode, err2)
 			}
@@ -1376,7 +1376,7 @@ func (v *Volume) streamWrite(inode uint64, reader io.Reader, h hash.Hash) (size 
 					return syscall.ENOSPC
 				}
 
-				if v.mw.IsQuotaLimitedById(inode, true, false) {
+				if v.mw.IsQuotaLimitedById(context.TODO(), inode, true, false) {
 					return syscall.ENOSPC
 				}
 				return nil
@@ -1454,7 +1454,7 @@ func (v *Volume) appendInodeHash(h hash.Hash, inode uint64, total uint64, preAll
 }
 
 func (v *Volume) applyInodeToNewDentry(parentID uint64, name string, inode uint64, fullPath string) (err error) {
-	if err = v.mw.DentryCreate_ll(parentID, name, inode, DefaultFileMode, fullPath); err != nil {
+	if err = v.mw.DentryCreate_ll(context.TODO(), parentID, name, inode, DefaultFileMode, fullPath); err != nil {
 		log.LogErrorf("applyInodeToNewDentry: meta dentry create fail: parentID(%v) name(%v) inode(%v) mode(%v) err(%v)",
 			parentID, name, inode, DefaultFileMode, err)
 		return err
@@ -1464,7 +1464,7 @@ func (v *Volume) applyInodeToNewDentry(parentID uint64, name string, inode uint6
 
 func (v *Volume) applyInodeToExistDentry(parentID uint64, name string, inode uint64, isCompleteMultipart bool, fullPath string) (err error) {
 	var oldInode uint64
-	oldInode, err = v.mw.DentryUpdate_ll(parentID, name, inode, fullPath)
+	oldInode, err = v.mw.DentryUpdate_ll(context.TODO(), parentID, name, inode, fullPath)
 	if err != nil {
 		log.LogErrorf("applyInodeToExistDentry: meta update dentry fail: parentID(%v) name(%v) inode(%v) err(%v)",
 			parentID, name, inode, err)
@@ -1491,13 +1491,13 @@ func (v *Volume) applyInodeToExistDentry(parentID uint64, name string, inode uin
 
 	// unlink and evict old inode
 	log.LogWarnf("applyInodeToExistDentry: unlink inode: volume(%v) inode(%v)", v.name, oldInode)
-	if _, err = v.mw.InodeUnlink_ll(oldInode, fullPath); err != nil {
+	if _, err = v.mw.InodeUnlink_ll(context.TODO(), oldInode, fullPath); err != nil {
 		log.LogWarnf("applyInodeToExistDentry: unlink inode fail: volume(%v) inode(%v) err(%v)",
 			v.name, oldInode, err)
 	}
 
 	log.LogWarnf("applyInodeToExistDentry: evict inode: volume(%v) inode(%v)", v.name, oldInode)
-	if err = v.mw.Evict(oldInode, fullPath); err != nil {
+	if err = v.mw.Evict(context.TODO(), oldInode, fullPath); err != nil {
 		log.LogWarnf("applyInodeToExistDentry: evict inode fail: volume(%v) inode(%v) err(%v)",
 			v.name, oldInode, err)
 	}
@@ -1507,7 +1507,7 @@ func (v *Volume) applyInodeToExistDentry(parentID uint64, name string, inode uin
 
 func (v *Volume) loadUserDefinedMetadata(inode uint64) (metadata map[string]string, err error) {
 	var storedXAttrKeys []string
-	if storedXAttrKeys, err = v.mw.XAttrsList_ll(inode); err != nil {
+	if storedXAttrKeys, err = v.mw.XAttrsList_ll(context.TODO(), inode); err != nil {
 		log.LogErrorf("loadUserDefinedMetadata: meta list xattr fail: volume(%v) inode(%v) err(%v)",
 			v.name, inode, err)
 		return
@@ -1519,7 +1519,7 @@ func (v *Volume) loadUserDefinedMetadata(inode uint64) (metadata map[string]stri
 		}
 	}
 	var xattrs []*proto.XAttrInfo
-	if xattrs, err = v.mw.BatchGetXAttr([]uint64{inode}, xattrKeys); err != nil {
+	if xattrs, err = v.mw.BatchGetXAttr(context.TODO(), []uint64{inode}, xattrKeys); err != nil {
 		log.LogErrorf("loadUserDefinedMetadata: meta get xattr fail, volume(%v) inode(%v) keys(%v) err(%v)",
 			v.name, inode, strings.Join(xattrKeys, ","), err)
 		return
@@ -1657,7 +1657,7 @@ func (v *Volume) ReadFile(path string, writer io.Writer, offset, size uint64) er
 	}
 	// read file data
 	var inoInfo *proto.InodeInfo
-	if inoInfo, err = v.mw.InodeGet_ll(ino); err != nil {
+	if inoInfo, err = v.mw.InodeGet_ll(context.TODO(), ino); err != nil {
 		return err
 	}
 
@@ -1677,7 +1677,7 @@ func (v *Volume) ObjectMeta(path string) (info *FSFileInfo, xattr *proto.XAttrIn
 				v.name, path, err)
 			return
 		}
-		inoInfo, err = v.mw.InodeGet_ll(inode)
+		inoInfo, err = v.mw.InodeGet_ll(context.TODO(), inode)
 		if err == syscall.ENOENT && retry < MaxRetry {
 			notUseCache = true
 			retry++
@@ -1704,7 +1704,7 @@ func (v *Volume) ObjectMeta(path string) (info *FSFileInfo, xattr *proto.XAttrIn
 		if attrItem == nil || needRefresh {
 			log.LogDebugf("ObjectMeta: get attr in cache miss: volume(%v) inode(%v) attrItem(%v), needRefresh(%v)",
 				v.name, inode, attrItem, needRefresh)
-			xattr, err = v.mw.XAttrGetAll_ll(inode)
+			xattr, err = v.mw.XAttrGetAll_ll(context.TODO(), inode)
 			if err != nil {
 				log.LogErrorf("ObjectMeta:  XAttrGetAll_ll fail, volume(%v) inode(%v) path(%v) err(%v)",
 					v.name, inode, path, err)
@@ -1721,7 +1721,7 @@ func (v *Volume) ObjectMeta(path string) (info *FSFileInfo, xattr *proto.XAttrIn
 			}
 		}
 	} else {
-		xattr, err = v.mw.XAttrGetAll_ll(inode)
+		xattr, err = v.mw.XAttrGetAll_ll(context.TODO(), inode)
 		if err != nil {
 			log.LogErrorf("ObjectMeta:  XAttrGetAll_ll fail, volume(%v) inode(%v) path(%v) err(%v)",
 				v.name, inode, path, err)
@@ -1837,7 +1837,7 @@ func (v *Volume) recursiveLookupTarget(path string, notUseCache bool) (parent ui
 			if dentry == nil || needRefresh || os.FileMode(dentry.Type).IsDir() != pathItem.IsDirectory {
 				log.LogDebugf("recursiveLookupTarget: dentry cache miss: volume(%v) dentry(%v) needRefresh(%v)",
 					v.name, dentry, needRefresh)
-				curIno, curMode, err = v.mw.Lookup_ll(parent, pathItem.Name)
+				curIno, curMode, err = v.mw.Lookup_ll(context.TODO(), parent, pathItem.Name)
 				if err != nil {
 					log.LogErrorf("recursiveLookupPath: lookup fail, parentID(%v) name(%v) fail err(%v)",
 						parent, pathItem.Name, err)
@@ -1893,7 +1893,7 @@ func (v *Volume) recursiveLookupTarget(path string, notUseCache bool) (parent ui
 		pathItem := pathIterator.Next()
 		var curIno uint64
 		var curMode uint32
-		curIno, curMode, err = v.mw.Lookup_ll(parent, pathItem.Name)
+		curIno, curMode, err = v.mw.Lookup_ll(context.TODO(), parent, pathItem.Name)
 		if err != nil && err != syscall.ENOENT {
 			log.LogErrorf("recursiveLookupPath: lookup fail, parentID(%v) name(%v) fail err(%v)",
 				parent, pathItem.Name, err)
@@ -1993,7 +1993,7 @@ func (v *Volume) recursiveMakeDirectory(path string) (partentIno uint64, err err
 		}
 		var curIno uint64
 		var curMode uint32
-		curIno, curMode, err = v.mw.Lookup_ll(partentIno, pathItem.Name)
+		curIno, curMode, err = v.mw.Lookup_ll(context.TODO(), partentIno, pathItem.Name)
 		if err != nil && err != syscall.ENOENT {
 			log.LogErrorf("recursiveMakeDirectory: lookup fail, parentID(%v) name(%v) fail err(%v)",
 				partentIno, pathItem.Name, err)
@@ -2001,9 +2001,9 @@ func (v *Volume) recursiveMakeDirectory(path string) (partentIno uint64, err err
 		}
 		if err == syscall.ENOENT {
 			var info *proto.InodeInfo
-			info, err = v.mw.Create_ll(partentIno, pathItem.Name, uint32(DefaultDirMode), 0, 0, nil, path[:pathIterator.cursor])
+			info, err = v.mw.Create_ll(context.TODO(), partentIno, pathItem.Name, uint32(DefaultDirMode), 0, 0, nil, path[:pathIterator.cursor])
 			if err != nil && err == syscall.EEXIST {
-				existInode, mode, e := v.mw.Lookup_ll(partentIno, pathItem.Name)
+				existInode, mode, e := v.mw.Lookup_ll(context.TODO(), partentIno, pathItem.Name)
 				if e != nil {
 					return
 				}
@@ -2038,7 +2038,7 @@ func (v *Volume) lookupDirectories(dirs []string, autoCreate bool) (inode uint64
 	parentId := rootIno
 	// check and create dirs
 	for _, dir := range dirs {
-		curIno, curMode, lookupErr := v.mw.Lookup_ll(parentId, dir)
+		curIno, curMode, lookupErr := v.mw.Lookup_ll(context.TODO(), parentId, dir)
 		if lookupErr != nil && lookupErr != syscall.ENOENT {
 			log.LogErrorf("lookupDirectories: meta lokkup fail, parentID(%v) name(%v) fail err(%v)", parentId, dir, lookupErr)
 			return 0, lookupErr
@@ -2050,14 +2050,14 @@ func (v *Volume) lookupDirectories(dirs []string, autoCreate bool) (inode uint64
 		if lookupErr == syscall.ENOENT {
 			var inodeInfo *proto.InodeInfo
 			var createErr error
-			inodeInfo, createErr = v.mw.Create_ll(parentId, dir, uint32(DefaultDirMode), 0, 0, nil, "/"+dir)
+			inodeInfo, createErr = v.mw.Create_ll(context.TODO(), parentId, dir, uint32(DefaultDirMode), 0, 0, nil, "/"+dir)
 			if createErr != nil && createErr != syscall.EEXIST {
 				log.LogErrorf("lookupDirectories: meta create fail, parentID(%v) name(%v) mode(%v) err(%v)", parentId, dir, os.ModeDir, createErr)
 				return 0, createErr
 			}
 			// retry lookup if it exists.
 			if createErr == syscall.EEXIST {
-				curIno, curMode, lookupErr = v.mw.Lookup_ll(parentId, dir)
+				curIno, curMode, lookupErr = v.mw.Lookup_ll(context.TODO(), parentId, dir)
 				if lookupErr != nil {
 					return 0, lookupErr
 				}
@@ -2207,7 +2207,7 @@ func (v *Volume) findParentId(prefix string) (inode uint64, prefixDirs []string,
 			break
 		}
 
-		curIno, curMode, err := v.mw.Lookup_ll(parentId, dir)
+		curIno, curMode, err := v.mw.Lookup_ll(context.TODO(), parentId, dir)
 
 		// If the part except the last part does not match exactly the same dentry, there is
 		// no path matching the path prefix. An ENOENT error is returned to the caller.
@@ -2291,7 +2291,7 @@ func (v *Volume) recursiveScan(fileInfos []*FSFileInfo, prefixMap PrefixMap, par
 	var children []proto.Dentry
 
 readDir:
-	children, err = v.mw.ReadDirLimit_ll(parentId, fromName, readLimit+1) // one more for nextMarker
+	children, err = v.mw.ReadDirLimit_ll(context.TODO(), parentId, fromName, readLimit+1) // one more for nextMarker
 	if err != nil && err != syscall.ENOENT {
 		return fileInfos, prefixMap, "", 0, err
 	}
@@ -2399,7 +2399,7 @@ func (v *Volume) supplyListFileInfo(fileInfos []*FSFileInfo) (err error) {
 	}
 
 	// Get size information in batches, then update to fileInfos
-	inodeInfos := v.mw.BatchInodeGet(inodes)
+	inodeInfos := v.mw.BatchInodeGet(context.TODO(), inodes)
 	sort.SliceStable(inodeInfos, func(i, j int) bool {
 		return inodeInfos[i].Inode < inodeInfos[j].Inode
 	})
@@ -2417,7 +2417,7 @@ func (v *Volume) supplyListFileInfo(fileInfos []*FSFileInfo) (err error) {
 
 	// Get MD5 information in batches, then update to fileInfos
 	keys := []string{XAttrKeyOSSETag, XAttrKeyOSSETagDeprecated}
-	xattrs, err := v.mw.BatchGetXAttr(inodes, keys)
+	xattrs, err := v.mw.BatchGetXAttr(context.TODO(), inodes, keys)
 	if err != nil {
 		log.LogErrorf("supplyListFileInfo: batch get xattr fail, inodes(%v), err(%v)", inodes, err)
 		return
@@ -2466,7 +2466,7 @@ func (v *Volume) updateETag(inode uint64, size int64, mt time.Time) (etagValue E
 		splittedRanges := SplitFileRange(size, SplitFileRangeBlockSize)
 		etagValue = NewRandomUUIDETagValue(len(splittedRanges), mt)
 	}
-	if err = v.mw.XAttrSet_ll(inode, []byte(XAttrKeyOSSETag), []byte(etagValue.Encode())); err != nil {
+	if err = v.mw.XAttrSet_ll(context.TODO(), inode, []byte(XAttrKeyOSSETag), []byte(etagValue.Encode())); err != nil {
 		return
 	}
 	return
@@ -2474,7 +2474,7 @@ func (v *Volume) updateETag(inode uint64, size int64, mt time.Time) (etagValue E
 
 func (v *Volume) ListMultipartUploads(prefix, delimiter, keyMarker string, multipartIdMarker string, maxUploads uint64) (
 	uploads []*FSUpload, nextMarker, nextMultipartIdMarker string, isTruncated bool, prefixes []string, err error) {
-	sessions, err := v.mw.ListMultipart_ll(prefix, delimiter, keyMarker, multipartIdMarker, maxUploads)
+	sessions, err := v.mw.ListMultipart_ll(context.TODO(), prefix, delimiter, keyMarker, multipartIdMarker, maxUploads)
 	if err != nil || len(sessions) == 0 {
 		return
 	}
@@ -2547,7 +2547,7 @@ func (v *Volume) ListMultipartUploads(prefix, delimiter, keyMarker string, multi
 }
 
 func (v *Volume) ListParts(path, uploadId string, maxParts, partNumberMarker uint64) (parts []*FSPart, nextMarker uint64, isTruncated bool, err error) {
-	multipartInfo, err := v.mw.GetMultipart_ll(path, uploadId)
+	multipartInfo, err := v.mw.GetMultipart_ll(context.TODO(), path, uploadId)
 	if err != nil {
 		log.LogErrorf("ListPart: get multipart upload fail: path(%v) volume(%v) uploadID(%v) err(%v)", path, v.name, uploadId, err)
 		return
@@ -2597,7 +2597,7 @@ func (v *Volume) CopyFile(sv *Volume, sourcePath, targetPath, metaDirective stri
 		log.LogErrorf("CopyFile: look up source path fail, source path(%v) err(%v)", sourcePath, err)
 		return
 	}
-	if sInodeInfo, err = sv.mw.InodeGet_ll(sInode); err != nil {
+	if sInodeInfo, err = sv.mw.InodeGet_ll(context.TODO(), sInode); err != nil {
 		log.LogErrorf("CopyFile: get source path inode info fail, source path(%v) err(%v)", sourcePath, err)
 		return
 	}
@@ -2667,7 +2667,7 @@ func (v *Volume) CopyFile(sv *Volume, sourcePath, targetPath, metaDirective stri
 						sv.name, sourcePath, sInode, name, value)
 				}
 			}
-			if err = v.mw.BatchSetXAttr_ll(sInode, attr.XAttrs); err != nil {
+			if err = v.mw.BatchSetXAttr_ll(context.TODO(), sInode, attr.XAttrs); err != nil {
 				log.LogErrorf("CopyFile: BatchSetXAttr_ll fail: volume(%v) source path(%v) inode(%v) attrs(%v) err(%v)",
 					sv.name, sourcePath, sInode, attr.XAttrs, err)
 				return nil, err
@@ -2713,7 +2713,7 @@ func (v *Volume) CopyFile(sv *Volume, sourcePath, targetPath, metaDirective stri
 				v.name, targetPath, err)
 			return
 		}
-		if tInodeInfo, err = v.mw.InodeGet_ll(tParentId); err != nil {
+		if tInodeInfo, err = v.mw.InodeGet_ll(context.TODO(), tParentId); err != nil {
 			log.LogErrorf("CopyFile: get create directory of target path inode info fail: volume(%v) target path(%v) err(%v)",
 				v.name, targetPath, err)
 			return
@@ -2753,7 +2753,7 @@ func (v *Volume) CopyFile(sv *Volume, sourcePath, targetPath, metaDirective stri
 	}
 
 	// create target file inode and set target inode to be source file inode
-	if tInodeInfo, err = v.mw.InodeCreate_ll(tParentId, uint32(sMode), 0, 0, nil, make([]uint64, 0), targetPath); err != nil {
+	if tInodeInfo, err = v.mw.InodeCreate_ll(context.TODO(), tParentId, uint32(sMode), 0, 0, nil, make([]uint64, 0), targetPath); err != nil {
 		return
 	}
 	defer func() {
@@ -2761,10 +2761,10 @@ func (v *Volume) CopyFile(sv *Volume, sourcePath, targetPath, metaDirective stri
 		if err != nil {
 			log.LogWarnf("CopyFile: unlink target temp inode: volume(%v) path(%v) inode(%v) ",
 				v.name, targetPath, tInodeInfo.Inode)
-			_, _ = v.mw.InodeUnlink_ll(tInodeInfo.Inode, targetPath)
+			_, _ = v.mw.InodeUnlink_ll(context.TODO(), tInodeInfo.Inode, targetPath)
 			log.LogWarnf("CopyFile: evict target temp inode: volume(%v) path(%v) inode(%v)",
 				v.name, targetPath, tInodeInfo.Inode)
-			_ = v.mw.Evict(tInodeInfo.Inode, targetPath)
+			_ = v.mw.Evict(context.TODO(), tInodeInfo.Inode, targetPath)
 		}
 	}()
 	if err = v.ec.OpenStream(ctx, tInodeInfo.Inode); err != nil {
@@ -2859,7 +2859,7 @@ func (v *Volume) CopyFile(sv *Volume, sourcePath, targetPath, metaDirective stri
 	log.LogDebugf("Audit: copy file: write file finished, volume(%v), path(%v), etag(%v)", v.name, targetPath, md5Value)
 
 	var finalInode *proto.InodeInfo
-	if finalInode, err = v.mw.InodeGet_ll(tInodeInfo.Inode); err != nil {
+	if finalInode, err = v.mw.InodeGet_ll(context.TODO(), tInodeInfo.Inode); err != nil {
 		log.LogErrorf("CopyFile: get finished target path final inode fail: volume(%v) path(%v) inode(%v) err(%v)",
 			v.name, targetPath, tInodeInfo.Inode, err)
 		return
@@ -2880,7 +2880,7 @@ func (v *Volume) CopyFile(sv *Volume, sourcePath, targetPath, metaDirective stri
 
 	// copy source file metadata to write target file metadata
 	if metaDirective != MetadataDirectiveReplace {
-		xattr, err = sv.mw.XAttrGetAll_ll(sInode)
+		xattr, err = sv.mw.XAttrGetAll_ll(context.TODO(), sInode)
 		if xattr == nil || err != nil {
 			return
 		}
@@ -2896,7 +2896,7 @@ func (v *Volume) CopyFile(sv *Volume, sourcePath, targetPath, metaDirective stri
 		if opt != nil && opt.ObjectLock != nil && opt.ObjectLock.ToRetention() != nil {
 			targetAttr.XAttrs[XAttrKeyOSSLock] = formatRetentionDateStr(tInodeInfo.ModifyTime, opt.ObjectLock.ToRetention())
 		}
-		if err = v.mw.BatchSetXAttr_ll(tInodeInfo.Inode, targetAttr.XAttrs); err != nil {
+		if err = v.mw.BatchSetXAttr_ll(context.TODO(), tInodeInfo.Inode, targetAttr.XAttrs); err != nil {
 			log.LogErrorf("CopyFile: set target xattr fail: volume(%v) target path(%v) inode(%v) xattr (%v)err(%v)",
 				v.name, targetPath, tInodeInfo.Inode, xattr, err)
 			return
@@ -2936,7 +2936,7 @@ func (v *Volume) CopyFile(sv *Volume, sourcePath, targetPath, metaDirective stri
 			}
 		}
 
-		if err = v.mw.BatchSetXAttr_ll(tInodeInfo.Inode, targetAttr.XAttrs); err != nil {
+		if err = v.mw.BatchSetXAttr_ll(context.TODO(), tInodeInfo.Inode, targetAttr.XAttrs); err != nil {
 			log.LogErrorf("CopyFile: BatchSetXAttr_ll fail: volume(%v) target path(%v) inode(%v) attrs(%v) err(%v)",
 				v.name, targetPath, tInodeInfo.Inode, targetAttr.XAttrs, err)
 			return nil, err
@@ -2973,10 +2973,10 @@ func (v *Volume) CopyFile(sv *Volume, sourcePath, targetPath, metaDirective stri
 }
 
 func (v *Volume) copyFile(parentID uint64, newFileName string, sourceFileInode uint64, mode uint32, newPath string, sourcePath string) (info *proto.InodeInfo, err error) {
-	if err = v.mw.DentryCreate_ll(parentID, newFileName, sourceFileInode, mode, newPath); err != nil {
+	if err = v.mw.DentryCreate_ll(context.TODO(), parentID, newFileName, sourceFileInode, mode, newPath); err != nil {
 		return
 	}
-	if info, err = v.mw.InodeLink_ll(sourceFileInode, sourcePath); err != nil {
+	if info, err = v.mw.InodeLink_ll(context.TODO(), sourceFileInode, sourcePath); err != nil {
 		return
 	}
 	return
@@ -3152,13 +3152,13 @@ func safeConvertStrToUint16(str string) (uint16, error) {
 func (v *Volume) referenceExtentKey(oldInode, inode uint64) (bool, error) {
 	// cold volume
 	if proto.IsCold(v.volType) {
-		_, _, _, oldObjExtents, err := v.mw.GetObjExtents(oldInode)
+		_, _, _, oldObjExtents, err := v.mw.GetObjExtents(context.TODO(), oldInode)
 		if err != nil {
 			log.LogErrorf("referenceExtentKey: meta get oldInode objextents fail: volume(%v) inode(%v) err(%v)",
 				v.name, oldInode, err)
 			return false, err
 		}
-		_, _, _, objExtents, err := v.mw.GetObjExtents(inode)
+		_, _, _, objExtents, err := v.mw.GetObjExtents(context.TODO(), inode)
 		if err != nil {
 			log.LogErrorf("referenceExtentKey: meta get inode objextents fail: volume(%v) inode(%v) err(%v)",
 				v.name, inode, err)
@@ -3171,13 +3171,13 @@ func (v *Volume) referenceExtentKey(oldInode, inode uint64) (bool, error) {
 
 	}
 	// hot volume
-	_, _, oldExtents, err := v.mw.GetExtents(oldInode)
+	_, _, oldExtents, err := v.mw.GetExtents(context.TODO(), oldInode)
 	if err != nil {
 		log.LogErrorf("referenceExtentKey: meta get oldInode extents fail: volume(%v) inode(%v) err(%v)",
 			v.name, oldInode, err)
 		return false, err
 	}
-	_, _, extents, err := v.mw.GetExtents(inode)
+	_, _, extents, err := v.mw.GetExtents(context.TODO(), inode)
 	if err != nil {
 		log.LogErrorf("referenceExtentKey: meta get inode objextents fail: volume(%v) inode(%v) err(%v)",
 			v.name, inode, err)

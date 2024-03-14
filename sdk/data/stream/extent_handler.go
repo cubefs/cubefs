@@ -450,7 +450,7 @@ func (eh *ExtentHandler) appendExtentKey(ctx context.Context) (err error) {
 			ekey := *eh.key
 			doAppend := func() (err error) {
 				discard = eh.stream.extents.Append(ctx, &ekey, true)
-				status, err = eh.stream.client.appendExtentKey(eh.stream.parentInode, eh.inode, ekey, discard)
+				status, err = eh.stream.client.appendExtentKey(ctx, eh.stream.parentInode, eh.inode, ekey, discard)
 				if atomic.LoadInt32(&eh.stream.needUpdateVer) > 0 {
 					if errUpdateExtents := eh.stream.GetExtentsForce(ctx); errUpdateExtents != nil {
 						span.Errorf("action[appendExtentKey] inode %v GetExtents err %v errUpdateExtents %v", eh.stream.inode, err, errUpdateExtents)
