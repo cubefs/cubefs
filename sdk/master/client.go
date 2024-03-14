@@ -65,6 +65,14 @@ func (c *MasterClient) ReplaceMasterAddresses(addrs []string) {
 	c.leaderAddr = ""
 }
 
+func (c *MasterClient) GetMasterAddresses() (addrs []string) {
+	c.Lock()
+	defer c.Unlock()
+	addrs = make([]string, len(c.masters))
+	copy(addrs, c.masters)
+	return
+}
+
 // AddNode add the given address as the master address.
 func (c *MasterClient) AddNode(address string) {
 	c.Lock()
