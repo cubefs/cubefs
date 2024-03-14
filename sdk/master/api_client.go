@@ -127,18 +127,9 @@ func (api *ClientAPI) GetMetaPartitions(volName string) (views []*proto.MetaPart
 	return
 }
 
-func (api *ClientAPI) GetDataPartitions(volName string) (view *proto.DataPartitionsView, err error) {
+func (api *ClientAPI) GetDataPartitionsFromLeader(volName string) (view *proto.DataPartitionsView, err error) {
 	var request = newAPIRequest(http.MethodGet, proto.ClientDataPartitions)
 	request.addParam("name", volName)
-
-	lastLeader := api.mc.leaderAddr
-	defer api.mc.SetLeader(lastLeader)
-	randIndex := rand.Intn(len(api.mc.masters))
-	if randIndex >= len(api.mc.masters) {
-		err = fmt.Errorf("master len %v less or equal request index %v", len(api.mc.masters), randIndex)
-		return
-	}
-	api.mc.SetLeader(api.mc.masters[randIndex])
 	var data []byte
 	if data, err = api.mc.serveRequest(request); err != nil {
 		return
@@ -147,6 +138,19 @@ func (api *ClientAPI) GetDataPartitions(volName string) (view *proto.DataPartiti
 	if err = json.Unmarshal(data, view); err != nil {
 		return
 	}
+	return
+}
+
+func (api *ClientAPI) GetDataPartitions(volName string) (view *proto.DataPartitionsView, err error) {
+	lastLeader := api.mc.leaderAddr
+	defer api.mc.SetLeader(lastLeader)
+	randIndex := rand.Intn(len(api.mc.masters))
+	if randIndex >= len(api.mc.masters) {
+		err = fmt.Errorf("master len %v less or equal request index %v", len(api.mc.masters), randIndex)
+		return
+	}
+	api.mc.SetLeader(api.mc.masters[randIndex])
+	view, err = api.GetDataPartitionsFromLeader(volName)
 	return
 }
 
