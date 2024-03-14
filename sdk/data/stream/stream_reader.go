@@ -191,7 +191,7 @@ func (s *Streamer) read(ctx context.Context, data []byte, offset int, size int) 
 			if s.client.bcacheEnable && s.needBCache && filesize <= bcache.MaxFileSize {
 				offset := req.FileOffset - int(req.ExtentKey.FileOffset)
 				if s.client.loadBcache != nil {
-					readBytes, err = s.client.loadBcache(cacheKey, req.Data, uint64(offset), uint32(req.Size))
+					readBytes, err = s.client.loadBcache(ctx, cacheKey, req.Data, uint64(offset), uint32(req.Size))
 					if err == nil && readBytes == req.Size {
 						total += req.Size
 						bcacheMetric := exporter.NewCounter("fileReadL1CacheHit")
@@ -284,7 +284,7 @@ func (s *Streamer) asyncBlockCache() {
 			}
 			if s.client.cacheBcache != nil {
 				span.Debugf("TRACE read. write blockCache cacheKey(%v) len_buf(%v),", cacheKey, len(data))
-				s.client.cacheBcache(cacheKey, data)
+				s.client.cacheBcache(ctx, cacheKey, data)
 			}
 			if ek.Size == bcache.MaxBlockSize {
 				buf.BCachePool.Put(data)

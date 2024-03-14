@@ -351,7 +351,7 @@ begin:
 				if _, ok := s.inflightEvictL1cache.Load(cacheKey); !ok {
 					go func(cacheKey string) {
 						s.inflightEvictL1cache.Store(cacheKey, true)
-						s.client.evictBcache(cacheKey)
+						s.client.evictBcache(ctx, cacheKey)
 						s.inflightEvictL1cache.Delete(cacheKey)
 					}(cacheKey)
 				}
@@ -384,7 +384,7 @@ begin:
 			}
 			if s.client.bcacheEnable {
 				cacheKey := util.GenerateKey(s.client.volumeName, s.inode, uint64(req.FileOffset))
-				go s.client.evictBcache(cacheKey)
+				go s.client.evictBcache(ctx, cacheKey)
 			}
 		} else {
 			if !isChecked && checkFunc != nil {

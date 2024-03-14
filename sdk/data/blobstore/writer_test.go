@@ -30,6 +30,7 @@ import (
 	"github.com/cubefs/cubefs/sdk/data/stream"
 	"github.com/cubefs/cubefs/sdk/meta"
 	"github.com/cubefs/cubefs/util/buf"
+	"github.com/cubefs/cubefs/util/log"
 )
 
 var writer *Writer
@@ -44,8 +45,8 @@ func init() {
 		},
 		PriorityAddrs:  []string{mockServer.service.URL},
 		MaxSizePutOnce: 1 << 20,
+		LogLevel:       log.Lpanic,
 	}
-
 	blobStoreClient, _ := NewEbsClient(cfg)
 
 	config := ClientConfig{
@@ -73,7 +74,7 @@ func init() {
 	config.Ec = ec
 
 	buf.InitCachePool(8388608)
-	config.Ec.LimitManager = manager.NewLimitManager(context.TODO(), nil)
+	config.Ec.LimitManager = manager.NewLimitManager(newCtx(), nil)
 	writer = NewWriter(config)
 }
 
@@ -246,7 +247,7 @@ func TestCacheL2(t *testing.T) {
 		writer.cacheThreshold = tc.cacheThreshold
 		writer.fileCache = tc.fileCache
 		wSlice.fileOffset = tc.fileOffset
-		writer.cacheLevel2(context.TODO(), wSlice)
+		writer.cacheLevel2(newCtx(), wSlice)
 	}
 }
 
@@ -267,7 +268,7 @@ func TestWriterAsyncCache(t *testing.T) {
 	}
 	writer.ec = ec
 	for _, tc := range testCase {
-		writer.asyncCache(context.TODO(), tc.ino, tc.offset, tc.data)
+		writer.asyncCache(newCtx(), tc.ino, tc.offset, tc.data)
 	}
 }
 
@@ -333,7 +334,7 @@ func TestNewWriter(t *testing.T) {
 	if err != nil {
 		panic(fmt.Sprintf("Hook advance instance method failed:%s", err.Error()))
 	}
-	config.Ec.LimitManager = manager.NewLimitManager(context.TODO(), nil)
+	config.Ec.LimitManager = manager.NewLimitManager(newCtx(), nil)
 	w := NewWriter(config)
 	_ = w.String()
 }
