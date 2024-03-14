@@ -157,9 +157,9 @@ func (mgr *followerReadManager) getVolumeDpView() {
 			continue
 		}
 
-		log.LogDebugf("followerReadManager.getVolumeDpView %v", vv.Name)
-		if view, err = mgr.c.masterClient.ClientAPI().GetDataPartitions(vv.Name); err != nil {
-			log.LogErrorf("followerReadManager.getVolumeDpView %v GetDataPartitions err %v", vv.Name, err)
+		log.LogDebugf("followerReadManager.getVolumeDpView %v leader(%v)", vv.Name, mgr.c.masterClient.Leader())
+		if view, err = mgr.c.masterClient.ClientAPI().GetDataPartitionsFromLeader(vv.Name); err != nil {
+			log.LogErrorf("followerReadManager.getVolumeDpView %v GetDataPartitions err %v leader(%v)", vv.Name, err, mgr.c.masterClient.Leader())
 			continue
 		}
 		mgr.updateVolViewFromLeader(vv.Name, view)
