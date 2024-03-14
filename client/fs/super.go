@@ -667,10 +667,9 @@ func (s *Super) syncMeta(ctx context.Context) <-chan struct{} {
 					// retry to make possible evict success
 					if s.bc != nil {
 						common.Timed(3, 100).On(func() error {
-							return s.bc.Evict(cacheKey)
+							return s.bc.Evict(ctx, cacheKey)
 						})
 					}
-
 				}
 				return nil
 			})

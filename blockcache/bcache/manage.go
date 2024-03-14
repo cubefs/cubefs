@@ -19,6 +19,7 @@ import (
 	"bufio"
 	"bytes"
 	"container/list"
+	"context"
 	"crypto/md5"
 	"encoding/hex"
 	"fmt"
@@ -34,7 +35,6 @@ import (
 	"time"
 
 	"github.com/cubefs/cubefs/util/errors"
-	"github.com/cubefs/cubefs/util/log"
 	"github.com/cubefs/cubefs/util/stat"
 )
 
@@ -54,24 +54,25 @@ type ReadCloser interface {
 }
 
 type BcacheManager interface {
-	cache(key string, data []byte, direct bool)
-	read(key string, offset uint64, len uint32) (io.ReadCloser, error)
-	queryCachePath(key string, offset uint64, len uint32) (string, error)
-	load(key string) (ReadCloser, error)
-	erase(key string)
-	stats() (int64, int64)
+	cache(_ context.Context, key string, data []byte, direct bool)
+	read(_ context.Context, key string, offset uint64, len uint32) (io.ReadCloser, error)
+	queryCachePath(_ context.Context, key string, offset uint64, len uint32) (string, error)
+	load(_ context.Context, key string) (ReadCloser, error)
+	erase(_ context.Context, key string)
+	stats(_ context.Context) (int64, int64)
 }
 
 func newBcacheManager(conf *bcacheConfig) BcacheManager {
-	log.LogInfof("init block cache: %s size:%d GB", conf.CacheDir, conf.BlockSize)
+	span, ctx := spanContextPrefix("new-")
+	span.Infof("init block cache: %s size:%d GB", conf.CacheDir, conf.BlockSize)
 	if conf.CacheDir == "" {
-		log.LogWarnf("no cache config,cacheDirs or size is empty!")
+		span.Warn("no cache config,cacheDirs or size is empty!")
 		return nil
 	}
 	// todo cachedir reg match
 	cacheDirs := strings.Split(conf.CacheDir, PathListSeparator)
 	if len(cacheDirs) == 0 {
-		log.LogWarnf("no cache dir config!")
+		span.Warn("no cache dir config!")
 		return nil
 	}
 
@@ -81,7 +82,7 @@ func newBcacheManager(conf *bcacheConfig) BcacheManager {
 		dirPath := result[0]
 		cacheSize, err := strconv.Atoi(result[1])
 		if dirPath == "" || err != nil {
-			log.LogWarnf("cache dir config error!")
+			span.Warn("cache dir config error!")
 			return nil
 		}
 		dirSizeMap[dirPath] = int64(cacheSize)
@@ -97,9 +98,9 @@ func newBcacheManager(conf *bcacheConfig) BcacheManager {
 	}
 	index := 0
 	for cacheDir, cacheSize := range dirSizeMap {
-		disk := NewDiskStore(cacheDir, cacheSize, conf)
+		disk := NewDiskStore(ctx, cacheDir, cacheSize, conf)
 		bm.bstore[index] = disk
-		go bm.reBuildCacheKeys(cacheDir, disk)
+		go bm.reBuildCacheKeys(ctx, cacheDir, disk)
 		index++
 	}
 	go bm.spaceManager()
@@ -120,6 +121,7 @@ type keyPair struct {
 
 // key vid_inode_offset
 type waitFlush struct {
+	ctx  context.Context
 	Key  string
 	Data []byte
 }
@@ -139,7 +141,7 @@ func encryptXOR(data []byte) {
 	}
 }
 
-func (bm *bcacheManager) queryCachePath(key string, offset uint64, len uint32) (path string, err error) {
+func (bm *bcacheManager) queryCachePath(ctx context.Context, key string, offset uint64, len uint32) (path string, err error) {
 	bgTime := stat.BeginStat()
 	defer func() {
 		stat.EndStat("GetCache:GetCachePath", err, bgTime, 1)
@@ -157,10 +159,10 @@ func (bm *bcacheManager) queryCachePath(key string, offset uint64, len uint32) (
 		bm.Lock()
 		bm.lrulist.MoveToBack(element)
 		bm.Unlock()
-		log.LogDebugf("Cache item found. key=%v offset =%v,len=%v size=%v, path=%v", key, offset, len, item.size, path)
+		getSpan(ctx).Debugf("Cache item found. key=%v offset =%v,len=%v size=%v, path=%v", key, offset, len, item.size, path)
 		return path, nil
 	}
-	log.LogDebugf("Cache item not found. key=%v offset =%v,len=%v", key, offset, len)
+	getSpan(ctx).Debugf("Cache item not found. key=%v offset =%v,len=%v", key, offset, len)
 	return "", os.ErrNotExist
 }
 
@@ -172,28 +174,29 @@ func (bm *bcacheManager) getCachePath(key string) (string, error) {
 	return cachePath, nil
 }
 
-func (bm *bcacheManager) cache(key string, data []byte, direct bool) {
+func (bm *bcacheManager) cache(ctx context.Context, key string, data []byte, direct bool) {
+	span := getSpan(ctx)
 	bgTime := stat.BeginStat()
 	defer func() {
 		stat.EndStat("Cache:Write", nil, bgTime, 1)
 		stat.StatBandWidth("Cache", uint32(len(data)))
 	}()
-	log.LogDebugf("TRACE cache. key(%v)  len(%v) direct(%v)", key, len(data), direct)
+	span.Debugf("TRACE cache. key(%v)  len(%v) direct(%v)", key, len(data), direct)
 	if direct {
-		bm.cacheDirect(key, data)
+		bm.cacheDirect(ctx, key, data)
 		return
 	}
 	select {
-	case bm.pending <- waitFlush{Key: key, Data: data}:
+	case bm.pending <- waitFlush{ctx: ctx, Key: key, Data: data}:
 	default:
-		log.LogDebugf("pending chan is full,skip memory. key =%v,len=%v bytes", key, len(data))
-		bm.cacheDirect(key, data)
+		span.Debugf("pending chan is full,skip memory. key =%v,len=%v bytes", key, len(data))
+		bm.cacheDirect(ctx, key, data)
 	}
 }
 
-func (bm *bcacheManager) cacheDirect(key string, data []byte) {
+func (bm *bcacheManager) cacheDirect(ctx context.Context, key string, data []byte) {
 	diskKv := bm.selectDiskKv(key)
-	if diskKv.flushKey(key, data) == nil {
+	if diskKv.flushKey(ctx, key, data) == nil {
 		bm.Lock()
 		item := &cacheItem{
 			key:  key,
@@ -205,7 +208,7 @@ func (bm *bcacheManager) cacheDirect(key string, data []byte) {
 	}
 }
 
-func (bm *bcacheManager) read(key string, offset uint64, len uint32) (io.ReadCloser, error) {
+func (bm *bcacheManager) read(ctx context.Context, key string, offset uint64, len uint32) (io.ReadCloser, error) {
 	var err error
 	bgTime := stat.BeginStat()
 	defer func() {
@@ -219,10 +222,12 @@ func (bm *bcacheManager) read(key string, offset uint64, len uint32) (io.ReadClo
 	element, ok := bm.bcacheKeys[key]
 	bm.Unlock()
 	stat.EndStat("GetCache:Read:GetMeta", nil, metaBgTime, 1)
-	log.LogDebugf("Trace read. ok =%v", ok)
+
+	span := getSpan(ctx)
+	span.Debugf("Trace read. ok =%v", ok)
 	if ok {
 		item := element.Value.(*cacheItem)
-		f, err := bm.load(key)
+		f, err := bm.load(ctx, key)
 		if os.IsNotExist(err) {
 			bm.Lock()
 			delete(bm.bcacheKeys, key)
@@ -237,7 +242,7 @@ func (bm *bcacheManager) read(key string, offset uint64, len uint32) (io.ReadClo
 		}
 		defer f.Close()
 		size := item.size
-		log.LogDebugf("read. offset =%v,len=%v size=%v", offset, len, size)
+		span.Debugf("read. offset =%v,len=%v size=%v", offset, len, size)
 		if uint32(offset)+len > size {
 			len = size - uint32(offset)
 		}
@@ -258,11 +263,11 @@ func (bm *bcacheManager) read(key string, offset uint64, len uint32) (io.ReadClo
 	return nil, err
 }
 
-func (bm *bcacheManager) load(key string) (ReadCloser, error) {
+func (bm *bcacheManager) load(ctx context.Context, key string) (ReadCloser, error) {
 	if len(bm.bstore) == 0 {
 		return nil, errors.New("no cache dir")
 	}
-	f, err := bm.selectDiskKv(key).load(key)
+	f, err := bm.selectDiskKv(key).load(ctx, key)
 	if err != nil {
 		return nil, err
 	}
@@ -274,11 +279,11 @@ func (bm *bcacheManager) load(key string) (ReadCloser, error) {
 	return f, err
 }
 
-func (bm *bcacheManager) erase(key string) {
+func (bm *bcacheManager) erase(ctx context.Context, key string) {
 	if len(bm.bstore) == 0 {
 		return
 	}
-	err := bm.selectDiskKv(key).remove(key)
+	err := bm.selectDiskKv(key).remove(ctx, key)
 	if err == nil {
 		bm.Lock()
 		defer bm.Unlock()
@@ -289,7 +294,7 @@ func (bm *bcacheManager) erase(key string) {
 	}
 }
 
-func (bm *bcacheManager) stats() (int64, int64) {
+func (bm *bcacheManager) stats(ctx context.Context) (int64, int64) {
 	var usedCount, usedSize int64
 	for _, item := range bm.bstore {
 		usedSize += atomic.LoadInt64(&item.usedSize)
@@ -311,66 +316,28 @@ func (bm *bcacheManager) spaceManager() {
 		tmpTicker.Stop()
 	}()
 	for {
+		span, ctx := spanContextPrefix("space-")
 		select {
 		case <-ticker.C:
 			for _, store := range bm.bstore {
-				useRatio, files := store.diskUsageRatio()
-				log.LogDebugf("useRation(%v), files(%v)", useRatio, files)
+				useRatio, files := store.diskUsageRatio(ctx)
+				span.Debugf("useRation(%v), files(%v)", useRatio, files)
 				if 1-useRatio < store.freeLimit || files > int64(store.limit) {
-					bm.freeSpace(store, 1-useRatio, files)
+					bm.freeSpace(ctx, store, 1-useRatio, files)
 				}
 			}
 		case <-tmpTicker.C:
 			for _, store := range bm.bstore {
-				useRatio, files := store.diskUsageRatio()
-				log.LogInfof("useRation(%v), files(%v)", useRatio, files)
-				bm.deleteTmpFile(store)
+				useRatio, files := store.diskUsageRatio(ctx)
+				span.Infof("useRation(%v), files(%v)", useRatio, files)
+				bm.deleteTmpFile(ctx, store)
 			}
 		}
 	}
 }
 
-//lru cache
-//func (bm *bcacheManager) freeSpace(index int, store *DiskStore, free float32, files int64) {
-//	var decreaseSpace int64
-//	var decreaseCnt int
-//	storeCnt := uint32(len(bm.bstore))
-//	bm.Lock()
-//	defer bm.Unlock()
-//	if free < store.freeLimit {
-//		decreaseSpace = int64((store.freeLimit - free) * (float32(store.capacity)))
-//	}
-//	if files > int64(store.limit) {
-//		decreaseCnt = int(files - int64(store.limit))
-//	}
-//	var lastKey string
-//	var lastItem cacheItem
-//	var cnt int
-//	for key, value := range bm.bcacheKeys {
-//		if int(hashKey(key)%storeCnt) == index {
-//			if cnt == 0 || lastItem.atime > value.atime {
-//				lastKey = key
-//				lastItem = value
-//			}
-//			cnt++
-//			if cnt > 1 {
-//				store.remove(lastKey)
-//				delete(bm.bcacheKeys, lastKey)
-//				decreaseSpace -= int64(value.size)
-//				decreaseCnt--
-//				cnt = 0
-//				log.LogDebugf("remove %s from cache, age: %d", lastKey, lastItem.atime)
-//				if decreaseCnt <= 0 && decreaseSpace <= 0 {
-//					break
-//				}
-//			}
-//		}
-//	}
-//
-//}
-
 // lru
-func (bm *bcacheManager) freeSpace(store *DiskStore, free float32, files int64) {
+func (bm *bcacheManager) freeSpace(ctx context.Context, store *DiskStore, free float32, files int64) {
 	var decreaseSpace int64
 	var decreaseCnt int
 
@@ -381,6 +348,7 @@ func (bm *bcacheManager) freeSpace(store *DiskStore, free float32, files int64) 
 		decreaseCnt = int(files - int64(store.limit))
 	}
 
+	span := getSpan(ctx)
 	cnt := 0
 	for {
 		if decreaseCnt <= 0 && decreaseSpace <= 0 {
@@ -399,7 +367,7 @@ func (bm *bcacheManager) freeSpace(store *DiskStore, free float32, files int64) 
 		}
 		item := element.Value.(*cacheItem)
 
-		if err := store.remove(item.key); err == nil {
+		if err := store.remove(ctx, item.key); err == nil {
 			bm.lrulist.Remove(element)
 			delete(bm.bcacheKeys, item.key)
 			decreaseSpace -= int64(item.size)
@@ -408,21 +376,21 @@ func (bm *bcacheManager) freeSpace(store *DiskStore, free float32, files int64) 
 		}
 
 		bm.Unlock()
-		log.LogDebugf("remove %v from cache", item.key)
-
+		span.Debugf("remove %v from cache", item.key)
 	}
 }
 
-func (bm *bcacheManager) reBuildCacheKeys(dir string, store *DiskStore) {
+func (bm *bcacheManager) reBuildCacheKeys(ctx context.Context, dir string, store *DiskStore) {
+	span := getSpan(ctx)
 	if _, err := os.Stat(dir); err != nil {
-		log.LogErrorf("cache dir %s is not exists", dir)
+		span.Errorf("cache dir %s is not exists", dir)
 		return
 	}
-	log.LogDebugf("reBuildCacheKeys(%s)", dir)
+	span.Debugf("reBuildCacheKeys(%s)", dir)
 	c := make(chan keyPair)
 	keyPrefix := filepath.Join(dir, Basedir)
 	go func() {
-		filepath.Walk(dir, bm.walker(c, keyPrefix, true))
+		filepath.Walk(dir, bm.walker(ctx, c, keyPrefix, true))
 		close(c)
 	}()
 
@@ -431,15 +399,16 @@ func (bm *bcacheManager) reBuildCacheKeys(dir string, store *DiskStore) {
 		element := bm.lrulist.PushBack(value.it)
 		bm.bcacheKeys[value.key] = element
 		bm.Unlock()
-		log.LogDebugf("updateStat(%v)", value.it.size)
+		span.Debugf("updateStat(%v)", value.it.size)
 		store.updateStat(value.it.size)
 	}
 }
 
-func (bm *bcacheManager) walker(c chan keyPair, prefix string, initial bool) filepath.WalkFunc {
+func (bm *bcacheManager) walker(ctx context.Context, c chan keyPair, prefix string, initial bool) filepath.WalkFunc {
+	span := getSpan(ctx)
 	return func(path string, info os.FileInfo, err error) error {
 		if err != nil {
-			log.LogWarnf("walk path %v failed %v", path, err)
+			span.Warnf("walk path %v failed %v", path, err)
 			return err
 		}
 		if info.IsDir() || !strings.HasPrefix(path, prefix) {
@@ -447,7 +416,7 @@ func (bm *bcacheManager) walker(c chan keyPair, prefix string, initial bool) fil
 		}
 		if strings.HasSuffix(path, ".tmp") && (initial || checkoutTempFileOuttime(path)) {
 			os.Remove(path)
-			log.LogDebugf("Remove tmp file %v", path)
+			span.Debugf("Remove tmp file %v", path)
 			return nil
 		}
 		_, key := filepath.Split(path)
@@ -467,9 +436,10 @@ func (bm *bcacheManager) walker(c chan keyPair, prefix string, initial bool) fil
 func (bm *bcacheManager) flush() {
 	for {
 		pending := <-bm.pending
+		span := getSpan(pending.ctx)
 		diskKv := bm.selectDiskKv(pending.Key)
-		log.LogDebugf("flush data,key(%v), dir(%v)", pending.Key, diskKv.dir)
-		if diskKv.flushKey(pending.Key, pending.Data) == nil {
+		span.Debugf("flush data, key(%v), dir(%v)", pending.Key, diskKv.dir)
+		if diskKv.flushKey(pending.ctx, pending.Key, pending.Data) == nil {
 			bm.Lock()
 			item := &cacheItem{
 				key:  pending.Key,
@@ -497,7 +467,7 @@ type DiskStore struct {
 	usedCount int64
 }
 
-func NewDiskStore(dir string, cacheSize int64, config *bcacheConfig) *DiskStore {
+func NewDiskStore(ctx context.Context, dir string, cacheSize int64, config *bcacheConfig) *DiskStore {
 	if config.Mode == 0 {
 		config.Mode = FilePerm
 	}
@@ -519,7 +489,7 @@ func NewDiskStore(dir string, cacheSize int64, config *bcacheConfig) *DiskStore 
 		freeLimit: config.FreeRatio,
 		limit:     config.Limit,
 	}
-	log.LogDebugf("ignored method DiskStore.scrub at %p", c.scrub) // TODO: ignored
+	getSpan(ctx).Debugf("ignored method DiskStore.scrub at %p", c.scrub) // TODO: ignored
 	c.checkBuildCacheDir(dir)
 	return c
 }
@@ -536,55 +506,7 @@ func (d *DiskStore) checkBuildCacheDir(dir string) {
 	}
 }
 
-//func (d *DiskStore) flushKey(key string, data []byte) error {
-//	var err error
-//	bgTime := stat.BeginStat()
-//	defer func() {
-//		stat.EndStat("Cache:Write:FlushData", err, bgTime, 1)
-//	}()
-//	cachePath := d.buildCachePath(key, d.dir)
-//	log.LogDebugf("TRACE BCacheService flushKey Enter. key(%v) cachePath(%v)", key, cachePath)
-//	d.checkBuildCacheDir(filepath.Dir(cachePath))
-//	tmp := cachePath + ".tmp"
-//	f, err := os.OpenFile(tmp, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, os.FileMode(d.mode))
-//	defer os.Remove(tmp)
-//	if err != nil {
-//		log.LogErrorf("Create block tmp file:%s err:%s!", tmp, err)
-//		return err
-//	}
-//	//encrypt
-//	encryptXOR(data)
-//	_, err = f.Write(data)
-//	if err != nil {
-//		f.Close()
-//		log.LogErrorf("Write tmp failed: file %s err %s!", tmp, err)
-//		return err
-//	}
-//	err = f.Close()
-//	if err != nil {
-//		log.LogErrorf("Close tmp failed: file:%s err:%s!", tmp, err)
-//		return err
-//	}
-//	info, err := os.Stat(cachePath)
-//	//if already cached
-//	if !os.IsNotExist(err) {
-//		atomic.AddInt64(&d.usedSize, -(info.Size()))
-//		atomic.AddInt64(&d.usedCount, -1)
-//		os.Remove(cachePath)
-//	}
-//	err = os.Rename(tmp, cachePath)
-//	if err != nil {
-//		log.LogErrorf("Rename block tmp file:%s err:%s!", tmp, err)
-//		return err
-//	}
-//	atomic.AddInt64(&d.usedSize, int64(len(data)))
-//	atomic.AddInt64(&d.usedCount, 1)
-//	log.LogDebugf("TRACE BCacheService flushKey Exit. key(%v) cachePath(%v)", key, cachePath)
-//	return nil
-//
-//}
-
-func (d *DiskStore) flushKey(key string, data []byte) error {
+func (d *DiskStore) flushKey(ctx context.Context, key string, data []byte) error {
 	var err error
 	bgTime := stat.BeginStat()
 	defer func() {
@@ -596,13 +518,14 @@ func (d *DiskStore) flushKey(key string, data []byte) error {
 	if err == nil && info.Size() > 0 {
 		return nil
 	}
-	log.LogDebugf("TRACE BCacheService flushKey Enter. key(%v) cachePath(%v)", key, cachePath)
+	span := getSpan(ctx)
+	span.Debugf("TRACE BCacheService flushKey Enter. key(%v) cachePath(%v)", key, cachePath)
 	d.checkBuildCacheDir(filepath.Dir(cachePath))
 	tmp := cachePath + ".tmp"
 	f, err := os.OpenFile(tmp, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, os.FileMode(d.mode))
 	defer os.Remove(tmp)
 	if err != nil {
-		log.LogWarnf("Create block tmp file:%s err:%s!", tmp, err)
+		span.Warnf("Create block tmp file:%s err:%s!", tmp, err)
 		return err
 	}
 	// encrypt
@@ -610,12 +533,12 @@ func (d *DiskStore) flushKey(key string, data []byte) error {
 	_, err = f.Write(data)
 	if err != nil {
 		f.Close()
-		log.LogErrorf("Write tmp failed: file %s err %s!", tmp, err)
+		span.Errorf("Write tmp failed: file %s err %s!", tmp, err)
 		return err
 	}
 	err = f.Close()
 	if err != nil {
-		log.LogErrorf("Close tmp failed: file:%s err:%s!", tmp, err)
+		span.Errorf("Close tmp failed: file:%s err:%s!", tmp, err)
 		return err
 	}
 	//info, err := os.Stat(cachePath)
@@ -627,30 +550,31 @@ func (d *DiskStore) flushKey(key string, data []byte) error {
 	//}
 	err = os.Rename(tmp, cachePath)
 	if err != nil {
-		log.LogErrorf("Rename block tmp file:%s err:%s!", tmp, err)
+		span.Errorf("Rename block tmp file:%s err:%s!", tmp, err)
 		return err
 	}
 	atomic.AddInt64(&d.usedSize, int64(len(data)))
 	atomic.AddInt64(&d.usedCount, 1)
-	log.LogDebugf("TRACE BCacheService flushKey Exit. key(%v) cachePath(%v)", key, cachePath)
+	span.Debugf("TRACE BCacheService flushKey Exit. key(%v) cachePath(%v)", key, cachePath)
 	return nil
 }
 
-func (d *DiskStore) load(key string) (ReadCloser, error) {
+func (d *DiskStore) load(ctx context.Context, key string) (ReadCloser, error) {
+	span := getSpan(ctx)
 	cachePath := d.buildCachePath(key, d.dir)
-	log.LogDebugf("TRACE BCacheService load Enter. key(%v) cachePath(%v)", key, cachePath)
+	span.Debugf("TRACE BCacheService load Enter. key(%v) cachePath(%v)", key, cachePath)
 	//if _, err := os.Stat(cachePath); err != nil {
 	//	return nil, errors.NewError(os.ErrNotExist)
 	//}
 	f, err := os.OpenFile(cachePath, os.O_RDONLY, os.FileMode(d.mode))
-	log.LogDebugf("TRACE BCacheService load Exit. err(%v)", err)
+	span.Debugf("TRACE BCacheService load Exit. err(%v)", err)
 	return f, err
 }
 
-func (d *DiskStore) remove(key string) (err error) {
+func (d *DiskStore) remove(ctx context.Context, key string) (err error) {
 	var size int64
 	cachePath := d.buildCachePath(key, d.dir)
-	log.LogDebugf("remove. cachePath(%v)", cachePath)
+	getSpan(ctx).Debugf("remove. cachePath(%v)", cachePath)
 	if info, err := os.Stat(cachePath); err == nil {
 		size = info.Size()
 		if err = os.Remove(cachePath); err == nil {
@@ -669,8 +593,8 @@ func (d *DiskStore) buildCachePath(key string, dir string) string {
 	return fmt.Sprintf("%s/blocks/%d/%d/%s", dir, hashKey(key)&0xFFF%512, inodeId%512, key)
 }
 
-func (d *DiskStore) diskUsageRatio() (float32, int64) {
-	log.LogDebugf("usedSize(%v), usedCount(%v)", atomic.LoadInt64(&d.usedSize), atomic.LoadInt64(&d.usedCount))
+func (d *DiskStore) diskUsageRatio(ctx context.Context) (float32, int64) {
+	getSpan(ctx).Debugf("usedSize(%v), usedCount(%v)", atomic.LoadInt64(&d.usedSize), atomic.LoadInt64(&d.usedCount))
 	if atomic.LoadInt64(&d.usedSize) < 0 || atomic.LoadInt64(&d.usedCount) < 0 {
 		return 0, 0
 	}
@@ -711,24 +635,24 @@ func (d *DiskStore) getPath(key string) string {
 	return cachePath
 }
 
-func (bm *bcacheManager) deleteTmpFile(store *DiskStore) {
+func (bm *bcacheManager) deleteTmpFile(ctx context.Context, store *DiskStore) {
+	span := getSpan(ctx)
 	if _, err := os.Stat(store.dir); err != nil {
-		log.LogErrorf("cache dir %s is not exists", store.dir)
+		span.Errorf("cache dir %s is not exists", store.dir)
 		return
 	}
-	log.LogDebugf("clear tmp files in %v", store.dir)
+	span.Debugf("clear tmp files in %v", store.dir)
 	c := make(chan keyPair)
 	keyPrefix := filepath.Join(store.dir, Basedir)
-	log.LogDebugf("keyPrefix %v", keyPrefix)
+	span.Debugf("keyPrefix %v", keyPrefix)
 	go func() {
-		filepath.Walk(store.dir, bm.walker(c, keyPrefix, false))
+		filepath.Walk(store.dir, bm.walker(ctx, c, keyPrefix, false))
 		close(c)
 	}()
 	// consume chan
 	for range c {
 	}
-
-	log.LogDebugf("clear tmp files end%v", store.dir)
+	span.Debugf("clear tmp files end %v", store.dir)
 }
 
 func checkoutTempFileOuttime(file string) bool {

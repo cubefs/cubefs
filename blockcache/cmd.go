@@ -28,6 +28,7 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/cubefs/cubefs/blobstore/common/trace"
 	"github.com/cubefs/cubefs/blockcache/bcache"
 	"github.com/cubefs/cubefs/cmd/common"
 	"github.com/cubefs/cubefs/proto"
@@ -38,6 +39,7 @@ import (
 	sysutil "github.com/cubefs/cubefs/util/sys"
 	"github.com/cubefs/cubefs/util/ump"
 	"github.com/jacobsa/daemonize"
+	"gopkg.in/natefinch/lumberjack.v2"
 )
 
 //TODO: remove this later.
@@ -152,31 +154,27 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Init logging
-	var (
-		level log.Level
-	)
+	level := log.Lerror
 	switch strings.ToLower(logLevel) {
 	case "debug":
-		level = log.DebugLevel
+		level = log.Ldebug
 	case "info":
-		level = log.InfoLevel
+		level = log.Linfo
 	case "warn":
-		level = log.WarnLevel
+		level = log.Lwarn
 	case "error":
-		level = log.ErrorLevel
+		level = log.Lerror
 	default:
-		level = log.ErrorLevel
 	}
-
-	_, err = log.InitLog(logDir, module, level, nil, log.DefaultLogLeftSpaceLimit)
-	if err != nil {
-		err = errors.NewErrorf("Fatal: failed to init log - %v", err)
-		fmt.Println(err)
-		daemonize.SignalOutcome(err)
-		os.Exit(1)
-	}
-	defer log.LogFlush()
+	log.SetOutputLevel(level)
+	log.SetOutput(&lumberjack.Logger{
+		Filename:   path.Join(logDir, module, module+".log"),
+		MaxSize:    1024,
+		MaxAge:     7,
+		MaxBackups: 7,
+		LocalTime:  true,
+		Compress:   true,
+	})
 
 	// Init output file
 	outputFilePath := path.Join(logDir, module, LoggerOutput)
@@ -188,10 +186,9 @@ func main() {
 		os.Exit(1)
 	}
 	// stat log
-	_, err = stat.NewStatistic(logDir, "blockcache", int64(stat.DefaultStatLogSize),
-		stat.DefaultTimeOutUs, true)
+	_, err = stat.NewStatistic(logDir, module, stat.DefaultStatLogSize, stat.DefaultTimeOutUs, true)
 	if err != nil {
-		err = errors.NewErrorf("Init stat log fail: %v\n", err)
+		err = errors.NewErrorf("Init stat log fail: %v", err)
 		fmt.Println(err)
 		daemonize.SignalOutcome(err)
 		os.Exit(1)
@@ -224,7 +221,6 @@ func main() {
 	// for multi-cpu scheduling
 	runtime.GOMAXPROCS(runtime.NumCPU())
 	if err = ump.InitUmp(role, umpDatadir); err != nil {
-		log.LogFlush()
 		err = errors.NewErrorf("Fatal: failed to init ump warnLogDir - %v", err)
 		syslog.Println(err)
 		daemonize.SignalOutcome(err)
@@ -246,13 +242,15 @@ func main() {
 				if strings.HasPrefix(req.URL.Path, "/debug/") {
 					mux.ServeHTTP(w, req)
 				} else {
+					span, ctx := trace.StartSpanFromHTTPHeaderSafe(req, "")
+					defer span.Finish()
+					req = req.WithContext(proto.ContextWithSpan(ctx, span))
 					http.DefaultServeMux.ServeHTTP(w, req)
 				}
 			})
 			mainMux.Handle("/", mainHandler)
 			e := http.ListenAndServe(fmt.Sprintf(":%v", profPort), mainMux)
 			if e != nil {
-				log.LogFlush()
 				err = errors.NewErrorf("cannot listen pprof %v err %v", profPort, err)
 				syslog.Println(err)
 				daemonize.SignalOutcome(err)
@@ -264,7 +262,6 @@ func main() {
 	interceptSignal(server)
 	err = server.Start(cfg)
 	if err != nil {
-		log.LogFlush()
 		err = errors.NewErrorf("Fatal: failed to start the CubeFS %s daemon err %v - ", role, err)
 		syslog.Println(err)
 		daemonize.SignalOutcome(err)
@@ -275,7 +272,6 @@ func main() {
 
 	// Block main goroutine until server shutdown.
 	server.Sync()
-	log.LogFlush()
 	os.Exit(0)
 }
 
