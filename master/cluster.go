@@ -1520,7 +1520,7 @@ func (c *Cluster) createDataPartition(volName string, preload *DataPartitionPreL
 			var diskPath string
 
 			if diskPath, err = c.syncCreateDataPartitionToDataNode(host, vol.dataPartitionSize,
-				dp, dp.Peers, dp.Hosts, proto.NormalCreateDataPartition, dp.PartitionType, false); err != nil {
+				dp, dp.Peers, dp.Hosts, proto.NormalCreateDataPartition, dp.PartitionType, false, false); err != nil {
 				errChannel <- err
 				return
 			}
@@ -1576,13 +1576,19 @@ errHandler:
 }
 
 func (c *Cluster) syncCreateDataPartitionToDataNode(host string, size uint64, dp *DataPartition,
-	peers []proto.Peer, hosts []string, createType int, partitionType int, needRollBack bool) (diskPath string, err error) {
-	log.LogInfof("action[syncCreateDataPartitionToDataNode] dp [%v] createtype[%v], partitionType[%v]", dp.PartitionID, createType, partitionType)
+	peers []proto.Peer, hosts []string, createType int, partitionType int, needRollBack, ignoreDecommissionDisk bool) (diskPath string, err error) {
+	log.LogInfof("action[syncCreateDataPartitionToDataNode] dp [%v] createType[%v], partitionType[%v] ignoreDecommissionDisk[%v]",
+		dp.PartitionID, createType, partitionType, ignoreDecommissionDisk)
 	dataNode, err := c.dataNode(host)
 	if err != nil {
 		return
 	}
-	task := dp.createTaskToCreateDataPartition(host, size, peers, hosts, createType, partitionType, dataNode.getDecommissionedDisks())
+	var task *proto.AdminTask
+	if ignoreDecommissionDisk {
+		task = dp.createTaskToCreateDataPartition(host, size, peers, hosts, createType, partitionType, []string{})
+	} else {
+		task = dp.createTaskToCreateDataPartition(host, size, peers, hosts, createType, partitionType, dataNode.getDecommissionedDisks())
+	}
 	var resp *proto.Packet
 	if resp, err = dataNode.TaskManager.syncSendAdminTask(task); err != nil {
 		// data node is not alive or other process error
@@ -2013,7 +2019,7 @@ func (c *Cluster) decommissionSingleDp(dp *DataPartition, newAddr, offlineAddr s
 	}()
 	// 1. add new replica first
 	if dp.GetSpecialReplicaDecommissionStep() == SpecialDecommissionEnter {
-		if err = c.addDataReplica(dp, newAddr); err != nil {
+		if err = c.addDataReplica(dp, newAddr, false); err != nil {
 			err = fmt.Errorf("action[decommissionSingleDp] dp %v addDataReplica fail err %v", dp.PartitionID, err)
 			goto ERR
 		}
@@ -2208,7 +2214,7 @@ func (c *Cluster) autoAddDataReplica(dp *DataPartition) (success bool, err error
 	}
 
 	newAddr = targetHosts[0]
-	if err = c.addDataReplica(dp, newAddr); err != nil {
+	if err = c.addDataReplica(dp, newAddr, false); err != nil {
 		goto errHandler
 	}
 
@@ -2357,7 +2363,7 @@ func (c *Cluster) migrateDataPartition(srcAddr, targetAddr string, dp *DataParti
 		if err = c.removeDataReplica(dp, srcAddr, false, raftForce); err != nil {
 			goto errHandler
 		}
-		if err = c.addDataReplica(dp, newAddr); err != nil {
+		if err = c.addDataReplica(dp, newAddr, false); err != nil {
 			goto errHandler
 		}
 
@@ -2437,7 +2443,7 @@ func (c *Cluster) validateDecommissionDataPartition(dp *DataPartition, offlineAd
 	return
 }
 
-func (c *Cluster) addDataReplica(dp *DataPartition, addr string) (err error) {
+func (c *Cluster) addDataReplica(dp *DataPartition, addr string, ignoreDecommissionDisk bool) (err error) {
 	defer func() {
 		if err != nil {
 			log.LogErrorf("action[addDataReplica],vol[%v],dp %v ,err[%v]", dp.VolName, dp.PartitionID, err)
@@ -2446,7 +2452,7 @@ func (c *Cluster) addDataReplica(dp *DataPartition, addr string) (err error) {
 		}
 	}()
 
-	log.LogInfof("action[addDataReplica]  dp %v try add replica dst addr %v try add raft member", dp.PartitionID, addr)
+	log.LogInfof("action[addDataReplica]  dp %v enter %v", dp.PartitionID, ignoreDecommissionDisk)
 
 	dp.addReplicaMutex.Lock()
 	defer dp.addReplicaMutex.Unlock()
@@ -2467,8 +2473,9 @@ func (c *Cluster) addDataReplica(dp *DataPartition, addr string) (err error) {
 		log.LogWarnf("action[addDataReplica] dp %v addr %v try add raft member err [%v]", dp.PartitionID, addr, err)
 		return
 	}
-	log.LogInfof("action[addDataReplica] dp %v addr %v try create data replica", dp.PartitionID, addr)
-	if err = c.createDataReplica(dp, addPeer); err != nil {
+	log.LogInfof("action[addDataReplica] dp %v addr %v try create data replica ignoreDecommissionDisk %v",
+		dp.PartitionID, addr, ignoreDecommissionDisk)
+	if err = c.createDataReplica(dp, addPeer, ignoreDecommissionDisk); err != nil {
 		log.LogWarnf("action[addDataReplica] dp %v addr %v createDataReplica err [%v]", dp.PartitionID, addr, err)
 		return
 	}
@@ -2606,7 +2613,7 @@ func (c *Cluster) addDataPartitionRaftMember(dp *DataPartition, addPeer proto.Pe
 	return
 }
 
-func (c *Cluster) createDataReplica(dp *DataPartition, addPeer proto.Peer) (err error) {
+func (c *Cluster) createDataReplica(dp *DataPartition, addPeer proto.Peer, ignoreDecommissionDisk bool) (err error) {
 	vol, err := c.getVol(dp.VolName)
 	if err != nil {
 		return
@@ -2620,7 +2627,7 @@ func (c *Cluster) createDataReplica(dp *DataPartition, addPeer proto.Peer) (err 
 	dp.RUnlock()
 
 	diskPath, err := c.syncCreateDataPartitionToDataNode(addPeer.Addr, vol.dataPartitionSize,
-		dp, peers, hosts, proto.DecommissionedCreateDataPartition, dp.PartitionType, true)
+		dp, peers, hosts, proto.DecommissionedCreateDataPartition, dp.PartitionType, true, ignoreDecommissionDisk)
 	if err != nil {
 		return
 	}

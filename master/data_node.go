@@ -491,7 +491,9 @@ func (dataNode *DataNode) markDecommission(targetAddr string, raftForce bool, li
 
 func (dataNode *DataNode) canMarkDecommission() bool {
 	status := dataNode.GetDecommissionStatus()
-	return status == DecommissionInitial || status == DecommissionPause || status == DecommissionFail
+	// After partial decommissioning, it is still possible to decommission further
+	return status == DecommissionInitial || status == DecommissionPause || status == DecommissionFail ||
+		status == DecommissionSuccess
 }
 
 func (dataNode *DataNode) markDecommissionSuccess(c *Cluster) {

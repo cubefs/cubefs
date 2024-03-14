@@ -1219,7 +1219,7 @@ func (partition *DataPartition) Decommission(c *Cluster) bool {
 		if err = c.removeDataReplica(partition, srcAddr, false, partition.DecommissionRaftForce); err != nil {
 			goto errHandler
 		}
-		if err = c.addDataReplica(partition, targetAddr); err != nil {
+		if err = c.addDataReplica(partition, targetAddr, false); err != nil {
 			goto errHandler
 		}
 		newReplica, _ := partition.getReplica(targetAddr)
@@ -1707,7 +1707,7 @@ func (partition *DataPartition) needRollback(c *Cluster) bool {
 		log.LogDebugf("action[needRollback]try add restore replica, dp[%v]DecommissionNeedRollbackTimes[%v]",
 			partition.PartitionID, partition.DecommissionNeedRollbackTimes)
 		partition.DecommissionNeedRollback = false
-		err := c.addDataReplica(partition, partition.DecommissionSrcAddr)
+		err := c.addDataReplica(partition, partition.DecommissionSrcAddr, true)
 		if err != nil {
 			log.LogWarnf("action[needRollback]dp[%v] recover decommission src replica %v failed: %v",
 				partition.PartitionID, partition.DecommissionSrcAddr, err)
@@ -1717,30 +1717,7 @@ func (partition *DataPartition) needRollback(c *Cluster) bool {
 			log.LogWarnf("action[needRollback]dp[%v] remove decommission dst replica %v failed: %v",
 				partition.PartitionID, partition.DecommissionDstAddr, err)
 		}
-		partition.ResetDecommissionStatus()
-		partition.SetDecommissionStatus(DecommissionFail)
 		return false
 	}
 	return true
-}
-
-func (partition *DataPartition) restoreReplica(c *Cluster) {
-	var err error
-
-	err = c.removeDataReplica(partition, partition.DecommissionDstAddr, false, false)
-	if err != nil {
-		log.LogWarnf("action[restoreReplica]dp[%v] rollback to del replica[%v] failed:%v",
-			partition.PartitionID, partition.DecommissionDstAddr, err.Error())
-	} else {
-		log.LogDebugf("action[restoreReplica]dp[%v] rollback to del replica[%v] success",
-			partition.PartitionID, partition.DecommissionDstAddr)
-	}
-
-	err = c.addDataReplica(partition, partition.DecommissionSrcAddr)
-	if err != nil {
-		log.LogWarnf("action[restoreReplica]dp[%v] recover decommission src replica failed", partition.PartitionID)
-	} else {
-		log.LogDebugf("action[restoreReplica]dp[%v] rollback to add replica[%v] success",
-			partition.PartitionID, partition.DecommissionSrcAddr)
-	}
 }

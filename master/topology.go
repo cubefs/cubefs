@@ -2250,7 +2250,6 @@ func (l *DecommissionDataPartitionList) traverse(c *Cluster) {
 					c.syncUpdateDataPartition(dp)
 				} else if dp.IsDecommissionFailed() {
 					if !dp.tryRollback(c) {
-						dp.restoreReplica(c)
 						log.LogDebugf("action[DecommissionListTraverse]Remove dp[%v] for fail",
 							dp.PartitionID)
 						l.Remove(dp)
