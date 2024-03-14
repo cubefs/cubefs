@@ -445,7 +445,7 @@ func initMockData() {
 		}, cmcli, proxycli, nil)
 
 	proxyClient = proxycli
-	volumeGetter, _ = controller.NewVolumeGetter(clusterID, serviceController, proxyClient, 0)
+	volumeGetter, _ = controller.NewVolumeGetter(clusterID, serviceController, proxyClient, 0, 0)
 	allocMgr, _ = controller.NewVolumeMgr(context.Background(), controller.VolumeMgrConfig{
 		VolConfig: controller.VolConfig{
 			ClusterID: clusterID,
@@ -459,6 +459,7 @@ func initMockData() {
 	c.EXPECT().GetServiceController(gomock.Any()).AnyTimes().Return(serviceController, nil)
 	c.EXPECT().GetVolumeGetter(gomock.Any()).AnyTimes().Return(volumeGetter, nil)
 	c.EXPECT().GetVolumeAllocator(gomock.Any()).AnyTimes().Return(allocMgr, nil)
+	c.EXPECT().All().AnyTimes().Return([]*clustermgr.ClusterInfo{clusterInfo})
 	c.EXPECT().ChangeChooseAlg(gomock.Any()).AnyTimes().DoAndReturn(
 		func(alg controller.AlgChoose) error {
 			if alg < 10 {
@@ -537,9 +538,9 @@ func initController() {
 		broken:  make(map[proto.Vuid]bool),
 		blocked: make(map[proto.Vuid]bool),
 		block: func() {
-			time.Sleep(200 * time.Millisecond)
+			time.Sleep(400 * time.Millisecond)
 		},
-		duration:      200 * time.Millisecond,
+		duration:      400 * time.Millisecond,
 		isBNRealError: false,
 	}
 	// initialized broken 1005
@@ -595,7 +596,9 @@ func init() {
 		discardVidChan: make(chan discardVid, 8),
 		stopCh:         make(chan struct{}),
 	}
+	streamer.ClusterConfig.VolumeReleaseSecs = 3
 	streamer.loopDiscardVids()
+	streamer.loopReleaseVids()
 }
 
 func ctxWithName(funcName string) func() context.Context {

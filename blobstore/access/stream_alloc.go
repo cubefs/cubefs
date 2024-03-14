@@ -118,7 +118,7 @@ func (h *Handler) allocFromAllocator(ctx context.Context, codeMode codemode.Code
 			return err
 		}
 
-		allocRets, err = allocMgr.Alloc(ctx, &args)
+		allocRets, err = allocMgr.Alloc(ctx, &args) // alloc bid and volume
 		if err != nil {
 			return errors.Base(err, "alloc failed")
 		}

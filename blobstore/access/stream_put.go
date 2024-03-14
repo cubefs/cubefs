@@ -231,7 +231,7 @@ func (h *Handler) writeToBlobnodes(ctx context.Context,
 
 	wg.Add(len(volume.Units))
 	// 1: has broken disk, need normal release volume ; 2: need sealed release volume
-	releaseType := releaseVolumeInvalid
+	release := releaseTypeInit
 	for i, unitI := range volume.Units {
 		index, unit := i, unitI
 
@@ -296,7 +296,7 @@ func (h *Handler) writeToBlobnodes(ctx context.Context,
 
 				code := rpc.DetectStatusCode(err)
 				if code == errcode.CodeDiskBroken {
-					releaseType = releaseVolumeNormal
+					release = releaseTypeNormal
 				}
 				switch code {
 				case errcode.CodeDiskBroken, errcode.CodeDiskNotFound,
@@ -403,14 +403,15 @@ func (h *Handler) writeToBlobnodes(ctx context.Context,
 			failIdxes.Store(uint8(idx))
 		}
 		if failIdxes.Len() > tactic.M {
-			go h.releaseVolume(ctx, clusterID, volume.CodeMode, releaseVolumeSealed, vid)
-			h.failVids.Delete(vid)
+			if _, ok := h.failVids.LoadAndDelete(vid); ok { // prevent duplicate marking sealed
+				h.releaseVolume(ctx, clusterID, volume.CodeMode, releaseTypeSealed, vid)
+			}
 		}
 	}(writeDone)
 
 	defer func() {
-		if releaseType > releaseVolumeInvalid {
-			go h.releaseVolume(ctx, clusterID, volume.CodeMode, releaseType, vid)
+		if release > releaseTypeInit {
+			h.releaseVolume(ctx, clusterID, volume.CodeMode, release, vid)
 		}
 	}()
 
@@ -457,7 +458,7 @@ func (h *Handler) writeToBlobnodes(ctx context.Context,
 	close(writeDone)
 	err = fmt.Errorf("quorum write failed (%d < %d) of %s", writtenNum, putQuorum, blob.String())
 	// need mark sealed: less than quorum, az fail
-	releaseType = releaseVolumeSealed
+	release = releaseTypeSealed
 	return
 }
 
