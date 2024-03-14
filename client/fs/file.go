@@ -442,7 +442,7 @@ func (f *File) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.Wri
 		}
 	} else {
 		atomic.StoreInt32(&f.idle, 0)
-		size, err = f.fWriter.Write(ctx, int(req.Offset), req.Data, flags)
+		size, err = f.fWriter.Write(context.Background(), int(req.Offset), req.Data, flags)
 	}
 	if err != nil {
 		msg := fmt.Sprintf("Write: ino(%v) offset(%v) len(%v) err(%v)", ino, req.Offset, reqlen, err)
@@ -498,7 +498,7 @@ func (f *File) Flush(ctx context.Context, req *fuse.FlushRequest) (err error) {
 		err = f.super.ec.Flush(f.info.Inode)
 	} else {
 		f.Lock()
-		err = f.fWriter.Flush(f.info.Inode, ctx)
+		err = f.fWriter.Flush(f.info.Inode, context.Background())
 		f.Unlock()
 	}
 	log.LogDebugf("TRACE Flush: ino(%v) err(%v)", f.info.Inode, err)
@@ -531,7 +531,7 @@ func (f *File) Fsync(ctx context.Context, req *fuse.FsyncRequest) (err error) {
 	if proto.IsHot(f.super.volType) {
 		err = f.super.ec.Flush(f.info.Inode)
 	} else {
-		err = f.fWriter.Flush(f.info.Inode, ctx)
+		err = f.fWriter.Flush(f.info.Inode, context.Background())
 	}
 	if err != nil {
 		msg := fmt.Sprintf("Fsync: ino(%v) err(%v)", f.info.Inode, err)
