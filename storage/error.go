@@ -28,6 +28,7 @@ var (
 	ForbiddenDataPartitionError = errors.New("the data partition is forbidden")
 	ForbiddenMetaPartitionError = errors.New("meta partition is forbidden")
 	TryAgainError               = errors.New("try again")
+	LimitedIoError              = errors.New("limited io error")
 	CrcMismatchError            = errors.New("packet Crc is incorrect")
 	NoLeaderError               = errors.New("no raft leader")
 	ExtentNotFoundError         = errors.New("extent does not exist")

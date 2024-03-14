@@ -221,6 +221,9 @@ const (
 	OpTxCommitErr             uint8 = 0xEC
 	OpTxRollbackErr           uint8 = 0xED
 	OpTxUnknownOp             uint8 = 0xEE
+
+	// io speed limit
+	OpLimitedIoErr uint8 = 0xB1
 )
 
 const (
@@ -602,6 +605,8 @@ func (p *Packet) GetResultMsg() (m string) {
 		m = "OpUploadPartConflictErr"
 	case OpForbidErr:
 		m = "OpForbidErr"
+	case OpLimitedIoErr:
+		m = "OpLimitedIoErr"
 	default:
 		return fmt.Sprintf("Unknown ResultCode(%v)", p.ResultCode)
 	}

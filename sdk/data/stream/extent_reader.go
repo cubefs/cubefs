@@ -83,6 +83,11 @@ func (reader *ExtentReader) Read(req *ExtentRequest) (readBytes int, err error) 
 				return nil, true
 			}
 
+			if replyPacket.ResultCode == proto.OpLimitedIoErr {
+				// NOTE: use special errors to retry
+				return LimitedIoError, true
+			}
+
 			e = reader.checkStreamReply(reqPacket, replyPacket)
 			if e != nil {
 				log.LogWarnf("checkStreamReply failed:(%v)", replyPacket.GetResultMsg())

@@ -30,6 +30,7 @@ import (
 var (
 	TryOtherAddrError = errors.New("TryOtherAddrError")
 	DpDiscardError    = errors.New("DpDiscardError")
+	LimitedIoError    = errors.New("LimitedIoError")
 )
 
 const (
@@ -176,6 +177,10 @@ func (sc *StreamConn) sendToConn(conn *net.TCPConn, req *Packet, getReply GetRep
 				log.LogWarnf("sendToConn: getReply error and RETURN, addr(%v) reqPacket(%v) err(%v)", sc.currAddr, req, err)
 			}
 			break
+		}
+		// NOTE: if we meet a try again error
+		if err == LimitedIoError {
+			i -= 1
 		}
 
 		log.LogWarnf("sendToConn: getReply error and will RETRY, sc(%v) err(%v)", sc, err)
