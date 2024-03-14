@@ -46,7 +46,7 @@ func (m *RaftCmd) Unmarshal(data []byte) (err error) {
 func (m *RaftCmd) setOpType() {
 	keyArr := strings.Split(m.K, keySeparator)
 	if len(keyArr) < 2 {
-		log.LogWarnf("action[setOpType] invalid length[%v]", keyArr)
+		log.Warnf("action[setOpType] invalid length[%v]", keyArr)
 		return
 	}
 	switch keyArr[1] {
@@ -55,7 +55,7 @@ func (m *RaftCmd) setOpType() {
 	case akAcronym:
 		m.Op = opSyncAddKey
 	default:
-		log.LogWarnf("action[setOpType] unknown opCode[%v]", keyArr[1])
+		log.Warnf("action[setOpType] unknown opCode[%v]", keyArr[1])
 	}
 }
 
@@ -119,7 +119,7 @@ func (c *Cluster) syncPutAccessKeyInfo(opType uint32, accessKeyInfo *keystore.Ac
 
 func (c *Cluster) loadKeystore() (err error) {
 	ks := make(map[string]*keystore.KeyInfo, 0)
-	log.LogInfof("action[loadKeystore]")
+	log.Info("action[loadKeystore]")
 	result, err := c.fsm.store.SeekForPrefix([]byte(ksPrefix))
 	if err != nil {
 		err = fmt.Errorf("action[loadKeystore],err:%v", err.Error())
@@ -134,7 +134,7 @@ func (c *Cluster) loadKeystore() (err error) {
 		if _, ok := ks[k.ID]; !ok {
 			ks[k.ID] = k
 		}
-		log.LogInfof("action[loadKeystore],key[%v]", k)
+		log.Infof("action[loadKeystore],key[%v]", k)
 	}
 	c.fsm.ksMutex.Lock()
 	defer c.fsm.ksMutex.Unlock()
@@ -151,7 +151,7 @@ func (c *Cluster) clearKeystore() {
 
 func (c *Cluster) loadAKstore() (err error) {
 	aks := make(map[string]*keystore.AccessKeyInfo, 0)
-	log.LogInfof("action[loadAccessKeystore]")
+	log.Info("action[loadAccessKeystore]")
 	result, err := c.fsm.store.SeekForPrefix([]byte(akPrefix))
 	if err != nil {
 		err = fmt.Errorf("action[loadAccessKeystore], err: %v", err.Error())
@@ -166,7 +166,7 @@ func (c *Cluster) loadAKstore() (err error) {
 		if _, ok := aks[ak.AccessKey]; !ok {
 			aks[ak.AccessKey] = ak
 		}
-		log.LogInfof("action[loadAccessKeystore], access key[%v]", ak)
+		log.Infof("action[loadAccessKeystore], access key[%v]", ak)
 	}
 	c.fsm.aksMutex.Lock()
 	defer c.fsm.aksMutex.Unlock()

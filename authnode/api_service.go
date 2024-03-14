@@ -44,7 +44,7 @@ func (m *Server) getTicket(w http.ResponseWriter, r *http.Request) {
 	)
 
 	if m.metaReady == false {
-		log.LogWarnf("action[handlerWithInterceptor] leader meta has not ready")
+		log.Warnf("action[handlerWithInterceptor] leader meta has not ready")
 		http.Error(w, m.leaderInfo.addr, http.StatusBadRequest)
 	}
 
@@ -664,7 +664,7 @@ func newSuccessHTTPAuthReply(data interface{}) *proto.HTTPAuthReply {
 func sendOkReply(w http.ResponseWriter, r *http.Request, HTTPAuthReply *proto.HTTPAuthReply) (err error) {
 	reply, err := json.Marshal(HTTPAuthReply)
 	if err != nil {
-		log.LogErrorf("fail to marshal http reply[%v]. URL[%v],remoteAddr[%v] err:[%v]", HTTPAuthReply, r.URL, r.RemoteAddr, err)
+		log.Errorf("fail to marshal http reply[%v]. URL[%v],remoteAddr[%v] err:[%v]", HTTPAuthReply, r.URL, r.RemoteAddr, err)
 		http.Error(w, "fail to marshal http reply", http.StatusBadRequest)
 		return
 	}
@@ -676,10 +676,10 @@ func send(w http.ResponseWriter, r *http.Request, reply []byte) {
 	w.Header().Set("content-type", "application/json")
 	w.Header().Set("Content-Length", strconv.Itoa(len(reply)))
 	if _, err := w.Write(reply); err != nil {
-		log.LogErrorf("fail to write http reply[%s] len[%d].URL[%v],remoteAddr[%v] err:[%v]", string(reply), len(reply), r.URL, r.RemoteAddr, err)
+		log.Errorf("fail to write http reply[%s] len[%d].URL[%v],remoteAddr[%v] err:[%v]", string(reply), len(reply), r.URL, r.RemoteAddr, err)
 		return
 	}
-	log.LogInfof("URL[%v],remoteAddr[%v],response ok", r.URL, r.RemoteAddr)
+	log.Infof("URL[%v],remoteAddr[%v],response ok", r.URL, r.RemoteAddr)
 	return
 }
 
@@ -688,17 +688,17 @@ func keyNotFound(name string) (err error) {
 }
 
 func sendErrReply(w http.ResponseWriter, r *http.Request, HTTPAuthReply *proto.HTTPAuthReply) {
-	log.LogInfof("URL[%v],remoteAddr[%v],response err[%v]", r.URL, r.RemoteAddr, HTTPAuthReply)
+	log.Infof("URL[%v],remoteAddr[%v],response err[%v]", r.URL, r.RemoteAddr, HTTPAuthReply)
 	reply, err := json.Marshal(HTTPAuthReply)
 	if err != nil {
-		log.LogErrorf("fail to marshal http reply[%v]. URL[%v],remoteAddr[%v] err:[%v]", HTTPAuthReply, r.URL, r.RemoteAddr, err)
+		log.Errorf("fail to marshal http reply[%v]. URL[%v],remoteAddr[%v] err:[%v]", HTTPAuthReply, r.URL, r.RemoteAddr, err)
 		http.Error(w, "fail to marshal http reply", http.StatusBadRequest)
 		return
 	}
 	w.Header().Set("content-type", "application/json")
 	w.Header().Set("Content-Length", strconv.Itoa(len(reply)))
 	if _, err = w.Write(reply); err != nil {
-		log.LogErrorf("fail to write http reply[%s] len[%d].URL[%v],remoteAddr[%v] err:[%v]", string(reply), len(reply), r.URL, r.RemoteAddr, err)
+		log.Errorf("fail to write http reply[%s] len[%d].URL[%v],remoteAddr[%v] err:[%v]", string(reply), len(reply), r.URL, r.RemoteAddr, err)
 	}
 	return
 }

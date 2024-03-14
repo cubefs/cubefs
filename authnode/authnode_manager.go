@@ -29,11 +29,11 @@ type LeaderInfo struct {
 
 func (m *Server) handleLeaderChange(leader uint64) {
 	if leader == 0 {
-		log.LogWarnf("action[handleLeaderChange] but no leader")
+		log.Warn("action[handleLeaderChange] but no leader")
 		return
 	}
 	m.leaderInfo.addr = AddrDatabase[leader]
-	log.LogWarnf("action[handleLeaderChange] change leader to [%v] ", m.leaderInfo.addr)
+	log.Warnf("action[handleLeaderChange] change leader to [%v] ", m.leaderInfo.addr)
 	m.authProxy = m.newAuthProxy() // TODO no lock?
 
 	if m.metaReady == false {
@@ -66,12 +66,12 @@ func (m *Server) handlePeerChange(confChange *proto.ConfChange) (err error) {
 	default:
 		// do nothing
 	}
-	log.LogWarnf(msg)
+	log.Warn(msg)
 	return
 }
 
 func (m *Server) handleApplySnapshot() {
-	log.LogInfof("clusterID[%v] peerID:%v action[handleApplySnapshot]", m.clusterName, m.id)
+	log.Infof("clusterID[%v] peerID:%v action[handleApplySnapshot]", m.clusterName, m.id)
 	m.fsm.restore()
 	return
 }
