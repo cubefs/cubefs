@@ -15,6 +15,7 @@
 package bcache
 
 import (
+	"context"
 	"encoding/binary"
 	"encoding/json"
 	"errors"
@@ -76,6 +77,8 @@ type BlockCachePacket struct {
 	Size       uint32 // Data's size ; header size: 3 + 8 = 11
 	Data       []byte
 	StartT     int64
+
+	ctx context.Context // TODO: add request id in block cache packet.
 }
 
 func NewBlockCachePacket() *BlockCachePacket {
