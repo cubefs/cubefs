@@ -15,6 +15,7 @@
 package objectnode
 
 import (
+	"context"
 	"encoding/xml"
 	"errors"
 	"strconv"
@@ -180,7 +181,7 @@ func storeObjectLock(bytes []byte, vol *Volume) (err error) {
 }
 
 func isObjectLocked(v *Volume, inode uint64, name, path string) error {
-	xattrInfo, err := v.mw.XAttrGet_ll(inode, XAttrKeyOSSLock)
+	xattrInfo, err := v.mw.XAttrGet_ll(context.TODO(), inode, XAttrKeyOSSLock)
 	if err != nil {
 		log.LogErrorf("isObjectLocked: check ObjectLock err(%v) volume(%v) path(%v) name(%v)",
 			err, v.name, path, name)
