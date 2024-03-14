@@ -15,16 +15,19 @@
 package cmd
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
+	"path"
 	"strings"
 	"sync"
 	"syscall"
 	"time"
 
 	"github.com/spf13/cobra"
+	"gopkg.in/natefinch/lumberjack.v2"
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/sdk/meta"
@@ -37,6 +40,13 @@ const (
 )
 
 var gMetaWrapper *meta.MetaWrapper
+
+var getSpan = proto.SpanFromContext
+
+func newCtx() context.Context {
+	_, ctx := proto.SpanContextPrefix("fsck-")
+	return ctx
+}
 
 func newCleanCmd() *cobra.Command {
 	c := &cobra.Command{
@@ -97,18 +107,17 @@ func newEvictInodeCmd() *cobra.Command {
 }
 
 func Clean(opt string) error {
-	defer log.LogFlush()
-
 	if MasterAddr == "" || VolName == "" {
 		return fmt.Errorf("Lack of parameters: master(%v) vol(%v)", MasterAddr, VolName)
 	}
 
 	ump.InitUmp("fsck", "")
 
-	_, err := log.InitLog("fscklog", "fsck", log.InfoLevel, nil, log.DefaultLogLeftSpaceLimit)
-	if err != nil {
-		return fmt.Errorf("Init log failed: %v", err)
-	}
+	log.SetOutputLevel(log.Linfo)
+	log.SetOutput(&lumberjack.Logger{
+		Filename: path.Join("fscklog", "fsck", "fsck.log"),
+		MaxSize:  1024, MaxAge: 7, MaxBackups: 7, LocalTime: true, Compress: true,
+	})
 
 	masters := strings.Split(MasterAddr, meta.HostsSeparator)
 	metaConfig := &meta.MetaConfig{
@@ -116,6 +125,7 @@ func Clean(opt string) error {
 		Masters: masters,
 	}
 
+	var err error
 	gMetaWrapper, err = meta.NewMetaWrapper(metaConfig)
 	if err != nil {
 		return fmt.Errorf("NewMetaWrapper failed: %v", err)
@@ -123,19 +133,20 @@ func Clean(opt string) error {
 
 	proto.InitBufferPool(BuffersTotalLimit)
 
+	ctx := newCtx()
 	switch opt {
 	case "inode":
-		err = cleanInodes()
+		err = cleanInodes(ctx)
 		if err != nil {
 			return fmt.Errorf("Clean inodes failed: %v", err)
 		}
 	case "dentry":
-		err = cleanDentries()
+		err = cleanDentries(ctx)
 		if err != nil {
 			return fmt.Errorf("Clean dentries failed: %v", err)
 		}
 	case "evict":
-		err = evictInodes()
+		err = evictInodes(ctx)
 		if err != nil {
 			return fmt.Errorf("Evict inodes failed: %v", err)
 		}
@@ -145,7 +156,7 @@ func Clean(opt string) error {
 	return nil
 }
 
-func evictInodes() error {
+func evictInodes(ctx context.Context) error {
 	mps, err := getMetaPartitions(MasterAddr, VolName)
 	if err != nil {
 		return err
@@ -156,45 +167,47 @@ func evictInodes() error {
 	for _, mp := range mps {
 		cmdline := fmt.Sprintf("http://%s:%s/getAllInodes?pid=%d", strings.Split(mp.LeaderAddr, ":")[0], MetaPort, mp.PartitionID)
 		wg.Add(1)
-		go evictOnTime(&wg, cmdline)
+		go evictOnTime(ctx, &wg, cmdline)
 	}
 
 	wg.Wait()
 	return nil
 }
 
-func evictOnTime(wg *sync.WaitGroup, cmdline string) {
+func evictOnTime(ctx context.Context, wg *sync.WaitGroup, cmdline string) {
 	defer wg.Done()
+
+	span := getSpan(ctx)
 
 	client := &http.Client{Timeout: 0}
 	resp, err := client.Get(cmdline)
 	if err != nil {
-		log.LogErrorf("Get request failed: %v %v", cmdline, err)
+		span.Errorf("Get request failed: %v %v", cmdline, err)
 		return
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != 200 {
-		log.LogErrorf("Invalid status code: %v", resp.StatusCode)
+		span.Errorf("Invalid status code: %v", resp.StatusCode)
 		return
 	}
 
-	log.LogWritef("Dealing with meta partition: %v", cmdline)
+	span.Infof("Dealing with meta partition: %v", cmdline)
 
 	dec := json.NewDecoder(resp.Body)
 	for dec.More() {
 		inode := &Inode{}
 		err = dec.Decode(inode)
 		if err != nil {
-			log.LogErrorf("Decode inode failed: %v", err)
+			span.Errorf("Decode inode failed: %v", err)
 			return
 		}
-		doEvictInode(inode)
+		doEvictInode(ctx, inode)
 	}
-	log.LogWritef("Done! Dealing with meta partition: %v", cmdline)
+	span.Infof("Done! Dealing with meta partition: %v", cmdline)
 }
 
-func cleanInodes() error {
+func cleanInodes(ctx context.Context) error {
 	filePath := fmt.Sprintf("_export_%s/%s", VolName, obsoleteInodeDumpFileName)
 
 	fp, err := os.Open(filePath)
@@ -208,13 +221,13 @@ func cleanInodes() error {
 		if err = dec.Decode(inode); err != nil {
 			return err
 		}
-		doEvictInode(inode)
+		doEvictInode(ctx, inode)
 	}
 
 	return nil
 }
 
-func doEvictInode(inode *Inode) error {
+func doEvictInode(ctx context.Context, inode *Inode) error {
 	if inode.NLink != 0 || time.Since(time.Unix(inode.ModifyTime, 0)) < 24*time.Hour || !proto.IsRegular(inode.Type) {
 		return nil
 	}
@@ -224,11 +237,11 @@ func doEvictInode(inode *Inode) error {
 			return err
 		}
 	}
-	log.LogWritef("%v", inode)
+	getSpan(ctx).Infof("%v", inode)
 	return nil
 }
 
-func doUnlinkInode(inode *Inode) error {
+func doUnlinkInode(ctx context.Context, inode *Inode) error {
 	/*
 	 * Do clean inode with the following exceptions:
 	 * 1. nlink == 0, might be a temorary inode
@@ -258,7 +271,7 @@ func doUnlinkInode(inode *Inode) error {
 	return nil
 }
 
-func cleanDentries() error {
+func cleanDentries(ctx context.Context) error {
 	// filePath := fmt.Sprintf("_export_%s/%s", VolName, obsoleteDentryDumpFileName)
 	// TODO: send request to meta node directly with pino, name and ino.
 	return nil

@@ -15,16 +15,19 @@
 package cmd
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"math"
 	"net/http"
+	"path"
 	"strings"
 	"sync"
 	"syscall"
 	"time"
 
 	"github.com/spf13/cobra"
+	"gopkg.in/natefinch/lumberjack.v2"
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/sdk/meta"
@@ -36,6 +39,13 @@ import (
 const snapshotFullPath = "(Snapshot Cmd Unsupported)"
 
 var gMetaWrapper *meta.MetaWrapper
+
+var getSpan = proto.SpanFromContext
+
+func newCtx() context.Context {
+	_, ctx := proto.SpanContextPrefix("snapshot-")
+	return ctx
+}
 
 func newCleanCmd() *cobra.Command {
 	c := &cobra.Command{
@@ -111,18 +121,17 @@ func newEvictInodeCmd() *cobra.Command {
 }
 
 func Clean(opt string, args []string) error {
-	defer log.LogFlush()
-
 	if MasterAddr == "" || VolName == "" {
 		return fmt.Errorf("Lack of parameters: master(%v) vol(%v)", MasterAddr, VolName)
 	}
 
 	ump.InitUmp("snapshot", "")
 
-	_, err := log.InitLog("snapshotlog", "snapshot", log.DebugLevel, nil, log.DefaultLogLeftSpaceLimit)
-	if err != nil {
-		return fmt.Errorf("Init log failed: %v", err)
-	}
+	log.SetOutputLevel(log.Ldebug)
+	log.SetOutput(&lumberjack.Logger{
+		Filename: path.Join("snapshotlog", "snapshot", "snapshot.log"),
+		MaxSize:  1024, MaxAge: 7, MaxBackups: 7, LocalTime: true, Compress: true,
+	})
 
 	masters := strings.Split(MasterAddr, meta.HostsSeparator)
 	metaConfig := &meta.MetaConfig{
@@ -130,24 +139,26 @@ func Clean(opt string, args []string) error {
 		Masters: masters,
 	}
 
+	var err error
 	gMetaWrapper, err = meta.NewMetaWrapper(metaConfig)
 	if err != nil {
 		return fmt.Errorf("NewMetaWrapper failed: %v", err)
 	}
 
+	ctx := newCtx()
 	switch opt {
 	case "snapshot":
-		err = cleanSnapshot()
+		err = cleanSnapshot(ctx)
 		if err != nil {
 			return fmt.Errorf("Clean snapshot failed: %v", err)
 		}
 	case "dentry":
-		err = cleanDentries()
+		err = cleanDentries(ctx)
 		if err != nil {
 			return fmt.Errorf("Clean dentries failed: %v", err)
 		}
 	case "evict":
-		err = evictInodes()
+		err = evictInodes(ctx)
 		if err != nil {
 			return fmt.Errorf("Evict inodes failed: %v", err)
 		}
@@ -157,7 +168,7 @@ func Clean(opt string, args []string) error {
 	return nil
 }
 
-func evictInodes() error {
+func evictInodes(ctx context.Context) error {
 	mps, err := getMetaPartitions(MasterAddr, VolName)
 	if err != nil {
 		return err
@@ -168,45 +179,47 @@ func evictInodes() error {
 	for _, mp := range mps {
 		cmdline := fmt.Sprintf("http://%s:%s/getAllInodes?pid=%d", strings.Split(mp.LeaderAddr, ":")[0], MetaPort, mp.PartitionID)
 		wg.Add(1)
-		go evictOnTime(&wg, cmdline)
+		go evictOnTime(ctx, &wg, cmdline)
 	}
 
 	wg.Wait()
 	return nil
 }
 
-func evictOnTime(wg *sync.WaitGroup, cmdline string) {
+func evictOnTime(ctx context.Context, wg *sync.WaitGroup, cmdline string) {
 	defer wg.Done()
+
+	span := getSpan(ctx)
 
 	client := &http.Client{Timeout: 0}
 	resp, err := client.Get(cmdline)
 	if err != nil {
-		log.LogErrorf("Get request failed: %v %v", cmdline, err)
+		span.Errorf("Get request failed: %v %v", cmdline, err)
 		return
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != 200 {
-		log.LogErrorf("Invalid status code: %v", resp.StatusCode)
+		span.Errorf("Invalid status code: %v", resp.StatusCode)
 		return
 	}
 
-	log.LogWritef("Dealing with meta partition: %v", cmdline)
+	span.Infof("Dealing with meta partition: %v", cmdline)
 
 	dec := json.NewDecoder(resp.Body)
 	for dec.More() {
 		inode := &Inode{}
 		err = dec.Decode(inode)
 		if err != nil {
-			log.LogErrorf("Decode inode failed: %v", err)
+			span.Errorf("Decode inode failed: %v", err)
 			return
 		}
-		doEvictInode(inode)
+		doEvictInode(ctx, inode)
 	}
-	log.LogWritef("Done! Dealing with meta partition: %v", cmdline)
+	span.Infof("Done! Dealing with meta partition: %v", cmdline)
 }
 
-func doEvictInode(inode *Inode) error {
+func doEvictInode(ctx context.Context, inode *Inode) error {
 	if inode.NLink != 0 || time.Since(time.Unix(inode.ModifyTime, 0)) < 24*time.Hour || !proto.IsRegular(inode.Type) {
 		return nil
 	}
@@ -216,11 +229,11 @@ func doEvictInode(inode *Inode) error {
 			return err
 		}
 	}
-	log.LogWritef("%v", inode)
+	getSpan(ctx).Infof("%v", inode)
 	return nil
 }
 
-func doUnlinkInode(inode *Inode) error {
+func doUnlinkInode(ctx context.Context, inode *Inode) error {
 	/*
 	 * Do clean inode with the following exceptions:
 	 * 1. nlink == 0, might be a temorary inode
@@ -250,7 +263,7 @@ func doUnlinkInode(inode *Inode) error {
 	return nil
 }
 
-func cleanDentries() error {
+func cleanDentries(ctx context.Context) error {
 	//filePath := fmt.Sprintf("_export_%s/%s", VolName, obsoleteDentryDumpFileName)
 	// TODO: send request to meta node directly with pino, name and ino.
 	//if ino, err := gMetaWrapper.Delete_ll_EX(1, child.Name, true, VerSeq); err != nil {
@@ -259,8 +272,9 @@ func cleanDentries() error {
 	return nil
 }
 
-func readSnapshot() (err error) {
-	log.LogInfof("action[readSnapshot] vol %v verSeq %v", VolName, VerSeq)
+func readSnapshot(ctx context.Context) (err error) {
+	span := getSpan(ctx).WithOperation("readSnapshot")
+	span.Infof("vol %v verSeq %v", VolName, VerSeq)
 	if VerSeq == 0 {
 		VerSeq = math.MaxUint64
 	}
@@ -269,20 +283,21 @@ func readSnapshot() (err error) {
 		ino     *proto.InodeInfo
 	)
 
-	log.LogDebugf("action[readSnapshot] ReadDirLimit_ll parent root verSeq %v", VerSeq)
+	span.Debugf("ReadDirLimit_ll parent root verSeq %v", VerSeq)
 	parents, err = gMetaWrapper.ReadDirLimitForSnapShotClean(1, "", math.MaxUint64, VerSeq, false) // one more for nextMarker
 	if err != nil && err != syscall.ENOENT {
-		log.LogErrorf("action[readSnapshot] parent root verSeq %v err %v", VerSeq, err)
+		span.Errorf("parent root verSeq %v err %v", VerSeq, err)
 		return err
 	}
 	for _, child := range parents {
-		log.LogDebugf("action[readSnapshot] parent root Delete_ll_EX child name %v verSeq %v ino %v success", child.Name, VerSeq, ino)
+		span.Debugf("parent root Delete_ll_EX child name %v verSeq %v ino %v success", child.Name, VerSeq, ino)
 	}
 	return
 }
 
-func cleanSnapshot() (err error) {
-	log.LogInfof("action[cleanSnapshot] vol %v verSeq %v", VolName, VerSeq)
+func cleanSnapshot(ctx context.Context) (err error) {
+	span := getSpan(ctx).WithOperation("cleanSnapshot")
+	span.Infof("vol %v verSeq %v", VolName, VerSeq)
 	if VerSeq == 0 {
 		VerSeq = math.MaxUint64
 	}
@@ -293,50 +308,50 @@ func cleanSnapshot() (err error) {
 	)
 	// return readSnapshot()
 
-	log.LogDebugf("action[cleanSnapshot] ReadDirLimit_ll parent root verSeq %v", VerSeq)
+	span.Debugf("ReadDirLimit_ll parent root verSeq %v", VerSeq)
 	parents, err = gMetaWrapper.ReadDirLimitForSnapShotClean(1, "", math.MaxUint64, VerSeq, false) // one more for nextMarker
 	if err != nil && err != syscall.ENOENT {
-		log.LogErrorf("action[cleanSnapshot] parent root verSeq %v err %v", VerSeq, err)
+		span.Errorf("parent root verSeq %v err %v", VerSeq, err)
 		return err
 	}
 
 	if err == syscall.ENOENT {
-		log.LogWarnf("action[cleanSnapshot] parent root verSeq %v found nothing", VerSeq)
+		span.Warnf("parent root verSeq %v found nothing", VerSeq)
 		return nil
 	}
 
-	log.LogDebugf("action[cleanSnapshot]  parent root verSeq %v Delete_ll_EX children count %v", VerSeq, len(parents))
+	span.Debugf("parent root verSeq %v Delete_ll_EX children count %v", VerSeq, len(parents))
 	for _, child := range parents {
 		fullPath := "/" + child.Name
 		if ino, err = gMetaWrapper.Delete_Ver_ll(1, child.Name, proto.IsDir(child.Type), VerSeq, fullPath); err != nil {
-			log.LogErrorf("action[cleanSnapshot] parent root Delete_ll_EX child name %v verSeq %v err %v", child.Name, VerSeq, err)
+			span.Errorf("parent root Delete_ll_EX child name %v verSeq %v err %v", child.Name, VerSeq, err)
 		}
-		log.LogDebugf("action[cleanSnapshot] parent root Delete_ll_EX child name %v verSeq %v ino %v success", child.Name, VerSeq, ino)
+		span.Debugf("parent root Delete_ll_EX child name %v verSeq %v ino %v success", child.Name, VerSeq, ino)
 	}
 
 	for idx := 0; idx < len(parents); idx++ {
 		parent := parents[idx]
 		if proto.IsDir(parent.Type) {
-			log.LogDebugf("action[cleanSnapshot] try loop delete dir %v %v with verSeq %v", parent.Inode, parent.Name, VerSeq)
+			span.Debugf("try loop delete dir %v %v with verSeq %v", parent.Inode, parent.Name, VerSeq)
 			children, err = gMetaWrapper.ReadDirLimitForSnapShotClean(parent.Inode, "", math.MaxUint64, VerSeq, false)
 			if err != nil && err != syscall.ENOENT {
-				log.LogErrorf("action[cleanSnapshot] parent %v verSeq %v err %v", parent.Name, VerSeq, err)
+				span.Errorf("parent %v verSeq %v err %v", parent.Name, VerSeq, err)
 				return err
 			}
 			if err == syscall.ENOENT {
-				log.LogWarnf("action[cleanSnapshot] parent %v verSeq %v found nothing", parent.Name, VerSeq)
+				span.Warnf("parent %v verSeq %v found nothing", parent.Name, VerSeq)
 				continue
 			}
 			for _, child := range children {
 				if ino, err = gMetaWrapper.Delete_Ver_ll(parent.Inode, child.Name, proto.IsDir(child.Type), VerSeq, snapshotFullPath); err != nil || ino == nil {
-					log.LogErrorf("action[cleanSnapshot] parent %v Delete_ll_EX child name %v verSeq %v err %v", parent.Name, child.Name, VerSeq, err)
+					span.Errorf("parent %v Delete_ll_EX child name %v verSeq %v err %v", parent.Name, child.Name, VerSeq, err)
 				} else {
-					log.LogDebugf("action[cleanSnapshot] parent %v Delete_ll_EX child name %v verSeq %v ino %v success", parent.Name, child.Name, VerSeq, ino)
+					span.Debugf("parent %v Delete_ll_EX child name %v verSeq %v ino %v success", parent.Name, child.Name, VerSeq, ino)
 				}
 			}
 			parents = append(parents, children...)
 		} else {
-			log.LogDebugf("action[cleanSnapshot] file %v %v is not dir", parent.Inode, parent.Name)
+			span.Debugf("file %v %v is not dir", parent.Inode, parent.Name)
 		}
 	}
 	return nil
