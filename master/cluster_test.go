@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/cubefs/cubefs/proto"
+	masterSDK "github.com/cubefs/cubefs/sdk/master"
 	"github.com/stretchr/testify/require"
 )
 
@@ -358,4 +359,25 @@ func TestBalanceMetaPartition(t *testing.T) {
 	require.Equal(t, len(sortNodes.nodes), 6)
 
 	sortNodes.balanceLeader()
+}
+
+func TestMasterClientLeaderChange(t *testing.T) {
+	cluster := &Cluster{
+		masterClient: masterSDK.NewMasterClient(nil, false),
+		t:            newTopology(),
+	}
+	server := &Server{
+		cluster: cluster,
+		leaderInfo: &LeaderInfo{
+			addr: "",
+		},
+		user: &User{},
+	}
+	// NOTE: avoid conflict
+	AddrDatabase[5] = "192.168.0.11:17010"
+	AddrDatabase[6] = "192.168.0.12:17010"
+	server.handleLeaderChange(5)
+	server.handleLeaderChange(6)
+	masters := cluster.masterClient.GetMasterAddresses()
+	require.EqualValues(t, 2, len(masters))
 }
