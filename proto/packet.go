@@ -246,6 +246,9 @@ const (
 	OpSplitMarkDelete       uint8 = 0xD6
 	OpTryOtherExtent        uint8 = 0xD7
 	OpReadRepairExtentAgain uint8 = 0xEF
+
+	// io speed limit
+	OpLimitedIoErr uint8 = 0xB1
 )
 
 const (
@@ -687,6 +690,8 @@ func (p *Packet) GetResultMsg() (m string) {
 		m = "OpUploadPartConflictErr"
 	case OpForbidErr:
 		m = "OpForbidErr"
+	case OpLimitedIoErr:
+		m = "OpLimitedIoErr"
 	default:
 		return fmt.Sprintf("Unknown ResultCode(%v)", p.ResultCode)
 	}

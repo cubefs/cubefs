@@ -140,6 +140,9 @@ func (s *Streamer) IssueFlushRequest() error {
 	s.request <- request
 	<-request.done
 	err := request.err
+	if err != nil {
+		log.LogErrorf("[IssueFlushRequest] ino(%v) flush failed err(%v)", s.inode, err)
+	}
 	flushRequestPool.Put(request)
 	return err
 }
@@ -652,6 +655,10 @@ func (s *Streamer) doOverwrite(req *ExtentRequest, direct bool) (total int, err 
 			log.LogDebugf("action[doOverwrite] streamer verseq (%v) datanode rsp seq (%v) code(%v)", s.verSeq, replyPacket.VerSeq, replyPacket.ResultCode)
 			if replyPacket.ResultCode == proto.OpAgain {
 				return nil, true
+			}
+
+			if replyPacket.ResultCode == proto.OpLimitedIoErr {
+				return LimitedIoError, true
 			}
 
 			if replyPacket.ResultCode == proto.OpTryOtherAddr {

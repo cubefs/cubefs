@@ -751,7 +751,7 @@ func (s *DataNode) handleBatchMarkDeletePacket(p *repl.Packet, c net.Conn) {
 				}
 			} else {
 				log.LogInfof("delete limiter reach(%v), remote (%v) try again.", deleteLimiteRater.Limit(), c.RemoteAddr().String())
-				err = storage.TryAgainError
+				err = storage.LimitedIoError
 			}
 		}
 	}
@@ -799,7 +799,7 @@ func (s *DataNode) handleWritePacket(p *repl.Packet) {
 		if writable := partition.disk.limitWrite.TryRun(int(p.Size), func() {
 			_, err = store.Write(p.ExtentID, p.ExtentOffset, int64(p.Size), p.Data, p.CRC, storage.AppendWriteType, p.IsSyncWrite(), false, false)
 		}); !writable {
-			err = storage.TryAgainError
+			err = storage.LimitedIoError
 			return
 		}
 		if !shallDegrade {
@@ -821,7 +821,7 @@ func (s *DataNode) handleWritePacket(p *repl.Packet) {
 		if writable := partition.disk.limitWrite.TryRun(int(p.Size), func() {
 			_, err = store.Write(p.ExtentID, p.ExtentOffset, int64(p.Size), p.Data, p.CRC, storage.AppendWriteType, p.IsSyncWrite(), false, false)
 		}); !writable {
-			err = storage.TryAgainError
+			err = storage.LimitedIoError
 			return
 		}
 		if !shallDegrade {
@@ -849,7 +849,7 @@ func (s *DataNode) handleWritePacket(p *repl.Packet) {
 			if writable := partition.disk.limitWrite.TryRun(currSize, func() {
 				_, err = store.Write(p.ExtentID, p.ExtentOffset+int64(offset), int64(currSize), data, crc, storage.AppendWriteType, p.IsSyncWrite(), false, false)
 			}); !writable {
-				err = storage.TryAgainError
+				err = storage.LimitedIoError
 				return
 			}
 			if !shallDegrade {
