@@ -57,7 +57,8 @@ func TestLoggerUnmarshal(t *testing.T) {
 		{"", true, -1},
 		{"0", false, Ldebug},
 		{"2", false, Lwarn},
-		{"-1", false, Level(-1)},
+		{"-1", true, -1},
+		{"100", true, -1},
 		{`"1"`, true, -1},
 		{"-1x", true, -1},
 		{`"info"`, false, Linfo},
@@ -200,5 +201,17 @@ func TestLoggerSetLevelHandler(t *testing.T) {
 		require.NoError(t, err)
 		resp.Body.Close()
 		require.Equal(t, Lerror, GetOutputLevel())
+	}
+	{
+		resp, err := http.PostForm(addr, url.Values{"level": []string{"info"}})
+		require.NoError(t, err)
+		resp.Body.Close()
+		require.Equal(t, 200, resp.StatusCode)
+		require.Equal(t, Linfo, GetOutputLevel())
+
+		resp, err = http.PostForm(addr, url.Values{"level": []string{"fatal"}})
+		require.NoError(t, err)
+		resp.Body.Close()
+		require.Equal(t, Lfatal, GetOutputLevel())
 	}
 }

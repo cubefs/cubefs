@@ -42,6 +42,9 @@ type Level int
 // Try compatible digit firstly then string.
 func (l *Level) UnmarshalJSON(data []byte) error {
 	if lvl, err := strconv.Atoi(string(data)); err == nil {
+		if lvl < 0 || lvl >= int(maxLevel) {
+			return fmt.Errorf("invalid log level: %s", string(data))
+		}
 		*l = Level(lvl)
 		return nil
 	}
@@ -139,12 +142,14 @@ func ChangeDefaultLevelHandler() (string, http.HandlerFunc) {
 				w.WriteHeader(http.StatusBadRequest)
 				return
 			}
-			level, err := strconv.Atoi(r.FormValue("level"))
-			if err != nil || level < 0 || level >= int(maxLevel) {
+			var level Level
+			lvlName := r.FormValue("level")
+			if lvl, ok := levelMapping[lvlName]; ok {
+				level = lvl
+			} else if err := level.UnmarshalJSON([]byte(lvlName)); err != nil {
 				w.WriteHeader(http.StatusBadRequest)
 				return
 			}
-
 			DefaultLogger.SetOutputLevel(Level(level))
 		default:
 			w.WriteHeader(http.StatusMethodNotAllowed)
