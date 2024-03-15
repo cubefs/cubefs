@@ -581,7 +581,7 @@ func (client *ExtentClient) Flush(ctx context.Context, inode uint64) error {
 }
 
 func (client *ExtentClient) Read(ctx context.Context, inode uint64, data []byte, offset int, size int) (read int, err error) {
-	// log.LogErrorf("======> ExtentClient Read Enter, inode(%v), len(data)=(%v), offset(%v), size(%v).", inode, len(data), offset, size)
+	// log.Errorf("======> ExtentClient Read Enter, inode(%v), len(data)=(%v), offset(%v), size(%v).", inode, len(data), offset, size)
 	// t1 := time.Now()
 	span := proto.SpanFromContext(ctx)
 	ctx = proto.ContextWithOperation(ctx, "Read")
@@ -606,7 +606,7 @@ func (client *ExtentClient) Read(ctx context.Context, inode uint64, data []byte,
 	}
 
 	read, err = s.read(ctx, data, offset, size)
-	// log.LogErrorf("======> ExtentClient Read Exit, inode(%v), time[%v us].", inode, time.Since(t1).Microseconds())
+	// log.Errorf("======> ExtentClient Read Exit, inode(%v), time[%v us].", inode, time.Since(t1).Microseconds())
 	return
 }
 

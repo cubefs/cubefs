@@ -14,7 +14,11 @@
 
 package log
 
-import "github.com/cubefs/cubefs/blobstore/util/log"
+import (
+	"strings"
+
+	"github.com/cubefs/cubefs/blobstore/util/log"
+)
 
 // alias of blobstore logger.
 
@@ -49,3 +53,22 @@ var (
 
 	ChangeDefaultLevelHandler = log.ChangeDefaultLevelHandler
 )
+
+func ParseLevel(levelName string, defaultLevel log.Level) log.Level {
+	switch strings.ToLower(levelName) {
+	case "debug":
+		return log.Ldebug
+	case "info":
+		return log.Linfo
+	case "warn", "warning":
+		return log.Lwarn
+	case "error":
+		return log.Lerror
+	case "panic", "critical":
+		return log.Lpanic
+	case "fatal":
+		return log.Lfatal
+	default:
+		return defaultLevel
+	}
+}
