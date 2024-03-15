@@ -111,6 +111,12 @@ static void * epoll_subWorker(void *ctx) {
     pthread_exit(NULL);
 }
 
+static int rdma_transferEvent_thread(Connection *conn, int fd, EventCallBack cb) {
+    struct EpollEvent* ev = GetEpollEvent();
+    ev->fd = fd;
+    pthread_create(&all_threads[ev->index], NULL, cb, conn);
+}
+
 static int epoll_rdma_transferEvent_add(int fd, void* ctx, EventCallBack cb) {
     int epoll_fd = get_epoll_fd();
     if(epoll_fd < 0){

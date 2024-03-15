@@ -16,7 +16,7 @@ typedef struct RdmaPoolConfig {
     int memBlockNum;
     int memBlockSize;
     int memPoolLevel;
-    
+
     int headerBlockNum;
     int headerPoolLevel;
 

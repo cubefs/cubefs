@@ -206,14 +206,14 @@ int UpdateConnection(Connection* conn) {
     struct ibv_cq *cq = NULL;
     Response* response;
     Header* header;
-    
+
     conn->cm_id->verbs = conn->pd->context;
 
     if (ibv_query_device(conn->cm_id->verbs, &device_attr)) {
         //printf("RDMA: ibv query device failed\n");
         goto error;
     }
-    
+
     cq = ibv_create_cq(conn->cm_id->verbs, MIN_CQE_NUM, NULL, conn->comp_channel, 0);//when -1, cq is null?     RDMA_MAX_WQE * 2
     if (!cq) {
         //printf("RDMA: ibv create cq failed: cq:%d\n",cq);
@@ -264,7 +264,7 @@ error:
             // we continue anyways;
         }
         conn->cq = NULL;
-    }        
+    }
     if(conn->freeList) {
         ClearQueue(conn->freeList);
     }
@@ -282,7 +282,7 @@ int ReConnect(Connection* conn) {
     int ret;
     struct RdmaContext* client = ((struct RdmaContext*)(conn->csContext));
     struct ConnectionEvent* conn_ev = client->conn_ev;
-    
+
 
     getaddrinfo(ip, port, NULL, &addr);
 
@@ -394,7 +394,7 @@ int connRdmaSendHeader(Connection *conn, void* header, int32_t len) {
     }
     int ret = rdmaSendCommand(conn,header,sizeof(Header));
     return ret;
-    
+
 }
 
 int connRdmaSendResponse(Connection *conn, Response *response, int32_t len) {
@@ -481,7 +481,7 @@ void* getResponseBuffer(Connection *conn, int64_t timeout_us, int32_t *ret_size)
         if(conn->send_timeout_ns == -1 || conn->send_timeout_ns == 0) {
             dead_line = -1;
         } else {
-           dead_line = now+conn->send_timeout_ns; 
+           dead_line = now+conn->send_timeout_ns;
         }
     } else {
         dead_line = now+timeout_us*1000;
@@ -521,7 +521,7 @@ void* getHeaderBuffer(Connection *conn, int64_t timeout_us, int32_t *ret_size) {
         if(conn->send_timeout_ns == -1 || conn->send_timeout_ns == 0) {
             dead_line = -1;
         } else {
-           dead_line = now+conn->send_timeout_ns; 
+           dead_line = now+conn->send_timeout_ns;
         }
     } else {
         dead_line = now+timeout_us*1000;
@@ -580,7 +580,8 @@ MemoryEntry* getRecvResponseBuffer(Connection *conn) {
 void setConnContext(Connection* conn, void* connContext) {
     conn->connContext = connContext;
     conn->state = CONN_STATE_CONNECTED;
-    epoll_rdma_transferEvent_add(conn->comp_channel->fd, conn, transport_sendAndRecv_event_cb);
+    //epoll_rdma_transferEvent_add(conn->comp_channel->fd, conn, transport_sendAndRecv_event_cb);
+    rdma_transferEvent_thread(conn, conn->comp_channel->fd, cq_thread);
     return;
 }
 
@@ -684,7 +685,7 @@ int RdmaRead(Connection *conn, Header *header, MemoryEntry* entry) {//, int64_t 
     if(conn->recv_timeout_ns == -1 || conn->recv_timeout_ns == 0) {
         dead_line = -1;
     } else {
-        dead_line = now+conn->recv_timeout_ns; 
+        dead_line = now+conn->recv_timeout_ns;
     }
     while(1) {
         if (conn->state != CONN_STATE_CONNECTED) { //在使用之前需要判断连接的状态

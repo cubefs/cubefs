@@ -34,6 +34,6 @@ int connRdmaHandleSend(Connection *conn);
 
 int transport_sendAndRecv_event_cb(void *ctx);
 
-
+void *cq_thread(void *ctx);
 
 #endif
