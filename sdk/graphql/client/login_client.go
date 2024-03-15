@@ -172,7 +172,7 @@ func (c *MasterGClient) Query(ctx context.Context, model string, req *Request) (
 	for i := c.active; i < len(c.addrs); i++ {
 		var rep *Response
 		if rep, err = doPost(ctx, "http://"+c.addrs[i%len(c.addrs)]+model, req); err != nil {
-			log.LogErrorf("execute by master clients has err:%s", err.Error())
+			log.Errorf("execute by master clients has err:%s", err.Error())
 			c.active = (i + 1) % len(c.addrs)
 			continue
 		} else {
@@ -224,7 +224,7 @@ func (c *MasterGClient) Proxy(ctx context.Context, r *http.Request, header http.
 	for i := c.active; i < len(c.addrs); i++ {
 		var rep *Response
 		if rep, err = doPost(ctx, "http://"+c.addrs[i%len(c.addrs)]+r.RequestURI, req); err != nil {
-			log.LogErrorf("execute by master clients has err:%s", err.Error())
+			log.Errorf("execute by master clients has err:%s", err.Error())
 			c.active = (i + 1) % len(c.addrs)
 			continue
 		} else {

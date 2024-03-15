@@ -28,7 +28,7 @@ import (
 	"time"
 
 	"github.com/cubefs/cubefs/blobstore/api/access"
-	"github.com/cubefs/cubefs/blobstore/common/trace"
+	blog "github.com/cubefs/cubefs/blobstore/util/log"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/sdk/data/blobstore"
 	"github.com/cubefs/cubefs/sdk/data/stream"
@@ -37,6 +37,7 @@ import (
 	"github.com/cubefs/cubefs/util/buf"
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/cubefs/cubefs/util/stat"
+	"gopkg.in/natefinch/lumberjack.v2"
 )
 
 type LimitParameters struct {
@@ -78,18 +79,20 @@ type PreloadConfig struct {
 	LimitParam LimitParameters
 }
 
-func FlushLog() {
-	log.LogFlush()
-}
+var getSpan = proto.SpanFromContext
 
-func NewClient(config PreloadConfig) *PreLoadClient {
-	defer log.LogFlush()
+func NewClient(ctx context.Context, config PreloadConfig) *PreLoadClient {
 	c := &PreLoadClient{
 		vol: config.Volume,
 	}
 
+	level := log.ParseLevel(config.LogLevel, log.Ldebug)
 	if config.LogDir != "" {
-		log.InitLog(config.LogDir, "preload", convertLogLevel(config.LogLevel), nil, log.DefaultLogLeftSpaceLimit)
+		log.SetOutputLevel(level)
+		log.SetOutput(&lumberjack.Logger{
+			Filename: path.Join(config.LogDir, "preload", "preload.log"),
+			MaxSize:  1024, MaxAge: 7, MaxBackups: 7, LocalTime: true, Compress: true,
+		})
 		stat.NewStatistic(config.LogDir, "preload", int64(stat.DefaultStatLogSize), stat.DefaultTimeOutUs, true)
 	}
 
@@ -97,7 +100,7 @@ func NewClient(config PreloadConfig) *PreLoadClient {
 		go func() {
 			mainMux := http.NewServeMux()
 			mux := http.NewServeMux()
-			http.HandleFunc(log.SetLogLevelPath, log.SetLogLevel)
+			http.HandleFunc(log.ChangeDefaultLevelHandler())
 			mux.Handle("/debug/pprof", http.HandlerFunc(pprof.Index))
 			mux.Handle("/debug/pprof/cmdline", http.HandlerFunc(pprof.Cmdline))
 			mux.Handle("/debug/pprof/profile", http.HandlerFunc(pprof.Profile))
@@ -114,19 +117,20 @@ func NewClient(config PreloadConfig) *PreLoadClient {
 			mainMux.Handle("/", mainHandler)
 			e := http.ListenAndServe(fmt.Sprintf(":%v", config.ProfPort), mainMux)
 			if e != nil {
-				log.LogWarnf("newClient newEBSClient cannot listen pprof (%v)", config.ProfPort)
+				log.Warnf("newClient newEBSClient cannot listen pprof (%v)", config.ProfPort)
 			}
 		}()
 	}
 
+	span := getSpan(ctx)
 	var (
 		mw  *meta.MetaWrapper
 		ec  *stream.ExtentClient
 		err error
 	)
 	c.mc = masterSDK.NewMasterClient(config.Masters, false)
-	if err = c.newEBSClient(config.Masters, config.LogDir); err != nil {
-		log.LogErrorf("newClient newEBSClient failed(%v)", err)
+	if err = c.newEBSClient(ctx, config.Masters, config.LogDir, level); err != nil {
+		span.Errorf("newClient newEBSClient failed(%v)", err)
 		return nil
 	}
 
@@ -135,11 +139,11 @@ func NewClient(config PreloadConfig) *PreLoadClient {
 		Masters:       config.Masters,
 		ValidateOwner: false,
 	}); err != nil {
-		log.LogErrorf("newClient NewMetaWrapper failed(%v)", err)
+		span.Errorf("newClient NewMetaWrapper failed(%v)", err)
 		return nil
 	}
 
-	if ec, err = stream.NewExtentClient(context.TODO(), &stream.ExtentConfig{
+	if ec, err = stream.NewExtentClient(ctx, &stream.ExtentConfig{
 		Volume:            config.Volume,
 		Masters:           config.Masters,
 		Preload:           true,
@@ -149,7 +153,7 @@ func NewClient(config PreloadConfig) *PreLoadClient {
 		OnTruncate:        mw.Truncate,
 		VolumeType:        proto.VolumeTypeCold,
 	}); err != nil {
-		log.LogErrorf("newClient NewExtentClient failed(%v)", err)
+		span.Errorf("newClient NewExtentClient failed(%v)", err)
 		return nil
 	}
 	c.mw = mw
@@ -173,35 +177,11 @@ func NewClient(config PreloadConfig) *PreLoadClient {
 	if c.limitParam.ClearFileConcurrency == 0 {
 		c.limitParam.ClearFileConcurrency = 4
 	}
-	log.LogDebugf("Client is created:(%v)", c)
+	span.Debugf("Client is created:(%v)", c)
 	return c
 }
 
-func convertLogLevel(level string) log.Level {
-	switch level {
-	case "debug":
-		return log.DebugLevel
-	case "info":
-		return log.InfoLevel
-	case "warn":
-		return log.WarnLevel
-	case "error":
-		return log.ErrorLevel
-	case "fatal":
-		return log.FatalLevel
-	case "critical":
-		return log.CriticalLevel
-	case "read":
-		return log.ReadLevel
-	case "update":
-		return log.UpdateLevel
-	default:
-		return log.DebugLevel
-	}
-}
-
-func (c *PreLoadClient) newEBSClient(masters []string, logDir string) (err error) {
-	ctx := context.TODO()
+func (c *PreLoadClient) newEBSClient(ctx context.Context, masters []string, logDir string, level blog.Level) (err error) {
 	var (
 		volumeInfo  *proto.SimpleVolView
 		clusterInfo *proto.ClusterInfo
@@ -227,11 +207,12 @@ func (c *PreLoadClient) newEBSClient(masters []string, logDir string) (err error
 			Address: ebsEndpoint,
 		},
 		MaxSizePutOnce: int64(c.ebsBlockSize),
+		LogLevel:       level,
 		Logger: &access.Logger{
 			Filename: gopath.Join(logDir, "ebs/ebs.log"),
 		},
 	}); err != nil {
-		log.LogErrorf("newClient newEBSClient failed(%v)", err)
+		getSpan(ctx).Errorf("newClient newEBSClient failed(%v)", err)
 		return
 	}
 	c.ebsc = ebsc
@@ -239,12 +220,9 @@ func (c *PreLoadClient) newEBSClient(masters []string, logDir string) (err error
 	return
 }
 
-func (c *PreLoadClient) ctx(cid int64, ino uint64) context.Context {
-	_, ctx := trace.StartSpanFromContextWithTraceID(context.Background(), "", fmt.Sprintf("cid=%v,ino=%v", cid, ino))
-	return ctx
-}
-
-func (c *PreLoadClient) walker(dir string, wg *sync.WaitGroup, currentGoroutineNum *int64, ch chan<- fileInfo, newGoroutine bool) (err error) {
+func (c *PreLoadClient) walker(ctx context.Context, dir string,
+	wg *sync.WaitGroup, currentGoroutineNum *int64, ch chan<- fileInfo, newGoroutine bool,
+) (err error) {
 	defer func() {
 		if newGoroutine {
 			atomic.AddInt64(currentGoroutineNum, -1)
@@ -257,52 +235,54 @@ func (c *PreLoadClient) walker(dir string, wg *sync.WaitGroup, currentGoroutineN
 		info *proto.InodeInfo
 	)
 
-	ino, err = c.mw.LookupPath(context.TODO(), gopath.Clean(dir))
+	span := getSpan(ctx)
+	ino, err = c.mw.LookupPath(ctx, gopath.Clean(dir))
 	if err != nil {
-		log.LogErrorf("LookupPath path(%v) faild(%v)", dir, err)
+		span.Errorf("LookupPath path(%v) faild(%v)", dir, err)
 		return err
 	}
-	info, err = c.mw.InodeGet_ll(context.TODO(), ino)
 
+	info, err = c.mw.InodeGet_ll(ctx, ino)
 	if err != nil {
-		log.LogErrorf("InodeGet_ll path(%v) faild(%v)", dir, err)
+		span.Errorf("InodeGet_ll path(%v) faild(%v)", dir, err)
 		return err
 	}
 
 	if proto.IsRegular(info.Mode) {
 		fInfo := fileInfo{ino: info.Inode, name: gopath.Base(dir)}
-		log.LogDebugf("Target is a file:(%v)", fInfo)
+		span.Debugf("Target is a file:(%v)", fInfo)
 		ch <- fInfo
 		return err
 	}
 
-	children, err := c.mw.ReadDir_ll(context.TODO(), info.Inode)
+	children, err := c.mw.ReadDir_ll(ctx, info.Inode)
 	if err != nil {
-		log.LogErrorf("ReadDir_ll path(%v) faild(%v)", dir, err)
+		span.Errorf("ReadDir_ll path(%v) faild(%v)", dir, err)
 		return err
 	}
 
 	for _, child := range children {
 		if proto.IsDir(child.Type) {
-			log.LogDebugf("preloadTravrseDir:(%v) is dir", path.Join(dir, child.Name))
+			span.Debugf("preloadTravrseDir:(%v) is dir", path.Join(dir, child.Name))
 			if atomic.LoadInt64(currentGoroutineNum) < c.limitParam.PreloadFileConcurrency {
 				wg.Add(1)
 				atomic.AddInt64(currentGoroutineNum, 1)
-				go c.walker(path.Join(dir, child.Name), wg, currentGoroutineNum, ch, true)
+				go c.walker(ctx, path.Join(dir, child.Name), wg, currentGoroutineNum, ch, true)
 			} else {
-				c.walker(path.Join(dir, child.Name), wg, currentGoroutineNum, ch, false)
+				c.walker(ctx, path.Join(dir, child.Name), wg, currentGoroutineNum, ch, false)
 			}
 
 		} else if proto.IsRegular(child.Type) {
 			fInfo := fileInfo{ino: child.Inode, name: child.Name}
-			log.LogDebugf("preloadTravrseDir send:(%v)", fInfo)
+			span.Debugf("preloadTravrseDir send:(%v)", fInfo)
 			ch <- fInfo
 		}
 	}
 	return nil
 }
 
-func (c *PreLoadClient) allocatePreloadDPWorker(ch <-chan fileInfo) uint64 {
+func (c *PreLoadClient) allocatePreloadDPWorker(ctx context.Context, ch <-chan fileInfo) uint64 {
+	span := getSpan(ctx)
 	var (
 		inodes []uint64
 		total  uint64
@@ -316,7 +296,7 @@ func (c *PreLoadClient) allocatePreloadDPWorker(ch <-chan fileInfo) uint64 {
 		if len(inodes) < 100 {
 			continue
 		}
-		infos := c.mw.BatchInodeGet(context.TODO(), inodes)
+		infos := c.mw.BatchInodeGet(ctx, inodes)
 		for _, info := range infos {
 			if int64(info.Size) <= c.limitParam.PreloadFileSizeLimit {
 				total += info.Size
@@ -324,7 +304,7 @@ func (c *PreLoadClient) allocatePreloadDPWorker(ch <-chan fileInfo) uint64 {
 				cachefino.size = info.Size
 				// append
 				c.fileCache = append(c.fileCache, cachefino)
-				log.LogDebugf("allocatePreloadDPWorker append:%v", cachefino)
+				span.Debugf("allocatePreloadDPWorker append:%v", cachefino)
 			}
 		}
 		inodes = inodes[:0]
@@ -332,10 +312,10 @@ func (c *PreLoadClient) allocatePreloadDPWorker(ch <-chan fileInfo) uint64 {
 			delete(cache, key)
 		}
 	}
+
 	// flush cache
 	if len(inodes) != 0 {
-		infos := c.mw.BatchInodeGet(context.TODO(), inodes)
-
+		infos := c.mw.BatchInodeGet(ctx, inodes)
 		for _, info := range infos {
 			if int64(info.Size) <= c.limitParam.PreloadFileSizeLimit {
 				total += info.Size
@@ -343,15 +323,16 @@ func (c *PreLoadClient) allocatePreloadDPWorker(ch <-chan fileInfo) uint64 {
 				cachefino.size = info.Size
 				// append
 				c.fileCache = append(c.fileCache, cachefino)
-				log.LogDebugf("allocatePreloadDPWorker append#2:%v", cachefino)
+				span.Debugf("allocatePreloadDPWorker append#2:%v", cachefino)
 			}
 		}
 	}
 	return total
 }
 
-func (c *PreLoadClient) allocatePreloadDP(target string, count int, ttl uint64, zones string) (err error) {
-	log.LogDebugf("allocatePreloadDP enter")
+func (c *PreLoadClient) allocatePreloadDP(ctx context.Context, target string, count int, ttl uint64, zones string) (err error) {
+	span := getSpan(ctx)
+	span.Debug("allocatePreloadDP enter")
 	ch := make(chan fileInfo, 100)
 	var (
 		wg                  sync.WaitGroup
@@ -359,12 +340,12 @@ func (c *PreLoadClient) allocatePreloadDP(target string, count int, ttl uint64, 
 	)
 	wg.Add(1)
 	atomic.AddInt64(&currentGoroutineNum, 1)
-	go c.walker(target, &wg, &currentGoroutineNum, ch, true)
+	go c.walker(ctx, target, &wg, &currentGoroutineNum, ch, true)
 	go func() {
 		wg.Wait()
 		close(ch)
 	}()
-	need := c.allocatePreloadDPWorker(ch)
+	need := c.allocatePreloadDPWorker(ctx, ch)
 	if need == 0 {
 		return errors.New("No file would be preloaded")
 	}
@@ -374,27 +355,28 @@ func (c *PreLoadClient) allocatePreloadDP(target string, count int, ttl uint64, 
 	} else {
 		need = uint64(need/(1024*1024*1024)) + 1
 	}
-	log.LogDebugf("preloadFile:need total space %v GB, ttl %v second, zones=%v", need, ttl, zones)
-	total, used := c.getVolumeCacheCapacity()
+	span.Debugf("preloadFile:need total space %v GB, ttl %v second, zones=%v", need, ttl, zones)
+	total, used := c.getVolumeCacheCapacity(ctx)
 
 	if float64(need+used) > float64(total) {
-		log.LogErrorf("AllocatePreLoadDataPartition failed: need space (%v) GB, volume total(%v)GB used(%v)GB", need, total, used)
+		span.Errorf("AllocatePreLoadDataPartition failed: need space (%v) GB, volume total(%v)GB used(%v)GB", need, total, used)
 		return errors.New(fmt.Sprintf("AllocatePreLoadDataPartition failed: need space (%v) GB, volume total(%v)GB used(%v)GB", need, total, used))
 	}
-	err = c.ec.AllocatePreLoadDataPartition(context.TODO(), c.vol, count, need, ttl, zones)
+	err = c.ec.AllocatePreLoadDataPartition(ctx, c.vol, count, need, ttl, zones)
 
 	if err != nil {
-		log.LogErrorf("AllocatePreLoadDataPartition failed:%v", err)
+		span.Errorf("AllocatePreLoadDataPartition failed:%v", err)
 		return err
 	}
-	log.LogDebugf("allocatePreloadDP leave")
+	span.Debug("allocatePreloadDP leave")
 	return nil
 }
 
-func (c *PreLoadClient) clearPreloadDPWorker(ch <-chan fileInfo) {
+func (c *PreLoadClient) clearPreloadDPWorker(ctx context.Context, ch <-chan fileInfo) {
 	var routineNum int64 = 0
 	var wg sync.WaitGroup
 
+	span := getSpan(ctx)
 	for fInfo := range ch {
 		if atomic.LoadInt64(&routineNum) < c.limitParam.ClearFileConcurrency {
 			wg.Add(1)
@@ -403,19 +385,19 @@ func (c *PreLoadClient) clearPreloadDPWorker(ch <-chan fileInfo) {
 					atomic.AddInt64(&routineNum, -1)
 					wg.Done()
 				}()
-				log.LogDebugf("clearPreloadDPWorker:clear file %v", f.name)
-				c.mw.InodeClearPreloadCache_ll(context.TODO(), f.ino)
+				span.Debugf("clearPreloadDPWorker:clear file %v", f.name)
+				c.mw.InodeClearPreloadCache_ll(ctx, f.ino)
 			}(fInfo)
 			atomic.AddInt64(&routineNum, 1)
 		} else {
-			log.LogDebugf("clearPreloadDPWorker:clear file %v", fInfo.name)
-			c.mw.InodeClearPreloadCache_ll(context.TODO(), fInfo.ino)
+			span.Debugf("clearPreloadDPWorker:clear file %v", fInfo.name)
+			c.mw.InodeClearPreloadCache_ll(ctx, fInfo.ino)
 		}
 	}
 	wg.Wait()
 }
 
-func (c *PreLoadClient) ClearPreloadDP(target string) (err error) {
+func (c *PreLoadClient) ClearPreloadDP(ctx context.Context, target string) (err error) {
 	ch := make(chan fileInfo, 100)
 	var (
 		wg                  sync.WaitGroup
@@ -423,29 +405,28 @@ func (c *PreLoadClient) ClearPreloadDP(target string) (err error) {
 	)
 	wg.Add(1)
 	atomic.AddInt64(&currentGoroutineNum, 1)
-	go c.walker(target, &wg, &currentGoroutineNum, ch, true)
+	go c.walker(ctx, target, &wg, &currentGoroutineNum, ch, true)
 	go func() {
 		wg.Wait()
 		close(ch)
 	}()
-	c.clearPreloadDPWorker(ch)
-
+	c.clearPreloadDPWorker(ctx, ch)
 	return nil
 }
 
-func (c *PreLoadClient) preloadFileWorker(id int64, jobs <-chan fileInfo, wg *sync.WaitGroup) {
-	ctx := context.TODO()
+func (c *PreLoadClient) preloadFileWorker(ctx context.Context, id int64, jobs <-chan fileInfo, wg *sync.WaitGroup) {
 	defer wg.Done()
 	var total int64 = 0
 	var succeed int64 = 0
 	noWritableDP := false
+	span := getSpan(ctx)
 	for job := range jobs {
 		if noWritableDP == true {
-			log.LogWarnf("no writable dp,ingnore (%v) to cbfs", job.name)
+			span.Warnf("no writable dp,ingnore (%v) to cbfs", job.name)
 			continue // consume the job
 		}
 		total += 1
-		log.LogDebugf("worker %v ready to preload(%v)", id, job.name)
+		span.Debugf("worker %v ready to preload(%v)", id, job.name)
 		ino := job.ino
 		//#1 open
 		c.ec.OpenStream(ctx, ino)
@@ -454,8 +435,8 @@ func (c *PreLoadClient) preloadFileWorker(id int64, jobs <-chan fileInfo, wg *sy
 			objExtents []proto.ObjExtentKey
 			err        error
 		)
-		if _, _, _, objExtents, err = c.mw.GetObjExtents(context.TODO(), ino); err != nil {
-			log.LogWarnf("GetObjExtents (%v) faild(%v)", job.name, err)
+		if _, _, _, objExtents, err = c.mw.GetObjExtents(ctx, ino); err != nil {
+			span.Warnf("GetObjExtents (%v) faild(%v)", job.name, err)
 			continue
 		}
 		clientConf := blobstore.ClientConfig{
@@ -479,16 +460,16 @@ func (c *PreLoadClient) preloadFileWorker(id int64, jobs <-chan fileInfo, wg *sy
 			size := objExtent.Size
 			buf := make([]byte, size)
 			var n int
-			n, err = fileReader.Read(c.ctx(0, ino), buf, int(objExtent.FileOffset), int(size))
+			n, err = fileReader.Read(ctx, buf, int(objExtent.FileOffset), int(size))
 
 			if err != nil {
 				subErr = true
-				log.LogWarnf("Read (%v) from ebs failed (%v)", objExtent, err)
+				span.Warnf("Read (%v) from ebs failed (%v)", objExtent, err)
 				continue
 			}
 
 			if uint64(n) != size {
-				log.LogWarnf("Read (%v) wrong size:(%v)", objExtent, n)
+				span.Warnf("Read (%v) wrong size:(%v)", objExtent, n)
 				continue
 			}
 			_, err = c.ec.Write(ctx, ino, int(objExtent.FileOffset), buf, 0, nil)
@@ -496,9 +477,9 @@ func (c *PreLoadClient) preloadFileWorker(id int64, jobs <-chan fileInfo, wg *sy
 			// so write should failed immediately
 			if err != nil {
 				subErr = true
-				log.LogWarnf("preload (%v) to cbfs failed (%v)", job.name, err)
+				span.Warnf("preload (%v) to cbfs failed (%v)", job.name, err)
 				if err = c.ec.GetDataPartitionForWrite(ctx); err != nil {
-					log.LogErrorf("worker %v end for %v", id, err)
+					span.Errorf("worker %v end for %v", id, err)
 					noWritableDP = true
 				}
 				break
@@ -506,17 +487,18 @@ func (c *PreLoadClient) preloadFileWorker(id int64, jobs <-chan fileInfo, wg *sy
 		}
 		c.ec.CloseStream(ino)
 		if subErr == false {
-			log.LogInfof("worker %v preload (%v) to cbfs success", id, job.name)
+			span.Infof("worker %v preload (%v) to cbfs success", id, job.name)
 			succeed += 1
 		}
 	}
 	atomic.AddInt64(&c.preloadFileNumTotal, total)
 	atomic.AddInt64(&c.preloadFileNumSucceed, succeed)
-	log.LogInfof("worker %v end:total %v, succeed %v", id, total, succeed)
+	span.Infof("worker %v end:total %v, succeed %v", id, total, succeed)
 }
 
-func (c *PreLoadClient) preloadFile() error {
-	log.LogDebug("preloadFile enter")
+func (c *PreLoadClient) preloadFile(ctx context.Context) error {
+	span := getSpan(ctx)
+	span.Debug("preloadFile enter")
 	var (
 		wg sync.WaitGroup
 		w  int64
@@ -525,7 +507,7 @@ func (c *PreLoadClient) preloadFile() error {
 
 	for w = 1; w <= c.limitParam.PreloadFileConcurrency; w++ {
 		wg.Add(1)
-		go c.preloadFileWorker(w, jobs, &wg)
+		go c.preloadFileWorker(ctx, w, jobs, &wg)
 	}
 
 	for _, fileInfo := range c.fileCache {
@@ -533,7 +515,7 @@ func (c *PreLoadClient) preloadFile() error {
 	}
 	close(jobs)
 	wg.Wait()
-	log.LogInfof("preloadFile end:total %v, succeed %v", c.preloadFileNumTotal, c.preloadFileNumSucceed)
+	span.Infof("preloadFile end:total %v, succeed %v", c.preloadFileNumTotal, c.preloadFileNumSucceed)
 	if c.preloadFileNumTotal == c.preloadFileNumSucceed {
 		return nil
 	} else if c.preloadFileNumSucceed < c.preloadFileNumTotal {
@@ -543,45 +525,38 @@ func (c *PreLoadClient) preloadFile() error {
 	}
 }
 
-func (c *PreLoadClient) CheckColdVolume() bool {
-	var (
-		err  error
-		view *proto.SimpleVolView
-	)
-
-	if view, err = c.mc.AdminAPI().GetVolumeSimpleInfo(context.TODO(), c.vol); err != nil {
-		log.LogErrorf("getSimpleVolView: get volume simple info fail: volume(%v) err(%v)", c.vol, err)
+func (c *PreLoadClient) CheckColdVolume(ctx context.Context) bool {
+	view, err := c.mc.AdminAPI().GetVolumeSimpleInfo(ctx, c.vol)
+	if err != nil {
+		getSpan(ctx).Errorf("get volume simple info fail: volume(%v) err(%v)", c.vol, err)
 		return false
 	}
 	return view.VolType == proto.VolumeTypeCold
 }
 
-func (c *PreLoadClient) getVolumeCacheCapacity() (total uint64, used uint64) {
-	var (
-		err  error
-		view *proto.SimpleVolView
-	)
-
-	if view, err = c.mc.AdminAPI().GetVolumeSimpleInfo(context.TODO(), c.vol); err != nil {
-		log.LogErrorf("getSimpleVolView: get volume simple info fail: volume(%v) err(%v)", c.vol, err)
+func (c *PreLoadClient) getVolumeCacheCapacity(ctx context.Context) (total uint64, used uint64) {
+	view, err := c.mc.AdminAPI().GetVolumeSimpleInfo(ctx, c.vol)
+	if err != nil {
+		getSpan(ctx).Errorf("get volume simple info fail: volume(%v) err(%v)", c.vol, err)
 		return 0, 0
 	}
 	return view.CacheCapacity, view.PreloadCapacity
 }
 
-func (c *PreLoadClient) PreloadDir(target string, count int, ttl uint64, zones string) (err error) {
-	log.LogDebugf("PreloadDir (%v)", target)
-	if err = c.allocatePreloadDP(target, count, ttl, zones); err != nil {
-		log.LogErrorf("PreloadDir failed(%v)", err)
+func (c *PreLoadClient) PreloadDir(ctx context.Context, target string, count int, ttl uint64, zones string) (err error) {
+	span := getSpan(ctx)
+	span.Debugf("PreloadDir (%v)", target)
+	if err = c.allocatePreloadDP(ctx, target, count, ttl, zones); err != nil {
+		span.Errorf("PreloadDir failed(%v)", err)
 		return
 	}
-	log.LogDebugf("Wait 100s for preload dp get ready")
+	span.Debug("Wait 100s for preload dp get ready")
 	time.Sleep(time.Duration(100) * time.Second)
-	log.LogDebugf("Sleep end")
+	span.Debug("Sleep end")
 	// Step3.2  preload the file
-	return c.preloadFile()
+	return c.preloadFile(ctx)
 }
 
-func (c *PreLoadClient) GetPreloadResult() (int64, int64) {
+func (c *PreLoadClient) GetPreloadResult(ctx context.Context) (int64, int64) {
 	return c.preloadFileNumTotal, c.preloadFileNumSucceed
 }

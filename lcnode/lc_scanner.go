@@ -24,7 +24,6 @@ import (
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/sdk/meta"
-	"github.com/cubefs/cubefs/util/log"
 	"github.com/cubefs/cubefs/util/routinepool"
 	"github.com/cubefs/cubefs/util/unboundedchan"
 	"golang.org/x/time/rate"
@@ -50,9 +49,10 @@ type LcScanner struct {
 	limiter       *rate.Limiter
 	now           time.Time
 	stopC         chan bool
+	ctx           context.Context
 }
 
-func NewS3Scanner(adminTask *proto.AdminTask, l *LcNode) (*LcScanner, error) {
+func NewS3Scanner(ctx context.Context, adminTask *proto.AdminTask, l *LcNode) (*LcScanner, error) {
 	request := adminTask.Request.(*proto.LcNodeRuleTaskRequest)
 	scanTask := request.Task
 	var err error
@@ -85,28 +85,31 @@ func NewS3Scanner(adminTask *proto.AdminTask, l *LcNode) (*LcScanner, error) {
 		limiter:       rate.NewLimiter(lcScanLimitPerSecond, defaultLcScanLimitBurst),
 		now:           time.Now(),
 		stopC:         make(chan bool),
+		ctx:           ctx,
 	}
-
 	return scanner, nil
 }
 
-func (l *LcNode) startLcScan(adminTask *proto.AdminTask) (err error) {
+func (l *LcNode) startLcScan(ctx context.Context, adminTask *proto.AdminTask) (err error) {
+	// new span and context with trace id
+	span, ctx := proto.StartSpanFromContextWithTraceID(context.Background(), "", getSpan(ctx).TraceID())
+
 	request := adminTask.Request.(*proto.LcNodeRuleTaskRequest)
-	log.LogInfof("startLcScan: scan task(%v) received!", request.Task)
+	span.Infof("startLcScan: scan task(%v) received!", request.Task)
 	resp := &proto.LcNodeRuleTaskResponse{}
 	adminTask.Response = resp
 
 	l.scannerMutex.Lock()
 	if _, ok := l.lcScanners[request.Task.Id]; ok {
-		log.LogInfof("startLcScan: scan task(%v) is already running!", request.Task)
+		span.Infof("startLcScan: scan task(%v) is already running!", request.Task)
 		l.scannerMutex.Unlock()
 		return
 	}
 
 	var scanner *LcScanner
-	scanner, err = NewS3Scanner(adminTask, l)
+	scanner, err = NewS3Scanner(ctx, adminTask, l)
 	if err != nil {
-		log.LogErrorf("startLcScan: NewS3Scanner err(%v)", err)
+		span.Errorf("startLcScan: NewS3Scanner err(%v)", err)
 		resp.Status = proto.TaskFailed
 		resp.Result = err.Error()
 		l.scannerMutex.Unlock()
@@ -118,7 +121,6 @@ func (l *LcNode) startLcScan(adminTask *proto.AdminTask) (err error) {
 	if err = scanner.Start(); err != nil {
 		return
 	}
-
 	return
 }
 
@@ -126,7 +128,7 @@ func (s *LcScanner) Start() (err error) {
 	response := s.adminTask.Response.(*proto.LcNodeRuleTaskResponse)
 	parentId, prefixDirs, err := s.FindPrefixInode()
 	if err != nil {
-		log.LogErrorf("startScan err(%v): volume(%v), rule id(%v), scanning done!",
+		getSpan(s.ctx).Errorf("startScan err(%v): volume(%v), rule id(%v), scanning done!",
 			err, s.Volume, s.rule.ID)
 		response.ID = s.ID
 		response.LcNode = s.lcnode.localServerAddr
@@ -162,13 +164,14 @@ func (s *LcScanner) Start() (err error) {
 }
 
 func (s *LcScanner) firstIn(d *proto.ScanDentry) {
+	span := getSpan(s.ctx)
 	select {
 	case <-s.stopC:
-		log.LogDebugf("startScan firstIn(%v): stopC!", s.ID)
+		span.Debugf("startScan firstIn(%v): stopC!", s.ID)
 		return
 	default:
 		s.dirChan.In <- d
-		log.LogDebugf("startScan(%v): first dir dentry(%v) in!", s.ID, d)
+		span.Debugf("startScan(%v): first dir dentry(%v) in!", s.ID, d)
 	}
 }
 
@@ -179,10 +182,11 @@ func (s *LcScanner) FindPrefixInode() (inode uint64, prefixDirs []string, err er
 		prefix = s.rule.Filter.Prefix
 	}
 
+	span := getSpan(s.ctx).WithOperation("FindPrefixInode")
 	var dirs []string
 	if prefix != "" {
 		dirs = strings.Split(prefix, "/")
-		log.LogInfof("FindPrefixInode: volume(%v), prefix(%v), dirs(%v), len(%v)", s.Volume, prefix, dirs, len(dirs))
+		span.Infof("volume(%v), prefix(%v), dirs(%v), len(%v)", s.Volume, prefix, dirs, len(dirs))
 	}
 	if len(dirs) <= 1 {
 		return proto.RootIno, prefixDirs, nil
@@ -190,24 +194,23 @@ func (s *LcScanner) FindPrefixInode() (inode uint64, prefixDirs []string, err er
 
 	parentId := proto.RootIno
 	for index, dir := range dirs {
-
 		// Because lookup can only retrieve dentry whose name exactly matches,
 		// so do not lookup the last part.
 		if index+1 == len(dirs) {
 			break
 		}
 
-		curIno, curMode, err := s.mw.Lookup_ll(context.TODO(), parentId, dir)
+		curIno, curMode, err := s.mw.Lookup_ll(s.ctx, parentId, dir)
 
 		// If the part except the last part does not match exactly the same dentry, there is
 		// no path matching the path prefix. An ENOENT error is returned to the caller.
 		if err == syscall.ENOENT {
-			log.LogErrorf("FindPrefixInode: find directories fail ENOENT: parentId(%v) dir(%v)", parentId, dir)
+			span.Errorf("find directories fail ENOENT: parentId(%v) dir(%v)", parentId, dir)
 			return 0, nil, syscall.ENOENT
 		}
 
 		if err != nil && err != syscall.ENOENT {
-			log.LogErrorf("FindPrefixInode: find directories fail: prefix(%v) err(%v)", prefix, err)
+			span.Errorf("find directories fail: prefix(%v) err(%v)", prefix, err)
 			return 0, nil, err
 		}
 
@@ -227,9 +230,10 @@ func (s *LcScanner) FindPrefixInode() (inode uint64, prefixDirs []string, err er
 }
 
 func (s *LcScanner) scan() {
-	log.LogInfof("Enter scan %+v", s)
+	span := getSpan(s.ctx)
+	span.Infof("Enter scan %+v", s)
 	defer func() {
-		log.LogInfof("Exit scan %+v", s)
+		span.Infof("Exit scan %+v", s)
 	}()
 
 	var prefix string
@@ -243,7 +247,7 @@ func (s *LcScanner) scan() {
 			return
 		case val, ok := <-s.fileChan.Out:
 			if !ok {
-				log.LogErrorf("fileChan closed")
+				span.Error("fileChan closed")
 				return
 			}
 			dentry := val.(*proto.ScanDentry)
@@ -256,7 +260,7 @@ func (s *LcScanner) scan() {
 			}
 			_, err := s.fileRPoll.Submit(job)
 			if err != nil {
-				log.LogErrorf("fileRPoll closed")
+				span.Error("fileRPoll closed")
 			}
 		default:
 			select {
@@ -264,7 +268,7 @@ func (s *LcScanner) scan() {
 				return
 			case val, ok := <-s.fileChan.Out:
 				if !ok {
-					log.LogErrorf("fileChan closed")
+					span.Error("fileChan closed")
 					return
 				}
 				dentry := val.(*proto.ScanDentry)
@@ -277,11 +281,11 @@ func (s *LcScanner) scan() {
 				}
 				_, err := s.fileRPoll.Submit(job)
 				if err != nil {
-					log.LogErrorf("fileRPoll closed")
+					span.Error("fileRPoll closed")
 				}
 			case val, ok := <-s.dirChan.Out:
 				if !ok {
-					log.LogErrorf("dirChan closed")
+					span.Error("dirChan closed")
 					return
 				}
 				dentry := val.(*proto.ScanDentry)
@@ -297,7 +301,7 @@ func (s *LcScanner) scan() {
 				}
 				_, err := s.dirRPoll.Submit(job)
 				if err != nil {
-					log.LogErrorf("handleDir failed, err(%v)", err)
+					span.Errorf("handleDir failed, err(%v)", err)
 				}
 			}
 		}
@@ -305,7 +309,7 @@ func (s *LcScanner) scan() {
 }
 
 func (s *LcScanner) handleFile(dentry *proto.ScanDentry) {
-	log.LogDebugf("handleFile dentry: %+v, fileChan.Len: %v", dentry, s.fileChan.Len())
+	getSpan(s.ctx).Debugf("handleFile dentry: %+v, fileChan.Len: %v", dentry, s.fileChan.Len())
 	atomic.AddInt64(&s.currentStat.FileScannedNum, 1)
 	atomic.AddInt64(&s.currentStat.TotalInodeScannedNum, 1)
 
@@ -319,7 +323,7 @@ func (s *LcScanner) batchHandleFile() {
 	dentries, inodes := s.batchDentries.BatchGetAndClear()
 
 	var expiredDentries []*proto.ScanDentry
-	inodesInfo := s.mw.BatchInodeGet(context.TODO(), inodes)
+	inodesInfo := s.mw.BatchInodeGet(s.ctx, inodes)
 	for _, info := range inodesInfo {
 		if s.inodeExpired(info, s.rule.Expire) {
 			d := dentries[info.Inode]
@@ -336,17 +340,18 @@ func (s *LcScanner) batchHandleFile() {
 		return
 	}
 	paths := getPath()
-	log.LogDebugf("batchHandleFile num: %v, expired num: %v, expired path: %v", len(inodesInfo), len(expiredDentries), paths)
+	span := getSpan(s.ctx).WithOperation("batchHandleFile")
+	span.Debugf("num: %v, expired num: %v, expired path: %v", len(inodesInfo), len(expiredDentries), paths)
 
 	for i, dentry := range expiredDentries {
 		s.limiter.Wait(context.Background())
-		_, err := s.mw.DeleteWithCond_ll(context.TODO(), dentry.ParentId, dentry.Inode, dentry.Name, os.FileMode(dentry.Type).IsDir(), paths[i])
+		_, err := s.mw.DeleteWithCond_ll(s.ctx, dentry.ParentId, dentry.Inode, dentry.Name, os.FileMode(dentry.Type).IsDir(), paths[i])
 		if err != nil {
-			log.LogWarnf("batchHandleFile DeleteWithCond_ll err: %v, dentry: %+v, skip it", err, dentry)
+			span.Warnf("DeleteWithCond_ll err: %v, dentry: %+v, skip it", err, dentry)
 			continue
 		}
-		if err = s.mw.Evict(context.TODO(), dentry.Inode, paths[i]); err != nil {
-			log.LogWarnf("batchHandleFile Evict err: %v, dentry: %+v", err, dentry)
+		if err = s.mw.Evict(s.ctx, dentry.Inode, paths[i]); err != nil {
+			span.Warnf("Evict err: %v, dentry: %+v", err, dentry)
 		}
 	}
 	atomic.AddInt64(&s.currentStat.ExpiredNum, int64(len(expiredDentries)))
@@ -376,15 +381,16 @@ func (s *LcScanner) inodeExpired(inode *proto.InodeInfo, cond *proto.ExpirationC
 // scan dir tree in depth when size of dirChan.In grow too much.
 // consider 40 Bytes is the ave size of dentry, 100 million ScanDentries may take up to around 4GB of Memory
 func (s *LcScanner) handleDirLimitDepthFirst(dentry *proto.ScanDentry) {
-	log.LogDebugf("handleDirLimitDepthFirst dentry: %+v, dirChan.Len: %v", dentry, s.dirChan.Len())
+	span := getSpan(s.ctx).WithOperation("handleDirLimitDepthFirst")
+	span.Debugf("dentry: %+v, dirChan.Len: %v", dentry, s.dirChan.Len())
 
 	marker := ""
 	done := false
 	for !done {
-		children, err := s.mw.ReadDirLimit_ll(context.TODO(), dentry.Inode, marker, uint64(defaultReadDirLimit))
+		children, err := s.mw.ReadDirLimit_ll(s.ctx, dentry.Inode, marker, uint64(defaultReadDirLimit))
 		if err != nil && err != syscall.ENOENT {
 			atomic.AddInt64(&s.currentStat.ErrorSkippedNum, 1)
-			log.LogErrorf("handleDirLimitDepthFirst ReadDirLimit_ll err %v, dentry %v, marker %v", err, dentry, marker)
+			span.Errorf("ReadDirLimit_ll err %v, dentry %v, marker %v", err, dentry, marker)
 			return
 		}
 
@@ -443,15 +449,16 @@ func (s *LcScanner) handleDirLimitDepthFirst(dentry *proto.ScanDentry) {
 }
 
 func (s *LcScanner) handleDirLimitBreadthFirst(dentry *proto.ScanDentry) {
-	log.LogDebugf("handleDirLimitBreadthFirst dentry: %+v, dirChan.Len: %v", dentry, s.dirChan.Len())
+	span := getSpan(s.ctx).WithOperation("handleDirLimitBreadthFirst")
+	span.Debugf("dentry: %+v, dirChan.Len: %v", dentry, s.dirChan.Len())
 
 	marker := ""
 	done := false
 	for !done {
-		children, err := s.mw.ReadDirLimit_ll(context.TODO(), dentry.Inode, marker, uint64(defaultReadDirLimit))
+		children, err := s.mw.ReadDirLimit_ll(s.ctx, dentry.Inode, marker, uint64(defaultReadDirLimit))
 		if err != nil && err != syscall.ENOENT {
 			atomic.AddInt64(&s.currentStat.ErrorSkippedNum, 1)
-			log.LogErrorf("handleDirLimitBreadthFirst ReadDirLimit_ll err %v, dentry %v, marker %v", err, dentry, marker)
+			span.Errorf("ReadDirLimit_ll err %v, dentry %v, marker %v", err, dentry, marker)
 			return
 		}
 
@@ -500,20 +507,21 @@ func (s *LcScanner) handleDirLimitBreadthFirst(dentry *proto.ScanDentry) {
 }
 
 func (s *LcScanner) checkScanning() {
+	span := getSpan(s.ctx)
 	dur := time.Second * time.Duration(scanCheckInterval)
 	taskCheckTimer := time.NewTimer(dur)
 	for {
 		select {
 		case <-s.stopC:
-			log.LogInfof("stop checking scan")
+			span.Info("stop checking scan")
 			return
 		case <-taskCheckTimer.C:
 			if s.DoneScanning() {
 				if s.batchDentries.Len() > 0 {
-					log.LogInfof("checkScanning last batchDentries")
+					span.Info("checkScanning last batchDentries")
 					s.batchHandleFile()
 				} else {
-					log.LogInfof("checkScanning completed for task(%v)", s.adminTask)
+					span.Infof("checkScanning completed for task(%v)", s.adminTask)
 					taskCheckTimer.Stop()
 					t := time.Now()
 					response := s.adminTask.Response.(*proto.LcNodeRuleTaskResponse)
@@ -535,7 +543,7 @@ func (s *LcScanner) checkScanning() {
 					delete(s.lcnode.lcScanners, s.ID)
 					s.lcnode.scannerMutex.Unlock()
 
-					s.lcnode.respondToMaster(s.adminTask)
+					s.lcnode.respondToMaster(s.ctx, s.adminTask)
 					return
 				}
 			}
@@ -545,7 +553,7 @@ func (s *LcScanner) checkScanning() {
 }
 
 func (s *LcScanner) DoneScanning() bool {
-	log.LogInfof("dirChan.Len(%v) fileChan.Len(%v) fileRPoll.RunningNum(%v) dirRPoll.RunningNum(%v)",
+	getSpan(s.ctx).Infof("dirChan.Len(%v) fileChan.Len(%v) fileRPoll.RunningNum(%v) dirRPoll.RunningNum(%v)",
 		s.dirChan.Len(), s.fileChan.Len(), s.fileRPoll.RunningNum(), s.dirRPoll.RunningNum())
 	return s.dirChan.Len() == 0 && s.fileChan.Len() == 0 && s.fileRPoll.RunningNum() == 0 && s.dirRPoll.RunningNum() == 0
 }
@@ -557,5 +565,5 @@ func (s *LcScanner) Stop() {
 	close(s.dirChan.In)
 	close(s.fileChan.In)
 	s.mw.Close()
-	log.LogInfof("scanner(%v) stopped", s.ID)
+	getSpan(s.ctx).Infof("scanner(%v) stopped", s.ID)
 }

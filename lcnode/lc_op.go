@@ -23,14 +23,14 @@ import (
 	"time"
 
 	"github.com/cubefs/cubefs/proto"
-	"github.com/cubefs/cubefs/util/log"
 )
 
 func (l *LcNode) opMasterHeartbeat(conn net.Conn, p *proto.Packet, remoteAddr string) (err error) {
+	span := p.Span()
 	go func() {
 		p.PacketOkReply()
 		if err := p.WriteToConn(conn); err != nil {
-			log.LogErrorf("ack master response: %s", err.Error())
+			span.Errorf("ack master response: %s", err.Error())
 		}
 	}()
 
@@ -96,13 +96,13 @@ func (l *LcNode) opMasterHeartbeat(conn net.Conn, p *proto.Packet, remoteAddr st
 
 	end:
 		adminTask.Response = resp
-		l.respondToMaster(adminTask)
-		log.LogInfof("%s pkt %s, resp success req: %v, respAdminTask: %v, resp: %v, cost %s",
+		l.respondToMaster(p.Context(), adminTask)
+		span.Infof("%s pkt %s, resp success req: %v, respAdminTask: %v, resp: %v, cost %s",
 			remoteAddr, p.String(), req, adminTask, resp, time.Since(start).String())
 	}()
 
 	l.lastHeartbeat = time.Now()
-	log.LogDebugf("lastHeartbeat: %v", l.lastHeartbeat)
+	span.Debugf("lastHeartbeat: %v", l.lastHeartbeat)
 	return
 }
 
@@ -110,7 +110,7 @@ func (l *LcNode) opLcScan(conn net.Conn, p *proto.Packet) (err error) {
 	go func() {
 		p.PacketOkReply()
 		if err := p.WriteToConn(conn); err != nil {
-			log.LogErrorf("ack master response: %s", err.Error())
+			p.Span().Errorf("ack master response: %s", err.Error())
 		}
 	}()
 	data := p.Data
@@ -122,31 +122,32 @@ func (l *LcNode) opLcScan(conn net.Conn, p *proto.Packet) (err error) {
 		}
 	)
 
+	ctx := p.Context()
 	decoder := json.NewDecoder(bytes.NewBuffer(data))
 	decoder.UseNumber()
 	if err = decoder.Decode(adminTask); err != nil {
 		resp.Status = proto.TaskFailed
 		resp.Result = err.Error()
 		adminTask.Response = resp
-		l.respondToMaster(adminTask)
+		l.respondToMaster(ctx, adminTask)
 		return
 	}
 
-	l.startLcScan(adminTask)
-	l.respondToMaster(adminTask)
+	l.startLcScan(ctx, adminTask)
+	l.respondToMaster(ctx, adminTask)
 
 	return
 }
 
-func (l *LcNode) respondToMaster(task *proto.AdminTask) {
+func (l *LcNode) respondToMaster(ctx context.Context, task *proto.AdminTask) {
 	// handle panic
 	defer func() {
 		if r := recover(); r != nil {
-			log.LogErrorf("respondToMaster err: %v", r)
+			getSpan(ctx).Errorf("respondToMaster err: %v", r)
 		}
 	}()
-	if err := l.mc.NodeAPI().ResponseLcNodeTask(context.TODO(), task); err != nil {
-		log.LogErrorf("respondToMaster err: %v, task: %v", err, task)
+	if err := l.mc.NodeAPI().ResponseLcNodeTask(ctx, task); err != nil {
+		getSpan(ctx).Errorf("respondToMaster err: %v, task: %v", err, task)
 	}
 }
 
@@ -154,7 +155,7 @@ func (l *LcNode) opSnapshotVerDel(conn net.Conn, p *proto.Packet) (err error) {
 	go func() {
 		p.PacketOkReply()
 		if err := p.WriteToConn(conn); err != nil {
-			log.LogErrorf("ack master response: %s", err.Error())
+			p.Span().Errorf("ack master response: %s", err.Error())
 		}
 	}()
 	data := p.Data
@@ -166,18 +167,19 @@ func (l *LcNode) opSnapshotVerDel(conn net.Conn, p *proto.Packet) (err error) {
 		}
 	)
 
+	ctx := p.Context()
 	decoder := json.NewDecoder(bytes.NewBuffer(data))
 	decoder.UseNumber()
 	if err = decoder.Decode(adminTask); err != nil {
 		resp.Status = proto.TaskFailed
 		resp.Result = err.Error()
 		adminTask.Response = resp
-		l.respondToMaster(adminTask)
+		l.respondToMaster(ctx, adminTask)
 		return
 	}
 
-	l.startSnapshotScan(adminTask)
-	l.respondToMaster(adminTask)
+	l.startSnapshotScan(ctx, adminTask)
+	l.respondToMaster(ctx, adminTask)
 
 	return
 }

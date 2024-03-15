@@ -154,26 +154,10 @@ func main() {
 		os.Exit(1)
 	}
 
-	level := log.Lerror
-	switch strings.ToLower(logLevel) {
-	case "debug":
-		level = log.Ldebug
-	case "info":
-		level = log.Linfo
-	case "warn":
-		level = log.Lwarn
-	case "error":
-		level = log.Lerror
-	default:
-	}
-	log.SetOutputLevel(level)
+	log.SetOutputLevel(log.ParseLevel(logLevel, log.Lerror))
 	log.SetOutput(&lumberjack.Logger{
-		Filename:   path.Join(logDir, module, module+".log"),
-		MaxSize:    1024,
-		MaxAge:     7,
-		MaxBackups: 7,
-		LocalTime:  true,
-		Compress:   true,
+		Filename: path.Join(logDir, module, module+".log"),
+		MaxSize:  1024, MaxAge: 7, MaxBackups: 7, LocalTime: true, Compress: true,
 	})
 
 	// Init output file
@@ -231,7 +215,7 @@ func main() {
 		go func() {
 			mainMux := http.NewServeMux()
 			mux := http.NewServeMux()
-			http.HandleFunc(log.SetLogLevelPath, log.SetLogLevel)
+			http.HandleFunc(log.ChangeDefaultLevelHandler())
 			mux.Handle("/debug/pprof", http.HandlerFunc(pprof.Index))
 			mux.Handle("/debug/pprof/cmdline", http.HandlerFunc(pprof.Cmdline))
 			mux.Handle("/debug/pprof/profile", http.HandlerFunc(pprof.Profile))

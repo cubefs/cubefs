@@ -96,7 +96,7 @@ func (c *ConsoleNode) writeError(err error, writer http.ResponseWriter) {
 		value = []byte("marshal rep has err")
 	}
 	if _, err := writer.Write(value); err != nil {
-		log.LogErrorf("write has err:[%s]", err.Error())
+		log.Errorf("write has err:[%s]", err.Error())
 	}
 }
 
@@ -106,7 +106,7 @@ func (c ConsoleNode) Shutdown() {
 
 func (c *ConsoleNode) Sync() {
 	if err := http.ListenAndServe(fmt.Sprintf(":%s", c.listen), c.server); err != nil {
-		log.LogErrorf("sync console has err:[%s]", err.Error())
+		log.Errorf("sync console has err:[%s]", err.Error())
 	}
 }
 
@@ -123,19 +123,17 @@ func (c *ConsoleNode) loadConfig(cfg *config.Config) (err error) {
 	if match := regexp.MustCompile("^(\\d)+$").MatchString(c.listen); !match {
 		return fmt.Errorf("invalid listen configuration:[%s]", c.listen)
 	}
-	log.LogInfof("console loadConfig: setup config: %v(%v)", proto.ListenPort, c.listen)
+	log.Infof("console loadConfig: setup config: %v(%v)", proto.ListenPort, c.listen)
 
 	// parse master config
 	c.masters = cfg.GetStringSlice(proto.MasterAddr)
 	if len(c.masters) == 0 {
 		return config.NewIllegalConfigError(proto.MasterAddr)
 	}
-	log.LogInfof("loadConfig: setup config: %v(%v)", proto.MasterAddr, strings.Join(c.masters, ","))
+	log.Infof("loadConfig: setup config: %v(%v)", proto.MasterAddr, strings.Join(c.masters, ","))
 
 	c.objectNodeDomain = cfg.GetString(proto.ObjectNodeDomain)
-
 	c.server = mux.NewRouter()
-
 	return
 }
 

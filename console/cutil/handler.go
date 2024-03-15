@@ -97,7 +97,7 @@ func writeResponse(w http.ResponseWriter, code int, value interface{}, err error
 	}
 
 	if _, err := w.Write(responseJSON); err != nil {
-		log.LogWarnf("write reponse has err:[%s]", err.Error())
+		log.Warnf("write reponse has err:[%s]", err.Error())
 	}
 }
 
@@ -148,7 +148,7 @@ func (h *graphqlProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) 
 		w.Header().Set("Content-Type", "application/json")
 	}
 	if _, err := w.Write(responseJSON); err != nil {
-		log.LogWarnf("write reponse has err:[%s]", err.Error())
+		log.Warnf("write reponse has err:[%s]", err.Error())
 	}
 }
 

@@ -181,8 +181,8 @@ func (dp *DataPartition) getLocalExtentInfo(extentType uint8, tinyExtents []uint
 	return
 }
 
-func (dp *DataPartition) getRemoteExtentInfo(extentType uint8, tinyExtents []uint64,
-	target string) (extentFiles []*storage.ExtentInfo, err error) {
+func (dp *DataPartition) getRemoteExtentInfo(extentType uint8, tinyExtents []uint64, target string,
+) (extentFiles []*storage.ExtentInfo, err error) {
 	p := repl.NewPacketToGetAllWatermarks(dp.partitionID, extentType)
 	extentFiles = make([]*storage.ExtentInfo, 0)
 	if proto.IsTinyExtentType(extentType) {
@@ -316,7 +316,7 @@ func (dp *DataPartition) prepareRepairTasks(repairTasks []*DataPartitionRepairTa
 					extentInfoMap[extentID] = extentInfo
 				}
 			}
-			//			log.LogInfof("action[prepareRepairTasks] dp %v extentid %v addr[dst %v,leader %v] info %v", dp.partitionID, extentID, repairTask.addr, repairTask.LeaderAddr, extentInfoMap[extentID])
+			// log.Infof("action[prepareRepairTasks] dp %v extentid %v addr[dst %v,leader %v] info %v", dp.partitionID, extentID, repairTask.addr, repairTask.LeaderAddr, extentInfoMap[extentID])
 		}
 	}
 	for extentID := range deleteExtents {
@@ -600,7 +600,7 @@ func (dp *DataPartition) streamRepairExtent(remoteExtentInfo *storage.ExtentInfo
 				log.Debugf("streamRepairExtent reply size %v, currFixoffset %v, reply %v ", reply.Size, currFixOffset, reply)
 				_, err = store.Write(uint64(localExtentInfo.FileID), int64(currFixOffset), int64(reply.Size), reply.Data, reply.CRC, wType, BufferWrite)
 			}
-			// log.LogDebugf("streamRepairExtent reply size %v, currFixoffset %v, reply %v err %v", reply.Size, currFixOffset, reply, err)
+			// log.Debugf("streamRepairExtent reply size %v, currFixoffset %v, reply %v err %v", reply.Size, currFixOffset, reply, err)
 			// write to the local extent file
 			if err != nil {
 				err = errors.Trace(err, "streamRepairExtent repair data error ")

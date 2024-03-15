@@ -222,7 +222,7 @@ func (factor *LimitFactor) TryReleaseWaitList(ctx context.Context) {
 		value := factor.waitList.Front()
 		ele := value.Value.(*AllocElement)
 
-		// log.LogDebugf("action[TryReleaseWaitList] type [%v] ele used [%v]", proto.QosTypeString(factor.factorType), ele.used)
+		// log.Debugf("action[TryReleaseWaitList] type [%v] ele used [%v]", proto.QosTypeString(factor.factorType), ele.used)
 		for atomic.LoadUint64(&tGrid.used)+uint64(ele.used) > tGrid.limit+tGrid.buffer {
 
 			span.Warnf("action[TryReleaseWaitList] type [%v] new gird be used up.alloc in waitlist left cnt [%v],"+
@@ -411,7 +411,7 @@ func (limitManager *LimitManager) GetFlowInfo(ctx context.Context) (*proto.Clien
 			buffer += grid.Value.(*GridElement).buffer
 			griCnt++
 
-			// log.LogDebugf("action[GetFlowInfo] type [%v] grid id[%v] used %v limit %v buffer %v time %v sum_used %v sum_limit %v,len %v",
+			// log.Debugf("action[GetFlowInfo] type [%v] grid id[%v] used %v limit %v buffer %v time %v sum_used %v sum_limit %v,len %v",
 			//	proto.QosTypeString(factorType),
 			//	grid.Value.(*GridElement).ID,
 			//	grid.Value.(*GridElement).used,

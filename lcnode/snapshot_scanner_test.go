@@ -27,6 +27,7 @@ import (
 func TestSnapshotScanner(t *testing.T) {
 	snapshotRoutineNumPerTask = 1
 	scanCheckInterval = 1
+	_, ctx := spanContextOperation("SnapshotScanner")
 	scanner := &SnapshotScanner{
 		ID:     "test_id",
 		Volume: "test_vol",
@@ -46,6 +47,7 @@ func TestSnapshotScanner(t *testing.T) {
 		rPoll:       routinepool.NewRoutinePool(snapshotRoutineNumPerTask),
 		currentStat: &proto.SnapshotStatistics{},
 		stopC:       make(chan bool),
+		ctx:         ctx,
 	}
 	go scanner.Start()
 	time.Sleep(time.Second * 5)
