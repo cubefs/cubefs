@@ -16,6 +16,7 @@ package storage_test
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"os"
 	"syscall"
@@ -50,61 +51,64 @@ func mockCrcPersist(t *testing.T, e *storage.Extent, blockNo int, blockCrc uint3
 }
 
 func getMockCrcPersist(t *testing.T) storage.UpdateCrcFunc {
-	return func(e *storage.Extent, blockNo int, crc uint32) (err error) {
+	return func(ctx context.Context, e *storage.Extent, blockNo int, crc uint32) (err error) {
 		return mockCrcPersist(t, e, blockNo, crc)
 	}
 }
 
 func normalExtentRwTest(t *testing.T, e *storage.Extent) {
+	ctx := context.Background()
+
 	data := []byte(dataStr)
-	_, err := e.Write(data, 0, 0, 0, storage.AppendWriteType, true, getMockCrcPersist(t), nil)
+	_, err := e.Write(ctx, data, 0, 0, 0, storage.AppendWriteType, true, getMockCrcPersist(t), nil)
 	require.Error(t, err)
 	// append write
-	_, err = e.Write(data, 0, int64(len(data)), 0, storage.AppendWriteType, true, getMockCrcPersist(t), nil)
+	_, err = e.Write(ctx, data, 0, int64(len(data)), 0, storage.AppendWriteType, true, getMockCrcPersist(t), nil)
 	require.NoError(t, err)
 	require.EqualValues(t, e.Size(), len(data))
-	_, err = e.Read(data, 0, int64(len(data)), false)
+	_, err = e.Read(ctx, data, 0, int64(len(data)), false)
 	require.NoError(t, err)
 	require.Equal(t, string(data), dataStr)
 	// failed append write
-	_, err = e.Write(data, 0, int64(len(data)), 0, storage.AppendWriteType, true, getMockCrcPersist(t), nil)
+	_, err = e.Write(ctx, data, 0, int64(len(data)), 0, storage.AppendWriteType, true, getMockCrcPersist(t), nil)
 	require.Error(t, err)
 	// random append write
 	oldSize := e.Size()
-	_, err = e.Write(data, 0, int64(len(data)), 0, storage.RandomWriteType, true, getMockCrcPersist(t), nil)
+	_, err = e.Write(ctx, data, 0, int64(len(data)), 0, storage.RandomWriteType, true, getMockCrcPersist(t), nil)
 	require.NoError(t, err)
 	require.Equal(t, e.Size(), oldSize)
-	_, err = e.Read(data, 0, int64(len(data)), false)
+	_, err = e.Read(ctx, data, 0, int64(len(data)), false)
 	require.NoError(t, err)
 	require.Equal(t, string(data), dataStr)
-	_, err = e.Write(data, util.BlockSize, dataSize, 0, storage.RandomWriteType, true, getMockCrcPersist(t), nil)
+	_, err = e.Write(ctx, data, util.BlockSize, dataSize, 0, storage.RandomWriteType, true, getMockCrcPersist(t), nil)
 	require.NoError(t, err)
-	_, err = e.Write(data, util.ExtentSize, dataSize, 0, storage.RandomWriteType, true, getMockCrcPersist(t), nil)
+	_, err = e.Write(ctx, data, util.ExtentSize, dataSize, 0, storage.RandomWriteType, true, getMockCrcPersist(t), nil)
 	require.NoError(t, err)
 	// TODO: append random write test
 }
 
 func tinyExtentRwTest(t *testing.T, e *storage.Extent) {
+	ctx := context.Background()
 	data := []byte(dataStr)
 	// write oversize
-	_, err := e.Write(data, storage.ExtentMaxSize, dataSize, 0, storage.RandomWriteType, true, getMockCrcPersist(t), nil)
+	_, err := e.Write(ctx, data, storage.ExtentMaxSize, dataSize, 0, storage.RandomWriteType, true, getMockCrcPersist(t), nil)
 	require.ErrorIs(t, err, storage.ExtentIsFullError)
 	// append write
-	_, err = e.Write(data, 0, int64(len(data)), 0, storage.AppendWriteType, true, getMockCrcPersist(t), nil)
+	_, err = e.Write(ctx, data, 0, int64(len(data)), 0, storage.AppendWriteType, true, getMockCrcPersist(t), nil)
 	require.NoError(t, err)
 	require.EqualValues(t, e.Size()%util.PageSize, 0)
-	_, err = e.Read(data, 0, int64(len(data)), false)
+	_, err = e.Read(ctx, data, 0, int64(len(data)), false)
 	require.NoError(t, err)
 	require.Equal(t, string(data), dataStr)
 	// failed append write
-	_, err = e.Write(data, 0, int64(len(data)), 0, storage.AppendWriteType, true, getMockCrcPersist(t), nil)
+	_, err = e.Write(ctx, data, 0, int64(len(data)), 0, storage.AppendWriteType, true, getMockCrcPersist(t), nil)
 	require.Error(t, err)
 	// random write
 	oldSize := e.Size()
-	_, err = e.Write(data, int64(len(data)), int64(len(data)), 0, storage.RandomWriteType, true, getMockCrcPersist(t), nil)
+	_, err = e.Write(ctx, data, int64(len(data)), int64(len(data)), 0, storage.RandomWriteType, true, getMockCrcPersist(t), nil)
 	require.NoError(t, err)
 	require.Equal(t, e.Size(), oldSize)
-	_, err = e.Read(data, int64(len(data)), int64(len(data)), false)
+	_, err = e.Read(ctx, data, int64(len(data)), int64(len(data)), false)
 	require.NoError(t, err)
 	require.Equal(t, string(data), dataStr)
 }
@@ -120,6 +124,7 @@ func normalExtentCreateTest(t *testing.T, name string) {
 }
 
 func normalExtentRecoveryTest(t *testing.T, name string) {
+	ctx := context.Background()
 	e := storage.NewExtentInCore(name, testNormalExtentID)
 	require.Equal(t, e.Exist(), true)
 	t.Log("normal-extent:", e.String())
@@ -128,7 +133,7 @@ func normalExtentRecoveryTest(t *testing.T, name string) {
 	defer e.Close()
 	for _, offset := range []int64{0, util.BlockSize, util.ExtentSize} {
 		data := make([]byte, dataSize)
-		_, err = e.Read(data, offset, dataSize, false)
+		_, err = e.Read(ctx, data, offset, dataSize, false)
 		require.NoError(t, err)
 		require.Equal(t, string(data), dataStr)
 	}
@@ -145,6 +150,7 @@ func tinyExtentCreateTest(t *testing.T, name string) {
 }
 
 func tinyExtentRecoveryTest(t *testing.T, name string) {
+	ctx := context.Background()
 	e := storage.NewExtentInCore(name, testTinyExtentID)
 	require.Equal(t, e.Exist(), true)
 	err := e.RestoreFromFS()
@@ -154,12 +160,13 @@ func tinyExtentRecoveryTest(t *testing.T, name string) {
 	_, err = e.ReadTiny(data, 0, int64(len(data)), false)
 	require.NoError(t, err)
 	require.Equal(t, string(data), dataStr)
-	_, err = e.Read(data, int64(len(data)), int64(len(data)), false)
+	_, err = e.Read(ctx, data, int64(len(data)), int64(len(data)), false)
 	require.NoError(t, err)
 	require.Equal(t, string(data), dataStr)
 }
 
 func tinyExtentRepairTest(t *testing.T, name string) {
+	ctx := context.Background()
 	e := storage.NewExtentInCore(name, testTinyExtentID)
 	require.Equal(t, e.Exist(), true)
 	err := e.RestoreFromFS()
@@ -170,7 +177,7 @@ func tinyExtentRepairTest(t *testing.T, name string) {
 	err = e.TinyExtentRecover(nil, size, int64(len(data)), 0, true)
 	require.NoError(t, err)
 	t.Logf("extent data size is %v", e.Size())
-	_, err = e.Read(data, size, int64(len(data)), true)
+	_, err = e.Read(ctx, data, size, int64(len(data)), true)
 	require.NoError(t, err)
 	for _, v := range data {
 		require.EqualValues(t, v, 0)
@@ -179,7 +186,7 @@ func tinyExtentRepairTest(t *testing.T, name string) {
 	data = []byte(dataStr)
 	err = e.TinyExtentRecover(data, size, int64(len(data)), 0, false)
 	require.NoError(t, err)
-	_, err = e.Read(data, size, int64(len(data)), false)
+	_, err = e.Read(ctx, data, size, int64(len(data)), false)
 	require.NoError(t, err)
 	require.Equal(t, string(data), dataStr)
 }
@@ -276,6 +283,7 @@ func TestSeekHole(t *testing.T) {
 }
 
 func TestExtentRecovery(t *testing.T) {
+	ctx := context.Background()
 	filePath := "./1025"
 	os.Remove(filePath)
 	defer os.Remove(filePath)
@@ -287,11 +295,11 @@ func TestExtentRecovery(t *testing.T) {
 
 	data := bytes.Repeat([]byte("s"), headSize)
 	for i := 0; i < 10; i++ {
-		_, err := e.Write(data, int64(i)*util.BlockSize, int64(headSize), 0, storage.AppendWriteType, true, getMockCrcPersist(t), nil)
+		_, err := e.Write(ctx, data, int64(i)*util.BlockSize, int64(headSize), 0, storage.AppendWriteType, true, getMockCrcPersist(t), nil)
 		require.NoError(t, err)
 	}
 	for i := 0; i < 10; i++ {
-		_, err := e.Write(data, int64(i)*util.BlockSize+util.ExtentSize, int64(headSize), 0, storage.AppendRandomWriteType, true, getMockCrcPersist(t), nil)
+		_, err := e.Write(ctx, data, int64(i)*util.BlockSize+util.ExtentSize, int64(headSize), 0, storage.AppendRandomWriteType, true, getMockCrcPersist(t), nil)
 		require.NoError(t, err)
 	}
 	e.GetFile().Close()
