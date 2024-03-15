@@ -892,6 +892,7 @@ type DataPartitionResponse struct {
 // DataPartitionsView defines the view of a data partition
 type DataPartitionsView struct {
 	DataPartitions []*DataPartitionResponse
+	VolReadOnly    bool // to notify client no readwrite dp
 }
 
 type DiskDataPartitionsView struct {
@@ -901,6 +902,7 @@ type DiskDataPartitionsView struct {
 func NewDataPartitionsView() (dataPartitionsView *DataPartitionsView) {
 	dataPartitionsView = new(DataPartitionsView)
 	dataPartitionsView.DataPartitions = make([]*DataPartitionResponse, 0)
+	dataPartitionsView.VolReadOnly = false
 	return
 }
 
