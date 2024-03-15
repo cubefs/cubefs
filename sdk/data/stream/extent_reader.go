@@ -114,6 +114,10 @@ func (reader *ExtentReader) checkStreamReply(request *Packet, reply *Packet) (er
 		return TryOtherAddrError
 	}
 
+	if reply.ResultCode == proto.OpNotExistErr {
+		return ExtentNotFoundError
+	}
+
 	if reply.ResultCode != proto.OpOk {
 		if request.Opcode == proto.OpStreamFollowerRead {
 			log.LogWarnf("checkStreamReply: ResultCode(%v) NOK, OpStreamFollowerRead return TryOtherAddrError, "+

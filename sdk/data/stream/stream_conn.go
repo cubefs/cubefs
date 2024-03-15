@@ -28,8 +28,9 @@ import (
 )
 
 var (
-	TryOtherAddrError = errors.New("TryOtherAddrError")
-	DpDiscardError    = errors.New("DpDiscardError")
+	TryOtherAddrError   = errors.New("TryOtherAddrError")
+	DpDiscardError      = errors.New("DpDiscardError")
+	ExtentNotFoundError = errors.New("ExtentNotFoundError")
 )
 
 const (
@@ -108,7 +109,7 @@ func (sc *StreamConn) String() string {
 func (sc *StreamConn) Send(retry *bool, req *Packet, getReply GetReplyFunc) (err error) {
 	for i := 0; i < StreamSendMaxRetry; i++ {
 		err = sc.sendToPartition(req, retry, getReply)
-		if err == nil || err == proto.ErrCodeVersionOp || !*retry || err == TryOtherAddrError {
+		if err == nil || err == proto.ErrCodeVersionOp || !*retry || err == TryOtherAddrError || err == ExtentNotFoundError {
 			return
 		}
 		log.LogWarnf("StreamConn Send: err(%v)", err)

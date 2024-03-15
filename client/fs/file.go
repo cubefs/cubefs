@@ -43,8 +43,10 @@ type File struct {
 	parentIno uint64
 	name      string
 	sync.RWMutex
-	fReader *blobstore.Reader
-	fWriter *blobstore.Writer
+	fReader  *blobstore.Reader
+	fWriter  *blobstore.Writer
+	flag     uint32
+	migrated bool
 }
 
 // Functions that File needs to implement
@@ -109,7 +111,7 @@ func NewFile(s *Super, i *proto.InodeInfo, flag uint32, pino uint64, filename st
 		log.LogDebugf("Trace NewFile:fReader(%v) fWriter(%v) ", fReader, fWriter)
 		return &File{super: s, info: i, fWriter: fWriter, fReader: fReader, parentIno: pino, name: filename}
 	}
-	return &File{super: s, info: i, parentIno: pino, name: filename}
+	return &File{super: s, info: i, parentIno: pino, name: filename, flag: flag}
 }
 
 // get file parentPath
@@ -301,6 +303,10 @@ func (f *File) Release(ctx context.Context, req *fuse.ReleaseRequest) (err error
 		stat.EndStat("Release", err, bgTime, 1)
 		log.LogInfof("action[Release] %v", f.fWriter)
 		f.fWriter.FreeCache()
+		// keep nodeCache hold the latest inode info
+		f.super.fslock.Lock()
+		delete(f.super.nodeCache, ino)
+		f.super.fslock.Unlock()
 		if DisableMetaCache {
 			f.super.ic.Delete(ino)
 		}
@@ -334,7 +340,8 @@ func (f *File) Read(ctx context.Context, req *fuse.ReadRequest, resp *fuse.ReadR
 		stat.StatBandWidth("Read", uint32(req.Size))
 	}()
 
-	log.LogDebugf("TRACE Read enter: ino(%v) offset(%v) reqsize(%v) req(%v)", f.info.Inode, req.Offset, req.Size, req)
+	log.LogDebugf("TRACE Read enter: ino(%v) storageClass(%v) offset(%v) reqsize(%v) req(%v)",
+		f.info.Inode, f.info.StorageClass, req.Offset, req.Size, req)
 
 	start := time.Now()
 
@@ -342,6 +349,7 @@ func (f *File) Read(ctx context.Context, req *fuse.ReadRequest, resp *fuse.ReadR
 	defer func() {
 		metric.SetWithLabels(err, map[string]string{exporter.Vol: f.super.volname})
 	}()
+ReadRetry:
 	var size int
 	if proto.IsStorageClassReplica(f.info.StorageClass) {
 		size, err = f.super.ec.Read(f.info.Inode, resp.Data[fuse.OutHeaderSize:], int(req.Offset),
@@ -349,7 +357,12 @@ func (f *File) Read(ctx context.Context, req *fuse.ReadRequest, resp *fuse.ReadR
 	} else {
 		size, err = f.fReader.Read(ctx, resp.Data[fuse.OutHeaderSize:], int(req.Offset), req.Size)
 	}
+	log.LogDebugf("TRACE Read enter: ino(%v) storageClass(%v) offset(%v) req(%v) result: size(%v) err (%v)",
+		f.info.Inode, f.info.StorageClass, req.Offset, req, size, err)
 	if err != nil && err != io.EOF {
+		if f.needReadRetry(err) {
+			goto ReadRetry
+		}
 		msg := fmt.Sprintf("Read: ino(%v) req(%v) err(%v) size(%v)", f.info.Inode, req, err, size)
 		f.super.handleError("Read", msg)
 		errMetric := exporter.NewCounter("fileReadFailed")
@@ -376,6 +389,75 @@ func (f *File) Read(ctx context.Context, req *fuse.ReadRequest, resp *fuse.ReadR
 	log.LogDebugf("TRACE Read: ino(%v) offset(%v) reqsize(%v) req(%v) size(%v) (%v)ns", f.info.Inode, req.Offset, req.Size, req, size, elapsed.Nanoseconds())
 
 	return nil
+}
+
+func (f *File) needReadRetry(err error) bool {
+	// TODO: ebs not found?
+	log.LogDebugf("needReadRetry: ino(%v) migrated(%v) ", f.info.Inode, f.migrated)
+	if strings.Contains(err.Error(), "ExtentNotFoundError") ||
+		strings.Contains(err.Error(), "reader is not opened yet") {
+		info, err := f.super.mw.InodeGet_ll(f.info.Inode)
+		if err != nil || info == nil {
+			log.LogErrorf("needReadRetry: ino(%v) err(%v) info(%v)", f.info.Inode, err, info)
+			if err != nil {
+				return false
+			} else {
+				return false
+			}
+		}
+		// file has not been migrated
+		if info.StorageClass == f.info.StorageClass || !f.migrated {
+			log.LogDebugf("needReadRetry: ino(%v) has not been migrated new(%v) old(%v) migrated(%v)",
+				f.info.Inode, info.StorageClass, f.info.StorageClass, f.migrated)
+			return false
+		}
+		// update inode cache for File
+		f.info = info
+		if proto.IsStorageClassReplica(f.info.StorageClass) {
+			log.LogDebugf("needReadRetry: ino(%v) update extent cache", f.info.Inode)
+			f.super.ec.RefreshExtentsCache(f.info.Inode)
+		}
+
+		if proto.IsStorageClassBlobStore(f.info.StorageClass) {
+			fileSize, _ := f.fileSizeVersion2(f.info.Inode)
+			clientConf := blobstore.ClientConfig{
+				VolName:         f.super.volname,
+				VolType:         f.super.volType,
+				BlockSize:       f.super.EbsBlockSize,
+				Ino:             f.info.Inode,
+				Bc:              f.super.bc,
+				Mw:              f.super.mw,
+				Ec:              f.super.ec,
+				Ebsc:            f.super.ebsc,
+				EnableBcache:    f.super.enableBcache,
+				WConcurrency:    f.super.writeThreads,
+				ReadConcurrency: f.super.readThreads,
+				CacheAction:     f.super.CacheAction,
+				FileCache:       false,
+				FileSize:        uint64(fileSize),
+				CacheThreshold:  f.super.CacheThreshold,
+				StorageClass:    f.info.StorageClass,
+			}
+			f.fWriter.FreeCache()
+			switch f.flag & 0x0f {
+			case syscall.O_RDONLY:
+				f.fReader = blobstore.NewReader(clientConf)
+				f.fWriter = nil
+			case syscall.O_WRONLY:
+				f.fWriter = blobstore.NewWriter(clientConf)
+				f.fReader = nil
+			case syscall.O_RDWR:
+				f.fReader = blobstore.NewReader(clientConf)
+				f.fWriter = blobstore.NewWriter(clientConf)
+			default:
+				f.fWriter = blobstore.NewWriter(clientConf)
+				f.fReader = nil
+			}
+			log.LogDebugf("needReadRetry: ino(%v) new writer and reader", f.info.Inode)
+		}
+		log.LogDebugf("needReadRetry: ino(%v) retry read", f.info.Inode)
+	}
+	return false
 }
 
 // Write handles the write request.
