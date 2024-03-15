@@ -1054,7 +1054,7 @@ func GetDecommissionStatusMessage(status uint32) string {
 }
 
 func (partition *DataPartition) MarkDecommissionStatus(srcAddr, dstAddr, srcDisk string, raftForce bool, term uint64, c *Cluster) bool {
-	if !partition.canMarkDecommission(term) {
+	if !partition.canMarkDecommission() {
 		log.LogWarnf("action[MarkDecommissionStatus] dp[%v] cannot make decommission:status[%v]",
 			partition.PartitionID, partition.GetDecommissionStatus())
 		return false
@@ -1263,7 +1263,7 @@ errHandler:
 	if partition.DecommissionNeedRollback {
 		partition.SetDecommissionStatus(DecommissionFail)
 	}
-	msg = fmt.Sprintf("clusterID[%v] vol[%v] partitionID[%v]  on Node:%v  "+
+	msg = fmt.Sprintf("clusterID[%v] vol[%v] dp[%v]  on Node:%v  "+
 		"to newHost:%v Err:%v, PersistenceHosts:%v ,retry %v,status %v, isRecover %v SingleDecommissionStatus[%v]"+
 		" DecommissionNeedRollback[%v]",
 		c.Name, partition.VolName, partition.PartitionID, srcAddr, targetAddr, err.Error(),
@@ -1403,11 +1403,11 @@ func (partition *DataPartition) checkConsumeToken() bool {
 }
 
 // only mark stop status or initial
-func (partition *DataPartition) canMarkDecommission(term uint64) bool {
+func (partition *DataPartition) canMarkDecommission() bool {
 	// dp may not be reset decommission status from last decommission
-	if partition.DecommissionTerm != term {
-		return true
-	}
+	//if partition.DecommissionTerm != term {
+	//	return true
+	//}
 	status := partition.GetDecommissionStatus()
 	if status == DecommissionInitial ||
 		status == DecommissionPause ||
