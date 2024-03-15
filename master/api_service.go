@@ -1825,6 +1825,7 @@ func (m *Server) decommissionDataPartition(w http.ResponseWriter, r *http.Reques
 		partitionID uint64
 		raftForce   bool
 		err         error
+		c           = m.cluster
 	)
 	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminDecommissionDataPartition))
 	defer func() {
@@ -1835,7 +1836,7 @@ func (m *Server) decommissionDataPartition(w http.ResponseWriter, r *http.Reques
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-	if dp, err = m.cluster.getDataPartitionByID(partitionID); err != nil {
+	if dp, err = c.getDataPartitionByID(partitionID); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(proto.ErrDataPartitionNotExists))
 		return
 	}
@@ -1844,28 +1845,45 @@ func (m *Server) decommissionDataPartition(w http.ResponseWriter, r *http.Reques
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-
-	if !dp.IsDecommissionInitial() {
-		rstMsg = fmt.Sprintf(" dataPartitionID :%v  status %v not support decommission",
-			partitionID, dp.GetDecommissionStatus())
+	replica, err := dp.getReplica(addr)
+	if err != nil {
+		rstMsg = fmt.Sprintf(" dataPartitionID :%v not find replica for addr %v",
+			partitionID, addr)
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: rstMsg})
 		return
 	}
-	if dp.isSpecialReplicaCnt() {
-		rstMsg = fmt.Sprintf(proto.AdminDecommissionDataPartition+" dataPartitionID :%v  is special replica cnt %v on node:%v async running,need check later",
-			partitionID, dp.ReplicaNum, addr)
-		go m.cluster.decommissionDataPartition(addr, dp, raftForce, handleDataPartitionOfflineErr)
-		sendOkReply(w, r, newSuccessHTTPReply(rstMsg))
+	node, err := c.dataNode(addr)
+	if err != nil {
+		rstMsg = fmt.Sprintf(" dataPartitionID :%v not find datanode for addr %v",
+			partitionID, addr)
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: rstMsg})
 		return
 	}
-	if err = m.cluster.decommissionDataPartition(addr, dp, raftForce, handleDataPartitionOfflineErr); err != nil {
-		sendErrReply(w, r, newErrHTTPReply(err))
+	zone, err := c.t.getZone(node.ZoneName)
+	if err != nil {
+		rstMsg = fmt.Sprintf(" dataPartitionID :%v not find zone for addr %v",
+			partitionID, addr)
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: rstMsg})
 		return
 	}
-	if !dp.isSpecialReplicaCnt() {
-		rstMsg = fmt.Sprintf(proto.AdminDecommissionDataPartition+" dataPartitionID :%v  on node:%v successfully", partitionID, addr)
-		sendOkReply(w, r, newSuccessHTTPReply(rstMsg))
+	ns, err := zone.getNodeSet(node.NodeSetID)
+	if err != nil {
+		rstMsg = fmt.Sprintf(" dataPartitionID :%v not find nodeset for addr %v",
+			partitionID, addr)
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: rstMsg})
+		return
 	}
+	if !dp.MarkDecommissionStatus(addr, "", replica.DiskPath, raftForce, 0, c) {
+		rstMsg = fmt.Sprintf(" dataPartitionID :%v mark decommission failed",
+			partitionID)
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: rstMsg})
+		return
+	}
+	c.syncUpdateDataPartition(dp)
+	ns.AddToDecommissionDataPartitionList(dp, c)
+	rstMsg = fmt.Sprintf(proto.AdminDecommissionDataPartition+" dataPartitionID :%v  on node:%v successfully", partitionID, addr)
+	sendOkReply(w, r, newSuccessHTTPReply(rstMsg))
+
 }
 
 func (m *Server) diagnoseDataPartition(w http.ResponseWriter, r *http.Request) {
@@ -1999,9 +2017,9 @@ func (m *Server) queryDataPartitionDecommissionStatus(w http.ResponseWriter, r *
 		replicas = append(replicas, replica.Addr)
 	}
 	msg = fmt.Sprintf("partitionID:%v  status[%v] specialStep[%v] retry [%v] raftForce[%v] recover [%v] "+
-		"decommission src dataNode[%v] disk[%v]  dst dataNode[%v] term[%v] replicas[%v] DecommissionWaitTimes[%v]",
+		"decommission src dataNode[%v] disk[%v]  dst dataNode[%v] term[%v] replicas[%v] DecommissionWaitTimes[%v] rollback[%v]",
 		partitionID, dp.GetDecommissionStatus(), dp.GetSpecialReplicaDecommissionStep(), dp.DecommissionRetry, dp.DecommissionRaftForce, dp.isRecover,
-		dp.DecommissionSrcAddr, dp.DecommissionSrcDiskPath, dp.DecommissionDstAddr, dp.DecommissionTerm, replicas, dp.DecommissionWaitTimes)
+		dp.DecommissionSrcAddr, dp.DecommissionSrcDiskPath, dp.DecommissionDstAddr, dp.DecommissionTerm, replicas, dp.DecommissionWaitTimes, dp.DecommissionNeedRollbackTimes)
 	sendOkReply(w, r, newSuccessHTTPReply(msg))
 }
 
