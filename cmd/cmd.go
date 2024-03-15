@@ -31,7 +31,6 @@ import (
 
 	"github.com/cubefs/cubefs/authnode"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
-	blog "github.com/cubefs/cubefs/blobstore/util/log"
 	"github.com/cubefs/cubefs/cmd/common"
 	"github.com/cubefs/cubefs/console"
 	"github.com/cubefs/cubefs/datanode"
@@ -54,8 +53,6 @@ const (
 	ConfigKeyRole              = "role"
 	ConfigKeyLogDir            = "logDir"
 	ConfigKeyLogLevel          = "logLevel"
-	ConfigKeyLogRotateSize     = "logRotateSize"
-	ConfigKeyLogRotateHeadRoom = "logRotateHeadRoom"
 	ConfigKeyProfPort          = "prof"
 	ConfigKeyWarnLogDir        = "warnLogDir"
 	ConfigKeyBuffersTotalLimit = "buffersTotalLimit"
@@ -169,15 +166,13 @@ func main() {
 	role := cfg.GetString(ConfigKeyRole)
 	logDir := cfg.GetString(ConfigKeyLogDir)
 	logLevel := cfg.GetString(ConfigKeyLogLevel)
-	logRotateSize := cfg.GetInt64(ConfigKeyLogRotateSize)
-	logRotateHeadRoom := cfg.GetInt64(ConfigKeyLogRotateHeadRoom)
 	profPort := cfg.GetString(ConfigKeyProfPort)
 	umpDatadir := cfg.GetString(ConfigKeyWarnLogDir)
 	buffersTotalLimit := cfg.GetInt64(ConfigKeyBuffersTotalLimit)
 	logLeftSpaceLimitStr := cfg.GetString(ConfigKeyLogLeftSpaceLimit)
 	logLeftSpaceLimit, err := strconv.ParseInt(logLeftSpaceLimitStr, 10, 64)
 	if err != nil || logLeftSpaceLimit == 0 {
-		log.LogErrorf("logLeftSpaceLimit is not a legal int value: %v", err.Error())
+		log.Errorf("logLeftSpaceLimit is not a legal int value: %v", err.Error())
 		logLeftSpaceLimit = log.DefaultLogLeftSpaceLimit
 	}
 	// Init server instance with specified role configuration.
@@ -215,56 +210,17 @@ func main() {
 	}
 
 	// Init logging
-	var (
-		level log.Level
-		blvl  blog.Level
-	)
-	switch strings.ToLower(logLevel) {
-	case "debug":
-		level = log.DebugLevel
-		blvl = blog.Ldebug
-	case "info":
-		level = log.InfoLevel
-		blvl = blog.Linfo
-	case "warn":
-		level = log.WarnLevel
-		blvl = blog.Lwarn
-	case "error":
-		level = log.ErrorLevel
-		blvl = blog.Lerror
-	case "critical":
-		level = log.CriticalLevel
-		blvl = blog.Lfatal
-	default:
-		level = log.ErrorLevel
-		blvl = blog.Lerror
-	}
-	rotate := log.NewLogRotate()
-	if logRotateSize > 0 {
-		rotate.SetRotateSizeMb(logRotateSize)
-	}
-	if logRotateHeadRoom > 0 {
-		rotate.SetHeadRoomMb(logRotateHeadRoom)
-	}
-	_, err = log.InitLog(logDir, module, level, rotate, logLeftSpaceLimit)
-	if err != nil {
-		err = errors.NewErrorf("Fatal: failed to init log - %v", err)
-		fmt.Println(err)
-		daemonize.SignalOutcome(err)
-		os.Exit(1)
-	}
-	defer log.LogFlush()
 	if errors.SupportPanicHook() {
 		err = errors.AtPanic(func() {
 			log.LogFlush()
 		})
 		if err != nil {
-			log.LogErrorf("failed to hook go panic")
+			log.Errorf("failed to hook go panic")
 			err = nil
 		}
 	}
-	blog.SetOutputLevel(blvl)
-	blog.SetOutput(&lumberjack.Logger{
+	log.SetOutputLevel(log.ParseLevel(logLevel, log.Lerror))
+	log.SetOutput(&lumberjack.Logger{
 		Filename:   path.Join(logDir, module, module+".log"),
 		MaxSize:    1024,
 		MaxAge:     7,
@@ -323,7 +279,6 @@ func main() {
 	// for multi-cpu scheduling
 	runtime.GOMAXPROCS(runtime.NumCPU())
 	if err = ump.InitUmp(role, umpDatadir); err != nil {
-		log.LogFlush()
 		err = errors.NewErrorf("Fatal: failed to init ump warnLogDir - %v", err)
 		syslog.Println(err)
 		daemonize.SignalOutcome(err)
@@ -334,7 +289,7 @@ func main() {
 		go func() {
 			mainMux := http.NewServeMux()
 			mux := http.NewServeMux()
-			http.HandleFunc(log.SetLogLevelPath, log.SetLogLevel)
+			http.HandleFunc(log.ChangeDefaultLevelHandler())
 			mux.Handle("/debug/pprof", http.HandlerFunc(pprof.Index))
 			mux.Handle("/debug/pprof/cmdline", http.HandlerFunc(pprof.Cmdline))
 			mux.Handle("/debug/pprof/profile", http.HandlerFunc(pprof.Profile))
@@ -354,7 +309,6 @@ func main() {
 			mainMux.Handle("/", mainHandler)
 			e := http.ListenAndServe(fmt.Sprintf(":%v", profPort), mainMux)
 			if e != nil {
-				log.LogFlush()
 				err = errors.NewErrorf("cannot listen pprof %v err %v", profPort, e)
 				syslog.Println(err)
 				daemonize.SignalOutcome(err)
@@ -366,7 +320,6 @@ func main() {
 	interceptSignal(server)
 	err = server.Start(cfg)
 	if err != nil {
-		log.LogFlush()
 		err = errors.NewErrorf("Fatal: failed to start the CubeFS %s daemon err %v - ", role, err)
 		syslog.Println(err)
 		daemonize.SignalOutcome(err)
@@ -377,7 +330,6 @@ func main() {
 	log.LogDisableStderrOutput()
 	err = log.OutputPid(logDir, role)
 	if err != nil {
-		log.LogFlush()
 		err = errors.NewErrorf("Fatal: failed to print pid %s err %v - ", role, err)
 		syslog.Println(err)
 		daemonize.SignalOutcome(err)

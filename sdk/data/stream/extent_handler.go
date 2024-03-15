@@ -115,7 +115,7 @@ type ExtentHandler struct {
 
 // NewExtentHandler returns a new extent handler.
 func NewExtentHandler(ctx context.Context, stream *Streamer, offset int, storeMode int, size int) *ExtentHandler {
-	// log.LogDebugf("NewExtentHandler stack(%v)", string(debug.Stack()))
+	// log.Debugf("NewExtentHandler stack(%v)", string(debug.Stack()))
 	eh := &ExtentHandler{
 		stream:       stream,
 		id:           GetExtentHandlerID(),
@@ -176,7 +176,7 @@ func (eh *ExtentHandler) write(ctx context.Context, data []byte, offset, size in
 			if direct {
 				eh.packet.Opcode = proto.OpSyncWrite
 			}
-			// log.LogDebugf("ExtentHandler Write: NewPacket, eh(%v) packet(%v)", eh, eh.packet)
+			// log.Debugf("ExtentHandler Write: NewPacket, eh(%v) packet(%v)", eh, eh.packet)
 		}
 		packsize := int(eh.packet.Size)
 		write = util.Min(size-total, blksize-packsize)
@@ -624,7 +624,7 @@ func (eh *ExtentHandler) allocateExtent(ctx context.Context) (err error) {
 		eh.conn = conn
 		eh.extID = extID
 
-		// log.LogDebugf("ExtentHandler allocateExtent exit: eh(%v) dp(%v) extID(%v)", eh, dp, extID)
+		// log.Debugf("ExtentHandler allocateExtent exit: eh(%v) dp(%v) extID(%v)", eh, dp, extID)
 		return nil
 	}
 
@@ -711,17 +711,17 @@ func (eh *ExtentHandler) getStatus() int32 {
 }
 
 func (eh *ExtentHandler) setClosed() bool {
-	//	log.LogDebugf("action[ExtentHandler.setClosed] stack (%v)", string(debug.Stack()))
+	//	log.Debugf("action[ExtentHandler.setClosed] stack (%v)", string(debug.Stack()))
 	return atomic.CompareAndSwapInt32(&eh.status, ExtentStatusOpen, ExtentStatusClosed)
 }
 
 func (eh *ExtentHandler) setRecovery() bool {
-	// log.LogDebugf("action[ExtentHandler.setRecovery] stack (%v)", string(debug.Stack()))
+	// log.Debugf("action[ExtentHandler.setRecovery] stack (%v)", string(debug.Stack()))
 	return atomic.CompareAndSwapInt32(&eh.status, ExtentStatusClosed, ExtentStatusRecovery)
 }
 
 func (eh *ExtentHandler) setError() bool {
-	// log.LogDebugf("action[ExtentHandler.setError] stack (%v)", string(debug.Stack()))
+	// log.Debugf("action[ExtentHandler.setError] stack (%v)", string(debug.Stack()))
 	if proto.IsHot(eh.stream.client.volumeType) {
 		atomic.StoreInt32(&eh.stream.status, StreamerError)
 	}

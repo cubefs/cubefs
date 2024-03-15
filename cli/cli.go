@@ -78,12 +78,8 @@ func setupCommands(cfg *cmd.Config) *cobra.Command {
 func main() {
 	log.SetOutputLevel(log.Ldebug)
 	log.SetOutput(&lumberjack.Logger{
-		Filename:   path.Join(path.Join(os.TempDir(), "cfs"), "cli", "cli.log"),
-		MaxSize:    128,
-		MaxAge:     7,
-		MaxBackups: 7,
-		LocalTime:  true,
-		Compress:   true,
+		Filename: path.Join(path.Join(os.TempDir(), "cfs"), "cli", "cli.log"),
+		MaxSize:  128, MaxAge: 7, MaxBackups: 7, LocalTime: true, Compress: true,
 	})
 
 	if err := runCLI(); err != nil {

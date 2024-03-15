@@ -71,7 +71,7 @@ func (ic *InodeCache) Put(info *proto.InodeInfo) {
 	element := ic.lruList.PushFront(info)
 	ic.cache[info.Inode] = element
 	ic.Unlock()
-	// log.LogDebugf("InodeCache put inode: inode(%v)", info.Inode)
+	// log.Debugf("InodeCache put inode: inode(%v)", info.Inode)
 }
 
 // Get returns the inode info based on the given inode number.
@@ -86,7 +86,7 @@ func (ic *InodeCache) Get(ino uint64) *proto.InodeInfo {
 	info := element.Value.(*proto.InodeInfo)
 	if inodeExpired(info) && DisableMetaCache {
 		ic.RUnlock()
-		// log.LogDebugf("InodeCache GetConnect expired: now(%v) inode(%v), expired(%d)", time.Now().Format(LogTimeFormat), info.Inode, info.Expiration())
+		// log.Debugf("InodeCache GetConnect expired: now(%v) inode(%v), expired(%d)", time.Now().Format(LogTimeFormat), info.Inode, info.Expiration())
 		return nil
 	}
 	ic.RUnlock()
@@ -95,7 +95,7 @@ func (ic *InodeCache) Get(ino uint64) *proto.InodeInfo {
 
 // Delete deletes the inode info based on the given inode number.
 func (ic *InodeCache) Delete(ino uint64) {
-	// log.LogDebugf("InodeCache Delete: ino(%v)", ino)
+	// log.Debugf("InodeCache Delete: ino(%v)", ino)
 	ic.Lock()
 	element, ok := ic.cache[ino]
 	if ok {
@@ -125,7 +125,7 @@ func (ic *InodeCache) evict(foreground bool) {
 			return
 		}
 
-		// log.LogDebugf("InodeCache GetConnect expired: now(%v) inode(%v)", time.Now().Format(LogTimeFormat), info.Inode)
+		// log.Debugf("InodeCache GetConnect expired: now(%v) inode(%v)", time.Now().Format(LogTimeFormat), info.Inode)
 		ic.lruList.Remove(element)
 		delete(ic.cache, info.Inode)
 		count++
@@ -145,7 +145,7 @@ func (ic *InodeCache) evict(foreground bool) {
 		if !inodeExpired(info) {
 			break
 		}
-		// log.LogDebugf("InodeCache GetConnect expired: now(%v) inode(%v)", time.Now().Format(LogTimeFormat), info.Inode)
+		// log.Debugf("InodeCache GetConnect expired: now(%v) inode(%v)", time.Now().Format(LogTimeFormat), info.Inode)
 		ic.lruList.Remove(element)
 		delete(ic.cache, info.Inode)
 		count++

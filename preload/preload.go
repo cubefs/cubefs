@@ -22,7 +22,6 @@ const (
 )
 
 func main() {
-	defer sdk.FlushLog()
 	flag.Parse()
 
 	if *configVersion {
@@ -75,29 +74,29 @@ func main() {
 		},
 	}
 
-	cli := sdk.NewClient(config)
-
+	_, ctx := proto.SpanContext()
+	cli := sdk.NewClient(ctx, config)
 	if cli == nil {
 		fmt.Println("Preload client created failed")
 		os.Exit(1)
 	}
 
-	if cli.CheckColdVolume() == false {
+	if cli.CheckColdVolume(ctx) == false {
 		fmt.Println("Preload only work in cold volume")
 		os.Exit(1)
 	}
 	fmt.Printf("conf is %v\n", config)
 	action := cfg.GetString("action")
 	if action == "preload" {
-		if err := cli.PreloadDir(cfg.GetString("target"), int(replicaNum), uint64(ttl), cfg.GetString("zones")); err != nil {
-			total, succeed := cli.GetPreloadResult()
+		if err := cli.PreloadDir(ctx, cfg.GetString("target"), int(replicaNum), uint64(ttl), cfg.GetString("zones")); err != nil {
+			total, succeed := cli.GetPreloadResult(ctx)
 			fmt.Printf("Preload failed:%v\n", err)
 			fmt.Printf("Result: total[%v], succeed[%v]\n", total, succeed)
 		} else {
 			fmt.Println("Preload succeed")
 		}
 	} else if action == "clear" {
-		cli.ClearPreloadDP(cfg.GetString("target"))
+		cli.ClearPreloadDP(ctx, cfg.GetString("target"))
 	} else {
 		fmt.Printf("action[%v] is not support\n", action)
 		os.Exit(1)
