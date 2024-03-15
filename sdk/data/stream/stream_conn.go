@@ -30,9 +30,10 @@ import (
 )
 
 var (
-	TryOtherAddrError = errors.New("TryOtherAddrError")
-	DpDiscardError    = errors.New("DpDiscardError")
-	LimitedIoError    = errors.New("LimitedIoError")
+	TryOtherAddrError   = errors.New("TryOtherAddrError")
+	DpDiscardError      = errors.New("DpDiscardError")
+	LimitedIoError      = errors.New("LimitedIoError")
+	ExtentNotFoundError = errors.New("ExtentNotFoundError")
 )
 
 const (
@@ -129,7 +130,7 @@ func (sc *StreamConn) Send(retry *bool, req *Packet, getReply GetReplyFunc) (err
 
 	for i := 0; i < StreamSendMaxRetry; i++ {
 		err = sc.sendToDataPartition(req, retry, getReply)
-		if err == nil || err == proto.ErrCodeVersionOp || !*retry || err == TryOtherAddrError || strings.Contains(err.Error(), "OpForbidErr") {
+		if err == nil || err == proto.ErrCodeVersionOp || !*retry || err == TryOtherAddrError || strings.Contains(err.Error(), "OpForbidErr") || err == ExtentNotFoundError {
 			return
 		}
 
