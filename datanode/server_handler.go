@@ -23,7 +23,6 @@ import (
 	"strconv"
 	"sync/atomic"
 
-	"github.com/cubefs/cubefs/blobstore/util/log"
 	"github.com/cubefs/cubefs/depends/tiglabs/raft"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/storage"
@@ -275,7 +274,7 @@ func (s *DataNode) getBlockCrcAPI(w http.ResponseWriter, r *http.Request) {
 		s.buildFailureResp(w, http.StatusNotFound, "partition not exist")
 		return
 	}
-	if blocks, err = partition.ExtentStore().ScanBlocks(uint64(extentID)); err != nil {
+	if blocks, err = partition.ExtentStore().ScanBlocks(r.Context(), uint64(extentID)); err != nil {
 		s.buildFailureResp(w, 500, err.Error())
 		return
 	}
@@ -512,36 +511,38 @@ func (s *DataNode) setDiskBadAPI(w http.ResponseWriter, r *http.Request) {
 		diskPath string
 		disk     *Disk
 	)
+	ctx := p.Context()
+	span := proto.SpanFromContext(ctx)
 
 	if err = r.ParseForm(); err != nil {
 		err = fmt.Errorf("parse form fail: %v", err)
-		log.Errorf("[setDiskBadAPI] %v", err.Error())
+		span.Errorf("[setDiskBadAPI] %v", err.Error())
 		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
 	if diskPath = r.FormValue(paramDiskPath); diskPath == "" {
 		err = fmt.Errorf("param(%v) is empty", paramDiskPath)
-		log.Errorf("[setDiskBadAPI] %v", err.Error())
+		span.Errorf("[setDiskBadAPI] %v", err.Error())
 		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
 	if disk, err = s.space.GetDisk(diskPath); err != nil {
 		err = fmt.Errorf("not exit such dissk, path: %v", diskPath)
-		log.Errorf("[setDiskBadAPI] %v", err.Error())
+		span.Errorf("[setDiskBadAPI] %v", err.Error())
 		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
 	if disk.Status == proto.Unavailable {
 		msg := fmt.Sprintf("disk(%v) status was already unavailable, nothing to do", disk.Path)
-		log.Infof("[setDiskBadAPI] %v", msg)
+		span.Infof("[setDiskBadAPI] %v", msg)
 		s.buildSuccessResp(w, msg)
 		return
 	}
 
-	log.Warnf("[setDiskBadAPI] set bad disk, path: %v", disk.Path)
+	span.Warnf("[setDiskBadAPI] set bad disk, path: %v", disk.Path)
 	disk.doDiskError()
 
 	s.buildSuccessResp(w, "OK")

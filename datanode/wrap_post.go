@@ -59,7 +59,7 @@ func (s *DataNode) releaseExtent(p *repl.Packet) {
 	if p.IsErrPacket() {
 		store.SendToBrokenTinyExtentC(p.ExtentID)
 	} else {
-		store.SendToAvailableTinyExtentC(p.ExtentID)
+		store.SendToAvailableTinyExtentC(p.Context(), p.ExtentID)
 	}
 	atomic.StoreInt32(&p.IsReleased, IsReleased)
 }

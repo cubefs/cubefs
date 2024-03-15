@@ -21,7 +21,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/cubefs/cubefs/blobstore/util/log"
+	"github.com/cubefs/cubefs/util/log"
 	"golang.org/x/time/rate"
 )
 
