@@ -15,6 +15,7 @@
 package storage
 
 import (
+	"context"
 	"encoding/binary"
 	"fmt"
 	"hash/crc32"
@@ -27,9 +28,9 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/cubefs/cubefs/blobstore/util/log"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util"
+	"github.com/cubefs/cubefs/util/log"
 )
 
 const (
@@ -150,6 +151,7 @@ func (e *Extent) GetFile() *os.File {
 // this operation will clear all data of exist entry file and initialize extent header data.
 func (e *Extent) InitToFS() (err error) {
 	if e.file, err = os.OpenFile(e.filePath, ExtentOpenOpt, 0o666); err != nil {
+		log.Errorf("[Extent.InitToFS] failed to open %s", e.filePath)
 		return err
 	}
 
@@ -291,8 +293,9 @@ func (e *Extent) WriteTiny(data []byte, offset, size int64, crc uint32, writeTyp
 }
 
 // Write writes data to an extent.
-func (e *Extent) Write(data []byte, offset, size int64, crc uint32, writeType int, isSync bool, crcFunc UpdateCrcFunc, ei *ExtentInfo) (status uint8, err error) {
-	log.Debugf("action[Extent.Write] path %v offset %v size %v writeType %v", e.filePath, offset, size, writeType)
+func (e *Extent) Write(ctx context.Context, data []byte, offset, size int64, crc uint32, writeType int, isSync bool, crcFunc UpdateCrcFunc, ei *ExtentInfo) (status uint8, err error) {
+	span := proto.SpanFromContext(ctx)
+	span.Debugf("action[Extent.Write] path %v offset %v size %v writeType %v", e.filePath, offset, size, writeType)
 	status = proto.OpOk
 	if IsTinyExtent(e.extentID) {
 		err = e.WriteTiny(data, offset, size, crc, writeType, isSync)
@@ -300,98 +303,99 @@ func (e *Extent) Write(data []byte, offset, size int64, crc uint32, writeType in
 	}
 
 	if err = e.checkWriteOffsetAndSize(writeType, offset, size); err != nil {
-		log.Errorf("action[Extent.Write] checkWriteOffsetAndSize offset %v size %v writeType %v err %v",
+		span.Errorf("action[Extent.Write] checkWriteOffsetAndSize offset %v size %v writeType %v err %v",
 			offset, size, writeType, err)
 		err = newParameterError("extent current size=%d write offset=%d write size=%d", e.dataSize, offset, size)
-		log.Infof("action[Extent.Write] newParameterError path %v offset %v size %v writeType %v err %v", e.filePath,
+		span.Infof("action[Extent.Write] newParameterError path %v offset %v size %v writeType %v err %v", e.filePath,
 			offset, size, writeType, err)
 		status = proto.OpTryOtherExtent
 		return
 	}
 
-	log.Debugf("action[Extent.Write] path %v offset %v size %v writeType %v", e.filePath, offset, size, writeType)
+	span.Debugf("action[Extent.Write] path %v offset %v size %v writeType %v", e.filePath, offset, size, writeType)
 	// Check if extent file size matches the write offset just in case
 	// multiple clients are writing concurrently.
 	e.Lock()
 	defer e.Unlock()
-	log.Debugf("action[Extent.Write] offset %v size %v writeType %v path %v", offset, size, writeType, e.filePath)
+	span.Debugf("action[Extent.Write] offset %v size %v writeType %v path %v", offset, size, writeType, e.filePath)
 	if IsAppendWrite(writeType) && e.dataSize != offset {
 		err = newParameterError("extent current size=%d write offset=%d write size=%d", e.dataSize, offset, size)
-		log.Infof("action[Extent.Write] newParameterError path %v offset %v size %v writeType %v err %v", e.filePath,
+		span.Infof("action[Extent.Write] newParameterError path %v offset %v size %v writeType %v err %v", e.filePath,
 			offset, size, writeType, err)
 		status = proto.OpTryOtherExtent
 		return
 	}
 	if IsAppendRandomWrite(writeType) {
 		if e.snapshotDataOff <= util.ExtentSize {
-			log.Infof("action[Extent.Write] truncate extent %v offset %v size %v writeType %v truncate err %v", e, offset, size, writeType, err)
+			span.Infof("action[Extent.Write] truncate extent %v offset %v size %v writeType %v truncate err %v", e, offset, size, writeType, err)
 			if err = e.file.Truncate(util.ExtentSize); err != nil {
-				log.Errorf("action[Extent.Write] offset %v size %v writeType %v truncate err %v", offset, size, writeType, err)
+				span.Errorf("action[Extent.Write] offset %v size %v writeType %v truncate err %v", offset, size, writeType, err)
 				return
 			}
 		}
 	}
 	if _, err = e.file.WriteAt(data[:size], int64(offset)); err != nil {
-		log.Errorf("action[Extent.Write] offset %v size %v writeType %v err %v", offset, size, writeType, err)
+		span.Errorf("action[Extent.Write] offset %v size %v writeType %v err %v", offset, size, writeType, err)
 		return
 	}
 
 	blockNo := offset / util.BlockSize
 	offsetInBlock := offset % util.BlockSize
 	defer func() {
-		log.Debugf("action[Extent.Write] offset %v size %v writeType %v path %v", offset, size, writeType, e.filePath)
+		span.Debugf("action[Extent.Write] offset %v size %v writeType %v path %v", offset, size, writeType, e.filePath)
 		if IsAppendWrite(writeType) {
 			atomic.StoreInt64(&e.modifyTime, time.Now().Unix())
 			e.dataSize = int64(math.Max(float64(e.dataSize), float64(offset+size)))
-			log.Debugf("action[Extent.Write] e %v offset %v size %v writeType %v", e, offset, size, writeType)
+			span.Debugf("action[Extent.Write] e %v offset %v size %v writeType %v", e, offset, size, writeType)
 		} else if IsAppendRandomWrite(writeType) {
 			atomic.StoreInt64(&e.modifyTime, time.Now().Unix())
 			e.snapshotDataOff = uint64(math.Max(float64(e.snapshotDataOff), float64(offset+size)))
 		}
-		log.Debugf("action[Extent.Write] offset %v size %v writeType %v dataSize %v snapshotDataOff %v",
+		span.Debugf("action[Extent.Write] offset %v size %v writeType %v dataSize %v snapshotDataOff %v",
 			offset, size, writeType, e.dataSize, e.snapshotDataOff)
 	}()
 
 	if isSync {
 		if err = e.file.Sync(); err != nil {
-			log.Debugf("action[Extent.Write] offset %v size %v writeType %v err %v",
+			span.Debugf("action[Extent.Write] offset %v size %v writeType %v err %v",
 				offset, size, writeType, err)
 			return
 		}
 	}
 	if offsetInBlock == 0 && size == util.BlockSize {
-		err = crcFunc(e, int(blockNo), crc)
-		log.Debugf("action[Extent.Write] offset %v size %v writeType %v err %v", offset, size, writeType, err)
+		err = crcFunc(ctx, e, int(blockNo), crc)
+		span.Debugf("action[Extent.Write] offset %v size %v writeType %v err %v", offset, size, writeType, err)
 		return
 	}
 
 	if offsetInBlock+size <= util.BlockSize {
-		err = crcFunc(e, int(blockNo), 0)
-		log.Debugf("action[Extent.Write]  offset %v size %v writeType %v err %v", offset, size, writeType, err)
+		err = crcFunc(ctx, e, int(blockNo), 0)
+		span.Debugf("action[Extent.Write]  offset %v size %v writeType %v err %v", offset, size, writeType, err)
 		return
 	}
-	log.Debugf("action[Extent.Write] offset %v size %v writeType %v", offset, size, writeType)
-	if err = crcFunc(e, int(blockNo), 0); err == nil {
-		err = crcFunc(e, int(blockNo+1), 0)
+	span.Debugf("action[Extent.Write] offset %v size %v writeType %v", offset, size, writeType)
+	if err = crcFunc(ctx, e, int(blockNo), 0); err == nil {
+		err = crcFunc(ctx, e, int(blockNo+1), 0)
 	}
 	return
 }
 
 // Read reads data from an extent.
-func (e *Extent) Read(data []byte, offset, size int64, isRepairRead bool) (crc uint32, err error) {
-	log.Debugf("action[Extent.read] offset %v size %v extent %v", offset, size, e)
+func (e *Extent) Read(ctx context.Context, data []byte, offset, size int64, isRepairRead bool) (crc uint32, err error) {
+	span := proto.SpanFromContext(ctx)
+	span.Debugf("action[Extent.read] offset %v size %v extent %v", offset, size, e)
 	if IsTinyExtent(e.extentID) {
 		return e.ReadTiny(data, offset, size, isRepairRead)
 	}
 
 	if err = e.checkReadOffsetAndSize(offset, size); err != nil {
-		log.Errorf("action[Extent.Read] offset %d size %d err %v", offset, size, err)
+		span.Errorf("action[Extent.Read] offset %d size %d err %v", offset, size, err)
 		return
 	}
 
 	var rSize int
 	if rSize, err = e.file.ReadAt(data[:size], offset); err != nil {
-		log.Errorf("action[Extent.Read] offset %v size %v err %v realsize %v", offset, size, err, rSize)
+		span.Errorf("action[Extent.Read] offset %v size %v err %v realsize %v", offset, size, err, rSize)
 		return
 	}
 	crc = crc32.ChecksumIEEE(data)
@@ -445,7 +449,7 @@ func (e *Extent) GetCrc(blockNo int64) uint32 {
 	return binary.BigEndian.Uint32(e.header[blockNo*util.PerBlockCrcSize : (blockNo+1)*util.PerBlockCrcSize])
 }
 
-func (e *Extent) autoComputeExtentCrc(crcFunc UpdateCrcFunc) (crc uint32, err error) {
+func (e *Extent) autoComputeExtentCrc(ctx context.Context, crcFunc UpdateCrcFunc) (crc uint32, err error) {
 	var blockCnt int
 	extSize := e.Size()
 	if e.snapshotDataOff > util.ExtentSize {
@@ -455,7 +459,8 @@ func (e *Extent) autoComputeExtentCrc(crcFunc UpdateCrcFunc) (crc uint32, err er
 	if extSize%util.BlockSize != 0 {
 		blockCnt += 1
 	}
-	log.Debugf("autoComputeExtentCrc. path %v extent %v extent size %v,blockCnt %v", e.filePath, e.extentID, extSize, blockCnt)
+	span := proto.SpanFromContext(ctx)
+	span.Debugf("autoComputeExtentCrc. path %v extent %v extent size %v,blockCnt %v", e.filePath, e.extentID, extSize, blockCnt)
 	crcData := make([]byte, blockCnt*util.PerBlockCrcSize)
 	for blockNo := 0; blockNo < blockCnt; blockNo++ {
 		blockCrc := binary.BigEndian.Uint32(e.header[blockNo*util.PerBlockCrcSize : (blockNo+1)*util.PerBlockCrcSize])
@@ -467,20 +472,20 @@ func (e *Extent) autoComputeExtentCrc(crcFunc UpdateCrcFunc) (crc uint32, err er
 		offset := int64(blockNo * util.BlockSize)
 		readN, err := e.file.ReadAt(bdata[:util.BlockSize], offset)
 		if readN == 0 && err != nil {
-			log.Errorf("autoComputeExtentCrc. path %v extent %v blockNo %v, readN %v err %v", e.filePath, e.extentID, blockNo, readN, err)
+			span.Errorf("autoComputeExtentCrc. path %v extent %v blockNo %v, readN %v err %v", e.filePath, e.extentID, blockNo, readN, err)
 			break
 		}
 		blockCrc = crc32.ChecksumIEEE(bdata[:readN])
-		err = crcFunc(e, blockNo, blockCrc)
+		err = crcFunc(ctx, e, blockNo, blockCrc)
 		if err != nil {
-			log.Errorf("autoComputeExtentCrc. path %v extent %v blockNo %v, err %v", e.filePath, e.extentID, blockNo, err)
+			span.Errorf("autoComputeExtentCrc. path %v extent %v blockNo %v, err %v", e.filePath, e.extentID, blockNo, err)
 			return 0, nil
 		}
-		log.Debugf("autoComputeExtentCrc. path %v extent %v blockCrc %v,blockNo %v", e.filePath, e.extentID, blockCrc, blockNo)
+		span.Debugf("autoComputeExtentCrc. path %v extent %v blockCrc %v,blockNo %v", e.filePath, e.extentID, blockCrc, blockNo)
 		binary.BigEndian.PutUint32(crcData[blockNo*util.PerBlockCrcSize:(blockNo+1)*util.PerBlockCrcSize], blockCrc)
 	}
 	crc = crc32.ChecksumIEEE(crcData)
-	log.Debugf("autoComputeExtentCrc. path %v extent %v crc %v", e.filePath, e.extentID, crc)
+	span.Debugf("autoComputeExtentCrc. path %v extent %v crc %v", e.filePath, e.extentID, crc)
 	return crc, err
 }
 
