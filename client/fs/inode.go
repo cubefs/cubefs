@@ -52,7 +52,9 @@ func (s *Super) InodeGet(ino uint64) (info *proto.InodeInfo, err error) {
 		if ok {
 			s.info = info
 		} else {
+			node.(*File).migrated = info.StorageClass == node.(*File).info.StorageClass
 			node.(*File).info = info
+			log.LogDebugf("InodeGet: ino(%v) migrate(%v) info(%v)", ino, node.(*File).migrated, info)
 		}
 	}
 	if proto.IsStorageClassBlobStore(info.StorageClass) {
