@@ -154,7 +154,7 @@ func (dpMap *DataPartitionMap) setDataPartitionCompressCache(responseCompress []
 	}
 }
 
-func (dpMap *DataPartitionMap) updateResponseCache(needsUpdate bool, minPartitionID uint64, volType int) (body []byte, err error) {
+func (dpMap *DataPartitionMap) updateResponseCache(needsUpdate bool, minPartitionID uint64, vol *Vol) (body []byte, err error) {
 	responseCache := dpMap.getDataPartitionResponseCache()
 	if responseCache == nil || needsUpdate || len(responseCache) == 0 {
 		dpMap.readMutex.Lock()
@@ -165,13 +165,16 @@ func (dpMap *DataPartitionMap) updateResponseCache(needsUpdate bool, minPartitio
 			return
 		}
 		dpResps := dpMap.getDataPartitionsView(minPartitionID)
-		if len(dpResps) == 0 && proto.IsHot(volType) {
+		if len(dpResps) == 0 && proto.IsHot(vol.VolType) {
 			log.LogError(fmt.Sprintf("action[updateDpResponseCache],volName[%v] minPartitionID:%v,err:%v",
 				dpMap.volName, minPartitionID, proto.ErrNoAvailDataPartition))
 			return nil, proto.ErrNoAvailDataPartition
 		}
 		cv := proto.NewDataPartitionsView()
 		cv.DataPartitions = dpResps
+		if vol.IsReadOnlyForVolFull() || vol.Forbidden {
+			cv.VolReadOnly = true
+		}
 		reply := newSuccessHTTPReply(cv)
 		if body, err = json.Marshal(reply); err != nil {
 			log.LogError(fmt.Sprintf("action[updateDpResponseCache],minPartitionID:%v,err:%v",
@@ -186,8 +189,8 @@ func (dpMap *DataPartitionMap) updateResponseCache(needsUpdate bool, minPartitio
 	return
 }
 
-func (dpMap *DataPartitionMap) updateCompressCache(needsUpdate bool, minPartitionID uint64, volType int) (body []byte, err error) {
-	if body, err = dpMap.updateResponseCache(needsUpdate, minPartitionID, volType); err != nil {
+func (dpMap *DataPartitionMap) updateCompressCache(needsUpdate bool, minPartitionID uint64, vol *Vol) (body []byte, err error) {
+	if body, err = dpMap.updateResponseCache(needsUpdate, minPartitionID, vol); err != nil {
 		log.LogErrorf("action[updateCompressCache]updateResponseCache failed,err:%+v", err)
 		return
 	}
