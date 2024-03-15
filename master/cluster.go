@@ -293,7 +293,8 @@ func (mgr *followerReadManager) checkViewContent(volName string, view *proto.Dat
 	for i := 0; i < len(view.DataPartitions); i++ {
 		dp := view.DataPartitions[i]
 		if len(dp.Hosts) == 0 {
-			log.LogErrorf("checkViewContent. dp id %v, leader %v, status %v", dp.PartitionID, dp.LeaderAddr, dp.Status)
+			log.LogErrorf("checkViewContent. vol %v, dp id %v, leader %v, status %v",
+				volName, dp.PartitionID, dp.LeaderAddr, dp.Status)
 		}
 	}
 	return true
@@ -593,8 +594,8 @@ func (c *Cluster) checkDataPartitions() {
 		readWrites := vol.checkDataPartitions(c)
 		vol.dataPartitions.setReadWriteDataPartitions(readWrites, c.Name)
 		if c.metaReady {
-			vol.dataPartitions.updateResponseCache(true, 0, vol.VolType)
-			vol.dataPartitions.updateCompressCache(true, 0, vol.VolType)
+			vol.dataPartitions.updateResponseCache(true, 0, vol)
+			vol.dataPartitions.updateCompressCache(true, 0, vol)
 		}
 		msg := fmt.Sprintf("action[checkDataPartitions],vol[%v] can readWrite partitions:%v  ",
 			vol.Name, vol.dataPartitions.readableAndWritableCnt)

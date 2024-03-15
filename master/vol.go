@@ -105,7 +105,8 @@ type Vol struct {
 	dpSelectorParm          string
 	domainId                uint64
 	qosManager              *QosCtrlManager
-	DpReadOnlyWhenVolFull   bool
+	DpReadOnlyWhenVolFull   bool // only if this switch is on, all dp becomes readonly when vol is full
+	ReadOnlyForVolFull      bool // only if the switch DpReadOnlyWhenVolFull is on, mark vol is readonly when is full
 	aclMgr                  AclManager
 	uidSpaceManager         *UidSpaceManager
 	volLock                 sync.RWMutex
@@ -321,11 +322,11 @@ func (vol *Vol) maxPartitionID() (maxPartitionID uint64) {
 }
 
 func (vol *Vol) getDataPartitionsView() (body []byte, err error) {
-	return vol.dataPartitions.updateResponseCache(false, 0, vol.VolType)
+	return vol.dataPartitions.updateResponseCache(false, 0, vol)
 }
 
 func (vol *Vol) getDataPartitionViewCompress() (body []byte, err error) {
-	return vol.dataPartitions.updateCompressCache(false, 0, vol.VolType)
+	return vol.dataPartitions.updateCompressCache(false, 0, vol)
 }
 
 func (vol *Vol) getDataPartitionByID(partitionID uint64) (dp *DataPartition, err error) {
@@ -382,6 +383,7 @@ func (vol *Vol) checkDataPartitions(c *Cluster) (cnt int) {
 	}
 
 	shouldDpInhibitWriteByVolFull := vol.shouldInhibitWriteBySpaceFull()
+	vol.SetReadOnlyForVolFull(shouldDpInhibitWriteByVolFull)
 
 	totalPreloadCapacity := uint64(0)
 
@@ -668,6 +670,25 @@ func (vol *Vol) capacity() uint64 {
 	return vol.Capacity
 }
 
+func (vol *Vol) SetReadOnlyForVolFull(isFull bool) {
+	vol.volLock.Lock()
+	defer vol.volLock.Unlock()
+
+	if isFull {
+		if vol.DpReadOnlyWhenVolFull {
+			vol.ReadOnlyForVolFull = isFull
+		}
+	} else {
+		vol.ReadOnlyForVolFull = isFull
+	}
+}
+
+func (vol *Vol) IsReadOnlyForVolFull() bool {
+	vol.volLock.RLock()
+	defer vol.volLock.RUnlock()
+	return vol.ReadOnlyForVolFull
+}
+
 func (vol *Vol) autoDeleteDp(c *Cluster) {
 
 	if vol.dataPartitions == nil {
@@ -736,6 +757,7 @@ func (vol *Vol) shouldInhibitWriteBySpaceFull() bool {
 		return true
 	}
 
+	vol.ReadOnlyForVolFull = false
 	return false
 }
 
@@ -753,7 +775,7 @@ func (vol *Vol) needCreateDataPartition() (ok bool, err error) {
 	}
 
 	if proto.IsHot(vol.VolType) {
-		if vol.shouldInhibitWriteBySpaceFull() {
+		if vol.IsReadOnlyForVolFull() {
 			vol.setAllDataPartitionsToReadOnly()
 			err = proto.ErrVolNoAvailableSpace
 			return
