@@ -15,6 +15,7 @@
 package datanode
 
 import (
+	"context"
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
@@ -26,13 +27,13 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/cubefs/cubefs/blobstore/util/log"
 	raftproto "github.com/cubefs/cubefs/depends/tiglabs/raft/proto"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/raftstore"
 	"github.com/cubefs/cubefs/repl"
 	"github.com/cubefs/cubefs/util/config"
 	"github.com/cubefs/cubefs/util/errors"
+	"github.com/cubefs/cubefs/util/log"
 )
 
 type dataPartitionCfg struct {
@@ -147,6 +148,8 @@ func (dp *DataPartition) stopRaft() {
 }
 
 func (dp *DataPartition) CanRemoveRaftMember(peer proto.Peer, force bool) error {
+	ctx := proto.ContextWithOperation(context.Background(), "CanRemoveRaftMember")
+	span := proto.SpanFromContext(ctx)
 	if !dp.isNormalType() {
 		return fmt.Errorf("CanRemoveRaftMember (%v) not support", dp)
 	}
@@ -160,7 +163,7 @@ func (dp *DataPartition) CanRemoveRaftMember(peer proto.Peer, force bool) error 
 		}
 	}
 	if !hasExsit {
-		log.Infof("action[CanRemoveRaftMember] replicaNum %v peers %v, peer %v not found", dp.replicaNum, len(dp.config.Peers), peer)
+		span.Infof("action[CanRemoveRaftMember] replicaNum %v peers %v, peer %v not found", dp.replicaNum, len(dp.config.Peers), peer)
 		return nil
 	}
 
@@ -173,7 +176,7 @@ func (dp *DataPartition) CanRemoveRaftMember(peer proto.Peer, force bool) error 
 		hasDownReplicasExcludePeer = append(hasDownReplicasExcludePeer, nodeID.NodeID)
 	}
 
-	log.Infof("action[CanRemoveRaftMember] dp %v replicaNum %v peers %v", dp.partitionID, dp.replicaNum, len(dp.config.Peers))
+	span.Infof("action[CanRemoveRaftMember] dp %v replicaNum %v peers %v", dp.partitionID, dp.replicaNum, len(dp.config.Peers))
 	if dp.replicaNum == 2 && len(dp.config.Peers) == 2 && force {
 		return nil
 	}
@@ -197,6 +200,8 @@ func (dp *DataPartition) CanRemoveRaftMember(peer proto.Peer, force bool) error 
 // 2. collect the applied ids from raft members.
 // 3. based on the minimum applied id to cutoff and delete the saved raft log in order to free the disk space.
 func (dp *DataPartition) StartRaftLoggingSchedule() {
+	ctx := proto.ContextWithOperation(context.Background(), "StartRaftLoggingSchedule")
+	span := proto.SpanFromContext(ctx)
 	// cache or preload partition not support raft and repair.
 	if !dp.isNormalType() {
 		return
@@ -206,12 +211,12 @@ func (dp *DataPartition) StartRaftLoggingSchedule() {
 	truncateRaftLogTimer := time.NewTimer(time.Minute * 10)
 	storeAppliedIDTimer := time.NewTimer(time.Second * 10)
 
-	log.Debugf("[startSchedule] hello DataPartition schedule")
+	span.Debugf("[startSchedule] hello DataPartition schedule")
 
 	for {
 		select {
 		case <-dp.stopC:
-			log.Debugf("[startSchedule] stop partition(%v)", dp.partitionID)
+			span.Debugf("[startSchedule] stop partition(%v)", dp.partitionID)
 			getAppliedIDTimer.Stop()
 			truncateRaftLogTimer.Stop()
 			storeAppliedIDTimer.Stop()
@@ -219,7 +224,7 @@ func (dp *DataPartition) StartRaftLoggingSchedule() {
 
 		case extentID := <-dp.stopRaftC:
 			dp.stopRaft()
-			log.Errorf("action[ExtentRepair] stop raft partition(%v)_%v", dp.partitionID, extentID)
+			span.Errorf("action[ExtentRepair] stop raft partition(%v)_%v", dp.partitionID, extentID)
 
 		case <-getAppliedIDTimer.C:
 			if !dp.raftStopped() {
@@ -235,25 +240,25 @@ func (dp *DataPartition) StartRaftLoggingSchedule() {
 			if dp.minAppliedID > dp.lastTruncateID { // Has changed
 				appliedID := atomic.LoadUint64(&dp.appliedID)
 				if err := dp.storeAppliedID(appliedID); err != nil {
-					log.Errorf("partition [%v] persist applied ID [%v] during scheduled truncate raft log failed: %v", dp.partitionID, appliedID, err)
+					span.Errorf("partition [%v] persist applied ID [%v] during scheduled truncate raft log failed: %v", dp.partitionID, appliedID, err)
 					truncateRaftLogTimer.Reset(time.Minute)
 					continue
 				}
 				dp.raftPartition.Truncate(dp.minAppliedID)
 				dp.lastTruncateID = dp.minAppliedID
-				if err := dp.PersistMetadata(); err != nil {
-					log.Errorf("partition [%v] persist metadata during scheduled truncate raft log failed: %v", dp.partitionID, err)
+				if err := dp.PersistMetadata(ctx); err != nil {
+					span.Errorf("partition [%v] persist metadata during scheduled truncate raft log failed: %v", dp.partitionID, err)
 					truncateRaftLogTimer.Reset(time.Minute)
 					continue
 				}
-				log.Infof("partition [%v] scheduled truncate raft log [applied: %v, truncated: %v]", dp.partitionID, appliedID, dp.minAppliedID)
+				span.Infof("partition [%v] scheduled truncate raft log [applied: %v, truncated: %v]", dp.partitionID, appliedID, dp.minAppliedID)
 			}
 			truncateRaftLogTimer.Reset(time.Minute)
 
 		case <-storeAppliedIDTimer.C:
 			appliedID := atomic.LoadUint64(&dp.appliedID)
 			if err := dp.storeAppliedID(appliedID); err != nil {
-				log.Errorf("partition [%v] scheduled persist applied ID [%v] failed: %v", dp.partitionID, appliedID, err)
+				span.Errorf("partition [%v] scheduled persist applied ID [%v] failed: %v", dp.partitionID, appliedID, err)
 			}
 			storeAppliedIDTimer.Reset(time.Second * 10)
 		}
@@ -265,7 +270,9 @@ func (dp *DataPartition) StartRaftLoggingSchedule() {
 // When the repair is finished, the local dp.partitionSize is same as the leader's dp.partitionSize.
 // The repair task can be done in statusUpdateScheduler->LaunchRepair.
 func (dp *DataPartition) StartRaftAfterRepair(isLoad bool) {
-	log.Debugf("StartRaftAfterRepair enter")
+	ctx := proto.ContextWithOperation(context.Background(), "StartRaftAfterRepair")
+	span := proto.SpanFromContext(ctx)
+	span.Debugf("StartRaftAfterRepair enter")
 	// cache or preload partition not support raft and repair.
 	if !dp.isNormalType() {
 		return
@@ -282,15 +289,15 @@ func (dp *DataPartition) StartRaftAfterRepair(isLoad bool) {
 			err = nil
 			if dp.isLeader { // primary does not need to wait repair
 				if err := dp.StartRaft(isLoad); err != nil {
-					log.Errorf("PartitionID(%v) leader start raft err(%v).", dp.partitionID, err)
+					span.Errorf("PartitionID(%v) leader start raft err(%v).", dp.partitionID, err)
 					continue
 				}
-				log.Debugf("PartitionID(%v) leader started.", dp.partitionID)
+				span.Debugf("PartitionID(%v) leader started.", dp.partitionID)
 				return
 			}
 
 			if dp.stopRecover && dp.isDecommissionRecovering() {
-				log.Debugf("action[StartRaftAfterRepair] PartitionID(%v) receive stop signal.", dp.partitionID)
+				span.Debugf("action[StartRaftAfterRepair] PartitionID(%v) receive stop signal.", dp.partitionID)
 				continue
 			}
 
@@ -303,14 +310,14 @@ func (dp *DataPartition) StartRaftAfterRepair(isLoad bool) {
 			}
 
 			if err != nil {
-				log.Errorf("action[StartRaftAfterRepair] PartitionID(%v) get MaxExtentID  err(%v)", dp.partitionID, err)
+				span.Errorf("action[StartRaftAfterRepair] PartitionID(%v) get MaxExtentID  err(%v)", dp.partitionID, err)
 				continue
 			}
 
 			// get the partition size from the primary and compare it with the loparal one
 			currLeaderPartitionSize, err = dp.getLeaderPartitionSize(initMaxExtentID)
 			if err != nil {
-				log.Errorf("action[StartRaftAfterRepair] PartitionID(%v) get leader size err(%v)", dp.partitionID, err)
+				span.Errorf("action[StartRaftAfterRepair] PartitionID(%v) get leader size err(%v)", dp.partitionID, err)
 				continue
 			}
 
@@ -321,29 +328,29 @@ func (dp *DataPartition) StartRaftAfterRepair(isLoad bool) {
 			}
 			localSize := dp.extentStore.StoreSizeExtentID(initMaxExtentID)
 			dp.decommissionRepairProgress = float64(localSize) / float64(initPartitionSize)
-			log.Infof("action[StartRaftAfterRepair] PartitionID(%v) initMaxExtentID(%v) initPartitionSize(%v) currLeaderPartitionSize(%v)"+
+			span.Infof("action[StartRaftAfterRepair] PartitionID(%v) initMaxExtentID(%v) initPartitionSize(%v) currLeaderPartitionSize(%v)"+
 				"localSize(%v)", dp.partitionID, initMaxExtentID, initPartitionSize, currLeaderPartitionSize, localSize)
 
 			if initPartitionSize > localSize {
-				log.Errorf("action[StartRaftAfterRepair] PartitionID(%v) leader size(%v) local size(%v) wait snapshot recover", dp.partitionID, initPartitionSize, localSize)
+				span.Errorf("action[StartRaftAfterRepair] PartitionID(%v) leader size(%v) local size(%v) wait snapshot recover", dp.partitionID, initPartitionSize, localSize)
 				continue
 			}
 
 			if err := dp.StartRaft(isLoad); err != nil {
-				log.Errorf("action[StartRaftAfterRepair] PartitionID(%v) start raft err(%v). Retry after 20s.", dp.partitionID, err)
+				span.Errorf("action[StartRaftAfterRepair] PartitionID(%v) start raft err(%v). Retry after 20s.", dp.partitionID, err)
 				timer.Reset(5 * time.Second)
 				continue
 			}
 			// start raft
 			dp.DataPartitionCreateType = proto.NormalCreateDataPartition
-			log.Infof("action[StartRaftAfterRepair] PartitionID(%v) change to NormalCreateDataPartition",
+			span.Infof("action[StartRaftAfterRepair] PartitionID(%v) change to NormalCreateDataPartition",
 				dp.partitionID)
 			dp.decommissionRepairProgress = float64(1)
-			dp.PersistMetadata()
-			log.Infof("action[StartRaftAfterRepair] PartitionID(%v) raft started!", dp.partitionID)
+			dp.PersistMetadata(ctx)
+			span.Infof("action[StartRaftAfterRepair] PartitionID(%v) raft started!", dp.partitionID)
 			return
 		case <-dp.stopC:
-			log.Debugf("action[StartRaftAfterRepair] PartitionID(%v) receive dp stop signal!!.", dp.partitionID)
+			span.Debugf("action[StartRaftAfterRepair] PartitionID(%v) receive dp stop signal!!.", dp.partitionID)
 			timer.Stop()
 			return
 		}
@@ -352,6 +359,8 @@ func (dp *DataPartition) StartRaftAfterRepair(isLoad bool) {
 
 // Add a raft node.
 func (dp *DataPartition) addRaftNode(req *proto.AddDataPartitionRaftMemberRequest, index uint64) (isUpdated bool, err error) {
+	ctx := proto.ContextWithOperation(context.Background(), "addRaftNode")
+	span := proto.SpanFromContext(ctx)
 	// cache or preload partition not support raft and repair.
 	if !dp.isNormalType() {
 		return false, fmt.Errorf("addRaftNode (%v) not support", dp)
@@ -364,7 +373,7 @@ func (dp *DataPartition) addRaftNode(req *proto.AddDataPartitionRaftMemberReques
 	if heartbeatPort, replicaPort, err = dp.raftPort(); err != nil {
 		return
 	}
-	log.Infof("action[addRaftNode] add raft node peer [%v]", req.AddPeer)
+	span.Infof("action[addRaftNode] add raft node peer [%v]", req.AddPeer)
 	found := false
 	for _, peer := range dp.config.Peers {
 		if peer.ID == req.AddPeer.ID {
@@ -377,7 +386,7 @@ func (dp *DataPartition) addRaftNode(req *proto.AddDataPartitionRaftMemberReques
 		return
 	}
 	data, _ := json.Marshal(req)
-	log.Infof("addRaftNode: partitionID(%v) nodeID(%v) index(%v) data(%v) ",
+	span.Infof("addRaftNode: partitionID(%v) nodeID(%v) index(%v) data(%v) ",
 		req.PartitionId, dp.config.NodeID, index, string(data))
 	dp.config.Peers = append(dp.config.Peers, req.AddPeer)
 	dp.config.Hosts = append(dp.config.Hosts, req.AddPeer.Addr)
@@ -392,19 +401,21 @@ func (dp *DataPartition) addRaftNode(req *proto.AddDataPartitionRaftMemberReques
 
 // Delete a raft node.
 func (dp *DataPartition) removeRaftNode(req *proto.RemoveDataPartitionRaftMemberRequest, index uint64) (isUpdated bool, err error) {
+	ctx := proto.ContextWithOperation(context.Background(), "removeRaftNode")
+	span := proto.SpanFromContext(ctx)
 	// cache or preload partition not support raft and repair.
 	if !dp.isNormalType() {
 		return false, fmt.Errorf("removeRaftNode (%v) not support", dp)
 	}
 
 	var canRemoveSelf bool
-	if canRemoveSelf, err = dp.canRemoveSelf(); err != nil {
+	if canRemoveSelf, err = dp.canRemoveSelf(ctx); err != nil {
 		return
 	}
 	peerIndex := -1
 	data, _ := json.Marshal(req)
 	isUpdated = false
-	log.Infof("Start RemoveRaftNode  PartitionID(%v) nodeID(%v)  do RaftLog (%v) ",
+	span.Infof("Start RemoveRaftNode  PartitionID(%v) nodeID(%v)  do RaftLog (%v) ",
 		req.PartitionId, dp.config.NodeID, string(data))
 	for i, peer := range dp.config.Peers {
 		if peer.ID == req.RemovePeer.ID {
@@ -414,7 +425,7 @@ func (dp *DataPartition) removeRaftNode(req *proto.RemoveDataPartitionRaftMember
 		}
 	}
 	if !isUpdated {
-		log.Infof("NoUpdate RemoveRaftNode  PartitionID(%v) nodeID(%v)  do RaftLog (%v) ",
+		span.Infof("NoUpdate RemoveRaftNode  PartitionID(%v) nodeID(%v)  do RaftLog (%v) ",
 			req.PartitionId, dp.config.NodeID, string(data))
 		return
 	}
@@ -431,7 +442,7 @@ func (dp *DataPartition) removeRaftNode(req *proto.RemoveDataPartitionRaftMember
 	dp.config.Peers = append(dp.config.Peers[:peerIndex], dp.config.Peers[peerIndex+1:]...)
 	if dp.config.NodeID == req.RemovePeer.ID && !dp.IsDataPartitionLoading() && canRemoveSelf {
 		dp.raftPartition.Delete()
-		dp.Disk().space.DeletePartition(dp.partitionID)
+		dp.Disk().space.DeletePartition(ctx, dp.partitionID)
 		isUpdated = false
 	}
 	// update dp replicas after removing a raft node
@@ -441,7 +452,7 @@ func (dp *DataPartition) removeRaftNode(req *proto.RemoveDataPartitionRaftMember
 		copy(dp.replicas, dp.config.Hosts)
 		dp.replicasLock.Unlock()
 	}
-	log.Infof("Finish RemoveRaftNode  PartitionID(%v) nodeID(%v)  do RaftLog (%v) ",
+	span.Infof("Finish RemoveRaftNode  PartitionID(%v) nodeID(%v)  do RaftLog (%v) ",
 		req.PartitionId, dp.config.NodeID, string(data))
 
 	return
@@ -512,13 +523,15 @@ func (s *DataNode) parseRaftConfig(cfg *config.Config) (err error) {
 }
 
 func (s *DataNode) startRaftServer(cfg *config.Config) (err error) {
-	log.Info("Start: startRaftServer")
+	ctx := proto.ContextWithOperation(context.Background(), "startRaftServer")
+	span := proto.SpanFromContext(ctx)
+	span.Info("Start: startRaftServer")
 
 	s.parseRaftConfig(cfg)
 
 	if s.clusterUuidEnable {
 		if err = config.CheckOrStoreClusterUuid(s.raftDir, s.clusterUuid, false); err != nil {
-			log.Errorf("CheckOrStoreClusterUuid failed: %v", err)
+			span.Errorf("CheckOrStoreClusterUuid failed: %v", err)
 			return fmt.Errorf("CheckOrStoreClusterUuid failed: %v", err)
 		}
 	}
@@ -530,14 +543,14 @@ func (s *DataNode) startRaftServer(cfg *config.Config) (err error) {
 	}
 	ok := false
 	if ok, err = config.CheckOrStoreConstCfg(s.raftDir, config.DefaultConstConfigFile, &constCfg); !ok {
-		log.Errorf("constCfg check failed %v %v %v %v", s.raftDir, config.DefaultConstConfigFile, constCfg, err)
+		span.Errorf("constCfg check failed %v %v %v %v", s.raftDir, config.DefaultConstConfigFile, constCfg, err)
 		return fmt.Errorf("constCfg check failed %v %v %v %v", s.raftDir, config.DefaultConstConfigFile, constCfg, err)
 	}
 
 	if _, err = os.Stat(s.raftDir); err != nil {
 		if err = os.MkdirAll(s.raftDir, 0o755); err != nil {
 			err = errors.NewErrorf("create raft server dir: %s", err.Error())
-			log.Errorf("action[startRaftServer] cannot start raft server err(%v)", err)
+			span.Errorf("action[startRaftServer] cannot start raft server err(%v)", err)
 			return
 		}
 	}
@@ -566,7 +579,7 @@ func (s *DataNode) startRaftServer(cfg *config.Config) (err error) {
 	s.raftStore, err = raftstore.NewRaftStore(raftConf, cfg)
 	if err != nil {
 		err = errors.NewErrorf("new raftStore: %s", err.Error())
-		log.Errorf("action[startRaftServer] cannot start raft server err(%v)", err)
+		span.Errorf("action[startRaftServer] cannot start raft server err(%v)", err)
 	}
 
 	return
