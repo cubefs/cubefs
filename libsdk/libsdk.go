@@ -739,28 +739,42 @@ func cfs_flush(id C.int64_t, fd C.int) C.int {
 }
 
 //export cfs_close
-func cfs_close(id C.int64_t, fd C.int) {
+func cfs_close(id C.int64_t, fd C.int) C.int {
+	var err error
 	c, exist := getClient(int64(id))
 	if !exist {
-		return
+		return statusEINVAL
 	}
 
 	f := c.getFile(uint(fd))
 	if f == nil {
-		return
+		return statusEBADFD
 	}
 
 	info := c.ic.Get(f.ino)
 	if info == nil {
-		info, _ = c.mw.InodeGet_ll(f.ino)
+		info, err = c.mw.InodeGet_ll(f.ino)
+		if err != nil {
+			return errorToStatus(err)
+		}
 	}
 
 	f = c.releaseFD(uint(fd))
+	if f == nil {
+		return statusEBADFD
+	}
 	// Consistent with cfs open, do close and closeStream only if f is regular file
 	if f != nil && info != nil && proto.IsRegular(info.Mode) {
-		c.flush(f)
-		c.closeStream(f)
+		err = c.flush(f)
+		if err != nil {
+			return statusEIO
+		}
+		err = c.closeStream(f)
+		if err != nil {
+			return errorToStatus(err)
+		}
 	}
+	return statusOK
 }
 
 //export cfs_truncate
@@ -1606,12 +1620,19 @@ func (c *client) openStream(f *file) {
 	_ = c.ec.OpenStream(f.ino)
 }
 
-func (c *client) closeStream(f *file) {
-	_ = c.ec.CloseStream(f.ino)
-	_ = c.ec.EvictStream(f.ino)
+func (c *client) closeStream(f *file) error {
+	err := c.ec.CloseStream(f.ino)
+	if err != nil {
+		return err
+	}
+	err = c.ec.EvictStream(f.ino)
+	if err != nil {
+		return err
+	}
 	f.fileWriter.FreeCache()
 	f.fileWriter = nil
 	f.fileReader = nil
+	return nil
 }
 
 func (c *client) flush(f *file) error {
