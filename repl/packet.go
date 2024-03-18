@@ -35,6 +35,40 @@ var (
 	ErrArgLenMismatch = errors.New("ArgLenMismatchErr")
 )
 
+type PacketInterface interface {
+	IsErrPacket() bool
+	WriteToConn(c net.Conn) (err error)
+	ReadFromConnWithVer(c net.Conn, timeoutSec int) (err error)
+	GetUniqueLogId() (m string)
+	GetReqID() int64
+	GetPartitionID() uint64
+	GetExtentID() uint64
+	GetSize() uint32
+	GetCRC() uint32
+	GetArg() []byte
+	GetArgLen() uint32
+	GetData() []byte
+	GetResultCode() uint8
+	GetExtentOffset() int64
+	GetStartT() int64
+	SetSize(size uint32)
+	GetOpcode() uint8
+	SetResultCode(uint8)
+	SetCRC(crc uint32)
+	SetExtentOffset(int64)
+	GetOpMsg() (m string)
+	ShallDegrade() bool
+	SetStartT(StartT int64)
+	SetData(data []byte)
+	SetOpCode(uint8)
+	LogMessage(action, remote string, start int64, err error) (m string)
+	PackErrorBody(action, msg string)
+	PacketOkReply()
+	SetArglen(len uint32)
+	SetArg(data []byte)
+}
+
+type NewPacketFunc func() (p PacketInterface)
 type Packet struct {
 	proto.Packet
 	followersAddrs  []string
@@ -174,6 +208,13 @@ func (p *Packet) resolveFollowersAddr() (err error) {
 
 	return
 }
+func NewPacketEx() (p PacketInterface) {
+	pr := new(Packet)
+	pr.Magic = proto.ProtoMagic
+	pr.StartT = time.Now().UnixNano()
+	pr.NeedReply = true
+	return pr
+}
 
 func NewPacket() (p *Packet) {
 	p = new(Packet)
@@ -216,32 +257,35 @@ func NewReadTinyDeleteRecordResponsePacket(requestID int64, partitionID uint64) 
 	return
 }
 
-func NewExtentRepairReadPacket(partitionID uint64, extentID uint64, offset, size int) (p *Packet) {
-	p = new(Packet)
-	p.ExtentID = extentID
-	p.PartitionID = partitionID
-	p.Magic = proto.ProtoMagic
-	p.ExtentOffset = int64(offset)
-	p.Size = uint32(size)
-	p.Opcode = proto.OpExtentRepairRead
-	p.ExtentType = proto.NormalExtentType
-	p.ReqID = proto.GenerateRequestID()
+type MakeStreamReadResponsePacket func(requestID int64, partitionID uint64, extentID uint64) (p PacketInterface)
+type MakeExtentRepairReadPacket func(partitionID uint64, extentID uint64, offset, size int) (p PacketInterface)
 
-	return
+func NewExtentRepairReadPacket(partitionID uint64, extentID uint64, offset, size int) (p PacketInterface) {
+	pr := new(Packet)
+	pr.ExtentID = extentID
+	pr.PartitionID = partitionID
+	pr.Magic = proto.ProtoMagic
+	pr.ExtentOffset = int64(offset)
+	pr.Size = uint32(size)
+	pr.Opcode = proto.OpExtentRepairRead
+	pr.ExtentType = proto.NormalExtentType
+	pr.ReqID = proto.GenerateRequestID()
+
+	return pr
 }
 
-func NewTinyExtentRepairReadPacket(partitionID uint64, extentID uint64, offset, size int) (p *Packet) {
-	p = new(Packet)
-	p.ExtentID = extentID
-	p.PartitionID = partitionID
-	p.Magic = proto.ProtoMagic
-	p.ExtentOffset = int64(offset)
-	p.Size = uint32(size)
-	p.Opcode = proto.OpTinyExtentRepairRead
-	p.ExtentType = proto.TinyExtentType
-	p.ReqID = proto.GenerateRequestID()
+func NewTinyExtentRepairReadPacket(partitionID uint64, extentID uint64, offset, size int) (p PacketInterface) {
+	pr := new(Packet)
+	pr.ExtentID = extentID
+	pr.PartitionID = partitionID
+	pr.Magic = proto.ProtoMagic
+	pr.ExtentOffset = int64(offset)
+	pr.Size = uint32(size)
+	pr.Opcode = proto.OpTinyExtentRepairRead
+	pr.ExtentType = proto.TinyExtentType
+	pr.ReqID = proto.GenerateRequestID()
 
-	return
+	return pr
 }
 
 func NewTinyExtentStreamReadResponsePacket(requestID int64, partitionID uint64, extentID uint64) (p *Packet) {
@@ -257,16 +301,16 @@ func NewTinyExtentStreamReadResponsePacket(requestID int64, partitionID uint64, 
 	return
 }
 
-func NewNormalExtentWithHoleRepairReadPacket(partitionID uint64, extentID uint64, offset, size int) (p *Packet) {
-	p = new(Packet)
-	p.ExtentID = extentID
-	p.PartitionID = partitionID
-	p.Magic = proto.ProtoMagic
-	p.ExtentOffset = int64(offset)
-	p.Size = uint32(size)
-	p.Opcode = proto.OpNormalWithHoleExtentRepairRead
-	p.ExtentType = proto.TinyExtentType
-	p.ReqID = proto.GenerateRequestID()
+func NewNormalExtentWithHoleRepairReadPacket(partitionID uint64, extentID uint64, offset, size int) (p PacketInterface) {
+	pr := new(Packet)
+	pr.ExtentID = extentID
+	pr.PartitionID = partitionID
+	pr.Magic = proto.ProtoMagic
+	pr.ExtentOffset = int64(offset)
+	pr.Size = uint32(size)
+	pr.Opcode = proto.OpSnapshotExtentRepairRead
+	pr.ExtentType = proto.TinyExtentType
+	pr.ReqID = proto.GenerateRequestID()
 
 	return
 }
@@ -276,7 +320,7 @@ func NewNormalExtentWithHoleStreamReadResponsePacket(requestID int64, partitionI
 	p.ExtentID = extentID
 	p.PartitionID = partitionID
 	p.Magic = proto.ProtoMagic
-	p.Opcode = proto.OpNormalWithHoleExtentRepairRead
+	p.Opcode = proto.OpSnapshotExtentRepairRsp
 	p.ReqID = requestID
 	p.ExtentType = proto.NormalExtentType
 	p.StartT = time.Now().UnixNano()
@@ -284,16 +328,15 @@ func NewNormalExtentWithHoleStreamReadResponsePacket(requestID int64, partitionI
 	return
 }
 
-func NewStreamReadResponsePacket(requestID int64, partitionID uint64, extentID uint64) (p *Packet) {
-	p = new(Packet)
-	p.ExtentID = extentID
-	p.PartitionID = partitionID
-	p.Magic = proto.ProtoMagic
-	p.Opcode = proto.OpOk
-	p.ReqID = requestID
-	p.ExtentType = proto.NormalExtentType
-
-	return
+func NewStreamReadResponsePacket(requestID int64, partitionID uint64, extentID uint64) (p PacketInterface) {
+	pr := new(Packet)
+	pr.ExtentID = extentID
+	pr.PartitionID = partitionID
+	pr.Magic = proto.ProtoMagic
+	pr.Opcode = proto.OpOk
+	pr.ReqID = requestID
+	pr.ExtentType = proto.NormalExtentType
+	return pr
 }
 
 func NewPacketToNotifyExtentRepair(partitionID uint64) (p *Packet) {
@@ -305,6 +348,66 @@ func NewPacketToNotifyExtentRepair(partitionID uint64) (p *Packet) {
 	p.ReqID = proto.GenerateRequestID()
 
 	return
+}
+
+func (p *Packet) SetResultCode(code uint8) {
+	p.ResultCode = code
+}
+
+func (p *Packet) SetCRC(crc uint32) {
+	p.CRC = crc
+}
+
+func (p *Packet) SetExtentOffset(offset int64) {
+	p.ExtentOffset = offset
+}
+
+func (p *Packet) GetStartT() int64 {
+	return p.StartT
+}
+
+func (p *Packet) GetPartitionID() uint64 {
+	return p.PartitionID
+}
+
+func (p *Packet) GetExtentID() uint64 {
+	return p.ExtentID
+}
+
+func (p *Packet) GetSize() uint32 {
+	return p.Size
+}
+
+func (p *Packet) SetSize(size uint32) {
+	p.Size = size
+}
+func (p *Packet) SetOpCode(op uint8) {
+	p.Opcode = op
+}
+func (p *Packet) GetOpcode() uint8 {
+	return p.Opcode
+}
+
+func (p *Packet) GetArg() []byte {
+	return p.Arg
+}
+func (p *Packet) GetCRC() uint32 {
+	return p.CRC
+}
+func (p *Packet) GetArgLen() uint32 {
+	return p.ArgLen
+}
+
+func (p *Packet) GetData() []byte {
+	return p.Data
+}
+
+func (p *Packet) GetResultCode() uint8 {
+	return p.ResultCode
+}
+
+func (p *Packet) GetExtentOffset() int64 {
+	return p.ExtentOffset
 }
 
 func (p *Packet) IsErrPacket() bool {
@@ -457,4 +560,17 @@ func (p *Packet) UnsetDegrade() {
 
 func (p *Packet) ShallDegrade() bool {
 	return p.shallDegrade
+}
+
+func (p *Packet) SetStartT(StartT int64) {
+	p.StartT = StartT
+}
+func (p *Packet) SetData(data []byte) {
+	p.Data = data
+}
+func (p *Packet) SetArglen(len uint32) {
+	p.ArgLen = len
+}
+func (p *Packet) SetArg(data []byte) {
+	p.Arg = data
 }
