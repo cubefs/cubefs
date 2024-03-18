@@ -966,7 +966,7 @@ func (c *Cluster) changeDataNodeAddr(id uint64, srcAddr string, targetAddr strin
 	}
 	dataNode := value.(*DataNode)
 	if dataNode.ID != id {
-		err = fmt.Errorf("The id of datanode  %v is not %d" , srcAddr, id)		
+		err = fmt.Errorf("The id of datanode  %v is not %d", srcAddr, id)		
 		return
 	}
 	cmds := make(map[string]*RaftCmd)
@@ -999,7 +999,7 @@ func (c *Cluster) changeMetaNodeAddr(id uint64, srcAddr string, targetAddr strin
 	}
 	metaNode := value.(*MetaNode)
 	if metaNode.ID != id {
-		err = fmt.Errorf("The id of metanode  %v is not %d" , srcAddr, id)		
+		err = fmt.Errorf("The id of metanode  %v is not %d", srcAddr, id)		
 		return
 	}
 	cmds := make(map[string]*RaftCmd)

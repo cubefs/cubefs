@@ -107,3 +107,39 @@ umount: /xxx/mnt: target is busy.
 ```
 3. If the client process exists, stop it.
 4. Start the new client process. Use `df -h` to check whether the upgrade is successful.
+
+## Change ip address of nodes including masternode, metanode and datanode
+Sometimes we need to change ip address of  the nodes in  a running cluster.
+
+- change metanode address
+  
+run `cfs-cli metanode list` to get and check. 
+
+Parameter List
+
+| Parameter  | Type   | Description                                          |
+| ---------- | ------ | ---------------------------------------------------- |
+| srcAddr    | string | Address of the source metanode node, such as ip:port |
+| targetAddr | string | Address of the target metanode node, such as ip:port |
+| id         | int    | metanode id                                          |
+```bash
+curl -v 'http://127.0.0.1:17010/metaNode/changeAddr?id=[id]&srcAddr=[ip:port]&targetAddr=[ip:port]' | jq .
+```
+- change datanode address
+run `cfs-cli datanode list` to get and check. 
+
+Parameter List
+
+| Parameter  | Type   | Description                                          |
+| ---------- | ------ | ---------------------------------------------------- |
+| srcAddr    | string | Address of the source datanode node, such as ip:port |
+| targetAddr | string | Address of the target datanode node, such as ip:port |
+| id         | int    | datanode id                                          |
+
+
+```bash
+curl -v 'http://127.0.0.1:17010/dataNode/changeAddr?id=[id]&srcAddr=[ip:port]&targetAddr=[ip:port]' | jq .
+```
+- if also change master ip, need to replace all kinds of *.json,then restart all services.
+
+
