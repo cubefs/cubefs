@@ -966,7 +966,7 @@ func (c *Cluster) changeDataNodeAddr(id uint64, srcAddr string, targetAddr strin
 	}
 	dataNode := value.(*DataNode)
 	if dataNode.ID != id {
-		err = fmt.Errorf("The id of datanode  %v is not %d", srcAddr, id)		
+		err = fmt.Errorf("The id of datanode  %s is not %d", srcAddr, id)
 		return
 	}
 	cmds := make(map[string]*RaftCmd)
@@ -999,7 +999,7 @@ func (c *Cluster) changeMetaNodeAddr(id uint64, srcAddr string, targetAddr strin
 	}
 	metaNode := value.(*MetaNode)
 	if metaNode.ID != id {
-		err = fmt.Errorf("The id of metanode  %v is not %d", srcAddr, id)		
+		err = fmt.Errorf("The id of metanode  %s is not %d", srcAddr, id)
 		return
 	}
 	cmds := make(map[string]*RaftCmd)
@@ -1198,7 +1198,8 @@ func (c *Cluster) checkLackReplicaDataPartitions() (lackReplicaDataPartitions []
 
 func (c *Cluster) checkReplicaOfDataPartitions(ignoreDiscardDp bool) (
 	lackReplicaDPs []*DataPartition, unavailableReplicaDPs []*DataPartition, repFileCountDifferDps []*DataPartition,
-	repUsedSizeDifferDps []*DataPartition, excessReplicaDPs []*DataPartition, noLeaderDPs []*DataPartition, err error) {
+	repUsedSizeDifferDps []*DataPartition, excessReplicaDPs []*DataPartition, noLeaderDPs []*DataPartition, err error,
+) {
 	noLeaderDPs = make([]*DataPartition, 0)
 	lackReplicaDPs = make([]*DataPartition, 0)
 	unavailableReplicaDPs = make([]*DataPartition, 0)
@@ -1642,7 +1643,8 @@ errHandler:
 }
 
 func (c *Cluster) syncCreateDataPartitionToDataNode(host string, size uint64, dp *DataPartition,
-	peers []proto.Peer, hosts []string, createType int, partitionType int, needRollBack bool) (diskPath string, err error) {
+	peers []proto.Peer, hosts []string, createType int, partitionType int, needRollBack bool,
+) (diskPath string, err error) {
 	log.LogInfof("action[syncCreateDataPartitionToDataNode] dp [%v] createtype[%v], partitionType[%v]", dp.PartitionID, createType, partitionType)
 	dataNode, err := c.dataNode(host)
 	if err != nil {
@@ -1750,7 +1752,8 @@ func (c *Cluster) chooseZone2Plus1(zones []*Zone, excludeNodeSets []uint64, excl
 }
 
 func (c *Cluster) chooseZoneNormal(zones []*Zone, excludeNodeSets []uint64, excludeHosts []string,
-	nodeType uint32, replicaNum int) (hosts []string, peers []proto.Peer, err error) {
+	nodeType uint32, replicaNum int,
+) (hosts []string, peers []proto.Peer, err error) {
 	log.LogInfof("action[chooseZoneNormal] zones[%s] nodeType[%d] replicaNum[%d]", printZonesName(zones), nodeType, replicaNum)
 
 	c.zoneIdxMux.Lock()
