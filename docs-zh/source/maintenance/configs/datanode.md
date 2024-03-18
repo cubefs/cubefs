@@ -22,6 +22,7 @@
 | diskWriteIocc | int          | 限制单盘并发写操作,小于等于0表示不限制            | 否   |
 | diskWriteFlow | int          | 限制单盘写流量,小于等于0表示不限制                | 否   |
 | disks         | string slice | 格式：`磁盘挂载路径:预留空间` ，预留空间配置范围`[20G,50G]` | 是   |
+| enableLogPanicHook | bool | (实验性) Hook `panic` 函数以便在执行`panic`之前使日志落盘 | No | false |
 
 ## 配置示例
 

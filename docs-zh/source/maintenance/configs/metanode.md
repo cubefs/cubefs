@@ -25,6 +25,7 @@
 | tickInterval        | float64      | raft检查心跳和选举超时的间隔，单位毫秒，默认`300`                    | 否  |
 | raftRecvBufSize     | int          | raft接收缓冲区大小，单位：字节，默认`2048`                       | 否  |
 | nameResolveInterval | int          | raft节点地址解析间隔，单位：分钟，值应当介于[1-60]之间，默认`1`           | 否  |
+| enableLogPanicHook | bool | (实验性) Hook `panic` 函数以便在执行`panic`之前使日志落盘 | No | false |
 
 ## 配置示例
 
