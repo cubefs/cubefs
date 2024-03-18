@@ -18,6 +18,7 @@ import (
 	"testing"
 	"time"
 
+	_ "github.com/cubefs/cubefs/blobstore/testing/nolog"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/routinepool"
 	"github.com/cubefs/cubefs/util/unboundedchan"

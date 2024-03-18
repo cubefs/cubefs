@@ -33,6 +33,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/trace"
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/buf"
+	"github.com/cubefs/cubefs/util/log"
 )
 
 var (
@@ -319,6 +320,38 @@ func RandomID() int64 {
 
 func TraceID() string {
 	return fmt.Sprintf("%016x", RandomID())
+}
+
+func RequestIDFromSpan(span trace.Span) int64 {
+	traceID := span.TraceID()
+	// has prefix
+	if l := len(traceID); l >= 17 && traceID[l-17] == '-' {
+		traceID = traceID[l-16:]
+	}
+	rid, err := strconv.ParseInt(traceID, 16, 64)
+	if err == nil {
+		return rid
+	}
+
+	rid = RandomID()
+	var f func(format string, v ...interface{})
+	switch log.GetOutputLevel() {
+	case log.Ldebug:
+		f = span.Debugf
+	case log.Linfo:
+		f = span.Infof
+	case log.Lwarn:
+		f = span.Warnf
+	default:
+		f = span.Errorf
+	}
+	f("transfer id to trace(%016x) request(%d)", rid, rid)
+
+	return rid
+}
+
+func RequestIDFromContext(ctx context.Context) int64 {
+	return RequestIDFromSpan(SpanFromContext(ctx))
 }
 
 // ContextWithSpan returns context within span.

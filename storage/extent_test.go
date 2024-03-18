@@ -22,6 +22,7 @@ import (
 	"testing"
 
 	"github.com/cubefs/cubefs/blobstore/blobnode/sys"
+	_ "github.com/cubefs/cubefs/blobstore/testing/nolog"
 	"github.com/cubefs/cubefs/storage"
 	"github.com/cubefs/cubefs/util"
 	"github.com/stretchr/testify/require"

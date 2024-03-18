@@ -3,8 +3,10 @@ package proto
 import (
 	"context"
 	"fmt"
+	"strings"
 	"testing"
 
+	"github.com/cubefs/cubefs/util/log"
 	"github.com/stretchr/testify/require"
 )
 
@@ -63,6 +65,31 @@ func TestPacketWithContext(t *testing.T) {
 
 	require.Equal(t, span1.TraceID(), span2.TraceID())
 	require.NotEqual(t, span1.TraceID(), reqID)
+}
+
+func TestTransferRequestID(t *testing.T) {
+	p := NewPacketReqID()
+	p.ReqID = RandomID()
+	require.Equal(t, p.ReqID, RequestIDFromContext(p.Context()))
+
+	span, ctx := SpanWithContextPrefix(context.Background(), "has-prefix-")
+	require.True(t, strings.HasSuffix(span.TraceID(), fmt.Sprintf("%016x", RequestIDFromContext(ctx))))
+
+	level := log.GetOutputLevel()
+	defer log.SetOutputLevel(level)
+
+	run := func() {
+		span, ctx := SpanWithContextPrefix(context.Background(), "hasnot-prefix")
+		require.NotEqual(t, span.TraceID(), fmt.Sprintf("%016x", RequestIDFromContext(ctx)))
+	}
+	log.SetOutputLevel(log.Ldebug)
+	run()
+	log.SetOutputLevel(log.Linfo)
+	run()
+	log.SetOutputLevel(log.Lwarn)
+	run()
+	log.SetOutputLevel(log.Lerror)
+	run()
 }
 
 func BenchmarkPacketSpan(b *testing.B) {

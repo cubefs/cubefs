@@ -57,7 +57,7 @@ func (mms *MockMetaServer) register() {
 	var nodeID uint64
 	var retry int
 	for retry < 3 {
-		nodeID, err = mms.mc.NodeAPI().AddMetaNode(context.TODO(), mms.TcpAddr, mms.ZoneName)
+		nodeID, err = mms.mc.NodeAPI().AddMetaNode(context.Background(), mms.TcpAddr, mms.ZoneName)
 		if err == nil {
 			break
 		}
@@ -295,7 +295,7 @@ end:
 func (mms *MockMetaServer) postResponseToMaster(adminTask *proto.AdminTask, resp interface{}) (err error) {
 	adminTask.Request = nil
 	adminTask.Response = resp
-	if err = mms.mc.NodeAPI().ResponseMetaNodeTask(context.TODO(), adminTask); err != nil {
+	if err = mms.mc.NodeAPI().ResponseMetaNodeTask(context.Background(), adminTask); err != nil {
 		return
 	}
 	return

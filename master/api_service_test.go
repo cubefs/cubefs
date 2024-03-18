@@ -24,6 +24,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"path"
 	"strings"
 	"sync"
 	"testing"
@@ -33,8 +34,10 @@ import (
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/compressor"
 	"github.com/cubefs/cubefs/util/config"
+	"github.com/cubefs/cubefs/util/log"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gopkg.in/natefinch/lumberjack.v2"
 )
 
 const (
@@ -220,26 +223,13 @@ func createMasterServer(cfgJSON string) (server *Server, err error) {
 	os.RemoveAll(storeDir)
 	os.Mkdir(walDir, 0o755)
 	os.Mkdir(storeDir, 0o755)
-	// logLevel := cfg.GetString(ConfigKeyLogLevel)
-	// var level log.Level
-	// switch strings.ToLower(logLevel) {
-	// case "debug":
-	// 	level = log.DebugLevel
-	// case "info":
-	// 	level = log.InfoLevel
-	// case "warn":
-	// 	level = log.WarnLevel
-	// case "error":
-	// 	level = log.ErrorLevel
-	// default:
-	// 	level = log.ErrorLevel
-	// }
-	// if mocktest.LogOn {
-	// 	if _, err = log.InitLog(logDir, "master", level, nil, log.DefaultLogLeftSpaceLimit); err != nil {
-	// 		fmt.Println("Fatal: failed to start the cubefs daemon - ", err)
-	// 		return
-	// 	}
-	// }
+	log.SetOutputLevel(log.Lpanic)
+	if mocktest.LogOn {
+		log.SetOutputLevel(log.ParseLevel(cfg.GetString(ConfigKeyLogLevel), log.Ldebug))
+		log.SetOutput(&lumberjack.Logger{
+			Filename: path.Join(logDir, "master", "master_test.log"),
+		})
+	}
 	if profPort != "" {
 		go func() {
 			err := http.ListenAndServe(fmt.Sprintf(":%v", profPort), nil)
