@@ -17,7 +17,7 @@ package metanode
 import (
 	"testing"
 
-	raftstoremock "github.com/cubefs/cubefs/metanode/mocktest/raftstore"
+	raftstoremock "github.com/cubefs/cubefs/util/mocktest/raftstore"
 	"github.com/golang/mock/gomock"
 )
 
