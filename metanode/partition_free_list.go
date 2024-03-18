@@ -357,7 +357,7 @@ func (mp *metaPartition) syncToRaftFollowersFreeInode(ctx context.Context, hasDe
 	return
 }
 
-func (mp *metaPartition) notifyRaftFollowerToFreeInodes(wg *sync.WaitGroup, target string, hasDeleteInodes []byte) (err error) {
+func (mp *metaPartition) notifyRaftFollowerToFreeInodes(ctx context.Context, wg *sync.WaitGroup, target string, hasDeleteInodes []byte) (err error) {
 	var conn *net.TCPConn
 	conn, err = mp.config.ConnPool.GetConnect(target)
 	defer func() {
@@ -372,7 +372,7 @@ func (mp *metaPartition) notifyRaftFollowerToFreeInodes(wg *sync.WaitGroup, targ
 	if err != nil {
 		return
 	}
-	request := NewPacketToFreeInodeOnRaftFollower(mp.config.PartitionId, hasDeleteInodes)
+	request := NewPacketToFreeInodeOnRaftFollower(ctx, mp.config.PartitionId, hasDeleteInodes)
 	if err = request.WriteToConn(conn); err != nil {
 		return
 	}
@@ -493,7 +493,7 @@ func (mp *metaPartition) doBatchDeleteExtentsByPartition(ctx context.Context, pa
 		err = errors.NewErrorf("get conn from pool %s, extents partitionId=%d", err.Error(), partitionID)
 		return
 	}
-	p := NewPacketToBatchDeleteExtent(dp, exts)
+	p := NewPacketToBatchDeleteExtent(ctx, dp, exts)
 	if err = p.WriteToConn(conn); err != nil {
 		err = errors.NewErrorf("write to dataNode %s, %s", p.GetUniqueLogId(), err.Error())
 		return

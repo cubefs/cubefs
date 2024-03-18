@@ -22,7 +22,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cubefs/cubefs/blobstore/common/trace"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/errors"
@@ -190,7 +189,7 @@ func (sender *AdminTaskManager) sendAdminTask(ctx context.Context, task *proto.A
 	if err != nil {
 		return errors.Trace(err, "action[sendAdminTask build packet failed,task:%v]", task.ID)
 	}
-	span, _ := trace.StartSpanFromContextWithTraceID(ctx, "", fmt.Sprintf("%v", packet.ReqID))
+	span := proto.SpanFromContext(ctx)
 	if err = packet.WriteToConn(conn); err != nil {
 		return errors.Trace(err, "action[sendAdminTask],WriteToConn failed,task:%v", task.ID)
 	}
@@ -208,7 +207,7 @@ func (sender *AdminTaskManager) syncSendAdminTask(ctx context.Context, task *pro
 	if err != nil {
 		return nil, errors.Trace(err, "action[syncSendAdminTask build packet failed,task:%v]", task.ID)
 	}
-	span, _ := trace.StartSpanFromContextWithTraceID(ctx, "", fmt.Sprintf("%v", packet.ReqID))
+	span := proto.SpanFromContext(ctx)
 	span.Infof("action[syncSendAdminTask],task[%s], op %s, reqId %d", task.ToString(), packet.GetOpMsg(), packet.GetReqID())
 	conn, err := sender.getConn()
 	if err != nil {

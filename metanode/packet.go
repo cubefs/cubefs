@@ -76,7 +76,7 @@ func NewPacketToDeleteExtent(ctx context.Context, dp *DataPartition, ext *proto.
 	p.Data, _ = json.Marshal(ext)
 	p.Size = uint32(len(p.Data))
 	p.ExtentID = ext.ExtentId
-	p.ReqID = proto.GenerateRequestID()
+	p.ReqID = proto.RequestIDFromContext(ctx)
 	p.RemainingFollowers = uint8(len(dp.Hosts) - 1)
 	if len(dp.Hosts) == 1 {
 		p.RemainingFollowers = 127
@@ -87,7 +87,7 @@ func NewPacketToDeleteExtent(ctx context.Context, dp *DataPartition, ext *proto.
 }
 
 // NewPacketToBatchDeleteExtent returns a new packet to batch delete the extent.
-func NewPacketToBatchDeleteExtent(dp *DataPartition, exts []*proto.ExtentKey) *Packet {
+func NewPacketToBatchDeleteExtent(ctx context.Context, dp *DataPartition, exts []*proto.ExtentKey) *Packet {
 	p := new(Packet)
 	p.Magic = proto.ProtoMagic
 	p.Opcode = proto.OpBatchDeleteExtent
@@ -95,7 +95,7 @@ func NewPacketToBatchDeleteExtent(dp *DataPartition, exts []*proto.ExtentKey) *P
 	p.PartitionID = uint64(dp.PartitionID)
 	p.Data, _ = json.Marshal(exts)
 	p.Size = uint32(len(p.Data))
-	p.ReqID = proto.GenerateRequestID()
+	p.ReqID = proto.RequestIDFromContext(ctx)
 	p.RemainingFollowers = uint8(len(dp.Hosts) - 1)
 	if len(dp.Hosts) == 1 {
 		p.RemainingFollowers = 127
@@ -106,13 +106,13 @@ func NewPacketToBatchDeleteExtent(dp *DataPartition, exts []*proto.ExtentKey) *P
 }
 
 // NewPacketToDeleteExtent returns a new packet to delete the extent.
-func NewPacketToFreeInodeOnRaftFollower(partitionID uint64, freeInodes []byte) *Packet {
+func NewPacketToFreeInodeOnRaftFollower(ctx context.Context, partitionID uint64, freeInodes []byte) *Packet {
 	p := new(Packet)
 	p.Magic = proto.ProtoMagic
 	p.Opcode = proto.OpMetaFreeInodesOnRaftFollower
 	p.PartitionID = partitionID
 	p.ExtentType = proto.NormalExtentType
-	p.ReqID = proto.GenerateRequestID()
+	p.ReqID = proto.RequestIDFromContext(ctx)
 	p.Data = make([]byte, len(freeInodes))
 	copy(p.Data, freeInodes)
 	p.Size = uint32(len(p.Data))
