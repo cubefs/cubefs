@@ -257,6 +257,33 @@ func NewTinyExtentStreamReadResponsePacket(requestID int64, partitionID uint64, 
 	return
 }
 
+func NewNormalExtentWithHoleRepairReadPacket(partitionID uint64, extentID uint64, offset, size int) (p *Packet) {
+	p = new(Packet)
+	p.ExtentID = extentID
+	p.PartitionID = partitionID
+	p.Magic = proto.ProtoMagic
+	p.ExtentOffset = int64(offset)
+	p.Size = uint32(size)
+	p.Opcode = proto.OpNormalWithHoleExtentRepairRead
+	p.ExtentType = proto.TinyExtentType
+	p.ReqID = proto.GenerateRequestID()
+
+	return
+}
+
+func NewNormalExtentWithHoleStreamReadResponsePacket(requestID int64, partitionID uint64, extentID uint64) (p *Packet) {
+	p = new(Packet)
+	p.ExtentID = extentID
+	p.PartitionID = partitionID
+	p.Magic = proto.ProtoMagic
+	p.Opcode = proto.OpNormalWithHoleExtentRepairRead
+	p.ReqID = requestID
+	p.ExtentType = proto.NormalExtentType
+	p.StartT = time.Now().UnixNano()
+
+	return
+}
+
 func NewStreamReadResponsePacket(requestID int64, partitionID uint64, extentID uint64) (p *Packet) {
 	p = new(Packet)
 	p.ExtentID = extentID
