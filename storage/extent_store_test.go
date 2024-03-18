@@ -15,7 +15,6 @@
 package storage_test
 
 import (
-	"bytes"
 	"fmt"
 	"hash/crc32"
 	"os"
@@ -26,7 +25,6 @@ import (
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/storage"
 	"github.com/cubefs/cubefs/util"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -236,7 +234,7 @@ func staleExtentStoreTest(t *testing.T, dpType int) {
 	defer newS2.Close()
 }
 
-func extentStoreTest(t *testing.T, dpType int) {
+func ExtentStoreTest(t *testing.T, dpType int) {
 	path, clean, err := getTestPathExtentStore()
 	require.NoError(t, err)
 	defer clean()
@@ -248,93 +246,6 @@ func extentStoreTest(t *testing.T, dpType int) {
 	staleExtentStoreTest(t, dpType)
 }
 
-func extentReloadCheckCrc(t *testing.T, path string, id uint64, crc uint32) {
-	s, err := storage.NewExtentStore(path, 0, 1*util.GB, proto.PartitionTypeNormal, false)
-	require.NoError(t, err)
-
-	offset := int64(util.ExtentSize)
-	// extent crc check
-	var e *storage.Extent
-	e, err = s.LoadExtentFromDisk(id, true)
-	assert.True(t, err == nil)
-	extCrc := e.GetCrc(offset / util.BlockSize)
-	assert.True(t, crc == extCrc)
-
-	// check
-	offset = int64(util.ExtentSize)*2 + util.BlockSize
-	e, err = s.LoadExtentFromDisk(id, true)
-	assert.True(t, err == nil)
-	extCrc = e.GetCrc(offset / util.BlockSize)
-	assert.True(t, crc == extCrc)
-	extCrc = e.GetCrc(offset/util.BlockSize + 1)
-	assert.True(t, 0 == extCrc)
-}
-
-func extentStoreSnapshotRwTest(t *testing.T, s *storage.ExtentStore, id uint64, crc uint32, data []byte) {
-	// append write
-	offset := int64(util.ExtentSize)
-	_, err := s.Write(id, offset, int64(len(data)), data, crc, storage.AppendRandomWriteType, true, false)
-	require.NoError(t, err)
-
-	_, err = s.Write(id, 0, int64(len(data)), data, crc, storage.AppendRandomWriteType, true, false)
-	assert.True(t, err != nil)
-	_, err = s.Write(id, offset, int64(len(data)), data, crc, storage.AppendWriteType, true, false)
-	assert.True(t, err != nil)
-
-	actualCrc, err := s.Read(id, offset, int64(len(data)), data, false)
-	require.NoError(t, err)
-	require.EqualValues(t, crc, actualCrc)
-	// random write
-	_, err = s.Write(id, offset, int64(len(data)), data, crc, storage.RandomWriteType, true, false)
-	require.NoError(t, err)
-	actualCrc, err = s.Read(id, offset, int64(len(data)), data, false)
-	require.NoError(t, err)
-	require.EqualValues(t, crc, actualCrc)
-	// TODO: append random write
-	require.NotEqualValues(t, s.GetStoreUsedSize(), 0)
-
-	_, err = s.Write(id, offset, int64(len(data)), data, crc, storage.AppendRandomWriteType, true, false)
-	require.NoError(t, err)
-
-	// extent crc check
-	var e *storage.Extent
-	e, err = s.LoadExtentFromDisk(id, true)
-	assert.True(t, err == nil)
-	extCrc := e.GetCrc(offset / util.BlockSize)
-	assert.True(t, crc == extCrc)
-
-	// check
-	offset = int64(util.ExtentSize)*2 + util.BlockSize
-	_, err = s.Write(id, offset, int64(len(data)), data, crc, storage.AppendRandomWriteType, true, false)
-	require.NoError(t, err)
-
-	e, err = s.LoadExtentFromDisk(id, true)
-	assert.True(t, err == nil)
-	extCrc = e.GetCrc(offset / util.BlockSize)
-	assert.True(t, crc == extCrc)
-	extCrc = e.GetCrc(offset/util.BlockSize + 1)
-	assert.True(t, 0 == extCrc)
-}
-
-func TestCheckExtentCrc(t *testing.T) {
-	path, clean, err := getTestPathExtentStore()
-	require.NoError(t, err)
-	defer clean()
-	s, err := storage.NewExtentStore(path, 0, 1*util.GB, proto.PartitionTypeNormal, true)
-	require.NoError(t, err)
-	data := bytes.Repeat([]byte("test"), util.BlockSize/len("test"))
-	crc := crc32.ChecksumIEEE(data)
-
-	normalId, err := s.NextExtentID()
-	require.NoError(t, err)
-	err = s.Create(normalId)
-	require.NoError(t, err)
-
-	require.NoError(t, err)
-	extentStoreSnapshotRwTest(t, s, normalId, crc, data)
-	extentReloadCheckCrc(t, path, normalId, crc)
-}
-
 func TestExtentStores(t *testing.T) {
 	dpTypes := []int{
 		proto.PartitionTypeNormal,
@@ -342,6 +253,6 @@ func TestExtentStores(t *testing.T) {
 		proto.PartitionTypeCache,
 	}
 	for _, ty := range dpTypes {
-		extentStoreTest(t, ty)
+		ExtentStoreTest(t, ty)
 	}
 }

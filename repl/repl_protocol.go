@@ -150,7 +150,7 @@ func (ft *FollowerTransport) readFollowerResult(request *FollowerPacket) (err er
 		return
 	}
 
-	if reply.ReqID != request.ReqID || reply.PartitionID != request.PartitionID ||
+	if reply.GetReqID() != request.ReqID || reply.GetPartitionID() != request.PartitionID ||
 		reply.ExtentOffset != request.ExtentOffset || reply.CRC != request.CRC || reply.ExtentID != request.ExtentID {
 		err = fmt.Errorf(ActionCheckReply+" request(%v), reply(%v)  ", request.GetUniqueLogId(),
 			reply.GetUniqueLogId())
