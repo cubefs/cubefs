@@ -22,6 +22,7 @@
 | diskWriteIocc | int            | Limit write concurrency io frequency per disk. No limit if less than or equal to 0                                              | No       |
 | diskWriteFlow | int            | Limit write io flow per disk. No limit if less than or equal to 0                                                               | No       |
 | disks         | string slice   | Format: `disk mount path:reserved space`, reserved space configuration range `[20G,50G]`                                        | Yes      |
+| enableLogPanicHook | bool | (Experimental) Hook `panic` function to flush log before executing `panic` | No | false |
 
 ## Configuration Example
 

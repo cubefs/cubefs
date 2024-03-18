@@ -48,15 +48,16 @@ import (
 )
 
 const (
-	ConfigKeyRole              = "role"
-	ConfigKeyLogDir            = "logDir"
-	ConfigKeyLogLevel          = "logLevel"
-	ConfigKeyLogRotateSize     = "logRotateSize"
-	ConfigKeyLogRotateHeadRoom = "logRotateHeadRoom"
-	ConfigKeyProfPort          = "prof"
-	ConfigKeyWarnLogDir        = "warnLogDir"
-	ConfigKeyBuffersTotalLimit = "buffersTotalLimit"
-	ConfigKeyLogLeftSpaceLimit = "logLeftSpaceLimit"
+	ConfigKeyRole               = "role"
+	ConfigKeyLogDir             = "logDir"
+	ConfigKeyLogLevel           = "logLevel"
+	ConfigKeyLogRotateSize      = "logRotateSize"
+	ConfigKeyLogRotateHeadRoom  = "logRotateHeadRoom"
+	ConfigKeyProfPort           = "prof"
+	ConfigKeyWarnLogDir         = "warnLogDir"
+	ConfigKeyBuffersTotalLimit  = "buffersTotalLimit"
+	ConfigKeyLogLeftSpaceLimit  = "logLeftSpaceLimit"
+	ConfigKeyEnableLogPanicHook = "enableLogPanicHook"
 )
 
 const (
@@ -166,6 +167,7 @@ func main() {
 	buffersTotalLimit := cfg.GetInt64(ConfigKeyBuffersTotalLimit)
 	logLeftSpaceLimitStr := cfg.GetString(ConfigKeyLogLeftSpaceLimit)
 	logLeftSpaceLimit, err := strconv.ParseInt(logLeftSpaceLimitStr, 10, 64)
+	enableLogPanicHook := cfg.GetBool(ConfigKeyEnableLogPanicHook)
 	if err != nil || logLeftSpaceLimit == 0 {
 		log.LogErrorf("logLeftSpaceLimit is not a legal int value: %v", err.Error())
 		logLeftSpaceLimit = log.DefaultLogLeftSpaceLimit
@@ -237,7 +239,8 @@ func main() {
 		os.Exit(1)
 	}
 	defer log.LogFlush()
-	if errors.SupportPanicHook() {
+	if enableLogPanicHook && errors.SupportPanicHook() {
+		log.LogWarnf("enable log panic hook")
 		err = errors.AtPanic(func() {
 			log.LogFlush()
 		})

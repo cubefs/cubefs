@@ -11,6 +11,7 @@
 | masterAddr   | string slice | 格式: `HOST:PORT`，HOST: 资源管理节点IP（Master），PORT: 资源管理节点服务端口（Master） | 是   |
 | exporterPort | string       | prometheus获取监控数据端口                                              | 否   |
 | prof         | string       | 调试和管理员API接口                                                     | 是   |
+| enableLogPanicHook | bool | (实验性) Hook `panic` 函数以便在执行`panic`之前使日志落盘 | No | false |
 
 ## 配置示例
 

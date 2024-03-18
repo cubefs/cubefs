@@ -25,6 +25,7 @@
 | tickInterval        | float64      | Interval for Raft to check heartbeats and election timeouts, unit is milliseconds, default is `300`                                                        | No       |
 | raftRecvBufSize     | int          | Size of the Raft receive buffer, unit: bytes, default is `2048`                                                                                            | No       |
 | nameResolveInterval | int          | Interval for Raft node address resolution, unit: minutes, the value should be between [1-60], default is `1`                                               | No       |
+| enableLogPanicHook | bool | (Experimental) Hook `panic` function to flush log before executing `panic` | No | false |
 
 ## Configuration Example
 

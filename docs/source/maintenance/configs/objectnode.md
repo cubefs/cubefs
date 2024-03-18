@@ -11,6 +11,7 @@
 | masterAddr   | string slice | Format: `HOST:PORT`, HOST: Resource management node IP (Master), PORT: Resource management node service port (Master) | Yes      |
 | exporterPort | string       | Port for Prometheus to obtain monitoring data                                                                         | No       |
 | prof         | string       | Debugging and administrator API interface                                                                             | Yes      |
+| enableLogPanicHook | bool | (Experimental) Hook `panic` function to flush log before executing `panic` | No | false |
 
 ## Configuration Example
 
