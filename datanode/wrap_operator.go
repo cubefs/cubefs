@@ -139,6 +139,8 @@ func (s *DataNode) OperatePacket(p *repl.Packet, c net.Conn) (err error) {
 		s.handleExtentRepairReadPacket(p, c, RepairRead)
 	case proto.OpTinyExtentRepairRead:
 		s.handleTinyExtentRepairReadPacket(p, c)
+	case proto.OpNormalWithHoleExtentRepairRead:
+		s.handleNorExtentRepairReadPacket(p, c)
 	case proto.OpMarkDelete, proto.OpSplitMarkDelete:
 		s.handleMarkDeletePacket(p, c)
 	case proto.OpBatchDeleteExtent:
@@ -776,7 +778,7 @@ func (s *DataNode) handleWritePacket(p *repl.Packet) {
 		partition.disk.allocCheckLimit(proto.IopsWriteType, 1)
 
 		if writable := partition.disk.limitWrite.TryRun(int(p.Size), func() {
-			_, err = store.Write(p.ExtentID, p.ExtentOffset, int64(p.Size), p.Data, p.CRC, storage.AppendWriteType, p.IsSyncWrite())
+			_, err = store.Write(p.ExtentID, p.ExtentOffset, int64(p.Size), p.Data, p.CRC, storage.AppendWriteType, p.IsSyncWrite(), false)
 		}); !writable {
 			err = storage.TryAgainError
 			return
@@ -798,7 +800,7 @@ func (s *DataNode) handleWritePacket(p *repl.Packet) {
 		partition.disk.allocCheckLimit(proto.IopsWriteType, 1)
 
 		if writable := partition.disk.limitWrite.TryRun(int(p.Size), func() {
-			_, err = store.Write(p.ExtentID, p.ExtentOffset, int64(p.Size), p.Data, p.CRC, storage.AppendWriteType, p.IsSyncWrite())
+			_, err = store.Write(p.ExtentID, p.ExtentOffset, int64(p.Size), p.Data, p.CRC, storage.AppendWriteType, p.IsSyncWrite(), false)
 		}); !writable {
 			err = storage.TryAgainError
 			return
@@ -826,7 +828,7 @@ func (s *DataNode) handleWritePacket(p *repl.Packet) {
 			partition.disk.allocCheckLimit(proto.IopsWriteType, 1)
 
 			if writable := partition.disk.limitWrite.TryRun(currSize, func() {
-				_, err = store.Write(p.ExtentID, p.ExtentOffset+int64(offset), int64(currSize), data, crc, storage.AppendWriteType, p.IsSyncWrite())
+				_, err = store.Write(p.ExtentID, p.ExtentOffset+int64(offset), int64(currSize), data, crc, storage.AppendWriteType, p.IsSyncWrite(), false)
 			}); !writable {
 				err = storage.TryAgainError
 				return
@@ -977,6 +979,10 @@ func (s *DataNode) handleTinyExtentRepairReadPacket(p *repl.Packet, connect net.
 	s.tinyExtentRepairRead(p, connect)
 }
 
+func (s *DataNode) handleNorExtentRepairReadPacket(p *repl.Packet, connect net.Conn) {
+	s.NormalSnapshotExtentRepairRead(p, connect)
+}
+
 func (s *DataNode) extentRepairReadPacket(p *repl.Packet, connect net.Conn, isRepairRead bool) {
 	var (
 		err error
@@ -1106,12 +1112,47 @@ func (s *DataNode) writeEmptyPacketOnTinyExtentRepairRead(reply *repl.Packet, ne
 	return
 }
 
-func (s *DataNode) attachAvaliSizeOnTinyExtentRepairRead(reply *repl.Packet, avaliSize uint64) {
+func (s *DataNode) attachAvaliSizeOnExtentRepairRead(reply *repl.Packet, avaliSize uint64) {
 	binary.BigEndian.PutUint64(reply.Arg[9:17], avaliSize)
 }
 
 // Handle tinyExtentRepairRead packet.
+func (s *DataNode) NormalSnapshotExtentRepairRead(request *repl.Packet, connect net.Conn) {
+	replyFunc := func() *repl.Packet {
+		reply := repl.NewNormalExtentWithHoleStreamReadResponsePacket(request.ReqID, request.PartitionID, request.ExtentID)
+		reply.ArgLen = NormalExtentWithHoleRepairReadResponseArgLen
+		reply.Arg = make([]byte, NormalExtentWithHoleRepairReadResponseArgLen)
+		return reply
+	}
+	s.ExtentWithHoleRepairRead(request, connect, replyFunc)
+}
+
+// Handle tinyExtentRepairRead packet.
 func (s *DataNode) tinyExtentRepairRead(request *repl.Packet, connect net.Conn) {
+	var err error
+	defer func() {
+		if err != nil {
+			request.PackErrorBody(ActionStreamReadTinyExtentRepair, err.Error())
+			request.WriteToConn(connect)
+		}
+	}()
+
+	if !storage.IsTinyExtent(request.ExtentID) {
+		err = fmt.Errorf("unavali extentID (%v)", request.ExtentID)
+		return
+	}
+	replyFunc := func() *repl.Packet {
+		reply := repl.NewTinyExtentStreamReadResponsePacket(request.ReqID, request.PartitionID, request.ExtentID)
+		reply.ArgLen = TinyExtentRepairReadResponseArgLen
+		reply.Arg = make([]byte, TinyExtentRepairReadResponseArgLen)
+		return reply
+	}
+	s.ExtentWithHoleRepairRead(request, connect, replyFunc)
+	return
+}
+
+// Handle tinyExtentRepairRead packet.
+func (s *DataNode) ExtentWithHoleRepairRead(request *repl.Packet, connect net.Conn, getReplyPacket func() *repl.Packet) {
 	var (
 		err                 error
 		needReplySize       int64
@@ -1124,14 +1165,11 @@ func (s *DataNode) tinyExtentRepairRead(request *repl.Packet, connect net.Conn) 
 			request.WriteToConn(connect)
 		}
 	}()
-	if !storage.IsTinyExtent(request.ExtentID) {
-		err = fmt.Errorf("unavali extentID (%v)", request.ExtentID)
-		return
-	}
+
 
 	partition := request.Object.(*DataPartition)
 	store := partition.ExtentStore()
-	tinyExtentFinfoSize, err = store.TinyExtentGetFinfoSize(request.ExtentID)
+	tinyExtentFinfoSize, err = store.GetExtentFinfoSize(request.ExtentID)
 	if err != nil {
 		return
 	}
@@ -1149,11 +1187,9 @@ func (s *DataNode) tinyExtentRepairRead(request *repl.Packet, connect net.Conn) 
 		if needReplySize <= 0 {
 			break
 		}
-		reply := repl.NewTinyExtentStreamReadResponsePacket(request.ReqID, request.PartitionID, request.ExtentID)
-		reply.ArgLen = TinyExtentRepairReadResponseArgLen
-		reply.Arg = make([]byte, TinyExtentRepairReadResponseArgLen)
-		s.attachAvaliSizeOnTinyExtentRepairRead(reply, avaliReplySize)
-		newOffset, newEnd, err = store.TinyExtentAvaliOffset(request.ExtentID, offset)
+		reply := getReplyPacket()
+		s.attachAvaliSizeOnExtentRepairRead(reply, avaliReplySize)
+		newOffset, newEnd, err = store.GetExtentWithHoleAvailableOffset(request.ExtentID, offset)
 		if err != nil {
 			return
 		}

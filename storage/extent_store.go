@@ -377,7 +377,7 @@ func (s *ExtentStore) initBaseFileID() error {
 }
 
 // Write writes the given extent to the disk.
-func (s *ExtentStore) Write(extentID uint64, offset, size int64, data []byte, crc uint32, writeType int, isSync bool) (status uint8, err error) {
+func (s *ExtentStore) Write(extentID uint64, offset, size int64, data []byte, crc uint32, writeType int, isSync bool, isHole bool) (status uint8, err error) {
 	var (
 		e  *Extent
 		ei *ExtentInfo
@@ -398,7 +398,7 @@ func (s *ExtentStore) Write(extentID uint64, offset, size int64, data []byte, cr
 		return status, err
 	}
 
-	status, err = e.Write(data, offset, size, crc, writeType, isSync, s.PersistenceBlockCrc, ei)
+	status, err = e.Write(data, offset, size, crc, writeType, isSync, s.PersistenceBlockCrc, ei, isHole)
 	if err != nil {
 		log.LogInfof("action[Write] path %v err %v", e.filePath, err)
 		return status, err
@@ -1189,11 +1189,8 @@ func (s *ExtentStore) TinyExtentRecover(extentID uint64, offset, size int64, dat
 	return nil
 }
 
-func (s *ExtentStore) TinyExtentGetFinfoSize(extentID uint64) (size uint64, err error) {
+func (s *ExtentStore) GetExtentFinfoSize(extentID uint64) (size uint64, err error) {
 	var e *Extent
-	if !IsTinyExtent(extentID) {
-		return 0, fmt.Errorf("unavali extent id (%v)", extentID)
-	}
 	s.eiMutex.RLock()
 	ei := s.extentInfoMap[extentID]
 	s.eiMutex.RUnlock()
@@ -1210,11 +1207,8 @@ func (s *ExtentStore) TinyExtentGetFinfoSize(extentID uint64) (size uint64, err 
 	return
 }
 
-func (s *ExtentStore) TinyExtentAvaliOffset(extentID uint64, offset int64) (newOffset, newEnd int64, err error) {
+func (s *ExtentStore) GetExtentWithHoleAvailableOffset(extentID uint64, offset int64) (newOffset, newEnd int64, err error) {
 	var e *Extent
-	if !IsTinyExtent(extentID) {
-		return 0, 0, fmt.Errorf("unavali extent(%v)", extentID)
-	}
 	s.eiMutex.RLock()
 	ei := s.extentInfoMap[extentID]
 	s.eiMutex.RUnlock()
@@ -1229,8 +1223,7 @@ func (s *ExtentStore) TinyExtentAvaliOffset(extentID uint64, offset int64) (newO
 			err = nil
 		}
 	}()
-	newOffset, newEnd, err = e.tinyExtentAvaliOffset(offset)
-
+	newOffset, newEnd, err = e.getExtentWithHoleAvailableOffset(offset)
 	return
 }
 
