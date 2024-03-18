@@ -332,7 +332,7 @@ func (e *Extent) Write(data []byte, offset, size int64, crc uint32, writeType in
 		}
 	}
 	if isHole {
-		if err = e.punchHole(offset, size); err != nil {
+		if err = e.repairPunchHole(offset, size); err != nil {
 			return
 		}
 	} else {
@@ -521,10 +521,35 @@ func (e *Extent) getRealBlockCnt() (blockNum int64) {
 	return stat.Blocks
 }
 
-func (e *Extent) punchHole(offset, size int64) (err error) {
-	if offset%util.PageSize != 0 || offset != e.dataSize {
-		return fmt.Errorf("error empty packet on (%v) offset(%v) size(%v)"+
-			" e.dataSize(%v)", e.file.Name(), offset, size, e.dataSize)
+func (e *Extent) repairPunchHole(offset, size int64) (err error) {
+	defer func() {
+		if err != nil {
+			err = fmt.Errorf("error empty packet on (%v) offset(%v) size(%v)"+
+				" e.dataSize(%v) err (%v)", e.file.Name(), offset, size, e.dataSize, err)
+		}
+		return
+	}()
+	if offset%util.PageSize != 0 {
+		err = fmt.Errorf("offset invalid")
+		return
+	}
+	if IsTinyExtent(e.extentID) {
+		if offset != e.dataSize {
+			err = fmt.Errorf("tiny offset not euqal")
+			return
+		}
+	} else {
+		if offset < util.ExtentSize {
+			if offset != e.dataSize {
+				err = fmt.Errorf("normal offset not euqal")
+				return
+			}
+		} else {
+			if offset != int64(e.snapshotDataOff) {
+				err = fmt.Errorf("normal offset not euqal")
+				return
+			}
+		}
 	}
 	log.LogDebugf("before file (%v) getRealBlockNo (%v) "+
 		"offset(%v) size(%v) e.datasize(%v)", e.filePath, e.getRealBlockCnt(), offset, size, e.dataSize)
@@ -552,7 +577,7 @@ func (e *Extent) TinyExtentRecover(data []byte, offset, size int64, crc uint32, 
 		return ParameterMismatchError
 	}
 	if isEmptyPacket {
-		err = e.punchHole(offset, size)
+		err = e.repairPunchHole(offset, size)
 	} else {
 		_, err = e.file.WriteAt(data[:size], int64(offset))
 	}
