@@ -163,6 +163,8 @@ const (
 	GetMetaNode                        = "/metaNode/get"
 	AdminUpdateMetaNode                = "/metaNode/update"
 	AdminUpdateDataNode                = "/dataNode/update"
+	AdminChangeMetaNodeAddr            = "/metaNode/changeAddr"
+	AdminChangeDataNodeAddr            = "/dataNode/changeAddr"
 	AdminGetInvalidNodes               = "/invalid/nodes"
 	AdminLoadMetaPartition             = "/metaPartition/load"
 	AdminDiagnoseMetaPartition         = "/metaPartition/diagnose"

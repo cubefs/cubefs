@@ -956,6 +956,72 @@ func (c *Cluster) updateMetaNodeBaseInfo(nodeAddr string, id uint64) (err error)
 	return
 }
 
+func (c *Cluster) changeDataNodeAddr(id uint64, srcAddr string, targetAddr string) (err error) {
+	c.dnMutex.Lock()
+	defer c.dnMutex.Unlock()
+	value, ok := c.dataNodes.Load(srcAddr)
+	if !ok {
+		err = fmt.Errorf("node %v is not exist", srcAddr)
+		return
+	}
+	dataNode := value.(*DataNode)
+	if dataNode.ID != id {
+		err = fmt.Errorf("The id of datanode  %v is not %d" , srcAddr, id)		
+		return
+	}
+	cmds := make(map[string]*RaftCmd)
+	metadata, err := c.buildDeleteDataNodeCmd(dataNode)
+	if err != nil {
+		return
+	}
+	cmds[metadata.K] = metadata
+	dataNode.ID = id
+	dataNode.Addr = targetAddr
+	metadata, err = c.buildUpdateDataNodeCmd(dataNode)
+	if err != nil {
+		return
+	}
+	cmds[metadata.K] = metadata
+	if err = c.syncBatchCommitCmd(cmds); err != nil {
+		return
+	}
+	// partitions := c.getAllMetaPartitionsByMetaNode(nodeAddr)
+	return
+}
+
+func (c *Cluster) changeMetaNodeAddr(id uint64, srcAddr string, targetAddr string) (err error) {
+	c.mnMutex.Lock()
+	defer c.mnMutex.Unlock()
+	value, ok := c.metaNodes.Load(srcAddr)
+	if !ok {
+		err = fmt.Errorf("node %v is not exist", srcAddr)
+		return
+	}
+	metaNode := value.(*MetaNode)
+	if metaNode.ID != id {
+		err = fmt.Errorf("The id of metanode  %v is not %d" , srcAddr, id)		
+		return
+	}
+	cmds := make(map[string]*RaftCmd)
+	metadata, err := c.buildDeleteMetaNodeCmd(metaNode)
+	if err != nil {
+		return
+	}
+	cmds[metadata.K] = metadata
+	metaNode.ID = id
+	metaNode.Addr = targetAddr
+	metadata, err = c.buildUpdateMetaNodeCmd(metaNode)
+	if err != nil {
+		return
+	}
+	cmds[metadata.K] = metadata
+	if err = c.syncBatchCommitCmd(cmds); err != nil {
+		return
+	}
+	// partitions := c.getAllMetaPartitionsByMetaNode(nodeAddr)
+	return
+}
+
 func (c *Cluster) addMetaNode(nodeAddr, zoneName string, nodesetId uint64) (id uint64, err error) {
 	c.mnMutex.Lock()
 	defer c.mnMutex.Unlock()
