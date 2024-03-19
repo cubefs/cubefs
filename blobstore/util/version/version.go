@@ -16,7 +16,6 @@ package version
 
 import (
 	"fmt"
-	"io/ioutil"
 	"os"
 )
 
@@ -39,6 +38,6 @@ func Version() string {
 
 func writeFile(fname, field string) {
 	if field != "" {
-		ioutil.WriteFile(fname, []byte(field), fPerm)
+		os.WriteFile(fname, []byte(field), fPerm)
 	}
 }

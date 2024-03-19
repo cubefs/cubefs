@@ -17,7 +17,6 @@ package base
 import (
 	"encoding/json"
 	err1 "errors"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -66,7 +65,7 @@ func IsEmptyDisk(filename string) (bool, error) {
 	if !isPathSafe(absPath) {
 		return false, ErrInValidFilePath
 	}
-	fis, err := ioutil.ReadDir(absPath)
+	fis, err := os.ReadDir(absPath)
 	if err != nil {
 		return false, err
 	}

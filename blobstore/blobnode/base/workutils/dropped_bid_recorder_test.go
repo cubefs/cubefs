@@ -16,7 +16,6 @@ package workutils
 
 import (
 	"context"
-	"io/ioutil"
 	"os"
 	"testing"
 
@@ -27,7 +26,7 @@ import (
 
 func TestDroppedBidRecorder(t *testing.T) {
 	r := DroppedBidRecorderInst()
-	dir, err := ioutil.TempDir("", "")
+	dir, err := os.MkdirTemp("", "")
 	require.NoError(t, err)
 
 	cfg := recordlog.Config{

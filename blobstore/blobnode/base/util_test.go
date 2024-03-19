@@ -15,7 +15,6 @@
 package base
 
 import (
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"testing"
@@ -28,6 +27,7 @@ import (
 //   "Range": "bytes=100-200"
 //   "Range": "bytes=-50"
 //   "Range": "bytes=150-"
+
 func TestParseOneRange(t *testing.T) {
 	s1 := "bytes=0-99"
 	s2 := "bytes=100-200"
@@ -107,7 +107,7 @@ func TestIsEmptyDisk(t *testing.T) {
 	require.Equal(t, false, flag)
 	require.Error(t, err)
 
-	testDir, err := ioutil.TempDir(os.TempDir(), "blobnode_util")
+	testDir, err := os.MkdirTemp(os.TempDir(), "blobnode_util")
 	require.NoError(t, err)
 	defer os.RemoveAll(testDir)
 
