@@ -18,7 +18,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"os"
 	"path/filepath"
 	"sync"
@@ -51,7 +51,7 @@ func newIoPoolMock(t *testing.T) taskpool.IoPool {
 }
 
 func TestNewChunkData(t *testing.T) {
-	testDir, err := ioutil.TempDir(os.TempDir(), defaultDiskTestDir+"NewChunkData")
+	testDir, err := os.MkdirTemp(os.TempDir(), defaultDiskTestDir+"NewChunkData")
 	require.NoError(t, err)
 	defer os.RemoveAll(testDir)
 
@@ -103,7 +103,7 @@ func TestNewChunkData(t *testing.T) {
 }
 
 func TestChunkData_Write(t *testing.T) {
-	testDir, err := ioutil.TempDir(os.TempDir(), defaultDiskTestDir+"ChunkDataWrite")
+	testDir, err := os.MkdirTemp(os.TempDir(), defaultDiskTestDir+"ChunkDataWrite")
 	require.NoError(t, err)
 	defer os.RemoveAll(testDir)
 
@@ -156,7 +156,7 @@ func TestChunkData_Write(t *testing.T) {
 	// read crc
 	r, err := cd.Read(ctx, shard, 0, shard.Size)
 	require.NoError(t, err)
-	rd, err := ioutil.ReadAll(r)
+	rd, err := io.ReadAll(r)
 	require.NoError(t, err)
 
 	log.Infof("read: %s", string(rd))
@@ -172,7 +172,7 @@ func TestChunkData_Write(t *testing.T) {
 }
 
 func TestChunkData_ConcurrencyWrite(t *testing.T) {
-	testDir, err := ioutil.TempDir(os.TempDir(), defaultDiskTestDir+"ChunkDataWriteCon")
+	testDir, err := os.MkdirTemp(os.TempDir(), defaultDiskTestDir+"ChunkDataWriteCon")
 	require.NoError(t, err)
 	defer os.RemoveAll(testDir)
 
@@ -232,7 +232,7 @@ func TestChunkData_ConcurrencyWrite(t *testing.T) {
 
 			r, err := cd.Read(ctx, shard, 0, shard.Size)
 			require.NoError(t, err)
-			rd, err := ioutil.ReadAll(r)
+			rd, err := io.ReadAll(r)
 			require.NoError(t, err)
 
 			log.Infof("read: %s", string(rd))
@@ -255,7 +255,7 @@ func TestChunkData_ConcurrencyWrite(t *testing.T) {
 }
 
 func TestChunkData_Delete(t *testing.T) {
-	testDir, err := ioutil.TempDir(os.TempDir(), defaultDiskTestDir+"ChunkDataDelete")
+	testDir, err := os.MkdirTemp(os.TempDir(), defaultDiskTestDir+"ChunkDataDelete")
 	require.NoError(t, err)
 	defer os.RemoveAll(testDir)
 
@@ -317,7 +317,7 @@ func TestChunkData_Delete(t *testing.T) {
 
 			r, err := cd.Read(ctx, shard, 0, shard.Size)
 			require.NoError(t, err)
-			rd, err := ioutil.ReadAll(r)
+			rd, err := io.ReadAll(r)
 			require.NoError(t, err)
 
 			log.Infof("read: %s", string(rd))
@@ -380,7 +380,7 @@ func TestChunkData_Delete(t *testing.T) {
 }
 
 func TestChunkData_Destroy(t *testing.T) {
-	testDir, err := ioutil.TempDir(os.TempDir(), defaultDiskTestDir+"ChunkDataDestroy")
+	testDir, err := os.MkdirTemp(os.TempDir(), defaultDiskTestDir+"ChunkDataDestroy")
 	require.NoError(t, err)
 	defer os.RemoveAll(testDir)
 
@@ -426,7 +426,7 @@ func TestChunkData_Close(t *testing.T) {
 }
 
 func TestParseMeta(t *testing.T) {
-	testDir, err := ioutil.TempDir(os.TempDir(), defaultDiskTestDir+"ParseMeta")
+	testDir, err := os.MkdirTemp(os.TempDir(), defaultDiskTestDir+"ParseMeta")
 	require.NoError(t, err)
 	defer os.RemoveAll(testDir)
 

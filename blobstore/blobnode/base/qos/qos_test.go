@@ -3,7 +3,6 @@ package qos
 import (
 	"context"
 	"io"
-	"io/ioutil"
 	"os"
 	"strings"
 	"testing"
@@ -60,7 +59,7 @@ func TestNewQosManager(t *testing.T) {
 	require.NoError(t, err)
 	defer qos.Close()
 
-	f, err := ioutil.TempFile(os.TempDir(), "TestQos")
+	f, err := os.CreateTemp(os.TempDir(), "TestQos")
 	require.NoError(t, err)
 	defer os.Remove(f.Name())
 	defer f.Close()
@@ -96,7 +95,7 @@ func TestNewQosManager(t *testing.T) {
 	}
 
 	{
-		wf, err := ioutil.TempFile(os.TempDir(), "TestQosReader")
+		wf, err := os.CreateTemp(os.TempDir(), "TestQosReader")
 		require.NoError(t, err)
 		defer os.Remove(wf.Name())
 		r := qos.Reader(ctx, bnapi.NormalIO, f)
@@ -143,7 +142,7 @@ func TestQosTryAcquire(t *testing.T) {
 	require.NoError(t, err)
 	defer qos.Close()
 
-	f, err := ioutil.TempFile(os.TempDir(), "TestQos")
+	f, err := os.CreateTemp(os.TempDir(), "TestQos")
 	require.NoError(t, err)
 	defer os.Remove(f.Name())
 	defer f.Close()

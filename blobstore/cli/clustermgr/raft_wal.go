@@ -19,7 +19,6 @@ import (
 	"errors"
 	"hash/crc32"
 	"io"
-	"io/ioutil"
 	"log"
 	"os"
 	"path"
@@ -83,7 +82,7 @@ func cmdWalParse(c *grumble.Context) error {
 		return parse(filepath, printf)
 	}
 
-	fis, err := ioutil.ReadDir(filepath)
+	fis, err := os.ReadDir(filepath)
 	if err != nil {
 		return err
 	}
