@@ -32,6 +32,19 @@ func (d Decoder) Decode(raw []byte) ([]byte, error) {
 
 type ClientAPI struct {
 	mc *MasterClient
+	h  map[string]string // extra headers
+}
+
+func (api *ClientAPI) WithHeader(key, val string) *ClientAPI {
+	return &ClientAPI{mc: api.mc, h: mergeHeader(api.h, key, val)}
+}
+
+func (api *ClientAPI) EncodingWith(encoding string) *ClientAPI {
+	return api.WithHeader(headerAcceptEncoding, encoding)
+}
+
+func (api *ClientAPI) EncodingGzip() *ClientAPI {
+	return api.EncodingWith(encodingGzip)
 }
 
 func (api *ClientAPI) GetVolume(volName string, authKey string) (vv *proto.VolView, err error) {
@@ -128,7 +141,7 @@ func (api *ClientAPI) GetMetaPartitions(volName string) (views []*proto.MetaPart
 }
 
 func (api *ClientAPI) GetDataPartitionsFromLeader(volName string) (view *proto.DataPartitionsView, err error) {
-	var request = newAPIRequest(http.MethodGet, proto.ClientDataPartitions)
+	var request = newAPIRequest(http.MethodGet, proto.ClientDataPartitions).Header(api.h)
 	request.addParam("name", volName)
 	var data []byte
 	if data, err = api.mc.serveRequest(request); err != nil {

@@ -34,6 +34,7 @@ import (
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util"
+	"github.com/cubefs/cubefs/util/compressor"
 	"github.com/cubefs/cubefs/util/cryptoutil"
 	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
@@ -4343,11 +4344,13 @@ func (m *Server) putDataPartitions(w http.ResponseWriter, r *http.Request) {
 // Obtain all the data partitions in a volume.
 func (m *Server) getDataPartitions(w http.ResponseWriter, r *http.Request) {
 	var (
-		body []byte
-		name string
-		vol  *Vol
-		err  error
+		body     []byte
+		name     string
+		compress bool
+		vol      *Vol
+		err      error
 	)
+	compress = r.Header.Get(proto.HeaderAcceptEncoding) == compressor.EncodingGzip
 	metric := exporter.NewTPCnt(apiToMetricsName(proto.ClientDataPartitions))
 	defer func() {
 		doStatAndMetric(proto.ClientDataPartitions, metric, err, map[string]string{exporter.Vol: name})
@@ -4357,13 +4360,17 @@ func (m *Server) getDataPartitions(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-	log.LogInfof("action[getDataPartitions] current is leader[%v]", m.cluster.partition.IsRaftLeader())
+	log.LogInfof("action[getDataPartitions] current is leader[%v], compress[%v]",
+		m.cluster.partition.IsRaftLeader(), compress)
 	if !m.cluster.partition.IsRaftLeader() {
 		var ok bool
-		if body, ok = m.cluster.followerReadManager.getVolViewAsFollower(name); !ok {
+		if body, ok = m.cluster.followerReadManager.getVolViewAsFollower(name, compress); !ok {
 			log.LogErrorf("action[getDataPartitions] volume [%v] not get partitions info", name)
 			sendErrReply(w, r, newErrHTTPReply(fmt.Errorf("follower volume info not found")))
 			return
+		}
+		if compress {
+			w.Header().Add(proto.HeaderContentEncoding, compressor.EncodingGzip)
 		}
 		send(w, r, body)
 		return
@@ -4372,10 +4379,17 @@ func (m *Server) getDataPartitions(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, newErrHTTPReply(proto.ErrVolNotExists))
 		return
 	}
-
-	if body, err = vol.getDataPartitionsView(); err != nil {
+	if compress {
+		body, err = vol.getDataPartitionViewCompress()
+	} else {
+		body, err = vol.getDataPartitionsView()
+	}
+	if err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
+	}
+	if compress {
+		w.Header().Add(proto.HeaderContentEncoding, compressor.EncodingGzip)
 	}
 	send(w, r, body)
 }

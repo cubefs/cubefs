@@ -323,6 +323,10 @@ func (vol *Vol) getDataPartitionsView() (body []byte, err error) {
 	return vol.dataPartitions.updateResponseCache(false, 0, vol.VolType)
 }
 
+func (vol *Vol) getDataPartitionViewCompress() (body []byte, err error) {
+	return vol.dataPartitions.updateCompressCache(false, 0, vol.VolType)
+}
+
 func (vol *Vol) getDataPartitionByID(partitionID uint64) (dp *DataPartition, err error) {
 	return vol.dataPartitions.get(partitionID)
 }
