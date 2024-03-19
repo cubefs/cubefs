@@ -204,7 +204,7 @@ func NewPacketToReadTinyDeleteRecord(partitionID uint64, offset int64) (p *Packe
 	return
 }
 
-func NewReadTinyDeleteRecordResponsePacket(requestID int64, partitionID uint64) (p *Packet) {
+func NewReadTinyDeleteRecordResponsePacket(requestID uint64, partitionID uint64) (p *Packet) {
 	p = new(Packet)
 	p.PartitionID = partitionID
 	p.Magic = proto.ProtoMagic
@@ -243,7 +243,7 @@ func NewTinyExtentRepairReadPacket(partitionID uint64, extentID uint64, offset, 
 	return
 }
 
-func NewTinyExtentStreamReadResponsePacket(requestID int64, partitionID uint64, extentID uint64) (p *Packet) {
+func NewTinyExtentStreamReadResponsePacket(requestID uint64, partitionID uint64, extentID uint64) (p *Packet) {
 	p = new(Packet)
 	p.ExtentID = extentID
 	p.PartitionID = partitionID
@@ -256,7 +256,7 @@ func NewTinyExtentStreamReadResponsePacket(requestID int64, partitionID uint64, 
 	return
 }
 
-func NewStreamReadResponsePacket(requestID int64, partitionID uint64, extentID uint64) (p *Packet) {
+func NewStreamReadResponsePacket(requestID uint64, partitionID uint64, extentID uint64) (p *Packet) {
 	p = new(Packet)
 	p.ExtentID = extentID
 	p.PartitionID = partitionID

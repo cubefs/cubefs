@@ -25,7 +25,6 @@ import (
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/exporter"
-	"github.com/cubefs/cubefs/util/log"
 	"github.com/cubefs/cubefs/util/stat"
 )
 
@@ -2889,7 +2888,7 @@ func (mw *MetaWrapper) checkVerFromMeta(packet *proto.Packet) {
 	if packet.VerSeq <= mw.Client.GetLatestVer() {
 		return
 	}
-
-	log.Debugf("checkVerFromMeta.UpdateLatestVer.try update meta wrapper verSeq from %v to %v verlist[%v]", mw.Client.GetLatestVer(), packet.VerSeq, packet.VerList)
-	mw.Client.UpdateLatestVer(context.TODO(), &proto.VolVersionInfoList{VerList: packet.VerList})
+	packet.Span().Debugf("try update meta wrapper verSeq from %v to %v verlist[%v]",
+		mw.Client.GetLatestVer(), packet.VerSeq, packet.VerList)
+	mw.Client.UpdateLatestVer(packet.Context(), &proto.VolVersionInfoList{VerList: packet.VerList})
 }

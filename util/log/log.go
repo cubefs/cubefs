@@ -95,7 +95,6 @@ func setBlobLogLevel(loglevel Level) {
 	case ErrorLevel:
 		blevel = Lerror
 	default:
-		blevel = Lwarn
 	}
 	SetOutputLevel(blevel)
 }

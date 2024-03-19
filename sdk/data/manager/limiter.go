@@ -11,7 +11,6 @@ import (
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/sdk/data/wrapper"
 	"github.com/cubefs/cubefs/util"
-	"github.com/cubefs/cubefs/util/log"
 )
 
 const (
@@ -456,14 +455,14 @@ func (limitManager *LimitManager) GetFlowInfo(ctx context.Context) (*proto.Clien
 			!limitFactor.isSetLimitZero ||
 			factor.Used|factor.Need > 0 {
 			// NOTICE: log.QosWriteDebugf
-			log.Debugf("[QOS] action[GetFlowInfo] type [%v]  len [%v] isSetLimitZero [%v] used [%v] need [%v]", proto.QosTypeString(limitFactor.factorType),
+			span.Debugf("[QOS] action[GetFlowInfo] type [%v]  len [%v] isSetLimitZero [%v] used [%v] need [%v]", proto.QosTypeString(limitFactor.factorType),
 				limitFactor.waitList.Len(), limitFactor.isSetLimitZero, factor.Used, factor.Need)
 			validCliInfo = true
 		}
 
 		if griCnt > 0 {
 			// NOTICE: log.QosWriteDebugf
-			log.Debugf("[QOS] action[GetFlowInfo] type [%v] last commit[%v] report to master "+
+			span.Debugf("[QOS] action[GetFlowInfo] type [%v] last commit[%v] report to master "+
 				"with simpleClient limit info [%v,%v,%v,%v],host [%v], "+
 				"status [%v] grid [%v, %v, %v]",
 				proto.QosTypeString(limitFactor.factorType), limitFactor.valAllocLastCommit,
@@ -486,7 +485,6 @@ func (limitManager *LimitManager) GetFlowInfo(ctx context.Context) (*proto.Clien
 }
 
 func (limitManager *LimitManager) ScheduleCheckGrid(ctx context.Context) {
-	span := proto.SpanFromContext(ctx)
 	go func() {
 		ticker := time.NewTicker(1000 / girdCntOneSecond * time.Millisecond)
 		defer func() {
@@ -494,6 +492,7 @@ func (limitManager *LimitManager) ScheduleCheckGrid(ctx context.Context) {
 		}()
 		var cnt uint64
 		for {
+			span, _ := proto.SpanContext()
 			select {
 			case <-limitManager.exitCh:
 				return
@@ -582,7 +581,8 @@ func (limitManager *LimitManager) WaitN(ctx context.Context, lim *LimitFactor, n
 		return
 	case <-respCh:
 		atomic.AddUint64(&lim.valAllocCommit, uint64(n))
-		log.QosWriteDebugf("action[WaitN] type [%v] return waitlistlen [%v]", proto.QosTypeString(lim.factorType), lim.waitList.Len())
+		// NOTICE: log.QosWriteDebugf
+		span.Debugf("[QOS] action[WaitN] type [%v] return waitlistlen [%v]", proto.QosTypeString(lim.factorType), lim.waitList.Len())
 		return nil
 		// default:
 	}

@@ -25,9 +25,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cubefs/cubefs/blobstore/util/log"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/compressor"
+	"github.com/cubefs/cubefs/util/log"
 )
 
 // TODO: re-use response body.
@@ -44,6 +44,8 @@ const (
 )
 
 var ErrNoValidMaster = errors.New("no valid master")
+
+var getSpan = proto.SpanFromContext
 
 type MasterCLientWithResolver struct {
 	MasterClient

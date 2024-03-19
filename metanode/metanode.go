@@ -51,6 +51,7 @@ var (
 	getSpan           = proto.SpanFromContext
 	spanContext       = proto.SpanContext
 	spanContextPrefix = proto.SpanContextPrefix
+	anyDuration       = trace.OptSpanDurationAny()
 )
 
 func spanOperationf(span trace.Span, format string, a ...interface{}) trace.Span {

@@ -358,7 +358,7 @@ func (writer *Writer) doBufferWriteWithoutPool(ctx context.Context, data []byte,
 		if len(writer.buf) == writer.blockSize {
 			span.Debugf("TRACE blobStore doBufferWriteWithoutPool: ino(%v) writer.buf.len(%v) writer.blocksize(%v)", writer.ino, len(writer.buf), writer.blockSize)
 			writer.Unlock()
-			err = writer.flushWithoutPool(writer.ino, ctx, false)
+			err = writer.flushWithoutPool(ctx, writer.ino, false)
 			writer.Lock()
 			if err != nil {
 				writer.buf = writer.buf[:len(writer.buf)-len(data)]
@@ -403,7 +403,7 @@ func (writer *Writer) doBufferWrite(ctx context.Context, data []byte, offset int
 		if writer.blockPosition == writer.blockSize {
 			span.Debugf("TRACE blobStore doBufferWrite: ino(%v) writer.buf.len(%v) writer.blocksize(%v)", writer.ino, len(writer.buf), writer.blockSize)
 			writer.Unlock()
-			err = writer.flush(writer.ino, ctx, false)
+			err = writer.flush(ctx, writer.ino, false)
 			writer.Lock()
 			if err != nil {
 				writer.buf = writer.buf[:writer.blockPosition-freeSize]
@@ -421,18 +421,18 @@ func (writer *Writer) doBufferWrite(ctx context.Context, data []byte, offset int
 	return size, nil
 }
 
-func (writer *Writer) FlushWithoutPool(ino uint64, ctx context.Context) (err error) {
+func (writer *Writer) FlushWithoutPool(ctx context.Context, ino uint64) (err error) {
 	if writer == nil {
 		return
 	}
-	return writer.flushWithoutPool(ino, ctx, true)
+	return writer.flushWithoutPool(ctx, ino, true)
 }
 
-func (writer *Writer) Flush(ino uint64, ctx context.Context) (err error) {
+func (writer *Writer) Flush(ctx context.Context, ino uint64) (err error) {
 	if writer == nil {
 		return
 	}
-	return writer.flush(ino, ctx, true)
+	return writer.flush(ctx, ino, true)
 }
 
 func (writer *Writer) shouldCacheCfs() bool {
@@ -532,7 +532,7 @@ func (writer *Writer) resetBuffer() {
 	writer.blockPosition = 0
 }
 
-func (writer *Writer) flushWithoutPool(inode uint64, ctx context.Context, flushFlag bool) (err error) {
+func (writer *Writer) flushWithoutPool(ctx context.Context, inode uint64, flushFlag bool) (err error) {
 	span := proto.SpanFromContext(ctx)
 	bgTime := stat.BeginStat()
 	defer func() {
@@ -576,7 +576,7 @@ func (writer *Writer) flushWithoutPool(inode uint64, ctx context.Context, flushF
 	return
 }
 
-func (writer *Writer) flush(inode uint64, ctx context.Context, flushFlag bool) (err error) {
+func (writer *Writer) flush(ctx context.Context, inode uint64, flushFlag bool) (err error) {
 	span := proto.SpanFromContext(ctx)
 	bgTime := stat.BeginStat()
 	defer func() {

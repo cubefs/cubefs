@@ -22,7 +22,6 @@ import (
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/exporter"
-	"github.com/cubefs/cubefs/util/log"
 	"github.com/cubefs/cubefs/util/stat"
 )
 
@@ -113,11 +112,12 @@ func (tx *Transaction) OnDone(ctx context.Context, err error, mw *MetaWrapper) (
 	if !tx.Started {
 		return
 	}
+	span := proto.SpanFromContext(ctx)
 	if err != nil {
-		log.Debugf("OnDone: rollback, tx %s", tx.txInfo.TxID)
+		span.Debugf("OnDone: rollback, tx %s", tx.txInfo.TxID)
 		tx.Rollback(ctx, mw)
 	} else {
-		log.Debugf("OnDone: commit, tx %s", tx.txInfo.TxID)
+		span.Debugf("OnDone: commit, tx %s", tx.txInfo.TxID)
 		newErr = tx.Commit(ctx, mw)
 	}
 	return

@@ -156,6 +156,7 @@ func (ic *InodeCache) backgroundEviction() {
 	t := time.NewTicker(BgEvictionInterval)
 	defer t.Stop()
 
+	// TODO: to close.
 	for range t.C {
 		log.Infof("InodeCache: start BG evict")
 		if !DisableMetaCache {

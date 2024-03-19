@@ -25,10 +25,11 @@ import (
 
 func (c *Cluster) scheduleToCheckDiskRecoveryProgress(ctx context.Context) {
 	go func() {
+		rCtx := proto.RoundContext("check-disk-recover")
 		for {
 			if c.partition != nil && c.partition.IsRaftLeader() {
 				if c.vols != nil {
-					c.checkDiskRecoveryProgress(ctx)
+					c.checkDiskRecoveryProgress(rCtx())
 				}
 			}
 			time.Sleep(time.Second * defaultIntervalToCheckDataPartition)
@@ -160,7 +161,8 @@ func (c *Cluster) deleteAndSyncDecommissionedDisk(ctx context.Context, dataNode 
 }
 
 func (c *Cluster) decommissionDisk(ctx context.Context, dataNode *DataNode, raftForce bool, badDiskPath string,
-	badPartitions []*DataPartition, diskDisable bool) (err error) {
+	badPartitions []*DataPartition, diskDisable bool,
+) (err error) {
 	span := proto.SpanFromContext(ctx)
 	msg := fmt.Sprintf("action[decommissionDisk], Node[%v] OffLine,disk[%v]", dataNode.Addr, badDiskPath)
 	span.Warn(msg)

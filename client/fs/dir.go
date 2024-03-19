@@ -127,7 +127,8 @@ func NewDir(s *Super, i *proto.InodeInfo, pino uint64, dirName string) fs.Node {
 
 // Attr set the attributes of a directory.
 func (d *Dir) Attr(ctx context.Context, a *fuse.Attr) error {
-	span, ctxNew := proto.SpanWithContextPrefix(ctx, "Dir-Attr-")
+	ctx = ctxOperation(ctx, "DirAttr")
+	span := getSpan(ctx)
 	var err error
 	bgTime := stat.BeginStat()
 	defer func() {
@@ -135,7 +136,7 @@ func (d *Dir) Attr(ctx context.Context, a *fuse.Attr) error {
 	}()
 
 	ino := d.info.Inode
-	info, err := d.super.InodeGet(ctxNew, ino)
+	info, err := d.super.InodeGet(ctx, ino)
 	if err != nil {
 		span.Errorf("Attr: ino(%v) err(%v)", ino, err)
 		return ParseError(err)
@@ -152,21 +153,22 @@ func (d *Dir) Release(ctx context.Context, req *fuse.ReleaseRequest) (err error)
 
 // Create handles the create request.
 func (d *Dir) Create(ctx context.Context, req *fuse.CreateRequest, resp *fuse.CreateResponse) (fs.Node, fs.Handle, error) {
-	span, ctxNew := proto.SpanWithContextPrefix(ctx, "Dir-Create-")
+	ctx = ctxOperation(ctx, "DirCreate")
+	span := getSpan(ctx)
 	start := time.Now()
 
 	bgTime := stat.BeginStat()
 	var err error
 	var newInode uint64
 	metric := exporter.NewTPCnt("filecreate")
-	fullPath := path.Join(d.getCwd(), req.Name)
+	fullPath := path.Join(d.getCwd(ctx), req.Name)
 	defer func() {
 		stat.EndStat("Create", err, bgTime, 1)
 		metric.SetWithLabels(err, map[string]string{exporter.Vol: d.super.volname})
 		auditlog.LogClientOp("Create", fullPath, "nil", err, time.Since(start).Microseconds(), newInode, 0)
 	}()
 
-	info, err := d.super.mw.Create_ll(ctxNew, d.info.Inode, req.Name, proto.Mode(req.Mode.Perm()), req.Uid, req.Gid, nil, fullPath)
+	info, err := d.super.mw.Create_ll(ctx, d.info.Inode, req.Name, proto.Mode(req.Mode.Perm()), req.Uid, req.Gid, nil, fullPath)
 	if err != nil {
 		span.Errorf("Create: parent(%v) req(%v) err(%v)", d.info.Inode, req, err)
 		return nil, nil, ParseError(err)
@@ -211,21 +213,22 @@ func (d *Dir) Forget() {
 
 // Mkdir handles the mkdir request.
 func (d *Dir) Mkdir(ctx context.Context, req *fuse.MkdirRequest) (fs.Node, error) {
-	span, ctxNew := proto.SpanWithContextPrefix(ctx, "Dir-Mkdir-")
+	ctx = ctxOperation(ctx, "DirMkdir")
+	span := getSpan(ctx)
 	start := time.Now()
 
 	bgTime := stat.BeginStat()
 	var err error
 	var newInode uint64
 	metric := exporter.NewTPCnt("mkdir")
-	fullPath := path.Join(d.getCwd(), req.Name)
+	fullPath := path.Join(d.getCwd(ctx), req.Name)
 	defer func() {
 		stat.EndStat("Mkdir", err, bgTime, 1)
 		metric.SetWithLabels(err, map[string]string{exporter.Vol: d.super.volname})
 		auditlog.LogClientOp("Mkdir", fullPath, "nil", err, time.Since(start).Microseconds(), newInode, 0)
 	}()
 
-	info, err := d.super.mw.Create_ll(ctxNew, d.info.Inode, req.Name, proto.Mode(os.ModeDir|req.Mode.Perm()), req.Uid, req.Gid, nil, fullPath)
+	info, err := d.super.mw.Create_ll(ctx, d.info.Inode, req.Name, proto.Mode(os.ModeDir|req.Mode.Perm()), req.Uid, req.Gid, nil, fullPath)
 	if err != nil {
 		span.Errorf("Mkdir: parent(%v) req(%v) err(%v)", d.info.Inode, req, err)
 		return nil, ParseError(err)
@@ -247,7 +250,8 @@ func (d *Dir) Mkdir(ctx context.Context, req *fuse.MkdirRequest) (fs.Node, error
 
 // Remove handles the remove request.
 func (d *Dir) Remove(ctx context.Context, req *fuse.RemoveRequest) error {
-	span, ctxNew := proto.SpanWithContextPrefix(ctx, "Dir-Remove-")
+	ctx = ctxOperation(ctx, "DirRemove")
+	span := getSpan(ctx)
 	start := time.Now()
 	d.dcache.Delete(req.Name)
 	dcacheKey := d.buildDcacheKey(d.info.Inode, req.Name)
@@ -257,14 +261,14 @@ func (d *Dir) Remove(ctx context.Context, req *fuse.RemoveRequest) error {
 	var err error
 	var deletedInode uint64
 	metric := exporter.NewTPCnt("remove")
-	fullPath := path.Join(d.getCwd(), req.Name)
+	fullPath := path.Join(d.getCwd(ctx), req.Name)
 	defer func() {
 		stat.EndStat("Remove", err, bgTime, 1)
 		metric.SetWithLabels(err, map[string]string{exporter.Vol: d.super.volname})
 		auditlog.LogClientOp("Remove", fullPath, "nil", err, time.Since(start).Microseconds(), deletedInode, 0)
 	}()
 
-	info, err := d.super.mw.Delete_ll(ctxNew, d.info.Inode, req.Name, req.Dir, fullPath)
+	info, err := d.super.mw.Delete_ll(ctx, d.info.Inode, req.Name, req.Dir, fullPath)
 	if err != nil {
 		span.Errorf("Remove: parent(%v) name(%v) err(%v)", d.info.Inode, req.Name, err)
 		return ParseError(err)
@@ -291,7 +295,8 @@ func (d *Dir) Fsync(ctx context.Context, req *fuse.FsyncRequest) error {
 
 // Lookup handles the lookup request.
 func (d *Dir) Lookup(ctx context.Context, req *fuse.LookupRequest, resp *fuse.LookupResponse) (fs.Node, error) {
-	span, ctxNew := proto.SpanWithContextPrefix(ctx, "Dir-Lookup-")
+	ctx = ctxOperation(ctx, "DirLookup")
+	span := getSpan(ctx)
 	var (
 		ino      uint64
 		err      error
@@ -304,9 +309,9 @@ func (d *Dir) Lookup(ctx context.Context, req *fuse.LookupRequest, resp *fuse.Lo
 	}()
 
 	span.Debugf("TRACE Lookup: parent(%v) req(%v)", d.info.Inode, req)
-	span.Debugf("TRACE Lookup: parent(%v) path(%v) d.super.bcacheDir(%v)", d.info.Inode, d.getCwd(), d.super.bcacheDir)
+	span.Debugf("TRACE Lookup: parent(%v) path(%v) d.super.bcacheDir(%v)", d.info.Inode, d.getCwd(ctx), d.super.bcacheDir)
 
-	if d.needDentrycache() {
+	if d.needDentrycache(ctx) {
 		dcachev2 = true
 	}
 	if dcachev2 {
@@ -317,7 +322,7 @@ func (d *Dir) Lookup(ctx context.Context, req *fuse.LookupRequest, resp *fuse.Lo
 		if dentryInfo == nil {
 			lookupMetric := exporter.NewCounter("lookupDcacheMiss")
 			lookupMetric.AddWithLabels(1, map[string]string{exporter.Vol: d.super.volname})
-			ino, _, err = d.super.mw.Lookup_ll(ctxNew, d.info.Inode, req.Name)
+			ino, _, err = d.super.mw.Lookup_ll(ctx, d.info.Inode, req.Name)
 			if err != nil {
 				if err != syscall.ENOENT {
 					span.Errorf("Lookup: parent(%v) name(%v) err(%v)", d.info.Inode, req.Name, err)
@@ -337,7 +342,7 @@ func (d *Dir) Lookup(ctx context.Context, req *fuse.LookupRequest, resp *fuse.Lo
 	} else {
 		cino, ok := d.dcache.Get(req.Name)
 		if !ok {
-			cino, _, err = d.super.mw.Lookup_ll(ctxNew, d.info.Inode, req.Name)
+			cino, _, err = d.super.mw.Lookup_ll(ctx, d.info.Inode, req.Name)
 			if err != nil {
 				if err != syscall.ENOENT {
 					span.Errorf("Lookup: parent(%v) name(%v) err(%v)", d.info.Inode, req.Name, err)
@@ -348,7 +353,7 @@ func (d *Dir) Lookup(ctx context.Context, req *fuse.LookupRequest, resp *fuse.Lo
 		ino = cino
 	}
 
-	info, err := d.super.InodeGet(ctxNew, ino)
+	info, err := d.super.InodeGet(ctx, ino)
 	if err != nil {
 		span.Errorf("Lookup: parent(%v) name(%v) ino(%v) err(%v)", d.info.Inode, req.Name, ino, err)
 		dummyInodeInfo := &proto.InodeInfo{Inode: ino}
@@ -379,7 +384,8 @@ func (d *Dir) buildDcacheKey(inode uint64, name string) string {
 }
 
 func (d *Dir) ReadDir(ctx context.Context, req *fuse.ReadRequest, resp *fuse.ReadResponse) ([]fuse.Dirent, error) {
-	span, ctxNew := proto.SpanWithContextPrefix(ctx, "Dir-ReadDir-")
+	ctx = ctxOperation(ctx, "DirReadDir")
+	span := getSpan(ctx)
 	var err error
 	var limit uint64 = DefaultReaddirLimit
 	start := time.Now()
@@ -397,7 +403,7 @@ func (d *Dir) ReadDir(ctx context.Context, req *fuse.ReadRequest, resp *fuse.Rea
 	} else {
 		dirCtx = DirContext{}
 	}
-	children, err := d.super.mw.ReadDirLimit_ll(ctxNew, d.info.Inode, dirCtx.Name, limit)
+	children, err := d.super.mw.ReadDirLimit_ll(ctx, d.info.Inode, dirCtx.Name, limit)
 	if err != nil {
 		span.Errorf("readdirlimit: Readdir: ino(%v) err(%v) offset %v", d.info.Inode, err, req.Offset)
 		return make([]fuse.Dirent, 0), ParseError(err)
@@ -451,14 +457,14 @@ func (d *Dir) ReadDir(ctx context.Context, req *fuse.ReadRequest, resp *fuse.Rea
 	inodes := make([]uint64, 0, len(children))
 	dirents := make([]fuse.Dirent, 0, len(children))
 
-	span.Debugf("Readdir ino(%v) path(%v) d.super.bcacheDir(%v)", d.info.Inode, d.getCwd(), d.super.bcacheDir)
+	span.Debugf("Readdir ino(%v) path(%v) d.super.bcacheDir(%v)", d.info.Inode, d.getCwd(ctx), d.super.bcacheDir)
 	var dcache *DentryCache
 	if !d.super.disableDcache {
 		dcache = NewDentryCache()
 	}
 
 	var dcachev2 bool
-	if d.needDentrycache() {
+	if d.needDentrycache(ctx) {
 		dcachev2 = true
 	}
 
@@ -482,7 +488,7 @@ func (d *Dir) ReadDir(ctx context.Context, req *fuse.ReadRequest, resp *fuse.Rea
 		}
 	}
 
-	infos := d.super.mw.BatchInodeGet(ctxNew, inodes)
+	infos := d.super.mw.BatchInodeGet(ctx, inodes)
 	for _, info := range infos {
 		d.super.ic.Put(info)
 	}
@@ -495,7 +501,8 @@ func (d *Dir) ReadDir(ctx context.Context, req *fuse.ReadRequest, resp *fuse.Rea
 
 // ReadDirAll gets all the dentries in a directory and puts them into the cache.
 func (d *Dir) ReadDirAll(ctx context.Context) ([]fuse.Dirent, error) {
-	span, ctxNew := proto.SpanWithContextPrefix(ctx, "Dir-ReadDirAll-")
+	ctx = ctxOperation(ctx, "DirReadDirAll")
+	span := getSpan(ctx)
 	start := time.Now()
 	bgTime := stat.BeginStat()
 	var err error
@@ -510,14 +517,13 @@ func (d *Dir) ReadDirAll(ctx context.Context) ([]fuse.Dirent, error) {
 	from := ""
 	var children []proto.Dentry
 	for !noMore {
-		batches, err := d.super.mw.ReadDirLimit_ll(ctxNew, d.info.Inode, from, DefaultReaddirLimit)
+		batches, err := d.super.mw.ReadDirLimit_ll(ctx, d.info.Inode, from, DefaultReaddirLimit)
 		if err != nil {
 			span.Errorf("Readdir: ino(%v) err(%v) from(%v)", d.info.Inode, err, from)
 			return make([]fuse.Dirent, 0), ParseError(err)
 		}
 		batchNr := uint64(len(batches))
 		if batchNr == 0 || (from != "" && batchNr == 1) {
-			noMore = true
 			break
 		} else if batchNr < DefaultReaddirLimit {
 			noMore = true
@@ -532,14 +538,14 @@ func (d *Dir) ReadDirAll(ctx context.Context) ([]fuse.Dirent, error) {
 	inodes := make([]uint64, 0, len(children))
 	dirents := make([]fuse.Dirent, 0, len(children))
 
-	span.Debugf("Readdir ino(%v) path(%v) d.super.bcacheDir(%v)", d.info.Inode, d.getCwd(), d.super.bcacheDir)
+	span.Debugf("Readdir ino(%v) path(%v) d.super.bcacheDir(%v)", d.info.Inode, d.getCwd(ctx), d.super.bcacheDir)
 	var dcache *DentryCache
 	if !d.super.disableDcache {
 		dcache = NewDentryCache()
 	}
 
 	var dcachev2 bool
-	if d.needDentrycache() {
+	if d.needDentrycache(ctx) {
 		dcachev2 = true
 	}
 
@@ -563,7 +569,7 @@ func (d *Dir) ReadDirAll(ctx context.Context) ([]fuse.Dirent, error) {
 		}
 	}
 
-	infos := d.super.mw.BatchInodeGet(ctxNew, inodes)
+	infos := d.super.mw.BatchInodeGet(ctx, inodes)
 	for _, info := range infos {
 		d.super.ic.Put(info)
 	}
@@ -575,7 +581,8 @@ func (d *Dir) ReadDirAll(ctx context.Context) ([]fuse.Dirent, error) {
 
 // Rename handles the rename request.
 func (d *Dir) Rename(ctx context.Context, req *fuse.RenameRequest, newDir fs.Node) error {
-	span, ctxNew := proto.SpanWithContextPrefix(ctx, "Dir-Rename-")
+	ctx = ctxOperation(ctx, "DirRename")
+	span := getSpan(ctx)
 	dstDir, ok := newDir.(*Dir)
 	if !ok {
 		span.Errorf("Rename: NOT DIR, parent(%v) req(%v)", d.info.Inode, req)
@@ -592,7 +599,7 @@ func (d *Dir) Rename(ctx context.Context, req *fuse.RenameRequest, newDir fs.Nod
 		srcInode = ino
 	} else {
 		// will not get there
-		if ino, _, err := d.super.mw.Lookup_ll(ctxNew, d.info.Inode, req.OldName); err == nil {
+		if ino, _, err := d.super.mw.Lookup_ll(ctx, d.info.Inode, req.OldName); err == nil {
 			srcInode = ino
 		}
 	}
@@ -603,8 +610,8 @@ func (d *Dir) Rename(ctx context.Context, req *fuse.RenameRequest, newDir fs.Nod
 	bgTime := stat.BeginStat()
 
 	metric := exporter.NewTPCnt("rename")
-	srcPath := path.Join(d.getCwd(), req.OldName)
-	dstPath := path.Join(dstDir.getCwd(), req.NewName)
+	srcPath := path.Join(d.getCwd(ctx), req.OldName)
+	dstPath := path.Join(dstDir.getCwd(ctx), req.NewName)
 	defer func() {
 		stat.EndStat("Rename", err, bgTime, 1)
 		metric.SetWithLabels(err, map[string]string{exporter.Vol: d.super.volname})
@@ -623,13 +630,13 @@ func (d *Dir) Rename(ctx context.Context, req *fuse.RenameRequest, newDir fs.Nod
 		d.super.fslock.Unlock()
 		auditlog.LogClientOp("Rename", srcPath, dstPath, err, time.Since(start).Microseconds(), srcInode, dstInode)
 	}()
-	// changePathMap := d.super.mw.GetChangeQuota(d.getCwd()+"/"+req.OldName, dstDir.getCwd()+"/"+req.NewName)
+	// changePathMap := d.super.mw.GetChangeQuota(d.getCwd(ctx)+"/"+req.OldName, dstDir.getCwd(ctx)+"/"+req.NewName)
 	if d.super.mw.EnableQuota {
-		if !d.canRenameByQuota(dstDir, req.OldName) {
+		if !d.canRenameByQuota(ctx, dstDir, req.OldName) {
 			return fuse.EPERM
 		}
 	}
-	err = d.super.mw.Rename_ll(ctxNew, d.info.Inode, req.OldName, dstDir.info.Inode, req.NewName, srcPath, dstPath, true)
+	err = d.super.mw.Rename_ll(ctx, d.info.Inode, req.OldName, dstDir.info.Inode, req.NewName, srcPath, dstPath, true)
 	if err != nil {
 		span.Errorf("Rename: parent(%v) req(%v) err(%v)", d.info.Inode, req, err)
 		return ParseError(err)
@@ -647,7 +654,8 @@ func (d *Dir) Rename(ctx context.Context, req *fuse.RenameRequest, newDir fs.Nod
 
 // Setattr handles the setattr request.
 func (d *Dir) Setattr(ctx context.Context, req *fuse.SetattrRequest, resp *fuse.SetattrResponse) error {
-	span, ctxNew := proto.SpanWithContextPrefix(ctx, "Dir-Setattr-")
+	ctx = ctxOperation(ctx, "DirSetattr")
+	span := getSpan(ctx)
 	var err error
 	bgTime := stat.BeginStat()
 	defer func() {
@@ -656,14 +664,14 @@ func (d *Dir) Setattr(ctx context.Context, req *fuse.SetattrRequest, resp *fuse.
 
 	ino := d.info.Inode
 	start := time.Now()
-	info, err := d.super.InodeGet(ctxNew, ino)
+	info, err := d.super.InodeGet(ctx, ino)
 	if err != nil {
 		span.Errorf("Setattr: ino(%v) err(%v)", ino, err)
 		return ParseError(err)
 	}
 
 	if valid := setattr(info, req); valid != 0 {
-		err = d.super.mw.Setattr(ctxNew, ino, valid, info.Mode, info.Uid, info.Gid, info.AccessTime.Unix(),
+		err = d.super.mw.Setattr(ctx, ino, valid, info.Mode, info.Uid, info.Gid, info.AccessTime.Unix(),
 			info.ModifyTime.Unix())
 		if err != nil {
 			d.super.ic.Delete(ino)
@@ -679,11 +687,12 @@ func (d *Dir) Setattr(ctx context.Context, req *fuse.SetattrRequest, resp *fuse.
 }
 
 func (d *Dir) Mknod(ctx context.Context, req *fuse.MknodRequest) (fs.Node, error) {
-	span, ctxNew := proto.SpanWithContextPrefix(ctx, "Dir-Mknode-")
 	if req.Rdev != 0 {
 		return nil, fuse.ENOSYS
 	}
 
+	ctx = ctxOperation(ctx, "DirMknod")
+	span := getSpan(ctx)
 	start := time.Now()
 
 	bgTime := stat.BeginStat()
@@ -693,8 +702,8 @@ func (d *Dir) Mknod(ctx context.Context, req *fuse.MknodRequest) (fs.Node, error
 		stat.EndStat("Mknod", err, bgTime, 1)
 		metric.SetWithLabels(err, map[string]string{exporter.Vol: d.super.volname})
 	}()
-	fullPath := path.Join(d.getCwd(), req.Name)
-	info, err := d.super.mw.Create_ll(ctxNew, d.info.Inode, req.Name, proto.Mode(req.Mode), req.Uid, req.Gid, nil, fullPath)
+	fullPath := path.Join(d.getCwd(ctx), req.Name)
+	info, err := d.super.mw.Create_ll(ctx, d.info.Inode, req.Name, proto.Mode(req.Mode), req.Uid, req.Gid, nil, fullPath)
 	if err != nil {
 		span.Errorf("Mknod: parent(%v) req(%v) err(%v)", d.info.Inode, req, err)
 		return nil, ParseError(err)
@@ -714,7 +723,8 @@ func (d *Dir) Mknod(ctx context.Context, req *fuse.MknodRequest) (fs.Node, error
 
 // Symlink handles the symlink request.
 func (d *Dir) Symlink(ctx context.Context, req *fuse.SymlinkRequest) (fs.Node, error) {
-	span, ctxNew := proto.SpanWithContextPrefix(ctx, "Dir-Symlink-")
+	ctx = ctxOperation(ctx, "DirSymlink")
+	span := getSpan(ctx)
 	parentIno := d.info.Inode
 	start := time.Now()
 
@@ -725,8 +735,8 @@ func (d *Dir) Symlink(ctx context.Context, req *fuse.SymlinkRequest) (fs.Node, e
 		stat.EndStat("Symlink", err, bgTime, 1)
 		metric.SetWithLabels(err, map[string]string{exporter.Vol: d.super.volname})
 	}()
-	fullPath := path.Join(d.getCwd(), req.NewName)
-	info, err := d.super.mw.Create_ll(ctxNew, parentIno, req.NewName, proto.Mode(os.ModeSymlink|os.ModePerm), req.Uid, req.Gid, []byte(req.Target), fullPath)
+	fullPath := path.Join(d.getCwd(ctx), req.NewName)
+	info, err := d.super.mw.Create_ll(ctx, parentIno, req.NewName, proto.Mode(os.ModeSymlink|os.ModePerm), req.Uid, req.Gid, []byte(req.Target), fullPath)
 	if err != nil {
 		span.Errorf("Symlink: parent(%v) NewName(%v) err(%v)", parentIno, req.NewName, err)
 		return nil, ParseError(err)
@@ -746,7 +756,8 @@ func (d *Dir) Symlink(ctx context.Context, req *fuse.SymlinkRequest) (fs.Node, e
 
 // Link handles the link request.
 func (d *Dir) Link(ctx context.Context, req *fuse.LinkRequest, old fs.Node) (fs.Node, error) {
-	span, ctxNew := proto.SpanWithContextPrefix(ctx, "Dir-Link-")
+	ctx = ctxOperation(ctx, "DirLink")
+	span := getSpan(ctx)
 	var oldInode *proto.InodeInfo
 	switch old := old.(type) {
 	case *File:
@@ -769,8 +780,8 @@ func (d *Dir) Link(ctx context.Context, req *fuse.LinkRequest, old fs.Node) (fs.
 		stat.EndStat("Link", err, bgTime, 1)
 		metric.SetWithLabels(err, map[string]string{exporter.Vol: d.super.volname})
 	}()
-	fullPath := path.Join(d.getCwd(), req.NewName)
-	info, err := d.super.mw.Link(ctxNew, d.info.Inode, req.NewName, oldInode.Inode, fullPath)
+	fullPath := path.Join(d.getCwd(ctx), req.NewName)
+	info, err := d.super.mw.Link(ctx, d.info.Inode, req.NewName, oldInode.Inode, fullPath)
 	if err != nil {
 		span.Errorf("Link: parent(%v) name(%v) ino(%v) err(%v)", d.info.Inode, req.NewName, oldInode.Inode, err)
 		return nil, ParseError(err)
@@ -793,10 +804,11 @@ func (d *Dir) Link(ctx context.Context, req *fuse.LinkRequest, old fs.Node) (fs.
 
 // Getxattr has not been implemented yet.
 func (d *Dir) Getxattr(ctx context.Context, req *fuse.GetxattrRequest, resp *fuse.GetxattrResponse) error {
-	span, ctxNew := proto.SpanWithContextPrefix(ctx, "Dir-Getxattr-")
 	if !d.super.enableXattr {
 		return fuse.ENOSYS
 	}
+	ctx = ctxOperation(ctx, "DirGetxattr")
+	span := getSpan(ctx)
 	ino := d.info.Inode
 	name := req.Name
 	size := req.Size
@@ -820,7 +832,7 @@ func (d *Dir) Getxattr(ctx context.Context, req *fuse.GetxattrRequest, resp *fus
 		if cacheSummaryInfo != nil {
 			summaryInfo = *cacheSummaryInfo
 		} else {
-			summaryInfo, err = d.super.mw.GetSummary_ll(ctxNew, ino, 20)
+			summaryInfo, err = d.super.mw.GetSummary_ll(ctx, ino, 20)
 			if err != nil {
 				span.Errorf("GetXattr: ino(%v) name(%v) err(%v)", ino, name, err)
 				return ParseError(err)
@@ -837,7 +849,7 @@ func (d *Dir) Getxattr(ctx context.Context, req *fuse.GetxattrRequest, resp *fus
 		value = []byte(summaryStr)
 
 	} else {
-		info, err = d.super.mw.XAttrGet_ll(ctxNew, ino, name)
+		info, err = d.super.mw.XAttrGet_ll(ctx, ino, name)
 		if err != nil {
 			span.Errorf("GetXattr: ino(%v) name(%v) err(%v)", ino, name, err)
 			return ParseError(err)
@@ -858,10 +870,11 @@ func (d *Dir) Getxattr(ctx context.Context, req *fuse.GetxattrRequest, resp *fus
 
 // Listxattr has not been implemented yet.
 func (d *Dir) Listxattr(ctx context.Context, req *fuse.ListxattrRequest, resp *fuse.ListxattrResponse) error {
-	span, ctxNew := proto.SpanWithContextPrefix(ctx, "Dir-Listxattr-")
 	if !d.super.enableXattr {
 		return fuse.ENOSYS
 	}
+	ctx = ctxOperation(ctx, "DirListxattr")
+	span := getSpan(ctx)
 
 	var err error
 	bgTime := stat.BeginStat()
@@ -873,9 +886,9 @@ func (d *Dir) Listxattr(ctx context.Context, req *fuse.ListxattrRequest, resp *f
 	_ = req.Size     // ignore currently
 	_ = req.Position // ignore currently
 
-	keys, err := d.super.mw.XAttrsList_ll(ctxNew, ino)
+	keys, err := d.super.mw.XAttrsList_ll(ctx, ino)
 	if err != nil {
-		log.Errorf("ListXattr: ino(%v) err(%v)", ino, err)
+		span.Errorf("ListXattr: ino(%v) err(%v)", ino, err)
 		return ParseError(err)
 	}
 	for _, key := range keys {
@@ -887,10 +900,11 @@ func (d *Dir) Listxattr(ctx context.Context, req *fuse.ListxattrRequest, resp *f
 
 // Setxattr has not been implemented yet.
 func (d *Dir) Setxattr(ctx context.Context, req *fuse.SetxattrRequest) error {
-	span, ctxNew := proto.SpanWithContextPrefix(ctx, "Dir-Setxattr-")
 	if !d.super.enableXattr {
 		return fuse.ENOSYS
 	}
+	ctx = ctxOperation(ctx, "DirSetxattr")
+	span := getSpan(ctx)
 
 	var err error
 	bgTime := stat.BeginStat()
@@ -906,7 +920,7 @@ func (d *Dir) Setxattr(ctx context.Context, req *fuse.SetxattrRequest) error {
 		return fuse.ENOSYS
 	}
 	// TODO： implement flag to improve compatible (Mofei Zhang)
-	if err = d.super.mw.XAttrSet_ll(ctxNew, ino, []byte(name), []byte(value)); err != nil {
+	if err = d.super.mw.XAttrSet_ll(ctx, ino, []byte(name), []byte(value)); err != nil {
 		span.Errorf("Setxattr: ino(%v) name(%v) err(%v)", ino, name, err)
 		return ParseError(err)
 	}
@@ -916,10 +930,11 @@ func (d *Dir) Setxattr(ctx context.Context, req *fuse.SetxattrRequest) error {
 
 // Removexattr has not been implemented yet.
 func (d *Dir) Removexattr(ctx context.Context, req *fuse.RemovexattrRequest) error {
-	span, ctxNew := proto.SpanWithContextPrefix(ctx, "Dir-Removexattr-")
 	if !d.super.enableXattr {
 		return fuse.ENOSYS
 	}
+	ctx = ctxOperation(ctx, "DirRemovexattr")
+	span := getSpan(ctx)
 
 	var err error
 	bgTime := stat.BeginStat()
@@ -933,7 +948,7 @@ func (d *Dir) Removexattr(ctx context.Context, req *fuse.RemovexattrRequest) err
 		span.Errorf("Remove 'DirStat' is not supported.")
 		return fuse.ENOSYS
 	}
-	if err = d.super.mw.XAttrDel_ll(ctxNew, ino, name); err != nil {
+	if err = d.super.mw.XAttrDel_ll(ctx, ino, name); err != nil {
 		span.Errorf("Removexattr: ino(%v) name(%v) err(%v)", ino, name, err)
 		return ParseError(err)
 	}
@@ -941,7 +956,7 @@ func (d *Dir) Removexattr(ctx context.Context, req *fuse.RemovexattrRequest) err
 	return nil
 }
 
-func (d *Dir) getCwd() string {
+func (d *Dir) getCwd(ctx context.Context) string {
 	dirPath := ""
 	if d.info.Inode == d.super.rootIno {
 		return "/"
@@ -952,12 +967,12 @@ func (d *Dir) getCwd() string {
 		node, ok := d.super.nodeCache[curIno]
 		d.super.fslock.Unlock()
 		if !ok {
-			log.Errorf("Get node cache failed: ino(%v)", curIno)
+			getSpan(ctx).Errorf("Get node cache failed: ino(%v)", curIno)
 			return "unknown" + dirPath
 		}
 		curDir, ok := node.(*Dir)
 		if !ok {
-			log.Errorf("Type error: Can not convert node -> *Dir, ino(%v)", curDir.parentIno)
+			getSpan(ctx).Errorf("Type error: Can not convert node -> *Dir, ino(%v)", curDir.parentIno)
 			return "unknown" + dirPath
 		}
 		dirPath = "/" + curDir.name + dirPath
@@ -966,8 +981,8 @@ func (d *Dir) getCwd() string {
 	return dirPath
 }
 
-func (d *Dir) needDentrycache() bool {
-	return !DisableMetaCache && d.super.bcacheDir != "" && strings.HasPrefix(d.getCwd(), d.super.bcacheDir)
+func (d *Dir) needDentrycache(ctx context.Context) bool {
+	return !DisableMetaCache && d.super.bcacheDir != "" && strings.HasPrefix(d.getCwd(ctx), d.super.bcacheDir)
 }
 
 func dentryExpired(info *proto.DentryInfo) bool {
@@ -978,20 +993,21 @@ func dentrySetExpiration(info *proto.DentryInfo, t time.Duration) {
 	info.SetExpiration(time.Now().Add(t).UnixNano())
 }
 
-func (d *Dir) canRenameByQuota(dstDir *Dir, srcName string) bool {
+func (d *Dir) canRenameByQuota(ctx context.Context, dstDir *Dir, srcName string) bool {
 	fullPaths := d.super.mw.GetQuotaFullPaths()
 	if len(fullPaths) == 0 {
 		return true
 	}
 	var srcPath string
-	if d.getCwd() == "/" {
+	if d.getCwd(ctx) == "/" {
 		srcPath = "/" + srcName
 	} else {
-		srcPath = d.getCwd() + "/" + srcName
+		srcPath = d.getCwd(ctx) + "/" + srcName
 	}
 
+	span := getSpan(ctx)
 	for _, fullPath := range fullPaths {
-		log.Debugf("srcPath [%v] fullPath[%v].", srcPath, fullPath)
+		span.Debugf("srcPath [%v] fullPath[%v].", srcPath, fullPath)
 		if proto.IsAncestor(srcPath, fullPath) {
 			return false
 		}

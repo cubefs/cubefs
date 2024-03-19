@@ -1412,7 +1412,7 @@ func (c *client) flush(ctx context.Context, f *file) error {
 		return c.ec.Flush(ctx, f.ino)
 	} else {
 		if f.fileWriter != nil {
-			return f.fileWriter.Flush(f.ino, ctx)
+			return f.fileWriter.Flush(ctx, f.ino)
 		}
 	}
 	return nil

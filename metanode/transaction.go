@@ -694,8 +694,8 @@ func (tm *TransactionManager) commitTxInfo(ctx context.Context, txId string) (st
 	return
 }
 
-func buildTxPacket(data interface{}, mp uint64, op uint8) (pkt *proto.Packet, err error) {
-	pkt = proto.NewPacketReqID(context.TODO())
+func buildTxPacket(ctx context.Context, data interface{}, mp uint64, op uint8) (pkt *proto.Packet, err error) {
+	pkt = proto.NewPacketReqID(ctx)
 	pkt.Opcode = op
 	pkt.PartitionID = mp
 	err = pkt.MarshalData(data)
@@ -762,7 +762,7 @@ func (tm *TransactionManager) clearOrphanTx(ctx context.Context, tx *proto.Trans
 		TxID: tx.TxID,
 	}
 
-	pkt, err := buildTxPacket(req, req.Pid, proto.OpMetaTxGet)
+	pkt, err := buildTxPacket(ctx, req, req.Pid, proto.OpMetaTxGet)
 	if err != nil {
 		return
 	}
@@ -860,7 +860,7 @@ func (tm *TransactionManager) sendToRM(ctx context.Context, txInfo *proto.Transa
 
 		wg.Add(1)
 
-		pkt, _ := buildTxPacket(req, mpId, op)
+		pkt, _ := buildTxPacket(ctx, req, mpId, op)
 		if mp.config.PartitionId == mpId {
 			pt := &Packet{Packet: *pkt}
 			go func() {
