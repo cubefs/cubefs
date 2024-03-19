@@ -20,7 +20,6 @@ import (
 	"encoding/xml"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"math/rand"
 	"net/http"
 	"net/http/httptest"
@@ -65,7 +64,7 @@ func initServer(t *testing.T, name string, cfg Config) (server *httptest.Server,
 	require.NotNil(t, lc)
 
 	bussinessHandler := func(w http.ResponseWriter, req *http.Request) {
-		_, err := ioutil.ReadAll(req.Body)
+		_, err := io.ReadAll(req.Body)
 		require.NoError(t, err)
 		w.Header().Set("testh1", "testh1value")
 		w.Header().Add("testh1", "testh1value2")
@@ -158,7 +157,7 @@ func initNoContentLengthServer(t *testing.T) (server *httptest.Server, tmpDir st
 	require.NotNil(t, lc)
 
 	noContentLengthHandler := func(w http.ResponseWriter, req *http.Request) {
-		buffered, err := ioutil.ReadAll(req.Body)
+		buffered, err := io.ReadAll(req.Body)
 		require.NoError(t, err)
 		bodySize := req.Body.(*reqBodyReadCloser).bodyRead
 		readSting := string(buffered[:bodySize])
@@ -195,7 +194,7 @@ func TestOpen(t *testing.T) {
 	resp, err := client.Do(req)
 	require.NoError(t, err)
 	require.Equal(t, http.StatusOK, resp.StatusCode)
-	b, err := ioutil.ReadAll(resp.Body)
+	b, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
 	respData := &testRespData{}
 	err = json.Unmarshal(b, respData)
@@ -216,7 +215,7 @@ func TestOpen(t *testing.T) {
 		resp, err := client.Do(req)
 		require.NoError(t, err)
 		require.Equal(t, http.StatusOK, resp.StatusCode)
-		b, err := ioutil.ReadAll(resp.Body)
+		b, err := io.ReadAll(resp.Body)
 		require.NoError(t, err)
 		respData := &testRespData{}
 		err = json.Unmarshal(b, respData)
@@ -249,7 +248,7 @@ func TestNoContentLength(t *testing.T) {
 	resp, err := client.Do(req)
 	require.NoError(t, err)
 	require.Equal(t, http.StatusOK, resp.StatusCode)
-	b, err := ioutil.ReadAll(resp.Body)
+	b, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
 	respData := &testRespData{}
 	err = json.Unmarshal(b, respData)
@@ -277,7 +276,7 @@ func TestNoLogBody(t *testing.T) {
 	resp, err := client.Do(req)
 	require.NoError(t, err)
 	require.Equal(t, http.StatusOK, resp.StatusCode)
-	b, err := ioutil.ReadAll(resp.Body)
+	b, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
 	respData := &testRespData{}
 	err = json.Unmarshal(b, respData)
@@ -290,7 +289,7 @@ func TestNoLogBody(t *testing.T) {
 	resp, err = client.Do(req)
 	require.NoError(t, err)
 	require.Equal(t, http.StatusBadRequest, resp.StatusCode)
-	b, err = ioutil.ReadAll(resp.Body)
+	b, err = io.ReadAll(resp.Body)
 	require.NoError(t, err)
 	respData2 := &testErrorRespData{}
 	err = xml.Unmarshal(b, respData2)

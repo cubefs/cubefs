@@ -17,7 +17,6 @@ package wal
 import (
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path"
 	"sort"
@@ -67,7 +66,7 @@ func (s logNameSlice) Swap(i, j int)      { s[i], s[j] = s[j], s[i] }
 func (s logNameSlice) Less(i, j int) bool { return s[i].sequence < s[j].sequence }
 
 func listLogFiles(path string) (fnames []logName, err error) {
-	files, err := ioutil.ReadDir(path)
+	files, err := os.ReadDir(path)
 	if err != nil {
 		return nil, err
 	}

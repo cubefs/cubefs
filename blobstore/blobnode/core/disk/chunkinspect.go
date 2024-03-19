@@ -17,7 +17,6 @@ package disk
 import (
 	"context"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"time"
@@ -30,7 +29,7 @@ import (
 func listPhyDiskChunkFile(ctx context.Context, dataPath string) (cis map[bnapi.ChunkId]struct{}, err error) {
 	span := trace.SpanFromContextSafe(ctx)
 
-	dir, err := ioutil.ReadDir(dataPath)
+	dir, err := os.ReadDir(dataPath)
 	if err != nil {
 		span.Errorf("Failed read dir, path:%s, err:%v", dataPath, err)
 		return nil, err

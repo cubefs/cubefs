@@ -17,7 +17,6 @@ package configmgr
 import (
 	"context"
 	"encoding/json"
-	"io/ioutil"
 	"os"
 	"testing"
 
@@ -31,7 +30,7 @@ import (
 )
 
 func TestConfigMgr_Others(t *testing.T) {
-	testDir, err := ioutil.TempDir("", "cf")
+	testDir, err := os.MkdirTemp("", "cf")
 	defer os.RemoveAll(testDir)
 	require.NoError(t, err)
 
@@ -58,7 +57,7 @@ func TestConfigMgr_Others(t *testing.T) {
 }
 
 func TestConfigMgr_Apply(t *testing.T) {
-	testDir, err := ioutil.TempDir("", "cf")
+	testDir, err := os.MkdirTemp("", "cf")
 	defer os.RemoveAll(testDir)
 	require.NoError(t, err)
 
