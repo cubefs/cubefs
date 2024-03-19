@@ -67,7 +67,7 @@ type DataPartition struct {
 	DecommissionTerm               uint64
 	DecommissionDstAddrSpecify     bool // if DecommissionDstAddrSpecify is true, donot rollback when add replica fail
 	DecommissionNeedRollback       bool
-	DecommissionNeedRollbackTimes  int
+	DecommissionNeedRollbackTimes  uint32
 	SpecialReplicaDecommissionStop chan bool // used for stop
 	SpecialReplicaDecommissionStep uint32
 	IsDiscard                      bool
@@ -566,17 +566,20 @@ func (partition *DataPartition) checkReplicaNum(c *Cluster, vol *Vol) {
 		msg := fmt.Sprintf("FIX DataPartition replicaNum,clusterID[%v] volName[%v] partitionID:%v orgReplicaNum:%v",
 			c.Name, vol.Name, partition.PartitionID, partition.ReplicaNum)
 		Warn(c.Name, msg)
-		if partition.isSpecialReplicaCnt() && partition.IsDecommissionFailed() { // case restart and no message left,delete the lasted replica be added
-			log.LogInfof("action[checkReplicaNum] volume %v partition %v need to lower replica", partition.VolName, partition.PartitionID)
-			vol.NeedToLowerReplica = true
+		if partition.isSpecialReplicaCnt() {
+			//only reduce replica num when rollback failed or no decommission happen
+			if partition.IsRollbackFailed() || partition.IsDecommissionInitial() {
+				log.LogInfof("action[checkReplicaNum] volume %v partition %v need to lower replica", partition.VolName, partition.PartitionID)
+				vol.NeedToLowerReplica = true
+				return
+			}
 			return
+		} else {
+			//add replica success but del replica failed
+			log.LogInfof("action[checkReplicaNum] volume %v partition %v replica num abnormal %v [%v]",
+				partition.VolName, partition.PartitionID, partition.ReplicaNum, partition.Hosts)
+			vol.NeedToLowerReplica = true
 		}
-	}
-
-	if vol.dpReplicaNum != partition.ReplicaNum && !vol.NeedToLowerReplica {
-		log.LogDebugf("action[checkReplicaNum] volume %v partiton %v replicanum abnornal %v %v",
-			partition.VolName, partition.PartitionID, vol.dpReplicaNum, partition.ReplicaNum)
-		vol.NeedToLowerReplica = true
 	}
 }
 
@@ -860,16 +863,24 @@ func (partition *DataPartition) activeUsedSimilar() bool {
 func (partition *DataPartition) getToBeDecommissionHost(replicaNum int) (host string) {
 	partition.RLock()
 	defer partition.RUnlock()
-
-	// if new replica is added success when failed(rollback failed with delete new replica timeout eg)
-	if partition.isSpecialReplicaCnt() &&
-		partition.GetSpecialReplicaDecommissionStep() >= SpecialDecommissionWaitAddRes &&
-		partition.IsDecommissionFailed() {
-		log.LogInfof("action[getToBeDecommissionHost] get single replica partition %v need to decommission %v",
-			partition.PartitionID, partition.DecommissionDstAddr)
-		host = partition.DecommissionDstAddr
+	//if decommission happened, remove DecommissionDstAddr
+	if partition.IsRollbackFailed() {
+		if partition.isSpecialReplicaCnt() {
+			// if new replica is added success when failed(rollback failed with delete new replica timeout eg)
+			if partition.GetSpecialReplicaDecommissionStep() >= SpecialDecommissionWaitAddRes {
+				log.LogInfof("action[getToBeDecommissionHost] single replica partition %v need to decommission %v",
+					partition.PartitionID, partition.DecommissionDstAddr)
+				host = partition.DecommissionDstAddr
+			}
+		} else {
+			// if rollback is failed
+			log.LogInfof("action[getToBeDecommissionHost]  partition %v need to decommission %v",
+				partition.PartitionID, partition.DecommissionDstAddr)
+			host = partition.DecommissionDstAddr
+		}
 		return
 	}
+
 	hostLen := len(partition.Hosts)
 	if hostLen <= 1 || hostLen <= replicaNum {
 		return
@@ -886,17 +897,16 @@ func (partition *DataPartition) removeOneReplicaByHost(c *Cluster, host string, 
 	partition.RLock()
 	defer partition.RUnlock()
 
-	//if partition.isSpecialReplicaCnt() && isReplicaNormal {
-	//	partition.SingleDecommissionStatus = 0
-	//	partition.SingleDecommissionAddr = ""
-	//	return
-	//}
-	oldReplicaNum := partition.ReplicaNum
-	partition.ReplicaNum = partition.ReplicaNum - 1
-
-	if err = c.syncUpdateDataPartition(partition); err != nil {
-		partition.ReplicaNum = oldReplicaNum
+	if partition.IsRollbackFailed() {
+		partition.DecommissionDstAddr = ""
+		return
 	}
+	//oldReplicaNum := partition.ReplicaNum
+	//partition.ReplicaNum = partition.ReplicaNum - 1
+	//
+	//if err = c.syncUpdateDataPartition(partition); err != nil {
+	//	partition.ReplicaNum = oldReplicaNum
+	//}
 
 	return
 }
@@ -1324,6 +1334,7 @@ func (partition *DataPartition) ResetDecommissionStatus() {
 	partition.DecommissionTerm = 0
 	partition.DecommissionDstAddrSpecify = false
 	partition.DecommissionNeedRollback = false
+	atomic.StoreUint32(&partition.DecommissionNeedRollbackTimes, 0)
 	partition.DecommissionNeedRollbackTimes = 0
 	partition.SetDecommissionStatus(DecommissionInitial)
 	partition.SetSpecialReplicaDecommissionStep(SpecialDecommissionInitial)
@@ -1432,9 +1443,14 @@ func (partition *DataPartition) tryRollback(c *Cluster) bool {
 	if !partition.needRollback(c) {
 		return false
 	}
-	partition.DecommissionNeedRollbackTimes++
+	atomic.AddUint32(&partition.DecommissionNeedRollbackTimes, 1)
 	partition.rollback(c)
 	return true
+}
+
+func (partition *DataPartition) IsRollbackFailed() bool {
+	return partition.IsDecommissionFailed() &&
+		atomic.LoadUint32(&partition.DecommissionNeedRollbackTimes) >= defaultDecommissionRollbackLimit
 }
 
 func (partition *DataPartition) pauseReplicaRepair(replicaAddr string, stop bool, c *Cluster) bool {
@@ -1693,7 +1709,8 @@ func getTargetNodeset(addr string, c *Cluster) (ns *nodeSet, zone *Zone, err err
 }
 
 func (partition *DataPartition) needRollback(c *Cluster) bool {
-	log.LogDebugf("action[needRollback]dp[%v]DecommissionNeedRollbackTimes[%v]", partition.PartitionID, partition.DecommissionNeedRollbackTimes)
+	log.LogDebugf("action[needRollback]dp[%v]DecommissionNeedRollbackTimes[%v]", partition.PartitionID,
+		atomic.LoadUint32(&partition.DecommissionNeedRollbackTimes))
 	// failed by error except add replica or create dp or repair dp
 	if !partition.DecommissionNeedRollback {
 		return false
@@ -1703,9 +1720,9 @@ func (partition *DataPartition) needRollback(c *Cluster) bool {
 		log.LogWarnf("action[needRollback]dp[%v] do not rollback for DecommissionDstAddrSpecify", partition.PartitionID)
 		return false
 	}
-	if partition.DecommissionNeedRollbackTimes >= defaultDecommissionRollbackLimit {
+	if atomic.LoadUint32(&partition.DecommissionNeedRollbackTimes) >= defaultDecommissionRollbackLimit {
 		log.LogDebugf("action[needRollback]try add restore replica, dp[%v]DecommissionNeedRollbackTimes[%v]",
-			partition.PartitionID, partition.DecommissionNeedRollbackTimes)
+			partition.PartitionID, atomic.LoadUint32(&partition.DecommissionNeedRollbackTimes))
 		partition.DecommissionNeedRollback = false
 		err := c.addDataReplica(partition, partition.DecommissionSrcAddr, true)
 		if err != nil {
