@@ -15,7 +15,6 @@
 package wal
 
 import (
-	"io/ioutil"
 	"os"
 	"path"
 	"testing"
@@ -100,7 +99,7 @@ func TestExceptionMeta(t *testing.T) {
 	defer clear()
 
 	os.MkdirAll(dir, 0o755)
-	err := ioutil.WriteFile(path.Join(dir, "meta01"), []byte("123456789"), 0o644)
+	err := os.WriteFile(path.Join(dir, "meta01"), []byte("123456789"), 0o644)
 	require.Nil(t, err)
 	_, _, _, err = NewMeta(dir)
 	require.NotNil(t, err)
@@ -116,9 +115,9 @@ func TestExceptionMeta(t *testing.T) {
 	data := make([]byte, metaSize)
 	md.encodeTo(data)
 	data[0] = 3
-	err = ioutil.WriteFile(path.Join(dir, "meta01"), data, 0o644)
+	err = os.WriteFile(path.Join(dir, "meta01"), data, 0o644)
 	require.Nil(t, err)
-	err = ioutil.WriteFile(path.Join(dir, "meta02"), data, 0o644)
+	err = os.WriteFile(path.Join(dir, "meta02"), data, 0o644)
 	require.Nil(t, err)
 	_, _, _, err = NewMeta(dir)
 	require.NotNil(t, err)

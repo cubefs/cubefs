@@ -19,7 +19,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"io/ioutil"
+	"os"
 
 	"github.com/cubefs/cubefs/blobstore/util/log"
 	"gopkg.in/go-playground/validator.v9"
@@ -52,7 +52,7 @@ func Load(conf interface{}) (err error) {
 }
 
 func LoadFile(conf interface{}, confName string) (err error) {
-	data, err := ioutil.ReadFile(confName)
+	data, err := os.ReadFile(confName)
 	if err != nil {
 		log.Error("LoadFile conf failed:", err)
 		return

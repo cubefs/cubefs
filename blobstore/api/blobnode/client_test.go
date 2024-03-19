@@ -17,7 +17,7 @@ package blobnode
 import (
 	"bytes"
 	"context"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -108,7 +108,7 @@ func TestNewBlobNodeClient(t *testing.T) {
 	body, _, err := cli.RangeGetShard(ctx, mockServer.URL, getShardArgs)
 	require.NoError(t, err)
 	if body != nil {
-		b, _ := ioutil.ReadAll(body)
+		b, _ := io.ReadAll(body)
 		span.Infof("body: %s\n", b)
 	}
 

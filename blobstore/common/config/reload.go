@@ -2,7 +2,6 @@ package config
 
 import (
 	"context"
-	"io/ioutil"
 	"os"
 	"os/signal"
 	"syscall"
@@ -46,7 +45,7 @@ func HotReload(ctx context.Context, confName string) {
 			case <-ctx.Done():
 				return
 			case <-s:
-				conf, err := ioutil.ReadFile(path)
+				conf, err := os.ReadFile(path)
 				if err != nil {
 					log.Errorf("reload fail to read config file, filename: %s, err: %v", path, err)
 					continue

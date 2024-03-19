@@ -17,7 +17,6 @@ package kvstore
 import (
 	"encoding/binary"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"testing"
 
@@ -25,7 +24,7 @@ import (
 )
 
 func TestDb(t *testing.T) {
-	path, err := ioutil.TempDir("", "testrocksdbkvdb12233222")
+	path, err := os.MkdirTemp("", "testrocksdbkvdb12233222")
 	require.NoError(t, err)
 	defer os.RemoveAll(path)
 
@@ -71,7 +70,7 @@ func TestDb(t *testing.T) {
 }
 
 func TestTable(t *testing.T) {
-	path, err := ioutil.TempDir("", "testrocksdbkvdb12345")
+	path, err := os.MkdirTemp("", "testrocksdbkvdb12345")
 	require.NoError(t, err)
 	defer os.RemoveAll(path)
 
@@ -178,7 +177,7 @@ func TestTable(t *testing.T) {
 }
 
 func TestTableBatchOP(t *testing.T) {
-	path, err := ioutil.TempDir("", "testrocksdbkvdb12345")
+	path, err := os.MkdirTemp("", "testrocksdbkvdb12345")
 	require.NoError(t, err)
 	defer os.RemoveAll(path)
 
@@ -212,7 +211,7 @@ func TestTableBatchOP(t *testing.T) {
 }
 
 func TestDbBatchOP(t *testing.T) {
-	path, err := ioutil.TempDir("", "testrocksdbkvdb121212323")
+	path, err := os.MkdirTemp("", "testrocksdbkvdb121212323")
 	require.NoError(t, err)
 	defer os.RemoveAll(path)
 
