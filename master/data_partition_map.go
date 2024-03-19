@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util/compressor"
 	"github.com/cubefs/cubefs/util/log"
 )
 
@@ -34,6 +35,7 @@ type DataPartitionMap struct {
 	lastReleasedIndex      uint64 // last released partition index
 	partitions             []*DataPartition
 	responseCache          []byte
+	responseCompressCache  []byte
 	lastAutoCreateTime     time.Time
 	volName                string
 	readMutex              sync.RWMutex
@@ -44,6 +46,7 @@ func newDataPartitionMap(volName string) (dpMap *DataPartitionMap) {
 	dpMap.partitionMap = make(map[uint64]*DataPartition, 0)
 	dpMap.partitions = make([]*DataPartition, 0)
 	dpMap.responseCache = make([]byte, 0)
+	dpMap.responseCompressCache = make([]byte, 0)
 	dpMap.volName = volName
 	dpMap.lastAutoCreateTime = time.Now()
 	return
@@ -129,11 +132,25 @@ func (dpMap *DataPartitionMap) getDataPartitionResponseCache() []byte {
 	return dpMap.responseCache
 }
 
+func (dpMap *DataPartitionMap) getDataPartitionCompressCache() []byte {
+	dpMap.RLock()
+	defer dpMap.RUnlock()
+	return dpMap.responseCompressCache
+}
+
 func (dpMap *DataPartitionMap) setDataPartitionResponseCache(responseCache []byte) {
 	dpMap.Lock()
 	defer dpMap.Unlock()
 	if responseCache != nil {
 		dpMap.responseCache = responseCache
+	}
+}
+
+func (dpMap *DataPartitionMap) setDataPartitionCompressCache(responseCompress []byte) {
+	dpMap.Lock()
+	defer dpMap.Unlock()
+	if responseCompress != nil {
+		dpMap.responseCompressCache = responseCompress
 	}
 }
 
@@ -166,6 +183,20 @@ func (dpMap *DataPartitionMap) updateResponseCache(needsUpdate bool, minPartitio
 	}
 
 	body = responseCache
+	return
+}
+
+func (dpMap *DataPartitionMap) updateCompressCache(needsUpdate bool, minPartitionID uint64, volType int) (body []byte, err error) {
+	if body, err = dpMap.updateResponseCache(needsUpdate, minPartitionID, volType); err != nil {
+		log.LogErrorf("action[updateCompressCache]updateResponseCache failed,err:%+v", err)
+		return
+	}
+	if body, err = compressor.New(compressor.EncodingGzip).Compress(body); err != nil {
+		log.LogErrorf("action[updateCompressCache]GzipCompressor.Compress failed,err:%+v", err)
+		err = proto.ErrCompressFailed
+		return
+	}
+	dpMap.setDataPartitionCompressCache(body)
 	return
 }
 
