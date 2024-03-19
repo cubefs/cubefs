@@ -16,7 +16,6 @@ package disk
 
 import (
 	"context"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"testing"
@@ -29,7 +28,7 @@ import (
 )
 
 func TestDiskMetricReport(t *testing.T) {
-	testDir, err := ioutil.TempDir(os.TempDir(), "TestDiskMetricReport")
+	testDir, err := os.MkdirTemp(os.TempDir(), "TestDiskMetricReport")
 	require.NoError(t, err)
 	defer os.RemoveAll(testDir)
 
