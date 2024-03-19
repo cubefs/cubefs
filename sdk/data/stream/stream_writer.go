@@ -198,7 +198,7 @@ func (s *Streamer) server() {
 						current_s, _ := s.client.streamers[s.inode]
 						// one stream maybe has multi server coroutine
 						// when the stream's residual server coroutine exits, others stream maybe deleted
-						if &current_s == &s {
+						if current_s == s {
 							delete(s.client.streamers, s.inode)
 							if s.client.evictIcache != nil {
 								s.client.evictIcache(s.inode)
