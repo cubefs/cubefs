@@ -16,7 +16,7 @@ package log
 
 import (
 	"bytes"
-	"io/ioutil"
+	"io"
 	"math/rand"
 	"os"
 	"strconv"
@@ -117,7 +117,7 @@ func BenchmarkFormatOutputLine(b *testing.B) {
 }
 
 func outputwith(b *testing.B, calldepth int) {
-	l := New(ioutil.Discard, 1)
+	l := New(io.Discard, 1)
 	b.Helper()
 	for ii := 0; ii < b.N; ii++ {
 		l.Output("id-xxx-id", Linfo, calldepth, "loggingggggggg")

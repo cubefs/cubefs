@@ -17,7 +17,6 @@ package disk
 import (
 	"context"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"time"
@@ -57,14 +56,18 @@ func (ds *DiskStorage) cleanTrash(ctx context.Context) (err error) {
 	trashPath := core.SysTrashPath(ds.Conf.Path)
 	trashProtection := time.Duration(ds.Conf.DiskTrashProtectionM) * time.Minute
 
-	fis, err := ioutil.ReadDir(trashPath)
+	fis, err := os.ReadDir(trashPath)
 	if err != nil {
 		span.Debugf("failed readdir, err:%v", err)
 		return
 	}
 	for _, fi := range fis {
 		path := filepath.Join(trashPath, fi.Name())
-		mtime := fi.ModTime()
+		info, infoErr := fi.Info()
+		if infoErr != nil {
+			continue
+		}
+		mtime := info.ModTime()
 
 		if time.Since(mtime) < trashProtection {
 			span.Debugf("%s mtime:%v, trashProtection:%v. skip", path, mtime, trashProtection)

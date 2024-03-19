@@ -2,7 +2,7 @@ package profile
 
 import (
 	"expvar"
-	"io/ioutil"
+	"io"
 	"net"
 	"net/http"
 	"testing"
@@ -94,7 +94,7 @@ func TestProfileBase(t *testing.T) {
 	resp, err = http.Get(profileAddr + "/debug/var/int_key")
 	require.NoError(t, err)
 	require.Equal(t, 200, resp.StatusCode)
-	data, err := ioutil.ReadAll(resp.Body)
+	data, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
 	require.Equal(t, "100", string(data))
 	resp.Body.Close()
@@ -102,7 +102,7 @@ func TestProfileBase(t *testing.T) {
 	resp, err = http.Get(profileAddr + "/test/before")
 	require.NoError(t, err)
 	require.Equal(t, 800, resp.StatusCode)
-	data, err = ioutil.ReadAll(resp.Body)
+	data, err = io.ReadAll(resp.Body)
 	require.NoError(t, err)
 	require.Equal(t, "ok", string(data))
 	resp.Body.Close()
@@ -114,7 +114,7 @@ func TestProfileBase(t *testing.T) {
 	resp, err = http.Get(profileAddr + "/test/handlfunc")
 	require.NoError(t, err)
 	require.Equal(t, 900, resp.StatusCode)
-	data, err = ioutil.ReadAll(resp.Body)
+	data, err = io.ReadAll(resp.Body)
 	require.NoError(t, err)
 	require.Equal(t, "ok", string(data))
 	resp.Body.Close()

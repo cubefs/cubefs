@@ -20,7 +20,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"os"
 	"path"
@@ -190,7 +189,7 @@ func marshalObj(obj interface{}) (*marshalledBody, error) {
 func programVersion() string {
 	sp := strings.Fields(strings.TrimSpace(version.Version()))
 	if len(sp) == 0 || sp[0] == "develop" {
-		data, err := ioutil.ReadFile(os.Args[0])
+		data, err := os.ReadFile(os.Args[0])
 		if err != nil {
 			return "_"
 		}

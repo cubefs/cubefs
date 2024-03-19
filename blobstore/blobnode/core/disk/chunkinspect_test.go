@@ -16,7 +16,6 @@ package disk
 
 import (
 	"context"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"testing"
@@ -30,7 +29,7 @@ import (
 )
 
 func TestMayChunkLost(t *testing.T) {
-	testDir, err := ioutil.TempDir(os.TempDir(), "TestMayChunkLost")
+	testDir, err := os.MkdirTemp(os.TempDir(), "TestMayChunkLost")
 	require.NoError(t, err)
 	defer os.RemoveAll(testDir)
 
@@ -93,7 +92,7 @@ func TestMayChunkLost(t *testing.T) {
 }
 
 func TestMaybeCleanRubbishChunk(t *testing.T) {
-	testDir, err := ioutil.TempDir(os.TempDir(), "TestMaybeCleanRubbishChunk")
+	testDir, err := os.MkdirTemp(os.TempDir(), "TestMaybeCleanRubbishChunk")
 	require.NoError(t, err)
 	defer os.RemoveAll(testDir)
 
@@ -146,7 +145,7 @@ func TestMaybeCleanRubbishChunk(t *testing.T) {
 }
 
 func TestGcRubbishChunk(t *testing.T) {
-	testDir, err := ioutil.TempDir(os.TempDir(), "TestGcRubbishChunk")
+	testDir, err := os.MkdirTemp(os.TempDir(), "TestGcRubbishChunk")
 	require.NoError(t, err)
 	defer os.RemoveAll(testDir)
 
