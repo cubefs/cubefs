@@ -29,6 +29,7 @@ import (
 	"time"
 
 	"errors"
+	syslog "log"
 	"os"
 	"syscall"
 
@@ -112,6 +113,10 @@ const (
 	ConfigDiskWriteIocc = "diskWriteIocc" // int
 	ConfigDiskWriteIops = "diskWriteIops" // int
 	ConfigDiskWriteFlow = "diskWriteFlow" // int
+
+	// load/stop dp limit
+	ConfigDiskCurrentLoadDpLimit = "diskCurrentLoadDpLimit"
+	ConfigDiskCurrentStopDpLimit = "diskCurrentStopDpLimit"
 )
 
 // DataNode defines the structure of a data node.
@@ -248,6 +253,12 @@ func doStart(server common.Server, cfg *config.Config) (err error) {
 }
 
 func doShutdown(server common.Server) {
+	begin := time.Now()
+	defer func() {
+		msg := fmt.Sprintf("[doShutdown] stop datanode using time(%v)", time.Since(begin))
+		log.LogInfo(msg)
+		syslog.Print(msg)
+	}()
 	s, ok := server.(*DataNode)
 	if !ok {
 		return
@@ -350,6 +361,11 @@ func (s *DataNode) startSpaceManager(cfg *config.Config) (err error) {
 	s.space.SetNodeID(s.nodeID)
 	s.space.SetClusterID(s.clusterID)
 	s.initQosLimit(cfg)
+
+	loadLimit := cfg.GetInt(ConfigDiskCurrentLoadDpLimit)
+	stopLimit := cfg.GetInt(ConfigDiskCurrentStopDpLimit)
+	s.space.SetCurrentLoadDpLimit(loadLimit)
+	s.space.SetCurrentStopDpLimit(stopLimit)
 
 	diskRdonlySpace := uint64(cfg.GetInt64(CfgDiskRdonlySpace))
 	if diskRdonlySpace < DefaultDiskRetainMin {
@@ -621,7 +637,12 @@ func (s *DataNode) startTCPService() (err error) {
 
 func (s *DataNode) stopTCPService() (err error) {
 	if s.tcpListener != nil {
-
+		begin := time.Now()
+		defer func() {
+			msg := fmt.Sprintf("[stopTCPService] stop tcp service using time(%v)", time.Since(begin))
+			log.LogInfo(msg)
+			syslog.Print(msg)
+		}()
 		s.tcpListener.Close()
 		log.LogDebugf("action[stopTCPService] stop tcp service.")
 	}
@@ -672,6 +693,12 @@ func (s *DataNode) startSmuxService(cfg *config.Config) (err error) {
 
 func (s *DataNode) stopSmuxService() (err error) {
 	if s.smuxListener != nil {
+		begin := time.Now()
+		defer func() {
+			msg := fmt.Sprintf("[stopSmuxService] stop smux service uing time(%v)", time.Since(begin))
+			syslog.Print(msg)
+			log.LogInfo(msg)
+		}()
 		s.smuxListener.Close()
 		log.LogDebugf("action[stopSmuxService] stop smux service.")
 	}
@@ -823,6 +850,12 @@ func (s *DataNode) initConnPool() {
 
 func (s *DataNode) closeSmuxConnPool() {
 	if s.smuxConnPool != nil {
+		begin := time.Now()
+		defer func() {
+			msg := fmt.Sprintf("[closeSmuxConnPool] close smux conn pool using time(%v)", time.Since(begin))
+			log.LogInfo(msg)
+			syslog.Print(msg)
+		}()
 		s.smuxConnPool.Close()
 		log.LogDebugf("action[stopSmuxService] stop smux conn pool")
 	}

@@ -24,11 +24,15 @@ import (
 	"math"
 	"os"
 
+	syslog "log"
+
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/raftstore"
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/log"
 )
+
+const DefaultStopDpLimit = DefaultCurrentLoadDpLimit
 
 // SpaceManager manages the disk space.
 type SpaceManager struct {
@@ -46,6 +50,8 @@ type SpaceManager struct {
 	dataNode             *DataNode
 	createPartitionMutex sync.RWMutex
 	rand                 *rand.Rand
+	currentLoadDpCount   int
+	currentStopDpCount   int
 }
 
 // NewSpaceManager creates a new space manager.
@@ -59,12 +65,32 @@ func NewSpaceManager(dataNode *DataNode) *SpaceManager {
 	space.stopC = make(chan bool, 0)
 	space.dataNode = dataNode
 	space.rand = rand.New(rand.NewSource(time.Now().Unix()))
+	space.currentLoadDpCount = DefaultCurrentLoadDpLimit
+	space.currentStopDpCount = DefaultStopDpLimit
 	go space.statUpdateScheduler()
 
 	return space
 }
 
+func (manager *SpaceManager) SetCurrentLoadDpLimit(limit int) {
+	if limit != 0 {
+		manager.currentLoadDpCount = limit
+	}
+}
+
+func (manager *SpaceManager) SetCurrentStopDpLimit(limit int) {
+	if limit != 0 {
+		manager.currentStopDpCount = limit
+	}
+}
+
 func (manager *SpaceManager) Stop() {
+	begin := time.Now()
+	defer func() {
+		msg := fmt.Sprintf("[Stop] stop space manager using time(%v)", time.Since(begin))
+		log.LogInfo(msg)
+		syslog.Print(msg)
+	}()
 	defer func() {
 		recover()
 	}()
@@ -79,6 +105,18 @@ func (manager *SpaceManager) Stop() {
 	// Close raft store.
 	for _, partition := range manager.partitions {
 		partition.stopRaft()
+	}
+
+	limitCh := make(map[string]chan interface{})
+	for _, partition := range manager.partitions {
+		_, ok := limitCh[partition.Disk().Path]
+		if !ok {
+			ch := make(chan interface{}, manager.currentStopDpCount)
+			defer func() {
+				close(ch)
+			}()
+			limitCh[partition.Disk().Path] = ch
+		}
 	}
 
 	go func(c chan<- *DataPartition) {
@@ -98,7 +136,14 @@ func (manager *SpaceManager) Stop() {
 				if partition = <-c; partition == nil {
 					return
 				}
-				partition.Stop()
+				func() {
+					limit := limitCh[partition.Disk().Path]
+					defer func() {
+						<-limit
+					}()
+					limit <- 1
+					partition.Stop()
+				}()
 			}
 		}(partitionC)
 	}
@@ -305,6 +350,10 @@ func (manager *SpaceManager) Partition(partitionID uint64) (dp *DataPartition) {
 }
 
 func (manager *SpaceManager) AttachPartition(dp *DataPartition) {
+	begin := time.Now()
+	defer func() {
+		log.LogInfof("[AttachPartition] load dp(%v) attach using time(%v)", dp.partitionID, time.Now().Sub(begin))
+	}()
 	manager.partitionMutex.Lock()
 	defer manager.partitionMutex.Unlock()
 	manager.partitions[dp.partitionID] = dp

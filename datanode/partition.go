@@ -253,7 +253,15 @@ func LoadDataPartition(partitionDir string, disk *Disk) (dp *DataPartition, err 
 	dp.lastTruncateID = meta.LastTruncateID
 	if meta.DataPartitionCreateType == proto.NormalCreateDataPartition {
 		err = dp.StartRaft(true)
+		func() {
+			begin := time.Now()
+			defer func() {
+				log.LogInfof("[LoadDataPartition] load dp(%v) flush extent using time(%v)", dp.partitionID, time.Since(begin))
+			}()
+			dp.extentStore.Flush()
+		}()
 	} else {
+		log.LogInfof("[LoadDataPartition] dp(%v) skip disk limit, need repair", dp.partitionID)
 		// init leaderSize to partitionSize
 		dp.leaderSize = dp.partitionSize
 		go dp.StartRaftAfterRepair(true)
@@ -272,6 +280,11 @@ func LoadDataPartition(partitionDir string, disk *Disk) (dp *DataPartition, err 
 
 func newDataPartition(dpCfg *dataPartitionCfg, disk *Disk, isCreate bool) (dp *DataPartition, err error) {
 	partitionID := dpCfg.PartitionID
+	begin := time.Now()
+	defer func() {
+		log.LogInfof("[newDataPartition] load dp(%v) new data partition using time(%v)", partitionID, time.Since(begin))
+	}()
+
 	var dataPath string
 
 	if proto.IsNormalDp(dpCfg.PartitionType) {
@@ -324,9 +337,7 @@ func (dp *DataPartition) replicasInit() {
 	if dp.config.Hosts == nil {
 		return
 	}
-	for _, host := range dp.config.Hosts {
-		replicas = append(replicas, host)
-	}
+	replicas = append(replicas, dp.config.Hosts...)
 	dp.replicasLock.Lock()
 	dp.replicas = replicas
 	dp.replicasLock.Unlock()
@@ -446,6 +457,11 @@ func (dp *DataPartition) SnapShot() (files []*proto.File) {
 
 // Stop close the store and the raft store.
 func (dp *DataPartition) Stop() {
+	begin := time.Now()
+	defer func() {
+		msg := fmt.Sprintf("[Stop] stop dp(%v) using time(%v)", dp.partitionID, time.Since(begin))
+		log.LogInfo(msg)
+	}()
 	dp.stopOnce.Do(func() {
 		if dp.stopC != nil {
 			close(dp.stopC)
@@ -455,7 +471,6 @@ func (dp *DataPartition) Stop() {
 		dp.extentStore.Close()
 		_ = dp.storeAppliedID(atomic.LoadUint64(&dp.appliedID))
 	})
-	return
 }
 
 // Disk returns the disk instance.

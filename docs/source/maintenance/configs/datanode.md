@@ -18,6 +18,8 @@
 | localIP       | string         | IP address of the local machine. If this option is not specified, the IP address used for communication with the master is used | No       |
 | zoneName      | string         | Specify the zone. By default, it is assigned to the `default` zone                                                              | No       |
 | disks         | string slice   | Format: `disk mount path:reserved space`, reserved space configuration range `[20G,50G]`                                        | Yes      |
+| diskCurrentLoadDpLimit | int | The max count of data partition on a disk that current load | No |
+| diskCurrentStopDpLimit | int | The max count of data partition on a disk that current stop | No |
 
 ## Configuration Example
 
