@@ -148,6 +148,10 @@ func MkdirAll(name string) (err error) {
 }
 
 func NewExtentStore(dataDir string, partitionID uint64, storeSize, dpType int, isCreate bool) (s *ExtentStore, err error) {
+	begin := time.Now()
+	defer func() {
+		log.LogInfof("[NewExtentStore] load dp(%v) new extent store using time(%v)", partitionID, time.Since(begin))
+	}()
 	s = new(ExtentStore)
 	s.dataPath = dataDir
 	s.partitionType = dpType
@@ -199,6 +203,7 @@ func NewExtentStore(dataDir string, partitionID uint64, storeSize, dpType int, i
 		needWriteEmpty := DeleteTinyRecordSize - (stat.Size() % DeleteTinyRecordSize)
 		data := make([]byte, needWriteEmpty)
 		s.tinyExtentDeleteFp.Write(data)
+		log.LogInfof("[NewExtentStore] load dp(%v) write zero buffer", partitionID)
 	}
 
 	log.LogDebugf("NewExtentStore.partitionID [%v] dataPath %v verifyExtentFp init", partitionID, s.dataPath)
@@ -634,8 +639,25 @@ func (s *ExtentStore) IsDeletedNormalExtent(extentID uint64) (ok bool) {
 	return
 }
 
+func (s *ExtentStore) Flush() {
+	begin := time.Now()
+	defer func() {
+		log.LogInfof("[Flush] flush extent store using time(%v)", time.Since(begin))
+	}()
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	if s.closed {
+		return
+	}
+	s.cache.Flush()
+}
+
 // Close closes the extent store.
 func (s *ExtentStore) Close() {
+	begin := time.Now()
+	defer func() {
+		log.LogInfof("[Close] close extent store using time(%v)", time.Since(begin))
+	}()
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 	if s.closed {
