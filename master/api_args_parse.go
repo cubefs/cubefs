@@ -14,6 +14,7 @@ import (
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util"
+	"github.com/cubefs/cubefs/util/compressor"
 	"github.com/cubefs/cubefs/util/cryptoutil"
 	"github.com/cubefs/cubefs/util/log"
 )
@@ -1506,6 +1507,12 @@ func sendOkReply(w http.ResponseWriter, r *http.Request, httpReply *proto.HTTPRe
 		log.LogErrorf("fail to marshal http reply. URL[%v],remoteAddr[%v] err:[%v]", r.URL, r.RemoteAddr, err)
 		http.Error(w, "fail to marshal http reply", http.StatusBadRequest)
 		return
+	}
+	if acceptEncoding := r.Header.Get(proto.HeaderAcceptEncoding); acceptEncoding != "" {
+		if compressed, errx := compressor.New(acceptEncoding).Compress(reply); errx == nil {
+			w.Header().Set(proto.HeaderContentEncoding, acceptEncoding)
+			reply = compressed
+		}
 	}
 	send(w, r, reply)
 	return

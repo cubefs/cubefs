@@ -91,6 +91,7 @@ var (
 	ErrQuotaNotExists                          = errors.New("quota not exists")
 	ErrVolNotDelete                            = errors.New("vol was not previously deleted or already deleted")
 	ErrVolHasDeleted                           = errors.New("vol has been deleted")
+	ErrCompressFailed                          = errors.New("compress data failed")
 )
 
 // http response error code and error message definitions

@@ -690,7 +690,7 @@ func newVolInfoCmd(client *master.MasterClient) *cobra.Command {
 			// print data detail
 			if optDataDetail {
 				var view *proto.DataPartitionsView
-				if view, err = client.ClientAPI().GetDataPartitions(volumeName); err != nil {
+				if view, err = client.ClientAPI().EncodingGzip().GetDataPartitions(volumeName); err != nil {
 					err = fmt.Errorf("Get volume data detail information failed:\n%v\n", err)
 					return
 				}
