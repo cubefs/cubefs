@@ -435,26 +435,20 @@ func (dataNode *DataNode) SetDecommissionStatus(status uint32) {
 	atomic.StoreUint32(&dataNode.DecommissionStatus, status)
 }
 
-func (dataNode *DataNode) GetDecommissionFailedDPByTerm(c *Cluster) (error, []uint64) {
+func (dataNode *DataNode) GetDecommissionFailedDPByTerm(c *Cluster) []uint64 {
 	var (
 		failedDps []uint64
-		err       error
 	)
-	if dataNode.GetDecommissionStatus() != DecommissionFail {
-		err = fmt.Errorf("action[GetDecommissionDataNodeFailedDP]dataNode[%s] status must be failed,but[%d]",
-			dataNode.Addr, dataNode.GetDecommissionStatus())
-		return err, failedDps
-	}
 	partitions := dataNode.GetLatestDecommissionDataPartition(c)
 	log.LogDebugf("action[GetDecommissionDataNodeFailedDP] partitions len %v", len(partitions))
 	for _, dp := range partitions {
-		if dp.IsDecommissionFailed() {
+		if dp.IsRollbackFailed() {
 			failedDps = append(failedDps, dp.PartitionID)
 			log.LogWarnf("action[GetDecommissionDataNodeFailedDP] dp[%v] failed", dp.PartitionID)
 		}
 	}
 	log.LogWarnf("action[GetDecommissionDataNodeFailedDP] failed dp list [%v]", failedDps)
-	return nil, failedDps
+	return failedDps
 }
 
 func (dataNode *DataNode) GetDecommissionFailedDP(c *Cluster) (error, []uint64) {

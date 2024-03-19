@@ -2019,7 +2019,8 @@ func (m *Server) queryDataPartitionDecommissionStatus(w http.ResponseWriter, r *
 	msg = fmt.Sprintf("partitionID:%v  status[%v] specialStep[%v] retry [%v] raftForce[%v] recover [%v] "+
 		"decommission src dataNode[%v] disk[%v]  dst dataNode[%v] term[%v] replicas[%v] DecommissionWaitTimes[%v] rollback[%v]",
 		partitionID, dp.GetDecommissionStatus(), dp.GetSpecialReplicaDecommissionStep(), dp.DecommissionRetry, dp.DecommissionRaftForce, dp.isRecover,
-		dp.DecommissionSrcAddr, dp.DecommissionSrcDiskPath, dp.DecommissionDstAddr, dp.DecommissionTerm, replicas, dp.DecommissionWaitTimes, dp.DecommissionNeedRollbackTimes)
+		dp.DecommissionSrcAddr, dp.DecommissionSrcDiskPath, dp.DecommissionDstAddr, dp.DecommissionTerm, replicas, dp.DecommissionWaitTimes,
+		atomic.LoadUint32(&dp.DecommissionNeedRollbackTimes))
 	sendOkReply(w, r, newSuccessHTTPReply(msg))
 }
 
@@ -5366,14 +5367,8 @@ func (m *Server) queryDataNodeDecoProgress(w http.ResponseWriter, r *http.Reques
 		Progress:      fmt.Sprintf("%.2f%%", progress*float64(100)),
 		StatusMessage: GetDecommissionStatusMessage(status),
 	}
-	if status == DecommissionFail {
-		err, dps := dn.GetDecommissionFailedDPByTerm(m.cluster)
-		if err != nil {
-			sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
-			return
-		}
-		resp.FailedDps = dps
-	}
+	dps := dn.GetDecommissionFailedDPByTerm(m.cluster)
+	resp.FailedDps = dps
 
 	sendOkReply(w, r, newSuccessHTTPReply(resp))
 }
