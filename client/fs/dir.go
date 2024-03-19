@@ -384,7 +384,7 @@ func (d *Dir) Lookup(ctx context.Context, req *fuse.LookupRequest, resp *fuse.Lo
 		}
 		d.super.nodeCache[ino] = child
 	} else {
-		//maybe not happen
+		//read dir first then look up
 		if mode.IsDir() {
 			if child.(*Dir).info.StorageClass != info.StorageClass {
 				child = NewDir(d.super, info, d.info.Inode, req.Name)

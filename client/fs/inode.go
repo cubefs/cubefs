@@ -53,7 +53,7 @@ func (s *Super) InodeGet(ino uint64) (*proto.InodeInfo, error) {
 		if ok {
 			s.info = info
 		} else {
-			migrated := info.StorageClass == node.(*File).info.StorageClass
+			migrated := info.StorageClass != node.(*File).info.StorageClass
 			// the first time storage class change to blob store
 			if migrated && proto.IsStorageClassBlobStore(info.StorageClass) {
 				f := node.(*File)
