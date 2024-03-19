@@ -133,7 +133,7 @@ func (sc *StreamConn) sendToPartitionByRDMA(req *Packet, retry *bool, getReply G
 		log.LogDebugf("req opcode %v, conn %v", req.Opcode, conn)
 		err = sc.sendToRDMAConn(conn, req, getReply)
 		if err == nil {
-			StreamRdmaConnPool.PutRdmaConn(conn, true)
+			StreamRdmaConnPool.PutRdmaConn(conn, false)
 			return
 		}
 		log.LogWarnf("sendToPartition: send to curr addr failed, addr(%v) reqPacket(%v) err(%v)", sc.currAddr, req, err)
@@ -159,7 +159,7 @@ func (sc *StreamConn) sendToPartitionByRDMA(req *Packet, retry *bool, getReply G
 		sc.dp.LeaderAddr = addr
 		err = sc.sendToRDMAConn(conn, req, getReply)
 		if err == nil {
-			StreamRdmaConnPool.PutRdmaConn(conn, true)
+			StreamRdmaConnPool.PutRdmaConn(conn, false)
 			return
 		}
 		StreamRdmaConnPool.PutRdmaConn(conn, true)

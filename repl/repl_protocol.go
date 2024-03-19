@@ -17,9 +17,10 @@ package repl
 import (
 	"container/list"
 	"fmt"
-	"github.com/cubefs/cubefs/util/rdma"
 	"net"
 	"sync"
+
+	"github.com/cubefs/cubefs/util/rdma"
 
 	"sync/atomic"
 	"time"
