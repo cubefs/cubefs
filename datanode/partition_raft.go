@@ -18,6 +18,8 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"io/ioutil"
+	syslog "log"
 	"net"
 	"os"
 	"path"
@@ -77,6 +79,11 @@ func (dp *DataPartition) raftPort() (heartbeat, replica int, err error) {
 
 // StartRaft start raft instance when data partition start or restore.
 func (dp *DataPartition) StartRaft(isLoad bool) (err error) {
+	begin := time.Now()
+	defer func() {
+		log.LogInfof("[StartRaft] load dp(%v) start raft using time(%v)", dp.partitionID, time.Since(begin))
+	}()
+
 	// cache or preload partition not support raft and repair.
 	if !dp.isNormalType() {
 		return nil
@@ -138,6 +145,10 @@ func (dp *DataPartition) raftStopped() bool {
 }
 
 func (dp *DataPartition) stopRaft() {
+	begin := time.Now()
+	defer func() {
+		log.LogInfof("[stopRaft] dp(%v) stop raft using time(%v)", dp.partitionID, time.Since(begin))
+	}()
 	if atomic.CompareAndSwapInt32(&dp.raftStatus, RaftStatusRunning, RaftStatusStopped) {
 		// cache or preload partition not support raft and repair.
 		if !dp.isNormalType() {
@@ -473,6 +484,10 @@ func (dp *DataPartition) storeAppliedID(applyIndex uint64) (err error) {
 
 // LoadAppliedID loads the applied IDs to the memory.
 func (dp *DataPartition) LoadAppliedID() (err error) {
+	begin := time.Now()
+	defer func() {
+		log.LogInfof("[LoadAppliedID] load dp(%v) load applied id using time(%v)", dp.partitionID, time.Since(begin))
+	}()
 	filename := path.Join(dp.Path(), ApplyIndexFile)
 	if _, err = os.Stat(filename); err != nil {
 		return
@@ -580,6 +595,12 @@ func (s *DataNode) startRaftServer(cfg *config.Config) (err error) {
 
 func (s *DataNode) stopRaftServer() {
 	if s.raftStore != nil {
+		begin := time.Now()
+		defer func() {
+			msg := fmt.Sprintf("[stopRaftServer] stop raft server using time(%v)", time.Since(begin))
+			log.LogInfo(msg)
+			syslog.Print(msg)
+		}()
 		s.raftStore.Stop()
 	}
 }
