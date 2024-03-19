@@ -695,7 +695,7 @@ func (tm *TransactionManager) commitTxInfo(ctx context.Context, txId string) (st
 }
 
 func buildTxPacket(data interface{}, mp uint64, op uint8) (pkt *proto.Packet, err error) {
-	pkt = proto.NewPacketReqID()
+	pkt = proto.NewPacketReqID(context.TODO())
 	pkt.Opcode = op
 	pkt.PartitionID = mp
 	err = pkt.MarshalData(data)
