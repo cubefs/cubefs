@@ -25,10 +25,11 @@ import (
 
 func (c *Cluster) scheduleToLoadMetaPartitions(ctx context.Context) {
 	go func() {
+		rCtx := proto.RoundContext("load-mp")
 		for {
 			if c.partition != nil && c.partition.IsRaftLeader() {
 				if c.vols != nil {
-					c.checkLoadMetaPartitions(ctx)
+					c.checkLoadMetaPartitions(rCtx())
 				}
 			}
 			time.Sleep(2 * time.Second * defaultIntervalToCheckDataPartition)
@@ -170,10 +171,11 @@ func (mp *MetaPartition) checkDentryCount(ctx context.Context, c *Cluster) (isEq
 
 func (c *Cluster) scheduleToCheckMetaPartitionRecoveryProgress(ctx context.Context) {
 	go func() {
+		rCtx := proto.RoundContext("check-mp-recover")
 		for {
 			if c.partition != nil && c.partition.IsRaftLeader() {
 				if c.vols != nil {
-					c.checkMetaPartitionRecoveryProgress(ctx)
+					c.checkMetaPartitionRecoveryProgress(rCtx())
 				}
 			}
 			time.Sleep(time.Second * defaultIntervalToCheckDataPartition)

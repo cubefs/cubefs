@@ -306,7 +306,7 @@ func TestFlush(t *testing.T) {
 		writer.buf = tc.buf
 		writer.dirty = tc.dirty
 		ctx := context.Background()
-		_ = writer.flush(1, ctx, tc.flushFlag)
+		_ = writer.flush(ctx, 1, tc.flushFlag)
 		// assert.Equal(t, tc.expectError, gotError)
 	}
 }

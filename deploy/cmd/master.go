@@ -3,8 +3,8 @@ package cmd
 import (
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"log"
+	"os"
 	"strconv"
 	"strings"
 )
@@ -44,7 +44,7 @@ func getMasterPeers(config *Config) string {
 }
 
 func readMaster(filename string) (*Master, error) {
-	data, err := ioutil.ReadFile(filename)
+	data, err := os.ReadFile(filename)
 	if err != nil {
 		return nil, err
 	}
@@ -86,7 +86,7 @@ func writeMaster(clusterName, id, ip, listen, prof, peers string) error {
 		return fmt.Errorf("cannot be resolved to master.json %v", err)
 	}
 	fileName := ConfDir + "/master" + id + ".json"
-	err = ioutil.WriteFile(fileName, masterData, 0o644)
+	err = os.WriteFile(fileName, masterData, 0o644)
 	if err != nil {
 		return fmt.Errorf("unable to write %s  %v", fileName, err)
 	}
@@ -99,7 +99,7 @@ func startAllMaster() error {
 		return err
 	}
 
-	files, err := ioutil.ReadDir(ConfDir)
+	files, err := os.ReadDir(ConfDir)
 	if err != nil {
 		return err
 	}
@@ -139,7 +139,7 @@ func startAllMaster() error {
 }
 
 func stopAllMaster() error {
-	files, err := ioutil.ReadDir(ConfDir)
+	files, err := os.ReadDir(ConfDir)
 	if err != nil {
 		return err
 	}

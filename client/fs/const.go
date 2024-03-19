@@ -65,6 +65,11 @@ var (
 	DisableMetaCache = true
 )
 
+var (
+	ctxOperation = proto.ContextWithOperation
+	getSpan      = proto.SpanFromContext
+)
+
 // ParseError returns the error type.
 func ParseError(err error) fuse.Errno {
 	switch v := err.(type) {

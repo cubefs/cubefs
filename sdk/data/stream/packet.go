@@ -158,7 +158,7 @@ func NewCreateExtentPacket(dp *wrapper.DataPartition, inode uint64) *Packet {
 }
 
 // NewReply returns a new reply packet. TODO rename to NewReplyPacket?
-func NewReply(reqID int64, partitionID uint64, extentID uint64) *Packet {
+func NewReply(reqID uint64, partitionID uint64, extentID uint64) *Packet {
 	p := new(Packet)
 	p.ReqID = reqID
 	p.PartitionID = partitionID

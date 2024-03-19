@@ -1164,18 +1164,23 @@ func (ns *nodeSet) removeAutoDecommissionDisk(dd *DecommissionDisk) {
 func (ns *nodeSet) traverseDecommissionDisk(ctx context.Context, c *Cluster) {
 	t := time.NewTicker(DecommissionInterval)
 	// wait for loading all decommissionDisk when reload metadata
-	log.Infof("action[traverseDecommissionDisk]wait %v", ns.ID)
+	span := getSpan(ctx)
+	span.Infof("action[traverseDecommissionDisk]wait %v", ns.ID)
 	<-ns.startDecommissionDiskListTraverse
-	log.Infof("action[traverseDecommissionDisk] traverseDecommissionDisk start %v", ns.ID)
+	span.Infof("action[traverseDecommissionDisk] traverseDecommissionDisk start %v", ns.ID)
 	defer t.Stop()
+
+	rCtx := proto.RoundContext("traverse-d-disk")
 	for {
+		ctx = rCtx()
+		span = getSpan(ctx)
 		select {
 		case <-ns.doneDecommissionDiskListTraverse:
-			log.Warnf("traverse stopped")
+			span.Warnf("traverse stopped")
 			return
 		case <-t.C:
 			if c.partition != nil && !c.partition.IsRaftLeader() {
-				log.Warnf("Leader changed, stop traverse!")
+				span.Warnf("Leader changed, stop traverse!")
 				continue
 			}
 			runningCnt := 0
@@ -1187,7 +1192,7 @@ func (ns *nodeSet) traverseDecommissionDisk(ctx context.Context, c *Cluster) {
 					runningCnt++
 				} else if status == DecommissionSuccess || status == DecommissionFail || status == DecommissionPause {
 					// remove from decommission disk list
-					log.Warnf("traverseDecommissionDisk remove disk %v status %v",
+					span.Warnf("traverseDecommissionDisk remove disk %v status %v",
 						disk.GenerateKey(), disk.GetDecommissionStatus())
 					ns.RemoveDecommissionDisk(disk)
 				}
@@ -1198,7 +1203,7 @@ func (ns *nodeSet) traverseDecommissionDisk(ctx context.Context, c *Cluster) {
 			ns.diskParallelFactorLk.Unlock()
 			if maxDiskDecommissionCnt == 0 && ns.dataNodeLen() != 0 {
 				manualCnt, manualDisks := ns.manualDecommissionDiskList.PopMarkDecommissionDisk(0)
-				log.Debugf("traverseDecommissionDisk traverse manualCnt %v",
+				span.Debugf("traverseDecommissionDisk traverse manualCnt %v",
 					manualCnt)
 				if manualCnt > 0 {
 					for _, disk := range manualDisks {
@@ -1207,7 +1212,7 @@ func (ns *nodeSet) traverseDecommissionDisk(ctx context.Context, c *Cluster) {
 				}
 				if c.AutoDecommissionDiskIsEnabled() {
 					autoCnt, autoDisks := ns.autoDecommissionDiskList.PopMarkDecommissionDisk(0)
-					log.Debugf("traverseDecommissionDisk traverse autoCnt %v",
+					span.Debugf("traverseDecommissionDisk traverse autoCnt %v",
 						autoCnt)
 					if autoCnt > 0 {
 						for _, disk := range autoDisks {
@@ -1217,11 +1222,11 @@ func (ns *nodeSet) traverseDecommissionDisk(ctx context.Context, c *Cluster) {
 				}
 			} else {
 				newDiskDecommissionCnt := maxDiskDecommissionCnt - runningCnt
-				log.Debugf("traverseDecommissionDisk traverse DiskDecommissionCnt %v",
+				span.Debugf("traverseDecommissionDisk traverse DiskDecommissionCnt %v",
 					newDiskDecommissionCnt)
 				if newDiskDecommissionCnt > 0 {
 					manualCnt, manualDisks := ns.manualDecommissionDiskList.PopMarkDecommissionDisk(newDiskDecommissionCnt)
-					log.Debugf("traverseDecommissionDisk traverse manualCnt %v",
+					span.Debugf("traverseDecommissionDisk traverse manualCnt %v",
 						manualCnt)
 					if manualCnt > 0 {
 						for _, disk := range manualDisks {
@@ -1230,7 +1235,7 @@ func (ns *nodeSet) traverseDecommissionDisk(ctx context.Context, c *Cluster) {
 					}
 					if newDiskDecommissionCnt-manualCnt > 0 && c.AutoDecommissionDiskIsEnabled() {
 						autoCnt, autoDisks := ns.autoDecommissionDiskList.PopMarkDecommissionDisk(newDiskDecommissionCnt - manualCnt)
-						log.Debugf("traverseDecommissionDisk traverse autoCnt %v",
+						span.Debugf("traverseDecommissionDisk traverse autoCnt %v",
 							autoCnt)
 						if autoCnt > 0 {
 							for _, disk := range autoDisks {
@@ -2233,21 +2238,24 @@ func (l *DecommissionDataPartitionList) traverse(ctx context.Context, c *Cluster
 	// wait for loading all ap when reload metadata
 	<-l.start
 	defer t.Stop()
+
+	rCtx := proto.RoundContext("traverse")
 	for {
+		ctx = rCtx()
+		span := getSpan(ctx)
 		select {
 		case <-l.done:
-			log.Warnf("traverse stopped!")
+			span.Warn("traverse stopped!")
 			return
 		case <-t.C:
 			if c.partition != nil && !c.partition.IsRaftLeader() {
-				log.Warnf("Leader changed, stop traverse!")
+				span.Warn("Leader changed, stop traverse!")
 				continue
 			}
 			allDecommissionDP := l.GetAllDecommissionDataPartitions()
 			for _, dp := range allDecommissionDP {
 				if dp.IsDecommissionSuccess() {
-					log.Debugf("action[DecommissionListTraverse]Remove dp[%v] for success",
-						dp.PartitionID)
+					span.Debugf("action[DecommissionListTraverse]Remove dp[%v] for success", dp.PartitionID)
 					l.Remove(dp)
 					dp.ReleaseDecommissionToken(ctx, c)
 					dp.ResetDecommissionStatus()
@@ -2255,15 +2263,13 @@ func (l *DecommissionDataPartitionList) traverse(ctx context.Context, c *Cluster
 				} else if dp.IsDecommissionFailed() {
 					if !dp.tryRollback(ctx, c) {
 						dp.restoreReplica(ctx, c)
-						log.Debugf("action[DecommissionListTraverse]Remove dp[%v] for fail",
-							dp.PartitionID)
+						span.Debugf("action[DecommissionListTraverse]Remove dp[%v] for fail", dp.PartitionID)
 						l.Remove(dp)
 					}
 					// rollback fail/success need release token
 					dp.ReleaseDecommissionToken(ctx, c)
 				} else if dp.IsDecommissionPaused() {
-					log.Debugf("action[DecommissionListTraverse]Remove dp[%v] for paused ",
-						dp.PartitionID)
+					span.Debugf("action[DecommissionListTraverse]Remove dp[%v] for paused ", dp.PartitionID)
 					dp.ReleaseDecommissionToken(ctx, c)
 					l.Remove(dp)
 				} else if dp.IsDecommissionInitial() { // fixed done ,not release token

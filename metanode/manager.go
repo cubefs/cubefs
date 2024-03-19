@@ -36,7 +36,6 @@ import (
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/loadutil"
-	"github.com/cubefs/cubefs/util/log"
 )
 
 const (
@@ -128,7 +127,7 @@ func (m *metadataManager) HandleMetadataOperation(conn net.Conn, p *Packet, remo
 	labels := m.getPacketLabels(p)
 	defer func() {
 		metric.SetWithLabels(err, labels)
-		span.AppendTrackLog("handle", start, err)
+		span.AppendTrackLog("handle", start, err, anyDuration)
 		if err != nil {
 			span.Warnf("output (%s), remote %s, err %s", p.String(), remoteAddr, err.Error())
 			return
@@ -430,7 +429,7 @@ func (m *metadataManager) loadPartitions() (err error) {
 	for _, fileInfo := range fileInfoList {
 		if fileInfo.IsDir() && strings.HasPrefix(fileInfo.Name(), partitionPrefix) {
 
-			if isExpiredPartition(fileInfo.Name(), metaNodeInfo.PersistenceMetaPartitions) {
+			if isExpiredPartition(ctx, fileInfo.Name(), metaNodeInfo.PersistenceMetaPartitions) {
 				span.Errorf("loadPartitions: find expired partition[%s], rename it and you can delete it manually",
 					fileInfo.Name())
 				oldName := path.Join(m.rootDir, fileInfo.Name())
@@ -638,8 +637,8 @@ func (m *metadataManager) MarshalJSON() (data []byte, err error) {
 	return json.Marshal(m.partitions)
 }
 
-func (m *metadataManager) QuotaGoroutineIsOver() (lsOver bool) {
-	log.Infof("QuotaGoroutineIsOver cur [%v] max [%v]", m.curQuotaGoroutineNum, m.maxQuotaGoroutineNum)
+func (m *metadataManager) QuotaGoroutineIsOver(ctx context.Context) (lsOver bool) {
+	getSpan(ctx).Infof("QuotaGoroutineIsOver cur [%v] max [%v]", m.curQuotaGoroutineNum, m.maxQuotaGoroutineNum)
 	return atomic.LoadInt32(&m.curQuotaGoroutineNum) >= m.maxQuotaGoroutineNum
 }
 
@@ -677,7 +676,7 @@ func NewMetadataManager(conf MetadataManagerConfig, metaNode *MetaNode) Metadata
 
 // isExpiredPartition return whether one partition is expired
 // if one partition does not exist in master, we decided that it is one expired partition
-func isExpiredPartition(fileName string, partitions []uint64) (expiredPartition bool) {
+func isExpiredPartition(ctx context.Context, fileName string, partitions []uint64) (expiredPartition bool) {
 	if len(partitions) == 0 {
 		return true
 	}
@@ -685,7 +684,7 @@ func isExpiredPartition(fileName string, partitions []uint64) (expiredPartition 
 	partitionId := fileName[len(partitionPrefix):]
 	id, err := strconv.ParseUint(partitionId, 10, 64)
 	if err != nil {
-		log.Warnf("isExpiredPartition: %s, check error [%v], skip this check", partitionId, err)
+		getSpan(ctx).Warnf("isExpiredPartition: %s, check error [%v], skip this check", partitionId, err)
 		return true
 	}
 

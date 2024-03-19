@@ -28,6 +28,7 @@ import (
 	"github.com/samsarahq/thunder/graphql"
 	"github.com/samsarahq/thunder/graphql/introspection"
 
+	"github.com/cubefs/cubefs/blobstore/common/trace"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/config"
 	"github.com/cubefs/cubefs/util/exporter"
@@ -90,11 +91,15 @@ func (m *Server) isFollowerRead(ctx context.Context, r *http.Request) (followerR
 	return
 }
 
-func (m *Server) registerAPIMiddleware(ctx context.Context, route *mux.Router) {
-	span := proto.SpanFromContext(ctx)
+func (m *Server) registerAPIMiddleware(_ context.Context, route *mux.Router) {
 	var interceptor mux.MiddlewareFunc = func(next http.Handler) http.Handler {
 		return http.HandlerFunc(
 			func(w http.ResponseWriter, r *http.Request) {
+				span, ctx := trace.StartSpanFromHTTPHeaderSafe(r, "")
+				defer span.Finish()
+				ctx = proto.ContextWithSpan(ctx, span)
+				r = r.WithContext(ctx)
+
 				span.Debugf("action[interceptor] request, method[%v] path[%v] query[%v]", r.Method, r.URL.Path, r.URL.Query())
 
 				if m.partition.IsRaftLeader() {

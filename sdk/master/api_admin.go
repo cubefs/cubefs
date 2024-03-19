@@ -19,7 +19,6 @@ import (
 	"fmt"
 	"strconv"
 
-	"github.com/cubefs/cubefs/blobstore/util/log"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util"
 )
@@ -432,7 +431,7 @@ func (api *AdminAPI) UploadFlowInfo(ctx context.Context, volName string, flowInf
 	ctx = proto.ContextWithOperation(ctx, "UploadFlowInfo")
 	err = api.mc.requestWith(vv, newRequest(ctx, get, proto.QosUpload).Header(api.h).Body(flowInfo).
 		Param(anyParam{"name", volName}, anyParam{"qosEnable", "true"}))
-	log.Infof("action[UploadFlowInfo] enable %v", vv.Enable)
+	getSpan(ctx).Infof("action[UploadFlowInfo] enable %v", vv.Enable)
 	return
 }
 
@@ -561,11 +560,11 @@ func (api *AdminAPI) ListQuota(ctx context.Context, volName string) (quotaInfo [
 	ctx = proto.ContextWithOperation(ctx, "ListQuota")
 	if err = api.mc.requestWith(resp, newRequest(ctx, get, proto.QuotaList).
 		Header(api.h).addParam("name", volName)); err != nil {
-		log.Errorf("action[ListQuota] fail. %v", err)
+		getSpan(ctx).Errorf("action[ListQuota] fail. %v", err)
 		return
 	}
 	quotaInfo = resp.Quotas
-	log.Infof("action[ListQuota] success.")
+	getSpan(ctx).Infof("action[ListQuota] success.")
 	return quotaInfo, err
 }
 
@@ -576,10 +575,10 @@ func (api *AdminAPI) CreateQuota(ctx context.Context, volName string, quotaPathI
 		anyParam{"name", volName},
 		anyParam{"maxFiles", maxFiles},
 		anyParam{"maxBytes", maxBytes})); err != nil {
-		log.Errorf("action[CreateQuota] fail. %v", err)
+		getSpan(ctx).Errorf("action[CreateQuota] fail. %v", err)
 		return
 	}
-	log.Infof("action[CreateQuota] success.")
+	getSpan(ctx).Infof("action[CreateQuota] success.")
 	return
 }
 
@@ -591,10 +590,10 @@ func (api *AdminAPI) UpdateQuota(ctx context.Context, volName string, quotaId st
 	request.addParam("maxFiles", strconv.FormatUint(maxFiles, 10))
 	request.addParam("maxBytes", strconv.FormatUint(maxBytes, 10))
 	if _, err = api.mc.serveRequest(request); err != nil {
-		log.Errorf("action[UpdateQuota] fail. %v", err)
+		getSpan(ctx).Errorf("action[UpdateQuota] fail. %v", err)
 		return
 	}
-	log.Infof("action[UpdateQuota] success.")
+	getSpan(ctx).Infof("action[UpdateQuota] success.")
 	return nil
 }
 
@@ -604,10 +603,10 @@ func (api *AdminAPI) DeleteQuota(ctx context.Context, volName string, quotaId st
 	request.addParam("name", volName)
 	request.addParam("quotaId", quotaId)
 	if _, err = api.mc.serveRequest(request); err != nil {
-		log.Errorf("action[DeleteQuota] fail. %v", err)
+		getSpan(ctx).Errorf("action[DeleteQuota] fail. %v", err)
 		return
 	}
-	log.Info("action[DeleteQuota] success.")
+	getSpan(ctx).Info("action[DeleteQuota] success.")
 	return nil
 }
 
@@ -616,11 +615,11 @@ func (api *AdminAPI) GetQuota(ctx context.Context, volName string, quotaId strin
 	ctx = proto.ContextWithOperation(ctx, "GetQuota")
 	if err = api.mc.requestWith(info, newRequest(ctx, get, proto.QuotaGet).Header(api.h).
 		Param(anyParam{"name", volName}, anyParam{"quotaId", quotaId})); err != nil {
-		log.Errorf("action[GetQuota] fail. %v", err)
+		getSpan(ctx).Errorf("action[GetQuota] fail. %v", err)
 		return
 	}
 	quotaInfo = info
-	log.Infof("action[GetQuota] %v success.", *quotaInfo)
+	getSpan(ctx).Infof("action[GetQuota] %v success.", *quotaInfo)
 	return quotaInfo, err
 }
 
@@ -667,14 +666,10 @@ func (api *AdminAPI) GetDiscardDataPartition(ctx context.Context) (discardDpInfo
 
 func (api *AdminAPI) SetDataPartitionDiscard(ctx context.Context, partitionId uint64, discard bool) (err error) {
 	ctx = proto.ContextWithOperation(ctx, "SetDataPartitionDiscard")
-	request := newRequest(ctx, post, proto.AdminSetDpDiscard).
-		Header(api.h).
+	request := newRequest(ctx, post, proto.AdminSetDpDiscard).Header(api.h).
 		addParam("id", strconv.FormatUint(partitionId, 10)).
 		addParam("dpDiscard", strconv.FormatBool(discard))
-	if err = api.mc.request(request); err != nil {
-		return
-	}
-	return
+	return api.mc.request(request)
 }
 
 func (api *AdminAPI) DeleteVersion(ctx context.Context, volName string, verSeq string) (err error) {
@@ -719,9 +714,10 @@ func (api *AdminAPI) GetVerList(ctx context.Context, volName string) (verList *p
 	ctx = proto.ContextWithOperation(ctx, "GetVerList")
 	err = api.mc.requestWith(verList, newRequest(ctx, get, proto.AdminGetAllVersionInfo).
 		Header(api.h).addParam("name", volName))
-	log.Debugf("GetVerList. vol %v verList %v", volName, verList)
+	span := getSpan(ctx)
+	span.Debugf("GetVerList. vol %v verList %v", volName, verList)
 	for _, info := range verList.VerList {
-		log.Debugf("GetVerList. vol %v verList %v", volName, info)
+		span.Debugf("GetVerList. vol %v verList %v", volName, info)
 	}
 	return
 }

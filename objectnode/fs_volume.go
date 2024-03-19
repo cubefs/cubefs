@@ -2925,7 +2925,7 @@ func (v *Volume) CopyFile(
 	}
 	// flush
 	if proto.IsCold(v.volType) {
-		err = ebsWriter.FlushWithoutPool(tInodeInfo.Inode, ctx)
+		err = ebsWriter.FlushWithoutPool(ctx, tInodeInfo.Inode)
 	} else {
 		err = v.ec.Flush(ctx, tInodeInfo.Inode)
 	}

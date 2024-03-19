@@ -41,9 +41,11 @@ func newSnapshotManager(ctx context.Context) *snapshotDelManager {
 	return snapshotMgr
 }
 
-func (m *snapshotDelManager) process(ctx context.Context) {
+func (m *snapshotDelManager) process(_ context.Context) {
+	rCtx := proto.RoundContext("snapshot-del")
 	for {
-		span, ctx := proto.SpanContextPrefix("snap-del-")
+		ctx := rCtx()
+		span := getSpan(ctx)
 		select {
 		case <-m.exitCh:
 			span.Info("exitCh notified, snapshotDelManager process exit")

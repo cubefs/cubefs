@@ -21,8 +21,8 @@ import (
 	"encoding/xml"
 	"net/http"
 
-	"github.com/cubefs/cubefs/blobstore/util/log"
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util/log"
 )
 
 const (
