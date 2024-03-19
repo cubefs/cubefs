@@ -575,7 +575,7 @@ func (c *Cluster) scheduleToCheckVolQos() {
 
 func (c *Cluster) scheduleToCheckVolUid() {
 	go func() {
-		//check vols after switching leader two minutes
+		// check vols after switching leader two minutes
 		for {
 			if c.partition.IsRaftLeader() {
 				vols := c.copyVols()
@@ -736,6 +736,9 @@ func (c *Cluster) checkDataNodeHeartbeat() {
 		for _, vol := range c.vols {
 			if vol.Forbidden {
 				hbReq.ForbiddenVols = append(hbReq.ForbiddenVols, vol.Name)
+			}
+			if vol.dpRepairBlockSize != proto.DefaultDpRepairBlockSize {
+				hbReq.VolDpRepairBlockSize[vol.Name] = vol.dpRepairBlockSize
 			}
 		}
 		tasks = append(tasks, task)
@@ -2159,7 +2162,7 @@ func (c *Cluster) decommissionSingleDp(dp *DataPartition, newAddr, offlineAddr s
 						log.LogWarnf("action[decommissionSingleDp] dp %v err:%v", dp.PartitionID, err)
 						goto ERR
 					}
-					if time.Now().Sub(dp.RecoverStartTime) > c.GetDecommissionDataPartitionRecoverTimeOut() {
+					if time.Since(dp.RecoverStartTime) > c.GetDecommissionDataPartitionRecoverTimeOut() {
 						err = fmt.Errorf("action[decommissionSingleDp] dp %v new replica %v repair time out",
 							dp.PartitionID, newAddr)
 						dp.DecommissionNeedRollback = true

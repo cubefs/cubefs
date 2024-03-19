@@ -118,6 +118,7 @@ type Vol struct {
 	authKey                 string
 	DeleteExecTime          time.Time
 	user                    *User
+	dpRepairBlockSize       uint64
 }
 
 func newVol(vv volValue) (vol *Vol) {
@@ -186,6 +187,7 @@ func newVol(vv volValue) (vol *Vol) {
 	vol.mpsLock = newMpsLockManager(vol)
 	vol.EnableAuditLog = true
 	vol.preloadCapacity = math.MaxUint64 // mark as special value to trigger calculate
+	vol.dpRepairBlockSize = proto.DefaultDpRepairBlockSize
 	return
 }
 
@@ -211,6 +213,10 @@ func newVolFromVolValue(vv *volValue) (vol *Vol) {
 	vol.authKey = vv.AuthKey
 	vol.DeleteExecTime = vv.DeleteExecTime
 	vol.user = vv.User
+	vol.dpRepairBlockSize = vv.DpRepairBlockSize
+	if vol.dpRepairBlockSize == 0 {
+		vol.dpRepairBlockSize = proto.DefaultDpRepairBlockSize
+	}
 	return vol
 }
 

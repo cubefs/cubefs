@@ -41,6 +41,7 @@ const (
 	BlockCount          = 1024
 	BlockSize           = 65536 * 2
 	ReadBlockSize       = BlockSize
+	RepairReadBlockSize = 512 * util.KB
 	PerBlockCrcSize     = 4
 	ExtentSize          = BlockCount * BlockSize
 	PacketHeaderSize    = 57
