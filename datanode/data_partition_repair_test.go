@@ -262,13 +262,13 @@ func mockMakeDp(path string) *DataPartition {
 
 func extentStoreNormalRwTest(t *testing.T, s *storage.ExtentStore, id uint64, crc uint32, data []byte) {
 	// append write
-	_, err := s.Write(id, 0, int64(len(data)), data, crc, storage.AppendWriteType, true, false)
+	_, err := s.Write(id, 0, int64(len(data)), data, crc, storage.AppendWriteType, true, false, false)
 	require.NoError(t, err)
 	actualCrc, err := s.Read(id, 0, int64(len(data)), data, false)
 	require.NoError(t, err)
 	require.EqualValues(t, crc, actualCrc)
 	// random write
-	_, err = s.Write(id, 0, int64(len(data)), data, crc, storage.RandomWriteType, true, false)
+	_, err = s.Write(id, 0, int64(len(data)), data, crc, storage.RandomWriteType, true, false, false)
 	require.NoError(t, err)
 	actualCrc, err = s.Read(id, 0, int64(len(data)), data, false)
 	require.NoError(t, err)
@@ -291,19 +291,19 @@ func extentReloadCheckNormalCrc(t *testing.T, s *storage.ExtentStore, id uint64,
 func extentStoreSnapshotRwTest(t *testing.T, s *storage.ExtentStore, id uint64, crc uint32, data []byte) {
 	// append write
 	offset := int64(util.ExtentSize)
-	_, err := s.Write(id, offset, int64(len(data)), data, crc, storage.AppendRandomWriteType, true, false)
+	_, err := s.Write(id, offset, int64(len(data)), data, crc, storage.AppendRandomWriteType, true, false, false)
 	require.NoError(t, err)
 
-	_, err = s.Write(id, 0, int64(len(data)), data, crc, storage.AppendRandomWriteType, true, false)
+	_, err = s.Write(id, 0, int64(len(data)), data, crc, storage.AppendRandomWriteType, true, false, false)
 	assert.True(t, err != nil)
-	_, err = s.Write(id, offset, int64(len(data)), data, crc, storage.AppendWriteType, true, false)
+	_, err = s.Write(id, offset, int64(len(data)), data, crc, storage.AppendWriteType, true, false, false)
 	assert.True(t, err != nil)
 
 	actualCrc, err := s.Read(id, offset, int64(len(data)), data, false)
 	require.NoError(t, err)
 	require.EqualValues(t, crc, actualCrc)
 	// random write
-	_, err = s.Write(id, offset, int64(len(data)), data, crc, storage.RandomWriteType, true, false)
+	_, err = s.Write(id, offset, int64(len(data)), data, crc, storage.RandomWriteType, true, false, false)
 	require.NoError(t, err)
 	actualCrc, err = s.Read(id, offset, int64(len(data)), data, false)
 	require.NoError(t, err)
@@ -311,7 +311,7 @@ func extentStoreSnapshotRwTest(t *testing.T, s *storage.ExtentStore, id uint64, 
 	// TODO: append random write
 	require.NotEqualValues(t, s.GetStoreUsedSize(), 0)
 
-	_, err = s.Write(id, offset, int64(len(data)), data, crc, storage.AppendRandomWriteType, true, false)
+	_, err = s.Write(id, offset, int64(len(data)), data, crc, storage.AppendRandomWriteType, true, false, false)
 	require.NoError(t, err)
 
 	// extent crc check
@@ -323,7 +323,7 @@ func extentStoreSnapshotRwTest(t *testing.T, s *storage.ExtentStore, id uint64, 
 
 	// check
 	offset = int64(util.ExtentSize)*2 + util.BlockSize
-	_, err = s.Write(id, offset, int64(len(data)), data, crc, storage.AppendRandomWriteType, true, false)
+	_, err = s.Write(id, offset, int64(len(data)), data, crc, storage.AppendRandomWriteType, true, false, false)
 	require.NoError(t, err)
 
 	e, err = s.LoadExtentFromDisk(id, true)
@@ -345,14 +345,14 @@ func extentReloadCheckSnapshotCrc(t *testing.T, path string, id uint64, crc uint
 	e, err = s.LoadExtentFromDisk(id, true)
 	assert.True(t, err == nil)
 	extCrc := e.GetCrc(offset / util.BlockSize)
-	assert.True(t, crc == extCrc)
+	require.EqualValues(t, crc, extCrc)
 
 	// check
 	offset = int64(util.ExtentSize)*2 + util.BlockSize
 	e, err = s.LoadExtentFromDisk(id, true)
 	assert.True(t, err == nil)
 	extCrc = e.GetCrc(offset / util.BlockSize)
-	assert.True(t, crc == extCrc)
+	require.EqualValues(t, crc, extCrc)
 	extCrc = e.GetCrc(offset/util.BlockSize + 1)
 	assert.True(t, 0 == extCrc)
 	return s
@@ -395,12 +395,13 @@ func genDataAndGetCrc(repeatWord string, size int) (data []byte, crc uint32) {
 }
 
 func workerInit(t *testing.T, id uint64, data []byte, crc uint32) {
+	_ = id
+	_ = data
+	_ = crc
 	sendWorker = mockInitWorker(t, "sender")
 	recvWorker = mockInitWorker(t, "receiver")
 	sendWorker.dstWorker = recvWorker
 	recvWorker.dstWorker = sendWorker
-
-	return
 }
 
 func senderRepairWorker(t *testing.T, exitCh chan struct{}) {
@@ -528,6 +529,24 @@ func TestExtentRepair(t *testing.T) {
 	}()
 	testDoNormalRepair(t, normalId, data, crc, true)
 
+	data, crc = genDataAndGetCrc("snapshot", util.BlockSize)
+	testDoSnapshotRepair(t, normalId, data, crc, false)
+}
+
+func TestExtentRepair_512KB(t *testing.T) {
+	proto.InitBufferPool(int64(32768))
+	t.Logf("TestExtentRepair_512KB initWorker")
+	normalId := uint64(1025)
+	data, crc := genDataAndGetCrc("normal", util.BlockSize)
+	workerInit(t, normalId, data, crc)
+	// NOTE: set repair size to 512KB
+	sendWorker.dp.SetRepairBlockSize(512 * util.KB)
+	t.Logf("Repair size is %v", sendWorker.dp.GetRepairBlockSize())
+	defer func() {
+		os.RemoveAll(filepath.Dir(sendWorker.dp.path))
+		os.RemoveAll(filepath.Dir(recvWorker.dp.path))
+	}()
+	testDoNormalRepair(t, normalId, data, crc, true)
 	data, crc = genDataAndGetCrc("snapshot", util.BlockSize)
 	testDoSnapshotRepair(t, normalId, data, crc, false)
 }

@@ -148,6 +148,18 @@ func (dp *DataPartition) SetForbidden(status bool) {
 	dp.config.Forbidden = status
 }
 
+func (dp *DataPartition) GetRepairBlockSize() (size uint64) {
+	size = dp.config.DpRepairBlockSize
+	if size == 0 {
+		size = proto.DefaultDpRepairBlockSize
+	}
+	return
+}
+
+func (dp *DataPartition) SetRepairBlockSize(size uint64) {
+	dp.config.DpRepairBlockSize = size
+}
+
 func CreateDataPartition(dpCfg *dataPartitionCfg, disk *Disk, request *proto.CreateDataPartitionRequest) (dp *DataPartition, err error) {
 	if dp, err = newDataPartition(dpCfg, disk, true); err != nil {
 		return
@@ -894,7 +906,9 @@ func (dp *DataPartition) DoExtentStoreRepair(repairTask *DataPartitionRepairTask
 		recoverIndex int
 	)
 	wg = new(sync.WaitGroup)
+	log.LogInfof("[DoExtentStoreRepair] dp(%v) start repair extents len(%v)", dp.partitionID, len(repairTask.extents))
 	for _, extentInfo := range repairTask.ExtentsToBeRepaired {
+		log.LogInfof("[DoExtentStoreRepair] dp(%v) repiar extent(%v)", dp.partitionID, extentInfo)
 		if dp.dataNode.space.Partition(dp.partitionID) == nil {
 			log.LogWarnf("DoExtentStoreRepair dp %v is detached, quit repair",
 				dp.partitionID)

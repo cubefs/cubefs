@@ -743,6 +743,9 @@ func (c *Cluster) checkDataNodeHeartbeat() {
 			if vol.Forbidden {
 				hbReq.ForbiddenVols = append(hbReq.ForbiddenVols, vol.Name)
 			}
+			if vol.dpRepairBlockSize != proto.DefaultDpRepairBlockSize {
+				hbReq.VolDpRepairBlockSize[vol.Name] = vol.dpRepairBlockSize
+			}
 		}
 		tasks = append(tasks, task)
 		return true

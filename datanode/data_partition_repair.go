@@ -502,8 +502,11 @@ func (dp *DataPartition) ExtentWithHoleRepairRead(request repl.PacketInterface, 
 			continue
 		}
 		currNeedReplySize := newEnd - newOffset
-		currReadSize := uint32(util.Min(int(currNeedReplySize), util.ReadBlockSize))
-		if currReadSize == util.ReadBlockSize {
+		currReadSize := uint32(util.Min(int(currNeedReplySize), int(dp.GetRepairBlockSize())))
+		if currReadSize == util.RepairReadBlockSize {
+			data, _ := proto.Buffers.Get(util.RepairReadBlockSize)
+			reply.SetData(data)
+		} else if currReadSize == util.ReadBlockSize {
 			data, _ := proto.Buffers.Get(util.ReadBlockSize)
 			reply.SetData(data)
 		} else {
@@ -558,9 +561,22 @@ func (dp *DataPartition) NormalExtentRepairRead(p repl.PacketInterface, connect 
 		err = nil
 		reply := makeRspPacket(p.GetReqID(), p.GetPartitionID(), p.GetExtentID())
 		reply.SetStartT(p.GetStartT())
-		currReadSize := uint32(util.Min(int(needReplySize), util.ReadBlockSize))
-		if currReadSize == util.ReadBlockSize {
-			data, _ := proto.Buffers.Get(util.ReadBlockSize)
+		currReadSize := uint32(util.Min(int(needReplySize), int(dp.GetRepairBlockSize())))
+		if currReadSize == util.RepairReadBlockSize {
+			var data []byte
+			data, err = proto.Buffers.Get(util.RepairReadBlockSize)
+			if err != nil {
+				log.LogErrorf("[NormalExtentRepairRead] dp(%v) failed to get repair data, err(%v)", dp.partitionID, err)
+				return
+			}
+			reply.SetData(data)
+		} else if currReadSize == util.BlockSize {
+			var data []byte
+			data, err = proto.Buffers.Get(util.BlockSize)
+			if err != nil {
+				log.LogErrorf("[NormalExtentRepairRead] dp(%v) failed to get repair data, err(%v)", dp.partitionID, err)
+				return
+			}
 			reply.SetData(data)
 		} else {
 			reply.SetData(make([]byte, currReadSize))
@@ -824,7 +840,7 @@ func (dp *DataPartition) streamRepairExtent(remoteExtentInfo *storage.ExtentInfo
 				}
 			} else {
 				log.LogDebugf("streamRepairExtent reply size %v, currFixoffset %v, reply %v ", reply.GetSize(), currFixOffset, reply)
-				_, err = store.Write(uint64(localExtentInfo.FileID), int64(currFixOffset), int64(reply.GetSize()), reply.GetData(), reply.GetCRC(), wType, BufferWrite, isEmptyResponse)
+				_, err = store.Write(uint64(localExtentInfo.FileID), int64(currFixOffset), int64(reply.GetSize()), reply.GetData(), reply.GetCRC(), wType, BufferWrite, isEmptyResponse, true)
 			}
 			// log.LogDebugf("streamRepairExtent reply size %v, currFixoffset %v, reply %v err %v", reply.Size, currFixOffset, reply, err)
 			// write to the local extent file

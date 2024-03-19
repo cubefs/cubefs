@@ -30,6 +30,7 @@ import (
 
 	"github.com/cubefs/cubefs/master/mocktest"
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/compressor"
 	"github.com/cubefs/cubefs/util/config"
 	"github.com/cubefs/cubefs/util/log"
@@ -1483,4 +1484,49 @@ func TestVolumeEnableAuditLog(t *testing.T) {
 	process(enableUrl, t)
 	require.True(t, vol.EnableAuditLog)
 	require.True(t, checkVolAuditLog(name, true))
+}
+
+func checkVolDpRepairBlockSize(name string, size uint64) (success bool) {
+	dataChecker := func(dp *mocktest.MockDataPartition) (ok bool) {
+		return dp.GetDpRepairBlockSize() == size
+	}
+	for i := 0; i < volPartitionCheckTimeout; i++ {
+		okCount := 0
+		count, _ := rangeMockDataServers(func(mds *mocktest.MockDataServer) bool {
+			if mds.CheckVolPartition(name, dataChecker) {
+				okCount++
+			}
+			return true
+		})
+		if count == okCount {
+			success = true
+			break
+		}
+		time.Sleep(1 * time.Second)
+	}
+	return
+}
+
+func TestSetVolumeDpRepairBlockSize(t *testing.T) {
+	name := "dpRepairBlockSizeVol"
+	createVol(map[string]interface{}{nameKey: name}, t)
+	vol, err := server.cluster.getVol(name)
+	if err != nil {
+		t.Errorf("failed to get vol %v, err %v", name, err)
+		return
+	}
+	defer func() {
+		reqURL := fmt.Sprintf("%v%v?name=%v&authKey=%v", hostAddr, proto.AdminDeleteVol, name, buildAuthKey(testOwner))
+		process(reqURL, t)
+	}()
+	reqUrl := fmt.Sprintf("%v%v", hostAddr, proto.AdminVolSetDpRepairBlockSize)
+	repairSize := 1 * util.MB
+	setUrl := fmt.Sprintf("%v?name=%v&%v=%v", reqUrl, vol.Name, dpRepairBlockSizeKey, repairSize)
+	unsetUrl := fmt.Sprintf("%v?name=%v&%v=%v", reqUrl, vol.Name, dpRepairBlockSizeKey, proto.DefaultDpRepairBlockSize)
+	process(setUrl, t)
+	require.EqualValues(t, repairSize, vol.dpRepairBlockSize)
+	require.True(t, checkVolDpRepairBlockSize(name, uint64(repairSize)))
+	process(unsetUrl, t)
+	require.EqualValues(t, proto.DefaultDpRepairBlockSize, vol.dpRepairBlockSize)
+	require.True(t, checkVolDpRepairBlockSize(name, proto.DefaultDpRepairBlockSize))
 }

@@ -49,6 +49,7 @@ const (
 	AdminVolExpand                            = "/vol/expand"
 	AdminVolForbidden                         = "/vol/forbidden"
 	AdminVolEnableAuditLog                    = "/vol/auditlog"
+	AdminVolSetDpRepairBlockSize              = "/vol/setDpRepairBlockSize"
 	AdminCreateVol                            = "/admin/createVol"
 	AdminGetVol                               = "/admin/getVol"
 	AdminClusterFreeze                        = "/cluster/freeze"
@@ -683,9 +684,10 @@ type HeartBeatRequest struct {
 	UidLimitToMetaNode
 	QuotaHeartBeatInfos
 	TxInfos
-	ForbiddenVols     []string
-	DisableAuditVols  []string
-	DecommissionDisks []string // NOTE: for datanode
+	ForbiddenVols        []string
+	DisableAuditVols     []string
+	DecommissionDisks    []string // NOTE: for datanode
+	VolDpRepairBlockSize map[string]uint64
 }
 
 // DataPartitionReport defines the partition report.
@@ -1085,10 +1087,11 @@ type SimpleVolView struct {
 	PreloadCapacity  uint64
 	Uids             []UidSimpleInfo
 	// multi version snapshot
-	LatestVer      uint64
-	Forbidden      bool
-	EnableAuditLog bool
-	DeleteExecTime time.Time
+	LatestVer         uint64
+	Forbidden         bool
+	EnableAuditLog    bool
+	DeleteExecTime    time.Time
+	DpRepairBlockSize uint64
 }
 
 type NodeSetInfo struct {
