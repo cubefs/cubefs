@@ -764,6 +764,9 @@ func (dp *DataPartition) statusUpdate() {
 	if dp.isNormalType() && dp.extentStore.GetExtentCount() >= storage.MaxExtentCount {
 		status = proto.ReadOnly
 	}
+	if dp.disk.Status == proto.ReadOnly {
+		status = proto.ReadOnly
+	}
 	if dp.isNormalType() && dp.raftStatus == RaftStatusStopped {
 		// dp is still recovering
 		if dp.DataPartitionCreateType == proto.DecommissionedCreateDataPartition {
