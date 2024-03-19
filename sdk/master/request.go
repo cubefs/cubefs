@@ -44,6 +44,19 @@ func (r *request) addBody(body []byte) {
 	r.body = body
 }
 
+func (r *request) Header(headers map[string]string, added ...string) *request {
+	if len(added)%2 == 1 {
+		added = added[:len(added)-1]
+	}
+	for k, v := range headers {
+		r.header[k] = v
+	}
+	for idx := 0; idx < len(added); idx += 2 {
+		r.header[added[idx]] = added[idx+1]
+	}
+	return r
+}
+
 func newAPIRequest(method string, path string) *request {
 	req := &request{
 		method: method,
@@ -55,4 +68,18 @@ func newAPIRequest(method string, path string) *request {
 	req.header["User-Agent"] = ReqHeaderUA
 
 	return req
+}
+
+func mergeHeader(headers map[string]string, added ...string) map[string]string {
+	if len(added)%2 == 1 {
+		added = added[:len(added)-1]
+	}
+	copied := make(map[string]string, len(headers)+len(added)/2)
+	for k, v := range headers {
+		copied[k] = v
+	}
+	for idx := 0; idx < len(added); idx += 2 {
+		copied[added[idx]] = added[idx+1]
+	}
+	return copied
 }

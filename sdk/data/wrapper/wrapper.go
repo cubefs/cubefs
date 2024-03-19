@@ -366,7 +366,7 @@ func (w *Wrapper) updateDataPartition(isInit bool) (err error) {
 		return
 	}
 	var dpv *proto.DataPartitionsView
-	if dpv, err = w.mc.ClientAPI().GetDataPartitions(w.volName); err != nil {
+	if dpv, err = w.mc.ClientAPI().EncodingGzip().GetDataPartitions(w.volName); err != nil {
 		log.LogErrorf("updateDataPartition: get data partitions fail: volume(%v) err(%v)", w.volName, err)
 		return
 	}

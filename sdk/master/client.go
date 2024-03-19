@@ -27,11 +27,15 @@ import (
 	"time"
 
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util/compressor"
 	"github.com/cubefs/cubefs/util/log"
 )
 
 const (
-	requestTimeout = 30 * time.Second
+	requestTimeout        = 30 * time.Second
+	encodingGzip          = compressor.EncodingGzip
+	headerAcceptEncoding  = proto.HeaderAcceptEncoding
+	headerContentEncoding = proto.HeaderContentEncoding
 )
 
 var (
@@ -166,6 +170,11 @@ func (c *MasterClient) serveRequest(r *request) (repsData []byte, err error) {
 			if leaderAddr != host {
 				log.LogDebugf("server Request resp new master[%v] old [%v]", host, leaderAddr)
 				c.SetLeader(host)
+			}
+			repsData, err = compressor.New(resp.Header.Get(headerContentEncoding)).Decompress(repsData)
+			if err != nil {
+				log.LogErrorf("serveRequest: decompress response body fail: err(%v)", err)
+				return nil, fmt.Errorf("decompress response body err:%v", err)
 			}
 			var body = &struct {
 				Code int32           `json:"code"`
