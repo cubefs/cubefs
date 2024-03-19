@@ -27,7 +27,6 @@ const (
 )
 
 func (s *Super) InodeGet(ctx context.Context, ino uint64) (*proto.InodeInfo, error) {
-	span := proto.SpanFromContext(ctx)
 	info := s.ic.Get(ino)
 	if info != nil {
 		return info, nil
@@ -35,7 +34,7 @@ func (s *Super) InodeGet(ctx context.Context, ino uint64) (*proto.InodeInfo, err
 
 	info, err := s.mw.InodeGet_ll(ctx, ino)
 	if err != nil || info == nil {
-		span.Errorf("InodeGet: ino(%v) err(%v) info(%v)", ino, err, info)
+		getSpan(ctx).Errorf("InodeGet: ino(%v) err(%v) info(%v)", ino, err, info)
 		if err != nil {
 			return nil, ParseError(err)
 		} else {

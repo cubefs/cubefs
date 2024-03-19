@@ -393,9 +393,10 @@ func (c *Cluster) tryToChangeLeaderByHost() error {
 
 func (c *Cluster) scheduleToUpdateStatInfo(ctx context.Context) {
 	go func() {
+		rCtx := proto.RoundContext("update-statinfo")
 		for {
 			if c.partition != nil && c.partition.IsRaftLeader() {
-				c.updateStatInfo(ctx)
+				c.updateStatInfo(rCtx())
 			}
 			time.Sleep(2 * time.Minute)
 		}
@@ -431,7 +432,7 @@ func (c *Cluster) IsLeader() bool {
 	return false
 }
 
-func (c *Cluster) scheduleToManageDp(ctx context.Context) {
+func (c *Cluster) scheduleToManageDp(_ context.Context) {
 	go func() {
 		// check volumes after switching leader two minutes
 		time.Sleep(2 * time.Minute)
@@ -442,22 +443,18 @@ func (c *Cluster) scheduleToManageDp(ctx context.Context) {
 	go func() {
 		time.Sleep(2 * time.Minute)
 
+		rCtx := proto.RoundContext("manage-dp")
 		for {
-
+			ctx := rCtx()
 			if c.partition != nil && c.partition.IsRaftLeader() {
-
 				vols := c.copyVols()
-
 				for _, vol := range vols {
-
 					if proto.IsHot(vol.VolType) {
 						continue
 					}
-
 					vol.autoDeleteDp(ctx, c)
 				}
 			}
-
 			time.Sleep(2 * time.Minute)
 		}
 	}()
@@ -465,19 +462,22 @@ func (c *Cluster) scheduleToManageDp(ctx context.Context) {
 
 func (c *Cluster) scheduleToCheckDataPartitions(ctx context.Context) {
 	go func() {
+		rCtx := proto.RoundContext("check-dp")
 		for {
 			if c.partition != nil && c.partition.IsRaftLeader() {
-				c.checkDataPartitions(ctx)
+				c.checkDataPartitions(rCtx())
 			}
 			time.Sleep(time.Second * time.Duration(c.cfg.IntervalToCheckDataPartition))
 		}
 	}()
 }
 
-func (c *Cluster) scheduleToCheckVolStatus(ctx context.Context) {
+func (c *Cluster) scheduleToCheckVolStatus(_ context.Context) {
 	go func() {
 		// check vols after switching leader two minutes
+		rCtx := proto.RoundContext("check-volume-status")
 		for {
+			ctx := rCtx()
 			if c.partition.IsRaftLeader() {
 				vols := c.copyVols()
 				for _, vol := range vols {
@@ -490,9 +490,11 @@ func (c *Cluster) scheduleToCheckVolStatus(ctx context.Context) {
 	}()
 }
 
-func (c *Cluster) scheduleToCheckFollowerReadCache(ctx context.Context) {
+func (c *Cluster) scheduleToCheckFollowerReadCache(_ context.Context) {
 	go func() {
+		rCtx := proto.RoundContext("check-follower-readcache")
 		for {
+			ctx := rCtx()
 			if !c.partition.IsRaftLeader() {
 				c.followerReadManager.getVolumeDpView(ctx)
 				c.followerReadManager.checkStatus(ctx)
@@ -504,10 +506,12 @@ func (c *Cluster) scheduleToCheckFollowerReadCache(ctx context.Context) {
 	}()
 }
 
-func (c *Cluster) scheduleToCheckVolQos(ctx context.Context) {
+func (c *Cluster) scheduleToCheckVolQos(_ context.Context) {
 	go func() {
 		// check vols after switching leader two minutes
+		rCtx := proto.RoundContext("check-volume-qos")
 		for {
+			ctx := rCtx()
 			if c.partition.IsRaftLeader() {
 				vols := c.copyVols()
 				for _, vol := range vols {
@@ -520,13 +524,15 @@ func (c *Cluster) scheduleToCheckVolQos(ctx context.Context) {
 	}()
 }
 
-func (c *Cluster) scheduleToCheckNodeSetGrpManagerStatus(ctx context.Context) {
+func (c *Cluster) scheduleToCheckNodeSetGrpManagerStatus(_ context.Context) {
 	go func() {
+		rCtx := proto.RoundContext("check-nodeset")
 		for {
 			if c.FaultDomain == false || !c.partition.IsRaftLeader() {
 				time.Sleep(time.Minute)
 				continue
 			}
+			ctx := rCtx()
 			c.domainManager.checkAllGrpState(ctx)
 			c.domainManager.checkExcludeZoneState(ctx)
 			time.Sleep(5 * time.Second)
@@ -536,9 +542,10 @@ func (c *Cluster) scheduleToCheckNodeSetGrpManagerStatus(ctx context.Context) {
 
 func (c *Cluster) scheduleToLoadDataPartitions(ctx context.Context) {
 	go func() {
+		rCtx := proto.RoundContext("load-dp")
 		for {
 			if c.partition != nil && c.partition.IsRaftLeader() {
-				c.doLoadDataPartitions(ctx)
+				c.doLoadDataPartitions(rCtx())
 			}
 			time.Sleep(time.Second * 5)
 		}
@@ -594,9 +601,10 @@ func (c *Cluster) doLoadDataPartitions(ctx context.Context) {
 
 func (c *Cluster) scheduleToCheckReleaseDataPartitions(ctx context.Context) {
 	go func() {
+		rCtx := proto.RoundContext("release-dp")
 		for {
 			if c.partition != nil && c.partition.IsRaftLeader() {
-				c.releaseDataPartitionAfterLoad(ctx)
+				c.releaseDataPartitionAfterLoad(rCtx())
 			}
 			time.Sleep(time.Second * defaultIntervalToFreeDataPartition)
 		}
@@ -621,10 +629,11 @@ func (c *Cluster) releaseDataPartitionAfterLoad(ctx context.Context) {
 
 func (c *Cluster) scheduleToCheckHeartbeat(ctx context.Context) {
 	go func() {
+		rCtx := proto.RoundContext("heartbeat-datanode")
 		for {
 			if c.partition != nil && c.partition.IsRaftLeader() {
 				c.checkLeaderAddr()
-				c.checkDataNodeHeartbeat(ctx)
+				c.checkDataNodeHeartbeat(rCtx())
 				// update load factor
 				setOverSoldFactor(c.cfg.ClusterLoadFactor)
 			}
@@ -633,18 +642,20 @@ func (c *Cluster) scheduleToCheckHeartbeat(ctx context.Context) {
 	}()
 
 	go func() {
+		rCtx := proto.RoundContext("heartbeat-metanode")
 		for {
 			if c.partition != nil && c.partition.IsRaftLeader() {
-				c.checkMetaNodeHeartbeat(ctx)
+				c.checkMetaNodeHeartbeat(rCtx())
 			}
 			time.Sleep(time.Second * defaultIntervalToCheckHeartbeat)
 		}
 	}()
 
 	go func() {
+		rCtx := proto.RoundContext("heartbeat-lcnode")
 		for {
 			if c.partition != nil && c.partition.IsRaftLeader() {
-				c.checkLcNodeHeartbeat(ctx)
+				c.checkLcNodeHeartbeat(rCtx())
 			}
 			time.Sleep(time.Second * defaultIntervalToCheckHeartbeat)
 		}
@@ -755,9 +766,10 @@ func (c *Cluster) checkLcNodeHeartbeat(ctx context.Context) {
 
 func (c *Cluster) scheduleToCheckMetaPartitions(ctx context.Context) {
 	go func() {
+		rCtx := proto.RoundContext("check-mp")
 		for {
 			if c.partition != nil && c.partition.IsRaftLeader() {
-				c.checkMetaPartitions(ctx)
+				c.checkMetaPartitions(rCtx())
 			}
 			time.Sleep(time.Second * time.Duration(c.cfg.IntervalToCheckDataPartition))
 		}
@@ -781,9 +793,10 @@ func (c *Cluster) checkMetaPartitions(ctx context.Context) {
 
 func (c *Cluster) scheduleToReduceReplicaNum(ctx context.Context) {
 	go func() {
+		rCtx := proto.RoundContext("reduce-replica")
 		for {
 			if c.partition != nil && c.partition.IsRaftLeader() {
-				c.checkVolReduceReplicaNum(ctx)
+				c.checkVolReduceReplicaNum(rCtx())
 			}
 			time.Sleep(5 * time.Minute)
 		}
@@ -815,10 +828,11 @@ func (c *Cluster) getInvalidIDNodes() (nodes []*InvalidNodeView) {
 
 func (c *Cluster) scheduleToCheckDataReplicas(ctx context.Context) {
 	go func() {
+		rCtx := proto.RoundContext("check-data-replicas")
 		for {
 			if c.checkDataReplicasEnable {
 				if c.partition != nil && c.partition.IsRaftLeader() {
-					c.checkDataReplicas(ctx)
+					c.checkDataReplicas(rCtx())
 				}
 			}
 			time.Sleep(1 * time.Minute)
@@ -3844,9 +3858,10 @@ func (c *Cluster) clearMetaNodes() {
 
 func (c *Cluster) scheduleToCheckDecommissionDataNode(ctx context.Context) {
 	go func() {
+		rCtx := proto.RoundContext("check-d-datanode")
 		for {
 			if c.partition.IsRaftLeader() && c.metaReady {
-				c.checkDecommissionDataNode(ctx)
+				c.checkDecommissionDataNode(rCtx())
 			}
 			time.Sleep(10 * time.Second)
 		}
@@ -4095,9 +4110,10 @@ func (c *Cluster) restoreStoppedAutoDecommissionDisk(ctx context.Context, nodeAd
 
 func (c *Cluster) scheduleToCheckDecommissionDisk(ctx context.Context) {
 	go func() {
+		rCtx := proto.RoundContext("check-d-disk")
 		for {
 			if c.partition.IsRaftLeader() && c.metaReady {
-				c.checkDecommissionDisk(ctx)
+				c.checkDecommissionDisk(rCtx())
 			}
 			time.Sleep(10 * time.Second)
 		}
@@ -4130,16 +4146,17 @@ func (c *Cluster) checkDecommissionDisk(ctx context.Context) {
 
 func (c *Cluster) scheduleToBadDisk(ctx context.Context) {
 	go func() {
+		rCtx := proto.RoundContext("check-bad-disk")
 		for {
 			if c.partition.IsRaftLeader() {
-				c.checkBadDisk()
+				c.checkBadDisk(rCtx())
 			}
 			time.Sleep(10 * time.Second)
 		}
 	}()
 }
 
-func (c *Cluster) checkBadDisk() {
+func (c *Cluster) checkBadDisk(ctx context.Context) {
 	c.dataNodes.Range(func(addr, node interface{}) bool {
 		//TODO add to auto decommission disk
 		//dataNode, ok := node.(*DataNode)
@@ -4523,6 +4540,7 @@ func (c *Cluster) delLcNode(ctx context.Context, nodeAddr string) (err error) {
 
 func (c *Cluster) scheduleToLcScan(ctx context.Context) {
 	go func() {
+		rCtx := proto.RoundContext("start-lc-scan")
 		for {
 			now := time.Now()
 			next := now.Add(time.Hour * 24)
@@ -4530,7 +4548,7 @@ func (c *Cluster) scheduleToLcScan(ctx context.Context) {
 			t := time.NewTimer(next.Sub(now))
 			<-t.C
 			if c.partition != nil && c.partition.IsRaftLeader() {
-				c.startLcScan(ctx)
+				c.startLcScan(rCtx())
 			}
 		}
 	}()
@@ -4554,8 +4572,10 @@ func (c *Cluster) scheduleToSnapshotDelVerScan(ctx context.Context) {
 	waitTime := time.Second * defaultIntervalToCheck
 	waited := false
 	go func() {
+		rCtx := proto.RoundContext("snapshot-del-ver-scan")
 		for {
-			span, ctx := proto.SpanContextPrefix("snap-del-ver-scan-")
+			ctx := rCtx()
+			span := getSpan(ctx)
 			if c.partition != nil && c.partition.IsRaftLeader() {
 				if !waited {
 					span.Infof("wait for %v seconds once after becoming leader to make sure all the ver deleting tasks are resumed",

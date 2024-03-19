@@ -51,6 +51,11 @@ func TestPacketContext(t *testing.T) {
 	span9, ctx9 := SpanWithContextPrefix(ctx6, "test2-")
 	require.NotEqual(t, span6.TraceID(), SpanFromContext(ctx9).TraceID())
 	require.NotEqual(t, span6.TraceID(), span9.TraceID())
+
+	round := RoundContext("testing")
+	for range [3]struct{}{} {
+		t.Log("operation of round:", SpanFromContext(round()).OperationName())
+	}
 }
 
 func TestPacketWithContext(t *testing.T) {

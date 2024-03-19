@@ -81,7 +81,7 @@ func (mp *metaPartition) txInitToRm(txInfo *proto.TransactionInfo, p *Packet) {
 			TransactionInfo: txInfo,
 		}
 
-		pkt, _ := buildTxPacket(req, mpId, proto.OpMetaTxCreate)
+		pkt, _ := buildTxPacket(p.Context(), req, mpId, proto.OpMetaTxCreate)
 		members := ifo.Members
 		wg.Add(1)
 		go func() {

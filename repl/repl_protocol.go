@@ -59,7 +59,7 @@ type ReplProtocol struct {
 	putSmuxConn func(conn net.Conn, force bool)
 
 	isError int32
-	replId  int64
+	replId  uint64
 }
 
 type FollowerTransport struct {

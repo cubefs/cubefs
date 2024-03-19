@@ -39,7 +39,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/cubefs/cubefs/blobstore/util/log"
 	"github.com/cubefs/cubefs/blockcache/bcache"
 	cfs "github.com/cubefs/cubefs/client/fs"
 	"github.com/cubefs/cubefs/depends/bazil.org/fuse"
@@ -52,6 +51,7 @@ import (
 	"github.com/cubefs/cubefs/util/config"
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/exporter"
+	"github.com/cubefs/cubefs/util/log"
 	"github.com/cubefs/cubefs/util/stat"
 	sysutil "github.com/cubefs/cubefs/util/sys"
 	"github.com/cubefs/cubefs/util/ump"
@@ -308,14 +308,11 @@ func main() {
 	}
 	// use uber automaxprocs: get real cpu number to k8s pod"
 
-	level := parseLogLevel(opt.Loglvl)
+	level := log.ParseLevel(opt.Loglvl, log.Lerror)
 	log.SetOutputLevel(level)
 	log.SetOutput(&lumberjack.Logger{
-		Filename:   path.Join(opt.Logpath, opt.Volname, opt.Volname+".log"),
-		MaxSize:    1024,
-		MaxAge:     7,
-		MaxBackups: 7,
-		LocalTime:  true,
+		Filename: path.Join(opt.Logpath, opt.Volname, opt.Volname+".log"),
+		MaxSize:  1024, MaxAge: 7, MaxBackups: 7, LocalTime: true,
 	})
 	if err != nil {
 		err = errors.NewErrorf("Init log dir fail: %v\n", err)
@@ -643,12 +640,12 @@ func mount(opt *proto.MountOptions) (fsConn *fuse.Conn, super *cfs.Super, err er
 		t := time.NewTicker(UpdateConfInterval)
 		defer t.Stop()
 		for range t.C {
-			log.Debugf("UpdateVolConf: load conf from master")
-			_, ctx := proto.SpanContextPrefix("mount-")
+			span, ctx := proto.SpanContextPrefix("mount-")
+			span.Debug("UpdateVolConf: load conf from master")
 			var volumeInfo *proto.SimpleVolView
 			volumeInfo, err = mc.AdminAPI().GetVolumeSimpleInfo(ctx, opt.Volname)
 			if err != nil {
-				log.Errorf("UpdateVolConf: get vol info from master failed, err %s", err.Error())
+				span.Errorf("UpdateVolConf: get vol info from master failed, err %s", err.Error())
 				if err == proto.ErrVolNotExists {
 					daemonize.SignalOutcome(err)
 					os.Exit(1)
@@ -657,11 +654,11 @@ func mount(opt *proto.MountOptions) (fsConn *fuse.Conn, super *cfs.Super, err er
 			}
 			if volumeInfo.Status == proto.VolStatusMarkDelete {
 				err = fmt.Errorf("vol [%s] has been deleted, stop client", volumeInfo.Name)
-				log.Error(err)
+				span.Error(err)
 				daemonize.SignalOutcome(err)
 				os.Exit(1)
 			}
-			super.SetTransaction(volumeInfo.EnableTransaction, volumeInfo.TxTimeout, volumeInfo.TxConflictRetryNum, volumeInfo.TxConflictRetryInterval)
+			super.SetTransaction(ctx, volumeInfo.EnableTransaction, volumeInfo.TxTimeout, volumeInfo.TxConflictRetryNum, volumeInfo.TxConflictRetryInterval)
 			if proto.IsCold(opt.VolType) {
 				super.CacheAction = volumeInfo.CacheAction
 				super.CacheThreshold = volumeInfo.CacheThreshold
@@ -860,23 +857,6 @@ func checkPermission(opt *proto.MountOptions) (err error) {
 		return
 	}
 	return
-}
-
-func parseLogLevel(loglvl string) log.Level {
-	var level log.Level
-	switch strings.ToLower(loglvl) {
-	case "debug":
-		level = log.Ldebug
-	case "info":
-		level = log.Linfo
-	case "warn":
-		level = log.Lwarn
-	case "error":
-		level = log.Lerror
-	default:
-		level = log.Lerror
-	}
-	return level
 }
 
 func changeRlimit(val uint64) {

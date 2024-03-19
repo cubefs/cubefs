@@ -72,6 +72,8 @@ var (
 
 	useConnPool = true // for test
 	gConfig     *clusterConfig
+
+	getSpan = proto.SpanFromContext
 )
 
 var overSoldFactor = defaultOverSoldFactor

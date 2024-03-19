@@ -353,7 +353,7 @@ func (client *ExtentClient) GetVerMgr() *proto.VolVersionInfoList {
 
 func (client *ExtentClient) UpdateLatestVer(ctx context.Context, verList *proto.VolVersionInfoList) (err error) {
 	span := proto.SpanFromContext(ctx)
-	ctx = proto.ContextWithOperationf(ctx, "UpdateLatestVer")
+	ctx = proto.ContextWithOperation(ctx, "UpdateLatestVer")
 	verSeq := verList.GetLastVer()
 	span.Debugf("action[UpdateLatestVer] verSeq %v verList[%v] mgr seq %v", verSeq, verList, client.multiVerMgr.latestVerSeq)
 	if verSeq == 0 || verSeq <= atomic.LoadUint64(&client.multiVerMgr.latestVerSeq) {

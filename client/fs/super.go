@@ -38,7 +38,6 @@ import (
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/auditlog"
 	"github.com/cubefs/cubefs/util/errors"
-	"github.com/cubefs/cubefs/util/log"
 	"github.com/cubefs/cubefs/util/ump"
 )
 
@@ -106,7 +105,8 @@ const (
 
 // NewSuper returns a new Super.
 func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
-	span, ctx := proto.SpanContextPrefix("new-super-")
+	ctx := ctxOperation(context.Background(), "SuperNew")
+	span := getSpan(ctx)
 	s = new(Super)
 	masters := strings.Split(opt.Master, meta.HostsSeparator)
 	metaConfig := &meta.MetaConfig{
@@ -124,7 +124,7 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 		return nil, errors.Trace(err, "NewMetaWrapper failed!"+err.Error())
 	}
 
-	s.SetTransaction(opt.EnableTransaction, opt.TxTimeout, opt.TxConflictRetryNum, opt.TxConflictRetryInterval)
+	s.SetTransaction(ctx, opt.EnableTransaction, opt.TxTimeout, opt.TxConflictRetryNum, opt.TxConflictRetryInterval)
 	s.mw.EnableQuota = opt.EnableQuota
 
 	s.volname = opt.Volname
@@ -283,7 +283,7 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 	span.Infof("NewSuper: cluster(%v) volname(%v) icacheExpiration(%v) LookupValidDuration(%v) AttrValidDuration(%v) state(%v)",
 		s.cluster, s.volname, inodeExpiration, LookupValidDuration, AttrValidDuration, s.state)
 
-	go s.loopSyncMeta(ctx)
+	go s.loopSyncMeta()
 
 	return s, nil
 }
@@ -291,10 +291,9 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 func (s *Super) scheduleFlush() {
 	t := time.NewTicker(2 * time.Second)
 	defer t.Stop()
-	for {
-		select {
-		case <-t.C:
-			ctx := context.Background()
+	for range t.C {
+		{
+			ctx := ctxOperation(context.Background(), "SuperFlush")
 			s.fslock.Lock()
 			for ino, node := range s.nodeCache {
 				if _, ok := node.(*File); !ok {
@@ -304,7 +303,7 @@ func (s *Super) scheduleFlush() {
 				if atomic.LoadInt32(&file.idle) >= BlobWriterIdleTimeoutPeriod {
 					if file.fWriter != nil {
 						atomic.StoreInt32(&file.idle, 0)
-						go file.fWriter.Flush(ino, ctx)
+						go file.fWriter.Flush(ctx, ino)
 					}
 				} else {
 					atomic.AddInt32(&file.idle, 1)
@@ -317,7 +316,7 @@ func (s *Super) scheduleFlush() {
 
 // Root returns the root directory where it resides.
 func (s *Super) Root() (fs.Node, error) {
-	_, ctx := proto.StartSpanFromContext(context.Background(), "super-root")
+	ctx := ctxOperation(context.Background(), "SuperRoot")
 	inode, err := s.InodeGet(ctx, s.rootIno)
 	if err != nil {
 		return nil, err
@@ -340,8 +339,8 @@ func (s *Super) Node(ino, pino uint64, mode uint32) (fs.Node, error) {
 		// the node is not evict. So we create a streamer for it,
 		// and streamer's refcnt is 0.
 		file := node.(*File)
-		file.Open(nil, nil, nil)
-		file.Release(nil, nil)
+		file.Open(context.Background(), nil, nil)
+		file.Release(context.Background(), nil)
 	}
 	s.fslock.Lock()
 	s.nodeCache[ino] = node
@@ -408,8 +407,8 @@ func (s *Super) umpKey(act string) string {
 	return fmt.Sprintf("%v_fuseclient_%v", s.cluster, act)
 }
 
-func (s *Super) handleError(op, msg string) {
-	log.Error(msg)
+func (s *Super) handleError(ctx context.Context, op, msg string) {
+	getSpan(ctx).Error(msg)
 	ump.Alarm(s.umpKey(op), msg)
 }
 
@@ -458,11 +457,11 @@ func (s *Super) SetSuspend(w http.ResponseWriter, r *http.Request) {
 
 	// wait
 	msg := <-s.suspendCh
-	switch msg.(type) {
+	switch msgVal := msg.(type) {
 	case error:
-		err = msg.(error)
+		err = msgVal
 	case string:
-		ret = msg.(string)
+		ret = msgVal
 	default:
 		err = fmt.Errorf("Unknown return type: %v", msg)
 	}
@@ -565,11 +564,12 @@ func (s *Super) Notify(stat fs.FSStatType, msg interface{}) {
 	}
 }
 
-func (s *Super) loopSyncMeta(ctx context.Context) {
+func (s *Super) loopSyncMeta() {
 	if s.bcacheDir == "" {
 		return
 	}
 	for {
+		ctx := ctxOperation(context.Background(), "SuperSyncMeta")
 		finishC := s.syncMeta(ctx)
 		select {
 		case <-finishC:
@@ -581,8 +581,6 @@ func (s *Super) loopSyncMeta(ctx context.Context) {
 }
 
 func (s *Super) syncMeta(ctx context.Context) <-chan struct{} {
-	span := proto.SpanFromContext(ctx)
-	ctx = proto.ContextWithOperation(ctx, "sync-meta")
 	finishC := make(chan struct{})
 	start := time.Now()
 	cacheLen := s.ic.lruList.Len()
@@ -648,6 +646,7 @@ func (s *Super) syncMeta(ctx context.Context) <-chan struct{} {
 
 	var changeCnt int
 
+	span := getSpan(ctx)
 	for ino := range mergeChanged(batCh) {
 		inode := ino
 		changeCnt++
@@ -683,7 +682,7 @@ func (s *Super) syncMeta(ctx context.Context) <-chan struct{} {
 }
 
 func (s *Super) getModifyInodes(ctx context.Context, inodes []uint64) (changedNodes []uint64) {
-	span := proto.SpanFromContext(ctx)
+	span := getSpan(ctx)
 	inodeInfos := s.mw.BatchInodeGet(ctx, inodes)
 
 	// get deleted files
@@ -725,11 +724,11 @@ func (s *Super) Close() {
 	close(s.closeC)
 }
 
-func (s *Super) SetTransaction(txMaskStr string, timeout int64, retryNum int64, retryInterval int64) {
+func (s *Super) SetTransaction(ctx context.Context, txMaskStr string, timeout int64, retryNum int64, retryInterval int64) {
 	// maskStr := proto.GetMaskString(txMask)
 	mask, err := proto.GetMaskFromString(txMaskStr)
 	if err != nil {
-		log.Errorf("SetTransaction: err[%v], op[%v], timeout[%v]", err, txMaskStr, timeout)
+		getSpan(ctx).Errorf("SetTransaction: err[%v], op[%v], timeout[%v]", err, txMaskStr, timeout)
 		return
 	}
 
@@ -748,6 +747,6 @@ func (s *Super) SetTransaction(txMaskStr string, timeout int64, retryNum int64, 
 		retryInterval = proto.DefaultTxConflictRetryInterval
 	}
 	s.mw.TxConflictRetryInterval = retryInterval
-	log.Debugf("SetTransaction: mask[%v], op[%v], timeout[%v], retryNum[%v], retryInterval[%v ms]",
+	getSpan(ctx).Debugf("SetTransaction: mask[%v], op[%v], timeout[%v], retryNum[%v], retryInterval[%v ms]",
 		mask, txMaskStr, timeout, retryNum, retryInterval)
 }

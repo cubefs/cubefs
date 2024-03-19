@@ -23,7 +23,6 @@ import (
 	"fmt"
 	"hash/maphash"
 	"io"
-	"math"
 	"net"
 	"strconv"
 	"sync/atomic"
@@ -37,13 +36,13 @@ import (
 )
 
 var (
-	GRequestID = int64(1)
+	GRequestID = uint64(1)
 	Buffers    *buf.BufferPool
 )
 
 // GenerateRequestID generates the request ID.
-func GenerateRequestID() int64 {
-	return atomic.AddInt64(&GRequestID, 1)
+func GenerateRequestID() uint64 {
+	return atomic.AddUint64(&GRequestID, 1)
 }
 
 const (
@@ -314,21 +313,21 @@ var (
 	StartSpanFromContextWithTraceID = trace.StartSpanFromContextWithTraceID
 )
 
-func RandomID() int64 {
-	return int64(new(maphash.Hash).Sum64() & math.MaxInt64)
+func RandomID() uint64 {
+	return new(maphash.Hash).Sum64()
 }
 
 func TraceID() string {
 	return fmt.Sprintf("%016x", RandomID())
 }
 
-func RequestIDFromSpan(span trace.Span) int64 {
+func RequestIDFromSpan(span trace.Span) uint64 {
 	traceID := span.TraceID()
 	// has prefix
 	if l := len(traceID); l >= 17 && traceID[l-17] == '-' {
 		traceID = traceID[l-16:]
 	}
-	rid, err := strconv.ParseInt(traceID, 16, 64)
+	rid, err := strconv.ParseUint(traceID, 16, 64)
 	if err == nil {
 		return rid
 	}
@@ -350,7 +349,7 @@ func RequestIDFromSpan(span trace.Span) int64 {
 	return rid
 }
 
-func RequestIDFromContext(ctx context.Context) int64 {
+func RequestIDFromContext(ctx context.Context) uint64 {
 	return RequestIDFromSpan(SpanFromContext(ctx))
 }
 
@@ -400,6 +399,14 @@ func SpanWithContextPrefix(ctx context.Context, prefix string) (trace.Span, cont
 	return span, ctxNew
 }
 
+func RoundContext(name string) func() context.Context {
+	var round int
+	return func() context.Context {
+		round++
+		return ContextWithOperationf(context.Background(), "%s-%d", name, round)
+	}
+}
+
 // Packet defines the packet structure.
 type Packet struct {
 	Magic              uint8
@@ -414,7 +421,7 @@ type Packet struct {
 	PartitionID        uint64
 	ExtentID           uint64
 	ExtentOffset       int64
-	ReqID              int64
+	ReqID              uint64
 	Arg                []byte // for create or append ops, the data contains the address
 	Data               []byte
 	StartT             int64
@@ -842,7 +849,7 @@ func (p *Packet) GetResultMsg() (m string) {
 	return
 }
 
-func (p *Packet) GetReqID() int64 {
+func (p *Packet) GetReqID() uint64 {
 	return p.ReqID
 }
 
@@ -887,7 +894,7 @@ func (p *Packet) UnmarshalHeader(in []byte) error {
 	p.PartitionID = binary.BigEndian.Uint64(in[17:25])
 	p.ExtentID = binary.BigEndian.Uint64(in[25:33])
 	p.ExtentOffset = int64(binary.BigEndian.Uint64(in[33:41]))
-	p.ReqID = int64(binary.BigEndian.Uint64(in[41:49]))
+	p.ReqID = binary.BigEndian.Uint64(in[41:49])
 	p.KernelOffset = binary.BigEndian.Uint64(in[49:util.PacketHeaderSize])
 
 	// header opcode OpRandomWriteVer should not unmarshal here due to header size is const

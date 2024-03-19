@@ -7,7 +7,7 @@ import (
 )
 
 // func openRemotePortFirewall(hostname, username string, privateKeyPath string, port int) error {
-// 	key, err := ioutil.ReadFile(privateKeyPath)
+// 	key, err := os.ReadFile(privateKeyPath)
 // 	if err != nil {
 // 		return err
 // 	}

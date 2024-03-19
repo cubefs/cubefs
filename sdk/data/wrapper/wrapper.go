@@ -147,8 +147,8 @@ func NewDataPartitionWrapper(ctx context.Context, client SimpleClientInfo, volNa
 	}
 	w.verReadSeq = verReadSeq
 	w.SimpleClient = client
-	go w.uploadFlowInfoByTick(ctx, client)
-	go w.update(ctx, client)
+	go w.uploadFlowInfoByTick(client)
+	go w.update(client)
 	return
 }
 
@@ -232,33 +232,35 @@ func (w *Wrapper) GetSimpleVolView(ctx context.Context) (err error) {
 	return
 }
 
-func (w *Wrapper) uploadFlowInfoByTick(ctx context.Context, clientInfo SimpleClientInfo) {
+func (w *Wrapper) uploadFlowInfoByTick(clientInfo SimpleClientInfo) {
 	ticker := time.NewTicker(5 * time.Second)
+	defer ticker.Stop()
+	roundCtx := proto.RoundContext("warpper-flowinfo")
 	for {
 		select {
 		case <-ticker.C:
-			w.UploadFlowInfo(ctx, clientInfo, false)
+			w.UploadFlowInfo(roundCtx(), clientInfo, false)
 		case <-w.stopC:
 			return
 		}
 	}
 }
 
-func (w *Wrapper) update(ctx context.Context, clientInfo SimpleClientInfo) {
-	ctx = proto.ContextWithOperation(ctx, "warpper-update")
+func (w *Wrapper) update(clientInfo SimpleClientInfo) {
 	ticker := time.NewTicker(time.Minute)
-	taskFunc := func() {
+	defer ticker.Stop()
+	taskFunc := func(ctx context.Context) {
 		w.updateSimpleVolView(ctx)
 		w.updateDataPartition(ctx, false)
 		w.updateDataNodeStatus(ctx)
 		w.CheckPermission(ctx)
 		w.updateVerlist(ctx, clientInfo)
 	}
-	taskFunc()
+	roundCtx := proto.RoundContext("warpper-update")
 	for {
+		taskFunc(roundCtx())
 		select {
 		case <-ticker.C:
-			taskFunc()
 		case <-w.stopC:
 			return
 		}

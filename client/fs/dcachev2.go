@@ -156,6 +156,7 @@ func (dc *Dcache) backgroundEviction() {
 	t := time.NewTicker(DentryBgEvictionInterval)
 	defer t.Stop()
 
+	// TODO: to close.
 	for range t.C {
 		log.Infof("Dcache: start BG evict")
 		if !DisableMetaCache {

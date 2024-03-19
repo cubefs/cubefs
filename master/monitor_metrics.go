@@ -485,15 +485,16 @@ func (mm *monitorMetrics) start(ctx context.Context) {
 
 func (mm *monitorMetrics) statMetrics(ctx context.Context) {
 	ticker := time.NewTicker(StatPeriod)
-	span := proto.SpanFromContext(ctx)
 	defer func() {
 		if err := recover(); err != nil {
 			ticker.Stop()
-			span.Errorf("statMetrics panic,msg:%v", err)
+			getSpan(ctx).Errorf("statMetrics panic,msg:%v", err)
 		}
 	}()
 
+	rCtx := proto.RoundContext("stat-metrics")
 	for {
+		ctx = rCtx()
 		select {
 		case <-ticker.C:
 			partition := mm.cluster.partition
