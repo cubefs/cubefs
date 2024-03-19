@@ -12,7 +12,7 @@ import (
 
 func TestPacketContext(t *testing.T) {
 	t.Log(NewPacket().Span().TraceID())
-	p1 := NewPacketReqID()
+	p1 := NewPacket()
 	p1.ReqID = RandomID()
 	ctx1 := p1.Context()
 	span1 := p1.Span()
@@ -57,7 +57,7 @@ func TestPacketWithContext(t *testing.T) {
 	span1, ctx := SpanWithContextPrefix(context.Background(), "File-Setattr-")
 	t.Log("span1.TraceID()=", span1.TraceID())
 
-	p := NewPacketReqID().WithContext(ctx)
+	p := NewPacket().WithContext(ctx)
 	span2 := p.Span()
 	t.Log("span2.TraceID()=", span2.TraceID())
 	t.Log("p.ReqID=", p.ReqID)
@@ -68,8 +68,7 @@ func TestPacketWithContext(t *testing.T) {
 }
 
 func TestTransferRequestID(t *testing.T) {
-	p := NewPacketReqID()
-	p.ReqID = RandomID()
+	p := NewPacketReqID(context.Background())
 	require.Equal(t, p.ReqID, RequestIDFromContext(p.Context()))
 
 	span, ctx := SpanWithContextPrefix(context.Background(), "has-prefix-")

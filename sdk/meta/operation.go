@@ -33,7 +33,8 @@ import (
 //
 // txIcreate create inode and tx together
 func (mw *MetaWrapper) txIcreate(ctx context.Context, tx *Transaction, mp *MetaPartition, mode, uid, gid uint32,
-	target []byte, quotaIds []uint32, fullPath string) (status int, info *proto.InodeInfo, err error) {
+	target []byte, quotaIds []uint32, fullPath string,
+) (status int, info *proto.InodeInfo, err error) {
 	bgTime := stat.BeginStat()
 	defer func() {
 		stat.EndStat("txIcreate", err, bgTime, 1)
@@ -58,7 +59,7 @@ func (mw *MetaWrapper) txIcreate(ctx context.Context, tx *Transaction, mp *MetaP
 		tx.OnExecuted(status, resp.TxInfo)
 	}()
 
-	packet := proto.NewPacketReqID().WithContext(ctx)
+	packet := proto.NewPacketReqID(ctx)
 	span := packet.Span()
 	packet.Opcode = proto.OpMetaTxCreateInode
 	packet.PartitionID = mp.PartitionID
@@ -105,8 +106,8 @@ func (mw *MetaWrapper) txIcreate(ctx context.Context, tx *Transaction, mp *MetaP
 	return status, resp.Info, nil
 }
 
-func (mw *MetaWrapper) quotaIcreate(ctx context.Context, mp *MetaPartition, mode, uid, gid uint32, target []byte, quotaIds []uint32, fullPath string) (status int,
-	info *proto.InodeInfo, err error) {
+func (mw *MetaWrapper) quotaIcreate(ctx context.Context, mp *MetaPartition, mode, uid, gid uint32, target []byte, quotaIds []uint32, fullPath string,
+) (status int, info *proto.InodeInfo, err error) {
 	bgTime := stat.BeginStat()
 	defer func() {
 		stat.EndStat("icreate", err, bgTime, 1)
@@ -123,7 +124,7 @@ func (mw *MetaWrapper) quotaIcreate(ctx context.Context, mp *MetaPartition, mode
 	}
 	req.FullPaths = []string{fullPath}
 
-	packet := proto.NewPacketReqID().WithContext(ctx)
+	packet := proto.NewPacketReqID(ctx)
 	span := packet.Span()
 	packet.Opcode = proto.OpQuotaCreateInode
 	packet.PartitionID = mp.PartitionID
@@ -166,8 +167,8 @@ func (mw *MetaWrapper) quotaIcreate(ctx context.Context, mp *MetaPartition, mode
 	return statusOK, resp.Info, nil
 }
 
-func (mw *MetaWrapper) icreate(ctx context.Context, mp *MetaPartition, mode, uid, gid uint32, target []byte, fullPath string) (status int,
-	info *proto.InodeInfo, err error) {
+func (mw *MetaWrapper) icreate(ctx context.Context, mp *MetaPartition, mode, uid, gid uint32, target []byte, fullPath string,
+) (status int, info *proto.InodeInfo, err error) {
 	bgTime := stat.BeginStat()
 	defer func() {
 		stat.EndStat("icreate", err, bgTime, 1)
@@ -183,7 +184,7 @@ func (mw *MetaWrapper) icreate(ctx context.Context, mp *MetaPartition, mode, uid
 	}
 	req.FullPaths = []string{fullPath}
 
-	packet := proto.NewPacketReqID().WithContext(ctx)
+	packet := proto.NewPacketReqID(ctx)
 	span := packet.Span()
 	packet.Opcode = proto.OpMetaCreateInode
 	packet.PartitionID = mp.PartitionID
@@ -256,8 +257,9 @@ func (mw *MetaWrapper) sendToMetaPartitionWithTx(ctx context.Context, mp *MetaPa
 }
 
 func (mw *MetaWrapper) SendTxPack(ctx context.Context, req proto.TxPack, resp interface{}, Opcode uint8, mp *MetaPartition,
-	checkStatusFunc func(int, *proto.Packet) error) (status int, err error, packet *proto.Packet) {
-	packet = proto.NewPacketReqID().WithContext(ctx)
+	checkStatusFunc func(int, *proto.Packet) error,
+) (status int, err error, packet *proto.Packet) {
+	packet = proto.NewPacketReqID(ctx)
 	span := packet.Span()
 	packet.Opcode = Opcode
 	packet.PartitionID = mp.PartitionID
@@ -354,7 +356,7 @@ func (mw *MetaWrapper) iunlink(ctx context.Context, mp *MetaPartition, inode uin
 	}
 	req.FullPaths = []string{fullPath}
 
-	packet := proto.NewPacketReqID().WithContext(ctx)
+	packet := proto.NewPacketReqID(ctx)
 	span := packet.Span()
 	packet.Opcode = proto.OpMetaUnlinkInode
 	packet.PartitionID = mp.PartitionID
@@ -405,7 +407,7 @@ func (mw *MetaWrapper) iclearCache(ctx context.Context, mp *MetaPartition, inode
 		Inode:       inode,
 	}
 
-	packet := proto.NewPacketReqID().WithContext(ctx)
+	packet := proto.NewPacketReqID(ctx)
 	span := packet.Span()
 	packet.Opcode = proto.OpMetaClearInodeCache
 	packet.PartitionID = mp.PartitionID
@@ -450,7 +452,7 @@ func (mw *MetaWrapper) ievict(ctx context.Context, mp *MetaPartition, inode uint
 	}
 	req.FullPaths = []string{fullPath}
 
-	packet := proto.NewPacketReqID().WithContext(ctx)
+	packet := proto.NewPacketReqID(ctx)
 	span := packet.Span()
 	packet.Opcode = proto.OpMetaEvictInode
 	packet.PartitionID = mp.PartitionID
@@ -532,7 +534,8 @@ func (mw *MetaWrapper) txDcreate(ctx context.Context, tx *Transaction, mp *MetaP
 }
 
 func (mw *MetaWrapper) quotaDcreate(ctx context.Context, mp *MetaPartition, parentID uint64, name string, inode uint64, mode uint32,
-	quotaIds []uint32, fullPath string) (status int, err error) {
+	quotaIds []uint32, fullPath string,
+) (status int, err error) {
 	bgTime := stat.BeginStat()
 	defer func() {
 		stat.EndStat("dcreate", err, bgTime, 1)
@@ -553,7 +556,7 @@ func (mw *MetaWrapper) quotaDcreate(ctx context.Context, mp *MetaPartition, pare
 	}
 	req.FullPaths = []string{fullPath}
 
-	packet := proto.NewPacketReqID().WithContext(ctx)
+	packet := proto.NewPacketReqID(ctx)
 	span := packet.Span()
 	packet.Opcode = proto.OpQuotaCreateDentry
 	packet.PartitionID = mp.PartitionID
@@ -605,7 +608,7 @@ func (mw *MetaWrapper) dcreate(ctx context.Context, mp *MetaPartition, parentID 
 	}
 	req.FullPaths = []string{fullPath}
 
-	packet := proto.NewPacketReqID().WithContext(ctx)
+	packet := proto.NewPacketReqID(ctx)
 	span := packet.Span()
 	packet.Opcode = proto.OpMetaCreateDentry
 	packet.PartitionID = mp.PartitionID
@@ -694,7 +697,7 @@ func (mw *MetaWrapper) dupdate(ctx context.Context, mp *MetaPartition, parentID 
 	}
 	req.FullPaths = []string{fullPath}
 
-	packet := proto.NewPacketReqID().WithContext(ctx)
+	packet := proto.NewPacketReqID(ctx)
 	span := packet.Span()
 	packet.Opcode = proto.OpMetaUpdateDentry
 	packet.PartitionID = mp.PartitionID
@@ -852,7 +855,7 @@ func (mw *MetaWrapper) ddelete(ctx context.Context, mp *MetaPartition, parentID 
 		Verseq:          verSeq,
 	}
 	req.FullPaths = []string{fullPath}
-	packet := proto.NewPacketReqID().WithContext(ctx)
+	packet := proto.NewPacketReqID(ctx)
 	span := packet.Span()
 	span.Debugf("action[ddelete] %v", req)
 	packet.Opcode = proto.OpMetaDeleteDentry
@@ -905,8 +908,8 @@ func (mw *MetaWrapper) canDeleteInode(ctx context.Context, mp *MetaPartition, in
 	return true, nil
 }
 
-func (mw *MetaWrapper) ddeletes(ctx context.Context, mp *MetaPartition, parentID uint64, dentries []proto.Dentry, fullPaths []string) (status int,
-	resp *proto.BatchDeleteDentryResponse, err error) {
+func (mw *MetaWrapper) ddeletes(ctx context.Context, mp *MetaPartition, parentID uint64, dentries []proto.Dentry, fullPaths []string,
+) (status int, resp *proto.BatchDeleteDentryResponse, err error) {
 	bgTime := stat.BeginStat()
 	defer func() {
 		stat.EndStat("ddeletes", err, bgTime, 1)
@@ -920,7 +923,7 @@ func (mw *MetaWrapper) ddeletes(ctx context.Context, mp *MetaPartition, parentID
 		FullPaths:   fullPaths,
 	}
 
-	packet := proto.NewPacketReqID().WithContext(ctx)
+	packet := proto.NewPacketReqID(ctx)
 	span := packet.Span()
 	packet.Opcode = proto.OpMetaBatchDeleteDentry
 	packet.PartitionID = mp.PartitionID
@@ -976,7 +979,7 @@ func (mw *MetaWrapper) lookup(ctx context.Context, mp *MetaPartition, parentID u
 		Name:        name,
 		VerSeq:      verSeq,
 	}
-	packet := proto.NewPacketReqID().WithContext(ctx)
+	packet := proto.NewPacketReqID(ctx)
 	span := packet.Span()
 	packet.Opcode = proto.OpMetaLookup
 	packet.PartitionID = mp.PartitionID
@@ -1039,7 +1042,7 @@ func (mw *MetaWrapper) iget(ctx context.Context, mp *MetaPartition, inode uint64
 		VerSeq:      verSeq,
 	}
 
-	packet := proto.NewPacketReqID().WithContext(ctx)
+	packet := proto.NewPacketReqID(ctx)
 	span := packet.Span()
 	packet.Opcode = proto.OpMetaInodeGet
 	packet.PartitionID = mp.PartitionID
@@ -1093,7 +1096,7 @@ func (mw *MetaWrapper) batchIget(ctx context.Context, wg *sync.WaitGroup, mp *Me
 		Inodes:      inodes,
 		VerSeq:      mw.VerReadSeq,
 	}
-	packet := proto.NewPacketReqID().WithContext(ctx)
+	packet := proto.NewPacketReqID(ctx)
 	span := packet.Span()
 	span.Debugf("action[batchIget] req %v", req)
 	packet.Opcode = proto.OpMetaBatchInodeGet
@@ -1151,7 +1154,7 @@ func (mw *MetaWrapper) readDir(ctx context.Context, mp *MetaPartition, parentID 
 		VerSeq:      mw.VerReadSeq,
 	}
 
-	packet := proto.NewPacketReqID().WithContext(ctx)
+	packet := proto.NewPacketReqID(ctx)
 	span := packet.Span()
 	packet.Opcode = proto.OpMetaReadDir
 	packet.PartitionID = mp.PartitionID
@@ -1202,7 +1205,7 @@ func (mw *MetaWrapper) readDirLimit(ctx context.Context, mp *MetaPartition, pare
 		VerOpt:      verOpt,
 	}
 
-	packet := proto.NewPacketReqID().WithContext(ctx)
+	packet := proto.NewPacketReqID(ctx)
 	span := packet.Span()
 	packet.Opcode = proto.OpMetaReadDirLimit
 	packet.PartitionID = mp.PartitionID
@@ -1255,7 +1258,7 @@ func (mw *MetaWrapper) appendExtentKey(ctx context.Context, mp *MetaPartition, i
 		IsSplit:        isSplit,
 	}
 
-	packet := proto.NewPacketReqID().WithContext(ctx)
+	packet := proto.NewPacketReqID(ctx)
 	span := packet.Span()
 	packet.Opcode = proto.OpMetaExtentAddWithCheck
 	packet.PartitionID = mp.PartitionID
@@ -1299,7 +1302,7 @@ func (mw *MetaWrapper) getExtents(ctx context.Context, mp *MetaPartition, inode 
 		VerSeq:      mw.VerReadSeq,
 	}
 
-	packet := proto.NewPacketReqID().WithContext(ctx)
+	packet := proto.NewPacketReqID(ctx)
 	span := packet.Span()
 	packet.Opcode = proto.OpMetaExtentsList
 	packet.PartitionID = mp.PartitionID
@@ -1348,7 +1351,7 @@ func (mw *MetaWrapper) getObjExtents(ctx context.Context, mp *MetaPartition, ino
 		VerSeq:      mw.VerReadSeq,
 	}
 
-	packet := proto.NewPacketReqID().WithContext(ctx)
+	packet := proto.NewPacketReqID(ctx)
 	span := packet.Span()
 	packet.Opcode = proto.OpMetaObjExtentsList
 	packet.PartitionID = mp.PartitionID
@@ -1394,7 +1397,7 @@ func (mw *MetaWrapper) getObjExtents(ctx context.Context, mp *MetaPartition, ino
 // 		Extents:     extents,
 // 	}
 
-// 	packet := proto.NewPacketReqID()
+// 	packet := proto.NewPacketReqID(ctx)
 // 	packet.Opcode = proto.OpMetaExtentsDel
 // 	packet.PartitionID = mp.PartitionID
 // 	err = packet.MarshalData(req)
@@ -1435,7 +1438,7 @@ func (mw *MetaWrapper) truncate(ctx context.Context, mp *MetaPartition, inode, s
 	}
 	req.FullPaths = []string{fullPath}
 
-	packet := proto.NewPacketReqID().WithContext(ctx)
+	packet := proto.NewPacketReqID(ctx)
 	span := packet.Span()
 	packet.Opcode = proto.OpMetaTruncate
 	packet.PartitionID = mp.PartitionID
@@ -1525,7 +1528,7 @@ func (mw *MetaWrapper) ilinkWork(ctx context.Context, mp *MetaPartition, inode u
 	}
 	req.FullPaths = []string{fullPath}
 
-	packet := proto.NewPacketReqID().WithContext(ctx)
+	packet := proto.NewPacketReqID(ctx)
 	span := packet.Span()
 	packet.Opcode = op
 	packet.PartitionID = mp.PartitionID
@@ -1588,7 +1591,7 @@ func (mw *MetaWrapper) setattr(ctx context.Context, mp *MetaPartition, inode uin
 		ModifyTime:  mtime,
 	}
 
-	packet := proto.NewPacketReqID().WithContext(ctx)
+	packet := proto.NewPacketReqID(ctx)
 	span := packet.Span()
 	packet.Opcode = proto.OpMetaSetattr
 	packet.PartitionID = mp.PartitionID
@@ -1635,7 +1638,7 @@ func (mw *MetaWrapper) createMultipart(ctx context.Context, mp *MetaPartition, p
 		Extend:      extend,
 	}
 
-	packet := proto.NewPacketReqID().WithContext(ctx)
+	packet := proto.NewPacketReqID(ctx)
 	span := packet.Span()
 	packet.Opcode = proto.OpCreateMultipart
 	packet.PartitionID = mp.PartitionID
@@ -1687,7 +1690,7 @@ func (mw *MetaWrapper) getExpiredMultipart(ctx context.Context, prefix string, d
 		Days:        days,
 	}
 
-	packet := proto.NewPacketReqID().WithContext(ctx)
+	packet := proto.NewPacketReqID(ctx)
 	span := packet.Span()
 	packet.Opcode = proto.OpGetExpiredMultipart
 	packet.PartitionID = mp.PartitionID
@@ -1740,7 +1743,7 @@ func (mw *MetaWrapper) getMultipart(ctx context.Context, mp *MetaPartition, path
 		MultipartId: multipartId,
 	}
 
-	packet := proto.NewPacketReqID().WithContext(ctx)
+	packet := proto.NewPacketReqID(ctx)
 	span := packet.Span()
 	packet.Opcode = proto.OpGetMultipart
 	packet.PartitionID = mp.PartitionID
@@ -1801,7 +1804,7 @@ func (mw *MetaWrapper) addMultipartPart(ctx context.Context, mp *MetaPartition, 
 		MultipartId: multipartId,
 		Part:        part,
 	}
-	packet := proto.NewPacketReqID().WithContext(ctx)
+	packet := proto.NewPacketReqID(ctx)
 	span := packet.Span()
 	span.Debugf("addMultipartPart: part(%v), req(%v)", part, req)
 	packet.Opcode = proto.OpAddMultipartPart
@@ -1851,7 +1854,7 @@ func (mw *MetaWrapper) idelete(ctx context.Context, mp *MetaPartition, inode uin
 		Inode:       inode,
 	}
 	req.FullPaths = []string{fullPath}
-	packet := proto.NewPacketReqID().WithContext(ctx)
+	packet := proto.NewPacketReqID(ctx)
 	span := packet.Span()
 	packet.Opcode = proto.OpMetaDeleteInode
 	packet.PartitionID = mp.PartitionID
@@ -1895,7 +1898,7 @@ func (mw *MetaWrapper) removeMultipart(ctx context.Context, mp *MetaPartition, p
 		MultipartId: multipartId,
 	}
 
-	packet := proto.NewPacketReqID().WithContext(ctx)
+	packet := proto.NewPacketReqID(ctx)
 	span := packet.Span()
 	packet.Opcode = proto.OpRemoveMultipart
 	packet.PartitionID = mp.PartitionID
@@ -1939,7 +1942,7 @@ func (mw *MetaWrapper) appendExtentKeys(ctx context.Context, mp *MetaPartition, 
 		Extents:     extents,
 	}
 
-	packet := proto.NewPacketReqID().WithContext(ctx)
+	packet := proto.NewPacketReqID(ctx)
 	span := packet.Span()
 	packet.Opcode = proto.OpMetaBatchExtentsAdd
 	packet.PartitionID = mp.PartitionID
@@ -1985,7 +1988,7 @@ func (mw *MetaWrapper) appendObjExtentKeys(ctx context.Context, mp *MetaPartitio
 		Extents:     extents,
 	}
 
-	packet := proto.NewPacketReqID().WithContext(ctx)
+	packet := proto.NewPacketReqID(ctx)
 	span := packet.Span()
 	packet.Opcode = proto.OpMetaBatchObjExtentsAdd
 	packet.PartitionID = mp.PartitionID
@@ -2035,7 +2038,7 @@ func (mw *MetaWrapper) batchSetXAttr(ctx context.Context, mp *MetaPartition, ino
 		req.Attrs[key] = val
 	}
 
-	packet := proto.NewPacketReqID().WithContext(ctx)
+	packet := proto.NewPacketReqID(ctx)
 	span := packet.Span()
 	packet.Opcode = proto.OpMetaBatchSetXAttr
 	packet.PartitionID = mp.PartitionID
@@ -2083,7 +2086,7 @@ func (mw *MetaWrapper) setXAttr(ctx context.Context, mp *MetaPartition, inode ui
 		Value:       string(value),
 	}
 
-	packet := proto.NewPacketReqID().WithContext(ctx)
+	packet := proto.NewPacketReqID(ctx)
 	span := packet.Span()
 	packet.Opcode = proto.OpMetaSetXAttr
 	packet.PartitionID = mp.PartitionID
@@ -2129,7 +2132,7 @@ func (mw *MetaWrapper) getAllXAttr(ctx context.Context, mp *MetaPartition, inode
 		Inode:       inode,
 	}
 
-	packet := proto.NewPacketReqID().WithContext(ctx)
+	packet := proto.NewPacketReqID(ctx)
 	span := packet.Span()
 	packet.Opcode = proto.OpMetaGetAllXAttr
 	packet.PartitionID = mp.PartitionID
@@ -2183,7 +2186,7 @@ func (mw *MetaWrapper) getXAttr(ctx context.Context, mp *MetaPartition, inode ui
 		VerSeq:      mw.VerReadSeq,
 	}
 
-	packet := proto.NewPacketReqID().WithContext(ctx)
+	packet := proto.NewPacketReqID(ctx)
 	span := packet.Span()
 	packet.Opcode = proto.OpMetaGetXAttr
 	packet.PartitionID = mp.PartitionID
@@ -2236,7 +2239,7 @@ func (mw *MetaWrapper) removeXAttr(ctx context.Context, mp *MetaPartition, inode
 		Key:         name,
 	}
 
-	packet := proto.NewPacketReqID().WithContext(ctx)
+	packet := proto.NewPacketReqID(ctx)
 	span := packet.Span()
 	packet.Opcode = proto.OpMetaRemoveXAttr
 	packet.PartitionID = mp.PartitionID
@@ -2280,7 +2283,7 @@ func (mw *MetaWrapper) listXAttr(ctx context.Context, mp *MetaPartition, inode u
 		VerSeq:      mw.VerReadSeq,
 	}
 
-	packet := proto.NewPacketReqID().WithContext(ctx)
+	packet := proto.NewPacketReqID(ctx)
 	span := packet.Span()
 	packet.Opcode = proto.OpMetaListXAttr
 	packet.PartitionID = mp.PartitionID
@@ -2335,7 +2338,7 @@ func (mw *MetaWrapper) listMultiparts(ctx context.Context, mp *MetaPartition, pr
 		Prefix:            prefix,
 	}
 
-	packet := proto.NewPacketReqID().WithContext(ctx)
+	packet := proto.NewPacketReqID(ctx)
 	span := packet.Span()
 	packet.Opcode = proto.OpListMultiparts
 	packet.PartitionID = mp.PartitionID
@@ -2389,7 +2392,7 @@ func (mw *MetaWrapper) batchGetXAttr(ctx context.Context, mp *MetaPartition, ino
 		Keys:        keys,
 		VerSeq:      mw.VerReadSeq,
 	}
-	packet := proto.NewPacketReqID().WithContext(ctx)
+	packet := proto.NewPacketReqID(ctx)
 	span := packet.Span()
 	packet.Opcode = proto.OpMetaBatchGetXAttr
 	packet.PartitionID = mp.PartitionID
@@ -2439,7 +2442,7 @@ func (mw *MetaWrapper) readdironly(ctx context.Context, mp *MetaPartition, paren
 		VerSeq:      mw.VerReadSeq,
 	}
 
-	packet := proto.NewPacketReqID().WithContext(ctx)
+	packet := proto.NewPacketReqID(ctx)
 	span := packet.Span()
 	packet.Opcode = proto.OpMetaReadDirOnly
 	packet.PartitionID = mp.PartitionID
@@ -2494,7 +2497,7 @@ func (mw *MetaWrapper) updateXAttrs(ctx context.Context, mp *MetaPartition, inod
 		Key:         SummaryKey,
 		Value:       value,
 	}
-	packet := proto.NewPacketReqID().WithContext(ctx)
+	packet := proto.NewPacketReqID(ctx)
 	span := packet.Span()
 	packet.Opcode = proto.OpMetaUpdateXAttr
 	packet.PartitionID = mp.PartitionID
@@ -2527,8 +2530,8 @@ func (mw *MetaWrapper) updateXAttrs(ctx context.Context, mp *MetaPartition, inod
 	return nil
 }
 
-func (mw *MetaWrapper) batchSetInodeQuota(ctx context.Context, mp *MetaPartition, inodes []uint64, quotaId uint32,
-	IsRoot bool) (resp *proto.BatchSetMetaserverQuotaResponse, err error) {
+func (mw *MetaWrapper) batchSetInodeQuota(ctx context.Context, mp *MetaPartition, inodes []uint64, quotaId uint32, IsRoot bool,
+) (resp *proto.BatchSetMetaserverQuotaResponse, err error) {
 	bgTime := stat.BeginStat()
 	defer func() {
 		stat.EndStat("batchSetInodeQuota", err, bgTime, 1)
@@ -2540,7 +2543,7 @@ func (mw *MetaWrapper) batchSetInodeQuota(ctx context.Context, mp *MetaPartition
 		QuotaId:     quotaId,
 		IsRoot:      IsRoot,
 	}
-	packet := proto.NewPacketReqID().WithContext(ctx)
+	packet := proto.NewPacketReqID(ctx)
 	span := packet.Span()
 	packet.Opcode = proto.OpMetaBatchSetInodeQuota
 	packet.PartitionID = mp.PartitionID
@@ -2577,8 +2580,8 @@ func (mw *MetaWrapper) batchSetInodeQuota(ctx context.Context, mp *MetaPartition
 	return
 }
 
-func (mw *MetaWrapper) batchDeleteInodeQuota(ctx context.Context, mp *MetaPartition, inodes []uint64,
-	quotaId uint32) (resp *proto.BatchDeleteMetaserverQuotaResponse, err error) {
+func (mw *MetaWrapper) batchDeleteInodeQuota(ctx context.Context, mp *MetaPartition, inodes []uint64, quotaId uint32,
+) (resp *proto.BatchDeleteMetaserverQuotaResponse, err error) {
 	bgTime := stat.BeginStat()
 	defer func() {
 		stat.EndStat("batchDeleteInodeQuota", err, bgTime, 1)
@@ -2588,7 +2591,7 @@ func (mw *MetaWrapper) batchDeleteInodeQuota(ctx context.Context, mp *MetaPartit
 		Inodes:      inodes,
 		QuotaId:     quotaId,
 	}
-	packet := proto.NewPacketReqID().WithContext(ctx)
+	packet := proto.NewPacketReqID(ctx)
 	span := packet.Span()
 	packet.Opcode = proto.OpMetaBatchDeleteInodeQuota
 	packet.PartitionID = mp.PartitionID
@@ -2640,7 +2643,7 @@ func (mw *MetaWrapper) getInodeQuota(ctx context.Context, mp *MetaPartition, ino
 	if qcInfo != nil {
 		return qcInfo.quotaInfos, nil
 	}
-	packet := proto.NewPacketReqID().WithContext(ctx)
+	packet := proto.NewPacketReqID(ctx)
 	span := packet.Span()
 	packet.Opcode = proto.OpMetaGetInodeQuota
 	packet.PartitionID = mp.PartitionID
@@ -2684,8 +2687,9 @@ func (mw *MetaWrapper) getInodeQuota(ctx context.Context, mp *MetaPartition, ino
 	return
 }
 
-func (mw *MetaWrapper) applyQuota(ctx context.Context, parentIno uint64, quotaId uint32, totalInodeCount *uint64, curInodeCount *uint64, inodes *[]uint64,
-	maxInodes uint64, first bool) (err error) {
+func (mw *MetaWrapper) applyQuota(ctx context.Context, parentIno uint64, quotaId uint32,
+	totalInodeCount *uint64, curInodeCount *uint64, inodes *[]uint64, maxInodes uint64, first bool,
+) (err error) {
 	if first {
 		var rootInodes []uint64
 		var ret map[uint64]uint8
@@ -2755,8 +2759,9 @@ func (mw *MetaWrapper) applyQuota(ctx context.Context, parentIno uint64, quotaId
 	return
 }
 
-func (mw *MetaWrapper) revokeQuota(ctx context.Context, parentIno uint64, quotaId uint32, totalInodeCount *uint64, curInodeCount *uint64, inodes *[]uint64,
-	maxInodes uint64, first bool) (err error) {
+func (mw *MetaWrapper) revokeQuota(ctx context.Context, parentIno uint64, quotaId uint32,
+	totalInodeCount *uint64, curInodeCount *uint64, inodes *[]uint64, maxInodes uint64, first bool,
+) (err error) {
 	if first {
 		var rootInodes []uint64
 		rootInodes = append(rootInodes, parentIno)
@@ -2849,7 +2854,7 @@ func (mw *MetaWrapper) getUniqID(ctx context.Context, mp *MetaPartition, num uin
 		Num:         num,
 	}
 
-	packet := proto.NewPacketReqID().WithContext(ctx)
+	packet := proto.NewPacketReqID(ctx)
 	span := packet.Span()
 	packet.Opcode = proto.OpMetaGetUniqID
 	packet.PartitionID = mp.PartitionID

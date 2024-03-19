@@ -149,7 +149,7 @@ func (tx *Transaction) Commit(ctx context.Context, mw *MetaWrapper) (err error) 
 		// TxInfo:      tx.txInfo,
 	}
 
-	packet := proto.NewPacketReqID().WithContext(ctx)
+	packet := proto.NewPacketReqID(ctx)
 	packet.Opcode = proto.OpTxCommit
 	packet.PartitionID = tmMP.PartitionID
 	err = packet.MarshalData(req)
@@ -207,7 +207,7 @@ func (tx *Transaction) Rollback(ctx context.Context, mw *MetaWrapper) {
 		// TxInfo:      tx.txInfo,
 	}
 
-	packet := proto.NewPacketReqID().WithContext(ctx)
+	packet := proto.NewPacketReqID(ctx)
 	packet.Opcode = proto.OpTxRollback
 	packet.PartitionID = tmMP.PartitionID
 	err = packet.MarshalData(req)
