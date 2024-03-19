@@ -400,6 +400,14 @@ func (api *AdminAPI) SetVolumeAuditLog(volName string, enable bool) (err error) 
 	return
 }
 
+func (api *AdminAPI) SetVolumeDpRepairBlockSize(volName string, repairSize uint64) (err error) {
+	request := newRequest(post, proto.AdminVolSetDpRepairBlockSize).Header(api.h)
+	request.addParam("name", volName)
+	request.addParam("dpRepairBlockSize", strconv.FormatUint(repairSize, 10))
+	_, err = api.mc.serveRequest(request)
+	return
+}
+
 func (api *AdminAPI) GetMonitorPushAddr() (addr string, err error) {
 	err = api.mc.requestWith(&addr, newRequest(get, proto.AdminGetMonitorPushAddr).Header(api.h))
 	return

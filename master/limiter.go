@@ -19,7 +19,6 @@ type UidSpaceManager struct {
 	vol            *Vol
 	msgChan        chan *proto.MetaPartitionReport
 	cmdChan        chan *UidCmd
-	exitC          chan struct{}
 	rwMutex        sync.RWMutex
 }
 
@@ -32,7 +31,6 @@ type UidCmd struct {
 	uid  uint32
 	size uint64
 	wg   sync.WaitGroup
-	rsp  interface{}
 }
 
 func (vol *Vol) initUidSpaceManager(c *Cluster) {
@@ -52,7 +50,7 @@ func (uMgr *UidSpaceManager) pushUidCmd(cmd *UidCmd) bool {
 	select {
 	case uMgr.cmdChan <- cmd:
 	default:
-		log.LogWarnf("vol %v volUidUpdate.mpID %v uid %v op %v be missed", uMgr.volName, cmd.uid, cmd.op)
+		log.LogWarnf("vol %v uid %v op %v be missed", uMgr.volName, cmd.uid, cmd.op)
 		return false
 	}
 	log.LogDebugf("pushUidCmd. vol %v cmd (%v) wait result", uMgr.volName, cmd)
@@ -64,7 +62,7 @@ func (uMgr *UidSpaceManager) pushUidCmd(cmd *UidCmd) bool {
 func (uMgr *UidSpaceManager) addUid(cmd *UidCmd) {
 	defer cmd.wg.Done()
 	if uidInfo, ok := uMgr.uidInfo[cmd.uid]; ok {
-		if uidInfo.Enabled == true {
+		if uidInfo.Enabled {
 			log.LogWarnf("UidSpaceManager.addUid vol %v add %v already exist", uMgr.volName, cmd.uid)
 			return
 		}

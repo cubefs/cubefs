@@ -23,9 +23,12 @@ import (
 	"math"
 	"sync"
 
+	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/btree"
 	"github.com/cubefs/cubefs/util/log"
 )
+
+const DefaultDpRepairBlockSize = 128 * util.KB
 
 var (
 	ExtentKeyHeader       = []byte("EKV2")

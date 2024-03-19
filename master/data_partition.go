@@ -76,6 +76,7 @@ type DataPartition struct {
 	RecoverStartTime               time.Time
 	RecoverLastConsumeTime         time.Duration
 	DecommissionWaitTimes          int
+	RepairBlockSize                uint64
 }
 
 type DataPartitionPreLoad struct {
@@ -116,6 +117,7 @@ func newDataPartition(ID uint64, replicaNum uint8, volName string, volID uint64,
 	partition.SpecialReplicaDecommissionStep = SpecialDecommissionInitial
 	partition.DecommissionDstAddrSpecify = false
 	partition.LeaderReportTime = now
+	partition.RepairBlockSize = util.DefaultDataPartitionSize
 	return
 }
 
@@ -1628,37 +1630,6 @@ func (partition *DataPartition) ReleaseDecommissionToken(c *Cluster) {
 //	}
 //	partition.ReleaseDecommissionToken(c)
 //}
-
-func (partition *DataPartition) restoreReplicaMeta(c *Cluster) (err error) {
-	//dst has
-	//dstDataNode, err := c.dataNode(partition.DecommissionDstAddr)
-	//if err != nil {
-	//	log.LogWarnf("action[restoreReplicaMeta]partition %v find dst %v data node failed:%v",
-	//		partition.PartitionID, partition.DecommissionDstAddr, err.Error())
-	//	return
-	//}
-	//removePeer := proto.Peer{ID: dstDataNode.ID, Addr: partition.DecommissionDstAddr}
-	//if err = c.removeHostMember(partition, removePeer); err != nil {
-	//	log.LogWarnf("action[restoreReplicaMeta]partition %v metadata  removeReplica %v failed:%v",
-	//		partition.PartitionID, partition.DecommissionDstAddr, err.Error())
-	//	return
-	//}
-	srcDataNode, err := c.dataNode(partition.DecommissionSrcAddr)
-	if err != nil {
-		log.LogWarnf("action[restoreReplicaMeta]partition %v find src %v data node failed:%v",
-			partition.PartitionID, partition.DecommissionSrcAddr, err.Error())
-		return
-	}
-	addPeer := proto.Peer{ID: srcDataNode.ID, Addr: partition.DecommissionSrcAddr}
-	if err = c.addDataPartitionRaftMember(partition, addPeer); err != nil {
-		log.LogWarnf("action[restoreReplicaMeta]partition %v metadata addReplica %v failed:%v",
-			partition.PartitionID, partition.DecommissionSrcAddr, err.Error())
-		return
-	}
-	log.LogDebugf("action[restoreReplicaMeta]partition %v meta data has restored:hosts [%v] peers[%v]",
-		partition.PartitionID, partition.Hosts, partition.Peers)
-	return
-}
 
 func getTargetNodeset(addr string, c *Cluster) (ns *nodeSet, zone *Zone, err error) {
 	var dataNode *DataNode
