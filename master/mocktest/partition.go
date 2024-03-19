@@ -7,12 +7,13 @@ import (
 )
 
 type MockDataPartition struct {
-	PartitionID      uint64
-	PersistenceHosts []string
-	total            int
-	used             uint64
-	VolName          string
-	Forbidden        int32
+	PartitionID       uint64
+	PersistenceHosts  []string
+	total             int
+	used              uint64
+	VolName           string
+	Forbidden         int32
+	DpRepairBlockSize uint64
 }
 
 func (md *MockDataPartition) IsForbidden() bool {
@@ -25,6 +26,18 @@ func (md *MockDataPartition) SetForbidden(status bool) {
 		val = 1
 	}
 	atomic.StoreInt32(&md.Forbidden, int32(val))
+}
+
+func (md *MockDataPartition) GetDpRepairBlockSize() (size uint64) {
+	size = atomic.LoadUint64(&md.DpRepairBlockSize)
+	if size == 0 {
+		size = proto.DefaultDpRepairBlockSize
+	}
+	return
+}
+
+func (md *MockDataPartition) SetDpRepairBlockSize(size uint64) {
+	atomic.StoreUint64(&md.DpRepairBlockSize, size)
 }
 
 type MockMetaPartition struct {

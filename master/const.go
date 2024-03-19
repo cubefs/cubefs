@@ -134,6 +134,7 @@ const (
 	Periodic                   = "periodic"
 	DecommissionType           = "decommissionType"
 	decommissionDiskFactor     = "decommissionDiskFactor"
+	dpRepairBlockSizeKey       = "dpRepairBlockSize"
 )
 
 const (

@@ -296,6 +296,7 @@ type volValue struct {
 	ClientReqPeriod, ClientHitTriggerCnt                   uint32
 	Forbidden                                              bool
 	EnableAuditLog                                         bool
+	DpRepairBlockSize                                      uint64
 }
 
 func (v *volValue) Bytes() (raw []byte, err error) {
@@ -362,6 +363,7 @@ func newVolValue(vol *Vol) (vv *volValue) {
 		AuthKey:               vol.authKey,
 		DeleteExecTime:        vol.DeleteExecTime,
 		User:                  vol.user,
+		DpRepairBlockSize:     vol.dpRepairBlockSize,
 	}
 
 	return

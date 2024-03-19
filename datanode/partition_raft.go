@@ -36,19 +36,20 @@ import (
 )
 
 type dataPartitionCfg struct {
-	VolName       string              `json:"vol_name"`
-	ClusterID     string              `json:"cluster_id"`
-	PartitionID   uint64              `json:"partition_id"`
-	PartitionSize int                 `json:"partition_size"`
-	PartitionType int                 `json:"partition_type"`
-	Peers         []proto.Peer        `json:"peers"`
-	Hosts         []string            `json:"hosts"`
-	NodeID        uint64              `json:"-"`
-	RaftStore     raftstore.RaftStore `json:"-"`
-	ReplicaNum    int
-	VerSeq        uint64 `json:"ver_seq"`
-	CreateType    int
-	Forbidden     bool
+	VolName           string              `json:"vol_name"`
+	ClusterID         string              `json:"cluster_id"`
+	PartitionID       uint64              `json:"partition_id"`
+	PartitionSize     int                 `json:"partition_size"`
+	PartitionType     int                 `json:"partition_type"`
+	Peers             []proto.Peer        `json:"peers"`
+	Hosts             []string            `json:"hosts"`
+	NodeID            uint64              `json:"-"`
+	RaftStore         raftstore.RaftStore `json:"-"`
+	ReplicaNum        int
+	VerSeq            uint64 `json:"ver_seq"`
+	CreateType        int
+	Forbidden         bool
+	DpRepairBlockSize uint64
 }
 
 func (dp *DataPartition) raftPort() (heartbeat, replica int, err error) {

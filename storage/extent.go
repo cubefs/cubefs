@@ -291,7 +291,7 @@ func (e *Extent) WriteTiny(data []byte, offset, size int64, crc uint32, writeTyp
 }
 
 // Write writes data to an extent.
-func (e *Extent) Write(data []byte, offset, size int64, crc uint32, writeType int, isSync bool, crcFunc UpdateCrcFunc, ei *ExtentInfo, isHole bool) (status uint8, err error) {
+func (e *Extent) Write(data []byte, offset, size int64, crc uint32, writeType int, isSync bool, crcFunc UpdateCrcFunc, ei *ExtentInfo, isHole bool, isRepair bool) (status uint8, err error) {
 	log.LogDebugf("action[Extent.Write] path %v offset %v size %v writeType %v", e.filePath, offset, size, writeType)
 	status = proto.OpOk
 	if IsTinyExtent(e.extentID) {
@@ -299,7 +299,7 @@ func (e *Extent) Write(data []byte, offset, size int64, crc uint32, writeType in
 		return
 	}
 
-	if err = e.checkWriteOffsetAndSize(writeType, offset, size); err != nil {
+	if err = e.checkWriteOffsetAndSize(writeType, offset, size, isRepair); err != nil {
 		log.LogErrorf("action[Extent.Write] checkWriteOffsetAndSize offset %v size %v writeType %v err %v",
 			offset, size, writeType, err)
 		err = newParameterError("extent current size=%d write offset=%d write size=%d", e.dataSize, offset, size)
@@ -341,9 +341,6 @@ func (e *Extent) Write(data []byte, offset, size int64, crc uint32, writeType in
 			return
 		}
 	}
-
-	blockNo := offset / util.BlockSize
-	offsetInBlock := offset % util.BlockSize
 	defer func() {
 		log.LogDebugf("action[Extent.Write] offset %v size %v writeType %v path %v", offset, size, writeType, e.filePath)
 		if IsAppendWrite(writeType) {
@@ -365,20 +362,32 @@ func (e *Extent) Write(data []byte, offset, size int64, crc uint32, writeType in
 			return
 		}
 	}
-	if offsetInBlock == 0 && size == util.BlockSize {
-		err = crcFunc(e, int(blockNo), crc)
-		log.LogDebugf("action[Extent.Write] offset %v size %v writeType %v err %v", offset, size, writeType, err)
-		return
-	}
 
-	if offsetInBlock+size <= util.BlockSize {
+	// NOTE: compute crc
+	beginOffset := offset
+	endOffset := offset + size
+	for beginOffset != endOffset {
+		// NOTE: take a block
+		blockNo := beginOffset / util.BlockSize
+		offsetInBlock := beginOffset % util.BlockSize
+		remainSizeInBlock := util.BlockSize - offsetInBlock
+
+		sizeInBlock := endOffset - beginOffset
+		if sizeInBlock > remainSizeInBlock {
+			sizeInBlock = remainSizeInBlock
+		}
+
+		// NOTE: aliagn, compute crc
+		if offsetInBlock == 0 && sizeInBlock == util.BlockSize {
+			err = crcFunc(e, int(blockNo), crc)
+			log.LogDebugf("action[Extent.Write] offset %v size %v writeType %v err %v crcOffset %v", offset, size, writeType, err, beginOffset)
+			beginOffset += sizeInBlock
+			continue
+		}
+		// NOTE: not aliagn
 		err = crcFunc(e, int(blockNo), 0)
-		log.LogDebugf("action[Extent.Write]  offset %v size %v writeType %v err %v", offset, size, writeType, err)
-		return
-	}
-	log.LogDebugf("action[Extent.Write] offset %v size %v writeType %v", offset, size, writeType)
-	if err = crcFunc(e, int(blockNo), 0); err == nil {
-		err = crcFunc(e, int(blockNo+1), 0)
+		log.LogDebugf("action[Extent.Write]  offset %v size %v writeType %v err %v crcOffset %v", offset, size, writeType, err, beginOffset)
+		beginOffset += sizeInBlock
 	}
 	return
 }
@@ -422,11 +431,15 @@ func (e *Extent) checkReadOffsetAndSize(offset, size int64) error {
 	return nil
 }
 
-func (e *Extent) checkWriteOffsetAndSize(writeType int, offset, size int64) error {
+func (e *Extent) checkWriteOffsetAndSize(writeType int, offset, size int64, isRepair bool) error {
 	err := newParameterError("writeType=%d offset=%d size=%d", writeType, offset, size)
 	if IsAppendWrite(writeType) {
-		if size == 0 || size > util.BlockSize ||
-			offset+size > util.ExtentSize || offset >= util.ExtentSize {
+		if size == 0 ||
+			offset+size > util.ExtentSize ||
+			offset >= util.ExtentSize {
+			return err
+		}
+		if !isRepair && size > util.BlockSize {
 			return err
 		}
 	} else if IsAppendRandomWrite(writeType) {

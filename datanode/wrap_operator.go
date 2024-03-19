@@ -478,6 +478,23 @@ func (s *DataNode) checkVolumeForbidden(volNames []string) {
 	})
 }
 
+func (s *DataNode) checkVolumeDpRepairBlockSize(dpRepairBlockSize map[string]uint64) {
+	s.space.RangePartitions(func(partition *DataPartition) bool {
+		size := uint64(proto.DefaultDpRepairBlockSize)
+		if len(dpRepairBlockSize) != 0 {
+			var ok bool
+			if size, ok = dpRepairBlockSize[partition.volumeID]; !ok {
+				size = proto.DefaultDpRepairBlockSize
+			}
+		}
+		log.LogDebugf("[checkVolumeDpRepairBlockSize] volume(%v) dp(%v) repair block size(%v) current size(%v)", partition.volumeID, partition.partitionID, size, partition.GetRepairBlockSize())
+		if partition.GetRepairBlockSize() != size {
+			partition.SetRepairBlockSize(size)
+		}
+		return true
+	})
+}
+
 func (s *DataNode) checkDecommissionDisks(decommissionDisks []string) {
 	decommissionDiskSet := util.NewSet()
 	for _, disk := range decommissionDisks {
@@ -534,6 +551,8 @@ func (s *DataNode) handleHeartbeatPacket(p *repl.Packet) {
 			// set decommission disks
 			s.checkDecommissionDisks(request.DecommissionDisks)
 			s.diskQosEnableFromMaster = request.EnableDiskQos
+
+			s.checkVolumeDpRepairBlockSize(request.VolDpRepairBlockSize)
 
 			var needUpdate bool
 			for _, pair := range []struct {
@@ -778,7 +797,7 @@ func (s *DataNode) handleWritePacket(p *repl.Packet) {
 		partition.disk.allocCheckLimit(proto.IopsWriteType, 1)
 
 		if writable := partition.disk.limitWrite.TryRun(int(p.Size), func() {
-			_, err = store.Write(p.ExtentID, p.ExtentOffset, int64(p.Size), p.Data, p.CRC, storage.AppendWriteType, p.IsSyncWrite(), false)
+			_, err = store.Write(p.ExtentID, p.ExtentOffset, int64(p.Size), p.Data, p.CRC, storage.AppendWriteType, p.IsSyncWrite(), false, false)
 		}); !writable {
 			err = storage.TryAgainError
 			return
@@ -800,7 +819,7 @@ func (s *DataNode) handleWritePacket(p *repl.Packet) {
 		partition.disk.allocCheckLimit(proto.IopsWriteType, 1)
 
 		if writable := partition.disk.limitWrite.TryRun(int(p.Size), func() {
-			_, err = store.Write(p.ExtentID, p.ExtentOffset, int64(p.Size), p.Data, p.CRC, storage.AppendWriteType, p.IsSyncWrite(), false)
+			_, err = store.Write(p.ExtentID, p.ExtentOffset, int64(p.Size), p.Data, p.CRC, storage.AppendWriteType, p.IsSyncWrite(), false, false)
 		}); !writable {
 			err = storage.TryAgainError
 			return
@@ -828,7 +847,7 @@ func (s *DataNode) handleWritePacket(p *repl.Packet) {
 			partition.disk.allocCheckLimit(proto.IopsWriteType, 1)
 
 			if writable := partition.disk.limitWrite.TryRun(currSize, func() {
-				_, err = store.Write(p.ExtentID, p.ExtentOffset+int64(offset), int64(currSize), data, crc, storage.AppendWriteType, p.IsSyncWrite(), false)
+				_, err = store.Write(p.ExtentID, p.ExtentOffset+int64(offset), int64(currSize), data, crc, storage.AppendWriteType, p.IsSyncWrite(), false, false)
 			}); !writable {
 				err = storage.TryAgainError
 				return

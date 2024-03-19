@@ -76,6 +76,7 @@ type DataPartition struct {
 	RecoverStartTime               time.Time
 	RecoverLastConsumeTime         time.Duration
 	DecommissionWaitTimes          int
+	RepairBlockSize                uint64
 }
 
 type DataPartitionPreLoad struct {
@@ -116,6 +117,7 @@ func newDataPartition(ID uint64, replicaNum uint8, volName string, volID uint64,
 	partition.SpecialReplicaDecommissionStep = SpecialDecommissionInitial
 	partition.DecommissionDstAddrSpecify = false
 	partition.LeaderReportTime = now
+	partition.RepairBlockSize = util.DefaultDataPartitionSize
 	return
 }
 

@@ -252,6 +252,19 @@ func (mds *MockDataServer) checkVolumeForbidden(volNames []string, dp *MockDataP
 	dp.SetForbidden(false)
 }
 
+func (mds *MockDataServer) checkVolDpRepairBlockSize(repairSize map[string]uint64, dp *MockDataPartition) {
+	size := uint64(proto.DefaultDpRepairBlockSize)
+	if len(repairSize) != 0 {
+		var ok bool
+		if size, ok = repairSize[dp.VolName]; !ok {
+			size = proto.DefaultDpRepairBlockSize
+		}
+	}
+	if dp.GetDpRepairBlockSize() != size {
+		dp.SetDpRepairBlockSize(size)
+	}
+}
+
 // Handle OpHeartbeat packet.
 func (mds *MockDataServer) handleHeartbeats(conn net.Conn, pkg *proto.Packet, task *proto.AdminTask) (err error) {
 	responseAckOKToMaster(conn, pkg, nil)
@@ -283,6 +296,7 @@ func (mds *MockDataServer) handleHeartbeats(conn net.Conn, pkg *proto.Packet, ta
 	mds.RLock()
 	for _, partition := range mds.partitions {
 		mds.checkVolumeForbidden(req.ForbiddenVols, partition)
+		mds.checkVolDpRepairBlockSize(req.VolDpRepairBlockSize, partition)
 		vr := &proto.DataPartitionReport{
 			PartitionID:     partition.PartitionID,
 			PartitionStatus: proto.ReadWrite,

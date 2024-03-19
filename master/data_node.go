@@ -257,8 +257,9 @@ func (dataNode *DataNode) clean() {
 
 func (dataNode *DataNode) createHeartbeatTask(masterAddr string, enableDiskQos bool) (task *proto.AdminTask) {
 	request := &proto.HeartBeatRequest{
-		CurrTime:   time.Now().Unix(),
-		MasterAddr: masterAddr,
+		CurrTime:             time.Now().Unix(),
+		MasterAddr:           masterAddr,
+		VolDpRepairBlockSize: make(map[string]uint64),
 	}
 	request.EnableDiskQos = enableDiskQos
 	request.QosIopsReadLimit = dataNode.QosIopsRLimit

@@ -40,13 +40,13 @@ func extentStoreNormalRwTest(t *testing.T, s *storage.ExtentStore, id uint64) {
 	data := []byte(dataStr)
 	crc := crc32.ChecksumIEEE(data)
 	// append write
-	_, err := s.Write(id, 0, int64(len(data)), data, crc, storage.AppendWriteType, true, false)
+	_, err := s.Write(id, 0, int64(len(data)), data, crc, storage.AppendWriteType, true, false, false)
 	require.NoError(t, err)
 	actualCrc, err := s.Read(id, 0, int64(len(data)), data, false)
 	require.NoError(t, err)
 	require.EqualValues(t, crc, actualCrc)
 	// random write
-	_, err = s.Write(id, 0, int64(len(data)), data, crc, storage.RandomWriteType, true, false)
+	_, err = s.Write(id, 0, int64(len(data)), data, crc, storage.RandomWriteType, true, false, false)
 	require.NoError(t, err)
 	actualCrc, err = s.Read(id, 0, int64(len(data)), data, false)
 	require.NoError(t, err)
@@ -93,7 +93,7 @@ func extentMarkDeleteTinyTest(t *testing.T, s *storage.ExtentStore, id uint64) {
 	require.NotEqualValues(t, size, 0)
 	// write second file to extent
 	crc := crc32.ChecksumIEEE(data)
-	_, err = s.Write(id, size, int64(len(data)), data, crc, storage.AppendWriteType, true, false)
+	_, err = s.Write(id, size, int64(len(data)), data, crc, storage.AppendWriteType, true, false, false)
 	require.NoError(t, err)
 	// mark delete first file
 	extentStoreMarkDeleteTiny(t, s, id, 0, size)
@@ -155,7 +155,7 @@ func reopenExtentStoreTest(t *testing.T, dpType int) {
 	data := []byte(dataStr)
 	crc := crc32.ChecksumIEEE(data)
 	// write some data
-	_, err = s.Write(id, 0, int64(len(data)), data, crc, storage.AppendWriteType, true, false)
+	_, err = s.Write(id, 0, int64(len(data)), data, crc, storage.AppendWriteType, true, false, false)
 	require.NoError(t, err)
 	firstSnap, err := s.SnapShot()
 	require.NoError(t, err)

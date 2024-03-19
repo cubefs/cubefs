@@ -1036,6 +1036,13 @@ func parseAndExtractForbidden(r *http.Request) (forbidden bool, err error) {
 	return extractForbidden(r)
 }
 
+func parseAndExtractDpRepairBlockSize(r *http.Request) (size uint64, err error) {
+	if err = r.ParseForm(); err != nil {
+		return
+	}
+	return extractDpRepairBlockSize(r)
+}
+
 func extractStatus(r *http.Request) (status bool, err error) {
 	var value string
 	if value = r.FormValue(enableKey); value == "" {
@@ -1055,6 +1062,18 @@ func extractForbidden(r *http.Request) (forbidden bool, err error) {
 		return
 	}
 	if forbidden, err = strconv.ParseBool(value); err != nil {
+		return
+	}
+	return
+}
+
+func extractDpRepairBlockSize(r *http.Request) (size uint64, err error) {
+	var value string
+	if value = r.FormValue(dpRepairBlockSizeKey); value == "" {
+		err = keyNotFound(dpRepairBlockSizeKey)
+		return
+	}
+	if size, err = strconv.ParseUint(value, 10, 64); err != nil {
 		return
 	}
 	return
