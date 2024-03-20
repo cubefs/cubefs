@@ -79,15 +79,19 @@ func (s *Super) InodeGet(ino uint64) (*proto.InodeInfo, error) {
 				f.fWriter.FreeCache()
 				switch f.flag & 0x0f {
 				case syscall.O_RDONLY:
+					log.LogDebugf("InodeGet: ino(%v) migrate(%v) info(%v) flag(%v) O_RDONLY", ino, migrated, info, f.flag)
 					f.fReader = blobstore.NewReader(clientConf)
 					f.fWriter = nil
 				case syscall.O_WRONLY:
+					log.LogDebugf("InodeGet: ino(%v) migrate(%v) info(%v) flag(%v) O_WRONLY", ino, migrated, info, f.flag)
 					f.fWriter = blobstore.NewWriter(clientConf)
 					f.fReader = nil
 				case syscall.O_RDWR:
+					log.LogDebugf("InodeGet: ino(%v) migrate(%v) info(%v) flag(%v) O_RDWR", ino, migrated, info, f.flag)
 					f.fReader = blobstore.NewReader(clientConf)
 					f.fWriter = blobstore.NewWriter(clientConf)
 				default:
+					log.LogDebugf("InodeGet: ino(%v) migrate(%v) info(%v) flag(%v) default", ino, migrated, info, f.flag)
 					f.fWriter = blobstore.NewWriter(clientConf)
 					f.fReader = nil
 				}

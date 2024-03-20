@@ -108,8 +108,9 @@ func NewFile(s *Super, i *proto.InodeInfo, flag uint32, pino uint64, filename st
 			// no thing
 		}
 		log.LogDebugf("Trace NewFile:fReader(%v) fWriter(%v) ", fReader, fWriter)
-		return &File{super: s, info: i, fWriter: fWriter, fReader: fReader, parentIno: pino, name: filename}
+		return &File{super: s, info: i, fWriter: fWriter, fReader: fReader, parentIno: pino, name: filename, flag: flag}
 	}
+	log.LogDebugf("Trace NewFile:ino(%v) flag(%v) ", i, flag)
 	return &File{super: s, info: i, parentIno: pino, name: filename, flag: flag}
 }
 
@@ -287,7 +288,8 @@ func (f *File) Open(ctx context.Context, req *fuse.OpenRequest, resp *fuse.OpenR
 	}
 
 	elapsed := time.Since(start)
-	log.LogDebugf("TRACE Open: ino(%v) req(%v) resp(%v) (%v)ns", ino, req, resp, elapsed.Nanoseconds())
+	f.flag = uint32(req.Flags)
+	log.LogDebugf("TRACE Open: ino(%v) req(%v) resp(%v) flags(%v) (%v)ns", ino, req, resp, f.flag, elapsed.Nanoseconds())
 
 	return f, nil
 }
