@@ -20,6 +20,7 @@
 | disks         | string slice   | Format: `disk mount path:reserved space`, reserved space configuration range `[20G,50G]`                                        | Yes      |
 | diskCurrentLoadDpLimit | int | The max count of data partition on a disk that current load | No |
 | diskCurrentStopDpLimit | int | The max count of data partition on a disk that current stop | No |
+| diskLoadDpAllowDelay | bool | Allow data partition lazy loading | No |
 
 ## Configuration Example
 
