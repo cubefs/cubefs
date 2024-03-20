@@ -152,7 +152,7 @@ func (e *Extent) InitToFS() (err error) {
 // RestoreFromFS restores the entity data and status from the file stored on the filesystem.
 func (e *Extent) RestoreFromFS() (err error) {
 	if e.file, err = os.OpenFile(e.filePath, os.O_RDWR, 0666); err != nil {
-		if strings.Contains(err.Error(), syscall.ENOENT.Error()) {
+		if os.IsNotExist(err) {
 			err = ExtentNotFoundError
 		}
 		return err

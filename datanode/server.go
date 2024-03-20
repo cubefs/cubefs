@@ -42,7 +42,6 @@ import (
 	"github.com/cubefs/cubefs/util/config"
 	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
-	"github.com/cubefs/cubefs/util/sys"
 
 	"github.com/xtaci/smux"
 )
@@ -118,6 +117,7 @@ const (
 	// load/stop dp limit
 	ConfigDiskCurrentLoadDpLimit = "diskCurrentLoadDpLimit"
 	ConfigDiskCurrentStopDpLimit = "diskCurrentStopDpLimit"
+	ConfigDiskLoadDpAllowDelay   = "diskLoadDpAllowDelay"
 	//disk read extent limit
 	ConfigEnableDiskReadExtentLimit = "enableDiskReadRepairExtentLimit" //bool
 )
@@ -353,11 +353,6 @@ func (s *DataNode) updateQosLimit() {
 	}
 }
 func (s *DataNode) startSpaceManager(cfg *config.Config) (err error) {
-	err = sys.FreeFileCache()
-	if err != nil {
-		log.LogErrorf("[startSpaceManager] failed to free file cache, err(%v)", err)
-		err = nil
-	}
 	s.startTime = time.Now().Unix()
 	s.space = NewSpaceManager(s)
 	if len(strings.TrimSpace(s.port)) == 0 {
@@ -374,6 +369,8 @@ func (s *DataNode) startSpaceManager(cfg *config.Config) (err error) {
 	stopLimit := cfg.GetInt(ConfigDiskCurrentStopDpLimit)
 	s.space.SetCurrentLoadDpLimit(loadLimit)
 	s.space.SetCurrentStopDpLimit(stopLimit)
+
+	allowDelay := cfg.GetBool(ConfigDiskLoadDpAllowDelay)
 
 	diskRdonlySpace := uint64(cfg.GetInt64(CfgDiskRdonlySpace))
 	if diskRdonlySpace < DefaultDiskRetainMin {
@@ -432,7 +429,7 @@ func (s *DataNode) startSpaceManager(cfg *config.Config) (err error) {
 		wg.Add(1)
 		go func(wg *sync.WaitGroup, path string, reservedSpace uint64) {
 			defer wg.Done()
-			s.space.LoadDisk(path, reservedSpace, diskRdonlySpace, DefaultDiskMaxErr, diskEnableReadRepairExtentLimit)
+			s.space.LoadDisk(path, reservedSpace, diskRdonlySpace, DefaultDiskMaxErr, diskEnableReadRepairExtentLimit, allowDelay)
 		}(&wg, path, reservedSpace)
 	}
 
