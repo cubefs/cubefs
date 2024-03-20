@@ -808,6 +808,36 @@ func (dp *DataPartition) statusUpdate() {
 	dp.partitionStatus = status
 }
 
+func parseFileName(filename string) (extentID uint64, isExtent bool) {
+	var (
+		err error
+	)
+	if extentID, err = strconv.ParseUint(filename, 10, 64); err != nil {
+		isExtent = false
+		return
+	}
+	isExtent = true
+	return
+}
+
+func (dp *DataPartition) actualSize(path string, finfo os.FileInfo) (size int64) {
+	name := finfo.Name()
+	extentID, isExtent := parseFileName(name)
+	if !isExtent {
+		return 0
+	}
+	if storage.IsTinyExtent(extentID) {
+		stat := new(syscall.Stat_t)
+		err := syscall.Stat(fmt.Sprintf("%v/%v", path, finfo.Name()), stat)
+		if err != nil {
+			return finfo.Size()
+		}
+		return stat.Blocks * DiskSectorSize
+	}
+
+	return finfo.Size()
+}
+
 func (dp *DataPartition) computeUsage() {
 	if dp.intervalToUpdatePartitionSize.Unix() != 0 &&
 		time.Since(dp.intervalToUpdatePartitionSize) < IntervalToUpdatePartitionSize {
