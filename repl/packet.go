@@ -311,6 +311,7 @@ func NewNormalExtentWithHoleRepairReadPacket(partitionID uint64, extentID uint64
 	pr.Opcode = proto.OpSnapshotExtentRepairRead
 	pr.ExtentType = proto.TinyExtentType
 	pr.ReqID = proto.GenerateRequestID()
+	p = pr
 
 	return
 }
