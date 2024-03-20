@@ -48,7 +48,7 @@ const (
 	ExpiredPartitionExistTime = time.Hour * time.Duration(24*7)
 )
 
-const DefaultCurrentLoadDpLimit = 1
+const DefaultCurrentLoadDpLimit = 32
 
 // Disk represents the structure of the disk
 type Disk struct {
@@ -442,7 +442,7 @@ type dpLoadInfo struct {
 }
 
 // RestorePartition reads the files stored on the local disk and restores the data partitions.
-func (d *Disk) RestorePartition(visitor PartitionVisitor) (err error) {
+func (d *Disk) RestorePartition(visitor PartitionVisitor, allowDelay bool) (err error) {
 	var convert = func(node *proto.DataNodeInfo) *DataNodeInfo {
 		result := &DataNodeInfo{}
 		result.Addr = node.Addr
@@ -503,7 +503,7 @@ func (d *Disk) RestorePartition(visitor PartitionVisitor) (err error) {
 						log.LogInfof("[RestorePartition] disk(%v) load dp(%v) using time(%v)", d.Path, dp.partitionID, time.Since(begin))
 					}
 				}()
-				if dp, err = LoadDataPartition(path.Join(d.Path, filename), d); err != nil {
+				if dp, err = LoadDataPartition(path.Join(d.Path, filename), d, allowDelay); err != nil {
 					mesg := fmt.Sprintf("action[RestorePartition] new partition(%v) err(%v) ",
 						partitionID, err.Error())
 					log.LogError(mesg)
