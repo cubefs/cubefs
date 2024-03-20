@@ -495,7 +495,6 @@ func (s *DataNode) getAllExtent(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.buildSuccessResp(w, gcExtents)
-	return
 }
 
 func (s *DataNode) setDiskBadAPI(w http.ResponseWriter, r *http.Request) {
@@ -613,6 +612,7 @@ func (s *DataNode) detachDataPartition(w http.ResponseWriter, r *http.Request) {
 	partition.Disk().DetachDataPartition(partition)
 
 	log.LogDebugf("data partition %v is detached", partitionID)
+	_, err = LoadDataPartition(rootDir, disk, false)
 	s.buildSuccessResp(w, "success")
 }
 
