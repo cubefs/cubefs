@@ -5,7 +5,6 @@ import (
 	"context"
 	"io"
 	"net/http"
-	"sync"
 
 	"github.com/cubefs/cubefs/blobstore/access"
 	acapi "github.com/cubefs/cubefs/blobstore/api/access"
@@ -75,8 +74,15 @@ func (s *sdkHandler) Delete(ctx context.Context, args *acapi.DeleteArgs) (failed
 		return args.Locations, errcode.ErrIllegalArguments
 	}
 
+	cid := args.Locations[0].ClusterID
+	for _, loc := range args.Locations { // only 1 cluster
+		if cid != loc.ClusterID {
+			return args.Locations, errcode.ErrIllegalArguments
+		}
+	}
+
 	ctx = acapi.WithReqidContextWrap(ctx)
-	locations := make([]acapi.Location, 0, len(args.Locations))
+	locations := make([]acapi.Location, 0, len(args.Locations)) // check location size
 	for _, loc := range args.Locations {
 		if loc.Size > 0 {
 			locations = append(locations, loc.Copy())
@@ -189,14 +195,14 @@ func (s *sdkHandler) doDelete(ctx context.Context, args *acapi.DeleteArgs) (resp
 	span.Debugf("accept sdk delete request args: locations %d", len(args.Locations))
 	defer span.Info("done sdk delete request")
 
-	clusterBlobsN := make(map[proto.ClusterID]int, 4)
+	blobsN := 0
 	for _, loc := range args.Locations {
 		if !access.VerifyCrcWrap(&loc) {
 			span.Infof("invalid crc %+v", loc)
 			err = errcode.ErrIllegalArguments
 			return
 		}
-		clusterBlobsN[loc.ClusterID] += len(loc.Blobs)
+		blobsN += len(loc.Blobs)
 	}
 
 	if len(args.Locations) == 1 {
@@ -214,16 +220,11 @@ func (s *sdkHandler) doDelete(ctx context.Context, args *acapi.DeleteArgs) (resp
 	// a min delete message about 10-20 bytes,
 	// max delete locations is 1024, one location is max to 5G,
 	// merged message max size about 40MB.
-
-	merged := make(map[proto.ClusterID][]acapi.SliceInfo, len(clusterBlobsN))
-	for id, n := range clusterBlobsN {
-		merged[id] = make([]acapi.SliceInfo, 0, n)
-	}
+	merged := make([]acapi.SliceInfo, 0, blobsN)
 	for _, loc := range args.Locations {
-		merged[loc.ClusterID] = append(merged[loc.ClusterID], loc.Blobs...)
+		merged = append(merged, loc.Blobs...)
 	}
 
-	var wg sync.WaitGroup
 	failedCh := make(chan proto.ClusterID, 1)
 	done := make(chan struct{})
 	go func() {
@@ -240,22 +241,21 @@ func (s *sdkHandler) doDelete(ctx context.Context, args *acapi.DeleteArgs) (resp
 		close(done)
 	}()
 
-	wg.Add(len(merged))
-	for id := range merged {
-		go func(id proto.ClusterID) {
-			if err := s.handler.Delete(ctx, &acapi.Location{
-				ClusterID: id,
-				BlobSize:  1,
-				Blobs:     merged[id],
-			}); err != nil {
-				span.Error("stream delete failed", id, errors.Detail(err))
-				failedCh <- id
-			}
-			wg.Done()
-		}(id)
-	}
+	cid := args.Locations[0].ClusterID
+	delCh := make(chan struct{}, 1)
+	go func() {
+		if err := s.handler.Delete(ctx, &acapi.Location{
+			ClusterID: cid,
+			BlobSize:  1,
+			Blobs:     merged,
+		}); err != nil {
+			span.Error("stream delete failed", cid, errors.Detail(err))
+			failedCh <- cid
+		}
+		delCh <- struct{}{}
+	}()
 
-	wg.Wait()
+	<-delCh
 	close(failedCh)
 	<-done
 	return
