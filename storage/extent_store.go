@@ -23,12 +23,10 @@ import (
 	"sync/atomic"
 
 	"path"
-	"regexp"
 	"time"
 
 	"hash/crc32"
 	"io"
-	"runtime"
 	"sort"
 	"strings"
 	"syscall"
@@ -58,8 +56,7 @@ const (
 )
 
 var (
-	RegexpExtentFile, _ = regexp.Compile("^(\\d)+$")
-	SnapShotFilePool    = &sync.Pool{New: func() interface{} {
+	SnapShotFilePool = &sync.Pool{New: func() interface{} {
 		return new(proto.File)
 	}}
 )
@@ -284,6 +281,11 @@ func (s *ExtentStore) Create(extentID uint64) (err error) {
 }
 
 func (s *ExtentStore) initBaseFileID() error {
+	var extNum int
+	begin := time.Now()
+	defer func() {
+		log.LogInfof("[initBaseFileID] init base file id using time(%v), count(%v)", time.Since(begin), extNum)
+	}()
 	var (
 		baseFileID uint64
 	)
@@ -294,17 +296,22 @@ func (s *ExtentStore) initBaseFileID() error {
 	}
 
 	var (
-		extentID uint64
-		isExtent bool
-		e        *Extent
-		ei       *ExtentInfo
-		loadErr  error
+		e       *Extent
+		ei      *ExtentInfo
+		loadErr error
 	)
+	extentIds := make([]uint64, 0, len(files))
 	for _, f := range files {
-		if extentID, isExtent = s.ExtentID(f.Name()); !isExtent {
-			continue
+		if extentID, isExtent := s.ExtentID(f.Name()); isExtent {
+			extentIds = append(extentIds, extentID)
+			extNum++
 		}
+	}
+	sort.Slice(extentIds, func(i, j int) bool {
+		return extentIds[i] < extentIds[j]
+	})
 
+	for _, extentID := range extentIds {
 		if e, loadErr = s.extent(extentID); loadErr != nil {
 			log.LogError("[initBaseFileID] load extent error", loadErr)
 			continue
@@ -328,7 +335,6 @@ func (s *ExtentStore) initBaseFileID() error {
 	}
 	atomic.StoreUint64(&s.baseExtentID, baseFileID)
 	log.LogInfof("datadir(%v) maxBaseId(%v)", s.dataPath, baseFileID)
-	runtime.GC()
 	return nil
 }
 
@@ -677,9 +683,6 @@ func (s *ExtentStore) getTinyExtentInfo() (extents []*ExtentInfo) {
 
 // ExtentID return the extent ID.
 func (s *ExtentStore) ExtentID(filename string) (extentID uint64, isExtent bool) {
-	if isExtent = RegexpExtentFile.MatchString(filename); !isExtent {
-		return
-	}
 	var (
 		err error
 	)
@@ -692,6 +695,10 @@ func (s *ExtentStore) ExtentID(filename string) (extentID uint64, isExtent bool)
 }
 
 func (s *ExtentStore) initTinyExtent() (err error) {
+	begin := time.Now()
+	defer func() {
+		log.LogInfof("[initTinyExtent] init tiny extent using time(%v)", time.Since(begin))
+	}()
 	s.availableTinyExtentC = make(chan uint64, TinyExtentCount)
 	s.brokenTinyExtentC = make(chan uint64, TinyExtentCount)
 	var extentID uint64
