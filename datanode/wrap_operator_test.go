@@ -29,7 +29,7 @@ import (
 func newExtentStoreForOperatorTest(t *testing.T) (store *storage.ExtentStore) {
 	path, err := os.MkdirTemp("", "")
 	require.NoError(t, err)
-	store, err = storage.NewExtentStore(path, 0, 1*util.GB, proto.PartitionTypeNormal, true)
+	store, err = storage.NewExtentStore(path, 0, 1*util.GB, proto.PartitionTypeNormal, true, false)
 	require.NoError(t, err)
 	return
 }

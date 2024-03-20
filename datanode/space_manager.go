@@ -24,9 +24,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"math"
-	"os"
-
 	syslog "log"
 
 	"github.com/cubefs/cubefs/proto"
@@ -38,7 +35,7 @@ import (
 	"github.com/shirou/gopsutil/disk"
 )
 
-const DefaultStopDpLimit = DefaultCurrentLoadDpLimit
+const DefaultStopDpLimit = 8
 
 // SpaceManager manages the disk space.
 type SpaceManager struct {
@@ -281,8 +278,7 @@ func (manager *SpaceManager) Stats() *Stats {
 }
 
 func (manager *SpaceManager) LoadDisk(path string, reservedSpace, diskRdonlySpace uint64, maxErrCnt int,
-	diskEnableReadRepairExtentLimit bool,
-) (err error) {
+	diskEnableReadRepairExtentLimit bool, allowDelay bool) (err error) {
 	var (
 		disk    *Disk
 		visitor PartitionVisitor
@@ -308,7 +304,7 @@ func (manager *SpaceManager) LoadDisk(path string, reservedSpace, diskRdonlySpac
 			log.LogErrorf("NewDisk fail err:[%v]", err)
 			return
 		}
-		err = disk.RestorePartition(visitor)
+		err = disk.RestorePartition(visitor, allowDelay)
 		if err != nil {
 			log.LogErrorf("RestorePartition fail err:[%v]", err)
 			return
