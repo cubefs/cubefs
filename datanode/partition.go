@@ -610,9 +610,6 @@ func (dp *DataPartition) statusUpdate() {
 }
 
 func parseFileName(filename string) (extentID uint64, isExtent bool) {
-	if isExtent = storage.RegexpExtentFile.MatchString(filename); !isExtent {
-		return
-	}
 	var (
 		err error
 	)

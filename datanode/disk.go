@@ -48,7 +48,7 @@ const (
 	ExpiredPartitionExistTime = time.Hour * time.Duration(24*7)
 )
 
-const DefaultCurrentLoadDpLimit = 8
+const DefaultCurrentLoadDpLimit = 1
 
 // Disk represents the structure of the disk
 type Disk struct {
