@@ -48,6 +48,7 @@ import (
 	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/loadutil"
 	"github.com/cubefs/cubefs/util/log"
+	"github.com/cubefs/cubefs/util/sys"
 
 	"github.com/xtaci/smux"
 )
@@ -399,6 +400,11 @@ func (s *DataNode) updateQosLimit() {
 }
 
 func (s *DataNode) startSpaceManager(cfg *config.Config) (err error) {
+	err = sys.FreeFileCache()
+	if err != nil {
+		log.LogErrorf("[startSpaceManager] failed to free file cache, err(%v)", err)
+		err = nil
+	}
 	s.startTime = time.Now().Unix()
 	s.space = NewSpaceManager(s)
 	if len(strings.TrimSpace(s.port)) == 0 {
