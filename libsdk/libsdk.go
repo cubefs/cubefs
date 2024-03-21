@@ -79,7 +79,6 @@ import (
 	"io"
 	syslog "log"
 	"os"
-	"path"
 	gopath "path"
 	"reflect"
 	"regexp"
@@ -95,6 +94,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/api/access"
 	"github.com/cubefs/cubefs/blockcache/bcache"
 	"github.com/cubefs/cubefs/client/fs"
+	"github.com/cubefs/cubefs/cmd/common"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/sdk/data/blobstore"
 	"github.com/cubefs/cubefs/sdk/data/stream"
@@ -105,7 +105,6 @@ import (
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/cubefs/cubefs/util/stat"
-	"gopkg.in/natefinch/lumberjack.v2"
 )
 
 const (
@@ -1163,10 +1162,7 @@ func (c *client) start() (err error) {
 	if c.logDir != "" {
 		level = log.ParseLevel(c.logLevel, log.Lwarn)
 		log.SetOutputLevel(level)
-		log.SetOutput(&lumberjack.Logger{
-			Filename: path.Join(c.logDir, "libcfs", "libcfs.log"),
-			MaxSize:  128, MaxAge: 7, MaxBackups: 7, LocalTime: true, Compress: true,
-		})
+		log.SetOutput(common.NewLogger(c.logDir, "libcfs", 128, 30, 0, 4096, true, true))
 		stat.NewStatistic(c.logDir, "libcfs", int64(stat.DefaultStatLogSize), stat.DefaultTimeOutUs, true)
 	}
 	proto.InitBufferPool(int64(32768))

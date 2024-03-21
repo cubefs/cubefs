@@ -116,7 +116,7 @@ func Clean(opt string) error {
 	log.SetOutputLevel(log.Linfo)
 	log.SetOutput(&lumberjack.Logger{
 		Filename: path.Join("fscklog", "fsck", "fsck.log"),
-		MaxSize:  1024, MaxAge: 7, MaxBackups: 7, LocalTime: true, Compress: true,
+		MaxSize:  1024, ReservedSize: 4096, LocalTime: true, Compress: true,
 	})
 
 	masters := strings.Split(MasterAddr, meta.HostsSeparator)

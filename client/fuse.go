@@ -41,6 +41,7 @@ import (
 
 	"github.com/cubefs/cubefs/blockcache/bcache"
 	cfs "github.com/cubefs/cubefs/client/fs"
+	"github.com/cubefs/cubefs/cmd/common"
 	"github.com/cubefs/cubefs/depends/bazil.org/fuse"
 	"github.com/cubefs/cubefs/depends/bazil.org/fuse/fs"
 	"github.com/cubefs/cubefs/proto"
@@ -57,7 +58,6 @@ import (
 	"github.com/cubefs/cubefs/util/ump"
 	"github.com/jacobsa/daemonize"
 	_ "go.uber.org/automaxprocs"
-	"gopkg.in/natefinch/lumberjack.v2"
 )
 
 const (
@@ -310,16 +310,9 @@ func main() {
 
 	level := log.ParseLevel(opt.Loglvl, log.Lerror)
 	log.SetOutputLevel(level)
-	log.SetOutput(&lumberjack.Logger{
-		Filename: path.Join(opt.Logpath, opt.Volname, opt.Volname+".log"),
-		MaxSize:  1024, MaxAge: 7, MaxBackups: 7, LocalTime: true,
-	})
-	if err != nil {
-		err = errors.NewErrorf("Init log dir fail: %v\n", err)
-		fmt.Println(err)
-		daemonize.SignalOutcome(err)
-		os.Exit(1)
-	}
+	Logger := common.LoadLogger(opt.Volname, cfg)
+	Logger.Filename = path.Join(opt.Logpath, opt.Volname, opt.Volname+".log")
+	log.SetOutput(Logger)
 
 	if _, err = os.Stat(opt.MountPoint); err != nil {
 		if err = os.Mkdir(opt.MountPoint, os.ModePerm); err != nil {
