@@ -29,6 +29,7 @@ import (
 
 	"github.com/cubefs/cubefs/blobstore/api/access"
 	blog "github.com/cubefs/cubefs/blobstore/util/log"
+	"github.com/cubefs/cubefs/cmd/common"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/sdk/data/blobstore"
 	"github.com/cubefs/cubefs/sdk/data/stream"
@@ -37,7 +38,6 @@ import (
 	"github.com/cubefs/cubefs/util/buf"
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/cubefs/cubefs/util/stat"
-	"gopkg.in/natefinch/lumberjack.v2"
 )
 
 type LimitParameters struct {
@@ -89,10 +89,7 @@ func NewClient(ctx context.Context, config PreloadConfig) *PreLoadClient {
 	level := log.ParseLevel(config.LogLevel, log.Ldebug)
 	if config.LogDir != "" {
 		log.SetOutputLevel(level)
-		log.SetOutput(&lumberjack.Logger{
-			Filename: path.Join(config.LogDir, "preload", "preload.log"),
-			MaxSize:  1024, MaxAge: 7, MaxBackups: 7, LocalTime: true, Compress: true,
-		})
+		log.SetOutput(common.NewLogger(config.LogDir, "preload", 1024, 30, 7, 4096, true, true))
 		stat.NewStatistic(config.LogDir, "preload", int64(stat.DefaultStatLogSize), stat.DefaultTimeOutUs, true)
 	}
 

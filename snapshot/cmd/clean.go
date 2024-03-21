@@ -130,7 +130,7 @@ func Clean(opt string, args []string) error {
 	log.SetOutputLevel(log.Ldebug)
 	log.SetOutput(&lumberjack.Logger{
 		Filename: path.Join("snapshotlog", "snapshot", "snapshot.log"),
-		MaxSize:  1024, MaxAge: 7, MaxBackups: 7, LocalTime: true, Compress: true,
+		MaxSize:  1024, ReservedSize: 4096, LocalTime: true, Compress: true,
 	})
 
 	masters := strings.Split(MasterAddr, meta.HostsSeparator)

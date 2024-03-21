@@ -46,7 +46,6 @@ import (
 	sysutil "github.com/cubefs/cubefs/util/sys"
 	"github.com/cubefs/cubefs/util/ump"
 	"github.com/jacobsa/daemonize"
-	"gopkg.in/natefinch/lumberjack.v2"
 )
 
 const (
@@ -220,13 +219,7 @@ func main() {
 		}
 	}
 	log.SetOutputLevel(log.ParseLevel(logLevel, log.Lerror))
-	log.SetOutput(&lumberjack.Logger{
-		Filename:   path.Join(logDir, module, module+".log"),
-		MaxSize:    1024,
-		MaxAge:     7,
-		MaxBackups: 7,
-		LocalTime:  true,
-	})
+	log.SetOutput(common.LoadLogger(module, cfg))
 
 	_, err = auditlog.InitAudit(logDir, module, auditlog.DefaultAuditLogSize)
 	if err != nil {

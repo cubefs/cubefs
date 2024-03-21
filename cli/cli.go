@@ -79,7 +79,7 @@ func main() {
 	log.SetOutputLevel(log.Ldebug)
 	log.SetOutput(&lumberjack.Logger{
 		Filename: path.Join(path.Join(os.TempDir(), "cfs"), "cli", "cli.log"),
-		MaxSize:  128, MaxAge: 7, MaxBackups: 7, LocalTime: true, Compress: true,
+		MaxSize:  128, ReservedSize: 4096, LocalTime: true, Compress: true,
 	})
 
 	if err := runCLI(); err != nil {
