@@ -884,8 +884,13 @@ func (dp *DataPartition) doStreamFixTinyDeleteRecord(repairTask *DataPartitionRe
 		return
 	}
 	defer func() {
-		dp.putRepairConn(conn, err != nil)
+		if dp.enableSmux() {
+			dp.putRepairConn(conn, true)
+		} else {
+			dp.putRepairConn(conn, err != nil)
+		}
 	}()
+
 	if err = p.WriteToConn(conn); err != nil {
 		return
 	}
@@ -970,6 +975,13 @@ func (dp *DataPartition) canRemoveSelf() (canRemove bool, err error) {
 
 func (dp *DataPartition) getRepairConn(target string) (net.Conn, error) {
 	return dp.dataNode.getRepairConnFunc(target)
+}
+
+func (dp *DataPartition) enableSmux() bool {
+	if dp.dataNode == nil {
+		return false
+	}
+	return dp.dataNode.enableSmuxConnPool
 }
 
 func (dp *DataPartition) putRepairConn(conn net.Conn, forceClose bool) {
