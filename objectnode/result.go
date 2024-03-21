@@ -250,7 +250,7 @@ type ListBucketResultV2 struct {
 	KeyCount       uint64          `xml:"KeyCount"`
 	MaxKeys        uint64          `xml:"MaxKeys"`
 	Delimiter      string          `xml:"Delimiter,omitempty"`
-	IsTruncated    bool            `xml:"IsTruncated,omitempty"`
+	IsTruncated    bool            `xml:"IsTruncated"`
 	Contents       []*Content      `xml:"Contents"`
 	CommonPrefixes []*CommonPrefix `xml:"CommonPrefixes"`
 }
