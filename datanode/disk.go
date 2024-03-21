@@ -77,7 +77,6 @@ type Disk struct {
 	limitWrite                  *ioLimiter
 	extentRepairReadLimit       chan struct{}
 	enableExtentRepairReadLimit bool
-	extentRepairReadMutex       sync.RWMutex
 	extentRepairReadDp          uint64
 }
 
@@ -613,25 +612,19 @@ func isExpiredPartition(id uint64, partitions []uint64) bool {
 }
 
 func (d *Disk) RequireReadExtentToken(id uint64) bool {
-	d.extentRepairReadMutex.Lock()
-	defer d.extentRepairReadMutex.Unlock()
 	if !d.enableExtentRepairReadLimit {
 		return true
 	}
-	hasToken := false
 	select {
 	case <-d.extentRepairReadLimit:
-		hasToken = true
 		d.extentRepairReadDp = id
+		return true
 	default:
-		hasToken = false
+		return false
 	}
-	return hasToken
 }
 
 func (d *Disk) ReleaseReadExtentToken() {
-	d.extentRepairReadMutex.Lock()
-	defer d.extentRepairReadMutex.Unlock()
 	if !d.enableExtentRepairReadLimit {
 		return
 	}
@@ -645,13 +638,9 @@ func (d *Disk) ReleaseReadExtentToken() {
 }
 
 func (d *Disk) SetExtentRepairReadLimitStatus(status bool) {
-	d.extentRepairReadMutex.Lock()
-	defer d.extentRepairReadMutex.Unlock()
 	d.enableExtentRepairReadLimit = status
 }
 
 func (d *Disk) QueryExtentRepairReadLimitStatus() (bool, uint64) {
-	d.extentRepairReadMutex.RLock()
-	defer d.extentRepairReadMutex.RUnlock()
 	return d.enableExtentRepairReadLimit, d.extentRepairReadDp
 }
