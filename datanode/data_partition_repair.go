@@ -496,7 +496,13 @@ func (dp *DataPartition) applyRepairKey(extentID int) (m string) {
 
 // The actual repair of an extent happens here.
 func (dp *DataPartition) streamRepairExtent(remoteExtentInfo *storage.ExtentInfo) (err error) {
-	log.LogDebugf("streamRepairExtent dp %v extent %v remote info %v", dp.partitionID, remoteExtentInfo.FileID, remoteExtentInfo)
+	defer func() {
+		if err != nil {
+			log.LogWarnf("streamRepairExtent: execute repair failed, err %s", err.Error())
+		}
+	}()
+
+	log.LogDebugf("streamRepairExtent dp %v remote info %v", dp.partitionID, remoteExtentInfo)
 	store := dp.ExtentStore()
 	if !store.HasExtent(remoteExtentInfo.FileID) {
 		return
@@ -537,15 +543,17 @@ func (dp *DataPartition) streamRepairExtent(remoteExtentInfo *storage.ExtentInfo
 		return errors.Trace(err, "streamRepairExtent dp %v get conn from host(%v) error", dp.partitionID, remoteExtentInfo.Source)
 	}
 
-	isNetError := false
 	defer func() {
-		dp.putRepairConn(conn, isNetError)
+		if dp.enableSmux() {
+			dp.putRepairConn(conn, true)
+		} else {
+			dp.putRepairConn(conn, err != nil)
+		}
 	}()
 
 	if err = request.WriteToConn(conn); err != nil {
 		err = errors.Trace(err, "streamRepairExtent send streamRead to host(%v) error", remoteExtentInfo.Source)
 		log.LogWarnf("action[streamRepairExtent] dp %v err(%v).", dp.partitionID, err)
-		isNetError = true
 		return
 	}
 	currFixOffset := localExtentInfo.Size
@@ -577,7 +585,6 @@ func (dp *DataPartition) streamRepairExtent(remoteExtentInfo *storage.ExtentInfo
 		if err = reply.ReadFromConn(conn, 60); err != nil {
 			err = errors.Trace(err, "streamRepairExtent dp %v extent %v receive data error,localExtentSize(%v) remoteExtentSize(%v)",
 				dp.partitionID, remoteExtentInfo.FileID, currFixOffset, remoteExtentInfo.Size)
-			isNetError = true
 			log.LogWarnf("%v", err.Error())
 			return
 		}
@@ -586,7 +593,6 @@ func (dp *DataPartition) streamRepairExtent(remoteExtentInfo *storage.ExtentInfo
 			if reply.ResultCode == proto.OpReadRepairExtentAgain {
 				log.LogDebugf("streamRepairExtent dp %v extent %v wait for token", dp.partitionID, remoteExtentInfo.FileID)
 				time.Sleep(time.Second * 5)
-				isNetError = true
 				return storage.NoDiskReadRepairExtentTokenError
 			} else {
 				err = errors.Trace(fmt.Errorf("unknow result code"),
