@@ -568,7 +568,7 @@ func (mp *metaPartition) ApplyMemberChange(confChange *raftproto.ConfChange, ind
 	var (
 		updated bool
 	)
-	span, ctx := spanContext()
+	span, ctx := spanContextPrefix("ApplyMemberChange-")
 	switch confChange.Type {
 	case raftproto.ConfAddNode:
 		req := &proto.AddMetaPartitionRaftMemberRequest{}
@@ -868,7 +868,7 @@ func (mp *metaPartition) HandleFatalEvent(err *raft.FatalError) {
 
 // HandleLeaderChange handles the leader changes.
 func (mp *metaPartition) HandleLeaderChange(leader uint64) {
-	span, ctx := spanContext()
+	span, ctx := spanContextPrefix("HandleLeaderChange-")
 	exporter.Warning(fmt.Sprintf("metaPartition(%v) changeLeader to (%v)", mp.config.PartitionId, leader))
 	if mp.config.NodeId == leader {
 		localIp := mp.manager.metaNode.localAddr

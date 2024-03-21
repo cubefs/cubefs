@@ -126,6 +126,8 @@ const (
 
 const cpuSampleDuration = 1 * time.Second
 
+var getSpan = proto.SpanFromContext
+
 // DataNode defines the structure of a data node.
 type DataNode struct {
 	space           *SpaceManager
@@ -213,7 +215,7 @@ func (s *DataNode) Sync() {
 
 // Workflow of starting up a data node.
 func doStart(server common.Server, cfg *config.Config) (err error) {
-	ctx := context.Background()
+	ctx := proto.ContextWithOperation(context.Background(), "datanode-start")
 	s, ok := server.(*DataNode)
 	if !ok {
 		return errors.New("Invalid node Type!")

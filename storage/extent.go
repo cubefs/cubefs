@@ -30,7 +30,6 @@ import (
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util"
-	"github.com/cubefs/cubefs/util/log"
 )
 
 const (
@@ -149,9 +148,9 @@ func (e *Extent) GetFile() *os.File {
 
 // InitToFS init extent data info filesystem. If entry file exist and overwrite is true,
 // this operation will clear all data of exist entry file and initialize extent header data.
-func (e *Extent) InitToFS() (err error) {
+func (e *Extent) InitToFS(ctx context.Context) (err error) {
 	if e.file, err = os.OpenFile(e.filePath, ExtentOpenOpt, 0o666); err != nil {
-		log.Errorf("[Extent.InitToFS] failed to open %s", e.filePath)
+		getSpan(ctx).Errorf("[Extent.InitToFS] failed to open %s", e.filePath)
 		return err
 	}
 
@@ -165,7 +164,7 @@ func (e *Extent) InitToFS() (err error) {
 	return
 }
 
-func (e *Extent) GetDataSize(statSize int64) (dataSize int64) {
+func (e *Extent) GetDataSize(ctx context.Context, statSize int64) (dataSize int64) {
 	var (
 		dataStart int64
 		holStart  int64
@@ -173,25 +172,26 @@ func (e *Extent) GetDataSize(statSize int64) (dataSize int64) {
 		err       error
 	)
 
+	span := getSpan(ctx)
 	for {
 		// curOff if the hold start and the data end
 		curOff, err = e.file.Seek(holStart, SEEK_DATA)
 		if err != nil || curOff >= util.ExtentSize || (holStart > 0 && holStart == curOff) {
-			log.Debugf("GetDataSize statSize %v curOff %v dataStart %v holStart %v, err %v,path %v", statSize, curOff, dataStart, holStart, err, e.filePath)
+			span.Debugf("GetDataSize statSize %v curOff %v dataStart %v holStart %v, err %v,path %v", statSize, curOff, dataStart, holStart, err, e.filePath)
 			break
 		}
-		log.Debugf("GetDataSize statSize %v curOff %v dataStart %v holStart %v, err %v,path %v", statSize, curOff, dataStart, holStart, err, e.filePath)
+		span.Debugf("GetDataSize statSize %v curOff %v dataStart %v holStart %v, err %v,path %v", statSize, curOff, dataStart, holStart, err, e.filePath)
 		dataStart = curOff
 
 		curOff, err = e.file.Seek(dataStart, SEEK_HOLE)
 		if err != nil || curOff >= util.ExtentSize || dataStart == curOff {
-			log.Debugf("GetDataSize statSize %v curOff %v dataStart %v holStart %v, err %v,path %v", statSize, curOff, dataStart, holStart, err, e.filePath)
+			span.Debugf("GetDataSize statSize %v curOff %v dataStart %v holStart %v, err %v,path %v", statSize, curOff, dataStart, holStart, err, e.filePath)
 			break
 		}
-		log.Debugf("GetDataSize statSize %v curOff %v dataStart %v holStart %v, err %v,path %v", statSize, curOff, dataStart, holStart, err, e.filePath)
+		span.Debugf("GetDataSize statSize %v curOff %v dataStart %v holStart %v, err %v,path %v", statSize, curOff, dataStart, holStart, err, e.filePath)
 		holStart = curOff
 	}
-	log.Debugf("GetDataSize statSize %v curOff %v dataStart %v holStart %v, err %v,path %v", statSize, curOff, dataStart, holStart, err, e.filePath)
+	span.Debugf("GetDataSize statSize %v curOff %v dataStart %v holStart %v, err %v,path %v", statSize, curOff, dataStart, holStart, err, e.filePath)
 	if holStart == 0 {
 		if statSize > util.ExtentSize {
 			return util.ExtentSize
@@ -202,7 +202,7 @@ func (e *Extent) GetDataSize(statSize int64) (dataSize int64) {
 }
 
 // RestoreFromFS restores the entity data and status from the file stored on the filesystem.
-func (e *Extent) RestoreFromFS() (err error) {
+func (e *Extent) RestoreFromFS(ctx context.Context) (err error) {
 	if e.file, err = os.OpenFile(e.filePath, os.O_RDWR, 0o666); err != nil {
 		if strings.Contains(err.Error(), syscall.ENOENT.Error()) {
 			err = ExtentNotFoundError
@@ -224,7 +224,7 @@ func (e *Extent) RestoreFromFS() (err error) {
 		return
 	}
 
-	e.dataSize = e.GetDataSize(info.Size())
+	e.dataSize = e.GetDataSize(ctx, info.Size())
 	e.snapshotDataOff = util.ExtentSize
 	if info.Size() > util.ExtentSize {
 		e.snapshotDataOff = uint64(info.Size())
@@ -302,7 +302,7 @@ func (e *Extent) Write(ctx context.Context, data []byte, offset, size int64, crc
 		return
 	}
 
-	if err = e.checkWriteOffsetAndSize(writeType, offset, size); err != nil {
+	if err = e.checkWriteOffsetAndSize(ctx, writeType, offset, size); err != nil {
 		span.Errorf("action[Extent.Write] checkWriteOffsetAndSize offset %v size %v writeType %v err %v",
 			offset, size, writeType, err)
 		err = newParameterError("extent current size=%d write offset=%d write size=%d", e.dataSize, offset, size)
@@ -420,7 +420,7 @@ func (e *Extent) checkReadOffsetAndSize(offset, size int64) error {
 	return nil
 }
 
-func (e *Extent) checkWriteOffsetAndSize(writeType int, offset, size int64) error {
+func (e *Extent) checkWriteOffsetAndSize(ctx context.Context, writeType int, offset, size int64) error {
 	err := newParameterError("writeType=%d offset=%d size=%d", writeType, offset, size)
 	if IsAppendWrite(writeType) {
 		if size == 0 || size > util.BlockSize ||
@@ -428,7 +428,7 @@ func (e *Extent) checkWriteOffsetAndSize(writeType int, offset, size int64) erro
 			return err
 		}
 	} else if IsAppendRandomWrite(writeType) {
-		log.Debugf("action[checkOffsetAndSize] offset %v size %v", offset, size)
+		getSpan(ctx).Debugf("action[checkOffsetAndSize] offset %v size %v", offset, size)
 		if offset < util.ExtentSize || size == 0 {
 			return err
 		}
@@ -490,8 +490,9 @@ func (e *Extent) autoComputeExtentCrc(ctx context.Context, crcFunc UpdateCrcFunc
 }
 
 // DeleteTiny deletes a tiny extent.
-func (e *Extent) punchDelete(offset, size int64) (hasDelete bool, err error) {
-	log.Debugf("punchDelete extent %v offset %v, size %v", e, offset, size)
+func (e *Extent) punchDelete(ctx context.Context, offset, size int64) (hasDelete bool, err error) {
+	span := getSpan(ctx)
+	span.Debugf("punchDelete extent %v offset %v, size %v", e, offset, size)
 	if int(offset)%util.PageSize != 0 {
 		return false, ParameterMismatchError
 	}
@@ -509,7 +510,7 @@ func (e *Extent) punchDelete(offset, size int64) (hasDelete bool, err error) {
 	if newOffset-offset >= size {
 		return true, nil
 	}
-	log.Debugf("punchDelete offset %v size %v", offset, size)
+	span.Debugf("punchDelete offset %v size %v", offset, size)
 	err = fallocate(int(e.file.Fd()), util.FallocFLPunchHole|util.FallocFLKeepSize, offset, size)
 	return
 }
@@ -520,7 +521,8 @@ func (e *Extent) getRealBlockCnt() (blockNum int64) {
 	return stat.Blocks
 }
 
-func (e *Extent) TinyExtentRecover(data []byte, offset, size int64, crc uint32, isEmptyPacket bool) (err error) {
+func (e *Extent) TinyExtentRecover(ctx context.Context, data []byte, offset, size int64, crc uint32, isEmptyPacket bool) (err error) {
+	span := getSpan(ctx)
 	e.Lock()
 	defer e.Unlock()
 	if !IsTinyExtent(e.extentID) {
@@ -530,7 +532,7 @@ func (e *Extent) TinyExtentRecover(data []byte, offset, size int64, crc uint32, 
 		return fmt.Errorf("error empty packet on (%v) offset(%v) size(%v)"+
 			" isEmptyPacket(%v)  e.dataSize(%v)", e.file.Name(), offset, size, isEmptyPacket, e.dataSize)
 	}
-	log.Debugf("before file (%v) getRealBlockNo (%v) isEmptyPacket(%v)"+
+	span.Debugf("before file (%v) getRealBlockNo (%v) isEmptyPacket(%v)"+
 		"offset(%v) size(%v) e.datasize(%v)", e.filePath, e.getRealBlockCnt(), isEmptyPacket, offset, size, e.dataSize)
 	if isEmptyPacket {
 		var finfo os.FileInfo
@@ -557,7 +559,7 @@ func (e *Extent) TinyExtentRecover(data []byte, offset, size int64, crc uint32, 
 		watermark = watermark + (util.PageSize - watermark%util.PageSize)
 	}
 	e.dataSize = watermark
-	log.Debugf("after file (%v) getRealBlockNo (%v) isEmptyPacket(%v)"+
+	span.Debugf("after file (%v) getRealBlockNo (%v) isEmptyPacket(%v)"+
 		"offset(%v) size(%v) e.datasize(%v)", e.filePath, e.getRealBlockCnt(), isEmptyPacket, offset, size, e.dataSize)
 
 	return

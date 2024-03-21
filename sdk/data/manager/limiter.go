@@ -491,8 +491,10 @@ func (limitManager *LimitManager) ScheduleCheckGrid(ctx context.Context) {
 			ticker.Stop()
 		}()
 		var cnt uint64
+		rCtx := proto.RoundContext("check-grid")
 		for {
-			span, _ := proto.SpanContext()
+			ctx := rCtx()
+			span := proto.SpanFromContext(ctx)
 			select {
 			case <-limitManager.exitCh:
 				return

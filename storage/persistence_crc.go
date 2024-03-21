@@ -25,7 +25,6 @@ import (
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util"
-	"github.com/cubefs/cubefs/util/log"
 )
 
 type BlockCrc struct {
@@ -179,7 +178,7 @@ func (s *ExtentStore) PreAllocSpaceOnVerfiyFileForAppend(ctx context.Context, id
 	}
 }
 
-func (s *ExtentStore) PreAllocSpaceOnVerfiyFile(currExtentID uint64) {
+func (s *ExtentStore) PreAllocSpaceOnVerfiyFile(ctx context.Context, currExtentID uint64) {
 	if !proto.IsNormalDp(s.partitionType) {
 		return
 	}
@@ -193,12 +192,13 @@ func (s *ExtentStore) PreAllocSpaceOnVerfiyFile(currExtentID uint64) {
 			return
 		}
 
+		span := getSpan(ctx)
 		for id, fp := range s.verifyExtentFpAppend {
 			stat, _ := fp.Stat()
-			log.Debugf("PreAllocSpaceOnVerfiyFile. id %v name %v size %v", id, fp.Name(), stat.Size())
+			span.Debugf("PreAllocSpaceOnVerfiyFile. id %v name %v size %v", id, fp.Name(), stat.Size())
 			err = fallocate(int(fp.Fd()), 1, prevAllocSpaceExtentID*util.BlockHeaderSize, size)
 			if err != nil {
-				log.Errorf("PreAllocSpaceOnVerfiyFile. id %v name %v err %v", id, fp.Name(), err)
+				span.Errorf("PreAllocSpaceOnVerfiyFile. id %v name %v err %v", id, fp.Name(), err)
 				return
 			}
 		}
@@ -209,7 +209,7 @@ func (s *ExtentStore) PreAllocSpaceOnVerfiyFile(currExtentID uint64) {
 			return
 		}
 		atomic.StoreUint64(&s.hasAllocSpaceExtentIDOnVerfiyFile, uint64(endAllocSpaceExtentID))
-		log.Infof("Action(PreAllocSpaceOnVerifyFile) PartitionID(%v) currentExtent(%v)"+
+		span.Infof("Action(PreAllocSpaceOnVerifyFile) PartitionID(%v) currentExtent(%v)"+
 			"PrevAllocSpaceExtentIDOnVerifyFile(%v) EndAllocSpaceExtentIDOnVerifyFile(%v)"+
 			" has allocSpaceOnVerifyFile to (%v)", s.partitionID, currExtentID, prevAllocSpaceExtentID, endAllocSpaceExtentID,
 			prevAllocSpaceExtentID*util.BlockHeaderSize+size)

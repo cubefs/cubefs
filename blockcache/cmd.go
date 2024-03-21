@@ -61,6 +61,13 @@ var (
 	configForeground = flag.Bool("f", false, "run foreground")
 )
 
+func init() {
+	trace.RequestIDKey = proto.HeaderRequestID
+	trace.PrefixBaggage = "x-cfs-baggage-"
+	trace.FieldKeyTraceID = proto.HeaderRequestID
+	trace.FieldKeySpanID = "x-cfs-span-id"
+}
+
 func interceptSignal(s common.Server) {
 	sigC := make(chan os.Signal, 1)
 	signal.Notify(sigC, syscall.SIGINT, syscall.SIGTERM)

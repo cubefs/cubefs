@@ -887,7 +887,7 @@ func (dp *DataPartition) DoExtentStoreRepair(ctx context.Context, repairTask *Da
 
 		dp.disk.allocCheckLimit(proto.IopsWriteType, 1)
 
-		err := store.Create(uint64(extentInfo.FileID))
+		err := store.Create(ctx, uint64(extentInfo.FileID))
 		if err != nil {
 			continue
 		}
@@ -1315,7 +1315,7 @@ func (dp *DataPartition) handleDecommissionRecoverFailed(ctx context.Context) {
 	// prevent status changing from  Unavailable to Recovering again in statusUpdate()
 	dp.partitionType = proto.NormalCreateDataPartition
 	dp.partitionStatus = proto.Unavailable
-	log.Warnf("[handleDecommissionRecoverFailed]  dp(%d) recover failed reach max limit", dp.partitionID)
+	getSpan(ctx).Warnf("[handleDecommissionRecoverFailed]  dp(%d) recover failed reach max limit", dp.partitionID)
 	dp.PersistMetadata(ctx)
 	dp.StopDecommissionRecover(ctx, true)
 }

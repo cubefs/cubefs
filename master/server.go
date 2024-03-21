@@ -139,7 +139,7 @@ func NewServer() *Server {
 
 // Start starts a server
 func (m *Server) Start(cfg *config.Config) (err error) {
-	span, ctx := proto.SpanContextPrefix("server-start-")
+	span, ctx := proto.SpanContextPrefix("master-start-")
 	m.config = newClusterConfig()
 	gConfig = m.config
 	m.leaderInfo = &LeaderInfo{}

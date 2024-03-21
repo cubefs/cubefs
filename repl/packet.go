@@ -187,7 +187,7 @@ func NewPacketToGetAllWatermarks(partitionID uint64, extentType uint8) (p *Packe
 	p.Opcode = proto.OpGetAllWatermarks
 	p.PartitionID = partitionID
 	p.Magic = proto.ProtoMagic
-	p.ReqID = proto.GenerateRequestID()
+	p.ReqID = proto.RandomID()
 	p.ExtentType = extentType
 
 	return
@@ -198,7 +198,7 @@ func NewPacketToReadTinyDeleteRecord(partitionID uint64, offset int64) (p *Packe
 	p.Opcode = proto.OpReadTinyDeleteRecord
 	p.PartitionID = partitionID
 	p.Magic = proto.ProtoMagic
-	p.ReqID = proto.GenerateRequestID()
+	p.ReqID = proto.RandomID()
 	p.ExtentOffset = offset
 
 	return
@@ -224,7 +224,7 @@ func NewExtentRepairReadPacket(partitionID uint64, extentID uint64, offset, size
 	p.Size = uint32(size)
 	p.Opcode = proto.OpExtentRepairRead
 	p.ExtentType = proto.NormalExtentType
-	p.ReqID = proto.GenerateRequestID()
+	p.ReqID = proto.RandomID()
 
 	return
 }
@@ -238,7 +238,7 @@ func NewTinyExtentRepairReadPacket(partitionID uint64, extentID uint64, offset, 
 	p.Size = uint32(size)
 	p.Opcode = proto.OpTinyExtentRepairRead
 	p.ExtentType = proto.TinyExtentType
-	p.ReqID = proto.GenerateRequestID()
+	p.ReqID = proto.RandomID()
 
 	return
 }
@@ -274,7 +274,7 @@ func NewPacketToNotifyExtentRepair(partitionID uint64) (p *Packet) {
 	p.PartitionID = partitionID
 	p.Magic = proto.ProtoMagic
 	p.ExtentType = proto.NormalExtentType
-	p.ReqID = proto.GenerateRequestID()
+	p.ReqID = proto.RandomID()
 
 	return
 }

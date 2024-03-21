@@ -16,7 +16,6 @@ package storage_test
 
 import (
 	"bytes"
-	"context"
 	"fmt"
 	"hash/crc32"
 	"os"
@@ -40,7 +39,7 @@ func getTestPathExtentStore() (string, func(), error) {
 }
 
 func extentStoreNormalRwTest(t *testing.T, s *storage.ExtentStore, id uint64) {
-	ctx := context.Background()
+	ctx := newCtx()
 
 	data := []byte(dataStr)
 	crc := crc32.ChecksumIEEE(data)
@@ -61,7 +60,7 @@ func extentStoreNormalRwTest(t *testing.T, s *storage.ExtentStore, id uint64) {
 }
 
 func extentStoreMarkDeleteTiny(t *testing.T, s *storage.ExtentStore, id uint64, offset int64, size int64) {
-	ctx := context.Background()
+	ctx := newCtx()
 
 	err := s.MarkDelete(ctx, id, offset, int64(size))
 	require.NoError(t, err)
@@ -77,7 +76,7 @@ func extentStoreMarkDeleteTiny(t *testing.T, s *storage.ExtentStore, id uint64, 
 }
 
 func extentMarkDeleteNormalTest(t *testing.T, s *storage.ExtentStore, id uint64) {
-	ctx := context.Background()
+	ctx := newCtx()
 
 	ei, err := s.Watermark(id)
 	require.NoError(t, err)
@@ -96,7 +95,7 @@ func extentMarkDeleteNormalTest(t *testing.T, s *storage.ExtentStore, id uint64)
 }
 
 func extentMarkDeleteTinyTest(t *testing.T, s *storage.ExtentStore, id uint64) {
-	ctx := context.Background()
+	ctx := newCtx()
 
 	size, err := s.GetTinyExtentOffset(id)
 	require.NoError(t, err)
@@ -128,15 +127,15 @@ func extentStoreMarkDeleteTest(t *testing.T, s *storage.ExtentStore, id uint64) 
 
 func extentStoreSizeTest(t *testing.T, s *storage.ExtentStore) {
 	maxId, size := s.GetMaxExtentIDAndPartitionSize()
-	total := s.StoreSizeExtentID(maxId)
+	total := s.StoreSizeExtentID(newCtx(), maxId)
 	require.EqualValues(t, total, size)
 }
 
 func extentStoreLogicalTest(t *testing.T, s *storage.ExtentStore) {
-	ctx := context.Background()
+	ctx := newCtx()
 	normalId, err := s.NextExtentID()
 	require.NoError(t, err)
-	err = s.Create(normalId)
+	err = s.Create(ctx, normalId)
 	require.NoError(t, err)
 	s.SendToAvailableTinyExtentC(ctx, testTinyExtentID)
 	tinyId, err := s.GetAvailableTinyExtent(ctx)
@@ -154,7 +153,7 @@ func extentStoreLogicalTest(t *testing.T, s *storage.ExtentStore) {
 }
 
 func reopenExtentStoreTest(t *testing.T, dpType int) {
-	ctx := context.Background()
+	ctx := newCtx()
 	path, clean, err := getTestPathExtentStore()
 	require.NoError(t, err)
 	defer clean()
@@ -163,7 +162,7 @@ func reopenExtentStoreTest(t *testing.T, dpType int) {
 	defer s.Close()
 	id, err := s.NextExtentID()
 	require.NoError(t, err)
-	err = s.Create(id)
+	err = s.Create(ctx, id)
 	require.NoError(t, err)
 	data := []byte(dataStr)
 	crc := crc32.ChecksumIEEE(data)
@@ -201,7 +200,7 @@ func reopenExtentStoreTest(t *testing.T, dpType int) {
 }
 
 func staleExtentStoreTest(t *testing.T, dpType int) {
-	ctx := context.Background()
+	ctx := newCtx()
 	path, clean, err := getTestPathExtentStore()
 	extDirName := filepath.Base(path)
 	require.NoError(t, err)
@@ -210,7 +209,7 @@ func staleExtentStoreTest(t *testing.T, dpType int) {
 	require.NoError(t, err)
 	id, err := s.NextExtentID()
 	require.NoError(t, err)
-	err = s.Create(id)
+	err = s.Create(ctx, id)
 	require.NoError(t, err)
 	s.Close()
 
@@ -249,7 +248,7 @@ func staleExtentStoreTest(t *testing.T, dpType int) {
 }
 
 func extentStoreTest(t *testing.T, dpType int) {
-	ctx := context.Background()
+	ctx := newCtx()
 	path, clean, err := getTestPathExtentStore()
 	require.NoError(t, err)
 	defer clean()
@@ -262,8 +261,7 @@ func extentStoreTest(t *testing.T, dpType int) {
 }
 
 func extentReloadCheckCrc(t *testing.T, path string, id uint64, crc uint32) {
-	ctx := context.Background()
-
+	ctx := newCtx()
 	s, err := storage.NewExtentStore(ctx, path, 0, 1*util.GB, proto.PartitionTypeNormal, false)
 	require.NoError(t, err)
 
@@ -286,7 +284,7 @@ func extentReloadCheckCrc(t *testing.T, path string, id uint64, crc uint32) {
 }
 
 func extentStoreSnapshotRwTest(t *testing.T, s *storage.ExtentStore, id uint64, crc uint32, data []byte) {
-	ctx := context.Background()
+	ctx := newCtx()
 
 	// append write
 	offset := int64(util.ExtentSize)
@@ -334,7 +332,7 @@ func extentStoreSnapshotRwTest(t *testing.T, s *storage.ExtentStore, id uint64, 
 }
 
 func TestCheckExtentCrc(t *testing.T) {
-	ctx := context.Background()
+	ctx := newCtx()
 	path, clean, err := getTestPathExtentStore()
 	require.NoError(t, err)
 	defer clean()
@@ -345,7 +343,7 @@ func TestCheckExtentCrc(t *testing.T) {
 
 	normalId, err := s.NextExtentID()
 	require.NoError(t, err)
-	err = s.Create(normalId)
+	err = s.Create(ctx, normalId)
 	require.NoError(t, err)
 
 	require.NoError(t, err)

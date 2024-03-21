@@ -443,7 +443,7 @@ func (f *File) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.Wri
 		for quotaId := range f.info.QuotaInfos {
 			quotaIds = append(quotaIds, quotaId)
 		}
-		if limited := f.super.mw.IsQuotaLimited(quotaIds); limited {
+		if limited := f.super.mw.IsQuotaLimited(ctx, quotaIds); limited {
 			return ParseError(syscall.ENOSPC)
 		}
 		return nil

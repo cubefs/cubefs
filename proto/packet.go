@@ -25,7 +25,6 @@ import (
 	"io"
 	"net"
 	"strconv"
-	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -35,15 +34,7 @@ import (
 	"github.com/cubefs/cubefs/util/log"
 )
 
-var (
-	GRequestID = uint64(1)
-	Buffers    *buf.BufferPool
-)
-
-// GenerateRequestID generates the request ID.
-func GenerateRequestID() uint64 {
-	return atomic.AddUint64(&GRequestID, 1)
-}
+var Buffers *buf.BufferPool
 
 const (
 	AddrSplit = "/"

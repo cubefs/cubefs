@@ -375,27 +375,28 @@ func (o *ObjectNode) setAuditLog(raw interface{}) error {
 }
 
 func handleStart(s common.Server, cfg *config.Config) (err error) {
-	_, ctx := proto.SpanContext()
+	ctx := proto.ContextWithOperation(context.Background(), "objectnode-start")
+	span := proto.SpanFromContext(ctx)
 	o, ok := s.(*ObjectNode)
 	if !ok {
 		return errors.New("Invalid node Type!")
 	}
 	// parse config
 	if err = o.loadConfig(cfg); err != nil {
-		log.Errorf("[handleStart] load config failed: %v", err)
+		span.Errorf("[handleStart] load config failed: %v", err)
 		return
 	}
 	// Get cluster info from master
 	var ci *proto.ClusterInfo
 	if ci, err = o.mc.AdminAPI().GetClusterInfo(ctx); err != nil {
-		log.Errorf("[handleStart] get cluster info failed: %v", err)
+		span.Errorf("[handleStart] get cluster info failed: %v", err)
 		return
 	}
 	o.updateRegion(ci.Cluster)
-	log.Infof("[handleStart] cluster region: %v", o.region)
+	span.Infof("[handleStart] cluster region: %v", o.region)
 	if ci.EbsAddr != "" {
 		if err = newEbsClient(ci, cfg); err != nil {
-			log.Errorf("[handleStart] new ebs client failed: %v", err)
+			span.Errorf("[handleStart] new ebs client failed: %v", err)
 			return err
 		}
 		wt := cfg.GetInt(ebsWriteThreads)
@@ -416,7 +417,7 @@ func handleStart(s common.Server, cfg *config.Config) (err error) {
 
 	err = reloadconf.StartReload(reloadConf, o.Reload)
 	if err != nil {
-		log.Warnf("[handleStart] GetS3QoSInfo failed: %v", err)
+		span.Warnf("[handleStart] GetS3QoSInfo failed: %v", err)
 		o.limitMutex.Lock()
 		o.rateLimit = &NullRateLimit{}
 		o.limitMutex.Unlock()
@@ -424,14 +425,14 @@ func handleStart(s common.Server, cfg *config.Config) (err error) {
 
 	// start rest api
 	if err = o.startMuxRestAPI(); err != nil {
-		log.Errorf("[handleStart] start rest api failed: %v", err)
+		span.Errorf("[handleStart] start rest api failed: %v", err)
 		return
 	}
 
 	exporter.Init(cfg.GetString("role"), cfg)
 	exporter.RegistConsul(ci.Cluster, cfg.GetString("role"), cfg)
 
-	log.Info("[handleStart] object subsystem start success")
+	span.Info("[handleStart] object subsystem start success")
 	return
 }
 

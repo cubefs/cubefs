@@ -51,6 +51,7 @@ var (
 	getSpan           = proto.SpanFromContext
 	spanContext       = proto.SpanContext
 	spanContextPrefix = proto.SpanContextPrefix
+	roundContext      = proto.RoundContext
 	anyDuration       = trace.OptSpanDurationAny()
 )
 
@@ -145,7 +146,7 @@ func doStart(s common.Server, cfg *config.Config) (err error) {
 	if err = m.parseConfig(cfg); err != nil {
 		return
 	}
-	span, ctx := spanContextPrefix("start-")
+	span, ctx := spanContextPrefix("metanode-start-")
 	if err = m.register(ctx); err != nil {
 		return
 	}

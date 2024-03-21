@@ -1362,11 +1362,13 @@ func (mp *metaPartition) multiVersionTTLWork(dur time.Duration) {
 	time.Sleep(time.Duration(rand.Intn(60)))
 	ttl := time.NewTicker(dur)
 	snapQueue := make(chan interface{}, 5)
+	rCtx := roundContext("multi-version-ttl")
 	for {
+		ctx := rCtx()
+		span := getSpan(ctx)
 		select {
 		case <-ttl.C:
-			span, ctx := spanContext()
-			span.Debugf("[multiVersionTTLWork] begin cache ttl, mp[%v]", mp.config.PartitionId)
+			span.Debugf("begin cache ttl, mp[%v]", mp.config.PartitionId)
 			mp.multiVersionList.RWLock.RLock()
 			volVersionInfoList := &proto.VolVersionInfoList{
 				TemporaryVerMap: make(map[uint64]*proto.VolVersionInfo),
@@ -1394,7 +1396,7 @@ func (mp *metaPartition) multiVersionTTLWork(dur time.Duration) {
 			}
 
 		case <-mp.stopC:
-			log.Warnf("[multiVersionTTLWork] stoped, mp[%v]", mp.config.PartitionId)
+			span.Warnf("stoped, mp[%v]", mp.config.PartitionId)
 			return
 		}
 	}
@@ -1569,10 +1571,12 @@ func (mp *metaPartition) doCacheTTL(cacheTTL int) (err error) {
 	time.Sleep(time.Duration(rand.Intn(1200)))
 
 	ttl := time.NewTicker(time.Duration(util.OneDaySec()) * time.Second)
+	rCtx := roundContext("cache-ttl")
 	for {
+		ctx := rCtx()
+		span := getSpan(ctx)
 		select {
 		case <-ttl.C:
-			span, ctx := spanContext()
 			if mp.verSeq > 0 {
 				span.Warnf("[doCacheTTL] volume [%v] enable snapshot.exit cache ttl, mp[%v] cacheTTL[%v]",
 					mp.GetVolName(), mp.config.PartitionId, cacheTTL)
@@ -1597,7 +1601,7 @@ func (mp *metaPartition) doCacheTTL(cacheTTL int) (err error) {
 			mp.InodeTTLScan(ctx, cacheTTL)
 
 		case <-mp.stopC:
-			log.Warnf("[doCacheTTL] stoped, mp[%v]", mp.config.PartitionId)
+			span.Warnf("[doCacheTTL] stoped, mp[%v]", mp.config.PartitionId)
 			return
 		}
 	}
@@ -1690,11 +1694,14 @@ func (mp *metaPartition) storeSnapshotFiles(ctx context.Context) (err error) {
 func (mp *metaPartition) startCheckerEvict() {
 	timer := time.NewTimer(opCheckerInterval)
 	defer timer.Stop()
+
+	rCtx := roundContext("checker-evict")
 	for {
+		ctx := rCtx()
+		span := getSpan(ctx)
 		select {
 		case <-timer.C:
 			if _, ok := mp.IsLeader(); ok {
-				span, ctx := spanContext()
 				left, evict, err := mp.uniqCheckerEvict(ctx)
 				if evict != 0 {
 					span.Infof("[uniqChecker] after doEvict partition-%d, left:%d, evict:%d, err:%v", mp.config.PartitionId, left, evict, err)

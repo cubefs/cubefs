@@ -170,10 +170,9 @@ func (sender *AdminTaskManager) updateTaskInfo(task *proto.AdminTask, connSucces
 	}
 }
 
-func (sender *AdminTaskManager) buildPacket(task *proto.AdminTask) (packet *proto.Packet, err error) {
-	packet = proto.NewPacket()
+func (sender *AdminTaskManager) buildPacket(ctx context.Context, task *proto.AdminTask) (packet *proto.Packet, err error) {
+	packet = proto.NewPacketReqID(ctx)
 	packet.Opcode = task.OpCode
-	packet.ReqID = proto.GenerateRequestID()
 	packet.PartitionID = task.PartitionID
 	body, err := json.Marshal(task)
 	if err != nil {
@@ -185,7 +184,7 @@ func (sender *AdminTaskManager) buildPacket(task *proto.AdminTask) (packet *prot
 }
 
 func (sender *AdminTaskManager) sendAdminTask(ctx context.Context, task *proto.AdminTask, conn net.Conn) (err error) {
-	packet, err := sender.buildPacket(task)
+	packet, err := sender.buildPacket(ctx, task)
 	if err != nil {
 		return errors.Trace(err, "action[sendAdminTask build packet failed,task:%v]", task.ID)
 	}
@@ -203,7 +202,7 @@ func (sender *AdminTaskManager) sendAdminTask(ctx context.Context, task *proto.A
 }
 
 func (sender *AdminTaskManager) syncSendAdminTask(ctx context.Context, task *proto.AdminTask) (packet *proto.Packet, err error) {
-	packet, err = sender.buildPacket(task)
+	packet, err = sender.buildPacket(ctx, task)
 	if err != nil {
 		return nil, errors.Trace(err, "action[syncSendAdminTask build packet failed,task:%v]", task.ID)
 	}

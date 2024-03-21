@@ -228,7 +228,7 @@ func (dp *DataPartition) StartRaftLoggingSchedule() {
 
 		case <-getAppliedIDTimer.C:
 			if !dp.raftStopped() {
-				dp.updateMaxMinAppliedID()
+				dp.updateMaxMinAppliedID(ctx)
 			}
 			getAppliedIDTimer.Reset(time.Minute * 1)
 
@@ -284,6 +284,8 @@ func (dp *DataPartition) StartRaftAfterRepair(isLoad bool) {
 	)
 	timer := time.NewTicker(5 * time.Second)
 	for {
+		ctx = proto.ContextWithOperation(context.Background(), "StartRaftAfterRepair")
+		span = proto.SpanFromContext(ctx)
 		select {
 		case <-timer.C:
 			err = nil
@@ -306,7 +308,7 @@ func (dp *DataPartition) StartRaftAfterRepair(isLoad bool) {
 				continue
 			}
 			if initMaxExtentID == 0 || initPartitionSize == 0 {
-				initMaxExtentID, initPartitionSize, err = dp.getLeaderMaxExtentIDAndPartitionSize()
+				initMaxExtentID, initPartitionSize, err = dp.getLeaderMaxExtentIDAndPartitionSize(ctx)
 			}
 
 			if err != nil {
@@ -315,7 +317,7 @@ func (dp *DataPartition) StartRaftAfterRepair(isLoad bool) {
 			}
 
 			// get the partition size from the primary and compare it with the loparal one
-			currLeaderPartitionSize, err = dp.getLeaderPartitionSize(initMaxExtentID)
+			currLeaderPartitionSize, err = dp.getLeaderPartitionSize(ctx, initMaxExtentID)
 			if err != nil {
 				span.Errorf("action[StartRaftAfterRepair] PartitionID(%v) get leader size err(%v)", dp.partitionID, err)
 				continue
@@ -326,7 +328,7 @@ func (dp *DataPartition) StartRaftAfterRepair(isLoad bool) {
 			if currLeaderPartitionSize < initPartitionSize {
 				initPartitionSize = currLeaderPartitionSize
 			}
-			localSize := dp.extentStore.StoreSizeExtentID(initMaxExtentID)
+			localSize := dp.extentStore.StoreSizeExtentID(ctx, initMaxExtentID)
 			dp.decommissionRepairProgress = float64(localSize) / float64(initPartitionSize)
 			span.Infof("action[StartRaftAfterRepair] PartitionID(%v) initMaxExtentID(%v) initPartitionSize(%v) currLeaderPartitionSize(%v)"+
 				"localSize(%v)", dp.partitionID, initMaxExtentID, initPartitionSize, currLeaderPartitionSize, localSize)
@@ -592,12 +594,12 @@ func (s *DataNode) stopRaftServer() {
 }
 
 // NewPacketToBroadcastMinAppliedID returns a new packet to broadcast the min applied ID.
-func NewPacketToBroadcastMinAppliedID(partitionID uint64, minAppliedID uint64) (p *repl.Packet) {
+func NewPacketToBroadcastMinAppliedID(ctx context.Context, partitionID uint64, minAppliedID uint64) (p *repl.Packet) {
 	p = new(repl.Packet)
 	p.Opcode = proto.OpBroadcastMinAppliedID
 	p.PartitionID = partitionID
 	p.Magic = proto.ProtoMagic
-	p.ReqID = proto.GenerateRequestID()
+	p.ReqID = proto.RequestIDFromContext(ctx)
 	p.Data = make([]byte, 8)
 	binary.BigEndian.PutUint64(p.Data, minAppliedID)
 	p.Size = uint32(len(p.Data))
@@ -605,32 +607,32 @@ func NewPacketToBroadcastMinAppliedID(partitionID uint64, minAppliedID uint64) (
 }
 
 // NewPacketToGetAppliedID returns a new packet to get the applied ID.
-func NewPacketToGetAppliedID(partitionID uint64) (p *repl.Packet) {
+func NewPacketToGetAppliedID(ctx context.Context, partitionID uint64) (p *repl.Packet) {
 	p = new(repl.Packet)
 	p.Opcode = proto.OpGetAppliedId
 	p.PartitionID = partitionID
 	p.Magic = proto.ProtoMagic
-	p.ReqID = proto.GenerateRequestID()
+	p.ReqID = proto.RequestIDFromContext(ctx)
 	return
 }
 
 // NewPacketToGetPartitionSize returns a new packet to get the partition size.
-func NewPacketToGetPartitionSize(partitionID uint64) (p *repl.Packet) {
+func NewPacketToGetPartitionSize(ctx context.Context, partitionID uint64) (p *repl.Packet) {
 	p = new(repl.Packet)
 	p.Opcode = proto.OpGetPartitionSize
 	p.PartitionID = partitionID
 	p.Magic = proto.ProtoMagic
-	p.ReqID = proto.GenerateRequestID()
+	p.ReqID = proto.RequestIDFromContext(ctx)
 	return
 }
 
 // NewPacketToGetPartitionSize returns a new packet to get the partition size.
-func NewPacketToGetMaxExtentIDAndPartitionSIze(partitionID uint64) (p *repl.Packet) {
+func NewPacketToGetMaxExtentIDAndPartitionSIze(ctx context.Context, partitionID uint64) (p *repl.Packet) {
 	p = new(repl.Packet)
 	p.Opcode = proto.OpGetMaxExtentIDAndPartitionSize
 	p.PartitionID = partitionID
 	p.Magic = proto.ProtoMagic
-	p.ReqID = proto.GenerateRequestID()
+	p.ReqID = proto.RequestIDFromContext(ctx)
 	return
 }
 
@@ -657,10 +659,10 @@ func (dp *DataPartition) findMaxAppliedID(allAppliedIDs []uint64) (maxAppliedID 
 }
 
 // Get the partition size from the leader.
-func (dp *DataPartition) getLeaderPartitionSize(maxExtentID uint64) (size uint64, err error) {
+func (dp *DataPartition) getLeaderPartitionSize(ctx context.Context, maxExtentID uint64) (size uint64, err error) {
 	var conn *net.TCPConn
 
-	p := NewPacketToGetPartitionSize(dp.partitionID)
+	p := NewPacketToGetPartitionSize(ctx, dp.partitionID)
 	p.ExtentID = maxExtentID
 	target := dp.getReplicaAddr(0)
 	conn, err = gConnPool.GetConnect(target) // get remote connect
@@ -687,14 +689,14 @@ func (dp *DataPartition) getLeaderPartitionSize(maxExtentID uint64) (size uint64
 		return
 	}
 	size = binary.BigEndian.Uint64(p.Data)
-	log.Infof("partition(%v) MaxExtentID(%v) size(%v)", dp.partitionID, maxExtentID, size)
+	p.Span().Infof("partition(%v) MaxExtentID(%v) size(%v)", dp.partitionID, maxExtentID, size)
 
 	return
 }
 
-func (dp *DataPartition) getMaxExtentIDAndPartitionSize(target string) (maxExtentID, PartitionSize uint64, err error) {
+func (dp *DataPartition) getMaxExtentIDAndPartitionSize(ctx context.Context, target string) (maxExtentID, PartitionSize uint64, err error) {
 	var conn *net.TCPConn
-	p := NewPacketToGetMaxExtentIDAndPartitionSIze(dp.partitionID)
+	p := NewPacketToGetMaxExtentIDAndPartitionSIze(ctx, dp.partitionID)
 
 	conn, err = gConnPool.GetConnect(target) // get remote connect
 	if err != nil {
@@ -722,29 +724,30 @@ func (dp *DataPartition) getMaxExtentIDAndPartitionSize(target string) (maxExten
 	maxExtentID = binary.BigEndian.Uint64(p.Data[0:8])
 	PartitionSize = binary.BigEndian.Uint64(p.Data[8:16])
 
-	log.Infof("partition(%v) maxExtentID(%v) PartitionSize(%v) on leader", dp.partitionID, maxExtentID, PartitionSize)
+	p.Span().Infof("partition(%v) maxExtentID(%v) PartitionSize(%v) on leader", dp.partitionID, maxExtentID, PartitionSize)
 	return
 }
 
 // Get the MaxExtentID partition  from the leader.
-func (dp *DataPartition) getLeaderMaxExtentIDAndPartitionSize() (maxExtentID, PartitionSize uint64, err error) {
+func (dp *DataPartition) getLeaderMaxExtentIDAndPartitionSize(ctx context.Context) (maxExtentID, PartitionSize uint64, err error) {
 	target := dp.getReplicaAddr(0)
-	return dp.getMaxExtentIDAndPartitionSize(target)
+	return dp.getMaxExtentIDAndPartitionSize(ctx, target)
 }
 
 // Get the MaxExtentID partition  from the leader.
-func (dp *DataPartition) getMemberExtentIDAndPartitionSize() (maxExtentID, PartitionSize uint64, err error) {
+func (dp *DataPartition) getMemberExtentIDAndPartitionSize(ctx context.Context) (maxExtentID, PartitionSize uint64, err error) {
 	target := dp.getReplicaAddr(1)
-	return dp.getMaxExtentIDAndPartitionSize(target)
+	return dp.getMaxExtentIDAndPartitionSize(ctx, target)
 }
 
-func (dp *DataPartition) broadcastMinAppliedID(minAppliedID uint64) (err error) {
+func (dp *DataPartition) broadcastMinAppliedID(ctx context.Context, minAppliedID uint64) (err error) {
 	for i := 0; i < dp.getReplicaLen(); i++ {
-		p := NewPacketToBroadcastMinAppliedID(dp.partitionID, minAppliedID)
+		p := NewPacketToBroadcastMinAppliedID(ctx, dp.partitionID, minAppliedID)
+		span := p.Span()
 		replicaHostParts := strings.Split(dp.getReplicaAddr(i), ":")
 		replicaHost := strings.TrimSpace(replicaHostParts[0])
 		if LocalIP == replicaHost {
-			log.Debugf("partition(%v) local no send msg. localIP(%v) replicaHost(%v) appliedId(%v)",
+			span.Debugf("partition(%v) local no send msg. localIP(%v) replicaHost(%v) appliedId(%v)",
 				dp.partitionID, LocalIP, replicaHost, dp.appliedID)
 			dp.minAppliedID = minAppliedID
 			continue
@@ -766,21 +769,22 @@ func (dp *DataPartition) broadcastMinAppliedID(minAppliedID uint64) (err error) 
 			return
 		}
 		gConnPool.PutConnect(conn, false)
-		log.Debugf("partition(%v) minAppliedID(%v)", dp.partitionID, minAppliedID)
+		span.Debugf("partition(%v) minAppliedID(%v)", dp.partitionID, minAppliedID)
 	}
 
 	return
 }
 
 // Get all replica applied ids
-func (dp *DataPartition) getAllReplicaAppliedID() (allAppliedID []uint64, replyNum uint8) {
+func (dp *DataPartition) getAllReplicaAppliedID(ctx context.Context) (allAppliedID []uint64, replyNum uint8) {
 	allAppliedID = make([]uint64, dp.getReplicaLen())
 	for i := 0; i < dp.getReplicaLen(); i++ {
-		p := NewPacketToGetAppliedID(dp.partitionID)
+		p := NewPacketToGetAppliedID(ctx, dp.partitionID)
+		span := p.Span()
 		replicaHostParts := strings.Split(dp.getReplicaAddr(i), ":")
 		replicaHost := strings.TrimSpace(replicaHostParts[0])
 		if LocalIP == replicaHost {
-			log.Debugf("partition(%v) local no send msg. localIP(%v) replicaHost(%v) appliedId(%v)",
+			span.Debugf("partition(%v) local no send msg. localIP(%v) replicaHost(%v) appliedId(%v)",
 				dp.partitionID, LocalIP, replicaHost, dp.appliedID)
 			allAppliedID[i] = dp.appliedID
 			replyNum++
@@ -789,11 +793,11 @@ func (dp *DataPartition) getAllReplicaAppliedID() (allAppliedID []uint64, replyN
 		target := dp.getReplicaAddr(i)
 		appliedID, err := dp.getRemoteAppliedID(target, p)
 		if err != nil {
-			log.Errorf("partition(%v) getRemoteAppliedID Failed(%v).", dp.partitionID, err)
+			span.Errorf("partition(%v) getRemoteAppliedID Failed(%v).", dp.partitionID, err)
 			continue
 		}
 		if appliedID == 0 {
-			log.Debugf("[getAllReplicaAppliedID] partition(%v) local appliedID(%v) replicaHost(%v) appliedID=0",
+			span.Debugf("[getAllReplicaAppliedID] partition(%v) local appliedID(%v) replicaHost(%v) appliedID=0",
 				dp.partitionID, dp.appliedID, replicaHost)
 		}
 		allAppliedID[i] = appliedID
@@ -810,7 +814,7 @@ func (dp *DataPartition) getRemoteAppliedID(target string, p *repl.Packet) (appl
 	defer func() {
 		if err != nil {
 			err = fmt.Errorf(p.LogMessage(p.GetOpMsg(), target, start, err))
-			log.Errorf(err.Error())
+			p.Span().Errorf(err.Error())
 		}
 	}()
 
@@ -835,13 +839,12 @@ func (dp *DataPartition) getRemoteAppliedID(target string, p *repl.Packet) (appl
 	}
 	appliedID = binary.BigEndian.Uint64(p.Data)
 
-	log.Debugf("[getRemoteAppliedID] partition(%v) remoteAppliedID(%v)", dp.partitionID, appliedID)
-
+	p.Span().Debugf("[getRemoteAppliedID] partition(%v) remoteAppliedID(%v)", dp.partitionID, appliedID)
 	return
 }
 
 // Get all members' applied ids and find the minimum one
-func (dp *DataPartition) updateMaxMinAppliedID() {
+func (dp *DataPartition) updateMaxMinAppliedID(ctx context.Context) {
 	var (
 		minAppliedID uint64
 		maxAppliedID uint64
@@ -858,20 +861,21 @@ func (dp *DataPartition) updateMaxMinAppliedID() {
 		return
 	}
 
-	allAppliedID, replyNum := dp.getAllReplicaAppliedID()
+	span := getSpan(ctx)
+	allAppliedID, replyNum := dp.getAllReplicaAppliedID(ctx)
 	if replyNum == 0 {
-		log.Debugf("[updateMaxMinAppliedID] PartitionID(%v) Get appliedId failed!", dp.partitionID)
+		span.Debugf("[updateMaxMinAppliedID] PartitionID(%v) Get appliedId failed!", dp.partitionID)
 		return
 	}
 	if replyNum == uint8(len(allAppliedID)) { // update dp.minAppliedID when every member had replied
 		minAppliedID, _ = dp.findMinAppliedID(allAppliedID)
-		log.Debugf("[updateMaxMinAppliedID] PartitionID(%v) localID(%v) OK! oldMinID(%v) newMinID(%v) allAppliedID(%v)",
+		span.Debugf("[updateMaxMinAppliedID] PartitionID(%v) localID(%v) OK! oldMinID(%v) newMinID(%v) allAppliedID(%v)",
 			dp.partitionID, dp.appliedID, dp.minAppliedID, minAppliedID, allAppliedID)
-		dp.broadcastMinAppliedID(minAppliedID)
+		dp.broadcastMinAppliedID(ctx, minAppliedID)
 	}
 
 	maxAppliedID, _ = dp.findMaxAppliedID(allAppliedID)
-	log.Debugf("[updateMaxMinAppliedID] PartitionID(%v) localID(%v) OK! oldMaxID(%v) newMaxID(%v)",
+	span.Debugf("[updateMaxMinAppliedID] PartitionID(%v) localID(%v) OK! oldMaxID(%v) newMaxID(%v)",
 		dp.partitionID, dp.appliedID, dp.maxAppliedID, maxAppliedID)
 	dp.maxAppliedID = maxAppliedID
 }

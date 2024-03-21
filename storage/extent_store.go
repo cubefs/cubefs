@@ -36,7 +36,6 @@ import (
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/errors"
-	"github.com/cubefs/cubefs/util/log"
 )
 
 //TODO: remove this later.
@@ -70,6 +69,8 @@ var (
 	SnapShotFilePool    = &sync.Pool{New: func() interface{} {
 		return new(proto.File)
 	}}
+
+	getSpan = proto.SpanFromContext
 )
 
 func GetSnapShotFileFromPool() (f *proto.File) {
@@ -239,14 +240,14 @@ func NewExtentStore(ctx context.Context, dataDir string, partitionID uint64, sto
 	s.storeSize = storeSize
 	s.closeC = make(chan bool, 1)
 	s.closed = false
-	err = s.initTinyExtent()
+	err = s.initTinyExtent(ctx)
 	if err != nil {
 		return
 	}
 	return
 }
 
-func (ei *ExtentInfo) UpdateExtentInfo(extent *Extent, crc uint32) {
+func (ei *ExtentInfo) UpdateExtentInfo(ctx context.Context, extent *Extent, crc uint32) {
 	extent.Lock()
 	defer extent.Unlock()
 
@@ -257,7 +258,7 @@ func (ei *ExtentInfo) UpdateExtentInfo(extent *Extent, crc uint32) {
 	ei.Size = uint64(extent.dataSize)
 	ei.SnapshotDataOff = extent.snapshotDataOff
 
-	log.Infof("action[ExtentInfo.UpdateExtentInfo] ei info [%v]", ei.String())
+	getSpan(ctx).Infof("action[ExtentInfo.UpdateExtentInfo] ei info [%v]", ei.String())
 
 	if !IsTinyExtent(ei.FileID) {
 		atomic.StoreUint32(&ei.Crc, crc)
@@ -304,32 +305,32 @@ func (s *ExtentStore) SnapShot(ctx context.Context) (files []*proto.File, err er
 }
 
 // Create creates an extent.
-func (s *ExtentStore) Create(extentID uint64) (err error) {
+func (s *ExtentStore) Create(ctx context.Context, extentID uint64) (err error) {
 	var e *Extent
 	name := path.Join(s.dataPath, strconv.Itoa(int(extentID)))
 	if s.HasExtent(extentID) {
 		err = ExtentExistsError
-		log.Errorf("[ExtentStore.Create] extent(%d) is existed", extentID)
+		getSpan(ctx).Errorf("[ExtentStore.Create] extent(%d) is existed", extentID)
 		return err
 	}
 
 	e = NewExtentInCore(name, extentID)
 	e.header = make([]byte, util.BlockHeaderSize)
-	err = e.InitToFS()
+	err = e.InitToFS(ctx)
 	if err != nil {
 		return err
 	}
 
 	s.cache.Put(e)
 	extInfo := &ExtentInfo{FileID: extentID}
-	extInfo.UpdateExtentInfo(e, 0)
+	extInfo.UpdateExtentInfo(ctx, e, 0)
 
 	atomic.StoreInt64(&extInfo.AccessTime, e.accessTime)
 	s.eiMutex.Lock()
 	s.extentInfoMap[extentID] = extInfo
 	s.eiMutex.Unlock()
 
-	s.UpdateBaseExtentID(extentID)
+	s.UpdateBaseExtentID(ctx, extentID)
 	return
 }
 
@@ -348,18 +349,19 @@ func (s *ExtentStore) initBaseFileID(ctx context.Context) error {
 		ei       *ExtentInfo
 		loadErr  error
 	)
+	span := getSpan(ctx)
 	for _, f := range files {
 		if extentID, isExtent = s.ExtentID(f.Name()); !isExtent {
 			continue
 		}
 
 		if e, loadErr = s.extent(ctx, extentID); loadErr != nil {
-			log.Error("[initBaseFileID] load extent error", loadErr)
+			span.Error("[initBaseFileID] load extent error", loadErr)
 			continue
 		}
 
 		ei = &ExtentInfo{FileID: extentID}
-		ei.UpdateExtentInfo(e, 0)
+		ei.UpdateExtentInfo(ctx, e, 0)
 		atomic.StoreInt64(&ei.AccessTime, e.accessTime)
 
 		s.eiMutex.Lock()
@@ -375,7 +377,7 @@ func (s *ExtentStore) initBaseFileID(ctx context.Context) error {
 		baseFileID = MinExtentID
 	}
 	atomic.StoreUint64(&s.baseExtentID, baseFileID)
-	log.Infof("datadir(%v) maxBaseId(%v)", s.dataPath, baseFileID)
+	span.Infof("datadir(%v) maxBaseId(%v)", s.dataPath, baseFileID)
 	runtime.GC()
 	return nil
 }
@@ -410,7 +412,7 @@ func (s *ExtentStore) Write(ctx context.Context, extentID uint64, offset, size i
 		return status, err
 	}
 
-	ei.UpdateExtentInfo(e, 0)
+	ei.UpdateExtentInfo(ctx, e, 0)
 	return status, nil
 }
 
@@ -485,7 +487,7 @@ func (s *ExtentStore) punchDelete(ctx context.Context, extentID uint64, offset, 
 		return
 	}
 	var hasDelete bool
-	if hasDelete, err = e.punchDelete(offset, size); err != nil {
+	if hasDelete, err = e.punchDelete(ctx, offset, size); err != nil {
 		return
 	}
 	if hasDelete {
@@ -613,12 +615,12 @@ func (s *ExtentStore) GetTinyExtentOffset(extentID uint64) (watermark int64, err
 }
 
 // GetTinyExtentOffset returns the offset of the given extent.
-func (s *ExtentStore) GetExtentSnapshotModOffset(extentID uint64, allocSize uint32) (watermark int64, err error) {
+func (s *ExtentStore) GetExtentSnapshotModOffset(ctx context.Context, extentID uint64, allocSize uint32) (watermark int64, err error) {
 	einfo, err := s.Watermark(extentID)
 	if err != nil {
 		return
 	}
-	log.Debugf("action[ExtentStore.GetExtentSnapshotModOffset] extId %v SnapshotDataOff %v SnapPreAllocDataOff %v allocSize %v",
+	getSpan(ctx).Debugf("action[ExtentStore.GetExtentSnapshotModOffset] extId %v SnapshotDataOff %v SnapPreAllocDataOff %v allocSize %v",
 		extentID, einfo.SnapshotDataOff, einfo.SnapPreAllocDataOff, allocSize)
 
 	if einfo.SnapPreAllocDataOff == 0 {
@@ -717,13 +719,13 @@ func (s *ExtentStore) ExtentID(filename string) (extentID uint64, isExtent bool)
 	return
 }
 
-func (s *ExtentStore) initTinyExtent() (err error) {
+func (s *ExtentStore) initTinyExtent(ctx context.Context) (err error) {
 	s.availableTinyExtentC = make(chan uint64, TinyExtentCount)
 	s.brokenTinyExtentC = make(chan uint64, TinyExtentCount)
 	var extentID uint64
 
 	for extentID = TinyExtentStartID; extentID < TinyExtentStartID+TinyExtentCount; extentID++ {
-		err = s.Create(extentID)
+		err = s.Create(ctx, extentID)
 		if err == nil || strings.Contains(err.Error(), syscall.EEXIST.Error()) || err == ExtentExistsError {
 			err = nil
 			s.brokenTinyExtentC <- extentID
@@ -816,7 +818,7 @@ func (s *ExtentStore) GetBrokenTinyExtent() (extentID uint64, err error) {
 }
 
 // StoreSizeExtentID returns the size of the extent store
-func (s *ExtentStore) StoreSizeExtentID(maxExtentID uint64) (totalSize uint64) {
+func (s *ExtentStore) StoreSizeExtentID(ctx context.Context, maxExtentID uint64) (totalSize uint64) {
 	extentInfos := make([]*ExtentInfo, 0)
 	s.eiMutex.RLock()
 	for _, extentInfo := range s.extentInfoMap {
@@ -825,9 +827,10 @@ func (s *ExtentStore) StoreSizeExtentID(maxExtentID uint64) (totalSize uint64) {
 		}
 	}
 	s.eiMutex.RUnlock()
+	span := getSpan(ctx)
 	for _, extentInfo := range extentInfos {
 		totalSize += extentInfo.TotalSize()
-		log.Debugf("ExtentStore.StoreSizeExtentID dp %v extentInfo %v totalSize %v", s.partitionID, extentInfo, extentInfo.TotalSize())
+		span.Debugf("ExtentStore.StoreSizeExtentID dp %v extentInfo %v totalSize %v", s.partitionID, extentInfo, extentInfo.TotalSize())
 	}
 
 	return totalSize
@@ -941,7 +944,7 @@ func (s *ExtentStore) getExtentKey(extent uint64) string {
 }
 
 // UpdateBaseExtentID updates the base extent ID.
-func (s *ExtentStore) UpdateBaseExtentID(id uint64) (err error) {
+func (s *ExtentStore) UpdateBaseExtentID(ctx context.Context, id uint64) (err error) {
 	if IsTinyExtent(id) {
 		return
 	}
@@ -949,7 +952,7 @@ func (s *ExtentStore) UpdateBaseExtentID(id uint64) (err error) {
 		atomic.StoreUint64(&s.baseExtentID, id)
 		err = s.PersistenceBaseExtentID(atomic.LoadUint64(&s.baseExtentID))
 	}
-	s.PreAllocSpaceOnVerfiyFile(atomic.LoadUint64(&s.baseExtentID))
+	s.PreAllocSpaceOnVerfiyFile(ctx, atomic.LoadUint64(&s.baseExtentID))
 
 	return
 }
@@ -1007,7 +1010,7 @@ func (s *ExtentStore) LoadExtentFromDisk(ctx context.Context, extentID uint64, p
 	span := proto.SpanFromContext(ctx)
 	name := path.Join(s.dataPath, fmt.Sprintf("%v", extentID))
 	e = NewExtentInCore(name, extentID)
-	if err = e.RestoreFromFS(); err != nil {
+	if err = e.RestoreFromFS(ctx); err != nil {
 		err = fmt.Errorf("restore from file %v putCache %v system: %v", name, putCache, err)
 		return
 	}
@@ -1166,7 +1169,7 @@ func (s *ExtentStore) autoComputeExtentCrc() {
 				continue
 			}
 
-			ei.UpdateExtentInfo(e, extentCrc)
+			ei.UpdateExtentInfo(ctx, e, extentCrc)
 			ei.ApplyID = s.ApplyId
 			time.Sleep(time.Millisecond * 100)
 		}
@@ -1193,10 +1196,10 @@ func (s *ExtentStore) TinyExtentRecover(ctx context.Context, extentID uint64, of
 		return nil
 	}
 
-	if err = e.TinyExtentRecover(data, offset, size, crc, isEmptyPacket); err != nil {
+	if err = e.TinyExtentRecover(ctx, data, offset, size, crc, isEmptyPacket); err != nil {
 		return err
 	}
-	ei.UpdateExtentInfo(e, 0)
+	ei.UpdateExtentInfo(ctx, e, 0)
 
 	return nil
 }

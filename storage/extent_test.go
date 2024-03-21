@@ -24,6 +24,7 @@ import (
 
 	"github.com/cubefs/cubefs/blobstore/blobnode/sys"
 	_ "github.com/cubefs/cubefs/blobstore/testing/nolog"
+	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/storage"
 	"github.com/cubefs/cubefs/util"
 	"github.com/stretchr/testify/require"
@@ -36,6 +37,11 @@ const (
 	dataStr  = "hello world"
 	dataSize = int64(len(dataStr))
 )
+
+func newCtx() context.Context {
+	_, ctx := proto.SpanContext()
+	return ctx
+}
 
 func getTestPathExtentName(id uint64) (string, func(), error) {
 	dir, err := os.MkdirTemp(os.TempDir(), "cfs_storage_extent_")
@@ -57,7 +63,7 @@ func getMockCrcPersist(t *testing.T) storage.UpdateCrcFunc {
 }
 
 func normalExtentRwTest(t *testing.T, e *storage.Extent) {
-	ctx := context.Background()
+	ctx := newCtx()
 
 	data := []byte(dataStr)
 	_, err := e.Write(ctx, data, 0, 0, 0, storage.AppendWriteType, true, getMockCrcPersist(t), nil)
@@ -88,7 +94,7 @@ func normalExtentRwTest(t *testing.T, e *storage.Extent) {
 }
 
 func tinyExtentRwTest(t *testing.T, e *storage.Extent) {
-	ctx := context.Background()
+	ctx := newCtx()
 	data := []byte(dataStr)
 	// write oversize
 	_, err := e.Write(ctx, data, storage.ExtentMaxSize, dataSize, 0, storage.RandomWriteType, true, getMockCrcPersist(t), nil)
@@ -117,18 +123,18 @@ func normalExtentCreateTest(t *testing.T, name string) {
 	e := storage.NewExtentInCore(name, testNormalExtentID)
 	t.Log("normal-extent:", e)
 	require.False(t, e.Exist())
-	err := e.InitToFS()
+	err := e.InitToFS(newCtx())
 	require.NoError(t, err)
 	defer e.Close()
 	normalExtentRwTest(t, e)
 }
 
 func normalExtentRecoveryTest(t *testing.T, name string) {
-	ctx := context.Background()
+	ctx := newCtx()
 	e := storage.NewExtentInCore(name, testNormalExtentID)
 	require.Equal(t, e.Exist(), true)
 	t.Log("normal-extent:", e.String())
-	err := e.RestoreFromFS()
+	err := e.RestoreFromFS(ctx)
 	require.NoError(t, err)
 	defer e.Close()
 	for _, offset := range []int64{0, util.BlockSize, util.ExtentSize} {
@@ -140,20 +146,21 @@ func normalExtentRecoveryTest(t *testing.T, name string) {
 }
 
 func tinyExtentCreateTest(t *testing.T, name string) {
+	ctx := newCtx()
 	e := storage.NewExtentInCore(name, testTinyExtentID)
 	t.Log("tiny-extent:", e)
 	require.False(t, e.Exist())
-	require.ErrorIs(t, e.RestoreFromFS(), storage.ExtentNotFoundError)
-	require.NoError(t, e.InitToFS())
+	require.ErrorIs(t, e.RestoreFromFS(ctx), storage.ExtentNotFoundError)
+	require.NoError(t, e.InitToFS(ctx))
 	defer e.Close()
 	tinyExtentRwTest(t, e)
 }
 
 func tinyExtentRecoveryTest(t *testing.T, name string) {
-	ctx := context.Background()
+	ctx := newCtx()
 	e := storage.NewExtentInCore(name, testTinyExtentID)
 	require.Equal(t, e.Exist(), true)
-	err := e.RestoreFromFS()
+	err := e.RestoreFromFS(ctx)
 	require.NoError(t, err)
 	defer e.Close()
 	data := make([]byte, dataSize)
@@ -166,15 +173,15 @@ func tinyExtentRecoveryTest(t *testing.T, name string) {
 }
 
 func tinyExtentRepairTest(t *testing.T, name string) {
-	ctx := context.Background()
+	ctx := newCtx()
 	e := storage.NewExtentInCore(name, testTinyExtentID)
 	require.Equal(t, e.Exist(), true)
-	err := e.RestoreFromFS()
+	err := e.RestoreFromFS(ctx)
 	require.NoError(t, err)
 	defer e.Close()
 	data := []byte(dataStr)
 	size := e.Size()
-	err = e.TinyExtentRecover(nil, size, int64(len(data)), 0, true)
+	err = e.TinyExtentRecover(ctx, nil, size, int64(len(data)), 0, true)
 	require.NoError(t, err)
 	t.Logf("extent data size is %v", e.Size())
 	_, err = e.Read(ctx, data, size, int64(len(data)), true)
@@ -184,7 +191,7 @@ func tinyExtentRepairTest(t *testing.T, name string) {
 	}
 	size = e.Size()
 	data = []byte(dataStr)
-	err = e.TinyExtentRecover(data, size, int64(len(data)), 0, false)
+	err = e.TinyExtentRecover(ctx, data, size, int64(len(data)), 0, false)
 	require.NoError(t, err)
 	_, err = e.Read(ctx, data, size, int64(len(data)), false)
 	require.NoError(t, err)
@@ -215,17 +222,18 @@ func TestSeekHole(t *testing.T) {
 		err      error
 		size     int64
 	)
+	ctx := newCtx()
 	os.Remove(filePath)
 	defer os.Remove(filePath)
 	e := storage.NewExtentInCore(filePath, 0)
-	err = e.InitToFS()
+	err = e.InitToFS(ctx)
 	require.NoError(t, err)
 
 	file := e.GetFile()
 	info, err = file.Stat()
 	require.NoError(t, err)
 
-	size = e.GetDataSize(info.Size())
+	size = e.GetDataSize(ctx, info.Size())
 	t.Logf("data size %v, file stat size %v", size, info.Size())
 	blockSize := info.Sys().(*syscall.Stat_t).Blksize
 	t.Logf("blockSize %v", blockSize)
@@ -268,13 +276,13 @@ func TestSeekHole(t *testing.T) {
 
 	// seek last hole in 128M
 	info, err = file.Stat()
-	size = e.GetDataSize(info.Size())
+	size = e.GetDataSize(ctx, info.Size())
 	t.Logf("datasize %v alignLastOff %v lastHoleOfData %v size %v", size, alignlastHole, lastHole, info.Size())
 	require.NoError(t, err)
 
 	file.Close()
 
-	err = e.RestoreFromFS()
+	err = e.RestoreFromFS(ctx)
 	require.NoError(t, err)
 
 	dataSize, snapSize := e.GetSize()
@@ -283,12 +291,12 @@ func TestSeekHole(t *testing.T) {
 }
 
 func TestExtentRecovery(t *testing.T) {
-	ctx := context.Background()
+	ctx := newCtx()
 	filePath := "./1025"
 	os.Remove(filePath)
 	defer os.Remove(filePath)
 	e := storage.NewExtentInCore(filePath, 1025)
-	err := e.InitToFS()
+	err := e.InitToFS(ctx)
 	require.NoError(t, err)
 
 	headSize := 128 * 1024
@@ -303,7 +311,7 @@ func TestExtentRecovery(t *testing.T) {
 		require.NoError(t, err)
 	}
 	e.GetFile().Close()
-	err = e.RestoreFromFS()
+	err = e.RestoreFromFS(ctx)
 	require.NoError(t, err)
 	dataSize, snapSize := e.GetSize()
 	t.Logf("dataSize %v, snapSize %v", dataSize, snapSize)

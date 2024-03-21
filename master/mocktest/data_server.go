@@ -110,6 +110,7 @@ func (mds *MockDataServer) serveConn(rc net.Conn) {
 	proto.InitBufferPool(int64(32768))
 
 	req := proto.NewPacket()
+	req.ReqID = proto.RandomID()
 	err := req.ReadFromConnWithVer(conn, proto.NoReadDeadlineTime)
 	if err != nil {
 		return

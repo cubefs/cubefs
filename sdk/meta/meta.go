@@ -15,6 +15,7 @@
 package meta
 
 import (
+	"context"
 	gerrors "errors"
 	"fmt"
 	"sync"
@@ -32,7 +33,6 @@ import (
 	"github.com/cubefs/cubefs/util/auth"
 	"github.com/cubefs/cubefs/util/btree"
 	"github.com/cubefs/cubefs/util/errors"
-	"github.com/cubefs/cubefs/util/log"
 )
 
 const (
@@ -72,6 +72,8 @@ const (
 	DefaultQuotaExpiration               = 120 * time.Second
 	MaxQuotaCache                        = 10000
 )
+
+var getSpan = proto.SpanFromContext
 
 type AsyncTaskErrorFunc func(err error)
 
@@ -223,11 +225,13 @@ func NewMetaWrapper(config *MetaConfig) (*MetaWrapper, error) {
 	mw.VerReadSeq = config.VerReadSeq
 
 	limit := 0
+	ctx := proto.ContextWithOperation(context.Background(), "NewMetaWrapper")
+	span := getSpan(ctx)
 	for limit < MaxMountRetryLimit {
 		// When initializing the volume, if the master explicitly responds that the specified
 		// volume does not exist, it will not retry.
-		if err = mw.initMetaWrapper(); err != nil {
-			log.Errorf("NewMetaWrapper: init meta wrapper failed: volume(%v) err(%v)", mw.volname, err)
+		if err = mw.initMetaWrapper(ctx); err != nil {
+			span.Errorf("NewMetaWrapper: init meta wrapper failed: volume(%v) err(%v)", mw.volname, err)
 			if gerrors.Is(err, proto.ErrVolAuthKeyNotMatch) || gerrors.Is(err, proto.ErrVolNotExists) {
 				break
 			}
@@ -246,23 +250,19 @@ func NewMetaWrapper(config *MetaConfig) (*MetaWrapper, error) {
 	return mw, nil
 }
 
-func (mw *MetaWrapper) initMetaWrapper() (err error) {
-	if err = mw.updateClusterInfo(); err != nil {
+func (mw *MetaWrapper) initMetaWrapper(ctx context.Context) (err error) {
+	if err = mw.updateClusterInfo(ctx); err != nil {
 		return err
 	}
-
-	if err = mw.updateVolStatInfo(); err != nil {
+	if err = mw.updateVolStatInfo(ctx); err != nil {
 		return err
 	}
-
-	if err = mw.updateMetaPartitions(); err != nil {
+	if err = mw.updateMetaPartitions(ctx); err != nil {
 		return err
 	}
-
-	if err = mw.updateDirChildrenNumLimit(); err != nil {
+	if err = mw.updateDirChildrenNumLimit(ctx); err != nil {
 		return err
 	}
-
 	return nil
 }
 

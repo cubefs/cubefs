@@ -245,16 +245,15 @@ func (d *Disk) CanWrite() bool {
 
 // Compute the disk usage
 func (d *Disk) computeUsage(ctx context.Context) (err error) {
+	span := getSpan(ctx)
 	d.RLock()
 	defer d.RUnlock()
 	fs := syscall.Statfs_t{}
 	err = syscall.Statfs(d.Path, &fs)
 	if err != nil {
-		log.Errorf("computeUsage. err %v", err)
+		span.Errorf("computeUsage. err %v", err)
 		return
 	}
-
-	span := proto.SpanFromContext(ctx)
 
 	repairSize := uint64(d.repairAllocSize())
 
@@ -654,19 +653,19 @@ func (d *Disk) RestorePartition(ctx context.Context, visitor PartitionVisitor) (
 	}
 
 	if len(toDeleteExpiredPartitionNames) > 0 {
-		log.Infof("action[RestorePartition] expiredPartitions %v, disk %v", toDeleteExpiredPartitionNames, d.Path)
+		span.Infof("action[RestorePartition] expiredPartitions %v, disk %v", toDeleteExpiredPartitionNames, d.Path)
 
-		notDeletedExpiredPartitionNames := d.deleteExpiredPartitions(toDeleteExpiredPartitionNames)
+		notDeletedExpiredPartitionNames := d.deleteExpiredPartitions(ctx, toDeleteExpiredPartitionNames)
 
 		if len(notDeletedExpiredPartitionNames) > 0 {
 			go func(toDeleteExpiredPartitions []string) {
 				ticker := time.NewTicker(ExpiredPartitionExistTime)
-				log.Infof("action[RestorePartition] delete expiredPartitions automatically start, toDeleteExpiredPartitions %v", toDeleteExpiredPartitions)
+				span.Infof("action[RestorePartition] delete expiredPartitions automatically start, toDeleteExpiredPartitions %v", toDeleteExpiredPartitions)
 
 				<-ticker.C
-				d.deleteExpiredPartitions(toDeleteExpiredPartitionNames)
+				d.deleteExpiredPartitions(ctx, toDeleteExpiredPartitionNames)
 				ticker.Stop()
-				log.Infof("action[RestorePartition] delete expiredPartitions automatically finish")
+				span.Infof("action[RestorePartition] delete expiredPartitions automatically finish")
 			}(notDeletedExpiredPartitionNames)
 		}
 	}
@@ -674,17 +673,19 @@ func (d *Disk) RestorePartition(ctx context.Context, visitor PartitionVisitor) (
 	return err
 }
 
-func (d *Disk) deleteExpiredPartitions(toDeleteExpiredPartitionNames []string) (notDeletedExpiredPartitionNames []string) {
+func (d *Disk) deleteExpiredPartitions(ctx context.Context, toDeleteExpiredPartitionNames []string,
+) (notDeletedExpiredPartitionNames []string) {
+	span := getSpan(ctx)
 	notDeletedExpiredPartitionNames = make([]string, 0)
 	for _, partitionName := range toDeleteExpiredPartitionNames {
 		dirName, fileName := path.Split(partitionName)
 		if !d.isExpiredPartitionDir(fileName) {
-			log.Infof("action[deleteExpiredPartitions] partition %v on %v is not expiredPartition", fileName, dirName)
+			span.Infof("action[deleteExpiredPartitions] partition %v on %v is not expiredPartition", fileName, dirName)
 			continue
 		}
 		dirInfo, err := os.Stat(partitionName)
 		if err != nil {
-			log.Errorf("action[deleteExpiredPartitions] stat expiredPartition %v fail, err(%v)", partitionName, err)
+			span.Errorf("action[deleteExpiredPartitions] stat expiredPartition %v fail, err(%v)", partitionName, err)
 			continue
 		}
 		dirStat := dirInfo.Sys().(*syscall.Stat_t)
@@ -693,10 +694,10 @@ func (d *Disk) deleteExpiredPartitions(toDeleteExpiredPartitionNames []string) (
 		if nowTime-expiredTime >= int64(ExpiredPartitionExistTime.Seconds()) {
 			err := os.RemoveAll(partitionName)
 			if err != nil {
-				log.Errorf("action[deleteExpiredPartitions] delete expiredPartition %v automatically fail, err(%v)", partitionName, err)
+				span.Errorf("action[deleteExpiredPartitions] delete expiredPartition %v automatically fail, err(%v)", partitionName, err)
 				continue
 			}
-			log.Infof("action[deleteExpiredPartitions] delete expiredPartition %v automatically", partitionName)
+			span.Infof("action[deleteExpiredPartitions] delete expiredPartition %v automatically", partitionName)
 		} else {
 			notDeletedExpiredPartitionNames = append(notDeletedExpiredPartitionNames, partitionName)
 		}

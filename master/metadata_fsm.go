@@ -15,6 +15,7 @@
 package master
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -22,6 +23,7 @@ import (
 
 	"github.com/cubefs/cubefs/depends/tiglabs/raft"
 	"github.com/cubefs/cubefs/depends/tiglabs/raft/proto"
+	cproto "github.com/cubefs/cubefs/proto"
 	raftstore "github.com/cubefs/cubefs/raftstore/raftstore_db"
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/log"
@@ -104,10 +106,14 @@ func (mf *MetadataFsm) restoreApplied() {
 
 // Apply implements the interface of raft.StateMachine
 func (mf *MetadataFsm) Apply(command []byte, index uint64) (resp interface{}, err error) {
-	log.Debugf("[Apply] apply index(%v)", index)
+	// TODO: apply with traceid.
+	ctx := cproto.ContextWithOperation(context.TODO(), "Apply")
+	span := getSpan(ctx)
+
+	span.Debugf("apply index(%v)", index)
 	cmd := new(RaftCmd)
 	if err = cmd.Unmarshal(command); err != nil {
-		log.Errorf("action[fsmApply],unmarshal data:%v, err:%v", command, err.Error())
+		span.Errorf("unmarshal data:%v, err:%v", command, err.Error())
 		panic(err)
 	}
 
@@ -119,7 +125,7 @@ func (mf *MetadataFsm) Apply(command []byte, index uint64) (resp interface{}, er
 	} else {
 		nestedCmdMap := make(map[string]*RaftCmd)
 		if err = json.Unmarshal(cmd.V, &nestedCmdMap); err != nil {
-			log.Errorf("action[fsmApply],unmarshal nested cmd data:%v, err:%v", command, err.Error())
+			span.Errorf("unmarshal nested cmd data:%v, err:%v", command, err.Error())
 			panic(err)
 		}
 		for cmdK, cmd := range nestedCmdMap {
@@ -159,7 +165,7 @@ func (mf *MetadataFsm) Apply(command []byte, index uint64) (resp interface{}, er
 	mf.applied = index
 
 	if mf.applied > 0 && (mf.applied%mf.retainLogs) == 0 {
-		log.Warnf("action[Apply],truncate raft log,retainLogs[%v],index[%v]", mf.retainLogs, mf.applied)
+		span.Warnf("truncate raft log,retainLogs[%v],index[%v]", mf.retainLogs, mf.applied)
 		mf.rs.Truncate(GroupID, mf.applied)
 	}
 	return
@@ -189,7 +195,10 @@ func (mf *MetadataFsm) Snapshot() (proto.Snapshot, error) {
 
 // ApplySnapshot implements the interface of raft.StateMachine
 func (mf *MetadataFsm) ApplySnapshot(peers []proto.Peer, iterator proto.SnapIterator) (err error) {
-	log.Warnf("action[ApplySnapshot] reset rocksdb before applying snapshot")
+	// TODO: apply with traceid.
+	ctx := cproto.ContextWithOperation(context.TODO(), "ApplySnapshot")
+	span := getSpan(ctx)
+	span.Warn("reset rocksdb before applying snapshot")
 	mf.onSnapshot = true
 
 	defer func() {
@@ -206,7 +215,7 @@ func (mf *MetadataFsm) ApplySnapshot(peers []proto.Peer, iterator proto.SnapIter
 			for iter.SeekToFirst(); iter.Valid(); iter.Next() {
 				cnt++
 			}
-			log.Debugf("[ApplySnapshot] scan %v keys before clear", cnt)
+			span.Debugf("scan %v keys before clear", cnt)
 		}()
 	}
 
@@ -222,11 +231,11 @@ func (mf *MetadataFsm) ApplySnapshot(peers []proto.Peer, iterator proto.SnapIter
 			for iter.SeekToFirst(); iter.Valid(); iter.Next() {
 				cnt++
 			}
-			log.Debugf("[ApplySnapshot] scan %v keys after clear", cnt)
+			span.Debugf("scan %v keys after clear", cnt)
 		}()
 	}
 
-	log.Warnf(fmt.Sprintf("action[ApplySnapshot] begin,applied[%v]", mf.applied))
+	span.Warnf(fmt.Sprintf("begin,applied[%v]", mf.applied))
 	var data []byte
 	var appliedIndex []byte
 	for err == nil {
@@ -254,25 +263,25 @@ func (mf *MetadataFsm) ApplySnapshot(peers []proto.Peer, iterator proto.SnapIter
 	}
 
 	if err = mf.store.Flush(); err != nil {
-		log.Error(fmt.Sprintf("action[ApplySnapshot] Flush failed,err:%v", err.Error()))
+		span.Errorf("Flush failed,err:%v", err.Error())
 		goto errHandler
 	}
 
 	// NOTE: we write applied index at last
-	log.Debugf("[ApplySnapshot] find applied index(%v)", appliedIndex)
+	span.Debugf("find applied index(%v)", appliedIndex)
 	if appliedIndex != nil {
 		if _, err = mf.store.Put(applied, appliedIndex, true); err != nil {
 			goto errHandler
 		}
 	} else {
-		log.Errorf("[ApplySnapshot] not found applied index in snapshot")
+		span.Error("not found applied index in snapshot")
 	}
 
 	mf.snapshotHandler()
-	log.Warnf(fmt.Sprintf("action[ApplySnapshot] success,applied[%v]", mf.applied))
+	span.Warnf("success,applied[%v]", mf.applied)
 	return nil
 errHandler:
-	log.Error(fmt.Sprintf("action[ApplySnapshot] failed,err:%v", err.Error()))
+	span.Errorf("failed,err:%v", err.Error())
 	return err
 }
 
