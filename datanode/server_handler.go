@@ -212,7 +212,7 @@ func (s *DataNode) getPartitionAPI(w http.ResponseWriter, r *http.Request) {
 		RaftStatus:           raftSt,
 	}
 
-	if partition.isNormalType() {
+	if partition.isNormalType() && partition.raftPartition != nil {
 		result.RaftStatus = partition.raftPartition.Status()
 	}
 
