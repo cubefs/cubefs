@@ -203,7 +203,7 @@ func (s *DataNode) getPartitionAPI(w http.ResponseWriter, r *http.Request) {
 		TinyDeleteRecordSize: tinyDeleteRecordSize,
 	}
 
-	if partition.isNormalType() {
+	if partition.isNormalType() && partition.raftPartition != nil {
 		result.RaftStatus = partition.raftPartition.Status()
 	}
 
