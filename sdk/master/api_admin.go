@@ -210,6 +210,14 @@ func (api *AdminAPI) AddMetaReplica(metaPartitionID uint64, nodeAddr string, cli
 	return
 }
 
+func (api *AdminAPI) QueryDataPartitionDecommissionStatus(partitionId uint64) (info *proto.DecommissionDataPartitionInfo, err error) {
+	request := newRequest(get, proto.AdminQueryDataPartitionDecommissionStatus).Header(api.h)
+	request.addParam("id", strconv.FormatUint(partitionId, 10))
+	info = &proto.DecommissionDataPartitionInfo{}
+	err = api.mc.requestWith(info, request)
+	return
+}
+
 func (api *AdminAPI) DeleteVolume(volName, authKey string) (err error) {
 	request := newRequest(get, proto.AdminDeleteVol).Header(api.h)
 	request.addParam("name", volName)

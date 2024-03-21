@@ -899,3 +899,21 @@ func formatDecommissionProgress(progress *proto.DecommissionProgress) string {
 	}
 	return sb.String()
 }
+
+func formatDataPartitionDecommissionProgress(info *proto.DecommissionDataPartitionInfo) string {
+	sb := strings.Builder{}
+	sb.WriteString(fmt.Sprintf("Status:            %v\n", info.Status))
+	sb.WriteString(fmt.Sprintf("SpecialStep:       %v\n", info.SpecialStep))
+	sb.WriteString(fmt.Sprintf("Retry:             %v\n", info.Retry))
+	sb.WriteString(fmt.Sprintf("RaftForce:         %v\n", info.RaftForce))
+	sb.WriteString(fmt.Sprintf("Recover:           %v\n", info.Recover))
+	sb.WriteString(fmt.Sprintf("SrcAddress:        %v\n", info.SrcAddress))
+	sb.WriteString(fmt.Sprintf("SrcDiskPath:       %v\n", info.SrcDiskPath))
+	sb.WriteString(fmt.Sprintf("DstAddress:        %v\n", info.DstAddress))
+	sb.WriteString(fmt.Sprintf("Term:              %v\n", info.Term))
+	sb.WriteString(fmt.Sprintf("Replicas:          %v\n", info.Replicas))
+	sb.WriteString(fmt.Sprintf("WaitTimes:         %v\n", info.WaitTimes))
+	sb.WriteString(fmt.Sprintf("NeedRollbackTimes: %v\n", info.NeedRollbackTimes))
+	sb.WriteString(fmt.Sprintf("ErrorMessage:      %v\n", info.ErrorMessage))
+	return sb.String()
+}

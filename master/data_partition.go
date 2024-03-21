@@ -68,6 +68,7 @@ type DataPartition struct {
 	DecommissionDstAddrSpecify     bool // if DecommissionDstAddrSpecify is true, donot rollback when add replica fail
 	DecommissionNeedRollback       bool
 	DecommissionNeedRollbackTimes  uint32
+	DecommissionErrorMessage       string
 	SpecialReplicaDecommissionStop chan bool // used for stop
 	SpecialReplicaDecommissionStep uint32
 	IsDiscard                      bool
@@ -1088,6 +1089,7 @@ func (partition *DataPartition) MarkDecommissionStatus(srcAddr, dstAddr, srcDisk
 	partition.DecommissionSrcDiskPath = srcDisk
 	partition.DecommissionRaftForce = raftForce
 	partition.DecommissionTerm = term
+	partition.DecommissionErrorMessage = ""
 	// reset special replicas decommission status
 	partition.isRecover = false
 	partition.SetSpecialReplicaDecommissionStep(SpecialDecommissionInitial)
@@ -1281,6 +1283,7 @@ errHandler:
 		partition.isRecover, partition.GetSpecialReplicaDecommissionStep(), partition.DecommissionNeedRollback)
 	Warn(c.Name, msg)
 	log.LogWarnf("action[decommissionDataPartition] %s", msg)
+	partition.DecommissionErrorMessage = err.Error()
 	return false
 }
 
@@ -1339,6 +1342,7 @@ func (partition *DataPartition) ResetDecommissionStatus() {
 	partition.SetDecommissionStatus(DecommissionInitial)
 	partition.SetSpecialReplicaDecommissionStep(SpecialDecommissionInitial)
 	partition.DecommissionWaitTimes = 0
+	partition.DecommissionErrorMessage = ""
 }
 
 func (partition *DataPartition) rollback(c *Cluster) {
@@ -1362,11 +1366,11 @@ func (partition *DataPartition) rollback(c *Cluster) {
 	partition.isRecover = false
 	partition.DecommissionNeedRollback = false
 	partition.DecommissionWaitTimes = 0
+	partition.DecommissionErrorMessage = ""
 	partition.SetDecommissionStatus(markDecommission)
 	partition.SetSpecialReplicaDecommissionStep(SpecialDecommissionInitial)
 	c.syncUpdateDataPartition(partition)
 	log.LogWarnf("action[rollback]dp[%v] rollback success", partition.PartitionID)
-	return
 }
 
 func (partition *DataPartition) addToDecommissionList(c *Cluster) {
@@ -1407,10 +1411,7 @@ func (partition *DataPartition) addToDecommissionList(c *Cluster) {
 }
 
 func (partition *DataPartition) checkConsumeToken() bool {
-	if partition.GetDecommissionStatus() == DecommissionRunning {
-		return true
-	}
-	return false
+	return partition.GetDecommissionStatus() == DecommissionRunning
 }
 
 // only mark stop status or initial
@@ -1586,7 +1587,7 @@ func (partition *DataPartition) TryAcquireDecommissionToken(c *Cluster) bool {
 			}
 			// get nodeset for target host
 			newAddr := targetHosts[0]
-			ns, zone, err = getTargetNodeset(newAddr, c)
+			ns, _, err = getTargetNodeset(newAddr, c)
 			if err != nil {
 				log.LogWarnf("action[TryAcquireDecommissionToken] dp %v find new nodeset failed:%v",
 					partition.PartitionID, err.Error())
@@ -1605,7 +1606,7 @@ func (partition *DataPartition) TryAcquireDecommissionToken(c *Cluster) bool {
 			return false
 		}
 	} else {
-		ns, zone, err = getTargetNodeset(partition.DecommissionDstAddr, c)
+		ns, _, err = getTargetNodeset(partition.DecommissionDstAddr, c)
 		if err != nil {
 			log.LogWarnf("action[TryAcquireDecommissionToken]dp %v find src nodeset failed:%v",
 				partition.PartitionID, err.Error())

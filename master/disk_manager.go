@@ -19,6 +19,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/log"
 )
 
@@ -88,15 +89,34 @@ func (c *Cluster) checkDiskRecoveryProgress() {
 					partition.DecommissionDstAddr)
 				partition.DecommissionNeedRollback = true
 				partition.SetDecommissionStatus(DecommissionFail)
+				partition.DecommissionErrorMessage = fmt.Sprintf("Decommission target node %v not found", partition.DecommissionDstAddr)
+				partition.RLock()
+				err = c.syncUpdateDataPartition(partition)
+				if err != nil {
+					log.LogErrorf("[checkDiskRecoveryProgress] update dp(%v) fail, err(%v)", partitionID, err)
+					err = nil
+				}
+				partition.RUnlock()
 				continue
 			}
 			if newReplica.isRepairing() {
 				if !partition.isSpecialReplicaCnt() &&
-					time.Now().Sub(partition.RecoverStartTime) > c.GetDecommissionDataPartitionRecoverTimeOut() {
+					time.Since(partition.RecoverStartTime) > c.GetDecommissionDataPartitionRecoverTimeOut() {
 					partition.DecommissionNeedRollback = true
 					partition.SetDecommissionStatus(DecommissionFail)
+					partition.DecommissionErrorMessage = fmt.Sprintf("Decommission target node %v repair timeout", partition.DecommissionDstAddr)
+					if partition.Replicas[0].Status == proto.Unavailable {
+						partition.DecommissionErrorMessage = fmt.Sprintf("%v because of leader %v is unavailable", partition.DecommissionErrorMessage, partition.Replicas[0].Addr)
+					}
 					Warn(c.Name, fmt.Sprintf("action[checkDiskRecoveryProgress]clusterID[%v],partitionID[%v]  recovered timeout %s",
-						c.Name, partitionID, time.Now().Sub(partition.RecoverStartTime).String()))
+						c.Name, partitionID, time.Since(partition.RecoverStartTime)))
+					partition.RLock()
+					err = c.syncUpdateDataPartition(partition)
+					if err != nil {
+						log.LogErrorf("[checkDiskRecoveryProgress] update dp(%v) fail, err(%v)", partitionID, err)
+						err = nil
+					}
+					partition.RUnlock()
 				} else {
 					newBadDpIds = append(newBadDpIds, partitionID)
 				}
@@ -108,13 +128,19 @@ func (c *Cluster) checkDiskRecoveryProgress() {
 				if newReplica.isUnavailable() {
 					partition.DecommissionNeedRollback = true
 					partition.SetDecommissionStatus(DecommissionFail)
+					partition.DecommissionErrorMessage = fmt.Sprintf("Decommission target node %v disk unavailable", partition.DecommissionDstAddr)
 					Warn(c.Name, fmt.Sprintf("action[checkDiskRecoveryProgress]clusterID[%v],partitionID[%v] has recovered failed", c.Name, partitionID))
 				} else {
+					partition.DecommissionErrorMessage = ""
 					partition.SetDecommissionStatus(DecommissionSuccess) // can be readonly or readwrite
 					Warn(c.Name, fmt.Sprintf("action[checkDiskRecoveryProgress]clusterID[%v],partitionID[%v] has recovered success", c.Name, partitionID))
 				}
 				partition.RLock()
-				c.syncUpdateDataPartition(partition)
+				err = c.syncUpdateDataPartition(partition)
+				if err != nil {
+					log.LogErrorf("[checkDiskRecoveryProgress] update dp(%v) fail, err(%v)", partitionID, err)
+					err = nil
+				}
 				partition.RUnlock()
 			}
 		}
