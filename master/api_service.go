@@ -1996,7 +1996,6 @@ func (m *Server) resetDataPartitionDecommissionStatus(w http.ResponseWriter, r *
 
 func (m *Server) queryDataPartitionDecommissionStatus(w http.ResponseWriter, r *http.Request) {
 	var (
-		msg         string
 		dp          *DataPartition
 		partitionID uint64
 		err         error
@@ -2015,12 +2014,23 @@ func (m *Server) queryDataPartitionDecommissionStatus(w http.ResponseWriter, r *
 	for _, replica := range dp.Replicas {
 		replicas = append(replicas, replica.Addr)
 	}
-	msg = fmt.Sprintf("partitionID:%v  status[%v] specialStep[%v] retry [%v] raftForce[%v] recover [%v] "+
-		"decommission src dataNode[%v] disk[%v]  dst dataNode[%v] term[%v] replicas[%v] DecommissionWaitTimes[%v] rollback[%v]",
-		partitionID, dp.GetDecommissionStatus(), dp.GetSpecialReplicaDecommissionStep(), dp.DecommissionRetry, dp.DecommissionRaftForce, dp.isRecover,
-		dp.DecommissionSrcAddr, dp.DecommissionSrcDiskPath, dp.DecommissionDstAddr, dp.DecommissionTerm, replicas, dp.DecommissionWaitTimes,
-		atomic.LoadUint32(&dp.DecommissionNeedRollbackTimes))
-	sendOkReply(w, r, newSuccessHTTPReply(msg))
+	info := &proto.DecommissionDataPartitionInfo{
+		PartitionId:       partitionID,
+		Status:            dp.GetDecommissionStatus(),
+		SpecialStep:       dp.GetSpecialReplicaDecommissionStep(),
+		Retry:             dp.DecommissionRetry,
+		RaftForce:         dp.DecommissionRaftForce,
+		Recover:           dp.isRecover,
+		SrcAddress:        dp.DecommissionSrcAddr,
+		SrcDiskPath:       dp.DecommissionSrcDiskPath,
+		DstAddress:        dp.DecommissionDstAddr,
+		Term:              dp.DecommissionTerm,
+		Replicas:          replicas,
+		WaitTimes:         dp.DecommissionWaitTimes,
+		ErrorMessage:      dp.DecommissionErrorMessage,
+		NeedRollbackTimes: atomic.LoadUint32(&dp.DecommissionNeedRollbackTimes),
+	}
+	sendOkReply(w, r, newSuccessHTTPReply(info))
 }
 
 // Mark the volume as deleted, which will then be deleted later.
