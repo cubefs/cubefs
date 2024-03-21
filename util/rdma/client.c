@@ -146,8 +146,8 @@ struct RdmaContext* Connect(const char* ip, const char* port, char* remoteAddr) 
     struct RdmaContext* client = (struct RdmaContext*)malloc(sizeof(struct RdmaContext));
     client->listen_id = conn;
     client->ec = ec;
-    client->ip = ip;
-    client->port = port;
+    client->ip = (char *)ip;
+    client->port = (char *)port;
     client->state = 0;
     client->cFd = open_event_fd();
     client->conn = NULL;

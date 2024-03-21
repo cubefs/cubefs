@@ -72,14 +72,14 @@ Connection* getServerConn(struct RdmaListener *server) {
     wait_event(server->cFd);
     Connection *conn;
     pthread_mutex_lock(&(server->mutex));
-    DeQueue(server->waitConns, &conn);
+    DeQueue(server->waitConns, (Item *)&conn);
     if(conn == NULL) {
     }
     pthread_mutex_unlock(&(server->mutex));
     return conn;
 }
 
-struct RdmaListener* StartServer(const char* ip, uint16_t port, char* serverAddr) {
+struct RdmaListener* StartServer(const char* ip, char* port, char* serverAddr) {
     struct rdma_addrinfo hints, *res;
     struct ibv_qp_init_attr init_attr;
     memset(&hints, 0, sizeof hints);
@@ -88,7 +88,7 @@ struct RdmaListener* StartServer(const char* ip, uint16_t port, char* serverAddr
     struct sockaddr_in addr;
     memset(&addr, 0, sizeof(addr));
     addr.sin_family  = AF_INET;
-    addr.sin_port  = htons(port);
+    addr.sin_port  = htons(atoi(port));
     addr.sin_addr.s_addr = inet_addr(ip);
     struct rdma_cm_id *listen_id;
     struct rdma_event_channel *ec = NULL;
@@ -108,7 +108,7 @@ struct RdmaListener* StartServer(const char* ip, uint16_t port, char* serverAddr
     server->count = 0;
     server->listen_id = listen_id;
     server->ec = ec;
-    server->ip = ip;
+    server->ip = (char *)ip;
     server->port = port;
     server->state = 0;
     server->cFd = open_event_fd();

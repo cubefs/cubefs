@@ -3,7 +3,7 @@
 
 #include <pthread.h>
 
-typedef struct WaitGroup {
+struct WaitGroup {
 	pthread_mutex_t mutex;
 	pthread_cond_t cond;
 	int count;

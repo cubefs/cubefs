@@ -491,7 +491,7 @@ void* getResponseBuffer(Connection *conn, int64_t timeout_us, int32_t *ret_size)
             DisConnect(conn,true);
             return NULL;
         }
-        if(DeQueue(conn->freeList,&(response)) == NULL) {
+        if(DeQueue(conn->freeList, (Item *)&response) == NULL) {
             //printf("conn(%d) get response buffer failed, no more response buffer can get\n", conn);
             continue;
         }
@@ -533,7 +533,7 @@ void* getHeaderBuffer(Connection *conn, int64_t timeout_us, int32_t *ret_size) {
             return NULL;
         }
 
-        if(DeQueue(conn->freeList,&(header)) == NULL) {
+        if(DeQueue(conn->freeList, (Item *)&header) == NULL) {
             //printf("conn(%d) get header buffer failed, no more response buffer can get\n", conn);
             continue;
         }
@@ -545,7 +545,7 @@ void* getHeaderBuffer(Connection *conn, int64_t timeout_us, int32_t *ret_size) {
 MemoryEntry* getRecvMsgBuffer(Connection *conn) {
     wait_event(conn->mFd);
     MemoryEntry *entry;
-    DeQueue(conn->msgList, &entry);
+    DeQueue(conn->msgList, (Item *)&entry);
     if(entry == NULL) {
     }
     return entry;
@@ -554,7 +554,7 @@ MemoryEntry* getRecvMsgBuffer(Connection *conn) {
 MemoryEntry* getRecvResponseBuffer(Connection *conn) {
     wait_event(conn->mFd);
     MemoryEntry *entry;
-    DeQueue(conn->msgList, &entry);
+    DeQueue(conn->msgList, (Item *)&entry);
     if(entry == NULL) {
     }
     return entry;
