@@ -280,7 +280,7 @@ func (dp *DataPartition) ApplyRandomWrite(command []byte, raftApplyID uint64) (r
 			syncWrite = true
 		}
 
-		dp.disk.limitWrite.Run(int(opItem.size), func() {
+		dp.disk.limitWrite.Run(ctx, int(opItem.size), func() {
 			respStatus, err = dp.ExtentStore().Write(ctx, opItem.extentID, opItem.offset, opItem.size, opItem.data, opItem.crc, writeType, syncWrite)
 		})
 		if err == nil {

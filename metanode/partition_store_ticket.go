@@ -83,6 +83,7 @@ func (mp *metaPartition) startSchedule(curIndex uint64) {
 	go func(stopC chan bool) {
 		var msgs []*storeMsg
 		readyChan := make(chan struct{}, 1)
+		rCtx := roundContext("scheduler")
 		for {
 			if len(msgs) > 0 {
 				if atomic.LoadUint32(&scheduleState) == common.StateStopped {
@@ -91,7 +92,9 @@ func (mp *metaPartition) startSchedule(curIndex uint64) {
 				}
 			}
 
-			span, ctx := spanContextPrefix("scheduler-")
+			ctx := rCtx()
+			span := getSpan(ctx)
+
 			select {
 			case <-stopC:
 				timer.Stop()

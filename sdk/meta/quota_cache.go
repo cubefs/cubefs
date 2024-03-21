@@ -4,7 +4,7 @@
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+//	http://www.apache.org/licenses/LICENSE-2.0
 //
 // Unless required by applicable law or agreed to in writing, software
 // distributed under the License is distributed on an "AS IS" BASIS,
@@ -19,7 +19,6 @@ import (
 	"time"
 
 	"github.com/cubefs/cubefs/proto"
-	"github.com/cubefs/cubefs/util/log"
 )
 
 const (
@@ -132,12 +131,14 @@ func (qc *QuotaCache) backgroundEviction() {
 	t := time.NewTicker(qc.expiration)
 	defer t.Stop()
 
+	rCtx := proto.RoundContext("eviction")
 	for range t.C {
-		log.Infof("QuotaCache: start BG evict")
+		span := getSpan(rCtx())
+		span.Infof("QuotaCache: start BG evict")
 		qc.Lock()
 		qc.evict(false)
 		qc.Unlock()
-		log.Infof("QuotaCache: end BG evict")
+		span.Infof("QuotaCache: end BG evict")
 	}
 }
 

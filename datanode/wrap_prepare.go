@@ -151,7 +151,7 @@ func (s *DataNode) checkPacketAndPrepare(p *repl.Packet) error {
 			return err
 		}
 
-		p.ExtentOffset, err = store.GetExtentSnapshotModOffset(p.ExtentID, p.Size)
+		p.ExtentOffset, err = store.GetExtentSnapshotModOffset(ctx, p.ExtentID, p.Size)
 		span.Debugf("action[prepare.checkPacketAndPrepare] pack (%v) partition %v %v", p, p.PartitionID, extentID)
 		if err != nil {
 			return fmt.Errorf("checkPacketAndPrepare partition %v  %v GetSnapshotModExtentOffset error %v", p.PartitionID, extentID, err.Error())

@@ -199,7 +199,7 @@ func NewReplProtocol(inConn net.Conn, prepareFunc func(p *Packet) error,
 	rp.operatorFunc = operatorFunc
 	rp.postFunc = postFunc
 	rp.exited = ReplRuning
-	rp.replId = proto.GenerateRequestID()
+	rp.replId = proto.RandomID()
 	go rp.OperatorAndForwardPktGoRoutine()
 	go rp.ReceiveResponseFromFollowersGoRoutine()
 	go rp.writeResponseToClientGoRroutine()

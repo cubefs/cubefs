@@ -240,7 +240,7 @@ func (dp *DataPartition) DoRepair(ctx context.Context, repairTasks []*DataPartit
 
 		dp.disk.allocCheckLimit(proto.IopsWriteType, 1)
 
-		store.Create(extentInfo.FileID)
+		store.Create(ctx, extentInfo.FileID)
 	}
 	span.Debugf("action[DoRepair] leader to repair len[%v], {%v}", len(repairTasks[0].ExtentsToBeRepaired), repairTasks[0].ExtentsToBeRepaired)
 	for _, extentInfo := range repairTasks[0].ExtentsToBeRepaired {

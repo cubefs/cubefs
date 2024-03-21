@@ -35,7 +35,6 @@ import (
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/exporter"
-	"github.com/cubefs/cubefs/util/log"
 )
 
 var ErrForbiddenDataPartition = errors.New("the data partition is forbidden")
@@ -103,9 +102,9 @@ func (s *DataNode) OperatePacket(p *repl.Packet, c net.Conn) (err error) {
 			logContent := fmt.Sprintf("action[OperatePacket] %v.",
 				p.LogMessage(p.GetOpMsg(), c.RemoteAddr().String(), start, err))
 			if isColdVolExtentDelErr(p) {
-				log.Infof(logContent)
+				span.Infof(logContent)
 			} else {
-				log.Errorf(logContent)
+				span.Errorf(logContent)
 			}
 		} else {
 			logContent := fmt.Sprintf("action[OperatePacket] %v.",
@@ -224,8 +223,8 @@ func (s *DataNode) handlePacketToCreateExtent(p *repl.Packet) {
 	}
 
 	partition.disk.allocCheckLimit(proto.IopsWriteType, 1)
-	partition.disk.limitWrite.Run(0, func() {
-		err = partition.ExtentStore().Create(p.ExtentID)
+	partition.disk.limitWrite.Run(p.Context(), 0, func() {
+		err = partition.ExtentStore().Create(p.Context(), p.ExtentID)
 		if err != nil {
 			span.Errorf("[DataNode.handlePacketToCreateExtent] failed to create extent(%v) in partition(%v)", p.ExtentID, partition.partitionID)
 		}
@@ -535,7 +534,7 @@ func (s *DataNode) handleHeartbeatPacket(p *repl.Packet) {
 	go func() {
 		request := &proto.HeartBeatRequest{}
 		response := &proto.DataNodeHeartbeatResponse{}
-		s.buildHeartBeatResponse(response)
+		s.buildHeartBeatResponse(p.Context(), response)
 
 		if task.OpCode == proto.OpDataNodeHeartbeat {
 			marshaled, _ := json.Marshal(task.Request)
@@ -702,7 +701,7 @@ func (s *DataNode) handleMarkDeletePacket(p *repl.Packet, c net.Conn) {
 			span.Infof("handleMarkDeletePacket Delete PartitionID(%v)_Extent(%v)_Offset(%v)_Size(%v)",
 				p.PartitionID, p.ExtentID, ext.ExtentOffset, ext.Size)
 			partition.disk.allocCheckLimit(proto.IopsWriteType, 1)
-			partition.disk.limitWrite.Run(0, func() {
+			partition.disk.limitWrite.Run(ctx, 0, func() {
 				err = partition.ExtentStore().MarkDelete(ctx, p.ExtentID, int64(ext.ExtentOffset), int64(ext.Size))
 				if err != nil {
 					span.Errorf("action[handleMarkDeletePacket]: failed to mark delete extent(%v), %v", p.ExtentID, err)
@@ -713,7 +712,7 @@ func (s *DataNode) handleMarkDeletePacket(p *repl.Packet, c net.Conn) {
 		span.Infof("handleMarkDeletePacket Delete PartitionID(%v)_Extent(%v)",
 			p.PartitionID, p.ExtentID)
 		partition.disk.allocCheckLimit(proto.IopsWriteType, 1)
-		partition.disk.limitWrite.Run(0, func() {
+		partition.disk.limitWrite.Run(ctx, 0, func() {
 			err = partition.ExtentStore().MarkDelete(ctx, p.ExtentID, 0, 0)
 			if err != nil {
 				span.Errorf("action[handleMarkDeletePacket]: failed to mark delete extent(%v), %v", p.ExtentID, err)
@@ -749,7 +748,7 @@ func (s *DataNode) handleBatchMarkDeletePacket(p *repl.Packet, c net.Conn) {
 			if deleteLimiteRater.Allow() {
 				span.Infof(fmt.Sprintf("recive DeleteExtent (%v) from (%v)", ext, c.RemoteAddr().String()))
 				partition.disk.allocCheckLimit(proto.IopsWriteType, 1)
-				partition.disk.limitWrite.Run(0, func() {
+				partition.disk.limitWrite.Run(ctx, 0, func() {
 					err = store.MarkDelete(ctx, ext.ExtentId, int64(ext.ExtentOffset), int64(ext.Size))
 					if err != nil {
 						span.Errorf("action[handleBatchMarkDeletePacket]: failed to mark delete extent(%v), %v", p.ExtentID, err)
@@ -811,7 +810,7 @@ func (s *DataNode) handleWritePacket(p *repl.Packet) {
 		partition.disk.allocCheckLimit(proto.FlowWriteType, uint32(p.Size))
 		partition.disk.allocCheckLimit(proto.IopsWriteType, 1)
 
-		if writable := partition.disk.limitWrite.TryRun(int(p.Size), func() {
+		if writable := partition.disk.limitWrite.TryRun(ctx, int(p.Size), func() {
 			_, err = store.Write(ctx, p.ExtentID, p.ExtentOffset, int64(p.Size), p.Data, p.CRC, storage.AppendWriteType, p.IsSyncWrite())
 		}); !writable {
 			err = storage.TryAgainError
@@ -833,7 +832,7 @@ func (s *DataNode) handleWritePacket(p *repl.Packet) {
 		partition.disk.allocCheckLimit(proto.FlowWriteType, uint32(p.Size))
 		partition.disk.allocCheckLimit(proto.IopsWriteType, 1)
 
-		if writable := partition.disk.limitWrite.TryRun(int(p.Size), func() {
+		if writable := partition.disk.limitWrite.TryRun(ctx, int(p.Size), func() {
 			_, err = store.Write(ctx, p.ExtentID, p.ExtentOffset, int64(p.Size), p.Data, p.CRC, storage.AppendWriteType, p.IsSyncWrite())
 		}); !writable {
 			err = storage.TryAgainError
@@ -861,7 +860,7 @@ func (s *DataNode) handleWritePacket(p *repl.Packet) {
 			partition.disk.allocCheckLimit(proto.FlowWriteType, uint32(currSize))
 			partition.disk.allocCheckLimit(proto.IopsWriteType, 1)
 
-			if writable := partition.disk.limitWrite.TryRun(currSize, func() {
+			if writable := partition.disk.limitWrite.TryRun(ctx, currSize, func() {
 				_, err = store.Write(ctx, p.ExtentID, p.ExtentOffset+int64(offset), int64(currSize), data, crc, storage.AppendWriteType, p.IsSyncWrite())
 			}); !writable {
 				err = storage.TryAgainError
@@ -980,7 +979,7 @@ func (s *DataNode) handleStreamReadPacket(p *repl.Packet, connect net.Conn, isRe
 
 func (s *DataNode) handleExtentRepairReadPacket(p *repl.Packet, connect net.Conn, isRepairRead bool) {
 	var err error
-	log.Debugf("handleExtentRepairReadPacket %v", p)
+	p.Span().Debugf("handleExtentRepairReadPacket %v", p)
 	defer func() {
 		if err != nil {
 			p.PackErrorBody(ActionStreamRead, err.Error())
@@ -1051,7 +1050,7 @@ func (s *DataNode) extentRepairReadPacket(p *repl.Packet, connect net.Conn, isRe
 		partition.Disk().allocCheckLimit(proto.IopsReadType, 1)
 		partition.Disk().allocCheckLimit(proto.FlowReadType, currReadSize)
 
-		partition.disk.limitRead.Run(int(currReadSize), func() {
+		partition.disk.limitRead.Run(ctx, int(currReadSize), func() {
 			reply.CRC, err = store.Read(ctx, reply.ExtentID, offset, int64(currReadSize), reply.Data, isRepairRead)
 		})
 		if !shallDegrade {
@@ -1128,7 +1127,7 @@ func (s *DataNode) writeEmptyPacketOnTinyExtentRepairRead(reply *repl.Packet, ne
 	logContent := fmt.Sprintf("action[operatePacket] %v.",
 		reply.LogMessage(reply.GetOpMsg(), connect.RemoteAddr().String(), reply.StartT, err))
 	// NOTICE: log.LogRead
-	log.Info("[READ] " + logContent)
+	reply.Span().Info("[READ] " + logContent)
 	return
 }
 
@@ -1305,7 +1304,7 @@ func (s *DataNode) handlePacketToGetAppliedID(p *repl.Packet) {
 
 func (s *DataNode) handlePacketToGetPartitionSize(p *repl.Packet) {
 	partition := p.Object.(*DataPartition)
-	usedSize := partition.extentStore.StoreSizeExtentID(p.ExtentID)
+	usedSize := partition.extentStore.StoreSizeExtentID(p.Context(), p.ExtentID)
 	buf := make([]byte, 8)
 	binary.BigEndian.PutUint64(buf, uint64(usedSize))
 	p.AddMesgLog(fmt.Sprintf("partitionSize_(%v)", usedSize))
@@ -1539,7 +1538,7 @@ func (s *DataNode) handlePacketToDataPartitionTryToLeader(p *repl.Packet) {
 	defer func() {
 		if err != nil {
 			p.PackErrorBody(ActionDataPartitionTryToLeader, err.Error())
-			log.Warnf("handlePacketToDataPartitionTryToLeader: %v ", err.Error())
+			span.Warnf("handlePacketToDataPartitionTryToLeader: %v ", err.Error())
 		} else {
 			p.PacketOkReply()
 			span.Debugf("handlePacketToDataPartitionTryToLeader: partition %v success ", p.PartitionID)
@@ -1577,7 +1576,7 @@ func (s *DataNode) forwardToRaftLeader(dp *DataPartition, p *repl.Packet, force 
 	if leaderAddr == "" {
 		if force {
 			ok = true
-			log.Infof("action[forwardToRaftLeader] no leader but replica num %v continue", dp.replicaNum)
+			p.Span().Infof("action[forwardToRaftLeader] no leader but replica num %v continue", dp.replicaNum)
 			return
 		}
 		err = storage.NoLeaderError

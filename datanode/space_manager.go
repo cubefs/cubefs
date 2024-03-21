@@ -26,7 +26,6 @@ import (
 	"github.com/cubefs/cubefs/raftstore"
 	"github.com/cubefs/cubefs/util/atomicutil"
 	"github.com/cubefs/cubefs/util/loadutil"
-	"github.com/cubefs/cubefs/util/log"
 	"github.com/shirou/gopsutil/disk"
 )
 
@@ -316,7 +315,8 @@ func (manager *SpaceManager) updateMetrics(ctx context.Context) {
 		remainingCapacityToCreatePartition, maxCapacityToCreatePartition, partitionCnt)
 }
 
-func (manager *SpaceManager) minPartitionCnt(decommissionedDisks []string) (d *Disk) {
+func (manager *SpaceManager) minPartitionCnt(ctx context.Context, decommissionedDisks []string) (d *Disk) {
+	span := getSpan(ctx)
 	manager.diskMutex.Lock()
 	defer manager.diskMutex.Unlock()
 	var (
@@ -330,7 +330,7 @@ func (manager *SpaceManager) minPartitionCnt(decommissionedDisks []string) (d *D
 	minWeight = math.MaxFloat64
 	for _, disk := range manager.disks {
 		if _, ok := decommissionedDiskMap[disk.Path]; ok {
-			log.Infof("action[minPartitionCnt] exclude decommissioned disk[%v]", disk.Path)
+			span.Infof("action[minPartitionCnt] exclude decommissioned disk[%v]", disk.Path)
 			continue
 		}
 		if disk.Status != proto.ReadWrite {
@@ -416,7 +416,7 @@ func (manager *SpaceManager) CreatePartition(ctx context.Context, request *proto
 		}
 		return
 	}
-	disk := manager.minPartitionCnt(request.DecommissionedDisks)
+	disk := manager.minPartitionCnt(ctx, request.DecommissionedDisks)
 	if disk == nil {
 		return nil, ErrNoSpaceToCreatePartition
 	}
@@ -444,7 +444,7 @@ func (manager *SpaceManager) DeletePartition(ctx context.Context, dpID uint64) {
 	os.RemoveAll(dp.Path())
 }
 
-func (s *DataNode) buildHeartBeatResponse(response *proto.DataNodeHeartbeatResponse) {
+func (s *DataNode) buildHeartBeatResponse(ctx context.Context, response *proto.DataNodeHeartbeatResponse) {
 	response.Status = proto.TaskSucceeds
 	stat := s.space.Stats()
 	stat.Lock()
@@ -463,6 +463,7 @@ func (s *DataNode) buildHeartBeatResponse(response *proto.DataNodeHeartbeatRespo
 	response.ZoneName = s.zoneName
 	response.PartitionReports = make([]*proto.DataPartitionReport, 0)
 	space := s.space
+	span := getSpan(ctx)
 	space.RangePartitions(func(partition *DataPartition) bool {
 		leaderAddr, isLeader := partition.IsRaftLeader()
 		vr := &proto.DataPartitionReport{
@@ -477,7 +478,7 @@ func (s *DataNode) buildHeartBeatResponse(response *proto.DataNodeHeartbeatRespo
 			NeedCompare:                true,
 			DecommissionRepairProgress: partition.decommissionRepairProgress,
 		}
-		log.Debugf("action[Heartbeats] dpid(%v), status(%v) total(%v) used(%v) leader(%v) isLeader(%v).", vr.PartitionID, vr.PartitionStatus, vr.Total, vr.Used, leaderAddr, vr.IsLeader)
+		span.Debugf("action[Heartbeats] dpid(%v), status(%v) total(%v) used(%v) leader(%v) isLeader(%v).", vr.PartitionID, vr.PartitionStatus, vr.Total, vr.Used, leaderAddr, vr.IsLeader)
 		response.PartitionReports = append(response.PartitionReports, vr)
 		return true
 	})

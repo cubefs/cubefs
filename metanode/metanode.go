@@ -51,6 +51,7 @@ var (
 	getSpan           = proto.SpanFromContext
 	spanContext       = proto.SpanContext
 	spanContextPrefix = proto.SpanContextPrefix
+	roundContext      = proto.RoundContext
 	anyDuration       = trace.OptSpanDurationAny()
 )
 

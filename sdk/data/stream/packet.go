@@ -55,7 +55,7 @@ func NewWriteTinyDirectly(inode uint64, dpID uint64, offset int, dp *wrapper.Dat
 // NewWritePacket returns a new write packet.
 func NewWritePacket(inode uint64, fileOffset, storeMode int) *Packet {
 	p := new(Packet)
-	p.ReqID = proto.GenerateRequestID()
+	p.ReqID = proto.RandomID()
 	p.Magic = proto.ProtoMagic
 	p.Opcode = proto.OpWrite
 	p.inode = inode
@@ -70,14 +70,15 @@ func NewWritePacket(inode uint64, fileOffset, storeMode int) *Packet {
 
 // NewOverwritePacket returns a new overwrite packet.
 func NewOverwriteByAppendPacket(dp *wrapper.DataPartition, extentID uint64, extentOffset int,
-	inode uint64, fileOffset int, direct bool, op uint8) *Packet {
+	inode uint64, fileOffset int, direct bool, op uint8,
+) *Packet {
 	p := new(Packet)
 	p.PartitionID = dp.PartitionID
 	p.Magic = proto.ProtoMagic
 	p.ExtentType = proto.NormalExtentType
 	p.ExtentID = extentID
 	p.ExtentOffset = int64(extentOffset)
-	p.ReqID = proto.GenerateRequestID()
+	p.ReqID = proto.RandomID()
 	p.Arg = nil
 	p.ArgLen = 0
 	p.RemainingFollowers = 0
@@ -105,7 +106,7 @@ func NewOverwritePacket(dp *wrapper.DataPartition, extentID uint64, extentOffset
 	p.ExtentType = proto.NormalExtentType
 	p.ExtentID = extentID
 	p.ExtentOffset = int64(extentOffset)
-	p.ReqID = proto.GenerateRequestID()
+	p.ReqID = proto.RandomID()
 	p.Arg = nil
 	p.ArgLen = 0
 	p.RemainingFollowers = 0
@@ -130,7 +131,7 @@ func NewReadPacket(key *proto.ExtentKey, extentOffset, size int, inode uint64, f
 		p.Opcode = proto.OpStreamRead
 	}
 	p.ExtentType = proto.NormalExtentType
-	p.ReqID = proto.GenerateRequestID()
+	p.ReqID = proto.RandomID()
 	p.RemainingFollowers = 0
 	p.inode = inode
 	p.KernelOffset = uint64(fileOffset)
@@ -149,7 +150,7 @@ func NewCreateExtentPacket(dp *wrapper.DataPartition, inode uint64) *Packet {
 	if len(dp.Hosts) == 1 {
 		p.RemainingFollowers = 127
 	}
-	p.ReqID = proto.GenerateRequestID()
+	p.ReqID = proto.RandomID()
 	p.Opcode = proto.OpCreateExtent
 	p.Data = make([]byte, 8)
 	binary.BigEndian.PutUint64(p.Data, inode)

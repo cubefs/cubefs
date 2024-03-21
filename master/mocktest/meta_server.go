@@ -95,6 +95,7 @@ func (mms *MockMetaServer) serveConn(rc net.Conn) {
 	conn.SetKeepAlive(true)
 	conn.SetNoDelay(true)
 	req := proto.NewPacket()
+	req.ReqID = proto.RandomID()
 	err := req.ReadFromConnWithVer(conn, proto.NoReadDeadlineTime)
 	if err != nil {
 		fmt.Printf("remote [%v] err is [%v]\n", conn.RemoteAddr(), err)

@@ -108,8 +108,11 @@ func (mp *metaPartition) updateVolWorker() {
 		}
 		return newView
 	}
+
+	rCtx := roundContext("update-")
 	for {
-		span, ctx := spanContextPrefix("update-")
+		ctx := rCtx()
+		span := getSpan(ctx)
 		if err := mp.updateVolView(ctx, convert); err != nil {
 			span.Error(err)
 		}
@@ -135,6 +138,7 @@ func (mp *metaPartition) deleteWorker() {
 	)
 	buffSlice := make([]uint64, 0, DeleteBatchCount())
 	var sleepCnt uint64
+	rCtx := roundContext("deleter-worker")
 	for {
 		buffSlice = buffSlice[:0]
 		select {
@@ -165,7 +169,8 @@ func (mp *metaPartition) deleteWorker() {
 			continue
 		}
 
-		span, ctx := spanContextPrefix("delete-")
+		ctx := rCtx()
+		span := getSpan(ctx)
 
 		batchCount := DeleteBatchCount()
 		delayDeleteInos := make([]uint64, 0)
