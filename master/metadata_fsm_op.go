@@ -155,6 +155,7 @@ type dataPartitionValue struct {
 	RecoverLastConsumeTime         float64
 	Forbidden                      bool
 	DecommissionWaitTimes          int
+	DecommissionErrorMessage       string
 }
 
 func (dpv *dataPartitionValue) Restore(c *Cluster) (dp *DataPartition) {
@@ -227,6 +228,7 @@ func newDataPartitionValue(dp *DataPartition) (dpv *dataPartitionValue) {
 		RecoverStartTime:               dp.RecoverStartTime.Unix(),
 		RecoverLastConsumeTime:         dp.RecoverLastConsumeTime.Seconds(),
 		DecommissionWaitTimes:          dp.DecommissionWaitTimes,
+		DecommissionErrorMessage:       dp.DecommissionErrorMessage,
 	}
 	for _, replica := range dp.Replicas {
 		rv := &replicaValue{Addr: replica.Addr, DiskPath: replica.DiskPath}

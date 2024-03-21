@@ -42,18 +42,20 @@ func newDataPartitionCmd(client *master.MasterClient) *cobra.Command {
 		newDataPartitionDeleteReplicaCmd(client),
 		newDataPartitionGetDiscardCmd(client),
 		newDataPartitionSetDiscardCmd(client),
+		newDataPartitionQueryDecommissionProgress(client),
 	)
 	return cmd
 }
 
 const (
-	cmdDataPartitionGetShort           = "Display detail information of a data partition"
-	cmdCheckCorruptDataPartitionShort  = "Check and list unhealthy data partitions"
-	cmdDataPartitionDecommissionShort  = "Decommission a replication of the data partition to a new address"
-	cmdDataPartitionReplicateShort     = "Add a replication of the data partition on a new address"
-	cmdDataPartitionDeleteReplicaShort = "Delete a replication of the data partition on a fixed address"
-	cmdDataPartitionGetDiscardShort    = "Display all discard data partitions"
-	cmdDataPartitionSetDiscardShort    = "Set discard flag for data partition"
+	cmdDataPartitionGetShort                       = "Display detail information of a data partition"
+	cmdCheckCorruptDataPartitionShort              = "Check and list unhealthy data partitions"
+	cmdDataPartitionDecommissionShort              = "Decommission a replication of the data partition to a new address"
+	cmdDataPartitionReplicateShort                 = "Add a replication of the data partition on a new address"
+	cmdDataPartitionDeleteReplicaShort             = "Delete a replication of the data partition on a fixed address"
+	cmdDataPartitionGetDiscardShort                = "Display all discard data partitions"
+	cmdDataPartitionSetDiscardShort                = "Set discard flag for data partition"
+	cmdDataPartitionQueryDecommissionProgressShort = "Query data partition decommission progress"
 )
 
 func newDataPartitionGetCmd(client *master.MasterClient) *cobra.Command {
@@ -420,6 +422,37 @@ func newDataPartitionSetDiscardCmd(client *master.MasterClient) *cobra.Command {
 				return
 			}
 			stdout("Discard %v successful", dpId)
+		},
+	}
+	return cmd
+}
+
+func newDataPartitionQueryDecommissionProgress(client *master.MasterClient) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   CliOpQueryProgress + "[DATA PARTITION ID]",
+		Short: cmdDataPartitionQueryDecommissionProgressShort,
+		Args:  cobra.MinimumNArgs(1),
+		Run: func(cmd *cobra.Command, args []string) {
+			var (
+				err  error
+				dpId uint64
+			)
+
+			defer func() {
+				errout(err)
+			}()
+
+			dpId, err = strconv.ParseUint(args[0], 10, 64)
+			if err != nil {
+				return
+			}
+
+			info, err := client.AdminAPI().QueryDataPartitionDecommissionStatus(dpId)
+			if err != nil {
+				return
+			}
+
+			stdout("%v", formatDataPartitionDecommissionProgress(info))
 		},
 	}
 	return cmd
