@@ -33,9 +33,9 @@ type RocksdbManager interface {
 
 	Unregister(dbPath string) (err error)
 
-	OpenRocksdb(dbPath string) (db *RocksDbInfo, err error)
+	OpenRocksdb(dbPath string) (db *RocksdbOperator, err error)
 
-	CloseRocksdb(db *RocksDbInfo)
+	CloseRocksdb(db *RocksdbOperator)
 
 	SelectRocksdbDisk(usableFactor float64) (disk string, err error)
 
@@ -47,7 +47,7 @@ type RocksdbManager interface {
 }
 
 type RocksdbHandle struct {
-	db         *RocksDbInfo
+	db         *RocksdbOperator
 	rc         uint64
 	partitions int
 }
@@ -66,7 +66,7 @@ func (r *rocksdbManager) Register(dbPath string) (err error) {
 		return
 	}
 	r.dbs[dbPath] = &RocksdbHandle{
-		db: NewRocksDb(),
+		db: NewRocksdb(),
 		rc: 0,
 	}
 	return
@@ -88,7 +88,7 @@ func (r *rocksdbManager) Unregister(dbPath string) (err error) {
 	return
 }
 
-func (r *rocksdbManager) OpenRocksdb(dbPath string) (db *RocksDbInfo, err error) {
+func (r *rocksdbManager) OpenRocksdb(dbPath string) (db *RocksdbOperator, err error) {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 	handle, ok := r.dbs[dbPath]
@@ -108,7 +108,7 @@ func (r *rocksdbManager) OpenRocksdb(dbPath string) (db *RocksDbInfo, err error)
 	return
 }
 
-func (r *rocksdbManager) CloseRocksdb(db *RocksDbInfo) {
+func (r *rocksdbManager) CloseRocksdb(db *RocksdbOperator) {
 	dbPath := db.dir
 	r.mutex.Lock()
 	defer r.mutex.Unlock()

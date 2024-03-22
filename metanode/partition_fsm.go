@@ -41,17 +41,11 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 	defer mp.nonIdempotent.Unlock()
 
 	if mp.applyID >= index {
-		log.LogErrorf("[Apply] skip apply duplicated log entry")
+		log.LogErrorf("[Apply] mp(%v) skip apply duplicated log entry", mp.config.PartitionId)
 		return
 	}
 
 	var dbWriteHandle interface{}
-
-	defer func() {
-		if err == nil {
-			mp.uploadApplyID(index)
-		}
-	}()
 	if err = msg.UnmarshalJson(command); err != nil {
 		return
 	}
@@ -65,7 +59,7 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 
 	mp.inodeTree.SetApplyID(index)
 
-	//commit db
+	// NOTE: commit changes
 	defer func() {
 		if err != nil {
 			_ = mp.inodeTree.ReleaseBatchWriteHandle(dbWriteHandle)
@@ -75,7 +69,6 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 		log.LogDebugf("[Apply] mp(%v) commit write handle", mp.config.PartitionId)
 		err = mp.inodeTree.CommitAndReleaseBatchWriteHandle(dbWriteHandle, true)
 		if err != nil {
-			// NOTE: try to rollback?
 			log.LogErrorf("[Apply] failed to commit write batch, is disk broken? err(%v)", err)
 		}
 	}()
@@ -687,14 +680,14 @@ func (mp *metaPartition) Snapshot() (snap raftproto.Snapshot, err error) {
 	return
 }
 
-func newRocksdbHandle(newDir string) (db *RocksDbInfo, err error) {
+func newRocksdbHandle(newDir string) (db *RocksdbOperator, err error) {
 	if _, err = os.Stat(newDir); err == nil {
 		os.RemoveAll(newDir)
 	}
 	os.MkdirAll(newDir, 0x755)
 	err = nil
 
-	db = NewRocksDb()
+	db = NewRocksdb()
 	//apply snapshot, tmp rocks db
 	if err = db.OpenDb(newDir, 0, 0, 0, 0, 0, 0); err != nil {
 		log.LogErrorf("open db failed, error(%v)", err)
@@ -1140,11 +1133,9 @@ func (mp *metaPartition) submit(op uint32, data []byte) (resp interface{}, err e
 func (mp *metaPartition) uploadApplyID(applyId uint64) {
 	atomic.StoreUint64(&mp.applyID, applyId)
 	if mp.HasRocksDBStore() {
-		if math.Abs(float64(mp.applyID-mp.inodeTree.GetPersistentApplyID())) > maximumApplyIdDifference {
-			//persist to rocksdb
-			if err := mp.inodeTree.PersistBaseInfo(); err != nil {
-				log.LogErrorf("action[uploadApplyID] persist base info failed:%v", err)
-			}
+		// NOTE: persist to rocksdb
+		if err := mp.inodeTree.PersistBaseInfo(); err != nil {
+			log.LogErrorf("action[uploadApplyID] mp(%v) persist base info failed, err(%v)", mp.config.PartitionId, err)
 		}
 	}
 }

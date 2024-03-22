@@ -32,9 +32,10 @@ func newMetaNodeForDiskTest(t *testing.T, dir string, rocksdbDir string, raftDir
 		rocksDirs: []string{
 			rocksdbDir,
 		},
-		raftDir:    raftDir,
-		disks:      make(map[string]*diskmon.FsCapMon),
-		diskStopCh: make(chan struct{}),
+		raftDir:        raftDir,
+		disks:          make(map[string]*diskmon.FsCapMon),
+		diskStopCh:     make(chan struct{}),
+		rocksdbManager: NewRocksdbManager(),
 	}
 	return
 }
@@ -48,6 +49,12 @@ func TestCheckRocksdbDisk(t *testing.T) {
 	err = os.MkdirAll(rocksdbDir, 0o755)
 	require.NoError(t, err)
 	mn := newMetaNodeForDiskTest(t, tempDir, rocksdbDir, raftDir)
+	err = mn.rocksdbManager.Register(tempDir)
+	require.NoError(t, err)
+	err = mn.rocksdbManager.Register(raftDir)
+	require.NoError(t, err)
+	err = mn.rocksdbManager.Register(rocksdbDir)
+	require.NoError(t, err)
 	err = mn.startDiskStat()
 	require.NoError(t, err)
 	time.Sleep(11 * time.Second)

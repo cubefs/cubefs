@@ -200,36 +200,36 @@ func (info *RocksBaseInfo) Unmarshal(raw []byte) (err error) {
 
 type RocksTree struct {
 	partitionId uint64
-	db          *RocksDbInfo
+	db          *RocksdbOperator
 	latch       [MaxTable]sync.Mutex
 	baseInfo    RocksBaseInfo
+	cf          *gorocksdb.ColumnFamilyHandle
 }
 
-func DefaultRocksTree(dbInfo *RocksDbInfo, partitionId uint64) (*RocksTree, error) {
+func DefaultRocksTree(dbInfo *RocksdbOperator, partitionId uint64) (*RocksTree, error) {
 	return NewRocksTree(dbInfo, partitionId)
 }
 
-func NewRocksTree(dbInfo *RocksDbInfo, partitionId uint64) (*RocksTree, error) {
+func NewRocksTree(dbInfo *RocksdbOperator, partitionId uint64) (*RocksTree, error) {
 	if dbInfo == nil {
 		return nil, errors.NewErrorf("dbInfo is null")
+	}
+	cfName := dbInfo.GetPartitionColumnFamilyName(partitionId)
+	cf, err := dbInfo.OpenColumnFamily(cfName)
+	if err != nil {
+		log.LogErrorf("[NewRocksTree] failed to open column family, err(%v)", err)
+		return nil, err
 	}
 	tree := &RocksTree{
 		partitionId: partitionId,
 		db:          dbInfo,
+		cf:          cf,
 	}
 	_ = tree.LoadBaseInfo()
 	if tree.baseInfo.length == 0 {
 		tree.baseInfo.length = uint32(unsafe.Sizeof(tree.baseInfo))
 	}
 	return tree, nil
-}
-
-func (r *RocksTree) warpKey(key []byte) []byte {
-	buf := bytes.NewBuffer([]byte{})
-	binary.Write(buf, binary.BigEndian, r.partitionId)
-	buf.WriteByte(0)
-	buf.Write(key)
-	return buf.Bytes()
 }
 
 func (r *RocksTree) LoadBaseInfo() error {
@@ -291,7 +291,7 @@ func (r *RocksTree) ReleaseBatchHandle(handle interface{}) (err error) {
 }
 
 func (r *RocksTree) AddItemToBatch(handle interface{}, key []byte, value []byte) error {
-	return r.db.AddItemToBatch(handle, r.warpKey(key), value)
+	return r.db.AddItemToBatch(handle, r.cf, key, value)
 }
 
 func (r *RocksTree) HandleBatchCount(handle interface{}) (count int, err error) {
@@ -423,8 +423,9 @@ func (r *RocksTree) GetCursor() uint64 {
 	return atomic.LoadUint64(&r.baseInfo.cursor)
 }
 
+// NOTE: we disable WAL, flush operation write all data to sst files
 func (r *RocksTree) Flush() error {
-	return r.db.Flush()
+	return r.db.CompactRange(r.cf, []byte{0}, []byte{255})
 }
 
 func (r *RocksTree) Count(tp TreeType) (uint64, error) {
@@ -461,12 +462,12 @@ func (r *RocksTree) Count(tp TreeType) (uint64, error) {
 
 // This requires global traversal to call carefully
 func (r *RocksTree) RangeWithSnap(start []byte, end []byte, snap *gorocksdb.Snapshot, iter func(k, v []byte) (bool, error)) (err error) {
-	err = r.db.RangeWithSnap(r.warpKey(start), r.warpKey(end), snap, iter)
+	err = r.db.RangeWithSnap(r.cf, start, end, snap, iter)
 	return
 }
 
 func (r *RocksTree) DescRangeWithSnap(start []byte, end []byte, snap *gorocksdb.Snapshot, iter func(k, v []byte) (bool, error)) (err error) {
-	err = r.db.DescRangeWithSnap(r.warpKey(start), r.warpKey(end), snap, iter)
+	err = r.db.DescRangeWithSnap(r.cf, start, end, snap, iter)
 	return
 }
 
@@ -510,7 +511,7 @@ func (r *RocksTree) Range(start, end []byte, cb func(v []byte) (bool, error)) er
 }
 
 func (r *RocksTree) RangeWithSnapByPrefix(prefix, start, end []byte, snap *gorocksdb.Snapshot, cb func(k, v []byte) (bool, error)) (err error) {
-	err = r.db.RangeWithSnapByPrefix(r.warpKey(prefix), r.warpKey(start), r.warpKey(end), snap, cb)
+	err = r.db.RangeWithSnapByPrefix(r.cf, prefix, start, end, snap, cb)
 	return
 }
 
@@ -535,11 +536,11 @@ func (r *RocksTree) HasKey(key []byte) (bool, error) {
 }
 
 func (r *RocksTree) GetBytes(key []byte) ([]byte, error) {
-	return r.db.GetBytes(r.warpKey(key))
+	return r.db.GetBytes(r.cf, key)
 }
 
 func (r *RocksTree) GetBytesWithSnap(snap *gorocksdb.Snapshot, key []byte) ([]byte, error) {
-	return r.db.GetBytesWithSnap(snap, r.warpKey(key))
+	return r.db.GetBytesWithSnap(r.cf, snap, key)
 }
 
 func (r *RocksTree) Put(handle interface{}, count *uint64, key []byte, value []byte) error {
@@ -580,16 +581,16 @@ func (r *RocksTree) Create(handle interface{}, count *uint64, key []byte, value 
 	lock.Lock()
 	defer lock.Unlock()
 
+	v, err = r.GetBytes(key)
+	if err != nil {
+		return
+	}
+
+	if len(v) > 0 && !force {
+		return
+	}
+
 	if count != nil {
-		v, err = r.GetBytes(key)
-		if err != nil {
-			return
-		}
-
-		if len(v) > 0 && !force {
-			return
-		}
-
 		if len(v) <= 0 {
 			//not exist
 			atomic.AddUint64(count, 1)
@@ -605,7 +606,7 @@ func (r *RocksTree) Create(handle interface{}, count *uint64, key []byte, value 
 }
 
 func (r *RocksTree) DelItemToBatch(handle interface{}, key []byte) (err error) {
-	err = r.db.DelItemToBatch(handle, r.warpKey(key))
+	err = r.db.DelItemToBatch(handle, r.cf, key)
 	return
 }
 
@@ -644,7 +645,7 @@ func (r *RocksTree) Execute(fn func(tree interface{}) interface{}) interface{} {
 }
 
 func (r *RocksTree) DelRangeToBatch(handle interface{}, start []byte, end []byte) (err error) {
-	err = r.db.DelRangeToBatch(handle, r.warpKey(start), r.warpKey(end))
+	err = r.db.DelRangeToBatch(handle, r.cf, start, end)
 	return
 }
 

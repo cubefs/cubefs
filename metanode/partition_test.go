@@ -17,6 +17,7 @@ package metanode
 import (
 	"os"
 	"path"
+	"strings"
 	"testing"
 	"time"
 
@@ -281,4 +282,74 @@ func TestMultiPartitionOnDisk(t *testing.T) {
 	mp2.Clear()
 
 	checkTreeCntForMpTest(t, mp1)
+}
+
+func getSSTCountForPartitionTest(t *testing.T, dir string) (count int) {
+	dentries, err := os.ReadDir(dir)
+	require.NoError(t, err)
+	for _, dentry := range dentries {
+		if strings.HasSuffix(dentry.Name(), ".sst") {
+			count++
+		}
+	}
+	return
+}
+
+func TestLoadAndStoreMetaPartition(t *testing.T) {
+	dbManager := NewRocksdbManager()
+	dbDir, err := os.MkdirTemp("", "")
+	require.NoError(t, err)
+	t.Logf("db dir is %v", dbDir)
+	err = dbManager.Register(dbDir)
+	require.NoError(t, err)
+
+	mpC := MetaPartitionConfig{
+		PartitionId:   1,
+		VolName:       "test_vol",
+		Start:         0,
+		End:           100,
+		PartitionType: 1,
+		Peers:         nil,
+		RootDir:       "",
+		StoreMode:     proto.StoreModeRocksDb,
+		RocksDBDir:    dbDir,
+	}
+
+	metaM := &metadataManager{
+		nodeId:         1,
+		zoneName:       "test",
+		raftStore:      nil,
+		partitions:     make(map[uint64]MetaPartition),
+		metaNode:       &MetaNode{},
+		rocksdbManager: dbManager,
+	}
+	partition := NewMetaPartition(&mpC, metaM)
+	require.NotNil(t, partition)
+	mp := partition.(*metaPartition)
+
+	err = mp.initObjects(true)
+	require.NoError(t, err)
+
+	prepareDataForMpTest(t, mp)
+
+	checkTreeCntForMpTest(t, mp)
+
+	count := getSSTCountForPartitionTest(t, dbDir)
+	require.EqualValues(t, 0, count)
+
+	snap, err := mp.GetSnapShot()
+	require.NoError(t, err)
+	require.NotNil(t, snap)
+	msg := &storeMsg{
+		command:     1,
+		snap:        snap,
+		uniqId:      mp.GetUniqId(),
+		uniqChecker: mp.uniqChecker,
+	}
+	err = mp.store(msg)
+	snap.Close()
+	require.NoError(t, err)
+
+	count = getSSTCountForPartitionTest(t, dbDir)
+	require.NotEqualValues(t, 0, count)
 }

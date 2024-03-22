@@ -156,10 +156,10 @@ func doStart(s common.Server, cfg *config.Config) (err error) {
 	if err = m.parseConfig(cfg); err != nil {
 		return
 	}
-	if err = m.startDiskStat(); err != nil {
+	if err = m.newRocksdbManager(); err != nil {
 		return
 	}
-	if err = m.newRocksdbManager(); err != nil {
+	if err = m.startDiskStat(); err != nil {
 		return
 	}
 	if err = m.register(); err != nil {

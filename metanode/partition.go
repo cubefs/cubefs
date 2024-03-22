@@ -515,7 +515,7 @@ type metaPartition struct {
 	deletedObjExtentsTree DeletedObjExtentsTree // deleted obj extents
 	deletedExtentId       uint64
 	rocksdbManager        RocksdbManager
-	db                    *RocksDbInfo
+	db                    *RocksdbOperator
 	txProcessor           *TransactionProcessor // transction processor
 	raftPartition         raftstore.Partition
 	stopC                 chan bool
@@ -1410,8 +1410,11 @@ func (mp *metaPartition) load(isCreate bool) (err error) {
 func (mp *metaPartition) store(sm *storeMsg) (err error) {
 	if mp.HasRocksDBStore() {
 		mp.storedApplyId = sm.snap.ApplyID()
-		log.LogInfof("[store] mp(%v) using rocksdb, nothing to do", mp.config.PartitionId)
-		// NOTE: after reviewed, there no need to execute flush
+		log.LogInfof("[store] mp(%v) flush rocksdb memory table to sst", mp.config.PartitionId)
+		// NOTE: execute flush
+		if err = mp.inodeTree.Flush(); err != nil {
+			return
+		}
 		return nil
 	}
 	log.LogDebugf("[store] mp(%v) store snapshot", mp.config.PartitionId)
@@ -1629,6 +1632,12 @@ func (mp *metaPartition) Reset() (err error) {
 		return
 	}
 	mp.txProcessor.Reset()
+	name := mp.db.GetPartitionColumnFamilyName(mp.config.PartitionId)
+	err = mp.db.DeleteColumnFamily(name)
+	if err != nil {
+		log.LogErrorf("[Reset] mp(%v) failed to delete partition column family(%v), err(%v)", mp.config.PartitionId, name, err)
+		err = nil
+	}
 	mp.rocksdbManager.CloseRocksdb(mp.db)
 	mp.db = nil
 
