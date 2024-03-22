@@ -21,7 +21,6 @@ import (
 	"os"
 	"sync"
 	"syscall"
-	"time"
 
 	"github.com/cubefs/cubefs/blockcache/bcache"
 	"github.com/cubefs/cubefs/proto"
@@ -58,21 +57,17 @@ type Reader struct {
 	volName         string
 	volType         int
 	ino             uint64
-	offset          uint64
-	data            []byte
 	err             chan error
 	bc              *bcache.BcacheClient
 	mw              *meta.MetaWrapper
 	ec              *stream.ExtentClient
 	ebs             *BlobStoreClient
 	readConcurrency int
-	cacheTimeout    time.Duration
 	wg              sync.WaitGroup
 	once            sync.Once
 	sync.Mutex
 	close           bool
 	extentKeys      []proto.ExtentKey
-	missExtentKeys  []proto.ExtentKey
 	objExtentKeys   []proto.ObjExtentKey
 	enableBcache    bool
 	cacheAction     int
@@ -338,7 +333,7 @@ func (reader *Reader) readSliceRange(ctx context.Context, rs *rwSlice) (err erro
 		reader.limitManager.ReadAlloc(ctx, int(rs.rSize))
 	}
 
-	readN, err = reader.ebs.Read(ctx, reader.volName, buf, rs.rOffset, uint64(rs.rSize), rs.objExtentKey)
+	_, err = reader.ebs.Read(ctx, reader.volName, buf, rs.rOffset, uint64(rs.rSize), rs.objExtentKey)
 	if err != nil {
 		reader.err <- err
 		return

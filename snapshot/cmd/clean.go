@@ -38,9 +38,13 @@ import (
 // TODO: Support record full path for snapshot tool
 const snapshotFullPath = "(Snapshot Cmd Unsupported)"
 
-var gMetaWrapper *meta.MetaWrapper
+var (
+	gMetaWrapper *meta.MetaWrapper
+	getSpan      = proto.SpanFromContext
 
-var getSpan = proto.SpanFromContext
+	// TODO: unused
+	_ = readSnapshot
+)
 
 func newCtx() context.Context {
 	_, ctx := proto.SpanContextPrefix("snapshot-")
@@ -230,36 +234,6 @@ func doEvictInode(ctx context.Context, inode *Inode) error {
 		}
 	}
 	getSpan(ctx).Infof("%v", inode)
-	return nil
-}
-
-func doUnlinkInode(ctx context.Context, inode *Inode) error {
-	/*
-	 * Do clean inode with the following exceptions:
-	 * 1. nlink == 0, might be a temorary inode
-	 * 2. size == 0 && ctime is close to current time, might be in the process of file creation
-	 */
-	if inode.NLink == 0 ||
-		(inode.Size == 0 &&
-			time.Unix(inode.CreateTime, 0).Add(24*time.Hour).After(time.Now())) {
-		return nil
-	}
-
-	_, err := gMetaWrapper.InodeUnlink_ll(ctx, inode.Inode, snapshotFullPath)
-	if err != nil {
-		if err != syscall.ENOENT {
-			return err
-		}
-		err = nil
-	}
-
-	err = gMetaWrapper.Evict(ctx, inode.Inode, snapshotFullPath)
-	if err != nil {
-		if err != syscall.ENOENT {
-			return err
-		}
-	}
-
 	return nil
 }
 

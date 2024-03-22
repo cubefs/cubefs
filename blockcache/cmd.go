@@ -41,9 +41,6 @@ import (
 	"github.com/jacobsa/daemonize"
 )
 
-//TODO: remove this later.
-//go:generate golangci-lint run --issues-exit-code=1 -D errcheck -E bodyclose ./...
-
 const (
 	ConfigKeyLogDir     = "logDir"
 	ConfigKeyLogLevel   = "logLevel"

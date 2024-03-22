@@ -59,11 +59,6 @@ func (r *request) addHeader(key, value string) *request {
 	return r
 }
 
-func (r *request) setBody(body []byte) *request {
-	r.body = body
-	return r
-}
-
 func (r *request) Param(params ...anyParam) *request {
 	for _, param := range params {
 		r.addParamAny(param.key, param.val)
@@ -114,9 +109,8 @@ func newRequest(ctx context.Context, method string, path string) *request {
 		header: make(map[string]string),
 		ctx:    ctx,
 	}
-	req.header["User-Agent"] = ReqHeaderUA
-
-	req.header[proto.HeaderRequestID] = proto.SpanFromContext(ctx).TraceID()
+	req.addHeader("User-Agent", ReqHeaderUA)
+	req.addHeader(proto.HeaderRequestID, proto.SpanFromContext(ctx).TraceID())
 	return req
 }
 

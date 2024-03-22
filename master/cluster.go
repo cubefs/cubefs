@@ -75,7 +75,6 @@ type Cluster struct {
 	MasterSecretKey              []byte
 	lastZoneIdxForNode           int
 	zoneIdxMux                   sync.Mutex //
-	zoneList                     []string
 	followerReadManager          *followerReadManager
 	diskQosEnable                bool
 	QosAcceptLimit               *rate.Limiter
@@ -304,9 +303,9 @@ func (mgr *followerReadManager) getVolViewAsFollower(ctx context.Context, key st
 	defer mgr.rwMutex.RUnlock()
 	ok = true
 	if compress {
-		value, _ = mgr.volDataPartitionsCompress[key]
+		value = mgr.volDataPartitionsCompress[key]
 	} else {
-		value, _ = mgr.volDataPartitionsView[key]
+		value = mgr.volDataPartitionsView[key]
 	}
 	span := proto.SpanFromContext(ctx)
 	span.Debugf("getVolViewAsFollower. volume %v return!", key)
@@ -326,7 +325,7 @@ func newCluster(ctx context.Context, name string, leaderInfo *LeaderInfo, fsm *M
 	c = new(Cluster)
 	c.Name = name
 	c.leaderInfo = leaderInfo
-	c.vols = make(map[string]*Vol, 0)
+	c.vols = make(map[string]*Vol)
 	c.cfg = cfg
 	if c.cfg.MaxDpCntLimit == 0 {
 		c.cfg.MaxDpCntLimit = defaultMaxDpCntLimit
@@ -528,7 +527,7 @@ func (c *Cluster) scheduleToCheckNodeSetGrpManagerStatus(_ context.Context) {
 	go func() {
 		rCtx := proto.RoundContext("check-nodeset")
 		for {
-			if c.FaultDomain == false || !c.partition.IsRaftLeader() {
+			if !c.FaultDomain || !c.partition.IsRaftLeader() {
 				time.Sleep(time.Minute)
 				continue
 			}
@@ -662,10 +661,6 @@ func (c *Cluster) scheduleToCheckHeartbeat(ctx context.Context) {
 	}()
 }
 
-func (c *Cluster) passAclCheck(ip string) {
-	// do nothing
-}
-
 func (c *Cluster) checkLeaderAddr() {
 	leaderID, _ := c.partition.LeaderTerm()
 	c.leaderInfo.addr = AddrDatabase[leaderID]
@@ -761,7 +756,6 @@ func (c *Cluster) checkLcNodeHeartbeat(ctx context.Context) {
 		span.Infof("checkLcNodeHeartbeat: deregister node(%v)", node)
 		_ = c.delLcNode(ctx, node)
 	}
-	return
 }
 
 func (c *Cluster) scheduleToCheckMetaPartitions(ctx context.Context) {
@@ -1130,8 +1124,7 @@ func (c *Cluster) checkLackReplicaAndHostDataPartitions(ctx context.Context) (la
 	lackReplicaDataPartitions = make([]*DataPartition, 0)
 	vols := c.copyVols()
 	for _, vol := range vols {
-		var dps *DataPartitionMap
-		dps = vol.dataPartitions
+		dps := vol.dataPartitions
 		for _, dp := range dps.partitions {
 			if dp.ReplicaNum > uint8(len(dp.Hosts)) && len(dp.Hosts) == len(dp.Replicas) && dp.IsDecommissionInitial() {
 				lackReplicaDataPartitions = append(lackReplicaDataPartitions, dp)
@@ -1140,23 +1133,6 @@ func (c *Cluster) checkLackReplicaAndHostDataPartitions(ctx context.Context) (la
 	}
 	span := proto.SpanFromContext(ctx)
 	span.Infof("clusterID[%v] checkLackReplicaAndHostDataPartitions count:[%v]", c.Name, len(lackReplicaDataPartitions))
-	return
-}
-
-func (c *Cluster) checkLackReplicaDataPartitions(ctx context.Context) (lackReplicaDataPartitions []*DataPartition, err error) {
-	lackReplicaDataPartitions = make([]*DataPartition, 0)
-	vols := c.copyVols()
-	for _, vol := range vols {
-		var dps *DataPartitionMap
-		dps = vol.dataPartitions
-		for _, dp := range dps.partitions {
-			if dp.ReplicaNum > uint8(len(dp.Hosts)) {
-				lackReplicaDataPartitions = append(lackReplicaDataPartitions, dp)
-			}
-		}
-	}
-	span := proto.SpanFromContext(ctx)
-	span.Infof("clusterID[%v] lackReplicaDataPartitions count:[%v]", c.Name, len(lackReplicaDataPartitions))
 	return
 }
 
@@ -1171,8 +1147,7 @@ func (c *Cluster) checkReplicaOfDataPartitions(ctx context.Context, ignoreDiscar
 	span := proto.SpanFromContext(ctx)
 	vols := c.copyVols()
 	for _, vol := range vols {
-		var dps *DataPartitionMap
-		dps = vol.dataPartitions
+		dps := vol.dataPartitions
 		for _, dp := range dps.partitions {
 			if ignoreDiscardDp && dp.IsDiscard {
 				continue
@@ -1342,9 +1317,8 @@ func (c *Cluster) getVol(volName string) (vol *Vol, err error) {
 
 func (c *Cluster) deleteVol(name string) {
 	c.volMutex.Lock()
-	defer c.volMutex.Unlock()
 	delete(c.vols, name)
-	return
+	c.volMutex.Unlock()
 }
 
 func (c *Cluster) markDeleteVol(ctx context.Context, name, authKey string, force bool) (err error) {
@@ -1794,8 +1768,6 @@ func (c *Cluster) getHostFromNormalZone(ctx context.Context, nodeType uint32, ex
 		goto result
 	}
 
-	hosts = make([]string, 0)
-	peers = make([]proto.Peer, 0)
 	if excludeHosts == nil {
 		excludeHosts = make([]string, 0)
 	}
@@ -1932,24 +1904,6 @@ func (c *Cluster) getAllMetaPartitionIDByMetaNode(addr string) (partitionIDs []u
 	return
 }
 
-func (c *Cluster) getAllMetaPartitionsByMetaNode(addr string) (partitions []*MetaPartition) {
-	partitions = make([]*MetaPartition, 0)
-	safeVols := c.allVols()
-	for _, vol := range safeVols {
-		for _, mp := range vol.MetaPartitions {
-			vol.mpsLock.RLock()
-			for _, host := range mp.Hosts {
-				if host == addr {
-					partitions = append(partitions, mp)
-					break
-				}
-			}
-			vol.mpsLock.RUnlock()
-		}
-	}
-	return
-}
-
 func (c *Cluster) decommissionDataNodeCancel(ctx context.Context, dataNode *DataNode) (err error, failed []uint64) {
 	if !dataNode.CanBePaused() {
 		err = fmt.Errorf("action[decommissionDataNodeCancel] dataNode[%v] status[%v] donot support cancel",
@@ -2048,7 +2002,7 @@ func (c *Cluster) delDecommissionDiskFromCache(dd *DecommissionDisk) {
 func (c *Cluster) decommissionSingleDp(ctx context.Context, dp *DataPartition, newAddr, offlineAddr string) (err error) {
 	var (
 		dataNode       *DataNode
-		decommContinue = false
+		decommContinue bool
 		newReplica     *DataReplica
 	)
 	span := proto.SpanFromContext(ctx)
@@ -2103,7 +2057,7 @@ func (c *Cluster) decommissionSingleDp(ctx context.Context, dp *DataPartition, n
 				span.Infof("action[decommissionSingleDp] dp %v replica[%v] status %v",
 					dp.PartitionID, newReplica.Addr, newReplica.Status)
 				if newReplica.isRepairing() { // wait for repair
-					if time.Now().Sub(dp.RecoverStartTime) > c.GetDecommissionDataPartitionRecoverTimeOut() {
+					if time.Since(dp.RecoverStartTime) > c.GetDecommissionDataPartitionRecoverTimeOut() {
 						err = fmt.Errorf("action[decommissionSingleDp] dp %v new replica %v repair time out",
 							dp.PartitionID, newAddr)
 						dp.DecommissionNeedRollback = true
@@ -2735,33 +2689,6 @@ func (c *Cluster) removeDataReplica(ctx context.Context, dp *DataPartition, addr
 	return
 }
 
-func (c *Cluster) isRecovering(ctx context.Context, dp *DataPartition, addr string) (isRecover bool) {
-	var key string
-	dp.RLock()
-	defer dp.RUnlock()
-	replica, _ := dp.getReplica(ctx, addr)
-	if replica != nil {
-		key = fmt.Sprintf("%s:%s", addr, replica.DiskPath)
-	} else {
-		key = fmt.Sprintf("%s:%s", addr, "")
-	}
-
-	c.badPartitionMutex.RLock()
-	defer c.badPartitionMutex.RUnlock()
-
-	var badPartitionIDs []uint64
-	badPartitions, ok := c.BadDataPartitionIds.Load(key)
-	if ok {
-		badPartitionIDs = badPartitions.([]uint64)
-	}
-	for _, id := range badPartitionIDs {
-		if id == dp.PartitionID {
-			isRecover = true
-		}
-	}
-	return
-}
-
 func (c *Cluster) removeHostMember(ctx context.Context, dp *DataPartition, removePeer proto.Peer) (err error) {
 	newHosts := make([]string, 0, len(dp.Hosts)-1)
 	for _, host := range dp.Hosts {
@@ -3380,43 +3307,6 @@ errHandler:
 	return
 }
 
-// Update the upper bound of the inode ids in a meta partition.
-func (c *Cluster) updateInodeIDRange(ctx context.Context, volName string, start uint64) (err error) {
-	var (
-		maxPartitionID uint64
-		vol            *Vol
-		partition      *MetaPartition
-	)
-	span := proto.SpanFromContext(ctx)
-	if vol, err = c.getVol(volName); err != nil {
-		span.Errorf("action[updateInodeIDRange]  vol [%v] not found", volName)
-		return proto.ErrVolNotExists
-	}
-
-	maxPartitionID = vol.maxPartitionID()
-	if partition, err = vol.metaPartition(maxPartitionID); err != nil {
-		span.Errorf("action[updateInodeIDRange]  mp[%v] not found", maxPartitionID)
-		return proto.ErrMetaPartitionNotExists
-	}
-
-	adjustStart := start
-	if adjustStart < partition.Start {
-		adjustStart = partition.Start
-	}
-
-	if adjustStart < partition.MaxInodeID {
-		adjustStart = partition.MaxInodeID
-	}
-
-	metaPartitionInodeIdStep := gConfig.MetaPartitionInodeIdStep
-	adjustStart = adjustStart + metaPartitionInodeIdStep
-	span.Warnf("vol[%v],maxMp[%v],start[%v],adjustStart[%v]", volName, maxPartitionID, start, adjustStart)
-	if err = vol.splitMetaPartition(ctx, c, partition, adjustStart, metaPartitionInodeIdStep, false); err != nil {
-		span.Errorf("action[updateInodeIDRange]  mp[%v] err[%v]", partition.PartitionID, err)
-	}
-	return
-}
-
 func (c *Cluster) dataNodeCount() (len int) {
 	c.dataNodes.Range(func(key, value interface{}) bool {
 		len++
@@ -3586,7 +3476,7 @@ func (c *Cluster) allVolNames() (vols []string) {
 }
 
 func (c *Cluster) copyVols() (vols map[string]*Vol) {
-	vols = make(map[string]*Vol, 0)
+	vols = make(map[string]*Vol)
 	c.volMutex.RLock()
 	defer c.volMutex.RUnlock()
 
@@ -3599,7 +3489,7 @@ func (c *Cluster) copyVols() (vols map[string]*Vol) {
 
 // Return all the volumes except the ones that have been marked to be deleted.
 func (c *Cluster) allVols() (vols map[string]*Vol) {
-	vols = make(map[string]*Vol, 0)
+	vols = make(map[string]*Vol)
 	c.volMutex.RLock()
 	defer c.volMutex.RUnlock()
 	for name, vol := range c.vols {
@@ -3755,11 +3645,6 @@ func (c *Cluster) setMetaNodeDeleteWorkerSleepMs(ctx context.Context, val uint64
 	return
 }
 
-func (c *Cluster) getMaxDpCntLimit() (dpCntInLimit uint64) {
-	dpCntInLimit = atomic.LoadUint64(&c.cfg.MaxDpCntLimit)
-	return
-}
-
 func (c *Cluster) setMaxDpCntLimit(ctx context.Context, val uint64) (err error) {
 	span := proto.SpanFromContext(ctx)
 	if val == 0 {
@@ -3815,23 +3700,10 @@ func (c *Cluster) setForbidMpDecommission(ctx context.Context, isForbid bool) (e
 	return
 }
 
-func (c *Cluster) setMaxConcurrentLcNodes(ctx context.Context, count uint64) (err error) {
-	span := proto.SpanFromContext(ctx)
-	oldCount := c.cfg.MaxConcurrentLcNodes
-	c.cfg.MaxConcurrentLcNodes = count
-	if err = c.syncPutCluster(ctx); err != nil {
-		span.Errorf("action[setMaxConcurrentLcNodes] err[%v]", err)
-		c.cfg.MaxConcurrentLcNodes = oldCount
-		err = proto.ErrPersistenceByRaft
-		return
-	}
-	return
-}
-
 func (c *Cluster) clearVols() {
 	c.volMutex.Lock()
-	defer c.volMutex.Unlock()
-	c.vols = make(map[string]*Vol, 0)
+	c.vols = make(map[string]*Vol)
+	c.volMutex.Unlock()
 }
 
 func (c *Cluster) clearTopology() {
@@ -3880,7 +3752,7 @@ func (c *Cluster) checkDecommissionDataNode(ctx context.Context) {
 			partitions := c.getAllDataPartitionByDataNode(dataNode.Addr)
 			// if only decommission part of data partitions, do not remove the datanode
 			if len(partitions) != 0 {
-				if time.Now().Sub(time.Unix(dataNode.DecommissionCompleteTime, 0)) > (20 * time.Minute) {
+				if time.Since(time.Unix(dataNode.DecommissionCompleteTime, 0)) > (20 * time.Minute) {
 					span.Warnf("action[checkDecommissionDataNode] dataNode %v decommission completed, "+
 						"but has dp left, so only reset decommission status", dataNode.Addr)
 					dataNode.resetDecommissionStatus()
@@ -4127,7 +3999,7 @@ func (c *Cluster) checkDecommissionDisk(ctx context.Context) {
 		disk := value.(*DecommissionDisk)
 		status := disk.GetDecommissionStatus()
 		if status == DecommissionSuccess || status == DecommissionFail {
-			if time.Now().Sub(time.Unix(disk.DecommissionCompleteTime, 0)) > (20 * time.Minute) {
+			if time.Since(time.Unix(disk.DecommissionCompleteTime, 0)) > (20 * time.Minute) {
 				if err := c.syncDeleteDecommissionDisk(ctx, disk); err != nil {
 					msg := fmt.Sprintf("action[checkDecommissionDisk],clusterID[%v] node[%v] disk[%v],"+
 						"syncDeleteDecommissionDisk failed,err[%v]",
@@ -4660,7 +4532,6 @@ func (c *Cluster) DelBucketLifecycle(ctx context.Context, VolName string) {
 	}
 	c.lcMgr.DelS3BucketLifecycle(VolName)
 	span.Infof("action[DelS3BucketLifecycle],clusterID[%v] vol:%v", c.Name, VolName)
-	return
 }
 
 func (c *Cluster) addDecommissionDiskToNodeset(ctx context.Context, dd *DecommissionDisk) (err error) {

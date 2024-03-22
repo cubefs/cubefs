@@ -321,7 +321,7 @@ func TestAsyncCache(t *testing.T) {
 		ctx := context.Background()
 		err := gohook.HookMethod(ebsc, "Read", tc.ebsReadFunc, nil)
 		if err != nil {
-			t.Fatal(fmt.Sprintf("Hook advance instance method failed:%s", err.Error()))
+			t.Fatalf("Hook advance instance method failed:%s", err.Error())
 		}
 		reader.fileLength = tc.fileSize
 		reader.cacheAction = tc.cacheAction
@@ -471,7 +471,8 @@ func TestReadSliceRange(t *testing.T) {
 }
 
 func MockGetObjExtentsTrue(m *meta.MetaWrapper, ctx context.Context, inode uint64) (gen uint64, size uint64,
-	extents []proto.ExtentKey, objExtents []proto.ObjExtentKey, err error) {
+	extents []proto.ExtentKey, objExtents []proto.ObjExtentKey, err error,
+) {
 	objEks := make([]proto.ObjExtentKey, 0)
 	objEkLen := 5
 	expectedFileSize := 0
@@ -484,7 +485,8 @@ func MockGetObjExtentsTrue(m *meta.MetaWrapper, ctx context.Context, inode uint6
 }
 
 func MockGetObjExtentsFalse(m *meta.MetaWrapper, ctx context.Context, inode uint64) (gen uint64, size uint64,
-	extents []proto.ExtentKey, objExtents []proto.ObjExtentKey, err error) {
+	extents []proto.ExtentKey, objExtents []proto.ObjExtentKey, err error,
+) {
 	return 1, 1, nil, nil, errors.New("Get objEks failed")
 }
 
@@ -493,7 +495,7 @@ func MockEbscReadTrue(ebsc *BlobStoreClient, ctx context.Context, volName string
 	oek proto.ObjExtentKey,
 ) (readN int, err error) {
 	reader := strings.NewReader("Hello world.")
-	readN, err = io.ReadFull(reader, buf)
+	readN, _ = io.ReadFull(reader, buf)
 	return readN, nil
 }
 

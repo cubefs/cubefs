@@ -101,7 +101,6 @@ func (m *Server) handleApplySnapshot() {
 	_, ctx := cfsProto.SpanContextPrefix("snapshot-apply-")
 	m.fsm.restore()
 	m.restoreIDAlloc(ctx)
-	return
 }
 
 func (m *Server) handleRaftUserCmd(opt uint32, key string, cmdMap map[string][]byte) (err error) {

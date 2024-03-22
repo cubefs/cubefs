@@ -26,9 +26,6 @@ import (
 	"gopkg.in/natefinch/lumberjack.v2"
 )
 
-//TODO: remove this later.
-//go:generate golangci-lint run --issues-exit-code=1 -D errcheck -E bodyclose ./...
-
 func runCLI() (err error) {
 	var cfg *cmd.Config
 	if cfg, err = cmd.LoadConfig(); err != nil {

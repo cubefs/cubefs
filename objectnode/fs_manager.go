@@ -21,7 +21,6 @@ import (
 	"time"
 
 	"github.com/cubefs/cubefs/proto"
-	"github.com/cubefs/cubefs/sdk/master"
 )
 
 const (
@@ -241,7 +240,6 @@ func NewVolumeLoader(masters []string, store Store, strict bool) *VolumeLoader {
 
 type VolumeManager struct {
 	masters    []string
-	mc         *master.MasterClient
 	loaders    [volumeLoaderNum]*VolumeLoader
 	store      Store
 	metaStrict bool

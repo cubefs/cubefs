@@ -82,7 +82,7 @@ func (partition *DataPartition) checkStatus(ctx context.Context, clusterName str
 		partition.Status = proto.Unavailable
 	}
 
-	if needLog == true && len(liveReplicas) != int(partition.ReplicaNum) {
+	if needLog && len(liveReplicas) != int(partition.ReplicaNum) {
 		msg := fmt.Sprintf("action[extractStatus],partitionID:%v  replicaNum:%v  liveReplicas:%v   Status:%v  RocksDBHost:%v ",
 			partition.PartitionID, partition.ReplicaNum, len(liveReplicas), partition.Status, partition.Hosts)
 		span.Info(msg)
@@ -95,23 +95,7 @@ func (partition *DataPartition) checkStatus(ctx context.Context, clusterName str
 
 func (partition *DataPartition) hasEnoughAvailableSpace() bool {
 	avail := partition.total - partition.used
-	if int64(avail) > 10*util.GB {
-		return true
-	}
-	return false
-}
-
-func (partition *DataPartition) checkReplicaNotHaveStatus(ctx context.Context, liveReplicas []*DataReplica, status int8) (equal bool) {
-	span := proto.SpanFromContext(ctx)
-	for _, replica := range liveReplicas {
-		if replica.Status == status {
-			span.Infof("action[checkReplicaNotHaveStatus] partition %v replica %v status %v dst status %v",
-				partition.PartitionID, replica.Addr, replica.Status, status)
-			return
-		}
-	}
-
-	return true
+	return int64(avail) > 10*util.GB
 }
 
 func (partition *DataPartition) checkReplicaEqualStatus(ctx context.Context, liveReplicas []*DataReplica, status int8) (equal bool) {
@@ -123,7 +107,6 @@ func (partition *DataPartition) checkReplicaEqualStatus(ctx context.Context, liv
 			return
 		}
 	}
-
 	return true
 }
 
@@ -169,7 +152,6 @@ func (partition *DataPartition) checkLeader(ctx context.Context, clusterID strin
 	if WarnMetrics != nil {
 		WarnMetrics.WarnDpNoLeader(clusterID, partition.PartitionID, report)
 	}
-	return
 }
 
 // Check if there is any missing replica for a data partition.
@@ -266,16 +248,14 @@ func (partition *DataPartition) needToAlarmMissingDataPartition(addr string, int
 
 func (partition *DataPartition) hasMissingDataPartition(addr string) (isMissing bool) {
 	_, ok := partition.hasReplica(addr)
-
 	if !ok {
 		isMissing = true
 	}
-
 	return
 }
 
 func (partition *DataPartition) checkDiskError(ctx context.Context, clusterID, leaderAddr string) {
-	diskErrorAddrs := make(map[string]string, 0)
+	diskErrorAddrs := make(map[string]string)
 
 	partition.Lock()
 	defer partition.Unlock()
@@ -305,8 +285,6 @@ func (partition *DataPartition) checkDiskError(ctx context.Context, clusterID, l
 			checkDataPartitionDiskErr, clusterID, partition.PartitionID, addr, leaderAddr, addr, diskPath)
 		Warn(ctx, clusterID, msg)
 	}
-
-	return
 }
 
 func (partition *DataPartition) checkReplicationTask(ctx context.Context, clusterID string, dataPartitionSize uint64) {
@@ -330,8 +308,6 @@ func (partition *DataPartition) checkReplicationTask(ctx context.Context, cluste
 			addMissingReplicaErr, partition.PartitionID, lackAddr, lackErr.Error(), partition.Hosts)
 		Warn(ctx, clusterID, msg)
 	}
-
-	return
 }
 
 func (partition *DataPartition) deleteIllegalReplica() (excessAddr string, err error) {

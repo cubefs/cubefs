@@ -537,7 +537,6 @@ func (s *Streamer) doDirectWriteByAppend(ctx context.Context, req *ExtentRequest
 		}
 
 		total += packSize
-		break
 	}
 	if err != nil {
 		span.Errorf("action[doDirectWriteByAppend] data process err %v", err)

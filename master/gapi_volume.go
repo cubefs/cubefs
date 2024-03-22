@@ -242,38 +242,6 @@ func (s *VolumeService) createVolume(ctx context.Context, args struct {
 	return vol, nil
 }
 
-func (s *VolumeService) markDeleteVol(ctx context.Context, args struct {
-	Name, AuthKey string
-},
-) (*proto.GeneralResp, error) {
-	uid, perm, err := permissions(ctx, ADMIN|USER)
-	if err != nil {
-		return nil, err
-	}
-
-	if perm == USER {
-		if v, e := s.cluster.getVol(args.Name); e != nil {
-			return nil, e
-		} else {
-			if v.Owner != uid {
-				return nil, fmt.Errorf("user:[%s] is not volume:[%s] onwer", uid, args.Name)
-			}
-		}
-	}
-
-	if err = s.user.deleteVolPolicy(ctx, args.Name); err != nil {
-		return nil, err
-	}
-
-	if err = s.cluster.markDeleteVol(ctx, args.Name, args.AuthKey, false); err != nil {
-		return nil, err
-	}
-	span := proto.SpanFromContext(ctx)
-	span.Warnf("delete vol[%s] successfully,from[%s]", args.Name, uid)
-
-	return proto.Success("success"), nil
-}
-
 func (s *VolumeService) updateVolume(ctx context.Context, args struct {
 	Name, AuthKey              string
 	ZoneName, Description      *string

@@ -49,7 +49,7 @@ type DirContexts struct {
 
 func NewDirContexts() (dctx *DirContexts) {
 	dctx = &DirContexts{}
-	dctx.dirCtx = make(map[fuse.HandleID]*DirContext, 0)
+	dctx.dirCtx = make(map[fuse.HandleID]*DirContext)
 	return
 }
 

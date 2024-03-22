@@ -207,10 +207,6 @@ func (p *Packet) readFromConn(c net.Conn, deadlineTime time.Duration) (err error
 		}
 	}
 
-	if p.Size < 0 {
-		return
-	}
-
 	size := int(p.Size)
 	if size > len(p.Data) {
 		size = len(p.Data)

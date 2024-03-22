@@ -121,9 +121,9 @@ func (p PrincipalType) match(uid string) bool {
 	if !ok {
 		return false
 	}
-	switch p1.(type) {
+	switch pval := p1.(type) {
 	case []interface{}:
-		p2 := p1.([]interface{})
+		p2 := pval
 		for _, p3 := range p2 {
 			if p4, ok := p3.(string); ok {
 				if PrincipalElementType(p4).match(uid) {
@@ -133,7 +133,7 @@ func (p PrincipalType) match(uid string) bool {
 		}
 		return false
 	case string:
-		return PrincipalElementType(p1.(string)).match(uid)
+		return PrincipalElementType(pval).match(uid)
 	default:
 		return false
 	}

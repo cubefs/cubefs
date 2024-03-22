@@ -92,7 +92,6 @@ func ReleaseUserInfoStore(store UserInfoStore) {
 	if cacheStore, is := store.(*CacheUserInfoStore); is {
 		cacheStore.Close()
 	}
-	return
 }
 
 type CacheUserInfoLoader struct {
@@ -154,8 +153,8 @@ func (us *CacheUserInfoLoader) scheduleUpdate() {
 		}
 		us.akInfoMutex.RUnlock()
 
-		span, ctx := proto.SpanContext()
-		span = spanWithOperation(ctx, "CacheUserInfoLoader")
+		_, ctx := proto.SpanContext()
+		span := spanWithOperation(ctx, "CacheUserInfoLoader")
 		for _, ak := range aks {
 			akPolicy, err := us.mc.UserAPI().GetAKInfo(ctx, ak)
 			if err == proto.ErrUserNotExists || err == proto.ErrAccessKeyNotExists {

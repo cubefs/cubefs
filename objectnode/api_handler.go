@@ -155,5 +155,4 @@ func (o *ObjectNode) unsupportedOperationHandler(w http.ResponseWriter, r *http.
 		getRequestIP(r),
 		r.UserAgent())
 	UnsupportedOperation.ServeResponse(w, r)
-	return
 }

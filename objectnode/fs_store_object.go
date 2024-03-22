@@ -22,6 +22,15 @@ const (
 	META_OSS_VOLUME = ".oss_meta"
 )
 
+var (
+	// TODO unused
+	_ = (*objectStore)(nil).Init
+	_ = (*objectStore)(nil).Put
+	_ = (*objectStore)(nil).Get
+	_ = (*objectStore)(nil).Delete
+	_ = (*objectStore)(nil).List
+)
+
 type objectStore struct {
 	vm *VolumeManager
 }

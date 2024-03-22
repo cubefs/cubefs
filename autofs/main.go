@@ -25,7 +25,7 @@ var rootCmd = &cobra.Command{
 		// version
 		v, _ := c.Flags().GetBool("version")
 		if v {
-			fmt.Println(fmt.Sprintf("Version: %s, BuildDate: %s", buildVersion, buildDate))
+			fmt.Printf("Version: %s, BuildDate: %s\n", buildVersion, buildDate)
 			return
 		}
 

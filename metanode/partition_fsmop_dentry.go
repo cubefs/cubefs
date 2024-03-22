@@ -160,11 +160,9 @@ func (mp *metaPartition) getDentryList(dentry *Dentry) (denList []proto.DetryInf
 
 // Query a dentry from the dentry tree with specified dentry info.
 func (mp *metaPartition) getDentry(ctx context.Context, dentry *Dentry) (*Dentry, uint8) {
-	status := proto.OpOk
 	item := mp.dentryTree.Get(dentry)
 	if item == nil {
-		status = proto.OpNotExistErr
-		return nil, status
+		return nil, proto.OpNotExistErr
 	}
 	getSpan(ctx).Debugf("action[getDentry] get dentry[%v] by req dentry %v", item.(*Dentry), dentry)
 	den := mp.getDentryByVerSeq(ctx, item.(*Dentry), dentry.getSeqFiled())
@@ -270,6 +268,7 @@ func (mp *metaPartition) fsmDeleteDentry(ctx context.Context, denParm *Dentry, c
 	if item != nil && (clean || (item.(*Dentry).getSnapListLen() == 0 && item.(*Dentry).isDeleted())) {
 		span.Debugf("dnetry %v really be deleted", item.(*Dentry))
 		item = mp.dentryTree.Delete(item.(*Dentry))
+		span.Debugf("dnetry %v been deleted", item.(*Dentry))
 	}
 
 	if !doMore { // not the top layer,do nothing to parent inode
@@ -383,10 +382,6 @@ func (mp *metaPartition) fsmUpdateDentry(ctx context.Context, dentry *Dentry) (r
 		resp.Msg = dentry
 	})
 	return
-}
-
-func (mp *metaPartition) getDentryTree() *BTree {
-	return mp.dentryTree.GetTree()
 }
 
 func (mp *metaPartition) getDentryByVerSeq(ctx context.Context, dy *Dentry, verSeq uint64) (d *Dentry) {

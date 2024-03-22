@@ -262,45 +262,12 @@ func (c *Cluster) checkInactiveMetaNodes(ctx context.Context) (inactiveMetaNodes
 	return
 }
 
-// check corrupt partitions related to this meta node
-func (c *Cluster) checkCorruptMetaNode(ctx context.Context, metaNode *MetaNode) (corruptPartitions []*MetaPartition, err error) {
-	var (
-		partition         *MetaPartition
-		mn                *MetaNode
-		corruptPids       []uint64
-		corruptReplicaNum uint8
-	)
-	metaNode.RLock()
-	defer metaNode.RUnlock()
-	span := proto.SpanFromContext(ctx)
-	for _, pid := range metaNode.PersistenceMetaPartitions {
-		corruptReplicaNum = 0
-		if partition, err = c.getMetaPartitionByID(pid); err != nil {
-			return
-		}
-		for _, host := range partition.Hosts {
-			if mn, err = c.metaNode(host); err != nil {
-				return
-			}
-			if !mn.IsActive {
-				corruptReplicaNum = corruptReplicaNum + 1
-			}
-		}
-		if corruptReplicaNum > partition.ReplicaNum/2 {
-			corruptPartitions = append(corruptPartitions, partition)
-			corruptPids = append(corruptPids, pid)
-		}
-	}
-	span.Infof("action[checkCorruptMetaNode],clusterID[%v] metaNodeAddr:[%v], corrupt partitions%v",
-		c.Name, metaNode.Addr, corruptPids)
-	return
-}
-
 type VolNameSet map[string]struct{}
 
 func (c *Cluster) checkReplicaMetaPartitions(ctx context.Context) (
 	lackReplicaMetaPartitions []*MetaPartition, noLeaderMetaPartitions []*MetaPartition,
-	unavailableReplicaMPs []*MetaPartition, excessReplicaMetaPartitions, inodeCountNotEqualMPs, maxInodeNotEqualMPs, dentryCountNotEqualMPs []*MetaPartition, err error) {
+	unavailableReplicaMPs []*MetaPartition, excessReplicaMetaPartitions, inodeCountNotEqualMPs, maxInodeNotEqualMPs, dentryCountNotEqualMPs []*MetaPartition, err error,
+) {
 	lackReplicaMetaPartitions = make([]*MetaPartition, 0)
 	noLeaderMetaPartitions = make([]*MetaPartition, 0)
 	excessReplicaMetaPartitions = make([]*MetaPartition, 0)
@@ -509,10 +476,8 @@ func (c *Cluster) addMetaReplica(ctx context.Context, partition *MetaPartition, 
 	if err = c.addMetaPartitionRaftMember(ctx, partition, addPeer); err != nil {
 		return
 	}
-	newHosts := make([]string, 0, len(partition.Hosts)+1)
-	newPeers := make([]proto.Peer, 0, len(partition.Hosts)+1)
-	newHosts = append(partition.Hosts, addPeer.Addr)
-	newPeers = append(partition.Peers, addPeer)
+	newHosts := append(partition.Hosts, addPeer.Addr)
+	newPeers := append(partition.Peers, addPeer)
 	if err = partition.persistToRocksDB(ctx, "addMetaReplica", partition.volName, newHosts, newPeers, c); err != nil {
 		return
 	}
@@ -901,7 +866,6 @@ func (c *Cluster) adjustMetaNode(ctx context.Context, metaNode *MetaNode) {
 		return
 	}
 	err = c.t.putMetaNode(metaNode)
-	return
 }
 
 func (c *Cluster) handleDataNodeTaskResponse(ctx context.Context, nodeAddr string, task *proto.AdminTask) {
@@ -950,7 +914,6 @@ func (c *Cluster) handleDataNodeTaskResponse(ctx context.Context, nodeAddr strin
 
 errHandler:
 	span.Errorf("process task[%v] failed,err:%v", task.ToString(), err)
-	return
 }
 
 func (c *Cluster) dealDeleteDataPartitionResponse(ctx context.Context, nodeAddr string, resp *proto.DeleteDataPartitionResponse) (err error) {
@@ -1086,7 +1049,6 @@ func (c *Cluster) adjustDataNode(ctx context.Context, dataNode *DataNode) {
 		return
 	}
 	err = c.t.putDataNode(dataNode)
-	return
 }
 
 /*if node report data partition infos,so range data partition infos,then update data partition info*/

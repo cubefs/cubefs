@@ -16,7 +16,6 @@ package objectnode
 
 import (
 	"context"
-	"strings"
 
 	"github.com/cubefs/cubefs/proto"
 )
@@ -31,27 +30,6 @@ type xattrStore struct {
 
 func (s *xattrStore) Init(vm *VolumeManager) {
 	s.vm = vm
-}
-
-func (s *xattrStore) getInode(ctx context.Context, vol, path string) (*Volume, uint64, error) {
-	v, err := s.vm.Volume(ctx, vol)
-	if err != nil {
-		return nil, 0, err
-	}
-	inode := volumeRootInode
-	if path != "" && path != "/" {
-		items := strings.Split(path, "/")
-		for _, item := range items {
-			if item == "" {
-				continue
-			}
-			inode, _, err = v.mw.Lookup_ll(ctx, inode, item)
-			if err != nil {
-				return v, inode, err
-			}
-		}
-	}
-	return v, inode, nil
 }
 
 func (s *xattrStore) Put(ctx context.Context, vol, path, key string, data []byte) error {
@@ -77,8 +55,7 @@ func (s *xattrStore) Get(ctx context.Context, vol, path, key string) (val []byte
 		return
 	}
 
-	var strVal string
-	strVal = xattrInfo.XAttrs[key]
+	strVal := xattrInfo.XAttrs[key]
 	if len(strVal) > 0 {
 		val = []byte(strVal)
 	}

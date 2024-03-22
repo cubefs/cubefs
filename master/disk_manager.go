@@ -95,11 +95,11 @@ func (c *Cluster) checkDiskRecoveryProgress(ctx context.Context) {
 			}
 			if newReplica.isRepairing() {
 				if !partition.isSpecialReplicaCnt() &&
-					time.Now().Sub(partition.RecoverStartTime) > c.GetDecommissionDataPartitionRecoverTimeOut() {
+					time.Since(partition.RecoverStartTime) > c.GetDecommissionDataPartitionRecoverTimeOut() {
 					partition.DecommissionNeedRollback = true
 					partition.SetDecommissionStatus(DecommissionFail)
 					Warn(ctx, c.Name, fmt.Sprintf("action[checkDiskRecoveryProgress]clusterID[%v],partitionID[%v]  recovered timeout %s",
-						c.Name, partitionID, time.Now().Sub(partition.RecoverStartTime).String()))
+						c.Name, partitionID, time.Since(partition.RecoverStartTime).String()))
 				} else {
 					newBadDpIds = append(newBadDpIds, partitionID)
 				}

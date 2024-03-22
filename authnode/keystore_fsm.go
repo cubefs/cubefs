@@ -39,8 +39,6 @@ type raftLeaderChangeHandler func(leader uint64)
 
 type raftPeerChangeHandler func(confChange *proto.ConfChange) (err error)
 
-type raftCmdApplyHandler func(cmd *RaftCmd) (err error)
-
 type raftApplySnapshotHandler func()
 
 // KeystoreFsm represents the finite state machine of a keystore
@@ -113,8 +111,7 @@ func (mf *KeystoreFsm) Apply(command []byte, index uint64) (resp interface{}, er
 	)
 
 	// TODO: apply with traceid.
-	span, ctx := cproto.StartSpanFromContext(context.TODO(), "")
-	ctx = cproto.ContextWithSpan(ctx, span)
+	span, _ := cproto.StartSpanFromContext(context.TODO(), "")
 
 	cmd := new(RaftCmd)
 	if err = cmd.Unmarshal(command); err != nil {

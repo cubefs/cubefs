@@ -28,11 +28,11 @@ import (
 )
 
 var (
-	regexpEncodedETagValue = regexp.MustCompile("^(\\w)+(-(\\d)+)?(:(\\d)+)?$")
+	regexpEncodedETagValue = regexp.MustCompile(`^(\w)+(-(\d)+)?(:(\d)+)?$`)
 	regexpEncodedETagParts = [3]*regexp.Regexp{
-		regexp.MustCompile("(\\w)+"),
-		regexp.MustCompile("-(\\d)+"),
-		regexp.MustCompile(":(\\d)+"),
+		regexp.MustCompile(`(\w)+`),
+		regexp.MustCompile(`-(\d)+`),
+		regexp.MustCompile(`:(\d)+`),
 	}
 	staticDirectoryETagValue = ETagValue{Value: EmptyContentMD5String, PartNum: 0}
 )
@@ -139,7 +139,6 @@ func ParseETagValue(raw string) ETagValue {
 	if len(tsLoc) == 2 {
 		unixSec, _ := strconv.ParseInt(raw[offset:][tsLoc[0]+1:tsLoc[1]], 10, 64)
 		value.TS = time.Unix(unixSec, 0)
-		offset += tsLoc[1] - tsLoc[0]
 	} else {
 		value.TS = time.Unix(0, 0)
 	}

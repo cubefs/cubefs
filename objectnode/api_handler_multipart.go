@@ -532,7 +532,7 @@ func (o *ObjectNode) checkReqParts(
 		return
 	}
 
-	reqInfo := make(map[int]int, 0)
+	reqInfo := make(map[int]int)
 	for _, reqPart := range reqParts.Parts {
 		reqInfo[reqPart.PartNumber] = 0
 	}
@@ -553,8 +553,8 @@ func (o *ObjectNode) checkReqParts(
 
 	maxPartNum := saveParts[len(saveParts)-1].ID
 	allSaveParts := make([]*proto.MultipartPartInfo, maxPartNum+1)
-	uploadedInfo := make(map[uint16]string, 0)
-	discardedPartInodes = make(map[uint64]uint16, 0)
+	uploadedInfo := make(map[uint16]string)
+	discardedPartInodes = make(map[uint64]uint16)
 	for _, uploadedPart := range multipartInfo.Parts {
 		eTag := uploadedPart.MD5
 		if strings.Contains(eTag, "\"") {

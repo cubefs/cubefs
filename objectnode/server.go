@@ -169,7 +169,7 @@ const (
 var (
 	// Regular expression used to verify the configuration of the service listening port.
 	// A valid service listening port configuration is a string containing only numbers.
-	regexpListen     = regexp.MustCompile("^(\\d)+$")
+	regexpListen     = regexp.MustCompile(`^(\d)+$`)
 	objMetaCache     *ObjMetaCache
 	blockCache       *bcache.BcacheClient
 	ebsClient        *blobstore.BlobStoreClient
@@ -186,8 +186,6 @@ type ObjectNode struct {
 	httpServer *http.Server
 	vm         *VolumeManager
 	mc         *master.MasterClient
-	state      uint32
-	wg         sync.WaitGroup
 	userStore  UserInfoStore
 
 	localAuditHandler rpc.ProgressHandler

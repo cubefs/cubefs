@@ -23,18 +23,16 @@ import (
 )
 
 var (
-	invalidCIDR                 = "value %v must be CIDR string for %v condition"
-	invalidIPKey                = "only %v key is allowed for %v condition"
-	invalidStringValue          = "value must be a string for %v condition"
-	invalidConditionKey         = "invalid condition key '%v'"
-	emptyCondition              = "condition must not be empty"
-	cannotHandledCondition      = "condition %v  cannot be handled"
-	cannotTransformToString     = "%v cannot transform to string"
-	cannotHandledConditionValue = "cannot handle condition values: %v"
-	invalidConditionOperator    = "invalid condition operator '%v'"
-	invalidConditionValue       = "invalid value"
-	duplicateConditionValue     = "duplicate value found '%v'"
-	unknownJsonData             = "unknown json data '%v'"
+	invalidCIDR              = "value %v must be CIDR string for %v condition"
+	invalidIPKey             = "only %v key is allowed for %v condition"
+	invalidStringValue       = "value must be a string for %v condition"
+	invalidConditionKey      = "invalid condition key '%v'"
+	emptyCondition           = "condition must not be empty"
+	cannotHandledCondition   = "condition %v  cannot be handled"
+	invalidConditionOperator = "invalid condition operator '%v'"
+	invalidConditionValue    = "invalid value"
+	duplicateConditionValue  = "duplicate value found '%v'"
+	unknownJsonData          = "unknown json data '%v'"
 )
 
 type operator string
@@ -224,55 +222,5 @@ func (operations Condition) CheckValid() error {
 			}
 		}
 	}
-	return nil
-}
-
-// parse a map into Condition
-func (operations *Condition) parseOperations(operatorMap map[string]map[string]interface{}) error {
-	var ops []Operation
-	for operatorString, args := range operatorMap {
-		o, err := parseOperator(operatorString)
-		if err != nil {
-			return err
-		}
-
-		vfn, ok := conditionOpMap[o]
-		if !ok {
-			return fmt.Errorf(cannotHandledCondition, o)
-		}
-		m := make(map[Key]ValueSet)
-		for keyString, values := range args {
-
-			valueSet := NewValueSet()
-			key, err := parseKey(keyString)
-			if err != nil {
-				return err
-			}
-			switch values.(type) {
-			case string:
-				valueSet.Add(NewStringValue(values.(string)))
-			case []interface{}:
-				for _, value := range values.([]interface{}) {
-					if valueString, ok := value.(string); ok {
-						valueSet.Add(NewStringValue(valueString))
-					} else {
-						return fmt.Errorf(cannotTransformToString, value)
-					}
-				}
-			default:
-
-				return fmt.Errorf(cannotHandledConditionValue, values)
-			}
-			m[key] = valueSet
-
-		}
-		op, err := vfn(m)
-		if err != nil {
-			return err
-		}
-		ops = append(ops, op)
-	}
-
-	*operations = ops
 	return nil
 }

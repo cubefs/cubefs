@@ -64,7 +64,6 @@ func (c *Cluster) handleLcNodeTaskResponse(ctx context.Context, nodeAddr string,
 
 errHandler:
 	span.Warnf("lc handleLcNodeTaskResponse failed, task: %v, err: %v", task.ToString(), err)
-	return
 }
 
 func (c *Cluster) handleLcNodeHeartbeatResp(ctx context.Context, nodeAddr string, resp *proto.LcNodeHeartbeatResponse) (err error) {

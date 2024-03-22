@@ -137,7 +137,7 @@ func (i *Inode) setVerNoCheck(seq uint64) {
 
 func (i *Inode) setVer(seq uint64) {
 	if i.getVer() > seq {
-		syslog.Println(fmt.Sprintf("inode[%v] old seq [%v] cann't use seq [%v]", i.getVer(), seq, string(debug.Stack())))
+		syslog.Printf("inode[%v] old seq [%v] cann't use seq [%v]\n", i.getVer(), seq, string(debug.Stack()))
 		log.Fatalf("inode[%v] old seq [%v] cann't use seq [%v] stack %v", i.Inode, i.getVer(), seq, string(debug.Stack()))
 	}
 	i.verUpdate(seq)
@@ -151,21 +151,6 @@ func (i *Inode) insertEkRefMap(ctx context.Context, mpId uint64, ek *proto.Exten
 		i.multiSnap.ekRefMap = new(sync.Map)
 	}
 	storeEkSplit(ctx, mpId, i.Inode, i.multiSnap.ekRefMap, ek)
-}
-
-func (i *Inode) isEkInRefMap(ctx context.Context, mpId uint64, ek *proto.ExtentKey) (ok bool) {
-	if i.multiSnap == nil {
-		return
-	}
-	span := getSpan(ctx)
-	if i.multiSnap.ekRefMap == nil {
-		span.Errorf("[storeEkSplit] mpId [%v] inodeID %v ekRef nil", mpId, i.Inode)
-		return
-	}
-	span.Debugf("[storeEkSplit] mpId [%v] inode[%v] mp[%v] extent id[%v] ek [%v]", mpId, i.Inode, ek.PartitionId, ek.ExtentId, ek)
-	id := ek.PartitionId<<32 | ek.ExtentId
-	_, ok = i.multiSnap.ekRefMap.Load(id)
-	return
 }
 
 func (i *Inode) getVer() uint64 {
@@ -1191,7 +1176,6 @@ func (inode *Inode) dirUnlinkVerInlist(ctx context.Context, ino *Inode, mpVer ui
 				return true
 			}
 			span.Debugf("action[dirUnlinkVerInlist] inode[%v] try drop scope [%v, %v), mp ver [%v] not suitable", inode.Inode, dIno.getVer(), endSeq, info.Ver)
-			return true
 		}
 		return true
 	}

@@ -32,7 +32,8 @@ func NewMonitorService(addr, app, cluster, dashboardAddr string) *MonitorService
 
 func (fs *MonitorService) empty(ctx context.Context, args struct {
 	Empty bool
-}) bool {
+},
+) bool {
 	return args.Empty
 }
 
@@ -60,9 +61,9 @@ func (ms *MonitorService) RangeQuery(ctx context.Context, args struct {
 	if err != nil {
 		return "", err
 	}
+	defer resp.Body.Close()
 
-	b, err := io.ReadAll(resp.Body)
-
+	b, _ := io.ReadAll(resp.Body)
 	return string(b), nil
 }
 
@@ -109,9 +110,9 @@ func (ms *MonitorService) Query(ctx context.Context, args struct {
 	if err != nil {
 		return "", err
 	}
+	defer resp.Body.Close()
 
-	b, err := io.ReadAll(resp.Body)
-
+	b, _ := io.ReadAll(resp.Body)
 	return string(b), nil
 }
 
@@ -150,8 +151,9 @@ func (ms *MonitorService) FuseClientList(ctx context.Context, args struct{}) ([]
 	if err != nil {
 		return nil, err
 	}
+	defer resp.Body.Close()
 
-	b, err := io.ReadAll(resp.Body)
+	b, _ := io.ReadAll(resp.Body)
 
 	result := struct {
 		Data struct {

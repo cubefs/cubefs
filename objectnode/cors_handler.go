@@ -170,5 +170,4 @@ func (o *ObjectNode) optionsObjectHandler(w http.ResponseWriter, r *http.Request
 	span := spanWithOperation(r.Context(), "OptionsObject")
 	span.Infof("remote: %v", r.RemoteAddr)
 	// Already done in methods 'corsMiddleware'.
-	return
 }

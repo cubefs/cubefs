@@ -618,11 +618,13 @@ func (m *metadataManager) opMetaInodeGet(conn net.Conn, p *Packet, remoteAddr st
 	if err != nil {
 		return err
 	}
-	if err = mp.InodeGet(req, p); err != nil {
-		err = errors.NewErrorf("InodeGet [%v],req[%v],err[%v]", p.GetOpMsgWithReqAndResult(), req, string(p.Data))
-	}
 
 	span := p.Span()
+	if err = mp.InodeGet(req, p); err != nil {
+		err = errors.NewErrorf("InodeGet [%v],req[%v],err[%v]", p.GetOpMsgWithReqAndResult(), req, string(p.Data))
+		span.Debug(err) // TODO return?
+	}
+
 	if err = m.respondToClient(conn, p); err != nil {
 		span.Debugf("%s [opMetaInodeGet] err [%v] req: %d - %v; resp: %v, body: %s",
 			remoteAddr, err, p.GetReqID(), req, p.GetResultMsg(), p.Data)
@@ -1766,7 +1768,7 @@ end:
 			remoteAddr, p.String(), req, adminTask, resp, errRsp, err)
 	}
 
-	if log.GetOutputLevel() >= log.Linfo {
+	if log.GetOutputLevel() <= log.Linfo {
 		rspData, _ := json.Marshal(resp)
 		span.Infof("%s [opMultiVersionOp] pkt %s, req: %v; respAdminTask: %v, resp: %v, cost %s",
 			remoteAddr, p.String(), req, adminTask, string(rspData), time.Since(start).String())

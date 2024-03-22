@@ -195,23 +195,6 @@ func (d *Dentry) getDentryFromVerList(ctx context.Context, verSeq uint64, isHit 
 	return
 }
 
-func (d *Dentry) getLastestVer(ctx context.Context, reqVerSeq uint64, commit bool, verlist []*proto.VolVersionInfo) (uint64, bool) {
-	if len(verlist) == 0 {
-		return 0, false
-	}
-	for id, info := range verlist {
-		if commit && id == len(verlist)-1 {
-			break
-		}
-		if info.Ver >= reqVerSeq { // include reqSeq itself
-			return info.Ver, true
-		}
-	}
-	getSpan(ctx).Debugf("action[getLastestVer] inode[%v] reqVerseq [%v] not found, the largetst one %v",
-		d.Inode, reqVerSeq, verlist[len(verlist)-1].Ver)
-	return 0, false
-}
-
 func (d *Dentry) deleteTopLayer(ctx context.Context, mpVerSeq uint64) (rd *Dentry, dmore bool, clean bool) {
 	span := getSpan(ctx).WithOperation("deleteTopLayer.delSeq_0")
 	if d.isDeleted() {

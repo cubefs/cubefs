@@ -123,7 +123,7 @@ func NewDisk(ctx context.Context, path string, reservedSpace, diskRdonlySpace ui
 	}
 	d.startScheduleToUpdateSpaceInfo()
 
-	d.limitFactor = make(map[uint32]*rate.Limiter, 0)
+	d.limitFactor = make(map[uint32]*rate.Limiter)
 	d.limitFactor[proto.FlowReadType] = rate.NewLimiter(rate.Limit(proto.QosDefaultDiskMaxFLowLimit), proto.QosDefaultBurst)
 	d.limitFactor[proto.FlowWriteType] = rate.NewLimiter(rate.Limit(proto.QosDefaultDiskMaxFLowLimit), proto.QosDefaultBurst)
 	d.limitFactor[proto.IopsReadType] = rate.NewLimiter(rate.Limit(proto.QosDefaultDiskMaxIoLimit), defaultIOLimitBurst)
@@ -131,7 +131,7 @@ func NewDisk(ctx context.Context, path string, reservedSpace, diskRdonlySpace ui
 	d.limitRead = newIOLimiter(space.dataNode.diskReadFlow, space.dataNode.diskReadIocc)
 	d.limitWrite = newIOLimiter(space.dataNode.diskWriteFlow, space.dataNode.diskWriteIocc)
 
-	d.DiskErrPartitionSet = make(map[uint64]struct{}, 0)
+	d.DiskErrPartitionSet = make(map[uint64]struct{})
 
 	err = d.initDecommissionStatus()
 	if err != nil {

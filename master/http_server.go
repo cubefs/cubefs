@@ -63,7 +63,6 @@ func (m *Server) startHTTPService(ctx context.Context, modulename string, cfg *c
 	}
 	go serveAPI()
 	m.apiServer = server
-	return
 }
 
 func (m *Server) isClientPartitionsReq(r *http.Request) bool {
@@ -763,7 +762,7 @@ func (m *Server) registerHandler(ctx context.Context, router *mux.Router, model 
 
 	gHandler := graphql.HTTPHandler(schema)
 	router.NewRoute().Name(model).Methods(http.MethodGet, http.MethodPost).Path(model).HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		userID := request.Header.Get(proto.UserKey)
+		userID := request.Header.Get(string(proto.UserKey))
 		if userID == "" {
 			ErrResponse(ctx, writer, fmt.Errorf("not found [%s] in header", proto.UserKey))
 			return

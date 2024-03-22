@@ -104,7 +104,7 @@ type ZoneView struct {
 }
 
 func newZoneView(name string) *ZoneView {
-	return &ZoneView{NodeSet: make(map[uint64]*NodeSetView, 0), Name: name}
+	return &ZoneView{NodeSet: make(map[uint64]*NodeSetView), Name: name}
 }
 
 type badPartitionView = proto.BadPartitionView
@@ -583,7 +583,7 @@ func (m *Server) clusterStat(w http.ResponseWriter, r *http.Request) {
 	cs := &proto.ClusterStatInfo{
 		DataNodeStatInfo: m.cluster.dataNodeStatInfo,
 		MetaNodeStatInfo: m.cluster.metaNodeStatInfo,
-		ZoneStatInfo:     make(map[string]*proto.ZoneStat, 0),
+		ZoneStatInfo:     make(map[string]*proto.ZoneStat),
 	}
 	for zoneName, zoneStat := range m.cluster.zoneStatInfos {
 		cs.ZoneStatInfo[zoneName] = zoneStat
@@ -619,6 +619,7 @@ func (m *Server) UidOperate(w http.ResponseWriter, r *http.Request) {
 	op, err = strconv.ParseUint(value, 10, 64)
 	if err != nil {
 		err = fmt.Errorf("parseUintParam %s-%s is not legal, err %s", OperateKey, value, err.Error())
+		span.Warn(err)
 		return
 	}
 
@@ -693,6 +694,7 @@ func (m *Server) aclOperate(w http.ResponseWriter, r *http.Request) {
 	op, err = strconv.ParseUint(value, 10, 64)
 	if err != nil {
 		err = fmt.Errorf("parseUintParam %s-%s is not legal, err %s", OperateKey, value, err.Error())
+		span.Warn(err)
 		return
 	}
 
@@ -723,7 +725,7 @@ func (m *Server) aclOperate(w http.ResponseWriter, r *http.Request) {
 		}
 	case util.AclAddIP, util.AclDelIP:
 		if opAclRes != nil {
-			if err, res = opAclRes.(error); !res {
+			if _, res = opAclRes.(error); !res {
 				sendErrReply(w, r, newErrHTTPReply(fmt.Errorf("inner error")))
 				return
 			}
@@ -832,7 +834,6 @@ func (m *Server) setApiQpsLimit(w http.ResponseWriter, r *http.Request) {
 	}
 	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("set api qps limit success: name: %v, limit: %v, timeout: %v",
 		name, limit, timeout)))
-	return
 }
 
 func (m *Server) getApiQpsLimit(w http.ResponseWriter, r *http.Request) {
@@ -961,7 +962,7 @@ func (m *Server) createMetaPartition(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprint("create meta partition successfully")))
+	sendOkReply(w, r, newSuccessHTTPReply("create meta partition successfully"))
 }
 
 func parsePreloadDpReq(r *http.Request, preload *DataPartitionPreLoad) (err error) {
@@ -1421,7 +1422,6 @@ RET:
 		return
 	}
 	_ = sendOkReply(w, r, newSuccessHTTPReply("success"))
-	return
 }
 
 func (m *Server) createDataPartition(w http.ResponseWriter, r *http.Request) {
@@ -1503,7 +1503,7 @@ func (m *Server) changeDataPartitionLeader(w http.ResponseWriter, r *http.Reques
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-	rstMsg := fmt.Sprintf(" changeDataPartitionLeader command success send to dest host but need check. ")
+	rstMsg := " changeDataPartitionLeader command success send to dest host but need check. "
 	_ = sendOkReply(w, r, newSuccessHTTPReply(rstMsg))
 }
 
@@ -1775,7 +1775,7 @@ func (m *Server) changeMetaPartitionLeader(w http.ResponseWriter, r *http.Reques
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-	rstMsg := fmt.Sprintf(" changeMetaPartitionLeader command success send to dest host but need check. ")
+	rstMsg := " changeMetaPartitionLeader command success send to dest host but need check. "
 	_ = sendOkReply(w, r, newSuccessHTTPReply(rstMsg))
 }
 
@@ -1826,7 +1826,7 @@ func (m *Server) balanceMetaPartitionLeader(w http.ResponseWriter, r *http.Reque
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-	rstMsg := fmt.Sprintf("balanceMetaPartitionLeader command sucess")
+	rstMsg := "balanceMetaPartitionLeader command sucess"
 	_ = sendOkReply(w, r, newSuccessHTTPReply(rstMsg))
 }
 
@@ -2360,7 +2360,6 @@ func (m *Server) checkCreateReq(req *createVolReq) (err error) {
 
 func (m *Server) createVol(w http.ResponseWriter, r *http.Request) {
 	req := &createVolReq{}
-	vol := &Vol{}
 
 	var err error
 
@@ -2384,6 +2383,7 @@ func (m *Server) createVol(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
+	var vol *Vol
 	if vol, err = m.cluster.createVol(r.Context(), req); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
@@ -3094,10 +3094,7 @@ func (m *Server) updateClusterSelector(ctx context.Context, dataNodesetSelector 
 			return false
 		}
 		err = m.updateZoneNodeSelector(ctx, zone.name, dataNodeSelector, metaNodeSelector)
-		if err != nil {
-			return false
-		}
-		return true
+		return err == nil
 	})
 	return
 }
@@ -3381,7 +3378,6 @@ func (m *Server) setNodeRdOnlyHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("[setNodeRdOnlyHandler] set node %s to rdOnly(%v) success", addr, rdOnly)))
-	return
 }
 
 func (m *Server) setDpRdOnlyHandler(w http.ResponseWriter, r *http.Request) {
@@ -3412,7 +3408,6 @@ func (m *Server) setDpRdOnlyHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("[setNodeRdOnlyHandler] set dpid %v to rdOnly(%v) success", dpId, rdOnly)))
-	return
 }
 
 func (m *Server) updateNodeSetCapacityHandler(w http.ResponseWriter, r *http.Request) {
@@ -3542,7 +3537,7 @@ func (m *Server) updateNodeSetIdHandler(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("update node setid successfully")))
+	sendOkReply(w, r, newSuccessHTTPReply("update node setid successfully"))
 }
 
 func (m *Server) updateNodeSetNodeSelector(w http.ResponseWriter, r *http.Request) {
@@ -3632,27 +3627,6 @@ func (m *Server) getIsDomainOn(w http.ResponseWriter, r *http.Request) {
 	nsglStat := new(SimpleDomainInfo)
 	nsglStat.DomainOn = m.cluster.FaultDomain
 	sendOkReply(w, r, newSuccessHTTPReply(nsglStat))
-}
-
-func (m *Server) createDomainHandler(w http.ResponseWriter, r *http.Request) {
-	nsgm := m.cluster.domainManager
-	var (
-		zoneName string
-		err      error
-	)
-
-	if zoneName = r.FormValue(zoneNameKey); zoneName == "" {
-		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: fmt.Errorf("zonename null").Error()})
-		return
-	}
-	span := proto.SpanFromContext(r.Context())
-	if err = nsgm.createDomain(r.Context(), zoneName); err != nil {
-		span.Errorf("action[createDomainHandler] err [%v]", err)
-		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
-		return
-	}
-
-	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("successful")))
 }
 
 // get metanode some interval params
@@ -4608,7 +4582,6 @@ func (m *Server) getMetaPartitions(w http.ResponseWriter, r *http.Request) {
 		mpsCache = vol.getMpsCache()
 	}
 	send(w, r, mpsCache)
-	return
 }
 
 func (m *Server) putDataPartitions(w http.ResponseWriter, r *http.Request) {
@@ -4826,9 +4799,7 @@ func getMetaPartitionView(mp *MetaPartition) (mpView *proto.MetaPartitionView) {
 	mpView = proto.NewMetaPartitionView(mp.PartitionID, mp.Start, mp.End, mp.Status)
 	mp.RLock()
 	defer mp.RUnlock()
-	for _, host := range mp.Hosts {
-		mpView.Members = append(mpView.Members, host)
-	}
+	mpView.Members = append(mpView.Members, mp.Hosts...)
 	mr, err := mp.getMetaReplicaLeader()
 	if err != nil {
 		return
@@ -4971,7 +4942,7 @@ func (m *Server) changeMasterLeader(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-	rstMsg := fmt.Sprintf(" changeMasterLeader. command success send to dest host but need check. ")
+	rstMsg := " changeMasterLeader. command success send to dest host but need check. "
 	_ = sendOkReply(w, r, newSuccessHTTPReply(rstMsg))
 }
 
@@ -5058,7 +5029,7 @@ func (m *Server) DelVersion(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	span := proto.SpanFromContext(r.Context())
-	verSeq, err = extractUint64(r, verSeqKey)
+	verSeq, _ = extractUint64(r, verSeqKey)
 	span.Debugf("action[DelVersion] vol %v verSeq %v", name, verSeq)
 	if value = r.FormValue(forceKey); value != "" {
 		force, _ = strconv.ParseBool(value)
@@ -5660,7 +5631,6 @@ func (m *Server) setConfigHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("set config key[%v], value[%v] success", key, value)))
-	return
 }
 
 func (m *Server) getConfigHandler(w http.ResponseWriter, r *http.Request) {
@@ -5816,7 +5786,6 @@ func (m *Server) DeleteQuota(w http.ResponseWriter, r *http.Request) {
 
 	msg := fmt.Sprintf("delete quota successfully, vol [%v] quotaId [%v]", name, quotaId)
 	sendOkReply(w, r, newSuccessHTTPReply(msg))
-	return
 }
 
 func (m *Server) ListQuota(w http.ResponseWriter, r *http.Request) {
@@ -5847,7 +5816,6 @@ func (m *Server) ListQuota(w http.ResponseWriter, r *http.Request) {
 	span.Infof("list quota vol [%v] resp [%v] success.", name, *resp)
 
 	sendOkReply(w, r, newSuccessHTTPReply(resp))
-	return
 }
 
 func (m *Server) ListQuotaAll(w http.ResponseWriter, r *http.Request) {
@@ -5860,7 +5828,6 @@ func (m *Server) ListQuotaAll(w http.ResponseWriter, r *http.Request) {
 	volsInfo := m.cluster.listQuotaAll(r.Context())
 	span.Infof("list all vol has quota [%v]", volsInfo)
 	sendOkReply(w, r, newSuccessHTTPReply(volsInfo))
-	return
 }
 
 func (m *Server) GetQuota(w http.ResponseWriter, r *http.Request) {
@@ -5894,7 +5861,6 @@ func (m *Server) GetQuota(w http.ResponseWriter, r *http.Request) {
 
 	span.Infof("get quota vol [%v] quotaInfo [%v] success.", name, *quotaInfo)
 	sendOkReply(w, r, newSuccessHTTPReply(quotaInfo))
-	return
 }
 
 // func (m *Server) BatchModifyQuotaFullPath(w http.ResponseWriter, r *http.Request) {
@@ -6007,7 +5973,6 @@ func (m *Server) setDpDiscardHandler(w http.ResponseWriter, r *http.Request) {
 	msg := fmt.Sprintf("[setDpDiscardHandler] set dpid %v to discard(%v) success", dpId, discard)
 	span.Info(msg)
 	sendOkReply(w, r, newSuccessHTTPReply(msg))
-	return
 }
 
 func (m *Server) getDiscardDpHandler(w http.ResponseWriter, r *http.Request) {
@@ -6020,8 +5985,7 @@ func (m *Server) getDiscardDpHandler(w http.ResponseWriter, r *http.Request) {
 
 	vols := m.cluster.copyVols()
 	for _, vol := range vols {
-		var dps *DataPartitionMap
-		dps = vol.dataPartitions
+		dps := vol.dataPartitions
 		for _, dp := range dps.partitions {
 			if dp.IsDiscard {
 				DiscardDpInfos.DiscardDps = append(DiscardDpInfos.DiscardDps, *dp.buildDpInfo(r.Context(), m.cluster))
@@ -6032,7 +5996,6 @@ func (m *Server) getDiscardDpHandler(w http.ResponseWriter, r *http.Request) {
 	msg := fmt.Sprintf("[GetDiscardDpHandler] discard dp num:%v", len(DiscardDpInfos.DiscardDps))
 	span.Info(msg)
 	sendOkReply(w, r, newSuccessHTTPReply(DiscardDpInfos))
-	return
 }
 
 func (m *Server) queryBadDisks(w http.ResponseWriter, r *http.Request) {
@@ -6118,7 +6081,7 @@ func (m *Server) SetBucketLifecycle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_ = m.cluster.SetBucketLifecycle(r.Context(), &req)
-	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("PutBucketLifecycleConfiguration successful ")))
+	sendOkReply(w, r, newSuccessHTTPReply("PutBucketLifecycleConfiguration successful "))
 }
 
 func (m *Server) GetBucketLifecycle(w http.ResponseWriter, r *http.Request) {
@@ -6259,7 +6222,7 @@ func (m *Server) S3QosGet(w http.ResponseWriter, r *http.Request) {
 		doStatAndMetric(proto.S3QoSGet, metric, err, nil)
 	}()
 
-	apiLimitConf := make(map[string]*proto.UserLimitConf, 0)
+	apiLimitConf := make(map[string]*proto.UserLimitConf)
 	s3QosResponse := proto.S3QoSResponse{
 		ApiLimitConf: apiLimitConf,
 	}
@@ -6277,9 +6240,9 @@ func (m *Server) S3QosGet(w http.ResponseWriter, r *http.Request) {
 			return true
 		}
 		if _, ok := apiLimitConf[api]; !ok {
-			bandWidthQuota := make(map[string]uint64, 0)
-			qpsQuota := make(map[string]uint64, 0)
-			concurrentQuota := make(map[string]uint64, 0)
+			bandWidthQuota := make(map[string]uint64)
+			qpsQuota := make(map[string]uint64)
+			concurrentQuota := make(map[string]uint64)
 			userLimitConf := &proto.UserLimitConf{
 				BandWidthQuota:  bandWidthQuota,
 				QPSQuota:        qpsQuota,

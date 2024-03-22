@@ -49,18 +49,6 @@ func getDataPartition(id uint64, t *testing.T) {
 	process(reqURL, t)
 }
 
-// test
-func decommissionDataPartition(dp *DataPartition, t *testing.T) {
-	offlineAddr := dp.Hosts[0]
-	reqURL := fmt.Sprintf("%v%v?name=%v&id=%v&addr=%v",
-		hostAddr, proto.AdminDecommissionDataPartition, dp.VolName, dp.PartitionID, offlineAddr)
-	process(reqURL, t)
-	if contains(dp.Hosts, offlineAddr) {
-		t.Errorf("decommissionDataPartition failed,offlineAddr[%v],hosts[%v]", offlineAddr, dp.Hosts)
-		return
-	}
-}
-
 func loadDataPartitionTest(ctx context.Context, dp *DataPartition, t *testing.T) {
 	dps := make([]*DataPartition, 0)
 	dps = append(dps, dp)

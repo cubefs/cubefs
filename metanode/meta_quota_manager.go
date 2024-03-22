@@ -267,7 +267,7 @@ func (mqMgr *MetaQuotaManager) statisticRebuildFin(ctx context.Context, rebuild 
 	mqMgr.statisticRebuildBase = new(sync.Map)
 	mqMgr.statisticRebuildTemp = new(sync.Map)
 
-	if log.GetOutputLevel() >= log.Linfo {
+	if log.GetOutputLevel() <= log.Linfo {
 		span := getSpan(ctx)
 		mqMgr.statisticTemp.Range(func(key, value interface{}) bool {
 			quotaId := key.(uint32)

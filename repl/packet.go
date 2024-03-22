@@ -166,11 +166,6 @@ func (p *Packet) resolveFollowersAddr() (err error) {
 		p.followersAddrs = followerAddrs[:int(followerNum)]
 		p.Span().Infof("action[resolveFollowersAddr] %v", p.followersAddrs)
 	}
-	if p.RemainingFollowers < 0 {
-		err = ErrBadNodes
-		return
-	}
-
 	return
 }
 
@@ -281,10 +276,6 @@ func NewPacketToNotifyExtentRepair(partitionID uint64) (p *Packet) {
 
 func (p *Packet) IsErrPacket() bool {
 	return p.ResultCode != proto.OpOk && p.ResultCode != proto.OpInitResultCode
-}
-
-func (p *Packet) getErrMessage() (m string) {
-	return fmt.Sprintf("req(%v) err(%v)", p.GetUniqueLogId(), string(p.Data[:p.Size]))
 }
 
 var ErrorUnknownOp = errors.New("unknown opcode")

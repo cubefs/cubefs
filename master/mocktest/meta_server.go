@@ -40,7 +40,7 @@ type MockMetaServer struct {
 
 func NewMockMetaServer(addr string, zoneName string) *MockMetaServer {
 	mms := &MockMetaServer{
-		TcpAddr: addr, partitions: make(map[uint64]*MockMetaPartition, 0),
+		TcpAddr: addr, partitions: make(map[uint64]*MockMetaPartition),
 		ZoneName: zoneName,
 		mc:       master.NewMasterClient([]string{hostAddr}, false),
 	}

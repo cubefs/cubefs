@@ -118,7 +118,7 @@ func (c *Cluster) syncPutAccessKeyInfo(opType uint32, accessKeyInfo *keystore.Ac
 }
 
 func (c *Cluster) loadKeystore() (err error) {
-	ks := make(map[string]*keystore.KeyInfo, 0)
+	ks := make(map[string]*keystore.KeyInfo)
 	log.Info("action[loadKeystore]")
 	result, err := c.fsm.store.SeekForPrefix([]byte(ksPrefix))
 	if err != nil {
@@ -143,14 +143,8 @@ func (c *Cluster) loadKeystore() (err error) {
 	return
 }
 
-func (c *Cluster) clearKeystore() {
-	c.fsm.ksMutex.Lock()
-	defer c.fsm.ksMutex.Unlock()
-	c.fsm.keystore = nil
-}
-
 func (c *Cluster) loadAKstore() (err error) {
-	aks := make(map[string]*keystore.AccessKeyInfo, 0)
+	aks := make(map[string]*keystore.AccessKeyInfo)
 	log.Info("action[loadAccessKeystore]")
 	result, err := c.fsm.store.SeekForPrefix([]byte(akPrefix))
 	if err != nil {
@@ -173,12 +167,6 @@ func (c *Cluster) loadAKstore() (err error) {
 	c.fsm.accessKeystore = aks
 
 	return
-}
-
-func (c *Cluster) clearAKstore() {
-	c.fsm.aksMutex.Lock()
-	defer c.fsm.aksMutex.Unlock()
-	c.fsm.accessKeystore = nil
 }
 
 func (c *Cluster) addRaftNode(nodeID uint64, addr string) (err error) {

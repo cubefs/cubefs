@@ -126,7 +126,7 @@ func SendFuseFdToNewClient(udsListener net.Listener, file *os.File) (err error) 
 
 	if file == nil {
 		err = fmt.Errorf("no file is received")
-		fmt.Fprintf(os.Stderr, err.Error())
+		fmt.Fprintln(os.Stderr, err.Error())
 		return
 	} else {
 		if err = util.SendFd(socket, file.Name(), file.Fd()); err != nil {
@@ -176,10 +176,10 @@ func SendSuspendRequest(port string, udsListener net.Listener) (err error) {
 	return nil
 }
 
-func WaitSuspendFinish(ch chan error) error {
-	err := <-ch
-	return err
-}
+// func WaitSuspendFinish(ch chan error) error {
+// 	err := <-ch
+// 	return err
+// }
 
 func doSuspend(port string) error {
 	var fud *os.File
@@ -319,7 +319,6 @@ func doDump(filePathes string) {
 		)
 		rsize, err = handleListFile.Read(data)
 		if rsize == 0 || err == io.EOF {
-			err = nil
 			break
 		}
 
@@ -357,7 +356,7 @@ func main() {
 	flag.Parse()
 
 	if *optVersion {
-		fmt.Printf(proto.DumpVersion("fdstore"))
+		fmt.Println(proto.DumpVersion("fdstore"))
 		os.Exit(0)
 	}
 
@@ -386,5 +385,4 @@ func main() {
 	}
 
 	fmt.Printf("Done Successfully\n")
-	return
 }
