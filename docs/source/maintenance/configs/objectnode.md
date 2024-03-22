@@ -8,6 +8,7 @@
 | domains      | string slice | Configure domain names for S3-compatible interfaces to support DNS-style access to resources. Format: `DOMAIN`        | No       |
 | logDir       | string       | Path to store logs                                                                                                    | Yes      |
 | logLevel     | string       | Log level, default: `error`                                                                                           | No       |
+| logOptions   | none         | Refer to the [Log Options](./log.md) section                                                                          | No       |
 | masterAddr   | string slice | Format: `HOST:PORT`, HOST: Resource management node IP (Master), PORT: Resource management node service port (Master) | Yes      |
 | exporterPort | string       | Port for Prometheus to obtain monitoring data                                                                         | No       |
 | prof         | string       | Debugging and administrator API interface                                                                             | Yes      |

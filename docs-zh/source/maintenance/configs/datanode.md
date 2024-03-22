@@ -9,6 +9,7 @@
 | prof          | string       | 数据节点提供HTTP接口所用的端口                     | 是   |
 | logDir        | string       | 调测日志存放的路径                             | 是   |
 | logLevel      | string       | 调测日志的级别。默认是error                      | 否   |
+| logOptions    | none         | [日志选项](./log.md)                             | 否   |
 | raftHeartbeat | string       | RAFT发送节点间心跳消息所用的端口                    | 是   |
 | raftReplica   | string       | RAFT发送日志消息所用的端口                       | 是   |
 | raftDir       | string       | RAFT调测日志存放的路径。默认在二进制文件启动路径            | 否   |

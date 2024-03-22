@@ -9,6 +9,7 @@
 | prof          | string         | Port used by the data node to provide HTTP interface                                                                            | Yes      |
 | logDir        | string         | Path to store debugging logs                                                                                                    | Yes      |
 | logLevel      | string         | Debug log level. Default is error                                                                                               | No       |
+| logOptions    | none           | Refer to the [Log Options](./log.md) section                                                                                    | No       |
 | raftHeartbeat | string         | Port used by RAFT to send heartbeat messages between nodes                                                                      | Yes      |
 | raftReplica   | string         | Port used by RAFT to send log messages                                                                                          | Yes      |
 | raftDir       | string         | Path to store RAFT debugging logs. Default is in the binary file startup path                                                   | No       |

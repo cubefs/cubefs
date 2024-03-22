@@ -10,6 +10,7 @@
 | logLevel            | string       | Log level, default: *error*                                                                                                                                | No       |
 | metadataDir         | string       | Directory for storing metadata snapshots                                                                                                                   | Yes      |
 | logDir              | string       | Directory for storing logs                                                                                                                                 | Yes      |
+| logOptions          | none         | Refer to the [Log Options](./log.md) section                                                                                                               | No       |
 | raftDir             | string       | Directory for storing Raft WAL logs                                                                                                                        | Yes      |
 | raftHeartbeatPort   | string       | Raft heartbeat communication port                                                                                                                          | Yes      |
 | raftReplicaPort     | string       | Raft data transmission port                                                                                                                                | Yes      |

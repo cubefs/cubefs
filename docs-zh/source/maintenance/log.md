@@ -79,13 +79,14 @@ curl -v "http://192.168.0.2:17410/auditlog/disable"
 ```
 - 可以通过命令动态的修改，命令如下
 ```
-http://127.0.0.1:{profPort}/loglevel/set?level={log-level}
+POST http://127.0.0.1:{profPort}/log/level?level={log-level}
 ```
 
 ::: tip 提示
 纠删码的日志设置稍有不同
 :::
 
+- 日志选项，请参考[日志选项](./configs/log.md).
 - 配置文件中设置，请参考[基础服务配置](./configs/blobstore/base.md)
 - 通过命令修改，请参考[纠删码通用管理命令](./admin-api/blobstore/base.md)
 

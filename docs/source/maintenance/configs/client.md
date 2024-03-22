@@ -2,13 +2,14 @@
 ## Configuration Description
 
 | Name          | Type   | Description                                                                                                               | Required |
-|:---------------|:--------|:---------------------------------------------------------------------------------------------------------------------------|:----------|
+|:--------------|:-------|:--------------------------------------------------------------------------------------------------------------------------|:---------|
 | mountPoint    | string | Mount point                                                                                                               | Yes      |
 | volName       | string | Volume name                                                                                                               | Yes      |
 | owner         | string | Owner                                                                                                                     | Yes      |
 | masterAddr    | string | Master node address                                                                                                       | Yes      |
 | logDir        | string | Log directory                                                                                                             | No       |
 | logLevel      | string | Log level: debug, info, warn, error                                                                                       | No       |
+| logOptions    | none   | Refer to the [Log Options](./log.md) section                                                                              | No       |
 | profPort      | string | Golang pprof debug port                                                                                                   | No       |
 | exporterPort  | string | Prometheus monitoring data port                                                                                           | No       |
 | consulAddr    | string | Monitoring registration server address                                                                                    | No       |
