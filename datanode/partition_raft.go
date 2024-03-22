@@ -398,10 +398,10 @@ func (dp *DataPartition) removeRaftNode(req *proto.RemoveDataPartitionRaftMember
 		return false, fmt.Errorf("removeRaftNode (%v) not support", dp)
 	}
 
-	var canRemoveSelf bool
-	if canRemoveSelf, err = dp.canRemoveSelf(); err != nil {
-		return
-	}
+	//var canRemoveSelf bool
+	//if canRemoveSelf, err = dp.canRemoveSelf(); err != nil {
+	//	return
+	//}
 	peerIndex := -1
 	data, _ := json.Marshal(req)
 	isUpdated = false
@@ -430,11 +430,13 @@ func (dp *DataPartition) removeRaftNode(req *proto.RemoveDataPartitionRaftMember
 		dp.config.Hosts = append(dp.config.Hosts[:hostIndex], dp.config.Hosts[hostIndex+1:]...)
 	}
 	dp.config.Peers = append(dp.config.Peers[:peerIndex], dp.config.Peers[peerIndex+1:]...)
-	if dp.config.NodeID == req.RemovePeer.ID && !dp.isLoadingDataPartition && canRemoveSelf {
-		dp.raftPartition.Delete()
-		dp.Disk().space.DeletePartition(dp.partitionID)
-		isUpdated = false
-	}
+	// if ApplyMemberChange is timeout, master will keep old hosts. when meta node executing
+	// delete inode operation, will produce amount of dp not found error messages
+	//if dp.config.NodeID == req.RemovePeer.ID && !dp.isLoadingDataPartition && canRemoveSelf {
+	//	dp.raftPartition.Delete()
+	//	dp.Disk().space.DeletePartition(dp.partitionID)
+	//	isUpdated = false
+	//}
 	// update dp replicas after removing a raft node
 	if isUpdated {
 		dp.replicasLock.Lock()
