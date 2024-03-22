@@ -15,6 +15,7 @@
 package cmd
 
 import (
+	"encoding/json"
 	"fmt"
 	"math"
 	"strconv"
@@ -24,6 +25,8 @@ import (
 	"github.com/cubefs/cubefs/proto"
 )
 
+var _sf = fmt.Sprintf
+
 func formatAddr(ipAddr string, domainAddr string) (addr string) {
 	if len(domainAddr) != 0 {
 		addr = fmt.Sprintf("%v(%v)", ipAddr, domainAddr)
@@ -31,6 +34,11 @@ func formatAddr(ipAddr string, domainAddr string) (addr string) {
 		addr = ipAddr
 	}
 	return
+}
+
+func formatIndent(v interface{}) string {
+	b, _ := json.MarshalIndent(v, "", "  ")
+	return string(b)
 }
 
 func formatClusterView(cv *proto.ClusterView, cn *proto.ClusterNodeInfo, cp *proto.ClusterIP) string {
@@ -178,6 +186,11 @@ func formatSimpleVolView(svv *proto.SimpleVolView) string {
 		sb.WriteString(fmt.Sprintf("  CacheHighWater       : %v\n", svv.CacheHighWater))
 		sb.WriteString(fmt.Sprintf("  CacheRule            : %v\n", svv.CacheRule))
 	}
+	sb.WriteString(fmt.Sprintf("  remoteCacheEnable               : %v\n", svv.RemoteCacheEnable))
+	sb.WriteString(fmt.Sprintf("  remoteCachePath                 : %v\n", svv.RemoteCachePath))
+	sb.WriteString(fmt.Sprintf("  remoteCacheAutoPrepare          : %v\n", svv.RemoteCacheAutoPrepare))
+	sb.WriteString(fmt.Sprintf("  remoteCacheTTL                  : %v\n", svv.RemoteCacheTTL))
+	sb.WriteString(fmt.Sprintf("  remoteCacheReadTimeoutSec       : %v\n", svv.RemoteCacheReadTimeoutSec))
 	return sb.String()
 }
 
@@ -897,5 +910,48 @@ func formatDecommissionProgress(progress *proto.DecommissionProgress) string {
 	if len(progress.FailedDps) != 0 {
 		sb.WriteString(fmt.Sprintf("Failed Dps:       %v\n", progress.FailedDps))
 	}
+	return sb.String()
+}
+
+const (
+	flashNodeViewTableSimpleRowPattern = "%-12v    %-10v    %-20v    %-8v    %-8v    %-12v   %-20v"
+	flashNodeViewTableRowPattern       = flashNodeViewTableSimpleRowPattern + "    %-8v    %-12v    %-10v"
+)
+
+func formatFlashNodeSimpleViewTableHeader() string {
+	return _sf(flashNodeViewTableSimpleRowPattern, "ZONE", "ID", "ADDRESS", "Active", "Enable", "FlashGroupID", "ReportTime")
+}
+
+func formatFlashNodeViewTableHeader() string {
+	return _sf(flashNodeViewTableRowPattern, "ZONE", "ID", "ADDRESS", "Active", "Enable", "FlashGroupID", "ReportTime", "HitRate", "Evicts", "Limit")
+}
+
+func formatFlashNodeView(fn *proto.FlashNodeViewInfo) string {
+	var sb strings.Builder
+	sb.WriteString("[FlashNode]\n")
+	sb.WriteString(_sf("  ID                  : %v\n", fn.ID))
+	sb.WriteString(_sf("  ADDRESS             : %v\n", fn.Addr))
+	sb.WriteString(_sf("  VERSION             : %v\n", fn.Version))
+	sb.WriteString(_sf("  ZONE                : %v\n", fn.ZoneName))
+	sb.WriteString(_sf("  FlashGroupID        : %v\n", fn.FlashGroupID))
+	sb.WriteString(_sf("  ReportTime          : %v\n", fn.ReportTime))
+	sb.WriteString(_sf("  IsActive            : %v\n", fn.IsActive))
+	sb.WriteString(_sf("  IsEnable            : %v\n", fn.IsEnable))
+	return sb.String()
+}
+
+const formatFlashGroupViewPattern = "%-6v    %-18v    %-18v    %-18v"
+
+func formatFlashGroupViewHeader() string {
+	return _sf(formatFlashGroupViewPattern, "ID", "SLOTS", "STATUS", "FlashNodeCount")
+}
+
+func formatFlashGroupView(fg *proto.FlashGroupAdminView) string {
+	var sb strings.Builder
+	sb.WriteString("[FlashGroup]\n")
+	sb.WriteString(_sf("  ID                  : %v\n", fg.ID))
+	sb.WriteString(_sf("  Slots               : %v\n", fg.Slots))
+	sb.WriteString(_sf("  Status              : %v\n", fg.Status))
+	sb.WriteString(_sf("  FlashNodeCount      : %v\n", fg.FlashNodeCount))
 	return sb.String()
 }

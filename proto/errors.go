@@ -97,6 +97,7 @@ var (
 	ErrNodeSetNotExists                        = errors.New("node set not exists")
 	ErrCompressFailed                          = errors.New("compress data failed")
 	ErrDecompressFailed                        = errors.New("decompress data failed")
+	ErrTmpfsNoSpace                            = errors.New("no space left on device")
 )
 
 // http response error code and error message definitions
@@ -164,6 +165,7 @@ const (
 	ErrCodeZoneNumError
 	ErrCodeVersionOpError
 	ErrCodeNodeSetNotExists
+	ErrCodeTmpfsNoSpace
 )
 
 // Err2CodeMap error map to code
@@ -229,6 +231,7 @@ var Err2CodeMap = map[error]int32{
 	ErrZoneNum:                         ErrCodeZoneNumError,
 	ErrCodeVersionOp:                   ErrCodeVersionOpError,
 	ErrNodeSetNotExists:                ErrCodeNodeSetNotExists,
+	ErrTmpfsNoSpace:                    ErrCodeTmpfsNoSpace,
 }
 
 func ParseErrorCode(code int32) error {
@@ -301,6 +304,7 @@ var code2ErrMap = map[int32]error{
 	ErrCodeZoneNumError:                    ErrZoneNum,
 	ErrCodeVersionOpError:                  ErrCodeVersionOp,
 	ErrCodeNodeSetNotExists:                ErrNodeSetNotExists,
+	ErrCodeTmpfsNoSpace:                    ErrTmpfsNoSpace,
 }
 
 type GeneralResp struct {

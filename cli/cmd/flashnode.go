@@ -1,0 +1,196 @@
+// Copyright 2023 The CubeFS Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
+// implied. See the License for the specific language governing
+// permissions and limitations under the License.
+
+package cmd
+
+import (
+	"fmt"
+	"sort"
+	"strconv"
+	"strings"
+
+	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/sdk/httpclient"
+	"github.com/cubefs/cubefs/sdk/master"
+	"github.com/spf13/cobra"
+)
+
+const _flashnodeAddr = " [FlashNodeAddr]"
+
+func newFlashNodeCmd(client *master.MasterClient) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "flashnode [COMMAND]",
+		Short: "cluster flashnode management",
+	}
+	cmd.AddCommand(
+		newCmdFlashNodeSet(client),
+		newCmdFlashNodeRemove(client),
+		newCmdFlashNodeGet(client),
+		newCmdFlashNodeList(client),
+
+		newCmdFlashNodeHTTPStat(client),
+		newCmdFlashNodeHTTPEvict(client),
+	)
+	return cmd
+}
+
+func newCmdFlashNodeSet(client *master.MasterClient) *cobra.Command {
+	return &cobra.Command{
+		Use:   CliOpSet + _flashnodeAddr + " [IsEnable]",
+		Short: "set flash node enable or not",
+		Args:  cobra.MinimumNArgs(2),
+		RunE: func(_ *cobra.Command, args []string) (err error) {
+			addr := args[0]
+			enable, err := strconv.ParseBool(args[1])
+			if err != nil {
+				return
+			}
+			if err = client.NodeAPI().SetFlashNode(addr, enable); err != nil {
+				return
+			}
+			stdoutlnf("set flashnode:%s enable:%v success", addr, enable)
+			return
+		},
+	}
+}
+
+func newCmdFlashNodeRemove(client *master.MasterClient) *cobra.Command {
+	return &cobra.Command{
+		Use:   CliOpRemove + _flashnodeAddr,
+		Short: "remove flash node by addr",
+		Args:  cobra.MinimumNArgs(1),
+		RunE: func(_ *cobra.Command, args []string) (err error) {
+			result, err := client.NodeAPI().RemoveFlashNode(args[0])
+			if err != nil {
+				return
+			}
+			stdoutlnf("decommission flashnode:%s %s", args[0], result)
+			return
+		},
+	}
+}
+
+func newCmdFlashNodeGet(client *master.MasterClient) *cobra.Command {
+	return &cobra.Command{
+		Use:   CliOpInfo + _flashnodeAddr,
+		Short: "get flash node by addr",
+		Args:  cobra.MinimumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) (err error) {
+			fn, err := client.NodeAPI().GetFlashNode(args[0])
+			if err != nil {
+				return
+			}
+			stdoutln(formatFlashNodeView(&fn))
+			return
+		},
+	}
+}
+
+func newCmdFlashNodeList(client *master.MasterClient) *cobra.Command {
+	var showAllFlashNodes bool
+	cmd := &cobra.Command{
+		Use:   CliOpList,
+		Short: "list all flash nodes",
+		Args:  cobra.MinimumNArgs(0),
+		RunE: func(cmd *cobra.Command, args []string) (err error) {
+			zoneFlashNodes, err := client.NodeAPI().ListFlashNodes(showAllFlashNodes)
+			if err != nil {
+				return
+			}
+			stdoutln("[FlashNodes]")
+			stdoutln(formatFlashNodeViewTableHeader())
+
+			for _, flashNodeViewInfos := range zoneFlashNodes {
+				showFlashNodesView(flashNodeViewInfos, true)
+			}
+			return
+		},
+	}
+	cmd.Flags().BoolVar(&showAllFlashNodes, "all", true, "show all flashnodes contain inactive and not enabled")
+	return cmd
+}
+
+func newCmdFlashNodeHTTPStat(_ *master.MasterClient) *cobra.Command {
+	return &cobra.Command{
+		Use:   "httpStat" + _flashnodeAddr,
+		Short: "show flashnode stat",
+		Args:  cobra.MinimumNArgs(1),
+		RunE: func(_ *cobra.Command, args []string) (err error) {
+			stat, err := httpclient.New().Addr(addr2Prof(args[0])).FlashNode().Stat()
+			if err != nil {
+				return
+			}
+			stdoutln(formatIndent(stat))
+			return
+		},
+	}
+}
+
+func newCmdFlashNodeHTTPEvict(_ *master.MasterClient) *cobra.Command {
+	return &cobra.Command{
+		Use:   "httpEvict" + _flashnodeAddr + " [volume]",
+		Short: "evict cache in flashnode",
+		Args:  cobra.MinimumNArgs(1),
+		RunE: func(_ *cobra.Command, args []string) (err error) {
+			addr := args[0]
+			if len(args) == 1 {
+				if err = httpclient.New().Addr(addr2Prof(addr)).FlashNode().EvictAll(); err == nil {
+					stdoutlnf("%s evicts all [OK]", addr)
+				}
+				return
+			}
+			volume := args[1]
+			if err = httpclient.New().Addr(addr2Prof(addr)).FlashNode().EvictVol(volume); err == nil {
+				stdoutlnf("%s evicts volume(%s) [OK]", addr, volume)
+			}
+			return
+		},
+	}
+}
+
+func showFlashNodesView(flashNodeViewInfos []*proto.FlashNodeViewInfo, showStat bool) {
+	client := httpclient.New()
+	sort.Slice(flashNodeViewInfos, func(i, j int) bool {
+		return flashNodeViewInfos[i].ID < flashNodeViewInfos[j].ID
+	})
+	for _, fn := range flashNodeViewInfos {
+		if !showStat {
+			stdoutlnf(flashNodeViewTableSimpleRowPattern, fn.ZoneName, fn.ID, fn.Addr,
+				formatYesNo(fn.IsActive), formatYesNo(fn.IsEnable),
+				fn.FlashGroupID, formatTime(fn.ReportTime.Unix()))
+			continue
+		}
+
+		hitRate, evicts, limit := "N/A", "N/A", "N/A"
+		if fn.IsActive && fn.IsEnable {
+			if stat, e := client.Addr(addr2Prof(fn.Addr)).FlashNode().Stat(); e == nil {
+				hitRate = fmt.Sprintf("%.2f%%", stat.CacheStatus.HitRate*100)
+				evicts = strconv.Itoa(stat.CacheStatus.Evicts)
+				limit = strconv.FormatUint(stat.NodeLimit, 10)
+			} else {
+				stdoutln(e)
+			}
+		}
+		stdoutlnf(flashNodeViewTableRowPattern, fn.ZoneName, fn.ID, fn.Addr,
+			formatYesNo(fn.IsActive), formatYesNo(fn.IsEnable),
+			fn.FlashGroupID, formatTime(fn.ReportTime.Unix()), hitRate, evicts, limit)
+	}
+}
+
+// TODO: mandatory design prof http port is service port+1
+func addr2Prof(addr string) string {
+	arr := strings.SplitN(addr, ":", 2)
+	p, _ := strconv.ParseUint(arr[1], 10, 64)
+	return fmt.Sprintf("%s:%d", arr[0], p+1)
+}

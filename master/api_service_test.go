@@ -30,6 +30,7 @@ import (
 
 	"github.com/cubefs/cubefs/master/mocktest"
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/sdk/master"
 	"github.com/cubefs/cubefs/util/compressor"
 	"github.com/cubefs/cubefs/util/config"
 	"github.com/cubefs/cubefs/util/log"
@@ -38,7 +39,8 @@ import (
 )
 
 const (
-	hostAddr          = "http://127.0.0.1:8080"
+	masterAddr        = "127.0.0.1:8080"
+	hostAddr          = "http://" + masterAddr
 	ConfigKeyLogDir   = "logDir"
 	ConfigKeyLogLevel = "logLevel"
 	mds1Addr          = "127.0.0.1:9101"
@@ -62,6 +64,15 @@ const (
 	testZone2     = "zone2"
 	testZone3     = "zone3"
 
+	mfs1Addr = "127.0.0.1:10501"
+	mfs2Addr = "127.0.0.1:10502"
+	mfs3Addr = "127.0.0.1:10503"
+	mfs4Addr = "127.0.0.1:10504"
+	mfs5Addr = "127.0.0.1:10505"
+	mfs6Addr = "127.0.0.1:10506"
+	mfs7Addr = "127.0.0.1:10507"
+	mfs8Addr = "127.0.0.1:10508"
+
 	testUserID  = "testUser"
 	ak          = "0123456789123456"
 	sk          = "01234567891234560123456789123456"
@@ -70,15 +81,21 @@ const (
 
 var (
 	server    = createDefaultMasterServerForTest()
+	mc        = master.NewMasterClient([]string{masterAddr}, false)
 	commonVol *Vol
 	cfsUser   *proto.UserInfo
+
+	mockServerLock   sync.Mutex
+	mockDataServers  []*mocktest.MockDataServer
+	mockMetaServers  []*mocktest.MockMetaServer
+	mockFlashServers []*mocktest.MockFlashServer
 )
 
-var mockServerLock sync.Mutex
-
-var mockDataServers []*mocktest.MockDataServer
-
-var mockMetaServers []*mocktest.MockMetaServer
+func TestMain(m *testing.M) {
+	exitCode := m.Run()
+	server.clearMetadata()
+	os.Exit(exitCode)
+}
 
 func rangeMockDataServers(fun func(*mocktest.MockDataServer) bool) (count int, passed int) {
 	mockServerLock.Lock()
@@ -145,10 +162,23 @@ func createDefaultMasterServerForTest() *Server {
 	mockMetaServers = append(mockMetaServers, addMetaServer(mms4Addr, testZone2))
 	mockMetaServers = append(mockMetaServers, addMetaServer(mms5Addr, testZone2))
 	mockMetaServers = append(mockMetaServers, addMetaServer(mms6Addr, testZone2))
+
+	// add flash node
+	mockFlashServers = append(mockFlashServers,
+		addFlashServer(mfs1Addr, testZone1),
+		addFlashServer(mfs2Addr, testZone1),
+		addFlashServer(mfs3Addr, testZone2),
+		addFlashServer(mfs4Addr, testZone2),
+		addFlashServer(mfs5Addr, testZone3),
+		addFlashServer(mfs6Addr, testZone3),
+		addFlashServer(mfs7Addr, testZone3),
+	)
+
 	// we should wait 5 seoncds for master to prepare state
 	time.Sleep(5 * time.Second)
 	testServer.cluster.checkDataNodeHeartbeat()
 	testServer.cluster.checkMetaNodeHeartbeat()
+	testServer.cluster.checkFlashNodeHeartbeat()
 	time.Sleep(5 * time.Second)
 	testServer.cluster.scheduleToUpdateStatInfo()
 	// set load factor
@@ -185,7 +215,7 @@ func createDefaultMasterServerForTest() *Server {
 	}
 
 	commonVol = vol
-	fmt.Printf("vol[%v] has created\n", newSimpleView(commonVol))
+	fmt.Printf("Volume[%+v] has created\n", newSimpleView(commonVol))
 
 	if err = createUserWithPolicy(testServer); err != nil {
 		panic(err)
@@ -268,6 +298,12 @@ func addMetaServer(addr, zoneName string) *mocktest.MockMetaServer {
 	return mms
 }
 
+func addFlashServer(addr, zoneName string) *mocktest.MockFlashServer {
+	mms := mocktest.NewMockFlashServer(addr, zoneName)
+	mms.Start()
+	return mms
+}
+
 func TestSetMetaNodeThreshold(t *testing.T) {
 	threshold := 0.5
 	reqURL := fmt.Sprintf("%v%v?threshold=%v", hostAddr, proto.AdminSetMetaNodeThreshold, threshold)
@@ -303,11 +339,6 @@ func TestGetCluster(t *testing.T) {
 func TestGetIpAndClusterName(t *testing.T) {
 	reqURL := fmt.Sprintf("%v%v", hostAddr, proto.AdminGetIP)
 	process(reqURL, t)
-}
-
-func fatal(t *testing.T, str string) {
-	log.LogFlush()
-	t.Fatal(str)
 }
 
 type httpReply = proto.HTTPReplyRaw
@@ -551,6 +582,11 @@ func TestUpdateVol(t *testing.T) {
 	checkParam(cacheLowWaterKey, proto.AdminUpdateVol, req, 93, low, t)
 	checkParam(cacheLRUIntervalKey, proto.AdminUpdateVol, req, -1, lru, t)
 	setParam(cacheRuleKey, proto.AdminUpdateVol, req, rule, t)
+	checkParam("remoteCacheEnable", proto.AdminUpdateVol, req, "not-bool", true, t)
+	checkParam("remoteCacheAutoPrepare", proto.AdminUpdateVol, req, "not-bool", false, t)
+	checkParam("remoteCacheTTL", proto.AdminUpdateVol, req, "not-number", int64(77), t)
+	checkParam("remoteCacheReadTimeoutSec", proto.AdminUpdateVol, req, "not-number", int64(7), t)
+	setParam("remoteCachePath", proto.AdminUpdateVol, req, "cache-path,a-path", t)
 
 	view = getSimpleVol(volName, true, t)
 	// check update result
@@ -569,6 +605,11 @@ func TestUpdateVol(t *testing.T) {
 	assert.True(t, view.CacheLowWater == low)
 	assert.True(t, view.CacheLruInterval == lru)
 	assert.True(t, view.CacheRule == rule)
+	require.True(t, view.RemoteCacheEnable)
+	require.Equal(t, "cache-path,a-path", view.RemoteCachePath)
+	require.False(t, view.RemoteCacheAutoPrepare)
+	require.Equal(t, int64(77), view.RemoteCacheTTL)
+	require.Equal(t, int64(7), view.RemoteCacheReadTimeoutSec)
 
 	// update cacheRule to empty
 	setUpdateVolParm(emptyCacheRuleKey, req, true, t)
@@ -582,10 +623,6 @@ func TestUpdateVol(t *testing.T) {
 
 func setUpdateVolParm(key string, req map[string]interface{}, val interface{}, t *testing.T) {
 	setParam(key, proto.AdminUpdateVol, req, val, t)
-}
-
-func checkUpdateVolParm(key string, req map[string]interface{}, wrong, correct interface{}, t *testing.T) {
-	checkParam(key, proto.AdminUpdateVol, req, wrong, correct, t)
 }
 
 func delVol(name string, t *testing.T) {

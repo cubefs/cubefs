@@ -235,6 +235,24 @@ const (
 	S3QoSSet    = "/s3/qos/set"
 	S3QoSGet    = "/s3/qos/get"
 	S3QoSDelete = "/s3/qos/delete"
+
+	// FlashNode API
+	FlashNodeAdd    = "/flashNode/add"
+	FlashNodeSet    = "/flashNode/set"
+	FlashNodeRemove = "/flashNode/remove"
+	FlashNodeGet    = "/flashNode/get"
+	FlashNodeList   = "/flashNode/list"
+
+	// FlashGroup API
+	AdminFlashGroupTurn       = "/flashGroup/turn"
+	AdminFlashGroupCreate     = "/flashGroup/create"
+	AdminFlashGroupSet        = "/flashGroup/set"
+	AdminFlashGroupRemove     = "/flashGroup/remove"
+	AdminFlashGroupNodeAdd    = "/flashGroup/addFlashNode"
+	AdminFlashGroupNodeRemove = "/flashGroup/removeFlashNode"
+	AdminFlashGroupGet        = "/flashGroup/get"
+	AdminFlashGroupList       = "/flashGroup/list"
+	ClientFlashGroups         = "/client/flashGroups"
 )
 
 var GApiInfo map[string]string = map[string]string{
@@ -774,6 +792,14 @@ type LcNodeHeartbeatResponse struct {
 	SnapshotScanningTasks map[string]*SnapshotVerDelTaskResponse
 }
 
+// FlashNodeHeartbeatResponse defines the response to the flash node heartbeat.
+type FlashNodeHeartbeatResponse struct {
+	Status   uint8
+	Result   string
+	Version  string
+	ZoneName string
+}
+
 // DeleteFileRequest defines the request to delete a file.
 type DeleteFileRequest struct {
 	VolId uint64
@@ -1085,6 +1111,13 @@ type SimpleVolView struct {
 	LatestVer      uint64
 	Forbidden      bool
 	EnableAuditLog bool
+
+	RemoteCacheEnable         bool
+	RemoteCachePath           string
+	RemoteCacheAutoPrepare    bool
+	RemoteCacheTTL            int64
+	RemoteCacheReadTimeoutSec int64
+	RemoteCacheRemoveDupReq   bool // TODO: using it in metanode, origin was named EnableRemoveDupReq
 }
 
 type NodeSetInfo struct {

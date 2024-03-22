@@ -100,6 +100,8 @@ type Cluster struct {
 	snapshotMgr                  *snapshotDelManager
 	DecommissionDiskFactor       float64
 	S3ApiQosQuota                *sync.Map // (api,uid,limtType) -> limitQuota
+
+	flashNodeTopo *flashNodeTopology
 }
 
 type followerReadManager struct {
@@ -352,6 +354,7 @@ func newCluster(name string, leaderInfo *LeaderInfo, fsm *MetadataFsm, partition
 	c.snapshotMgr = newSnapshotManager()
 	c.snapshotMgr.cluster = c
 	c.S3ApiQosQuota = new(sync.Map)
+	c.flashNodeTopo = newFlashNodeTopology()
 	return
 }
 
@@ -377,6 +380,7 @@ func (c *Cluster) scheduleTask() {
 	c.scheduleToLcScan()
 	c.scheduleToSnapshotDelVerScan()
 	c.scheduleToBadDisk()
+	c.scheduleToUpdateFlashGroupRespCache()
 }
 
 func (c *Cluster) masterAddr() (addr string) {
@@ -639,6 +643,17 @@ func (c *Cluster) scheduleToCheckHeartbeat() {
 				c.checkLcNodeHeartbeat()
 			}
 			time.Sleep(time.Second * defaultIntervalToCheckHeartbeat)
+		}
+	}()
+
+	go func() {
+		ticker := time.NewTicker(time.Second * defaultIntervalToCheckHeartbeat)
+		defer ticker.Stop()
+		for {
+			if c.partition != nil && c.partition.IsRaftLeader() {
+				c.checkFlashNodeHeartbeat()
+			}
+			<-ticker.C
 		}
 	}()
 }
@@ -1132,7 +1147,8 @@ func (c *Cluster) checkLackReplicaDataPartitions() (lackReplicaDataPartitions []
 
 func (c *Cluster) checkReplicaOfDataPartitions(ignoreDiscardDp bool) (
 	lackReplicaDPs []*DataPartition, unavailableReplicaDPs []*DataPartition, repFileCountDifferDps []*DataPartition,
-	repUsedSizeDifferDps []*DataPartition, excessReplicaDPs []*DataPartition, noLeaderDPs []*DataPartition, err error) {
+	repUsedSizeDifferDps []*DataPartition, excessReplicaDPs []*DataPartition, noLeaderDPs []*DataPartition, err error,
+) {
 	noLeaderDPs = make([]*DataPartition, 0)
 	lackReplicaDPs = make([]*DataPartition, 0)
 	unavailableReplicaDPs = make([]*DataPartition, 0)
@@ -1576,7 +1592,8 @@ errHandler:
 }
 
 func (c *Cluster) syncCreateDataPartitionToDataNode(host string, size uint64, dp *DataPartition,
-	peers []proto.Peer, hosts []string, createType int, partitionType int, needRollBack bool) (diskPath string, err error) {
+	peers []proto.Peer, hosts []string, createType int, partitionType int, needRollBack bool,
+) (diskPath string, err error) {
 	log.LogInfof("action[syncCreateDataPartitionToDataNode] dp [%v] createtype[%v], partitionType[%v]", dp.PartitionID, createType, partitionType)
 	dataNode, err := c.dataNode(host)
 	if err != nil {
@@ -1684,7 +1701,8 @@ func (c *Cluster) chooseZone2Plus1(zones []*Zone, excludeNodeSets []uint64, excl
 }
 
 func (c *Cluster) chooseZoneNormal(zones []*Zone, excludeNodeSets []uint64, excludeHosts []string,
-	nodeType uint32, replicaNum int) (hosts []string, peers []proto.Peer, err error) {
+	nodeType uint32, replicaNum int,
+) (hosts []string, peers []proto.Peer, err error) {
 	log.LogInfof("action[chooseZoneNormal] zones[%s] nodeType[%d] replicaNum[%d]", printZonesName(zones), nodeType, replicaNum)
 
 	c.zoneIdxMux.Lock()
@@ -3421,6 +3439,23 @@ func (c *Cluster) allMetaNodes() (metaNodes []proto.NodeView) {
 			ID: metaNode.ID, Addr: metaNode.Addr, DomainAddr: metaNode.DomainAddr,
 			IsActive: metaNode.IsActive, IsWritable: metaNode.isWritable(),
 		})
+		return true
+	})
+	return
+}
+
+func (c *Cluster) allFlashNodes() (flashNodes []proto.NodeView) {
+	flashNodes = make([]proto.NodeView, 0)
+	c.flashNodeTopo.flashNodeMap.Range(func(addr, node interface{}) bool {
+		flashNode := node.(*FlashNode)
+		flashNode.RLock()
+		flashNodes = append(flashNodes, proto.NodeView{
+			ID:         flashNode.ID,
+			Addr:       flashNode.Addr,
+			IsActive:   flashNode.IsActive,
+			IsWritable: flashNode.isWriteable(),
+		})
+		flashNode.RUnlock()
 		return true
 	})
 	return

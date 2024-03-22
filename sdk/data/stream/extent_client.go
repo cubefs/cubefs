@@ -18,6 +18,7 @@ import (
 	"container/list"
 	"context"
 	"fmt"
+	"runtime/debug"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -29,6 +30,7 @@ import (
 	"github.com/cubefs/cubefs/sdk/data/wrapper"
 	"github.com/cubefs/cubefs/sdk/meta"
 	"github.com/cubefs/cubefs/util"
+	"github.com/cubefs/cubefs/util/bloom"
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
@@ -110,6 +112,7 @@ type ExtentConfig struct {
 	BcacheDir         string
 	MaxStreamerLimit  int64
 	VerReadSeq        uint64
+	MetaWrapper       *meta.MetaWrapper
 	OnAppendExtentKey AppendExtentKeyFunc
 	OnSplitExtentKey  SplitExtentKeyFunc
 	OnGetExtents      GetExtentsFunc
@@ -147,6 +150,7 @@ type ExtentClient struct {
 	preload            bool
 	LimitManager       *manager.LimitManager
 	dataWrapper        *wrapper.Wrapper
+	metaWrapper        *meta.MetaWrapper
 	appendExtentKey    AppendExtentKeyFunc
 	splitExtentKey     SplitExtentKeyFunc
 	getExtents         GetExtentsFunc
@@ -158,6 +162,11 @@ type ExtentClient struct {
 	inflightL1cache    sync.Map
 	inflightL1BigBlock int32
 	multiVerMgr        *MultiVerMgr
+	extentConfig       *ExtentConfig
+	RemoteCache        RemoteCache
+	stopOnce           sync.Once
+	stopCh             chan struct{}
+	wg                 sync.WaitGroup
 }
 
 func (client *ExtentClient) UidIsLimited(uid uint32) bool {
@@ -236,7 +245,6 @@ func NewExtentClient(config *ExtentConfig) (client *ExtentClient, err error) {
 	client.LimitManager.WrapperUpdate = client.UploadFlowInfo
 	limit := 0
 retry:
-
 	client.dataWrapper, err = wrapper.NewDataPartitionWrapper(client, config.Volume, config.Masters, config.Preload, config.MinWriteAbleDataPartitionCnt, config.VerReadSeq)
 	if err != nil {
 		log.LogErrorf("NewExtentClient: new data partition wrapper failed: volume(%v) mayRetry(%v) err(%v)",
@@ -289,24 +297,35 @@ retry:
 	client.readLimiter = rate.NewLimiter(readLimit, defaultReadLimitBurst)
 	client.writeLimiter = rate.NewLimiter(writeLimit, defaultWriteLimitBurst)
 
-	if config.MaxStreamerLimit <= 0 {
-		client.disableMetaCache = true
-		return
-	}
+	if config.MaxStreamerLimit > 0 {
+		if config.MaxStreamerLimit <= defaultStreamerLimit {
+			client.maxStreamerLimit = defaultStreamerLimit
+		} else if config.MaxStreamerLimit > defMaxStreamerLimit {
+			client.maxStreamerLimit = defMaxStreamerLimit
+		} else {
+			client.maxStreamerLimit = int(config.MaxStreamerLimit)
+		}
 
-	if config.MaxStreamerLimit <= defaultStreamerLimit {
-		client.maxStreamerLimit = defaultStreamerLimit
-	} else if config.MaxStreamerLimit > defMaxStreamerLimit {
-		client.maxStreamerLimit = defMaxStreamerLimit
+		client.maxStreamerLimit += fastStreamerEvictNum
+
+		log.LogInfof("max streamer limit %d", client.maxStreamerLimit)
+		client.streamerList = list.New()
+
+		go client.backgroundEvictStream()
 	} else {
-		client.maxStreamerLimit = int(config.MaxStreamerLimit)
+		client.disableMetaCache = true
 	}
 
-	client.maxStreamerLimit += fastStreamerEvictNum
+	client.stopCh = make(chan struct{})
+	client.wg.Add(1)
+	client.metaWrapper = config.MetaWrapper
 
-	log.LogInfof("max streamer limit %d", client.maxStreamerLimit)
-	client.streamerList = list.New()
-	go client.backgroundEvictStream()
+	if client.metaWrapper != nil {
+		client.metaWrapper.RemoteCacheBloom = client.RemoteCacheBloom
+		client.RemoteCacheBloom().AddUint64(0)
+	}
+	client.extentConfig = config
+	client.RemoteCache.Init(client)
 
 	return
 }
@@ -323,12 +342,27 @@ func (client *ExtentClient) GetFlowInfo() (*proto.ClientReportLimitInfo, bool) {
 func (client *ExtentClient) UpdateFlowInfo(limit *proto.LimitRsp2Client) {
 	log.LogInfof("action[UpdateFlowInfo.UpdateFlowInfo]")
 	client.LimitManager.SetClientLimit(limit)
-	return
 }
 
 func (client *ExtentClient) SetClientID(id uint64) (err error) {
 	client.LimitManager.ID = id
 	return
+}
+
+func (client *ExtentClient) IsRemoteCacheEnabled() bool {
+	return client.RemoteCache.ClusterEnabled && client.RemoteCache.VolumeEnabled
+}
+
+func (client *ExtentClient) enableRemoteCacheCluster(enabled bool) {
+	client.RemoteCache.Status = client.IsRemoteCacheEnabled()
+	if client.RemoteCache.ClusterEnabled != enabled {
+		log.LogInfof("enableRemoteCacheCluster: %v -> %v", client.RemoteCache.ClusterEnabled, enabled)
+		client.RemoteCache.ClusterEnabled = enabled
+	}
+}
+
+func (client *ExtentClient) UpdateRemoteCacheConfig(view *proto.SimpleVolView) {
+	client.RemoteCache.UpdateRemoteCacheConfig(client, view)
 }
 
 func (client *ExtentClient) GetVolumeName() string {
@@ -717,6 +751,8 @@ func setRate(lim *rate.Limiter, val int) string {
 
 func (client *ExtentClient) Close() error {
 	// release streamers
+	client.stopOnce.Do(func() { close(client.stopCh) })
+	client.wg.Wait()
 	var inodes []uint64
 	client.streamerLock.Lock()
 	inodes = make([]uint64, 0, len(client.streamers))
@@ -756,4 +792,26 @@ func (client *ExtentClient) IsPreloadMode() bool {
 
 func (client *ExtentClient) UploadFlowInfo(clientInfo wrapper.SimpleClientInfo) error {
 	return client.dataWrapper.UploadFlowInfo(clientInfo, false)
+}
+
+func (c *ExtentClient) RemoteCacheBloom() *bloom.BloomFilter {
+	return c.RemoteCache.GetRemoteCacheBloom()
+}
+
+func (c *ExtentClient) GetInodeBloomStatus(ino uint64) bool {
+	return c.RemoteCacheBloom().TestUint64(ino)
+}
+
+func (c *ExtentClient) servePrepareRequest(prepareReq *PrepareRemoteCacheRequest) {
+	defer func() {
+		if err := recover(); err != nil {
+			log.LogWarnf("servePrepareRequest: panic occurs, stack(%v)", string(debug.Stack()))
+		}
+	}()
+	s := c.GetStreamer(prepareReq.inode)
+	if s == nil {
+		log.LogWarnf("servePrepareRequest: streamer is nil, prepare request: (%v)", prepareReq)
+		return
+	}
+	s.prepareRemoteCache(prepareReq.ctx, prepareReq.ek)
 }

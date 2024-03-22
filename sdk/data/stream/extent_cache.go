@@ -47,6 +47,19 @@ func NewExtentRequest(offset, size int, data []byte, ek *proto.ExtentKey) *Exten
 	}
 }
 
+// NewExtentRequest returns a new extent request.
+func NewExtentRequestV2(offset, size int, data []byte, start, end uint64, ek *proto.ExtentKey) *ExtentRequest {
+	req := &ExtentRequest{
+		FileOffset: offset,
+		Size:       size,
+		ExtentKey:  ek,
+	}
+	if data != nil {
+		req.Data = data[start:end]
+	}
+	return req
+}
+
 // ExtentCache defines the struct of the extent cache.
 type ExtentCache struct {
 	sync.RWMutex
@@ -444,20 +457,20 @@ func (cache *ExtentCache) PrepareReadRequests(offset, size int, data []byte) []*
 				return false
 			} else if end < ekEnd {
 				// add hole (start, ekStart)
-				req := NewExtentRequest(start, ekStart-start, data[start-offset:ekStart-offset], nil)
+				req := NewExtentRequestV2(start, ekStart-start, data, uint64(start-offset), uint64(ekStart-offset), nil)
 				requests = append(requests, req)
 				// add non-hole (ekStart, end)
-				req = NewExtentRequest(ekStart, end-ekStart, data[ekStart-offset:end-offset], ek)
+				req = NewExtentRequestV2(start, end-ekStart, data, uint64(ekStart-offset), uint64(end-offset), ek)
 				requests = append(requests, req)
 				start = end
 				return false
 			} else {
 				// add hole (start, ekStart)
-				req := NewExtentRequest(start, ekStart-start, data[start-offset:ekStart-offset], nil)
+				req := NewExtentRequestV2(start, ekStart-start, data, uint64(start-offset), uint64(ekStart-offset), nil)
 				requests = append(requests, req)
 
 				// add non-hole (ekStart, ekEnd)
-				req = NewExtentRequest(ekStart, ekEnd-ekStart, data[ekStart-offset:ekEnd-offset], ek)
+				req = NewExtentRequestV2(ekStart, ekEnd-ekStart, data, uint64(ekStart-offset), uint64(ekEnd-offset), ek)
 				requests = append(requests, req)
 
 				start = ekEnd
@@ -466,13 +479,13 @@ func (cache *ExtentCache) PrepareReadRequests(offset, size int, data []byte) []*
 		} else if start < ekEnd {
 			if end <= ekEnd {
 				// add non-hole (start, end)
-				req := NewExtentRequest(start, end-start, data[start-offset:end-offset], ek)
+				req := NewExtentRequestV2(start, end-start, data, uint64(start-offset), uint64(end-offset), ek)
 				requests = append(requests, req)
 				start = end
 				return false
 			} else {
 				// add non-hole (start, ekEnd), start = ekEnd
-				req := NewExtentRequest(start, ekEnd-start, data[start-offset:ekEnd-offset], ek)
+				req := NewExtentRequestV2(start, ekEnd-start, data, uint64(start-offset), uint64(ekEnd-offset), ek)
 				requests = append(requests, req)
 				start = ekEnd
 				return true
@@ -485,7 +498,7 @@ func (cache *ExtentCache) PrepareReadRequests(offset, size int, data []byte) []*
 	log.LogDebugf("PrepareReadRequests: ino(%v) start(%v) end(%v)", cache.inode, start, end)
 	if start < end {
 		// add hole (start, end)
-		req := NewExtentRequest(start, end-start, data[start-offset:end-offset], nil)
+		req := NewExtentRequestV2(start, end-start, data, uint64(start-offset), uint64(end-offset), nil)
 		requests = append(requests, req)
 	}
 

@@ -17,6 +17,7 @@ package wrapper
 import (
 	"fmt"
 	"net"
+	"sort"
 	"strings"
 	"sync"
 	"syscall"
@@ -27,6 +28,60 @@ import (
 	"github.com/cubefs/cubefs/util/log"
 )
 
+type hostPingElapsed struct {
+	host    string
+	elapsed time.Duration
+}
+
+type PingElapsedSortedHosts struct {
+	sortedHosts  []string
+	updateTSUnix int64 // Timestamp (unix second) of latest update.
+	getHosts     func() (hosts []string)
+	getElapsed   func(host string) (elapsed time.Duration, ok bool)
+}
+
+func (h *PingElapsedSortedHosts) isNeedUpdate() bool {
+	return h.updateTSUnix == 0 || time.Now().Unix()-h.updateTSUnix > 10
+}
+
+func (h *PingElapsedSortedHosts) update(getHosts func() []string, getElapsed func(host string) (time.Duration, bool)) []string {
+	hosts := getHosts()
+	hostElapses := make([]*hostPingElapsed, 0, len(hosts))
+	for _, host := range hosts {
+		var hostElapsed *hostPingElapsed
+		if elapsed, ok := getElapsed(host); ok {
+			hostElapsed = &hostPingElapsed{host: host, elapsed: elapsed}
+		} else {
+			hostElapsed = &hostPingElapsed{host: host, elapsed: time.Duration(0)}
+		}
+		hostElapses = append(hostElapses, hostElapsed)
+	}
+	sort.SliceStable(hostElapses, func(i, j int) bool {
+		return hostElapses[j].elapsed == 0 || hostElapses[i].elapsed < hostElapses[j].elapsed
+	})
+	sorted := make([]string, len(hostElapses))
+	for i, hotElapsed := range hostElapses {
+		sorted[i] = hotElapsed.host
+	}
+	h.sortedHosts = sorted
+	h.updateTSUnix = time.Now().Unix()
+	return sorted
+}
+
+func (h *PingElapsedSortedHosts) GetSortedHosts() []string {
+	if h.isNeedUpdate() {
+		return h.update(h.getHosts, h.getElapsed)
+	}
+	return h.sortedHosts
+}
+
+func NewPingElapsedSortHosts(getHosts func() []string, getElapsed func(host string) (time.Duration, bool)) *PingElapsedSortedHosts {
+	return &PingElapsedSortedHosts{
+		getHosts:   getHosts,
+		getElapsed: getElapsed,
+	}
+}
+
 // DataPartition defines the wrapper of the data partition.
 type DataPartition struct {
 	// Will not be changed
@@ -35,6 +90,8 @@ type DataPartition struct {
 	NearHosts     []string
 	ClientWrapper *Wrapper
 	Metrics       *DataPartitionMetrics
+
+	pingElapsedSortedHosts *PingElapsedSortedHosts
 }
 
 // DataPartitionMetrics defines the wrapper of the metrics related to the data partition.
@@ -156,4 +213,21 @@ func isExcluded(dp *DataPartition, exclude map[string]struct{}) bool {
 		}
 	}
 	return false
+}
+
+func (dp *DataPartition) SortHostsByPingElapsed() []string {
+	if dp.pingElapsedSortedHosts == nil {
+		getHosts := func() []string {
+			return dp.Hosts
+		}
+		getElapsed := func(host string) (time.Duration, bool) {
+			delay, ok := dp.ClientWrapper.HostsDelay.Load(host)
+			if !ok {
+				return 0, false
+			}
+			return delay.(time.Duration), true
+		}
+		dp.pingElapsedSortedHosts = NewPingElapsedSortHosts(getHosts, getElapsed)
+	}
+	return dp.pingElapsedSortedHosts.GetSortedHosts()
 }

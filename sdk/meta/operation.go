@@ -1121,6 +1121,14 @@ func (mw *MetaWrapper) readDir(mp *MetaPartition, parentID uint64) (status int, 
 	bgTime := stat.BeginStat()
 	defer func() {
 		stat.EndStat("readDir", err, bgTime, 1)
+		if err == nil && mw.RemoteCacheBloom != nil {
+			cacheBloom := mw.RemoteCacheBloom()
+			if cacheBloom.TestUint64(parentID) {
+				for _, c := range children {
+					cacheBloom.AddUint64(c.Inode)
+				}
+			}
+		}
 	}()
 
 	req := &proto.ReadDirRequest{

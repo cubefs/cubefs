@@ -157,6 +157,22 @@ func NewCreateExtentPacket(dp *wrapper.DataPartition, inode uint64) *Packet {
 	return p
 }
 
+// NewFlashCachePacket returns a new packet of flash cache.
+func NewFlashCachePacket(inode uint64, opcode uint8) *Packet {
+	p := new(Packet)
+	p.Magic = proto.ProtoMagic
+	p.ReqID = proto.GenerateRequestID()
+	p.inode = inode
+	p.Opcode = opcode
+	return p
+}
+
+func NewFlashCacheReply() *Packet {
+	p := new(Packet)
+	p.Magic = proto.ProtoMagic
+	return p
+}
+
 // NewReply returns a new reply packet. TODO rename to NewReplyPacket?
 func NewReply(reqID int64, partitionID uint64, extentID uint64) *Packet {
 	p := new(Packet)
@@ -204,10 +220,6 @@ func (p *Packet) readFromConn(c net.Conn, deadlineTime time.Duration) (err error
 		if err = readToBuffer(c, &p.Arg, int(p.ArgLen)); err != nil {
 			return
 		}
-	}
-
-	if p.Size < 0 {
-		return
 	}
 
 	size := int(p.Size)

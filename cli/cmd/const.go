@@ -21,6 +21,7 @@ const (
 	CliOpStatus               = "stat"
 	CliOpCreate               = "create"
 	CliOpDelete               = "delete"
+	CliOpRemove               = "remove"
 	CliOpInfo                 = "info"
 	CliOpAdd                  = "add"
 	CliOpSet                  = "set"
@@ -120,6 +121,12 @@ const (
 	CliFlagEnableQuota         = "enableQuota"
 	CliFlagDeleteLockTime      = "delete-lock-time"
 	CliFlagClientIDKey         = "clientIDKey"
+
+	CliFlagRemoteCacheEnable         = "remoteCacheEnable"
+	CliFlagRemoteCachePath           = "remoteCachePath"
+	CliFlagRemoteCacheAutoPrepare    = "remoteCacheAutoPrepare"
+	CliFlagRemoteCacheTTL            = "remoteCacheTTL"
+	CliFlagRemoteCacheReadTimeoutSec = "remoteCacheReadTimeoutSec"
 
 	// CliFlagSetDataPartitionCount	= "count" use dp-count instead
 
