@@ -143,12 +143,6 @@ func (c *Cluster) loadKeystore() (err error) {
 	return
 }
 
-func (c *Cluster) clearKeystore() {
-	c.fsm.ksMutex.Lock()
-	defer c.fsm.ksMutex.Unlock()
-	c.fsm.keystore = nil
-}
-
 func (c *Cluster) loadAKstore() (err error) {
 	aks := make(map[string]*keystore.AccessKeyInfo, 0)
 	log.Info("action[loadAccessKeystore]")
@@ -173,12 +167,6 @@ func (c *Cluster) loadAKstore() (err error) {
 	c.fsm.accessKeystore = aks
 
 	return
-}
-
-func (c *Cluster) clearAKstore() {
-	c.fsm.aksMutex.Lock()
-	defer c.fsm.aksMutex.Unlock()
-	c.fsm.accessKeystore = nil
 }
 
 func (c *Cluster) addRaftNode(nodeID uint64, addr string) (err error) {

@@ -285,8 +285,6 @@ type UidManager struct {
 	accumRebuildDelta *sync.Map // snapshot redoLog
 	accumRebuildBase  *sync.Map // snapshot mirror
 	uidAcl            *sync.Map
-	lastUpdateTime    time.Time
-	enable            bool
 	rbuilding         bool
 	volName           string
 	acLock            sync.RWMutex
@@ -494,7 +492,6 @@ type metaPartition struct {
 	vol                    *Vol
 	manager                *metadataManager
 	isLoadingMetaPartition bool
-	summaryLock            sync.Mutex
 	ebsClient              *blobstore.BlobStoreClient
 	volType                int
 	isFollowerRead         bool
@@ -506,7 +503,6 @@ type metaPartition struct {
 	uniqChecker            *uniqChecker
 	verSeq                 uint64
 	multiVersionList       *proto.VolVersionInfoList
-	versionLock            sync.Mutex
 	verUpdateChan          chan []byte
 	enableAuditLog         bool
 }
@@ -823,6 +819,7 @@ func (mp *metaPartition) stopRaft() {
 	if mp.raftPartition != nil {
 		// TODO Unhandled errors
 		// mp.raftPartition.Stop()
+		_ = struct{}{}
 	}
 }
 

@@ -35,7 +35,6 @@ import (
 const (
 	prefixDelExtent     = "EXTENT_DEL"
 	prefixDelExtentV2   = "EXTENT_DEL_V2"
-	prefixMultiVer      = verdataFile
 	maxDeleteExtentSize = 10 * MB
 )
 
@@ -398,7 +397,6 @@ func (mp *metaPartition) deleteExtentsFromList(fileList *synclist.SyncList) {
 			err = mp.batchDeleteExtentsByDp(ctx, dpId, eks)
 			if err != nil {
 				span.Errorf("failed to delete dp(%v) extents", dpId)
-				err = nil
 				for _, ek := range eks {
 					errExts = append(errExts, *ek)
 				}

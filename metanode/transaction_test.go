@@ -40,7 +40,6 @@ const (
 	inodeNum    = 1001
 	pInodeNum   = 1002
 	inodeNum2   = 1003
-	inodeNum3   = 1004
 	dentryName  = "parent"
 )
 
@@ -332,16 +331,6 @@ func mockDeleteTxInode(mp *metaPartition) *TxRollbackInode {
 	mp.inodeTree.Delete(inode2)
 	return rbInode
 }
-
-//func mockUpdateTxInode(mp *metaPartition) *TxRollbackInode {
-//	inode3 := NewInode(inodeNum3, FileModeType)
-//	oldInode, ok := mp.inodeTree.ReplaceOrInsert(inode3, true)
-//
-//	txMgr := mp.txProcessor.txManager
-//	txInodeInfo3 := proto.NewTxInodeInfo(MemberAddrs, inodeNum3, 10001)
-//	txInodeInfo3.TxID = txMgr.nextTxID()
-//	rbInode := NewTxRollbackInode(inode3, txInodeInfo3, TxUpdate)
-//}
 
 func mockAddTxDentry(mp *metaPartition) *TxRollbackDentry {
 	txMgr := mp.txProcessor.txManager

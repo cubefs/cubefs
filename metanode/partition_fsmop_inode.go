@@ -306,7 +306,7 @@ func (mp *metaPartition) fsmUnlinkInode(ctx context.Context, ino *Inode, uniqID 
 	span.Debugf("get inode[%v]", inode)
 	var (
 		doMore bool
-		status = proto.OpOk
+		status uint8
 	)
 
 	if ino.getVer() == 0 {
@@ -366,10 +366,6 @@ func (mp *metaPartition) fsmUnlinkInodeBatch(ctx context.Context, ib InodeBatch)
 	return
 }
 
-func (mp *metaPartition) internalHasInode(ino *Inode) bool {
-	return mp.inodeTree.Has(ino)
-}
-
 func (mp *metaPartition) internalDelete(ctx context.Context, val []byte) (err error) {
 	if len(val) == 0 {
 		return
@@ -418,7 +414,6 @@ func (mp *metaPartition) internalDeleteInode(ino *Inode) {
 }
 
 func (mp *metaPartition) fsmAppendExtents(ctx context.Context, ino *Inode) (status uint8) {
-	status = proto.OpOk
 	item := mp.inodeTree.CopyGet(ino)
 	if item == nil {
 		status = proto.OpNotExistErr
@@ -726,37 +721,6 @@ func (mp *metaPartition) fsmExtentsEmpty(ctx context.Context, ino *Inode) (statu
 	return
 }
 
-// fsmExtentsEmpty only use in datalake situation
-func (mp *metaPartition) fsmDelVerExtents(ctx context.Context, ino *Inode) (status uint8) {
-	status = proto.OpOk
-	item := mp.inodeTree.CopyGet(ino)
-	if item == nil {
-		status = proto.OpNotExistErr
-		return
-	}
-	i := item.(*Inode)
-	if i.ShouldDelete() {
-		status = proto.OpNotExistErr
-		return
-	}
-	if proto.IsDir(i.Type) {
-		status = proto.OpArgMismatchErr
-		return
-	}
-	span := getSpan(ctx)
-	span.Debugf("action[fsmExtentsEmpty] mp[%v] ino[%v],eks len [%v]", mp.config.PartitionId, ino.Inode, len(i.Extents.eks))
-	tinyEks := i.CopyTinyExtents()
-	span.Debugf("action[fsmExtentsEmpty] mp[%v] ino[%v],eks tiny len [%v]", mp.config.PartitionId, ino.Inode, len(tinyEks))
-
-	if len(tinyEks) > 0 {
-		mp.extDelCh <- tinyEks
-		span.Debugf("fsmExtentsEmpty mp[%v] inode[%d] tinyEks(%v)", mp.config.PartitionId, ino.Inode, tinyEks)
-	}
-
-	i.EmptyExtents(ino.ModifyTime)
-	return
-}
-
 func (mp *metaPartition) fsmClearInodeCache(ctx context.Context, ino *Inode) (status uint8) {
 	status = proto.OpOk
 	item := mp.inodeTree.Get(ino)
@@ -797,7 +761,7 @@ func (mp *metaPartition) fsmSetInodeQuotaBatch(ctx context.Context, req *proto.B
 	var files int64
 	var bytes int64
 	resp = &proto.BatchSetMetaserverQuotaResponse{}
-	resp.InodeRes = make(map[uint64]uint8, 0)
+	resp.InodeRes = make(map[uint64]uint8)
 	span := getSpan(ctx)
 	for _, ino := range req.Inodes {
 		var isExist bool
@@ -866,7 +830,7 @@ func (mp *metaPartition) fsmDeleteInodeQuotaBatch(ctx context.Context, req *prot
 	var files int64
 	var bytes int64
 	resp = &proto.BatchDeleteMetaserverQuotaResponse{}
-	resp.InodeRes = make(map[uint64]uint8, 0)
+	resp.InodeRes = make(map[uint64]uint8)
 	span := getSpan(ctx)
 	for _, ino := range req.Inodes {
 		var err error

@@ -87,9 +87,8 @@ type Super struct {
 	ebsc         *blobstore.BlobStoreClient
 	sc           *SummaryCache
 
-	taskPool      []common.TaskPool
-	closeC        chan struct{}
-	enableVerRead bool
+	taskPool []common.TaskPool
+	closeC   chan struct{}
 }
 
 // Functions that Super needs to implement
@@ -397,10 +396,6 @@ func (s *Super) SetRate(w http.ResponseWriter, r *http.Request) {
 			w.Write([]byte(fmt.Sprintf("Set write rate to %v successfully\n", msg)))
 		}
 	}
-}
-
-func (s *Super) exporterKey(act string) string {
-	return fmt.Sprintf("%v_fuseclient_%v", s.cluster, act)
 }
 
 func (s *Super) umpKey(act string) string {

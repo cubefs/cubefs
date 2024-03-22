@@ -23,11 +23,6 @@ import (
 	"github.com/cubefs/cubefs/util/btree"
 )
 
-type ExtentVal struct {
-	dataMap map[string][]byte
-	verSeq  uint64
-}
-
 type Extend struct {
 	inode     uint64
 	dataMap   map[string][]byte

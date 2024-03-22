@@ -734,12 +734,6 @@ func (dp *DataPartition) getLeaderMaxExtentIDAndPartitionSize(ctx context.Contex
 	return dp.getMaxExtentIDAndPartitionSize(ctx, target)
 }
 
-// Get the MaxExtentID partition  from the leader.
-func (dp *DataPartition) getMemberExtentIDAndPartitionSize(ctx context.Context) (maxExtentID, PartitionSize uint64, err error) {
-	target := dp.getReplicaAddr(1)
-	return dp.getMaxExtentIDAndPartitionSize(ctx, target)
-}
-
 func (dp *DataPartition) broadcastMinAppliedID(ctx context.Context, minAppliedID uint64) (err error) {
 	for i := 0; i < dp.getReplicaLen(); i++ {
 		p := NewPacketToBroadcastMinAppliedID(ctx, dp.partitionID, minAppliedID)

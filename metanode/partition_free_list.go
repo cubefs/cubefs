@@ -17,7 +17,6 @@ package metanode
 import (
 	"context"
 	"fmt"
-	"net"
 	"os"
 	"path"
 	"runtime/debug"
@@ -362,40 +361,10 @@ func (mp *metaPartition) syncToRaftFollowersFreeInode(ctx context.Context, hasDe
 	return
 }
 
-func (mp *metaPartition) notifyRaftFollowerToFreeInodes(ctx context.Context, wg *sync.WaitGroup, target string, hasDeleteInodes []byte) (err error) {
-	var conn *net.TCPConn
-	conn, err = mp.config.ConnPool.GetConnect(target)
-	defer func() {
-		wg.Done()
-		if err != nil {
-			log.Warn(err.Error())
-			mp.config.ConnPool.PutConnect(conn, ForceClosedConnect)
-		} else {
-			mp.config.ConnPool.PutConnect(conn, NoClosedConnect)
-		}
-	}()
-	if err != nil {
-		return
-	}
-	request := NewPacketToFreeInodeOnRaftFollower(ctx, mp.config.PartitionId, hasDeleteInodes)
-	if err = request.WriteToConn(conn); err != nil {
-		return
-	}
-
-	if err = request.ReadFromConnWithVer(conn, proto.NoReadDeadlineTime); err != nil {
-		return
-	}
-	if request.ResultCode != proto.OpOk {
-		err = fmt.Errorf("request(%v) error(%v)", request.GetUniqueLogId(), string(request.Data[:request.Size]))
-	}
-	return
-}
-
 func (mp *metaPartition) doDeleteMarkedInodes(ctx context.Context, ext *proto.ExtentKey) (err error) {
 	span := getSpan(ctx).WithOperation("doDeleteMarkedInodes")
 	// get the data node view
 	dp := mp.vol.GetPartition(ext.PartitionId)
-	span.Debugf("dp(%v) status (%v)", dp.PartitionID, dp.Status)
 	if dp == nil {
 		if proto.IsCold(mp.volType) {
 			span.Infof("ext(%s) is already been deleted, not delete any more", ext.String())
@@ -404,6 +373,7 @@ func (mp *metaPartition) doDeleteMarkedInodes(ctx context.Context, ext *proto.Ex
 		err = errors.NewErrorf("unknown dataPartitionID=%d in vol", ext.PartitionId)
 		return
 	}
+	span.Debugf("dp(%v) status (%v)", dp.PartitionID, dp.Status)
 
 	// delete the data node
 	if len(dp.Hosts) < 1 {
@@ -488,7 +458,6 @@ func (mp *metaPartition) doBatchDeleteExtentsByPartition(ctx context.Context, pa
 	conn, err := smuxPool.GetConnect(addr)
 	span.Infof("mp(%v) GetConnect (%v)", mp.config.PartitionId, addr)
 
-	ResultCode := proto.OpOk
 	defer func() {
 		smuxPool.PutConnect(conn, ForceClosedConnect)
 		span.Infof("mp(%v) PutConnect (%v)", mp.config.PartitionId, addr)
@@ -508,7 +477,7 @@ func (mp *metaPartition) doBatchDeleteExtentsByPartition(ctx context.Context, pa
 		return
 	}
 
-	ResultCode = p.ResultCode
+	ResultCode := p.ResultCode
 	if ResultCode == proto.OpTryOtherAddr && proto.IsCold(mp.volType) {
 		span.Infof("deleteOp retrun tryOtherAddr code means dp is deleted for LF vol, dp(%d)", partitionID)
 		return

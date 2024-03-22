@@ -51,5 +51,5 @@ func (fileCachePool *FileCachePool) Put(data []byte) {
 	log.Infof("action[FileCachePool.put] %v", fileCachePool)
 	log.Infof("action[FileCachePool.put] pool %v", fileCachePool.pool)
 	atomic.AddInt64(&cacheCount, -1)
-	fileCachePool.pool.Put(data)
+	fileCachePool.pool.Put(data) // nolint: staticcheck
 }
