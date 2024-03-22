@@ -806,6 +806,10 @@ func formatMetaNodeDetail(mn *proto.MetaNodeInfo, rowTable bool) string {
 	sb.WriteString(fmt.Sprintf("  Report time         : %v\n", formatTimeToString(mn.ReportTime)))
 	sb.WriteString(fmt.Sprintf("  Partition count     : %v\n", mn.MetaPartitionCount))
 	sb.WriteString(fmt.Sprintf("  Persist partitions  : %v\n", mn.PersistenceMetaPartitions))
+	sb.WriteString("  Select count        :\n")
+	sb.WriteString(fmt.Sprintf("      Total           : %v\n", mn.SelectCount))
+	sb.WriteString(fmt.Sprintf("      Memory          : %v\n", mn.MemorySelectCount))
+	sb.WriteString(fmt.Sprintf("      Rocksdb         : %v\n", mn.RocksdbSelectCount))
 	sb.WriteString(fmt.Sprintf("  CpuUtil             : %.1f%%\n", mn.CpuUtil))
 	return sb.String()
 }

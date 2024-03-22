@@ -138,12 +138,19 @@ func (m *MetaNode) getRocksDBDiskStat() []*proto.MetaNodeRocksdbInfo {
 		} else if d.Used > d.Total {
 			ratio = 1
 		}
+		count, err := m.rocksdbManager.GetPartitionCount(d.Path)
+		if err != nil {
+			log.LogErrorf("[getRocksDBDiskStat] failed to get partition count on disk(%v), err(%v)", d.Path, err)
+			err = nil
+			count = 0
+		}
 		disks = append(disks, &proto.MetaNodeRocksdbInfo{
-			Path:       d.Path,
-			Total:      total,
-			Used:       uint64(d.Used),
-			UsageRatio: ratio,
-			Status:     d.Status,
+			Path:           d.Path,
+			Total:          total,
+			Used:           uint64(d.Used),
+			UsageRatio:     ratio,
+			Status:         d.Status,
+			PartitionCount: count,
 		})
 	}
 	return disks

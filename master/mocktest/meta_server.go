@@ -269,11 +269,12 @@ func (mms *MockMetaServer) handleHeartbeats(conn net.Conn, p *proto.Packet, admi
 	resp.MemUsed = 1 * util.GB
 	resp.RocksDBDiskInfo = []*proto.MetaNodeRocksdbInfo{
 		{
-			Path:       "",
-			Total:      10 * util.GB,
-			Used:       1 * util.GB,
-			UsageRatio: 0.1,
-			Status:     proto.ReadWrite,
+			Path:           "",
+			Total:          10 * util.GB,
+			Used:           1 * util.GB,
+			UsageRatio:     0.1,
+			Status:         proto.ReadWrite,
+			PartitionCount: 0,
 		},
 	}
 	// every partition used

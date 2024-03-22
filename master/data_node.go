@@ -244,7 +244,7 @@ func (dataNode *DataNode) GetAddr() string {
 }
 
 // SelectNodeForWrite implements "SelectNodeForWrite" in the Node interface
-func (dataNode *DataNode) SelectNodeForWrite() {
+func (dataNode *DataNode) SelectNodeForWrite(resource NodeResourceType) {
 	dataNode.Lock()
 	defer dataNode.Unlock()
 	dataNode.UsageRatio = float64(dataNode.Used) / float64(dataNode.Total)

@@ -42,6 +42,8 @@ type MetaNodeInfo struct {
 	RocksdbUsed               uint64
 	Ratio                     float64
 	SelectCount               uint64
+	MemorySelectCount         uint64
+	RocksdbSelectCount        uint64
 	Threshold                 float32
 	ReportTime                time.Time
 	MetaPartitionCount        int

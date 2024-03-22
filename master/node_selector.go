@@ -67,7 +67,7 @@ type weightedNode struct {
 
 // Node defines an interface that needs to be implemented by weightedNode
 type Node interface {
-	SelectNodeForWrite()
+	SelectNodeForWrite(resource NodeResourceType)
 	GetID() uint64
 	GetAddr() string
 }
@@ -324,7 +324,7 @@ func (s *CarryWeightNodeSelector) setNodeCarry(nodes SortedWeightedNodes, availC
 }
 
 func (s *CarryWeightNodeSelector) selectNodeForWrite(node Node) {
-	node.SelectNodeForWrite()
+	node.SelectNodeForWrite(s.nodeType)
 	// decrease node weight
 	s.carry[node.GetID()] -= 1.0
 }
@@ -443,7 +443,7 @@ func (s *AvailableSpaceFirstNodeSelector) Select(ns *nodeSet, excludeHosts []str
 		// if we get a writable node, append it to host list
 		if selectedIndex != len(sortedNodes) {
 			node := sortedNodes[selectedIndex]
-			node.SelectNodeForWrite()
+			node.SelectNodeForWrite(s.nodeType)
 			orderHosts = append(orderHosts, node.GetAddr())
 			peer := proto.Peer{ID: node.GetID(), Addr: node.GetAddr()}
 			peers = append(peers, peer)
@@ -523,7 +523,7 @@ func (s *RoundRobinNodeSelector) Select(ns *nodeSet, excludeHosts []string, repl
 		if selectedIndex != len(sortedNodes) {
 			node := sortedNodes[(selectedIndex+s.index)%len(sortedNodes)]
 			orderHosts = append(orderHosts, node.GetAddr())
-			node.SelectNodeForWrite()
+			node.SelectNodeForWrite(s.nodeType)
 			peer := proto.Peer{ID: node.GetID(), Addr: node.GetAddr()}
 			peers = append(peers, peer)
 		}
@@ -619,7 +619,7 @@ func (s *StrawNodeSelector) Select(ns *nodeSet, excludeHosts []string, replicaNu
 			continue
 		}
 		orderHosts = append(orderHosts, node.GetAddr())
-		node.SelectNodeForWrite()
+		node.SelectNodeForWrite(s.nodeType)
 		peer := proto.Peer{ID: node.GetID(), Addr: node.GetAddr()}
 		peers = append(peers, peer)
 	}

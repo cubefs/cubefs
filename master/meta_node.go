@@ -37,6 +37,8 @@ type MetaNode struct {
 	Used                      uint64            `json:"UsedWeight"`
 	Ratio                     float64
 	SelectCount               uint64
+	MemorySelectCount         uint64
+	RocksdbHostSelectCount    uint64
 	Threshold                 float32
 	ReportTime                time.Time
 	metaPartitionInfos        []*proto.MetaPartitionReport
@@ -49,9 +51,8 @@ type MetaNode struct {
 	MigrateLock               sync.RWMutex
 	CpuUtil                   atomicutil.Float64 `json:"-"`
 
-	RocksdbDisks           []*proto.MetaNodeRocksdbInfo
-	RocksdbHostSelectCount uint64
-	RocksdbDiskThreshold   float32
+	RocksdbDisks         []*proto.MetaNodeRocksdbInfo
+	RocksdbDiskThreshold float32
 }
 
 func newMetaNode(addr, zoneName, clusterID string) (node *MetaNode) {
@@ -81,9 +82,15 @@ func (metaNode *MetaNode) GetAddr() string {
 }
 
 // SelectNodeForWrite implements the Node interface
-func (metaNode *MetaNode) SelectNodeForWrite() {
+func (metaNode *MetaNode) SelectNodeForWrite(resource NodeResourceType) {
 	metaNode.Lock()
 	defer metaNode.Unlock()
+	switch resource {
+	case MetaNodeRocksdb:
+		metaNode.RocksdbHostSelectCount++
+	case MetaNodeMemory:
+		metaNode.MemorySelectCount++
+	}
 	metaNode.SelectCount++
 }
 

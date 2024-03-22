@@ -715,11 +715,12 @@ type BadDiskStat struct {
 }
 
 type MetaNodeRocksdbInfo struct {
-	Path       string
-	Total      uint64
-	Used       uint64
-	UsageRatio float64
-	Status     int8
+	Path           string
+	Total          uint64
+	Used           uint64
+	UsageRatio     float64
+	Status         int8
+	PartitionCount int
 }
 
 // DataNodeHeartbeatResponse defines the response to the data node heartbeat.
