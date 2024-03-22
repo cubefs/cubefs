@@ -4147,6 +4147,51 @@ func (m *Server) updateMetaNode(w http.ResponseWriter, r *http.Request) {
 	sendOkReply(w, r, newSuccessHTTPReply(id))
 }
 
+func (m *Server) changeDataNodeAddr(w http.ResponseWriter, r *http.Request) {
+	var (
+		id         uint64
+		srcAddr    string
+		targetAddr string
+		err        error
+	)
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminChangeDataNodeAddr))
+	defer func() {
+		doStatAndMetric(proto.AdminChangeDataNodeAddr, metric, err, nil)
+	}()
+
+	if id, srcAddr, targetAddr, err = parseChangeNodeAddrParam(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	if err = m.cluster.changeDataNodeAddr(id, srcAddr, targetAddr); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+	sendOkReply(w, r, newSuccessHTTPReply(id))
+}
+
+func (m *Server) changeMetaNodeAddr(w http.ResponseWriter, r *http.Request) {
+	var (
+		id         uint64
+		srcAddr    string
+		targetAddr string
+		err        error
+	)
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminChangeMetaNodeAddr))
+	defer func() {
+		doStatAndMetric(proto.AdminChangeMetaNodeAddr, metric, err, nil)
+	}()
+	if id, srcAddr, targetAddr, err = parseChangeNodeAddrParam(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	if err = m.cluster.changeMetaNodeAddr(id, srcAddr, targetAddr); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+	sendOkReply(w, r, newSuccessHTTPReply(id))
+}
+
 func (m *Server) getMetaNode(w http.ResponseWriter, r *http.Request) {
 	var (
 		nodeAddr     string
@@ -4249,6 +4294,43 @@ func parseMigrateNodeParam(r *http.Request) (srcAddr, targetAddr string, limit i
 	}
 
 	limit, err = parseUintParam(r, countKey)
+	if err != nil {
+		return
+	}
+
+	return
+}
+
+func parseChangeNodeAddrParam(r *http.Request) (id uint64, srcAddr, targetAddr string, err error) {
+	if err = r.ParseForm(); err != nil {
+		return
+	}
+
+	srcAddr = r.FormValue(srcAddrKey)
+	if srcAddr == "" {
+		err = fmt.Errorf("parseChangeNodeAddrParam %s can't be empty", srcAddrKey)
+		return
+	}
+
+	if ipAddr, ok := util.ParseAddrToIpAddr(srcAddr); ok {
+		srcAddr = ipAddr
+	}
+
+	targetAddr = r.FormValue(targetAddrKey)
+	if targetAddr == "" {
+		err = fmt.Errorf("parseChangeNodeAddrParam %s can't be empty when change ip", targetAddrKey)
+		return
+	}
+	if ipAddr, ok := util.ParseAddrToIpAddr(targetAddr); ok {
+		targetAddr = ipAddr
+	}
+
+	if srcAddr == targetAddr {
+		err = fmt.Errorf("parseChangeNodeAddrParam srcAddr %s can't be equal to targetAddr %s", srcAddr, targetAddr)
+		return
+	}
+
+	id, err = extractNodeID(r)
 	if err != nil {
 		return
 	}

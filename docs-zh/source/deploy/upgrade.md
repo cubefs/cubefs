@@ -105,3 +105,40 @@ umount: /xxx/mnt: target is busy.
 ```
 3. 查看client进程若存在，则停止
 4. 启动新的客户端进程即可，`df -h` 查看是否执行成功
+
+
+## 修改ip地址包括 masternode, metanode and datanode
+正在运行的集群有时需要修改其服务器节点网卡的ip地址。
+
+- 修改metanode地址
+  
+  运行 `cfs-cli metanode list` 获取和验证节点ip地址信息。
+
+
+参数列表
+
+| 参数       | 类型   | 描述                    |
+| ---------- | ------ | ----------------------- |
+| srcAddr    | string | 原始地址，格式为ip:port |
+| targetAddr | string | 目的地址，格式为ip:port |
+| id         | int    | 元数据节点id            |
+
+```bash
+curl -v 'http://127.0.0.1:17010/metaNode/changeAddr?id=[id]&srcAddr=[ip:port]&targetAddr=[ip:port]' | jq .
+```
+-  修改datanode地址
+运行 `cfs-cli datanode list` 获取和验证节点ip地址信息。
+
+参数列表
+
+| 参数       | 类型   | 描述                    |
+| ---------- | ------ | ----------------------- |
+| srcAddr    | string | 原始地址，格式为ip:port |
+| targetAddr | string | 目的地址，格式为ip:port |
+| id         | int    | 数据节点id              |
+```bash
+curl -v 'http://127.0.0.1:17010/dataNode/changeAddr?id=[id]&srcAddr=[ip:port]&targetAddr=[ip:port]' | jq .
+```
+- 如果修改了master节点ip，需要修改所有节点所有服务的json配置文件，然后重启所有服务
+
+

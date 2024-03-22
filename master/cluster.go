@@ -956,6 +956,72 @@ func (c *Cluster) updateMetaNodeBaseInfo(nodeAddr string, id uint64) (err error)
 	return
 }
 
+func (c *Cluster) changeDataNodeAddr(id uint64, srcAddr string, targetAddr string) (err error) {
+	c.dnMutex.Lock()
+	defer c.dnMutex.Unlock()
+	value, ok := c.dataNodes.Load(srcAddr)
+	if !ok {
+		err = fmt.Errorf("node %v is not exist", srcAddr)
+		return
+	}
+	dataNode := value.(*DataNode)
+	if dataNode.ID != id {
+		err = fmt.Errorf("The id of datanode  %s is not %d", srcAddr, id)
+		return
+	}
+	cmds := make(map[string]*RaftCmd)
+	metadata, err := c.buildDeleteDataNodeCmd(dataNode)
+	if err != nil {
+		return
+	}
+	cmds[metadata.K] = metadata
+	dataNode.ID = id
+	dataNode.Addr = targetAddr
+	metadata, err = c.buildUpdateDataNodeCmd(dataNode)
+	if err != nil {
+		return
+	}
+	cmds[metadata.K] = metadata
+	if err = c.syncBatchCommitCmd(cmds); err != nil {
+		return
+	}
+	// partitions := c.getAllMetaPartitionsByMetaNode(nodeAddr)
+	return
+}
+
+func (c *Cluster) changeMetaNodeAddr(id uint64, srcAddr string, targetAddr string) (err error) {
+	c.mnMutex.Lock()
+	defer c.mnMutex.Unlock()
+	value, ok := c.metaNodes.Load(srcAddr)
+	if !ok {
+		err = fmt.Errorf("node %v is not exist", srcAddr)
+		return
+	}
+	metaNode := value.(*MetaNode)
+	if metaNode.ID != id {
+		err = fmt.Errorf("The id of metanode  %s is not %d", srcAddr, id)
+		return
+	}
+	cmds := make(map[string]*RaftCmd)
+	metadata, err := c.buildDeleteMetaNodeCmd(metaNode)
+	if err != nil {
+		return
+	}
+	cmds[metadata.K] = metadata
+	metaNode.ID = id
+	metaNode.Addr = targetAddr
+	metadata, err = c.buildUpdateMetaNodeCmd(metaNode)
+	if err != nil {
+		return
+	}
+	cmds[metadata.K] = metadata
+	if err = c.syncBatchCommitCmd(cmds); err != nil {
+		return
+	}
+	// partitions := c.getAllMetaPartitionsByMetaNode(nodeAddr)
+	return
+}
+
 func (c *Cluster) addMetaNode(nodeAddr, zoneName string, nodesetId uint64) (id uint64, err error) {
 	c.mnMutex.Lock()
 	defer c.mnMutex.Unlock()
@@ -1132,7 +1198,8 @@ func (c *Cluster) checkLackReplicaDataPartitions() (lackReplicaDataPartitions []
 
 func (c *Cluster) checkReplicaOfDataPartitions(ignoreDiscardDp bool) (
 	lackReplicaDPs []*DataPartition, unavailableReplicaDPs []*DataPartition, repFileCountDifferDps []*DataPartition,
-	repUsedSizeDifferDps []*DataPartition, excessReplicaDPs []*DataPartition, noLeaderDPs []*DataPartition, err error) {
+	repUsedSizeDifferDps []*DataPartition, excessReplicaDPs []*DataPartition, noLeaderDPs []*DataPartition, err error,
+) {
 	noLeaderDPs = make([]*DataPartition, 0)
 	lackReplicaDPs = make([]*DataPartition, 0)
 	unavailableReplicaDPs = make([]*DataPartition, 0)
@@ -1576,7 +1643,8 @@ errHandler:
 }
 
 func (c *Cluster) syncCreateDataPartitionToDataNode(host string, size uint64, dp *DataPartition,
-	peers []proto.Peer, hosts []string, createType int, partitionType int, needRollBack bool) (diskPath string, err error) {
+	peers []proto.Peer, hosts []string, createType int, partitionType int, needRollBack bool,
+) (diskPath string, err error) {
 	log.LogInfof("action[syncCreateDataPartitionToDataNode] dp [%v] createtype[%v], partitionType[%v]", dp.PartitionID, createType, partitionType)
 	dataNode, err := c.dataNode(host)
 	if err != nil {
@@ -1684,7 +1752,8 @@ func (c *Cluster) chooseZone2Plus1(zones []*Zone, excludeNodeSets []uint64, excl
 }
 
 func (c *Cluster) chooseZoneNormal(zones []*Zone, excludeNodeSets []uint64, excludeHosts []string,
-	nodeType uint32, replicaNum int) (hosts []string, peers []proto.Peer, err error) {
+	nodeType uint32, replicaNum int,
+) (hosts []string, peers []proto.Peer, err error) {
 	log.LogInfof("action[chooseZoneNormal] zones[%s] nodeType[%d] replicaNum[%d]", printZonesName(zones), nodeType, replicaNum)
 
 	c.zoneIdxMux.Lock()
