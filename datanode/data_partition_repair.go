@@ -666,6 +666,7 @@ func (dp *DataPartition) applyRepairKey(extentID int) (m string) {
 }
 
 // The actual repair of an extent happens here.
+// The actual repair of an extent happens here.
 func (dp *DataPartition) streamRepairExtent(remoteExtentInfo *storage.ExtentInfo,
 	tinyPackFunc, normalPackFunc, normalWithHoleFunc repl.MakeExtentRepairReadPacket,
 	newPack repl.NewPacketFunc) (err error,
@@ -725,6 +726,8 @@ func (dp *DataPartition) streamRepairExtent(remoteExtentInfo *storage.ExtentInfo
 			log.LogWarnf("action[streamRepairExtent] dp %v err(%v).", dp.partitionID, err)
 			return
 		}
+		starFixOffset := currFixOffset
+		begin := time.Now()
 		log.LogDebugf("streamRepairExtent dp %v extent %v currFixOffset %v dstOffset %v, request %v", dp.partitionID,
 			remoteExtentInfo.FileID, currFixOffset, dstOffset, request)
 		var hasRecoverySize uint64
@@ -833,8 +836,8 @@ func (dp *DataPartition) streamRepairExtent(remoteExtentInfo *storage.ExtentInfo
 			currFixOffset += uint64(reply.GetSize())
 			if currFixOffset >= dstOffset {
 				log.LogWarnf(fmt.Sprintf("action[streamRepairExtent] dp %v extent(%v) start fix from (%v)"+
-					" remoteSize(%v)localSize(%v) reply(%v).", dp.partitionID, localExtentInfo.FileID, remoteExtentInfo.String(),
-					dstOffset, currFixOffset, reply.GetUniqueLogId()))
+					" remoteSize(%v)localSize(%v) reply(%v) size(%v) cost(%v)millseconds.", dp.partitionID, localExtentInfo.FileID, remoteExtentInfo.String(),
+					remoteExtentInfo.Size, currFixOffset, reply.GetUniqueLogId(), currFixOffset-starFixOffset, time.Now().Sub(begin).Milliseconds()))
 				break
 			}
 		}
