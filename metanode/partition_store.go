@@ -54,7 +54,6 @@ const (
 	verdataFile             = "multiVer"
 	StaleMetadataSuffix     = ".old"
 	StaleMetadataTimeFormat = "20060102150405.000000000"
-	verdataInitFile         = "multiVerInitFile"
 )
 
 func (mp *metaPartition) loadMetadata(ctx context.Context) (err error) {
@@ -341,7 +340,7 @@ func (mp *metaPartition) loadMultipart(ctx context.Context, rootDir string, crc 
 	var offset, n int
 	// read number of multipart
 	var numMultiparts uint64
-	numMultiparts, n = binary.Uvarint(mem)
+	numMultiparts, _ = binary.Uvarint(mem)
 	varintTmp := make([]byte, binary.MaxVarintLen64)
 	// write number of multipart
 	n = binary.PutUvarint(varintTmp, numMultiparts)

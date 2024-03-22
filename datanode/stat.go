@@ -22,11 +22,6 @@ import (
 
 // Stats defines various metrics that will be collected during the execution.
 type Stats struct {
-	inDataSize  uint64
-	outDataSize uint64
-	inFlow      uint64
-	outFlow     uint64
-
 	Zone                               string
 	ConnectionCnt                      int64
 	ClusterID                          string
@@ -71,7 +66,8 @@ func (s *Stats) GetConnectionCount() int64 {
 
 func (s *Stats) updateMetrics(
 	total, used, available, createdPartitionWeights, remainWeightsForCreatePartition,
-	maxWeightsForCreatePartition, dataPartitionCnt uint64) {
+	maxWeightsForCreatePartition, dataPartitionCnt uint64,
+) {
 	s.Lock()
 	defer s.Unlock()
 

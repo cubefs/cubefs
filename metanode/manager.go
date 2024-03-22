@@ -83,7 +83,6 @@ type metadataManager struct {
 	mu                   sync.RWMutex
 	partitions           map[uint64]MetaPartition // Key: metaRangeId, Val: metaPartition
 	metaNode             *MetaNode
-	flDeleteBatchCount   atomic.Value
 	fileStatsEnable      bool
 	curQuotaGoroutineNum int32
 	maxQuotaGoroutineNum int32
@@ -510,7 +509,7 @@ func (m *metadataManager) loadPartitions() (err error) {
 
 func (m *metadataManager) attachPartition(ctx context.Context, id uint64, partition MetaPartition) (err error) {
 	span := getSpan(ctx)
-	syslog.Println(fmt.Sprintf("start load metaPartition %v", id))
+	syslog.Printf("start load metaPartition %v", id)
 	partition.ForceSetMetaPartitionToLoadding()
 	if err = partition.Start(ctx, false); err != nil {
 		msg := fmt.Sprintf("load meta partition %v fail: %v", id, err)

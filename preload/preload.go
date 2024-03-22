@@ -81,7 +81,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	if cli.CheckColdVolume(ctx) == false {
+	if !cli.CheckColdVolume(ctx) {
 		fmt.Println("Preload only work in cold volume")
 		os.Exit(1)
 	}

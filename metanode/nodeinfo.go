@@ -40,10 +40,6 @@ func updateDeleteWorkerSleepMs(val uint64) {
 	atomic.StoreUint64(&deleteWorkerSleepMs, val)
 }
 
-func updateDirChildrenNumLimit(val uint32) {
-	atomic.StoreUint32(&dirChildrenNumLimit, val)
-}
-
 func DeleteWorkerSleepMs() {
 	val := atomic.LoadUint64(&deleteWorkerSleepMs)
 	if val > 0 {

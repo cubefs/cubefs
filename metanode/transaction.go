@@ -710,7 +710,6 @@ func buildTxPacket(ctx context.Context, data interface{}, mp uint64, op uint8) (
 func (tm *TransactionManager) setTransactionState(ctx context.Context, txId string, state int32) (status uint8, err error) {
 	var val []byte
 	var resp interface{}
-	status = proto.OpOk
 
 	stateReq := &proto.TxSetStateRequest{
 		TxID:  txId,
@@ -1183,18 +1182,6 @@ func (tr *TransactionResource) getTxRbInode(ino uint64) (rbInode *TxRollbackInod
 		inode: NewInode(ino, 0),
 	}
 	item := tr.txRbInodeTree.Get(keyNode)
-	if item == nil {
-		return nil
-	}
-	rbInode = item.(*TxRollbackInode)
-	return
-}
-
-func (tr *TransactionResource) copyGetTxRbInode(ino uint64) (rbInode *TxRollbackInode) {
-	keyNode := &TxRollbackInode{
-		inode: NewInode(ino, 0),
-	}
-	item := tr.txRbInodeTree.CopyGet(keyNode)
 	if item == nil {
 		return nil
 	}

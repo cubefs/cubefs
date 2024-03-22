@@ -241,36 +241,6 @@ func doEvictInode(ctx context.Context, inode *Inode) error {
 	return nil
 }
 
-func doUnlinkInode(ctx context.Context, inode *Inode) error {
-	/*
-	 * Do clean inode with the following exceptions:
-	 * 1. nlink == 0, might be a temorary inode
-	 * 2. size == 0 && ctime is close to current time, might be in the process of file creation
-	 */
-	//	if inode.NLink == 0 ||
-	//		(inode.Size == 0 &&
-	//			time.Unix(inode.CreateTime, 0).Add(24*time.Hour).After(time.Now())) {
-	//		return nil
-	//	}
-	//
-	//	err := gMetaWrapper.Unlink_ll(inode.Inode)
-	//	if err != nil {
-	//		if err != syscall.ENOENT {
-	//			return err
-	//		}
-	//		err = nil
-	//	}
-	//
-	//	err = gMetaWrapper.Evict(inode.Inode)
-	//	if err != nil {
-	//		if err != syscall.ENOENT {
-	//			return err
-	//		}
-	//	}
-
-	return nil
-}
-
 func cleanDentries(ctx context.Context) error {
 	// filePath := fmt.Sprintf("_export_%s/%s", VolName, obsoleteDentryDumpFileName)
 	// TODO: send request to meta node directly with pino, name and ino.

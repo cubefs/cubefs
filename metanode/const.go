@@ -192,22 +192,27 @@ const (
 var (
 	ErrNoLeader   = errors.New("no leader")
 	ErrNotALeader = errors.New("not a leader")
+
+	// TODO: unused
+	_ = opFSMDelVer
+	_ = opFSMDeletePartition
+	_ = opFSMSentToChanV1
+	_ = opFSMStoreTickV1
+	_ = opFSMUpdateSummaryInfo
+	_ = (*metaPartition)(nil).doDeleteMarkedInodes
 )
 
 // Default configuration
 const (
 	defaultMetadataDir = "metadataDir"
 	defaultRaftDir     = "raftDir"
-	defaultAuthTimeout = 5 // seconds
 )
 
 // Configuration keys
 const (
 	cfgLocalIP                   = "localIP"
-	cfgListen                    = "listen"
 	cfgMetadataDir               = "metadataDir"
 	cfgRaftDir                   = "raftDir"
-	cfgMasterAddrs               = "masterAddrs" // will be deprecated
 	cfgRaftHeartbeatPort         = "raftHeartbeatPort"
 	cfgRaftReplicaPort           = "raftReplicaPort"
 	cfgDeleteBatchCount          = "deleteBatchCount"

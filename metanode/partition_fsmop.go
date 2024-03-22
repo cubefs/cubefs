@@ -68,11 +68,6 @@ func (mp *metaPartition) initInode(ctx context.Context, ino *Inode) {
 	}
 }
 
-// Not implemented.
-func (mp *metaPartition) decommissionPartition() (err error) {
-	return
-}
-
 func (mp *metaPartition) fsmUpdatePartition(ctx context.Context, end uint64) (status uint8, err error) {
 	status = proto.OpOk
 	oldEnd := mp.config.End

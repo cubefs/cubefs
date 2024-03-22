@@ -131,8 +131,6 @@ type DataPartition struct {
 
 	// snapshot
 	verSeq                     uint64
-	verSeqPrepare              uint64
-	verSeqCommitStatus         int8
 	volVersionInfoList         *proto.VolVersionInfoList
 	decommissionRepairProgress float64 // record repair progress for decommission datapartition
 	stopRecover                bool
@@ -741,7 +739,6 @@ func (dp *DataPartition) checkIsDiskError(ctx context.Context, err error, rwFlag
 
 	// must after change disk.status
 	dp.statusUpdate(ctx)
-	return
 }
 
 func newRaftApplyError(err error) error {

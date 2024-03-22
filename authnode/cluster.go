@@ -66,10 +66,6 @@ func (c *Cluster) scheduleTask() {
 	c.scheduleToCheckHeartbeat()
 }
 
-func (c *Cluster) authAddr() (addr string) {
-	return c.leaderInfo.addr
-}
-
 func (c *Cluster) scheduleToCheckHeartbeat() {
 	go func() {
 		for {

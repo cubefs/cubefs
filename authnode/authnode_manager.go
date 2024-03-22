@@ -36,7 +36,7 @@ func (m *Server) handleLeaderChange(leader uint64) {
 	log.Warnf("action[handleLeaderChange] change leader to [%v] ", m.leaderInfo.addr)
 	m.authProxy = m.newAuthProxy() // TODO no lock?
 
-	if m.metaReady == false {
+	if !m.metaReady {
 		if err := m.cluster.loadKeystore(); err != nil {
 			panic(err)
 		}
@@ -73,5 +73,4 @@ func (m *Server) handlePeerChange(confChange *proto.ConfChange) (err error) {
 func (m *Server) handleApplySnapshot() {
 	log.Infof("clusterID[%v] peerID:%v action[handleApplySnapshot]", m.clusterName, m.id)
 	m.fsm.restore()
-	return
 }

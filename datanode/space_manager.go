@@ -31,21 +31,19 @@ import (
 
 // SpaceManager manages the disk space.
 type SpaceManager struct {
-	clusterID            string
-	disks                map[string]*Disk
-	partitions           map[uint64]*DataPartition
-	raftStore            raftstore.RaftStore
-	nodeID               uint64
-	diskMutex            sync.RWMutex
-	partitionMutex       sync.RWMutex
-	stats                *Stats
-	stopC                chan bool
-	selectedIndex        int // TODO what is selected index
-	diskList             []string
-	dataNode             *DataNode
-	createPartitionMutex sync.RWMutex
-	diskUtils            map[string]*atomicutil.Float64
-	samplerDone          chan struct{}
+	clusterID      string
+	disks          map[string]*Disk
+	partitions     map[uint64]*DataPartition
+	raftStore      raftstore.RaftStore
+	nodeID         uint64
+	diskMutex      sync.RWMutex
+	partitionMutex sync.RWMutex
+	stats          *Stats
+	stopC          chan bool
+	diskList       []string
+	dataNode       *DataNode
+	diskUtils      map[string]*atomicutil.Float64
+	samplerDone    chan struct{}
 }
 
 const diskSampleDuration = 1 * time.Second
@@ -496,12 +494,4 @@ func (s *DataNode) buildHeartBeatResponse(ctx context.Context, response *proto.D
 			response.BadDiskStats = append(response.BadDiskStats, bds)
 		}
 	}
-}
-
-func (manager *SpaceManager) getPartitionIds() []uint64 {
-	res := make([]uint64, 0)
-	for id := range manager.partitions {
-		res = append(res, id)
-	}
-	return res
 }
