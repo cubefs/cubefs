@@ -31,7 +31,7 @@ import (
 )
 
 var (
-	GRequestID = int64(1)
+	GRequestID = time.Now().Unix()<<32 + 1
 	Buffers    *buf.BufferPool
 )
 
