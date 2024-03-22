@@ -104,6 +104,27 @@ func (mw *MetaWrapper) LookupPath(subdir string) (uint64, error) {
 	return ino, nil
 }
 
+// Looks up absolute path and returns the ino
+func (mw *MetaWrapper) LookupPathBySubDir(rootIno uint64, subdir string) (uint64, error) {
+	ino := rootIno
+	if subdir == "" || subdir == "/" {
+		return ino, nil
+	}
+
+	dirs := strings.Split(subdir, "/")
+	for _, dir := range dirs {
+		if dir == "/" || dir == "" {
+			continue
+		}
+		child, _, err := mw.Lookup_ll(ino, dir)
+		if err != nil {
+			return 0, err
+		}
+		ino = child
+	}
+	return ino, nil
+}
+
 func (mw *MetaWrapper) Statfs() (total, used, inodeCount uint64) {
 	total = atomic.LoadUint64(&mw.totalSize)
 	used = atomic.LoadUint64(&mw.usedSize)

@@ -12,7 +12,7 @@
 // implied. See the License for the specific language governing
 // permissions and limitations under the License.
 
-package fs
+package cache
 
 import (
 	"sync"
@@ -21,16 +21,18 @@ import (
 
 // DentryCache defines the dentry cache.
 type DentryCache struct {
-	sync.Mutex
-	cache      map[string]uint64
-	expiration time.Time
+	sync.RWMutex
+	cache               map[string]uint64
+	expiration          time.Time
+	dentryValidDuration time.Duration
 }
 
 // NewDentryCache returns a new dentry cache.
-func NewDentryCache() *DentryCache {
+func NewDentryCache(dentryValidDuration time.Duration) *DentryCache {
 	return &DentryCache{
-		cache:      make(map[string]uint64),
-		expiration: time.Now().Add(DentryValidDuration),
+		cache:               make(map[string]uint64),
+		expiration:          time.Now().Add(dentryValidDuration),
+		dentryValidDuration: dentryValidDuration,
 	}
 }
 
@@ -42,7 +44,7 @@ func (dc *DentryCache) Put(name string, ino uint64) {
 	dc.Lock()
 	defer dc.Unlock()
 	dc.cache[name] = ino
-	dc.expiration = time.Now().Add(DentryValidDuration)
+	dc.expiration = time.Now().Add(dc.dentryValidDuration)
 }
 
 // Get gets the item from the cache based on the given key.
@@ -51,13 +53,16 @@ func (dc *DentryCache) Get(name string) (uint64, bool) {
 		return 0, false
 	}
 
-	dc.Lock()
-	defer dc.Unlock()
+	dc.RLock()
 	if dc.expiration.Before(time.Now()) {
+		dc.RUnlock()
+		dc.Lock()
 		dc.cache = make(map[string]uint64)
+		dc.Unlock()
 		return 0, false
 	}
 	ino, ok := dc.cache[name]
+	dc.RUnlock()
 	return ino, ok
 }
 
@@ -69,4 +74,62 @@ func (dc *DentryCache) Delete(name string) {
 	dc.Lock()
 	defer dc.Unlock()
 	delete(dc.cache, name)
+}
+
+// Count gets the count of cache items.
+func (dc *DentryCache) Count() int {
+	if dc == nil {
+		return 0
+	}
+	dc.RLock()
+	defer dc.RUnlock()
+
+	return len(dc.cache)
+}
+
+func (dc *DentryCache) IsEmpty() bool {
+	if dc == nil {
+		return true
+	}
+	dc.RLock()
+	defer dc.RUnlock()
+
+	if len(dc.cache) == 0 {
+		return true
+	}
+	return false
+}
+
+func (dc *DentryCache) IsExpired() bool {
+	if dc == nil {
+		return false
+	}
+	dc.RLock()
+	defer dc.RUnlock()
+
+	if dc.expiration.Before(time.Now()) {
+		return true
+	}
+	return false
+}
+
+func (dc *DentryCache) Expiration() time.Time {
+	if dc == nil {
+		return time.Now()
+	}
+	dc.RLock()
+	defer dc.RUnlock()
+
+	return dc.expiration
+}
+
+func (dc *DentryCache) ResetExpiration(dentryValidDuration time.Duration) {
+	if dc == nil {
+		return
+	}
+	dc.Lock()
+	defer dc.Unlock()
+
+	dc.expiration = time.Now().Add(dentryValidDuration)
+	dc.dentryValidDuration = dentryValidDuration
 }

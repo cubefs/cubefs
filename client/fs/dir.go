@@ -29,6 +29,7 @@ import (
 	"github.com/cubefs/cubefs/depends/bazil.org/fuse"
 	"github.com/cubefs/cubefs/depends/bazil.org/fuse/fs"
 
+	"github.com/cubefs/cubefs/client/cache"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/sdk/meta"
 	"github.com/cubefs/cubefs/util/auditlog"
@@ -87,8 +88,8 @@ func (dctx *DirContexts) Remove(handle fuse.HandleID) {
 // Dir defines the structure of a directory
 type Dir struct {
 	super     *Super
-	info      *proto.InodeInfo
-	dcache    *DentryCache
+	info      proto.InodeInfo
+	dcache    *cache.DentryCache
 	dctx      *DirContexts
 	parentIno uint64
 	name      string
@@ -118,7 +119,7 @@ var (
 func NewDir(s *Super, i *proto.InodeInfo, pino uint64, dirName string) fs.Node {
 	return &Dir{
 		super:     s,
-		info:      i,
+		info:      *i,
 		parentIno: pino,
 		name:      dirName,
 		dctx:      NewDirContexts(),
@@ -331,6 +332,13 @@ func (d *Dir) Lookup(ctx context.Context, req *fuse.LookupRequest, resp *fuse.Lo
 		}
 	} else {
 		cino, ok := d.dcache.Get(req.Name)
+		if !ok && d.super.prefetchManager != nil {
+			dcache := d.super.prefetchManager.GetDentryCache(d.info.Inode)
+			if dcache != nil {
+				d.dcache = dcache
+				cino, ok = d.dcache.Get(req.Name)
+			}
+		}
 		if !ok {
 			cino, _, err = d.super.mw.Lookup_ll(d.info.Inode, req.Name)
 			if err != nil {
@@ -446,9 +454,9 @@ func (d *Dir) ReadDir(ctx context.Context, req *fuse.ReadRequest, resp *fuse.Rea
 	dirents := make([]fuse.Dirent, 0, len(children))
 
 	log.LogDebugf("Readdir ino(%v) path(%v) d.super.bcacheDir(%v)", d.info.Inode, d.getCwd(), d.super.bcacheDir)
-	var dcache *DentryCache
+	var dcache *cache.DentryCache
 	if !d.super.disableDcache {
-		dcache = NewDentryCache()
+		dcache = cache.NewDentryCache(DentryValidDuration)
 	}
 
 	var dcachev2 bool
@@ -526,9 +534,9 @@ func (d *Dir) ReadDirAll(ctx context.Context) ([]fuse.Dirent, error) {
 	dirents := make([]fuse.Dirent, 0, len(children))
 
 	log.LogDebugf("Readdir ino(%v) path(%v) d.super.bcacheDir(%v)", d.info.Inode, d.getCwd(), d.super.bcacheDir)
-	var dcache *DentryCache
+	var dcache *cache.DentryCache
 	if !d.super.disableDcache {
-		dcache = NewDentryCache()
+		dcache = cache.NewDentryCache(DentryValidDuration)
 	}
 
 	var dcachev2 bool
@@ -738,7 +746,7 @@ func (d *Dir) Link(ctx context.Context, req *fuse.LinkRequest, old fs.Node) (fs.
 	var oldInode *proto.InodeInfo
 	switch old := old.(type) {
 	case *File:
-		oldInode = old.info
+		oldInode = &old.info
 	default:
 		return nil, fuse.EPERM
 	}
@@ -952,14 +960,6 @@ func (d *Dir) getCwd() string {
 
 func (d *Dir) needDentrycache() bool {
 	return !DisableMetaCache && d.super.bcacheDir != "" && strings.HasPrefix(d.getCwd(), d.super.bcacheDir)
-}
-
-func dentryExpired(info *proto.DentryInfo) bool {
-	return time.Now().UnixNano() > info.Expiration()
-}
-
-func dentrySetExpiration(info *proto.DentryInfo, t time.Duration) {
-	info.SetExpiration(time.Now().Add(t).UnixNano())
 }
 
 func (d *Dir) canRenameByQuota(dstDir *Dir, srcName string) bool {

@@ -37,7 +37,7 @@ import (
 // File defines the structure of a file.
 type File struct {
 	super     *Super
-	info      *proto.InodeInfo
+	info      proto.InodeInfo
 	idle      int32
 	parentIno uint64
 	name      string
@@ -105,9 +105,9 @@ func NewFile(s *Super, i *proto.InodeInfo, flag uint32, pino uint64, filename st
 			// no thing
 		}
 		log.LogDebugf("Trace NewFile:fReader(%v) fWriter(%v) ", fReader, fWriter)
-		return &File{super: s, info: i, fWriter: fWriter, fReader: fReader, parentIno: pino, name: filename}
+		return &File{super: s, info: *i, fWriter: fWriter, fReader: fReader, parentIno: pino, name: filename}
 	}
-	return &File{super: s, info: i, parentIno: pino, name: filename}
+	return &File{super: s, info: *i, parentIno: pino, name: filename}
 }
 
 // get file parentPath
@@ -231,7 +231,9 @@ func (f *File) Open(ctx context.Context, req *fuse.OpenRequest, resp *fuse.OpenR
 	}
 	log.LogDebugf("TRACE open ino(%v) f.super.bcacheDir(%v) needBCache(%v)", ino, f.super.bcacheDir, needBCache)
 
-	f.super.ec.RefreshExtentsCache(ino)
+	if f.super.prefetchManager == nil {
+		f.super.ec.RefreshExtentsCache(ino)
+	}
 
 	if f.super.keepCache && resp != nil {
 		resp.Flags |= fuse.OpenKeepCache
@@ -289,7 +291,7 @@ func (f *File) Release(ctx context.Context, req *fuse.ReleaseRequest) (err error
 		stat.EndStat("Release", err, bgTime, 1)
 		log.LogInfof("action[Release] %v", f.fWriter)
 		f.fWriter.FreeCache()
-		if DisableMetaCache {
+		if DisableMetaCache || f.super.prefetchManager == nil {
 			f.super.ic.Delete(ino)
 		}
 	}()
@@ -330,11 +332,21 @@ func (f *File) Read(ctx context.Context, req *fuse.ReadRequest, resp *fuse.ReadR
 	defer func() {
 		metric.SetWithLabels(err, map[string]string{exporter.Vol: f.super.volname})
 	}()
+	f.super.prefetchManager.AddTotalReadCount()
+	if f.super.prefetchManager.ContainsAppPid(req.Pid) {
+		f.super.prefetchManager.AddAppReadCount()
+		metric := exporter.NewTPCnt("appread")
+		defer func() {
+			metric.SetWithLabels(err, map[string]string{exporter.Vol: f.super.volname})
+			log.LogWarnf("Read CFS from app: ino(%v) offset(%v) reqsize(%v) req(%v)", f.info.Inode, req.Offset, req.Size, req)
+		}()
+	}
+
 	var size int
 	if proto.IsHot(f.super.volType) {
-		size, err = f.super.ec.Read(f.info.Inode, resp.Data[fuse.OutHeaderSize:], int(req.Offset), req.Size)
+		size, err = f.super.ec.Read(f.info.Inode, resp.Data[fuse.OutHeaderSize:(fuse.OutHeaderSize+req.Size)], int(req.Offset), req.Size)
 	} else {
-		size, err = f.fReader.Read(ctx, resp.Data[fuse.OutHeaderSize:], int(req.Offset), req.Size)
+		size, err = f.fReader.Read(ctx, resp.Data[fuse.OutHeaderSize:(fuse.OutHeaderSize+req.Size)], int(req.Offset), req.Size)
 	}
 	if err != nil && err != io.EOF {
 		msg := fmt.Sprintf("Read: ino(%v) req(%v) err(%v) size(%v)", f.info.Inode, req, err, size)
@@ -353,9 +365,9 @@ func (f *File) Read(ctx context.Context, req *fuse.ReadRequest, resp *fuse.ReadR
 	}
 
 	if size > 0 {
-		resp.Data = resp.Data[:size+fuse.OutHeaderSize]
+		resp.ActualSize = uint64(size + fuse.OutHeaderSize)
 	} else if size <= 0 {
-		resp.Data = resp.Data[:fuse.OutHeaderSize]
+		resp.ActualSize = uint64(fuse.OutHeaderSize)
 		log.LogWarnf("Read: ino(%v) offset(%v) reqsize(%v) req(%v) size(%v)", f.info.Inode, req.Offset, req.Size, req, size)
 	}
 
@@ -533,7 +545,9 @@ func (f *File) Fsync(ctx context.Context, req *fuse.FsyncRequest) (err error) {
 	if proto.IsHot(f.super.volType) {
 		err = f.super.ec.Flush(f.info.Inode)
 	} else {
+		f.Lock()
 		err = f.fWriter.Flush(f.info.Inode, ctx)
+		f.Unlock()
 	}
 	if err != nil {
 		msg := fmt.Sprintf("Fsync: ino(%v) err(%v)", f.info.Inode, err)

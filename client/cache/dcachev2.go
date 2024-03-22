@@ -12,7 +12,7 @@
 // implied. See the License for the specific language governing
 // permissions and limitations under the License.
 
-package fs
+package cache
 
 import (
 	"container/list"
@@ -40,15 +40,18 @@ type Dcache struct {
 	lruList     *list.List
 	expiration  time.Duration
 	maxElements int
+
+	disableMetaCache bool
 }
 
 // NewDentryCache returns a new inode cache.
-func NewDcache(exp time.Duration, maxElements int) *Dcache {
+func NewDcache(exp time.Duration, maxElements int, disableMetaCache bool) *Dcache {
 	dc := &Dcache{
-		cache:       make(map[string]*list.Element),
-		lruList:     list.New(),
-		expiration:  exp,
-		maxElements: maxElements,
+		cache:            make(map[string]*list.Element),
+		lruList:          list.New(),
+		expiration:       exp,
+		maxElements:      maxElements,
+		disableMetaCache: disableMetaCache,
 	}
 	go dc.backgroundEviction()
 	return dc
@@ -67,7 +70,7 @@ func (dc *Dcache) Put(info *proto.DentryInfo) {
 		dc.evict(true)
 	}
 
-	dentrySetExpiration(info, dc.expiration)
+	info.SetExpiration(dc.expiration)
 	element := dc.lruList.PushFront(info)
 	dc.cache[info.Name] = element
 	dc.Unlock()
@@ -84,7 +87,7 @@ func (dc *Dcache) Get(name string) *proto.DentryInfo {
 	}
 
 	info := element.Value.(*proto.DentryInfo)
-	if dentryExpired(info) && DisableMetaCache {
+	if info.Expired() && dc.disableMetaCache {
 		dc.RUnlock()
 		// log.LogDebugf("Dcache GetConnect expired: now(%v) inode(%v), expired(%d)", time.Now().Format(LogTimeFormat), info.Inode, info.Expiration())
 		return nil
@@ -121,7 +124,7 @@ func (dc *Dcache) evict(foreground bool) {
 		// But for foreground eviction, we need to evict at least MinDentryCacheEvictNum inodes.
 		// The foreground eviction, does not need to care if the inode has expired or not.
 		info := element.Value.(*proto.DentryInfo)
-		if !foreground && !dentryExpired(info) {
+		if !foreground && !info.Expired() {
 			return
 		}
 
@@ -142,7 +145,7 @@ func (dc *Dcache) evict(foreground bool) {
 			break
 		}
 		info := element.Value.(*proto.DentryInfo)
-		if !dentryExpired(info) {
+		if !info.Expired() {
 			break
 		}
 		// log.LogDebugf("Dcache GetConnect expired: now(%v) inode(%v)", time.Now().Format(LogTimeFormat), info.Inode)
@@ -158,7 +161,7 @@ func (dc *Dcache) backgroundEviction() {
 
 	for range t.C {
 		log.LogInfof("Dcache: start BG evict")
-		if !DisableMetaCache {
+		if !dc.disableMetaCache {
 			log.LogInfof("Dcache: no need to do BG evict")
 			continue
 		}

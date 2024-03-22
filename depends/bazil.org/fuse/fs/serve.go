@@ -628,8 +628,8 @@ func (s *Server) SaveFuseContext(fs FS) (msg string, err error) {
 			continue
 		}
 
-		if hdl, ok := sh.handle.(HandleFlusher); ok {
-			if err = hdl.Flush(context.TODO(), nil); err != nil {
+		if nodeFsyncer, ok := sh.handle.(NodeFsyncer); ok {
+			if err = nodeFsyncer.Fsync(context.TODO(), nil); err != nil {
 				s.meta.Unlock()
 				err = fmt.Errorf("SaveFuseContext: flush handle %v: %v\n",
 					s.node[sh.nodeID].inode, err)

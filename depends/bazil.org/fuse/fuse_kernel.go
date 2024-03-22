@@ -46,7 +46,7 @@ const (
 	protoVersionMinMajor = 7
 	protoVersionMinMinor = 8
 	protoVersionMaxMajor = 7
-	protoVersionMaxMinor = 12
+	protoVersionMaxMinor = 13
 )
 
 const (
@@ -711,7 +711,8 @@ type initOut struct {
 	Minor        uint32
 	MaxReadahead uint32
 	Flags        uint32
-	Unused       uint32
+	MaxBackGround		uint16
+	CongestionThresh	uint16
 	MaxWrite     uint32
 }
 

@@ -14,6 +14,8 @@ func dummyOption(conf *mountConfig) error {
 type mountConfig struct {
 	options          map[string]string
 	maxReadahead     uint32
+	maxBackground    uint16
+	congestionThresh uint16
 	initFlags        InitFlags
 	osxfuseLocations []OSXFUSEPaths
 	RequestTimeout   int64
@@ -222,6 +224,20 @@ func ReadOnly() MountOption {
 func MaxReadahead(n uint32) MountOption {
 	return func(conf *mountConfig) error {
 		conf.maxReadahead = n
+		return nil
+	}
+}
+
+func MaxBackground(n uint16) MountOption {
+	return func(conf *mountConfig) error {
+		conf.maxBackground = n
+		return nil
+	}
+}
+
+func CongestionThresh(n uint16) MountOption {
+	return func(conf *mountConfig) error {
+		conf.congestionThresh = n
 		return nil
 	}
 }

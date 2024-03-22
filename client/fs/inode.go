@@ -49,9 +49,9 @@ func (s *Super) InodeGet(ino uint64) (*proto.InodeInfo, error) {
 	if isFind {
 		s, ok := node.(*Dir)
 		if ok {
-			s.info = info
+			s.info = *info
 		} else {
-			node.(*File).info = info
+			node.(*File).info = *info
 		}
 	}
 	s.ec.RefreshExtentsCache(ino)

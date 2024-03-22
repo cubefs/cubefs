@@ -121,12 +121,16 @@ type DentryInfo struct {
 	expiration int64
 }
 
-func (info *DentryInfo) SetExpiration(e int64) {
-	info.expiration = e
+func (info *DentryInfo) SetExpiration(t time.Duration) {
+	info.expiration = time.Now().Add(t).UnixNano()
 }
 
 func (info *DentryInfo) Expiration() int64 {
 	return info.expiration
+}
+
+func (info *DentryInfo) Expired() bool {
+	return time.Now().UnixNano() > info.Expiration()
 }
 
 func (info *InodeInfo) Expiration() int64 {

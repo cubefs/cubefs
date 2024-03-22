@@ -76,6 +76,7 @@ import "C"
 import (
 	"context"
 	"fmt"
+	"github.com/cubefs/cubefs/client/cache"
 	"io"
 	syslog "log"
 	"os"
@@ -168,7 +169,7 @@ func newClient() *client {
 		cwd:                 "/",
 		sc:                  fs.NewSummaryCache(fs.DefaultSummaryExpiration, fs.MaxSummaryCache),
 		ic:                  fs.NewInodeCache(fs.DefaultInodeExpiration, fs.MaxInodeCache),
-		dc:                  fs.NewDentryCache(),
+		dc:                  cache.NewDentryCache(fs.DentryValidDuration),
 	}
 
 	gClientManager.mu.Lock()
@@ -252,7 +253,7 @@ type client struct {
 	mw   *meta.MetaWrapper
 	ec   *stream.ExtentClient
 	ic   *fs.InodeCache
-	dc   *fs.DentryCache
+	dc   *cache.DentryCache
 	bc   *bcache.BcacheClient
 	ebsc *blobstore.BlobStoreClient
 	sc   *fs.SummaryCache

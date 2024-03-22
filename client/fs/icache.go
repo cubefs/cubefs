@@ -74,6 +74,10 @@ func (ic *InodeCache) Put(info *proto.InodeInfo) {
 	// log.LogDebugf("InodeCache put inode: inode(%v)", info.Inode)
 }
 
+func (ic *InodeCache) PutValue(info proto.InodeInfo) {
+	ic.Put(&info)
+}
+
 // Get returns the inode info based on the given inode number.
 func (ic *InodeCache) Get(ino uint64) *proto.InodeInfo {
 	ic.RLock()

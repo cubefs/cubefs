@@ -50,12 +50,13 @@ func NewExtentRequest(offset, size int, data []byte, ek *proto.ExtentKey) *Exten
 // ExtentCache defines the struct of the extent cache.
 type ExtentCache struct {
 	sync.RWMutex
-	inode   uint64
-	gen     uint64 // generation number
-	size    uint64 // size of the cache
-	root    *btree.BTree
-	discard *btree.BTree
-	verSeq  uint64
+	inode       uint64
+	gen         uint64 // generation number
+	size        uint64 // size of the cache
+	root        *btree.BTree
+	discard     *btree.BTree
+	verSeq      uint64
+	initialized bool
 }
 
 // NewExtentCache returns a new extent cache.
@@ -112,6 +113,7 @@ func (cache *ExtentCache) update(gen, size uint64, force bool, eks []proto.Exten
 		return
 	}
 
+	cache.initialized = true
 	cache.gen = gen
 	cache.size = size
 	cache.root.Clear(false)

@@ -108,3 +108,11 @@ const DEFAULT_MAX_DISTANCE = 128
 func GetDistance(a, b net.IP) int {
 	return DEFAULT_MAX_DISTANCE - commonPrefixLen(a, b)
 }
+
+func IsValidIP(ipAddr string) bool {
+	ip := net.ParseIP(ipAddr)
+	if ip != nil {
+		return true
+	}
+	return false
+}

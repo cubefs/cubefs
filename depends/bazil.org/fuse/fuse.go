@@ -251,6 +251,8 @@ func initMount(c *Conn, conf *mountConfig) error {
 	s := &InitResponse{
 		Library:      proto,
 		MaxReadahead: conf.maxReadahead,
+		MaxBackground: 		conf.maxBackground,
+		CongestionThresh:	conf.congestionThresh,
 		MaxWrite:     maxWrite,
 		Flags:        InitBigWrites | conf.initFlags,
 	}
@@ -1244,10 +1246,13 @@ type InitResponse struct {
 	// Maximum size of a single write operation.
 	// Linux enforces a minimum of 4 KiB.
 	MaxWrite uint32
+	// Maximum background requests
+	MaxBackground		uint16
+	CongestionThresh	uint16
 }
 
 func (r *InitResponse) String() string {
-	return fmt.Sprintf("Init %v ra=%d fl=%v w=%d", r.Library, r.MaxReadahead, r.Flags, r.MaxWrite)
+	return fmt.Sprintf("Init %v ra=%d fl=%v w=%d mb=%d ct=%d", r.Library, r.MaxReadahead, r.Flags, r.MaxWrite, r.MaxBackground, r.CongestionThresh)
 }
 
 // Respond replies to the request with the given response.
@@ -1258,6 +1263,8 @@ func (r *InitRequest) Respond(resp *InitResponse) {
 	out.Minor = resp.Library.Minor
 	out.MaxReadahead = resp.MaxReadahead
 	out.Flags = uint32(resp.Flags)
+	out.MaxBackGround = resp.MaxBackground
+	out.CongestionThresh = resp.CongestionThresh
 	out.MaxWrite = resp.MaxWrite
 
 	// MaxWrite larger than our receive buffer would just lead to
@@ -1793,18 +1800,19 @@ func (r *ReadRequest) Respond(resp *ReadResponse) {
 		buf = append(buf, resp.Data...)
 		r.respond(buf)
 	} else {
-		r.respond(resp.Data)
+		r.respond(resp.Data[:resp.ActualSize])
 		PutBlockBuf(resp.Data)
 	}
 }
 
 // A ReadResponse is the response to a ReadRequest.
 type ReadResponse struct {
-	Data []byte
+	Data 		[]byte
+	ActualSize	uint64
 }
 
 func (r *ReadResponse) String() string {
-	return fmt.Sprintf("Read %d", len(r.Data))
+	return fmt.Sprintf("Read actual size=%v, data buffer size=%d", r.ActualSize, len(r.Data))
 }
 
 type jsonReadResponse struct {

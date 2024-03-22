@@ -1,11 +1,13 @@
-package fuse
+package stream
 
 import (
 	"sync"
+
+	"github.com/cubefs/cubefs/util/log"
 )
 
 const (
-	NumOfBlockPool = 9
+	NumOfBlockPool = 10
 )
 
 const (
@@ -22,50 +24,70 @@ const (
 	PoolSize256K
 	PoolSize512K
 	PoolSize1024K
-)
-
-const (
-	PoolSizeWithHeader4K = BlockSize*(1<<iota) + OutHeaderSize
-	PoolSizeWithHeader8K
-	PoolSizeWithHeader16K
-	PoolSizeWithHeader32K
-	PoolSizeWithHeader64K
-	PoolSizeWithHeader128K
-	PoolSizeWithHeader256K
-	PoolSizeWithHeader512K
-	PoolSizeWithHeader1024K
+	PoolSize2048K
 )
 
 var ReadBlockPool = [NumOfBlockPool]*sync.Pool{}
 
 func InitReadBlockPool() {
 	ReadBlockPool[0] = &sync.Pool{New: func() interface{} {
-		return make([]byte, PoolSizeWithHeader4K)
+		return make([]byte, PoolSize4K)
 	}}
 	ReadBlockPool[1] = &sync.Pool{New: func() interface{} {
-		return make([]byte, PoolSizeWithHeader8K)
+		return make([]byte, PoolSize8K)
 	}}
 	ReadBlockPool[2] = &sync.Pool{New: func() interface{} {
-		return make([]byte, PoolSizeWithHeader16K)
+		return make([]byte, PoolSize16K)
 	}}
 	ReadBlockPool[3] = &sync.Pool{New: func() interface{} {
-		return make([]byte, PoolSizeWithHeader32K)
+		return make([]byte, PoolSize32K)
 	}}
 	ReadBlockPool[4] = &sync.Pool{New: func() interface{} {
-		return make([]byte, PoolSizeWithHeader64K)
+		return make([]byte, PoolSize64K)
 	}}
 	ReadBlockPool[5] = &sync.Pool{New: func() interface{} {
-		return make([]byte, PoolSizeWithHeader128K)
+		return make([]byte, PoolSize128K)
 	}}
 	ReadBlockPool[6] = &sync.Pool{New: func() interface{} {
-		return make([]byte, PoolSizeWithHeader256K)
+		return make([]byte, PoolSize256K)
 	}}
 	ReadBlockPool[7] = &sync.Pool{New: func() interface{} {
-		return make([]byte, PoolSizeWithHeader512K)
+		return make([]byte, PoolSize512K)
 	}}
 	ReadBlockPool[8] = &sync.Pool{New: func() interface{} {
-		return make([]byte, PoolSizeWithHeader1024K)
+		return make([]byte, PoolSize1024K)
 	}}
+	ReadBlockPool[9] = &sync.Pool{New: func() interface{} {
+		return make([]byte, PoolSize2048K)
+	}}
+}
+
+func PutBlockBuf(data []byte) {
+	switch len(data) {
+	case PoolSize4K:
+		ReadBlockPool[0].Put(data)
+	case PoolSize8K:
+		ReadBlockPool[1].Put(data)
+	case PoolSize16K:
+		ReadBlockPool[2].Put(data)
+	case PoolSize32K:
+		ReadBlockPool[3].Put(data)
+	case PoolSize64K:
+		ReadBlockPool[4].Put(data)
+	case PoolSize128K:
+		ReadBlockPool[5].Put(data)
+	case PoolSize256K:
+		ReadBlockPool[6].Put(data)
+	case PoolSize512K:
+		ReadBlockPool[7].Put(data)
+	case PoolSize1024K:
+		ReadBlockPool[8].Put(data)
+	case PoolSize2048K:
+		ReadBlockPool[9].Put(data)
+	default:
+		log.LogWarnf("PutBlockBuf: size(%v)", len(data))
+		return
+	}
 }
 
 func GetBlockBuf(size int) []byte {
@@ -90,35 +112,16 @@ func GetBlockBuf(size int) []byte {
 		data = ReadBlockPool[7].Get().([]byte)
 	case PoolSize1024K:
 		data = ReadBlockPool[8].Get().([]byte)
+	case PoolSize2048K:
+		data = ReadBlockPool[9].Get().([]byte)
 	default:
-		data = make([]byte, OutHeaderSize+size)
+		log.LogInfof("GetBlockBuf: make size(%v)", size)
+		data = make([]byte, size)
+	}
+	if log.EnableDebug() {
+		log.LogDebugf("GetBlockBuf: make size(%v) alloc(%v)", size, allocSize)
 	}
 	return data
-}
-
-func PutBlockBuf(data []byte) {
-	switch len(data) {
-	case PoolSizeWithHeader4K:
-		ReadBlockPool[0].Put(data)
-	case PoolSizeWithHeader8K:
-		ReadBlockPool[1].Put(data)
-	case PoolSizeWithHeader16K:
-		ReadBlockPool[2].Put(data)
-	case PoolSizeWithHeader32K:
-		ReadBlockPool[3].Put(data)
-	case PoolSizeWithHeader64K:
-		ReadBlockPool[4].Put(data)
-	case PoolSizeWithHeader128K:
-		ReadBlockPool[5].Put(data)
-	case PoolSizeWithHeader256K:
-		ReadBlockPool[6].Put(data)
-	case PoolSizeWithHeader512K:
-		ReadBlockPool[7].Put(data)
-	case PoolSizeWithHeader1024K:
-		ReadBlockPool[8].Put(data)
-	default:
-		return
-	}
 }
 
 func computeAllocSize(size int) int {
@@ -134,6 +137,14 @@ func computeAllocSize(size int) int {
 		return PoolSize64K
 	} else if size <= PoolSize128K {
 		return PoolSize128K
+	} else if size <= PoolSize256K {
+		return PoolSize256K
+	} else if size <= PoolSize512K {
+		return PoolSize512K
+	} else if size <= PoolSize1024K {
+		return PoolSize1024K
+	} else if size <= PoolSize2048K {
+		return PoolSize2048K
 	} else {
 		return size
 	}
