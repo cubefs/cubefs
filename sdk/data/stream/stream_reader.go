@@ -78,6 +78,7 @@ func NewStreamer(client *ExtentClient, inode uint64) *Streamer {
 	s.dirtylist = NewDirtyExtentList()
 	s.isOpen = true
 	s.pendingCache = make(chan bcacheKey, 1)
+	log.LogDebugf("NewStreamer: streamer(%v)", s)
 	go s.server()
 	go s.asyncBlockCache()
 	return s
@@ -89,7 +90,7 @@ func (s *Streamer) SetParentInode(inode uint64) {
 
 // String returns the string format of the streamer.
 func (s *Streamer) String() string {
-	return fmt.Sprintf("Streamer{ino(%v)}", s.inode)
+	return fmt.Sprintf("Streamer{ino(%v), refcnt(%v), isOpen(%v), inflight(%v), addr(%p)}", s.inode, s.refcnt, s.isOpen, len(s.request), s)
 }
 
 // TODO should we call it RefreshExtents instead?
@@ -300,7 +301,7 @@ func (s *Streamer) asyncBlockCache() {
 			}
 		case <-t.C:
 			if s.refcnt <= 0 {
-				s.isOpen = false
+				//s.isOpen = false
 				return
 			}
 		}

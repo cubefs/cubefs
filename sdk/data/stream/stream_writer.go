@@ -177,7 +177,7 @@ func (s *Streamer) server() {
 	//		s.request = nil
 	//	}
 	//}()
-
+	log.LogDebugf("start server: streamer(%v)", s)
 	for {
 		select {
 		case request := <-s.request:
@@ -185,9 +185,12 @@ func (s *Streamer) server() {
 			s.idle = 0
 			s.traversed = 0
 		case <-s.done:
-			s.abort()
-			log.LogDebugf("done server: evict, ino(%v)", s.inode)
-			return
+			log.LogDebugf("done server: evict, streamer(%v)", s)
+			// server exit if streamer is deleted
+			if s.isOpen == false {
+				s.abort()
+				return
+			}
 		case <-t.C:
 			s.traverse()
 			s.client.streamerLock.Lock()
@@ -199,20 +202,23 @@ func (s *Streamer) server() {
 						// one stream maybe has multi server coroutine
 						// when the stream's residual server coroutine exits, others stream maybe deleted
 						if current_s == s {
+							log.LogDebugf("done server: delete streamer(%v)", s)
 							delete(s.client.streamers, s.inode)
+							s.isOpen = false
 							if s.client.evictIcache != nil {
 								s.client.evictIcache(s.inode)
 							}
 						}
 					}
 
-					s.isOpen = false
-					// fail the remaining requests in such case
-					s.clearRequests()
-					s.client.streamerLock.Unlock()
-
-					log.LogDebugf("done server: no requests for a long time, ino(%v)", s.inode)
-					return
+					// server exit if streamer is deleted
+					if s.isOpen == false {
+						// fail the remaining requests in such case
+						s.clearRequests()
+						s.client.streamerLock.Unlock()
+						log.LogDebugf("done server: no requests for a long time, ino(%v), streamer(%v)", s.inode, s)
+						return
+					}
 				}
 				s.idle++
 			}
