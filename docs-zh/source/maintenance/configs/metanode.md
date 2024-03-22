@@ -10,6 +10,7 @@
 | logLevel            | string       | 日志级别，默认: *error*                                 | 否  |
 | metadataDir         | string       | 元数据快照存储目录                                        | 是  |
 | logDir              | string       | 日志存储目录                                           | 是  |
+| logOptions          | none         | [日志选项](./log.md)                                   | 否  |
 | raftDir             | string       | raft wal日志目录                                     | 是  |
 | raftHeartbeatPort   | string       | raft心跳通信端口                                       | 是  |
 | raftReplicaPort     | string       | raft数据传输端口                                       | 是  |
