@@ -2772,7 +2772,7 @@ func (m *Server) migrateDataNodeHandler(w http.ResponseWriter, r *http.Request) 
 }
 
 // Decommission a data node. This will decommission all the data partition on that node.
-func (m *Server) cancelDecommissionDataNode(w http.ResponseWriter, r *http.Request) {
+func (m *Server) pauseDecommissionDataNode(w http.ResponseWriter, r *http.Request) {
 	var (
 		node        *DataNode
 		rstMsg      string
@@ -2781,9 +2781,9 @@ func (m *Server) cancelDecommissionDataNode(w http.ResponseWriter, r *http.Reque
 		dps         []uint64
 	)
 
-	metric := exporter.NewTPCnt(apiToMetricsName(proto.CancelDecommissionDataNode))
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.PauseDecommissionDataNode))
 	defer func() {
-		doStatAndMetric(proto.CancelDecommissionDataNode, metric, err, nil)
+		doStatAndMetric(proto.PauseDecommissionDataNode, metric, err, nil)
 	}()
 
 	if offLineAddr, err = parseAndExtractNodeAddr(r); err != nil {
@@ -2795,14 +2795,50 @@ func (m *Server) cancelDecommissionDataNode(w http.ResponseWriter, r *http.Reque
 		sendErrReply(w, r, newErrHTTPReply(proto.ErrDataNodeNotExists))
 		return
 	}
-	if err, dps = m.cluster.decommissionDataNodeCancel(node); err != nil {
+	if err, dps = m.cluster.decommissionDataNodePause(node); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
-	rstMsg = fmt.Sprintf("cancel decommission data node [%v] with paused failed[%v]", offLineAddr, dps)
+	rstMsg = fmt.Sprintf("pause decommission data node [%v] with paused failed[%v]", offLineAddr, dps)
 	sendOkReply(w, r, newSuccessHTTPReply(rstMsg))
 }
 
+// Decommission a data node. This will decommission all the data partition on that node.
+func (m *Server) cancelDecommissionDataNode(w http.ResponseWriter, r *http.Request) {
+	var (
+		rstMsg      string
+		offLineAddr string
+		err         error
+		dps         []uint64
+	)
+
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.PauseDecommissionDataNode))
+	defer func() {
+		doStatAndMetric(proto.PauseDecommissionDataNode, metric, err, nil)
+	}()
+
+	if offLineAddr, err = parseAndExtractNodeAddr(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	partitions := m.cluster.getAllDataPartitionByDataNode(offLineAddr)
+	for _, dp := range partitions {
+		dps = append(dps, dp.PartitionID)
+	}
+	if len(partitions) != 0 {
+		rstMsg = fmt.Sprintf("cancel decommission data node [%v] failed: %v dp [%v] left", offLineAddr,
+			len(dps), dps)
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: rstMsg})
+		return
+	}
+	// find all decommission failed data partitions for this node
+	leftPartitions := m.cluster.getAllDecommissionDataPartitionByDataNode(offLineAddr)
+	for _, dp := range leftPartitions {
+		dp.ResetDecommissionStatus()
+	}
+	rstMsg = fmt.Sprintf("cancel decommission data node [%v] success", offLineAddr)
+	sendOkReply(w, r, newSuccessHTTPReply(rstMsg))
+}
 func (m *Server) setNodeInfoHandler(w http.ResponseWriter, r *http.Request) {
 	var (
 		params map[string]interface{}
@@ -4032,7 +4068,7 @@ func (m *Server) markDecoDiskFixed(w http.ResponseWriter, r *http.Request) {
 	sendOkReply(w, r, newSuccessHTTPReply("success"))
 }
 
-func (m *Server) cancelDecommissionDisk(w http.ResponseWriter, r *http.Request) {
+func (m *Server) pauseDecommissionDisk(w http.ResponseWriter, r *http.Request) {
 	var (
 		offLineAddr, diskPath string
 		err                   error
@@ -4056,7 +4092,7 @@ func (m *Server) cancelDecommissionDisk(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	disk := value.(*DecommissionDisk)
-	err, dps := m.cluster.decommissionDiskCancel(disk)
+	err, dps := m.cluster.decommissionDiskPause(disk)
 	if err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
