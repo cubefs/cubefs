@@ -1286,10 +1286,11 @@ errHandler:
 	}
 	msg = fmt.Sprintf("clusterID[%v] vol[%v] dp[%v]  on Node:%v  "+
 		"to newHost:%v Err:%v, PersistenceHosts:%v ,retry %v,status %v, isRecover %v SingleDecommissionStatus[%v]"+
-		" DecommissionNeedRollback[%v]",
+		" DecommissionNeedRollback[%v] DecommissionNeedRollbackTimes %v",
 		c.Name, partition.VolName, partition.PartitionID, srcAddr, targetAddr, err.Error(),
 		partition.Hosts, partition.DecommissionRetry, partition.GetDecommissionStatus(),
-		partition.isRecover, partition.GetSpecialReplicaDecommissionStep(), partition.DecommissionNeedRollback)
+		partition.isRecover, partition.GetSpecialReplicaDecommissionStep(), partition.DecommissionNeedRollback,
+		partition.DecommissionNeedRollbackTimes)
 	Warn(c.Name, msg)
 	log.LogWarnf("action[decommissionDataPartition] %s", msg)
 	partition.DecommissionErrorMessage = err.Error()
@@ -1447,7 +1448,7 @@ func (partition *DataPartition) canAddToDecommissionList() bool {
 	if status == DecommissionInitial ||
 		status == DecommissionPause ||
 		status == DecommissionSuccess ||
-		status == DecommissionFail {
+		(status == DecommissionFail && partition.DecommissionNeedRollbackTimes >= defaultDecommissionRollbackLimit) {
 		return false
 	}
 	return true
