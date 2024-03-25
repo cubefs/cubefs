@@ -146,12 +146,13 @@ const (
 	QueryDataNodeDecoProgress          = "/dataNode/queryDecommissionProgress"
 	QueryDataNodeDecoFailedDps         = "/dataNode/queryDecommissionFailedDps"
 	MigrateDataNode                    = "/dataNode/migrate"
+	PauseDecommissionDataNode          = "/dataNode/pauseDecommission"
 	CancelDecommissionDataNode         = "/dataNode/cancelDecommission"
 	DecommissionDisk                   = "/disk/decommission"
 	RecommissionDisk                   = "/disk/recommission"
 	QueryDiskDecoProgress              = "/disk/queryDecommissionProgress"
 	MarkDecoDiskFixed                  = "/disk/MarkDecommissionDiskFixed"
-	CancelDecommissionDisk             = "/disk/cancelDecommission"
+	PauseDecommissionDisk              = "/disk/pauseDecommission"
 	QueryDecommissionDiskDecoFailedDps = "/disk/queryDecommissionFailedDps"
 	QueryBadDisks                      = "/disk/queryBadDisks"
 	RestoreStoppedAutoDecommissionDisk = "/disk/restoreStoppedAutoDecommissionDisk"
@@ -307,7 +308,7 @@ var GApiInfo map[string]string = map[string]string{
 	"adddatanode":                     AddDataNode,
 	"decommissiondatanode":            DecommissionDataNode,
 	"migratedatanode":                 MigrateDataNode,
-	"canceldecommissiondatanode":      CancelDecommissionDataNode,
+	"canceldecommissiondatanode":      PauseDecommissionDataNode,
 	"decommissiondisk":                DecommissionDisk,
 	"getdatanode":                     GetDataNode,
 	"addmetanode":                     AddMetaNode,
