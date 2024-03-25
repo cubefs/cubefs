@@ -53,8 +53,6 @@ func (lcNode *LcNode) checkLiveness(ctx context.Context) {
 	if time.Since(lcNode.ReportTime) > time.Second*time.Duration(defaultNodeTimeOutSec) {
 		lcNode.IsActive = false
 	}
-
-	return
 }
 
 func (lcNode *LcNode) createHeartbeatTask(masterAddr string) (task *proto.AdminTask) {

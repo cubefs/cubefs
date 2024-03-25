@@ -47,6 +47,14 @@ var (
 
 	// Regular expression to match more than two consecutive path separators.
 	regexpDupSep = regexp.MustCompile("/{2,}")
+
+	// TODO: unused
+	_ = tempFileName
+	_ = formatSimpleTime
+	_ = formatTimeISOLocal
+	_ = transferError
+	_ = isIPNetContainsIP
+	_ = patternMatch
 )
 
 var keyEscapedSkipBytes = []byte{'/', '*', '.', '-', '_'}
@@ -301,8 +309,10 @@ func ParseUserDefinedMetadata(header http.Header) map[string]string {
 }
 
 // validate Cache-Control
-var cacheControlDir = []string{"public", "private", "no-cache", "no-store", "no-transform", "must-revalidate", "proxy-revalidate"}
-var maxAgeRegexp = regexp.MustCompile("^((max-age)|(s-maxage))=[1-9][0-9]*$")
+var (
+	cacheControlDir = []string{"public", "private", "no-cache", "no-store", "no-transform", "must-revalidate", "proxy-revalidate"}
+	maxAgeRegexp    = regexp.MustCompile("^((max-age)|(s-maxage))=[1-9][0-9]*$")
+)
 
 func ValidateCacheControl(cacheControl string) bool {
 	cacheDirs := strings.Split(cacheControl, ",")
@@ -323,11 +333,7 @@ func ValidateCacheExpires(expires string) bool {
 	}
 	expiresInt := stamp.Unix()
 	now := time.Now().UTC().Unix()
-	if now < expiresInt {
-		return true
-	}
-
-	return false
+	return now < expiresInt
 }
 
 func GetMD5(b []byte) string {

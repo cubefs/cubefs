@@ -8,8 +8,6 @@ import (
 )
 
 func TestServer(t *testing.T) {
-	return
-
 	// if _, err := log.InitLog("/tmp", "console", log.DebugLevel, nil); err != nil {
 	// 	panic(err)
 	// }
@@ -57,11 +55,11 @@ func TestServer(t *testing.T) {
 	// server.Sync()
 }
 
-type graphErr struct {
-	Message string
-}
+// type graphErr struct {
+// 	Message string
+// }
 
-type graphResponse struct {
-	Data   interface{}
-	Errors []graphErr
-}
+// type graphResponse struct {
+// 	Data   interface{}
+// 	Errors []graphErr
+// }

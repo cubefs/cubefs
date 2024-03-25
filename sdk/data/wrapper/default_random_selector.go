@@ -126,10 +126,8 @@ func (s *DefaultRandomSelector) RemoveDP(partitionID uint64) {
 	newLocalLeaderPartitions = append(newLocalLeaderPartitions, localLeaderPartitions[i+1:]...)
 
 	s.Lock()
-	defer s.Unlock()
 	s.localLeaderPartitions = newLocalLeaderPartitions
-
-	return
+	s.Unlock()
 }
 
 func (s *DefaultRandomSelector) Count() int {
@@ -146,7 +144,8 @@ func (s *DefaultRandomSelector) getLocalLeaderDataPartition(ctx context.Context,
 }
 
 func (s *DefaultRandomSelector) getRandomDataPartition(ctx context.Context, partitions []*DataPartition, exclude map[string]struct{}) (
-	dp *DataPartition) {
+	dp *DataPartition,
+) {
 	span := proto.SpanFromContext(ctx)
 	length := len(partitions)
 	if length == 0 {

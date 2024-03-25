@@ -177,12 +177,12 @@ func createDefaultMasterServerForTest() *Server {
 		qosLimitArgs:     &qosArgs{},
 	}
 
-	vol, err := testServer.cluster.createVol(ctx, req)
+	_, err = testServer.cluster.createVol(ctx, req)
 	if err != nil {
 		panic(err)
 	}
 
-	vol, err = testServer.cluster.getVol(req.name)
+	vol, err := testServer.cluster.getVol(req.name)
 	if err != nil {
 		panic(err)
 	}
@@ -293,10 +293,6 @@ func TestGetCluster(t *testing.T) {
 func TestGetIpAndClusterName(t *testing.T) {
 	reqURL := fmt.Sprintf("%v%v", hostAddr, proto.AdminGetIP)
 	process(reqURL, t)
-}
-
-func fatal(t *testing.T, str string) {
-	t.Fatal(str)
 }
 
 type httpReply = proto.HTTPReplyRaw
@@ -575,10 +571,6 @@ func TestUpdateVol(t *testing.T) {
 
 func setUpdateVolParm(key string, req map[string]interface{}, val interface{}, t *testing.T) {
 	setParam(key, proto.AdminUpdateVol, req, val, t)
-}
-
-func checkUpdateVolParm(key string, req map[string]interface{}, wrong, correct interface{}, t *testing.T) {
-	checkParam(key, proto.AdminUpdateVol, req, wrong, correct, t)
 }
 
 func delVol(name string, t *testing.T) {

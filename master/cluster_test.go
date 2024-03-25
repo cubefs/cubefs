@@ -106,7 +106,6 @@ func TestPanicCheckMetaPartitions(t *testing.T) {
 	}
 	mp := newMetaPartition(partitionID, 1, defaultMaxMetaPartitionInodeID, vol.mpReplicaNum, vol.Name, vol.ID, 0)
 	vol.addMetaPartition(ctx, mp)
-	mp = nil
 	c.checkMetaPartitions(ctx)
 	t.Logf("catched panic")
 }
@@ -167,9 +166,7 @@ func TestCheckBadDiskRecovery(t *testing.T) {
 	}
 	vol.volLock.RLock()
 	dps := make([]*DataPartition, 0)
-	for _, dp := range vol.dataPartitions.partitions {
-		dps = append(dps, dp)
-	}
+	dps = append(dps, vol.dataPartitions.partitions...)
 	dpsMapLen := len(vol.dataPartitions.partitionMap)
 	vol.volLock.RUnlock()
 	dpsLen := len(dps)
@@ -180,7 +177,6 @@ func TestCheckBadDiskRecovery(t *testing.T) {
 	for _, dp := range dps {
 		dp.RLock()
 		if len(dp.Replicas) == 0 {
-			dpsLen--
 			dp.RUnlock()
 			return
 		}
@@ -258,7 +254,6 @@ func TestCheckBadMetaPartitionRecovery(t *testing.T) {
 	for _, mp := range mps {
 		mp.RLock()
 		if len(mp.Replicas) == 0 {
-			mpsLen--
 			mp.RUnlock()
 			return
 		}
@@ -332,19 +327,21 @@ func TestBalanceMetaPartition(t *testing.T) {
 	// cluster normal volume has 3 mps , total 3*3 =9 mp in metaNode
 	_, ctx := proto.SpanContextPrefix("cluster-test-balance-meta-partition-")
 	req := &createVolReq{
-		name:             commonVolName + "1",
-		owner:            "cfs",
-		dpSize:           3,
-		mpCount:          30,
-		dpReplicaNum:     3,
-		capacity:         100,
-		followerRead:     false,
-		authenticate:     false,
-		crossZone:        true,
-		normalZonesFirst: false,
-		zoneName:         testZone1 + "," + testZone2,
-		description:      "",
-		qosLimitArgs:     &qosArgs{},
+		name:                commonVolName + "1",
+		owner:               "cfs",
+		dpSize:              3,
+		mpCount:             30,
+		dpReplicaNum:        3,
+		capacity:            100,
+		followerRead:        false,
+		authenticate:        false,
+		crossZone:           true,
+		normalZonesFirst:    false,
+		zoneName:            testZone1 + "," + testZone2,
+		description:         "",
+		qosLimitArgs:        &qosArgs{},
+		clientReqPeriod:     0,
+		clientHitTriggerCnt: 0,
 	}
 	_, err := server.cluster.createVol(ctx, req)
 	require.NoError(t, err)

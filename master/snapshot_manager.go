@@ -181,12 +181,12 @@ func (vs *lcSnapshotVerStatus) DeleteOldResult(ctx context.Context) {
 	span := proto.SpanFromContext(ctx)
 	for k, v := range vs.TaskResults {
 		// delete result that already done
-		if v.Done == true && time.Now().After(v.EndTime.Add(time.Minute*10)) {
+		if v.Done && time.Now().After(v.EndTime.Add(time.Minute*10)) {
 			delete(vs.TaskResults, k)
 			span.Debugf("delete result already done: %v", v)
 		}
 		// delete result that not done but no updating
-		if v.Done != true && time.Now().After(v.UpdateTime.Add(time.Minute*10)) {
+		if !v.Done && time.Now().After(v.UpdateTime.Add(time.Minute*10)) {
 			delete(vs.TaskResults, k)
 			span.Warnf("delete result that not done but no updating: %v", v)
 		}

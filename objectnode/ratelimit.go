@@ -20,7 +20,6 @@ import (
 	"io"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/cubefs/cubefs/proto"
@@ -51,6 +50,8 @@ var listApi = map[string]string{
 	LIST_MULTIPART_UPLOADS: List,
 }
 
+var _ = listApi
+
 type RateLimiter interface {
 	AcquireLimitResource(uid string, api string) error
 	ReleaseLimitResource(uid string, api string)
@@ -62,7 +63,6 @@ type RateLimit struct {
 	S3ApiRateLimitMgr map[string]UserRateManager      // api -> UserRateMgr
 	ApiLimitConf      map[string]*proto.UserLimitConf // api -> UserLimitConf
 	putApi            map[string]string
-	limitMutex        sync.RWMutex
 }
 
 func NewRateLimit(apiLimitConf map[string]*proto.UserLimitConf) RateLimiter {
@@ -145,7 +145,7 @@ func (n *NullRateLimit) AcquireLimitResource(uid string, api string) error {
 }
 
 func (n *NullRateLimit) ReleaseLimitResource(uid string, api string) {
-	return
+	_ = struct{}{}
 }
 
 func (n *NullRateLimit) GetResponseWriter(uid string, api string, w io.Writer) io.Writer {

@@ -77,14 +77,11 @@ func (mqMgr *MasterQuotaManager) createQuota(ctx context.Context, req *proto.Set
 		VolName:   req.VolName,
 		QuotaId:   quotaId,
 		CTime:     time.Now().Unix(),
-		PathInfos: make([]proto.QuotaPathInfo, 0, 0),
+		PathInfos: make([]proto.QuotaPathInfo, 0),
 		MaxFiles:  req.MaxFiles,
 		MaxBytes:  req.MaxBytes,
 	}
-
-	for _, pathInfo := range req.PathInfos {
-		quotaInfo.PathInfos = append(quotaInfo.PathInfos, pathInfo)
-	}
+	quotaInfo.PathInfos = append(quotaInfo.PathInfos, req.PathInfos...)
 
 	var value []byte
 	if value, err = json.Marshal(quotaInfo); err != nil {
@@ -231,7 +228,7 @@ func (mqMgr *MasterQuotaManager) quotaUpdate(ctx context.Context, report *proto.
 		quotaInfo.UsedInfo.UsedFiles = 0
 		quotaInfo.UsedInfo.UsedBytes = 0
 	}
-	deleteQuotaIds := make(map[uint32]bool, 0)
+	deleteQuotaIds := make(map[uint32]bool)
 	for mpId, reportInfos := range mqMgr.MpQuotaInfoMap {
 		for _, info := range reportInfos {
 			if _, isFind := mqMgr.IdQuotaInfoMap[info.QuotaId]; !isFind {
@@ -259,7 +256,6 @@ func (mqMgr *MasterQuotaManager) quotaUpdate(ctx context.Context, report *proto.
 		}
 		span.Debugf("[quotaUpdate] quotaId [%v] quotaInfo [%v]", id, quotaInfo)
 	}
-	return
 }
 
 func (mqMgr *MasterQuotaManager) getQuotaHbInfos(ctx context.Context) (infos []*proto.QuotaHeartBeatInfo) {
@@ -283,9 +279,5 @@ func (mqMgr *MasterQuotaManager) getQuotaHbInfos(ctx context.Context) (infos []*
 func (mqMgr *MasterQuotaManager) HasQuota() bool {
 	mqMgr.RLock()
 	defer mqMgr.RUnlock()
-
-	if len(mqMgr.IdQuotaInfoMap) == 0 {
-		return false
-	}
-	return true
+	return len(mqMgr.IdQuotaInfoMap) > 0
 }

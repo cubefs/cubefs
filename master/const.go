@@ -348,3 +348,17 @@ const (
 	DataNodeType = NodeType(0)
 	MetaNodeType = NodeType(iota)
 )
+
+var (
+	// TODO: unused
+	_ = startKey
+	_ = nodeHostsKey
+	_ = fullPathKey
+	_ = inodeKey
+	_ = dataNodeOfflineErr
+	_ = defaultMigrateDpCnt
+	_ = opSyncDataPartitionsView
+	_ = opSyncUpdateLcNode
+	_ = idSeparator
+	_ = volCachePrefix
+)

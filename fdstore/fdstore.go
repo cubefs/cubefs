@@ -176,10 +176,10 @@ func SendSuspendRequest(port string, udsListener net.Listener) (err error) {
 	return nil
 }
 
-func WaitSuspendFinish(ch chan error) error {
-	err := <-ch
-	return err
-}
+// func WaitSuspendFinish(ch chan error) error {
+// 	err := <-ch
+// 	return err
+// }
 
 func doSuspend(port string) error {
 	var fud *os.File

@@ -32,13 +32,10 @@ import (
 
 const StatusServerPanic = 597
 
-var routeSNRegexp = regexp.MustCompile(":(\\w){32}$")
+var routeSNRegexp = regexp.MustCompile(`:(\w){32}$`)
 
 func IsMonitoredStatusCode(code int) bool {
-	if code > http.StatusInternalServerError {
-		return true
-	}
-	return false
+	return code > http.StatusInternalServerError
 }
 
 func generateWarnDetail(r *http.Request, errorInfo string) string {
@@ -173,7 +170,6 @@ func (o *ObjectNode) policyCheckMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(
 		func(w http.ResponseWriter, r *http.Request) {
 			o.policyCheck(next.ServeHTTP).ServeHTTP(w, r)
-			return
 		})
 }
 
@@ -285,7 +281,6 @@ func (o *ObjectNode) corsMiddleware(next http.Handler) http.Handler {
 			return
 		}
 		next.ServeHTTP(w, r)
-		return
 	})
 }
 

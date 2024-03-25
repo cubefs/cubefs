@@ -471,9 +471,7 @@ func (u *User) getUsersOfVol(ctx context.Context, volName string) (userIDs []str
 	volUser.Mu.RLock()
 	defer volUser.Mu.RUnlock()
 	span := proto.SpanFromContext(ctx)
-	for _, userID := range volUser.UserIDs {
-		userIDs = append(userIDs, userID)
-	}
+	userIDs = append(userIDs, volUser.UserIDs...)
 	span.Infof("action[getUsersOfVol], vol: %v, user numbers: %v", volName, len(userIDs))
 	return
 }

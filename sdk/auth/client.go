@@ -30,7 +30,7 @@ import (
 )
 
 const (
-	requestTimeout       = 30 * time.Second
+	// requestTimeout       = 30 * time.Second
 	RequestMaxRetry      = 5
 	RequestSleepInterval = 100 * time.Millisecond
 )
@@ -41,7 +41,6 @@ type AuthClient struct {
 	enableHTTPS bool
 	certFile    string
 	ticket      *auth.Ticket
-	leaderAddr  string
 }
 
 func (c *AuthClient) API() *API {

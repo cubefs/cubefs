@@ -79,11 +79,7 @@ var (
 var overSoldFactor = defaultOverSoldFactor
 
 func overSoldLimit() bool {
-	if overSoldFactor <= 0 {
-		return false
-	}
-
-	return true
+	return overSoldFactor > 0
 }
 
 func overSoldCap(cap uint64) uint64 {
@@ -99,8 +95,6 @@ func setOverSoldFactor(factor float32) {
 		overSoldFactor = factor
 	}
 }
-
-var volNameErr = errors.New("name can only start and end with number or letters, and len can't less than 3")
 
 // Server represents the server in a cluster
 type Server struct {
@@ -181,7 +175,7 @@ func (m *Server) Start(cfg *config.Config) (err error) {
 		stat.DefaultTimeOutUs, true)
 
 	m.wg.Add(1)
-	return nil
+	return err
 }
 
 // Shutdown closes the server

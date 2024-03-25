@@ -304,7 +304,8 @@ func (o *ObjectNode) policyCheck(f http.HandlerFunc) http.HandlerFunc {
 }
 
 func (o *ObjectNode) loadBucketMeta(ctx context.Context, bucket string) (vol *Volume, acl *AccessControlPolicy,
-	policy *Policy, err error) {
+	policy *Policy, err error,
+) {
 	if vol, err = o.getVol(ctx, bucket); err != nil {
 		return
 	}
@@ -326,7 +327,7 @@ func (o *ObjectNode) allowedBySrcBucketPolicy(ctx context.Context, param *Reques
 		return
 	}
 
-	vol, acl, policy, err := o.loadBucketMeta(ctx, srcBucketId)
+	vol, _, policy, err := o.loadBucketMeta(ctx, srcBucketId)
 	if err != nil {
 		span.Errorf("load bucket metadata fail: bucket(%v) err(%v)", srcBucketId, err)
 		return
@@ -361,6 +362,7 @@ func (o *ObjectNode) allowedBySrcBucketPolicy(ctx context.Context, param *Reques
 	}
 
 	isOwner := reqUid == vol.owner
+	var acl *AccessControlPolicy
 	if acl, err = getObjectACL(ctx, vol, srcKey, true); err != nil && err != syscall.ENOENT {
 		span.Errorf("get object ACL fail: srcVol(%v) srcKey(%v) err(%v)", srcBucketId, srcKey, err)
 		return

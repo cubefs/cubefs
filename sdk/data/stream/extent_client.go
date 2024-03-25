@@ -327,7 +327,6 @@ func (client *ExtentClient) UpdateFlowInfo(ctx context.Context, limit *proto.Lim
 	span := proto.SpanFromContext(ctx)
 	span.Infof("action[UpdateFlowInfo.UpdateFlowInfo]")
 	client.LimitManager.SetClientLimit(ctx, limit)
-	return
 }
 
 func (client *ExtentClient) SetClientID(id uint64) (err error) {
@@ -554,7 +553,7 @@ func (client *ExtentClient) Truncate(ctx context.Context, mw *meta.MetaWrapper, 
 	var err error
 	var oldSize uint64
 	if mw.EnableSummary {
-		info, err = mw.InodeGet_ll(ctx, inode)
+		info, _ = mw.InodeGet_ll(ctx, inode)
 		oldSize = info.Size
 	}
 	err = s.IssueTruncRequest(size, fullPath)

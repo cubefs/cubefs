@@ -92,7 +92,7 @@ func newMetaPartition(partitionID, start, end uint64, replicaNum uint8, volName 
 	mp.Replicas = make([]*MetaReplica, 0)
 	mp.LeaderReportTime = time.Now().Unix()
 	mp.Status = proto.Unavailable
-	mp.MissNodes = make(map[string]int64, 0)
+	mp.MissNodes = make(map[string]int64)
 	mp.Peers = make([]proto.Peer, 0)
 	mp.Hosts = make([]string, 0)
 	mp.VerSeq = verSeq
@@ -120,7 +120,6 @@ func (mp *MetaPartition) addReplica(mr *MetaReplica) {
 		}
 	}
 	mp.Replicas = append(mp.Replicas, mr)
-	return
 }
 
 func (mp *MetaPartition) removeReplica(mr *MetaReplica) {
@@ -132,7 +131,6 @@ func (mp *MetaPartition) removeReplica(mr *MetaReplica) {
 		newReplicas = append(newReplicas, m)
 	}
 	mp.Replicas = newReplicas
-	return
 }
 
 func (mp *MetaPartition) removeReplicaByAddr(addr string) {
@@ -144,7 +142,6 @@ func (mp *MetaPartition) removeReplicaByAddr(addr string) {
 		newReplicas = append(newReplicas, m)
 	}
 	mp.Replicas = newReplicas
-	return
 }
 
 func (mp *MetaPartition) updateInodeIDRangeForAllReplicas() {
@@ -263,9 +260,7 @@ func (mp *MetaPartition) getMetaReplica(addr string) (mr *MetaReplica, err error
 }
 
 func (mp *MetaPartition) removeMissingReplica(addr string) {
-	if _, ok := mp.MissNodes[addr]; ok {
-		delete(mp.MissNodes, addr)
-	}
+	delete(mp.MissNodes, addr)
 }
 
 func (mp *MetaPartition) isLeaderExist() bool {
@@ -295,7 +290,6 @@ func (mp *MetaPartition) checkLeader(clusterID string) {
 	if WarnMetrics != nil {
 		WarnMetrics.WarnMpNoLeader(clusterID, mp.PartitionID, report)
 	}
-	return
 }
 
 func (mp *MetaPartition) checkStatus(ctx context.Context, clusterID string, writeLog bool, replicaNum int, maxPartitionID uint64, metaPartitionInodeIdStep uint64, forbiddenVol bool) (doSplit bool) {
@@ -487,7 +481,6 @@ func (mp *MetaPartition) checkReplicas() {
 			mr.Status = proto.Unavailable
 		}
 	}
-	return
 }
 
 func (mp *MetaPartition) persistToRocksDB(ctx context.Context, action, volName string, newHosts []string, newPeers []proto.Peer, c *Cluster) (err error) {
@@ -604,7 +597,7 @@ func (mp *MetaPartition) replicaCreationTasks(ctx context.Context, clusterID, vo
 
 func (mp *MetaPartition) buildNewMetaPartitionTasks(specifyAddrs []string, peers []proto.Peer, volName string) (tasks []*proto.AdminTask) {
 	tasks = make([]*proto.AdminTask, 0)
-	hosts := make([]string, 0)
+	var hosts []string
 
 	req := &proto.CreateMetaPartitionRequest{
 		Start:       mp.Start,
@@ -694,17 +687,6 @@ func (mp *MetaPartition) createTaskToRemoveRaftMember(removePeer proto.Peer) (t 
 	}
 	req := &proto.RemoveMetaPartitionRaftMemberRequest{PartitionId: mp.PartitionID, RemovePeer: removePeer}
 	t = proto.NewAdminTask(proto.OpRemoveMetaPartitionRaftMember, mr.Addr, req)
-	resetMetaPartitionTaskID(t, mp.PartitionID)
-	return
-}
-
-func (mp *MetaPartition) createTaskToDecommissionReplica(volName string, removePeer proto.Peer, addPeer proto.Peer) (t *proto.AdminTask, err error) {
-	mr, err := mp.getMetaReplicaLeader()
-	if err != nil {
-		return nil, errors.NewError(err)
-	}
-	req := &proto.MetaPartitionDecommissionRequest{PartitionID: mp.PartitionID, VolName: volName, RemovePeer: removePeer, AddPeer: addPeer}
-	t = proto.NewAdminTask(proto.OpDecommissionMetaPartition, mr.Addr, req)
 	resetMetaPartitionTaskID(t, mp.PartitionID)
 	return
 }
@@ -907,21 +889,6 @@ func (mp *MetaPartition) SetTxCnt() {
 		}
 	}
 	mp.TxCnt, mp.TxRbInoCnt, mp.TxRbDenCnt = txCnt, rbInoCnt, rbDenCnt
-}
-
-func (mp *MetaPartition) getAllNodeSets() (nodeSets []uint64) {
-	mp.RLock()
-	defer mp.RUnlock()
-	nodeSets = make([]uint64, 0)
-	for _, mr := range mp.Replicas {
-		if mr.metaNode == nil {
-			continue
-		}
-		if !containsID(nodeSets, mr.metaNode.NodeSetID) {
-			nodeSets = append(nodeSets, mr.metaNode.NodeSetID)
-		}
-	}
-	return
 }
 
 func (mp *MetaPartition) getLiveZones(offlineAddr string) (zones []string) {

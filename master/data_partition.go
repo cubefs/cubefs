@@ -96,7 +96,7 @@ func newDataPartition(ID uint64, replicaNum uint8, volName string, volID uint64,
 	partition.Hosts = make([]string, 0)
 	partition.Peers = make([]proto.Peer, 0)
 	partition.Replicas = make([]*DataReplica, 0)
-	partition.FileInCoreMap = make(map[string]*FileInCore, 0)
+	partition.FileInCoreMap = make(map[string]*FileInCore)
 	partition.FilesWithMissingReplica = make(map[string]int64)
 	partition.MissingNodes = make(map[string]int64)
 
@@ -129,18 +129,10 @@ func (partition *DataPartition) isSpecialReplicaCnt() bool {
 	return partition.ReplicaNum == 1 || partition.ReplicaNum == 2
 }
 
-func (partition *DataPartition) isSingleReplica() bool {
-	return partition.ReplicaNum == 1
-}
-
-func (partition *DataPartition) isTwoReplica() bool {
-	return partition.ReplicaNum == 2
-}
-
 func (partition *DataPartition) resetFilesWithMissingReplica() {
 	partition.Lock()
-	defer partition.Unlock()
 	partition.FilesWithMissingReplica = make(map[string]int64)
+	partition.Unlock()
 }
 
 func (partition *DataPartition) dataNodeStartTime() int64 {
@@ -354,21 +346,6 @@ func (partition *DataPartition) canBeOffLine(ctx context.Context, offlineAddr st
 	return
 }
 
-// get all the valid replicas of the given data partition
-func (partition *DataPartition) availableDataReplicas() (replicas []*DataReplica) {
-	replicas = make([]*DataReplica, 0)
-	for i := 0; i < len(partition.Replicas); i++ {
-		replica := partition.Replicas[i]
-
-		// the node reports heartbeat normally and the node is available
-		if replica.isLocationAvailable() == true && partition.hasHost(replica.Addr) == true {
-			replicas = append(replicas, replica)
-		}
-	}
-
-	return
-}
-
 // Remove the replica address from the memory.
 func (partition *DataPartition) removeReplicaByAddr(ctx context.Context, addr string) {
 	span := proto.SpanFromContext(ctx)
@@ -387,11 +364,9 @@ func (partition *DataPartition) removeReplicaByAddr(ctx context.Context, addr st
 	if delIndex == -1 {
 		return
 	}
-	partition.FileInCoreMap = make(map[string]*FileInCore, 0)
+	partition.FileInCoreMap = make(map[string]*FileInCore)
 	partition.deleteReplicaByIndex(ctx, delIndex)
 	partition.modifyTime = time.Now().Unix()
-
-	return
 }
 
 func (partition *DataPartition) deleteReplicaByIndex(ctx context.Context, index int) {
@@ -413,7 +388,7 @@ func (partition *DataPartition) createLoadTasks(ctx context.Context) (tasks []*p
 	defer partition.Unlock()
 	for _, addr := range partition.Hosts {
 		replica, err := partition.getReplica(ctx, addr)
-		if err != nil || replica.isLive(ctx, defaultDataPartitionTimeOutSec) == false {
+		if err != nil || !replica.isLive(ctx, defaultDataPartitionTimeOutSec) {
 			continue
 		}
 		replica.HasLoadResponse = false
@@ -494,13 +469,13 @@ func (partition *DataPartition) checkLoadResponse(ctx context.Context, timeOutSe
 			return
 		}
 		timePassed := time.Now().Unix() - partition.LastLoadedTime
-		if replica.HasLoadResponse == false && timePassed > timeToWaitForResponse {
+		if !replica.HasLoadResponse && timePassed > timeToWaitForResponse {
 			msg := fmt.Sprintf("action[checkLoadResponse], partitionID:%v on node:%v no response, spent time %v s",
 				partition.PartitionID, addr, timePassed)
 			span.Warn(msg)
 			return
 		}
-		if replica.isLive(ctx, timeOutSec) == false || replica.HasLoadResponse == false {
+		if !replica.isLive(ctx, timeOutSec) || !replica.HasLoadResponse {
 			span.Infof("action[checkLoadResponse] partitionID:%v getReplica addr %v replica.isLive(timeOutSec) %v", partition.PartitionID, addr, replica.isLive(ctx, timeOutSec))
 			return
 		}
@@ -548,7 +523,7 @@ func (partition *DataPartition) releaseDataPartition(ctx context.Context) {
 		fc.MetadataArray = nil
 		delete(partition.FileInCoreMap, name)
 	}
-	partition.FileInCoreMap = make(map[string]*FileInCore, 0)
+	partition.FileInCoreMap = make(map[string]*FileInCore)
 	for name, fileMissReplicaTime := range partition.FilesWithMissingReplica {
 		if time.Now().Unix()-fileMissReplicaTime > 2*intervalToLoadDataPartition {
 			delete(partition.FilesWithMissingReplica, name)
@@ -630,7 +605,7 @@ func (partition *DataPartition) getLiveReplicasFromHosts(ctx context.Context, ti
 		if !ok {
 			continue
 		}
-		if replica.isLive(ctx, timeOutSec) == true {
+		if replica.isLive(ctx, timeOutSec) {
 			replicas = append(replicas, replica)
 		}
 	}
@@ -642,7 +617,7 @@ func (partition *DataPartition) getLiveReplicasFromHosts(ctx context.Context, ti
 func (partition *DataPartition) getLiveReplicas(ctx context.Context, timeOutSec int64) (replicas []*DataReplica) {
 	replicas = make([]*DataReplica, 0)
 	for _, replica := range partition.Replicas {
-		if replica.isLive(ctx, timeOutSec) == true {
+		if replica.isLive(ctx, timeOutSec) {
 			replicas = append(replicas, replica)
 		}
 	}
@@ -651,9 +626,7 @@ func (partition *DataPartition) getLiveReplicas(ctx context.Context, timeOutSec 
 }
 
 func (partition *DataPartition) checkAndRemoveMissReplica(addr string) {
-	if _, ok := partition.MissingNodes[addr]; ok {
-		delete(partition.MissingNodes, addr)
-	}
+	delete(partition.MissingNodes, addr)
 }
 
 func (partition *DataPartition) loadFile(ctx context.Context, dataNode *DataNode, resp *proto.LoadDataPartitionResponse) {
@@ -836,18 +809,6 @@ func (partition *DataPartition) getReplicaDisk(nodeAddr string) string {
 		}
 	}
 	return ""
-}
-
-func (partition *DataPartition) getMinus() (minus float64) {
-	partition.RLock()
-	defer partition.RUnlock()
-	used := partition.Replicas[0].Used
-	for _, replica := range partition.Replicas {
-		if math.Abs(float64(replica.Used)-float64(used)) > minus {
-			minus = math.Abs(float64(replica.Used) - float64(used))
-		}
-	}
-	return minus
 }
 
 func (partition *DataPartition) activeUsedSimilar(ctx context.Context) bool {
@@ -1039,10 +1000,10 @@ const (
 const InvalidDecommissionDpCnt = -1
 
 const (
-	defaultDecommissionParallelLimit      = 10
-	defaultDecommissionRetryLimit         = 5
-	defaultDecommissionRollbackLimit      = 3
-	defaultDecommissionDiskParallelFactor = 0
+	defaultDecommissionParallelLimit = 10
+	defaultDecommissionRetryLimit    = 5
+	defaultDecommissionRollbackLimit = 3
+	// defaultDecommissionDiskParallelFactor = 0
 )
 
 func GetDecommissionStatusMessage(status uint32) string {
@@ -1371,7 +1332,6 @@ func (partition *DataPartition) rollback(ctx context.Context, c *Cluster) {
 	partition.SetSpecialReplicaDecommissionStep(SpecialDecommissionInitial)
 	c.syncUpdateDataPartition(ctx, partition)
 	span.Warnf("action[rollback]dp[%v] rollback success", partition.PartitionID)
-	return
 }
 
 func (partition *DataPartition) addToDecommissionList(ctx context.Context, c *Cluster) {
@@ -1414,10 +1374,7 @@ func (partition *DataPartition) addToDecommissionList(ctx context.Context, c *Cl
 }
 
 func (partition *DataPartition) checkConsumeToken() bool {
-	if partition.GetDecommissionStatus() == DecommissionRunning {
-		return true
-	}
-	return false
+	return partition.GetDecommissionStatus() == DecommissionRunning
 }
 
 // only mark stop status or initial
@@ -1492,7 +1449,7 @@ func (partition *DataPartition) pauseReplicaRepair(ctx context.Context, replicaA
 			span.Debugf("action[pauseReplicaRepair]dp[%v] replica %v RecoverStartTime sub %v seconds",
 				partition.PartitionID, replicaAddr, partition.RecoverLastConsumeTime.Seconds())
 		} else {
-			partition.RecoverLastConsumeTime = time.Now().Sub(partition.RecoverStartTime)
+			partition.RecoverLastConsumeTime = time.Since(partition.RecoverStartTime)
 			span.Debugf("action[pauseReplicaRepair]dp[%v] replica %v already recover %v seconds",
 				partition.PartitionID, replicaAddr, partition.RecoverLastConsumeTime.Seconds())
 		}
@@ -1592,7 +1549,7 @@ func (partition *DataPartition) TryAcquireDecommissionToken(ctx context.Context,
 			}
 			// get nodeset for target host
 			newAddr := targetHosts[0]
-			ns, zone, err = getTargetNodeset(ctx, newAddr, c)
+			ns, _, err = getTargetNodeset(ctx, newAddr, c)
 			if err != nil {
 				span.Warnf("action[TryAcquireDecommissionToken] dp %v find new nodeset failed:%v",
 					partition.PartitionID, err.Error())
@@ -1611,7 +1568,7 @@ func (partition *DataPartition) TryAcquireDecommissionToken(ctx context.Context,
 			return false
 		}
 	} else {
-		ns, zone, err = getTargetNodeset(ctx, partition.DecommissionDstAddr, c)
+		ns, _, err = getTargetNodeset(ctx, partition.DecommissionDstAddr, c)
 		if err != nil {
 			span.Warnf("action[TryAcquireDecommissionToken]dp %v find src nodeset failed:%v",
 				partition.PartitionID, err.Error())

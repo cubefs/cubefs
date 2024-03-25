@@ -43,10 +43,6 @@ type MockMetaPartition struct {
 // MockMetaReplica defines the replica of a meta partition
 type MockMetaReplica struct {
 	Addr        string
-	start       uint64 // lower bound of the inode id
-	end         uint64 // upper bound of the inode id
-	dataSize    uint64
-	nodeID      uint64
 	MaxInodeID  uint64
 	InodeCount  uint64
 	DentryCount uint64

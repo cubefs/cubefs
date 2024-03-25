@@ -123,7 +123,7 @@ func (fc *FileInCore) calculateCrc(badVfNodes []*FileMetadata) (fileCrcArr []*Fi
 			}
 		}
 
-		if isFound == false {
+		if !isFound {
 			crc = newFileCrc(crcKey)
 			crc.meta = badVfNodes[i]
 			fileCrcArr = append(fileCrcArr, crc)

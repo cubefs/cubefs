@@ -437,7 +437,7 @@ func (mw *MetaWrapper) IsQuotaLimited(ctx context.Context, quotaIds []uint32) bo
 }
 
 func (mw *MetaWrapper) GetQuotaFullPaths() (fullPaths []string) {
-	fullPaths = make([]string, 0, 0)
+	fullPaths = make([]string, 0)
 	mw.QuotaLock.RLock()
 	defer mw.QuotaLock.RUnlock()
 	for _, info := range mw.QuotaInfoMap {

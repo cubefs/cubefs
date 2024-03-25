@@ -2570,7 +2570,7 @@ func (mw *MetaWrapper) batchSetInodeQuota(ctx context.Context, mp *MetaPartition
 		return
 	}
 	resp = new(proto.BatchSetMetaserverQuotaResponse)
-	resp.InodeRes = make(map[uint64]uint8, 0)
+	resp.InodeRes = make(map[uint64]uint8)
 	if err = packet.UnmarshalData(resp); err != nil {
 		span.Errorf("batchSetInodeQuota: packet(%v) mp(%v) req(%v) err(%v) PacketData(%v)", packet, mp, *req, err, string(packet.Data))
 		return
@@ -2618,7 +2618,7 @@ func (mw *MetaWrapper) batchDeleteInodeQuota(ctx context.Context, mp *MetaPartit
 		return
 	}
 	resp = new(proto.BatchDeleteMetaserverQuotaResponse)
-	resp.InodeRes = make(map[uint64]uint8, 0)
+	resp.InodeRes = make(map[uint64]uint8)
 	if err = packet.UnmarshalData(resp); err != nil {
 		span.Errorf("batchSetInodeQuota: packet(%v) mp(%v) req(%v) err(%v) PacketData(%v)", packet, mp, *req, err, string(packet.Data))
 		return

@@ -170,8 +170,8 @@ func (v *Volume) syncOSSMeta() {
 
 // update Volume meta info
 func (v *Volume) loadOSSMeta() {
-	span, ctx := proto.SpanContext()
-	span = spanWithOperation(ctx, "LoadOSSMeta")
+	_, ctx := proto.SpanContext()
+	span := spanWithOperation(ctx, "LoadOSSMeta")
 
 	var err error
 	defer func() {
@@ -419,7 +419,7 @@ func (v *Volume) GetXAttr(ctx context.Context, path string, key string) (info *p
 
 		info = &proto.XAttrInfo{
 			Inode:  inode,
-			XAttrs: make(map[string]string, 0),
+			XAttrs: make(map[string]string),
 		}
 
 		var attr *proto.XAttrInfo
@@ -1469,55 +1469,6 @@ func (v *Volume) streamWrite(ctx context.Context, inode uint64, reader io.Reader
 	return
 }
 
-func (v *Volume) appendInodeHash(ctx context.Context, h hash.Hash, inode uint64, total uint64, preAllocatedBuf []byte) (err error) {
-	span := spanWithOperation(ctx, "appendInodeHash")
-
-	if err = v.ec.OpenStream(ctx, inode); err != nil {
-		span.Errorf("data OpenStream fail: volume(%v) inode(%v) err(%v)", v.name, inode, err)
-		return
-	}
-	defer func() {
-		if closeErr := v.ec.CloseStream(inode); closeErr != nil {
-			span.Warnf("data CloseStream fail: volume(%v) inode(%v) err(%v)", v.name, inode, closeErr)
-		}
-		if evictErr := v.ec.EvictStream(inode); evictErr != nil {
-			span.Warnf("data EvictStream fail: volume(%v) inode(%v) err(%v)", v.name, inode, evictErr)
-		}
-	}()
-
-	buf := preAllocatedBuf
-	if len(buf) == 0 {
-		buf = make([]byte, 1024*64)
-	}
-
-	var n, offset, size int
-	for {
-		size = len(buf)
-		rest := total - uint64(offset)
-		if uint64(size) > rest {
-			size = int(rest)
-		}
-		n, err = v.ec.Read(ctx, inode, buf, offset, size)
-		if err != nil && err != io.EOF {
-			span.Errorf("data Read fail: volume(%v) inode(%v) offset(%v) size(%v) err(%v)",
-				v.name, inode, offset, size, err)
-			return
-		}
-		if n > 0 {
-			if _, err = h.Write(buf[:n]); err != nil {
-				span.Errorf("hash write fail: %v", err)
-				return
-			}
-			offset += n
-		}
-		if n == 0 || err == io.EOF {
-			break
-		}
-	}
-
-	return
-}
-
 func (v *Volume) applyInodeToNewDentry(ctx context.Context, parentID uint64, name string, inode uint64, fullPath string) error {
 	return v.mw.DentryCreate_ll(ctx, parentID, name, inode, DefaultFileMode, fullPath)
 }
@@ -1578,36 +1529,6 @@ func (v *Volume) applyInodeToExistDentry(
 	return
 }
 
-func (v *Volume) loadUserDefinedMetadata(ctx context.Context, inode uint64) (metadata map[string]string, err error) {
-	span := spanWithOperation(ctx, "loadUserDefinedMetadata")
-
-	var storedXAttrKeys []string
-	if storedXAttrKeys, err = v.mw.XAttrsList_ll(ctx, inode); err != nil {
-		span.Errorf("meta XAttrsList_ll fail: volume(%v) inode(%v) err(%v)", v.name, inode, err)
-		return
-	}
-	xattrKeys := make([]string, 0)
-	for _, storedXAttrKey := range storedXAttrKeys {
-		if !strings.HasPrefix(storedXAttrKey, "oss:") {
-			xattrKeys = append(xattrKeys, storedXAttrKey)
-		}
-	}
-	var xattrs []*proto.XAttrInfo
-	if xattrs, err = v.mw.BatchGetXAttr(ctx, []uint64{inode}, xattrKeys); err != nil {
-		span.Errorf("meta BatchGetXAttr fail: volume(%v) inode(%v) keys(%v) err(%v)",
-			v.name, inode, strings.Join(xattrKeys, ","), err)
-		return
-	}
-	metadata = make(map[string]string)
-	if len(xattrs) > 0 && xattrs[0].Inode == inode {
-		xattrs[0].VisitAll(func(key string, value []byte) bool {
-			metadata[key] = string(value)
-			return true
-		})
-	}
-	return
-}
-
 func (v *Volume) readFile(ctx context.Context, inode, inodeSize uint64, path string, writer io.Writer, offset, size uint64) (err error) {
 	start := time.Now()
 	span := spanWithOperation(ctx, "readFile")
@@ -1644,12 +1565,11 @@ func (v *Volume) readEbs(ctx context.Context, inode, inodeSize uint64, path stri
 		upper = inodeSize - offset
 	}
 
-	_ = context.WithValue(ctx, "objectnode", 1)
 	reader := v.getEbsReader(inode)
 	var n int
 	var rest uint64
 	tmp := buf.ReadBufPool.Get().([]byte)
-	defer buf.ReadBufPool.Put(tmp)
+	defer buf.ReadBufPool.Put(tmp) // nolint: staticcheck
 
 	for {
 		if rest = upper - offset; rest <= 0 {
@@ -1841,7 +1761,7 @@ func (v *Volume) ObjectMeta(ctx context.Context, path string) (info *FSFileInfo,
 	// Load user-defined metadata
 	var retainUntilDate string
 	var retainUntilDateInt64 int64
-	metadata := make(map[string]string, 0)
+	metadata := make(map[string]string)
 	for key, val := range xattr.XAttrs {
 		if !strings.HasPrefix(key, XAttrKeyOSSPrefix) {
 			metadata[key] = val
@@ -2042,7 +1962,7 @@ func updateAttrCache(inode uint64, key, value, volName string) {
 		attrItem := &AttrItem{
 			XAttrInfo: proto.XAttrInfo{
 				Inode:  inode,
-				XAttrs: make(map[string]string, 0),
+				XAttrs: make(map[string]string),
 			},
 		}
 		attrItem.XAttrs[key] = value
@@ -2303,9 +2223,7 @@ func (v *Volume) recursiveScan(
 	span := spanWithOperation(ctx, "recursiveScan")
 
 	currentPath := strings.Join(dirs, pathSep) + pathSep
-	if strings.HasPrefix(currentPath, pathSep) {
-		currentPath = strings.TrimPrefix(currentPath, pathSep)
-	}
+	currentPath = strings.TrimPrefix(currentPath, pathSep)
 
 	// The "prefix" needs to be extracted as marker when it is larger than "marker".
 	// So extract prefixMarker in this layer.
@@ -2697,7 +2615,6 @@ func (v *Volume) CopyFile(
 		}
 	}()
 
-	var xattr *proto.XAttrInfo
 	// if source path is same with target path, just reset file metadata
 	// source path is same with target path, and metadata directive is not 'REPLACE', objectNode does nothing
 	if targetPath == sourcePath && v.name == sv.name {
@@ -2752,7 +2669,7 @@ func (v *Volume) CopyFile(
 				objMetaCache.MergeAttr(v.name, attr)
 			}
 		}
-		info, xattr, err = sv.ObjectMeta(ctx, sourcePath)
+		info, _, err = sv.ObjectMeta(ctx, sourcePath)
 
 		return
 	}
@@ -2955,6 +2872,7 @@ func (v *Volume) CopyFile(
 	}
 	targetAttr.XAttrs[XAttrKeyOSSETag] = etagValue.Encode()
 
+	var xattr *proto.XAttrInfo
 	// copy source file metadata to write target file metadata
 	if metaDirective != MetadataDirectiveReplace {
 		xattr, err = sv.mw.XAttrGetAll_ll(ctx, sInode)
@@ -3028,22 +2946,6 @@ func (v *Volume) CopyFile(
 	putAttrCache(targetAttr, v.name)
 
 	return
-}
-
-func (v *Volume) copyFile(
-	ctx context.Context,
-	parentID uint64,
-	newFileName string,
-	sourceFileInode uint64,
-	mode uint32,
-	newPath string,
-	sourcePath string,
-) (*proto.InodeInfo, error) {
-	if err := v.mw.DentryCreate_ll(ctx, parentID, newFileName, sourceFileInode, mode, newPath); err != nil {
-		return nil, err
-	}
-
-	return v.mw.InodeLink_ll(ctx, sourceFileInode, sourcePath)
 }
 
 func NewVolume(ctx context.Context, config *VolumeConfig) (*Volume, error) {

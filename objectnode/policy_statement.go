@@ -128,9 +128,9 @@ func (p PrincipalType) valid() bool {
 	if !ok {
 		return false
 	}
-	switch p1.(type) {
+	switch pval := p1.(type) {
 	case []interface{}:
-		p2 := p1.([]interface{})
+		p2 := pval
 		if len(p2) == 0 {
 			return false
 		}
@@ -145,7 +145,7 @@ func (p PrincipalType) valid() bool {
 		}
 		return true
 	case string:
-		if !PrincipalElementType(p1.(string)).valid() {
+		if !PrincipalElementType(pval).valid() {
 			return false
 		}
 	default:

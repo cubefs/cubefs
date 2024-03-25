@@ -34,7 +34,7 @@ import (
 )
 
 var (
-	rangeRegexp  = regexp.MustCompile("^bytes=(\\d)*-(\\d)*$")
+	rangeRegexp  = regexp.MustCompile(`^bytes=(\d)*-(\d)*$`)
 	MaxKeyLength = 750
 )
 
@@ -516,8 +516,7 @@ func (o *ObjectNode) deleteObjectsHandler(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	var vol *Volume
-	if vol, err = o.getVol(ctx, param.Bucket()); err != nil {
+	if _, err = o.getVol(ctx, param.Bucket()); err != nil {
 		span.Errorf("load volume fail: volume(%v) err(%v)", param.Bucket(), err)
 		return
 	}
@@ -591,7 +590,6 @@ func (o *ObjectNode) deleteObjectsHandler(w http.ResponseWriter, r *http.Request
 
 	deletedObjects := make([]Deleted, 0, len(deleteReq.Objects))
 	deletedErrors := make([]Error, 0)
-	objectKeys := make([]string, 0, len(deleteReq.Objects))
 	start := time.Now()
 	for _, object := range deleteReq.Objects {
 		result := POLICY_UNKNOW
@@ -612,7 +610,6 @@ func (o *ObjectNode) deleteObjectsHandler(w http.ResponseWriter, r *http.Request
 			})
 			continue
 		}
-		objectKeys = append(objectKeys, object.Key)
 		span.Warnf("delete object: reqUid(%v) remote(%v) volume(%v) path(%v)",
 			userInfo.UserID, getRequestIP(r), vol.Name(), object.Key)
 		// QPS and Concurrency Limit

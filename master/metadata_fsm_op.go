@@ -887,11 +887,6 @@ func (c *Cluster) buildPutMetaNodeCmd(opType uint32, metaNode *MetaNode) (metada
 	return
 }
 
-func (c *Cluster) buildAddMetaNodeCmd(metaNode *MetaNode) (metadata *RaftCmd, err error) {
-	metadata, err = c.buildPutMetaNodeCmd(opSyncAddMetaNode, metaNode)
-	return
-}
-
 func (c *Cluster) buildDeleteMetaNodeCmd(metaNode *MetaNode) (metadata *RaftCmd, err error) {
 	metadata, err = c.buildPutMetaNodeCmd(opSyncDeleteMetaNode, metaNode)
 	return
@@ -921,11 +916,6 @@ func (c *Cluster) syncDeleteDataNode(ctx context.Context, dataNode *DataNode) (e
 
 func (c *Cluster) syncUpdateDataNode(ctx context.Context, dataNode *DataNode) (err error) {
 	return c.syncPutDataNode(ctx, opSyncUpdateDataNode, dataNode)
-}
-
-func (c *Cluster) buildAddDataNodeCmd(dataNode *DataNode) (metadata *RaftCmd, err error) {
-	metadata, err = c.buildPutDataNodeCmd(opSyncAddDataNode, dataNode)
-	return
 }
 
 func (c *Cluster) buildDeleteDataNodeCmd(dataNode *DataNode) (metadata *RaftCmd, err error) {
@@ -1099,7 +1089,6 @@ func (c *Cluster) checkPersistClusterValue(ctx context.Context) {
 		panic(err)
 	}
 	span.Info("action[checkPersistClusterValue] add cluster value record")
-	return
 }
 
 func (c *Cluster) loadClusterValue(ctx context.Context) (err error) {
@@ -1294,13 +1283,12 @@ func (c *Cluster) loadZoneDomain(ctx context.Context) (ok bool, err error) {
 
 		for zoneName, domainId := range c.domainManager.ZoneName2DomainIdMap {
 			span.Infof("action[loadZoneDomain] zoneName %v domainid %v", zoneName, domainId)
-			if domainIndex, ok := c.domainManager.domainId2IndexMap[domainId]; !ok {
+			if _, ok := c.domainManager.domainId2IndexMap[domainId]; !ok {
 				span.Infof("action[loadZoneDomain] zoneName %v domainid %v build new domainnodesetgrp manager", zoneName, domainId)
 				domainGrp := newDomainNodeSetGrpManager()
 				domainGrp.domainId = domainId
 				c.domainManager.domainNodeSetGrpVec = append(c.domainManager.domainNodeSetGrpVec, domainGrp)
-				domainIndex = len(c.domainManager.domainNodeSetGrpVec) - 1
-				c.domainManager.domainId2IndexMap[domainId] = domainIndex
+				c.domainManager.domainId2IndexMap[domainId] = len(c.domainManager.domainNodeSetGrpVec) - 1
 			}
 		}
 
@@ -1736,10 +1724,6 @@ func (c *Cluster) syncAddLcNode(ctx context.Context, ln *LcNode) (err error) {
 
 func (c *Cluster) syncDeleteLcNode(ctx context.Context, ln *LcNode) (err error) {
 	return c.syncPutLcNodeInfo(ctx, opSyncDeleteLcNode, ln)
-}
-
-func (c *Cluster) syncUpdateLcNode(ctx context.Context, ln *LcNode) (err error) {
-	return c.syncPutLcNodeInfo(ctx, opSyncUpdateLcNode, ln)
 }
 
 func (c *Cluster) syncPutLcNodeInfo(ctx context.Context, opType uint32, ln *LcNode) (err error) {

@@ -118,7 +118,7 @@ func (c *Cluster) syncPutAccessKeyInfo(opType uint32, accessKeyInfo *keystore.Ac
 }
 
 func (c *Cluster) loadKeystore() (err error) {
-	ks := make(map[string]*keystore.KeyInfo, 0)
+	ks := make(map[string]*keystore.KeyInfo)
 	log.Info("action[loadKeystore]")
 	result, err := c.fsm.store.SeekForPrefix([]byte(ksPrefix))
 	if err != nil {
@@ -144,7 +144,7 @@ func (c *Cluster) loadKeystore() (err error) {
 }
 
 func (c *Cluster) loadAKstore() (err error) {
-	aks := make(map[string]*keystore.AccessKeyInfo, 0)
+	aks := make(map[string]*keystore.AccessKeyInfo)
 	log.Info("action[loadAccessKeystore]")
 	result, err := c.fsm.store.SeekForPrefix([]byte(akPrefix))
 	if err != nil {

@@ -207,18 +207,6 @@ func parseAndExtractNodeAddr(r *http.Request) (nodeAddr string, err error) {
 	return extractNodeAddr(r)
 }
 
-func parseRequestToDecommissionNode(r *http.Request) (nodeAddr, diskPath string, err error) {
-	if err = r.ParseForm(); err != nil {
-		return
-	}
-	nodeAddr, err = extractNodeAddr(r)
-	if err != nil {
-		return
-	}
-	diskPath, err = extractDiskPath(r)
-	return
-}
-
 func parseRequestToGetTaskResponse(r *http.Request) (tr *proto.AdminTask, err error) {
 	var body []byte
 	if err = r.ParseForm(); err != nil {
@@ -339,7 +327,7 @@ func extractUint64WithDefault(r *http.Request, key string, def uint64) (val uint
 		return def, nil
 	}
 
-	if val, err = strconv.ParseUint(str, 10, 64); err != nil || val < 0 {
+	if val, err = strconv.ParseUint(str, 10, 64); err != nil {
 		return 0, fmt.Errorf("parse [%s] is not valid uint [%d], err %v", key, val, err)
 	}
 
@@ -776,7 +764,7 @@ func parseRequestToCreateVol(r *http.Request, req *createVolReq) (err error) {
 	if err != nil {
 		return
 	}
-	if followerExist && followerRead == false && proto.IsHot(req.volType) &&
+	if followerExist && !followerRead && proto.IsHot(req.volType) &&
 		(req.dpReplicaNum == 1 || req.dpReplicaNum == 2) {
 		return fmt.Errorf("vol with 1 ro 2 replia should enable followerRead")
 	}
@@ -807,7 +795,7 @@ func parseRequestToCreateVol(r *http.Request, req *createVolReq) (err error) {
 		return
 	}
 
-	req.enablePosixAcl, err = extractPosixAcl(r)
+	req.enablePosixAcl, _ = extractPosixAcl(r)
 
 	if req.DpReadOnlyWhenVolFull, err = extractBoolWithDefault(r, dpReadOnlyWhenVolFull, false); err != nil {
 		return
@@ -858,18 +846,6 @@ func parseRequestToCreateDataPartition(r *http.Request) (count int, name string,
 	if name, err = extractName(r); err != nil {
 		return
 	}
-	return
-}
-
-func parseRequestToGetConcurrentLcNode(r *http.Request) (count uint64, err error) {
-	if err = r.ParseForm(); err != nil {
-		return
-	}
-	if count, err = extractUint64(r, countKey); err != nil || count == 0 {
-		err = unmatchedKey(countKey)
-		return
-	}
-
 	return
 }
 
@@ -1077,30 +1053,6 @@ func extractFollowerRead(r *http.Request) (followerRead bool, exist bool, err er
 	}
 	exist = true
 	if followerRead, err = strconv.ParseBool(value); err != nil {
-		return
-	}
-	return
-}
-
-func extractAuthenticate(r *http.Request) (authenticate bool, err error) {
-	var value string
-	if value = r.FormValue(authenticateKey); value == "" {
-		authenticate = false
-		return
-	}
-	if authenticate, err = strconv.ParseBool(value); err != nil {
-		return
-	}
-	return
-}
-
-func extractCrossZone(r *http.Request) (crossZone bool, err error) {
-	var value string
-	if value = r.FormValue(crossZoneKey); value == "" {
-		crossZone = false
-		return
-	}
-	if crossZone, err = strconv.ParseBool(value); err != nil {
 		return
 	}
 	return
@@ -1449,7 +1401,7 @@ func extractUint64(r *http.Request, key string) (val uint64, err error) {
 		return 0, nil
 	}
 
-	if val, err = strconv.ParseUint(str, 10, 64); err != nil || val < 0 {
+	if val, err = strconv.ParseUint(str, 10, 64); err != nil {
 		return 0, fmt.Errorf("args [%s] is not legal, val %s", key, str)
 	}
 
@@ -1463,7 +1415,7 @@ func extractUint32(r *http.Request, key string) (val uint32, err error) {
 	}
 
 	var tmp uint64
-	if tmp, err = strconv.ParseUint(str, 10, 32); err != nil || val < 0 {
+	if tmp, err = strconv.ParseUint(str, 10, 32); err != nil {
 		return 0, fmt.Errorf("args [%s] is not legal, val %s", key, str)
 	}
 
@@ -1646,7 +1598,6 @@ func send(w http.ResponseWriter, r *http.Request, reply []byte) {
 		return
 	}
 	proto.SpanFromContext(r.Context()).Infof("URL[%v],remoteAddr[%v],response ok", r.URL, r.RemoteAddr)
-	return
 }
 
 func sendErrReply(w http.ResponseWriter, r *http.Request, httpReply *proto.HTTPReply) {
@@ -1664,8 +1615,6 @@ func sendErrReply(w http.ResponseWriter, r *http.Request, httpReply *proto.HTTPR
 	if _, err = w.Write(reply); err != nil {
 		span.Errorf("fail to write http len[%d].URL[%v],remoteAddr[%v] err:[%v]", len(reply), r.URL, r.RemoteAddr, err)
 	}
-
-	return
 }
 
 func parseRequestToUpdateDecommissionLimit(r *http.Request) (limit uint64, err error) {
@@ -1795,14 +1744,6 @@ func parseGetQuotaParam(r *http.Request) (volName string, quotaId uint32, err er
 	return
 }
 
-func extractPath(r *http.Request) (fullPath string, err error) {
-	if fullPath = r.FormValue(fullPathKey); fullPath == "" {
-		err = keyNotFound(nameKey)
-		return
-	}
-	return
-}
-
 func extractQuotaId(r *http.Request) (quotaId uint32, err error) {
 	var value string
 	if value = r.FormValue(quotaKey); value == "" {
@@ -1812,15 +1753,6 @@ func extractQuotaId(r *http.Request) (quotaId uint32, err error) {
 	tmp, err := strconv.ParseUint(value, 10, 32)
 	quotaId = uint32(tmp)
 	return
-}
-
-func extractInodeId(r *http.Request) (inode uint64, err error) {
-	var value string
-	if value = r.FormValue(inodeKey); value == "" {
-		err = keyNotFound(inodeKey)
-		return
-	}
-	return strconv.ParseUint(value, 10, 64)
 }
 
 func parseRequestToUpdateDecommissionDiskFactor(r *http.Request) (factor float64, err error) {

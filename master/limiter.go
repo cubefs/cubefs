@@ -158,7 +158,8 @@ func (uMgr *UidSpaceManager) volUidUpdate(ctx context.Context, report *proto.Met
 				}
 			}
 			if _, ok := uidInfo[space.Uid]; !ok {
-				uidInfo[space.Uid] = &(*uMgr.uidInfo[space.Uid])
+				infoCopy := *uMgr.uidInfo[space.Uid]
+				uidInfo[space.Uid] = &infoCopy
 			}
 
 			span.Debugf("volUidUpdate.vol %v uid %v from mpId %v useSize %v add %v", uMgr.vol, space.Uid, mpId, uidInfo[space.Uid].UsedSize, space.Size)
@@ -690,7 +691,6 @@ func (qosManager *QosCtrlManager) updateServerLimitByClientsInfo(ctx context.Con
 	}
 	span.Debugf("action[updateServerLimitByClientsInfo] vol [%v] type [%v] after adjust limitRatio serverLimit:(%v)",
 		qosManager.vol.Name, proto.QosTypeString(factorType), serverLimit)
-	return
 }
 
 func (qosManager *QosCtrlManager) assignClientsNewQos(ctx context.Context, factorType uint32) {
@@ -811,14 +811,14 @@ func (vol *Vol) getClientLimitInfo(ctx context.Context, id uint64, ip string) (i
 			Cli: &ClientReportOutput{
 				ID:        info.Cli.ID,
 				Status:    info.Cli.Status,
-				FactorMap: make(map[uint32]*proto.ClientLimitInfo, 0),
+				FactorMap: make(map[uint32]*proto.ClientLimitInfo),
 			},
 			Assign: &LimitOutput{
 				ID:            info.Assign.ID,
 				Enable:        info.Assign.Enable,
 				ReqPeriod:     info.Assign.ReqPeriod,
 				HitTriggerCnt: info.Assign.HitTriggerCnt,
-				FactorMap:     make(map[uint32]*proto.ClientLimitInfo, 0),
+				FactorMap:     make(map[uint32]*proto.ClientLimitInfo),
 			},
 			Time: info.Time,
 			Host: info.Host,

@@ -259,10 +259,6 @@ func (rp *ReplProtocol) setReplProtocolError(request *Packet, index int) {
 	atomic.StoreInt32(&rp.isError, ReplProtocolError)
 }
 
-func (rp *ReplProtocol) hasError() bool {
-	return atomic.LoadInt32(&rp.isError) == ReplProtocolError
-}
-
 func (rp *ReplProtocol) readPkgAndPrepare() (err error) {
 	request := NewPacket()
 	if err = request.ReadFromConnWithVer(rp.sourceConn, proto.NoReadDeadlineTime); err != nil {

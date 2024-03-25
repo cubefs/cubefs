@@ -41,7 +41,6 @@ type VolVarargs struct {
 	dpSelectorName          string
 	dpSelectorParm          string
 	coldArgs                *coldVolArgs
-	domainId                uint64
 	dpReplicaNum            uint8
 	enablePosixAcl          bool
 	dpReadOnlyWhenVolFull   bool
@@ -119,8 +118,7 @@ type Vol struct {
 }
 
 func newVol(ctx context.Context, vv volValue) (vol *Vol) {
-	vol = &Vol{ID: vv.ID, Name: vv.Name, MetaPartitions: make(map[uint64]*MetaPartition, 0)}
-
+	vol = &Vol{ID: vv.ID, Name: vv.Name, MetaPartitions: make(map[uint64]*MetaPartition)}
 	if vol.threshold <= 0 {
 		vol.threshold = defaultMetaPartitionMemUsageThreshold
 	}
@@ -279,24 +277,22 @@ func (mpsLock *mpsLockManager) RUnlock() {
 
 func (mpsLock *mpsLockManager) CheckExceptionLock(interval time.Duration, expireTime time.Duration) {
 	ticker := time.NewTicker(interval)
-	for {
-		select {
-		case <-ticker.C:
-			if mpsLock.vol.status() == proto.VolStatusMarkDelete || atomic.LoadInt32(&mpsLock.enable) == 0 {
-				break
-			}
-			if log.GetOutputLevel() != log.Ldebug {
-				continue
-			}
-			if !mpsLock.onLock {
-				continue
-			}
-			tm := time.Now()
-			if tm.After(mpsLock.lockTime.Add(expireTime)) {
-				log.Warnf("vol %v mpsLock hang more than %v since time %v stack(%v)",
-					mpsLock.vol.Name, expireTime, mpsLock.lockTime, mpsLock.lastEffectStack)
-				mpsLock.hang = true
-			}
+	defer ticker.Stop()
+	for range ticker.C {
+		if mpsLock.vol.status() == proto.VolStatusMarkDelete || atomic.LoadInt32(&mpsLock.enable) == 0 {
+			break
+		}
+		if log.GetOutputLevel() != log.Ldebug {
+			continue
+		}
+		if !mpsLock.onLock {
+			continue
+		}
+		tm := time.Now()
+		if tm.After(mpsLock.lockTime.Add(expireTime)) {
+			log.Warnf("vol %v mpsLock hang more than %v since time %v stack(%v)",
+				mpsLock.vol.Name, expireTime, mpsLock.lockTime, mpsLock.lastEffectStack)
+			mpsLock.hang = true
 		}
 	}
 }
@@ -326,7 +322,7 @@ func (vol *Vol) CheckStrategy(ctx context.Context, c *Cluster) {
 					return
 				}
 				vol.VersionMgr.RLock()
-				if vol.VersionMgr.strategy.GetPeriodicSecond() == 0 || vol.VersionMgr.strategy.Enable == false { // strategy not be set
+				if vol.VersionMgr.strategy.GetPeriodicSecond() == 0 || !vol.VersionMgr.strategy.Enable { // strategy not be set
 					vol.VersionMgr.RUnlock()
 					continue
 				}
@@ -367,8 +363,8 @@ func (vol *Vol) getPreloadCapacity(ctx context.Context) uint64 {
 
 func (vol *Vol) initQosManager(ctx context.Context, limitArgs *qosArgs) {
 	vol.qosManager = &QosCtrlManager{
-		cliInfoMgrMap:        make(map[uint64]*ClientInfoMgr, 0),
-		serverFactorLimitMap: make(map[uint32]*ServerFactorLimit, 0),
+		cliInfoMgrMap:        make(map[uint64]*ClientInfoMgr),
+		serverFactorLimitMap: make(map[uint32]*ServerFactorLimit),
 		qosEnable:            limitArgs.qosEnable,
 		vol:                  vol,
 		ClientHitTriggerCnt:  defaultClientTriggerHitCnt,
@@ -794,7 +790,6 @@ func (vol *Vol) checkSplitMetaPartition(ctx context.Context, c *Cluster, metaPar
 		span.Infof("volume[%v] split MaxMP[%v], MaxInodeID[%d] Start[%d] RWMPNum[%d] maxMPInodeUsedRatio[%.2f]",
 			vol.Name, maxPartitionID, maxMP.MaxInodeID, maxMP.Start, RWMPNum, maxMPInodeUsedRatio)
 	}
-	return
 }
 
 func (mp *MetaPartition) memUsedReachThreshold(ctx context.Context, clusterName, volName string) bool {
@@ -821,7 +816,7 @@ func (mp *MetaPartition) memUsedReachThreshold(ctx context.Context, clusterName,
 }
 
 func (vol *Vol) cloneMetaPartitionMap() (mps map[uint64]*MetaPartition) {
-	mps = make(map[uint64]*MetaPartition, 0)
+	mps = make(map[uint64]*MetaPartition)
 	vol.mpsLock.RLock()
 	defer vol.mpsLock.RUnlock()
 	for _, mp := range vol.MetaPartitions {
@@ -843,7 +838,7 @@ func (vol *Vol) setMpRdOnly() {
 func (vol *Vol) cloneDataPartitionMap() (dps map[uint64]*DataPartition) {
 	vol.dataPartitions.RLock()
 	defer vol.dataPartitions.RUnlock()
-	dps = make(map[uint64]*DataPartition, 0)
+	dps = make(map[uint64]*DataPartition)
 	for _, dp := range vol.dataPartitions.partitionMap {
 		dps[dp.PartitionID] = dp
 	}
@@ -941,11 +936,7 @@ func (vol *Vol) shouldInhibitWriteBySpaceFull() bool {
 	}
 
 	usedSpace := vol.totalUsedSpace() / util.GB
-	if usedSpace >= vol.capacity() {
-		return true
-	}
-
-	return false
+	return usedSpace >= vol.capacity()
 }
 
 func (vol *Vol) needCreateDataPartition(ctx context.Context) (ok bool, err error) {
@@ -1065,22 +1056,6 @@ func (vol *Vol) totalUsedSpaceByMeta(byMeta bool) uint64 {
 
 func (vol *Vol) cfsUsedSpace() uint64 {
 	return vol.dataPartitions.totalUsedSpace()
-}
-
-func (vol *Vol) sendViewCacheToFollower(ctx context.Context, c *Cluster) {
-	var err error
-	span := proto.SpanFromContext(ctx)
-	span.Infof("action[asyncSendPartitionsToFollower]")
-
-	metadata := new(RaftCmd)
-	metadata.Op = opSyncDataPartitionsView
-	metadata.K = vol.Name
-	metadata.V = vol.dataPartitions.getDataPartitionResponseCache()
-
-	if err = c.submit(ctx, metadata); err != nil {
-		span.Errorf("action[asyncSendPartitionsToFollower] error [%v]", err)
-	}
-	span.Infof("action[asyncSendPartitionsToFollower] finished")
 }
 
 func (vol *Vol) ebsUsedSpace() uint64 {
@@ -1221,8 +1196,6 @@ func (vol *Vol) checkStatus(ctx context.Context, c *Cluster) {
 			vol.deleteDataPartitionFromDataNode(ctx, c, dataTask)
 		}
 	}()
-
-	return
 }
 
 func (vol *Vol) deleteMetaPartitionFromMetaNode(ctx context.Context, c *Cluster, task *proto.AdminTask) {
@@ -1253,7 +1226,6 @@ func (vol *Vol) deleteMetaPartitionFromMetaNode(ctx context.Context, c *Cluster,
 	mp.removeReplicaByAddr(metaNode.Addr)
 	mp.removeMissingReplica(metaNode.Addr)
 	mp.Unlock()
-	return
 }
 
 func (vol *Vol) deleteDataPartitionFromDataNode(ctx context.Context, c *Cluster, task *proto.AdminTask) (err error) {
@@ -1318,7 +1290,6 @@ func (vol *Vol) deleteMetaPartitionsFromStore(ctx context.Context, c *Cluster) {
 	for _, mp := range vol.MetaPartitions {
 		c.syncDeleteMetaPartition(ctx, mp)
 	}
-	return
 }
 
 func (vol *Vol) deleteDataPartitionsFromStore(ctx context.Context, c *Cluster) {
@@ -1378,7 +1349,7 @@ func (vol *Vol) doSplitMetaPartition(ctx context.Context, c *Cluster, mp *MetaPa
 	}
 
 	span.Warnf("action[splitMetaPartition],partition[%v],start[%v],end[%v],new end[%v]", mp.PartitionID, mp.Start, mp.End, end)
-	cmdMap := make(map[string]*RaftCmd, 0)
+	cmdMap := make(map[string]*RaftCmd)
 	oldEnd := mp.End
 	mp.End = end
 

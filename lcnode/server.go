@@ -37,9 +37,6 @@ import (
 	"golang.org/x/time/rate"
 )
 
-//TODO: remove this later.
-//go:generate golangci-lint run --issues-exit-code=1 -D errcheck -E bodyclose ./...
-
 var (
 	getSpan     = proto.SpanFromContext
 	spanContext = proto.SpanContext

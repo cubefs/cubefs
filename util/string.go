@@ -22,9 +22,6 @@ import (
 	"strings"
 )
 
-//TODO: remove this later.
-//go:generate golangci-lint run --issues-exit-code=1 -D errcheck -E bodyclose ./...
-
 func SubString(sourceString string, begin, end int) string {
 	bytes := []byte(sourceString)
 	stringLength := len(bytes)

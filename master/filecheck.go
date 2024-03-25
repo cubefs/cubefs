@@ -48,7 +48,6 @@ func (partition *DataPartition) validateCRC(ctx context.Context, clusterID strin
 		Warn(ctx, clusterID, fmt.Sprintf("vol[%v],dpId[%v],liveAddrs[%v],inactiveAddrs[%v]", partition.VolName, partition.PartitionID, liveAddrs, inactiveAddrs))
 	}
 	partition.doValidateCRC(ctx, liveReplicas, clusterID)
-	return
 }
 
 func (partition *DataPartition) doValidateCRC(ctx context.Context, liveReplicas []*DataReplica, clusterID string) {
@@ -73,7 +72,7 @@ func (partition *DataPartition) doValidateCRC(ctx context.Context, liveReplicas 
 }
 
 func (partition *DataPartition) checkTinyExtentFile(ctx context.Context, fc *FileInCore, liveReplicas []*DataReplica, clusterID string, getInfoCallback func() string) {
-	if fc.shouldCheckCrc() == false {
+	if !fc.shouldCheckCrc() {
 		return
 	}
 	span := proto.SpanFromContext(ctx)
@@ -94,11 +93,10 @@ func (partition *DataPartition) checkTinyExtentFile(ctx context.Context, fc *Fil
 		msg = msg + fmt.Sprintf("fm[%v]:%v\n", fm.locIndex, fm)
 	}
 	Warn(ctx, clusterID, msg)
-	return
 }
 
 func (partition *DataPartition) checkExtentFile(ctx context.Context, fc *FileInCore, liveReplicas []*DataReplica, clusterID string, getInfoCallback func() string) {
-	if fc.shouldCheckCrc() == false {
+	if !fc.shouldCheckCrc() {
 		return
 	}
 	span := proto.SpanFromContext(ctx)
@@ -157,5 +155,4 @@ func (partition *DataPartition) checkExtentFile(ctx context.Context, fc *FileInC
 			Warn(ctx, clusterID, msg)
 		}
 	}
-	return
 }
