@@ -1917,9 +1917,9 @@ func (c *Cluster) getAllMetaPartitionsByMetaNode(addr string) (partitions []*Met
 	return
 }
 
-func (c *Cluster) decommissionDataNodeCancel(dataNode *DataNode) (err error, failed []uint64) {
+func (c *Cluster) decommissionDataNodePause(dataNode *DataNode) (err error, failed []uint64) {
 	if !dataNode.CanBePaused() {
-		err = fmt.Errorf("action[decommissionDataNodeCancel] dataNode[%v] status[%v] donot support cancel",
+		err = fmt.Errorf("action[decommissionDataNodePause] dataNode[%v] status[%v] donot support cancel",
 			dataNode.Addr, dataNode.GetDecommissionStatus())
 		return
 	}
@@ -1928,7 +1928,7 @@ func (c *Cluster) decommissionDataNodeCancel(dataNode *DataNode) (err error, fai
 	dataNode.ToBeOffline = false
 	dataNode.DecommissionCompleteTime = time.Now().Unix()
 	if err = c.syncUpdateDataNode(dataNode); err != nil {
-		log.LogErrorf("action[decommissionDataNodeCancel] dataNode[%v] sync update failed[ %v]",
+		log.LogErrorf("action[decommissionDataNodePause] dataNode[%v] sync update failed[ %v]",
 			dataNode.Addr, err.Error())
 		return
 	}
@@ -1936,27 +1936,27 @@ func (c *Cluster) decommissionDataNodeCancel(dataNode *DataNode) (err error, fai
 		key := fmt.Sprintf("%s_%s", dataNode.Addr, disk)
 		if value, ok := c.DecommissionDisks.Load(key); ok {
 			dd := value.(*DecommissionDisk)
-			_, dps := c.decommissionDiskCancel(dd)
-			log.LogInfof("action[decommissionDataNodeCancel] dataNode [%s] pause disk %v with failed dp[%v]",
+			_, dps := c.decommissionDiskPause(dd)
+			log.LogInfof("action[decommissionDataNodePause] dataNode [%s] pause disk %v with failed dp[%v]",
 				dataNode.Addr, dd.GenerateKey(), dps)
 			failed = append(failed, dps...)
 		}
 	}
-	log.LogDebugf("action[decommissionDataNodeCancel] dataNode[%v] cancel decommission, offline %v with failed dp[%v]",
+	log.LogDebugf("action[decommissionDataNodePause] dataNode[%v] cancel decommission, offline %v with failed dp[%v]",
 		dataNode.Addr, dataNode.ToBeOffline, failed)
 	return
 }
 
-func (c *Cluster) decommissionDiskCancel(disk *DecommissionDisk) (err error, failed []uint64) {
+func (c *Cluster) decommissionDiskPause(disk *DecommissionDisk) (err error, failed []uint64) {
 	if !disk.CanBePaused() {
-		err = fmt.Errorf("action[decommissionDiskCancel] dataNode[%v] disk[%s] status[%v] donot support cancel",
+		err = fmt.Errorf("action[decommissionDiskPause] dataNode[%v] disk[%s] status[%v] donot support cancel",
 			disk.SrcAddr, disk.SrcAddr, disk.GetDecommissionStatus())
 		return
 	}
 	disk.SetDecommissionStatus(DecommissionPause)
 	// disk.DecommissionDpTotal = 0
 	if err = c.syncUpdateDecommissionDisk(disk); err != nil {
-		log.LogErrorf("action[decommissionDiskCancel] dataNode[%v] disk[%s] sync update failed[ %v]",
+		log.LogErrorf("action[decommissionDiskPause] dataNode[%v] disk[%s] sync update failed[ %v]",
 			disk.SrcAddr, disk.SrcAddr, err.Error())
 		return
 	}
@@ -1968,7 +1968,7 @@ func (c *Cluster) decommissionDiskCancel(disk *DecommissionDisk) (err error, fai
 		}
 		dpIds = append(dpIds, dp.PartitionID)
 	}
-	log.LogDebugf("action[decommissionDiskCancel] dataNode[%v] disk[%s] cancel decommission dps[%v] with failed [%v]",
+	log.LogDebugf("action[decommissionDiskPause] dataNode[%v] disk[%s] cancel decommission dps[%v] with failed [%v]",
 		disk.SrcAddr, disk.SrcAddr, dpIds, failed)
 	return
 }
@@ -3824,12 +3824,13 @@ func (c *Cluster) checkDecommissionDataNode() {
 			c.TryDecommissionDataNode(dataNode)
 		} else if dataNode.GetDecommissionStatus() == DecommissionSuccess {
 			partitions := c.getAllDataPartitionByDataNode(dataNode.Addr)
-			// if only decommission part of data partitions, do not remove the datanode
+			// if only decommission part of data partitions, do not remove the data node
 			if len(partitions) != 0 {
 				if time.Now().Sub(time.Unix(dataNode.DecommissionCompleteTime, 0)) > (20 * time.Minute) {
 					log.LogWarnf("action[checkDecommissionDataNode] dataNode %v decommission completed, "+
 						"but has dp left, so only reset decommission status", dataNode.Addr)
 					dataNode.resetDecommissionStatus()
+					//todo: 解锁锁定的磁盘
 				}
 				return true
 			}
@@ -3839,7 +3840,9 @@ func (c *Cluster) checkDecommissionDataNode() {
 				log.LogWarnf("%s", msg)
 			} else {
 				log.LogWarnf("action[checkDecommissionDataNode] del dataNode %v", dataNode.Addr)
+				dataNode.delDecommissionDiskFromCache(c)
 				c.delDataNodeFromCache(dataNode)
+
 			}
 		}
 		return true
@@ -4094,7 +4097,9 @@ func (c *Cluster) checkDecommissionDisk() {
 	c.DecommissionDisks.Range(func(key, value interface{}) bool {
 		disk := value.(*DecommissionDisk)
 		status := disk.GetDecommissionStatus()
-		if status == DecommissionSuccess || status == DecommissionFail {
+		// keep failed decommission disk in list for preventing the reuse of a
+		// term in future decommissioning operations
+		if status == DecommissionSuccess {
 			if time.Now().Sub(time.Unix(disk.DecommissionCompleteTime, 0)) > (20 * time.Minute) {
 				if err := c.syncDeleteDecommissionDisk(disk); err != nil {
 					msg := fmt.Sprintf("action[checkDecommissionDisk],clusterID[%v] node[%v] disk[%v],"+
