@@ -314,6 +314,9 @@ func (dataNode *DataNode) updateDecommissionStatus(c *Cluster, debug bool) (uint
 	if dataNode.GetDecommissionStatus() == DecommissionSuccess {
 		return DecommissionSuccess, float64(1)
 	}
+	if dataNode.GetDecommissionStatus() == DecommissionFail {
+		return DecommissionFail, float64(0)
+	}
 	if dataNode.GetDecommissionStatus() == DecommissionPause {
 		return DecommissionPause, float64(0)
 	}

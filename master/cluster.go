@@ -373,7 +373,7 @@ func (c *Cluster) scheduleTask() {
 	c.scheduleToCheckFollowerReadCache()
 	c.scheduleToCheckDecommissionDataNode()
 	c.scheduleToCheckDecommissionDisk()
-	// c.scheduleToCheckDataReplicas()
+	c.scheduleToCheckDataReplicas()
 	c.scheduleToLcScan()
 	c.scheduleToSnapshotDelVerScan()
 	c.scheduleToBadDisk()
@@ -802,34 +802,34 @@ func (c *Cluster) getInvalidIDNodes() (nodes []*InvalidNodeView) {
 	return
 }
 
-//func (c *Cluster) scheduleToCheckDataReplicas() {
-//	go func() {
-//		for {
-//			if c.checkDataReplicasEnable {
-//				if c.partition != nil && c.partition.IsRaftLeader() {
-//					c.checkDataReplicas()
-//				}
-//			}
-//			time.Sleep(1 * time.Minute)
-//		}
-//	}()
-//}
+func (c *Cluster) scheduleToCheckDataReplicas() {
+	go func() {
+		for {
+			if c.checkDataReplicasEnable {
+				if c.partition != nil && c.partition.IsRaftLeader() {
+					c.checkDataReplicas()
+				}
+			}
+			time.Sleep(1 * time.Minute)
+		}
+	}()
+}
 
-//func (c *Cluster) checkDataReplicas() {
-//	lackReplicaDataPartitions, _ := c.checkLackReplicaAndHostDataPartitions()
-//	if len(lackReplicaDataPartitions) == 0 {
-//		return
-//	}
-//
-//	successCnt := 0
-//	for _, dp := range lackReplicaDataPartitions {
-//		if success, _ := c.autoAddDataReplica(dp); success {
-//			successCnt += 1
-//		}
-//	}
-//	failCnt := len(lackReplicaDataPartitions) - successCnt
-//	log.LogInfof("action[checkDataReplicas] autoAddDataReplica successCnt[%v], failedCnt[%v]", successCnt, failCnt)
-//}
+func (c *Cluster) checkDataReplicas() {
+	lackReplicaDataPartitions, _ := c.checkLackReplicaAndHostDataPartitions()
+	if len(lackReplicaDataPartitions) == 0 {
+		return
+	}
+
+	successCnt := 0
+	for _, dp := range lackReplicaDataPartitions {
+		if success, _ := c.autoAddDataReplica(dp); success {
+			successCnt += 1
+		}
+	}
+	failCnt := len(lackReplicaDataPartitions) - successCnt
+	log.LogInfof("action[checkDataReplicas] autoAddDataReplica successCnt[%v], failedCnt[%v]", successCnt, failCnt)
+}
 
 func (c *Cluster) getNotConsistentIDMetaNodes() (metaNodes []*InvalidNodeView) {
 	metaNodes = make([]*InvalidNodeView, 0)
@@ -2154,95 +2154,93 @@ ERR:
 	return err
 }
 
-//func (c *Cluster) autoAddDataReplica(dp *DataPartition) bool {
-//	var (
-//		targetHosts []string
-//		newAddr     string
-//		vol         *Vol
-//		zone        *Zone
-//		ns          *nodeSet
-//	)
-//	success = false
-//
-//	// not support
-//	if !proto.IsNormalDp(dp.PartitionType) {
-//		return
-//	}
-//
-//	var ok bool
-//	if vol, ok = c.vols[dp.VolName]; !ok {
-//		log.LogWarnf("action[autoAddDataReplica] clusterID[%v] vol[%v] partitionID[%v] vol not exist, PersistenceHosts:[%v]",
-//			c.Name, dp.VolName, dp.PartitionID, dp.Hosts)
-//		return false
-//	}
-//
-//	// not support
-//	if c.isFaultDomain(vol) {
-//		return
-//	}
-//
-//	if dp.IsRollbackFailed() {
-//		err := c.addDataReplica(dp, newAddr, false)
-//		if err != nil {
-//			log.LogErrorf("action[autoAddDataReplica] clusterID[%v] vol[%v] dp(%v) add restore decommission src failed:%v",
-//				c.Name, dp.VolName, dp.PartitionID, err)
-//			return false
-//		}
-//		dp.DecommissionSrcAddr
-//		return true
-//	} else {
-//
-//	}
-//	if vol.crossZone {
-//		zones := dp.getZones()
-//		if targetHosts, _, err = c.getHostFromNormalZone(TypeDataPartition, zones, nil, dp.Hosts, 1, 1, ""); err != nil {
-//			goto errHandler
-//		}
-//	} else {
-//		if zone, err = c.t.getZone(vol.zoneName); err != nil {
-//			log.LogWarnf("action[autoAddDataReplica] clusterID[%v] vol[%v] partitionID[%v] zone not exist, PersistenceHosts:[%v]",
-//				c.Name, dp.VolName, dp.PartitionID, dp.Hosts)
-//			return
-//		}
-//		nodeSets := dp.getNodeSets()
-//		if len(nodeSets) != 1 {
-//			log.LogWarnf("action[autoAddDataReplica] clusterID[%v] vol[%v] partitionID[%v] the number of nodeSets is not one, PersistenceHosts:[%v]",
-//				c.Name, dp.VolName, dp.PartitionID, dp.Hosts)
-//			return
-//		}
-//		if ns, err = zone.getNodeSet(nodeSets[0]); err != nil {
-//			goto errHandler
-//		}
-//		if targetHosts, _, err = ns.getAvailDataNodeHosts(dp.Hosts, 1); err != nil {
-//			goto errHandler
-//		}
-//	}
-//
-//	newAddr = targetHosts[0]
-//	if err = c.addDataReplica(dp, newAddr, false); err != nil {
-//		goto errHandler
-//	}
-//
-//	dp.Status = proto.ReadOnly
-//	dp.isRecover = true
-//	c.putBadDataPartitionIDs(nil, newAddr, dp.PartitionID)
-//
-//	dp.RLock()
-//	c.syncUpdateDataPartition(dp)
-//	dp.RUnlock()
-//
-//	log.LogInfof("action[autoAddDataReplica] clusterID[%v] vol[%v] partitionID[%v] auto add data replica success, newReplicaHost[%v], PersistenceHosts:[%v]",
-//		c.Name, dp.VolName, dp.PartitionID, newAddr, dp.Hosts)
-//	success = true
-//	return
-//
-//errHandler:
-//	if err != nil {
-//		err = fmt.Errorf("clusterID[%v] vol[%v] partitionID[%v], err[%v]", c.Name, dp.VolName, dp.PartitionID, err)
-//		log.LogErrorf("action[autoAddDataReplica] err %v", err)
-//	}
-//	return
-//}
+func (c *Cluster) autoAddDataReplica(dp *DataPartition) (success bool, err error) {
+	var (
+		targetHosts []string
+		newAddr     string
+		vol         *Vol
+		zone        *Zone
+		ns          *nodeSet
+	)
+	success = false
+
+	dp.RLock()
+
+	// not support
+	if dp.isSpecialReplicaCnt() {
+		dp.RUnlock()
+		return
+	}
+
+	dp.RUnlock()
+
+	// not support
+	if !proto.IsNormalDp(dp.PartitionType) {
+		return
+	}
+
+	var ok bool
+	if vol, ok = c.vols[dp.VolName]; !ok {
+		log.LogWarnf("action[autoAddDataReplica] clusterID[%v] vol[%v] partitionID[%v] vol not exist, PersistenceHosts:[%v]",
+			c.Name, dp.VolName, dp.PartitionID, dp.Hosts)
+		return
+	}
+
+	// not support
+	if c.isFaultDomain(vol) {
+		return
+	}
+
+	if vol.crossZone {
+		zones := dp.getZones()
+		if targetHosts, _, err = c.getHostFromNormalZone(TypeDataPartition, zones, nil, dp.Hosts, 1, 1, ""); err != nil {
+			goto errHandler
+		}
+	} else {
+		if zone, err = c.t.getZone(vol.zoneName); err != nil {
+			log.LogWarnf("action[autoAddDataReplica] clusterID[%v] vol[%v] partitionID[%v] zone not exist, PersistenceHosts:[%v]",
+				c.Name, dp.VolName, dp.PartitionID, dp.Hosts)
+			return
+		}
+		nodeSets := dp.getNodeSets()
+		if len(nodeSets) != 1 {
+			log.LogWarnf("action[autoAddDataReplica] clusterID[%v] vol[%v] partitionID[%v] the number of nodeSets is not one, PersistenceHosts:[%v]",
+				c.Name, dp.VolName, dp.PartitionID, dp.Hosts)
+			return
+		}
+		if ns, err = zone.getNodeSet(nodeSets[0]); err != nil {
+			goto errHandler
+		}
+		if targetHosts, _, err = ns.getAvailDataNodeHosts(dp.Hosts, 1); err != nil {
+			goto errHandler
+		}
+	}
+
+	newAddr = targetHosts[0]
+	if err = c.addDataReplica(dp, newAddr, false); err != nil {
+		goto errHandler
+	}
+
+	dp.Status = proto.ReadOnly
+	dp.isRecover = true
+	c.putBadDataPartitionIDs(nil, newAddr, dp.PartitionID)
+
+	dp.RLock()
+	c.syncUpdateDataPartition(dp)
+	dp.RUnlock()
+
+	log.LogInfof("action[autoAddDataReplica] clusterID[%v] vol[%v] partitionID[%v] auto add data replica success, newReplicaHost[%v], PersistenceHosts:[%v]",
+		c.Name, dp.VolName, dp.PartitionID, newAddr, dp.Hosts)
+	success = true
+	return
+
+errHandler:
+	if err != nil {
+		err = fmt.Errorf("clusterID[%v] vol[%v] partitionID[%v], err[%v]", c.Name, dp.VolName, dp.PartitionID, err)
+		log.LogErrorf("action[autoAddDataReplica] err %v", err)
+	}
+	return
+}
 
 // Decommission a data partition.
 // 1. Check if we can decommission a data partition. In the following cases, we are not allowed to do so:
@@ -2478,9 +2476,11 @@ func (c *Cluster) addDataReplica(dp *DataPartition, addr string, ignoreDecommiss
 		log.LogWarnf("action[addDataReplica] dp %v addr %v try add raft member err [%v]", dp.PartitionID, addr, err)
 		return
 	}
+
 	log.LogInfof("action[addDataReplica] dp %v addr %v try create data replica ignoreDecommissionDisk %v",
 		dp.PartitionID, addr, ignoreDecommissionDisk)
 	if err = c.createDataReplica(dp, addPeer, ignoreDecommissionDisk); err != nil {
+		c.removeHostMember(dp, addPeer)
 		log.LogWarnf("action[addDataReplica] dp %v addr %v createDataReplica err [%v]", dp.PartitionID, addr, err)
 		return
 	}
@@ -3906,6 +3906,7 @@ func (c *Cluster) TryDecommissionDataNode(dataNode *DataNode) {
 		err = fmt.Errorf("DecommissionDataNode no partition can migrate from [%s] to [%s] for replica address conflict",
 			dataNode.Addr, dataNode.DecommissionDstAddr)
 		log.LogWarnf("action[TryDecommissionDataNode] %v", err.Error())
+		dataNode.markDecommissionFail()
 		return
 	}
 
@@ -3926,22 +3927,46 @@ func (c *Cluster) TryDecommissionDataNode(dataNode *DataNode) {
 
 	// recode dp count in each disk
 	dpToDecommissionByDisk := make(map[string]int)
+	var (
+		toBeOffLinePartitionsFinal    []*DataPartition
+		toBeOffLinePartitionsFinalIds []uint64
+	)
 	// find respond disk
 	for _, dp := range toBeOffLinePartitions {
 		disk := dp.getReplicaDisk(dataNode.Addr)
 		if disk == "" {
-			log.LogWarnf("action[TryDecommissionDataNode] ignore dp [%v] on dataNode[%v]with empty disk",
+			log.LogWarnf("action[TryDecommissionDataNode] cannot find dp replica [%v] on dataNode[%v]",
 				dp.PartitionID, dataNode.Addr)
+			// master change leader or restart, operation for decommission success dp is not triggered
 			if dp.IsDecommissionSuccess() {
 				dp.ResetDecommissionStatus()
 				c.syncUpdateDataPartition(dp)
+			} else {
+				//if dp
+
+				toBeOffLinePartitionsFinal = append(toBeOffLinePartitionsFinal, dp)
+				toBeOffLinePartitionsFinalIds = append(toBeOffLinePartitionsFinalIds, dp.PartitionID)
 			}
 			continue
 		}
+		toBeOffLinePartitionsFinal = append(toBeOffLinePartitionsFinal, dp)
+		toBeOffLinePartitionsFinalIds = append(toBeOffLinePartitionsFinalIds, dp.PartitionID)
 		dpToDecommissionByDisk[disk]++
 	}
+	if len(toBeOffLinePartitionsFinal) == 0 {
+		dataNode.markDecommissionSuccess(c)
+		return
+	}
+	if len(dpToDecommissionByDisk) == 0 {
+		err = fmt.Errorf("no dp replica can be found on %v, partitions %v",
+			dataNode.Addr, toBeOffLinePartitionsFinalIds)
+		log.LogWarnf("action[TryDecommissionDataNode] %v", err.Error())
+		dataNode.markDecommissionFail()
+		return
+	}
+
 	decommissionDpTotal := 0
-	left := len(toBeOffLinePartitions)
+	left := len(toBeOffLinePartitionsFinal)
 	decommissionDiskList := make([]string, 0)
 	for disk, dpCnt := range dpToDecommissionByDisk {
 		//
