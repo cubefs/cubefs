@@ -17,8 +17,6 @@ package objectnode
 import (
 	"regexp"
 	"strings"
-
-	"github.com/cubefs/cubefs/util/log"
 )
 
 type (
@@ -49,33 +47,28 @@ func (s *Statement) effect() PolicyCheckResult {
 
 func (s *Statement) match(apiName string, uid string, conditionCheck map[string]string) bool {
 	if !s.matchPrincipal(uid) {
-		log.LogDebugf("cannot match principal, uid:%v", uid)
 		return false
 	}
 	if !s.matchAction(apiName) {
-		log.LogDebugf("cannot match action, apiName:%v", apiName)
 		return false
 	}
 	if !s.matchResource(apiName, conditionCheck[KEYNAME]) {
-		log.LogDebugf("cannot match resource, apiName:%v, keyname:%v", apiName, conditionCheck[KEYNAME])
 		return false
 	}
 	if !s.matchCondition(conditionCheck) {
-		log.LogDebugf("cannot match condition, conditionCheck:%v", conditionCheck)
 		return false
 	}
 	return true
 }
 
-//----------------------------------------------------------------------------------------------------------------
+// ----------------------------------------------------------------------------------------------------------------
 func (s *Statement) matchAction(apiName string) bool {
-	log.LogDebug("start to match action")
 	switch s.Action.(type) {
-	case []interface{}: //["s3:PutObject", "s3:GetObject","s3:DeleteObject"]
+	case []interface{}: // ["s3:PutObject", "s3:GetObject","s3:DeleteObject"]
 		actions := s.Action.([]interface{})
 		return ActionType(actions).match(apiName)
 
-	case string: //"s3:ListBucket"
+	case string: // "s3:ListBucket"
 		return ActionElementType(s.Action.(string)).match(apiName)
 	default:
 		return false
@@ -106,7 +99,7 @@ func (actions ActionType) match(apiToMatch string) bool {
 	return false
 }
 
-//----------------------------------------------------------------------------------------------------------------
+// ----------------------------------------------------------------------------------------------------------------
 func (s *Statement) matchPrincipal(uid string) bool {
 	switch s.Principal.(type) {
 	case string: // "*" or "123"
@@ -128,9 +121,9 @@ func (p PrincipalType) match(uid string) bool {
 	if !ok {
 		return false
 	}
-	switch p1.(type) {
+	switch pval := p1.(type) {
 	case []interface{}:
-		p2 := p1.([]interface{})
+		p2 := pval
 		for _, p3 := range p2 {
 			if p4, ok := p3.(string); ok {
 				if PrincipalElementType(p4).match(uid) {
@@ -140,13 +133,13 @@ func (p PrincipalType) match(uid string) bool {
 		}
 		return false
 	case string:
-		return PrincipalElementType(p1.(string)).match(uid)
+		return PrincipalElementType(pval).match(uid)
 	default:
 		return false
 	}
 }
 
-//----------------------------------------------------------------------------------------------------------------
+// ----------------------------------------------------------------------------------------------------------------
 func (s *Statement) matchResource(apiName string, keyname interface{}) bool {
 	if IsBucketApi(apiName) {
 		return s.matchBucketInResource()
@@ -237,7 +230,7 @@ func makeRegexPattern(raw string) string {
 	return pattern
 }
 
-//----------------------------------------------------------------------------------------------------------------
+// ----------------------------------------------------------------------------------------------------------------
 func (s *Statement) matchCondition(conditionCheck map[string]string) bool {
 	// condition is optional
 	if s.Condition == nil {

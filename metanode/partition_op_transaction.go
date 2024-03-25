@@ -22,7 +22,6 @@ import (
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/auditlog"
-	"github.com/cubefs/cubefs/util/log"
 )
 
 func (mp *metaPartition) TxCreate(req *proto.TxCreateRequest, p *Packet) error {
@@ -41,7 +40,7 @@ func (mp *metaPartition) TxCreate(req *proto.TxCreateRequest, p *Packet) error {
 	}
 
 	if ifo.State != proto.TxStatePreCommit {
-		log.LogWarnf("TxCreate: tx is already init, txInfo %s", ifo.String())
+		p.Span().Warn("TxCreate: tx is already init, txInfo", ifo.String())
 		p.PacketOkReply()
 		return nil
 	}
@@ -82,14 +81,14 @@ func (mp *metaPartition) txInitToRm(txInfo *proto.TransactionInfo, p *Packet) {
 			TransactionInfo: txInfo,
 		}
 
-		pkt, _ := buildTxPacket(req, mpId, proto.OpMetaTxCreate)
+		pkt, _ := buildTxPacket(p.Context(), req, mpId, proto.OpMetaTxCreate)
 		members := ifo.Members
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
 			status := mp.txProcessor.txManager.txSendToMpWithAddrs(members, pkt)
 			if status != proto.OpOk {
-				log.LogWarnf("txInitRm: send to rm failed, addr %s, pkt %s, status %s",
+				p.Span().Warnf("txInitRm: send to rm failed, addr %s, pkt %s, status %s",
 					members, string(pkt.Data), proto.GetStatusStr(status))
 			}
 			statusCh <- status
@@ -112,7 +111,6 @@ func (mp *metaPartition) txInitToRm(txInfo *proto.TransactionInfo, p *Packet) {
 	}
 
 	p.ResultCode = proto.OpOk
-	return
 }
 
 func canRetry(status uint8) bool {
@@ -126,7 +124,7 @@ func (mp *metaPartition) txInit(txInfo *proto.TransactionInfo, p *Packet) (ifo *
 	if uint64(txInfo.TmID) == mp.config.PartitionId {
 		err = mp.initTxInfo(txInfo)
 		if err != nil {
-			log.LogWarnf("init tx limited, ifo %v", txInfo)
+			p.Span().Warnf("init tx limited, ifo %v", txInfo)
 			p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 			return
 		}
@@ -138,7 +136,7 @@ func (mp *metaPartition) txInit(txInfo *proto.TransactionInfo, p *Packet) (ifo *
 		return nil, err
 	}
 
-	status, err := mp.submit(opFSMTxInit, val)
+	status, err := mp.submit(p.Context(), opFSMTxInit, val)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return nil, err
@@ -151,7 +149,7 @@ func (mp *metaPartition) txInit(txInfo *proto.TransactionInfo, p *Packet) (ifo *
 
 	ifo = mp.txProcessor.txManager.getTransaction(txInfo.TxID)
 	if ifo == nil {
-		log.LogWarnf("TxCreate: tx is still not exist, info %s", txInfo.String())
+		p.Span().Warnf("TxCreate: tx is still not exist, info %s", txInfo.String())
 		p.ResultCode = proto.OpTxInfoNotExistErr
 		return nil, nil
 	}
@@ -165,13 +163,13 @@ func (mp *metaPartition) TxCommitRM(req *proto.TxApplyRMRequest, p *Packet) erro
 
 	ifo := mp.txProcessor.txManager.getTransaction(txInfo.TxID)
 	if ifo == nil {
-		log.LogWarnf("TxCommitRM: can't find tx, already rollback or commit, ifo %v", req.TransactionInfo)
+		p.Span().Warnf("can't find tx, already rollback or commit, ifo %v", req.TransactionInfo)
 		p.PacketErrorWithBody(proto.OpTxInfoNotExistErr, []byte(fmt.Sprintf("tx %s is not exist", txInfo.TxID)))
 		return nil
 	}
 
 	if ifo.Finish() {
-		log.LogWarnf("TxCommitRM: tx already commit before in rm, tx %v", ifo)
+		p.Span().Warnf("tx already commit before in rm, tx %v", ifo)
 		p.ResultCode = proto.OpOk
 		return nil
 	}
@@ -182,7 +180,7 @@ func (mp *metaPartition) TxCommitRM(req *proto.TxApplyRMRequest, p *Packet) erro
 		return err
 	}
 
-	status, err := mp.submit(opFSMTxCommitRM, val)
+	status, err := mp.submit(p.Context(), opFSMTxCommitRM, val)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return err
@@ -198,13 +196,13 @@ func (mp *metaPartition) TxRollbackRM(req *proto.TxApplyRMRequest, p *Packet) er
 
 	ifo := mp.txProcessor.txManager.getTransaction(txInfo.TxID)
 	if ifo == nil {
-		log.LogWarnf("TxRollbackRM: can't find tx, already rollback or commit, ifo %v", req.TransactionInfo)
+		p.Span().Warnf("can't find tx, already rollback or commit, ifo %v", req.TransactionInfo)
 		p.PacketErrorWithBody(proto.OpTxInfoNotExistErr, []byte(fmt.Sprintf("tx %s is not exist", txInfo.TxID)))
 		return nil
 	}
 
 	if ifo.Finish() {
-		log.LogWarnf("TxRollbackRM: tx already commit before in rm, tx %v", ifo)
+		p.Span().Warnf("tx already commit before in rm, tx %v", ifo)
 		p.ResultCode = proto.OpOk
 		return nil
 	}
@@ -215,7 +213,7 @@ func (mp *metaPartition) TxRollbackRM(req *proto.TxApplyRMRequest, p *Packet) er
 		return err
 	}
 
-	status, err := mp.submit(opFSMTxRollbackRM, val)
+	status, err := mp.submit(p.Context(), opFSMTxRollbackRM, val)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return err
@@ -233,7 +231,7 @@ func (mp *metaPartition) TxCommit(req *proto.TxApplyRequest, p *Packet, remoteAd
 			auditlog.LogTxOp(remoteAddr, mp.GetVolName(), p.GetOpMsg(), req.TxID, err, time.Since(start).Milliseconds())
 		}()
 	}
-	status, err := mp.txProcessor.txManager.commitTx(req.TxID, false)
+	status, err := mp.txProcessor.txManager.commitTx(p.Context(), req.TxID, false)
 	if err != nil {
 		p.PacketErrorWithBody(status, []byte(err.Error()))
 		return err
@@ -250,7 +248,7 @@ func (mp *metaPartition) TxRollback(req *proto.TxApplyRequest, p *Packet, remote
 			auditlog.LogTxOp(remoteAddr, mp.GetVolName(), p.GetOpMsg(), req.TxID, err, time.Since(start).Milliseconds())
 		}()
 	}
-	status, err := mp.txProcessor.txManager.rollbackTx(req.TxID, false)
+	status, err := mp.txProcessor.txManager.rollbackTx(p.Context(), req.TxID, false)
 	if err != nil {
 		p.PacketErrorWithBody(status, []byte(err.Error()))
 		return err

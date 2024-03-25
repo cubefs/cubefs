@@ -65,7 +65,6 @@ func (mw *MetaWrapper) replaceOrInsertPartition(mp *MetaPartition) {
 	}
 
 	mw.addPartition(mp)
-	return
 }
 
 func (mw *MetaWrapper) getPartitionByID(id uint64) *MetaPartition {
@@ -121,24 +120,24 @@ func (mw *MetaWrapper) getRWPartitions() []*MetaPartition {
 	return rwPartitions
 }
 
-// GetConnect the partition whose Start is Larger than ino.
-// Return nil if no successive partition.
-func (mw *MetaWrapper) getNextPartition(ino uint64) *MetaPartition {
-	var mp *MetaPartition
-	mw.RLock()
-	defer mw.RUnlock()
+// // GetConnect the partition whose Start is Larger than ino.
+// // Return nil if no successive partition.
+// func (mw *MetaWrapper) getNextPartition(ino uint64) *MetaPartition {
+// 	var mp *MetaPartition
+// 	mw.RLock()
+// 	defer mw.RUnlock()
 
-	pivot := &MetaPartition{Start: ino + 1}
-	mw.ranges.AscendGreaterOrEqual(pivot, func(i btree.Item) bool {
-		mp = i.(*MetaPartition)
-		return false
-	})
+// 	pivot := &MetaPartition{Start: ino + 1}
+// 	mw.ranges.AscendGreaterOrEqual(pivot, func(i btree.Item) bool {
+// 		mp = i.(*MetaPartition)
+// 		return false
+// 	})
 
-	return mp
-}
+// 	return mp
+// }
 
-func (mw *MetaWrapper) getLatestPartition() *MetaPartition {
-	mw.RLock()
-	defer mw.RUnlock()
-	return mw.ranges.Max().(*MetaPartition)
-}
+// func (mw *MetaWrapper) getLatestPartition() *MetaPartition {
+// 	mw.RLock()
+// 	defer mw.RUnlock()
+// 	return mw.ranges.Max().(*MetaPartition)
+// }

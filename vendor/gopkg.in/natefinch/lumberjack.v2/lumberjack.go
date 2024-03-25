@@ -3,7 +3,7 @@
 // Note that this is v2.0 of lumberjack, and should be imported using gopkg.in
 // thusly:
 //
-//   import "gopkg.in/natefinch/lumberjack.v2"
+//	import "gopkg.in/natefinch/lumberjack.v2"
 //
 // The package name remains simply lumberjack, and the code resides at
 // https://github.com/natefinch/lumberjack under the v2.0 branch.
@@ -32,6 +32,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 )
 
@@ -66,7 +67,7 @@ var _ io.WriteCloser = (*Logger)(nil)
 // `/var/log/foo/server.log`, a backup created at 6:30pm on Nov 11 2016 would
 // use the filename `/var/log/foo/server-2016-11-04T18-30-00.000.log`
 //
-// Cleaning Up Old Log Files
+// # Cleaning Up Old Log Files
 //
 // Whenever a new logfile gets created, old log files may be deleted.  The most
 // recent files according to the encoded timestamp will be retained, up to a
@@ -74,8 +75,10 @@ var _ io.WriteCloser = (*Logger)(nil)
 // with an encoded timestamp older than MaxAge days are deleted, regardless of
 // MaxBackups.  Note that the time encoded in the timestamp is the rotation
 // time, which may differ from the last time that file was written to.
+// The older files will be deleted until there's enough ReservedSize space left.
 //
 // If MaxBackups and MaxAge are both 0, no old log files will be deleted.
+// If MaxBackups and MaxAge and ReservedSize are all 0, no old log files will be deleted.
 type Logger struct {
 	// Filename is the file to write logs to.  Backup log files will be retained
 	// in the same directory.  It uses <processname>-lumberjack.log in
@@ -97,6 +100,10 @@ type Logger struct {
 	// is to retain all old log files (though MaxAge may still cause them to get
 	// deleted.)
 	MaxBackups int `json:"maxbackups" yaml:"maxbackups"`
+
+	// ReservedSize is the minimum left space in megabytes of the store device.
+	// Do not to check the available space of the device.
+	ReservedSize int `json:"reservedsize" yaml:"reservedsize"`
 
 	// LocalTime determines if the time used for formatting the timestamps in
 	// backup files is the computer's local time.  The default is to use UTC
@@ -120,7 +127,7 @@ var (
 	currentTime = time.Now
 
 	// os_Stat exists so it can be mocked out by tests.
-	os_Stat = os.Stat
+	osStat = os.Stat
 
 	// megabyte is the conversion factor between MaxSize and bytes.  It is a
 	// variable so tests can mock it out and not need to write megabytes of data
@@ -206,14 +213,14 @@ func (l *Logger) rotate() error {
 // openNew opens a new log file for writing, moving any old log file out of the
 // way.  This methods assumes the file has already been closed.
 func (l *Logger) openNew() error {
-	err := os.MkdirAll(l.dir(), 0744)
+	err := os.MkdirAll(l.dir(), 0755)
 	if err != nil {
 		return fmt.Errorf("can't make directories for new logfile: %s", err)
 	}
 
 	name := l.filename()
-	mode := os.FileMode(0644)
-	info, err := os_Stat(name)
+	mode := os.FileMode(0600)
+	info, err := osStat(name)
 	if err == nil {
 		// Copy the mode off the old logfile.
 		mode = info.Mode()
@@ -265,7 +272,7 @@ func (l *Logger) openExistingOrNew(writeLen int) error {
 	l.mill()
 
 	filename := l.filename()
-	info, err := os_Stat(filename)
+	info, err := osStat(filename)
 	if os.IsNotExist(err) {
 		return l.openNew()
 	}
@@ -288,7 +295,7 @@ func (l *Logger) openExistingOrNew(writeLen int) error {
 	return nil
 }
 
-// genFilename generates the name of the logfile from the current time.
+// filename generates the name of the logfile from the current time.
 func (l *Logger) filename() string {
 	if l.Filename != "" {
 		return l.Filename
@@ -300,9 +307,9 @@ func (l *Logger) filename() string {
 // millRunOnce performs compression and removal of stale log files.
 // Log files are compressed if enabled via configuration and old log
 // files are removed, keeping at most l.MaxBackups files, as long as
-// none of them are older than MaxAge.
+// none of them are older than MaxAge, or keep reserved space in device.
 func (l *Logger) millRunOnce() error {
-	if l.MaxBackups == 0 && l.MaxAge == 0 && !l.Compress {
+	if l.MaxBackups == 0 && l.MaxAge == 0 && l.ReservedSize == 0 && !l.Compress {
 		return nil
 	}
 
@@ -347,6 +354,28 @@ func (l *Logger) millRunOnce() error {
 		}
 		files = remaining
 	}
+	if reserved := l.ReservedSize * megabyte; reserved > 0 && len(files) > 0 {
+		var fs syscall.Statfs_t
+		errStat := syscall.Statfs(l.Filename, &fs)
+		if errStat != nil {
+			if err == nil {
+				err = errStat
+			}
+		} else {
+			avail := int(fs.Bavail) * int(fs.Bsize)
+			var remaining []logInfo
+			for idx := len(files) - 1; idx >= 0; idx-- {
+				f := files[idx]
+				if avail < reserved {
+					avail += int(f.Size())
+					remove = append(remove, f)
+				} else {
+					remaining = append(remaining, f)
+				}
+			}
+			files = remaining
+		}
+	}
 
 	if l.Compress {
 		for _, f := range files {
@@ -376,7 +405,7 @@ func (l *Logger) millRunOnce() error {
 // millRun runs in a goroutine to manage post-rotation compression and removal
 // of old log files.
 func (l *Logger) millRun() {
-	for _ = range l.millCh {
+	for range l.millCh {
 		// what am I going to do, log this?
 		_ = l.millRunOnce()
 	}
@@ -472,7 +501,7 @@ func compressLogFile(src, dst string) (err error) {
 	}
 	defer f.Close()
 
-	fi, err := os_Stat(src)
+	fi, err := osStat(src)
 	if err != nil {
 		return fmt.Errorf("failed to stat log file: %v", err)
 	}

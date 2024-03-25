@@ -91,14 +91,14 @@ func (helper *masterHelper) request(method, path string, param, header map[strin
 		resp, err = helper.httpRequest(method, fmt.Sprintf("http://%s%s", host,
 			path), param, header, reqData)
 		if err != nil {
-			log.LogErrorf("[masterHelper] %s", err)
+			log.Errorf("[masterHelper] %s", err)
 			continue
 		}
 		stateCode := resp.StatusCode
 		repsData, err = io.ReadAll(resp.Body)
 		resp.Body.Close()
 		if err != nil {
-			log.LogErrorf("[masterHelper] %s", err)
+			log.Errorf("[masterHelper] %s", err)
 			continue
 		}
 		switch stateCode {
@@ -106,8 +106,7 @@ func (helper *masterHelper) request(method, path string, param, header map[strin
 			curMasterAddr := strings.TrimSpace(string(repsData))
 			curMasterAddr = strings.Replace(curMasterAddr, "\n", "", -1)
 			if len(curMasterAddr) == 0 {
-				log.LogErrorf("[masterHelper] request[%s] response statudCode"+
-					"[403], respBody is empty", host)
+				log.Errorf("[masterHelper] request[%s] response statudCode[403], respBody is empty", host)
 				err = ErrNoValidMaster
 				return
 			}
@@ -131,7 +130,7 @@ func (helper *masterHelper) request(method, path string, param, header map[strin
 			}
 			return []byte(body.Data), nil
 		default:
-			log.LogErrorf("[masterHelper] master[%v] uri[%v] statusCode[%v] respBody[%v].",
+			log.Errorf("[masterHelper] master[%v] uri[%v] statusCode[%v] respBody[%v].",
 				resp.Request.URL.String(), host, stateCode, string(repsData))
 			continue
 		}
@@ -163,7 +162,7 @@ func (helper *masterHelper) httpRequest(method, url string, param, header map[st
 	client.Timeout = requestTimeout
 	var req *http.Request
 	fullUrl := helper.mergeRequestUrl(url, param)
-	log.LogDebugf("action[httpRequest] method[%v] url[%v] reqBodyLen[%v].", method, fullUrl, len(reqData))
+	log.Debugf("action[httpRequest] method[%v] url[%v] reqBodyLen[%v].", method, fullUrl, len(reqData))
 	if req, err = http.NewRequest(method, fullUrl, reader); err != nil {
 		return
 	}

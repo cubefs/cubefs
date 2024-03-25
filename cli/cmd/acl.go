@@ -49,12 +49,11 @@ func newAclAddCmd(client *master.MasterClient) *cobra.Command {
 				stdout("example:cfs-cli acl aclAdd volName 192.168.0.1\n")
 				return
 			}
+			span, ctx := spanContext()
 			var err error
-			defer func() {
-				errout(err)
-			}()
+			defer func() { errout(span, err) }()
 			var aclInfo *proto.AclRsp
-			if aclInfo, err = client.UserAPI().AclOperation(args[0], args[1], util.AclAddIP); err != nil || !aclInfo.OK {
+			if aclInfo, err = client.UserAPI().AclOperation(ctx, args[0], args[1], util.AclAddIP); err != nil || !aclInfo.OK {
 				return
 			}
 			stdout("success!\n")
@@ -76,12 +75,11 @@ func newAclListCmd(client *master.MasterClient) *cobra.Command {
 				return
 			}
 			volumeName := args[0]
+			span, ctx := spanContext()
 			var err error
-			defer func() {
-				errout(err)
-			}()
+			defer func() { errout(span, err) }()
 			var aclInfo *proto.AclRsp
-			if aclInfo, err = client.UserAPI().AclOperation(volumeName, "", util.AclListIP); err != nil || !aclInfo.OK {
+			if aclInfo, err = client.UserAPI().AclOperation(ctx, volumeName, "", util.AclListIP); err != nil || !aclInfo.OK {
 				stdout("AclOperation return \n")
 				return
 			}
@@ -106,13 +104,11 @@ func newAclDelCmd(client *master.MasterClient) *cobra.Command {
 				stdout("USAGE:./cfs-cli acl aclDel volName ipAddr\n")
 				return
 			}
-
+			span, ctx := spanContext()
 			var err error
-			defer func() {
-				errout(err)
-			}()
+			defer func() { errout(span, err) }()
 			var aclInfo *proto.AclRsp
-			if aclInfo, err = client.UserAPI().AclOperation(args[0], args[1], util.AclDelIP); err != nil || !aclInfo.OK {
+			if aclInfo, err = client.UserAPI().AclOperation(ctx, args[0], args[1], util.AclDelIP); err != nil || !aclInfo.OK {
 				return
 			}
 			stdout("success!\n")
@@ -133,13 +129,11 @@ func newAclCheckCmd(client *master.MasterClient) *cobra.Command {
 				stdout("USAGE:./cfs-cli acl aclCheck volName ipAddr\n")
 				return
 			}
-
+			span, ctx := spanContext()
 			var err error
-			defer func() {
-				errout(err)
-			}()
+			defer func() { errout(span, err) }()
 			var aclInfo *proto.AclRsp
-			if aclInfo, err = client.UserAPI().AclOperation(args[0], args[1], util.AclCheckIP); err != nil || !aclInfo.OK {
+			if aclInfo, err = client.UserAPI().AclOperation(ctx, args[0], args[1], util.AclCheckIP); err != nil || !aclInfo.OK {
 				return
 			}
 			stdout("%v\n", volumeAclTableHeader)

@@ -29,10 +29,6 @@ import (
 	"github.com/cubefs/cubefs/util/log"
 )
 
-const (
-	nodeType = "auth"
-)
-
 func (m *Server) getTicket(w http.ResponseWriter, r *http.Request) {
 	var (
 		plaintext []byte
@@ -43,8 +39,8 @@ func (m *Server) getTicket(w http.ResponseWriter, r *http.Request) {
 		message   string
 	)
 
-	if m.metaReady == false {
-		log.LogWarnf("action[handlerWithInterceptor] leader meta has not ready")
+	if !m.metaReady {
+		log.Warnf("action[handlerWithInterceptor] leader meta has not ready")
 		http.Error(w, m.leaderInfo.addr, http.StatusBadRequest)
 	}
 
@@ -79,7 +75,6 @@ func (m *Server) getTicket(w http.ResponseWriter, r *http.Request) {
 	}
 
 	sendOkReply(w, r, newSuccessHTTPAuthReply(message))
-	return
 }
 
 func (m *Server) raftNodeOp(w http.ResponseWriter, r *http.Request) {
@@ -145,21 +140,14 @@ func (m *Server) raftNodeOp(w http.ResponseWriter, r *http.Request) {
 	}
 
 	sendOkReply(w, r, newSuccessHTTPAuthReply(message))
-	return
 }
 
 func (m *Server) handleAddRaftNode(raftNodeInfo *proto.AuthRaftNodeInfo) (err error) {
-	if err = m.cluster.addRaftNode(raftNodeInfo.ID, raftNodeInfo.Addr); err != nil {
-		return
-	}
-	return
+	return m.cluster.addRaftNode(raftNodeInfo.ID, raftNodeInfo.Addr)
 }
 
 func (m *Server) handleRemoveRaftNode(raftNodeInfo *proto.AuthRaftNodeInfo) (err error) {
-	if err = m.cluster.removeRaftNode(raftNodeInfo.ID, raftNodeInfo.Addr); err != nil {
-		return
-	}
-	return
+	return m.cluster.removeRaftNode(raftNodeInfo.ID, raftNodeInfo.Addr)
 }
 
 func genAuthRaftNodeOpResp(req *proto.APIAccessReq, ts int64, key []byte, msg string) (message string, err error) {
@@ -184,7 +172,6 @@ func genAuthRaftNodeOpResp(req *proto.APIAccessReq, ts int64, key []byte, msg st
 		err = fmt.Errorf("encode message for response failed %s", err.Error())
 		return
 	}
-
 	return
 }
 
@@ -289,28 +276,18 @@ func (m *Server) apiAccessEntry(w http.ResponseWriter, r *http.Request) {
 	}
 
 	sendOkReply(w, r, newSuccessHTTPAuthReply(message))
-	return
 }
 
 func (m *Server) handleCreateKey(keyInfo *keystore.KeyInfo) (res *keystore.KeyInfo, err error) {
-	if res, err = m.cluster.CreateNewKey(keyInfo.ID, keyInfo); err != nil {
-		return
-	}
-	return
+	return m.cluster.CreateNewKey(keyInfo.ID, keyInfo)
 }
 
 func (m *Server) handleDeleteKey(keyInfo *keystore.KeyInfo) (res *keystore.KeyInfo, err error) {
-	if res, err = m.cluster.DeleteKey(keyInfo.ID); err != nil {
-		return
-	}
-	return
+	return m.cluster.DeleteKey(keyInfo.ID)
 }
 
 func (m *Server) handleGetKey(keyInfo *keystore.KeyInfo) (res *keystore.KeyInfo, err error) {
-	if res, err = m.getSecretKeyInfo(keyInfo.ID); err != nil {
-		return
-	}
-	return
+	return m.getSecretKeyInfo(keyInfo.ID)
 }
 
 func (m *Server) handleAddCaps(keyInfo *keystore.KeyInfo) (res *keystore.KeyInfo, err error) {
@@ -349,7 +326,6 @@ func (m *Server) extractClientReqInfo(r *http.Request) (plaintext []byte, err er
 	if plaintext, err = cryptoutil.Base64Decode(message); err != nil {
 		return
 	}
-
 	return
 }
 
@@ -437,7 +413,6 @@ func (m *Server) osCapsOp(w http.ResponseWriter, r *http.Request) {
 	}
 
 	sendOkReply(w, r, newSuccessHTTPAuthReply(message))
-	return
 }
 
 func (m *Server) genTicket(key []byte, serviceID string, IP string, caps []byte) (ticket cryptoutil.Ticket) {
@@ -664,7 +639,7 @@ func newSuccessHTTPAuthReply(data interface{}) *proto.HTTPAuthReply {
 func sendOkReply(w http.ResponseWriter, r *http.Request, HTTPAuthReply *proto.HTTPAuthReply) (err error) {
 	reply, err := json.Marshal(HTTPAuthReply)
 	if err != nil {
-		log.LogErrorf("fail to marshal http reply[%v]. URL[%v],remoteAddr[%v] err:[%v]", HTTPAuthReply, r.URL, r.RemoteAddr, err)
+		log.Errorf("fail to marshal http reply[%v]. URL[%v],remoteAddr[%v] err:[%v]", HTTPAuthReply, r.URL, r.RemoteAddr, err)
 		http.Error(w, "fail to marshal http reply", http.StatusBadRequest)
 		return
 	}
@@ -676,11 +651,10 @@ func send(w http.ResponseWriter, r *http.Request, reply []byte) {
 	w.Header().Set("content-type", "application/json")
 	w.Header().Set("Content-Length", strconv.Itoa(len(reply)))
 	if _, err := w.Write(reply); err != nil {
-		log.LogErrorf("fail to write http reply[%s] len[%d].URL[%v],remoteAddr[%v] err:[%v]", string(reply), len(reply), r.URL, r.RemoteAddr, err)
+		log.Errorf("fail to write http reply[%s] len[%d].URL[%v],remoteAddr[%v] err:[%v]", string(reply), len(reply), r.URL, r.RemoteAddr, err)
 		return
 	}
-	log.LogInfof("URL[%v],remoteAddr[%v],response ok", r.URL, r.RemoteAddr)
-	return
+	log.Infof("URL[%v],remoteAddr[%v],response ok", r.URL, r.RemoteAddr)
 }
 
 func keyNotFound(name string) (err error) {
@@ -688,17 +662,16 @@ func keyNotFound(name string) (err error) {
 }
 
 func sendErrReply(w http.ResponseWriter, r *http.Request, HTTPAuthReply *proto.HTTPAuthReply) {
-	log.LogInfof("URL[%v],remoteAddr[%v],response err[%v]", r.URL, r.RemoteAddr, HTTPAuthReply)
+	log.Infof("URL[%v],remoteAddr[%v],response err[%v]", r.URL, r.RemoteAddr, HTTPAuthReply)
 	reply, err := json.Marshal(HTTPAuthReply)
 	if err != nil {
-		log.LogErrorf("fail to marshal http reply[%v]. URL[%v],remoteAddr[%v] err:[%v]", HTTPAuthReply, r.URL, r.RemoteAddr, err)
+		log.Errorf("fail to marshal http reply[%v]. URL[%v],remoteAddr[%v] err:[%v]", HTTPAuthReply, r.URL, r.RemoteAddr, err)
 		http.Error(w, "fail to marshal http reply", http.StatusBadRequest)
 		return
 	}
 	w.Header().Set("content-type", "application/json")
 	w.Header().Set("Content-Length", strconv.Itoa(len(reply)))
 	if _, err = w.Write(reply); err != nil {
-		log.LogErrorf("fail to write http reply[%s] len[%d].URL[%v],remoteAddr[%v] err:[%v]", string(reply), len(reply), r.URL, r.RemoteAddr, err)
+		log.Errorf("fail to write http reply[%s] len[%d].URL[%v],remoteAddr[%v] err:[%v]", string(reply), len(reply), r.URL, r.RemoteAddr, err)
 	}
-	return
 }

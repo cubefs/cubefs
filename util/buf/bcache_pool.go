@@ -21,7 +21,7 @@ func newBlockCachePool(blockSize int) *sync.Pool {
 	return &sync.Pool{
 		New: func() interface{} {
 			if atomic.LoadInt64(&bcacheCount) >= bcacheTotalLimit {
-				log.LogWarnf("FileBCachePool: bcacheCount=(%v),bcacheTotalLimit=(%v)", atomic.LoadInt64(&bcacheCount), bcacheTotalLimit)
+				log.Warnf("FileBCachePool: bcacheCount=(%v),bcacheTotalLimit=(%v)", atomic.LoadInt64(&bcacheCount), bcacheTotalLimit)
 				ctx := context.Background()
 				bcacheRateLimit.Wait(ctx)
 			}
@@ -50,5 +50,5 @@ func (fileCachePool *FileBCachePool) Get() []byte {
 
 func (fileCachePool *FileBCachePool) Put(data []byte) {
 	atomic.AddInt64(&bcacheCount, -1)
-	fileCachePool.pool.Put(data)
+	fileCachePool.pool.Put(data) // nolint: staticcheck
 }

@@ -15,9 +15,11 @@
 package master
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 
+	"github.com/cubefs/cubefs/blobstore/common/trace"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util"
 )
@@ -31,6 +33,8 @@ type request struct {
 	err    error
 
 	noTimeout bool
+
+	ctx context.Context
 }
 
 type anyParam struct {
@@ -52,11 +56,6 @@ func (r *request) addParam(key, value string) *request {
 
 func (r *request) addHeader(key, value string) *request {
 	r.header[key] = value
-	return r
-}
-
-func (r *request) setBody(body []byte) *request {
-	r.body = body
 	return r
 }
 
@@ -98,14 +97,20 @@ func (r *request) NoTimeout() *request {
 	return r
 }
 
-func newRequest(method string, path string) *request {
+func (r *request) Span() trace.Span {
+	return proto.SpanFromContext(r.ctx)
+}
+
+func newRequest(ctx context.Context, method string, path string) *request {
 	req := &request{
 		method: method,
 		path:   path,
 		params: make(map[string]string),
 		header: make(map[string]string),
+		ctx:    ctx,
 	}
-	req.header["User-Agent"] = ReqHeaderUA
+	req.addHeader("User-Agent", ReqHeaderUA)
+	req.addHeader(proto.HeaderRequestID, proto.SpanFromContext(ctx).TraceID())
 	return req
 }
 

@@ -139,7 +139,7 @@ func (k *ExtentKey) SetSplit(split bool) {
 
 func (k *ExtentKey) GenerateId() uint64 {
 	if k.PartitionId > math.MaxUint32 || k.ExtentId > math.MaxUint32 {
-		log.LogFatalf("ext %v abnormal", k)
+		log.Fatalf("ext %v abnormal", k)
 	}
 	return (k.PartitionId << 32) | k.ExtentId
 }
@@ -152,7 +152,7 @@ func ParseFromId(sID uint64) (dpID uint64, extID uint64) {
 
 func MergeSplitKey(inodeID uint64, ekRefMap *sync.Map, sMap *sync.Map) (err error) {
 	if ekRefMap == nil || sMap == nil {
-		log.LogErrorf("MergeSplitKey. inodeID %v should not use nil role", inodeID)
+		log.Errorf("MergeSplitKey. inodeID %v should not use nil role", inodeID)
 		return
 	}
 	sMap.Range(func(id, value interface{}) bool {
@@ -162,7 +162,7 @@ func MergeSplitKey(inodeID uint64, ekRefMap *sync.Map, sMap *sync.Map) (err erro
 		if ok {
 			nVal = val.(uint32)
 		}
-		log.LogDebugf("UnmarshalInodeValue inode %v get splitID %v dp id %v extentid %v, refCnt %v, add %v",
+		log.Debugf("UnmarshalInodeValue inode %v get splitID %v dp id %v extentid %v, refCnt %v, add %v",
 			inodeID, id.(uint64), dpID, extID, value.(uint32), nVal)
 
 		ekRefMap.Store(id, nVal+value.(uint32))
@@ -317,7 +317,7 @@ func (k *ExtentKey) CheckSum(v3 bool) uint32 {
 	sign := crc32.NewIEEE()
 	buf, err := k.MarshalBinary(v3)
 	if err != nil {
-		log.LogErrorf("[ExtentKey] extentKey %v CRC32 error: %v", k, err)
+		log.Errorf("[ExtentKey] extentKey %v CRC32 error: %v", k, err)
 		return 0
 	}
 	sign.Write(buf)
@@ -384,7 +384,7 @@ func (k *ExtentKey) UnmarshalBinaryWithCheckSum(buf *bytes.Buffer) (err error) {
 
 	if r := bytes.Compare(magic, ExtentKeyHeader); r != 0 {
 		if r = bytes.Compare(magic, ExtentKeyHeaderV3); r != 0 {
-			log.LogErrorf("action[UnmarshalBinaryWithCheckSum] err header magic %v", string(magic))
+			log.Errorf("action[UnmarshalBinaryWithCheckSum] err header magic %v", string(magic))
 			err = InvalidKeyHeader
 			return
 		}

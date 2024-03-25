@@ -63,24 +63,25 @@ func newClusterInfoCmd(client *master.MasterClient) *cobra.Command {
 		Use:   CliOpInfo,
 		Short: cmdClusterInfoShort,
 		Run: func(cmd *cobra.Command, args []string) {
+			span, ctx := spanContext()
 			var err error
 			var cv *proto.ClusterView
 			var cn *proto.ClusterNodeInfo
 			var cp *proto.ClusterIP
 			var clusterPara map[string]string
-			if cv, err = client.AdminAPI().GetCluster(); err != nil {
-				errout(err)
+			if cv, err = client.AdminAPI().GetCluster(ctx); err != nil {
+				errout(span, err)
 			}
-			if cn, err = client.AdminAPI().GetClusterNodeInfo(); err != nil {
-				errout(err)
+			if cn, err = client.AdminAPI().GetClusterNodeInfo(ctx); err != nil {
+				errout(span, err)
 			}
-			if cp, err = client.AdminAPI().GetClusterIP(); err != nil {
-				errout(err)
+			if cp, err = client.AdminAPI().GetClusterIP(ctx); err != nil {
+				errout(span, err)
 			}
 			stdout("[Cluster]\n")
 			stdout("%v", formatClusterView(cv, cn, cp))
-			if clusterPara, err = client.AdminAPI().GetClusterParas(); err != nil {
-				errout(err)
+			if clusterPara, err = client.AdminAPI().GetClusterParas(ctx); err != nil {
+				errout(span, err)
 			}
 
 			stdout(fmt.Sprintf("  BatchCount         : %v\n", clusterPara[nodeDeleteBatchCountKey]))
@@ -103,12 +104,9 @@ func newClusterStatCmd(client *master.MasterClient) *cobra.Command {
 				err error
 				cs  *proto.ClusterStatInfo
 			)
-			defer func() {
-				if err != nil {
-					errout(err)
-				}
-			}()
-			if cs, err = client.AdminAPI().GetClusterStat(); err != nil {
+			span, ctx := spanContext()
+			defer func() { errout(span, err) }()
+			if cs, err = client.AdminAPI().GetClusterStat(ctx); err != nil {
 				err = fmt.Errorf("Get cluster info fail:\n%v\n", err)
 				return
 			}
@@ -138,14 +136,13 @@ If 'freeze=true', CubeFS WILL NOT automatically allocate new data partitions `,
 				err    error
 				enable bool
 			)
-			defer func() {
-				errout(err)
-			}()
+			span, ctx := spanContext()
+			defer func() { errout(span, err) }()
 			if enable, err = strconv.ParseBool(args[0]); err != nil {
 				err = fmt.Errorf("Parse bool fail: %v\n", err)
 				return
 			}
-			if err = client.AdminAPI().IsFreezeCluster(enable, clientIDKey); err != nil {
+			if err = client.AdminAPI().IsFreezeCluster(ctx, enable, clientIDKey); err != nil {
 				return
 			}
 			if enable {
@@ -172,9 +169,8 @@ If the memory usage reaches this threshold, all the meta partition will be readO
 				err       error
 				threshold float64
 			)
-			defer func() {
-				errout(err)
-			}()
+			span, ctx := spanContext()
+			defer func() { errout(span, err) }()
 			if threshold, err = strconv.ParseFloat(args[0], 64); err != nil {
 				err = fmt.Errorf("Parse Float fail: %v\n", err)
 				return
@@ -183,7 +179,7 @@ If the memory usage reaches this threshold, all the meta partition will be readO
 				err = fmt.Errorf("Threshold too big\n")
 				return
 			}
-			if err = client.AdminAPI().SetMetaNodeThreshold(threshold, clientIDKey); err != nil {
+			if err = client.AdminAPI().SetMetaNodeThreshold(ctx, threshold, clientIDKey); err != nil {
 				return
 			}
 			stdout("MetaNode threshold is set to %v!\n", threshold)
@@ -205,11 +201,9 @@ func newClusterSetParasCmd(client *master.MasterClient) *cobra.Command {
 		Short: cmdClusterSetClusterInfoShort,
 		Run: func(cmd *cobra.Command, args []string) {
 			var err error
-			defer func() {
-				errout(err)
-			}()
-
-			if err = client.AdminAPI().SetClusterParas(optDelBatchCount, optMarkDeleteRate, optDelWorkerSleepMs,
+			span, ctx := spanContext()
+			defer func() { errout(span, err) }()
+			if err = client.AdminAPI().SetClusterParas(ctx, optDelBatchCount, optMarkDeleteRate, optDelWorkerSleepMs,
 				optAutoRepairRate, optLoadFactor, opMaxDpCntLimit, clientIDKey,
 				dataNodesetSelector, metaNodesetSelector,
 				dataNodeSelector, metaNodeSelector); err != nil {
@@ -247,14 +241,13 @@ If 'forbid=true', MetaPartition decommission/migrate and MetaNode decommission i
 				err    error
 				forbid bool
 			)
-			defer func() {
-				errout(err)
-			}()
+			span, ctx := spanContext()
+			defer func() { errout(span, err) }()
 			if forbid, err = strconv.ParseBool(args[0]); err != nil {
 				err = fmt.Errorf("Parse bool fail: %v\n", err)
 				return
 			}
-			if err = client.AdminAPI().SetForbidMpDecommission(forbid); err != nil {
+			if err = client.AdminAPI().SetForbidMpDecommission(ctx, forbid); err != nil {
 				return
 			}
 			if forbid {

@@ -13,6 +13,7 @@ CubeFS 使用 **JSON** 作为配置文件的格式.
 | peers                               | string | raft复制组成员信息                                | 是     |            |
 | logDir                              | string | 日志文件存储目录                                   | 是     |            |
 | logLevel                            | string | 日志级别                                       | 否     | error      |
+| logOptions                          | none   | [日志选项](./log.md)                           | 否     | none |
 | retainLogs                          | string | 保留多少条raft日志.                               | 是     |            |
 | walDir                              | string | raft wal日志存储目录.                            | 是     |            |
 | storeDir                            | string | RocksDB数据存储目录.此目录必须存在，如果目录不存在，无法启动服务       | 是     |            |

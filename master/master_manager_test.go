@@ -70,6 +70,7 @@ const volForSnapshotCount = 300
 
 func BenchmarkSnapshot(b *testing.B) {
 	var err error
+	_, ctx := proto.SpanContextPrefix("master-manager-test-")
 	// perpare status
 	req := &createVolReq{
 		name:             "",
@@ -88,7 +89,7 @@ func BenchmarkSnapshot(b *testing.B) {
 	}
 	for i := 0; i != volForSnapshotCount; i++ {
 		req.name = fmt.Sprintf("%v_%v", volForSnapshot, i)
-		server.cluster.createVol(req)
+		server.cluster.createVol(ctx, req)
 	}
 	time.Sleep(6 * time.Second)
 	mdSnapshot, err := server.cluster.fsm.Snapshot()

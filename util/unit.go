@@ -109,7 +109,7 @@ func getIpAndPort(ipAddr string) (ip string, port string, success bool) {
 	success = false
 	arr := strings.Split(ipAddr, ":")
 	if len(arr) != 2 {
-		log.LogWarnf("action[GetIpAndPort] ipAddr[%v] invalid", ipAddr)
+		log.Warnf("action[GetIpAndPort] ipAddr[%v] invalid", ipAddr)
 		return
 	}
 	ip = strings.Trim(arr[0], " ")
@@ -122,7 +122,7 @@ func getDomainAndPort(domainAddr string) (domain string, port string, success bo
 	success = false
 	arr := strings.Split(domainAddr, ":")
 	if len(arr) != 2 {
-		log.LogWarnf("action[GetDomainAndPort] domainAddr[%v] invalid", domainAddr)
+		log.Warnf("action[GetDomainAndPort] domainAddr[%v] invalid", domainAddr)
 		return
 	}
 	domain = strings.Trim(arr[0], " ")
@@ -146,7 +146,7 @@ func ParseIpAddrToDomainAddr(ipAddr string) (domainAddr string) {
 	}
 	domains, err := net.LookupAddr(ip)
 	if err != nil {
-		log.LogWarnf("action[ParseIpAddrToDomainAddr] failed, ipAddr[%v], ip[%v], err[%v]", ipAddr, ip, err)
+		log.Warnf("action[ParseIpAddrToDomainAddr] failed, ipAddr[%v], ip[%v], err[%v]", ipAddr, ip, err)
 		return
 	}
 	for _, v := range domains {
@@ -184,18 +184,18 @@ func ParseDomainAddrToIpAddr(domainAddr string) (ipAddr string, success bool) {
 	}
 	ips, err := net.LookupHost(domain)
 	if err != nil {
-		log.LogWarnf("action[ParseDomainAddrToIpAddr] failed, domainAddr[%v], domain[%v], err[%v]",
+		log.Warnf("action[ParseDomainAddrToIpAddr] failed, domainAddr[%v], domain[%v], err[%v]",
 			domainAddr, domain, err)
 		return
 	}
 	if len(ips) == 0 {
-		log.LogWarnf("action[ParseDomainAddrToIpAddr] ips is null, domainAddr[%v], domain[%v]",
+		log.Warnf("action[ParseDomainAddrToIpAddr] ips is null, domainAddr[%v], domain[%v]",
 			domainAddr, domain)
 		return
 	}
 	for i := 0; i < len(ips); i += 1 {
 		if ips[i] != ips[0] {
-			log.LogWarnf("action[ParseDomainAddrToIpAddr] the number of ips is not one,"+
+			log.Warnf("action[ParseDomainAddrToIpAddr] the number of ips is not one,"+
 				"domainAddr[%v], domain[%v], ips[%v], err[%v]", domainAddr, domain, ips, err)
 			return
 		}

@@ -71,9 +71,9 @@ func (c *Histogram) Metric() prometheus.Histogram {
 
 	err := prometheus.Register(actualMetric.(prometheus.Collector))
 	if err == nil {
-		log.LogInfof("register metric %v", c.Name())
+		log.Infof("register metric %v", c.Name())
 	} else {
-		log.LogErrorf("register metric %v, %v", c.Name(), err)
+		log.Errorf("register metric %v, %v", c.Name(), err)
 	}
 
 	return actualMetric.(prometheus.Histogram)

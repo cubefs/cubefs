@@ -56,7 +56,8 @@ func newDataNodeListCmd(client *master.MasterClient) *cobra.Command {
 		Short:   cmdDataNodeListShort,
 		Aliases: []string{"ls"},
 		RunE: func(cmd *cobra.Command, args []string) error {
-			view, err := client.AdminAPI().GetCluster()
+			_, ctx := spanContext()
+			view, err := client.AdminAPI().GetCluster(ctx)
 			if err != nil {
 				return err
 			}
@@ -85,12 +86,13 @@ func newDataNodeListCmd(client *master.MasterClient) *cobra.Command {
 }
 
 func newDataNodeInfoCmd(client *master.MasterClient) *cobra.Command {
+	_, ctx := spanContext()
 	cmd := &cobra.Command{
 		Use:   CliOpInfo + " [{HOST}:{PORT}]",
 		Short: cmdDataNodeInfoShort,
 		Args:  cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			datanodeInfo, err := client.NodeAPI().GetDataNode(args[0])
+			datanodeInfo, err := client.NodeAPI().GetDataNode(ctx, args[0])
 			if err != nil {
 				return err
 			}
@@ -102,7 +104,7 @@ func newDataNodeInfoCmd(client *master.MasterClient) *cobra.Command {
 			if len(args) != 0 {
 				return nil, cobra.ShellCompDirectiveNoFileComp
 			}
-			return validDataNodes(client, toComplete), cobra.ShellCompDirectiveNoFileComp
+			return validDataNodes(ctx, client, toComplete), cobra.ShellCompDirectiveNoFileComp
 		},
 	}
 	return cmd
@@ -113,6 +115,7 @@ func newDataNodeDecommissionCmd(client *master.MasterClient) *cobra.Command {
 		optCount    int
 		clientIDKey string
 	)
+	_, ctx := spanContext()
 	cmd := &cobra.Command{
 		Use:   CliOpDecommission + " [{HOST}:{PORT}]",
 		Short: cmdDataNodeDecommissionInfoShort,
@@ -122,7 +125,7 @@ func newDataNodeDecommissionCmd(client *master.MasterClient) *cobra.Command {
 				stdoutln("Migrate dp count should >= 0")
 				return nil
 			}
-			if err := client.NodeAPI().DataNodeDecommission(args[0], optCount, clientIDKey); err != nil {
+			if err := client.NodeAPI().DataNodeDecommission(ctx, args[0], optCount, clientIDKey); err != nil {
 				return err
 			}
 			stdoutln("Decommission data node successfully")
@@ -132,7 +135,7 @@ func newDataNodeDecommissionCmd(client *master.MasterClient) *cobra.Command {
 			if len(args) != 0 {
 				return nil, cobra.ShellCompDirectiveNoFileComp
 			}
-			return validDataNodes(client, toComplete), cobra.ShellCompDirectiveNoFileComp
+			return validDataNodes(ctx, client, toComplete), cobra.ShellCompDirectiveNoFileComp
 		},
 	}
 	cmd.Flags().IntVar(&optCount, CliFlagCount, 0, "DataNode delete mp count")
@@ -143,6 +146,7 @@ func newDataNodeDecommissionCmd(client *master.MasterClient) *cobra.Command {
 func newDataNodeMigrateCmd(client *master.MasterClient) *cobra.Command {
 	var clientIDKey string
 	var optCount int
+	_, ctx := spanContext()
 	cmd := &cobra.Command{
 		Use:   CliOpMigrate + " src[{HOST}:{PORT}] dst[{HOST}:{PORT}]",
 		Short: cmdDataNodeMigrateInfoShort,
@@ -153,8 +157,7 @@ func newDataNodeMigrateCmd(client *master.MasterClient) *cobra.Command {
 				stdoutln("Migrate dp count should between [1-50]")
 				return nil
 			}
-
-			if err := client.NodeAPI().DataNodeMigrate(src, dst, optCount, clientIDKey); err != nil {
+			if err := client.NodeAPI().DataNodeMigrate(ctx, src, dst, optCount, clientIDKey); err != nil {
 				return err
 			}
 			stdoutln("Migrate data node successfully")
@@ -164,7 +167,7 @@ func newDataNodeMigrateCmd(client *master.MasterClient) *cobra.Command {
 			if len(args) != 0 {
 				return nil, cobra.ShellCompDirectiveNoFileComp
 			}
-			return validMetaNodes(client, toComplete), cobra.ShellCompDirectiveNoFileComp
+			return validMetaNodes(ctx, client, toComplete), cobra.ShellCompDirectiveNoFileComp
 		},
 	}
 	cmd.Flags().IntVar(&optCount, CliFlagCount, dpMigrateMax, "Migrate dp count,default 15")

@@ -16,31 +16,25 @@ package proto
 
 import (
 	"bytes"
+	"context"
 	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"hash/maphash"
 	"io"
 	"net"
 	"strconv"
-	"sync/atomic"
 	"syscall"
 	"time"
 
+	"github.com/cubefs/cubefs/blobstore/common/trace"
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/buf"
 	"github.com/cubefs/cubefs/util/log"
 )
 
-var (
-	GRequestID = int64(1)
-	Buffers    *buf.BufferPool
-)
-
-// GenerateRequestID generates the request ID.
-func GenerateRequestID() int64 {
-	return atomic.AddInt64(&GRequestID, 1)
-}
+var Buffers *buf.BufferPool
 
 const (
 	AddrSplit = "/"
@@ -294,6 +288,116 @@ const (
 	DecommissionedCreateDataPartition = 1
 )
 
+type (
+	spanContextKey struct{}
+	// carry span in struct,
+	// asserting trace.Span is inefficient.
+	spanCarrier struct {
+		span trace.Span
+	}
+)
+
+var activeSpanKey = spanContextKey{}
+
+var (
+	StartSpanFromContext            = trace.StartSpanFromContext
+	StartSpanFromContextWithTraceID = trace.StartSpanFromContextWithTraceID
+)
+
+func RandomID() uint64 {
+	return new(maphash.Hash).Sum64()
+}
+
+func TraceID() string {
+	return fmt.Sprintf("%016x", RandomID())
+}
+
+func RequestIDFromSpan(span trace.Span) uint64 {
+	traceID := span.TraceID()
+	// has prefix
+	if l := len(traceID); l >= 17 && traceID[l-17] == '-' {
+		traceID = traceID[l-16:]
+	}
+	rid, err := strconv.ParseUint(traceID, 16, 64)
+	if err == nil {
+		return rid
+	}
+
+	rid = RandomID()
+	var f func(format string, v ...interface{})
+	switch log.GetOutputLevel() {
+	case log.Ldebug:
+		f = span.Debugf
+	case log.Linfo:
+		f = span.Infof
+	case log.Lwarn:
+		f = span.Warnf
+	default:
+		f = span.Errorf
+	}
+	f("transfer id to trace(%016x) request(%d)", rid, rid)
+
+	return rid
+}
+
+func RequestIDFromContext(ctx context.Context) uint64 {
+	return RequestIDFromSpan(SpanFromContext(ctx))
+}
+
+// ContextWithSpan returns context within span.
+func ContextWithSpan(ctx context.Context, span trace.Span) context.Context {
+	return context.WithValue(ctx, activeSpanKey, &spanCarrier{span: span})
+}
+
+// SpanFromContext try to load span from context.
+func SpanFromContext(ctx context.Context) trace.Span {
+	if spanVal := ctx.Value(activeSpanKey); spanVal != nil {
+		return spanVal.(*spanCarrier).span
+	}
+	return trace.SpanFromContextSafe(ctx)
+}
+
+// ContextWithOperation create child span with operation and child span will be in the context
+func ContextWithOperation(ctx context.Context, operation string) context.Context {
+	return ContextWithSpan(ctx, SpanFromContext(ctx).WithOperation(operation))
+}
+
+func ContextWithOperationf(ctx context.Context, format string, a ...interface{}) context.Context {
+	return ContextWithOperation(ctx, fmt.Sprintf(format, a...))
+}
+
+func SpanContext() (trace.Span, context.Context) {
+	span, ctx := StartSpanFromContext(context.Background(), "")
+	ctx = ContextWithSpan(ctx, span)
+	return span, ctx
+}
+
+func SpanWithContext(ctx context.Context) (trace.Span, context.Context) {
+	span, ctxNew := StartSpanFromContext(ctx, "")
+	ctxNew = ContextWithSpan(ctxNew, span)
+	return span, ctxNew
+}
+
+func SpanContextPrefix(prefix string) (trace.Span, context.Context) {
+	span, ctx := StartSpanFromContextWithTraceID(context.Background(), "", prefix+TraceID())
+	ctx = ContextWithSpan(ctx, span)
+	return span, ctx
+}
+
+func SpanWithContextPrefix(ctx context.Context, prefix string) (trace.Span, context.Context) {
+	span, ctxNew := StartSpanFromContextWithTraceID(ctx, "", prefix+TraceID())
+	ctxNew = ContextWithSpan(ctxNew, span)
+	return span, ctxNew
+}
+
+func RoundContext(name string) func() context.Context {
+	var round int
+	return func() context.Context {
+		round++
+		return ContextWithOperationf(context.Background(), "%s-%d", name, round)
+	}
+}
+
 // Packet defines the packet structure.
 type Packet struct {
 	Magic              uint8
@@ -308,7 +412,7 @@ type Packet struct {
 	PartitionID        uint64
 	ExtentID           uint64
 	ExtentOffset       int64
-	ReqID              int64
+	ReqID              uint64
 	Arg                []byte // for create or append ops, the data contains the address
 	Data               []byte
 	StartT             int64
@@ -316,6 +420,9 @@ type Packet struct {
 	HasPrepare         bool
 	VerSeq             uint64 // only used in mod request to datanode
 	VerList            []*VolVersionInfo
+
+	// context carries span of trace.
+	ctx context.Context
 }
 
 func IsTinyExtentType(extentType uint8) bool {
@@ -335,10 +442,56 @@ func NewPacket() *Packet {
 }
 
 // NewPacketReqID returns a new packet with ReqID assigned.
-func NewPacketReqID() *Packet {
+// Generate random request id if no trace in context.
+func NewPacketReqID(ctx context.Context) *Packet {
 	p := NewPacket()
-	p.ReqID = GenerateRequestID()
+	p.ReqID = RequestIDFromContext(ctx)
 	return p
+}
+
+// SetTraceID new a trace context, store span into p.ctx.
+func (p *Packet) SetTraceID(traceID string) *Packet {
+	var span trace.Span
+	var ctx context.Context
+	if traceID != "" {
+		span, ctx = StartSpanFromContextWithTraceID(context.Background(), "", traceID)
+	} else {
+		span, ctx = StartSpanFromContext(context.Background(), "")
+	}
+	p.ctx = ContextWithSpan(ctx, span)
+	return p
+}
+
+// Context returns context with trace of Packet.ReqID,
+// otherwise new a trace in Packet's context.
+// It's better to call after reading Packet's header.
+func (p *Packet) Context() context.Context {
+	if ctx := p.ctx; ctx != nil {
+		return ctx
+	}
+	traceID := ""
+	if p.ReqID > 0 {
+		traceID = fmt.Sprintf("%016x", p.ReqID)
+	}
+	p.SetTraceID(traceID)
+	return p.ctx
+}
+
+// WithContext clone Packet with new context.
+func (p *Packet) WithContext(ctx context.Context) *Packet {
+	if ctx == nil {
+		panic("nil context")
+	}
+	p2 := new(Packet)
+	*p2 = *p
+	p2.ctx = ctx
+	return p2
+}
+
+// Span returns trace span.
+// It's better to call after reading Packet's Header.
+func (p *Packet) Span() trace.Span {
+	return SpanFromContext(p.Context())
 }
 
 func (p *Packet) GetCopy() *Packet {
@@ -351,6 +504,7 @@ func (p *Packet) GetCopy() *Packet {
 	copy(newPacket.Data[:p.Size], p.Data)
 
 	newPacket.Size = p.Size
+	newPacket.ctx = p.ctx
 	return newPacket
 }
 
@@ -686,7 +840,7 @@ func (p *Packet) GetResultMsg() (m string) {
 	return
 }
 
-func (p *Packet) GetReqID() int64 {
+func (p *Packet) GetReqID() uint64 {
 	return p.ReqID
 }
 
@@ -731,7 +885,7 @@ func (p *Packet) UnmarshalHeader(in []byte) error {
 	p.PartitionID = binary.BigEndian.Uint64(in[17:25])
 	p.ExtentID = binary.BigEndian.Uint64(in[25:33])
 	p.ExtentOffset = int64(binary.BigEndian.Uint64(in[33:41]))
-	p.ReqID = int64(binary.BigEndian.Uint64(in[41:49]))
+	p.ReqID = binary.BigEndian.Uint64(in[41:49])
 	p.KernelOffset = binary.BigEndian.Uint64(in[49:util.PacketHeaderSize])
 
 	// header opcode OpRandomWriteVer should not unmarshal here due to header size is const
@@ -832,12 +986,12 @@ func (p *Packet) WriteToConn(c net.Conn) (err error) {
 	if p.Opcode == OpRandomWriteVer || p.ExtentType&MultiVersionFlag > 0 {
 		headSize = util.PacketHeaderVerSize
 	}
-	// log.LogDebugf("packet opcode %v header size %v extentype %v conn %v", p.Opcode, headSize, p.ExtentType, c)
+	// log.Debugf("packet opcode %v header size %v extentype %v conn %v", p.Opcode, headSize, p.ExtentType, c)
 	header, err := Buffers.Get(headSize)
 	if err != nil {
 		header = make([]byte, headSize)
 	}
-	// log.LogErrorf("action[WriteToConn] buffer get nil,opcode %v head len [%v]", p.Opcode, len(header))
+	// log.Errorf("action[WriteToConn] buffer get nil,opcode %v head len [%v]", p.Opcode, len(header))
 	defer Buffers.Put(header)
 	c.SetWriteDeadline(time.Now().Add(WriteDeadlineTime * time.Second))
 	p.MarshalHeader(header)
@@ -846,10 +1000,9 @@ func (p *Packet) WriteToConn(c net.Conn) (err error) {
 		if p.IsVersionList() {
 			d, err1 := p.MarshalVersionSlice()
 			if err1 != nil {
-				log.LogErrorf("MarshalVersionSlice: marshal version ifo failed, err %s", err1.Error())
+				p.Span().Error("MarshalVersionSlice: marshal version err", err1)
 				return err1
 			}
-
 			_, err = c.Write(d)
 			if err != nil {
 				return err
@@ -861,7 +1014,6 @@ func (p *Packet) WriteToConn(c net.Conn) (err error) {
 			}
 		}
 	}
-
 	return
 }
 
@@ -922,17 +1074,17 @@ func (p *Packet) ReadFromConnWithVer(c net.Conn, timeoutSec int) (err error) {
 			return err
 		}
 		cnt := binary.BigEndian.Uint16(cntByte)
-		log.LogDebugf("action[ReadFromConnWithVer] op %s verseq %v, extType %d, cnt %d",
-			p.GetOpMsg(), p.VerSeq, p.ExtentType, cnt)
+		span := p.Span().WithOperation("ReadFromConnWithVer")
+		span.Debugf("op %s, verseq %v, extType %d, cnt %d", p.GetOpMsg(), p.VerSeq, p.ExtentType, cnt)
 		verData := make([]byte, cnt*verInfoCnt)
 		if _, err = io.ReadFull(c, verData); err != nil {
-			log.LogWarnf("ReadFromConnWithVer: read ver slice from conn failed, err %s", err.Error())
+			span.Warnf("read ver slice from conn err %s", err.Error())
 			return err
 		}
 
 		err = p.UnmarshalVersionSlice(int(cnt), verData)
 		if err != nil {
-			log.LogWarnf("ReadFromConnWithVer: unmarshal ver slice failed, err %s", err.Error())
+			span.Warnf("unmarshal ver slice err %s", err.Error())
 			return err
 		}
 	}
@@ -1040,6 +1192,18 @@ func (p *Packet) PacketErrorWithBody(code uint8, reply []byte) {
 	copy(p.Data[:p.Size], reply)
 	p.ResultCode = code
 	p.ArgLen = 0
+}
+
+func (p *Packet) PacketErrorWithError(code uint8, err error) {
+	p.PacketErrorWithBody(code, []byte(err.Error()))
+}
+
+func (p *Packet) PacketErrorOpErr(err error) {
+	p.PacketErrorWithError(OpErr, err)
+}
+
+func (p *Packet) PacketErrorOpAgain(err error) {
+	p.PacketErrorWithError(OpAgain, err)
 }
 
 func (p *Packet) SetPacketHasPrepare() {

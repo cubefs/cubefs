@@ -1,4 +1,4 @@
-// Copyright 2022 The CubeFS Authors.
+// Copyright 2024 The CubeFS Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,23 +12,6 @@
 // implied. See the License for the specific language governing
 // permissions and limitations under the License.
 
-package sdk
+package cubefs
 
-import (
-	"testing"
-
-	"github.com/cubefs/cubefs/util/log"
-)
-
-func TestConvertDebugLevel(t *testing.T) {
-	t.Run("warn", func(t *testing.T) {
-		if convertLogLevel("warn") != log.WarnLevel {
-			t.Fatalf("expected WarnLevel")
-		}
-	})
-	t.Run("warn2", func(t *testing.T) {
-		if convertLogLevel("warn2") != log.DebugLevel {
-			t.Fatalf("expected DebugLevel")
-		}
-	})
-}
+//go:generate golangci-lint run --issues-exit-code=1 --timeout 10m --skip-dirs depends -D errcheck -E bodyclose ./...

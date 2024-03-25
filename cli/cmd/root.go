@@ -15,13 +15,14 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path"
 
+	"github.com/cubefs/cubefs/blobstore/common/trace"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/sdk/master"
-	"github.com/cubefs/cubefs/util/log"
 	"github.com/spf13/cobra"
 )
 
@@ -52,7 +53,8 @@ func NewRootCmd(client *master.MasterClient) *CubeFSCmd {
 						suggestionsString += fmt.Sprintf("\t%v\n", s)
 					}
 				}
-				errout(fmt.Errorf("cfs-cli: unknown command %q\n%s", args[0], suggestionsString))
+				span, _ := spanContext()
+				errout(span, fmt.Errorf("cfs-cli: unknown command %q\n%s", args[0], suggestionsString))
 			},
 			SilenceErrors: true,
 			SilenceUsage:  true,
@@ -84,7 +86,20 @@ func NewRootCmd(client *master.MasterClient) *CubeFSCmd {
 	return cmd
 }
 
-var stdout = stdoutf
+var (
+	stdout = stdoutf
+
+	getSpan = proto.SpanFromContext
+)
+
+func spanContext() (trace.Span, context.Context) {
+	return proto.SpanContextPrefix("cli-")
+}
+
+func newCtx() context.Context {
+	_, ctx := spanContext()
+	return ctx
+}
 
 func stdoutln(a ...interface{}) {
 	fmt.Fprintln(os.Stdout, a...)
@@ -99,12 +114,11 @@ func stdoutlnf(format string, a ...interface{}) {
 	fmt.Fprintln(os.Stdout)
 }
 
-func errout(err error) {
+func errout(span trace.Span, err error) {
 	if err == nil {
 		return
 	}
-	fmt.Fprintln(os.Stderr, "Error:", err)
-	log.LogError("Error:", err)
-	log.LogFlush()
+	fmt.Fprintln(os.Stderr, span.String(), "Error:", err)
+	span.Error("Error:", err)
 	os.Exit(1)
 }

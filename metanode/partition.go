@@ -16,6 +16,7 @@ package metanode
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"math"
@@ -105,10 +106,6 @@ func (c *MetaPartitionConfig) checkMeta() (err error) {
 	if c.PartitionId <= 0 {
 		err = errors.NewErrorf("[checkMeta]: partition id at least 1, "+
 			"now partition id is: %d", c.PartitionId)
-		return
-	}
-	if c.Start < 0 {
-		err = errors.NewErrorf("[checkMeta]: start at least 0")
 		return
 	}
 	if c.End <= c.Start {
@@ -209,9 +206,9 @@ type OpMultipart interface {
 	AppendMultipart(req *proto.AddMultipartPartRequest, p *Packet) (err error)
 	RemoveMultipart(req *proto.RemoveMultipartRequest, p *Packet) (err error)
 	ListMultipart(req *proto.ListMultipartRequest, p *Packet) (err error)
-	GetUidInfo() (info []*proto.UidReportSpaceInfo)
+	GetUidInfo(_ context.Context) (info []*proto.UidReportSpaceInfo)
 	SetUidLimit(info []*proto.UidSpaceInfo)
-	SetTxInfo(info []*proto.TxInfo)
+	SetTxInfo(_ context.Context, info []*proto.TxInfo)
 	GetExpiredMultipart(req *proto.GetExpiredMultipartRequest, p *Packet) (err error)
 }
 
@@ -220,13 +217,13 @@ type OpMultiVersion interface {
 	GetVerSeq() uint64
 	GetVerList() []*proto.VolVersionInfo
 	GetAllVerList() []*proto.VolVersionInfo
-	HandleVersionOp(op uint8, verSeq uint64, verList []*proto.VolVersionInfo, sync bool) (err error)
-	fsmVersionOp(reqData []byte) (err error)
-	GetAllVersionInfo(req *proto.MultiVersionOpRequest, p *Packet) (err error)
-	GetSpecVersionInfo(req *proto.MultiVersionOpRequest, p *Packet) (err error)
-	GetExtentByVer(ino *Inode, req *proto.GetExtentsRequest, rsp *proto.GetExtentsResponse)
-	checkVerList(info *proto.VolVersionInfoList, sync bool) (needUpdate bool, err error)
-	checkByMasterVerlist(mpVerList *proto.VolVersionInfoList, masterVerList *proto.VolVersionInfoList) (err error)
+	HandleVersionOp(_ context.Context, op uint8, verSeq uint64, verList []*proto.VolVersionInfo, sync bool) (err error)
+	fsmVersionOp(_ context.Context, reqData []byte) (err error)
+	GetAllVersionInfo(_ context.Context, req *proto.MultiVersionOpRequest, p *Packet) (err error)
+	GetSpecVersionInfo(_ context.Context, req *proto.MultiVersionOpRequest, p *Packet) (err error)
+	GetExtentByVer(_ context.Context, ino *Inode, req *proto.GetExtentsRequest, rsp *proto.GetExtentsResponse)
+	checkVerList(_ context.Context, info *proto.VolVersionInfoList, sync bool) (needUpdate bool, err error)
+	checkByMasterVerlist(_ context.Context, mpVerList *proto.VolVersionInfoList, masterVerList *proto.VolVersionInfoList) (err error)
 }
 
 // OpMeta defines the interface for the metadata operations.
@@ -253,11 +250,11 @@ type OpPartition interface {
 	GetUniqId() uint64
 	GetBaseConfig() MetaPartitionConfig
 	ResponseLoadMetaPartition(p *Packet) (err error)
-	PersistMetadata() (err error)
-	RenameStaleMetadata() (err error)
+	PersistMetadata(_ context.Context) (err error)
+	RenameStaleMetadata(_ context.Context) (err error)
 	ChangeMember(changeType raftproto.ConfChangeType, peer raftproto.Peer, context []byte) (resp interface{}, err error)
 	Reset() (err error)
-	UpdatePartition(req *UpdatePartitionReq, resp *UpdatePartitionResp) (err error)
+	UpdatePartition(_ context.Context, req *UpdatePartitionReq, resp *UpdatePartitionResp) (err error)
 	DeleteRaft() error
 	IsExsitPeer(peer proto.Peer) bool
 	TryToLeader(groupID uint64) error
@@ -268,12 +265,12 @@ type OpPartition interface {
 
 // MetaPartition defines the interface for the meta partition operations.
 type MetaPartition interface {
-	Start(isCreate bool) error
+	Start(_ context.Context, isCreate bool) error
 	Stop()
 	DataSize() uint64
 	GetFreeListLen() int
 	OpMeta
-	LoadSnapshot(path string) error
+	LoadSnapshot(_ context.Context, path string) error
 	ForceSetMetaPartitionToLoadding()
 	ForceSetMetaPartitionToFininshLoad()
 	IsForbidden() bool
@@ -288,8 +285,6 @@ type UidManager struct {
 	accumRebuildDelta *sync.Map // snapshot redoLog
 	accumRebuildBase  *sync.Map // snapshot mirror
 	uidAcl            *sync.Map
-	lastUpdateTime    time.Time
-	enable            bool
 	rbuilding         bool
 	volName           string
 	acLock            sync.RWMutex
@@ -308,7 +303,6 @@ func NewUidMgr(volName string, mpID uint64) (mgr *UidManager) {
 	}
 	var uid uint32
 	mgr.uidAcl.Store(uid, false)
-	log.LogDebugf("NewUidMgr init")
 	return
 }
 
@@ -318,7 +312,6 @@ func (uMgr *UidManager) addUidSpace(uid uint32, inode uint64, eks []proto.Extent
 
 	status = proto.OpOk
 	if uMgr.getUidAcl(uid) {
-		log.LogWarnf("addUidSpace.volname [%v] mp[%v] uid %v be set full", uMgr.mpID, uMgr.volName, uid)
 		return proto.OpNoSpaceErr
 	}
 	if eks == nil {
@@ -385,12 +378,11 @@ func (uMgr *UidManager) setUidAcl(info []*proto.UidSpaceInfo) {
 		if uidInfo.VolName != uMgr.volName {
 			continue
 		}
-		// log.LogDebugf("setUidAcl.volname [%v] uid %v be set enable %v", uMgr.volName, uidInfo.Uid, uidInfo.Limited)
 		uMgr.uidAcl.Store(uidInfo.Uid, uidInfo.Limited)
 	}
 }
 
-func (uMgr *UidManager) getAllUidSpace() (rsp []*proto.UidReportSpaceInfo) {
+func (uMgr *UidManager) getAllUidSpace(ctx context.Context) (rsp []*proto.UidReportSpaceInfo) {
 	uMgr.acLock.RLock()
 	defer uMgr.acLock.RUnlock()
 
@@ -402,7 +394,7 @@ func (uMgr *UidManager) getAllUidSpace() (rsp []*proto.UidReportSpaceInfo) {
 		if baseInfo, ok := uMgr.accumBase.Load(key.(uint32)); ok {
 			size += baseInfo.(int64)
 			if size < 0 {
-				log.LogErrorf("getAllUidSpace. mp[%v] uid %v size small than 0 %v, old %v, new %v", uMgr.mpID, key.(uint32), size, value.(int64), baseInfo.(int64))
+				getSpan(ctx).Errorf("getAllUidSpace. mp[%v] uid %v size small than 0 %v, old %v, new %v", uMgr.mpID, key.(uint32), size, value.(int64), baseInfo.(int64))
 				return false
 			}
 		}
@@ -415,14 +407,14 @@ func (uMgr *UidManager) getAllUidSpace() (rsp []*proto.UidReportSpaceInfo) {
 	uMgr.accumBase.Range(func(key, value interface{}) bool {
 		var size int64
 		if size, ok = value.(int64); !ok {
-			log.LogErrorf("getAllUidSpace. mp[%v] accumBase key %v size type %v", uMgr.mpID, reflect.TypeOf(key), reflect.TypeOf(value))
+			getSpan(ctx).Errorf("getAllUidSpace. mp[%v] accumBase key %v size type %v", uMgr.mpID, reflect.TypeOf(key), reflect.TypeOf(value))
 			return false
 		}
 		rsp = append(rsp, &proto.UidReportSpaceInfo{
 			Uid:  key.(uint32),
 			Size: uint64(size),
 		})
-		// log.LogDebugf("getAllUidSpace. mp[%v] accumBase uid %v size %v", uMgr.mpID, key.(uint32), size)
+		// getSpan(ctx).Debugf("getAllUidSpace. mp[%v] accumBase uid %v size %v", uMgr.mpID, key.(uint32), size)
 		return true
 	})
 
@@ -432,7 +424,6 @@ func (uMgr *UidManager) getAllUidSpace() (rsp []*proto.UidReportSpaceInfo) {
 func (uMgr *UidManager) accumRebuildStart() bool {
 	uMgr.acLock.Lock()
 	defer uMgr.acLock.Unlock()
-	log.LogDebugf("accumRebuildStart vol [%v] mp[%v] rbuilding [%v]", uMgr.volName, uMgr.mpID, uMgr.rbuilding)
 	if uMgr.rbuilding {
 		return false
 	}
@@ -443,8 +434,6 @@ func (uMgr *UidManager) accumRebuildStart() bool {
 func (uMgr *UidManager) accumRebuildFin(rebuild bool) {
 	uMgr.acLock.Lock()
 	defer uMgr.acLock.Unlock()
-	log.LogDebugf("accumRebuildFin rebuild volname [%v], mp:[%v],%v:%v, rebuild:[%v]", uMgr.volName, uMgr.mpID,
-		uMgr.accumRebuildBase, uMgr.accumRebuildDelta, rebuild)
 	uMgr.rbuilding = false
 	if !rebuild {
 		uMgr.accumRebuildBase = new(sync.Map)
@@ -466,13 +455,13 @@ func (uMgr *UidManager) accumInoUidSize(ino *Inode, accum *sync.Map) {
 }
 
 type OpQuota interface {
-	setQuotaHbInfo(infos []*proto.QuotaHeartBeatInfo)
-	getQuotaReportInfos() (infos []*proto.QuotaReportInfo)
-	batchSetInodeQuota(req *proto.BatchSetMetaserverQuotaReuqest,
+	setQuotaHbInfo(_ context.Context, infos []*proto.QuotaHeartBeatInfo)
+	getQuotaReportInfos(_ context.Context) (infos []*proto.QuotaReportInfo)
+	batchSetInodeQuota(_ context.Context, req *proto.BatchSetMetaserverQuotaReuqest,
 		resp *proto.BatchSetMetaserverQuotaResponse) (err error)
-	batchDeleteInodeQuota(req *proto.BatchDeleteMetaserverQuotaReuqest,
+	batchDeleteInodeQuota(_ context.Context, req *proto.BatchDeleteMetaserverQuotaReuqest,
 		resp *proto.BatchDeleteMetaserverQuotaResponse) (err error)
-	getInodeQuota(inode uint64, p *Packet) (err error)
+	getInodeQuota(_ context.Context, inode uint64, p *Packet) (err error)
 }
 
 // metaPartition manages the range of the inode IDs.
@@ -503,7 +492,6 @@ type metaPartition struct {
 	vol                    *Vol
 	manager                *metadataManager
 	isLoadingMetaPartition bool
-	summaryLock            sync.Mutex
 	ebsClient              *blobstore.BlobStoreClient
 	volType                int
 	isFollowerRead         bool
@@ -515,7 +503,6 @@ type metaPartition struct {
 	uniqChecker            *uniqChecker
 	verSeq                 uint64
 	multiVersionList       *proto.VolVersionInfoList
-	versionLock            sync.Mutex
 	verUpdateChan          chan []byte
 	enableAuditLog         bool
 }
@@ -574,17 +561,15 @@ func (mp *metaPartition) GetAllVerList() (verList []*proto.VolVersionInfo) {
 		verList = append(verList, verInfo)
 	}
 	sort.SliceStable(verList, func(i, j int) bool {
-		if verList[i].Ver < verList[j].Ver {
-			return true
-		}
-		return false
+		return verList[i].Ver < verList[j].Ver
 	})
 	return
 }
 
 func (mp *metaPartition) updateSize() {
-	timer := time.NewTicker(time.Minute * 2)
 	go func() {
+		timer := time.NewTicker(time.Minute * 2)
+		defer timer.Stop()
 		for {
 			select {
 			case <-timer.C:
@@ -597,9 +582,9 @@ func (mp *metaPartition) updateSize() {
 				})
 
 				mp.size = size
-				log.LogDebugf("[updateSize] update mp[%v] size(%d) success,inodeCount(%d),dentryCount(%d)", mp.config.PartitionId, size, mp.inodeTree.Len(), mp.dentryTree.Len())
+				log.Debugf("[updateSize] update mp[%v] size(%d) success,inodeCount(%d),dentryCount(%d)", mp.config.PartitionId, size, mp.inodeTree.Len(), mp.dentryTree.Len())
 			case <-mp.stopC:
-				log.LogDebugf("[updateSize] stop update mp[%v] size,inodeCount(%d),dentryCount(%d)", mp.config.PartitionId, mp.inodeTree.Len(), mp.dentryTree.Len())
+				log.Infof("[updateSize] stop update mp[%v] size,inodeCount(%d),dentryCount(%d)", mp.config.PartitionId, mp.inodeTree.Len(), mp.dentryTree.Len())
 				return
 			}
 		}
@@ -623,7 +608,7 @@ func (mp *metaPartition) GetFreeListLen() int {
 }
 
 // Start starts a meta partition.
-func (mp *metaPartition) Start(isCreate bool) (err error) {
+func (mp *metaPartition) Start(ctx context.Context, isCreate bool) (err error) {
 	if atomic.CompareAndSwapUint32(&mp.state, common.StateStandby, common.StateStart) {
 		defer func() {
 			var newState uint32
@@ -637,7 +622,7 @@ func (mp *metaPartition) Start(isCreate bool) (err error) {
 		if mp.config.BeforeStart != nil {
 			mp.config.BeforeStart()
 		}
-		if err = mp.onStart(isCreate); err != nil {
+		if err = mp.onStart(ctx, isCreate); err != nil {
 			err = errors.NewErrorf("[Start]->%s", err.Error())
 			return
 		}
@@ -659,21 +644,20 @@ func (mp *metaPartition) Stop() {
 		mp.onStop()
 		if mp.config.AfterStop != nil {
 			mp.config.AfterStop()
-			log.LogDebugf("[AfterStop]: partition id=%d execute ok.",
-				mp.config.PartitionId)
+			log.Debugf("[AfterStop]: partition id=%d execute ok.", mp.config.PartitionId)
 		}
 	}
 }
 
-func (mp *metaPartition) versionInit(isCreate bool) (err error) {
+func (mp *metaPartition) versionInit(ctx context.Context, isCreate bool) (err error) {
 	if !isCreate {
 		return
 	}
 	var verList *proto.VolVersionInfoList
-	verList, err = masterClient.AdminAPI().GetVerList(mp.config.VolName)
+	verList, err = masterClient.AdminAPI().GetVerList(ctx, mp.config.VolName)
 
 	if err != nil {
-		log.LogErrorf("action[onStart] GetVerList err[%v]", err)
+		getSpan(ctx).Errorf("action[onStart] GetVerList err[%v]", err)
 		return
 	}
 
@@ -684,26 +668,26 @@ func (mp *metaPartition) versionInit(isCreate bool) (err error) {
 		mp.multiVersionList.VerList = append(mp.multiVersionList.VerList, info)
 	}
 
-	log.LogDebugf("action[onStart] mp[%v] verList %v", mp.config.PartitionId, mp.multiVersionList.VerList)
+	getSpan(ctx).Debugf("action[onStart] mp[%v] verList %v", mp.config.PartitionId, mp.multiVersionList.VerList)
 	vlen := len(mp.multiVersionList.VerList)
 	if vlen > 0 {
 		mp.verSeq = mp.multiVersionList.VerList[vlen-1].Ver
 	}
-
 	return
 }
 
-func (mp *metaPartition) onStart(isCreate bool) (err error) {
+func (mp *metaPartition) onStart(ctx context.Context, isCreate bool) (err error) {
+	span := getSpan(ctx)
 	defer func() {
 		if err == nil {
 			return
 		}
 		mp.onStop()
 	}()
-	if err = mp.versionInit(isCreate); err != nil {
+	if err = mp.versionInit(ctx, isCreate); err != nil {
 		return
 	}
-	if err = mp.load(isCreate); err != nil {
+	if err = mp.load(ctx, isCreate); err != nil {
 		err = errors.NewErrorf("[onStart] load partition id=%d: %s",
 			mp.config.PartitionId, err.Error())
 		return
@@ -716,14 +700,14 @@ func (mp *metaPartition) onStart(isCreate bool) (err error) {
 	}
 
 	// set EBS Client
-	if clusterInfo, err = masterClient.AdminAPI().GetClusterInfo(); err != nil {
-		log.LogErrorf("action[onStart] GetClusterInfo err[%v]", err)
+	if clusterInfo, err = masterClient.AdminAPI().GetClusterInfo(ctx); err != nil {
+		span.Errorf("action[onStart] GetClusterInfo err[%v]", err)
 		return
 	}
 
 	var volumeInfo *proto.SimpleVolView
-	if volumeInfo, err = masterClient.AdminAPI().GetVolumeSimpleInfo(mp.config.VolName); err != nil {
-		log.LogErrorf("action[onStart] GetVolumeSimpleInfo err[%v]", err)
+	if volumeInfo, err = masterClient.AdminAPI().GetVolumeSimpleInfo(ctx, mp.config.VolName); err != nil {
+		span.Errorf("action[onStart] GetVolumeSimpleInfo err[%v]", err)
 		return
 	}
 
@@ -744,9 +728,8 @@ func (mp *metaPartition) onStart(isCreate bool) (err error) {
 				Logger:         &access.Logger{Filename: path.Join(log.LogDir, "ebs.log")},
 			},
 		)
-
 		if err != nil {
-			log.LogErrorf("action[onStart] err[%v]", err)
+			span.Errorf("action[onStart] err[%v]", err)
 			return
 		}
 		if ebsClient == nil {
@@ -758,29 +741,27 @@ func (mp *metaPartition) onStart(isCreate bool) (err error) {
 
 	go mp.startCheckerEvict()
 
-	log.LogDebugf("[before raft] get mp[%v] applied(%d),inodeCount(%d),dentryCount(%d)", mp.config.PartitionId, mp.applyID, mp.inodeTree.Len(), mp.dentryTree.Len())
-
-	if err = mp.startRaft(); err != nil {
+	span.Debugf("[before raft] get mp[%v] applied(%d),inodeCount(%d),dentryCount(%d)", mp.config.PartitionId, mp.applyID, mp.inodeTree.Len(), mp.dentryTree.Len())
+	if err = mp.startRaft(ctx); err != nil {
 		err = errors.NewErrorf("[onStart] start raft id=%d: %s",
 			mp.config.PartitionId, err.Error())
 		return
 	}
-	log.LogDebugf("[after raft] get mp[%v] applied(%d),inodeCount(%d),dentryCount(%d)", mp.config.PartitionId, mp.applyID, mp.inodeTree.Len(), mp.dentryTree.Len())
+	span.Debugf("[after raft] get mp[%v] applied(%d),inodeCount(%d),dentryCount(%d)", mp.config.PartitionId, mp.applyID, mp.inodeTree.Len(), mp.dentryTree.Len())
 
 	mp.updateSize()
 
 	if proto.IsHot(mp.volType) {
-		log.LogInfof("hot vol not need cacheTTL")
+		span.Info("hot vol not need cacheTTL")
 		go mp.multiVersionTTLWork(time.Minute)
 		return
 	}
 	// do cache TTL die out process
-	if err = mp.cacheTTLWork(); err != nil {
+	if err = mp.cacheTTLWork(ctx); err != nil {
 		err = errors.NewErrorf("[onStart] start CacheTTLWork id=%d: %s",
 			mp.config.PartitionId, err.Error())
 		return
 	}
-
 	return
 }
 
@@ -798,7 +779,7 @@ func (mp *metaPartition) onStop() {
 	}
 }
 
-func (mp *metaPartition) startRaft() (err error) {
+func (mp *metaPartition) startRaft(ctx context.Context) (err error) {
 	var (
 		heartbeatPort int
 		replicaPort   int
@@ -819,7 +800,7 @@ func (mp *metaPartition) startRaft() (err error) {
 		}
 		peers = append(peers, rp)
 	}
-	log.LogInfof("start partition id=%d,applyID:%v raft peers: %s",
+	getSpan(ctx).Infof("start partition id=%d,applyID:%v raft peers: %s",
 		mp.config.PartitionId, mp.applyID, peers)
 	pc := &raftstore.PartitionConfig{
 		ID:      mp.config.PartitionId,
@@ -838,8 +819,8 @@ func (mp *metaPartition) stopRaft() {
 	if mp.raftPartition != nil {
 		// TODO Unhandled errors
 		// mp.raftPartition.Stop()
+		_ = struct{}{}
 	}
-	return
 }
 
 func (mp *metaPartition) getRaftPort() (heartbeat, replica int, err error) {
@@ -905,7 +886,6 @@ func (mp *metaPartition) SetFollowerRead(fRead bool) {
 		return
 	}
 	mp.isFollowerRead = fRead
-	return
 }
 
 // IsLeader returns the raft leader address and if the current meta partition is the leader.
@@ -973,15 +953,15 @@ func (mp *metaPartition) GetUniqId() uint64 {
 }
 
 // PersistMetadata is the wrapper of persistMetadata.
-func (mp *metaPartition) PersistMetadata() (err error) {
+func (mp *metaPartition) PersistMetadata(ctx context.Context) (err error) {
 	mp.config.sortPeers()
-	err = mp.persistMetadata()
+	err = mp.persistMetadata(ctx)
 	return
 }
 
 // Backup partition to partition.old
-func (mp *metaPartition) RenameStaleMetadata() (err error) {
-	err = mp.renameStaleMetadata()
+func (mp *metaPartition) RenameStaleMetadata(ctx context.Context) (err error) {
+	err = mp.renameStaleMetadata(ctx)
 	return
 }
 
@@ -1012,13 +992,14 @@ const (
 	CRC_COUNT_MULTI_VER  int = 9
 )
 
-func (mp *metaPartition) LoadSnapshot(snapshotPath string) (err error) {
+func (mp *metaPartition) LoadSnapshot(ctx context.Context, snapshotPath string) (err error) {
+	span := getSpan(ctx)
 	crcs, err := mp.parseCrcFromFile()
 	if err != nil {
 		return err
 	}
 
-	loadFuncs := []func(rootDir string, crc uint32) error{
+	loadFuncs := []func(_ context.Context, rootDir string, crc uint32) error{
 		mp.loadInode,
 		mp.loadDentry,
 		nil, // loading quota info from extend requires mp.loadInode() has been completed, so skip mp.loadExtend() here
@@ -1027,7 +1008,7 @@ func (mp *metaPartition) LoadSnapshot(snapshotPath string) (err error) {
 
 	crc_count := len(crcs)
 	if crc_count != CRC_COUNT_BASIC && crc_count != CRC_COUNT_TX_STUFF && crc_count != CRC_COUNT_UINQ_STUFF && crc_count != CRC_COUNT_MULTI_VER {
-		log.LogErrorf("action[LoadSnapshot] crc array length %d not match", len(crcs))
+		span.Errorf("action[LoadSnapshot] crc array length %d not match", len(crcs))
 		return ErrSnapshotCrcMismatch
 	}
 
@@ -1046,11 +1027,11 @@ func (mp *metaPartition) LoadSnapshot(snapshotPath string) (err error) {
 	}
 
 	if crc_count == CRC_COUNT_MULTI_VER {
-		if err = mp.loadMultiVer(snapshotPath, crcs[CRC_COUNT_MULTI_VER-1]); err != nil {
+		if err = mp.loadMultiVer(ctx, snapshotPath, crcs[CRC_COUNT_MULTI_VER-1]); err != nil {
 			return
 		}
 	} else {
-		mp.storeMultiVersion(snapshotPath, &storeMsg{multiVerList: mp.multiVersionList.VerList})
+		mp.storeMultiVersion(ctx, snapshotPath, &storeMsg{multiVerList: mp.multiVersionList.VerList})
 	}
 
 	errs := make([]error, len(loadFuncs))
@@ -1067,58 +1048,53 @@ func (mp *metaPartition) LoadSnapshot(snapshotPath string) (err error) {
 		go func() {
 			defer func() {
 				if r := recover(); r != nil {
-					log.LogWarnf("action[LoadSnapshot] recovered when load partition partition: %v, failed: %v",
+					span.Warnf("action[LoadSnapshot] recovered when load partition partition: %v, failed: %v",
 						mp.config.PartitionId, r)
-
 					errs[i] = errors.NewErrorf("%v", r)
 				}
-
 				wg.Done()
 			}()
 
-			errs[i] = loadFunc(snapshotPath, crcs[i])
+			errs[i] = loadFunc(ctx, snapshotPath, crcs[i])
 		}()
 	}
 
 	wg.Wait()
-	log.LogDebugf("[load meta finish] get mp[%v] inodeCount(%d),dentryCount(%d)", mp.config.PartitionId, mp.inodeTree.Len(), mp.dentryTree.Len())
+	span.Debugf("[load meta finish] get mp[%v] inodeCount(%d),dentryCount(%d)", mp.config.PartitionId, mp.inodeTree.Len(), mp.dentryTree.Len())
 	for _, err = range errs {
 		if err != nil {
 			return
 		}
 	}
 
-	if err = mp.loadExtend(snapshotPath, crcs[2]); err != nil {
+	if err = mp.loadExtend(ctx, snapshotPath, crcs[2]); err != nil {
 		return
 	}
-
 	if needLoadTxStuff {
-		if err = mp.loadTxID(snapshotPath); err != nil {
+		if err = mp.loadTxID(ctx, snapshotPath); err != nil {
 			return
 		}
 	}
-
 	if needLoadUniqStuff {
-		if err = mp.loadUniqID(snapshotPath); err != nil {
+		if err = mp.loadUniqID(ctx, snapshotPath); err != nil {
 			return
 		}
 	}
-
-	if err = mp.loadApplyID(snapshotPath); err != nil {
+	if err = mp.loadApplyID(ctx, snapshotPath); err != nil {
 		return
 	}
 	return
 }
 
-func (mp *metaPartition) load(isCreate bool) (err error) {
-	if err = mp.loadMetadata(); err != nil {
+func (mp *metaPartition) load(ctx context.Context, isCreate bool) (err error) {
+	if err = mp.loadMetadata(ctx); err != nil {
 		return
 	}
 	// 1. create new metaPartition, no need to load snapshot
 	// 2. store the snapshot files for new mp, because
 	// mp.load() will check all the snapshot files when mn startup
 	if isCreate {
-		if err = mp.storeSnapshotFiles(); err != nil {
+		if err = mp.storeSnapshotFiles(ctx); err != nil {
 			err = errors.NewErrorf("[onStart] storeSnapshotFiles for partition id=%d: %s",
 				mp.config.PartitionId, err.Error())
 		}
@@ -1127,22 +1103,20 @@ func (mp *metaPartition) load(isCreate bool) (err error) {
 
 	snapshotPath := path.Join(mp.config.RootDir, snapshotDir)
 	if _, err = os.Stat(snapshotPath); err != nil {
-		log.LogErrorf("load snapshot failed, err: %s", err.Error())
+		getSpan(ctx).Errorf("load snapshot failed, err: %s", err.Error())
 		return nil
-
 	}
-
-	return mp.LoadSnapshot(snapshotPath)
+	return mp.LoadSnapshot(ctx, snapshotPath)
 }
 
-func (mp *metaPartition) store(sm *storeMsg) (err error) {
-	log.LogWarnf("metaPartition %d store apply %v", mp.config.PartitionId, sm.applyIndex)
+func (mp *metaPartition) store(ctx context.Context, sm *storeMsg) (err error) {
+	span := getSpan(ctx)
+	span.Warnf("metaPartition %d store apply %v", mp.config.PartitionId, sm.applyIndex)
 	tmpDir := path.Join(mp.config.RootDir, snapshotDirTmp)
 	if _, err = os.Stat(tmpDir); err == nil {
 		// TODO Unhandled errors
 		os.RemoveAll(tmpDir)
 	}
-	err = nil
 	if err = os.MkdirAll(tmpDir, 0o775); err != nil {
 		return
 	}
@@ -1154,7 +1128,7 @@ func (mp *metaPartition) store(sm *storeMsg) (err error) {
 		}
 	}()
 	crcBuffer := bytes.NewBuffer(make([]byte, 0, 16))
-	storeFuncs := []func(dir string, sm *storeMsg) (uint32, error){
+	storeFuncs := []func(_ context.Context, dir string, sm *storeMsg) (uint32, error){
 		mp.storeInode,
 		mp.storeDentry,
 		mp.storeExtend,
@@ -1167,7 +1141,7 @@ func (mp *metaPartition) store(sm *storeMsg) (err error) {
 	}
 	for _, storeFunc := range storeFuncs {
 		var crc uint32
-		if crc, err = storeFunc(tmpDir, sm); err != nil {
+		if crc, err = storeFunc(ctx, tmpDir, sm); err != nil {
 			return
 		}
 		if crcBuffer.Len() != 0 {
@@ -1175,14 +1149,14 @@ func (mp *metaPartition) store(sm *storeMsg) (err error) {
 		}
 		crcBuffer.WriteString(fmt.Sprintf("%d", crc))
 	}
-	log.LogWarnf("metaPartition %d store apply %v", mp.config.PartitionId, sm.applyIndex)
-	if err = mp.storeApplyID(tmpDir, sm); err != nil {
+	span.Warnf("metaPartition %d store apply %v", mp.config.PartitionId, sm.applyIndex)
+	if err = mp.storeApplyID(ctx, tmpDir, sm); err != nil {
 		return
 	}
-	if err = mp.storeTxID(tmpDir, sm); err != nil {
+	if err = mp.storeTxID(ctx, tmpDir, sm); err != nil {
 		return
 	}
-	if err = mp.storeUniqID(tmpDir, sm); err != nil {
+	if err = mp.storeUniqID(ctx, tmpDir, sm); err != nil {
 		return
 	}
 
@@ -1238,7 +1212,6 @@ func (mp *metaPartition) nextInodeID() (inodeId uint64, err error) {
 		cur := atomic.LoadUint64(&mp.config.Cursor)
 		end := mp.config.End
 		if cur >= end {
-			log.LogWarnf("nextInodeID: can't create inode again, cur %d, end %d", cur, end)
 			return 0, ErrInodeIDOutOfRange
 		}
 		newId := cur + 1
@@ -1260,15 +1233,14 @@ func (mp *metaPartition) GetBaseConfig() MetaPartitionConfig {
 }
 
 // UpdatePartition updates the meta partition. TODO remove? no usage?
-func (mp *metaPartition) UpdatePartition(req *UpdatePartitionReq,
-	resp *UpdatePartitionResp) (err error) {
+func (mp *metaPartition) UpdatePartition(ctx context.Context, req *UpdatePartitionReq, resp *UpdatePartitionResp) (err error) {
 	reqData, err := json.Marshal(req)
 	if err != nil {
 		resp.Status = proto.TaskFailed
 		resp.Result = err.Error()
 		return
 	}
-	r, err := mp.submit(opFSMUpdatePartition, reqData)
+	r, err := mp.submit(ctx, opFSMUpdatePartition, reqData)
 	if err != nil {
 		resp.Status = proto.TaskFailed
 		resp.Result = err.Error()
@@ -1276,17 +1248,15 @@ func (mp *metaPartition) UpdatePartition(req *UpdatePartitionReq,
 	}
 	if status := r.(uint8); status != proto.OpOk {
 		resp.Status = proto.TaskFailed
-		p := &Packet{}
-		p.ResultCode = status
-		err = errors.NewErrorf("[UpdatePartition]: %s", p.GetResultMsg())
-		resp.Result = p.GetResultMsg()
+		resp.Result = proto.GetStatusStr(status)
+		err = errors.NewErrorf("[UpdatePartition]: %s", resp.Result)
 	}
 	resp.Status = proto.TaskSucceeds
 	return
 }
 
-func (mp *metaPartition) DecommissionPartition(req []byte) (err error) {
-	_, err = mp.submit(opFSMDecommissionPartition, req)
+func (mp *metaPartition) DecommissionPartition(ctx context.Context, req []byte) (err error) {
+	_, err = mp.submit(ctx, opFSMDecommissionPartition, req)
 	return
 }
 
@@ -1356,10 +1326,10 @@ func (mp *metaPartition) Reset() (err error) {
 	return
 }
 
-func (mp *metaPartition) canRemoveSelf() (canRemove bool, err error) {
+func (mp *metaPartition) canRemoveSelf(ctx context.Context) (canRemove bool, err error) {
 	var partition *proto.MetaPartitionInfo
-	if partition, err = masterClient.ClientAPI().GetMetaPartition(mp.config.PartitionId); err != nil {
-		log.LogErrorf("action[canRemoveSelf] err[%v]", err)
+	if partition, err = masterClient.ClientAPI().GetMetaPartition(ctx, mp.config.PartitionId); err != nil {
+		getSpan(ctx).Errorf("action[canRemoveSelf] err[%v]", err)
 		return
 	}
 	canRemove = false
@@ -1387,13 +1357,15 @@ func (mp *metaPartition) multiVersionTTLWork(dur time.Duration) {
 	// make sure all mps is not doing scan work at the same time.
 	rand.Seed(time.Now().Unix())
 	time.Sleep(time.Duration(rand.Intn(60)))
-	log.LogDebugf("[multiVersionTTLWork] start, mp[%v]", mp.config.PartitionId)
 	ttl := time.NewTicker(dur)
 	snapQueue := make(chan interface{}, 5)
+	rCtx := roundContext("multi-version-ttl")
 	for {
+		ctx := rCtx()
+		span := getSpan(ctx)
 		select {
 		case <-ttl.C:
-			log.LogDebugf("[multiVersionTTLWork] begin cache ttl, mp[%v]", mp.config.PartitionId)
+			span.Debugf("begin cache ttl, mp[%v]", mp.config.PartitionId)
 			mp.multiVersionList.RWLock.RLock()
 			volVersionInfoList := &proto.VolVersionInfoList{
 				TemporaryVerMap: make(map[uint64]*proto.VolVersionInfo),
@@ -1412,7 +1384,7 @@ func (mp *metaPartition) multiVersionTTLWork(dur time.Duration) {
 				snapQueue <- nil
 				version.Status = proto.VersionDeleting
 				go func(verSeq uint64) {
-					mp.delPartitionVersion(verSeq)
+					mp.delPartitionVersion(ctx, verSeq)
 					mp.multiVersionList.RWLock.Lock()
 					delete(mp.multiVersionList.TemporaryVerMap, verSeq)
 					mp.multiVersionList.RWLock.Unlock()
@@ -1421,15 +1393,13 @@ func (mp *metaPartition) multiVersionTTLWork(dur time.Duration) {
 			}
 
 		case <-mp.stopC:
-			log.LogWarnf("[multiVersionTTLWork] stoped, mp[%v]", mp.config.PartitionId)
+			span.Warnf("stoped, mp[%v]", mp.config.PartitionId)
 			return
 		}
 	}
-
-	return
 }
 
-func (mp *metaPartition) delPartitionVersion(verSeq uint64) {
+func (mp *metaPartition) delPartitionVersion(ctx context.Context, verSeq uint64) {
 	var wg sync.WaitGroup
 	wg.Add(3)
 	reqVerSeq := verSeq
@@ -1437,8 +1407,8 @@ func (mp *metaPartition) delPartitionVersion(verSeq uint64) {
 		reqVerSeq = math.MaxUint64
 	}
 
-	log.LogInfof("action[delPartitionVersion] mp[%v] verseq [%v]:%v", mp.config.PartitionId, verSeq, reqVerSeq)
-	go mp.delPartitionInodesVersion(reqVerSeq, &wg)
+	getSpan(ctx).Infof("action[delPartitionVersion] mp[%v] verseq [%v]:%v", mp.config.PartitionId, verSeq, reqVerSeq)
+	go mp.delPartitionInodesVersion(ctx, reqVerSeq, &wg)
 	go mp.delPartitionExtendsVersion(reqVerSeq, &wg)
 	go mp.delPartitionDentriesVersion(reqVerSeq, &wg)
 	wg.Wait()
@@ -1520,7 +1490,7 @@ func (mp *metaPartition) delPartitionExtendsVersion(verSeq uint64, wg *sync.Wait
 	})
 }
 
-func (mp *metaPartition) delPartitionInodesVersion(verSeq uint64, wg *sync.WaitGroup) {
+func (mp *metaPartition) delPartitionInodesVersion(ctx context.Context, verSeq uint64, wg *sync.WaitGroup) {
 	defer wg.Done()
 	// begin
 	count := 0
@@ -1538,7 +1508,7 @@ func (mp *metaPartition) delPartitionInodesVersion(verSeq uint64, wg *sync.WaitG
 
 		inode.RLock()
 		// eks is empty just skip
-		if ok, _ := inode.ShouldDelVer(verSeq, mp.verSeq); !ok {
+		if ok, _ := inode.ShouldDelVer(ctx, verSeq, mp.verSeq); !ok {
 			inode.RUnlock()
 			return true
 		}
@@ -1566,14 +1536,12 @@ func (mp *metaPartition) delPartitionInodesVersion(verSeq uint64, wg *sync.WaitG
 		}
 		return true
 	})
-
-	return
 }
 
 // cacheTTLWork only happen in datalake situation
-func (mp *metaPartition) cacheTTLWork() (err error) {
+func (mp *metaPartition) cacheTTLWork(ctx context.Context) (err error) {
 	// check volume type, only Cold volume will do the cache ttl.
-	volView, mcErr := masterClient.ClientAPI().GetVolumeWithoutAuthKey(mp.config.VolName)
+	volView, mcErr := masterClient.ClientAPI().GetVolumeWithoutAuthKey(ctx, mp.config.VolName)
 	if mcErr != nil {
 		err = fmt.Errorf("cacheTTLWork: can't get volume info: partitoinID(%v) volume(%v)",
 			mp.config.PartitionId, mp.config.VolName)
@@ -1584,7 +1552,7 @@ func (mp *metaPartition) cacheTTLWork() (err error) {
 	}
 
 	if mp.verSeq > 0 {
-		log.LogWarnf("[doCacheTTL] volume [%v] enable snapshot.exit cache ttl, mp[%v]", mp.GetVolName(), mp.config.PartitionId)
+		getSpan(ctx).Warnf("[doCacheTTL] volume [%v] enable snapshot.exit cache ttl, mp[%v]", mp.GetVolName(), mp.config.PartitionId)
 		return
 	}
 
@@ -1600,23 +1568,26 @@ func (mp *metaPartition) doCacheTTL(cacheTTL int) (err error) {
 	time.Sleep(time.Duration(rand.Intn(1200)))
 
 	ttl := time.NewTicker(time.Duration(util.OneDaySec()) * time.Second)
+	rCtx := roundContext("cache-ttl")
 	for {
+		ctx := rCtx()
+		span := getSpan(ctx)
 		select {
 		case <-ttl.C:
 			if mp.verSeq > 0 {
-				log.LogWarnf("[doCacheTTL] volume [%v] enable snapshot.exit cache ttl, mp[%v] cacheTTL[%v]",
+				span.Warnf("[doCacheTTL] volume [%v] enable snapshot.exit cache ttl, mp[%v] cacheTTL[%v]",
 					mp.GetVolName(), mp.config.PartitionId, cacheTTL)
 				return
 			}
-			log.LogDebugf("[doCacheTTL] begin cache ttl, mp[%v] cacheTTL[%v]", mp.config.PartitionId, cacheTTL)
+			span.Debugf("[doCacheTTL] begin cache ttl, mp[%v] cacheTTL[%v]", mp.config.PartitionId, cacheTTL)
 			// only leader can do TTL work
 			if _, ok := mp.IsLeader(); !ok {
-				log.LogDebugf("[doCacheTTL] partitionId=%d is not leader, skip", mp.config.PartitionId)
+				span.Debugf("[doCacheTTL] partitionId=%d is not leader, skip", mp.config.PartitionId)
 				continue
 			}
 
 			// get the last cacheTTL
-			volView, mcErr := masterClient.ClientAPI().GetVolumeWithoutAuthKey(mp.config.VolName)
+			volView, mcErr := masterClient.ClientAPI().GetVolumeWithoutAuthKey(ctx, mp.config.VolName)
 			if mcErr != nil {
 				err = fmt.Errorf("[doCacheTTL]: can't get volume info: partitoinID(%v) volume(%v)",
 					mp.config.PartitionId, mp.config.VolName)
@@ -1624,20 +1595,21 @@ func (mp *metaPartition) doCacheTTL(cacheTTL int) (err error) {
 			}
 			cacheTTL = volView.CacheTTL
 
-			mp.InodeTTLScan(cacheTTL)
+			mp.InodeTTLScan(ctx, cacheTTL)
 
 		case <-mp.stopC:
-			log.LogWarnf("[doCacheTTL] stoped, mp[%v]", mp.config.PartitionId)
+			span.Warnf("[doCacheTTL] stoped, mp[%v]", mp.config.PartitionId)
 			return
 		}
 	}
 }
 
-func (mp *metaPartition) InodeTTLScan(cacheTTL int) {
+func (mp *metaPartition) InodeTTLScan(ctx context.Context, cacheTTL int) {
 	curTime := timeutil.GetCurrentTimeUnix()
 	// begin
 	count := 0
 	needSleep := false
+	span := getSpan(ctx)
 	mp.inodeTree.GetTree().Ascend(func(i BtreeItem) bool {
 		inode := i.(*Inode)
 		// dir type just skip
@@ -1652,7 +1624,7 @@ func (mp *metaPartition) InodeTTLScan(cacheTTL int) {
 		}
 
 		if (curTime - inode.AccessTime) > int64(cacheTTL)*util.OneDaySec() {
-			log.LogDebugf("[InodeTTLScan] mp[%v] do inode ttl delete[%v]", mp.config.PartitionId, inode.Inode)
+			span.Debugf("[InodeTTLScan] mp[%v] do inode ttl delete[%v]", mp.config.PartitionId, inode.Inode)
 			count++
 			// make request
 			p := &Packet{}
@@ -1697,7 +1669,7 @@ func (mp *metaPartition) initTxInfo(txInfo *proto.TransactionInfo) error {
 	return fmt.Errorf("tx create is limited")
 }
 
-func (mp *metaPartition) storeSnapshotFiles() (err error) {
+func (mp *metaPartition) storeSnapshotFiles(ctx context.Context) (err error) {
 	msg := &storeMsg{
 		applyIndex:     mp.applyID,
 		txId:           mp.txProcessor.txManager.txIdAlloc.getTransactionID(),
@@ -1713,20 +1685,25 @@ func (mp *metaPartition) storeSnapshotFiles() (err error) {
 		multiVerList:   mp.multiVersionList.VerList,
 	}
 
-	return mp.store(msg)
+	return mp.store(ctx, msg)
 }
 
 func (mp *metaPartition) startCheckerEvict() {
 	timer := time.NewTimer(opCheckerInterval)
+	defer timer.Stop()
+
+	rCtx := roundContext("checker-evict")
 	for {
+		ctx := rCtx()
+		span := getSpan(ctx)
 		select {
 		case <-timer.C:
 			if _, ok := mp.IsLeader(); ok {
-				left, evict, err := mp.uniqCheckerEvict()
+				left, evict, err := mp.uniqCheckerEvict(ctx)
 				if evict != 0 {
-					log.LogInfof("[uniqChecker] after doEvict partition-%d, left:%d, evict:%d, err:%v", mp.config.PartitionId, left, evict, err)
+					span.Infof("[uniqChecker] after doEvict partition-%d, left:%d, evict:%d, err:%v", mp.config.PartitionId, left, evict, err)
 				} else {
-					log.LogDebugf("[uniqChecker] after doEvict partition-%d, left:%d, evict:%d, err:%v", mp.config.PartitionId, left, evict, err)
+					span.Debugf("[uniqChecker] after doEvict partition-%d, left:%d, evict:%d, err:%v", mp.config.PartitionId, left, evict, err)
 				}
 			}
 			timer.Reset(opCheckerInterval)

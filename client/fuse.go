@@ -41,6 +41,7 @@ import (
 
 	"github.com/cubefs/cubefs/blockcache/bcache"
 	cfs "github.com/cubefs/cubefs/client/fs"
+	"github.com/cubefs/cubefs/cmd/common"
 	"github.com/cubefs/cubefs/depends/bazil.org/fuse"
 	"github.com/cubefs/cubefs/depends/bazil.org/fuse/fs"
 	"github.com/cubefs/cubefs/proto"
@@ -70,12 +71,12 @@ const (
 )
 
 const (
-	LoggerDir    = "client"
+	// LoggerDir    = "client"
 	LoggerPrefix = "client"
 	LoggerOutput = "output.log"
 
-	ModuleName            = "fuseclient"
-	ConfigKeyExporterPort = "exporterKey"
+	ModuleName = "fuseclient"
+	// ConfigKeyExporterPort = "exporterKey"
 
 	ControlCommandSetRate      = "/rate/set"
 	ControlCommandGetRate      = "/rate/get"
@@ -111,21 +112,21 @@ func init() {
 func createUDS(sockAddr string) (listener net.Listener, err error) {
 	var addr *net.UnixAddr
 
-	log.LogInfof("sockaddr: %s\n", sockAddr)
+	log.Infof("sockaddr: %s\n", sockAddr)
 
 	os.Remove(sockAddr)
 	if addr, err = net.ResolveUnixAddr("unix", sockAddr); err != nil {
-		log.LogErrorf("cannot resolve unix addr: %v\n", err)
+		log.Errorf("cannot resolve unix addr: %v\n", err)
 		return
 	}
 
 	if listener, err = net.ListenUnix("unix", addr); err != nil {
-		log.LogErrorf("cannot create unix domain: %v\n", err)
+		log.Errorf("cannot create unix domain: %v\n", err)
 		return
 	}
 
 	if err = os.Chmod(sockAddr, 0o666); err != nil {
-		log.LogErrorf("failed to chmod socket file: %v\n", err)
+		log.Errorf("failed to chmod socket file: %v\n", err)
 		listener.Close()
 		return
 	}
@@ -144,25 +145,25 @@ func recvFuseFdFromOldClient(udsListener net.Listener) (file *os.File, err error
 	var socket *os.File
 
 	if conn, err = udsListener.Accept(); err != nil {
-		log.LogErrorf("unix domain accepts fail: %v\n", err)
+		log.Errorf("unix domain accepts fail: %v\n", err)
 		return
 	}
 	defer conn.Close()
 
-	log.LogInfof("a new connection accepted\n")
+	log.Infof("a new connection accepted\n")
 	unixconn := conn.(*net.UnixConn)
 	if socket, err = unixconn.File(); err != nil {
-		log.LogErrorf("failed to get socket file: %v\n", err)
+		log.Errorf("failed to get socket file: %v\n", err)
 		return
 	}
 	defer socket.Close()
 
 	if file, err = util.RecvFd(socket); err != nil {
-		log.LogErrorf("failed to receive fd: %v\n", err)
+		log.Errorf("failed to receive fd: %v\n", err)
 		return
 	}
 
-	log.LogInfof("Received file %s fd %v\n", file.Name(), file.Fd())
+	log.Infof("Received file %s fd %v\n", file.Name(), file.Fd())
 	return
 }
 
@@ -176,7 +177,7 @@ func sendSuspendRequest(port string, udsListener net.Listener) (err error) {
 
 	url := fmt.Sprintf("http://%s:%s/suspend?sock=%s", DefaultIP, port, udsFilePath)
 	if req, err = http.NewRequest("POST", url, nil); err != nil {
-		log.LogErrorf("Failed to get new request: %v\n", err)
+		log.Errorf("Failed to get new request: %v\n", err)
 		return err
 	}
 	req.Header.Set("Content-Type", "application/text")
@@ -184,20 +185,20 @@ func sendSuspendRequest(port string, udsListener net.Listener) (err error) {
 	client := http.DefaultClient
 	client.Timeout = 120 * time.Second
 	if resp, err = client.Do(req); err != nil {
-		log.LogErrorf("Failed to post request: %v\n", err)
+		log.Errorf("Failed to post request: %v\n", err)
 		return err
 	}
 	defer resp.Body.Close()
 
 	if data, err = io.ReadAll(resp.Body); err != nil {
-		log.LogErrorf("Failed to read response: %v\n", err)
+		log.Errorf("Failed to read response: %v\n", err)
 		return err
 	}
 
 	if resp.StatusCode == http.StatusOK {
-		log.LogInfof("\n==> %s\n==> Could restore cfs-client now with -r option.\n\n", string(data))
+		log.Infof("\n==> %s\n==> Could restore cfs-client now with -r option.\n\n", string(data))
 	} else {
-		log.LogErrorf("\n==> %s\n==> Status: %s\n\n", string(data), resp.Status)
+		log.Errorf("\n==> %s\n==> Status: %s\n\n", string(data), resp.Status)
 		return fmt.Errorf(resp.Status)
 	}
 
@@ -213,24 +214,24 @@ func sendResumeRequest(port string) (err error) {
 
 	url := fmt.Sprintf("http://%s:%s/resume", DefaultIP, port)
 	if req, err = http.NewRequest("POST", url, nil); err != nil {
-		log.LogErrorf("Failed to get new request: %v\n", err)
+		log.Errorf("Failed to get new request: %v\n", err)
 		return err
 	}
 	req.Header.Set("Content-Type", "application/text")
 
 	client := http.DefaultClient
 	if resp, err = client.Do(req); err != nil {
-		log.LogErrorf("Failed to post request: %v\n", err)
+		log.Errorf("Failed to post request: %v\n", err)
 		return err
 	}
 	defer resp.Body.Close()
 
 	if data, err = io.ReadAll(resp.Body); err != nil {
-		log.LogErrorf("Failed to read response: %v\n", err)
+		log.Errorf("Failed to read response: %v\n", err)
 		return err
 	}
 
-	log.LogInfof("data: %s\n", string(data))
+	log.Infof("data: %s\n", string(data))
 	return nil
 }
 
@@ -239,7 +240,7 @@ func doSuspend(uds string, port string) (*os.File, error) {
 
 	udsListener, err := createUDS(uds)
 	if err != nil {
-		log.LogErrorf("doSuspend: failed to create UDS: %v\n", err)
+		log.Errorf("doSuspend: failed to create UDS: %v\n", err)
 		return nil, err
 	}
 	defer destroyUDS(udsListener)
@@ -307,15 +308,11 @@ func main() {
 	}
 	// use uber automaxprocs: get real cpu number to k8s pod"
 
-	level := parseLogLevel(opt.Loglvl)
-	_, err = log.InitLog(opt.Logpath, opt.Volname, level, nil, log.DefaultLogLeftSpaceLimit)
-	if err != nil {
-		err = errors.NewErrorf("Init log dir fail: %v\n", err)
-		fmt.Println(err)
-		daemonize.SignalOutcome(err)
-		os.Exit(1)
-	}
-	defer log.LogFlush()
+	level := log.ParseLevel(opt.Loglvl, log.Lerror)
+	log.SetOutputLevel(level)
+	Logger := common.LoadLogger(opt.Volname, cfg)
+	Logger.Filename = path.Join(opt.Logpath, opt.Volname, opt.Volname+".log")
+	log.SetOutput(Logger)
 
 	if _, err = os.Stat(opt.MountPoint); err != nil {
 		if err = os.Mkdir(opt.MountPoint, os.ModePerm); err != nil {
@@ -400,14 +397,13 @@ func main() {
 	if err != nil {
 		err = errors.NewErrorf("check permission failed: %v", err)
 		syslog.Println(err)
-		log.LogFlush()
 		_ = daemonize.SignalOutcome(err)
 		os.Exit(1)
 	}
 
 	var fud *os.File
 	if opt.NeedRestoreFuse && *configFuseHttpPort != "" {
-		log.LogInfof("Suspend/Restore by self\n")
+		log.Infof("Suspend/Restore by self\n")
 		var udsName string
 		if *configDynamicUDSName {
 			udsName = fmt.Sprintf(DynamicUDSNameFormat, os.Getpid())
@@ -419,9 +415,8 @@ func main() {
 		// before mount() to avoid pprof port conflict between old and
 		// new cfs-clients.
 		if fud, err = doSuspend(udsName, *configFuseHttpPort); err != nil {
-			log.LogErrorf("Failed to tell old cfs-client to suspend: %v\n", err)
+			log.Errorf("Failed to tell old cfs-client to suspend: %v\n", err)
 			syslog.Printf("Error: Failed to tell old cfs-client to suspend: %v\n", err)
-			log.LogFlush()
 			_ = daemonize.SignalOutcome(err)
 			os.Exit(1)
 		}
@@ -431,7 +426,6 @@ func main() {
 	if err != nil {
 		err = errors.NewErrorf("mount failed: %v", err)
 		syslog.Println(err)
-		log.LogFlush()
 		_ = daemonize.SignalOutcome(err)
 		os.Exit(1)
 	} else {
@@ -453,13 +447,6 @@ func main() {
 	exporter.Init(ModuleName, cfg)
 	exporter.RegistConsul(super.ClusterName(), ModuleName, cfg)
 
-	err = log.OutputPid(opt.Logpath, ModuleName)
-	if err != nil {
-		log.LogFlush()
-		syslog.Printf("output pid err(%v)", err)
-		os.Exit(1)
-	}
-
 	if opt.NeedRestoreFuse {
 		if fud == nil {
 			if *configRestoreFuseUDS == "" {
@@ -473,22 +460,21 @@ func main() {
 	}
 
 	if err = fs.Serve(fsConn, super, opt); err != nil {
-		log.LogFlush()
 		syslog.Printf("fs Serve returns err(%v)", err)
 		os.Exit(1)
 	}
 
 	<-fsConn.Ready
 	if fsConn.MountError != nil {
-		log.LogFlush()
 		syslog.Printf("fs Serve returns err(%v)\n", err)
 		os.Exit(1)
 	}
 }
 
 func getPushAddrFromMaster(masterAddr string) (addr string, err error) {
+	_, ctx := proto.SpanContextPrefix("getPushAddrFromMaster-")
 	mc := master.NewMasterClientFromString(masterAddr, false)
-	addr, err = mc.AdminAPI().GetMonitorPushAddr()
+	addr, err = mc.AdminAPI().GetMonitorPushAddr(ctx)
 	return
 }
 
@@ -598,15 +584,15 @@ func waitListenAndServe(statusCh chan error, addr string, handler http.Handler) 
 func mount(opt *proto.MountOptions) (fsConn *fuse.Conn, super *cfs.Super, err error) {
 	super, err = cfs.NewSuper(opt)
 	if err != nil {
-		log.LogError(errors.Stack(err))
+		log.Error(errors.Stack(err))
 		return
 	}
 
 	http.HandleFunc(ControlCommandSetRate, super.SetRate)
 	http.HandleFunc(ControlCommandGetRate, super.GetRate)
-	http.HandleFunc(log.SetLogLevelPath, log.SetLogLevel)
+	http.HandleFunc(log.ChangeDefaultLevelHandler())
 	http.HandleFunc(ControlCommandFreeOSMemory, freeOSMemory)
-	http.HandleFunc(log.GetLogPath, log.GetLog)
+	// http.HandleFunc(log.GetLogPath, log.GetLog)
 	http.HandleFunc(ControlCommandSuspend, super.SetSuspend)
 	http.HandleFunc(ControlCommandResume, super.SetResume)
 	// auditlog
@@ -647,13 +633,13 @@ func mount(opt *proto.MountOptions) (fsConn *fuse.Conn, super *cfs.Super, err er
 		t := time.NewTicker(UpdateConfInterval)
 		defer t.Stop()
 		for range t.C {
-			log.LogDebugf("UpdateVolConf: load conf from master")
+			span, ctx := proto.SpanContextPrefix("mount-")
+			span.Debug("UpdateVolConf: load conf from master")
 			var volumeInfo *proto.SimpleVolView
-			volumeInfo, err = mc.AdminAPI().GetVolumeSimpleInfo(opt.Volname)
+			volumeInfo, err = mc.AdminAPI().GetVolumeSimpleInfo(ctx, opt.Volname)
 			if err != nil {
-				log.LogErrorf("UpdateVolConf: get vol info from master failed, err %s", err.Error())
+				span.Errorf("UpdateVolConf: get vol info from master failed, err %s", err.Error())
 				if err == proto.ErrVolNotExists {
-					log.LogFlush()
 					daemonize.SignalOutcome(err)
 					os.Exit(1)
 				}
@@ -661,12 +647,11 @@ func mount(opt *proto.MountOptions) (fsConn *fuse.Conn, super *cfs.Super, err er
 			}
 			if volumeInfo.Status == proto.VolStatusMarkDelete {
 				err = fmt.Errorf("vol [%s] has been deleted, stop client", volumeInfo.Name)
-				log.LogError(err)
-				log.LogFlush()
+				span.Error(err)
 				daemonize.SignalOutcome(err)
 				os.Exit(1)
 			}
-			super.SetTransaction(volumeInfo.EnableTransaction, volumeInfo.TxTimeout, volumeInfo.TxConflictRetryNum, volumeInfo.TxConflictRetryInterval)
+			super.SetTransaction(ctx, volumeInfo.EnableTransaction, volumeInfo.TxTimeout, volumeInfo.TxConflictRetryNum, volumeInfo.TxConflictRetryInterval)
 			if proto.IsCold(opt.VolType) {
 				super.CacheAction = volumeInfo.CacheAction
 				super.CacheThreshold = volumeInfo.CacheThreshold
@@ -802,7 +787,7 @@ func parseMountOption(cfg *config.Config) (*proto.MountOptions, error) {
 		} else {
 			opt.VerReadSeq = uint64(verReadSeq)
 		}
-		log.LogDebugf("oonfig.verReadSeq %v opt.VerReadSeq %v", verReadSeq, opt.VerReadSeq)
+		log.Debugf("oonfig.verReadSeq %v opt.VerReadSeq %v", verReadSeq, opt.VerReadSeq)
 	}
 	opt.MetaSendTimeout = GlobalMountOptions[proto.MetaSendTimeout].GetInt64()
 
@@ -831,16 +816,17 @@ func parseMountOption(cfg *config.Config) (*proto.MountOptions, error) {
 }
 
 func checkPermission(opt *proto.MountOptions) (err error) {
+	_, ctx := proto.SpanContextPrefix("checkPermission-")
 	mc := master.NewMasterClientFromString(opt.Master, false)
 	localIP, _ := ump.GetLocalIpAddr()
-	if info, err := mc.UserAPI().AclOperation(opt.Volname, localIP, util.AclCheckIP); err != nil || !info.OK {
+	if info, err := mc.UserAPI().AclOperation(ctx, opt.Volname, localIP, util.AclCheckIP); err != nil || !info.OK {
 		syslog.Println(err)
 		return proto.ErrNoAclPermission
 	}
 	// Check user access policy is enabled
 	if opt.AccessKey != "" {
 		var userInfo *proto.UserInfo
-		if userInfo, err = mc.UserAPI().GetAKInfo(opt.AccessKey); err != nil {
+		if userInfo, err = mc.UserAPI().GetAKInfo(ctx, opt.AccessKey); err != nil {
 			return
 		}
 		if userInfo.SecretKey != opt.SecretKey {
@@ -866,23 +852,6 @@ func checkPermission(opt *proto.MountOptions) (err error) {
 	return
 }
 
-func parseLogLevel(loglvl string) log.Level {
-	var level log.Level
-	switch strings.ToLower(loglvl) {
-	case "debug":
-		level = log.DebugLevel
-	case "info":
-		level = log.InfoLevel
-	case "warn":
-		level = log.WarnLevel
-	case "error":
-		level = log.ErrorLevel
-	default:
-		level = log.ErrorLevel
-	}
-	return level
-}
-
 func changeRlimit(val uint64) {
 	rlimit := &syscall.Rlimit{Max: val, Cur: val}
 	err := syscall.Setrlimit(syscall.RLIMIT_NOFILE, rlimit)
@@ -898,9 +867,11 @@ func freeOSMemory(w http.ResponseWriter, r *http.Request) {
 }
 
 func loadConfFromMaster(opt *proto.MountOptions) (err error) {
+	_, ctx := proto.SpanContextPrefix("loadConfFromMaster-")
+
 	mc := master.NewMasterClientFromString(opt.Master, false)
 	var volumeInfo *proto.SimpleVolView
-	volumeInfo, err = mc.AdminAPI().GetVolumeSimpleInfo(opt.Volname)
+	volumeInfo, err = mc.AdminAPI().GetVolumeSimpleInfo(ctx, opt.Volname)
 	if err != nil {
 		return
 	}
@@ -915,7 +886,7 @@ func loadConfFromMaster(opt *proto.MountOptions) (err error) {
 	opt.TxConflictRetryInterval = volumeInfo.TxConflictRetryInterval
 
 	var clusterInfo *proto.ClusterInfo
-	clusterInfo, err = mc.AdminAPI().GetClusterInfo()
+	clusterInfo, err = mc.AdminAPI().GetClusterInfo(ctx)
 	if err != nil {
 		return
 	}

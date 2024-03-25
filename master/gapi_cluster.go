@@ -1,20 +1,15 @@
 package master
 
 import (
-	"bufio"
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
-	"os"
-	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/cubefs/cubefs/proto"
-	"github.com/cubefs/cubefs/util/log"
 	"github.com/samsarahq/thunder/graphql"
 	"github.com/samsarahq/thunder/graphql/schemabuilder"
 )
@@ -160,7 +155,7 @@ func (s *ClusterService) registerQuery(schema *schemabuilder.Schema) {
 	query.FieldFunc("metaNodeGet", s.metaNodeGet)
 	query.FieldFunc("masterList", s.masterList)
 	query.FieldFunc("getTopology", s.getTopology)
-	query.FieldFunc("alarmList", s.alarmList)
+	// query.FieldFunc("alarmList", s.alarmList)
 }
 
 func (s *ClusterService) registerMutation(schema *schemabuilder.Schema) {
@@ -200,10 +195,10 @@ func (m *ClusterService) decommissionDisk(ctx context.Context, args struct {
 	}
 	rstMsg := fmt.Sprintf("receive decommissionDisk node[%v] disk[%v], badPartitionIds[%v] has offline successfully",
 		node.Addr, args.DiskPath, badPartitionIds)
-	if err = m.cluster.decommissionDisk(node, false, args.DiskPath, badPartitions, true); err != nil {
+	if err = m.cluster.decommissionDisk(ctx, node, false, args.DiskPath, badPartitions, true); err != nil {
 		return nil, err
 	}
-	Warn(m.cluster.Name, rstMsg)
+	Warn(ctx, m.cluster.Name, rstMsg)
 
 	return proto.Success("success"), nil
 }
@@ -217,7 +212,7 @@ func (m *ClusterService) decommissionDataNode(ctx context.Context, args struct {
 	if err != nil {
 		return nil, err
 	}
-	if err := m.cluster.decommissionDataNode(node, false); err != nil {
+	if err := m.cluster.decommissionDataNode(ctx, node, false); err != nil {
 		return nil, err
 	}
 	rstMsg := fmt.Sprintf("decommission data node [%v] submited,please check laster!", args.OffLineAddr)
@@ -227,7 +222,8 @@ func (m *ClusterService) decommissionDataNode(ctx context.Context, args struct {
 
 func (m *ClusterService) decommissionMetaNode(ctx context.Context, args struct {
 	OffLineAddr string
-}) (*proto.GeneralResp, error) {
+},
+) (*proto.GeneralResp, error) {
 	if _, _, err := permissions(ctx, ADMIN); err != nil {
 		return nil, err
 	}
@@ -235,16 +231,18 @@ func (m *ClusterService) decommissionMetaNode(ctx context.Context, args struct {
 	if err != nil {
 		return nil, err
 	}
-	if err = m.cluster.decommissionMetaNode(metaNode); err != nil {
+	if err = m.cluster.decommissionMetaNode(ctx, metaNode); err != nil {
 		return nil, err
 	}
-	log.LogInfof("decommissionMetaNode metaNode [%v] has offline successfully", args.OffLineAddr)
+	span := proto.SpanFromContext(ctx)
+	span.Infof("decommissionMetaNode metaNode [%v] has offline successfully", args.OffLineAddr)
 	return proto.Success("success"), nil
 }
 
 func (m *ClusterService) loadMetaPartition(ctx context.Context, args struct {
 	PartitionID uint64
-}) (*proto.GeneralResp, error) {
+},
+) (*proto.GeneralResp, error) {
 	if _, _, err := permissions(ctx, ADMIN); err != nil {
 		return nil, err
 	}
@@ -253,15 +251,17 @@ func (m *ClusterService) loadMetaPartition(ctx context.Context, args struct {
 		return nil, err
 	}
 
-	m.cluster.loadMetaPartitionAndCheckResponse(mp)
-	log.LogInfof(proto.AdminLoadMetaPartition+" partitionID :%v Load successfully", args.PartitionID)
+	m.cluster.loadMetaPartitionAndCheckResponse(ctx, mp)
+	span := proto.SpanFromContext(ctx)
+	span.Infof(proto.AdminLoadMetaPartition+" partitionID :%v Load successfully", args.PartitionID)
 	return proto.Success("success"), nil
 }
 
 func (m *ClusterService) decommissionMetaPartition(ctx context.Context, args struct {
 	PartitionID uint64
 	NodeAddr    string
-}) (*proto.GeneralResp, error) {
+},
+) (*proto.GeneralResp, error) {
 	if _, _, err := permissions(ctx, ADMIN); err != nil {
 		return nil, err
 	}
@@ -269,24 +269,12 @@ func (m *ClusterService) decommissionMetaPartition(ctx context.Context, args str
 	if err != nil {
 		return nil, err
 	}
-	if err := m.cluster.decommissionMetaPartition(args.NodeAddr, mp); err != nil {
+	if err := m.cluster.decommissionMetaPartition(ctx, args.NodeAddr, mp); err != nil {
 		return nil, err
 	}
-	log.LogInfof(proto.AdminDecommissionMetaPartition+" partitionID :%v  decommissionMetaPartition successfully", args.PartitionID)
+	span := proto.SpanFromContext(ctx)
+	span.Infof(proto.AdminDecommissionMetaPartition+" partitionID :%v  decommissionMetaPartition successfully", args.PartitionID)
 	return proto.Success("success"), nil
-}
-
-func (m *ClusterService) getMetaNode(ctx context.Context, args struct {
-	NodeAddr string
-}) (*MetaNode, error) {
-	if _, _, err := permissions(ctx, ADMIN); err != nil {
-		return nil, err
-	}
-	metaNode, err := m.cluster.metaNode(args.NodeAddr)
-	if err != nil {
-		return nil, err
-	}
-	return metaNode, nil
 }
 
 // View the topology of the cluster.
@@ -361,7 +349,8 @@ func (s *ClusterService) masterList(ctx context.Context, args struct{}) ([]*Mast
 
 func (s *ClusterService) dataNodeGet(ctx context.Context, args struct {
 	Addr string
-}) (*DataNode, error) {
+},
+) (*DataNode, error) {
 	if _, _, err := permissions(ctx, ADMIN); err != nil {
 		return nil, err
 	}
@@ -382,7 +371,8 @@ func (s *ClusterService) dataNodeList(ctx context.Context, args struct{}) ([]*Da
 
 func (s *ClusterService) dataNodeListTest(ctx context.Context, args struct {
 	Num int64
-}) ([]*DataNode, error) {
+},
+) ([]*DataNode, error) {
 	if _, _, err := permissions(ctx, ADMIN); err != nil {
 		return nil, err
 	}
@@ -409,7 +399,8 @@ func (s *ClusterService) dataNodeListTest(ctx context.Context, args struct {
 
 func (s *ClusterService) metaNodeGet(ctx context.Context, args struct {
 	Addr string
-}) (*MetaNode, error) {
+},
+) (*MetaNode, error) {
 	if _, _, err := permissions(ctx, ADMIN); err != nil {
 		return nil, err
 	}
@@ -432,29 +423,20 @@ func (s *ClusterService) metaNodeList(ctx context.Context, args struct{}) ([]*Me
 	return all, nil
 }
 
-func (m *ClusterService) addMetaNode(ctx context.Context, args struct {
-	NodeAddr string
-	ZoneName string
-}) (uint64, error) {
-	if id, err := m.cluster.addMetaNode(args.NodeAddr, args.ZoneName, 0); err != nil {
-		return 0, err
-	} else {
-		return id, nil
-	}
-}
-
 // Dynamically remove a master node. Similar to addRaftNode, this operation is performed online.
 func (m *ClusterService) removeRaftNode(ctx context.Context, args struct {
 	Id   uint64
 	Addr string
-}) (*proto.GeneralResp, error) {
+},
+) (*proto.GeneralResp, error) {
 	if _, _, err := permissions(ctx, ADMIN); err != nil {
 		return nil, err
 	}
-	if err := m.cluster.removeRaftNode(args.Id, args.Addr); err != nil {
+	if err := m.cluster.removeRaftNode(ctx, args.Id, args.Addr); err != nil {
 		return nil, err
 	}
-	log.LogInfof("remove  raft node id :%v,adr:%v successfully\n", args.Id, args.Addr)
+	span := proto.SpanFromContext(ctx)
+	span.Infof("remove  raft node id :%v,adr:%v successfully\n", args.Id, args.Addr)
 	return proto.Success("success"), nil
 }
 
@@ -463,16 +445,17 @@ func (m *ClusterService) removeRaftNode(ctx context.Context, args struct {
 func (m *ClusterService) addRaftNode(ctx context.Context, args struct {
 	Id   uint64
 	Addr string
-}) (*proto.GeneralResp, error) {
+},
+) (*proto.GeneralResp, error) {
 	if _, _, err := permissions(ctx, ADMIN); err != nil {
 		return nil, err
 	}
 
-	if err := m.cluster.addRaftNode(args.Id, args.Addr); err != nil {
+	if err := m.cluster.addRaftNode(ctx, args.Id, args.Addr); err != nil {
 		return nil, err
 	}
-
-	log.LogInfof("add  raft node id :%v, addr:%v successfully \n", args.Id, args.Addr)
+	span := proto.SpanFromContext(ctx)
+	span.Infof("add  raft node id :%v, addr:%v successfully \n", args.Id, args.Addr)
 	return proto.Success("success"), nil
 }
 
@@ -486,123 +469,124 @@ func (m *ClusterService) addRaftNode(ctx context.Context, args struct {
 //  2. and the number of r&w data partition is less than 20.
 func (m *ClusterService) clusterFreeze(ctx context.Context, args struct {
 	Status bool
-}) (*proto.GeneralResp, error) {
+},
+) (*proto.GeneralResp, error) {
 	if _, _, err := permissions(ctx, ADMIN); err != nil {
 		return nil, err
 	}
 
-	if err := m.cluster.setDisableAutoAllocate(args.Status); err != nil {
+	if err := m.cluster.setDisableAutoAllocate(ctx, args.Status); err != nil {
 		return nil, err
 	}
 	return proto.Success("success"), nil
 }
 
-type WarnMessage struct {
-	Time     string `json:"time"`
-	Key      string `json:"key"`
-	Hostname string `json:"hostname"`
-	Type     string `json:"type"`
-	Value    string `json:"value"`
-	Detail   string `json:"detail"`
-}
+// type WarnMessage struct {
+// 	Time     string `json:"time"`
+// 	Key      string `json:"key"`
+// 	Hostname string `json:"hostname"`
+// 	Type     string `json:"type"`
+// 	Value    string `json:"value"`
+// 	Detail   string `json:"detail"`
+// }
 
-func (m *ClusterService) alarmList(ctx context.Context, args struct {
-	Size int32
-}) ([]*WarnMessage, error) {
-	if _, _, err := permissions(ctx, ADMIN); err != nil {
-		return nil, err
-	}
+// func (m *ClusterService) alarmList(ctx context.Context, args struct {
+// 	Size int32
+// }) ([]*WarnMessage, error) {
+// 	if _, _, err := permissions(ctx, ADMIN); err != nil {
+// 		return nil, err
+// 	}
 
-	size := int64(args.Size * 1000)
+// 	size := int64(args.Size * 1000)
 
-	list := make([]*WarnMessage, 0, 100)
+// 	list := make([]*WarnMessage, 0, 100)
 
-	path := filepath.Join(log.LogDir, "master"+log.CriticalLogFileName)
+// 	path := filepath.Join(log.LogDir, "master"+log.CriticalLogFileName)
 
-	stat, err := os.Stat(path)
-	if err != nil {
-		list = append(list, &WarnMessage{
-			Time:     time.Now().Format("2006-01-02 15:04:05"),
-			Key:      "not found",
-			Hostname: m.leaderInfo.addr,
-			Type:     "not found",
-			Value:    "not found",
-			Detail:   path + " read has err:" + err.Error(),
-		})
-		return list, nil
-	}
+// 	stat, err := os.Stat(path)
+// 	if err != nil {
+// 		list = append(list, &WarnMessage{
+// 			Time:     time.Now().Format("2006-01-02 15:04:05"),
+// 			Key:      "not found",
+// 			Hostname: m.leaderInfo.addr,
+// 			Type:     "not found",
+// 			Value:    "not found",
+// 			Detail:   path + " read has err:" + err.Error(),
+// 		})
+// 		return list, nil
+// 	}
 
-	f, err := os.Open(path)
-	if err != nil {
-		return nil, fmt.Errorf("open file has err:[%s]", err.Error())
-	}
+// 	f, err := os.Open(path)
+// 	if err != nil {
+// 		return nil, fmt.Errorf("open file has err:[%s]", err.Error())
+// 	}
 
-	if stat.Size() > size {
-		if _, err := f.Seek(stat.Size()-size, 0); err != nil {
-			return nil, fmt.Errorf("seek file has err:[%s]", err.Error())
-		}
-	}
+// 	if stat.Size() > size {
+// 		if _, err := f.Seek(stat.Size()-size, 0); err != nil {
+// 			return nil, fmt.Errorf("seek file has err:[%s]", err.Error())
+// 		}
+// 	}
 
-	defer func() {
-		if err := f.Close(); err != nil {
-			log.LogErrorf("close alarm file has err:[%s]", err.Error())
-		}
-	}()
+// 	defer func() {
+// 		if err := f.Close(); err != nil {
+// 			log.Errorf("close alarm file has err:[%s]", err.Error())
+// 		}
+// 	}()
 
-	buf := bufio.NewReader(f)
+// 	buf := bufio.NewReader(f)
 
-	all, err := io.ReadAll(buf)
-	if err != nil {
-		return nil, fmt.Errorf("read file:[%s] size:[%d] has err:[%s]", path, stat.Size(), err.Error())
-	}
+// 	all, err := io.ReadAll(buf)
+// 	if err != nil {
+// 		return nil, fmt.Errorf("read file:[%s] size:[%d] has err:[%s]", path, stat.Size(), err.Error())
+// 	}
 
-	for _, line := range strings.Split(string(all), "\n") {
+// 	for _, line := range strings.Split(string(all), "\n") {
 
-		if len(line) == 0 {
-			break
-		}
+// 		if len(line) == 0 {
+// 			break
+// 		}
 
-		split := strings.Split(string(line), " ")
+// 		split := strings.Split(string(line), " ")
 
-		var msg *WarnMessage
+// 		var msg *WarnMessage
 
-		if len(split) < 7 {
-			value := string(line)
-			msg = &WarnMessage{
-				Time:     "unknow",
-				Key:      "parse msg has err",
-				Hostname: "parse msg has err",
-				Type:     "parse msg has err",
-				Value:    value,
-				Detail:   value,
-			}
-		} else {
-			value := strings.Join(split[6:], " ")
-			msg = &WarnMessage{
-				Time:     split[0] + " " + split[1],
-				Key:      split[4],
-				Hostname: split[5],
-				Type:     split[2],
-				Value:    value,
-				Detail:   value,
-			}
-		}
+// 		if len(split) < 7 {
+// 			value := string(line)
+// 			msg = &WarnMessage{
+// 				Time:     "unknow",
+// 				Key:      "parse msg has err",
+// 				Hostname: "parse msg has err",
+// 				Type:     "parse msg has err",
+// 				Value:    value,
+// 				Detail:   value,
+// 			}
+// 		} else {
+// 			value := strings.Join(split[6:], " ")
+// 			msg = &WarnMessage{
+// 				Time:     split[0] + " " + split[1],
+// 				Key:      split[4],
+// 				Hostname: split[5],
+// 				Type:     split[2],
+// 				Value:    value,
+// 				Detail:   value,
+// 			}
+// 		}
 
-		list = append(list, msg)
-	}
+// 		list = append(list, msg)
+// 	}
 
-	// reverse slice
-	l := len(list)
-	for i := 0; i < l/2; i++ {
-		list[i], list[l-i-1] = list[l-i-1], list[i]
-	}
+// 	// reverse slice
+// 	l := len(list)
+// 	for i := 0; i < l/2; i++ {
+// 		list[i], list[l-i-1] = list[l-i-1], list[i]
+// 	}
 
-	if len(list) > int(args.Size) {
-		list = list[:args.Size]
-	}
+// 	if len(list) > int(args.Size) {
+// 		list = list[:args.Size]
+// 	}
 
-	return list, nil
-}
+// 	return list, nil
+// }
 
 func (m *ClusterService) makeClusterView() *proto.ClusterView {
 	cv := &proto.ClusterView{

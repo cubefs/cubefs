@@ -119,7 +119,7 @@ func valuesToIPNets(op operator, values ValueSet) ([]*IPInfo, error) {
 			return nil, fmt.Errorf(invalidCIDR, v, op)
 		}
 
-		if strings.Index(s, "/") < 0 {
+		if !strings.Contains(s, "/") {
 			s += "/32"
 		}
 		IP, IPNet, err := net.ParseCIDR(s)

@@ -14,9 +14,13 @@
 
 package metanode
 
-import "github.com/cubefs/cubefs/proto"
+import (
+	"context"
 
-func (mp *metaPartition) fsmCreateMultipart(multipart *Multipart) (status uint8) {
+	"github.com/cubefs/cubefs/proto"
+)
+
+func (mp *metaPartition) fsmCreateMultipart(ctx context.Context, multipart *Multipart) (status uint8) {
 	_, ok := mp.multipartTree.ReplaceOrInsert(multipart, false)
 	if !ok {
 		return proto.OpExistErr
@@ -24,7 +28,7 @@ func (mp *metaPartition) fsmCreateMultipart(multipart *Multipart) (status uint8)
 	return proto.OpOk
 }
 
-func (mp *metaPartition) fsmRemoveMultipart(multipart *Multipart) (status uint8) {
+func (mp *metaPartition) fsmRemoveMultipart(ctx context.Context, multipart *Multipart) (status uint8) {
 	deletedItem := mp.multipartTree.Delete(multipart)
 	if deletedItem == nil {
 		return proto.OpNotExistErr
@@ -32,7 +36,7 @@ func (mp *metaPartition) fsmRemoveMultipart(multipart *Multipart) (status uint8)
 	return proto.OpOk
 }
 
-func (mp *metaPartition) fsmAppendMultipart(multipart *Multipart) (resp proto.AppendMultipartResponse) {
+func (mp *metaPartition) fsmAppendMultipart(ctx context.Context, multipart *Multipart) (resp proto.AppendMultipartResponse) {
 	storedItem := mp.multipartTree.CopyGet(multipart)
 	if storedItem == nil {
 		resp.Status = proto.OpNotExistErr
@@ -44,7 +48,7 @@ func (mp *metaPartition) fsmAppendMultipart(multipart *Multipart) (resp proto.Ap
 		return
 	}
 	for _, part := range multipart.Parts() {
-		oldInode, updated, conflict := storedMultipart.UpdateOrStorePart(part)
+		oldInode, updated, conflict := storedMultipart.UpdateOrStorePart(ctx, part)
 		if conflict {
 			resp.Status = proto.OpUploadPartConflictErr
 			return

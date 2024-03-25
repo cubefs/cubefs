@@ -15,6 +15,7 @@
 package datanode
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -22,6 +23,7 @@ import (
 )
 
 func TestLimitIOBase(t *testing.T) {
+	ctx := context.Background()
 	f := func() {}
 	for _, flowIO := range [][2]int{
 		{-1, -1},
@@ -33,23 +35,23 @@ func TestLimitIOBase(t *testing.T) {
 		l := newIOLimiter(flowIO[0], flowIO[1])
 		l.ResetFlow(flowIO[0])
 		l.ResetIO(flowIO[1])
-		l.Run(0, f)
-		l.Run(10, f)
-		require.True(t, l.TryRun(1, f))
+		l.Run(ctx, 0, f)
+		l.Run(ctx, 10, f)
+		require.True(t, l.TryRun(ctx, 1, f))
 		l.Close()
 	}
 
 	{
 		l := newIOLimiter(1<<10, 0)
-		l.Run(10, f)
+		l.Run(ctx, 10, f)
 		st := l.Status()
 		t.Logf("status: %+v", st)
 		require.Equal(t, 1<<10, st.FlowLimit)
 		require.True(t, st.FlowUsed > 0)
 		require.True(t, st.FlowUsed <= 10)
-		require.True(t, l.TryRun(10, f))
-		l.Run(1<<20, f)
-		l.TryRun(1<<20, f)
+		require.True(t, l.TryRun(ctx, 10, f))
+		l.Run(ctx, 1<<20, f)
+		l.TryRun(ctx, 1<<20, f)
 		l.Close()
 	}
 	{
@@ -59,17 +61,17 @@ func TestLimitIOBase(t *testing.T) {
 		t.Logf("before status: %+v", st)
 		for ii := 0; ii < st.IOConcurrency; ii++ {
 			go func() {
-				l.Run(0, func() { <-done })
+				l.Run(ctx, 0, func() { <-done })
 			}()
 		}
 		for ii := 0; ii < st.IOQueue*2; ii++ {
 			go func() {
-				l.Run(0, func() { <-done })
+				l.Run(ctx, 0, func() { <-done })
 			}()
 		}
 		time.Sleep(100 * time.Millisecond)
 		t.Logf("after status: %+v", l.Status())
-		require.False(t, l.TryRun(0, f))
+		require.False(t, l.TryRun(ctx, 0, f))
 		close(done)
 		q := l.getIO()
 		l.Close()
@@ -106,7 +108,7 @@ func TestLimitIOConcurrency(t *testing.T) {
 
 			time.Sleep(time.Microsecond)
 			go func() {
-				l.Run(1, func() { <-done })
+				l.Run(context.Background(), 1, func() { <-done })
 			}()
 		}
 	}()
@@ -121,7 +123,7 @@ func TestLimitIOConcurrency(t *testing.T) {
 
 			time.Sleep(time.Microsecond)
 			go func() {
-				l.TryRun(1, func() { <-done })
+				l.TryRun(context.Background(), 1, func() { <-done })
 			}()
 		}
 	}()

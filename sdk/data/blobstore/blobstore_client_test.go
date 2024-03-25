@@ -28,13 +28,16 @@ import (
 	"github.com/cubefs/cubefs/blobstore/api/access"
 	"github.com/cubefs/cubefs/blobstore/common/crc32block"
 	"github.com/cubefs/cubefs/blobstore/util/bytespool"
+	"github.com/cubefs/cubefs/proto"
 	cproto "github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util/log"
 	"github.com/stretchr/testify/require"
 )
 
-const (
-	blobSize = 1 << 20
-)
+func newCtx() context.Context {
+	_, ctx := proto.SpanContext()
+	return ctx
+}
 
 var dataCache []byte
 
@@ -56,7 +59,8 @@ func NewMockEbsService() *MockEbsService {
 				w.Header().Set("X-Ack-Crc-Encoded", "1")
 				w.WriteHeader(http.StatusOK)
 
-				body := crc32block.NewDecoderReader(req.Body)
+				body := crc32block.NewBodyDecoder(req.Body)
+				defer body.Close()
 				dataCache = dataCache[:cap(dataCache)]
 				dataCache = dataCache[:crc32block.DecodeSizeWithDefualtBlock(int64(l))]
 				io.ReadFull(body, dataCache)
@@ -173,6 +177,7 @@ func TestEbsClient_Write_Read(t *testing.T) {
 	cfg.PriorityAddrs = []string{mockServer.service.URL}
 	cfg.ConnMode = access.QuickConnMode
 	cfg.MaxSizePutOnce = 1 << 20
+	cfg.LogLevel = log.Lpanic
 	defer mockServer.service.Close()
 
 	blobStoreClient, err := NewEbsClient(cfg)

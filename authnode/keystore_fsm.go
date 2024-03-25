@@ -15,6 +15,7 @@
 package authnode
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -24,6 +25,7 @@ import (
 
 	"github.com/cubefs/cubefs/depends/tiglabs/raft"
 	"github.com/cubefs/cubefs/depends/tiglabs/raft/proto"
+	cproto "github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/raftstore/raftstore_db"
 	"github.com/cubefs/cubefs/util/keystore"
 	"github.com/cubefs/cubefs/util/log"
@@ -36,8 +38,6 @@ const (
 type raftLeaderChangeHandler func(leader uint64)
 
 type raftPeerChangeHandler func(confChange *proto.ConfChange) (err error)
-
-type raftCmdApplyHandler func(cmd *RaftCmd) (err error)
 
 type raftApplySnapshotHandler func()
 
@@ -110,12 +110,15 @@ func (mf *KeystoreFsm) Apply(command []byte, index uint64) (resp interface{}, er
 		leader  uint64
 	)
 
+	// TODO: apply with traceid.
+	span, _ := cproto.StartSpanFromContext(context.TODO(), "")
+
 	cmd := new(RaftCmd)
 	if err = cmd.Unmarshal(command); err != nil {
-		log.LogErrorf("action[fsmApply],unmarshal data:%v, err:%v", command, err.Error())
+		span.Errorf("action[fsmApply],unmarshal data:%v, err:%v", command, err.Error())
 		panic(err)
 	}
-	log.LogInfof("action[fsmApply],cmd.op[%v],cmd.K[%v],cmd.V[%v]", cmd.Op, cmd.K, string(cmd.V))
+	span.Infof("action[fsmApply],cmd.op[%v],cmd.K[%v],cmd.V[%v]", cmd.Op, cmd.K, string(cmd.V))
 
 	if err = json.Unmarshal(cmd.V, &keyInfo); err != nil {
 		panic(err)
@@ -148,9 +151,9 @@ func (mf *KeystoreFsm) Apply(command []byte, index uint64) (resp interface{}, er
 		if mf.id != leader {
 			mf.DeleteKey(keyInfo.ID)
 			mf.DeleteAKInfo(keyInfo.AccessKey)
-			log.LogInfof("action[Apply], Successfully delete key in node[%d]", mf.id)
+			span.Infof("action[Apply], Successfully delete key in node[%d]", mf.id)
 		} else {
-			log.LogInfof("action[Apply], Already delete key in node[%d]", mf.id)
+			span.Infof("action[Apply], Already delete key in node[%d]", mf.id)
 		}
 	default:
 		if err = mf.batchPut(cmdMap); err != nil {
@@ -165,14 +168,14 @@ func (mf *KeystoreFsm) Apply(command []byte, index uint64) (resp interface{}, er
 				ID:        keyInfo.ID,
 			}
 			mf.PutAKInfo(accessKeyInfo)
-			log.LogInfof("action[Apply], Successfully put key in node[%d]", mf.id)
+			span.Infof("action[Apply], Successfully put key in node[%d]", mf.id)
 		} else {
-			log.LogInfof("action[Apply], Already put key in node[%d]", mf.id)
+			span.Infof("action[Apply], Already put key in node[%d]", mf.id)
 		}
 	}
 	mf.applied = index
 	if mf.applied > 0 && (mf.applied%mf.retainLogs) == 0 {
-		log.LogWarnf("action[Apply],truncate raft log,retainLogs[%v],index[%v]", mf.retainLogs, mf.applied)
+		span.Warnf("action[Apply],truncate raft log,retainLogs[%v],index[%v]", mf.retainLogs, mf.applied)
 		mf.rs.Truncate(GroupID, mf.applied)
 	}
 	return
@@ -202,7 +205,7 @@ func (mf *KeystoreFsm) Snapshot() (proto.Snapshot, error) {
 
 // ApplySnapshot implements the interface of raft.StateMachine
 func (mf *KeystoreFsm) ApplySnapshot(peers []proto.Peer, iterator proto.SnapIterator) (err error) {
-	log.LogInfof(fmt.Sprintf("action[ApplySnapshot] begin,applied[%v]", mf.applied))
+	log.Infof(fmt.Sprintf("action[ApplySnapshot] begin,applied[%v]", mf.applied))
 	var data []byte
 	for err == nil {
 		if data, err = iterator.Next(); err != nil {
@@ -220,10 +223,10 @@ func (mf *KeystoreFsm) ApplySnapshot(peers []proto.Peer, iterator proto.SnapIter
 		goto errHandler
 	}
 	mf.snapshotHandler()
-	log.LogInfof(fmt.Sprintf("action[ApplySnapshot] success,applied[%v]", mf.applied))
+	log.Infof(fmt.Sprintf("action[ApplySnapshot] success,applied[%v]", mf.applied))
 	return nil
 errHandler:
-	log.LogError(fmt.Sprintf("action[ApplySnapshot] failed,err:%v", err.Error()))
+	log.Error(fmt.Sprintf("action[ApplySnapshot] failed,err:%v", err.Error()))
 	return err
 }
 

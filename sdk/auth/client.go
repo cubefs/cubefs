@@ -30,7 +30,7 @@ import (
 )
 
 const (
-	requestTimeout       = 30 * time.Second
+	// requestTimeout       = 30 * time.Second
 	RequestMaxRetry      = 5
 	RequestSleepInterval = 100 * time.Millisecond
 )
@@ -41,7 +41,6 @@ type AuthClient struct {
 	enableHTTPS bool
 	certFile    string
 	ticket      *auth.Ticket
-	leaderAddr  string
 }
 
 func (c *AuthClient) API() *API {
@@ -66,7 +65,7 @@ func (c *AuthClient) request(clientID, clientKey string, key []byte, data interf
 		urlProto = "https://"
 		if certFile, err = loadCertfile(c.certFile); err != nil {
 			err = fmt.Errorf("load cert file failed: %v, certFile[%v]", err, c.certFile)
-			log.LogWarnf("%v", err)
+			log.Warnf("%v", err)
 			return
 		}
 		client, err = cryptoutil.CreateClientX(&certFile)
@@ -105,10 +104,10 @@ func (c *AuthClient) request(clientID, clientKey string, key []byte, data interf
 			}
 			return
 		}
-		log.LogWarnf("Request authnode: getReply error and will RETRY, url(%v) err(%v)", url, err)
+		log.Warnf("Request authnode: getReply error and will RETRY, url(%v) err(%v)", url, err)
 		time.Sleep(RequestSleepInterval)
 	}
-	log.LogWarnf("Request authnode exit: send to addr(%v) err(%v)", url, err)
+	log.Warnf("Request authnode exit: send to addr(%v) err(%v)", url, err)
 	return nil, fmt.Errorf("Request authnode: getReply error, url(%v) err(%v)", url, err)
 }
 

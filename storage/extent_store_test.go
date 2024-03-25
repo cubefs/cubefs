@@ -39,18 +39,20 @@ func getTestPathExtentStore() (string, func(), error) {
 }
 
 func extentStoreNormalRwTest(t *testing.T, s *storage.ExtentStore, id uint64) {
+	ctx := newCtx()
+
 	data := []byte(dataStr)
 	crc := crc32.ChecksumIEEE(data)
 	// append write
-	_, err := s.Write(id, 0, int64(len(data)), data, crc, storage.AppendWriteType, true)
+	_, err := s.Write(ctx, id, 0, int64(len(data)), data, crc, storage.AppendWriteType, true)
 	require.NoError(t, err)
-	actualCrc, err := s.Read(id, 0, int64(len(data)), data, false)
+	actualCrc, err := s.Read(ctx, id, 0, int64(len(data)), data, false)
 	require.NoError(t, err)
 	require.EqualValues(t, crc, actualCrc)
 	// random write
-	_, err = s.Write(id, 0, int64(len(data)), data, crc, storage.RandomWriteType, true)
+	_, err = s.Write(ctx, id, 0, int64(len(data)), data, crc, storage.RandomWriteType, true)
 	require.NoError(t, err)
-	actualCrc, err = s.Read(id, 0, int64(len(data)), data, false)
+	actualCrc, err = s.Read(ctx, id, 0, int64(len(data)), data, false)
 	require.NoError(t, err)
 	require.EqualValues(t, crc, actualCrc)
 	// TODO: append random write
@@ -58,7 +60,9 @@ func extentStoreNormalRwTest(t *testing.T, s *storage.ExtentStore, id uint64) {
 }
 
 func extentStoreMarkDeleteTiny(t *testing.T, s *storage.ExtentStore, id uint64, offset int64, size int64) {
-	err := s.MarkDelete(id, offset, int64(size))
+	ctx := newCtx()
+
+	err := s.MarkDelete(ctx, id, offset, int64(size))
 	require.NoError(t, err)
 	eds, err := s.GetHasDeleteTinyRecords()
 	require.NoError(t, err)
@@ -72,9 +76,11 @@ func extentStoreMarkDeleteTiny(t *testing.T, s *storage.ExtentStore, id uint64, 
 }
 
 func extentMarkDeleteNormalTest(t *testing.T, s *storage.ExtentStore, id uint64) {
+	ctx := newCtx()
+
 	ei, err := s.Watermark(id)
 	require.NoError(t, err)
-	err = s.MarkDelete(id, 0, int64(ei.Size))
+	err = s.MarkDelete(ctx, id, 0, int64(ei.Size))
 	require.NoError(t, err)
 	require.Equal(t, s.IsDeletedNormalExtent(id), true)
 	eds, err := s.GetHasDeleteExtent()
@@ -89,13 +95,15 @@ func extentMarkDeleteNormalTest(t *testing.T, s *storage.ExtentStore, id uint64)
 }
 
 func extentMarkDeleteTinyTest(t *testing.T, s *storage.ExtentStore, id uint64) {
+	ctx := newCtx()
+
 	size, err := s.GetTinyExtentOffset(id)
 	require.NoError(t, err)
 	data := []byte(dataStr)
 	require.NotEqualValues(t, size, 0)
 	// write second file to extent
 	crc := crc32.ChecksumIEEE(data)
-	_, err = s.Write(id, size, int64(len(data)), data, crc, storage.AppendWriteType, true)
+	_, err = s.Write(ctx, id, size, int64(len(data)), data, crc, storage.AppendWriteType, true)
 	require.NoError(t, err)
 	// mark delete first file
 	extentStoreMarkDeleteTiny(t, s, id, 0, size)
@@ -119,17 +127,18 @@ func extentStoreMarkDeleteTest(t *testing.T, s *storage.ExtentStore, id uint64) 
 
 func extentStoreSizeTest(t *testing.T, s *storage.ExtentStore) {
 	maxId, size := s.GetMaxExtentIDAndPartitionSize()
-	total := s.StoreSizeExtentID(maxId)
+	total := s.StoreSizeExtentID(newCtx(), maxId)
 	require.EqualValues(t, total, size)
 }
 
 func extentStoreLogicalTest(t *testing.T, s *storage.ExtentStore) {
+	ctx := newCtx()
 	normalId, err := s.NextExtentID()
 	require.NoError(t, err)
-	err = s.Create(normalId)
+	err = s.Create(ctx, normalId)
 	require.NoError(t, err)
-	s.SendToAvailableTinyExtentC(testTinyExtentID)
-	tinyId, err := s.GetAvailableTinyExtent()
+	s.SendToAvailableTinyExtentC(ctx, testTinyExtentID)
+	tinyId, err := s.GetAvailableTinyExtent(ctx)
 	require.NoError(t, err)
 	ids := []uint64{
 		normalId,
@@ -144,32 +153,33 @@ func extentStoreLogicalTest(t *testing.T, s *storage.ExtentStore) {
 }
 
 func reopenExtentStoreTest(t *testing.T, dpType int) {
+	ctx := newCtx()
 	path, clean, err := getTestPathExtentStore()
 	require.NoError(t, err)
 	defer clean()
-	s, err := storage.NewExtentStore(path, 0, 1*util.GB, dpType, true)
+	s, err := storage.NewExtentStore(ctx, path, 0, 1*util.GB, dpType, true)
 	require.NoError(t, err)
 	defer s.Close()
 	id, err := s.NextExtentID()
 	require.NoError(t, err)
-	err = s.Create(id)
+	err = s.Create(ctx, id)
 	require.NoError(t, err)
 	data := []byte(dataStr)
 	crc := crc32.ChecksumIEEE(data)
 	// write some data
-	_, err = s.Write(id, 0, int64(len(data)), data, crc, storage.AppendWriteType, true)
+	_, err = s.Write(ctx, id, 0, int64(len(data)), data, crc, storage.AppendWriteType, true)
 	require.NoError(t, err)
-	firstSnap, err := s.SnapShot()
+	firstSnap, err := s.SnapShot(ctx)
 	require.NoError(t, err)
 	s.Close()
-	newStor, err := storage.NewExtentStore(path, 0, 1*util.GB, dpType, false)
+	newStor, err := storage.NewExtentStore(ctx, path, 0, 1*util.GB, dpType, false)
 	require.NoError(t, err)
 	defer newStor.Close()
 	// read data
-	actualCrc, err := newStor.Read(id, 0, int64(len(data)), data, false)
+	actualCrc, err := newStor.Read(ctx, id, 0, int64(len(data)), data, false)
 	require.NoError(t, err)
 	require.EqualValues(t, crc, actualCrc)
-	secondSnap, err := newStor.SnapShot()
+	secondSnap, err := newStor.SnapShot(ctx)
 	require.NoError(t, err)
 	require.EqualValues(t, len(firstSnap), len(secondSnap))
 	// check snapshot
@@ -190,20 +200,21 @@ func reopenExtentStoreTest(t *testing.T, dpType int) {
 }
 
 func staleExtentStoreTest(t *testing.T, dpType int) {
+	ctx := newCtx()
 	path, clean, err := getTestPathExtentStore()
 	extDirName := filepath.Base(path)
 	require.NoError(t, err)
 	defer clean()
-	s, err := storage.NewExtentStore(path, 0, 1*util.GB, dpType, true)
+	s, err := storage.NewExtentStore(ctx, path, 0, 1*util.GB, dpType, true)
 	require.NoError(t, err)
 	id, err := s.NextExtentID()
 	require.NoError(t, err)
-	err = s.Create(id)
+	err = s.Create(ctx, id)
 	require.NoError(t, err)
 	s.Close()
 
 	// reopen1
-	newS1, err := storage.NewExtentStore(path, 0, 1*util.GB, dpType, true)
+	newS1, err := storage.NewExtentStore(ctx, path, 0, 1*util.GB, dpType, true)
 	require.NoError(t, err)
 	fileList, err := os.ReadDir(filepath.Dir(path))
 	require.NoError(t, err)
@@ -219,7 +230,7 @@ func staleExtentStoreTest(t *testing.T, dpType int) {
 	newS1.Close()
 
 	// reopen2
-	newS2, err := storage.NewExtentStore(path, 0, 1*util.GB, dpType, true)
+	newS2, err := storage.NewExtentStore(ctx, path, 0, 1*util.GB, dpType, true)
 	require.NoError(t, err)
 	fileList, err = os.ReadDir(filepath.Dir(path))
 	require.NoError(t, err)
@@ -237,10 +248,11 @@ func staleExtentStoreTest(t *testing.T, dpType int) {
 }
 
 func extentStoreTest(t *testing.T, dpType int) {
+	ctx := newCtx()
 	path, clean, err := getTestPathExtentStore()
 	require.NoError(t, err)
 	defer clean()
-	s, err := storage.NewExtentStore(path, 0, 1*util.GB, dpType, true)
+	s, err := storage.NewExtentStore(ctx, path, 0, 1*util.GB, dpType, true)
 	require.NoError(t, err)
 	defer s.Close()
 	extentStoreLogicalTest(t, s)
@@ -249,20 +261,21 @@ func extentStoreTest(t *testing.T, dpType int) {
 }
 
 func extentReloadCheckCrc(t *testing.T, path string, id uint64, crc uint32) {
-	s, err := storage.NewExtentStore(path, 0, 1*util.GB, proto.PartitionTypeNormal, false)
+	ctx := newCtx()
+	s, err := storage.NewExtentStore(ctx, path, 0, 1*util.GB, proto.PartitionTypeNormal, false)
 	require.NoError(t, err)
 
 	offset := int64(util.ExtentSize)
 	// extent crc check
 	var e *storage.Extent
-	e, err = s.LoadExtentFromDisk(id, true)
+	e, err = s.LoadExtentFromDisk(ctx, id, true)
 	assert.True(t, err == nil)
 	extCrc := e.GetCrc(offset / util.BlockSize)
 	assert.True(t, crc == extCrc)
 
 	// check
 	offset = int64(util.ExtentSize)*2 + util.BlockSize
-	e, err = s.LoadExtentFromDisk(id, true)
+	e, err = s.LoadExtentFromDisk(ctx, id, true)
 	assert.True(t, err == nil)
 	extCrc = e.GetCrc(offset / util.BlockSize)
 	assert.True(t, crc == extCrc)
@@ -271,44 +284,46 @@ func extentReloadCheckCrc(t *testing.T, path string, id uint64, crc uint32) {
 }
 
 func extentStoreSnapshotRwTest(t *testing.T, s *storage.ExtentStore, id uint64, crc uint32, data []byte) {
+	ctx := newCtx()
+
 	// append write
 	offset := int64(util.ExtentSize)
-	_, err := s.Write(id, offset, int64(len(data)), data, crc, storage.AppendRandomWriteType, true)
+	_, err := s.Write(ctx, id, offset, int64(len(data)), data, crc, storage.AppendRandomWriteType, true)
 	require.NoError(t, err)
 
-	_, err = s.Write(id, 0, int64(len(data)), data, crc, storage.AppendRandomWriteType, true)
+	_, err = s.Write(ctx, id, 0, int64(len(data)), data, crc, storage.AppendRandomWriteType, true)
 	assert.True(t, err != nil)
-	_, err = s.Write(id, offset, int64(len(data)), data, crc, storage.AppendWriteType, true)
+	_, err = s.Write(ctx, id, offset, int64(len(data)), data, crc, storage.AppendWriteType, true)
 	assert.True(t, err != nil)
 
-	actualCrc, err := s.Read(id, offset, int64(len(data)), data, false)
+	actualCrc, err := s.Read(ctx, id, offset, int64(len(data)), data, false)
 	require.NoError(t, err)
 	require.EqualValues(t, crc, actualCrc)
 	// random write
-	_, err = s.Write(id, offset, int64(len(data)), data, crc, storage.RandomWriteType, true)
+	_, err = s.Write(ctx, id, offset, int64(len(data)), data, crc, storage.RandomWriteType, true)
 	require.NoError(t, err)
-	actualCrc, err = s.Read(id, offset, int64(len(data)), data, false)
+	actualCrc, err = s.Read(ctx, id, offset, int64(len(data)), data, false)
 	require.NoError(t, err)
 	require.EqualValues(t, crc, actualCrc)
 	// TODO: append random write
 	require.NotEqualValues(t, s.GetStoreUsedSize(), 0)
 
-	_, err = s.Write(id, offset, int64(len(data)), data, crc, storage.AppendRandomWriteType, true)
+	_, err = s.Write(ctx, id, offset, int64(len(data)), data, crc, storage.AppendRandomWriteType, true)
 	require.NoError(t, err)
 
 	// extent crc check
 	var e *storage.Extent
-	e, err = s.LoadExtentFromDisk(id, true)
+	e, err = s.LoadExtentFromDisk(ctx, id, true)
 	assert.True(t, err == nil)
 	extCrc := e.GetCrc(offset / util.BlockSize)
 	assert.True(t, crc == extCrc)
 
 	// check
 	offset = int64(util.ExtentSize)*2 + util.BlockSize
-	_, err = s.Write(id, offset, int64(len(data)), data, crc, storage.AppendRandomWriteType, true)
+	_, err = s.Write(ctx, id, offset, int64(len(data)), data, crc, storage.AppendRandomWriteType, true)
 	require.NoError(t, err)
 
-	e, err = s.LoadExtentFromDisk(id, true)
+	e, err = s.LoadExtentFromDisk(ctx, id, true)
 	assert.True(t, err == nil)
 	extCrc = e.GetCrc(offset / util.BlockSize)
 	assert.True(t, crc == extCrc)
@@ -317,17 +332,18 @@ func extentStoreSnapshotRwTest(t *testing.T, s *storage.ExtentStore, id uint64, 
 }
 
 func TestCheckExtentCrc(t *testing.T) {
+	ctx := newCtx()
 	path, clean, err := getTestPathExtentStore()
 	require.NoError(t, err)
 	defer clean()
-	s, err := storage.NewExtentStore(path, 0, 1*util.GB, proto.PartitionTypeNormal, true)
+	s, err := storage.NewExtentStore(ctx, path, 0, 1*util.GB, proto.PartitionTypeNormal, true)
 	require.NoError(t, err)
 	data := bytes.Repeat([]byte("test"), util.BlockSize/len("test"))
 	crc := crc32.ChecksumIEEE(data)
 
 	normalId, err := s.NextExtentID()
 	require.NoError(t, err)
-	err = s.Create(normalId)
+	err = s.Create(ctx, normalId)
 	require.NoError(t, err)
 
 	require.NoError(t, err)

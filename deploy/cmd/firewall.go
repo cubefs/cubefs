@@ -1,13 +1,12 @@
 package cmd
 
 import (
-	"fmt"
 	"log"
 	"os/exec"
 )
 
 // func openRemotePortFirewall(hostname, username string, privateKeyPath string, port int) error {
-// 	key, err := ioutil.ReadFile(privateKeyPath)
+// 	key, err := os.ReadFile(privateKeyPath)
 // 	if err != nil {
 // 		return err
 // 	}
@@ -61,12 +60,12 @@ func stopFirewall(nodeUser, node string) {
 	log.Println(cmd)
 }
 
-func checkPortStatus(nodeUser, node string, port string) (string, error) {
-	cmd := exec.Command("ssh", nodeUser+"@"+node, "firewall-cmd --list-all | grep "+port)
-	fmt.Println(cmd)
-	_, err := cmd.Output()
-	if err != nil {
-		return fmt.Sprintf("Port %s %s is closed", node, port), err
-	}
-	return fmt.Sprintf("Port %s is open", port), nil
-}
+// func checkPortStatus(nodeUser, node string, port string) (string, error) {
+// 	cmd := exec.Command("ssh", nodeUser+"@"+node, "firewall-cmd --list-all | grep "+port)
+// 	fmt.Println(cmd)
+// 	_, err := cmd.Output()
+// 	if err != nil {
+// 		return fmt.Sprintf("Port %s %s is closed", node, port), err
+// 	}
+// 	return fmt.Sprintf("Port %s is open", port), nil
+// }

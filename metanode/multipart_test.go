@@ -65,7 +65,7 @@ func TestMUParts_Bytes(t *testing.T) {
 		parts1.Insert(part, false)
 	}
 	var partsBytes []byte
-	partsBytes, err = parts1.Bytes()
+	parts1.Bytes()
 	if partsBytes, err = parts1.Bytes(); err != nil {
 		t.Fatalf("get bytes of part fail cause: %v", err)
 	}

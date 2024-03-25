@@ -23,7 +23,6 @@ import (
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/auditlog"
 	"github.com/cubefs/cubefs/util/errors"
-	"github.com/cubefs/cubefs/util/log"
 )
 
 func (mp *metaPartition) TxCreateDentry(req *proto.TxCreateDentryRequest, p *Packet, remoteAddr string) (err error) {
@@ -39,8 +38,9 @@ func (mp *metaPartition) TxCreateDentry(req *proto.TxCreateDentryRequest, p *Pac
 		return
 	}
 
+	ctx := p.Context()
 	for _, quotaId := range req.QuotaIds {
-		status := mp.mqMgr.IsOverQuota(false, true, quotaId)
+		status := mp.mqMgr.IsOverQuota(ctx, false, true, quotaId)
 		if status != 0 {
 			err = errors.New("create dentry is over quota")
 			reply := []byte(err.Error())
@@ -72,7 +72,7 @@ func (mp *metaPartition) TxCreateDentry(req *proto.TxCreateDentryRequest, p *Pac
 		return
 	}
 
-	status, err := mp.submit(opFSMTxCreateDentry, val)
+	status, err := mp.submit(ctx, opFSMTxCreateDentry, val)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return
@@ -122,7 +122,7 @@ func (mp *metaPartition) CreateDentry(req *CreateDentryReq, p *Packet, remoteAdd
 	if err != nil {
 		return
 	}
-	resp, err := mp.submit(opFSMCreateDentry, val)
+	resp, err := mp.submit(p.Context(), opFSMCreateDentry, val)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return
@@ -143,8 +143,10 @@ func (mp *metaPartition) QuotaCreateDentry(req *proto.QuotaCreateDentryRequest, 
 		p.PacketErrorWithBody(proto.OpExistErr, []byte(err.Error()))
 		return
 	}
+
+	ctx := p.Context()
 	for _, quotaId := range req.QuotaIds {
-		status := mp.mqMgr.IsOverQuota(false, true, quotaId)
+		status := mp.mqMgr.IsOverQuota(ctx, false, true, quotaId)
 		if status != 0 {
 			err = errors.New("create dentry is over quota")
 			reply := []byte(err.Error())
@@ -174,12 +176,12 @@ func (mp *metaPartition) QuotaCreateDentry(req *proto.QuotaCreateDentryRequest, 
 		Type:     req.Mode,
 	}
 	dentry.setVerSeq(mp.verSeq)
-	log.LogDebugf("action[CreateDentry] mp[%v] with seq [%v],dentry [%v]", mp.config.PartitionId, mp.verSeq, dentry)
+	p.Span().Debugf("mp[%v] with seq [%v],dentry [%v]", mp.config.PartitionId, mp.verSeq, dentry)
 	val, err := dentry.Marshal()
 	if err != nil {
 		return
 	}
-	resp, err := mp.submit(opFSMCreateDentry, val)
+	resp, err := mp.submit(ctx, opFSMCreateDentry, val)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return
@@ -212,16 +214,17 @@ func (mp *metaPartition) TxDeleteDentry(req *proto.TxDeleteDentryRequest, p *Pac
 		}
 	}()
 
-	dentry, status := mp.getDentry(den)
+	ctx := p.Context()
+	dentry, status := mp.getDentry(ctx, den)
 	if status != proto.OpOk {
 		if mp.txDentryInRb(req.ParentID, req.Name, req.TxInfo.TxID) {
 			p.ResultCode = proto.OpOk
-			log.LogWarnf("TxDeleteDentry: dentry is already been deleted before, req %v", req)
+			p.Span().Warnf("dentry is already been deleted before, req %v", req)
 			return
 		}
 
 		err = fmt.Errorf("dentry[%v] not exists", den)
-		log.LogWarn(err)
+		p.Span().Warn(err)
 		p.PacketErrorWithBody(status, []byte(err.Error()))
 		return
 	}
@@ -229,12 +232,12 @@ func (mp *metaPartition) TxDeleteDentry(req *proto.TxDeleteDentryRequest, p *Pac
 	if dentry.Inode != req.Ino {
 		err = fmt.Errorf("target name ino is not right, par %d, name %s, want %d, got %d",
 			req.PartitionID, req.Name, req.Ino, dentry.Inode)
-		log.LogWarn(err)
+		p.Span().Warn(err)
 		p.PacketErrorWithBody(proto.OpExistErr, []byte(err.Error()))
 		return
 	}
 	parIno := NewInode(req.ParentID, 0)
-	inoResp := mp.getInode(parIno, false)
+	inoResp := mp.getInode(ctx, parIno, false)
 	if inoResp.Status != proto.OpOk {
 		err = fmt.Errorf("parIno[%v] not exists", parIno.Inode)
 		p.PacketErrorWithBody(inoResp.Status, []byte(err.Error()))
@@ -253,7 +256,7 @@ func (mp *metaPartition) TxDeleteDentry(req *proto.TxDeleteDentryRequest, p *Pac
 		return
 	}
 
-	r, err := mp.submit(opFSMTxDeleteDentry, val)
+	r, err := mp.submit(ctx, opFSMTxDeleteDentry, val)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return
@@ -267,6 +270,7 @@ func (mp *metaPartition) TxDeleteDentry(req *proto.TxDeleteDentryRequest, p *Pac
 // DeleteDentry deletes a dentry.
 func (mp *metaPartition) DeleteDentry(req *DeleteDentryReq, p *Packet, remoteAddr string) (err error) {
 	start := time.Now()
+	span := p.Span()
 	if mp.IsEnableAuditLog() {
 		defer func() {
 			auditlog.LogDentryOp(remoteAddr, mp.GetVolName(), p.GetOpMsg(), req.Name, req.GetFullPath(), err, time.Since(start).Milliseconds(), 0, req.ParentID)
@@ -275,7 +279,8 @@ func (mp *metaPartition) DeleteDentry(req *DeleteDentryReq, p *Packet, remoteAdd
 	if req.InodeCreateTime > 0 {
 		if mp.vol.volDeleteLockTime > 0 && req.InodeCreateTime+mp.vol.volDeleteLockTime*60*60 > time.Now().Unix() {
 			err = errors.NewErrorf("the current Inode[%v] is still locked for deletion", req.Name)
-			log.LogDebugf("DeleteDentry: the current Inode is still locked for deletion, inode[%v] createTime(%v) mw.volDeleteLockTime(%v) now(%v)", req.Name, req.InodeCreateTime, mp.vol.volDeleteLockTime, time.Now().Unix())
+			span.Debugf("the current Inode is still locked for deletion, inode[%v] createTime(%v) mw.volDeleteLockTime(%v) now(%v)",
+				req.Name, req.InodeCreateTime, mp.vol.volDeleteLockTime, time.Now().Unix())
 			p.PacketErrorWithBody(proto.OpNotPerm, []byte(err.Error()))
 			return
 		}
@@ -285,7 +290,7 @@ func (mp *metaPartition) DeleteDentry(req *DeleteDentryReq, p *Packet, remoteAdd
 		Name:     req.Name,
 	}
 	dentry.setVerSeq(req.Verseq)
-	log.LogDebugf("action[DeleteDentry] den param(%v)", dentry)
+	span.Debugf("den param(%v)", dentry)
 
 	val, err := dentry.Marshal()
 	if err != nil {
@@ -297,8 +302,8 @@ func (mp *metaPartition) DeleteDentry(req *DeleteDentryReq, p *Packet, remoteAdd
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return
 	}
-	log.LogDebugf("action[DeleteDentry] submit!")
-	r, err := mp.submit(opFSMDeleteDentry, val)
+	span.Debugf("submit!")
+	r, err := mp.submit(p.Context(), opFSMDeleteDentry, val)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return
@@ -317,7 +322,7 @@ func (mp *metaPartition) DeleteDentry(req *DeleteDentryReq, p *Packet, remoteAdd
 	return
 }
 
-// DeleteDentry deletes a dentry.
+// DeleteDentryBatch deletes a dentry.
 func (mp *metaPartition) DeleteDentryBatch(req *BatchDeleteDentryReq, p *Packet, remoteAddr string) (err error) {
 	db := make(DentryBatch, 0, len(req.Dens))
 	start := time.Now()
@@ -345,7 +350,7 @@ func (mp *metaPartition) DeleteDentryBatch(req *BatchDeleteDentryReq, p *Packet,
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return
 	}
-	r, err := mp.submit(opFSMDeleteDentryBatch, val)
+	r, err := mp.submit(p.Context(), opFSMDeleteDentryBatch, val)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return err
@@ -386,7 +391,6 @@ func (mp *metaPartition) DeleteDentryBatch(req *BatchDeleteDentryReq, p *Packet,
 		return err
 	}
 	p.PacketOkWithBody(reply)
-
 	return
 }
 
@@ -421,11 +425,11 @@ func (mp *metaPartition) TxUpdateDentry(req *proto.TxUpdateDentryRequest, p *Pac
 		Name:     req.Name,
 		Inode:    req.Inode,
 	}
-	oldDentry, status := mp.getDentry(newDentry)
+	oldDentry, status := mp.getDentry(p.Context(), newDentry)
 	if status != proto.OpOk {
 		if mp.txDentryInRb(req.ParentID, req.Name, req.TxInfo.TxID) {
 			p.ResultCode = proto.OpOk
-			log.LogWarnf("TxDeleteDentry: dentry is already been deleted before, req %v", req)
+			p.Span().Warnf("dentry is already been deleted before, req %v", req)
 			return
 		}
 		err = fmt.Errorf("oldDentry[%v] not exists", oldDentry)
@@ -449,7 +453,7 @@ func (mp *metaPartition) TxUpdateDentry(req *proto.TxUpdateDentryRequest, p *Pac
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return
 	}
-	resp, err := mp.submit(opFSMTxUpdateDentry, val)
+	resp, err := mp.submit(p.Context(), opFSMTxUpdateDentry, val)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return
@@ -485,7 +489,7 @@ func (mp *metaPartition) UpdateDentry(req *UpdateDentryReq, p *Packet, remoteAdd
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return
 	}
-	resp, err := mp.submit(opFSMUpdateDentry, val)
+	resp, err := mp.submit(p.Context(), opFSMUpdateDentry, val)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return
@@ -504,7 +508,7 @@ func (mp *metaPartition) UpdateDentry(req *UpdateDentryReq, p *Packet, remoteAdd
 }
 
 func (mp *metaPartition) ReadDirOnly(req *ReadDirOnlyReq, p *Packet) (err error) {
-	resp := mp.readDirOnly(req)
+	resp := mp.readDirOnly(p.Context(), req)
 	reply, err := json.Marshal(resp)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
@@ -516,7 +520,7 @@ func (mp *metaPartition) ReadDirOnly(req *ReadDirOnlyReq, p *Packet) (err error)
 
 // ReadDir reads the directory based on the given request.
 func (mp *metaPartition) ReadDir(req *ReadDirReq, p *Packet) (err error) {
-	resp := mp.readDir(req)
+	resp := mp.readDir(p.Context(), req)
 	reply, err := json.Marshal(resp)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
@@ -527,8 +531,8 @@ func (mp *metaPartition) ReadDir(req *ReadDirReq, p *Packet) (err error) {
 }
 
 func (mp *metaPartition) ReadDirLimit(req *ReadDirLimitReq, p *Packet) (err error) {
-	log.LogInfof("action[ReadDirLimit] read seq [%v], request[%v]", req.VerSeq, req)
-	resp := mp.readDirLimit(req)
+	p.Span().Infof("read seq [%v], request[%v]", req.VerSeq, req)
+	resp := mp.readDirLimit(p.Context(), req)
 	reply, err := json.Marshal(resp)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
@@ -549,7 +553,7 @@ func (mp *metaPartition) Lookup(req *LookupReq, p *Packet) (err error) {
 	if req.VerAll {
 		denList = mp.getDentryList(dentry)
 	}
-	dentry, status := mp.getDentry(dentry)
+	dentry, status := mp.getDentry(p.Context(), dentry)
 
 	var reply []byte
 	if status == proto.OpOk || req.VerAll {

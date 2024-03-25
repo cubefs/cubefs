@@ -67,6 +67,10 @@ type Logger struct {
     // deleted.)
     MaxBackups int `json:"maxbackups" yaml:"maxbackups"`
 
+    // ReservedSize is the minimum left space in megabytes of the store device.
+    // Do not to check the available space of the device.
+    ReservedSize int `json:"reservedsize" yaml:"reservedsize"`
+
     // LocalTime determines if the time used for formatting the timestamps in
     // backup files is the computer's local time.  The default is to use UTC
     // time.
@@ -107,8 +111,9 @@ number equal to MaxBackups (or all of them if MaxBackups is 0).  Any files
 with an encoded timestamp older than MaxAge days are deleted, regardless of
 MaxBackups.  Note that the time encoded in the timestamp is the rotation
 time, which may differ from the last time that file was written to.
+The older files will be deleted until there's enough ReservedSize space left.
 
-If MaxBackups and MaxAge are both 0, no old log files will be deleted.
+If MaxBackups and MaxAge and ReservedSize are all 0, no old log files will be deleted.
 
 
 

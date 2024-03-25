@@ -3,8 +3,8 @@ package cmd
 import (
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"log"
+	"os"
 	"strings"
 )
 
@@ -27,7 +27,7 @@ type MetaNode struct {
 }
 
 func readMetaNode(filename string) (*MetaNode, error) {
-	data, err := ioutil.ReadFile(filename)
+	data, err := os.ReadFile(filename)
 	if err != nil {
 		return nil, err
 	}
@@ -63,7 +63,7 @@ func writeMetaNode(listen, prof, id, localIP string, masterAddrs []string) error
 	if err != nil {
 		return err
 	}
-	err = ioutil.WriteFile(ConfDir+"/metanode"+id+".json", metaNodeData, 0o644)
+	err = os.WriteFile(ConfDir+"/metanode"+id+".json", metaNodeData, 0o644)
 	if err != nil {
 		return err
 	}
@@ -71,7 +71,7 @@ func writeMetaNode(listen, prof, id, localIP string, masterAddrs []string) error
 }
 
 func stopMetanodeInSpecificNode(node string) error {
-	files, err := ioutil.ReadDir(ConfDir)
+	files, err := os.ReadDir(ConfDir)
 	if err != nil {
 		return err
 	}
@@ -106,7 +106,7 @@ func startMetanodeInSpecificNode(node string) error {
 	if err != nil {
 		return err
 	}
-	files, err := ioutil.ReadDir(ConfDir)
+	files, err := os.ReadDir(ConfDir)
 	if err != nil {
 		return err
 	}
@@ -167,7 +167,7 @@ func startAllMetaNode() error {
 		return err
 	}
 
-	files, err := ioutil.ReadDir(ConfDir)
+	files, err := os.ReadDir(ConfDir)
 	if err != nil {
 		return err
 	}
@@ -208,7 +208,7 @@ func startAllMetaNode() error {
 }
 
 func stopAllMetaNode() error {
-	files, err := ioutil.ReadDir(ConfDir)
+	files, err := os.ReadDir(ConfDir)
 	if err != nil {
 		return err
 	}

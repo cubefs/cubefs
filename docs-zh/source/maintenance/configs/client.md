@@ -9,6 +9,7 @@
 | masterAddr     | string | Master节点地址                              | 是   |
 | logDir         | string | 日志存放路径                                  | 否   |
 | logLevel       | string | 日志级别：debug, info, warn, error           | 否   |
+| logOptions     | none   | [日志选项](./log.md)                         | 否       |
 | profPort       | string | golang pprof调试端口                        | 否   |
 | exporterPort   | string | prometheus获取监控数据端口                      | 否   |
 | consulAddr     | string | 监控注册服务器地址                               | 否   |

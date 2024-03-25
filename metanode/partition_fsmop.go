@@ -15,28 +15,28 @@
 package metanode
 
 import (
+	"context"
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path"
 	"strings"
 	"time"
 
 	"github.com/cubefs/cubefs/proto"
-	"github.com/cubefs/cubefs/util/log"
 )
 
-func (mp *metaPartition) initInode(ino *Inode) {
+func (mp *metaPartition) initInode(ctx context.Context, ino *Inode) {
 	for {
 		time.Sleep(10 * time.Nanosecond)
 		select {
 		case <-mp.stopC:
 			return
 		default:
+			span := getSpan(ctx)
 			// check first root inode
-			if mp.hasInode(ino) {
+			if mp.hasInode(ctx, ino) {
 				return
 			}
 			if !mp.raftPartition.IsRaftLeader() {
@@ -48,34 +48,27 @@ func (mp *metaPartition) initInode(ino *Inode) {
 			// }
 			// data, err := qinode.Marshal()
 			// if err != nil {
-			// 	log.LogFatalf("[initInode] marshal: %s", err.Error())
+			// 	span.Fatalf("[initInode] marshal: %s", err.Error())
 			// }
 
 			data, err := ino.Marshal()
 			if err != nil {
-				log.LogFatalf("[initInode] marshal: %s", err.Error())
+				span.Fatalf("[initInode] marshal: %s", err.Error())
 			}
 			// put first root inode
-			resp, err := mp.submit(opFSMCreateInode, data)
+			resp, err := mp.submit(ctx, opFSMCreateInode, data)
 			if err != nil {
-				log.LogFatalf("[initInode] raft sync: %s", err.Error())
+				span.Fatalf("[initInode] raft sync: %s", err.Error())
 			}
 			p := &Packet{}
 			p.ResultCode = resp.(uint8)
-			log.LogDebugf("[initInode] raft sync: response status = %v.",
-				p.GetResultMsg())
+			span.Debugf("[initInode] raft sync: response status = %v.", p.GetResultMsg())
 			return
 		}
 	}
 }
 
-// Not implemented.
-func (mp *metaPartition) decommissionPartition() (err error) {
-	return
-}
-
-func (mp *metaPartition) fsmUpdatePartition(end uint64) (status uint8,
-	err error) {
+func (mp *metaPartition) fsmUpdatePartition(ctx context.Context, end uint64) (status uint8, err error) {
 	status = proto.OpOk
 	oldEnd := mp.config.End
 	mp.config.End = end
@@ -85,14 +78,14 @@ func (mp *metaPartition) fsmUpdatePartition(end uint64) (status uint8,
 		mp.config.End = oldEnd
 		return
 	}
-	if err = mp.PersistMetadata(); err != nil {
+	if err = mp.PersistMetadata(ctx); err != nil {
 		status = proto.OpDiskErr
 		mp.config.End = oldEnd
 	}
 	return
 }
 
-func (mp *metaPartition) confAddNode(req *proto.AddMetaPartitionRaftMemberRequest, index uint64) (updated bool, err error) {
+func (mp *metaPartition) confAddNode(ctx context.Context, req *proto.AddMetaPartitionRaftMemberRequest, index uint64) (updated bool, err error) {
 	var (
 		heartbeatPort int
 		replicaPort   int
@@ -118,14 +111,15 @@ func (mp *metaPartition) confAddNode(req *proto.AddMetaPartitionRaftMemberReques
 	return
 }
 
-func (mp *metaPartition) confRemoveNode(req *proto.RemoveMetaPartitionRaftMemberRequest, index uint64) (updated bool, err error) {
+func (mp *metaPartition) confRemoveNode(ctx context.Context, req *proto.RemoveMetaPartitionRaftMemberRequest, index uint64) (updated bool, err error) {
 	var canRemoveSelf bool
-	if canRemoveSelf, err = mp.canRemoveSelf(); err != nil {
+	if canRemoveSelf, err = mp.canRemoveSelf(ctx); err != nil {
 		return
 	}
 	peerIndex := -1
 	data, _ := json.Marshal(req)
-	log.LogInfof("Start RemoveRaftNode  PartitionID(%v) nodeID(%v)  do RaftLog (%v) ",
+	span := getSpan(ctx)
+	span.Infof("Start RemoveRaftNode  PartitionID(%v) nodeID(%v)  do RaftLog (%v) ",
 		req.PartitionId, mp.config.NodeId, string(data))
 	for i, peer := range mp.config.Peers {
 		if peer.ID == req.RemovePeer.ID {
@@ -135,7 +129,7 @@ func (mp *metaPartition) confRemoveNode(req *proto.RemoveMetaPartitionRaftMember
 		}
 	}
 	if !updated {
-		log.LogInfof("NoUpdate RemoveRaftNode  PartitionID(%v) nodeID(%v)  do RaftLog (%v) ",
+		span.Infof("NoUpdate RemoveRaftNode  PartitionID(%v) nodeID(%v)  do RaftLog (%v) ",
 			req.PartitionId, mp.config.NodeId, string(data))
 		return
 	}
@@ -147,21 +141,21 @@ func (mp *metaPartition) confRemoveNode(req *proto.RemoveMetaPartitionRaftMember
 		os.RemoveAll(mp.config.RootDir)
 		updated = false
 	}
-	log.LogInfof("Fininsh RemoveRaftNode  PartitionID(%v) nodeID(%v)  do RaftLog (%v) ",
+	span.Infof("Fininsh RemoveRaftNode  PartitionID(%v) nodeID(%v)  do RaftLog (%v) ",
 		req.PartitionId, mp.config.NodeId, string(data))
 	return
 }
 
-func (mp *metaPartition) delOldExtentFile(buf []byte) (err error) {
+func (mp *metaPartition) delOldExtentFile(ctx context.Context, buf []byte) (err error) {
 	fileName := string(buf)
-	log.LogWarnf("[delOldExtentFile] del extent file(%s), mp[%v]", fileName, mp.config.PartitionId)
+	span := getSpan(ctx)
+	span.Warnf("[delOldExtentFile] del extent file(%s), mp[%v]", fileName, mp.config.PartitionId)
 
-	infos, err := ioutil.ReadDir(mp.config.RootDir)
+	entries, err := os.ReadDir(mp.config.RootDir)
 	if err != nil {
 		return
 	}
-
-	infos = sortDelExtFileInfo(infos)
+	infos := sortDelExtFileInfo(entries)
 	tgtIdx := getDelExtFileIdx(fileName)
 
 	for _, f := range infos {
@@ -170,35 +164,31 @@ func (mp *metaPartition) delOldExtentFile(buf []byte) (err error) {
 			break
 		}
 
-		log.LogWarnf("[delOldExtentFile] del extent file(%s), mp[%v]", f.Name(), mp.config.PartitionId)
+		span.Warnf("[delOldExtentFile] del extent file(%s), mp[%v]", f.Name(), mp.config.PartitionId)
 		os.Remove(path.Join(mp.config.RootDir, f.Name()))
 	}
-
 	return
 }
 
-//
-func (mp *metaPartition) setExtentDeleteFileCursor(buf []byte) (err error) {
+func (mp *metaPartition) setExtentDeleteFileCursor(ctx context.Context, buf []byte) (err error) {
+	span := getSpan(ctx)
 	str := string(buf)
 	var (
 		fileName string
 		cursor   int64
 	)
 	_, err = fmt.Sscanf(str, "%s %d", &fileName, &cursor)
-	log.LogInfof("[setExtentDeleteFileCursor] &fileName_&cursor(%s), mp[%v]", str, mp.config.PartitionId)
+	span.Infof("[setExtentDeleteFileCursor] &fileName_&cursor(%s), mp[%v]", str, mp.config.PartitionId)
 	if err != nil {
 		return
 	}
-	fp, err := os.OpenFile(path.Join(mp.config.RootDir, fileName), os.O_CREATE|os.O_RDWR,
-		0o644)
+	fp, err := os.OpenFile(path.Join(mp.config.RootDir, fileName), os.O_CREATE|os.O_RDWR, 0o644)
 	if err != nil {
-		log.LogErrorf("[setExtentDeleteFileCursor] openFile %s failed: %s",
-			fileName, err.Error())
+		span.Errorf("[setExtentDeleteFileCursor] openFile %s failed: %s", fileName, err.Error())
 		return
 	}
 	if err = binary.Write(fp, binary.BigEndian, cursor); err != nil {
-		log.LogErrorf("[setExtentDeleteFileCursor] write file %s cursor"+
-			" failed: %s", fileName, err.Error())
+		span.Errorf("[setExtentDeleteFileCursor] write file %s cursor failed: %s", fileName, err.Error())
 	}
 	// TODO Unhandled errors
 	fp.Close()

@@ -15,6 +15,7 @@
 package datanode
 
 import (
+	"context"
 	"fmt"
 	"math"
 	"os"
@@ -25,27 +26,24 @@ import (
 	"github.com/cubefs/cubefs/raftstore"
 	"github.com/cubefs/cubefs/util/atomicutil"
 	"github.com/cubefs/cubefs/util/loadutil"
-	"github.com/cubefs/cubefs/util/log"
 	"github.com/shirou/gopsutil/disk"
 )
 
 // SpaceManager manages the disk space.
 type SpaceManager struct {
-	clusterID            string
-	disks                map[string]*Disk
-	partitions           map[uint64]*DataPartition
-	raftStore            raftstore.RaftStore
-	nodeID               uint64
-	diskMutex            sync.RWMutex
-	partitionMutex       sync.RWMutex
-	stats                *Stats
-	stopC                chan bool
-	selectedIndex        int // TODO what is selected index
-	diskList             []string
-	dataNode             *DataNode
-	createPartitionMutex sync.RWMutex
-	diskUtils            map[string]*atomicutil.Float64
-	samplerDone          chan struct{}
+	clusterID      string
+	disks          map[string]*Disk
+	partitions     map[uint64]*DataPartition
+	raftStore      raftstore.RaftStore
+	nodeID         uint64
+	diskMutex      sync.RWMutex
+	partitionMutex sync.RWMutex
+	stats          *Stats
+	stopC          chan bool
+	diskList       []string
+	dataNode       *DataNode
+	diskUtils      map[string]*atomicutil.Float64
+	samplerDone    chan struct{}
 }
 
 const diskSampleDuration = 1 * time.Second
@@ -132,7 +130,8 @@ func (manager *SpaceManager) FillIoUtils(samples map[string]loadutil.DiskIoSampl
 	}
 }
 
-func (manager *SpaceManager) StartDiskSample() {
+func (manager *SpaceManager) StartDiskSample(ctx context.Context) {
+	span := proto.SpanFromContext(ctx)
 	manager.samplerDone = make(chan struct{})
 	go func() {
 		for {
@@ -143,7 +142,7 @@ func (manager *SpaceManager) StartDiskSample() {
 				partitions := manager.GetAllDiskPartitions()
 				samples, err := loadutil.GetDisksIoSample(partitions, diskSampleDuration)
 				if err != nil {
-					log.LogErrorf("failed to sample disk %v\n", err.Error())
+					span.Errorf("failed to sample disk %v\n", err.Error())
 					return
 				}
 				manager.FillIoUtils(samples)
@@ -228,25 +227,28 @@ func (manager *SpaceManager) LoadDisk(path string, reservedSpace, diskRdonlySpac
 		diskRdonlySpace = reservedSpace
 	}
 
-	log.LogDebugf("action[LoadDisk] load disk from path(%v).", path)
+	ctx := proto.ContextWithOperation(context.Background(), "LoadDisk")
+	span := proto.SpanFromContext(ctx)
+
+	span.Debugf("action[LoadDisk] load disk from path(%v).", path)
 	visitor = func(dp *DataPartition) {
 		manager.partitionMutex.Lock()
 		defer manager.partitionMutex.Unlock()
 		if _, has := manager.partitions[dp.partitionID]; !has {
 			manager.partitions[dp.partitionID] = dp
-			log.LogDebugf("action[LoadDisk] put partition(%v) to manager manager.", dp.partitionID)
+			span.Debugf("action[LoadDisk] put partition(%v) to manager manager.", dp.partitionID)
 		}
 	}
 
 	if _, err = manager.GetDisk(path); err != nil {
-		disk, err = NewDisk(path, reservedSpace, diskRdonlySpace, maxErrCnt, manager)
+		disk, err = NewDisk(ctx, path, reservedSpace, diskRdonlySpace, maxErrCnt, manager)
 		if err != nil {
-			log.LogErrorf("NewDisk fail err:[%v]", err)
+			span.Errorf("NewDisk fail err:[%v]", err)
 			return
 		}
-		err = disk.RestorePartition(visitor)
+		err = disk.RestorePartition(ctx, visitor)
 		if err != nil {
-			log.LogErrorf("RestorePartition fail err:[%v]", err)
+			span.Errorf("RestorePartition fail err:[%v]", err)
 			return
 		}
 		manager.putDisk(disk)
@@ -279,7 +281,8 @@ func (manager *SpaceManager) putDisk(d *Disk) {
 	manager.diskMutex.Unlock()
 }
 
-func (manager *SpaceManager) updateMetrics() {
+func (manager *SpaceManager) updateMetrics(ctx context.Context) {
+	span := proto.SpanFromContext(ctx)
 	manager.diskMutex.RLock()
 	var (
 		total, used, available                                 uint64
@@ -289,7 +292,7 @@ func (manager *SpaceManager) updateMetrics() {
 	maxCapacityToCreatePartition = 0
 	for _, d := range manager.disks {
 		if d.Status == proto.Unavailable {
-			log.LogInfof("disk is broken, not stat disk useage, diskpath %s", d.Path)
+			span.Infof("disk is broken, not stat disk useage, diskpath %s", d.Path)
 			continue
 		}
 
@@ -304,13 +307,14 @@ func (manager *SpaceManager) updateMetrics() {
 		}
 	}
 	manager.diskMutex.RUnlock()
-	log.LogDebugf("action[updateMetrics] total(%v) used(%v) available(%v) totalPartitionSize(%v)  remainingCapacityToCreatePartition(%v) "+
+	span.Debugf("action[updateMetrics] total(%v) used(%v) available(%v) totalPartitionSize(%v)  remainingCapacityToCreatePartition(%v) "+
 		"partitionCnt(%v) maxCapacityToCreatePartition(%v) ", total, used, available, totalPartitionSize, remainingCapacityToCreatePartition, partitionCnt, maxCapacityToCreatePartition)
 	manager.stats.updateMetrics(total, used, available, totalPartitionSize,
 		remainingCapacityToCreatePartition, maxCapacityToCreatePartition, partitionCnt)
 }
 
-func (manager *SpaceManager) minPartitionCnt(decommissionedDisks []string) (d *Disk) {
+func (manager *SpaceManager) minPartitionCnt(ctx context.Context, decommissionedDisks []string) (d *Disk) {
+	span := getSpan(ctx)
 	manager.diskMutex.Lock()
 	defer manager.diskMutex.Unlock()
 	var (
@@ -324,7 +328,7 @@ func (manager *SpaceManager) minPartitionCnt(decommissionedDisks []string) (d *D
 	minWeight = math.MaxFloat64
 	for _, disk := range manager.disks {
 		if _, ok := decommissionedDiskMap[disk.Path]; ok {
-			log.LogInfof("action[minPartitionCnt] exclude decommissioned disk[%v]", disk.Path)
+			span.Infof("action[minPartitionCnt] exclude decommissioned disk[%v]", disk.Path)
 			continue
 		}
 		if disk.Status != proto.ReadWrite {
@@ -350,9 +354,10 @@ func (manager *SpaceManager) statUpdateScheduler() {
 	go func() {
 		ticker := time.NewTicker(10 * time.Second)
 		for {
+			ctx := proto.ContextWithOperation(context.Background(), "statUpdateScheduler")
 			select {
 			case <-ticker.C:
-				manager.updateMetrics()
+				manager.updateMetrics(ctx)
 			case <-manager.stopC:
 				ticker.Stop()
 				return
@@ -381,9 +386,10 @@ func (manager *SpaceManager) DetachDataPartition(partitionID uint64) {
 	delete(manager.partitions, partitionID)
 }
 
-func (manager *SpaceManager) CreatePartition(request *proto.CreateDataPartitionRequest) (dp *DataPartition, err error) {
+func (manager *SpaceManager) CreatePartition(ctx context.Context, request *proto.CreateDataPartitionRequest) (dp *DataPartition, err error) {
 	manager.partitionMutex.Lock()
 	defer manager.partitionMutex.Unlock()
+	span := proto.SpanFromContext(ctx)
 	dpCfg := &dataPartitionCfg{
 		PartitionID:   request.PartitionId,
 		VolName:       request.VolumeId,
@@ -399,7 +405,7 @@ func (manager *SpaceManager) CreatePartition(request *proto.CreateDataPartitionR
 		CreateType:    request.CreateType,
 		Forbidden:     false,
 	}
-	log.LogInfof("action[CreatePartition] dp %v dpCfg.Peers %v request.Members %v",
+	span.Infof("action[CreatePartition] dp %v dpCfg.Peers %v request.Members %v",
 		dpCfg.PartitionID, dpCfg.Peers, request.Members)
 	dp = manager.partitions[dpCfg.PartitionID]
 	if dp != nil {
@@ -408,11 +414,11 @@ func (manager *SpaceManager) CreatePartition(request *proto.CreateDataPartitionR
 		}
 		return
 	}
-	disk := manager.minPartitionCnt(request.DecommissionedDisks)
+	disk := manager.minPartitionCnt(ctx, request.DecommissionedDisks)
 	if disk == nil {
 		return nil, ErrNoSpaceToCreatePartition
 	}
-	if dp, err = CreateDataPartition(dpCfg, disk, request); err != nil {
+	if dp, err = CreateDataPartition(ctx, dpCfg, disk, request); err != nil {
 		return
 	}
 	manager.partitions[dp.partitionID] = dp
@@ -420,7 +426,7 @@ func (manager *SpaceManager) CreatePartition(request *proto.CreateDataPartitionR
 }
 
 // DeletePartition deletes a partition based on the partition id.
-func (manager *SpaceManager) DeletePartition(dpID uint64) {
+func (manager *SpaceManager) DeletePartition(ctx context.Context, dpID uint64) {
 	manager.partitionMutex.Lock()
 
 	dp := manager.partitions[dpID]
@@ -432,11 +438,11 @@ func (manager *SpaceManager) DeletePartition(dpID uint64) {
 	delete(manager.partitions, dpID)
 	manager.partitionMutex.Unlock()
 	dp.Stop()
-	dp.Disk().DetachDataPartition(dp)
+	dp.Disk().DetachDataPartition(ctx, dp)
 	os.RemoveAll(dp.Path())
 }
 
-func (s *DataNode) buildHeartBeatResponse(response *proto.DataNodeHeartbeatResponse) {
+func (s *DataNode) buildHeartBeatResponse(ctx context.Context, response *proto.DataNodeHeartbeatResponse) {
 	response.Status = proto.TaskSucceeds
 	stat := s.space.Stats()
 	stat.Lock()
@@ -455,6 +461,7 @@ func (s *DataNode) buildHeartBeatResponse(response *proto.DataNodeHeartbeatRespo
 	response.ZoneName = s.zoneName
 	response.PartitionReports = make([]*proto.DataPartitionReport, 0)
 	space := s.space
+	span := getSpan(ctx)
 	space.RangePartitions(func(partition *DataPartition) bool {
 		leaderAddr, isLeader := partition.IsRaftLeader()
 		vr := &proto.DataPartitionReport{
@@ -469,7 +476,7 @@ func (s *DataNode) buildHeartBeatResponse(response *proto.DataNodeHeartbeatRespo
 			NeedCompare:                true,
 			DecommissionRepairProgress: partition.decommissionRepairProgress,
 		}
-		log.LogDebugf("action[Heartbeats] dpid(%v), status(%v) total(%v) used(%v) leader(%v) isLeader(%v).", vr.PartitionID, vr.PartitionStatus, vr.Total, vr.Used, leaderAddr, vr.IsLeader)
+		span.Debugf("action[Heartbeats] dpid(%v), status(%v) total(%v) used(%v) leader(%v) isLeader(%v).", vr.PartitionID, vr.PartitionStatus, vr.Total, vr.Used, leaderAddr, vr.IsLeader)
 		response.PartitionReports = append(response.PartitionReports, vr)
 		return true
 	})
@@ -487,12 +494,4 @@ func (s *DataNode) buildHeartBeatResponse(response *proto.DataNodeHeartbeatRespo
 			response.BadDiskStats = append(response.BadDiskStats, bds)
 		}
 	}
-}
-
-func (manager *SpaceManager) getPartitionIds() []uint64 {
-	res := make([]uint64, 0)
-	for id := range manager.partitions {
-		res = append(res, id)
-	}
-	return res
 }

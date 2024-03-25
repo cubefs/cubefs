@@ -18,16 +18,17 @@ package raft
 import (
 	"encoding/binary"
 	"fmt"
-	"github.com/cubefs/cubefs/depends/tiglabs/raft/proto"
-	"github.com/cubefs/cubefs/depends/tiglabs/raft/storage/wal"
-	"github.com/cubefs/cubefs/util/log"
-	"github.com/stretchr/testify/require"
 	"math/rand"
 	"os"
 	"strconv"
 	"strings"
 	"sync"
 	"testing"
+
+	"github.com/cubefs/cubefs/depends/tiglabs/raft/proto"
+	"github.com/cubefs/cubefs/depends/tiglabs/raft/storage/wal"
+	"github.com/cubefs/cubefs/util/log"
+	"github.com/stretchr/testify/require"
 )
 
 type serverStorage struct {
@@ -81,7 +82,7 @@ func (sm *testStateMachine) Apply(command []byte, index uint64) (interface{}, er
 }
 
 func (sm *testStateMachine) ApplyMemberChange(cc *proto.ConfChange, index uint64) (interface{}, error) {
-	log.LogInfof("[node=%d] ApplyMemberChange [context: %s Type: %s]", sm.id, string(cc.Context), cc.Type.String())
+	log.Infof("[node=%d] ApplyMemberChange [context: %s Type: %s]", sm.id, string(cc.Context), cc.Type.String())
 
 	sm.store.applied = index
 	return nil, nil

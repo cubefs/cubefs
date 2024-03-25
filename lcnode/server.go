@@ -15,6 +15,7 @@
 package lcnode
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"net"
@@ -24,6 +25,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/cubefs/cubefs/blobstore/common/trace"
 	"github.com/cubefs/cubefs/cmd/common"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/sdk/master"
@@ -35,8 +37,17 @@ import (
 	"golang.org/x/time/rate"
 )
 
-//TODO: remove this later.
-//go:generate golangci-lint run --issues-exit-code=1 -D errcheck -E bodyclose ./...
+var (
+	getSpan     = proto.SpanFromContext
+	spanContext = proto.SpanContext
+)
+
+func spanContextOperation(op string) (trace.Span, context.Context) {
+	span, ctx := spanContext()
+	span = span.WithOperation(op)
+	ctx = proto.ContextWithSpan(ctx, span)
+	return span, ctx
+}
 
 type LcNode struct {
 	listen           string
@@ -80,21 +91,22 @@ func doStart(s common.Server, cfg *config.Config) (err error) {
 	}
 	l.stopC = make(chan bool)
 
-	if err = l.parseConfig(cfg); err != nil {
+	span, ctx := spanContextOperation("start")
+	if err = l.parseConfig(ctx, cfg); err != nil {
 		return
 	}
-	l.register()
+	l.register(ctx)
 	l.lastHeartbeat = time.Now()
 
 	go l.checkRegister()
-	if err = l.startServer(); err != nil {
+	if err = l.startServer(ctx); err != nil {
 		return
 	}
 
 	exporter.Init(ModuleName, cfg)
 	exporter.RegistConsul(l.clusterID, ModuleName, cfg)
 
-	log.LogInfo("lcnode start successfully")
+	span.Info("lcnode start successfully")
 	return
 }
 
@@ -106,7 +118,8 @@ func doShutdown(s common.Server) {
 	l.stopServer()
 }
 
-func (l *LcNode) parseConfig(cfg *config.Config) (err error) {
+func (l *LcNode) parseConfig(ctx context.Context, cfg *config.Config) (err error) {
+	span := getSpan(ctx).WithOperation("loadConfig")
 	// parse listen
 	listen := cfg.GetString(configListen)
 	if len(listen) == 0 {
@@ -117,14 +130,14 @@ func (l *LcNode) parseConfig(cfg *config.Config) (err error) {
 		return
 	}
 	l.listen = listen
-	log.LogInfof("loadConfig: setup config: %v(%v)", configListen, listen)
+	span.Infof("setup config: %v(%v)", configListen, listen)
 
 	// parse master config
 	masters := cfg.GetStringSlice(configMasterAddr)
 	if len(masters) == 0 {
 		return config.NewIllegalConfigError(configMasterAddr)
 	}
-	log.LogInfof("loadConfig: setup config: %v(%v)", configMasterAddr, strings.Join(masters, ","))
+	span.Infof("setup config: %v(%v)", configMasterAddr, strings.Join(masters, ","))
 	l.masters = masters
 	l.mc = master.NewMasterClient(masters, false)
 
@@ -140,7 +153,7 @@ func (l *LcNode) parseConfig(cfg *config.Config) (err error) {
 	if batchExpirationGetNum <= 0 || batchExpirationGetNum > maxBatchExpirationGetNum {
 		batchExpirationGetNum = defaultBatchExpirationGetNum
 	}
-	log.LogInfof("loadConfig: setup config: %v(%v)", configBatchExpirationGetNumStr, batchExpirationGetNum)
+	span.Infof("setup config: %v(%v)", configBatchExpirationGetNumStr, batchExpirationGetNum)
 
 	// parse scanCheckInterval
 	scis := cfg.GetString(configScanCheckIntervalStr)
@@ -152,7 +165,7 @@ func (l *LcNode) parseConfig(cfg *config.Config) (err error) {
 	if scanCheckInterval <= 0 {
 		scanCheckInterval = defaultScanCheckInterval
 	}
-	log.LogInfof("loadConfig: setup config: %v(%v)", configScanCheckIntervalStr, scanCheckInterval)
+	span.Infof("setup config: %v(%v)", configScanCheckIntervalStr, scanCheckInterval)
 
 	// parse lcScanRoutineNumPerTask
 	var routineNum int64
@@ -166,7 +179,7 @@ func (l *LcNode) parseConfig(cfg *config.Config) (err error) {
 	if lcScanRoutineNumPerTask <= 0 || lcScanRoutineNumPerTask > maxLcScanRoutineNumPerTask {
 		lcScanRoutineNumPerTask = defaultLcScanRoutineNumPerTask
 	}
-	log.LogInfof("loadConfig: setup config: %v(%v)", configLcScanRoutineNumPerTaskStr, lcScanRoutineNumPerTask)
+	span.Infof("setup config: %v(%v)", configLcScanRoutineNumPerTaskStr, lcScanRoutineNumPerTask)
 
 	// parse snapshotRoutineNumPerTask
 	routineNum = 0
@@ -181,7 +194,7 @@ func (l *LcNode) parseConfig(cfg *config.Config) (err error) {
 	if snapshotRoutineNumPerTask <= 0 || snapshotRoutineNumPerTask > maxLcScanRoutineNumPerTask {
 		snapshotRoutineNumPerTask = defaultLcScanRoutineNumPerTask
 	}
-	log.LogInfof("loadConfig: setup config: %v(%v)", configSnapshotRoutineNumPerTaskStr, snapshotRoutineNumPerTask)
+	span.Infof("setup config: %v(%v)", configSnapshotRoutineNumPerTaskStr, snapshotRoutineNumPerTask)
 
 	// parse lcScanLimitPerSecond
 	var limitNum int64
@@ -196,7 +209,7 @@ func (l *LcNode) parseConfig(cfg *config.Config) (err error) {
 	} else {
 		lcScanLimitPerSecond = rate.Limit(limitNum)
 	}
-	log.LogInfof("loadConfig: setup config: %v(%v)", configLcScanLimitPerSecondStr, lcScanLimitPerSecond)
+	span.Infof("setup config: %v(%v)", configLcScanLimitPerSecondStr, lcScanLimitPerSecond)
 
 	// parse lcNodeTaskCount
 	var count int64
@@ -211,23 +224,22 @@ func (l *LcNode) parseConfig(cfg *config.Config) (err error) {
 	} else {
 		lcNodeTaskCountLimit = int(count)
 	}
-	log.LogInfof("loadConfig: setup config: %v(%v)", configLcNodeTaskCountLimit, lcNodeTaskCountLimit)
-
+	span.Infof("setup config: %v(%v)", configLcNodeTaskCountLimit, lcNodeTaskCountLimit)
 	return
 }
 
-func (l *LcNode) register() {
+func (l *LcNode) register(ctx context.Context) {
 	var err error
 	timer := time.NewTimer(0)
 
+	span := getSpan(ctx)
 	// get the IsIPV4 address, cluster ID and node ID from the master
 	for {
 		select {
 		case <-timer.C:
 			var ci *proto.ClusterInfo
-			if ci, err = l.mc.AdminAPI().GetClusterInfo(); err != nil {
-				log.LogErrorf("action[registerToMaster] cannot get ip from master(%v) err(%v).",
-					l.mc.Leader(), err)
+			if ci, err = l.mc.AdminAPI().GetClusterInfo(ctx); err != nil {
+				span.Errorf("cannot get ip from master(%v) err(%v).", l.mc.Leader(), err)
 				timer.Reset(2 * time.Second)
 				continue
 			}
@@ -236,22 +248,20 @@ func (l *LcNode) register() {
 			localIP := ci.Ip
 			l.localServerAddr = fmt.Sprintf("%s:%v", localIP, l.listen)
 			if !util.IsIPV4(localIP) {
-				log.LogErrorf("action[registerToMaster] got an invalid local ip(%v) from master(%v).",
-					localIP, masterAddr)
+				span.Errorf("got an invalid local ip(%v) from master(%v).", localIP, masterAddr)
 				timer.Reset(2 * time.Second)
 				continue
 			}
 
 			// register this lcnode on the master
 			var nodeID uint64
-			if nodeID, err = l.mc.NodeAPI().AddLcNode(l.localServerAddr); err != nil {
-				log.LogErrorf("action[registerToMaster] cannot register this node to master[%v] err(%v).",
-					masterAddr, err)
+			if nodeID, err = l.mc.NodeAPI().AddLcNode(ctx, l.localServerAddr); err != nil {
+				span.Errorf("cannot register this node to master[%v] err(%v).", masterAddr, err)
 				timer.Reset(2 * time.Second)
 				continue
 			}
 			l.nodeID = nodeID
-			log.LogInfof("register: register LcNode: nodeID(%v)", l.nodeID)
+			span.Infof("register: register LcNode: nodeID(%v)", l.nodeID)
 			return
 		case <-l.stopC:
 			timer.Stop()
@@ -262,38 +272,40 @@ func (l *LcNode) register() {
 
 func (l *LcNode) checkRegister() {
 	for {
+		span, ctx := spanContextOperation("check")
 		if time.Since(l.lastHeartbeat) > time.Minute*10 {
-			log.LogWarnf("lcnode might be deregistered from master, stop scanners...")
+			span.Warn("lcnode might be deregistered from master, stop scanners...")
 			l.stopScanners()
-			log.LogWarnf("lcnode might be deregistered from master, retry registering...")
-			l.register()
+			span.Warn("lcnode might be deregistered from master, retry registering...")
+			l.register(ctx)
 			l.lastHeartbeat = time.Now()
 		}
 		time.Sleep(time.Minute)
 	}
 }
 
-func (l *LcNode) startServer() (err error) {
-	log.LogInfo("Start: startServer")
+func (l *LcNode) startServer(ctx context.Context) (err error) {
+	span := getSpan(ctx)
+	span.Info("start ...")
 	addr := fmt.Sprintf(":%v", l.listen)
 	listener, err := net.Listen("tcp", addr)
-	log.LogDebugf("action[startServer] listen tcp address(%v).", addr)
+	span.Debugf("listen tcp address(%v).", addr)
 	if err != nil {
-		log.LogError("failed to listen, err:", err)
+		span.Error("failed to listen, err:", err)
 		return
 	}
 	go func(stopC chan bool) {
 		defer listener.Close()
 		for {
 			conn, err := listener.Accept()
-			log.LogDebugf("action[startServer] accept connection from %s.", conn.RemoteAddr().String())
+			log.Debugf("accept connection from %s.", conn.RemoteAddr().String())
 			select {
 			case <-stopC:
 				return
 			default:
 			}
 			if err != nil {
-				log.LogErrorf("action[startServer] failed to accept, err:%s", err.Error())
+				log.Errorf("failed to accept, err:%s", err.Error())
 				continue
 			}
 			go l.serveConn(conn, stopC)
@@ -317,18 +329,22 @@ func (l *LcNode) serveConn(conn net.Conn, stopC chan bool) {
 		p := &proto.Packet{}
 		if err := p.ReadFromConn(conn, proto.NoReadDeadlineTime); err != nil {
 			if err != io.EOF {
-				log.LogErrorf("serveConn ReadFromConn err: %v", err)
+				p.Span().Errorf("serveConn ReadFromConn err: %v", err)
 			}
 			return
 		}
+		span := p.Span()
 		if err := l.handlePacket(conn, p, remoteAddr); err != nil {
-			log.LogErrorf("serveConn handlePacket err: %v", err)
+			p.Span().Errorf("serveConn handlePacket err: %v", err)
+		}
+		if tracks := span.TrackLog(); len(tracks) > 0 {
+			span.Info("tracks:", tracks)
 		}
 	}
 }
 
 func (l *LcNode) handlePacket(conn net.Conn, p *proto.Packet, remoteAddr string) (err error) {
-	log.LogInfof("HandleMetadataOperation input info op (%s), remote %s", p.String(), remoteAddr)
+	p.Span().Infof("HandleMetadataOperation input info op (%s), remote %s", p.String(), remoteAddr)
 	switch p.Opcode {
 	case proto.OpLcNodeHeartbeat:
 		err = l.opMasterHeartbeat(conn, p, remoteAddr)
@@ -337,8 +353,7 @@ func (l *LcNode) handlePacket(conn net.Conn, p *proto.Packet, remoteAddr string)
 	case proto.OpLcNodeSnapshotVerDel:
 		err = l.opSnapshotVerDel(conn, p)
 	default:
-		err = fmt.Errorf("%s unknown Opcode: %d, reqId: %d", remoteAddr,
-			p.Opcode, p.GetReqID())
+		err = fmt.Errorf("%s unknown Opcode: %d, reqId: %d", remoteAddr, p.Opcode, p.GetReqID())
 	}
 	if err != nil {
 		err = errors.NewErrorf("%s [%s] req: %d - %s", remoteAddr, p.GetOpMsg(),
@@ -351,11 +366,11 @@ func (l *LcNode) stopServer() {
 	if l.stopC != nil {
 		defer func() {
 			if r := recover(); r != nil {
-				log.LogErrorf("action[StopTcpServer],err:%v", r)
+				log.Errorf("action[StopTcpServer],err:%v", r)
 			}
 		}()
 		close(l.stopC)
-		log.LogInfo("LcNode Stop!")
+		log.Info("LcNode Stop!")
 	}
 }
 

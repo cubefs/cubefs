@@ -16,6 +16,7 @@ package metanode
 
 import (
 	"bufio"
+	"context"
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
@@ -29,7 +30,6 @@ import (
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/errors"
-	"github.com/cubefs/cubefs/util/log"
 	mmap "github.com/edsrzf/mmap-go"
 )
 
@@ -54,10 +54,9 @@ const (
 	verdataFile             = "multiVer"
 	StaleMetadataSuffix     = ".old"
 	StaleMetadataTimeFormat = "20060102150405.000000000"
-	verdataInitFile         = "multiVerInitFile"
 )
 
-func (mp *metaPartition) loadMetadata() (err error) {
+func (mp *metaPartition) loadMetadata(ctx context.Context) (err error) {
 	metaFile := path.Join(mp.config.RootDir, metadataFile)
 	fp, err := os.OpenFile(metaFile, os.O_RDONLY, 0o644)
 	if err != nil {
@@ -67,14 +66,12 @@ func (mp *metaPartition) loadMetadata() (err error) {
 	defer fp.Close()
 	data, err := io.ReadAll(fp)
 	if err != nil || len(data) == 0 {
-		err = errors.NewErrorf("[loadMetadata]: ReadFile %s, data: %s", err.Error(),
-			string(data))
+		err = errors.NewErrorf("[loadMetadata]: ReadFile %s, data: %s", err.Error(), string(data))
 		return
 	}
 	mConf := &MetaPartitionConfig{}
 	if err = json.Unmarshal(data, mConf); err != nil {
-		err = errors.NewErrorf("[loadMetadata]: Unmarshal MetaPartitionConfig %s",
-			err.Error())
+		err = errors.NewErrorf("[loadMetadata]: Unmarshal MetaPartitionConfig %s", err.Error())
 		return
 	}
 
@@ -92,16 +89,17 @@ func (mp *metaPartition) loadMetadata() (err error) {
 	mp.uidManager = NewUidMgr(mp.config.VolName, mp.config.PartitionId)
 	mp.mqMgr = NewQuotaManager(mp.config.VolName, mp.config.PartitionId)
 
-	log.LogInfof("loadMetadata: load complete: partitionID(%v) volume(%v) range(%v,%v) cursor(%v)",
+	getSpan(ctx).Infof("loadMetadata: load complete: partitionID(%v) volume(%v) range(%v,%v) cursor(%v)",
 		mp.config.PartitionId, mp.config.VolName, mp.config.Start, mp.config.End, mp.config.Cursor)
 	return
 }
 
-func (mp *metaPartition) loadInode(rootDir string, crc uint32) (err error) {
+func (mp *metaPartition) loadInode(ctx context.Context, rootDir string, crc uint32) (err error) {
+	span := getSpan(ctx)
 	var numInodes uint64
 	defer func() {
 		if err == nil {
-			log.LogInfof("loadInode: load complete: partitonID(%v) volume(%v) numInodes(%v)",
+			span.Infof("loadInode: load complete: partitonID(%v) volume(%v) numInodes(%v)",
 				mp.config.PartitionId, mp.config.VolName, numInodes)
 		}
 	}()
@@ -127,7 +125,7 @@ func (mp *metaPartition) loadInode(rootDir string, crc uint32) (err error) {
 			if err == io.EOF {
 				err = nil
 				if res := crcCheck.Sum32(); res != crc {
-					log.LogErrorf("[loadInode]: check crc mismatch, expected[%d], actual[%d]", crc, res)
+					span.Errorf("[loadInode]: check crc mismatch, expected[%d], actual[%d]", crc, res)
 					return ErrSnapshotCrcMismatch
 				}
 				return
@@ -166,7 +164,7 @@ func (mp *metaPartition) loadInode(rootDir string, crc uint32) (err error) {
 
 		mp.size += ino.Size
 
-		mp.fsmCreateInode(ino)
+		mp.fsmCreateInode(ctx, ino)
 		mp.checkAndInsertFreeList(ino)
 		if mp.config.Cursor < ino.Inode {
 			mp.config.Cursor = ino.Inode
@@ -176,11 +174,12 @@ func (mp *metaPartition) loadInode(rootDir string, crc uint32) (err error) {
 }
 
 // Load dentry from the dentry snapshot.
-func (mp *metaPartition) loadDentry(rootDir string, crc uint32) (err error) {
+func (mp *metaPartition) loadDentry(ctx context.Context, rootDir string, crc uint32) (err error) {
+	span := getSpan(ctx)
 	var numDentries uint64
 	defer func() {
 		if err == nil {
-			log.LogInfof("loadDentry: load complete: partitonID(%v) volume(%v) numDentries(%v)",
+			span.Infof("loadDentry: load complete: partitonID(%v) volume(%v) numDentries(%v)",
 				mp.config.PartitionId, mp.config.VolName, numDentries)
 		}
 	}()
@@ -207,7 +206,7 @@ func (mp *metaPartition) loadDentry(rootDir string, crc uint32) (err error) {
 			if err == io.EOF {
 				err = nil
 				if res := crcCheck.Sum32(); res != crc {
-					log.LogErrorf("[loadDentry]: check crc mismatch, expected[%d], actual[%d]", crc, res)
+					span.Errorf("[loadDentry]: check crc mismatch, expected[%d], actual[%d]", crc, res)
 					return ErrSnapshotCrcMismatch
 				}
 				return
@@ -236,7 +235,7 @@ func (mp *metaPartition) loadDentry(rootDir string, crc uint32) (err error) {
 			err = errors.NewErrorf("[loadDentry] Unmarshal: %s", err.Error())
 			return
 		}
-		if status := mp.fsmCreateDentry(dentry, true); status != proto.OpOk {
+		if status := mp.fsmCreateDentry(ctx, dentry, true); status != proto.OpOk {
 			err = errors.NewErrorf("[loadDentry] createDentry dentry: %v, resp code: %d", dentry, status)
 			return
 		}
@@ -247,7 +246,7 @@ func (mp *metaPartition) loadDentry(rootDir string, crc uint32) (err error) {
 	}
 }
 
-func (mp *metaPartition) loadExtend(rootDir string, crc uint32) (err error) {
+func (mp *metaPartition) loadExtend(ctx context.Context, rootDir string, crc uint32) (err error) {
 	filename := path.Join(rootDir, extendFile)
 	if _, err = os.Stat(filename); err != nil {
 		err = errors.NewErrorf("[loadExtend] Stat: %s", err.Error())
@@ -295,27 +294,28 @@ func (mp *metaPartition) loadExtend(rootDir string, crc uint32) (err error) {
 		if _, err = crcCheck.Write(mem[offset-n : offset]); err != nil {
 			return err
 		}
-		// log.LogDebugf("loadExtend: new extend from bytes: partitionID (%v) volume(%v) inode[%v]",
+		// log.Debugf("loadExtend: new extend from bytes: partitionID (%v) volume(%v) inode[%v]",
 		//	mp.config.PartitionId, mp.config.VolName, extend.inode)
-		_ = mp.fsmSetXAttr(extend)
+		_ = mp.fsmSetXAttr(ctx, extend)
 
 		if _, err = crcCheck.Write(mem[offset : offset+int(numBytes)]); err != nil {
 			return
 		}
 		offset += int(numBytes)
-		mp.statisticExtendByLoad(extend)
+		mp.statisticExtendByLoad(ctx, extend)
 	}
 
-	log.LogInfof("loadExtend: load complete: partitionID(%v) volume(%v) numExtends(%v) filename(%v)",
+	span := getSpan(ctx)
+	span.Infof("loadExtend: load complete: partitionID(%v) volume(%v) numExtends(%v) filename(%v)",
 		mp.config.PartitionId, mp.config.VolName, numExtends, filename)
 	if res := crcCheck.Sum32(); res != crc {
-		log.LogErrorf("loadExtend: check crc mismatch, expected[%d], actual[%d]", crc, res)
+		span.Errorf("loadExtend: check crc mismatch, expected[%d], actual[%d]", crc, res)
 		return ErrSnapshotCrcMismatch
 	}
 	return nil
 }
 
-func (mp *metaPartition) loadMultipart(rootDir string, crc uint32) (err error) {
+func (mp *metaPartition) loadMultipart(ctx context.Context, rootDir string, crc uint32) (err error) {
 	filename := path.Join(rootDir, multipartFile)
 	if _, err = os.Stat(filename); err != nil {
 		err = errors.NewErrorf("[loadMultipart] Stat: %s", err.Error())
@@ -336,10 +336,11 @@ func (mp *metaPartition) loadMultipart(rootDir string, crc uint32) (err error) {
 	defer func() {
 		_ = mem.Unmap()
 	}()
+	span := getSpan(ctx)
 	var offset, n int
 	// read number of multipart
 	var numMultiparts uint64
-	numMultiparts, n = binary.Uvarint(mem)
+	numMultiparts, _ = binary.Uvarint(mem)
 	varintTmp := make([]byte, binary.MaxVarintLen64)
 	// write number of multipart
 	n = binary.PutUvarint(varintTmp, numMultiparts)
@@ -356,25 +357,24 @@ func (mp *metaPartition) loadMultipart(rootDir string, crc uint32) (err error) {
 		if _, err = crcCheck.Write(mem[offset-n : offset]); err != nil {
 			return err
 		}
-		var multipart *Multipart
-		multipart = MultipartFromBytes(mem[offset : offset+int(numBytes)])
-		log.LogDebugf("loadMultipart: create multipart from bytes: partitionID（%v) multipartID(%v)", mp.config.PartitionId, multipart.id)
-		mp.fsmCreateMultipart(multipart)
+		multipart := MultipartFromBytes(mem[offset : offset+int(numBytes)])
+		span.Debugf("loadMultipart: create multipart from bytes: partitionID（%v) multipartID(%v)", mp.config.PartitionId, multipart.id)
+		mp.fsmCreateMultipart(ctx, multipart)
 		offset += int(numBytes)
 		if _, err = crcCheck.Write(mem[offset-int(numBytes) : offset]); err != nil {
 			return err
 		}
 	}
-	log.LogInfof("loadMultipart: load complete: partitionID(%v) numMultiparts(%v) filename(%v)",
+	span.Infof("loadMultipart: load complete: partitionID(%v) numMultiparts(%v) filename(%v)",
 		mp.config.PartitionId, numMultiparts, filename)
 	if res := crcCheck.Sum32(); res != crc {
-		log.LogErrorf("[loadMultipart] check crc mismatch, expected[%d], actual[%d]", crc, res)
+		span.Errorf("[loadMultipart] check crc mismatch, expected[%d], actual[%d]", crc, res)
 		return ErrSnapshotCrcMismatch
 	}
 	return nil
 }
 
-func (mp *metaPartition) loadApplyID(rootDir string) (err error) {
+func (mp *metaPartition) loadApplyID(ctx context.Context, rootDir string) (err error) {
 	filename := path.Join(rootDir, applyIDFile)
 	if _, err = os.Stat(filename); err != nil {
 		err = errors.NewErrorf("[loadApplyID]: Stat %s", err.Error())
@@ -406,16 +406,17 @@ func (mp *metaPartition) loadApplyID(rootDir string) (err error) {
 		atomic.StoreUint64(&mp.config.Cursor, cursor)
 	}
 
-	log.LogInfof("loadApplyID: load complete: partitionID(%v) volume(%v) applyID(%v) cursor(%v) filename(%v)",
+	getSpan(ctx).Infof("loadApplyID: load complete: partitionID(%v) volume(%v) applyID(%v) cursor(%v) filename(%v)",
 		mp.config.PartitionId, mp.config.VolName, mp.applyID, mp.config.Cursor, filename)
 	return
 }
 
-func (mp *metaPartition) loadTxRbDentry(rootDir string, crc uint32) (err error) {
+func (mp *metaPartition) loadTxRbDentry(ctx context.Context, rootDir string, crc uint32) (err error) {
+	span := getSpan(ctx)
 	var numTxRbDentry uint64
 	defer func() {
 		if err == nil {
-			log.LogInfof("loadTxRbDentry: load complete: partitonID(%v) volume(%v) numInodes(%v)",
+			span.Infof("loadTxRbDentry: load complete: partitonID(%v) volume(%v) numInodes(%v)",
 				mp.config.PartitionId, mp.config.VolName, numTxRbDentry)
 		}
 	}()
@@ -442,7 +443,7 @@ func (mp *metaPartition) loadTxRbDentry(rootDir string, crc uint32) (err error) 
 			if err == io.EOF {
 				err = nil
 				if res := crcCheck.Sum32(); res != crc {
-					log.LogErrorf("[loadTxRbDentry]: check crc mismatch, expected[%d], actual[%d]", crc, res)
+					span.Errorf("[loadTxRbDentry]: check crc mismatch, expected[%d], actual[%d]", crc, res)
 					return ErrSnapshotCrcMismatch
 				}
 				return
@@ -486,11 +487,11 @@ func (mp *metaPartition) loadTxRbDentry(rootDir string, crc uint32) (err error) 
 	}
 }
 
-func (mp *metaPartition) loadTxRbInode(rootDir string, crc uint32) (err error) {
+func (mp *metaPartition) loadTxRbInode(ctx context.Context, rootDir string, crc uint32) (err error) {
 	var numTxRbInode uint64
 	defer func() {
 		if err == nil {
-			log.LogInfof("loadTxRbInode: load complete: partitonID(%v) volume(%v) numInodes(%v)",
+			getSpan(ctx).Infof("loadTxRbInode: load complete: partitonID(%v) volume(%v) numInodes(%v)",
 				mp.config.PartitionId, mp.config.VolName, numTxRbInode)
 		}
 	}()
@@ -555,11 +556,12 @@ func (mp *metaPartition) loadTxRbInode(rootDir string, crc uint32) (err error) {
 	}
 }
 
-func (mp *metaPartition) loadTxInfo(rootDir string, crc uint32) (err error) {
+func (mp *metaPartition) loadTxInfo(ctx context.Context, rootDir string, crc uint32) (err error) {
+	span := getSpan(ctx)
 	var numTxInfos uint64
 	defer func() {
 		if err == nil {
-			log.LogInfof("loadTxInfo: load complete: partitonID(%v) volume(%v) numInodes(%v)",
+			span.Infof("loadTxInfo: load complete: partitonID(%v) volume(%v) numInodes(%v)",
 				mp.config.PartitionId, mp.config.VolName, numTxInfos)
 		}
 	}()
@@ -586,7 +588,7 @@ func (mp *metaPartition) loadTxInfo(rootDir string, crc uint32) (err error) {
 			if err == io.EOF {
 				err = nil
 				if res := crcCheck.Sum32(); res != crc {
-					log.LogErrorf("[loadTxInfo]: check crc mismatch, expected[%d], actual[%d]", crc, res)
+					span.Errorf("[loadTxInfo]: check crc mismatch, expected[%d], actual[%d]", crc, res)
 					return ErrSnapshotCrcMismatch
 				}
 				return
@@ -629,7 +631,7 @@ func (mp *metaPartition) loadTxInfo(rootDir string, crc uint32) (err error) {
 	}
 }
 
-func (mp *metaPartition) loadTxID(rootDir string) (err error) {
+func (mp *metaPartition) loadTxID(ctx context.Context, rootDir string) (err error) {
 	filename := path.Join(rootDir, TxIDFile)
 	if _, err = os.Stat(filename); err != nil {
 		err = nil
@@ -654,12 +656,12 @@ func (mp *metaPartition) loadTxID(rootDir string) (err error) {
 	if txId > mp.txProcessor.txManager.txIdAlloc.getTransactionID() {
 		mp.txProcessor.txManager.txIdAlloc.setTransactionID(txId)
 	}
-	log.LogInfof("loadTxID: load complete: partitionID(%v) volume(%v) txId(%v) filename(%v)",
+	getSpan(ctx).Infof("loadTxID: load complete: partitionID(%v) volume(%v) txId(%v) filename(%v)",
 		mp.config.PartitionId, mp.config.VolName, mp.txProcessor.txManager.txIdAlloc.getTransactionID(), filename)
 	return
 }
 
-func (mp *metaPartition) loadUniqID(rootDir string) (err error) {
+func (mp *metaPartition) loadUniqID(ctx context.Context, rootDir string) (err error) {
 	filename := path.Join(rootDir, uniqIDFile)
 	if _, err = os.Stat(filename); err != nil {
 		err = nil
@@ -684,51 +686,50 @@ func (mp *metaPartition) loadUniqID(rootDir string) (err error) {
 	if uniqId > mp.GetUniqId() {
 		atomic.StoreUint64(&mp.config.UniqId, uniqId)
 	}
-
-	log.LogInfof("loadUniqID: load complete: partitionID(%v) volume(%v) uniqID(%v) filename(%v)",
+	getSpan(ctx).Infof("loadUniqID: load complete: partitionID(%v) volume(%v) uniqID(%v) filename(%v)",
 		mp.config.PartitionId, mp.config.VolName, mp.GetUniqId(), filename)
 	return
 }
 
-func (mp *metaPartition) loadUniqChecker(rootDir string, crc uint32) (err error) {
-	log.LogInfof("loadUniqChecker partition(%v) begin", mp.config.PartitionId)
+func (mp *metaPartition) loadUniqChecker(ctx context.Context, rootDir string, crc uint32) (err error) {
+	span := getSpan(ctx)
+	span.Infof("loadUniqChecker partition(%v) begin", mp.config.PartitionId)
 	filename := path.Join(rootDir, uniqCheckerFile)
 	if _, err = os.Stat(filename); err != nil {
-		log.LogErrorf("loadUniqChecker get file %s err(%s)", filename, err)
+		span.Errorf("loadUniqChecker get file %s err(%s)", filename, err)
 		err = nil
 		return
 	}
 
 	data, err := os.ReadFile(filename)
 	if err != nil {
-		log.LogErrorf("loadUniqChecker read file %s err(%s)", filename, err)
+		span.Errorf("loadUniqChecker read file %s err(%s)", filename, err)
 		err = errors.NewErrorf("[loadUniqChecker] OpenFile: %v", err.Error())
 		return
 	}
 	if err = mp.uniqChecker.UnMarshal(data); err != nil {
-		log.LogErrorf("loadUniqChecker UnMarshal err(%s)", err)
+		span.Errorf("loadUniqChecker UnMarshal err(%s)", err)
 		err = errors.NewErrorf("[loadUniqChecker] Unmarshal: %v", err.Error())
 		return
 	}
 
 	crcCheck := crc32.NewIEEE()
 	if _, err = crcCheck.Write(data); err != nil {
-		log.LogErrorf("loadUniqChecker write to  crcCheck failed: %s", err)
+		span.Errorf("loadUniqChecker write to  crcCheck failed: %s", err)
 		return err
 	}
 	if res := crcCheck.Sum32(); res != crc {
-		log.LogErrorf("[loadUniqChecker]: check crc mismatch, expected[%d], actual[%d]", crc, res)
+		span.Errorf("[loadUniqChecker]: check crc mismatch, expected[%d], actual[%d]", crc, res)
 		return ErrSnapshotCrcMismatch
 	}
 
-	log.LogInfof("loadUniqChecker partition(%v) complete", mp.config.PartitionId)
+	span.Infof("loadUniqChecker partition(%v) complete", mp.config.PartitionId)
 	return
 }
 
-func (mp *metaPartition) loadMultiVer(rootDir string, crc uint32) (err error) {
+func (mp *metaPartition) loadMultiVer(ctx context.Context, rootDir string, crc uint32) (err error) {
 	filename := path.Join(rootDir, verdataFile)
 	if _, err = os.Stat(filename); err != nil {
-
 		err = nil
 		return
 	}
@@ -786,15 +787,14 @@ func (mp *metaPartition) loadMultiVer(rootDir string, crc uint32) (err error) {
 	mp.multiVersionList.VerList = verList
 	mp.verSeq = mp.multiVersionList.GetLastVer()
 
-	log.LogInfof("loadMultiVer: updateVerList load complete: partitionID(%v) volume(%v) applyID(%v) filename(%v) verlist (%v) crc (%v) mp Ver(%v)",
+	getSpan(ctx).Infof("loadMultiVer: updateVerList load complete: partitionID(%v) volume(%v) applyID(%v) filename(%v) verlist (%v) crc (%v) mp Ver(%v)",
 		mp.config.PartitionId, mp.config.VolName, mp.applyID, filename, mp.multiVersionList.VerList, crc, mp.verSeq)
 	return
 }
 
-func (mp *metaPartition) storeMultiVersion(rootDir string, sm *storeMsg) (crc uint32, err error) {
+func (mp *metaPartition) storeMultiVersion(ctx context.Context, rootDir string, sm *storeMsg) (crc uint32, err error) {
 	filename := path.Join(rootDir, verdataFile)
-	fp, err := os.OpenFile(filename, os.O_RDWR|os.O_APPEND|os.O_TRUNC|os.
-		O_CREATE, 0o755)
+	fp, err := os.OpenFile(filename, os.O_RDWR|os.O_APPEND|os.O_TRUNC|os.O_CREATE, 0o755)
 	if err != nil {
 		return
 	}
@@ -815,12 +815,12 @@ func (mp *metaPartition) storeMultiVersion(rootDir string, sm *storeMsg) (crc ui
 	if _, err = fp.WriteString(fmt.Sprintf("%d|%s", sm.applyIndex, string(verData))); err != nil {
 		return
 	}
-	log.LogInfof("storeMultiVersion: store complete: partitionID(%v) volume(%v) applyID(%v) verData(%v) crc(%v)",
+	getSpan(ctx).Infof("storeMultiVersion: store complete: partitionID(%v) volume(%v) applyID(%v) verData(%v) crc(%v)",
 		mp.config.PartitionId, mp.config.VolName, sm.applyIndex, string(verData), crc)
 	return
 }
 
-func (mp *metaPartition) renameStaleMetadata() (err error) {
+func (mp *metaPartition) renameStaleMetadata(ctx context.Context) (err error) {
 	if _, err = os.Stat(mp.config.RootDir); err != nil {
 		if os.IsNotExist(err) {
 			return nil
@@ -835,7 +835,7 @@ func (mp *metaPartition) renameStaleMetadata() (err error) {
 	return nil
 }
 
-func (mp *metaPartition) persistMetadata() (err error) {
+func (mp *metaPartition) persistMetadata(ctx context.Context) (err error) {
 	if err = mp.config.checkMeta(); err != nil {
 		err = errors.NewErrorf("[persistMetadata]->%s", err.Error())
 		return
@@ -865,15 +865,14 @@ func (mp *metaPartition) persistMetadata() (err error) {
 	if err = os.Rename(filename, path.Join(mp.config.RootDir, metadataFile)); err != nil {
 		return
 	}
-	log.LogInfof("persistMetata: persist complete: partitionID(%v) volume(%v) range(%v,%v) cursor(%v)",
+	getSpan(ctx).Infof("persistMetata: persist complete: partitionID(%v) volume(%v) range(%v,%v) cursor(%v)",
 		mp.config.PartitionId, mp.config.VolName, mp.config.Start, mp.config.End, mp.config.Cursor)
 	return
 }
 
-func (mp *metaPartition) storeApplyID(rootDir string, sm *storeMsg) (err error) {
+func (mp *metaPartition) storeApplyID(ctx context.Context, rootDir string, sm *storeMsg) (err error) {
 	filename := path.Join(rootDir, applyIDFile)
-	fp, err := os.OpenFile(filename, os.O_RDWR|os.O_APPEND|os.O_TRUNC|os.
-		O_CREATE, 0o755)
+	fp, err := os.OpenFile(filename, os.O_RDWR|os.O_APPEND|os.O_TRUNC|os.O_CREATE, 0o755)
 	if err != nil {
 		return
 	}
@@ -886,15 +885,14 @@ func (mp *metaPartition) storeApplyID(rootDir string, sm *storeMsg) (err error) 
 	if _, err = fp.WriteString(fmt.Sprintf("%d|%d", sm.applyIndex, cursor)); err != nil {
 		return
 	}
-	log.LogWarnf("storeApplyID: store complete: partitionID(%v) volume(%v) applyID(%v) cursor(%v)",
+	getSpan(ctx).Warnf("storeApplyID: store complete: partitionID(%v) volume(%v) applyID(%v) cursor(%v)",
 		mp.config.PartitionId, mp.config.VolName, sm.applyIndex, cursor)
 	return
 }
 
-func (mp *metaPartition) storeTxID(rootDir string, sm *storeMsg) (err error) {
+func (mp *metaPartition) storeTxID(ctx context.Context, rootDir string, sm *storeMsg) (err error) {
 	filename := path.Join(rootDir, TxIDFile)
-	fp, err := os.OpenFile(filename, os.O_RDWR|os.O_APPEND|os.O_TRUNC|os.
-		O_CREATE, 0o755)
+	fp, err := os.OpenFile(filename, os.O_RDWR|os.O_APPEND|os.O_TRUNC|os.O_CREATE, 0o755)
 	if err != nil {
 		return
 	}
@@ -905,12 +903,12 @@ func (mp *metaPartition) storeTxID(rootDir string, sm *storeMsg) (err error) {
 	if _, err = fp.WriteString(fmt.Sprintf("%d", sm.txId)); err != nil {
 		return
 	}
-	log.LogInfof("storeTxID: store complete: partitionID(%v) volume(%v) txId(%v)",
+	getSpan(ctx).Infof("storeTxID: store complete: partitionID(%v) volume(%v) txId(%v)",
 		mp.config.PartitionId, mp.config.VolName, sm.txId)
 	return
 }
 
-func (mp *metaPartition) storeTxRbDentry(rootDir string, sm *storeMsg) (crc uint32, err error) {
+func (mp *metaPartition) storeTxRbDentry(ctx context.Context, rootDir string, sm *storeMsg) (crc uint32, err error) {
 	filename := path.Join(rootDir, txRbDentryFile)
 	fp, err := os.OpenFile(filename, os.O_RDWR|os.O_TRUNC|os.O_APPEND|os.O_CREATE, 0o755)
 	if err != nil {
@@ -949,12 +947,12 @@ func (mp *metaPartition) storeTxRbDentry(rootDir string, sm *storeMsg) (crc uint
 	})
 
 	crc = sign.Sum32()
-	log.LogInfof("storeTxRbDentry: store complete: partitoinID(%v) volume(%v) numRbDentry(%v) crc(%v)",
+	getSpan(ctx).Infof("storeTxRbDentry: store complete: partitoinID(%v) volume(%v) numRbDentry(%v) crc(%v)",
 		mp.config.PartitionId, mp.config.VolName, sm.txRbDentryTree.Len(), crc)
 	return
 }
 
-func (mp *metaPartition) storeTxRbInode(rootDir string, sm *storeMsg) (crc uint32, err error) {
+func (mp *metaPartition) storeTxRbInode(ctx context.Context, rootDir string, sm *storeMsg) (crc uint32, err error) {
 	filename := path.Join(rootDir, txRbInodeFile)
 	fp, err := os.OpenFile(filename, os.O_RDWR|os.O_TRUNC|os.O_APPEND|os.O_CREATE, 0o755)
 	if err != nil {
@@ -993,12 +991,12 @@ func (mp *metaPartition) storeTxRbInode(rootDir string, sm *storeMsg) (crc uint3
 	})
 
 	crc = sign.Sum32()
-	log.LogInfof("storeTxRbInode: store complete: partitoinID(%v) volume(%v) numRbinode[%v] crc(%v)",
+	getSpan(ctx).Infof("storeTxRbInode: store complete: partitoinID(%v) volume(%v) numRbinode[%v] crc(%v)",
 		mp.config.PartitionId, mp.config.VolName, sm.txRbInodeTree.Len(), crc)
 	return
 }
 
-func (mp *metaPartition) storeTxInfo(rootDir string, sm *storeMsg) (crc uint32, err error) {
+func (mp *metaPartition) storeTxInfo(ctx context.Context, rootDir string, sm *storeMsg) (crc uint32, err error) {
 	filename := path.Join(rootDir, txInfoFile)
 	fp, err := os.OpenFile(filename, os.O_RDWR|os.O_TRUNC|os.O_APPEND|os.O_CREATE, 0o755)
 	if err != nil {
@@ -1038,16 +1036,14 @@ func (mp *metaPartition) storeTxInfo(rootDir string, sm *storeMsg) (crc uint32, 
 	})
 
 	crc = sign.Sum32()
-	log.LogInfof("storeTxInfo: store complete: partitoinID(%v) volume(%v) numTxs(%v) crc(%v)",
+	getSpan(ctx).Infof("storeTxInfo: store complete: partitoinID(%v) volume(%v) numTxs(%v) crc(%v)",
 		mp.config.PartitionId, mp.config.VolName, sm.txTree.Len(), crc)
 	return
 }
 
-func (mp *metaPartition) storeInode(rootDir string,
-	sm *storeMsg) (crc uint32, err error) {
+func (mp *metaPartition) storeInode(ctx context.Context, rootDir string, sm *storeMsg) (crc uint32, err error) {
 	filename := path.Join(rootDir, inodeFile)
-	fp, err := os.OpenFile(filename, os.O_RDWR|os.O_TRUNC|os.O_APPEND|os.
-		O_CREATE, 0o755)
+	fp, err := os.OpenFile(filename, os.O_RDWR|os.O_TRUNC|os.O_APPEND|os.O_CREATE, 0o755)
 	if err != nil {
 		return
 	}
@@ -1096,17 +1092,14 @@ func (mp *metaPartition) storeInode(rootDir string,
 	crc = sign.Sum32()
 	mp.size = size
 
-	log.LogInfof("storeInode: store complete: partitoinID(%v) volume(%v) numInodes(%v) crc(%v), size (%d)",
+	getSpan(ctx).Infof("storeInode: store complete: partitoinID(%v) volume(%v) numInodes(%v) crc(%v), size (%d)",
 		mp.config.PartitionId, mp.config.VolName, sm.inodeTree.Len(), crc, size)
-
 	return
 }
 
-func (mp *metaPartition) storeDentry(rootDir string,
-	sm *storeMsg) (crc uint32, err error) {
+func (mp *metaPartition) storeDentry(ctx context.Context, rootDir string, sm *storeMsg) (crc uint32, err error) {
 	filename := path.Join(rootDir, dentryFile)
-	fp, err := os.OpenFile(filename, os.O_RDWR|os.O_TRUNC|os.O_APPEND|os.
-		O_CREATE, 0o755)
+	fp, err := os.OpenFile(filename, os.O_RDWR|os.O_TRUNC|os.O_APPEND|os.O_CREATE, 0o755)
 	if err != nil {
 		return
 	}
@@ -1141,12 +1134,12 @@ func (mp *metaPartition) storeDentry(rootDir string,
 		return true
 	})
 	crc = sign.Sum32()
-	log.LogInfof("storeDentry: store complete: partitoinID(%v) volume(%v) numDentries(%v) crc(%v)",
+	getSpan(ctx).Infof("storeDentry: store complete: partitoinID(%v) volume(%v) numDentries(%v) crc(%v)",
 		mp.config.PartitionId, mp.config.VolName, sm.dentryTree.Len(), crc)
 	return
 }
 
-func (mp *metaPartition) storeExtend(rootDir string, sm *storeMsg) (crc uint32, err error) {
+func (mp *metaPartition) storeExtend(ctx context.Context, rootDir string, sm *storeMsg) (crc uint32, err error) {
 	extendTree := sm.extendTree
 	fp := path.Join(rootDir, extendFile)
 	var f *os.File
@@ -1154,7 +1147,8 @@ func (mp *metaPartition) storeExtend(rootDir string, sm *storeMsg) (crc uint32, 
 	if err != nil {
 		return
 	}
-	log.LogDebugf("storeExtend: store start: partitoinID(%v) volume(%v) numInodes(%v) extends(%v)",
+	span := getSpan(ctx)
+	span.Debugf("storeExtend: store start: partitoinID(%v) volume(%v) numInodes(%v) extends(%v)",
 		mp.config.PartitionId, mp.config.VolName, sm.inodeTree.Len(), sm.extendTree.Len())
 	defer func() {
 		closeErr := f.Close()
@@ -1179,7 +1173,7 @@ func (mp *metaPartition) storeExtend(rootDir string, sm *storeMsg) (crc uint32, 
 		e := i.(*Extend)
 		var raw []byte
 		if sm.quotaRebuild {
-			mp.statisticExtendByStore(e, sm.inodeTree)
+			mp.statisticExtendByStore(ctx, e, sm.inodeTree)
 		}
 		if raw, err = e.Bytes(); err != nil {
 			return false
@@ -1201,9 +1195,9 @@ func (mp *metaPartition) storeExtend(rootDir string, sm *storeMsg) (crc uint32, 
 		}
 		return true
 	})
-	log.LogInfof("storeExtend: write data ok: partitoinID(%v) volume(%v) numInodes(%v) extends(%v) quotaRebuild(%v)",
+	span.Infof("storeExtend: write data ok: partitoinID(%v) volume(%v) numInodes(%v) extends(%v) quotaRebuild(%v)",
 		mp.config.PartitionId, mp.config.VolName, sm.inodeTree.Len(), sm.extendTree.Len(), sm.quotaRebuild)
-	mp.mqMgr.statisticRebuildFin(sm.quotaRebuild)
+	mp.mqMgr.statisticRebuildFin(ctx, sm.quotaRebuild)
 	if err != nil {
 		return
 	}
@@ -1215,12 +1209,12 @@ func (mp *metaPartition) storeExtend(rootDir string, sm *storeMsg) (crc uint32, 
 		return
 	}
 	crc = crc32.Sum32()
-	log.LogInfof("storeExtend: store complete: partitoinID(%v) volume(%v) numExtends(%v) crc(%v)",
+	span.Infof("storeExtend: store complete: partitoinID(%v) volume(%v) numExtends(%v) crc(%v)",
 		mp.config.PartitionId, mp.config.VolName, extendTree.Len(), crc)
 	return
 }
 
-func (mp *metaPartition) storeMultipart(rootDir string, sm *storeMsg) (crc uint32, err error) {
+func (mp *metaPartition) storeMultipart(ctx context.Context, rootDir string, sm *storeMsg) (crc uint32, err error) {
 	multipartTree := sm.multipartTree
 	fp := path.Join(rootDir, multipartFile)
 	var f *os.File
@@ -1280,15 +1274,14 @@ func (mp *metaPartition) storeMultipart(rootDir string, sm *storeMsg) (crc uint3
 		return
 	}
 	crc = crc32.Sum32()
-	log.LogInfof("storeMultipart: store complete: partitoinID(%v) volume(%v) numMultiparts(%v) crc(%v)",
+	getSpan(ctx).Infof("storeMultipart: store complete: partitoinID(%v) volume(%v) numMultiparts(%v) crc(%v)",
 		mp.config.PartitionId, mp.config.VolName, multipartTree.Len(), crc)
 	return
 }
 
-func (mp *metaPartition) storeUniqID(rootDir string, sm *storeMsg) (err error) {
+func (mp *metaPartition) storeUniqID(ctx context.Context, rootDir string, sm *storeMsg) (err error) {
 	filename := path.Join(rootDir, uniqIDFile)
-	fp, err := os.OpenFile(filename, os.O_RDWR|os.O_APPEND|os.O_TRUNC|os.
-		O_CREATE, 0o755)
+	fp, err := os.OpenFile(filename, os.O_RDWR|os.O_APPEND|os.O_TRUNC|os.O_CREATE, 0o755)
 	if err != nil {
 		return
 	}
@@ -1299,15 +1292,14 @@ func (mp *metaPartition) storeUniqID(rootDir string, sm *storeMsg) (err error) {
 	if _, err = fp.WriteString(fmt.Sprintf("%d", sm.uniqId)); err != nil {
 		return
 	}
-	log.LogInfof("storeUniqID: store complete: partitionID(%v) volume(%v) uniqID(%v)",
+	getSpan(ctx).Infof("storeUniqID: store complete: partitionID(%v) volume(%v) uniqID(%v)",
 		mp.config.PartitionId, mp.config.VolName, sm.uniqId)
 	return
 }
 
-func (mp *metaPartition) storeUniqChecker(rootDir string, sm *storeMsg) (crc uint32, err error) {
+func (mp *metaPartition) storeUniqChecker(ctx context.Context, rootDir string, sm *storeMsg) (crc uint32, err error) {
 	filename := path.Join(rootDir, uniqCheckerFile)
-	fp, err := os.OpenFile(filename, os.O_RDWR|os.O_TRUNC|os.O_APPEND|os.
-		O_CREATE, 0o755)
+	fp, err := os.OpenFile(filename, os.O_RDWR|os.O_TRUNC|os.O_APPEND|os.O_CREATE, 0o755)
 	if err != nil {
 		return
 	}
@@ -1325,7 +1317,7 @@ func (mp *metaPartition) storeUniqChecker(rootDir string, sm *storeMsg) (crc uin
 		return
 	}
 
-	log.LogInfof("storeUniqChecker: store complete: PartitionID(%v) volume(%v) crc(%v)",
+	getSpan(ctx).Infof("storeUniqChecker: store complete: PartitionID(%v) volume(%v) crc(%v)",
 		mp.config.UniqId, mp.config.VolName, crc)
 	return
 }

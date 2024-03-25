@@ -40,24 +40,18 @@ func getDelExtFileIdx(name string) int64 {
 	return idx
 }
 
-func sortDelExtFileInfo(files []os.FileInfo) []os.FileInfo {
+func sortDelExtFileInfo(entries []os.DirEntry) []os.FileInfo {
 	newFiles := make([]os.FileInfo, 0)
-
-	for _, info := range files {
-		if info.IsDir() {
+	for _, entry := range entries {
+		if entry.IsDir() {
 			continue
 		}
-
-		if strings.HasPrefix(info.Name(), prefixDelExtent) {
-			newFiles = append(newFiles, info)
+		if strings.HasPrefix(entry.Name(), prefixDelExtent) {
+			if info, err := entry.Info(); err == nil {
+				newFiles = append(newFiles, info)
+			}
 		}
 	}
-
-	if len(newFiles) <= 1 {
-		return newFiles
-	}
-
 	sort.Sort(DelExtFile(newFiles))
-
 	return newFiles
 }

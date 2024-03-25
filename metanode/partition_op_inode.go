@@ -23,7 +23,6 @@ import (
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/auditlog"
 	"github.com/cubefs/cubefs/util/errors"
-	"github.com/cubefs/cubefs/util/log"
 )
 
 func replyInfoNoCheck(info *proto.InodeInfo, ino *Inode) bool {
@@ -117,7 +116,7 @@ func (mp *metaPartition) CreateInode(req *CreateInoReq, p *Packet, remoteAddr st
 	}
 	inoID, err = mp.nextInodeID()
 	if err != nil {
-		p.PacketErrorWithBody(proto.OpInodeFullErr, []byte(err.Error()))
+		p.PacketErrorWithError(proto.OpInodeFullErr, err)
 		return
 	}
 	ino := NewInode(inoID, req.Mode)
@@ -128,12 +127,12 @@ func (mp *metaPartition) CreateInode(req *CreateInoReq, p *Packet, remoteAddr st
 
 	val, err := ino.Marshal()
 	if err != nil {
-		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+		p.PacketErrorOpErr(err)
 		return err
 	}
-	resp, err = mp.submit(opFSMCreateInode, val)
+	resp, err = mp.submit(p.Context(), opFSMCreateInode, val)
 	if err != nil {
-		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
+		p.PacketErrorOpAgain(err)
 		return err
 	}
 
@@ -141,17 +140,18 @@ func (mp *metaPartition) CreateInode(req *CreateInoReq, p *Packet, remoteAddr st
 		resp := &CreateInoResp{
 			Info: &proto.InodeInfo{},
 		}
-		if replyInfo(resp.Info, ino, make(map[uint32]*proto.MetaQuotaInfo, 0)) {
+		if replyInfo(resp.Info, ino, make(map[uint32]*proto.MetaQuotaInfo)) {
 			status = proto.OpOk
 			reply, err = json.Marshal(resp)
 			if err != nil {
+				// TODO ???: create success?
 				status = proto.OpErr
 				reply = []byte(err.Error())
 			}
 		}
 	}
 	p.PacketErrorWithBody(status, reply)
-	log.LogInfof("CreateInode req [%v] qinode[%v] success.", req, qinode)
+	p.Span().Infof("CreateInode req [%v] qinode[%v] success.", req, qinode)
 	return
 }
 
@@ -179,8 +179,9 @@ func (mp *metaPartition) QuotaCreateInode(req *proto.QuotaCreateInodeRequest, p 
 	ino.Gid = req.Gid
 	ino.LinkTarget = req.Target
 
+	ctx := p.Context()
 	for _, quotaId := range req.QuotaIds {
-		status = mp.mqMgr.IsOverQuota(false, true, quotaId)
+		status = mp.mqMgr.IsOverQuota(ctx, false, true, quotaId)
 		if status != 0 {
 			err = errors.New("create inode is over quota")
 			reply = []byte(err.Error())
@@ -192,14 +193,14 @@ func (mp *metaPartition) QuotaCreateInode(req *proto.QuotaCreateInodeRequest, p 
 		inode:    ino,
 		quotaIds: req.QuotaIds,
 	}
-	val, err := qinode.Marshal()
+	val, err := qinode.Marshal(ctx)
 	if err != nil {
-		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+		p.PacketErrorOpErr(err)
 		return err
 	}
-	resp, err = mp.submit(opFSMCreateInodeQuota, val)
+	resp, err = mp.submit(ctx, opFSMCreateInodeQuota, val)
 	if err != nil {
-		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
+		p.PacketErrorOpAgain(err)
 		return err
 	}
 
@@ -217,13 +218,14 @@ func (mp *metaPartition) QuotaCreateInode(req *proto.QuotaCreateInodeRequest, p 
 			status = proto.OpOk
 			reply, err = json.Marshal(resp)
 			if err != nil {
+				// TODO ???: create success?
 				status = proto.OpErr
 				reply = []byte(err.Error())
 			}
 		}
 	}
 	p.PacketErrorWithBody(status, reply)
-	log.LogInfof("QuotaCreateInode req [%v] qinode[%v] success.", req, qinode)
+	p.Span().Infof("QuotaCreateInode req [%v] qinode[%v] success.", req, qinode)
 	return
 }
 
@@ -244,7 +246,7 @@ func (mp *metaPartition) TxUnlinkInode(req *proto.TxUnlinkInodeRequest, p *Packe
 				Info: &proto.InodeInfo{},
 			}
 			if respIno != nil {
-				replyInfo(resp.Info, respIno, make(map[uint32]*proto.MetaQuotaInfo, 0))
+				replyInfo(resp.Info, respIno, make(map[uint32]*proto.MetaQuotaInfo))
 				if reply, err = json.Marshal(resp); err != nil {
 					status = proto.OpErr
 					reply = []byte(err.Error())
@@ -255,7 +257,7 @@ func (mp *metaPartition) TxUnlinkInode(req *proto.TxUnlinkInodeRequest, p *Packe
 	}()
 
 	ino := NewInode(req.Inode, 0)
-	inoResp := mp.getInode(ino, true)
+	inoResp := mp.getInode(p.Context(), ino, true)
 	if inoResp.Status != proto.OpOk {
 		if rbIno := mp.txInodeInRb(req.Inode, req.TxInfo.TxID); rbIno != nil {
 			respIno = rbIno.inode
@@ -267,7 +269,7 @@ func (mp *metaPartition) TxUnlinkInode(req *proto.TxUnlinkInodeRequest, p *Packe
 			}
 
 			p.ResultCode = status
-			log.LogWarnf("TxUnlinkInode: inode is already unlink before, req %v, rbino[%v], item %v", req, respIno, item)
+			p.Span().Warnf("inode is already unlink before, req %v, rbino[%v], item %v", req, respIno, item)
 			return nil
 		}
 
@@ -281,7 +283,8 @@ func (mp *metaPartition) TxUnlinkInode(req *proto.TxUnlinkInodeRequest, p *Packe
 	deleteLockTime := mp.vol.volDeleteLockTime * 60 * 60
 	if deleteLockTime > 0 && createTime+deleteLockTime > time.Now().Unix() {
 		err = fmt.Errorf("the current Inode[%v] is still locked for deletion", req.Inode)
-		log.LogDebugf("TxUnlinkInode: the current Inode is still locked for deletion, inode[%v] createTime(%v) mw.volDeleteLockTime(%v) now(%v)", respIno.Inode, createTime, deleteLockTime, time.Now())
+		p.Span().Debugf("the current Inode is still locked for deletion, inode[%v] createTime(%v) mw.volDeleteLockTime(%v) now(%v)",
+			respIno.Inode, createTime, deleteLockTime, time.Now())
 		p.PacketErrorWithBody(proto.OpNotPerm, []byte(err.Error()))
 		return
 	}
@@ -297,7 +300,7 @@ func (mp *metaPartition) TxUnlinkInode(req *proto.TxUnlinkInodeRequest, p *Packe
 		return
 	}
 
-	r, err := mp.submit(opFSMTxUnlinkInode, val)
+	r, err := mp.submit(p.Context(), opFSMTxUnlinkInode, val)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return
@@ -321,6 +324,7 @@ func (mp *metaPartition) UnlinkInode(req *UnlinkInoReq, p *Packet, remoteAddr st
 		val   []byte
 	)
 	start := time.Now()
+	span := p.Span()
 	if mp.IsEnableAuditLog() {
 		defer func() {
 			auditlog.LogInodeOp(remoteAddr, mp.GetVolName(), p.GetOpMsg(), req.GetFullPath(), err, time.Since(start).Milliseconds(), req.Inode, 0)
@@ -332,7 +336,7 @@ func (mp *metaPartition) UnlinkInode(req *UnlinkInoReq, p *Packet, remoteAddr st
 			resp := &UnlinkInoResp{
 				Info: &proto.InodeInfo{},
 			}
-			replyInfo(resp.Info, msg.Msg, make(map[uint32]*proto.MetaQuotaInfo, 0))
+			replyInfo(resp.Info, msg.Msg, make(map[uint32]*proto.MetaQuotaInfo))
 			if reply, err = json.Marshal(resp); err != nil {
 				status = proto.OpErr
 				reply = []byte(err.Error())
@@ -343,24 +347,24 @@ func (mp *metaPartition) UnlinkInode(req *UnlinkInoReq, p *Packet, remoteAddr st
 	ino := NewInode(req.Inode, 0)
 	if item := mp.inodeTree.Get(ino); item == nil {
 		err = fmt.Errorf("mp[%v] inode[%v] reqeust cann't found", mp.config.PartitionId, ino)
-		log.LogErrorf("action[UnlinkInode] %v", err)
+		span.Error(err)
 		p.PacketErrorWithBody(proto.OpNotExistErr, []byte(err.Error()))
 		return
 	}
 
 	if req.UniqID > 0 {
 		val = InodeOnceUnlinkMarshal(req)
-		r, err = mp.submit(opFSMUnlinkInodeOnce, val)
+		r, err = mp.submit(p.Context(), opFSMUnlinkInodeOnce, val)
 	} else {
 		ino.setVer(req.VerSeq)
-		log.LogDebugf("action[UnlinkInode] mp[%v] verseq [%v] ino[%v]", mp.config.PartitionId, req.VerSeq, ino)
+		span.Debugf("mp[%v] verseq [%v] ino[%v]", mp.config.PartitionId, req.VerSeq, ino)
 		val, err = ino.Marshal()
 		if err != nil {
 			p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 			return
 		}
-		log.LogDebugf("action[UnlinkInode] mp[%v] ino[%v] submit", mp.config.PartitionId, ino)
-		r, err = mp.submit(opFSMUnlinkInode, val)
+		span.Debugf("mp[%v] ino[%v] submit", mp.config.PartitionId, ino)
+		r, err = mp.submit(p.Context(), opFSMUnlinkInode, val)
 	}
 
 	if err != nil {
@@ -370,7 +374,6 @@ func (mp *metaPartition) UnlinkInode(req *UnlinkInoReq, p *Packet, remoteAddr st
 
 	msg = r.(*InodeResponse)
 	makeRspFunc()
-
 	return
 }
 
@@ -401,7 +404,7 @@ func (mp *metaPartition) UnlinkInodeBatch(req *BatchUnlinkInoReq, p *Packet, rem
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return
 	}
-	r, err := mp.submit(opFSMUnlinkInodeBatch, val)
+	r, err := mp.submit(p.Context(), opFSMUnlinkInodeBatch, val)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return
@@ -415,7 +418,7 @@ func (mp *metaPartition) UnlinkInodeBatch(req *BatchUnlinkInoReq, p *Packet, rem
 		}
 
 		info := &proto.InodeInfo{}
-		replyInfo(info, ir.Msg, make(map[uint32]*proto.MetaQuotaInfo, 0))
+		replyInfo(info, ir.Msg, make(map[uint32]*proto.MetaQuotaInfo))
 		result.Items = append(result.Items, &struct {
 			Info   *proto.InodeInfo `json:"info"`
 			Status uint8            `json:"status"`
@@ -440,9 +443,10 @@ func (mp *metaPartition) InodeGetSplitEk(req *InodeGetSplitReq, p *Packet) (err 
 	ino.setVer(req.VerSeq)
 
 	getAllVerInfo := req.VerAll
-	retMsg := mp.getInode(ino, getAllVerInfo)
+	retMsg := mp.getInode(p.Context(), ino, getAllVerInfo)
 
-	log.LogDebugf("action[InodeGetSplitEk] %v seq [%v] retMsg.status [%v], getAllVerInfo %v",
+	span := p.Span()
+	span.Debugf("action[InodeGetSplitEk] %v seq [%v] retMsg.status [%v], getAllVerInfo %v",
 		ino.Inode, req.VerSeq, retMsg.Status, getAllVerInfo)
 
 	ino = retMsg.Msg
@@ -469,20 +473,20 @@ func (mp *metaPartition) InodeGetSplitEk(req *InodeGetSplitReq, p *Packet) (err 
 				return true
 			})
 		}
-		log.LogDebugf("action[InodeGetSplitEk] %v seq [%v] retMsg.status [%v], getAllVerInfo %v",
+		span.Debugf("action[InodeGetSplitEk] %v seq [%v] retMsg.status [%v], getAllVerInfo %v",
 			ino.Inode, req.VerSeq, retMsg.Status, getAllVerInfo)
 		status = proto.OpOk
 		reply, err = json.Marshal(resp)
 		if err != nil {
-			log.LogDebugf("action[InodeGetSplitEk] %v seq [%v] retMsg.status [%v], getAllVerInfo %v",
+			span.Debugf("action[InodeGetSplitEk] %v seq [%v] retMsg.status [%v], getAllVerInfo %v",
 				ino.Inode, req.VerSeq, retMsg.Status, getAllVerInfo)
 			status = proto.OpErr
 			reply = []byte(err.Error())
 		}
-		log.LogDebugf("action[InodeGetSplitEk] %v seq [%v] retMsg.status [%v], getAllVerInfo %v",
+		span.Debugf("action[InodeGetSplitEk] %v seq [%v] retMsg.status [%v], getAllVerInfo %v",
 			ino.Inode, req.VerSeq, retMsg.Status, getAllVerInfo)
 	}
-	log.LogDebugf("action[InodeGetSplitEk] %v seq [%v] retMsg.status [%v], getAllVerInfo %v",
+	span.Debugf("action[InodeGetSplitEk] %v seq [%v] retMsg.status [%v], getAllVerInfo %v",
 		ino.Inode, req.VerSeq, retMsg.Status, getAllVerInfo)
 	p.PacketErrorWithBody(status, reply)
 	return
@@ -493,12 +497,11 @@ func (mp *metaPartition) InodeGet(req *InodeGetReq, p *Packet) (err error) {
 	ino := NewInode(req.Inode, 0)
 	ino.setVer(req.VerSeq)
 	getAllVerInfo := req.VerAll
-	retMsg := mp.getInode(ino, getAllVerInfo)
+	retMsg := mp.getInode(p.Context(), ino, getAllVerInfo)
 
-	log.LogDebugf("action[Inode] %v seq [%v] retMsg.status [%v], getAllVerInfo %v",
+	span := p.Span()
+	span.Debugf("action[Inode] %v seq [%v] retMsg.status [%v], getAllVerInfo %v",
 		ino.Inode, req.VerSeq, retMsg.Status, getAllVerInfo)
-
-	ino = retMsg.Msg
 
 	var (
 		reply      []byte
@@ -506,7 +509,7 @@ func (mp *metaPartition) InodeGet(req *InodeGetReq, p *Packet) (err error) {
 		quotaInfos map[uint32]*proto.MetaQuotaInfo
 	)
 	if mp.mqMgr.EnableQuota() {
-		quotaInfos, err = mp.getInodeQuotaInfos(req.Inode)
+		quotaInfos, err = mp.getInodeQuotaInfos(p.Context(), req.Inode)
 		if err != nil {
 			status = proto.OpErr
 			reply = []byte(err.Error())
@@ -533,7 +536,7 @@ func (mp *metaPartition) InodeGet(req *InodeGetReq, p *Packet) (err error) {
 		status = proto.OpOk
 		if getAllVerInfo {
 			inode := mp.getInodeTopLayer(ino)
-			log.LogDebugf("req ino[%v], toplayer ino[%v]", retMsg.Msg, inode)
+			span.Debugf("req ino[%v], toplayer ino[%v]", retMsg.Msg, inode)
 			resp.LayAll = inode.Msg.getAllInodesInfo()
 		}
 		reply, err = json.Marshal(resp)
@@ -551,13 +554,14 @@ func (mp *metaPartition) InodeGet(req *InodeGetReq, p *Packet) (err error) {
 func (mp *metaPartition) InodeGetBatch(req *InodeGetReqBatch, p *Packet) (err error) {
 	resp := &proto.BatchInodeGetResponse{}
 	ino := NewInode(0, 0)
+	ctx := p.Context()
 	for _, inoId := range req.Inodes {
 		var quotaInfos map[uint32]*proto.MetaQuotaInfo
 		ino.Inode = inoId
 		ino.setVer(req.VerSeq)
-		retMsg := mp.getInode(ino, false)
+		retMsg := mp.getInode(ctx, ino, false)
 		if mp.mqMgr.EnableQuota() {
-			quotaInfos, err = mp.getInodeQuotaInfos(inoId)
+			quotaInfos, err = mp.getInodeQuotaInfos(ctx, inoId)
 			if err != nil {
 				p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 				return
@@ -588,7 +592,7 @@ func (mp *metaPartition) TxCreateInodeLink(req *proto.TxLinkInodeRequest, p *Pac
 	}
 	txInfo := req.TxInfo.GetCopy()
 	ino := NewInode(req.Inode, 0)
-	inoResp := mp.getInode(ino, true)
+	inoResp := mp.getInode(p.Context(), ino, true)
 	if inoResp.Status != proto.OpOk {
 		err = fmt.Errorf("ino[%v] not exists", ino.Inode)
 		p.PacketErrorWithBody(inoResp.Status, []byte(err.Error()))
@@ -602,13 +606,13 @@ func (mp *metaPartition) TxCreateInodeLink(req *proto.TxLinkInodeRequest, p *Pac
 
 	val, err := ti.Marshal()
 	if err != nil {
-		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+		p.PacketErrorOpErr(err)
 		return
 	}
 
-	resp, err := mp.submit(opFSMTxCreateLinkInode, val)
+	resp, err := mp.submit(p.Context(), opFSMTxCreateLinkInode, val)
 	if err != nil {
-		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
+		p.PacketErrorOpAgain(err)
 		return
 	}
 
@@ -619,7 +623,7 @@ func (mp *metaPartition) TxCreateInodeLink(req *proto.TxLinkInodeRequest, p *Pac
 		resp := &proto.TxLinkInodeResponse{
 			Info: &proto.InodeInfo{},
 		}
-		if replyInfo(resp.Info, retMsg.Msg, make(map[uint32]*proto.MetaQuotaInfo, 0)) {
+		if replyInfo(resp.Info, retMsg.Msg, make(map[uint32]*proto.MetaQuotaInfo)) {
 			status = proto.OpOk
 			reply, err = json.Marshal(resp)
 			if err != nil {
@@ -644,23 +648,22 @@ func (mp *metaPartition) CreateInodeLink(req *LinkInodeReq, p *Packet, remoteAdd
 	var val []byte
 	if req.UniqID > 0 {
 		val = InodeOnceLinkMarshal(req)
-		r, err = mp.submit(opFSMCreateLinkInodeOnce, val)
+		r, err = mp.submit(p.Context(), opFSMCreateLinkInodeOnce, val)
 	} else {
 		ino := NewInode(req.Inode, 0)
 		ino.setVer(mp.verSeq)
 		val, err = ino.Marshal()
 		if err != nil {
-			p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+			p.PacketErrorOpErr(err)
 			return
 		}
-		r, err = mp.submit(opFSMCreateLinkInode, val)
-
+		r, err = mp.submit(p.Context(), opFSMCreateLinkInode, val)
 	}
-
 	if err != nil {
-		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
+		p.PacketErrorOpAgain(err)
 		return
 	}
+
 	retMsg := r.(*InodeResponse)
 	status := proto.OpNotExistErr
 	var reply []byte
@@ -668,7 +671,7 @@ func (mp *metaPartition) CreateInodeLink(req *LinkInodeReq, p *Packet, remoteAdd
 		resp := &LinkInodeResp{
 			Info: &proto.InodeInfo{},
 		}
-		if replyInfo(resp.Info, retMsg.Msg, make(map[uint32]*proto.MetaQuotaInfo, 0)) {
+		if replyInfo(resp.Info, retMsg.Msg, make(map[uint32]*proto.MetaQuotaInfo)) {
 			status = proto.OpOk
 			reply, err = json.Marshal(resp)
 			if err != nil {
@@ -676,7 +679,6 @@ func (mp *metaPartition) CreateInodeLink(req *LinkInodeReq, p *Packet, remoteAdd
 				reply = []byte(err.Error())
 			}
 		}
-
 	}
 	p.PacketErrorWithBody(status, reply)
 	return
@@ -696,7 +698,7 @@ func (mp *metaPartition) EvictInode(req *EvictInodeReq, p *Packet, remoteAddr st
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return
 	}
-	resp, err := mp.submit(opFSMEvictInode, val)
+	resp, err := mp.submit(p.Context(), opFSMEvictInode, val)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return
@@ -734,7 +736,7 @@ func (mp *metaPartition) EvictInodeBatch(req *BatchEvictInodeReq, p *Packet, rem
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return
 	}
-	resp, err := mp.submit(opFSMEvictInodeBatch, val)
+	resp, err := mp.submit(p.Context(), opFSMEvictInodeBatch, val)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return
@@ -757,16 +759,16 @@ func (mp *metaPartition) SetAttr(req *SetattrRequest, reqData []byte, p *Packet)
 		req.VerSeq = mp.GetVerSeq()
 		reqData, err = json.Marshal(req)
 		if err != nil {
-			log.LogErrorf("setattr: marshal err(%v)", err)
+			p.Span().Errorf("setattr: marshal err(%v)", err)
 			return
 		}
 	}
-	_, err = mp.submit(opFSMSetAttr, reqData)
+	_, err = mp.submit(p.Context(), opFSMSetAttr, reqData)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return
 	}
-	log.LogDebugf("action[SetAttr] inode[%v] ver [%v] exit", req.Inode, req.VerSeq)
+	p.Span().Debugf("inode[%v] ver [%v] exit", req.Inode, req.VerSeq)
 	p.PacketOkReply()
 	return
 }
@@ -793,7 +795,7 @@ func (mp *metaPartition) DeleteInode(req *proto.DeleteInodeRequest, p *Packet, r
 	}
 	bytes := make([]byte, 8)
 	binary.BigEndian.PutUint64(bytes, req.Inode)
-	_, err = mp.submit(opFSMInternalDeleteInode, bytes)
+	_, err = mp.submit(p.Context(), opFSMInternalDeleteInode, bytes)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return
@@ -828,7 +830,7 @@ func (mp *metaPartition) DeleteInodeBatch(req *proto.DeleteInodeBatchRequest, p 
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return
 	}
-	_, err = mp.submit(opFSMInternalDeleteInodeBatch, encoded)
+	_, err = mp.submit(p.Context(), opFSMInternalDeleteInodeBatch, encoded)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return
@@ -851,7 +853,7 @@ func (mp *metaPartition) ClearInodeCache(req *proto.ClearInodeCacheRequest, p *P
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return
 	}
-	resp, err := mp.submit(opFSMClearInodeCache, val)
+	resp, err := mp.submit(p.Context(), opFSMClearInodeCache, val)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return
@@ -891,11 +893,13 @@ func (mp *metaPartition) TxCreateInode(req *proto.TxCreateInodeRequest, p *Packe
 		return
 	}
 
+	ctx := p.Context()
+	span := p.Span()
 	createResp := &proto.TxCreateResponse{}
 	err = json.Unmarshal(p.Data, createResp)
 	if err != nil || createResp.TxInfo == nil {
 		err = fmt.Errorf("TxCreateInode: unmarshal txInfo failed, data %s, err %v", string(p.Data), err)
-		log.LogWarn(err)
+		span.Warn(err)
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return
 	}
@@ -905,13 +909,11 @@ func (mp *metaPartition) TxCreateInode(req *proto.TxCreateInodeRequest, p *Packe
 	txIno.Inode.Gid = req.Gid
 	txIno.Inode.LinkTarget = req.Target
 
-	if log.EnableDebug() {
-		log.LogDebugf("NewTxInode: TxInode: %v", txIno)
-	}
+	span.Debug("NewTxInode: TxInode:", txIno)
 
 	if defaultQuotaSwitch {
 		for _, quotaId := range req.QuotaIds {
-			status = mp.mqMgr.IsOverQuota(false, true, quotaId)
+			status = mp.mqMgr.IsOverQuota(ctx, false, true, quotaId)
 			if status != 0 {
 				err = errors.New("tx create inode is over quota")
 				reply = []byte(err.Error())
@@ -924,12 +926,12 @@ func (mp *metaPartition) TxCreateInode(req *proto.TxCreateInodeRequest, p *Packe
 			txinode:  txIno,
 			quotaIds: req.QuotaIds,
 		}
-		val, err := qinode.Marshal()
+		val, err := qinode.Marshal(ctx)
 		if err != nil {
 			p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 			return err
 		}
-		resp, err = mp.submit(opFSMTxCreateInodeQuota, val)
+		resp, err = mp.submit(ctx, opFSMTxCreateInodeQuota, val)
 		if err != nil {
 			p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 			return err
@@ -940,7 +942,7 @@ func (mp *metaPartition) TxCreateInode(req *proto.TxCreateInodeRequest, p *Packe
 			p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 			return err
 		}
-		resp, err = mp.submit(opFSMTxCreateInode, val)
+		resp, err = mp.submit(ctx, opFSMTxCreateInode, val)
 		if err != nil {
 			p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 			return err

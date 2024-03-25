@@ -67,13 +67,12 @@ func newDataPartitionGetCmd(client *master.MasterClient) *cobra.Command {
 				partitionID uint64
 				partition   *proto.DataPartitionInfo
 			)
-			defer func() {
-				errout(err)
-			}()
+			span, ctx := spanContext()
+			defer func() { errout(span, err) }()
 			if partitionID, err = strconv.ParseUint(args[0], 10, 64); err != nil {
 				return
 			}
-			if partition, err = client.AdminAPI().GetDataPartition("", partitionID); err != nil {
+			if partition, err = client.AdminAPI().GetDataPartition(ctx, "", partitionID); err != nil {
 				return
 			}
 			stdoutf("%v", formatDataPartitionInfo(partition))
@@ -101,17 +100,16 @@ The "reset" command will be released in next version`,
 				dataNodes []*proto.DataNodeInfo
 				err       error
 			)
-			defer func() {
-				errout(err)
-			}()
-			if diagnosis, err = client.AdminAPI().DiagnoseDataPartition(ignoreDiscardDp); err != nil {
+			span, ctx := spanContext()
+			defer func() { errout(span, err) }()
+			if diagnosis, err = client.AdminAPI().DiagnoseDataPartition(ctx, ignoreDiscardDp); err != nil {
 				return
 			}
 			stdoutln("[Inactive Data nodes]:")
 			stdoutlnf("%v", formatDataNodeDetailTableHeader())
 			for _, addr := range diagnosis.InactiveDataNodes {
 				var node *proto.DataNodeInfo
-				if node, err = client.NodeAPI().GetDataNode(addr); err != nil {
+				if node, err = client.NodeAPI().GetDataNode(ctx, addr); err != nil {
 					return
 				}
 				dataNodes = append(dataNodes, node)
@@ -130,7 +128,7 @@ The "reset" command will be released in next version`,
 			})
 			for _, pid := range diagnosis.CorruptDataPartitionIDs {
 				var partition *proto.DataPartitionInfo
-				if partition, err = client.AdminAPI().GetDataPartition("", pid); err != nil {
+				if partition, err = client.AdminAPI().GetDataPartition(ctx, "", pid); err != nil {
 					err = fmt.Errorf("Partition not found, err:[%v] ", err)
 					return
 				}
@@ -145,7 +143,7 @@ The "reset" command will be released in next version`,
 			})
 			for _, pid := range diagnosis.LackReplicaDataPartitionIDs {
 				var partition *proto.DataPartitionInfo
-				if partition, err = client.AdminAPI().GetDataPartition("", pid); err != nil {
+				if partition, err = client.AdminAPI().GetDataPartition(ctx, "", pid); err != nil {
 					err = fmt.Errorf("Partition not found, err:[%v] ", err)
 					return
 				}
@@ -177,7 +175,7 @@ The "reset" command will be released in next version`,
 
 			for _, dpId := range diagnosis.BadReplicaDataPartitionIDs {
 				var partition *proto.DataPartitionInfo
-				if partition, err = client.AdminAPI().GetDataPartition("", dpId); err != nil {
+				if partition, err = client.AdminAPI().GetDataPartition(ctx, "", dpId); err != nil {
 					err = fmt.Errorf("Partition not found, err:[%v] ", err)
 					return
 				}
@@ -195,7 +193,7 @@ The "reset" command will be released in next version`,
 				})
 				for _, dpId := range diagnosis.RepFileCountDifferDpIDs {
 					var partition *proto.DataPartitionInfo
-					if partition, err = client.AdminAPI().GetDataPartition("", dpId); err != nil {
+					if partition, err = client.AdminAPI().GetDataPartition(ctx, "", dpId); err != nil {
 						err = fmt.Errorf("Partition not found, err:[%v] ", err)
 						return
 					}
@@ -212,7 +210,7 @@ The "reset" command will be released in next version`,
 				})
 				for _, dpId := range diagnosis.RepUsedSizeDifferDpIDs {
 					var partition *proto.DataPartitionInfo
-					if partition, err = client.AdminAPI().GetDataPartition("", dpId); err != nil {
+					if partition, err = client.AdminAPI().GetDataPartition(ctx, "", dpId); err != nil {
 						err = fmt.Errorf("Partition not found, err:[%v] ", err)
 						return
 					}
@@ -238,7 +236,7 @@ The "reset" command will be released in next version`,
 			})
 			for _, pid := range diagnosis.ExcessReplicaDpIDs {
 				var partition *proto.DataPartitionInfo
-				if partition, err = client.AdminAPI().GetDataPartition("", pid); err != nil {
+				if partition, err = client.AdminAPI().GetDataPartition(ctx, "", pid); err != nil {
 					err = fmt.Errorf("Partition not found, err:[%v] ", err)
 					return
 				}
@@ -257,6 +255,7 @@ The "reset" command will be released in next version`,
 func newDataPartitionDecommissionCmd(client *master.MasterClient) *cobra.Command {
 	var raftForceDel bool
 	var clientIDKey string
+	span, ctx := spanContext()
 	cmd := &cobra.Command{
 		Use:   CliOpDecommission + " [ADDRESS] [DATA PARTITION ID]",
 		Short: cmdDataPartitionDecommissionShort,
@@ -266,15 +265,13 @@ func newDataPartitionDecommissionCmd(client *master.MasterClient) *cobra.Command
 				err         error
 				partitionID uint64
 			)
-			defer func() {
-				errout(err)
-			}()
+			defer func() { errout(span, err) }()
 			address := args[0]
 			partitionID, err = strconv.ParseUint(args[1], 10, 64)
 			if err != nil {
 				return
 			}
-			if err := client.AdminAPI().DecommissionDataPartition(partitionID, address, raftForceDel, clientIDKey); err != nil {
+			if err := client.AdminAPI().DecommissionDataPartition(ctx, partitionID, address, raftForceDel, clientIDKey); err != nil {
 				stdout(fmt.Sprintf("failed:err(%v)\n", err.Error()))
 				return
 			}
@@ -284,7 +281,7 @@ func newDataPartitionDecommissionCmd(client *master.MasterClient) *cobra.Command
 			if len(args) != 0 {
 				return nil, cobra.ShellCompDirectiveNoFileComp
 			}
-			return validDataNodes(client, toComplete), cobra.ShellCompDirectiveNoFileComp
+			return validDataNodes(ctx, client, toComplete), cobra.ShellCompDirectiveNoFileComp
 		},
 	}
 	cmd.Flags().BoolVarP(&raftForceDel, "raftForceDel", "r", false, "true for raftForceDel")
@@ -294,6 +291,7 @@ func newDataPartitionDecommissionCmd(client *master.MasterClient) *cobra.Command
 
 func newDataPartitionReplicateCmd(client *master.MasterClient) *cobra.Command {
 	var clientIDKey string
+	span, ctx := spanContext()
 	cmd := &cobra.Command{
 		Use:   CliOpReplicate + " [ADDRESS] [DATA PARTITION ID]",
 		Short: cmdDataPartitionReplicateShort,
@@ -303,14 +301,12 @@ func newDataPartitionReplicateCmd(client *master.MasterClient) *cobra.Command {
 				err         error
 				partitionID uint64
 			)
-			defer func() {
-				errout(err)
-			}()
+			defer func() { errout(span, err) }()
 			address := args[0]
 			if partitionID, err = strconv.ParseUint(args[1], 10, 64); err != nil {
 				return
 			}
-			if err = client.AdminAPI().AddDataReplica(partitionID, address, clientIDKey); err != nil {
+			if err = client.AdminAPI().AddDataReplica(ctx, partitionID, address, clientIDKey); err != nil {
 				return
 			}
 			stdoutln("Add replication successfully")
@@ -319,7 +315,7 @@ func newDataPartitionReplicateCmd(client *master.MasterClient) *cobra.Command {
 			if len(args) != 0 {
 				return nil, cobra.ShellCompDirectiveNoFileComp
 			}
-			return validDataNodes(client, toComplete), cobra.ShellCompDirectiveNoFileComp
+			return validDataNodes(ctx, client, toComplete), cobra.ShellCompDirectiveNoFileComp
 		},
 	}
 	cmd.Flags().StringVar(&clientIDKey, CliFlagClientIDKey, client.ClientIDKey(), CliUsageClientIDKey)
@@ -328,6 +324,7 @@ func newDataPartitionReplicateCmd(client *master.MasterClient) *cobra.Command {
 
 func newDataPartitionDeleteReplicaCmd(client *master.MasterClient) *cobra.Command {
 	var clientIDKey string
+	span, ctx := spanContext()
 	cmd := &cobra.Command{
 		Use:   CliOpDelReplica + " [ADDRESS] [DATA PARTITION ID]",
 		Short: cmdDataPartitionDeleteReplicaShort,
@@ -337,14 +334,12 @@ func newDataPartitionDeleteReplicaCmd(client *master.MasterClient) *cobra.Comman
 				err         error
 				partitionID uint64
 			)
-			defer func() {
-				errout(err)
-			}()
+			defer func() { errout(span, err) }()
 			address := args[0]
 			if partitionID, err = strconv.ParseUint(args[1], 10, 64); err != nil {
 				return
 			}
-			if err = client.AdminAPI().DeleteDataReplica(partitionID, address, clientIDKey); err != nil {
+			if err = client.AdminAPI().DeleteDataReplica(ctx, partitionID, address, clientIDKey); err != nil {
 				return
 			}
 			stdoutln("Delete replication successfully")
@@ -353,7 +348,7 @@ func newDataPartitionDeleteReplicaCmd(client *master.MasterClient) *cobra.Comman
 			if len(args) != 0 {
 				return nil, cobra.ShellCompDirectiveNoFileComp
 			}
-			return validDataNodes(client, toComplete), cobra.ShellCompDirectiveNoFileComp
+			return validDataNodes(ctx, client, toComplete), cobra.ShellCompDirectiveNoFileComp
 		},
 	}
 	cmd.Flags().StringVar(&clientIDKey, CliFlagClientIDKey, client.ClientIDKey(), CliUsageClientIDKey)
@@ -369,12 +364,10 @@ func newDataPartitionGetDiscardCmd(client *master.MasterClient) *cobra.Command {
 				infos *proto.DiscardDataPartitionInfos
 				err   error
 			)
+			span, ctx := spanContext()
+			defer func() { errout(span, err) }()
 
-			defer func() {
-				errout(err)
-			}()
-
-			if infos, err = client.AdminAPI().GetDiscardDataPartition(); err != nil {
+			if infos, err = client.AdminAPI().GetDiscardDataPartition(ctx); err != nil {
 				return
 			}
 
@@ -403,10 +396,8 @@ func newDataPartitionSetDiscardCmd(client *master.MasterClient) *cobra.Command {
 				dpId    uint64
 				discard bool
 			)
-
-			defer func() {
-				errout(err)
-			}()
+			span, ctx := spanContext()
+			defer func() { errout(span, err) }()
 
 			dpId, err = strconv.ParseUint(args[0], 10, 64)
 			if err != nil {
@@ -416,7 +407,7 @@ func newDataPartitionSetDiscardCmd(client *master.MasterClient) *cobra.Command {
 			if err != nil {
 				return
 			}
-			if err = client.AdminAPI().SetDataPartitionDiscard(dpId, discard); err != nil {
+			if err = client.AdminAPI().SetDataPartitionDiscard(ctx, dpId, discard); err != nil {
 				return
 			}
 			stdout("Discard %v successful", dpId)

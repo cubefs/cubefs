@@ -15,6 +15,7 @@
 package datanode
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"hash/crc32"
@@ -130,8 +131,6 @@ type DataPartition struct {
 
 	// snapshot
 	verSeq                     uint64
-	verSeqPrepare              uint64
-	verSeqCommitStatus         int8
 	volVersionInfoList         *proto.VolVersionInfoList
 	decommissionRepairProgress float64 // record repair progress for decommission datapartition
 	stopRecover                bool
@@ -148,8 +147,8 @@ func (dp *DataPartition) SetForbidden(status bool) {
 	dp.config.Forbidden = status
 }
 
-func CreateDataPartition(dpCfg *dataPartitionCfg, disk *Disk, request *proto.CreateDataPartitionRequest) (dp *DataPartition, err error) {
-	if dp, err = newDataPartition(dpCfg, disk, true); err != nil {
+func CreateDataPartition(ctx context.Context, dpCfg *dataPartitionCfg, disk *Disk, request *proto.CreateDataPartitionRequest) (dp *DataPartition, err error) {
+	if dp, err = newDataPartition(ctx, dpCfg, disk, true); err != nil {
 		return
 	}
 	dp.ForceLoadHeader()
@@ -170,7 +169,7 @@ func CreateDataPartition(dpCfg *dataPartitionCfg, disk *Disk, request *proto.Cre
 	go dp.StartRaftLoggingSchedule()
 	dp.DataPartitionCreateType = request.CreateType
 	dp.replicaNum = request.ReplicaNum
-	err = dp.PersistMetadata()
+	err = dp.PersistMetadata(ctx)
 	disk.AddSize(uint64(dp.Size()))
 	return
 }
@@ -221,7 +220,8 @@ func (dp *DataPartition) ForceSetRaftRunning() {
 // LoadDataPartition loads and returns a partition instance based on the specified directory.
 // It reads the partition metadata file stored under the specified directory
 // and creates the partition instance.
-func LoadDataPartition(partitionDir string, disk *Disk) (dp *DataPartition, err error) {
+func LoadDataPartition(ctx context.Context, partitionDir string, disk *Disk) (dp *DataPartition, err error) {
+	span := proto.SpanFromContext(ctx)
 	var metaFileData []byte
 	if metaFileData, err = os.ReadFile(path.Join(partitionDir, DataPartitionMetadataFileName)); err != nil {
 		return
@@ -246,7 +246,7 @@ func LoadDataPartition(partitionDir string, disk *Disk) (dp *DataPartition, err 
 		NodeID:        disk.space.GetNodeID(),
 		ClusterID:     disk.space.GetClusterID(),
 	}
-	if dp, err = newDataPartition(dpCfg, disk, false); err != nil {
+	if dp, err = newDataPartition(ctx, dpCfg, disk, false); err != nil {
 		return
 	}
 	dp.stopRecover = meta.StopRecover
@@ -255,10 +255,10 @@ func LoadDataPartition(partitionDir string, disk *Disk) (dp *DataPartition, err 
 	dp.ForceSetDataPartitionToLoadding()
 	disk.space.AttachPartition(dp)
 	if err = dp.LoadAppliedID(); err != nil {
-		log.LogErrorf("action[loadApplyIndex] %v", err)
+		span.Errorf("action[loadApplyIndex] %v", err)
 		return
 	}
-	log.LogInfof("Action(LoadDataPartition) PartitionID(%v) meta(%v) stopRecover(%v)", dp.partitionID, meta, meta.StopRecover)
+	span.Infof("Action(LoadDataPartition) PartitionID(%v) meta(%v) stopRecover(%v)", dp.partitionID, meta, meta.StopRecover)
 	dp.DataPartitionCreateType = meta.DataPartitionCreateType
 	dp.lastTruncateID = meta.LastTruncateID
 	if meta.DataPartitionCreateType == proto.NormalCreateDataPartition {
@@ -270,7 +270,7 @@ func LoadDataPartition(partitionDir string, disk *Disk) (dp *DataPartition, err 
 		go dp.StartRaftAfterRepair(true)
 	}
 	if err != nil {
-		log.LogErrorf("PartitionID(%v) start raft err(%v)..", dp.partitionID, err)
+		span.Errorf("PartitionID(%v) start raft err(%v)..", dp.partitionID, err)
 		disk.space.DetachDataPartition(dp.partitionID)
 		return
 	}
@@ -281,7 +281,8 @@ func LoadDataPartition(partitionDir string, disk *Disk) (dp *DataPartition, err 
 	return
 }
 
-func newDataPartition(dpCfg *dataPartitionCfg, disk *Disk, isCreate bool) (dp *DataPartition, err error) {
+func newDataPartition(ctx context.Context, dpCfg *dataPartitionCfg, disk *Disk, isCreate bool) (dp *DataPartition, err error) {
+	span := proto.SpanFromContext(ctx)
 	partitionID := dpCfg.PartitionID
 	var dataPath string
 
@@ -318,32 +319,32 @@ func newDataPartition(dpCfg *dataPartitionCfg, disk *Disk, isCreate bool) (dp *D
 		volVersionInfoList:      &proto.VolVersionInfoList{},
 	}
 	atomic.StoreUint64(&partition.recoverErrCnt, 0)
-	log.LogInfof("action[newDataPartition] dp %v replica num %v", partitionID, dpCfg.ReplicaNum)
+	span.Infof("action[newDataPartition] dp %v replica num %v", partitionID, dpCfg.ReplicaNum)
 	partition.replicasInit()
-	partition.extentStore, err = storage.NewExtentStore(partition.path, dpCfg.PartitionID, dpCfg.PartitionSize,
+	partition.extentStore, err = storage.NewExtentStore(ctx, partition.path, dpCfg.PartitionID, dpCfg.PartitionSize,
 		partition.partitionType, isCreate)
 	if err != nil {
-		log.LogWarnf("action[newDataPartition] dp %v NewExtentStore failed %v", partitionID, err.Error())
+		span.Warnf("action[newDataPartition] dp %v NewExtentStore failed %v", partitionID, err.Error())
 		return
 	}
 	// store applyid
 	if err = partition.storeAppliedID(partition.appliedID); err != nil {
-		log.LogErrorf("action[newDataPartition] dp %v initial Apply [%v] failed: %v",
+		span.Errorf("action[newDataPartition] dp %v initial Apply [%v] failed: %v",
 			partition.partitionID, partition.appliedID, err)
 		return
 	}
-	disk.AttachDataPartition(partition)
+	disk.AttachDataPartition(ctx, partition)
 	dp = partition
 	go partition.statusUpdateScheduler()
 	go partition.startEvict()
 	if isCreate {
-		if err = dp.getVerListFromMaster(); err != nil {
-			log.LogErrorf("action[newDataPartition] vol %v dp %v loadFromMaster verList failed err %v", dp.volumeID, dp.partitionID, err)
+		if err = dp.getVerListFromMaster(ctx); err != nil {
+			span.Errorf("action[newDataPartition] vol %v dp %v loadFromMaster verList failed err %v", dp.volumeID, dp.partitionID, err)
 			return
 		}
 	}
 
-	log.LogInfof("action[newDataPartition] dp %v replica num %v CreateType %v create success",
+	span.Infof("action[newDataPartition] dp %v replica num %v CreateType %v create success",
 		dp.partitionID, dpCfg.ReplicaNum, dp.DataPartitionCreateType)
 	return
 }
@@ -366,10 +367,11 @@ func (partition *DataPartition) HandleVersionOp(req *proto.MultiVersionOpRequest
 	return
 }
 
-func (partition *DataPartition) fsmVersionOp(opItem *RaftCmdItem) (err error) {
+func (partition *DataPartition) fsmVersionOp(ctx context.Context, opItem *RaftCmdItem) (err error) {
+	span := proto.SpanFromContext(ctx)
 	req := new(proto.MultiVersionOpRequest)
 	if err = json.Unmarshal(opItem.V, req); err != nil {
-		log.LogErrorf("action[fsmVersionOp] dp[%v] op item %v", partition.partitionID, opItem)
+		span.Errorf("action[fsmVersionOp] dp[%v] op item %v", partition.partitionID, opItem)
 		return
 	}
 	if len(req.VolVerList) == 0 {
@@ -381,14 +383,14 @@ func (partition *DataPartition) fsmVersionOp(opItem *RaftCmdItem) (err error) {
 		partition.volVersionInfoList.VerList = make([]*proto.VolVersionInfo, len(req.VolVerList))
 		copy(partition.volVersionInfoList.VerList, req.VolVerList)
 		partition.verSeq = lastSeq
-		log.LogInfof("action[fsmVersionOp] dp %v seq %v updateVerList reqeust ver %v verlist  %v  dp verlist nil and set",
+		span.Infof("action[fsmVersionOp] dp %v seq %v updateVerList reqeust ver %v verlist  %v  dp verlist nil and set",
 			partition.partitionID, partition.verSeq, lastSeq, req.VolVerList)
 		partition.volVersionInfoList.RWLock.Unlock()
 		return
 	}
 
 	lastVerInfo := partition.volVersionInfoList.GetLastVolVerInfo()
-	log.LogInfof("action[fsmVersionOp] dp %v seq %v lastVerList seq %v req seq %v op %v",
+	span.Infof("action[fsmVersionOp] dp %v seq %v lastVerList seq %v req seq %v op %v",
 		partition.partitionID, partition.verSeq, lastVerInfo.Ver, lastSeq, req.Op)
 
 	if lastVerInfo.Ver >= lastSeq {
@@ -412,19 +414,20 @@ func (partition *DataPartition) fsmVersionOp(opItem *RaftCmdItem) (err error) {
 
 	partition.verSeq = lastSeq
 
-	err = partition.PersistMetadata()
-	log.LogInfof("action[fsmVersionOp] dp %v seq %v updateVerList reqeust add new seq %v verlist (%v) err (%v)",
+	err = partition.PersistMetadata(ctx)
+	span.Infof("action[fsmVersionOp] dp %v seq %v updateVerList reqeust add new seq %v verlist (%v) err (%v)",
 		partition.partitionID, partition.verSeq, lastSeq, partition.volVersionInfoList, err)
 
 	partition.volVersionInfoList.RWLock.Unlock()
 	return
 }
 
-func (dp *DataPartition) getVerListFromMaster() (err error) {
+func (dp *DataPartition) getVerListFromMaster(ctx context.Context) (err error) {
+	span := proto.SpanFromContext(ctx)
 	var verList *proto.VolVersionInfoList
-	verList, err = MasterClient.AdminAPI().GetVerList(dp.volumeID)
+	verList, err = MasterClient.AdminAPI().GetVerList(ctx, dp.volumeID)
 	if err != nil {
-		log.LogErrorf("action[onStart] GetVerList err[%v]", err)
+		span.Errorf("action[onStart] GetVerList err[%v]", err)
 		return
 	}
 
@@ -435,7 +438,7 @@ func (dp *DataPartition) getVerListFromMaster() (err error) {
 		dp.volVersionInfoList.VerList = append(dp.volVersionInfoList.VerList, info)
 	}
 
-	log.LogDebugf("action[onStart] dp %v verList %v", dp.partitionID, dp.volVersionInfoList.VerList)
+	span.Debugf("action[onStart] dp %v verList %v", dp.partitionID, dp.volVersionInfoList.VerList)
 	dp.verSeq = dp.volVersionInfoList.GetLastVer()
 	return
 }
@@ -523,10 +526,11 @@ func (dp *DataPartition) IsExistReplica(addr string) bool {
 	return false
 }
 
-func (dp *DataPartition) ReloadSnapshot() {
-	files, err := dp.extentStore.SnapShot()
+func (dp *DataPartition) ReloadSnapshot(ctx context.Context) {
+	span := proto.SpanFromContext(ctx)
+	files, err := dp.extentStore.SnapShot(ctx)
 	if err != nil {
-		log.LogErrorf("ReloadSnapshot err %v", err)
+		span.Errorf("ReloadSnapshot err %v", err)
 		return
 	}
 
@@ -557,7 +561,7 @@ func (dp *DataPartition) Stop() {
 		dp.extentStore.Close()
 		err := dp.storeAppliedID(atomic.LoadUint64(&dp.appliedID))
 		if err != nil {
-			log.LogErrorf("action[Stop]: failed to store applied index")
+			log.Errorf("action[Stop]: failed to store applied index")
 		}
 	})
 }
@@ -596,10 +600,10 @@ func (dp *DataPartition) ForceLoadHeader() {
 }
 
 // PersistMetadata persists the file metadata on the disk.
-func (dp *DataPartition) PersistMetadata() (err error) {
+func (dp *DataPartition) PersistMetadata(ctx context.Context) (err error) {
 	dp.persistMetaMutex.Lock()
 	defer dp.persistMetaMutex.Unlock()
-
+	span := proto.SpanFromContext(ctx)
 	var (
 		metadataFile *os.File
 		metaData     []byte
@@ -637,7 +641,7 @@ func (dp *DataPartition) PersistMetadata() (err error) {
 		return
 	}
 	dp.metaAppliedID = dp.appliedID
-	log.LogInfof("PersistMetadata DataPartition(%v) data(%v)", dp.partitionID, string(metaData))
+	span.Infof("PersistMetadata DataPartition(%v) data(%v)", dp.partitionID, string(metaData))
 	err = os.Rename(fileName, path.Join(dp.Path(), DataPartitionMetadataFileName))
 	return
 }
@@ -647,12 +651,13 @@ func (dp *DataPartition) statusUpdateScheduler() {
 	snapshotTicker := time.NewTicker(time.Minute * 5)
 	var index int
 	for {
+		ctx := context.Background()
 		select {
 		case <-ticker.C:
-			dp.statusUpdate()
+			dp.statusUpdate(ctx)
 			// only repair tiny extent
 			if !dp.isNormalType() {
-				dp.LaunchRepair(proto.TinyExtentType)
+				dp.LaunchRepair(ctx, proto.TinyExtentType)
 				continue
 			}
 
@@ -662,12 +667,12 @@ func (dp *DataPartition) statusUpdateScheduler() {
 			}
 
 			if index%2 == 0 {
-				dp.LaunchRepair(proto.TinyExtentType)
+				dp.LaunchRepair(ctx, proto.TinyExtentType)
 			} else {
-				dp.LaunchRepair(proto.NormalExtentType)
+				dp.LaunchRepair(ctx, proto.NormalExtentType)
 			}
 		case <-snapshotTicker.C:
-			dp.ReloadSnapshot()
+			dp.ReloadSnapshot(ctx)
 		case <-dp.stopC:
 			ticker.Stop()
 			snapshotTicker.Stop()
@@ -676,7 +681,8 @@ func (dp *DataPartition) statusUpdateScheduler() {
 	}
 }
 
-func (dp *DataPartition) statusUpdate() {
+func (dp *DataPartition) statusUpdate(ctx context.Context) {
+	span := proto.SpanFromContext(ctx)
 	status := proto.ReadWrite
 	dp.computeUsage()
 
@@ -698,7 +704,7 @@ func (dp *DataPartition) statusUpdate() {
 		dp.partitionStatus = proto.Unavailable
 	}
 
-	log.LogInfof("action[statusUpdate] dp %v raft status %v dp.status %v, status %v, disk status %v",
+	span.Infof("action[statusUpdate] dp %v raft status %v dp.status %v, status %v, disk status %v",
 		dp.partitionID, dp.raftStatus, dp.Status(), status, float64(dp.disk.Status))
 	// dp.partitionStatus = int(math.Min(float64(status), float64(dp.disk.Status)))
 	dp.partitionStatus = status
@@ -716,23 +722,23 @@ func (dp *DataPartition) ExtentStore() *storage.ExtentStore {
 	return dp.extentStore
 }
 
-func (dp *DataPartition) checkIsDiskError(err error, rwFlag uint8) {
+func (dp *DataPartition) checkIsDiskError(ctx context.Context, err error, rwFlag uint8) {
 	if err == nil {
 		return
 	}
-	log.LogWarnf("checkIsDiskError: disk path %v, error: %v, partition:%v, rwFlag:%v",
+	span := proto.SpanFromContext(ctx)
+	span.Warnf("checkIsDiskError: disk path %v, error: %v, partition:%v, rwFlag:%v",
 		dp.Path(), err.Error(), dp.partitionID, rwFlag)
 	if !IsDiskErr(err.Error()) {
 		return
 	}
 
 	dp.stopRaft()
-	dp.incDiskErrCnt()
-	dp.disk.triggerDiskError(rwFlag, dp.partitionID)
+	dp.incDiskErrCnt(ctx)
+	dp.disk.triggerDiskError(ctx, rwFlag, dp.partitionID)
 
 	// must after change disk.status
-	dp.statusUpdate()
-	return
+	dp.statusUpdate(ctx)
 }
 
 func newRaftApplyError(err error) error {
@@ -749,42 +755,45 @@ func (dp *DataPartition) String() (m string) {
 }
 
 // LaunchRepair launches the repair of extents.
-func (dp *DataPartition) LaunchRepair(extentType uint8) {
+func (dp *DataPartition) LaunchRepair(ctx context.Context, extentType uint8) {
 	if dp.partitionStatus == proto.Unavailable {
 		return
 	}
-	if err := dp.updateReplicas(false); err != nil {
-		log.LogErrorf("action[LaunchRepair] partition(%v) err(%v).", dp.partitionID, err)
+	span := proto.SpanFromContext(ctx)
+
+	if err := dp.updateReplicas(ctx, false); err != nil {
+		span.Errorf("action[LaunchRepair] partition(%v) err(%v).", dp.partitionID, err)
 		return
 	}
 	if !dp.isLeader {
 		return
 	}
 	if dp.extentStore.BrokenTinyExtentCnt() == 0 {
-		dp.extentStore.MoveAllToBrokenTinyExtentC(MinTinyExtentsToRepair)
+		dp.extentStore.MoveAllToBrokenTinyExtentC(ctx, MinTinyExtentsToRepair)
 	}
-	dp.repair(extentType)
+	dp.repair(ctx, extentType)
 }
 
-func (dp *DataPartition) updateReplicas(isForce bool) (err error) {
+func (dp *DataPartition) updateReplicas(ctx context.Context, isForce bool) (err error) {
 	if !isForce && time.Now().Unix()-dp.intervalToUpdateReplicas <= IntervalToUpdateReplica {
 		return
 	}
+	span := proto.SpanFromContext(ctx)
 	dp.isLeader = false
-	isLeader, replicas, err := dp.fetchReplicasFromMaster()
+	isLeader, replicas, err := dp.fetchReplicasFromMaster(ctx)
 	if err != nil {
 		return
 	}
 	dp.replicasLock.Lock()
 	defer dp.replicasLock.Unlock()
 	if !dp.compareReplicas(dp.replicas, replicas) {
-		log.LogInfof("action[updateReplicas] partition(%v) replicas changed from (%v) to (%v).",
+		span.Infof("action[updateReplicas] partition(%v) replicas changed from (%v) to (%v).",
 			dp.partitionID, dp.replicas, replicas)
 	}
 	dp.isLeader = isLeader
 	dp.replicas = replicas
 	dp.intervalToUpdateReplicas = time.Now().Unix()
-	log.LogInfof(fmt.Sprintf("ActionUpdateReplicationHosts partiton(%v), force(%v)", dp.partitionID, isForce))
+	span.Infof(fmt.Sprintf("ActionUpdateReplicationHosts partiton(%v), force(%v)", dp.partitionID, isForce))
 
 	return
 }
@@ -803,11 +812,11 @@ func (dp *DataPartition) compareReplicas(v1, v2 []string) (equals bool) {
 }
 
 // Fetch the replica information from the master.
-func (dp *DataPartition) fetchReplicasFromMaster() (isLeader bool, replicas []string, err error) {
+func (dp *DataPartition) fetchReplicasFromMaster(ctx context.Context) (isLeader bool, replicas []string, err error) {
 	var partition *proto.DataPartitionInfo
 	retry := 0
 	for {
-		if partition, err = MasterClient.AdminAPI().GetDataPartition(dp.volumeID, dp.partitionID); err != nil {
+		if partition, err = MasterClient.AdminAPI().GetDataPartition(ctx, dp.volumeID, dp.partitionID); err != nil {
 			retry++
 			if retry > 5 {
 				isLeader = false
@@ -852,15 +861,16 @@ func (dp *DataPartition) Load() (response *proto.LoadDataPartitionResponse) {
 // DoExtentStoreRepair performs the repairs of the extent store.
 // 1. when the extent size is smaller than the max size on the record, start to repair the missing part.
 // 2. if the extent does not even exist, create the extent first, and then repair.
-func (dp *DataPartition) DoExtentStoreRepair(repairTask *DataPartitionRepairTask) {
+func (dp *DataPartition) DoExtentStoreRepair(ctx context.Context, repairTask *DataPartitionRepairTask) {
+	span := proto.SpanFromContext(ctx)
 	if dp.stopRecover && dp.isDecommissionRecovering() {
-		log.LogWarnf("DoExtentStoreRepair %v receive stop signal", dp.partitionID)
+		span.Warnf("DoExtentStoreRepair %v receive stop signal", dp.partitionID)
 		return
 	}
 	store := dp.extentStore
-	log.LogDebugf("DoExtentStoreRepair.dp %v len extents %v", dp.partitionID, len(repairTask.ExtentsToBeCreated))
+	span.Debugf("DoExtentStoreRepair.dp %v len extents %v", dp.partitionID, len(repairTask.ExtentsToBeCreated))
 	for _, extentInfo := range repairTask.ExtentsToBeCreated {
-		log.LogDebugf("DoExtentStoreRepair.dp %v len extentInfo %v", dp.partitionID, extentInfo)
+		span.Debugf("DoExtentStoreRepair.dp %v len extentInfo %v", dp.partitionID, extentInfo)
 		if storage.IsTinyExtent(extentInfo.FileID) {
 			continue
 		}
@@ -868,13 +878,13 @@ func (dp *DataPartition) DoExtentStoreRepair(repairTask *DataPartitionRepairTask
 			continue
 		}
 		if !AutoRepairStatus {
-			log.LogWarnf("AutoRepairStatus is False,so cannot Create extent(%v)", extentInfo.String())
+			span.Warnf("AutoRepairStatus is False,so cannot Create extent(%v)", extentInfo.String())
 			continue
 		}
 
 		dp.disk.allocCheckLimit(proto.IopsWriteType, 1)
 
-		err := store.Create(uint64(extentInfo.FileID))
+		err := store.Create(ctx, uint64(extentInfo.FileID))
 		if err != nil {
 			continue
 		}
@@ -887,7 +897,7 @@ func (dp *DataPartition) DoExtentStoreRepair(repairTask *DataPartitionRepairTask
 	wg = new(sync.WaitGroup)
 	for _, extentInfo := range repairTask.ExtentsToBeRepaired {
 		if dp.stopRecover && dp.isDecommissionRecovering() {
-			log.LogWarnf("DoExtentStoreRepair %v receive stop signal", dp.partitionID)
+			span.Warnf("DoExtentStoreRepair %v receive stop signal", dp.partitionID)
 			return
 		}
 		if !store.HasExtent(uint64(extentInfo.FileID)) {
@@ -896,7 +906,7 @@ func (dp *DataPartition) DoExtentStoreRepair(repairTask *DataPartitionRepairTask
 		wg.Add(1)
 
 		// repair the extents
-		go dp.doStreamExtentFixRepair(wg, extentInfo)
+		go dp.doStreamExtentFixRepair(ctx, wg, extentInfo)
 		recoverIndex++
 
 		if recoverIndex%NumOfFilesToRecoverInParallel == 0 {
@@ -904,7 +914,7 @@ func (dp *DataPartition) DoExtentStoreRepair(repairTask *DataPartitionRepairTask
 		}
 	}
 	wg.Wait()
-	dp.doStreamFixTinyDeleteRecord(repairTask)
+	dp.doStreamFixTinyDeleteRecord(ctx, repairTask)
 }
 
 func (dp *DataPartition) pushSyncDeleteRecordFromLeaderMesg() bool {
@@ -925,12 +935,14 @@ func (dp *DataPartition) consumeTinyDeleteRecordFromLeaderMesg() {
 	}
 }
 
-func (dp *DataPartition) doStreamFixTinyDeleteRecord(repairTask *DataPartitionRepairTask) {
+func (dp *DataPartition) doStreamFixTinyDeleteRecord(ctx context.Context, repairTask *DataPartitionRepairTask) {
 	var (
 		localTinyDeleteFileSize int64
 		err                     error
 		conn                    net.Conn
 	)
+	span := proto.SpanFromContext(ctx)
+
 	if !dp.pushSyncDeleteRecordFromLeaderMesg() {
 		return
 	}
@@ -942,7 +954,7 @@ func (dp *DataPartition) doStreamFixTinyDeleteRecord(repairTask *DataPartitionRe
 		return
 	}
 
-	log.LogInfof(ActionSyncTinyDeleteRecord+" start PartitionID(%v) localTinyDeleteFileSize(%v) leaderTinyDeleteFileSize(%v) leaderAddr(%v)",
+	span.Infof(ActionSyncTinyDeleteRecord+" start PartitionID(%v) localTinyDeleteFileSize(%v) leaderTinyDeleteFileSize(%v) leaderAddr(%v)",
 		dp.partitionID, localTinyDeleteFileSize, repairTask.LeaderTinyDeleteRecordFileSize, repairTask.LeaderAddr)
 
 	if localTinyDeleteFileSize >= repairTask.LeaderTinyDeleteRecordFileSize {
@@ -954,7 +966,7 @@ func (dp *DataPartition) doStreamFixTinyDeleteRecord(repairTask *DataPartitionRe
 	}
 
 	defer func() {
-		log.LogInfof(ActionSyncTinyDeleteRecord+" end PartitionID(%v) localTinyDeleteFileSize(%v) leaderTinyDeleteFileSize(%v) leaderAddr(%v) err(%v)",
+		span.Infof(ActionSyncTinyDeleteRecord+" end PartitionID(%v) localTinyDeleteFileSize(%v) leaderTinyDeleteFileSize(%v) leaderAddr(%v) err(%v)",
 			dp.partitionID, localTinyDeleteFileSize, repairTask.LeaderTinyDeleteRecordFileSize, repairTask.LeaderAddr, err)
 	}()
 
@@ -972,7 +984,7 @@ func (dp *DataPartition) doStreamFixTinyDeleteRecord(repairTask *DataPartitionRe
 	start := time.Now().Unix()
 	for localTinyDeleteFileSize < repairTask.LeaderTinyDeleteRecordFileSize {
 		if dp.stopRecover && dp.isDecommissionRecovering() {
-			log.LogWarnf("doStreamFixTinyDeleteRecord %v receive stop signal", dp.partitionID)
+			span.Warnf("doStreamFixTinyDeleteRecord %v receive stop signal", dp.partitionID)
 			return
 		}
 		if localTinyDeleteFileSize >= repairTask.LeaderTinyDeleteRecordFileSize {
@@ -1006,8 +1018,8 @@ func (dp *DataPartition) doStreamFixTinyDeleteRecord(repairTask *DataPartitionRe
 			}
 			DeleteLimiterWait()
 			dp.disk.allocCheckLimit(proto.IopsWriteType, 1)
-			// log.LogInfof("doStreamFixTinyDeleteRecord Delete PartitionID(%v)_Extent(%v)_Offset(%v)_Size(%v)", dp.partitionID, extentID, offset, size)
-			store.MarkDelete(extentID, int64(offset), int64(size))
+			// span.Infof("doStreamFixTinyDeleteRecord Delete PartitionID(%v)_Extent(%v)_Offset(%v)_Size(%v)", dp.partitionID, extentID, offset, size)
+			store.MarkDelete(ctx, extentID, int64(offset), int64(size))
 		}
 	}
 }
@@ -1018,12 +1030,13 @@ func (dp *DataPartition) ChangeRaftMember(changeType raftProto.ConfChangeType, p
 	return
 }
 
-func (dp *DataPartition) canRemoveSelf() (canRemove bool, err error) {
+func (dp *DataPartition) canRemoveSelf(ctx context.Context) (canRemove bool, err error) {
+	span := proto.SpanFromContext(ctx)
 	var partition *proto.DataPartitionInfo
 	retry := 0
 	for {
-		if partition, err = MasterClient.AdminAPI().GetDataPartition(dp.volumeID, dp.partitionID); err != nil {
-			log.LogErrorf("action[canRemoveSelf] err[%v]", err)
+		if partition, err = MasterClient.AdminAPI().GetDataPartition(ctx, dp.volumeID, dp.partitionID); err != nil {
+			span.Errorf("action[canRemoveSelf] err[%v]", err)
 			retry++
 			if retry > 60 {
 				return
@@ -1057,7 +1070,7 @@ func (dp *DataPartition) getRepairConn(target string) (net.Conn, error) {
 }
 
 func (dp *DataPartition) putRepairConn(conn net.Conn, forceClose bool) {
-	log.LogDebugf("action[putRepairConn], forceClose: %v", forceClose)
+	log.Debugf("action[putRepairConn], forceClose: %v", forceClose)
 	dp.dataNode.putRepairConnFunc(conn, forceClose)
 }
 
@@ -1080,7 +1093,8 @@ var volViews = VolMap{
 	volMap: make(map[string]*SimpleVolView),
 }
 
-func (vo *VolMap) getSimpleVolView(VolumeID string) (vv *proto.SimpleVolView, err error) {
+func (vo *VolMap) getSimpleVolView(ctx context.Context, VolumeID string) (vv *proto.SimpleVolView, err error) {
+	span := proto.SpanFromContext(ctx)
 	vo.Lock()
 	if volView, ok := vo.volMap[VolumeID]; ok && time.Since(volView.lastUpdateTime) < 5*time.Minute {
 		vo.Unlock()
@@ -1093,13 +1107,13 @@ func (vo *VolMap) getSimpleVolView(VolumeID string) (vv *proto.SimpleVolView, er
 		lastUpdateTime: time.Time{},
 	}
 
-	if vv, err = MasterClient.AdminAPI().GetVolumeSimpleInfo(VolumeID); err != nil {
-		log.LogErrorf("action[GetVolumeSimpleInfo] cannot get vol(%v) from master(%v) err(%v).",
+	if vv, err = MasterClient.AdminAPI().GetVolumeSimpleInfo(ctx, VolumeID); err != nil {
+		span.Errorf("action[GetVolumeSimpleInfo] cannot get vol(%v) from master(%v) err(%v).",
 			VolumeID, MasterClient.Leader(), err)
 		return nil, err
 	}
 
-	log.LogDebugf("get volume info, vol(%s), vol(%v)", vv.Name, volView)
+	span.Debugf("get volume info, vol(%s), vol(%v)", vv.Name, volView)
 
 	volView.vv = vv
 	volView.lastUpdateTime = time.Now()
@@ -1111,9 +1125,10 @@ func (vo *VolMap) getSimpleVolView(VolumeID string) (vv *proto.SimpleVolView, er
 	return
 }
 
-func (dp *DataPartition) doExtentTtl(ttl int) {
+func (dp *DataPartition) doExtentTtl(ctx context.Context, ttl int) {
+	span := proto.SpanFromContext(ctx)
 	if ttl <= 0 {
-		log.LogWarn("[doTTL] ttl is 0, set default 30", ttl)
+		span.Warn("[doTTL] ttl is 0, set default 30", ttl)
 		ttl = 30
 	}
 
@@ -1125,22 +1140,23 @@ func (dp *DataPartition) doExtentTtl(ttl int) {
 		}
 
 		if time.Now().Unix()-ext.AccessTime > int64(ttl)*util.OneDaySec() {
-			log.LogDebugf("action[doExtentTtl] ttl delete dp(%v) extent(%v).", dp.partitionID, ext)
-			dp.extentStore.MarkDelete(ext.FileID, 0, 0)
+			span.Debugf("action[doExtentTtl] ttl delete dp(%v) extent(%v).", dp.partitionID, ext)
+			dp.extentStore.MarkDelete(ctx, ext.FileID, 0, 0)
 		}
 	}
 }
 
-func (dp *DataPartition) doExtentEvict(vv *proto.SimpleVolView) {
+func (dp *DataPartition) doExtentEvict(ctx context.Context, vv *proto.SimpleVolView) {
 	var (
 		needDieOut      bool
 		freeSpace       int
 		freeExtentCount int
 	)
+	span := proto.SpanFromContext(ctx)
 
 	needDieOut = false
 	if vv.CacheHighWater < vv.CacheLowWater || vv.CacheLowWater < 0 || vv.CacheHighWater > 100 {
-		log.LogErrorf("action[doExtentEvict] invalid policy dp(%v), CacheHighWater(%v) CacheLowWater(%v).",
+		span.Errorf("action[doExtentEvict] invalid policy dp(%v), CacheHighWater(%v) CacheLowWater(%v).",
 			dp.partitionID, vv.CacheHighWater, vv.CacheLowWater)
 		return
 	}
@@ -1164,7 +1180,7 @@ func (dp *DataPartition) doExtentEvict(vv *proto.SimpleVolView) {
 		freeExtentCount = len(extInfos) - vv.CacheLowWater*maxExtentCount/100
 	}
 
-	log.LogDebugf("action[doExtentEvict], vol %v, LRU(%v, %v), dp %v, usage %v, status(%d), extents %v, freeSpace %v, freeExtentCount %v, needDieOut %v",
+	span.Debugf("action[doExtentEvict], vol %v, LRU(%v, %v), dp %v, usage %v, status(%d), extents %v, freeSpace %v, freeExtentCount %v, needDieOut %v",
 		vv.Name, vv.CacheLowWater, vv.CacheHighWater, dp.partitionID, dp.Used()*100/dp.Size(), dp.partitionStatus, len(extInfos),
 		freeSpace, freeExtentCount, needDieOut)
 
@@ -1181,28 +1197,30 @@ func (dp *DataPartition) doExtentEvict(vv *proto.SimpleVolView) {
 
 		freeSpace -= int(ext.Size)
 		freeExtentCount--
-		dp.extentStore.MarkDelete(ext.FileID, 0, 0)
-		log.LogDebugf("action[doExtentEvict] die out. vol %v, dp(%v), extent(%v).", vv.Name, dp.partitionID, *ext)
+		dp.extentStore.MarkDelete(ctx, ext.FileID, 0, 0)
+		span.Debugf("action[doExtentEvict] die out. vol %v, dp(%v), extent(%v).", vv.Name, dp.partitionID, *ext)
 
 		if freeSpace <= 0 && freeExtentCount <= 0 {
-			log.LogDebugf("[doExtentEvict] die out done, vol(%s), dp (%d)", vv.Name, dp.partitionID)
+			span.Debugf("[doExtentEvict] die out done, vol(%s), dp (%d)", vv.Name, dp.partitionID)
 			break
 		}
 	}
 }
 
 func (dp *DataPartition) startEvict() {
+	span, ctx := proto.SpanContextPrefix("startEvict-")
+
 	// only cache or preload dp can't do evict.
 	if !proto.IsCacheDp(dp.partitionType) {
 		return
 	}
 
-	log.LogDebugf("[startEvict] start do dp(%d) evict op", dp.partitionID)
+	span.Debugf("[startEvict] start do dp(%d) evict op", dp.partitionID)
 
-	vv, err := volViews.getSimpleVolView(dp.volumeID)
+	vv, err := volViews.getSimpleVolView(ctx, dp.volumeID)
 	if err != nil {
 		err := fmt.Errorf("[startEvict] get vol [%s] info error, err %s", dp.volumeID, err.Error())
-		log.LogError(err)
+		span.Error(err)
 		panic(err)
 	}
 
@@ -1219,33 +1237,33 @@ func (dp *DataPartition) startEvict() {
 	for {
 		// check volume type and dp type.
 		if proto.IsHot(vv.VolType) || !proto.IsCacheDp(dp.partitionType) {
-			log.LogErrorf("action[startEvict] cannot startEvict, vol(%v), dp(%v).", vv.Name, dp.partitionID)
+			span.Errorf("action[startEvict] cannot startEvict, vol(%v), dp(%v).", vv.Name, dp.partitionID)
 			return
 		}
 
 		select {
 		case <-lruTimer.C:
-			log.LogDebugf("start [doExtentEvict] vol(%s), dp(%d).", vv.Name, dp.partitionID)
+			span.Debugf("start [doExtentEvict] vol(%s), dp(%d).", vv.Name, dp.partitionID)
 			evictStart := time.Now()
-			dp.doExtentEvict(vv)
-			log.LogDebugf("action[doExtentEvict] vol(%v), dp(%v), cost (%v)ms, .", vv.Name, dp.partitionID, time.Since(evictStart))
+			dp.doExtentEvict(ctx, vv)
+			span.Debugf("action[doExtentEvict] vol(%v), dp(%v), cost (%v)ms, .", vv.Name, dp.partitionID, time.Since(evictStart))
 
 		case <-ttlTimer.C:
-			log.LogDebugf("start [doExtentTtl] vol(%s), dp(%d).", vv.Name, dp.partitionID)
+			span.Debugf("start [doExtentTtl] vol(%s), dp(%d).", vv.Name, dp.partitionID)
 			ttlStart := time.Now()
-			dp.doExtentTtl(cacheTtl)
-			log.LogDebugf("action[doExtentTtl] vol(%v), dp(%v), cost (%v)ms.", vv.Name, dp.partitionID, time.Since(ttlStart))
+			dp.doExtentTtl(ctx, cacheTtl)
+			span.Debugf("action[doExtentTtl] vol(%v), dp(%v), cost (%v)ms.", vv.Name, dp.partitionID, time.Since(ttlStart))
 
 		case <-dp.stopC:
-			log.LogWarn("task[doExtentTtl] stopped", dp.volumeID, dp.partitionID)
+			span.Warn("task[doExtentTtl] stopped", dp.volumeID, dp.partitionID)
 			return
 		}
 
 		// loop update vol info
-		newVV, err := volViews.getSimpleVolView(dp.volumeID)
+		newVV, err := volViews.getSimpleVolView(ctx, dp.volumeID)
 		if err != nil {
 			err := fmt.Errorf("[startEvict] get vol [%s] info error, err %s", dp.volumeID, err.Error())
-			log.LogError(err)
+			span.Error(err)
 			continue
 		}
 
@@ -1255,7 +1273,7 @@ func (dp *DataPartition) startEvict() {
 			cacheTtl = getWithDefault(vv.CacheTtl, 30)
 
 			lruTimer = time.NewTicker(time.Duration(lruInterval) * time.Minute)
-			log.LogInfof("[startEvict] update vol config, dp(%d) %v ", dp.partitionID, *vv)
+			span.Infof("[startEvict] update vol config, dp(%d) %v ", dp.partitionID, *vv)
 		}
 	}
 }
@@ -1268,16 +1286,18 @@ func getWithDefault(base, def int) int {
 	return base
 }
 
-func (dp *DataPartition) StopDecommissionRecover(stop bool) {
+func (dp *DataPartition) StopDecommissionRecover(ctx context.Context, stop bool) {
+	span := proto.SpanFromContext(ctx)
+
 	// only work for decommission repair
 	if !dp.isDecommissionRecovering() {
-		log.LogWarnf("[StopDecommissionRecover]  dp(%d) is not in recovering status: type %d status %d",
+		span.Warnf("[StopDecommissionRecover]  dp(%d) is not in recovering status: type %d status %d",
 			dp.partitionID, dp.partitionType, dp.Status())
 		return
 	}
 	// for check timeout
 	dp.stopRecover = stop
-	dp.PersistMetadata()
+	dp.PersistMetadata(ctx)
 }
 
 func (dp *DataPartition) isDecommissionRecovering() bool {
@@ -1285,21 +1305,22 @@ func (dp *DataPartition) isDecommissionRecovering() bool {
 	return dp.DataPartitionCreateType == proto.DecommissionedCreateDataPartition
 }
 
-func (dp *DataPartition) handleDecommissionRecoverFailed() {
+func (dp *DataPartition) handleDecommissionRecoverFailed(ctx context.Context) {
 	if !dp.isDecommissionRecovering() {
 		return
 	}
 	// prevent status changing from  Unavailable to Recovering again in statusUpdate()
 	dp.partitionType = proto.NormalCreateDataPartition
 	dp.partitionStatus = proto.Unavailable
-	log.LogWarnf("[handleDecommissionRecoverFailed]  dp(%d) recover failed reach max limit", dp.partitionID)
-	dp.PersistMetadata()
-	dp.StopDecommissionRecover(true)
+	getSpan(ctx).Warnf("[handleDecommissionRecoverFailed]  dp(%d) recover failed reach max limit", dp.partitionID)
+	dp.PersistMetadata(ctx)
+	dp.StopDecommissionRecover(ctx, true)
 }
 
-func (dp *DataPartition) incDiskErrCnt() {
+func (dp *DataPartition) incDiskErrCnt(ctx context.Context) {
 	diskErrCnt := atomic.AddUint64(&dp.diskErrCnt, 1)
-	log.LogWarnf("[incDiskErrCnt]: dp(%v) disk err count:%v", dp.partitionID, diskErrCnt)
+	span := proto.SpanFromContext(ctx)
+	span.Warnf("[incDiskErrCnt]: dp(%v) disk err count:%v", dp.partitionID, diskErrCnt)
 }
 
 func (dp *DataPartition) getDiskErrCnt() uint64 {

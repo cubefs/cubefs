@@ -9,7 +9,6 @@ import (
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/exporter"
-	"github.com/cubefs/cubefs/util/log"
 )
 
 func (m *Server) createUser(w http.ResponseWriter, r *http.Request) {
@@ -52,6 +51,7 @@ func (m *Server) deleteUser(w http.ResponseWriter, r *http.Request) {
 		userID string
 		err    error
 	)
+	span := proto.SpanFromContext(r.Context())
 	metric := exporter.NewTPCnt(apiToMetricsName(proto.UserDelete))
 	defer func() {
 		doStatAndMetric(proto.UserDelete, metric, err, nil)
@@ -61,12 +61,12 @@ func (m *Server) deleteUser(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-	if err = m.user.deleteKey(userID); err != nil {
+	if err = m.user.deleteKey(r.Context(), userID); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
 	msg := fmt.Sprintf("delete user[%v] successfully", userID)
-	log.LogWarn(msg)
+	span.Warn(msg)
 	sendOkReply(w, r, newSuccessHTTPReply(msg))
 }
 
@@ -94,7 +94,7 @@ func (m *Server) updateUser(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, newErrHTTPReply(proto.ErrInvalidUserType))
 		return
 	}
-	if userInfo, err = m.user.updateKey(&param); err != nil {
+	if userInfo, err = m.user.updateKey(r.Context(), &param); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -116,7 +116,7 @@ func (m *Server) getUserAKInfo(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-	if userInfo, err = m.user.getKeyInfo(ak); err != nil {
+	if userInfo, err = m.user.getKeyInfo(r.Context(), ak); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -138,7 +138,7 @@ func (m *Server) getUserInfo(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-	if userInfo, err = m.user.getUserInfo(userID); err != nil {
+	if userInfo, err = m.user.getUserInfo(r.Context(), userID); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -169,7 +169,7 @@ func (m *Server) updateUserPolicy(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeVolNotExists, Msg: err.Error()})
 		return
 	}
-	if userInfo, err = m.user.updatePolicy(&param); err != nil {
+	if userInfo, err = m.user.updatePolicy(r.Context(), &param); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -200,7 +200,7 @@ func (m *Server) removeUserPolicy(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeVolNotExists, Msg: err.Error()})
 		return
 	}
-	if userInfo, err = m.user.removePolicy(&param); err != nil {
+	if userInfo, err = m.user.removePolicy(r.Context(), &param); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -212,6 +212,7 @@ func (m *Server) deleteUserVolPolicy(w http.ResponseWriter, r *http.Request) {
 		vol string
 		err error
 	)
+	span := proto.SpanFromContext(r.Context())
 	metric := exporter.NewTPCnt(apiToMetricsName(proto.UserDeleteVolPolicy))
 	defer func() {
 		doStatAndMetric(proto.UserDeleteVolPolicy, metric, err, map[string]string{exporter.Vol: vol})
@@ -221,12 +222,12 @@ func (m *Server) deleteUserVolPolicy(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-	if err = m.user.deleteVolPolicy(vol); err != nil {
+	if err = m.user.deleteVolPolicy(r.Context(), vol); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
 	msg := fmt.Sprintf("delete vol[%v] policy successfully", vol)
-	log.LogWarn(msg)
+	span.Warn(msg)
 	sendOkReply(w, r, newSuccessHTTPReply(msg))
 }
 
@@ -261,13 +262,13 @@ func (m *Server) transferUserVol(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, newErrHTTPReply(proto.ErrHaveNoPolicy))
 		return
 	}
-	if userInfo, err = m.user.transferVol(&param); err != nil {
+	if userInfo, err = m.user.transferVol(r.Context(), &param); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
 	owner := vol.Owner
 	vol.Owner = userInfo.UserID
-	if err = m.cluster.syncUpdateVol(vol); err != nil {
+	if err = m.cluster.syncUpdateVol(r.Context(), vol); err != nil {
 		vol.Owner = owner
 		err = proto.ErrPersistenceByRaft
 		sendErrReply(w, r, newErrHTTPReply(err))
@@ -291,7 +292,7 @@ func (m *Server) getAllUsers(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-	users = m.user.getAllUserInfo(keywords)
+	users = m.user.getAllUserInfo(r.Context(), keywords)
 	sendOkReply(w, r, newSuccessHTTPReply(users))
 }
 
@@ -310,7 +311,7 @@ func (m *Server) getUsersOfVol(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-	if users, err = m.user.getUsersOfVol(volName); err != nil {
+	if users, err = m.user.getUsersOfVol(r.Context(), volName); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}

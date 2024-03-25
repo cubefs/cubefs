@@ -14,13 +14,17 @@
 
 package objectnode
 
+import (
+	"context"
+)
+
 type MetaStore interface{}
 
 // MetaStore
 type Store interface {
 	Init(vm *VolumeManager)
-	Put(ns, obj, key string, data []byte) error
-	Get(ns, obj, key string) (data []byte, err error)
-	List(ns, obj string) (data [][]byte, err error)
-	Delete(ns, obj, key string) error
+	Put(ctx context.Context, ns, obj, key string, data []byte) error
+	Get(ctx context.Context, ns, obj, key string) (data []byte, err error)
+	List(ctx context.Context, ns, obj string) (data [][]byte, err error)
+	Delete(ctx context.Context, ns, obj, key string) error
 }

@@ -44,11 +44,12 @@ func (s *MetaItem) MarshalJson() ([]byte, error) {
 
 // MarshalBinary marshals MetaItem to binary data.
 // Binary frame structure:
-//  +------+----+------+------+------+------+
-//  | Item | Op | LenK |   K  | LenV |   V  |
-//  +------+----+------+------+------+------+
-//  | byte | 4  |  4   | LenK |  4   | LenV |
-//  +------+----+------+------+------+------+
+//
+//	+------+----+------+------+------+------+
+//	| Item | Op | LenK |   K  | LenV |   V  |
+//	+------+----+------+------+------+------+
+//	| byte | 4  |  4   | LenK |  4   | LenV |
+//	+------+----+------+------+------+------+
 func (s *MetaItem) MarshalBinary() (result []byte, err error) {
 	buff := bytes.NewBuffer(make([]byte, 0))
 	buff.Grow(4 + len(s.K) + len(s.V))
@@ -78,11 +79,12 @@ func (s *MetaItem) UnmarshalJson(data []byte) error {
 
 // MarshalBinary unmarshal this MetaItem entity from binary data.
 // Binary frame structure:
-//  +------+----+------+------+------+------+
-//  | Item | Op | LenK |   K  | LenV |   V  |
-//  +------+----+------+------+------+------+
-//  | byte | 4  |  4   | LenK |  4   | LenV |
-//  +------+----+------+------+------+------+
+//
+//	+------+----+------+------+------+------+
+//	| Item | Op | LenK |   K  | LenV |   V  |
+//	+------+----+------+------+------+------+
+//	| byte | 4  |  4   | LenK |  4   | LenV |
+//	+------+----+------+------+------+------+
 func (s *MetaItem) UnmarshalBinary(raw []byte) (err error) {
 	var (
 		lenK uint32
@@ -258,7 +260,7 @@ func newMetaItemIterator(mp *metaPartition) (si *MetaItemIterator, err error) {
 		if si.SnapFormatVersion == SnapFormatVersion_0 {
 			// process index ID
 			produceItem(si.applyID)
-			log.LogDebugf("newMetaItemIterator: SnapFormatVersion_0, partitionId(%v), applyID(%v)",
+			log.Debugf("newMetaItemIterator: SnapFormatVersion_0, partitionId(%v), applyID(%v)",
 				mp.config.PartitionId, si.applyID)
 		} else if si.SnapFormatVersion == SnapFormatVersion_1 {
 			// process snapshot format version
@@ -280,7 +282,7 @@ func newMetaItemIterator(mp *metaPartition) (si *MetaItemIterator, err error) {
 			verListWrapper := SnapItemWrapper{SiwKeyVerList, si.verList}
 			produceItem(verListWrapper)
 
-			log.LogDebugf("newMetaItemIterator: SnapFormatVersion_1, partitionId(%v) applyID(%v) txId(%v) cursor(%v) uniqID(%v) verList(%v)",
+			log.Debugf("newMetaItemIterator: SnapFormatVersion_1, partitionId(%v) applyID(%v) txId(%v) cursor(%v) uniqID(%v) verList(%v)",
 				mp.config.PartitionId, si.applyID, si.txId, si.cursor, si.uniqID, si.verList)
 
 			if si.uniqID != 0 {
@@ -378,7 +380,6 @@ func (si *MetaItemIterator) Close() {
 	si.closeOnce.Do(func() {
 		close(si.closeCh)
 	})
-	return
 }
 
 // Next returns the next item.
@@ -440,7 +441,7 @@ func (si *MetaItemIterator) Next() (data []byte, err error) {
 				return
 			}
 			snap = NewMetaItem(opFSMVerListSnapShot, typedItem.MarshalKey(), verListBuf)
-			log.LogInfof("snapshot.fileRootDir %v verList %v", si.fileRootDir, verListBuf)
+			log.Infof("snapshot.fileRootDir %v verList %v", si.fileRootDir, verListBuf)
 		} else {
 			panic(fmt.Sprintf("MetaItemIterator.Next: unknown SnapItemWrapper key: %v", typedItem.key))
 		}

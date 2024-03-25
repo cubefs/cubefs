@@ -16,6 +16,7 @@ package datanode
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"net"
@@ -52,8 +53,8 @@ var (
 	ErrNewSpaceManagerFailed       = errors.New("Creater new space manager failed")
 	ErrGetMasterDatanodeInfoFailed = errors.New("Failed to get datanode info from master")
 
-	LocalIP, serverPort string
-	gConnPool           = util.NewConnectPool()
+	LocalIP   string
+	gConnPool = util.NewConnectPool()
 	// MasterClient        = masterSDK.NewMasterClient(nil, false)
 	MasterClient *masterSDK.MasterCLientWithResolver
 )
@@ -125,13 +126,14 @@ const (
 
 const cpuSampleDuration = 1 * time.Second
 
+var getSpan = proto.SpanFromContext
+
 // DataNode defines the structure of a data node.
 type DataNode struct {
 	space           *SpaceManager
 	port            string
 	zoneName        string
 	clusterID       string
-	localIP         string
 	bindIp          bool
 	localServerAddr string
 	nodeID          uint64
@@ -172,7 +174,6 @@ type DataNode struct {
 	diskWriteIops           int
 	diskWriteFlow           int
 	dpMaxRepairErrCnt       uint64
-	dpRepairTimeOut         uint64
 	clusterUuid             string
 	clusterUuidEnable       bool
 	serviceIDKey            string
@@ -187,7 +188,6 @@ type verOp2Phase struct {
 	verPrepare uint64
 	status     uint32
 	step       uint32
-	op         uint8
 	sync.Mutex
 }
 
@@ -212,6 +212,7 @@ func (s *DataNode) Sync() {
 
 // Workflow of starting up a data node.
 func doStart(server common.Server, cfg *config.Config) (err error) {
+	ctx := proto.ContextWithOperation(context.Background(), "datanode-start")
 	s, ok := server.(*DataNode)
 	if !ok {
 		return errors.New("Invalid node Type!")
@@ -226,7 +227,7 @@ func doStart(server common.Server, cfg *config.Config) (err error) {
 
 	exporter.Init(ModuleName, cfg)
 	s.registerMetrics()
-	s.register(cfg)
+	s.register(ctx, cfg)
 
 	// parse the smux config
 	if err = s.parseSmuxConfig(cfg); err != nil {
@@ -249,8 +250,8 @@ func doStart(server common.Server, cfg *config.Config) (err error) {
 	}
 
 	// check local partition compare with master ,if lack,then not start
-	if _, err = s.checkLocalPartitionMatchWithMaster(); err != nil {
-		log.LogError(err)
+	if _, err = s.checkLocalPartitionMatchWithMaster(ctx); err != nil {
+		log.Error(err)
 		exporter.Warning(err.Error())
 		return
 	}
@@ -267,7 +268,7 @@ func doStart(server common.Server, cfg *config.Config) (err error) {
 
 	go s.registerHandler()
 
-	s.scheduleTask()
+	s.scheduleTask(ctx)
 
 	// start metrics (LackDpCount, etc.)
 	s.startMetrics()
@@ -303,7 +304,6 @@ func (s *DataNode) parseConfig(cfg *config.Config) (err error) {
 	LocalIP = cfg.GetString(ConfigKeyLocalIP)
 	port = cfg.GetString(proto.ListenPort)
 	s.bindIp = cfg.GetBool(proto.BindIpKey)
-	serverPort = port
 	if regexpPort, err = regexp.Compile(`^(\d)+$`); err != nil {
 		return fmt.Errorf("Err:no port")
 	}
@@ -318,7 +318,7 @@ func (s *DataNode) parseConfig(cfg *config.Config) (err error) {
 
 	updateInterval := cfg.GetInt(configNameResolveInterval)
 	if updateInterval <= 0 || updateInterval > 60 {
-		log.LogWarnf("name resolving interval[1-60] is set to default: %v", DefaultNameResolveInterval)
+		log.Warnf("name resolving interval[1-60] is set to default: %v", DefaultNameResolveInterval)
 		updateInterval = DefaultNameResolveInterval
 	}
 
@@ -333,7 +333,7 @@ func (s *DataNode) parseConfig(cfg *config.Config) (err error) {
 	MasterClient = masterSDK.NewMasterCLientWithResolver(masters, false, updateInterval)
 	if MasterClient == nil {
 		err = fmt.Errorf("parseConfig: masters addrs format err[%v]", masters)
-		log.LogErrorf("parseConfig: masters addrs format err[%v]", masters)
+		log.Errorf("parseConfig: masters addrs format err[%v]", masters)
 		return err
 	}
 	if err = MasterClient.Start(); err != nil {
@@ -351,19 +351,20 @@ func (s *DataNode) parseConfig(cfg *config.Config) (err error) {
 	diskUnavailablePartitionErrorCount := cfg.GetInt64(ConfigKeyDiskUnavailablePartitionErrorCount)
 	if diskUnavailablePartitionErrorCount <= 0 || diskUnavailablePartitionErrorCount > 100 {
 		diskUnavailablePartitionErrorCount = DefaultDiskUnavailablePartitionErrorCount
-		log.LogDebugf("action[parseConfig] ConfigKeyDiskUnavailablePartitionErrorCount(%v) out of range, set as default(%v)",
+		log.Debugf("action[parseConfig] ConfigKeyDiskUnavailablePartitionErrorCount(%v) out of range, set as default(%v)",
 			diskUnavailablePartitionErrorCount, DefaultDiskUnavailablePartitionErrorCount)
 	}
 	s.diskUnavailablePartitionErrorCount = uint64(diskUnavailablePartitionErrorCount)
-	log.LogDebugf("action[parseConfig] load diskUnavailablePartitionErrorCount(%v)", s.diskUnavailablePartitionErrorCount)
+	log.Debugf("action[parseConfig] load diskUnavailablePartitionErrorCount(%v)", s.diskUnavailablePartitionErrorCount)
 
-	log.LogDebugf("action[parseConfig] load masterAddrs(%v).", MasterClient.Nodes())
-	log.LogDebugf("action[parseConfig] load port(%v).", s.port)
-	log.LogDebugf("action[parseConfig] load zoneName(%v).", s.zoneName)
+	log.Debugf("action[parseConfig] load masterAddrs(%v).", MasterClient.Nodes())
+	log.Debugf("action[parseConfig] load port(%v).", s.port)
+	log.Debugf("action[parseConfig] load zoneName(%v).", s.zoneName)
 	return
 }
 
-func (s *DataNode) initQosLimit(cfg *config.Config) {
+func (s *DataNode) initQosLimit(ctx context.Context, cfg *config.Config) {
+	span := proto.SpanFromContext(ctx)
 	dn := s.space.dataNode
 	dn.diskQosEnable = cfg.GetBoolWithDefault(ConfigDiskQosEnable, true)
 	dn.diskReadIocc = cfg.GetInt(ConfigDiskReadIocc)
@@ -372,17 +373,19 @@ func (s *DataNode) initQosLimit(cfg *config.Config) {
 	dn.diskWriteIocc = cfg.GetInt(ConfigDiskWriteIocc)
 	dn.diskWriteIops = cfg.GetInt(ConfigDiskWriteIops)
 	dn.diskWriteFlow = cfg.GetInt(ConfigDiskWriteFlow)
-	log.LogWarnf("action[initQosLimit] set qos [%v], read(iocc:%d iops:%d flow:%d) write(iocc:%d iops:%d flow:%d)",
+	span.Warnf("action[initQosLimit] set qos [%v], read(iocc:%d iops:%d flow:%d) write(iocc:%d iops:%d flow:%d)",
 		dn.diskQosEnable, dn.diskReadIocc, dn.diskReadIops, dn.diskReadFlow, dn.diskWriteIocc, dn.diskWriteIops, dn.diskWriteFlow)
 }
 
-func (s *DataNode) updateQosLimit() {
+func (s *DataNode) updateQosLimit(ctx context.Context) {
 	for _, disk := range s.space.disks {
-		disk.updateQosLimiter()
+		disk.updateQosLimiter(ctx)
 	}
 }
 
 func (s *DataNode) startSpaceManager(cfg *config.Config) (err error) {
+	ctx := proto.ContextWithOperation(context.Background(), "startSpaceManager")
+	span := proto.SpanFromContext(ctx)
 	s.startTime = time.Now().Unix()
 	s.space = NewSpaceManager(s)
 	if len(strings.TrimSpace(s.port)) == 0 {
@@ -393,21 +396,21 @@ func (s *DataNode) startSpaceManager(cfg *config.Config) (err error) {
 	s.space.SetRaftStore(s.raftStore)
 	s.space.SetNodeID(s.nodeID)
 	s.space.SetClusterID(s.clusterID)
-	s.initQosLimit(cfg)
+	s.initQosLimit(ctx, cfg)
 
 	diskRdonlySpace := uint64(cfg.GetInt64(CfgDiskRdonlySpace))
 	if diskRdonlySpace < DefaultDiskRetainMin {
 		diskRdonlySpace = DefaultDiskRetainMin
 	}
 
-	log.LogInfof("startSpaceManager preReserveSpace %d", diskRdonlySpace)
+	span.Infof("startSpaceManager preReserveSpace %d", diskRdonlySpace)
 
 	paths := make([]string, 0)
 	diskPath := cfg.GetString(ConfigKeyDiskPath)
 	if diskPath != "" {
 		paths, err = parseDiskPath(diskPath)
 		if err != nil {
-			log.LogErrorf("parse diskpath failed, path %s, err %s", diskPath, err.Error())
+			span.Errorf("parse diskpath failed, path %s, err %s", diskPath, err.Error())
 			return err
 		}
 	} else {
@@ -418,7 +421,7 @@ func (s *DataNode) startSpaceManager(cfg *config.Config) (err error) {
 
 	var wg sync.WaitGroup
 	for _, d := range paths {
-		log.LogDebugf("action[startSpaceManager] load disk raw config(%v).", d)
+		span.Debugf("action[startSpaceManager] load disk raw config(%v).", d)
 
 		// format "PATH:RESET_SIZE
 		arr := strings.Split(d, ":")
@@ -428,7 +431,7 @@ func (s *DataNode) startSpaceManager(cfg *config.Config) (err error) {
 		path := arr[0]
 		fileInfo, err := os.Stat(path)
 		if err != nil {
-			log.LogErrorf("Stat disk path [%v] error: [%s]", path, err)
+			span.Errorf("Stat disk path [%v] error: [%s]", path, err)
 			continue
 		}
 		if !fileInfo.IsDir() {
@@ -436,7 +439,7 @@ func (s *DataNode) startSpaceManager(cfg *config.Config) (err error) {
 		}
 		if s.clusterUuidEnable {
 			if err = config.CheckOrStoreClusterUuid(path, s.clusterUuid, false); err != nil {
-				log.LogErrorf("CheckOrStoreClusterUuid failed: %v", err)
+				span.Errorf("CheckOrStoreClusterUuid failed: %v", err)
 				return fmt.Errorf("CheckOrStoreClusterUuid failed: %v", err.Error())
 			}
 		}
@@ -458,15 +461,15 @@ func (s *DataNode) startSpaceManager(cfg *config.Config) (err error) {
 
 	wg.Wait()
 	// start async sample
-	s.space.StartDiskSample()
-	s.updateQosLimit() // load from config
+	s.space.StartDiskSample(ctx)
+	s.updateQosLimit(ctx) // load from config
 	return nil
 }
 
 // execute shell to find all paths
 // out: like, /disk1:1024, /disk2:1024
 func parseDiskPath(pathStr string) (disks []string, err error) {
-	log.LogInfof("parse diskpath, %s", pathStr)
+	log.Infof("parse diskpath, %s", pathStr)
 
 	arr := strings.Split(pathStr, ":")
 	if len(arr) != 2 {
@@ -475,7 +478,7 @@ func parseDiskPath(pathStr string) (disks []string, err error) {
 
 	shell := fmt.Sprintf("mount | grep %s | awk '{print $3}'", arr[0])
 	cmd := exec.Command("/bin/sh", "-c", shell)
-	log.LogWarnf("execute diskPath shell, %s", shell)
+	log.Warnf("execute diskPath shell, %s", shell)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return disks, fmt.Errorf("execute shell failed, %s", err.Error())
@@ -497,9 +500,9 @@ func parseDiskPath(pathStr string) (disks []string, err error) {
 
 // registers the data node on the master to report the information such as IsIPV4 address.
 // The startup of a data node will be blocked until the registration succeeds.
-func (s *DataNode) register(cfg *config.Config) {
+func (s *DataNode) register(ctx context.Context, cfg *config.Config) {
 	var err error
-
+	span := proto.SpanFromContext(ctx)
 	timer := time.NewTimer(0)
 
 	// get the IsIPV4 address, cluster ID and node ID from the master
@@ -507,8 +510,8 @@ func (s *DataNode) register(cfg *config.Config) {
 		select {
 		case <-timer.C:
 			var ci *proto.ClusterInfo
-			if ci, err = MasterClient.AdminAPI().GetClusterInfo(); err != nil {
-				log.LogErrorf("action[registerToMaster] cannot get ip from master(%v) err(%v).",
+			if ci, err = MasterClient.AdminAPI().GetClusterInfo(ctx); err != nil {
+				span.Errorf("action[registerToMaster] cannot get ip from master(%v) err(%v).",
 					MasterClient.Leader(), err)
 				timer.Reset(2 * time.Second)
 				continue
@@ -522,7 +525,7 @@ func (s *DataNode) register(cfg *config.Config) {
 			}
 			s.localServerAddr = fmt.Sprintf("%s:%v", LocalIP, s.port)
 			if !util.IsIPV4(LocalIP) {
-				log.LogErrorf("action[registerToMaster] got an invalid local ip(%v) from master(%v).",
+				span.Errorf("action[registerToMaster] got an invalid local ip(%v) from master(%v).",
 					LocalIP, masterAddr)
 				timer.Reset(2 * time.Second)
 				continue
@@ -530,16 +533,16 @@ func (s *DataNode) register(cfg *config.Config) {
 
 			// register this data node on the master
 			var nodeID uint64
-			if nodeID, err = MasterClient.NodeAPI().AddDataNodeWithAuthNode(fmt.Sprintf("%s:%v", LocalIP, s.port),
+			if nodeID, err = MasterClient.NodeAPI().AddDataNodeWithAuthNode(ctx, fmt.Sprintf("%s:%v", LocalIP, s.port),
 				s.zoneName, s.serviceIDKey); err != nil {
-				log.LogErrorf("action[registerToMaster] cannot register this node to master[%v] err(%v).",
+				span.Errorf("action[registerToMaster] cannot register this node to master[%v] err(%v).",
 					masterAddr, err)
 				timer.Reset(2 * time.Second)
 				continue
 			}
 			exporter.RegistConsul(s.clusterID, ModuleName, cfg)
 			s.nodeID = nodeID
-			log.LogDebugf("register: register DataNode: nodeID(%v)", s.nodeID)
+			span.Debugf("register: register DataNode: nodeID(%v)", s.nodeID)
 			return
 		case <-s.stopC:
 			timer.Stop()
@@ -553,7 +556,8 @@ type DataNodeInfo struct {
 	PersistenceDataPartitions []uint64
 }
 
-func (s *DataNode) checkLocalPartitionMatchWithMaster() (lackPartitions []uint64, err error) {
+func (s *DataNode) checkLocalPartitionMatchWithMaster(ctx context.Context) (lackPartitions []uint64, err error) {
+	span := proto.SpanFromContext(ctx)
 	convert := func(node *proto.DataNodeInfo) *DataNodeInfo {
 		result := &DataNodeInfo{}
 		result.Addr = node.Addr
@@ -562,8 +566,8 @@ func (s *DataNode) checkLocalPartitionMatchWithMaster() (lackPartitions []uint64
 	}
 	var dataNode *proto.DataNodeInfo
 	for i := 0; i < 3; i++ {
-		if dataNode, err = MasterClient.NodeAPI().GetDataNode(s.localServerAddr); err != nil {
-			log.LogErrorf("checkLocalPartitionMatchWithMaster error %v", err)
+		if dataNode, err = MasterClient.NodeAPI().GetDataNode(ctx, s.localServerAddr); err != nil {
+			span.Errorf("checkLocalPartitionMatchWithMaster error %v", err)
 			continue
 		}
 		break
@@ -585,14 +589,15 @@ func (s *DataNode) checkLocalPartitionMatchWithMaster() (lackPartitions []uint64
 	}
 
 	if len(lackPartitions) == 0 {
-		log.LogInfo("checkLocalPartitionMatchWithMaster no lack")
+		span.Info("checkLocalPartitionMatchWithMaster no lack")
 	} else {
-		log.LogErrorf("checkLocalPartitionMatchWithMaster lack ids [%v]", lackPartitions)
+		span.Errorf("checkLocalPartitionMatchWithMaster lack ids [%v]", lackPartitions)
 	}
 	return
 }
 
-func (s *DataNode) checkPartitionInMemoryMatchWithInDisk() (lackPartitions []uint64) {
+func (s *DataNode) checkPartitionInMemoryMatchWithInDisk(ctx context.Context) (lackPartitions []uint64) {
+	span := proto.SpanFromContext(ctx)
 	s.space.partitionMutex.RLock()
 	partitions := make([]*DataPartition, 0)
 	for _, dp := range s.space.partitions {
@@ -604,12 +609,12 @@ func (s *DataNode) checkPartitionInMemoryMatchWithInDisk() (lackPartitions []uin
 		stat, err := os.Stat(dp.path)
 		if err != nil {
 			lackPartitions = append(lackPartitions, dp.partitionID)
-			log.LogErrorf("action[checkPartitionInMemoryMatchWithInDisk] stat dataPartition[%v] fail, path[%v], err[%v]", dp.partitionID, dp.Path(), err)
+			span.Errorf("action[checkPartitionInMemoryMatchWithInDisk] stat dataPartition[%v] fail, path[%v], err[%v]", dp.partitionID, dp.Path(), err)
 			continue
 		}
 		if !stat.IsDir() {
 			lackPartitions = append(lackPartitions, dp.partitionID)
-			log.LogErrorf("action[checkPartitionInMemoryMatchWithInDisk] dataPartition[%v] is not directory, path[%v]", dp.partitionID, dp.Path())
+			span.Errorf("action[checkPartitionInMemoryMatchWithInDisk] dataPartition[%v] is not directory, path[%v]", dp.partitionID, dp.Path())
 			continue
 		}
 	}
@@ -638,15 +643,15 @@ func (s *DataNode) registerHandler() {
 }
 
 func (s *DataNode) startTCPService() (err error) {
-	log.LogInfo("Start: startTCPService")
+	log.Info("Start: startTCPService")
 	addr := fmt.Sprintf(":%v", s.port)
 	if s.bindIp {
 		addr = fmt.Sprintf("%s:%v", LocalIP, s.port)
 	}
 	l, err := net.Listen(NetworkProtocol, addr)
-	log.LogDebugf("action[startTCPService] listen %v address(%v).", NetworkProtocol, addr)
+	log.Debugf("action[startTCPService] listen %v address(%v).", NetworkProtocol, addr)
 	if err != nil {
-		log.LogError("failed to listen, err:", err)
+		log.Error("failed to listen, err:", err)
 		return
 	}
 	s.tcpListener = l
@@ -654,10 +659,10 @@ func (s *DataNode) startTCPService() (err error) {
 		for {
 			conn, err := ln.Accept()
 			if err != nil {
-				log.LogErrorf("action[startTCPService] failed to accept, err:%s", err.Error())
+				log.Errorf("action[startTCPService] failed to accept, err:%s", err.Error())
 				break
 			}
-			log.LogDebugf("action[startTCPService] accept connection from %s.", conn.RemoteAddr().String())
+			log.Debugf("action[startTCPService] accept connection from %s.", conn.RemoteAddr().String())
 			go s.serveConn(conn)
 		}
 	}(l)
@@ -668,7 +673,7 @@ func (s *DataNode) stopTCPService() (err error) {
 	if s.tcpListener != nil {
 
 		s.tcpListener.Close()
-		log.LogDebugf("action[stopTCPService] stop tcp service.")
+		log.Debugf("action[stopTCPService] stop tcp service.")
 	}
 	return
 }
@@ -685,19 +690,19 @@ func (s *DataNode) serveConn(conn net.Conn) {
 }
 
 func (s *DataNode) startSmuxService(cfg *config.Config) (err error) {
-	log.LogInfo("Start: startSmuxService")
+	log.Info("Start: startSmuxService")
 	addr := fmt.Sprintf(":%v", s.port)
 	if s.bindIp {
 		addr = fmt.Sprintf("%s:%v", LocalIP, s.port)
 	}
 	addr = util.ShiftAddrPort(addr, s.smuxPortShift)
-	log.LogInfof("SmuxListenAddr: (%v)", addr)
+	log.Infof("SmuxListenAddr: (%v)", addr)
 
 	// server
 	l, err := net.Listen(NetworkProtocol, addr)
-	log.LogDebugf("action[startSmuxService] listen %v address(%v).", NetworkProtocol, addr)
+	log.Debugf("action[startSmuxService] listen %v address(%v).", NetworkProtocol, addr)
 	if err != nil {
-		log.LogError("failed to listen smux addr, err:", err)
+		log.Error("failed to listen smux addr, err:", err)
 		return
 	}
 	s.smuxListener = l
@@ -705,10 +710,10 @@ func (s *DataNode) startSmuxService(cfg *config.Config) (err error) {
 		for {
 			conn, err := ln.Accept()
 			if err != nil {
-				log.LogErrorf("action[startSmuxService] failed to accept, err:%s", err.Error())
+				log.Errorf("action[startSmuxService] failed to accept, err:%s", err.Error())
 				break
 			}
-			log.LogDebugf("action[startSmuxService] accept connection from %s.", conn.RemoteAddr().String())
+			log.Debugf("action[startSmuxService] accept connection from %s.", conn.RemoteAddr().String())
 			go s.serveSmuxConn(conn)
 		}
 	}(l)
@@ -718,7 +723,7 @@ func (s *DataNode) startSmuxService(cfg *config.Config) (err error) {
 func (s *DataNode) stopSmuxService() (err error) {
 	if s.smuxListener != nil {
 		s.smuxListener.Close()
-		log.LogDebugf("action[stopSmuxService] stop smux service.")
+		log.Debugf("action[stopSmuxService] stop smux service.")
 	}
 	return
 }
@@ -733,7 +738,7 @@ func (s *DataNode) serveSmuxConn(conn net.Conn) {
 	var err error
 	sess, err = smux.Server(conn, s.smuxServerConfig)
 	if err != nil {
-		log.LogErrorf("action[serveSmuxConn] failed to serve smux connection, addr(%v), err(%v)", c.RemoteAddr(), err)
+		log.Errorf("action[serveSmuxConn] failed to serve smux connection, addr(%v), err(%v)", c.RemoteAddr(), err)
 		return
 	}
 	defer func() {
@@ -744,9 +749,9 @@ func (s *DataNode) serveSmuxConn(conn net.Conn) {
 		stream, err := sess.AcceptStream()
 		if err != nil {
 			if util.FilterSmuxAcceptError(err) != nil {
-				log.LogErrorf("action[startSmuxService] failed to accept, err: %s", err)
+				log.Errorf("action[startSmuxService] failed to accept, err: %s", err)
 			} else {
-				log.LogInfof("action[startSmuxService] accept done, err: %s", err)
+				log.Infof("action[startSmuxService] accept done, err: %s", err)
 			}
 			break
 		}
@@ -808,33 +813,33 @@ func (s *DataNode) parseSmuxConfig(cfg *config.Config) error {
 			return err
 		}
 	}
-	log.LogDebugf("[parseSmuxConfig] load smuxPortShift(%v).", s.smuxPortShift)
-	log.LogDebugf("[parseSmuxConfig] load enableSmuxConnPool(%v).", s.enableSmuxConnPool)
-	log.LogDebugf("[parseSmuxConfig] load smuxServerConfig(%v).", s.smuxServerConfig)
-	log.LogDebugf("[parseSmuxConfig] load smuxConnPoolConfig(%v).", s.smuxConnPoolConfig)
+	log.Debugf("[parseSmuxConfig] load smuxPortShift(%v).", s.smuxPortShift)
+	log.Debugf("[parseSmuxConfig] load enableSmuxConnPool(%v).", s.enableSmuxConnPool)
+	log.Debugf("[parseSmuxConfig] load smuxServerConfig(%v).", s.smuxServerConfig)
+	log.Debugf("[parseSmuxConfig] load smuxConnPoolConfig(%v).", s.smuxConnPoolConfig)
 	return nil
 }
 
 func (s *DataNode) initConnPool() {
 	if s.enableSmuxConnPool {
-		log.LogInfof("Start: init smux conn pool")
+		log.Infof("Start: init smux conn pool")
 		s.smuxConnPool = util.NewSmuxConnectPool(s.smuxConnPoolConfig)
 		s.getRepairConnFunc = func(target string) (net.Conn, error) {
 			addr := util.ShiftAddrPort(target, s.smuxPortShift)
-			log.LogDebugf("[dataNode.getRepairConnFunc] get smux conn, addr(%v)", addr)
+			log.Debugf("[dataNode.getRepairConnFunc] get smux conn, addr(%v)", addr)
 			return s.smuxConnPool.GetConnect(addr)
 		}
 		s.putRepairConnFunc = func(conn net.Conn, forceClose bool) {
-			log.LogDebugf("[dataNode.putRepairConnFunc] put smux conn, addr(%v), forceClose(%v)", conn.RemoteAddr().String(), forceClose)
+			log.Debugf("[dataNode.putRepairConnFunc] put smux conn, addr(%v), forceClose(%v)", conn.RemoteAddr().String(), forceClose)
 			s.smuxConnPool.PutConnect(conn.(*smux.Stream), forceClose)
 		}
 	} else {
 		s.getRepairConnFunc = func(target string) (conn net.Conn, err error) {
-			log.LogDebugf("[dataNode.getRepairConnFunc] get tcp conn, addr(%v)", target)
+			log.Debugf("[dataNode.getRepairConnFunc] get tcp conn, addr(%v)", target)
 			return gConnPool.GetConnect(target)
 		}
 		s.putRepairConnFunc = func(conn net.Conn, forceClose bool) {
-			log.LogDebugf("[dataNode.putRepairConnFunc] put tcp conn, addr(%v), forceClose(%v)", conn.RemoteAddr().String(), forceClose)
+			log.Debugf("[dataNode.putRepairConnFunc] put tcp conn, addr(%v), forceClose(%v)", conn.RemoteAddr().String(), forceClose)
 			gConnPool.PutConnect(conn.(*net.TCPConn), forceClose)
 		}
 	}
@@ -843,7 +848,7 @@ func (s *DataNode) initConnPool() {
 func (s *DataNode) closeSmuxConnPool() {
 	if s.smuxConnPool != nil {
 		s.smuxConnPool.Close()
-		log.LogDebugf("action[stopSmuxService] stop smux conn pool")
+		log.Debugf("action[stopSmuxService] stop smux conn pool")
 	}
 }
 
@@ -859,9 +864,10 @@ func (s *DataNode) shallDegrade() bool {
 	return cnt%uint64(level) != 0
 }
 
-func (s *DataNode) scheduleTask() {
-	go s.startUpdateNodeInfo()
-	s.scheduleToCheckLackPartitions()
+func (s *DataNode) scheduleTask(ctx_ context.Context) {
+	ctx := proto.ContextWithOperation(ctx_, "scheduleTask")
+	go s.startUpdateNodeInfo(ctx)
+	s.scheduleToCheckLackPartitions(ctx)
 }
 
 func (s *DataNode) startCpuSample() {
@@ -882,25 +888,27 @@ func (s *DataNode) startCpuSample() {
 	}()
 }
 
-func (s *DataNode) scheduleToCheckLackPartitions() {
+func (s *DataNode) scheduleToCheckLackPartitions(ctx_ context.Context) {
+	ctx := proto.ContextWithOperation(ctx_, "scheduleToCheckLackPartitions")
+	span := proto.SpanFromContext(ctx)
 	go func() {
 		for {
-			lackPartitionsInMem, err := s.checkLocalPartitionMatchWithMaster()
+			lackPartitionsInMem, err := s.checkLocalPartitionMatchWithMaster(ctx)
 			if err != nil {
-				log.LogError(err)
+				span.Error(err)
 			}
 			if len(lackPartitionsInMem) > 0 {
 				err = fmt.Errorf("action[scheduleToLackDataPartitions] lackPartitions %v in datanode %v memory",
 					lackPartitionsInMem, s.localServerAddr)
-				log.LogErrorf(err.Error())
+				span.Errorf(err.Error())
 			}
 			s.space.stats.updateMetricLackPartitionsInMem(uint64(len(lackPartitionsInMem)))
 
-			lackPartitionsInDisk := s.checkPartitionInMemoryMatchWithInDisk()
+			lackPartitionsInDisk := s.checkPartitionInMemoryMatchWithInDisk(ctx)
 			if len(lackPartitionsInDisk) > 0 {
 				err = fmt.Errorf("action[scheduleToLackDataPartitions] lackPartitions %v in datanode %v disk",
 					lackPartitionsInDisk, s.localServerAddr)
-				log.LogErrorf(err.Error())
+				span.Errorf(err.Error())
 			}
 			s.space.stats.updateMetricLackPartitionsInDisk(uint64(len(lackPartitionsInDisk)))
 

@@ -71,7 +71,7 @@ func (dc *Dcache) Put(info *proto.DentryInfo) {
 	element := dc.lruList.PushFront(info)
 	dc.cache[info.Name] = element
 	dc.Unlock()
-	// log.LogDebugf("Dcache put inode: inode(%v)", info.Inode)
+	// log.Debugf("Dcache put inode: inode(%v)", info.Inode)
 }
 
 // Get returns the inode info based on the given inode number.
@@ -86,7 +86,7 @@ func (dc *Dcache) Get(name string) *proto.DentryInfo {
 	info := element.Value.(*proto.DentryInfo)
 	if dentryExpired(info) && DisableMetaCache {
 		dc.RUnlock()
-		// log.LogDebugf("Dcache GetConnect expired: now(%v) inode(%v), expired(%d)", time.Now().Format(LogTimeFormat), info.Inode, info.Expiration())
+		// log.Debugf("Dcache GetConnect expired: now(%v) inode(%v), expired(%d)", time.Now().Format(LogTimeFormat), info.Inode, info.Expiration())
 		return nil
 	}
 	dc.RUnlock()
@@ -95,7 +95,7 @@ func (dc *Dcache) Get(name string) *proto.DentryInfo {
 
 // Delete deletes the dentry info based on the given name(partentId+name).
 func (dc *Dcache) Delete(name string) {
-	// log.LogDebugf("Dcache Delete: ino(%v)", ino)
+	// log.Debugf("Dcache Delete: ino(%v)", ino)
 	dc.Lock()
 	element, ok := dc.cache[name]
 	if ok {
@@ -125,7 +125,7 @@ func (dc *Dcache) evict(foreground bool) {
 			return
 		}
 
-		// log.LogDebugf("Dcache GetConnect expired: now(%v) inode(%v)", time.Now().Format(LogTimeFormat), info.Inode)
+		// log.Debugf("Dcache GetConnect expired: now(%v) inode(%v)", time.Now().Format(LogTimeFormat), info.Inode)
 		dc.lruList.Remove(element)
 		delete(dc.cache, info.Name)
 		count++
@@ -145,7 +145,7 @@ func (dc *Dcache) evict(foreground bool) {
 		if !dentryExpired(info) {
 			break
 		}
-		// log.LogDebugf("Dcache GetConnect expired: now(%v) inode(%v)", time.Now().Format(LogTimeFormat), info.Inode)
+		// log.Debugf("Dcache GetConnect expired: now(%v) inode(%v)", time.Now().Format(LogTimeFormat), info.Inode)
 		dc.lruList.Remove(element)
 		delete(dc.cache, info.Name)
 		count++
@@ -156,10 +156,11 @@ func (dc *Dcache) backgroundEviction() {
 	t := time.NewTicker(DentryBgEvictionInterval)
 	defer t.Stop()
 
+	// TODO: to close.
 	for range t.C {
-		log.LogInfof("Dcache: start BG evict")
+		log.Infof("Dcache: start BG evict")
 		if !DisableMetaCache {
-			log.LogInfof("Dcache: no need to do BG evict")
+			log.Infof("Dcache: no need to do BG evict")
 			continue
 		}
 		start := time.Now()
@@ -167,6 +168,6 @@ func (dc *Dcache) backgroundEviction() {
 		dc.evict(false)
 		dc.Unlock()
 		elapsed := time.Since(start)
-		log.LogInfof("Dcache: total inode cache(%d), cost(%d)ns", dc.lruList.Len(), elapsed.Nanoseconds())
+		log.Infof("Dcache: total inode cache(%d), cost(%d)ns", dc.lruList.Len(), elapsed.Nanoseconds())
 	}
 }

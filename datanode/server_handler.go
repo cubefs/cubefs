@@ -27,7 +27,6 @@ import (
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/storage"
 	"github.com/cubefs/cubefs/util/config"
-	"github.com/cubefs/cubefs/util/log"
 )
 
 var AutoRepairStatus = true
@@ -74,7 +73,7 @@ func (s *DataNode) getDiskAPI(w http.ResponseWriter, r *http.Request) {
 
 func (s *DataNode) getStatAPI(w http.ResponseWriter, r *http.Request) {
 	response := &proto.DataNodeHeartbeatResponse{}
-	s.buildHeartBeatResponse(response)
+	s.buildHeartBeatResponse(r.Context(), response)
 
 	s.buildSuccessResp(w, response)
 }
@@ -275,7 +274,7 @@ func (s *DataNode) getBlockCrcAPI(w http.ResponseWriter, r *http.Request) {
 		s.buildFailureResp(w, http.StatusNotFound, "partition not exist")
 		return
 	}
-	if blocks, err = partition.ExtentStore().ScanBlocks(uint64(extentID)); err != nil {
+	if blocks, err = partition.ExtentStore().ScanBlocks(r.Context(), uint64(extentID)); err != nil {
 		s.buildFailureResp(w, 500, err.Error())
 		return
 	}
@@ -392,7 +391,7 @@ func (s *DataNode) setDiskQos(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if updated {
-		s.updateQosLimit()
+		s.updateQosLimit(r.Context())
 	}
 	s.buildSuccessResp(w, "success")
 }
@@ -512,36 +511,38 @@ func (s *DataNode) setDiskBadAPI(w http.ResponseWriter, r *http.Request) {
 		diskPath string
 		disk     *Disk
 	)
+	ctx := r.Context()
+	span := proto.SpanFromContext(ctx)
 
 	if err = r.ParseForm(); err != nil {
 		err = fmt.Errorf("parse form fail: %v", err)
-		log.LogErrorf("[setDiskBadAPI] %v", err.Error())
+		span.Errorf("[setDiskBadAPI] %v", err.Error())
 		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
 	if diskPath = r.FormValue(paramDiskPath); diskPath == "" {
 		err = fmt.Errorf("param(%v) is empty", paramDiskPath)
-		log.LogErrorf("[setDiskBadAPI] %v", err.Error())
+		span.Errorf("[setDiskBadAPI] %v", err.Error())
 		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
 	if disk, err = s.space.GetDisk(diskPath); err != nil {
 		err = fmt.Errorf("not exit such dissk, path: %v", diskPath)
-		log.LogErrorf("[setDiskBadAPI] %v", err.Error())
+		span.Errorf("[setDiskBadAPI] %v", err.Error())
 		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
 	if disk.Status == proto.Unavailable {
 		msg := fmt.Sprintf("disk(%v) status was already unavailable, nothing to do", disk.Path)
-		log.LogInfof("[setDiskBadAPI] %v", msg)
+		span.Infof("[setDiskBadAPI] %v", msg)
 		s.buildSuccessResp(w, msg)
 		return
 	}
 
-	log.LogWarnf("[setDiskBadAPI] set bad disk, path: %v", disk.Path)
+	span.Warnf("[setDiskBadAPI] set bad disk, path: %v", disk.Path)
 	disk.doDiskError()
 
 	s.buildSuccessResp(w, "OK")

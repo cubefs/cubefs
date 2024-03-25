@@ -15,12 +15,9 @@ popd
 
 export PATH=$PATH:/go/bin
 
-for subdir in proto blockcache storage cli lcnode
-do
-    pushd ${CurrentPath}/../../${subdir}
-    go generate ./...
-    if [[ $? -ne 0 ]]; then
-        exit 1
-    fi
-    popd
-done
+pushd ${CurrentPath}/../..
+go generate .
+if [[ $? -ne 0 ]]; then
+    exit 1
+fi
+popd

@@ -16,6 +16,7 @@ package datanode
 
 import (
 	"bytes"
+	"context"
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
@@ -34,6 +35,8 @@ import (
 
 // Apply puts the data onto the disk.
 func (dp *DataPartition) Apply(command []byte, index uint64) (resp interface{}, err error) {
+	ctx := proto.ContextWithOperation(context.Background(), "DataPartition.Apply")
+	span := proto.SpanFromContext(ctx)
 	buff := bytes.NewBuffer(command)
 	var version uint32
 	if err = binary.Read(buff, binary.BigEndian, &version); err != nil {
@@ -43,12 +46,12 @@ func (dp *DataPartition) Apply(command []byte, index uint64) (resp interface{}, 
 	if version != BinaryMarshalMagicVersion {
 		var opItem *RaftCmdItem
 		if opItem, err = UnmarshalRaftCmd(command); err != nil {
-			log.LogErrorf("[ApplyRandomWrite] ApplyID(%v) Partition(%v) unmarshal failed(%v)", index, dp.partitionID, err)
+			span.Errorf("[ApplyRandomWrite] ApplyID(%v) Partition(%v) unmarshal failed(%v)", index, dp.partitionID, err)
 			return
 		}
-		log.LogInfof("[ApplyRandomWrite] ApplyID(%v) Partition(%v) opItem Op(%v)", index, dp.partitionID, opItem.Op)
+		span.Infof("[ApplyRandomWrite] ApplyID(%v) Partition(%v) opItem Op(%v)", index, dp.partitionID, opItem.Op)
 		if opItem.Op == uint32(proto.OpVersionOp) {
-			dp.fsmVersionOp(opItem)
+			dp.fsmVersionOp(ctx, opItem)
 			return
 		}
 		return
@@ -57,13 +60,15 @@ func (dp *DataPartition) Apply(command []byte, index uint64) (resp interface{}, 
 		resp, err = dp.ApplyRandomWrite(command, index)
 		return
 	}
-	log.LogDebugf("[DataPartition.Apply] dp[%v] metaAppliedID(%v) index(%v) no need apply", dp.partitionID, dp.metaAppliedID, index)
+	span.Debugf("[DataPartition.Apply] dp[%v] metaAppliedID(%v) index(%v) no need apply", dp.partitionID, dp.metaAppliedID, index)
 	return
 }
 
 // ApplyMemberChange supports adding new raft member or deleting an existing raft member.
 // It does not support updating an existing member at this point.
 func (dp *DataPartition) ApplyMemberChange(confChange *raftproto.ConfChange, index uint64) (resp interface{}, err error) {
+	ctx := proto.ContextWithOperation(context.Background(), "DataPartition.ApplyMemberChange")
+	span := proto.SpanFromContext(ctx)
 	defer func(index uint64) {
 		if err == nil {
 			dp.uploadApplyID(index)
@@ -84,7 +89,7 @@ func (dp *DataPartition) ApplyMemberChange(confChange *raftproto.ConfChange, ind
 		if err = json.Unmarshal(confChange.Context, req); err != nil {
 			return
 		}
-		log.LogInfof("action[ApplyMemberChange] ConfAddNode [%v], partitionId [%v]", req.AddPeer, req.PartitionId)
+		span.Infof("action[ApplyMemberChange] ConfAddNode [%v], partitionId [%v]", req.AddPeer, req.PartitionId)
 		isUpdated, err = dp.addRaftNode(req, index)
 		if isUpdated && err == nil {
 			// Perform the update replicas operation asynchronously after the execution of the member change applying
@@ -96,11 +101,11 @@ func (dp *DataPartition) ApplyMemberChange(confChange *raftproto.ConfChange, ind
 				defer updateWG.Done()
 				//may fetch old replica, e.g. 3-replica back to 2-replica for adding raft member not return
 				//if err = dp.updateReplicas(true); err != nil {
-				//	log.LogErrorf("ApplyMemberChange: update partition %v replicas failed: %v", dp.partitionID, err)
+				//	span.Errorf("ApplyMemberChange: update partition %v replicas failed: %v", dp.partitionID, err)
 				//	return
 				//}
 				if dp.isLeader {
-					dp.ExtentStore().MoveAllToBrokenTinyExtentC(storage.TinyExtentCount)
+					dp.ExtentStore().MoveAllToBrokenTinyExtentC(ctx, storage.TinyExtentCount)
 				}
 			}()
 			updateWG.Wait()
@@ -110,15 +115,15 @@ func (dp *DataPartition) ApplyMemberChange(confChange *raftproto.ConfChange, ind
 		if err = json.Unmarshal(confChange.Context, req); err != nil {
 			return
 		}
-		log.LogInfof("action[ApplyMemberChange] ConfRemoveNode [%v], partitionId [%v]", req.RemovePeer, req.PartitionId)
+		span.Infof("action[ApplyMemberChange] ConfRemoveNode [%v], partitionId [%v]", req.RemovePeer, req.PartitionId)
 		isUpdated, err = dp.removeRaftNode(req, index)
 	case raftproto.ConfUpdateNode:
-		log.LogDebugf("[updateRaftNode]: not support.")
+		span.Debugf("[updateRaftNode]: not support.")
 	default:
 		// do nothing
 	}
 	if err != nil {
-		log.LogErrorf("action[ApplyMemberChange] dp(%v) type(%v) err(%v).", dp.partitionID, confChange.Type, err)
+		span.Errorf("action[ApplyMemberChange] dp(%v) type(%v) err(%v).", dp.partitionID, confChange.Type, err)
 		if IsDiskErr(err.Error()) {
 			panic(newRaftApplyError(err))
 		}
@@ -126,8 +131,8 @@ func (dp *DataPartition) ApplyMemberChange(confChange *raftproto.ConfChange, ind
 	}
 	if isUpdated {
 		dp.DataPartitionCreateType = proto.NormalCreateDataPartition
-		if err = dp.PersistMetadata(); err != nil {
-			log.LogErrorf("action[ApplyMemberChange] dp(%v) PersistMetadata err(%v).", dp.partitionID, err)
+		if err = dp.PersistMetadata(ctx); err != nil {
+			span.Errorf("action[ApplyMemberChange] dp(%v) PersistMetadata err(%v).", dp.partitionID, err)
 			if IsDiskErr(err.Error()) {
 				panic(newRaftApplyError(err))
 			}
@@ -142,7 +147,7 @@ func (dp *DataPartition) ApplyMemberChange(confChange *raftproto.ConfChange, ind
 // snapshot in this case.
 func (dp *DataPartition) Snapshot() (raftproto.Snapshot, error) {
 	snapIterator := NewItemIterator(dp.raftPartition.AppliedIndex())
-	log.LogInfof("SendSnapShot PartitionID(%v) Snapshot lastTruncateID(%v) currentApplyID(%v) firstCommitID(%v)",
+	log.Infof("SendSnapShot PartitionID(%v) Snapshot lastTruncateID(%v) currentApplyID(%v) firstCommitID(%v)",
 		dp.partitionID, dp.lastTruncateID, dp.appliedID, dp.raftPartition.CommittedIndex())
 	return snapIterator, nil
 }
@@ -150,18 +155,21 @@ func (dp *DataPartition) Snapshot() (raftproto.Snapshot, error) {
 // ApplySnapshot asks the raft leader for the snapshot data to recover the contents on the local disk.
 func (dp *DataPartition) ApplySnapshot(peers []raftproto.Peer, iterator raftproto.SnapIterator) (err error) {
 	// Never delete the raft log which hadn't applied, so snapshot no need.
-	log.LogInfof("PartitionID(%v) ApplySnapshot to (%v)", dp.partitionID, dp.raftPartition.CommittedIndex())
+	log.Infof("PartitionID(%v) ApplySnapshot to (%v)", dp.partitionID, dp.raftPartition.CommittedIndex())
 	return
 }
 
 // HandleFatalEvent notifies the application when panic happens.
 func (dp *DataPartition) HandleFatalEvent(err *raft.FatalError) {
+	ctx := proto.ContextWithOperation(context.Background(), "HandleFatalEvent")
+	span := proto.SpanFromContext(ctx)
 	if isRaftApplyError(err.Err.Error()) {
 		dp.stopRaft()
-		dp.checkIsDiskError(err.Err, 0)
-		log.LogCriticalf("action[HandleFatalEvent] raft apply err(%v), partitionId:%v", err, dp.partitionID)
+		dp.checkIsDiskError(ctx, err.Err, 0)
+		// NOTICE: log.LogCriticalf
+		span.Errorf("[CRITICAL] action[HandleFatalEvent] raft apply err(%v), partitionId:%v", err, dp.partitionID)
 	} else {
-		log.LogFatalf("action[HandleFatalEvent] err(%v), partitionId:%v", err, dp.partitionID)
+		span.Fatalf("action[HandleFatalEvent] err(%v), partitionId:%v", err, dp.partitionID)
 	}
 }
 

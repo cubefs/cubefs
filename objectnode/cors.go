@@ -17,6 +17,7 @@ package objectnode
 // https://docs.aws.amazon.com/AmazonS3/latest/dev/cors.html
 
 import (
+	"context"
 	"encoding/xml"
 	"regexp"
 	"strings"
@@ -119,12 +120,12 @@ func StringListContain(list []string, element string) bool {
 	return false
 }
 
-func storeBucketCors(bytes []byte, vol *Volume) (err error) {
-	return vol.store.Put(vol.name, bucketRootPath, XAttrKeyOSSCORS, bytes)
+func storeBucketCors(ctx context.Context, bytes []byte, vol *Volume) (err error) {
+	return vol.store.Put(ctx, vol.name, bucketRootPath, XAttrKeyOSSCORS, bytes)
 }
 
-func deleteBucketCors(vol *Volume) (err error) {
-	return vol.store.Delete(vol.name, bucketRootPath, XAttrKeyOSSCORS)
+func deleteBucketCors(ctx context.Context, vol *Volume) (err error) {
+	return vol.store.Delete(ctx, vol.name, bucketRootPath, XAttrKeyOSSCORS)
 }
 
 func matchOrigin(allowedOrigins []string, origin string) bool {

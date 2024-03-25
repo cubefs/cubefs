@@ -99,7 +99,7 @@ func (fc *FileInCore) updateFileInCore(volID uint64, vf *proto.File, volLoc *Dat
 		}
 	}
 
-	if isFind == false {
+	if !isFind {
 		fm := newFileMetadata(vf.Crc, volLoc.Addr, volLocIndex, vf.Size, vf.ApplyID)
 		fc.MetadataArray = append(fc.MetadataArray, fm)
 	}

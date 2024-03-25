@@ -1,15 +1,11 @@
 package console
 
 import (
-	"net/http"
-	"path"
-	"runtime"
 	"testing"
 )
 
 func TestMakeHtml2GoBin(t *testing.T) {
 	// when you need rebuild html . please open it
-	return
 	/*
 		assets := getAssets()
 
@@ -24,10 +20,10 @@ func TestMakeHtml2GoBin(t *testing.T) {
 		}*/
 }
 
-func getAssets() http.FileSystem {
-	_, fileStr, _, _ := runtime.Caller(1)
-	split, _ := path.Split(fileStr)
+// func getAssets() http.FileSystem {
+// 	_, fileStr, _, _ := runtime.Caller(1)
+// 	split, _ := path.Split(fileStr)
 
-	var assets http.FileSystem = http.Dir(split + "html")
-	return assets
-}
+// 	var assets http.FileSystem = http.Dir(split + "html")
+// 	return assets
+// }

@@ -15,6 +15,7 @@
 package storage
 
 import (
+	"context"
 	"encoding/binary"
 	"io"
 	"os"
@@ -24,7 +25,6 @@ import (
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util"
-	"github.com/cubefs/cubefs/util/log"
 )
 
 type BlockCrc struct {
@@ -42,15 +42,16 @@ func (arr BlockCrcArr) Less(i, j int) bool { return arr[i].BlockNo < arr[j].Bloc
 func (arr BlockCrcArr) Swap(i, j int)      { arr[i], arr[j] = arr[j], arr[i] }
 
 type (
-	UpdateCrcFunc    func(e *Extent, blockNo int, crc uint32) (err error)
+	UpdateCrcFunc    func(ctx context.Context, e *Extent, blockNo int, crc uint32) (err error)
 	GetExtentCrcFunc func(extentID uint64) (crc uint32, err error)
 )
 
-func (s *ExtentStore) BuildSnapshotExtentCrcMetaFile(blockNo int) (fp *os.File, err error) {
+func (s *ExtentStore) BuildSnapshotExtentCrcMetaFile(ctx context.Context, blockNo int) (fp *os.File, err error) {
+	span := proto.SpanFromContext(ctx)
 	fIdx := blockNo * util.PerBlockCrcSize / util.BlockHeaderSize
 	if fIdx > 0 {
 		gap := fIdx - len(s.verifyExtentFpAppend)
-		log.LogDebugf("PersistenceBlockCrc. idx %v gap %v", fIdx, gap)
+		span.Debugf("PersistenceBlockCrc. idx %v gap %v", fIdx, gap)
 		if gap > 0 {
 			appendFpArr := make([]*os.File, fIdx-len(s.verifyExtentFpAppend))
 			s.verifyExtentFpAppend = append(s.verifyExtentFpAppend, appendFpArr...)
@@ -58,14 +59,14 @@ func (s *ExtentStore) BuildSnapshotExtentCrcMetaFile(blockNo int) (fp *os.File, 
 			for i := gap; i > 0; i-- {
 				suffix := fIdx - i
 				dataPath := path.Join(s.dataPath, ExtCrcHeaderFileName+"_"+strconv.Itoa(suffix))
-				log.LogDebugf("PersistenceBlockCrc. idx %v try create path %v", fIdx-1, dataPath)
+				span.Debugf("PersistenceBlockCrc. idx %v try create path %v", fIdx-1, dataPath)
 				if fp, err = os.OpenFile(dataPath, os.O_CREATE|os.O_RDWR, 0o666); err != nil {
-					log.LogDebugf("PersistenceBlockCrc. idx %v try create path %v err %v", fIdx, dataPath, err)
+					span.Debugf("PersistenceBlockCrc. idx %v try create path %v err %v", fIdx, dataPath, err)
 					return
 				}
-				log.LogDebugf("PersistenceBlockCrc. idx %v try create path %v success", fIdx, dataPath)
+				span.Debugf("PersistenceBlockCrc. idx %v try create path %v success", fIdx, dataPath)
 				s.verifyExtentFpAppend[suffix] = fp
-				s.PreAllocSpaceOnVerfiyFileForAppend(suffix)
+				s.PreAllocSpaceOnVerfiyFileForAppend(ctx, suffix)
 			}
 		}
 		if s.verifyExtentFpAppend[fIdx-1] == nil {
@@ -80,8 +81,9 @@ func (s *ExtentStore) BuildSnapshotExtentCrcMetaFile(blockNo int) (fp *os.File, 
 	return
 }
 
-func (s *ExtentStore) PersistenceBlockCrc(e *Extent, blockNo int, blockCrc uint32) (err error) {
-	log.LogDebugf("PersistenceBlockCrc. extent id %v blockNo %v blockCrc %v data path %v", e.extentID, blockNo, blockCrc, s.dataPath)
+func (s *ExtentStore) PersistenceBlockCrc(ctx context.Context, e *Extent, blockNo int, blockCrc uint32) (err error) {
+	span := proto.SpanFromContext(ctx)
+	span.Debugf("PersistenceBlockCrc. extent id %v blockNo %v blockCrc %v data path %v", e.extentID, blockNo, blockCrc, s.dataPath)
 	if !proto.IsNormalDp(s.partitionType) {
 		return
 	}
@@ -92,16 +94,16 @@ func (s *ExtentStore) PersistenceBlockCrc(e *Extent, blockNo int, blockCrc uint3
 	}
 
 	fIdx := blockNo * util.PerBlockCrcSize / util.BlockHeaderSize
-	log.LogDebugf("PersistenceBlockCrc. idx %v", fIdx)
+	span.Debugf("PersistenceBlockCrc. idx %v", fIdx)
 	fp := s.verifyExtentFp
 	if fIdx > 0 {
-		if fp, err = s.BuildSnapshotExtentCrcMetaFile(blockNo); err != nil {
+		if fp, err = s.BuildSnapshotExtentCrcMetaFile(ctx, blockNo); err != nil {
 			return
 		}
 	}
 	startIdx := blockNo * util.PerBlockCrcSize % util.BlockHeaderSize
 	verifyStart := startIdx + int(util.BlockHeaderSize*e.extentID)
-	log.LogDebugf("PersistenceBlockCrc. dp %v write at start %v name %v", s.partitionID, startIdx, fp.Name())
+	span.Debugf("PersistenceBlockCrc. dp %v write at start %v name %v", s.partitionID, startIdx, fp.Name())
 
 	headerOff := blockNo*util.PerBlockCrcSize%util.BlockHeaderSize + fIdx*util.BlockHeaderSize
 	headerEnd := startIdx + util.PerBlockCrcSize%util.BlockHeaderSize + fIdx*util.BlockHeaderSize
@@ -112,7 +114,8 @@ func (s *ExtentStore) PersistenceBlockCrc(e *Extent, blockNo int, blockCrc uint3
 	return
 }
 
-func (s *ExtentStore) DeleteBlockCrc(extentID uint64) (err error) {
+func (s *ExtentStore) DeleteBlockCrc(ctx context.Context, extentID uint64) (err error) {
+	span := proto.SpanFromContext(ctx)
 	if !proto.IsNormalDp(s.partitionType) {
 		return
 	}
@@ -124,10 +127,10 @@ func (s *ExtentStore) DeleteBlockCrc(extentID uint64) (err error) {
 
 	for idx, fp := range s.verifyExtentFpAppend {
 		if fp == nil {
-			log.LogErrorf("DeleteBlockCrc. idx %v append fp is nil", idx)
+			span.Errorf("DeleteBlockCrc. idx %v append fp is nil", idx)
 			return
 		}
-		log.LogDebugf("DeleteBlockCrc. dp %v idx %v extentID %v offset %v", s.partitionID, idx, extentID, int64(util.BlockHeaderSize*extentID))
+		span.Debugf("DeleteBlockCrc. dp %v idx %v extentID %v offset %v", s.partitionID, idx, extentID, int64(util.BlockHeaderSize*extentID))
 		if err = fallocate(int(fp.Fd()), util.FallocFLPunchHole|util.FallocFLKeepSize,
 			int64(util.BlockHeaderSize*extentID), util.BlockHeaderSize); err != nil {
 			return
@@ -154,26 +157,28 @@ func (s *ExtentStore) GetPreAllocSpaceExtentIDOnVerifyFile() (extentID uint64) {
 	return
 }
 
-func (s *ExtentStore) PreAllocSpaceOnVerfiyFileForAppend(idx int) {
+func (s *ExtentStore) PreAllocSpaceOnVerfiyFileForAppend(ctx context.Context, idx int) {
+	span := proto.SpanFromContext(ctx)
+
 	if !proto.IsNormalDp(s.partitionType) {
 		return
 	}
-	log.LogDebugf("PreAllocSpaceOnVerfiyFileForAppend. idx %v end %v", idx, len(s.verifyExtentFpAppend))
+	span.Debugf("PreAllocSpaceOnVerfiyFileForAppend. idx %v end %v", idx, len(s.verifyExtentFpAppend))
 	if idx >= len(s.verifyExtentFpAppend) {
-		log.LogErrorf("PreAllocSpaceOnVerfiyFileForAppend. idx %v end %v", idx, len(s.verifyExtentFpAppend))
+		span.Errorf("PreAllocSpaceOnVerfiyFileForAppend. idx %v end %v", idx, len(s.verifyExtentFpAppend))
 		return
 	}
 	prevAllocSpaceExtentID := int64(atomic.LoadUint64(&s.hasAllocSpaceExtentIDOnVerfiyFile))
 
-	log.LogDebugf("PreAllocSpaceOnVerfiyFileForAppend. idx %v size %v", idx, prevAllocSpaceExtentID*util.BlockHeaderSize)
+	span.Debugf("PreAllocSpaceOnVerfiyFileForAppend. idx %v size %v", idx, prevAllocSpaceExtentID*util.BlockHeaderSize)
 	err := fallocate(int(s.verifyExtentFpAppend[idx].Fd()), 1, 0, prevAllocSpaceExtentID*util.BlockHeaderSize)
 	if err != nil {
-		log.LogErrorf("PreAllocSpaceOnVerfiyFileForAppend. idx %v size %v err %v", idx, prevAllocSpaceExtentID*util.BlockHeaderSize, err)
+		span.Errorf("PreAllocSpaceOnVerfiyFileForAppend. idx %v size %v err %v", idx, prevAllocSpaceExtentID*util.BlockHeaderSize, err)
 		return
 	}
 }
 
-func (s *ExtentStore) PreAllocSpaceOnVerfiyFile(currExtentID uint64) {
+func (s *ExtentStore) PreAllocSpaceOnVerfiyFile(ctx context.Context, currExtentID uint64) {
 	if !proto.IsNormalDp(s.partitionType) {
 		return
 	}
@@ -187,12 +192,13 @@ func (s *ExtentStore) PreAllocSpaceOnVerfiyFile(currExtentID uint64) {
 			return
 		}
 
+		span := getSpan(ctx)
 		for id, fp := range s.verifyExtentFpAppend {
 			stat, _ := fp.Stat()
-			log.LogDebugf("PreAllocSpaceOnVerfiyFile. id %v name %v size %v", id, fp.Name(), stat.Size())
+			span.Debugf("PreAllocSpaceOnVerfiyFile. id %v name %v size %v", id, fp.Name(), stat.Size())
 			err = fallocate(int(fp.Fd()), 1, prevAllocSpaceExtentID*util.BlockHeaderSize, size)
 			if err != nil {
-				log.LogErrorf("PreAllocSpaceOnVerfiyFile. id %v name %v err %v", id, fp.Name(), err)
+				span.Errorf("PreAllocSpaceOnVerfiyFile. id %v name %v err %v", id, fp.Name(), err)
 				return
 			}
 		}
@@ -203,7 +209,7 @@ func (s *ExtentStore) PreAllocSpaceOnVerfiyFile(currExtentID uint64) {
 			return
 		}
 		atomic.StoreUint64(&s.hasAllocSpaceExtentIDOnVerfiyFile, uint64(endAllocSpaceExtentID))
-		log.LogInfof("Action(PreAllocSpaceOnVerifyFile) PartitionID(%v) currentExtent(%v)"+
+		span.Infof("Action(PreAllocSpaceOnVerifyFile) PartitionID(%v) currentExtent(%v)"+
 			"PrevAllocSpaceExtentIDOnVerifyFile(%v) EndAllocSpaceExtentIDOnVerifyFile(%v)"+
 			" has allocSpaceOnVerifyFile to (%v)", s.partitionID, currExtentID, prevAllocSpaceExtentID, endAllocSpaceExtentID,
 			prevAllocSpaceExtentID*util.BlockHeaderSize+size)

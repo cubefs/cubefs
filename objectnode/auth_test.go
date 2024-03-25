@@ -25,6 +25,15 @@ import (
 )
 
 func TestGetSecurityToken(t *testing.T) {
+	si := SignatureInfo{}
+	_ = si.credential
+	_ = si.signedHeaders
+	_ = si.version
+	_ = si.algorithm
+	_ = si.signature
+	_ = si.stringToSign
+	_ = si.canonicalRequest
+
 	token := "X-AMZ-SECURITY-TOKEN-EXAMPLE"
 	// header
 	request := httptest.NewRequest("GET", "https://s3.cubefs.com/bucket/key", nil)

@@ -15,17 +15,16 @@
 package master
 
 import (
+	"context"
 	"time"
 
 	"github.com/cubefs/cubefs/proto"
-	"github.com/cubefs/cubefs/util/log"
 )
 
 // DataReplica represents the replica of a data partition
 type DataReplica struct {
 	proto.DataReplica
 	dataNode *DataNode
-	loc      uint8
 }
 
 func newDataReplica(dataNode *DataNode) (replica *DataReplica) {
@@ -47,8 +46,10 @@ func (replica *DataReplica) isMissing(interval int64) (isMissing bool) {
 	return
 }
 
-func (replica *DataReplica) isLive(timeOutSec int64) (isAvailable bool) {
-	log.LogDebugf("action[isLive] replica addr %v, datanode active %v replica status %v and is active %v",
+func (replica *DataReplica) isLive(ctx context.Context, timeOutSec int64) (isAvailable bool) {
+	span := proto.SpanFromContext(ctx)
+
+	span.Debugf("action[isLive] replica addr %v, datanode active %v replica status %v and is active %v",
 		replica.Addr, replica.dataNode.isActive, replica.Status, replica.isActive(timeOutSec))
 	if replica.dataNode.isActive && replica.Status != proto.Unavailable &&
 		replica.isActive(timeOutSec) {
@@ -63,18 +64,6 @@ func (replica *DataReplica) isActive(timeOutSec int64) bool {
 
 func (replica *DataReplica) getReplicaNode() (node *DataNode) {
 	return replica.dataNode
-}
-
-// check if the replica's location is available
-func (replica *DataReplica) isLocationAvailable() (isAvailable bool) {
-	dataNode := replica.getReplicaNode()
-	dataNode.Lock()
-	defer dataNode.Unlock()
-	if dataNode.isActive == true && replica.isActive(defaultDataPartitionTimeOutSec) == true {
-		isAvailable = true
-	}
-
-	return
 }
 
 func (replica *DataReplica) isRepairing() bool {

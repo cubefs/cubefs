@@ -8,10 +8,10 @@ import (
 // PutKey change keyInfo in keystore cache
 func (mf *KeystoreFsm) PutKey(k *keystore.KeyInfo) {
 	mf.ksMutex.Lock()
-	defer mf.ksMutex.Unlock()
 	if _, ok := (mf.keystore)[k.ID]; !ok {
 		(mf.keystore)[k.ID] = k
 	}
+	mf.ksMutex.Unlock()
 }
 
 // GetKey Get keyInfo from keystore cache
@@ -28,17 +28,16 @@ func (mf *KeystoreFsm) GetKey(id string) (u *keystore.KeyInfo, err error) {
 // DeleteKey Delete keyInfo in keystore cache
 func (mf *KeystoreFsm) DeleteKey(id string) {
 	mf.ksMutex.Lock()
-	defer mf.ksMutex.Unlock()
 	delete(mf.keystore, id)
-	return
+	mf.ksMutex.Unlock()
 }
 
 func (mf *KeystoreFsm) PutAKInfo(akInfo *keystore.AccessKeyInfo) {
 	mf.aksMutex.Lock()
-	defer mf.aksMutex.Unlock()
 	if _, ok := (mf.accessKeystore)[akInfo.AccessKey]; !ok {
 		(mf.accessKeystore)[akInfo.AccessKey] = akInfo
 	}
+	mf.aksMutex.Unlock()
 }
 
 func (mf *KeystoreFsm) GetAKInfo(accessKey string) (akInfo *keystore.AccessKeyInfo, err error) {
@@ -53,7 +52,6 @@ func (mf *KeystoreFsm) GetAKInfo(accessKey string) (akInfo *keystore.AccessKeyIn
 
 func (mf *KeystoreFsm) DeleteAKInfo(accessKey string) {
 	mf.aksMutex.Lock()
-	defer mf.aksMutex.Unlock()
 	delete(mf.accessKeystore, accessKey)
-	return
+	mf.aksMutex.Unlock()
 }

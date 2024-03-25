@@ -15,11 +15,10 @@
 package proto
 
 import (
+	"context"
 	"fmt"
 	"sync"
 	"time"
-
-	"github.com/cubefs/cubefs/util/log"
 )
 
 const (
@@ -372,12 +371,13 @@ type VolVersionInfoList struct {
 	RWLock          sync.RWMutex
 }
 
-func (v *VolVersionInfoList) GetNextOlderVer(ver uint64) (verSeq uint64, err error) {
+func (v *VolVersionInfoList) GetNextOlderVer(ctx context.Context, ver uint64) (verSeq uint64, err error) {
+	span := SpanFromContext(ctx)
 	v.RWLock.RLock()
 	defer v.RWLock.RUnlock()
-	log.LogDebugf("getNextOlderVer ver %v", ver)
+	span.Debugf("getNextOlderVer ver %v", ver)
 	for idx, info := range v.VerList {
-		log.LogDebugf("getNextOlderVer id %v ver %v info %v", idx, info.Ver, info)
+		span.Debugf("getNextOlderVer id %v ver %v info %v", idx, info.Ver, info)
 		if info.Ver >= ver {
 			if idx == 0 {
 				return 0, fmt.Errorf("not found")
@@ -385,19 +385,20 @@ func (v *VolVersionInfoList) GetNextOlderVer(ver uint64) (verSeq uint64, err err
 			return v.VerList[idx-1].Ver, nil
 		}
 	}
-	log.LogErrorf("getNextOlderVer ver %v not found", ver)
+	span.Errorf("getNextOlderVer ver %v not found", ver)
 	return 0, fmt.Errorf("version not exist")
 }
 
-func (v *VolVersionInfoList) GetNextNewerVer(ver uint64) (verSeq uint64, err error) {
-	log.LogDebugf("getNextOlderVer ver %v", ver)
+func (v *VolVersionInfoList) GetNextNewerVer(ctx context.Context, ver uint64) (verSeq uint64, err error) {
+	span := SpanFromContext(ctx)
+	span.Debugf("getNextOlderVer ver %v", ver)
 	for idx, info := range v.VerList {
-		log.LogDebugf("getNextOlderVer id %v ver %v info %v", idx, info.Ver, info)
+		span.Debugf("getNextOlderVer id %v ver %v info %v", idx, info.Ver, info)
 		if info.Ver > ver {
 			return info.Ver, nil
 		}
 	}
-	log.LogErrorf("getNextOlderVer ver %v not found", ver)
+	span.Errorf("getNextOlderVer ver %v not found", ver)
 	return 0, fmt.Errorf("version not exist")
 }
 

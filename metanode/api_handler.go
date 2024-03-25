@@ -25,11 +25,15 @@ import (
 	"path"
 	"strconv"
 
+	"github.com/cubefs/cubefs/blobstore/common/trace"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/config"
 	"github.com/cubefs/cubefs/util/errors"
-	"github.com/cubefs/cubefs/util/log"
 )
+
+func httpSpan(r *http.Request) trace.Span {
+	return proto.SpanFromContext(r.Context())
+}
 
 // APIResponse defines the structure of the response to an HTTP request
 type APIResponse struct {
@@ -46,9 +50,12 @@ func NewAPIResponse(code int, msg string) *APIResponse {
 	}
 }
 
-// Marshal is a wrapper function of json.Marshal
-func (api *APIResponse) Marshal() ([]byte, error) {
-	return json.Marshal(api)
+// Reply write response.
+func (api *APIResponse) Reply(w http.ResponseWriter, r *http.Request) {
+	data, _ := json.Marshal(api)
+	if _, err := w.Write(data); err != nil {
+		httpSpan(r).Errorf("write to response %s", err.Error())
+	}
 }
 
 // register the APIs
@@ -78,46 +85,31 @@ func (m *MetaNode) registerAPIHandler() (err error) {
 	return
 }
 
-func (m *MetaNode) getParamsHandler(w http.ResponseWriter,
-	r *http.Request) {
+func (m *MetaNode) getParamsHandler(w http.ResponseWriter, r *http.Request) {
 	resp := NewAPIResponse(http.StatusOK, http.StatusText(http.StatusOK))
 	params := make(map[string]interface{})
 	params[metaNodeDeleteBatchCountKey] = DeleteBatchCount()
 	resp.Data = params
-	data, _ := resp.Marshal()
-	if _, err := w.Write(data); err != nil {
-		log.LogErrorf("[getPartitionsHandler] response %s", err)
-	}
+	resp.Reply(w, r)
 }
 
-func (m *MetaNode) getSmuxStatHandler(w http.ResponseWriter,
-	r *http.Request) {
+func (m *MetaNode) getSmuxStatHandler(w http.ResponseWriter, r *http.Request) {
 	resp := NewAPIResponse(http.StatusOK, http.StatusText(http.StatusOK))
 	resp.Data = smuxPool.GetStat()
-	data, _ := resp.Marshal()
-	if _, err := w.Write(data); err != nil {
-		log.LogErrorf("[getSmuxStatHandler] response %s", err)
-	}
+	resp.Reply(w, r)
 }
 
-func (m *MetaNode) getPartitionsHandler(w http.ResponseWriter,
-	r *http.Request) {
+func (m *MetaNode) getPartitionsHandler(w http.ResponseWriter, r *http.Request) {
 	resp := NewAPIResponse(http.StatusOK, http.StatusText(http.StatusOK))
 	resp.Data = m.metadataManager
-	data, _ := resp.Marshal()
-	if _, err := w.Write(data); err != nil {
-		log.LogErrorf("[getPartitionsHandler] response %s", err)
-	}
+	resp.Reply(w, r)
 }
 
 func (m *MetaNode) getPartitionByIDHandler(w http.ResponseWriter, r *http.Request) {
 	r.ParseForm()
 	resp := NewAPIResponse(http.StatusBadRequest, "")
 	defer func() {
-		data, _ := resp.Marshal()
-		if _, err := w.Write(data); err != nil {
-			log.LogErrorf("[getPartitionByIDHandler] response %s", err)
-		}
+		resp.Reply(w, r)
 	}()
 	pid, err := strconv.ParseUint(r.FormValue("pid"), 10, 64)
 	if err != nil {
@@ -153,28 +145,18 @@ func (m *MetaNode) getLeaderPartitionsHandler(w http.ResponseWriter, r *http.Req
 	resp := NewAPIResponse(http.StatusOK, http.StatusText(http.StatusOK))
 	mps := m.metadataManager.GetLeaderPartitions()
 	resp.Data = mps
-	data, err := resp.Marshal()
-	if err != nil {
-		log.LogErrorf("json marshal error:%v", err)
-		resp.Code = http.StatusInternalServerError
-		resp.Msg = err.Error()
-		return
-	}
-	if _, err := w.Write(data); err != nil {
-		log.LogErrorf("[getPartitionsHandler] response %s", err)
-		resp.Code = http.StatusInternalServerError
-		resp.Msg = err.Error()
-	}
+	resp.Reply(w, r)
 }
 
 func (m *MetaNode) getAllInodesHandler(w http.ResponseWriter, r *http.Request) {
 	var err error
+	span := httpSpan(r)
 
 	defer func() {
 		if err != nil {
 			msg := fmt.Sprintf("[getAllInodesHandler] err(%v)", err)
 			if _, e := w.Write([]byte(msg)); e != nil {
-				log.LogErrorf("[getAllInodesHandler] failed to write response: err(%v) msg(%v)", e, msg)
+				span.Errorf("response err(%v) msg(%v)", e, msg)
 			}
 		}
 	}()
@@ -194,8 +176,9 @@ func (m *MetaNode) getAllInodesHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		return
 	}
-	var inode *Inode
 
+	ctx := r.Context()
+	var inode *Inode
 	f := func(i BtreeItem) bool {
 		var (
 			data []byte
@@ -204,22 +187,21 @@ func (m *MetaNode) getAllInodesHandler(w http.ResponseWriter, r *http.Request) {
 
 		if inode != nil {
 			if _, e = w.Write([]byte("\n")); e != nil {
-				log.LogErrorf("[getAllInodesHandler] failed to write response: %v", e)
+				span.Errorf("write to response: %v", e)
 				return false
 			}
 		}
 
-		inode, _ = i.(*Inode).getInoByVer(verSeq, false)
+		inode, _ = i.(*Inode).getInoByVer(ctx, verSeq, false)
 		if inode == nil {
 			return true
 		}
 		if data, e = inode.MarshalToJSON(); e != nil {
-			log.LogErrorf("[getAllInodesHandler] failed to marshal to json: %v", e)
+			span.Errorf("marshal to json: %v", e)
 			return false
 		}
-
 		if _, e = w.Write(data); e != nil {
-			log.LogErrorf("[getAllInodesHandler] failed to write response: %v", e)
+			span.Errorf("write to response: %v", e)
 			return false
 		}
 
@@ -231,32 +213,25 @@ func (m *MetaNode) getAllInodesHandler(w http.ResponseWriter, r *http.Request) {
 
 func (m *MetaNode) getSplitKeyHandler(w http.ResponseWriter, r *http.Request) {
 	r.ParseForm()
-	log.LogDebugf("getSplitKeyHandler")
+	span := httpSpan(r).WithOperation("getSplitKeyHandler")
 	resp := NewAPIResponse(http.StatusBadRequest, "")
-	defer func() {
-		data, _ := resp.Marshal()
-		if _, err := w.Write(data); err != nil {
-			log.LogErrorf("[getSplitKeyHandler] response %s", err)
-		}
-	}()
+	span.Debug("handle ...")
+	defer func() { resp.Reply(w, r) }()
 	pid, err := strconv.ParseUint(r.FormValue("pid"), 10, 64)
 	if err != nil {
 		resp.Msg = err.Error()
 		return
 	}
-	log.LogDebugf("getSplitKeyHandler")
 	id, err := strconv.ParseUint(r.FormValue("ino"), 10, 64)
 	if err != nil {
 		resp.Msg = err.Error()
 		return
 	}
-	log.LogDebugf("getSplitKeyHandler")
 	verSeq, err := m.getRealVerSeq(w, r)
 	if err != nil {
 		resp.Msg = err.Error()
 		return
 	}
-	log.LogDebugf("getSplitKeyHandler")
 	verAll, _ := strconv.ParseBool(r.FormValue("verAll"))
 	mp, err := m.metadataManager.GetPartition(pid)
 	if err != nil {
@@ -264,14 +239,12 @@ func (m *MetaNode) getSplitKeyHandler(w http.ResponseWriter, r *http.Request) {
 		resp.Msg = err.Error()
 		return
 	}
-	log.LogDebugf("getSplitKeyHandler")
 	req := &InodeGetSplitReq{
 		PartitionID: pid,
 		Inode:       id,
 		VerSeq:      verSeq,
 		VerAll:      verAll,
 	}
-	log.LogDebugf("getSplitKeyHandler")
 	p := &Packet{}
 	err = mp.InodeGetSplitEk(req, p)
 	if err != nil {
@@ -279,27 +252,20 @@ func (m *MetaNode) getSplitKeyHandler(w http.ResponseWriter, r *http.Request) {
 		resp.Msg = err.Error()
 		return
 	}
-	log.LogDebugf("getSplitKeyHandler")
 	resp.Code = http.StatusSeeOther
 	resp.Msg = p.GetResultMsg()
 	if len(p.Data) > 0 {
 		resp.Data = json.RawMessage(p.Data)
-		log.LogDebugf("getSplitKeyHandler data %v", resp.Data)
+		span.Debugf("data %v", resp.Data)
 	} else {
-		log.LogDebugf("getSplitKeyHandler")
+		span.Debug("end")
 	}
-	return
 }
 
 func (m *MetaNode) getInodeHandler(w http.ResponseWriter, r *http.Request) {
 	r.ParseForm()
 	resp := NewAPIResponse(http.StatusBadRequest, "")
-	defer func() {
-		data, _ := resp.Marshal()
-		if _, err := w.Write(data); err != nil {
-			log.LogErrorf("[getInodeHandler] response %s", err)
-		}
-	}()
+	defer func() { resp.Reply(w, r) }()
 	pid, err := strconv.ParseUint(r.FormValue("pid"), 10, 64)
 	if err != nil {
 		resp.Msg = err.Error()
@@ -343,22 +309,13 @@ func (m *MetaNode) getInodeHandler(w http.ResponseWriter, r *http.Request) {
 	if len(p.Data) > 0 {
 		resp.Data = json.RawMessage(p.Data)
 	}
-	return
 }
 
 func (m *MetaNode) getRaftStatusHandler(w http.ResponseWriter, r *http.Request) {
-	const (
-		paramRaftID = "id"
-	)
-
 	resp := NewAPIResponse(http.StatusOK, http.StatusText(http.StatusOK))
-	defer func() {
-		data, _ := resp.Marshal()
-		if _, err := w.Write(data); err != nil {
-			log.LogErrorf("[getRaftStatusHandler] response %s", err)
-		}
-	}()
+	defer func() { resp.Reply(w, r) }()
 
+	const paramRaftID = "id"
 	raftID, err := strconv.ParseUint(r.FormValue(paramRaftID), 10, 64)
 	if err != nil {
 		err = fmt.Errorf("parse param %v fail: %v", paramRaftID, err)
@@ -371,16 +328,10 @@ func (m *MetaNode) getRaftStatusHandler(w http.ResponseWriter, r *http.Request) 
 	resp.Data = raftStatus
 }
 
-func (m *MetaNode) getEbsExtentsByInodeHandler(w http.ResponseWriter,
-	r *http.Request) {
+func (m *MetaNode) getEbsExtentsByInodeHandler(w http.ResponseWriter, r *http.Request) {
 	r.ParseForm()
 	resp := NewAPIResponse(http.StatusBadRequest, "")
-	defer func() {
-		data, _ := resp.Marshal()
-		if _, err := w.Write(data); err != nil {
-			log.LogErrorf("[getEbsExtentsByInodeHandler] response %s", err)
-		}
-	}()
+	defer func() { resp.Reply(w, r) }()
 	pid, err := strconv.ParseUint(r.FormValue("pid"), 10, 64)
 	if err != nil {
 		resp.Msg = err.Error()
@@ -412,19 +363,12 @@ func (m *MetaNode) getEbsExtentsByInodeHandler(w http.ResponseWriter,
 	if len(p.Data) > 0 {
 		resp.Data = json.RawMessage(p.Data)
 	}
-	return
 }
 
-func (m *MetaNode) getExtentsByInodeHandler(w http.ResponseWriter,
-	r *http.Request) {
+func (m *MetaNode) getExtentsByInodeHandler(w http.ResponseWriter, r *http.Request) {
 	r.ParseForm()
 	resp := NewAPIResponse(http.StatusBadRequest, "")
-	defer func() {
-		data, _ := resp.Marshal()
-		if _, err := w.Write(data); err != nil {
-			log.LogErrorf("[getExtentsByInodeHandler] response %s", err)
-		}
-	}()
+	defer func() { resp.Reply(w, r) }()
 	pid, err := strconv.ParseUint(r.FormValue("pid"), 10, 64)
 	if err != nil {
 		resp.Msg = err.Error()
@@ -466,19 +410,13 @@ func (m *MetaNode) getExtentsByInodeHandler(w http.ResponseWriter,
 	if len(p.Data) > 0 {
 		resp.Data = json.RawMessage(p.Data)
 	}
-	return
 }
 
 func (m *MetaNode) getDentryHandler(w http.ResponseWriter, r *http.Request) {
 	r.ParseForm()
 	name := r.FormValue("name")
 	resp := NewAPIResponse(http.StatusBadRequest, "")
-	defer func() {
-		data, _ := resp.Marshal()
-		if _, err := w.Write(data); err != nil {
-			log.LogErrorf("[getDentryHandler] response %s", err)
-		}
-	}()
+	defer func() { resp.Reply(w, r) }()
 	var (
 		pid  uint64
 		pIno uint64
@@ -524,18 +462,12 @@ func (m *MetaNode) getDentryHandler(w http.ResponseWriter, r *http.Request) {
 	if len(p.Data) > 0 {
 		resp.Data = json.RawMessage(p.Data)
 	}
-	return
 }
 
 func (m *MetaNode) getTxHandler(w http.ResponseWriter, r *http.Request) {
 	r.ParseForm()
 	resp := NewAPIResponse(http.StatusBadRequest, "")
-	defer func() {
-		data, _ := resp.Marshal()
-		if _, err := w.Write(data); err != nil {
-			log.LogErrorf("[getTxHandler] response %s", err)
-		}
-	}()
+	defer func() { resp.Reply(w, r) }()
 	var (
 		pid  uint64
 		txId string
@@ -573,7 +505,6 @@ func (m *MetaNode) getTxHandler(w http.ResponseWriter, r *http.Request) {
 	if len(p.Data) > 0 {
 		resp.Data = json.RawMessage(p.Data)
 	}
-	return
 }
 
 func (m *MetaNode) getRealVerSeq(w http.ResponseWriter, r *http.Request) (verSeq uint64, err error) {
@@ -596,10 +527,7 @@ func (m *MetaNode) getAllDentriesHandler(w http.ResponseWriter, r *http.Request)
 	shouldSkip := false
 	defer func() {
 		if !shouldSkip {
-			data, _ := resp.Marshal()
-			if _, err := w.Write(data); err != nil {
-				log.LogErrorf("[getAllDentriesHandler] response %s", err)
-			}
+			resp.Reply(w, r)
 		}
 	}()
 	pid, err := strconv.ParseUint(r.FormValue("pid"), 10, 64)
@@ -632,8 +560,9 @@ func (m *MetaNode) getAllDentriesHandler(w http.ResponseWriter, r *http.Request)
 		isFirst   = true
 	)
 
+	ctx := r.Context()
 	mp.GetDentryTree().Ascend(func(i BtreeItem) bool {
-		den, _ := i.(*Dentry).getDentryFromVerList(verSeq, false)
+		den, _ := i.(*Dentry).getDentryFromVerList(ctx, verSeq, false)
 		if den == nil || den.isDeleted() {
 			return true
 		}
@@ -659,9 +588,8 @@ func (m *MetaNode) getAllDentriesHandler(w http.ResponseWriter, r *http.Request)
 	shouldSkip = true
 	buff.WriteString(`]}`)
 	if _, err = w.Write(buff.Bytes()); err != nil {
-		log.LogErrorf("[getAllDentriesHandler] response %s", err)
+		httpSpan(r).Errorf("response %s", err.Error())
 	}
-	return
 }
 
 func (m *MetaNode) getAllTxHandler(w http.ResponseWriter, r *http.Request) {
@@ -670,10 +598,7 @@ func (m *MetaNode) getAllTxHandler(w http.ResponseWriter, r *http.Request) {
 	shouldSkip := false
 	defer func() {
 		if !shouldSkip {
-			data, _ := resp.Marshal()
-			if _, err := w.Write(data); err != nil {
-				log.LogErrorf("[getAllTxHandler] response %s", err)
-			}
+			resp.Reply(w, r)
 		}
 	}()
 	pid, err := strconv.ParseUint(r.FormValue("pid"), 10, 64)
@@ -710,17 +635,11 @@ func (m *MetaNode) getAllTxHandler(w http.ResponseWriter, r *http.Request) {
 
 		if ino, ok := i.(*TxRollbackInode); ok {
 			_, err = w.Write([]byte(ino.ToString()))
-			if err != nil {
-				return false
-			}
-			return true
+			return err == nil
 		}
 		if den, ok := i.(*TxRollbackDentry); ok {
 			_, err = w.Write([]byte(den.ToString()))
-			if err != nil {
-				return false
-			}
-			return true
+			return err == nil
 		}
 
 		val, err = json.Marshal(i)
@@ -743,19 +662,13 @@ func (m *MetaNode) getAllTxHandler(w http.ResponseWriter, r *http.Request) {
 	shouldSkip = true
 	buff.WriteString(`]}`)
 	if _, err = w.Write(buff.Bytes()); err != nil {
-		log.LogErrorf("[getAllTxHandler] response %s", err)
+		httpSpan(r).Errorf("response %s", err.Error())
 	}
-	return
 }
 
 func (m *MetaNode) getDirectoryHandler(w http.ResponseWriter, r *http.Request) {
 	resp := NewAPIResponse(http.StatusBadRequest, "")
-	defer func() {
-		data, _ := resp.Marshal()
-		if _, err := w.Write(data); err != nil {
-			log.LogErrorf("[getDirectoryHandler] response %s", err)
-		}
-	}()
+	defer func() { resp.Reply(w, r) }()
 	pid, err := strconv.ParseUint(r.FormValue("pid"), 10, 64)
 	if err != nil {
 		resp.Msg = err.Error()
@@ -795,18 +708,12 @@ func (m *MetaNode) getDirectoryHandler(w http.ResponseWriter, r *http.Request) {
 	if len(p.Data) > 0 {
 		resp.Data = json.RawMessage(p.Data)
 	}
-	return
 }
 
 func (m *MetaNode) genClusterVersionFileHandler(w http.ResponseWriter, r *http.Request) {
 	r.ParseForm()
 	resp := NewAPIResponse(http.StatusOK, "Generate cluster version file success")
-	defer func() {
-		data, _ := resp.Marshal()
-		if _, err := w.Write(data); err != nil {
-			log.LogErrorf("[genClusterVersionFileHandler] response %s", err)
-		}
-	}()
+	defer func() { resp.Reply(w, r) }()
 	paths := make([]string, 0)
 	paths = append(paths, m.metadataDir, m.raftDir)
 	for _, p := range paths {
@@ -823,7 +730,6 @@ func (m *MetaNode) genClusterVersionFileHandler(w http.ResponseWriter, r *http.R
 			return
 		}
 	}
-	return
 }
 
 func (m *MetaNode) getInodeSnapshotHandler(w http.ResponseWriter, r *http.Request) {
@@ -838,10 +744,11 @@ func (m *MetaNode) getSnapshotHandler(w http.ResponseWriter, r *http.Request, fi
 	var err error
 	defer func() {
 		if err != nil {
-			msg := fmt.Sprintf("[getInodeSnapshotHandler] err(%v)", err)
-			log.LogErrorf("%s", msg)
+			span := httpSpan(r)
+			msg := fmt.Sprintf("err(%v)", err)
+			span.Error(msg)
 			if _, e := w.Write([]byte(msg)); e != nil {
-				log.LogErrorf("[getInodeSnapshotHandler] failed to write response: err(%v) msg(%v)", e, msg)
+				span.Errorf("response: err(%v) msg(%v)", e, msg)
 			}
 		}
 	}()
@@ -859,19 +766,19 @@ func (m *MetaNode) getSnapshotHandler(w http.ResponseWriter, r *http.Request, fi
 
 	filename := path.Join(mp.GetBaseConfig().RootDir, snapshotDir, file)
 	if _, err = os.Stat(filename); err != nil {
-		err = errors.NewErrorf("[getInodeSnapshotHandler] Stat: %s", err.Error())
+		err = errors.NewErrorf("Stat: %s", err.Error())
 		return
 	}
 	fp, err := os.OpenFile(filename, os.O_RDONLY, 0o644)
 	if err != nil {
-		err = errors.NewErrorf("[getInodeSnapshotHandler] OpenFile: %s", err.Error())
+		err = errors.NewErrorf("OpenFile: %s", err.Error())
 		return
 	}
 	defer fp.Close()
 
 	_, err = io.Copy(w, fp)
 	if err != nil {
-		err = errors.NewErrorf("[getInodeSnapshotHandler] copy: %s", err.Error())
+		err = errors.NewErrorf("Copy: %s", err.Error())
 		return
 	}
 }

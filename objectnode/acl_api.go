@@ -15,6 +15,7 @@
 package objectnode
 
 import (
+	"context"
 	"encoding/json"
 	"encoding/xml"
 	"fmt"
@@ -46,12 +47,15 @@ func IsApiSupportByObjectAcl(apiName proto.Action) bool {
 	return false
 }
 
-func ParseACL(req *http.Request, owner string, hasBodyAcl, needDefault bool) (acl *AccessControlPolicy, err error) {
+func ParseACL(req *http.Request, owner string, hasBodyAcl, needDefault bool) (*AccessControlPolicy, error) {
 	cannedAcl, hasCannedAcl := req.Header[XAmzAcl]
 	hasGrantAcl := hasGrantAclHeader(req.Header)
-	if err = hasConflictAcl(hasCannedAcl, hasGrantAcl, hasBodyAcl); err != nil {
+	err := hasConflictAcl(hasCannedAcl, hasGrantAcl, hasBodyAcl)
+	if err != nil {
 		return nil, err
 	}
+
+	var acl *AccessControlPolicy
 	switch {
 	case hasCannedAcl:
 		acl, err = ParseCannedAcl(cannedAcl[0], owner)
@@ -65,9 +69,10 @@ func ParseACL(req *http.Request, owner string, hasBodyAcl, needDefault bool) (ac
 		}
 		return nil, nil
 	}
-	if err != nil {
+	if err != nil || acl == nil {
 		return nil, err
 	}
+
 	return acl, acl.IsValid()
 }
 
@@ -105,12 +110,14 @@ func ParseGrantAclWithinHeader(reqHeader http.Header, owner string) (*AccessCont
 
 func ParseAclFromRequestBody(body io.Reader, owner string) (acl *AccessControlPolicy, err error) {
 	if err = xml.NewDecoder(body).Decode(&acl); err != nil {
-		return nil, ErrMalformedACL
+		err = ErrMalformedACL
+		return
 	}
 	if acl.GetOwner() != owner {
-		return nil, AccessDenied
+		err = AccessDenied
 	}
-	return acl, nil
+
+	return
 }
 
 func CreateDefaultACL(owner string) *AccessControlPolicy {
@@ -158,10 +165,12 @@ func parseGrantValue(grantValue string) (grants []grant, err error) {
 	for _, pair := range pairs {
 		kv := strings.Split(pair, "=")
 		if len(kv) != 2 || kv[0] == "" || kv[1] == "" {
-			return nil, InvalidArgument
+			err = InvalidArgument
+			return
 		}
 		grants = append(grants, grant{key: kv[0], value: kv[1]})
 	}
+
 	return
 }
 
@@ -178,16 +187,17 @@ func addGrants(acl *AccessControlPolicy, grants []grant, permission string) {
 	}
 }
 
-func putBucketACL(vol *Volume, acp *AccessControlPolicy) error {
+func putBucketACL(ctx context.Context, vol *Volume, acp *AccessControlPolicy) error {
 	data, err := json.Marshal(acp)
 	if err != nil {
 		return err
 	}
-	return vol.store.Put(vol.name, bucketRootPath, XAttrKeyOSSACL, data)
+
+	return vol.store.Put(ctx, vol.name, bucketRootPath, XAttrKeyOSSACL, data)
 }
 
-func getObjectACL(vol *Volume, path string, needDefault bool) (*AccessControlPolicy, error) {
-	xAttr, err := vol.GetXAttr(path, XAttrKeyOSSACL)
+func getObjectACL(ctx context.Context, vol *Volume, path string, needDefault bool) (*AccessControlPolicy, error) {
+	xAttr, err := vol.GetXAttr(ctx, path, XAttrKeyOSSACL)
 	if err != nil || xAttr == nil {
 		return nil, err
 	}
@@ -203,13 +213,15 @@ func getObjectACL(vol *Volume, path string, needDefault bool) (*AccessControlPol
 	} else if needDefault {
 		acp = CreateDefaultACL(vol.owner)
 	}
+
 	return acp, err
 }
 
-func putObjectACL(vol *Volume, path string, acp *AccessControlPolicy) error {
+func putObjectACL(ctx context.Context, vol *Volume, path string, acp *AccessControlPolicy) error {
 	data, err := json.Marshal(acp)
 	if err != nil {
 		return err
 	}
-	return vol.SetXAttr(path, XAttrKeyOSSACL, data, false)
+
+	return vol.SetXAttr(ctx, path, XAttrKeyOSSACL, data, false)
 }

@@ -15,6 +15,7 @@
 package master
 
 import (
+	"context"
 	"crypto/md5"
 	"encoding/hex"
 	"encoding/json"
@@ -26,12 +27,12 @@ import (
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/exporter"
-	"github.com/cubefs/cubefs/util/log"
 )
 
 func newCreateDataPartitionRequest(volName string, ID uint64, replicaNum int, members []proto.Peer,
 	dataPartitionSize, leaderSize int, hosts []string, createType int, partitionType int,
-	decommissionedDisks []string, verSeq uint64) (req *proto.CreateDataPartitionRequest) {
+	decommissionedDisks []string, verSeq uint64,
+) (req *proto.CreateDataPartitionRequest) {
 	req = &proto.CreateDataPartitionRequest{
 		PartitionTyp:        partitionType,
 		PartitionId:         ID,
@@ -86,7 +87,7 @@ func newStopDataPartitionRepairRequest(ID uint64, stop bool) (req *proto.StopDat
 	return
 }
 
-func unmarshalTaskResponse(task *proto.AdminTask) (err error) {
+func unmarshalTaskResponse(ctx context.Context, task *proto.AdminTask) (err error) {
 	bytes, err := json.Marshal(task.Response)
 	if err != nil {
 		return
@@ -119,7 +120,7 @@ func unmarshalTaskResponse(task *proto.AdminTask) (err error) {
 		response = &proto.SnapshotVerDelTaskResponse{}
 
 	default:
-		log.LogError(fmt.Sprintf("unknown operate code(%v)", task.OpCode))
+		proto.SpanFromContext(ctx).Error(fmt.Sprintf("unknown operate code(%v)", task.OpCode))
 	}
 
 	if response == nil {
@@ -133,7 +134,7 @@ func unmarshalTaskResponse(task *proto.AdminTask) (err error) {
 }
 
 func contains(arr []string, element string) (ok bool) {
-	if arr == nil || len(arr) == 0 {
+	if len(arr) == 0 {
 		return
 	}
 
@@ -147,7 +148,7 @@ func contains(arr []string, element string) (ok bool) {
 }
 
 func containsID(arr []uint64, element uint64) bool {
-	if arr == nil || len(arr) == 0 {
+	if len(arr) == 0 {
 		return false
 	}
 
@@ -160,9 +161,9 @@ func containsID(arr []uint64, element uint64) bool {
 	return false
 }
 
-func reshuffleHosts(oldHosts []string) (newHosts []string, err error) {
-	if oldHosts == nil || len(oldHosts) == 0 {
-		log.LogError(fmt.Sprintf("action[reshuffleHosts],err:%v", proto.ErrReshuffleArray))
+func reshuffleHosts(ctx context.Context, oldHosts []string) (newHosts []string, err error) {
+	if len(oldHosts) == 0 {
+		proto.SpanFromContext(ctx).Error(fmt.Sprintf("action[reshuffleHosts],err:%v", proto.ErrReshuffleArray))
 		err = proto.ErrReshuffleArray
 		return
 	}
@@ -184,14 +185,14 @@ func reshuffleHosts(oldHosts []string) (newHosts []string, err error) {
 }
 
 // Warn provides warnings when exits
-func Warn(clusterID, msg string) {
+func Warn(ctx context.Context, clusterID, msg string) {
 	key := fmt.Sprintf("%s_%s", clusterID, ModuleName)
-	WarnBySpecialKey(key, msg)
+	WarnBySpecialKey(ctx, key, msg)
 }
 
 // WarnBySpecialKey provides warnings when exits
-func WarnBySpecialKey(key, msg string) {
-	log.LogWarn(msg)
+func WarnBySpecialKey(ctx context.Context, key, msg string) {
+	proto.SpanFromContext(ctx).Warn(msg)
 	exporter.Warning(msg)
 }
 
@@ -201,10 +202,6 @@ func keyNotFound(name string) (err error) {
 
 func unmatchedKey(name string) (err error) {
 	return errors.NewErrorf("parameter %v not match", name)
-}
-
-func txInvalidMask() (err error) {
-	return errors.New("transaction mask key value pair should be: enableTxMaskKey=[create|mkdir|remove|rename|mknod|symlink|link]\n enableTxMaskKey=off \n enableTxMaskKey=all")
 }
 
 func notFoundMsg(name string) (err error) {
@@ -227,10 +224,6 @@ func dataReplicaNotFound(addr string) (err error) {
 	return notFoundMsg(fmt.Sprintf("data replica[%v]", addr))
 }
 
-func zoneNotFound(name string) (err error) {
-	return notFoundMsg(fmt.Sprintf("zone[%v]", name))
-}
-
 func nodeSetNotFound(id uint64) (err error) {
 	return notFoundMsg(fmt.Sprintf("node set[%v]", id))
 }
@@ -247,17 +240,13 @@ func lcNodeNotFound(addr string) (err error) {
 	return notFoundMsg(fmt.Sprintf("lc node[%v]", addr))
 }
 
-func volNotFound(name string) (err error) {
-	return notFoundMsg(fmt.Sprintf("vol[%v]", name))
-}
-
-func matchKey(serverKey, clientKey string) bool {
+func matchKey(ctx context.Context, serverKey, clientKey string) bool {
 	h := md5.New()
 	_, err := h.Write([]byte(serverKey))
 	if err != nil {
-		log.LogWarnf("action[matchKey] write server key[%v] failed,err[%v]", serverKey, err)
+		proto.SpanFromContext(ctx).Warnf("action[matchKey] write server key[%v] failed,err[%v]", serverKey, err)
 		return false
 	}
 	cipherStr := h.Sum(nil)
-	return strings.ToLower(clientKey) == strings.ToLower(hex.EncodeToString(cipherStr))
+	return strings.EqualFold(clientKey, hex.EncodeToString(cipherStr))
 }

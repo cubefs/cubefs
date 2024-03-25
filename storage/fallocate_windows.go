@@ -22,6 +22,6 @@ import (
 
 func fallocate(fd int, mode uint32, off int64, len int64) (err error) {
 	// system call 'fallocate' is not supported in Microsoft Windows.
-	log.LogWarnf("fallocate: not supported in Microsoft Windows operating system")
+	log.Warnf("fallocate: not supported in Microsoft Windows operating system")
 	return syscall.ENOSYS
 }

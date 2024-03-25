@@ -8,6 +8,7 @@
 | domains      | string slice | 为S3兼容接口配置域名以支持DNS风格访问资源，格式: `DOMAIN`                            | 否   |
 | logDir       | string       | 日志存放路径                                                          | 是   |
 | logLevel     | string       | 日志级别，默认: `error`                                                | 否   |
+| logOptions   | none         | [日志选项](./log.md)                                                   | 否   |
 | masterAddr   | string slice | 格式: `HOST:PORT`，HOST: 资源管理节点IP（Master），PORT: 资源管理节点服务端口（Master） | 是   |
 | exporterPort | string       | prometheus获取监控数据端口                                              | 否   |
 | prof         | string       | 调试和管理员API接口                                                     | 是   |

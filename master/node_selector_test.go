@@ -15,6 +15,7 @@
 package master
 
 import (
+	"context"
 	"fmt"
 	"math"
 	"math/rand"
@@ -25,6 +26,7 @@ import (
 	"time"
 
 	"github.com/cubefs/cubefs/master/mocktest"
+	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util"
 )
 
@@ -144,7 +146,7 @@ func getFirstMetaNodeForTest(t *testing.T, selectZone string) (node *MetaNode) {
 	return
 }
 
-func DataNodeSelectorTest(t *testing.T, selector NodeSelector, expectedNode *DataNode) *DataNode {
+func DataNodeSelectorTest(ctx context.Context, t *testing.T, selector NodeSelector, expectedNode *DataNode) *DataNode {
 	selectZone := testZone2
 	zone, err := server.cluster.t.getZone(selectZone)
 	if err != nil {
@@ -161,7 +163,7 @@ func DataNodeSelectorTest(t *testing.T, selector NodeSelector, expectedNode *Dat
 	nset := nsc[0]
 	mocktest.Log(t, "List datanodes of nodeset", nset.ID)
 	printNodesetAndDataNodes(t, nset)
-	_, peer, err := selector.Select(nset, nil, 1)
+	_, peer, err := selector.Select(ctx, nset, nil, 1)
 	if err != nil {
 		t.Errorf("%v failed to select nodes %v", selector.GetName(), err)
 		return nil
@@ -189,7 +191,7 @@ func DataNodeSelectorTest(t *testing.T, selector NodeSelector, expectedNode *Dat
 	return node
 }
 
-func MetaNodeSelectorTest(t *testing.T, selector NodeSelector, expectedNode *MetaNode) *MetaNode {
+func MetaNodeSelectorTest(ctx context.Context, t *testing.T, selector NodeSelector, expectedNode *MetaNode) *MetaNode {
 	selectZone := testZone2
 	zone, err := server.cluster.t.getZone(selectZone)
 	if err != nil {
@@ -202,7 +204,7 @@ func MetaNodeSelectorTest(t *testing.T, selector NodeSelector, expectedNode *Met
 	nset := nsc[0]
 	mocktest.Log(t, "List metanodes of nodeset", nset.ID)
 	printNodesetAndMetaNodes(t, nset)
-	_, peer, err := selector.Select(nset, nil, 1)
+	_, peer, err := selector.Select(ctx, nset, nil, 1)
 	if err != nil {
 		t.Errorf("%v failed to select nodes %v", selector.GetName(), err)
 		return nil
@@ -239,6 +241,7 @@ func printNodeSelectTimes(t *testing.T, times map[uint64]int) {
 }
 
 func TestCarryWeightNodeSelector(t *testing.T) {
+	_, ctx := proto.SpanContextPrefix("test-carry-weight-node-selector-")
 	// get first node
 	dataNode := getFirstDataNodeForTest(t, testZone2)
 	metaNode := getFirstMetaNodeForTest(t, testZone2)
@@ -255,17 +258,15 @@ func TestCarryWeightNodeSelector(t *testing.T) {
 		if i != 0 {
 			expected = nil
 		}
-		node := DataNodeSelectorTest(t, selector, expected)
+		node := DataNodeSelectorTest(ctx, t, selector, expected)
 		if node == nil {
 			return
 		}
-		count, _ := dataSelectTimes[node.ID]
-		count += 1
-		dataSelectTimes[node.ID] = count
+		dataSelectTimes[node.ID]++
 	}
 	t.Logf("%v data node select times:\n", selector.GetName())
 	printNodeSelectTimes(t, dataSelectTimes)
-	count, _ := dataSelectTimes[dataNode.ID]
+	count := dataSelectTimes[dataNode.ID]
 	for _, c := range dataSelectTimes {
 		if count < c {
 			t.Errorf("%v failed to select data nodes", selector.GetName())
@@ -286,17 +287,15 @@ func TestCarryWeightNodeSelector(t *testing.T) {
 		if i != 0 {
 			expected = nil
 		}
-		node := MetaNodeSelectorTest(t, selector, expected)
+		node := MetaNodeSelectorTest(ctx, t, selector, expected)
 		if node == nil {
 			return
 		}
-		count, _ := metaSelectTimes[node.ID]
-		count += 1
-		metaSelectTimes[node.ID] = count
+		metaSelectTimes[node.ID]++
 	}
 	t.Logf("%v meta node select times:\n", selector.GetName())
 	printNodeSelectTimes(t, metaSelectTimes)
-	count, _ = metaSelectTimes[metaNode.ID]
+	count = metaSelectTimes[metaNode.ID]
 	for _, c := range metaSelectTimes {
 		if count < c {
 			t.Errorf("%v failed to select meta nodes", selector.GetName())
@@ -308,6 +307,7 @@ func TestCarryWeightNodeSelector(t *testing.T) {
 }
 
 func TestRoundRobinNodeSelector(t *testing.T) {
+	_, ctx := proto.SpanContextPrefix("test-roundrobin-node-selector-")
 	dataNodes := getAllDataNodesForTest(t, testZone2)
 	if dataNodes == nil {
 		return
@@ -319,20 +319,21 @@ func TestRoundRobinNodeSelector(t *testing.T) {
 	selector := NewRoundRobinNodeSelector(DataNodeType)
 	for i, node := range dataNodes {
 		mocktest.Log(t, "Select DataNode Round", i)
-		if DataNodeSelectorTest(t, selector, node) == nil {
+		if DataNodeSelectorTest(ctx, t, selector, node) == nil {
 			return
 		}
 	}
 	selector = NewRoundRobinNodeSelector(MetaNodeType)
 	for i, node := range metaNodes {
 		mocktest.Log(t, "Select MetaNode Round", i)
-		if MetaNodeSelectorTest(t, selector, node) == nil {
+		if MetaNodeSelectorTest(ctx, t, selector, node) == nil {
 			return
 		}
 	}
 }
 
 func TestAvailableSpaceFirstNodeSelector(t *testing.T) {
+	_, ctx := proto.SpanContextPrefix("test-avail-space-first-node-selector-")
 	// get first node
 	dataNode := getFirstDataNodeForTest(t, testZone2)
 	metaNode := getFirstMetaNodeForTest(t, testZone2)
@@ -343,7 +344,7 @@ func TestAvailableSpaceFirstNodeSelector(t *testing.T) {
 	dataNode.AvailableSpace *= 2
 	// select test
 	selector := NewAvailableSpaceFirstNodeSelector(DataNodeType)
-	if DataNodeSelectorTest(t, selector, dataNode) == nil {
+	if DataNodeSelectorTest(ctx, t, selector, dataNode) == nil {
 		return
 	}
 	// restore status
@@ -355,7 +356,7 @@ func TestAvailableSpaceFirstNodeSelector(t *testing.T) {
 	metaNode.Total *= 2
 	// select test
 	selector = NewAvailableSpaceFirstNodeSelector(MetaNodeType)
-	if MetaNodeSelectorTest(t, selector, metaNode) == nil {
+	if MetaNodeSelectorTest(ctx, t, selector, metaNode) == nil {
 		return
 	}
 	// restore status
@@ -363,6 +364,7 @@ func TestAvailableSpaceFirstNodeSelector(t *testing.T) {
 }
 
 func TestStrawNodeSelector(t *testing.T) {
+	_, ctx := proto.SpanContextPrefix("test-straw-node-selector-")
 	// get first node
 	dataNode := getFirstDataNodeForTest(t, testZone2)
 	metaNode := getFirstMetaNodeForTest(t, testZone2)
@@ -375,17 +377,15 @@ func TestStrawNodeSelector(t *testing.T) {
 	// select test
 	selector := NewStrawNodeSelector(DataNodeType)
 	for i := 0; i != loopNodeSelectorTestCount; i++ {
-		node := DataNodeSelectorTest(t, selector, nil)
+		node := DataNodeSelectorTest(ctx, t, selector, nil)
 		if node == nil {
 			return
 		}
-		count, _ := dataSelectTimes[node.ID]
-		count += 1
-		dataSelectTimes[node.ID] = count
+		dataSelectTimes[node.ID]++
 	}
 	t.Logf("%v data node select times:\n", selector.GetName())
 	printNodeSelectTimes(t, dataSelectTimes)
-	count, _ := dataSelectTimes[dataNode.ID]
+	count := dataSelectTimes[dataNode.ID]
 	for _, c := range dataSelectTimes {
 		if count < c {
 			t.Errorf("%v failed to select data nodes", selector.GetName())
@@ -402,17 +402,15 @@ func TestStrawNodeSelector(t *testing.T) {
 	// select test
 	selector = NewStrawNodeSelector(MetaNodeType)
 	for i := 0; i != loopNodeSelectorTestCount; i++ {
-		node := MetaNodeSelectorTest(t, selector, nil)
+		node := MetaNodeSelectorTest(ctx, t, selector, nil)
 		if node == nil {
 			return
 		}
-		count, _ := metaSelectTimes[node.ID]
-		count += 1
-		metaSelectTimes[node.ID] = count
+		metaSelectTimes[node.ID]++
 	}
 	t.Logf("%v meta node select times:\n", selector.GetName())
 	printNodeSelectTimes(t, metaSelectTimes)
-	count, _ = metaSelectTimes[metaNode.ID]
+	count = metaSelectTimes[metaNode.ID]
 	for _, c := range metaSelectTimes {
 		if count < c {
 			t.Errorf("%v failed to select meta nodes", selector.GetName())
@@ -472,17 +470,15 @@ func prepareMetaNodesForBench(count int, initTotal uint64, grow uint64) (ns *nod
 	return
 }
 
-func nodeSelectorBench(selector NodeSelector, nset *nodeSet, onSelect func(addr string)) (map[uint64]int, error) {
+func nodeSelectorBench(ctx context.Context, selector NodeSelector, nset *nodeSet, onSelect func(addr string)) (map[uint64]int, error) {
 	times := make(map[uint64]int)
 	for i := 0; i < loopNodeSelectorTestCount; i++ {
-		_, peers, err := selector.Select(nset, nil, 1)
+		_, peers, err := selector.Select(ctx, nset, nil, 1)
 		if err != nil {
 			return nil, err
 		}
 		for _, peer := range peers {
-			count, _ := times[peer.ID]
-			count += 1
-			times[peer.ID] = count
+			times[peer.ID]++
 			if onSelect != nil {
 				onSelect(peer.Addr)
 			}
@@ -491,10 +487,10 @@ func nodeSelectorBench(selector NodeSelector, nset *nodeSet, onSelect func(addr 
 	return times, nil
 }
 
-func dataNodeSelectorBench(t *testing.T, selector NodeSelector) error {
+func dataNodeSelectorBench(ctx context.Context, t *testing.T, selector NodeSelector) error {
 	nset := prepareDataNodesForBench(4, 100*util.GB, 100*util.GB)
 	random := rand.New(rand.NewSource(time.Now().Unix()))
-	times, err := nodeSelectorBench(selector, nset, func(addr string) {
+	times, err := nodeSelectorBench(ctx, selector, nset, func(addr string) {
 		val, _ := nset.dataNodes.Load(addr)
 		node := val.(*DataNode)
 		node.AvailableSpace -= uint64(random.Float64() * util.GB * 10)
@@ -512,10 +508,10 @@ func dataNodeSelectorBench(t *testing.T, selector NodeSelector) error {
 	return nil
 }
 
-func metaNodeSelectorBench(t *testing.T, selector NodeSelector) error {
+func metaNodeSelectorBench(ctx context.Context, t *testing.T, selector NodeSelector) error {
 	nset := prepareMetaNodesForBench(4, 100*util.GB, 100*util.GB)
 	random := rand.New(rand.NewSource(time.Now().Unix()))
-	times, err := nodeSelectorBench(selector, nset, func(addr string) {
+	times, err := nodeSelectorBench(ctx, selector, nset, func(addr string) {
 		val, _ := nset.metaNodes.Load(addr)
 		node := val.(*MetaNode)
 		node.Used += uint64(random.Float64() * util.GB * 10)
@@ -534,15 +530,17 @@ func metaNodeSelectorBench(t *testing.T, selector NodeSelector) error {
 }
 
 func TestBenchCarryWeightNodeSelector(t *testing.T) {
+	_, ctx := proto.SpanContextPrefix("bench-test-carry-weight-node-selector-")
 	selector := NewCarryWeightNodeSelector(DataNodeType)
-	dataNodeSelectorBench(t, selector)
+	dataNodeSelectorBench(ctx, t, selector)
 	selector = NewCarryWeightNodeSelector(MetaNodeType)
-	metaNodeSelectorBench(t, selector)
+	metaNodeSelectorBench(ctx, t, selector)
 }
 
 func TestBenchStrawNodeSelector(t *testing.T) {
+	_, ctx := proto.SpanContextPrefix("bench-test-straw-node-selector-")
 	selector := NewStrawNodeSelector(DataNodeType)
-	dataNodeSelectorBench(t, selector)
+	dataNodeSelectorBench(ctx, t, selector)
 	selector = NewStrawNodeSelector(MetaNodeType)
-	metaNodeSelectorBench(t, selector)
+	metaNodeSelectorBench(ctx, t, selector)
 }

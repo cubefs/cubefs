@@ -42,7 +42,7 @@ type MetaNodeMetrics struct {
 
 func (m *MetaNode) startStat() {
 	m.metrics = &MetaNodeMetrics{
-		metricStopCh: make(chan struct{}, 0),
+		metricStopCh: make(chan struct{}),
 
 		MetricConnectionCount:          exporter.NewGauge(MetricConnectionCount),
 		MetricMetaFailedPartition:      exporter.NewGauge(MetricMetaFailedPartition),

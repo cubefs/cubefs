@@ -32,7 +32,6 @@ import (
 	"time"
 
 	"github.com/cubefs/cubefs/util"
-	"github.com/cubefs/cubefs/util/log"
 )
 
 const (
@@ -48,6 +47,14 @@ var (
 
 	// Regular expression to match more than two consecutive path separators.
 	regexpDupSep = regexp.MustCompile("/{2,}")
+
+	// TODO: unused
+	_ = tempFileName
+	_ = formatSimpleTime
+	_ = formatTimeISOLocal
+	_ = transferError
+	_ = isIPNetContainsIP
+	_ = patternMatch
 )
 
 var keyEscapedSkipBytes = []byte{'/', '*', '.', '-', '_'}
@@ -200,7 +207,6 @@ func isIPNetContainsIP(ipStr, ipnetStr string) (bool, error) {
 	}
 	_, ipnet, err := net.ParseCIDR(ipnetStr)
 	if err != nil {
-		log.LogInfof("parse ipnet error ipnet   %v", ipnetStr)
 		return false, err
 	}
 
@@ -221,7 +227,6 @@ func patternMatch(pattern, key string) bool {
 	}
 	matched, err := regexp.MatchString(pattern, key)
 	if err != nil {
-		log.LogErrorf("patternMatch error %v", err)
 		return false
 	}
 
@@ -304,17 +309,19 @@ func ParseUserDefinedMetadata(header http.Header) map[string]string {
 }
 
 // validate Cache-Control
-var cacheControlDir = []string{"public", "private", "no-cache", "no-store", "no-transform", "must-revalidate", "proxy-revalidate"}
-var maxAgeRegexp = regexp.MustCompile("^((max-age)|(s-maxage))=[1-9][0-9]*$")
+var (
+	cacheControlDir = []string{"public", "private", "no-cache", "no-store", "no-transform", "must-revalidate", "proxy-revalidate"}
+	maxAgeRegexp    = regexp.MustCompile("^((max-age)|(s-maxage))=[1-9][0-9]*$")
+)
 
 func ValidateCacheControl(cacheControl string) bool {
 	cacheDirs := strings.Split(cacheControl, ",")
 	for _, dir := range cacheDirs {
 		if !contains(cacheControlDir, dir) && !maxAgeRegexp.MatchString(dir) {
-			log.LogErrorf("invalid cache-control directive: %v", dir)
 			return false
 		}
 	}
+
 	return true
 }
 
@@ -322,16 +329,11 @@ func ValidateCacheExpires(expires string) bool {
 	var err error
 	var stamp time.Time
 	if stamp, err = time.Parse(RFC1123Format, expires); err != nil {
-		log.LogErrorf("invalid expires: %v", expires)
 		return false
 	}
 	expiresInt := stamp.Unix()
 	now := time.Now().UTC().Unix()
-	if now < expiresInt {
-		return true
-	}
-	log.LogErrorf("Expires less than now: %v, now: %v", expires, now)
-	return false
+	return now < expiresInt
 }
 
 func GetMD5(b []byte) string {

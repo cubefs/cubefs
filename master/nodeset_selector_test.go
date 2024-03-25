@@ -119,8 +119,6 @@ func prepareMetaNodesetForBench(count int, initTotal uint64, grow uint64) (nsc n
 	return
 }
 
-const loopNodesetSelectorTestCount = 100
-
 func nodesetSelectorBench(selector NodesetSelector, nsc nodeSetCollection, onSelect func(id uint64)) (map[uint64]int, error) {
 	times := make(map[uint64]int)
 	for i := 0; i < loopNodeSelectorTestCount; i++ {
@@ -128,9 +126,7 @@ func nodesetSelectorBench(selector NodesetSelector, nsc nodeSetCollection, onSel
 		if err != nil {
 			return nil, err
 		}
-		count, _ := times[ns.ID]
-		count += 1
-		times[ns.ID] = count
+		times[ns.ID]++
 		if onSelect != nil {
 			onSelect(ns.ID)
 		}

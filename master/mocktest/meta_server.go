@@ -16,6 +16,7 @@ package mocktest
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -39,7 +40,7 @@ type MockMetaServer struct {
 
 func NewMockMetaServer(addr string, zoneName string) *MockMetaServer {
 	mms := &MockMetaServer{
-		TcpAddr: addr, partitions: make(map[uint64]*MockMetaPartition, 0),
+		TcpAddr: addr, partitions: make(map[uint64]*MockMetaPartition),
 		ZoneName: zoneName,
 		mc:       master.NewMasterClient([]string{hostAddr}, false),
 	}
@@ -56,7 +57,7 @@ func (mms *MockMetaServer) register() {
 	var nodeID uint64
 	var retry int
 	for retry < 3 {
-		nodeID, err = mms.mc.NodeAPI().AddMetaNode(mms.TcpAddr, mms.ZoneName)
+		nodeID, err = mms.mc.NodeAPI().AddMetaNode(context.Background(), mms.TcpAddr, mms.ZoneName)
 		if err == nil {
 			break
 		}
@@ -94,6 +95,7 @@ func (mms *MockMetaServer) serveConn(rc net.Conn) {
 	conn.SetKeepAlive(true)
 	conn.SetNoDelay(true)
 	req := proto.NewPacket()
+	req.ReqID = proto.RandomID()
 	err := req.ReadFromConnWithVer(conn, proto.NoReadDeadlineTime)
 	if err != nil {
 		fmt.Printf("remote [%v] err is [%v]\n", conn.RemoteAddr(), err)
@@ -294,7 +296,7 @@ end:
 func (mms *MockMetaServer) postResponseToMaster(adminTask *proto.AdminTask, resp interface{}) (err error) {
 	adminTask.Request = nil
 	adminTask.Response = resp
-	if err = mms.mc.NodeAPI().ResponseMetaNodeTask(adminTask); err != nil {
+	if err = mms.mc.NodeAPI().ResponseMetaNodeTask(context.Background(), adminTask); err != nil {
 		return
 	}
 	return

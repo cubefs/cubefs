@@ -19,7 +19,6 @@ import (
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/errors"
-	"github.com/cubefs/cubefs/util/log"
 )
 
 const (
@@ -87,8 +86,7 @@ func (m *metadataManager) IsForbiddenOp(mp MetaPartition, reqOp uint8) bool {
 
 // The proxy is used during the leader change. When a leader of a partition changes, the proxy forwards the request to
 // the new leader.
-func (m *metadataManager) serveProxy(conn net.Conn, mp MetaPartition,
-	p *Packet) (ok bool) {
+func (m *metadataManager) serveProxy(conn net.Conn, mp MetaPartition, p *Packet) (ok bool) {
 	var (
 		mConn      *net.TCPConn
 		leaderAddr string
@@ -108,6 +106,7 @@ func (m *metadataManager) serveProxy(conn net.Conn, mp MetaPartition,
 	if leaderAddr, ok = mp.IsLeader(); ok {
 		return
 	}
+	span := p.Span().WithOperation("serveProxy")
 	if leaderAddr == "" {
 		err = ErrNoLeader
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
@@ -135,17 +134,16 @@ func (m *metadataManager) serveProxy(conn net.Conn, mp MetaPartition,
 		goto end
 	}
 	if reqID != p.ReqID || reqOp != p.Opcode {
-		log.LogErrorf("serveProxy: send and received packet mismatch: req(%v_%v) resp(%v_%v)",
+		span.Errorf("send and received packet mismatch: req(%v_%v) resp(%v_%v)",
 			reqID, reqOp, p.ReqID, p.Opcode)
 	}
 	m.connPool.PutConnect(mConn, NoClosedConnect)
 end:
 	m.respondToClient(conn, p)
 	if err != nil {
-		log.LogErrorf("[serveProxy]: req: %d - %v, %v, packet(%v)", p.GetReqID(),
-			p.GetOpMsg(), err, p)
+		span.Errorf("req: %d - %v, %v, packet(%v)", p.GetReqID(), p.GetOpMsg(), err, p)
+		return
 	}
-	log.LogDebugf("[serveProxy] req: %d - %v, resp: %v, packet(%v)", p.GetReqID(), p.GetOpMsg(),
-		p.GetResultMsg(), p)
+	span.Debugf("req: %d - %v, %v, packet(%v)", p.GetReqID(), p.GetOpMsg(), p.GetResultMsg(), p)
 	return
 }

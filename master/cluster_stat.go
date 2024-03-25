@@ -15,13 +15,13 @@
 package master
 
 import (
+	"context"
 	"fmt"
 	"math"
 	"strconv"
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util"
-	"github.com/cubefs/cubefs/util/log"
 )
 
 type nodeStatInfo = proto.NodeStatInfo
@@ -52,21 +52,22 @@ func newZoneStatInfo() *proto.ZoneStat {
 }
 
 // Check the total space, available space, and daily-used space in data nodes,  meta nodes, and volumes
-func (c *Cluster) updateStatInfo() {
+func (c *Cluster) updateStatInfo(ctx context.Context) {
+	span := proto.SpanFromContext(ctx)
 	defer func() {
 		if r := recover(); r != nil {
-			log.LogWarnf("updateStatInfo occurred panic,err[%v]", r)
-			WarnBySpecialKey(fmt.Sprintf("%v_%v_scheduling_job_panic", c.Name, ModuleName),
+			span.Warnf("updateStatInfo occurred panic,err[%v]", r)
+			WarnBySpecialKey(ctx, fmt.Sprintf("%v_%v_scheduling_job_panic", c.Name, ModuleName),
 				"updateStatInfo occurred panic")
 		}
 	}()
-	c.updateDataNodeStatInfo()
-	c.updateMetaNodeStatInfo()
-	c.updateVolStatInfo()
-	c.updateZoneStatInfo()
+	c.updateDataNodeStatInfo(ctx)
+	c.updateMetaNodeStatInfo(ctx)
+	c.updateVolStatInfo(ctx)
+	c.updateZoneStatInfo(ctx)
 }
 
-func (c *Cluster) updateZoneStatInfo() {
+func (c *Cluster) updateZoneStatInfo(ctx context.Context) {
 	for _, zone := range c.t.zones {
 		zs := newZoneStatInfo()
 		c.zoneStatInfos[zone.name] = zs
@@ -112,7 +113,7 @@ func fixedPoint(x float64, scale int) float64 {
 	return float64(int(math.Round(x*decimal))) / decimal
 }
 
-func (c *Cluster) updateDataNodeStatInfo() {
+func (c *Cluster) updateDataNodeStatInfo(ctx context.Context) {
 	var (
 		total uint64
 		used  uint64
@@ -133,7 +134,7 @@ func (c *Cluster) updateDataNodeStatInfo() {
 	}
 	usedRate := float64(used) / float64(total)
 	if usedRate > spaceAvailableRate {
-		Warn(c.Name, fmt.Sprintf("clusterId[%v] space utilization reached [%v],usedSpace[%v],totalSpace[%v] please add dataNode",
+		Warn(ctx, c.Name, fmt.Sprintf("clusterId[%v] space utilization reached [%v],usedSpace[%v],totalSpace[%v] please add dataNode",
 			c.Name, usedRate, used, total))
 	}
 	c.dataNodeStatInfo.TotalGB = total / util.GB
@@ -144,7 +145,7 @@ func (c *Cluster) updateDataNodeStatInfo() {
 	c.dataNodeStatInfo.UsedRatio = strconv.FormatFloat(usedRate, 'f', 3, 32)
 }
 
-func (c *Cluster) updateMetaNodeStatInfo() {
+func (c *Cluster) updateMetaNodeStatInfo(ctx context.Context) {
 	var (
 		total uint64
 		used  uint64
@@ -164,7 +165,7 @@ func (c *Cluster) updateMetaNodeStatInfo() {
 	}
 	useRate := float64(used) / float64(total)
 	if useRate > spaceAvailableRate {
-		Warn(c.Name, fmt.Sprintf("clusterId[%v] space utilization reached [%v],usedSpace[%v],totalSpace[%v] please add metaNode",
+		Warn(ctx, c.Name, fmt.Sprintf("clusterId[%v] space utilization reached [%v],usedSpace[%v],totalSpace[%v] please add metaNode",
 			c.Name, useRate, used, total))
 	}
 	c.metaNodeStatInfo.TotalGB = total / util.GB
@@ -175,7 +176,7 @@ func (c *Cluster) updateMetaNodeStatInfo() {
 	c.metaNodeStatInfo.UsedRatio = strconv.FormatFloat(useRate, 'f', 3, 32)
 }
 
-func (c *Cluster) updateVolStatInfo() {
+func (c *Cluster) updateVolStatInfo(ctx context.Context) {
 	vols := c.copyVols()
 	for _, vol := range vols {
 		used, total := vol.totalUsedSpace(), vol.Capacity*util.GB

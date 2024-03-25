@@ -16,6 +16,7 @@ package master
 
 import (
 	"bytes"
+	"context"
 	"crypto/md5"
 	"encoding/hex"
 	"encoding/json"
@@ -23,6 +24,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"path"
 	"strings"
 	"sync"
 	"testing"
@@ -35,6 +37,7 @@ import (
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gopkg.in/natefinch/lumberjack.v2"
 )
 
 const (
@@ -107,6 +110,7 @@ func rangeMockMetaServers(fun func(*mocktest.MockMetaServer) bool) (count int, p
 }
 
 func createDefaultMasterServerForTest() *Server {
+	_, ctx := proto.SpanContextPrefix("api-service-test-")
 	cfgJSON := `{
 		"role": "master",
 		"ip": "127.0.0.1",
@@ -147,12 +151,12 @@ func createDefaultMasterServerForTest() *Server {
 	mockMetaServers = append(mockMetaServers, addMetaServer(mms6Addr, testZone2))
 	// we should wait 5 seoncds for master to prepare state
 	time.Sleep(5 * time.Second)
-	testServer.cluster.checkDataNodeHeartbeat()
-	testServer.cluster.checkMetaNodeHeartbeat()
+	testServer.cluster.checkDataNodeHeartbeat(ctx)
+	testServer.cluster.checkMetaNodeHeartbeat(ctx)
 	time.Sleep(5 * time.Second)
-	testServer.cluster.scheduleToUpdateStatInfo()
+	testServer.cluster.scheduleToUpdateStatInfo(ctx)
 	// set load factor
-	err = testServer.cluster.setClusterLoadFactor(100)
+	err = testServer.cluster.setClusterLoadFactor(ctx, 100)
 	if err != nil {
 		panic("set load factor fail" + err.Error())
 	}
@@ -173,35 +177,34 @@ func createDefaultMasterServerForTest() *Server {
 		qosLimitArgs:     &qosArgs{},
 	}
 
-	vol, err := testServer.cluster.createVol(req)
+	_, err = testServer.cluster.createVol(ctx, req)
 	if err != nil {
-		log.LogFlush()
 		panic(err)
 	}
 
-	vol, err = testServer.cluster.getVol(req.name)
+	vol, err := testServer.cluster.getVol(req.name)
 	if err != nil {
 		panic(err)
 	}
 
 	commonVol = vol
-	fmt.Printf("vol[%v] has created\n", newSimpleView(commonVol))
+	fmt.Printf("vol[%v] has created\n", newSimpleView(ctx, commonVol))
 
-	if err = createUserWithPolicy(testServer); err != nil {
+	if err = createUserWithPolicy(ctx, testServer); err != nil {
 		panic(err)
 	}
 
 	return testServer
 }
 
-func createUserWithPolicy(testServer *Server) (err error) {
+func createUserWithPolicy(ctx context.Context, testServer *Server) (err error) {
 	param := &proto.UserCreateParam{ID: "cfs", Type: proto.UserTypeNormal}
 	if cfsUser, err = testServer.user.createKey(param); err != nil {
 		return
 	}
 	fmt.Printf("user[%v] has created\n", cfsUser.UserID)
 	paramTransfer := &proto.UserTransferVolParam{Volume: commonVolName, UserSrc: "cfs", UserDst: "cfs", Force: false}
-	if cfsUser, err = testServer.user.transferVol(paramTransfer); err != nil {
+	if cfsUser, err = testServer.user.transferVol(ctx, paramTransfer); err != nil {
 		return
 	}
 	return nil
@@ -220,25 +223,12 @@ func createMasterServer(cfgJSON string) (server *Server, err error) {
 	os.RemoveAll(storeDir)
 	os.Mkdir(walDir, 0o755)
 	os.Mkdir(storeDir, 0o755)
-	logLevel := cfg.GetString(ConfigKeyLogLevel)
-	var level log.Level
-	switch strings.ToLower(logLevel) {
-	case "debug":
-		level = log.DebugLevel
-	case "info":
-		level = log.InfoLevel
-	case "warn":
-		level = log.WarnLevel
-	case "error":
-		level = log.ErrorLevel
-	default:
-		level = log.ErrorLevel
-	}
+	log.SetOutputLevel(log.Lpanic)
 	if mocktest.LogOn {
-		if _, err = log.InitLog(logDir, "master", level, nil, log.DefaultLogLeftSpaceLimit); err != nil {
-			fmt.Println("Fatal: failed to start the cubefs daemon - ", err)
-			return
-		}
+		log.SetOutputLevel(log.ParseLevel(cfg.GetString(ConfigKeyLogLevel), log.Ldebug))
+		log.SetOutput(&lumberjack.Logger{
+			Filename: path.Join(logDir, "master", "master_test.log"),
+		})
 	}
 	if profPort != "" {
 		go func() {
@@ -303,11 +293,6 @@ func TestGetCluster(t *testing.T) {
 func TestGetIpAndClusterName(t *testing.T) {
 	reqURL := fmt.Sprintf("%v%v", hostAddr, proto.AdminGetIP)
 	process(reqURL, t)
-}
-
-func fatal(t *testing.T, str string) {
-	log.LogFlush()
-	t.Fatal(str)
 }
 
 type httpReply = proto.HTTPReplyRaw
@@ -417,10 +402,11 @@ func processCompression(reqURL string, compress bool, t testing.TB) (reply *prot
 func TestDisk(t *testing.T) {
 	addr := mds5Addr
 	disk := "/cfs"
-	decommissionDisk(addr, disk, t)
+	_, ctx := proto.SpanContextPrefix("api-service-test-disk-")
+	decommissionDisk(ctx, addr, disk, t)
 }
 
-func decommissionDisk(addr, path string, t *testing.T) {
+func decommissionDisk(ctx context.Context, addr, path string, t *testing.T) {
 	reqURL := fmt.Sprintf("%v%v?addr=%v&disk=%v",
 		hostAddr, proto.DecommissionDisk, addr, path)
 	mocktest.Log(t, reqURL)
@@ -446,19 +432,20 @@ func decommissionDisk(addr, path string, t *testing.T) {
 		t.Error(err)
 		return
 	}
-	server.cluster.checkDataNodeHeartbeat()
+	server.cluster.checkDataNodeHeartbeat(ctx)
 	time.Sleep(5 * time.Second)
-	server.cluster.checkDiskRecoveryProgress()
+	server.cluster.checkDiskRecoveryProgress(ctx)
 }
 
 func TestMarkDeleteVol(t *testing.T) {
+	_, ctx := proto.SpanContextPrefix("api-service-test-mark-delete-vol-")
 	name := "delVol"
-	createVol(map[string]interface{}{nameKey: name}, t)
+	createVol(ctx, map[string]interface{}{nameKey: name}, t)
 
 	reqURL := fmt.Sprintf("%v%v?name=%v&authKey=%v", hostAddr, proto.AdminDeleteVol, name, buildAuthKey(testOwner))
 	process(reqURL, t)
 
-	userInfo, err := server.user.getUserInfo("cfs")
+	userInfo, err := server.user.getUserInfo(ctx, "cfs")
 	if err != nil {
 		t.Error(err)
 		return
@@ -476,11 +463,12 @@ func TestSetVolCapacity(t *testing.T) {
 }
 
 func TestPreloadDp(t *testing.T) {
+	_, ctx := proto.SpanContextPrefix("api-service-test-preload-dp-")
 	volName := "preloadVol"
 	req := map[string]interface{}{}
 	req[nameKey] = volName
 	req[volTypeKey] = proto.VolumeTypeCold
-	createVol(req, t)
+	createVol(ctx, req, t)
 
 	preCap := 60
 	checkParam(cacheCapacity, proto.AdminCreatePreLoadDataPartition, req, -1, preCap, t)
@@ -488,12 +476,13 @@ func TestPreloadDp(t *testing.T) {
 }
 
 func TestUpdateVol(t *testing.T) {
+	_, ctx := proto.SpanContextPrefix("api-service-test-update-vol-")
 	volName := "updateVol"
 	req := map[string]interface{}{}
 	req[nameKey] = volName
 	req[volTypeKey] = proto.VolumeTypeCold
 
-	createVol(req, t)
+	createVol(ctx, req, t)
 
 	view := getSimpleVol(volName, true, t)
 
@@ -584,10 +573,6 @@ func setUpdateVolParm(key string, req map[string]interface{}, val interface{}, t
 	setParam(key, proto.AdminUpdateVol, req, val, t)
 }
 
-func checkUpdateVolParm(key string, req map[string]interface{}, wrong, correct interface{}, t *testing.T) {
-	checkParam(key, proto.AdminUpdateVol, req, wrong, correct, t)
-}
-
 func delVol(name string, t *testing.T) {
 	req := map[string]interface{}{
 		nameKey:    name,
@@ -638,10 +623,11 @@ func TestGetVolSimpleInfo(t *testing.T) {
 }
 
 func TestCreateVol(t *testing.T) {
+	_, ctx := proto.SpanContextPrefix("api-service-test-create-vol-")
 	name := "test_create_vol"
 	reqURL := fmt.Sprintf("%v%v?name=%v&replicas=3&type=extent&capacity=100&owner=cfstest&zoneName=%v", hostAddr, proto.AdminCreateVol, name, testZone2)
 	process(reqURL, t)
-	userInfo, err := server.user.getUserInfo("cfstest")
+	userInfo, err := server.user.getUserInfo(ctx, "cfstest")
 	if err != nil {
 		t.Error(err)
 		return
@@ -653,10 +639,11 @@ func TestCreateVol(t *testing.T) {
 }
 
 func TestCreateMetaPartition(t *testing.T) {
-	server.cluster.checkMetaNodeHeartbeat()
+	_, ctx := proto.SpanContextPrefix("api-service-test-create-meta-partition-")
+	server.cluster.checkMetaNodeHeartbeat(ctx)
 	time.Sleep(5 * time.Second)
-	commonVol.checkMetaPartitions(server.cluster)
-	createMetaPartition(commonVol, t)
+	commonVol.checkMetaPartitions(ctx, server.cluster)
+	createMetaPartition(ctx, commonVol, t)
 }
 
 func TestCreateDataPartition(t *testing.T) {
@@ -690,11 +677,12 @@ func TestLoadDataPartition(t *testing.T) {
 }
 
 func TestDataPartitionDecommission(t *testing.T) {
+	_, ctx := proto.SpanContextPrefix("api-service-test-partition-decommision-")
 	if len(commonVol.dataPartitions.partitions) == 0 {
 		t.Errorf("no data partitions")
 		return
 	}
-	server.cluster.checkDataNodeHeartbeat()
+	server.cluster.checkDataNodeHeartbeat(ctx)
 	time.Sleep(5 * time.Second)
 	partition := commonVol.dataPartitions.partitions[0]
 	offlineAddr := partition.Hosts[0]
@@ -824,7 +812,8 @@ func TestAddMetaReplica(t *testing.T) {
 		defer mockServerLock.Unlock()
 		mockMetaServers = append(mockMetaServers, addMetaServer(mms8Addr, testZone3))
 	}()
-	server.cluster.checkMetaNodeHeartbeat()
+	_, ctx := proto.SpanContextPrefix("api-service-test-add-meta-replica-")
+	server.cluster.checkMetaNodeHeartbeat(ctx)
 	time.Sleep(2 * time.Second)
 	reqURL := fmt.Sprintf("%v%v?id=%v&addr=%v", hostAddr, proto.AdminAddMetaReplica, partition.PartitionID, mms8Addr)
 	process(reqURL, t)
@@ -1051,6 +1040,7 @@ func TestGetUser(t *testing.T) {
 }
 
 func TestUpdateUser(t *testing.T) {
+	_, ctx := proto.SpanContextPrefix("api-service-test-update-user-")
 	reqURL := fmt.Sprintf("%v%v", hostAddr, proto.UserUpdate)
 	param := &proto.UserUpdateParam{UserID: testUserID, AccessKey: ak, SecretKey: sk, Type: proto.UserTypeAdmin, Description: description}
 	data, err := json.Marshal(param)
@@ -1059,7 +1049,7 @@ func TestUpdateUser(t *testing.T) {
 		return
 	}
 	post(reqURL, data, t)
-	userInfo, err := server.user.getUserInfo(testUserID)
+	userInfo, err := server.user.getUserInfo(ctx, testUserID)
 	if err != nil {
 		t.Error(err)
 		return
@@ -1088,6 +1078,7 @@ func TestGetAKInfo(t *testing.T) {
 }
 
 func TestUpdatePolicy(t *testing.T) {
+	_, ctx := proto.SpanContextPrefix("api-service-test-update-policy-")
 	reqURL := fmt.Sprintf("%v%v", hostAddr, proto.UserUpdatePolicy)
 	param := &proto.UserPermUpdateParam{UserID: testUserID, Volume: commonVolName, Policy: []string{proto.BuiltinPermissionWritable.String()}}
 	data, err := json.Marshal(param)
@@ -1096,7 +1087,7 @@ func TestUpdatePolicy(t *testing.T) {
 		return
 	}
 	post(reqURL, data, t)
-	userInfo, err := server.user.getUserInfo(testUserID)
+	userInfo, err := server.user.getUserInfo(ctx, testUserID)
 	if err != nil {
 		t.Error(err)
 		return
@@ -1108,6 +1099,7 @@ func TestUpdatePolicy(t *testing.T) {
 }
 
 func TestRemovePolicy(t *testing.T) {
+	_, ctx := proto.SpanContextPrefix("api-service-test-remove-policy-")
 	reqURL := fmt.Sprintf("%v%v", hostAddr, proto.UserRemovePolicy)
 	param := &proto.UserPermRemoveParam{UserID: testUserID, Volume: commonVolName}
 	data, err := json.Marshal(param)
@@ -1116,7 +1108,7 @@ func TestRemovePolicy(t *testing.T) {
 		return
 	}
 	post(reqURL, data, t)
-	userInfo, err := server.user.getUserInfo(testUserID)
+	userInfo, err := server.user.getUserInfo(ctx, testUserID)
 	if err != nil {
 		t.Error(err)
 		return
@@ -1128,6 +1120,7 @@ func TestRemovePolicy(t *testing.T) {
 }
 
 func TestTransferVol(t *testing.T) {
+	_, ctx := proto.SpanContextPrefix("api-service-test-transfer-vol-")
 	reqURL := fmt.Sprintf("%v%v", hostAddr, proto.UserTransferVol)
 	param := &proto.UserTransferVolParam{Volume: commonVolName, UserSrc: "cfs", UserDst: testUserID, Force: false}
 	data, err := json.Marshal(param)
@@ -1136,7 +1129,7 @@ func TestTransferVol(t *testing.T) {
 		return
 	}
 	post(reqURL, data, t)
-	userInfo1, err := server.user.getUserInfo(testUserID)
+	userInfo1, err := server.user.getUserInfo(ctx, testUserID)
 	if err != nil {
 		t.Error(err)
 		return
@@ -1145,7 +1138,7 @@ func TestTransferVol(t *testing.T) {
 		t.Errorf("expect vol %v in own vols, but is not", commonVolName)
 		return
 	}
-	userInfo2, err := server.user.getUserInfo("cfs")
+	userInfo2, err := server.user.getUserInfo(ctx, "cfs")
 	if err != nil {
 		t.Error(err)
 		return
@@ -1166,14 +1159,15 @@ func TestTransferVol(t *testing.T) {
 }
 
 func TestDeleteVolPolicy(t *testing.T) {
+	_, ctx := proto.SpanContextPrefix("api-service-test-delete-vol-policy-")
 	param := &proto.UserPermUpdateParam{UserID: "cfs", Volume: commonVolName, Policy: []string{proto.BuiltinPermissionWritable.String()}}
-	if _, err := server.user.updatePolicy(param); err != nil {
+	if _, err := server.user.updatePolicy(ctx, param); err != nil {
 		t.Error(err)
 		return
 	}
 	reqURL := fmt.Sprintf("%v%v?name=%v", hostAddr, proto.UserDeleteVolPolicy, commonVolName)
 	process(reqURL, t)
-	userInfo1, err := server.user.getUserInfo(testUserID)
+	userInfo1, err := server.user.getUserInfo(ctx, testUserID)
 	if err != nil {
 		t.Error(err)
 		return
@@ -1182,7 +1176,7 @@ func TestDeleteVolPolicy(t *testing.T) {
 		t.Errorf("expect no vol %v in own vols, but is not", commonVolName)
 		return
 	}
-	userInfo2, err := server.user.getUserInfo("cfs")
+	userInfo2, err := server.user.getUserInfo(ctx, "cfs")
 	if err != nil {
 		t.Error(err)
 		return
@@ -1199,9 +1193,10 @@ func TestListUser(t *testing.T) {
 }
 
 func TestDeleteUser(t *testing.T) {
+	_, ctx := proto.SpanContextPrefix("api-service-test-delete-user-")
 	reqURL := fmt.Sprintf("%v%v?user=%v", hostAddr, proto.UserDelete, testUserID)
 	process(reqURL, t)
-	if _, err := server.user.getUserInfo(testUserID); err != proto.ErrUserNotExists {
+	if _, err := server.user.getUserInfo(ctx, testUserID); err != proto.ErrUserNotExists {
 		t.Errorf("expect err ErrUserNotExists, but err is %v", err)
 		return
 	}
@@ -1380,8 +1375,9 @@ func checkVolForbidden(name string, forbidden bool) (success bool) {
 }
 
 func TestForbiddenVolume(t *testing.T) {
+	_, ctx := proto.SpanContextPrefix("api-service-test-forbid-volume-")
 	name := "forbiddenVol"
-	createVol(map[string]interface{}{nameKey: name}, t)
+	createVol(ctx, map[string]interface{}{nameKey: name}, t)
 	vol, err := server.cluster.getVol(name)
 	if err != nil {
 		t.Errorf("failed to get vol %v, err %v", name, err)
@@ -1458,8 +1454,9 @@ func checkVolAuditLog(name string, enable bool) (success bool) {
 }
 
 func TestVolumeEnableAuditLog(t *testing.T) {
+	_, ctx := proto.SpanContextPrefix("api-service-test-volume-enable-auditlog-")
 	name := "auditLogVol"
-	createVol(map[string]interface{}{nameKey: name}, t)
+	createVol(ctx, map[string]interface{}{nameKey: name}, t)
 	vol, err := server.cluster.getVol(name)
 	if err != nil {
 		t.Errorf("failed to get vol %v, err %v", name, err)

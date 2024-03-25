@@ -1,6 +1,7 @@
 package master
 
 import (
+	"context"
 	"fmt"
 	"testing"
 	"time"
@@ -10,10 +11,11 @@ import (
 )
 
 func TestDataPartition(t *testing.T) {
-	server.cluster.checkDataNodeHeartbeat()
-	server.cluster.checkMetaNodeHeartbeat()
+	_, ctx := proto.SpanContextPrefix("data-partition-test-")
+	server.cluster.checkDataNodeHeartbeat(ctx)
+	server.cluster.checkMetaNodeHeartbeat(ctx)
 	time.Sleep(5 * time.Second)
-	server.cluster.checkDataPartitions()
+	server.cluster.checkDataPartitions(ctx)
 	count := 20
 	createDataPartition(commonVol, count, t)
 	if len(commonVol.dataPartitions.partitions) <= 0 {
@@ -22,7 +24,7 @@ func TestDataPartition(t *testing.T) {
 	}
 	partition := commonVol.dataPartitions.partitions[0]
 	getDataPartition(partition.PartitionID, t)
-	loadDataPartitionTest(partition, t)
+	loadDataPartitionTest(ctx, partition, t)
 	// decommissionDataPartition(partition, t)
 }
 
@@ -47,22 +49,10 @@ func getDataPartition(id uint64, t *testing.T) {
 	process(reqURL, t)
 }
 
-// test
-func decommissionDataPartition(dp *DataPartition, t *testing.T) {
-	offlineAddr := dp.Hosts[0]
-	reqURL := fmt.Sprintf("%v%v?name=%v&id=%v&addr=%v",
-		hostAddr, proto.AdminDecommissionDataPartition, dp.VolName, dp.PartitionID, offlineAddr)
-	process(reqURL, t)
-	if contains(dp.Hosts, offlineAddr) {
-		t.Errorf("decommissionDataPartition failed,offlineAddr[%v],hosts[%v]", offlineAddr, dp.Hosts)
-		return
-	}
-}
-
-func loadDataPartitionTest(dp *DataPartition, t *testing.T) {
+func loadDataPartitionTest(ctx context.Context, dp *DataPartition, t *testing.T) {
 	dps := make([]*DataPartition, 0)
 	dps = append(dps, dp)
-	server.cluster.waitForResponseToLoadDataPartition(dps)
+	server.cluster.waitForResponseToLoadDataPartition(ctx, dps)
 	time.Sleep(5 * time.Second)
 	dp.RLock()
 	for _, replica := range dp.Replicas {
@@ -84,6 +74,6 @@ func loadDataPartitionTest(dp *DataPartition, t *testing.T) {
 	dp.FileInCoreMap[extentFile.Name] = extentFile
 	dp.RUnlock()
 	dp.getFileCount()
-	dp.validateCRC(server.cluster.Name)
+	dp.validateCRC(ctx, server.cluster.Name)
 	dp.setToNormal()
 }

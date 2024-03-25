@@ -16,8 +16,6 @@ package objectnode
 
 import (
 	"strings"
-
-	"github.com/cubefs/cubefs/util/log"
 )
 
 // https://docs.aws.amazon.com/AmazonS3/latest/dev/access-policy-language-overview.html
@@ -53,7 +51,6 @@ func (s *Statement) Validate(bucket string) (bool, error) {
 }
 
 func (s *Statement) isValid(bucket string) (bool, error) {
-	log.LogDebug("start to validate statement")
 	// step 1: check required field
 	if err := s.checkRequiredField(); err != nil {
 		return false, err
@@ -106,7 +103,7 @@ func (s *Statement) isEffectValid() bool {
 	return false
 }
 
-//  "Principal": "*" or "Principal" : {"AWS":"111122223333"} or "Principal" : {"AWS":["111122223333","444455556666"]}
+// "Principal": "*" or "Principal" : {"AWS":"111122223333"} or "Principal" : {"AWS":["111122223333","444455556666"]}
 func (s *Statement) isPrincipalValid() bool {
 	// principal: uid must be "*" or uint32, and can't be 0
 	switch s.Principal.(type) {
@@ -131,9 +128,9 @@ func (p PrincipalType) valid() bool {
 	if !ok {
 		return false
 	}
-	switch p1.(type) {
+	switch pval := p1.(type) {
 	case []interface{}:
-		p2 := p1.([]interface{})
+		p2 := pval
 		if len(p2) == 0 {
 			return false
 		}
@@ -148,7 +145,7 @@ func (p PrincipalType) valid() bool {
 		}
 		return true
 	case string:
-		if !PrincipalElementType(p1.(string)).valid() {
+		if !PrincipalElementType(pval).valid() {
 			return false
 		}
 	default:

@@ -15,8 +15,8 @@
 package meta
 
 import (
+	"context"
 	gerrors "errors"
-	"fmt"
 	"sync"
 	"syscall"
 	"time"
@@ -32,7 +32,6 @@ import (
 	"github.com/cubefs/cubefs/util/auth"
 	"github.com/cubefs/cubefs/util/btree"
 	"github.com/cubefs/cubefs/util/errors"
-	"github.com/cubefs/cubefs/util/log"
 )
 
 const (
@@ -41,7 +40,7 @@ const (
 )
 
 const (
-	statusUnknown int = iota
+	_ int = iota
 	statusOK
 	statusExist
 	statusNoent
@@ -72,6 +71,8 @@ const (
 	DefaultQuotaExpiration               = 120 * time.Second
 	MaxQuotaCache                        = 10000
 )
+
+var getSpan = proto.SpanFromContext
 
 type AsyncTaskErrorFunc func(err error)
 
@@ -218,16 +219,18 @@ func NewMetaWrapper(config *MetaConfig) (*MetaWrapper, error) {
 	mw.forceUpdateLimit = rate.NewLimiter(1, MinForceUpdateMetaPartitionsInterval)
 	mw.EnableSummary = config.EnableSummary
 	mw.DirChildrenNumLimit = proto.DefaultDirChildrenNumLimit
-	mw.uniqidRangeMap = make(map[uint64]*uniqidRange, 0)
+	mw.uniqidRangeMap = make(map[uint64]*uniqidRange)
 	mw.qc = NewQuotaCache(DefaultQuotaExpiration, MaxQuotaCache)
 	mw.VerReadSeq = config.VerReadSeq
 
 	limit := 0
+	ctx := proto.ContextWithOperation(context.Background(), "NewMetaWrapper")
+	span := getSpan(ctx)
 	for limit < MaxMountRetryLimit {
 		// When initializing the volume, if the master explicitly responds that the specified
 		// volume does not exist, it will not retry.
-		if err = mw.initMetaWrapper(); err != nil {
-			log.LogErrorf("NewMetaWrapper: init meta wrapper failed: volume(%v) err(%v)", mw.volname, err)
+		if err = mw.initMetaWrapper(ctx); err != nil {
+			span.Errorf("NewMetaWrapper: init meta wrapper failed: volume(%v) err(%v)", mw.volname, err)
 			if gerrors.Is(err, proto.ErrVolAuthKeyNotMatch) || gerrors.Is(err, proto.ErrVolNotExists) {
 				break
 			}
@@ -246,23 +249,19 @@ func NewMetaWrapper(config *MetaConfig) (*MetaWrapper, error) {
 	return mw, nil
 }
 
-func (mw *MetaWrapper) initMetaWrapper() (err error) {
-	if err = mw.updateClusterInfo(); err != nil {
+func (mw *MetaWrapper) initMetaWrapper(ctx context.Context) (err error) {
+	if err = mw.updateClusterInfo(ctx); err != nil {
 		return err
 	}
-
-	if err = mw.updateVolStatInfo(); err != nil {
+	if err = mw.updateVolStatInfo(ctx); err != nil {
 		return err
 	}
-
-	if err = mw.updateMetaPartitions(); err != nil {
+	if err = mw.updateMetaPartitions(ctx); err != nil {
 		return err
 	}
-
-	if err = mw.updateDirChildrenNumLimit(); err != nil {
+	if err = mw.updateDirChildrenNumLimit(ctx); err != nil {
 		return err
 	}
-
 	return nil
 }
 
@@ -296,10 +295,6 @@ func (mw *MetaWrapper) Cluster() string {
 
 func (mw *MetaWrapper) LocalIP() string {
 	return mw.localIP
-}
-
-func (mw *MetaWrapper) exporterKey(act string) string {
-	return fmt.Sprintf("%s_sdk_meta_%s", mw.cluster, act)
 }
 
 // Proto ResultCode to status

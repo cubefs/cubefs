@@ -15,6 +15,7 @@
 package objectnode
 
 import (
+	"context"
 	"crypto/aes"
 	"crypto/cipher"
 	"encoding/base64"
@@ -86,7 +87,11 @@ type FedDecodeResult struct {
 	UserInfo *proto.UserInfo
 }
 
-func DecodeFedSessionToken(fedAk, session string, getUserInfo func(ak string) (*proto.UserInfo, error)) (*FedDecodeResult, error) {
+func DecodeFedSessionToken(
+	ctx context.Context,
+	fedAk, session string,
+	getUserInfo func(context.Context, string) (*proto.UserInfo, error),
+) (*FedDecodeResult, error) {
 	if !strings.HasPrefix(fedAk, stsAkPrefix) {
 		return nil, InvalidAccessKeyId
 	}
@@ -100,7 +105,7 @@ func DecodeFedSessionToken(fedAk, session string, getUserInfo func(ak string) (*
 		return nil, InvalidToken
 	}
 	ownerAk, encryption := tokens[0], tokens[1]
-	userInfo, err := getUserInfo(ownerAk)
+	userInfo, err := getUserInfo(ctx, ownerAk)
 	if err != nil {
 		return nil, InvalidToken
 	}

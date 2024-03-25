@@ -38,7 +38,6 @@ import (
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/auditlog"
 	"github.com/cubefs/cubefs/util/errors"
-	"github.com/cubefs/cubefs/util/log"
 	"github.com/cubefs/cubefs/util/ump"
 )
 
@@ -88,9 +87,8 @@ type Super struct {
 	ebsc         *blobstore.BlobStoreClient
 	sc           *SummaryCache
 
-	taskPool      []common.TaskPool
-	closeC        chan struct{}
-	enableVerRead bool
+	taskPool []common.TaskPool
+	closeC   chan struct{}
 }
 
 // Functions that Super needs to implement
@@ -106,6 +104,8 @@ const (
 
 // NewSuper returns a new Super.
 func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
+	ctx := ctxOperation(context.Background(), "SuperNew")
+	span := getSpan(ctx)
 	s = new(Super)
 	masters := strings.Split(opt.Master, meta.HostsSeparator)
 	metaConfig := &meta.MetaConfig{
@@ -123,7 +123,7 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 		return nil, errors.Trace(err, "NewMetaWrapper failed!"+err.Error())
 	}
 
-	s.SetTransaction(opt.EnableTransaction, opt.TxTimeout, opt.TxConflictRetryNum, opt.TxConflictRetryInterval)
+	s.SetTransaction(ctx, opt.EnableTransaction, opt.TxTimeout, opt.TxConflictRetryNum, opt.TxConflictRetryInterval)
 	s.mw.EnableQuota = opt.EnableQuota
 
 	s.volname = opt.Volname
@@ -237,7 +237,7 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 		MinWriteAbleDataPartitionCnt: opt.MinWriteAbleDataPartitionCnt,
 	}
 
-	s.ec, err = stream.NewExtentClient(extentConfig)
+	s.ec, err = stream.NewExtentClient(ctx, extentConfig)
 	if err != nil {
 		return nil, errors.Trace(err, "NewExtentClient failed!")
 	}
@@ -263,7 +263,7 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 		opt.EnablePosixACL = s.ec.GetEnablePosixAcl()
 	}
 
-	if s.rootIno, err = s.mw.GetRootIno(opt.SubDir); err != nil {
+	if s.rootIno, err = s.mw.GetRootIno(ctx, opt.SubDir); err != nil {
 		return nil, err
 	}
 
@@ -279,7 +279,7 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 		atomic.StoreUint32((*uint32)(&s.state), uint32(fs.FSStatRestore))
 	}
 
-	log.LogInfof("NewSuper: cluster(%v) volname(%v) icacheExpiration(%v) LookupValidDuration(%v) AttrValidDuration(%v) state(%v)",
+	span.Infof("NewSuper: cluster(%v) volname(%v) icacheExpiration(%v) LookupValidDuration(%v) AttrValidDuration(%v) state(%v)",
 		s.cluster, s.volname, inodeExpiration, LookupValidDuration, AttrValidDuration, s.state)
 
 	go s.loopSyncMeta()
@@ -290,10 +290,9 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 func (s *Super) scheduleFlush() {
 	t := time.NewTicker(2 * time.Second)
 	defer t.Stop()
-	for {
-		select {
-		case <-t.C:
-			ctx := context.Background()
+	for range t.C {
+		{
+			ctx := ctxOperation(context.Background(), "SuperFlush")
 			s.fslock.Lock()
 			for ino, node := range s.nodeCache {
 				if _, ok := node.(*File); !ok {
@@ -303,7 +302,7 @@ func (s *Super) scheduleFlush() {
 				if atomic.LoadInt32(&file.idle) >= BlobWriterIdleTimeoutPeriod {
 					if file.fWriter != nil {
 						atomic.StoreInt32(&file.idle, 0)
-						go file.fWriter.Flush(ino, ctx)
+						go file.fWriter.Flush(ctx, ino)
 					}
 				} else {
 					atomic.AddInt32(&file.idle, 1)
@@ -316,7 +315,8 @@ func (s *Super) scheduleFlush() {
 
 // Root returns the root directory where it resides.
 func (s *Super) Root() (fs.Node, error) {
-	inode, err := s.InodeGet(s.rootIno)
+	ctx := ctxOperation(context.Background(), "SuperRoot")
+	inode, err := s.InodeGet(ctx, s.rootIno)
 	if err != nil {
 		return nil, err
 	}
@@ -338,8 +338,8 @@ func (s *Super) Node(ino, pino uint64, mode uint32) (fs.Node, error) {
 		// the node is not evict. So we create a streamer for it,
 		// and streamer's refcnt is 0.
 		file := node.(*File)
-		file.Open(nil, nil, nil)
-		file.Release(nil, nil)
+		file.Open(context.Background(), nil, nil)
+		file.Release(context.Background(), nil)
 	}
 	s.fslock.Lock()
 	s.nodeCache[ino] = node
@@ -398,16 +398,12 @@ func (s *Super) SetRate(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (s *Super) exporterKey(act string) string {
-	return fmt.Sprintf("%v_fuseclient_%v", s.cluster, act)
-}
-
 func (s *Super) umpKey(act string) string {
 	return fmt.Sprintf("%v_fuseclient_%v", s.cluster, act)
 }
 
-func (s *Super) handleError(op, msg string) {
-	log.LogError(msg)
+func (s *Super) handleError(ctx context.Context, op, msg string) {
+	getSpan(ctx).Error(msg)
 	ump.Alarm(s.umpKey(op), msg)
 }
 
@@ -456,11 +452,11 @@ func (s *Super) SetSuspend(w http.ResponseWriter, r *http.Request) {
 
 	// wait
 	msg := <-s.suspendCh
-	switch msg.(type) {
+	switch msgVal := msg.(type) {
 	case error:
-		err = msg.(error)
+		err = msgVal
 	case string:
-		ret = msg.(string)
+		ret = msgVal
 	default:
 		err = fmt.Errorf("Unknown return type: %v", msg)
 	}
@@ -568,7 +564,8 @@ func (s *Super) loopSyncMeta() {
 		return
 	}
 	for {
-		finishC := s.syncMeta()
+		ctx := ctxOperation(context.Background(), "SuperSyncMeta")
+		finishC := s.syncMeta(ctx)
 		select {
 		case <-finishC:
 			time.Sleep(time.Second * time.Duration(s.bcacheCheckInterval))
@@ -578,7 +575,7 @@ func (s *Super) loopSyncMeta() {
 	}
 }
 
-func (s *Super) syncMeta() <-chan struct{} {
+func (s *Super) syncMeta(ctx context.Context) <-chan struct{} {
 	finishC := make(chan struct{})
 	start := time.Now()
 	cacheLen := s.ic.lruList.Len()
@@ -603,12 +600,12 @@ func (s *Super) syncMeta() <-chan struct{} {
 			for i := range in {
 				tmpInodes = append(tmpInodes, i)
 				if len(tmpInodes) == int(batchCnt) {
-					changed = append(changed, s.getModifyInodes(tmpInodes)...)
+					changed = append(changed, s.getModifyInodes(ctx, tmpInodes)...)
 					tmpInodes = tmpInodes[:0]
 				}
 			}
 			if len(tmpInodes) != 0 {
-				changed = append(changed, s.getModifyInodes(tmpInodes)...)
+				changed = append(changed, s.getModifyInodes(ctx, tmpInodes)...)
 			}
 			for i := range changed {
 				out <- changed[i]
@@ -644,48 +641,49 @@ func (s *Super) syncMeta() <-chan struct{} {
 
 	var changeCnt int
 
+	span := getSpan(ctx)
 	for ino := range mergeChanged(batCh) {
 		inode := ino
 		changeCnt++
-		log.LogDebugf("sync meta,inode:%d changed", inode)
+		span.Debugf("sync meta,inode:%d changed", inode)
 		s.ic.Delete(inode)
 		s.taskPool[1].Run(func() {
 			common.Timed(3, 100).On(func() error {
-				extents := s.ec.GetExtents(inode)
-				if err := s.ec.ForceRefreshExtentsCache(inode); err != nil {
+				extents := s.ec.GetExtents(ctx, inode)
+				if err := s.ec.ForceRefreshExtentsCache(ctx, inode); err != nil {
 					if err != os.ErrNotExist {
-						log.LogErrorf("ForceRefreshExtentsCache failed:%v", err)
+						span.Errorf("ForceRefreshExtentsCache failed:%v", err)
 					}
 				}
-				log.LogDebugf("inode:%d,extents is :%v", inode, extents)
+				span.Debugf("inode:%d,extents is :%v", inode, extents)
 				for _, extent := range extents {
 					cacheKey := util.GenerateRepVolKey(s.volname, inode, extent.PartitionId, extent.ExtentId, extent.FileOffset)
 					// retry to make possible evict success
 					if s.bc != nil {
 						common.Timed(3, 100).On(func() error {
-							return s.bc.Evict(cacheKey)
+							return s.bc.Evict(ctx, cacheKey)
 						})
 					}
-
 				}
 				return nil
 			})
 		})
 	}
 
-	log.LogDebugf("total cache cnt:%d,changedCnt:%d,sync meta cost:%v", cacheLen, changeCnt, time.Since(start))
+	span.Debugf("total cache cnt:%d,changedCnt:%d,sync meta cost:%v", cacheLen, changeCnt, time.Since(start))
 	close(finishC)
 
 	return finishC
 }
 
-func (s *Super) getModifyInodes(inodes []uint64) (changedNodes []uint64) {
-	inodeInfos := s.mw.BatchInodeGet(inodes)
+func (s *Super) getModifyInodes(ctx context.Context, inodes []uint64) (changedNodes []uint64) {
+	span := getSpan(ctx)
+	inodeInfos := s.mw.BatchInodeGet(ctx, inodes)
 
 	// get deleted files
 	if len(inodeInfos) != len(inodes) {
 		changedNodes = append(changedNodes, getDelInodes(inodes, inodeInfos)...)
-		log.LogDebugf("len inodes is %d, len get inode infos is :%d, del inodes is:%v", len(inodes), len(inodeInfos), changedNodes)
+		span.Debugf("len inodes is %d, len get inode infos is :%d, del inodes is:%v", len(inodes), len(inodeInfos), changedNodes)
 	}
 
 	for _, newInfo := range inodeInfos {
@@ -693,11 +691,11 @@ func (s *Super) getModifyInodes(inodes []uint64) (changedNodes []uint64) {
 		if oldInfo == nil {
 			continue
 		}
-		if !oldInfo.ModifyTime.Equal(newInfo.ModifyTime) || newInfo.Generation != s.ec.GetExtentCacheGen(newInfo.Inode) {
-			log.LogDebugf("oldInfo:ino(%d) modifyTime(%v) gen(%d),newInfo:ino(%d) modifyTime(%d) gen(%d)", oldInfo.Inode, oldInfo.ModifyTime.Unix(), s.ec.GetExtentCacheGen(newInfo.Inode), newInfo.Inode, newInfo.ModifyTime.Unix(), newInfo.Generation)
+		if !oldInfo.ModifyTime.Equal(newInfo.ModifyTime) || newInfo.Generation != s.ec.GetExtentCacheGen(ctx, newInfo.Inode) {
+			span.Debugf("oldInfo:ino(%d) modifyTime(%v) gen(%d),newInfo:ino(%d) modifyTime(%d) gen(%d)", oldInfo.Inode, oldInfo.ModifyTime.Unix(), s.ec.GetExtentCacheGen(ctx, newInfo.Inode), newInfo.Inode, newInfo.ModifyTime.Unix(), newInfo.Generation)
 			changedNodes = append(changedNodes, newInfo.Inode)
 		} else {
-			log.LogDebugf("oldInfo:ino(%d) modifyTime(%v) gen(%d),newInfo:ino(%d) modifyTime(%d) gen(%d)", oldInfo.Inode, oldInfo.ModifyTime.Unix(), s.ec.GetExtentCacheGen(newInfo.Inode), newInfo.Inode, newInfo.ModifyTime.Unix(), newInfo.Generation)
+			span.Debugf("oldInfo:ino(%d) modifyTime(%v) gen(%d),newInfo:ino(%d) modifyTime(%d) gen(%d)", oldInfo.Inode, oldInfo.ModifyTime.Unix(), s.ec.GetExtentCacheGen(ctx, newInfo.Inode), newInfo.Inode, newInfo.ModifyTime.Unix(), newInfo.Generation)
 		}
 	}
 	return
@@ -721,11 +719,11 @@ func (s *Super) Close() {
 	close(s.closeC)
 }
 
-func (s *Super) SetTransaction(txMaskStr string, timeout int64, retryNum int64, retryInterval int64) {
+func (s *Super) SetTransaction(ctx context.Context, txMaskStr string, timeout int64, retryNum int64, retryInterval int64) {
 	// maskStr := proto.GetMaskString(txMask)
 	mask, err := proto.GetMaskFromString(txMaskStr)
 	if err != nil {
-		log.LogErrorf("SetTransaction: err[%v], op[%v], timeout[%v]", err, txMaskStr, timeout)
+		getSpan(ctx).Errorf("SetTransaction: err[%v], op[%v], timeout[%v]", err, txMaskStr, timeout)
 		return
 	}
 
@@ -744,6 +742,6 @@ func (s *Super) SetTransaction(txMaskStr string, timeout int64, retryNum int64, 
 		retryInterval = proto.DefaultTxConflictRetryInterval
 	}
 	s.mw.TxConflictRetryInterval = retryInterval
-	log.LogDebugf("SetTransaction: mask[%v], op[%v], timeout[%v], retryNum[%v], retryInterval[%v ms]",
+	getSpan(ctx).Debugf("SetTransaction: mask[%v], op[%v], timeout[%v], retryNum[%v], retryInterval[%v ms]",
 		mask, txMaskStr, timeout, retryNum, retryInterval)
 }

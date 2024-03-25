@@ -92,9 +92,9 @@ import (
 
 	"github.com/bits-and-blooms/bitset"
 	"github.com/cubefs/cubefs/blobstore/api/access"
-	"github.com/cubefs/cubefs/blobstore/common/trace"
 	"github.com/cubefs/cubefs/blockcache/bcache"
 	"github.com/cubefs/cubefs/client/fs"
+	"github.com/cubefs/cubefs/cmd/common"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/sdk/data/blobstore"
 	"github.com/cubefs/cubefs/sdk/data/stream"
@@ -130,7 +130,6 @@ var (
 	statusEISDIR  = errorToStatus(syscall.EISDIR)
 	statusENOSPC  = errorToStatus(syscall.ENOSPC)
 )
-var once sync.Once
 
 func init() {
 	gClientManager = &clientManager{
@@ -152,10 +151,6 @@ type clientManager struct {
 	nextClientID int64
 	clients      map[int64]*client
 	mu           sync.RWMutex
-}
-
-type pushConfig struct {
-	PushAddr string `json:"pushAddr"`
 }
 
 func newClient() *client {
@@ -357,7 +352,6 @@ func cfs_close_client(id C.int64_t) {
 		removeClient(int64(id))
 	}
 	auditlog.StopAudit()
-	log.LogFlush()
 }
 
 //export cfs_chdir
@@ -367,7 +361,7 @@ func cfs_chdir(id C.int64_t, path *C.char) C.int {
 		return statusEINVAL
 	}
 	cwd := c.absPath(C.GoString(path))
-	dirInfo, err := c.lookupPath(cwd)
+	dirInfo, err := c.lookupPath(newCtx(), cwd)
 	if err != nil {
 		return errorToStatus(err)
 	}
@@ -394,7 +388,7 @@ func cfs_getattr(id C.int64_t, path *C.char, stat *C.struct_cfs_stat_info) C.int
 		return statusEINVAL
 	}
 
-	info, err := c.lookupPath(c.absPath(C.GoString(path)))
+	info, err := c.lookupPath(newCtx(), c.absPath(C.GoString(path)))
 	if err != nil {
 		return errorToStatus(err)
 	}
@@ -446,13 +440,13 @@ func cfs_setattr(id C.int64_t, path *C.char, stat *C.struct_cfs_stat_info, valid
 		return statusEINVAL
 	}
 
-	info, err := c.lookupPath(c.absPath(C.GoString(path)))
+	ctx := newCtx()
+	info, err := c.lookupPath(ctx, c.absPath(C.GoString(path)))
 	if err != nil {
 		return errorToStatus(err)
 	}
 
-	err = c.setattr(info, uint32(valid), uint32(stat.mode), uint32(stat.uid), uint32(stat.gid), int64(stat.atime), int64(stat.mtime))
-
+	err = c.setattr(ctx, info, uint32(valid), uint32(stat.mode), uint32(stat.uid), uint32(stat.gid), int64(stat.atime), int64(stat.mtime))
 	if err != nil {
 		return errorToStatus(err)
 	}
@@ -481,12 +475,13 @@ func cfs_open(id C.int64_t, path *C.char, flags C.int, mode C.mode_t) C.int {
 	 * Note that the rwx mode is ignored when using libsdk
 	 */
 
+	ctx := newCtx()
 	if fuseFlags&uint32(C.O_CREAT) != 0 {
 		if accFlags != uint32(C.O_WRONLY) && accFlags != uint32(C.O_RDWR) {
 			return statusEACCES
 		}
 		dirpath, name := gopath.Split(absPath)
-		dirInfo, err := c.lookupPath(dirpath)
+		dirInfo, err := c.lookupPath(ctx, dirpath)
 		if err != nil {
 			return errorToStatus(err)
 		}
@@ -498,12 +493,12 @@ func cfs_open(id C.int64_t, path *C.char, flags C.int, mode C.mode_t) C.int {
 				auditlog.LogClientOp("Create", dirpath, "nil", err, time.Since(start).Microseconds(), 0, 0)
 			}
 		}()
-		newInfo, err := c.create(dirInfo.Inode, name, fuseMode, absPath)
+		newInfo, err := c.create(ctx, dirInfo.Inode, name, fuseMode, absPath)
 		if err != nil {
 			if err != syscall.EEXIST {
 				return errorToStatus(err)
 			}
-			newInfo, err = c.lookupPath(absPath)
+			newInfo, err = c.lookupPath(ctx, absPath)
 			if err != nil {
 				return errorToStatus(err)
 			}
@@ -511,12 +506,12 @@ func cfs_open(id C.int64_t, path *C.char, flags C.int, mode C.mode_t) C.int {
 		info = newInfo
 	} else {
 		dirpath, _ := gopath.Split(absPath)
-		dirInfo, err := c.lookupPath(dirpath)
+		dirInfo, err := c.lookupPath(ctx, dirpath)
 		if err != nil {
 			return errorToStatus(err)
 		}
 		parentIno = dirInfo.Inode // parent inode
-		newInfo, err := c.lookupPath(absPath)
+		newInfo, err := c.lookupPath(ctx, absPath)
 		if err != nil {
 			return errorToStatus(err)
 		}
@@ -535,15 +530,15 @@ func cfs_open(id C.int64_t, path *C.char, flags C.int, mode C.mode_t) C.int {
 	}
 
 	if proto.IsRegular(info.Mode) {
-		c.openStream(f)
+		c.openStream(ctx, f)
 		if fuseFlags&uint32(C.O_TRUNC) != 0 {
 			if accFlags != uint32(C.O_WRONLY) && accFlags != uint32(C.O_RDWR) {
-				c.closeStream(f)
+				c.closeStream(ctx, f)
 				c.releaseFD(f.fd)
 				return statusEACCES
 			}
-			if err := c.truncate(f, 0); err != nil {
-				c.closeStream(f)
+			if err := c.truncate(ctx, f, 0); err != nil {
+				c.closeStream(ctx, f)
 				c.releaseFD(f.fd)
 				return statusEIO
 			}
@@ -565,7 +560,7 @@ func cfs_flush(id C.int64_t, fd C.int) C.int {
 		return statusEBADFD
 	}
 
-	err := c.flush(f)
+	err := c.flush(newCtx(), f)
 	if err != nil {
 		return statusEIO
 	}
@@ -579,10 +574,11 @@ func cfs_close(id C.int64_t, fd C.int) {
 	if !exist {
 		return
 	}
+	ctx := newCtx()
 	f := c.releaseFD(uint(fd))
 	if f != nil {
-		c.flush(f)
-		c.closeStream(f)
+		c.flush(ctx, f)
+		c.closeStream(ctx, f)
 	}
 }
 
@@ -623,7 +619,8 @@ func cfs_write(id C.int64_t, fd C.int, buf unsafe.Pointer, size C.size_t, off C.
 		flags |= proto.FlagsSyncWrite
 	}
 
-	n, err := c.write(f, int(off), buffer, flags)
+	ctx := newCtx()
+	n, err := c.write(ctx, f, int(off), buffer, flags)
 	if err != nil {
 		if err == syscall.ENOSPC {
 			return C.ssize_t(statusENOSPC)
@@ -632,7 +629,7 @@ func cfs_write(id C.int64_t, fd C.int, buf unsafe.Pointer, size C.size_t, off C.
 	}
 
 	if wait {
-		if err = c.flush(f); err != nil {
+		if err = c.flush(ctx, f); err != nil {
 			return C.ssize_t(statusEIO)
 		}
 	}
@@ -664,7 +661,7 @@ func cfs_read(id C.int64_t, fd C.int, buf unsafe.Pointer, size C.size_t, off C.o
 	hdr.Len = int(size)
 	hdr.Cap = int(size)
 
-	n, err := c.read(f, int(off), buffer)
+	n, err := c.read(newCtx(), f, int(off), buffer)
 	if err != nil {
 		return C.ssize_t(statusEIO)
 	}
@@ -691,7 +688,7 @@ func cfs_batch_get_inodes(id C.int64_t, fd C.int, iids unsafe.Pointer, stats []C
 	hdr.Len = int(count)
 	hdr.Cap = int(count)
 
-	infos := c.mw.BatchInodeGet(inodeIDS)
+	infos := c.mw.BatchInodeGet(newCtx(), inodeIDS)
 	if len(infos) > int(count) {
 		return statusEINVAL
 	}
@@ -744,7 +741,8 @@ func cfs_refreshsummary(id C.int64_t, path *C.char, goroutine_num C.int) C.int {
 	if !c.enableSummary {
 		return statusEINVAL
 	}
-	info, err := c.lookupPath(c.absPath(C.GoString(path)))
+	ctx := newCtx()
+	info, err := c.lookupPath(ctx, c.absPath(C.GoString(path)))
 	var ino uint64
 	if err != nil {
 		ino = proto.RootIno
@@ -752,7 +750,7 @@ func cfs_refreshsummary(id C.int64_t, path *C.char, goroutine_num C.int) C.int {
 		ino = info.Inode
 	}
 	goroutineNum := int32(goroutine_num)
-	err = c.mw.RefreshSummary_ll(ino, goroutineNum)
+	err = c.mw.RefreshSummary_ll(ctx, ino, goroutineNum)
 	if err != nil {
 		return errorToStatus(err)
 	}
@@ -777,7 +775,7 @@ func cfs_readdir(id C.int64_t, fd C.int, dirents []C.struct_cfs_dirent, count C.
 
 	if f.dirp == nil {
 		f.dirp = &dirStream{}
-		dentries, err := c.mw.ReadDir_ll(f.ino)
+		dentries, err := c.mw.ReadDir_ll(newCtx(), f.ino)
 		if err != nil {
 			return errorToStatus(err)
 		}
@@ -829,9 +827,10 @@ func cfs_lsdir(id C.int64_t, fd C.int, direntsInfo []C.struct_cfs_dirent_info, c
 		return statusEBADFD
 	}
 
+	ctx := newCtx()
 	if f.dirp == nil {
 		f.dirp = &dirStream{}
-		dentries, err := c.mw.ReadDir_ll(f.ino)
+		dentries, err := c.mw.ReadDir_ll(ctx, f.ino)
 		if err != nil {
 			return errorToStatus(err)
 		}
@@ -839,7 +838,7 @@ func cfs_lsdir(id C.int64_t, fd C.int, direntsInfo []C.struct_cfs_dirent_info, c
 	}
 
 	dirp := f.dirp
-	inodeIDS := make([]uint64, count, count)
+	inodeIDS := make([]uint64, count)
 	inodeMap := make(map[uint64]C.int)
 	for dirp.pos < len(dirp.dirents) && n < count {
 		inodeIDS[n] = dirp.dirents[dirp.pos].Inode
@@ -871,7 +870,7 @@ func cfs_lsdir(id C.int64_t, fd C.int, direntsInfo []C.struct_cfs_dirent_info, c
 	if n == 0 {
 		return n
 	}
-	infos := c.mw.BatchInodeGet(inodeIDS)
+	infos := c.mw.BatchInodeGet(ctx, inodeIDS)
 	if len(infos) != int(n) {
 		return statusEIO
 	}
@@ -929,14 +928,15 @@ func cfs_mkdirs(id C.int64_t, path *C.char, mode C.mode_t) C.int {
 
 	pino := proto.RootIno
 	dirs := strings.Split(dirpath, "/")
+	ctx := newCtx()
 	for _, dir := range dirs {
 		if dir == "/" || dir == "" {
 			continue
 		}
-		child, _, err := c.mw.Lookup_ll(pino, dir)
+		child, _, err := c.mw.Lookup_ll(ctx, pino, dir)
 		if err != nil {
 			if err == syscall.ENOENT {
-				info, err := c.mkdir(pino, dir, uint32(mode), dirpath)
+				info, err := c.mkdir(ctx, pino, dir, uint32(mode), dirpath)
 
 				if err != nil {
 					if err != syscall.EEXIST {
@@ -976,13 +976,14 @@ func cfs_rmdir(id C.int64_t, path *C.char) C.int {
 			auditlog.LogClientOp("Rmdir", absPath, "nil", err, time.Since(start).Microseconds(), info.Inode, 0)
 		}
 	}()
+	ctx := newCtx()
 	dirpath, name := gopath.Split(absPath)
-	dirInfo, err := c.lookupPath(dirpath)
+	dirInfo, err := c.lookupPath(ctx, dirpath)
 	if err != nil {
 		return errorToStatus(err)
 	}
 
-	info, err = c.mw.Delete_ll(dirInfo.Inode, name, true, absPath)
+	info, err = c.mw.Delete_ll(ctx, dirInfo.Inode, name, true, absPath)
 	c.ic.Delete(dirInfo.Inode)
 	c.dc.Delete(absPath)
 	return errorToStatus(err)
@@ -1009,12 +1010,13 @@ func cfs_unlink(id C.int64_t, path *C.char) C.int {
 			auditlog.LogClientOp("Unlink", absPath, "nil", err, time.Since(start).Microseconds(), info.Inode, 0)
 		}
 	}()
-	dirInfo, err := c.lookupPath(dirpath)
+	ctx := newCtx()
+	dirInfo, err := c.lookupPath(ctx, dirpath)
 	if err != nil {
 		return errorToStatus(err)
 	}
 
-	_, mode, err := c.mw.Lookup_ll(dirInfo.Inode, name)
+	_, mode, err := c.mw.Lookup_ll(ctx, dirInfo.Inode, name)
 	if err != nil {
 		return errorToStatus(err)
 	}
@@ -1022,13 +1024,13 @@ func cfs_unlink(id C.int64_t, path *C.char) C.int {
 		return statusEISDIR
 	}
 
-	info, err = c.mw.Delete_ll(dirInfo.Inode, name, false, absPath)
+	info, err = c.mw.Delete_ll(ctx, dirInfo.Inode, name, false, absPath)
 	if err != nil {
 		return errorToStatus(err)
 	}
 
 	if info != nil {
-		_ = c.mw.Evict(info.Inode, absPath)
+		_ = c.mw.Evict(ctx, info.Inode, absPath)
 		c.ic.Delete(info.Inode)
 	}
 	return 0
@@ -1054,16 +1056,17 @@ func cfs_rename(id C.int64_t, from *C.char, to *C.char) C.int {
 	srcDirPath, srcName := gopath.Split(absFrom)
 	dstDirPath, dstName := gopath.Split(absTo)
 
-	srcDirInfo, err := c.lookupPath(srcDirPath)
+	ctx := newCtx()
+	srcDirInfo, err := c.lookupPath(ctx, srcDirPath)
 	if err != nil {
 		return errorToStatus(err)
 	}
-	dstDirInfo, err := c.lookupPath(dstDirPath)
+	dstDirInfo, err := c.lookupPath(ctx, dstDirPath)
 	if err != nil {
 		return errorToStatus(err)
 	}
 
-	err = c.mw.Rename_ll(srcDirInfo.Inode, srcName, dstDirInfo.Inode, dstName, absFrom, absTo, false)
+	err = c.mw.Rename_ll(ctx, srcDirInfo.Inode, srcName, dstDirInfo.Inode, dstName, absFrom, absTo, false)
 	c.ic.Delete(srcDirInfo.Inode)
 	c.ic.Delete(dstDirInfo.Inode)
 	c.dc.Delete(absFrom)
@@ -1082,12 +1085,13 @@ func cfs_fchmod(id C.int64_t, fd C.int, mode C.mode_t) C.int {
 		return statusEBADFD
 	}
 
-	info, err := c.mw.InodeGet_ll(f.ino)
+	ctx := newCtx()
+	info, err := c.mw.InodeGet_ll(ctx, f.ino)
 	if err != nil {
 		return errorToStatus(err)
 	}
 
-	err = c.setattr(info, proto.AttrMode, uint32(mode), 0, 0, 0, 0)
+	err = c.setattr(ctx, info, proto.AttrMode, uint32(mode), 0, 0, 0, 0)
 	if err != nil {
 		return errorToStatus(err)
 	}
@@ -1102,7 +1106,8 @@ func cfs_getsummary(id C.int64_t, path *C.char, summary *C.struct_cfs_summary_in
 		return statusEINVAL
 	}
 
-	info, err := c.lookupPath(c.absPath(C.GoString(path)))
+	ctx := newCtx()
+	info, err := c.lookupPath(ctx, c.absPath(C.GoString(path)))
 	if err != nil {
 		return errorToStatus(err)
 	}
@@ -1121,7 +1126,7 @@ func cfs_getsummary(id C.int64_t, path *C.char, summary *C.struct_cfs_summary_in
 		return statusENOTDIR
 	}
 	goroutineNum := int32(goroutine_num)
-	summaryInfo, err := c.mw.GetSummary_ll(info.Inode, goroutineNum)
+	summaryInfo, err := c.mw.GetSummary_ll(ctx, info.Inode, goroutineNum)
 	if err != nil {
 		return errorToStatus(err)
 	}
@@ -1146,12 +1151,13 @@ func (c *client) absPath(path string) string {
 
 func (c *client) start() (err error) {
 	masters := strings.Split(c.masterAddr, ",")
+
+	span, ctx := proto.SpanContext()
+	level := log.Lwarn
 	if c.logDir != "" {
-		if c.logLevel == "" {
-			c.logLevel = "WARN"
-		}
-		level := parseLogLevel(c.logLevel)
-		log.InitLog(c.logDir, "libcfs", level, nil, log.DefaultLogLeftSpaceLimit)
+		level = log.ParseLevel(c.logLevel, log.Lwarn)
+		log.SetOutputLevel(level)
+		log.SetOutput(common.NewLogger(c.logDir, "libcfs", 128, 30, 0, 4096, true, true))
 		stat.NewStatistic(c.logDir, "libcfs", int64(stat.DefaultStatLogSize), stat.DefaultTimeOutUs, true)
 	}
 	proto.InitBufferPool(int64(32768))
@@ -1161,10 +1167,10 @@ func (c *client) start() (err error) {
 	if c.writeBlockThread == 0 {
 		c.writeBlockThread = 10
 	}
-	if err = c.loadConfFromMaster(masters); err != nil {
+	if err = c.loadConfFromMaster(ctx, masters); err != nil {
 		return
 	}
-	if err = c.checkPermission(); err != nil {
+	if err = c.checkPermission(ctx); err != nil {
 		err = errors.NewErrorf("check permission failed: %v", err)
 		syslog.Println(err)
 		return
@@ -1173,7 +1179,7 @@ func (c *client) start() (err error) {
 	if c.enableAudit {
 		_, err = auditlog.InitAudit(c.logDir, "clientSdk", int64(auditlog.DefaultAuditLogSize))
 		if err != nil {
-			log.LogWarnf("Init audit log fail: %v", err)
+			span.Warnf("Init audit log fail: %v", err)
 		}
 	}
 
@@ -1191,6 +1197,7 @@ func (c *client) start() (err error) {
 				Address: c.ebsEndpoint,
 			},
 			MaxSizePutOnce: MaxSizePutOnce,
+			LogLevel:       level,
 			Logger: &access.Logger{
 				Filename: gopath.Join(c.logDir, "libcfs/ebs.log"),
 			},
@@ -1205,11 +1212,11 @@ func (c *client) start() (err error) {
 		ValidateOwner: false,
 		EnableSummary: c.enableSummary,
 	}); err != nil {
-		log.LogErrorf("newClient NewMetaWrapper failed(%v)", err)
+		span.Errorf("newClient NewMetaWrapper failed(%v)", err)
 		return err
 	}
 	var ec *stream.ExtentClient
-	if ec, err = stream.NewExtentClient(&stream.ExtentConfig{
+	if ec, err = stream.NewExtentClient(ctx, &stream.ExtentConfig{
 		Volume:            c.volName,
 		VolumeType:        c.volType,
 		Masters:           masters,
@@ -1224,7 +1231,7 @@ func (c *client) start() (err error) {
 		OnEvictBcache:     c.bc.Evict,
 		DisableMetaCache:  true,
 	}); err != nil {
-		log.LogErrorf("newClient NewExtentClient failed(%v)", err)
+		span.Errorf("newClient NewExtentClient failed(%v)", err)
 		return
 	}
 
@@ -1234,7 +1241,7 @@ func (c *client) start() (err error) {
 	return nil
 }
 
-func (c *client) checkPermission() (err error) {
+func (c *client) checkPermission(ctx context.Context) (err error) {
 	if c.accessKey == "" || c.secretKey == "" {
 		err = errors.New("invalid AccessKey or SecretKey")
 		return
@@ -1243,7 +1250,7 @@ func (c *client) checkPermission() (err error) {
 	// checkPermission
 	mc := masterSDK.NewMasterClientFromString(c.masterAddr, false)
 	var userInfo *proto.UserInfo
-	if userInfo, err = mc.UserAPI().GetAKInfo(c.accessKey); err != nil {
+	if userInfo, err = mc.UserAPI().GetAKInfo(ctx, c.accessKey); err != nil {
 		return
 	}
 	if userInfo.SecretKey != c.secretKey {
@@ -1335,10 +1342,10 @@ func (c *client) releaseFD(fd uint) *file {
 	return f
 }
 
-func (c *client) lookupPath(path string) (*proto.InodeInfo, error) {
+func (c *client) lookupPath(ctx context.Context, path string) (*proto.InodeInfo, error) {
 	ino, ok := c.dc.Get(gopath.Clean(path))
 	if !ok {
-		inoInterval, err := c.mw.LookupPath(gopath.Clean(path))
+		inoInterval, err := c.mw.LookupPath(ctx, gopath.Clean(path))
 		if err != nil {
 			return nil, err
 		}
@@ -1349,7 +1356,7 @@ func (c *client) lookupPath(path string) (*proto.InodeInfo, error) {
 	if info != nil {
 		return info, nil
 	}
-	info, err := c.mw.InodeGet_ll(ino)
+	info, err := c.mw.InodeGet_ll(ctx, ino)
 	if err != nil {
 		return nil, err
 	}
@@ -1358,32 +1365,32 @@ func (c *client) lookupPath(path string) (*proto.InodeInfo, error) {
 	return info, nil
 }
 
-func (c *client) setattr(info *proto.InodeInfo, valid uint32, mode, uid, gid uint32, atime, mtime int64) error {
+func (c *client) setattr(ctx context.Context, info *proto.InodeInfo, valid uint32, mode, uid, gid uint32, atime, mtime int64) error {
 	// Only rwx mode bit can be set
 	if valid&proto.AttrMode != 0 {
 		fuseMode := mode & uint32(0o777)
 		mode = info.Mode &^ uint32(0o777) // clear rwx mode bit
 		mode |= fuseMode
 	}
-	return c.mw.Setattr(info.Inode, valid, mode, uid, gid, atime, mtime)
+	return c.mw.Setattr(ctx, info.Inode, valid, mode, uid, gid, atime, mtime)
 }
 
-func (c *client) create(pino uint64, name string, mode uint32, fullPath string) (info *proto.InodeInfo, err error) {
+func (c *client) create(ctx context.Context, pino uint64, name string, mode uint32, fullPath string) (info *proto.InodeInfo, err error) {
 	fuseMode := mode & 0o777
-	return c.mw.Create_ll(pino, name, fuseMode, 0, 0, nil, fullPath)
+	return c.mw.Create_ll(ctx, pino, name, fuseMode, 0, 0, nil, fullPath)
 }
 
-func (c *client) mkdir(pino uint64, name string, mode uint32, fullPath string) (info *proto.InodeInfo, err error) {
+func (c *client) mkdir(ctx context.Context, pino uint64, name string, mode uint32, fullPath string) (info *proto.InodeInfo, err error) {
 	fuseMode := mode & 0o777
 	fuseMode |= uint32(os.ModeDir)
-	return c.mw.Create_ll(pino, name, fuseMode, 0, 0, nil, fullPath)
+	return c.mw.Create_ll(ctx, pino, name, fuseMode, 0, 0, nil, fullPath)
 }
 
-func (c *client) openStream(f *file) {
-	_ = c.ec.OpenStream(f.ino)
+func (c *client) openStream(ctx context.Context, f *file) {
+	_ = c.ec.OpenStream(ctx, f.ino)
 }
 
-func (c *client) closeStream(f *file) {
+func (c *client) closeStream(ctx context.Context, f *file) {
 	_ = c.ec.CloseStream(f.ino)
 	_ = c.ec.EvictStream(f.ino)
 	f.fileWriter.FreeCache()
@@ -1391,45 +1398,45 @@ func (c *client) closeStream(f *file) {
 	f.fileReader = nil
 }
 
-func (c *client) flush(f *file) error {
+func (c *client) flush(ctx context.Context, f *file) error {
 	if proto.IsHot(c.volType) {
-		return c.ec.Flush(f.ino)
+		return c.ec.Flush(ctx, f.ino)
 	} else {
 		if f.fileWriter != nil {
-			return f.fileWriter.Flush(f.ino, c.ctx(c.id, f.ino))
+			return f.fileWriter.Flush(ctx, f.ino)
 		}
 	}
 	return nil
 }
 
-func (c *client) truncate(f *file, size int) error {
-	err := c.ec.Truncate(c.mw, f.pino, f.ino, size, f.path)
+func (c *client) truncate(ctx context.Context, f *file, size int) error {
+	err := c.ec.Truncate(ctx, c.mw, f.pino, f.ino, size, f.path)
 	if err != nil {
 		return err
 	}
 	return nil
 }
 
-func (c *client) write(f *file, offset int, data []byte, flags int) (n int, err error) {
+func (c *client) write(ctx context.Context, f *file, offset int, data []byte, flags int) (n int, err error) {
 	if proto.IsHot(c.volType) {
-		c.ec.GetStreamer(f.ino).SetParentInode(f.pino) // set the parent inode
+		c.ec.GetStreamer(ctx, f.ino).SetParentInode(f.pino) // set the parent inode
 		checkFunc := func() error {
 			if !c.mw.EnableQuota {
 				return nil
 			}
 
-			if ok := c.ec.UidIsLimited(0); ok {
+			if ok := c.ec.UidIsLimited(ctx, 0); ok {
 				return syscall.ENOSPC
 			}
 
-			if c.mw.IsQuotaLimitedById(f.ino, true, false) {
+			if c.mw.IsQuotaLimitedById(ctx, f.ino, true, false) {
 				return syscall.ENOSPC
 			}
 			return nil
 		}
-		n, err = c.ec.Write(f.ino, offset, data, flags, checkFunc)
+		n, err = c.ec.Write(ctx, f.ino, offset, data, flags, checkFunc)
 	} else {
-		n, err = f.fileWriter.Write(c.ctx(c.id, f.ino), offset, data, flags)
+		n, err = f.fileWriter.Write(ctx, offset, data, flags)
 	}
 	if err != nil {
 		return 0, err
@@ -1437,11 +1444,11 @@ func (c *client) write(f *file, offset int, data []byte, flags int) (n int, err 
 	return n, nil
 }
 
-func (c *client) read(f *file, offset int, data []byte) (n int, err error) {
+func (c *client) read(ctx context.Context, f *file, offset int, data []byte) (n int, err error) {
 	if proto.IsHot(c.volType) {
-		n, err = c.ec.Read(f.ino, data, offset, len(data))
+		n, err = c.ec.Read(ctx, f.ino, data, offset, len(data))
 	} else {
-		n, err = f.fileReader.Read(c.ctx(c.id, f.ino), data, offset, len(data))
+		n, err = f.fileReader.Read(ctx, data, offset, len(data))
 	}
 	if err != nil && err != io.EOF {
 		return 0, err
@@ -1449,15 +1456,10 @@ func (c *client) read(f *file, offset int, data []byte) (n int, err error) {
 	return n, nil
 }
 
-func (c *client) ctx(cid int64, ino uint64) context.Context {
-	_, ctx := trace.StartSpanFromContextWithTraceID(context.Background(), "", fmt.Sprintf("cid=%v,ino=%v", cid, ino))
-	return ctx
-}
-
-func (c *client) loadConfFromMaster(masters []string) (err error) {
+func (c *client) loadConfFromMaster(ctx context.Context, masters []string) (err error) {
 	mc := masterSDK.NewMasterClient(masters, false)
 	var volumeInfo *proto.SimpleVolView
-	volumeInfo, err = mc.AdminAPI().GetVolumeSimpleInfo(c.volName)
+	volumeInfo, err = mc.AdminAPI().GetVolumeSimpleInfo(ctx, c.volName)
 	if err != nil {
 		return
 	}
@@ -1468,7 +1470,7 @@ func (c *client) loadConfFromMaster(masters []string) (err error) {
 	c.cacheThreshold = volumeInfo.CacheThreshold
 
 	var clusterInfo *proto.ClusterInfo
-	clusterInfo, err = mc.AdminAPI().GetClusterInfo()
+	clusterInfo, err = mc.AdminAPI().GetClusterInfo(ctx)
 	if err != nil {
 		return
 	}
@@ -1480,38 +1482,27 @@ func (c *client) loadConfFromMaster(masters []string) (err error) {
 	return
 }
 
-func parseLogLevel(loglvl string) log.Level {
-	var level log.Level
-	switch strings.ToLower(loglvl) {
-	case "debug":
-		level = log.DebugLevel
-	case "info":
-		level = log.InfoLevel
-	case "warn":
-		level = log.WarnLevel
-	case "error":
-		level = log.ErrorLevel
-	default:
-		level = log.ErrorLevel
-	}
-	return level
-}
-
-func (c *client) fileSize(ino uint64) (size int, gen uint64) {
-	size, gen, valid := c.ec.FileSize(ino)
-	log.LogDebugf("fileSize: ino(%v) fileSize(%v) gen(%v) valid(%v)", ino, size, gen, valid)
+func (c *client) fileSize(ctx context.Context, ino uint64) (size int, gen uint64) {
+	span := proto.SpanFromContext(ctx)
+	size, gen, valid := c.ec.FileSize(ctx, ino)
+	span.Debugf("fileSize: ino(%v) fileSize(%v) gen(%v) valid(%v)", ino, size, gen, valid)
 
 	if !valid {
 		info := c.ic.Get(ino)
 		if info != nil {
 			return int(info.Size), info.Generation
 		}
-		if info, err := c.mw.InodeGet_ll(ino); err == nil {
+		if info, err := c.mw.InodeGet_ll(ctx, ino); err == nil {
 			size = int(info.Size)
 			gen = info.Generation
 		}
 	}
 	return
+}
+
+func newCtx() context.Context {
+	_, ctx := proto.SpanContext()
+	return ctx
 }
 
 func main() {

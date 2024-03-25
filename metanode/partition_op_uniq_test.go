@@ -52,7 +52,7 @@ func TestDoEvit(t *testing.T) {
 	defer mockCtrl.Finish()
 	mp := mockPartitionRaft(mockCtrl)
 	checker := mp.uniqChecker
-	mp.uniqCheckerEvict()
+	mp.uniqCheckerEvict(newCtx())
 	if checker.inQue.len() != 0 || len(checker.op) != 0 {
 		t.Errorf("failed, inQue %v, op [%v]", checker.inQue.len(), len(checker.op))
 	}
@@ -62,12 +62,12 @@ func TestDoEvit(t *testing.T) {
 			t.Errorf("failed")
 		}
 	}
-	mp.uniqCheckerEvict()
+	mp.uniqCheckerEvict(newCtx())
 	if checker.inQue.len() != 1 || len(checker.op) != 1 {
 		t.Errorf("failed, inQue %v, op [%v]", checker.inQue, checker.op)
 	}
 	mp.uniqChecker.keepTime = 0
-	mp.uniqCheckerEvict()
+	mp.uniqCheckerEvict(newCtx())
 	if checker.inQue.len() != 0 || len(checker.op) != 0 {
 		t.Errorf("failed, inQue %v, op [%v]", checker.inQue, checker.op)
 	}
@@ -81,14 +81,14 @@ func TestDoEvit(t *testing.T) {
 		t.Errorf("failed, inQue %v, op [%v]", checker.inQue.len(), len(checker.op))
 	}
 
-	mp.uniqCheckerEvict()
+	mp.uniqCheckerEvict(newCtx())
 	mp.uniqChecker.keepOps = 100
 	for i := 1001; i <= 1100; i++ {
 		if !checker.legalIn(uint64(i)) {
 			t.Errorf("failed")
 		}
 	}
-	mp.uniqCheckerEvict()
+	mp.uniqCheckerEvict(newCtx())
 	if checker.inQue.len() != 100 || len(checker.op) != 100 {
 		t.Errorf("failed, inQue %v, op [%v]", checker.inQue.len(), len(checker.op))
 	}
@@ -106,7 +106,7 @@ func TestDoEvit1(t *testing.T) {
 			t.Errorf("failed")
 		}
 	}
-	mp.uniqCheckerEvict()
+	mp.uniqCheckerEvict(newCtx())
 
 	if checker.inQue.len() != 0 || len(checker.op) != 0 {
 		t.Errorf("failed, inQue %v, op [%v]", checker.inQue, checker.op)
@@ -130,7 +130,7 @@ func TestDoEvit2(t *testing.T) {
 			t.Errorf("failed")
 		}
 	}
-	mp.uniqCheckerEvict()
+	mp.uniqCheckerEvict(newCtx())
 	if checker.inQue.len() != len(checker.op) {
 		t.Errorf("failed, inQue %v, op [%v]", checker.inQue.len(), len(checker.op))
 	}

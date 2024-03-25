@@ -62,9 +62,7 @@ func NewCreateTransaction(parentMp, inoMp *MetaPartition, parentID uint64, name 
 	if err = tx.AddInode(txParInoInfo); err != nil {
 		return nil, err
 	}
-	if log.EnableDebug() {
-		log.LogDebugf("NewCreateTransaction: txInfo(%v) parentMp", tx.txInfo)
-	}
+	log.Debugf("NewCreateTransaction: txInfo(%v) parentMp", tx.txInfo)
 	return tx, nil
 }
 
@@ -91,9 +89,7 @@ func NewDeleteTransaction(
 	if err = tx.AddDentry(txDentryInfo); err != nil {
 		return nil, err
 	}
-	if log.EnableDebug() {
-		log.LogDebugf("NewDeleteTransaction: tx(%v)", tx)
-	}
+	log.Debugf("NewDeleteTransaction: tx(%v)", tx)
 	return tx, nil
 }
 
@@ -120,9 +116,7 @@ func NewRenameTransaction(srcMp *MetaPartition, srcDenParentID uint64, srcName s
 		return nil, err
 	}
 
-	if log.EnableDebug() {
-		log.LogDebugf("NewRenameTransaction: txInfo(%v)", tx.txInfo)
-	}
+	log.Debugf("NewRenameTransaction: txInfo(%v)", tx.txInfo)
 	return tx, nil
 }
 
@@ -133,7 +127,7 @@ func RenameTxReplaceInode(tx *Transaction, inoMp *MetaPartition, ino uint64) (er
 	}
 	txInoInfo := proto.NewTxInodeInfo(inoMembers, ino, inoMp.PartitionID)
 	_ = tx.AddInode(txInoInfo)
-	log.LogDebugf("RenameTxReplaceInode: txInfo(%v)", tx.txInfo)
+	log.Debugf("RenameTxReplaceInode: txInfo(%v)", tx.txInfo)
 	return nil
 }
 
@@ -160,8 +154,6 @@ func NewLinkTransaction(
 	if err = tx.AddDentry(txDentryInfo); err != nil {
 		return nil, err
 	}
-	if log.EnableDebug() {
-		log.LogDebugf("NewLinkTransaction: tx(%v)", tx)
-	}
+	log.Debugf("NewLinkTransaction: tx(%v)", tx)
 	return tx, nil
 }

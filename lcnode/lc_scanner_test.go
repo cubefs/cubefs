@@ -18,6 +18,7 @@ import (
 	"testing"
 	"time"
 
+	_ "github.com/cubefs/cubefs/blobstore/testing/nolog"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/routinepool"
 	"github.com/cubefs/cubefs/util/unboundedchan"
@@ -27,6 +28,7 @@ import (
 func TestLcScanner(t *testing.T) {
 	lcScanRoutineNumPerTask = 1
 	scanCheckInterval = 1
+	_, ctx := spanContextOperation("LcScanner")
 	scanner := &LcScanner{
 		ID:     "test_id",
 		Volume: "test_vol",
@@ -46,6 +48,7 @@ func TestLcScanner(t *testing.T) {
 		currentStat:   &proto.LcNodeRuleTaskStatistics{},
 		now:           time.Now(),
 		stopC:         make(chan bool),
+		ctx:           ctx,
 	}
 	err := scanner.Start()
 	require.NoError(t, err)

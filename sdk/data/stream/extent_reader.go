@@ -15,6 +15,7 @@
 package stream
 
 import (
+	"context"
 	"fmt"
 	"hash/crc32"
 	"net"
@@ -24,7 +25,6 @@ import (
 	"github.com/cubefs/cubefs/sdk/data/wrapper"
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/errors"
-	"github.com/cubefs/cubefs/util/log"
 )
 
 // ExtentReader defines the struct of the extent reader.
@@ -54,16 +54,17 @@ func (reader *ExtentReader) String() (m string) {
 }
 
 // Read reads the extent request.
-func (reader *ExtentReader) Read(req *ExtentRequest) (readBytes int, err error) {
+func (reader *ExtentReader) Read(ctx context.Context, req *ExtentRequest) (readBytes int, err error) {
+	span := proto.SpanFromContext(ctx)
 	offset := req.FileOffset - int(reader.key.FileOffset) + int(reader.key.ExtentOffset)
 	size := req.Size
 
 	reqPacket := NewReadPacket(reader.key, offset, size, reader.inode, req.FileOffset, reader.followerRead)
-	sc := NewStreamConn(reader.dp, reader.followerRead)
+	sc := NewStreamConn(ctx, reader.dp, reader.followerRead)
 
-	log.LogDebugf("ExtentReader Read enter: size(%v) req(%v) reqPacket(%v)", size, req, reqPacket)
+	span.Debugf("ExtentReader Read enter: size(%v) req(%v) reqPacket(%v)", size, req, reqPacket)
 
-	err = sc.Send(&reader.retryRead, reqPacket, func(conn *net.TCPConn) (error, bool) {
+	err = sc.Send(ctx, &reader.retryRead, reqPacket, func(conn *net.TCPConn) (error, bool) {
 		readBytes = 0
 		for readBytes < size {
 			replyPacket := NewReply(reqPacket.ReqID, reader.dp.PartitionID, reqPacket.ExtentID)
@@ -72,7 +73,7 @@ func (reader *ExtentReader) Read(req *ExtentRequest) (readBytes int, err error) 
 			e := replyPacket.readFromConn(conn, proto.ReadDeadlineTime)
 
 			if e != nil {
-				log.LogWarnf("Extent Reader Read: failed to read from connect, ino(%v) req(%v) readBytes(%v) err(%v)", reader.inode, reqPacket, readBytes, e)
+				span.Warnf("Extent Reader Read: failed to read from connect, ino(%v) req(%v) readBytes(%v) err(%v)", reader.inode, reqPacket, readBytes, e)
 				// Upon receiving TryOtherAddrError, other hosts will be retried.
 				return TryOtherAddrError, false
 			}
@@ -81,9 +82,9 @@ func (reader *ExtentReader) Read(req *ExtentRequest) (readBytes int, err error) 
 				return nil, true
 			}
 
-			e = reader.checkStreamReply(reqPacket, replyPacket)
+			e = reader.checkStreamReply(ctx, reqPacket, replyPacket)
 			if e != nil {
-				log.LogWarnf("checkStreamReply failed:(%v) reply msg:(%v)", e, replyPacket.GetResultMsg())
+				span.Warnf("checkStreamReply failed:(%v) reply msg:(%v)", e, replyPacket.GetResultMsg())
 				// Dont change the error message, since the caller will
 				// check if it is NotLeaderErr.
 				return e, false
@@ -97,24 +98,25 @@ func (reader *ExtentReader) Read(req *ExtentRequest) (readBytes int, err error) 
 	if err != nil {
 		// if cold vol and cach is invaild
 		if !reader.retryRead && (err == TryOtherAddrError || strings.Contains(err.Error(), "ExistErr")) {
-			log.LogWarnf("Extent Reader Read: err(%v) req(%v) reqPacket(%v)", err, req, reqPacket)
+			span.Warnf("Extent Reader Read: err(%v) req(%v) reqPacket(%v)", err, req, reqPacket)
 		} else {
-			log.LogErrorf("Extent Reader Read: err(%v) req(%v) reqPacket(%v)", err, req, reqPacket)
+			span.Warnf("Extent Reader Read: err(%v) req(%v) reqPacket(%v)", err, req, reqPacket)
 		}
 	}
 
-	log.LogDebugf("ExtentReader Read exit: req(%v) reqPacket(%v) readBytes(%v) err(%v)", req, reqPacket, readBytes, err)
+	span.Debugf("ExtentReader Read exit: req(%v) reqPacket(%v) readBytes(%v) err(%v)", req, reqPacket, readBytes, err)
 	return
 }
 
-func (reader *ExtentReader) checkStreamReply(request *Packet, reply *Packet) (err error) {
+func (reader *ExtentReader) checkStreamReply(ctx context.Context, request *Packet, reply *Packet) (err error) {
+	span := proto.SpanFromContext(ctx)
 	if reply.ResultCode == proto.OpTryOtherAddr {
 		return TryOtherAddrError
 	}
 
 	if reply.ResultCode != proto.OpOk {
 		if request.Opcode == proto.OpStreamFollowerRead {
-			log.LogWarnf("checkStreamReply: ResultCode(%v) NOK, OpStreamFollowerRead return TryOtherAddrError, "+
+			span.Warnf("checkStreamReply: ResultCode(%v) NOK, OpStreamFollowerRead return TryOtherAddrError, "+
 				"req(%v) reply(%v)", reply.GetResultMsg(), request, reply)
 			return TryOtherAddrError
 		}

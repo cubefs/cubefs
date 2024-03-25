@@ -87,6 +87,7 @@ func newQuotaCreateCmd(client *master.MasterClient) *cobra.Command {
 			volName := args[0]
 			fullPath := args[1]
 
+			ctx := newCtx()
 			metaConfig := &meta.MetaConfig{
 				Volume:  volName,
 				Masters: client.Nodes(),
@@ -116,13 +117,13 @@ func newQuotaCreateCmd(client *master.MasterClient) *cobra.Command {
 					return
 				}
 
-				inodeId, err := metaWrapper.LookupPath(path)
+				inodeId, err := metaWrapper.LookupPath(ctx, path)
 				if err != nil {
 					stdout("get inode by fullPath %v fail %v\n", path, err)
 					return
 				}
 				quotaPathInfo.RootInode = inodeId
-				inodeInfo, err := metaWrapper.InodeGet_ll(inodeId)
+				inodeInfo, err := metaWrapper.InodeGet_ll(ctx, inodeId)
 				if err != nil {
 					stdout("get inode %v info fail %v\n", inodeId, err)
 					return
@@ -133,7 +134,7 @@ func newQuotaCreateCmd(client *master.MasterClient) *cobra.Command {
 					return
 				}
 
-				mp := metaWrapper.GetPartitionByInodeId_ll(inodeId)
+				mp := metaWrapper.GetPartitionByInodeId_ll(ctx, inodeId)
 				if mp == nil {
 					stdout("can not find mp by inodeId: %v\n", inodeId)
 					return
@@ -142,7 +143,7 @@ func newQuotaCreateCmd(client *master.MasterClient) *cobra.Command {
 				quotaPathInofs = append(quotaPathInofs, quotaPathInfo)
 			}
 			var quotaId uint32
-			if quotaId, err = client.AdminAPI().CreateQuota(volName, quotaPathInofs, maxFiles, maxBytes); err != nil {
+			if quotaId, err = client.AdminAPI().CreateQuota(newCtx(), volName, quotaPathInofs, maxFiles, maxBytes); err != nil {
 				stdout("volName %v path %v quota create failed(%v)\n", volName, fullPath, err)
 				return
 			}
@@ -164,7 +165,7 @@ func newQuotaListCmd(client *master.MasterClient) *cobra.Command {
 			var quotas []*proto.QuotaInfo
 			var err error
 			volName := args[0]
-			if quotas, err = client.AdminAPI().ListQuota(volName); err != nil {
+			if quotas, err = client.AdminAPI().ListQuota(newCtx(), volName); err != nil {
 				stdout("volName %v quota list failed(%v)\n", volName, err)
 				return
 			}
@@ -190,7 +191,7 @@ func newQuotaListAllCmd(client *master.MasterClient) *cobra.Command {
 			var err error
 			var vols []*proto.VolInfo
 
-			if vols, err = client.AdminAPI().ListQuotaAll(); err != nil {
+			if vols, err = client.AdminAPI().ListQuotaAll(newCtx()); err != nil {
 				stdout("quota list all failed(%v)\n", err)
 				return
 			}
@@ -216,7 +217,8 @@ func newQuotaUpdateCmd(client *master.MasterClient) *cobra.Command {
 			volName := args[0]
 			quotaId := args[1]
 
-			quotaInfo, err := client.AdminAPI().GetQuota(volName, quotaId)
+			ctx := newCtx()
+			quotaInfo, err := client.AdminAPI().GetQuota(ctx, volName, quotaId)
 			if err != nil {
 				stdout("get quota vol: %v ,quotaId: %v failed err %v.\n", volName, quotaId, err)
 				return
@@ -227,7 +229,7 @@ func newQuotaUpdateCmd(client *master.MasterClient) *cobra.Command {
 			if maxBytes == 0 {
 				maxBytes = quotaInfo.MaxBytes
 			}
-			if err = client.AdminAPI().UpdateQuota(volName, quotaId, maxFiles, maxBytes); err != nil {
+			if err = client.AdminAPI().UpdateQuota(ctx, volName, quotaId, maxFiles, maxBytes); err != nil {
 				stdout("volName %v quotaId %v quota update failed(%v)\n", volName, quotaId, err)
 				return
 			}
@@ -261,7 +263,7 @@ func newQuotaDelete(client *master.MasterClient) *cobra.Command {
 					return
 				}
 			}
-			if err = client.AdminAPI().DeleteQuota(volName, quotaId); err != nil {
+			if err = client.AdminAPI().DeleteQuota(newCtx(), volName, quotaId); err != nil {
 				stdout("volName %v quotaId %v quota delete failed(%v)\n", volName, quotaId, err)
 				return
 			}
@@ -295,7 +297,7 @@ func newQuotaGetInode(client *master.MasterClient) *cobra.Command {
 				return
 			}
 
-			quotaInfos, err := metaWrapper.GetInodeQuota_ll(inodeId)
+			quotaInfos, err := metaWrapper.GetInodeQuota_ll(newCtx(), inodeId)
 			if err != nil {
 				stdout("get indoe quota failed %v\n", err)
 				return
@@ -320,7 +322,7 @@ func newQuotaApplyCmd(client *master.MasterClient) *cobra.Command {
 			var err error
 			var quotaInfo *proto.QuotaInfo
 
-			if quotaInfo, err = client.AdminAPI().GetQuota(volName, quotaId); err != nil {
+			if quotaInfo, err = client.AdminAPI().GetQuota(newCtx(), volName, quotaId); err != nil {
 				stdout("volName %v get quota %v failed(%v)\n", volName, quotaId, err)
 				return
 			}
@@ -343,8 +345,9 @@ func newQuotaApplyCmd(client *master.MasterClient) *cobra.Command {
 				return
 			}
 			quotaIdNum = uint32(tmp)
+			ctx := newCtx()
 			for _, pathInfo := range quotaInfo.PathInfos {
-				inodeNums, err := metaWrapper.ApplyQuota_ll(pathInfo.RootInode, quotaIdNum, maxConcurrencyInode)
+				inodeNums, err := metaWrapper.ApplyQuota_ll(ctx, pathInfo.RootInode, quotaIdNum, maxConcurrencyInode)
 				if err != nil {
 					stdout("apply quota failed: %v\n", err)
 					return
@@ -372,6 +375,7 @@ func newQuotaRevokeCmd(client *master.MasterClient) *cobra.Command {
 			var quotaInfo *proto.QuotaInfo
 			var totalNums uint64
 
+			ctx := newCtx()
 			metaConfig := &meta.MetaConfig{
 				Volume:  volName,
 				Masters: client.Nodes(),
@@ -390,20 +394,20 @@ func newQuotaRevokeCmd(client *master.MasterClient) *cobra.Command {
 			}
 			quotaIdNum = uint32(tmp)
 			if forceInode == 0 {
-				if quotaInfo, err = client.AdminAPI().GetQuota(volName, quotaId); err != nil {
+				if quotaInfo, err = client.AdminAPI().GetQuota(newCtx(), volName, quotaId); err != nil {
 					stdout("volName %v get quota %v failed(%v)\n", volName, quotaId, err)
 					return
 				}
 
 				for _, pathInfo := range quotaInfo.PathInfos {
-					inodeNums, err := metaWrapper.RevokeQuota_ll(pathInfo.RootInode, quotaIdNum, maxConcurrencyInode)
+					inodeNums, err := metaWrapper.RevokeQuota_ll(ctx, pathInfo.RootInode, quotaIdNum, maxConcurrencyInode)
 					if err != nil {
 						stdout("revoke quota inodeNums %v failed %v\n", inodeNums, err)
 					}
 					totalNums += inodeNums
 				}
 			} else {
-				totalNums, err = metaWrapper.RevokeQuota_ll(forceInode, quotaIdNum, maxConcurrencyInode)
+				totalNums, err = metaWrapper.RevokeQuota_ll(ctx, forceInode, quotaIdNum, maxConcurrencyInode)
 				if err != nil {
 					stdout("revoke quota inodeNums %v failed %v\n", totalNums, err)
 				}

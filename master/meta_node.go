@@ -15,13 +15,13 @@
 package master
 
 import (
+	"context"
 	"sync"
 	"time"
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/atomicutil"
-	"github.com/cubefs/cubefs/util/log"
 )
 
 // MetaNode defines the structure of a meta node
@@ -50,11 +50,11 @@ type MetaNode struct {
 	CpuUtil                   atomicutil.Float64 `json:"-"`
 }
 
-func newMetaNode(addr, zoneName, clusterID string) (node *MetaNode) {
+func newMetaNode(ctx context.Context, addr, zoneName, clusterID string) (node *MetaNode) {
 	node = &MetaNode{
 		Addr:     addr,
 		ZoneName: zoneName,
-		Sender:   newAdminTaskManager(addr, clusterID),
+		Sender:   newAdminTaskManager(ctx, addr, clusterID),
 	}
 	node.CpuUtil.Store(0)
 	return
@@ -193,17 +193,18 @@ func (s *sortLeaderMetaNode) getLeaderCount(addr string) int {
 	return s.leaderCountM[addr]
 }
 
-func (s *sortLeaderMetaNode) changeLeader(l *LeaderMetaNode) {
+func (s *sortLeaderMetaNode) changeLeader(ctx context.Context, l *LeaderMetaNode) {
+	span := proto.SpanFromContext(ctx)
 	for _, mp := range l.metaPartitions {
 		if count := s.getLeaderCount(l.addr); count <= s.average {
-			log.LogInfof("now leader count is[%d], average is[%d]", count, s.average)
+			span.Infof("now leader count is[%d], average is[%d]", count, s.average)
 			break
 		}
 
 		// mp's leader not in this metaNode, skip it
 		oldLeader, err := mp.getMetaReplicaLeader()
 		if err != nil {
-			log.LogErrorf("mp[%v] no leader, can not change leader err[%v]", mp, err)
+			span.Errorf("mp[%v] no leader, can not change leader err[%v]", mp, err)
 			continue
 		}
 
@@ -218,26 +219,27 @@ func (s *sortLeaderMetaNode) changeLeader(l *LeaderMetaNode) {
 		s.mu.RUnlock()
 
 		if addr == oldLeader.Addr {
-			log.LogDebugf("newAddr:%s,oldAddr:%s is same", addr, oldLeader.Addr)
+			span.Debugf("newAddr:%s,oldAddr:%s is same", addr, oldLeader.Addr)
 			continue
 		}
 
 		// one mp change leader failed not influence others
-		if err = mp.tryToChangeLeaderByHost(addr); err != nil {
-			log.LogErrorf("mp[%v] change to addr[%v] err[%v]", mp, addr, err)
+		if err = mp.tryToChangeLeaderByHost(ctx, addr); err != nil {
+			span.Errorf("mp[%v] change to addr[%v] err[%v]", mp, addr, err)
 			continue
 		}
 		s.mu.Lock()
 		s.leaderCountM[addr]++
 		s.leaderCountM[oldLeader.Addr]--
 		s.mu.Unlock()
-		log.LogDebugf("mp[%v] oldLeader[%v,nowCount:%d] change to newLeader[%v,nowCount:%d] success", mp.PartitionID, oldLeader.Addr, s.leaderCountM[oldLeader.Addr], addr, s.leaderCountM[addr])
+		span.Debugf("mp[%v] oldLeader[%v,nowCount:%d] change to newLeader[%v,nowCount:%d] success", mp.PartitionID, oldLeader.Addr, s.leaderCountM[oldLeader.Addr], addr, s.leaderCountM[addr])
 	}
 }
 
-func (s *sortLeaderMetaNode) balanceLeader() {
+func (s *sortLeaderMetaNode) balanceLeader(ctx context.Context) {
+	span := proto.SpanFromContext(ctx)
 	for _, node := range s.nodes {
-		log.LogDebugf("node[%v] leader count is:%d,average:%d", node.addr, len(node.metaPartitions), s.average)
-		s.changeLeader(node)
+		span.Debugf("node[%v] leader count is:%d,average:%d", node.addr, len(node.metaPartitions), s.average)
+		s.changeLeader(ctx, node)
 	}
 }

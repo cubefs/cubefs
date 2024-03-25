@@ -5,6 +5,7 @@ go 1.17
 replace (
 	github.com/jacobsa/fuse => ./depends/jacobsa/fuse
 	github.com/spf13/cobra => ./depends/spf13/cobra
+	gopkg.in/natefinch/lumberjack.v2 v2.0.0 => github.com/sejust/lumberjack v0.0.0-20240321083556-466800aaf73d
 )
 
 require (

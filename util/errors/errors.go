@@ -29,6 +29,10 @@ func New(msg string) error {
 	return &ErrorTrace{msg: msg}
 }
 
+func Newf(format string, a ...interface{}) error {
+	return &ErrorTrace{msg: fmt.Sprintf(format, a...)}
+}
+
 func NewError(err error) error {
 	if err == nil {
 		return nil

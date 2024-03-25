@@ -15,27 +15,26 @@
 package fs
 
 import (
+	"context"
 	"time"
 
 	"github.com/cubefs/cubefs/depends/bazil.org/fuse"
-
 	"github.com/cubefs/cubefs/proto"
-	"github.com/cubefs/cubefs/util/log"
 )
 
 const (
 	LogTimeFormat = "20060102150405000"
 )
 
-func (s *Super) InodeGet(ino uint64) (*proto.InodeInfo, error) {
+func (s *Super) InodeGet(ctx context.Context, ino uint64) (*proto.InodeInfo, error) {
 	info := s.ic.Get(ino)
 	if info != nil {
 		return info, nil
 	}
 
-	info, err := s.mw.InodeGet_ll(ino)
+	info, err := s.mw.InodeGet_ll(ctx, ino)
 	if err != nil || info == nil {
-		log.LogErrorf("InodeGet: ino(%v) err(%v) info(%v)", ino, err, info)
+		getSpan(ctx).Errorf("InodeGet: ino(%v) err(%v) info(%v)", ino, err, info)
 		if err != nil {
 			return nil, ParseError(err)
 		} else {
@@ -54,7 +53,7 @@ func (s *Super) InodeGet(ino uint64) (*proto.InodeInfo, error) {
 			node.(*File).info = info
 		}
 	}
-	s.ec.RefreshExtentsCache(ino)
+	s.ec.RefreshExtentsCache(ctx, ino)
 	return info, nil
 }
 

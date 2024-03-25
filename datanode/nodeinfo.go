@@ -1,15 +1,14 @@
 package datanode
 
 import (
+	"context"
 	"sync/atomic"
 	"time"
 
-	"github.com/cubefs/cubefs/util/log"
-	"golang.org/x/time/rate"
+	"github.com/cubefs/cubefs/proto"
 )
 
 const (
-	defaultMarkDeleteLimitRate  = rate.Inf
 	defaultMarkDeleteLimitBurst = 512
 	defaultIOLimitBurst         = 512
 	UpdateNodeInfoTicket        = 1 * time.Minute
@@ -20,16 +19,18 @@ const (
 
 var nodeInfoStopC = make(chan struct{})
 
-func (m *DataNode) startUpdateNodeInfo() {
+func (m *DataNode) startUpdateNodeInfo(ctx_ context.Context) {
+	ctx := proto.ContextWithOperation(ctx_, "startUpdateNodeInfo")
+	span := proto.SpanFromContext(ctx)
 	ticker := time.NewTicker(UpdateNodeInfoTicket)
 	defer ticker.Stop()
 	for {
 		select {
 		case <-nodeInfoStopC:
-			log.LogInfo("datanode nodeinfo goroutine stopped")
+			span.Info("datanode nodeinfo goroutine stopped")
 			return
 		case <-ticker.C:
-			m.updateNodeInfo()
+			m.updateNodeInfo(ctx)
 		}
 	}
 }
@@ -38,10 +39,11 @@ func (m *DataNode) stopUpdateNodeInfo() {
 	nodeInfoStopC <- struct{}{}
 }
 
-func (m *DataNode) updateNodeInfo() {
-	clusterInfo, err := MasterClient.AdminAPI().GetClusterInfo()
+func (m *DataNode) updateNodeInfo(ctx context.Context) {
+	span := proto.SpanFromContext(ctx)
+	clusterInfo, err := MasterClient.AdminAPI().GetClusterInfo(ctx)
 	if err != nil {
-		log.LogErrorf("[updateDataNodeInfo] %s", err.Error())
+		span.Errorf("[updateDataNodeInfo] %s", err.Error())
 		return
 	}
 
@@ -51,7 +53,7 @@ func (m *DataNode) updateNodeInfo() {
 
 	atomic.StoreUint64(&m.dpMaxRepairErrCnt, clusterInfo.DpMaxRepairErrCnt)
 
-	log.LogInfof("updateNodeInfo from master:"+
+	span.Infof("updateNodeInfo from master:"+
 		"deleteLimite(%v), autoRepairLimit(%v), dpMaxRepairErrCnt(%v)",
 		clusterInfo.DataNodeDeleteLimitRate, clusterInfo.DataNodeAutoRepairLimitRate,
 		clusterInfo.DpMaxRepairErrCnt)

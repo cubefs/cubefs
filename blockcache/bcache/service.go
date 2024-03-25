@@ -44,6 +44,12 @@ const (
 	BigExtentSize = 32 << 20
 )
 
+var (
+	getSpan           = proto.SpanFromContext
+	spanContext       = proto.SpanContext
+	spanContextPrefix = proto.SpanContextPrefix
+)
+
 type bcacheConfig struct {
 	CacheDir  string
 	BlockSize uint32
@@ -118,8 +124,7 @@ func (s *bcacheStore) startServer() (err error) {
 	os.MkdirAll(filepath.Dir(UnixSocketPath), FilePerm)
 
 	if _, err := os.Stat(UnixSocketPath); err == nil {
-		existErr := fmt.Sprintf("Another process is running or %s already exist,force delete it.", UnixSocketPath)
-		log.LogErrorf(existErr)
+		log.Errorf("Another process is running or %s already exist, force delete it.", UnixSocketPath)
 		os.Remove(UnixSocketPath)
 	}
 
@@ -144,7 +149,7 @@ func (s *bcacheStore) startServer() (err error) {
 		}
 	}(s.stopC)
 
-	log.LogInfof("start blockcache server.")
+	log.Info("start blockcache server.")
 	return
 }
 
@@ -152,7 +157,7 @@ func (s *bcacheStore) stopServer() {
 	if s.stopC != nil {
 		defer func() {
 			if r := recover(); r != nil {
-				log.LogErrorf("action[StopBcacheServer],err:%v", r)
+				log.Errorf("action[StopBcacheServer],err:%v", r)
 			}
 		}()
 		close(s.stopC)
@@ -167,15 +172,21 @@ func (s *bcacheStore) serveConn(conn net.Conn, stopC chan struct{}) {
 			return
 		default:
 		}
+		span, ctx := spanContext()
+		defer span.Finish()
 		p := &BlockCachePacket{}
+		p.ctx = ctx
 		if err := p.ReadFromConn(conn, proto.NoReadDeadlineTime); err != nil {
 			if err != io.EOF {
-				log.LogDebugf("serve BcacheServer: %v", err.Error())
+				span.Debugf("serve BcacheServer: %v", err.Error())
 			}
 			return
 		}
 		if err := s.handlePacket(conn, p); err != nil {
-			log.LogDebugf("serve handlePacket fail: %v", err)
+			span.Debugf("serve handlePacket fail: %v", err)
+		}
+		if tracks := span.TrackLog(); len(tracks) > 0 {
+			span.Debug("tracks:", span.TrackLog())
 		}
 	}
 }
@@ -202,7 +213,7 @@ func (s *bcacheStore) opBlockCachePut(conn net.Conn, p *BlockCachePacket) (err e
 		err = errors.NewErrorf("req[%v],err[%v]", req, err.Error())
 		return
 	}
-	s.bcache.cache(req.CacheKey, req.Data, false)
+	s.bcache.cache(p.ctx, req.CacheKey, req.Data, false)
 	p.PacketOkReplay()
 	s.response(conn, p)
 	return
@@ -217,7 +228,7 @@ func (s *bcacheStore) opBlockCacheGet(conn net.Conn, p *BlockCachePacket) (err e
 		return
 	}
 
-	cachePath, err := s.bcache.queryCachePath(req.CacheKey, req.Offset, req.Size)
+	cachePath, err := s.bcache.queryCachePath(p.ctx, req.CacheKey, req.Offset, req.Size)
 	if err != nil {
 		if err == os.ErrNotExist {
 			p.PacketErrorWithBody(proto.OpNotExistErr, ([]byte)(err.Error()))
@@ -250,7 +261,7 @@ func (s *bcacheStore) opBlockCacheEvict(conn net.Conn, p *BlockCachePacket) (err
 		err = errors.NewErrorf("req[%v],err[%v]", req, err.Error())
 		return
 	}
-	s.bcache.erase(req.CacheKey)
+	s.bcache.erase(p.ctx, req.CacheKey)
 	p.PacketOkReplay()
 	s.response(conn, p)
 	return
@@ -269,9 +280,7 @@ func (s *bcacheStore) response(conn net.Conn, p *BlockCachePacket) (err error) {
 	}()
 	err = p.WriteToConn(conn)
 	if err != nil {
-		log.LogDebugf("response to client[%s], "+
-			"request[%s]",
-			err.Error(), p.GetOpMsg())
+		getSpan(p.ctx).Debugf("response[%s], request[%s]", err.Error(), p.GetOpMsg())
 	}
 	return
 }

@@ -22,7 +22,6 @@ import (
 	"time"
 
 	"github.com/cubefs/cubefs/util"
-	"github.com/cubefs/cubefs/util/log"
 )
 
 // https://docs.aws.amazon.com/zh_cn/STS/latest/APIReference/API_GetFederationToken.html
@@ -31,32 +30,34 @@ func (o *ObjectNode) getFederationTokenHandler(w http.ResponseWriter, r *http.Re
 		err error
 		erc *ErrorCode
 	)
+
+	ctx := r.Context()
+	span := spanWithOperation(ctx, "GetFederationToken")
 	defer func() {
 		o.errorResponse(w, r, err, erc)
 	}()
+
 	// request param check
 	if token := r.Header.Get(XAmzSecurityToken); token != "" {
 		erc = AccessDeniedBySTS
 		return
 	}
+
 	if action := r.PostFormValue(stsActionKey); action != stsActionValue {
-		log.LogErrorf("getFederationTokenHandler: sts action invalid: requestID(%v) action(%v)",
-			GetRequestID(r), action)
 		erc = InvalidArgument
 		return
 	}
+
 	name := r.PostFormValue(stsNameKey)
 	matched, _ := regexp.MatchString(`^[\w+=,.@-]*$`, name)
 	if len(name) < 2 || len(name) > 32 || !matched {
-		log.LogErrorf("getFederationTokenHandler: sts name invalid: requestID(%v) name(%v) err(%v)",
-			GetRequestID(r), name, err)
 		erc = InvalidArgument
 		return
 	}
+
 	policy := r.PostFormValue(stsPolicyKey)
 	if _, err = ParsePolicyV2Config(policy); err != nil {
-		log.LogErrorf("getFederationTokenHandler: sts policy invalid: requestID(%v) policy(%v) err(%v)",
-			GetRequestID(r), policy, err)
+		span.Errorf("invalid sts policy: policy(%v) err(%v)", policy, err)
 		erc = &ErrorCode{
 			ErrorCode:    "MalformedPolicyDocument",
 			ErrorMessage: fmt.Sprintf("The policy document was malformed: %v.", err.Error()),
@@ -64,16 +65,17 @@ func (o *ObjectNode) getFederationTokenHandler(w http.ResponseWriter, r *http.Re
 		}
 		return
 	}
+
 	seconds := r.PostFormValue(stsDurationSecondsKey)
 	durationSeconds, _ := strconv.ParseInt(seconds, 10, 64)
 	if durationSeconds < 900 || durationSeconds > 129600 {
 		durationSeconds = 43200
 	}
+
 	param := ParseRequestParam(r)
-	user, err := o.getUserInfoByAccessKeyV2(param.AccessKey())
+	user, err := o.getUserInfoByAccessKey(ctx, param.AccessKey())
 	if err != nil {
-		log.LogErrorf("getFederationTokenHandler: get user info fail: requestID(%v) accessKey(%v) err(%v)",
-			GetRequestID(r), param.AccessKey(), err)
+		span.Errorf("get user info fail: accessKey(%v) err(%v)", param.AccessKey(), err)
 		return
 	}
 	// federated ak/sk generation
@@ -83,8 +85,7 @@ func (o *ObjectNode) getFederationTokenHandler(w http.ResponseWriter, r *http.Re
 	fedSk := util.RandomString(32, util.Numeric|util.LowerLetter|util.UpperLetter)
 	sessionToken, err := EncodeFedSessionToken(user.AccessKey, user.SecretKey, fedAk, fedSk, name, policy, expireUnixStr)
 	if err != nil {
-		log.LogErrorf("getFederationTokenHandler: encode session token fail: requestID(%v) err(%v)",
-			GetRequestID(r), err)
+		span.Errorf("encode session token fail: %v", err)
 		return
 	}
 	// response result return
@@ -105,11 +106,9 @@ func (o *ObjectNode) getFederationTokenHandler(w http.ResponseWriter, r *http.Re
 	fedToken.ResponseMetadata.RequestID = GetRequestID(r)
 	response, err := MarshalXMLEntity(&fedToken)
 	if err != nil {
-		log.LogErrorf("getFederationTokenHandler: xml marshal result fail: requestID(%v) fedToken(%v) err(%v)",
-			GetRequestID(r), fedToken, err)
+		span.Errorf("marshal xml response fail: response(%+v) err(%v)", fedToken, err)
 		return
 	}
 
 	writeSuccessResponseXML(w, response)
-	return
 }

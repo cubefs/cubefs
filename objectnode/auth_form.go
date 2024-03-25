@@ -121,7 +121,7 @@ func (auth *FormAuth) parseSignV4() error {
 
 func (auth *FormAuth) FromMultipartForm(key string) string {
 	for k, v := range auth.request.MultipartForm.Value {
-		if strings.ToLower(k) == strings.ToLower(key) && len(v) > 0 {
+		if strings.EqualFold(k, key) && len(v) > 0 {
 			return v[0]
 		}
 	}

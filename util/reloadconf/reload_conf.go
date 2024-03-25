@@ -16,6 +16,7 @@ package reloadconf
 
 import (
 	"bytes"
+	"context"
 	"crypto/md5"
 	"encoding/base64"
 	"fmt"
@@ -31,7 +32,7 @@ import (
 type ReloadConf struct {
 	ConfName      string
 	ReloadSec     int
-	RequestRemote func() ([]byte, error)
+	RequestRemote func(context.Context) ([]byte, error)
 
 	md5sum []byte
 	mutex  sync.Mutex
@@ -45,7 +46,7 @@ func (self *ReloadConf) reload(reload func(data []byte) error) error {
 	if self.RequestRemote != nil {
 		errRemote := self.remoteReload(reload)
 		if errRemote != nil {
-			log.LogWarn("remoteReload failed", self.ConfName, errors.Detail(errRemote))
+			log.Warn("remoteReload failed", self.ConfName, errors.Detail(errRemote))
 		} else {
 			return nil
 		}
@@ -61,7 +62,8 @@ func (self *ReloadConf) reload(reload func(data []byte) error) error {
 }
 
 func (self *ReloadConf) remoteReload(reload func(data []byte) error) (err error) {
-	data, md5sum, err := fetchRemote(self.RequestRemote)
+	ctx := context.Background()
+	data, md5sum, err := fetchRemote(ctx, self.RequestRemote)
 	if err != nil {
 		err = errors.Info(err, "fetchRemote").Detail(err)
 		return
@@ -69,7 +71,7 @@ func (self *ReloadConf) remoteReload(reload func(data []byte) error) (err error)
 
 	// compare whether md5sum is changed
 	if bytes.Equal(md5sum, self.md5sum) {
-		log.LogDebug("remoteReload:", self.ConfName, "do nothing cause of md5sum is equal")
+		log.Debug("remoteReload:", self.ConfName, "do nothing cause of md5sum is equal")
 		return nil
 	}
 
@@ -79,7 +81,7 @@ func (self *ReloadConf) remoteReload(reload func(data []byte) error) (err error)
 		err = errors.Info(err, "os.WriteFile")
 		return
 	}
-	log.LogInfof("remoteReload %v remote file is changed, oldmd5: %v, newmd5: %v", self.ConfName, self.md5sum, md5sum)
+	log.Infof("remoteReload %v remote file is changed, oldmd5: %v, newmd5: %v", self.ConfName, self.md5sum, md5sum)
 
 	err = reload(data)
 	if err != nil {
@@ -108,11 +110,11 @@ func (self *ReloadConf) localReload(reload func(data []byte) error) (err error) 
 	md5sum := calcMD5Sum(data)
 
 	if bytes.Equal(md5sum, self.md5sum) {
-		log.LogDebug("localReload:", self.ConfName, "do nothing cause of md5sum is equal")
+		log.Debug("localReload:", self.ConfName, "do nothing cause of md5sum is equal")
 		return nil
 	}
 
-	log.LogInfof("localReload: %v local file is changed, oldmd5: %v, newmd5: %v", self.ConfName, self.md5sum, md5sum)
+	log.Infof("localReload: %v local file is changed, oldmd5: %v, newmd5: %v", self.ConfName, self.md5sum, md5sum)
 	err = reload(data)
 	if err != nil {
 		err = errors.Info(err, "reload").Detail(err)
@@ -122,8 +124,8 @@ func (self *ReloadConf) localReload(reload func(data []byte) error) (err error) 
 	return
 }
 
-func fetchRemote(requestRemote func() ([]byte, error)) (data, md5sum []byte, err error) {
-	data, err = requestRemote()
+func fetchRemote(ctx context.Context, requestRemote func(context.Context) ([]byte, error)) (data, md5sum []byte, err error) {
+	data, err = requestRemote(ctx)
 	if err != nil {
 		err = errors.Info(err, "io.ReadAll")
 		return
@@ -136,7 +138,7 @@ func fetchRemote(requestRemote func() ([]byte, error)) (data, md5sum []byte, err
 func StartReload(cfg *ReloadConf, reload func(data []byte) error) (err error) {
 	err = cfg.reload(reload)
 	if err != nil {
-		log.LogError("cfg.reload:", cfg.ConfName, errors.Detail(err))
+		log.Error("cfg.reload:", cfg.ConfName, errors.Detail(err))
 		return
 	}
 
@@ -148,7 +150,7 @@ func StartReload(cfg *ReloadConf, reload func(data []byte) error) (err error) {
 		for range time.Tick(dur) {
 			err := cfg.reload(reload)
 			if err != nil {
-				log.LogError("cfg.reload:", cfg.ConfName, errors.Detail(err))
+				log.Error("cfg.reload:", cfg.ConfName, errors.Detail(err))
 			}
 		}
 	}()

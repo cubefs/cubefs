@@ -18,7 +18,7 @@ const (
 )
 
 type MasterGClient struct {
-	addrs  []string //first is leader
+	addrs  []string // first is leader
 	active int
 }
 
@@ -45,7 +45,7 @@ func (c *MasterGClient) ValidatePassword(ctx context.Context, userID string, pas
 			}
 		`,
 	}
-	req.header.Set(proto.UserKey, userID)
+	req.header.Set(string(proto.UserKey), userID)
 	req.header.Set("Content-Type", MIME_TYPE_JSON)
 	req.header.Set("Accept", MIME_TYPE_JSON)
 
@@ -64,7 +64,6 @@ func (c *MasterGClient) ValidatePassword(ctx context.Context, userID string, pas
 	}
 
 	return userInfo, nil
-
 }
 
 //-------------------client use ------------------//
@@ -118,7 +117,6 @@ func (r Result) String() string {
 	} else {
 		return string(v)
 	}
-
 }
 
 type Request struct {
@@ -148,7 +146,7 @@ func NewRequest(ctx context.Context, query string) *Request {
 	}
 
 	if userKey := ctx.Value(proto.UserKey); userKey != nil {
-		req.header.Set(proto.UserKey, userKey.(string))
+		req.header.Set(string(proto.UserKey), userKey.(string))
 	}
 
 	if token := ctx.Value(proto.HeadAuthorized); token != nil {
@@ -172,7 +170,7 @@ func (c *MasterGClient) Query(ctx context.Context, model string, req *Request) (
 	for i := c.active; i < len(c.addrs); i++ {
 		var rep *Response
 		if rep, err = doPost(ctx, "http://"+c.addrs[i%len(c.addrs)]+model, req); err != nil {
-			log.LogErrorf("execute by master clients has err:%s", err.Error())
+			log.Errorf("execute by master clients has err:%s", err.Error())
 			c.active = (i + 1) % len(c.addrs)
 			continue
 		} else {
@@ -201,6 +199,7 @@ func doPost(ctx context.Context, url string, qr *Request) (*Response, error) {
 	if err != nil {
 		return nil, err
 	}
+	defer resp.Body.Close()
 
 	rep := &Response{
 		Code: resp.StatusCode,
@@ -224,7 +223,7 @@ func (c *MasterGClient) Proxy(ctx context.Context, r *http.Request, header http.
 	for i := c.active; i < len(c.addrs); i++ {
 		var rep *Response
 		if rep, err = doPost(ctx, "http://"+c.addrs[i%len(c.addrs)]+r.RequestURI, req); err != nil {
-			log.LogErrorf("execute by master clients has err:%s", err.Error())
+			log.Errorf("execute by master clients has err:%s", err.Error())
 			c.active = (i + 1) % len(c.addrs)
 			continue
 		} else {

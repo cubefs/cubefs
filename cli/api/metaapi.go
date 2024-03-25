@@ -17,6 +17,7 @@ package api
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -27,12 +28,13 @@ import (
 
 	"github.com/cubefs/cubefs/metanode"
 	"github.com/cubefs/cubefs/proto"
-	"github.com/cubefs/cubefs/util/log"
 )
 
 const (
 	requestTimeout = 30 * time.Second
 )
+
+var getSpan = proto.SpanFromContext
 
 type Inode struct {
 	sync.RWMutex
@@ -108,7 +110,8 @@ func newAPIRequest(method string, path string) *request {
 
 type RespBody struct{}
 
-func (c *MetaHttpClient) serveRequest(r *request) (respData []byte, err error) {
+func (c *MetaHttpClient) serveRequest(ctx context.Context, r *request) (respData []byte, err error) {
+	span := getSpan(ctx)
 	var resp *http.Response
 	var schema string
 	if c.useSSL {
@@ -118,17 +121,17 @@ func (c *MetaHttpClient) serveRequest(r *request) (respData []byte, err error) {
 	}
 	url := fmt.Sprintf("%s://%s%s", schema, c.host,
 		r.path)
-	resp, err = c.httpRequest(r.method, url, r.params, r.header, r.body)
-	log.LogInfof("resp %v,err %v", resp, err)
+	resp, err = c.httpRequest(ctx, r.method, url, r.params, r.header, r.body)
+	span.Infof("resp %v,err %v", resp, err)
 	if err != nil {
-		log.LogErrorf("serveRequest: send http request fail: method(%v) url(%v) err(%v)", r.method, url, err)
+		span.Errorf("serveRequest: send http request fail: method(%v) url(%v) err(%v)", r.method, url, err)
 		return
 	}
 	stateCode := resp.StatusCode
 	respData, err = io.ReadAll(resp.Body)
 	_ = resp.Body.Close()
 	if err != nil {
-		log.LogErrorf("serveRequest: read http response body fail: err(%v)", err)
+		span.Errorf("serveRequest: read http response body fail: err(%v)", err)
 		return
 	}
 	switch stateCode {
@@ -143,19 +146,21 @@ func (c *MetaHttpClient) serveRequest(r *request) (respData []byte, err error) {
 		}
 		return body.Bytes(), nil
 	default:
-		log.LogErrorf("serveRequest: unknown status: host(%v) uri(%v) status(%v) body(%s).",
+		span.Errorf("serveRequest: unknown status: host(%v) uri(%v) status(%v) body(%s).",
 			resp.Request.URL.String(), c.host, stateCode, strings.Replace(string(respData), "\n", "", -1))
 	}
 	return
 }
 
-func (c *MetaHttpClient) httpRequest(method, url string, param, header map[string]string, reqData []byte) (resp *http.Response, err error) {
+func (c *MetaHttpClient) httpRequest(ctx context.Context,
+	method, url string, param, header map[string]string, reqData []byte,
+) (resp *http.Response, err error) {
 	client := http.DefaultClient
 	reader := bytes.NewReader(reqData)
 	client.Timeout = requestTimeout
 	var req *http.Request
 	fullUrl := c.mergeRequestUrl(url, param)
-	log.LogDebugf("httpRequest: merge request url: method(%v) url(%v) bodyLength[%v].", method, fullUrl, len(reqData))
+	getSpan(ctx).Debugf("httpRequest: merge request url: method(%v) url(%v) bodyLength[%v].", method, fullUrl, len(reqData))
 	if req, err = http.NewRequest(method, fullUrl, reader); err != nil {
 		return
 	}
@@ -188,16 +193,17 @@ func (c *MetaHttpClient) mergeRequestUrl(url string, params map[string]string) s
 	return url
 }
 
-func (mc *MetaHttpClient) GetMetaPartition(pid uint64) (cursor uint64, err error) {
+func (mc *MetaHttpClient) GetMetaPartition(ctx context.Context, pid uint64) (cursor uint64, err error) {
+	span := getSpan(ctx)
 	defer func() {
 		if err != nil {
-			log.LogErrorf("action[GetMetaPartition],pid:%v,err:%v", pid, err)
+			span.Errorf("action[GetMetaPartition],pid:%v,err:%v", pid, err)
 		}
 	}()
 	request := newAPIRequest(http.MethodGet, "/getPartitionById")
 	request.params["pid"] = fmt.Sprintf("%v", pid)
-	respData, err := mc.serveRequest(request)
-	log.LogInfof("err:%v,respData:%v\n", err, string(respData))
+	respData, err := mc.serveRequest(ctx, request)
+	span.Infof("err:%v,respData:%v\n", err, string(respData))
 	if err != nil {
 		return
 	}
@@ -211,17 +217,18 @@ func (mc *MetaHttpClient) GetMetaPartition(pid uint64) (cursor uint64, err error
 	return body.Cursor, nil
 }
 
-func (mc *MetaHttpClient) GetAllDentry(pid uint64) (dentryMap map[string]*metanode.Dentry, err error) {
+func (mc *MetaHttpClient) GetAllDentry(ctx context.Context, pid uint64) (dentryMap map[string]*metanode.Dentry, err error) {
+	span := getSpan(ctx)
 	defer func() {
 		if err != nil {
-			log.LogErrorf("action[GetAllDentry],pid:%v,err:%v", pid, err)
+			span.Errorf("action[GetAllDentry],pid:%v,err:%v", pid, err)
 		}
 	}()
 	dentryMap = make(map[string]*metanode.Dentry)
 	request := newAPIRequest(http.MethodGet, "/getAllDentry")
 	request.params["pid"] = fmt.Sprintf("%v", pid)
-	respData, err := mc.serveRequest(request)
-	log.LogInfof("err:%v,respData:%v\n", err, string(respData))
+	respData, err := mc.serveRequest(ctx, request)
+	span.Infof("err:%v,respData:%v\n", err, string(respData))
 	if err != nil {
 		return
 	}
@@ -261,29 +268,31 @@ func parseToken(dec *json.Decoder, expectToken rune) (err error) {
 	return
 }
 
-func (mc *MetaHttpClient) GetAllInodes(pid uint64) (rstMap map[uint64]*Inode, err error) {
+func (mc *MetaHttpClient) GetAllInodes(ctx context.Context, pid uint64) (rstMap map[uint64]*Inode, err error) {
+	span := getSpan(ctx)
 	defer func() {
 		if err != nil {
-			log.LogErrorf("action[GetAllInodes],pid:%v,err:%v", pid, err)
+			span.Errorf("action[GetAllInodes],pid:%v,err:%v", pid, err)
 		}
 	}()
 	reqURL := fmt.Sprintf("http://%v%v?pid=%v", mc.host, "/getAllInodes", pid)
-	log.LogDebugf("reqURL=%v", reqURL)
+	span.Debugf("reqURL=%v", reqURL)
 	resp, err := http.Get(reqURL)
 	if err != nil {
 		return
 	}
 	defer resp.Body.Close()
-	return unmarshalInodes(resp)
+	return unmarshalInodes(ctx, resp)
 }
 
-func unmarshalInodes(resp *http.Response) (rstMap map[uint64]*Inode, err error) {
+func unmarshalInodes(ctx context.Context, resp *http.Response) (rstMap map[uint64]*Inode, err error) {
+	span := getSpan(ctx)
 	bufReader := bufio.NewReader(resp.Body)
 	rstMap = make(map[uint64]*Inode)
 	var buf []byte
 	for {
 		buf, err = bufReader.ReadBytes('\n')
-		log.LogInfof("buf[%v],err[%v]", string(buf), err)
+		span.Infof("buf[%v],err[%v]", string(buf), err)
 		if err != nil && err != io.EOF {
 			return
 		}
@@ -293,7 +302,7 @@ func unmarshalInodes(resp *http.Response) (rstMap map[uint64]*Inode, err error) 
 			return
 		}
 		rstMap[inode.Inode] = inode
-		log.LogInfof("after unmarshal current inode[%v]", inode)
+		span.Infof("after unmarshal current inode[%v]", inode)
 		if err == io.EOF {
 			err = nil
 			return

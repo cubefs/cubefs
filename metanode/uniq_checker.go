@@ -100,14 +100,13 @@ func (checker *uniqChecker) Marshal() (buf []byte, crc uint32, err error) {
 func (checker *uniqChecker) UnMarshal(data []byte) (err error) {
 	if len(data) < checkerVersionSize {
 		err = errors.New("invalid uniqChecker file length")
-		log.LogErrorf("uniqChecker UnMarshal err(%v)", err)
 		return
 	}
 
 	buff := bytes.NewBuffer(data)
 	var version int32
 	if err = binary.Read(buff, binary.BigEndian, &version); err != nil {
-		log.LogErrorf("uniqChecker unmarshal read version err(%v)", err)
+		err = errors.Newf("uniqChecker unmarshal read version err(%v)", err)
 		return
 	}
 
@@ -116,16 +115,16 @@ func (checker *uniqChecker) UnMarshal(data []byte) (err error) {
 	now := time.Now().Unix()
 	for buff.Len() != 0 {
 		if err = binary.Read(buff, binary.BigEndian, &uniqid); err != nil {
-			log.LogErrorf("uniqChecker unmarshal read uniqid err(%v)", err)
+			err = errors.Newf("uniqChecker unmarshal read uniqid err(%v)", err)
 			return
 		}
 		if err = binary.Read(buff, binary.BigEndian, &atime); err != nil {
-			log.LogErrorf("uniqChecker unmarshal read atime err(%v)", err)
+			err = errors.Newf("uniqChecker unmarshal read atime err(%v)", err)
 			return
 		}
 		// atime over local time is too large
 		if atime > now+86400 {
-			log.LogWarnf("uniqChecker skip invalid atime %v uniqid %v", atime, uniqid)
+			log.Warnf("uniqChecker skip invalid atime %v uniqid %v", atime, uniqid)
 			continue
 		}
 		checker.inQue.append(&uniqOp{uniqid, atime})
@@ -196,10 +195,7 @@ func (checker *uniqChecker) doEvict(evictBid uint64) {
 		checker.inQue.scan(func(op *uniqOp) bool {
 			cnt++
 			delete(checker.op, op.uniqid)
-			if op.uniqid == evictBid {
-				return false
-			}
-			return true
+			return op.uniqid != evictBid
 		})
 	}
 

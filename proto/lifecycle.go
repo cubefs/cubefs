@@ -52,7 +52,7 @@ func (lcConf *LcConfiguration) GenEnabledRuleTasks() []*RuleTask {
 	tasks := make([]*RuleTask, 0)
 	for _, r := range lcConf.Rules {
 		if r.Status != RuleEnabled {
-			log.LogDebugf("GenEnabledRuleTasks: skip disabled rule(%v) in volume(%v)", r.ID, lcConf.VolName)
+			log.Debugf("GenEnabledRuleTasks: skip disabled rule(%v) in volume(%v)", r.ID, lcConf.VolName)
 			continue
 		}
 		task := &RuleTask{
@@ -61,7 +61,7 @@ func (lcConf *LcConfiguration) GenEnabledRuleTasks() []*RuleTask {
 			Rule:    r,
 		}
 		tasks = append(tasks, task)
-		log.LogDebugf("GenEnabledRuleTasks: RuleTask(%v) generated from rule(%v) in volume(%v)", *task, r.ID, lcConf.VolName)
+		log.Debugf("GenEnabledRuleTasks: RuleTask(%v) generated from rule(%v) in volume(%v)", *task, r.ID, lcConf.VolName)
 	}
 	return tasks
 }

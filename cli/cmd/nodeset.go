@@ -53,10 +53,9 @@ func newNodeSetListCmd(client *master.MasterClient) *cobra.Command {
 		Run: func(cmd *cobra.Command, args []string) {
 			var nodeSetStats []*proto.NodeSetStat
 			var err error
-			defer func() {
-				errout(err)
-			}()
-			if nodeSetStats, err = client.AdminAPI().ListNodeSets(zoneName); err != nil {
+			span, ctx := spanContext()
+			defer func() { errout(span, err) }()
+			if nodeSetStats, err = client.AdminAPI().ListNodeSets(ctx, zoneName); err != nil {
 				return
 			}
 			zoneTablePattern := "%-6v %-6v %-12v %-10v %-10v\n"
@@ -80,13 +79,11 @@ func newNodeSetInfoCmd(client *master.MasterClient) *cobra.Command {
 		Run: func(cmd *cobra.Command, args []string) {
 			var nodeSetStatInfo *proto.NodeSetStatInfo
 			var err error
-			defer func() {
-				errout(err)
-			}()
+			span, ctx := spanContext()
+			defer func() { errout(span, err) }()
 
 			nodeSetId := args[0]
-
-			if nodeSetStatInfo, err = client.AdminAPI().GetNodeSet(nodeSetId); err != nil {
+			if nodeSetStatInfo, err = client.AdminAPI().GetNodeSet(ctx, nodeSetId); err != nil {
 				return
 			}
 			stdout("%v", formatNodeSetView(nodeSetStatInfo))
@@ -104,12 +101,11 @@ func newNodeSetUpdateCmd(client *master.MasterClient) *cobra.Command {
 		Args:  cobra.MinimumNArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
 			var err error
-			defer func() {
-				errout(err)
-			}()
+			span, ctx := spanContext()
+			defer func() { errout(span, err) }()
 
 			nodeSetId := args[0]
-			if err = client.AdminAPI().UpdateNodeSet(nodeSetId, dataNodeSelector, metaNodeSelector); err != nil {
+			if err = client.AdminAPI().UpdateNodeSet(ctx, nodeSetId, dataNodeSelector, metaNodeSelector); err != nil {
 				return
 			}
 			stdout("success to update nodeset %v\n", nodeSetId)

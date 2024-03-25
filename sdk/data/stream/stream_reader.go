@@ -27,7 +27,6 @@ import (
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/buf"
 	"github.com/cubefs/cubefs/util/exporter"
-	"github.com/cubefs/cubefs/util/log"
 )
 
 // One inode corresponds to one streamer. All the requests to the same inode will be queued.
@@ -62,7 +61,7 @@ type bcacheKey struct {
 }
 
 // NewStreamer returns a new streamer.
-func NewStreamer(client *ExtentClient, inode uint64) *Streamer {
+func NewStreamer(ctx context.Context, client *ExtentClient, inode uint64) *Streamer {
 	s := new(Streamer)
 	s.client = client
 	s.inode = inode
@@ -75,7 +74,7 @@ func NewStreamer(client *ExtentClient, inode uint64) *Streamer {
 	s.pendingCache = make(chan bcacheKey, 1)
 	s.verSeq = client.multiVerMgr.latestVerSeq
 	s.extents.verSeq = client.multiVerMgr.latestVerSeq
-	go s.server()
+	go s.server(ctx)
 	go s.asyncBlockCache()
 	return s
 }
@@ -90,28 +89,29 @@ func (s *Streamer) String() string {
 }
 
 // TODO should we call it RefreshExtents instead?
-func (s *Streamer) GetExtents() error {
+func (s *Streamer) GetExtents(ctx context.Context) error {
 	if s.client.disableMetaCache || !s.needBCache {
-		return s.extents.RefreshForce(s.inode, s.client.getExtents)
+		return s.extents.RefreshForce(ctx, s.inode, s.client.getExtents)
 	}
 
-	return s.extents.Refresh(s.inode, s.client.getExtents)
+	return s.extents.Refresh(ctx, s.inode, s.client.getExtents)
 }
 
-func (s *Streamer) GetExtentsForce() error {
-	return s.extents.RefreshForce(s.inode, s.client.getExtents)
+func (s *Streamer) GetExtentsForce(ctx context.Context) error {
+	return s.extents.RefreshForce(ctx, s.inode, s.client.getExtents)
 }
 
 // GetExtentReader returns the extent reader.
 // TODO: use memory pool
-func (s *Streamer) GetExtentReader(ek *proto.ExtentKey) (*ExtentReader, error) {
-	partition, err := s.client.dataWrapper.GetDataPartition(ek.PartitionId)
+func (s *Streamer) GetExtentReader(ctx context.Context, ek *proto.ExtentKey) (*ExtentReader, error) {
+	span := proto.SpanFromContext(ctx)
+	partition, err := s.client.dataWrapper.GetDataPartition(ctx, ek.PartitionId)
 	if err != nil {
 		return nil, err
 	}
 
 	if partition.IsDiscard {
-		log.LogWarnf("GetExtentReader: datapartition %v is discard", partition.PartitionID)
+		span.Warnf("GetExtentReader: datapartition %v is discard", partition.PartitionID)
 		return nil, DpDiscardError
 	}
 
@@ -124,18 +124,19 @@ func (s *Streamer) GetExtentReader(ek *proto.ExtentKey) (*ExtentReader, error) {
 	return reader, nil
 }
 
-func (s *Streamer) read(data []byte, offset int, size int) (total int, err error) {
+func (s *Streamer) read(ctx context.Context, data []byte, offset int, size int) (total int, err error) {
+	span := proto.SpanFromContext(ctx)
 	var (
 		readBytes       int
 		reader          *ExtentReader
 		requests        []*ExtentRequest
 		revisedRequests []*ExtentRequest
 	)
-	log.LogDebugf("action[streamer.read] offset %v size %v", offset, size)
-	ctx := context.Background()
+	span.Debugf("action[streamer.read] offset %v size %v", offset, size)
+
 	s.client.readLimiter.Wait(ctx)
 	s.client.LimitManager.ReadAlloc(ctx, size)
-	requests = s.extents.PrepareReadRequests(offset, size, data)
+	requests = s.extents.PrepareReadRequests(ctx, offset, size, data)
 	for _, req := range requests {
 		if req.ExtentKey == nil {
 			continue
@@ -146,7 +147,7 @@ func (s *Streamer) read(data []byte, offset int, size int) (total int, err error
 				s.writeLock.Unlock()
 				return 0, err
 			}
-			revisedRequests = s.extents.PrepareReadRequests(offset, size, data)
+			revisedRequests = s.extents.PrepareReadRequests(ctx, offset, size, data)
 			s.writeLock.Unlock()
 			break
 		}
@@ -157,9 +158,9 @@ func (s *Streamer) read(data []byte, offset int, size int) (total int, err error
 	}
 
 	filesize, _ := s.extents.Size()
-	log.LogDebugf("read: ino(%v) requests(%v) filesize(%v)", s.inode, requests, filesize)
+	span.Debugf("read: ino(%v) requests(%v) filesize(%v)", s.inode, requests, filesize)
 	for _, req := range requests {
-		log.LogDebugf("action[streamer.read] req %v", req)
+		span.Debugf("action[streamer.read] req %v", req)
 		if req.ExtentKey == nil {
 			zeros := make([]byte, len(req.Data))
 			copy(req.Data, zeros)
@@ -176,30 +177,30 @@ func (s *Streamer) read(data []byte, offset int, size int) (total int, err error
 
 			// Reading a hole, just fill zero
 			total += req.Size
-			log.LogDebugf("Stream read hole: ino(%v) req(%v) total(%v)", s.inode, req, total)
+			span.Debugf("Stream read hole: ino(%v) req(%v) total(%v)", s.inode, req, total)
 		} else {
-			log.LogDebugf("Stream read: ino(%v) req(%v) s.needBCache(%v) s.client.bcacheEnable(%v)", s.inode, req, s.needBCache, s.client.bcacheEnable)
+			span.Debugf("Stream read: ino(%v) req(%v) s.needBCache(%v) s.client.bcacheEnable(%v)", s.inode, req, s.needBCache, s.client.bcacheEnable)
 			if s.needBCache {
 				bcacheMetric := exporter.NewCounter("fileReadL1Cache")
 				bcacheMetric.AddWithLabels(1, map[string]string{exporter.Vol: s.client.volumeName})
 			}
 
 			// skip hole,ek is not nil,read block cache firstly
-			log.LogDebugf("Stream read: ino(%v) req(%v) s.client.bcacheEnable(%v) s.needBCache(%v)", s.inode, req, s.client.bcacheEnable, s.needBCache)
+			span.Debugf("Stream read: ino(%v) req(%v) s.client.bcacheEnable(%v) s.needBCache(%v)", s.inode, req, s.client.bcacheEnable, s.needBCache)
 			cacheKey := util.GenerateRepVolKey(s.client.volumeName, s.inode, req.ExtentKey.PartitionId, req.ExtentKey.ExtentId, req.ExtentKey.FileOffset)
 			if s.client.bcacheEnable && s.needBCache && filesize <= bcache.MaxFileSize {
 				offset := req.FileOffset - int(req.ExtentKey.FileOffset)
 				if s.client.loadBcache != nil {
-					readBytes, err = s.client.loadBcache(cacheKey, req.Data, uint64(offset), uint32(req.Size))
+					readBytes, err = s.client.loadBcache(ctx, cacheKey, req.Data, uint64(offset), uint32(req.Size))
 					if err == nil && readBytes == req.Size {
 						total += req.Size
 						bcacheMetric := exporter.NewCounter("fileReadL1CacheHit")
 						bcacheMetric.AddWithLabels(1, map[string]string{exporter.Vol: s.client.volumeName})
-						log.LogDebugf("TRACE Stream read. hit blockCache: ino(%v) cacheKey(%v) readBytes(%v) err(%v)", s.inode, cacheKey, readBytes, err)
+						span.Debugf("TRACE Stream read. hit blockCache: ino(%v) cacheKey(%v) readBytes(%v) err(%v)", s.inode, cacheKey, readBytes, err)
 						continue
 					}
 				}
-				log.LogDebugf("TRACE Stream read. miss blockCache cacheKey(%v) loadBcache(%v)", cacheKey, s.client.loadBcache)
+				span.Debugf("TRACE Stream read. miss blockCache cacheKey(%v) loadBcache(%v)", cacheKey, s.client.loadBcache)
 			}
 
 			if s.needBCache {
@@ -208,9 +209,9 @@ func (s *Streamer) read(data []byte, offset int, size int) (total int, err error
 			}
 
 			// read extent
-			reader, err = s.GetExtentReader(req.ExtentKey)
+			reader, err = s.GetExtentReader(ctx, req.ExtentKey)
 			if err != nil {
-				log.LogErrorf("action[streamer.read] req %v err %v", req, err)
+				span.Errorf("action[streamer.read] req %v err %v", req, err)
 				break
 			}
 
@@ -229,24 +230,26 @@ func (s *Streamer) read(data []byte, offset int, size int) (total int, err error
 				}
 			}
 
-			readBytes, err = reader.Read(req)
-			log.LogDebugf("TRACE Stream read: ino(%v) req(%v) readBytes(%v) err(%v)", s.inode, req, readBytes, err)
+			readBytes, err = reader.Read(ctx, req)
+			span.Debugf("TRACE Stream read: ino(%v) req(%v) readBytes(%v) err(%v)", s.inode, req, readBytes, err)
 
 			total += readBytes
 
 			if err != nil || readBytes < req.Size {
 				if total == 0 {
-					log.LogErrorf("Stream read: ino(%v) req(%v) readBytes(%v) err(%v)", s.inode, req, readBytes, err)
+					span.Errorf("Stream read: ino(%v) req(%v) readBytes(%v) err(%v)", s.inode, req, readBytes, err)
 				}
 				break
 			}
 		}
 	}
-	log.LogDebugf("action[streamer.read] offset %v size %v exit", offset, size)
+	span.Debugf("action[streamer.read] offset %v size %v exit", offset, size)
 	return
 }
 
 func (s *Streamer) asyncBlockCache() {
+	span, ctxTmp := proto.StartSpanFromContext(context.Background(), "streamer-async-block-cache")
+	ctx := proto.ContextWithSpan(ctxTmp, span)
 	if !s.needBCache || !s.isOpen {
 		return
 	}
@@ -257,7 +260,7 @@ func (s *Streamer) asyncBlockCache() {
 		case pending := <-s.pendingCache:
 			ek := pending.extentKey
 			cacheKey := pending.cacheKey
-			log.LogDebugf("asyncBlockCache: cacheKey=(%v) ek=(%v)", cacheKey, ek)
+			span.Debugf("asyncBlockCache: cacheKey=(%v) ek=(%v)", cacheKey, ek)
 
 			// read full extent
 			var data []byte
@@ -266,11 +269,11 @@ func (s *Streamer) asyncBlockCache() {
 			} else {
 				data = make([]byte, ek.Size)
 			}
-			reader, err := s.GetExtentReader(ek)
+			reader, _ := s.GetExtentReader(ctx, ek)
 			fullReq := NewExtentRequest(int(ek.FileOffset), int(ek.Size), data, ek)
-			readBytes, err := reader.Read(fullReq)
+			readBytes, err := reader.Read(ctx, fullReq)
 			if err != nil || readBytes != len(data) {
-				log.LogWarnf("asyncBlockCache: Stream read full extent error. fullReq(%v) readBytes(%v) err(%v)", fullReq, readBytes, err)
+				span.Warnf("asyncBlockCache: Stream read full extent error. fullReq(%v) readBytes(%v) err(%v)", fullReq, readBytes, err)
 				if ek.Size == bcache.MaxBlockSize {
 					buf.BCachePool.Put(data)
 				}
@@ -280,8 +283,8 @@ func (s *Streamer) asyncBlockCache() {
 				return
 			}
 			if s.client.cacheBcache != nil {
-				log.LogDebugf("TRACE read. write blockCache cacheKey(%v) len_buf(%v),", cacheKey, len(data))
-				s.client.cacheBcache(cacheKey, data)
+				span.Debugf("TRACE read. write blockCache cacheKey(%v) len_buf(%v),", cacheKey, len(data))
+				s.client.cacheBcache(ctx, cacheKey, data)
 			}
 			if ek.Size == bcache.MaxBlockSize {
 				buf.BCachePool.Put(data)
@@ -299,8 +302,5 @@ func (s *Streamer) asyncBlockCache() {
 }
 
 func (s *Streamer) exceedBlockSize(size uint32) bool {
-	if size > bcache.BigExtentSize {
-		return true
-	}
-	return false
+	return size > bcache.BigExtentSize
 }

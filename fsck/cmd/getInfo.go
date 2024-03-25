@@ -38,12 +38,6 @@ const (
 	MaxFollowPathTaskNum = 120
 )
 
-type Summary struct {
-	files uint64
-	dirs  uint64
-	bytes uint64
-}
-
 func newInfoCmd() *cobra.Command {
 	c := &cobra.Command{
 		Use:   "get",

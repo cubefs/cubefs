@@ -3,8 +3,8 @@ package cmd
 import (
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"log"
+	"os"
 	"strconv"
 	"strings"
 )
@@ -32,7 +32,7 @@ type DataNode struct {
 }
 
 func readDataNode(filename string) (*DataNode, error) {
-	data, err := ioutil.ReadFile(filename)
+	data, err := os.ReadFile(filename)
 	if err != nil {
 		return nil, err
 	}
@@ -75,7 +75,7 @@ func writeDataNode(listen, prof, id, localIP string, masterAddrs, disks []string
 		return err
 	}
 
-	err = ioutil.WriteFile(ConfDir+"/datanode"+id+".json", dataNodeData, 0o644)
+	err = os.WriteFile(ConfDir+"/datanode"+id+".json", dataNodeData, 0o644)
 	if err != nil {
 		log.Println("Unable to write to DataNode.json file:", err)
 		return err
@@ -105,7 +105,7 @@ func startAllDataNode() error {
 		dataDir = config.DataNode.Config.DataDir
 	}
 	index := 0
-	files, err := ioutil.ReadDir(ConfDir)
+	files, err := os.ReadDir(ConfDir)
 	if err != nil {
 		return err
 	}
@@ -202,7 +202,7 @@ func stopDatanodeInSpecificNode(node string) error {
 }
 
 func stopAllDataNode() error {
-	files, err := ioutil.ReadDir(ConfDir)
+	files, err := os.ReadDir(ConfDir)
 	if err != nil {
 		return err
 	}

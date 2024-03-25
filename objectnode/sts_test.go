@@ -15,15 +15,17 @@
 package objectnode
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util"
-	"github.com/stretchr/testify/require"
 )
 
 const (
@@ -42,7 +44,7 @@ func TestEncodeDecodeFedSessionToken(t *testing.T) {
 	token, err := EncodeFedSessionToken(testOwnerAK, testOwnerSK, fedAk, fedSk, "test", policyStr, expireUnixStr)
 	require.NoError(t, err)
 
-	fed, err := DecodeFedSessionToken(fedAk, token, testGetUserInfo)
+	fed, err := DecodeFedSessionToken(context.Background(), fedAk, token, testGetUserInfo)
 	require.NoError(t, err)
 	require.Equal(t, fedSk, fed.FedSK)
 	require.Equal(t, testUser, fed.UserInfo.UserID)
@@ -55,7 +57,7 @@ func TestEncodeDecodeFedSessionToken(t *testing.T) {
 	require.Equal(t, &policy, fed.Policy)
 }
 
-func testGetUserInfo(ak string) (*proto.UserInfo, error) {
+func testGetUserInfo(ctx context.Context, ak string) (*proto.UserInfo, error) {
 	if ak != testOwnerAK {
 		return nil, errors.New("wrong access key")
 	}

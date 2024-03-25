@@ -16,6 +16,7 @@ package mocktest
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -70,7 +71,7 @@ func (mds *MockDataServer) register() {
 	var nodeID uint64
 	var retry int
 	for retry < 3 {
-		nodeID, err = mds.mc.NodeAPI().AddDataNode(mds.TcpAddr, mds.zoneName)
+		nodeID, err = mds.mc.NodeAPI().AddDataNode(context.Background(), mds.TcpAddr, mds.zoneName)
 		if err == nil {
 			break
 		}
@@ -109,6 +110,7 @@ func (mds *MockDataServer) serveConn(rc net.Conn) {
 	proto.InitBufferPool(int64(32768))
 
 	req := proto.NewPacket()
+	req.ReqID = proto.RandomID()
 	err := req.ReadFromConnWithVer(conn, proto.NoReadDeadlineTime)
 	if err != nil {
 		return
@@ -300,7 +302,7 @@ func (mds *MockDataServer) handleHeartbeats(conn net.Conn, pkg *proto.Packet, ta
 
 	task.Response = response
 end:
-	if err = mds.mc.NodeAPI().ResponseDataNodeTask(task); err != nil {
+	if err = mds.mc.NodeAPI().ResponseDataNodeTask(context.Background(), task); err != nil {
 		return
 	}
 	return
@@ -344,7 +346,7 @@ func (mds *MockDataServer) handleLoadDataPartition(conn net.Conn, pkg *proto.Pac
 	}
 	// response.VolName = partition.VolName
 	task.Response = response
-	if err = mds.mc.NodeAPI().ResponseDataNodeTask(task); err != nil {
+	if err = mds.mc.NodeAPI().ResponseDataNodeTask(context.Background(), task); err != nil {
 		return
 	}
 	return

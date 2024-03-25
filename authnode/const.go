@@ -37,3 +37,9 @@ const (
 	akAcronym = "ak"
 	akPrefix  = keySeparator + akAcronym + keySeparator
 )
+
+var (
+	// TODO: unused
+	_ = opSyncGetKey
+	_ = opSyncGetCaps
+)

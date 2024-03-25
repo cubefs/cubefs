@@ -15,15 +15,15 @@
 package metanode
 
 import (
+	"context"
 	"net"
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/errors"
-	"github.com/cubefs/cubefs/util/log"
 )
 
 // Reply operation results to the master.
-func (m *metadataManager) respondToMaster(task *proto.AdminTask) (err error) {
+func (m *metadataManager) respondToMaster(ctx context.Context, task *proto.AdminTask) (err error) {
 	// handle panic
 	defer func() {
 		if r := recover(); r != nil {
@@ -35,7 +35,7 @@ func (m *metadataManager) respondToMaster(task *proto.AdminTask) (err error) {
 			}
 		}
 	}()
-	if err = masterClient.NodeAPI().ResponseMetaNodeTask(task); err != nil {
+	if err = masterClient.NodeAPI().ResponseMetaNodeTask(ctx, task); err != nil {
 		err = errors.Trace(err, "try respondToMaster failed")
 	}
 	return
@@ -61,8 +61,7 @@ func (m *metadataManager) respondToClientWithVer(conn net.Conn, p *Packet) (err 
 	}
 	err = p.WriteToConn(conn)
 	if err != nil {
-		log.LogErrorf("response to client[%s], "+
-			"request[%s], response packet[%s]",
+		p.Span().Errorf("response to client[%s], request[%s], packet[%s]",
 			err.Error(), p.GetOpMsg(), p.GetResultMsg())
 	}
 	return
@@ -85,8 +84,7 @@ func (m *metadataManager) respondToClient(conn net.Conn, p *Packet) (err error) 
 	// process data and send reply though specified tcp connection.
 	err = p.WriteToConn(conn)
 	if err != nil {
-		log.LogErrorf("response to client[%s], "+
-			"request[%s], response packet[%s]",
+		p.Span().Errorf("response to client[%s], request[%s], response packet[%s]",
 			err.Error(), p.GetOpMsg(), p.GetResultMsg())
 	}
 	return
@@ -96,7 +94,7 @@ func (m *metadataManager) responseAckOKToMaster(conn net.Conn, p *Packet) {
 	go func() {
 		p.PacketOkReply()
 		if err := p.WriteToConn(conn); err != nil {
-			log.LogErrorf("ack master response: %s", err.Error())
+			p.Span().Errorf("ack master response: %s", err.Error())
 		}
 	}()
 }

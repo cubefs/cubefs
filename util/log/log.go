@@ -19,8 +19,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"log"
+	syslog "log"
 	"math"
 	"net/http"
 	"os"
@@ -33,9 +33,6 @@ import (
 	"sync/atomic"
 	"syscall"
 	"time"
-
-	blog "github.com/cubefs/cubefs/blobstore/util/log"
-	syslog "log"
 )
 
 type Level uint8
@@ -87,20 +84,19 @@ func (f RotatedFile) Swap(i, j int) {
 }
 
 func setBlobLogLevel(loglevel Level) {
-	blevel := blog.Lwarn
+	blevel := Lwarn
 	switch loglevel {
 	case DebugLevel:
-		blevel = blog.Ldebug
+		blevel = Ldebug
 	case InfoLevel:
-		blevel = blog.Linfo
+		blevel = Linfo
 	case WarnLevel:
-		blevel = blog.Lwarn
+		blevel = Lwarn
 	case ErrorLevel:
-		blevel = blog.Lerror
+		blevel = Lerror
 	default:
-		blevel = blog.Lwarn
 	}
-	blog.SetOutputLevel(blevel)
+	SetOutputLevel(blevel)
 }
 
 type asyncWriter struct {
@@ -454,6 +450,9 @@ const (
 	SetLogLevelPath = "/loglevel/set"
 )
 
+// SetLogLevel change log level.
+//
+// Deprecated: use log.ChangeDefaultLevelHandler to instead.
 func SetLogLevel(w http.ResponseWriter, r *http.Request) {
 	var err error
 	if err = r.ParseForm(); err != nil {
@@ -517,6 +516,8 @@ func buildJSONResp(w http.ResponseWriter, code int, data interface{}, msg string
 }
 
 // LogWarn indicates the warnings.
+//
+// Deprecated: use log.Warn to instead.
 func LogWarn(v ...interface{}) {
 	if gLog == nil {
 		return
@@ -530,6 +531,8 @@ func LogWarn(v ...interface{}) {
 }
 
 // LogWarnf indicates the warnings with specific format.
+//
+// Deprecated: use log.Warnf to instead.
 func LogWarnf(format string, v ...interface{}) {
 	if gLog == nil {
 		return
@@ -543,6 +546,8 @@ func LogWarnf(format string, v ...interface{}) {
 }
 
 // LogInfo indicates log the information. TODO explain
+//
+// Deprecated: use log.Info to instead.
 func LogInfo(v ...interface{}) {
 	if gLog == nil {
 		return
@@ -556,6 +561,8 @@ func LogInfo(v ...interface{}) {
 }
 
 // LogInfo indicates log the information with specific format. TODO explain
+//
+// Deprecated: use log.Infof to instead.
 func LogInfof(format string, v ...interface{}) {
 	if gLog == nil {
 		return
@@ -568,14 +575,9 @@ func LogInfof(format string, v ...interface{}) {
 	gLog.infoLogger.Output(2, s)
 }
 
-func EnableInfo() bool {
-	if gLog == nil {
-		return false
-	}
-	return InfoLevel&gLog.level == gLog.level
-}
-
 // LogError logs the errors.
+//
+// Deprecated: use log.Error to instead.
 func LogError(v ...interface{}) {
 	if gLog == nil {
 		return
@@ -589,6 +591,8 @@ func LogError(v ...interface{}) {
 }
 
 // LogErrorf logs the errors with the specified format.
+//
+// Deprecated: use log.Errorf to instead.
 func LogErrorf(format string, v ...interface{}) {
 	if gLog == nil {
 		return
@@ -602,6 +606,8 @@ func LogErrorf(format string, v ...interface{}) {
 }
 
 // LogDebug logs the debug information.
+//
+// Deprecated: use log.Debug to instead.
 func LogDebug(v ...interface{}) {
 	if gLog == nil {
 		return
@@ -615,6 +621,8 @@ func LogDebug(v ...interface{}) {
 }
 
 // LogDebugf logs the debug information with specified format.
+//
+// Deprecated: use log.Debugf to instead.
 func LogDebugf(format string, v ...interface{}) {
 	if gLog == nil {
 		return
@@ -627,15 +635,9 @@ func LogDebugf(format string, v ...interface{}) {
 	gLog.debugLogger.Output(2, s)
 }
 
-func EnableDebug() bool {
-	if gLog == nil {
-		return false
-	}
-
-	return DebugLevel&gLog.level == gLog.level
-}
-
 // LogFatal logs the fatal errors.
+//
+// Deprecated: use log.Fatal to instead.
 func LogFatal(v ...interface{}) {
 	if gLog == nil {
 		return
@@ -648,6 +650,8 @@ func LogFatal(v ...interface{}) {
 }
 
 // LogFatalf logs the fatal errors with specified format.
+//
+// Deprecated: use log.Fatalf to instead.
 func LogFatalf(format string, v ...interface{}) {
 	if gLog == nil {
 		return
@@ -660,6 +664,8 @@ func LogFatalf(format string, v ...interface{}) {
 }
 
 // LogFatal logs the fatal errors.
+//
+// Deprecated: use log.Error to instead.
 func LogCritical(v ...interface{}) {
 	if gLog == nil {
 		return
@@ -671,6 +677,8 @@ func LogCritical(v ...interface{}) {
 }
 
 // LogFatalf logs the fatal errors with specified format.
+//
+// Deprecated: use log.Errorf to instead.
 func LogCriticalf(format string, v ...interface{}) {
 	if gLog == nil {
 		return
@@ -682,6 +690,8 @@ func LogCriticalf(format string, v ...interface{}) {
 }
 
 // LogRead
+//
+// Deprecated: use log.Info to instead.
 func LogRead(v ...interface{}) {
 	if gLog == nil {
 		return
@@ -695,6 +705,8 @@ func LogRead(v ...interface{}) {
 }
 
 // TODO not used?
+//
+// Deprecated: use log.Infof to instead.
 func LogReadf(format string, v ...interface{}) {
 	if gLog == nil {
 		return
@@ -708,6 +720,8 @@ func LogReadf(format string, v ...interface{}) {
 }
 
 // QosWrite
+//
+// Deprecated: use log.Debug to instead.
 func QosWrite(v ...interface{}) {
 	if gLog == nil {
 		return
@@ -721,6 +735,8 @@ func QosWrite(v ...interface{}) {
 }
 
 // QosWriteDebugf TODO not used
+//
+// Deprecated: use log.Debugf to instead.
 func QosWriteDebugf(format string, v ...interface{}) {
 	if gLog == nil {
 		return
@@ -734,6 +750,8 @@ func QosWriteDebugf(format string, v ...interface{}) {
 }
 
 // LogWrite
+//
+// Deprecated: use log.Info to instead.
 func LogWrite(v ...interface{}) {
 	if gLog == nil {
 		return
@@ -747,6 +765,8 @@ func LogWrite(v ...interface{}) {
 }
 
 // LogWritef TODO not used
+//
+// Deprecated: use log.Infof to instead.
 func LogWritef(format string, v ...interface{}) {
 	if gLog == nil {
 		return
@@ -822,13 +842,17 @@ func DeleteFileFilter(info os.FileInfo, diskSpaceLeft int64, module string) bool
 
 func (l *Log) removeLogFile(logDir string, diskSpaceLeft int64, module string) (err error) {
 	// collect free file list
-	fInfos, err := ioutil.ReadDir(logDir)
+	fEntries, err := os.ReadDir(logDir)
 	if err != nil {
 		LogErrorf("error read log directory files: %s", err.Error())
 		return
 	}
 	var needDelFiles RotatedFile
-	for _, info := range fInfos {
+	for _, entry := range fEntries {
+		info, errInfo := entry.Info()
+		if errInfo != nil {
+			continue
+		}
 		if DeleteFileFilter(info, diskSpaceLeft, module) {
 			LogDebugf("%v will be put into needDelFiles", info.Name())
 			needDelFiles = append(needDelFiles, info)

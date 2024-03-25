@@ -80,13 +80,14 @@ There are two ways to set the log:
 ```
 - You can dynamically modify it through the command. The command is as follows:
 ```
-http://127.0.0.1:{profPort}/loglevel/set?level={log-level}
+POST http://127.0.0.1:{profPort}/log/level?level={log-level}
 ```
 
 ::: tip Note
 The log settings for the erasure coding subsystem are slightly different.
 :::
 
+- Log options refer to the [Log Options](./configs/log.md).
 - Set in the configuration file, please refer to [Basic Service Configuration](./configs/blobstore/base.md).
 - Modify through the command, please refer to [Erasure Coding Common Management Commands](./admin-api/blobstore/base.md).
 

@@ -95,7 +95,7 @@ func (r *FormRequest) ParseMultipartForm() error {
 // If key is not present, MultipartFormValue returns the empty string.
 func (r *FormRequest) MultipartFormValue(key string) string {
 	for k, v := range r.MultipartForm.Value {
-		if strings.ToLower(k) == strings.ToLower(key) && len(v) > 0 {
+		if strings.EqualFold(k, key) && len(v) > 0 {
 			return v[0]
 		}
 	}
