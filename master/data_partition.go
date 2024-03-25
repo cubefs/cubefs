@@ -337,7 +337,7 @@ func (partition *DataPartition) canBeOffLine(offlineAddr string) (err error) {
 			lives = append(lives, replica.Addr)
 		}
 		msg = fmt.Sprintf(msg+" err:%v  liveReplicas len:%v [%v] not satisify qurom %d ",
-			proto.ErrCannotBeOffLine, len(liveReplicas), lives, int(partition.ReplicaNum/2+1))
+			proto.ErrCannotBeOffLine, len(otherLiveReplicas), lives, int(partition.ReplicaNum/2+1))
 		log.LogError(msg)
 		err = fmt.Errorf(msg)
 		return
@@ -1015,6 +1015,8 @@ func (partition *DataPartition) buildDpInfo(c *Cluster) *proto.DataPartitionInfo
 		IsDiscard:                partition.IsDiscard,
 		SingleDecommissionStatus: partition.GetSpecialReplicaDecommissionStep(),
 		Forbidden:                forbidden,
+		DecommissionStatus:       partition.DecommissionStatus,
+		DecommissionDstAddr:      partition.DecommissionDstAddr,
 	}
 }
 
@@ -1274,6 +1276,13 @@ errHandler:
 	// if need rollback, set to fail,reset DecommissionDstAddr
 	if partition.DecommissionNeedRollback {
 		partition.SetDecommissionStatus(DecommissionFail)
+	} else {
+		// The maximum number of retries for the DP error has been reached,
+		// and a rollback is still required, even if the rollback conditions have not been triggered.
+		if partition.DecommissionRetry >= defaultDecommissionRetryLimit {
+			partition.DecommissionNeedRollback = true
+			partition.DecommissionNeedRollbackTimes = defaultDecommissionRollbackLimit
+		}
 	}
 	msg = fmt.Sprintf("clusterID[%v] vol[%v] dp[%v]  on Node:%v  "+
 		"to newHost:%v Err:%v, PersistenceHosts:%v ,retry %v,status %v, isRecover %v SingleDecommissionStatus[%v]"+
@@ -1361,7 +1370,6 @@ func (partition *DataPartition) rollback(c *Cluster) {
 	// release token first
 	partition.ReleaseDecommissionToken(c)
 	// reset status if rollback success
-	partition.DecommissionDstAddr = ""
 	partition.DecommissionRetry = 0
 	partition.isRecover = false
 	partition.DecommissionNeedRollback = false
@@ -1369,6 +1377,11 @@ func (partition *DataPartition) rollback(c *Cluster) {
 	partition.DecommissionErrorMessage = ""
 	partition.SetDecommissionStatus(markDecommission)
 	partition.SetSpecialReplicaDecommissionStep(SpecialDecommissionInitial)
+	// specify dst addr do not need rollback
+	if !partition.DecommissionDstAddrSpecify {
+		log.LogWarnf("action[needRollback]dp[%v] do not rollback for DecommissionDstAddrSpecify", partition.PartitionID)
+		partition.DecommissionDstAddr = ""
+	}
 	c.syncUpdateDataPartition(partition)
 	log.LogWarnf("action[rollback]dp[%v] rollback success", partition.PartitionID)
 }
@@ -1716,11 +1729,7 @@ func (partition *DataPartition) needRollback(c *Cluster) bool {
 	if !partition.DecommissionNeedRollback {
 		return false
 	}
-	// specify dst addr do not need rollback
-	if partition.DecommissionDstAddrSpecify {
-		log.LogWarnf("action[needRollback]dp[%v] do not rollback for DecommissionDstAddrSpecify", partition.PartitionID)
-		return false
-	}
+
 	if atomic.LoadUint32(&partition.DecommissionNeedRollbackTimes) >= defaultDecommissionRollbackLimit {
 		log.LogDebugf("action[needRollback]try add restore replica, dp[%v]DecommissionNeedRollbackTimes[%v]",
 			partition.PartitionID, atomic.LoadUint32(&partition.DecommissionNeedRollbackTimes))
