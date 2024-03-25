@@ -2148,8 +2148,8 @@ func (l *DecommissionDataPartitionList) Put(id uint64, value *DataPartition, c *
 	if value.checkConsumeToken() {
 		value.TryAcquireDecommissionToken(c)
 	}
-	log.LogInfof("action[DecommissionDataPartitionListPut] ns[%v] add dp[%v] status[%v] isRecover[%v]",
-		id, value.PartitionID, value.GetDecommissionStatus(), value.isRecover)
+	log.LogInfof("action[DecommissionDataPartitionListPut] ns[%v] add dp[%v] status[%v] isRecover[%v] rollbackTimes(%v)",
+		id, value.PartitionID, value.GetDecommissionStatus(), value.isRecover, value.DecommissionNeedRollbackTimes)
 }
 
 func (l *DecommissionDataPartitionList) pushFailedDp(value *DataPartition, c *Cluster) {
