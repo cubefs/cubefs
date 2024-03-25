@@ -207,7 +207,11 @@ func (dp *DataPartition) ForceSetDataPartitionToLoadding() {
 }
 
 func (dp *DataPartition) ForceSetDataPartitionToFininshLoad() {
-	atomic.StoreInt32(&dp.isLoadingDataPartition, 0)
+	atomic.StoreInt32(&dp.isLoadingDataPartition, 2)
+}
+
+func (dp *DataPartition) IsDataPartitionLoadFin() bool {
+	return atomic.LoadInt32(&dp.isLoadingDataPartition) == 2
 }
 
 func (dp *DataPartition) IsDataPartitionLoading() bool {

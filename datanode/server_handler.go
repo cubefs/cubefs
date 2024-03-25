@@ -180,7 +180,7 @@ func (s *DataNode) getPartitionAPI(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if partition.IsDataPartitionLoading() {
+	if !partition.IsDataPartitionLoadFin() {
 		raftSt = &raft.Status{Stopped: true}
 	} else {
 		raftSt = partition.raftPartition.Status()
