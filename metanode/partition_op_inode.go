@@ -1308,7 +1308,8 @@ func (mp *metaPartition) DeleteMigrationExtentKey(req *proto.DeleteMigrationExte
 	start := time.Now()
 	if mp.IsEnableAuditLog() {
 		defer func() {
-			auditlog.LogMigrationOp(remoteAddr, mp.GetVolName(), p.GetOpMsg(), req.GetFullPath(), err, time.Since(start).Milliseconds(), req.Inode, ino.StorageClass, ino.StorageClass)
+			auditlog.LogMigrationOp(remoteAddr, mp.GetVolName(), p.GetOpMsg(), req.GetFullPath(),
+				err, time.Since(start).Milliseconds(), req.Inode, ino.StorageClass, ino.StorageClass)
 		}()
 	}
 	//no migration extent key to delete

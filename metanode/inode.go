@@ -441,6 +441,9 @@ func (i *Inode) String() string {
 			buff.WriteString(fmt.Sprintf("Extents[%s]", i.HybridCouldExtents.sortedEks.(*SortedObjExtents)))
 		}
 	}
+	if i.HybridCouldExtentsMigration != nil {
+		buff.WriteString(fmt.Sprintf("MigrationExtents[%s]", i.HybridCouldExtentsMigration))
+	}
 	buff.WriteString(fmt.Sprintf("ForbiddenMigration[%v]", i.ForbiddenMigration))
 	buff.WriteString(fmt.Sprintf("WriteGeneration[%v]", i.WriteGeneration))
 	buff.WriteString("}")
@@ -851,6 +854,7 @@ func (i *Inode) MarshalInodeValue(buff *bytes.Buffer) {
 	//		panic(err)
 	//	}
 	//}
+
 	if i.Reserved&V4MigrationExtentsFlag > 0 {
 		log.LogDebugf("MarshalInodeValue ino(%v) marshall V4MigrationExtentsFlag Reserved(%v)", i.Inode, i.Reserved)
 		if err = binary.Write(buff, binary.BigEndian, &i.HybridCouldExtentsMigration.storageClass); err != nil {
@@ -864,7 +868,12 @@ func (i *Inode) MarshalInodeValue(buff *bytes.Buffer) {
 			if proto.IsStorageClassReplica(i.HybridCouldExtentsMigration.storageClass) {
 				log.LogDebugf("MarshalInodeValue ino(%v) migrationStorageClass(%v) marshall V4MigrationExtentsFlag SortedExtents Reserved(%v)",
 					i.Inode, i.HybridCouldExtentsMigration.storageClass, i.Reserved)
-				replicaExtents := i.HybridCouldExtentsMigration.sortedEks.(*SortedExtents)
+				replicaExtents, ok := i.HybridCouldExtentsMigration.sortedEks.(*SortedExtents)
+				if !ok {
+					panic(errors.New(fmt.Sprintf("MarshalInodeValue failed, inode(%v) StorageClass(%v) but type of sortedEks not match",
+						i.Inode, i.HybridCouldExtentsMigration.storageClass)))
+				}
+
 				extData, err := replicaExtents.MarshalBinary(true)
 				if err != nil {
 					panic(err)
@@ -891,8 +900,9 @@ func (i *Inode) MarshalInodeValue(buff *bytes.Buffer) {
 					panic(err)
 				}
 			} else {
-				panic(errors.New(fmt.Sprintf("MarshalInodeValue failed, unsupport migrate StorageClass %v",
-					i.HybridCouldExtentsMigration.storageClass)))
+				log.LogFlush()
+				panic(errors.New(fmt.Sprintf("MarshalInodeValue failed, inode(%v) unsupport migrate StorageClass(%v)",
+					i.Inode, i.HybridCouldExtentsMigration.storageClass)))
 			}
 		}
 	}

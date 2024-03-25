@@ -1071,14 +1071,15 @@ func (mp *metaPartition) fsmUpdateExtentKeyAfterMigration(inoParam *Inode) (resp
 
 func logCurrentExtentKeys(storageClass uint32, sortedEks interface{}, inode uint64) {
 	if sortedEks == nil {
-		log.LogInfof("action[fsmUpdateExtentKeyAfterMigration] inode %v current ek empty", inode)
+		log.LogInfof("action[fsmUpdateExtentKeyAfterMigration] inode(%v) storageClass(%v) current ek empty",
+			inode, storageClass)
 	} else {
 		if proto.IsStorageClassReplica(storageClass) {
-			log.LogInfof("action[fsmUpdateExtentKeyAfterMigration] inode %v current ek %v",
-				inode, sortedEks.(*SortedExtents).eks)
+			log.LogInfof("action[fsmUpdateExtentKeyAfterMigration] inode(%v) storageClass(%v) current ek %v",
+				inode, storageClass, sortedEks.(*SortedExtents).eks)
 		} else if proto.IsStorageClassBlobStore(storageClass) {
-			log.LogInfof("action[fsmUpdateExtentKeyAfterMigration] inode %v current ek %v",
-				inode, sortedEks.(*SortedObjExtents).eks)
+			log.LogInfof("action[fsmUpdateExtentKeyAfterMigration] inode(%v) storageClass(%v) current ek %v",
+				inode, storageClass, sortedEks.(*SortedObjExtents).eks)
 		}
 	}
 }
@@ -1164,8 +1165,10 @@ func (mp *metaPartition) fsmInternalDeleteMigrationExtentKey(inoParam *Inode) (r
 	i := item.(*Inode)
 	//may be triggered by updateMigrationExtentKey
 	if proto.IsStorageClassBlobStore(inoParam.HybridCouldExtentsMigration.storageClass) {
-		log.LogDebugf("action[fsmInternalDeleteMigrationExtentKey] inode %v migration ek replaced", i.Inode)
+		log.LogDebugf("action[fsmInternalDeleteMigrationExtentKey] inode %v migration ek replaced,"+
+			" old migrationStorageClass(%v)", i.Inode, i.HybridCouldExtentsMigration.storageClass)
 		i.HybridCouldExtentsMigration.sortedEks = inoParam.HybridCouldExtentsMigration.sortedEks
+		i.HybridCouldExtentsMigration.storageClass = inoParam.HybridCouldExtentsMigration.storageClass
 	}
 
 	i.SetDeleteMigrationExtentKeyImmediately()
