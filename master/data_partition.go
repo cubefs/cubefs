@@ -1733,12 +1733,7 @@ func (partition *DataPartition) needRollback(c *Cluster) bool {
 		log.LogDebugf("action[needRollback]try add restore replica, dp[%v]DecommissionNeedRollbackTimes[%v]",
 			partition.PartitionID, atomic.LoadUint32(&partition.DecommissionNeedRollbackTimes))
 		partition.DecommissionNeedRollback = false
-		err := c.addDataReplica(partition, partition.DecommissionSrcAddr, true)
-		if err != nil {
-			log.LogWarnf("action[needRollback]dp[%v] recover decommission src replica %v failed: %v",
-				partition.PartitionID, partition.DecommissionSrcAddr, err)
-		}
-		err = c.removeDataReplica(partition, partition.DecommissionDstAddr, false, false)
+		err := c.removeDataReplica(partition, partition.DecommissionDstAddr, false, false)
 		if err != nil {
 			log.LogWarnf("action[needRollback]dp[%v] remove decommission dst replica %v failed: %v",
 				partition.PartitionID, partition.DecommissionDstAddr, err)
