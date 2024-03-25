@@ -1015,8 +1015,6 @@ func (partition *DataPartition) buildDpInfo(c *Cluster) *proto.DataPartitionInfo
 		IsDiscard:                partition.IsDiscard,
 		SingleDecommissionStatus: partition.GetSpecialReplicaDecommissionStep(),
 		Forbidden:                forbidden,
-		DecommissionStatus:       partition.DecommissionStatus,
-		DecommissionDstAddr:      partition.DecommissionDstAddr,
 	}
 }
 
