@@ -4079,9 +4079,11 @@ func (m *Server) handleDataNodeTaskResponse(w http.ResponseWriter, r *http.Reque
 
 	tr, err = parseRequestToGetTaskResponse(r)
 	if err != nil {
+		log.LogErrorf("master handle dataNode task response(%v), err(%v)", tr, err.Error())
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
+	log.LogInfof("master handle dataNode task response(%v)", tr)
 	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("%v", http.StatusOK)))
 	m.cluster.handleDataNodeTaskResponse(tr.OperatorAddr, tr)
 }
