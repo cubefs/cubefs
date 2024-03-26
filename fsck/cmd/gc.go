@@ -1332,7 +1332,7 @@ func batchLockBadNormalExtent(dpIdStr string, exts []*BadNornalExtent, IsCreate 
 
 	conn, err := streamConnPool.GetConnect(addr)
 	defer func() {
-		streamConnPool.PutConnect(conn, true)
+		streamConnPool.PutConnect(conn, false)
 		log.LogInfof("batchLockBadNormalExtent PutConnect (%v)", dpInfo.Hosts[0])
 	}()
 
@@ -1409,7 +1409,7 @@ func batchUnlockBadNormalExtent(dpIdStr string, exts []*BadNornalExtent) (err er
 
 	conn, err := streamConnPool.GetConnect(addr)
 	defer func() {
-		streamConnPool.PutConnect(conn, true)
+		streamConnPool.PutConnect(conn, false)
 		log.LogInfof("batchUnlockBadNormalExtent PutConnect (%v)", dpInfo.Hosts[0])
 	}()
 
@@ -1672,6 +1672,10 @@ func batchDeleteBadExtent(dpIdStr string, exts []*BadNornalExtent) (err error) {
 		log.LogErrorf("Get dp info failed, err: %v", err)
 		return
 	}
+	start := time.Now()
+	defer func() {
+		log.LogInfof("batchDeleteBadExtent: delete dp(%s) extents (%d), cost (%d) ms", dpIdStr, len(exts), time.Since(start).Milliseconds())
+	}()
 
 	eks := make([]*proto.ExtentKey, 0, len(exts))
 	for _, ext := range exts {
@@ -1698,7 +1702,7 @@ func batchDeleteBadExtent(dpIdStr string, exts []*BadNornalExtent) (err error) {
 	defer releaseToken(addr)
 
 	defer func() {
-		smuxPool.PutConnect(conn, true)
+		smuxPool.PutConnect(conn, false)
 		log.LogInfof("batchDeleteBadExtent PutConnect (%v)", addr)
 	}()
 
@@ -1780,6 +1784,10 @@ func readBadExtentFromDp(dpIdStr string, extentId uint64, size uint32) (data []b
 		log.LogErrorf("GetConnect failed, addr %s, %v", leaderAddr, err.Error())
 		return
 	}
+
+	defer func() {
+		streamConnPool.PutConnect(conn, false)
+	}()
 
 	err = p.WriteToConn(conn)
 	if err != nil {
@@ -1913,14 +1921,24 @@ func cleanBadNormalExtentOfDp(volname, dir, backupDir, dpIdStr string) (err erro
 		log.LogInfof("cleanBadNormalExtentOfDp: copyBadNormalExtentToBackup success, dp %s, cost %d ms, befor %d, after %d",
 			dpIdStr, len(exts), len(succExts), time.Since(start).Milliseconds())
 
-		err = batchDeleteBadExtent(dpIdStr, succExts)
-		if err != nil {
-			log.LogErrorf("Batch delete bad extent failed, dp %v, err: %v", dpIdStr, err)
-			return err
-		}
-		log.LogInfof("cleanBadNormalExtentOfDp: batchDeleteBadExtent success, dp %s, cost %d ms", dpIdStr, time.Since(start).Milliseconds())
+		delOnce := 128
+		idx := 0
+		for idx < len(succExts) {
+			endIdx := idx + delOnce
+			if endIdx > len(succExts) {
+				endIdx = len(succExts)
+			}
 
-		renameSucceExts(backupDir, volname, dpIdStr, succExts)
+			tmpExts := succExts[idx:endIdx]
+			err = batchDeleteBadExtent(dpIdStr, tmpExts)
+			if err != nil {
+				log.LogErrorf("Batch delete bad extent failed, dp %v, err: %v", dpIdStr, err)
+				return err
+			}
+
+			renameSucceExts(backupDir, volname, dpIdStr, tmpExts)
+			idx += delOnce
+		}
 
 		err = batchUnlockBadNormalExtent(dpIdStr, exts)
 		if err != nil {
@@ -2115,7 +2133,7 @@ func writeBadNormalExtentToDp(data []byte, volname, dpId, extent string) (err er
 
 	start := time.Now()
 	defer func() {
-		streamConnPool.PutConnect(conn, true)
+		streamConnPool.PutConnect(conn, false)
 		log.LogInfof("writeBadNormalExtentToDp finish write. PutConnect (%v), dp (%s), ext (%s), cost(%d)",
 			leaderAddr, dpId, extent, time.Since(start).Milliseconds())
 	}()
