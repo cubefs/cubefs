@@ -100,6 +100,7 @@ func (mf *MetadataFsm) restoreApplied() {
 		panic(fmt.Sprintf("Failed to restore applied,err:%v ", err.Error()))
 	}
 	mf.applied = applied
+	log.LogInfof("[restoreApplied] apply index(%v)", applied)
 }
 
 // Apply implements the interface of raft.StateMachine
@@ -111,6 +112,15 @@ func (mf *MetadataFsm) Apply(command []byte, index uint64) (resp interface{}, er
 		panic(err)
 	}
 
+	if cmd.Op == opSyncUpdateDataPartition || cmd.Op == opSyncDeleteDataPartition {
+		dpv := &dataPartitionValue{}
+		if err := json.Unmarshal(cmd.V, dpv); err != nil {
+			log.LogErrorf("action[fsmApply],unmarshal  cmd data:%v, err:%v", command, err.Error())
+			panic(err)
+		}
+		log.LogInfof("action[fsmApply] apply index %v op %v, dp (%v), status(%v) hosts(%v) IsRecover(%v)",
+			index, cmd.Op, dpv.PartitionID, dpv.DecommissionStatus, dpv.Hosts, dpv.IsRecover)
+	}
 	cmdMap := make(map[string][]byte)
 	deleteSet := make(map[string]util.Null)
 	if cmd.Op != opSyncBatchPut {
