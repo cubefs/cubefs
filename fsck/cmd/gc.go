@@ -722,7 +722,13 @@ func getExtentsByDpId(dir string, volname string, dpId string, beforeTime string
 		log.LogErrorf("Open normalFile failed, err: %v", err)
 		return
 	}
-	defer normalFile.Close()
+	defer func() {
+		err1 := normalFile.Close()
+		if err1 != nil {
+			err = err1
+			log.LogErrorf("persist data file failed, path %s, err %s", normalFilePath, err.Error())
+		}
+	}()
 
 	for _, extent := range extents {
 		if storage.IsTinyExtent(extent.FileID) {
@@ -1169,7 +1175,7 @@ func writeBadNormalExtentoLocal(dpId, badDir string, exts []BadNornalExtent) (er
 	}
 
 	defer func() {
-		msg := fmt.Sprintf("perist bad extent finish, path %s, cost %d ms", filePath, time.Since(start))
+		msg := fmt.Sprintf("perist bad extent finish, path %s, cost %d ms", filePath, time.Since(start).Milliseconds())
 		if err != nil {
 			log.LogErrorf("%s_err(%s)", msg, err.Error())
 			return
@@ -1177,7 +1183,13 @@ func writeBadNormalExtentoLocal(dpId, badDir string, exts []BadNornalExtent) (er
 		log.LogInfo(msg)
 	}()
 
-	defer file.Close()
+	defer func() {
+		err1 := file.Close()
+		if err1 != nil {
+			err = err1
+			log.LogErrorf("close file failed, path %s, err %s", filePath, err1.Error())
+		}
+	}()
 
 	buf := bytes.NewBuffer(nil)
 	for _, ext := range exts {
@@ -1245,7 +1257,12 @@ func checkBadNormalExtents(volname, dir, checkDpId string) {
 		if err != nil {
 			slog.Fatalf("Open file failed, path %s, err: %v", badExtentPath, err)
 		}
-		defer file.Close()
+		defer func() {
+			err = file.Close()
+			if err != nil {
+				slog.Fatalf("close file failed, err %s", err.Error())
+			}
+		}()
 
 		exts := make([]BadNornalExtent, 0, 10240)
 
@@ -1370,7 +1387,7 @@ func batchLockBadNormalExtent(dpIdStr string, exts []*BadNornalExtent, IsCreate 
 
 	conn, err := streamConnPool.GetConnect(addr)
 	defer func() {
-		streamConnPool.PutConnect(conn, false)
+		streamConnPool.PutConnect(conn, err != nil)
 		log.LogInfof("batchLockBadNormalExtent PutConnect (%v)", dpInfo.Hosts[0])
 	}()
 
@@ -1447,7 +1464,7 @@ func batchUnlockBadNormalExtent(dpIdStr string, exts []*BadNornalExtent) (err er
 
 	conn, err := streamConnPool.GetConnect(addr)
 	defer func() {
-		streamConnPool.PutConnect(conn, false)
+		streamConnPool.PutConnect(conn, err != nil)
 		log.LogInfof("batchUnlockBadNormalExtent PutConnect (%v)", dpInfo.Hosts[0])
 	}()
 
@@ -1740,7 +1757,7 @@ func batchDeleteBadExtent(dpIdStr string, exts []*BadNornalExtent) (err error) {
 	defer releaseToken(addr)
 
 	defer func() {
-		smuxPool.PutConnect(conn, false)
+		smuxPool.PutConnect(conn, true)
 		log.LogInfof("batchDeleteBadExtent PutConnect (%v)", addr)
 	}()
 
@@ -1824,7 +1841,7 @@ func readBadExtentFromDp(dpIdStr string, extentId uint64, size uint32) (data []b
 	}
 
 	defer func() {
-		streamConnPool.PutConnect(conn, false)
+		streamConnPool.PutConnect(conn, err != nil)
 	}()
 
 	err = p.WriteToConn(conn)
@@ -1884,7 +1901,13 @@ func writeBadNormalExtentToBackup(backupDir, volname, dpIdStr string, badExtent 
 	if err != nil {
 		slog.Fatalf("Create extent file failed, filePath %s, err: %v", extentFile, err)
 	}
-	defer file.Close()
+	defer func() {
+		err1 := file.Close()
+		if err1 != nil {
+			err = err1
+			log.LogErrorf("close file failed, path %s, err %s", extentFile, err.Error())
+		}
+	}()
 
 	_, err = file.Write(data[:readBytes])
 	if err != nil {
@@ -2045,6 +2068,7 @@ func newRollbackBadExtentsCmd() *cobra.Command {
 	var (
 		dpId   string
 		extent string
+		roll   string
 	)
 
 	cmd := &cobra.Command{
@@ -2069,6 +2093,14 @@ func newRollbackBadExtentsCmd() *cobra.Command {
 						slog.Printf("rollbackBadNormalExtent success, vol %s, dp %s, ext %s, cost %d ms",
 							volname, dpId, extent, time.Since(start).Milliseconds())
 						return
+					} else if roll == "true" {
+						err := batchUnlockBadNormalExtent(dpId, []*BadNornalExtent{})
+						if err != nil {
+							log.LogErrorf("Batch unlock bad normal extent failed, dp %v, extent %v, err: %v", dpId, extent, err)
+							return
+						}
+						slog.Printf("batchUnlockBadNormalExtent: unlock dp(%s) success", dpId)
+						return
 					} else {
 						rollbackBadNormalExtentInDpId(volname, backupDir, dpId)
 						return
@@ -2087,6 +2119,7 @@ func newRollbackBadExtentsCmd() *cobra.Command {
 
 	cmd.Flags().StringVar(&dpId, "dp", "", "rollback bad extent in dp id")
 	cmd.Flags().StringVar(&extent, "e", "", "rollback one bad extent")
+	cmd.Flags().StringVar(&roll, "roll", "", "rollback one bad extent")
 	return cmd
 }
 
@@ -2171,7 +2204,7 @@ func writeBadNormalExtentToDp(data []byte, volname, dpId, extent string) (err er
 
 	start := time.Now()
 	defer func() {
-		streamConnPool.PutConnect(conn, false)
+		streamConnPool.PutConnect(conn, err != nil)
 		log.LogInfof("writeBadNormalExtentToDp finish write. PutConnect (%v), dp (%s), ext (%s), cost(%d)",
 			leaderAddr, dpId, extent, time.Since(start).Milliseconds())
 	}()
@@ -2221,6 +2254,7 @@ func writeBadNormalExtentToDp(data []byte, volname, dpId, extent string) (err er
 	if p.ResultCode != proto.OpOk {
 		log.LogErrorf("writeBadNormalExtentToDp failed, addr, host %s, dp %v, extent %v, ResultCode: %v",
 			leaderAddr, dpId, extent, p.String())
+		err = fmt.Errorf("invalid reslut code %d", p.ResultCode)
 		return
 	}
 	return
