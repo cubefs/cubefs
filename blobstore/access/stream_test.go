@@ -54,9 +54,8 @@ func TestAccessStreamConfig(t *testing.T) {
 func TestAccessStreamNew(t *testing.T) {
 	require.Equal(t, idc, streamer.IDC)
 
-	require.Panics(t, func() {
-		NewStreamHandler(&StreamConfig{IDC: "idc"}, nil)
-	})
+	_, err := NewStreamHandler(&StreamConfig{IDC: "idc"}, nil)
+	require.NotNil(t, err)
 }
 
 func TestAccessStreamDelete(t *testing.T) {

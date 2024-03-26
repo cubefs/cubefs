@@ -115,9 +115,14 @@ func New(cfg Config) *Service {
 	initWithRegionMagic(cfg.Stream.ClusterConfig.RegionMagic)
 
 	cl := closer.New()
+	h, err := NewStreamHandler(&cfg.Stream, cl.Done())
+	if err != nil {
+		log.Fatalf("new stream handler failed, err: %+v", err)
+	}
+
 	return &Service{
 		config:        cfg,
-		streamHandler: NewStreamHandler(&cfg.Stream, cl.Done()),
+		streamHandler: h,
 		limiter:       NewLimiter(cfg.Limit),
 		closer:        cl,
 	}
