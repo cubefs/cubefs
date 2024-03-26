@@ -448,7 +448,6 @@ func (d *Disk) triggerDiskError(rwFlag uint8, dpId uint64) {
 	}
 
 	d.AddDiskErrPartition(dpId)
-
 	diskErrCnt := d.getTotalErrCnt()
 	diskErrPartitionCnt := d.GetDiskErrPartitionCount()
 	if diskErrPartitionCnt >= d.dataNode.diskUnavailablePartitionErrorCount {
@@ -725,6 +724,7 @@ func (d *Disk) getSelectWeight() float64 {
 
 func (d *Disk) AddDiskErrPartition(dpId uint64) {
 	if _, ok := d.DiskErrPartitionSet[dpId]; !ok {
+		log.LogWarnf("[AddDiskErrPartition] mark dp(%v) as broken", dpId)
 		d.DiskErrPartitionSet[dpId] = struct{}{}
 	}
 }
