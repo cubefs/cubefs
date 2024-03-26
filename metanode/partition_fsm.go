@@ -634,9 +634,12 @@ func (mp *metaPartition) fsmVersionOp(reqData []byte) (err error) {
 
 // ApplyMemberChange  apply changes to the raft member.
 func (mp *metaPartition) ApplyMemberChange(confChange *raftproto.ConfChange, index uint64) (resp interface{}, err error) {
+	var removeSelf bool
 	defer func() {
 		if err == nil {
-			mp.uploadApplyID(index)
+			if !removeSelf {
+				mp.uploadApplyID(index)
+			}
 		}
 	}()
 	// change memory status
@@ -655,7 +658,7 @@ func (mp *metaPartition) ApplyMemberChange(confChange *raftproto.ConfChange, ind
 		if err = json.Unmarshal(confChange.Context, req); err != nil {
 			return
 		}
-		updated, err = mp.confRemoveNode(req, index)
+		updated, removeSelf, err = mp.confRemoveNode(req, index)
 	case raftproto.ConfUpdateNode:
 		// updated, err = mp.confUpdateNode(req, index)
 	default:
@@ -677,22 +680,6 @@ func (mp *metaPartition) ApplyMemberChange(confChange *raftproto.ConfChange, ind
 // Snapshot returns the snapshot of the current meta partition.
 func (mp *metaPartition) Snapshot() (snap raftproto.Snapshot, err error) {
 	snap, err = newMetaItemIterator(mp)
-	return
-}
-
-func newRocksdbHandle(newDir string) (db *RocksdbOperator, err error) {
-	if _, err = os.Stat(newDir); err == nil {
-		os.RemoveAll(newDir)
-	}
-	os.MkdirAll(newDir, 0x755)
-	err = nil
-
-	db = NewRocksdb()
-	//apply snapshot, tmp rocks db
-	if err = db.OpenDb(newDir, 0, 0, 0, 0, 0, 0); err != nil {
-		log.LogErrorf("open db failed, error(%v)", err)
-		return
-	}
 	return
 }
 

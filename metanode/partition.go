@@ -1625,6 +1625,7 @@ func (mp *metaPartition) MarshalJSON() ([]byte, error) {
 
 // Reset resets the meta partition.
 func (mp *metaPartition) Reset() (err error) {
+	log.LogWarnf("[Reset] reset mp(%v)", mp.config.PartitionId)
 	// NOTE: close rocksdb
 	err = mp.Clear()
 	if err != nil {
@@ -1632,6 +1633,11 @@ func (mp *metaPartition) Reset() (err error) {
 		return
 	}
 	mp.txProcessor.Reset()
+	err = mp.inodeTree.Flush()
+	if err != nil {
+		log.LogErrorf("[Reset] mp(%v) failed to clear data, err(%v)", mp.config.PartitionId, err)
+		err = nil
+	}
 	name := mp.db.GetPartitionColumnFamilyName(mp.config.PartitionId)
 	err = mp.db.DeleteColumnFamily(name)
 	if err != nil {
@@ -1652,6 +1658,14 @@ func (mp *metaPartition) Reset() (err error) {
 	}
 	if mp.HasMemStore() {
 		mp.cleanMemoryTreeResource()
+	}
+
+	if mp.config.RocksDBDir != "" && mp.rocksdbManager != nil {
+		err = mp.rocksdbManager.DetachPartition(mp.config.RocksDBDir)
+		if err != nil {
+			log.LogWarnf("[opDeleteMetaPartition] failed to detach partition from rocksdb manager, err(%v)", err)
+			err = nil
+		}
 	}
 	return
 }

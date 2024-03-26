@@ -155,11 +155,11 @@ const (
 func (mode *StoreMode) Str() string {
 	switch *mode {
 	case StoreModeMem:
-		return "Mem"
+		return "Memory"
 	case StoreModeRocksDb:
-		return "Rocks Db"
+		return "Rocksdb"
 	case StoreModeMem | StoreModeRocksDb:
-		return "Mem&Rocks"
+		return "Memory&Rocksdb"
 	default:
 	}
 	return "Unknown"

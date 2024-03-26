@@ -563,7 +563,11 @@ func (m *metadataManager) detachPartition(id uint64) (err error) {
 	m.mu.Unlock()
 	err = m.volViewUpdaer.Unregister(mp)
 	if err != nil {
-		log.LogErrorf("[detachPartition] failed to detach mp(%v), err(%v)", id, err)
+		if err != ErrMpNotFoundInVolViewUpdater {
+			log.LogErrorf("[detachPartition] failed to detach mp(%v), err(%v)", id, err)
+			return
+		}
+		err = nil
 	}
 	return
 }
@@ -649,10 +653,12 @@ func (m *metadataManager) deletePartition(id uint64) (err error) {
 	m.mu.Unlock()
 	err = m.volViewUpdaer.Unregister(mp)
 	if err != nil {
-		log.LogErrorf("[deletePartition] failed to remove mp(%v) from vol view updater, force remove", id)
+		if err != ErrMpNotFoundInVolViewUpdater {
+			log.LogErrorf("[deletePartition] failed to remove mp(%v) from vol view updater, force remove", id)
+			return
+		}
 		err = nil
 	}
-	mp.Reset()
 	return
 }
 

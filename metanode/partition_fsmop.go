@@ -118,7 +118,7 @@ func (mp *metaPartition) confAddNode(req *proto.AddMetaPartitionRaftMemberReques
 	return
 }
 
-func (mp *metaPartition) confRemoveNode(req *proto.RemoveMetaPartitionRaftMemberRequest, index uint64) (updated bool, err error) {
+func (mp *metaPartition) confRemoveNode(req *proto.RemoveMetaPartitionRaftMemberRequest, index uint64) (updated bool, removeSelf bool, err error) {
 	var canRemoveSelf bool
 	if canRemoveSelf, err = mp.canRemoveSelf(); err != nil {
 		return
@@ -141,8 +141,14 @@ func (mp *metaPartition) confRemoveNode(req *proto.RemoveMetaPartitionRaftMember
 	}
 	mp.config.Peers = append(mp.config.Peers[:peerIndex], mp.config.Peers[peerIndex+1:]...)
 	if mp.config.NodeId == req.RemovePeer.ID && !mp.isLoadingMetaPartition && canRemoveSelf {
+		removeSelf = true
 		mp.Stop()
 		mp.DeleteRaft()
+		err = mp.Reset()
+		if err != nil {
+			log.LogErrorf("[deletePartition] failed to clear mp(%v) data, err(%v)", mp.config.PartitionId, err)
+			err = nil
+		}
 		mp.manager.deletePartition(mp.GetBaseConfig().PartitionId)
 		os.RemoveAll(mp.config.RootDir)
 		updated = false
@@ -177,7 +183,6 @@ func (mp *metaPartition) delOldExtentFile(buf []byte) (err error) {
 	return
 }
 
-//
 func (mp *metaPartition) setExtentDeleteFileCursor(buf []byte) (err error) {
 	str := string(buf)
 	var (

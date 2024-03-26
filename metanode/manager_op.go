@@ -1430,15 +1430,13 @@ func (m *metadataManager) opDeleteMetaPartition(conn net.Conn,
 	conf := mp.GetBaseConfig()
 	mp.Stop()
 	mp.DeleteRaft()
+	err = mp.Reset()
+	if err != nil {
+		log.LogErrorf("[deletePartition] failed to clear mp(%v) data, err(%v)", conf.PartitionId, err)
+		err = nil
+	}
 	m.deletePartition(mp.GetBaseConfig().PartitionId)
 	os.RemoveAll(conf.RootDir)
-	if conf.RocksDBDir != "" {
-		err = m.rocksdbManager.DetachPartition(conf.RocksDBDir)
-		if err != nil {
-			log.LogWarnf("[opDeleteMetaPartition] failed to detach partition from rocksdb manager, err(%v)", err)
-			err = nil
-		}
-	}
 	p.PacketOkReply()
 	m.respondToClientWithVer(conn, p)
 	runtime.GC()
