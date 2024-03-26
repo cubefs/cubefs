@@ -764,8 +764,9 @@ func (dp *DataPartition) broadcastMinAppliedID(minAppliedID uint64) (err error) 
 
 // Get all replica applied ids
 func (dp *DataPartition) getAllReplicaAppliedID() (allAppliedID []uint64, replyNum uint8) {
-	allAppliedID = make([]uint64, dp.getReplicaLen())
-	for i := 0; i < dp.getReplicaLen(); i++ {
+	replicaLen := dp.getReplicaLen()
+	allAppliedID = make([]uint64, replicaLen)
+	for i := 0; i < replicaLen; i++ {
 		p := NewPacketToGetAppliedID(dp.partitionID)
 		replicaHostParts := strings.Split(dp.getReplicaAddr(i), ":")
 		replicaHost := strings.TrimSpace(replicaHostParts[0])
