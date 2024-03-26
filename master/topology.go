@@ -2263,12 +2263,18 @@ func (l *DecommissionDataPartitionList) traverse(c *Cluster) {
 			log.LogDebugf("action[DecommissionListTraverse]enter")
 			for _, dp := range allDecommissionDP {
 				if dp.IsDecommissionSuccess() {
-					log.LogDebugf("action[DecommissionListTraverse]Remove dp[%v] for success",
-						dp.PartitionID)
+
 					l.Remove(dp)
 					dp.ReleaseDecommissionToken(c)
 					dp.ResetDecommissionStatus()
-					c.syncUpdateDataPartition(dp)
+					err := c.syncUpdateDataPartition(dp)
+					if err != nil {
+						log.LogWarnf("action[DecommissionListTraverse]Remove success dp[%v] failed for %v",
+							dp.PartitionID, err)
+					} else {
+						log.LogDebugf("action[DecommissionListTraverse]Remove dp[%v] for success",
+							dp.PartitionID)
+					}
 				} else if dp.IsDecommissionFailed() {
 					if !dp.tryRollback(c) {
 						log.LogDebugf("action[DecommissionListTraverse]Remove dp[%v] for fail",

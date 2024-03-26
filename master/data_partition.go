@@ -1415,11 +1415,12 @@ func (partition *DataPartition) addToDecommissionList(c *Cluster) {
 		log.LogWarnf("action[addToDecommissionList]dataNode[%v] nodeSet is nil:%v", dataNode.Addr, err.Error())
 		return
 	}
-	ns.AddToDecommissionDataPartitionList(partition, c)
-	log.LogDebugf("action[addToDecommissionList]dp[%v] decommission src[%v] Disk[%v] dst[%v] status[%v] specialStep[%v],"+
-		" add to  decommission list[%v] ",
+	log.LogDebugf("action[addToDecommissionList]ready to add dp[%v] decommission src[%v] Disk[%v] dst[%v] status[%v] specialStep[%v],"+
+		" RollbackTimes(%v) isRecover(%v) host[%v] to  decommission list[%v]",
 		partition.PartitionID, partition.DecommissionSrcAddr, partition.DecommissionSrcDiskPath,
-		partition.DecommissionDstAddr, partition.GetDecommissionStatus(), partition.GetSpecialReplicaDecommissionStep(), ns.ID)
+		partition.DecommissionDstAddr, partition.GetDecommissionStatus(), partition.GetSpecialReplicaDecommissionStep(),
+		partition.DecommissionNeedRollbackTimes, partition.isRecover, partition.Hosts, ns.ID)
+	ns.AddToDecommissionDataPartitionList(partition, c)
 }
 
 func (partition *DataPartition) checkConsumeToken() bool {
