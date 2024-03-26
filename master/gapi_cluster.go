@@ -433,10 +433,12 @@ func (s *ClusterService) metaNodeList(ctx context.Context, args struct{}) ([]*Me
 }
 
 func (m *ClusterService) addMetaNode(ctx context.Context, args struct {
-	NodeAddr string
-	ZoneName string
+	NodeAddr      string
+	ZoneName      string
+	HeartbeatPort string
+	ReplicaPort   string
 }) (uint64, error) {
-	if id, err := m.cluster.addMetaNode(args.NodeAddr, args.ZoneName, 0); err != nil {
+	if id, err := m.cluster.addMetaNode(args.NodeAddr, args.ZoneName, args.HeartbeatPort, args.ReplicaPort, 0); err != nil {
 		return 0, err
 	} else {
 		return id, nil

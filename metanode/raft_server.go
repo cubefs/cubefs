@@ -45,8 +45,15 @@ func (m *MetaNode) startRaftServer(cfg *config.Config) (err error) {
 		}
 	}
 
-	heartbeatPort, _ := strconv.Atoi(m.raftHeartbeatPort)
-	replicaPort, _ := strconv.Atoi(m.raftReplicatePort)
+	heartbeatPort, err := strconv.Atoi(m.raftHeartbeatPort)
+	if err != nil {
+		return fmt.Errorf("strconv.Atoi(%v) failed: %v", m.raftHeartbeatPort, err)
+	}
+
+	replicaPort, err := strconv.Atoi(m.raftReplicatePort)
+	if err != nil {
+		return fmt.Errorf("strconv.Atoi(%v) failed: %v", m.raftReplicatePort, err)
+	}
 
 	raftConf := &raftstore.Config{
 		NodeID:            m.nodeId,

@@ -37,10 +37,12 @@ func (api *NodeAPI) EncodingGzip() *NodeAPI {
 	return api.EncodingWith(encodingGzip)
 }
 
-func (api *NodeAPI) AddDataNode(serverAddr, zoneName string) (id uint64, err error) {
+func (api *NodeAPI) AddDataNodeWithPort(serverAddr, zoneName, heartbeatPort, replicaPort string) (id uint64, err error) {
 	request := newRequest(get, proto.AddDataNode).Header(api.h)
 	request.addParam("addr", serverAddr)
 	request.addParam("zoneName", zoneName)
+	request.addParam("heartbeatPort", heartbeatPort)
+	request.addParam("replicaPort", replicaPort)
 	var data []byte
 	if data, err = api.mc.serveRequest(request); err != nil {
 		return
@@ -49,11 +51,13 @@ func (api *NodeAPI) AddDataNode(serverAddr, zoneName string) (id uint64, err err
 	return
 }
 
-func (api *NodeAPI) AddDataNodeWithAuthNode(serverAddr, zoneName, clientIDKey string) (id uint64, err error) {
+func (api *NodeAPI) AddDataNodeWithAuthNode(serverAddr, zoneName, clientIDKey, heartbeatPort, replicaPort string) (id uint64, err error) {
 	request := newRequest(get, proto.AddDataNode).Header(api.h)
 	request.addParam("addr", serverAddr)
 	request.addParam("zoneName", zoneName)
 	request.addParam("clientIDKey", clientIDKey)
+	request.addParam("heartbeatPort", heartbeatPort)
+	request.addParam("replicaPort", replicaPort)
 	var data []byte
 	if data, err = api.mc.serveRequest(request); err != nil {
 		return
@@ -62,10 +66,12 @@ func (api *NodeAPI) AddDataNodeWithAuthNode(serverAddr, zoneName, clientIDKey st
 	return
 }
 
-func (api *NodeAPI) AddMetaNode(serverAddr, zoneName string) (id uint64, err error) {
+func (api *NodeAPI) AddMetaNodeWithPort(serverAddr, zoneName, heartbeatPort, replicaPort string) (id uint64, err error) {
 	request := newRequest(get, proto.AddMetaNode).Header(api.h)
 	request.addParam("addr", serverAddr)
 	request.addParam("zoneName", zoneName)
+	request.addParam("heartbeatPort", heartbeatPort)
+	request.addParam("replicaPort", replicaPort)
 	var data []byte
 	if data, err = api.mc.serveRequest(request); err != nil {
 		return
@@ -74,11 +80,13 @@ func (api *NodeAPI) AddMetaNode(serverAddr, zoneName string) (id uint64, err err
 	return
 }
 
-func (api *NodeAPI) AddMetaNodeWithAuthNode(serverAddr, zoneName, clientIDKey string) (id uint64, err error) {
+func (api *NodeAPI) AddMetaNodeWithAuthNode(serverAddr, zoneName, clientIDKey, heartbeatPort, replicaPort string) (id uint64, err error) {
 	request := newRequest(get, proto.AddMetaNode).Header(api.h)
 	request.addParam("addr", serverAddr)
 	request.addParam("zoneName", zoneName)
 	request.addParam("clientIDKey", clientIDKey)
+	request.addParam("heartbeatPort", heartbeatPort)
+	request.addParam("replicaPort", replicaPort)
 	var data []byte
 	if data, err = api.mc.serveRequest(request); err != nil {
 		return

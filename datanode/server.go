@@ -302,6 +302,8 @@ func (s *DataNode) parseConfig(cfg *config.Config) (err error) {
 	)
 	LocalIP = cfg.GetString(ConfigKeyLocalIP)
 	port = cfg.GetString(proto.ListenPort)
+	s.raftHeartbeat = cfg.GetString(proto.RaftHeartbeat)
+	s.raftReplica = cfg.GetString(proto.RaftReplica)
 	s.bindIp = cfg.GetBool(proto.BindIpKey)
 	serverPort = port
 	if regexpPort, err = regexp.Compile(`^(\d)+$`); err != nil {
@@ -531,7 +533,7 @@ func (s *DataNode) register(cfg *config.Config) {
 			// register this data node on the master
 			var nodeID uint64
 			if nodeID, err = MasterClient.NodeAPI().AddDataNodeWithAuthNode(fmt.Sprintf("%s:%v", LocalIP, s.port),
-				s.zoneName, s.serviceIDKey); err != nil {
+				s.zoneName, s.serviceIDKey, s.raftHeartbeat, s.raftReplica); err != nil {
 				log.LogErrorf("action[registerToMaster] cannot register this node to master[%v] err(%v).",
 					masterAddr, err)
 				timer.Reset(2 * time.Second)

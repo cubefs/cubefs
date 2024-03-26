@@ -20,9 +20,10 @@ import (
 	"math/rand"
 	"strings"
 
+	"time"
+
 	"github.com/cubefs/cubefs/depends/tiglabs/raft/logger"
 	"github.com/cubefs/cubefs/depends/tiglabs/raft/proto"
-	"time"
 )
 
 // CampaignType represents the type of campaigning
@@ -441,6 +442,8 @@ func (r *raftFsm) applyConfChange(cc *proto.ConfChange) (ok bool) {
 	case proto.ConfRemoveNode:
 		return r.removePeer(cc.Peer)
 	case proto.ConfUpdateNode:
+		r.updatePeer(cc.Peer)
+	case proto.ConfUpdatePeer:
 		r.updatePeer(cc.Peer)
 	}
 	return

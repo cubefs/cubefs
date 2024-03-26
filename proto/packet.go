@@ -140,6 +140,7 @@ const (
 	OpDataPartitionTryToLeader      uint8 = 0x69
 	OpQos                           uint8 = 0x6A
 	OpStopDataPartitionRepair       uint8 = 0x6B
+	OpUpdateDataPartitionPeer       uint8 = 0x6C
 
 	// Operations: MultipartInfo
 	OpCreateMultipart  uint8 = 0x70

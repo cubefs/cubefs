@@ -381,7 +381,7 @@ func (c *Cluster) deleteMetaReplica(partition *MetaPartition, addr string, valid
 		return
 	}
 
-	removePeer := proto.Peer{ID: metaNode.ID, Addr: addr}
+	removePeer := proto.Peer{ID: metaNode.ID, Addr: addr, HeartbeatPort: metaNode.HeartbeatPort, ReplicaPort: metaNode.ReplicaPort}
 	if err = c.removeMetaPartitionRaftMember(partition, removePeer); err != nil {
 		return
 	}
@@ -497,7 +497,7 @@ func (c *Cluster) addMetaReplica(partition *MetaPartition, addr string) (err err
 	if err != nil {
 		return
 	}
-	addPeer := proto.Peer{ID: metaNode.ID, Addr: addr}
+	addPeer := proto.Peer{ID: metaNode.ID, Addr: addr, HeartbeatPort: metaNode.HeartbeatPort, ReplicaPort: metaNode.ReplicaPort}
 	if err = c.addMetaPartitionRaftMember(partition, addPeer); err != nil {
 		return
 	}

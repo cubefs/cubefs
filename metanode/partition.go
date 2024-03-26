@@ -799,15 +799,17 @@ func (mp *metaPartition) onStop() {
 }
 
 func (mp *metaPartition) startRaft() (err error) {
-	var (
-		heartbeatPort int
-		replicaPort   int
-		peers         []raftstore.PeerAddress
-	)
-	if heartbeatPort, replicaPort, err = mp.getRaftPort(); err != nil {
-		return
-	}
+	var peers []raftstore.PeerAddress
+
 	for _, peer := range mp.config.Peers {
+		heartbeatPort, err := strconv.Atoi(peer.HeartbeatPort)
+		if err != nil {
+			return err
+		}
+		replicaPort, err := strconv.Atoi(peer.ReplicaPort)
+		if err != nil {
+			return err
+		}
 		addr := strings.Split(peer.Addr, ":")[0]
 		rp := raftstore.PeerAddress{
 			Peer: raftproto.Peer{
@@ -1261,7 +1263,8 @@ func (mp *metaPartition) GetBaseConfig() MetaPartitionConfig {
 
 // UpdatePartition updates the meta partition. TODO remove? no usage?
 func (mp *metaPartition) UpdatePartition(req *UpdatePartitionReq,
-	resp *UpdatePartitionResp) (err error) {
+	resp *UpdatePartitionResp,
+) (err error) {
 	reqData, err := json.Marshal(req)
 	if err != nil {
 		resp.Status = proto.TaskFailed

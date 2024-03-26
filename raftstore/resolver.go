@@ -43,6 +43,9 @@ type NodeManager interface {
 
 	// delete node address information
 	DeleteNode(nodeID uint64)
+
+	// update node address with specified port.
+	UpdateNodeWithPort(nodeID uint64, addr string, heartbeat int, replicate int)
 }
 
 // NodeResolver defines the methods for node address resolving and management.
@@ -105,6 +108,22 @@ func (r *nodeResolver) AddNodeWithPort(nodeID uint64, addr string, heartbeat int
 // DeleteNode deletes the node address information of the specified node ID from the NodeManager if possible.
 func (r *nodeResolver) DeleteNode(nodeID uint64) {
 	r.nodeMap.Delete(nodeID)
+}
+
+// UpdateNodeWithPort updates the node address with specified port.
+func (r *nodeResolver) UpdateNodeWithPort(nodeID uint64, addr string, heartbeat int, replicate int) {
+	if heartbeat == 0 {
+		heartbeat = DefaultHeartbeatPort
+	}
+	if replicate == 0 {
+		replicate = DefaultReplicaPort
+	}
+	if len(strings.TrimSpace(addr)) != 0 {
+		r.nodeMap.Store(nodeID, &nodeAddress{
+			Heartbeat: fmt.Sprintf("%s:%d", addr, heartbeat),
+			Replicate: fmt.Sprintf("%s:%d", addr, replicate),
+		})
+	}
 }
 
 // NewNodeResolver returns a new NodeResolver instance for node address management and resolving.

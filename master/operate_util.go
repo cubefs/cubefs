@@ -55,6 +55,14 @@ func newDeleteDataPartitionRequest(ID uint64) (req *proto.DeleteDataPartitionReq
 	return
 }
 
+func newUpdateDataPartitionPeerRequest(ID uint64, peer proto.Peer) (req *proto.UpdateDataPartitionPeerRequest) {
+	req = &proto.UpdateDataPartitionPeerRequest{
+		PartitionId: ID,
+		Peer:        peer,
+	}
+	return
+}
+
 func newAddDataPartitionRaftMemberRequest(ID uint64, addPeer proto.Peer) (req *proto.AddDataPartitionRaftMemberRequest) {
 	req = &proto.AddDataPartitionRaftMemberRequest{
 		PartitionId: ID,

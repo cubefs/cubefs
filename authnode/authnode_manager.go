@@ -63,6 +63,13 @@ func (m *Server) handlePeerChange(confChange *proto.ConfChange) (err error) {
 	case proto.ConfRemoveNode:
 		m.raftStore.DeleteNode(confChange.Peer.ID)
 		msg = fmt.Sprintf("clusterID[%v] peerID:%v,nodeAddr[%v] has been removed", m.clusterName, confChange.Peer.ID, addr)
+	case proto.ConfUpdatePeer:
+		var arr []string
+		if arr = strings.Split(addr, colonSplit); len(arr) < 2 {
+			msg = fmt.Sprintf("action[handlePeerChange] clusterID[%v] nodeAddr[%v] is invalid", m.clusterName, addr)
+			break
+		}
+		m.raftStore.UpdateNodeWithPort(confChange.Peer.ID, arr[0], int(m.config.heartbeatPort), int(m.config.replicaPort))
 	default:
 		// do nothing
 	}

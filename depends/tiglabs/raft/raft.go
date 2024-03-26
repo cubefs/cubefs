@@ -73,6 +73,8 @@ func (s *peerState) change(c *proto.ConfChange) {
 		delete(s.peers, c.Peer.ID)
 	case proto.ConfUpdateNode:
 		s.peers[c.Peer.ID] = c.Peer
+	case proto.ConfUpdatePeer:
+		s.peers[c.Peer.ID] = c.Peer
 	}
 	s.mu.Unlock()
 }

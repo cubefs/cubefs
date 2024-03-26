@@ -28,6 +28,8 @@ import (
 type MetaNode struct {
 	ID                        uint64
 	Addr                      string
+	HeartbeatPort             string
+	ReplicaPort               string
 	DomainAddr                string
 	IsActive                  bool
 	Sender                    *AdminTaskManager `graphql:"-"`
@@ -50,11 +52,13 @@ type MetaNode struct {
 	CpuUtil                   atomicutil.Float64 `json:"-"`
 }
 
-func newMetaNode(addr, zoneName, clusterID string) (node *MetaNode) {
+func newMetaNode(addr, zoneName, heartbeatPort, replicaPort, clusterID string) (node *MetaNode) {
 	node = &MetaNode{
-		Addr:     addr,
-		ZoneName: zoneName,
-		Sender:   newAdminTaskManager(addr, clusterID),
+		Addr:          addr,
+		ZoneName:      zoneName,
+		HeartbeatPort: heartbeatPort,
+		ReplicaPort:   replicaPort,
+		Sender:        newAdminTaskManager(addr, clusterID),
 	}
 	node.CpuUtil.Store(0)
 	return
@@ -74,6 +78,18 @@ func (metaNode *MetaNode) GetAddr() string {
 	metaNode.RLock()
 	defer metaNode.RUnlock()
 	return metaNode.Addr
+}
+
+func (metaNode *MetaNode) GetHeartbeatPort() string {
+	metaNode.RLock()
+	defer metaNode.RUnlock()
+	return metaNode.HeartbeatPort
+}
+
+func (metaNode *MetaNode) GetReplicaPort() string {
+	metaNode.RLock()
+	defer metaNode.RUnlock()
+	return metaNode.ReplicaPort
 }
 
 // SelectNodeForWrite implements the Node interface

@@ -83,6 +83,8 @@ const (
 const (
 	MasterAddr       = "masterAddr"
 	ListenPort       = "listen"
+	RaftHeartbeat    = "raftHeartbeat"
+	RaftReplica      = "raftReplica"
 	ObjectNodeDomain = "objectNodeDomain"
 	BindIpKey        = "bindIp"
 )
