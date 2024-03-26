@@ -436,9 +436,7 @@ func (dataNode *DataNode) SetDecommissionStatus(status uint32) {
 }
 
 func (dataNode *DataNode) GetDecommissionFailedDPByTerm(c *Cluster) []uint64 {
-	var (
-		failedDps []uint64
-	)
+	var failedDps []uint64
 	partitions := dataNode.GetLatestDecommissionDataPartition(c)
 	log.LogDebugf("action[GetDecommissionDataNodeFailedDP] partitions len %v", len(partitions))
 	for _, dp := range partitions {

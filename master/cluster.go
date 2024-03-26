@@ -373,7 +373,7 @@ func (c *Cluster) scheduleTask() {
 	c.scheduleToCheckFollowerReadCache()
 	c.scheduleToCheckDecommissionDataNode()
 	c.scheduleToCheckDecommissionDisk()
-	//c.scheduleToCheckDataReplicas()
+	// c.scheduleToCheckDataReplicas()
 	c.scheduleToLcScan()
 	c.scheduleToSnapshotDelVerScan()
 	c.scheduleToBadDisk()

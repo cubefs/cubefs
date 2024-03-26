@@ -1,6 +1,6 @@
 package cluster
 
-//auto generral by sdk/graphql general.go
+// auto generral by sdk/graphql general.go
 
 import (
 	"context"
@@ -18,7 +18,7 @@ func NewClusterClient(c *client.MasterGClient) *ClusterClient {
 	return &ClusterClient{c}
 }
 
-//struct begin .....
+// struct begin .....
 type GeneralResp struct {
 	Code    int32
 	Message string
@@ -129,8 +129,7 @@ type NodeStatInfo struct {
 	UsedRatio   string
 }
 
-type RWMutex struct {
-}
+type RWMutex struct{}
 
 type Vol struct {
 	Capacity           uint64
@@ -159,9 +158,8 @@ type BadPartitionView struct {
 	Path         string
 }
 
-//function begin .....
+// function begin .....
 func (c *ClusterClient) DecommissionDataNode(ctx context.Context, offLineAddr string) (*GeneralResp, error) {
-
 	req := client.NewRequest(ctx, `mutation($offLineAddr: string){
 			decommissionDataNode(offLineAddr: $offLineAddr){
 				code
@@ -183,11 +181,9 @@ func (c *ClusterClient) DecommissionDataNode(ctx context.Context, offLineAddr st
 	}
 
 	return &result, nil
-
 }
 
 func (c *ClusterClient) ClusterView(ctx context.Context) (*ClusterView, error) {
-
 	req := client.NewRequest(ctx, `query(){
 			clusterView{
 				applied
@@ -380,11 +376,9 @@ func (c *ClusterClient) ClusterView(ctx context.Context) (*ClusterView, error) {
 	}
 
 	return &result, nil
-
 }
 
 func (c *ClusterClient) DataNodeList(ctx context.Context) ([]DataNode, error) {
-
 	req := client.NewRequest(ctx, `query(){
 			dataNodeList{
 				addr
@@ -428,11 +422,9 @@ func (c *ClusterClient) DataNodeList(ctx context.Context) ([]DataNode, error) {
 	}
 
 	return result, nil
-
 }
 
 func (c *ClusterClient) DataNodeListTest(ctx context.Context, num int64) ([]DataNode, error) {
-
 	req := client.NewRequest(ctx, `query($num: int64){
 			dataNodeListTest(num: $num){
 				addr
@@ -478,11 +470,9 @@ func (c *ClusterClient) DataNodeListTest(ctx context.Context, num int64) ([]Data
 	}
 
 	return result, nil
-
 }
 
 func (c *ClusterClient) MasterList(ctx context.Context) ([]MasterInfo, error) {
-
 	req := client.NewRequest(ctx, `query(){
 			masterList{
 				addr
@@ -503,11 +493,9 @@ func (c *ClusterClient) MasterList(ctx context.Context) ([]MasterInfo, error) {
 	}
 
 	return result, nil
-
 }
 
 func (c *ClusterClient) AddMetaNode(ctx context.Context, addr string, id uint64) (*GeneralResp, error) {
-
 	req := client.NewRequest(ctx, `mutation($addr: string, $id: uint64){
 			addMetaNode(addr: $addr, id: $id){
 				code
@@ -530,11 +518,9 @@ func (c *ClusterClient) AddMetaNode(ctx context.Context, addr string, id uint64)
 	}
 
 	return &result, nil
-
 }
 
 func (c *ClusterClient) AddRaftNode(ctx context.Context, addr string, id uint64) (*GeneralResp, error) {
-
 	req := client.NewRequest(ctx, `mutation($addr: string, $id: uint64){
 			addRaftNode(addr: $addr, id: $id){
 				code
@@ -557,11 +543,9 @@ func (c *ClusterClient) AddRaftNode(ctx context.Context, addr string, id uint64)
 	}
 
 	return &result, nil
-
 }
 
 func (c *ClusterClient) DecommissionMetaPartition(ctx context.Context, nodeAddr string, partitionID uint64) (*GeneralResp, error) {
-
 	req := client.NewRequest(ctx, `mutation($nodeAddr: string, $partitionID: uint64){
 			decommissionMetaPartition(nodeAddr: $nodeAddr, partitionID: $partitionID){
 				code
@@ -584,11 +568,9 @@ func (c *ClusterClient) DecommissionMetaPartition(ctx context.Context, nodeAddr 
 	}
 
 	return &result, nil
-
 }
 
 func (c *ClusterClient) RemoveRaftNode(ctx context.Context, addr string, id uint64) (*GeneralResp, error) {
-
 	req := client.NewRequest(ctx, `mutation($addr: string, $id: uint64){
 			removeRaftNode(addr: $addr, id: $id){
 				code
@@ -611,11 +593,9 @@ func (c *ClusterClient) RemoveRaftNode(ctx context.Context, addr string, id uint
 	}
 
 	return &result, nil
-
 }
 
 func (c *ClusterClient) DataNodeGet(ctx context.Context, addr string) (*DataNode, error) {
-
 	req := client.NewRequest(ctx, `query($addr: string){
 			dataNodeGet(addr: $addr){
 				addr
@@ -661,11 +641,9 @@ func (c *ClusterClient) DataNodeGet(ctx context.Context, addr string) (*DataNode
 	}
 
 	return &result, nil
-
 }
 
 func (c *ClusterClient) GetTopology(ctx context.Context) (*GeneralResp, error) {
-
 	req := client.NewRequest(ctx, `query(){
 			getTopology{
 				code
@@ -685,11 +663,9 @@ func (c *ClusterClient) GetTopology(ctx context.Context) (*GeneralResp, error) {
 	}
 
 	return &result, nil
-
 }
 
 func (c *ClusterClient) MetaNodeGet(ctx context.Context, addr string) (*metaNode, error) {
-
 	req := client.NewRequest(ctx, `query($addr: string){
 			metaNodeGet(addr: $addr){
 				addr
@@ -733,11 +709,9 @@ func (c *ClusterClient) MetaNodeGet(ctx context.Context, addr string) (*metaNode
 	}
 
 	return &result, nil
-
 }
 
 func (c *ClusterClient) DecommissionDisk(ctx context.Context, diskPath string, offLineAddr string) (*GeneralResp, error) {
-
 	req := client.NewRequest(ctx, `mutation($diskPath: string, $offLineAddr: string){
 			decommissionDisk(diskPath: $diskPath, offLineAddr: $offLineAddr){
 				code
@@ -760,11 +734,9 @@ func (c *ClusterClient) DecommissionDisk(ctx context.Context, diskPath string, o
 	}
 
 	return &result, nil
-
 }
 
 func (c *ClusterClient) DecommissionMetaNode(ctx context.Context, offLineAddr string) (*GeneralResp, error) {
-
 	req := client.NewRequest(ctx, `mutation($offLineAddr: string){
 			decommissionMetaNode(offLineAddr: $offLineAddr){
 				code
@@ -786,11 +758,9 @@ func (c *ClusterClient) DecommissionMetaNode(ctx context.Context, offLineAddr st
 	}
 
 	return &result, nil
-
 }
 
 func (c *ClusterClient) LoadMetaPartition(ctx context.Context, partitionID uint64) (*GeneralResp, error) {
-
 	req := client.NewRequest(ctx, `mutation($partitionID: uint64){
 			loadMetaPartition(partitionID: $partitionID){
 				code
@@ -812,11 +782,9 @@ func (c *ClusterClient) LoadMetaPartition(ctx context.Context, partitionID uint6
 	}
 
 	return &result, nil
-
 }
 
 func (c *ClusterClient) ClusterFreeze(ctx context.Context, status bool) (*GeneralResp, error) {
-
 	req := client.NewRequest(ctx, `mutation($status: bool){
 			clusterFreeze(status: $status){
 				code
@@ -838,11 +806,9 @@ func (c *ClusterClient) ClusterFreeze(ctx context.Context, status bool) (*Genera
 	}
 
 	return &result, nil
-
 }
 
 func (c *ClusterClient) MetaNodeList(ctx context.Context) ([]metaNode, error) {
-
 	req := client.NewRequest(ctx, `query(){
 			metaNodeList{
 				addr
@@ -884,5 +850,4 @@ func (c *ClusterClient) MetaNodeList(ctx context.Context) ([]metaNode, error) {
 	}
 
 	return result, nil
-
 }
