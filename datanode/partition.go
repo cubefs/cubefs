@@ -742,6 +742,7 @@ func (dp *DataPartition) checkIsDiskError(err error, rwFlag uint8) {
 		return
 	}
 
+	log.LogWarnf("[checkIsDiskError] disk(%v) dp(%v) meet io error", dp.Path(), dp.partitionID)
 	dp.stopRaft()
 	dp.incDiskErrCnt()
 	dp.disk.triggerDiskError(rwFlag, dp.partitionID)

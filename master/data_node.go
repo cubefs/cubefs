@@ -48,8 +48,9 @@ type DataNode struct {
 	TotalPartitionSize        uint64
 	NodeSetID                 uint64
 	PersistenceDataPartitions []uint64
-	BadDisks                  []string         // Keep this old field for compatibility
-	DiskStats                 []proto.DiskStat // key: disk path
+	BadDisks                  []string            // Keep this old field for compatibility
+	BadDiskStats              []proto.BadDiskStat // key: disk path
+	DiskStats                 []proto.DiskStat    // key: disk path
 	DecommissionedDisks       sync.Map
 	ToBeOffline               bool
 	RdOnly                    bool

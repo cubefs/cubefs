@@ -718,6 +718,12 @@ type DataNodeQosResponse struct {
 	Result     string
 }
 
+type BadDiskStat struct {
+	DiskPath             string
+	TotalPartitionCnt    int
+	DiskErrPartitionList []uint64
+}
+
 type DiskStat struct {
 	Status   int
 	DiskPath string
@@ -747,6 +753,7 @@ type DataNodeHeartbeatResponse struct {
 	Status              uint8
 	Result              string
 	BadDisks            []string           // Keep this old field for compatibility
+	BadDiskStats        []BadDiskStat      // key: disk path
 	DiskStats           []DiskStat         // key: disk path
 	CpuUtil             float64            `json:"cpuUtil"`
 	IoUtils             map[string]float64 `json:"ioUtil"`
