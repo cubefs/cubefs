@@ -135,6 +135,7 @@ const (
 	DecommissionType           = "decommissionType"
 	decommissionDiskFactor     = "decommissionDiskFactor"
 	dpRepairBlockSizeKey       = "dpRepairBlockSize"
+	markDiskBrokenThresholdKey = "markDiskBrokenThreshold"
 )
 
 const (
@@ -207,6 +208,7 @@ const (
 	defaultClientReqPeriodSeconds                = 1
 	defaultMaxQuotaNumPerVol                     = 100
 	defaultVolDelayDeleteTimeHour                = 48
+	defaultMarkDiskBrokenThreshold               = 0.5
 )
 
 const (

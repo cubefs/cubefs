@@ -122,6 +122,8 @@ type ClusterView struct {
 	MaxMetaNodeID            uint64
 	MaxMetaPartitionID       uint64
 	VolDeletionDelayTimeHour int64
+	MarkDiskBrokenThreshold  float64
+	EnableAutoDecommission   bool
 	DataNodeStatInfo         *NodeStatInfo
 	MetaNodeStatInfo         *NodeStatInfo
 	VolStatInfo              []*VolStatInfo
@@ -457,4 +459,9 @@ type DecommissionDataPartitionInfo struct {
 	Replicas          []string
 	ErrorMessage      string
 	NeedRollbackTimes uint32
+}
+
+type DecommissionedDisks struct {
+	Node  string
+	Disks []string
 }
