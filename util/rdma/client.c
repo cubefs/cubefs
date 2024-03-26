@@ -8,7 +8,8 @@ int OnClientConnPreConnect(struct rdma_cm_id *id, void* ctx) {
         Connection* conn = AllocConnection(id, conn_ev, 2);
         if(conn == NULL) {
             //EpollDelConnEvent(client->listen_id->channel->fd);
-            DelEpollEvent(client->listen_id->channel->fd);
+            //DelEpollEvent(client->listen_id->channel->fd);
+            DelConnectEvent(2, client);
             rdma_destroy_id(id);
             client->listen_id = NULL;
             return C_ERR;
@@ -20,7 +21,8 @@ int OnClientConnPreConnect(struct rdma_cm_id *id, void* ctx) {
     } else {
         if(!UpdateConnection(client->conn)) {
             //EpollDelConnEvent(client->listen_id->channel->fd);
-            DelEpollEvent(client->listen_id->channel->fd);
+            //DelEpollEvent(client->listen_id->channel->fd);
+            DelConnectEvent(2, client);
             rdma_destroy_id(id);
             client->conn->cm_id = NULL;
             client->listen_id = NULL;
@@ -60,7 +62,8 @@ int OnClientConnRejected(struct rdma_cm_id *id, void* ctx) {
     struct RdmaContext* client = (struct RdmaContext*)ctx;
     Connection* conn = (Connection*)id->context;
     //EpollDelConnEvent(client->listen_id->channel->fd);
-    DelEpollEvent(client->listen_id->channel->fd);
+    //DelEpollEvent(client->listen_id->channel->fd);
+    DelConnectEvent(2, client);
     if (conn->cm_id->qp) {
         if(ibv_destroy_qp(conn->cm_id->qp)) {
             //printf("Failed to destroy qp cleanly\n");
@@ -100,7 +103,8 @@ int OnClientConnDisconnected(struct rdma_cm_id *id, void* ctx) {
     DisConnectCallback(conn->connContext);
     wait_group_wait(&(conn->wg));
     //EpollDelConnEvent(client->listen_id->channel->fd);
-    DelEpollEvent(client->listen_id->channel->fd);
+    //DelEpollEvent(client->listen_id->channel->fd);
+    DelConnectEvent(2, client);
     if (conn->cm_id->qp) {
         if(ibv_destroy_qp(conn->cm_id->qp)) {
             //printf("Failed to destroy qp cleanly\n");
@@ -163,7 +167,8 @@ struct RdmaContext* Connect(const char* ip, const char* port, char* remoteAddr) 
     conn_ev->rejected_callback = OnClientConnRejected;
     client->conn_ev = conn_ev;
     //EpollAddConnectEvent(client->listen_id->channel->fd, conn_ev);
-    epoll_rdma_connectEvent_add(client->listen_id->channel->fd, conn_ev, connection_event_cb);
+    //epoll_rdma_connectEvent_add(client->listen_id->channel->fd, conn_ev, connection_event_cb);
+    rdma_connectEvent_thread(2, client, cm_thread, conn_ev);
     return client;
 }
 
