@@ -83,11 +83,7 @@ int OnClientConnRejected(struct rdma_cm_id *id, void* ctx) {
     }
     conn->cm_id = NULL;
     ((struct RdmaContext*)(conn->csContext))->listen_id = NULL;
-    if(conn->cFd > 0) {
-        notify_event(conn->cFd,0);
-        close(conn->cFd);
-        conn->cFd = -1;
-    }
+    notify_event(conn->cFd,1);
     if(conn->freeList) {
         ClearQueue(conn->freeList);
     }
@@ -132,9 +128,7 @@ int OnClientConnDisconnected(struct rdma_cm_id *id, void* ctx) {
 
 
 struct Connection* getClientConn(struct RdmaContext *client) {
-    if(wait_event(client->cFd) <= 0) {
-		return NULL;
-	}
+    wait_event(client->cFd);
     return client->conn;
 }
 
@@ -203,11 +197,7 @@ int CloseClient(struct RdmaContext* client) {
         }
         free(conn);
     }
-    if(client->cFd > 0) {
-        notify_event(client->cFd,0);
-        close(client->cFd);
-        client->cFd = -1;
-    }
+    notify_event(client->cFd,1);
     if(client->ec) {
         rdma_destroy_event_channel(client->ec);    
     }

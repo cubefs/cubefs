@@ -8,6 +8,8 @@
 #include <stdbool.h>
 #include <netdb.h>
 #include <sys/eventfd.h>
+#include <pthread.h>
+#include <semaphore.h>
 
 #define C_OK 1
 #define C_ERR 0
@@ -130,8 +132,8 @@ typedef struct Connection {
     void* csContext;
     ConnectionState state;
     void* connContext;
-    int cFd;
-    int mFd;
+    sem_t* cFd;
+    sem_t* mFd;
     struct WaitGroup wg;
     pthread_spinlock_t lock;
     int lockInitialized;
@@ -148,7 +150,7 @@ typedef struct RdmaContext {
     char* ip;
     char* port;
     struct ConnectionEvent *conn_ev;
-    int cFd;
+    sem_t* cFd;
     int state;
     bool isReConnect;
     pthread_t connectThread;
@@ -164,29 +166,31 @@ typedef struct RdmaListener {
     char* ip;
     char* port;
     struct ConnectionEvent *conn_ev;
-    int cFd;
+    sem_t* cFd;
     struct WaitGroup closeWg;
     int state;
     pthread_t connectThread;
 };
 
-static inline int open_event_fd() {
-   return eventfd(0, EFD_SEMAPHORE);
+static inline sem_t* open_event_fd() {
+    sem_t* event = (sem_t*)malloc(sizeof(sem_t));;
+    sem_init(event, 0, 0);
+    return event;
 }
 
-static inline int wait_event(int fd) {
-	uint64_t value = 0;
-	return read(fd, &value, 8);
+static inline void wait_event(sem_t* fd) {
+    sem_wait(fd);
+    return;
 }
 
-static inline int notify_event(int fd, int flag) {
+static inline void notify_event(sem_t* fd, int flag) {
 	if (flag == 0) {
-		uint64_t value = 1;
-		return write(fd, &value, 8);
+		sem_post(fd);
 	} else {
-		close(fd);
+		sem_destroy(fd);
+		free(fd);
 	}
-	return 0;
+	return;
 }
 
 #endif

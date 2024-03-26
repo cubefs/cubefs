@@ -300,9 +300,7 @@ int ReConnect(Connection* conn) {
         //printf("Failed to resolve addr: %s\n", strerror(errno));
         return C_ERR;
     }
-    if(wait_event(client->cFd) < 0) {
-        return C_ERR;
-    }
+    wait_event(client->cFd);
     return C_OK;
 }
 
@@ -324,14 +322,8 @@ int DisConnect(Connection* conn, bool force) {
         }
     }
     if (conn->conntype == 1) {//server
-        if (wait_event(conn->cFd) <= 0) {
-		    return C_ERR;
-	    }
-        if(conn->cFd > 0) {
-            notify_event(conn->cFd,0);
-            close(conn->cFd);
-            conn->cFd  = -1;
-        }
+        wait_event(conn->cFd);
+        notify_event(conn->cFd,1);
         free(conn);
         return C_OK;
     } else {//client
@@ -344,22 +336,14 @@ int DisConnect(Connection* conn, bool force) {
             if(ret != 0) {
                 return C_ERR;
             }
-            if(wait_event(conn->cFd) <= 0) {
-		        return C_ERR;
-	        }
+            wait_event(conn->cFd);
         } else {//对端异常关闭 异常关闭
             //EpollDelConnEvent(conn->comp_channel->fd);
             //DelEpollEvent(conn->comp_channel->fd);
             DelTransferEvent(conn);
-            if(wait_event(conn->cFd) <= 0) {
-		        return C_ERR;
-	        }
+            wait_event(conn->cFd);
         }
-        if(conn->cFd > 0) {
-            notify_event(conn->cFd,0);
-            close(conn->cFd);
-            conn->cFd = -1;
-        }
+        notify_event(conn->cFd,1);
         return C_OK;
     }
 }
@@ -559,9 +543,7 @@ void* getHeaderBuffer(Connection *conn, int64_t timeout_us, int32_t *ret_size) {
 }
 
 MemoryEntry* getRecvMsgBuffer(Connection *conn) {
-    if(wait_event(conn->mFd) <= 0) {
-        return NULL;
-    }
+    wait_event(conn->mFd);
     MemoryEntry *entry;
     DeQueue(conn->msgList, &entry);
     if(entry == NULL) {
@@ -570,9 +552,7 @@ MemoryEntry* getRecvMsgBuffer(Connection *conn) {
 }
 
 MemoryEntry* getRecvResponseBuffer(Connection *conn) {
-    if(wait_event(conn->mFd) <= 0) {
-        return NULL;
-    }
+    wait_event(conn->mFd);
     MemoryEntry *entry;
     DeQueue(conn->msgList, &entry);
     if(entry == NULL) {

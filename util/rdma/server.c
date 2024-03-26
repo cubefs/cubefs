@@ -77,9 +77,7 @@ int OnServerConnDisconnected(struct rdma_cm_id *id, void* ctx) {
 }
 
 Connection* getServerConn(struct RdmaListener *server) {
-    if(wait_event(server->cFd) <= 0) {
-		return NULL;
-	}
+    wait_event(server->cFd);
     Connection *conn;
     pthread_mutex_lock(&(server->mutex));
     DeQueue(server->waitConns, &conn);
@@ -150,11 +148,7 @@ int CloseServer(struct RdmaListener* server) {
     ClearQueue(server->waitConns);
     DestroyQueue(server->waitConns);
     hashmap_free(server->allConns);
-    if(server->cFd > 0) {
-        notify_event(server->cFd,0);
-        close(server->cFd);
-        server->cFd = -1;
-    }
+    notify_event(server->cFd,1);
     //EpollDelConnEvent(server->listen_id->channel->fd);
     //DelEpollEvent(server->listen_id->channel->fd);
     DelConnectEvent(1, server);
