@@ -20,6 +20,7 @@ import (
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/sdk/master"
+	"github.com/cubefs/cubefs/util/strutil"
 	"github.com/spf13/cobra"
 )
 
@@ -41,6 +42,7 @@ func newClusterCmd(client *master.MasterClient) *cobra.Command {
 		newClusterSetParasCmd(client),
 		newClusterDisableMpDecommissionCmd(client),
 		newClusterSetVolDeletionDelayTimeCmd(client),
+		newClusterEnableAutoDecommissionDisk(client),
 	)
 	return clusterCmd
 }
@@ -58,6 +60,7 @@ const (
 	nodeAutoRepairRateKey                  = "autoRepairRate"
 	nodeMaxDpCntLimit                      = "maxDpCntLimit"
 	cmdForbidMpDecommission                = "forbid meta partition decommission"
+	cmdEnableAutoDecommissionDiskShort     = "enable auto decommission disk"
 )
 
 func newClusterInfoCmd(client *master.MasterClient) *cobra.Command {
@@ -129,11 +132,11 @@ func newClusterFreezeCmd(client *master.MasterClient) *cobra.Command {
 		ValidArgs: []string{"true", "false"},
 		Short:     cmdClusterFreezeShort,
 		Args:      cobra.MinimumNArgs(1),
-		Long: `Turn on or off the automatic allocation of the data partitions. 
+		Long: `Turn on or off the automatic allocation of the data partitions.
 If 'freeze=false', CubeFS WILL automatically allocate new data partitions for the volume when:
   1. the used space is below the max capacity,
   2. and the number of r&w data partition is less than 20.
-		
+
 If 'freeze=true', CubeFS WILL NOT automatically allocate new data partitions `,
 		Run: func(cmd *cobra.Command, args []string) {
 			var (
@@ -235,6 +238,7 @@ func newClusterSetParasCmd(client *master.MasterClient) *cobra.Command {
 	metaNodesetSelector := ""
 	dataNodeSelector := ""
 	metaNodeSelector := ""
+	markBrokenDiskThreshold := ""
 	cmd := &cobra.Command{
 		Use:   CliOpSetCluster,
 		Short: cmdClusterSetClusterInfoShort,
@@ -244,10 +248,17 @@ func newClusterSetParasCmd(client *master.MasterClient) *cobra.Command {
 				errout(err)
 			}()
 
+			if markBrokenDiskThreshold != "" {
+				val, err := strutil.ParsePercent(markBrokenDiskThreshold)
+				if err != nil {
+					return
+				}
+				markBrokenDiskThreshold = fmt.Sprintf("%v", val)
+			}
 			if err = client.AdminAPI().SetClusterParas(optDelBatchCount, optMarkDeleteRate, optDelWorkerSleepMs,
 				optAutoRepairRate, optLoadFactor, opMaxDpCntLimit, clientIDKey,
 				dataNodesetSelector, metaNodesetSelector,
-				dataNodeSelector, metaNodeSelector); err != nil {
+				dataNodeSelector, metaNodeSelector, markBrokenDiskThreshold); err != nil {
 				return
 			}
 			stdout("Cluster parameters has been set successfully. \n")
@@ -264,6 +275,7 @@ func newClusterSetParasCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().StringVar(&metaNodesetSelector, CliFlagMetaNodesetSelector, "", "Set the nodeset select policy(metanode) for cluster")
 	cmd.Flags().StringVar(&dataNodeSelector, CliFlagDataNodeSelector, "", "Set the node select policy(datanode) for cluster")
 	cmd.Flags().StringVar(&metaNodeSelector, CliFlagMetaNodeSelector, "", "Set the node select policy(metanode) for cluster")
+	cmd.Flags().StringVar(&markBrokenDiskThreshold, CliFlagMarkDiskBrokenThreshold, "", "Threshold to mark disk as broken")
 	return cmd
 }
 
@@ -273,7 +285,7 @@ func newClusterDisableMpDecommissionCmd(client *master.MasterClient) *cobra.Comm
 		ValidArgs: []string{"true", "false"},
 		Short:     cmdForbidMpDecommission,
 		Args:      cobra.MinimumNArgs(1),
-		Long: `Forbid or allow MetaPartition decommission in the cluster. 
+		Long: `Forbid or allow MetaPartition decommission in the cluster.
 the forbid flag is false by default when cluster created
 If 'forbid=false', MetaPartition decommission/migrate and MetaNode decommission is allowed.
 If 'forbid=true', MetaPartition decommission/migrate and MetaNode decommission is forbidden.`,
@@ -296,6 +308,36 @@ If 'forbid=true', MetaPartition decommission/migrate and MetaNode decommission i
 				stdout("Forbid MetaPartition decommission successful!\n")
 			} else {
 				stdout("Allow MetaPartition decommission successful!\n")
+			}
+		},
+	}
+	return cmd
+}
+
+func newClusterEnableAutoDecommissionDisk(client *master.MasterClient) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:       CliOpEnableAutoDecommission + " [STATUS]",
+		ValidArgs: []string{"true", "false"},
+		Short:     cmdEnableAutoDecommissionDiskShort,
+		Args:      cobra.MinimumNArgs(1),
+		Run: func(cmd *cobra.Command, args []string) {
+			var (
+				err    error
+				enable bool
+			)
+			defer func() {
+				errout(err)
+			}()
+			if enable, err = strconv.ParseBool(args[0]); err != nil {
+				return
+			}
+			if err = client.AdminAPI().SetAutoDecommissionDisk(enable); err != nil {
+				return
+			}
+			if enable {
+				stdout("Enable auto decommission successful!\n")
+			} else {
+				stdout("Disable auto decommission successful!\n")
 			}
 		},
 	}

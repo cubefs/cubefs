@@ -62,6 +62,7 @@ type clusterValue struct {
 	EnableAutoDecommissionDisk  bool
 	DecommissionDiskFactor      float64
 	VolDeletionDelayTimeHour    int64
+	MarkDiskBrokenThreshold     float64
 }
 
 func newClusterValue(c *Cluster) (cv *clusterValue) {
@@ -93,6 +94,7 @@ func newClusterValue(c *Cluster) (cv *clusterValue) {
 		EnableAutoDecommissionDisk:  c.EnableAutoDecommissionDisk,
 		DecommissionDiskFactor:      c.DecommissionDiskFactor,
 		VolDeletionDelayTimeHour:    c.cfg.volDelayDeleteTimeHour,
+		MarkDiskBrokenThreshold:     c.getMarkDiskBrokenThreshold(),
 	}
 	return cv
 }
@@ -1016,6 +1018,13 @@ func (c *Cluster) updateInodeIdStep(val uint64) {
 	atomic.StoreUint64(&c.cfg.MetaPartitionInodeIdStep, val)
 }
 
+func (c *Cluster) updateMarkDiskBrokenThreshold(val float64) {
+	if val <= 0 || val > 1 {
+		val = defaultMarkDiskBrokenThreshold
+	}
+	c.MarkDiskBrokenThreshold.Store(val)
+}
+
 func (c *Cluster) loadZoneValue() (err error) {
 	var ok bool
 	result, err := c.fsm.store.SeekForPrefix([]byte(zonePrefix))
@@ -1158,6 +1167,7 @@ func (c *Cluster) loadClusterValue() (err error) {
 		log.LogInfof("action[loadClusterValue], metaNodeThreshold[%v]", cv.Threshold)
 
 		c.checkDataReplicasEnable = cv.CheckDataReplicasEnable
+		c.updateMarkDiskBrokenThreshold(cv.MarkDiskBrokenThreshold)
 	}
 	return
 }

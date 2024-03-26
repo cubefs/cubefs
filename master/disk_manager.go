@@ -48,6 +48,7 @@ func (c *Cluster) checkDiskRecoveryProgress() {
 	c.badPartitionMutex.Lock()
 	defer c.badPartitionMutex.Unlock()
 
+	log.LogDebugf("[checkDiskRecoveryProgress] check disk recovery progress")
 	c.BadDataPartitionIds.Range(func(key, value interface{}) bool {
 		badDataPartitionIds := value.([]uint64)
 		newBadDpIds := make([]uint64, 0)
@@ -59,6 +60,7 @@ func (c *Cluster) checkDiskRecoveryProgress() {
 			}
 			// do not update status if paused
 			if partition.IsDecommissionPaused() {
+				log.LogInfof("[checkDiskRecoveryProgress] dp(%v) decommission pause", partitionID)
 				continue
 			}
 			_, err = c.getVol(partition.VolName)
@@ -67,6 +69,7 @@ func (c *Cluster) checkDiskRecoveryProgress() {
 					c.Name, partitionID, partition.VolName))
 				continue
 			}
+			log.LogDebugf("[checkDiskRecoveryProgress] dp(%v) decommission status(%v)", partitionID, partition.GetDecommissionStatus())
 			log.LogInfof("action[checkDiskRecoveryProgress] dp %v isSpec %v replicas %v conf replicas num %v",
 				partition.PartitionID, partition.isSpecialReplicaCnt(), len(partition.Replicas), int(partition.ReplicaNum))
 			if len(partition.Replicas) == 0 {
@@ -100,6 +103,7 @@ func (c *Cluster) checkDiskRecoveryProgress() {
 				continue
 			}
 			if newReplica.isRepairing() {
+				log.LogInfof("[checkDiskRecoveryProgress] dp(%v) new replica(%v) report time(%v) is repairing", partition.PartitionID, newReplica.Addr, time.Unix(newReplica.ReportTime, 0))
 				if !partition.isSpecialReplicaCnt() {
 					masterNode, _ := partition.getReplica(partition.Hosts[0])
 					duration := time.Unix(masterNode.ReportTime, 0).Sub(time.Unix(newReplica.ReportTime, 0))
@@ -137,6 +141,7 @@ func (c *Cluster) checkDiskRecoveryProgress() {
 				newBadDpIds = append(newBadDpIds, partitionID)
 			} else {
 				if partition.isSpecialReplicaCnt() {
+					log.LogWarnf("[checkDiskRecoveryProgress] dp(%v) special replica cnt, skip", partition.PartitionID)
 					continue // change dp decommission status in decommission function
 				}
 				// do not add to BadDataPartitionIds
@@ -308,6 +313,7 @@ func (dd *DecommissionDisk) updateDecommissionStatus(c *Cluster, debug bool) (ui
 			stopNum++
 			stopPartitionIds = append(stopPartitionIds, dp.PartitionID)
 		}
+		log.LogDebugf("[updateDecommissionStatus] dp(%v) decommission status(%v)", dp.PartitionID, dp.GetDecommissionStatus())
 		partitionIds = append(partitionIds, dp.PartitionID)
 	}
 	progress = float64(totalNum-len(partitions)) / float64(totalNum)

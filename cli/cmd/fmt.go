@@ -70,6 +70,8 @@ func formatClusterView(cv *proto.ClusterView, cn *proto.ClusterNodeInfo, cp *pro
 	sb.WriteString(fmt.Sprintf("  EbsAddr            : %v\n", cp.EbsAddr))
 	sb.WriteString(fmt.Sprintf("  LoadFactor         : %v\n", cn.LoadFactor))
 	sb.WriteString(fmt.Sprintf("  volDeletionDelayTime : %v h\n", cv.VolDeletionDelayTimeHour))
+	sb.WriteString(fmt.Sprintf("  EnableAutoDecommission: %v\n", cv.EnableAutoDecommission))
+	sb.WriteString(fmt.Sprintf("  MarkDiskBrokenThreshold : %v%%\n", cv.MarkDiskBrokenThreshold*100))
 	return sb.String()
 }
 

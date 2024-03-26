@@ -93,3 +93,22 @@ func FormatSize(size uint64) (sizeStr string) {
 	sizeStr = fmt.Sprintf("%v%v", size, pair.Suffix)
 	return
 }
+
+func ParsePercent(valStr string) (val float64, err error) {
+	base := float64(1)
+	if strings.HasPrefix(valStr, "%") {
+		base = 1
+		valStr = strings.TrimSuffix(valStr, "%")
+	}
+	val, err = strconv.ParseFloat(valStr, 64)
+	if err != nil {
+		return
+	}
+	val *= base
+	return
+}
+
+func FormatPercent(val float64) (valStr string) {
+	valStr = fmt.Sprintf("%v%%", val*100)
+	return
+}

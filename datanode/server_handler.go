@@ -22,6 +22,7 @@ import (
 	"path"
 	"strconv"
 	"sync/atomic"
+	"syscall"
 
 	"github.com/cubefs/cubefs/depends/tiglabs/raft"
 	"github.com/cubefs/cubefs/proto"
@@ -756,4 +757,59 @@ func (s *DataNode) loadDataPartition(w http.ResponseWriter, r *http.Request) {
 	} else {
 		s.buildSuccessResp(w, "success")
 	}
+}
+
+// NOTE: use for test
+func (s *DataNode) markDataPartitionBroken(w http.ResponseWriter, r *http.Request) {
+	const (
+		paramID = "id"
+	)
+	if err := r.ParseForm(); err != nil {
+		err = fmt.Errorf("parse form fail: %v", err)
+		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	partitionID, err := strconv.ParseUint(r.FormValue(paramID), 10, 64)
+	if err != nil {
+		err = fmt.Errorf("parse param %v fail: %v", paramID, err)
+		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	partition := s.space.Partition(partitionID)
+	if partition == nil {
+		s.buildFailureResp(w, http.StatusBadRequest, "partition not found")
+		return
+	}
+	partition.checkIsDiskError(syscall.EIO, WriteFlag|ReadFlag)
+	s.buildSuccessResp(w, "success")
+}
+
+func (s *DataNode) markDiskBroken(w http.ResponseWriter, r *http.Request) {
+	const (
+		paramDisk = "disk"
+	)
+	if err := r.ParseForm(); err != nil {
+		err = fmt.Errorf("parse form fail: %v", err)
+		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	diskPath := r.FormValue(paramDisk)
+	// store disk path and root of dp
+	disk, err := s.space.GetDisk(diskPath)
+	if err != nil {
+		log.LogErrorf("[markDiskBroken] disk(%v) is not found err(%v).", diskPath, err)
+		s.buildFailureResp(w, http.StatusBadRequest, fmt.Sprintf("disk %v is not found", diskPath))
+		return
+	}
+	dps := disk.DataPartitionList()
+	for _, dpId := range dps {
+		partition := s.space.Partition(dpId)
+		if partition == nil {
+			log.LogErrorf("[markDiskBroken] dp(%v) not found", dpId)
+			s.buildFailureResp(w, http.StatusBadRequest, "partition not found")
+			return
+		}
+		partition.checkIsDiskError(syscall.EIO, WriteFlag|ReadFlag)
+	}
+	s.buildSuccessResp(w, "success")
 }

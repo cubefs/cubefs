@@ -786,6 +786,8 @@ func (m *Server) getCluster(w http.ResponseWriter, r *http.Request) {
 		MaxMetaNodeID:            m.cluster.idAlloc.commonID,
 		MaxMetaPartitionID:       m.cluster.idAlloc.metaPartitionID,
 		VolDeletionDelayTimeHour: m.cluster.cfg.volDelayDeleteTimeHour,
+		MarkDiskBrokenThreshold:  m.cluster.getMarkDiskBrokenThreshold(),
+		EnableAutoDecommission:   m.cluster.AutoDecommissionDiskIsEnabled(),
 		MasterNodes:              make([]proto.NodeView, 0),
 		MetaNodes:                make([]proto.NodeView, 0),
 		DataNodes:                make([]proto.NodeView, 0),
@@ -1875,13 +1877,6 @@ func (m *Server) decommissionDataPartition(w http.ResponseWriter, r *http.Reques
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-	replica, err := dp.getReplica(addr)
-	if err != nil {
-		rstMsg = fmt.Sprintf(" dataPartitionID :%v not find replica for addr %v",
-			partitionID, addr)
-		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: rstMsg})
-		return
-	}
 	node, err := c.dataNode(addr)
 	if err != nil {
 		rstMsg = fmt.Sprintf(" dataPartitionID :%v not find datanode for addr %v",
@@ -1889,28 +1884,12 @@ func (m *Server) decommissionDataPartition(w http.ResponseWriter, r *http.Reques
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: rstMsg})
 		return
 	}
-	zone, err := c.t.getZone(node.ZoneName)
+	err = m.cluster.markDecommissionDataPartition(dp, node, raftForce)
 	if err != nil {
-		rstMsg = fmt.Sprintf(" dataPartitionID :%v not find zone for addr %v",
-			partitionID, addr)
+		rstMsg = err.Error()
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: rstMsg})
 		return
 	}
-	ns, err := zone.getNodeSet(node.NodeSetID)
-	if err != nil {
-		rstMsg = fmt.Sprintf(" dataPartitionID :%v not find nodeset for addr %v",
-			partitionID, addr)
-		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: rstMsg})
-		return
-	}
-	if !dp.MarkDecommissionStatus(addr, "", replica.DiskPath, raftForce, 0, c) {
-		rstMsg = fmt.Sprintf(" dataPartitionID :%v mark decommission failed",
-			partitionID)
-		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: rstMsg})
-		return
-	}
-	c.syncUpdateDataPartition(dp)
-	ns.AddToDecommissionDataPartitionList(dp, c)
 	rstMsg = fmt.Sprintf(proto.AdminDecommissionDataPartition+" dataPartitionID :%v  on node:%v successfully", partitionID, addr)
 	sendOkReply(w, r, newSuccessHTTPReply(rstMsg))
 }
@@ -3068,6 +3047,15 @@ func (m *Server) setNodeInfoHandler(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			if err = m.cluster.setClusterCreateTime(createTime.Unix()); err != nil {
+				sendErrReply(w, r, newErrHTTPReply(err))
+				return
+			}
+		}
+	}
+
+	if val, ok := params[markDiskBrokenThresholdKey]; ok {
+		if markDiskBrokenThreshold, ok := val.(float64); ok {
+			if err = m.cluster.setMarkDiskBrokenThreshold(markDiskBrokenThreshold); err != nil {
 				sendErrReply(w, r, newErrHTTPReply(err))
 				return
 			}
@@ -5620,9 +5608,9 @@ func (m *Server) queryDisableDisk(w http.ResponseWriter, r *http.Request) {
 		nodeAddr string
 		err      error
 	)
-	metric := exporter.NewTPCnt(apiToMetricsName(proto.RecommissionDisk))
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.QueryDisableDisk))
 	defer func() {
-		doStatAndMetric(proto.RecommissionDisk, metric, err, nil)
+		doStatAndMetric(proto.QueryDisableDisk, metric, err, nil)
 	}()
 
 	if nodeAddr, err = parseAndExtractNodeAddr(r); err != nil {
@@ -5637,11 +5625,15 @@ func (m *Server) queryDisableDisk(w http.ResponseWriter, r *http.Request) {
 
 	disks := node.getDecommissionedDisks()
 
+	disksInfo := &proto.DecommissionedDisks{
+		Node:  nodeAddr,
+		Disks: disks,
+	}
 	rstMsg = fmt.Sprintf("datanode[%v] disable disk[%v]",
 		nodeAddr, disks)
 
 	Warn(m.clusterName, rstMsg)
-	sendOkReply(w, r, newSuccessHTTPReply(rstMsg))
+	sendOkReply(w, r, newSuccessHTTPReply(disksInfo))
 }
 
 func parseReqToDecoDataNodeProgress(r *http.Request) (nodeAddr string, err error) {
@@ -6196,6 +6188,9 @@ func (m *Server) queryBadDisks(w http.ResponseWriter, r *http.Request) {
 		if !ok {
 			return true
 		}
+
+		dataNode.RLock()
+		defer dataNode.RUnlock()
 
 		for _, bds := range dataNode.BadDiskStats {
 			info := proto.BadDiskInfo{

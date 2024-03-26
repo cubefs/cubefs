@@ -1018,6 +1018,7 @@ func (c *Cluster) handleDataNodeHeartbeatResp(nodeAddr string, resp *proto.DataN
 	dataNode.SetIoUtils(resp.IoUtils)
 
 	dataNode.updateNodeMetric(resp)
+
 	if err = c.t.putDataNode(dataNode); err != nil {
 		log.LogErrorf("action[handleDataNodeHeartbeatResp] dataNode[%v],zone[%v],node set[%v], err[%v]", dataNode.Addr, dataNode.ZoneName, dataNode.NodeSetID, err)
 	}

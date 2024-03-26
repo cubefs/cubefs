@@ -498,7 +498,7 @@ func (api *AdminAPI) SetMasterVolDeletionDelayTime(volDeletionDelayTimeHour int)
 }
 
 func (api *AdminAPI) SetClusterParas(batchCount, markDeleteRate, deleteWorkerSleepMs, autoRepairRate, loadFactor, maxDpCntLimit, clientIDKey string,
-	dataNodesetSelector, metaNodesetSelector, dataNodeSelector, metaNodeSelector string,
+	dataNodesetSelector, metaNodesetSelector, dataNodeSelector, metaNodeSelector string, markDiskBrokenThreshold string,
 ) (err error) {
 	request := newRequest(get, proto.AdminSetNodeInfo).Header(api.h)
 	request.addParam("batchCount", batchCount)
@@ -513,6 +513,9 @@ func (api *AdminAPI) SetClusterParas(batchCount, markDeleteRate, deleteWorkerSle
 	request.addParam("metaNodesetSelector", metaNodesetSelector)
 	request.addParam("dataNodeSelector", dataNodeSelector)
 	request.addParam("metaNodeSelector", metaNodeSelector)
+	if markDiskBrokenThreshold != "" {
+		request.addParam("markDiskBrokenThreshold", markDiskBrokenThreshold)
+	}
 	_, err = api.mc.serveRequest(request)
 	return
 }
@@ -712,4 +715,11 @@ func (api *AdminAPI) DelBucketLifecycle(volume string) (err error) {
 
 func (api *AdminAPI) GetS3QoSInfo() (data []byte, err error) {
 	return api.mc.serveRequest(newRequest(get, proto.S3QoSGet).Header(api.h))
+}
+
+func (api *AdminAPI) SetAutoDecommissionDisk(enable bool) (err error) {
+	request := newRequest(post, proto.AdminEnableAutoDecommissionDisk)
+	request.addParam("enable", strconv.FormatBool(enable))
+	_, err = api.mc.serveRequest(request)
+	return
 }

@@ -166,3 +166,9 @@ func (api *NodeAPI) AddLcNode(serverAddr string) (id uint64, err error) {
 func (api *NodeAPI) ResponseLcNodeTask(task *proto.AdminTask) (err error) {
 	return api.mc.request(newRequest(post, proto.GetLcNodeTaskResponse).Header(api.h).Body(task))
 }
+
+func (api *NodeAPI) QueryDecommissionedDisks(addr string) (disks *proto.DecommissionedDisks, err error) {
+	disks = &proto.DecommissionedDisks{}
+	err = api.mc.requestWith(disks, newRequest(get, proto.QueryDisableDisk).Header(api.h).addParam("addr", addr))
+	return
+}

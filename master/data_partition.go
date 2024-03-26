@@ -1112,6 +1112,7 @@ func (partition *DataPartition) MarkDecommissionStatus(srcAddr, dstAddr, srcDisk
 }
 
 func (partition *DataPartition) SetDecommissionStatus(status uint32) {
+	log.LogDebugf("[SetDecommissionStatus] set dp(%v) decommission status to status(%v)", partition.PartitionID, status)
 	atomic.StoreUint32(&partition.DecommissionStatus, status)
 }
 

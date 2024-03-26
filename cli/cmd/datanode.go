@@ -38,14 +38,16 @@ func newDataNodeCmd(client *master.MasterClient) *cobra.Command {
 		newDataNodeInfoCmd(client),
 		newDataNodeDecommissionCmd(client),
 		newDataNodeMigrateCmd(client),
+		newDataNodeQueryDecommissionedDisk(client),
 	)
 	return cmd
 }
 
 const (
-	cmdDataNodeListShort             = "List information of data nodes"
-	cmdDataNodeInfoShort             = "Show information of a data node"
-	cmdDataNodeDecommissionInfoShort = "decommission partitions in a data node to others"
+	cmdDataNodeListShort                     = "List information of data nodes"
+	cmdDataNodeInfoShort                     = "Show information of a data node"
+	cmdDataNodeDecommissionInfoShort         = "decommission partitions in a data node to others"
+	cmdDataNodeQueryDecommissionedDisksShort = "query datanode decommissioned disks"
 )
 
 func newDataNodeListCmd(client *master.MasterClient) *cobra.Command {
@@ -169,5 +171,26 @@ func newDataNodeMigrateCmd(client *master.MasterClient) *cobra.Command {
 	}
 	cmd.Flags().IntVar(&optCount, CliFlagCount, dpMigrateMax, "Migrate dp count,default 15")
 	cmd.Flags().StringVar(&clientIDKey, CliFlagClientIDKey, client.ClientIDKey(), CliUsageClientIDKey)
+	return cmd
+}
+
+func newDataNodeQueryDecommissionedDisk(client *master.MasterClient) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   CliOpQueryDecommission + " [{HOST}:{PORT}]",
+		Short: cmdDataNodeQueryDecommissionedDisksShort,
+		Args:  cobra.MinimumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			disks, err := client.NodeAPI().QueryDecommissionedDisks(args[0])
+			if err != nil {
+				stdout("%v", err)
+				return err
+			}
+			stdoutln("[Decommissioned disks]")
+			for _, disk := range disks.Disks {
+				stdout("%v", disk)
+			}
+			return nil
+		},
+	}
 	return cmd
 }
