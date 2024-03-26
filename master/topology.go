@@ -2209,6 +2209,7 @@ func (l *DecommissionDataPartitionList) traverse(c *Cluster) {
 				continue
 			}
 			allDecommissionDP := l.GetAllDecommissionDataPartitions()
+			log.LogDebugf("action[DecommissionListTraverse]enter")
 			for _, dp := range allDecommissionDP {
 				if dp.IsDecommissionSuccess() {
 					log.LogDebugf("action[DecommissionListTraverse]Remove dp[%v] for success",
@@ -2241,12 +2242,15 @@ func (l *DecommissionDataPartitionList) traverse(c *Cluster) {
 							// retry should release token
 							if dp.IsMarkDecommission() {
 								dp.ReleaseDecommissionToken(c)
+								// choose other node to create data partitoin
+								dp.DecommissionDstAddr = ""
 							}
 							l.pushFailedDp(dp, c)
 						}
 					}(dp) // special replica cnt cost some time from prepare to running
 				}
 			}
+			log.LogDebugf("action[DecommissionListTraverse]end")
 		}
 	}
 }
