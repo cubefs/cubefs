@@ -63,18 +63,7 @@ int transport_sendAndRecv_event_handler(Connection *conn) {
     void *block;
     MemoryEntry *entry;
     int ret;
-    /*
-    if (ibv_get_cq_event(conn->comp_channel, &ev_cq, &ev_ctx) < 0) {
-        //printf("RDMA: get CQ event error");
-        goto error;
-    }
-    ibv_ack_cq_events(conn->cq, 1);
-    if (ibv_req_notify_cq(ev_cq, 0)) {
-        //printf("RDMA: notify CQ error");
-        goto error;
-    }
-    int ne = 0;
-    */
+
     while((ret = ibv_poll_cq(conn->cq, 1 ,&wc)) == 1) {
         ret = 0;
         if(wc.status != IBV_WC_SUCCESS) {
@@ -141,12 +130,13 @@ void *cq_thread(void *ctx) {
         if(ev_cq != conn->cq) {
             goto error;
         }
+        ibv_ack_cq_events(conn->cq, 1);
         ret = ibv_req_notify_cq(conn->cq,0);
         if(ret) {
             goto error;
         }
         ret = transport_sendAndRecv_event_handler(conn);
-        ibv_ack_cq_events(conn->cq, 1);
+
         if (ret == C_ERR) {
             goto error;
         }

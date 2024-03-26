@@ -291,7 +291,8 @@ int ReConnect(Connection* conn) {
     client->listen_id = id;
     conn_ev->cm_id = id;
     //EpollAddConnectEvent(client->listen_id->channel->fd,conn_ev);
-    epoll_rdma_connectEvent_add(client->listen_id->channel->fd, conn_ev, connection_event_cb);
+    //epoll_rdma_connectEvent_add(client->listen_id->channel->fd, conn_ev, connection_event_cb);
+    rdma_connectEvent_thread(2, client, cm_thread, conn_ev);
 
     ((struct RdmaContext*)conn->csContext)->isReConnect = true;
     ret = rdma_resolve_addr(conn->cm_id, NULL, addr->ai_addr, TIMEOUT_IN_MS);
@@ -299,9 +300,7 @@ int ReConnect(Connection* conn) {
         //printf("Failed to resolve addr: %s\n", strerror(errno));
         return C_ERR;
     }
-    if(wait_event(client->cFd) < 0) {
-        return C_ERR;
-    }
+    wait_event(client->cFd);
     return C_OK;
 }
 
@@ -313,7 +312,8 @@ int DisConnect(Connection* conn, bool force) {
             conn->state = CONN_STATE_CLOSING;
             //printf("force disconnect\n");
             //EpollDelConnEvent(conn->comp_channel->fd);
-            DelEpollEvent(conn->comp_channel->fd);
+            //DelEpollEvent(conn->comp_channel->fd);
+            DelTransferEvent(conn);
             int ret = rdma_disconnect(conn->cm_id);
             if(ret != 0) {
                 return C_ERR;
@@ -322,40 +322,28 @@ int DisConnect(Connection* conn, bool force) {
         }
     }
     if (conn->conntype == 1) {//server
-        if (wait_event(conn->cFd) <= 0) {
-		    return C_ERR;
-	    }
-        if(conn->cFd > 0) {
-            notify_event(conn->cFd,0);
-            close(conn->cFd);
-            conn->cFd  = -1;
-        }
+        wait_event(conn->cFd);
+        notify_event(conn->cFd,1);
         free(conn);
         return C_OK;
     } else {//client
         if(conn->state == CONN_STATE_CONNECTED) {//正常关闭
             conn->state = CONN_STATE_CLOSING;
             //EpollDelConnEvent(conn->comp_channel->fd);
-            DelEpollEvent(conn->comp_channel->fd);
+            //DelEpollEvent(conn->comp_channel->fd);
+            DelTransferEvent(conn);
             int ret= rdma_disconnect(conn->cm_id);
             if(ret != 0) {
                 return C_ERR;
             }
-            if(wait_event(conn->cFd) <= 0) {
-		        return C_ERR;
-	        }
+            wait_event(conn->cFd);
         } else {//对端异常关闭 异常关闭
             //EpollDelConnEvent(conn->comp_channel->fd);
-            DelEpollEvent(conn->comp_channel->fd);
-            if(wait_event(conn->cFd) <= 0) {
-		        return C_ERR;
-	        }
+            //DelEpollEvent(conn->comp_channel->fd);
+            DelTransferEvent(conn);
+            wait_event(conn->cFd);
         }
-        if(conn->cFd > 0) {
-            notify_event(conn->cFd,0);
-            close(conn->cFd);
-            conn->cFd = -1;
-        }
+        notify_event(conn->cFd,1);
         return C_OK;
     }
 }
@@ -555,9 +543,7 @@ void* getHeaderBuffer(Connection *conn, int64_t timeout_us, int32_t *ret_size) {
 }
 
 MemoryEntry* getRecvMsgBuffer(Connection *conn) {
-    if(wait_event(conn->mFd) <= 0) {
-        return NULL;
-    }
+    wait_event(conn->mFd);
     MemoryEntry *entry;
     DeQueue(conn->msgList, &entry);
     if(entry == NULL) {
@@ -566,9 +552,7 @@ MemoryEntry* getRecvMsgBuffer(Connection *conn) {
 }
 
 MemoryEntry* getRecvResponseBuffer(Connection *conn) {
-    if(wait_event(conn->mFd) <= 0) {
-        return NULL;
-    }
+    wait_event(conn->mFd);
     MemoryEntry *entry;
     DeQueue(conn->msgList, &entry);
     if(entry == NULL) {
@@ -581,7 +565,7 @@ void setConnContext(Connection* conn, void* connContext) {
     conn->connContext = connContext;
     conn->state = CONN_STATE_CONNECTED;
     //epoll_rdma_transferEvent_add(conn->comp_channel->fd, conn, transport_sendAndRecv_event_cb);
-    rdma_transferEvent_thread(conn, conn->comp_channel->fd, cq_thread);
+    rdma_transferEvent_thread(conn, cq_thread);
     return;
 }
 

@@ -43,7 +43,8 @@ int OnServerConnDisconnected(struct rdma_cm_id *id, void* ctx) {
         DisConnectCallback(conn->connContext);
     }
     //EpollDelConnEvent(conn->comp_channel->fd);
-    DelEpollEvent(conn->comp_channel->fd);
+    //DelEpollEvent(conn->comp_channel->fd);
+    DelTransferEvent(conn);
     wait_group_wait(&(conn->wg));
     destroy_connection(conn);
     pthread_mutex_lock(&(server->mutex));
@@ -76,9 +77,7 @@ int OnServerConnDisconnected(struct rdma_cm_id *id, void* ctx) {
 }
 
 Connection* getServerConn(struct RdmaListener *server) {
-    if(wait_event(server->cFd) <= 0) {
-		return NULL;
-	}
+    wait_event(server->cFd);
     Connection *conn;
     pthread_mutex_lock(&(server->mutex));
     DeQueue(server->waitConns, &conn);
@@ -138,7 +137,8 @@ struct RdmaListener* StartServer(const char* ip, uint16_t port, char* serverAddr
     conn_ev->disconnected_callback = OnServerConnDisconnected;
     server->conn_ev = conn_ev;
     //EpollAddConnectEvent(server->listen_id->channel->fd, conn_ev);
-    epoll_rdma_connectEvent_add(server->listen_id->channel->fd, conn_ev, connection_event_cb);
+    //epoll_rdma_connectEvent_add(server->listen_id->channel->fd, conn_ev, connection_event_cb);
+    rdma_connectEvent_thread(1, server, cm_thread, conn_ev);
     return server;
 }
 
@@ -148,13 +148,10 @@ int CloseServer(struct RdmaListener* server) {
     ClearQueue(server->waitConns);
     DestroyQueue(server->waitConns);
     hashmap_free(server->allConns);
-    if(server->cFd > 0) {
-        notify_event(server->cFd,0);
-        close(server->cFd);
-        server->cFd = -1;
-    }
+    notify_event(server->cFd,1);
     //EpollDelConnEvent(server->listen_id->channel->fd);
-    DelEpollEvent(server->listen_id->channel->fd);
+    //DelEpollEvent(server->listen_id->channel->fd);
+    DelConnectEvent(1, server);
     rdma_destroy_id(server->listen_id);
     if(server->ec) {
         rdma_destroy_event_channel(server->ec);

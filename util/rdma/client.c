@@ -8,7 +8,8 @@ int OnClientConnPreConnect(struct rdma_cm_id *id, void* ctx) {
         Connection* conn = AllocConnection(id, conn_ev, 2);
         if(conn == NULL) {
             //EpollDelConnEvent(client->listen_id->channel->fd);
-            DelEpollEvent(client->listen_id->channel->fd);
+            //DelEpollEvent(client->listen_id->channel->fd);
+            DelConnectEvent(2, client);
             rdma_destroy_id(id);
             client->listen_id = NULL;
             return C_ERR;
@@ -20,7 +21,8 @@ int OnClientConnPreConnect(struct rdma_cm_id *id, void* ctx) {
     } else {
         if(!UpdateConnection(client->conn)) {
             //EpollDelConnEvent(client->listen_id->channel->fd);
-            DelEpollEvent(client->listen_id->channel->fd);
+            //DelEpollEvent(client->listen_id->channel->fd);
+            DelConnectEvent(2, client);
             rdma_destroy_id(id);
             client->conn->cm_id = NULL;
             client->listen_id = NULL;
@@ -60,7 +62,8 @@ int OnClientConnRejected(struct rdma_cm_id *id, void* ctx) {
     struct RdmaContext* client = (struct RdmaContext*)ctx;
     Connection* conn = (Connection*)id->context;
     //EpollDelConnEvent(client->listen_id->channel->fd);
-    DelEpollEvent(client->listen_id->channel->fd);
+    //DelEpollEvent(client->listen_id->channel->fd);
+    DelConnectEvent(2, client);
     if (conn->cm_id->qp) {
         if(ibv_destroy_qp(conn->cm_id->qp)) {
             //printf("Failed to destroy qp cleanly\n");
@@ -80,11 +83,7 @@ int OnClientConnRejected(struct rdma_cm_id *id, void* ctx) {
     }
     conn->cm_id = NULL;
     ((struct RdmaContext*)(conn->csContext))->listen_id = NULL;
-    if(conn->cFd > 0) {
-        notify_event(conn->cFd,0);
-        close(conn->cFd);
-        conn->cFd = -1;
-    }
+    notify_event(conn->cFd,1);
     if(conn->freeList) {
         ClearQueue(conn->freeList);
     }
@@ -100,7 +99,8 @@ int OnClientConnDisconnected(struct rdma_cm_id *id, void* ctx) {
     DisConnectCallback(conn->connContext);
     wait_group_wait(&(conn->wg));
     //EpollDelConnEvent(client->listen_id->channel->fd);
-    DelEpollEvent(client->listen_id->channel->fd);
+    //DelEpollEvent(client->listen_id->channel->fd);
+    DelConnectEvent(2, client);
     if (conn->cm_id->qp) {
         if(ibv_destroy_qp(conn->cm_id->qp)) {
             //printf("Failed to destroy qp cleanly\n");
@@ -128,9 +128,7 @@ int OnClientConnDisconnected(struct rdma_cm_id *id, void* ctx) {
 
 
 struct Connection* getClientConn(struct RdmaContext *client) {
-    if(wait_event(client->cFd) <= 0) {
-		return NULL;
-	}
+    wait_event(client->cFd);
     return client->conn;
 }
 
@@ -163,7 +161,8 @@ struct RdmaContext* Connect(const char* ip, const char* port, char* remoteAddr) 
     conn_ev->rejected_callback = OnClientConnRejected;
     client->conn_ev = conn_ev;
     //EpollAddConnectEvent(client->listen_id->channel->fd, conn_ev);
-    epoll_rdma_connectEvent_add(client->listen_id->channel->fd, conn_ev, connection_event_cb);
+    //epoll_rdma_connectEvent_add(client->listen_id->channel->fd, conn_ev, connection_event_cb);
+    rdma_connectEvent_thread(2, client, cm_thread, conn_ev);
     return client;
 }
 
@@ -198,11 +197,7 @@ int CloseClient(struct RdmaContext* client) {
         }
         free(conn);
     }
-    if(client->cFd > 0) {
-        notify_event(client->cFd,0);
-        close(client->cFd);
-        client->cFd = -1;
-    }
+    notify_event(client->cFd,1);
     if(client->ec) {
         rdma_destroy_event_channel(client->ec);    
     }
