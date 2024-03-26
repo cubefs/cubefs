@@ -119,7 +119,11 @@ func (ft *FollowerTransport) serverWriteToFollower() {
 		case <-ft.exitCh:
 			ft.exitedMu.Lock()
 			if atomic.AddInt32(&ft.isclosed, -1) == FollowerTransportExited {
-				ft.conn.Close()
+				if conn, ok := ft.conn.(*rdma.Connection); ok {
+					RdmaConnPool.PutRdmaConn(conn, true)
+				} else {
+					ft.conn.Close()
+				}
 				atomic.StoreInt32(&ft.isclosed, FollowerTransportExited)
 			}
 			ft.exitedMu.Unlock()
@@ -136,7 +140,11 @@ func (ft *FollowerTransport) serverReadFromFollower() {
 		case <-ft.exitCh:
 			ft.exitedMu.Lock()
 			if atomic.AddInt32(&ft.isclosed, -1) == FollowerTransportExited {
-				ft.conn.Close()
+				if conn, ok := ft.conn.(*rdma.Connection); ok {
+					RdmaConnPool.PutRdmaConn(conn, true)
+				} else {
+					ft.conn.Close()
+				}
 				atomic.StoreInt32(&ft.isclosed, FollowerTransportExited)
 			}
 			ft.exitedMu.Unlock()
