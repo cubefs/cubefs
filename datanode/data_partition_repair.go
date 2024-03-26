@@ -18,7 +18,6 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
-	"github.com/cubefs/cubefs/util/exporter"
 	"hash/crc32"
 	"math"
 	"net"
@@ -26,6 +25,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/cubefs/cubefs/util/exporter"
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/repl"
@@ -579,7 +580,6 @@ func (dp *DataPartition) NormalExtentRepairRead(p repl.PacketInterface, connect 
 			var crc uint32
 			crc, err = store.Read(reply.GetExtentID(), offset, int64(currReadSize), reply.GetData(), isRepairRead)
 			reply.SetCRC(crc)
-
 		})
 		if !shallDegrade && metrics != nil {
 			metrics.MetricIOBytes.AddWithLabels(int64(p.GetSize()), metricPartitionIOLabels)
@@ -668,8 +668,8 @@ func (dp *DataPartition) applyRepairKey(extentID int) (m string) {
 // The actual repair of an extent happens here.
 func (dp *DataPartition) streamRepairExtent(remoteExtentInfo *storage.ExtentInfo,
 	tinyPackFunc, normalPackFunc, normalWithHoleFunc repl.MakeExtentRepairReadPacket,
-	newPack repl.NewPacketFunc) (err error) {
-
+	newPack repl.NewPacketFunc) (err error,
+) {
 	log.LogDebugf("streamRepairExtent dp %v remote info %v", dp.partitionID, remoteExtentInfo)
 
 	store := dp.ExtentStore()
@@ -729,7 +729,7 @@ func (dp *DataPartition) streamRepairExtent(remoteExtentInfo *storage.ExtentInfo
 			if currFixOffset >= dstOffset {
 				break
 			}
-			reply := newPack() //repl.NewPacket()
+			reply := newPack() // repl.NewPacket()
 
 			// read 64k streaming repair packet
 			if err = reply.ReadFromConnWithVer(conn, 60); err != nil {

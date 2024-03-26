@@ -18,7 +18,7 @@ const (
 )
 
 type MasterGClient struct {
-	addrs  []string //first is leader
+	addrs  []string // first is leader
 	active int
 }
 
@@ -64,7 +64,6 @@ func (c *MasterGClient) ValidatePassword(ctx context.Context, userID string, pas
 	}
 
 	return userInfo, nil
-
 }
 
 //-------------------client use ------------------//
@@ -118,7 +117,6 @@ func (r Result) String() string {
 	} else {
 		return string(v)
 	}
-
 }
 
 type Request struct {
