@@ -2065,13 +2065,12 @@ func (l *DecommissionDataPartitionList) traverse(c *Cluster) {
 			for _, dp := range allDecommissionDP {
 				log.LogDebugf("[DecommissionListTraverse] traverse dp(%v)", dp.decommissionInfo())
 				if dp.IsDecommissionSuccess() {
+
 					l.Remove(dp)
 					dp.ReleaseDecommissionToken(c)
 					msg := fmt.Sprintf("dp %v decommission success, cost %v",
 						dp.decommissionInfo(), time.Since(dp.RecoverStartTime))
 					dp.ResetDecommissionStatus()
-					dp.setRestoreReplicaStop()
-
 					err := c.syncUpdateDataPartition(dp)
 					if err != nil {
 						log.LogWarnf("action[DecommissionListTraverse]Remove success dp[%v] failed for %v",
@@ -2080,7 +2079,6 @@ func (l *DecommissionDataPartitionList) traverse(c *Cluster) {
 						log.LogDebugf("action[DecommissionListTraverse]Remove dp[%v] for success",
 							dp.PartitionID)
 					}
-					auditlog.LogMasterOp("TraverseDataPartition", msg, err)
 				} else if dp.IsDecommissionFailed() {
 					if !dp.tryRollback(c) {
 						log.LogDebugf("action[DecommissionListTraverse]Remove dp[%v] for fail",
