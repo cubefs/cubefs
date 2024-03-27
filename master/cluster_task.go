@@ -1089,7 +1089,7 @@ func (c *Cluster) updateMetaNode(metaNode *MetaNode, metaPartitions []*proto.Met
 		}
 
 		mp.updateMetaPartition(mr, metaNode)
-		vol.uidSpaceManager.volUidUpdate(mr)
+		vol.uidSpaceManager.pushUidMsg(mr)
 		vol.quotaManager.quotaUpdate(mr)
 		c.updateInodeIDUpperBound(mp, mr, threshold, metaNode)
 	}
