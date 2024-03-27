@@ -196,7 +196,7 @@ If the memory usage reaches this threshold, all the meta partition will be readO
 }
 
 func newClusterSetVolDeletionDelayTimeCmd(client *master.MasterClient) *cobra.Command {
-	var cmd = &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   CliOpSetVolDeletionDelayTime + " [VOLDELETIONDELAYTIME]",
 		Short: cmdClusterSetVolDeletionDelayTimeShort,
 		Args:  cobra.MinimumNArgs(1),

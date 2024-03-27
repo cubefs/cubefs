@@ -236,7 +236,7 @@ func (api *AdminAPI) DeleteVolumeWithAuthNode(volName, authKey, clientIDKey stri
 }
 
 func (api *AdminAPI) UnDeleteVolume(volName, authKey string, status bool) (err error) {
-	var request = newRequest(get, proto.AdminDeleteVol)
+	request := newRequest(get, proto.AdminDeleteVol)
 	request.addParam("name", volName)
 	request.addParam("authKey", authKey)
 	request.addParam("delete", strconv.FormatBool(false))
@@ -483,7 +483,7 @@ func (api *AdminAPI) SetMetaNodeThreshold(threshold float64, clientIDKey string)
 }
 
 func (api *AdminAPI) SetMasterVolDeletionDelayTime(volDeletionDelayTimeHour int) (err error) {
-	var request = newRequest(get, proto.AdminSetMasterVolDeletionDelayTime)
+	request := newRequest(get, proto.AdminSetMasterVolDeletionDelayTime)
 	request.addParam("volDeletionDelayTime", strconv.FormatInt(int64(volDeletionDelayTimeHour), 10))
 	_, err = api.mc.serveRequest(request)
 	return
