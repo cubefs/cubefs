@@ -8,7 +8,6 @@ import (
 )
 
 func (c *UserClient) GetUserInfoForLogin(ctx context.Context, userID string) (*UserInfo, error) {
-
 	req := client.NewRequest(ctx, `query($userID: string){
 			getUserInfo(userID: $userID){
 				access_key
@@ -38,5 +37,4 @@ func (c *UserClient) GetUserInfoForLogin(ctx context.Context, userID string) (*U
 	}
 
 	return &result, nil
-
 }
