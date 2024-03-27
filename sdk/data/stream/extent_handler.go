@@ -108,22 +108,25 @@ type ExtentHandler struct {
 
 	// Signaled in receiver ONLY to exit *sender*.
 	doneSender chan struct{}
+
+	meetLimitedIoError bool
 }
 
 // NewExtentHandler returns a new extent handler.
 func NewExtentHandler(stream *Streamer, offset int, storeMode int, size int) *ExtentHandler {
 	eh := &ExtentHandler{
-		stream:       stream,
-		id:           GetExtentHandlerID(),
-		inode:        stream.inode,
-		fileOffset:   offset,
-		size:         size,
-		storeMode:    storeMode,
-		empty:        make(chan struct{}, 1024),
-		request:      make(chan *Packet, 1024),
-		reply:        make(chan *Packet, 1024),
-		doneSender:   make(chan struct{}),
-		doneReceiver: make(chan struct{}),
+		stream:             stream,
+		id:                 GetExtentHandlerID(),
+		inode:              stream.inode,
+		fileOffset:         offset,
+		size:               size,
+		storeMode:          storeMode,
+		empty:              make(chan struct{}, 1024),
+		request:            make(chan *Packet, 1024),
+		reply:              make(chan *Packet, 1024),
+		doneSender:         make(chan struct{}),
+		doneReceiver:       make(chan struct{}),
+		meetLimitedIoError: false,
 	}
 
 	go eh.receiver()
@@ -298,7 +301,6 @@ func (eh *ExtentHandler) processReply(packet *Packet) {
 	}()
 
 	//log.LogDebugf("processReply enter: eh(%v) packet(%v)", eh, packet.GetUniqueLogId())
-
 	status := eh.getStatus()
 	if status >= ExtentStatusError {
 		eh.discardPacket(packet)
@@ -322,26 +324,40 @@ func (eh *ExtentHandler) processReply(packet *Packet) {
 
 	log.LogDebugf("processReply: get reply, eh(%v) packet(%v) reply(%v)", eh, packet, reply)
 
-	if reply.ResultCode != proto.OpOk {
-		// NOTE: try again
-		if reply.ResultCode == proto.OpLimitedIoErr {
-			log.LogWarnf("[processReply] eh(%v) packet(%v) reply(%v) try again", eh, packet, reply)
-			for reply.ResultCode == proto.OpLimitedIoErr {
-				time.Sleep(StreamSendSleepInterval)
-				if err = packet.writeToConn(eh.conn); err != nil {
-					log.LogWarnf("sender writeTo: failed, eh(%v) err(%v) packet(%v)", eh, err, packet)
-					eh.processReplyError(packet, err.Error())
-					return
-				}
-				reply = NewReply(packet.ReqID, packet.PartitionID, packet.ExtentID)
-				err = reply.ReadFromConn(eh.conn, proto.ReadDeadlineTime)
-				if err != nil {
-					log.LogErrorf("[processReply] failed to read reply from connection, eh(%v) err(%v) packet(%v)", eh, err, packet)
-					eh.processReplyError(packet, err.Error())
-					return
-				}
+	// NOTE: if meet a io limited error
+	if reply.ResultCode == proto.OpLimitedIoErr {
+		log.LogWarnf("[processReply] eh(%v) packet(%v) reply(%v) try again", eh, packet, reply)
+		host := eh.conn.RemoteAddr()
+		// NOTE: use tmp connection to avoid packet reorder
+		tmpConn, err := StreamConnPool.GetConnect(host.String())
+		if err != nil {
+			log.LogErrorf("[processReply] eh(%v) packet(%v) failed to get tmp conn retry, err(%v)", eh, packet, err)
+			eh.processReplyError(packet, err.Error())
+			return
+		}
+		forceClose := false
+		defer StreamConnPool.PutConnect(tmpConn, forceClose)
+		for reply.ResultCode == proto.OpLimitedIoErr {
+			time.Sleep(StreamSendSleepInterval)
+			if err = packet.writeToConn(tmpConn); err != nil {
+				forceClose = true
+				log.LogWarnf("sender writeTo: failed, eh(%v) err(%v) packet(%v)", eh, err, packet)
+				eh.processReplyError(packet, err.Error())
+				return
+			}
+			reply = NewReply(packet.ReqID, packet.PartitionID, packet.ExtentID)
+			err = reply.ReadFromConn(tmpConn, proto.ReadDeadlineTime)
+			if err != nil {
+				forceClose = true
+				log.LogErrorf("[processReply] failed to read reply from connection, eh(%v) err(%v) packet(%v)", eh, err, packet)
+				eh.processReplyError(packet, err.Error())
+				return
 			}
 		}
+		eh.meetLimitedIoError = true
+	}
+
+	if reply.ResultCode != proto.OpOk {
 		errmsg := fmt.Sprintf("reply NOK: reply(%v)", reply)
 		eh.processReplyError(packet, errmsg)
 		return
@@ -492,7 +508,11 @@ func (eh *ExtentHandler) waitForFlush() {
 }
 
 func (eh *ExtentHandler) recoverPacket(packet *Packet) error {
-	packet.errCount++
+	// NOTE: if last result code is limited io error
+	// allow client to retry indefinitely
+	if !eh.meetLimitedIoError {
+		packet.errCount++
+	}
 	if packet.errCount >= MaxPacketErrorCount || proto.IsCold(eh.stream.client.volumeType) {
 		return errors.New(fmt.Sprintf("recoverPacket failed: reach max error limit, eh(%v) packet(%v)", eh, packet))
 	}
