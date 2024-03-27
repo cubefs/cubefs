@@ -619,6 +619,10 @@ func (s *Streamer) closeOpenHandler() (err error) {
 		} else {
 			// TODO unhandled error
 			err = s.handler.flush()
+			// remove handle from dirtylist after flush success
+			if err == nil {
+				s.dirtylist.RemoveById(handler.id)
+			}
 		}
 		handler = handler.recoverHandler
 		cnt--
