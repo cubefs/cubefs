@@ -127,6 +127,8 @@ func createDefaultMasterServerForTest() *Server {
 	}`
 
 	testServer, err := createMasterServer(cfgJSON)
+	testServer.cluster.cfg.volForceDeletion = true
+
 	if err != nil {
 		panic(err)
 	}
@@ -689,7 +691,7 @@ func delVol(name string, t *testing.T) {
 
 	vol, err := server.cluster.getVol(name)
 	assert.True(t, err == nil)
-	t.Logf("vol statu %v", vol.Status)
+
 	assert.True(t, vol.Status == proto.VolStatusMarkDelete)
 }
 
