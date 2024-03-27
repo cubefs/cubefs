@@ -3,13 +3,6 @@ package datanode
 import (
 	"bytes"
 	"fmt"
-	"github.com/cubefs/cubefs/proto"
-	"github.com/cubefs/cubefs/repl"
-	"github.com/cubefs/cubefs/storage"
-	"github.com/cubefs/cubefs/util"
-	"github.com/cubefs/cubefs/util/exporter"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 	"hash/crc32"
 	"net"
 	"os"
@@ -17,6 +10,14 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/repl"
+	"github.com/cubefs/cubefs/storage"
+	"github.com/cubefs/cubefs/util"
+	"github.com/cubefs/cubefs/util/exporter"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 type repairWorker struct {
@@ -45,72 +46,95 @@ func (p *repairWorker) IsErrPacket() bool {
 func (p *repairWorker) SetArglen(len uint32) {
 	p.ArgLen = len
 }
+
 func (p *repairWorker) SetArg(data []byte) {
 	p.Arg = data
 }
+
 func (p *repairWorker) GetCRC() uint32 {
 	return p.CRC
 }
+
 func (p *repairWorker) GetStartT() int64 {
 	return p.StartT
 }
+
 func (p *repairWorker) GetOpcode() uint8 {
 	return p.Opcode
 }
+
 func (p *repairWorker) GetUniqueLogId() (m string) {
 	return ""
 }
+
 func (p *repairWorker) GetReqID() int64 {
 	return p.ReqID
 }
+
 func (p *repairWorker) GetPartitionID() uint64 {
 	return p.PartitionID
 }
+
 func (p *repairWorker) GetExtentID() uint64 {
 	return p.ExtentID
 }
+
 func (p *repairWorker) GetSize() uint32 {
 	return p.Size
 }
+
 func (p *repairWorker) SetSize(size uint32) {
 	p.Size = size
 }
+
 func (p *repairWorker) GetArg() []byte {
 	return p.Arg
 }
+
 func (p *repairWorker) GetArgLen() uint32 {
 	return p.ArgLen
 }
+
 func (p *repairWorker) GetData() []byte {
 	return p.Data
 }
+
 func (p *repairWorker) GetResultCode() uint8 {
 	return p.ResultCode
 }
+
 func (p *repairWorker) GetExtentOffset() int64 {
 	return p.ExtentOffset
 }
+
 func (p *repairWorker) SetResultCode(code uint8) {
 	p.ResultCode = code
 }
+
 func (p *repairWorker) SetCRC(crc uint32) {
 	p.CRC = crc
 }
+
 func (p *repairWorker) SetExtentOffset(offset int64) {
 	p.ExtentOffset = offset
 }
+
 func (p *repairWorker) ShallDegrade() bool {
 	return p.shallDegrade
 }
+
 func (p *repairWorker) SetStartT(StartT int64) {
 	p.StartT = StartT
 }
+
 func (p *repairWorker) SetData(data []byte) {
 	p.Data = data
 }
+
 func (p *repairWorker) SetOpCode(op uint8) {
 	p.Opcode = op
 }
+
 func (p *repairWorker) PackErrorBody(action, msg string) {
 	p.Size = uint32(len([]byte(action + "_" + msg)))
 	p.Data = make([]byte, p.Size)
@@ -120,7 +144,7 @@ func (p *repairWorker) PackErrorBody(action, msg string) {
 var sendWorker, recvWorker *repairWorker
 
 func (p *repairWorker) WriteToConn(c net.Conn) (err error) {
-	var pr = new(repl.Packet)
+	pr := new(repl.Packet)
 	pr.Opcode = p.Opcode
 	pr.Data = make([]byte, len(p.Data))
 	copy(pr.Data, p.Data)
@@ -140,6 +164,7 @@ func (p *repairWorker) WriteToConn(c net.Conn) (err error) {
 	p.dstWorker.packChannel <- pr
 	return nil
 }
+
 func (p *repairWorker) ReadFromConnWithVer(c net.Conn, timeoutSec int) (err error) {
 	select {
 	case pr := <-p.packChannel:
@@ -158,6 +183,7 @@ func (p *repairWorker) ReadFromConnWithVer(c net.Conn, timeoutSec int) (err erro
 	}
 	return nil
 }
+
 func getSrcPathExtentStore(role string) (string, func(), error) {
 	pattern := "cfs_storage_extentstore_" + role + "_"
 	dir, err := os.MkdirTemp(os.TempDir(), pattern)
@@ -491,7 +517,6 @@ func testDoSnapshotRepair(t *testing.T, normalId uint64, data []byte, crc uint32
 }
 
 func TestExtentRepair(t *testing.T) {
-
 	proto.InitBufferPool(int64(32768))
 	t.Logf("TestExtentRepair initWorker")
 	normalId := uint64(1025)

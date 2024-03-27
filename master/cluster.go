@@ -3830,7 +3830,7 @@ func (c *Cluster) checkDecommissionDataNode() {
 					log.LogWarnf("action[checkDecommissionDataNode] dataNode %v decommission completed, "+
 						"but has dp left, so only reset decommission status", dataNode.Addr)
 					dataNode.resetDecommissionStatus()
-					//todo: 解锁锁定的磁盘
+					// todo: 解锁锁定的磁盘
 				}
 				return true
 			}
@@ -3945,7 +3945,7 @@ func (c *Cluster) TryDecommissionDataNode(dataNode *DataNode) {
 				dp.ResetDecommissionStatus()
 				c.syncUpdateDataPartition(dp)
 			} else {
-				//if dp
+				// if dp
 
 				toBeOffLinePartitionsFinal = append(toBeOffLinePartitionsFinal, dp)
 				toBeOffLinePartitionsFinalIds = append(toBeOffLinePartitionsFinalIds, dp.PartitionID)

@@ -568,7 +568,7 @@ func (partition *DataPartition) checkReplicaNum(c *Cluster, vol *Vol) {
 			c.Name, vol.Name, partition.PartitionID, partition.ReplicaNum)
 		Warn(c.Name, msg)
 		if partition.isSpecialReplicaCnt() {
-			//only reduce replica num when rollback failed or no decommission happen
+			// only reduce replica num when rollback failed or no decommission happen
 			if partition.IsRollbackFailed() || partition.IsDecommissionInitial() {
 				log.LogInfof("action[checkReplicaNum] volume %v partition %v need to lower replica", partition.VolName, partition.PartitionID)
 				vol.NeedToLowerReplica = true
@@ -576,7 +576,7 @@ func (partition *DataPartition) checkReplicaNum(c *Cluster, vol *Vol) {
 			}
 			return
 		} else {
-			//add replica success but del replica failed
+			// add replica success but del replica failed
 			log.LogInfof("action[checkReplicaNum] volume %v partition %v replica num abnormal %v [%v]",
 				partition.VolName, partition.PartitionID, partition.ReplicaNum, partition.Hosts)
 			vol.NeedToLowerReplica = true
@@ -864,7 +864,7 @@ func (partition *DataPartition) activeUsedSimilar() bool {
 func (partition *DataPartition) getToBeDecommissionHost(replicaNum int) (host string) {
 	partition.RLock()
 	defer partition.RUnlock()
-	//if decommission happened, remove DecommissionDstAddr
+	// if decommission happened, remove DecommissionDstAddr
 	if partition.IsRollbackFailed() {
 		if partition.isSpecialReplicaCnt() {
 			// if new replica is added success when failed(rollback failed with delete new replica timeout eg)

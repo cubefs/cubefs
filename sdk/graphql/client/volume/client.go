@@ -1,9 +1,11 @@
 package volume
 
-//auto generral by sdk/graphql general.go
+// auto generral by sdk/graphql general.go
 
-import "context"
-import "github.com/cubefs/cubefs/sdk/graphql/client"
+import (
+	"context"
+	"github.com/cubefs/cubefs/sdk/graphql/client"
+)
 
 type VolumeClient struct {
 	*client.MasterGClient
@@ -13,7 +15,7 @@ func NewVolumeClient(c *client.MasterGClient) *VolumeClient {
 	return &VolumeClient{c}
 }
 
-//struct begin .....
+// struct begin .....
 type Token struct {
 	TokenType int8
 	Value     string
@@ -49,8 +51,7 @@ type GeneralResp struct {
 	Message string
 }
 
-type RWMutex struct {
-}
+type RWMutex struct{}
 
 type SimpleVolView struct {
 	Authenticate       bool
@@ -73,9 +74,8 @@ type SimpleVolView struct {
 	ZoneName           string
 }
 
-//function begin .....
+// function begin .....
 func (c *VolumeClient) CreateVolume(ctx context.Context, authenticate bool, capacity uint64, crossZone bool, dataPartitionSize uint64, description string, dpReplicaNum uint64, enableToken bool, followerRead bool, mpCount uint64, dpCount uint64, name string, owner string, zoneName string) (*Vol, error) {
-
 	req := client.NewRequest(ctx, `mutation($authenticate: bool, $capacity: uint64, $crossZone: bool, $dataPartitionSize: uint64, $description: string, $dpReplicaNum: uint64, $enableToken: bool, $followerRead: bool, $mpCount: uint64, $dpCount: uint64, $name: string, $owner: string, $zoneName: string){
 			createVolume(authenticate: $authenticate, capacity: $capacity, crossZone: $crossZone, dataPartitionSize: $dataPartitionSize, description: $description, dpReplicaNum: $dpReplicaNum, enableToken: $enableToken, followerRead: $followerRead, mpCount: $mpCount, dpCount: $dpCount, name: $name, owner: $owner, zoneName: $zoneName){
 				capacity
@@ -146,11 +146,9 @@ func (c *VolumeClient) CreateVolume(ctx context.Context, authenticate bool, capa
 	}
 
 	return &result, nil
-
 }
 
 func (c *VolumeClient) DeleteVolume(ctx context.Context, authKey string, name string) (*GeneralResp, error) {
-
 	req := client.NewRequest(ctx, `mutation($authKey: string, $name: string){
 			deleteVolume(authKey: $authKey, name: $name){
 				code
@@ -173,11 +171,9 @@ func (c *VolumeClient) DeleteVolume(ctx context.Context, authKey string, name st
 	}
 
 	return &result, nil
-
 }
 
 func (c *VolumeClient) UpdateVolume(ctx context.Context, authKey string, authenticate *bool, capacity *uint64, description *string, enableToken *bool, followerRead *bool, name string, replicaNum *uint64, zoneName *string) (*Vol, error) {
-
 	req := client.NewRequest(ctx, `mutation($authKey: string, $authenticate: bool, $capacity: uint64, $description: string, $enableToken: bool, $followerRead: bool, $name: string, $replicaNum: uint64, $zoneName: string){
 			updateVolume(authKey: $authKey, authenticate: $authenticate, capacity: $capacity, description: $description, enableToken: $enableToken, followerRead: $followerRead, name: $name, replicaNum: $replicaNum, zoneName: $zoneName){
 				capacity
@@ -244,11 +240,9 @@ func (c *VolumeClient) UpdateVolume(ctx context.Context, authKey string, authent
 	}
 
 	return &result, nil
-
 }
 
 func (c *VolumeClient) GetVolume(ctx context.Context, name string) (*Vol, error) {
-
 	req := client.NewRequest(ctx, `query($name: string){
 			getVolume(name: $name){
 				capacity
@@ -307,11 +301,9 @@ func (c *VolumeClient) GetVolume(ctx context.Context, name string) (*Vol, error)
 	}
 
 	return &result, nil
-
 }
 
 func (c *VolumeClient) ListVolume(ctx context.Context, keyword *string, userID *string) ([]Vol, error) {
-
 	req := client.NewRequest(ctx, `query($keyword: string, $userID: string){
 			listVolume(keyword: $keyword, userID: $userID){
 				capacity
@@ -371,11 +363,9 @@ func (c *VolumeClient) ListVolume(ctx context.Context, keyword *string, userID *
 	}
 
 	return result, nil
-
 }
 
 func (c *VolumeClient) VolPermission(ctx context.Context, userID *string, volName string) ([]UserPermission, error) {
-
 	req := client.NewRequest(ctx, `query($userID: string, $volName: string){
 			volPermission(userID: $userID, volName: $volName){
 				access
@@ -399,5 +389,4 @@ func (c *VolumeClient) VolPermission(ctx context.Context, userID *string, volNam
 	}
 
 	return result, nil
-
 }

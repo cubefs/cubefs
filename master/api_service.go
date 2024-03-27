@@ -1883,7 +1883,6 @@ func (m *Server) decommissionDataPartition(w http.ResponseWriter, r *http.Reques
 	ns.AddToDecommissionDataPartitionList(dp, c)
 	rstMsg = fmt.Sprintf(proto.AdminDecommissionDataPartition+" dataPartitionID :%v  on node:%v successfully", partitionID, addr)
 	sendOkReply(w, r, newSuccessHTTPReply(rstMsg))
-
 }
 
 func (m *Server) diagnoseDataPartition(w http.ResponseWriter, r *http.Request) {
@@ -2839,6 +2838,7 @@ func (m *Server) cancelDecommissionDataNode(w http.ResponseWriter, r *http.Reque
 	rstMsg = fmt.Sprintf("cancel decommission data node [%v] success", offLineAddr)
 	sendOkReply(w, r, newSuccessHTTPReply(rstMsg))
 }
+
 func (m *Server) setNodeInfoHandler(w http.ResponseWriter, r *http.Request) {
 	var (
 		params map[string]interface{}

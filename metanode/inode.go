@@ -63,8 +63,8 @@ var (
 //  +-------+-----------+--------------+-----------+--------------+
 
 type InodeMultiSnap struct {
-	verSeq        uint64 // latest version be create or modified
-	multiVersions InodeBatch //descend
+	verSeq        uint64     // latest version be create or modified
+	multiVersions InodeBatch // descend
 	ekRefMap      *sync.Map
 }
 
@@ -1138,6 +1138,7 @@ func (inode *Inode) unlinkTopLayer(mpId uint64, ino *Inode, mpVer uint64, verlis
 	}
 	return
 }
+
 // mpVerlist should not include verSeq of ino,it should be deleted before in volume version deletion command
 func (inode *Inode) dirUnlinkVerInlist(ino *Inode, mpVer uint64, mpVerlist *proto.VolVersionInfoList) (ext2Del []proto.ExtentKey, doMore bool, status uint8) {
 	var idxWithTopLayer int
@@ -1159,8 +1160,8 @@ func (inode *Inode) dirUnlinkVerInlist(ino *Inode, mpVer uint64, mpVerlist *prot
 		inode.multiSnap = &InodeMultiSnap{}
 	}
 	var (
-		starSeq = dIno.getVer() //startSeq is the seq of the directory snapshot waiting to be determined whether to be deleted.
-		endSeq uint64
+		starSeq = dIno.getVer() // startSeq is the seq of the directory snapshot waiting to be determined whether to be deleted.
+		endSeq  uint64
 	)
 	mIdx := idxWithTopLayer - 1
 	if mIdx == 0 {

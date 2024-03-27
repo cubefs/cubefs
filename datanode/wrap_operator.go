@@ -943,9 +943,7 @@ func (s *DataNode) handleStreamReadPacket(p *repl.Packet, connect net.Conn, isRe
 }
 
 func (s *DataNode) handleExtentRepairReadPacket(p *repl.Packet, connect net.Conn, isRepairRead bool) {
-	var (
-		err error
-	)
+	var err error
 	err = requestDoExtentRepair()
 	if err != nil {
 		p.PackErrorBody(ActionStreamRead, err.Error())

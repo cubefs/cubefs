@@ -1,6 +1,6 @@
 package user
 
-//auto generral by sdk/graphql general.go
+// auto generral by sdk/graphql general.go
 
 import (
 	"context"
@@ -17,7 +17,7 @@ func NewUserClient(c *client.MasterGClient) *UserClient {
 	return &UserClient{c}
 }
 
-//struct begin .....
+// struct begin .....
 type AuthorizedVols struct {
 	Authorized []string
 	Vol        string
@@ -58,9 +58,8 @@ type UserUseSpace struct {
 	Size  uint64
 }
 
-//function begin .....
+// function begin .....
 func (c *UserClient) DeleteUser(ctx context.Context, userID string) (*GeneralResp, error) {
-
 	req := client.NewRequest(ctx, `mutation($userID: string){
 			deleteUser(userID: $userID){
 				code
@@ -82,11 +81,9 @@ func (c *UserClient) DeleteUser(ctx context.Context, userID string) (*GeneralRes
 	}
 
 	return &result, nil
-
 }
 
 func (c *UserClient) UpdateUser(ctx context.Context, accessKey string, description string, secretKey string, Type uint8, userID string) (*UserInfo, error) {
-
 	req := client.NewRequest(ctx, `mutation($accessKey: string, $description: string, $secretKey: string, $type: uint8, $userID: string){
 			updateUser(accessKey: $accessKey, description: $description, secretKey: $secretKey, type: $type, userID: $userID){
 				access_key
@@ -130,11 +127,9 @@ func (c *UserClient) UpdateUser(ctx context.Context, accessKey string, descripti
 	}
 
 	return &result, nil
-
 }
 
 func (c *UserClient) GetUserInfo(ctx context.Context, userID string) (*UserInfo, error) {
-
 	req := client.NewRequest(ctx, `query($userID: string){
 			getUserInfo(userID: $userID){
 				access_key
@@ -174,11 +169,9 @@ func (c *UserClient) GetUserInfo(ctx context.Context, userID string) (*UserInfo,
 	}
 
 	return &result, nil
-
 }
 
 func (c *UserClient) TopNUser(ctx context.Context, n int32) ([]UserUseSpace, error) {
-
 	req := client.NewRequest(ctx, `query($n: int32){
 			topNUser(n: $n){
 				name
@@ -201,11 +194,9 @@ func (c *UserClient) TopNUser(ctx context.Context, n int32) ([]UserUseSpace, err
 	}
 
 	return result, nil
-
 }
 
 func (c *UserClient) ValidatePassword(ctx context.Context, password string, userID string) (*UserInfo, error) {
-
 	req := client.NewRequest(ctx, `query($password: string, $userID: string){
 			validatePassword(password: $password, userID: $userID){
 				access_key
@@ -246,11 +237,9 @@ func (c *UserClient) ValidatePassword(ctx context.Context, password string, user
 	}
 
 	return &result, nil
-
 }
 
 func (c *UserClient) CreateUser(ctx context.Context, accessKey string, description string, iD string, password string, secretKey string, Type uint8) (*UserInfo, error) {
-
 	req := client.NewRequest(ctx, `mutation($accessKey: string, $description: string, $iD: string, $password: string, $secretKey: string, $type: uint8){
 			createUser(accessKey: $accessKey, description: $description, iD: $iD, password: $password, secretKey: $secretKey, type: $type){
 				access_key
@@ -295,11 +284,9 @@ func (c *UserClient) CreateUser(ctx context.Context, accessKey string, descripti
 	}
 
 	return &result, nil
-
 }
 
 func (c *UserClient) RemoveUserPolicy(ctx context.Context, userID string, volume string) (*UserInfo, error) {
-
 	req := client.NewRequest(ctx, `mutation($userID: string, $volume: string){
 			removeUserPolicy(userID: $userID, volume: $volume){
 				access_key
@@ -340,11 +327,9 @@ func (c *UserClient) RemoveUserPolicy(ctx context.Context, userID string, volume
 	}
 
 	return &result, nil
-
 }
 
 func (c *UserClient) TransferUserVol(ctx context.Context, force bool, userDst string, userSrc string, volume string) (*UserInfo, error) {
-
 	req := client.NewRequest(ctx, `mutation($force: bool, $userDst: string, $userSrc: string, $volume: string){
 			transferUserVol(force: $force, userDst: $userDst, userSrc: $userSrc, volume: $volume){
 				access_key
@@ -387,11 +372,9 @@ func (c *UserClient) TransferUserVol(ctx context.Context, force bool, userDst st
 	}
 
 	return &result, nil
-
 }
 
 func (c *UserClient) UpdateUserPolicy(ctx context.Context, policy []string, userID string, volume string) (*UserInfo, error) {
-
 	req := client.NewRequest(ctx, `mutation($policy: []string, $userID: string, $volume: string){
 			updateUserPolicy(policy: $policy, userID: $userID, volume: $volume){
 				access_key
@@ -433,11 +416,9 @@ func (c *UserClient) UpdateUserPolicy(ctx context.Context, policy []string, user
 	}
 
 	return &result, nil
-
 }
 
 func (c *UserClient) GetUserAKInfo(ctx context.Context, accessKey string) (*UserInfo, error) {
-
 	req := client.NewRequest(ctx, `query($accessKey: string){
 			getUserAKInfo(accessKey: $accessKey){
 				access_key
@@ -477,11 +458,9 @@ func (c *UserClient) GetUserAKInfo(ctx context.Context, accessKey string) (*User
 	}
 
 	return &result, nil
-
 }
 
 func (c *UserClient) ListUserInfo(ctx context.Context) ([]UserInfo, error) {
-
 	req := client.NewRequest(ctx, `query(){
 			listUserInfo{
 				access_key
@@ -519,5 +498,4 @@ func (c *UserClient) ListUserInfo(ctx context.Context) ([]UserInfo, error) {
 	}
 
 	return result, nil
-
 }

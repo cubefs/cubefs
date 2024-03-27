@@ -36,7 +36,7 @@ var panicHook func()
 
 // NOTE: useless code for trampoline
 func panicTrampoline(e interface{}) {
-	var _ = e
+	_ = e
 	const arrayCount = 1000
 	randGen := rand.New(rand.NewSource(time.Now().Unix()))
 	randTable := make([]int, 0)

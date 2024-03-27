@@ -2171,6 +2171,7 @@ func (l *DecommissionDataPartitionList) pushFailedDp(value *DataPartition, c *Cl
 		value.PartitionID, status, value.isRecover)
 	return
 }
+
 func (l *DecommissionDataPartitionList) Remove(value *DataPartition) {
 	if value == nil {
 		log.LogWarnf("Cannot remove nil value")

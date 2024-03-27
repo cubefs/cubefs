@@ -68,21 +68,23 @@ type PacketInterface interface {
 	SetArg(data []byte)
 }
 
-type NewPacketFunc func() (p PacketInterface)
-type Packet struct {
-	proto.Packet
-	followersAddrs  []string
-	followerPackets []*FollowerPacket
-	IsReleased      int32 // TODO what is released?
-	Object          interface{}
-	TpObject        *exporter.TimePointCount
-	NeedReply       bool
-	OrgBuffer       []byte
+type (
+	NewPacketFunc func() (p PacketInterface)
+	Packet        struct {
+		proto.Packet
+		followersAddrs  []string
+		followerPackets []*FollowerPacket
+		IsReleased      int32 // TODO what is released?
+		Object          interface{}
+		TpObject        *exporter.TimePointCount
+		NeedReply       bool
+		OrgBuffer       []byte
 
-	// used locally
-	shallDegrade bool
-	AfterPre     bool
-}
+		// used locally
+		shallDegrade bool
+		AfterPre     bool
+	}
+)
 
 type FollowerPacket struct {
 	proto.Packet
@@ -208,6 +210,7 @@ func (p *Packet) resolveFollowersAddr() (err error) {
 
 	return
 }
+
 func NewPacketEx() (p PacketInterface) {
 	pr := new(Packet)
 	pr.Magic = proto.ProtoMagic
@@ -257,8 +260,10 @@ func NewReadTinyDeleteRecordResponsePacket(requestID int64, partitionID uint64) 
 	return
 }
 
-type MakeStreamReadResponsePacket func(requestID int64, partitionID uint64, extentID uint64) (p PacketInterface)
-type MakeExtentRepairReadPacket func(partitionID uint64, extentID uint64, offset, size int) (p PacketInterface)
+type (
+	MakeStreamReadResponsePacket func(requestID int64, partitionID uint64, extentID uint64) (p PacketInterface)
+	MakeExtentRepairReadPacket   func(partitionID uint64, extentID uint64, offset, size int) (p PacketInterface)
+)
 
 func NewExtentRepairReadPacket(partitionID uint64, extentID uint64, offset, size int) (p PacketInterface) {
 	pr := new(Packet)
@@ -382,9 +387,11 @@ func (p *Packet) GetSize() uint32 {
 func (p *Packet) SetSize(size uint32) {
 	p.Size = size
 }
+
 func (p *Packet) SetOpCode(op uint8) {
 	p.Opcode = op
 }
+
 func (p *Packet) GetOpcode() uint8 {
 	return p.Opcode
 }
@@ -392,9 +399,11 @@ func (p *Packet) GetOpcode() uint8 {
 func (p *Packet) GetArg() []byte {
 	return p.Arg
 }
+
 func (p *Packet) GetCRC() uint32 {
 	return p.CRC
 }
+
 func (p *Packet) GetArgLen() uint32 {
 	return p.ArgLen
 }
@@ -566,12 +575,15 @@ func (p *Packet) ShallDegrade() bool {
 func (p *Packet) SetStartT(StartT int64) {
 	p.StartT = StartT
 }
+
 func (p *Packet) SetData(data []byte) {
 	p.Data = data
 }
+
 func (p *Packet) SetArglen(len uint32) {
 	p.ArgLen = len
 }
+
 func (p *Packet) SetArg(data []byte) {
 	p.Arg = data
 }
