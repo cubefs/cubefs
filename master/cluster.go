@@ -51,7 +51,7 @@ type Cluster struct {
 	metaNodes                    sync.Map
 	volMutex                     sync.RWMutex // volume mutex
 	createVolMutex               sync.RWMutex // create volume mutex
-	deleteVolMutex               sync.RWMutex //delete volume mutex
+	deleteVolMutex               sync.RWMutex // delete volume mutex
 	mnMutex                      sync.RWMutex // meta node mutex
 	dnMutex                      sync.RWMutex // data node mutex
 	nsMutex                      sync.RWMutex // nodeset mutex
