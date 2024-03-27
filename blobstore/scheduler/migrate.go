@@ -345,6 +345,7 @@ type MigrateMgr struct {
 	lockFailHandleFunc lockFailFunc
 	// clear junk tasks
 	clearJunkTasksWhenLoadingFunc clearJunkTasksFunc
+	releaseTaskLimit              func(diskId proto.DiskID)
 }
 
 // NewMigrateMgr returns migrate manager
@@ -355,6 +356,7 @@ func NewMigrateMgr(
 	taskLogger recordlog.Encoder,
 	conf *MigrateConfig,
 	taskType proto.TaskType,
+	releaseTaskLimit func(diskId proto.DiskID),
 ) *MigrateMgr {
 	mgr := &MigrateMgr{
 		taskType:           taskType,
@@ -374,6 +376,7 @@ func NewMigrateMgr(
 		taskLogger: taskLogger,
 
 		clearJunkTasksWhenLoadingFunc: defaultClearJunkTasksWhenLoadingFunc,
+		releaseTaskLimit:              releaseTaskLimit,
 
 		Closer: closer.New(),
 	}
@@ -683,6 +686,11 @@ func (mgr *MigrateMgr) finishTask() (err error) {
 
 	// add delete task and check it again
 	mgr.addDeletedTask(migrateTask)
+
+	if migrateTask.TaskType == proto.TaskTypeDiskDrop {
+		mgr.releaseTaskLimit(migrateTask.SourceDiskID)
+	}
+
 	span.Infof("finish task phase success: task_id[%s], state[%v]", migrateTask.TaskID, migrateTask.State)
 	return
 }
@@ -728,6 +736,9 @@ func (mgr *MigrateMgr) finishTaskInAdvance(ctx context.Context, task *proto.Migr
 	mgr.finishTaskCounter.Add()
 	mgr.prepareQueue.RemoveTask(task.TaskID)
 	mgr.addDeletedTask(task)
+	if task.TaskType == proto.TaskTypeDiskDrop {
+		mgr.releaseTaskLimit(task.SourceDiskID)
+	}
 	base.VolTaskLockerInst().Unlock(ctx, task.SourceVuid.Vid())
 }
 

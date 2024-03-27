@@ -44,7 +44,7 @@ func newDiskDroper(t *testing.T) *DiskDropMgr {
 	migrater.EXPECT().StatQueueTaskCnt().AnyTimes().Return(0, 0, 0)
 	migrater.EXPECT().Close().AnyTimes().DoAndReturn(c.Close)
 	migrater.EXPECT().Done().AnyTimes().Return(c.Done())
-	mgr := NewDiskDropMgr(clusterMgr, volumeUpdater, taskSwitch, taskLogger, &MigrateConfig{})
+	mgr := NewDiskDropMgr(clusterMgr, volumeUpdater, taskSwitch, taskLogger, &DropMgrConfig{}, nil)
 	mgr.cfg.DiskConcurrency = 1
 	mgr.IMigrator = migrater
 	return mgr
@@ -141,7 +141,7 @@ func TestDiskDropCollectTask(t *testing.T) {
 		require.False(t, mgr.hasRevised)
 	}
 	{
-		// genDiskDropTasks failed
+		// loopGenerateTask failed
 		mgr := newDiskDroper(t)
 		mgr.hasRevised = false
 		mgr.droppingDisks.add(testDisk1.DiskID, testDisk1)
@@ -159,7 +159,7 @@ func TestDiskDropCollectTask(t *testing.T) {
 		mgr.collectTask()
 		require.False(t, mgr.hasRevised)
 
-		// genDiskDropTasks success
+		// loopGenerateTask success
 		volume := MockGenVolInfo(10005, codemode.EC6P6, proto.VolumeStatusIdle)
 		var units []*client.VunitInfoSimple
 		for _, unit := range volume.VunitLocations {
