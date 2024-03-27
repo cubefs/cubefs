@@ -2838,6 +2838,7 @@ func (m *Server) cancelDecommissionDataNode(w http.ResponseWriter, r *http.Reque
 	rstMsg = fmt.Sprintf("cancel decommission data node [%v] success", offLineAddr)
 	sendOkReply(w, r, newSuccessHTTPReply(rstMsg))
 }
+
 func (m *Server) setNodeInfoHandler(w http.ResponseWriter, r *http.Request) {
 	var (
 		params map[string]interface{}

@@ -668,8 +668,8 @@ func (dp *DataPartition) applyRepairKey(extentID int) (m string) {
 // The actual repair of an extent happens here.
 func (dp *DataPartition) streamRepairExtent(remoteExtentInfo *storage.ExtentInfo,
 	tinyPackFunc, normalPackFunc, normalWithHoleFunc repl.MakeExtentRepairReadPacket,
-	newPack repl.NewPacketFunc) (err error) {
-
+	newPack repl.NewPacketFunc) (err error,
+) {
 	defer func() {
 		if err != nil {
 			log.LogWarnf("streamRepairExtent: dp %v remote info %v execute repair failed, err %s",
