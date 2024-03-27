@@ -628,23 +628,31 @@ func (i *Inode) Unmarshal(raw []byte) (err error) {
 	)
 	buff := bytes.NewBuffer(raw)
 	if err = binary.Read(buff, binary.BigEndian, &keyLen); err != nil {
+		err = errors.NewErrorf("[Unmarshal] read keyLen: %s", err.Error())
 		return
 	}
 	keyBytes := make([]byte, keyLen)
 	if _, err = buff.Read(keyBytes); err != nil {
+		err = errors.NewErrorf("[Unmarshal] read keyBytes: %s", err.Error())
 		return
 	}
 	if err = i.UnmarshalKey(keyBytes); err != nil {
+		err = errors.NewErrorf("[Unmarshal] UnmarshalKey: %s", err.Error())
 		return
 	}
 	if err = binary.Read(buff, binary.BigEndian, &valLen); err != nil {
+		err = errors.NewErrorf("[Unmarshal] inode(%v) read valLen: %s", i.Inode, err.Error())
 		return
 	}
 	valBytes := make([]byte, valLen)
 	if _, err = buff.Read(valBytes); err != nil {
+		err = errors.NewErrorf("[Unmarshal] inode(%v) read valBytes: %s", i.Inode, err.Error())
 		return
 	}
 	err = i.UnmarshalValue(valBytes)
+	if err != nil {
+		err = errors.NewErrorf("[Unmarshal] inode(%v) UnmarshalValue: %s", i.Inode, err.Error())
+	}
 	return
 }
 
@@ -788,7 +796,7 @@ func (i *Inode) MarshalInodeValue(buff *bytes.Buffer) {
 			}
 		}
 	} else {
-		panic(errors.New(fmt.Sprintf("MarshalInodeValue failed, unsupport StorageClass %v", i.StorageClass)))
+		panic(errors.New(fmt.Sprintf("ino(%v) MarshalInodeValue failed, unsupport StorageClass %v", i.Inode, i.StorageClass)))
 	}
 	if i.HybridCouldExtentsMigration != nil && i.HybridCouldExtentsMigration.storageClass != proto.MediaType_Unspecified {
 		i.Reserved |= V4MigrationExtentsFlag
@@ -917,6 +925,11 @@ func (i *Inode) MarshalInodeValue(buff *bytes.Buffer) {
 				log.LogFlush()
 				panic(errors.New(fmt.Sprintf("MarshalInodeValue failed, inode(%v) unsupport migrate StorageClass(%v)",
 					i.Inode, i.HybridCouldExtentsMigration.storageClass)))
+			}
+		} else {
+			emptyExtDataLen := uint32(0)
+			if err = binary.Write(buff, binary.BigEndian, emptyExtDataLen); err != nil {
+				panic(err)
 			}
 		}
 	}
@@ -1116,7 +1129,8 @@ func (i *Inode) UnmarshalInodeValue(buff *bytes.Buffer) (err error) {
 				if err = binary.Read(buff, binary.BigEndian, &extSize); err != nil {
 					return
 				}
-				fmt.Printf("ino %v migration extSize %v\n", i.Inode, extSize)
+				log.LogDebugf("[UnmarshalInodeValue] ino(%v) migrateStorageClass(%v) extSize(%v)",
+					i.Inode, &i.HybridCouldExtentsMigration.storageClass, extSize)
 				if extSize > 0 {
 					extBytes := make([]byte, extSize)
 					if _, err = io.ReadFull(buff, extBytes); err != nil {
@@ -1133,6 +1147,8 @@ func (i *Inode) UnmarshalInodeValue(buff *bytes.Buffer) (err error) {
 				if err = binary.Read(buff, binary.BigEndian, &ObjExtSize); err != nil {
 					return
 				}
+				log.LogDebugf("[UnmarshalInodeValue] ino(%v) migrateStorageClass(%v) extSize(%v)",
+					i.Inode, &i.HybridCouldExtentsMigration.storageClass, extSize)
 				if ObjExtSize > 0 {
 					objExtBytes := make([]byte, ObjExtSize)
 					if _, err = io.ReadFull(buff, objExtBytes); err != nil {
@@ -1325,17 +1341,16 @@ func (i *Inode) UnmarshalValue(val []byte) (err error) {
 	if i.Reserved&V3EnableSnapInodeFlag > 0 {
 		var verCnt int32
 		if err = binary.Read(buff, binary.BigEndian, &verCnt); err != nil {
-			log.LogInfof("action[UnmarshalValue] err get ver cnt inode[%v] new seq [%v]", i.Inode, i.getVer())
+			log.LogErrorf("[UnmarshalValue] inode[%v] newSeq[%v], get ver cnt err: %v", i.Inode, i.getVer(), err.Error())
 			return
 		}
 
-		//TODO:tangjingyu eed to handle it
-		if verCnt > 0 && i.getVer() == 0 {
-			err = fmt.Errorf("inode[%v] verCnt %v root ver [%v]", i.Inode, verCnt, i.getVer())
-			log.LogFatalf("UnmarshalValue. %v", err)
-			return
-		}
-
+		//TODO:tangjingyu need to handle it
+		//if verCnt > 0 && i.getVer() == 0 {
+		//	err = fmt.Errorf("inode[%v] verCnt[%v] rootVer [%v]", i.Inode, verCnt, i.getVer())
+		//	log.LogFatalf("UnmarshalValue. %v", err)
+		//	return
+		//}
 		for idx := int32(0); idx < verCnt; idx++ {
 			ino := &Inode{Inode: i.Inode}
 			ino.UnmarshalInodeValue(buff) //TODO:tangjingyu check err
