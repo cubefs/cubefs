@@ -2125,7 +2125,8 @@ func (l *DecommissionDataPartitionList) Put(id uint64, value *DataPartition, c *
 		log.LogWarnf("action[DecommissionDataPartitionListPut] ns[%v] cannot put nil value", id)
 		return
 	}
-	// can only add running or mark or prepare or failed without reaching roll back max
+	// no need to add initial, pause.
+	// success or failed needs to put into decommission list to reset status
 	if !value.canAddToDecommissionList() {
 		log.LogWarnf("action[DecommissionDataPartitionListPut] ns[%v] put wrong dp[%v] status[%v] DecommissionNeedRollbackTimes(%v)",
 			id, value.PartitionID, value.GetDecommissionStatus(), value.DecommissionNeedRollbackTimes)
