@@ -390,6 +390,7 @@ func (c *Cluster) scheduleTask() {
 	c.scheduleToLcScan()
 	c.scheduleToSnapshotDelVerScan()
 	c.scheduleToBadDisk()
+	c.scheduleToCheckVolUid()
 }
 
 func (c *Cluster) masterAddr() (addr string) {
@@ -567,6 +568,23 @@ func (c *Cluster) scheduleToCheckVolQos() {
 				vols := c.copyVols()
 				for _, vol := range vols {
 					vol.checkQos()
+				}
+			}
+			// time.Sleep(time.Second * time.Duration(c.cfg.IntervalToCheckQos))
+			time.Sleep(time.Duration(float32(time.Second) * 0.5))
+		}
+	}()
+}
+
+func (c *Cluster) scheduleToCheckVolUid() {
+	go func() {
+		//check vols after switching leader two minutes
+		for {
+			if c.partition.IsRaftLeader() {
+				vols := c.copyVols()
+				for _, vol := range vols {
+					vol.uidSpaceManager.scheduleUidUpdate()
+					vol.uidSpaceManager.reCalculate()
 				}
 			}
 			// time.Sleep(time.Second * time.Duration(c.cfg.IntervalToCheckQos))
