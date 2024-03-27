@@ -21,20 +21,20 @@ import (
 	"time"
 
 	"github.com/cubefs/cubefs/util/errors"
+	"github.com/stretchr/testify/require"
 )
 
 func TestStatistic(t *testing.T) {
 	DefaultStatInterval = 1 * time.Second
 
-	statLogPath := "./"
+	statLogPath, err := os.MkdirTemp("", "")
+	require.NoError(t, err)
 	statLogSize := 20000000
 	statLogModule := "TestStatistic"
 	timeOutUs := [MaxTimeoutLevel]uint32{100000, 500000, 1000000}
 
-	_, err := NewStatistic(statLogPath, statLogModule, int64(statLogSize), timeOutUs, true)
-	if err != nil {
-		t.Fatal(err)
-	}
+	_, err = NewStatistic(statLogPath, statLogModule, int64(statLogSize), timeOutUs, true)
+	require.NoError(t, err)
 	defer os.RemoveAll(path.Join(statLogPath, statLogModule))
 	defer ClearStat()
 
