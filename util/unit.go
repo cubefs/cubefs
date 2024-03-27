@@ -57,7 +57,7 @@ const (
 const (
 	UidLimitList = 0
 	UidAddLimit  = 1
-	UidDel       = 2
+	UidDelLimit  = 2
 	UidGetLimit  = 3
 )
 

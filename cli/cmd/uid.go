@@ -132,7 +132,7 @@ func newUidDelCmd(client *master.MasterClient) *cobra.Command {
 				}
 			}()
 			var uidInfo *proto.UidSpaceRsp
-			if uidInfo, err = client.UserAPI().UidOperation(args[0], args[1], util.UidDel, ""); err != nil || !uidInfo.OK {
+			if uidInfo, err = client.UserAPI().UidOperation(args[0], args[1], util.UidDelLimit, ""); err != nil || !uidInfo.OK {
 				return
 			}
 			stdout("success!\n")

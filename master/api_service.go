@@ -486,11 +486,14 @@ func (m *Server) UidOperate(w http.ResponseWriter, r *http.Request) {
 	case util.UidGetLimit:
 		ok, uidInfo = vol.uidSpaceManager.checkUid(uid)
 		uidList = append(uidList, uidInfo)
-	case util.AclAddIP:
-		ok = vol.uidSpaceManager.addUid(uid, capSize)
-	case util.AclDelIP:
-		ok = vol.uidSpaceManager.removeUid(uid)
-	case util.AclListIP:
+	case util.UidAddLimit, util.UidDelLimit:
+		cmd := &UidCmd{
+			op:   op,
+			uid:  uid,
+			size: capSize,
+		}
+		ok = vol.uidSpaceManager.pushUidCmd(cmd)
+	case util.UidLimitList:
 		uidList = vol.uidSpaceManager.listAll()
 	}
 
@@ -2443,8 +2446,8 @@ func newSimpleView(vol *Vol) (view *proto.SimpleVolView) {
 		DeleteExecTime:          vol.DeleteExecTime,
 	}
 
-	vol.uidSpaceManager.RLock()
-	defer vol.uidSpaceManager.RUnlock()
+	vol.uidSpaceManager.rwMutex.RLock()
+	defer vol.uidSpaceManager.rwMutex.RUnlock()
 	for _, uid := range vol.uidSpaceManager.uidInfo {
 		view.Uids = append(view.Uids, proto.UidSimpleInfo{
 			UID:     uid.Uid,

@@ -17,11 +17,22 @@ type UidSpaceManager struct {
 	uidInfo        map[uint32]*proto.UidSpaceInfo
 	c              *Cluster
 	vol            *Vol
-	sync.RWMutex
+	msgChan        chan *proto.MetaPartitionReport
+	cmdChan        chan *UidCmd
+	exitC          chan struct{}
+	rwMutex        sync.RWMutex
 }
 
 type UidSpaceFsm struct {
 	UidSpaceArr []*proto.UidSpaceInfo
+}
+
+type UidCmd struct {
+	op   uint64
+	uid  uint32
+	size uint64
+	wg   sync.WaitGroup
+	rsp  interface{}
 }
 
 func (vol *Vol) initUidSpaceManager(c *Cluster) {
@@ -31,49 +42,66 @@ func (vol *Vol) initUidSpaceManager(c *Cluster) {
 		volName:        vol.Name,
 		mpSpaceMetrics: make(map[uint64][]*proto.UidReportSpaceInfo),
 		uidInfo:        make(map[uint32]*proto.UidSpaceInfo),
+		msgChan:        make(chan *proto.MetaPartitionReport, 10000),
+		cmdChan:        make(chan *UidCmd, 1000),
 	}
 }
 
-func (uMgr *UidSpaceManager) addUid(uid uint32, size uint64) bool {
-	uMgr.Lock()
-	uMgr.uidInfo[uid] = &proto.UidSpaceInfo{
-		LimitSize: size,
-		VolName:   uMgr.volName,
-		Uid:       uid,
-		Enabled:   true,
+func (uMgr *UidSpaceManager) pushUidCmd(cmd *UidCmd) bool {
+	cmd.wg.Add(1)
+	select {
+	case uMgr.cmdChan <- cmd:
+	default:
+		log.LogWarnf("vol %v volUidUpdate.mpID %v uid %v op %v be missed", uMgr.volName, cmd.uid, cmd.op)
+		return false
 	}
-	uMgr.persist()
-	uMgr.Unlock()
-
-	uMgr.listAll()
+	log.LogDebugf("pushUidCmd. vol %v cmd (%v) wait result", uMgr.volName, cmd)
+	cmd.wg.Wait()
+	log.LogDebugf("pushUidCmd. vol %v cmd (%v) get result", uMgr.volName, cmd)
 	return true
 }
 
-func (uMgr *UidSpaceManager) removeUid(uid uint32) bool {
-	uMgr.Lock()
-	defer uMgr.Unlock()
+func (uMgr *UidSpaceManager) addUid(cmd *UidCmd) {
+	defer cmd.wg.Done()
+	if uidInfo, ok := uMgr.uidInfo[cmd.uid]; ok {
+		if uidInfo.Enabled == true {
+			log.LogWarnf("UidSpaceManager.addUid vol %v add %v already exist", uMgr.volName, cmd.uid)
+			return
+		}
+	}
+	uMgr.uidInfo[cmd.uid] = &proto.UidSpaceInfo{
+		LimitSize: cmd.size,
+		VolName:   uMgr.volName,
+		Uid:       cmd.uid,
+		Enabled:   true,
+	}
+	uMgr.persist()
+	log.LogWarnf("UidSpaceManager.vol %v addUid %v success", uMgr.volName, cmd.uid)
+}
 
-	if _, ok := uMgr.uidInfo[uid]; !ok {
-		log.LogErrorf("UidSpaceManager.vol %v del %v failed", uMgr.volName, uid)
+func (uMgr *UidSpaceManager) removeUid(cmd *UidCmd) bool {
+	defer cmd.wg.Done()
+	if _, ok := uMgr.uidInfo[cmd.uid]; !ok {
+		log.LogWarnf("UidSpaceManager.vol %v uid del uid %v not exist", uMgr.volName, cmd.uid)
 		return true
 	}
-	uMgr.uidInfo[uid].Enabled = false
-	uMgr.uidInfo[uid].Limited = false
+	uMgr.uidInfo[cmd.uid].Enabled = false
+	uMgr.uidInfo[cmd.uid].Limited = false
 	uMgr.persist()
-	log.LogDebugf("UidSpaceManager.vol %v del %v success", uMgr.volName, uid)
+	log.LogWarnf("UidSpaceManager.vol %v del %v success", uMgr.volName, cmd.uid)
 	return true
 }
 
 func (uMgr *UidSpaceManager) checkUid(uid uint32) (ok bool, uidInfo *proto.UidSpaceInfo) {
-	uMgr.RLock()
-	defer uMgr.RUnlock()
+	uMgr.rwMutex.RLock()
+	defer uMgr.rwMutex.RUnlock()
 	uidInfo, ok = uMgr.uidInfo[uid]
 	return
 }
 
 func (uMgr *UidSpaceManager) listAll() (rsp []*proto.UidSpaceInfo) {
-	uMgr.RLock()
-	defer uMgr.RUnlock()
+	uMgr.rwMutex.RLock()
+	defer uMgr.rwMutex.RUnlock()
 
 	log.LogDebugf("UidSpaceManager. listAll vol %v, info %v", uMgr.volName, len(uMgr.uidInfo))
 	for _, t := range uMgr.uidInfo {
@@ -118,8 +146,8 @@ func (uMgr *UidSpaceManager) load(c *Cluster, val []byte) (err error) {
 }
 
 func (uMgr *UidSpaceManager) getSpaceOp() (rsp []*proto.UidSpaceInfo) {
-	uMgr.RLock()
-	defer uMgr.RUnlock()
+	uMgr.rwMutex.RLock()
+	defer uMgr.rwMutex.RUnlock()
 	for _, info := range uMgr.uidInfo {
 		rsp = append(rsp, info)
 		log.LogDebugf("getSpaceOp. vol %v uid %v enabled %v", info.VolName, info.Uid, info.Limited)
@@ -127,15 +155,43 @@ func (uMgr *UidSpaceManager) getSpaceOp() (rsp []*proto.UidSpaceInfo) {
 	return
 }
 
-func (uMgr *UidSpaceManager) volUidUpdate(report *proto.MetaPartitionReport) {
+func (uMgr *UidSpaceManager) scheduleUidUpdate() {
+	for {
+		select {
+		case report := <-uMgr.msgChan:
+			log.LogDebugf("vol %v scheduleUidUpdate.mpID %v set uid %v be set", uMgr.volName, report.PartitionID, report.UidInfo)
+			uMgr.volUidUpdate(report)
+		case cmd := <-uMgr.cmdChan:
+			uMgr.rwMutex.Lock()
+			log.LogDebugf("vol %v scheduleUidUpdate.cmd(%v)", uMgr.volName, cmd)
+			if cmd.op == util.UidAddLimit {
+				uMgr.addUid(cmd)
+			} else if cmd.op == util.UidDelLimit {
+				uMgr.removeUid(cmd)
+			}
+			uMgr.rwMutex.Unlock()
+			log.LogDebugf("vol %v scheduleUidUpdate.cmd(%v) left", uMgr.volName, cmd)
+		default:
+			return
+		}
+	}
+}
+
+func (uMgr *UidSpaceManager) pushUidMsg(report *proto.MetaPartitionReport) {
 	if !report.IsLeader {
 		return
 	}
-	uMgr.Lock()
-	defer uMgr.Unlock()
-	id := report.PartitionID
-	uMgr.mpSpaceMetrics[id] = report.UidInfo
-	log.LogDebugf("vol %v volUidUpdate.mpID %v set uid %v. uid list size %v", uMgr.volName, id, report.UidInfo, len(uMgr.uidInfo))
+	select {
+	case uMgr.msgChan <- report:
+	default:
+		log.LogWarnf("vol %v volUidUpdate.mpID %v set uid %v be missed", uMgr.volName, report.PartitionID, report.UidInfo)
+		return
+	}
+}
+
+func (uMgr *UidSpaceManager) reCalculate() {
+	uMgr.rwMutex.Lock()
+	defer uMgr.rwMutex.Unlock()
 
 	for _, info := range uMgr.uidInfo {
 		info.UsedSize = 0
@@ -143,7 +199,6 @@ func (uMgr *UidSpaceManager) volUidUpdate(report *proto.MetaPartitionReport) {
 
 	uidInfo := make(map[uint32]*proto.UidSpaceInfo)
 	for mpId, info := range uMgr.mpSpaceMetrics {
-		log.LogDebugf("vol %v volUidUpdate. reCalc mpId %v info %v", uMgr.volName, mpId, len(info))
 		for _, space := range info {
 			if _, ok := uMgr.uidInfo[space.Uid]; !ok {
 				log.LogDebugf("vol %v volUidUpdate.uid %v not found", uMgr.volName, space.Uid)
@@ -157,7 +212,7 @@ func (uMgr *UidSpaceManager) volUidUpdate(report *proto.MetaPartitionReport) {
 				uidInfo[space.Uid] = &(*uMgr.uidInfo[space.Uid])
 			}
 
-			log.LogDebugf("volUidUpdate.vol %v uid %v from mpId %v useSize %v add %v", uMgr.vol, space.Uid, mpId, uidInfo[space.Uid].UsedSize, space.Size)
+			// log.LogDebugf("volUidUpdate.vol %v uid %v from mpId %v useSize %v add %v", uMgr.vol, space.Uid, mpId, uidInfo[space.Uid].UsedSize, space.Size)
 			uidInfo[space.Uid].UsedSize += space.Size
 			if !uidInfo[space.Uid].Enabled {
 				uidInfo[space.Uid].Limited = false
@@ -173,7 +228,6 @@ func (uMgr *UidSpaceManager) volUidUpdate(report *proto.MetaPartitionReport) {
 		}
 	}
 
-	log.LogDebugf("vol %v volUidUpdate.mpID %v set uid %v. uid list size %v", uMgr.volName, id, report.UidInfo, len(uMgr.uidInfo))
 	for _, info := range uidInfo {
 		if _, ok := uMgr.uidInfo[info.Uid]; !ok {
 			log.LogErrorf("volUidUpdate.uid %v not found", info.Uid)
@@ -186,8 +240,17 @@ func (uMgr *UidSpaceManager) volUidUpdate(report *proto.MetaPartitionReport) {
 			info.Limited = false
 		}
 	}
-	log.LogDebugf("volUidUpdate.mpID %v set uid %v. uid list size %v", id, report.UidInfo, len(uMgr.uidInfo))
+	// log.LogDebugf("volUidUpdate. uid count %v", len(uMgr.uidInfo))
+}
 
+func (uMgr *UidSpaceManager) volUidUpdate(report *proto.MetaPartitionReport) {
+	if !report.IsLeader {
+		return
+	}
+
+	id := report.PartitionID
+	uMgr.mpSpaceMetrics[id] = report.UidInfo
+	log.LogDebugf("vol %v volUidUpdate.mpID %v set uid %v. uid list size %v", uMgr.volName, id, report.UidInfo, len(uMgr.uidInfo))
 }
 
 type ServerFactorLimit struct {
