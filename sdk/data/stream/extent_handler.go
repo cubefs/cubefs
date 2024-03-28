@@ -387,6 +387,10 @@ func (eh *ExtentHandler) processReplyError(packet *Packet, errmsg string) {
 }
 
 func (eh *ExtentHandler) flush() (err error) {
+	if eh.packet == nil {
+		return
+	}
+
 	eh.flushPacket()
 	eh.waitForFlush()
 
