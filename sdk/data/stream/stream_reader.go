@@ -80,6 +80,7 @@ func NewStreamer(client *ExtentClient, inode uint64, openForWrite, isCache bool)
 	s.extents.verSeq = client.multiVerMgr.latestVerSeq
 	s.openForWrite = openForWrite
 	s.isCache = isCache
+	log.LogDebugf("NewStreamer: streamer(%v)", s)
 	go s.server()
 	go s.asyncBlockCache()
 	return s
@@ -304,7 +305,7 @@ func (s *Streamer) asyncBlockCache() {
 			}
 		case <-t.C:
 			if s.refcnt <= 0 {
-				s.isOpen = false
+				//s.isOpen = false
 				return
 			}
 		}
