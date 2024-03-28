@@ -190,6 +190,11 @@ func (dpMap *DataPartitionMap) updateResponseCache(needsUpdate bool, minPartitio
 }
 
 func (dpMap *DataPartitionMap) updateCompressCache(needsUpdate bool, minPartitionID uint64, vol *Vol) (body []byte, err error) {
+	cachedBody := dpMap.getDataPartitionCompressCache()
+	if len(cachedBody) != 0 && !needsUpdate {
+		body = cachedBody
+		return
+	}
 	if body, err = dpMap.updateResponseCache(needsUpdate, minPartitionID, vol); err != nil {
 		log.LogErrorf("action[updateCompressCache]updateResponseCache failed,err:%+v", err)
 		return
