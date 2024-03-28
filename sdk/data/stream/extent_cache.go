@@ -383,7 +383,7 @@ func (cache *ExtentCache) PrepareWriteRequests(offset, size int, data []byte) []
 		if start <= ekStart {
 			if end <= ekStart {
 				return false
-			} else if end < ekEnd {
+			} else if end <= ekEnd {
 				var req *ExtentRequest
 				if start < ekStart {
 					// add hole (start, ekStart)
