@@ -428,8 +428,8 @@ func formatDataPartitionInfo(partition *proto.DataPartitionInfo) string {
 	sb.WriteString("\n")
 	sb.WriteString("Replicas : \n")
 	sb.WriteString(fmt.Sprintf("%v\n", formatDataReplicaTableHeader()))
-	for _, replica := range partition.Replicas {
-		sb.WriteString(fmt.Sprintf("%v\n", formatDataReplica("", replica, true)))
+	for idx, replica := range partition.Replicas {
+		sb.WriteString(fmt.Sprintf("%v\n", formatDataReplica(idx, replica, true)))
 	}
 
 	sb.WriteString("\n")
@@ -683,25 +683,25 @@ func formatDataFileMetadate(indentation string, fileMeta *proto.FileMetadata) st
 	return fmt.Sprintf(dataFileMetadateTableRowPattern, "", "", "", fileMeta.Crc, fileMeta.Size, fileMeta.LocAddr)
 }
 
-func formatDataReplica(indentation string, replica *proto.DataReplica, rowTable bool) string {
+func formatDataReplica(index int, replica *proto.DataReplica, rowTable bool) string {
 	if rowTable {
 		return fmt.Sprintf(dataReplicaTableRowPattern, formatAddr(replica.Addr, replica.DomainAddr),
 			formatSize(replica.Used), formatSize(replica.Total), replica.IsLeader, replica.FileCount,
 			replica.HasLoadResponse, replica.NeedsToCompare, formatDataPartitionStatus(replica.Status),
 			replica.DiskPath, formatTime(replica.ReportTime))
 	}
-	sb := strings.Builder{}
-	sb.WriteString(fmt.Sprintf("%v- Addr           : %v\n", indentation, formatAddr(replica.Addr, replica.DomainAddr)))
-	sb.WriteString(fmt.Sprintf("%v  Allocated      : %v\n", indentation, formatSize(replica.Used)))
-	sb.WriteString(fmt.Sprintf("%v  Total          : %v\n", indentation, formatSize(replica.Total)))
-	sb.WriteString(fmt.Sprintf("%v  IsLeader       : %v\n", indentation, replica.IsLeader))
-	sb.WriteString(fmt.Sprintf("%v  FileCount      : %v\n", indentation, replica.FileCount))
-	sb.WriteString(fmt.Sprintf("%v  HasLoadResponse: %v\n", indentation, replica.HasLoadResponse))
-	sb.WriteString(fmt.Sprintf("%v  NeedsToCompare : %v\n", indentation, replica.NeedsToCompare))
-	sb.WriteString(fmt.Sprintf("%v  Status         : %v\n", indentation, formatDataPartitionStatus(replica.Status)))
-	sb.WriteString(fmt.Sprintf("%v  DiskPath       : %v\n", indentation, replica.DiskPath))
-	sb.WriteString(fmt.Sprintf("%v  ReportTime     : %v\n", indentation, formatTime(replica.ReportTime)))
-	return sb.String()
+	return alignColumnIndex(index,
+		arow("Addr", formatAddr(replica.Addr, replica.DomainAddr)),
+		arow("Allocated", formatSize(replica.Used)),
+		arow("Total", formatSize(replica.Total)),
+		arow("IsLeader", replica.IsLeader),
+		arow("FileCount", replica.FileCount),
+		arow("HasLoadResponse", replica.HasLoadResponse),
+		arow("NeedsToCompare", replica.NeedsToCompare),
+		arow("Status", formatDataPartitionStatus(replica.Status)),
+		arow("DiskPath", replica.DiskPath),
+		arow("ReportTime", formatTime(replica.ReportTime)),
+	)
 }
 
 var metaReplicaTableRowPattern = "%-65v    %-6v    %-6v    %-6v    %-10v"
@@ -883,25 +883,25 @@ func formatQuotaInfo(info *proto.QuotaInfo) string {
 	return ret
 }
 
-var badDiskDetailTableRowPattern = "%-18v    %-18v    %-18v    %-18v    %-18v"
-
-func formatBadDiskTableHeader() string {
-	return fmt.Sprintf(badDiskDetailTableRowPattern, "Address", "Path", "TotalPartitionCnt", "DiskErrPartitionCnt", "PartitionIdsWithDiskErr")
-}
-
-func formatBadDiskInfoRow(disk proto.BadDiskInfo) string {
-	msgDpIdList := fmt.Sprintf("%v", disk.DiskErrPartitionList)
-	return fmt.Sprintf(badDiskDetailTableRowPattern, disk.Address, disk.Path, disk.TotalPartitionCnt, len(disk.DiskErrPartitionList), msgDpIdList)
+func formatBadDisks(disks []proto.BadDiskInfo) string {
+	if len(disks) == 0 {
+		return ""
+	}
+	diskRows := table{
+		arow("Address", "Path", "TotalPartitionCnt", "DiskErrPartitionCnt", "PartitionIdsWithDiskErr"),
+	}
+	for _, d := range disks {
+		diskRows = diskRows.append(arow(d.Address, d.Path, d.TotalPartitionCnt, len(d.DiskErrPartitionList), d.DiskErrPartitionList))
+	}
+	return alignTable(diskRows...)
 }
 
 func formatDecommissionProgress(progress *proto.DecommissionProgress) string {
-	sb := strings.Builder{}
-	sb.WriteString(fmt.Sprintf("Status:           %v\n", progress.StatusMessage))
-	sb.WriteString(fmt.Sprintf("Progress:         %v\n", progress.Progress))
-	if len(progress.FailedDps) != 0 {
-		sb.WriteString(fmt.Sprintf("Failed Dps:       %v\n", progress.FailedDps))
-	}
-	return sb.String()
+	return alignColumn(
+		arow("Status", progress.StatusMessage),
+		arow("Progress", progress.Progress),
+		arow("Failed Dps", progress.FailedDps),
+	)
 }
 
 func formatDataPartitionDecommissionProgress(info *proto.DecommissionDataPartitionInfo) string {
