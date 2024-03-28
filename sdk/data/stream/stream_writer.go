@@ -618,20 +618,18 @@ func (s *Streamer) closeOpenHandler() (err error) {
 			handler.flushPacket()
 		} else {
 			// TODO unhandled error
-			err = s.handler.flush()
+			err = handler.flush()
+			// remove handle from dirtylist after flush success
+			if err == nil {
+				//handler.stream.dirtylist.RemoveById(handler.id)
+				//handler.cleanup()
+			}
 		}
 		handler = handler.recoverHandler
 		cnt--
 	}
 
-	if s.handler != nil {
-		if !s.dirty {
-			// in case the current handler is not on the dirty list and will not get cleaned up
-			// TODO unhandled error
-			s.handler.cleanup()
-		}
-		s.handler = nil
-	}
+	s.handler = nil
 	return err
 }
 

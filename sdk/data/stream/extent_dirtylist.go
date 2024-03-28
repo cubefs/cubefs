@@ -53,6 +53,19 @@ func (dl *DirtyExtentList) Remove(e *list.Element) {
 	dl.list.Remove(e)
 }
 
+// removes the ExtentHandler by id from the dirty extent list.
+func (dl *DirtyExtentList) RemoveById(id uint64) {
+	dl.Lock()
+	defer dl.Unlock()
+	for element := dl.list.Front(); element != nil; element = element.Next() {
+		eh := element.Value.(*ExtentHandler)
+		if eh.id == id {
+			dl.list.Remove(element)
+			break
+		}
+	}
+}
+
 // Len returns the size of the dirty extent list.
 func (dl *DirtyExtentList) Len() int {
 	dl.RLock()
