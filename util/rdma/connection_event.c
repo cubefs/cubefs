@@ -90,8 +90,8 @@ void build_params(struct rdma_conn_param *params) {
   params->retry_count = 7;
 }
 
-int connection_event_cb(void *ctx) {
-    return C_OK;
+void connection_event_cb(void *ctx) {
+    return;
 }
 
 int connection_event_handler(struct rdma_cm_id *conn_id, int event_type, struct ConnectionEvent *conn_ev) {

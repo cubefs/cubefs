@@ -188,8 +188,7 @@ error:
     conn->freeList = NULL;
     conn->state = CONN_STATE_ERROR;
     conn->cm_id = NULL;
-    close(conn->cFd);
-    conn->cFd = -1;
+    notify_event(conn->cFd, 1);
     if(conn->wg.wgInitialized == 1) {
         wait_group_destroy(&conn->wg);
     }
@@ -268,8 +267,7 @@ error:
     if(conn->freeList) {
         ClearQueue(conn->freeList);
     }
-    close(conn->cFd);
-    conn->cFd = -1;
+    notify_event(conn->cFd, 1);
     return C_ERR;
 }
 

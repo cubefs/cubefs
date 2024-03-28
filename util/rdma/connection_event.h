@@ -28,7 +28,7 @@ int build_connection(struct ConnectionEvent *conn_ev, Connection *conn);
 
 void build_params(struct rdma_conn_param *params);
 
-void *connection_event_cb(void *ctx);
+void connection_event_cb(void *ctx);
 
 void *cm_thread(void *ctx);
 

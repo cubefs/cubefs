@@ -187,6 +187,7 @@ static inline void notify_event(sem_t* fd, int flag) {
 	} else {
 		sem_destroy(fd);
 		free(fd);
+		fd = NULL;
 	}
 	return;
 }
