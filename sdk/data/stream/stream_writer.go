@@ -622,6 +622,7 @@ func (s *Streamer) closeOpenHandler() (err error) {
 		}
 		handler = handler.recoverHandler
 		cnt--
+		log.LogDebugf("ttttttttttttttttt")
 	}
 
 	if s.handler != nil {
