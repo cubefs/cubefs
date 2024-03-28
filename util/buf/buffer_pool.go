@@ -158,7 +158,7 @@ func (bufferP *BufferPool) getHeadVer(id uint64) (data []byte) {
 	}
 }
 
-func (bufferP *BufferPool) getNoraml(id uint64) (data []byte) {
+func (bufferP *BufferPool) getNormal(id uint64) (data []byte) {
 	select {
 	case data = <-bufferP.normalPools[id%slotCnt]:
 		return
@@ -180,7 +180,7 @@ func (bufferP *BufferPool) Get(size int) (data []byte, err error) {
 	} else if size == util.BlockSize {
 		atomic.AddInt64(&normalBuffersCount, 1)
 		id := atomic.AddUint64(&normalBufAllocId, 1)
-		return bufferP.getNoraml(id), nil
+		return bufferP.getNormal(id), nil
 	} else if size == util.DefaultTinySizeLimit {
 		atomic.AddInt64(&tinyBuffersCount, 1)
 		return bufferP.tinyPool.Get().([]byte), nil
