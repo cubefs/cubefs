@@ -95,7 +95,7 @@ func (ft *FollowerTransport) serverWriteToFollower() {
 			if err := p.WriteToConn(ft.conn); err != nil {
 				p.PackErrorBody(ActionSendToFollowers, err.Error())
 				p.respCh <- fmt.Errorf(string(p.Data[:p.Size]))
-				log.LogErrorf("serverWriteToFollower ft.addr(%v), err (%v)", ft.addr, err.Error())
+				log.LogErrorf("serverWriteToFollower ft.addr(%v), req(%s), err (%v)", ft.addr, p.String(), err.Error())
 				ft.conn.Close()
 				continue
 			}
@@ -139,6 +139,7 @@ func (ft *FollowerTransport) readFollowerResult(request *FollowerPacket) (err er
 			ft.conn.Close()
 		}
 	}()
+
 	if request.IsErrPacket() {
 		err = fmt.Errorf(string(request.Data[:request.Size]))
 		return
@@ -148,7 +149,7 @@ func (ft *FollowerTransport) readFollowerResult(request *FollowerPacket) (err er
 		timeOut = proto.BatchDeleteExtentReadDeadLineTime
 	}
 	if err = reply.ReadFromConn(ft.conn, timeOut); err != nil {
-		log.LogErrorf("readFollowerResult ft.addr(%v), err(%v)", ft.addr, err.Error())
+		log.LogErrorf("readFollowerResult ft.addr(%v), request (%s), err(%v)", ft.addr, request.String(), err.Error())
 		return
 	}
 
@@ -307,11 +308,11 @@ func (rp *ReplProtocol) sendRequestToAllFollowers(request *Packet) (index int, e
 }
 
 // OperatorAndForwardPktGoRoutine reads packets from the to-be-processed channel and writes responses to the client.
-// 1. Read a packet from toBeProcessCh, and determine if it needs to be forwarded or not. If the answer is no, then
-// 	  process the packet locally and put it into responseCh.
-// 2. If the packet needs to be forwarded, the first send it to the followers, and execute the operator function.
-//    Then notify receiveResponse to read the followers' responses.
-// 3. Read a reply from responseCh, and write to the client.
+//  1. Read a packet from toBeProcessCh, and determine if it needs to be forwarded or not. If the answer is no, then
+//     process the packet locally and put it into responseCh.
+//  2. If the packet needs to be forwarded, the first send it to the followers, and execute the operator function.
+//     Then notify receiveResponse to read the followers' responses.
+//  3. Read a reply from responseCh, and write to the client.
 func (rp *ReplProtocol) OperatorAndForwardPktGoRoutine() {
 	for {
 		select {
