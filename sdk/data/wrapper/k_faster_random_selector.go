@@ -142,7 +142,20 @@ func (s *KFasterRandomSelector) RemoveDP(partitionID uint64) {
 	newRwPartition = append(newRwPartition, partitions[i+1:]...)
 
 	s.Refresh(newRwPartition)
+}
 
+func (s *KFasterRandomSelector) GetAllDp() (dps []*DataPartition) {
+	s.RLock()
+	defer s.RUnlock()
+	dps = make([]*DataPartition, len(s.partitions))
+	copy(dps, s.partitions)
+	return
+}
+
+func (s *KFasterRandomSelector) GetDpCount() (count int) {
+	s.RLock()
+	defer s.RUnlock()
+	count = len(s.partitions)
 	return
 }
 
