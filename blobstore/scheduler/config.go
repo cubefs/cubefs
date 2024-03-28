@@ -56,7 +56,6 @@ const (
 	defaultBatchIntervalSec       = 2
 
 	defaultTaskLimitPerDisk = 1
-	defaultTotalTaskLimit   = 1000
 
 	defaultTickInterval   = uint32(1)
 	defaultHeartbeatTicks = uint32(30)
@@ -240,8 +239,10 @@ func (c *Config) fixBalanceConfig() {
 
 func (c *Config) fixDiskDropConfig() {
 	c.DiskDrop.ClusterID = c.ClusterID
-	defaulter.LessOrEqual(c.DiskDrop.TaskLimitPerDisk, defaultTaskLimitPerDisk)
-	defaulter.LessOrEqual(c.DiskDrop.TotalTaskLimit, defaultTotalTaskLimit)
+	defaulter.LessOrEqual(&c.DiskDrop.TaskLimitPerDisk, defaultTaskLimitPerDisk)
+	if c.DiskDrop.TotalTaskLimit <= 0 {
+		c.DiskDrop.TotalTaskLimit = c.DiskDrop.TaskLimitPerDisk * c.DiskDrop.DiskConcurrency
+	}
 	c.DiskDrop.CheckAndFix()
 }
 
