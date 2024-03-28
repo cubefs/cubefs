@@ -515,6 +515,18 @@ func (mr *MockMigraterMockRecorder) ReclaimTask(arg0, arg1, arg2, arg3, arg4, ar
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReclaimTask", reflect.TypeOf((*MockMigrater)(nil).ReclaimTask), arg0, arg1, arg2, arg3, arg4, arg5)
 }
 
+// RegisteDiskDropTaskLimitFunc mocks base method.
+func (m *MockMigrater) RegisteDiskDropTaskLimitFunc(arg0, arg1 diskTaskLimitFunc) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "RegisteDiskDropTaskLimitFunc", arg0, arg1)
+}
+
+// RegisteDiskDropTaskLimitFunc indicates an expected call of RegisteDiskDropTaskLimitFunc.
+func (mr *MockMigraterMockRecorder) RegisteDiskDropTaskLimitFunc(arg0, arg1 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RegisteDiskDropTaskLimitFunc", reflect.TypeOf((*MockMigrater)(nil).RegisteDiskDropTaskLimitFunc), arg0, arg1)
+}
+
 // RenewalTask mocks base method.
 func (m *MockMigrater) RenewalTask(arg0 context.Context, arg1, arg2 string) error {
 	m.ctrl.T.Helper()
