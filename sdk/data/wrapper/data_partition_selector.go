@@ -16,9 +16,18 @@ package wrapper
 
 import (
 	"errors"
+	"math/rand"
 	"strings"
+	"time"
 
 	"github.com/cubefs/cubefs/util/log"
+)
+
+type RefreshDpPolicy int32
+
+const (
+	MergeDpPolicy RefreshDpPolicy = iota
+	UpdateDpPolicy
 )
 
 // This type defines the constructor used to create and initialize the selector.
@@ -38,6 +47,10 @@ type DataPartitionSelector interface {
 
 	// RemoveDP removes specified data partition.
 	RemoveDP(partitionID uint64)
+
+	GetAllDp() (dp []*DataPartition)
+
+	GetDpCount() (count int)
 }
 
 var (
@@ -84,7 +97,13 @@ func (w *Wrapper) initDpSelector() (err error) {
 	return
 }
 
-func (w *Wrapper) refreshDpSelector(partitions []*DataPartition) {
+func (w *Wrapper) refreshMinDpCount(oldDpCount int) (count int) {
+	tmp := float64(oldDpCount) * 2 / 3
+	count = int(tmp)
+	return
+}
+
+func (w *Wrapper) refreshDpSelector(refreshPolicy RefreshDpPolicy, partitions []*DataPartition) {
 	w.Lock.RLock()
 	dpSelector := w.dpSelector
 	dpSelectorChanged := w.dpSelectorChanged
@@ -111,6 +130,54 @@ func (w *Wrapper) refreshDpSelector(partitions []*DataPartition) {
 		}
 	}
 
+	log.LogInfof("[refreshDpSelector] refresh dp, partition count(%v)", len(partitions))
+	if refreshPolicy == UpdateDpPolicy {
+		minDpCount := w.refreshMinDpCount(dpSelector.GetDpCount())
+		// NOTE: if decrease more than 1/3 dp at once
+		if len(partitions) < minDpCount {
+			oldDps := dpSelector.GetAllDp()
+			mergeTable := make(map[uint64]int)
+			for _, dp := range oldDps {
+				mergeTable[dp.PartitionID] = 1
+			}
+
+			for _, dp := range partitions {
+				mergeTable[dp.PartitionID] = mergeTable[dp.PartitionID] + 1
+			}
+
+			// NOTE: take some old dps and put it back
+			randGen := rand.New(rand.NewSource(time.Now().Unix()))
+			for len(partitions) < minDpCount {
+				index := randGen.Intn(len(oldDps))
+				selectedDp := oldDps[index]
+				if mergeTable[selectedDp.PartitionID] == 2 {
+					continue
+				}
+				mergeTable[selectedDp.PartitionID] = 2
+				partitions = append(partitions, selectedDp)
+				log.LogWarnf("[refreshDpSelector] put dp(%v) to rw dp table, dp(%v) maybe readonly", selectedDp.PartitionID, selectedDp.PartitionID)
+			}
+		}
+	} else if refreshPolicy == MergeDpPolicy {
+		oldDps := dpSelector.GetAllDp()
+		mergeTable := make(map[uint64]int)
+		for _, dp := range oldDps {
+			mergeTable[dp.PartitionID] = 1
+		}
+
+		for _, dp := range partitions {
+			if _, ok := mergeTable[dp.PartitionID]; !ok {
+				oldDps = append(oldDps, dp)
+			}
+		}
+		partitions = oldDps
+	}
+	if log.EnableDebug() {
+		for _, dp := range partitions {
+			log.LogDebugf("[refreshDpSelector] refresh dp(%v) to rw partition", dp.PartitionID)
+		}
+	}
+	log.LogInfof("[refreshDpSelector] finally refresh dp count(%v) to rw partitions", len(partitions))
 	_ = dpSelector.Refresh(partitions)
 }
 
