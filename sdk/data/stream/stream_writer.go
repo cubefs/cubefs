@@ -203,6 +203,7 @@ func (s *Streamer) server() {
 	renewalTimer := time.NewTicker(proto.ForbiddenMigrationRenewalPeriod / 5)
 	defer renewalTimer.Stop()
 
+	log.LogDebugf("start server: streamer(%v)", s)
 	for {
 		select {
 		case request := <-s.request:
@@ -210,9 +211,12 @@ func (s *Streamer) server() {
 			s.idle = 0
 			s.traversed = 0
 		case <-s.done:
-			s.abort()
-			log.LogDebugf("done server: evict, ino(%v)", s.inode)
-			return
+			log.LogDebugf("done server: evict, streamer(%v)", s)
+			// server exit if streamer is deleted
+			if s.isOpen == false {
+				s.abort()
+				return
+			}
 		case <-t.C:
 			s.traverse()
 			s.client.streamerLock.Lock()
@@ -224,14 +228,14 @@ func (s *Streamer) server() {
 							s.client.evictIcache(s.inode)
 						}
 					}
-
-					s.isOpen = false
-					// fail the remaining requests in such case
-					s.clearRequests()
-					s.client.streamerLock.Unlock()
-
-					log.LogDebugf("done server: no requests for a long time, ino(%v)", s.inode)
-					return
+					// server exit if streamer is deleted
+					if s.isOpen == false {
+						// fail the remaining requests in such case
+						s.clearRequests()
+						s.client.streamerLock.Unlock()
+						log.LogDebugf("done server: no requests for a long time, ino(%v), streamer(%v)", s.inode, s)
+						return
+					}
 				}
 				s.idle++
 			}
