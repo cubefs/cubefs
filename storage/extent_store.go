@@ -837,6 +837,8 @@ func (s *ExtentStore) GetMaxExtentIDAndPartitionSize() (maxExtentID, totalSize u
 			maxExtentID = extentInfo.FileID
 		}
 		totalSize += extentInfo.TotalSize()
+		log.LogDebugf("GetMaxExtentIDAndPartitionSize dp %v add extentInfo %v size %v", s.partitionID,
+			extentInfo.FileID, extentInfo.TotalSize())
 	}
 	return maxExtentID, totalSize
 }
