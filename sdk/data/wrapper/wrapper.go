@@ -303,7 +303,7 @@ func (w *Wrapper) UpdateSimpleVolView() (err error) {
 	return nil
 }
 
-func (w *Wrapper) updateDataPartitionByRsp(forceUpdate bool, DataPartitions []*proto.DataPartitionResponse) (err error) {
+func (w *Wrapper) updateDataPartitionByRsp(forceUpdate bool, refreshPolicy RefreshDpPolicy, DataPartitions []*proto.DataPartitionResponse) (err error) {
 
 	var convert = func(response *proto.DataPartitionResponse) *DataPartition {
 		return &DataPartition{
@@ -342,7 +342,7 @@ func (w *Wrapper) updateDataPartitionByRsp(forceUpdate bool, DataPartitions []*p
 	if forceUpdate || len(rwPartitionGroups) >= 1 {
 		log.LogInfof("updateDataPartition: refresh dpSelector of volume(%v) with %v rw partitions(%v all), forceUpdate(%v)",
 			w.volName, len(rwPartitionGroups), len(DataPartitions), forceUpdate)
-		w.refreshDpSelector(rwPartitionGroups)
+		w.refreshDpSelector(refreshPolicy, rwPartitionGroups)
 	} else {
 		err = errors.New("updateDataPartition: no writable data partition")
 		log.LogWarnf("updateDataPartition: no enough writable data partitions, volume(%v) with %v rw partitions(%v all), forceUpdate(%v)",
@@ -370,7 +370,7 @@ func (w *Wrapper) updateDataPartition(isInit bool) (err error) {
 		forceUpdate = true
 	}
 
-	return w.updateDataPartitionByRsp(forceUpdate, dpv.DataPartitions)
+	return w.updateDataPartitionByRsp(forceUpdate, UpdateDpPolicy, dpv.DataPartitions)
 }
 
 func (w *Wrapper) UpdateDataPartition() (err error) {
@@ -407,7 +407,7 @@ func (w *Wrapper) getDataPartitionFromMaster(dpId uint64) (err error) {
 
 	DataPartitions := make([]*proto.DataPartitionResponse, 1)
 	DataPartitions = append(DataPartitions, dpr)
-	return w.updateDataPartitionByRsp(false, DataPartitions)
+	return w.updateDataPartitionByRsp(false, MergeDpPolicy, DataPartitions)
 }
 
 func (w *Wrapper) clearPartitions() {
@@ -441,7 +441,7 @@ func (w *Wrapper) AllocatePreLoadDataPartition(volName string, count int, capaci
 		rwPartitionGroups = append(rwPartitionGroups, dp)
 	}
 
-	w.refreshDpSelector(rwPartitionGroups)
+	w.refreshDpSelector(MergeDpPolicy, rwPartitionGroups)
 	return nil
 }
 
