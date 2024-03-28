@@ -93,7 +93,7 @@ func (ft *FollowerTransport) serverWriteToFollower() {
 			if err := p.WriteToConn(ft.conn); err != nil {
 				p.PackErrorBody(ActionSendToFollowers, err.Error())
 				p.respCh <- fmt.Errorf(string(p.Data[:p.Size]))
-				log.LogErrorf("serverWriteToFollower ft.addr(%v), err (%v)", ft.addr, err.Error())
+				log.LogErrorf("serverWriteToFollower ft.addr(%v), req(%s), err (%v)", ft.addr, p.String(), err.Error())
 				ft.conn.Close()
 				continue
 			}
@@ -137,6 +137,7 @@ func (ft *FollowerTransport) readFollowerResult(request *FollowerPacket) (err er
 			ft.conn.Close()
 		}
 	}()
+
 	if request.IsErrPacket() {
 		err = fmt.Errorf(string(request.Data[:request.Size]))
 		return
