@@ -257,10 +257,14 @@ func (mp *metaPartition) TxDeleteDentry(req *proto.TxDeleteDentryRequest, p *Pac
 
 // DeleteDentry deletes a dentry.
 func (mp *metaPartition) DeleteDentry(req *DeleteDentryReq, p *Packet, remoteAddr string) (err error) {
+	dentry := &Dentry{
+		ParentId: req.ParentID,
+		Name:     req.Name,
+	}
 	start := time.Now()
 	if mp.IsEnableAuditLog() {
 		defer func() {
-			auditlog.LogDentryOp(remoteAddr, mp.GetVolName(), p.GetOpMsg(), req.Name, req.GetFullPath(), err, time.Since(start).Milliseconds(), 0, req.ParentID)
+			auditlog.LogDentryOp(remoteAddr, mp.GetVolName(), p.GetOpMsg(), req.Name, req.GetFullPath(), err, time.Since(start).Milliseconds(), dentry.Inode, req.ParentID)
 		}()
 	}
 	if req.InodeCreateTime > 0 {
@@ -270,10 +274,6 @@ func (mp *metaPartition) DeleteDentry(req *DeleteDentryReq, p *Packet, remoteAdd
 			p.PacketErrorWithBody(proto.OpNotPerm, []byte(err.Error()))
 			return
 		}
-	}
-	dentry := &Dentry{
-		ParentId: req.ParentID,
-		Name:     req.Name,
 	}
 	val, err := dentry.Marshal()
 	if err != nil {
