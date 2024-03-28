@@ -16,11 +16,12 @@ package stream
 
 import (
 	"fmt"
-	"github.com/cubefs/cubefs/util/stat"
 	"net"
 	"strings"
 	"sync/atomic"
 	"time"
+
+	"github.com/cubefs/cubefs/util/stat"
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/sdk/data/wrapper"
