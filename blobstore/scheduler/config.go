@@ -56,7 +56,7 @@ const (
 	defaultBatchIntervalSec       = 2
 
 	defaultTaskLimitPerDisk = 1
-	defaultTotalTaskLimit   = 500
+	defaultTotalTaskLimit   = 1000
 
 	defaultTickInterval   = uint32(1)
 	defaultHeartbeatTicks = uint32(30)
