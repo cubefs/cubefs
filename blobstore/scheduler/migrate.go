@@ -98,6 +98,7 @@ type IMigrator interface {
 	ListAllTask(ctx context.Context) (tasks []*proto.MigrateTask, err error)
 	ListAllTaskByDiskID(ctx context.Context, diskID proto.DiskID) (tasks []*proto.MigrateTask, err error)
 	FinishTaskInAdvanceWhenLockFail(ctx context.Context, task *proto.MigrateTask)
+	RegisteDiskDropTaskLimitFunc(acquireTaskLimitFn, releaseTaskLimitFn diskTaskLimitFunc)
 }
 
 type migratingDisks struct {
@@ -316,6 +317,12 @@ var defaultClearJunkTasksWhenLoadingFunc = func(ctx context.Context, tasks []*pr
 	return nil
 }
 
+type diskTaskLimitFunc func(diskId proto.DiskID) error
+
+var defaultDiskTaskLimitFunc = func(diskId proto.DiskID) error {
+	return nil
+}
+
 type lockFailFunc func(ctx context.Context, task *proto.MigrateTask)
 
 // MigrateMgr migrate manager
@@ -345,7 +352,8 @@ type MigrateMgr struct {
 	lockFailHandleFunc lockFailFunc
 	// clear junk tasks
 	clearJunkTasksWhenLoadingFunc clearJunkTasksFunc
-	releaseTaskLimit              func(diskId proto.DiskID)
+	releaseTaskLimitFn            diskTaskLimitFunc
+	acquireTaskLimitFn            diskTaskLimitFunc
 }
 
 // NewMigrateMgr returns migrate manager
@@ -356,7 +364,6 @@ func NewMigrateMgr(
 	taskLogger recordlog.Encoder,
 	conf *MigrateConfig,
 	taskType proto.TaskType,
-	releaseTaskLimit func(diskId proto.DiskID),
 ) *MigrateMgr {
 	mgr := &MigrateMgr{
 		taskType:           taskType,
@@ -376,7 +383,8 @@ func NewMigrateMgr(
 		taskLogger: taskLogger,
 
 		clearJunkTasksWhenLoadingFunc: defaultClearJunkTasksWhenLoadingFunc,
-		releaseTaskLimit:              releaseTaskLimit,
+		releaseTaskLimitFn:            defaultDiskTaskLimitFunc,
+		acquireTaskLimitFn:            defaultDiskTaskLimitFunc,
 
 		Closer: closer.New(),
 	}
@@ -393,6 +401,11 @@ func (mgr *MigrateMgr) SetLockFailHandleFunc(lockFailHandleFunc lockFailFunc) {
 // SetClearJunkTasksWhenLoadingFunc set clear junk task func
 func (mgr *MigrateMgr) SetClearJunkTasksWhenLoadingFunc(clearJunkTasksWhenLoadingFunc clearJunkTasksFunc) {
 	mgr.clearJunkTasksWhenLoadingFunc = clearJunkTasksWhenLoadingFunc
+}
+
+func (mgr *MigrateMgr) RegisteDiskDropTaskLimitFunc(acquireTaskLimitFn, releaseTaskLimitFn diskTaskLimitFunc) {
+	mgr.acquireTaskLimitFn = acquireTaskLimitFn
+	mgr.releaseTaskLimitFn = releaseTaskLimitFn
 }
 
 // Load load migrate task from database
@@ -431,6 +444,10 @@ func (mgr *MigrateMgr) Load() (err error) {
 			}
 		}
 
+		if err = mgr.acquireDiskDropLimit(tasks[i]); err != nil {
+			return fmt.Errorf("fail to acquire disk drop limit: vid[%d], task[%+v], err[%+v]",
+				tasks[i].SourceVuid.Vid(), tasks[i], err.Error())
+		}
 		mgr.addMigratingVuid(tasks[i].SourceDiskID, tasks[i].SourceVuid, tasks[i].TaskID)
 
 		span.Infof("load task success: task_type[%s], task_id[%s], state[%d]", mgr.taskType, tasks[i].TaskID, tasks[i].State)
@@ -686,10 +703,7 @@ func (mgr *MigrateMgr) finishTask() (err error) {
 
 	// add delete task and check it again
 	mgr.addDeletedTask(migrateTask)
-
-	if migrateTask.TaskType == proto.TaskTypeDiskDrop {
-		mgr.releaseTaskLimit(migrateTask.SourceDiskID)
-	}
+	mgr.releaseDiskDropLimit(migrateTask)
 
 	span.Infof("finish task phase success: task_id[%s], state[%v]", migrateTask.TaskID, migrateTask.State)
 	return
@@ -736,9 +750,7 @@ func (mgr *MigrateMgr) finishTaskInAdvance(ctx context.Context, task *proto.Migr
 	mgr.finishTaskCounter.Add()
 	mgr.prepareQueue.RemoveTask(task.TaskID)
 	mgr.addDeletedTask(task)
-	if task.TaskType == proto.TaskTypeDiskDrop {
-		mgr.releaseTaskLimit(task.SourceDiskID)
-	}
+	mgr.releaseDiskDropLimit(task)
 	base.VolTaskLockerInst().Unlock(ctx, task.SourceVuid.Vid())
 }
 
@@ -826,6 +838,19 @@ func (mgr *MigrateMgr) addDeletedTask(task *proto.MigrateTask) {
 		mgr.deletedTasks.add(task.SourceDiskID, task.TaskID)
 	default:
 	}
+}
+
+func (mgr *MigrateMgr) releaseDiskDropLimit(task *proto.MigrateTask) {
+	if task.TaskType == proto.TaskTypeDiskDrop {
+		_ = mgr.releaseTaskLimitFn(task.SourceDiskID)
+	}
+}
+
+func (mgr *MigrateMgr) acquireDiskDropLimit(task *proto.MigrateTask) error {
+	if task.TaskType == proto.TaskTypeDiskDrop {
+		return mgr.acquireTaskLimitFn(task.SourceDiskID)
+	}
+	return nil
 }
 
 // StatQueueTaskCnt returns queue task count

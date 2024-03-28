@@ -90,6 +90,7 @@ func (d *dropDiskMap) get(diskId proto.DiskID) *dropDisk {
 	d.lock.RUnlock()
 	return disk
 }
+
 func (d *dropDiskMap) isCollecting(diskId proto.DiskID) bool {
 	d.lock.RLock()
 	disk := d.disks[diskId]
@@ -113,10 +114,11 @@ type DiskDropMgr struct {
 	droppingDisks   *migratingDisks
 	droppedDisks    *migratedDisks
 
+	limitOkCh        chan struct{}
 	totalTaskLimit   limit.Limiter
 	taskLimitPerDisk limit.Limiter
 	prepareTaskPool  taskpool.TaskPool
-	clusterTopology  IClusterTopology
+	clearTaskPool    taskpool.TaskPool
 
 	clusterMgrCli client.ClusterMgrAPI
 	hasRevised    bool
@@ -126,7 +128,7 @@ type DiskDropMgr struct {
 
 // NewDiskDropMgr returns disk drop manager
 func NewDiskDropMgr(clusterMgrCli client.ClusterMgrAPI, volumeUpdater client.IVolumeUpdater,
-	taskSwitch taskswitch.ISwitcher, taskLogger recordlog.Encoder, conf *DropMgrConfig, clusterTopology IClusterTopology) *DiskDropMgr {
+	taskSwitch taskswitch.ISwitcher, taskLogger recordlog.Encoder, conf *DropMgrConfig) *DiskDropMgr {
 	mgr := &DiskDropMgr{
 		clusterMgrCli:   clusterMgrCli,
 		cfg:             conf,
@@ -135,14 +137,16 @@ func NewDiskDropMgr(clusterMgrCli client.ClusterMgrAPI, volumeUpdater client.IVo
 		droppedDisks:    newMigratedDisks(),
 		droppingDisks:   newMigratingDisks(),
 
-		prepareTaskPool:  taskpool.New(conf.DiskConcurrency, conf.DiskConcurrency*2),
+		limitOkCh:        make(chan struct{}, 1),
 		totalTaskLimit:   count.NewBlockingCount(conf.TotalTaskLimit),
 		taskLimitPerDisk: keycount.New(conf.TaskLimitPerDisk),
-		clusterTopology:  clusterTopology,
+		prepareTaskPool:  taskpool.New(conf.DiskConcurrency, conf.DiskConcurrency*2),
+		clearTaskPool:    taskpool.New(conf.DiskConcurrency, conf.DiskConcurrency*2),
 	}
 	mgr.IMigrator = NewMigrateMgr(clusterMgrCli, volumeUpdater, taskSwitch,
-		taskLogger, conf.MigrateConfig, proto.TaskTypeDiskDrop, mgr.releaseTaskLimit)
+		taskLogger, conf.MigrateConfig, proto.TaskTypeDiskDrop)
 	mgr.SetClearJunkTasksWhenLoadingFunc(mgr.clearJunkTasksWhenLoading)
+	mgr.RegisteDiskDropTaskLimitFunc(mgr.acquireTaskLimit, mgr.releaseTaskLimit)
 	return mgr
 }
 
@@ -255,9 +259,31 @@ func (mgr *DiskDropMgr) collectTask() {
 	}
 }
 
-func (mgr *DiskDropMgr) releaseTaskLimit(diskId proto.DiskID) {
+func (mgr *DiskDropMgr) releaseTaskLimit(diskId proto.DiskID) error {
 	mgr.totalTaskLimit.Release()
 	mgr.taskLimitPerDisk.Release(diskId)
+	return nil
+}
+
+func (mgr *DiskDropMgr) acquireTaskLimit(diskId proto.DiskID) error {
+	go func() {
+		tk := time.NewTicker(time.Second)
+		defer tk.Stop()
+
+		select {
+		case <-mgr.limitOkCh:
+		case <-tk.C:
+			panic("config total_task_limit is too small, when disk drop load")
+		}
+	}()
+
+	_ = mgr.totalTaskLimit.Acquire()
+	mgr.limitOkCh <- struct{}{}
+	if err := mgr.taskLimitPerDisk.Acquire(diskId); err != nil {
+		mgr.totalTaskLimit.Release()
+		return err
+	}
+	return nil
 }
 
 func (mgr *DiskDropMgr) loopGenerateTask(ctx context.Context, disk *client.DiskInfoSimple) error {
@@ -304,7 +330,7 @@ RETRY:
 	for _, vuid := range remain {
 		migrated := false
 		vid := vuid.Vid()
-		volume, err := mgr.clusterTopology.GetVolume(vid)
+		volume, err := mgr.clusterMgrCli.GetVolumeInfo(ctx, vid)
 		if err != nil {
 			retryVuids = append(retryVuids, vuid)
 			continue
@@ -396,18 +422,24 @@ func (mgr *DiskDropMgr) checkDroppedAndClearLoop() {
 func (mgr *DiskDropMgr) checkDroppedAndClear() {
 	span, ctx := trace.StartSpanFromContext(context.Background(), "disk_drop.checkDroppedAndClear")
 
+	var wg sync.WaitGroup
 	for _, disk := range mgr.droppingDisks.list() {
 		if !mgr.checkDiskDropped(ctx, disk.DiskID) {
 			continue
 		}
-		err := mgr.clusterMgrCli.SetDiskDropped(ctx, disk.DiskID)
-		if err != nil {
-			span.Errorf("set disk dropped failed: err[%+v]", err)
-			return
-		}
-		span.Infof("start clear dropped disk: disk_id[%d]", disk.DiskID)
-		mgr.clearTasksByDiskID(ctx, disk.DiskID)
+		wg.Add(1)
+		mgr.clearTaskPool.Run(func() {
+			defer wg.Done()
+			err := mgr.clusterMgrCli.SetDiskDropped(ctx, disk.DiskID)
+			if err != nil {
+				span.Errorf("set disk dropped failed: err[%+v]", err)
+				return
+			}
+			span.Infof("start clear dropped disk: disk_id[%d]", disk.DiskID)
+			mgr.clearTasksByDiskID(ctx, disk.DiskID)
+		})
 	}
+	wg.Wait()
 }
 
 func (mgr *DiskDropMgr) checkDiskDropped(ctx context.Context, diskID proto.DiskID) bool {
@@ -426,7 +458,7 @@ func (mgr *DiskDropMgr) checkDiskDropped(ctx context.Context, diskID proto.DiskI
 	}
 	if len(vunitInfos) == 0 && len(tasks) != 0 {
 		// due to network timeout, it may lead to repeated insertion of deleted tasks, and need to delete it again
-		mgr.clearJunkTasks(ctx, diskID, tasks)
+		mgr.clearJunkTasks(ctx, tasks)
 		return false
 	}
 	if len(tasks) == 0 && len(vunitInfos) != 0 {
@@ -442,7 +474,7 @@ func (mgr *DiskDropMgr) checkDiskDropped(ctx context.Context, diskID proto.DiskI
 	return len(tasks) == 0 && len(vunitInfos) == 0
 }
 
-func (mgr *DiskDropMgr) clearJunkTasks(ctx context.Context, diskID proto.DiskID, tasks []*proto.MigrateTask) {
+func (mgr *DiskDropMgr) clearJunkTasks(ctx context.Context, tasks []*proto.MigrateTask) {
 	span := trace.SpanFromContextSafe(ctx)
 	for _, task := range tasks {
 		if !mgr.IsDeletedTask(task) {
@@ -484,34 +516,40 @@ func (mgr *DiskDropMgr) checkAndClearJunkTasksLoop() {
 func (mgr *DiskDropMgr) checkAndClearJunkTasks() {
 	span, ctx := trace.StartSpanFromContext(context.Background(), "disk_drop.clearJunkTasks")
 
+	var wg sync.WaitGroup
 	for _, disk := range mgr.droppedDisks.list() {
-		if time.Since(disk.finishedTime) < junkMigrationTaskProtectionWindow {
-			continue
-		}
-		span.Debugf("check dropped disk: disk_id[%d], dropped time[%v]", disk.diskID, disk.finishedTime)
-		diskInfo, err := mgr.clusterMgrCli.GetDiskInfo(ctx, disk.diskID)
-		if err != nil {
-			span.Errorf("get disk info failed: disk_id[%d], err[%+v]", disk.diskID, err)
-			continue
-		}
-		if !diskInfo.IsDropped() {
-			continue
-		}
-		tasks, err := mgr.clusterMgrCli.ListAllMigrateTasksByDiskID(ctx, proto.TaskTypeDiskDrop, disk.diskID)
-		if err != nil {
-			continue
-		}
-		if len(tasks) != 0 {
-			span.Warnf("clear junk tasks of dropped disk: disk_id[%d], tasks size[%d]", disk.diskID, len(tasks))
-			for _, task := range tasks {
-				span.Warnf("check and delete junk task: task_id[%s]", task.TaskID)
-				base.InsistOn(ctx, "check and delete junk task", func() error {
-					return mgr.clusterMgrCli.DeleteMigrateTask(ctx, task.TaskID)
-				})
+		wg.Add(1)
+		mgr.clearTaskPool.Run(func() {
+			defer wg.Done()
+			if time.Since(disk.finishedTime) < junkMigrationTaskProtectionWindow {
+				return
 			}
-		}
-		mgr.droppedDisks.delete(disk.diskID)
+			span.Debugf("check dropped disk: disk_id[%d], dropped time[%v]", disk.diskID, disk.finishedTime)
+			diskInfo, err := mgr.clusterMgrCli.GetDiskInfo(ctx, disk.diskID)
+			if err != nil {
+				span.Errorf("get disk info failed: disk_id[%d], err[%+v]", disk.diskID, err)
+				return
+			}
+			if !diskInfo.IsDropped() {
+				return
+			}
+			tasks, err := mgr.clusterMgrCli.ListAllMigrateTasksByDiskID(ctx, proto.TaskTypeDiskDrop, disk.diskID)
+			if err != nil {
+				return
+			}
+			if len(tasks) != 0 {
+				span.Warnf("clear junk tasks of dropped disk: disk_id[%d], tasks size[%d]", disk.diskID, len(tasks))
+				for _, task := range tasks {
+					span.Warnf("check and delete junk task: task_id[%s]", task.TaskID)
+					base.InsistOn(ctx, "check and delete junk task", func() error {
+						return mgr.clusterMgrCli.DeleteMigrateTask(ctx, task.TaskID)
+					})
+				}
+			}
+			mgr.droppedDisks.delete(disk.diskID)
+		})
 	}
+	wg.Wait()
 }
 
 func (mgr *DiskDropMgr) getUnDroppingDisk(disks []*client.DiskInfoSimple) *client.DiskInfoSimple {
