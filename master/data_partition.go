@@ -1362,10 +1362,10 @@ func (partition *DataPartition) rollback(c *Cluster) {
 			partition.PartitionID, partition.DecommissionDstAddr, err.Error())
 		return
 	}
-	err = partition.restoreReplicaMeta(c)
-	if err != nil {
-		return
-	}
+	//err = partition.restoreReplicaMeta(c)
+	//if err != nil {
+	//	return
+	//}
 	// release token first
 	partition.ReleaseDecommissionToken(c)
 	// reset status if rollback success
