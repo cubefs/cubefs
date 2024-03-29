@@ -2056,7 +2056,6 @@ func (m *Server) queryDataPartitionDecommissionStatus(w http.ResponseWriter, r *
 		DstAddress:        dp.DecommissionDstAddr,
 		Term:              dp.DecommissionTerm,
 		Replicas:          replicas,
-		WaitTimes:         dp.DecommissionWaitTimes,
 		ErrorMessage:      dp.DecommissionErrorMessage,
 		NeedRollbackTimes: atomic.LoadUint32(&dp.DecommissionNeedRollbackTimes),
 	}
@@ -4111,6 +4110,7 @@ func (m *Server) queryDecommissionDiskDecoFailedDps(w http.ResponseWriter, r *ht
 	var (
 		offLineAddr, diskPath string
 		err                   error
+		failedDps             []uint64
 	)
 
 	metric := exporter.NewTPCnt("req_queryDecommissionDiskDecoFailedDps")
@@ -4122,21 +4122,14 @@ func (m *Server) queryDecommissionDiskDecoFailedDps(w http.ResponseWriter, r *ht
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-	key := fmt.Sprintf("%s_%s", offLineAddr, diskPath)
-	value, ok := m.cluster.DecommissionDisks.Load(key)
-	if !ok {
-		ret := fmt.Sprintf("action[queryDiskDecoProgress]cannot found decommission task for node[%v] disk[%v], "+
-			"may be already offline", offLineAddr, diskPath)
-		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: ret})
-		return
+	badPartitions := m.cluster.getAllDecommissionDataPartitionByDisk(offLineAddr, diskPath)
+	for _, dp := range badPartitions {
+		if dp.IsDecommissionFailed() {
+			failedDps = append(failedDps, dp.PartitionID)
+		}
 	}
-	disk := value.(*DecommissionDisk)
-	err, dps := disk.GetDecommissionFailedDP(m.cluster)
-	if err != nil {
-		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
-		return
-	}
-	sendOkReply(w, r, newSuccessHTTPReply(dps))
+	log.LogWarnf("action[GetDecommissionDiskFailedDP]disk %v_%v failed dp list [%v]", offLineAddr, diskPath, failedDps)
+	sendOkReply(w, r, newSuccessHTTPReply(failedDps))
 }
 
 func (m *Server) queryAllDecommissionDisk(w http.ResponseWriter, r *http.Request) {

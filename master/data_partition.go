@@ -75,7 +75,6 @@ type DataPartition struct {
 	VerSeq                         uint64
 	RecoverStartTime               time.Time
 	RecoverLastConsumeTime         time.Duration
-	DecommissionWaitTimes          int
 	RepairBlockSize                uint64
 }
 
@@ -1180,6 +1179,7 @@ func (partition *DataPartition) Decommission(c *Cluster) bool {
 		err        error
 		srcAddr    = partition.DecommissionSrcAddr
 		targetAddr = partition.DecommissionDstAddr
+		srcReplica *DataReplica
 	)
 	defer func() {
 		c.syncUpdateDataPartition(partition)
@@ -1204,6 +1204,16 @@ func (partition *DataPartition) Decommission(c *Cluster) bool {
 		}
 		partition.SetDecommissionStatus(DecommissionSuccess)
 		log.LogWarnf("action[decommissionDataPartition]delete dp directly[%v]", partition.PartitionID)
+		return true
+	}
+
+	// if decommission src for dp is not reset and decommission dst is already repaired
+	srcReplica, _ = partition.getReplica(partition.DecommissionSrcAddr)
+
+	if len(partition.Replicas) == int(partition.ReplicaNum) && srcReplica == nil {
+		partition.SetDecommissionStatus(DecommissionSuccess)
+		log.LogWarnf("action[decommissionDataPartition]dp(%v) status(%v) is already decommissioned",
+			partition.PartitionID, partition.Status)
 		return true
 	}
 
@@ -1270,7 +1280,6 @@ errHandler:
 		partition.SetDecommissionStatus(DecommissionFail)
 	} else {
 		partition.SetDecommissionStatus(markDecommission) // retry again
-		partition.DecommissionWaitTimes = 0
 	}
 
 	// if need rollback, set to fail,reset DecommissionDstAddr
@@ -1286,11 +1295,11 @@ errHandler:
 	}
 	msg = fmt.Sprintf("clusterID[%v] vol[%v] dp[%v]  on Node:%v  "+
 		"to newHost:%v Err:%v, PersistenceHosts:%v ,retry %v,status %v, isRecover %v SingleDecommissionStatus[%v]"+
-		" DecommissionNeedRollback[%v] DecommissionNeedRollbackTimes %v",
+		" DecommissionNeedRollback[%v] DecommissionNeedRollbackTimes %v consume[%v]seconds",
 		c.Name, partition.VolName, partition.PartitionID, srcAddr, targetAddr, err.Error(),
 		partition.Hosts, partition.DecommissionRetry, partition.GetDecommissionStatus(),
 		partition.isRecover, partition.GetSpecialReplicaDecommissionStep(), partition.DecommissionNeedRollback,
-		partition.DecommissionNeedRollbackTimes)
+		partition.DecommissionNeedRollbackTimes, time.Since(begin).Seconds())
 	Warn(c.Name, msg)
 	log.LogWarnf("action[decommissionDataPartition] %s", msg)
 	partition.DecommissionErrorMessage = err.Error()
@@ -1348,10 +1357,8 @@ func (partition *DataPartition) ResetDecommissionStatus() {
 	partition.DecommissionDstAddrSpecify = false
 	partition.DecommissionNeedRollback = false
 	atomic.StoreUint32(&partition.DecommissionNeedRollbackTimes, 0)
-	partition.DecommissionNeedRollbackTimes = 0
 	partition.SetDecommissionStatus(DecommissionInitial)
 	partition.SetSpecialReplicaDecommissionStep(SpecialDecommissionInitial)
-	partition.DecommissionWaitTimes = 0
 	partition.DecommissionErrorMessage = ""
 }
 
@@ -1374,7 +1381,6 @@ func (partition *DataPartition) rollback(c *Cluster) {
 	partition.DecommissionRetry = 0
 	partition.isRecover = false
 	partition.DecommissionNeedRollback = false
-	partition.DecommissionWaitTimes = 0
 	partition.DecommissionErrorMessage = ""
 	partition.SetDecommissionStatus(markDecommission)
 	partition.SetSpecialReplicaDecommissionStep(SpecialDecommissionInitial)
@@ -1547,16 +1553,11 @@ func (partition *DataPartition) TryAcquireDecommissionToken(c *Cluster) bool {
 	)
 	const MaxRetryDecommissionWait = 60
 	defer c.syncUpdateDataPartition(partition)
-
-	if partition.DecommissionRetry > 0 {
-		partition.DecommissionWaitTimes++
-		if partition.DecommissionWaitTimes < MaxRetryDecommissionWait {
-			// log.LogDebugf("action[TryAcquireDecommissionToken] dp %v wait %v", partition.PartitionID, partition.DecommissionWaitTimes)
-			return false
-		} else {
-			partition.DecommissionWaitTimes = 0
-		}
-	}
+	begin := time.Now()
+	defer func() {
+		log.LogDebugf("action[TryAcquireDecommissionToken] dp %v get token consume(%v)",
+			partition.PartitionID, time.Now().Sub(begin).String())
+	}()
 
 	// the first time for dst addr not specify
 	if !partition.DecommissionDstAddrSpecify && partition.DecommissionDstAddr == "" {
@@ -1637,8 +1638,6 @@ errHandler:
 	partition.DecommissionRetry++
 	if partition.DecommissionRetry >= defaultDecommissionRetryLimit {
 		partition.SetDecommissionStatus(DecommissionFail)
-	} else {
-		partition.DecommissionWaitTimes = 0
 	}
 	log.LogWarnf("action[TryAcquireDecommissionToken] clusterID[%v] vol[%v] partitionID[%v]"+
 		" retry [%v] status [%v] DecommissionDstAddrSpecify [%v] DecommissionDstAddr [%v] failed",

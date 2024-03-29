@@ -315,9 +315,6 @@ func (dataNode *DataNode) updateDecommissionStatus(c *Cluster, debug bool) (uint
 	if dataNode.GetDecommissionStatus() == DecommissionSuccess {
 		return DecommissionSuccess, float64(1)
 	}
-	if dataNode.GetDecommissionStatus() == DecommissionFail {
-		return DecommissionFail, float64(0)
-	}
 	if dataNode.GetDecommissionStatus() == DecommissionPause {
 		return DecommissionPause, float64(0)
 	}
@@ -456,22 +453,15 @@ func (dataNode *DataNode) GetDecommissionFailedDPByTerm(c *Cluster) []uint64 {
 func (dataNode *DataNode) GetDecommissionFailedDP(c *Cluster) (error, []uint64) {
 	var (
 		failedDps []uint64
-		err       error
 	)
-	if dataNode.GetDecommissionStatus() != DecommissionFail {
-		err = fmt.Errorf("action[GetDecommissionDataNodeFailedDP]dataNode[%s] status must be failed,but[%d]",
-			dataNode.Addr, dataNode.GetDecommissionStatus())
-		return err, failedDps
-	}
 	partitions := c.getAllDecommissionDataPartitionByDataNode(dataNode.Addr)
 	log.LogDebugf("action[GetDecommissionDataNodeFailedDP] partitions len %v", len(partitions))
 	for _, dp := range partitions {
 		if dp.IsDecommissionFailed() {
 			failedDps = append(failedDps, dp.PartitionID)
-			log.LogWarnf("action[GetDecommissionDataNodeFailedDP] dp[%v] failed", dp.PartitionID)
 		}
 	}
-	log.LogWarnf("action[GetDecommissionDataNodeFailedDP] failed dp list [%v]", failedDps)
+	log.LogInfof("action[GetDecommissionDataNodeFailedDP] failed dp list [%v]", failedDps)
 	return nil, failedDps
 }
 

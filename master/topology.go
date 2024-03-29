@@ -2300,10 +2300,9 @@ func (l *DecommissionDataPartitionList) traverse(c *Cluster) {
 							// retry should release token
 							if dp.IsMarkDecommission() {
 								dp.ReleaseDecommissionToken(c)
-								// choose other node to create data partitoin
+								// choose other node to create data partition
 								dp.DecommissionDstAddr = ""
 							}
-							l.pushFailedDp(dp, c)
 						}
 					}(dp) // special replica cnt cost some time from prepare to running
 				}

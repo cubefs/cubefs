@@ -3950,6 +3950,11 @@ func (c *Cluster) checkDecommissionDataNode() {
 				}
 				return true
 			}
+			// maybe has decommission failed dp
+			failedPartitions := c.getAllDecommissionDataPartitionByDataNode(dataNode.Addr)
+			if len(failedPartitions) != 0 {
+				return true
+			}
 			if err := c.syncDeleteDataNode(dataNode); err != nil {
 				msg := fmt.Sprintf("action[checkDecommissionDataNode],clusterID[%v] Node[%v] syncDeleteDataNode failed,err[%v]",
 					c.Name, dataNode.Addr, err)
@@ -4060,17 +4065,25 @@ func (c *Cluster) TryDecommissionDataNode(dataNode *DataNode) {
 			if dp.IsDecommissionSuccess() {
 				dp.ResetDecommissionStatus()
 				c.syncUpdateDataPartition(dp)
-			} else {
-				// if dp
-
-				toBeOffLinePartitionsFinal = append(toBeOffLinePartitionsFinal, dp)
-				toBeOffLinePartitionsFinalIds = append(toBeOffLinePartitionsFinalIds, dp.PartitionID)
+				continue
 			}
-			continue
+			if dp.DecommissionSrcDiskPath == "" {
+				dp.ResetDecommissionStatus()
+				c.syncUpdateDataPartition(dp)
+				log.LogWarnf("action[TryDecommissionDataNode] cannot find DecommissionSrcDiskPath for "+
+					"dp replica [%v] on dataNode[%v],reset decommission status",
+					dp.PartitionID, dataNode.Addr)
+				continue
+			}
+			// dp decommission failed with decommission src replica is deleted
+			toBeOffLinePartitionsFinal = append(toBeOffLinePartitionsFinal, dp)
+			toBeOffLinePartitionsFinalIds = append(toBeOffLinePartitionsFinalIds, dp.PartitionID)
+			dpToDecommissionByDisk[dp.DecommissionSrcDiskPath]++
+		} else {
+			toBeOffLinePartitionsFinal = append(toBeOffLinePartitionsFinal, dp)
+			toBeOffLinePartitionsFinalIds = append(toBeOffLinePartitionsFinalIds, dp.PartitionID)
+			dpToDecommissionByDisk[disk]++
 		}
-		toBeOffLinePartitionsFinal = append(toBeOffLinePartitionsFinal, dp)
-		toBeOffLinePartitionsFinalIds = append(toBeOffLinePartitionsFinalIds, dp.PartitionID)
-		dpToDecommissionByDisk[disk]++
 	}
 	if len(toBeOffLinePartitionsFinal) == 0 {
 		dataNode.markDecommissionSuccess(c)
@@ -4261,13 +4274,15 @@ func (c *Cluster) checkBadDisk() {
 
 func (c *Cluster) TryDecommissionDisk(disk *DecommissionDisk) {
 	var (
-		node            *DataNode
-		err             error
-		badPartitionIds []uint64
-		badPartitions   []*DataPartition
-		rstMsg          string
-		zone            *Zone
-		ns              *nodeSet
+		node                *DataNode
+		err                 error
+		badPartitionIds     []uint64
+		lastBadPartitionIds []uint64
+		//tmpIds              []uint64
+		badPartitions []*DataPartition
+		rstMsg        string
+		zone          *Zone
+		ns            *nodeSet
 	)
 	defer func() {
 		if err != nil {
@@ -4283,6 +4298,12 @@ func (c *Cluster) TryDecommissionDisk(disk *DecommissionDisk) {
 	badPartitions = node.badPartitions(disk.DiskPath, c)
 	// check decommission dp last time
 	lastBadPartitions := c.getAllDecommissionDataPartitionByDisk(disk.SrcAddr, disk.DiskPath)
+	for _, dp := range lastBadPartitions {
+		lastBadPartitionIds = append(lastBadPartitionIds, dp.PartitionID)
+	}
+	log.LogInfof("action[TryDecommissionDisk] disk[%v_%v] lastBadPartitionIds %v",
+		node.Addr, disk.DiskPath, lastBadPartitionIds)
+
 	badPartitions = mergeDataPartitionArr(badPartitions, lastBadPartitions)
 	if len(badPartitions) == 0 {
 		log.LogInfof("action[TryDecommissionDisk] receive decommissionDisk node[%v] "+
@@ -4295,6 +4316,14 @@ func (c *Cluster) TryDecommissionDisk(disk *DecommissionDisk) {
 		}
 		return
 	}
+	//tmpIds = tmpIds[:0]
+	//for _, dp := range badPartitions {
+	//	tmpIds = append(tmpIds, dp.PartitionID)
+	//}
+	//log.LogInfof("action[TryDecommissionDisk] disk[%v_%v] tmpIds %v",
+	//	node.Addr, disk.DiskPath, tmpIds)
+	//log.LogInfof("action[TryDecommissionDisk] disk[%v_%v] DecommissionDpCount %v",
+	//	node.Addr, disk.DiskPath, disk.DecommissionDpCount)
 	// recover from pause
 	if disk.DecommissionDpTotal != InvalidDecommissionDpCnt {
 		badPartitions = lastBadPartitions
@@ -4330,6 +4359,8 @@ func (c *Cluster) TryDecommissionDisk(disk *DecommissionDisk) {
 			continue
 		}
 		if !dp.MarkDecommissionStatus(node.Addr, disk.DstAddr, disk.DiskPath, disk.DecommissionRaftForce, disk.DecommissionTerm, c) {
+			log.LogWarnf("action[TryDecommissionDisk] mark dp [%v] on %v:%v decommission failed",
+				dp.PartitionID, disk.SrcAddr, disk.DiskPath)
 			continue
 		}
 		c.syncUpdateDataPartition(dp)

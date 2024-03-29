@@ -23,7 +23,6 @@ import (
 	"net"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/cubefs/cubefs/util/exporter"
@@ -658,14 +657,15 @@ RETRY:
 			log.LogWarnf("action[DoRepair] retry dp(%v) extent(%v).", dp.partitionID, remoteExtentInfo.FileID)
 			goto RETRY
 		}
-		// only decommission repair need to check err cnt
-		if dp.isDecommissionRecovering() {
-			atomic.AddUint64(&dp.recoverErrCnt, 1)
-			if atomic.LoadUint64(&dp.recoverErrCnt) >= dp.dataNode.GetDpMaxRepairErrCnt() {
-				dp.handleDecommissionRecoverFailed()
-				return
-			}
-		}
+		// If there are too many extents on the data protection (DP) side,
+		// a rapid increase in error counts can occur when the source restarts.This can lead to repair failures.
+		//if dp.isDecommissionRecovering() {
+		//	atomic.AddUint64(&dp.recoverErrCnt, 1)
+		//	if atomic.LoadUint64(&dp.recoverErrCnt) >= dp.dataNode.GetDpMaxRepairErrCnt() {
+		//		dp.handleDecommissionRecoverFailed()
+		//		return
+		//	}
+		//}
 		err = errors.Trace(err, "doStreamExtentFixRepair %v", dp.applyRepairKey(int(remoteExtentInfo.FileID)))
 		localExtentInfo, opErr := dp.ExtentStore().Watermark(uint64(remoteExtentInfo.FileID))
 		if opErr != nil {
