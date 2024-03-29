@@ -285,7 +285,7 @@ func (a *Audit) formatAuditEntry(ipAddr, hostName, op, src, dst string, err erro
 		errStr = "nil"
 	}
 	curTime := time.Now()
-	curTimeStr := curTime.Format("2006-01-02 15:04:05")
+	curTimeStr := curTime.Format("2006-01-02 15:04:05.000000")
 	timeZone, _ := curTime.Zone()
 	latencyStr := strconv.FormatInt(latency, 10) + " us"
 	srcInodeStr := strconv.FormatUint(srcInode, 10)
