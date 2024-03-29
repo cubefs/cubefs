@@ -16,10 +16,10 @@ package master
 
 import (
 	"fmt"
+	"math"
 	"sync/atomic"
 	"time"
 
-	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/log"
 )
 
@@ -100,16 +100,23 @@ func (c *Cluster) checkDiskRecoveryProgress() {
 				continue
 			}
 			if newReplica.isRepairing() {
-				if !partition.isSpecialReplicaCnt() &&
-					time.Since(partition.RecoverStartTime) > c.GetDecommissionDataPartitionRecoverTimeOut() {
-					partition.DecommissionNeedRollback = true
-					partition.SetDecommissionStatus(DecommissionFail)
-					partition.DecommissionErrorMessage = fmt.Sprintf("Decommission target node %v repair timeout", partition.DecommissionDstAddr)
-					if partition.Replicas[0].Status == proto.Unavailable {
-						partition.DecommissionErrorMessage = fmt.Sprintf("%v because of leader %v is unavailable", partition.DecommissionErrorMessage, partition.Replicas[0].Addr)
+				if !partition.isSpecialReplicaCnt() {
+					masterNode, _ := partition.getReplica(partition.Hosts[0])
+					duration := time.Unix(masterNode.ReportTime, 0).Sub(time.Unix(newReplica.ReportTime, 0))
+					if math.Abs(duration.Minutes()) > 10 {
+						partition.SetDecommissionStatus(DecommissionFail)
+						partition.DecommissionErrorMessage = fmt.Sprintf("Decommission target node %v cannot finish recover"+
+							"for host[0] %v is down ", partition.DecommissionDstAddr, masterNode.Addr)
+						partition.DecommissionNeedRollback = false
+						Warn(c.Name, fmt.Sprintf("action[checkDiskRecoveryProgress]clusterID[%v],partitionID[%v] %v",
+							c.Name, partitionID, partition.DecommissionErrorMessage))
+					} else if time.Since(partition.RecoverStartTime) > c.GetDecommissionDataPartitionRecoverTimeOut() {
+						partition.DecommissionNeedRollback = true
+						partition.SetDecommissionStatus(DecommissionFail)
+						partition.DecommissionErrorMessage = fmt.Sprintf("Decommission target node %v repair timeout", partition.DecommissionDstAddr)
+						Warn(c.Name, fmt.Sprintf("action[checkDiskRecoveryProgress]clusterID[%v],partitionID[%v]  recovered timeout %s",
+							c.Name, partitionID, time.Since(partition.RecoverStartTime)))
 					}
-					Warn(c.Name, fmt.Sprintf("action[checkDiskRecoveryProgress]clusterID[%v],partitionID[%v]  recovered timeout %s",
-						c.Name, partitionID, time.Since(partition.RecoverStartTime)))
 					partition.RLock()
 					err = c.syncUpdateDataPartition(partition)
 					if err != nil {
