@@ -1638,12 +1638,6 @@ func (mp *metaPartition) Reset() (err error) {
 		log.LogErrorf("[Reset] mp(%v) failed to clear data, err(%v)", mp.config.PartitionId, err)
 		err = nil
 	}
-	name := mp.db.GetPartitionColumnFamilyName(mp.config.PartitionId)
-	err = mp.db.DeleteColumnFamily(name)
-	if err != nil {
-		log.LogErrorf("[Reset] mp(%v) failed to delete partition column family(%v), err(%v)", mp.config.PartitionId, name, err)
-		err = nil
-	}
 	mp.rocksdbManager.CloseRocksdb(mp.db)
 	mp.db = nil
 
