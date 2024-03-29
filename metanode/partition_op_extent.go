@@ -384,6 +384,11 @@ func (mp *metaPartition) ExtentsList(req *proto.GetExtentsRequest, p *Packet) (e
 	// note:don't need set reqSeq, extents get be done in next step
 	ino := NewInode(req.Inode, 0)
 	retMsg := mp.getInodeTopLayer(ino)
+	if retMsg.Status != proto.OpOk || retMsg.Msg == nil {
+		err = fmt.Errorf("inode(%v) not found", req.Inode)
+		log.LogError("[ExtentsList] %v", err.Error())
+		return
+	}
 
 	// notice.getInode should not set verSeq due to extent need filter from the newest layer to req.VerSeq
 	ino = retMsg.Msg
