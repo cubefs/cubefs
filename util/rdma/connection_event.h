@@ -22,13 +22,6 @@ int getHeaderSize();
 
 int getResponseSize();
 
-
-int connection_compare(const void *a, const void *b, void *udata);
-
-bool connection_iter(const void *item, void *udata);
-
-uint64_t connection_hash(const void *item, uint64_t seed0, uint64_t seed1);
-
 void destroy_connection(Connection *conn);
 
 int build_connection(struct ConnectionEvent *conn_ev, Connection *conn);

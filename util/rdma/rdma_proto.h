@@ -157,7 +157,6 @@ typedef struct RdmaContext {
 };
 
 typedef struct RdmaListener {
-    struct hashmap *allConns;
     Queue *waitConns;
     pthread_mutex_t mutex;
     int count;

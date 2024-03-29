@@ -8,28 +8,6 @@ int getResponseSize() {
     return sizeof(Response);
 }
 
-int connection_compare(const void *a, const void *b, void *udata) {
-    Connection *ca = a;
-    Connection *cb = b;
-    if(ca->cm_id > cb->cm_id) {
-        return 1;
-    } else if(ca->cm_id < cb->cm_id) {
-        return -1;
-    } else {
-        return 0;
-    }
-}
-
-bool connection_iter(const void *item, void *udata) {
-    const Connection *conn = item;
-    return true;
-}
-
-uint64_t connection_hash(const void *item, uint64_t seed0, uint64_t seed1) {
-    const Connection *conn = item;
-    return hashmap_sip(conn->cm_id, sizeof(conn->cm_id), seed0, seed1);
-}
-
 void destroy_connection(Connection *conn) {
     if(conn->pd) {
         conn->pd = NULL;
