@@ -257,7 +257,7 @@ int cfs_extent_read_pages(struct cfs_extent_stream *es, bool direct_io,
 int cfs_extent_write_pages(struct cfs_extent_stream *es, struct page **pages,
 			   size_t nr_pages, loff_t file_offset,
 			   size_t first_page_offset, size_t end_page_size);
-int cfs_extent_dio_read_write(struct cfs_extent_stream *es, int type,
+ssize_t cfs_extent_dio_read_write(struct cfs_extent_stream *es, int type,
 			      struct iov_iter *iter, loff_t offset);
 int cfs_extent_module_init(void);
 void cfs_extent_module_exit(void);

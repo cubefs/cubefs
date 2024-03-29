@@ -1114,6 +1114,7 @@ static struct page **extent_dio_pages_alloc(struct iov_iter *iter, int type,
 		kvfree(pages);
 		return ERR_PTR(-ENOMEM);
 	}
+	iov_iter_advance(iter, nbytes);
 
 	*nr_pages = npages;
 	*first_page_offset = start & ~PAGE_MASK;
@@ -1123,7 +1124,7 @@ static struct page **extent_dio_pages_alloc(struct iov_iter *iter, int type,
 	return pages;
 }
 
-int cfs_extent_dio_read_write(struct cfs_extent_stream *es, int type,
+ssize_t cfs_extent_dio_read_write(struct cfs_extent_stream *es, int type,
 			      struct iov_iter *iter, loff_t offset)
 {
 	struct page **pages;
@@ -1131,7 +1132,7 @@ int cfs_extent_dio_read_write(struct cfs_extent_stream *es, int type,
 	size_t first_page_offset;
 	size_t end_page_size;
 	size_t i;
-	int ret = 0;
+	ssize_t ret = 0;
 
 #ifdef DEBUG
 	cfs_pr_debug("ino(%llu) type=%d offset=%lld, size=%lu\n", es->ino, type,
