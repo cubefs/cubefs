@@ -14,7 +14,6 @@ import (
 	"fmt"
 	"net"
 	"reflect"
-	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -53,8 +52,7 @@ func EpollAddSendAndRecvEvent(fd C.int, ctx unsafe.Pointer) {
 //export EpollAddConnectEvent
 func EpollAddConnectEvent(fd C.int, ctx unsafe.Pointer) {
 	GetEpoll().EpollAdd(int(fd), func() {
-		if ok := C.connection_event_cb(unsafe.Pointer(ctx)); ok == 0 {
-		}
+		C.connection_event_cb(unsafe.Pointer(ctx))
 	})
 }
 
@@ -114,9 +112,8 @@ func NewRdmaServer(targetIp, targetPort string) (server *Server, err error) { //
 	server.RemotePort = ""
 	server.LocalIp = targetIp
 	server.LocalPort = targetPort
-	nPort, _ := strconv.Atoi(server.LocalPort)
 	serverAddr := strings.Join([]string{server.LocalIp, server.LocalPort}, ":")
-	cCtx := C.StartServer(C.CString(server.LocalIp), C.ushort(nPort), C.CString(serverAddr))
+	cCtx := C.StartServer(C.CString(server.LocalIp), C.CString(server.LocalPort), C.CString(serverAddr))
 	if cCtx == nil {
 		return nil, errors2.New("server start failed")
 	}

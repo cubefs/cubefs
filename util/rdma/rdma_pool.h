@@ -6,13 +6,13 @@
 #define C_OK 1
 #define C_ERR 0
 
-typedef struct RdmaPool {
+struct RdmaPool {
     MemoryPool *memoryPool;
     ObjectPool *headerPool;
     ObjectPool *responsePool;
 };
 
-typedef struct RdmaPoolConfig {
+struct RdmaPoolConfig {
     int memBlockNum;
     int memBlockSize;
     int memPoolLevel;

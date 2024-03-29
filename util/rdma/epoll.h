@@ -14,7 +14,7 @@
 
 #include "rdma_proto.h"
 
-typedef void (*EventCallBack)(void *ctx);
+typedef void *EventCallBack(void *ctx);
 
 static int rdma_transferEvent_thread(Connection *conn, EventCallBack cb) {
     pthread_create(&conn->transferThread, NULL, cb, conn);
@@ -34,7 +34,6 @@ static int rdma_connectEvent_thread(int type, void *ctx, EventCallBack cb, struc
 
 static void DelTransferEvent(Connection *conn) {
     conn->close = 1;
-    return 1;
 }
 
 static void DelConnectEvent(int type, void *ctx) {
@@ -45,8 +44,6 @@ static void DelConnectEvent(int type, void *ctx) {
         struct RdmaContext* client = (struct RdmaContext*)ctx;
         client->conn_ev->close = 1;
     }
-
-    return 1;
 }
 
 #endif

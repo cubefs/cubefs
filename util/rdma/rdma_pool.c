@@ -1,7 +1,8 @@
 #include "rdma_pool.h"
+#include "connection_event.h"
 
-WQ_DEPTH = 32;
-MIN_CQE_NUM = 1024;
+int WQ_DEPTH = 32;
+int MIN_CQE_NUM = 1024;
 
 struct RdmaPool *rdmaPool = NULL;
 struct RdmaPoolConfig *rdmaPoolConfig = NULL;

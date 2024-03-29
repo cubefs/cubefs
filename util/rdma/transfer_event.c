@@ -1,5 +1,5 @@
 #include "transfer_event.h"
-
+#include "connection.h"
 
 
 int connRdmaHandleRecv(Connection *conn, void *block, uint32_t byte_len) {
@@ -71,7 +71,7 @@ int transport_sendAndRecv_event_handler(Connection *conn) {
         }
         switch (wc.opcode) {
           case IBV_WC_RECV:
-              block = wc.wr_id;
+              block = (void *)wc.wr_id;
               if (connRdmaHandleRecv(conn, block, wc.byte_len) == C_ERR) {
                   //printf("rdma recv failed");
                   goto error;
