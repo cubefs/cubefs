@@ -463,7 +463,6 @@ type DecommissionDataPartitionInfo struct {
 	DstAddress        string
 	Term              uint64
 	Replicas          []string
-	WaitTimes         int
 	ErrorMessage      string
 	NeedRollbackTimes uint32
 }
