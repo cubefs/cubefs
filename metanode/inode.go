@@ -1556,7 +1556,7 @@ func (inode *Inode) unlinkTopLayer(mpId uint64, ino *Inode, mpVer uint64, verlis
 	// make sure inode be unlinked by normal deletion, sdk add filed of dentry verSeq to identify and different from other unlink actions
 	if mpVer == inode.getVer() || ino.Flag&InodeDelTop > 0 {
 		if inode.getLayerLen() == 0 {
-			log.LogDebugf("action[unlinkTopLayer] no snapshot available depends on ino %v not found seq %v and return, verlist %v", ino, inode.getVer(), verlist)
+			log.LogDebugf("action[unlinkTopLayer] no snapshot available depends on ino %v not found seq %v and return, verlist %v", inode, inode.getVer(), verlist)
 			inode.DecNLink()
 			log.LogDebugf("action[unlinkTopLayer] inode %v be unlinked", ino.Inode)
 			// operate inode directly
