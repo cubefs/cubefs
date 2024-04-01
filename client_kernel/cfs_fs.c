@@ -1478,6 +1478,9 @@ static int cfs_show_options(struct seq_file *seq_file, struct dentry *dentry)
 		   cmi->options->quota_cache_valid_ms);
 	seq_printf(seq_file, ",enable_quota=%s",
 		   cmi->options->enable_quota ? "true" : "false");
+	seq_printf(seq_file, ",enable_rdma=%s",
+		   cmi->options->enable_rdma ? "true" : "false");
+	seq_printf(seq_file, ",rdma_port=%u", cmi->options->rdma_port);
 	return 0;
 }
 
