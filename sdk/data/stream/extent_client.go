@@ -377,14 +377,15 @@ func (client *ExtentClient) CloseStream(inode uint64) error {
 // Evict request shall grab the lock until request is sent to the request channel
 func (client *ExtentClient) EvictStream(inode uint64) error {
 	client.streamerLock.Lock()
-	defer client.streamerLock.Unlock()
 	s, ok := client.streamers[inode]
 	if !ok {
+		client.streamerLock.Unlock()
 		return nil
 	}
 	log.LogDebugf("EvictStream streamer(%v)", s)
 	if s.refcnt != 0 || len(s.request) != 0 {
 		log.LogDebugf("EvictStream can not evict, streamer(%v)", s)
+		client.streamerLock.Unlock()
 		return nil
 	}
 
@@ -392,8 +393,12 @@ func (client *ExtentClient) EvictStream(inode uint64) error {
 		log.LogDebugf("EvictStream: delete streamer(%v)", s)
 		delete(s.client.streamers, s.inode)
 		s.isOpen = false
+		// unlock before write channel s.done, or else maybe leadto deadlock(server wait to lock while user wait server read s.done)
+		client.streamerLock.Unlock()
 		//after streamer is deleted, notify server to exit
 		s.done <- struct{}{}
+	} else {
+		client.streamerLock.Unlock()
 	}
 	return nil
 }
