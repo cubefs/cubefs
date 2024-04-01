@@ -1233,7 +1233,7 @@ int cfs_extent_stream_flush(struct cfs_extent_stream *es)
 		mutex_lock(&es->lock_readers);
 		reader = list_first_entry_or_null(
 			&es->readers, struct cfs_extent_reader, list);
-		if (!writer) {
+		if (!reader) {
 			mutex_unlock(&es->lock_readers);
 			break;
 		}
