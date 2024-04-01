@@ -23,12 +23,15 @@ import (
 	"strconv"
 	"sync/atomic"
 
+	"github.com/cubefs/cubefs/cmd/common"
 	"github.com/cubefs/cubefs/depends/tiglabs/raft"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/storage"
 	"github.com/cubefs/cubefs/util/config"
 	"github.com/cubefs/cubefs/util/log"
 )
+
+var parseArgs = common.ParseArguments
 
 var AutoRepairStatus = true
 
@@ -80,40 +83,22 @@ func (s *DataNode) getStatAPI(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *DataNode) setAutoRepairStatus(w http.ResponseWriter, r *http.Request) {
-	const (
-		paramAutoRepair = "autoRepair"
-	)
-	if err := r.ParseForm(); err != nil {
-		err = fmt.Errorf("parse form fail: %v", err)
+	var autoRepair common.Bool
+	if err := parseArgs(r, autoRepair.Key("autoRepair")); err != nil {
 		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	autoRepair, err := strconv.ParseBool(r.FormValue(paramAutoRepair))
-	if err != nil {
-		err = fmt.Errorf("parse param %v fail: %v", paramAutoRepair, err)
-		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	AutoRepairStatus = autoRepair
-	s.buildSuccessResp(w, autoRepair)
+	AutoRepairStatus = autoRepair.V
+	s.buildSuccessResp(w, autoRepair.V)
 }
 
 func (s *DataNode) getRaftStatus(w http.ResponseWriter, r *http.Request) {
-	const (
-		paramRaftID = "raftID"
-	)
-	if err := r.ParseForm(); err != nil {
-		err = fmt.Errorf("parse form fail: %v", err)
+	var raftID common.Uint
+	if err := parseArgs(r, raftID.Key("raftID")); err != nil {
 		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	raftID, err := strconv.ParseUint(r.FormValue(paramRaftID), 10, 64)
-	if err != nil {
-		err = fmt.Errorf("parse param %v fail: %v", paramRaftID, err)
-		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	raftStatus := s.raftStore.RaftStatus(raftID)
+	raftStatus := s.raftStore.RaftStatus(raftID.V)
 	s.buildSuccessResp(w, raftStatus)
 }
 
@@ -149,27 +134,18 @@ func (s *DataNode) getPartitionsAPI(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *DataNode) getPartitionAPI(w http.ResponseWriter, r *http.Request) {
-	const (
-		paramPartitionID = "id"
-	)
 	var (
-		partitionID          uint64
+		pid                  common.Uint
 		files                []*storage.ExtentInfo
 		err                  error
 		tinyDeleteRecordSize int64
 		raftSt               *raft.Status
 	)
-	if err = r.ParseForm(); err != nil {
-		err = fmt.Errorf("parse form fail: %v", err)
+	if err := parseArgs(r, pid.ID()); err != nil {
 		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	if partitionID, err = strconv.ParseUint(r.FormValue(paramPartitionID), 10, 64); err != nil {
-		err = fmt.Errorf("parse param %v fail: %v", paramPartitionID, err)
-		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	partition := s.space.Partition(partitionID)
+	partition := s.space.Partition(pid.V)
 	if partition == nil {
 		s.buildFailureResp(w, http.StatusNotFound, "partition not exist")
 		return
@@ -221,29 +197,21 @@ func (s *DataNode) getPartitionAPI(w http.ResponseWriter, r *http.Request) {
 
 func (s *DataNode) getExtentAPI(w http.ResponseWriter, r *http.Request) {
 	var (
-		partitionID uint64
-		extentID    int
-		err         error
-		extentInfo  *storage.ExtentInfo
+		pid        common.Uint
+		eid        common.Int
+		err        error
+		extentInfo *storage.ExtentInfo
 	)
-	if err = r.ParseForm(); err != nil {
+	if err = parseArgs(r, pid.PartitionID(), eid.ExtentID()); err != nil {
 		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	if partitionID, err = strconv.ParseUint(r.FormValue("partitionID"), 10, 64); err != nil {
-		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	if extentID, err = strconv.Atoi(r.FormValue("extentID")); err != nil {
-		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	partition := s.space.Partition(partitionID)
+	partition := s.space.Partition(pid.V)
 	if partition == nil {
 		s.buildFailureResp(w, http.StatusNotFound, "partition not exist")
 		return
 	}
-	if extentInfo, err = partition.ExtentStore().Watermark(uint64(extentID)); err != nil {
+	if extentInfo, err = partition.ExtentStore().Watermark(uint64(eid.V)); err != nil {
 		s.buildFailureResp(w, 500, err.Error())
 		return
 	}
@@ -253,51 +221,38 @@ func (s *DataNode) getExtentAPI(w http.ResponseWriter, r *http.Request) {
 
 func (s *DataNode) getBlockCrcAPI(w http.ResponseWriter, r *http.Request) {
 	var (
-		partitionID uint64
-		extentID    int
-		err         error
-		blocks      []*storage.BlockCrc
+		pid    common.Uint
+		eid    common.Int
+		err    error
+		blocks []*storage.BlockCrc
 	)
-	if err = r.ParseForm(); err != nil {
+	if err = parseArgs(r, pid.PartitionID(), eid.ExtentID()); err != nil {
 		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	if partitionID, err = strconv.ParseUint(r.FormValue("partitionID"), 10, 64); err != nil {
-		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	if extentID, err = strconv.Atoi(r.FormValue("extentID")); err != nil {
-		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	partition := s.space.Partition(partitionID)
+	partition := s.space.Partition(pid.V)
 	if partition == nil {
 		s.buildFailureResp(w, http.StatusNotFound, "partition not exist")
 		return
 	}
-	if blocks, err = partition.ExtentStore().ScanBlocks(uint64(extentID)); err != nil {
+	if blocks, err = partition.ExtentStore().ScanBlocks(uint64(eid.V)); err != nil {
 		s.buildFailureResp(w, 500, err.Error())
 		return
 	}
-
 	s.buildSuccessResp(w, blocks)
 }
 
 func (s *DataNode) getTinyDeleted(w http.ResponseWriter, r *http.Request) {
 	var (
-		partitionID uint64
-		err         error
-		extentInfo  []storage.ExtentDeleted
+		pid        common.Uint
+		err        error
+		extentInfo []storage.ExtentDeleted
 	)
-	if err = r.ParseForm(); err != nil {
+	if err = parseArgs(r, pid.ID()); err != nil {
 		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	if partitionID, err = strconv.ParseUint(r.FormValue("id"), 10, 64); err != nil {
-		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	partition := s.space.Partition(partitionID)
+	partition := s.space.Partition(pid.V)
 	if partition == nil {
 		s.buildFailureResp(w, http.StatusNotFound, "partition not exist")
 		return
@@ -306,25 +261,20 @@ func (s *DataNode) getTinyDeleted(w http.ResponseWriter, r *http.Request) {
 		s.buildFailureResp(w, 500, err.Error())
 		return
 	}
-
 	s.buildSuccessResp(w, extentInfo)
 }
 
 func (s *DataNode) getNormalDeleted(w http.ResponseWriter, r *http.Request) {
 	var (
-		partitionID uint64
-		err         error
-		extentInfo  []storage.ExtentDeleted
+		pid        common.Uint
+		err        error
+		extentInfo []storage.ExtentDeleted
 	)
-	if err = r.ParseForm(); err != nil {
+	if err = parseArgs(r, pid.ID()); err != nil {
 		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	if partitionID, err = strconv.ParseUint(r.FormValue("id"), 10, 64); err != nil {
-		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	partition := s.space.Partition(partitionID)
+	partition := s.space.Partition(pid.V)
 	if partition == nil {
 		s.buildFailureResp(w, http.StatusNotFound, "partition not exist")
 		return
@@ -333,25 +283,17 @@ func (s *DataNode) getNormalDeleted(w http.ResponseWriter, r *http.Request) {
 		s.buildFailureResp(w, 500, err.Error())
 		return
 	}
-
 	s.buildSuccessResp(w, extentInfo)
 }
 
 func (s *DataNode) setQosEnable() func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
-		var (
-			err    error
-			enable bool
-		)
-		if err = r.ParseForm(); err != nil {
+		var enable common.Bool
+		if err := parseArgs(r, enable.Enable()); err != nil {
 			s.buildFailureResp(w, http.StatusBadRequest, err.Error())
 			return
 		}
-		if enable, err = strconv.ParseBool(r.FormValue("enable")); err != nil {
-			s.buildFailureResp(w, http.StatusBadRequest, err.Error())
-			return
-		}
-		s.diskQosEnable = enable
+		s.diskQosEnable = enable.V
 		s.buildSuccessResp(w, "success")
 	}
 }
@@ -437,19 +379,20 @@ func (s *DataNode) getSmuxPoolStat() func(http.ResponseWriter, *http.Request) {
 }
 
 func (s *DataNode) setMetricsDegrade(w http.ResponseWriter, r *http.Request) {
-	if err := r.ParseForm(); err != nil {
+	key := "level"
+	var level common.Int
+	if err := parseArgs(r, level.Key(key).OmitEmpty().
+		OnError(func() error {
+			w.Write([]byte("Set metrics degrade level parse failed\n"))
+			return nil
+		}).
+		OnValue(func() error {
+			atomic.StoreInt64(&s.metricsDegrade, level.V)
+			w.Write([]byte(fmt.Sprintf("Set metrics degrade level to %d successfully\n", level.V)))
+			return nil
+		})); err != nil {
 		w.Write([]byte(err.Error()))
 		return
-	}
-
-	if level := r.FormValue("level"); level != "" {
-		val, err := strconv.Atoi(level)
-		if err != nil {
-			w.Write([]byte("Set metrics degrade level failed\n"))
-		} else {
-			atomic.StoreInt64(&s.metricsDegrade, int64(val))
-			w.Write([]byte(fmt.Sprintf("Set metrics degrade level to %v successfully\n", val)))
-		}
 	}
 }
 
@@ -504,31 +447,19 @@ func (s *DataNode) buildJSONResp(w http.ResponseWriter, code int, data interface
 }
 
 func (s *DataNode) setDiskBadAPI(w http.ResponseWriter, r *http.Request) {
-	const (
-		paramDiskPath = "diskPath"
-	)
 	var (
 		err      error
-		diskPath string
+		diskPath common.String
 		disk     *Disk
 	)
-
-	if err = r.ParseForm(); err != nil {
-		err = fmt.Errorf("parse form fail: %v", err)
+	if err = parseArgs(r, diskPath.DiskPath()); err != nil {
 		log.LogErrorf("[setDiskBadAPI] %v", err.Error())
 		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
-	if diskPath = r.FormValue(paramDiskPath); diskPath == "" {
-		err = fmt.Errorf("param(%v) is empty", paramDiskPath)
-		log.LogErrorf("[setDiskBadAPI] %v", err.Error())
-		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
-		return
-	}
-
-	if disk, err = s.space.GetDisk(diskPath); err != nil {
-		err = fmt.Errorf("not exit such dissk, path: %v", diskPath)
+	if disk, err = s.space.GetDisk(diskPath.V); err != nil {
+		err = fmt.Errorf("not exit such dissk, path: %v", diskPath.V)
 		log.LogErrorf("[setDiskBadAPI] %v", err.Error())
 		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
 		return
@@ -548,24 +479,18 @@ func (s *DataNode) setDiskBadAPI(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *DataNode) reloadDataPartition(w http.ResponseWriter, r *http.Request) {
-	const (
-		paramID = "id"
-	)
 	if !s.checkAllDiskLoaded() {
 		s.buildFailureResp(w, http.StatusBadRequest, "please wait for disk loading")
 		return
 	}
-	if err := r.ParseForm(); err != nil {
+	var pid common.Uint
+	if err := parseArgs(r, pid.ID()); err != nil {
 		err = fmt.Errorf("parse form fail: %v", err)
 		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	partitionID, err := strconv.ParseUint(r.FormValue(paramID), 10, 64)
-	if err != nil {
-		err = fmt.Errorf("parse param %v fail: %v", paramID, err)
-		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
-		return
-	}
+	partitionID := pid.V
+
 	partition := s.space.Partition(partitionID)
 	if partition == nil {
 		s.buildFailureResp(w, http.StatusNotFound, "partition not exist")
@@ -583,8 +508,7 @@ func (s *DataNode) reloadDataPartition(w http.ResponseWriter, r *http.Request) {
 	partition.Disk().DetachDataPartition(partition)
 
 	log.LogDebugf("data partition %v is detached", partitionID)
-	_, err = LoadDataPartition(rootDir, disk)
-	if err != nil {
+	if _, err := LoadDataPartition(rootDir, disk); err != nil {
 		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
 	} else {
 		s.buildSuccessResp(w, "success")
@@ -592,22 +516,13 @@ func (s *DataNode) reloadDataPartition(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *DataNode) setDiskExtentReadLimitStatus(w http.ResponseWriter, r *http.Request) {
-	const (
-		paramStatus = "status"
-	)
-	if err := r.ParseForm(); err != nil {
-		err = fmt.Errorf("parse form fail: %v", err)
-		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	status, err := strconv.ParseBool(r.FormValue(paramStatus))
-	if err != nil {
-		err = fmt.Errorf("parse param %v fail: %v", paramStatus, err)
+	var status common.Bool
+	if err := parseArgs(r, status.Status()); err != nil {
 		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	for _, disk := range s.space.disks {
-		disk.SetExtentRepairReadLimitStatus(status)
+		disk.SetExtentRepairReadLimitStatus(status.V)
 	}
 	s.buildSuccessResp(w, "success")
 }
@@ -632,20 +547,14 @@ func (s *DataNode) queryDiskExtentReadLimitStatus(w http.ResponseWriter, r *http
 }
 
 func (s *DataNode) detachDataPartition(w http.ResponseWriter, r *http.Request) {
-	const (
-		paramID = "id"
-	)
-	if err := r.ParseForm(); err != nil {
+	var pid common.Uint
+	if err := parseArgs(r, pid.ID()); err != nil {
 		err = fmt.Errorf("parse form fail: %v", err)
 		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	partitionID, err := strconv.ParseUint(r.FormValue(paramID), 10, 64)
-	if err != nil {
-		err = fmt.Errorf("parse param %v fail: %v", paramID, err)
-		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
-		return
-	}
+	partitionID := pid.V
+
 	partition := s.space.Partition(partitionID)
 	if partition == nil {
 		s.buildFailureResp(w, http.StatusBadRequest, "partition not exist")
@@ -667,15 +576,13 @@ func (s *DataNode) detachDataPartition(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *DataNode) releaseDiskExtentReadLimitToken(w http.ResponseWriter, r *http.Request) {
-	const (
-		paramDisk = "disk"
-	)
-	if err := r.ParseForm(); err != nil {
+	var diskParam common.String
+	if err := parseArgs(r, diskParam.Disk()); err != nil {
 		err = fmt.Errorf("parse form fail: %v", err)
 		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	diskPath := r.FormValue(paramDisk)
+	diskPath := diskParam.V
 	// store disk path and root of dp
 	disk, err := s.space.GetDisk(diskPath)
 	if err != nil {
@@ -688,27 +595,21 @@ func (s *DataNode) releaseDiskExtentReadLimitToken(w http.ResponseWriter, r *htt
 }
 
 func (s *DataNode) loadDataPartition(w http.ResponseWriter, r *http.Request) {
-	const (
-		paramID   = "id"
-		paramDisk = "disk"
-	)
-	if err := r.ParseForm(); err != nil {
+	var pid common.Uint
+	var diskParam common.String
+	if err := parseArgs(r, pid.ID(), diskParam.Disk()); err != nil {
 		err = fmt.Errorf("parse form fail: %v", err)
 		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	partitionID, err := strconv.ParseUint(r.FormValue(paramID), 10, 64)
-	if err != nil {
-		err = fmt.Errorf("parse param %v fail: %v", paramID, err)
-		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
-		return
-	}
+	partitionID := pid.V
+	diskPath := diskParam.V
+
 	partition := s.space.Partition(partitionID)
 	if partition != nil {
 		s.buildFailureResp(w, http.StatusBadRequest, "partition is already loaded")
 		return
 	}
-	diskPath := r.FormValue(paramDisk)
 	// store disk path and root of dp
 	disk, err := s.space.GetDisk(diskPath)
 	if err != nil {

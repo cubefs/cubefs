@@ -24,13 +24,21 @@ type (
 
 func (b *Bool) Key(key string) *Argument { return NewArgument(key, &b.V) }
 func (b *Bool) Enable() *Argument        { return b.Key("enable") }
+func (b *Bool) Status() *Argument        { return b.Key("status") }
 
 func (i *Int) Key(key string) *Argument { return NewArgument(key, &i.V) }
 func (i *Int) ID() *Argument            { return i.Key("id") }
+func (i *Int) ExtentID() *Argument      { return i.Key("extentID") }
 
 func (u *Uint) Key(key string) *Argument { return NewArgument(key, &u.V) }
 func (u *Uint) ID() *Argument            { return u.Key("id") }
+func (u *Uint) PID() *Argument           { return u.Key("pid") }
+func (u *Uint) PartitionID() *Argument   { return u.Key("partitionID") }
+func (u *Uint) Ino() *Argument           { return u.Key("ino") }
+func (u *Uint) ParentIno() *Argument     { return u.Key("parentIno") }
 
 func (f *Float) Key(key string) *Argument { return NewArgument(key, &f.V) }
 
 func (s *String) Key(key string) *Argument { return NewArgument(key, &s.V) }
+func (s *String) Disk() *Argument          { return s.Key("disk") }
+func (s *String) DiskPath() *Argument      { return s.Key("diskPath") }
