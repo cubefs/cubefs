@@ -653,6 +653,7 @@ func formatDataFileInCoreMap(id string, indentation string, fileCore *proto.File
 			sb.WriteString("\n")
 			sb.WriteString(formatDataFileMetadate("", v))
 		}
+		sb.WriteString("\n")
 		return sb.String()
 	}
 	sb.WriteString(fmt.Sprintf("%v- Name           : %v\n", indentation, fileCore.Name))
