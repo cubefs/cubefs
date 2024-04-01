@@ -23,13 +23,15 @@ import (
 	"net/http"
 	"os"
 	"path"
-	"strconv"
 
+	"github.com/cubefs/cubefs/cmd/common"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/config"
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/log"
 )
+
+var parseArgs = common.ParseArguments
 
 // APIResponse defines the structure of the response to an HTTP request
 type APIResponse struct {
@@ -108,7 +110,6 @@ func (m *MetaNode) getPartitionsHandler(w http.ResponseWriter, r *http.Request) 
 }
 
 func (m *MetaNode) getPartitionByIDHandler(w http.ResponseWriter, r *http.Request) {
-	r.ParseForm()
 	resp := NewAPIResponse(http.StatusBadRequest, "")
 	defer func() {
 		data, _ := resp.Marshal()
@@ -116,12 +117,12 @@ func (m *MetaNode) getPartitionByIDHandler(w http.ResponseWriter, r *http.Reques
 			log.LogErrorf("[getPartitionByIDHandler] response %s", err)
 		}
 	}()
-	pid, err := strconv.ParseUint(r.FormValue("pid"), 10, 64)
-	if err != nil {
+	var pid common.Uint
+	if err := parseArgs(r, pid.PID()); err != nil {
 		resp.Msg = err.Error()
 		return
 	}
-	mp, err := m.metadataManager.GetPartition(pid)
+	mp, err := m.metadataManager.GetPartition(pid.V)
 	if err != nil {
 		resp.Code = http.StatusNotFound
 		resp.Msg = err.Error()
@@ -176,14 +177,11 @@ func (m *MetaNode) getAllInodesHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}()
 
-	if err = r.ParseForm(); err != nil {
+	var pid common.Uint
+	if err = parseArgs(r, pid.PID()); err != nil {
 		return
 	}
-	id, err := strconv.ParseUint(r.FormValue("pid"), 10, 64)
-	if err != nil {
-		return
-	}
-	mp, err := m.metadataManager.GetPartition(id)
+	mp, err := m.metadataManager.GetPartition(pid.V)
 	if err != nil {
 		return
 	}
@@ -227,7 +225,6 @@ func (m *MetaNode) getAllInodesHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *MetaNode) getSplitKeyHandler(w http.ResponseWriter, r *http.Request) {
-	r.ParseForm()
 	log.LogDebugf("getSplitKeyHandler")
 	resp := NewAPIResponse(http.StatusBadRequest, "")
 	defer func() {
@@ -236,26 +233,20 @@ func (m *MetaNode) getSplitKeyHandler(w http.ResponseWriter, r *http.Request) {
 			log.LogErrorf("[getSplitKeyHandler] response %s", err)
 		}
 	}()
-	pid, err := strconv.ParseUint(r.FormValue("pid"), 10, 64)
-	if err != nil {
+	var pid, ino common.Uint
+	var verAll common.Bool
+	if err := parseArgs(r, pid.PID(), ino.Ino(),
+		verAll.Key("verAll").OmitEmpty().OmitError()); err != nil {
 		resp.Msg = err.Error()
 		return
 	}
-	log.LogDebugf("getSplitKeyHandler")
-	id, err := strconv.ParseUint(r.FormValue("ino"), 10, 64)
-	if err != nil {
-		resp.Msg = err.Error()
-		return
-	}
-	log.LogDebugf("getSplitKeyHandler")
+
 	verSeq, err := m.getRealVerSeq(w, r)
 	if err != nil {
 		resp.Msg = err.Error()
 		return
 	}
-	log.LogDebugf("getSplitKeyHandler")
-	verAll, _ := strconv.ParseBool(r.FormValue("verAll"))
-	mp, err := m.metadataManager.GetPartition(pid)
+	mp, err := m.metadataManager.GetPartition(pid.V)
 	if err != nil {
 		resp.Code = http.StatusNotFound
 		resp.Msg = err.Error()
@@ -263,10 +254,10 @@ func (m *MetaNode) getSplitKeyHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	log.LogDebugf("getSplitKeyHandler")
 	req := &InodeGetSplitReq{
-		PartitionID: pid,
-		Inode:       id,
+		PartitionID: pid.V,
+		Inode:       ino.V,
 		VerSeq:      verSeq,
-		VerAll:      verAll,
+		VerAll:      verAll.V,
 	}
 	log.LogDebugf("getSplitKeyHandler")
 	p := &Packet{}
@@ -288,7 +279,6 @@ func (m *MetaNode) getSplitKeyHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *MetaNode) getInodeHandler(w http.ResponseWriter, r *http.Request) {
-	r.ParseForm()
 	resp := NewAPIResponse(http.StatusBadRequest, "")
 	defer func() {
 		data, _ := resp.Marshal()
@@ -296,13 +286,10 @@ func (m *MetaNode) getInodeHandler(w http.ResponseWriter, r *http.Request) {
 			log.LogErrorf("[getInodeHandler] response %s", err)
 		}
 	}()
-	pid, err := strconv.ParseUint(r.FormValue("pid"), 10, 64)
-	if err != nil {
-		resp.Msg = err.Error()
-		return
-	}
-	id, err := strconv.ParseUint(r.FormValue("ino"), 10, 64)
-	if err != nil {
+	var pid, ino common.Uint
+	var verAll common.Bool
+	if err := parseArgs(r, pid.PID(), ino.Ino(),
+		verAll.Key("verAll").OmitEmpty().OmitError()); err != nil {
 		resp.Msg = err.Error()
 		return
 	}
@@ -312,20 +299,17 @@ func (m *MetaNode) getInodeHandler(w http.ResponseWriter, r *http.Request) {
 		resp.Msg = err.Error()
 		return
 	}
-
-	verAll, _ := strconv.ParseBool(r.FormValue("verAll"))
-
-	mp, err := m.metadataManager.GetPartition(pid)
+	mp, err := m.metadataManager.GetPartition(pid.V)
 	if err != nil {
 		resp.Code = http.StatusNotFound
 		resp.Msg = err.Error()
 		return
 	}
 	req := &InodeGetReq{
-		PartitionID: pid,
-		Inode:       id,
+		PartitionID: pid.V,
+		Inode:       ino.V,
 		VerSeq:      verSeq,
-		VerAll:      verAll,
+		VerAll:      verAll.V,
 	}
 	p := &Packet{}
 	err = mp.InodeGet(req, p)
@@ -342,10 +326,6 @@ func (m *MetaNode) getInodeHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *MetaNode) getRaftStatusHandler(w http.ResponseWriter, r *http.Request) {
-	const (
-		paramRaftID = "id"
-	)
-
 	resp := NewAPIResponse(http.StatusOK, http.StatusText(http.StatusOK))
 	defer func() {
 		data, _ := resp.Marshal()
@@ -353,21 +333,17 @@ func (m *MetaNode) getRaftStatusHandler(w http.ResponseWriter, r *http.Request) 
 			log.LogErrorf("[getRaftStatusHandler] response %s", err)
 		}
 	}()
-
-	raftID, err := strconv.ParseUint(r.FormValue(paramRaftID), 10, 64)
-	if err != nil {
-		err = fmt.Errorf("parse param %v fail: %v", paramRaftID, err)
+	var raftID common.Uint
+	if err := parseArgs(r, raftID.ID()); err != nil {
 		resp.Msg = err.Error()
 		resp.Code = http.StatusBadRequest
 		return
 	}
-
-	raftStatus := m.raftStore.RaftStatus(raftID)
+	raftStatus := m.raftStore.RaftStatus(raftID.V)
 	resp.Data = raftStatus
 }
 
 func (m *MetaNode) getEbsExtentsByInodeHandler(w http.ResponseWriter, r *http.Request) {
-	r.ParseForm()
 	resp := NewAPIResponse(http.StatusBadRequest, "")
 	defer func() {
 		data, _ := resp.Marshal()
@@ -375,25 +351,20 @@ func (m *MetaNode) getEbsExtentsByInodeHandler(w http.ResponseWriter, r *http.Re
 			log.LogErrorf("[getEbsExtentsByInodeHandler] response %s", err)
 		}
 	}()
-	pid, err := strconv.ParseUint(r.FormValue("pid"), 10, 64)
-	if err != nil {
+	var pid, ino common.Uint
+	if err := parseArgs(r, pid.PID(), ino.Ino()); err != nil {
 		resp.Msg = err.Error()
 		return
 	}
-	id, err := strconv.ParseUint(r.FormValue("ino"), 10, 64)
-	if err != nil {
-		resp.Msg = err.Error()
-		return
-	}
-	mp, err := m.metadataManager.GetPartition(pid)
+	mp, err := m.metadataManager.GetPartition(pid.V)
 	if err != nil {
 		resp.Code = http.StatusNotFound
 		resp.Msg = err.Error()
 		return
 	}
 	req := &proto.GetExtentsRequest{
-		PartitionID: pid,
-		Inode:       id,
+		PartitionID: pid.V,
+		Inode:       ino.V,
 	}
 	p := &Packet{}
 	if err = mp.ObjExtentsList(req, p); err != nil {
@@ -409,7 +380,6 @@ func (m *MetaNode) getEbsExtentsByInodeHandler(w http.ResponseWriter, r *http.Re
 }
 
 func (m *MetaNode) getExtentsByInodeHandler(w http.ResponseWriter, r *http.Request) {
-	r.ParseForm()
 	resp := NewAPIResponse(http.StatusBadRequest, "")
 	defer func() {
 		data, _ := resp.Marshal()
@@ -417,13 +387,10 @@ func (m *MetaNode) getExtentsByInodeHandler(w http.ResponseWriter, r *http.Reque
 			log.LogErrorf("[getExtentsByInodeHandler] response %s", err)
 		}
 	}()
-	pid, err := strconv.ParseUint(r.FormValue("pid"), 10, 64)
-	if err != nil {
-		resp.Msg = err.Error()
-		return
-	}
-	id, err := strconv.ParseUint(r.FormValue("ino"), 10, 64)
-	if err != nil {
+	var pid, ino common.Uint
+	var verAll common.Bool
+	if err := parseArgs(r, pid.PID(), ino.Ino(),
+		verAll.Key("verAll").OmitEmpty().OmitError()); err != nil {
 		resp.Msg = err.Error()
 		return
 	}
@@ -433,8 +400,7 @@ func (m *MetaNode) getExtentsByInodeHandler(w http.ResponseWriter, r *http.Reque
 		resp.Msg = err.Error()
 		return
 	}
-	verAll, _ := strconv.ParseBool(r.FormValue("verAll"))
-	mp, err := m.metadataManager.GetPartition(pid)
+	mp, err := m.metadataManager.GetPartition(pid.V)
 	if err != nil {
 		resp.Code = http.StatusNotFound
 		resp.Msg = err.Error()
@@ -442,10 +408,10 @@ func (m *MetaNode) getExtentsByInodeHandler(w http.ResponseWriter, r *http.Reque
 	}
 
 	req := &proto.GetExtentsRequest{
-		PartitionID: pid,
-		Inode:       id,
+		PartitionID: pid.V,
+		Inode:       ino.V,
 		VerSeq:      uint64(verSeq),
-		VerAll:      verAll,
+		VerAll:      verAll.V,
 	}
 	p := &Packet{}
 	if err = mp.ExtentsList(req, p); err != nil {
@@ -461,8 +427,6 @@ func (m *MetaNode) getExtentsByInodeHandler(w http.ResponseWriter, r *http.Reque
 }
 
 func (m *MetaNode) getDentryHandler(w http.ResponseWriter, r *http.Request) {
-	r.ParseForm()
-	name := r.FormValue("name")
 	resp := NewAPIResponse(http.StatusBadRequest, "")
 	defer func() {
 		data, _ := resp.Marshal()
@@ -470,38 +434,33 @@ func (m *MetaNode) getDentryHandler(w http.ResponseWriter, r *http.Request) {
 			log.LogErrorf("[getDentryHandler] response %s", err)
 		}
 	}()
-	var (
-		pid  uint64
-		pIno uint64
-		err  error
-	)
-	if pid, err = strconv.ParseUint(r.FormValue("pid"), 10, 64); err == nil {
-		pIno, err = strconv.ParseUint(r.FormValue("parentIno"), 10, 64)
-	}
-	if err != nil {
+	var pid, pIno common.Uint
+	var verAll common.Bool
+	if err := parseArgs(r, pid.PID(), pIno.ParentIno(),
+		verAll.Key("verAll").OmitEmpty().OmitError()); err != nil {
 		resp.Msg = err.Error()
 		return
 	}
+	name := r.FormValue("name")
 
 	verSeq, err := m.getRealVerSeq(w, r)
 	if err != nil {
 		resp.Msg = err.Error()
 		return
 	}
-	verAll, _ := strconv.ParseBool(r.FormValue("verAll"))
 
-	mp, err := m.metadataManager.GetPartition(pid)
+	mp, err := m.metadataManager.GetPartition(pid.V)
 	if err != nil {
 		resp.Code = http.StatusNotFound
 		resp.Msg = err.Error()
 		return
 	}
 	req := &LookupReq{
-		PartitionID: pid,
-		ParentID:    pIno,
+		PartitionID: pid.V,
+		ParentID:    pIno.V,
 		Name:        name,
 		VerSeq:      verSeq,
-		VerAll:      verAll,
+		VerAll:      verAll.V,
 	}
 	p := &Packet{}
 	if err = mp.Lookup(req, p); err != nil {
@@ -518,7 +477,6 @@ func (m *MetaNode) getDentryHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *MetaNode) getTxHandler(w http.ResponseWriter, r *http.Request) {
-	r.ParseForm()
 	resp := NewAPIResponse(http.StatusBadRequest, "")
 	defer func() {
 		data, _ := resp.Marshal()
@@ -526,30 +484,22 @@ func (m *MetaNode) getTxHandler(w http.ResponseWriter, r *http.Request) {
 			log.LogErrorf("[getTxHandler] response %s", err)
 		}
 	}()
-	var (
-		pid  uint64
-		txId string
-		err  error
-	)
-	if pid, err = strconv.ParseUint(r.FormValue("pid"), 10, 64); err == nil {
-		if txId = r.FormValue("txId"); txId == "" {
-			err = fmt.Errorf("no txId")
-		}
-	}
-	if err != nil {
+	var pid common.Uint
+	var txid common.String
+	if err := parseArgs(r, pid.PID(), txid.Key("txId")); err != nil {
 		resp.Msg = err.Error()
 		return
 	}
 
-	mp, err := m.metadataManager.GetPartition(pid)
+	mp, err := m.metadataManager.GetPartition(pid.V)
 	if err != nil {
 		resp.Code = http.StatusNotFound
 		resp.Msg = err.Error()
 		return
 	}
 	req := &proto.TxGetInfoRequest{
-		Pid:  pid,
-		TxID: txId,
+		Pid:  pid.V,
+		TxID: txid.V,
 	}
 	p := &Packet{}
 	if err = mp.TxGetInfo(req, p); err != nil {
@@ -566,21 +516,18 @@ func (m *MetaNode) getTxHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *MetaNode) getRealVerSeq(w http.ResponseWriter, r *http.Request) (verSeq uint64, err error) {
-	if r.FormValue("verSeq") != "" {
-		var ver int64
-		if ver, err = strconv.ParseInt(r.FormValue("verSeq"), 10, 64); err != nil {
-			return
-		}
-		verSeq = uint64(ver)
+	var seq common.Uint
+	err = parseArgs(r, seq.Key("verSeq").OmitEmpty().OnValue(func() error {
+		verSeq = seq.V
 		if verSeq == 0 {
 			verSeq = math.MaxUint64
 		}
-	}
+		return nil
+	}))
 	return
 }
 
 func (m *MetaNode) getAllDentriesHandler(w http.ResponseWriter, r *http.Request) {
-	r.ParseForm()
 	resp := NewAPIResponse(http.StatusSeeOther, "")
 	shouldSkip := false
 	defer func() {
@@ -591,13 +538,13 @@ func (m *MetaNode) getAllDentriesHandler(w http.ResponseWriter, r *http.Request)
 			}
 		}
 	}()
-	pid, err := strconv.ParseUint(r.FormValue("pid"), 10, 64)
-	if err != nil {
+	var pid common.Uint
+	if err := parseArgs(r, pid.PID()); err != nil {
 		resp.Code = http.StatusBadRequest
 		resp.Msg = err.Error()
 		return
 	}
-	mp, err := m.metadataManager.GetPartition(pid)
+	mp, err := m.metadataManager.GetPartition(pid.V)
 	if err != nil {
 		resp.Code = http.StatusNotFound
 		resp.Msg = err.Error()
@@ -653,7 +600,6 @@ func (m *MetaNode) getAllDentriesHandler(w http.ResponseWriter, r *http.Request)
 }
 
 func (m *MetaNode) getAllTxHandler(w http.ResponseWriter, r *http.Request) {
-	r.ParseForm()
 	resp := NewAPIResponse(http.StatusOK, "")
 	shouldSkip := false
 	defer func() {
@@ -664,13 +610,13 @@ func (m *MetaNode) getAllTxHandler(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}()
-	pid, err := strconv.ParseUint(r.FormValue("pid"), 10, 64)
-	if err != nil {
+	var pid common.Uint
+	if err := parseArgs(r, pid.PID()); err != nil {
 		resp.Code = http.StatusBadRequest
 		resp.Msg = err.Error()
 		return
 	}
-	mp, err := m.metadataManager.GetPartition(pid)
+	mp, err := m.metadataManager.GetPartition(pid.V)
 	if err != nil {
 		resp.Code = http.StatusNotFound
 		resp.Msg = err.Error()
@@ -737,32 +683,25 @@ func (m *MetaNode) getDirectoryHandler(w http.ResponseWriter, r *http.Request) {
 			log.LogErrorf("[getDirectoryHandler] response %s", err)
 		}
 	}()
-	pid, err := strconv.ParseUint(r.FormValue("pid"), 10, 64)
-	if err != nil {
+	var pid, pIno common.Uint
+	if err := parseArgs(r, pid.PID(), pIno.ParentIno()); err != nil {
 		resp.Msg = err.Error()
 		return
 	}
-
-	pIno, err := strconv.ParseUint(r.FormValue("parentIno"), 10, 64)
-	if err != nil {
-		resp.Msg = err.Error()
-		return
-	}
-
 	verSeq, err := m.getRealVerSeq(w, r)
 	if err != nil {
 		resp.Msg = err.Error()
 		return
 	}
 
-	mp, err := m.metadataManager.GetPartition(pid)
+	mp, err := m.metadataManager.GetPartition(pid.V)
 	if err != nil {
 		resp.Code = http.StatusNotFound
 		resp.Msg = err.Error()
 		return
 	}
 	req := ReadDirReq{
-		ParentID: pIno,
+		ParentID: pIno.V,
 		VerSeq:   verSeq,
 	}
 	p := &Packet{}
@@ -824,14 +763,11 @@ func (m *MetaNode) getSnapshotHandler(w http.ResponseWriter, r *http.Request, fi
 			}
 		}
 	}()
-	if err = r.ParseForm(); err != nil {
+	var pid common.Uint
+	if err = parseArgs(r, pid.PID()); err != nil {
 		return
 	}
-	id, err := strconv.ParseUint(r.FormValue("pid"), 10, 64)
-	if err != nil {
-		return
-	}
-	mp, err := m.metadataManager.GetPartition(id)
+	mp, err := m.metadataManager.GetPartition(pid.V)
 	if err != nil {
 		return
 	}
