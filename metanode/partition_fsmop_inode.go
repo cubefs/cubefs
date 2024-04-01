@@ -329,7 +329,7 @@ func (mp *metaPartition) fsmUnlinkInode(ino *Inode, uniqID uint64) (resp *InodeR
 	}
 
 	if inode.IsEmptyDirAndNoSnapshot() {
-		if ino.NLink < 2 { // snapshot deletion
+		if inode.NLink < 2 { // snapshot deletion
 			log.LogDebugf("action[fsmUnlinkInode] mp[%v] ino[%v] really be deleted, empty dir", mp.config.PartitionId, inode)
 			mp.inodeTree.Delete(inode)
 			mp.updateUsedInfo(0, -1, inode.Inode)
