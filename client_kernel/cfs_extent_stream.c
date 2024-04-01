@@ -127,7 +127,7 @@ retry:
 		return ret;
 	host = &dp->members.base[host_id % dp->members.num];
 	// Only support write by RDMA now. The read is not supported yet.
-	if (es->enable_rdma && packet->request.hdr.opcode == CFS_OP_STREAM_RANDOM_WRITE) {
+	if (es->enable_rdma && packet->request.hdr.opcode == CFS_OP_STREAM_WRITE) {
 		ret = do_extent_request_rdma(es, host, packet);
 	} else {
 		ret = do_extent_request(es, host, packet);

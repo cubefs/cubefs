@@ -115,6 +115,11 @@ int cfs_rdma_send_packet(struct cfs_socket *csk, struct cfs_packet *packet)
 	char *pStart = NULL;
 	int index = 0;
 
+	if (packet->request.hdr.opcode != CFS_OP_STREAM_WRITE) {
+		cfs_log_error(csk->log, "only support stream write opcode\n");
+		return -EPERM;
+	}
+
 	cfs_buffer_reset(csk->tx_buffer);
 	switch (packet->request.hdr.opcode) {
 	case CFS_OP_EXTENT_CREATE:
@@ -228,6 +233,11 @@ int cfs_rdma_recv_packet(struct cfs_socket *csk, struct cfs_packet *packet)
 	ssize_t count = 0;
 	char *pStart = NULL;
 	int index = 0;
+
+	if (packet->request.hdr.opcode != CFS_OP_STREAM_WRITE) {
+		cfs_log_error(csk->log, "only support stream write opcode\n");
+		return -EPERM;
+	}
 
 	iov.iov_base = &packet->reply;
 	iov.iov_len = sizeof(struct cfs_packet_hdr) + sizeof(struct reply_hdr_padding);
