@@ -101,23 +101,25 @@ func (partition *DataPartition) checkExtentFile(fc *FileInCore, liveReplicas []*
 	fms, needRepair := fc.needCrcRepair(liveReplicas)
 
 	if len(fms) < len(liveReplicas) && (time.Now().Unix()-fc.LastModify) > intervalToCheckMissingReplica {
-		lastReportTime, ok := partition.FilesWithMissingReplica[fc.Name]
-		if len(partition.FilesWithMissingReplica) > 400 {
-			Warn(clusterID, fmt.Sprintf("partitionid[%v] has [%v] files missed replica", partition.PartitionID, len(partition.FilesWithMissingReplica)))
-			return
-		}
-
-		if !ok {
-			partition.FilesWithMissingReplica[fc.Name] = time.Now().Unix()
-			return
-		}
-		if time.Now().Unix()-lastReportTime < intervalToCheckMissingReplica {
-			return
-		}
-
 		liveAddrs := make([]string, 0)
 		for _, replica := range liveReplicas {
 			liveAddrs = append(liveAddrs, replica.Addr)
+		}
+
+		if len(partition.FilesWithMissingReplica) > 400 {
+			Warn(clusterID, fmt.Sprintf("partitionid[%v] has [%v] files missed replica, name %s", partition.PartitionID, len(partition.FilesWithMissingReplica), fc.Name))
+			return
+		}
+
+		lastReportTime, ok := partition.FilesWithMissingReplica[fc.Name]
+		if !ok {
+			partition.FilesWithMissingReplica[fc.Name] = time.Now().Unix()
+			Warn(clusterID, fmt.Sprintf("partitionid[%v],file[%v],fms[%v],liveAddr[%v]", partition.PartitionID, fc.Name, fc.getFileMetaAddrs(), liveAddrs))
+			return
+		}
+
+		if time.Now().Unix()-lastReportTime < intervalToCheckMissingReplica {
+			return
 		}
 		Warn(clusterID, fmt.Sprintf("partitionid[%v],file[%v],fms[%v],liveAddr[%v]", partition.PartitionID, fc.Name, fc.getFileMetaAddrs(), liveAddrs))
 	}
