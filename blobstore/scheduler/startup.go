@@ -172,7 +172,7 @@ func NewService(conf *Config) (svr *Service, err error) {
 	if err != nil {
 		return nil, err
 	}
-	diskDropMgr := NewDiskDropMgr(clusterMgrCli, volumeUpdater, diskDropTaskSwitch, taskLogger, &conf.DiskDrop)
+	diskDropMgr := NewDiskDropMgr(clusterMgrCli, volumeUpdater, diskDropTaskSwitch, taskLogger, &conf.DiskDrop, topologyMgr)
 
 	// new disk repair manager
 	diskRepairTaskSwitch, err := switchMgr.AddSwitch(proto.TaskTypeDiskRepair.String())

@@ -71,8 +71,8 @@ func newMigrateMgr(t *testing.T) *MigrateMgr {
 			WorkQueueSize:           3,
 		},
 	}
+
 	mgr := NewMigrateMgr(clusterMgr, volumeUpdater, taskSwitch, taskLogger, conf, proto.TaskTypeBalance)
-	mgr.SetLockFailHandleFunc(mgr.FinishTaskInAdvanceWhenLockFail)
 	return mgr
 }
 
@@ -192,7 +192,7 @@ func TestPrepareMigrateTask(t *testing.T) {
 		err := mgr.prepareTask()
 		require.True(t, errors.Is(err, errMock))
 
-		// lock failed and call lockFailHandleFunc
+		// lock failed and call lockVolFailHandleFunc
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().GetVolumeInfo(any, any).Return(volume, nil)
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().LockVolume(any, any).Return(errcode.ErrLockNotAllow)
 		err = mgr.prepareTask()

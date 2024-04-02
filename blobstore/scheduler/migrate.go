@@ -16,6 +16,7 @@ package scheduler
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"time"
@@ -85,8 +86,6 @@ type IManualMigrator interface {
 type IMigrator interface {
 	Migrator
 	// inner interface
-	SetLockFailHandleFunc(lockFailHandleFunc lockFailFunc)
-	SetClearJunkTasksWhenLoadingFunc(clearJunkTasksWhenLoadingFunc clearJunkTasksFunc)
 	GetMigratingDiskNum() int
 	IsMigratingDisk(diskID proto.DiskID) bool
 	ClearDeletedTasks(diskID proto.DiskID)
@@ -97,8 +96,6 @@ type IMigrator interface {
 	GetTask(ctx context.Context, taskID string) (*proto.MigrateTask, error)
 	ListAllTask(ctx context.Context) (tasks []*proto.MigrateTask, err error)
 	ListAllTaskByDiskID(ctx context.Context, diskID proto.DiskID) (tasks []*proto.MigrateTask, err error)
-	FinishTaskInAdvanceWhenLockFail(ctx context.Context, task *proto.MigrateTask)
-	RegisteDiskDropTaskLimitFunc(acquireTaskLimitFn, releaseTaskLimitFn diskTaskLimitFunc)
 }
 
 type migratingDisks struct {
@@ -309,21 +306,29 @@ func (m *migratedDisks) list() (disks []*migratedDisk) {
 type MigrateConfig struct {
 	ClusterID proto.ClusterID `json:"-"` // fill in config.go
 	base.TaskCommonConfig
+
+	lockFailHandleFunc lockFailFunc
+	// clear junk tasks
+	clearJunkTasksWhenLoadingFunc clearJunkTasksFunc
+	// finish drop task
+	finishTaskCallback dropTaskLimitFunc
+	// load drop task
+	loadTaskCallback dropTaskLimitFunc
 }
 
 type clearJunkTasksFunc func(ctx context.Context, tasks []*proto.MigrateTask) error
 
-var defaultClearJunkTasksWhenLoadingFunc = func(ctx context.Context, tasks []*proto.MigrateTask) error {
+var defaultClearJunkTasksFunc = func(ctx context.Context, tasks []*proto.MigrateTask) error {
 	return nil
 }
 
-type diskTaskLimitFunc func(diskId proto.DiskID) error
-
-var defaultDiskTaskLimitFunc = func(diskId proto.DiskID) error {
-	return nil
-}
+type dropTaskLimitFunc func(diskId proto.DiskID)
 
 type lockFailFunc func(ctx context.Context, task *proto.MigrateTask)
+
+var defaultDiskTaskLimitFunc = func(diskId proto.DiskID) {
+	_ = struct{}{}
+}
 
 // MigrateMgr migrate manager
 type MigrateMgr struct {
@@ -348,12 +353,12 @@ type MigrateMgr struct {
 	cfg *MigrateConfig
 
 	taskLogger recordlog.Encoder
-	// handle func when lock volume fail
-	lockFailHandleFunc lockFailFunc
+
+	lockVolFailHandleFunc lockFailFunc
 	// clear junk tasks
-	clearJunkTasksWhenLoadingFunc clearJunkTasksFunc
-	releaseTaskLimitFn            diskTaskLimitFunc
-	acquireTaskLimitFn            diskTaskLimitFunc
+	clearJunkTasksCallBack clearJunkTasksFunc
+	// load and finish drop task
+	finishTaskCallback, loadTaskCallback dropTaskLimitFunc
 }
 
 // NewMigrateMgr returns migrate manager
@@ -365,6 +370,7 @@ func NewMigrateMgr(
 	conf *MigrateConfig,
 	taskType proto.TaskType,
 ) *MigrateMgr {
+	checkMigrateConf(conf)
 	mgr := &MigrateMgr{
 		taskType:           taskType,
 		diskMigratingVuids: newDiskMigratingVuids(),
@@ -382,30 +388,18 @@ func NewMigrateMgr(
 		cfg:        conf,
 		taskLogger: taskLogger,
 
-		clearJunkTasksWhenLoadingFunc: defaultClearJunkTasksWhenLoadingFunc,
-		releaseTaskLimitFn:            defaultDiskTaskLimitFunc,
-		acquireTaskLimitFn:            defaultDiskTaskLimitFunc,
+		clearJunkTasksCallBack: conf.clearJunkTasksWhenLoadingFunc,
+		finishTaskCallback:     conf.finishTaskCallback,
+		loadTaskCallback:       conf.loadTaskCallback,
+		lockVolFailHandleFunc:  conf.lockFailHandleFunc,
 
 		Closer: closer.New(),
 	}
-
+	if mgr.lockVolFailHandleFunc == nil {
+		mgr.lockVolFailHandleFunc = mgr.handleLockVolFail
+	}
 	mgr.taskStatsMgr = base.NewTaskStatsMgrAndRun(conf.ClusterID, taskType, mgr)
 	return mgr
-}
-
-// SetLockFailHandleFunc set lock failed func
-func (mgr *MigrateMgr) SetLockFailHandleFunc(lockFailHandleFunc lockFailFunc) {
-	mgr.lockFailHandleFunc = lockFailHandleFunc
-}
-
-// SetClearJunkTasksWhenLoadingFunc set clear junk task func
-func (mgr *MigrateMgr) SetClearJunkTasksWhenLoadingFunc(clearJunkTasksWhenLoadingFunc clearJunkTasksFunc) {
-	mgr.clearJunkTasksWhenLoadingFunc = clearJunkTasksWhenLoadingFunc
-}
-
-func (mgr *MigrateMgr) RegisteDiskDropTaskLimitFunc(acquireTaskLimitFn, releaseTaskLimitFn diskTaskLimitFunc) {
-	mgr.acquireTaskLimitFn = acquireTaskLimitFn
-	mgr.releaseTaskLimitFn = releaseTaskLimitFn
 }
 
 // Load load migrate task from database
@@ -440,14 +434,11 @@ func (mgr *MigrateMgr) Load() (err error) {
 			err = base.VolTaskLockerInst().TryLock(ctx, tasks[i].SourceVuid.Vid())
 			if err != nil {
 				return fmt.Errorf("migrate task conflict: vid[%d], task[%+v], err[%+v]",
-					tasks[i].SourceVuid.Vid(), tasks[i], err.Error())
+					tasks[i].SourceVuid.Vid(), tasks[i], err)
 			}
 		}
 
-		if err = mgr.acquireDiskDropLimit(tasks[i]); err != nil {
-			return fmt.Errorf("fail to acquire disk drop limit: vid[%d], task[%+v], err[%+v]",
-				tasks[i].SourceVuid.Vid(), tasks[i], err.Error())
-		}
+		mgr.loadTaskCallback(tasks[i].SourceDiskID)
 		mgr.addMigratingVuid(tasks[i].SourceDiskID, tasks[i].SourceVuid, tasks[i].TaskID)
 
 		span.Infof("load task success: task_type[%s], task_id[%s], state[%d]", mgr.taskType, tasks[i].TaskID, tasks[i].State)
@@ -464,7 +455,7 @@ func (mgr *MigrateMgr) Load() (err error) {
 			return fmt.Errorf("unexpect migrate state: task[%+v]", tasks[i])
 		}
 	}
-	return mgr.clearJunkTasksWhenLoadingFunc(ctx, junkTasks)
+	return mgr.clearJunkTasksCallBack(ctx, junkTasks)
 }
 
 func (mgr *MigrateMgr) isJunkTask(disks *migratingDisks, task *proto.MigrateTask) bool {
@@ -511,7 +502,7 @@ func (mgr *MigrateMgr) prepareTaskLoop() {
 			continue
 		}
 		err := mgr.prepareTask()
-		if err == base.ErrNoTaskInQueue {
+		if errors.Is(err, base.ErrNoTaskInQueue) {
 			time.Sleep(prepareMigrateTaskInterval)
 		}
 	}
@@ -578,9 +569,9 @@ func (mgr *MigrateMgr) prepareTask() (err error) {
 	// lock volume
 	err = mgr.clusterMgrCli.LockVolume(ctx, migTask.SourceVuid.Vid())
 	if err != nil {
-		if rpc.DetectStatusCode(err) == errcode.CodeLockNotAllow && mgr.lockFailHandleFunc != nil {
-			// disk drop lockFailHandleFunc is nil, and can not finished in advance
-			mgr.lockFailHandleFunc(ctx, migTask)
+		if rpc.DetectStatusCode(err) == errcode.CodeLockNotAllow {
+			// disk drop lockVolFailHandleFunc is nil, and can not finished in advance
+			mgr.lockVolFailHandleFunc(ctx, migTask)
 			return nil
 		}
 		span.Errorf("lock volume failed: volume_id[%v], err[%+v]", migTask.SourceVuid.Vid(), err)
@@ -606,7 +597,7 @@ func (mgr *MigrateMgr) prepareTask() (err error) {
 
 	// send task to worker queue and remove task in prepareQueue
 	mgr.workQueue.AddPreparedTask(migTask.SourceIDC, migTask.TaskID, migTask)
-	mgr.prepareQueue.RemoveTask(migTask.TaskID)
+	_ = mgr.prepareQueue.RemoveTask(migTask.TaskID)
 
 	span.Infof("prepare task success: task_id[%s], state[%v]", migTask.TaskID, migTask.State)
 	return
@@ -614,9 +605,8 @@ func (mgr *MigrateMgr) prepareTask() (err error) {
 
 func (mgr *MigrateMgr) finishTaskLoop() {
 	for {
-		mgr.taskSwitch.WaitEnable()
 		err := mgr.finishTask()
-		if err == base.ErrNoTaskInQueue {
+		if errors.Is(err, base.ErrNoTaskInQueue) {
 			time.Sleep(finishMigrateTaskInterval)
 		}
 	}
@@ -694,7 +684,7 @@ func (mgr *MigrateMgr) finishTask() (err error) {
 		span.Errorf("record migrate task failed: task[%+v], err[%+v]", migrateTask, recordErr)
 	}
 
-	mgr.finishQueue.RemoveTask(migrateTask.TaskID)
+	_ = mgr.finishQueue.RemoveTask(migrateTask.TaskID)
 
 	base.VolTaskLockerInst().Unlock(ctx, migrateTask.SourceVuid.Vid())
 	mgr.deleteMigratingVuid(migrateTask.SourceDiskID, migrateTask.SourceVuid)
@@ -703,7 +693,7 @@ func (mgr *MigrateMgr) finishTask() (err error) {
 
 	// add delete task and check it again
 	mgr.addDeletedTask(migrateTask)
-	mgr.releaseDiskDropLimit(migrateTask)
+	mgr.finishTaskCallback(migrateTask.SourceDiskID)
 
 	span.Infof("finish task phase success: task_id[%s], state[%v]", migrateTask.TaskID, migrateTask.State)
 	return
@@ -728,8 +718,7 @@ func (mgr *MigrateMgr) AddTask(ctx context.Context, task *proto.MigrateTask) {
 	mgr.addMigratingVuid(task.SourceDiskID, task.SourceVuid, task.TaskID)
 }
 
-// FinishTaskInAdvanceWhenLockFail finish migrate task in advance when lock volume failed
-func (mgr *MigrateMgr) FinishTaskInAdvanceWhenLockFail(ctx context.Context, task *proto.MigrateTask) {
+func (mgr *MigrateMgr) handleLockVolFail(ctx context.Context, task *proto.MigrateTask) {
 	mgr.finishTaskInAdvance(ctx, task, "lock volume fail")
 }
 
@@ -748,9 +737,11 @@ func (mgr *MigrateMgr) finishTaskInAdvance(ctx context.Context, task *proto.Migr
 	}
 
 	mgr.finishTaskCounter.Add()
-	mgr.prepareQueue.RemoveTask(task.TaskID)
+	_ = mgr.prepareQueue.RemoveTask(task.TaskID)
 	mgr.addDeletedTask(task)
-	mgr.releaseDiskDropLimit(task)
+
+	mgr.finishTaskCallback(task.SourceDiskID)
+
 	base.VolTaskLockerInst().Unlock(ctx, task.SourceVuid.Vid())
 }
 
@@ -778,7 +769,7 @@ func (mgr *MigrateMgr) handleUpdateVolMappingFail(ctx context.Context, task *pro
 			return mgr.clusterMgrCli.UpdateMigrateTask(ctx, task)
 		})
 
-		mgr.finishQueue.RemoveTask(task.TaskID)
+		_ = mgr.finishQueue.RemoveTask(task.TaskID)
 		mgr.workQueue.AddPreparedTask(task.SourceIDC, task.TaskID, task)
 		span.Infof("task %+v redo again", task)
 
@@ -838,19 +829,6 @@ func (mgr *MigrateMgr) addDeletedTask(task *proto.MigrateTask) {
 		mgr.deletedTasks.add(task.SourceDiskID, task.TaskID)
 	default:
 	}
-}
-
-func (mgr *MigrateMgr) releaseDiskDropLimit(task *proto.MigrateTask) {
-	if task.TaskType == proto.TaskTypeDiskDrop {
-		_ = mgr.releaseTaskLimitFn(task.SourceDiskID)
-	}
-}
-
-func (mgr *MigrateMgr) acquireDiskDropLimit(task *proto.MigrateTask) error {
-	if task.TaskType == proto.TaskTypeDiskDrop {
-		return mgr.acquireTaskLimitFn(task.SourceDiskID)
-	}
-	return nil
 }
 
 // StatQueueTaskCnt returns queue task count
@@ -1030,4 +1008,16 @@ func (mgr *MigrateMgr) Enabled() bool {
 // WaitEnable block to wait enable.
 func (mgr *MigrateMgr) WaitEnable() {
 	mgr.taskSwitch.WaitEnable()
+}
+
+func checkMigrateConf(conf *MigrateConfig) {
+	if conf.clearJunkTasksWhenLoadingFunc == nil {
+		conf.clearJunkTasksWhenLoadingFunc = defaultClearJunkTasksFunc
+	}
+	if conf.finishTaskCallback == nil {
+		conf.finishTaskCallback = defaultDiskTaskLimitFunc
+	}
+	if conf.loadTaskCallback == nil {
+		conf.loadTaskCallback = defaultDiskTaskLimitFunc
+	}
 }
