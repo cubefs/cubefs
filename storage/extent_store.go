@@ -54,6 +54,7 @@ const (
 	RandomWriteType              = 2
 	AppendWriteType              = 1
 	NormalExtentDeleteRetainTime = 3600 * 4
+	CacheFlushInterval           = 5 * time.Second
 )
 
 var (
@@ -142,7 +143,6 @@ type ExtentStore struct {
 	metadataFp             *os.File // metadata file pointer?
 	tinyExtentDeleteFp     *os.File
 	normalExtentDeleteFp   *os.File
-	closeC                 chan bool
 	closed                 bool
 	availableTinyExtentC   chan uint64 // available tinyExtent channel
 	availableTinyExtentMap sync.Map
@@ -157,6 +157,7 @@ type ExtentStore struct {
 	extentLockMap                     map[uint64]proto.GcFlag
 	elMutex                           sync.RWMutex
 	extentLock                        bool
+	stopC                             chan interface{}
 }
 
 func MkdirAll(name string) (err error) {
@@ -226,12 +227,13 @@ func NewExtentStore(dataDir string, partitionID uint64, storeSize, dpType int, i
 	}
 	s.hasAllocSpaceExtentIDOnVerifyFile = s.GetPreAllocSpaceExtentIDOnVerifyFile()
 	s.storeSize = storeSize
-	s.closeC = make(chan bool, 1)
 	s.closed = false
 	err = s.initTinyExtent()
 	if err != nil {
 		return
 	}
+	s.stopC = make(chan interface{})
+	go s.startFlushCache()
 	return
 }
 
@@ -285,6 +287,21 @@ func (s *ExtentStore) SnapShot() (files []*proto.File, err error) {
 	}
 
 	return
+}
+
+func (s *ExtentStore) startFlushCache() {
+	// NOTE: flush extents in cache
+	timer := time.NewTicker(CacheFlushInterval)
+	for {
+		select {
+		case <-timer.C:
+			log.LogInfof("[startFlushCache] flush extent cache")
+			s.cache.CopyAndFlush(5 * time.Second)
+		case <-s.stopC:
+			timer.Stop()
+			return
+		}
+	}
 }
 
 // Create creates an extent.
@@ -740,6 +757,7 @@ func (s *ExtentStore) Close() {
 	if s.closed {
 		return
 	}
+	close(s.stopC)
 
 	// Release cache
 	s.cache.Flush()
