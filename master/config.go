@@ -25,7 +25,7 @@ import (
 	"github.com/cubefs/cubefs/raftstore"
 )
 
-//config key
+// config key
 const (
 	colonSplit = ":"
 	commaSplit = ","
@@ -54,7 +54,7 @@ const (
 	cfgVolDeletionDentryThreshold = "volDeletionDentryThreshold"
 )
 
-//default value
+// default value
 const (
 	defaultTobeFreedDataPartitionCount         = 1000
 	defaultSecondsToFreeDataPartitionAfterLoad = 5 * 60 // a data partition can only be freed after loading 5 mins
