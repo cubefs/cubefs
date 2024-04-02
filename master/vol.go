@@ -1241,13 +1241,17 @@ func (vol *Vol) checkStatus(c *Cluster) {
 	metaTasks := vol.getTasksToDeleteMetaPartitions()
 	dataTasks := vol.getTasksToDeleteDataPartitions()
 
-	if len(metaTasks) == 0 && len(dataTasks) == 0 {
-		vol.deleteVolFromStore(c)
-	}
-
 	if vol.Deleting {
 		log.LogWarnf("action[volCheckStatus] vol[%v] is already in deleting status", vol.Name)
 		return
+	}
+
+	if len(metaTasks) == 0 && len(dataTasks) == 0 {
+		go func() {
+			vol.Deleting = true
+			vol.deleteVolFromStore(c)
+			vol.Deleting = false
+		}()
 	}
 
 	go func() {
@@ -1329,7 +1333,12 @@ func (vol *Vol) deleteDataPartitionFromDataNode(c *Cluster, task *proto.AdminTas
 }
 
 func (vol *Vol) deleteVolFromStore(c *Cluster) (err error) {
-	log.LogWarnf("deleteVolFromStore vol %v", vol.Name)
+	start := time.Now()
+	log.LogWarnf("deleteVolFromStore: start delete volume from store, name %s", vol.Name)
+	defer func() {
+		log.LogWarnf("deleteVolFromStore: finish delete volume, name %s, cost %d ms", vol.Name, time.Since(start).Milliseconds())
+	}()
+
 	if err = c.syncDeleteVol(vol); err != nil {
 		return
 	}
