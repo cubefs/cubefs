@@ -429,7 +429,7 @@ func newDataPartitionSetDiscardCmd(client *master.MasterClient) *cobra.Command {
 
 func newDataPartitionQueryDecommissionProgress(client *master.MasterClient) *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   CliOpQueryProgress + "[DATA PARTITION ID]",
+		Use:   CliOpQueryProgress + " [DATA PARTITION ID]",
 		Short: cmdDataPartitionQueryDecommissionProgressShort,
 		Args:  cobra.MinimumNArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
