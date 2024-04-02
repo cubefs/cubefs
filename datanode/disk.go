@@ -561,6 +561,9 @@ func (d *Disk) RestorePartition(visitor PartitionVisitor, allowDelay bool) (err 
 		}
 	}
 	close(loadCh)
+	// NOTE: wait for load dp goroutines
+	// avoid delete expired dp competing for io
+	wg.Wait()
 
 	if len(toDeleteExpiredPartitionNames) > 0 {
 		go func(toDeleteExpiredPartitions []string) {
@@ -573,7 +576,6 @@ func (d *Disk) RestorePartition(visitor PartitionVisitor, allowDelay bool) (err 
 			log.LogInfof("action[RestorePartition] delete expiredPartitions automatically finish")
 		}(toDeleteExpiredPartitionNames)
 	}
-	wg.Wait()
 	return err
 }
 
