@@ -963,6 +963,16 @@ func (partition *DataPartition) buildDpInfo(c *Cluster) *proto.DataPartitionInfo
 		fileInCoreMap[k] = v.clone()
 	}
 
+	filesMissReplicas := make(map[string]int64, len(partition.FilesWithMissingReplica))
+	for k, v := range partition.FilesWithMissingReplica {
+		filesMissReplicas[k] = v
+	}
+
+	missNodes := map[string]int64{}
+	for k, v := range partition.MissingNodes {
+		missNodes[k] = v
+	}
+
 	zones := make([]string, len(partition.Hosts))
 	nodeSets := make([]uint64, len(partition.Hosts))
 	for idx, host := range partition.Hosts {
@@ -993,13 +1003,14 @@ func (partition *DataPartition) buildDpInfo(c *Cluster) *proto.DataPartitionInfo
 		Peers:                    partition.Peers,
 		Zones:                    zones,
 		NodeSets:                 nodeSets,
-		MissingNodes:             partition.MissingNodes,
+		MissingNodes:             missNodes,
 		VolName:                  partition.VolName,
 		VolID:                    partition.VolID,
 		FileInCoreMap:            fileInCoreMap,
 		OfflinePeerID:            partition.OfflinePeerID,
 		IsRecover:                partition.isRecover,
-		FilesWithMissingReplica:  partition.FilesWithMissingReplica,
+		FilesWithMissingReplica:  filesMissReplicas,
+		SingleDecommissionAddr:   partition.SingleDecommissionAddr,
 		IsDiscard:                partition.IsDiscard,
 		SingleDecommissionStatus: partition.GetSpecialReplicaDecommissionStep(),
 		Forbidden:                forbidden,
