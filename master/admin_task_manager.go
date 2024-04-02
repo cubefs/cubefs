@@ -28,7 +28,7 @@ import (
 	"github.com/cubefs/cubefs/util/log"
 )
 
-//const
+// const
 const (
 	// the maximum number of tasks that can be handled each time
 	MaxTaskNum = 30
