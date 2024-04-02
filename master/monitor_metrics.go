@@ -25,7 +25,7 @@ import (
 	"github.com/cubefs/cubefs/util/log"
 )
 
-//metrics
+// metrics
 const (
 	StatPeriod                 = time.Minute * time.Duration(1)
 	MetricDataNodesUsedGB      = "dataNodes_used_GB"
@@ -218,7 +218,7 @@ func (m *warningMetrics) deleteMissingDp(missingDpAddrSet addrSet, clusterName, 
 	log.LogDebugf("action[deleteMissingDp] delete: dpId(%v), addr(%v)", dpId, addr)
 }
 
-//leader only
+// leader only
 func (m *warningMetrics) WarnMissingDp(clusterName, addr string, partitionID uint64, report bool) {
 	m.dpMissingReplicaMutex.Lock()
 	defer m.dpMissingReplicaMutex.Unlock()
@@ -237,7 +237,7 @@ func (m *warningMetrics) WarnMissingDp(clusterName, addr string, partitionID uin
 	m.dpMissingReplicaInfo[id].addrs[addr] = voidVal
 }
 
-//leader only
+// leader only
 func (m *warningMetrics) CleanObsoleteDpMissing(clusterName string, dp *DataPartition) {
 	m.dpMissingReplicaMutex.Lock()
 	defer m.dpMissingReplicaMutex.Unlock()
@@ -262,7 +262,7 @@ func (m *warningMetrics) CleanObsoleteDpMissing(clusterName string, dp *DataPart
 	}
 }
 
-//leader only
+// leader only
 func (m *warningMetrics) WarnDpNoLeader(clusterName string, partitionID uint64, report bool) {
 	if clusterName != m.cluster.Name {
 		return
@@ -309,7 +309,7 @@ func (m *warningMetrics) deleteMissingMp(missingMpAddrSet addrSet, clusterName, 
 	log.LogDebugf("action[deleteMissingMp] delete: mpId(%v), addr(%v)", mpId, addr)
 }
 
-//leader only
+// leader only
 func (m *warningMetrics) WarnMissingMp(clusterName, addr string, partitionID uint64, report bool) {
 	m.mpMissingReplicaMutex.Lock()
 	defer m.mpMissingReplicaMutex.Unlock()
@@ -330,7 +330,7 @@ func (m *warningMetrics) WarnMissingMp(clusterName, addr string, partitionID uin
 	m.mpMissingReplicaInfo[id].addrs[addr] = voidVal
 }
 
-//leader only
+// leader only
 func (m *warningMetrics) CleanObsoleteMpMissing(clusterName string, mp *MetaPartition) {
 	m.mpMissingReplicaMutex.Lock()
 	defer m.mpMissingReplicaMutex.Unlock()
@@ -352,7 +352,7 @@ func (m *warningMetrics) CleanObsoleteMpMissing(clusterName string, mp *MetaPart
 	}
 }
 
-//leader only
+// leader only
 func (m *warningMetrics) WarnMpNoLeader(clusterName string, partitionID uint64, report bool) {
 	if clusterName != m.cluster.Name {
 		return

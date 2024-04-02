@@ -40,7 +40,7 @@ func (fm *FileMetadata) getFileCrc() (crc uint32) {
 	return fm.Crc
 }
 
-//FileInCore define file in data partition
+// FileInCore define file in data partition
 type FileInCore struct {
 	proto.FileInCore
 	MetadataArray []*FileMetadata
