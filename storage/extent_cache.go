@@ -17,6 +17,9 @@ package storage
 import (
 	"container/list"
 	"sync"
+	"time"
+
+	"github.com/cubefs/cubefs/util/log"
 )
 
 // ExtentMapItem stores the extent entity pointer and the element
@@ -149,6 +152,49 @@ func (cache *ExtentCache) evict() {
 			delete(cache.extentMap, front.extentID)
 			cache.extentList.Remove(e)
 			front.Close()
+		}
+	}
+}
+
+func (cache *ExtentCache) CopyAndFlush(motifyInterval time.Duration) {
+	tinyExtents := make([]*Extent, 0)
+	normalExtents := make([]*Extent, 0)
+
+	func() {
+		cache.tinyLock.RLock()
+		defer cache.tinyLock.RUnlock()
+		for _, extent := range cache.tinyExtents {
+			tinyExtents = append(tinyExtents, extent)
+		}
+	}()
+
+	func() {
+		cache.lock.RLock()
+		defer cache.lock.RUnlock()
+		for _, extent := range cache.extentMap {
+			normalExtents = append(normalExtents, extent.e)
+		}
+	}()
+
+	for _, extent := range tinyExtents {
+		lastMotify := time.Unix(extent.ModifyTime(), 0)
+		if time.Since(lastMotify) < motifyInterval {
+			continue
+		}
+		err := extent.Flush()
+		if err != nil {
+			log.LogErrorf("[CopyAndFlush] failed to flush extent(%v), err(%v)", extent.extentID, err)
+		}
+	}
+
+	for _, extent := range normalExtents {
+		lastMotify := time.Unix(extent.ModifyTime(), 0)
+		if time.Since(lastMotify) < motifyInterval {
+			continue
+		}
+		err := extent.Flush()
+		if err != nil {
+			log.LogErrorf("[CopyAndFlush] failed to flush extent(%v), err(%v)", extent.extentID, err)
 		}
 	}
 }
