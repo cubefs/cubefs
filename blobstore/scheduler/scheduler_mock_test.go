@@ -357,18 +357,6 @@ func (mr *MockMigraterMockRecorder) Enabled() *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Enabled", reflect.TypeOf((*MockMigrater)(nil).Enabled))
 }
 
-// FinishTaskInAdvanceWhenLockFail mocks base method.
-func (m *MockMigrater) FinishTaskInAdvanceWhenLockFail(arg0 context.Context, arg1 *proto.MigrateTask) {
-	m.ctrl.T.Helper()
-	m.ctrl.Call(m, "FinishTaskInAdvanceWhenLockFail", arg0, arg1)
-}
-
-// FinishTaskInAdvanceWhenLockFail indicates an expected call of FinishTaskInAdvanceWhenLockFail.
-func (mr *MockMigraterMockRecorder) FinishTaskInAdvanceWhenLockFail(arg0, arg1 interface{}) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FinishTaskInAdvanceWhenLockFail", reflect.TypeOf((*MockMigrater)(nil).FinishTaskInAdvanceWhenLockFail), arg0, arg1)
-}
-
 // GetMigratingDiskNum mocks base method.
 func (m *MockMigrater) GetMigratingDiskNum() int {
 	m.ctrl.T.Helper()
@@ -515,18 +503,6 @@ func (mr *MockMigraterMockRecorder) ReclaimTask(arg0, arg1, arg2, arg3, arg4, ar
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReclaimTask", reflect.TypeOf((*MockMigrater)(nil).ReclaimTask), arg0, arg1, arg2, arg3, arg4, arg5)
 }
 
-// RegisteDiskDropTaskLimitFunc mocks base method.
-func (m *MockMigrater) RegisteDiskDropTaskLimitFunc(arg0, arg1 diskTaskLimitFunc) {
-	m.ctrl.T.Helper()
-	m.ctrl.Call(m, "RegisteDiskDropTaskLimitFunc", arg0, arg1)
-}
-
-// RegisteDiskDropTaskLimitFunc indicates an expected call of RegisteDiskDropTaskLimitFunc.
-func (mr *MockMigraterMockRecorder) RegisteDiskDropTaskLimitFunc(arg0, arg1 interface{}) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RegisteDiskDropTaskLimitFunc", reflect.TypeOf((*MockMigrater)(nil).RegisteDiskDropTaskLimitFunc), arg0, arg1)
-}
-
 // RenewalTask mocks base method.
 func (m *MockMigrater) RenewalTask(arg0 context.Context, arg1, arg2 string) error {
 	m.ctrl.T.Helper()
@@ -563,30 +539,6 @@ func (m *MockMigrater) Run() {
 func (mr *MockMigraterMockRecorder) Run() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Run", reflect.TypeOf((*MockMigrater)(nil).Run))
-}
-
-// SetClearJunkTasksWhenLoadingFunc mocks base method.
-func (m *MockMigrater) SetClearJunkTasksWhenLoadingFunc(arg0 clearJunkTasksFunc) {
-	m.ctrl.T.Helper()
-	m.ctrl.Call(m, "SetClearJunkTasksWhenLoadingFunc", arg0)
-}
-
-// SetClearJunkTasksWhenLoadingFunc indicates an expected call of SetClearJunkTasksWhenLoadingFunc.
-func (mr *MockMigraterMockRecorder) SetClearJunkTasksWhenLoadingFunc(arg0 interface{}) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetClearJunkTasksWhenLoadingFunc", reflect.TypeOf((*MockMigrater)(nil).SetClearJunkTasksWhenLoadingFunc), arg0)
-}
-
-// SetLockFailHandleFunc mocks base method.
-func (m *MockMigrater) SetLockFailHandleFunc(arg0 lockFailFunc) {
-	m.ctrl.T.Helper()
-	m.ctrl.Call(m, "SetLockFailHandleFunc", arg0)
-}
-
-// SetLockFailHandleFunc indicates an expected call of SetLockFailHandleFunc.
-func (mr *MockMigraterMockRecorder) SetLockFailHandleFunc(arg0 interface{}) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetLockFailHandleFunc", reflect.TypeOf((*MockMigrater)(nil).SetLockFailHandleFunc), arg0)
 }
 
 // StatQueueTaskCnt mocks base method.

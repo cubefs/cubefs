@@ -240,9 +240,7 @@ func (c *Config) fixBalanceConfig() {
 func (c *Config) fixDiskDropConfig() {
 	c.DiskDrop.ClusterID = c.ClusterID
 	defaulter.LessOrEqual(&c.DiskDrop.TaskLimitPerDisk, defaultTaskLimitPerDisk)
-	if c.DiskDrop.TotalTaskLimit <= 0 {
-		c.DiskDrop.TotalTaskLimit = c.DiskDrop.TaskLimitPerDisk * c.DiskDrop.DiskConcurrency
-	}
+	defaulter.LessOrEqual(&c.DiskDrop.TotalTaskLimit, c.DiskDrop.TaskLimitPerDisk*c.DiskDrop.DiskConcurrency)
 	c.DiskDrop.CheckAndFix()
 }
 

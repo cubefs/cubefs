@@ -37,10 +37,8 @@ func NewManualMigrateMgr(clusterMgrCli client.ClusterMgrAPI, volumeUpdater clien
 	mgr := &ManualMigrateMgr{
 		clusterMgrCli: clusterMgrCli,
 	}
-
 	mgr.IMigrator = NewMigrateMgr(clusterMgrCli, volumeUpdater, taskswitch.NewEnabledTaskSwitch(), taskLogger,
 		conf, proto.TaskTypeManualMigrate)
-	mgr.IMigrator.SetLockFailHandleFunc(mgr.IMigrator.FinishTaskInAdvanceWhenLockFail)
 	return mgr
 }
 
