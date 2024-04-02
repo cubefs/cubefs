@@ -123,11 +123,18 @@ func (e *Extent) HasClosed() bool {
 	return atomic.LoadInt32(&e.hasClose) == ExtentHasClose
 }
 
+func (e *Extent) setClosed() {
+	atomic.StoreInt32(&e.hasClose, ExtentHasClose)
+}
+
 // Close this extent and release FD.
 func (e *Extent) Close() (err error) {
 	if e.HasClosed() {
 		return
 	}
+	// NOTE: see https://yarchive.net/comp/linux/close_return_value.html
+	// close will always tear down fd
+	e.setClosed()
 	if err = e.file.Close(); err != nil {
 		return
 	}
@@ -453,6 +460,9 @@ func (e *Extent) checkWriteOffsetAndSize(writeType int, offset, size int64, isRe
 
 // Flush synchronizes data to the disk.
 func (e *Extent) Flush() (err error) {
+	if e.HasClosed() {
+		return
+	}
 	err = e.file.Sync()
 	return
 }
