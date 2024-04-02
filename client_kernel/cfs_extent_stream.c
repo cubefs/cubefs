@@ -333,6 +333,7 @@ static int extent_write_pages_random(struct cfs_extent_stream *es,
 			goto out;
 		}
 		cfs_packet_set_write_data(packet, iter, &w_len);
+		packet->request.hdr.crc = cpu_to_be32(cfs_page_frags_crc32(packet->request.data.write.frags, packet->request.data.write.nr));
 
 		ret = do_extent_request_retry(es, dp, packet, dp->leader_idx);
 		if (ret < 0) {
@@ -550,6 +551,7 @@ static int extent_write_pages_normal(struct cfs_extent_stream *es,
 						   writer->dp->follower_addrs);
 		}
 		cfs_packet_set_write_data(packet, iter, &w_len);
+		packet->request.hdr.crc = cpu_to_be32(cfs_page_frags_crc32(packet->request.data.write.frags, packet->request.data.write.nr));
 
 		cfs_packet_extent_init(&extent, writer->file_offset, 0, 0, 0,
 				       writer->w_size + w_len);
@@ -1280,4 +1282,167 @@ int cfs_extent_stream_truncate(struct cfs_extent_stream *es, loff_t size)
 			      "ino(%llu) extent cache refresh error %d\n",
 			      es->ino, ret);
 	return ret;
+}
+
+static void extent_write_iter_reply_cb(struct cfs_packet *packet)
+{
+	struct cfs_extent_writer *writer = packet->private;
+	struct cfs_log *log = writer->es->ec->log;
+	int err;
+
+	if (packet->error) {
+		err = packet->error;
+		cfs_log_error(log, "ino(%llu) io error %d\n", writer->es->ino,
+			      err);
+	} else {
+		err = -cfs_parse_status(packet->reply.hdr.result_code);
+		if (err)
+			cfs_log_error(log, "ino(%llu) reply error %d\n",
+				      writer->es->ino, err);
+	}
+	if (!err)
+		cfs_extent_writer_ack_bytes(
+			writer, be32_to_cpu(packet->request.hdr.size));
+}
+
+static int cfs_set_packet_iter_crc(struct cfs_packet *packet, struct iov_iter *iter, size_t size) {
+	u32 crc = 0;
+	bool ret = false;
+
+	packet->request.iov.iov_base = kvmalloc(size, GFP_KERNEL);
+	if (!packet->request.iov.iov_base) {
+		printk("failed to malloc size=%ld\n", size);
+		return -ENOMEM;
+	}
+	packet->request.iov.iov_len = size;
+	ret = copy_from_iter_full(packet->request.iov.iov_base, size, iter);
+	if (!ret) {
+		kfree(packet->request.iov.iov_base);
+		printk("copied %d bytes != size =%ld\n", ret, size);
+		return -EIO;
+	}
+
+	crc ^= 0xffffffffUL;
+	crc = crc32_le(crc, packet->request.iov.iov_base, size);
+	crc ^= 0xffffffffUL;
+
+#ifdef KERNEL_HAS_IOV_ITER_WITH_TAG
+	iov_iter_init(&(packet->request.data.iter), WRITE, &(packet->request.iov), 1, size);
+#else
+	iov_iter_init(&(packet->request.data.iter), &(packet->request.iov), 1, size, 0);
+#endif
+
+	packet->request.hdr.crc = cpu_to_be32(crc);
+	packet->request.hdr.size = cpu_to_be32(size);
+	packet->pkg_data_type = CFS_PACKAGE_DATA_ITER;
+
+	return 0;
+}
+
+static size_t cfs_extent_write_iter(struct cfs_extent_stream *es,
+				     struct cfs_extent_io_info *io_info,
+				     struct iov_iter *iter)
+{
+	struct cfs_extent_writer *writer;
+	struct cfs_packet *packet;
+	struct cfs_packet_extent extent;
+	loff_t offset = io_info->offset;
+	size_t send_bytes = 0, total_bytes = io_info->size;
+	size_t w_len;
+	int ret;
+
+	while (send_bytes < total_bytes) {
+		w_len = min(total_bytes - send_bytes, EXTENT_BLOCK_SIZE);
+		writer = extent_stream_get_writer(es, offset, w_len);
+		if (IS_ERR(writer))
+			return PTR_ERR(writer);
+
+		packet = cfs_extent_packet_new(
+			CFS_OP_STREAM_WRITE, CFS_EXTENT_TYPE_NORMAL,
+			writer->dp->nr_followers, writer->dp->id,
+			writer->ext_id, offset - writer->file_offset, offset);
+		if (!packet) {
+			cfs_log_error(es->ec->log, "ino(%llu) oom\n", es->ino);
+			return -ENOMEM;
+		}
+		cfs_packet_set_callback(packet, extent_write_iter_reply_cb,
+					writer);
+		if (es->enable_rdma) {
+			cfs_packet_set_request_arg(
+				packet, writer->dp->rdma_follower_addrs);
+		} else {
+			cfs_packet_set_request_arg(packet,
+						   writer->dp->follower_addrs);
+		}
+
+		ret = cfs_set_packet_iter_crc(packet, iter, w_len);
+		if (unlikely(ret < 0)) {
+			cfs_log_error(es->ec->log, "ino(%llu) cfs_set_packet_iter_crc error ret(%d)\n", es->ino, ret);
+			cfs_packet_release(packet);
+			return ret;
+		}
+
+		cfs_packet_extent_init(&extent, writer->file_offset, 0, 0, 0,
+				       writer->w_size + w_len);
+		ret = cfs_extent_cache_append(&es->cache, &extent, false, NULL);
+		if (unlikely(ret < 0)) {
+			cfs_log_error(es->ec->log, "ino(%llu) oom\n", es->ino);
+			cfs_packet_release(packet);
+			return ret;
+		}
+		cfs_extent_writer_request(writer, packet);
+
+		send_bytes += w_len;
+		offset += w_len;
+	}
+
+	return send_bytes;
+}
+
+ssize_t cfs_extent_direct_write(struct cfs_extent_stream *es, struct iov_iter *iter, loff_t offset)
+{
+	LIST_HEAD(io_info_list);
+	struct cfs_extent_io_info *io_info;
+	size_t w_ret;
+	int ret;
+	ssize_t send_bytes = 0;
+
+	ret = cfs_extent_cache_refresh(&es->cache, false);
+	if (ret < 0) {
+		cfs_log_error(es->ec->log,
+			      "ino(%llu) extent cache refresh error %d\n",
+			      es->ino, ret);
+		return ret;
+	}
+
+	mutex_lock(&es->lock_io);
+	ret = cfs_prepare_extent_io_list(&es->cache, offset,
+					 iov_iter_count(iter), &io_info_list);
+	if (ret < 0) {
+		mutex_unlock(&es->lock_io);
+		cfs_log_error(
+			es->ec->log,
+			"ino(%llu) prepare extent write request error %d\n",
+			es->ino, ret);
+		return ret;
+	}
+
+	while (!list_empty(&io_info_list)) {
+		io_info = list_first_entry(&io_info_list,
+					   struct cfs_extent_io_info, list);
+		list_del(&io_info->list);
+		w_ret = cfs_extent_write_iter(es, io_info, iter);
+		cfs_extent_io_info_release(io_info);
+		if (w_ret < 0) {
+			mutex_unlock(&es->lock_io);
+			cfs_log_error(es->ec->log,
+				      "ino(%llu) write page error %d\n",
+				      es->ino, ret);
+			return w_ret;
+		}
+		send_bytes += w_ret;
+	}
+	mutex_unlock(&es->lock_io);
+
+	return send_bytes;
 }

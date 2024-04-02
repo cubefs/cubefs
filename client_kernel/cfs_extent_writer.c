@@ -136,12 +136,6 @@ static void extent_writer_tx_work_cb(struct work_struct *work)
 		if (!packet)
 			break;
 
-		if (!packet->request.hdr.crc)
-			packet->request.hdr.crc =
-				cpu_to_be32(cfs_page_frags_crc32(
-					packet->request.data.write.frags,
-					packet->request.data.write.nr));
-
 		if (!(writer->flags &
 		      (EXTENT_WRITER_F_ERROR | EXTENT_WRITER_F_RECOVER))) {
 			int ret;

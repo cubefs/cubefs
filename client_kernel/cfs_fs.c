@@ -470,8 +470,12 @@ static ssize_t cfs_direct_io(struct kiocb *iocb, struct iov_iter *iter)
 	struct inode *inode = file_inode(file);
 	loff_t offset = iocb->ki_pos;
 
-	return cfs_extent_dio_read_write(CFS_INODE(inode)->es,
-					 iov_iter_rw(iter), iter, offset);
+	if (iov_iter_rw(iter) == WRITE) {
+		return cfs_extent_direct_write(CFS_INODE(inode)->es, iter, offset);
+	} else {
+		return cfs_extent_dio_read_write(CFS_INODE(inode)->es,
+						iov_iter_rw(iter), iter, offset);
+	}
 }
 #elif defined(KERNEL_HAS_DIO_WITH_ITER_AND_OFFSET)
 static ssize_t cfs_direct_io(struct kiocb *iocb, struct iov_iter *iter,

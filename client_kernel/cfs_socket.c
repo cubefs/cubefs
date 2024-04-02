@@ -298,6 +298,27 @@ static int cfs_socket_recv_pages(struct cfs_socket *csk,
 	return ret;
 }
 
+static int cfs_socket_send_iter(struct cfs_socket *csk, struct iov_iter *iter, size_t size)
+{
+	sigset_t blocked, oldset;
+	int ret = 0;
+	struct msghdr msghdr = {
+		.msg_flags = MSG_NOSIGNAL,
+	};
+
+	/* Allow interception of SIGKILL only
+	 * Don't allow other signals to interrupt the transmission */
+	siginitsetinv(&blocked, sigmask(SIGKILL));
+	sigprocmask(SIG_SETMASK, &blocked, &oldset);
+	ret = kernel_sendmsg(csk->sock, &msghdr, (struct kvec *)iter->iov, iter->nr_segs, size);
+	if (ret < 0) {
+		printk("kernel_sendmsg error: %d\n", ret);
+	}
+	sigprocmask(SIG_SETMASK, &oldset, NULL);
+
+	return ret;
+}
+
 int cfs_socket_send_packet(struct cfs_socket *csk, struct cfs_packet *packet)
 {
 	int ret = 0;
@@ -376,9 +397,18 @@ int cfs_socket_send_packet(struct cfs_socket *csk, struct cfs_packet *packet)
 		break;
 	case CFS_OP_STREAM_WRITE:
 	case CFS_OP_STREAM_RANDOM_WRITE:
-		ret = cfs_socket_send_pages(csk,
-					    packet->request.data.write.frags,
-					    packet->request.data.write.nr);
+		if (packet->pkg_data_type == CFS_PACKAGE_DATA_PAGE) {
+			ret = cfs_socket_send_pages(csk,
+							packet->request.data.write.frags,
+							packet->request.data.write.nr);
+		} else if (packet->pkg_data_type == CFS_PACKAGE_DATA_ITER) {
+			size_t size = be32_to_cpu(packet->request.hdr.size);
+			ret = cfs_socket_send_iter(csk, &(packet->request.data.iter), size);
+		} else {
+			cfs_log_error(csk->log, "package data type error %d\n", packet->pkg_data_type);
+			ret = -EPERM;
+		}
+
 		break;
 	case CFS_OP_STREAM_READ:
 	case CFS_OP_STREAM_FOLLOWER_READ:

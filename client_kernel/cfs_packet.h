@@ -122,6 +122,13 @@ static inline int cfs_parse_status(u8 status)
 #define CFS_MP_STATUS_READWRITE 2
 #define CFS_MP_STATUS_UNAVAILABLE -1
 
+
+/**
+ * Define the package data type.
+ */
+#define CFS_PACKAGE_DATA_PAGE 0
+#define CFS_PACKAGE_DATA_ITER 1
+
 /**
  *  Define cubefs file mode, refer to "https://pkg.go.dev/io/fs#FileMode".
  */
@@ -934,7 +941,9 @@ struct cfs_packet {
 				struct cfs_page_frag *frags;
 				size_t nr;
 			} write;
+			struct iov_iter iter;
 		} data;
+		struct iovec iov;
 	} __attribute__((packed)) request;
 	struct {
 		struct cfs_packet_hdr hdr;
@@ -971,6 +980,7 @@ struct cfs_packet {
 		struct cfs_page_frag frags[CFS_PAGE_VEC_NUM];
 	} rw;
 	int data_buf_index;
+	int pkg_data_type;
 };
 
 struct cfs_packet *cfs_packet_new(u8 op, u64 pid,
@@ -1035,6 +1045,9 @@ static inline void cfs_packet_clear(struct cfs_packet *packet)
 		return;
 	if (packet->reply.arg)
 		cfs_buffer_release(packet->reply.arg);
+	if (packet->pkg_data_type == CFS_PACKAGE_DATA_ITER) {
+		kfree(packet->request.iov.iov_base);
+	}
 	cfs_packet_request_data_clear(packet);
 	cfs_packet_reply_data_clear(packet);
 	memset(packet, 0, sizeof(*packet));
