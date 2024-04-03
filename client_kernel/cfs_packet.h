@@ -128,6 +128,7 @@ static inline int cfs_parse_status(u8 status)
  */
 #define CFS_PACKAGE_DATA_PAGE 0
 #define CFS_PACKAGE_DATA_ITER 1
+#define CFS_PACKAGE_READ_ITER 2
 
 /**
  *  Define cubefs file mode, refer to "https://pkg.go.dev/io/fs#FileMode".
@@ -968,6 +969,7 @@ struct cfs_packet {
 				struct cfs_page_frag *frags;
 				size_t nr;
 			} read;
+			struct iov_iter *user_iter;
 		} data;
 	} __attribute__((packed)) reply;
 	struct list_head list;

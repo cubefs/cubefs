@@ -319,6 +319,46 @@ static int cfs_socket_send_iter(struct cfs_socket *csk, struct iov_iter *iter, s
 	return ret;
 }
 
+static int cfs_socket_recv_iter(struct cfs_socket *csk, struct iov_iter *iter, u32 size)
+{
+	sigset_t blocked, oldset;
+	int ret = 0;
+	struct msghdr msghdr = {
+		.msg_flags = MSG_WAITALL | MSG_NOSIGNAL,
+	};
+	struct kvec vec;
+	size_t len = 0;
+
+	vec.iov_base = kvmalloc(size, GFP_KERNEL);
+	if (!vec.iov_base) {
+		printk("failed to kvmalloc size=%d\n", size);
+		return -ENOMEM;
+	}
+	vec.iov_len = size;
+
+	/* Allow interception of SIGKILL only
+	 * Don't allow other signals to interrupt the transmission */
+	siginitsetinv(&blocked, sigmask(SIGKILL));
+	sigprocmask(SIG_SETMASK, &blocked, &oldset);
+	ret = kernel_recvmsg(csk->sock, &msghdr, &vec, 1, size, msghdr.msg_flags);
+	sigprocmask(SIG_SETMASK, &oldset, NULL);
+	if (ret < 0) {
+		printk("kernel_recvmsg error: %d\n", ret);
+		kfree(vec.iov_base);
+		return ret;
+	}
+
+	len = copy_to_iter(vec.iov_base, size, iter);
+	if (len != size) {
+		printk("copy error len =%ld, size=%d\n", len, size);
+		kfree(vec.iov_base);
+		return -EFAULT;
+	}
+
+	kfree(vec.iov_base);
+	return ret;
+}
+
 int cfs_socket_send_packet(struct cfs_socket *csk, struct cfs_packet *packet)
 {
 	int ret = 0;
@@ -502,8 +542,16 @@ int cfs_socket_recv_packet(struct cfs_socket *csk, struct cfs_packet *packet)
 		/**
 		 *  reply read extent message
 		 */
-		ret = cfs_socket_recv_pages(csk, packet->reply.data.read.frags,
-					    packet->reply.data.read.nr);
+		if (packet->pkg_data_type == CFS_PACKAGE_DATA_PAGE) {
+			ret = cfs_socket_recv_pages(csk, packet->reply.data.read.frags,
+							packet->reply.data.read.nr);
+		} else if (packet->pkg_data_type == CFS_PACKAGE_READ_ITER) {
+			ret = cfs_socket_recv_iter(csk, packet->reply.data.user_iter, datalen);
+		} else {
+			cfs_log_error(csk->log, "the pkg_data_type=%d is not supported\n", packet->pkg_data_type);
+			return -EINVAL;
+		}
+
 		if (ret < 0) {
 			cfs_log_error(
 				csk->log,

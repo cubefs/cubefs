@@ -259,7 +259,7 @@ int cfs_extent_write_pages(struct cfs_extent_stream *es, struct page **pages,
 			   size_t first_page_offset, size_t end_page_size);
 ssize_t cfs_extent_dio_read_write(struct cfs_extent_stream *es, int type,
 			      struct iov_iter *iter, loff_t offset);
-ssize_t cfs_extent_direct_write(struct cfs_extent_stream *es, struct iov_iter *iter, loff_t offset);
+ssize_t cfs_extent_direct_io(struct cfs_extent_stream *es, struct iov_iter *iter, loff_t offset);
 int cfs_extent_module_init(void);
 void cfs_extent_module_exit(void);
 
@@ -295,6 +295,7 @@ static inline void cfs_packet_set_read_data(struct cfs_packet *packet,
 					    struct cfs_page_iter *pi,
 					    size_t *size)
 {
+	packet->pkg_data_type = CFS_PACKAGE_DATA_PAGE;
 	packet->reply.data.read.frags = packet->rw.frags;
 	packet->reply.data.read.nr = cfs_page_iter_get_frags(
 		pi, packet->reply.data.read.frags, CFS_PAGE_VEC_NUM, size);
