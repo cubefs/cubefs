@@ -2125,6 +2125,9 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 	newArgs.txOpLimit = req.txOpLimit
 	newArgs.enableQuota = req.enableQuota
 	newArgs.DefaultStoreMode = proto.StoreMode(req.storeMode)
+	if !newArgs.DefaultStoreMode.Valid() {
+		newArgs.DefaultStoreMode = vol.DefaultStoreMode
+	}
 	if req.coldArgs != nil {
 		newArgs.coldArgs = req.coldArgs
 	}

@@ -300,6 +300,7 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 	var optReplicaNum string
 	var optDeleteLockTime int64
 	var optEnableQuota string
+	var optStoreMode string
 	confirmString := strings.Builder{}
 	var vv *proto.SimpleVolView
 	cmd := &cobra.Command{
@@ -584,6 +585,20 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 					formatEnabledDisabled(vv.DpReadOnlyWhenVolFull)))
 			}
 
+			if optStoreMode != "" {
+				optStoreMode = strings.ToLower(optStoreMode)
+				switch optStoreMode {
+				case "rocksdb":
+					vv.DefaultStoreMode = proto.StoreModeRocksDb
+					isChange = true
+				case "memory":
+					vv.DefaultStoreMode = proto.StoreModeMem
+					isChange = true
+				}
+				confirmString.WriteString(fmt.Sprintf("  Default store mode : %v\n",
+					vv.DefaultStoreMode.Str()))
+			}
+
 			if err != nil {
 				return
 			}
@@ -641,6 +656,7 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().StringVar(&optEnableQuota, CliFlagEnableQuota, "", "Enable quota")
 	cmd.Flags().Int64Var(&optDeleteLockTime, CliFlagDeleteLockTime, -1, "Specify delete lock time[Unit: hour] for volume")
 	cmd.Flags().StringVar(&clientIDKey, CliFlagClientIDKey, client.ClientIDKey(), CliUsageClientIDKey)
+	cmd.Flags().StringVar(&optStoreMode, CliFlagStoreMode, "", "Specify default store mode of mp")
 
 	return cmd
 }

@@ -14,7 +14,9 @@
 
 package proto
 
-import "sync"
+import (
+	"sync"
+)
 
 // CreateNameSpaceRequest defines the request to create a name space.
 type CreateNameSpaceRequest struct {
@@ -163,6 +165,11 @@ func (mode *StoreMode) Str() string {
 	default:
 	}
 	return "Unknown"
+}
+
+func (mode *StoreMode) Valid() (ok bool) {
+	ok = *mode == StoreModeMem || *mode == StoreModeRocksDb
+	return
 }
 
 type SelectMetaNodeInfo struct {

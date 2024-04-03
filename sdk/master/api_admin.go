@@ -374,6 +374,7 @@ func (api *AdminAPI) UpdateVolume(
 	request.addParam("enableQuota", strconv.FormatBool(vv.EnableQuota))
 	request.addParam("deleteLockTime", strconv.FormatInt(vv.DeleteLockTime, 10))
 	request.addParam("clientIDKey", clientIDKey)
+	request.addParam("storeMode", strconv.FormatInt(int64(vv.DefaultStoreMode), 10))
 
 	if txMask != "" {
 		request.addParam("enableTxMask", txMask)

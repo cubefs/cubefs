@@ -1424,3 +1424,24 @@ func TestVolumeEnableAuditLog(t *testing.T) {
 	require.True(t, vol.EnableAuditLog)
 	require.True(t, checkVolAuditLog(name, true))
 }
+
+func TestUpdateVolStoreMode(t *testing.T) {
+	name := "storeModeVol"
+	createVol(map[string]interface{}{nameKey: name}, t)
+	vol, err := server.cluster.getVol(name)
+	if err != nil {
+		t.Errorf("failed to get vol %v, err %v", name, err)
+		return
+	}
+	defer func() {
+		reqURL := fmt.Sprintf("%v%v?name=%v&authKey=%v", hostAddr, proto.AdminDeleteVol, name, buildAuthKey(testOwner))
+		process(reqURL, t)
+	}()
+	reqUrl := fmt.Sprintf("%v%v", hostAddr, proto.AdminUpdateVol)
+	setUrl := fmt.Sprintf("%v?name=%v&storeMode=%v&authKey=%v", reqUrl, name, int(proto.StoreModeRocksDb), buildAuthKey(testOwner))
+	unsetUrl := fmt.Sprintf("%v?name=%v&storeMode=%v&authKey=%v", reqUrl, name, int(proto.StoreModeMem), buildAuthKey(testOwner))
+	process(setUrl, t)
+	require.EqualValues(t, proto.StoreModeRocksDb, vol.DefaultStoreMode)
+	process(unsetUrl, t)
+	require.EqualValues(t, proto.StoreModeMem, vol.DefaultStoreMode)
+}
