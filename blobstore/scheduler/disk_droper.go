@@ -101,8 +101,8 @@ type DiskDropMgr struct {
 	droppedDisks  *migratedDisks
 
 	limitOkCh        chan struct{}
-	totalTaskLimit   limit.LimiterV2
-	taskLimitPerDisk limit.LimiterV2
+	totalTaskLimit   limit.Limiter
+	taskLimitPerDisk limit.Limiter
 	prepareTaskPool  taskpool.TaskPool
 
 	clusterMgrCli client.ClusterMgrAPI
@@ -123,8 +123,8 @@ func NewDiskDropMgr(clusterMgrCli client.ClusterMgrAPI, volumeUpdater client.IVo
 		droppingDisks: newMigratingDisks(),
 
 		limitOkCh:        make(chan struct{}, 1),
-		totalTaskLimit:   count.NewBlockingCountV2(conf.TotalTaskLimit),
-		taskLimitPerDisk: keycount.NewBlockingKeyCountLimitV2(conf.TaskLimitPerDisk),
+		totalTaskLimit:   count.NewBlockingCount(conf.TotalTaskLimit),
+		taskLimitPerDisk: keycount.NewBlockingKeyCountLimit(conf.TaskLimitPerDisk),
 		prepareTaskPool:  taskpool.New(conf.DiskConcurrency, conf.DiskConcurrency*2),
 	}
 	conf.MigrateConfig.loadTaskCallback = mgr.acquireTaskLimit
@@ -240,11 +240,11 @@ func (mgr *DiskDropMgr) releaseTaskLimit(diskID proto.DiskID) {
 
 func (mgr *DiskDropMgr) acquireTaskLimit(diskID proto.DiskID) {
 	ctx, cancelFunc := context.WithTimeout(context.Background(), time.Second)
-	err := mgr.taskLimitPerDisk.AcquireV2(ctx, diskID)
+	err := mgr.taskLimitPerDisk.AcquireWithContext(ctx, diskID)
 	if err != nil {
 		panic("acquire task limit for disk failed")
 	}
-	err = mgr.totalTaskLimit.AcquireV2(ctx, nil)
+	err = mgr.totalTaskLimit.AcquireWithContext(ctx)
 	if err != nil {
 		panic("acquire total task limit failed")
 	}

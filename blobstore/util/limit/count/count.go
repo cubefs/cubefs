@@ -15,6 +15,7 @@
 package count
 
 import (
+	"context"
 	"sync/atomic"
 
 	"github.com/cubefs/cubefs/blobstore/util/limit"
@@ -44,6 +45,15 @@ func (l *countLimit) Acquire(keys ...interface{}) error {
 	return nil
 }
 
+func (l *countLimit) AcquireWithContext(ctx context.Context, keys ...interface{}) error {
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	default:
+	}
+	return l.Acquire(keys...)
+}
+
 func (l *countLimit) Release(keys ...interface{}) {
 	atomic.AddUint32(&l.current, minusOne)
 }
@@ -68,6 +78,21 @@ func (l *blockingCountLimit) Running() int {
 
 func (l *blockingCountLimit) Acquire(keys ...interface{}) error {
 	<-l.ch
+	return nil
+}
+
+func (l *blockingCountLimit) AcquireWithContext(ctx context.Context, keys ...interface{}) error {
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	default:
+	}
+
+	select {
+	case <-l.ch:
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 	return nil
 }
 

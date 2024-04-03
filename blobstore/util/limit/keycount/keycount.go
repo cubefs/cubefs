@@ -15,6 +15,7 @@
 package keycount
 
 import (
+	"context"
 	"sync"
 
 	"github.com/cubefs/cubefs/blobstore/util/limit"
@@ -61,6 +62,15 @@ func (l *keyCountLimit) Acquire(keys ...interface{}) error {
 	return nil
 }
 
+func (l *keyCountLimit) AcquireWithContext(ctx context.Context, keys ...interface{}) error {
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	default:
+	}
+	return l.Acquire(keys...)
+}
+
 func (l *keyCountLimit) Release(keys ...interface{}) {
 	l.mutex.Lock()
 	defer l.mutex.Unlock()
@@ -103,6 +113,21 @@ func (s *blocker) acquire() {
 	<-s.ready
 }
 
+func (s *blocker) acquireWithCtx(ctx context.Context) error {
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	default:
+	}
+
+	select {
+	case <-s.ready:
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+	return nil
+}
+
 func (s *blocker) release() {
 	s.ready <- struct{}{}
 }
@@ -123,7 +148,8 @@ type blockingKeyCountLimit struct {
 }
 
 // NewBlockingKeyCountLimit returns blocking limiter
-//     with concurrent n by everyone key
+//
+//	with concurrent n by everyone key
 func NewBlockingKeyCountLimit(n int) limit.Limiter {
 	return &blockingKeyCountLimit{
 		limit:  n,
@@ -159,6 +185,38 @@ func (l *blockingKeyCountLimit) Acquire(keys ...interface{}) error {
 	l.lock.Unlock()
 	for _, kl := range kls {
 		kl.acquire()
+	}
+	return nil
+}
+
+func (l *blockingKeyCountLimit) AcquireWithContext(ctx context.Context, keys ...interface{}) error {
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	default:
+	}
+
+	if len(keys) == 0 {
+		return limit.ErrLimited
+	}
+	kls := make([]*blocker, 0, len(keys))
+	l.lock.Lock()
+	for _, key := range keys {
+		kl, ok := l.keyMap[key]
+		if !ok {
+			kl = newBlocker(l.limit)
+			l.keyMap[key] = kl
+		}
+		kl.addRef()
+		kls = append(kls, kl)
+	}
+	l.lock.Unlock()
+
+	for idx, kl := range kls {
+		if err := kl.acquireWithCtx(ctx); err != nil {
+			l.Release(keys[:idx]...)
+			return err
+		}
 	}
 	return nil
 }

@@ -14,20 +14,26 @@
 
 package limit
 
-import "errors"
+import (
+	"context"
+	"errors"
+)
 
 // ErrLimited limited error for non-blocking
 var ErrLimited = errors.New("limit exceeded")
 
 // Limiter to limit all by key
 type Limiter interface {
-	// returns how many holder are running
+	// Running returns how many holder are running
 	// return -1 if u donot want to implement this
 	Running() int
 
 	// Acquire by this keys, returns error if no available resource
 	// Panic if key is unhashable type necessarily
 	Acquire(keys ...interface{}) error
+
+	// AcquireWithContext exit acquire limit via ctx
+	AcquireWithContext(ctx context.Context, keys ...interface{}) error
 
 	// Release this keys holder
 	// Panic if not acquire yet necessarily
