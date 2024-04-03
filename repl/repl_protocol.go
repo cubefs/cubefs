@@ -169,17 +169,35 @@ func (ft *FollowerTransport) readFollowerResult(request *FollowerPacket) (err er
 	return
 }
 
+func cleanFollowerCh(ch chan *FollowerPacket) {
+	cnt := len(ch)
+	for idx := 0; idx < cnt; idx++ {
+		select {
+		case p := <-ch:
+			p.Data = nil
+			continue
+		default:
+			return
+		}
+	}
+}
+
 func (ft *FollowerTransport) Destory() {
 	ft.exitedMu.Lock()
 	atomic.StoreInt32(&ft.isclosed, FollowerTransportExiting)
 	close(ft.exitCh)
 	ft.exitedMu.Unlock()
+
+	cleanFollowerCh(ft.sendCh)
+	cleanFollowerCh(ft.recvCh)
+
 	for {
 		if atomic.LoadInt32(&ft.isclosed) == FollowerTransportExited {
 			break
 		}
 		time.Sleep(time.Millisecond)
 	}
+
 	close(ft.sendCh)
 	close(ft.recvCh)
 }
@@ -575,7 +593,9 @@ func (rp *ReplProtocol) putResponse(reply *Packet) (err error) {
 	case rp.responseCh <- reply:
 		return
 	default:
-		return fmt.Errorf("response Chan has full (%v)", len(rp.responseCh))
+		err = fmt.Errorf("response Chan has full (%v)", len(rp.responseCh))
+		log.LogError(err)
+		return err
 	}
 }
 
@@ -584,7 +604,9 @@ func (rp *ReplProtocol) putToBeProcess(request *Packet) (err error) {
 	case rp.toBeProcessedCh <- request:
 		return
 	default:
-		return fmt.Errorf("toBeProcessedCh Chan has full (%v)", len(rp.toBeProcessedCh))
+		err = fmt.Errorf("toBeProcessedCh Chan has full (%v)", len(rp.toBeProcessedCh))
+		log.LogError(err)
+		return err
 	}
 }
 
@@ -593,6 +615,8 @@ func (rp *ReplProtocol) putAck() (err error) {
 	case rp.ackCh <- struct{}{}:
 		return
 	default:
-		return fmt.Errorf("ack Chan has full (%v)", len(rp.ackCh))
+		err = fmt.Errorf("ack Chan has full (%v)", len(rp.ackCh))
+		log.LogError(err)
+		return err
 	}
 }
