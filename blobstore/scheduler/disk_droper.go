@@ -46,20 +46,30 @@ type DropMgrConfig struct {
 type dropDisk struct {
 	*client.DiskInfoSimple
 
-	collect atomic.Value
-	done    chan struct{}
+	collecting atomic.Value
+	wait       chan struct{}
 }
 
-func (d *dropDisk) wait() {
-	d.done <- struct{}{}
+func (d *dropDisk) setCollecting(collecting bool) {
+	d.collecting.Store(collecting)
+}
+
+func (d *dropDisk) isCollecting() bool {
+	val := d.collecting.Load()
+	if val != nil {
+		if res, ok := val.(bool); ok && res {
+			return true
+		}
+	}
+	return false
 }
 
 func (d *dropDisk) waitDone() {
-	<-d.done
+	<-d.wait
 }
 
-func (d *dropDisk) Done() {
-	close(d.done)
+func (d *dropDisk) done() {
+	d.wait <- struct{}{}
 }
 
 type dropDiskMap struct {
@@ -101,8 +111,8 @@ type DiskDropMgr struct {
 	droppedDisks  *migratedDisks
 
 	limitOkCh        chan struct{}
-	totalTaskLimit   limit.LimiterV2
-	taskLimitPerDisk limit.LimiterV2
+	totalTaskLimit   limit.Limiter
+	taskLimitPerDisk limit.Limiter
 	prepareTaskPool  taskpool.TaskPool
 
 	clusterMgrCli client.ClusterMgrAPI
@@ -123,8 +133,8 @@ func NewDiskDropMgr(clusterMgrCli client.ClusterMgrAPI, volumeUpdater client.IVo
 		droppingDisks: newMigratingDisks(),
 
 		limitOkCh:        make(chan struct{}, 1),
-		totalTaskLimit:   count.NewBlockingCountV2(conf.TotalTaskLimit),
-		taskLimitPerDisk: keycount.NewBlockingKeyCountLimitV2(conf.TaskLimitPerDisk),
+		totalTaskLimit:   count.NewBlockingCount(conf.TotalTaskLimit),
+		taskLimitPerDisk: keycount.NewBlockingKeyCountLimit(conf.TaskLimitPerDisk),
 		prepareTaskPool:  taskpool.New(conf.DiskConcurrency, conf.DiskConcurrency*2),
 	}
 	conf.MigrateConfig.loadTaskCallback = mgr.acquireTaskLimit
@@ -206,29 +216,26 @@ func (mgr *DiskDropMgr) collectTask() {
 	for _, disk := range disks {
 		dDisk := mgr.allDisks.get(disk.DiskID)
 		if dDisk == nil {
-			dDisk = &dropDisk{done: make(chan struct{}), DiskInfoSimple: disk}
+			dDisk = &dropDisk{wait: make(chan struct{}), DiskInfoSimple: disk}
 			mgr.allDisks.add(dDisk)
 		}
-		val := dDisk.collect.Load()
-		if val != nil {
-			if res, ok := val.(bool); ok && res {
-				continue
-			}
+		if dDisk.isCollecting() {
+			continue
 		}
 
 		newDisk := disk
 		mgr.prepareTaskPool.Run(func() {
-			dDisk.collect.Store(true)
+			dDisk.setCollecting(true)
 			taskSpan, ctx := trace.StartSpanFromContextWithTraceID(context.Background(),
 				fmt.Sprintf("drop-disk[%d]", newDisk.DiskID), "")
 			err := mgr.loopGenerateTask(ctx, newDisk)
 			if err != nil {
 				taskSpan.Errorf("loop generate task failed for disk[%d], err: %s", newDisk.DiskID, err)
-				dDisk.collect.Store(false)
+				dDisk.setCollecting(false)
 				return
 			}
 			dDisk.waitDone()
-			dDisk.collect.Store(false)
+			dDisk.setCollecting(false)
 		})
 	}
 }
@@ -240,11 +247,11 @@ func (mgr *DiskDropMgr) releaseTaskLimit(diskID proto.DiskID) {
 
 func (mgr *DiskDropMgr) acquireTaskLimit(diskID proto.DiskID) {
 	ctx, cancelFunc := context.WithTimeout(context.Background(), time.Second)
-	err := mgr.taskLimitPerDisk.AcquireV2(ctx, diskID)
+	err := mgr.taskLimitPerDisk.AcquireWithContext(ctx, diskID)
 	if err != nil {
 		panic("acquire task limit for disk failed")
 	}
-	err = mgr.totalTaskLimit.AcquireV2(ctx, nil)
+	err = mgr.totalTaskLimit.AcquireWithContext(ctx)
 	if err != nil {
 		panic("acquire total task limit failed")
 	}
@@ -406,7 +413,7 @@ func (mgr *DiskDropMgr) checkDiskDropped(ctx context.Context, diskID proto.DiskI
 		span.Warnf("clustermgr has some volume unit not migrate and remigrate again: disk_id[%d], volume units len[%d]", diskID, len(vunitInfos))
 		mgr.droppingDisks.delete(diskID)
 		// need exit colleting goroutine
-		mgr.allDisks.get(diskID).wait()
+		mgr.allDisks.get(diskID).done()
 		return false
 	}
 	return len(tasks) == 0 && len(vunitInfos) == 0
@@ -432,7 +439,7 @@ func (mgr *DiskDropMgr) clearTasksByDiskID(ctx context.Context, diskID proto.Dis
 	mgr.ClearDeletedTasks(diskID)
 	mgr.droppedDisks.add(diskID, time.Now())
 	mgr.droppingDisks.delete(diskID)
-	mgr.allDisks.get(diskID).Done()
+	mgr.allDisks.get(diskID).done()
 	mgr.allDisks.delete(diskID)
 }
 

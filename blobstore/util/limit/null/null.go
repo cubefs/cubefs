@@ -14,7 +14,11 @@
 
 package null
 
-import "github.com/cubefs/cubefs/blobstore/util/limit"
+import (
+	"context"
+
+	"github.com/cubefs/cubefs/blobstore/util/limit"
+)
 
 type nullLimit struct{}
 
@@ -23,6 +27,7 @@ func New() limit.Limiter {
 	return nullLimit{}
 }
 
-func (l nullLimit) Running() int                      { return -1 }
-func (l nullLimit) Acquire(keys ...interface{}) error { return nil }
-func (l nullLimit) Release(keys ...interface{})       { _ = struct{}{} }
+func (l nullLimit) Running() int                                                      { return -1 }
+func (l nullLimit) Acquire(keys ...interface{}) error                                 { return nil }
+func (l nullLimit) Release(keys ...interface{})                                       { _ = struct{}{} }
+func (l nullLimit) AcquireWithContext(ctx context.Context, keys ...interface{}) error { return nil }

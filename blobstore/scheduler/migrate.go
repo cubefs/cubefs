@@ -311,9 +311,9 @@ type MigrateConfig struct {
 	// clear junk tasks
 	clearJunkTasksWhenLoadingFunc clearJunkTasksFunc
 	// finish drop task
-	finishTaskCallback dropTaskLimitFunc
+	finishTaskCallback taskLimitFunc
 	// load drop task
-	loadTaskCallback dropTaskLimitFunc
+	loadTaskCallback taskLimitFunc
 }
 
 type clearJunkTasksFunc func(ctx context.Context, tasks []*proto.MigrateTask) error
@@ -322,7 +322,7 @@ var defaultClearJunkTasksFunc = func(ctx context.Context, tasks []*proto.Migrate
 	return nil
 }
 
-type dropTaskLimitFunc func(diskId proto.DiskID)
+type taskLimitFunc func(diskId proto.DiskID)
 
 type lockFailFunc func(ctx context.Context, task *proto.MigrateTask)
 
@@ -358,7 +358,7 @@ type MigrateMgr struct {
 	// clear junk tasks
 	clearJunkTasksCallBack clearJunkTasksFunc
 	// load and finish drop task
-	finishTaskCallback, loadTaskCallback dropTaskLimitFunc
+	finishTaskCallback, loadTaskCallback taskLimitFunc
 }
 
 // NewMigrateMgr returns migrate manager
