@@ -504,9 +504,71 @@ func TestUpdateVol(t *testing.T) {
 	view = getSimpleVol(volName, true, t)
 	assert.True(t, view.CacheRule == "")
 
-	delVol(volName, t)
-	// can't update vol after delete
-	checkParam(cacheLRUIntervalKey, proto.AdminUpdateVol, req, lru, lru, t)
+	for id, name := range []string{"z1", "z2", "z3"} {
+		zone := newZone(name)
+		nodeSet1 := newNodeSet(server.cluster, uint64(id), 6, name)
+
+		zone.putNodeSet(nodeSet1)
+		server.cluster.t.putZone(zone)
+	}
+
+	req[zoneNameKey] = "z1,z2,z3"
+	processWithFatalV2(proto.AdminUpdateVol, false, req, t)
+	view = getSimpleVol(volName, true, t)
+	t.Logf("zonename %v", view.ZoneName)
+	assert.True(t, view.ZoneName != "z1,z2,z3")
+	assert.True(t, view.CrossZone == false)
+
+	req[zoneNameKey] = "z1,z2,z3"
+	req[crossZoneKey] = true
+	processWithFatalV2(proto.AdminUpdateVol, true, req, t)
+	view = getSimpleVol(volName, true, t)
+	t.Logf("zonename %v", view.ZoneName)
+	assert.True(t, view.ZoneName == "z1,z2,z3")
+	assert.True(t, view.CrossZone == true)
+
+	req[zoneNameKey] = "z1"
+	req[crossZoneKey] = false
+	processWithFatalV2(proto.AdminUpdateVol, true, req, t)
+	view = getSimpleVol(volName, true, t)
+	t.Logf("zonename %v crosszone %v", view.ZoneName, view.CrossZone)
+	assert.True(t, view.ZoneName == "z1")
+	assert.True(t, view.CrossZone == false)
+
+	req[zoneNameKey] = "z2"
+	req[crossZoneKey] = true
+	processWithFatalV2(proto.AdminUpdateVol, false, req, t)
+	view = getSimpleVol(volName, true, t)
+	t.Logf("zonename %v crosszone %v", view.ZoneName, view.CrossZone)
+	assert.True(t, view.ZoneName == "z1")
+	assert.True(t, view.CrossZone == false)
+
+	// zonename cann't be set from nonempty to empty, because volume update always have no param zoneName
+	req[zoneNameKey] = ""
+	req[crossZoneKey] = true
+	processWithFatalV2(proto.AdminUpdateVol, false, req, t)
+	view = getSimpleVol(volName, true, t)
+	t.Logf("zonename %v crosszone %v", view.ZoneName, view.CrossZone)
+	assert.True(t, view.ZoneName == "z1")
+	assert.True(t, view.CrossZone == false)
+
+	req[zoneNameKey] = "z1,z2"
+	req[crossZoneKey] = false
+	processWithFatalV2(proto.AdminUpdateVol, false, req, t)
+	view = getSimpleVol(volName, true, t)
+	t.Logf("zonename %v", view.ZoneName)
+	assert.True(t, view.ZoneName == "z1")
+	assert.True(t, view.CrossZone == false)
+
+	req[zoneNameKey] = "z1,z2"
+	req[crossZoneKey] = true
+	processWithFatalV2(proto.AdminUpdateVol, true, req, t)
+	view = getSimpleVol(volName, true, t)
+	t.Logf("zonename %v", view.ZoneName)
+	assert.True(t, view.ZoneName == "z1,z2")
+	assert.True(t, view.CrossZone == true)
+
+	// vol cann't be delete except no inode and dentry exist
 }
 
 func setUpdateVolParm(key string, req map[string]interface{}, val interface{}, t *testing.T) {
@@ -527,7 +589,7 @@ func delVol(name string, t *testing.T) {
 
 	vol, err := server.cluster.getVol(name)
 	assert.True(t, err == nil)
-
+	t.Logf("vol statu %v", vol.Status)
 	assert.True(t, vol.Status == markDelete)
 }
 

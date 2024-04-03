@@ -49,6 +49,7 @@ type VolVarargs struct {
 	txConflictRetryInterval int64
 	txOpLimit               int
 	trashInterval           int64
+	crossZone               bool
 }
 
 // Vol represents a set of meta partitionMap and data partitionMap
@@ -1304,6 +1305,7 @@ func setVolFromArgs(args *VolVarargs, vol *Vol) {
 	vol.txConflictRetryInterval = args.txConflictRetryInterval
 	vol.txOpLimit = args.txOpLimit
 	vol.dpReplicaNum = args.dpReplicaNum
+	vol.crossZone = args.crossZone
 
 	if proto.IsCold(vol.VolType) {
 		coldArgs := args.coldArgs
