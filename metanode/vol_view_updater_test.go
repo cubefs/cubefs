@@ -15,13 +15,20 @@
 package metanode
 
 import (
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 )
 
 func TestVolViewUpdater(t *testing.T) {
-	updater := NewVolViewUpdater()
+	updater := &volViewUpdater{
+		metaPartitions: &sync.Map{},
+		timer:          *time.NewTicker(UpdateVolTicket),
+		forceUpdateC:   make(chan string, 1000),
+		wg:             sync.WaitGroup{},
+	}
 	mp := &metaPartition{
 		config: &MetaPartitionConfig{
 			VolName: "testVol",
