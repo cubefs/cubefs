@@ -2099,8 +2099,9 @@ func (l *DecommissionDataPartitionList) Put(id uint64, value *DataPartition, c *
 	if value.checkConsumeToken() {
 		value.TryAcquireDecommissionToken(c)
 	}
-	log.LogInfof("action[DecommissionDataPartitionListPut] ns[%v] add dp[%v] status[%v] isRecover[%v] rollbackTimes(%v)",
-		id, value.PartitionID, value.GetDecommissionStatus(), value.isRecover, value.DecommissionNeedRollbackTimes)
+	log.LogInfof("action[DecommissionDataPartitionListPut] ns[%v] add dp[%v] status[%v] specialStep(%v) isRecover[%v] rollbackTimes(%v)",
+		id, value.PartitionID, value.GetDecommissionStatus(), value.GetSpecialReplicaDecommissionStep(),
+		value.isRecover, value.DecommissionNeedRollbackTimes)
 }
 
 func (l *DecommissionDataPartitionList) pushFailedDp(value *DataPartition, c *Cluster) {
@@ -2210,10 +2211,8 @@ func (l *DecommissionDataPartitionList) traverse(c *Cluster) {
 				continue
 			}
 			allDecommissionDP := l.GetAllDecommissionDataPartitions()
-			log.LogDebugf("action[DecommissionListTraverse]enter")
 			for _, dp := range allDecommissionDP {
 				if dp.IsDecommissionSuccess() {
-
 					l.Remove(dp)
 					dp.ReleaseDecommissionToken(c)
 					dp.ResetDecommissionStatus()
@@ -2254,9 +2253,19 @@ func (l *DecommissionDataPartitionList) traverse(c *Cluster) {
 							}
 						}
 					}(dp) // special replica cnt cost some time from prepare to running
+				} else if dp.isSpecialReplicaCnt() && dp.IsDecommissionRunning() {
+					go func(dp *DataPartition) {
+						if !dp.Decommission(c) {
+							// retry should release token
+							if dp.IsMarkDecommission() {
+								dp.ReleaseDecommissionToken(c)
+								// choose other node to create data partition
+								dp.DecommissionDstAddr = ""
+							}
+						}
+					}(dp)
 				}
 			}
-			log.LogDebugf("action[DecommissionListTraverse]end")
 		}
 	}
 }
