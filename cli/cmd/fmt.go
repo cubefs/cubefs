@@ -920,7 +920,6 @@ func formatDataPartitionDecommissionProgress(info *proto.DecommissionDataPartiti
 	sb.WriteString(fmt.Sprintf("DstAddress:        %v\n", info.DstAddress))
 	sb.WriteString(fmt.Sprintf("Term:              %v\n", info.Term))
 	sb.WriteString(fmt.Sprintf("Replicas:          %v\n", info.Replicas))
-	sb.WriteString(fmt.Sprintf("WaitTimes:         %v\n", info.WaitTimes))
 	sb.WriteString(fmt.Sprintf("NeedRollbackTimes: %v\n", info.NeedRollbackTimes))
 	sb.WriteString(fmt.Sprintf("ErrorMessage:      %v\n", info.ErrorMessage))
 	return sb.String()
