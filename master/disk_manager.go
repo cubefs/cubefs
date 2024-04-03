@@ -141,7 +141,7 @@ func (c *Cluster) checkDiskRecoveryProgress() {
 				newBadDpIds = append(newBadDpIds, partitionID)
 			} else {
 				if partition.isSpecialReplicaCnt() {
-					log.LogWarnf("[checkDiskRecoveryProgress] dp(%v) special replica cnt, skip", partition.PartitionID)
+					log.LogInfof("[checkDiskRecoveryProgress] special dp(%v) new replica status(%v)", partitionID, newReplica.Status)
 					continue // change dp decommission status in decommission function
 				}
 				// do not add to BadDataPartitionIds
