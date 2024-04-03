@@ -640,7 +640,7 @@ func (mp *metaPartition) skipDeleteObjExtentKey(doek *DeletedObjExtentKey) (ok b
 func (mp *metaPartition) deletedExtentsTreeTraveler() (err error) {
 	sleepDuration := getDeleteWorkerSleepMs()
 	batchSize := DeleteBatchCount()
-	timer := time.NewTimer(sleepDuration)
+	timer := time.NewTicker(sleepDuration)
 	defer timer.Stop()
 	var snap Snapshot
 	for {
@@ -733,7 +733,7 @@ func (mp *metaPartition) deletedExtentsTreeTraveler() (err error) {
 func (mp *metaPartition) deletedObjExtentsTreeTravler() (err error) {
 	sleepDuration := getDeleteWorkerSleepMs()
 	batchSize := DeleteBatchCount()
-	timer := time.NewTimer(sleepDuration)
+	timer := time.NewTicker(sleepDuration)
 	defer timer.Stop()
 	var snap Snapshot
 	doeks := make([]*DeletedObjExtentKey, batchSize)

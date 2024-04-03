@@ -38,7 +38,7 @@ type VolViewUpdater interface {
 
 type volViewUpdater struct {
 	metaPartitions *sync.Map // NOTE: sync.Map[vol name](sync.Map[uint64]MetaPartition)
-	timer          time.Timer
+	timer          time.Ticker
 	forceUpdateC   chan string
 	wg             sync.WaitGroup
 }
@@ -198,7 +198,7 @@ func (v *volViewUpdater) Stop() {
 func NewVolViewUpdater() VolViewUpdater {
 	updater := &volViewUpdater{
 		metaPartitions: &sync.Map{},
-		timer:          *time.NewTimer(UpdateVolTicket),
+		timer:          *time.NewTicker(UpdateVolTicket),
 		forceUpdateC:   make(chan string, 1000),
 		wg:             sync.WaitGroup{},
 	}
