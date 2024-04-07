@@ -92,20 +92,22 @@ func NewS3Scanner(adminTask *proto.AdminTask, l *LcNode) (*LcScanner, error) {
 		stopC:         make(chan bool, 0),
 	}
 
-	var ebsConfig = access.Config{
-		ConnMode: access.NoLimitConnMode,
-		Consul: access.ConsulConfig{
-			Address: l.ebsAddr,
-		},
-		MaxSizePutOnce: MaxSizePutOnce,
-		Logger: &access.Logger{
-			Filename: path.Join(l.logDir, "ebs.log"),
-		},
-	}
 	var ebsClient *blobstore.BlobStoreClient
-	if ebsClient, err = blobstore.NewEbsClient(ebsConfig); err != nil {
-		log.LogErrorf("NewEbsClient err: %v", err)
-		return nil, err
+	if l.ebsAddr != "" {
+		var ebsConfig = access.Config{
+			ConnMode: access.NoLimitConnMode,
+			Consul: access.ConsulConfig{
+				Address: l.ebsAddr,
+			},
+			MaxSizePutOnce: MaxSizePutOnce,
+			Logger: &access.Logger{
+				Filename: path.Join(l.logDir, "ebs.log"),
+			},
+		}
+		if ebsClient, err = blobstore.NewEbsClient(ebsConfig); err != nil {
+			log.LogErrorf("NewEbsClient err: %v", err)
+			return nil, err
+		}
 	}
 
 	var volumeInfo *proto.SimpleVolView
