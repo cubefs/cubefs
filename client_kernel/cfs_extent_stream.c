@@ -402,11 +402,7 @@ retry:
 		return ret;
 	}
 
-	if (es->enable_rdma) {
-		cfs_packet_set_request_arg(packet, dp->rdma_follower_addrs);
-	} else {
-		cfs_packet_set_request_arg(packet, dp->follower_addrs);
-	}
+	cfs_packet_set_request_arg(packet, dp->follower_addrs);
 	cfs_packet_set_write_data(packet, iter, &io_info->size);
 	packet->request.hdr.crc = cpu_to_be32(cfs_page_frags_crc32(packet->request.data.write.frags, packet->request.data.write.nr));
 
@@ -543,13 +539,8 @@ static int extent_write_pages_normal(struct cfs_extent_stream *es,
 		}
 		cfs_packet_set_callback(packet, extent_write_pages_reply_cb,
 					writer);
-		if (es->enable_rdma) {
-			cfs_packet_set_request_arg(
-				packet, writer->dp->rdma_follower_addrs);
-		} else {
-			cfs_packet_set_request_arg(packet,
-						   writer->dp->follower_addrs);
-		}
+		cfs_packet_set_request_arg(packet,
+						writer->dp->follower_addrs);
 		cfs_packet_set_write_data(packet, iter, &w_len);
 		packet->request.hdr.crc = cpu_to_be32(cfs_page_frags_crc32(packet->request.data.write.frags, packet->request.data.write.nr));
 
@@ -1367,13 +1358,8 @@ static size_t cfs_extent_write_iter(struct cfs_extent_stream *es,
 		}
 		cfs_packet_set_callback(packet, extent_write_iter_reply_cb,
 					writer);
-		if (es->enable_rdma) {
-			cfs_packet_set_request_arg(
-				packet, writer->dp->rdma_follower_addrs);
-		} else {
-			cfs_packet_set_request_arg(packet,
-						   writer->dp->follower_addrs);
-		}
+		cfs_packet_set_request_arg(packet,
+						writer->dp->follower_addrs);
 
 		ret = cfs_set_packet_iter_crc(packet, iter, w_len);
 		if (unlikely(ret < 0)) {

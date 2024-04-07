@@ -8,7 +8,7 @@
 struct workqueue_struct *extent_work_queue;
 
 struct cfs_data_partition *
-cfs_data_partition_new(struct cfs_data_partition_view *dp_view, u32 rdma_port)
+cfs_data_partition_new(struct cfs_data_partition_view *dp_view)
 {
 	struct cfs_data_partition *dp;
 	u32 i;
@@ -21,25 +21,11 @@ cfs_data_partition_new(struct cfs_data_partition_view *dp_view, u32 rdma_port)
 		kfree(dp);
 		return NULL;
 	}
-	dp->rdma_follower_addrs = cfs_buffer_new(0);
-	if (!dp->rdma_follower_addrs) {
-		kfree(dp);
-		return NULL;
-	}
 	for (i = 1; i < dp_view->members.num; i++) {
 		if (cfs_buffer_write(dp->follower_addrs, "%s/",
 				     cfs_pr_addr(&dp_view->members.base[i])) <
 		    0) {
 			cfs_buffer_release(dp->follower_addrs);
-			cfs_buffer_release(dp->rdma_follower_addrs);
-			kfree(dp);
-			return NULL;
-		}
-		if (cfs_buffer_write(
-			    dp->rdma_follower_addrs, "%s/",
-			    cfs_pr_addr_rdma(&dp_view->members.base[i], rdma_port)) < 0) {
-			cfs_buffer_release(dp->follower_addrs);
-			cfs_buffer_release(dp->rdma_follower_addrs);
 			kfree(dp);
 			return NULL;
 		}
@@ -76,8 +62,6 @@ void cfs_data_partition_release(struct cfs_data_partition *dp)
 	sockaddr_storage_array_clear(&dp->members);
 	if (dp->follower_addrs)
 		cfs_buffer_release(dp->follower_addrs);
-	if (dp->rdma_follower_addrs)
-		cfs_buffer_release(dp->rdma_follower_addrs);
 	kfree(dp);
 }
 
@@ -166,7 +150,7 @@ int cfs_extent_update_partition(struct cfs_extent_client *ec)
 	ec->nr_rw_partitions = 0;
 	for (i = 0; i < dp_views.num; i++) {
 		dp_view = &dp_views.base[i];
-		dp = cfs_data_partition_new(dp_view, ec->rdma_port);
+		dp = cfs_data_partition_new(dp_view);
 		if (!dp) {
 			ret = -ENOMEM;
 			goto unlock;
