@@ -336,9 +336,12 @@ func (eh *ExtentHandler) processReply(packet *Packet) {
 			return
 		}
 		forceClose := false
-		defer StreamConnPool.PutConnect(tmpConn, forceClose)
-		for reply.ResultCode == proto.OpLimitedIoErr {
+		defer func() {
+			StreamConnPool.PutConnect(tmpConn, forceClose)
+		}()
+		for try := 0; reply.ResultCode == proto.OpLimitedIoErr; try++ {
 			time.Sleep(StreamSendSleepInterval)
+			log.LogWarnf("[processReply] eh(%v) packet(%v) limited io retry count(%v)", eh, packet, try)
 			if err = packet.writeToConn(tmpConn); err != nil {
 				forceClose = true
 				log.LogWarnf("sender writeTo: failed, eh(%v) err(%v) packet(%v)", eh, err, packet)
