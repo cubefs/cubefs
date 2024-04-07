@@ -136,8 +136,10 @@ func (m *MetaNode) checkLocalPartitionMatchWithMaster() (err error) {
 	return
 }
 
-func (m *MetaNode) newRocksdbManager() (err error) {
-	m.rocksdbManager = NewRocksdbManager()
+func (m *MetaNode) newRocksdbManager(cfg *config.Config) (err error) {
+	writeBufferSize := cfg.GetInt(cfgRocksdbWriteBufferSize)
+	blockCacheSize := cfg.GetInt64(cfgRocksdbBlockCacheSize)
+	m.rocksdbManager = NewRocksdbManager(writeBufferSize, uint64(blockCacheSize))
 	for _, dbPath := range m.rocksDirs {
 		err = m.rocksdbManager.Register(dbPath)
 		if err != nil {
@@ -156,7 +158,7 @@ func doStart(s common.Server, cfg *config.Config) (err error) {
 	if err = m.parseConfig(cfg); err != nil {
 		return
 	}
-	if err = m.newRocksdbManager(); err != nil {
+	if err = m.newRocksdbManager(cfg); err != nil {
 		return
 	}
 	if err = m.startDiskStat(); err != nil {

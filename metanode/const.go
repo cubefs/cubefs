@@ -239,6 +239,10 @@ const (
 
 	cfgRocksDirs         = "rocksDirs"
 	cfgDiskReservedSpace = "diskReservedSpace"
+
+	// NOTE: metanode rocksdb config
+	cfgRocksdbWriteBufferSize = "rocksdbWriteBufferSize" // int
+	cfgRocksdbBlockCacheSize  = "rocksdbBlockCacheSize"  // uint64
 )
 
 const (

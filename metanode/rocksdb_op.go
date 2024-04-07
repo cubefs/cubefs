@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"time"
 
 	"strings"
 	"sync"
@@ -31,16 +32,12 @@ import (
 )
 
 const (
-	DefLRUCacheSize       = 256 * util.MB
-	DefWriteBuffSize      = 4 * util.MB
-	DefRetryCount         = 3
-	DefMaxWriteBatchCount = 1000
-	DefWalSizeLimitMB     = 5
-	DefWalMemSizeLimitMB  = 2
-	DefMaxLogFileSize     = 1 //MB
-	DefLogFileRollTimeDay = 3 // 3 day
-	DefLogReservedCnt     = 3
-	DefWalTTL             = 60 //second
+	DefaultCacheSize       = 256 * util.MB
+	DefaultWriteBuffSize   = 256 * util.MB
+	DefaultRetryCount      = 3
+	DefaultMaxLogFileSize  = 1 * util.MB
+	DefaultLogFileRollTime = 3 * 24 * time.Hour // NOTE: 3 day
+	DefaultKeepLogFileNum  = 3
 )
 
 var (
@@ -123,6 +120,7 @@ type RocksdbOperator struct {
 	readOption  *gorocksdb.ReadOptions
 	writeOption *gorocksdb.WriteOptions
 	openOption  *gorocksdb.Options
+	cache       *gorocksdb.Cache
 	tableOption *gorocksdb.BlockBasedTableOptions
 }
 
@@ -152,6 +150,7 @@ func (db *RocksdbOperator) CloseDb() (err error) {
 	db.readOption.Destroy()
 	db.writeOption.Destroy()
 	db.openOption.Destroy()
+	db.cache.Destroy()
 	db.tableOption.Destroy()
 
 	db.db = nil
@@ -159,30 +158,54 @@ func (db *RocksdbOperator) CloseDb() (err error) {
 	db.writeOption = nil
 	db.openOption = nil
 	db.tableOption = nil
+	db.cache = nil
 	return
 }
 
-func (dbInfo *RocksdbOperator) newRocksdbOptions(walFileSize, walMemSize, logFileSize, logReversed, logReversedCnt, walTTL uint64) (opts *gorocksdb.Options, tableOpts *gorocksdb.BlockBasedTableOptions) {
+func (dbInfo *RocksdbOperator) newRocksdbOptions(
+	writeBufferSize int,
+	blockCacheSize uint64,
+	maxLogFileSize int,
+	logFileTimeToRoll time.Duration,
+	keepLogFileNum int) (opts *gorocksdb.Options, cache *gorocksdb.Cache, tableOpts *gorocksdb.BlockBasedTableOptions) {
 	opts = gorocksdb.NewDefaultOptions()
 
+	// NOTE: check and set default options
+	if writeBufferSize == 0 {
+		writeBufferSize = DefaultWriteBuffSize
+	}
+	if maxLogFileSize == 0 {
+		maxLogFileSize = DefaultMaxLogFileSize
+	}
+	if logFileTimeToRoll == 0 {
+		logFileTimeToRoll = DefaultLogFileRollTime
+	}
+	if keepLogFileNum == 0 {
+		keepLogFileNum = DefaultKeepLogFileNum
+	}
+	if blockCacheSize == 0 {
+		blockCacheSize = DefaultCacheSize
+	}
+
+	// NOTE: main options
 	opts.SetCreateIfMissing(true)
-	opts.SetWriteBufferSize(DefWriteBuffSize)
+	opts.SetWriteBufferSize(writeBufferSize)
 	opts.SetMaxWriteBufferNumber(2)
 	opts.SetCompression(gorocksdb.NoCompression)
 
-	opts.SetWalSizeLimitMb(walFileSize)
-	opts.SetMaxTotalWalSize(walMemSize * util.MB)
-	opts.SetMaxLogFileSize(int(logFileSize * util.MB))
-	opts.SetLogFileTimeToRoll(int(logReversed * 60 * 60 * 24))
-	opts.SetKeepLogFileNum(int(logReversedCnt))
-	opts.SetWALTtlSeconds(walTTL)
-
 	tableOpts = gorocksdb.NewDefaultBlockBasedTableOptions()
+	cache = gorocksdb.NewLRUCache(blockCacheSize)
+	tableOpts.SetBlockCache(cache)
 	opts.SetBlockBasedTableFactory(tableOpts)
+
+	// NOTE: rocksdb log file options
+	opts.SetMaxLogFileSize(maxLogFileSize)
+	opts.SetLogFileTimeToRoll(int(logFileTimeToRoll.Seconds()))
+	opts.SetKeepLogFileNum(keepLogFileNum)
 	return
 }
 
-func (dbInfo *RocksdbOperator) doOpen(dir string, walFileSize, walMemSize, logFileSize, logReversed, logReversedCnt, walTTL uint64) (err error) {
+func (dbInfo *RocksdbOperator) doOpen(dir string, writeBufferSize int, blockCacheSize uint64, maxLogFileSize int, logFileTimeToRoll time.Duration, keepLogFileNum int) (err error) {
 	var stat fs.FileInfo
 
 	stat, err = os.Stat(dir)
@@ -202,29 +225,8 @@ func (dbInfo *RocksdbOperator) doOpen(dir string, walFileSize, walMemSize, logFi
 		return err
 	}
 
-	log.LogInfof("rocks db dir:[%s]", dir)
-
-	// NOTE: adjust param
-	if walFileSize == 0 {
-		walFileSize = DefWalSizeLimitMB
-	}
-	if walMemSize == 0 {
-		walMemSize = DefWalMemSizeLimitMB
-	}
-	if logFileSize == 0 {
-		logFileSize = DefMaxLogFileSize
-	}
-	if logReversed == 0 {
-		logReversed = DefLogFileRollTimeDay
-	}
-	if logReversedCnt == 0 {
-		logReversedCnt = DefLogReservedCnt
-	}
-	if walTTL == 0 {
-		walTTL = DefWalTTL
-	}
-
-	dbInfo.openOption, dbInfo.tableOption = dbInfo.newRocksdbOptions(walFileSize, walFileSize, logFileSize, logReversed, logReversedCnt, walTTL)
+	log.LogInfof("[doOpen] rocksdb dir(%v)", dir)
+	dbInfo.openOption, dbInfo.cache, dbInfo.tableOption = dbInfo.newRocksdbOptions(writeBufferSize, blockCacheSize, maxLogFileSize, logFileTimeToRoll, keepLogFileNum)
 
 	dbInfo.db, err = gorocksdb.OpenDb(dbInfo.openOption, dir)
 
@@ -240,7 +242,7 @@ func (dbInfo *RocksdbOperator) doOpen(dir string, walFileSize, walMemSize, logFi
 	return nil
 }
 
-func (dbInfo *RocksdbOperator) OpenDb(dir string, walFileSize, walMemSize, logFileSize, logReversed, logReversedCnt, walTTL uint64) (err error) {
+func (dbInfo *RocksdbOperator) OpenDb(dir string, writeBufferSize int, blockCacheSize uint64, maxLogFileSize int, logFileTimeToRoll time.Duration, keepLogFileNum int) (err error) {
 	ok := atomic.CompareAndSwapUint32(&dbInfo.state, dbInitSt, dbOpenningSt)
 	ok = ok || atomic.CompareAndSwapUint32(&dbInfo.state, dbClosedSt, dbOpenningSt)
 	if !ok {
@@ -262,10 +264,10 @@ func (dbInfo *RocksdbOperator) OpenDb(dir string, walFileSize, walMemSize, logFi
 		dbInfo.mutex.Unlock()
 	}()
 
-	return dbInfo.doOpen(dir, walFileSize, walMemSize, logFileSize, logReversed, logReversedCnt, walTTL)
+	return dbInfo.doOpen(dir, writeBufferSize, blockCacheSize, maxLogFileSize, logFileTimeToRoll, keepLogFileNum)
 }
 
-func (dbInfo *RocksdbOperator) ReOpenDb(dir string, walFileSize, walMemSize, logFileSize, logReversed, logReversedCnt, walTTL uint64) (err error) {
+func (dbInfo *RocksdbOperator) ReOpenDb(dir string, writeBufferSize int, blockCacheSize uint64, maxLogFileSize int, logFileTimeToRoll time.Duration, keepLogFileNum int) (err error) {
 	if ok := atomic.CompareAndSwapUint32(&dbInfo.state, dbClosedSt, dbOpenningSt); !ok {
 		if atomic.LoadUint32(&dbInfo.state) == dbOpenedSt {
 			//already opened
@@ -288,7 +290,7 @@ func (dbInfo *RocksdbOperator) ReOpenDb(dir string, walFileSize, walMemSize, log
 		return fmt.Errorf("rocks db dir changed, need new db instance")
 	}
 
-	return dbInfo.doOpen(dir, walFileSize, walMemSize, logFileSize, logReversed, logReversedCnt, walTTL)
+	return dbInfo.doOpen(dir, writeBufferSize, blockCacheSize, maxLogFileSize, logFileTimeToRoll, keepLogFileNum)
 }
 
 func genRocksDBReadOption(snap *gorocksdb.Snapshot) (ro *gorocksdb.ReadOptions) {
@@ -428,7 +430,7 @@ func (dbInfo *RocksdbOperator) GetBytesWithSnap(snap *gorocksdb.Snapshot, key []
 	}
 	defer dbInfo.releaseDb()
 	ro := genRocksDBReadOption(snap)
-	for index := 0; index < DefRetryCount; {
+	for index := 0; index < DefaultRetryCount; {
 		value, err = dbInfo.db.GetBytes(ro, key)
 		if err == nil {
 			break
@@ -531,7 +533,7 @@ func (dbInfo *RocksdbOperator) GetBytes(key []byte) (bytes []byte, err error) {
 		return
 	}
 	defer dbInfo.releaseDb()
-	for index := 0; index < DefRetryCount; {
+	for index := 0; index < DefaultRetryCount; {
 		bytes, err = dbInfo.db.GetBytes(dbInfo.readOption, key)
 		if err == nil {
 			break
@@ -570,7 +572,7 @@ func (dbInfo *RocksdbOperator) Put(key, value []byte) (err error) {
 		return err
 	}
 	defer dbInfo.releaseDb()
-	for index := 0; index < DefRetryCount; {
+	for index := 0; index < DefaultRetryCount; {
 		err = dbInfo.db.Put(dbInfo.writeOption, key, value)
 		if err == nil {
 			break
@@ -601,7 +603,7 @@ func (dbInfo *RocksdbOperator) Del(key []byte) (err error) {
 		return err
 	}
 	defer dbInfo.releaseDb()
-	for index := 0; index < DefRetryCount; {
+	for index := 0; index < DefaultRetryCount; {
 		err = dbInfo.db.Delete(dbInfo.writeOption, key)
 		if err == nil {
 			break
@@ -694,7 +696,7 @@ func (dbInfo *RocksdbOperator) CommitBatchAndRelease(handle interface{}) (err er
 	}
 	defer dbInfo.releaseDb()
 
-	for index := 0; index < DefRetryCount; {
+	for index := 0; index < DefaultRetryCount; {
 		err = dbInfo.db.Write(dbInfo.writeOption, batch)
 		if err == nil {
 			break
@@ -753,7 +755,7 @@ func (dbInfo *RocksdbOperator) CommitBatch(handle interface{}) (err error) {
 	}
 	defer dbInfo.releaseDb()
 
-	for index := 0; index < DefRetryCount; {
+	for index := 0; index < DefaultRetryCount; {
 		err = dbInfo.db.Write(dbInfo.writeOption, batch)
 		if err == nil {
 			break
