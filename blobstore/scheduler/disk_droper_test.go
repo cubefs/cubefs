@@ -59,7 +59,7 @@ func TestDiskDropLoad(t *testing.T) {
 		mgr := newDiskDroper(t)
 		mgr.IMigrator.(*MockMigrater).EXPECT().Load().Return(errMock)
 		err := mgr.Load()
-		require.Equal(t, 0, mgr.droppingDisks.size())
+		require.Equal(t, 0, mgr.collectedDisks.size())
 		require.True(t, errors.Is(err, errMock))
 	}
 	{
@@ -123,7 +123,7 @@ func TestDiskDropCollectTask(t *testing.T) {
 		mgr.prepareTaskPool = taskpool.New(1, 2)
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().ListDropDisks(any).Return(nil, errMock)
 		mgr.collectTask()
-		require.Equal(t, 0, mgr.droppingDisks.size())
+		require.Equal(t, 0, mgr.collectedDisks.size())
 	}
 	{
 		mgr := newDiskDroper(t)
@@ -150,7 +150,7 @@ func TestDiskDropCollectTask(t *testing.T) {
 		mgr.clusterMgrCli = cli
 		mgr.collectTask()
 		time.Sleep(100 * time.Millisecond)
-		require.Equal(t, 1, mgr.droppingDisks.size())
+		require.Equal(t, 1, mgr.collectedDisks.size())
 	}
 }
 
@@ -158,44 +158,44 @@ func TestDiskDropCheckDroppedAndClear(t *testing.T) {
 	{
 		// check dropped return false
 		mgr := newDiskDroper(t)
-		mgr.droppingDisks.add(testDisk1.DiskID, testDisk1)
+		mgr.collectedDisks.add(&dropDisk{DiskInfoSimple: testDisk1})
 
 		mgr.IMigrator.(*MockMigrater).EXPECT().ListAllTaskByDiskID(any, any).Return(nil, errMock)
 		mgr.checkDroppedAndClear()
-		require.Equal(t, 1, mgr.droppingDisks.size())
+		require.Equal(t, 1, mgr.collectedDisks.size())
 
 		mgr.IMigrator.(*MockMigrater).EXPECT().ListAllTaskByDiskID(any, any).Return(nil, nil)
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().ListDiskVolumeUnits(any, any).Return(nil, errMock)
 		mgr.checkDroppedAndClear()
-		require.Equal(t, 1, mgr.droppingDisks.size())
+		require.Equal(t, 1, mgr.collectedDisks.size())
 
 		task1 := &proto.MigrateTask{State: proto.MigrateStatePrepared, TaskType: proto.TaskTypeDiskDrop}
 		mgr.IMigrator.(*MockMigrater).EXPECT().ListAllTaskByDiskID(any, any).Times(3).Return([]*proto.MigrateTask{task1}, nil)
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().ListDiskVolumeUnits(any, any).Return([]*client.VunitInfoSimple{{}, {}}, nil)
 		mgr.checkDroppedAndClear()
-		require.Equal(t, 1, mgr.droppingDisks.size())
+		require.Equal(t, 1, mgr.collectedDisks.size())
 
 		mgr.IMigrator.(*MockMigrater).EXPECT().IsDeletedTask(any).Return(false)
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().ListDiskVolumeUnits(any, any).Times(2).Return(nil, nil)
 		mgr.checkDroppedAndClear()
-		require.Equal(t, 1, mgr.droppingDisks.size())
+		require.Equal(t, 1, mgr.collectedDisks.size())
 
 		mgr.IMigrator.(*MockMigrater).EXPECT().IsDeletedTask(any).Return(true)
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().DeleteMigrateTask(any, any).Return(nil)
 		mgr.checkDroppedAndClear()
-		require.Equal(t, 1, mgr.droppingDisks.size())
+		require.Equal(t, 1, mgr.collectedDisks.size())
 
 		task2 := &proto.MigrateTask{State: proto.MigrateStateFinished, TaskType: proto.TaskTypeDiskDrop}
 		task3 := &proto.MigrateTask{State: proto.MigrateStateFinishedInAdvance, TaskType: proto.TaskTypeDiskDrop}
 		mgr.IMigrator.(*MockMigrater).EXPECT().ListAllTaskByDiskID(any, any).Return([]*proto.MigrateTask{task1, task2, task3}, nil)
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().ListDiskVolumeUnits(any, any).Return([]*client.VunitInfoSimple{{}, {}}, nil)
 		mgr.checkDroppedAndClear()
-		require.Equal(t, 1, mgr.droppingDisks.size())
+		require.Equal(t, 1, mgr.collectedDisks.size())
 	}
 	{
 		// check dropped return true
 		mgr := newDiskDroper(t)
-		mgr.droppingDisks.add(testDisk1.DiskID, testDisk1)
+		mgr.collectedDisks.add(&dropDisk{DiskInfoSimple: testDisk1})
 		volume := MockGenVolInfo(10, codemode.EC6P6, proto.VolumeStatusIdle)
 		var units []*client.VunitInfoSimple
 		for _, unit := range volume.VunitLocations {
@@ -209,16 +209,16 @@ func TestDiskDropCheckDroppedAndClear(t *testing.T) {
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().ListDiskVolumeUnits(any, any).Return(units, nil)
 		mgr.allDisks.add(&dropDisk{wait: make(chan struct{}, 1), DiskInfoSimple: testDisk1})
 		mgr.checkDroppedAndClear()
-		require.Equal(t, 0, mgr.droppingDisks.size())
+		require.Equal(t, 0, mgr.collectedDisks.size())
 
-		mgr.droppingDisks.add(testDisk1.DiskID, testDisk1)
+		mgr.collectedDisks.add(&dropDisk{DiskInfoSimple: testDisk1})
 		mgr.IMigrator.(*MockMigrater).EXPECT().AddTask(any, any).AnyTimes().Return()
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().ListDiskVolumeUnits(any, any).Times(1).Return(units, nil)
 		mgr.allDisks.add(&dropDisk{wait: make(chan struct{}, 1), DiskInfoSimple: testDisk1})
 		mgr.checkDroppedAndClear()
-		require.Equal(t, 0, mgr.droppingDisks.size())
+		require.Equal(t, 0, mgr.collectedDisks.size())
 
-		mgr.droppingDisks.add(testDisk1.DiskID, testDisk1)
+		mgr.collectedDisks.add(&dropDisk{DiskInfoSimple: testDisk1})
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().ListDiskVolumeUnits(any, any).AnyTimes().Return(nil, nil)
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().DeleteMigratingDisk(any, any, any).Times(1).Return(nil)
 		mgr.IMigrator.(*MockMigrater).EXPECT().ClearDeletedTasks(any).Times(1).Return()
@@ -226,7 +226,7 @@ func TestDiskDropCheckDroppedAndClear(t *testing.T) {
 		dropped := mgr.checkDiskDropped(context.Background(), testDisk1.DiskID)
 		require.True(t, dropped)
 		mgr.clearTasksByDiskID(context.Background(), testDisk1.DiskID)
-		require.Equal(t, 0, mgr.droppingDisks.size())
+		require.Equal(t, 0, mgr.collectedDisks.size())
 		require.Equal(t, 1, mgr.droppedDisks.size())
 	}
 }
@@ -348,14 +348,14 @@ func TestDiskDropProgress(t *testing.T) {
 	}
 	{
 		mgr := newDiskDroper(t)
-		mgr.droppingDisks.add(testDisk1.DiskID, testDisk1)
+		mgr.collectedDisks.add(&dropDisk{DiskInfoSimple: testDisk1})
 		mgr.IMigrator.(*MockMigrater).EXPECT().ListAllTaskByDiskID(any, any).Return(nil, errMock)
 		disks, _, _ := mgr.Progress(ctx)
 		require.Equal(t, 0, len(disks))
 	}
 	{
 		mgr := newDiskDroper(t)
-		mgr.droppingDisks.add(testDisk1.DiskID, testDisk1)
+		mgr.collectedDisks.add(&dropDisk{DiskInfoSimple: testDisk1})
 		task1 := &proto.MigrateTask{State: proto.MigrateStatePrepared, SourceDiskID: testDisk1.DiskID}
 		task2 := &proto.MigrateTask{State: proto.MigrateStateInited, SourceDiskID: testDisk1.DiskID}
 		task3 := &proto.MigrateTask{State: proto.MigrateStateWorkCompleted, SourceDiskID: testDisk1.DiskID}
@@ -368,8 +368,8 @@ func TestDiskDropProgress(t *testing.T) {
 	}
 	{
 		mgr := newDiskDroper(t)
-		mgr.droppingDisks.add(testDisk1.DiskID, testDisk1)
-		mgr.droppingDisks.add(testDisk2.DiskID, testDisk2)
+		mgr.collectedDisks.add(&dropDisk{DiskInfoSimple: testDisk1})
+		mgr.collectedDisks.add(&dropDisk{DiskInfoSimple: testDisk2})
 		task1 := &proto.MigrateTask{State: proto.MigrateStatePrepared, SourceDiskID: testDisk1.DiskID}
 		task2 := &proto.MigrateTask{State: proto.MigrateStateInited, SourceDiskID: testDisk1.DiskID}
 		task3 := &proto.MigrateTask{State: proto.MigrateStateWorkCompleted, SourceDiskID: testDisk1.DiskID}
@@ -391,15 +391,16 @@ func TestDiskDropDiskProgress(t *testing.T) {
 	}
 	{
 		mgr := newDiskDroper(t)
-		mgr.droppingDisks.add(testDisk1.DiskID, testDisk1)
+		mgr.collectedDisks.add(&dropDisk{DiskInfoSimple: testDisk1})
+		mgr.allDisks.add(&dropDisk{DiskInfoSimple: testDisk1})
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().ListAllMigrateTasksByDiskID(any, any, any).Return(nil, errMock)
 		_, err := mgr.DiskProgress(ctx, testDisk1.DiskID)
 		require.True(t, errors.Is(err, errMock))
 	}
 	{
 		mgr := newDiskDroper(t)
-		mgr.droppingDisks.add(testDisk1.DiskID, testDisk1)
-
+		mgr.collectedDisks.add(&dropDisk{DiskInfoSimple: testDisk1})
+		mgr.allDisks.add(&dropDisk{DiskInfoSimple: testDisk1})
 		task1 := &proto.MigrateTask{State: proto.MigrateStatePrepared, SourceDiskID: testDisk1.DiskID}
 		task2 := &proto.MigrateTask{State: proto.MigrateStateInited, SourceDiskID: testDisk1.DiskID}
 		task3 := &proto.MigrateTask{State: proto.MigrateStateWorkCompleted, SourceDiskID: testDisk1.DiskID}
