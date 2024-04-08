@@ -62,7 +62,7 @@ void cfs_extent_writer_release(struct cfs_extent_writer *writer)
 	if (writer->sock->enable_rdma) {
 		cfs_rdma_release(writer->sock, false);
 	} else {
-		cfs_socket_release(writer->sock, true);
+		cfs_socket_release(writer->sock, false);
 	}
 
 	kfree(writer);
