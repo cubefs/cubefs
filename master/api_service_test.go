@@ -342,7 +342,7 @@ func processWithFatalV2(url string, success bool, req map[string]interface{}, t 
 	return
 }
 
-func process(reqURL string, t testing.TB) (reply *proto.HTTPReply) {
+func processNoCheck(reqURL string, t testing.TB) (reply *proto.HTTPReply) {
 	mocktest.Log(t, reqURL)
 	resp, err := http.Get(reqURL)
 	if err != nil {
@@ -366,6 +366,11 @@ func process(reqURL string, t testing.TB) (reply *proto.HTTPReply) {
 		t.Error(err)
 		return
 	}
+	return
+}
+
+func process(reqURL string, t testing.TB) (reply *proto.HTTPReply) {
+	reply = processNoCheck(reqURL, t)
 	if reply.Code != 0 {
 		t.Errorf("failed,msg[%v],data[%v]", reply.Msg, reply.Data)
 		return
@@ -1541,4 +1546,38 @@ func TestSetMarkDiskBrokenThreshold(t *testing.T) {
 	require.EqualValues(t, setVal, server.cluster.getMarkDiskBrokenThreshold())
 	process(unsetUrl, t)
 	require.EqualValues(t, oldVal, server.cluster.getMarkDiskBrokenThreshold())
+}
+
+func TestSetDiscardDp(t *testing.T) {
+	name := "setDiscardVol"
+	createVol(map[string]interface{}{nameKey: name}, t)
+	vol, err := server.cluster.getVol(name)
+	if err != nil {
+		t.Errorf("failed to get vol %v, err %v", name, err)
+		return
+	}
+	defer func() {
+		reqURL := fmt.Sprintf("%v%v?name=%v&authKey=%v", hostAddr, proto.AdminDeleteVol, name, buildAuthKey(testOwner))
+		process(reqURL, t)
+	}()
+	dpMap := vol.cloneDataPartitionMap()
+	var dp *DataPartition
+	for _, dp = range dpMap {
+		break
+	}
+	require.NotNil(t, dp)
+	reqUrl := fmt.Sprintf("%v%v", hostAddr, proto.AdminSetDpDiscard)
+	setUrl := fmt.Sprintf("%v?%v=%v&%v=true", reqUrl, idKey, dp.PartitionID, dpDiscardKey)
+	forceSetUrl := fmt.Sprintf("%v&force=true", setUrl)
+	unsetUrl := fmt.Sprintf("%v?%v=%v&%v=false", reqUrl, idKey, dp.PartitionID, dpDiscardKey)
+	processNoCheck(setUrl, t)
+	time.Sleep(2 * time.Second)
+	require.False(t, dp.IsDiscard)
+
+	process(forceSetUrl, t)
+	time.Sleep(2 * time.Second)
+	require.True(t, dp.IsDiscard)
+
+	process(unsetUrl, t)
+	require.False(t, dp.IsDiscard)
 }
