@@ -1365,7 +1365,13 @@ func (partition *DataPartition) ResetDecommissionStatus() {
 
 func (partition *DataPartition) rollback(c *Cluster) {
 	// del new add replica,may timeout, try rollback next time
-	err := c.removeDataReplica(partition, partition.DecommissionDstAddr, false, false)
+	force := false
+	// if single dp add raft member success but add a replica fails, use force to delete raft member
+	// to avoid no leader
+	if partition.ReplicaNum == 1 {
+		force = true
+	}
+	err := c.removeDataReplica(partition, partition.DecommissionDstAddr, false, force)
 	if err != nil {
 		// keep decommission status to failed for rollback
 		log.LogWarnf("action[rollback]dp[%v] rollback to del replica[%v] failed:%v",
