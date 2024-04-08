@@ -2286,10 +2286,6 @@ func (l *DecommissionDataPartitionList) traverse(c *Cluster) {
 					l.Remove(dp)
 					dp.ReleaseDecommissionToken(c)
 					dp.ResetDecommissionStatus()
-					if _, err := c.getDataPartitionByID(dp.PartitionID); err != nil {
-						log.LogWarnf("[DecommissionListTraverse] not found dp(%v), but success in memory, discard(%v)", dp.PartitionID, dp.IsDiscard)
-						continue
-					}
 					err := c.syncUpdateDataPartition(dp)
 					if err != nil {
 						log.LogWarnf("action[DecommissionListTraverse]Remove success dp[%v] failed for %v",
