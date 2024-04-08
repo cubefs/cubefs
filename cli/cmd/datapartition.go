@@ -421,7 +421,7 @@ func newDataPartitionSetDiscardCmd(client *master.MasterClient) *cobra.Command {
 			if err = client.AdminAPI().SetDataPartitionDiscard(dpId, discard); err != nil {
 				return
 			}
-			stdout("Discard %v successful", dpId)
+			stdout("Discard %v successful\n", dpId)
 		},
 	}
 	return cmd

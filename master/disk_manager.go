@@ -77,6 +77,11 @@ func (c *Cluster) checkDiskRecoveryProgress() {
 				log.LogWarnf("action[checkDiskRecoveryProgress] dp %v maybe deleted", partition.PartitionID)
 				continue
 			}
+			if partition.IsDiscard {
+				partition.SetDecommissionStatus(DecommissionSuccess)
+				log.LogWarnf("[checkDiskRecoveryProgress] dp(%v) is discard, decommission successfully", partition.PartitionID)
+				continue
+			}
 			//if len(partition.Replicas) == 0 ||
 			//	(!partition.isSpecialReplicaCnt() && len(partition.Replicas) < int(partition.ReplicaNum)) ||
 			//	(partition.isSpecialReplicaCnt() && len(partition.Replicas) > int(partition.ReplicaNum)) {
