@@ -1576,6 +1576,9 @@ func (c *Cluster) loadDataPartitions() (err error) {
 		}
 
 		dp := dpv.Restore(c)
+		if dp.IsDiscard {
+			log.LogWarnf("[loadDataPartitions] dp(%v) is discard, decommission status(%v)", dp.PartitionID, dp.GetDecommissionStatus())
+		}
 		vol.dataPartitions.put(dp)
 		c.addBadDataPartitionIdMap(dp)
 		// add to nodeset decommission list

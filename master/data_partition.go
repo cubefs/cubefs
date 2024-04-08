@@ -1183,9 +1183,6 @@ func (partition *DataPartition) Decommission(c *Cluster) bool {
 		srcReplica           *DataReplica
 		resetDecommissionDst = true
 	)
-	defer func() {
-		c.syncUpdateDataPartition(partition)
-	}()
 	log.LogInfof("action[decommissionDataPartition] dp[%v] from node[%v] to node[%v], raftForce[%v] SingleDecommissionStatus[%v]",
 		partition.PartitionID, srcAddr, targetAddr, partition.DecommissionRaftForce, partition.GetSpecialReplicaDecommissionStep())
 	begin := time.Now()
@@ -1196,18 +1193,22 @@ func (partition *DataPartition) Decommission(c *Cluster) bool {
 		goto errHandler
 	}
 
-	// delete if not normal data partition
-	if !proto.IsNormalDp(partition.PartitionType) {
+	// NOTE: delete if not normal data partition or dp is discard
+	if partition.IsDiscard || !proto.IsNormalDp(partition.PartitionType) {
 		if vol, ok := c.vols[partition.VolName]; !ok {
 			log.LogWarnf("action[decommissionDataPartition]vol [%v] for dp [%v] is deleted ", partition.VolName,
 				partition.PartitionID)
 		} else {
+			log.LogWarnf("[decommissionDataPartition] delete dp(%v) discard(%v)", partition.PartitionID, partition.IsDiscard)
 			vol.deleteDataPartition(c, partition)
 		}
 		partition.SetDecommissionStatus(DecommissionSuccess)
-		log.LogWarnf("action[decommissionDataPartition]delete dp directly[%v]", partition.PartitionID)
+		log.LogWarnf("action[decommissionDataPartition]delete dp directly[%v] discard(%v)", partition.PartitionID, partition.IsDiscard)
 		return true
 	}
+	defer func() {
+		c.syncUpdateDataPartition(partition)
+	}()
 
 	// if decommission src for dp is not reset and decommission dst is already repaired
 	srcReplica, _ = partition.getReplica(partition.DecommissionSrcAddr)

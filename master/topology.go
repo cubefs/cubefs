@@ -2149,7 +2149,8 @@ func (l *DecommissionDataPartitionList) Put(id uint64, value *DataPartition, c *
 	l.cacheMap[value.PartitionID] = elm
 	l.mu.Unlock()
 	// restore from rocksdb
-	if value.checkConsumeToken() {
+	// NOTE: if dp is discard, not need to get token, decommission will success directly
+	if value.checkConsumeToken() && !value.IsDiscard {
 		value.TryAcquireDecommissionToken(c)
 	}
 
@@ -2280,10 +2281,15 @@ func (l *DecommissionDataPartitionList) traverse(c *Cluster) {
 			}
 			allDecommissionDP := l.GetAllDecommissionDataPartitions()
 			for _, dp := range allDecommissionDP {
+				log.LogDebugf("[DecommissionListTraverse] traverse dp(%v) discard(%v) decommission status(%v)", dp.PartitionID, dp.IsDiscard, dp.GetDecommissionStatus())
 				if dp.IsDecommissionSuccess() {
 					l.Remove(dp)
 					dp.ReleaseDecommissionToken(c)
 					dp.ResetDecommissionStatus()
+					if _, err := c.getDataPartitionByID(dp.PartitionID); err != nil {
+						log.LogWarnf("[DecommissionListTraverse] not found dp(%v), but success in memory, discard(%v)", dp.PartitionID, dp.IsDiscard)
+						continue
+					}
 					err := c.syncUpdateDataPartition(dp)
 					if err != nil {
 						log.LogWarnf("action[DecommissionListTraverse]Remove success dp[%v] failed for %v",
@@ -2310,15 +2316,19 @@ func (l *DecommissionDataPartitionList) traverse(c *Cluster) {
 					dp.ResetDecommissionStatus()
 					c.syncUpdateDataPartition(dp)
 				} else if dp.IsMarkDecommission() && dp.TryAcquireDecommissionToken(c) {
-					// TODO: decommission in here
-					go func(dp *DataPartition) {
-						if !dp.TryToDecommission(c) {
-							// retry should release token
-							if dp.IsMarkDecommission() {
-								dp.ReleaseDecommissionToken(c)
+					if dp.IsDiscard || dp.TryAcquireDecommissionToken(c) {
+						// TODO: decommission in here
+						go func(dp *DataPartition) {
+							if !dp.TryToDecommission(c) {
+								// retry should release token
+								if dp.IsMarkDecommission() {
+									dp.ReleaseDecommissionToken(c)
+									// choose other node to create data partition
+									dp.DecommissionDstAddr = ""
+								}
 							}
-						}
-					}(dp) // special replica cnt cost some time from prepare to running
+						}(dp) // special replica cnt cost some time from prepare to running
+					}
 				}
 			}
 		}
