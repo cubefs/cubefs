@@ -102,18 +102,71 @@ void cfs_rdma_release(struct cfs_socket *csk, bool forever)
 	}
 }
 
+static int cfs_rdma_pages_to_buffer(struct cfs_socket *csk, struct cfs_packet *packet) {
+	struct cfs_page_frag *frags;
+	struct BufferItem *pDataBuf = NULL;
+	char *pStart = NULL;
+	ssize_t count = 0;
+	ssize_t len = 0;
+	int index = 0;
+	int i;
+
+	frags = packet->request.data.write.frags;
+	count = 0;
+	for (i = 0; i < packet->request.data.write.nr; i++) {
+		count += frags[i].size;
+	}
+	index = IBVSocket_get_data_buf(csk->ibvsock, count);
+	if (index < 0) {
+		printk("failed to allocate data buffer. size=%ld\n", count);
+		return -ENOMEM;
+	}
+	packet->data_buf_index = index;
+	pDataBuf = &csk->ibvsock->data_buf[index];
+	// copy the data into data buffer.
+	len = 0;
+	for (i = 0; i < packet->request.data.write.nr; i++) {
+		pStart = pDataBuf->pBuff+len;
+		memcpy(pStart, kmap(frags[i].page->page) + frags[i].offset, frags[i].size);
+		kunmap(frags[i].page->page);
+		len += frags[i].size;
+	}
+	packet->request.hdr_padding.RdmaAddr = pDataBuf->dma_addr;
+	packet->request.hdr_padding.RdmaLength = htonl(count);
+
+	return 0;
+}
+
+static int cfs_rdma_attach_buffer(struct cfs_socket *csk, struct cfs_packet *packet) {
+	struct cfs_page_frag *frags;
+	struct BufferItem *pDataBuf = NULL;
+	ssize_t count = 0;
+	int index = 0;
+	int i;
+
+	frags = packet->reply.data.read.frags;
+	count = 0;
+	for (i = 0; i < packet->reply.data.read.nr; i++) {
+		count += frags[i].size;
+	}
+	index = IBVSocket_get_data_buf(csk->ibvsock, count);
+	if (index < 0) {
+		printk("failed to allocate data buffer. size=%ld\n", count);
+		return -ENOMEM;
+	}
+	pDataBuf = &csk->ibvsock->data_buf[index];
+	packet->request.hdr_padding.RdmaAddr = pDataBuf->dma_addr;
+	packet->request.hdr_padding.RdmaLength = htonl(count);
+
+	return 0;
+}
+
 int cfs_rdma_send_packet(struct cfs_socket *csk, struct cfs_packet *packet)
 {
 	struct iov_iter iter;
 	struct iovec iov;
-	struct cfs_page_frag *frags;
-	int i;
-	int ret = 0;
 	ssize_t len = 0;
-	ssize_t count = 0;
-	struct BufferItem *pDataBuf = NULL;
-	char *pStart = NULL;
-	int index = 0;
+	int ret = 0;
 
 	if (packet->request.hdr.opcode != CFS_OP_STREAM_WRITE) {
 		cfs_log_error(csk->log, "only support stream write opcode\n");
@@ -122,25 +175,22 @@ int cfs_rdma_send_packet(struct cfs_socket *csk, struct cfs_packet *packet)
 
 	cfs_buffer_reset(csk->tx_buffer);
 	switch (packet->request.hdr.opcode) {
-	case CFS_OP_EXTENT_CREATE:
-	case CFS_OP_STREAM_WRITE:
-	case CFS_OP_STREAM_RANDOM_WRITE:
-	case CFS_OP_STREAM_READ:
-	case CFS_OP_STREAM_FOLLOWER_READ:
-		break;
-	default:
-		ret = cfs_packet_request_data_to_json(packet, csk->tx_buffer);
-		if (ret < 0) {
-			cfs_log_error(
-				csk->log,
-				"so(%p) id=%llu, op=0x%x, invalid request data %d\n",
-				csk->sock,
-				be64_to_cpu(packet->request.hdr.req_id),
-				packet->request.hdr.opcode, ret);
-			return ret;
-		}
-		packet->request.hdr.size =
-			cpu_to_be32(cfs_buffer_size(csk->tx_buffer));
+		case CFS_OP_EXTENT_CREATE:
+		case CFS_OP_STREAM_WRITE:
+		case CFS_OP_STREAM_RANDOM_WRITE:
+		case CFS_OP_STREAM_READ:
+		case CFS_OP_STREAM_FOLLOWER_READ:
+			break;
+		default:
+			ret = cfs_packet_request_data_to_json(packet, csk->tx_buffer);
+			if (ret < 0) {
+				cfs_log_error(
+					csk->log, "so(%p) id=%llu, op=0x%x, invalid request data %d\n",
+					csk->sock, be64_to_cpu(packet->request.hdr.req_id),
+					packet->request.hdr.opcode, ret);
+				return ret;
+			}
+			packet->request.hdr.size = cpu_to_be32(cfs_buffer_size(csk->tx_buffer));
 	}
 
 	if (packet->request.arg) {
@@ -153,67 +203,42 @@ int cfs_rdma_send_packet(struct cfs_socket *csk, struct cfs_packet *packet)
 	iov_iter_init(&iter, READ, &iov, 1, iov.iov_len);
 
 	switch (packet->request.hdr.opcode) {
-	case CFS_OP_EXTENT_CREATE:
-		len = IBVSocket_send(csk->ibvsock, &iter);
-		if (len < 0) {
-			cfs_log_error(csk->log, "IBVSocket_send error: %ld\n", len);
-		}
-		break;
-	case CFS_OP_STREAM_WRITE:
-	case CFS_OP_STREAM_RANDOM_WRITE:
-		frags = packet->request.data.write.frags;
-		count = 0;
-		for (i = 0; i < packet->request.data.write.nr; i++) {
-			count += frags[i].size;
-		}
-		index = IBVSocket_get_data_buf(csk->ibvsock, count);
-		if (index < 0) {
-			printk("failed to allocate data buffer. size=%ld\n", count);
-			return -ENOMEM;
-		}
-		packet->data_buf_index = index;
-		pDataBuf = &csk->ibvsock->data_buf[index];
-		// copy the data into data buffer.
-		len = 0;
-		for (i = 0; i < packet->request.data.write.nr; i++) {
-			pStart = pDataBuf->pBuff+len;
-			memcpy(pStart, kmap(frags[i].page->page) + frags[i].offset, frags[i].size);
-			kunmap(frags[i].page->page);
-			len += frags[i].size;
-		}
-		packet->request.hdr_padding.RdmaAddr = pDataBuf->dma_addr;
-		packet->request.hdr_padding.RdmaLength = htonl(count);
-		len = IBVSocket_send(csk->ibvsock, &iter);
-		if (len < 0) {
-			cfs_log_error(csk->log, "IBVSocket_send error: %ld\n", len);
-		}
-		break;
-	case CFS_OP_STREAM_READ:
-	case CFS_OP_STREAM_FOLLOWER_READ:
-		frags = packet->reply.data.read.frags;
-		count = 0;
-		for (i = 0; i < packet->reply.data.read.nr; i++) {
-			count += frags[i].size;
-		}
-		index = IBVSocket_get_data_buf(csk->ibvsock, count);
-		if (index < 0) {
-			printk("failed to allocate data buffer. size=%ld\n", count);
-			return -ENOMEM;
-		}
-		pDataBuf = &csk->ibvsock->data_buf[index];
-		packet->request.hdr_padding.RdmaAddr = pDataBuf->dma_addr;
-		packet->request.hdr_padding.RdmaLength = htonl(count);
-		len = IBVSocket_send(csk->ibvsock, &iter);
-		if (len < 0) {
-			cfs_log_error(csk->log, "IBVSocket_send error: %ld\n", len);
-		}
-		break;
-	default:
-		len = IBVSocket_send(csk->ibvsock, &iter);
-		if (len < 0) {
-			cfs_log_error(csk->log, "IBVSocket_send error: %ld\n", len);
-		}
-		break;
+		case CFS_OP_EXTENT_CREATE:
+			len = IBVSocket_send(csk->ibvsock, &iter);
+			if (len < 0) {
+				cfs_log_error(csk->log, "IBVSocket_send error: %ld\n", len);
+			}
+			break;
+		case CFS_OP_STREAM_WRITE:
+		case CFS_OP_STREAM_RANDOM_WRITE:
+			ret = cfs_rdma_pages_to_buffer(csk, packet);
+			if (ret < 0) {
+				cfs_log_error(csk->log, "cfs_rdma_pages_to_buffer error: %ld\n", ret);
+				return ret;
+			}
+			len = IBVSocket_send(csk->ibvsock, &iter);
+			if (len < 0) {
+				cfs_log_error(csk->log, "IBVSocket_send error: %ld\n", len);
+			}
+			break;
+		case CFS_OP_STREAM_READ:
+		case CFS_OP_STREAM_FOLLOWER_READ:
+			ret = cfs_rdma_attach_buffer(csk, packet);
+			if (ret < 0) {
+				cfs_log_error(csk->log, "cfs_rdma_attach_buffer error: %ld\n", ret);
+				return ret;
+			}
+			len = IBVSocket_send(csk->ibvsock, &iter);
+			if (len < 0) {
+				cfs_log_error(csk->log, "IBVSocket_send error: %ld\n", len);
+			}
+			break;
+		default:
+			len = IBVSocket_send(csk->ibvsock, &iter);
+			if (len < 0) {
+				cfs_log_error(csk->log, "IBVSocket_send error: %ld\n", len);
+			}
+			break;
 	}
 
 	if (len < 0) {
@@ -222,17 +247,44 @@ int cfs_rdma_send_packet(struct cfs_socket *csk, struct cfs_packet *packet)
 	return 0;
 }
 
+static int cfs_rdma_buffer_to_pages(struct cfs_socket *csk, struct cfs_packet *packet) {
+	struct cfs_page_frag *frags;
+	ssize_t count = 0;
+	char *pStart = NULL;
+	int index = 0;
+	int i;
+
+	// copy data from buffer.
+	frags = packet->reply.data.read.frags;
+	count = 0;
+	index = packet->data_buf_index;
+	if (index < 0 || index >= DATA_BUF_NUM) {
+		printk("error: invalid data_buf_index=%d\n", index);
+		return -EINVAL;
+	}
+	if (!csk->ibvsock->data_buf[index].used) {
+		printk("error: data_buf[%d] used is false\n", index);
+		return -EINVAL;
+	}
+	for (i = 0; i < packet->reply.data.read.nr && count < csk->ibvsock->data_buf[index].size; i++) {
+		pStart = csk->ibvsock->data_buf[index].pBuff + count;
+		memcpy(kmap(frags[i].page->page) + frags[i].offset, pStart, frags[i].size);
+		kunmap(frags[i].page->page);
+		count += frags[i].size;
+	}
+	// release the data buffer.
+	IBVSocket_free_data_buf(csk->ibvsock, index);
+
+	return 0;
+}
+
 int cfs_rdma_recv_packet(struct cfs_socket *csk, struct cfs_packet *packet)
 {
 	struct iov_iter iter;
 	struct iovec iov;
-	struct cfs_page_frag *frags;
-	int i, ret = 0;
+	int ret = 0;
 	ssize_t len = 0;
 	int arglen;
-	ssize_t count = 0;
-	char *pStart = NULL;
-	int index = 0;
 
 	if (packet->request.hdr.opcode != CFS_OP_STREAM_WRITE) {
 		cfs_log_error(csk->log, "only support stream write opcode\n");
@@ -267,35 +319,20 @@ int cfs_rdma_recv_packet(struct cfs_socket *csk, struct cfs_packet *packet)
 
 	//unmap the rdma memory.
 	switch (packet->request.hdr.opcode) {
-	case CFS_OP_STREAM_WRITE:
-	case CFS_OP_STREAM_RANDOM_WRITE:
-		IBVSocket_free_data_buf(csk->ibvsock, packet->data_buf_index);
-		break;
-	case CFS_OP_STREAM_READ:
-	case CFS_OP_STREAM_FOLLOWER_READ:
-		// copy data from buffer.
-		frags = packet->reply.data.read.frags;
-		count = 0;
-		index = packet->data_buf_index;
-		if (index < 0 || index >= DATA_BUF_NUM) {
-			printk("error: invalid data_buf_index=%d\n", index);
-			return -EINVAL;
-		}
-		if (!csk->ibvsock->data_buf[index].used) {
-			printk("error: data_buf[%d] used is false\n", index);
-			return -EINVAL;
-		}
-		for (i = 0; i < packet->reply.data.read.nr && count < csk->ibvsock->data_buf[index].size; i++) {
-			pStart = csk->ibvsock->data_buf[index].pBuff + count;
-			memcpy(kmap(frags[i].page->page) + frags[i].offset, pStart, frags[i].size);
-			kunmap(frags[i].page->page);
-			count += frags[i].size;
-		}
-		// release the data buffer.
-		IBVSocket_free_data_buf(csk->ibvsock, index);
-		break;
-	default:
-		break;
+		case CFS_OP_STREAM_WRITE:
+		case CFS_OP_STREAM_RANDOM_WRITE:
+			IBVSocket_free_data_buf(csk->ibvsock, packet->data_buf_index);
+			break;
+		case CFS_OP_STREAM_READ:
+		case CFS_OP_STREAM_FOLLOWER_READ:
+			ret = cfs_rdma_buffer_to_pages(csk, packet);
+			if (ret < 0) {
+				cfs_log_error(csk->log, "cfs_rdma_buffer_to_pages ret: %d\n", ret);
+				return ret;
+			}
+			break;
+		default:
+			break;
 	}
 
 	return ret;
