@@ -127,7 +127,7 @@ func (dp *DataPartition) ApplySnapshot(peers []raftproto.Peer, iterator raftprot
 
 // HandleFatalEvent notifies the application when panic happens.
 func (dp *DataPartition) HandleFatalEvent(err *raft.FatalError) {
-	if isRaftApplyError(err.Err.Error()) {
+	if isRaftApplyError(err.Err.Error()) || IsDiskErr(err.Err.Error()) {
 		dp.stopRaft()
 		dp.checkIsDiskError(err.Err)
 		log.LogCriticalf("action[HandleFatalEvent] err(%v).", err)
