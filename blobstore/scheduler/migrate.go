@@ -473,13 +473,13 @@ func (mgr *MigrateMgr) isJunkTask(disks *migratingDisks, task *proto.MigrateTask
 func (mgr *MigrateMgr) listMigratingDisks(ctx context.Context) (*migratingDisks, error) {
 	switch mgr.taskType {
 	case proto.TaskTypeDiskDrop:
-		migratingDisks, err := mgr.clusterMgrCli.ListMigratingDisks(ctx, mgr.taskType)
+		migratingDisks, err := mgr.clusterMgrCli.ListDropDisks(ctx)
 		if err != nil {
 			return nil, err
 		}
 		disks := newMigratingDisks()
 		for _, disk := range migratingDisks {
-			disks.add(disk.Disk.DiskID, disk.Disk)
+			disks.add(disk.DiskID, disk)
 		}
 		return disks, nil
 	default:
