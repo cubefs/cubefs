@@ -18,11 +18,12 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"github.com/cubefs/cubefs/storage"
 	"net"
 	"os"
 	"runtime"
 	"time"
+
+	"github.com/cubefs/cubefs/storage"
 
 	raftProto "github.com/cubefs/cubefs/depends/tiglabs/raft/proto"
 	"github.com/cubefs/cubefs/proto"
@@ -1512,8 +1513,8 @@ func (m *metadataManager) opRemoveMetaPartitionRaftMember(conn net.Conn,
 		return
 	}
 	if err = mp.CanRemoveRaftMember(req.RemovePeer); err != nil {
-		err = errors.NewErrorf("[opRemoveMetaPartitionRaftMember]: partitionID= %d, "+
-			"Marshal %s", req.PartitionId, fmt.Sprintf("unavali RemovePeerID %v", req.RemovePeer.ID))
+		err = errors.NewErrorf("[opRemoveMetaPartitionRaftMember]: partitionID= %d, RemovePeerID %d, err %s",
+			req.PartitionId, req.RemovePeer.ID, err.Error())
 		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
 		m.respondToClient(conn, p)
 		return
