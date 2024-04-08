@@ -124,6 +124,7 @@ const (
 	CliFlagDeleteLockTime          = "delete-lock-time"
 	CliFlagClientIDKey             = "clientIDKey"
 	CliFlagMarkDiskBrokenThreshold = "markBrokenDiskThreshold"
+	CliFlagForce                   = "force"
 
 	// CliFlagSetDataPartitionCount	= "count" use dp-count instead
 
