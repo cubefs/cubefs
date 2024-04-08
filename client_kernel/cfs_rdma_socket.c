@@ -137,6 +137,18 @@ static int cfs_rdma_pages_to_buffer(struct cfs_socket *csk, struct cfs_packet *p
 	return 0;
 }
 
+static void cfs_rdma_map_iter(struct cfs_socket *csk, struct cfs_packet *packet) {
+	ssize_t size = 0;
+	u64 rdma_addr;
+
+	size = packet->request.iov.iov_len;
+	rdma_addr = ib_dma_map_single(csk->ibvsock->cm_id->device, packet->request.iov.iov_base, size, DMA_TO_DEVICE);
+
+	packet->request.hdr_padding.RdmaAddr = rdma_addr;
+	packet->request.hdr_padding.RdmaLength = htonl(size);
+	packet->request.rdma_addr = rdma_addr;
+}
+
 static int cfs_rdma_attach_buffer(struct cfs_socket *csk, struct cfs_packet *packet) {
 	struct cfs_page_frag *frags;
 	struct BufferItem *pDataBuf = NULL;
@@ -211,11 +223,19 @@ int cfs_rdma_send_packet(struct cfs_socket *csk, struct cfs_packet *packet)
 			break;
 		case CFS_OP_STREAM_WRITE:
 		case CFS_OP_STREAM_RANDOM_WRITE:
-			ret = cfs_rdma_pages_to_buffer(csk, packet);
-			if (ret < 0) {
-				cfs_log_error(csk->log, "cfs_rdma_pages_to_buffer error: %ld\n", ret);
-				return ret;
+			if (packet->pkg_data_type == CFS_PACKAGE_DATA_PAGE) {
+				ret = cfs_rdma_pages_to_buffer(csk, packet);
+				if (ret < 0) {
+					cfs_log_error(csk->log, "cfs_rdma_pages_to_buffer error: %ld\n", ret);
+					return ret;
+				}
+			} else if (packet->pkg_data_type == CFS_PACKAGE_DATA_ITER) {
+				cfs_rdma_map_iter(csk, packet);
+			} else {
+				cfs_log_error(csk->log, "invalid data type in rdma send: %d\n", packet->pkg_data_type);
+				return -EINVAL;
 			}
+
 			len = IBVSocket_send(csk->ibvsock, &iter);
 			if (len < 0) {
 				cfs_log_error(csk->log, "IBVSocket_send error: %ld\n", len);
@@ -278,6 +298,35 @@ static int cfs_rdma_buffer_to_pages(struct cfs_socket *csk, struct cfs_packet *p
 	return 0;
 }
 
+static int cfs_rdma_buffer_to_iter(struct cfs_socket *csk, struct cfs_packet *packet) {
+	ssize_t len = 0;
+	int index = 0;
+	u32 datalen = 0;
+
+	// copy data from buffer.
+	index = packet->data_buf_index;
+	if (index < 0 || index >= DATA_BUF_NUM) {
+		printk("error: invalid data_buf_index=%d\n", index);
+		return -EINVAL;
+	}
+	if (!csk->ibvsock->data_buf[index].used) {
+		printk("error: data_buf[%d] used is false\n", index);
+		return -EINVAL;
+	}
+
+	datalen = be32_to_cpu(packet->reply.hdr.size);
+
+	len = copy_to_iter(csk->ibvsock->data_buf[index].pBuff, datalen, packet->reply.data.user_iter);
+	if (len != datalen) {
+		printk("warning reply hdr size=%d, copied size=%ld\n", datalen, len);
+	}
+
+	// release the data buffer.
+	IBVSocket_free_data_buf(csk->ibvsock, index);
+
+	return 0;
+}
+
 int cfs_rdma_recv_packet(struct cfs_socket *csk, struct cfs_packet *packet)
 {
 	struct iov_iter iter;
@@ -311,6 +360,7 @@ int cfs_rdma_recv_packet(struct cfs_socket *csk, struct cfs_packet *packet)
 		}
 
 		if (ret < 0) {
+			cfs_log_error(csk->log, "cfs buffer re-arrange error ret: %d\n", ret);
 			return ret;
 		}
 		memcpy(packet->reply.arg, packet->reply.hdr_padding.arg, arglen);
@@ -321,14 +371,32 @@ int cfs_rdma_recv_packet(struct cfs_socket *csk, struct cfs_packet *packet)
 	switch (packet->request.hdr.opcode) {
 		case CFS_OP_STREAM_WRITE:
 		case CFS_OP_STREAM_RANDOM_WRITE:
-			IBVSocket_free_data_buf(csk->ibvsock, packet->data_buf_index);
+			if (packet->pkg_data_type == CFS_PACKAGE_DATA_PAGE) {
+				IBVSocket_free_data_buf(csk->ibvsock, packet->data_buf_index);
+			} else if (packet->pkg_data_type == CFS_PACKAGE_DATA_ITER) {
+				ib_dma_unmap_single(csk->ibvsock->cm_id->device, packet->request.rdma_addr, packet->request.iov.iov_len, DMA_TO_DEVICE);
+			} else {
+				cfs_log_error(csk->log, "invalid package data type: %d\n", packet->pkg_data_type);
+				return -EINVAL;
+			}
 			break;
 		case CFS_OP_STREAM_READ:
 		case CFS_OP_STREAM_FOLLOWER_READ:
-			ret = cfs_rdma_buffer_to_pages(csk, packet);
-			if (ret < 0) {
-				cfs_log_error(csk->log, "cfs_rdma_buffer_to_pages ret: %d\n", ret);
-				return ret;
+			if (packet->pkg_data_type == CFS_PACKAGE_DATA_PAGE) {
+				ret = cfs_rdma_buffer_to_pages(csk, packet);
+				if (ret < 0) {
+					cfs_log_error(csk->log, "cfs_rdma_buffer_to_pages ret: %d\n", ret);
+					return ret;
+				}
+			} else if (packet->pkg_data_type == CFS_PACKAGE_READ_ITER) {
+				ret = cfs_rdma_buffer_to_iter(csk, packet);
+				if (ret < 0) {
+					cfs_log_error(csk->log, "cfs_rdma_buffer_to_iter ret: %d\n", ret);
+					return ret;
+				}
+			} else {
+				cfs_log_error(csk->log, "invalid package data type: %d\n", packet->pkg_data_type);
+				return -EINVAL;
 			}
 			break;
 		default:
