@@ -395,6 +395,7 @@ func newDataPartitionGetDiscardCmd(client *master.MasterClient) *cobra.Command {
 }
 
 func newDataPartitionSetDiscardCmd(client *master.MasterClient) *cobra.Command {
+	force := false
 	cmd := &cobra.Command{
 		Use:   CliOpSetDiscard + " [DATA PARTITION ID] [DISCARD]",
 		Short: cmdDataPartitionSetDiscardShort,
@@ -418,12 +419,13 @@ func newDataPartitionSetDiscardCmd(client *master.MasterClient) *cobra.Command {
 			if err != nil {
 				return
 			}
-			if err = client.AdminAPI().SetDataPartitionDiscard(dpId, discard); err != nil {
+			if err = client.AdminAPI().SetDataPartitionDiscard(dpId, discard, force); err != nil {
 				return
 			}
-			stdout("Discard %v successful\n", dpId)
+			stdout("Set data partition %v discard to %v successful\n", dpId, discard)
 		},
 	}
+	cmd.Flags().BoolVar(&force, CliFlagForce, false, "force set dp discard")
 	return cmd
 }
 
