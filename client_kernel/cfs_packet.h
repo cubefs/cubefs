@@ -129,6 +129,7 @@ static inline int cfs_parse_status(u8 status)
 #define CFS_PACKAGE_DATA_PAGE 0
 #define CFS_PACKAGE_DATA_ITER 1
 #define CFS_PACKAGE_READ_ITER 2
+#define CFS_PACKAGE_RDMA_ITER 3
 
 /**
  *  Define cubefs file mode, refer to "https://pkg.go.dev/io/fs#FileMode".
@@ -945,7 +946,6 @@ struct cfs_packet {
 			struct iov_iter iter;
 		} data;
 		struct iovec iov;
-		u64 rdma_addr;
 	} __attribute__((packed)) request;
 	struct {
 		struct cfs_packet_hdr hdr;

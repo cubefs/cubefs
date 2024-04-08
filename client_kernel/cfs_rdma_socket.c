@@ -137,16 +137,25 @@ static int cfs_rdma_pages_to_buffer(struct cfs_socket *csk, struct cfs_packet *p
 	return 0;
 }
 
-static void cfs_rdma_map_iter(struct cfs_socket *csk, struct cfs_packet *packet) {
+static int cfs_rdma_iter_to_buffer(struct cfs_socket *csk, struct cfs_packet *packet) {
+	struct BufferItem *pDataBuf = NULL;
 	ssize_t size = 0;
-	u64 rdma_addr;
+	int index = 0;
 
-	size = packet->request.iov.iov_len;
-	rdma_addr = ib_dma_map_single(csk->ibvsock->cm_id->device, packet->request.iov.iov_base, size, DMA_TO_DEVICE);
-
-	packet->request.hdr_padding.RdmaAddr = rdma_addr;
+	size = be32_to_cpu(packet->request.hdr.size);
+	index = IBVSocket_get_data_buf(csk->ibvsock, size);
+	if (index < 0) {
+		printk("failed to allocate data buffer. size=%ld\n", size);
+		return -ENOMEM;
+	}
+	packet->data_buf_index = index;
+	pDataBuf = &csk->ibvsock->data_buf[index];
+	// copy the data into data buffer.
+	memcpy(pDataBuf->pBuff, packet->request.iov.iov_base, size);
+	packet->request.hdr_padding.RdmaAddr = pDataBuf->dma_addr;
 	packet->request.hdr_padding.RdmaLength = htonl(size);
-	packet->request.rdma_addr = rdma_addr;
+
+	return 0;
 }
 
 static int cfs_rdma_attach_buffer(struct cfs_socket *csk, struct cfs_packet *packet) {
@@ -169,6 +178,34 @@ static int cfs_rdma_attach_buffer(struct cfs_socket *csk, struct cfs_packet *pac
 	pDataBuf = &csk->ibvsock->data_buf[index];
 	packet->request.hdr_padding.RdmaAddr = pDataBuf->dma_addr;
 	packet->request.hdr_padding.RdmaLength = htonl(count);
+
+	return 0;
+}
+
+static int cfs_rdma_set_packet_data(struct cfs_socket *csk, struct cfs_packet *packet) {
+	int ret = 0;
+
+	switch(packet->pkg_data_type) {
+		case CFS_PACKAGE_DATA_PAGE:
+			ret = cfs_rdma_pages_to_buffer(csk, packet);
+			if (ret < 0) {
+				cfs_log_error(csk->log, "cfs_rdma_pages_to_buffer error: %ld\n", ret);
+				return ret;
+			}
+			break;
+		case CFS_PACKAGE_DATA_ITER:
+			ret = cfs_rdma_iter_to_buffer(csk, packet);
+			if (ret < 0) {
+				cfs_log_error(csk->log, "cfs_rdma_iter_to_buffer error: %ld\n", ret);
+				return ret;
+			}
+			break;
+		case CFS_PACKAGE_RDMA_ITER:
+			break;
+		default:
+			cfs_log_error(csk->log, "invalid data type in rdma send: %d\n", packet->pkg_data_type);
+			return -EINVAL;
+	}
 
 	return 0;
 }
@@ -223,17 +260,10 @@ int cfs_rdma_send_packet(struct cfs_socket *csk, struct cfs_packet *packet)
 			break;
 		case CFS_OP_STREAM_WRITE:
 		case CFS_OP_STREAM_RANDOM_WRITE:
-			if (packet->pkg_data_type == CFS_PACKAGE_DATA_PAGE) {
-				ret = cfs_rdma_pages_to_buffer(csk, packet);
-				if (ret < 0) {
-					cfs_log_error(csk->log, "cfs_rdma_pages_to_buffer error: %ld\n", ret);
-					return ret;
-				}
-			} else if (packet->pkg_data_type == CFS_PACKAGE_DATA_ITER) {
-				cfs_rdma_map_iter(csk, packet);
-			} else {
-				cfs_log_error(csk->log, "invalid data type in rdma send: %d\n", packet->pkg_data_type);
-				return -EINVAL;
+			ret = cfs_rdma_set_packet_data(csk, packet);
+			if (ret < 0) {
+				cfs_log_error(csk->log, "cfs_rdma_set_packet_data error: %ld\n", ret);
+				return ret;
 			}
 
 			len = IBVSocket_send(csk->ibvsock, &iter);
@@ -371,14 +401,7 @@ int cfs_rdma_recv_packet(struct cfs_socket *csk, struct cfs_packet *packet)
 	switch (packet->request.hdr.opcode) {
 		case CFS_OP_STREAM_WRITE:
 		case CFS_OP_STREAM_RANDOM_WRITE:
-			if (packet->pkg_data_type == CFS_PACKAGE_DATA_PAGE) {
-				IBVSocket_free_data_buf(csk->ibvsock, packet->data_buf_index);
-			} else if (packet->pkg_data_type == CFS_PACKAGE_DATA_ITER) {
-				ib_dma_unmap_single(csk->ibvsock->cm_id->device, packet->request.rdma_addr, packet->request.iov.iov_len, DMA_TO_DEVICE);
-			} else {
-				cfs_log_error(csk->log, "invalid package data type: %d\n", packet->pkg_data_type);
-				return -EINVAL;
-			}
+			IBVSocket_free_data_buf(csk->ibvsock, packet->data_buf_index);
 			break;
 		case CFS_OP_STREAM_READ:
 		case CFS_OP_STREAM_FOLLOWER_READ:
@@ -404,6 +427,26 @@ int cfs_rdma_recv_packet(struct cfs_socket *csk, struct cfs_packet *packet)
 	}
 
 	return ret;
+}
+
+int cfs_rdma_allocate_buffer(struct cfs_socket *csk, size_t size, struct cfs_rdma_buffer *buffer) {
+	int index = -1;
+
+	if (buffer == NULL) {
+		return -EPERM;
+	}
+
+	index = IBVSocket_get_data_buf(csk->ibvsock, size);
+	if (index < 0 ) {
+		cfs_log_error(csk->log, "allocate rdma data buffer failed.\n");
+		return -ENOMEM;
+	}
+
+	buffer->index = index;
+	buffer->pBuff = csk->ibvsock->data_buf[index].pBuff;
+	buffer->dma_addr = csk->ibvsock->data_buf[index].dma_addr;
+
+	return 0;
 }
 
 static void rdma_pool_lru_work_cb(struct work_struct *work)

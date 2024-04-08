@@ -1302,14 +1302,12 @@ static int cfs_set_packet_iter_crc(struct cfs_packet *packet, struct iov_iter *i
 
 	packet->request.iov.iov_base = kvmalloc(size, GFP_KERNEL);
 	if (!packet->request.iov.iov_base) {
-		printk("failed to malloc size=%ld\n", size);
 		return -ENOMEM;
 	}
 	packet->request.iov.iov_len = size;
 	ret = copy_from_iter_full(packet->request.iov.iov_base, size, iter);
 	if (!ret) {
 		kfree(packet->request.iov.iov_base);
-		printk("copied %d bytes != size =%ld\n", ret, size);
 		return -EIO;
 	}
 
@@ -1380,7 +1378,6 @@ static size_t extent_write_iter_random(struct cfs_extent_stream *es, struct cfs_
 		cfs_data_partition_set_leader(dp, ret);
 
 		cfs_packet_release(packet);
-		iov_iter_advance(iter, w_len);
 		send_bytes += w_len;
 	}
 
@@ -1480,8 +1477,38 @@ retry:
 		return ret;
 	}
 
-	iov_iter_advance(iter, io_info->size);
 	cfs_packet_release(packet);
+	return 0;
+}
+
+static int cfs_set_packet_rdma_buffer_crc(struct cfs_extent_writer *writer, struct cfs_packet *packet, struct iov_iter *iter, size_t size) {
+	u32 crc = 0;
+	bool ret = false;
+	struct cfs_rdma_buffer rdma_buf;
+	int iret = 0;
+
+	iret = cfs_rdma_allocate_buffer(writer->sock, size, &rdma_buf);
+	if (iret < 0) {
+		return -ENOMEM;
+	}
+
+	ret = copy_from_iter_full(rdma_buf.pBuff, size, iter);
+	if (!ret) {
+		IBVSocket_free_data_buf(writer->sock->ibvsock, rdma_buf.index);
+		return -EIO;
+	}
+
+	crc ^= 0xffffffffUL;
+	crc = crc32_le(crc, rdma_buf.pBuff, size);
+	crc ^= 0xffffffffUL;
+
+	packet->request.hdr.crc = cpu_to_be32(crc);
+	packet->request.hdr.size = cpu_to_be32(size);
+	packet->pkg_data_type = CFS_PACKAGE_RDMA_ITER;
+	packet->data_buf_index = rdma_buf.index;
+	packet->request.hdr_padding.RdmaAddr = rdma_buf.dma_addr;
+	packet->request.hdr_padding.RdmaLength = htonl(size);
+
 	return 0;
 }
 
@@ -1516,9 +1543,13 @@ static size_t extent_write_iter_normal(struct cfs_extent_stream *es,
 		cfs_packet_set_request_arg(packet,
 						writer->dp->follower_addrs);
 
-		ret = cfs_set_packet_iter_crc(packet, iter, w_len);
+		if (es->enable_rdma) {
+			ret = cfs_set_packet_rdma_buffer_crc(writer, packet, iter, w_len);
+		} else {
+			ret = cfs_set_packet_iter_crc(packet, iter, w_len);
+		}
 		if (unlikely(ret < 0)) {
-			cfs_log_error(es->ec->log, "ino(%llu) cfs_set_packet_iter_crc error ret(%d)\n", es->ino, ret);
+			cfs_log_error(es->ec->log, "ino(%llu) set packet iter and crc error ret(%d)\n", es->ino, ret);
 			cfs_packet_release(packet);
 			return ret;
 		}
