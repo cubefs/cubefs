@@ -304,3 +304,9 @@ type BadDiskInfos struct {
 type DiscardDataPartitionInfos struct {
 	DiscardDps []DataPartitionInfo
 }
+
+type DecommissionTokenStatus struct {
+	NodesetID   uint64
+	CurTokenNum int32
+	MaxTokenNum int32
+}

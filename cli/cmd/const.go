@@ -41,6 +41,8 @@ const (
 	CliOpShrink                  = "shrink"
 	CliOpGetDiscard              = "get-discard"
 	CliOpForbidMpDecommission    = "forbid-mp-decommission"
+	CliOpSetDecommissionLimit    = "set-decommission-limit"
+	CliOpQueryDecommissionStatus = "query-decommission-status"
 
 	//Shorthand format of operation name
 	CliOpDecommissionShortHand = "dec"
