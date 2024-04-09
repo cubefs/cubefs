@@ -296,7 +296,7 @@ func (dd *DecommissionDisk) updateDecommissionStatus(c *Cluster, debug bool) (ui
 	}
 
 	for _, dp := range partitions {
-		if dp.IsDecommissionFailed() && !dp.needRollback(c) {
+		if dp.IsRollbackFailed() {
 			failedNum++
 			failedPartitionIds = append(failedPartitionIds, dp.PartitionID)
 		}
