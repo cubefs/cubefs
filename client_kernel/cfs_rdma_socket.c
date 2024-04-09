@@ -108,7 +108,6 @@ static int cfs_rdma_pages_to_buffer(struct cfs_socket *csk, struct cfs_packet *p
 	char *pStart = NULL;
 	ssize_t count = 0;
 	ssize_t len = 0;
-	int index = 0;
 	int i;
 
 	frags = packet->request.data.write.frags;
@@ -116,13 +115,12 @@ static int cfs_rdma_pages_to_buffer(struct cfs_socket *csk, struct cfs_packet *p
 	for (i = 0; i < packet->request.data.write.nr; i++) {
 		count += frags[i].size;
 	}
-	index = IBVSocket_get_data_buf(csk->ibvsock, count);
-	if (index < 0) {
+	pDataBuf = IBVSocket_get_data_buf(csk->ibvsock, count);
+	if (!pDataBuf) {
 		printk("failed to allocate data buffer. size=%ld\n", count);
 		return -ENOMEM;
 	}
-	packet->data_buf_index = index;
-	pDataBuf = &csk->ibvsock->data_buf[index];
+	packet->data_buffer = pDataBuf;
 	// copy the data into data buffer.
 	len = 0;
 	for (i = 0; i < packet->request.data.write.nr; i++) {
@@ -140,16 +138,14 @@ static int cfs_rdma_pages_to_buffer(struct cfs_socket *csk, struct cfs_packet *p
 static int cfs_rdma_iter_to_buffer(struct cfs_socket *csk, struct cfs_packet *packet) {
 	struct BufferItem *pDataBuf = NULL;
 	ssize_t size = 0;
-	int index = 0;
 
 	size = be32_to_cpu(packet->request.hdr.size);
-	index = IBVSocket_get_data_buf(csk->ibvsock, size);
-	if (index < 0) {
+	pDataBuf = IBVSocket_get_data_buf(csk->ibvsock, size);
+	if (!pDataBuf) {
 		printk("failed to allocate data buffer. size=%ld\n", size);
 		return -ENOMEM;
 	}
-	packet->data_buf_index = index;
-	pDataBuf = &csk->ibvsock->data_buf[index];
+	packet->data_buffer = pDataBuf;
 	// copy the data into data buffer.
 	memcpy(pDataBuf->pBuff, packet->request.iov.iov_base, size);
 	packet->request.hdr_padding.RdmaAddr = pDataBuf->dma_addr;
@@ -162,7 +158,6 @@ static int cfs_rdma_attach_buffer(struct cfs_socket *csk, struct cfs_packet *pac
 	struct cfs_page_frag *frags;
 	struct BufferItem *pDataBuf = NULL;
 	ssize_t count = 0;
-	int index = 0;
 	int i;
 
 	frags = packet->reply.data.read.frags;
@@ -170,12 +165,11 @@ static int cfs_rdma_attach_buffer(struct cfs_socket *csk, struct cfs_packet *pac
 	for (i = 0; i < packet->reply.data.read.nr; i++) {
 		count += frags[i].size;
 	}
-	index = IBVSocket_get_data_buf(csk->ibvsock, count);
-	if (index < 0) {
+	pDataBuf = IBVSocket_get_data_buf(csk->ibvsock, count);
+	if (!pDataBuf) {
 		printk("failed to allocate data buffer. size=%ld\n", count);
 		return -ENOMEM;
 	}
-	pDataBuf = &csk->ibvsock->data_buf[index];
 	packet->request.hdr_padding.RdmaAddr = pDataBuf->dma_addr;
 	packet->request.hdr_padding.RdmaLength = htonl(count);
 
@@ -298,61 +292,54 @@ int cfs_rdma_send_packet(struct cfs_socket *csk, struct cfs_packet *packet)
 }
 
 static int cfs_rdma_buffer_to_pages(struct cfs_socket *csk, struct cfs_packet *packet) {
+	struct BufferItem *pDataBuf = NULL;
 	struct cfs_page_frag *frags;
 	ssize_t count = 0;
 	char *pStart = NULL;
-	int index = 0;
 	int i;
 
 	// copy data from buffer.
 	frags = packet->reply.data.read.frags;
 	count = 0;
-	index = packet->data_buf_index;
-	if (index < 0 || index >= DATA_BUF_NUM) {
-		printk("error: invalid data_buf_index=%d\n", index);
+	pDataBuf = packet->data_buffer;
+	if (!pDataBuf) {
+		printk("the data buffer pointer is null\n");
 		return -EINVAL;
 	}
-	if (!csk->ibvsock->data_buf[index].used) {
-		printk("error: data_buf[%d] used is false\n", index);
-		return -EINVAL;
-	}
-	for (i = 0; i < packet->reply.data.read.nr && count < csk->ibvsock->data_buf[index].size; i++) {
-		pStart = csk->ibvsock->data_buf[index].pBuff + count;
+
+	for (i = 0; i < packet->reply.data.read.nr && count < pDataBuf->size; i++) {
+		pStart = pDataBuf->pBuff + count;
 		memcpy(kmap(frags[i].page->page) + frags[i].offset, pStart, frags[i].size);
 		kunmap(frags[i].page->page);
 		count += frags[i].size;
 	}
 	// release the data buffer.
-	IBVSocket_free_data_buf(csk->ibvsock, index);
+	IBVSocket_free_data_buf(csk->ibvsock, pDataBuf);
 
 	return 0;
 }
 
 static int cfs_rdma_buffer_to_iter(struct cfs_socket *csk, struct cfs_packet *packet) {
+	struct BufferItem *pDataBuf = NULL;
 	ssize_t len = 0;
-	int index = 0;
 	u32 datalen = 0;
 
 	// copy data from buffer.
-	index = packet->data_buf_index;
-	if (index < 0 || index >= DATA_BUF_NUM) {
-		printk("error: invalid data_buf_index=%d\n", index);
-		return -EINVAL;
-	}
-	if (!csk->ibvsock->data_buf[index].used) {
-		printk("error: data_buf[%d] used is false\n", index);
+	pDataBuf = packet->data_buffer;
+	if (!pDataBuf) {
+		printk("the data buffer pointer is null\n");
 		return -EINVAL;
 	}
 
 	datalen = be32_to_cpu(packet->reply.hdr.size);
 
-	len = copy_to_iter(csk->ibvsock->data_buf[index].pBuff, datalen, packet->reply.data.user_iter);
+	len = copy_to_iter(pDataBuf->pBuff, datalen, packet->reply.data.user_iter);
 	if (len != datalen) {
 		printk("warning reply hdr size=%d, copied size=%ld\n", datalen, len);
 	}
 
 	// release the data buffer.
-	IBVSocket_free_data_buf(csk->ibvsock, index);
+	IBVSocket_free_data_buf(csk->ibvsock, pDataBuf);
 
 	return 0;
 }
@@ -401,7 +388,7 @@ int cfs_rdma_recv_packet(struct cfs_socket *csk, struct cfs_packet *packet)
 	switch (packet->request.hdr.opcode) {
 		case CFS_OP_STREAM_WRITE:
 		case CFS_OP_STREAM_RANDOM_WRITE:
-			IBVSocket_free_data_buf(csk->ibvsock, packet->data_buf_index);
+			IBVSocket_free_data_buf(csk->ibvsock, packet->data_buffer);
 			break;
 		case CFS_OP_STREAM_READ:
 		case CFS_OP_STREAM_FOLLOWER_READ:
@@ -427,26 +414,6 @@ int cfs_rdma_recv_packet(struct cfs_socket *csk, struct cfs_packet *packet)
 	}
 
 	return ret;
-}
-
-int cfs_rdma_allocate_buffer(struct cfs_socket *csk, size_t size, struct cfs_rdma_buffer *buffer) {
-	int index = -1;
-
-	if (buffer == NULL) {
-		return -EPERM;
-	}
-
-	index = IBVSocket_get_data_buf(csk->ibvsock, size);
-	if (index < 0 ) {
-		cfs_log_error(csk->log, "allocate rdma data buffer failed.\n");
-		return -ENOMEM;
-	}
-
-	buffer->index = index;
-	buffer->pBuff = csk->ibvsock->data_buf[index].pBuff;
-	buffer->dma_addr = csk->ibvsock->data_buf[index].dma_addr;
-
-	return 0;
 }
 
 static void rdma_pool_lru_work_cb(struct work_struct *work)

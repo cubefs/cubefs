@@ -22,6 +22,7 @@ cubefs-y :=	btree.o \
 	cfs_page.o \
 	cfs_socket.o \
 	rdma/rdma_api.o \
+	rdma/rdma_buffer.o \
 	cfs_rdma_socket.o
 
 all:

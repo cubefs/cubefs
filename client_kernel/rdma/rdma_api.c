@@ -115,20 +115,8 @@ void print_ip_addr(u32 addr) {
 	printk("ip addr: %d.%d.%d.%d\n", (addr & 0xff000000) >> 24, (addr & 0x00ff0000) >> 16, (addr & 0x0000ff00) >> 8, (addr & 0x000000ff));
 }
 
-void IBVSocket_init(struct IBVSocket *this) {
-    if (this == NULL) {
-        return;
-    }
-	memset(this, 0, sizeof(struct IBVSocket));
-    this->cm_id = NULL;
-    this->pd = NULL;
-    this->recvCQ = NULL;
-    this->sendCQ = NULL;
-    this->qp = NULL;
-    this->cm_id = NULL;
-}
-
 int RingBuffer_init(struct IBVSocket *this) {
+	struct BufferItem *item = NULL;
 	int i = 0;
 	struct ib_recv_wr wr;
 	const struct ib_recv_wr *bad_wr;
@@ -141,25 +129,23 @@ int RingBuffer_init(struct IBVSocket *this) {
 	mutex_init(&this->lock);
 	
 	for (i=0; i<BLOCK_NUM; i++) {
-		this->recvBuf[i].pBuff = kzalloc(MSG_LEN, GFP_KERNEL);
-		if (!this->recvBuf[i].pBuff) {
+		ret = rdma_buffer_get(&item, BUFFER_4K_SIZE);
+		if (ret < 0) {
 			return -ENOMEM;
 		}
-		this->recvBuf[i].dma_addr = ib_dma_map_single(this->cm_id->device, this->recvBuf[i].pBuff, MSG_LEN, DMA_BIDIRECTIONAL);
-		this->recvBuf[i].used = false;
+		this->recvBuf[i] = item;
 	}
 
 	for (i=0; i<BLOCK_NUM; i++) {
-		this->sendBuf[i].pBuff = kzalloc(MSG_LEN, GFP_KERNEL);
-		if (!this->sendBuf[i].pBuff) {
+		ret = rdma_buffer_get(&item, BUFFER_4K_SIZE);
+		if (ret < 0) {
 			return -ENOMEM;
 		}
-		this->sendBuf[i].dma_addr = ib_dma_map_single(this->cm_id->device, this->sendBuf[i].pBuff, MSG_LEN, DMA_BIDIRECTIONAL);
-		this->sendBuf[i].used = false;
+		this->sendBuf[i] = item;
 	}
 
 	for (i=0; i<BLOCK_NUM; i++) {
-		sge.addr = this->recvBuf[i].dma_addr;
+		sge.addr = this->recvBuf[i]->dma_addr;
 		sge.length = MSG_LEN;
 		sge.lkey = this->pd->local_dma_lkey;
 		wr.next = NULL;
@@ -175,12 +161,6 @@ int RingBuffer_init(struct IBVSocket *this) {
 	this->recvBufIndex = 0;
 	this->sendBufIndex = 0;
 
-	for (i=0; i<DATA_BUF_NUM; i++) {
-		this->data_buf[i].pBuff = NULL;
-		this->data_buf[i].size = 0;
-		this->data_buf[i].used = false;
-	}
-
 	return 0;
 }
 
@@ -190,27 +170,17 @@ void RingBuffer_free(struct IBVSocket *this) {
 	if (!this)
 		return;
 
-	for (i=0; i<DATA_BUF_NUM; i++) {
-		if (this->data_buf[i].pBuff != NULL) {
-			ib_dma_unmap_single(this->cm_id->device, this->data_buf[i].dma_addr, this->data_buf[i].size, DMA_TO_DEVICE);
-			kfree(this->data_buf[i].pBuff);
-			this->data_buf[i].pBuff = NULL;
+	for (i=0; i<BLOCK_NUM; i++) {
+		if (this->recvBuf[i]) {
+			rdma_buffer_put(this->recvBuf[i]);
+			this->recvBuf[i] = NULL;
 		}
 	}
 
 	for (i=0; i<BLOCK_NUM; i++) {
-		if (this->recvBuf[i].pBuff) {
-			ib_dma_unmap_single(this->cm_id->device, this->recvBuf[i].dma_addr, MSG_LEN, DMA_BIDIRECTIONAL);
-			kfree(this->recvBuf[i].pBuff);
-			this->recvBuf[i].pBuff = NULL;
-		}
-	}
-
-	for (i=0; i<BLOCK_NUM; i++) {
-		if (this->sendBuf[i].pBuff) {
-			ib_dma_unmap_single(this->cm_id->device, this->sendBuf[i].dma_addr, MSG_LEN, DMA_BIDIRECTIONAL);
-			kfree(this->sendBuf[i].pBuff);
-			this->sendBuf[i].pBuff = NULL;
+		if (this->sendBuf[i]) {
+			rdma_buffer_put(this->sendBuf[i]);
+			this->sendBuf[i] = NULL;
 		}
 	}
 }
@@ -221,16 +191,16 @@ int RingBuffer_alloc(struct IBVSocket *this, bool send) {
 	mutex_lock(&this->lock);
 	if (send) {
 		for (i = this->sendBufIndex; i<BLOCK_NUM; i++) {
-			if (!this->sendBuf[i].used) {
-				this->sendBuf[i].used = true;
+			if (!this->sendBuf[i]->used) {
+				this->sendBuf[i]->used = true;
 				this->sendBufIndex = i;
 				mutex_unlock(&this->lock);
 				return i;
 			}
 		}
 		for (i = 0; i<this->sendBufIndex; i++) {
-			if (!this->sendBuf[i].used) {
-				this->sendBuf[i].used = true;
+			if (!this->sendBuf[i]->used) {
+				this->sendBuf[i]->used = true;
 				this->sendBufIndex = i;
 				mutex_unlock(&this->lock);
 				return i;
@@ -238,14 +208,14 @@ int RingBuffer_alloc(struct IBVSocket *this, bool send) {
 		}
 	} else {
 		for (i = this->recvBufIndex; i<BLOCK_NUM; i++) {
-			if (this->recvBuf[i].used) {
+			if (this->recvBuf[i]->used) {
 				this->recvBufIndex = (i+1)%BLOCK_NUM;
 				mutex_unlock(&this->lock);
 				return i;
 			}
 		}
 		for (i=0; i<this->recvBufIndex; i++) {
-			if (this->recvBuf[i].used) {
+			if (this->recvBuf[i]->used) {
 				this->recvBufIndex = (i+1)%BLOCK_NUM;
 				mutex_unlock(&this->lock);
 				return i;
@@ -262,9 +232,9 @@ void RingBuffer_dealloc(struct IBVSocket *this, bool send, int index) {
 		return;
 
 	if (send) {
-		this->sendBuf[index].used = false;
+		this->sendBuf[index]->used = false;
 	} else {
-		this->recvBuf[index].used = false;
+		this->recvBuf[index]->used = false;
 	}
 }
 
@@ -280,7 +250,6 @@ struct IBVSocket *IBVSocket_construct(struct sockaddr_in *sin) {
 		printk("kzalloc failed\n");
 		return ERR_PTR(-ENOMEM);
 	}
-    IBVSocket_init(this);
 
 	this->connState = IBVSOCKETCONNSTATE_CONNECTING;
 	init_waitqueue_head(&this->eventWaitQ);
@@ -463,10 +432,10 @@ ssize_t IBVSocket_copy_restore(struct IBVSocket *this, struct iov_iter *iter, in
 
 	isize = MIN(MSG_LEN, iter->iov->iov_len);
 	
-    memcpy(iter->iov->iov_base, this->recvBuf[index].pBuff, isize);
+    memcpy(iter->iov->iov_base, this->recvBuf[index]->pBuff, isize);
 	RingBuffer_dealloc(this, false, index);
 
-	sge.addr = this->recvBuf[index].dma_addr;
+	sge.addr = this->recvBuf[index]->dma_addr;
 	sge.length = MSG_LEN;
 	sge.lkey = this->pd->local_dma_lkey;
     wr.next = NULL;
@@ -497,7 +466,7 @@ ssize_t IBVSocket_recvT(struct IBVSocket *this, struct iov_iter *iter) {
             for (i = 0; i < numElements; i++) {
                 ibv_print_debug("recv status: %d, opcode: %d, wr_id: %lld\n", wc[i].status, wc[i].opcode, wc[i].wr_id);
 				index = wc[i].wr_id;
-				this->recvBuf[index].used = true;
+				this->recvBuf[index]->used = true;
             }
         } else if (numElements < 0) {
 			printk("ib_poll_cq recvCQ failed. ErrCode: %d\n", numElements);
@@ -558,9 +527,9 @@ ssize_t IBVSocket_send(struct IBVSocket *this, struct iov_iter *iter) {
 	}
 
     isize = MIN(MSG_LEN, iter->iov->iov_len);
-    memcpy(this->sendBuf[index].pBuff, iter->iov->iov_base, isize);
+    memcpy(this->sendBuf[index]->pBuff, iter->iov->iov_base, isize);
 
-	sge.addr = this->sendBuf[index].dma_addr;
+	sge.addr = this->sendBuf[index]->dma_addr;
 	sge.length = isize;
 	sge.lkey = this->pd->local_dma_lkey;
 	send_wr.wr_id = index;
@@ -578,79 +547,19 @@ ssize_t IBVSocket_send(struct IBVSocket *this, struct iov_iter *iter) {
     return isize;
 }
 
-int IBVSocket_lock_data_buf(struct IBVSocket *this, size_t size) {
-	int i;
-
-	mutex_lock(&this->lock);
-	for (i=0; i<DATA_BUF_NUM; i++) {
-		if (!this->data_buf[i].used && this->data_buf[i].size >= size) {
-			this->data_buf[i].used = true;
-			mutex_unlock(&this->lock);
-			return i;
-		}
-	}
-
-	for (i=0; i<DATA_BUF_NUM; i++) {
-		if (!this->data_buf[i].used) {
-			this->data_buf[i].used = true;
-			mutex_unlock(&this->lock);
-			return i;
-		}
-	}
-	mutex_unlock(&this->lock);
-	return -1;
-}
-
-int IBVSocket_get_data_buf(struct IBVSocket *this, size_t size) {
-	int index = -1, j;
+struct BufferItem *IBVSocket_get_data_buf(struct IBVSocket *this, size_t size) {
+	int ret = 0;
+	struct BufferItem *item = NULL;
 	size_t alloc_size = PAGE_ALIGN(size);
 
-	for (j=0; j< MAX_RETRY_COUNT; j++) {
-		if (this->connState != IBVSOCKETCONNSTATE_ESTABLISHED) {
-			return -EIO;
-		}
-
-		index = IBVSocket_lock_data_buf(this, alloc_size);
-		if (index >= 0) {
-			// Get the data buffer.
-			break;
-		}
-		usleep_range(1000, 20000);
+	ret = rdma_buffer_get(&item, alloc_size);
+	if (ret < 0) {
+		return NULL;
 	}
 
-	if (index < 0) {
-		printk("Timeout for waiting for data buffer\n");
-		return -ENOMEM;
-	}
-
-	if (this->data_buf[index].size >= size) {
-		return index;
-	}
-
-	// Free the old buffer. Allocate a larger one.
-	if (this->data_buf[index].pBuff != NULL) {
-		ib_dma_unmap_single(this->cm_id->device, this->data_buf[index].dma_addr, this->data_buf[index].size, DMA_TO_DEVICE);
-		kfree(this->data_buf[index].pBuff);
-		this->data_buf[index].pBuff = NULL;
-		this->data_buf[index].size = 0;
-	}
-
-	this->data_buf[index].pBuff = kmalloc(alloc_size, GFP_KERNEL);
-	if (this->data_buf[index].pBuff == NULL) {
-		printk("Failed to allocate data buffer with size: %ld\n", alloc_size);
-		this->data_buf[index].used = false;
-		return -ENOMEM;
-	}
-	this->data_buf[index].size = alloc_size;
-	this->data_buf[index].dma_addr = ib_dma_map_single(this->cm_id->device, this->data_buf[index].pBuff, alloc_size, DMA_TO_DEVICE);
-
-	return index;
+	return item;
 }
 
-void IBVSocket_free_data_buf(struct IBVSocket *this, int index) {
-	if (index < 0 || index >= DATA_BUF_NUM) {
-		return;
-	}
-
-	this->data_buf[index].used = false;
+void IBVSocket_free_data_buf(struct IBVSocket *this, struct BufferItem *item) {
+	rdma_buffer_put(item);
 }

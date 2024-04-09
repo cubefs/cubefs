@@ -1482,31 +1482,31 @@ retry:
 }
 
 static int cfs_set_packet_rdma_buffer_crc(struct cfs_extent_writer *writer, struct cfs_packet *packet, struct iov_iter *iter, size_t size) {
+	struct BufferItem *pDataBuf = NULL;
 	u32 crc = 0;
 	bool ret = false;
-	struct cfs_rdma_buffer rdma_buf;
 	int iret = 0;
 
-	iret = cfs_rdma_allocate_buffer(writer->sock, size, &rdma_buf);
-	if (iret < 0) {
+	pDataBuf = IBVSocket_get_data_buf(writer->sock->ibvsock, size);
+	if (!pDataBuf) {
 		return -ENOMEM;
 	}
 
-	ret = copy_from_iter_full(rdma_buf.pBuff, size, iter);
+	ret = copy_from_iter_full(pDataBuf->pBuff, size, iter);
 	if (!ret) {
-		IBVSocket_free_data_buf(writer->sock->ibvsock, rdma_buf.index);
+		IBVSocket_free_data_buf(writer->sock->ibvsock, pDataBuf);
 		return -EIO;
 	}
 
 	crc ^= 0xffffffffUL;
-	crc = crc32_le(crc, rdma_buf.pBuff, size);
+	crc = crc32_le(crc, pDataBuf->pBuff, size);
 	crc ^= 0xffffffffUL;
 
 	packet->request.hdr.crc = cpu_to_be32(crc);
 	packet->request.hdr.size = cpu_to_be32(size);
 	packet->pkg_data_type = CFS_PACKAGE_RDMA_ITER;
-	packet->data_buf_index = rdma_buf.index;
-	packet->request.hdr_padding.RdmaAddr = rdma_buf.dma_addr;
+	packet->data_buffer = pDataBuf;
+	packet->request.hdr_padding.RdmaAddr = pDataBuf->dma_addr;
 	packet->request.hdr_padding.RdmaLength = htonl(size);
 
 	return 0;

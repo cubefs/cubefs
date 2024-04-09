@@ -10,10 +10,11 @@
 #include <rdma/ib_verbs.h>
 #include <rdma/rdma_cm.h>
 #include <rdma/ib_cm.h>
+#include "rdma_buffer.h"
 
 #define IBVSOCKET_CONN_TIMEOUT_MS 5000
 #define MSG_LEN 4096
-#define BLOCK_NUM 32
+#define BLOCK_NUM 8
 #define DATA_BUF_NUM 32
 #define MAX_RETRY_COUNT 5000
 #define TIMEOUT_JS 5000
@@ -30,13 +31,6 @@ enum IBVSocketConnState {
 };
 typedef enum IBVSocketConnState IBVSocketConnState_t;
 
-struct BufferItem {
-	char *pBuff;
-	u64 dma_addr;
-	bool used;
-	size_t size;
-};
-
 struct IBVSocket {
 	wait_queue_head_t eventWaitQ;
 	struct rdma_cm_id *cm_id;
@@ -44,21 +38,20 @@ struct IBVSocket {
 	struct ib_cq *recvCQ; // recv completion queue
 	struct ib_cq *sendCQ; // send completion queue
 	struct ib_qp *qp; // send+recv queue pair
-	struct BufferItem recvBuf[BLOCK_NUM];
+	struct BufferItem *recvBuf[BLOCK_NUM];
 	int recvBufIndex;
-	struct BufferItem sendBuf[BLOCK_NUM];
+	struct BufferItem *sendBuf[BLOCK_NUM];
 	int sendBufIndex;
 	struct mutex lock;
 	volatile IBVSocketConnState_t connState;
-	struct BufferItem data_buf[DATA_BUF_NUM];
 };
 
 extern struct IBVSocket *IBVSocket_construct(struct sockaddr_in *sin);
 extern bool IBVSocket_destruct(struct IBVSocket *_this);
 extern ssize_t IBVSocket_recvT(struct IBVSocket *_this, struct iov_iter *iter);
 extern ssize_t IBVSocket_send(struct IBVSocket *_this, struct iov_iter *source);
-extern int IBVSocket_get_data_buf(struct IBVSocket *this, size_t size);
-extern void IBVSocket_free_data_buf(struct IBVSocket *this, int index);
+extern struct BufferItem *IBVSocket_get_data_buf(struct IBVSocket *this, size_t size);
+extern void IBVSocket_free_data_buf(struct IBVSocket *this, struct BufferItem *item);
 
 #define MIN(a, b) (((a) < (b)) ? (a) : (b))
 #define MAX(a, b) (((a) < (b)) ? (b) : (a))

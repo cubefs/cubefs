@@ -982,7 +982,7 @@ struct cfs_packet {
 	union {
 		struct cfs_page_frag frags[CFS_PAGE_VEC_NUM];
 	} rw;
-	int data_buf_index;
+	struct BufferItem *data_buffer;
 	int pkg_data_type;
 };
 

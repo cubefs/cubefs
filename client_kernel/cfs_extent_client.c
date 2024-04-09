@@ -2,6 +2,7 @@
  * Copyright 2023 The CubeFS Authors.
  */
 #include "cfs_extent.h"
+#include "rdma/rdma_buffer.h"
 
 #define EXTENT_UPDATE_DP_INTERVAL_MS 5 * 60 * 1000u
 
@@ -105,6 +106,14 @@ cfs_extent_client_new(struct cfs_mount_info *cmi)
 	INIT_DELAYED_WORK(&ec->update_dp_work, update_dp_work_cb);
 	schedule_delayed_work(&ec->update_dp_work,
 			      msecs_to_jiffies(EXTENT_UPDATE_DP_INTERVAL_MS));
+	if (ec->enable_rdma) {
+		ret = rdma_buffer_new(ec->rdma_port);
+		if (ret < 0) {
+			printk("error to call rdma_buffer_new\n");
+			kfree(ec);
+			return ERR_PTR(ret);
+		}
+	}
 	return ec;
 }
 
@@ -120,6 +129,9 @@ void cfs_extent_client_release(struct cfs_extent_client *ec)
 	hash_for_each_safe(ec->data_partitions, i, tmp, dp, hash) {
 		hash_del(&dp->hash);
 		cfs_data_partition_release(dp);
+	}
+	if (ec->enable_rdma) {
+		rdma_buffer_release();
 	}
 	kfree(ec);
 }
