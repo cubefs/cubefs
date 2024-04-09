@@ -986,3 +986,7 @@ func replicaInHost(hosts []string, replica string) bool {
 	}
 	return false
 }
+
+func formatDecommissionTokenStatus(status *proto.DecommissionTokenStatus) string {
+	return fmt.Sprintf("Nodeset %v: %v/%v", status.NodesetID, status.CurTokenNum, status.MaxTokenNum)
+}
