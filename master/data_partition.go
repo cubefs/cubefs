@@ -1381,6 +1381,10 @@ func (partition *DataPartition) Decommission(c *Cluster) bool {
 	}
 
 errHandler:
+	// choose other node to create data partition
+	if resetDecommissionDst {
+		partition.DecommissionDstAddr = ""
+	}
 	// special replica num receive stop signal,donot reset  SingleDecommissionStatus for decommission again
 	if partition.GetDecommissionStatus() == DecommissionPause {
 		log.LogWarnf("action[decommissionDataPartition] partitionID:%v is stopped", partition.PartitionID)
