@@ -1485,7 +1485,6 @@ static int cfs_set_packet_rdma_buffer_crc(struct cfs_extent_writer *writer, stru
 	struct BufferItem *pDataBuf = NULL;
 	u32 crc = 0;
 	bool ret = false;
-	int iret = 0;
 
 	pDataBuf = IBVSocket_get_data_buf(writer->sock->ibvsock, size);
 	if (!pDataBuf) {

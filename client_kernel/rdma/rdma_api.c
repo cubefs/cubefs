@@ -454,10 +454,10 @@ ssize_t IBVSocket_copy_restore(struct IBVSocket *this, struct iov_iter *iter, in
 ssize_t IBVSocket_recvT(struct IBVSocket *this, struct iov_iter *iter) {
 	struct ib_wc wc[8];
 	int numElements;
-	int i, j;
+	int i;
 	int index = -1;
 
-    for(j=0; j< MAX_RETRY_COUNT; j++) {
+    while(true) {
 		if (this->connState != IBVSOCKETCONNSTATE_ESTABLISHED) {
 			return -EIO;
 		}
@@ -477,7 +477,6 @@ ssize_t IBVSocket_recvT(struct IBVSocket *this, struct iov_iter *iter) {
 		if (index >= 0) {
 			break;
 		}
-		usleep_range(1000, 20000);
     }
 	if (index < 0) {
 		printk("Timeout waiting for receive buffer\n");
@@ -494,11 +493,11 @@ ssize_t IBVSocket_send(struct IBVSocket *this, struct iov_iter *iter) {
     int ret = 0;
 	struct ib_wc wc[8];
 	int numElements;
-    int i = 0, j;
+    int i = 0;
     ssize_t isize = 0;
 	int index = -1;
 
-	for (j=0; j< MAX_RETRY_COUNT; j++) {
+	while(true) {
 		if (this->connState != IBVSOCKETCONNSTATE_ESTABLISHED) {
 			return -EIO;
 		}
@@ -518,7 +517,6 @@ ssize_t IBVSocket_send(struct IBVSocket *this, struct iov_iter *iter) {
 		if (index >= 0) {
 			break;
 		}
-		usleep_range(1000, 20000);
 	}
 
 	if (index < 0) {
