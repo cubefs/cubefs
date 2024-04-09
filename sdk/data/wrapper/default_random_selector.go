@@ -54,9 +54,6 @@ func (s *DefaultRandomSelector) Name() string {
 func (s *DefaultRandomSelector) Refresh(partitions []*DataPartition) (err error) {
 	var localLeaderPartitions []*DataPartition
 	for i := 0; i < len(partitions); i++ {
-		//TODO:tangjingyu test only
-		log.LogInfof("############ DefaultRandomSelector[Refresh] dpId(%v) mediaType(%v)",
-			partitions[i].PartitionID, proto.MediaTypeString(partitions[i].MediaType))
 		if strings.Split(partitions[i].Hosts[0], ":")[0] == LocalIP {
 			localLeaderPartitions = append(localLeaderPartitions, partitions[i])
 		}
@@ -85,9 +82,6 @@ func (s *DefaultRandomSelector) Select(exclude map[string]struct{}, mediaType ui
 	dp = s.getRandomDataPartition(partitions, exclude, mediaType, ehID)
 
 	if dp != nil {
-		//TODO:tangjingyu test only
-		log.LogInfof("############ DefaultRandomSelector[Select]: eh(%v) targetMediaType(%v), selected dpId(%v) mediaType(%v)",
-			ehID, proto.MediaTypeString(mediaType), dp.PartitionID, proto.MediaTypeString(dp.MediaType))
 		return dp, nil
 	}
 
