@@ -764,6 +764,28 @@ func (api *AdminAPI) AbortDiskDecommission(addr string, disk string) (err error)
 	return
 }
 
+func (api *AdminAPI) SetClusterDecommissionLimit(limit int32) (err error) {
+	var request = newAPIRequest(http.MethodPost, proto.AdminUpdateDecommissionLimit)
+	request.addParam("decommissionLimit", strconv.FormatInt(int64(limit), 10))
+	if _, err = api.mc.serveRequest(request); err != nil {
+		return
+	}
+	return
+}
+
+func (api *AdminAPI) QueryDecommissionToken() (status []proto.DecommissionTokenStatus, err error) {
+	var buf []byte
+	var request = newAPIRequest(http.MethodGet, proto.AdminQueryDecommissionToken)
+	if buf, err = api.mc.serveRequest(request); err != nil {
+		return
+	}
+	status = make([]proto.DecommissionTokenStatus, 0)
+	if err = json.Unmarshal(buf, &status); err != nil {
+		return
+	}
+	return
+}
+
 func (api AdminAPI) SetDecommissionDiskLimit(limit uint32) (err error) {
 	request := newRequest(post, proto.AdminUpdateDecommissionDiskLimit)
 	request.addParam("decommissionDiskLimit", strconv.FormatUint(uint64(limit), 10))

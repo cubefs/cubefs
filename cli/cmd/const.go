@@ -50,6 +50,9 @@ const (
 	CliOpQueryDecommissionFailedDisk = "query-decommission-failed-disk"
 	CliOpSetDecommissionDiskLimit    = "set-decommission-disk-limit"
 
+	CliOpSetDecommissionLimit    = "set-decommission-limit"
+	CliOpQueryDecommissionStatus = "query-decommission-status"
+
 	// Shorthand format of operation name
 	CliOpDecommissionShortHand = "dec"
 
