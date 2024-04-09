@@ -92,19 +92,31 @@ func replyInfo(info *proto.InodeInfo, ino *Inode, quotaInfos map[uint32]*proto.M
 
 func txReplyInfo(inode *Inode, txInfo *proto.TransactionInfo, quotaInfos map[uint32]*proto.MetaQuotaInfo) (resp *proto.TxCreateInodeResponse) {
 	inoInfo := &proto.InodeInfo{
-		Inode:      inode.Inode,
-		Mode:       inode.Type,
-		Nlink:      inode.NLink,
-		Size:       inode.Size,
-		Uid:        inode.Uid,
-		Gid:        inode.Gid,
-		Generation: inode.Generation,
-		ModifyTime: time.Unix(inode.ModifyTime, 0),
-		CreateTime: time.Unix(inode.CreateTime, 0),
-		AccessTime: time.Unix(inode.AccessTime, 0),
-		QuotaInfos: quotaInfos,
-		Target:     nil,
+		Inode:                 inode.Inode,
+		Mode:                  inode.Type,
+		Nlink:                 inode.NLink,
+		Size:                  inode.Size,
+		Uid:                   inode.Uid,
+		Gid:                   inode.Gid,
+		Generation:            inode.Generation,
+		ModifyTime:            time.Unix(inode.ModifyTime, 0),
+		CreateTime:            time.Unix(inode.CreateTime, 0),
+		AccessTime:            time.Unix(inode.AccessTime, 0),
+		QuotaInfos:            quotaInfos,
+		Target:                nil,
+		StorageClass:          inode.StorageClass,
+		WriteGen:              atomic.LoadUint64(&inode.WriteGeneration),
+		MigrationStorageClass: inode.HybridCouldExtentsMigration.storageClass,
 	}
+
+	if atomic.LoadUint32(&inode.ForbiddenMigration) == ForbiddenToMigration {
+		inoInfo.ForbiddenLc = true
+	}
+
+	if inode.HybridCouldExtentsMigration.sortedEks != nil {
+		inoInfo.HasMigrationEk = true
+	}
+
 	if length := len(inode.LinkTarget); length > 0 {
 		inoInfo.Target = make([]byte, length)
 		copy(inoInfo.Target, inode.LinkTarget)

@@ -257,8 +257,8 @@ type TxCreateInodeRequest struct {
 	Target      []byte           `json:"tgt"`
 	QuotaIds    []uint32         `json:"qids"`
 	TxInfo      *TransactionInfo `json:"tx"`
+	StorageType uint32           `json:"storageType"`
 	RequestExtend
-	StorageType uint32 `json:"storageType"`
 }
 
 // TxCreateInodeResponse defines the response with transaction info to the request of creating an inode.
