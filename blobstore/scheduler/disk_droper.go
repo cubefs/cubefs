@@ -46,8 +46,9 @@ type DropMgrConfig struct {
 type dropDisk struct {
 	*client.DiskInfoSimple
 
-	collecting atomic.Value
-	wait       chan struct{}
+	undoneTaskCnt int64 // undone: generating + migrating tasks
+	collecting    atomic.Value
+	wait          chan struct{}
 }
 
 func (d *dropDisk) setCollecting(collecting bool) {
@@ -62,6 +63,20 @@ func (d *dropDisk) isCollecting() bool {
 		}
 	}
 	return false
+}
+
+func (d *dropDisk) getUndoneCnt() int64 {
+	return atomic.LoadInt64(&d.undoneTaskCnt)
+}
+
+func (d *dropDisk) addUndoneCnt(cnt int64) {
+	// add generating or migrating task
+	atomic.AddInt64(&d.undoneTaskCnt, cnt)
+}
+
+func (d *dropDisk) subUndoneCnt() {
+	// finishTaskCallback, one task done
+	atomic.AddInt64(&d.undoneTaskCnt, -1)
 }
 
 func (d *dropDisk) waitDone() {
@@ -96,21 +111,21 @@ func (d *dropDiskMap) delete(diskID proto.DiskID) {
 	d.lock.Unlock()
 }
 
-func (d *dropDiskMap) list() []*client.DiskInfoSimple {
-	var disks []*client.DiskInfoSimple
-	d.lock.RLock()
-	for _, disk := range d.disks {
-		disks = append(disks, disk.DiskInfoSimple)
-	}
-	d.lock.RUnlock()
-	return disks
-}
-
 func (d *dropDiskMap) size() int {
 	d.lock.RLock()
 	size := len(d.disks)
 	d.lock.RUnlock()
 	return size
+}
+
+func (d *dropDiskMap) list() (disks []*dropDisk) {
+	d.lock.RLock()
+	disks = make([]*dropDisk, 0, len(d.disks))
+	for _, disk := range d.disks {
+		disks = append(disks, disk)
+	}
+	d.lock.RUnlock()
+	return
 }
 
 func newDropDiskMap() *dropDiskMap {
@@ -167,6 +182,16 @@ func NewDiskDropMgr(clusterMgrCli client.ClusterMgrAPI, volumeUpdater client.IVo
 
 // Load load disk drop task from database
 func (mgr *DiskDropMgr) Load() (err error) {
+	disks, err := mgr.clusterMgrCli.ListDropDisks(context.Background())
+	if err != nil {
+		return err
+	}
+
+	for _, disk := range disks {
+		// Initialize the allDisks during loading, to prevent a panic when migrate.go calling the callback function
+		mgr.allDisks.add(&dropDisk{wait: make(chan struct{}), DiskInfoSimple: disk})
+	}
+
 	return mgr.IMigrator.Load()
 }
 
@@ -240,7 +265,7 @@ func (mgr *DiskDropMgr) collectTask() {
 		mgr.prepareTaskPool.Run(func() {
 			dDisk.setCollecting(true)
 			taskSpan, ctx := trace.StartSpanFromContextWithTraceID(context.Background(),
-				fmt.Sprintf("drop-disk[%d]", dDisk.DiskID), "")
+				span.OperationName(), fmt.Sprintf("disk_%d", dDisk.DiskID))
 			err := mgr.loopGenerateTask(ctx, dDisk)
 			if err != nil {
 				taskSpan.Errorf("loop generate task failed for disk[%d], err: %s", dDisk.DiskID, err)
@@ -256,6 +281,7 @@ func (mgr *DiskDropMgr) collectTask() {
 func (mgr *DiskDropMgr) releaseTaskLimit(diskID proto.DiskID) {
 	mgr.totalTaskLimit.Release()
 	mgr.taskLimitPerDisk.Release(diskID)
+	mgr.allDisks.get(diskID).subUndoneCnt() // finishTaskCallback, one task done
 }
 
 func (mgr *DiskDropMgr) acquireTaskLimit(diskID proto.DiskID) {
@@ -269,6 +295,7 @@ func (mgr *DiskDropMgr) acquireTaskLimit(diskID proto.DiskID) {
 		panic("acquire total task limit failed")
 	}
 	cancelFunc()
+	mgr.allDisks.get(diskID).addUndoneCnt(1) // add migrating one task
 }
 
 func (mgr *DiskDropMgr) loopGenerateTask(ctx context.Context, disk *dropDisk) error {
@@ -289,6 +316,7 @@ func (mgr *DiskDropMgr) loopGenerateTask(ctx context.Context, disk *dropDisk) er
 	}
 
 	remain := base.Subtraction(unmigratedvuids, migratingVuids)
+	disk.addUndoneCnt(int64(len(remain))) // add generating tasks
 	span.Infof("should gen tasks: remain len[%d]", len(remain))
 
 	var retryVuids []proto.Vuid
@@ -331,6 +359,7 @@ RETRY:
 	}
 
 	mgr.collectedDisks.add(disk)
+	span.Debugf("generate done: disk_id[%d], total[%d], finish[%d]", disk.DiskID, disk.UsedChunkCnt, len(migratingVuids))
 	return nil
 }
 
@@ -505,18 +534,18 @@ func (mgr *DiskDropMgr) checkAndClearJunkTasks() {
 }
 
 // Progress returns disk drop progress
+// undone = generating + migrating ; migrated = total - undone
+// 1.restart: The count of completed tasks is not recorded in the cluster, and the finished count in memory will be lost after a restart.
+// 2.running: If you get the count of tasks immediately after a restart, the tasks are still being generated, migrating tasks maybe zero.
 func (mgr *DiskDropMgr) Progress(ctx context.Context) (migratingDisks []proto.DiskID, total, migrated int) {
-	span := trace.SpanFromContextSafe(ctx)
 	migratingDisks = make([]proto.DiskID, 0)
 
-	for _, disk := range mgr.collectedDisks.list() {
-		total += int(disk.UsedChunkCnt)
-		remainTasks, err := mgr.IMigrator.ListAllTaskByDiskID(ctx, disk.DiskID)
-		if err != nil {
-			span.Errorf("find remain task failed: disk_id[%d], err[%+v]", disk.DiskID, err)
-			return migratingDisks, 0, 0
+	for _, disk := range mgr.allDisks.list() {
+		if !disk.isCollecting() { // only show migrating disk
+			continue
 		}
-		migrated += int(disk.UsedChunkCnt) - len(remainTasks)
+		total += int(disk.UsedChunkCnt)
+		migrated += int(disk.UsedChunkCnt - disk.getUndoneCnt())
 		migratingDisks = append(migratingDisks, disk.DiskID)
 	}
 	return
