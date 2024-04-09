@@ -43,6 +43,10 @@ func newClusterCmd(client *master.MasterClient) *cobra.Command {
 		newClusterSetParasCmd(client),
 		newClusterDisableMpDecommissionCmd(client),
 		newClusterSetVolDeletionDelayTimeCmd(client),
+		newClusterQueryDecommissionStatusCmd(client),
+		newClusterSetDecommissionLimitCmd(client),
+		newClusterEnableAutoDecommissionDisk(client),
+		newClusterQueryDecommissionFailedDisk(client),
 		newClusterEnableAutoDecommissionDiskCmd(client),
 		newClusterQueryDecommissionFailedDiskCmd(client),
 		newClusterSetDecommissionDiskLimitCmd(client),
@@ -64,6 +68,8 @@ const (
 	nodeMaxDpCntLimit                      = "maxDpCntLimit"
 	nodeMaxMpCntLimit                      = "maxMpCntLimit"
 	cmdForbidMpDecommission                = "forbid meta partition decommission"
+	cmdSetDecommissionLimitShort           = "set cluster decommission limit"
+	cmdQueryDecommissionStatus             = "query decommission status"
 	cmdEnableAutoDecommissionDiskShort     = "enable auto decommission disk"
 	cmdQueryDecommissionFailedDiskShort    = "query auto or manual decommission failed disk"
 	cmdSetDecommissionDiskLimit            = "set decommission disk limit"
@@ -317,6 +323,53 @@ If 'forbid=true', MetaPartition decommission/migrate and MetaNode decommission i
 				stdout("Forbid MetaPartition decommission successful!\n")
 			} else {
 				stdout("Allow MetaPartition decommission successful!\n")
+			}
+		},
+	}
+	return cmd
+}
+
+func newClusterSetDecommissionLimitCmd(client *master.MasterClient) *cobra.Command {
+	var cmd = &cobra.Command{
+		Use:   CliOpSetDecommissionLimit + " [LIMIT]",
+		Short: cmdSetDecommissionLimitShort,
+		Args:  cobra.MinimumNArgs(1),
+		Run: func(cmd *cobra.Command, args []string) {
+			var err error
+			defer func() {
+				if err != nil {
+					errout("Error: %v", err)
+				}
+			}()
+			limit, err := strconv.ParseInt(args[0], 10, 32)
+			if err = client.AdminAPI().SetClusterDecommissionLimit(int32(limit)); err != nil {
+				return
+			}
+
+			stdout("Set decommission limit to %v successfully\n", limit)
+		},
+	}
+	return cmd
+}
+
+func newClusterQueryDecommissionStatusCmd(client *master.MasterClient) *cobra.Command {
+	var cmd = &cobra.Command{
+		Use:   CliOpQueryDecommissionStatus,
+		Short: cmdQueryDecommissionStatus,
+		Run: func(cmd *cobra.Command, args []string) {
+			var err error
+			var status []proto.DecommissionTokenStatus
+			defer func() {
+				if err != nil {
+					errout("Error: %v", err)
+				}
+			}()
+			if status, err = client.AdminAPI().QueryDecommissionToken(); err != nil {
+				return
+			}
+
+			for _, s := range status {
+				stdout("%v\n", formatDecommissionTokenStatus(&s))
 			}
 		},
 	}

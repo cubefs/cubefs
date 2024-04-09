@@ -389,6 +389,12 @@ type DiscardDataPartitionInfos struct {
 	DiscardDps []DataPartitionInfo
 }
 
+type DecommissionTokenStatus struct {
+	NodesetID   uint64
+	CurTokenNum int32
+	MaxTokenNum int32
+}
+
 type VolVersionInfo struct {
 	Ver     uint64 // unixMicro of createTime used as version
 	DelTime int64
