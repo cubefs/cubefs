@@ -4790,7 +4790,7 @@ func (m *Server) queryDecommissionToken(w http.ResponseWriter, r *http.Request) 
 		doStatAndMetric(proto.AdminQueryDecommissionToken, metric, err, nil)
 	}()
 
-	var stats []nodeSetDecommissionParallelStatus
+	var stats []proto.DecommissionTokenStatus
 	zones := m.cluster.t.getAllZones()
 	for _, zone := range zones {
 		err, zoneStats := zone.queryDecommissionParallelStatus()
@@ -4798,7 +4798,13 @@ func (m *Server) queryDecommissionToken(w http.ResponseWriter, r *http.Request) 
 			sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: err.Error()})
 			return
 		}
-		stats = append(stats, zoneStats...)
+		for _, s := range zoneStats {
+			stats = append(stats, proto.DecommissionTokenStatus{
+				NodesetID:   s.ID,
+				CurTokenNum: s.CurTokenNum,
+				MaxTokenNum: s.MaxTokenNum,
+			})
+		}
 	}
 	log.LogDebugf("action[queryDecommissionToken] %v", stats)
 	sendOkReply(w, r, newSuccessHTTPReply(stats))
