@@ -1049,6 +1049,7 @@ func (c *Cluster) loadNodeSets() (err error) {
 			zone = newZone(nsv.ZoneName)
 			c.t.putZoneIfAbsent(zone)
 		}
+		ns.UpdateMaxParallel(int32(c.DecommissionLimit))
 
 		zone.putNodeSet(ns)
 		log.LogInfof("action[addNodeSetGrp] nodeSet[%v]", ns.ID)
