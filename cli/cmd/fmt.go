@@ -829,3 +829,7 @@ func formatBadDiskTableHeader() string {
 func formatBadDiskInfoRow(disk proto.BadDiskInfo) string {
 	return fmt.Sprintf(badDiskDetailTableRowPattern, disk.Address, disk.Path)
 }
+
+func formatDecommissionTokenStatus(status *proto.DecommissionTokenStatus) string {
+	return fmt.Sprintf("Nodeset %v: %v/%v", status.NodesetID, status.CurTokenNum, status.MaxTokenNum)
+}

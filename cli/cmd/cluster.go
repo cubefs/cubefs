@@ -41,6 +41,8 @@ func (cmd *CubeFSCmd) newClusterCmd(client *master.MasterClient) *cobra.Command 
 		newClusterSetParasCmd(client),
 		newClusterDisableMpDecommissionCmd(client),
 		newClusterSetVolDeletionDelayTimeCmd(client),
+		newClusterQueryDecommissionStatusCmd(client),
+		newClusterSetDecommissionLimitCmd(client),
 	)
 	return clusterCmd
 }
@@ -58,6 +60,8 @@ const (
 	nodeAutoRepairRateKey                  = "autoRepairRate"
 	nodeMaxDpCntLimit                      = "maxDpCntLimit"
 	cmdForbidMpDecommission                = "forbid meta partition decommission"
+	cmdSetDecommissionLimitShort           = "set cluster decommission limit"
+	cmdQueryDecommissionStatus             = "query decommission status"
 )
 
 func newClusterInfoCmd(client *master.MasterClient) *cobra.Command {
@@ -128,11 +132,11 @@ func newClusterFreezeCmd(client *master.MasterClient) *cobra.Command {
 		ValidArgs: []string{"true", "false"},
 		Short:     cmdClusterFreezeShort,
 		Args:      cobra.MinimumNArgs(1),
-		Long: `Turn on or off the automatic allocation of the data partitions. 
+		Long: `Turn on or off the automatic allocation of the data partitions.
 If 'freeze=false', CubeFS WILL automatically allocate new data partitions for the volume when:
   1. the used space is below the max capacity,
   2. and the number of r&w data partition is less than 20.
-		
+
 If 'freeze=true', CubeFS WILL NOT automatically allocate new data partitions `,
 		Run: func(cmd *cobra.Command, args []string) {
 			var (
@@ -265,7 +269,7 @@ func newClusterDisableMpDecommissionCmd(client *master.MasterClient) *cobra.Comm
 		ValidArgs: []string{"true", "false"},
 		Short:     cmdForbidMpDecommission,
 		Args:      cobra.MinimumNArgs(1),
-		Long: `Forbid or allow MetaPartition decommission in the cluster. 
+		Long: `Forbid or allow MetaPartition decommission in the cluster.
 the forbid flag is false by default when cluster created
 If 'forbid=false', MetaPartition decommission/migrate and MetaNode decommission is allowed.
 If 'forbid=true', MetaPartition decommission/migrate and MetaNode decommission is forbidden.`,
@@ -290,6 +294,53 @@ If 'forbid=true', MetaPartition decommission/migrate and MetaNode decommission i
 				stdout("Forbid MetaPartition decommission successful!\n")
 			} else {
 				stdout("Allow MetaPartition decommission successful!\n")
+			}
+		},
+	}
+	return cmd
+}
+
+func newClusterSetDecommissionLimitCmd(client *master.MasterClient) *cobra.Command {
+	var cmd = &cobra.Command{
+		Use:   CliOpSetDecommissionLimit + " [LIMIT]",
+		Short: cmdSetDecommissionLimitShort,
+		Args:  cobra.MinimumNArgs(1),
+		Run: func(cmd *cobra.Command, args []string) {
+			var err error
+			defer func() {
+				if err != nil {
+					errout("Error: %v", err)
+				}
+			}()
+			limit, err := strconv.ParseInt(args[0], 10, 32)
+			if err = client.AdminAPI().SetClusterDecommissionLimit(int32(limit)); err != nil {
+				return
+			}
+
+			stdout("Set decommission limit to %v successfully\n", limit)
+		},
+	}
+	return cmd
+}
+
+func newClusterQueryDecommissionStatusCmd(client *master.MasterClient) *cobra.Command {
+	var cmd = &cobra.Command{
+		Use:   CliOpQueryDecommissionStatus,
+		Short: cmdQueryDecommissionStatus,
+		Run: func(cmd *cobra.Command, args []string) {
+			var err error
+			var status []proto.DecommissionTokenStatus
+			defer func() {
+				if err != nil {
+					errout("Error: %v", err)
+				}
+			}()
+			if status, err = client.AdminAPI().QueryDecommissionToken(); err != nil {
+				return
+			}
+
+			for _, s := range status {
+				stdout("%v\n", formatDecommissionTokenStatus(&s))
 			}
 		},
 	}
