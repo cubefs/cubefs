@@ -1121,6 +1121,10 @@ func (ns *nodeSet) ReleaseDecommissionToken(id uint64) {
 	ns.decommissionDataPartitionList.releaseDecommissionToken(id)
 }
 
+func (ns *nodeSet) HasDecommissionToken(id uint64) bool {
+	return ns.decommissionDataPartitionList.hasDecommissionToken(id)
+}
+
 func (ns *nodeSet) AddDecommissionDisk(dd *DecommissionDisk) {
 	ns.DecommissionDisks.Store(dd.GenerateKey(), dd)
 	if dd.IsManualDecommissionDisk() {
@@ -2136,7 +2140,6 @@ func (l *DecommissionDataPartitionList) Put(id uint64, value *DataPartition, c *
 	if value.GetDecommissionStatus() == DecommissionPrepare {
 		value.SetDecommissionStatus(markDecommission)
 	}
-
 	l.mu.Lock()
 	if _, ok := l.cacheMap[value.PartitionID]; ok {
 		l.mu.Unlock()
@@ -2149,6 +2152,13 @@ func (l *DecommissionDataPartitionList) Put(id uint64, value *DataPartition, c *
 	if value.checkConsumeToken() {
 		value.TryAcquireDecommissionToken(c)
 	}
+
+	// restore special replica decommission progress
+	if value.isSpecialReplicaCnt() && value.GetDecommissionStatus() == DecommissionRunning {
+		value.SetDecommissionStatus(markDecommission)
+		log.LogInfof("action[DecommissionDataPartitionListPut] ns[%v]  dp[%v] set status from DecommissionRunning to markDecommission")
+	}
+
 	log.LogInfof("action[DecommissionDataPartitionListPut] ns[%v] add dp[%v] status[%v] specialStep(%v) isRecover[%v] rollbackTimes(%v)",
 		id, value.PartitionID, value.GetDecommissionStatus(), value.GetSpecialReplicaDecommissionStep(),
 		value.isRecover, value.DecommissionNeedRollbackTimes)
@@ -2232,6 +2242,13 @@ func (l *DecommissionDataPartitionList) releaseDecommissionToken(id uint64) {
 	atomic.StoreInt32(&l.curParallel, int32(len(l.runningMap)))
 }
 
+func (l *DecommissionDataPartitionList) hasDecommissionToken(id uint64) bool {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	_, ok := l.runningMap[id]
+	return ok
+}
+
 func (l *DecommissionDataPartitionList) GetAllDecommissionDataPartitions() (collection []*DataPartition) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
@@ -2299,22 +2316,9 @@ func (l *DecommissionDataPartitionList) traverse(c *Cluster) {
 							// retry should release token
 							if dp.IsMarkDecommission() {
 								dp.ReleaseDecommissionToken(c)
-								// choose other node to create data partition
-								dp.DecommissionDstAddr = ""
 							}
 						}
 					}(dp) // special replica cnt cost some time from prepare to running
-				} else if dp.isSpecialReplicaCnt() && dp.IsDecommissionRunning() {
-					go func(dp *DataPartition) {
-						if !dp.Decommission(c) {
-							// retry should release token
-							if dp.IsMarkDecommission() {
-								dp.ReleaseDecommissionToken(c)
-								// choose other node to create data partition
-								dp.DecommissionDstAddr = ""
-							}
-						}
-					}(dp)
 				}
 			}
 		}
