@@ -495,19 +495,61 @@ func (mw *MetaWrapper) BatchGetXAttr(inodes []uint64, keys []string) ([]*proto.X
 	return xattrs, nil
 }
 
-func (mw *MetaWrapper) shouldNotMoveToTrash(parentIno uint64, entry string) (error, bool) {
+func (mw *MetaWrapper) shouldNotMoveToTrash(parentMP *MetaPartition, parentIno uint64, entry string, isDir bool) (error, bool) {
 	log.LogDebugf("action[shouldNotMoveToTrash]: parentIno(%v) entry(%v)", parentIno, entry)
-	//remove .Trash directly
+
+	status, inode, mode, err := mw.lookup(parentMP, parentIno, entry)
+	if err != nil || status != statusOK {
+		return statusToErrno(status), false
+	}
+	mp := mw.getPartitionByInode(inode)
+	if mp == nil {
+		log.LogErrorf("shouldNotMoveToTrash: No inode partition, parentID(%v) name(%v) ino(%v)", parentIno, entry, inode)
+		return syscall.EAGAIN, false
+	}
+	status, info, err := mw.iget(mp, inode)
+	if err != nil || status != statusOK {
+		return statusToErrno(status), false
+	}
+
+	if isDir {
+		if !proto.IsDir(mode) {
+			return syscall.EINVAL, false
+		}
+		if info == nil || info.Nlink > 2 {
+			return syscall.ENOTEMPTY, false
+		}
+		if mw.EnableQuota {
+			quotaInfos, err := mw.GetInodeQuota_ll(inode)
+			if err != nil {
+				log.LogErrorf("get inode [%v] quota failed [%v]", inode, err)
+				return syscall.ENOENT, false
+			}
+			for _, info := range quotaInfos {
+				if info.RootInode {
+					log.LogErrorf("can not remove quota Root inode equal inode [%v]", inode)
+					return syscall.EACCES, false
+				}
+			}
+			mw.qc.Delete(inode)
+		}
+	}
+	if mw.volDeleteLockTime > 0 {
+		if ok, err := mw.canDeleteInode(mp, info, inode); !ok {
+			return err, false
+		}
+	}
+	// remove .Trash directly
 	if mw.trashPolicy.IsTrashRoot(parentIno, entry) {
 		return syscall.EOPNOTSUPP, false
 	}
-	//check if is sub dir of .Trash
-	//get parent path to mount sub
+	// check if is sub dir of .Trash
+	// get parent path to mount sub
 	currentPath := mw.getCurrentPathToMountSub(parentIno)
 	if strings.Contains(currentPath, UnknownPath) {
 		return nil, true
 	}
-	log.LogDebugf("action[shouldNotMoveToTrash]: parentIno(%v) entry(%v) currentPath(%v)", parentIno, entry, currentPath)
+	//log.LogDebugf("action[shouldNotMoveToTrash]: parentIno(%v) entry(%v) currentPath(%v)", parentIno, entry, currentPath)
 
 	subs := strings.Split(currentPath, "/")
 	if len(subs) == 1 {
@@ -527,7 +569,7 @@ func (mw *MetaWrapper) shouldNotMoveToTrash(parentIno uint64, entry string) (err
 			return nil, true
 		}
 	}
-	log.LogDebugf("action[shouldMoveToTrash]: currentPath(%v) is not expired ", currentPath)
+	//log.LogDebugf("action[shouldMoveToTrash]: currentPath(%v) is not expired ", currentPath)
 	return nil, false
 }
 
@@ -555,27 +597,30 @@ func (mw *MetaWrapper) txDelete_ll(parentID uint64, name string, isDir bool, ful
 		log.LogDebugf("Delete_ll: consume %v", time.Since(start).Seconds())
 	}()
 
+	parentMP := mw.getPartitionByInode(parentID)
+	if parentMP == nil {
+		log.LogErrorf("txDelete_ll: No parent partition, parentID(%v) name(%v)", parentID, name)
+		return nil, syscall.ENOENT
+	}
+
 	if mw.disableTrash == false && mw.disableTrashByClient == false {
 		if mw.trashPolicy == nil {
 			log.LogDebugf("TRACE Remove:TrashPolicy is nil")
 			mw.enableTrash()
 		}
 		//cannot delete .Trash
-		err, ret := mw.shouldNotMoveToTrash(parentID, name)
+		err, ret := mw.shouldNotMoveToTrash(parentMP, parentID, name, isDir)
 		if err != nil {
+			log.LogErrorf("Delete_ll: shouldNotMoveToTrash failed:%v", err)
 			return nil, err
 		}
 		if !ret {
 			parentPathAbsolute := mw.getCurrentPath(parentID)
 			err = mw.trashPolicy.MoveToTrash(parentPathAbsolute, parentID, name, isDir)
+			log.LogErrorf("Delete_ll: MoveToTrash failed:%v", err)
 			return nil, err
 		}
 
-	}
-	parentMP := mw.getPartitionByInode(parentID)
-	if parentMP == nil {
-		log.LogErrorf("txDelete_ll: No parent partition, parentID(%v) name(%v)", parentID, name)
-		return nil, syscall.ENOENT
 	}
 
 	var tx *Transaction
@@ -698,27 +743,33 @@ func (mw *MetaWrapper) Delete_ll_EX(parentID uint64, name string, isDir bool, fu
 		inodeCreateTime int64
 	)
 
+	parentMP := mw.getPartitionByInode(parentID)
+	if parentMP == nil {
+		log.LogErrorf("delete_ll: No parent partition, parentID(%v) name(%v)", parentID, name)
+		return nil, syscall.ENOENT
+	}
+
 	if mw.disableTrash == false && mw.disableTrashByClient == false {
 		if mw.trashPolicy == nil {
 			log.LogDebugf("TRACE Remove:TrashPolicy is nil")
 			mw.enableTrash()
 		}
 		//cannot delete .Trash
-		err, ret := mw.shouldNotMoveToTrash(parentID, name)
+		err, ret := mw.shouldNotMoveToTrash(parentMP, parentID, name, isDir)
 		if err != nil {
+			log.LogErrorf("Delete_ll: shouldNotMoveToTrash name %v failed %v", name, err)
 			return nil, err
 		}
 		if !ret {
 			parentPathAbsolute := mw.getCurrentPath(parentID)
 			err = mw.trashPolicy.MoveToTrash(parentPathAbsolute, parentID, name, isDir)
+			if err != nil {
+				log.LogErrorf("Delete_ll: MoveToTrash name %v  failed %v", name, err)
+			}
+
 			return nil, err
 		}
 
-	}
-	parentMP := mw.getPartitionByInode(parentID)
-	if parentMP == nil {
-		log.LogErrorf("delete_ll: No parent partition, parentID(%v) name(%v)", parentID, name)
-		return nil, syscall.ENOENT
 	}
 
 	if isDir {
@@ -1020,6 +1071,10 @@ func (mw *MetaWrapper) rename_ll(srcParentID uint64, srcName string, dstParentID
 		start    = time.Now()
 	)
 	defer func() {
+		if err != nil {
+			log.LogErrorf("Rename_ll: srcName %v srcFullPath %v dstName %v dstFullPath %v err %v",
+				srcName, srcFullPath, dstName, dstFullPath, err)
+		}
 		log.LogDebugf("Rename_ll: consume %v", time.Since(start).Seconds())
 	}()
 	srcParentMP := mw.getPartitionByInode(srcParentID)
@@ -1038,14 +1093,14 @@ func (mw *MetaWrapper) rename_ll(srcParentID uint64, srcName string, dstParentID
 
 	quota := atomic.LoadUint32(&mw.DirChildrenNumLimit)
 	if info.Nlink >= quota {
-		log.LogErrorf("rename_ll: dst parent inode's nlink quota reached, parentID(%v)", dstParentID)
+		log.LogErrorf("Rename_ll: dst parent inode's nlink quota reached, parentID(%v) srcFullPath(%v)", dstParentID, srcFullPath)
 		return syscall.EDQUOT
 	}
 
 	// look up for the src ino
 	status, inode, mode, err := mw.lookup(srcParentMP, srcParentID, srcName)
 	if err != nil || status != statusOK {
-		log.LogDebugf("Rename_ll: no such srcParentID %v srcName %v", srcParentID, srcName)
+		log.LogErrorf("Rename_ll: no such srcParentID %v srcFullPath(%v) failed %v", srcParentID, srcFullPath, err)
 		return statusToErrno(status)
 	}
 
@@ -1056,6 +1111,7 @@ func (mw *MetaWrapper) rename_ll(srcParentID uint64, srcName string, dstParentID
 
 	status, _, err = mw.ilink(srcMP, inode, srcFullPath)
 	if err != nil || status != statusOK {
+		log.LogErrorf("Rename_ll:ilink srcParentID %v srcFullPath(%v) failed %v ", srcParentID, srcFullPath, err)
 		return statusToErrno(status)
 	}
 
@@ -1063,6 +1119,7 @@ func (mw *MetaWrapper) rename_ll(srcParentID uint64, srcName string, dstParentID
 	status, err = mw.dcreate(dstParentMP, dstParentID, dstName, inode, mode, dstFullPath, false)
 	if err != nil {
 		if status == statusOpDirQuota {
+			log.LogErrorf("Rename_ll:dcreate srcParentID %v srcFullPath(%v) failed %v ", srcParentID, srcFullPath, err)
 			return statusToErrno(status)
 		}
 		return syscall.EAGAIN
@@ -1088,13 +1145,14 @@ func (mw *MetaWrapper) rename_ll(srcParentID uint64, srcName string, dstParentID
 
 	if status != statusOK {
 		mw.iunlink(srcMP, inode, srcFullPath)
+		log.LogErrorf("Rename_ll:srcParentID %v srcFullPath(%v) failed %v ", srcParentID, srcFullPath, err)
 		return statusToErrno(status)
 	}
 
 	// delete dentry from src parent
 	status, _, err = mw.ddelete(srcParentMP, srcParentID, srcName, 0, srcFullPath)
 	if err != nil {
-		log.LogErrorf("mw.ddelete(srcParentMP, srcParentID, %s) failed.", srcName)
+		log.LogErrorf("Rename_ll:ddelete srcParentID %v srcFullPath(%v) failed %v ", srcParentID, srcFullPath, err)
 		return statusToErrno(status)
 	} else if status != statusOK {
 		var (
@@ -1110,6 +1168,7 @@ func (mw *MetaWrapper) rename_ll(srcParentID uint64, srcName string, dstParentID
 			mw.iunlink(srcMP, inode, srcFullPath)
 
 		}
+		log.LogErrorf("Rename_ll:#### srcParentID %v srcFullPath(%v) failed %v ", srcParentID, srcFullPath, err)
 		return statusToErrno(status)
 	}
 
