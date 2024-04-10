@@ -687,6 +687,34 @@ func TestDeleteBlob(t *testing.T) {
 		require.True(t, doneVolume.EqualWith(volume))
 	}
 	{
+		// delete failed: err[shard must mark delete]
+		mgr := newBlobDeleteMgr(t)
+		blobnodeCli := NewMockBlobnodeAPI(ctr)
+		blobnodeCli.EXPECT().Delete(any, any, any).Times(1).Return(errcode.ErrShardNotMarkDelete)
+		mgr.blobnodeCli = blobnodeCli
+
+		stages := make(map[uint8]proto.DeleteStage)
+		for i := 0; i < codemode.EC3P3.GetShardNum(); i++ {
+			stages[uint8(i)] = proto.DeleteStageDelete
+		}
+		stages[1] = proto.DeleteStageMarkDelete
+		msg := &proto.DeleteMsg{
+			Bid:           proto.BlobID(1),
+			BlobDelStages: proto.BlobDeleteStage{Stages: stages},
+		}
+
+		doneVolume, err := mgr.deleteBlob(ctx, volume, msg) // will roll back stage
+		require.ErrorIs(t, err, errcode.ErrShardNotMarkDelete)
+		require.True(t, doneVolume.EqualWith(volume))
+		require.Equal(t, proto.InitStage, msg.BlobDelStages.Stages[1]) // alread roll back to init
+
+		blobnodeCli.EXPECT().MarkDelete(any, any, any).Times(1).Return(nil)
+		blobnodeCli.EXPECT().Delete(any, any, any).Times(1).Return(nil)
+		doneVolume, err = mgr.deleteBlob(ctx, volume, msg)
+		require.NoError(t, err) // retry ok
+		require.True(t, doneVolume.EqualWith(volume))
+	}
+	{
 		// mark delete failed and need update volume cache: update cache failed
 		mgr := newBlobDeleteMgr(t)
 		blobnodeCli := NewMockBlobnodeAPI(ctr)

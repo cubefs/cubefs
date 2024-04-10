@@ -655,7 +655,7 @@ func (mgr *BlobDeleteMgr) deleteShard(ctx context.Context, location proto.VunitL
 			return
 		}
 
-		if shouldBackToInitStage(err) {
+		if shouldBackToInitStage(errCode) {
 			stageMgr.setShardDelStage(location.Vuid, proto.InitStage)
 			span.Warnf("delete shard failed, roll back to init: bid[%d], location[%+v], markDelete[%v], code[%d], err[%+v]",
 				bid, location, markDelete, errCode, err)
@@ -740,9 +740,9 @@ func shouldUpdateVolumeErr(errCode int) bool {
 		errCode == errcode.CodeDiskNotFound
 }
 
-func shouldBackToInitStage(err error) bool {
+func shouldBackToInitStage(errCode int) bool {
 	// 653: errcode.CodeShardNotMarkDelete
-	return err == errcode.ErrShardNotMarkDelete
+	return errCode == errcode.CodeShardNotMarkDelete
 }
 
 func assumeDeleteSuccess(errCode int) bool {
