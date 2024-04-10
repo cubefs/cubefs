@@ -555,7 +555,72 @@ func (mw *MetaWrapper) txDelete_ll(parentID uint64, name string, isDir bool, ful
 		log.LogDebugf("Delete_ll: consume %v", time.Since(start).Seconds())
 	}()
 
+	parentMP := mw.getPartitionByInode(parentID)
+	if parentMP == nil {
+		log.LogErrorf("txDelete_ll: No parent partition, parentID(%v) name(%v)", parentID, name)
+		return nil, syscall.ENOENT
+	}
+
 	if mw.disableTrash == false && mw.disableTrashByClient == false {
+		if isDir {
+			status, inode, mode, err = mw.lookup(parentMP, parentID, name)
+			if err != nil || status != statusOK {
+				return nil, statusToErrno(status)
+			}
+			if !proto.IsDir(mode) {
+				return nil, syscall.EINVAL
+			}
+			mp = mw.getPartitionByInode(inode)
+			if mp == nil {
+				log.LogErrorf("delete_ll: No inode partition, parentID(%v) name(%v) ino(%v)", parentID, name, inode)
+				return nil, syscall.EAGAIN
+			}
+			status, info, err = mw.iget(mp, inode)
+			if err != nil || status != statusOK {
+				return nil, statusToErrno(status)
+			}
+			if info == nil || info.Nlink > 2 {
+				return nil, syscall.ENOTEMPTY
+			}
+			if mw.EnableQuota {
+				quotaInfos, err := mw.GetInodeQuota_ll(inode)
+				if err != nil {
+					log.LogErrorf("get inode [%v] quota failed [%v]", inode, err)
+					return nil, syscall.ENOENT
+				}
+				for _, info := range quotaInfos {
+					if info.RootInode {
+						log.LogErrorf("can not remove quota Root inode equal inode [%v]", inode)
+						return nil, syscall.EACCES
+					}
+				}
+				mw.qc.Delete(inode)
+			}
+			if mw.volDeleteLockTime > 0 {
+				if ok, err := mw.canDeleteInode(mp, info, inode); !ok {
+					return nil, err
+				}
+			}
+		} else {
+			if mw.volDeleteLockTime > 0 {
+				status, inode, _, err = mw.lookup(parentMP, parentID, name)
+				if err != nil || status != statusOK {
+					return nil, statusToErrno(status)
+				}
+				mp = mw.getPartitionByInode(inode)
+				if mp == nil {
+					log.LogErrorf("delete_ll: No inode partition, parentID(%v) name(%v) ino(%v)", parentID, name, inode)
+					return nil, syscall.EAGAIN
+				}
+				status, info, err = mw.iget(mp, inode)
+				if err != nil || status != statusOK {
+					return nil, statusToErrno(status)
+				}
+				if ok, err := mw.canDeleteInode(mp, info, inode); !ok {
+					return nil, err
+				}
+			}
+		}
 		if mw.trashPolicy == nil {
 			log.LogDebugf("TRACE Remove:TrashPolicy is nil")
 			mw.enableTrash()
@@ -563,59 +628,26 @@ func (mw *MetaWrapper) txDelete_ll(parentID uint64, name string, isDir bool, ful
 		//cannot delete .Trash
 		err, ret := mw.shouldNotMoveToTrash(parentID, name, isDir)
 		if err != nil {
-			log.LogErrorf("Delete_ll: shouldNotMoveToTrash failed:%v", err)
+			log.LogErrorf("Delete_ll: shouldNotMoveToTrash name %v failed %v", name, err)
 			return nil, err
 		}
 		if !ret {
 			parentPathAbsolute := mw.getCurrentPath(parentID)
 			err = mw.trashPolicy.MoveToTrash(parentPathAbsolute, parentID, name, isDir)
-			log.LogErrorf("Delete_ll: MoveToTrash failed:%v", err)
+			if err != nil {
+				log.LogErrorf("Delete_ll: MoveToTrash name %v  failed %v", name, err)
+			}
+
 			return nil, err
 		}
 
 	}
-	parentMP := mw.getPartitionByInode(parentID)
-	if parentMP == nil {
-		log.LogErrorf("txDelete_ll: No parent partition, parentID(%v) name(%v)", parentID, name)
-		return nil, syscall.ENOENT
-	}
-
 	var tx *Transaction
 	defer func() {
 		if tx != nil {
 			err = tx.OnDone(err, mw)
 		}
 	}()
-
-	status, inode, mode, err = mw.lookup(parentMP, parentID, name)
-	if err != nil || status != statusOK {
-		return nil, statusErrToErrno(status, err)
-	}
-
-	mp = mw.getPartitionByInode(inode)
-	if mp == nil {
-		log.LogErrorf("txDelete_ll: No inode partition, parentID(%v) name(%v) ino(%v)", parentID, name, inode)
-		return nil, syscall.EINVAL
-	}
-
-	if isDir && !proto.IsDir(mode) {
-		return nil, syscall.EINVAL
-	}
-
-	if isDir && mw.EnableQuota {
-		quotaInfos, err := mw.GetInodeQuota_ll(inode)
-		if err != nil {
-			log.LogErrorf("get inode [%v] quota failed [%v]", inode, err)
-			return nil, syscall.ENOENT
-		}
-		for _, info := range quotaInfos {
-			if info.RootInode {
-				log.LogErrorf("can not remove quota Root inode equal inode [%v]", inode)
-				return nil, syscall.EACCES
-			}
-		}
-	}
-
 	tx, err = NewDeleteTransaction(parentMP, parentID, name, mp, inode, mw.TxTimeout)
 	if err != nil {
 		return nil, syscall.EAGAIN
