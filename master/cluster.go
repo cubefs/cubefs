@@ -4170,9 +4170,9 @@ func (c *Cluster) TryDecommissionDataNode(dataNode *DataNode) {
 	dataNode.DecommissionDiskList = decommissionDiskList
 	dataNode.DecommissionDpTotal = decommissionDpTotal
 	log.LogInfof("action[TryDecommissionDataNode] try decommission disk[%v] from dataNode[%s] "+
-		"raftForce [%v] to dst [%v] DecommissionDpTotal[%v]",
+		"raftForce [%v] to dst [%v] DecommissionDpTotal[%v] dp[%v]",
 		decommissionDiskList, dataNode.Addr, dataNode.DecommissionRaftForce,
-		dataNode.DecommissionDstAddr, dataNode.DecommissionDpTotal)
+		dataNode.DecommissionDstAddr, dataNode.DecommissionDpTotal, toBeOffLinePartitionsFinalIds)
 }
 
 func (c *Cluster) migrateDisk(nodeAddr, diskPath, dstPath string, raftForce bool, limit int, diskDisable bool, migrateType uint32) (err error) {
@@ -4452,10 +4452,14 @@ func (c *Cluster) TryDecommissionDisk(disk *DecommissionDisk) {
 		if !dp.MarkDecommissionStatus(node.Addr, disk.DstAddr, disk.DiskPath, disk.DecommissionRaftForce, disk.DecommissionTerm, c) {
 			log.LogWarnf("action[TryDecommissionDisk] mark dp [%v] on %v:%v decommission failed",
 				dp.PartitionID, disk.SrcAddr, disk.DiskPath)
-			continue
+			// mark as failed
+			dp.SetDecommissionStatus(DecommissionFail)
+			dp.DecommissionNeedRollbackTimes = defaultDecommissionRollbackLimit
+			dp.DecommissionTerm = disk.DecommissionTerm
+		} else {
+			ns.AddToDecommissionDataPartitionList(dp, c)
 		}
 		c.syncUpdateDataPartition(dp)
-		ns.AddToDecommissionDataPartitionList(dp, c)
 		badPartitionIds = append(badPartitionIds, dp.PartitionID)
 	}
 	disk.SetDecommissionStatus(DecommissionRunning)

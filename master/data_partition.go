@@ -1276,10 +1276,6 @@ func (partition *DataPartition) Decommission(c *Cluster) bool {
 	}
 
 errHandler:
-	// choose other node to create data partition
-	if resetDecommissionDst {
-		partition.DecommissionDstAddr = ""
-	}
 	// special replica num receive stop signal,donot reset  SingleDecommissionStatus for decommission again
 	if partition.GetDecommissionStatus() == DecommissionPause {
 		log.LogWarnf("action[decommissionDataPartition] partitionID:%v is stopped", partition.PartitionID)
@@ -1291,6 +1287,12 @@ errHandler:
 		partition.SetDecommissionStatus(DecommissionFail)
 	} else {
 		partition.SetDecommissionStatus(markDecommission) // retry again
+		partition.ReleaseDecommissionToken(c)
+	}
+	// choose other node to create data partition
+	if resetDecommissionDst {
+		partition.DecommissionDstAddr = ""
+		log.LogWarnf("action[decommissionDataPartition] partitionID:%v reset DecommissionDstAddr", partition.PartitionID)
 	}
 
 	// if need rollback, set to fail,reset DecommissionDstAddr
@@ -1571,8 +1573,8 @@ func (partition *DataPartition) TryAcquireDecommissionToken(c *Cluster) bool {
 	defer c.syncUpdateDataPartition(partition)
 	begin := time.Now()
 	defer func() {
-		log.LogDebugf("action[TryAcquireDecommissionToken] dp %v get token consume(%v)",
-			partition.PartitionID, time.Now().Sub(begin).String())
+		log.LogDebugf("action[TryAcquireDecommissionToken] dp %v get token to %v consume(%v)",
+			partition.PartitionID, partition.DecommissionDstAddr, time.Now().Sub(begin).String())
 	}()
 
 	// the first time for dst addr not specify
@@ -1756,7 +1758,7 @@ func (partition *DataPartition) needRollback(c *Cluster) bool {
 	}
 
 	if atomic.LoadUint32(&partition.DecommissionNeedRollbackTimes) >= defaultDecommissionRollbackLimit {
-		log.LogDebugf("action[needRollback]try delete replica %v, dp[%v]DecommissionNeedRollbackTimes[%v]",
+		log.LogDebugf("action[needRollback]try delete dp[%v] replica %v DecommissionNeedRollbackTimes[%v]",
 			partition.PartitionID, partition.DecommissionDstAddr, atomic.LoadUint32(&partition.DecommissionNeedRollbackTimes))
 		partition.DecommissionNeedRollback = false
 		err := c.removeDataReplica(partition, partition.DecommissionDstAddr, false, false)

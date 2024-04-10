@@ -2312,19 +2312,10 @@ func (l *DecommissionDataPartitionList) traverse(c *Cluster) {
 					dp.ResetDecommissionStatus()
 					c.syncUpdateDataPartition(dp)
 				} else if dp.IsMarkDecommission() && dp.TryAcquireDecommissionToken(c) {
-					if dp.IsDiscard || dp.TryAcquireDecommissionToken(c) {
-						// TODO: decommission in here
-						go func(dp *DataPartition) {
-							if !dp.TryToDecommission(c) {
-								// retry should release token
-								if dp.IsMarkDecommission() {
-									dp.ReleaseDecommissionToken(c)
-									// choose other node to create data partition
-									dp.DecommissionDstAddr = ""
-								}
-							}
-						}(dp) // special replica cnt cost some time from prepare to running
-					}
+					// TODO: decommission in here
+					go func(dp *DataPartition) {
+						dp.TryToDecommission(c)
+					}(dp) // special replica cnt cost some time from prepare to running
 				}
 			}
 		}
