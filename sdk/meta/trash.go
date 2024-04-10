@@ -219,10 +219,14 @@ func (trash *Trash) MoveToTrash(parentPathAbsolute string, parentIno uint64, fil
 			if !isDir {
 				// ignore dir rename
 				dstPath = fmt.Sprintf("%s_%v", dstPath, time.Now().Unix())
-				log.LogDebugf("action[MoveToTrash]filePathInTrash rename to %v", dstPath)
+				//		log.LogDebugf("action[MoveToTrash]filePathInTrash rename to %v", dstPath)
 			} else {
-				log.LogWarnf("action[MoveToTrash]ignore dir already created %v", dstPath)
-				return
+				// delete src dir directly
+				err := trash.deleteSrcDirDirectly(parentIno, fileName, srcPath)
+				if err != nil {
+					return err
+				}
+				break
 			}
 		} else {
 			log.LogDebugf("action[MoveToTrash]break")
@@ -724,7 +728,19 @@ func (trash *Trash) createParentPathInTrash(parentPath, rootDir string) (err err
 }
 
 func (trash *Trash) renameToTrashTempFile(parentIno, currentIno uint64, oldPath, newPath string) error {
-	return trash.mw.Rename_ll(parentIno, path.Base(oldPath), currentIno, path.Base(newPath), oldPath, newPath, true)
+	err := trash.mw.Rename_ll(parentIno, path.Base(oldPath), currentIno, path.Base(newPath), oldPath, newPath, true)
+	if err == syscall.ENOENT {
+		log.LogErrorf("action[renameToTrashTempFile] rename src %v err ENOENT", oldPath)
+		srcParentMP := trash.mw.getPartitionByInode(parentIno)
+		if srcParentMP == nil {
+			return syscall.ENOENT
+		}
+		status, _, _, _ := trash.mw.lookup(srcParentMP, parentIno, path.Base(oldPath), trash.mw.LastVerSeq)
+		if status == statusNoent {
+			return nil
+		}
+	}
+	return err
 }
 
 func (trash *Trash) rename(oldPath, newPath string) error {
@@ -804,7 +820,6 @@ func (trash *Trash) releaseTraverseToken() {
 }
 
 func (trash *Trash) buildDeletedFileParentDirsBackground() {
-	// 定时任务，仿照拷贝文件
 	rebuildTimer := time.NewTimer(5 * time.Second)
 	defer rebuildTimer.Stop()
 	for {
@@ -1065,4 +1080,17 @@ func (trash *Trash) recoverPosixPathName(fileName string, fileIno uint64) string
 	}
 	fileName = strings.ReplaceAll(fileName, ParentDirPrefix, "/")
 	return fileName
+}
+
+func (trash *Trash) deleteSrcDirDirectly(parentIno uint64, fileName, fullPath string) error {
+	srcParentMP := trash.mw.getPartitionByInode(parentIno)
+	if srcParentMP == nil {
+		return syscall.ENOENT
+	}
+	status, _, _, err := trash.mw.ddelete(srcParentMP, parentIno, fileName, 0, trash.mw.LastVerSeq, fullPath)
+	if err != nil {
+		log.LogErrorf("deleteSrcDirDirectly delete %v failed.err %v", fullPath, err)
+		return statusToErrno(status)
+	}
+	return nil
 }
