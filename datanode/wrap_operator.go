@@ -35,6 +35,7 @@ import (
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
+	"github.com/cubefs/cubefs/util/strutil"
 )
 
 var ErrForbiddenDataPartition = errors.New("the data partition is forbidden")
@@ -203,6 +204,7 @@ func (s *DataNode) handlePacketToCreateExtent(p *repl.Packet) {
 	}()
 	partition := p.Object.(*DataPartition)
 	if partition.Available() <= 0 || !partition.disk.CanWrite() {
+		log.LogWarnf("[handlePacketToCreateExtent] dp(%v) not enough space, available(%v) canWrite(%v)", partition.partitionID, strutil.FormatSize(uint64(partition.Available())), partition.disk.CanWrite())
 		err = storage.NoSpaceError
 		return
 	} else if partition.disk.Status == proto.Unavailable {
@@ -212,6 +214,7 @@ func (s *DataNode) handlePacketToCreateExtent(p *repl.Packet) {
 
 	// in case too many extents
 	if partition.GetExtentCount() >= storage.MaxExtentCount+10 {
+		log.LogWarnf("[handlePacketToCreateExtent] dp(%v) not enough space, too many extents(%v)", partition.partitionID, partition.GetExtentCount())
 		err = storage.NoSpaceError
 		return
 	}
@@ -781,6 +784,7 @@ func (s *DataNode) handleWritePacket(p *repl.Packet) {
 		metricPartitionIOLabels = GetIoMetricLabels(partition, "write")
 	}
 	if partition.Available() <= 0 || !partition.disk.CanWrite() {
+		log.LogWarnf("[handleWritePacket] dp(%v) not enough space, available(%v) canWrite(%v)", partition.partitionID, strutil.FormatSize(uint64(partition.Available())), partition.disk.CanWrite())
 		err = storage.NoSpaceError
 		return
 	} else if partition.disk.Status == proto.Unavailable {
