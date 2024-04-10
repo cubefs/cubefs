@@ -69,6 +69,7 @@ type DataNode struct {
 	ioUtils                   atomic.Value       `json:"-"`
 	DecommissionDiskList      []string
 	DecommissionDpTotal       int
+	DecommissionSyncMutex     sync.Mutex
 }
 
 func newDataNode(addr, zoneName, clusterID string) (dataNode *DataNode) {
@@ -313,6 +314,10 @@ func (dataNode *DataNode) updateDecommissionStatus(c *Cluster, debug bool) (uint
 	if dataNode.GetDecommissionStatus() == DecommissionFail && dataNode.DecommissionDpTotal == 0 {
 		return DecommissionFail, float64(0)
 	}
+
+	dataNode.DecommissionSyncMutex.Lock()
+	defer dataNode.DecommissionSyncMutex.Unlock()
+
 	defer func() {
 		c.syncUpdateDataNode(dataNode)
 	}()
