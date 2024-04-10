@@ -17,7 +17,6 @@ package datanode
 import (
 	"fmt"
 	"math"
-	"os"
 	"sync"
 	"time"
 
@@ -435,7 +434,9 @@ func (manager *SpaceManager) DeletePartition(dpID uint64) {
 	manager.partitionMutex.Unlock()
 	dp.Stop()
 	dp.Disk().DetachDataPartition(dp)
-	os.RemoveAll(dp.Path())
+	if err := dp.RemoveAll(); err != nil {
+		log.LogErrorf("[DeletePartition] failed to remove dp(%v) dir(%v), err(%v)", dp.partitionID, dp.Path(), err)
+	}
 }
 
 func (s *DataNode) buildHeartBeatResponse(response *proto.DataNodeHeartbeatResponse) {

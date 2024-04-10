@@ -35,6 +35,7 @@ import (
 	"github.com/cubefs/cubefs/storage"
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/errors"
+	"github.com/cubefs/cubefs/util/fileutil"
 	"github.com/cubefs/cubefs/util/log"
 )
 
@@ -611,10 +612,23 @@ func (dp *DataPartition) ForceLoadHeader() {
 	dp.loadExtentHeaderStatus = FinishLoadDataPartitionExtentHeader
 }
 
+func (dp *DataPartition) RemoveAll() (err error) {
+	dp.persistMetaMutex.Lock()
+	defer dp.persistMetaMutex.Unlock()
+
+	err = os.RemoveAll(dp.Path())
+	return
+}
+
 // PersistMetadata persists the file metadata on the disk.
 func (dp *DataPartition) PersistMetadata() (err error) {
 	dp.persistMetaMutex.Lock()
 	defer dp.persistMetaMutex.Unlock()
+
+	if !fileutil.ExistDir(dp.Path()) {
+		log.LogWarnf("[PersistMetadata] dp(%v) persist metadata, but dp dir(%v) has been removed", dp.partitionID, dp.Path())
+		return
+	}
 
 	var (
 		metadataFile *os.File
@@ -710,12 +724,17 @@ func (dp *DataPartition) statusUpdate() {
 			status = proto.Unavailable
 		}
 	}
-	if dp.getDiskErrCnt() > 0 {
-		dp.partitionStatus = proto.Unavailable
+
+	if dp.disk.Status == proto.ReadOnly {
+		status = proto.ReadOnly
 	}
 
-	log.LogInfof("action[statusUpdate] dp %v raft status %v dp.status %v, status %v, disk status %v",
-		dp.partitionID, dp.raftStatus, dp.Status(), status, float64(dp.disk.Status))
+	if dp.getDiskErrCnt() > 0 {
+		status = proto.Unavailable
+	}
+
+	log.LogInfof("action[statusUpdate] dp %v raft status %v dp.status %v, status %v, disk status %v canWrite(%v)",
+		dp.partitionID, dp.raftStatus, dp.Status(), status, float64(dp.disk.Status), dp.disk.CanWrite())
 	// dp.partitionStatus = int(math.Min(float64(status), float64(dp.disk.Status)))
 	dp.partitionStatus = status
 }
