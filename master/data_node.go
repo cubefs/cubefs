@@ -436,13 +436,13 @@ func (dataNode *DataNode) SetDecommissionStatus(status uint32) {
 	atomic.StoreUint32(&dataNode.DecommissionStatus, status)
 }
 
-func (dataNode *DataNode) GetDecommissionFailedDPByTerm(c *Cluster) []uint64 {
-	var failedDps []uint64
+func (dataNode *DataNode) GetDecommissionFailedDPByTerm(c *Cluster) []proto.FailedDpInfo {
+	var failedDps []proto.FailedDpInfo
 	partitions := dataNode.GetLatestDecommissionDataPartition(c)
 	log.LogDebugf("action[GetDecommissionDataNodeFailedDP] partitions len %v", len(partitions))
 	for _, dp := range partitions {
 		if dp.IsRollbackFailed() {
-			failedDps = append(failedDps, dp.PartitionID)
+			failedDps = append(failedDps, proto.FailedDpInfo{PartitionID: dp.PartitionID, ErrMsg: dp.DecommissionErrorMessage})
 			log.LogWarnf("action[GetDecommissionDataNodeFailedDP] dp[%v] failed", dp.PartitionID)
 		}
 	}

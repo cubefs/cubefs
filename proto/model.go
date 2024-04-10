@@ -336,10 +336,14 @@ type MetaPartitionDiagnosis struct {
 	DentryCountNotEqualReplicaMetaPartitionIDs []uint64
 }
 
+type FailedDpInfo struct {
+	PartitionID uint64
+	ErrMsg      string
+}
 type DecommissionProgress struct {
 	Status        uint32
 	Progress      string
-	FailedDps     []uint64
+	FailedDps     []FailedDpInfo
 	StatusMessage string
 }
 

@@ -4081,16 +4081,8 @@ func (m *Server) queryDiskDecoProgress(w http.ResponseWriter, r *http.Request) {
 		Progress:      fmt.Sprintf("%.2f%%", progress*float64(100)),
 		StatusMessage: GetDecommissionStatusMessage(status),
 	}
-	if status == DecommissionFail {
-		dps := disk.GetLatestDecommissionDP(m.cluster)
-		dpIds := make([]uint64, 0)
-		for _, dp := range dps {
-			if dp.IsDecommissionFailed() {
-				dpIds = append(dpIds, dp.PartitionID)
-			}
-		}
-		resp.FailedDps = dpIds
-	}
+	dps := disk.GetDecommissionFailedDPByTerm(m.cluster)
+	resp.FailedDps = dps
 	sendOkReply(w, r, newSuccessHTTPReply(resp))
 }
 
