@@ -1667,6 +1667,7 @@ errHandler:
 	if partition.DecommissionRetry >= defaultDecommissionRetryLimit {
 		partition.SetDecommissionStatus(DecommissionFail)
 	}
+	partition.DecommissionErrorMessage = err.Error()
 	log.LogWarnf("action[TryAcquireDecommissionToken] clusterID[%v] vol[%v] partitionID[%v]"+
 		" retry [%v] status [%v] DecommissionDstAddrSpecify [%v] DecommissionDstAddr [%v] failed",
 		c.Name, partition.VolName, partition.PartitionID, partition.DecommissionRetry, partition.GetDecommissionStatus(),
