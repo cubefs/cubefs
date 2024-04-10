@@ -260,7 +260,8 @@ func (d *Dir) Remove(ctx context.Context, req *fuse.RemoveRequest) error {
 		stat.EndStat("Remove", err, bgTime, 1)
 		metric.SetWithLabels(err, map[string]string{exporter.Vol: d.super.volname})
 		auditlog.LogClientOp("Remove", fullPath, "nil", err, time.Since(start).Microseconds(), deletedInode, 0)
-		log.LogDebugf("Remove: parent(%v) entry(%v) consume %v", d.info.Inode, req.Name, time.Since(start).Seconds())
+		log.LogDebugf("Remove: parent(%v) entry(%v) fullPath(%v) consume %v err %v",
+			d.info.Inode, req.Name, fullPath, time.Since(start).Seconds(), err)
 	}()
 	log.LogDebugf("TRACE Remove: parent(%v) entry(%v)", d.info.Inode, req.Name)
 
