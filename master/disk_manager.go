@@ -326,9 +326,9 @@ func (dd *DecommissionDisk) updateDecommissionStatus(c *Cluster, debug bool) (ui
 	if debug {
 		log.LogInfof("action[updateDecommissionDiskStatus] disk[%v] progress[%v] totalNum[%v] "+
 			"partitionIds %v  FailedNum[%v] failedPartitionIds %v, runningNum[%v] runningDp %v, prepareNum[%v] prepareDp %v "+
-			"stopNum[%v] stopPartitionIds %v ",
+			"stopNum[%v] stopPartitionIds %v term %v",
 			dd.GenerateKey(), progress, totalNum, partitionIds, failedNum, failedPartitionIds, runningNum, runningPartitionIds,
-			prepareNum, preparePartitionIds, stopNum, stopPartitionIds)
+			prepareNum, preparePartitionIds, stopNum, stopPartitionIds, dd.DecommissionTerm)
 	}
 	if failedNum >= (len(partitions)-stopNum) && failedNum != 0 {
 		dd.markDecommissionFailed()

@@ -1302,8 +1302,7 @@ errHandler:
 		// The maximum number of retries for the DP error has been reached,
 		// and a rollback is still required, even if the rollback conditions have not been triggered.
 		if partition.DecommissionRetry >= defaultDecommissionRetryLimit {
-			partition.DecommissionNeedRollback = true
-			partition.DecommissionNeedRollbackTimes = defaultDecommissionRollbackLimit
+			partition.markRollbackFailed(true)
 		}
 	}
 	msg = fmt.Sprintf("clusterID[%v] vol[%v] dp[%v]  on Node:%v  "+
@@ -1665,7 +1664,7 @@ func (partition *DataPartition) TryAcquireDecommissionToken(c *Cluster) bool {
 errHandler:
 	partition.DecommissionRetry++
 	if partition.DecommissionRetry >= defaultDecommissionRetryLimit {
-		partition.SetDecommissionStatus(DecommissionFail)
+		partition.markRollbackFailed(false)
 	}
 	partition.DecommissionErrorMessage = err.Error()
 	log.LogWarnf("action[TryAcquireDecommissionToken] clusterID[%v] vol[%v] partitionID[%v]"+
@@ -1770,4 +1769,10 @@ func (partition *DataPartition) needRollback(c *Cluster) bool {
 		return false
 	}
 	return true
+}
+
+func (partition *DataPartition) markRollbackFailed(needRollback bool) {
+	partition.SetDecommissionStatus(DecommissionFail)
+	partition.DecommissionNeedRollbackTimes = defaultDecommissionRollbackLimit
+	partition.DecommissionNeedRollback = needRollback
 }

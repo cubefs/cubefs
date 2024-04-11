@@ -390,7 +390,6 @@ type dataNodeValue struct {
 	DecommissionDstAddr      string
 	DecommissionRaftForce    bool
 	DecommissionLimit        int
-	DecommissionRetry        uint8
 	DecommissionCompleteTime int64
 	ToBeOffline              bool
 	DecommissionDiskList     []string
@@ -409,7 +408,6 @@ func newDataNodeValue(dataNode *DataNode) *dataNodeValue {
 		DecommissionDstAddr:      dataNode.DecommissionDstAddr,
 		DecommissionRaftForce:    dataNode.DecommissionRaftForce,
 		DecommissionLimit:        dataNode.DecommissionLimit,
-		DecommissionRetry:        dataNode.DecommissionRetry,
 		DecommissionCompleteTime: dataNode.DecommissionCompleteTime,
 		ToBeOffline:              dataNode.ToBeOffline,
 		DecommissionDiskList:     dataNode.DecommissionDiskList,
@@ -1394,7 +1392,6 @@ func (c *Cluster) loadDataNodes() (err error) {
 		dataNode.DecommissionDstAddr = dnv.DecommissionDstAddr
 		dataNode.DecommissionRaftForce = dnv.DecommissionRaftForce
 		dataNode.DecommissionLimit = dnv.DecommissionLimit
-		dataNode.DecommissionRetry = dnv.DecommissionRetry
 		dataNode.DecommissionCompleteTime = dnv.DecommissionCompleteTime
 		dataNode.ToBeOffline = dnv.ToBeOffline
 		dataNode.DecommissionDiskList = dnv.DecommissionDiskList
@@ -1408,10 +1405,10 @@ func (c *Cluster) loadDataNodes() (err error) {
 		}
 		c.dataNodes.Store(dataNode.Addr, dataNode)
 		log.LogInfof("action[loadDataNodes],dataNode[%v],dataNodeID[%v],zone[%v],ns[%v] DecommissionStatus [%v] "+
-			"DecommissionDstAddr[%v] DecommissionRaftForce[%v] DecommissionDpTotal[%v] DecommissionLimit[%v]  DecommissionRetry[%v] "+
+			"DecommissionDstAddr[%v] DecommissionRaftForce[%v] DecommissionDpTotal[%v] DecommissionLimit[%v]  "+
 			"DecommissionCompleteTime [%v] ToBeOffline[%v]",
 			dataNode.Addr, dataNode.ID, dnv.ZoneName, dnv.NodeSetID, dataNode.DecommissionStatus, dataNode.DecommissionDstAddr,
-			dataNode.DecommissionRaftForce, dataNode.DecommissionDpTotal, dataNode.DecommissionLimit, dataNode.DecommissionRetry,
+			dataNode.DecommissionRaftForce, dataNode.DecommissionDpTotal, dataNode.DecommissionLimit,
 			time.Unix(dataNode.DecommissionCompleteTime, 0).Format("2006-01-02 15:04:05"),
 			dataNode.ToBeOffline)
 	}
