@@ -1050,6 +1050,14 @@ func (mp *metaPartition) fsmUpdateExtentKeyAfterMigration(inoParam *Inode) (resp
 		return
 	}
 	i := item.(*Inode)
+
+	if i.StorageClass == inoParam.HybridCouldExtentsMigration.storageClass {
+		log.LogWarnf("[fsmUpdateExtentKeyAfterMigration] inode(%v) storageClass(%v) is already the same with req storageClass",
+			i.Inode, i.StorageClass)
+		resp.Status = proto.OpNotPerm
+		return
+	}
+
 	// store old storage ek in HybridCouldExtentsMigration
 	i.HybridCouldExtentsMigration.storageClass = inoParam.StorageClass
 	i.HybridCouldExtentsMigration.sortedEks = inoParam.HybridCouldExtents.sortedEks

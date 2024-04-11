@@ -1123,6 +1123,14 @@ func (mp *metaPartition) UpdateExtentKeyAfterMigration(req *proto.UpdateExtentKe
 		}
 	}()
 
+	if ino.StorageClass == req.StorageClass {
+		err = fmt.Errorf("inode(%v) storageClass(%v) is already the same with request storageClass",
+			ino.Inode, ino.StorageClass)
+		log.LogWarnf("[UpdateExtentKeyAfterMigration] %v", err.Error())
+		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+		return
+	}
+
 	if atomic.LoadUint32(&ino.ForbiddenMigration) == ForbiddenToMigration {
 		err = fmt.Errorf("mp %v inode %v is forbidden to migration", mp.config.PartitionId, ino.Inode)
 		log.LogErrorf("action[UpdateExtentKeyAfterMigration] %v", err)
@@ -1167,7 +1175,7 @@ func (mp *metaPartition) UpdateExtentKeyAfterMigration(req *proto.UpdateExtentKe
 	}
 	val, err := ino.Marshal()
 	if err != nil {
-		log.LogErrorf("action[UpdateExtentKeyAfterMigration] ino %v marshall failed %v", ino.Inode, err)
+		log.LogErrorf("action[UpdateExtentKeyAfterMigration] ino %v marshall failed %v", ino.Inode, err.Error())
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return
 	}
@@ -1176,6 +1184,15 @@ func (mp *metaPartition) UpdateExtentKeyAfterMigration(req *proto.UpdateExtentKe
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return
 	}
+	fsmRespStatus := resp.(*InodeResponse).Status
+	if fsmRespStatus != proto.OpOk {
+		err = fmt.Errorf("fsm resp err status(%v)", fsmRespStatus)
+		log.LogErrorf("action[UpdateExtentKeyAfterMigration] ino(%v) storageClass(%v) req(%v), fsm return err:%v",
+			ino.Inode, ino.StorageClass, req, err.Error())
+		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+		return
+	}
+
 	msg := resp.(*InodeResponse)
 	p.PacketErrorWithBody(msg.Status, nil)
 	return
