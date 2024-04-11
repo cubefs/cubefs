@@ -599,6 +599,11 @@ func (c *Cluster) syncAddDataPartition(dp *DataPartition) (err error) {
 }
 
 func (c *Cluster) syncUpdateDataPartition(dp *DataPartition) (err error) {
+	if _, err = c.getDataPartitionByID(dp.PartitionID); err != nil {
+		log.LogWarnf("[syncUpdateDataPartition] update dp(%v) but dp not found, err(%v)", dp.PartitionID, err)
+		err = nil
+		return
+	}
 	return c.putDataPartitionInfo(opSyncUpdateDataPartition, dp)
 }
 

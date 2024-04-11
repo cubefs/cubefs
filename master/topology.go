@@ -1991,12 +1991,14 @@ func (l *DecommissionDataPartitionList) traverse(c *Cluster) {
 					l.Remove(dp)
 					dp.ResetDecommissionStatus()
 					c.syncUpdateDataPartition(dp)
-				} else if dp.IsMarkDecommission() && l.acquireDecommissionToken() {
-					go func(dp *DataPartition) {
-						if !dp.TryToDecommission(c) {
-							l.releaseDecommissionToken()
-						}
-					}(dp) // special replica cnt cost some time from prepare to running
+				} else if dp.IsMarkDecommission() {
+					if dp.IsDiscard || l.acquireDecommissionToken() {
+						go func(dp *DataPartition) {
+							if !dp.TryToDecommission(c) {
+								l.releaseDecommissionToken()
+							}
+						}(dp) // special replica cnt cost some time from prepare to running
+					}
 				}
 			}
 		}

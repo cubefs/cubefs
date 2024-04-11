@@ -1072,9 +1072,6 @@ func (partition *DataPartition) Decommission(c *Cluster) bool {
 		srcAddr         = partition.DecommissionSrcAddr
 		targetAddr      = partition.DecommissionDstAddr
 	)
-	defer func() {
-		c.syncUpdateDataPartition(partition)
-	}()
 	log.LogInfof("action[decommissionDataPartition] dp[%v] from node[%v] to node[%v], raftForce[%v] SingleDecommissionStatus[%v]",
 		partition.PartitionID, srcAddr, targetAddr, partition.DecommissionRaftForce, partition.SingleDecommissionStatus)
 	begin := time.Now()
@@ -1082,12 +1079,16 @@ func (partition *DataPartition) Decommission(c *Cluster) bool {
 	c.syncUpdateDataPartition(partition)
 
 	// delete if not normal data partition
-	if !proto.IsNormalDp(partition.PartitionType) {
+	if partition.IsDiscard || !proto.IsNormalDp(partition.PartitionType) {
 		c.vols[partition.VolName].deleteDataPartition(c, partition)
 		partition.SetDecommissionStatus(DecommissionSuccess)
 		log.LogWarnf("action[decommissionDataPartition]delete dp directly[%v]", partition.PartitionID)
 		return true
 	}
+
+	defer func() {
+		c.syncUpdateDataPartition(partition)
+	}()
 
 	if err = c.validateDecommissionDataPartition(partition, srcAddr); err != nil {
 		goto errHandler
