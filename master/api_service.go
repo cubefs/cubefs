@@ -5110,7 +5110,7 @@ func (m *Server) GetQuota(w http.ResponseWriter, r *http.Request) {
 // 	sendOkReply(w, r, newSuccessHTTPReply(msg))
 // }
 
-func parseSetDpDiscardParam(r *http.Request) (dpId uint64, rdOnly bool, err error) {
+func parseSetDpDiscardParam(r *http.Request) (dpId uint64, rdOnly bool, force bool, err error) {
 	if err = r.ParseForm(); err != nil {
 		return
 	}
@@ -5131,19 +5131,33 @@ func parseSetDpDiscardParam(r *http.Request) (dpId uint64, rdOnly bool, err erro
 		return
 	}
 
+	val = r.FormValue(forceKey)
+	if val != "" {
+		if force, err = strconv.ParseBool(val); err != nil {
+			err = fmt.Errorf("parseSetDpDiscardParam %s is not bool value %s", forceKey, val)
+			return
+		}
+	}
+
 	return
 }
 
-func (m *Server) setDpDiscard(partitionID uint64, isDiscard bool) (err error) {
+func (m *Server) setDpDiscard(partitionID uint64, isDiscard bool, force bool) (err error) {
 
 	var dp *DataPartition
 	if dp, err = m.cluster.getDataPartitionByID(partitionID); err != nil {
 		return fmt.Errorf("[setDpDiacard] getDataPartitionByID err(%s)", err.Error())
 	}
+
 	dp.RLock()
+	defer dp.RUnlock()
+	if !dp.IsDiscard && isDiscard && !force && dp.Status != proto.Unavailable {
+		err = fmt.Errorf("data partition %v is not unavailable", dp.PartitionID)
+		log.LogErrorf("[setDpDiscard] dp(%v) set discard, but still available status(%v)", dp.PartitionID, dp.Status)
+		return
+	}
 	dp.IsDiscard = isDiscard
 	m.cluster.syncUpdateDataPartition(dp)
-	dp.RUnlock()
 
 	return
 }
@@ -5152,6 +5166,7 @@ func (m *Server) setDpDiscardHandler(w http.ResponseWriter, r *http.Request) {
 	var (
 		dpId    uint64
 		discard bool
+		force   bool
 		err     error
 	)
 
@@ -5160,14 +5175,14 @@ func (m *Server) setDpDiscardHandler(w http.ResponseWriter, r *http.Request) {
 		doStatAndMetric(proto.AdminSetDpDiscard, metric, err, nil)
 	}()
 
-	dpId, discard, err = parseSetDpDiscardParam(r)
+	dpId, discard, force, err = parseSetDpDiscardParam(r)
 	if err != nil {
 		log.LogInfof("[setDpDiscardHandler] set dp %v to discard(%v)", dpId, discard)
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
 
-	err = m.setDpDiscard(dpId, discard)
+	err = m.setDpDiscard(dpId, discard, force)
 	if err != nil {
 		log.LogErrorf("[setDpDiscardHandler] set dp %v to discard %v, err (%s)", dpId, discard, err.Error())
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
