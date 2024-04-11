@@ -223,15 +223,7 @@ func doStart(server common.Server, cfg *config.Config) (err error) {
 		return
 	}
 
-	// create space manager (disk, partition, etc.)
-	if err = s.startSpaceManager(cfg); err != nil {
-		return
-	}
-
-	// check local partition compare with master ,if lack,then not start
-	if _, err = s.checkLocalPartitionMatchWithMaster(); err != nil {
-		log.LogError(err)
-		exporter.Warning(err.Error())
+	if err = s.newSpaceManager(cfg); err != nil {
 		return
 	}
 
@@ -242,6 +234,18 @@ func doStart(server common.Server, cfg *config.Config) (err error) {
 
 	//smux listening & smux connection pool
 	if err = s.startSmuxService(cfg); err != nil {
+		return
+	}
+
+	// create space manager (disk, partition, etc.)
+	if err = s.startSpaceManager(cfg); err != nil {
+		return
+	}
+
+	// check local partition compare with master ,if lack,then not start
+	if _, err = s.checkLocalPartitionMatchWithMaster(); err != nil {
+		log.LogError(err)
+		exporter.Warning(err.Error())
 		return
 	}
 
@@ -352,7 +356,8 @@ func (s *DataNode) updateQosLimit() {
 		disk.updateQosLimiter()
 	}
 }
-func (s *DataNode) startSpaceManager(cfg *config.Config) (err error) {
+
+func (s *DataNode) newSpaceManager(cfg *config.Config) (err error) {
 	s.startTime = time.Now().Unix()
 	s.space = NewSpaceManager(s)
 	if len(strings.TrimSpace(s.port)) == 0 {
@@ -370,6 +375,10 @@ func (s *DataNode) startSpaceManager(cfg *config.Config) (err error) {
 	s.space.SetCurrentLoadDpLimit(loadLimit)
 	s.space.SetCurrentStopDpLimit(stopLimit)
 
+	return
+}
+
+func (s *DataNode) startSpaceManager(cfg *config.Config) (err error) {
 	allowDelay := cfg.GetBool(ConfigDiskLoadDpAllowDelay)
 
 	diskRdonlySpace := uint64(cfg.GetInt64(CfgDiskRdonlySpace))
@@ -400,7 +409,7 @@ func (s *DataNode) startSpaceManager(cfg *config.Config) (err error) {
 		// format "PATH:RESET_SIZE
 		arr := strings.Split(d, ":")
 		if len(arr) != 2 {
-			return errors.New("Invalid disk configuration. Example: PATH:RESERVE_SIZE")
+			return errors.New("invalid disk configuration. Example: PATH:RESERVE_SIZE")
 		}
 		path := arr[0]
 		fileInfo, err := os.Stat(path)
@@ -414,12 +423,12 @@ func (s *DataNode) startSpaceManager(cfg *config.Config) (err error) {
 		if s.clusterUuidEnable {
 			if err = config.CheckOrStoreClusterUuid(path, s.clusterUuid, false); err != nil {
 				log.LogErrorf("CheckOrStoreClusterUuid failed: %v", err)
-				return errors.New(fmt.Sprintf("CheckOrStoreClusterUuid failed: %v", err.Error()))
+				return fmt.Errorf("checkOrStoreClusterUuid failed: %v", err.Error())
 			}
 		}
 		reservedSpace, err := strconv.ParseUint(arr[1], 10, 64)
 		if err != nil {
-			return errors.New(fmt.Sprintf("Invalid disk reserved space. Error: %s", err.Error()))
+			return fmt.Errorf("invalid disk reserved space. Error: %s", err.Error())
 		}
 
 		if reservedSpace < DefaultDiskRetainMin {
