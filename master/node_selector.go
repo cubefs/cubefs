@@ -192,13 +192,13 @@ func (s *CarryWeightNodeSelector) getCarryDataNodes(maxTotal uint64, excludeHost
 			return true
 		}
 		if !dataNode.canAllocDp() {
-			log.LogDebugf("[getAvailCarryDataNodeTab] dataNode [%v] is not writeable, offline %v, dpCnt %d",
-				dataNode.Addr, dataNode.ToBeOffline, dataNode.DataPartitionCount)
+			log.LogWarnf("[getAvailCarryDataNodeTab] dataNode [%v] is not writeable(%v), offline %v, dpCnt %d excludeHosts[%v]",
+				dataNode.Addr, dataNode.isWriteAble(), dataNode.ToBeOffline, dataNode.DataPartitionCount, excludeHosts)
 			return true
 		}
 
 		if !dataNode.canAlloc() {
-			log.LogWarnf("[getAvailCarryDataNodeTab] dataNode [%v] is overSold", dataNode.Addr)
+			log.LogWarnf("[getAvailCarryDataNodeTab] dataNode [%v] is overSold excludeHosts[%v]", dataNode.Addr, excludeHosts)
 			return true
 		}
 		if s.carry[dataNode.ID] >= 1.0 {

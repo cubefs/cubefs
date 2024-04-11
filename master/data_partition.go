@@ -1288,11 +1288,11 @@ errHandler:
 	} else {
 		partition.SetDecommissionStatus(markDecommission) // retry again
 		partition.ReleaseDecommissionToken(c)
-	}
-	// choose other node to create data partition
-	if resetDecommissionDst {
-		partition.DecommissionDstAddr = ""
-		log.LogWarnf("action[decommissionDataPartition] partitionID:%v reset DecommissionDstAddr", partition.PartitionID)
+		// choose other node to create data partition when retry decommission
+		if resetDecommissionDst {
+			partition.DecommissionDstAddr = ""
+			log.LogWarnf("action[decommissionDataPartition] partitionID:%v reset DecommissionDstAddr", partition.PartitionID)
+		}
 	}
 
 	// if need rollback, set to fail,reset DecommissionDstAddr
@@ -1586,7 +1586,7 @@ func (partition *DataPartition) TryAcquireDecommissionToken(c *Cluster) bool {
 			goto errHandler
 		}
 		if partition.isSpecialReplicaCnt() && ns.HasDecommissionToken(partition.PartitionID) {
-			log.LogDebugf("action[TryAcquireDecommissionToken]dp %v has token when reloading meta from nodeset",
+			log.LogDebugf("action[TryAcquireDecommissionToken]dp %v has token when reloading meta from nodeset %v",
 				partition.PartitionID, ns.ID)
 			return true
 		}
