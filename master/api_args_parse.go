@@ -1316,6 +1316,10 @@ func validateRequestToCreateMetaPartition(r *http.Request) (volName string, coun
 		err = unmatchedKey(countKey)
 		return
 	}
+	if count > maxMpCreationCount {
+		err = fmt.Errorf("count[%d] exceeds maximum limit[%d]", count, maxMpCreationCount)
+		return
+	}
 	if volName, err = extractName(r); err != nil {
 		return
 	}

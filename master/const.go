@@ -208,6 +208,7 @@ const (
 	defaultMaxQuotaNumPerVol                     = 100
 	defaultVolDelayDeleteTimeHour                = 48
 	defaultMarkDiskBrokenThreshold               = 0.5
+	maxMpCreationCount                           = 10
 )
 
 const (
