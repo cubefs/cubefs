@@ -62,7 +62,6 @@ type DataNode struct {
 	DecommissionStatus        uint32
 	DecommissionDstAddr       string
 	DecommissionRaftForce     bool
-	DecommissionRetry         uint8
 	DecommissionLimit         int
 	DecommissionCompleteTime  int64
 	DpCntLimit                DpCountLimiter     `json:"-"` // max count of data partition in a data node
@@ -310,15 +309,13 @@ func (dataNode *DataNode) updateDecommissionStatus(c *Cluster, debug bool) (uint
 	if dataNode.GetDecommissionStatus() == DecommissionPause {
 		return DecommissionPause, float64(0)
 	}
+	// trigger error when try to decommission dataNode
+	if dataNode.GetDecommissionStatus() == DecommissionFail && dataNode.DecommissionDpTotal == 0 {
+		return DecommissionFail, float64(0)
+	}
 	defer func() {
 		c.syncUpdateDataNode(dataNode)
 	}()
-	// not enter running status
-	if dataNode.DecommissionRetry >= defaultDecommissionRetryLimit {
-		dataNode.markDecommissionFail()
-		return DecommissionFail, float64(0)
-	}
-
 	log.LogDebugf("action[GetLatestDecommissionDataPartition]dataNode %v diskList %v",
 		dataNode.Addr, dataNode.DecommissionDiskList)
 
@@ -393,7 +390,7 @@ func (dataNode *DataNode) updateDecommissionStatus(c *Cluster, debug bool) (uint
 	if debug {
 		log.LogInfof("action[updateDecommissionStatus] dataNode[%v] progress[%v] totalNum[%v] "+
 			"partitionIds %v  FailedNum[%v] failedPartitionIds %v, runningNum[%v] runningDp %v, prepareNum[%v] prepareDp %v "+
-			"stopNum[%v] stopPartitionIds %v ",
+			"stopNum[%v] stopPartitionIds %v term %v",
 			dataNode.Addr, progress, len(partitions), partitionIds, failedNum, failedPartitionIds, runningNum, runningPartitionIds,
 			prepareNum, preparePartitionIds, stopNum, stopPartitionIds)
 	}
@@ -461,8 +458,6 @@ func (dataNode *DataNode) markDecommission(targetAddr string, raftForce bool, li
 	dataNode.SetDecommissionStatus(markDecommission)
 	dataNode.DecommissionRaftForce = raftForce
 	dataNode.DecommissionDstAddr = targetAddr
-	// reset decommission status for failed once
-	dataNode.DecommissionRetry = 0
 	dataNode.DecommissionLimit = limit
 	dataNode.DecommissionDiskList = make([]string, 0)
 }
@@ -494,7 +489,6 @@ func (dataNode *DataNode) resetDecommissionStatus() {
 	dataNode.SetDecommissionStatus(DecommissionInitial)
 	dataNode.DecommissionRaftForce = false
 	dataNode.DecommissionDstAddr = ""
-	dataNode.DecommissionRetry = 0
 	dataNode.DecommissionLimit = 0
 	dataNode.DecommissionCompleteTime = 0
 	dataNode.DecommissionDiskList = make([]string, 0)
