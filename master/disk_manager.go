@@ -58,6 +58,12 @@ func (c *Cluster) checkDiskRecoveryProgress() {
 				continue
 			}
 
+			if partition.IsDiscard {
+				partition.SetDecommissionStatus(DecommissionSuccess)
+				log.LogWarnf("[checkDiskRecoveryProgress] dp(%v) is discard, decommission successfully", partition.PartitionID)
+				continue
+			}
+
 			_, err = c.getVol(partition.VolName)
 			if err != nil {
 				Warn(c.Name, fmt.Sprintf("checkDiskRecoveryProgress clusterID[%v],partitionID[%v] vol(%s) is not exist",
