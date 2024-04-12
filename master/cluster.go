@@ -342,6 +342,9 @@ func newCluster(name string, leaderInfo *LeaderInfo, fsm *MetadataFsm, partition
 	if c.cfg.MaxDpCntLimit == 0 {
 		c.cfg.MaxDpCntLimit = defaultMaxDpCntLimit
 	}
+	if c.cfg.MaxMpCntLimit == 0 {
+		c.cfg.MaxMpCntLimit = defaultMaxMpCntLimit
+	}
 	c.t = newTopology()
 	c.BadDataPartitionIds = new(sync.Map)
 	c.BadMetaPartitionIds = new(sync.Map)
@@ -1055,6 +1058,7 @@ func (c *Cluster) addMetaNode(nodeAddr, zoneName string, nodesetId uint64) (id u
 	}
 
 	metaNode = newMetaNode(nodeAddr, zoneName, c.Name)
+	metaNode.MpCntLimit = newLimitCounter(&c.cfg.MaxMpCntLimit, defaultMaxMpCntLimit)
 	zone, err := c.t.getZone(zoneName)
 	if err != nil {
 		zone = c.t.putZoneIfAbsent(newZone(zoneName))
@@ -1118,7 +1122,7 @@ func (c *Cluster) addDataNode(nodeAddr, zoneName string, nodesetId uint64) (id u
 	}
 
 	dataNode = newDataNode(nodeAddr, zoneName, c.Name)
-	dataNode.DpCntLimit = newDpCountLimiter(&c.cfg.MaxDpCntLimit)
+	dataNode.DpCntLimit = newLimitCounter(&c.cfg.MaxDpCntLimit, defaultMaxDpCntLimit)
 	zone, err := c.t.getZone(zoneName)
 	if err != nil {
 		zone = c.t.putZoneIfAbsent(newZone(zoneName))
@@ -2180,7 +2184,7 @@ func (c *Cluster) decommissionSingleDp(dp *DataPartition, newAddr, offlineAddr s
 					dp.PartitionID, newReplica.Addr, newReplica.Status)
 				dataNodeRebootRetryTimes = 0 // reset dataNodeRebootRetryTimes
 				if len(liveReplicas) > int(dp.ReplicaNum+1) {
-					log.LogInfof("action[decommissionSingleDp] dp %v replica[%v] status[%d] has excess replicas",
+					log.LogInfof("action[decommissionSingleDp] dp %v replica[%v] new replica status[%v] has excess replicas",
 						dp.PartitionID, newReplica.Addr, newReplica.Status)
 				}
 				if newReplica.isRepairing() { // wait for repair
@@ -2194,7 +2198,7 @@ func (c *Cluster) decommissionSingleDp(dp *DataPartition, newAddr, offlineAddr s
 						log.LogWarnf("action[decommissionSingleDp] dp %v err:%v", dp.PartitionID, err)
 						goto ERR
 					}
-					if time.Now().Sub(dp.RecoverStartTime) > c.GetDecommissionDataPartitionRecoverTimeOut() {
+					if time.Since(dp.RecoverStartTime) > c.GetDecommissionDataPartitionRecoverTimeOut() {
 						err = fmt.Errorf("action[decommissionSingleDp] dp %v new replica %v repair time out",
 							dp.PartitionID, newAddr)
 						dp.DecommissionNeedRollback = true
@@ -3882,11 +3886,31 @@ func (c *Cluster) setMaxDpCntLimit(val uint64) (err error) {
 	if val == 0 {
 		val = defaultMaxDpCntLimit
 	}
-	oldVal := atomic.LoadUint64(&c.cfg.MaxDpCntLimit)
+	oldVal := c.getMaxDpCntLimit()
 	atomic.StoreUint64(&c.cfg.MaxDpCntLimit, val)
 	if err = c.syncPutCluster(); err != nil {
 		log.LogErrorf("action[MaxDpCntLimit] err[%v]", err)
 		atomic.StoreUint64(&c.cfg.MaxDpCntLimit, oldVal)
+		err = proto.ErrPersistenceByRaft
+		return
+	}
+	return
+}
+
+func (c *Cluster) getMaxMpCntLimit() (mpCntLimit uint64) {
+	mpCntLimit = atomic.LoadUint64(&c.cfg.MaxMpCntLimit)
+	return
+}
+
+func (c *Cluster) setMaxMpCntLimit(val uint64) (err error) {
+	if val == 0 {
+		val = defaultMaxMpCntLimit
+	}
+	oldVal := c.getMaxMpCntLimit()
+	atomic.StoreUint64(&c.cfg.MaxMpCntLimit, val)
+	if err = c.syncPutCluster(); err != nil {
+		log.LogErrorf("[setMaxMpCntLimit] failed to set mp limit to value(%v), err(%v)", val, err)
+		atomic.StoreUint64(&c.cfg.MaxMpCntLimit, oldVal)
 		err = proto.ErrPersistenceByRaft
 		return
 	}

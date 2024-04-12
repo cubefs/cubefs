@@ -497,7 +497,7 @@ func (api *AdminAPI) SetMasterVolDeletionDelayTime(volDeletionDelayTimeHour int)
 	return
 }
 
-func (api *AdminAPI) SetClusterParas(batchCount, markDeleteRate, deleteWorkerSleepMs, autoRepairRate, loadFactor, maxDpCntLimit, clientIDKey string,
+func (api *AdminAPI) SetClusterParas(batchCount, markDeleteRate, deleteWorkerSleepMs, autoRepairRate, loadFactor, maxDpCntLimit, maxMpCntLimit, clientIDKey string,
 	dataNodesetSelector, metaNodesetSelector, dataNodeSelector, metaNodeSelector string, markDiskBrokenThreshold string,
 ) (err error) {
 	request := newRequest(get, proto.AdminSetNodeInfo).Header(api.h)
@@ -507,6 +507,7 @@ func (api *AdminAPI) SetClusterParas(batchCount, markDeleteRate, deleteWorkerSle
 	request.addParam("autoRepairRate", autoRepairRate)
 	request.addParam("loadFactor", loadFactor)
 	request.addParam("maxDpCntLimit", maxDpCntLimit)
+	request.addParam("maxMpCntLimit", maxMpCntLimit)
 	request.addParam("clientIDKey", clientIDKey)
 
 	request.addParam("dataNodesetSelector", dataNodesetSelector)

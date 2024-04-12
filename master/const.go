@@ -82,6 +82,7 @@ const (
 	nodeDpMaxRepairErrCntKey   = "dpMaxRepairErrCnt"
 	clusterLoadFactorKey       = "loadFactor"
 	maxDpCntLimitKey           = "maxDpCntLimit"
+	maxMpCntLimitKey           = "maxMpCntLimit"
 	clusterCreateTimeKey       = "clusterCreateTime"
 	descriptionKey             = "description"
 	dpSelectorNameKey          = "dpSelectorName"

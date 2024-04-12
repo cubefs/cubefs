@@ -46,6 +46,7 @@ type clusterValue struct {
 	MetaNodeDeleteWorkerSleepMs uint64
 	DataNodeAutoRepairLimitRate uint64
 	MaxDpCntLimit               uint64
+	MaxMpCntLimit               uint64
 	FaultDomain                 bool
 	DiskQosEnable               bool
 	QosLimitUpload              uint64
@@ -78,6 +79,7 @@ func newClusterValue(c *Cluster) (cv *clusterValue) {
 		DisableAutoAllocate:         c.DisableAutoAllocate,
 		ForbidMpDecommission:        c.ForbidMpDecommission,
 		MaxDpCntLimit:               c.cfg.MaxDpCntLimit,
+		MaxMpCntLimit:               c.cfg.MaxMpCntLimit,
 		FaultDomain:                 c.FaultDomain,
 		DiskQosEnable:               c.diskQosEnable,
 		QosLimitUpload:              uint64(c.QosAcceptLimit.Limit()),
@@ -1021,6 +1023,10 @@ func (c *Cluster) updateMaxDpCntLimit(val uint64) {
 	atomic.StoreUint64(&c.cfg.MaxDpCntLimit, val)
 }
 
+func (c *Cluster) updateMaxMpCntLimit(val uint64) {
+	atomic.StoreUint64(&c.cfg.MaxMpCntLimit, val)
+}
+
 func (c *Cluster) updateInodeIdStep(val uint64) {
 	atomic.StoreUint64(&c.cfg.MetaPartitionInodeIdStep, val)
 }
@@ -1165,6 +1171,7 @@ func (c *Cluster) loadClusterValue() (err error) {
 		c.updateDataPartitionMaxRepairErrCnt(cv.DpMaxRepairErrCnt)
 		c.updateDataPartitionRepairTimeOut(cv.DpRepairTimeOut)
 		c.updateMaxDpCntLimit(cv.MaxDpCntLimit)
+		c.updateMaxMpCntLimit(cv.MaxMpCntLimit)
 		if cv.MetaPartitionInodeIdStep == 0 {
 			cv.MetaPartitionInodeIdStep = defaultMetaPartitionInodeIDStep
 		}
@@ -1385,7 +1392,7 @@ func (c *Cluster) loadDataNodes() (err error) {
 			dnv.ZoneName = DefaultZoneName
 		}
 		dataNode := newDataNode(dnv.Addr, dnv.ZoneName, c.Name)
-		dataNode.DpCntLimit = newDpCountLimiter(&c.cfg.MaxDpCntLimit)
+		dataNode.DpCntLimit = newLimitCounter(&c.cfg.MaxDpCntLimit, defaultMaxDpCntLimit)
 		dataNode.ID = dnv.ID
 		dataNode.NodeSetID = dnv.NodeSetID
 		dataNode.RdOnly = dnv.RdOnly
@@ -1435,6 +1442,7 @@ func (c *Cluster) loadMetaNodes() (err error) {
 			mnv.ZoneName = DefaultZoneName
 		}
 		metaNode := newMetaNode(mnv.Addr, mnv.ZoneName, c.Name)
+		metaNode.MpCntLimit = newLimitCounter(&c.cfg.MaxMpCntLimit, defaultMaxMpCntLimit)
 		metaNode.ID = mnv.ID
 		metaNode.NodeSetID = mnv.NodeSetID
 		metaNode.RdOnly = mnv.RdOnly

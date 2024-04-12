@@ -64,7 +64,7 @@ type DataNode struct {
 	DecommissionRaftForce     bool
 	DecommissionLimit         int
 	DecommissionCompleteTime  int64
-	DpCntLimit                DpCountLimiter     `json:"-"` // max count of data partition in a data node
+	DpCntLimit                LimitCounter       `json:"-"` // max count of data partition in a data node
 	CpuUtil                   atomicutil.Float64 `json:"-"`
 	ioUtils                   atomic.Value       `json:"-"`
 	DecommissionDiskList      []string           // NOTE: the disks that running decommission
@@ -80,7 +80,7 @@ func newDataNode(addr, zoneName, clusterID string) (dataNode *DataNode) {
 	dataNode.LastUpdateTime = time.Now().Add(-time.Minute)
 	dataNode.TaskManager = newAdminTaskManager(dataNode.Addr, clusterID)
 	dataNode.DecommissionStatus = DecommissionInitial
-	dataNode.DpCntLimit = newDpCountLimiter(nil)
+	dataNode.DpCntLimit = newLimitCounter(nil, defaultMaxDpCntLimit)
 	dataNode.CpuUtil.Store(0)
 	dataNode.SetIoUtils(make(map[string]float64))
 	dataNode.AllDisks = make([]string, 0)
@@ -241,7 +241,7 @@ func (dataNode *DataNode) isWriteAbleWithSize(size uint64) (ok bool) {
 	dataNode.RLock()
 	defer dataNode.RUnlock()
 
-	if dataNode.isActive == true && dataNode.AvailableSpace > size {
+	if dataNode.isActive && dataNode.AvailableSpace > size {
 		ok = true
 	}
 

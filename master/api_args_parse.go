@@ -1300,6 +1300,17 @@ func parseAndExtractSetNodeInfoParams(r *http.Request) (params map[string]interf
 		params[maxDpCntLimitKey] = val
 	}
 
+	if value = r.FormValue(maxMpCntLimitKey); value != "" {
+		noParams = false
+		val := uint64(0)
+		val, err = strconv.ParseUint(value, 10, 64)
+		if err != nil {
+			err = unmatchedKey(maxMpCntLimitKey)
+			return
+		}
+		params[maxMpCntLimitKey] = val
+	}
+
 	if value = r.FormValue(nodeDpRepairTimeOutKey); value != "" {
 		noParams = false
 		val := uint64(0)

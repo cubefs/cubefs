@@ -16,24 +16,26 @@ package master
 
 import "sync/atomic"
 
-type DpCountLimiter struct {
-	cntLimit *uint64
+type LimitCounter struct {
+	cntLimit     *uint64
+	defaultValue uint64
 }
 
-func newDpCountLimiter(cntLimit *uint64) DpCountLimiter {
-	limiter := DpCountLimiter{
-		cntLimit: cntLimit,
+func newLimitCounter(cntLimit *uint64, defaultValue uint64) LimitCounter {
+	limiter := LimitCounter{
+		cntLimit:     cntLimit,
+		defaultValue: defaultValue,
 	}
 	return limiter
 }
 
-func (cntLimiter *DpCountLimiter) GetCntLimit() uint64 {
+func (cntLimiter *LimitCounter) GetCntLimit() uint64 {
 	limit := uint64(0)
 	if cntLimiter.cntLimit != nil {
 		limit = atomic.LoadUint64(cntLimiter.cntLimit)
 	}
 	if limit == 0 {
-		limit = defaultMaxDpCntLimit
+		limit = cntLimiter.defaultValue
 	}
 	return limit
 }

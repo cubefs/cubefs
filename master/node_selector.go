@@ -89,7 +89,7 @@ func canAllocPartition(node interface{}, nodeType NodeType) bool {
 		return dataNode.canAlloc() && dataNode.canAllocDp()
 	case MetaNodeType:
 		metaNode := node.(*MetaNode)
-		return metaNode.isWritable()
+		return metaNode.isWritable() && metaNode.mpCntInLimit()
 	default:
 		panic("unknown node type")
 	}
