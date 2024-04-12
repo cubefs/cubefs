@@ -12,21 +12,16 @@
 // implied. See the License for the specific language governing
 // permissions and limitations under the License.
 
-package fileutil_test
+package fileutil
 
-import (
-	"os"
-	"testing"
+import "os"
 
-	"github.com/cubefs/cubefs/util/fileutil"
-	"github.com/stretchr/testify/require"
-)
-
-func TestStat(t *testing.T) {
-	dir, err := os.MkdirTemp("", "")
-	require.NoError(t, err)
-	defer os.Remove(dir)
-	ino, err := fileutil.Stat(dir)
-	require.NoError(t, err)
-	require.NotEqual(t, 0, ino)
+func ReadDir(name string) (dentries []string, err error) {
+	dir, err := os.Open(name)
+	if err != nil {
+		return
+	}
+	defer dir.Close()
+	dentries, err = dir.Readdirnames(0)
+	return
 }

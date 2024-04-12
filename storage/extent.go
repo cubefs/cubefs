@@ -15,6 +15,7 @@
 package storage
 
 import (
+	"bytes"
 	"encoding/binary"
 	"fmt"
 	"hash/crc32"
@@ -58,6 +59,58 @@ func (ei *ExtentInfo) String() (m string) {
 		source = "none"
 	}
 	return fmt.Sprintf("FileID(%v)_Size(%v)_IsDeleted(%v)_Souarce(%v)_MT(%d)_AT(%d)_CRC(%d)", ei.FileID, ei.Size, ei.IsDeleted, source, ei.ModifyTime, ei.AccessTime, ei.Crc)
+}
+
+func (ei *ExtentInfo) MarshalBinaryWithBuffer(buff *bytes.Buffer) (err error) {
+	if err = binary.Write(buff, binary.BigEndian, ei.FileID); err != nil {
+		return
+	}
+	if err = binary.Write(buff, binary.BigEndian, ei.Size); err != nil {
+		return
+	}
+	if err = binary.Write(buff, binary.BigEndian, ei.IsDeleted); err != nil {
+		return
+	}
+	if err = binary.Write(buff, binary.BigEndian, ei.ModifyTime); err != nil {
+		return
+	}
+	if err = binary.Write(buff, binary.BigEndian, ei.AccessTime); err != nil {
+		return
+	}
+	return
+}
+
+func (ei *ExtentInfo) MarshalBinary() (v []byte, err error) {
+	buff := bytes.NewBuffer([]byte{})
+	if err = ei.MarshalBinaryWithBuffer(buff); err != nil {
+		return
+	}
+	v = buff.Bytes()
+	return
+}
+
+func (ei *ExtentInfo) UnmarshalBinaryWithBuffer(buff *bytes.Buffer) (err error) {
+	if err = binary.Read(buff, binary.BigEndian, &ei.FileID); err != nil {
+		return
+	}
+	if err = binary.Read(buff, binary.BigEndian, &ei.Size); err != nil {
+		return
+	}
+	if err = binary.Read(buff, binary.BigEndian, &ei.IsDeleted); err != nil {
+		return
+	}
+	if err = binary.Read(buff, binary.BigEndian, &ei.ModifyTime); err != nil {
+		return
+	}
+	if err = binary.Read(buff, binary.BigEndian, &ei.AccessTime); err != nil {
+		return
+	}
+	return
+}
+
+func (ei *ExtentInfo) UnmarshalBinary(v []byte) (err error) {
+	err = ei.UnmarshalBinaryWithBuffer(bytes.NewBuffer(v))
+	return
 }
 
 // SortedExtentInfos defines an array sorted by AccessTime
