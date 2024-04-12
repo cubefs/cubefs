@@ -271,6 +271,7 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 	var optDescription string
 	var optCacheRule string
 	var optZoneName string
+	var optCrossZone string
 	var optCapacity uint64
 	var optFollowerRead string
 	var optEbsBlkSize int
@@ -319,16 +320,14 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 			} else {
 				confirmString.WriteString(fmt.Sprintf("  Description         : %v \n", vv.Description))
 			}
-			if vv.CrossZone == false && "" != optZoneName {
+			if "" != optZoneName {
 				isChange = true
 				confirmString.WriteString(fmt.Sprintf("  ZoneName            : %v -> %v\n", vv.ZoneName, optZoneName))
 				vv.ZoneName = optZoneName
 			} else {
 				confirmString.WriteString(fmt.Sprintf("  ZoneName            : %v\n", vv.ZoneName))
 			}
-			if vv.CrossZone == true && "" != optZoneName {
-				err = fmt.Errorf("Can not set zone name of the volume that cross zone\n")
-			}
+
 			if optCapacity > 0 {
 				isChange = true
 				confirmString.WriteString(fmt.Sprintf("  Capacity            : %v GB -> %v GB\n", vv.Capacity, optCapacity))
@@ -360,6 +359,18 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 				}
 				confirmString.WriteString(fmt.Sprintf("  Allow follower read : %v\n", formatEnabledDisabled(vv.FollowerRead)))
 			}
+			if optCrossZone != "" {
+				isChange = true
+				var enable bool
+				if enable, err = strconv.ParseBool(optCrossZone); err != nil {
+					return
+				}
+				confirmString.WriteString(fmt.Sprintf("  Allow CrossZone : %v -> %v\n", formatEnabledDisabled(vv.CrossZone), formatEnabledDisabled(enable)))
+				vv.CrossZone = enable
+			} else {
+				confirmString.WriteString(fmt.Sprintf("  Allow CrossZone : %v\n", formatEnabledDisabled(vv.CrossZone)))
+			}
+
 			if optEbsBlkSize > 0 {
 				if vv.VolType == 0 {
 					err = fmt.Errorf("ebs-blk-size not support in hot vol\n")
@@ -614,6 +625,7 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 	}
 	cmd.Flags().StringVar(&optDescription, CliFlagDescription, "", "The description of volume")
 	cmd.Flags().StringVar(&optZoneName, CliFlagZoneName, "", "Specify volume zone name")
+	cmd.Flags().StringVar(&optCrossZone, CliFlagEnableCrossZone, "", "Enable cross zone")
 	cmd.Flags().Uint64Var(&optCapacity, CliFlagCapacity, 0, "Specify volume datanode capacity [Unit: GB]")
 	cmd.Flags().StringVar(&optFollowerRead, CliFlagEnableFollowerRead, "", "Enable read form replica follower (default false)")
 	cmd.Flags().IntVar(&optEbsBlkSize, CliFlagEbsBlkSize, 0, "Specify ebsBlk Size[Unit: byte]")

@@ -2044,6 +2044,7 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 	newArgs := getVolVarargs(vol)
 
 	newArgs.zoneName = req.zoneName
+	newArgs.crossZone = req.crossZone
 	newArgs.description = req.description
 	newArgs.capacity = req.capacity
 	newArgs.deleteLockTime = req.deleteLockTime

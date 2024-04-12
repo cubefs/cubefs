@@ -49,6 +49,7 @@ type VolVarargs struct {
 	txConflictRetryInterval int64
 	txOpLimit               int
 	trashInterval           int64
+	crossZone               bool
 }
 
 // Vol represents a set of meta partitionMap and data partitionMap
@@ -277,7 +278,7 @@ func (vol *Vol) initQosManager(limitArgs *qosArgs) {
 			Buffer:     arrLimit[i],
 			requestCh:  make(chan interface{}, 10240),
 			qosManager: vol.qosManager,
-			done: make (chan interface{}, 1),
+			done:       make(chan interface{}, 1),
 		}
 		go vol.qosManager.serverFactorLimitMap[arrType[i]].dispatch()
 	}
@@ -1389,6 +1390,7 @@ func setVolFromArgs(args *VolVarargs, vol *Vol) {
 	vol.txConflictRetryInterval = args.txConflictRetryInterval
 	vol.txOpLimit = args.txOpLimit
 	vol.dpReplicaNum = args.dpReplicaNum
+	vol.crossZone = args.crossZone
 
 	if proto.IsCold(vol.VolType) {
 		coldArgs := args.coldArgs
@@ -1426,6 +1428,7 @@ func getVolVarargs(vol *Vol) *VolVarargs {
 
 	return &VolVarargs{
 		zoneName:                vol.zoneName,
+		crossZone:               vol.crossZone,
 		description:             vol.description,
 		capacity:                vol.Capacity,
 		deleteLockTime:          vol.DeleteLockTime,

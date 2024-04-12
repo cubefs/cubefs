@@ -368,6 +368,7 @@ type updateVolReq struct {
 	coldArgs                *coldVolArgs
 	dpReadOnlyWhenVolFull   bool
 	enableQuota             bool
+	crossZone               bool
 }
 
 func parseColdVolUpdateArgs(r *http.Request, vol *Vol) (args *coldVolArgs, err error) {
@@ -443,6 +444,9 @@ func parseVolUpdateReq(r *http.Request, vol *Vol, req *updateVolReq) (err error)
 	req.authKey = extractStr(r, volAuthKey)
 	req.description = extractStrWithDefault(r, descriptionKey, vol.description)
 	req.zoneName = extractStrWithDefault(r, zoneNameKey, vol.zoneName)
+	if req.crossZone, err = extractBoolWithDefault(r, crossZoneKey, vol.crossZone); err != nil {
+		return
+	}
 
 	if req.capacity, err = extractUint64WithDefault(r, volCapacityKey, vol.Capacity); err != nil {
 		return
