@@ -23,7 +23,7 @@ import (
 	"io"
 	"io/ioutil"
 	"net/http"
-	_ "net/http/pprof"
+	"net/http/pprof"
 	"os"
 	"strings"
 	"sync"
@@ -242,7 +242,23 @@ func createMasterServer(cfgJSON string) (server *Server, err error) {
 	}
 	if profPort != "" {
 		go func() {
-			err := http.ListenAndServe(fmt.Sprintf(":%v", profPort), nil)
+			mainMux := http.NewServeMux()
+			mux := http.NewServeMux()
+			mux.Handle("/debug/pprof", http.HandlerFunc(pprof.Index))
+			mux.Handle("/debug/pprof/cmdline", http.HandlerFunc(pprof.Cmdline))
+			mux.Handle("/debug/pprof/profile", http.HandlerFunc(pprof.Profile))
+			mux.Handle("/debug/pprof/symbol", http.HandlerFunc(pprof.Symbol))
+			mux.Handle("/debug/pprof/trace", http.HandlerFunc(pprof.Trace))
+			mux.Handle("/debug/", http.HandlerFunc(pprof.Index))
+			mainHandler := http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+				if strings.HasPrefix(req.URL.Path, "/debug/") {
+					mux.ServeHTTP(w, req)
+				} else {
+					http.DefaultServeMux.ServeHTTP(w, req)
+				}
+			})
+			mainMux.Handle("/", mainHandler)
+			err := http.ListenAndServe(fmt.Sprintf(":%v", profPort), mainMux)
 			if err != nil {
 				panic(fmt.Sprintf("cannot listen pprof %v err %v", profPort, err.Error()))
 			}
