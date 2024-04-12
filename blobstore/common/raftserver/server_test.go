@@ -17,7 +17,13 @@ package raftserver
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
+	"io"
+	"math/rand"
+	"net/http"
+	"net/http/pprof"
 	"os"
+	"strings"
 	"sync"
 	"testing"
 
@@ -88,6 +94,31 @@ func TestRaftServer(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	log.SetOutputLevel(0)
 	os.RemoveAll("/tmp/raftserver")
+	go func() {
+		mainMux := http.NewServeMux()
+		mux := http.NewServeMux()
+		mux.Handle("/debug/pprof", http.HandlerFunc(pprof.Index))
+		mux.Handle("/debug/pprof/cmdline", http.HandlerFunc(pprof.Cmdline))
+		mux.Handle("/debug/pprof/profile", http.HandlerFunc(pprof.Profile))
+		mux.Handle("/debug/pprof/symbol", http.HandlerFunc(pprof.Symbol))
+		mux.Handle("/debug/pprof/trace", http.HandlerFunc(pprof.Trace))
+		mux.Handle("/debug/", http.HandlerFunc(pprof.Index))
+		mainHandler := http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+			if strings.HasPrefix(req.URL.Path, "/debug/") {
+				mux.ServeHTTP(w, req)
+			} else {
+				http.DefaultServeMux.ServeHTTP(w, req)
+			}
+		})
+		mainMux.Handle("/", mainHandler)
+		if err := http.ListenAndServe(":8080", mainMux); err != http.ErrServerClosed {
+			return
+		}
+	}()
+	var stores [3]*srvStore
+	var sms [3]*srvStatemachine
+	var rss [3]RaftServer
+	var err error
 	defer ctrl.Finish()
 
 	var (
