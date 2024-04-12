@@ -165,7 +165,7 @@ func NewDiskDropMgr(clusterMgrCli client.ClusterMgrAPI, volumeUpdater client.IVo
 
 		totalTaskLimit:   count.NewBlockingCount(conf.TotalTaskLimit),
 		taskLimitPerDisk: keycount.NewBlockingKeyCountLimit(conf.TaskLimitPerDisk),
-		prepareTaskPool:  taskpool.New(conf.DiskConcurrency, conf.DiskConcurrency*2),
+		prepareTaskPool:  taskpool.New(conf.DiskConcurrency, conf.DiskConcurrency),
 	}
 	conf.MigrateConfig.loadTaskCallback = mgr.acquireTaskLimit
 	conf.MigrateConfig.finishTaskCallback = mgr.releaseTaskLimit
@@ -262,8 +262,8 @@ func (mgr *DiskDropMgr) collectTask() {
 		if dDisk.isCollecting() {
 			continue
 		}
+		dDisk.setCollecting(true)
 		mgr.prepareTaskPool.Run(func() {
-			dDisk.setCollecting(true)
 			taskSpan, ctx := trace.StartSpanFromContextWithTraceID(context.Background(),
 				span.OperationName(), fmt.Sprintf("disk_%d", dDisk.DiskID))
 			err := mgr.loopGenerateTask(ctx, dDisk)
