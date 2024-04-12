@@ -236,10 +236,6 @@ int cfs_rdma_send_packet(struct cfs_socket *csk, struct cfs_packet *packet)
 			packet->request.hdr.size = cpu_to_be32(cfs_buffer_size(csk->tx_buffer));
 	}
 
-	if (packet->request.arg) {
-		memcpy(packet->request.hdr_padding.arg, packet->request.arg, cfs_buffer_size(packet->request.arg));
-	}
-
 	packet->request.hdr_padding.RdmaKey = htonl(csk->ibvsock->pd->unsafe_global_rkey);
 	iov.iov_base = &packet->request;
 	iov.iov_len = sizeof(struct cfs_packet_hdr) + sizeof(struct request_hdr_padding);

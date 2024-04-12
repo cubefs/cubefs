@@ -131,6 +131,8 @@ static inline int cfs_parse_status(u8 status)
 #define CFS_PACKAGE_READ_ITER 2
 #define CFS_PACKAGE_RDMA_ITER 3
 
+#define CFS_PACKET_REQUEST_BUFFER_SIZE 40
+
 /**
  *  Define cubefs file mode, refer to "https://pkg.go.dev/io/fs#FileMode".
  */
@@ -891,8 +893,8 @@ cfs_packet_gquota_reply_clear(struct cfs_packet_gquota_reply *reply)
 struct request_hdr_padding {
 	uint64_t VerSeq; // only used in mod request to datanode
 	unsigned char
-		arg[40]; // for create or append ops, the data contains the address
-	unsigned char list[40];
+		arg[CFS_PACKET_REQUEST_BUFFER_SIZE]; // for create or append ops, the data contains the address
+	unsigned char list[CFS_PACKET_REQUEST_BUFFER_SIZE];
 	uint8_t RdmaVersion; //rdma version
 	uint64_t RdmaAddr;
 	uint32_t RdmaLength;
@@ -902,9 +904,9 @@ struct request_hdr_padding {
 struct reply_hdr_padding {
 	uint64_t VerSeq; // only used in mod request to datanode
 	unsigned char
-		arg[40]; // for create or append ops, the data contains the address
+		arg[CFS_PACKET_REQUEST_BUFFER_SIZE]; // for create or append ops, the data contains the address
 	unsigned char data[500];
-	unsigned char list[40];
+	unsigned char list[CFS_PACKET_REQUEST_BUFFER_SIZE];
 	uint8_t RdmaVersion; //rdma version
 	uint64_t RdmaAddr;
 	uint32_t RdmaLength;
@@ -915,7 +917,6 @@ struct cfs_packet {
 	struct {
 		struct cfs_packet_hdr hdr;
 		struct request_hdr_padding hdr_padding;
-		struct cfs_buffer *arg;
 		union {
 			struct cfs_packet_icreate_request icreate;
 			struct cfs_packet_iget_request iget;
@@ -1016,11 +1017,20 @@ static inline void cfs_packet_set_callback(struct cfs_packet *packet,
 	packet->private = private;
 }
 
-static inline void cfs_packet_set_request_arg(struct cfs_packet *packet,
+static inline int cfs_packet_set_request_arg(struct cfs_packet *packet,
 					      struct cfs_buffer *arg)
 {
-	packet->request.arg = arg;
-	packet->request.hdr.arglen = cpu_to_be32(cfs_buffer_size(arg));
+	size_t len = 0;
+
+	len = cfs_buffer_size(arg);
+	if (len > CFS_PACKET_REQUEST_BUFFER_SIZE) {
+		return -EINVAL;
+	}
+
+	memcpy(packet->request.hdr_padding.arg, cfs_buffer_data(arg), len);
+	packet->request.hdr.arglen = cpu_to_be32(len);
+
+	return 0;
 }
 
 /**

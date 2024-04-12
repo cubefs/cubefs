@@ -192,7 +192,13 @@ retry:
 		cfs_data_partition_release(dp);
 		return -ENOMEM;
 	}
-	cfs_packet_set_request_arg(packet, dp->follower_addrs);
+	ret = cfs_packet_set_request_arg(packet, dp->follower_addrs);
+	if (unlikely(ret < 0)) {
+		cfs_log_error(es->ec->log, "cfs_packet_set_request_arg failed: %d\n", ret);
+		cfs_packet_release(packet);
+		cfs_data_partition_release(dp);
+		return ret;
+	}
 	packet->request.data.ino = cpu_to_be64(es->ino);
 	packet->request.hdr.size = cpu_to_be32(sizeof(es->ino));
 
@@ -403,9 +409,15 @@ retry:
 	}
 
 	if (es->enable_rdma) {
-		cfs_packet_set_request_arg(packet, dp->rdma_follower_addrs);
+		ret = cfs_packet_set_request_arg(packet, dp->rdma_follower_addrs);
 	} else {
-		cfs_packet_set_request_arg(packet, dp->follower_addrs);
+		ret = cfs_packet_set_request_arg(packet, dp->follower_addrs);
+	}
+	if (unlikely(ret < 0)) {
+		cfs_log_error(es->ec->log, "cfs_packet_set_request_arg failed: %d\n", ret);
+		cfs_packet_release(packet);
+		cfs_data_partition_release(dp);
+		return ret;
 	}
 	cfs_packet_set_write_data(packet, iter, &io_info->size);
 	packet->request.hdr.crc = cpu_to_be32(cfs_page_frags_crc32(packet->request.data.write.frags, packet->request.data.write.nr));
@@ -544,10 +556,16 @@ static int extent_write_pages_normal(struct cfs_extent_stream *es,
 		cfs_packet_set_callback(packet, extent_write_pages_reply_cb,
 					writer);
 		if (es->enable_rdma) {
-			cfs_packet_set_request_arg(packet, writer->dp->rdma_follower_addrs);
+			ret = cfs_packet_set_request_arg(packet, writer->dp->rdma_follower_addrs);
 		} else {
-			cfs_packet_set_request_arg(packet, writer->dp->follower_addrs);
+			ret = cfs_packet_set_request_arg(packet, writer->dp->follower_addrs);
 		}
+		if (unlikely(ret < 0)) {
+			cfs_log_error(es->ec->log, "cfs_packet_set_request_arg failed: %d\n", ret);
+			cfs_packet_release(packet);
+			return -EPERM;
+		}
+
 		cfs_packet_set_write_data(packet, iter, &w_len);
 		packet->request.hdr.crc = cpu_to_be32(cfs_page_frags_crc32(packet->request.data.write.frags, packet->request.data.write.nr));
 
@@ -1424,15 +1442,22 @@ retry:
 	}
 
 	if (es->enable_rdma) {
-		cfs_packet_set_request_arg(packet, dp->rdma_follower_addrs);
+		ret = cfs_packet_set_request_arg(packet, dp->rdma_follower_addrs);
 	} else {
-		cfs_packet_set_request_arg(packet, dp->follower_addrs);
+		ret = cfs_packet_set_request_arg(packet, dp->follower_addrs);
+	}
+	if (unlikely(ret < 0)) {
+		cfs_log_error(es->ec->log, "cfs_packet_set_request_arg failed: %d\n", ret);
+		cfs_packet_release(packet);
+		cfs_data_partition_release(dp);
+		return -EPERM;
 	}
 
 	ret = cfs_set_packet_iter_crc(packet, iter, io_info->size);
 	if (unlikely(ret < 0)) {
 		cfs_log_error(es->ec->log, "ino(%llu) cfs_set_packet_iter_crc error ret(%d)\n", es->ino, ret);
 		cfs_packet_release(packet);
+		cfs_data_partition_release(dp);
 		return ret;
 	}
 
@@ -1551,9 +1576,14 @@ static size_t extent_write_iter_normal(struct cfs_extent_stream *es,
 		cfs_packet_set_callback(packet, extent_write_iter_reply_cb,
 					writer);
 		if (es->enable_rdma) {
-			cfs_packet_set_request_arg(packet, writer->dp->rdma_follower_addrs);
+			ret = cfs_packet_set_request_arg(packet, writer->dp->rdma_follower_addrs);
 		} else {
-			cfs_packet_set_request_arg(packet, writer->dp->follower_addrs);
+			ret = cfs_packet_set_request_arg(packet, writer->dp->follower_addrs);
+		}
+		if (unlikely(ret < 0)) {
+			cfs_log_error(es->ec->log, "cfs_packet_set_request_arg failed: %d\n", ret);
+			cfs_packet_release(packet);
+			return -EPERM;
 		}
 
 		if (es->enable_rdma) {

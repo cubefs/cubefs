@@ -24,6 +24,7 @@ cfs_data_partition_new(struct cfs_data_partition_view *dp_view, u32 rdma_port)
 	}
 	dp->rdma_follower_addrs = cfs_buffer_new(0);
 	if (!dp->rdma_follower_addrs) {
+		cfs_buffer_release(dp->follower_addrs);
 		kfree(dp);
 		return NULL;
 	}

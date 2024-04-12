@@ -248,10 +248,14 @@ recover_packet:
 		packet->request.hdr.remaining_followers =
 			recover->dp->nr_followers;
 		if (writer->sock->enable_rdma) {
-			cfs_packet_set_request_arg(packet, recover->dp->rdma_follower_addrs);
+			ret = cfs_packet_set_request_arg(packet, recover->dp->rdma_follower_addrs);
 		} else {
-			cfs_packet_set_request_arg(packet, recover->dp->follower_addrs);
+			ret = cfs_packet_set_request_arg(packet, recover->dp->follower_addrs);
 		}
+		if (unlikely(ret < 0)) {
+			cfs_log_error(es->ec->log, "cfs_packet_set_request_arg failed: %d\n", ret);
+		}
+
 		cfs_packet_set_callback(packet, packet->handle_reply, recover);
 
 		cfs_extent_writer_request(recover, packet);

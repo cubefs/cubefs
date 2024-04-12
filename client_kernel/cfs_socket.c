@@ -362,6 +362,7 @@ static int cfs_socket_recv_iter(struct cfs_socket *csk, struct iov_iter *iter, u
 int cfs_socket_send_packet(struct cfs_socket *csk, struct cfs_packet *packet)
 {
 	int ret = 0;
+	int len = 0;
 
 	cfs_buffer_reset(csk->tx_buffer);
 	switch (packet->request.hdr.opcode) {
@@ -415,9 +416,9 @@ int cfs_socket_send_packet(struct cfs_socket *csk, struct cfs_packet *packet)
 	}
 
 	/* send arg */
-	if (packet->request.arg) {
-		ret = cfs_socket_send(csk, cfs_buffer_data(packet->request.arg),
-				      cfs_buffer_size(packet->request.arg));
+	len = be32_to_cpu(packet->request.hdr.arglen);
+	if (len > 0) {
+		ret = cfs_socket_send(csk, packet->request.hdr_padding.arg, len);
 		if (ret < 0) {
 			cfs_log_error(
 				csk->log,
