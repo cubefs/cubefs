@@ -132,6 +132,7 @@ const (
 	CliFlagClientIDKey             = "clientIDKey"
 	CliFlagMarkDiskBrokenThreshold = "markBrokenDiskThreshold"
 	CliFlagForce                   = "force"
+	CliFlagEnableCrossZone     = "cross-zone"
 
 	// CliFlagSetDataPartitionCount	= "count" use dp-count instead
 

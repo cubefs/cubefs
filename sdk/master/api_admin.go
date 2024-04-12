@@ -271,6 +271,7 @@ func (api *AdminAPI) UpdateVolume(
 	request := newRequest(get, proto.AdminUpdateVol).Header(api.h)
 	request.addParam("name", vv.Name)
 	request.addParam("description", vv.Description)
+	request.addParam("crossZone", strconv.FormatBool(vv.CrossZone))
 	request.addParam("authKey", util.CalcAuthKey(vv.Owner))
 	request.addParam("zoneName", vv.ZoneName)
 	request.addParam("capacity", strconv.FormatUint(vv.Capacity, 10))
