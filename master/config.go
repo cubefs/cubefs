@@ -88,6 +88,7 @@ const (
 	defaultNodeSetGrpStep                              = 1
 	defaultMasterMinQosAccept                          = 20000
 	defaultMaxDpCntLimit                               = 3000
+	defaultMaxMpCntLimit                               = 300
 	defaultIntervalToScanS3Expiration                  = 12 * 3600
 	defaultMaxConcurrentLcNodes                        = 3
 	defaultIntervalToCheckDelVerTaskExpiration         = 3
@@ -119,6 +120,7 @@ type clusterConfig struct {
 	DataNodeDeleteLimitRate             uint64 // datanode delete limit rate
 	MetaNodeDeleteWorkerSleepMs         uint64 // metaNode delete worker sleep time with millisecond. if 0 for no sleep
 	MaxDpCntLimit                       uint64 // datanode data partition limit
+	MaxMpCntLimit                       uint64 // metanode meta partition limit
 	DataNodeAutoRepairLimitRate         uint64 // datanode autorepair limit rate
 	DpMaxRepairErrCnt                   uint64
 	DpRepairTimeOut                     uint64
@@ -163,6 +165,7 @@ func newClusterConfig() (cfg *clusterConfig) {
 	cfg.MetaNodeThreshold = defaultMetaPartitionMemUsageThreshold
 	cfg.ClusterLoadFactor = defaultOverSoldFactor
 	cfg.MaxDpCntLimit = defaultMaxDpCntLimit
+	cfg.MaxMpCntLimit = defaultMaxMpCntLimit
 	cfg.metaNodeReservedMem = defaultMetaNodeReservedMem
 	cfg.diffReplicaSpaceUsage = defaultDiffSpaceUsage
 	cfg.diffReplicaFileCount = defaultDiffReplicaFileCount

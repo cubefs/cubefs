@@ -2800,6 +2800,7 @@ func (m *Server) getDataNode(w http.ResponseWriter, r *http.Request) {
 		PersistenceDataPartitions: dataNode.PersistenceDataPartitions,
 		BadDisks:                  dataNode.BadDisks,
 		RdOnly:                    dataNode.RdOnly,
+		CanAllocPartition:         dataNode.canAlloc() && dataNode.canAllocDp(),
 		MaxDpCntLimit:             dataNode.GetDpCntLimit(),
 		CpuUtil:                   dataNode.CpuUtil.Load(),
 		IoUtils:                   dataNode.GetIoUtils(),
@@ -3053,6 +3054,15 @@ func (m *Server) setNodeInfoHandler(w http.ResponseWriter, r *http.Request) {
 	if val, ok := params[maxDpCntLimitKey]; ok {
 		if v, ok := val.(uint64); ok {
 			if err = m.cluster.setMaxDpCntLimit(v); err != nil {
+				sendErrReply(w, r, newErrHTTPReply(err))
+				return
+			}
+		}
+	}
+
+	if val, ok := params[maxMpCntLimitKey]; ok {
+		if v, ok := val.(uint64); ok {
+			if err = m.cluster.setMaxMpCntLimit(v); err != nil {
 				sendErrReply(w, r, newErrHTTPReply(err))
 				return
 			}
@@ -3886,7 +3896,8 @@ func (m *Server) getNodeInfoHandler(w http.ResponseWriter, r *http.Request) {
 	resp[nodeDpRepairTimeOutKey] = fmt.Sprintf("%v", m.cluster.cfg.DpRepairTimeOut)
 	resp[nodeDpMaxRepairErrCntKey] = fmt.Sprintf("%v", m.cluster.cfg.DpMaxRepairErrCnt)
 	resp[clusterLoadFactorKey] = fmt.Sprintf("%v", m.cluster.cfg.ClusterLoadFactor)
-	resp[maxDpCntLimitKey] = fmt.Sprintf("%v", m.cluster.cfg.MaxDpCntLimit)
+	resp[maxDpCntLimitKey] = fmt.Sprintf("%v", m.cluster.getMaxDpCntLimit())
+	resp[maxMpCntLimitKey] = fmt.Sprintf("%v", m.cluster.getMaxMpCntLimit())
 
 	sendOkReply(w, r, newSuccessHTTPReply(resp))
 }
@@ -4391,6 +4402,7 @@ func (m *Server) getMetaNode(w http.ResponseWriter, r *http.Request) {
 		MetaPartitionCount:        metaNode.MetaPartitionCount,
 		NodeSetID:                 metaNode.NodeSetID,
 		PersistenceMetaPartitions: metaNode.PersistenceMetaPartitions,
+		CanAllowPartition:         metaNode.isWritable() && metaNode.mpCntInLimit(),
 		CpuUtil:                   metaNode.CpuUtil.Load(),
 	}
 	sendOkReply(w, r, newSuccessHTTPReply(metaNodeInfo))
@@ -4547,7 +4559,7 @@ func (m *Server) migrateMetaNodeHandler(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	if !targetNode.isWritable() {
+	if !targetNode.isWritable() || !targetNode.mpCntInLimit() {
 		err = fmt.Errorf("[%s] is not writable, can't used as target addr for migrate", targetAddr)
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return

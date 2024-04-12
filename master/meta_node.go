@@ -47,6 +47,7 @@ type MetaNode struct {
 	PersistenceMetaPartitions []uint64
 	RdOnly                    bool
 	MigrateLock               sync.RWMutex
+	MpCntLimit                LimitCounter       `json:"-"` // max count of meta partition in a meta node
 	CpuUtil                   atomicutil.Float64 `json:"-"`
 }
 
@@ -160,6 +161,15 @@ func (metaNode *MetaNode) checkHeartbeat() {
 	if time.Since(metaNode.ReportTime) > time.Second*time.Duration(defaultNodeTimeOutSec) {
 		metaNode.IsActive = false
 	}
+}
+
+func (metaNode *MetaNode) GetMpCntLimit() (limit uint32) {
+	limit = uint32(metaNode.MpCntLimit.GetCntLimit())
+	return
+}
+
+func (metaNode *MetaNode) mpCntInLimit() bool {
+	return uint32(metaNode.MetaPartitionCount) <= metaNode.GetMpCntLimit()
 }
 
 // LeaderMetaNode define the leader metaPartitions in meta node

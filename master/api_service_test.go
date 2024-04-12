@@ -777,6 +777,20 @@ func TestSetNodeMaxDpCntLimit(t *testing.T) {
 	assert.True(t, dataNodeLimit == limit)
 }
 
+func TestSetNodeMaxMpCntLimit(t *testing.T) {
+	limit := uint64(600)
+	oldVal := server.cluster.getMaxMpCntLimit()
+	reqUrl := fmt.Sprintf("%v%v", hostAddr, proto.AdminSetNodeInfo)
+	setUrl := fmt.Sprintf("%v?%v=%v", reqUrl, maxMpCntLimitKey, limit)
+	unsetUrl := fmt.Sprintf("%v?%v=%v", reqUrl, maxMpCntLimitKey, oldVal)
+
+	process(setUrl, t)
+	require.EqualValues(t, limit, server.cluster.getMaxMpCntLimit())
+
+	process(unsetUrl, t)
+	require.EqualValues(t, oldVal, server.cluster.getMaxMpCntLimit())
+}
+
 func TestAddDataReplica(t *testing.T) {
 	partition := commonVol.dataPartitions.partitions[0]
 	dsAddr := mds7Addr

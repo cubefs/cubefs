@@ -59,6 +59,7 @@ const (
 	nodeDeleteWorkerSleepMs                = "deleteWorkerSleepMs"
 	nodeAutoRepairRateKey                  = "autoRepairRate"
 	nodeMaxDpCntLimit                      = "maxDpCntLimit"
+	nodeMaxMpCntLimit                      = "maxMpCntLimit"
 	cmdForbidMpDecommission                = "forbid meta partition decommission"
 	cmdEnableAutoDecommissionDiskShort     = "enable auto decommission disk"
 )
@@ -93,6 +94,7 @@ func newClusterInfoCmd(client *master.MasterClient) *cobra.Command {
 			stdout(fmt.Sprintf("  DeleteWorkerSleepMs: %v\n", clusterPara[nodeDeleteWorkerSleepMs]))
 			stdout(fmt.Sprintf("  AutoRepairRate     : %v\n", clusterPara[nodeAutoRepairRateKey]))
 			stdout(fmt.Sprintf("  MaxDpCntLimit      : %v\n", clusterPara[nodeMaxDpCntLimit]))
+			stdout(fmt.Sprintf("  MaxMpCntLimit      : %v\n", clusterPara[nodeMaxMpCntLimit]))
 			stdout("\n")
 		},
 	}
@@ -239,6 +241,7 @@ func newClusterSetParasCmd(client *master.MasterClient) *cobra.Command {
 	dataNodeSelector := ""
 	metaNodeSelector := ""
 	markBrokenDiskThreshold := ""
+	opMaxMpCntLimit := ""
 	cmd := &cobra.Command{
 		Use:   CliOpSetCluster,
 		Short: cmdClusterSetClusterInfoShort,
@@ -256,7 +259,7 @@ func newClusterSetParasCmd(client *master.MasterClient) *cobra.Command {
 				markBrokenDiskThreshold = fmt.Sprintf("%v", val)
 			}
 			if err = client.AdminAPI().SetClusterParas(optDelBatchCount, optMarkDeleteRate, optDelWorkerSleepMs,
-				optAutoRepairRate, optLoadFactor, opMaxDpCntLimit, clientIDKey,
+				optAutoRepairRate, optLoadFactor, opMaxDpCntLimit, opMaxMpCntLimit, clientIDKey,
 				dataNodesetSelector, metaNodesetSelector,
 				dataNodeSelector, metaNodeSelector, markBrokenDiskThreshold); err != nil {
 				return
@@ -270,6 +273,7 @@ func newClusterSetParasCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().StringVar(&optAutoRepairRate, CliFlagAutoRepairRate, "", "DataNode auto repair rate")
 	cmd.Flags().StringVar(&optDelWorkerSleepMs, CliFlagDelWorkerSleepMs, "", "MetaNode delete worker sleep time with millisecond. if 0 for no sleep")
 	cmd.Flags().StringVar(&opMaxDpCntLimit, CliFlagMaxDpCntLimit, "", "Maximum number of dp on each datanode, default 3000, 0 represents setting to default")
+	cmd.Flags().StringVar(&opMaxMpCntLimit, CliFlagMaxMpCntLimit, "", "Maximum number of mp on each metanode, default 300, 0 represents setting to default")
 	cmd.Flags().StringVar(&clientIDKey, CliFlagClientIDKey, client.ClientIDKey(), CliUsageClientIDKey)
 	cmd.Flags().StringVar(&dataNodesetSelector, CliFlagDataNodesetSelector, "", "Set the nodeset select policy(datanode) for cluster")
 	cmd.Flags().StringVar(&metaNodesetSelector, CliFlagMetaNodesetSelector, "", "Set the nodeset select policy(metanode) for cluster")
