@@ -1,29 +1,29 @@
 # Maintainers
 This page listed the CubeFS main maintainers and their responsibilities.
 
-| Name                                                                   | Email                                                           | Duty                                                         | Organization |
-|------------------------------------------------------------------------|-----------------------------------------------------------------|--------------------------------------------------------------|--------------|
-| Haifeng Liu ([@bladehliu](https://github.com/bladehliu))               | [bladehliu@qq.com](mailto:bladehliu@qq.com)                     | Project Lead, Sponsor, Software Architect                    | -            |
-| Weilong Guo ([@awzhgw](https://github.com/awzhgw))                     | [guowl18702995996@gmail.com](mailto:guowl18702995996@gmail.com) | -                                                            | [JD.com]     |
-| Shuoran Liu ([@shuoranliu](https://github.com/shuoranliu))             | [shuoranliu@gmail.com](mailto:shuoranliu@gmail.com)             | Client, SDK, Metadata, Community                             | [BEIKE]      |
-| Xiaochun He ([@xiaochunhe](https://github.com/xiaochunhe))             | [626148589@qq.com](mailto:626148589@qq.com)                     | Client, Metadata, Data Storage, Community                    | [OPPO]       |
-| Hongyan Wang ([@jadewang198510](https://github.com/jadewang198510))    | [741773046@qq.com](mailto:741773046@qq.com)                     | Metadata, Data Storage, Community                            | [OPPO]       |
-| Chi He([@bboyCH4](https://github.com/bboyCH4))                         | [hechi1014@126.com](mailto:hechi1014@126.com)                   | Client, Community                                            | [OPPO]       |
-| Mofei Zhang ([@mervinkid](https://github.com/mervinkid))               | [mofei2816@gmail.com](mailto:mofei2816@gmail.com)               | Metadata, S3, Raft, Community                                | [JD.com]     |
-| Liang Chang ([@leonrayang](https://github.com/leonrayang))             | [chl696@sina.com](mailto:chl696@sina.com)                       | Resource Manager, Metadata, Raft, Community                  | [OPPO]       |
-| Xuewei Zeng ([@Victor1319](https://github.com/Victor1319))             | [834863182@qq.com](mailto:834863182@qq.com)                     | Resource Manager, Data Storage, Metadata, Monitor, Community | [OPPO]       |
-| Dr.Wei Ding ([@wding109](https://github.com/wding109))                 | [wding109@gmail.com](mailto:wding109@gmail.com)                 | Strategy, Researching                                        | [ByteDance]  |
-| Dr.Junyuan Zeng ([@jzeng4](https://github.com/jzeng4))                 | [jzeng04@gmail.com](mailto:[jzeng04@gmail.com)                  | Authorization                                                | [LinkedIn]   |
-| hooklee2000 ([@hooklee2000](https://github.com/hooklee2000))           | [hooklee2000@gmail.com](mailto:hooklee2000@gmail.com)           | Project Building                                             | -            |
-| Zhendong Li ([@lizhendong666](https://github.com/lizhendong666))       | [lizhendong666@gmail.com](mailto:lizhendong666@gmail.com)       | Yum Deployment                                               | [JD.com]     |
-| Xiaobo Yu ([@cessory](https://github.com/cessory))                     | [yxbstorm@gmail.com](mailto:yxbstorm@gmail.com)                 | Blobstore, Community                                         | [OPPO]       |
-| Cloudstriff ([@Cloudstriff](https://github.com/Cloudstriff))           | [chenjiongwendao@qq.com](mailto:chenjiongwendao@qq.com)         | Blobstore ClusterMgr, Access                                 | [OPPO]       |
-| slasher ([@sejust](https://github.com/sejust))                         | [mcq.sejust@gmail.com](mailto:mcq.sejust@gmail.com)             | Blobstore Access, Cli                                        | [OPPO]       |
+| Name                                                                   | Email                                                           | Duty                                                                        | Organization |
+|------------------------------------------------------------------------|-----------------------------------------------------------------|-----------------------------------------------------------------------------|--------------|
+| Haifeng Liu ([@bladehliu](https://github.com/bladehliu))               | [bladehliu@qq.com](mailto:bladehliu@qq.com)                     | Project Lead, Sponsor, Software Architect, steering commitee member         | -            |
+| Weilong Guo ([@awzhgw](https://github.com/awzhgw))                     | [guowl18702995996@gmail.com](mailto:guowl18702995996@gmail.com) | Software Architect, steering commitee member                                | [JD.com]     |
+| Shuoran Liu ([@shuoranliu](https://github.com/shuoranliu))             | [shuoranliu@gmail.com](mailto:shuoranliu@gmail.com)             | Client, SDK, Metadata                                                       | [BEIKE]      |
+| Xiaochun He ([@xiaochunhe](https://github.com/xiaochunhe))             | [626148589@qq.com](mailto:626148589@qq.com)                     | Software Architect, steering commitee member, Community                     | [OPPO]       |
+| Mofei Zhang ([@mervinkid](https://github.com/mervinkid))               | [mofei2816@gmail.com](mailto:mofei2816@gmail.com)               | Metadata, S3, Raft, Community, steering commitee member                     | [JD.com]     |
+| Liang Chang ([@leonrayang](https://github.com/leonrayang))             | [chl696@sina.com](mailto:chl696@sina.com)                       | Resource Manager, Metadata,Community, steering commitee member              | [OPPO]       |
+| Xuewei Zeng ([@Victor1319](https://github.com/Victor1319))             | [834863182@qq.com](mailto:834863182@qq.com)                     | Resource Manager, Data Storage, Metadata, Monitor, Community                | [OPPO]       |
+| Dr.Wei Ding ([@wding109](https://github.com/wding109))                 | [wding109@gmail.com](mailto:wding109@gmail.com)                 | Strategy, Researching                                                       | [ByteDance]  |
+| Dr.Junyuan Zeng ([@jzeng4](https://github.com/jzeng4))                 | [jzeng04@gmail.com](mailto:[jzeng04@gmail.com)                  | Authorization                                                               | [LinkedIn]   |
+| hooklee2000 ([@hooklee2000](https://github.com/hooklee2000))           | [hooklee2000@gmail.com](mailto:hooklee2000@gmail.com)           | Project Building                                                            | -            |
+| Zhendong Li ([@lizhendong666](https://github.com/lizhendong666))       | [lizhendong666@gmail.com](mailto:lizhendong666@gmail.com)       | Yum Deployment                                                              | [JD.com]     |
+| Xiaobo Yu ([@cessory](https://github.com/cessory))                     | [yxbstorm@gmail.com](mailto:yxbstorm@gmail.com)                 | Blobstore, Community                                                        | [OPPO]       |
+| Cloudstriff ([@Cloudstriff](https://github.com/Cloudstriff))           | [chenjiongwendao@qq.com](mailto:chenjiongwendao@qq.com)         | Blobstore ClusterMgr, Access                                                | [OPPO]       |
+| slasher ([@sejust](https://github.com/sejust))                         | [mcq.sejust@gmail.com](mailto:mcq.sejust@gmail.com)             | Blobstore Access, Cli                                                       | [OPPO]       |
 
 # Committers
 
 | Name                                                                   | Email                                                            | Duty                         | Organization |
 |------------------------------------------------------------------------|------------------------------------------------------------------|------------------------------|--------------|
+| Hongyan Wang ([@jadewang198510](https://github.com/jadewang198510))    | [741773046@qq.com](mailto:741773046@qq.com)                      | Data Storage, Community      | [OPPO]       |
+| Chi He([@bboyCH4](https://github.com/bboyCH4))                         | [hechi1014@126.com](mailto:hechi1014@126.com)                    | Client, Community            | [OPPO]       |
 | Jianxing Zhao ([@znlstar](https://github.com/znlstar))                 | [znlstar@163.com](mailto:znlstar@163.com)                        | Metadata                     | [JD.com]     |
 | Yong Sheng ([@shyodx](https://github.com/shyodx))                      | [shengyong2021@gmail.com](mailto:shengyong2021@gmail.com)        | Client, SDK, Metadata        | [BEIKE]      |
 | Zhengyi Zhu ([@zhuzhengyi](https://github.com/wding109))               | [zhengyi.zhu.hust@gmail.com](mailto:zhengyi.zhu.hust@gmail.com)  | Mointoring                   | [BEIKE]      |
