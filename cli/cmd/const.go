@@ -102,6 +102,7 @@ const (
 	CliFlagLoadFactor              = "loadFactor"
 	CliFlagMarkDelRate             = "markDeleteRate"
 	CliFlagMaxDpCntLimit           = "maxDpCntLimit"
+	CliFlagMaxMpCntLimit           = "maxMpCntLimit"
 	CliFlagDataNodeSelector        = "dataNodeSelector"
 	CliFlagMetaNodeSelector        = "metaNodeSelector"
 	CliFlagDataNodesetSelector     = "dataNodesetSelector"

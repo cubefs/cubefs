@@ -45,6 +45,7 @@ type MetaNodeInfo struct {
 	NodeSetID                 uint64
 	PersistenceMetaPartitions []uint64
 	RdOnly                    bool
+	CanAllowPartition         bool
 	CpuUtil                   float64 `json:"cpuUtil"`
 }
 
@@ -68,6 +69,7 @@ type DataNodeInfo struct {
 	PersistenceDataPartitions []uint64
 	BadDisks                  []string
 	RdOnly                    bool
+	CanAllocPartition         bool
 	MaxDpCntLimit             uint32             `json:"maxDpCntLimit"`
 	CpuUtil                   float64            `json:"cpuUtil"`
 	IoUtils                   map[string]float64 `json:"ioUtil"`
