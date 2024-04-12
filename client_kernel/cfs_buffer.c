@@ -92,3 +92,19 @@ int cfs_buffer_write(struct cfs_buffer *buffer, const char *fmt, ...)
 
 	return ret;
 }
+
+int cfs_buffer_init(struct cfs_buffer *buffer, size_t n)
+{
+	char *data;
+
+	n = max_t(size_t, n, CFS_BUFFER_SIZE);
+	data = kvmalloc(n, GFP_KERNEL);
+	if (!data)
+		return -ENOMEM;
+	if (buffer->data)
+		kvfree(buffer->data);
+	buffer->data = data;
+	buffer->capacity = n;
+	buffer->pos = 0;
+	return 0;
+}

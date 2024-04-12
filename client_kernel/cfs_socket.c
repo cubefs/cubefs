@@ -496,12 +496,7 @@ int cfs_socket_recv_packet(struct cfs_socket *csk, struct cfs_packet *packet)
 	 * packet arg
 	 */
 	if (arglen > 0) {
-		if (packet->reply.arg) {
-			ret = cfs_buffer_resize(packet->reply.arg, arglen);
-		} else if (!(packet->reply.arg = cfs_buffer_new(arglen))) {
-			ret = -ENOMEM;
-		}
-
+		ret = cfs_buffer_init(&(packet->reply.arg), arglen);
 		if (ret < 0) {
 			cfs_log_error(
 				csk->log,
@@ -511,7 +506,7 @@ int cfs_socket_recv_packet(struct cfs_socket *csk, struct cfs_packet *packet)
 				packet->request.hdr.opcode);
 			return ret;
 		}
-		ret = cfs_socket_recv(csk, cfs_buffer_data(packet->reply.arg),
+		ret = cfs_socket_recv(csk, cfs_buffer_data(&(packet->reply.arg)),
 				      arglen);
 		if (ret < 0) {
 			cfs_log_error(
@@ -522,7 +517,7 @@ int cfs_socket_recv_packet(struct cfs_socket *csk, struct cfs_packet *packet)
 				packet->request.hdr.opcode, arglen, ret);
 			return ret;
 		}
-		cfs_buffer_seek(packet->reply.arg, arglen);
+		cfs_buffer_seek(&(packet->reply.arg), arglen);
 	}
 
 	/**

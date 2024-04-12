@@ -951,7 +951,7 @@ struct cfs_packet {
 	struct {
 		struct cfs_packet_hdr hdr;
 		struct reply_hdr_padding hdr_padding;
-		struct cfs_buffer *arg;
+		struct cfs_buffer arg;
 		union {
 			struct cfs_packet_icreate_reply icreate;
 			struct cfs_packet_iget_reply iget;
@@ -1056,8 +1056,8 @@ static inline void cfs_packet_clear(struct cfs_packet *packet)
 {
 	if (!packet)
 		return;
-	if (packet->reply.arg)
-		cfs_buffer_release(packet->reply.arg);
+	if (packet->reply.arg.data != NULL)
+		kfree(packet->reply.arg.data);
 	if (packet->pkg_data_type == CFS_PACKAGE_DATA_ITER) {
 		kfree(packet->request.iov.iov_base);
 	}

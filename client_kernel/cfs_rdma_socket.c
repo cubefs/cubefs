@@ -366,18 +366,13 @@ int cfs_rdma_recv_packet(struct cfs_socket *csk, struct cfs_packet *packet)
 
 	arglen = be32_to_cpu(packet->reply.hdr.arglen);
 	if (arglen > 0) {
-		if (packet->reply.arg) {
-			ret = cfs_buffer_resize(packet->reply.arg, arglen);
-		} else if (!(packet->reply.arg = cfs_buffer_new(arglen))) {
-			ret = -ENOMEM;
-		}
-
+		ret = cfs_buffer_init(&(packet->reply.arg), arglen);
 		if (ret < 0) {
 			cfs_log_error(csk->log, "cfs buffer re-arrange error ret: %d\n", ret);
 			return ret;
 		}
-		memcpy(packet->reply.arg, packet->reply.hdr_padding.arg, arglen);
-		cfs_buffer_seek(packet->reply.arg, arglen);
+		memcpy(cfs_buffer_data(&(packet->reply.arg)), packet->reply.hdr_padding.arg, arglen);
+		cfs_buffer_seek(&(packet->reply.arg), arglen);
 	}
 
 	//unmap the rdma memory.
