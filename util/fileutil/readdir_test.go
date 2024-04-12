@@ -16,17 +16,40 @@ package fileutil_test
 
 import (
 	"os"
+	"path"
 	"testing"
 
 	"github.com/cubefs/cubefs/util/fileutil"
 	"github.com/stretchr/testify/require"
 )
 
-func TestStat(t *testing.T) {
-	dir, err := os.MkdirTemp("", "")
+func TestReaddir(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "")
 	require.NoError(t, err)
-	defer os.Remove(dir)
-	ino, err := fileutil.Stat(dir)
+
+	file1 := "f1"
+	file2 := "f2"
+
+	err = os.WriteFile(path.Join(tmpDir, file1), []byte(""), 0644)
 	require.NoError(t, err)
-	require.NotEqual(t, 0, ino)
+
+	os.WriteFile(path.Join(tmpDir, file2), []byte(""), 0644)
+	require.NoError(t, err)
+
+	names, err := fileutil.ReadDir(tmpDir)
+	require.NoError(t, err)
+
+	fileMap := make(map[string]interface{})
+
+	for _, v := range names {
+		fileMap[v] = 1
+	}
+
+	require.EqualValues(t, 2, len(fileMap))
+
+	_, file1Exist := fileMap[file1]
+	_, file2Exist := fileMap[file2]
+
+	require.True(t, file1Exist)
+	require.True(t, file2Exist)
 }

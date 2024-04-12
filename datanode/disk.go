@@ -48,7 +48,7 @@ const (
 	ExpiredPartitionExistTime = time.Hour * time.Duration(24*7)
 )
 
-const DefaultCurrentLoadDpLimit = 32
+const DefaultCurrentLoadDpLimit = 1
 
 // Disk represents the structure of the disk
 type Disk struct {
@@ -500,7 +500,7 @@ func (d *Disk) RestorePartition(visitor PartitionVisitor, allowDelay bool) (err 
 				)
 				defer func() {
 					if err == nil {
-						log.LogInfof("[RestorePartition] disk(%v) load dp(%v) using time(%v)", d.Path, dp.partitionID, time.Since(begin))
+						log.LogInfof("[RestorePartition] disk(%v) load dp(%v) using time(%v) slow(%v)", d.Path, dp.partitionID, time.Since(begin), time.Since(begin) > 1*time.Second)
 					}
 				}()
 				if dp, err = LoadDataPartition(path.Join(d.Path, filename), d, allowDelay); err != nil {
