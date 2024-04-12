@@ -1375,14 +1375,7 @@ func (partition *DataPartition) ResetDecommissionStatus() {
 }
 
 func (partition *DataPartition) rollback(c *Cluster) {
-	// del new add replica,may timeout, try rollback next time
-	force := false
-	// if single dp add raft member success but add a replica fails, use force to delete raft member
-	// to avoid no leader
-	if partition.ReplicaNum == 1 {
-		force = true
-	}
-	err := c.removeDataReplica(partition, partition.DecommissionDstAddr, false, force)
+	err := partition.removeReplicaByRollback(c)
 	if err != nil {
 		// keep decommission status to failed for rollback
 		log.LogWarnf("action[rollback]dp[%v] rollback to del replica[%v] failed:%v",
@@ -1761,7 +1754,7 @@ func (partition *DataPartition) needRollback(c *Cluster) bool {
 		log.LogDebugf("action[needRollback]try delete dp[%v] replica %v DecommissionNeedRollbackTimes[%v]",
 			partition.PartitionID, partition.DecommissionDstAddr, atomic.LoadUint32(&partition.DecommissionNeedRollbackTimes))
 		partition.DecommissionNeedRollback = false
-		err := c.removeDataReplica(partition, partition.DecommissionDstAddr, false, false)
+		err := partition.removeReplicaByRollback(c)
 		if err != nil {
 			log.LogWarnf("action[needRollback]dp[%v] remove decommission dst replica %v failed: %v",
 				partition.PartitionID, partition.DecommissionDstAddr, err)
@@ -1775,4 +1768,19 @@ func (partition *DataPartition) markRollbackFailed(needRollback bool) {
 	partition.SetDecommissionStatus(DecommissionFail)
 	partition.DecommissionNeedRollbackTimes = defaultDecommissionRollbackLimit
 	partition.DecommissionNeedRollback = needRollback
+}
+
+func (partition *DataPartition) removeReplicaByRollback(c *Cluster) error {
+	// del new add replica,may timeout, try rollback next time
+	force := false
+	// if single dp add raft member success but add a replica fails, use force to delete raft member
+	// to avoid no leader
+	if partition.ReplicaNum == 1 {
+		force = true
+	}
+	err := c.removeDataReplica(partition, partition.DecommissionDstAddr, false, force)
+	if err != nil {
+		return err
+	}
+	return nil
 }

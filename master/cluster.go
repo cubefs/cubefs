@@ -4393,7 +4393,7 @@ func (c *Cluster) TryDecommissionDisk(disk *DecommissionDisk) {
 	}
 	log.LogInfof("action[TryDecommissionDisk] disk[%v_%v] len(%v) badPartitionIds %v",
 		node.Addr, disk.DiskPath, len(badPartitionIds), badPartitionIds)
-	badPartitions = badPartitions[:0]
+	badPartitionIds = badPartitionIds[:0]
 	// check decommission dp last time
 	lastBadPartitions := c.getAllDecommissionDataPartitionByDisk(disk.SrcAddr, disk.DiskPath)
 	for _, dp := range lastBadPartitions {
