@@ -45,6 +45,7 @@ struct cfs_data_partition {
 	bool is_recover;
 	bool is_discard;
 	struct cfs_buffer *follower_addrs;
+	struct cfs_buffer *rdma_follower_addrs;
 	u8 nr_followers;
 	atomic_t refcnt;
 };
@@ -152,7 +153,7 @@ cfs_extent_io_info_new(loff_t offset, size_t size,
 void cfs_extent_io_info_release(struct cfs_extent_io_info *io_info);
 
 struct cfs_data_partition *
-cfs_data_partition_new(struct cfs_data_partition_view *dp_view);
+cfs_data_partition_new(struct cfs_data_partition_view *dp_view, u32 rdma_port);
 void cfs_data_partition_release(struct cfs_data_partition *dp);
 #define cfs_data_partition_put cfs_data_partition_release
 
