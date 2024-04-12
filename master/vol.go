@@ -1343,6 +1343,7 @@ func getVolVarargs(vol *Vol) *VolVarargs {
 
 	return &VolVarargs{
 		zoneName:                vol.zoneName,
+		crossZone:               vol.crossZone,
 		description:             vol.description,
 		capacity:                vol.Capacity,
 		deleteLockTime:          vol.DeleteLockTime,
