@@ -33,6 +33,13 @@ Please use the fixes keyword in the pull request to associate the pull request w
 **Note 3:**<br>
 Every pull request that merges code to the master branch needs to be approved by at least one core maintainer for code review and pass all checks (including the DCO check) before it can be merged.
 
+## Contributor Recruitment
+- Current Recruitment：
+	- Developer activity 2024 ：https://github.com/cubefs/cubefs/issues/3105
+- History：
+  - Summer of Open Source ：https://www.we2shopping.com/blog/2829327/
+  - Developer activity 2023 ：https://github.com/cubefs/cubefs/issues/1920
+
 ## Development Guide
 
 ### Coding style
