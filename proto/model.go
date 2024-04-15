@@ -487,3 +487,12 @@ type BadReplicaMetaInfo struct {
 type BadReplicaMetaResponse struct {
 	Infos []BadReplicaMetaInfo
 }
+
+type DecommissionFailedDiskInfo struct {
+	SrcAddr               string
+	DiskPath              string
+	DecommissionRaftForce bool
+	DecommissionRetry     uint8
+	DecommissionDpTotal   int
+	IsAutoDecommission    bool
+}
