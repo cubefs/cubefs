@@ -953,3 +953,14 @@ func formatDiskErrorReplicaDpInfoRow(partition *proto.DataPartitionInfo) string 
 	return fmt.Sprintf(diskErrorReplicaPartitionInfoTablePattern, partition.PartitionID, partition.VolName, partition.ReplicaNum,
 		formatDataPartitionStatus(partition.Status), "["+strings.Join(partition.Hosts, ", ")+"]", sb.String())
 }
+
+func formatDecommissionFailedDiskInfo(info *proto.DecommissionFailedDiskInfo) string {
+	sb := strings.Builder{}
+	sb.WriteString(fmt.Sprintf("SrcAddr:              %v\n", info.SrcAddr))
+	sb.WriteString(fmt.Sprintf("DiskPath:             %v\n", info.DiskPath))
+	sb.WriteString(fmt.Sprintf("DpTotal:              %v\n", info.DecommissionDpTotal))
+	sb.WriteString(fmt.Sprintf("RaftForce:            %v\n", info.DecommissionRaftForce))
+	sb.WriteString(fmt.Sprintf("Retry:                %v\n", info.DecommissionRetry))
+	sb.WriteString(fmt.Sprintf("AutoDecommission:     %v\n", info.IsAutoDecommission))
+	return sb.String()
+}

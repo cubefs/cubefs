@@ -1460,6 +1460,13 @@ func parseAndExtractName(r *http.Request) (name string, err error) {
 	return extractName(r)
 }
 
+func parseAndExtractDecommissionType(r *http.Request) (decommissionType int, err error) {
+	if err = r.ParseForm(); err != nil {
+		return
+	}
+	return extractDecommissionType(r)
+}
+
 func extractName(r *http.Request) (name string, err error) {
 	if name = r.FormValue(nameKey); name == "" {
 		err = keyNotFound(nameKey)
@@ -1469,6 +1476,20 @@ func extractName(r *http.Request) (name string, err error) {
 		return "", errors.New("name can only be number and letters")
 	}
 
+	return
+}
+
+func extractDecommissionType(r *http.Request) (decommissionType int, err error) {
+	var val string
+	if val = r.FormValue(decommissionTypeKey); val == "" {
+		err = keyNotFound(decommissionTypeKey)
+		return
+	}
+	var v int64
+	if v, err = strconv.ParseInt(val, 10, 32); err != nil {
+		return
+	}
+	decommissionType = int(v)
 	return
 }
 

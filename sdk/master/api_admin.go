@@ -725,3 +725,12 @@ func (api *AdminAPI) SetAutoDecommissionDisk(enable bool) (err error) {
 	_, err = api.mc.serveRequest(request)
 	return
 }
+
+func (api *AdminAPI) QueryDecommissionFailedDisk(decommType int) (diskInfo []*proto.DecommissionFailedDiskInfo, err error) {
+	request := newRequest(get, proto.AdminQueryDecommissionFailedDisk)
+	request.addParam("decommissionType", strconv.FormatInt(int64(decommType), 10))
+
+	diskInfo = make([]*proto.DecommissionFailedDiskInfo, 0)
+	err = api.mc.requestWith(&diskInfo, request)
+	return
+}
