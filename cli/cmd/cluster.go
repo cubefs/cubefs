@@ -17,6 +17,7 @@ package cmd
 import (
 	"fmt"
 	"strconv"
+	"strings"
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/sdk/master"
@@ -43,6 +44,7 @@ func newClusterCmd(client *master.MasterClient) *cobra.Command {
 		newClusterDisableMpDecommissionCmd(client),
 		newClusterSetVolDeletionDelayTimeCmd(client),
 		newClusterEnableAutoDecommissionDisk(client),
+		newClusterQueryDecommissionFailedDisk(client),
 	)
 	return clusterCmd
 }
@@ -62,6 +64,7 @@ const (
 	nodeMaxMpCntLimit                      = "maxMpCntLimit"
 	cmdForbidMpDecommission                = "forbid meta partition decommission"
 	cmdEnableAutoDecommissionDiskShort     = "enable auto decommission disk"
+	cmdQueryDecommissionFailedDiskShort    = "query auto or manual decommission failed disk"
 )
 
 func newClusterInfoCmd(client *master.MasterClient) *cobra.Command {
@@ -342,6 +345,48 @@ func newClusterEnableAutoDecommissionDisk(client *master.MasterClient) *cobra.Co
 				stdout("Enable auto decommission successful!\n")
 			} else {
 				stdout("Disable auto decommission successful!\n")
+			}
+		},
+	}
+	return cmd
+}
+
+func newClusterQueryDecommissionFailedDisk(client *master.MasterClient) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   CliOpQueryDecommissionFailedDisk + " [TYPE]",
+		Short: cmdQueryDecommissionFailedDiskShort,
+		Args:  cobra.MinimumNArgs(1),
+		Run: func(cmd *cobra.Command, args []string) {
+			var (
+				err        error
+				decommType int
+			)
+
+			defer func() {
+				errout(err)
+			}()
+
+			args[0] = strings.ToLower(args[0])
+			if args[0] != "auto" && args[0] != "manual" {
+				err = fmt.Errorf("unknown decommission type %v, not \"auto\" or \"manual\"", args[0])
+				return
+			}
+
+			switch args[0] {
+			case "manual":
+				decommType = 0
+			case "auto":
+				decommType = 1
+			}
+
+			diskInfo, err := client.AdminAPI().QueryDecommissionFailedDisk(decommType)
+			if err != nil {
+				return
+			}
+
+			stdout("FailedDisks:\n")
+			for i, d := range diskInfo {
+				stdout("[%v/%v]\n%v", i+1, len(diskInfo), formatDecommissionFailedDiskInfo(d))
 			}
 		},
 	}

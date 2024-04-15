@@ -137,6 +137,7 @@ const (
 	decommissionDiskFactor     = "decommissionDiskFactor"
 	dpRepairBlockSizeKey       = "dpRepairBlockSize"
 	markDiskBrokenThresholdKey = "markDiskBrokenThreshold"
+	decommissionTypeKey        = "decommissionType"
 )
 
 const (

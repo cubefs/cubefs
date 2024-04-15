@@ -6673,3 +6673,37 @@ func (m *Server) recoverReplicaMeta(w http.ResponseWriter, r *http.Request) {
 	}
 	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("recover meta for dp (%v) replica success", dp.PartitionID)))
 }
+
+func (m *Server) QueryDecommissionFailedDisk(w http.ResponseWriter, r *http.Request) {
+	var (
+		err        error
+		decommType int
+	)
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminQueryDecommissionFailedDisk))
+	defer func() {
+		doStatAndMetric(proto.AdminQueryDecommissionFailedDisk, metric, err, nil)
+	}()
+
+	decommType, err = parseAndExtractDecommissionType(r)
+	if err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	disks := make([]*proto.DecommissionFailedDiskInfo, 0)
+	m.cluster.DecommissionDisks.Range(func(key, value interface{}) bool {
+		d := value.(*DecommissionDisk)
+		if d.GetDecommissionStatus() == DecommissionFail && d.Type == uint32(decommType) {
+			disks = append(disks, &proto.DecommissionFailedDiskInfo{
+				SrcAddr:               d.SrcAddr,
+				DiskPath:              d.DiskPath,
+				DecommissionRaftForce: d.DecommissionRaftForce,
+				DecommissionRetry:     d.DecommissionRetry,
+				DecommissionDpTotal:   d.DecommissionDpTotal,
+				IsAutoDecommission:    d.Type == AutoDecommission,
+			})
+		}
+		return true
+	})
+	sendOkReply(w, r, newSuccessHTTPReply(disks))
+}

@@ -397,6 +397,9 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.AdminVolSetDpRepairBlockSize).
 		HandlerFunc(m.setVolDpRepairBlockSize)
+	router.NewRoute().Methods(http.MethodGet).
+		Path(proto.AdminQueryDecommissionFailedDisk).
+		HandlerFunc(m.QueryDecommissionFailedDisk)
 
 	// multi version snapshot APIs
 	router.NewRoute().Methods(http.MethodGet).
