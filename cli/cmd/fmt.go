@@ -171,7 +171,7 @@ func formatSimpleVolView(svv *proto.SimpleVolView) string {
 	sb.WriteString(fmt.Sprintf("  Tx limit interval(s)            : %v\n", svv.TxOpLimit))
 	sb.WriteString(fmt.Sprintf("  Forbidden                       : %v\n", svv.Forbidden))
 	sb.WriteString(fmt.Sprintf("  DisableAuditLog                 : %v\n", svv.DisableAuditLog))
-	sb.WriteString(fmt.Sprintf("  Forbidden                       : %v\n", svv.Forbidden))
+	sb.WriteString(fmt.Sprintf("  TrashInterval                   : %v\n", time.Duration(svv.TrashInterval)*time.Minute))
 	sb.WriteString(fmt.Sprintf("  DpRepairBlockSize               : %v\n", strutil.FormatSize(svv.DpRepairBlockSize)))
 	sb.WriteString(fmt.Sprintf("  Quota                           : %v\n", formatEnabledDisabled(svv.EnableQuota)))
 	if svv.Forbidden && svv.Status == 1 {
