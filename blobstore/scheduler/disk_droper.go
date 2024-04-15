@@ -182,7 +182,8 @@ func NewDiskDropMgr(clusterMgrCli client.ClusterMgrAPI, volumeUpdater client.IVo
 
 // Load load disk drop task from database
 func (mgr *DiskDropMgr) Load() (err error) {
-	disks, err := mgr.clusterMgrCli.ListDropDisks(context.Background())
+	_, ctx := trace.StartSpanFromContextWithTraceID(context.Background(), "DiskDropMgr.Load", "")
+	disks, err := mgr.clusterMgrCli.ListDropDisks(ctx)
 	if err != nil {
 		return err
 	}
@@ -190,6 +191,23 @@ func (mgr *DiskDropMgr) Load() (err error) {
 	for _, disk := range disks {
 		// Initialize the allDisks during loading, to prevent a panic when migrate.go calling the callback function
 		mgr.allDisks.add(&dropDisk{wait: make(chan struct{}), DiskInfoSimple: disk})
+	}
+
+	// delete junk task wrote by timeout task kv operation
+	tasks, err := mgr.clusterMgrCli.ListAllMigrateTasks(ctx, proto.TaskTypeDiskDrop)
+	if err != nil {
+		return err
+	}
+	for _, task := range tasks {
+		migrated, err := mgr.isMigrated(task.SourceVuid)
+		if err != nil {
+			return err
+		}
+		if migrated {
+			base.InsistOn(ctx, "loading delete junk task", func() error {
+				return mgr.clusterMgrCli.DeleteMigrateTask(ctx, task.TaskID)
+			})
+		}
 	}
 
 	return mgr.IMigrator.Load()
@@ -328,31 +346,20 @@ RETRY:
 	}
 
 	for _, vuid := range remain {
-		migrated := false
-		vid := vuid.Vid()
-		volume, err := mgr.topologyMgr.GetVolume(vid)
+		migrated, err := mgr.isMigrated(vuid)
 		if err != nil {
 			retryVuids = append(retryVuids, vuid)
 			continue
 		}
-		for _, location := range volume.VunitLocations {
-			if location.Vuid.Index() == vuid.Index() {
-				if location.Vuid != vuid {
-					migrated = true
-				}
-				break
-			}
-		}
 		if migrated {
 			continue
 		}
-
 		mgr.WaitEnable()
 		_ = mgr.taskLimitPerDisk.Acquire(disk.DiskID)
 		_ = mgr.totalTaskLimit.Acquire()
 
 		mgr.initOneTask(ctx, vuid, disk.DiskID, disk.Idc)
-		span.Debugf("init drop task success: vuid[%d]", vuid)
+		span.Debugf("init drop task success: vuid[%d], disk[%d]", vuid, disk.DiskID)
 	}
 	if len(retryVuids) != 0 {
 		goto RETRY
@@ -361,6 +368,23 @@ RETRY:
 	mgr.collectedDisks.add(disk)
 	span.Debugf("generate done: disk_id[%d], total[%d], finish[%d]", disk.DiskID, disk.UsedChunkCnt, len(migratingVuids))
 	return nil
+}
+
+func (mgr *DiskDropMgr) isMigrated(vuid proto.Vuid) (bool, error) {
+	vid := vuid.Vid()
+	volume, err := mgr.topologyMgr.GetVolume(vid)
+	if err != nil {
+		return false, err
+	}
+	for _, location := range volume.VunitLocations {
+		if location.Vuid.Index() == vuid.Index() {
+			if location.Vuid != vuid {
+				return true, nil
+			}
+			break
+		}
+	}
+	return false, nil
 }
 
 func (mgr *DiskDropMgr) listMigratingVuid(ctx context.Context, diskID proto.DiskID) (drops []proto.Vuid, err error) {
