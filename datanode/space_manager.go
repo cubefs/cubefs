@@ -300,7 +300,12 @@ func (manager *SpaceManager) updateMetrics() {
 			continue
 		}
 
-		total += d.Total
+		if d.Used > d.Total {
+			total += d.Used
+		} else {
+			total += d.Total
+		}
+
 		used += d.Used
 		available += d.Available
 		totalPartitionSize += d.Allocated
