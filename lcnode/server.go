@@ -91,10 +91,9 @@ func doStart(s common.Server, cfg *config.Config) (err error) {
 		return
 	}
 
-	exporter.Init(ModuleName, cfg)
 	exporter.RegistConsul(l.clusterID, ModuleName, cfg)
-
 	log.LogInfo("lcnode start successfully")
+
 	return
 }
 
