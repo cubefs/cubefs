@@ -159,7 +159,6 @@ func doStart(s common.Server, cfg *config.Config) (err error) {
 
 	go m.startUpdateNodeInfo()
 
-	exporter.Init(cfg.GetString("role"), cfg)
 	m.startStat()
 
 	// check local partition compare with master ,if lack,then not start
