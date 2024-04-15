@@ -30,6 +30,7 @@ import (
 	"github.com/cubefs/cubefs/util/config"
 	"github.com/cubefs/cubefs/util/cryptoutil"
 	"github.com/cubefs/cubefs/util/errors"
+	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
 )
 
@@ -225,7 +226,7 @@ func (m *Server) Start(cfg *config.Config) (err error) {
 		m.cluster.PKIKey.EnableHTTPS = false
 	}
 	m.authProxy = m.newAuthProxy()
-
+	exporter.RegistConsul(m.clusterName, cfg.GetString("role"), cfg)
 	m.cluster.scheduleTask()
 	m.startHTTPService()
 	m.wg.Add(1)

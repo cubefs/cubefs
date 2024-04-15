@@ -232,7 +232,6 @@ func doStart(server common.Server, cfg *config.Config) (err error) {
 		return
 	}
 
-	exporter.Init(ModuleName, cfg)
 	s.registerMetrics()
 	s.register(cfg)
 
