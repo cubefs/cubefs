@@ -83,7 +83,7 @@ func (cache *ExtentCache) RefreshForce(inode uint64, force bool, getExtents GetE
 	// log.LogDebugf("Local ExtentCache before update: ino(%v) gen(%v) size(%v) extents(%v)", inode, cache.gen, cache.size, cache.List())
 	cache.update(gen, size, force, extents)
 	if log.EnableDebug() {
-		log.LogDebugf("Local ExtentCache after update: ino(%v) gen(%v) size(%v) extents(%v) openForWrite(%v) isMigration(%v)",
+		log.LogDebugf("[RefreshForce] Local ExtentCache after update: ino(%v) gen(%v) size(%v) extents(%v) openForWrite(%v) isMigration(%v)",
 			inode, cache.gen, cache.size, cache.List(), openForWrite, isMigration)
 	}
 	return nil
@@ -99,10 +99,10 @@ func (cache *ExtentCache) Refresh(inode uint64, getExtents GetExtentsFunc, isCac
 	if err != nil {
 		return err
 	}
-	// log.LogDebugf("Local ExtentCache before update: ino(%v) gen(%v) size(%v) extents(%v)", inode, cache.gen, cache.size, cache.List())
+
 	cache.update(gen, size, false, extents)
 	if log.EnableDebug() {
-		log.LogDebugf("Local ExtentCache after update: ino(%v) gen(%v) size(%v) extents(%v) openForWrite(%v) isMigration(%v)",
+		log.LogDebugf("[Refresh] Local ExtentCache after update: ino(%v) gen(%v) size(%v) extents(%v) openForWrite(%v) isMigration(%v)",
 			inode, cache.gen, cache.size, cache.List(), openForWrite, isMigration)
 	}
 	return nil
