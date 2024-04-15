@@ -15,10 +15,10 @@
 package master
 
 import (
+	"github.com/cubefs/cubefs/util/log"
 	"time"
 
 	"github.com/cubefs/cubefs/proto"
-	"github.com/cubefs/cubefs/util/log"
 )
 
 // DataReplica represents the replica of a data partition
@@ -47,12 +47,13 @@ func (replica *DataReplica) isMissing(interval int64) (isMissing bool) {
 	return
 }
 
-func (replica *DataReplica) isLive(timeOutSec int64) (isAvailable bool) {
-	log.LogDebugf("action[isLive] replica addr %v, datanode active %v replica status %v and is active %v",
-		replica.Addr, replica.dataNode.isActive, replica.Status, replica.isActive(timeOutSec))
+func (replica *DataReplica) isLive(id uint64, timeOutSec int64) (isAvailable bool) {
 	if replica.dataNode.isActive && replica.Status != proto.Unavailable &&
 		replica.isActive(timeOutSec) {
 		isAvailable = true
+	} else {
+		log.LogDebugf("action[isLive] partition %v, replica addr %v, datanode active %v replica status %v and is active %v",
+			id, replica.Addr, replica.dataNode.isActive, replica.Status, replica.isActive(timeOutSec))
 	}
 	return
 }
