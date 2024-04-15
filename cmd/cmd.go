@@ -41,6 +41,7 @@ import (
 	"github.com/cubefs/cubefs/util/auditlog"
 	"github.com/cubefs/cubefs/util/config"
 	"github.com/cubefs/cubefs/util/errors"
+	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
 	sysutil "github.com/cubefs/cubefs/util/sys"
 	"github.com/cubefs/cubefs/util/ump"
@@ -339,6 +340,10 @@ func main() {
 	}
 
 	interceptSignal(server)
+	exporter.Init(role, cfg)
+	versionMetric := exporter.NewVersionMetrics(role)
+	go versionMetric.Start()
+	defer versionMetric.Stop()
 	err = server.Start(cfg)
 	if err != nil {
 		log.LogFlush()
