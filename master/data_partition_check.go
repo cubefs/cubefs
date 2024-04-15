@@ -128,7 +128,7 @@ func (partition *DataPartition) checkReplicaStatus(timeOutSec int64) {
 	partition.Lock()
 	defer partition.Unlock()
 	for _, replica := range partition.Replicas {
-		if !replica.isLive(timeOutSec) {
+		if !replica.isLive(partition.PartitionID, timeOutSec) {
 			log.LogInfof("action[checkReplicaStatus] partition %v replica %v be set status ReadOnly", partition.PartitionID, replica.Addr)
 			if replica.Status == proto.ReadWrite {
 				replica.Status = proto.ReadOnly
@@ -145,16 +145,16 @@ func (partition *DataPartition) checkReplicaStatus(timeOutSec int64) {
 	}
 }
 
-func (partition *DataPartition) checkLeader(clusterID string, timeOut int64) {
+func (partition *DataPartition) checkLeader(c *Cluster, clusterID string, timeOut int64) {
 	partition.Lock()
-	defer partition.Unlock()
 	for _, dr := range partition.Replicas {
-		if !dr.isLive(timeOut) {
+		if !dr.isLive(partition.PartitionID, timeOut) {
 			dr.IsLeader = false
 		}
 	}
 
 	if !proto.IsNormalDp(partition.PartitionType) {
+		partition.Unlock()
 		return
 	}
 
@@ -165,7 +165,45 @@ func (partition *DataPartition) checkLeader(clusterID string, timeOut int64) {
 	if WarnMetrics != nil {
 		WarnMetrics.WarnDpNoLeader(clusterID, partition.PartitionID, report)
 	}
+	partition.Unlock()
+	if report && partition.ReplicaNum == 1 && partition.GetDecommissionStatus() == DecommissionInitial &&
+		len(partition.Hosts) == 1 && len(partition.Peers) == 1 {
+		replica := partition.Replicas[0]
+		// heart beat is not arrived
+		if len(replica.LocalPeers) == 0 {
+			return
+		}
+		redundantPeers := findRedundantPeers(partition.Hosts, replica.LocalPeers)
+		log.LogInfof("action[checkLeader] partition %v try to recover leader local peers(%v) redundantPeers(%v)",
+			partition.PartitionID, replica.LocalPeers, redundantPeers)
+		for _, peer := range redundantPeers {
+			log.LogInfof("action[checkLeader] partition %v remove peer (%v)",
+				partition.PartitionID, peer)
+			if err := partition.removeReplicaByForce(c, peer); err != nil {
+				log.LogInfof("action[checkLeader] partition %v remove peer (%v) failed %v",
+					partition.PartitionID, peer, err)
+			}
+
+		}
+	}
 	return
+}
+
+func findRedundantPeers(a, b []string) []string {
+	var redundantPeers []string
+	for _, item := range b {
+		found := false
+		for _, value := range a {
+			if item == value {
+				found = true
+				break
+			}
+		}
+		if !found {
+			redundantPeers = append(redundantPeers, item)
+		}
+	}
+	return redundantPeers
 }
 
 // Check if there is any missing replica for a data partition.

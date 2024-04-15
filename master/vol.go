@@ -621,7 +621,7 @@ func (vol *Vol) checkDataPartitions(c *Cluster) (cnt int) {
 
 		dp.checkReplicaStatus(c.cfg.DataPartitionTimeOutSec)
 		dp.checkStatus(c.Name, true, c.cfg.DataPartitionTimeOutSec, c, shouldDpInhibitWriteByVolFull, vol.Forbidden)
-		dp.checkLeader(c.Name, c.cfg.DataPartitionTimeOutSec)
+		dp.checkLeader(c, c.Name, c.cfg.DataPartitionTimeOutSec)
 		dp.checkMissingReplicas(c.Name, c.leaderInfo.addr, c.cfg.MissingDataPartitionInterval, c.cfg.IntervalToAlarmMissingDataPartition)
 		dp.checkReplicaNum(c, vol)
 
