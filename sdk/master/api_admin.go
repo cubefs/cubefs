@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util"
@@ -784,6 +785,17 @@ func (api *AdminAPI) QueryDecommissionToken() (status []proto.DecommissionTokenS
 	}
 	status = make([]proto.DecommissionTokenStatus, 0)
 	if err = json.Unmarshal(buf, &status); err != nil {
+		return
+	}
+	return
+}
+
+func (api *AdminAPI) SetVolTrashInterval(volName string, authKey string, interval time.Duration) (err error) {
+	request := newAPIRequest(http.MethodPost, proto.AdminSetTrashInterval)
+	request.addParam("name", volName)
+	request.addParam("trashInterval", strconv.FormatInt(int64(interval.Minutes()), 10))
+	request.addParam("authKey", authKey)
+	if _, err = api.mc.serveRequest(request); err != nil {
 		return
 	}
 	return
