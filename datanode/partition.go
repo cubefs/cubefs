@@ -278,7 +278,7 @@ func LoadDataPartition(partitionDir string, disk *Disk, allowDelay bool) (dp *Da
 	dp.metaAppliedID = meta.ApplyID
 	dp.computeUsage()
 	dp.ForceSetDataPartitionToLoadding()
-	disk.space.AttachPartition(dp)
+	// disk.space.AttachPartition(dp)
 	if err = dp.LoadAppliedID(); err != nil {
 		log.LogErrorf("action[loadApplyIndex] %v", err)
 		return
@@ -304,7 +304,7 @@ func LoadDataPartition(partitionDir string, disk *Disk, allowDelay bool) (dp *Da
 	}
 	if err != nil {
 		log.LogErrorf("PartitionID(%v) start raft err(%v)..", dp.partitionID, err)
-		disk.space.DetachDataPartition(dp.partitionID)
+		// disk.space.DetachDataPartition(dp.partitionID)
 		return
 	}
 
