@@ -18,13 +18,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"hash/crc32"
-	"io/ioutil"
 	syslog "log"
 	"math"
 	"net"
 	"os"
 	"path"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -168,7 +168,7 @@ func (dp *DataPartition) SetRepairBlockSize(size uint64) {
 
 func CreateDataPartition(dpCfg *dataPartitionCfg, disk *Disk, request *proto.CreateDataPartitionRequest) (dp *DataPartition, err error) {
 
-	if dp, err = newDataPartition(dpCfg, disk, true, false); err != nil {
+	if dp, err = newDataPartition(dpCfg, disk, true); err != nil {
 		return
 	}
 	dp.ForceLoadHeader()
@@ -244,11 +244,9 @@ func (dp *DataPartition) ForceSetRaftRunning() {
 // LoadDataPartition loads and returns a partition instance based on the specified directory.
 // It reads the partition metadata file stored under the specified directory
 // and creates the partition instance.
-func LoadDataPartition(partitionDir string, disk *Disk, allowDelay bool) (dp *DataPartition, err error) {
-	var (
-		metaFileData []byte
-	)
-	if metaFileData, err = ioutil.ReadFile(path.Join(partitionDir, DataPartitionMetadataFileName)); err != nil {
+func LoadDataPartition(partitionDir string, disk *Disk) (dp *DataPartition, err error) {
+	var metaFileData []byte
+	if metaFileData, err = os.ReadFile(path.Join(partitionDir, DataPartitionMetadataFileName)); err != nil {
 		return
 	}
 	meta := &DataPartitionMetadata{}
@@ -271,7 +269,7 @@ func LoadDataPartition(partitionDir string, disk *Disk, allowDelay bool) (dp *Da
 		NodeID:        disk.space.GetNodeID(),
 		ClusterID:     disk.space.GetClusterID(),
 	}
-	if dp, err = newDataPartition(dpCfg, disk, false, allowDelay); err != nil {
+	if dp, err = newDataPartition(dpCfg, disk, false); err != nil {
 		return
 	}
 	dp.stopRecover = meta.StopRecover
@@ -304,7 +302,7 @@ func LoadDataPartition(partitionDir string, disk *Disk, allowDelay bool) (dp *Da
 	}
 	if err != nil {
 		log.LogErrorf("PartitionID(%v) start raft err(%v)..", dp.partitionID, err)
-		disk.space.DetachDataPartition(dp.partitionID)
+		// disk.space.DetachDataPartition(dp.partitionID)
 		return
 	}
 
@@ -329,7 +327,7 @@ func LoadDataPartition(partitionDir string, disk *Disk, allowDelay bool) (dp *Da
 	return
 }
 
-func newDataPartition(dpCfg *dataPartitionCfg, disk *Disk, isCreate bool, allowDelay bool) (dp *DataPartition, err error) {
+func newDataPartition(dpCfg *dataPartitionCfg, disk *Disk, isCreate bool) (dp *DataPartition, err error) {
 	partitionID := dpCfg.PartitionID
 	begin := time.Now()
 	defer func() {
@@ -374,7 +372,7 @@ func newDataPartition(dpCfg *dataPartitionCfg, disk *Disk, isCreate bool, allowD
 	log.LogInfof("action[newDataPartition] dp %v replica num %v", partitionID, dpCfg.ReplicaNum)
 	partition.replicasInit()
 	partition.extentStore, err = storage.NewExtentStore(partition.path, dpCfg.PartitionID, dpCfg.PartitionSize,
-		partition.partitionType, isCreate, allowDelay)
+		partition.partitionType, isCreate)
 	if err != nil {
 		log.LogWarnf("action[newDataPartition] dp %v NewExtentStore failed %v", partitionID, err.Error())
 		return
@@ -847,13 +845,6 @@ func (dp *DataPartition) computeUsage() {
 		log.LogDebugf("[computeUsage] dp(%v) skip size update", dp.partitionID)
 		return
 	}
-	used, err := dp.ExtentStore().GetStoreUsedSize()
-	if err != nil {
-		log.LogErrorf("[computeUsage] dp(%v) failed to compute extents size, err(%v)", dp.partitionID, err)
-		return
-	}
-	dp.used = int(used)
-	dp.intervalToUpdatePartitionSize = time.Now().Unix()
 	dp.used = int(dp.ExtentStore().GetStoreUsedSize())
 	if log.EnableDebug() {
 		log.LogDebugf("[computeUsage] dp(%v) update size(%v)", dp.partitionID, strutil.FormatSize(uint64(dp.used)))
@@ -1315,12 +1306,7 @@ func (dp *DataPartition) doExtentTtl(ttl int) (err error) {
 		ttl = 30
 	}
 
-	extents, err := dp.extentStore.DumpExtents()
-	if err != nil {
-		log.LogErrorf("[doExtentTtl] dp(%v) failed to dump extents, err(%v)", dp.partitionID, err)
-		return
-	}
-
+	extents := dp.extentStore.DumpExtents()
 	for _, ext := range extents {
 		if storage.IsTinyExtent(ext.FileID) {
 			continue
@@ -1360,11 +1346,7 @@ func (dp *DataPartition) doExtentEvict(vv *proto.SimpleVolView) (err error) {
 
 	// if dp extent count larger than upper count, do die out.
 	freeExtentCount = 0
-	extInfos, err := dp.extentStore.DumpExtents()
-	if err != nil {
-		log.LogErrorf("[doExtentEvict] dp(%v) failed to dump extents, err(%v)", dp.partitionID, err)
-		return
-	}
+	extInfos := dp.extentStore.DumpExtents()
 	maxExtentCount := dp.Size() / util.DefaultTinySizeLimit
 	if len(extInfos) > maxExtentCount {
 		needDieOut = true
