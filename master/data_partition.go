@@ -410,7 +410,7 @@ func (partition *DataPartition) createLoadTasks() (tasks []*proto.AdminTask) {
 	defer partition.Unlock()
 	for _, addr := range partition.Hosts {
 		replica, err := partition.getReplica(addr)
-		if err != nil || replica.isLive(defaultDataPartitionTimeOutSec) == false {
+		if err != nil || replica.isLive(partition.PartitionID, defaultDataPartitionTimeOutSec) == false {
 			continue
 		}
 		replica.HasLoadResponse = false
@@ -493,8 +493,9 @@ func (partition *DataPartition) checkLoadResponse(timeOutSec int64) (isResponse 
 			log.LogWarn(msg)
 			return
 		}
-		if replica.isLive(timeOutSec) == false || replica.HasLoadResponse == false {
-			log.LogInfof("action[checkLoadResponse] partitionID:%v getReplica addr %v replica.isLive(timeOutSec) %v", partition.PartitionID, addr, replica.isLive(timeOutSec))
+		if replica.isLive(partition.PartitionID, timeOutSec) == false || replica.HasLoadResponse == false {
+			log.LogInfof("action[checkLoadResponse] partitionID:%v getReplica addr %v replica.isLive(timeOutSec) %v",
+				partition.PartitionID, addr, replica.isLive(partition.PartitionID, timeOutSec))
 			return
 		}
 	}
@@ -609,7 +610,7 @@ func (partition *DataPartition) liveReplicas(timeOutSec int64) (replicas []*Data
 	replicas = make([]*DataReplica, 0)
 	for i := 0; i < len(partition.Replicas); i++ {
 		replica := partition.Replicas[i]
-		if replica.isLive(timeOutSec) && partition.hasHost(replica.Addr) {
+		if replica.isLive(partition.PartitionID, timeOutSec) && partition.hasHost(replica.Addr) {
 			replicas = append(replicas, replica)
 		}
 	}
@@ -625,7 +626,7 @@ func (partition *DataPartition) getLiveReplicasFromHosts(timeOutSec int64) (repl
 		if !ok {
 			continue
 		}
-		if replica.isLive(timeOutSec) == true {
+		if replica.isLive(partition.PartitionID, timeOutSec) == true {
 			replicas = append(replicas, replica)
 		} else {
 			replica.Status = proto.Unavailable
@@ -641,7 +642,7 @@ func (partition *DataPartition) getLiveReplicasFromHosts(timeOutSec int64) (repl
 func (partition *DataPartition) getLiveReplicas(timeOutSec int64) (replicas []*DataReplica) {
 	replicas = make([]*DataReplica, 0)
 	for _, replica := range partition.Replicas {
-		if replica.isLive(timeOutSec) == true {
+		if replica.isLive(partition.PartitionID, timeOutSec) == true {
 			replicas = append(replicas, replica)
 		} else {
 			replica.Status = proto.Unavailable
@@ -745,6 +746,7 @@ func (partition *DataPartition) updateMetric(vr *proto.DataPartitionReport, data
 	}
 	replica.NeedsToCompare = vr.NeedCompare
 	replica.DecommissionRepairProgress = vr.DecommissionRepairProgress
+	replica.LocalPeers = vr.LocalPeers
 	if replica.DiskPath != vr.DiskPath && vr.DiskPath != "" {
 		oldDiskPath := replica.DiskPath
 		replica.DiskPath = vr.DiskPath
@@ -1375,7 +1377,7 @@ func (partition *DataPartition) ResetDecommissionStatus() {
 }
 
 func (partition *DataPartition) rollback(c *Cluster) {
-	err := partition.removeReplicaByRollback(c)
+	err := partition.removeReplicaByForce(c, partition.DecommissionDstAddr)
 	if err != nil {
 		// keep decommission status to failed for rollback
 		log.LogWarnf("action[rollback]dp[%v] rollback to del replica[%v] failed:%v",
@@ -1754,7 +1756,7 @@ func (partition *DataPartition) needRollback(c *Cluster) bool {
 		log.LogDebugf("action[needRollback]try delete dp[%v] replica %v DecommissionNeedRollbackTimes[%v]",
 			partition.PartitionID, partition.DecommissionDstAddr, atomic.LoadUint32(&partition.DecommissionNeedRollbackTimes))
 		partition.DecommissionNeedRollback = false
-		err := partition.removeReplicaByRollback(c)
+		err := partition.removeReplicaByForce(c, partition.DecommissionDstAddr)
 		if err != nil {
 			log.LogWarnf("action[needRollback]dp[%v] remove decommission dst replica %v failed: %v",
 				partition.PartitionID, partition.DecommissionDstAddr, err)
@@ -1770,7 +1772,7 @@ func (partition *DataPartition) markRollbackFailed(needRollback bool) {
 	partition.DecommissionNeedRollback = needRollback
 }
 
-func (partition *DataPartition) removeReplicaByRollback(c *Cluster) error {
+func (partition *DataPartition) removeReplicaByForce(c *Cluster, peerAddr string) error {
 	// del new add replica,may timeout, try rollback next time
 	force := false
 	// if single dp add raft member success but add a replica fails, use force to delete raft member
@@ -1778,7 +1780,7 @@ func (partition *DataPartition) removeReplicaByRollback(c *Cluster) error {
 	if partition.ReplicaNum == 1 {
 		force = true
 	}
-	err := c.removeDataReplica(partition, partition.DecommissionDstAddr, false, force)
+	err := c.removeDataReplica(partition, peerAddr, false, force)
 	if err != nil {
 		return err
 	}
