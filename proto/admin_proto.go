@@ -84,6 +84,7 @@ const (
 	AdminOpFollowerPartitionsRead             = "/master/opFollowerPartitionRead"
 	AdminUpdateDecommissionLimit              = "/admin/updateDecommissionLimit"
 	AdminQueryDecommissionLimit               = "/admin/queryDecommissionLimit"
+	AdminQueryDecommissionFailedDisk          = "/admin/queryDecommissionFailedDisk"
 	// #nosec G101
 	AdminQueryDecommissionToken = "/admin/queryDecommissionToken"
 	AdminSetFileStats           = "/admin/setFileStatsEnable"
