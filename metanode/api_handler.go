@@ -1121,6 +1121,15 @@ func (m *MetaNode) updateExtentKeyAfterMigrationHandler(w http.ResponseWriter, r
 		return
 	}
 
+	if leaderAddr, ok := mp.IsLeader(); !ok {
+		resp.Code = http.StatusSeeOther
+		err = fmt.Errorf("not mp leader, leader is %v", leaderAddr)
+		log.LogErrorf("[updateExtentKeyAfterMigrationHandler] mpId(%v) ino(%v), get mp err: %v",
+			req.PartitionID, req.Inode, err.Error())
+		resp.Msg = err.Error()
+		return
+	}
+
 	p := &Packet{}
 	p.Opcode = proto.OpMetaUpdateExtentKeyAfterMigration
 	req.FullPaths = []string{"N/A"}

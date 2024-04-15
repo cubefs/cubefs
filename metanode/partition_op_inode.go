@@ -1107,6 +1107,13 @@ func (mp *metaPartition) UpdateExtentKeyAfterMigration(req *proto.UpdateExtentKe
 		}()
 	}
 
+	if proto.IsDir(ino.Type) && req.NewObjExtentKeys != nil {
+		err = fmt.Errorf("mp(%v) inode(%v) is dir, but request NewObjExtentKeys is not nil", mp.config.PartitionId, ino.Inode)
+		log.LogErrorf("action[UpdateExtentKeyAfterMigration] %v", err)
+		p.PacketErrorWithBody(proto.OpArgMismatchErr, []byte(err.Error()))
+		return
+	}
+
 	defer func() {
 		//delete migration extent key if encounter an error
 		if err != nil {
@@ -1127,7 +1134,7 @@ func (mp *metaPartition) UpdateExtentKeyAfterMigration(req *proto.UpdateExtentKe
 		err = fmt.Errorf("inode(%v) storageClass(%v) is already the same with request storageClass",
 			ino.Inode, ino.StorageClass)
 		log.LogWarnf("[UpdateExtentKeyAfterMigration] %v", err.Error())
-		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+		p.PacketErrorWithBody(proto.OpArgMismatchErr, []byte(err.Error()))
 		return
 	}
 
