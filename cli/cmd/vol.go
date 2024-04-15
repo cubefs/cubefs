@@ -19,6 +19,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/sdk/master"
@@ -52,6 +53,7 @@ func newVolCmd(client *master.MasterClient) *cobra.Command {
 		newVolAddMPCmd(client),
 		newVolSetForbiddenCmd(client),
 		newVolSetAuditLogCmd(client),
+		newVolSetTrashIntervalCmd(client),
 		newVolSetDpRepairBlockSize(client),
 	)
 	return cmd
@@ -1075,6 +1077,51 @@ func newVolSetDpRepairBlockSize(client *master.MasterClient) *cobra.Command {
 				return
 			}
 			stdout("Volume dp repair block size has been set successfully, please wait few minutes for the settings to take effect.\n")
+		},
+	}
+	return cmd
+}
+
+var (
+	cmdVolSetTrashIntervalUse   = "set-trash-interval [VOLUME] [INTERVAL MINUTES]"
+	cmdVolSetTrashIntervalShort = "set trash interval for volume"
+)
+
+func newVolSetTrashIntervalCmd(client *master.MasterClient) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   cmdVolSetTrashIntervalUse,
+		Short: cmdVolSetTrashIntervalShort,
+		Args:  cobra.MinimumNArgs(2),
+		Run: func(cmd *cobra.Command, args []string) {
+
+			var (
+				err      error
+				interval time.Duration
+				tmp      int64
+			)
+
+			name := args[0]
+			defer func() {
+				if err != nil {
+					errout("%v\n", err)
+				}
+			}()
+
+			var svv *proto.SimpleVolView
+			svv, err = client.AdminAPI().GetVolumeSimpleInfo(name)
+			if err != nil {
+				return
+			}
+
+			if tmp, err = strconv.ParseInt(args[1], 10, 64); err != nil {
+				return
+			}
+			interval = time.Duration(tmp) * time.Minute
+			authKey := util.CalcAuthKey(svv.Owner)
+			if err = client.AdminAPI().SetVolTrashInterval(name, authKey, interval); err != nil {
+				return
+			}
+			stdout("Set trash interval of %v to %v successfully\n", name, interval)
 		},
 	}
 	return cmd
