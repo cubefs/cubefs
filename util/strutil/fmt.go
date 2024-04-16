@@ -81,6 +81,9 @@ var suffixTable = []SuffixPair{
 }
 
 func FormatSize(size uint64) (sizeStr string) {
+	if size == 0 {
+		return "0"
+	}
 	var pair SuffixPair
 	for _, suffixPair := range suffixTable {
 		if size >= suffixPair.Size {
@@ -101,8 +104,8 @@ func FormatSize(size uint64) (sizeStr string) {
 
 func ParsePercent(valStr string) (val float64, err error) {
 	base := float64(1)
-	if strings.HasPrefix(valStr, "%") {
-		base = 1
+	if strings.HasSuffix(valStr, "%") {
+		base = 0.01
 		valStr = strings.TrimSuffix(valStr, "%")
 	}
 	val, err = strconv.ParseFloat(valStr, 64)

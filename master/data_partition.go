@@ -26,6 +26,7 @@ import (
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/log"
+	"github.com/cubefs/cubefs/util/strutil"
 )
 
 // DataPartition represents the structure of storing the file contents.
@@ -772,6 +773,9 @@ func (partition *DataPartition) setMaxUsed() {
 		}
 	}
 	partition.used = maxUsed
+	if log.EnableDebug() {
+		log.LogInfof("[setMaxUsed] vol(%v) dp(%v) set max used size(%v)", partition.VolName, partition.PartitionID, strutil.FormatSize(maxUsed))
+	}
 }
 
 func (partition *DataPartition) getMaxUsedSpace() uint64 {
