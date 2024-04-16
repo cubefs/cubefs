@@ -38,6 +38,7 @@ import (
 	"github.com/cubefs/cubefs/util/iputil"
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/cubefs/cubefs/util/stat"
+	"github.com/cubefs/cubefs/util/strutil"
 )
 
 func apiToMetricsName(api string) (reqMetricName string) {
@@ -4964,6 +4965,10 @@ func volStat(vol *Vol, countByMeta bool) (stat *proto.VolStatInfo) {
 	stat.UsedSize = vol.totalUsedSpaceByMeta(countByMeta)
 	if stat.UsedSize > stat.TotalSize {
 		log.LogWarnf("vol(%v) useSize(%v) is larger than capacity(%v)", vol.Name, stat.UsedSize, stat.TotalSize)
+	}
+
+	if log.EnableInfo() {
+		log.LogInfof("[volStat] vol(%v) useSize(%v)/Capacity(%v)", vol.Name, strutil.FormatSize(stat.UsedSize), strutil.FormatSize(stat.TotalSize))
 	}
 
 	stat.UsedRatio = strconv.FormatFloat(float64(stat.UsedSize)/float64(stat.TotalSize), 'f', 2, 32)

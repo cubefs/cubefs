@@ -702,6 +702,7 @@ func (s *DataNode) handleMarkDeletePacket(p *repl.Packet, c net.Conn) {
 				p.PartitionID, p.ExtentID, ext.ExtentOffset, ext.Size)
 			partition.disk.allocCheckLimit(proto.IopsWriteType, 1)
 			partition.disk.limitWrite.Run(0, func() {
+				log.LogInfof("[handleBatchMarkDeletePacket] vol(%v) dp(%v) mark delete extent(%v)", partition.config.VolName, partition.partitionID, p.ExtentID)
 				err = partition.ExtentStore().MarkDelete(p.ExtentID, int64(ext.ExtentOffset), int64(ext.Size))
 				if err != nil {
 					log.LogErrorf("action[handleMarkDeletePacket]: failed to mark delete extent(%v), %v", p.ExtentID, err)
@@ -713,6 +714,7 @@ func (s *DataNode) handleMarkDeletePacket(p *repl.Packet, c net.Conn) {
 			p.PartitionID, p.ExtentID)
 		partition.disk.allocCheckLimit(proto.IopsWriteType, 1)
 		partition.disk.limitWrite.Run(0, func() {
+			log.LogInfof("[handleBatchMarkDeletePacket] vol(%v) dp(%v) mark delete extent(%v)", partition.config.VolName, partition.partitionID, p.ExtentID)
 			err = partition.ExtentStore().MarkDelete(p.ExtentID, 0, 0)
 			if err != nil {
 				log.LogErrorf("action[handleMarkDeletePacket]: failed to mark delete extent(%v), %v", p.ExtentID, err)
@@ -746,9 +748,23 @@ func (s *DataNode) handleBatchMarkDeletePacket(p *repl.Packet, c net.Conn) {
 				log.LogInfof(fmt.Sprintf("recive DeleteExtent (%v) from (%v)", ext, c.RemoteAddr().String()))
 				partition.disk.allocCheckLimit(proto.IopsWriteType, 1)
 				partition.disk.limitWrite.Run(0, func() {
-					err = store.MarkDelete(ext.ExtentId, int64(ext.ExtentOffset), int64(ext.Size))
+					log.LogInfof("[handleBatchMarkDeletePacket] vol(%v) dp(%v) mark delete extent(%v)", partition.config.VolName, partition.partitionID, ext.ExtentId)
+					if proto.IsTinyExtentType(p.ExtentType) {
+						err = store.MarkDelete(ext.ExtentId, int64(ext.ExtentOffset), int64(ext.Size))
+					} else {
+						// TODO: fix snapshot deletion
+						// NOTE: it must use 0 to remove normal extent
+						// Consider the following scenario:
+						// data partition replica 1: size 200kb
+						//                replica 2: size 100kb
+						//                replica 3: size 100kb
+						// meta partition: size 100kb
+						// when we remove the file, the request size is 100kb
+						// replica 1 will lost 100kb if we use ext.Size to remove extent
+						err = partition.ExtentStore().MarkDelete(ext.ExtentId, 0, 0)
+					}
 					if err != nil {
-						log.LogErrorf("action[handleBatchMarkDeletePacket]: failed to mark delete extent(%v), %v", p.ExtentID, err)
+						log.LogErrorf("action[handleBatchMarkDeletePacket]: failed to mark delete extent(%v), %v", ext.ExtentId, err)
 					}
 				})
 				if err != nil {

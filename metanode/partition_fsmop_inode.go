@@ -412,7 +412,7 @@ func (mp *metaPartition) internalDeleteBatch(val []byte) error {
 }
 
 func (mp *metaPartition) internalDeleteInode(ino *Inode) {
-	log.LogDebugf("action[internalDeleteInode] ino[%v] really be deleted", ino)
+	log.LogDebugf("action[internalDeleteInode] vol(%v) mp(%v) ino[%v] really be deleted", mp.config.VolName, mp.config.PartitionId, ino)
 	mp.inodeTree.Delete(ino)
 	mp.freeList.Remove(ino.Inode)
 	mp.extendTree.Delete(&Extend{inode: ino.Inode}) // Also delete extend attribute.

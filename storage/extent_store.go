@@ -36,6 +36,7 @@ import (
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/log"
+	"github.com/cubefs/cubefs/util/strutil"
 )
 
 //TODO: remove this later.
@@ -507,13 +508,24 @@ func (s *ExtentStore) MarkDelete(extentID uint64, offset, size int64) (err error
 		extentID, offset, size, ei.Size, ei.SnapshotDataOff)
 
 	funcNeedPunchDel := func() bool {
-		return offset != 0 || (size != 0 && ((ei.Size != uint64(size) && ei.SnapshotDataOff == util.ExtentSize) ||
-			(ei.SnapshotDataOff != uint64(size) && ei.SnapshotDataOff > util.ExtentSize)))
-	}
+		if offset != 0 {
+			return true
+		}
+		if size != 0 {
+			if ei.Size != uint64(size) && ei.SnapshotDataOff == util.ExtentSize {
+				return true
+			}
 
+			if ei.SnapshotDataOff != uint64(size) && ei.SnapshotDataOff > util.ExtentSize {
+				return true
+			}
+		}
+		return false
+	}
+	log.LogInfof("[MarkDelete] store(%v) mark del extent(%v) offset(%v) size(%v), ei size(%v) ei snapshotOff(%v), tiny(%v), funcNeedPunchDel(%v)", s.dataPath, extentID, offset, size, ei.Size, ei.SnapshotDataOff, IsTinyExtent(extentID), funcNeedPunchDel())
 	if IsTinyExtent(extentID) || funcNeedPunchDel() {
-		log.LogDebugf("action[MarkDelete] extentID %v offset %v size %v ei(size %v snapshotSize %v)",
-			extentID, offset, size, ei.Size, ei.SnapshotDataOff)
+		log.LogDebugf("action[MarkDelete] extentID %v offset %v size %v ei(size %v snapshotSize %v), tiny(%v), snapshot punch(%v)",
+			extentID, offset, size, ei.Size, ei.SnapshotDataOff, IsTinyExtent(extentID), funcNeedPunchDel())
 		return s.punchDelete(extentID, offset, size)
 	}
 
@@ -634,6 +646,16 @@ const (
 	DiskSectorSize = 512
 )
 
+func (s *ExtentStore) getFileDiskUsed(name string) (size int64, err error) {
+	stat := syscall.Stat_t{}
+	err = syscall.Stat(name, &stat)
+	if err != nil {
+		return
+	}
+	size = stat.Blocks * DiskSectorSize
+	return
+}
+
 func (s *ExtentStore) GetStoreUsedSize() (used int64) {
 	extentInfoSlice := make([]*ExtentInfo, 0, s.GetExtentCount())
 	s.eiMutex.RLock()
@@ -641,20 +663,43 @@ func (s *ExtentStore) GetStoreUsedSize() (used int64) {
 		extentInfoSlice = append(extentInfoSlice, extentID)
 	}
 	s.eiMutex.RUnlock()
+	tinyTotal := uint64(0)
+	normalTotal := uint64(0)
 	for _, einfo := range extentInfoSlice {
 		if einfo.IsDeleted {
 			continue
 		}
 		if IsTinyExtent(einfo.FileID) {
-			stat := new(syscall.Stat_t)
-			err := syscall.Stat(fmt.Sprintf("%v/%v", s.dataPath, einfo.FileID), stat)
+			size, err := s.getFileDiskUsed(path.Join(s.dataPath, strconv.FormatInt(int64(einfo.FileID), 10)))
 			if err != nil {
+				log.LogErrorf("[GetStoreUsedSize] store(%v) failed to get tiny extent(%v) disk used", s.dataPath, einfo.FileID)
 				continue
 			}
-			used += stat.Blocks * DiskSectorSize
+			if log.EnableDebug() {
+				log.LogDebugf("[GetStoreUsedSize] store(%v) tiny extent(%v) size(%v)", s.dataPath, einfo.FileID, strutil.FormatSize(uint64(size)))
+			}
+			used += size
+			tinyTotal += uint64(size)
 		} else {
-			used += int64(einfo.Size + (einfo.SnapshotDataOff - util.ExtentSize))
+			// NOTE: for debug
+			size := int64(einfo.Size + (einfo.SnapshotDataOff - util.ExtentSize))
+			if log.EnableDebug() {
+				actualSize, err := s.getFileDiskUsed(path.Join(s.dataPath, strconv.FormatInt(int64(einfo.FileID), 10)))
+				if err != nil {
+					log.LogErrorf("[GetStoreUsedSize] store(%v) failed to get normal extent(%v) disk used", s.dataPath, einfo.FileID)
+					continue
+				}
+				log.LogDebugf("[GetStoreUsedSize] store(%v) normal extent(%v) size(%v), actual size(%v)", s.dataPath, einfo.FileID, strutil.FormatSize(uint64(size)), strutil.FormatSize(uint64(actualSize)))
+				if actualSize < size {
+					log.LogWarnf("[GetStoreUsedSize] store(%v) normal extent(%v) actual size(%v), size(%v) einfo size(%v) snapshot off(%v)", s.dataPath, einfo.FileID, strutil.FormatSize(uint64(actualSize)), strutil.FormatSize(uint64(size)), strutil.FormatSize(einfo.Size), strutil.FormatSize(einfo.SnapshotDataOff))
+				}
+			}
+			used += size
+			normalTotal += uint64(size)
 		}
+	}
+	if log.EnableInfo() {
+		log.LogInfof("[GetStoreUsedSize] store(%v) total size(%v) tiny total(%v) normal total(%v)", s.dataPath, strutil.FormatSize(uint64(used)), strutil.FormatSize(tinyTotal), strutil.FormatSize(normalTotal))
 	}
 	return
 }
