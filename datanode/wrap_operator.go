@@ -983,9 +983,7 @@ func (s *DataNode) handleStreamReadPacket(p *repl.Packet, connect net.Conn, isRe
 }
 
 func (s *DataNode) handleExtentRepairReadPacket(p *repl.Packet, connect net.Conn, isRepairRead bool) {
-	var (
-		err error
-	)
+	var err error
 
 	defer func() {
 		if err != nil {
@@ -1429,8 +1427,11 @@ func (s *DataNode) handlePacketToRemoveDataPartitionRaftMember(p *repl.Packet) {
 				log.LogWarnf("handlePacketToRemoveDataPartitionRaftMember dp(%v) peer(%v) nodeID(%v) is different from req(%v)",
 					dp.partitionID, peer.Addr, peer.ID, req.RemovePeer.ID)
 				// update reqData for
-				newReq := &proto.RemoveDataPartitionRaftMemberRequest{PartitionId: req.PartitionId, Force: req.Force,
-					RemovePeer: removePeer}
+				newReq := &proto.RemoveDataPartitionRaftMemberRequest{
+					PartitionId: req.PartitionId,
+					Force:       req.Force,
+					RemovePeer:  removePeer,
+				}
 				reqData, err = json.Marshal(newReq)
 				if err != nil {
 					log.LogWarnf("handlePacketToRemoveDataPartitionRaftMember dp(%v) marshall req(%v) failed:%v",

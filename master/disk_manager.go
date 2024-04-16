@@ -16,11 +16,11 @@ package master
 
 import (
 	"fmt"
-	"github.com/cubefs/cubefs/proto"
 	"math"
 	"sync/atomic"
 	"time"
 
+	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/log"
 )
 
@@ -226,7 +226,7 @@ func (c *Cluster) decommissionDisk(dataNode *DataNode, raftForce bool, badDiskPa
 }
 
 const (
-	ManualDecommission uint32 = iota //used for queryAllDecommissionDisk
+	ManualDecommission uint32 = iota // used for queryAllDecommissionDisk
 	AutoDecommission
 	AllDecommission
 )

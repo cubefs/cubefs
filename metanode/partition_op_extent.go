@@ -386,7 +386,7 @@ func (mp *metaPartition) ExtentsList(req *proto.GetExtentsRequest, p *Packet) (e
 	retMsg := mp.getInodeTopLayer(ino)
 	if retMsg.Status != proto.OpOk || retMsg.Msg == nil {
 		err = fmt.Errorf("inode(%v) not found", req.Inode)
-		log.LogError("[ExtentsList] %v", err.Error())
+		log.LogErrorf("[ExtentsList] %v", err.Error())
 		return
 	}
 

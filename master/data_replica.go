@@ -15,10 +15,10 @@
 package master
 
 import (
-	"github.com/cubefs/cubefs/util/log"
 	"time"
 
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util/log"
 )
 
 // DataReplica represents the replica of a data partition

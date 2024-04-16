@@ -17,7 +17,6 @@ package datanode
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/cubefs/cubefs/util/exporter"
 	"hash/crc32"
 	"math"
 	"net"
@@ -36,6 +35,7 @@ import (
 	"github.com/cubefs/cubefs/storage"
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/errors"
+	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/fileutil"
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/cubefs/cubefs/util/strutil"
@@ -1413,6 +1413,7 @@ func (dp *DataPartition) reload(s *SpaceManager) error {
 	_, err := LoadDataPartition(rootDir, disk)
 	return err
 }
+
 func (dp *DataPartition) resetDiskErrCnt() {
 	atomic.StoreUint64(&dp.diskErrCnt, 0)
 }
