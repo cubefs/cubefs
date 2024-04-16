@@ -4144,9 +4144,11 @@ func (m *Server) queryAllDecommissionDisk(w http.ResponseWriter, r *http.Request
 			}
 			dps := disk.GetDecommissionFailedDPByTerm(m.cluster)
 			decommissionProgress.FailedDps = dps
-			resp.Infos = append(resp.Infos, proto.DecommissionDiskInfo{SrcAddr: disk.SrcAddr,
+			resp.Infos = append(resp.Infos, proto.DecommissionDiskInfo{
+				SrcAddr:      disk.SrcAddr,
 				DiskPath:     disk.DiskPath,
-				ProgressInfo: decommissionProgress})
+				ProgressInfo: decommissionProgress,
+			})
 		}
 		return true
 	})

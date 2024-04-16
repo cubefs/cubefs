@@ -469,6 +469,7 @@ func (dataNode *DataNode) GetDecommissionFailedDPByTerm(c *Cluster) []proto.Fail
 
 func (dataNode *DataNode) GetDecommissionFailedDP(c *Cluster) (error, []uint64) {
 	var failedDps []uint64
+
 	partitions := c.getAllDecommissionDataPartitionByDataNode(dataNode.Addr)
 	log.LogDebugf("action[GetDecommissionDataNodeFailedDP] partitions len %v", len(partitions))
 	for _, dp := range partitions {

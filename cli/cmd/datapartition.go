@@ -265,7 +265,6 @@ The "reset" command will be released in next version`,
 					stdoutln(formatDiskErrorReplicaDpInfoRow(partition))
 				}
 			}
-
 		},
 	}
 
