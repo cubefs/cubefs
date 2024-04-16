@@ -38,6 +38,7 @@ import (
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/fileutil"
 	"github.com/cubefs/cubefs/util/log"
+	"github.com/cubefs/cubefs/util/strutil"
 )
 
 const (
@@ -125,7 +126,7 @@ type DataPartition struct {
 	intervalToUpdateReplicas      int64 // interval to ask the master for updating the replica information
 	snapshot                      []*proto.File
 	snapshotMutex                 sync.RWMutex
-	intervalToUpdatePartitionSize int64
+	intervalToUpdatePartitionSize time.Time
 	loadExtentHeaderStatus        int
 	DataPartitionCreateType       int
 	isLoadingDataPartition        int32
@@ -758,11 +759,16 @@ func (dp *DataPartition) statusUpdate() {
 }
 
 func (dp *DataPartition) computeUsage() {
-	if time.Now().Unix()-dp.intervalToUpdatePartitionSize < IntervalToUpdatePartitionSize {
+	if dp.intervalToUpdatePartitionSize.Unix() != 0 &&
+		time.Since(dp.intervalToUpdatePartitionSize) < IntervalToUpdatePartitionSize {
+		log.LogDebugf("[computeUsage] dp(%v) skip size update", dp.partitionID)
 		return
 	}
 	dp.used = int(dp.ExtentStore().GetStoreUsedSize())
-	dp.intervalToUpdatePartitionSize = time.Now().Unix()
+	if log.EnableDebug() {
+		log.LogDebugf("[computeUsage] dp(%v) update size(%v)", dp.partitionID, strutil.FormatSize(uint64(dp.used)))
+	}
+	dp.intervalToUpdatePartitionSize = time.Now()
 }
 
 func (dp *DataPartition) ExtentStore() *storage.ExtentStore {
