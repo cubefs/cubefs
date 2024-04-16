@@ -32,9 +32,7 @@ import (
 	"github.com/cubefs/cubefs/util/ump"
 )
 
-var (
-	LocalIP string
-)
+var LocalIP string
 
 type DataPartitionView struct {
 	DataPartitions []*DataPartition

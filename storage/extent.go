@@ -540,7 +540,6 @@ func (e *Extent) repairPunchHole(offset, size int64) (err error) {
 			err = fmt.Errorf("error empty packet on (%v) offset(%v) size(%v)"+
 				" e.dataSize(%v) err (%v)", e.file.Name(), offset, size, e.dataSize, err)
 		}
-		return
 	}()
 	if offset%util.PageSize != 0 {
 		err = fmt.Errorf("offset invalid")

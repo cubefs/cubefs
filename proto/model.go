@@ -343,6 +343,7 @@ type FailedDpInfo struct {
 	PartitionID uint64
 	ErrMsg      string
 }
+
 type DecommissionProgress struct {
 	Status        uint32
 	Progress      string

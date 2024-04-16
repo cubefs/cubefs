@@ -4150,9 +4150,11 @@ func (m *Server) queryAllDecommissionDisk(w http.ResponseWriter, r *http.Request
 			}
 			dps := disk.GetDecommissionFailedDPByTerm(m.cluster)
 			decommissionProgress.FailedDps = dps
-			resp.Infos = append(resp.Infos, proto.DecommissionDiskInfo{SrcAddr: disk.SrcAddr,
+			resp.Infos = append(resp.Infos, proto.DecommissionDiskInfo{
+				SrcAddr:      disk.SrcAddr,
 				DiskPath:     disk.DiskPath,
-				ProgressInfo: decommissionProgress})
+				ProgressInfo: decommissionProgress,
+			})
 		}
 		return true
 	})
@@ -6600,9 +6602,7 @@ func (m *Server) setVolDpRepairBlockSize(w http.ResponseWriter, r *http.Request)
 }
 
 func (m *Server) checkReplicaMeta(w http.ResponseWriter, r *http.Request) {
-	var (
-		resp proto.BadReplicaMetaResponse
-	)
+	var resp proto.BadReplicaMetaResponse
 
 	vols := m.cluster.allVols()
 	for _, vol := range vols {
@@ -6611,10 +6611,12 @@ func (m *Server) checkReplicaMeta(w http.ResponseWriter, r *http.Request) {
 			for _, replica := range dp.Replicas {
 				// check peer length first
 				if !dp.checkReplicaMetaEqualToMaster(replica.LocalPeers) {
-					resp.Infos = append(resp.Infos, proto.BadReplicaMetaInfo{PartitionId: dp.PartitionID,
-						Replica:    fmt.Sprintf("%v_%v", replica.Addr, replica.DiskPath),
-						BadPeer:    replica.LocalPeers,
-						ExpectPeer: dp.Peers})
+					resp.Infos = append(resp.Infos, proto.BadReplicaMetaInfo{
+						PartitionId: dp.PartitionID,
+						Replica:     fmt.Sprintf("%v_%v", replica.Addr, replica.DiskPath),
+						BadPeer:     replica.LocalPeers,
+						ExpectPeer:  dp.Peers,
+					})
 				}
 			}
 		}
