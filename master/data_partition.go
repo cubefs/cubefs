@@ -1869,7 +1869,7 @@ func (partition *DataPartition) recoverDataReplicaMeta(replicaAddr string, c *Cl
 	task := partition.createTaskToRecoverDataReplicaMeta(replicaAddr, partition.Peers, partition.Hosts)
 	packet, err := dataNode.TaskManager.syncSendAdminTask(task)
 	if err != nil {
-		log.LogWarnf("action[recoverDataReplicaMeta]dp(%v) replica %v syncSendAdminTask to replica failed %v",
+		log.LogWarnf("action[recoverDataReplicaMeta]dp(%v), addr:%s, syncSendAdminTask to replica failed %v",
 			partition.PartitionID, replicaAddr, err)
 		return err
 	}
@@ -1913,14 +1913,14 @@ func (partition *DataPartition) needManualFix() bool {
 
 func (partition *DataPartition) checkReplicaMeta(c *Cluster) {
 	// find redundant peers from replica meta
-	var force = false
+	force := false
 	if partition.getLeaderAddr() == "" {
 		force = true
 	}
 	for _, replica := range partition.Replicas {
 		redundantPeers := findPeersToDeleteByConfig(replica.LocalPeers, partition.Peers)
 		for _, peer := range redundantPeers {
-			//remove raft member
+			// remove raft member
 			partition.createTaskToRemoveRaftMember(c, peer, force)
 			log.LogInfof("action[checkReplicaMeta]dp(%v) remove redundant peer %v force %v",
 				partition.PartitionID, peer, force)

@@ -1424,8 +1424,9 @@ func (s *DataNode) handlePacketToRemoveDataPartitionRaftMember(p *repl.Packet) {
 					dp.partitionID, peer.Addr, peer.ID, req.RemovePeer.ID)
 				// update reqData for
 				newReq := &proto.RemoveDataPartitionRaftMemberRequest{
-					PartitionId: req.PartitionId, Force: req.Force,
-					RemovePeer: removePeer,
+					PartitionId: req.PartitionId,
+					Force:       req.Force,
+					RemovePeer:  removePeer,
 				}
 				reqData, err = json.Marshal(newReq)
 				if err != nil {
