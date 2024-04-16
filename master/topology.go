@@ -2125,10 +2125,10 @@ func (l *DecommissionDataPartitionList) Put(id uint64, value *DataPartition, c *
 		log.LogWarnf("action[DecommissionDataPartitionListPut] ns[%v] cannot put nil value", id)
 		return
 	}
-	// can only add running or mark or prepare
+	// can only add running or mark or prepare or failed without reaching roll back max
 	if !value.canAddToDecommissionList() {
-		log.LogWarnf("action[DecommissionDataPartitionListPut] ns[%v] put wrong dp[%v] status[%v]",
-			id, value.PartitionID, value.GetDecommissionStatus())
+		log.LogWarnf("action[DecommissionDataPartitionListPut] ns[%v] put wrong dp[%v] status[%v] DecommissionNeedRollbackTimes(%v)",
+			id, value.PartitionID, value.GetDecommissionStatus(), value.DecommissionNeedRollbackTimes)
 		return
 	}
 	// prepare status reset to mark status to retry again
@@ -2148,8 +2148,28 @@ func (l *DecommissionDataPartitionList) Put(id uint64, value *DataPartition, c *
 	if value.checkConsumeToken() {
 		value.TryAcquireDecommissionToken(c)
 	}
-	log.LogInfof("action[DecommissionDataPartitionListPut] ns[%v] add dp[%v] status[%v] isRecover[%v]",
-		id, value.PartitionID, value.GetDecommissionStatus(), value.isRecover)
+	log.LogInfof("action[DecommissionDataPartitionListPut] ns[%v] add dp[%v] status[%v] isRecover[%v] rollbackTimes(%v)",
+		id, value.PartitionID, value.GetDecommissionStatus(), value.isRecover, value.DecommissionNeedRollbackTimes)
+}
+
+func (l *DecommissionDataPartitionList) pushFailedDp(value *DataPartition, c *Cluster) {
+	if value == nil {
+		log.LogWarnf("action[pushFailedDp] cannot put nil value")
+		return
+	}
+	status := value.GetDecommissionStatus()
+	if status != markDecommission && status != DecommissionFail {
+		log.LogWarnf("action[pushFailedDp]  dp(%v) wrong status %v", value.PartitionID, status)
+		return
+	}
+	l.Remove(value)
+	l.mu.Lock()
+	elm := l.decommissionList.PushFront(value)
+	l.cacheMap[value.PartitionID] = elm
+	l.mu.Unlock()
+	log.LogInfof("action[pushFailedDp]  add dp[%v] status[%v] isRecover[%v]",
+		value.PartitionID, status, value.isRecover)
+	return
 }
 
 func (l *DecommissionDataPartitionList) Remove(value *DataPartition) {
@@ -2250,7 +2270,6 @@ func (l *DecommissionDataPartitionList) traverse(c *Cluster) {
 					c.syncUpdateDataPartition(dp)
 				} else if dp.IsDecommissionFailed() {
 					if !dp.tryRollback(c) {
-						dp.restoreReplica(c)
 						log.LogDebugf("action[DecommissionListTraverse]Remove dp[%v] for fail",
 							dp.PartitionID)
 						l.Remove(dp)
@@ -2274,6 +2293,7 @@ func (l *DecommissionDataPartitionList) traverse(c *Cluster) {
 							if dp.IsMarkDecommission() {
 								dp.ReleaseDecommissionToken(c)
 							}
+							l.pushFailedDp(dp, c)
 						}
 					}(dp) // special replica cnt cost some time from prepare to running
 				}

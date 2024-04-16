@@ -17,8 +17,9 @@ package metanode
 import (
 	"net"
 
+	"github.com/cubefs/cubefs/storage"
+
 	"github.com/cubefs/cubefs/proto"
-	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/log"
 )
 
@@ -26,8 +27,6 @@ const (
 	ForceClosedConnect = true
 	NoClosedConnect    = false
 )
-
-var ErrForbiddenMetaPartition = errors.New("meta partition is forbidden")
 
 func (m *metadataManager) IsForbiddenOp(mp MetaPartition, reqOp uint8) bool {
 	if !mp.IsForbidden() {
@@ -71,6 +70,7 @@ func (m *metadataManager) IsForbiddenOp(mp MetaPartition, reqOp uint8) bool {
 		proto.OpMetaBatchDeleteInode,
 		proto.OpMetaClearInodeCache,
 		proto.OpMetaTxCreateInode,
+		proto.OpMetaLookup,
 		// multipart
 		proto.OpAddMultipartPart,
 		proto.OpRemoveMultipart,
@@ -99,8 +99,8 @@ func (m *metadataManager) serveProxy(conn net.Conn, mp MetaPartition,
 
 	// check forbidden
 	if m.IsForbiddenOp(mp, reqOp) {
-		err = ErrForbiddenMetaPartition
-		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+		err = storage.ForbiddenMetaPartitionError
+		p.PacketErrorWithBody(proto.OpForbidErr, []byte(err.Error()))
 		m.respondToClient(conn, p)
 		return false
 	}

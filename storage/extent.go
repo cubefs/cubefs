@@ -68,7 +68,7 @@ func (ei *ExtentInfo) String() (m string) {
 	if source == "" {
 		source = "none"
 	}
-	return fmt.Sprintf("%v_%v_%v_%v_%v_%d_%d_%d", ei.FileID, ei.Size, ei.SnapshotDataOff, ei.IsDeleted, source, ei.ModifyTime, ei.AccessTime, ei.Crc)
+	return fmt.Sprintf("FileID(%v)_Size(%v)_IsDeleted(%v)_Souarce(%v)_MT(%d)_AT(%d)_CRC(%d)", ei.FileID, ei.Size, ei.IsDeleted, source, ei.ModifyTime, ei.AccessTime, ei.Crc)
 }
 
 // SortedExtentInfos defines an array sorted by AccessTime
@@ -291,7 +291,7 @@ func (e *Extent) WriteTiny(data []byte, offset, size int64, crc uint32, writeTyp
 }
 
 // Write writes data to an extent.
-func (e *Extent) Write(data []byte, offset, size int64, crc uint32, writeType int, isSync bool, crcFunc UpdateCrcFunc, ei *ExtentInfo) (status uint8, err error) {
+func (e *Extent) Write(data []byte, offset, size int64, crc uint32, writeType int, isSync bool, crcFunc UpdateCrcFunc, ei *ExtentInfo, isHole bool) (status uint8, err error) {
 	log.LogDebugf("action[Extent.Write] path %v offset %v size %v writeType %v", e.filePath, offset, size, writeType)
 	status = proto.OpOk
 	if IsTinyExtent(e.extentID) {
@@ -331,9 +331,15 @@ func (e *Extent) Write(data []byte, offset, size int64, crc uint32, writeType in
 			}
 		}
 	}
-	if _, err = e.file.WriteAt(data[:size], int64(offset)); err != nil {
-		log.LogErrorf("action[Extent.Write] offset %v size %v writeType %v err %v", offset, size, writeType, err)
-		return
+	if isHole {
+		if err = e.repairPunchHole(offset, size); err != nil {
+			return
+		}
+	} else {
+		if _, err = e.file.WriteAt(data[:size], int64(offset)); err != nil {
+			log.LogErrorf("action[Extent.Write] offset %v size %v writeType %v err %v", offset, size, writeType, err)
+			return
+		}
 	}
 
 	blockNo := offset / util.BlockSize
@@ -515,32 +521,62 @@ func (e *Extent) getRealBlockCnt() (blockNum int64) {
 	return stat.Blocks
 }
 
+func (e *Extent) repairPunchHole(offset, size int64) (err error) {
+	defer func() {
+		if err != nil {
+			err = fmt.Errorf("error empty packet on (%v) offset(%v) size(%v)"+
+				" e.dataSize(%v) err (%v)", e.file.Name(), offset, size, e.dataSize, err)
+		}
+	}()
+	if offset%util.PageSize != 0 {
+		err = fmt.Errorf("offset invalid")
+		return
+	}
+	if IsTinyExtent(e.extentID) {
+		if offset != e.dataSize {
+			err = fmt.Errorf("tiny offset not euqal")
+			return
+		}
+	} else {
+		if offset < util.ExtentSize {
+			if offset != e.dataSize {
+				err = fmt.Errorf("normal offset not euqal")
+				return
+			}
+		} else {
+			if offset != int64(e.snapshotDataOff) {
+				err = fmt.Errorf("normal offset not euqal")
+				return
+			}
+		}
+	}
+	log.LogDebugf("before file (%v) getRealBlockNo (%v) "+
+		"offset(%v) size(%v) e.datasize(%v)", e.filePath, e.getRealBlockCnt(), offset, size, e.dataSize)
+
+	var finfo os.FileInfo
+	finfo, err = e.file.Stat()
+	if err != nil {
+		return err
+	}
+	if offset < finfo.Size() {
+		return fmt.Errorf("error empty packet on (%v) offset(%v) size(%v)"+
+			" filesize(%v) e.dataSize(%v)", e.file.Name(), offset, size, finfo.Size(), e.dataSize)
+	}
+	if err = syscall.Ftruncate(int(e.file.Fd()), offset+size); err != nil {
+		return err
+	}
+	err = fallocate(int(e.file.Fd()), util.FallocFLPunchHole|util.FallocFLKeepSize, offset, size)
+	return
+}
+
 func (e *Extent) TinyExtentRecover(data []byte, offset, size int64, crc uint32, isEmptyPacket bool) (err error) {
 	e.Lock()
 	defer e.Unlock()
 	if !IsTinyExtent(e.extentID) {
 		return ParameterMismatchError
 	}
-	if offset%util.PageSize != 0 || offset != e.dataSize {
-		return fmt.Errorf("error empty packet on (%v) offset(%v) size(%v)"+
-			" isEmptyPacket(%v)  e.dataSize(%v)", e.file.Name(), offset, size, isEmptyPacket, e.dataSize)
-	}
-	log.LogDebugf("before file (%v) getRealBlockNo (%v) isEmptyPacket(%v)"+
-		"offset(%v) size(%v) e.datasize(%v)", e.filePath, e.getRealBlockCnt(), isEmptyPacket, offset, size, e.dataSize)
 	if isEmptyPacket {
-		var finfo os.FileInfo
-		finfo, err = e.file.Stat()
-		if err != nil {
-			return err
-		}
-		if offset < finfo.Size() {
-			return fmt.Errorf("error empty packet on (%v) offset(%v) size(%v)"+
-				" isEmptyPacket(%v) filesize(%v) e.dataSize(%v)", e.file.Name(), offset, size, isEmptyPacket, finfo.Size(), e.dataSize)
-		}
-		if err = syscall.Ftruncate(int(e.file.Fd()), offset+size); err != nil {
-			return err
-		}
-		err = fallocate(int(e.file.Fd()), util.FallocFLPunchHole|util.FallocFLKeepSize, offset, size)
+		err = e.repairPunchHole(offset, size)
 	} else {
 		_, err = e.file.WriteAt(data[:size], int64(offset))
 	}
@@ -558,7 +594,7 @@ func (e *Extent) TinyExtentRecover(data []byte, offset, size int64, crc uint32, 
 	return
 }
 
-func (e *Extent) tinyExtentAvaliOffset(offset int64) (newOffset, newEnd int64, err error) {
+func (e *Extent) getExtentWithHoleAvailableOffset(offset int64) (newOffset, newEnd int64, err error) {
 	e.Lock()
 	defer e.Unlock()
 	newOffset, err = e.file.Seek(int64(offset), SEEK_DATA)
@@ -576,7 +612,7 @@ func (e *Extent) tinyExtentAvaliOffset(offset int64) (newOffset, newEnd int64, e
 		newEnd = newOffset + util.BlockSize
 	}
 	if newEnd < newOffset {
-		err = fmt.Errorf("unavali TinyExtentAvaliOffset on SEEK_DATA or SEEK_HOLE   (%v) offset(%v) "+
+		err = fmt.Errorf("unavali ExtentAvaliOffset on SEEK_DATA or SEEK_HOLE   (%v) offset(%v) "+
 			"newEnd(%v) newOffset(%v)", e.extentID, offset, newEnd, newOffset)
 	}
 	return

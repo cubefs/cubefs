@@ -115,6 +115,9 @@ type Vol struct {
 	mpsLock                 *mpsLockManager
 	EnableAuditLog          bool
 	preloadCapacity         uint64
+	authKey                 string
+	DeleteExecTime          time.Time
+	user                    *User
 }
 
 func newVol(vv volValue) (vol *Vol) {
@@ -206,6 +209,9 @@ func newVolFromVolValue(vv *volValue) (vol *Vol) {
 	}
 	vol.Forbidden = vv.Forbidden
 	vol.EnableAuditLog = vv.EnableAuditLog
+	vol.authKey = vv.AuthKey
+	vol.DeleteExecTime = vv.DeleteExecTime
+	vol.user = vv.User
 	return vol
 }
 
@@ -823,7 +829,7 @@ func (vol *Vol) cloneMetaPartitionMap() (mps map[uint64]*MetaPartition) {
 	return
 }
 
-func (vol *Vol) setMpRdOnly() {
+func (vol *Vol) setMpForbid() {
 	vol.mpsLock.RLock()
 	defer vol.mpsLock.RUnlock()
 	for _, mp := range vol.MetaPartitions {
@@ -843,7 +849,7 @@ func (vol *Vol) cloneDataPartitionMap() (dps map[uint64]*DataPartition) {
 	return
 }
 
-func (vol *Vol) setDpRdOnly() {
+func (vol *Vol) setDpForbid() {
 	vol.dataPartitions.RLock()
 	defer vol.dataPartitions.RUnlock()
 	for _, dp := range vol.dataPartitions.partitionMap {
@@ -1194,6 +1200,21 @@ func (vol *Vol) checkStatus(c *Cluster) {
 	if vol.Status != proto.VolStatusMarkDelete {
 		return
 	}
+
+	if vol.Forbidden && len(c.delayDeleteVolsInfo) != 0 {
+		var value *delayDeleteVolInfo
+		c.deleteVolMutex.RLock()
+		for _, value = range c.delayDeleteVolsInfo {
+			if value.volName == vol.Name {
+				break
+			}
+		}
+		c.deleteVolMutex.RUnlock()
+		if value.volName == vol.Name {
+			return
+		}
+	}
+
 	log.LogInfof("action[volCheckStatus] vol[%v],status[%v]", vol.Name, vol.Status)
 	metaTasks := vol.getTasksToDeleteMetaPartitions()
 	dataTasks := vol.getTasksToDeleteDataPartitions()

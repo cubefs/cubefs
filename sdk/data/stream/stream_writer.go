@@ -204,14 +204,19 @@ func (s *Streamer) server() {
 			return
 		case <-t.C:
 			s.traverse()
+			s.client.streamerLock.Lock()
 			if s.refcnt <= 0 {
-
-				s.client.streamerLock.Lock()
 				if s.idle >= streamWriterIdleTimeoutPeriod && len(s.request) == 0 {
 					if s.client.disableMetaCache || !s.needBCache {
-						delete(s.client.streamers, s.inode)
-						if s.client.evictIcache != nil {
-							s.client.evictIcache(s.inode)
+						// get current stream in map
+						current_s, _ := s.client.streamers[s.inode]
+						// one stream maybe has multi server coroutine
+						// when the stream's residual server coroutine exits, others stream maybe deleted
+						if current_s == s {
+							delete(s.client.streamers, s.inode)
+							if s.client.evictIcache != nil {
+								s.client.evictIcache(s.inode)
+							}
 						}
 					}
 
@@ -223,10 +228,9 @@ func (s *Streamer) server() {
 					log.LogDebugf("done server: no requests for a long time, ino(%v)", s.inode)
 					return
 				}
-				s.client.streamerLock.Unlock()
-
 				s.idle++
 			}
+			s.client.streamerLock.Unlock()
 		}
 	}
 }
@@ -316,6 +320,7 @@ begin:
 
 	ctx := context.Background()
 	s.client.writeLimiter.Wait(ctx)
+	s.client.LimitManager.WriteAlloc(ctx, size)
 
 	requests := s.extents.PrepareWriteRequests(offset, size, data)
 	log.LogDebugf("Streamer write: ino(%v) prepared requests(%v)", s.inode, requests)

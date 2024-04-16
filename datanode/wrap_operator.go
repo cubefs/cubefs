@@ -139,6 +139,8 @@ func (s *DataNode) OperatePacket(p *repl.Packet, c net.Conn) (err error) {
 		s.handleExtentRepairReadPacket(p, c, RepairRead)
 	case proto.OpTinyExtentRepairRead:
 		s.handleTinyExtentRepairReadPacket(p, c)
+	case proto.OpSnapshotExtentRepairRead:
+		s.handleSnapshotExtentRepairReadPacket(p, c)
 	case proto.OpMarkDelete, proto.OpSplitMarkDelete:
 		s.handleMarkDeletePacket(p, c)
 	case proto.OpBatchDeleteExtent:
@@ -566,7 +568,7 @@ func (s *DataNode) handleHeartbeatPacket(p *repl.Packet) {
 		task.Response = response
 		if err = MasterClient.NodeAPI().ResponseDataNodeTask(task); err != nil {
 			err = errors.Trace(err, "heartbeat to master(%v) failed.", request.MasterAddr)
-			log.LogErrorf(err.Error())
+			log.LogErrorf("HeartbeatPacket response to master: task(%v), err(%v)", task, err.Error())
 			return
 		}
 	}()
@@ -752,7 +754,7 @@ func (s *DataNode) handleWritePacket(p *repl.Packet) {
 	}()
 	partition := p.Object.(*DataPartition)
 	if partition.IsForbidden() {
-		err = ErrForbiddenDataPartition
+		err = storage.ForbiddenDataPartitionError
 		return
 	}
 	shallDegrade := p.ShallDegrade()
@@ -776,7 +778,7 @@ func (s *DataNode) handleWritePacket(p *repl.Packet) {
 		partition.disk.allocCheckLimit(proto.IopsWriteType, 1)
 
 		if writable := partition.disk.limitWrite.TryRun(int(p.Size), func() {
-			_, err = store.Write(p.ExtentID, p.ExtentOffset, int64(p.Size), p.Data, p.CRC, storage.AppendWriteType, p.IsSyncWrite())
+			_, err = store.Write(p.ExtentID, p.ExtentOffset, int64(p.Size), p.Data, p.CRC, storage.AppendWriteType, p.IsSyncWrite(), false)
 		}); !writable {
 			err = storage.TryAgainError
 			return
@@ -798,7 +800,7 @@ func (s *DataNode) handleWritePacket(p *repl.Packet) {
 		partition.disk.allocCheckLimit(proto.IopsWriteType, 1)
 
 		if writable := partition.disk.limitWrite.TryRun(int(p.Size), func() {
-			_, err = store.Write(p.ExtentID, p.ExtentOffset, int64(p.Size), p.Data, p.CRC, storage.AppendWriteType, p.IsSyncWrite())
+			_, err = store.Write(p.ExtentID, p.ExtentOffset, int64(p.Size), p.Data, p.CRC, storage.AppendWriteType, p.IsSyncWrite(), false)
 		}); !writable {
 			err = storage.TryAgainError
 			return
@@ -826,7 +828,7 @@ func (s *DataNode) handleWritePacket(p *repl.Packet) {
 			partition.disk.allocCheckLimit(proto.IopsWriteType, 1)
 
 			if writable := partition.disk.limitWrite.TryRun(currSize, func() {
-				_, err = store.Write(p.ExtentID, p.ExtentOffset+int64(offset), int64(currSize), data, crc, storage.AppendWriteType, p.IsSyncWrite())
+				_, err = store.Write(p.ExtentID, p.ExtentOffset+int64(offset), int64(currSize), data, crc, storage.AppendWriteType, p.IsSyncWrite(), false)
 			}); !writable {
 				err = storage.TryAgainError
 				return
@@ -875,7 +877,7 @@ func (s *DataNode) handleRandomWritePacket(p *repl.Packet) {
 
 	partition := p.Object.(*DataPartition)
 	if partition.IsForbidden() {
-		err = ErrForbiddenDataPartition
+		err = storage.ForbiddenDataPartitionError
 		return
 	}
 	log.LogDebugf("action[handleRandomWritePacket opcod %v seq %v dpid %v dpseq %v extid %v", p.Opcode, p.VerSeq, p.PartitionID, partition.verSeq, p.ExtentID)
@@ -942,21 +944,27 @@ func (s *DataNode) handleStreamReadPacket(p *repl.Packet, connect net.Conn, isRe
 
 func (s *DataNode) handleExtentRepairReadPacket(p *repl.Packet, connect net.Conn, isRepairRead bool) {
 	var err error
-	log.LogDebugf("handleExtentRepairReadPacket %v", p)
-	defer func() {
-		if err != nil {
-			p.PackErrorBody(ActionStreamRead, err.Error())
-			p.WriteToConn(connect)
-			return
-		}
-		fininshDoExtentRepair()
-	}()
-
 	err = requestDoExtentRepair()
 	if err != nil {
+		p.PackErrorBody(ActionStreamRead, err.Error())
+		p.WriteToConn(connect)
 		return
 	}
-
+	defer fininshDoExtentRepair()
+	partition := p.Object.(*DataPartition)
+	if !partition.disk.RequireReadExtentToken(partition.partitionID) {
+		err = storage.NoDiskReadRepairExtentTokenError
+		log.LogDebugf("dp(%v) disk(%v) extent(%v) wait for read extent token",
+			p.PartitionID, partition.disk.Path, p.ExtentID)
+		return
+	}
+	defer func() {
+		partition.disk.ReleaseReadExtentToken()
+		log.LogDebugf("dp(%v) disk(%v) extent(%v) release read extent token",
+			p.PartitionID, partition.disk.Path, p.ExtentID)
+	}()
+	log.LogDebugf("dp(%v) disk(%v) extent(%v) get read extent token",
+		p.PartitionID, partition.disk.Path, p.ExtentID)
 	s.extentRepairReadPacket(p, connect, isRepairRead)
 }
 
@@ -964,13 +972,13 @@ func (s *DataNode) handleTinyExtentRepairReadPacket(p *repl.Packet, connect net.
 	s.tinyExtentRepairRead(p, connect)
 }
 
-func (s *DataNode) extentRepairReadPacket(p *repl.Packet, connect net.Conn, isRepairRead bool) {
-	var (
-		err error
+func (s *DataNode) handleSnapshotExtentRepairReadPacket(p *repl.Packet, connect net.Conn) {
+	s.NormalSnapshotExtentRepairRead(p, connect)
+}
 
-		metricPartitionIOLabels     map[string]string
-		partitionIOMetric, tpObject *exporter.TimePointCount
-	)
+func (s *DataNode) extentRepairReadPacket(p *repl.Packet, connect net.Conn, isRepairRead bool) {
+	var err error
+
 	defer func() {
 		if err != nil {
 			p.PackErrorBody(ActionStreamRead, err.Error())
@@ -978,67 +986,15 @@ func (s *DataNode) extentRepairReadPacket(p *repl.Packet, connect net.Conn, isRe
 		}
 	}()
 	partition := p.Object.(*DataPartition)
-	needReplySize := p.Size
-	offset := p.ExtentOffset
-	store := partition.ExtentStore()
-	shallDegrade := p.ShallDegrade()
-	if !shallDegrade {
-		metricPartitionIOLabels = GetIoMetricLabels(partition, "read")
+	if partition.IsForbidden() && !isRepairRead {
+		err = storage.ForbiddenDataPartitionError
+		return
 	}
-	log.LogDebugf("extentRepairReadPacket dp %v offset %v needSize %v", partition.partitionID, offset, needReplySize)
-	for {
-		if needReplySize <= 0 {
-			break
-		}
-		err = nil
-		reply := repl.NewStreamReadResponsePacket(p.ReqID, p.PartitionID, p.ExtentID)
-		reply.StartT = p.StartT
-		currReadSize := uint32(util.Min(int(needReplySize), util.ReadBlockSize))
-		if currReadSize == util.ReadBlockSize {
-			reply.Data, _ = proto.Buffers.Get(util.ReadBlockSize)
-		} else {
-			reply.Data = make([]byte, currReadSize)
-		}
-		if !shallDegrade {
-			partitionIOMetric = exporter.NewTPCnt(MetricPartitionIOName)
-			tpObject = exporter.NewTPCnt(fmt.Sprintf("Repair_%s", p.GetOpMsg()))
-		}
-		reply.ExtentOffset = offset
-		p.Size = currReadSize
-		p.ExtentOffset = offset
+	log.LogDebugf("extentRepairReadPacket ready to repair dp(%v) disk(%v) extent(%v) offset (%v) needSize (%v)",
+		p.PartitionID, partition.disk.Path, p.ExtentID, p.ExtentOffset, p.Size)
 
-		partition.Disk().allocCheckLimit(proto.IopsReadType, 1)
-		partition.Disk().allocCheckLimit(proto.FlowReadType, currReadSize)
-
-		partition.disk.limitRead.Run(int(currReadSize), func() {
-			reply.CRC, err = store.Read(reply.ExtentID, offset, int64(currReadSize), reply.Data, isRepairRead)
-		})
-		if !shallDegrade {
-			s.metrics.MetricIOBytes.AddWithLabels(int64(p.Size), metricPartitionIOLabels)
-			partitionIOMetric.SetWithLabels(err, metricPartitionIOLabels)
-			tpObject.Set(err)
-		}
-		partition.checkIsDiskError(err, ReadFlag)
-		p.CRC = reply.CRC
-		if err != nil {
-			log.LogErrorf("action[operatePacket] err %v", err)
-			return
-		}
-		reply.Size = currReadSize
-		reply.ResultCode = proto.OpOk
-		reply.Opcode = p.Opcode
-		p.ResultCode = proto.OpOk
-		if err = reply.WriteToConn(connect); err != nil {
-			return
-		}
-		needReplySize -= currReadSize
-		offset += int64(currReadSize)
-		if currReadSize == util.ReadBlockSize {
-			proto.Buffers.Put(reply.Data)
-		}
-		logContent := fmt.Sprintf("action[operatePacket] %v.",
-			reply.LogMessage(reply.GetOpMsg(), connect.RemoteAddr().String(), reply.StartT, err))
-		log.LogReadf(logContent)
+	if err = partition.NormalExtentRepairRead(p, connect, isRepairRead, s.metrics, repl.NewStreamReadResponsePacket); err != nil {
+		return
 	}
 	p.PacketOkReply()
 }
@@ -1072,111 +1028,67 @@ func (s *DataNode) handlePacketToGetAllWatermarks(p *repl.Packet) {
 	}
 }
 
-func (s *DataNode) writeEmptyPacketOnTinyExtentRepairRead(reply *repl.Packet, newOffset, currentOffset int64, connect net.Conn) (replySize int64, err error) {
+func writeEmptyPacketOnExtentRepairRead(reply repl.PacketInterface, newOffset, currentOffset int64, connect net.Conn) (replySize int64, err error) {
 	replySize = newOffset - currentOffset
-	reply.Data = make([]byte, 0)
-	reply.Size = 0
-	reply.CRC = crc32.ChecksumIEEE(reply.Data)
-	reply.ResultCode = proto.OpOk
-	reply.ExtentOffset = currentOffset
-	reply.Arg[0] = EmptyResponse
-	binary.BigEndian.PutUint64(reply.Arg[1:9], uint64(replySize))
+	reply.SetData(make([]byte, 0))
+	reply.SetSize(0)
+	reply.SetCRC(crc32.ChecksumIEEE(reply.GetData()))
+	reply.SetResultCode(proto.OpOk)
+	reply.SetExtentOffset(currentOffset)
+	reply.GetArg()[0] = EmptyResponse
+	binary.BigEndian.PutUint64(reply.GetArg()[1:9], uint64(replySize))
 	err = reply.WriteToConn(connect)
-	reply.Size = uint32(replySize)
-	logContent := fmt.Sprintf("action[operatePacket] %v.",
-		reply.LogMessage(reply.GetOpMsg(), connect.RemoteAddr().String(), reply.StartT, err))
-	log.LogReadf(logContent)
-
+	reply.SetSize(uint32(replySize))
+	if connect.RemoteAddr() != nil { // testcase connect not have effect fd
+		logContent := fmt.Sprintf("action[operatePacket] %v.",
+			reply.LogMessage(reply.GetOpMsg(), connect.RemoteAddr().String(), reply.GetStartT(), err))
+		log.LogReadf(logContent)
+	}
 	return
 }
 
-func (s *DataNode) attachAvaliSizeOnTinyExtentRepairRead(reply *repl.Packet, avaliSize uint64) {
+func (s *DataNode) attachAvaliSizeOnExtentRepairRead(reply *repl.Packet, avaliSize uint64) {
 	binary.BigEndian.PutUint64(reply.Arg[9:17], avaliSize)
+}
+
+func (s *DataNode) NormalSnapshotExtentRepairRead(request *repl.Packet, connect net.Conn) {
+	replyFunc := func() repl.PacketInterface {
+		reply := repl.NewNormalExtentWithHoleStreamReadResponsePacket(request.ReqID, request.PartitionID, request.ExtentID)
+		reply.ArgLen = NormalExtentWithHoleRepairReadResponseArgLen
+		reply.Arg = make([]byte, NormalExtentWithHoleRepairReadResponseArgLen)
+		return reply
+	}
+	s.ExtentWithHoleRepairRead(request, connect, replyFunc)
 }
 
 // Handle tinyExtentRepairRead packet.
 func (s *DataNode) tinyExtentRepairRead(request *repl.Packet, connect net.Conn) {
-	var (
-		err                 error
-		needReplySize       int64
-		tinyExtentFinfoSize uint64
-	)
-
+	var err error
 	defer func() {
 		if err != nil {
 			request.PackErrorBody(ActionStreamReadTinyExtentRepair, err.Error())
 			request.WriteToConn(connect)
 		}
 	}()
+
 	if !storage.IsTinyExtent(request.ExtentID) {
 		err = fmt.Errorf("unavali extentID (%v)", request.ExtentID)
 		return
 	}
-
-	partition := request.Object.(*DataPartition)
-	store := partition.ExtentStore()
-	tinyExtentFinfoSize, err = store.TinyExtentGetFinfoSize(request.ExtentID)
-	if err != nil {
-		return
-	}
-	needReplySize = int64(request.Size)
-	offset := request.ExtentOffset
-	if uint64(request.ExtentOffset)+uint64(request.Size) > tinyExtentFinfoSize {
-		needReplySize = int64(tinyExtentFinfoSize - uint64(request.ExtentOffset))
-	}
-	avaliReplySize := uint64(needReplySize)
-
-	var newOffset, newEnd int64
-	for {
-		if needReplySize <= 0 {
-			break
-		}
+	replyFunc := func() repl.PacketInterface {
 		reply := repl.NewTinyExtentStreamReadResponsePacket(request.ReqID, request.PartitionID, request.ExtentID)
 		reply.ArgLen = TinyExtentRepairReadResponseArgLen
 		reply.Arg = make([]byte, TinyExtentRepairReadResponseArgLen)
-		s.attachAvaliSizeOnTinyExtentRepairRead(reply, avaliReplySize)
-		newOffset, newEnd, err = store.TinyExtentAvaliOffset(request.ExtentID, offset)
-		if err != nil {
-			return
-		}
-		if newOffset > offset {
-			var replySize int64
-			if replySize, err = s.writeEmptyPacketOnTinyExtentRepairRead(reply, newOffset, offset, connect); err != nil {
-				return
-			}
-			needReplySize -= replySize
-			offset += replySize
-			continue
-		}
-		currNeedReplySize := newEnd - newOffset
-		currReadSize := uint32(util.Min(int(currNeedReplySize), util.ReadBlockSize))
-		if currReadSize == util.ReadBlockSize {
-			reply.Data, _ = proto.Buffers.Get(util.ReadBlockSize)
-		} else {
-			reply.Data = make([]byte, currReadSize)
-		}
-		reply.ExtentOffset = offset
-		reply.CRC, err = store.Read(reply.ExtentID, offset, int64(currReadSize), reply.Data, false)
-		if err != nil {
-			return
-		}
-		reply.Size = uint32(currReadSize)
-		reply.ResultCode = proto.OpOk
-		if err = reply.WriteToConn(connect); err != nil {
-			connect.Close()
-			return
-		}
-		needReplySize -= int64(currReadSize)
-		offset += int64(currReadSize)
-		if currReadSize == util.ReadBlockSize {
-			proto.Buffers.Put(reply.Data)
-		}
-		logContent := fmt.Sprintf("action[operatePacket] %v.",
-			reply.LogMessage(reply.GetOpMsg(), connect.RemoteAddr().String(), reply.StartT, err))
-		log.LogReadf(logContent)
+		return reply
 	}
+	s.ExtentWithHoleRepairRead(request, connect, replyFunc)
+	return
+}
 
-	request.PacketOkReply()
+// Handle tinyExtentRepairRead packet.
+func (s *DataNode) ExtentWithHoleRepairRead(request *repl.Packet, connect net.Conn, getReplyPacket func() repl.PacketInterface) {
+	partition := request.Object.(*DataPartition)
+	partition.ExtentWithHoleRepairRead(request, connect, getReplyPacket)
 }
 
 func (s *DataNode) handlePacketToReadTinyDeleteRecordFile(p *repl.Packet, connect net.Conn) {

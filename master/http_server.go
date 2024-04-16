@@ -196,7 +196,7 @@ var AuthenticationUri2MsgTypeMap = map[string]proto.MsgType{
 	proto.AddDataNode:                   proto.MsgMasterAddDataNodeReq,
 	proto.DecommissionDataNode:          proto.MsgMasterDecommissionDataNodeReq,
 	proto.MigrateDataNode:               proto.MsgMasterMigrateDataNodeReq,
-	proto.CancelDecommissionDataNode:    proto.MsgMasterCancelDecommissionDataNodeReq,
+	proto.PauseDecommissionDataNode:     proto.MsgMasterCancelDecommissionDataNodeReq,
 	proto.DecommissionDisk:              proto.MsgMasterDecommissionDiskReq,
 	proto.AdminUpdateNodeSetCapcity:     proto.MsgMasterUpdateNodeSetCapcityReq,
 	proto.AdminUpdateNodeSetId:          proto.MsgMasterUpdateNodeSetIdReq,
@@ -551,6 +551,9 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 		Path(proto.AdminSetMetaNodeThreshold).
 		HandlerFunc(m.setMetaNodeThreshold)
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminSetMasterVolDeletionDelayTime).
+		HandlerFunc(m.setMasterVolDeletionDelayTime)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.AdminAddDataReplica).
 		HandlerFunc(m.addDataReplica)
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
@@ -590,6 +593,9 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 		Path(proto.MigrateDataNode).
 		HandlerFunc(m.migrateDataNodeHandler)
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.PauseDecommissionDataNode).
+		HandlerFunc(m.pauseDecommissionDataNode)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.CancelDecommissionDataNode).
 		HandlerFunc(m.cancelDecommissionDataNode)
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
@@ -615,8 +621,8 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 		Path(proto.MarkDecoDiskFixed).
 		HandlerFunc(m.markDecoDiskFixed)
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
-		Path(proto.CancelDecommissionDisk).
-		HandlerFunc(m.cancelDecommissionDisk)
+		Path(proto.PauseDecommissionDisk).
+		HandlerFunc(m.pauseDecommissionDisk)
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.QueryDecommissionDiskDecoFailedDps).
 		HandlerFunc(m.queryDecommissionDiskDecoFailedDps)

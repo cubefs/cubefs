@@ -266,7 +266,7 @@ func (s *VolumeService) markDeleteVol(ctx context.Context, args struct {
 		return nil, err
 	}
 
-	if err = s.cluster.markDeleteVol(args.Name, args.AuthKey, false); err != nil {
+	if err = s.cluster.markDeleteVol(args.Name, args.AuthKey, false, true); err != nil {
 		return nil, err
 	}
 
@@ -366,7 +366,7 @@ func (s *VolumeService) listVolume(ctx context.Context, args struct {
 			continue
 		}
 
-		if vol.Status == proto.VolStatusMarkDelete {
+		if (vol.Status == proto.VolStatusMarkDelete && !vol.Forbidden) || (vol.Status == proto.VolStatusMarkDelete && vol.Forbidden && vol.DeleteExecTime.Sub(time.Now()) <= 0) {
 			continue
 		}
 

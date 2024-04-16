@@ -125,6 +125,8 @@ func createDefaultMasterServerForTest() *Server {
 	}`
 
 	testServer, err := createMasterServer(cfgJSON)
+	testServer.cluster.cfg.volForceDeletion = true
+
 	if err != nil {
 		panic(err)
 	}
@@ -576,6 +578,8 @@ func TestUpdateVol(t *testing.T) {
 	assert.True(t, view.CacheRule == "")
 
 	delVol(volName, t)
+
+	time.Sleep(10 * time.Second)
 	// can't update vol after delete
 	checkParam(cacheLRUIntervalKey, proto.AdminUpdateVol, req, lru, lru, t)
 }
@@ -690,22 +694,23 @@ func TestLoadDataPartition(t *testing.T) {
 }
 
 func TestDataPartitionDecommission(t *testing.T) {
-	if len(commonVol.dataPartitions.partitions) == 0 {
-		t.Errorf("no data partitions")
-		return
-	}
+	name := "decommissionTestVol"
+	createVol(map[string]interface{}{nameKey: name}, t)
+	vol, err := server.cluster.getVol(name)
+	require.NoError(t, err)
+	defer func() {
+		reqURL := fmt.Sprintf("%v%v?name=%v&authKey=%v", hostAddr, proto.AdminDeleteVol, name, buildAuthKey(testOwner))
+		process(reqURL, t)
+	}()
+	require.NotEqualValues(t, 0, len(vol.dataPartitions.partitions))
 	server.cluster.checkDataNodeHeartbeat()
 	time.Sleep(5 * time.Second)
-	partition := commonVol.dataPartitions.partitions[0]
+	partition := vol.dataPartitions.partitions[0]
 	offlineAddr := partition.Hosts[0]
 	reqURL := fmt.Sprintf("%v%v?name=%v&id=%v&addr=%v",
-		hostAddr, proto.AdminDecommissionDataPartition, commonVol.Name, partition.PartitionID, offlineAddr)
+		hostAddr, proto.AdminDecommissionDataPartition, vol.Name, partition.PartitionID, offlineAddr)
 	process(reqURL, t)
-	if contains(partition.Hosts, offlineAddr) {
-		t.Errorf("offlineAddr[%v],hosts[%v]", offlineAddr, partition.Hosts)
-		return
-	}
-	partition.isRecover = false
+	require.EqualValues(t, markDecommission, partition.GetDecommissionStatus())
 }
 
 //	func TestGetAllVols(t *testing.T) {

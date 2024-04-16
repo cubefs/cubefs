@@ -210,6 +210,14 @@ func (api *AdminAPI) AddMetaReplica(metaPartitionID uint64, nodeAddr string, cli
 	return
 }
 
+func (api *AdminAPI) QueryDataPartitionDecommissionStatus(partitionId uint64) (info *proto.DecommissionDataPartitionInfo, err error) {
+	request := newRequest(get, proto.AdminQueryDataPartitionDecommissionStatus).Header(api.h)
+	request.addParam("id", strconv.FormatUint(partitionId, 10))
+	info = &proto.DecommissionDataPartitionInfo{}
+	err = api.mc.requestWith(info, request)
+	return
+}
+
 func (api *AdminAPI) DeleteVolume(volName, authKey string) (err error) {
 	request := newRequest(get, proto.AdminDeleteVol).Header(api.h)
 	request.addParam("name", volName)
@@ -223,6 +231,15 @@ func (api *AdminAPI) DeleteVolumeWithAuthNode(volName, authKey, clientIDKey stri
 	request.addParam("name", volName)
 	request.addParam("authKey", authKey)
 	request.addParam("clientIDKey", clientIDKey)
+	_, err = api.mc.serveRequest(request)
+	return
+}
+
+func (api *AdminAPI) UnDeleteVolume(volName, authKey string, status bool) (err error) {
+	request := newRequest(get, proto.AdminDeleteVol)
+	request.addParam("name", volName)
+	request.addParam("authKey", authKey)
+	request.addParam("delete", strconv.FormatBool(false))
 	_, err = api.mc.serveRequest(request)
 	return
 }
@@ -461,6 +478,13 @@ func (api *AdminAPI) SetMetaNodeThreshold(threshold float64, clientIDKey string)
 	request := newRequest(get, proto.AdminSetMetaNodeThreshold).Header(api.h)
 	request.addParam("threshold", strconv.FormatFloat(threshold, 'f', 6, 64))
 	request.addParam("clientIDKey", clientIDKey)
+	_, err = api.mc.serveRequest(request)
+	return
+}
+
+func (api *AdminAPI) SetMasterVolDeletionDelayTime(volDeletionDelayTimeHour int) (err error) {
+	request := newRequest(get, proto.AdminSetMasterVolDeletionDelayTime)
+	request.addParam("volDeletionDelayTime", strconv.FormatInt(int64(volDeletionDelayTimeHour), 10))
 	_, err = api.mc.serveRequest(request)
 	return
 }

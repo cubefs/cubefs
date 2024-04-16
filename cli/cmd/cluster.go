@@ -40,22 +40,24 @@ func newClusterCmd(client *master.MasterClient) *cobra.Command {
 		newClusterSetThresholdCmd(client),
 		newClusterSetParasCmd(client),
 		newClusterDisableMpDecommissionCmd(client),
+		newClusterSetVolDeletionDelayTimeCmd(client),
 	)
 	return clusterCmd
 }
 
 const (
-	cmdClusterInfoShort           = "Show cluster summary information"
-	cmdClusterStatShort           = "Show cluster status information"
-	cmdClusterFreezeShort         = "Freeze cluster"
-	cmdClusterThresholdShort      = "Set memory threshold of metanodes"
-	cmdClusterSetClusterInfoShort = "Set cluster parameters"
-	nodeDeleteBatchCountKey       = "batchCount"
-	nodeMarkDeleteRateKey         = "markDeleteRate"
-	nodeDeleteWorkerSleepMs       = "deleteWorkerSleepMs"
-	nodeAutoRepairRateKey         = "autoRepairRate"
-	nodeMaxDpCntLimit             = "maxDpCntLimit"
-	cmdForbidMpDecommission       = "forbid meta partition decommission"
+	cmdClusterInfoShort                    = "Show cluster summary information"
+	cmdClusterStatShort                    = "Show cluster status information"
+	cmdClusterFreezeShort                  = "Freeze cluster"
+	cmdClusterThresholdShort               = "Set memory threshold of metanodes"
+	cmdClusterSetClusterInfoShort          = "Set cluster parameters"
+	cmdClusterSetVolDeletionDelayTimeShort = "Set volDeletionDelayTime of master"
+	nodeDeleteBatchCountKey                = "batchCount"
+	nodeMarkDeleteRateKey                  = "markDeleteRate"
+	nodeDeleteWorkerSleepMs                = "deleteWorkerSleepMs"
+	nodeAutoRepairRateKey                  = "autoRepairRate"
+	nodeMaxDpCntLimit                      = "maxDpCntLimit"
+	cmdForbidMpDecommission                = "forbid meta partition decommission"
 )
 
 func newClusterInfoCmd(client *master.MasterClient) *cobra.Command {
@@ -190,6 +192,39 @@ If the memory usage reaches this threshold, all the meta partition will be readO
 		},
 	}
 	cmd.Flags().StringVar(&clientIDKey, CliFlagClientIDKey, client.ClientIDKey(), CliUsageClientIDKey)
+	return cmd
+}
+
+func newClusterSetVolDeletionDelayTimeCmd(client *master.MasterClient) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   CliOpSetVolDeletionDelayTime + " [VOLDELETIONDELAYTIME]",
+		Short: cmdClusterSetVolDeletionDelayTimeShort,
+		Args:  cobra.MinimumNArgs(1),
+		Long:  `Set the volDeletionDelayTime of master on each master.`,
+		Run: func(cmd *cobra.Command, args []string) {
+			var (
+				err                      error
+				volDeletionDelayTimeHour int
+			)
+			defer func() {
+				if err != nil {
+					errout(err)
+				}
+			}()
+			if volDeletionDelayTimeHour, err = strconv.Atoi(args[0]); err != nil {
+				err = fmt.Errorf("Parse int fail: %v\n", err)
+				return
+			}
+			if volDeletionDelayTimeHour <= 0 {
+				err = fmt.Errorf("volDeletionDelayTime is less than or equal to 0\n")
+				return
+			}
+			if err = client.AdminAPI().SetMasterVolDeletionDelayTime(volDeletionDelayTimeHour); err != nil {
+				return
+			}
+			stdout("master volDeletionDelayTime is set to %v h!\n", volDeletionDelayTimeHour)
+		},
+	}
 	return cmd
 }
 

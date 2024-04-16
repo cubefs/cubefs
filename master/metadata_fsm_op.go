@@ -61,6 +61,7 @@ type clusterValue struct {
 	DpRepairTimeOut             uint64
 	EnableAutoDecommissionDisk  bool
 	DecommissionDiskFactor      float64
+	VolDeletionDelayTimeHour    int64
 }
 
 func newClusterValue(c *Cluster) (cv *clusterValue) {
@@ -91,6 +92,7 @@ func newClusterValue(c *Cluster) (cv *clusterValue) {
 		DpRepairTimeOut:             c.cfg.DpRepairTimeOut,
 		EnableAutoDecommissionDisk:  c.EnableAutoDecommissionDisk,
 		DecommissionDiskFactor:      c.DecommissionDiskFactor,
+		VolDeletionDelayTimeHour:    c.cfg.volDelayDeleteTimeHour,
 	}
 	return cv
 }
@@ -155,6 +157,7 @@ type dataPartitionValue struct {
 	RecoverLastConsumeTime         float64
 	Forbidden                      bool
 	DecommissionWaitTimes          int
+	DecommissionErrorMessage       string
 }
 
 func (dpv *dataPartitionValue) Restore(c *Cluster) (dp *DataPartition) {
@@ -227,6 +230,7 @@ func newDataPartitionValue(dp *DataPartition) (dpv *dataPartitionValue) {
 		RecoverStartTime:               dp.RecoverStartTime.Unix(),
 		RecoverLastConsumeTime:         dp.RecoverLastConsumeTime.Seconds(),
 		DecommissionWaitTimes:          dp.DecommissionWaitTimes,
+		DecommissionErrorMessage:       dp.DecommissionErrorMessage,
 	}
 	for _, replica := range dp.Replicas {
 		rv := &replicaValue{Addr: replica.Addr, DiskPath: replica.DiskPath}
@@ -247,6 +251,10 @@ type volValue struct {
 	FollowerRead          bool
 	Authenticate          bool
 	DpReadOnlyWhenVolFull bool
+
+	AuthKey        string
+	DeleteExecTime time.Time
+	User           *User
 
 	CrossZone       bool
 	DomainOn        bool
@@ -351,6 +359,9 @@ func newVolValue(vol *Vol) (vv *volValue) {
 		DpReadOnlyWhenVolFull: vol.DpReadOnlyWhenVolFull,
 		Forbidden:             vol.Forbidden,
 		EnableAuditLog:        vol.EnableAuditLog,
+		AuthKey:               vol.authKey,
+		DeleteExecTime:        vol.DeleteExecTime,
+		User:                  vol.user,
 	}
 
 	return
@@ -1125,6 +1136,7 @@ func (c *Cluster) loadClusterValue() (err error) {
 		c.DecommissionLimit = cv.DecommissionLimit
 		c.EnableAutoDecommissionDisk = cv.EnableAutoDecommissionDisk
 		c.DecommissionDiskFactor = cv.DecommissionDiskFactor
+		c.cfg.volDelayDeleteTimeHour = cv.VolDeletionDelayTimeHour
 		if c.cfg.QosMasterAcceptLimit < QosMasterAcceptCnt {
 			c.cfg.QosMasterAcceptLimit = QosMasterAcceptCnt
 		}
@@ -1382,7 +1394,13 @@ func (c *Cluster) loadDataNodes() (err error) {
 			}
 		}
 		c.dataNodes.Store(dataNode.Addr, dataNode)
-		log.LogInfof("action[loadDataNodes],dataNode[%v],dataNodeID[%v],zone[%v],ns[%v]", dataNode.Addr, dataNode.ID, dnv.ZoneName, dnv.NodeSetID)
+		log.LogInfof("action[loadDataNodes],dataNode[%v],dataNodeID[%v],zone[%v],ns[%v] DecommissionStatus [%v] "+
+			"DecommissionDstAddr[%v] DecommissionRaftForce[%v] DecommissionDpTotal[%v] DecommissionLimit[%v]  DecommissionRetry[%v] "+
+			"DecommissionCompleteTime [%v] ToBeOffline[%v]",
+			dataNode.Addr, dataNode.ID, dnv.ZoneName, dnv.NodeSetID, dataNode.DecommissionStatus, dataNode.DecommissionDstAddr,
+			dataNode.DecommissionRaftForce, dataNode.DecommissionDpTotal, dataNode.DecommissionLimit, dataNode.DecommissionRetry,
+			time.Unix(dataNode.DecommissionCompleteTime, 0).Format("2006-01-02 15:04:05"),
+			dataNode.ToBeOffline)
 	}
 	return
 }
@@ -1470,6 +1488,10 @@ func (c *Cluster) loadVols() (err error) {
 
 		c.putVol(vol)
 		log.LogInfof("action[loadVols],vol[%v]", vol.Name)
+		if vol.Forbidden && vol.Status == bsProto.VolStatusMarkDelete {
+			c.delayDeleteVolsInfo = append(c.delayDeleteVolsInfo, &delayDeleteVolInfo{volName: vol.Name, authKey: vol.authKey, execTime: vol.DeleteExecTime, user: vol.user})
+			log.LogInfof("action[loadDelayDeleteVols],vol[%v]", vol.Name)
+		}
 	}
 	return
 }

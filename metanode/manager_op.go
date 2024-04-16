@@ -25,6 +25,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/cubefs/cubefs/storage"
+
 	raftProto "github.com/cubefs/cubefs/depends/tiglabs/raft/proto"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util"
@@ -1142,6 +1144,14 @@ func (m *metadataManager) opMetaLookup(conn net.Conn, p *Packet,
 		err = errors.NewErrorf("[%v] req: %v, resp: %v", p.GetOpMsgWithReqAndResult(), req, err.Error())
 		return
 	}
+
+	if mp.IsForbidden() {
+		err = storage.ForbiddenMetaPartitionError
+		p.PacketErrorWithBody(proto.OpForbidErr, []byte(err.Error()))
+		m.respondToClient(conn, p)
+		return
+	}
+
 	if !mp.IsFollowerRead() && !m.serveProxy(conn, mp, p) {
 		return
 	}

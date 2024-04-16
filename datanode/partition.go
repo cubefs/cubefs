@@ -175,7 +175,7 @@ func CreateDataPartition(dpCfg *dataPartitionCfg, disk *Disk, request *proto.Cre
 	return
 }
 
-func (dp *DataPartition) IsEquareCreateDataPartitionRequst(request *proto.CreateDataPartitionRequest) (err error) {
+func (dp *DataPartition) IsEqualCreateDataPartitionRequest(request *proto.CreateDataPartitionRequest) (err error) {
 	if len(dp.config.Peers) != len(request.Members) {
 		return fmt.Errorf("exist partition(%v)  peers len(%v) members len(%v)",
 			dp.partitionID, len(dp.config.Peers), len(request.Members))
@@ -202,12 +202,16 @@ func (dp *DataPartition) IsEquareCreateDataPartitionRequst(request *proto.Create
 	return
 }
 
-func (dp *DataPartition) ForceSetDataPartitionToLoadding() {
+func (dp *DataPartition) ForceSetDataPartitionToLoading() {
 	atomic.StoreInt32(&dp.isLoadingDataPartition, 1)
 }
 
-func (dp *DataPartition) ForceSetDataPartitionToFininshLoad() {
-	atomic.StoreInt32(&dp.isLoadingDataPartition, 0)
+func (dp *DataPartition) ForceSetDataPartitionToFinishLoad() {
+	atomic.StoreInt32(&dp.isLoadingDataPartition, 2)
+}
+
+func (dp *DataPartition) IsDataPartitionLoadFin() bool {
+	return atomic.LoadInt32(&dp.isLoadingDataPartition) == 2
 }
 
 func (dp *DataPartition) IsDataPartitionLoading() bool {
@@ -252,7 +256,7 @@ func LoadDataPartition(partitionDir string, disk *Disk) (dp *DataPartition, err 
 	dp.stopRecover = meta.StopRecover
 	dp.metaAppliedID = meta.ApplyID
 	dp.computeUsage()
-	dp.ForceSetDataPartitionToLoadding()
+	dp.ForceSetDataPartitionToLoading()
 	disk.space.AttachPartition(dp)
 	if err = dp.LoadAppliedID(); err != nil {
 		log.LogErrorf("action[loadApplyIndex] %v", err)
@@ -858,17 +862,20 @@ func (dp *DataPartition) DoExtentStoreRepair(repairTask *DataPartitionRepairTask
 		return
 	}
 	store := dp.extentStore
-	log.LogDebugf("DoExtentStoreRepair.dp %v len extents %v", dp.partitionID, len(repairTask.ExtentsToBeCreated))
+	log.LogDebugf("DoExtentStoreRepair dp %v len extents %v type %v",
+		dp.partitionID, len(repairTask.ExtentsToBeCreated), repairTask.TaskType)
 	for _, extentInfo := range repairTask.ExtentsToBeCreated {
 		log.LogDebugf("DoExtentStoreRepair.dp %v len extentInfo %v", dp.partitionID, extentInfo)
 		if storage.IsTinyExtent(extentInfo.FileID) {
 			continue
 		}
 		if store.HasExtent(uint64(extentInfo.FileID)) {
+			log.LogWarnf("DoExtentStoreRepair dp %v, extent(%v) is exist", dp.partitionID, extentInfo.FileID)
 			continue
 		}
 		if !AutoRepairStatus {
-			log.LogWarnf("AutoRepairStatus is False,so cannot Create extent(%v)", extentInfo.String())
+			log.LogWarnf("DoExtentStoreRepair dp %v, AutoRepairStatus is False,so cannot Create extent(%v)",
+				dp.partitionID, extentInfo.FileID)
 			continue
 		}
 
@@ -876,6 +883,8 @@ func (dp *DataPartition) DoExtentStoreRepair(repairTask *DataPartitionRepairTask
 
 		err := store.Create(uint64(extentInfo.FileID))
 		if err != nil {
+			log.LogWarnf("DoExtentStoreRepair dp %v extent %v failed, err:%v",
+				dp.partitionID, extentInfo.FileID, err.Error())
 			continue
 		}
 	}
@@ -886,6 +895,10 @@ func (dp *DataPartition) DoExtentStoreRepair(repairTask *DataPartitionRepairTask
 	)
 	wg = new(sync.WaitGroup)
 	for _, extentInfo := range repairTask.ExtentsToBeRepaired {
+		if dp.dataNode.space.Partition(dp.partitionID) == nil {
+			log.LogWarnf("DoExtentStoreRepair dp %v is detached, quit repair",
+				dp.partitionID)
+		}
 		if dp.stopRecover && dp.isDecommissionRecovering() {
 			log.LogWarnf("DoExtentStoreRepair %v receive stop signal", dp.partitionID)
 			return
@@ -963,8 +976,13 @@ func (dp *DataPartition) doStreamFixTinyDeleteRecord(repairTask *DataPartitionRe
 		return
 	}
 	defer func() {
-		dp.putRepairConn(conn, err != nil)
+		if dp.enableSmux() {
+			dp.putRepairConn(conn, true)
+		} else {
+			dp.putRepairConn(conn, err != nil)
+		}
 	}()
+
 	if err = p.WriteToConn(conn); err != nil {
 		return
 	}
@@ -1054,6 +1072,13 @@ func (dp *DataPartition) canRemoveSelf() (canRemove bool, err error) {
 
 func (dp *DataPartition) getRepairConn(target string) (net.Conn, error) {
 	return dp.dataNode.getRepairConnFunc(target)
+}
+
+func (dp *DataPartition) enableSmux() bool {
+	if dp.dataNode == nil {
+		return false
+	}
+	return dp.dataNode.enableSmuxConnPool
 }
 
 func (dp *DataPartition) putRepairConn(conn net.Conn, forceClose bool) {

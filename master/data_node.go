@@ -314,6 +314,9 @@ func (dataNode *DataNode) updateDecommissionStatus(c *Cluster, debug bool) (uint
 	if dataNode.GetDecommissionStatus() == DecommissionSuccess {
 		return DecommissionSuccess, float64(1)
 	}
+	if dataNode.GetDecommissionStatus() == DecommissionFail {
+		return DecommissionFail, float64(0)
+	}
 	if dataNode.GetDecommissionStatus() == DecommissionPause {
 		return DecommissionPause, float64(0)
 	}
@@ -435,26 +438,18 @@ func (dataNode *DataNode) SetDecommissionStatus(status uint32) {
 	atomic.StoreUint32(&dataNode.DecommissionStatus, status)
 }
 
-func (dataNode *DataNode) GetDecommissionFailedDPByTerm(c *Cluster) (error, []uint64) {
-	var (
-		failedDps []uint64
-		err       error
-	)
-	if dataNode.GetDecommissionStatus() != DecommissionFail {
-		err = fmt.Errorf("action[GetDecommissionDataNodeFailedDP]dataNode[%s] status must be failed,but[%d]",
-			dataNode.Addr, dataNode.GetDecommissionStatus())
-		return err, failedDps
-	}
+func (dataNode *DataNode) GetDecommissionFailedDPByTerm(c *Cluster) []uint64 {
+	var failedDps []uint64
 	partitions := dataNode.GetLatestDecommissionDataPartition(c)
 	log.LogDebugf("action[GetDecommissionDataNodeFailedDP] partitions len %v", len(partitions))
 	for _, dp := range partitions {
-		if dp.IsDecommissionFailed() {
+		if dp.IsRollbackFailed() {
 			failedDps = append(failedDps, dp.PartitionID)
 			log.LogWarnf("action[GetDecommissionDataNodeFailedDP] dp[%v] failed", dp.PartitionID)
 		}
 	}
 	log.LogWarnf("action[GetDecommissionDataNodeFailedDP] failed dp list [%v]", failedDps)
-	return nil, failedDps
+	return failedDps
 }
 
 func (dataNode *DataNode) GetDecommissionFailedDP(c *Cluster) (error, []uint64) {
@@ -491,7 +486,9 @@ func (dataNode *DataNode) markDecommission(targetAddr string, raftForce bool, li
 
 func (dataNode *DataNode) canMarkDecommission() bool {
 	status := dataNode.GetDecommissionStatus()
-	return status == DecommissionInitial || status == DecommissionPause || status == DecommissionFail
+	// After partial decommissioning, it is still possible to decommission further
+	return status == DecommissionInitial || status == DecommissionPause || status == DecommissionFail ||
+		status == DecommissionSuccess
 }
 
 func (dataNode *DataNode) markDecommissionSuccess(c *Cluster) {
@@ -539,4 +536,12 @@ func (dataNode *DataNode) CanBePaused() bool {
 		return true
 	}
 	return false
+}
+
+func (dataNode *DataNode) delDecommissionDiskFromCache(c *Cluster) {
+	for _, diskPath := range dataNode.DecommissionDiskList {
+		key := fmt.Sprintf("%s_%s", dataNode.Addr, diskPath)
+		c.DecommissionDisks.Delete(key)
+		log.LogDebugf("action[delDecommissionDiskFromCache] remove  %v", key)
+	}
 }

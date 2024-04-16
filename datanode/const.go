@@ -96,9 +96,10 @@ const (
 )
 
 const (
-	EmptyResponse                      = 'E'
-	TinyExtentRepairReadResponseArgLen = 17
-	MaxSyncTinyDeleteBufferSize        = 2400000
-	MaxFullSyncTinyDeleteTime          = 3600 * 24
-	MinTinyExtentDeleteRecordSyncSize  = 4 * 1024 * 1024
+	EmptyResponse                                = 'E'
+	TinyExtentRepairReadResponseArgLen           = 17
+	NormalExtentWithHoleRepairReadResponseArgLen = 17
+	MaxSyncTinyDeleteBufferSize                  = 2400000
+	MaxFullSyncTinyDeleteTime                    = 3600 * 24
+	MinTinyExtentDeleteRecordSyncSize            = 4 * 1024 * 1024
 )

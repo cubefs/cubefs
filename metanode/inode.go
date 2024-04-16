@@ -63,8 +63,8 @@ var (
 //  +-------+-----------+--------------+-----------+--------------+
 
 type InodeMultiSnap struct {
-	verSeq        uint64 // latest version be create or modified
-	multiVersions InodeBatch
+	verSeq        uint64     // latest version be create or modified
+	multiVersions InodeBatch // descend
 	ekRefMap      *sync.Map
 }
 
@@ -1139,7 +1139,8 @@ func (inode *Inode) unlinkTopLayer(mpId uint64, ino *Inode, mpVer uint64, verlis
 	return
 }
 
-func (inode *Inode) dirUnlinkVerInlist(ino *Inode, mpVer uint64, verlist *proto.VolVersionInfoList) (ext2Del []proto.ExtentKey, doMore bool, status uint8) {
+// mpVerlist should not include verSeq of ino,it should be deleted before in volume version deletion command
+func (inode *Inode) dirUnlinkVerInlist(ino *Inode, mpVer uint64, mpVerlist *proto.VolVersionInfoList) (ext2Del []proto.ExtentKey, doMore bool, status uint8) {
 	var idxWithTopLayer int
 	var dIno *Inode
 	status = proto.OpOk
@@ -1147,7 +1148,7 @@ func (inode *Inode) dirUnlinkVerInlist(ino *Inode, mpVer uint64, verlist *proto.
 		log.LogDebugf("action[dirUnlinkVerInlist] ino[%v] not found", ino)
 		return
 	}
-	var endSeq uint64
+
 	if idxWithTopLayer == 0 {
 		// header layer do nothing and be depends on should not be dropped
 		log.LogDebugf("action[dirUnlinkVerInlist] ino[%v] first layer do nothing", ino)
@@ -1158,7 +1159,10 @@ func (inode *Inode) dirUnlinkVerInlist(ino *Inode, mpVer uint64, verlist *proto.
 		log.LogWarnf("action[dirUnlinkVerInlist] ino[%v] multiSnap should not be nil", inode)
 		inode.multiSnap = &InodeMultiSnap{}
 	}
-
+	var (
+		starSeq = dIno.getVer() // startSeq is the seq of the directory snapshot waiting to be determined whether to be deleted.
+		endSeq  uint64
+	)
 	mIdx := idxWithTopLayer - 1
 	if mIdx == 0 {
 		endSeq = inode.getVer()
@@ -1167,18 +1171,19 @@ func (inode *Inode) dirUnlinkVerInlist(ino *Inode, mpVer uint64, verlist *proto.
 	}
 
 	log.LogDebugf("action[dirUnlinkVerInlist] inode[%v] try drop multiVersion idx %v effective seq scope [%v,%v) ",
-		inode.Inode, mIdx, dIno.getVer(), endSeq)
+		inode.Inode, mIdx, starSeq, endSeq)
 
-	doWork := func() bool {
-		verlist.RWLock.RLock()
-		defer verlist.RWLock.RUnlock()
+	// if the [startSeq, endSeq) have no effective volume version, the startSeq in dir snapshotList should be dropped
+	doDelForNoDepends := func() bool {
+		mpVerlist.RWLock.RLock()
+		defer mpVerlist.RWLock.RUnlock()
 
-		for vidx, info := range verlist.VerList {
-			if info.Ver >= dIno.getVer() && info.Ver < endSeq {
+		for id, info := range mpVerlist.VerList {
+			if info.Ver >= starSeq && info.Ver < endSeq { //
 				log.LogDebugf("action[dirUnlinkVerInlist] inode[%v] dir layer idx %v still have effective snapshot seq [%v].so don't drop", inode.Inode, mIdx, info.Ver)
 				return false
 			}
-			if info.Ver >= endSeq || vidx == len(verlist.VerList)-1 {
+			if info.Ver >= endSeq || id == len(mpVerlist.VerList)-1 {
 				log.LogDebugf("action[dirUnlinkVerInlist] inode[%v] try drop multiVersion idx %v and return", inode.Inode, mIdx)
 
 				inode.Lock()
@@ -1187,11 +1192,10 @@ func (inode *Inode) dirUnlinkVerInlist(ino *Inode, mpVer uint64, verlist *proto.
 				return true
 			}
 			log.LogDebugf("action[dirUnlinkVerInlist] inode[%v] try drop scope [%v, %v), mp ver [%v] not suitable", inode.Inode, dIno.getVer(), endSeq, info.Ver)
-			return true
 		}
-		return true
+		return false // should not take effect
 	}
-	if !doWork() {
+	if !doDelForNoDepends() {
 		return
 	}
 	doMore = true
@@ -1199,24 +1203,20 @@ func (inode *Inode) dirUnlinkVerInlist(ino *Inode, mpVer uint64, verlist *proto.
 	return
 }
 
-func (inode *Inode) unlinkVerInList(mpId uint64, ino *Inode, mpVer uint64, verlist *proto.VolVersionInfoList) (ext2Del []proto.ExtentKey, doMore bool, status uint8) {
-	log.LogDebugf("action[unlinkVerInList] mpId [%v] ino[%v] try search seq [%v] isdir %v", mpId, ino, ino.getVer(), proto.IsDir(inode.Type))
-	if proto.IsDir(inode.Type) { // snapshot dir deletion don't take link into consider, but considers the scope of snapshot contrast to verList
-		return inode.dirUnlinkVerInlist(ino, mpVer, verlist)
-	}
+func (inode *Inode) inodeUnlinkVerInList(mpId uint64, ino *Inode, mpVer uint64, mpVerlist *proto.VolVersionInfoList) (ext2Del []proto.ExtentKey, doMore bool, status uint8) {
 	var dIno *Inode
 	status = proto.OpOk
 	// special case, snapshot is the last one and be depended by upper version,update it's version to the right one
 	// ascend search util to the curr unCommit version in the verList
 	if ino.getVer() == inode.getVer() || (isInitSnapVer(ino.getVer()) && inode.getVer() == 0) {
-		if len(verlist.VerList) == 0 {
+		if len(mpVerlist.VerList) == 0 {
 			status = proto.OpNotExistErr
-			log.LogErrorf("action[unlinkVerInList] inode[%v] verlist should be larger than 0, return not found", inode.Inode)
+			log.LogErrorf("action[unlinkVerInList] inode[%v] mpVerlist should be larger than 0, return not found", inode.Inode)
 			return
 		}
 
 		// just move to upper layer,the request snapshot be dropped
-		nVerSeq, found := inode.getLastestVer(inode.getVer(), verlist)
+		nVerSeq, found := inode.getLastestVer(inode.getVer(), mpVerlist)
 		if !found {
 			status = proto.OpNotExistErr
 			return
@@ -1226,7 +1226,7 @@ func (inode *Inode) unlinkVerInList(mpId uint64, ino *Inode, mpVer uint64, verli
 		return
 	} else {
 		// don't unlink if no version satisfied
-		if ext2Del, dIno = inode.getAndDelVerInList(mpId, ino.getVer(), mpVer, verlist); dIno == nil {
+		if ext2Del, dIno = inode.getAndDelVerInList(mpId, ino.getVer(), mpVer, mpVerlist); dIno == nil {
 			status = proto.OpNotExistErr
 			log.LogDebugf("action[unlinkVerInList] ino[%v]", ino)
 			return
@@ -1237,6 +1237,14 @@ func (inode *Inode) unlinkVerInList(mpId uint64, ino *Inode, mpVer uint64, verli
 	log.LogDebugf("action[unlinkVerInList] inode[%v] snapshot layer be unlinked", ino.Inode)
 	doMore = true
 	return
+}
+
+func (inode *Inode) unlinkVerInList(mpId uint64, ino *Inode, mpVer uint64, mpVerlist *proto.VolVersionInfoList) (ext2Del []proto.ExtentKey, doMore bool, status uint8) {
+	log.LogDebugf("action[unlinkVerInList] mpId [%v] ino[%v] try search seq [%v] isdir %v", mpId, ino, ino.getVer(), proto.IsDir(inode.Type))
+	if proto.IsDir(inode.Type) { // snapshot dir deletion don't take link into consider, but considers the scope of snapshot contrast to verList
+		return inode.dirUnlinkVerInlist(ino, mpVer, mpVerlist)
+	}
+	return inode.inodeUnlinkVerInList(mpId, ino, mpVer, mpVerlist)
 }
 
 func (i *Inode) ShouldDelVer(delVer uint64, mpVer uint64) (ok bool, err error) {

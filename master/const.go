@@ -23,30 +23,32 @@ import (
 
 // Keys in the request
 const (
-	addrKey               = "addr"
-	diskPathKey           = "disk"
-	nameKey               = "name"
-	idKey                 = "id"
-	countKey              = "count"
-	startKey              = "start"
-	enableKey             = "enable"
-	thresholdKey          = "threshold"
-	dirQuotaKey           = "dirQuota"
-	dirLimitKey           = "dirSizeLimit"
-	dataPartitionSizeKey  = "dpSize"
-	metaPartitionCountKey = "mpCount"
-	dataPartitionCountKey = "dpCount"
-	volCapacityKey        = "capacity"
-	volDeleteLockTimeKey  = "deleteLockTime"
-	volTypeKey            = "volType"
-	cacheRuleKey          = "cacheRuleKey"
-	emptyCacheRuleKey     = "emptyCacheRule"
+	addrKey                 = "addr"
+	diskPathKey             = "disk"
+	nameKey                 = "name"
+	idKey                   = "id"
+	countKey                = "count"
+	startKey                = "start"
+	enableKey               = "enable"
+	thresholdKey            = "threshold"
+	volDeletionDelayTimeKey = "volDeletionDelayTime"
+	dirQuotaKey             = "dirQuota"
+	dirLimitKey             = "dirSizeLimit"
+	dataPartitionSizeKey    = "dpSize"
+	metaPartitionCountKey   = "mpCount"
+	dataPartitionCountKey   = "dpCount"
+	volCapacityKey          = "capacity"
+	volDeleteLockTimeKey    = "deleteLockTime"
+	volTypeKey              = "volType"
+	cacheRuleKey            = "cacheRuleKey"
+	emptyCacheRuleKey       = "emptyCacheRule"
 
 	dataNodesetSelectorKey = "dataNodesetSelector"
 	metaNodesetSelectorKey = "metaNodesetSelector"
 	dataNodeSelectorKey    = "dataNodeSelector"
 	metaNodeSelectorKey    = "metaNodeSelector"
 	forbiddenKey           = "forbidden"
+	deleteVolKey           = "delete"
 
 	forceDelVolKey             = "forceDelVol"
 	ebsBlkSizeKey              = "ebsBlkSize"
@@ -203,6 +205,7 @@ const (
 	defaultClientTriggerHitCnt                   = 1
 	defaultClientReqPeriodSeconds                = 1
 	defaultMaxQuotaNumPerVol                     = 100
+	defaultVolDelayDeleteTimeHour                = 48
 )
 
 const (

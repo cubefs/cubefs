@@ -310,8 +310,12 @@ func (mp *MetaPartition) checkStatus(clusterID string, writeLog bool, replicaNum
 			mp.Status = proto.Unavailable
 			log.LogErrorf("[checkStatus] mp %v getMetaReplicaLeader err:%v", mp.PartitionID, err)
 		}
+		if mr.Status == proto.Unavailable || !forbiddenVol {
+			mp.Status = mr.Status
+		} else {
+			mp.Status = proto.ReadOnly
+		}
 
-		mp.Status = mr.Status
 		for _, replica := range liveReplicas {
 			if replica.Status == proto.ReadOnly {
 				mp.Status = proto.ReadOnly
@@ -550,8 +554,6 @@ func (mp *MetaPartition) reportMissingReplicas(clusterID, leaderAddr string, sec
 					"miss time > :%v  vlocLastRepostTime:%v   dnodeLastReportTime:%v  nodeisActive:%v",
 					clusterID, mp.volName, mp.PartitionID, replica.Addr, seconds, replica.ReportTime, lastReportTime, isActive)
 				Warn(clusterID, msg)
-				// msg = fmt.Sprintf("decommissionMetaPartitionURL is http://%v/dataPartition/decommission?id=%v&addr=%v", leaderAddr, mp.PartitionID, replica.Addr)
-				// Warn(clusterID, msg)
 				if WarnMetrics != nil {
 					WarnMetrics.WarnMissingMp(clusterID, replica.Addr, mp.PartitionID, true)
 				}

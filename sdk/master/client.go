@@ -73,6 +73,14 @@ func (c *MasterClient) ReplaceMasterAddresses(addrs []string) {
 	c.leaderAddr = ""
 }
 
+func (c *MasterClient) GetMasterAddresses() (addrs []string) {
+	c.Lock()
+	defer c.Unlock()
+	addrs = make([]string, len(c.masters))
+	copy(addrs, c.masters)
+	return
+}
+
 // AddNode add the given address as the master address.
 func (c *MasterClient) AddNode(address string) {
 	c.Lock()
@@ -188,10 +196,7 @@ func (c *MasterClient) serveRequest(r *request) (repsData []byte, err error) {
 			}
 			if body.Code != proto.ErrCodeSuccess {
 				log.LogWarnf("serveRequest: code[%v], msg[%v], data[%v] ", body.Code, body.Msg, body.Data)
-				if body.Code == proto.ErrCodeInternalError && len(body.Msg) > 0 {
-					return nil, errors.New(body.Msg)
-				}
-				return nil, proto.ParseErrorCode(body.Code)
+				return []byte(body.Data), errors.New(body.Msg)
 			}
 			return body.Bytes(), nil
 		default:

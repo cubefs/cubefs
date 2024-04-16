@@ -128,7 +128,7 @@ func (s *DataNode) checkPacketAndPrepare(p *repl.Packet) error {
 		if err != nil {
 			return fmt.Errorf("checkPacketAndPrepare partition %v  %v GetTinyExtentOffset error %v", p.PartitionID, extentID, err.Error())
 		}
-	} else if p.IsSnapshotModWriteAppendOperation() {
+	} else if p.IsLeaderPacket() && p.IsSnapshotModWriteAppendOperation() {
 		if proto.IsTinyExtentType(p.ExtentType) {
 			extentID, err = store.GetAvailableTinyExtent()
 			if err != nil {

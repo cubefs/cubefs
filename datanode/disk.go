@@ -83,18 +83,23 @@ type Disk struct {
 	limitWrite  *ioLimiter
 
 	// diskPartition info
-	diskPartition       *disk.PartitionStat
-	DiskErrPartitionSet map[uint64]struct{}
-	decommission        bool
+	diskPartition               *disk.PartitionStat
+	DiskErrPartitionSet         map[uint64]struct{}
+	decommission                bool
+	extentRepairReadLimit       chan struct{}
+	enableExtentRepairReadLimit bool
+	extentRepairReadDp          uint64
 }
 
 const (
 	SyncTinyDeleteRecordFromLeaderOnEveryDisk = 5
+	MaxExtentRepairReadLimit                  = 1 //
 )
 
 type PartitionVisitor func(dp *DataPartition)
 
-func NewDisk(path string, reservedSpace, diskRdonlySpace uint64, maxErrCnt int, space *SpaceManager) (d *Disk, err error) {
+func NewDisk(path string, reservedSpace, diskRdonlySpace uint64, maxErrCnt int, space *SpaceManager,
+	diskEnableReadRepairExtentLimit bool) (d *Disk, err error) {
 	d = new(Disk)
 	d.Path = path
 	d.ReservedSpace = reservedSpace
@@ -138,6 +143,9 @@ func NewDisk(path string, reservedSpace, diskRdonlySpace uint64, maxErrCnt int, 
 		// NOTE: continue execution
 		err = nil
 	}
+	d.extentRepairReadLimit = make(chan struct{}, MaxExtentRepairReadLimit)
+	d.extentRepairReadLimit <- struct{}{}
+	d.enableExtentRepairReadLimit = diskEnableReadRepairExtentLimit
 	return
 }
 
@@ -745,4 +753,38 @@ func isExpiredPartition(id uint64, partitions []uint64) bool {
 		}
 	}
 	return true
+}
+
+func (d *Disk) RequireReadExtentToken(id uint64) bool {
+	if !d.enableExtentRepairReadLimit {
+		return true
+	}
+	select {
+	case <-d.extentRepairReadLimit:
+		d.extentRepairReadDp = id
+		return true
+	default:
+		return false
+	}
+}
+
+func (d *Disk) ReleaseReadExtentToken() {
+	if !d.enableExtentRepairReadLimit {
+		return
+	}
+	select {
+	case d.extentRepairReadLimit <- struct{}{}:
+		d.extentRepairReadDp = 0
+	default:
+		log.LogDebugf("extentRepairReadLimit channel is full, still release token")
+		d.extentRepairReadDp = 0
+	}
+}
+
+func (d *Disk) SetExtentRepairReadLimitStatus(status bool) {
+	d.enableExtentRepairReadLimit = status
+}
+
+func (d *Disk) QueryExtentRepairReadLimitStatus() (bool, uint64) {
+	return d.enableExtentRepairReadLimit, d.extentRepairReadDp
 }

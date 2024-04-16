@@ -192,12 +192,15 @@ func parseDecomNodeReq(r *http.Request) (nodeAddr string, limit int, err error) 
 	return
 }
 
-func parseDecomDataNodeReq(r *http.Request) (nodeAddr string, err error) {
+func parseDecomDataNodeReq(r *http.Request) (nodeAddr string, limit int, err error) {
 	nodeAddr, err = parseAndExtractNodeAddr(r)
 	if err != nil {
 		return
 	}
-
+	limit, err = parseUintParam(r, countKey)
+	if err != nil {
+		return
+	}
 	return
 }
 
@@ -299,7 +302,7 @@ func parseGetVolParameter(r *http.Request) (p *getVolParameter, err error) {
 	return
 }
 
-func parseRequestToDeleteVol(r *http.Request) (name, authKey string, force bool, err error) {
+func parseRequestToDeleteVol(r *http.Request) (name, authKey string, status, force bool, err error) {
 	if err = r.ParseForm(); err != nil {
 		return
 	}
@@ -309,6 +312,10 @@ func parseRequestToDeleteVol(r *http.Request) (name, authKey string, force bool,
 	}
 
 	if authKey, err = extractAuthKey(r); err != nil {
+		return
+	}
+
+	if status, err = extractBoolWithDefault(r, deleteVolKey, true); err != nil {
 		return
 	}
 
@@ -1140,6 +1147,21 @@ func parseAndExtractThreshold(r *http.Request) (threshold float64, err error) {
 		return
 	}
 	if threshold, err = strconv.ParseFloat(value, 64); err != nil {
+		return
+	}
+	return
+}
+
+func parseAndExtractVolDeletionDelayTime(r *http.Request) (volDeletionDelayTimeHour int, err error) {
+	if err = r.ParseForm(); err != nil {
+		return
+	}
+	var value string
+	if value = r.FormValue(volDeletionDelayTimeKey); value == "" {
+		err = keyNotFound(volDeletionDelayTimeKey)
+		return
+	}
+	if volDeletionDelayTimeHour, err = strconv.Atoi(value); err != nil {
 		return
 	}
 	return

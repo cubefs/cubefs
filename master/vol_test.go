@@ -70,6 +70,7 @@ func TestVol(t *testing.T) {
 	getVol(name, t)
 	statVol(name, t)
 	delVol(name, t)
+	time.Sleep(5 * time.Second)
 	getSimpleVol(name, true, t)
 	vol.checkStatus(server.cluster)
 	err = vol.deleteVolFromStore(server.cluster)
@@ -112,7 +113,7 @@ func TestCreateColdVol(t *testing.T) {
 	assert.True(t, vol.domainId == 0)
 
 	delVol(volName, t)
-	time.Sleep(11 * time.Second)
+	time.Sleep(30 * time.Second)
 
 	req[volTypeKey] = proto.VolumeTypeCold
 

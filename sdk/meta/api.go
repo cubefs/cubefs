@@ -181,7 +181,7 @@ func (mw *MetaWrapper) txCreate_ll(parentID uint64, name string, mode, uid, gid 
 		status, info, err = mw.txIcreate(tx, mp, mode, uid, gid, target, quotaIds, fullPath)
 		if err == nil && status == statusOK {
 			goto create_dentry
-		} else if status == statusNoSpace {
+		} else if status == statusNoSpace || status == statusForbid {
 			log.LogErrorf("Create_ll status %v", status)
 			return nil, statusToErrno(status)
 		} else {
@@ -281,7 +281,7 @@ get_rwmp:
 					return nil, nil
 				})
 				goto get_rwmp
-			} else if status == statusNoSpace {
+			} else if status == statusNoSpace || status == statusForbid {
 				log.LogErrorf("Create_ll status %v", status)
 				return nil, statusToErrno(status)
 			}
@@ -304,7 +304,7 @@ get_rwmp:
 					return nil, nil
 				})
 				goto get_rwmp
-			} else if status == statusNoSpace {
+			} else if status == statusNoSpace || status == statusForbid {
 				log.LogErrorf("Create_ll status %v", status)
 				return nil, statusToErrno(status)
 			}
@@ -1742,7 +1742,7 @@ get_rwmp:
 					return nil, nil
 				})
 				goto get_rwmp
-			} else if status == statusNoSpace {
+			} else if status == statusNoSpace || status == statusForbid {
 				log.LogErrorf("InodeCreate_ll status %v", status)
 				return nil, statusToErrno(status)
 			}
@@ -1765,7 +1765,7 @@ get_rwmp:
 					return nil, nil
 				})
 				goto get_rwmp
-			} else if status == statusNoSpace {
+			} else if status == statusNoSpace || status == statusForbid {
 				log.LogErrorf("InodeCreate_ll status %v", status)
 				return nil, statusToErrno(status)
 			}

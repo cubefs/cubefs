@@ -15,8 +15,11 @@
 package errors
 
 import (
+	"fmt"
+	"math/rand"
 	"runtime"
-	"sync"
+	"sort"
+	"time"
 	_ "unsafe"
 
 	"github.com/brahma-adshonor/gohook"
@@ -24,22 +27,35 @@ import (
 
 var ErrUnsupportedArch = New("Unsupported arch")
 
+// NOTE: export go language panic function address
+
 //go:linkname gopanic runtime.gopanic
 func gopanic(e interface{})
 
 var panicHook func()
 
-// NOTE: trampoline don't works
-var mu sync.Mutex
+// NOTE: useless code for trampoline
+func panicTrampoline(e interface{}) {
+	_ = e
+	const arrayCount = 1000
+	randGen := rand.New(rand.NewSource(time.Now().Unix()))
+	randTable := make([]int, 0)
+	for i := 0; i < arrayCount; i++ {
+		randTable = append(randTable, randGen.Int())
+	}
+
+	sort.Slice(randTable, func(i, j int) bool {
+		return randTable[i] < randTable[j]
+	})
+
+	for _, v := range randTable {
+		fmt.Printf("%v", v)
+	}
+}
 
 func hookedPanic(e interface{}) {
-	mu.Lock()
-	defer mu.Unlock()
-	// NOTE: unhook before invoke hook function
-	gohook.UnHook(gopanic)
-	defer gohook.Hook(gopanic, hookedPanic, nil)
 	panicHook()
-	gopanic(e)
+	panicTrampoline(e)
 }
 
 func AtPanic(hook func()) error {
@@ -47,7 +63,7 @@ func AtPanic(hook func()) error {
 		return ErrUnsupportedArch
 	}
 	panicHook = hook
-	return gohook.Hook(gopanic, hookedPanic, nil)
+	return gohook.Hook(gopanic, hookedPanic, panicTrampoline)
 }
 
 var (
