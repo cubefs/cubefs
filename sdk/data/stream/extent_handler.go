@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"github.com/cubefs/cubefs/util/stat"
 	"net"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -113,6 +114,9 @@ type ExtentHandler struct {
 	storageClass uint32
 
 	isMigration bool
+	// for flush
+	mu        sync.Mutex
+	flushCond *sync.Cond
 }
 
 // NewExtentHandler returns a new extent handler.
@@ -135,6 +139,7 @@ func NewExtentHandler(stream *Streamer, offset int, storeMode int, size int,
 		storageClass: proto.GetMediaTypeByStorageClass(storageClass),
 		isMigration:  isMigration,
 	}
+	eh.flushCond = sync.NewCond(&eh.mu)
 
 	go eh.receiver()
 	go eh.sender()
@@ -310,7 +315,8 @@ func (eh *ExtentHandler) processReply(packet *Packet) {
 	defer func() {
 		log.LogDebugf("processReply end: packet(%v), eh(%v)", packet, eh)
 		if atomic.AddInt32(&eh.inflight, -1) <= 0 {
-			eh.empty <- struct{}{}
+			//eh.empty <- struct{}{}
+			eh.flushCond.Broadcast()
 		}
 	}()
 
@@ -427,6 +433,11 @@ func (eh *ExtentHandler) flush() (err error) {
 }
 
 func (eh *ExtentHandler) cleanup() (err error) {
+	// if eh.inflight > 0, not cleanup eh, otherwise sender and receiver exit, leadto waitForFlush blocked.
+	if atomic.LoadInt32(&eh.inflight) > 0 {
+		log.LogDebugf("cleanup do nothing: eh(%v)", eh)
+		return
+	}
 	eh.doneSender <- struct{}{}
 	eh.doneReceiver <- struct{}{}
 	if eh.conn != nil {
@@ -478,25 +489,18 @@ func (eh *ExtentHandler) appendExtentKey() (err error) {
 // This function is meaningful to be called from stream writer flush method,
 // because there is no new write request.
 func (eh *ExtentHandler) waitForFlush() {
+	log.LogDebugf("ExtentHandler waitForFlush begin: eh(%v)", eh)
+	defer func() {
+		log.LogDebugf("ExtentHandler waitForFlush end: eh(%v)", eh)
+	}()
+
 	if atomic.LoadInt32(&eh.inflight) <= 0 {
 		return
 	}
 
-	//	t := time.NewTicker(10 * time.Second)
-	//	defer t.Stop()
-
-	for {
-		select {
-		case <-eh.empty:
-			if atomic.LoadInt32(&eh.inflight) <= 0 {
-				return
-			}
-			//		case <-t.C:
-			//			if atomic.LoadInt32(&eh.inflight) <= 0 {
-			//				return
-			//			}
-		}
-	}
+	eh.flushCond.L.Lock()
+	eh.flushCond.Wait()
+	eh.flushCond.L.Unlock()
 }
 
 func (eh *ExtentHandler) recoverPacket(packet *Packet) error {
