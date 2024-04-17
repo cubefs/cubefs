@@ -617,12 +617,14 @@ func (s *Streamer) traverse() (err error) {
 }
 
 func (s *Streamer) closeOpenHandler() (err error) {
+	log.LogDebugf("closeOpenHandler: streamer(%v)", s)
 	// just in case to avoid infinite loop
 	var cnt int = 2 * MaxPacketErrorCount
 
 	handler := s.handler
 	for handler != nil && cnt >= 0 {
 		handler.setClosed()
+		log.LogDebugf("closeOpenHandler: eh(%v)", handler)
 		if s.dirtylist.Len() < MaxDirtyListLen {
 			handler.flushPacket()
 		} else {
@@ -637,6 +639,7 @@ func (s *Streamer) closeOpenHandler() (err error) {
 		if !s.dirty {
 			// in case the current handler is not on the dirty list and will not get cleaned up
 			// TODO unhandled error
+			log.LogDebugf("closeOpenHandler cleanup: eh(%v)", s.handler)
 			s.handler.cleanup()
 		}
 		s.handler = nil
