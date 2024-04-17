@@ -144,8 +144,8 @@ func NewExtentHandler(stream *Streamer, offset int, storeMode int, size int,
 
 // String returns the string format of the extent handler.
 func (eh *ExtentHandler) String() string {
-	return fmt.Sprintf("ExtentHandler{ID(%v)Inode(%v)FileOffset(%v)Size(%v)StoreMode(%v)Status(%v)Dp(%v)storageClass(%v)}",
-		eh.id, eh.inode, eh.fileOffset, eh.size, eh.storeMode, eh.status, eh.dp, eh.storageClass)
+	return fmt.Sprintf("ExtentHandler{ID(%v)Inode(%v)FileOffset(%v)Size(%v)StoreMode(%v)Status(%v)Dp(%v)storageClass(%v)inflight(%v)}",
+		eh.id, eh.inode, eh.fileOffset, eh.size, eh.storeMode, eh.status, eh.dp, eh.storageClass, eh.inflight)
 }
 
 func (eh *ExtentHandler) write(data []byte, offset, size int, direct bool) (ek *proto.ExtentKey, err error) {
@@ -179,6 +179,7 @@ func (eh *ExtentHandler) write(data []byte, offset, size int, direct bool) (ek *
 	for total < size {
 		if eh.packet == nil {
 			eh.packet = NewWritePacket(eh.inode, offset+total, eh.storeMode)
+			log.LogDebugf("ExtentHandler write packet nil and new packet: eh(%v)", eh)
 			if direct {
 				eh.packet.Opcode = proto.OpSyncWrite
 			}
@@ -305,7 +306,9 @@ func (eh *ExtentHandler) receiver() {
 }
 
 func (eh *ExtentHandler) processReply(packet *Packet) {
+	log.LogDebugf("processReply begin: packet(%v), eh(%v)", packet, eh)
 	defer func() {
+		log.LogDebugf("processReply end: packet(%v), eh(%v)", packet, eh)
 		if atomic.AddInt32(&eh.inflight, -1) <= 0 {
 			eh.empty <- struct{}{}
 		}
@@ -392,15 +395,19 @@ func (eh *ExtentHandler) processReply(packet *Packet) {
 }
 
 func (eh *ExtentHandler) processReplyError(packet *Packet, errmsg string) {
+	log.LogDebugf("processReplyError begin: eh(%v) packet(%v) errmsg(%v)", eh, packet, errmsg)
 	eh.setClosed()
 	eh.setRecovery()
 	if err := eh.recoverPacket(packet); err != nil {
 		eh.discardPacket(packet)
 		log.LogErrorf("processReplyError discard packet: eh(%v) packet(%v) err(%v) errmsg(%v)", eh, packet, err, errmsg)
+	} else {
+		log.LogDebugf("processReplyError end: eh(%v) packet(%v) errmsg(%v)", eh, packet, errmsg)
 	}
 }
 
 func (eh *ExtentHandler) flush() (err error) {
+	log.LogDebugf("ExtentHandler flush begin: eh(%v)", eh)
 	eh.flushPacket()
 	eh.waitForFlush()
 	err = eh.appendExtentKey()
@@ -493,6 +500,7 @@ func (eh *ExtentHandler) waitForFlush() {
 }
 
 func (eh *ExtentHandler) recoverPacket(packet *Packet) error {
+	log.LogDebugf("ExtentHandler recoverPacket: eh(%v), packet(%v)", eh, packet)
 	packet.errCount++
 	if packet.errCount >= MaxPacketErrorCount || proto.IsStorageClassBlobStore(eh.storageClass) {
 		return errors.New(fmt.Sprintf("recoverPacket failed: reach max error limit, eh(%v) packet(%v)", eh, packet))
@@ -644,11 +652,13 @@ func (eh *ExtentHandler) createExtent(dp *wrapper.DataPartition) (extID int, err
 // Handler lock is held by the caller.
 func (eh *ExtentHandler) flushPacket() {
 	if eh.packet == nil {
+		log.LogDebugf("ExtentHandler flushPacket nil, return: eh(%v)", eh)
 		return
 	}
 
 	eh.pushToRequest(eh.packet)
 	eh.packet = nil
+	log.LogDebugf("ExtentHandler flushPacket end: eh(%v)", eh)
 }
 
 func (eh *ExtentHandler) pushToRequest(packet *Packet) {
