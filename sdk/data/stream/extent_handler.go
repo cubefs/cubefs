@@ -427,6 +427,7 @@ func (eh *ExtentHandler) processReplyError(packet *Packet, errmsg string) {
 }
 
 func (eh *ExtentHandler) flush() (err error) {
+	log.LogDebugf("ExtentHandler flush begin: eh(%v)", eh)
 	eh.flushPacket()
 	eh.waitForFlush()
 
