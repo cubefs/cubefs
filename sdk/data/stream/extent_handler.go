@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"net"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -110,6 +111,9 @@ type ExtentHandler struct {
 	doneSender chan struct{}
 
 	meetLimitedIoError bool
+	// for flush
+	mu        sync.Mutex
+	flushCond *sync.Cond
 }
 
 // NewExtentHandler returns a new extent handler.
@@ -128,6 +132,7 @@ func NewExtentHandler(stream *Streamer, offset int, storeMode int, size int) *Ex
 		doneReceiver:       make(chan struct{}),
 		meetLimitedIoError: false,
 	}
+	eh.flushCond = sync.NewCond(&eh.mu)
 
 	go eh.receiver()
 	go eh.sender()
@@ -137,8 +142,8 @@ func NewExtentHandler(stream *Streamer, offset int, storeMode int, size int) *Ex
 
 // String returns the string format of the extent handler.
 func (eh *ExtentHandler) String() string {
-	return fmt.Sprintf("ExtentHandler{ID(%v)Inode(%v)FileOffset(%v)Size(%v)StoreMode(%v)Status(%v)}",
-		eh.id, eh.inode, eh.fileOffset, eh.size, eh.storeMode, eh.status)
+	return fmt.Sprintf("ExtentHandler{ID(%v)Inode(%v)FileOffset(%v)Size(%v)StoreMode(%v)Status(%v)inflight(%v)}",
+		eh.id, eh.inode, eh.fileOffset, eh.size, eh.storeMode, eh.status, eh.inflight)
 }
 
 func (eh *ExtentHandler) write(data []byte, offset, size int, direct bool) (ek *proto.ExtentKey, err error) {
@@ -296,7 +301,8 @@ func (eh *ExtentHandler) receiver() {
 func (eh *ExtentHandler) processReply(packet *Packet) {
 	defer func() {
 		if atomic.AddInt32(&eh.inflight, -1) <= 0 {
-			eh.empty <- struct{}{}
+			//eh.empty <- struct{}{}
+			eh.flushCond.Broadcast()
 		}
 	}()
 
@@ -446,6 +452,13 @@ func (eh *ExtentHandler) flush() (err error) {
 }
 
 func (eh *ExtentHandler) cleanup() (err error) {
+	log.LogDebugf("cleanup: eh(%v)", eh)
+
+	// if eh.inflight > 0, not cleanup eh. waitForFlush may blocked.
+	if atomic.LoadInt32(&eh.inflight) > 0 {
+		log.LogDebugf("cleanup do nothing: eh(%v)", eh)
+		return
+	}
 	eh.doneSender <- struct{}{}
 	eh.doneReceiver <- struct{}{}
 	if eh.conn != nil {
@@ -494,25 +507,17 @@ func (eh *ExtentHandler) appendExtentKey() (err error) {
 // This function is meaningful to be called from stream writer flush method,
 // because there is no new write request.
 func (eh *ExtentHandler) waitForFlush() {
+	log.LogDebugf("ExtentHandler waitForFlush begin: eh(%v)", eh)
+	defer func() {
+		log.LogDebugf("ExtentHandler waitForFlush end: eh(%v)", eh)
+	}()
+
 	if atomic.LoadInt32(&eh.inflight) <= 0 {
 		return
 	}
-
-	//	t := time.NewTicker(10 * time.Second)
-	//	defer t.Stop()
-
-	for {
-		select {
-		case <-eh.empty:
-			if atomic.LoadInt32(&eh.inflight) <= 0 {
-				return
-			}
-			//		case <-t.C:
-			//			if atomic.LoadInt32(&eh.inflight) <= 0 {
-			//				return
-			//			}
-		}
-	}
+	eh.flushCond.L.Lock()
+	eh.flushCond.Wait()
+	eh.flushCond.L.Unlock()
 }
 
 func (eh *ExtentHandler) recoverPacket(packet *Packet) error {
