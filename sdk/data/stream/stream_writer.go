@@ -653,7 +653,6 @@ func (s *Streamer) open() {
 }
 
 func (s *Streamer) release() error {
-	s.refcnt--
 	s.closeOpenHandler()
 	err := s.flush()
 	if err != nil {
