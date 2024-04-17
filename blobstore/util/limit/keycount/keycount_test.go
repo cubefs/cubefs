@@ -15,6 +15,7 @@
 package keycount
 
 import (
+	"context"
 	"runtime"
 	"sync"
 	"sync/atomic"
@@ -147,6 +148,33 @@ func TestBlockingKeyLimitBase(t *testing.T) {
 		}()
 	}
 	wg.Wait()
+}
+
+func TestBlockingKeyCountLimit_AcquireWithContext(t *testing.T) {
+	l := NewBlockingKeyCountLimit(1)
+	ctx, cancelFunc := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	err := l.AcquireWithContext(ctx, "test_key_1")
+	require.NoError(t, err)
+	err = l.AcquireWithContext(ctx, "test_key_1")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "context deadline")
+	cancelFunc()
+	// get limit with deadline context
+	l.Release("test_key_1")
+	err = l.AcquireWithContext(ctx, "test_key_1")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "context deadline")
+	require.Equal(t, 0, l.Running())
+
+	// success partly should release the key has been acquired
+	ctx, cancelFunc = context.WithTimeout(context.Background(), 200*time.Millisecond)
+	err = l.AcquireWithContext(ctx, "test_key_1")
+	require.NoError(t, err)
+	err = l.AcquireWithContext(ctx, "test_key_2", "test_key_1")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "context deadline")
+	cancelFunc()
+	require.Equal(t, 1, l.Running())
 }
 
 type atomicBool struct {

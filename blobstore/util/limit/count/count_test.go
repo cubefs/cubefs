@@ -15,6 +15,7 @@
 package count
 
 import (
+	"context"
 	"runtime"
 	"sync/atomic"
 	"testing"
@@ -87,6 +88,33 @@ func TestBlockingCountLimit(t *testing.T) {
 	time.Sleep(.5e9)
 	require.Equal(t, 2, l.Running())
 	require.True(t, done.Get())
+}
+
+func TestNewBlockingCountWithCtx(t *testing.T) {
+	l := NewBlockingCount(1)
+	ctx, cancelFunc := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	err := l.AcquireWithContext(ctx)
+	require.NoError(t, err)
+	err = l.AcquireWithContext(ctx)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "context deadline")
+	cancelFunc()
+
+	l.Release()
+	// get limit with deadline context
+	err = l.AcquireWithContext(ctx)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "context deadline")
+
+	l = New(1)
+	ctx, cancelFunc = context.WithCancel(context.Background())
+	err = l.AcquireWithContext(ctx, "k1", "k2")
+	require.NoError(t, err)
+	cancelFunc()
+	l.Release("k1")
+	err = l.AcquireWithContext(ctx, "k1")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "context canceled")
 }
 
 type atomicBool struct {

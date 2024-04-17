@@ -55,6 +55,8 @@ const (
 	defaultMaxBatchSize           = 10
 	defaultBatchIntervalSec       = 2
 
+	defaultTaskLimitPerDisk = 1
+
 	defaultTickInterval   = uint32(1)
 	defaultHeartbeatTicks = uint32(30)
 	defaultExpiresTicks   = uint32(60)
@@ -84,7 +86,7 @@ type Config struct {
 	Scheduler  scheduler.Config  `json:"scheduler"`
 
 	Balance       BalanceMgrConfig    `json:"balance"`
-	DiskDrop      MigrateConfig       `json:"disk_drop"`
+	DiskDrop      DropMgrConfig       `json:"disk_drop"`
 	DiskRepair    MigrateConfig       `json:"disk_repair"`
 	ManualMigrate MigrateConfig       `json:"manual_migrate"`
 	VolumeInspect VolumeInspectMgrCfg `json:"volume_inspect"`
@@ -237,6 +239,8 @@ func (c *Config) fixBalanceConfig() {
 
 func (c *Config) fixDiskDropConfig() {
 	c.DiskDrop.ClusterID = c.ClusterID
+	defaulter.LessOrEqual(&c.DiskDrop.TaskLimitPerDisk, defaultTaskLimitPerDisk)
+	defaulter.LessOrEqual(&c.DiskDrop.TotalTaskLimit, c.DiskDrop.TaskLimitPerDisk*c.DiskDrop.DiskConcurrency)
 	c.DiskDrop.CheckAndFix()
 }
 
