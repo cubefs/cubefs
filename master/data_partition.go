@@ -884,12 +884,15 @@ func (partition *DataPartition) getToBeDecommissionHost(replicaNum int) (host st
 		}
 		return
 	}
-
-	hostLen := len(partition.Hosts)
-	if hostLen <= 1 || hostLen <= replicaNum {
-		return
+	// remove the last host if decommission status is DecommissionInitial
+	if partition.IsDecommissionInitial() {
+		hostLen := len(partition.Hosts)
+		if hostLen <= 1 || hostLen <= replicaNum {
+			return
+		}
+		host = partition.Hosts[hostLen-1]
 	}
-	host = partition.Hosts[hostLen-1]
+	// if decommission is running, return ""
 	return
 }
 
@@ -1243,7 +1246,9 @@ func (partition *DataPartition) Decommission(c *Cluster) bool {
 		}
 		if err = c.decommissionSingleDp(partition, targetAddr, srcAddr); err != nil {
 			// when dp retry decommission, step into SpecialDecommissionWaitAddResFin above
-			if partition.GetSpecialReplicaDecommissionStep() >= SpecialDecommissionWaitAddResFin {
+			// do not reset decommission dst when master leader changed
+			if partition.GetSpecialReplicaDecommissionStep() >= SpecialDecommissionWaitAddResFin ||
+				strings.Contains(err.Error(), "master leader changed") {
 				resetDecommissionDst = false
 			}
 			goto errHandler
@@ -1290,14 +1295,10 @@ errHandler:
 	} else {
 		partition.SetDecommissionStatus(markDecommission) // retry again
 		partition.ReleaseDecommissionToken(c)
-		// choose other node to create data partition when retry decommission
-		if resetDecommissionDst {
-			partition.DecommissionDstAddr = ""
-			log.LogWarnf("action[decommissionDataPartition] partitionID:%v reset DecommissionDstAddr", partition.PartitionID)
-		}
 	}
 
 	// if need rollback, set to fail,reset DecommissionDstAddr
+	// do not reset DecommissionDstAddr outside the rollback operation, as it may cause rollback failure
 	if partition.DecommissionNeedRollback {
 		partition.SetDecommissionStatus(DecommissionFail)
 	} else {
@@ -1305,6 +1306,12 @@ errHandler:
 		// and a rollback is still required, even if the rollback conditions have not been triggered.
 		if partition.DecommissionRetry >= defaultDecommissionRetryLimit {
 			partition.markRollbackFailed(true)
+		} else {
+			// choose other node to create data partition when retry decommission
+			if resetDecommissionDst {
+				partition.DecommissionDstAddr = ""
+				log.LogWarnf("action[decommissionDataPartition] partitionID:%v reset DecommissionDstAddr", partition.PartitionID)
+			}
 		}
 	}
 	msg = fmt.Sprintf("clusterID[%v] vol[%v] dp[%v]  on Node:%v  "+
@@ -1377,11 +1384,14 @@ func (partition *DataPartition) ResetDecommissionStatus() {
 }
 
 func (partition *DataPartition) rollback(c *Cluster) {
+	defer c.syncUpdateDataPartition(partition)
 	err := partition.removeReplicaByForce(c, partition.DecommissionDstAddr)
 	if err != nil {
 		// keep decommission status to failed for rollback
 		log.LogWarnf("action[rollback]dp[%v] rollback to del replica[%v] failed:%v",
 			partition.PartitionID, partition.DecommissionDstAddr, err.Error())
+		partition.DecommissionErrorMessage = fmt.Sprintf("rollback failed:%v", err.Error())
+
 		return
 	}
 	//err = partition.restoreReplicaMeta(c)
@@ -1401,7 +1411,6 @@ func (partition *DataPartition) rollback(c *Cluster) {
 	if !partition.DecommissionDstAddrSpecify {
 		partition.DecommissionDstAddr = ""
 	}
-	c.syncUpdateDataPartition(partition)
 	log.LogWarnf("action[rollback]dp[%v] rollback success", partition.PartitionID)
 }
 
@@ -1436,10 +1445,10 @@ func (partition *DataPartition) addToDecommissionList(c *Cluster) {
 		return
 	}
 	log.LogInfof("action[addToDecommissionList]ready to add dp[%v] decommission src[%v] Disk[%v] dst[%v] status[%v] specialStep[%v],"+
-		" RollbackTimes(%v) isRecover(%v) host[%v] to  decommission list[%v]",
+		" RollbackTimes(%v) isRecover(%v) retry[%v] host[%v] to decommission list[%v]",
 		partition.PartitionID, partition.DecommissionSrcAddr, partition.DecommissionSrcDiskPath,
 		partition.DecommissionDstAddr, partition.GetDecommissionStatus(), partition.GetSpecialReplicaDecommissionStep(),
-		partition.DecommissionNeedRollbackTimes, partition.isRecover, partition.Hosts, ns.ID)
+		partition.DecommissionNeedRollbackTimes, partition.isRecover, partition.DecommissionRetry, partition.Hosts, ns.ID)
 	ns.AddToDecommissionDataPartitionList(partition, c)
 }
 
@@ -1562,13 +1571,14 @@ func (partition *DataPartition) TryAcquireDecommissionToken(c *Cluster) bool {
 		targetHosts     []string
 		excludeNodeSets []uint64
 		zones           []string
+		result          = false
 	)
 	const MaxRetryDecommissionWait = 60
 	defer c.syncUpdateDataPartition(partition)
 	begin := time.Now()
 	defer func() {
-		log.LogDebugf("action[TryAcquireDecommissionToken] dp %v get token to %v consume(%v)",
-			partition.PartitionID, partition.DecommissionDstAddr, time.Now().Sub(begin).String())
+		log.LogDebugf("action[TryAcquireDecommissionToken] dp %v get token to %v consume(%v) err(%v) result(%v)",
+			partition.PartitionID, partition.DecommissionDstAddr, time.Now().Sub(begin).String(), err, result)
 	}()
 
 	// the first time for dst addr not specify
@@ -1583,6 +1593,7 @@ func (partition *DataPartition) TryAcquireDecommissionToken(c *Cluster) bool {
 		if partition.isSpecialReplicaCnt() && ns.HasDecommissionToken(partition.PartitionID) {
 			log.LogDebugf("action[TryAcquireDecommissionToken]dp %v has token when reloading meta from nodeset %v",
 				partition.PartitionID, ns.ID)
+			result = true
 			return true
 		}
 		targetHosts, _, err = ns.getAvailDataNodeHosts(partition.Hosts, 1)
@@ -1630,6 +1641,7 @@ func (partition *DataPartition) TryAcquireDecommissionToken(c *Cluster) bool {
 			partition.DecommissionDstAddr = targetHosts[0]
 			log.LogDebugf("action[TryAcquireDecommissionToken] dp %v get token from %v nodeset %v success",
 				partition.PartitionID, partition.DecommissionDstAddr, ns.ID)
+			result = true
 			return true
 		} else {
 			log.LogDebugf("action[TryAcquireDecommissionToken] dp %v: nodeset %v token is empty",
@@ -1644,7 +1656,7 @@ func (partition *DataPartition) TryAcquireDecommissionToken(c *Cluster) bool {
 			goto errHandler
 		}
 		if partition.isSpecialReplicaCnt() && ns.HasDecommissionToken(partition.PartitionID) {
-			log.LogDebugf("action[TryAcquireDecommissionToken]dp %v has token when reloading meta from nodeset",
+			log.LogDebugf("action[TryAcquireDecommissionToken]dp %v has token when reloading meta from nodeset %v",
 				partition.PartitionID, ns.ID)
 			return true
 		}
@@ -1653,6 +1665,8 @@ func (partition *DataPartition) TryAcquireDecommissionToken(c *Cluster) bool {
 				partition.PartitionID, partition.DecommissionDstAddr, ns.ID)
 			return true
 		} else {
+			log.LogDebugf("action[TryAcquireDecommissionToken] dp %v: nodeset %v token is empty",
+				partition.PartitionID, ns.ID)
 			return false
 		}
 	}
