@@ -18,7 +18,6 @@ import (
 	"fmt"
 	"net"
 	"strings"
-	"sync"
 	"sync/atomic"
 	"time"
 
@@ -111,9 +110,6 @@ type ExtentHandler struct {
 	doneSender chan struct{}
 
 	meetLimitedIoError bool
-	// for flush
-	mu        sync.Mutex
-	flushCond *sync.Cond
 }
 
 // NewExtentHandler returns a new extent handler.
@@ -132,7 +128,6 @@ func NewExtentHandler(stream *Streamer, offset int, storeMode int, size int) *Ex
 		doneReceiver:       make(chan struct{}),
 		meetLimitedIoError: false,
 	}
-	eh.flushCond = sync.NewCond(&eh.mu)
 
 	go eh.receiver()
 	go eh.sender()
@@ -301,8 +296,7 @@ func (eh *ExtentHandler) receiver() {
 func (eh *ExtentHandler) processReply(packet *Packet) {
 	defer func() {
 		if atomic.AddInt32(&eh.inflight, -1) <= 0 {
-			//eh.empty <- struct{}{}
-			eh.flushCond.Broadcast()
+			eh.empty <- struct{}{}
 		}
 	}()
 
@@ -516,9 +510,14 @@ func (eh *ExtentHandler) waitForFlush() {
 	if atomic.LoadInt32(&eh.inflight) <= 0 {
 		return
 	}
-	eh.flushCond.L.Lock()
-	eh.flushCond.Wait()
-	eh.flushCond.L.Unlock()
+	for {
+		select {
+		case <-eh.empty:
+			if atomic.LoadInt32(&eh.inflight) <= 0 {
+				return
+			}
+		}
+	}
 }
 
 func (eh *ExtentHandler) recoverPacket(packet *Packet) error {
