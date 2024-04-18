@@ -176,13 +176,12 @@ func (client *ExtentClient) evictStreamer() bool {
 		return true
 	}
 
-	if s.refcnt > 0 || len(s.request) != 0 {
+	if s.isOpen {
 		client.streamerList.PushFront(ino)
 		return true
 	}
 
 	delete(s.client.streamers, s.inode)
-	s.isOpen = false
 	return true
 }
 
@@ -321,22 +320,17 @@ func (client *ExtentClient) SetClientID(id uint64) (err error) {
 // Open request shall grab the lock until request is sent to the request channel
 func (client *ExtentClient) OpenStream(inode uint64) error {
 	client.streamerLock.Lock()
-	defer client.streamerLock.Unlock()
 	s, ok := client.streamers[inode]
 	if !ok {
 		s = NewStreamer(client, inode)
 		client.streamers[inode] = s
 	}
-	s.refcnt++
-	log.LogDebugf("OpenStream: streamer(%v)", s)
-
-	return nil
+	return s.IssueOpenRequest()
 }
 
 // Open request shall grab the lock until request is sent to the request channel
 func (client *ExtentClient) OpenStreamWithCache(inode uint64, needBCache bool) error {
 	client.streamerLock.Lock()
-	defer client.streamerLock.Unlock()
 	s, ok := client.streamers[inode]
 	if !ok {
 		s = NewStreamer(client, inode)
@@ -346,10 +340,15 @@ func (client *ExtentClient) OpenStreamWithCache(inode uint64, needBCache bool) e
 		}
 	}
 	s.needBCache = needBCache
-	s.refcnt++
-	log.LogDebugf("OpenStream: streamer(%v)", s)
-
-	return nil
+	if !s.isOpen && !client.disableMetaCache {
+		s.isOpen = true
+		log.LogDebugf("open stream again, ino(%v)", s.inode)
+		s.request = make(chan interface{}, 64)
+		s.pendingCache = make(chan bcacheKey, 1)
+		go s.server()
+		go s.asyncBlockCache()
+	}
+	return s.IssueOpenRequest()
 }
 
 // Release request shall grab the lock until request is sent to the request channel
@@ -361,9 +360,7 @@ func (client *ExtentClient) CloseStream(inode uint64) error {
 		return nil
 	}
 
-	log.LogDebugf("CloseStream begin: streamer(%v)", s)
-	s.refcnt--
-
+	log.LogDebugf("CloseStream: streamer(%v)", s)
 	return s.IssueReleaseRequest()
 }
 
@@ -376,23 +373,18 @@ func (client *ExtentClient) EvictStream(inode uint64) error {
 		return nil
 	}
 	log.LogDebugf("EvictStream streamer(%v)", s)
-	if s.refcnt != 0 || len(s.request) != 0 {
-		log.LogDebugf("EvictStream can not evict, streamer(%v)", s)
-		client.streamerLock.Unlock()
-		return nil
+	if s.isOpen {
+		err := s.IssueEvictRequest()
+		if err != nil {
+			return err
+		}
+		s.done <- struct{}{}
+		s.isOpen = false
+	} else {
+		delete(s.client.streamers, s.inode)
+		s.client.streamerLock.Unlock()
 	}
 
-	if s.client.disableMetaCache || !s.needBCache {
-		log.LogDebugf("EvictStream: delete streamer(%v)", s)
-		delete(s.client.streamers, s.inode)
-		s.isOpen = false
-		// unlock before write channel s.done, or else maybe leadto deadlock(server wait to lock while user wait server read s.done)
-		client.streamerLock.Unlock()
-		//after streamer is deleted, notify server to exit
-		s.done <- struct{}{}
-	} else {
-		client.streamerLock.Unlock()
-	}
 	return nil
 }
 
@@ -621,6 +613,11 @@ func (client *ExtentClient) GetStreamer(inode uint64) *Streamer {
 		return nil
 	}
 	log.LogDebugf("GetStreamer: streamer(%v)", s)
+	if !s.isOpen {
+		s.isOpen = true
+		go s.server()
+		go s.asyncBlockCache()
+	}
 	return s
 }
 
