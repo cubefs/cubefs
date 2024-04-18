@@ -2159,6 +2159,8 @@ func (c *Cluster) decommissionSingleDp(dp *DataPartition, newAddr, offlineAddr s
 				err = fmt.Errorf("action[decommissionSingleDp] dp %v replica %v not found",
 					dp.PartitionID, newAddr)
 				log.LogWarnf("action[decommissionSingleDp] dp %v err:%v", dp.PartitionID, err)
+				dp.DecommissionNeedRollback = false
+				newReplica.Status = proto.Unavailable // remove from data partition check
 				goto ERR
 			}
 			if len(liveReplicas) >= int(dp.ReplicaNum+1) {
