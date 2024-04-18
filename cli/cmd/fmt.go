@@ -943,11 +943,17 @@ func formatDiskDataPartitionTableRow(view *proto.DataPartitionReport) string {
 }
 
 func formatDecommissionProgress(progress *proto.DecommissionProgress) string {
-	return alignColumn(
-		arow("Status", progress.StatusMessage),
-		arow("Progress", progress.Progress),
-		arow("Failed Dps", progress.FailedDps),
-	)
+	sb := strings.Builder{}
+	sb.WriteString(fmt.Sprintf("Status:           %v\n", progress.StatusMessage))
+	sb.WriteString(fmt.Sprintf("Progress:         %v\n", progress.Progress))
+	if len(progress.FailedDps) != 0 {
+		sb.WriteString("Failed Dps:       \n")
+		for i, info := range progress.FailedDps {
+			sb.WriteString(fmt.Sprintf("           [%v/%v] Partition Id  : %v\n", i+1, len(progress.FailedDps), info.PartitionID))
+			sb.WriteString(fmt.Sprintf("                   Error Message : %v\n", info.ErrMsg))
+		}
+	}
+	return sb.String()
 }
 
 func formatDataPartitionDecommissionProgress(info *proto.DecommissionDataPartitionInfo) string {
