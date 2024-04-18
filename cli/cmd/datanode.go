@@ -187,7 +187,7 @@ func newDataNodeQueryDecommissionedDisk(client *master.MasterClient) *cobra.Comm
 			}
 			stdoutln("[Decommissioned disks]")
 			for _, disk := range disks.Disks {
-				stdout("%v", disk)
+				stdout("%v\n", disk)
 			}
 			return nil
 		},

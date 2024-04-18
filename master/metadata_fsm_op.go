@@ -189,6 +189,7 @@ func (dpv *dataPartitionValue) Restore(c *Cluster) (dp *DataPartition) {
 	dp.RecoverStartTime = time.Unix(dpv.RecoverStartTime, 0)
 	dp.RecoverLastConsumeTime = time.Duration(dpv.RecoverLastConsumeTime) * time.Second
 	dp.DecommissionNeedRollbackTimes = dpv.DecommissionNeedRollbackTimes
+	dp.DecommissionErrorMessage = dpv.DecommissionErrorMessage
 	for _, rv := range dpv.Replicas {
 		if !contains(dp.Hosts, rv.Addr) {
 			continue
