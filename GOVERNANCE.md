@@ -13,15 +13,20 @@ The CubeFS community adheres to the following principles:
 
 The CubeFS project has a project lead.
 
-A project lead in CubeFS is a single person that has a final say in any decision concerning the CubeFS project.
+- A project lead in CubeFS is a single person that has a final say controversial issues concerning the CubeFS project.
+- The term of the project lead position is one year, and individuals can serve multiple terms in this role.
+- The project lead is elected by CubeFS maintainers according to an individual's technical merit to CubeFS project.
+- The current project lead is identified in the top level [MAINTAINERS](MAINTAINERS.md) file with the string `project lead` and the term behind the name.
 
-The term of the project lead is one year, with no term limit restriction.
+## Expectations from The Steering Committee
 
-The project lead is elected by CubeFS maintainers according to an individual's technical merit to CubeFS project.
-
-The current project lead is identified in the top level [MAINTAINERS](MAINTAINERS.md) file with the string
-`project lead` and the term behind the name.
-
+The CubeFS project has a Steering Committee.
+- The term of the Steering Committee position is one year, and individuals can serve multiple terms in this role.
+- Steering Committee Member is responsible for the top-level design of projects, formulation of roadmaps, and community management
+- The composition of the Steering Committee members consists of core maintainers from independent developers or vendors. 
+- To ensure fairness, efforts will be made to maintain a balanced representation among the personnel from different vendors.
+- No single vendor can exceed 50% of the total number of personnel.
+- The term of the Steering Committee is one year,adjust up to 50% for stability.
 
 ## Expectations from Maintainers
 
@@ -31,33 +36,36 @@ Making a community work requires input/effort from everyone. Maintainers should 
 participate in Pull Request reviews. Maintainers are expected to respond to assigned Pull Requests
 in a *reasonable* time frame, either providing insights, or assign the Pull Requests to other
 maintainers.
-
 Every Maintainer is listed in the top-level [MAINTAINERS](MAINTAINERS.md) file.
 
 ## Committer
 
-Committer is an active contributor in the community who continuously makes contributions to the community by contributing codes, documentation, participating in community discussions, or helping community users answer questions, etc. 
+Committer is an active contributor in the community who continuously makes contributions to the community by contributing codes, documentation, participating in community discussions, or answering community questions, etc. 
 
-Typically, they need to have a good understanding of the project to help more community users quickly join the project. After becoming a committer, you will be responsible for reviewing relevant issues or PRs, and your opinions are also extremely important to the community.
+Typically, they need to have a good understanding of the project to help more community users quickly join the project. Committer will be responsible for reviewing relevant issues or PRs, and your opinions are also extremely important to the community.
 
 Every Committer is listed in the top-level [MAINTAINERS](MAINTAINERS.md) file.
 
 ## Becoming a committer
 
-If you are interested in becoming a committer, please email `maintainers@cubefs.groups.io`, and you will receive an invitation letter from the community after the review is passed.
+If you are interested in becoming a committer, please email `maintainers@cubefs.groups.io`, 
+The steering committee will review the proposal,and you will receive an invitation letter from the community after the review is passed.
 
 ## Becoming a Maintainer
 
 On successful merge of a significant pull request any current maintainer can reach
 to the author behind the pull request and ask them if they are willing to become a CubeFS
 maintainer. The email of the new maintainer invitation should be cc'ed to `maintainers@cubefs.groups.io`
-as part of the process.
+as part of the process.The steering committee will review the proposal,and you will receive an invitation letter from the community after the review is passed.
 
 ## Changes in Maintainership
 
 If a Maintainer feels she/he can not fulfill the "Expectations from Maintainers", they are free to step down.
-
-Maintainers of a repository (or a directory) can lose their status by voluntarily stepping down for personal reasons, or due to inactivity.
+The steering committee will adjust the list of maintainers based on the following factors
+- The activity level and contribution level of the maintainer in the past six months.
+- Balance of personnel across modules
+- Module changes, such as additions or deprecations
+- Balance of personnel among vendors.
 
 In such a case:
 
@@ -68,32 +76,38 @@ remove them from the core-maintainers team;
 go to https://maintainers.cncf.io/ and open a PR to remove them under CubeFS;
 remove them from the cubefs.groups.io/g/maintainers mailing list.
 
+## Changes in Project Lead and Steering Committee
 
-## Changes in Project Lead
-
-Changes in project lead or term is initiated by opening a github PR.
+Changes in project lead or or steering committee members are initiated by opening a github PR.
 
 Anyone from CubeFS community can vote on the PR with either +1 or -1.
 
 Only the following votes are binding:
 1) Any maintainer that has been listed in the top-level [MAINTAINERS](MAINTAINERS.md) file before the PR is opened.
 2) Any maintainer from an organization may cast the vote for that organization. However, no organization
-should have more binding votes than 1/5 of the total number of maintainers defined in 1).
+should have more binding votes than 1/2 of the total number of maintainers defined in 1).
 
-The PR should only be opened no earlier than 6 weeks before the end of the project lead's term.
-The PR should be kept open for no less than 4 weeks. The PR can only be merged after the end of the
-last project lead's term, with more +1 than -1 in the binding votes.
+The PR should only be opened no earlier than 4 weeks before the end of the term.
+The PR should be kept open for no less than 2 weeks. The PR can only be merged after the end of the
+last term, with more +1 than -1 in the binding votes.
 
-When there are conflicting PRs about changes in project lead, the PR with the most binding +1 votes is merged.
+When there are conflicting PRs about changes in project lead or Steering Committee, the PR with the most binding +1 votes is merged.
 
-The project lead can volunteer to step down.
+The project lead or Steering Committee member can volunteer to step down.
 
 ## Changes in Project Governance
 
-Changes in project governance (GOVERNANCE.md) could be initiated by opening a github PR.
-The PR should only be opened no earlier than 6 weeks before the end of the project lead's term.
-The PR should be kept open for no less than 4 weeks. The PR can only be merged follow the same
-voting process as in `Changes in Project Lead`.
+- Changes in project governance (GOVERNANCE.md) could be initiated by opening a github PR.
+- The PR should only be opened no earlier than 4 weeks before the end of the project lead's term.
+- The PR should be kept open for no less than 2 weeks. The PR can only be merged follow the same
+- voting process as in `Changes in Project Lead`.
+
+## vendor-neutrality
+
+- Vendors share communication channels of the community, such as social media and messaging platforms.
+- All vendors involved in the project are encouraged to actively participate in the topic selection process for public events.
+- Vendors can apply to participate in open-source conferences and events. The invitation should be cc'ed to `maintainers@cubefs.groups.io`.
+- The Steering Committee will review the application, and if it is approved, the Steering Committee can provide guidance on this matter.
 
 ## Decision making process
 
@@ -147,6 +161,10 @@ permits, or a _reasonable_ time frame to allow maintainers to have a chance to v
 ## Code of Conduct
 
 The [CubeFS Code of Conduct](CODE_OF_CONDUCT.md) is aligned with the CNCF Code of Conduct.
+
+## Liaison Officer for CNCF
+
+The liaison officer is responsible for daily communication with CNCF, including information updates, demand communication, community activity meetings, etc.
 
 ## Credits
 
