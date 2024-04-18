@@ -124,14 +124,14 @@ func TestDiskDropCollectTask(t *testing.T) {
 	{
 		// reviseDropTask failed
 		mgr := newDiskDroper(t)
-		mgr.prepareTaskPool = taskpool.New(1, 2)
+		mgr.prepareTaskPool = taskpool.New(1, 1)
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().ListDropDisks(any).Return(nil, errMock)
 		mgr.collectTask()
 		require.Equal(t, 0, mgr.collectedDisks.size())
 	}
 	{
 		mgr := newDiskDroper(t)
-		mgr.prepareTaskPool = taskpool.New(1, 2)
+		mgr.prepareTaskPool = taskpool.New(1, 1)
 		// loopGenerateTask success
 		volume := MockGenVolInfo(10005, codemode.EC6P6, proto.VolumeStatusIdle)
 		var units []*client.VunitInfoSimple
