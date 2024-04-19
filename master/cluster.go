@@ -3586,6 +3586,12 @@ func (c *Cluster) setForbidMpDecommission(isForbid bool) (err error) {
 func (c *Cluster) clearVols() {
 	c.volMutex.Lock()
 	defer c.volMutex.Unlock()
+	vols := c.vols
+	go func() {
+		for _, vol := range vols {
+			vol.qosManager.stop()
+		}
+	}()
 	c.vols = make(map[string]*Vol, 0)
 }
 
