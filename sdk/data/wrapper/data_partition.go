@@ -171,21 +171,14 @@ func (dp *DataPartition) GetAllAddrs() string {
 }
 
 func (dp *DataPartition) GetAllRdmaAddrs() string {
-	hosts := strings.Split(dp.GetAllAddrs(), proto.AddrSplit)
-	rdmaHosts := ""
-	for _, host := range hosts {
-		pars := strings.Split(host, ":")
-		if len(pars) != 2 {
-			return ""
-		}
+	remoteHosts := make([]string, len(dp.Hosts)-1)
+	for i := 1; i < len(dp.Hosts); i++ {
+		pars := strings.Split(dp.Hosts[i], ":")
 		ip, _ := pars[0], pars[1]
-		//ips := strings.Split(ip, ".")
-		//tmp, _ := strconv.Atoi(ips[3])
-		//ip = ips[0] + "." + ips[1] + "." + ips[2] + "." + strconv.Itoa(tmp+10)
 		addr := ip + ":" + util.Config.RdmaPort
-		rdmaHosts += addr + "/"
+		remoteHosts[i-1] = addr
 	}
-	return rdmaHosts
+	return strings.Join(remoteHosts, proto.AddrSplit) + proto.AddrSplit
 }
 
 func GetRdmaAddr(addr string) string {
@@ -195,9 +188,6 @@ func GetRdmaAddr(addr string) string {
 		return ""
 	}
 	ip, _ := pars[0], pars[1]
-	//ips := strings.Split(ip, ".")
-	//tmp, _ := strconv.Atoi(ips[3])
-	//ip = ips[0] + "." + ips[1] + "." + ips[2] + "." + strconv.Itoa(tmp+10)
 	rdmaAddr := ip + ":" + util.Config.RdmaPort
 	return rdmaAddr
 
