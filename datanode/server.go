@@ -290,6 +290,8 @@ func (s *DataNode) parseConfig(cfg *config.Config) (err error) {
 		util.Config.WqDepth = int(cfg.GetInt64WithDefault("wqDepth", 32))
 		util.Config.MinCqeNum = int(cfg.GetInt64WithDefault("minCqeNum", 1024))
 
+		util.Config.EnableRdmaLog = cfg.GetBoolWithDefault("enableRdmaLog", false)
+
 		stream.StreamRdmaConnPool = util.NewRdmaConnectPool()
 		repl.RdmaConnPool = util.NewRdmaConnectPool()
 	}
@@ -607,9 +609,13 @@ func (s *DataNode) startRDMAService() (err error) {
 	s.rdmaListener = l
 	go func(ln *rdma.Server) {
 		for {
-			conn := ln.Accept()
+			conn, err := ln.Accept()
+			if err != nil {
+				log.LogErrorf("action[startRDMAService] failed to accept, err:%s", err.Error())
+				break
+			}
 			//TODO
-			//log.LogDebugf("action[startRDMAService] accept connection from %s.", conn.RemoteAddr().String())
+			log.LogDebugf("action[startRDMAService] accept connection from %s.", conn.RemoteAddr().String())
 			go s.serveConn(conn)
 		}
 	}(l)
