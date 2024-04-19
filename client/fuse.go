@@ -286,6 +286,7 @@ func main() {
 
 	stream.IsRdma = cfg.GetBoolWithDefault("enableRdma", false)
 	if stream.IsRdma {
+		util.Config.RdmaPort = cfg.GetString("rdmaPort")
 		util.Config.MemBlockNum = int(cfg.GetInt64WithDefault("rdmaMemBlockNum", 8*1024*5))
 		util.Config.MemBlockSize = int(cfg.GetInt64WithDefault("rdmaMemBlockSize", 65536*2))
 		util.Config.MemPoolLevel = int(cfg.GetInt64WithDefault("rdmaMemPoolLevel", 18))

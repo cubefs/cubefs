@@ -103,11 +103,8 @@ func (s *DataNode) OperatePacket(p *repl.Packet, c net.Conn) (err error) {
 				log.LogErrorf(logContent)
 			}
 		} else {
-			/*
-				logContent := fmt.Sprintf("action[OperatePacket] %v.",
-					p.LogMessage(p.GetOpMsg(), c.RemoteAddr().String(), start, nil)) //rdma TODO
-			*/
-			logContent := ""
+			logContent := fmt.Sprintf("action[OperatePacket] %v.",
+				p.LogMessage(p.GetOpMsg(), c.RemoteAddr().String(), start, nil)) //rdma TODO
 			switch p.Opcode {
 			case proto.OpStreamRead, proto.OpRead, proto.OpExtentRepairRead, proto.OpStreamFollowerRead:
 			case proto.OpReadTinyDeleteRecord:

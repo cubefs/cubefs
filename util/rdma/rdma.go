@@ -492,6 +492,7 @@ func (conn *Connection) RdmaPostRecvResponse(responseBuffer []byte) error {
 }
 
 type RdmaPoolConfig struct {
+	RdmaPort          string
 	MemBlockNum       int
 	MemBlockSize      int
 	MemPoolLevel      int
