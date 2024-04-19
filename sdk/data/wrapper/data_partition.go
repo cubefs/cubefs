@@ -129,23 +129,21 @@ func (dp *DataPartition) String() string {
 
 func (dp *DataPartition) CheckAllRdmaHostsIsAvail(exclude map[string]struct{}) {
 	var (
-		client *rdma.Client
-		conn   *rdma.Connection
-		err    error
+		conn *rdma.Connection
+		err  error
 	)
 	for i := 0; i < len(dp.Hosts); i++ {
 		host := GetRdmaAddr(dp.Hosts[i])
 		pars := strings.Split(host, ":")
-		if client, err = rdma.NewRdmaClient(pars[0], pars[1]); err != nil {
-			log.LogWarnf("CheckAllRdmaHostsIsAvail: dial host (%v) err(%v)", host, err)
-			if strings.Contains(err.Error(), syscall.ECONNREFUSED.Error()) { //TODO rdma connection refused
+		conn = &rdma.Connection{}
+		if err = conn.Dial(pars[0], pars[1]); err != nil { //rdma todo rdma connection timeout
+			log.LogWarnf("CheckAllHostsIsAvail: dial host (%v) err(%v)", host, err)
+			if strings.Contains(err.Error(), syscall.ECONNREFUSED.Error()) {
 				exclude[host] = struct{}{}
 			}
 			continue
 		}
-		conn = client.Dial() //rdma todo rdma connection timeout
 		conn.Close()
-		client.Close()
 	}
 
 }
@@ -174,21 +172,14 @@ func (dp *DataPartition) GetAllAddrs() string {
 }
 
 func (dp *DataPartition) GetAllRdmaAddrs() string {
-	hosts := strings.Split(dp.GetAllAddrs(), proto.AddrSplit)
-	rdmaHosts := ""
-	for _, host := range hosts {
-		pars := strings.Split(host, ":")
-		if len(pars) != 2 {
-			return ""
-		}
+	remoteHosts := make([]string, len(dp.Hosts)-1)
+	for i := 1; i < len(dp.Hosts); i++ {
+		pars := strings.Split(dp.Hosts[i], ":")
 		ip, _ := pars[0], pars[1]
-		//ips := strings.Split(ip, ".")
-		//tmp, _ := strconv.Atoi(ips[3])
-		//ip = ips[0] + "." + ips[1] + "." + ips[2] + "." + strconv.Itoa(tmp+10)
-		addr := ip + ":17360"
-		rdmaHosts += addr + "/"
+		addr := ip + ":" + util.Config.RdmaPort
+		remoteHosts[i-1] = addr
 	}
-	return rdmaHosts
+	return strings.Join(remoteHosts, proto.AddrSplit) + proto.AddrSplit
 }
 
 func GetRdmaAddr(addr string) string {
@@ -198,10 +189,7 @@ func GetRdmaAddr(addr string) string {
 		return ""
 	}
 	ip, _ := pars[0], pars[1]
-	//ips := strings.Split(ip, ".")
-	//tmp, _ := strconv.Atoi(ips[3])
-	//ip = ips[0] + "." + ips[1] + "." + ips[2] + "." + strconv.Itoa(tmp+10)
-	rdmaAddr := ip + ":17360"
+	rdmaAddr := ip + ":" + util.Config.RdmaPort
 	return rdmaAddr
 
 	return addr

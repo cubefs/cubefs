@@ -95,6 +95,7 @@ func (ft *FollowerTransport) serverWriteToFollower() {
 	for {
 		select {
 		case p := <-ft.sendCh:
+			log.LogDebugf("writeToFollowerRdmaConn start: followerPacket:%v", p)
 			if conn, ok := ft.conn.(*rdma.Connection); ok {
 				if err := p.WriteToFollowerRDMAConn(conn); err != nil {
 					p.PackErrorBody(ActionSendToFollowers, err.Error())
@@ -114,7 +115,7 @@ func (ft *FollowerTransport) serverWriteToFollower() {
 					continue
 				}
 			}
-
+			log.LogDebugf("writeToFollowerRdmaConn end: followerPacket:%v", p)
 			ft.recvCh <- p
 		case <-ft.exitCh:
 			ft.exitedMu.Lock()
@@ -136,7 +137,9 @@ func (ft *FollowerTransport) serverReadFromFollower() {
 	for {
 		select {
 		case p := <-ft.recvCh:
+			log.LogDebugf("serverReadFromFollower start: followerPacket:%v", p)
 			ft.readFollowerResult(p)
+			log.LogDebugf("serverReadFromFollower end: followerPacket:%v", p)
 		case <-ft.exitCh:
 			ft.exitedMu.Lock()
 			if atomic.AddInt32(&ft.isclosed, -1) == FollowerTransportExited {
@@ -180,7 +183,7 @@ func (ft *FollowerTransport) readFollowerResult(request *FollowerPacket) (err er
 	if request.IsBatchDeleteExtents() {
 		timeOut = proto.BatchDeleteExtentReadDeadLineTime
 	}
-
+	log.LogDebugf("RecvRespFromRDMAConn start: reply:%v", reply)
 	if conn, ok := ft.conn.(*rdma.Connection); ok {
 		if reply.RecvRespFromRDMAConn(conn, timeOut); err != nil {
 			log.LogErrorf("readFollowerResult ft.addr(%v), err(%v)", ft.addr, err.Error())
@@ -192,7 +195,7 @@ func (ft *FollowerTransport) readFollowerResult(request *FollowerPacket) (err er
 			return
 		}
 	}
-
+	log.LogDebugf("RecvRespFromRDMAConn end: reply:%v", reply)
 	if reply.ReqID != request.ReqID || reply.PartitionID != request.PartitionID ||
 		reply.ExtentOffset != request.ExtentOffset || reply.CRC != request.CRC || reply.ExtentID != request.ExtentID {
 		err = fmt.Errorf(ActionCheckReply+" request(%v), reply(%v)  ", request.GetUniqueLogId(),
@@ -288,7 +291,9 @@ func (rp *ReplProtocol) ReceiveResponseFromFollowersGoRoutine() {
 	for {
 		select {
 		case <-rp.ackCh:
+			log.LogDebugf("checkLocalResultAndReciveAllFollowerResponse start")
 			rp.checkLocalResultAndReciveAllFollowerResponse()
+			log.LogDebugf("checkLocalResultAndReciveAllFollowerResponse end")
 		case <-rp.exitC:
 			rp.exitedMu.Lock()
 			if atomic.AddInt32(&rp.exited, -1) == ReplHasExited {
@@ -319,10 +324,9 @@ func (rp *ReplProtocol) readPkgAndPrepare() (err error) {
 		log.LogDebugf("action[readPkgAndPrepare] packet(%v) from remote(%v) ",
 			request.GetUniqueLogId(), rp.sourceConn.RemoteAddr().String())
 	*/
-	log.LogDebugf("read pkg and prepare time[%v]", time.Now())
 	log.LogDebugf("packet: %v", request)
-	//log.LogDebugf("action[readPkgAndPrepare] packet(%v) op %v from remote(%v) conn(%v) ",
-	//	request.GetUniqueLogId(), request.Opcode, rp.sourceConn.RemoteAddr().String(), rp.sourceConn)
+	log.LogDebugf("action[readPkgAndPrepare] packet(%v) op %v from remote(%v) conn(%v) ",
+		request.GetUniqueLogId(), request.Opcode, rp.sourceConn.RemoteAddr().String(), rp.sourceConn)
 
 	if err = request.resolveFollowersAddr(); err != nil {
 		log.LogDebugf("resolveFollowerAddr failed, err:%v", err)
@@ -341,7 +345,7 @@ func (rp *ReplProtocol) readPkgAndPrepare() (err error) {
 			_ = rdma.ReleaseDataBuffer(request.Data)
 		}
 	}
-
+	log.LogDebugf("read pkg and prepare exit")
 	return
 }
 
@@ -358,6 +362,7 @@ func (rp *ReplProtocol) sendRequestToAllFollowers(request *Packet) (index int, e
 		followerRequest.RemainingFollowers = 0
 		request.followerPackets[index] = followerRequest
 		transport.Write(followerRequest)
+		log.LogDebugf("follower transport write followerPacket:%v", followerRequest)
 	}
 
 	return
@@ -374,16 +379,22 @@ func (rp *ReplProtocol) OperatorAndForwardPktGoRoutine() {
 		select {
 		case request := <-rp.toBeProcessedCh:
 			if !request.IsForwardPacket() {
+				log.LogDebugf("local exec operatorFunc start")
 				rp.operatorFunc(request, rp.sourceConn)
+				log.LogDebugf("local exec operatorFunc end")
 				rp.putResponse(request)
 			} else {
+				log.LogDebugf("sendRequestToAllFollowers start")
 				index, err := rp.sendRequestToAllFollowers(request)
+				log.LogDebugf("sendRequestToAllFollowers end")
 				if err != nil {
 					rp.setReplProtocolError(request, index)
 					rp.putResponse(request)
 				} else {
 					rp.pushPacketToList(request)
+					log.LogDebugf("local exec operatorFunc start")
 					rp.operatorFunc(request, rp.sourceConn)
+					log.LogDebugf("local exec operatorFunc end")
 					rp.putAck()
 				}
 			}
@@ -404,7 +415,9 @@ func (rp *ReplProtocol) writeResponseToClientGoRroutine() {
 	for {
 		select {
 		case request := <-rp.responseCh:
+			log.LogDebugf("writeResponseToClient start:%v", request)
 			rp.writeResponse(request)
+			log.LogDebugf("writeResponseToClient end:%v", request)
 		case <-rp.exitC:
 			rp.exitedMu.Lock()
 			if atomic.AddInt32(&rp.exited, -1) == ReplHasExited {
@@ -448,7 +461,7 @@ func (rp *ReplProtocol) checkLocalResultAndReciveAllFollowerResponse() {
 			request.PackErrorBody(ActionReceiveFromFollower, err.Error())
 			return
 		}
-
+		log.LogDebugf("checkLocalResultAndReciveAllFollowerResponse: followerPacket:%v", followerPacket)
 	}
 }
 
@@ -643,6 +656,7 @@ func (rp *ReplProtocol) deletePacket(reply *Packet, e *list.Element) (success bo
 	rp.packetList.Remove(e)
 	success = true
 	rp.putResponse(reply)
+	log.LogDebugf("put response: reply:%v", reply)
 	return
 }
 
