@@ -4,32 +4,36 @@
 //#include "wait_group.h"
 //#include "queue.h"
 #include "hashmap.h"
-//#include "rdma_proto.h"
-#include "rdma_pool.h"
+#include "rdma_proto.h"
+//#include "rdma_pool.h"
 
-#include "epoll.h"
+//#include "epoll.h"
+
+#include "log.h"
+
+#include "connection.h"
 
 #include <rdma/rdma_cma.h>
 #include <rdma/rdma_verbs.h>
 
-#define C_OK 1
-#define C_ERR 0
+//#define C_OK 1
+//#define C_ERR 0
 
-static int rdma_comp_vector = -1; /* -1 means a random one */
+//static int rdma_comp_vector = -1; /* -1 means a random one */
 
+void on_addr_resolved(struct rdma_cm_id *id);
 
-int getHeaderSize();
+void on_route_resolved(struct rdma_cm_id *id);
 
-int getResponseSize();
+void on_accept(struct rdma_cm_id* listen_id, struct rdma_cm_id* id);
 
-void destroy_connection(Connection *conn);
+void on_connected(struct rdma_cm_id *id);
 
-int build_connection(struct ConnectionEvent *conn_ev, Connection *conn);
+void on_disconnected(struct rdma_cm_id* id);
 
-void build_params(struct rdma_conn_param *params);
+void process_cm_event(struct rdma_cm_id *conn_id, struct rdma_cm_id *listen_id, int event_type);
 
-void connection_event_cb(void *ctx);
+extern void *cm_thread(void *ctx);
 
-void *cm_thread(void *ctx);
 
 #endif

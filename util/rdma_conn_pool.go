@@ -24,11 +24,10 @@ import (
 	"github.com/cubefs/cubefs/util/rdma"
 )
 
-type RdmaClientObject struct {
-	client *rdma.Client // client conn
-	conn   *rdma.Connection
-	Addr   string
-	idle   int64
+type RdmaConnObject struct {
+	conn *rdma.Connection
+	Addr string
+	idle int64
 }
 
 const (
@@ -92,7 +91,7 @@ func (rcp *RdmaConnectPool) GetRdmaConn(targetAddr string) (conn *rdma.Connectio
 		if item.Value == nil {
 			continue
 		}
-		obj, ok := item.Value.(*RdmaClientObject)
+		obj, ok := item.Value.(*RdmaConnObject)
 		if !ok {
 			continue
 		}
@@ -106,11 +105,12 @@ func (rcp *RdmaConnectPool) GetRdmaConn(targetAddr string) (conn *rdma.Connectio
 	str := strings.Split(targetAddr, ":")
 	targetIp := str[0]
 	targetPort := str[1]
-	client, err := rdma.NewRdmaClient(targetIp, targetPort) //TODO
-	if err != nil {
+	conn = &rdma.Connection{}
+	conn.TargetIp = targetIp
+	conn.TargetPort = targetPort
+	if err = conn.Dial(targetIp, targetPort); err != nil {
 		return nil, err
 	}
-	conn = client.Dial()
 
 	return conn, nil
 }
@@ -120,22 +120,19 @@ func (rcp *RdmaConnectPool) PutRdmaConn(conn *rdma.Connection, forceClose bool) 
 		return
 	}
 
-	client, _ := (conn.Ctx).(*rdma.Client)
-	addr := client.RemoteIp + ":" + client.RemotePort
+	addr := conn.TargetIp + ":" + conn.TargetPort
 
 	if forceClose {
 		conn.Close()
-		client.Close()
 		return
 	}
 
 	rcp.Lock()
 	defer rcp.Unlock()
 
-	obj := &RdmaClientObject{
-		client: client,
-		conn:   conn,
-		Addr:   addr,
+	obj := &RdmaConnObject{
+		conn: conn,
+		Addr: addr,
 	}
 	rcp.NetLinks.PushFront(obj)
 

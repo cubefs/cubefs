@@ -2,23 +2,24 @@
 #define OBJECT_POOL_H
 
 #include "buddy.h"
+#include "log.h"
 #include <stdlib.h>
 #include <stdint.h>
 #include <unistd.h>
 #include <string.h>
 
-typedef void* Item;
+//typedef void* Item;
 
-typedef struct ObjectPool {
+typedef struct object_pool {
     void *original_mem;
     uint32_t original_mem_size;
-    struct buddy* allocation;
+    struct buddy *allocation;
     int block_num;
-} ObjectPool;
+} object_pool;
 
 
-ObjectPool* InitObjectPool(int block_num, int block_size, int level);
+object_pool* init_object_pool(int block_num, int block_size, int level);
 
-void CloseObjectPool(ObjectPool* pool);
+void close_object_pool(object_pool* pool);
 
 #endif

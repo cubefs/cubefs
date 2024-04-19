@@ -127,23 +127,21 @@ func (dp *DataPartition) String() string {
 
 func (dp *DataPartition) CheckAllRdmaHostsIsAvail(exclude map[string]struct{}) {
 	var (
-		client *rdma.Client
-		conn   *rdma.Connection
-		err    error
+		conn *rdma.Connection
+		err  error
 	)
 	for i := 0; i < len(dp.Hosts); i++ {
 		host := GetRdmaAddr(dp.Hosts[i])
 		pars := strings.Split(host, ":")
-		if client, err = rdma.NewRdmaClient(pars[0], pars[1]); err != nil {
-			log.LogWarnf("CheckAllRdmaHostsIsAvail: dial host (%v) err(%v)", host, err)
-			if strings.Contains(err.Error(), syscall.ECONNREFUSED.Error()) { //TODO rdma connection refused
+		conn = &rdma.Connection{}
+		if err = conn.Dial(pars[0], pars[1]); err != nil { //rdma todo rdma connection timeout
+			log.LogWarnf("CheckAllHostsIsAvail: dial host (%v) err(%v)", host, err)
+			if strings.Contains(err.Error(), syscall.ECONNREFUSED.Error()) {
 				exclude[host] = struct{}{}
 			}
 			continue
 		}
-		conn = client.Dial() //rdma todo rdma connection timeout
 		conn.Close()
-		client.Close()
 	}
 
 }

@@ -7,33 +7,23 @@
 #include <rdma/rdma_verbs.h>
 #include <arpa/inet.h>
 #include "rdma_proto.h"
+#include "log.h"
+
+#include "connection.h"
 
 #define UNUSED(x) (void)(x)
-#define C_OK 1
-#define C_ERR 0
+//#define C_OK 1
+//#define C_ERR 0
 
 
-typedef void (*CompleteCb)(struct rdma_cm_id *id, void* ctx);
-typedef void (*EPoolCb)(void* ctx);
+int process_recv_event(connection *conn, memory_entry *entry);
 
-extern int RecvHeaderCallback(void*, int, char*);
+int process_send_event(connection *conn);
 
-extern void RecvMessageCallback(void*, MemoryEntry*);
+int process_read_event(connection *conn, memory_entry *entry);
 
-extern void EpollAddSendAndRecvEvent(int, void*);
+void process_cq_event(struct ibv_wc *wcs, int num, worker *worker);
 
-extern void EpollDelConnEvent(int);
-
-extern void DisConnectCallback(void*);
-
-int connRdmaHandleRecv(Connection *conn, void *block, uint32_t byte_len);
-
-int connRdmaHandleRead(Connection *conn, MemoryEntry* entry, uint32_t byte_len);
-
-int connRdmaHandleSend(Connection *conn);
-
-int transport_sendAndRecv_event_cb(void *ctx);
-
-void *cq_thread(void *ctx);
+extern void *cq_thread(void *ctx);
 
 #endif

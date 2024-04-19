@@ -1,5 +1,6 @@
 #include <client.h>
 
+/*
 int OnClientConnPreConnect(struct rdma_cm_id *id, void* ctx) {
     struct ConnectionEvent* conn_ev = (struct ConnectionEvent*)ctx;
     struct RdmaContext* client = (struct RdmaContext*)conn_ev->ctx;
@@ -126,47 +127,68 @@ int OnClientConnDisconnected(struct rdma_cm_id *id, void* ctx) {
     return C_OK;
 }
 
-
 struct Connection* getClientConn(struct RdmaContext *client) {
     wait_event(client->cFd);
     return client->conn;
 }
+*/
 
-struct RdmaContext* Connect(const char* ip, const char* port, char* remoteAddr) {//, MemoryPool* pool, ObjectPool* headerPool, ObjectPool* responsePool, struct ibv_pd* pd, struct ibv_mr* mr
-
+struct connection* rdma_connect_by_addr(const char* ip, const char* port) {//, MemoryPool* pool, ObjectPool* headerPool, ObjectPool* responsePool, struct ibv_pd* pd, struct ibv_mr* mr
     struct addrinfo *addr;
-    struct rdma_cm_id *conn = NULL;
-    struct rdma_event_channel *ec = NULL;
     struct rdma_conn_param cm_params;
-    TEST_NZ_(getaddrinfo(ip, port, NULL, &addr));
-    TEST_Z_(ec = rdma_create_event_channel());
-    TEST_NZ_(rdma_create_id(ec, &conn, NULL, RDMA_PS_TCP));
-    TEST_NZ_(rdma_resolve_addr(conn, NULL, addr->ai_addr, TIMEOUT_IN_MS));
+    uint64_t nd;
+    nd = allocate_nd(CONN_ACTIVE_BIT);
+    connection* conn = init_connection(nd, CONN_TYPE_CLIENT);
+    if (conn == NULL) {
+        log_debug("init_connection return null");
+        return NULL;
+    }
+    /*
+    int ret = create_conn_qp(conn, id);
+    if (ret != C_OK) {
+        log_debug("conn(%lu-%p) create qp failed, errno:%d", conn->nd, conn, errno);
+        conn_disconnect(conn);
+        //del_conn_from_worker(conn->nd, worker, worker->nd_map);
+        //add_conn_to_worker(conn, worker, worker->closing_nd_map);
+        return;
+    }
+    ret = rdma_setup_ioBuf(conn, CONN_TYPE_CLIENT);
+    if (ret != C_OK) {
+        log_debug("rdma reg mem failed, err:%d", errno);
+        goto err_free;
+    }
+    */
+
+    add_conn_to_worker(conn, conn->worker, conn->worker->nd_map);
+
+    getaddrinfo(ip, port, NULL, &addr);
+    int ret = rdma_create_id(g_net_env->event_channel, &conn->cm_id, (void*)(conn->nd), RDMA_PS_TCP);
+    if (ret != 0) {
+        log_debug("rdma create id failed, err:%d", errno);
+        goto err_free;
+    }
+    log_debug("conn(%lu-%p) create cmid:%p", conn->nd, conn, conn->cm_id);
+
+    ret = rdma_resolve_addr(conn->cm_id, NULL, addr->ai_addr, TIMEOUT_IN_MS);
+    if (ret != 0) {
+        log_debug("rdma solve addr failed, err:%d", errno);
+        goto err_destroy_id;
+    }
     freeaddrinfo(addr);
-    struct RdmaContext* client = (struct RdmaContext*)malloc(sizeof(struct RdmaContext));
-    client->listen_id = conn;
-    client->ec = ec;
-    client->ip = (char *)ip;
-    client->port = (char *)port;
-    client->state = 0;
-    client->cFd = open_event_fd();
-    client->conn = NULL;
-    client->isReConnect = false;
-    struct ConnectionEvent* conn_ev = (struct ConnectionEvent*)malloc(sizeof(struct ConnectionEvent));
-    conn_ev->cm_id = conn;
-    conn_ev->ctx = client;
-    conn_ev->preconnect_callback = OnClientConnPreConnect;
-    conn_ev->connected_callback = OnClientConnConnected;
-    conn_ev->disconnected_callback = OnClientConnDisconnected;
-    conn_ev->rejected_callback = OnClientConnRejected;
-    client->conn_ev = conn_ev;
-    //EpollAddConnectEvent(client->listen_id->channel->fd, conn_ev);
-    //epoll_rdma_connectEvent_add(client->listen_id->channel->fd, conn_ev, connection_event_cb);
-    rdma_connectEvent_thread(2, client, cm_thread, conn_ev);
-    return client;
+
+    wait_event(conn->connect_fd);
+    return conn;
+err_destroy_id:
+    rdma_destroy_id(conn->cm_id);
+//err_destroy_iobuf:
+//    rdma_destroy_ioBuf(conn);
+err_free:
+    del_conn_from_worker(conn->nd,conn->worker,conn->worker->nd_map);
+    destroy_connection(conn);
+    return NULL;
 }
 
-
+/*
 int CloseClient(struct RdmaContext* client) {
     if(client->conn != NULL) {
         Connection *conn = client->conn;
@@ -205,3 +227,4 @@ int CloseClient(struct RdmaContext* client) {
     free(client);
     return C_OK;
 }
+*/

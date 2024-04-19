@@ -11,18 +11,10 @@
 
 #include "rdma.h"
 
-int OnServerConnPreConnect(struct rdma_cm_id *id, void* ctx);
+connection* get_rdma_server_conn(struct rdma_listener *server);
 
-int OnServerConnConnected(struct rdma_cm_id *id, void* ctx);
+struct rdma_listener* start_rdma_server_by_addr(char* ip, char* port);
 
-int OnServerConnDisconnected(struct rdma_cm_id *id, void* ctx);
-
-Connection* getServerConn(struct RdmaListener *server);
-
-struct RdmaListener* StartServer(const char* ip, char* port, char* serverAddr);
-
-int CloseServer(struct RdmaListener* server);
-
-
+void close_rdma_server(struct rdma_listener* server);
 
 #endif

@@ -1,6 +1,6 @@
 #include "server.h"
 
-
+/*
 int OnServerConnPreConnect(struct rdma_cm_id *id, void* ctx) {
     struct ConnectionEvent* conn_ev = (struct ConnectionEvent*)ctx;
     struct RdmaListener* server = (struct RdmaListener*)conn_ev->ctx;
@@ -67,21 +67,54 @@ int OnServerConnDisconnected(struct rdma_cm_id *id, void* ctx) {
     wait_group_done(&server->closeWg);
     return C_OK;
 }
+*/
 
-Connection* getServerConn(struct RdmaListener *server) {
-    wait_event(server->cFd);
-    Connection *conn;
-    pthread_mutex_lock(&(server->mutex));
-    DeQueue(server->waitConns, (Item *)&conn);
+
+
+connection* get_rdma_server_conn(struct rdma_listener *server) {
+    wait_event(server->connect_fd);
+    connection *conn;
+    pthread_spin_lock(&server->conn_lock);
+    DeQueue(server->wait_conns, &conn);//(Item *)
     if(conn == NULL) {
+        log_debug("get server conn failed: conn is null");
+        pthread_spin_unlock(&server->conn_lock);
+        return NULL;
     }
-    pthread_mutex_unlock(&(server->mutex));
+    pthread_spin_unlock(&server->conn_lock);
     return conn;
 }
 
-struct RdmaListener* StartServer(const char* ip, char* port, char* serverAddr) {
+struct rdma_listener* start_rdma_server_by_addr(char* ip, char* port) {
+    struct rdma_listener* server = (struct rdma_listener*)malloc(sizeof(struct rdma_listener));
+    if (server == NULL) {
+        log_debug("create server failed: malloc failed");
+        return NULL;
+    }
+    server->nd = allocate_nd(CONN_SERVER_BIT);
+    server->ip = ip;
+    server->port = port;
+    int ret = pthread_spin_init(&(server->conn_lock), PTHREAD_PROCESS_SHARED);
+    if (ret != 0) {
+        log_debug("init server spin lock failed, err:%d", ret);
+        goto err_free;
+    }
+    server->connect_fd = open_event_fd();
+    if (server->connect_fd == NULL) {
+        log_debug("open server event fd failed");
+        goto err_destroy_spinlock;
+    }
+    server->conn_map = hashmap_create();
+    if (server->conn_map == NULL) {
+        log_debug("create server conn map failed");
+        goto err_destroy_fd;
+    }
+    server->wait_conns = InitQueue();
+    if (server->wait_conns == NULL) {
+        log_debug("init server wait conns queue failed");
+        goto err_destroy_map;
+    }
     struct rdma_addrinfo hints, *res;
-    struct ibv_qp_init_attr init_attr;
     memset(&hints, 0, sizeof hints);
     hints.ai_flags = RAI_PASSIVE;
     hints.ai_port_space = RDMA_PS_TCP;
@@ -90,60 +123,52 @@ struct RdmaListener* StartServer(const char* ip, char* port, char* serverAddr) {
     addr.sin_family  = AF_INET;
     addr.sin_port  = htons(atoi(port));
     addr.sin_addr.s_addr = inet_addr(ip);
-    struct rdma_cm_id *listen_id;
-    struct rdma_event_channel *ec = NULL;
-    TEST_Z_(ec = rdma_create_event_channel());
-    TEST_NZ_(rdma_create_id(ec, &listen_id, NULL, RDMA_PS_TCP));
-    TEST_NZ_(rdma_bind_addr(listen_id, (struct sockaddr *)&addr));
-    TEST_NZ_(rdma_listen(listen_id, 10));
-    struct RdmaListener* server = (struct RdmaListener*)malloc(sizeof(struct RdmaListener));
-    if(server == NULL) {
-        return NULL;
+    ret = rdma_create_id(g_net_env->event_channel, &server->listen_id, server, RDMA_PS_TCP);
+    if (ret != 0) {
+        log_debug("rdma create id failed, errno:%d", errno);
+        goto err_destroy_queue;
     }
-    pthread_mutex_init(&(server->mutex),NULL);
-    server->waitConns = InitQueue();
-    if(server->waitConns == NULL) {
-        return NULL;
+    log_debug("server: listen_id:%p",server->listen_id);
+    ret = rdma_bind_addr(server->listen_id, (struct sockaddr *)&addr);
+    if (ret != 0) {
+        log_debug("rdma bind addr failed, errno:%d", errno);
+        goto err_destroy_id;
     }
-    server->count = 0;
-    server->listen_id = listen_id;
-    server->ec = ec;
-    server->ip = (char *)ip;
-    server->port = port;
-    server->state = 0;
-    server->cFd = open_event_fd();
-    int ret = wait_group_init(&server->closeWg);
-    if(ret) {
-        //printf("init conn wg failed, err:%d",ret);
-        return NULL;
+    ret = rdma_listen(server->listen_id, 10);
+    if (ret != 0) {
+        log_debug("rdma listen failed, errno:%d", errno);
+        goto err_destroy_id;
     }
-    struct ConnectionEvent* conn_ev = (struct ConnectionEvent*)malloc(sizeof(struct ConnectionEvent));
-    conn_ev->cm_id = listen_id;
-    conn_ev->ctx = server;
-    conn_ev->preconnect_callback = OnServerConnPreConnect;
-    conn_ev->connected_callback = OnServerConnConnected;
-    conn_ev->disconnected_callback = OnServerConnDisconnected;
-    server->conn_ev = conn_ev;
-    //EpollAddConnectEvent(server->listen_id->channel->fd, conn_ev);
-    //epoll_rdma_connectEvent_add(server->listen_id->channel->fd, conn_ev, connection_event_cb);
-    rdma_connectEvent_thread(1, server, cm_thread, conn_ev);
+    add_server_to_env(server, g_net_env->server_map);
+
     return server;
+
+err_destroy_id:
+    rdma_destroy_id(server->listen_id);
+err_destroy_queue:
+    DestroyQueue(server->wait_conns);
+err_destroy_map:
+    hashmap_destroy(server->conn_map);
+err_destroy_fd:
+    notify_event(server->connect_fd,1);
+err_destroy_spinlock:
+    pthread_spin_destroy(&server->conn_lock);
+err_free:
+    free(server);
+    return NULL;
 }
 
-int CloseServer(struct RdmaListener* server) {
-    wait_group_wait(&server->closeWg);
-    wait_group_destroy(&server->closeWg);
-    ClearQueue(server->waitConns);
-    DestroyQueue(server->waitConns);
-    notify_event(server->cFd,1);
-    //EpollDelConnEvent(server->listen_id->channel->fd);
-    //DelEpollEvent(server->listen_id->channel->fd);
-    DelConnectEvent(1, server);
-    rdma_destroy_id(server->listen_id);
-    if(server->ec) {
-        rdma_destroy_event_channel(server->ec);
+void close_rdma_server(struct rdma_listener* server) {
+    if (server != NULL) {
+        del_server_from_env(server);
+        notify_event(server->connect_fd,1);
+        DestroyQueue(server->wait_conns);
+        hashmap_destroy(server->conn_map);
+        pthread_spin_destroy(&server->conn_lock);
+        if (server->listen_id != 0) {
+            rdma_destroy_id(server->listen_id);
+        }
+        free(server);
+        return;
     }
-    free(server->conn_ev);
-    free(server);
-    return C_OK;
 }

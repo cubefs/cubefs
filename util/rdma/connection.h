@@ -11,78 +11,82 @@
 #include <netdb.h>
 #include <unistd.h>
 //#include "wait_group.h"
-#include "rdma_pool.h"
+#include "rdma_proto.h"
 //#include "rdma_proto.h"
 
-#include "transfer_event.h"
-#include "connection_event.h"
+//#include "transfer_event.h"
+//#include "connection_event.h"
 
 static const int trace = 0;
 #define TRACE_PRINT(fn) if (trace) fn
+#define ntohu64(v) (v)
+#define htonu64(v) (v)
 
 #define RDMA_DEFAULT_DX_SIZE  (1024*1024)
 static int rdma_dx_size = RDMA_DEFAULT_DX_SIZE;
 
-
-#define ntohu64(v) (v)
-#define htonu64(v) (v)
+extern void DisConnectCallback(void*);
 
 int64_t get_time_ns();
 
-int rdmaPostRecv(Connection *conn, void *block);
+int conn_rdma_read(connection *conn, memory_entry* entry);
 
-void *page_aligned_zalloc(size_t size);
+int conn_rdma_post_recv(connection *conn, void *block);
 
-void rdmaDestroyIoBuf(Connection *conn);
+int conn_rdma_post_send(connection *conn, void *block, int32_t len);
 
-int rdmaSetupIoBuf(Connection *conn, struct ConnectionEvent *conn_ev, int conntype);
+void rdma_destroy_ioBuf(connection *conn);
 
-Connection* AllocConnection(struct rdma_cm_id *cm_id, struct ConnectionEvent *conn_ev, int conntype);
+int rdma_setup_ioBuf(connection *conn, int conn_type);
 
-int UpdateConnection(Connection* conn);
+void destroy_connection(connection *conn);
 
-int ReConnect(Connection* conn);
+connection* init_connection(uint64_t nd, int conn_type);
 
-int DisConnect(Connection* conn, bool force);
+void destroy_conn_qp(connection *conn);
 
-int rdmaSendCommand(Connection *conn, void *block, int32_t len);
+int create_conn_qp(connection *conn, struct rdma_cm_id* id);
 
-int connRdmaSendHeader(Connection *conn, void* header, int32_t len);
+int add_conn_to_server(connection *conn, struct rdma_listener *server);
 
-int connRdmaSendResponse(Connection *conn, Response *response, int32_t len);
+int del_conn_from_server(connection *conn, struct rdma_listener *server);
 
-int rdmaPostRecvHeader(Connection *conn, void *headerCtx);
+void conn_disconnect(connection *conn);
 
-int rdmaPostRecvResponse(Connection *conn, void *responseCtx);
+//int DisConnect(Connection* conn, bool force);//TODO
 
-void* getDataBuffer(uint32_t size, int64_t timeout_us,int64_t *ret_size);
+int rdma_post_send_header(connection *conn, void* header);
 
-void* getResponseBuffer(Connection *conn, int64_t timeout_us, int32_t *ret_size);
+int rdma_post_send_response(connection *conn, response *response);
 
-void* getHeaderBuffer(Connection *conn, int64_t timeout_us, int32_t *ret_size);
+int rdma_post_recv_header(connection* conn, void *header_ctx);
 
-MemoryEntry* getRecvMsgBuffer(Connection *conn);
+int rdma_post_recv_response(connection *conn, void *response_ctx);
 
-MemoryEntry* getRecvResponseBuffer(Connection *conn);
+int conn_app_write(connection *conn, void* buff, void *header_ctx, int32_t len);
 
-void setConnContext(Connection* conn, void* connContext);
+int conn_app_send_resp(connection *conn, void* response_ctx);
 
-void setSendTimeoutUs(Connection* conn, int64_t timeout_us);
+void* get_data_buffer(uint32_t size, int64_t timeout_us,int64_t *ret_size);
 
-void setRecvTimeoutUs(Connection* conn, int64_t timeout_us);
+void* get_response_buffer(connection *conn, int64_t timeout_us, int32_t *ret_size);
 
-int releaseDataBuffer(void* buff);
+void* get_header_buffer(connection *conn, int64_t timeout_us, int32_t *ret_size);
 
-int releaseResponseBuffer(Connection* conn, void* buff);
+memory_entry* get_recv_msg_buffer(connection *conn);
 
-int releaseHeaderBuffer(Connection* conn, void* buff);
+memory_entry* get_recv_response_buffer(connection *conn);
 
-int connAppWrite(Connection *conn, void* buff, void *headerCtx, int32_t len);
+void set_conn_context(connection* conn, void* conn_context);
 
-int connAppSendResp(Connection *conn, void* responseCtx, int32_t len);
+void set_send_timeout_us(connection* conn, int64_t timeout_us);
 
-int RdmaRead(Connection *conn, Header *header, MemoryEntry* entry);
+void set_recv_timeout_us(connection* conn, int64_t timeout_us);
 
-int connRdmaRead(Connection *conn, void *block, MemoryEntry *entry);
+int release_data_buffer(void* buff);
+
+int release_response_buffer(connection* conn, void* buff);
+
+int release_header_buffer(connection* conn, void* buff);
 
 #endif
