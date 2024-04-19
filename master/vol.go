@@ -277,6 +277,7 @@ func (vol *Vol) initQosManager(limitArgs *qosArgs) {
 			Buffer:     arrLimit[i],
 			requestCh:  make(chan interface{}, 10240),
 			qosManager: vol.qosManager,
+			done: make (chan interface{}, 1),
 		}
 		go vol.qosManager.serverFactorLimitMap[arrType[i]].dispatch()
 	}

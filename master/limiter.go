@@ -322,6 +322,12 @@ type QosCtrlManager struct {
 	sync.RWMutex
 }
 
+func (qosManager *QosCtrlManager) stop() {
+	for _, srvLimit := range qosManager.serverFactorLimitMap {
+		srvLimit.done <- struct{}{}
+	}
+}
+
 func (qosManager *QosCtrlManager) volUpdateMagnify(magnifyArgs *qosArgs) {
 	defer qosManager.Unlock()
 	qosManager.Lock()
@@ -501,7 +507,7 @@ func (serverLimit *ServerFactorLimit) dispatch() {
 		case request := <-serverLimit.requestCh:
 			serverLimit.updateLimitFactor(request)
 		case <-serverLimit.done:
-			log.LogErrorf("done ServerFactorLimit type (%v)", serverLimit.Type)
+			log.LogWarnf("done ServerFactorLimit type (%v)", serverLimit.Type)
 			return
 		}
 	}
