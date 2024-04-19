@@ -3971,8 +3971,14 @@ func (c *Cluster) setMaxConcurrentLcNodes(count uint64) (err error) {
 
 func (c *Cluster) clearVols() {
 	c.volMutex.Lock()
-	c.vols = make(map[string]*Vol)
-	c.volMutex.Unlock()
+	defer c.volMutex.Unlock()
+	vols := c.vols
+	go func() {
+		for _, vol := range vols {
+			vol.qosManager.stop()
+		}
+	}()
+	c.vols = make(map[string]*Vol, 0)
 }
 
 func (c *Cluster) clearTopology() {
@@ -4203,15 +4209,15 @@ func (c *Cluster) TryDecommissionDataNode(dataNode *DataNode) {
 		}
 		decommissionDiskList = append(decommissionDiskList, disk)
 	}
-	//put all dp to nodeset's decommission list
-	//for _, dp := range toBeOffLinePartitions {
+	// put all dp to nodeset's decommission list
+	// for _, dp := range toBeOffLinePartitions {
 	//	dp.MarkDecommissionStatus(dataNode.Addr, dataNode.DecommissionDstAddr, "",
 	//		dataNode.DecommissionRaftForce, dataNode.DecommissionTerm, c)
 	//	c.syncUpdateDataPartition(dp)
 	//	ns.AddToDecommissionDataPartitionList(dp)
 	//	toBeOffLinePartitionIds = append(toBeOffLinePartitionIds, dp.PartitionID)
-	//}
-	//disk wait for decommission
+	// }
+	// disk wait for decommission
 	dataNode.SetDecommissionStatus(DecommissionPrepare)
 	// avoid alloc dp on this node
 	dataNode.ToBeOffline = true
@@ -4466,13 +4472,13 @@ func (c *Cluster) TryDecommissionDisk(disk *DecommissionDisk) {
 		}
 		return
 	}
-	//tmpIds = tmpIds[:0]
-	//for _, dp := range badPartitions {
+	// tmpIds = tmpIds[:0]
+	// for _, dp := range badPartitions {
 	//	tmpIds = append(tmpIds, dp.PartitionID)
-	//}
-	//log.LogInfof("action[TryDecommissionDisk] disk[%v_%v] tmpIds %v",
+	// }
+	// log.LogInfof("action[TryDecommissionDisk] disk[%v_%v] tmpIds %v",
 	//	node.Addr, disk.DiskPath, tmpIds)
-	//log.LogInfof("action[TryDecommissionDisk] disk[%v_%v] DecommissionDpCount %v",
+	// log.LogInfof("action[TryDecommissionDisk] disk[%v_%v] DecommissionDpCount %v",
 	//	node.Addr, disk.DiskPath, disk.DecommissionDpCount)
 	// recover from pause
 	if disk.DecommissionDpTotal != InvalidDecommissionDpCnt {
