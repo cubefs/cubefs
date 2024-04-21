@@ -1155,9 +1155,13 @@ func (mp *metaPartition) internalDeleteInodeMigrationExtentKey(inoParam *Inode) 
 		return
 	}
 	ino := item.(*Inode)
+	ino.Lock()
+	defer ino.Unlock()
 	ino.HybridCouldExtentsMigration.storageClass = proto.StorageClass_Unspecified
 	ino.HybridCouldExtentsMigration.expiredTime = 0
 	ino.HybridCouldExtentsMigration.sortedEks = nil
+	// reset DeleteMigrationExtentKeyFlag for future deletion of inode
+	ino.Flag ^= DeleteMigrationExtentKeyFlag
 	log.LogDebugf("internalDeleteInodeMigrationExtentKey:  partitionID(%v) inode(%v)",
 		mp.config.PartitionId, inoParam.Inode)
 	return
