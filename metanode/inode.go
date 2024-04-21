@@ -2317,11 +2317,6 @@ func (i *Inode) SetDeleteMark() {
 	i.Unlock()
 }
 
-func (i *Inode) SetDeleteMigrationExtentKey() {
-	i.Lock()
-	i.Flag |= DeleteMigrationExtentKeyFlag
-	i.Unlock()
-}
 func (i *Inode) SetDeleteMigrationExtentKeyImmediately() {
 	i.Lock()
 	i.Flag |= DeleteMigrationExtentKeyFlag
