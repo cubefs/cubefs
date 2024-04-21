@@ -1156,7 +1156,6 @@ func (mp *metaPartition) UpdateExtentKeyAfterMigration(req *proto.UpdateExtentKe
 	ino.HybridCouldExtentsMigration.storageClass = req.StorageClass
 	ino.HybridCouldExtentsMigration.expiredTime = time.Now().Add(time.Duration(req.DelayDeleteMinute) * time.Minute).Unix()
 	if req.StorageClass == proto.StorageClass_BlobStore {
-		//may be
 		ino.HybridCouldExtentsMigration.sortedEks = NewSortedObjExtentsFromObjEks(req.NewObjExtentKeys)
 	} else if req.StorageClass == proto.StorageClass_Replica_HDD {
 		if item.(*Inode).HybridCouldExtentsMigration.sortedEks == nil &&
