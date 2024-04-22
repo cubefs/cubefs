@@ -541,6 +541,10 @@ func (dp *DataPartition) IsRaftLeader() (addr string, ok bool) {
 	return
 }
 
+func (dp *DataPartition) getConfigHosts() []string {
+	return dp.config.Hosts
+}
+
 func (dp *DataPartition) Replicas() []string {
 	dp.replicasLock.RLock()
 	defer dp.replicasLock.RUnlock()
