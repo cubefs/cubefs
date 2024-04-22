@@ -2551,6 +2551,13 @@ func (c *Cluster) validateDecommissionDataPartition(dp *DataPartition, offlineAd
 		return
 	}
 
+	// for example, new replica is added,  but remove src replica is failed. Then retry decommission should not check isRecover
+	// leader change also do not check isRecover for isRecover is not reset
+	if dp.DecommissionRetry >= 1 && dp.isSpecialReplicaCnt() {
+		log.LogInfof("action[validateDecommissionDataPartition] vol %v dp %v decommission retry,do not check isRecover",
+			dp.VolName, dp.PartitionID)
+		return
+	}
 	if dp.isRecover && !dp.activeUsedSimilar() {
 		err = fmt.Errorf("vol[%v],data partition[%v] is recovering,[%v] can't be decommissioned", vol.Name, dp.PartitionID, offlineAddr)
 		log.LogInfof("action[validateDecommissionDataPartition] dp vol %v dp %v err %v", dp.VolName, dp.PartitionID, err)
