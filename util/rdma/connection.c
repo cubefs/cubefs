@@ -400,24 +400,29 @@ void conn_disconnect(connection *conn) {
 }
 
 int rdma_post_send_header(connection *conn, void* header) {
+    log_debug("rdma_post_send_header start");
     if(conn->state != CONN_STATE_CONNECTED) {
         log_debug("post send header failed: conn state is not connected: state(%d)",conn->state);
         return C_ERR;
     }
     int ret = conn_rdma_post_send(conn, header, sizeof(struct request_header));
+    log_debug("rdma_post_send_header end");
     return ret;
 }
 
 int rdma_post_send_response(connection *conn, response *response) {
+    log_debug("rdma_post_send_response start");
     if(conn->state != CONN_STATE_CONNECTED) {
         log_debug("post send response failed: conn state is not connected: state(%d)",conn->state);
         return C_ERR;
     }
     int ret = conn_rdma_post_send(conn, response, sizeof(struct request_response));
+    log_debug("rdma_post_send_response end");
     return ret;
 }
 
 int rdma_post_recv_header(connection* conn, void *header_ctx) {
+    log_debug("rdma_post_recv_header start");
     if (conn->state != CONN_STATE_CONNECTED) {
         log_debug("post recv header failed: conn state is not connected: state(%d)",conn->state);
         return C_ERR;
@@ -427,6 +432,7 @@ int rdma_post_recv_header(connection* conn, void *header_ctx) {
     if(ret == C_ERR) {
         goto error;
     }
+    log_debug("rdma_post_recv_header end");
     return C_OK;
 error:
     conn_disconnect(conn);
@@ -434,6 +440,7 @@ error:
 }
 
 int rdma_post_recv_response(connection *conn, void *response_ctx) {
+    log_debug("rdma_post_recv_response start");
     if(conn->state != CONN_STATE_CONNECTED) {
         log_debug("post recv response failed: conn state is not connected: state(%d)",conn->state);
         return C_ERR;
@@ -443,6 +450,7 @@ int rdma_post_recv_response(connection *conn, void *response_ctx) {
     if(ret == C_ERR) {
         goto error;
     }
+    log_debug("rdma_post_recv_response end");
     return C_OK;
 error:
     conn_disconnect(conn);
@@ -450,6 +458,7 @@ error:
 }
 
 int conn_app_write(connection *conn, void* buff, void *header_ctx, int32_t len) {
+    log_debug("conn app write start");
     if (conn->state != CONN_STATE_CONNECTED) { //在使用之前需要判断连接的状态
         log_debug("conn app write failed: conn state is not connected: state(%d)",conn->state);
         return C_ERR;
@@ -464,6 +473,7 @@ int conn_app_write(connection *conn, void* buff, void *header_ctx, int32_t len) 
         goto error;
     }
     log_debug("app write success");
+    log_debug("conn app write end");
     return C_OK;
 error:
     conn_disconnect(conn);
@@ -471,6 +481,7 @@ error:
 }
 
 int conn_app_send_resp(connection *conn, void* response_ctx) {
+    log_debug("conn app send resp start");
     if (conn->state != CONN_STATE_CONNECTED) {
         log_debug("conn app send response failed: conn state is not connected: state(%d)",conn->state);
         return C_ERR;
@@ -481,6 +492,7 @@ int conn_app_send_resp(connection *conn, void* response_ctx) {
         log_debug("app send resp failed");
         goto error;
     }
+    log_debug("conn app send resp end");
     return C_OK;
 error:
     conn_disconnect(conn);
@@ -488,6 +500,7 @@ error:
 }
 
 void* get_data_buffer(uint32_t size, int64_t timeout_us,int64_t *ret_size) {//buddy alloc add lock?
+    log_debug("get data buffer start");
     *ret_size = 0;
     int64_t dead_line = 0;
     int64_t now = get_time_ns();
@@ -517,11 +530,13 @@ void* get_data_buffer(uint32_t size, int64_t timeout_us,int64_t *ret_size) {//bu
         assert(s >= (size / rdma_pool_config->mem_block_size));
         *ret_size = s * rdma_pool_config->mem_block_size;
         void* send_buffer = rdma_pool->memory_pool->original_mem + index * rdma_pool_config->mem_block_size;
+        log_debug("get data buffer end");
         return send_buffer;
     }
 }
 
 void* get_response_buffer(connection *conn, int64_t timeout_us, int32_t *ret_size) {
+    log_debug("get response buffer start");
     response* response = NULL;
     *ret_size = 0;
     int64_t dead_line = 0;
@@ -559,11 +574,13 @@ void* get_response_buffer(connection *conn, int64_t timeout_us, int32_t *ret_siz
             continue;
         }
         *ret_size = sizeof(struct request_response);
+        log_debug("get response buffer end");
         return response;
     }
 }
 
 void* get_header_buffer(connection *conn, int64_t timeout_us, int32_t *ret_size) {
+    log_debug("get header buffer start");
     header *header = NULL;
     *ret_size = 0;
     int64_t dead_line = 0;
@@ -603,11 +620,13 @@ void* get_header_buffer(connection *conn, int64_t timeout_us, int32_t *ret_size)
             continue;
         }
         *ret_size = sizeof(struct request_header);
+        log_debug("get header buffer end");
         return header;
     }
 }
 
 memory_entry* get_recv_msg_buffer(connection *conn) {
+    log_debug("get recv msg buffer start");
     wait_event(conn->msg_fd);
     log_debug("wait event: conn(%p) msg_fd(%d)",conn,conn->msg_fd);
     memory_entry *entry = NULL;
@@ -618,10 +637,12 @@ memory_entry* get_recv_msg_buffer(connection *conn) {
         //TODO
     }
     log_debug("conn(%p) get recv msg buffer success: dequeue(%p) entry is %p",conn,conn->msg_list,entry);
+    log_debug("get recv msg buffer end");
     return entry;
 }
 
 memory_entry* get_recv_response_buffer(connection *conn) {
+    log_debug("get recv response buffer start");
     wait_event(conn->msg_fd);
     log_debug("wait event: conn(%p) msg_fd(%d)",conn,conn->msg_fd);
     memory_entry *entry = NULL;
@@ -632,6 +653,7 @@ memory_entry* get_recv_response_buffer(connection *conn) {
         //TODO
     }
     log_debug("conn(%p) get recv response buffer success: dequeue(%p) entry is %p",conn,conn->msg_list,entry);
+    log_debug("get recv response buffer end");
     return entry;
 }
 
@@ -641,33 +663,40 @@ void set_conn_context(connection* conn, void* conn_context) {
 }
 
 void set_send_timeout_us(connection* conn, int64_t timeout_us) {
+    log_debug("set send timeout start");
     if(timeout_us > 0) {
         conn->send_timeout_ns = timeout_us * 1000;
     } else {
         conn->send_timeout_ns = -1;
     }
     log_debug("set send timeout us:%ld",conn->send_timeout_ns);
+    log_debug("set send timeout end");
     return;
 }
 
 void set_recv_timeout_us(connection* conn, int64_t timeout_us) {
+    log_debug("set recv timeout start");
     if(timeout_us > 0) {
         conn->recv_timeout_ns = timeout_us * 1000;
     } else {
         conn->recv_timeout_ns = -1;
     }
     log_debug("set recv timeout us:%ld",conn->recv_timeout_ns);
+    log_debug("set recv timeout end");
     return;
 }
 
 int release_data_buffer(void* buff) {
+    log_debug("release data buffer start");
     int index = (int)((buff - (rdma_pool->memory_pool->original_mem)) / (rdma_pool_config->mem_block_size));
     buddy_free(rdma_pool->memory_pool->allocation, index);
     //buddy_dump(rdmaPool->memoryPool->allocation);
+    log_debug("release data buffer end");
     return C_OK;
 }
 
 int release_response_buffer(connection* conn, void* buff) {
+    log_debug("release response buffer start");
     if(conn->state != CONN_STATE_CONNECTED) {
         log_debug("release response buffer failed: conn state is not connected: state(%d)",conn->state);
         return C_ERR;
@@ -676,10 +705,12 @@ int release_response_buffer(connection* conn, void* buff) {
         log_debug("release response buffer failed: no more memory can be malloced");
         return C_ERR;
     };
+    log_debug("release response buffer end");
     return C_OK;
 }
 
 int release_header_buffer(connection* conn, void* buff) {
+    log_debug("release header buffer start");
     if (conn->state != CONN_STATE_CONNECTED) { //在使用之前需要判断连接的状态
         log_debug("release header buffer failed: conn state is not connected: state(%d)",conn->state);
         return C_ERR;
@@ -688,5 +719,6 @@ int release_header_buffer(connection* conn, void* buff) {
         log_debug("release header buffer failed: no more memory can be malloced");
         return C_ERR;
     };
+    log_debug("release header buffer end");
     return C_OK;
 }
