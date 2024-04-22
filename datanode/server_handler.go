@@ -17,12 +17,13 @@ package datanode
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/cubefs/cubefs/util/log"
 	"net/http"
 	"os"
 	"path"
 	"strconv"
 	"sync/atomic"
+
+	"github.com/cubefs/cubefs/util/log"
 
 	"github.com/cubefs/cubefs/depends/tiglabs/raft"
 	"github.com/cubefs/cubefs/proto"
@@ -127,6 +128,7 @@ func (s *DataNode) getPartitionsAPI(w http.ResponseWriter, r *http.Request) {
 			Status   int      `json:"status"`
 			Path     string   `json:"path"`
 			Replicas []string `json:"replicas"`
+			Hosts    []string `json:"hosts"`
 		}{
 			ID:       dp.partitionID,
 			Size:     dp.Size(),
@@ -134,6 +136,7 @@ func (s *DataNode) getPartitionsAPI(w http.ResponseWriter, r *http.Request) {
 			Status:   dp.Status(),
 			Path:     dp.Path(),
 			Replicas: dp.Replicas(),
+			Hosts:    dp.getConfigHosts(),
 		}
 		partitions = append(partitions, partition)
 		return true

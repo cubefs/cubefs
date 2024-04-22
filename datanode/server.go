@@ -783,15 +783,15 @@ func (s *DataNode) incDiskErrCnt(partitionID uint64, err error, flag uint8) {
 	if err == nil {
 		return
 	}
+	if !IsDiskErr(err.Error()) {
+		return
+	}
 	dp := s.space.Partition(partitionID)
 	if dp == nil {
 		return
 	}
 	d := dp.Disk()
 	if d == nil {
-		return
-	}
-	if !IsDiskErr(err.Error()) {
 		return
 	}
 	if flag == WriteFlag {

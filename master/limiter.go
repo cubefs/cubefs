@@ -52,7 +52,7 @@ func (uMgr *UidSpaceManager) pushUidCmd(cmd *UidCmd) bool {
 	select {
 	case uMgr.cmdChan <- cmd:
 	default:
-		log.LogWarnf("vol %v volUidUpdate.mpID %v uid %v op %v be missed", uMgr.volName, cmd.uid, cmd.op)
+		log.LogWarnf("vol %v volUidUpdate, uid %v op %v be missed", uMgr.volName, cmd.uid, cmd.op)
 		return false
 	}
 	log.LogDebugf("pushUidCmd. vol %v cmd (%v) wait result", uMgr.volName, cmd)
