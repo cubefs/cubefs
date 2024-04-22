@@ -1809,8 +1809,8 @@ func (partition *DataPartition) checkReplicaMeta(c *Cluster) {
 					continue
 				} else {
 					if peer.ID != base.ID {
-						log.LogWarnf("action[checkReplicaMeta]dp(%v) replica(%v) peer(%v) is different from master(%v)",
-							partition.PartitionID, replica.Addr, peer, base)
+						//log.LogDebugf("action[checkReplicaMeta]dp(%v) replica(%v) peer(%v) is different from master(%v)",
+						//	partition.PartitionID, replica.Addr, peer, base)
 						//raftForceDel := false
 						//removePeer := proto.Peer{ID: peer.ID, Addr: peer.Addr}
 						//err := c.removeDataPartitionRaftMember(partition, removePeer, raftForceDel)

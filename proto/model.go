@@ -470,3 +470,15 @@ type DecommissionedDisks struct {
 	Node  string
 	Disks []string
 }
+
+type BadReplicaMetaInfo struct {
+	PartitionId   uint64
+	Replica       string
+	BadPeer       string
+	BadPeerNodeID uint64
+	ExpectNodeID  uint64
+}
+
+type BadReplicaMetaResponse struct {
+	Infos []BadReplicaMetaInfo
+}
