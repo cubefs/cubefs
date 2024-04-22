@@ -6566,3 +6566,36 @@ func (m *Server) setVolDpRepairBlockSize(w http.ResponseWriter, r *http.Request)
 	}
 	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("set volume dp repair block size to (%v) success", repairSize)))
 }
+
+func (m *Server) checkReplicaMeta(w http.ResponseWriter, r *http.Request) {
+	var (
+		resp proto.BadReplicaMetaResponse
+	)
+
+	vols := m.cluster.allVols()
+	for _, vol := range vols {
+		partitions := vol.dataPartitions.clonePartitions()
+		for _, dp := range partitions {
+			for _, replica := range dp.Replicas {
+				for _, peer := range replica.LocalPeers {
+					for _, base := range dp.Peers {
+						if peer.Addr != base.Addr {
+							continue
+						} else {
+							if peer.ID != base.ID {
+								log.LogDebugf("action[checkReplicaMeta]dp(%v) replica(%v) peer(%v) is different from master(%v)",
+									dp.PartitionID, replica.Addr, peer, base)
+								resp.Infos = append(resp.Infos, proto.BadReplicaMetaInfo{PartitionId: dp.PartitionID,
+									Replica:       fmt.Sprintf("%v_%v", replica.Addr, replica.DiskPath),
+									BadPeer:       peer.Addr,
+									BadPeerNodeID: peer.ID,
+									ExpectNodeID:  base.ID})
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+	sendOkReply(w, r, newSuccessHTTPReply(resp))
+}
