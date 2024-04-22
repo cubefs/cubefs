@@ -707,7 +707,7 @@ type DataPartitionReport struct {
 	ExtentCount                int
 	NeedCompare                bool
 	DecommissionRepairProgress float64
-	LocalPeers                 []string
+	LocalPeers                 []Peer
 }
 
 type DataNodeQosResponse struct {

@@ -308,7 +308,7 @@ type DataReplica struct {
 	NeedsToCompare             bool
 	DiskPath                   string
 	DecommissionRepairProgress float64
-	LocalPeers                 []string
+	LocalPeers                 []Peer
 }
 
 // data partition diagnosis represents the inactive data nodes, corrupt data partitions, and data partitions lack of replicas
