@@ -188,6 +188,7 @@ func TestHandleDiskDrop(t *testing.T) {
 	service.lock.RUnlock()
 	require.True(t, exist)
 	require.Equal(t, proto.DiskID(101), ds.ID())
+	require.NotZero(t, service.Conf.DiskConfig.ChunkCleanIntervalSec)
 	service.Conf.DiskConfig.ChunkCleanIntervalSec = 1
 	service.handleDiskDrop(ctx, ds)
 	require.Equal(t, ds.Status(), proto.DiskStatusDropped)
