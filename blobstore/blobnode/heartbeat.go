@@ -92,15 +92,9 @@ func (s *Service) syncDiskStatus(ctx context.Context, diskInfosRet []*cmapi.Disk
 			continue
 		}
 
-		switch status {
-		case proto.DiskStatusBroken, proto.DiskStatusRepairing, proto.DiskStatusRepaired:
+		if status >= proto.DiskStatusBroken {
 			span.Warnf("notify broken. diskID:%v ds.Status:%v, status:%v", diskId, ds.Status(), status)
 			s.handleDiskIOError(ctx, diskId, bloberr.ErrDiskBroken)
-			continue
-
-		case proto.DiskStatusDropped:
-			span.Warnf("disk drop: diskID:%v ds.Status:%v, status:%v", diskId, ds.Status(), status)
-			s.handleDiskDrop(ctx, ds)
 			continue
 		}
 	}

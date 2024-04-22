@@ -192,6 +192,20 @@ func (mr *MockDiskAPIMockRecorder) ID() *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ID", reflect.TypeOf((*MockDiskAPI)(nil).ID))
 }
 
+// IsCleanUp mocks base method.
+func (m *MockDiskAPI) IsCleanUp(arg0 context.Context) bool {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "IsCleanUp", arg0)
+	ret0, _ := ret[0].(bool)
+	return ret0
+}
+
+// IsCleanUp indicates an expected call of IsCleanUp.
+func (mr *MockDiskAPIMockRecorder) IsCleanUp(arg0 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "IsCleanUp", reflect.TypeOf((*MockDiskAPI)(nil).IsCleanUp), arg0)
+}
+
 // ListChunks mocks base method.
 func (m *MockDiskAPI) ListChunks(arg0 context.Context) ([]core.VuidMeta, error) {
 	m.ctrl.T.Helper()

@@ -133,6 +133,10 @@ func (mock *diskMock) ResetChunks(ctx context.Context) {
 	// do nothing
 }
 
+func (mock *diskMock) IsCleanUp(ctx context.Context) bool {
+	return true
+}
+
 func (mock *diskMock) Close(ctx context.Context) {
 	// do nothing
 }

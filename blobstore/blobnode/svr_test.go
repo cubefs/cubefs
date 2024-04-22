@@ -24,7 +24,6 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
-	"time"
 
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/require"
@@ -145,74 +144,6 @@ func TestHandleDiskIOError(t *testing.T) {
 		DiskID: proto.DiskID(102),
 	}
 	di, err = client.DiskInfo(ctx, host, diskInfoArg)
-	require.NoError(t, err)
-	require.Equal(t, proto.DiskID(102), di.DiskID)
-	require.Equal(t, di.Status, proto.DiskStatusNormal)
-}
-
-func TestHandleDiskDrop(t *testing.T) {
-	_, ctx := trace.StartSpanFromContextWithTraceID(context.Background(), "", "TestService")
-
-	service, _ := newTestBlobNodeService(t, "Service")
-	defer cleanTestBlobNodeService(service)
-
-	host := runTestServer(service)
-	client := bnapi.New(&bnapi.Config{})
-
-	dis, err := client.Stat(ctx, host)
-	require.NoError(t, err)
-	require.Equal(t, 2, len(dis))
-
-	service.lock.RLock()
-	ds, exist := service.Disks[proto.DiskID(101)]
-	service.lock.RUnlock()
-	require.True(t, exist)
-	require.Equal(t, proto.DiskID(101), ds.ID())
-	delCh := make(chan struct{}, 1)
-	go func() {
-		ds.CreateChunk(ctx, proto.Vuid(146095996936), 8)
-		os.OpenFile(filepath.Join(ds.GetDataPath(), "testChunk"), os.O_CREATE, 0o644)
-
-		time.Sleep(time.Millisecond * 200)
-		ds.ResetChunks(ctx)
-		chunkFiles, err := os.ReadDir(ds.GetDataPath())
-		require.NoError(t, err)
-		for _, file := range chunkFiles {
-			os.Remove(filepath.Join(ds.GetDataPath(), file.Name()))
-		}
-		delCh <- struct{}{}
-	}()
-
-	service.lock.RLock()
-	ds, exist = service.Disks[proto.DiskID(101)]
-	service.lock.RUnlock()
-	require.True(t, exist)
-	require.Equal(t, proto.DiskID(101), ds.ID())
-	require.NotZero(t, service.Conf.DiskConfig.ChunkCleanIntervalSec)
-	service.Conf.DiskConfig.ChunkCleanIntervalSec = 1
-	service.handleDiskDrop(ctx, ds)
-	require.Equal(t, ds.Status(), proto.DiskStatusDropped)
-
-	<-delCh
-	time.Sleep(time.Second)
-	service.lock.RLock()
-	ds, exist = service.Disks[proto.DiskID(101)]
-	service.lock.RUnlock()
-	require.False(t, exist)
-
-	// 101 broken
-	diskInfoArg := &bnapi.DiskStatArgs{
-		DiskID: proto.DiskID(101),
-	}
-	_, err = client.DiskInfo(ctx, host, diskInfoArg)
-	require.NotNil(t, err)
-	require.Equal(t, bloberr.ErrNoSuchDisk.Error(), err.Error())
-
-	// 102 ok
-	diskInfoArg = &bnapi.DiskStatArgs{
-		DiskID: proto.DiskID(102),
-	}
-	di, err := client.DiskInfo(ctx, host, diskInfoArg)
 	require.NoError(t, err)
 	require.Equal(t, proto.DiskID(102), di.DiskID)
 	require.Equal(t, di.Status, proto.DiskStatusNormal)
