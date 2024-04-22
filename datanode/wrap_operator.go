@@ -1391,7 +1391,39 @@ func (s *DataNode) handlePacketToRemoveDataPartitionRaftMember(p *repl.Packet) {
 		log.LogWarnf("handlePacketToRemoveDataPartitionRaftMember return no leader")
 		return
 	}
-	if err = dp.CanRemoveRaftMember(req.RemovePeer, req.Force); err != nil {
+
+	removePeer := req.RemovePeer
+	found := false
+	// nodeId may be changed for this peer, reset nodeID to META of dp
+	for _, peer := range dp.config.Peers {
+		if peer.Addr != req.RemovePeer.Addr {
+			continue
+		} else {
+			found = true
+			if peer.ID != req.RemovePeer.ID {
+				// update removePeer.ID  according to local config
+				removePeer.ID = peer.ID
+				log.LogWarnf("handlePacketToRemoveDataPartitionRaftMember dp(%v) peer(%v) nodeID(%v) is different from req(%v)",
+					dp.partitionID, peer.Addr, peer.ID, req.RemovePeer.ID)
+				// update reqData for
+				newReq := &proto.RemoveDataPartitionRaftMemberRequest{PartitionId: req.PartitionId, Force: req.Force,
+					RemovePeer: removePeer}
+				reqData, err = json.Marshal(newReq)
+				if err != nil {
+					log.LogWarnf("handlePacketToRemoveDataPartitionRaftMember dp(%v) marshall req(%v) failed:%v",
+						dp.partitionID, newReq, err)
+					return
+				}
+			}
+		}
+	}
+	if !found {
+		err = errors.NewErrorf("cannot found peer(%v) in dp(%v) peers", req.RemovePeer.Addr, dp.partitionID)
+		log.LogWarnf("handlePacketToRemoveDataPartitionRaftMember:%v", err.Error())
+		return
+	}
+
+	if err = dp.CanRemoveRaftMember(removePeer, req.Force); err != nil {
 		log.LogWarnf("action[handlePacketToRemoveDataPartitionRaftMember] CanRemoveRaftMember failed "+
 			"req %v dp %v err %v",
 			p.GetReqID(), dp.partitionID, err.Error())
@@ -1402,7 +1434,7 @@ func (s *DataNode) handlePacketToRemoveDataPartitionRaftMember(p *repl.Packet) {
 		cc := &raftProto.ConfChange{
 			Type: raftProto.ConfRemoveNode,
 			Peer: raftProto.Peer{
-				ID: req.RemovePeer.ID,
+				ID: removePeer.ID,
 			},
 			Context: reqData,
 		}

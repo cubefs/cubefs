@@ -463,6 +463,9 @@ func (r *raftFsm) removePeer(peer proto.Peer) (ok bool) {
 
 	replica, ok := r.replicas[peer.ID]
 	if !ok {
+		if logger.IsEnableWarn() {
+			logger.Warn("raft[%v] peer[%v] not found", r.id, peer.String())
+		}
 		return
 	} else if replica.peer.PeerID != peer.PeerID {
 		if logger.IsEnableInfo() {
