@@ -1391,7 +1391,6 @@ func (partition *DataPartition) rollback(c *Cluster) {
 		log.LogWarnf("action[rollback]dp[%v] rollback to del replica[%v] failed:%v",
 			partition.PartitionID, partition.DecommissionDstAddr, err.Error())
 		partition.DecommissionErrorMessage = fmt.Sprintf("rollback failed:%v", err.Error())
-
 		return
 	}
 	//err = partition.restoreReplicaMeta(c)
@@ -1799,4 +1798,39 @@ func (partition *DataPartition) removeReplicaByForce(c *Cluster, peerAddr string
 		return err
 	}
 	return nil
+}
+
+func (partition *DataPartition) checkReplicaMeta(c *Cluster) {
+	// handle different node id
+	for _, replica := range partition.Replicas {
+		for _, peer := range replica.LocalPeers {
+			for _, base := range partition.Peers {
+				if peer.Addr != base.Addr {
+					continue
+				} else {
+					if peer.ID != base.ID {
+						log.LogWarnf("action[checkReplicaMeta]dp[%v] replica(%v) peer(%v) is different from master(%v)",
+							partition.PartitionID, replica.Addr, peer, base)
+						//raftForceDel := false
+						//removePeer := proto.Peer{ID: peer.ID, Addr: peer.Addr}
+						//err := c.removeDataPartitionRaftMember(partition, removePeer, raftForceDel)
+						//if err != nil {
+						//	log.LogWarnf("action[checkReplicaMeta]dp[%v] remove replica(%v) peer(%v) failed(%v)",
+						//		partition.PartitionID, replica.Addr, peer, err)
+						//	continue
+						//}
+						//addPeer := proto.Peer{ID: base.ID, Addr: base.Addr}
+						//// 这里不能直接使用之前的逻辑，不然一直添加
+						//err = c.addDataPartitionRaftMember(partition, addPeer, true)
+						//if err != nil {
+						//	log.LogWarnf("action[checkReplicaMeta]dp[%v] add replica(%v) peer(%v) failed(%v)",
+						//		partition.PartitionID, replica.Addr, base, err)
+						//	continue
+						//}
+					}
+				}
+			}
+		}
+	}
+
 }

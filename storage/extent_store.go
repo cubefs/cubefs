@@ -255,7 +255,7 @@ func (ei *ExtentInfo) UpdateExtentInfo(extent *Extent, crc uint32) {
 	ei.Size = uint64(extent.dataSize)
 	ei.SnapshotDataOff = extent.snapshotDataOff
 
-	log.LogInfof("action[ExtentInfo.UpdateExtentInfo] ei info [%v]", ei.String())
+	log.LogDebugf("action[ExtentInfo.UpdateExtentInfo] ei info [%v]", ei.String())
 
 	if !IsTinyExtent(ei.FileID) {
 		atomic.StoreUint32(&ei.Crc, crc)

@@ -476,7 +476,7 @@ func (s *DataNode) buildHeartBeatResponse(response *proto.DataNodeHeartbeatRespo
 			ExtentCount:                partition.GetExtentCount(),
 			NeedCompare:                true,
 			DecommissionRepairProgress: partition.decommissionRepairProgress,
-			LocalPeers:                 partition.config.Hosts,
+			LocalPeers:                 partition.config.Peers,
 		}
 		log.LogDebugf("action[Heartbeats] dpid(%v), status(%v) total(%v) used(%v) leader(%v) isLeader(%v).", vr.PartitionID, vr.PartitionStatus, vr.Total, vr.Used, leaderAddr, vr.IsLeader)
 		response.PartitionReports = append(response.PartitionReports, vr)
