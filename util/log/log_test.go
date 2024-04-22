@@ -30,12 +30,13 @@ func TestLog(t *testing.T) {
 		http.ListenAndServe(":10000", nil)
 	}()
 
-	dir := path.Join("/tmp/cfs", "cfs")
+	tmpDir, _ := os.MkdirTemp(".", "")
+	dir := path.Join(tmpDir, "cfs")
 	_, err := os.Stat(dir)
 	if os.IsNotExist(err) {
 		os.MkdirAll(dir, 0755)
 	}
-	defer os.RemoveAll(dir)
+	defer os.RemoveAll(tmpDir)
 
 	logFilePath1 := path.Join(dir, "log_info.log.old")
 	if err = createFile(logFilePath1, true); err != nil {
@@ -53,7 +54,7 @@ func TestLog(t *testing.T) {
 		return
 	}
 
-	InitLog("/tmp/cfs", "cfs", DebugLevel, nil, DefaultLogLeftSpaceLimitRatio)
+	InitLog(dir, "cfs", DebugLevel, nil, DefaultLogLeftSpaceLimitRatio)
 	for i := 0; i < 10; i++ {
 		LogDebugf("[debug] current time %v.", time.Now())
 		LogWarnf("[warn] current time %v.", time.Now())
@@ -100,18 +101,20 @@ func prepareTestLeftSpaceLimit(dir string, logFileName string) (diskSpaceLeft in
 }
 
 func TestLogLeftSpaceLimit01(t *testing.T) {
-	dir := path.Join("/tmp/cfs", "cfs")
+	tmpDir, _ := os.MkdirTemp(".", "")
+	dir := path.Join(tmpDir, "cfs")
 	logFileName := "cfs_info.log.old"
 	diskSpaceLeft, logFilePath, err := prepareTestLeftSpaceLimit(dir, logFileName)
 	if err != nil {
 		t.Errorf("create file[%v] err[%v]", logFilePath, err)
 		return
 	}
-	log, err := InitLog("/tmp/cfs", "cfs", DebugLevel, nil, DefaultLogLeftSpaceLimitRatio)
+	log, err := InitLog(tmpDir, "cfs", DebugLevel, nil, DefaultLogLeftSpaceLimitRatio)
 	if err != nil {
 		t.Errorf("init log err[%v]", err)
 		return
 	}
+	defer os.RemoveAll(tmpDir)
 	log.rotate.SetHeadRoomMb(int64(diskSpaceLeft/1024/1024 - 1))
 
 	time.Sleep(200 * time.Millisecond)
@@ -124,7 +127,8 @@ func TestLogLeftSpaceLimit01(t *testing.T) {
 }
 
 func TestLogLeftSpaceLimit02(t *testing.T) {
-	dir := path.Join("/tmp/cfs", "cfs")
+	tmpDir, _ := os.MkdirTemp(".", "")
+	dir := path.Join(tmpDir, "cfs")
 	logFileName := "cfs_info.log.old"
 	diskSpaceLeft, logFilePath, err := prepareTestLeftSpaceLimit(dir, logFileName)
 	if err != nil {
@@ -132,11 +136,13 @@ func TestLogLeftSpaceLimit02(t *testing.T) {
 		return
 	}
 
-	log, err := InitLog("/tmp/cfs", "cfs", DebugLevel, nil, DefaultLogLeftSpaceLimitRatio)
+	log, err := InitLog(tmpDir, "cfs", DebugLevel, nil, DefaultLogLeftSpaceLimitRatio)
 	if err != nil {
 		t.Errorf("init log err[%v]", err)
 		return
 	}
+
+	defer os.RemoveAll(tmpDir)
 	log.rotate.SetHeadRoomMb(int64(diskSpaceLeft/1024/1024 + 1))
 
 	time.Sleep(200 * time.Millisecond)

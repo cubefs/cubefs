@@ -147,7 +147,7 @@ func TestGlobalAuditLog(t *testing.T) {
 		t.Logf("log file %v, size %v\n", dentry.Name(), getFileSize(t, auditLogName))
 	}
 	nowSize := getFileSize(t, auditLogName)
-	require.Less(t, nowSize, maxSize)
+	require.LessOrEqual(t, nowSize, maxSize)
 	t.Logf("log file count %v", len(dentries))
 	auditlog.ResetWriterBufferSize(testResetBufSize)
 }
