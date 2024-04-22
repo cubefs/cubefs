@@ -171,5 +171,6 @@ type DiskAPI interface {
 	GcRubbishChunk(ctx context.Context) (mayBeLost []bnapi.ChunkId, err error)
 	WalkChunksWithLock(ctx context.Context, fn func(cs ChunkAPI) error) (err error)
 	ResetChunks(ctx context.Context)
+	IsCleanUp(ctx context.Context) bool
 	Close(ctx context.Context)
 }

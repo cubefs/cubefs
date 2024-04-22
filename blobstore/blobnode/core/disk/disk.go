@@ -1085,6 +1085,28 @@ func (ds *DiskStorage) WalkChunksWithLock(ctx context.Context, walkFn func(cs co
 	return nil
 }
 
+func (ds *DiskStorage) IsCleanUp(ctx context.Context) bool {
+	span := trace.SpanFromContextSafe(ctx)
+
+	if len(ds.Chunks) != 0 { // all chunks handler in memory
+		span.Debugf("diskID:%d is not clean, used chunk cnt:%d", ds.DiskID, len(ds.Chunks))
+		return false
+	}
+
+	chunks, err := ds.ListChunks(ctx)
+	if err != nil {
+		span.Errorf("%v list chunks failed: %+v", ds.MetaPath, err)
+		return false
+	}
+
+	if len(chunks) != 0 { // all chunks in db
+		span.Debugf("diskID:%d is not clean, db chunk file cnt:%d", ds.DiskID, len(chunks))
+		return false
+	}
+
+	return true
+}
+
 func isValidStateTransition(src, dest bnapi.ChunkStatus) bool {
 	validStates, exist := StateTransitionRules[src]
 	if !exist {

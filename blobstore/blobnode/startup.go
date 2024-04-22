@@ -158,21 +158,29 @@ func (s *Service) waitRepairAndClose(ctx context.Context, disk core.DiskAPI) {
 
 	diskId := disk.ID()
 	for {
-		info, err := s.ClusterMgrClient.DiskInfo(ctx, diskId)
-		if err != nil {
-			span.Errorf("Failed get clustermgr diskinfo %v, err:%v", diskId, err)
-			continue
-		}
-		if info.Status >= proto.DiskStatusRepairing {
-			span.Infof("disk:%v path:%s status:%v", diskId, info.Path, info.Status)
-			break
-		}
-
 		select {
 		case <-s.closeCh:
 			span.Warnf("service is closed. return")
 			return
 		case <-ticker.C:
+		}
+
+		info, err := s.ClusterMgrClient.DiskInfo(ctx, diskId)
+		if err != nil {
+			span.Errorf("Failed get clustermgr diskinfo %v, err:%v", diskId, err)
+			continue
+		}
+
+		if info.Status == proto.DiskStatusDropped {
+			if disk.IsCleanUp(ctx) {
+				break // is clean, need to delete disk handler
+			}
+			continue // not clean, wait it, next check
+		}
+
+		if info.Status >= proto.DiskStatusRepairing {
+			span.Infof("disk:%v path:%s status:%v", diskId, info.Path, info.Status)
+			break
 		}
 	}
 
@@ -187,58 +195,6 @@ func (s *Service) waitRepairAndClose(ctx context.Context, disk core.DiskAPI) {
 	disk.ResetChunks(ctx)
 
 	span.Infof("disk %v will gc close", diskId)
-}
-
-func (s *Service) handleDiskDrop(ctx context.Context, ds core.DiskAPI) {
-	span := trace.SpanFromContextSafe(ctx)
-	span.Debugf("diskID:%d drop check start", ds.ID())
-
-	// 1. set disk dropped in memory
-	ds.SetStatus(proto.DiskStatusDropped)
-
-	// 2. check all chunks is clean: handler in memory, physics chunks
-	go s.waitDiskChunksIsClean(ctx, ds)
-}
-
-func (s *Service) waitDiskChunksIsClean(ctx context.Context, ds core.DiskAPI) {
-	span := trace.SpanFromContextSafe(ctx)
-	span.Debugf("start check disk chunks is clean")
-	tk := time.NewTicker(time.Duration(s.Conf.DiskConfig.ChunkCleanIntervalSec) * time.Second)
-	defer tk.Stop()
-
-	for {
-		select {
-		case <-s.closeCh:
-			span.Warnf("service is closed. skip check disk drop")
-			return
-
-		case <-tk.C:
-			cnt := ds.DiskInfo().UsedChunkCnt
-			if cnt != 0 { // UsedChunkCnt = len(ds.Chunks), all chunks handler. wait chunks handler is 0
-				span.Debugf("diskID:%d is not clean, used chunk cnt:%d", ds.ID(), cnt)
-				continue
-			}
-
-			chunkFiles, err := os.ReadDir(ds.GetDataPath())
-			if err != nil {
-				span.Warnf("diskID:%d read disk data dir err:%+v", ds.ID(), err)
-				continue
-			}
-
-			if len(chunkFiles) != 0 { // wait physics chunks file is 0
-				span.Debugf("diskID:%d is not clean, chunk file cnt:%d", ds.ID(), len(chunkFiles))
-				continue
-			}
-			goto DELETE // all is clean
-		}
-	}
-
-DELETE:
-	// 3. physics chunks is already empty, destroy disk/chunks handlers
-	s.lock.Lock()
-	delete(s.Disks, ds.ID())
-	s.lock.Unlock()
-	span.Infof("diskID:%d drop check done, gc destroy resource", ds.ID())
 }
 
 func setDefaultIOStat(dryRun bool) error {

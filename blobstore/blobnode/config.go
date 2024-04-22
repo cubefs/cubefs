@@ -110,7 +110,6 @@ func configInit(config *Config) {
 	}
 	defaulter.LessOrEqual(&config.InspectConf.IntervalSec, DefaultChunkInspectIntervalSec)
 	defaulter.LessOrEqual(&config.InspectConf.RateLimit, DefaultInspectRate)
-	defaulter.LessOrEqual(&config.DiskConfig.ChunkCleanIntervalSec, core.DefaultChunkCleanIntervalSec)
 }
 
 func (s *Service) changeLimit(ctx context.Context, c Config) {
