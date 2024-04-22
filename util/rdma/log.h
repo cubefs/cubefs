@@ -12,6 +12,7 @@
 #include <stdarg.h>
 #include <stdbool.h>
 #include <time.h>
+#include <sys/time.h>
 
 #define LOG_VERSION "0.1.0"
 
@@ -20,6 +21,7 @@ typedef struct {
   const char *fmt;
   const char *file;
   struct tm *time;
+  suseconds_t time_usec;
   void *udata;
   int line;
   int level;
