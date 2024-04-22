@@ -179,12 +179,18 @@ func (partition *DataPartition) checkLeader(c *Cluster, clusterID string, timeOu
 		for _, peer := range redundantPeers {
 			log.LogInfof("action[checkLeader] partition %v remove peer (%v)",
 				partition.PartitionID, peer)
-			// TODO-chi: only deleta raft member
-			if err := partition.removeReplicaByForce(c, peer); err != nil {
+			dataNode, err := c.dataNode(peer)
+			if err != nil {
+				log.LogInfof("action[checkLeader] partition %v find data node for peer (%v) failed %v",
+					partition.PartitionID, peer, err)
+				continue
+			}
+			removePeer := proto.Peer{ID: dataNode.ID, Addr: peer}
+			if err := c.removeDataPartitionRaftMember(partition, removePeer, true); err != nil {
 				log.LogInfof("action[checkLeader] partition %v remove peer (%v) failed %v",
 					partition.PartitionID, peer, err)
+				continue
 			}
-
 		}
 	}
 	return
