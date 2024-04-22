@@ -32,17 +32,6 @@ static const int TIMEOUT_IN_MS = 500;
 
 typedef void *event_callback(void *ctx);
 
-//typedef int (*PreConnCb)(struct rdma_cm_id *id, void* ctx);
-//typedef int (*ConnectedCb)(struct rdma_cm_id *id, void* ctx);
-//typedef int (*DisConnectedCb)(struct rdma_cm_id *id, void* ctx);
-//typedef int (*RejectedCb)(struct rdma_cm_id *id, void* ctx);
-
-//extern void PrintCallback(char*);
-//static char buffer[100];
-
-//extern int WQ_DEPTH;
-//extern int MIN_CQE_NUM;
-
 void *cm_thread(void *ctx);
 void *cq_thread(void *ctx);
 
@@ -105,27 +94,16 @@ union conn_nd_union {
 typedef struct worker {
     struct ibv_pd      *pd;
     struct ibv_cq      *cq;
-
-    struct ibv_comp_channel   *comp_channel;        // with cq
+    struct ibv_comp_channel   *comp_channel;
     pthread_t  cq_poller_thread;
-
     pthread_spinlock_t nd_map_lock;
     khash_t(map)       *nd_map;
-    khash_t(map)       *closing_nd_map;
-
-    //send task list
+    //khash_t(map)       *closing_nd_map;
     pthread_spinlock_t lock;
-    //list_link_t        conn_list;
-    //list_link_t        close_list;
     Queue              *conn_list;
-    //Queue              *close_list;
-
     uint8_t          id;
     uint32_t         qp_cnt;
     pthread_t        w_pid;
-
-    //uint64_t         run_cycle;
-    //int64_t          last_active_time;
     int              close;
 } worker;
 
@@ -198,19 +176,6 @@ typedef struct request_response {
     uint32_t             rdma_key;
 } response;
 
-/*
-typedef struct ConnectionEvent {
-    struct rdma_cm_id *cm_id;
-    void* ctx;
-    int close;
-
-    PreConnCb preconnect_callback;
-    ConnectedCb connected_callback;
-    DisConnectedCb disconnected_callback;
-    RejectedCb rejected_callback;
-} ConnectionEvent;
-*/
-
 typedef struct memory_entry {
     void* header_buff;
     void* data_buff;
@@ -241,13 +206,8 @@ typedef struct connection {
     char   local_addr[INET_ADDRSTRLEN + NI_MAXSERV];
     char   remote_addr[INET_ADDRSTRLEN + NI_MAXSERV];
     int     conn_type;
-    //void    *buf;
-    //int     buf_len;
     struct rdma_cm_id * cm_id;
     struct ibv_qp *qp;
-    //struct ibv_pd *pd;
-    //struct ibv_comp_channel *comp_channel;
-    //struct ibv_cq *cq;
     struct ibv_mr *mr;
     memory_pool *pool;
     object_pool* header_pool;
@@ -260,35 +220,15 @@ typedef struct connection {
     Queue *msg_list;
     void* context;
     void* conn_context;
-    //void* cs_context;
     connection_state state;
-    int connect_fd;//sem_t*
-    int msg_fd;//sem_t*
-    int close_fd;//sem_t*
-    //struct WaitGroup wg;
+    int connect_fd;
+    int msg_fd;
+    int close_fd;
     pthread_spinlock_t spin_lock;
     int64_t send_timeout_ns;
     int64_t recv_timeout_ns;
-    //int lockInitialized;
-    //pthread_t transferThread;
-    //int close;
     worker *worker;
 } connection;
-
-/*
-struct RdmaContext {
-    Connection *conn;
-    struct rdma_cm_id *listen_id;
-    struct rdma_event_channel *ec;
-    char* ip;
-    char* port;
-    struct ConnectionEvent *conn_ev;
-    sem_t* cFd;
-    int state;
-    bool isReConnect;
-    //pthread_t connectThread;
-};
-*/
 
 struct rdma_listener {
     uint64_t nd;
@@ -299,9 +239,6 @@ struct rdma_listener {
     khash_t(map) *conn_map;
     Queue *wait_conns;
     int connect_fd;//sem_t*
-    //struct WaitGroup close_wg;
-    //int state;
-    //pthread_t connectThread;
 };
 
 static int get_header_size() {
@@ -317,19 +254,10 @@ static uint64_t allocate_nd(int type) {
     union conn_nd_union id;
 
     id_index += 1;
-    //pthread_spin_lock(&g_net_env->lock);
-    //*(g_net_env->id_gen + id_index) = *(g_net_env->id_gen + id_index) + 1;
-    //id.nd_.worker_id = *(g_net_env->id_gen + id_index) & 0xFF;
-    //pthread_spin_unlock(&g_net_env->lock);
     id.nd_.worker_id = __sync_fetch_and_add((g_net_env->id_gen + id_index), 1) & 0xFF;
     id.nd_.type = type & 0xFF;
     id.nd_.m1 = 'c';
     id.nd_.m2 = 'b';
-
-    //pthread_spin_lock(&g_net_env->lock);
-    //*(g_net_env->id_gen + ID_GEN_MAX - 1) = *(g_net_env->id_gen + ID_GEN_MAX - 1) + 1;
-    //id.nd_.id = (g_net_env->id_gen + ID_GEN_MAX - 1);
-    //pthread_spin_unlock(&g_net_env->lock);
     id.nd_.id = __sync_fetch_and_add((g_net_env->id_gen + ID_GEN_MAX -1), 1);
     return id.nd;
 }
@@ -396,12 +324,6 @@ static int init_worker(worker *worker, event_callback cb) {
         log_debug("init worker conn list failed");
         goto err_destroy_map;
     }
-    //list_head_init(&worker->close_list);
-    //worker->close_list = InitQueue();
-    //if (worker->close_list == NULL) {
-    //    log_debug("init worker close list failed");
-    //    goto err_destroy_connlist;
-    //}
     worker->w_pid = 0;
     pthread_create(&worker->cq_poller_thread, NULL, cb, worker);
     return C_OK;
@@ -423,10 +345,6 @@ static void destroy_worker(worker *worker) {
     pthread_join(worker->cq_poller_thread, NULL);
     worker->w_pid = 0;
 
-    //if (worker->close_list != NULL) {
-    //    DestroyQueue(worker->close_list);
-    //    worker->close_list = NULL;
-    //}
     if (worker->conn_list != NULL) {
         DestroyQueue(worker->conn_list);
         worker->conn_list = NULL;
@@ -476,8 +394,6 @@ static void destroy_rdma_env() {
         }
 
         pthread_spin_destroy(&g_net_env->server_lock);
-
-        //pthread_spin_destroy(&g_net_env->lock);
 
         hashmap_destroy(g_net_env->server_map);
 
@@ -538,11 +454,6 @@ static int init_rdma_env(struct rdma_pool_config* config) {
         log_debug("init g_net_env->server_lock spin lock failed");
         goto err_free_gnetenv;
     }
-
-    //if (pthread_spin_init(&(g_net_env->lock), PTHREAD_PROCESS_SHARED) != 0) {
-    //    log_debug("init g_net_env->lock spin lock failed");
-    //    goto err_destroy_spinlock1;
-    //}
 
     g_net_env->all_devs = rdma_get_devices(&g_net_env->ib_dev_cnt);
     if (g_net_env->all_devs == NULL) {
@@ -614,8 +525,6 @@ err_destroy_eventchannel:
     rdma_destroy_event_channel(g_net_env->event_channel);
 err_free_devices:
     rdma_free_devices(g_net_env->all_devs);
-//err_destroy_spinlock2:
-//    pthread_spin_destroy(&g_net_env->lock);
 err_destroy_spinlock:
     pthread_spin_destroy(&g_net_env->server_lock);
 err_free_gnetenv:
@@ -681,36 +590,20 @@ static int del_server_from_env(struct rdma_listener *server) {
     return ret >= 0;
 }
 
-static inline int open_event_fd() {//sem_t*
-    /*
-    sem_t* event = (sem_t*)malloc(sizeof(sem_t));
-    if (event == NULL) {
-        return NULL;
-    }
-    sem_init(event, 0, 0);
-    return event;
-    */
+static inline int open_event_fd() {
     return eventfd(0, EFD_SEMAPHORE);
 }
 
-static inline void wait_event(int fd) {//sem_t*
-    /*
-    sem_wait(fd);
-    return;
-    */
+static inline void wait_event(int fd) {
     uint64_t value = 0;
     return read(fd, &value, 8);
 }
 
-static inline void notify_event(int fd, int flag) {//sem_t*
+static inline void notify_event(int fd, int flag) {
 	if (flag == 0) {
-		//sem_post(fd);
 		uint64_t value = 1;
         write(fd, &value, 8);
 	} else {
-		//sem_destroy(fd);
-		//free(fd);
-		//fd = NULL;
 		close(fd);
 	}
 	return;

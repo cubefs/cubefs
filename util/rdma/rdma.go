@@ -4,14 +4,11 @@ package rdma
 #cgo LDFLAGS: -libverbs -lrdmacm -lrt -pthread
 #include "client.h"
 #include "server.h"
-//#include "rdma.h"
-//#include "rdma_proto.h"
 */
 import "C"
 import (
 	errors2 "errors"
 	"fmt"
-	syslog "log"
 	"net"
 	"reflect"
 	"sync"
@@ -34,70 +31,12 @@ const (
 	SERVER_CONN = 8
 )
 
-/*
-//export PrintCallback
-func PrintCallback(cstr *C.char) {
-	str := C.GoString(cstr)
-	println(str)
-}
-
-//export EpollAddSendAndRecvEvent
-func EpollAddSendAndRecvEvent(fd C.int, ctx unsafe.Pointer) {
-	GetEpoll().EpollAdd(int(fd), func() {
-		if ok := C.transport_sendAndRecv_event_cb(ctx); ok == 0 {
-		}
-	})
-}
-
-//export EpollAddConnectEvent
-func EpollAddConnectEvent(fd C.int, ctx unsafe.Pointer) {
-	GetEpoll().EpollAdd(int(fd), func() {
-		C.connection_event_cb(unsafe.Pointer(ctx))
-	})
-}
-
-//export EpollDelConnEvent
-func EpollDelConnEvent(fd C.int) {
-	GetEpoll().EpollDel(int(fd))
-}
-
-//export RecvHeaderCallback
-func RecvHeaderCallback(header unsafe.Pointer, len C.int, fielaName *C.char) C.int {
-	return C.int(145)
-}
-
-//export RecvMessageCallback
-func RecvMessageCallback(ctx unsafe.Pointer, entry *C.MemoryEntry) {
-	conn := (*Connection)(ctx)
-	if atomic.LoadInt32(&conn.state) != CONN_ST_CONNECTED {
-		return
-	}
-	if !entry.is_response {
-		recvHeaderBuff := CbuffToSlice(entry.header_buff, int(entry.header_len))
-		recvDataBuff := CbuffToSlice(entry.data_buff, int(entry.data_len))
-		conn.OnRecvCB(recvHeaderBuff, recvDataBuff)
-	} else {
-		recvResponseBuff := CbuffToSlice(entry.response_buff, int(entry.response_len))
-		conn.OnRecvCB(recvResponseBuff)
-	}
-}
-
-*/
-
 //export DisConnectCallback
 func DisConnectCallback(ctx unsafe.Pointer) {
 	conn := (*Connection)(ctx)
 	atomic.StoreInt32(&conn.state, CONN_ST_CLOSING)
 	conn.rFd <- struct{}{}
 }
-
-/*
-type RecvMsg struct {
-	headerPtr   []byte
-	dataPtr     []byte
-	responsePtr []byte
-}
-*/
 
 type RdmaAddr struct {
 	network string
@@ -171,39 +110,6 @@ func (server *Server) Close() {
 	return
 }
 
-/*
-type Client struct {
-	LocalIp       string
-	LocalPort     string
-	RemoteIp      string
-	RemotePort    string
-	cClient       unsafe.Pointer
-	reConnectFlag bool
-}
-
-func NewRdmaClient(targetIp, targetPort string) (client *Client, err error) { //, memoryPool *MemoryPool, headerPool *ObjectPool, responsePool *ObjectPool
-	client = &Client{}
-	client.RemoteIp = targetIp
-	client.RemotePort = targetPort
-	cCtx := C.Connect(C.CString(client.RemoteIp), C.CString(client.RemotePort))
-	if cCtx == nil {
-		err = errors2.New("client connect failed")
-		return nil, err
-	}
-	client.cClient = unsafe.Pointer(cCtx)
-	return client, nil
-}
-
-func (client *Client) Close() (err error) {
-	ret := C.CloseClient((*C.struct_RdmaContext)(client.cClient))
-	if ret != 1 {
-		err = errors2.New("client free failed")
-		return err
-	}
-	return nil
-}
-*/
-
 func (conn *Connection) Dial(targetIp, targetPort string) error {
 	cConn := C.rdma_connect_by_addr(C.CString(targetIp), C.CString(targetPort))
 	if cConn == nil {
@@ -237,10 +143,9 @@ func (conn *Connection) RemoteAddr() net.Addr {
 func (conn *Connection) init(cConn *C.connection) {
 	conn.cConn = unsafe.Pointer(cConn)
 	conn.SetDeadline(time.Now().Add(200 * time.Millisecond))
-	C.set_conn_context(cConn, unsafe.Pointer(conn))
+	//C.set_conn_context(cConn, unsafe.Pointer(conn))
 	conn.rFd = make(chan struct{}, 100)
 	conn.wFd = make(chan struct{}, 100)
-	//conn.recvMsgList = list.New()
 }
 
 func (conn *Connection) SetDeadline(t time.Time) error {
@@ -268,69 +173,8 @@ func (conn *Connection) SetReadDeadline(t time.Time) error {
 	return nil
 }
 
-/*
-func (conn *Connection) OnRecvCB(buffs ...[]byte) {
-	conn.mu.Lock()
-	if len(buffs) == 2 {
-		conn.recvMsgList.PushBack(&RecvMsg{buffs[0], buffs[1], nil})
-	} else {
-		conn.recvMsgList.PushBack(&RecvMsg{nil, nil, buffs[0]})
-	}
-	conn.mu.Unlock()
-	conn.rFd <- struct{}{}
-	return
-}
-
-func (conn *Connection) OnSendCB(sendLen int) {
-	conn.wFd <- struct{}{}
-	return
-}
-
-func (conn *Connection) ReConnect() error {
-	if atomic.LoadInt32(&conn.state) != CONN_ST_CLOSED {
-		return fmt.Errorf("conn has not been closed")
-	}
-	if ret := int(C.ReConnect((*C.Connection)(conn.cConn))); ret == 0 {
-		return fmt.Errorf("conn reconnect failed")
-	}
-	conn.rFd = make(chan struct{}, 100)
-	conn.wFd = make(chan struct{}, 100)
-	atomic.StoreInt32(&conn.state, CONN_ST_CONNECTED)
-	return nil
-}
-*/
-
 func (conn *Connection) Close() (err error) {
-	syslog.Println("conn app close")
 	C.conn_disconnect((*C.connection)(conn.cConn)) //TODO
-	/*
-		C.DisConnect((*C.Connection)(conn.cConn), false)
-		if conn.rFd != nil {
-			conn.rFd <- struct{}{}
-		}
-		if conn.wFd != nil {
-			conn.wFd <- struct{}{}
-		}
-		if conn.recvMsgList != nil {
-			for elem := conn.recvMsgList.Front(); elem != nil; elem = elem.Next() {
-				msg := elem.Value.(*RecvMsg)
-				if msg.headerPtr != nil {
-					if err := conn.RdmaPostRecvHeader(msg.headerPtr); err != nil {
-					}
-					if msg.dataPtr != nil {
-						ReleaseDataBuffer(msg.dataPtr)
-					}
-				} else {
-					if msg.responsePtr != nil {
-						if err := conn.RdmaPostRecvResponse(msg.responsePtr); err != nil {
-						}
-					}
-				}
-
-			}
-			conn.recvMsgList.Init()
-		}
-	*/
 	atomic.StoreInt32(&conn.state, CONN_ST_CLOSED)
 	return nil
 }
