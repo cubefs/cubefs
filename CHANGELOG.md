@@ -1,3 +1,55 @@
+## Release v3.3.2 - 2024/04/23
+
+### **UPGRAGDE NOTICE**
+UPGRAGDE NOTICE
+If your CubeFS version is v2.3.x or before, please refer to the UPGRADE NOTICE in v2.4.0 for upgrading steps.
+if you CubeFS version is v3.2.1 or before, and need to upgrade to v3.3.*, you must follow these upgrade steps:
+1. When upgrading the metanode node, you need to add "raftSyncSnapFormatVersion": 0 to the configuration file.
+2. After all metanodes are upgraded, remove this configuration item so that raftSyncSnapFormatVersion defaults to 1.
+3. Restart all metanodes.
+4. Please upgrade the client at the end, the master has enhanced the check of the client, otherwise it will cause the client to mount abnormally
+
+If your Blobstore version is v1.1.0 or before which built with cubefs-blobstore (https://github.com/cubefs/cubefs-blobstore) , please refer to UPGRADE to v3.2.0 following these steps [#1556](https://github.com/cubefs/cubefs/issues/1556).
+
+### **Main Feature**
+* `objectnode`: ObjectNode support post object. （#2695，@yhjiango）
+* `objectnode`: S3 sts and signature auth. (#2488, @yhjiango)
+* `libsdk/meta`: Support dir lock. (#3344, @longerfly)
+* `master/data/meta`: Support write disable option for volume. (#2537, @NaturalSelect)
+* `master`: Support freeze volume and delayed deletion of volume. (#2922, @shuqiang-zheng)
+* `master`: Support compressing client/partitions api response data to save bandwidth。 (#3314, @lily-lee)
+
+### **Enhance**
+* `objectnode`: Concurrent multipart upload security mechanism (#2928, @tangdeyi)
+* `master`: enable rename atomic operation by default (#2956, @Victor1319)
+* `master`: Optimize the display of capacity when "used" is greater than "total".  (#3315, @true1064)
+* `libsdk`: Support more api function for libsdk. (#3316, @longerfly)
+* `data`: Little io error only set current datapartition as broken. (#3317, @true1064)
+* `client`: Write to tiny extent when file size less than 1M. (#3318, @leonrayang)
+* `master`: Optimize CPU cost when invoking the volStat api (#3319, @true1064)
+* `master`: Optimize the speed of applying raft snapshot for master module. (#3320, @NaturalSelect)
+* `meta`: Support rotating and deleting inode files to avoid excessive size. (#3321, @NaturalSelect)
+* `data`: Speed up the startup speed of the datanode. (#3322, @NaturalSelect)
+* `master`: Optimize the volume deletion process. (#3323, @Victor1319)
+* `master`: Add a rdonly flag to the client/partitions api to indicate whether a volume is read-only. (#3324, @true1064)
+* `data`: Support asynchronous deletion of expired datapartitions. (#3325, @Victor1319)
+* `data`: Prioritize listening to external service port when starting the datanode. (#3326, @Victor1319)
+* `data`: Synchronously persist dp meta information when creating dp.(#3335, @bboyCH4)
+* `client`: Support retrying requests for failed extent writes when the client encounters limit io error. ( #3338, @NaturalSelect)
+
+### **Bugfix**
+* `objectnode`: PartNumber of multipart must be greater than 0. (#2885, @yhjiango）
+* `objectnode`: Listobjectv1 with delimiter may lead to panic. (#2931, @tangdeyi)
+* `client`: When the recycle bin is enabled, avoid deleting non-empty directories.  (#3328, @bboyCH4)
+* `libsdk`: Fix some issues encountered during the usage of the libsdk. (#3329, @longerfly)
+* `data`: Optimize the blocking issue during data partition migration in snapshot synchronization. (#3330, @bboyCH4)
+* `meta`: Fix the issue of possible duplication caused by the unpersisted meta unique id. (#3331, @true1064)
+* `master`: Master follower replicas only request the leader replica to obtain the partition list.(#3332, @NaturalSelect)
+* `client`: Fix the issue that interruption causes failure to write data to ec.(#3333, @Victor1319)
+* `data`: Fix the issue of memory leaks caused by blocking during data transmission between datanode leader and follower. (#3336, @Victor1319)
+* `data`: During the process of reusing network connections, there is a possibility of using incorrect network response messages. (#3337, @Victor1319)
+
+
 ## Release v3.3.1 - 2023/12/25
 
 ### **UPGRAGDE NOTICE**
