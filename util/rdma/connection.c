@@ -392,9 +392,9 @@ int del_conn_from_server(connection *conn, struct rdma_listener *server) {
 void conn_disconnect(connection *conn) {
     pthread_spin_lock(&conn->spin_lock);
     if (conn->state != CONN_STATE_DISCONNECTING && conn->cm_id != NULL) {
+        set_conn_state(conn, CONN_STATE_DISCONNECTING);
         rdma_disconnect(conn->cm_id);
     }
-    set_conn_state(conn, CONN_STATE_DISCONNECTING);
     pthread_spin_unlock(&conn->spin_lock);
     return;
 }

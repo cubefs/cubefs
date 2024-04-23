@@ -141,7 +141,7 @@ void *cq_thread(void *ctx) {
             goto error;
         }
         log_debug("ibv_get_cq_event success");
-        ibv_ack_cq_events(worker->cq, 1);
+        //ibv_ack_cq_events(worker->cq, 1);
         ret = ibv_req_notify_cq(worker->cq, 0);
         if (ret != 0) {
             log_debug("ibv req notify cq error\n");
@@ -153,6 +153,7 @@ void *cq_thread(void *ctx) {
             goto error;
         }
         process_cq_event(wcs, ret, worker);
+        ibv_ack_cq_events(worker->cq, ret);
         log_debug("process cq event finish");
     }
 error:
