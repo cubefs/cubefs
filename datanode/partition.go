@@ -17,6 +17,7 @@ package datanode
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/cubefs/cubefs/util/exporter"
 	"hash/crc32"
 	"math"
 	"net"
@@ -69,6 +70,7 @@ type DataPartitionMetadata struct {
 	StopRecover             bool
 	VerList                 []*proto.VolVersionInfo
 	ApplyID                 uint64
+	DiskErrCnt              uint64
 }
 
 func (md *DataPartitionMetadata) Validate() (err error) {
@@ -295,6 +297,21 @@ func LoadDataPartition(partitionDir string, disk *Disk) (dp *DataPartition, err 
 	go dp.StartRaftLoggingSchedule()
 	disk.AddSize(uint64(dp.Size()))
 	dp.ForceLoadHeader()
+	// if dp trigger disk error before, add it to diskErrPartitionSet
+	// TODO: should care which disk error type is ?
+	dp.diskErrCnt = meta.DiskErrCnt
+	if meta.DiskErrCnt > 0 {
+		disk.AddDiskErrPartition(dp.partitionID)
+		diskErrPartitionCnt := disk.GetDiskErrPartitionCount()
+		if diskErrPartitionCnt >= disk.dataNode.diskUnavailablePartitionErrorCount {
+			msg := fmt.Sprintf("set disk unavailable for too many disk error, "+
+				"disk path(%v), ip(%v), diskErrPartitionCnt(%v) threshold(%v)",
+				disk.Path, LocalIP, diskErrPartitionCnt, disk.dataNode.diskUnavailablePartitionErrorCount)
+			exporter.Warning(msg)
+			log.LogWarnf(msg)
+			disk.doDiskError()
+		}
+	}
 	return
 }
 
@@ -658,6 +675,7 @@ func (dp *DataPartition) PersistMetadata() (err error) {
 		StopRecover:             dp.stopRecover,
 		VerList:                 dp.volVersionInfoList.VerList,
 		ApplyID:                 dp.appliedID,
+		DiskErrCnt:              atomic.LoadUint64(&dp.diskErrCnt),
 	}
 
 	if metaData, err = json.Marshal(md); err != nil {
@@ -1357,6 +1375,7 @@ func (dp *DataPartition) handleDecommissionRecoverFailed() {
 
 func (dp *DataPartition) incDiskErrCnt() {
 	diskErrCnt := atomic.AddUint64(&dp.diskErrCnt, 1)
+	dp.PersistMetadata()
 	log.LogWarnf("[incDiskErrCnt]: dp(%v) disk err count:%v", dp.partitionID, diskErrCnt)
 }
 

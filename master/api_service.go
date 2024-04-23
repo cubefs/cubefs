@@ -1896,22 +1896,24 @@ func (m *Server) decommissionDataPartition(w http.ResponseWriter, r *http.Reques
 
 func (m *Server) diagnoseDataPartition(w http.ResponseWriter, r *http.Request) {
 	var (
-		err                     error
-		rstMsg                  *proto.DataPartitionDiagnosis
-		inactiveNodes           []string
-		corruptDps              []*DataPartition
-		lackReplicaDps          []*DataPartition
-		badReplicaDps           []*DataPartition
-		repFileCountDifferDps   []*DataPartition
-		repUsedSizeDifferDps    []*DataPartition
-		excessReplicaDPs        []*DataPartition
-		corruptDpIDs            []uint64
-		lackReplicaDpIDs        []uint64
-		badReplicaDpIDs         []uint64
-		repFileCountDifferDpIDs []uint64
-		repUsedSizeDifferDpIDs  []uint64
-		excessReplicaDpIDs      []uint64
-		badDataPartitionInfos   []proto.BadPartitionRepairView
+		err                       error
+		rstMsg                    *proto.DataPartitionDiagnosis
+		inactiveNodes             []string
+		corruptDps                []*DataPartition
+		lackReplicaDps            []*DataPartition
+		badReplicaDps             []*DataPartition
+		repFileCountDifferDps     []*DataPartition
+		repUsedSizeDifferDps      []*DataPartition
+		excessReplicaDPs          []*DataPartition
+		diskErrorReplicaDPs       []*DataPartition
+		corruptDpIDs              []uint64
+		lackReplicaDpIDs          []uint64
+		badReplicaDpIDs           []uint64
+		repFileCountDifferDpIDs   []uint64
+		repUsedSizeDifferDpIDs    []uint64
+		excessReplicaDpIDs        []uint64
+		badDataPartitionInfos     []proto.BadPartitionRepairView
+		diskErrorDataPartitionIDs []uint64
 	)
 	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminDiagnoseDataPartition))
 	defer func() {
@@ -1930,13 +1932,15 @@ func (m *Server) diagnoseDataPartition(w http.ResponseWriter, r *http.Request) {
 	repFileCountDifferDpIDs = make([]uint64, 0)
 	repUsedSizeDifferDpIDs = make([]uint64, 0)
 	excessReplicaDpIDs = make([]uint64, 0)
+	diskErrorDataPartitionIDs = make([]uint64, 0)
 
 	if inactiveNodes, err = m.cluster.checkInactiveDataNodes(); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
 
-	if lackReplicaDps, badReplicaDps, repFileCountDifferDps, repUsedSizeDifferDps, excessReplicaDPs, corruptDps, err = m.cluster.checkReplicaOfDataPartitions(ignoreDiscardDp); err != nil {
+	if lackReplicaDps, badReplicaDps, repFileCountDifferDps, repUsedSizeDifferDps, excessReplicaDPs,
+		corruptDps, diskErrorReplicaDPs, err = m.cluster.checkReplicaOfDataPartitions(ignoreDiscardDp); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -1959,6 +1963,9 @@ func (m *Server) diagnoseDataPartition(w http.ResponseWriter, r *http.Request) {
 		excessReplicaDpIDs = append(excessReplicaDpIDs, dp.PartitionID)
 	}
 
+	for _, dp := range diskErrorReplicaDPs {
+		diskErrorDataPartitionIDs = append(diskErrorDataPartitionIDs, dp.PartitionID)
+	}
 	// badDataPartitions = m.cluster.getBadDataPartitionsView()
 	badDataPartitionInfos = m.cluster.getBadDataPartitionsRepairView()
 	rstMsg = &proto.DataPartitionDiagnosis{
@@ -1970,13 +1977,14 @@ func (m *Server) diagnoseDataPartition(w http.ResponseWriter, r *http.Request) {
 		RepFileCountDifferDpIDs:     repFileCountDifferDpIDs,
 		RepUsedSizeDifferDpIDs:      repUsedSizeDifferDpIDs,
 		ExcessReplicaDpIDs:          excessReplicaDpIDs,
+		DiskErrorDataPartitionIDs:   diskErrorDataPartitionIDs,
 	}
 	log.LogInfof("diagnose dataPartition[%v] inactiveNodes:[%v], corruptDpIDs:[%v], "+
 		"lackReplicaDpIDs:[%v], BadReplicaDataPartitionIDs[%v], "+
-		"repFileCountDifferDpIDs:[%v], RepUsedSizeDifferDpIDs[%v], excessReplicaDpIDs[%v]",
+		"repFileCountDifferDpIDs:[%v], RepUsedSizeDifferDpIDs[%v], excessReplicaDpIDs[%v], diskErrorDataPartitionIDs[%v]",
 		m.cluster.Name, inactiveNodes, corruptDpIDs,
 		lackReplicaDpIDs, badReplicaDpIDs,
-		repFileCountDifferDpIDs, repUsedSizeDifferDpIDs, excessReplicaDpIDs)
+		repFileCountDifferDpIDs, repUsedSizeDifferDpIDs, excessReplicaDpIDs, diskErrorDataPartitionIDs)
 	sendOkReply(w, r, newSuccessHTTPReply(rstMsg))
 }
 
