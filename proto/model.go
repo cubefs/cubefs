@@ -309,6 +309,7 @@ type DataReplica struct {
 	DiskPath                   string
 	DecommissionRepairProgress float64
 	LocalPeers                 []Peer
+	TriggerDiskError           bool
 }
 
 // data partition diagnosis represents the inactive data nodes, corrupt data partitions, and data partitions lack of replicas
@@ -322,6 +323,7 @@ type DataPartitionDiagnosis struct {
 	// BadDataPartitionIDs         []BadPartitionView
 	BadDataPartitionInfos      []BadPartitionRepairView
 	BadReplicaDataPartitionIDs []uint64
+	DiskErrorDataPartitionIDs  []uint64
 }
 
 // meta partition diagnosis represents the inactive meta nodes, corrupt meta partitions, and meta partitions lack of replicas

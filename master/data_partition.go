@@ -747,6 +747,7 @@ func (partition *DataPartition) updateMetric(vr *proto.DataPartitionReport, data
 	replica.NeedsToCompare = vr.NeedCompare
 	replica.DecommissionRepairProgress = vr.DecommissionRepairProgress
 	replica.LocalPeers = vr.LocalPeers
+	replica.TriggerDiskError = vr.TriggerDiskError
 	if replica.DiskPath != vr.DiskPath && vr.DiskPath != "" {
 		oldDiskPath := replica.DiskPath
 		replica.DiskPath = vr.DiskPath

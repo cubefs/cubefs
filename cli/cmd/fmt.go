@@ -279,6 +279,10 @@ var (
 	dentryCountNotEqualInfoTablePattern = "%-8v    %-8v    %-8v     %-8v    %-24v"
 	dentryCountNotEqualInfoTableHeader  = fmt.Sprintf(dentryCountNotEqualInfoTablePattern,
 		"ID", "VOLUME", "REPLICAS", "STATUS", "MEMBERS(dentryCount)")
+
+	diskErrorReplicaPartitionInfoTablePattern = "%-8v    %-8v    %-8v    %-8v    %-24v    %-24v"
+	diskErrorReplicaPartitionInfoTableHeader  = fmt.Sprintf(badReplicaPartitionInfoTablePattern,
+		"DP_ID", "VOLUME", "REPLICAS", "DP_STATUS", "MEMBERS", "DiskError_REPLICAS")
 )
 
 func formatDataPartitionInfoRow(partition *proto.DataPartitionInfo) string {
@@ -927,4 +931,23 @@ func formatDataPartitionDecommissionProgress(info *proto.DecommissionDataPartiti
 	sb.WriteString(fmt.Sprintf("NeedRollbackTimes: %v\n", info.NeedRollbackTimes))
 	sb.WriteString(fmt.Sprintf("ErrorMessage:      %v\n", info.ErrorMessage))
 	return sb.String()
+}
+
+func formatDiskErrorReplicaDpInfoRow(partition *proto.DataPartitionInfo) string {
+	sb := strings.Builder{}
+	sb.WriteString("[")
+	firstItem := true
+	for _, replica := range partition.Replicas {
+		if replica.TriggerDiskError {
+			if !firstItem {
+				sb.WriteString(",")
+			}
+
+			sb.WriteString(fmt.Sprintf("%v(%v)", replica.Addr, replica.DiskPath))
+			firstItem = false
+		}
+	}
+	sb.WriteString("]")
+	return fmt.Sprintf(diskErrorReplicaPartitionInfoTablePattern, partition.PartitionID, partition.VolName, partition.ReplicaNum,
+		formatDataPartitionStatus(partition.Status), "["+strings.Join(partition.Hosts, ", ")+"]", sb.String())
 }

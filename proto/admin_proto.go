@@ -711,6 +711,7 @@ type DataPartitionReport struct {
 	NeedCompare                bool
 	DecommissionRepairProgress float64
 	LocalPeers                 []Peer
+	TriggerDiskError           bool
 }
 
 type DataNodeQosResponse struct {

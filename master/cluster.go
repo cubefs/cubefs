@@ -1220,11 +1220,13 @@ func (c *Cluster) checkLackReplicaDataPartitions() (lackReplicaDataPartitions []
 
 func (c *Cluster) checkReplicaOfDataPartitions(ignoreDiscardDp bool) (
 	lackReplicaDPs []*DataPartition, unavailableReplicaDPs []*DataPartition, repFileCountDifferDps []*DataPartition,
-	repUsedSizeDifferDps []*DataPartition, excessReplicaDPs []*DataPartition, noLeaderDPs []*DataPartition, err error) {
+	repUsedSizeDifferDps []*DataPartition, excessReplicaDPs []*DataPartition, noLeaderDPs []*DataPartition,
+	hasBadDiskErrorReplicaDPs []*DataPartition, err error) {
 	noLeaderDPs = make([]*DataPartition, 0)
 	lackReplicaDPs = make([]*DataPartition, 0)
 	unavailableReplicaDPs = make([]*DataPartition, 0)
 	excessReplicaDPs = make([]*DataPartition, 0)
+	hasBadDiskErrorReplicaDPs = make([]*DataPartition, 0)
 
 	vols := c.copyVols()
 	for _, vol := range vols {
@@ -1264,12 +1266,15 @@ func (c *Cluster) checkReplicaOfDataPartitions(ignoreDiscardDp bool) (
 			}
 
 			recordReplicaUnavailable := false
+			hasBadDiskErrorReplica := false
 			for _, replica := range dp.Replicas {
 				if !recordReplicaUnavailable && replica.Status == proto.Unavailable {
 					unavailableReplicaDPs = append(unavailableReplicaDPs, dp)
 					recordReplicaUnavailable = true
 				}
-
+				if replica.TriggerDiskError {
+					hasBadDiskErrorReplica = true
+				}
 				if dp.IsDoingDecommission() {
 					continue
 				}
@@ -1292,15 +1297,18 @@ func (c *Cluster) checkReplicaOfDataPartitions(ignoreDiscardDp bool) (
 			if repFileCountDiff > c.cfg.diffReplicaFileCount {
 				repFileCountDifferDps = append(repFileCountDifferDps, dp)
 			}
+			if hasBadDiskErrorReplica {
+				hasBadDiskErrorReplicaDPs = append(hasBadDiskErrorReplicaDPs, dp)
+			}
 		}
 	}
 
 	log.LogInfof("clusterID[%v] lackReplicaDp count:[%v], unavailableReplicaDp count:[%v], "+
 		"repFileCountDifferDps count[%v], repUsedSizeDifferDps count[%v], "+
-		"excessReplicaDPs count[%v], noLeaderDPs count[%v]",
+		"excessReplicaDPs count[%v], noLeaderDPs count[%v] hasBadDiskErrorReplicaDPs count[%v]",
 		c.Name, len(lackReplicaDPs), len(unavailableReplicaDPs),
 		len(repFileCountDifferDps), len(repUsedSizeDifferDps),
-		len(excessReplicaDPs), len(noLeaderDPs))
+		len(excessReplicaDPs), len(noLeaderDPs), len(hasBadDiskErrorReplicaDPs))
 	return
 }
 

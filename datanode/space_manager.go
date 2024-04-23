@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"math"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/cubefs/cubefs/proto"
@@ -477,8 +478,10 @@ func (s *DataNode) buildHeartBeatResponse(response *proto.DataNodeHeartbeatRespo
 			NeedCompare:                true,
 			DecommissionRepairProgress: partition.decommissionRepairProgress,
 			LocalPeers:                 partition.config.Peers,
+			TriggerDiskError:           atomic.LoadUint64(&partition.diskErrCnt) > 0,
 		}
-		log.LogDebugf("action[Heartbeats] dpid(%v), status(%v) total(%v) used(%v) leader(%v) isLeader(%v).", vr.PartitionID, vr.PartitionStatus, vr.Total, vr.Used, leaderAddr, vr.IsLeader)
+		log.LogDebugf("action[Heartbeats] dpid(%v), status(%v) total(%v) used(%v) leader(%v) isLeader(%v) TriggerDiskError(%v).",
+			vr.PartitionID, vr.PartitionStatus, vr.Total, vr.Used, leaderAddr, vr.IsLeader, vr.TriggerDiskError)
 		response.PartitionReports = append(response.PartitionReports, vr)
 		return true
 	})
