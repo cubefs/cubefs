@@ -18,7 +18,6 @@ import (
 	"fmt"
 	"github.com/cubefs/cubefs/util/stat"
 	"net"
-	"sync"
 	"sync/atomic"
 	"time"
 
@@ -114,9 +113,6 @@ type ExtentHandler struct {
 	storageClass uint32
 
 	isMigration bool
-	// for flush
-	mu        sync.Mutex
-	flushCond *sync.Cond
 }
 
 // NewExtentHandler returns a new extent handler.
@@ -139,7 +135,6 @@ func NewExtentHandler(stream *Streamer, offset int, storeMode int, size int,
 		storageClass: proto.GetMediaTypeByStorageClass(storageClass),
 		isMigration:  isMigration,
 	}
-	eh.flushCond = sync.NewCond(&eh.mu)
 
 	go eh.receiver()
 	go eh.sender()
@@ -315,8 +310,7 @@ func (eh *ExtentHandler) processReply(packet *Packet) {
 	defer func() {
 		log.LogDebugf("processReply end: packet(%v), eh(%v)", packet, eh)
 		if atomic.AddInt32(&eh.inflight, -1) <= 0 {
-			//eh.empty <- struct{}{}
-			eh.flushCond.Broadcast()
+			eh.empty <- struct{}{}
 		}
 	}()
 
@@ -498,9 +492,14 @@ func (eh *ExtentHandler) waitForFlush() {
 		return
 	}
 
-	eh.flushCond.L.Lock()
-	eh.flushCond.Wait()
-	eh.flushCond.L.Unlock()
+	for {
+		select {
+		case <-eh.empty:
+			if atomic.LoadInt32(&eh.inflight) <= 0 {
+				return
+			}
+		}
+	}
 }
 
 func (eh *ExtentHandler) recoverPacket(packet *Packet) error {

@@ -304,7 +304,7 @@ func (s *Streamer) asyncBlockCache() {
 			}
 		case <-t.C:
 			if s.refcnt <= 0 {
-				//s.isOpen = false
+				s.isOpen = false
 				return
 			}
 		}
