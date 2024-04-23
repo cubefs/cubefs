@@ -396,11 +396,12 @@ begin:
 		}
 		total += writeSize
 	}
-	if filesize, _ := s.extents.Size(); offset+total > filesize {
+	filesize, _ := s.extents.Size()
+	if offset+total > filesize {
 		s.extents.SetSize(uint64(offset+total), false)
 		log.LogDebugf("Streamer write: ino(%v) filesize changed to (%v)", s.inode, offset+total)
 	}
-	log.LogDebugf("Streamer write exit: ino(%v) offset(%v) size(%v) done total(%v) err(%v)", s.inode, offset, size, total, err)
+	log.LogDebugf("Streamer write exit: ino(%v) filesize(%v) offset(%v) size(%v) done total(%v) err(%v)", s.inode, filesize, offset, size, total, err)
 	return
 }
 

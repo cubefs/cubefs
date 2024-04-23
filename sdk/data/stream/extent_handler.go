@@ -460,12 +460,10 @@ func (eh *ExtentHandler) appendExtentKey() (err error) {
 			if proto.IsCold(eh.stream.client.volumeType) && eh.status == ExtentStatusError {
 				return
 			}
-			discard := eh.stream.extents.Append(eh.key, true)
-			status, err := eh.stream.client.appendExtentKey(eh.stream.parentInode, eh.inode, *eh.key, discard)
-
+			var status int
 			ekey := *eh.key
 			doAppend := func() (err error) {
-				discard = eh.stream.extents.Append(&ekey, true)
+				discard := eh.stream.extents.Append(&ekey, true)
 				status, err = eh.stream.client.appendExtentKey(eh.stream.parentInode, eh.inode, ekey, discard)
 				if atomic.LoadInt32(&eh.stream.needUpdateVer) > 0 {
 					if errUpdateExtents := eh.stream.GetExtentsForce(); errUpdateExtents != nil {

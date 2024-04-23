@@ -27,13 +27,14 @@ const (
 	LogTimeFormat = "20060102150405000"
 )
 
-func (s *Super) InodeGet(ino uint64) (*proto.InodeInfo, error) {
-	info := s.ic.Get(ino)
+func (s *Super) InodeGet(ino uint64) (info *proto.InodeInfo, err error) {
+	info = s.ic.Get(ino)
+
 	if info != nil {
 		return info, nil
 	}
 
-	info, err := s.mw.InodeGet_ll(ino)
+	info, err = s.mw.InodeGet_ll(ino)
 	if err != nil || info == nil {
 		log.LogErrorf("InodeGet: ino(%v) err(%v) info(%v)", ino, err, info)
 		if err != nil {
@@ -55,6 +56,7 @@ func (s *Super) InodeGet(ino uint64) (*proto.InodeInfo, error) {
 		}
 	}
 	s.ec.RefreshExtentsCache(ino)
+	log.LogInfof("[InodeGet] get ino(%v) inode(%v)", ino, info)
 	return info, nil
 }
 

@@ -498,11 +498,11 @@ func (client *ExtentClient) FileSize(inode uint64) (size int, gen uint64, valid 
 }
 
 // SetFileSize set the file size.
-func (client *ExtentClient) SetFileSize(inode uint64, size int) {
+func (client *ExtentClient) SetFileSize(inode uint64, size int, sync bool) {
 	s := client.GetStreamer(inode)
 	if s != nil {
 		log.LogDebugf("SetFileSize: ino(%v) size(%v)", inode, size)
-		s.extents.SetSize(uint64(size), true)
+		s.extents.SetSize(uint64(size), sync)
 	}
 }
 
