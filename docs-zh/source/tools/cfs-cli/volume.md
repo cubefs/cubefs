@@ -33,15 +33,17 @@ Flags:
 
 ## 删除指定卷
 
-删除指定卷[VOLUME NAME], ec卷大小为0才能删除
+删除指定卷[VOLUME NAME], ec卷大小为0才能删除。开启延迟删除后，volume将会在`volDeletionDelayTime`小时后被真正删除，在此期间可以通过`status=false`取消删除操作。
 
 ```bash
 cfs-cli volume delete [VOLUME NAME] [flags]
 ```
 
 ```bash
-Flags:
-    -y, --yes                                           # 跳过所有问题并设置回答为"yes"
+ Flags:
+    -h, --help     help for delete
+    -s, --status   Decide whether to delete or undelete (default true)
+    -y, --yes      Answer yes for all questions
 ```
 
 ## 获取卷信息
