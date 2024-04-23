@@ -33,7 +33,7 @@ Flags:
 
 ## Delete Volume
 
-Delete the specified volume [VOLUME NAME]. The size of the ec volume must be 0 to be deleted.
+Delete the specified volume [VOLUME NAME]. The size of the ec volume must be 0 to be deleted. When enable delay deletion, volume will be deleted after `volDeletionDelayTime` hours, and `status=false` can be used to cancel volume deletion.
 
 ```bash
 cfs-cli volume delete [VOLUME NAME] [flags]
@@ -41,7 +41,9 @@ cfs-cli volume delete [VOLUME NAME] [flags]
 
 ```bash
 Flags:
-    -y, --yes                                           # Skip all questions and set the answer to "yes".
+  -h, --help     help for delete
+  -s, --status   Decide whether to delete or undelete (default true)
+  -y, --yes      Answer yes for all questions
 ```
 
 ## Show Volume

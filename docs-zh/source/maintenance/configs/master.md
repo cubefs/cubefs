@@ -40,6 +40,7 @@ CubeFS 使用 **JSON** 作为配置文件的格式.
 | volForceDeletion                    | bool   | 非空的卷是否可以删除                                    | 否     | true          |
 | volDeletionDentryThreshold          | int    | 如果非空的卷不可以直接删除， 该参数定义了一个阈值，只有一个卷的dentry个数小于等于该阈值时才可以被删除  | 否       | 0             |
 | enableLogPanicHook | bool | (实验性) Hook `panic` 函数以便在执行`panic`之前使日志落盘 | No | false |
+| enableDirectDeleteVol               | bool   | 用于控制是否直接删除卷，`true` 将会直接删除，`false` 延迟删除|  No          |true |
 
 ## 配置示例
 

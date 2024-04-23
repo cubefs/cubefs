@@ -40,6 +40,7 @@ CubeFS uses **JSON** as the format of the configuration file.
 | volForceDeletion                    | bool   | the non-empty volume can be deleted directly or not                                                                                                                             | No       | true          |
 | volDeletionDentryThreshold          | int    | if the non-empty volume can't be deleted directly , this param define a threshold , only volumes with a dentry count that is less than or equal to the threshold can be deleted | No       | 0             |
 | enableLogPanicHook                  | bool   | (Experimental) Hook `panic` function to flush log before executing `panic` |  No          |false |
+| enableDirectDeleteVol               | bool   | to control the support for delayed volume deletion. `true``, will delete volume directly|  No          |true |
 
 ## Configuration Example
 
