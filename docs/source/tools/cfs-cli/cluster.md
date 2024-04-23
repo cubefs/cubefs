@@ -32,6 +32,12 @@ Set the memory threshold for each MetaNode in the cluster. If the memory usage r
 cfs-cli cluster threshold [float]
 ```
 
+## Set Volume Deletion DelayTime
+Set the `volDeletionDelayTime` configuration, measured in hours, which represents the number of hours after enabling delayed volume deletion when the volume will be permanently deleted. Prior to that, it will be marked for deletion and can be recovered. default is 48 hours.
+```bash
+cfs-cli cluster volDeletionDelayTime [VOLDELETIONDELAYTIME]
+```
+
 ## Cluster Configuration Setup
 
 Set the configurations of the cluster.
