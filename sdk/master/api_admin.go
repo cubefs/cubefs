@@ -594,9 +594,23 @@ func (api *AdminAPI) GetQuota(volName string, quotaId string) (quotaInfo *proto.
 	return quotaInfo, err
 }
 
-func (api *AdminAPI) QueryBadDisks() (badDisks *proto.BadDiskInfos, err error) {
-	badDisks = &proto.BadDiskInfos{}
+func (api *AdminAPI) QueryBadDisks() (badDisks *proto.DiskInfos, err error) {
+	badDisks = &proto.DiskInfos{}
 	err = api.mc.requestWith(badDisks, newRequest(get, proto.QueryBadDisks).Header(api.h))
+	return
+}
+
+func (api *AdminAPI) QueryDisks(addr string) (disks *proto.DiskInfos, err error) {
+	disks = &proto.DiskInfos{}
+	err = api.mc.requestWith(disks, newRequest(get, proto.QueryDisks).Header(api.h).
+		addParam("addr", addr))
+	return
+}
+
+func (api *AdminAPI) DiskDetail(addr string, diskPath string) (disk *proto.DiskInfo, err error) {
+	disk = &proto.DiskInfo{}
+	err = api.mc.requestWith(disk, newRequest(get, proto.QueryDiskDetail).Header(api.h).
+		addParam("addr", addr).addParam("disk", diskPath))
 	return
 }
 

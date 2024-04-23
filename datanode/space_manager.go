@@ -163,6 +163,13 @@ func (manager *SpaceManager) GetDiskUtils() map[string]float64 {
 	return utils
 }
 
+func (manager *SpaceManager) GetDiskUtil(disk *Disk) (util float64) {
+	manager.diskMutex.RLock()
+	defer manager.diskMutex.RUnlock()
+	util = manager.diskUtils[disk.diskPartition.Device].Load()
+	return
+}
+
 func (manager *SpaceManager) SetNodeID(nodeID uint64) {
 	manager.nodeID = nodeID
 }
@@ -450,7 +457,7 @@ func (s *DataNode) buildHeartBeatResponse(response *proto.DataNodeHeartbeatRespo
 	response.MaxCapacity = stat.MaxCapacityToCreatePartition
 	response.RemainingCapacity = stat.RemainingCapacityToCreatePartition
 	response.BadDisks = make([]string, 0)
-	response.BadDiskStats = make([]proto.BadDiskStat, 0)
+	response.DiskStats = make([]proto.DiskStat, 0)
 	response.StartTime = s.startTime
 	stat.Unlock()
 
@@ -480,14 +487,20 @@ func (s *DataNode) buildHeartBeatResponse(response *proto.DataNodeHeartbeatRespo
 	for _, d := range disks {
 		if d.Status == proto.Unavailable {
 			response.BadDisks = append(response.BadDisks, d.Path)
-
-			bds := proto.BadDiskStat{
-				DiskPath:             d.Path,
-				TotalPartitionCnt:    d.PartitionCount(),
-				DiskErrPartitionList: d.GetDiskErrPartitionList(),
-			}
-			response.BadDiskStats = append(response.BadDiskStats, bds)
 		}
+
+		bds := proto.DiskStat{
+			Status:            d.Status,
+			DiskPath:          d.Path,
+			Total:             d.Total,
+			Used:              d.Used,
+			Available:         d.Available,
+			IOUtil:            d.space.GetDiskUtil(d),
+			TotalPartitionCnt: d.PartitionCount(),
+
+			DiskErrPartitionList: d.GetDiskErrPartitionList(),
+		}
+		response.DiskStats = append(response.DiskStats, bds)
 	}
 }
 

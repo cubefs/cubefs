@@ -113,11 +113,12 @@ const (
 	ConsoleFileUpload = "/file/upload"
 
 	// Client APIs
-	ClientDataPartitions = "/client/partitions"
-	ClientVol            = "/client/vol"
-	ClientMetaPartition  = "/metaPartition/get"
-	ClientVolStat        = "/client/volStat"
-	ClientMetaPartitions = "/client/metaPartitions"
+	ClientDataPartitions     = "/client/partitions"
+	ClientDiskDataPartitions = "/client/disk/partitions"
+	ClientVol                = "/client/vol"
+	ClientMetaPartition      = "/metaPartition/get"
+	ClientVolStat            = "/client/volStat"
+	ClientMetaPartitions     = "/client/metaPartitions"
 
 	// qos api
 	QosGetStatus           = "/qos/getStatus"
@@ -156,6 +157,8 @@ const (
 	PauseDecommissionDisk              = "/disk/pauseDecommission"
 	QueryDecommissionDiskDecoFailedDps = "/disk/queryDecommissionFailedDps"
 	QueryBadDisks                      = "/disk/queryBadDisks"
+	QueryDisks                         = "/disk/queryDisks"
+	QueryDiskDetail                    = "/disk/detail"
 	RestoreStoppedAutoDecommissionDisk = "/disk/restoreStoppedAutoDecommissionDisk"
 	QueryAllDecommissionDisk           = "/disk/queryAllDecommissionDisk"
 	GetDataNode                        = "/dataNode/get"
@@ -713,9 +716,17 @@ type DataNodeQosResponse struct {
 	Result     string
 }
 
-type BadDiskStat struct {
-	DiskPath             string
-	TotalPartitionCnt    int
+type DiskStat struct {
+	Status   int
+	DiskPath string
+
+	Total     uint64
+	Used      uint64
+	Available uint64
+	IOUtil    float64
+
+	TotalPartitionCnt int
+
 	DiskErrPartitionList []uint64
 }
 
@@ -734,7 +745,7 @@ type DataNodeHeartbeatResponse struct {
 	Status              uint8
 	Result              string
 	BadDisks            []string           // Keep this old field for compatibility
-	BadDiskStats        []BadDiskStat      // key: disk path
+	DiskStats           []DiskStat         // key: disk path
 	CpuUtil             float64            `json:"cpuUtil"`
 	IoUtils             map[string]float64 `json:"ioUtil"`
 }
@@ -872,6 +883,10 @@ type DataPartitionResponse struct {
 // DataPartitionsView defines the view of a data partition
 type DataPartitionsView struct {
 	DataPartitions []*DataPartitionResponse
+}
+
+type DiskDataPartitionsView struct {
+	DataPartitions []*DataPartitionReport
 }
 
 func NewDataPartitionsView() (dataPartitionsView *DataPartitionsView) {

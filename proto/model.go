@@ -341,15 +341,23 @@ type DecommissionProgress struct {
 	StatusMessage string
 }
 
-type BadDiskInfo struct {
-	Address              string
-	Path                 string
+type DiskInfo struct {
+	NodeId  uint64
+	Address string
+	Path    string
+	Status  string
+
+	Total     uint64
+	Used      uint64
+	Available uint64
+	IOUtil    float64
+
 	TotalPartitionCnt    int
 	DiskErrPartitionList []uint64
 }
 
-type BadDiskInfos struct {
-	BadDisks []BadDiskInfo
+type DiskInfos struct {
+	Disks []DiskInfo
 }
 
 type DiscardDataPartitionInfos struct {

@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"fmt"
 	"sort"
 
 	"github.com/cubefs/cubefs/proto"
@@ -21,11 +22,91 @@ func newDiskCmd(client *master.MasterClient) *cobra.Command {
 		Aliases: []string{"disk"},
 	}
 	cmd.AddCommand(
+		newListDisksCmd(client),
+		newDiskDetailCmd(client),
 		newListBadDiskCmd(client),
 		newDecommissionDiskCmd(client),
 		newRecommissionDiskCmd(client),
 		newQueryDecommissionDiskCmd(client),
 	)
+	return cmd
+}
+
+const (
+	cmdDiskDetailShort = "show disk detail"
+)
+
+func newDiskDetailCmd(client *master.MasterClient) *cobra.Command {
+	var optDpDetail bool
+	cmd := &cobra.Command{
+		Use:   CliOpInfo + " [DATANODE_IP:PORT] [DISK_PATH]",
+		Short: cmdDiskDetailShort,
+		Args:  cobra.ExactArgs(2),
+		Run: func(cmd *cobra.Command, args []string) {
+			var (
+				detail *proto.DiskInfo
+				err    error
+			)
+			defer func() {
+				errout(err)
+			}()
+			if detail, err = client.AdminAPI().DiskDetail(args[0], args[1]); err != nil {
+				return
+			}
+			stdout("Summary:\n%s\n", formatDiskDetailSummary(detail))
+
+			// print data partition detail
+			if optDpDetail {
+				var view *proto.DiskDataPartitionsView
+				if view, err = client.ClientAPI().GetDiskDataPartitions(args[0], args[1]); err != nil {
+					err = fmt.Errorf("Get disk data detail information failed:\n%v\n", err)
+					return
+				}
+				stdout("Data partitions:\n")
+				stdout("%v\n", diskDataPartitionTableHeader)
+				sort.SliceStable(view.DataPartitions, func(i, j int) bool {
+					return view.DataPartitions[i].PartitionID < view.DataPartitions[j].PartitionID
+				})
+				for _, dp := range view.DataPartitions {
+					stdout("%v\n", formatDiskDataPartitionTableRow(dp))
+				}
+			}
+		},
+	}
+	cmd.Flags().BoolVarP(&optDpDetail, "data-partition", "d", false, "Display data partitions on the disk")
+	return cmd
+}
+
+const (
+	cmdListDisksShort = "list disks"
+)
+
+func newListDisksCmd(client *master.MasterClient) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   CliOpList + " [DATANODE_IP:PORT]",
+		Short: cmdListDisksShort,
+		Args:  cobra.MaximumNArgs(1),
+		Run: func(cmd *cobra.Command, args []string) {
+			var (
+				infos *proto.DiskInfos
+				err   error
+			)
+			defer func() {
+				errout(err)
+			}()
+			addr := ""
+			if len(args) > 0 {
+				addr = args[0]
+			}
+			if infos, err = client.AdminAPI().QueryDisks(addr); err != nil {
+				return
+			}
+			sort.SliceStable(infos.Disks, func(i, j int) bool {
+				return infos.Disks[i].Address < infos.Disks[j].Address
+			})
+			stdout("%v\n", formatDiskList(infos.Disks))
+		},
+	}
 	return cmd
 }
 
@@ -39,7 +120,7 @@ func newListBadDiskCmd(client *master.MasterClient) *cobra.Command {
 		Short: cmdCheckBadDisksShort,
 		Run: func(cmd *cobra.Command, args []string) {
 			var (
-				infos *proto.BadDiskInfos
+				infos *proto.DiskInfos
 				err   error
 			)
 			defer func() {
@@ -49,10 +130,10 @@ func newListBadDiskCmd(client *master.MasterClient) *cobra.Command {
 				return
 			}
 			stdout("(partitionID=0 means detected by datanode disk checking, not associated with any partition)\n\n[Unavaliable disks]:\n")
-			sort.SliceStable(infos.BadDisks, func(i, j int) bool {
-				return infos.BadDisks[i].Address < infos.BadDisks[j].Address
+			sort.SliceStable(infos.Disks, func(i, j int) bool {
+				return infos.Disks[i].Address < infos.Disks[j].Address
 			})
-			stdoutln(formatBadDisks(infos.BadDisks))
+			stdoutln(formatBadDisks(infos.Disks))
 		},
 	}
 	return cmd

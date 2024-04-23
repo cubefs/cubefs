@@ -527,6 +527,9 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 	router.NewRoute().Methods(http.MethodGet).
 		Path(proto.ClientDataPartitions).
 		HandlerFunc(m.getDataPartitions)
+	router.NewRoute().Methods(http.MethodGet).
+		Path(proto.ClientDiskDataPartitions).
+		HandlerFunc(m.getDiskDataPartitions)
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.AdminResetDataPartitionDecommissionStatus).
 		HandlerFunc(m.resetDataPartitionDecommissionStatus)
@@ -629,6 +632,12 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.QueryBadDisks).
 		HandlerFunc(m.queryBadDisks)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.QueryDisks).
+		HandlerFunc(m.queryDisks)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.QueryDiskDetail).
+		HandlerFunc(m.queryDiskDetail)
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.QueryAllDecommissionDisk).
 		HandlerFunc(m.queryAllDecommissionDisk)
