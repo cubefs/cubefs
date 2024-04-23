@@ -194,7 +194,7 @@ func (client *ExtentClient) evictStreamer() bool {
 		return true
 	}
 
-	if s.isOpen  {
+	if s.isOpen {
 		client.streamerList.PushFront(ino)
 		return true
 	}
