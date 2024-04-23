@@ -1248,7 +1248,8 @@ func (partition *DataPartition) Decommission(c *Cluster) bool {
 			// when dp retry decommission, step into SpecialDecommissionWaitAddResFin above
 			// do not reset decommission dst when master leader changed
 			if partition.GetSpecialReplicaDecommissionStep() >= SpecialDecommissionWaitAddResFin ||
-				strings.Contains(err.Error(), "master leader changed") {
+				strings.Contains(err.Error(), "master leader changed") ||
+				strings.Contains(err.Error(), "old replica unavailable") {
 				resetDecommissionDst = false
 			}
 			goto errHandler

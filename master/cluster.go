@@ -2136,6 +2136,8 @@ func (c *Cluster) decommissionSingleDp(dp *DataPartition, newAddr, offlineAddr s
 	}
 	// 2. wait for repair
 	if dp.GetSpecialReplicaDecommissionStep() == SpecialDecommissionWaitAddRes {
+		const dataNodeRebootMaxTimes = 24 // 2 minutes for dataNode to reboot, total 10 miniutes
+		var dataNodeRebootRetryTimes = 0
 		for {
 			select {
 			case decommContinue = <-dp.SpecialReplicaDecommissionStop: //
@@ -2163,9 +2165,12 @@ func (c *Cluster) decommissionSingleDp(dp *DataPartition, newAddr, offlineAddr s
 				newReplica.Status = proto.Unavailable // remove from data partition check
 				goto ERR
 			}
+			log.LogInfof("action[decommissionSingleDp] dp %v liveReplicas num[%v]",
+				dp.PartitionID, len(liveReplicas))
 			if len(liveReplicas) >= int(dp.ReplicaNum+1) {
 				log.LogInfof("action[decommissionSingleDp] dp %v replica[%v] status %v",
 					dp.PartitionID, newReplica.Addr, newReplica.Status)
+				dataNodeRebootRetryTimes = 0 //reset dataNodeRebootRetryTimes
 				if len(liveReplicas) > int(dp.ReplicaNum+1) {
 					log.LogInfof("action[decommissionSingleDp] dp %v replica[%v] has excess replicas",
 						dp.PartitionID, newReplica.Addr, newReplica.Status)
@@ -2190,18 +2195,28 @@ func (c *Cluster) decommissionSingleDp(dp *DataPartition, newAddr, offlineAddr s
 						goto ERR
 					}
 					continue
-				} else if newReplica.isUnavailable() { // repair failed,need rollback
-					err = fmt.Errorf("action[decommissionSingleDp] dp %v new replica %v is Unavailable",
-						dp.PartitionID, newAddr)
-					dp.DecommissionNeedRollback = true
-					log.LogWarnf("action[decommissionSingleDp] dp %v err:%v", dp.PartitionID, err)
-					goto ERR
 				} else {
 					dp.SetSpecialReplicaDecommissionStep(SpecialDecommissionWaitAddResFin)
 					c.syncUpdateDataPartition(dp)
 					log.LogInfof("action[decommissionSingleDp] dp %v add replica success", dp.PartitionID)
 					break
 				}
+			} else {
+				// newReplica repair failed or encounter bad disk ,need rollback
+				if newReplica.isUnavailable() {
+					err = fmt.Errorf("action[decommissionSingleDp] dp %v new replica %v is Unavailable",
+						dp.PartitionID, newAddr)
+					dp.DecommissionNeedRollback = true
+					log.LogWarnf("action[decommissionSingleDp] dp %v err:%v", dp.PartitionID, err)
+					goto ERR
+				}
+				if dataNodeRebootRetryTimes >= dataNodeRebootMaxTimes {
+					err = fmt.Errorf("action[decommissionSingleDp] dp %v old replica unavailable",
+						dp.PartitionID)
+					log.LogWarnf("action[decommissionSingleDp] dp %v err:%v", dp.PartitionID, err)
+					goto ERR
+				}
+				dataNodeRebootRetryTimes++
 			}
 		}
 	}
