@@ -4967,3 +4967,22 @@ func (c *Cluster) markDecommissionDataPartition(dp *DataPartition, src *DataNode
 	ns.AddToDecommissionDataPartitionList(dp, c)
 	return
 }
+
+func (c *Cluster) removeDPFromBadDataPartitionIDs(addr, diskPath string, partitionID uint64) error {
+	c.badPartitionMutex.Lock()
+	defer c.badPartitionMutex.Unlock()
+
+	var key = fmt.Sprintf("%s:%s", addr, diskPath)
+	badPartitionIDs, ok := c.BadDataPartitionIds.Load(key)
+	if !ok {
+		return errors.NewErrorf("action[TryDecommissionDisk] cannot find %v in BadDataPartitionIds", key)
+	}
+	newBadPartitionIDs := make([]uint64, 0)
+	for _, dp := range badPartitionIDs.([]uint64) {
+		if dp != partitionID {
+			newBadPartitionIDs = append(newBadPartitionIDs, dp)
+		}
+	}
+	c.BadDataPartitionIds.Store(key, newBadPartitionIDs)
+	return nil
+}
