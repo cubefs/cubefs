@@ -89,8 +89,13 @@ func FormatSize(size uint64) (sizeStr string) {
 		}
 		break
 	}
-	size /= pair.Size
-	sizeStr = fmt.Sprintf("%v%v", size, pair.Suffix)
+	if pair.Size == 0 {
+		sizeStr = fmt.Sprintf("invalid %v", size)
+	} else {
+		size /= pair.Size
+		sizeStr = fmt.Sprintf("%v%v", size, pair.Suffix)
+	}
+
 	return
 }
 
