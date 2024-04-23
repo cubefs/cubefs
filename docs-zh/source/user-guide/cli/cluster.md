@@ -32,6 +32,13 @@ cfs-cli cluster freeze [true/false]
 cfs-cli cluster threshold [float]
 ```
 
+## 设置卷延迟删除时间
+`volDeletionDelayTime`代表启用延迟卷删除后，卷将在多少小时后被永久删除。在此之前，卷将被标记为删除状态，可以恢复, 以小时为单位, 默认48小时。
+```bash
+cfs-cli cluster volDeletionDelayTime [VOLDELETIONDELAYTIME]
+```
+
+
 ## 设置集群参数
 
 ```bash
