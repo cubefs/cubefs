@@ -556,9 +556,6 @@ func (eh *ExtentHandler) waitForFlush() (err error) {
 		return
 	}
 
-	//	t := time.NewTicker(10 * time.Second)
-	//	defer t.Stop()
-
 	for {
 		select {
 		case <-eh.empty:
