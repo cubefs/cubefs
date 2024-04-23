@@ -782,7 +782,9 @@ func (partition *DataPartition) afterCreation(nodeAddr, diskPath string, c *Clus
 		return err
 	}
 	replica := newDataReplica(dataNode)
-	if partition.IsDecommissionRunning() {
+	// Special replica dp need to check live replica num immediately.
+	// At this time, heartbeat messages may not have been received
+	if partition.IsDecommissionRunning() || partition.isSpecialReplicaCnt() {
 		replica.Status = proto.Recovering
 	} else {
 		replica.Status = proto.Unavailable
@@ -1302,6 +1304,7 @@ errHandler:
 	// do not reset DecommissionDstAddr outside the rollback operation, as it may cause rollback failure
 	if partition.DecommissionNeedRollback {
 		partition.SetDecommissionStatus(DecommissionFail)
+		resetDecommissionDst = false
 	} else {
 		// The maximum number of retries for the DP error has been reached,
 		// and a rollback is still required, even if the rollback conditions have not been triggered.
@@ -1386,7 +1389,12 @@ func (partition *DataPartition) ResetDecommissionStatus() {
 
 func (partition *DataPartition) rollback(c *Cluster) {
 	defer c.syncUpdateDataPartition(partition)
-	err := partition.removeReplicaByForce(c, partition.DecommissionDstAddr)
+	// delete it from BadDataPartitionIds
+	err := c.removeDPFromBadDataPartitionIDs(partition.DecommissionSrcAddr, partition.DecommissionSrcDiskPath, partition.PartitionID)
+	if err != nil {
+		log.LogWarnf("action[rollback]dp[%v] rollback to del from bad dataPartitionIDs failed:%v", partition.PartitionID, err)
+	}
+	err = partition.removeReplicaByForce(c, partition.DecommissionDstAddr)
 	if err != nil {
 		// keep decommission status to failed for rollback
 		log.LogWarnf("action[rollback]dp[%v] rollback to del replica[%v] failed:%v",
