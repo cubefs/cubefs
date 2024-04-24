@@ -16,6 +16,7 @@ package stream
 
 import (
 	"fmt"
+	"io"
 	"net"
 	"strings"
 	"sync"
@@ -340,15 +341,13 @@ func (eh *ExtentHandler) processReply(packet *Packet) {
 			eh.processReplyError(packet, err.Error())
 			return
 		}
-		forceClose := false
 		defer func() {
-			StreamConnPool.PutConnect(tmpConn, forceClose)
+			StreamConnPool.PutConnectEx(tmpConn, err)
 		}()
 		for try := 0; reply.ResultCode == proto.OpLimitedIoErr; try++ {
 			time.Sleep(StreamSendSleepInterval)
 			log.LogWarnf("[processReply] eh(%v) packet(%v) limited io retry count(%v)", eh, packet, try)
 			if err = packet.writeToConn(tmpConn); err != nil {
-				forceClose = true
 				log.LogWarnf("sender writeTo: failed, eh(%v) err(%v) packet(%v)", eh, err, packet)
 				eh.processReplyError(packet, err.Error())
 				return
@@ -356,7 +355,6 @@ func (eh *ExtentHandler) processReply(packet *Packet) {
 			reply = NewReply(packet.ReqID, packet.PartitionID, packet.ExtentID)
 			err = reply.ReadFromConn(tmpConn, proto.ReadDeadlineTime)
 			if err != nil {
-				forceClose = true
 				log.LogErrorf("[processReply] failed to read reply from connection, eh(%v) err(%v) packet(%v)", eh, err, packet)
 				eh.processReplyError(packet, err.Error())
 				return
@@ -475,8 +473,7 @@ func (eh *ExtentHandler) appendExtentKey() (err error) {
 			if proto.IsCold(eh.stream.client.volumeType) && eh.status == ExtentStatusError {
 				return
 			}
-			var discard []proto.ExtentKey
-			discard = eh.stream.extents.Append(eh.key, true)
+			discard := eh.stream.extents.Append(eh.key, true)
 			err = eh.stream.client.appendExtentKey(eh.stream.parentInode, eh.inode, *eh.key, discard)
 
 			if err == nil && len(discard) > 0 {
@@ -583,7 +580,7 @@ func (eh *ExtentHandler) allocateExtent() (err error) {
 			}
 			if err != nil {
 				// NOTE: try again
-				if strings.Contains(err.Error(), "Again") || strings.Contains(err.Error(), "DiskNoSpaceErr") {
+				if strings.Contains(err.Error(), "Again") || strings.Contains(err.Error(), "DiskNoSpaceErr") || strings.Contains(err.Error(), "LimitedIoErr") {
 					log.LogWarnf("[allocateExtent] eh(%v) try agagin", eh)
 					i -= 1
 					continue
@@ -655,11 +652,7 @@ func (eh *ExtentHandler) createExtent(dp *wrapper.DataPartition) (extID int, err
 	}
 
 	defer func() {
-		if err != nil {
-			StreamConnPool.PutConnect(conn, true)
-		} else {
-			StreamConnPool.PutConnect(conn, false)
-		}
+		StreamConnPool.PutConnectEx(conn, err)
 	}()
 
 	p := NewCreateExtentPacket(dp, eh.inode)

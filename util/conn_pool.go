@@ -15,9 +15,12 @@
 package util
 
 import (
+	"io"
 	"net"
 	"sync"
 	"time"
+
+	"github.com/cubefs/cubefs/util/log"
 )
 
 type Object struct {
@@ -100,6 +103,19 @@ func (cp *ConnectPool) GetConnect(targetAddr string) (c *net.TCPConn, err error)
 	return pool.GetConnectFromPool()
 }
 
+func (cp *ConnectPool) ReleaseAll(addr net.Addr) {
+	pool, ok := func() (pool *Pool, ok bool) {
+		cp.RLock()
+		defer cp.RUnlock()
+		pool, ok = cp.pools[addr.String()]
+		return
+	}()
+	if !ok {
+		return
+	}
+	pool.ReleaseAll()
+}
+
 func (cp *ConnectPool) PutConnect(c *net.TCPConn, forceClose bool) {
 	if c == nil {
 		return
@@ -126,6 +142,18 @@ func (cp *ConnectPool) PutConnect(c *net.TCPConn, forceClose bool) {
 	pool.PutConnectObjectToPool(object)
 }
 
+func (cp *ConnectPool) PutConnectEx(c *net.TCPConn, err error) {
+	if c == nil {
+		return
+	}
+	if err != nil {
+		if err == io.EOF || err == io.ErrUnexpectedEOF {
+			cp.ReleaseAll(c.RemoteAddr())
+		}
+	}
+	cp.PutConnect(c, err != nil)
+}
+
 func (cp *ConnectPool) autoRelease() {
 	var timer = time.NewTimer(time.Second)
 	for {
@@ -141,9 +169,11 @@ func (cp *ConnectPool) autoRelease() {
 			pools = append(pools, pool)
 		}
 		cp.RUnlock()
+		begin := time.Now()
 		for _, pool := range pools {
 			pool.autoRelease()
 		}
+		log.LogInfof("[autoRelease] release conn pool cnt(%v) using time(%v)", len(pools), time.Since(begin))
 		timer.Reset(time.Second)
 	}
 }
