@@ -16,6 +16,7 @@ package stream
 
 import (
 	"fmt"
+	"io"
 	"net"
 	"strings"
 	"sync"
@@ -471,10 +472,8 @@ func (eh *ExtentHandler) appendExtentKey() (err error) {
 			if proto.IsCold(eh.stream.client.volumeType) && eh.status == ExtentStatusError {
 				return
 			}
-			var (
-				discard []proto.ExtentKey
-				status  int
-			)
+			discard := eh.stream.extents.Append(eh.key, true)
+			err = eh.stream.client.appendExtentKey(eh.stream.parentInode, eh.inode, *eh.key, discard)
 
 			ekey := *eh.key
 			doAppend := func() (err error) {
