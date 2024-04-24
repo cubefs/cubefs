@@ -42,6 +42,7 @@ CLI主要分为10类管理命令：
 ./cfs-cli cluster freeze [true/false]        #是否冻结集群，设置为 `true` 冻结后，当partition写满，集群不会自动分配新的partition
 ./cfs-cli cluster threshold [float]     #设置集群中每个MetaNode的内存阈值，当内存使用率超过该阈值时，上面的meta partition将会被设为只读。[float]应当是一个介于0和1之间的小数.
 ./cfs-cli cluster set [flags]    #设置集群的参数
+./cfs-cli cluster volDeletionDelayTime [VOLDELETIONDELAYTIME] #设置卷延迟删除时间, `volDeletionDelayTime`代表启用延迟卷删除后，卷将在多少小时后被永久删除。在此之前，卷将被标记为删除状态，可以恢复, 以小时为单位, 默认48小时。
 ```
 
 ### 元数据节点管理
@@ -130,9 +131,11 @@ Flags:
 ```
 
 ``` bash
-./cfs-cli volume delete [VOLUME NAME] [flags]               #删除指定卷[VOLUME NAME], ec卷大小为0才能删除
+./cfs-cli volume delete [VOLUME NAME] [flags]               #删除指定卷[VOLUME NAME], ec卷大小为0才能删除。开启延迟删除后，volume将会在`volDeletionDelayTime`小时后被真正删除，在此期间可以通过`status=false`取消删除操作。
 Flags:
-    -y, --yes                                           #跳过所有问题并设置回答为"yes"
+    -h, --help     help for delete
+    -s, --status   Decide whether to delete or undelete (default true)
+    -y, --yes      Answer yes for all questions
 ```
 
 ``` bash
@@ -155,6 +158,17 @@ Flags:
 Flags：
     -f, --force                                         #强制转交
     -y, --yes                                           #跳过所有问题并设置回答为"yes"
+```
+``` bash
+./cfs-cli vol set-forbidden [VOLUME] [FORBIDDEN]   # 禁用卷
+eg:
+./cfs-cli vol set-forbidden ltptest true
+```
+
+``` bash
+./cfs-cli volume set-auditlog [VOLUME] [STATUS]   # 开启/关闭审计日志
+eg:
+./cfs-cli volume set-auditlog ltptest false
 ```
 
 ``` bash

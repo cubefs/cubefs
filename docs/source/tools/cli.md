@@ -38,6 +38,7 @@ The CLI is mainly divided into six types of management commands:
 ./cfs-cli cluster freeze [true/false]        # Freeze the cluster. After setting it to `true`, when the partition is full, the cluster will not automatically allocate new partitions.
 ./cfs-cli cluster threshold [float]     # Set the memory threshold for each MetaNode in the cluster. If the memory usage reaches this threshold, all the meta partition will be readOnly. [float] should be a float number between 0 and 1.
 ./cfs-cli cluster set [flags]    # Set the parameters of the cluster.
+./cfs-cli cluster volDeletionDelayTime [VOLDELETIONDELAYTIME] # Set Volume Deletion DelayTime, Set the `volDeletionDelayTime` configuration, measured in hours, which represents the number of hours after enabling delayed volume deletion when the volume will be permanently deleted. Prior to that, it will be marked for deletion and can be recovered. default is 48 hours.
 ```
 
 ### MetaData Management
@@ -126,9 +127,11 @@ Flags:
 ```
 
 ``` bash
-./cfs-cli volume delete [VOLUME NAME] [flags]               # Delete the specified volume [VOLUME NAME]. The size of the ec volume must be 0 to be deleted.
+./cfs-cli volume delete [VOLUME NAME] [flags]         # Delete the specified volume [VOLUME NAME]. The size of the ec volume must be 0 to be deleted. When enable delay deletion, volume will be deleted after `volDeletionDelayTime` hours, and `status=false` can be used to cancel volume deletion.
 Flags:
-    -y, --yes                                           # Skip all questions and set the answer to "yes".
+  -h, --help     help for delete
+  -s, --status   Decide whether to delete or undelete (default true)
+  -y, --yes      Answer yes for all questions
 ```
 
 ``` bash
@@ -151,6 +154,18 @@ Flags:
 Flags：
     -f, --force                                         # Force transfer.
     -y, --yes                                           # Skip all questions and set the answer to "yes".
+```
+
+``` bash
+./cfs-cli vol set-forbidden [VOLUME] [FORBIDDEN]   # Forbid Volume, set volume forbidden mark
+eg:
+./cfs-cli vol set-forbidden ltptest true
+```
+
+``` bash
+./cfs-cli volume set-auditlog [VOLUME] [STATUS]   # Enable/Disable Volume Auditlog, enable or disable auditlog of volume
+eg:
+./cfs-cli volume set-auditlog ltptest false
 ```
 
 ``` bash
