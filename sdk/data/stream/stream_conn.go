@@ -127,7 +127,7 @@ func (sc *StreamConn) sendToPartition(req *Packet, retry bool, getReply GetReply
 			return
 		}
 		log.LogWarnf("sendToPartition: send to curr addr failed, addr(%v) reqPacket(%v) err(%v)", sc.currAddr, req, err)
-		StreamConnPool.PutConnect(conn, true)
+		StreamConnPool.PutConnectEx(conn, err)
 		if err != TryOtherAddrError || !retry {
 			return
 		}

@@ -54,7 +54,7 @@ func (mw *MetaWrapper) getConn(partitionID uint64, addr string) (*MetaConn, erro
 }
 
 func (mw *MetaWrapper) putConn(mc *MetaConn, err error) {
-	mw.conns.PutConnect(mc.conn, err != nil)
+	mw.conns.PutConnectEx(mc.conn, err)
 }
 
 func (mw *MetaWrapper) sendToMetaPartition(mp *MetaPartition, req *proto.Packet) (*proto.Packet, error) {
