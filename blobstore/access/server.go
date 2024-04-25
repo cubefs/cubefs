@@ -63,6 +63,9 @@ var (
 		{0xff, 0x1f, 0x2f, 0x4f, 0x7f, 0xaf, 0xef, 0xff},
 	}
 	_initTokenSecret sync.Once
+
+	StreamTokenSecretKeys = tokenSecretKeys
+	StreamGenTokens       = genTokens
 )
 
 func initTokenSecret(b []byte) {
@@ -147,9 +150,9 @@ func (s *Service) RegisterService() {
 // RegisterAdminHandler register admin handler to profile
 func (s *Service) RegisterAdminHandler() {
 	profile.HandleFunc(http.MethodGet, "/access/status", func(c *rpc.Context) {
-		var admin *StreamAdmin
+		var admin *streamAdmin
 		if sa := s.streamHandler.Admin(); sa != nil {
-			if ad, ok := sa.(*StreamAdmin); ok {
+			if ad, ok := sa.(*streamAdmin); ok {
 				admin = ad
 			}
 		}
@@ -163,7 +166,7 @@ func (s *Service) RegisterAdminHandler() {
 
 		status := new(accessStatus)
 		status.Limit = s.limiter.Status()
-		status.Pool = admin.MemPool.Status()
+		status.Pool = admin.memPool.Status()
 		status.Config = admin.config
 		status.Clusters = admin.controller.All()
 		status.Services = make(map[proto.ClusterID]map[string][]string, len(status.Clusters))
@@ -196,7 +199,7 @@ func (s *Service) RegisterAdminHandler() {
 
 		alg := controller.AlgChoose(algInt)
 		if sa := s.streamHandler.Admin(); sa != nil {
-			if admin, ok := sa.(*StreamAdmin); ok {
+			if admin, ok := sa.(*streamAdmin); ok {
 				if err := admin.controller.ChangeChooseAlg(alg); err != nil {
 					c.RespondWith(http.StatusForbidden, "", []byte(err.Error()))
 					return
@@ -282,7 +285,7 @@ func (s *Service) Put(c *rpc.Context) {
 		hashSumMap[alg] = hasher.Sum(nil)
 	}
 
-	if err := FillCrc(loc); err != nil {
+	if err := fillCrc(loc); err != nil {
 		span.Error("stream put fill location crc", err)
 		c.RespondError(httpError(err))
 		return
@@ -374,7 +377,7 @@ func (s *Service) Alloc(c *rpc.Context) {
 		return
 	}
 
-	if err := FillCrc(location); err != nil {
+	if err := fillCrc(location); err != nil {
 		span.Error("stream alloc fill location crc", err)
 		c.RespondError(httpError(err))
 		return
@@ -400,7 +403,7 @@ func (s *Service) Get(c *rpc.Context) {
 	span := trace.SpanFromContextSafe(ctx)
 
 	span.Debugf("accept /get request args:%+v", args)
-	if !args.IsValid() || !VerifyCrc(&args.Location) {
+	if !args.IsValid() || !verifyCrc(&args.Location) {
 		c.RespondError(errcode.ErrIllegalArguments)
 		return
 	}
@@ -429,7 +432,7 @@ func (s *Service) Get(c *rpc.Context) {
 
 	err = transfer()
 	if err != nil {
-		ReportDownload(args.Location.ClusterID, "StatusOKError", "-")
+		reportDownload(args.Location.ClusterID, "StatusOKError", "-")
 		span.Error("stream get transfer failed", errors.Detail(err))
 		return
 	}
@@ -476,7 +479,7 @@ func (s *Service) Delete(c *rpc.Context) {
 
 	clusterBlobsN := make(map[proto.ClusterID]int, 4)
 	for _, loc := range args.Locations {
-		if !VerifyCrc(&loc) {
+		if !verifyCrc(&loc) {
 			span.Infof("invalid crc %+v", loc)
 			err = errcode.ErrIllegalArguments
 			return

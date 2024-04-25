@@ -39,6 +39,10 @@ var (
 		0x10, 0x19, 0xbc, 0x60, 0x7,
 	}
 	_initLocationSecret sync.Once
+
+	LocationCrcCalculate = calcCrc
+	LocationCrcFill      = fillCrc
+	LocationCrcVerify    = verifyCrc
 )
 
 func initLocationSecret(b []byte) {
@@ -47,7 +51,7 @@ func initLocationSecret(b []byte) {
 	})
 }
 
-func CalcCrc(loc *access.Location) (uint32, error) {
+func calcCrc(loc *access.Location) (uint32, error) {
 	crcWriter := crc32.New(_crcTable)
 
 	buf := bytespool.Alloc(1024)
@@ -68,8 +72,8 @@ func CalcCrc(loc *access.Location) (uint32, error) {
 	return crcWriter.Sum32(), nil
 }
 
-func FillCrc(loc *access.Location) error {
-	crc, err := CalcCrc(loc)
+func fillCrc(loc *access.Location) error {
+	crc, err := calcCrc(loc)
 	if err != nil {
 		return err
 	}
@@ -77,8 +81,8 @@ func FillCrc(loc *access.Location) error {
 	return nil
 }
 
-func VerifyCrc(loc *access.Location) bool {
-	crc, err := CalcCrc(loc)
+func verifyCrc(loc *access.Location) bool {
+	crc, err := calcCrc(loc)
 	if err != nil {
 		return false
 	}
@@ -96,7 +100,7 @@ func signCrc(loc *access.Location, locs []access.Location) error {
 	}
 
 	for _, l := range locs {
-		if !VerifyCrc(&l) {
+		if !verifyCrc(&l) {
 			return fmt.Errorf("not equal in crc %d", l.Crc)
 		}
 
@@ -123,5 +127,5 @@ func signCrc(loc *access.Location, locs []access.Location) error {
 		}
 	}
 
-	return FillCrc(loc)
+	return fillCrc(loc)
 }
