@@ -14,33 +14,30 @@
   - Once all items of the checklist are addressed, remove the above text and this checklist, leaving only the filled out template below.
 -->
 
-> Either this PR fixes an issue,
+<!-- Either this PR fixes an issue, -->
 
 Fixes: #xyz
 
-> or this PR is one task of an issue.
+<!-- or this PR is one task of an issue. -->
 
 Main Issue: #xyz
 
 
 ### Motivation
-> Explain here the context, and why you're making that change. What is the problem you're trying to solve.
---------------
+<!-- Explain here the context, and why you're making that change. What is the problem you're trying to solve. -->
 
 blaaaaa
 
 ### Modifications
-> Describe the modifications you've done.
------------------
+<!-- Describe the modifications you've done. -->
 
 ``` text
 blaaaaa
 ```
 
 ### Types of changes
-> Show in a checkbox-style, the expected types of changes your project is supposed to have:
+<!-- Show in a checkbox-style, the expected types of changes your project is supposed to have: -->
 <!-- _Put an `x` in the boxes that apply_ -->
---------------------
 
 - [ ] New feature (non-breaking change which adds functionality)
 - [ ] Breaking change (fix or feature that would cause existing functionality to not work as expected)
@@ -49,9 +46,7 @@ blaaaaa
 - [ ] So on...
 
 ### Verifying this change
-
-> *(Please pick either of the following options.)*
--------------------------
+<!-- Please pick either of the following options. -->
 
 - [ ] Make sure that the change passes the testing checks.
 
@@ -74,8 +69,7 @@ This change added tests and can be verified as follows:
 This change `MUST` reappear in online clusters, or occur in that specific scenarios.
 
 ### Does this pull request potentially affect one of the following parts:
-> Which of the following parts are affected by this change?
--------------------------------------------------------------------------
+<!-- Which of the following parts are affected by this change? -->
 
 - [ ] Master
 - [ ] MetaNode
@@ -93,8 +87,7 @@ This change `MUST` reappear in online clusters, or occur in that specific scenar
 - [ ] Anything that affects deployment
 
 ### Documentation
-> Is there a chinese and english document modification?
------------------
+<!-- Is there a chinese and english document modification? -->
 
 - [ ] `doc` <!-- Your PR contains doc changes. -->
 - [ ] `doc-required` <!-- Your PR changes impact docs and you will update later -->
@@ -102,17 +95,15 @@ This change `MUST` reappear in online clusters, or occur in that specific scenar
 - [ ] `doc-complete` <!-- Docs have been already added -->
 
 ### Review Expection
-> How long would you like the team to be completed in your contributing?
---------------------
+<!-- How long would you like the team to be completed in your contributing? -->
 
 - [ ] `in-two-days`
-- [ ] `weeks`
+- [ ] `weekly`
 - [ ] `free-time`
 - [ ] `whenever`
 
 ### Matching PR in forked repository
-> enter the url if has PR in forked repository.
-------------------------------------
+<!-- enter the url if has PR in forked repository. -->
 
 PR in forked repository: <!-- ENTER URL HERE -->
 
