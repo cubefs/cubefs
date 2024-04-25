@@ -1430,6 +1430,7 @@ static void cfs_put_super(struct super_block *sb)
 
 	cfs_log_info(cmi->log, "sb=%p{.s_fs_info=%p}\n", sb, sb->s_fs_info);
 	cfs_mount_info_release(cmi);
+	sb->s_fs_info = NULL;
 }
 
 static int cfs_statfs(struct dentry *dentry, struct kstatfs *kstatfs)
@@ -1557,9 +1558,6 @@ static struct dentry *cfs_mount(struct file_system_type *fs_type, int flags,
 
 static void cfs_kill_sb(struct super_block *sb)
 {
-	struct cfs_mount_info *cmi = sb->s_fs_info;
-
-	cfs_log_info(cmi->log, "sb=%p{.s_fs_info=%p}\n", sb, sb->s_fs_info);
 	kill_anon_super(sb);
 }
 

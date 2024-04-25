@@ -7,6 +7,7 @@
 #define DENTRY_CACHE_VALID_MS 5 * 1000u
 #define ATTR_CACHE_VALID_MS 30 * 1000u
 #define QUOTA_CACHE_VALID_MS 120 * 1000u
+#define DEFAULT_RDMA_PORT 17360
 
 static int addrs_parse(const char *str, size_t len,
 		       struct sockaddr_storage_array *addrs)
@@ -53,6 +54,25 @@ static void cfs_options_clear(struct cfs_options *options)
 		kfree(options->owner);
 }
 
+static inline int cfs_options_option_end(const char *start) {
+	char *end = NULL;
+	if (!start) {
+		return 0;
+	}
+
+	end = strchr(start, ',');
+	if (end) {
+		return end - start;
+	}
+
+	end = strchr(start, '\0');
+	if (end) {
+		return end - start;
+	}
+
+	return strlen(start);
+}
+
 /**
  * @param dev_str in, format: //172.16.1.101:17010,172.16.1.102:17010,172.16.1.103:17010/ltptest
  * @param opt_str in, format: owner=ltptest,key1=val1
@@ -63,6 +83,7 @@ static int cfs_options_parse(const char *dev_str, const char *opt_str,
 {
 	const char *start, *end;
 	int ret;
+	int end_pos = 0;
 
 	if (!dev_str)
 		return -EINVAL;
@@ -110,127 +131,100 @@ static int cfs_options_parse(const char *dev_str, const char *opt_str,
 
 	start = opt_str;
 	while (*start) {
-		if (strncmp(start, "owner=", 6) == 0) {
-			start += 6;
-			end = strchr(start, ',');
-			if (end)
-				options->owner =
-					kstrndup(start, end - start, GFP_NOFS);
-			else
-				options->owner = kstrdup(start, GFP_NOFS);
-			if (!options->owner) {
+		if (*start == ',') {
+			start++;
+			continue;
+		}
+		if (*start == '\0') {
+			break;
+		}
+		if (strncmp(start, "owner=", strlen("owner=")) == 0) {
+			start += strlen("owner=");
+			end_pos = cfs_options_option_end(start);
+			if (end_pos <= 0) {
 				cfs_options_clear(options);
-				return -ENOMEM;
+				return -EINVAL;
 			}
-			if (end)
-				start = end + 1;
-			else
-				break;
-		} else if (strncmp(start, "dentry_cache_valid_ms=", 22) == 0) {
-			start += 22;
-			end = strchr(start, ',');
-			if (end)
-				ret = cfs_kstrntou32(
-					start, end - start, 10,
-					&options->dentry_cache_valid_ms);
-			else
-				ret = kstrtou32(
-					start, 10,
-					&options->dentry_cache_valid_ms);
+			options->owner = kstrndup(start, end_pos, GFP_NOFS);
+			start += end_pos;
+		} else if (strncmp(start, "dentry_cache_valid_ms=", strlen("dentry_cache_valid_ms=")) == 0) {
+			start += strlen("dentry_cache_valid_ms=");
+			end_pos = cfs_options_option_end(start);
+			if (end_pos <= 0) {
+				cfs_options_clear(options);
+				return -EINVAL;
+			}
+			ret = cfs_kstrntou32(start, end_pos, 10, &options->dentry_cache_valid_ms);
 			if (ret < 0) {
 				cfs_options_clear(options);
 				return -EINVAL;
 			}
-			if (end)
-				start = end + 1;
-			else
-				break;
-		} else if (strncmp(start, "attr_cache_valid_ms=", 20) == 0) {
-			start += 20;
-			end = strchr(start, ',');
-			if (end)
-				ret = cfs_kstrntou32(
-					start, end - start, 10,
-					&options->attr_cache_valid_ms);
-			else
-				ret = kstrtou32(start, 10,
-						&options->attr_cache_valid_ms);
+			start += end_pos;
+		} else if (strncmp(start, "attr_cache_valid_ms=", strlen("attr_cache_valid_ms=")) == 0) {
+			start += strlen("attr_cache_valid_ms=");
+			end_pos = cfs_options_option_end(start);
+			if (end_pos <= 0) {
+				cfs_options_clear(options);
+				return -EINVAL;
+			}
+			ret = cfs_kstrntou32(start, end_pos, 10, &options->attr_cache_valid_ms);
 			if (ret < 0) {
 				cfs_options_clear(options);
 				return -EINVAL;
 			}
-			if (end)
-				start = end + 1;
-			else
-				break;
-		} else if (strncmp(start, "quota_cache_valid_ms=", 21) == 0) {
-			start += 21;
-			end = strchr(start, ',');
-			if (end)
-				ret = cfs_kstrntou32(
-					start, end - start, 10,
-					&options->quota_cache_valid_ms);
-			else
-				ret = kstrtou32(start, 10,
-						&options->quota_cache_valid_ms);
+			start += end_pos;
+		} else if (strncmp(start, "quota_cache_valid_ms=", strlen("quota_cache_valid_ms=")) == 0) {
+			start += strlen("quota_cache_valid_ms=");
+			end_pos = cfs_options_option_end(start);
+			if (end_pos <= 0) {
+				cfs_options_clear(options);
+				return -EINVAL;
+			}
+			ret = cfs_kstrntou32(start, end_pos, 10, &options->quota_cache_valid_ms);
 			if (ret < 0) {
 				cfs_options_clear(options);
 				return -EINVAL;
 			}
-			if (end)
-				start = end + 1;
-			else
-				break;
-		} else if (strncmp(start, "enable_quota=", 13) == 0) {
-			start += 13;
-			end = strchr(start, ',');
-			if (end)
-				ret = cfs_kstrntobool(start, end - start,
-						      &options->enable_quota);
-			else
-				ret = kstrtobool(start, &options->enable_quota);
+			start += end_pos;
+		} else if (strncmp(start, "enable_quota=", strlen("enable_quota=")) == 0) {
+			start += strlen("enable_quota=");
+			end_pos = cfs_options_option_end(start);
+			if (end_pos <= 0) {
+				cfs_options_clear(options);
+				return -EINVAL;
+			}
+			ret = cfs_kstrntobool(start, end_pos, &options->enable_quota);
 			if (ret < 0) {
 				cfs_options_clear(options);
 				return -EINVAL;
 			}
-			if (end)
-				start = end + 1;
-			else
-				break;
-		} else if (strncmp(start, "enable_rdma=", 12) == 0) {
-			start += 12;
-			end = strchr(start, ',');
-			if (end)
-				ret = cfs_kstrntobool(start, end - start,
-						      &options->enable_rdma);
-			else
-				ret = kstrtobool(start, &options->enable_rdma);
+			start += end_pos;
+		} else if (strncmp(start, "enable_rdma=", strlen("enable_rdma=")) == 0) {
+			start += strlen("enable_rdma=");
+			end_pos = cfs_options_option_end(start);
+			if (end_pos <= 0) {
+				cfs_options_clear(options);
+				return -EINVAL;
+			}
+			ret = cfs_kstrntobool(start, end_pos, &options->enable_rdma);
 			if (ret < 0) {
 				cfs_options_clear(options);
 				return -EINVAL;
 			}
-			if (end)
-				start = end + 1;
-			else
-				break;
-		} else if (strncmp(start, "rdma_port=", 10) == 0) {
-			start += 10;
-			end = strchr(start, ',');
-			if (end)
-				ret = cfs_kstrntou32(
-					start, end - start, 10,
-					&options->rdma_port);
-			else
-				ret = kstrtou32(start, 10,
-						&options->rdma_port);
+			start += end_pos;
+		} else if (strncmp(start, "rdma_port=", strlen("rdma_port=")) == 0) {
+			start += strlen("rdma_port=");
+			end_pos = cfs_options_option_end(start);
+			if (end_pos <= 0) {
+				cfs_options_clear(options);
+				return -EINVAL;
+			}
+			ret = cfs_kstrntou32(start, end_pos, 10, &options->rdma_port);
 			if (ret < 0) {
 				cfs_options_clear(options);
 				return -EINVAL;
 			}
-			if (end)
-				start = end + 1;
-			else
-				break;
+			start += end_pos;
 		} else {
 			start++;
 		}
@@ -253,6 +247,7 @@ struct cfs_options *cfs_options_new(const char *dev_str, const char *opt_str)
 	options->dentry_cache_valid_ms = DENTRY_CACHE_VALID_MS;
 	options->attr_cache_valid_ms = ATTR_CACHE_VALID_MS;
 	options->quota_cache_valid_ms = QUOTA_CACHE_VALID_MS;
+	options->rdma_port = DEFAULT_RDMA_PORT;
 	ret = cfs_options_parse(dev_str, opt_str, options);
 	if (ret < 0) {
 		cfs_options_release(options);

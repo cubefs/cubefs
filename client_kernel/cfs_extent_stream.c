@@ -1653,7 +1653,8 @@ static size_t cfs_extent_read_iter(struct cfs_extent_stream *es,
 	int ret = 0;
 
 	if (io_info->hole) {
-		return 0;
+		read_bytes = iov_iter_zero(total_bytes, iter);
+		return read_bytes;
 	}
 
 	dp = cfs_extent_get_partition(es->ec, io_info->ext.pid);
@@ -1742,7 +1743,7 @@ ssize_t cfs_extent_direct_io(struct cfs_extent_stream *es, struct iov_iter *iter
 			cfs_log_error(es->ec->log,
 				      "ino(%llu) direct io error %d\n",
 				      es->ino, ret);
-			return io_ret;
+			goto err_out;
 		}
 		io_bytes += io_ret;
 	}
@@ -1751,4 +1752,14 @@ ssize_t cfs_extent_direct_io(struct cfs_extent_stream *es, struct iov_iter *iter
 	cfs_extent_stream_flush(es);
 
 	return io_bytes;
+
+err_out:
+	while (!list_empty(&io_info_list)) {
+		io_info = list_first_entry(&io_info_list,
+					   struct cfs_extent_io_info, list);
+		list_del(&io_info->list);
+		cfs_extent_io_info_release(io_info);
+	}
+
+	return io_ret;
 }
