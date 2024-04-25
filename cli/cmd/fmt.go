@@ -277,7 +277,7 @@ func formatDataPartitionTableRow(view *proto.DataPartitionResponse) string {
 var (
 	partitionInfoTablePattern = "%-8v    %-8v    %-10v     %-12v     %-12v    %-18v"
 	partitionInfoTableHeader  = fmt.Sprintf(partitionInfoTablePattern,
-		"ID", "VOLUME", "REPLICAS", "STATUS", "MediaType", "MEMBERS")
+		"ID", "VOLUME", "REPLICAS", "STATUS", "MediaType", "MEMBERS") // TODO:tangjingyu MP has no MediaType
 
 	badReplicaPartitionInfoTablePattern = "%-8v    %-8v    %-8v    %-8v    %-24v    %-24v"
 	badReplicaPartitionInfoTableHeader  = fmt.Sprintf(badReplicaPartitionInfoTablePattern,

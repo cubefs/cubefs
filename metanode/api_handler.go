@@ -78,10 +78,11 @@ func (m *MetaNode) registerAPIHandler() (err error) {
 	// get tx information
 	http.HandleFunc("/getTx", m.getTxHandler)
 	http.HandleFunc("/getInodeAccessTime", m.getInodeAccessTimeHandler)
+	// for hybrid cloud debug
 	http.HandleFunc("/getInodeWithExtentKey", m.getInodeWithExtentKeyHandler)
-	http.HandleFunc("/setInodeCreateTime", m.setInodeCreateTimeHandler)                       //for debug
-	http.HandleFunc("/deleteMigrateExtentKey", m.deleteMigrateExtentKeyHandler)               //for debug
-	http.HandleFunc("/updateExtentKeyAfterMigration", m.updateExtentKeyAfterMigrationHandler) //for debug
+	http.HandleFunc("/setInodeCreateTime", m.setInodeCreateTimeHandler)
+	http.HandleFunc("/deleteMigrateExtentKey", m.deleteMigrateExtentKeyHandler)
+	http.HandleFunc("/updateExtentKeyAfterMigration", m.updateExtentKeyAfterMigrationHandler)
 	return
 }
 
