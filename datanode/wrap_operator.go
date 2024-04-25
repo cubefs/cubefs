@@ -185,6 +185,8 @@ func (s *DataNode) OperatePacket(p *repl.Packet, c net.Conn) (err error) {
 		s.handleUpdateVerPacket(p)
 	case proto.OpStopDataPartitionRepair:
 		s.handlePacketToStopDataPartitionRepair(p)
+	case proto.OpRecoverDataReplicaMeta:
+		s.handlePacketToRecoverDataReplicaMeta(p)
 	default:
 		p.PackErrorBody(repl.ErrorUnknownOp.Error(), repl.ErrorUnknownOp.Error()+strconv.Itoa(int(p.Opcode)))
 	}
@@ -1400,8 +1402,10 @@ func (s *DataNode) handlePacketToRemoveDataPartitionRaftMember(p *repl.Packet) {
 				log.LogWarnf("handlePacketToRemoveDataPartitionRaftMember dp(%v) peer(%v) nodeID(%v) is different from req(%v)",
 					dp.partitionID, peer.Addr, peer.ID, req.RemovePeer.ID)
 				// update reqData for
-				newReq := &proto.RemoveDataPartitionRaftMemberRequest{PartitionId: req.PartitionId, Force: req.Force,
-					RemovePeer: removePeer}
+				newReq := &proto.RemoveDataPartitionRaftMemberRequest{
+					PartitionId: req.PartitionId, Force: req.Force,
+					RemovePeer: removePeer,
+				}
 				reqData, err = json.Marshal(newReq)
 				if err != nil {
 					log.LogWarnf("handlePacketToRemoveDataPartitionRaftMember dp(%v) marshall req(%v) failed:%v",
@@ -1555,4 +1559,56 @@ func (s *DataNode) handlePacketToStopDataPartitionRepair(p *repl.Packet) {
 	}
 	dp.StopDecommissionRecover(request.Stop)
 	log.LogInfof("action[handlePacketToStopDataPartitionRepair] %v stop %v success", request.PartitionId, request.Stop)
+}
+
+func (s *DataNode) handlePacketToRecoverDataReplicaMeta(p *repl.Packet) {
+	task := &proto.AdminTask{}
+	err := json.Unmarshal(p.Data, task)
+	defer func() {
+		if err != nil {
+			p.PackErrorBody(ActionRecoverDataReplicaMeta, err.Error())
+		} else {
+			p.PacketOkReply()
+		}
+	}()
+	if err != nil {
+		return
+	}
+	request := &proto.RecoverDataReplicaMetaRequest{}
+	if task.OpCode != proto.OpRecoverDataReplicaMeta {
+		err = fmt.Errorf("action[handlePacketToRecoverDataReplicaMeta] illegal opcode ")
+		log.LogWarnf("action[handlePacketToRecoverDataReplicaMeta] illegal opcode ")
+		return
+	}
+
+	bytes, _ := json.Marshal(task.Request)
+	p.AddMesgLog(string(bytes))
+	err = json.Unmarshal(bytes, request)
+	if err != nil {
+		return
+	}
+	log.LogDebugf("action[handlePacketToRecoverDataReplicaMeta] try stop %v", request.PartitionId)
+	dp := s.space.Partition(request.PartitionId)
+	if dp == nil {
+		err = proto.ErrDataPartitionNotExists
+		log.LogWarnf("action[handlePacketToRecoverDataReplicaMeta] cannot find dp %v", request.PartitionId)
+		return
+	}
+	// modify meta content
+	dp.config.Hosts = request.Hosts
+	dp.config.Peers = request.Peers
+	if err = dp.PersistMetadata(); err != nil {
+		log.LogErrorf("action[ApplyMemberChange] dp(%v) PersistMetadata err(%v).", dp.partitionID, err)
+		if IsDiskErr(err.Error()) {
+			panic(newRaftApplyError(err))
+		}
+		return
+	}
+	// reload data partition
+	err = dp.reload(s.space)
+	if err != nil {
+		log.LogWarnf("action[handlePacketToRecoverDataReplicaMeta] dp %v recover replica failed %v", dp.partitionID, err)
+	} else {
+		log.LogInfof("action[handlePacketToRecoverDataReplicaMeta] dp %v recover replica success", dp.partitionID)
+	}
 }

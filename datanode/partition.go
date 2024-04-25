@@ -1343,18 +1343,6 @@ func (dp *DataPartition) isDecommissionRecovering() bool {
 	return dp.DataPartitionCreateType == proto.DecommissionedCreateDataPartition
 }
 
-func (dp *DataPartition) handleDecommissionRecoverFailed() {
-	if !dp.isDecommissionRecovering() {
-		return
-	}
-	// prevent status changing from  Unavailable to Recovering again in statusUpdate()
-	dp.partitionType = proto.NormalCreateDataPartition
-	dp.partitionStatus = proto.Unavailable
-	log.LogWarnf("[handleDecommissionRecoverFailed]  dp(%d) recover failed reach max limit", dp.partitionID)
-	dp.PersistMetadata()
-	dp.StopDecommissionRecover(true)
-}
-
 func (dp *DataPartition) incDiskErrCnt() {
 	diskErrCnt := atomic.AddUint64(&dp.diskErrCnt, 1)
 	log.LogWarnf("[incDiskErrCnt]: dp(%v) disk err count:%v", dp.partitionID, diskErrCnt)
@@ -1362,4 +1350,18 @@ func (dp *DataPartition) incDiskErrCnt() {
 
 func (dp *DataPartition) getDiskErrCnt() uint64 {
 	return atomic.LoadUint64(&dp.diskErrCnt)
+}
+
+func (dp *DataPartition) reload(s *SpaceManager) error {
+	disk := dp.disk
+	rootDir := dp.path
+	log.LogDebugf("data partition disk %v rootDir %v", disk, rootDir)
+	s.partitionMutex.Lock()
+	delete(s.partitions, dp.partitionID)
+	s.partitionMutex.Unlock()
+	dp.Stop()
+	dp.Disk().DetachDataPartition(dp)
+	log.LogDebugf("data partition %v is detached", dp.partitionID)
+	_, err := LoadDataPartition(rootDir, disk)
+	return err
 }

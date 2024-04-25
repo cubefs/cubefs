@@ -179,7 +179,6 @@ func (partition *DataPartition) checkLeader(c *Cluster, clusterID string, timeOu
 			}
 		}
 	}
-	return
 }
 
 func findRedundantPeers(a []string, b []proto.Peer) []string {

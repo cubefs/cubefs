@@ -43,7 +43,7 @@ func newDiskForOperatorTest(t *testing.T, dn *DataNode) (d *Disk) {
 		Used:      0,
 		dataNode:  dn,
 	}
-	d.limitFactor = make(map[uint32]*rate.Limiter, 0)
+	d.limitFactor = make(map[uint32]*rate.Limiter)
 	d.limitFactor[proto.FlowReadType] = rate.NewLimiter(rate.Limit(proto.QosDefaultDiskMaxFLowLimit), proto.QosDefaultBurst)
 	d.limitFactor[proto.FlowWriteType] = rate.NewLimiter(rate.Limit(proto.QosDefaultDiskMaxFLowLimit), proto.QosDefaultBurst)
 	d.limitFactor[proto.IopsReadType] = rate.NewLimiter(rate.Limit(proto.QosDefaultDiskMaxIoLimit), defaultIOLimitBurst)

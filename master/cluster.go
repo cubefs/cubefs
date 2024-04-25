@@ -2128,7 +2128,7 @@ func (c *Cluster) decommissionSingleDp(dp *DataPartition, newAddr, offlineAddr s
 	// 2. wait for repair
 	if dp.GetSpecialReplicaDecommissionStep() == SpecialDecommissionWaitAddRes {
 		const dataNodeRebootMaxTimes = 24 // 2 minutes for dataNode to reboot, total 10 miniutes
-		var dataNodeRebootRetryTimes = 0
+		dataNodeRebootRetryTimes := 0
 		for {
 			select {
 			case decommContinue = <-dp.SpecialReplicaDecommissionStop: //
@@ -2161,9 +2161,9 @@ func (c *Cluster) decommissionSingleDp(dp *DataPartition, newAddr, offlineAddr s
 			if len(liveReplicas) >= int(dp.ReplicaNum+1) {
 				log.LogInfof("action[decommissionSingleDp] dp %v replica[%v] status %v",
 					dp.PartitionID, newReplica.Addr, newReplica.Status)
-				dataNodeRebootRetryTimes = 0 //reset dataNodeRebootRetryTimes
+				dataNodeRebootRetryTimes = 0 // reset dataNodeRebootRetryTimes
 				if len(liveReplicas) > int(dp.ReplicaNum+1) {
-					log.LogInfof("action[decommissionSingleDp] dp %v replica[%v] has excess replicas",
+					log.LogInfof("action[decommissionSingleDp] dp %v replica[%v] status %v has excess replicas",
 						dp.PartitionID, newReplica.Addr, newReplica.Status)
 				}
 				if newReplica.isRepairing() { // wait for repair
@@ -4380,7 +4380,7 @@ func (c *Cluster) TryDecommissionDisk(disk *DecommissionDisk) {
 		err                 error
 		badPartitionIds     []uint64
 		lastBadPartitionIds []uint64
-		//tmpIds              []uint64
+		// tmpIds              []uint64
 		badPartitions []*DataPartition
 		rstMsg        string
 		zone          *Zone
@@ -4957,7 +4957,7 @@ func (c *Cluster) removeDPFromBadDataPartitionIDs(addr, diskPath string, partiti
 	c.badPartitionMutex.Lock()
 	defer c.badPartitionMutex.Unlock()
 
-	var key = fmt.Sprintf("%s:%s", addr, diskPath)
+	key := fmt.Sprintf("%s:%s", addr, diskPath)
 	badPartitionIDs, ok := c.BadDataPartitionIds.Load(key)
 	if !ok {
 		return errors.NewErrorf("action[TryDecommissionDisk] cannot find %v in BadDataPartitionIds", key)

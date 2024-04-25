@@ -6687,9 +6687,7 @@ func (m *Server) setVolDpRepairBlockSize(w http.ResponseWriter, r *http.Request)
 }
 
 func (m *Server) checkReplicaMeta(w http.ResponseWriter, r *http.Request) {
-	var (
-		resp proto.BadReplicaMetaResponse
-	)
+	var resp proto.BadReplicaMetaResponse
 
 	vols := m.cluster.allVols()
 	for _, vol := range vols {
@@ -6698,13 +6696,42 @@ func (m *Server) checkReplicaMeta(w http.ResponseWriter, r *http.Request) {
 			for _, replica := range dp.Replicas {
 				// check peer length first
 				if !dp.checkReplicaMetaEqualToMaster(replica.LocalPeers) {
-					resp.Infos = append(resp.Infos, proto.BadReplicaMetaInfo{PartitionId: dp.PartitionID,
-						Replica:    fmt.Sprintf("%v_%v", replica.Addr, replica.DiskPath),
-						BadPeer:    replica.LocalPeers,
-						ExpectPeer: dp.Peers})
+					resp.Infos = append(resp.Infos, proto.BadReplicaMetaInfo{
+						PartitionId: dp.PartitionID,
+						Replica:     fmt.Sprintf("%v_%v", replica.Addr, replica.DiskPath),
+						BadPeer:     replica.LocalPeers,
+						ExpectPeer:  dp.Peers,
+					})
 				}
 			}
 		}
 	}
 	sendOkReply(w, r, newSuccessHTTPReply(resp))
+}
+
+func (m *Server) recoverReplicaMeta(w http.ResponseWriter, r *http.Request) {
+	var (
+		dp          *DataPartition
+		partitionID uint64
+		err         error
+	)
+
+	if partitionID, err = parseRequestToLoadDataPartition(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	if dp, err = m.cluster.getDataPartitionByID(partitionID); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(proto.ErrDataPartitionNotExists))
+		return
+	}
+	for _, replica := range dp.Replicas {
+		if !dp.checkReplicaMetaEqualToMaster(replica.LocalPeers) {
+			err = dp.recoverDataReplicaMeta(replica.Addr, m.cluster)
+			if err != nil {
+				sendErrReply(w, r, newErrHTTPReply(err))
+			}
+		}
+	}
+	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("recover meta for dp (%v) replica success", dp.PartitionID)))
 }
