@@ -2117,25 +2117,6 @@ func (l *DecommissionDataPartitionList) Put(id uint64, value *DataPartition, c *
 		value.isRecover, value.DecommissionNeedRollbackTimes)
 }
 
-func (l *DecommissionDataPartitionList) pushFailedDp(value *DataPartition, c *Cluster) {
-	if value == nil {
-		log.LogWarnf("action[pushFailedDp] cannot put nil value")
-		return
-	}
-	status := value.GetDecommissionStatus()
-	if status != markDecommission && status != DecommissionFail {
-		log.LogWarnf("action[pushFailedDp]  dp(%v) wrong status %v", value.PartitionID, status)
-		return
-	}
-	l.Remove(value)
-	l.mu.Lock()
-	elm := l.decommissionList.PushFront(value)
-	l.cacheMap[value.PartitionID] = elm
-	l.mu.Unlock()
-	log.LogInfof("action[pushFailedDp]  add dp[%v] status[%v] isRecover[%v]",
-		value.PartitionID, status, value.isRecover)
-}
-
 func (l *DecommissionDataPartitionList) Remove(value *DataPartition) {
 	if value == nil {
 		log.LogWarnf("Cannot remove nil value")

@@ -108,10 +108,8 @@ type ExtentHandler struct {
 	// Signaled in receiver ONLY to exit *sender*.
 	doneSender chan struct{}
 
-	// ver update need alloc new extent
-	verUpdate chan uint64
-	appendLK  sync.Mutex
-	lastKey   proto.ExtentKey
+	appendLK sync.Mutex
+	lastKey  proto.ExtentKey
 
 	meetLimitedIoError bool
 }

@@ -385,7 +385,7 @@ func (partition *DataPartition) createLoadTasks() (tasks []*proto.AdminTask) {
 	defer partition.Unlock()
 	for _, addr := range partition.Hosts {
 		replica, err := partition.getReplica(addr)
-		if err != nil || replica.isLive(partition.PartitionID, defaultDataPartitionTimeOutSec) == false {
+		if err != nil || !replica.isLive(partition.PartitionID, defaultDataPartitionTimeOutSec) {
 			continue
 		}
 		replica.HasLoadResponse = false
@@ -468,7 +468,7 @@ func (partition *DataPartition) checkLoadResponse(timeOutSec int64) (isResponse 
 			log.LogWarn(msg)
 			return
 		}
-		if replica.isLive(partition.PartitionID, timeOutSec) == false || replica.HasLoadResponse == false {
+		if !replica.isLive(partition.PartitionID, timeOutSec) || !replica.HasLoadResponse {
 			log.LogInfof("action[checkLoadResponse] partitionID:%v getReplica addr %v replica.isLive(timeOutSec) %v",
 				partition.PartitionID, addr, replica.isLive(partition.PartitionID, timeOutSec))
 			return
@@ -601,7 +601,7 @@ func (partition *DataPartition) getLiveReplicasFromHosts(timeOutSec int64) (repl
 		if !ok {
 			continue
 		}
-		if replica.isLive(partition.PartitionID, timeOutSec) == true {
+		if replica.isLive(partition.PartitionID, timeOutSec) {
 			replicas = append(replicas, replica)
 		} else {
 			replica.Status = proto.Unavailable
@@ -1264,7 +1264,6 @@ errHandler:
 	// do not reset DecommissionDstAddr outside the rollback operation, as it may cause rollback failure
 	if partition.DecommissionNeedRollback {
 		partition.SetDecommissionStatus(DecommissionFail)
-		resetDecommissionDst = false
 	} else {
 		// The maximum number of retries for the DP error has been reached,
 		// and a rollback is still required, even if the rollback conditions have not been triggered.
@@ -1541,12 +1540,11 @@ func (partition *DataPartition) TryAcquireDecommissionToken(c *Cluster) bool {
 		zones           []string
 		result          = false
 	)
-	const MaxRetryDecommissionWait = 60
 	defer c.syncUpdateDataPartition(partition)
 	begin := time.Now()
 	defer func() {
 		log.LogDebugf("action[TryAcquireDecommissionToken] dp %v get token to %v consume(%v) err(%v) result(%v)",
-			partition.PartitionID, partition.DecommissionDstAddr, time.Now().Sub(begin).String(), err, result)
+			partition.PartitionID, partition.DecommissionDstAddr, time.Since(begin).String(), err, result)
 	}()
 
 	// the first time for dst addr not specify
@@ -1762,6 +1760,33 @@ func (partition *DataPartition) checkReplicaMetaEqualToMaster(replicaPeers []pro
 	}
 
 	return true
+}
+
+func (partition *DataPartition) recoverDataReplicaMeta(replicaAddr string, c *Cluster) error {
+	var (
+		dataNode *DataNode
+		err      error
+	)
+	if dataNode, err = c.dataNode(replicaAddr); err != nil {
+		log.LogWarnf("action[recoverDataReplicaMeta]dp(%v)  can't find dataNode %v", partition.PartitionID, replicaAddr)
+		return err
+	}
+	task := partition.createTaskToRecoverDataReplicaMeta(replicaAddr, partition.Peers, partition.Hosts)
+	packet, err := dataNode.TaskManager.syncSendAdminTask(task)
+	if err != nil {
+		log.LogWarnf("action[recoverDataReplicaMeta]dp(%v) replica %v syncSendAdminTask to replica failed %v",
+			partition.PartitionID, replicaAddr, err)
+		return err
+	}
+	log.LogDebugf("action[recoverDataReplicaMeta]dp(%v) send packet(%v)task to recover replica %v meta success",
+		partition.PartitionID, packet, replicaAddr)
+	return nil
+}
+
+func (partition *DataPartition) createTaskToRecoverDataReplicaMeta(addr string, peers []proto.Peer, hosts []string) (task *proto.AdminTask) {
+	task = proto.NewAdminTask(proto.OpRecoverDataReplicaMeta, addr, newRecoverDataReplicaMetaRequest(partition.PartitionID, peers, hosts))
+	partition.resetTaskID(task)
+	return
 }
 
 //func (partition *DataPartition) checkReplicaMetaEqualToMaster(replicaPeers []proto.Peer) bool {

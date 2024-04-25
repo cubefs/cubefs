@@ -16,11 +16,11 @@ package master
 
 import (
 	"fmt"
-	"github.com/cubefs/cubefs/proto"
 	"math"
 	"sync/atomic"
 	"time"
 
+	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/log"
 )
 
@@ -123,7 +123,6 @@ func (c *Cluster) checkDiskRecoveryProgress() {
 						err = c.syncUpdateDataPartition(partition)
 						if err != nil {
 							log.LogErrorf("[checkDiskRecoveryProgress] update dp(%v) fail, err(%v)", partitionID, err)
-							err = nil
 						}
 						partition.RUnlock()
 						continue
@@ -137,7 +136,6 @@ func (c *Cluster) checkDiskRecoveryProgress() {
 						err = c.syncUpdateDataPartition(partition)
 						if err != nil {
 							log.LogErrorf("[checkDiskRecoveryProgress] update dp(%v) fail, err(%v)", partitionID, err)
-							err = nil
 						}
 						partition.RUnlock()
 						continue
