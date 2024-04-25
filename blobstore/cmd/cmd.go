@@ -132,13 +132,15 @@ func Main(args []string) {
 	defer cancel1()
 	config.HotReload(ctx, config.ConfName())
 
+	// new profile handler firstly
+	profileHandler := profile.NewProfileHandler(cfg.BindAddr)
+
 	if mod.graceful {
 		programEntry := func(state *graceful.State) {
 			router, handlers := mod.SetUp()
-
 			httpServer := &http.Server{
 				Addr:         cfg.BindAddr,
-				Handler:      reorderMiddleWareHandlers(router, lh, cfg.BindAddr, cfg.Auth, handlers),
+				Handler:      reorderMiddleWareHandlers(router, lh, profileHandler, cfg.Auth, handlers),
 				ReadTimeout:  5 * time.Minute,
 				WriteTimeout: 5 * time.Minute,
 			}
@@ -169,10 +171,9 @@ func Main(args []string) {
 	}
 
 	router, handlers := mod.SetUp()
-
 	httpServer := &http.Server{
 		Addr:         cfg.BindAddr,
-		Handler:      reorderMiddleWareHandlers(router, lh, cfg.BindAddr, cfg.Auth, handlers),
+		Handler:      reorderMiddleWareHandlers(router, lh, profileHandler, cfg.Auth, handlers),
 		ReadTimeout:  5 * time.Minute,
 		WriteTimeout: 5 * time.Minute,
 	}
@@ -199,23 +200,24 @@ func Main(args []string) {
 }
 
 // reorderMiddleWareHandlers
+//
 //	the order of handlers in MiddlewareHandler has some constraints:
 //	1. the first is router,
 //	2. the second is AuditLog handler,
 //	3. the third is profile handler if config,
 //	4. the fourth is Auth handler if config,
 //	5. others self define handlers by modules.
-func reorderMiddleWareHandlers(r *rpc.Router, lh rpc.ProgressHandler, profileAddr string, authCfg auth.Config, handlers []rpc.ProgressHandler) (mux http.Handler) {
+func reorderMiddleWareHandlers(r *rpc.Router, lh, profileHandler rpc.ProgressHandler,
+	authCfg auth.Config, handlers []rpc.ProgressHandler,
+) (mux http.Handler) {
 	hs := []rpc.ProgressHandler{lh}
-
-	if profileHandler := profile.NewProfileHandler(profileAddr); profileHandler != nil {
+	if profileHandler != nil {
 		hs = append(hs, profileHandler)
 	}
 	if authCfg.EnableAuth && authCfg.Secret != "" {
 		hs = append(hs, auth.NewAuthHandler(&authCfg))
 	}
 	hs = append(hs, handlers...)
-
 	return rpc.MiddlewareHandlerWith(r, hs...)
 }
 
