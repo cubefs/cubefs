@@ -17,6 +17,7 @@ package profile
 import (
 	"expvar"
 	"fmt"
+	"net"
 	"net/http"
 	"net/http/pprof"
 	"os"
@@ -42,6 +43,8 @@ const (
 
 var (
 	profileAddr string
+	serverOnce  sync.Once
+	routerOnce  sync.Once
 	httpRouter  = rpc.New()
 	startTime   = time.Now()
 
@@ -135,14 +138,7 @@ func init() {
 	expvar.Publish("NumGoroutine", expvar.Func(func() interface{} { return runtime.NumGoroutine() }))
 }
 
-func NewProfileHandler(addr string) rpc.ProgressHandler {
-	// without profile setting
-	if without {
-		return nil
-	}
-
-	ph := &profileHandler{}
-
+func registerRouter() {
 	httpRouter.Router.HandlerFunc(http.MethodGet, "/", index)
 	httpRouter.Router.HandlerFunc(http.MethodGet, "/debug/pprof/", pprof.Index)
 	httpRouter.Router.HandlerFunc(http.MethodGet, "/debug/pprof/:key", secondIndex)
@@ -168,6 +164,36 @@ func NewProfileHandler(addr string) rpc.ProgressHandler {
 		"/metrics",
 	}
 	router.mu.Unlock()
+}
+
+func randomLocalServer() {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		return
+	}
+
+	addr := fmt.Sprintf("127.0.0.1:%d", ln.Addr().(*net.TCPAddr).Port)
+	genDumpScript("http://" + addr)
+	server := &http.Server{
+		Addr:    addr,
+		Handler: rpc.MiddlewareHandlerWith(rpc.New(), &profileHandler{}),
+	}
+
+	go func() {
+		server.Serve(ln)
+	}()
+}
+
+func NewProfileHandler(addr string) rpc.ProgressHandler {
+	// without profile setting
+	if without {
+		return nil
+	}
+
+	routerOnce.Do(registerRouter)
+	if addr == "" {
+		return &profileHandler{}
+	}
 
 	if strings.HasPrefix(addr, ":") {
 		profileAddr = "http://127.0.0.1" + addr
@@ -177,11 +203,14 @@ func NewProfileHandler(addr string) rpc.ProgressHandler {
 
 	// do not gen files in `go test`
 	if !strings.HasSuffix(os.Args[0], ".test") {
-		genListenAddr()
-		genDumpScript()
-		genMetricExporter()
+		genListenAddr(profileAddr)
+		genMetricExporter(profileAddr)
+		genDumpScript(profileAddr)
 	}
-	return ph
+
+	serverOnce.Do(randomLocalServer)
+
+	return &profileHandler{}
 }
 
 // handle path /debug/ , show usage

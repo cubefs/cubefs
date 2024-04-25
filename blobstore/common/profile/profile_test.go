@@ -2,6 +2,7 @@ package profile
 
 import (
 	"expvar"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
@@ -46,6 +47,7 @@ func TestProfileBase(t *testing.T) {
 	resp.Body.Close()
 
 	defaultRouter := rpc.DefaultRouter
+	_ = NewProfileHandler(":8888")
 	ph := NewProfileHandler("127.0.0.1:8888")
 	httpServer := &http.Server{
 		Addr:    "127.0.0.1:8888",
@@ -120,8 +122,31 @@ func TestProfileBase(t *testing.T) {
 	resp.Body.Close()
 
 	{
-		genListenAddr()
-		genDumpScript()
-		genMetricExporter()
+		genListenAddr(profileAddr)
+		genMetricExporter(profileAddr)
+		genDumpScript(profileAddr)
 	}
+
+	// new profile port
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+
+	pAddr := fmt.Sprintf("127.0.0.1:%d", ln.Addr().(*net.TCPAddr).Port)
+	profileServer := &http.Server{
+		Addr:    pAddr,
+		Handler: rpc.MiddlewareHandlerWith(rpc.New(), NewProfileHandler("")),
+	}
+	t.Log("Profile is running at", pAddr)
+	go func() {
+		err = profileServer.Serve(ln)
+		require.NoError(t, err)
+	}()
+	time.Sleep(time.Millisecond * 10)
+	// test /debug/pprof/:key, ignore profile
+	for _, m := range []string{"cmdline", "symbol", "trace", " "} {
+		resp, err := http.Get(profileAddr + "/debug/pprof/" + m)
+		require.NoError(t, err)
+		resp.Body.Close()
+	}
+	genDumpScript("http://" + pAddr)
 }
