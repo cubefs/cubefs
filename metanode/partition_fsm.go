@@ -483,6 +483,8 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 	case opFSMUpdateExtentKeyAfterMigration:
 		ino := NewInode(0, 0)
 		if err = ino.Unmarshal(msg.V); err != nil {
+			log.LogWarnf("[Apply] mp(%v) opFSMUpdateExtentKeyAfterMigration Unmarshal inode failed: %v",
+				mp.config.PartitionId, err.Error())
 			return
 		}
 		resp = mp.fsmUpdateExtentKeyAfterMigration(ino)
@@ -498,12 +500,16 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 	case opFSMDeleteMigrationExtentKey:
 		ino := NewInode(0, 0)
 		if err = ino.Unmarshal(msg.V); err != nil {
+			log.LogWarnf("[Apply] mp(%v) opFSMDeleteMigrationExtentKey Unmarshal inode failed: %v",
+				mp.config.PartitionId, err.Error())
 			return
 		}
 		resp = mp.fsmDeleteMigrationExtentKey(ino)
 	case opFSMInternalDeleteMigrationExtentKey:
 		ino := NewInode(0, 0)
 		if err = ino.Unmarshal(msg.V); err != nil {
+			log.LogWarnf("[Apply] mp(%v) opFSMInternalDeleteMigrationExtentKey Unmarshal inode failed: %v",
+				mp.config.PartitionId, err.Error())
 			return
 		}
 		resp = mp.fsmInternalDeleteMigrationExtentKey(ino)
