@@ -11,7 +11,7 @@
 :::
 
 ``` bash
-$ yum install https://ocs-cn-north1.heytapcs.com/cubefs/rpm/3.3.0/cfs-install-3.3.0-el7.x86_64.rpm
+$ yum install https://ocs-cn-north1.heytapcs.com/cubefs/rpm/3.3.2/cfs-install-3.3.2-el7.x86_64.rpm
 $ cd /cfs/install
 $ tree -L 3
  .
