@@ -86,6 +86,15 @@ func newStopDataPartitionRepairRequest(ID uint64, stop bool) (req *proto.StopDat
 	return
 }
 
+func newRecoverDataReplicaMetaRequest(ID uint64, peers []proto.Peer, hosts []string) (req *proto.RecoverDataReplicaMetaRequest) {
+	req = &proto.RecoverDataReplicaMetaRequest{
+		PartitionId: ID,
+		Peers:       peers,
+		Hosts:       hosts,
+	}
+	return
+}
+
 func unmarshalTaskResponse(task *proto.AdminTask) (err error) {
 	bytes, err := json.Marshal(task.Response)
 	if err != nil {

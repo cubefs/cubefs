@@ -1835,6 +1835,32 @@ func (partition *DataPartition) checkReplicaMetaEqualToMaster(replicaPeers []pro
 	return true
 }
 
+func (partition *DataPartition) recoverDataReplicaMeta(replicaAddr string, c *Cluster) error {
+	var (
+		dataNode *DataNode
+		err      error
+	)
+	if dataNode, err = c.dataNode(replicaAddr); err != nil {
+		log.LogWarnf("action[recoverDataReplicaMeta]dp(%v)  can't find dataNode %v", partition.PartitionID, replicaAddr)
+		return err
+	}
+	task := partition.createTaskToRecoverDataReplicaMeta(replicaAddr, partition.Peers, partition.Hosts)
+	packet, err := dataNode.TaskManager.syncSendAdminTask(task)
+	if err != nil {
+		log.LogWarnf("action[recoverDataReplicaMeta]dp(%v)  syncSendAdminTask to replica failed %v",
+			partition.PartitionID, replicaAddr, err)
+		return err
+	}
+	log.LogDebugf("action[recoverDataReplicaMeta]dp(%v) send packet(%v)task to recover replica %v meta success",
+		partition.PartitionID, packet, replicaAddr)
+	return nil
+}
+func (partition *DataPartition) createTaskToRecoverDataReplicaMeta(addr string, peers []proto.Peer, hosts []string) (task *proto.AdminTask) {
+	task = proto.NewAdminTask(proto.OpRecoverDataReplicaMeta, addr, newRecoverDataReplicaMetaRequest(partition.PartitionID, peers, hosts))
+	partition.resetTaskID(task)
+	return
+}
+
 //func (partition *DataPartition) checkReplicaMetaEqualToMaster(replicaPeers []proto.Peer) bool {
 //	// check peer length
 //	if len(partition.Peers) != len(replicaPeers) {

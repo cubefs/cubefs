@@ -6589,3 +6589,30 @@ func (m *Server) checkReplicaMeta(w http.ResponseWriter, r *http.Request) {
 	}
 	sendOkReply(w, r, newSuccessHTTPReply(resp))
 }
+
+func (m *Server) recoverReplicaMeta(w http.ResponseWriter, r *http.Request) {
+	var (
+		dp          *DataPartition
+		partitionID uint64
+		err         error
+	)
+
+	if partitionID, err = parseRequestToLoadDataPartition(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	if dp, err = m.cluster.getDataPartitionByID(partitionID); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(proto.ErrDataPartitionNotExists))
+		return
+	}
+	for _, replica := range dp.Replicas {
+		if !dp.checkReplicaMetaEqualToMaster(replica.LocalPeers) {
+			err = dp.recoverDataReplicaMeta(replica.Addr, m.cluster)
+			if err != nil {
+				sendErrReply(w, r, newErrHTTPReply(err))
+			}
+		}
+	}
+	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("recover meta for dp (%v) replica success", dp.PartitionID)))
+}

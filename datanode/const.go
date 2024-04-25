@@ -65,6 +65,7 @@ const (
 	ActionBatchMarkDelete            = "ActionBatchMarkDelete"
 	ActionUpdateVersion              = "ActionUpdateVersion"
 	ActionStopDataPartitionRepair    = "ActionStopDataPartitionRepair"
+	ActionRecoverDataReplicaMeta     = "ActionRecoverDataReplicaMeta"
 )
 
 // Apply the raft log operation. Currently we only have the random write operation.

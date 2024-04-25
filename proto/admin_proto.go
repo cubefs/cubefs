@@ -42,6 +42,7 @@ const (
 	AdminResetDataPartitionDecommissionStatus = "/dataPartition/resetDecommissionStatus"
 	AdminQueryDataPartitionDecommissionStatus = "/dataPartition/queryDecommissionStatus"
 	AdminCheckReplicaMeta                     = "/dataPartition/checkReplicaMeta"
+	AdminRecoverReplicaMeta                   = "/dataPartition/recoverReplicaMeta"
 	AdminDeleteDataReplica                    = "/dataReplica/delete"
 	AdminAddDataReplica                       = "/dataReplica/add"
 	AdminDeleteVol                            = "/vol/delete"
@@ -603,6 +604,12 @@ type StopDataPartitionRepairResponse struct {
 	Status      uint8
 	Result      string
 	PartitionId uint64
+}
+
+type RecoverDataReplicaMetaRequest struct {
+	PartitionId uint64
+	Peers       []Peer
+	Hosts       []string
 }
 
 // File defines the file struct.

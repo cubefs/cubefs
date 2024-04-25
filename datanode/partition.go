@@ -1363,3 +1363,17 @@ func (dp *DataPartition) incDiskErrCnt() {
 func (dp *DataPartition) getDiskErrCnt() uint64 {
 	return atomic.LoadUint64(&dp.diskErrCnt)
 }
+
+func (dp *DataPartition) reload(s *SpaceManager) error {
+	disk := dp.disk
+	rootDir := dp.path
+	log.LogDebugf("data partition disk %v rootDir %v", disk, rootDir)
+	s.partitionMutex.Lock()
+	delete(s.partitions, dp.partitionID)
+	s.partitionMutex.Unlock()
+	dp.Stop()
+	dp.Disk().DetachDataPartition(dp)
+	log.LogDebugf("data partition %v is detached", dp.partitionID)
+	_, err := LoadDataPartition(rootDir, disk)
+	return err
+}
