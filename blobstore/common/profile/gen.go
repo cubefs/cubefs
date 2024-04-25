@@ -32,7 +32,7 @@ type MEConfig struct {
 	Labels map[string]string `yaml:"labels"`
 }
 
-func genMetricExporter() {
+func genMetricExporter(profileAddr string) {
 	fn := os.Args[0] + suffixMetricExporter
 	f, err := os.OpenFile(fn, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0o644)
 	if err != nil {
@@ -64,7 +64,7 @@ func genMetricExporter() {
 	f.Sync()
 }
 
-func genDumpScript() {
+func genDumpScript(profileAddr string) {
 	fn := os.Args[0] + suffixDumpScript
 	f, err := os.OpenFile(fn, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0o755)
 	if err != nil {
@@ -109,7 +109,7 @@ func genDumpScript() {
 	f.Sync()
 }
 
-func genListenAddr() {
+func genListenAddr(profileAddr string) {
 	fn := os.Args[0] + suffixListenAddr
 	f, err := os.OpenFile(fn, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0o644)
 	if err != nil {
