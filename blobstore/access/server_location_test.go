@@ -48,16 +48,16 @@ var (
 
 func TestAccessServiceLocationCrc(t *testing.T) {
 	{
-		_, err := CalcCrc(nil)
+		_, err := calcCrc(nil)
 		require.Error(t, err)
 	}
 	{
-		crc, err := CalcCrc(&testMinLoc)
+		crc, err := calcCrc(&testMinLoc)
 		require.NoError(t, err)
 		require.Equal(t, uint32(0x8a7370cc), crc)
 	}
 	{
-		crc, err := CalcCrc(&testMaxLoc)
+		crc, err := calcCrc(&testMaxLoc)
 		require.NoError(t, err)
 		require.Equal(t, uint32(0xda55150a), crc)
 	}
@@ -65,17 +65,17 @@ func TestAccessServiceLocationCrc(t *testing.T) {
 		loc := testMinLoc.Copy()
 		loc.Size = 1 << 30
 
-		err := FillCrc(&loc)
+		err := fillCrc(&loc)
 		require.NoError(t, err)
 		require.Equal(t, uint32(0x9e17bc9e), loc.Crc)
 	}
 	{
 		loc := testMinLoc.Copy()
 		loc.Size = 1 << 30
-		require.False(t, VerifyCrc(&loc))
+		require.False(t, verifyCrc(&loc))
 
 		loc.Crc = 0x9e17bc9e
-		require.True(t, VerifyCrc(&loc))
+		require.True(t, verifyCrc(&loc))
 	}
 }
 
@@ -87,7 +87,7 @@ func TestAccessServiceLocationSecret(t *testing.T) {
 	}()
 	{
 		initLocationSecret([]byte{0x34, 0x45, 0x18, 0x4f})
-		crc, err := CalcCrc(&testMinLoc)
+		crc, err := calcCrc(&testMinLoc)
 		require.NoError(t, err)
 		require.NotEqual(t, uint32(0x8a7370cc), crc)
 		require.Equal(t, uint32(0xdbe8df90), crc)
@@ -95,7 +95,7 @@ func TestAccessServiceLocationSecret(t *testing.T) {
 	{
 		// init once
 		initLocationSecret([]byte{0x1, 0x2, 0x3, 0x4})
-		crc, err := CalcCrc(&testMinLoc)
+		crc, err := calcCrc(&testMinLoc)
 		require.NoError(t, err)
 		require.Equal(t, uint32(0xdbe8df90), crc)
 	}
@@ -114,8 +114,8 @@ func TestAccessServiceLocationSignCrc(t *testing.T) {
 			Count:  10,
 		}},
 	}
-	FillCrc(loc)
-	require.True(t, VerifyCrc(loc))
+	fillCrc(loc)
+	require.True(t, verifyCrc(loc))
 
 	{
 		loc1, loc2 := loc.Copy(), loc.Copy()
@@ -124,7 +124,7 @@ func TestAccessServiceLocationSignCrc(t *testing.T) {
 	{
 		loc1, loc2 := loc.Copy(), loc.Copy()
 		loc1.BlobSize = 100
-		FillCrc(&loc1)
+		fillCrc(&loc1)
 		require.Error(t, signCrc(loc, []access.Location{loc1, loc2}))
 	}
 	{
@@ -135,21 +135,21 @@ func TestAccessServiceLocationSignCrc(t *testing.T) {
 	{
 		loc1, loc2 := loc.Copy(), loc.Copy()
 		loc2.ClusterID = 2
-		FillCrc(&loc2)
+		fillCrc(&loc2)
 		require.Error(t, signCrc(loc, []access.Location{loc1, loc2}))
 	}
 	{
 		loc1, loc2 := loc.Copy(), loc.Copy()
 		loc2.CodeMode = 100
-		FillCrc(&loc2)
+		fillCrc(&loc2)
 		require.Error(t, signCrc(loc, []access.Location{loc1, loc2}))
 	}
 	{
 		loc1, loc2 := loc.Copy(), loc.Copy()
 		loc1.Blobs = nil
 		loc2.Blobs[0].Count = 5
-		FillCrc(&loc1)
-		FillCrc(&loc2)
+		fillCrc(&loc1)
+		fillCrc(&loc2)
 		require.Error(t, signCrc(loc, []access.Location{loc1, loc2}))
 	}
 }
@@ -187,7 +187,7 @@ func benchmarkCrc(b *testing.B, key string,
 }
 
 func BenchmarkAccessServerCrcWithMagicMin(b *testing.B) {
-	benchmarkCrc(b, "min-with-magic", testMinLoc, testMinBlob, CalcCrc)
+	benchmarkCrc(b, "min-with-magic", testMinLoc, testMinBlob, calcCrc)
 }
 
 func BenchmarkAccessServerCrcWithoutMagicMin(b *testing.B) {
@@ -195,7 +195,7 @@ func BenchmarkAccessServerCrcWithoutMagicMin(b *testing.B) {
 }
 
 func BenchmarkAccessServerCrcWithMagicMax(b *testing.B) {
-	benchmarkCrc(b, "max-with-magic", testMaxLoc, testMaxBlob, CalcCrc)
+	benchmarkCrc(b, "max-with-magic", testMaxLoc, testMaxBlob, calcCrc)
 }
 
 func BenchmarkAccessServerCrcWithoutMagicMax(b *testing.B) {

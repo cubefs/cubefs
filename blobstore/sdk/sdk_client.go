@@ -1,7 +1,6 @@
 package sdk
 
 import (
-	"bytes"
 	"context"
 	"io"
 	"net/http"
@@ -12,9 +11,9 @@ import (
 	acapi "github.com/cubefs/cubefs/blobstore/api/access"
 	errcode "github.com/cubefs/cubefs/blobstore/common/errors"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
-	"github.com/cubefs/cubefs/blobstore/common/resourcepool"
 	"github.com/cubefs/cubefs/blobstore/common/rpc"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
+	"github.com/cubefs/cubefs/blobstore/common/uptoken"
 	"github.com/cubefs/cubefs/blobstore/util/closer"
 	"github.com/cubefs/cubefs/blobstore/util/defaulter"
 	"github.com/cubefs/cubefs/blobstore/util/errors"
@@ -23,27 +22,32 @@ import (
 )
 
 const (
-	defaultMaxSizePutOnce  int64 = 1 << 28 // 256MB
-	defaultClientTimeoutMs int64 = 5000
+	defaultClientTimeoutMs int64 = 5000 // 5s
 )
 
-type ConfigSdk struct {
+type noopBody struct{}
+
+var _ io.ReadCloser = (*noopBody)(nil)
+
+func (rc noopBody) Read(p []byte) (n int, err error) { return 0, io.EOF }
+func (rc noopBody) Close() error                     { return nil }
+
+type Config struct {
 	access.StreamConfig
 	Limit           access.LimitConfig `json:"limit"`
-	MaxSizePutOnce  int64              `json:"max_size_put_once"`
 	ClientTimeoutMs int64              `json:"client_timeout_ms"`
 	LogLevel        log.Level          `json:"log_level"`
 	Logger          *lumberjack.Logger `json:"logger"`
 }
 
 type sdkHandler struct {
-	conf    ConfigSdk
+	conf    Config
 	handler access.StreamHandler
 	limiter access.Limiter
 	closer  closer.Closer
 }
 
-func NewSdkBlobstore(conf *ConfigSdk) (acapi.API, error) {
+func New(conf *Config) (acapi.API, error) {
 	fixConfig(conf)
 
 	cl := closer.New()
@@ -61,21 +65,16 @@ func NewSdkBlobstore(conf *ConfigSdk) (acapi.API, error) {
 }
 
 func (s *sdkHandler) Get(ctx context.Context, args *acapi.GetArgs) (body io.ReadCloser, err error) {
-	if !args.IsValid() {
+	if !args.IsValid() || args.Body == nil {
 		return nil, errcode.ErrIllegalArguments
 	}
 
-	ctx = acapi.WithReqidContext(ctx)
+	ctx = acapi.ClientWithReqidContext(ctx)
 	if args.Location.Size == 0 || args.ReadSize == 0 {
-		return acapi.NoopBody{}, nil
+		return noopBody{}, nil
 	}
 
-	resp, err := s.doGet(ctx, args)
-	if err != nil {
-		return nil, err
-	}
-
-	return resp, nil
+	return s.doGet(ctx, args)
 }
 
 func (s *sdkHandler) Delete(ctx context.Context, args *acapi.DeleteArgs) (failedLocations []acapi.Location, err error) {
@@ -83,18 +82,11 @@ func (s *sdkHandler) Delete(ctx context.Context, args *acapi.DeleteArgs) (failed
 		return nil, errcode.ErrIllegalArguments
 	}
 
-	cid := args.Locations[0].ClusterID
-	for _, loc := range args.Locations { // only 1 cluster
-		if cid != loc.ClusterID {
-			return nil, errcode.ErrIllegalArguments
-		}
-	}
-
-	ctx = acapi.WithReqidContext(ctx)
+	ctx = acapi.ClientWithReqidContext(ctx)
 	locations := make([]acapi.Location, 0, len(args.Locations)) // check location size
 	for _, loc := range args.Locations {
 		if loc.Size > 0 {
-			locations = append(locations, loc.Copy())
+			locations = append(locations, loc)
 		}
 	}
 	if len(locations) == 0 {
@@ -131,44 +123,39 @@ func (s *sdkHandler) Put(ctx context.Context, args *acapi.PutArgs) (location aca
 		return acapi.Location{Blobs: make([]acapi.SliceInfo, 0)}, hashSumMap, nil
 	}
 
-	ctx = acapi.WithReqidContext(ctx)
-	if args.Size <= s.conf.MaxSizePutOnce {
-		return s.doPutObject(ctx, args)
+	ctx = acapi.ClientWithReqidContext(ctx)
+	return s.doPutObject(ctx, args)
+}
+
+func (s *sdkHandler) PutAt(ctx context.Context, args *acapi.PutAtArgs) (acapi.HashSumMap, error) {
+	if !args.IsValid() {
+		return nil, errcode.ErrIllegalArguments
 	}
 
-	span := trace.SpanFromContextSafe(ctx)
-	err = errcode.ErrRequestNotAllow
-	span.Errorf("sdk put too large size at once: %+v", err)
-	return acapi.Location{}, nil, err
+	ctx = acapi.ClientWithReqidContext(ctx)
+	return s.doPutAt(ctx, args)
+}
+
+func (s *sdkHandler) Alloc(ctx context.Context, args *acapi.AllocArgs) (acapi.AllocResp, error) {
+	if !args.IsValid() {
+		return acapi.AllocResp{}, errcode.ErrIllegalArguments
+	}
+
+	ctx = acapi.ClientWithReqidContext(ctx)
+	return s.doAlloc(ctx, args)
 }
 
 func (s *sdkHandler) doGet(ctx context.Context, args *acapi.GetArgs) (resp io.ReadCloser, err error) {
 	span := trace.SpanFromContextSafe(ctx)
 
 	span.Debugf("accept sdk request args:%+v", args)
-	if !access.VerifyCrc(&args.Location) {
+	if !access.LocationCrcVerify(&args.Location) {
 		err = errcode.ErrIllegalArguments
 		span.Error("stream get args is invalid ", errors.Detail(err))
 		return
 	}
 
-	if args.ReadSize > 0 && args.ReadSize != args.Location.Size {
-		span.Errorf("stream get size is invalid, bytes %d-%d/%d", args.Offset, args.Offset+args.ReadSize-1, args.Location.Size)
-		err = errcode.ErrIllegalArguments
-		return
-	}
-
-	mp := s.getMemPool()
-	if mp == nil {
-		return nil, errcode.ErrUnexpected
-	}
-	buf, err := mp.Alloc(int(args.ReadSize))
-	if err != nil {
-		return nil, err
-	}
-
-	w := bytes.NewBuffer(buf)
-	writer := s.limiter.Writer(ctx, w)
+	writer := s.limiter.Writer(ctx, args.Body)
 	transfer, err := s.handler.Get(ctx, writer, args.Location, args.ReadSize, args.Offset)
 	if err != nil {
 		span.Error("stream get prepare failed", errors.Detail(err))
@@ -177,13 +164,12 @@ func (s *sdkHandler) doGet(ctx context.Context, args *acapi.GetArgs) (resp io.Re
 
 	err = transfer()
 	if err != nil {
-		access.ReportDownload(args.Location.ClusterID, "StatusOKError", "-")
 		span.Error("stream get transfer failed", errors.Detail(err))
 		return
 	}
 	span.Info("done sdk get request")
 
-	return io.NopCloser(bytes.NewReader(buf)), nil
+	return io.NopCloser(args.Body), nil
 }
 
 func (s *sdkHandler) doDelete(ctx context.Context, args *acapi.DeleteArgs) (resp acapi.DeleteResp, err error) {
@@ -207,14 +193,14 @@ func (s *sdkHandler) doDelete(ctx context.Context, args *acapi.DeleteArgs) (resp
 	span.Debugf("accept sdk delete request args: locations %d", len(args.Locations))
 	defer span.Info("done sdk delete request")
 
-	blobsN := 0
+	clusterBlobsN := make(map[proto.ClusterID]int, 4)
 	for _, loc := range args.Locations {
-		if !access.VerifyCrc(&loc) {
+		if !access.LocationCrcVerify(&loc) {
 			span.Infof("invalid crc %+v", loc)
 			err = errcode.ErrIllegalArguments
 			return
 		}
-		blobsN += len(loc.Blobs)
+		clusterBlobsN[loc.ClusterID] += len(loc.Blobs)
 	}
 
 	if len(args.Locations) == 1 {
@@ -232,44 +218,29 @@ func (s *sdkHandler) doDelete(ctx context.Context, args *acapi.DeleteArgs) (resp
 	// a min delete message about 10-20 bytes,
 	// max delete locations is 1024, one location is max to 5G,
 	// merged message max size about 40MB.
-	merged := make([]acapi.SliceInfo, 0, blobsN)
+	merged := make(map[proto.ClusterID][]acapi.SliceInfo, len(clusterBlobsN))
+	for id, n := range clusterBlobsN {
+		merged[id] = make([]acapi.SliceInfo, 0, n)
+	}
 	for _, loc := range args.Locations {
-		merged = append(merged, loc.Blobs...)
+		merged[loc.ClusterID] = append(merged[loc.ClusterID], loc.Blobs...)
 	}
 
-	failedCh := make(chan proto.ClusterID, 1)
-	done := make(chan struct{})
-	go func() {
-		for id := range failedCh {
-			if resp.FailedLocations == nil {
-				resp.FailedLocations = make([]acapi.Location, 0, len(args.Locations))
-			}
+	for cid := range merged {
+		if err := s.handler.Delete(ctx, &acapi.Location{
+			ClusterID: cid,
+			BlobSize:  1,
+			Blobs:     merged[cid],
+		}); err != nil {
+			span.Error("stream delete failed", cid, errors.Detail(err))
 			for _, loc := range args.Locations {
-				if loc.ClusterID == id {
+				if loc.ClusterID == cid {
 					resp.FailedLocations = append(resp.FailedLocations, loc)
 				}
 			}
 		}
-		close(done)
-	}()
+	}
 
-	cid := args.Locations[0].ClusterID
-	delCh := make(chan struct{}, 1)
-	go func() {
-		if err := s.handler.Delete(ctx, &acapi.Location{
-			ClusterID: cid,
-			BlobSize:  1,
-			Blobs:     merged,
-		}); err != nil {
-			span.Error("stream delete failed", cid, errors.Detail(err))
-			failedCh <- cid
-		}
-		delCh <- struct{}{}
-	}()
-
-	<-delCh
-	close(failedCh)
-	<-done
 	return
 }
 
@@ -303,7 +274,7 @@ func (s *sdkHandler) doPutObject(ctx context.Context, args *acapi.PutArgs) (loca
 		hashSumMap[alg] = hasher.Sum(nil)
 	}
 
-	if err = access.FillCrc(loc); err != nil {
+	if err = access.LocationCrcFill(loc); err != nil {
 		span.Error("stream put fill location crc", err)
 		err = httpError(err)
 		return
@@ -314,14 +285,67 @@ func (s *sdkHandler) doPutObject(ctx context.Context, args *acapi.PutArgs) (loca
 	return location, hashSumMap, nil
 }
 
-func (s *sdkHandler) getMemPool() *resourcepool.MemPool {
-	if sa := s.handler.Admin(); sa != nil {
-		if ad, ok := sa.(*access.StreamAdmin); ok {
-			return ad.MemPool
+func (s *sdkHandler) doPutAt(ctx context.Context, args *acapi.PutAtArgs) (hashSumMap acapi.HashSumMap, err error) {
+	span := trace.SpanFromContextSafe(ctx)
+	span.Debugf("accept sdk putat request args:%+v", args)
+
+	valid := false
+	for _, secretKey := range access.StreamTokenSecretKeys {
+		token := uptoken.DecodeToken(args.Token)
+		if token.IsValid(args.ClusterID, args.Vid, args.BlobID, uint32(args.Size), secretKey[:]) {
+			valid = true
+			break
 		}
 	}
+	if !valid {
+		span.Debugf("invalid token:%s", args.Token)
+		return nil, errcode.ErrIllegalArguments
+	}
 
-	return nil
+	hashSumMap = args.Hashes.ToHashSumMap()
+	hasherMap := make(acapi.HasherMap, len(hashSumMap))
+	for alg := range hashSumMap {
+		hasherMap[alg] = alg.ToHasher()
+	}
+
+	rc := s.limiter.Reader(ctx, args.Body)
+	err = s.handler.PutAt(ctx, rc, args.ClusterID, args.Vid, args.BlobID, args.Size, hasherMap)
+	if err != nil {
+		span.Error("stream putat failed ", errors.Detail(err))
+		return nil, err
+	}
+
+	// hasher sum
+	for alg, hasher := range hasherMap {
+		hashSumMap[alg] = hasher.Sum(nil)
+	}
+	span.Infof("done /putat request hash:%+v", hashSumMap.All())
+
+	return hashSumMap, nil
+}
+
+func (s *sdkHandler) doAlloc(ctx context.Context, args *acapi.AllocArgs) (resp acapi.AllocResp, err error) {
+	span := trace.SpanFromContextSafe(ctx)
+	span.Debugf("accept sdk alloc request args:%+v", args)
+
+	location, err := s.handler.Alloc(ctx, args.Size, args.BlobSize, args.AssignClusterID, args.CodeMode)
+	if err != nil {
+		span.Error("stream alloc failed ", errors.Detail(err))
+		return resp, err
+	}
+
+	if err = access.LocationCrcFill(location); err != nil {
+		span.Error("stream alloc fill location crc", err)
+		return resp, err
+	}
+
+	resp = acapi.AllocResp{
+		Location: *location,
+		Tokens:   access.StreamGenTokens(location),
+	}
+	span.Infof("done /alloc request resp:%+v", resp)
+
+	return resp, nil
 }
 
 func httpError(err error) error {
@@ -334,8 +358,7 @@ func httpError(err error) error {
 	return errcode.ErrUnexpected
 }
 
-func fixConfig(cfg *ConfigSdk) {
-	defaulter.LessOrEqual(&cfg.MaxSizePutOnce, defaultMaxSizePutOnce)
+func fixConfig(cfg *Config) {
 	defaulter.Less(&cfg.ClientTimeoutMs, defaultClientTimeoutMs)
 	log.SetOutputLevel(cfg.LogLevel)
 	if cfg.Logger != nil {

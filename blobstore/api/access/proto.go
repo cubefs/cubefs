@@ -561,9 +561,10 @@ type AllocResp struct {
 
 // GetArgs for service /get
 type GetArgs struct {
-	Location Location `json:"location"`
-	Offset   uint64   `json:"offset"`
-	ReadSize uint64   `json:"read_size"`
+	Location Location      `json:"location"`
+	Offset   uint64        `json:"offset"`
+	ReadSize uint64        `json:"read_size"`
+	Body     io.ReadWriter `json:"body"`
 }
 
 // IsValid is valid get args
