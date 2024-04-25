@@ -572,19 +572,7 @@ func (s *DataNode) reloadDataPartition(w http.ResponseWriter, r *http.Request) {
 		s.buildFailureResp(w, http.StatusNotFound, "partition not exist")
 		return
 	}
-	// store disk path and root of dp
-	disk := partition.disk
-	rootDir := partition.path
-	log.LogDebugf("data partition disk %v rootDir %v", disk, rootDir)
-
-	s.space.partitionMutex.Lock()
-	delete(s.space.partitions, partitionID)
-	s.space.partitionMutex.Unlock()
-	partition.Stop()
-	partition.Disk().DetachDataPartition(partition)
-
-	log.LogDebugf("data partition %v is detached", partitionID)
-	_, err = LoadDataPartition(rootDir, disk)
+	err = partition.reload(s.space)
 	if err != nil {
 		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
 	} else {

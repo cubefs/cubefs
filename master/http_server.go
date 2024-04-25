@@ -539,6 +539,9 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 	router.NewRoute().Methods(http.MethodGet).
 		Path(proto.AdminCheckReplicaMeta).
 		HandlerFunc(m.checkReplicaMeta)
+	router.NewRoute().Methods(http.MethodGet).
+		Path(proto.AdminRecoverReplicaMeta).
+		HandlerFunc(m.recoverReplicaMeta)
 
 	// meta node management APIs
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
