@@ -472,11 +472,10 @@ type DecommissionedDisks struct {
 }
 
 type BadReplicaMetaInfo struct {
-	PartitionId   uint64
-	Replica       string
-	BadPeer       string
-	BadPeerNodeID uint64
-	ExpectNodeID  uint64
+	PartitionId uint64
+	Replica     string
+	BadPeer     []Peer
+	ExpectPeer  []Peer
 }
 
 type BadReplicaMetaResponse struct {

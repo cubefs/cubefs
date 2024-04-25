@@ -6577,22 +6577,12 @@ func (m *Server) checkReplicaMeta(w http.ResponseWriter, r *http.Request) {
 		partitions := vol.dataPartitions.clonePartitions()
 		for _, dp := range partitions {
 			for _, replica := range dp.Replicas {
-				for _, peer := range replica.LocalPeers {
-					for _, base := range dp.Peers {
-						if peer.Addr != base.Addr {
-							continue
-						} else {
-							if peer.ID != base.ID {
-								log.LogDebugf("action[checkReplicaMeta]dp(%v) replica(%v) peer(%v) is different from master(%v)",
-									dp.PartitionID, replica.Addr, peer, base)
-								resp.Infos = append(resp.Infos, proto.BadReplicaMetaInfo{PartitionId: dp.PartitionID,
-									Replica:       fmt.Sprintf("%v_%v", replica.Addr, replica.DiskPath),
-									BadPeer:       peer.Addr,
-									BadPeerNodeID: peer.ID,
-									ExpectNodeID:  base.ID})
-							}
-						}
-					}
+				// check peer length first
+				if !dp.checkReplicaMetaEqualToMaster(replica.LocalPeers) {
+					resp.Infos = append(resp.Infos, proto.BadReplicaMetaInfo{PartitionId: dp.PartitionID,
+						Replica:    fmt.Sprintf("%v_%v", replica.Addr, replica.DiskPath),
+						BadPeer:    replica.LocalPeers,
+						ExpectPeer: dp.Peers})
 				}
 			}
 		}

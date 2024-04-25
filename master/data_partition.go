@@ -1809,37 +1809,87 @@ func (partition *DataPartition) removeReplicaByForce(c *Cluster, peerAddr string
 	return nil
 }
 
-func (partition *DataPartition) checkReplicaMeta(c *Cluster) {
-	// handle different node id
-	for _, replica := range partition.Replicas {
-		for _, peer := range replica.LocalPeers {
-			for _, base := range partition.Peers {
-				if peer.Addr != base.Addr {
-					continue
-				} else {
-					if peer.ID != base.ID {
-						//log.LogDebugf("action[checkReplicaMeta]dp(%v) replica(%v) peer(%v) is different from master(%v)",
-						//	partition.PartitionID, replica.Addr, peer, base)
-						//raftForceDel := false
-						//removePeer := proto.Peer{ID: peer.ID, Addr: peer.Addr}
-						//err := c.removeDataPartitionRaftMember(partition, removePeer, raftForceDel)
-						//if err != nil {
-						//	log.LogWarnf("action[checkReplicaMeta]dp[%v] remove replica(%v) peer(%v) failed(%v)",
-						//		partition.PartitionID, replica.Addr, peer, err)
-						//	continue
-						//}
-						//addPeer := proto.Peer{ID: base.ID, Addr: base.Addr}
-						//// 这里不能直接使用之前的逻辑，不然一直添加
-						//err = c.addDataPartitionRaftMember(partition, addPeer, true)
-						//if err != nil {
-						//	log.LogWarnf("action[checkReplicaMeta]dp[%v] add replica(%v) peer(%v) failed(%v)",
-						//		partition.PartitionID, replica.Addr, base, err)
-						//	continue
-						//}
-					}
+func (partition *DataPartition) checkReplicaMetaEqualToMaster(replicaPeers []proto.Peer) bool {
+	// Check peer length
+	if len(partition.Peers) != len(replicaPeers) {
+		return false
+	}
+
+	// Check nodeID and Addr for each peer
+	for _, replicaPeer := range replicaPeers {
+		found := false
+		for _, basePeer := range partition.Peers {
+			if replicaPeer.Addr == basePeer.Addr {
+				if replicaPeer.ID != basePeer.ID {
+					return false
 				}
+				found = true
+				break
 			}
+		}
+		if !found {
+			return false
 		}
 	}
 
+	return true
 }
+
+//func (partition *DataPartition) checkReplicaMetaEqualToMaster(replicaPeers []proto.Peer) bool {
+//	// check peer length
+//	if len(partition.Peers) != len(replicaPeers) {
+//		return false
+//	}
+//
+//	// check nodeID
+//	var replicaPeerAddr, basePeerAddr []string
+//	for _, peer := range replicaPeers {
+//		replicaPeerAddr = append(replicaPeerAddr, peer.Addr)
+//		for _, base := range partition.Peers {
+//			if peer.Addr != base.Addr {
+//				continue
+//			} else {
+//				if peer.ID != base.ID {
+//					return false
+//				}
+//			}
+//		}
+//	}
+//	for _, base := range partition.Peers {
+//		basePeerAddr = append(basePeerAddr, base.Addr)
+//	}
+//	// check peer addr
+//
+//	//// handle different node id
+//	//for _, replica := range partition.Replicas {
+//	//	for _, peer := range replica.LocalPeers {
+//	//		for _, base := range partition.Peers {
+//	//			if peer.Addr != base.Addr {
+//	//				continue
+//	//			} else {
+//	//				if peer.ID != base.ID {
+//	//					//log.LogDebugf("action[checkReplicaMeta]dp(%v) replica(%v) peer(%v) is different from master(%v)",
+//	//					//	partition.PartitionID, replica.Addr, peer, base)
+//	//					//raftForceDel := false
+//	//					//removePeer := proto.Peer{ID: peer.ID, Addr: peer.Addr}
+//	//					//err := c.removeDataPartitionRaftMember(partition, removePeer, raftForceDel)
+//	//					//if err != nil {
+//	//					//	log.LogWarnf("action[checkReplicaMeta]dp[%v] remove replica(%v) peer(%v) failed(%v)",
+//	//					//		partition.PartitionID, replica.Addr, peer, err)
+//	//					//	continue
+//	//					//}
+//	//					//addPeer := proto.Peer{ID: base.ID, Addr: base.Addr}
+//	//					//// 这里不能直接使用之前的逻辑，不然一直添加
+//	//					//err = c.addDataPartitionRaftMember(partition, addPeer, true)
+//	//					//if err != nil {
+//	//					//	log.LogWarnf("action[checkReplicaMeta]dp[%v] add replica(%v) peer(%v) failed(%v)",
+//	//					//		partition.PartitionID, replica.Addr, base, err)
+//	//					//	continue
+//	//					//}
+//	//				}
+//	//			}
+//	//		}
+//	//	}
+//	//}
+//
+//}
