@@ -156,9 +156,9 @@ func (h *Handler) Get(ctx context.Context, w io.Writer, location access.Location
 				if err != errNeedReconstructRead {
 					if err != nil {
 						span.Error("read data shard only", err)
-						ReportDownload(clusterID, "Direct", "error")
+						reportDownload(clusterID, "Direct", "error")
 					} else {
-						ReportDownload(clusterID, "Direct", "-")
+						reportDownload(clusterID, "Direct", "-")
 					}
 					return err
 				}
@@ -286,11 +286,11 @@ func (h *Handler) Get(ctx context.Context, w io.Writer, location access.Location
 		}()
 
 		if err != nil {
-			ReportDownload(clusterID, "EC", "error")
+			reportDownload(clusterID, "EC", "error")
 			span.Error("get request error", err)
 			return err
 		}
-		ReportDownload(clusterID, "EC", "-")
+		reportDownload(clusterID, "EC", "-")
 		return nil
 	}, nil
 }
@@ -420,7 +420,7 @@ func (h *Handler) readOneBlob(ctx context.Context, getTime *timeReadWrite,
 			var err error
 			if shardReadSize < shardSize {
 				span.Debugf("bid(%d) ready to segment ec reconstruct data", blob.Bid)
-				ReportDownload(blob.Cid, "EC", "segment")
+				reportDownload(blob.Cid, "EC", "segment")
 				segments := make([][]byte, len(shards))
 				for idx := range shards {
 					segments[idx] = shards[idx][shardOffset : shardOffset+shardReadSize]

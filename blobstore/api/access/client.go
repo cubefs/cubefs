@@ -219,16 +219,20 @@ type API interface {
 	// Delete all blobs in these locations.
 	// return failed locations which have yet been deleted if error is not nil.
 	Delete(ctx context.Context, args *DeleteArgs) (failedLocations []Location, err error)
+	// PutAt put one blob
+	PutAt(ctx context.Context, args *PutAtArgs) (hashSumMap HashSumMap, err error)
+	// Alloc alloc one location
+	Alloc(ctx context.Context, args *AllocArgs) (AllocResp, error)
 }
 
 var _ API = (*client)(nil)
 
-type NoopBody struct{}
+type noopBody struct{}
 
-var _ io.ReadCloser = (*NoopBody)(nil)
+var _ io.ReadCloser = (*noopBody)(nil)
 
-func (rc NoopBody) Read(p []byte) (n int, err error) { return 0, io.EOF }
-func (rc NoopBody) Close() error                     { return nil }
+func (rc noopBody) Read(p []byte) (n int, err error) { return 0, io.EOF }
+func (rc noopBody) Close() error                     { return nil }
 
 var memPool *resourcepool.MemPool
 
@@ -394,7 +398,7 @@ func (c *client) Put(ctx context.Context, args *PutArgs) (location Location, has
 		return Location{Blobs: make([]SliceInfo, 0)}, hashSumMap, nil
 	}
 
-	ctx = WithReqidContext(ctx)
+	ctx = withReqidContext(ctx)
 	if args.Size <= c.config.MaxSizePutOnce {
 		return c.putObject(ctx, args)
 	}
@@ -723,9 +727,9 @@ func (c *client) Get(ctx context.Context, args *GetArgs) (body io.ReadCloser, er
 	}
 	rpcClient := c.rpcClient.Load().(rpc.Client)
 
-	ctx = WithReqidContext(ctx)
+	ctx = withReqidContext(ctx)
 	if args.Location.Size == 0 || args.ReadSize == 0 {
-		return NoopBody{}, nil
+		return noopBody{}, nil
 	}
 
 	resp, err := rpcClient.Post(ctx, "/get", args)
@@ -748,7 +752,7 @@ func (c *client) Delete(ctx context.Context, args *DeleteArgs) ([]Location, erro
 	}
 	rpcClient := c.rpcClient.Load().(rpc.Client)
 
-	ctx = WithReqidContext(ctx)
+	ctx = withReqidContext(ctx)
 	locations := make([]Location, 0, len(args.Locations))
 	for _, loc := range args.Locations {
 		if loc.Size > 0 {
@@ -775,6 +779,14 @@ func (c *client) Delete(ctx context.Context, args *DeleteArgs) ([]Location, erro
 		return locations, err
 	}
 	return nil, nil
+}
+
+func (c *client) PutAt(ctx context.Context, args *PutAtArgs) (hashSumMap HashSumMap, err error) {
+	return nil, nil
+}
+
+func (c *client) Alloc(ctx context.Context, args *AllocArgs) (AllocResp, error) {
+	return AllocResp{}, nil
 }
 
 func shouldRetry(code int, err error) bool {

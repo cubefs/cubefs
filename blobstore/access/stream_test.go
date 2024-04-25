@@ -76,17 +76,17 @@ func TestAccessStreamAdmin(t *testing.T) {
 		sa := handler.Admin()
 		require.NotNil(t, sa)
 
-		admin := sa.(*StreamAdmin)
-		require.Nil(t, admin.MemPool)
+		admin := sa.(*streamAdmin)
+		require.Nil(t, admin.memPool)
 		require.Nil(t, admin.controller)
 	}
 	{
 		sa := streamer.Admin()
 		require.NotNil(t, sa)
 
-		admin := sa.(*StreamAdmin)
-		require.NotNil(t, admin.MemPool)
-		t.Log("mempool status:", admin.MemPool.Status())
+		admin := sa.(*streamAdmin)
+		require.NotNil(t, admin.memPool)
+		t.Log("mempool status:", admin.memPool.Status())
 
 		ctr := admin.controller
 		require.NotNil(t, ctr)

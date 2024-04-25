@@ -77,7 +77,7 @@ func newService() *Service {
 			}
 			loc := location.Copy()
 			loc.Size = uint64(size)
-			FillCrc(&loc)
+			fillCrc(&loc)
 			return &loc, nil
 		})
 
@@ -99,7 +99,7 @@ func newService() *Service {
 			}
 			loc := location.Copy()
 			loc.Size = uint64(size)
-			FillCrc(&loc)
+			fillCrc(&loc)
 			return &loc, nil
 		})
 
@@ -304,7 +304,7 @@ func TestAccessServiceGet(t *testing.T) {
 	{
 		args.Location.Size = 1023
 		args.ReadSize = 1023
-		FillCrc(&args.Location)
+		fillCrc(&args.Location)
 		resp, err := cli.Post(ctx, url(), args)
 		require.NoError(t, err)
 		resp.Body.Close()
@@ -313,7 +313,7 @@ func TestAccessServiceGet(t *testing.T) {
 	{
 		args.Location.Size = 1024
 		args.ReadSize = 1024
-		FillCrc(&args.Location)
+		fillCrc(&args.Location)
 		resp, err := cli.Post(ctx, url(), args)
 		require.NoError(t, err)
 		resp.Body.Close()
@@ -323,7 +323,7 @@ func TestAccessServiceGet(t *testing.T) {
 		args.Location.Size = 10240
 		args.Offset = 1000
 		args.ReadSize = 1024
-		FillCrc(&args.Location)
+		fillCrc(&args.Location)
 		resp, err := cli.Post(ctx, url(), args)
 		require.NoError(t, err)
 		resp.Body.Close()
@@ -376,7 +376,7 @@ func TestAccessServiceDelete(t *testing.T) {
 		require.Equal(t, 400, code)
 	}
 	{
-		FillCrc(&args.Locations[0])
+		fillCrc(&args.Locations[0])
 		code, resp, err := deleteRequest(args)
 		require.NoError(t, err)
 		require.Equal(t, 226, code)
@@ -385,7 +385,7 @@ func TestAccessServiceDelete(t *testing.T) {
 	{
 		loc := &args.Locations[0]
 		loc.Size = 1024
-		FillCrc(loc)
+		fillCrc(loc)
 		code, _, err := deleteRequest(args)
 		require.NoError(t, err)
 		require.Equal(t, 200, code)
@@ -393,7 +393,7 @@ func TestAccessServiceDelete(t *testing.T) {
 	{
 		loc := location.Copy()
 		loc.Size = 1024
-		FillCrc(&loc)
+		fillCrc(&loc)
 		locs := make([]access.Location, access.MaxDeleteLocations)
 		for idx := range locs {
 			locs[idx] = loc
@@ -406,7 +406,7 @@ func TestAccessServiceDelete(t *testing.T) {
 	{
 		loc := location.Copy()
 		loc.Size = 1024
-		FillCrc(&loc)
+		fillCrc(&loc)
 		locs := make([]access.Location, access.MaxDeleteLocations+1)
 		for idx := range locs {
 			locs[idx] = loc
@@ -419,7 +419,7 @@ func TestAccessServiceDelete(t *testing.T) {
 		loc := location.Copy()
 		loc.Size = 1024
 		loc.ClusterID = proto.ClusterID(11)
-		FillCrc(&loc)
+		fillCrc(&loc)
 		code, resp, err := deleteRequest(access.DeleteArgs{Locations: []access.Location{loc}})
 		require.NoError(t, err)
 		require.Equal(t, 226, code)
@@ -432,7 +432,7 @@ func TestAccessServiceDelete(t *testing.T) {
 			loc := location.Copy()
 			loc.Size = 1024
 			loc.ClusterID = proto.ClusterID(idx % 11)
-			FillCrc(&loc)
+			fillCrc(&loc)
 			locs[idx] = loc
 		}
 		code, resp, err := deleteRequest(access.DeleteArgs{Locations: locs})
@@ -517,7 +517,7 @@ func TestAccessServiceSign(t *testing.T) {
 		assertErrorCode(t, 400, err)
 	}
 	{
-		FillCrc(&args.Locations[0])
+		fillCrc(&args.Locations[0])
 		resp := &access.SignResp{}
 		err := cli.PostWith(ctx, url(), resp, args)
 		require.NoError(t, err)

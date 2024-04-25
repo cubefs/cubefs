@@ -31,6 +31,8 @@ const (
 	reqidKey
 )
 
+var ClientWithReqidContext = withReqidContext
+
 // WithRequestID trace request id in full life of the request
 // The second parameter rid could be the one of type below:
 //     a string,
@@ -61,7 +63,7 @@ func reqidFromContext(ctx context.Context) (string, bool) {
 	return "", false
 }
 
-func WithReqidContext(ctx context.Context) context.Context {
+func withReqidContext(ctx context.Context) context.Context {
 	if rid, ok := reqidFromContext(ctx); ok {
 		_, ctx := trace.StartSpanFromContextWithTraceID(ctx, _operationName, rid)
 		return ctx
