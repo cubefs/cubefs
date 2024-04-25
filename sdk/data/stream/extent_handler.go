@@ -333,34 +333,8 @@ func (eh *ExtentHandler) processReply(packet *Packet) {
 	// NOTE: if meet a io limited error
 	if reply.ResultCode == proto.OpLimitedIoErr {
 		log.LogWarnf("[processReply] eh(%v) packet(%v) reply(%v) try again", eh, packet, reply)
-		host := eh.conn.RemoteAddr()
-		// NOTE: use tmp connection to avoid packet reorder
-		tmpConn, err := StreamConnPool.GetConnect(host.String())
-		if err != nil {
-			log.LogErrorf("[processReply] eh(%v) packet(%v) failed to get tmp conn retry, err(%v)", eh, packet, err)
-			eh.processReplyError(packet, err.Error())
-			return
-		}
-		defer func() {
-			StreamConnPool.PutConnectEx(tmpConn, err)
-		}()
-		for try := 0; reply.ResultCode == proto.OpLimitedIoErr; try++ {
-			time.Sleep(StreamSendSleepInterval)
-			log.LogWarnf("[processReply] eh(%v) packet(%v) limited io retry count(%v)", eh, packet, try)
-			if err = packet.writeToConn(tmpConn); err != nil {
-				log.LogWarnf("sender writeTo: failed, eh(%v) err(%v) packet(%v)", eh, err, packet)
-				eh.processReplyError(packet, err.Error())
-				return
-			}
-			reply = NewReply(packet.ReqID, packet.PartitionID, packet.ExtentID)
-			err = reply.ReadFromConn(tmpConn, proto.ReadDeadlineTime)
-			if err != nil {
-				log.LogErrorf("[processReply] failed to read reply from connection, eh(%v) err(%v) packet(%v)", eh, err, packet)
-				eh.processReplyError(packet, err.Error())
-				return
-			}
-		}
 		eh.meetLimitedIoError = true
+		time.Sleep(StreamSendSleepInterval)
 	}
 
 	if reply.ResultCode != proto.OpOk {
@@ -536,7 +510,13 @@ func (eh *ExtentHandler) recoverPacket(packet *Packet) error {
 		// Always use normal extent store mode for recovery.
 		// Because tiny extent files are limited, tiny store
 		// failures might due to lack of tiny extent file.
-		handler = NewExtentHandler(eh.stream, int(packet.KernelOffset), proto.NormalExtentType, 0)
+		extentType := proto.NormalExtentType
+		// NOTE: but, if we meet a limited io error
+		// use correct type to recover
+		if eh.meetLimitedIoError {
+			extentType = eh.storeMode
+		}
+		handler = NewExtentHandler(eh.stream, int(packet.KernelOffset), extentType, 0)
 		handler.setClosed()
 	}
 	handler.pushToRequest(packet)
