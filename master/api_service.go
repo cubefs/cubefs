@@ -1884,7 +1884,7 @@ func (m *Server) decommissionDataPartition(w http.ResponseWriter, r *http.Reques
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: rstMsg})
 		return
 	}
-	err = m.cluster.markDecommissionDataPartition(dp, node, raftForce)
+	err = m.cluster.markDecommissionDataPartition(dp, node, raftForce, ManualDecommission)
 	if err != nil {
 		rstMsg = err.Error()
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: rstMsg})

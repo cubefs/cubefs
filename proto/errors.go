@@ -99,6 +99,8 @@ var (
 	ErrNodeSetNotExists                        = errors.New("node set not exists")
 	ErrCompressFailed                          = errors.New("compress data failed")
 	ErrDecompressFailed                        = errors.New("decompress data failed")
+	ErrDecommissionDiskErrDPFirst              = errors.New("decommission disk error data partition first")
+	ErrAllReplicaUnavailable                   = errors.New("all replica unavailable")
 )
 
 // http response error code and error message definitions

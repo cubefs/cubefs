@@ -160,6 +160,7 @@ type dataPartitionValue struct {
 	Forbidden                      bool
 	DecommissionErrorMessage       string
 	DecommissionNeedRollbackTimes  uint32
+	DecommissionType               uint32
 }
 
 func (dpv *dataPartitionValue) Restore(c *Cluster) (dp *DataPartition) {
@@ -190,6 +191,7 @@ func (dpv *dataPartitionValue) Restore(c *Cluster) (dp *DataPartition) {
 	dp.RecoverLastConsumeTime = time.Duration(dpv.RecoverLastConsumeTime) * time.Second
 	dp.DecommissionNeedRollbackTimes = dpv.DecommissionNeedRollbackTimes
 	dp.DecommissionErrorMessage = dpv.DecommissionErrorMessage
+	dp.DecommissionType = dpv.DecommissionType
 	for _, rv := range dpv.Replicas {
 		if !contains(dp.Hosts, rv.Addr) {
 			continue
@@ -234,6 +236,7 @@ func newDataPartitionValue(dp *DataPartition) (dpv *dataPartitionValue) {
 		RecoverLastConsumeTime:         dp.RecoverLastConsumeTime.Seconds(),
 		DecommissionErrorMessage:       dp.DecommissionErrorMessage,
 		DecommissionNeedRollbackTimes:  dp.DecommissionNeedRollbackTimes,
+		DecommissionType:               dp.DecommissionType,
 	}
 	for _, replica := range dp.Replicas {
 		rv := &replicaValue{Addr: replica.Addr, DiskPath: replica.DiskPath}
