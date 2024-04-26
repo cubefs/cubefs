@@ -488,6 +488,7 @@ func (s *DataNode) buildHeartBeatResponse(response *proto.DataNodeHeartbeatRespo
 
 	disks := space.GetDisks()
 	for _, d := range disks {
+		response.AllDisks = append(response.AllDisks, d.Path)
 		brokenDpsCnt := d.GetDiskErrPartitionCount()
 		log.LogInfof("[buildHeartBeatResponse] disk(%v) status(%v) broken dp len(%v)", d.Path, d.Status, brokenDpsCnt)
 		if d.Status == proto.Unavailable || brokenDpsCnt != 0 {
