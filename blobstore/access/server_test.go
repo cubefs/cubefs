@@ -30,6 +30,7 @@ import (
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/require"
 
+	"github.com/cubefs/cubefs/blobstore/access/stream"
 	"github.com/cubefs/cubefs/blobstore/api/access"
 	"github.com/cubefs/cubefs/blobstore/common/codemode"
 	errcode "github.com/cubefs/cubefs/blobstore/common/errors"
@@ -77,7 +78,7 @@ func newService() *Service {
 			}
 			loc := location.Copy()
 			loc.Size = uint64(size)
-			fillCrc(&loc)
+			stream.LocationCrcFill(&loc)
 			return &loc, nil
 		})
 
@@ -99,7 +100,7 @@ func newService() *Service {
 			}
 			loc := location.Copy()
 			loc.Size = uint64(size)
-			fillCrc(&loc)
+			stream.LocationCrcFill(&loc)
 			return &loc, nil
 		})
 
@@ -122,7 +123,7 @@ func newService() *Service {
 
 	return &Service{
 		streamHandler: s,
-		limiter: NewLimiter(LimitConfig{
+		limiter: stream.NewLimiter(stream.LimitConfig{
 			NameRps: map[string]int{
 				limitNameAlloc: 2,
 			},
@@ -304,7 +305,7 @@ func TestAccessServiceGet(t *testing.T) {
 	{
 		args.Location.Size = 1023
 		args.ReadSize = 1023
-		fillCrc(&args.Location)
+		stream.LocationCrcFill(&args.Location)
 		resp, err := cli.Post(ctx, url(), args)
 		require.NoError(t, err)
 		resp.Body.Close()
@@ -313,7 +314,7 @@ func TestAccessServiceGet(t *testing.T) {
 	{
 		args.Location.Size = 1024
 		args.ReadSize = 1024
-		fillCrc(&args.Location)
+		stream.LocationCrcFill(&args.Location)
 		resp, err := cli.Post(ctx, url(), args)
 		require.NoError(t, err)
 		resp.Body.Close()
@@ -323,7 +324,7 @@ func TestAccessServiceGet(t *testing.T) {
 		args.Location.Size = 10240
 		args.Offset = 1000
 		args.ReadSize = 1024
-		fillCrc(&args.Location)
+		stream.LocationCrcFill(&args.Location)
 		resp, err := cli.Post(ctx, url(), args)
 		require.NoError(t, err)
 		resp.Body.Close()
@@ -376,7 +377,7 @@ func TestAccessServiceDelete(t *testing.T) {
 		require.Equal(t, 400, code)
 	}
 	{
-		fillCrc(&args.Locations[0])
+		stream.LocationCrcFill(&args.Locations[0])
 		code, resp, err := deleteRequest(args)
 		require.NoError(t, err)
 		require.Equal(t, 226, code)
@@ -385,7 +386,7 @@ func TestAccessServiceDelete(t *testing.T) {
 	{
 		loc := &args.Locations[0]
 		loc.Size = 1024
-		fillCrc(loc)
+		stream.LocationCrcFill(loc)
 		code, _, err := deleteRequest(args)
 		require.NoError(t, err)
 		require.Equal(t, 200, code)
@@ -393,7 +394,7 @@ func TestAccessServiceDelete(t *testing.T) {
 	{
 		loc := location.Copy()
 		loc.Size = 1024
-		fillCrc(&loc)
+		stream.LocationCrcFill(&loc)
 		locs := make([]access.Location, access.MaxDeleteLocations)
 		for idx := range locs {
 			locs[idx] = loc
@@ -406,7 +407,7 @@ func TestAccessServiceDelete(t *testing.T) {
 	{
 		loc := location.Copy()
 		loc.Size = 1024
-		fillCrc(&loc)
+		stream.LocationCrcFill(&loc)
 		locs := make([]access.Location, access.MaxDeleteLocations+1)
 		for idx := range locs {
 			locs[idx] = loc
@@ -419,7 +420,7 @@ func TestAccessServiceDelete(t *testing.T) {
 		loc := location.Copy()
 		loc.Size = 1024
 		loc.ClusterID = proto.ClusterID(11)
-		fillCrc(&loc)
+		stream.LocationCrcFill(&loc)
 		code, resp, err := deleteRequest(access.DeleteArgs{Locations: []access.Location{loc}})
 		require.NoError(t, err)
 		require.Equal(t, 226, code)
@@ -432,7 +433,7 @@ func TestAccessServiceDelete(t *testing.T) {
 			loc := location.Copy()
 			loc.Size = 1024
 			loc.ClusterID = proto.ClusterID(idx % 11)
-			fillCrc(&loc)
+			stream.LocationCrcFill(&loc)
 			locs[idx] = loc
 		}
 		code, resp, err := deleteRequest(access.DeleteArgs{Locations: locs})
@@ -517,7 +518,7 @@ func TestAccessServiceSign(t *testing.T) {
 		assertErrorCode(t, 400, err)
 	}
 	{
-		fillCrc(&args.Locations[0])
+		stream.LocationCrcFill(&args.Locations[0])
 		resp := &access.SignResp{}
 		err := cli.PostWith(ctx, url(), resp, args)
 		require.NoError(t, err)
@@ -531,7 +532,7 @@ func assertErrorCode(t *testing.T, code int, err error) {
 }
 
 func TestAccessServiceTokens(t *testing.T) {
-	skey := tokenSecretKeys[0][:]
+	skey := stream.StreamTokenSecretKeys[0][:]
 	checker := func(loc *access.Location, tokens []string) {
 		if loc.Size == 0 {
 			require.Equal(t, 0, len(tokens))
@@ -604,7 +605,7 @@ func TestAccessServiceTokens(t *testing.T) {
 			BlobSize: 333,
 			Blobs:    []access.SliceInfo{},
 		}
-		checker(loc, genTokens(loc))
+		checker(loc, stream.StreamGenTokens(loc))
 	}
 	{
 		loc := &access.Location{
@@ -614,7 +615,7 @@ func TestAccessServiceTokens(t *testing.T) {
 				{MinBid: 100, Vid: 1000, Count: 1},
 			},
 		}
-		checker(loc, genTokens(loc))
+		checker(loc, stream.StreamGenTokens(loc))
 	}
 	{
 		loc := &access.Location{
@@ -624,7 +625,7 @@ func TestAccessServiceTokens(t *testing.T) {
 				{MinBid: 100, Vid: 1000, Count: 1},
 			},
 		}
-		checker(loc, genTokens(loc))
+		checker(loc, stream.StreamGenTokens(loc))
 	}
 	{
 		loc := &access.Location{
@@ -634,7 +635,7 @@ func TestAccessServiceTokens(t *testing.T) {
 				{MinBid: 100, Vid: 1000, Count: 2},
 			},
 		}
-		checker(loc, genTokens(loc))
+		checker(loc, stream.StreamGenTokens(loc))
 	}
 	{
 		loc := &access.Location{
@@ -644,7 +645,7 @@ func TestAccessServiceTokens(t *testing.T) {
 				{MinBid: 100, Vid: 1000, Count: 2},
 			},
 		}
-		checker(loc, genTokens(loc))
+		checker(loc, stream.StreamGenTokens(loc))
 	}
 	{
 		loc := &access.Location{
@@ -655,7 +656,7 @@ func TestAccessServiceTokens(t *testing.T) {
 				{MinBid: 200, Vid: 1000, Count: 6},
 			},
 		}
-		checker(loc, genTokens(loc))
+		checker(loc, stream.StreamGenTokens(loc))
 	}
 	{
 		loc := &access.Location{
@@ -666,7 +667,7 @@ func TestAccessServiceTokens(t *testing.T) {
 				{MinBid: 200, Vid: 1000, Count: 1},
 			},
 		}
-		checker(loc, genTokens(loc))
+		checker(loc, stream.StreamGenTokens(loc))
 	}
 	{
 		loc := &access.Location{
@@ -677,7 +678,7 @@ func TestAccessServiceTokens(t *testing.T) {
 				{MinBid: 200, Vid: 1000, Count: 6},
 			},
 		}
-		checker(loc, genTokens(loc))
+		checker(loc, stream.StreamGenTokens(loc))
 	}
 }
 
