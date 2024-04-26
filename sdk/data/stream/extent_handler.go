@@ -16,7 +16,6 @@ package stream
 
 import (
 	"fmt"
-	"io"
 	"net"
 	"strings"
 	"sync"
