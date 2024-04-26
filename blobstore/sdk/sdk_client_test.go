@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"github.com/cubefs/cubefs/blobstore/common/codemode"
 	"io"
 	"strings"
 	"testing"
@@ -12,8 +11,9 @@ import (
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/require"
 
-	"github.com/cubefs/cubefs/blobstore/access"
+	"github.com/cubefs/cubefs/blobstore/access/stream"
 	acapi "github.com/cubefs/cubefs/blobstore/api/access"
+	"github.com/cubefs/cubefs/blobstore/common/codemode"
 	errcode "github.com/cubefs/cubefs/blobstore/common/errors"
 	"github.com/cubefs/cubefs/blobstore/common/uptoken"
 	"github.com/cubefs/cubefs/blobstore/testing/mocks"
@@ -23,7 +23,7 @@ import (
 func newSdkHandler() *sdkHandler {
 	ctr := gomock.NewController(&testing.T{})
 	h := mocks.NewMockStreamHandler(ctr)
-	l := access.NewLimiter(access.LimitConfig{
+	l := stream.NewLimiter(stream.LimitConfig{
 		NameRps: map[string]int{
 			"alloc": 2,
 		},
@@ -75,7 +75,7 @@ func TestSdkHandler_Delete(t *testing.T) {
 
 	// retry 3 time
 	hd.handler.(*mocks.MockStreamHandler).EXPECT().Delete(any, any).Times(3).Return(errMock)
-	crc, _ := access.LocationCrcCalculate(&args.Locations[0])
+	crc, _ := stream.LocationCrcCalculate(&args.Locations[0])
 	args.Locations[0].Crc = crc
 	args.Locations[0].Blobs = make([]acapi.SliceInfo, 0)
 	ret, err = hd.Delete(ctx, args)
@@ -94,7 +94,7 @@ func TestSdkHandler_Delete(t *testing.T) {
 		Size:      1,
 		Blobs:     []acapi.SliceInfo{{Vid: 9}},
 	}
-	crc, _ = access.LocationCrcCalculate(&loc)
+	crc, _ = stream.LocationCrcCalculate(&loc)
 	loc.Crc = crc
 	args.Locations = make([]acapi.Location, 0)
 	for len(args.Locations) < 3 {
@@ -139,7 +139,7 @@ func TestSdkHandler_Get(t *testing.T) {
 	require.NotNil(t, err)
 	require.ErrorIs(t, err, errcode.ErrIllegalArguments)
 
-	crc, _ := access.LocationCrcCalculate(&args.Location)
+	crc, _ := stream.LocationCrcCalculate(&args.Location)
 	args.Location.Crc = crc
 	hd.handler.(*mocks.MockStreamHandler).EXPECT().Get(any, any, any, any, any).Return(nil, errMock)
 	args.ReadSize = 2
@@ -163,7 +163,7 @@ func TestSdkHandler_Get(t *testing.T) {
 	data := "test read"
 	args.ReadSize = uint64(len(data))
 	args.Location.Size = args.ReadSize
-	crc, _ = access.LocationCrcCalculate(&args.Location)
+	crc, _ = stream.LocationCrcCalculate(&args.Location)
 	args.Location.Crc = crc
 	args.Body = bytes.NewBuffer([]byte{})
 	hd.handler.(*mocks.MockStreamHandler).EXPECT().Get(any, args.Body, any, any, any).DoAndReturn(
@@ -254,7 +254,7 @@ func TestSdkHandler_PutAt(t *testing.T) {
 	require.ErrorIs(t, err, errcode.ErrIllegalArguments)
 	require.Nil(t, hash)
 
-	secretKey := access.StreamTokenSecretKeys[0]
+	secretKey := stream.StreamTokenSecretKeys[0]
 	token = uptoken.NewUploadToken(args.ClusterID, args.Vid, args.BlobID, 1, uint32(args.Size), 0, secretKey[:])
 	args.Token = uptoken.EncodeToken(token)
 	hd.handler.(*mocks.MockStreamHandler).EXPECT().PutAt(any, any, any, any, any, any, any).Return(errMock)
@@ -296,7 +296,7 @@ func TestSdkHandler_Alloc(t *testing.T) {
 		Size:      2,
 		BlobSize:  1,
 	}
-	crc, _ := access.LocationCrcCalculate(loca)
+	crc, _ := stream.LocationCrcCalculate(loca)
 	loca.Crc = crc
 	hd.handler.(*mocks.MockStreamHandler).EXPECT().Alloc(any, any, any, any, any).Return(loca, nil)
 	ret, err = hd.Alloc(ctx, args)

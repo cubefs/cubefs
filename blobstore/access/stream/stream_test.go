@@ -12,7 +12,7 @@
 // implied. See the License for the specific language governing
 // permissions and limitations under the License.
 
-package access
+package stream
 
 import (
 	"bytes"
@@ -76,19 +76,19 @@ func TestAccessStreamAdmin(t *testing.T) {
 		sa := handler.Admin()
 		require.NotNil(t, sa)
 
-		admin := sa.(*streamAdmin)
-		require.Nil(t, admin.memPool)
-		require.Nil(t, admin.controller)
+		admin := sa.(*StreamAdmin)
+		require.Nil(t, admin.MemPool)
+		require.Nil(t, admin.Controller)
 	}
 	{
 		sa := streamer.Admin()
 		require.NotNil(t, sa)
 
-		admin := sa.(*streamAdmin)
-		require.NotNil(t, admin.memPool)
-		t.Log("mempool status:", admin.memPool.Status())
+		admin := sa.(*StreamAdmin)
+		require.NotNil(t, admin.MemPool)
+		t.Log("mempool status:", admin.MemPool.Status())
 
-		ctr := admin.controller
+		ctr := admin.Controller
 		require.NotNil(t, ctr)
 		t.Log("region:", ctr.Region())
 		require.Error(t, ctr.ChangeChooseAlg(controller.AlgChoose(100)))

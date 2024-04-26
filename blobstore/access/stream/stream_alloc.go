@@ -12,13 +12,14 @@
 // implied. See the License for the specific language governing
 // permissions and limitations under the License.
 
-package access
+package stream
 
 import (
 	"context"
 	"sync/atomic"
 
 	"github.com/afex/hystrix-go/hystrix"
+
 	"github.com/cubefs/cubefs/blobstore/api/access"
 	"github.com/cubefs/cubefs/blobstore/api/proxy"
 	"github.com/cubefs/cubefs/blobstore/common/codemode"

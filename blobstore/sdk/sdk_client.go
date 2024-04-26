@@ -7,7 +7,7 @@ import (
 
 	"gopkg.in/natefinch/lumberjack.v2"
 
-	"github.com/cubefs/cubefs/blobstore/access"
+	"github.com/cubefs/cubefs/blobstore/access/stream"
 	acapi "github.com/cubefs/cubefs/blobstore/api/access"
 	errcode "github.com/cubefs/cubefs/blobstore/common/errors"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
@@ -33,8 +33,8 @@ func (rc noopBody) Read(p []byte) (n int, err error) { return 0, io.EOF }
 func (rc noopBody) Close() error                     { return nil }
 
 type Config struct {
-	access.StreamConfig
-	Limit           access.LimitConfig `json:"limit"`
+	stream.StreamConfig
+	Limit           stream.LimitConfig `json:"limit"`
 	ClientTimeoutMs int64              `json:"client_timeout_ms"`
 	LogLevel        log.Level          `json:"log_level"`
 	Logger          *lumberjack.Logger `json:"logger"`
@@ -42,8 +42,8 @@ type Config struct {
 
 type sdkHandler struct {
 	conf    Config
-	handler access.StreamHandler
-	limiter access.Limiter
+	handler stream.StreamHandler
+	limiter stream.Limiter
 	closer  closer.Closer
 }
 
@@ -51,7 +51,7 @@ func New(conf *Config) (acapi.API, error) {
 	fixConfig(conf)
 
 	cl := closer.New()
-	h, err := access.NewStreamHandler(&conf.StreamConfig, cl.Done())
+	h, err := stream.NewStreamHandler(&conf.StreamConfig, cl.Done())
 	if err != nil {
 		return nil, err
 	}
@@ -59,7 +59,7 @@ func New(conf *Config) (acapi.API, error) {
 	return &sdkHandler{
 		conf:    *conf,
 		handler: h,
-		limiter: access.NewLimiter(conf.Limit),
+		limiter: stream.NewLimiter(conf.Limit),
 		closer:  cl,
 	}, nil
 }
@@ -149,7 +149,7 @@ func (s *sdkHandler) doGet(ctx context.Context, args *acapi.GetArgs) (resp io.Re
 	span := trace.SpanFromContextSafe(ctx)
 
 	span.Debugf("accept sdk request args:%+v", args)
-	if !access.LocationCrcVerify(&args.Location) {
+	if !stream.LocationCrcVerify(&args.Location) {
 		err = errcode.ErrIllegalArguments
 		span.Error("stream get args is invalid ", errors.Detail(err))
 		return
@@ -195,7 +195,7 @@ func (s *sdkHandler) doDelete(ctx context.Context, args *acapi.DeleteArgs) (resp
 
 	clusterBlobsN := make(map[proto.ClusterID]int, 4)
 	for _, loc := range args.Locations {
-		if !access.LocationCrcVerify(&loc) {
+		if !stream.LocationCrcVerify(&loc) {
 			span.Infof("invalid crc %+v", loc)
 			err = errcode.ErrIllegalArguments
 			return
@@ -274,7 +274,7 @@ func (s *sdkHandler) doPutObject(ctx context.Context, args *acapi.PutArgs) (loca
 		hashSumMap[alg] = hasher.Sum(nil)
 	}
 
-	if err = access.LocationCrcFill(loc); err != nil {
+	if err = stream.LocationCrcFill(loc); err != nil {
 		span.Error("stream put fill location crc", err)
 		err = httpError(err)
 		return
@@ -290,7 +290,7 @@ func (s *sdkHandler) doPutAt(ctx context.Context, args *acapi.PutAtArgs) (hashSu
 	span.Debugf("accept sdk putat request args:%+v", args)
 
 	valid := false
-	for _, secretKey := range access.StreamTokenSecretKeys {
+	for _, secretKey := range stream.StreamTokenSecretKeys {
 		token := uptoken.DecodeToken(args.Token)
 		if token.IsValid(args.ClusterID, args.Vid, args.BlobID, uint32(args.Size), secretKey[:]) {
 			valid = true
@@ -334,14 +334,14 @@ func (s *sdkHandler) doAlloc(ctx context.Context, args *acapi.AllocArgs) (resp a
 		return resp, err
 	}
 
-	if err = access.LocationCrcFill(location); err != nil {
+	if err = stream.LocationCrcFill(location); err != nil {
 		span.Error("stream alloc fill location crc", err)
 		return resp, err
 	}
 
 	resp = acapi.AllocResp{
 		Location: *location,
-		Tokens:   access.StreamGenTokens(location),
+		Tokens:   stream.StreamGenTokens(location),
 	}
 	span.Infof("done /alloc request resp:%+v", resp)
 

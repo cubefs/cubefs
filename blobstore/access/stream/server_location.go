@@ -12,21 +12,24 @@
 // implied. See the License for the specific language governing
 // permissions and limitations under the License.
 
-package access
+package stream
 
 import (
 	"fmt"
 	"hash/crc32"
 	"sync"
+	"time"
 
 	"github.com/cubefs/cubefs/blobstore/api/access"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
+	"github.com/cubefs/cubefs/blobstore/common/uptoken"
 	"github.com/cubefs/cubefs/blobstore/util/bytespool"
 )
 
 const (
 	// DO NOT CHANGE IT.
-	_crcPoly = uint32(0x59c8943c)
+	_crcPoly         = uint32(0x59c8943c)
+	_tokenExpiration = time.Hour * 12
 )
 
 var (
@@ -40,9 +43,25 @@ var (
 	}
 	_initLocationSecret sync.Once
 
+	// tokenSecretKeys alloc token with the first secret key always,
+	// so that you can change the secret key.
+	//
+	// parse-1: insert a new key at the first index,
+	// parse-2: delete the old key at the last index after _tokenExpiration duration.
+	tokenSecretKeys = [...][20]byte{
+		{0x5f, 0x00, 0x88, 0x96, 0x00, 0xa1, 0xfe, 0x1b},
+		{0xff, 0x1f, 0x2f, 0x4f, 0x7f, 0xaf, 0xef, 0xff},
+	}
+	InitTokenSecret sync.Once
+
 	LocationCrcCalculate = calcCrc
 	LocationCrcFill      = fillCrc
 	LocationCrcVerify    = verifyCrc
+	LocationCrcSign      = signCrc
+	LocationInitSecret   = initLocationSecret
+
+	StreamTokenSecretKeys = tokenSecretKeys
+	StreamGenTokens       = genTokens
 )
 
 func initLocationSecret(b []byte) {
@@ -128,4 +147,40 @@ func signCrc(loc *access.Location, locs []access.Location) error {
 	}
 
 	return fillCrc(loc)
+}
+
+// genTokens generate tokens
+//  1. Returns 0 token if has no blobs.
+//  2. Returns 1 token if file size less than blobsize.
+//  3. Returns len(blobs) tokens if size divided by blobsize.
+//  4. Otherwise returns len(blobs)+1 tokens, the last token
+//     will be used by the last blob, even if the last slice blobs' size
+//     less than blobsize.
+//  5. Each segment blob has its specified token include the last blob.
+func genTokens(location *access.Location) []string {
+	tokens := make([]string, 0, len(location.Blobs)+1)
+
+	hasMultiBlobs := location.Size >= uint64(location.BlobSize)
+	lastSize := uint32(location.Size % uint64(location.BlobSize))
+	for idx, blob := range location.Blobs {
+		// returns one token if size < blobsize
+		if hasMultiBlobs {
+			count := blob.Count
+			if idx == len(location.Blobs)-1 && lastSize > 0 {
+				count--
+			}
+			tokens = append(tokens, uptoken.EncodeToken(uptoken.NewUploadToken(location.ClusterID,
+				blob.Vid, blob.MinBid, count,
+				location.BlobSize, _tokenExpiration, tokenSecretKeys[0][:])))
+		}
+
+		// token of the last blob
+		if idx == len(location.Blobs)-1 && lastSize > 0 {
+			tokens = append(tokens, uptoken.EncodeToken(uptoken.NewUploadToken(location.ClusterID,
+				blob.Vid, blob.MinBid+proto.BlobID(blob.Count)-1, 1,
+				lastSize, _tokenExpiration, tokenSecretKeys[0][:])))
+		}
+	}
+
+	return tokens
 }

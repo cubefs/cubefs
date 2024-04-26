@@ -12,7 +12,7 @@
 // implied. See the License for the specific language governing
 // permissions and limitations under the License.
 
-package access
+package stream
 
 import (
 	"context"
@@ -102,10 +102,10 @@ type StreamHandler interface {
 	Admin() interface{}
 }
 
-type streamAdmin struct {
-	config     StreamConfig
-	memPool    *resourcepool.MemPool
-	controller controller.ClusterController
+type StreamAdmin struct {
+	Config     StreamConfig
+	MemPool    *resourcepool.MemPool
+	Controller controller.ClusterController
 }
 
 // StreamConfig access stream handler config
@@ -314,10 +314,10 @@ func (h *Handler) Delete(ctx context.Context, location *access.Location) error {
 
 // Admin returns internal admin interface.
 func (h *Handler) Admin() interface{} {
-	return &streamAdmin{
-		config:     h.StreamConfig,
-		memPool:    h.memPool,
-		controller: h.clusterController,
+	return &StreamAdmin{
+		Config:     h.StreamConfig,
+		MemPool:    h.memPool,
+		Controller: h.clusterController,
 	}
 }
 

@@ -12,20 +12,20 @@
 // implied. See the License for the specific language governing
 // permissions and limitations under the License.
 
-package access_test
+package stream_test
 
 import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/cubefs/cubefs/blobstore/access"
+	"github.com/cubefs/cubefs/blobstore/access/stream"
 	"github.com/cubefs/cubefs/blobstore/common/codemode"
 )
 
 func TestAccessStreamCodeModePairs(t *testing.T) {
-	m := access.CodeModePairs{
-		codemode.EC6P6: access.CodeModePair{
+	m := stream.CodeModePairs{
+		codemode.EC6P6: stream.CodeModePair{
 			Policy: codemode.Policy{
 				ModeName: codemode.EC6P6.Name(),
 				MinSize:  1 << 10,
@@ -34,7 +34,7 @@ func TestAccessStreamCodeModePairs(t *testing.T) {
 			},
 			Tactic: codemode.EC6P6.Tactic(),
 		},
-		codemode.EC6P10L2: access.CodeModePair{
+		codemode.EC6P10L2: stream.CodeModePair{
 			Policy: codemode.Policy{
 				ModeName: codemode.EC6P10L2.Name(),
 				MinSize:  1 << 30,
