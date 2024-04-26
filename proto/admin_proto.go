@@ -743,6 +743,7 @@ type DataNodeHeartbeatResponse struct {
 	PartitionReports    []*DataPartitionReport
 	Status              uint8
 	Result              string
+	AllDisks            []string
 	BadDisks            []string           // Keep this old field for compatibility
 	BadDiskStats        []BadDiskStat      // key: disk path
 	CpuUtil             float64            `json:"cpuUtil"`
