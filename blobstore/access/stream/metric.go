@@ -12,7 +12,7 @@
 // implied. See the License for the specific language governing
 // permissions and limitations under the License.
 
-package access
+package stream
 
 import (
 	"github.com/prometheus/client_golang/prometheus"
@@ -39,6 +39,8 @@ var downloadMetric = prometheus.NewCounterVec(
 	},
 	[]string{"cluster", "way", "reason"},
 )
+
+var SteamReportDownload = reportDownload
 
 func init() {
 	prometheus.MustRegister(unhealthMetric)

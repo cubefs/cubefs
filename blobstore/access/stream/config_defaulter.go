@@ -12,7 +12,7 @@
 // implied. See the License for the specific language governing
 // permissions and limitations under the License.
 
-package access
+package stream
 
 const (
 	defaultMaxBlobSize uint32 = 1 << 22 // 4MB

@@ -20,9 +20,9 @@ import (
 	"net/http"
 	"strconv"
 	"sync"
-	"time"
 
 	"github.com/cubefs/cubefs/blobstore/access/controller"
+	"github.com/cubefs/cubefs/blobstore/access/stream"
 	"github.com/cubefs/cubefs/blobstore/api/access"
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/cmd"
@@ -48,30 +48,10 @@ const (
 	limitNameSign   = "sign"
 )
 
-const (
-	_tokenExpiration = time.Hour * 12
-)
-
-var (
-	// tokenSecretKeys alloc token with the first secret key always,
-	// so that you can change the secret key.
-	//
-	// parse-1: insert a new key at the first index,
-	// parse-2: delete the old key at the last index after _tokenExpiration duration.
-	tokenSecretKeys = [...][20]byte{
-		{0x5f, 0x00, 0x88, 0x96, 0x00, 0xa1, 0xfe, 0x1b},
-		{0xff, 0x1f, 0x2f, 0x4f, 0x7f, 0xaf, 0xef, 0xff},
-	}
-	_initTokenSecret sync.Once
-
-	StreamTokenSecretKeys = tokenSecretKeys
-	StreamGenTokens       = genTokens
-)
-
 func initTokenSecret(b []byte) {
-	_initTokenSecret.Do(func() {
-		for idx := range tokenSecretKeys {
-			copy(tokenSecretKeys[idx][7:], b)
+	stream.InitTokenSecret.Do(func() {
+		for idx := range stream.StreamTokenSecretKeys {
+			copy(stream.StreamTokenSecretKeys[idx][7:], b)
 		}
 	})
 }
@@ -83,14 +63,14 @@ func initWithRegionMagic(regionMagic string) {
 	}
 	b := sha1.Sum([]byte(regionMagic))
 	initTokenSecret(b[:8])
-	initLocationSecret(b[:8])
+	stream.LocationInitSecret(b[:8])
 }
 
 type accessStatus struct {
-	Limit Status              `json:"limit"`
+	Limit stream.Status       `json:"limit"`
 	Pool  resourcepool.Status `json:"pool"`
 
-	Config   StreamConfig                            `json:"config"`
+	Config   stream.StreamConfig                     `json:"config"`
 	Clusters []*clustermgr.ClusterInfo               `json:"clusters"`
 	Services map[proto.ClusterID]map[string][]string `json:"services"`
 }
@@ -99,16 +79,16 @@ type accessStatus struct {
 type Config struct {
 	cmd.Config
 
-	ServiceRegister consul.Config `json:"service_register"`
-	Stream          StreamConfig  `json:"stream"`
-	Limit           LimitConfig   `json:"limit"`
+	ServiceRegister consul.Config       `json:"service_register"`
+	Stream          stream.StreamConfig `json:"stream"`
+	Limit           stream.LimitConfig  `json:"limit"`
 }
 
 // Service rpc service
 type Service struct {
 	config        Config
-	streamHandler StreamHandler
-	limiter       Limiter
+	streamHandler stream.StreamHandler
+	limiter       stream.Limiter
 	closer        closer.Closer
 }
 
@@ -118,7 +98,7 @@ func New(cfg Config) *Service {
 	initWithRegionMagic(cfg.Stream.ClusterConfig.RegionMagic)
 
 	cl := closer.New()
-	h, err := NewStreamHandler(&cfg.Stream, cl.Done())
+	h, err := stream.NewStreamHandler(&cfg.Stream, cl.Done())
 	if err != nil {
 		log.Fatalf("new stream handler failed, err: %+v", err)
 	}
@@ -126,7 +106,7 @@ func New(cfg Config) *Service {
 	return &Service{
 		config:        cfg,
 		streamHandler: h,
-		limiter:       NewLimiter(cfg.Limit),
+		limiter:       stream.NewLimiter(cfg.Limit),
 		closer:        cl,
 	}
 }
@@ -150,9 +130,9 @@ func (s *Service) RegisterService() {
 // RegisterAdminHandler register admin handler to profile
 func (s *Service) RegisterAdminHandler() {
 	profile.HandleFunc(http.MethodGet, "/access/status", func(c *rpc.Context) {
-		var admin *streamAdmin
+		var admin *stream.StreamAdmin
 		if sa := s.streamHandler.Admin(); sa != nil {
-			if ad, ok := sa.(*streamAdmin); ok {
+			if ad, ok := sa.(*stream.StreamAdmin); ok {
 				admin = ad
 			}
 		}
@@ -166,13 +146,13 @@ func (s *Service) RegisterAdminHandler() {
 
 		status := new(accessStatus)
 		status.Limit = s.limiter.Status()
-		status.Pool = admin.memPool.Status()
-		status.Config = admin.config
-		status.Clusters = admin.controller.All()
+		status.Pool = admin.MemPool.Status()
+		status.Config = admin.Config
+		status.Clusters = admin.Controller.All()
 		status.Services = make(map[proto.ClusterID]map[string][]string, len(status.Clusters))
 
 		for _, cluster := range status.Clusters {
-			service, err := admin.controller.GetServiceController(cluster.ClusterID)
+			service, err := admin.Controller.GetServiceController(cluster.ClusterID)
 			if err != nil {
 				span.Warn(err.Error())
 				continue
@@ -199,8 +179,8 @@ func (s *Service) RegisterAdminHandler() {
 
 		alg := controller.AlgChoose(algInt)
 		if sa := s.streamHandler.Admin(); sa != nil {
-			if admin, ok := sa.(*streamAdmin); ok {
-				if err := admin.controller.ChangeChooseAlg(alg); err != nil {
+			if admin, ok := sa.(*stream.StreamAdmin); ok {
+				if err := admin.Controller.ChangeChooseAlg(alg); err != nil {
 					c.RespondWith(http.StatusForbidden, "", []byte(err.Error()))
 					return
 				}
@@ -285,7 +265,7 @@ func (s *Service) Put(c *rpc.Context) {
 		hashSumMap[alg] = hasher.Sum(nil)
 	}
 
-	if err := fillCrc(loc); err != nil {
+	if err := stream.LocationCrcFill(loc); err != nil {
 		span.Error("stream put fill location crc", err)
 		c.RespondError(httpError(err))
 		return
@@ -316,7 +296,7 @@ func (s *Service) PutAt(c *rpc.Context) {
 	}
 
 	valid := false
-	for _, secretKey := range tokenSecretKeys {
+	for _, secretKey := range stream.StreamTokenSecretKeys {
 		token := uptoken.DecodeToken(args.Token)
 		if token.IsValid(args.ClusterID, args.Vid, args.BlobID, uint32(args.Size), secretKey[:]) {
 			valid = true
@@ -377,7 +357,7 @@ func (s *Service) Alloc(c *rpc.Context) {
 		return
 	}
 
-	if err := fillCrc(location); err != nil {
+	if err := stream.LocationCrcFill(location); err != nil {
 		span.Error("stream alloc fill location crc", err)
 		c.RespondError(httpError(err))
 		return
@@ -385,7 +365,7 @@ func (s *Service) Alloc(c *rpc.Context) {
 
 	resp := access.AllocResp{
 		Location: *location,
-		Tokens:   genTokens(location),
+		Tokens:   stream.StreamGenTokens(location),
 	}
 	c.RespondJSON(resp)
 	span.Infof("done /alloc request resp:%+v", resp)
@@ -403,7 +383,7 @@ func (s *Service) Get(c *rpc.Context) {
 	span := trace.SpanFromContextSafe(ctx)
 
 	span.Debugf("accept /get request args:%+v", args)
-	if !args.IsValid() || !verifyCrc(&args.Location) {
+	if !args.IsValid() || !stream.LocationCrcVerify(&args.Location) {
 		c.RespondError(errcode.ErrIllegalArguments)
 		return
 	}
@@ -432,7 +412,7 @@ func (s *Service) Get(c *rpc.Context) {
 
 	err = transfer()
 	if err != nil {
-		reportDownload(args.Location.ClusterID, "StatusOKError", "-")
+		stream.SteamReportDownload(args.Location.ClusterID, "StatusOKError", "-")
 		span.Error("stream get transfer failed", errors.Detail(err))
 		return
 	}
@@ -479,7 +459,7 @@ func (s *Service) Delete(c *rpc.Context) {
 
 	clusterBlobsN := make(map[proto.ClusterID]int, 4)
 	for _, loc := range args.Locations {
-		if !verifyCrc(&loc) {
+		if !stream.LocationCrcVerify(&loc) {
 			span.Infof("invalid crc %+v", loc)
 			err = errcode.ErrIllegalArguments
 			return
@@ -566,7 +546,7 @@ func (s *Service) DeleteBlob(c *rpc.Context) {
 	}
 
 	valid := false
-	for _, secretKey := range tokenSecretKeys {
+	for _, secretKey := range stream.StreamTokenSecretKeys {
 		token := uptoken.DecodeToken(args.Token)
 		if token.IsValid(args.ClusterID, args.Vid, args.BlobID, uint32(args.Size), secretKey[:]) {
 			valid = true
@@ -616,7 +596,7 @@ func (s *Service) Sign(c *rpc.Context) {
 
 	loc := args.Location
 	crcOld := loc.Crc
-	if err := signCrc(&loc, args.Locations); err != nil {
+	if err := stream.LocationCrcSign(&loc, args.Locations); err != nil {
 		span.Error("stream sign failed", errors.Detail(err))
 		c.RespondError(errcode.ErrIllegalArguments)
 		return
@@ -634,40 +614,4 @@ func httpError(err error) error {
 		return rpc.NewError(http.StatusInternalServerError, "ServerError", e.Cause())
 	}
 	return errcode.ErrUnexpected
-}
-
-// genTokens generate tokens
-//  1. Returns 0 token if has no blobs.
-//  2. Returns 1 token if file size less than blobsize.
-//  3. Returns len(blobs) tokens if size divided by blobsize.
-//  4. Otherwise returns len(blobs)+1 tokens, the last token
-//     will be used by the last blob, even if the last slice blobs' size
-//     less than blobsize.
-//  5. Each segment blob has its specified token include the last blob.
-func genTokens(location *access.Location) []string {
-	tokens := make([]string, 0, len(location.Blobs)+1)
-
-	hasMultiBlobs := location.Size >= uint64(location.BlobSize)
-	lastSize := uint32(location.Size % uint64(location.BlobSize))
-	for idx, blob := range location.Blobs {
-		// returns one token if size < blobsize
-		if hasMultiBlobs {
-			count := blob.Count
-			if idx == len(location.Blobs)-1 && lastSize > 0 {
-				count--
-			}
-			tokens = append(tokens, uptoken.EncodeToken(uptoken.NewUploadToken(location.ClusterID,
-				blob.Vid, blob.MinBid, count,
-				location.BlobSize, _tokenExpiration, tokenSecretKeys[0][:])))
-		}
-
-		// token of the last blob
-		if idx == len(location.Blobs)-1 && lastSize > 0 {
-			tokens = append(tokens, uptoken.EncodeToken(uptoken.NewUploadToken(location.ClusterID,
-				blob.Vid, blob.MinBid+proto.BlobID(blob.Count)-1, 1,
-				lastSize, _tokenExpiration, tokenSecretKeys[0][:])))
-		}
-	}
-
-	return tokens
 }
