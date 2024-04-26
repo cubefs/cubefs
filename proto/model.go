@@ -435,17 +435,9 @@ type DecommissionDiskLimit struct {
 }
 
 type DecommissionDiskInfo struct {
-	SrcAddr                  string
-	DiskPath                 string
-	DecommissionStatus       uint32
-	DecommissionRaftForce    bool
-	DecommissionRetry        uint8
-	DecommissionDpTotal      int
-	DecommissionTerm         uint64
-	DecommissionLimit        int
-	Type                     uint32
-	DecommissionCompleteTime int64
-	Progress                 float64
+	SrcAddr      string
+	DiskPath     string
+	ProgressInfo DecommissionProgress
 }
 
 type DecommissionDisksResponse struct {
