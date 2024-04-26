@@ -1384,3 +1384,6 @@ func (dp *DataPartition) reload(s *SpaceManager) error {
 	_, err := LoadDataPartition(rootDir, disk)
 	return err
 }
+func (dp *DataPartition) resetDiskErrCnt() {
+	atomic.StoreUint64(&dp.diskErrCnt, 0)
+}
