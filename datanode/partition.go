@@ -361,11 +361,14 @@ func newDataPartition(dpCfg *dataPartitionCfg, disk *Disk, isCreate bool) (dp *D
 		log.LogWarnf("action[newDataPartition] dp %v NewExtentStore failed %v", partitionID, err.Error())
 		return
 	}
-	// store applyid
-	if err = partition.storeAppliedID(partition.appliedID); err != nil {
-		log.LogErrorf("action[newDataPartition] dp %v initial Apply [%v] failed: %v",
-			partition.partitionID, partition.appliedID, err)
-		return
+	//store applyid
+	if isCreate {
+		log.LogInfof("action[newDataPartition] init apply id when create dp directly. dp %d", partitionID)
+		if err = partition.storeAppliedID(partition.appliedID); err != nil {
+			log.LogErrorf("action[newDataPartition] dp %v initial Apply [%v] failed: %v",
+				partition.partitionID, partition.appliedID, err)
+			return
+		}
 	}
 	disk.AttachDataPartition(partition)
 	dp = partition
