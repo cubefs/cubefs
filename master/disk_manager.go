@@ -226,8 +226,9 @@ func (c *Cluster) decommissionDisk(dataNode *DataNode, raftForce bool, badDiskPa
 }
 
 const (
-	ManualDecommission uint32 = iota
+	ManualDecommission uint32 = iota //used for queryAllDecommissionDisk
 	AutoDecommission
+	AllDecommission
 )
 
 type DecommissionDisk struct {

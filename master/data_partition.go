@@ -1070,6 +1070,8 @@ func GetDecommissionStatusMessage(status uint32) string {
 		return "Success"
 	case DecommissionFail:
 		return "Failed"
+	case DecommissionNeedManualFix:
+		return "DecommissionNeedManualFix"
 	default:
 		return "Unknown"
 	}

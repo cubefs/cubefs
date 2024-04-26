@@ -4121,32 +4121,39 @@ func (m *Server) queryDecommissionDiskDecoFailedDps(w http.ResponseWriter, r *ht
 }
 
 func (m *Server) queryAllDecommissionDisk(w http.ResponseWriter, r *http.Request) {
-	var err error
+	var (
+		err              error
+		decommissoinType int
+	)
 
 	metric := exporter.NewTPCnt("req_queryAllDecommissionDisk")
 	defer func() {
 		metric.Set(err)
 	}()
+	if decommissoinType, err = parseReqToQueryDecoDisk(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
 	resp := &proto.DecommissionDisksResponse{}
 	m.cluster.DecommissionDisks.Range(func(key, value interface{}) bool {
 		disk := value.(*DecommissionDisk)
-		info := proto.DecommissionDiskInfo{
-			SrcAddr:                  disk.SrcAddr,
-			DiskPath:                 disk.DiskPath,
-			DecommissionStatus:       disk.GetDecommissionStatus(),
-			DecommissionRaftForce:    disk.DecommissionRaftForce,
-			DecommissionRetry:        disk.DecommissionRetry,
-			DecommissionDpTotal:      disk.DecommissionDpTotal,
-			DecommissionTerm:         disk.DecommissionTerm,
-			DecommissionLimit:        disk.DecommissionDpCount,
-			Type:                     disk.Type,
-			DecommissionCompleteTime: disk.DecommissionCompleteTime,
+		if decommissoinType == int(AllDecommission) || (decommissoinType != int(AllDecommission) && disk.Type == uint32(decommissoinType)) {
+			status, progress := disk.updateDecommissionStatus(m.cluster, true)
+			progress, _ = FormatFloatFloor(progress, 4)
+			decommissionProgress := proto.DecommissionProgress{
+				Status:        status,
+				Progress:      fmt.Sprintf("%.2f%%", progress*float64(100)),
+				StatusMessage: GetDecommissionStatusMessage(status),
+			}
+			dps := disk.GetDecommissionFailedDPByTerm(m.cluster)
+			decommissionProgress.FailedDps = dps
+			resp.Infos = append(resp.Infos, proto.DecommissionDiskInfo{SrcAddr: disk.SrcAddr,
+				DiskPath:     disk.SrcAddr,
+				ProgressInfo: decommissionProgress})
 		}
-		_, info.Progress = disk.updateDecommissionStatus(m.cluster, true)
-		resp.Infos = append(resp.Infos, info)
 		return true
 	})
-
 	sendOkReply(w, r, newSuccessHTTPReply(resp))
 }
 
@@ -4695,6 +4702,17 @@ func parseReqToRecoDisk(r *http.Request) (nodeAddr, diskPath string, err error) 
 		return
 	}
 
+	return
+}
+
+func parseReqToQueryDecoDisk(r *http.Request) (decommissionType int, err error) {
+	if err = r.ParseForm(); err != nil {
+		return
+	}
+	decommissionType, err = parseUintParam(r, DecommissionType)
+	if err != nil {
+		return
+	}
 	return
 }
 
