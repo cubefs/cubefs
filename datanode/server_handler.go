@@ -750,7 +750,8 @@ func (s *DataNode) loadDataPartition(w http.ResponseWriter, r *http.Request) {
 // NOTE: use for test
 func (s *DataNode) markDataPartitionBroken(w http.ResponseWriter, r *http.Request) {
 	const (
-		paramID = "id"
+		paramID     = "id"
+		paramStatus = "status"
 	)
 	if err := r.ParseForm(); err != nil {
 		err = fmt.Errorf("parse form fail: %v", err)
@@ -763,12 +764,25 @@ func (s *DataNode) markDataPartitionBroken(w http.ResponseWriter, r *http.Reques
 		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	status, err := strconv.ParseBool(r.FormValue(paramStatus))
+	if err != nil {
+		err = fmt.Errorf("parse param %v fail: %v", paramStatus, err)
+		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
+		return
+	}
 	partition := s.space.Partition(partitionID)
 	if partition == nil {
 		s.buildFailureResp(w, http.StatusBadRequest, "partition not found")
 		return
 	}
-	partition.checkIsDiskError(syscall.EIO, WriteFlag|ReadFlag)
+	if !status {
+		partition.checkIsDiskError(syscall.EIO, WriteFlag|ReadFlag)
+	} else {
+		partition.StartRaft(true)
+		partition.resetDiskErrCnt()
+		partition.statusUpdate()
+	}
+
 	s.buildSuccessResp(w, "success")
 }
 
