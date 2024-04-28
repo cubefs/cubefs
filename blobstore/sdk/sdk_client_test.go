@@ -5,7 +5,6 @@ import (
 	"context"
 	"errors"
 	"io"
-	"strings"
 	"testing"
 
 	"github.com/golang/mock/gomock"
@@ -15,9 +14,9 @@ import (
 	acapi "github.com/cubefs/cubefs/blobstore/api/access"
 	"github.com/cubefs/cubefs/blobstore/common/codemode"
 	errcode "github.com/cubefs/cubefs/blobstore/common/errors"
-	"github.com/cubefs/cubefs/blobstore/common/uptoken"
 	"github.com/cubefs/cubefs/blobstore/testing/mocks"
 	_ "github.com/cubefs/cubefs/blobstore/testing/nolog"
+	"github.com/cubefs/cubefs/blobstore/util/closer"
 )
 
 func newSdkHandler() *sdkHandler {
@@ -31,9 +30,13 @@ func newSdkHandler() *sdkHandler {
 		WriterMBps: 0,
 	})
 
+	conf := Config{}
+	fixConfig(&conf)
 	return &sdkHandler{
 		handler: h,
 		limiter: l,
+		conf:    conf,
+		closer:  closer.New(),
 	}
 }
 
@@ -196,21 +199,15 @@ func TestSdkHandler_Put(t *testing.T) {
 	_, _, err = hd.doPutObject(ctx, nil)
 	require.ErrorIs(t, err, errcode.ErrIllegalArguments)
 
-	loc, hash, err := hd.Put(ctx, &acapi.PutArgs{})
+	// size 0
+	loc, hash, err := hd.Put(ctx, &acapi.PutArgs{Hashes: 1})
 	require.NoError(t, err)
 	require.Equal(t, uint64(0), loc.Size)
-	require.Equal(t, 0, len(hash))
+	require.Equal(t, 1, len(hash))
 
 	args := &acapi.PutArgs{
 		Size: 2,
 	}
-	// hd.conf.MaxSizePutOnce = 1
-	//
-	// loc, hash, err = hd.Put(ctx, args)
-	// require.NotNil(t, err)
-	// require.ErrorIs(t, err, errcode.ErrRequestNotAllow)
-	// require.Equal(t, uint64(0), loc.Size)
-	// require.Equal(t, 0, len(hash))
 
 	hd.handler.(*mocks.MockStreamHandler).EXPECT().Put(any, any, any, any).Return(nil, errMock)
 	loc, hash, err = hd.Put(ctx, args)
@@ -218,54 +215,13 @@ func TestSdkHandler_Put(t *testing.T) {
 	require.Equal(t, uint64(0), loc.Size)
 	require.Equal(t, 0, len(hash))
 
+	args.Hashes = 1
 	mockLoc := acapi.Location{Size: 2}
 	hd.handler.(*mocks.MockStreamHandler).EXPECT().Put(any, any, any, any).Return(&mockLoc, nil)
 	loc, hash, err = hd.Put(ctx, args)
 	require.NoError(t, err)
 	require.Equal(t, mockLoc.Size, loc.Size)
-	require.Equal(t, 0, len(hash))
-}
-
-func TestSdkHandler_PutAt(t *testing.T) {
-	any := gomock.Any()
-	errMock := errors.New("fake error")
-	ctx := context.Background()
-	hd := newSdkHandler()
-
-	_, err := hd.PutAt(ctx, nil)
-	require.NotNil(t, err)
-	require.ErrorIs(t, err, errcode.ErrIllegalArguments)
-	_, err = hd.PutAt(ctx, &acapi.PutAtArgs{})
-	require.ErrorIs(t, err, errcode.ErrIllegalArguments)
-
-	args := &acapi.PutAtArgs{
-		ClusterID: 1,
-		Vid:       1,
-		BlobID:    1,
-		Size:      2,
-	}
-	hash, err := hd.PutAt(ctx, args)
-	require.ErrorIs(t, err, errcode.ErrIllegalArguments)
-	require.Nil(t, hash)
-
-	token := uptoken.NewUploadToken(args.ClusterID, args.Vid, args.BlobID, 1, uint32(args.Size), 0, []byte("token"))
-	args.Token = uptoken.EncodeToken(token)
-	hash, err = hd.PutAt(ctx, args)
-	require.ErrorIs(t, err, errcode.ErrIllegalArguments)
-	require.Nil(t, hash)
-
-	secretKey := stream.StreamTokenSecretKeys[0]
-	token = uptoken.NewUploadToken(args.ClusterID, args.Vid, args.BlobID, 1, uint32(args.Size), 0, secretKey[:])
-	args.Token = uptoken.EncodeToken(token)
-	hd.handler.(*mocks.MockStreamHandler).EXPECT().PutAt(any, any, any, any, any, any, any).Return(errMock)
-	hash, err = hd.PutAt(ctx, args)
-	require.ErrorIs(t, err, errMock)
-	require.Nil(t, hash)
-
-	args.Body = strings.NewReader("read")
-	hd.handler.(*mocks.MockStreamHandler).EXPECT().PutAt(any, any, any, any, any, any, any).Return(nil)
-	_, err = hd.PutAt(ctx, args)
-	require.NoError(t, err)
+	require.Equal(t, int(args.Hashes), len(hash))
 }
 
 func TestSdkHandler_Alloc(t *testing.T) {
@@ -302,4 +258,90 @@ func TestSdkHandler_Alloc(t *testing.T) {
 	ret, err = hd.Alloc(ctx, args)
 	require.NoError(t, err)
 	require.Equal(t, *loca, ret.Location)
+}
+
+func TestSdkHandler_putParts(t *testing.T) {
+	any := gomock.Any()
+	errMock := errors.New("fake error")
+	ctx := context.Background()
+	hd := newSdkHandler()
+
+	hd.conf.MaxSizePutOnce = 8
+	args := &acapi.PutArgs{
+		Size: 12,
+	}
+
+	// alloc fail
+	args.Hashes = 1
+	hd.handler.(*mocks.MockStreamHandler).EXPECT().Alloc(any, any, any, any, any).Return(nil, errMock)
+	loc, hash, err := hd.Put(ctx, args)
+	require.NotNil(t, err)
+	require.ErrorIs(t, err, errMock)
+	require.NotEqual(t, args.Size, int64(loc.Size))
+	require.Nil(t, hash)
+
+	// all ok
+	data := "test alloc put"
+	args.Body = bytes.NewBuffer([]byte(data))
+	args.Size = int64(len(data))
+	loca := &acapi.Location{
+		ClusterID: 1,
+		Size:      uint64(args.Size),
+		BlobSize:  4,
+		Blobs: []acapi.SliceInfo{{
+			MinBid: 1001,
+			Vid:    10,
+			Count:  4,
+		}},
+	}
+	crc, _ := stream.LocationCrcCalculate(loca)
+	loca.Crc = crc
+	hd.handler.(*mocks.MockStreamHandler).EXPECT().Alloc(any, any, any, any, any).Return(loca, nil)
+	hd.handler.(*mocks.MockStreamHandler).EXPECT().PutAt(any, any, any, any, any, any, any).Return(nil).Times(14/4 + 1)
+	loc, hash, err = hd.Put(ctx, args)
+	require.NoError(t, err)
+	require.Equal(t, 1, len(hash))
+	require.Equal(t, *loca, loc)
+
+	// waiting at least one blob, errcode.ErrAccessReadRequestBody
+	hd.handler.(*mocks.MockStreamHandler).EXPECT().Alloc(any, any, any, any, any).Return(loca, nil)
+	hd.handler.(*mocks.MockStreamHandler).EXPECT().Delete(any, any).Return(nil)
+	_, _, err = hd.Put(ctx, args)
+	require.NotNil(t, err)
+	require.ErrorIs(t, err, errcode.ErrAccessReadRequestBody)
+
+	// alloc the rest parts failed
+	loca.CodeMode = codemode.EC3P3
+	args.Body = bytes.NewBuffer([]byte(data))
+	hd.handler.(*mocks.MockStreamHandler).EXPECT().Alloc(any, any, any, any, any).Return(loca, nil).Times(4) // init, retry3
+	hd.handler.(*mocks.MockStreamHandler).EXPECT().PutAt(any, any, any, any, any, any, any).Return(errMock).Times(4)
+	hd.handler.(*mocks.MockStreamHandler).EXPECT().Delete(any, any).Return(nil).Times(4 + 1) // 4 blobs, fail del
+	_, _, err = hd.Put(ctx, args)
+	require.NotNil(t, err)
+	require.ErrorIs(t, err, errcode.ErrUnexpected)
+
+	// alloc the rest parts failed
+	{
+		loca.CodeMode = codemode.EC3P3
+		args.Body = bytes.NewBuffer([]byte(data))
+		hd.handler.(*mocks.MockStreamHandler).EXPECT().Alloc(any, any, any, any, any).Return(loca, nil)
+		locb := &acapi.Location{
+			ClusterID: 1,
+			Size:      uint64(args.Size),
+			BlobSize:  4,
+			Blobs: []acapi.SliceInfo{{
+				MinBid: 1001,
+				Vid:    11, // loca + 1
+				Count:  4,
+			}},
+		}
+		stream.LocationCrcFill(locb)
+		hd.handler.(*mocks.MockStreamHandler).EXPECT().Alloc(any, any, any, any, any).Return(locb, nil)
+		hd.handler.(*mocks.MockStreamHandler).EXPECT().PutAt(any, any, any, any, any, any, any).Return(errMock).Times(1)
+		hd.handler.(*mocks.MockStreamHandler).EXPECT().PutAt(any, any, any, any, any, any, any).Return(nil).AnyTimes()
+		hd.handler.(*mocks.MockStreamHandler).EXPECT().Delete(any, any).Return(nil).Times(4 + 1 + 1) // 4 blobs, fail del
+		_, _, err = hd.Put(ctx, args)
+		require.NotNil(t, err)
+		require.ErrorIs(t, err, errcode.ErrUnexpected)
+	}
 }

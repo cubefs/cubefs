@@ -564,7 +564,7 @@ type GetArgs struct {
 	Location Location      `json:"location"`
 	Offset   uint64        `json:"offset"`
 	ReadSize uint64        `json:"read_size"`
-	Body     io.ReadWriter `json:"body"`
+	Body     io.ReadWriter `json:"-"`
 }
 
 // IsValid is valid get args
