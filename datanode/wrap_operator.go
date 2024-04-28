@@ -739,7 +739,7 @@ func (s *DataNode) handleBatchMarkDeletePacket(p *repl.Packet, c net.Conn) {
 	// even the partition is forbidden, because
 	// the inode already be deleted in meta partition
 	// if we prevent it, we will get "orphan extents"
-	var exts []*proto.ExtentKey
+	var exts []*proto.DelExtentParam
 	err = json.Unmarshal(p.Data, &exts)
 	store := partition.ExtentStore()
 	if err == nil {
@@ -749,10 +749,9 @@ func (s *DataNode) handleBatchMarkDeletePacket(p *repl.Packet, c net.Conn) {
 				partition.disk.allocCheckLimit(proto.IopsWriteType, 1)
 				partition.disk.limitWrite.Run(0, func() {
 					log.LogInfof("[handleBatchMarkDeletePacket] vol(%v) dp(%v) mark delete extent(%v)", partition.config.VolName, partition.partitionID, ext.ExtentId)
-					if proto.IsTinyExtentType(p.ExtentType) {
+					if proto.IsTinyExtentType(p.ExtentType) || ext.IsSnapshotDeletion {
 						err = store.MarkDelete(ext.ExtentId, int64(ext.ExtentOffset), int64(ext.Size))
 					} else {
-						// TODO: fix snapshot deletion
 						// NOTE: it must use 0 to remove normal extent
 						// Consider the following scenario:
 						// data partition replica 1: size 200kb
