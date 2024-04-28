@@ -13,6 +13,7 @@ int cfs_rdma_create(struct sockaddr_storage *ss, struct cfs_log *log,
 void cfs_rdma_release(struct cfs_socket *csk, bool forever);
 int cfs_rdma_send_packet(struct cfs_socket *csk, struct cfs_packet *packet);
 int cfs_rdma_recv_packet(struct cfs_socket *csk, struct cfs_packet *packet);
+void cfs_rdma_clean_sockets_in_exit(void);
 int cfs_rdma_module_init(void);
 void cfs_rdma_module_exit(void);
 

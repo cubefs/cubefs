@@ -426,6 +426,22 @@ static void rdma_pool_lru_work_cb(struct work_struct *work)
 	mutex_unlock(&rdma_sock_pool->lock);
 }
 
+void cfs_rdma_clean_sockets_in_exit(void)
+{
+	struct cfs_socket *sock;
+	struct cfs_socket *tmp;
+
+	cancel_delayed_work_sync(&rdma_sock_pool->work);
+
+	mutex_lock(&rdma_sock_pool->lock);
+	list_for_each_entry_safe(sock, tmp, &rdma_sock_pool->lru, list) {
+		hash_del(&sock->hash);
+		list_del(&sock->list);
+		cfs_rdma_release(sock, true);
+	}
+	mutex_unlock(&rdma_sock_pool->lock);
+}
+
 int cfs_rdma_module_init(void)
 {
 	if (rdma_sock_pool)

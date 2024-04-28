@@ -148,6 +148,7 @@ void cfs_extent_client_release(struct cfs_extent_client *ec)
 		cfs_data_partition_release(dp);
 	}
 	if (ec->enable_rdma) {
+		cfs_rdma_clean_sockets_in_exit();
 		rdma_buffer_release();
 	}
 	kfree(ec);
