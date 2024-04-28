@@ -258,6 +258,17 @@ func (s *raft) run() {
 		close(s.done)
 	}()
 
+	defer func() {
+		if r := recover(); r != nil {
+			s.doStop()
+			s.resetPending(ErrStopped)
+			s.raftFsm.readOnly.reset(ErrStopped)
+			s.stopSnapping()
+			s.raftConfig.Storage.Close()
+			close(s.done)
+		}
+	}()
+
 	s.prevHardSt.Term = s.raftFsm.term
 	s.prevHardSt.Vote = s.raftFsm.vote
 	s.prevHardSt.Commit = s.raftFsm.raftLog.committed
