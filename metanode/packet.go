@@ -87,7 +87,7 @@ func NewPacketToDeleteExtent(dp *DataPartition, ext *proto.ExtentKey) (p *Packet
 }
 
 // NewPacketToBatchDeleteExtent returns a new packet to batch delete the extent.
-func NewPacketToBatchDeleteExtent(dp *DataPartition, exts []*proto.ExtentKey) *Packet {
+func NewPacketToBatchDeleteExtent(dp *DataPartition, exts []*proto.DelExtentParam) *Packet {
 	p := new(Packet)
 	p.Magic = proto.ProtoMagic
 	p.Opcode = proto.OpBatchDeleteExtent
