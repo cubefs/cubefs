@@ -107,6 +107,39 @@ func initTestDiskMgrDisks(t *testing.T, testDiskMgr *DiskMgr, start, end int, id
 	}
 }
 
+func initTestDiskMgrDisksWithReadonly(t *testing.T, testDiskMgr *DiskMgr, start, end int, idcs ...string) {
+	_, ctx := trace.StartSpanFromContext(context.Background(), "")
+	diskInfo := blobnode.DiskInfo{
+		DiskHeartBeatInfo: blobnode.DiskHeartBeatInfo{
+			Used:         0,
+			Size:         1024,
+			Free:         1024,
+			MaxChunkCnt:  1024 / 16,
+			FreeChunkCnt: 1024 / 16,
+		},
+		ClusterID: proto.ClusterID(1),
+		Idc:       "z0",
+		Status:    proto.DiskStatusNormal,
+		Readonly:  false,
+	}
+	for idx, idc := range idcs {
+		for i := start; i <= end; i++ {
+			diskInfo.DiskID = proto.DiskID(idx*10000 + i)
+			hostID := i / 60
+			diskInfo.Rack = strconv.Itoa(hostID)
+			diskInfo.Host = idc + hostPrefix + strconv.Itoa(hostID)
+			diskInfo.Idc = idc
+			if i%2 == 0 {
+				diskInfo.Readonly = true
+			} else {
+				diskInfo.Readonly = false
+			}
+			err := testDiskMgr.addDisk(ctx, diskInfo)
+			require.NoError(t, err)
+		}
+	}
+}
+
 func TestAlloc(t *testing.T) {
 	testDiskMgr, closeTestDiskMgr := initTestDiskMgr(t)
 	defer closeTestDiskMgr()
