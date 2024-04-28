@@ -28,9 +28,8 @@ import (
 )
 
 const (
-	NoDiskLoadThreshold   = int(^uint(0) >> 1)
-	healthiestScore       = 0
-	shardBalanceThreshold = 0.75
+	NoDiskLoadThreshold = int(^uint(0) >> 1)
+	healthiestScore     = 0
 )
 
 type allocConfig struct {
@@ -42,18 +41,13 @@ type allocConfig struct {
 }
 
 type idleItem struct {
-	head     *list.List
-	element  *list.Element
-	shardIdx int
-}
-
-type Shard struct {
-	allocatable *list.List
+	head    *list.List
+	element *list.Element
 }
 
 type idleVolumes struct {
 	m                 map[proto.Vid]idleItem
-	allocatableShards []*Shard
+	allocatableShards []*list.List
 	notAllocatable    *list.List
 	shardNum          int
 	sync.RWMutex
@@ -62,8 +56,8 @@ type idleVolumes struct {
 func (i *idleVolumes) getOneShardIdles(shardId int) []*volume {
 	i.RLock()
 	shardId = shardId % i.shardNum
-	ret := make([]*volume, 0, i.allocatableShards[shardId].allocatable.Len())
-	head := i.allocatableShards[shardId].allocatable.Front()
+	ret := make([]*volume, 0, i.allocatableShards[shardId].Len())
+	head := i.allocatableShards[shardId].Front()
 	for head != nil {
 		ret = append(ret, head.Value.(*volume))
 		head = head.Next()
@@ -84,8 +78,8 @@ func (i *idleVolumes) addAllocatable(vol *volume) {
 		item.head.Remove(item.element)
 	}
 	idx := int(vol.vid) % i.shardNum
-	e := i.allocatableShards[idx].allocatable.PushFront(vol)
-	i.m[vol.vid] = idleItem{element: e, head: i.allocatableShards[idx].allocatable, shardIdx: idx}
+	e := i.allocatableShards[idx].PushFront(vol)
+	i.m[vol.vid] = idleItem{element: e, head: i.allocatableShards[idx]}
 	i.Unlock()
 }
 
@@ -95,48 +89,17 @@ func (i *idleVolumes) addNotAllocatable(vol *volume) {
 		item.head.Remove(item.element)
 	}
 	e := i.notAllocatable.PushFront(vol)
-	// notAllocatable volume does not belong to any shard
-	i.m[vol.vid] = idleItem{element: e, head: i.notAllocatable, shardIdx: -1}
+	i.m[vol.vid] = idleItem{element: e, head: i.notAllocatable}
 	i.Unlock()
 }
 
 func (i *idleVolumes) delete(vid proto.Vid) {
 	i.Lock()
-	defer i.Unlock()
-	if _, ok := i.m[vid]; !ok {
-		return
+	if item, ok := i.m[vid]; ok {
+		item.head.Remove(item.element)
+		delete(i.m, vid)
 	}
-	// remove volume from allocatable or notAllocatable list
-	item := i.m[vid]
-	item.head.Remove(item.element)
-	delete(i.m, vid)
-	curShardIdx := item.shardIdx
-	if curShardIdx == -1 {
-		return
-	}
-
-	curShardLen := i.allocatableShards[curShardIdx].allocatable.Len()
-	averageShardLen := (len(i.m) - i.notAllocatable.Len()) / i.shardNum
-	// If the Shard volumeLen < average, there must be another Shard volumeLen > average
-	if float64(curShardLen) < shardBalanceThreshold*float64(averageShardLen) {
-		for j, idx := 0, curShardIdx+1; j < i.shardNum; j++ {
-			if idx >= i.shardNum {
-				idx = idx % i.shardNum
-			}
-			if i.allocatableShards[idx].allocatable.Len() > averageShardLen {
-				// move from
-				eFrom := i.allocatableShards[idx].allocatable
-				e := eFrom.Front()
-				eFrom.Remove(e)
-				// move to
-				eTo := i.allocatableShards[curShardIdx].allocatable
-				i.m[e.Value.(*volume).vid] = idleItem{element: e, head: eTo, shardIdx: curShardIdx}
-				eTo.PushFront(e.Value.(*volume))
-				break
-			}
-			idx++
-		}
-	}
+	i.Unlock()
 }
 
 func (i *idleVolumes) get(vid proto.Vid) (vol *volume) {
@@ -197,9 +160,9 @@ func (v sortVid) Less(i, j int) bool { return v[i].health > v[j].health || v[i].
 func newVolumeAllocator(cfg allocConfig) *volumeAllocator {
 	idles := make(map[codemode.CodeMode]*idleVolumes)
 	for _, modeConf := range cfg.codeModes {
-		allocatableShard := make([]*Shard, cfg.shardNum)
+		allocatableShard := make([]*list.List, cfg.shardNum)
 		for i := 0; i < cfg.shardNum; i++ {
-			allocatableShard[i] = &Shard{allocatable: list.New()}
+			allocatableShard[i] = list.New()
 		}
 		idles[modeConf.mode] = &idleVolumes{
 			m:                 make(map[proto.Vid]idleItem),
