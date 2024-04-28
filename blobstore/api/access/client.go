@@ -219,10 +219,6 @@ type API interface {
 	// Delete all blobs in these locations.
 	// return failed locations which have yet been deleted if error is not nil.
 	Delete(ctx context.Context, args *DeleteArgs) (failedLocations []Location, err error)
-	// PutAt put one blob
-	PutAt(ctx context.Context, args *PutAtArgs) (hashSumMap HashSumMap, err error)
-	// Alloc alloc one location
-	Alloc(ctx context.Context, args *AllocArgs) (AllocResp, error)
 }
 
 var _ API = (*client)(nil)
@@ -779,14 +775,6 @@ func (c *client) Delete(ctx context.Context, args *DeleteArgs) ([]Location, erro
 		return locations, err
 	}
 	return nil, nil
-}
-
-func (c *client) PutAt(ctx context.Context, args *PutAtArgs) (hashSumMap HashSumMap, err error) {
-	return nil, nil
-}
-
-func (c *client) Alloc(ctx context.Context, args *AllocArgs) (AllocResp, error) {
-	return AllocResp{}, nil
 }
 
 func shouldRetry(code int, err error) bool {
