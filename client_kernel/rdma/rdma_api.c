@@ -474,6 +474,7 @@ ssize_t IBVSocket_recvT(struct IBVSocket *this, struct iov_iter *iter) {
 	int numElements;
 	int i;
 	int index = -1;
+	unsigned long time_out_jiffies = jiffies + msecs_to_jiffies(IBVSOCKET_CONN_TIMEOUT_MS);
 
     while(true) {
 		if (this->connState != IBVSOCKETCONNSTATE_ESTABLISHED) {
@@ -498,6 +499,10 @@ ssize_t IBVSocket_recvT(struct IBVSocket *this, struct iov_iter *iter) {
 		index = RingBuffer_alloc(this, false);
 		if (index >= 0) {
 			break;
+		}
+		if (time_out_jiffies < jiffies) {
+			ibv_print_debug("rdma receive timeout %d seconds\n", IBVSOCKET_CONN_TIMEOUT_MS/1000);
+			return -ETIMEDOUT;
 		}
     }
 	if (index < 0) {
