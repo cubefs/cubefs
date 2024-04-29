@@ -425,11 +425,6 @@ func (eh *ExtentHandler) flush() (err error) {
 	eh.flushPacket()
 	eh.waitForFlush()
 
-	// if eh.dirty is false after waitForFlush, not append ek
-	if !eh.dirty {
-		return
-	}
-
 	err = eh.appendExtentKey()
 	if err != nil {
 		return
