@@ -914,6 +914,8 @@ func (partition *DataPartition) removeOneReplicaByHost(c *Cluster, host string, 
 
 	if partition.IsRollbackFailed() {
 		partition.DecommissionDstAddr = ""
+		c.syncUpdateDataPartition(partition)
+		log.LogWarnf("action[removeOneReplicaByHost]  partition %v reset DecommissionDstAddr", partition.PartitionID)
 		return
 	}
 	//oldReplicaNum := partition.ReplicaNum
@@ -1382,7 +1384,6 @@ errHandler:
 		partition.Hosts, partition.DecommissionRetry, partition.GetDecommissionStatus(),
 		partition.isRecover, partition.GetSpecialReplicaDecommissionStep(), partition.DecommissionNeedRollback,
 		partition.DecommissionNeedRollbackTimes, time.Since(begin).Seconds())
-	Warn(c.Name, msg)
 	log.LogWarnf("action[decommissionDataPartition] %s", msg)
 	partition.DecommissionErrorMessage = err.Error()
 	return false
@@ -1836,12 +1837,18 @@ func (partition *DataPartition) needRollback(c *Cluster) bool {
 	if atomic.LoadUint32(&partition.DecommissionNeedRollbackTimes) >= defaultDecommissionRollbackLimit {
 		log.LogDebugf("action[needRollback]try delete dp[%v] replica %v DecommissionNeedRollbackTimes[%v]",
 			partition.PartitionID, partition.DecommissionDstAddr, atomic.LoadUint32(&partition.DecommissionNeedRollbackTimes))
+		// delete it from BadDataPartitionIds
+		err := c.removeDPFromBadDataPartitionIDs(partition.DecommissionSrcAddr, partition.DecommissionSrcDiskPath, partition.PartitionID)
+		if err != nil {
+			log.LogWarnf("action[rollback]dp[%v] rollback to del from bad dataPartitionIDs failed:%v", partition.PartitionID, err)
+		}
 		partition.DecommissionNeedRollback = false
-		err := partition.removeReplicaByForce(c, partition.DecommissionDstAddr)
+		err = partition.removeReplicaByForce(c, partition.DecommissionDstAddr)
 		if err != nil {
 			log.LogWarnf("action[needRollback]dp[%v] remove decommission dst replica %v failed: %v",
 				partition.PartitionID, partition.DecommissionDstAddr, err)
 		}
+		c.syncUpdateDataPartition(partition)
 		return false
 	}
 	return true
