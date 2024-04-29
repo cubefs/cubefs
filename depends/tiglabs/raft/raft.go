@@ -17,6 +17,7 @@ package raft
 
 import (
 	"fmt"
+	"github.com/cubefs/cubefs/util/log"
 	"runtime"
 	"sync"
 	"sync/atomic"
@@ -250,23 +251,15 @@ func (s *raft) runApply() {
 
 func (s *raft) run() {
 	defer func() {
+		if r := recover(); r != nil {
+			log.LogWarnf("raft(%v) run occurred panic,err[%v]", s.raftFsm.id, r)
+		}
 		s.doStop()
 		s.resetPending(ErrStopped)
 		s.raftFsm.readOnly.reset(ErrStopped)
 		s.stopSnapping()
 		s.raftConfig.Storage.Close()
 		close(s.done)
-	}()
-
-	defer func() {
-		if r := recover(); r != nil {
-			s.doStop()
-			s.resetPending(ErrStopped)
-			s.raftFsm.readOnly.reset(ErrStopped)
-			s.stopSnapping()
-			s.raftConfig.Storage.Close()
-			close(s.done)
-		}
 	}()
 
 	s.prevHardSt.Term = s.raftFsm.term
