@@ -1953,3 +1953,36 @@ func (partition *DataPartition) getDiskErrorReplica() *DataReplica {
 func (partition *DataPartition) needManualFix() bool {
 	return partition.GetDecommissionStatus() == DecommissionNeedManualFix
 }
+
+func (partition *DataPartition) checkReplicaMeta(c *Cluster) {
+	// find redundant peers from replica meta
+	var force = false
+	if partition.getLeaderAddr() == "" {
+		force = true
+	}
+	for _, replica := range partition.Replicas {
+		redundantPeers := findPeersToDeleteByConfig(replica.LocalPeers, partition.Peers)
+		for _, peer := range redundantPeers {
+			//remove raft member
+			partition.createTaskToRemoveRaftMember(c, peer, force)
+			log.LogInfof("action[checkReplicaMeta]dp(%v) remove redundant peer %v force %v",
+				partition.PartitionID, peer, force)
+		}
+	}
+}
+
+func findPeersToDeleteByConfig(toCompare, basePeers []proto.Peer) []proto.Peer {
+	var redundantPeers []proto.Peer
+	for _, peer := range toCompare {
+		found := false
+		for _, base := range basePeers {
+			if base.Addr == peer.Addr {
+				found = true
+			}
+		}
+		if !found {
+			redundantPeers = append(redundantPeers, peer)
+		}
+	}
+	return redundantPeers
+}

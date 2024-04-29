@@ -558,6 +558,17 @@ func (dp *DataPartition) IsExistReplica(addr string) bool {
 	return false
 }
 
+func (dp *DataPartition) IsExistReplicaWithNodeId(addr string, nodeID uint64) bool {
+	dp.replicasLock.RLock()
+	defer dp.replicasLock.RUnlock()
+	for _, peer := range dp.config.Peers {
+		if peer.Addr == addr && peer.ID == nodeID {
+			return true
+		}
+	}
+	return false
+}
+
 func (dp *DataPartition) ReloadSnapshot() {
 	files, err := dp.extentStore.SnapShot()
 	if err != nil {
@@ -1404,4 +1415,15 @@ func (dp *DataPartition) reload(s *SpaceManager) error {
 }
 func (dp *DataPartition) resetDiskErrCnt() {
 	atomic.StoreUint64(&dp.diskErrCnt, 0)
+}
+
+func (dp *DataPartition) hasNodeIDConflict(addr string, nodeID uint64) error {
+	dp.replicasLock.RLock()
+	defer dp.replicasLock.RUnlock()
+	for _, peer := range dp.config.Peers {
+		if peer.Addr == addr && peer.ID != nodeID {
+			return errors.NewErrorf(fmt.Sprintf("local nodeID for %v is %v(expected:%v)", peer.Addr, peer.ID, nodeID))
+		}
+	}
+	return nil
 }
