@@ -1336,11 +1336,17 @@ func (s *DataNode) handlePacketToAddDataPartitionRaftMember(p *repl.Packet) {
 		return
 	}
 	p.PartitionID = req.PartitionId
-	if dp.IsExistReplica(req.AddPeer.Addr) {
-		log.LogInfof("handlePacketToAddDataPartitionRaftMember recive MasterCommand: %v "+
-			"addRaftAddr(%v) has exsit", string(reqData), req.AddPeer.Addr)
+	if dp.IsExistReplicaWithNodeId(req.AddPeer.Addr, req.AddPeer.ID) {
+		if err = dp.hasNodeIDConflict(req.AddPeer.Addr, req.AddPeer.ID); err != nil {
+			log.LogWarnf("action[handlePacketToAddDataPartitionRaftMember] partition %v node id conflict: %v",
+				req.PartitionId, err)
+		} else {
+			log.LogInfof("handlePacketToAddDataPartitionRaftMember receive MasterCommand: %v "+
+				"addRaftAddr(%v) is exist", string(reqData), req.AddPeer.Addr)
+		}
 		return
 	}
+
 	isRaftLeader, err = s.forwardToRaftLeader(dp, p, false)
 	if !isRaftLeader {
 		return
@@ -1399,8 +1405,8 @@ func (s *DataNode) handlePacketToRemoveDataPartitionRaftMember(p *repl.Packet) {
 	p.PartitionID = req.PartitionId
 
 	if !dp.IsExistReplica(req.RemovePeer.Addr) && !req.Force {
-		log.LogWarnf("action[handlePacketToRemoveDataPartitionRaftMember] receive MasterCommand:  req %v[%v] "+
-			"RemoveRaftPeer(%v) has not exist", p.GetReqID(), string(reqData), req.RemovePeer.Addr)
+		log.LogWarnf("action[handlePacketToRemoveDataPartitionRaftMember]dp %v receive MasterCommand:  req %v "+
+			"RemoveRaftPeer(%v) force(%v) has not exist", dp.partitionID, p.GetReqID(), req.RemovePeer, req.Force)
 		return
 	}
 
