@@ -1692,7 +1692,6 @@ static size_t cfs_extent_read_iter(struct cfs_extent_stream *es,
 		cfs_data_partition_set_leader(dp, ret);
 
 		cfs_packet_release(packet);
-		iov_iter_advance(iter, len);
 		read_bytes += len;
 	}
 
