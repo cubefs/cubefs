@@ -419,20 +419,16 @@ bool IBVSocket_destruct(struct IBVSocket *this) {
     return true;
 }
 
-ssize_t IBVSocket_copy_restore(struct IBVSocket *this, struct iov_iter *iter, int index) {
+ssize_t IBVSocket_post_recv(struct IBVSocket *this, int index) {
 	struct ib_recv_wr wr;
 	const struct ib_recv_wr *bad_wr;
 	struct ib_sge sge;
     int ret;
-    ssize_t isize = 0;
 
 	if (index < 0 || index >= BLOCK_NUM) {
 		return -EINVAL;
 	}
 
-	isize = MIN(MSG_LEN, iter->iov->iov_len);
-	
-    memcpy(iter->iov->iov_base, this->recvBuf[index]->pBuff, isize);
 	RingBuffer_dealloc(this, false, index);
 
 	sge.addr = this->recvBuf[index]->dma_addr;
@@ -444,8 +440,30 @@ ssize_t IBVSocket_copy_restore(struct IBVSocket *this, struct iov_iter *iter, in
 	wr.num_sge = 1;
 	ret = ib_post_recv(this->qp, &wr, &bad_wr);
 	if (unlikely(ret)) {
-		printk("ib_post_recv failed. ErrCode: %d\n", ret);
+		ibv_print_debug("ib_post_recv failed. ErrCode: %d\n", ret);
 		return -EIO;
+	}
+
+    return 0;
+}
+
+ssize_t IBVSocket_copy_restore(struct IBVSocket *this, struct iov_iter *iter, int index) {
+    int ret;
+    ssize_t isize = 0;
+
+	if (index < 0 || index >= BLOCK_NUM) {
+		ibv_print_debug("index is out of range 0-%d, index=%d\n", (BLOCK_NUM-1), index);
+		return -EINVAL;
+	}
+
+	isize = MIN(MSG_LEN, iter->iov->iov_len);
+
+    memcpy(iter->iov->iov_base, this->recvBuf[index]->pBuff, isize);
+
+	ret = IBVSocket_post_recv(this, index);
+	if (unlikely(ret < 0)) {
+		ibv_print_debug("IBVSocket_post_recv error: %d\n", ret);
+		return ret;
 	}
 
     return isize;
@@ -464,8 +482,12 @@ ssize_t IBVSocket_recvT(struct IBVSocket *this, struct iov_iter *iter) {
         numElements = ib_poll_cq(this->recvCQ, 8, wc);
         if (numElements > 0) {
             for (i = 0; i < numElements; i++) {
-                ibv_print_debug("recv status: %d, opcode: %d, wr_id: %lld\n", wc[i].status, wc[i].opcode, wc[i].wr_id);
 				index = wc[i].wr_id;
+				if (wc[i].status != IB_WC_SUCCESS) {
+					ibv_print_debug("recv status: %d, opcode: %d, wr_id: %lld\n", wc[i].status, wc[i].opcode, wc[i].wr_id);
+					IBVSocket_post_recv(this, index);
+					continue;
+				}
 				this->recvBuf[index]->used = true;
             }
         } else if (numElements < 0) {
@@ -505,8 +527,10 @@ ssize_t IBVSocket_send(struct IBVSocket *this, struct iov_iter *iter) {
 		numElements = ib_poll_cq(this->sendCQ, 8, wc);
 		if (numElements > 0) {
 			for (i = 0; i < numElements; i++) {
-				ibv_print_debug("send status: %d, opcode: %d, wr_id: %lld\n", wc[i].status, wc[i].opcode, wc[i].wr_id);
 				RingBuffer_dealloc(this, true, wc[i].wr_id);
+				if (wc[i].status != IB_WC_SUCCESS) {
+					ibv_print_debug("send status: %d, opcode: %d, wr_id: %lld\n", wc[i].status, wc[i].opcode, wc[i].wr_id);
+				}
 			}
 		} else if (numElements < 0) {
 			printk("ib_poll_cq sendCQ failed. ErrCode: %d\n", numElements);
