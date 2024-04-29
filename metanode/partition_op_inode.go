@@ -1163,7 +1163,7 @@ func (mp *metaPartition) UpdateExtentKeyAfterMigration(req *proto.UpdateExtentKe
 		err = fmt.Errorf("inode(%v) storageClass(%v) is already the same with request storageClass",
 			ino.Inode, ino.StorageClass)
 		log.LogWarnf("[UpdateExtentKeyAfterMigration] %v", err.Error())
-		p.PacketErrorWithBody(proto.OpArgMismatchErr, []byte(err.Error()))
+		p.PacketErrorWithBody(proto.OpOk, []byte(err.Error()))
 		return
 	}
 
