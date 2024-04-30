@@ -24,6 +24,7 @@ import (
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util"
+	"github.com/cubefs/cubefs/util/auditlog"
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/cubefs/cubefs/util/strutil"
@@ -1178,6 +1179,10 @@ func (partition *DataPartition) MarkDecommissionStatus(srcAddr, dstAddr, srcDisk
 }
 
 func (partition *DataPartition) SetDecommissionStatus(status uint32) {
+	if status == DecommissionFail || status == DecommissionSuccess {
+		auditlog.LogChangeDpDecommission(GetDecommissionStatusMessage(partition.GetDecommissionStatus()), GetDecommissionStatusMessage(status), partition.DecommissionSrcAddr, partition.DecommissionSrcDiskPath, partition.PartitionID, partition.DecommissionDstAddr)
+	}
+
 	log.LogDebugf("[SetDecommissionStatus] set dp(%v) decommission status to status(%v)", partition.PartitionID, status)
 	atomic.StoreUint32(&partition.DecommissionStatus, status)
 }
@@ -1430,6 +1435,10 @@ func (partition *DataPartition) PauseDecommission(c *Cluster) bool {
 }
 
 func (partition *DataPartition) ResetDecommissionStatus() {
+	if partition.GetDecommissionStatus() != DecommissionInitial {
+		auditlog.LogResetDpDecommission(GetDecommissionStatusMessage(partition.GetDecommissionStatus()), partition.DecommissionSrcAddr, partition.DecommissionSrcDiskPath, partition.PartitionID, partition.DecommissionDstAddr)
+	}
+
 	partition.DecommissionDstAddr = ""
 	partition.DecommissionSrcAddr = ""
 	partition.DecommissionRetry = 0
