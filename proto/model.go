@@ -446,6 +446,7 @@ type DecommissionDisksResponse struct {
 
 type DecommissionDataPartitionInfo struct {
 	PartitionId       uint64
+	ReplicaNum        uint8
 	Status            uint32
 	SpecialStep       uint32
 	Retry             int
