@@ -583,10 +583,16 @@ struct BufferItem *IBVSocket_get_data_buf(struct IBVSocket *this, size_t size) {
 	if (ret < 0) {
 		return NULL;
 	}
+	item->used = true;
 
 	return item;
 }
 
 void IBVSocket_free_data_buf(struct IBVSocket *this, struct BufferItem *item) {
+	if (!item->used) {
+		printk("error: the buffer is not used. ptr: %llx\n", (uint64_t)item);
+		return;
+	}
+	item->used = false;
 	rdma_buffer_put(item);
 }

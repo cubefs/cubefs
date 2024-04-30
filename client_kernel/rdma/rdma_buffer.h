@@ -10,11 +10,11 @@
 #include <rdma/ib_cm.h>
 
 #define BUFFER_4K_SIZE 4096
-#define BUFFER_4K_NUM 100
+#define BUFFER_4K_NUM 1000
 #define BUFFER_128K_SIZE 128 * 1024
-#define BUFFER_128K_NUM 100
+#define BUFFER_128K_NUM 500
 #define BUFFER_1M_SIZE 1024 * 1024
-#define BUFFER_1M_NUM 10
+#define BUFFER_1M_NUM 50
 
 struct BufferItem {
 	char *pBuff;

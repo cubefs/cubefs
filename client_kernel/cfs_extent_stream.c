@@ -772,7 +772,7 @@ extent_stream_get_reader(struct cfs_extent_stream *es,
 	}
 
 	reader = cfs_extent_reader_new(es, dp, dp->leader_idx, ext->ext_id);
-	if (!reader) {
+	if (IS_ERR(reader)) {
 		cfs_data_partition_put(dp);
 		return ERR_PTR(-ENOMEM);
 	}

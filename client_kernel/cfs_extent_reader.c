@@ -190,7 +190,7 @@ recover_packet:
 			recover = cfs_extent_reader_new(es, reader->dp,
 							reader->host_idx + 1,
 							reader->ext_id);
-			if (!recover) {
+			if (IS_ERR(recover)) {
 				cfs_data_partition_put(reader->dp);
 				reader->flags |= EXTENT_WRITER_F_ERROR;
 				packet->error = -ENOMEM;
