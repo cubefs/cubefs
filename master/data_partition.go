@@ -1337,7 +1337,7 @@ func (partition *DataPartition) Decommission(c *Cluster) bool {
 		if err = c.removeDataReplica(partition, srcAddr, false, partition.DecommissionRaftForce); err != nil {
 			goto errHandler
 		}
-		if err = c.addDataReplica(partition, targetAddr, false); err != nil {
+		if err = c.addDataReplica(partition, targetAddr, true, false); err != nil {
 			goto errHandler
 		}
 		newReplica, _ := partition.getReplica(targetAddr)

@@ -441,6 +441,7 @@ func prepareDataNodesForBench(count int, initTotal uint64, grow uint64) (ns *nod
 			Total:          space,
 			AvailableSpace: space,
 			isActive:       true,
+			AllDisks:       []string{"/cfs/disk"},
 		}
 		ns.putDataNode(node)
 	}
