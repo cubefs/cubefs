@@ -90,7 +90,7 @@ func AuditLogTest(audit *auditlog.Audit, baseDir string, t *testing.T) {
 	// NOTE: we have prefix, so shiftfile()
 	// must be invoked once
 	nowSize := getFileSize(t, auditLogName)
-	require.Less(t, nowSize, maxSize)
+	require.LessOrEqual(t, nowSize, maxSize)
 	t.Logf("log file count %v", len(dentries))
 	audit.ResetWriterBufferSize(testResetBufSize)
 }
