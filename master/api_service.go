@@ -2409,6 +2409,10 @@ func (m *Server) checkCreateReq(req *createVolReq) (err error) {
 		return fmt.Errorf("dpCount[%d] exceeds maximum limit[%d]", req.dpCount, maxInitDataPartitionCnt)
 	}
 
+	if req.dpCount < defaultInitDataPartitionCnt {
+		req.dpCount = defaultInitDataPartitionCnt
+	}
+
 	if proto.IsHot(req.volType) {
 		if req.dpReplicaNum == 0 {
 			req.dpReplicaNum = defaultReplicaNum
