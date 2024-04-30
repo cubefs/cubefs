@@ -137,8 +137,8 @@ func NewExtentHandler(stream *Streamer, offset int, storeMode int, size int) *Ex
 
 // String returns the string format of the extent handler.
 func (eh *ExtentHandler) String() string {
-	return fmt.Sprintf("ExtentHandler{ID(%v)Inode(%v)FileOffset(%v)Size(%v)StoreMode(%v)Status(%v)inflight(%v)}",
-		eh.id, eh.inode, eh.fileOffset, eh.size, eh.storeMode, eh.status, eh.inflight)
+	return fmt.Sprintf("ExtentHandler{ID(%v)Inode(%v)FileOffset(%v)Size(%v)StoreMode(%v)Status(%v)inflight(%v)dirty(%v)}",
+		eh.id, eh.inode, eh.fileOffset, eh.size, eh.storeMode, eh.status, eh.inflight, eh.dirty)
 }
 
 func (eh *ExtentHandler) write(data []byte, offset, size int, direct bool) (ek *proto.ExtentKey, err error) {
@@ -443,12 +443,6 @@ func (eh *ExtentHandler) flush() (err error) {
 
 func (eh *ExtentHandler) cleanup() (err error) {
 	log.LogDebugf("cleanup: eh(%v)", eh)
-
-	// if eh.inflight > 0, not cleanup eh. waitForFlush may blocked.
-	if atomic.LoadInt32(&eh.inflight) > 0 {
-		log.LogDebugf("cleanup do nothing: eh(%v)", eh)
-		return
-	}
 	eh.doneSender <- struct{}{}
 	eh.doneReceiver <- struct{}{}
 	if eh.conn != nil {
