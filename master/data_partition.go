@@ -879,12 +879,18 @@ func (partition *DataPartition) getToBeDecommissionHost(replicaNum int) (host st
 	// if decommission happened, remove DecommissionDstAddr
 	if partition.IsRollbackFailed() {
 		if partition.isSpecialReplicaCnt() {
-			// if new replica is added success when failed(rollback failed with delete new replica timeout eg)
-			if partition.GetSpecialReplicaDecommissionStep() >= SpecialDecommissionWaitAddRes {
-				log.LogInfof("action[getToBeDecommissionHost] single replica partition %v need to decommission %v",
-					partition.PartitionID, partition.DecommissionDstAddr)
-				host = partition.DecommissionDstAddr
+			// if new replica is created, but decommission is failed for target data node is down. roll back is failed
+			// at this time. when data node is recover, new created replica can still do repair work
+			host = partition.DecommissionDstAddr
+			if host == "" {
+				log.LogInfof("action[getToBeDecommissionHost]  partition %v cannot find decommission dst",
+					partition.PartitionID)
 			}
+			hostLen := len(partition.Hosts)
+			if hostLen <= 1 || hostLen <= replicaNum {
+				return
+			}
+			host = partition.Hosts[hostLen-1]
 		} else {
 			// if rollback is failed
 			log.LogInfof("action[getToBeDecommissionHost]  partition %v need to decommission %v",
@@ -905,7 +911,7 @@ func (partition *DataPartition) getToBeDecommissionHost(replicaNum int) (host st
 	return
 }
 
-func (partition *DataPartition) removeOneReplicaByHost(c *Cluster, host string, isReplicaNormal bool) (err error) {
+func (partition *DataPartition) removeOneReplicaByHost(c *Cluster, host string) (err error) {
 	if err = c.removeDataReplica(partition, host, false, false); err != nil {
 		return
 	}
@@ -1088,6 +1094,13 @@ func (partition *DataPartition) MarkDecommissionStatus(srcAddr, dstAddr, srcDisk
 	migrateType uint32, c *Cluster) (err error) {
 	if partition.needManualFix() && migrateType == AutoDecommission {
 		return proto.ErrAllReplicaUnavailable
+	}
+	// 1 or 2 replica can always add new replica if retrying decommission
+	// for 3 replica,
+	if partition.isSpecialReplicaCnt() && len(partition.Hosts) >= int(partition.ReplicaNum+1) {
+		return errors.NewErrorf("special replica dp[%v] host length(%v) is different from replicaNum(%v), "+
+			"wait for auto reduce replica",
+			partition.PartitionID, len(partition.Hosts), partition.ReplicaNum)
 	}
 	status := partition.GetDecommissionStatus()
 	if !partition.canMarkDecommission(status) {
@@ -1375,6 +1388,11 @@ errHandler:
 		if partition.DecommissionRetry >= defaultDecommissionRetryLimit {
 			partition.markRollbackFailed(true)
 		} else {
+			// remove dp from BadDataPartitionIDs, preventing errors caused by disk manager not finding the replica
+			err := c.removeDPFromBadDataPartitionIDs(partition.DecommissionSrcAddr, partition.DecommissionSrcDiskPath, partition.PartitionID)
+			if err != nil {
+				log.LogWarnf("action[decommissionDataPartition]dp[%v] rollback to del from bad dataPartitionIDs failed:%v", partition.PartitionID, err)
+			}
 			// choose other node to create data partition when retry decommission
 			if resetDecommissionDst {
 				partition.DecommissionDstAddr = ""
@@ -1874,7 +1892,9 @@ func (partition *DataPartition) removeReplicaByForce(c *Cluster, peerAddr string
 	force := false
 	// if single dp add raft member success but add a replica fails, use force to delete raft member
 	// to avoid no leader
-	if partition.ReplicaNum == 1 {
+	//  to make sure host for dp on master is correct,redundant peer on dataNode can be deleted by scheduled task for
+	// checkReplicaMeta
+	if partition.getLeaderAddr() == "" {
 		force = true
 	}
 	err := c.removeDataReplica(partition, peerAddr, false, force)

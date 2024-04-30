@@ -2034,6 +2034,7 @@ func (m *Server) queryDataPartitionDecommissionStatus(w http.ResponseWriter, r *
 	}
 	info := &proto.DecommissionDataPartitionInfo{
 		PartitionId:       partitionID,
+		ReplicaNum:        dp.ReplicaNum,
 		Status:            dp.GetDecommissionStatus(),
 		SpecialStep:       dp.GetSpecialReplicaDecommissionStep(),
 		Retry:             dp.DecommissionRetry,

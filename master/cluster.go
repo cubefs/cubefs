@@ -2601,6 +2601,12 @@ func (c *Cluster) addDataReplica(dp *DataPartition, addr string, ignoreDecommiss
 
 	log.LogInfof("action[addDataReplica]  dp %v enter %v", dp.PartitionID, ignoreDecommissionDisk)
 
+	if dp.isSpecialReplicaCnt() && len(dp.Hosts) > int(dp.ReplicaNum) {
+		return fmt.Errorf("action[addDataReplica]special replica dp(%v) has redundant replica", dp.PartitionID)
+	}
+	if !dp.isSpecialReplicaCnt() && len(dp.Hosts) > int(dp.ReplicaNum)-1 {
+		return fmt.Errorf("action[addDataReplica]3 replica  dp(%v) has redundant replica", dp.PartitionID)
+	}
 	dp.addReplicaMutex.Lock()
 	defer dp.addReplicaMutex.Unlock()
 
@@ -2797,7 +2803,8 @@ func (c *Cluster) createDataReplica(dp *DataPartition, addPeer proto.Peer, ignor
 func (c *Cluster) removeDataReplica(dp *DataPartition, addr string, validate bool, raftForceDel bool) (err error) {
 	defer func() {
 		if err != nil {
-			log.LogErrorf("action[removeDataReplica],vol[%v],data partition[%v],err[%v]", dp.VolName, dp.PartitionID, err)
+			log.LogErrorf("action[removeDataReplica],vol[%v],data partition[%v] remove %v,err[%v]",
+				dp.VolName, dp.PartitionID, addr, err)
 		}
 	}()
 	log.LogInfof("action[removeDataReplica]  dp %v try remove replica  addr [%v]", dp.PartitionID, addr)
@@ -4505,6 +4512,7 @@ func (c *Cluster) TryDecommissionDisk(disk *DecommissionDisk) {
 					dp.DecommissionNeedRollback = false
 				} else {
 					dp.markRollbackFailed(false)
+					dp.DecommissionErrorMessage = err.Error()
 				}
 				dp.DecommissionTerm = disk.DecommissionTerm
 			}
