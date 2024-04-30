@@ -270,6 +270,15 @@ func NewAudit(dir, logModule string, logMaxSize int64) (*Audit, error) {
 // NOTE:
 // common header:
 // [PREFIX] CURRENT_TIME TIME_ZONE
+func (a *Audit) formatCommonHeader() (str string) {
+	curTime := time.Now()
+	curTimeStr := curTime.Format("2006-01-02 15:04:05")
+	timeZone, _ := curTime.Zone()
+	str = fmt.Sprintf("%v %v", curTimeStr, timeZone)
+	return
+}
+
+// NOTE: meta audit logs
 // format for client:
 // [COMMON HEADER] IP_ADDR HOSTNAME OP SRC DST(Rename) ERR LATENCY SRC_INODE DST_INODE(Rename)
 // format for server(inode):
@@ -278,54 +287,93 @@ func NewAudit(dir, logModule string, logMaxSize int64) (*Audit, error) {
 // [COMMON HEADER] CLIENT_ADDR VOLUME OP NAME FULL_PATH ERR LATENCY INODE PARENT_INODE
 // format for server(transaction):
 // [COMMON HEADER] CLIENT_ADDR VOLUME OP TX_ID ("nil") ERR LATENCY TM_ID (0)
-func (a *Audit) formatAuditEntry(ipAddr, hostName, op, src, dst string, err error, latency int64, srcInode, dstInode uint64) (entry string) {
+func (a *Audit) formatMetaAudit(ipAddr, hostName, op, src, dst string, err error, latency int64, srcInode, dstInode uint64) (entry string) {
 	var errStr string
 	if err != nil {
 		errStr = err.Error()
 	} else {
 		errStr = "nil"
 	}
-	curTime := time.Now()
-	curTimeStr := curTime.Format("2006-01-02 15:04:05")
-	timeZone, _ := curTime.Zone()
 	latencyStr := strconv.FormatInt(latency, 10) + " us"
 	srcInodeStr := strconv.FormatUint(srcInode, 10)
 	dstInodeStr := strconv.FormatUint(dstInode, 10)
 
-	entry = fmt.Sprintf("%s %s, %s, %s, %s, %s, %s, %s, %s, %s, %s",
-		curTimeStr, timeZone, ipAddr, hostName, op, src, dst, errStr, latencyStr, srcInodeStr, dstInodeStr)
+	entry = fmt.Sprintf("%v, %s, %s, %s, %s, %s, %s, %s, %s, %s",
+		a.formatCommonHeader(), ipAddr, hostName, op, src, dst, errStr, latencyStr, srcInodeStr, dstInodeStr)
 	return
 }
 
 func (a *Audit) LogClientOp(op, src, dst string, err error, latency int64, srcInode, dstInode uint64) {
-	a.formatLog(a.ipAddr, a.hostName, op, src, dst, err, latency, srcInode, dstInode)
+	a.formatMetaLog(a.ipAddr, a.hostName, op, src, dst, err, latency, srcInode, dstInode)
 }
 
 func (a *Audit) LogDentryOp(clientAddr, volume, op, name, fullPath string, err error, latency int64, ino, parentIno uint64) {
 	if fullPath == "" {
 		fullPath = auditFullPathUnsupported
 	}
-	a.formatLog(clientAddr, volume, op, name, fullPath, err, latency, ino, parentIno)
+	a.formatMetaLog(clientAddr, volume, op, name, fullPath, err, latency, ino, parentIno)
 }
 
 func (a *Audit) LogInodeOp(clientAddr, volume, op, fullPath string, err error, latency int64, ino uint64, fileSize uint64) {
 	if fullPath == "" {
 		fullPath = auditFullPathUnsupported
 	}
-	a.formatLog(clientAddr, volume, op, "nil", fullPath, err, latency, ino, fileSize)
+	a.formatMetaLog(clientAddr, volume, op, "nil", fullPath, err, latency, ino, fileSize)
 }
 
 func (a *Audit) LogTxOp(clientAddr, volume, op, txId string, err error, latency int64) {
-	a.formatLog(clientAddr, volume, op, txId, "nil", err, latency, 0, 0)
+	a.formatMetaLog(clientAddr, volume, op, txId, "nil", err, latency, 0, 0)
 }
 
-func (a *Audit) formatLog(ipAddr, hostName, op, src, dst string, err error, latency int64, srcInode, dstInode uint64) {
-	if entry := a.formatAuditEntry(ipAddr, hostName, op, src, dst, err, latency, srcInode, dstInode); entry != "" {
+func (a *Audit) formatMetaLog(ipAddr, hostName, op, src, dst string, err error, latency int64, srcInode, dstInode uint64) {
+	if entry := a.formatMetaAudit(ipAddr, hostName, op, src, dst, err, latency, srcInode, dstInode); entry != "" {
 		if a.prefix != nil {
 			entry = fmt.Sprintf("%s%s", a.prefix.String(), entry)
 		}
 		a.AddLog(entry)
 	}
+}
+
+// NOTE: master audit logs
+// format for decommssion:
+// [COMMON HEADER] OP OLD_STATUS STATUS ADDR DISK DP_ID DST_ADDR ERR
+func (a *Audit) formatMasterAudit(op string, oldStatus string, status string, src string, disk string, id string, dst string, err error) (str string) {
+	var errStr string
+	if err != nil {
+		errStr = err.Error()
+	} else {
+		errStr = "nil"
+	}
+	str = fmt.Sprintf("%v, %v, %v, %v, %v, %v, %v, %v, ERR: %v", a.formatCommonHeader(), op, oldStatus, status, src, disk, id, dst, errStr)
+	return
+}
+
+func (a *Audit) formatMasterLog(op string, oldStatus string, status string, src string, disk string, id string, dst string, err error) {
+	if entry := a.formatMasterAudit(op, oldStatus, status, src, disk, id, dst, err); entry != "" {
+		if a.prefix != nil {
+			entry = fmt.Sprintf("%s%s", a.prefix.String(), entry)
+		}
+		a.AddLog(entry)
+	}
+}
+
+func (a *Audit) LogResetDpDecommission(status string, src string, disk string, dpId uint64, dst string) {
+	status = fmt.Sprintf("Prev: %v", status)
+	src = fmt.Sprintf("SrcAddr: %v", src)
+	disk = fmt.Sprintf("SrcDisk: %v", disk)
+	id := fmt.Sprintf("DpId: %v", dpId)
+	dst = fmt.Sprintf("DstAddr: %v", dst)
+	a.formatMasterLog("RESET_DP_DECOMMISSION", status, "Next: Initial", src, disk, id, dst, nil)
+}
+
+func (a *Audit) LogChangeDpDecommission(oldStatus string, status string, src string, disk string, dpId uint64, dst string) {
+	oldStatus = fmt.Sprintf("Prev: %v", oldStatus)
+	status = fmt.Sprintf("Next: %v", status)
+	src = fmt.Sprintf("SrcAddr: %v", src)
+	disk = fmt.Sprintf("SrcDisk: %v", disk)
+	id := fmt.Sprintf("DpId: %v", dpId)
+	dst = fmt.Sprintf("DstAddr: %v", dst)
+	a.formatMasterLog("DP_DECOMMISSION_CHANGE", oldStatus, status, src, disk, id, dst, nil)
 }
 
 func (a *Audit) ResetWriterBufferSize(size int) {
@@ -415,6 +463,25 @@ func LogTxOp(clientAddr, volume, op, txId string, err error, latency int64) {
 		return
 	}
 	gAdt.LogTxOp(clientAddr, volume, op, txId, err, latency)
+}
+
+func LogResetDpDecommission(status string, src string, disk string, dpId uint64, dst string) {
+	gAdtMutex.RLock()
+	defer gAdtMutex.RUnlock()
+	if gAdt == nil {
+		return
+	}
+	gAdt.LogResetDpDecommission(status, src, disk, dpId, dst)
+}
+
+func LogChangeDpDecommission(oldStatus string, status string, src string, disk string, dpId uint64, dst string) {
+	gAdtMutex.RLock()
+	defer gAdtMutex.RUnlock()
+	if gAdt == nil {
+		return
+	}
+
+	gAdt.LogChangeDpDecommission(oldStatus, status, src, disk, dpId, dst)
 }
 
 func ResetWriterBufferSize(size int) {
