@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/cubefs/cubefs/util"
+	"github.com/stretchr/testify/require"
 )
 
 func createDataNodeForTopo(addr, zoneName string, ns *nodeSet) (dn *DataNode) {
@@ -16,6 +17,7 @@ func createDataNodeForTopo(addr, zoneName string, ns *nodeSet) (dn *DataNode) {
 	dn.ReportTime = time.Now()
 	dn.isActive = true
 	dn.NodeSetID = ns.ID
+	dn.AllDisks = []string{"/cfs/disk"}
 	return
 }
 
@@ -42,26 +44,14 @@ func TestSingleZone(t *testing.T) {
 	excludeZones := make([]string, 0)
 	excludeZones = append(excludeZones, zoneName)
 	zones, err := topo.allocZonesForDataNode(replicaNum, replicaNum, excludeZones)
-	if err != nil {
-		t.Error(err)
-		return
-	}
-	if len(zones) != 1 {
-		t.Errorf("expect zone num [%v],len(zones) is %v", 0, len(zones))
-		return
-	}
+	require.NoError(t, err)
+	require.EqualValues(t, 1, len(zones))
 
 	// single zone normal
 	zones, err = topo.allocZonesForDataNode(replicaNum, replicaNum, nil)
-	if err != nil {
-		t.Error(err)
-		return
-	}
+	require.NoError(t, err)
 	newHosts, _, err := zones[0].getAvailNodeHosts(TypeDataPartition, nil, nil, replicaNum)
-	if err != nil {
-		t.Error(err)
-		return
-	}
+	require.NoError(t, err)
 	t.Log(newHosts)
 	topo.deleteDataNode(createDataNodeForTopo(mds1Addr, zoneName, nodeSet))
 }
@@ -98,22 +88,12 @@ func TestAllocZones(t *testing.T) {
 	topo.putDataNode(createDataNodeForTopo(mds5Addr, zoneName3, nodeSet3))
 
 	zones := topo.getAllZones()
-	if len(zones) != zoneCount {
-		t.Errorf("expect zones num[%v],len(zones) is %v", zoneCount, len(zones))
-		return
-	}
+	require.EqualValues(t, zoneCount, len(zones))
 	// only pass replica num
 	replicaNum := 2
 	zones, err := topo.allocZonesForDataNode(replicaNum, replicaNum, nil)
-	if err != nil {
-		t.Error(err)
-		return
-	}
-
-	if len(zones) != replicaNum {
-		t.Errorf("expect zones num[%v],len(zones) is %v", replicaNum, len(zones))
-		return
-	}
+	require.NoError(t, err)
+	require.EqualValues(t, replicaNum, len(zones))
 
 	cluster := new(Cluster)
 	cluster.t = topo
@@ -121,17 +101,13 @@ func TestAllocZones(t *testing.T) {
 
 	// don't cross zone
 	hosts, _, err := cluster.getHostFromNormalZone(TypeDataPartition, nil, nil, nil, replicaNum, 1, "")
-	if err != nil {
-		t.Error(err)
-		return
-	}
+	require.NoError(t, err)
+
+	t.Logf("ChooseTargetDataHosts in single zone,hosts[%v]", hosts)
 
 	// cross zone
 	hosts, _, err = cluster.getHostFromNormalZone(TypeDataPartition, nil, nil, nil, replicaNum, 2, "")
-	if err != nil {
-		t.Error(err)
-		return
-	}
+	require.NoError(t, err)
 
 	t.Logf("ChooseTargetDataHosts in multi zones,hosts[%v]", hosts)
 	// after excluding zone3, alloc zones will be success

@@ -292,6 +292,9 @@ func (mds *MockDataServer) handleHeartbeats(conn net.Conn, pkg *proto.Packet, ta
 
 	response.ZoneName = mds.zoneName
 	response.PartitionReports = make([]*proto.DataPartitionReport, 0)
+	response.AllDisks = []string{
+		"/cfs/disk",
+	}
 
 	mds.RLock()
 	for _, partition := range mds.partitions {

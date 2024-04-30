@@ -1599,6 +1599,7 @@ func (m *Server) addDataReplica(w http.ResponseWriter, r *http.Request) {
 		addr        string
 		dp          *DataPartition
 		partitionID uint64
+		force       bool
 		err         error
 	)
 	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminAddDataReplica))
@@ -1611,12 +1612,18 @@ func (m *Server) addDataReplica(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	force, err = pareseBoolWithDefault(r, forceKey, false)
+	if err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
 	if dp, err = m.cluster.getDataPartitionByID(partitionID); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(proto.ErrDataPartitionNotExists))
 		return
 	}
 
-	if err = m.cluster.addDataReplica(dp, addr, false); err != nil {
+	if err = m.cluster.addDataReplica(dp, addr, !force, false); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
