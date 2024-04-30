@@ -1653,8 +1653,8 @@ static size_t cfs_extent_read_iter(struct cfs_extent_stream *es,
 	int ret = 0;
 
 	if (io_info->hole) {
-		read_bytes = iov_iter_zero(total_bytes, iter);
-		return read_bytes;
+		iov_iter_zero(total_bytes, iter);
+		return 0;
 	}
 
 	dp = cfs_extent_get_partition(es->ec, io_info->ext.pid);
