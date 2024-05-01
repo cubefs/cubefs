@@ -1,16 +1,39 @@
 import json
 import os
 import re
+
+import numpy as np
 import requests
+from torch.utils.data import ConcatDataset
+
 from cube_torch import get_manager
-from cube_torch.cube_dataset_info import CubeDataSetInfo
+from cube_torch.cube_dataset_info import CubeDataSetInfo, is_numpy_2d_array
 
 USE_PREFETCH = 'USE_PREFETCH'
+USE_BATCH_DOWNLOAD = 'USE_BATCH_DOWNLOAD'
 VOL_NAME = 'VOL_NAME'
+CUBE_DATASET_FILE = 'DATASET_FILE'
+
+
+def parse_file(file_path):
+    data = []
+    element_count = None
+    with open(file_path, 'r') as f:
+        for line in f:
+            line = line.strip()
+            elements = [float(x.strip()) for x in line.split(',')]
+            if element_count is None:
+                element_count = len(elements)
+            elif len(elements) != element_count:
+                raise ValueError(
+                    f"每行的元素个数应该相等,但第一行有{element_count}个元素,当前行有{len(elements)}个元素")
+            data.append(elements)
+    return np.array(data)
 
 
 class CubePushDataSetInfo(CubeDataSetInfo):
     def __init__(self, cube_loader):
+        os.environ[USE_PREFETCH]="1"
         super().__init__(cube_loader)
         self.prefetch_read_url = ""
         self.register_pid_addr = ""
@@ -18,6 +41,8 @@ class CubePushDataSetInfo(CubeDataSetInfo):
         self.prof_port = ""
         self.vol_name = os.environ.get(VOL_NAME)
         self._is_use_batch_download = True
+        self._dataset_file = None
+        self._train_dataset = None
         self.check_evn()
         self._dataset_cnt = cube_loader.real_sample_size
         self.cubefs_mount_point = ""
@@ -39,6 +64,10 @@ class CubePushDataSetInfo(CubeDataSetInfo):
 
     def get_unregister_pid_addr(self):
         return self.unregister_pid_addr
+
+    def parse_dataset_file(self):
+        if self._dataset_file is not None:
+            self.train_list = parse_file(self._dataset_file)
 
     def folder_train_file_names(self, index_list):
         train_file_name_lists = []
@@ -81,6 +110,18 @@ class CubePushDataSetInfo(CubeDataSetInfo):
         prefetch = os.environ.get(USE_PREFETCH)
         if prefetch is not None:
             self._is_use_batch_download = False
+        batch_download = os.environ.get(USE_BATCH_DOWNLOAD)
+        if batch_download is not None:
+            self._is_use_batch_download = True
+        dataset_file = os.environ.get(CUBE_DATASET_FILE)
+        if dataset_file is not None:
+            if not os.path.exists(dataset_file):
+                raise ValueError('DATASET_FILE:{} not exist'.format(dataset_file))
+            if not os.path.isfile(dataset_file):
+                raise ValueError('DATASET_FILE:{} is not file'.format(dataset_file))
+            self._dataset_file = dataset_file
+        else:
+            raise ValueError('DATASET_FILE env not set,please set DATASET_FILE env')
         self.check_cube_queue_size_on_worker()
         self._init_env_fininsh = True
 
@@ -129,3 +170,17 @@ class CubePushDataSetInfo(CubeDataSetInfo):
 
     def get_batch_download_addr(self):
         return self.batch_download_addr
+
+    def get_train_file_name_lists(self):
+        if len(self.train_list) != 0:
+            return self.train_list
+
+        loader = self.cube_loader
+        dataset = loader.dataset
+        if isinstance(dataset, ConcatDataset):
+            file_name_lists = self._concatDataSet_get_samples(dataset)
+        else:
+            file_name_lists = self._signel_DataSet_get_samples(dataset)
+        if is_numpy_2d_array(file_name_lists):
+            self.train_list_dimensional = 2
+        self.train_list = file_name_lists

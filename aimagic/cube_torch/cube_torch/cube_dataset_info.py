@@ -3,7 +3,6 @@ import os
 
 import numpy as np
 from torch import multiprocessing
-from torch.utils.data import ConcatDataset
 from torchvision import datasets
 
 CubeFS_ROOT_DIR = 'CubeFS_ROOT_DIR'
@@ -43,7 +42,6 @@ class CubeDataSetInfo:
             self._is_test_env = False
         self.stop_event = multiprocessing.Event()
         self._init_env_fininsh = False
-        self.train_list_dimensional = 1
         self.is_folder_dataset = False
 
     def get_cubefs_root_dir(self):
@@ -116,18 +114,7 @@ class CubeDataSetInfo:
     def _signel_DataSet_get_samples(self, dataset):
         return self.get_dataset_samples(dataset)
 
-    def get_train_file_name_lists(self):
-        if len(self.train_list) != 0:
-            return self.train_list
-        loader = self.cube_loader
-        dataset = loader.dataset
-        if isinstance(dataset, ConcatDataset):
-            file_name_lists = self._concatDataSet_get_samples(dataset)
-        else:
-            file_name_lists = self._signel_DataSet_get_samples(dataset)
-        if is_numpy_2d_array(file_name_lists):
-            self.train_list_dimensional = 2
-        self.train_list = file_name_lists
+
 
     def get_cube_queue_size_on_worker(self):
         return self.cubefs_queue_size_on_worker

@@ -2,7 +2,7 @@ from setuptools import setup
 
 setup(
     name='cube_torch',
-    version='0.3',
+    version='0.4',
     description='cube_torch is A Pytorch Acceleration Package',
     author='guoweilong',
     author_email='542531652@qq.com',
