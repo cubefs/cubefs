@@ -220,11 +220,13 @@ func (s *Streamer) server() {
 			if s.refcnt <= 0 {
 				if s.idle >= streamWriterIdleTimeoutPeriod && len(s.request) == 0 {
 					if s.client.disableMetaCache || !s.needBCache {
+						log.LogDebugf("done server: delete streamer(%v)", s)
 						delete(s.client.streamers, s.inode)
 						if s.client.evictIcache != nil {
 							s.client.evictIcache(s.inode)
 						}
 					}
+					s.isOpen = false
 					// fail the remaining requests in such case
 					s.clearRequests()
 					s.client.streamerLock.Unlock()
