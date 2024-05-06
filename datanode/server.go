@@ -18,6 +18,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	syslog "log"
 	"net"
 	"net/http"
 	"os"
@@ -220,7 +221,6 @@ func doStart(server common.Server, cfg *config.Config) (err error) {
 	}
 
 	s.stopC = make(chan bool)
-
 	// parse the config file
 	if err = s.parseConfig(cfg); err != nil {
 		return
@@ -555,6 +555,7 @@ func (s *DataNode) register(cfg *config.Config) {
 			exporter.RegistConsul(s.clusterID, ModuleName, cfg)
 			s.nodeID = nodeID
 			log.LogDebugf("register: register DataNode: nodeID(%v)", s.nodeID)
+			syslog.Printf("register: register DataNode: nodeID(%v)\n", s.nodeID)
 			return
 		case <-s.stopC:
 			timer.Stop()

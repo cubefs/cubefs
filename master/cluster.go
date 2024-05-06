@@ -2921,7 +2921,7 @@ func (c *Cluster) removeDataPartitionRaftMember(dp *DataPartition, removePeer pr
 		log.LogErrorf("action[removeDataPartitionRaftMember] vol[%v],data partition[%v],err[%v]", dp.VolName, dp.PartitionID, err)
 		return
 	}
-	return dp.createTaskToRemoveRaftMember(c, removePeer, force)
+	return dp.createTaskToRemoveRaftMember(c, removePeer, force, false)
 }
 
 // call from remove raft member
