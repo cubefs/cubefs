@@ -561,6 +561,17 @@ func (dp *DataPartition) IsExistReplica(addr string) bool {
 	return false
 }
 
+func (dp *DataPartition) IsExistPeer(peer proto.Peer) bool {
+	dp.replicasLock.RLock()
+	defer dp.replicasLock.RUnlock()
+	for _, localPeer := range dp.config.Peers {
+		if peer.Addr == localPeer.Addr {
+			return true
+		}
+	}
+	return false
+}
+
 func (dp *DataPartition) IsExistReplicaWithNodeId(addr string, nodeID uint64) bool {
 	dp.replicasLock.RLock()
 	defer dp.replicasLock.RUnlock()
@@ -854,8 +865,10 @@ func (dp *DataPartition) updateReplicas(isForce bool) (err error) {
 		log.LogInfof("action[updateReplicas] partition(%v) replicas changed from (%v) to (%v).",
 			dp.partitionID, dp.replicas, replicas)
 	}
+	// only update isLeader, dp.replica can only be updated by member change. remove redundant trigged by master
+	// would be failed for not found error
 	dp.isLeader = isLeader
-	dp.replicas = replicas
+	// dp.replicas = replicas
 	dp.intervalToUpdateReplicas = time.Now().Unix()
 	log.LogInfof(fmt.Sprintf("ActionUpdateReplicationHosts partiton(%v), force(%v)", dp.partitionID, isForce))
 

@@ -1400,11 +1400,20 @@ func (s *DataNode) handlePacketToRemoveDataPartitionRaftMember(p *repl.Packet) {
 		p.GetReqID(), string(reqData), req.RemovePeer.Addr, dp.partitionID, dp.replicaNum)
 
 	p.PartitionID = req.PartitionId
-
-	if !dp.IsExistReplica(req.RemovePeer.Addr) && !req.Force {
-		log.LogWarnf("action[handlePacketToRemoveDataPartitionRaftMember]dp %v receive MasterCommand:  req %v "+
-			"RemoveRaftPeer(%v) force(%v) has not exist", dp.partitionID, p.GetReqID(), req.RemovePeer, req.Force)
-		return
+	log.LogInfof("action[handlePacketToRemoveDataPartitionRaftMember]dp %v config.Peer %v replica %v", dp.partitionID, dp.config.Peers, dp.replicas)
+	// do not return error to keep decommission progress go forword
+	if req.AutoRemove {
+		if !dp.IsExistPeer(req.RemovePeer) && !req.Force {
+			log.LogWarnf("action[handlePacketToRemoveDataPartitionRaftMember]dp %v receive MasterCommand:  req %v "+
+				"RemoveRaftPeer(%v) force(%v) autoRemove(%v) has not exist", dp.partitionID, p.GetReqID(), req.RemovePeer, req.Force, req.AutoRemove)
+			return
+		}
+	} else {
+		if !dp.IsExistReplica(req.RemovePeer.Addr) && !req.Force {
+			log.LogWarnf("action[handlePacketToRemoveDataPartitionRaftMember]dp %v receive MasterCommand:  req %v "+
+				"RemoveRaftPeer(%v) force(%v)  autoRemove(%v) has not exist", dp.partitionID, p.GetReqID(), req.RemovePeer, req.Force, req.AutoRemove)
+			return
+		}
 	}
 
 	isRaftLeader, err = s.forwardToRaftLeader(dp, p, req.Force)

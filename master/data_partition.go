@@ -237,11 +237,12 @@ func (partition *DataPartition) createTaskToAddRaftMember(addPeer proto.Peer, le
 	return
 }
 
-func (partition *DataPartition) createTaskToRemoveRaftMember(c *Cluster, removePeer proto.Peer, force bool) (err error) {
+func (partition *DataPartition) createTaskToRemoveRaftMember(c *Cluster, removePeer proto.Peer, force bool, autoRemove bool) (err error) {
 	doWork := func(leaderAddr string) error {
 		log.LogInfof("action[createTaskToRemoveRaftMember] vol[%v],data partition[%v] removePeer %v leaderAddr %v", partition.VolName, partition.PartitionID, removePeer, leaderAddr)
 		req := newRemoveDataPartitionRaftMemberRequest(partition.PartitionID, removePeer)
 		req.Force = force
+		req.AutoRemove = autoRemove
 
 		task := proto.NewAdminTask(proto.OpRemoveDataPartitionRaftMember, leaderAddr, req)
 		partition.resetTaskID(task)
@@ -1994,7 +1995,7 @@ func (partition *DataPartition) checkReplicaMeta(c *Cluster) {
 		redundantPeers := findPeersToDeleteByConfig(replica.LocalPeers, partition.Peers)
 		for _, peer := range redundantPeers {
 			// remove raft member
-			partition.createTaskToRemoveRaftMember(c, peer, force)
+			partition.createTaskToRemoveRaftMember(c, peer, force, true)
 			log.LogInfof("action[checkReplicaMeta]dp(%v) remove redundant peer %v force %v",
 				partition.PartitionID, peer, force)
 		}
