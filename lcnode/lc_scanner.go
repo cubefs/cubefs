@@ -28,6 +28,7 @@ import (
 	"github.com/cubefs/cubefs/sdk/data/blobstore"
 	"github.com/cubefs/cubefs/sdk/data/stream"
 	"github.com/cubefs/cubefs/sdk/meta"
+	"github.com/cubefs/cubefs/util/auditlog"
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/cubefs/cubefs/util/routinepool"
 	"github.com/cubefs/cubefs/util/unboundedchan"
@@ -369,11 +370,19 @@ func (s *LcScanner) scan() {
 
 func (s *LcScanner) handleFile(dentry *proto.ScanDentry) {
 	log.LogDebugf("handleFile: %v, fileChan: %v", dentry, s.fileChan.Len())
+	var err error
+	start := time.Now()
+	defer func() {
+		if dentry.Op != "" {
+			auditlog.LogLcNodeOp(dentry.Op, dentry.Name, dentry.Path, dentry.ParentId, dentry.Inode, dentry.Size, dentry.WriteGen,
+				dentry.HasMek, dentry.StorageClass, proto.OpTypeToStorageType(dentry.Op), time.Since(start).Milliseconds(), err)
+		}
+	}()
 
 	switch dentry.Op {
 	case proto.OpTypeDelete:
 		s.limiter.Wait(context.Background())
-		_, err := s.mw.DeleteWithCond_ll(dentry.ParentId, dentry.Inode, dentry.Name, os.FileMode(dentry.Type).IsDir(), dentry.Path)
+		_, err = s.mw.DeleteWithCond_ll(dentry.ParentId, dentry.Inode, dentry.Name, os.FileMode(dentry.Type).IsDir(), dentry.Path)
 		if err != nil {
 			atomic.AddInt64(&s.currentStat.ErrorSkippedNum, 1)
 			log.LogWarnf("delete DeleteWithCond_ll err: %v, dentry: %+v, skip it", err, dentry)
@@ -387,12 +396,12 @@ func (s *LcScanner) handleFile(dentry *proto.ScanDentry) {
 	case proto.OpTypeStorageClassHDD:
 		s.limiter.Wait(context.Background())
 		if dentry.HasMek {
-			if err := s.mw.DeleteMigrationExtentKey(dentry.Inode, dentry.Path); err != nil {
+			if err = s.mw.DeleteMigrationExtentKey(dentry.Inode, dentry.Path); err != nil {
 				log.LogErrorf("DeleteMigrationExtentKey err: %v, dentry: %+v", err, dentry)
 			}
 			return
 		}
-		err := s.transitionMgr.migrate(dentry)
+		err = s.transitionMgr.migrate(dentry)
 		if err != nil {
 			atomic.AddInt64(&s.currentStat.ErrorSkippedNum, 1)
 			log.LogErrorf("migrate err: %v, dentry: %+v, skip it", err, dentry)
@@ -410,18 +419,19 @@ func (s *LcScanner) handleFile(dentry *proto.ScanDentry) {
 	case proto.OpTypeStorageClassEBS:
 		s.limiter.Wait(context.Background())
 		if dentry.HasMek {
-			if err := s.mw.DeleteMigrationExtentKey(dentry.Inode, dentry.Path); err != nil {
+			if err = s.mw.DeleteMigrationExtentKey(dentry.Inode, dentry.Path); err != nil {
 				log.LogErrorf("DeleteMigrationExtentKey err: %v, dentry: %+v", err, dentry)
 			}
 			return
 		}
-		oeks, err := s.transitionMgr.migrateToEbs(dentry)
+		var oek []proto.ObjExtentKey
+		oek, err = s.transitionMgr.migrateToEbs(dentry)
 		if err != nil {
 			atomic.AddInt64(&s.currentStat.ErrorSkippedNum, 1)
 			log.LogErrorf("migrateToEbs err: %v, dentry: %+v, skip it", err, dentry)
 			return
 		}
-		err = s.mw.UpdateExtentKeyAfterMigration(dentry.Inode, proto.OpTypeToStorageType(dentry.Op), oeks, dentry.WriteGen, delayDelMinute, dentry.Path)
+		err = s.mw.UpdateExtentKeyAfterMigration(dentry.Inode, proto.OpTypeToStorageType(dentry.Op), oek, dentry.WriteGen, delayDelMinute, dentry.Path)
 		if err != nil {
 			atomic.AddInt64(&s.currentStat.ErrorSkippedNum, 1)
 			log.LogErrorf("update extent key err: %v, dentry: %+v, skip it", err, dentry)
