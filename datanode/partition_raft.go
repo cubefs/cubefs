@@ -81,7 +81,7 @@ func (dp *DataPartition) raftPort() (heartbeat, replica int, err error) {
 func (dp *DataPartition) StartRaft(isLoad bool) (err error) {
 	begin := time.Now()
 	defer func() {
-		log.LogInfof("[StartRaft] load dp(%v) start raft using time(%v)", dp.partitionID, time.Since(begin))
+		log.LogInfof("[StartRaft] load dp(%v) start raft using time(%v), slow(%v)", dp.partitionID, time.Since(begin), time.Since(begin) > 1*time.Second)
 	}()
 
 	// cache or preload partition not support raft and repair.
@@ -248,7 +248,7 @@ func (dp *DataPartition) StartRaftLoggingSchedule() {
 			if dp.minAppliedID > dp.lastTruncateID { // Has changed
 				appliedID := atomic.LoadUint64(&dp.appliedID)
 				if err := dp.storeAppliedID(appliedID); err != nil {
-					log.LogErrorf("partition [%v] persist applied ID [%v] during scheduled truncate raft log failed: %v", dp.partitionID, appliedID, err)
+					log.LogErrorf("[StartRaftLoggingSchedule] partition [%v] persist applied ID [%v] during scheduled truncate raft log failed: %v", dp.partitionID, appliedID, err)
 					truncateRaftLogTimer.Reset(time.Minute)
 					dp.checkIsDiskError(err, WriteFlag)
 					continue
@@ -256,11 +256,11 @@ func (dp *DataPartition) StartRaftLoggingSchedule() {
 				dp.raftPartition.Truncate(dp.minAppliedID)
 				dp.lastTruncateID = dp.minAppliedID
 				if err := dp.PersistMetadata(); err != nil {
-					log.LogErrorf("partition [%v] persist metadata during scheduled truncate raft log failed: %v", dp.partitionID, err)
+					log.LogErrorf("[StartRaftLoggingSchedule] partition [%v] persist metadata during scheduled truncate raft log failed: %v", dp.partitionID, err)
 					truncateRaftLogTimer.Reset(time.Minute)
 					continue
 				}
-				log.LogInfof("partition [%v] scheduled truncate raft log [applied: %v, truncated: %v]", dp.partitionID, appliedID, dp.minAppliedID)
+				log.LogInfof("[StartRaftLoggingSchedule] partition [%v] scheduled truncate raft log [applied: %v, truncated: %v]", dp.partitionID, appliedID, dp.minAppliedID)
 			}
 			truncateRaftLogTimer.Reset(time.Minute)
 
