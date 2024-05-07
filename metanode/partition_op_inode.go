@@ -130,7 +130,7 @@ func txReplyInfo(inode *Inode, txInfo *proto.TransactionInfo, quotaInfos map[uin
 }
 
 // for compatibility: handle req from old version client without filed StorageType
-func (mp *metaPartition) checkCreateInoStorageClassFroCompatibility(reqStorageClass uint32, inodeId uint64) (err error, resultStorageClass uint32) {
+func (mp *metaPartition) checkCreateInoStorageClassForCompatibility(reqStorageClass uint32, inodeId uint64) (err error, resultStorageClass uint32) {
 	if proto.IsValidStorageClass(reqStorageClass) {
 		resultStorageClass = reqStorageClass
 		return
@@ -162,17 +162,23 @@ func (mp *metaPartition) checkCreateInoStorageClassFroCompatibility(reqStorageCl
 // CreateInode returns a new inode.
 func (mp *metaPartition) CreateInode(req *CreateInoReq, p *Packet, remoteAddr string) (err error) {
 	var (
-		status = proto.OpNotExistErr
-		reply  []byte
-		resp   interface{}
-		qinode *MetaQuotaInode
-		inoID  uint64
+		status               = proto.OpNotExistErr
+		reply                []byte
+		resp                 interface{}
+		qinode               *MetaQuotaInode
+		inoID                uint64
+		requiredStorageClass uint32
 	)
 	start := time.Now()
 	if mp.IsEnableAuditLog() {
 		defer func() {
 			auditlog.LogInodeOp(remoteAddr, mp.GetVolName(), p.GetOpMsg(), req.GetFullPath(), err, time.Since(start).Milliseconds(), inoID, 0)
 		}()
+	}
+	if err, requiredStorageClass = mp.checkCreateInoStorageClassForCompatibility(req.StorageType, inoID); err != nil {
+		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+		log.LogErrorf("[CreateInode] %v, req(%+v)", err.Error(), req)
+		return
 	}
 	inoID, err = mp.nextInodeID()
 	if err != nil {
@@ -184,12 +190,7 @@ func (mp *metaPartition) CreateInode(req *CreateInoReq, p *Packet, remoteAddr st
 	ino.Gid = req.Gid
 	ino.setVer(mp.verSeq)
 	ino.LinkTarget = req.Target
-
-	if err, ino.StorageClass = mp.checkCreateInoStorageClassFroCompatibility(req.StorageType, inoID); err != nil {
-		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
-		log.LogErrorf("[CreateInode] %v, req(%+v)", err.Error(), req)
-		return
-	}
+	ino.StorageClass = requiredStorageClass
 
 	if proto.IsStorageClassReplica(ino.StorageClass) {
 		ino.HybridCouldExtents.sortedEks = NewSortedExtents()
@@ -231,11 +232,12 @@ func (mp *metaPartition) CreateInode(req *CreateInoReq, p *Packet, remoteAddr st
 
 func (mp *metaPartition) QuotaCreateInode(req *proto.QuotaCreateInodeRequest, p *Packet, remoteAddr string) (err error) {
 	var (
-		status = proto.OpNotExistErr
-		reply  []byte
-		resp   interface{}
-		qinode *MetaQuotaInode
-		inoID  uint64
+		status               = proto.OpNotExistErr
+		reply                []byte
+		resp                 interface{}
+		qinode               *MetaQuotaInode
+		inoID                uint64
+		requiredStorageClass uint32
 	)
 	start := time.Now()
 	if mp.IsEnableAuditLog() {
@@ -243,6 +245,12 @@ func (mp *metaPartition) QuotaCreateInode(req *proto.QuotaCreateInodeRequest, p 
 			auditlog.LogInodeOp(remoteAddr, mp.GetVolName(), p.GetOpMsg(), req.GetFullPath(), err, time.Since(start).Milliseconds(), inoID, 0)
 		}()
 	}
+	if err, requiredStorageClass = mp.checkCreateInoStorageClassForCompatibility(req.StorageType, inoID); err != nil {
+		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+		log.LogErrorf("[QuotaCreateInode] %v, req(%+v)", err.Error(), req)
+		return
+	}
+
 	inoID, err = mp.nextInodeID()
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpInodeFullErr, []byte(err.Error()))
@@ -252,12 +260,7 @@ func (mp *metaPartition) QuotaCreateInode(req *proto.QuotaCreateInodeRequest, p 
 	ino.Uid = req.Uid
 	ino.Gid = req.Gid
 	ino.LinkTarget = req.Target
-
-	if err, ino.StorageClass = mp.checkCreateInoStorageClassFroCompatibility(req.StorageType, inoID); err != nil {
-		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
-		log.LogErrorf("[QuotaCreateInode] %v, req(%+v)", err.Error(), req)
-		return
-	}
+	ino.StorageClass = requiredStorageClass
 
 	for _, quotaId := range req.QuotaIds {
 		status = mp.mqMgr.IsOverQuota(false, true, quotaId)
@@ -953,10 +956,11 @@ func (mp *metaPartition) ClearInodeCache(req *proto.ClearInodeCacheRequest, p *P
 // TxCreateInode returns a new inode.
 func (mp *metaPartition) TxCreateInode(req *proto.TxCreateInodeRequest, p *Packet, remoteAddr string) (err error) {
 	var (
-		status = proto.OpNotExistErr
-		reply  []byte
-		resp   interface{}
-		inoID  uint64
+		status               = proto.OpNotExistErr
+		reply                []byte
+		resp                 interface{}
+		inoID                uint64
+		requiredStorageClass uint32
 	)
 	start := time.Now()
 	if mp.IsEnableAuditLog() {
@@ -964,6 +968,12 @@ func (mp *metaPartition) TxCreateInode(req *proto.TxCreateInodeRequest, p *Packe
 			auditlog.LogInodeOp(remoteAddr, mp.GetVolName(), p.GetOpMsg(), req.GetFullPath(), err, time.Since(start).Milliseconds(), inoID, 0)
 		}()
 	}
+	if err, requiredStorageClass = mp.checkCreateInoStorageClassForCompatibility(req.StorageType, inoID); err != nil {
+		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+		log.LogErrorf("[QuotaCreateInode] %v, req(%+v)", err.Error(), req)
+		return
+	}
+
 	inoID, err = mp.nextInodeID()
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpInodeFullErr, []byte(err.Error()))
@@ -994,7 +1004,7 @@ func (mp *metaPartition) TxCreateInode(req *proto.TxCreateInodeRequest, p *Packe
 	txIno.Inode.Uid = req.Uid
 	txIno.Inode.Gid = req.Gid
 	txIno.Inode.LinkTarget = req.Target
-	txIno.Inode.StorageClass = req.StorageType
+	txIno.Inode.StorageClass = requiredStorageClass
 
 	if log.EnableDebug() {
 		log.LogDebugf("NewTxInode: TxInode: %v", txIno)
