@@ -151,7 +151,7 @@ func (ps *PrometheusSender) parseLine(line, host string) {
 	if ps.EnableRespDuration && (strings.HasPrefix(statusCode, "2") || statusCode == "499") {
 		reqlengthTag := ps.getSizeTag(requestLength)
 		resplengthTag := ps.getSizeTag(responseLength)
-		respTimeMs := float64(entry.RespTime()) / 1e4
+		respTimeMs := float64(entry.RespTime()) / 1e3
 		ps.responseDurationCounter.WithLabelValues(host, ps.Service, ps.Team, tag, api, method, statusCode, reqlengthTag, resplengthTag).Observe(respTimeMs)
 	}
 	if ps.EnableXWarnCnt {
