@@ -32,7 +32,7 @@ import (
 	"github.com/cubefs/cubefs/util/log"
 )
 
-const DefaultStopDpLimit = 8
+const DefaultStopDpLimit = 4
 
 // SpaceManager manages the disk space.
 type SpaceManager struct {
@@ -96,57 +96,56 @@ func (manager *SpaceManager) Stop() {
 		recover()
 	}()
 	close(manager.stopC)
-	// Parallel stop data partitions.
-	const maxParallelism = 128
-	var parallelism = int(math.Min(float64(maxParallelism), float64(len(manager.partitions))))
-	wg := sync.WaitGroup{}
-	partitionC := make(chan *DataPartition, parallelism)
-	wg.Add(1)
 
 	// Close raft store.
 	for _, partition := range manager.partitions {
 		partition.stopRaft()
 	}
 
-	limitCh := make(map[string]chan interface{})
-	for _, partition := range manager.partitions {
-		_, ok := limitCh[partition.Disk().Path]
-		if !ok {
-			ch := make(chan interface{}, manager.currentStopDpCount)
-			defer func() {
-				close(ch)
-			}()
-			limitCh[partition.Disk().Path] = ch
-		}
-	}
+	var wg sync.WaitGroup
+	for _, d := range manager.disks {
+		dps := make([]*DataPartition, 0)
 
-	go func(c chan<- *DataPartition) {
-		defer wg.Done()
-		for _, partition := range manager.partitions {
-			c <- partition
+		for _, dp := range manager.partitions {
+			if dp.disk == d {
+				dps = append(dps, dp)
+			}
 		}
-		close(c)
-	}(partitionC)
-
-	for i := 0; i < parallelism; i++ {
 		wg.Add(1)
-		go func(c <-chan *DataPartition) {
+		go func(d *Disk, dps []*DataPartition) {
+			begin := time.Now()
+			defer func() {
+				log.LogInfof("[Stop] stop disk(%v) using time(%v) dp cnt(%v)", d.Path, time.Since(begin), len(dps))
+			}()
+
 			defer wg.Done()
-			var partition *DataPartition
-			for {
-				if partition = <-c; partition == nil {
-					return
-				}
-				func() {
-					limit := limitCh[partition.Disk().Path]
-					defer func() {
-						<-limit
-					}()
-					limit <- 1
-					partition.Stop()
+
+			var stopWg sync.WaitGroup
+			defer func() {
+				stopWg.Wait()
+			}()
+
+			stopCh := make(chan *DataPartition, manager.currentStopDpCount)
+			defer close(stopCh)
+
+			for i := 0; i < manager.currentStopDpCount; i++ {
+				stopWg.Add(1)
+				go func() {
+					defer stopWg.Done()
+					for {
+						dp, ok := <-stopCh
+						if !ok {
+							return
+						}
+						dp.Stop()
+					}
 				}()
 			}
-		}(partitionC)
+
+			for _, dp := range dps {
+				stopCh <- dp
+			}
+		}(d, dps)
 	}
 	wg.Wait()
 }

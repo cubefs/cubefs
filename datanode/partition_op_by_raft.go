@@ -229,6 +229,7 @@ func (dp *DataPartition) ApplyRandomWrite(command []byte, raftApplyID uint64) (r
 				return
 			}
 			err = fmt.Errorf("[ApplyRandomWrite] ApplyID(%v) Partition(%v)_Extent(%v)_ExtentOffset(%v)_Size(%v) apply err(%v) retry[20]", raftApplyID, dp.partitionID, opItem.extentID, opItem.offset, opItem.size, err)
+			log.LogErrorf("[ApplyRandomWrite] dp(%v) failed to apply log entry, apply id(%v) err(%v)", dp.partitionID, raftApplyID, err)
 			exporter.Warning(err.Error())
 			resp = proto.OpDiskErr
 			panic(newRaftApplyError(err))
