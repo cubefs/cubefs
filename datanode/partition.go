@@ -473,7 +473,11 @@ func (dp *DataPartition) SnapShot() (files []*proto.File) {
 func (dp *DataPartition) Stop() {
 	begin := time.Now()
 	defer func() {
-		msg := fmt.Sprintf("[Stop] stop dp(%v) using time(%v)", dp.partitionID, time.Since(begin))
+		diskPath := ""
+		if dp.disk != nil {
+			diskPath = dp.disk.Path
+		}
+		msg := fmt.Sprintf("[Stop] stop disk(%v) dp(%v) using time(%v), slow(%v)", diskPath, dp.partitionID, time.Since(begin), time.Since(begin) > 100*time.Millisecond)
 		log.LogInfo(msg)
 	}()
 	dp.stopOnce.Do(func() {

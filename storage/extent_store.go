@@ -409,6 +409,11 @@ func (s *ExtentStore) GetExtentInfoCount() (count int) {
 }
 
 func (s *ExtentStore) writeReadDirHint() (err error) {
+	begin := time.Now()
+	defer func() {
+		log.LogInfof("[writeReadDirHint] store(%v) write dir hint extent cnt(%v) using time(%v), slow(%v)", s.dataPath, s.GetExtentCount(), time.Since(begin), time.Since(begin) > 100*time.Millisecond)
+	}()
+
 	hintTempPath := path.Join(s.dataPath, ExtentReadDirHintTemp)
 	hintPath := path.Join(s.dataPath, ExtentReadDirHint)
 	buff := bytes.NewBuffer([]byte{})
@@ -819,7 +824,7 @@ func (s *ExtentStore) Flush() {
 func (s *ExtentStore) Close() {
 	begin := time.Now()
 	defer func() {
-		log.LogInfof("[Close] close extent store using time(%v)", time.Since(begin))
+		log.LogInfof("[Close] store(%v) close extent store using time(%v), slow(%v)", s.dataPath, time.Since(begin), time.Since(begin) > 100*time.Millisecond)
 	}()
 	s.mutex.Lock()
 	defer s.mutex.Unlock()

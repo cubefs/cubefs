@@ -179,5 +179,6 @@ func (dp *DataPartition) Del(key interface{}) (interface{}, error) {
 }
 
 func (dp *DataPartition) uploadApplyID(applyID uint64) {
+	log.LogDebugf("[uploadApplyID] dp(%v) upload apply id(%v)", dp.partitionID, applyID)
 	atomic.StoreUint64(&dp.appliedID, applyID)
 }
