@@ -277,11 +277,11 @@ func formatDataPartitionTableRow(view *proto.DataPartitionResponse) string {
 var (
 	partitionInfoTablePattern = "%-8v    %-8v    %-10v     %-12v     %-12v    %-18v"
 	partitionInfoTableHeader  = fmt.Sprintf(partitionInfoTablePattern,
-		"ID", "VOLUME", "REPLICAS", "STATUS", "MediaType", "MEMBERS") // TODO:tangjingyu MP has no MediaType
+		"ID", "VOLUME", "REPLICAS", "STATUS", "MediaType", "MEMBERS")
 
 	badReplicaPartitionInfoTablePattern = "%-8v    %-8v    %-8v    %-8v    %-24v    %-24v"
 	badReplicaPartitionInfoTableHeader  = fmt.Sprintf(badReplicaPartitionInfoTablePattern,
-		"DP_ID", "VOLUME", "REPLICAS", "DP_STATUS", "MEMBERS", "UNAVAILABLE_REPLICAS")
+		"ID", "VOLUME", "REPLICAS", "STATUS", "MEMBERS", "UNAVAILABLE_REPLICAS")
 
 	repFileCountDifferPartitionInfoTablePattern = "%-8v    %-8v    %-8v    %-8v    %-24v"
 	RepFileCountDifferInfoTableHeader           = fmt.Sprintf(repFileCountDifferPartitionInfoTablePattern,
@@ -416,7 +416,8 @@ func formatMetaPartitionReplicaDentryNotEqualInfoRow(partition *proto.MetaPartit
 
 func formatMetaPartitionInfoRow(partition *proto.MetaPartitionInfo) string {
 	return fmt.Sprintf(partitionInfoTablePattern,
-		partition.PartitionID, partition.VolName, partition.ReplicaNum, formatDataPartitionStatus(partition.Status), strings.Join(partition.Hosts, ", "))
+		partition.PartitionID, partition.VolName, partition.ReplicaNum,
+		formatDataPartitionStatus(partition.Status), "N/A", strings.Join(partition.Hosts, ", "))
 }
 
 func formatBadReplicaMpInfoRow(partition *proto.MetaPartitionInfo) string {
