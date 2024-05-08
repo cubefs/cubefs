@@ -51,9 +51,8 @@ type DataPartitionSelector interface {
 	// Count return number of data partitions held by selector.
 	Count() int
 
+	// GetAllDp return data partitions held by selector
 	GetAllDp() (dp []*DataPartition)
-
-	GetDpCount() (count int)
 }
 
 var (
@@ -135,7 +134,7 @@ func (w *Wrapper) refreshDpSelector(refreshPolicy RefreshDpPolicy, partitions []
 
 	log.LogInfof("[refreshDpSelector] refresh dp, partition count(%v)", len(partitions))
 	if refreshPolicy == UpdateDpPolicy {
-		minDpCount := w.refreshMinDpCount(dpSelector.GetDpCount())
+		minDpCount := w.refreshMinDpCount(dpSelector.Count())
 		// NOTE: if decrease more than 1/3 dp at once
 		if len(partitions) < minDpCount {
 			oldDps := dpSelector.GetAllDp()

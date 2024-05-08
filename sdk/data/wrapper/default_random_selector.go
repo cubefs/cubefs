@@ -178,10 +178,3 @@ func (s *DefaultRandomSelector) GetAllDp() (dps []*DataPartition) {
 	copy(dps, s.partitions)
 	return
 }
-
-func (s *DefaultRandomSelector) GetDpCount() (count int) {
-	s.RLock()
-	defer s.RUnlock()
-	count = len(s.partitions)
-	return
-}

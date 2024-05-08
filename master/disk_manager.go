@@ -17,6 +17,7 @@ package master
 import (
 	"fmt"
 	"math"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -244,6 +245,7 @@ type DecommissionDisk struct {
 	DiskDisable              bool
 	Type                     uint32
 	DecommissionCompleteTime int64
+	UpdateMutex              sync.Mutex `json:"-"`
 }
 
 func (dd *DecommissionDisk) GenerateKey() string {
@@ -280,6 +282,9 @@ func (dd *DecommissionDisk) updateDecommissionStatus(c *Cluster, debug bool) (ui
 	if dd.GetDecommissionStatus() == DecommissionPause {
 		return DecommissionPause, float64(0)
 	}
+
+	dd.UpdateMutex.Lock()
+	defer dd.UpdateMutex.Unlock()
 
 	defer func() {
 		c.syncUpdateDecommissionDisk(dd)
@@ -337,6 +342,18 @@ func (dd *DecommissionDisk) updateDecommissionStatus(c *Cluster, debug bool) (ui
 	}
 	dd.SetDecommissionStatus(DecommissionRunning)
 	return DecommissionRunning, progress
+}
+
+func (dd *DecommissionDisk) Abort(c *Cluster) (err error) {
+	dd.UpdateMutex.Lock()
+	defer dd.UpdateMutex.Unlock()
+
+	err = c.syncDeleteDecommissionDisk(dd)
+	if err != nil {
+		return
+	}
+	c.DecommissionDisks.Delete(dd.GenerateKey())
+	return
 }
 
 func (dd *DecommissionDisk) GetDecommissionStatus() uint32 {

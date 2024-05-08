@@ -25,6 +25,7 @@ func newDiskCmd(client *master.MasterClient) *cobra.Command {
 		newDecommissionDiskCmd(client),
 		newRecommissionDiskCmd(client),
 		newQueryDecommissionDiskCmd(client),
+		newAbortDecommissionDiskCmd(client),
 	)
 	return cmd
 }
@@ -127,6 +128,31 @@ func newQueryDecommissionDiskCmd(client *master.MasterClient) *cobra.Command {
 				return
 			}
 			stdout("%v", formatDecommissionProgress(progress))
+		},
+	}
+	return cmd
+}
+
+const (
+	cmdAbortDecommissionDiskShort = "Abort disk decommission"
+)
+
+func newAbortDecommissionDiskCmd(client *master.MasterClient) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   CliOpAbortDecommission + " [DATA NODE ADDR] [DISK]",
+		Short: cmdAbortDecommissionDiskShort,
+		Args:  cobra.MinimumNArgs(2),
+		Run: func(cmd *cobra.Command, args []string) {
+			var err error
+			defer func() {
+				errout(err)
+			}()
+
+			err = client.AdminAPI().AbortDiskDecommission(args[0], args[1])
+			if err != nil {
+				return
+			}
+			stdout("%v\n", "Abort decommission successfully")
 		},
 	}
 	return cmd

@@ -6693,17 +6693,57 @@ func (m *Server) QueryDecommissionFailedDisk(w http.ResponseWriter, r *http.Requ
 	disks := make([]*proto.DecommissionFailedDiskInfo, 0)
 	m.cluster.DecommissionDisks.Range(func(key, value interface{}) bool {
 		d := value.(*DecommissionDisk)
-		if d.GetDecommissionStatus() == DecommissionFail && d.Type == uint32(decommType) {
-			disks = append(disks, &proto.DecommissionFailedDiskInfo{
-				SrcAddr:               d.SrcAddr,
-				DiskPath:              d.DiskPath,
-				DecommissionRaftForce: d.DecommissionRaftForce,
-				DecommissionRetry:     d.DecommissionRetry,
-				DecommissionDpTotal:   d.DecommissionDpTotal,
-				IsAutoDecommission:    d.Type == AutoDecommission,
-			})
+		if d.GetDecommissionStatus() == DecommissionFail {
+			if d.Type == uint32(decommType) || decommType == int(AllDecommission) {
+				disks = append(disks, &proto.DecommissionFailedDiskInfo{
+					SrcAddr:               d.SrcAddr,
+					DiskPath:              d.DiskPath,
+					DecommissionRaftForce: d.DecommissionRaftForce,
+					DecommissionRetry:     d.DecommissionRetry,
+					DecommissionDpTotal:   d.DecommissionDpTotal,
+					IsAutoDecommission:    d.Type == AutoDecommission,
+				})
+			}
 		}
 		return true
 	})
 	sendOkReply(w, r, newSuccessHTTPReply(disks))
+}
+
+func (m *Server) abortDecommissionDisk(w http.ResponseWriter, r *http.Request) {
+	var (
+		err  error
+		addr string
+		disk string
+	)
+
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminAbortDecommissionDisk))
+	defer func() {
+		doStatAndMetric(proto.AdminAbortDecommissionDisk, metric, err, nil)
+	}()
+
+	addr, err = parseAndExtractNodeAddr(r)
+	if err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	disk, err = extractDiskPath(r)
+	if err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	key := fmt.Sprintf("%v_%v", addr, disk)
+	val, ok := m.cluster.DecommissionDisks.Load(key)
+	if !ok {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: fmt.Sprintf("decommission datanode %v disk %v not found", addr, disk)})
+		return
+	}
+	dd := val.(*DecommissionDisk)
+	err = dd.Abort(m.cluster)
+	if err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodePersistenceByRaft, Msg: err.Error()})
+		return
+	}
+	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("cancel decommission datanode(%v) disk(%v) success", addr, disk)))
 }
