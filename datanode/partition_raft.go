@@ -239,6 +239,7 @@ func (dp *DataPartition) StartRaftLoggingSchedule() {
 				if err := dp.storeAppliedID(appliedID); err != nil {
 					log.LogErrorf("partition [%v] persist applied ID [%v] during scheduled truncate raft log failed: %v", dp.partitionID, appliedID, err)
 					truncateRaftLogTimer.Reset(time.Minute)
+					dp.checkIsDiskError(err, WriteFlag)
 					continue
 				}
 				dp.raftPartition.Truncate(dp.minAppliedID)
@@ -256,6 +257,7 @@ func (dp *DataPartition) StartRaftLoggingSchedule() {
 			appliedID := atomic.LoadUint64(&dp.appliedID)
 			if err := dp.storeAppliedID(appliedID); err != nil {
 				log.LogErrorf("partition [%v] scheduled persist applied ID [%v] failed: %v", dp.partitionID, appliedID, err)
+				dp.checkIsDiskError(err, WriteFlag)
 			}
 			storeAppliedIDTimer.Reset(time.Second * 10)
 		}
