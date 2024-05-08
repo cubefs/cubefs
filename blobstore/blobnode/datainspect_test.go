@@ -38,13 +38,14 @@ func TestDataInspect(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, cfg.IntervalSec, mgr.conf.IntervalSec)
 
+	ds1.EXPECT().IsWritable().AnyTimes().Return(true)
+	ds2.EXPECT().IsWritable().AnyTimes().Return(true)
+
 	{
 		ds1.EXPECT().ID().Times(2).Return(proto.DiskID(11))
 		ds1.EXPECT().ListChunks(any).Return(nil, errMock)
-		ds1.EXPECT().Status().Return(proto.DiskStatusNormal)
 		ds2.EXPECT().ID().Times(2).Return(proto.DiskID(22))
 		ds2.EXPECT().ListChunks(any).Return(nil, errMock)
-		ds2.EXPECT().Status().Return(proto.DiskStatusNormal)
 		// close(svr.closeCh)
 		mgr.inspectAllDisks(ctx)
 

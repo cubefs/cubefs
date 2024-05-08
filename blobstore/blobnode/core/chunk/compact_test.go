@@ -137,6 +137,10 @@ func (mock *diskMock) IsCleanUp(ctx context.Context) bool {
 	return true
 }
 
+func (mock *diskMock) IsWritable() bool {
+	return true
+}
+
 func (mock *diskMock) Close(ctx context.Context) {
 	// do nothing
 }

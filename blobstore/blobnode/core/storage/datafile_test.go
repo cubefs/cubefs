@@ -334,19 +334,21 @@ func TestChunkData_Delete(t *testing.T) {
 	}
 
 	log.Infof("chunkdata: \n%s", cd)
+	statBefore, err := cd.ef.SysStat()
+	require.NoError(t, err)
 
 	for i := 0; i < concurrency; i++ {
 		err = cd.Delete(ctx, shards[i])
 		require.NoError(t, err)
 	}
 
-	stat, err := cd.ef.SysStat()
+	stat, err := cd.ef.SysStat() // after delete
 	require.NoError(t, err)
 	log.Infof("stat: %v", stat)
 	log.Infof("blksize: %d", stat.Blocks)
 
 	require.Equal(t, true, int(stat.Blocks) >= 8)
-	// require.Equal(t, true, int(stat.Blocks) < (1+len(shards))*8)
+	require.Less(t, stat.Blocks, statBefore.Blocks)
 
 	shardData := []byte("test")
 	// normal write

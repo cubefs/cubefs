@@ -733,7 +733,7 @@ func (cs *chunk) Destroy(ctx context.Context) {
 func (cs *chunk) AllowModify() (err error) {
 	ds := cs.Disk()
 
-	if ds.Status() >= proto.DiskStatusBroken {
+	if !ds.IsWritable() { // not writable, return
 		return bloberr.ErrDiskBroken
 	}
 

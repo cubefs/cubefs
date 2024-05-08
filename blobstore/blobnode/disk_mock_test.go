@@ -206,6 +206,20 @@ func (mr *MockDiskAPIMockRecorder) IsCleanUp(arg0 interface{}) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "IsCleanUp", reflect.TypeOf((*MockDiskAPI)(nil).IsCleanUp), arg0)
 }
 
+// IsWritable mocks base method.
+func (m *MockDiskAPI) IsWritable() bool {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "IsWritable")
+	ret0, _ := ret[0].(bool)
+	return ret0
+}
+
+// IsWritable indicates an expected call of IsWritable.
+func (mr *MockDiskAPIMockRecorder) IsWritable() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "IsWritable", reflect.TypeOf((*MockDiskAPI)(nil).IsWritable))
+}
+
 // ListChunks mocks base method.
 func (m *MockDiskAPI) ListChunks(arg0 context.Context) ([]core.VuidMeta, error) {
 	m.ctrl.T.Helper()
