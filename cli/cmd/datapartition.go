@@ -252,17 +252,14 @@ The "reset" command will be released in next version`,
 			stdoutln()
 			stdoutln("[Partition with disk error replicas]:")
 			stdoutln(diskErrorReplicaPartitionInfoTableHeader)
-			sort.SliceStable(diagnosis.DiskErrorDataPartitionIDs, func(i, j int) bool {
-				return diagnosis.DiskErrorDataPartitionIDs[i] < diagnosis.DiskErrorDataPartitionIDs[j]
-			})
-			for _, pid := range diagnosis.DiskErrorDataPartitionIDs {
+			for pid, infos := range diagnosis.DiskErrorDataPartitionInfos.DiskErrReplicas {
 				var partition *proto.DataPartitionInfo
 				if partition, err = client.AdminAPI().GetDataPartition("", pid); err != nil {
 					err = fmt.Errorf("Partition not found, err:[%v] ", err)
 					return
 				}
 				if partition != nil {
-					stdoutln(formatDiskErrorReplicaDpInfoRow(partition))
+					stdoutln(formatDiskErrorReplicaDpInfoRow(partition, infos))
 				}
 			}
 		},
