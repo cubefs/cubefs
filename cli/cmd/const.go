@@ -28,6 +28,7 @@ const (
 	CliOpDecommission                = "decommission"
 	CliOpRecommission                = "recommission"
 	CliOpQueryProgress               = "query-progress"
+	CliOpAbortDecommission           = "abort-decommission"
 	CliOpMigrate                     = "migrate"
 	CliOpDownloadZip                 = "load"
 	CliOpMetaCompatibility           = "meta"

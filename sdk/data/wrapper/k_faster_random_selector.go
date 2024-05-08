@@ -152,13 +152,6 @@ func (s *KFasterRandomSelector) GetAllDp() (dps []*DataPartition) {
 	return
 }
 
-func (s *KFasterRandomSelector) GetDpCount() (count int) {
-	s.RLock()
-	defer s.RUnlock()
-	count = len(s.partitions)
-	return
-}
-
 func (s *KFasterRandomSelector) Count() int {
 	s.RLock()
 	defer s.RUnlock()

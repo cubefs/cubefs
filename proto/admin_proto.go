@@ -85,6 +85,7 @@ const (
 	AdminUpdateDecommissionLimit              = "/admin/updateDecommissionLimit"
 	AdminQueryDecommissionLimit               = "/admin/queryDecommissionLimit"
 	AdminQueryDecommissionFailedDisk          = "/admin/queryDecommissionFailedDisk"
+	AdminAbortDecommissionDisk                = "/admin/abortDecommissionDisk"
 	// #nosec G101
 	AdminQueryDecommissionToken = "/admin/queryDecommissionToken"
 	AdminSetFileStats           = "/admin/setFileStatsEnable"
