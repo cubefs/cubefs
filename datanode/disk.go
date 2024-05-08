@@ -17,7 +17,6 @@ package datanode
 import (
 	"context"
 	"fmt"
-	syslog "log"
 	"os"
 	"path"
 	"regexp"
@@ -31,7 +30,6 @@ import (
 	"golang.org/x/time/rate"
 
 	"github.com/cubefs/cubefs/proto"
-	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/loadutil"
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/cubefs/cubefs/util/strutil"
@@ -85,7 +83,7 @@ type Disk struct {
 
 	// diskPartition info
 	diskPartition               *disk.PartitionStat
-	DiskErrPartitionSet         map[uint64]struct{}
+	DiskErrPartitionSet         sync.Map
 	decommission                bool
 	extentRepairReadLimit       chan struct{}
 	enableExtentRepairReadLimit bool
@@ -135,8 +133,6 @@ func NewDisk(path string, reservedSpace, diskRdonlySpace uint64, maxErrCnt int, 
 	d.limitFactor[proto.IopsWriteType] = rate.NewLimiter(rate.Limit(proto.QosDefaultDiskMaxIoLimit), defaultIOLimitBurst)
 	d.limitRead = newIOLimiter(space.dataNode.diskReadFlow, space.dataNode.diskReadIocc)
 	d.limitWrite = newIOLimiter(space.dataNode.diskWriteFlow, space.dataNode.diskWriteIocc)
-
-	d.DiskErrPartitionSet = make(map[uint64]struct{}, 0)
 
 	err = d.initDecommissionStatus()
 	if err != nil {
@@ -436,7 +432,7 @@ func (d *Disk) doDiskError() {
 
 func (d *Disk) triggerDiskError(rwFlag uint8, dpId uint64) {
 	mesg := fmt.Sprintf("disk path %v error on %v, dpId %v", d.Path, LocalIP, dpId)
-	exporter.Warning(mesg)
+	//exporter.Warning(mesg)
 	log.LogWarnf(mesg)
 
 	if rwFlag == WriteFlag {
@@ -455,7 +451,7 @@ func (d *Disk) triggerDiskError(rwFlag uint8, dpId uint64) {
 		msg := fmt.Sprintf("set disk unavailable for too many disk error, "+
 			"disk path(%v), ip(%v), diskErrCnt(%v), diskErrPartitionCnt(%v) threshold(%v)",
 			d.Path, LocalIP, diskErrCnt, diskErrPartitionCnt, d.dataNode.diskUnavailablePartitionErrorCount)
-		exporter.Warning(msg)
+		//exporter.Warning(msg)
 		log.LogWarnf(msg)
 		d.doDiskError()
 	}
@@ -470,7 +466,7 @@ func (d *Disk) updateSpaceInfo() (err error) {
 	if d.Status == proto.Unavailable {
 		mesg := fmt.Sprintf("disk path %v error on %v", d.Path, LocalIP)
 		log.LogErrorf(mesg)
-		exporter.Warning(mesg)
+		// exporter.Warning(mesg)
 		// d.ForceExitRaftStore()
 	} else if d.Available <= 0 {
 		d.Status = proto.ReadOnly
@@ -497,7 +493,7 @@ func (d *Disk) AttachDataPartition(dp *DataPartition) {
 func (d *Disk) DetachDataPartition(dp *DataPartition) {
 	d.Lock()
 	delete(d.partitionMap, dp.partitionID)
-	delete(d.DiskErrPartitionSet, dp.partitionID)
+	d.DiskErrPartitionSet.Delete(dp.partitionID)
 	d.Unlock()
 
 	d.computeUsage()
@@ -642,8 +638,11 @@ func (d *Disk) RestorePartition(visitor PartitionVisitor) (err error) {
 				mesg := fmt.Sprintf("action[RestorePartition] new partition(%v) err(%v) ",
 					partitionID, err.Error())
 				log.LogError(mesg)
-				exporter.Warning(mesg)
-				syslog.Println(mesg)
+				if IsDiskErr(err.Error()) {
+					d.triggerDiskError(ReadFlag, partitionID)
+				}
+				//exporter.Warning(mesg)
+				//syslog.Println(mesg)
 				return
 			}
 			if visitor != nil {
@@ -724,22 +723,20 @@ func (d *Disk) getSelectWeight() float64 {
 }
 
 func (d *Disk) AddDiskErrPartition(dpId uint64) {
-	if _, ok := d.DiskErrPartitionSet[dpId]; !ok {
-		log.LogWarnf("[AddDiskErrPartition] mark dp(%v) as broken", dpId)
-		d.DiskErrPartitionSet[dpId] = struct{}{}
-	}
+	d.DiskErrPartitionSet.Store(dpId, struct{}{})
 }
 
 func (d *Disk) GetDiskErrPartitionList() (diskErrPartitionList []uint64) {
 	diskErrPartitionList = make([]uint64, 0)
-	for k := range d.DiskErrPartitionSet {
-		diskErrPartitionList = append(diskErrPartitionList, k)
-	}
+	d.DiskErrPartitionSet.Range(func(key, value interface{}) bool {
+		diskErrPartitionList = append(diskErrPartitionList, key.(uint64))
+		return true
+	})
 	return diskErrPartitionList
 }
 
 func (d *Disk) GetDiskErrPartitionCount() uint64 {
-	return uint64(len(d.DiskErrPartitionSet))
+	return uint64(len(d.GetDiskErrPartitionList()))
 }
 
 // isExpiredPartition return whether one partition is expired

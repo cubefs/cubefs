@@ -180,6 +180,14 @@ type BadPartitionView struct {
 	PartitionIDs []uint64
 }
 
+type DiskErrPartitionView struct {
+	DiskErrReplicas map[uint64][]DiskErrReplicaInfo
+}
+
+type DiskErrReplicaInfo struct {
+	Addr string
+	Disk string
+}
 type ClusterStatInfo struct {
 	DataNodeStatInfo *NodeStatInfo
 	MetaNodeStatInfo *NodeStatInfo
@@ -323,9 +331,9 @@ type DataPartitionDiagnosis struct {
 	RepUsedSizeDifferDpIDs      []uint64
 	ExcessReplicaDpIDs          []uint64
 	// BadDataPartitionIDs         []BadPartitionView
-	BadDataPartitionInfos      []BadPartitionRepairView
-	BadReplicaDataPartitionIDs []uint64
-	DiskErrorDataPartitionIDs  []uint64
+	BadDataPartitionInfos       []BadPartitionRepairView
+	BadReplicaDataPartitionIDs  []uint64
+	DiskErrorDataPartitionInfos DiskErrPartitionView
 }
 
 // meta partition diagnosis represents the inactive meta nodes, corrupt meta partitions, and meta partitions lack of replicas
