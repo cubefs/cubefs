@@ -935,17 +935,17 @@ func formatDataPartitionDecommissionProgress(info *proto.DecommissionDataPartiti
 	return sb.String()
 }
 
-func formatDiskErrorReplicaDpInfoRow(partition *proto.DataPartitionInfo) string {
+func formatDiskErrorReplicaDpInfoRow(partition *proto.DataPartitionInfo, infos []proto.DiskErrReplicaInfo) string {
 	sb := strings.Builder{}
 	sb.WriteString("[")
 	firstItem := true
-	for _, replica := range partition.Replicas {
-		if replica.TriggerDiskError {
-			if !firstItem {
-				sb.WriteString(",")
-			}
-
-			sb.WriteString(fmt.Sprintf("%v(%v)", replica.Addr, replica.DiskPath))
+	for _, info := range infos {
+		if !firstItem {
+			sb.WriteString(",")
+		}
+		// if dp is not loaded, remove replica cannot delete dp from disk heartbeat report
+		if replicaInHost(partition.Hosts, info.Addr) {
+			sb.WriteString(fmt.Sprintf("%v(%v)", info.Addr, info.Disk))
 			firstItem = false
 		}
 	}
@@ -963,4 +963,12 @@ func formatDecommissionFailedDiskInfo(info *proto.DecommissionFailedDiskInfo) st
 	sb.WriteString(fmt.Sprintf("Retry:                %v\n", info.DecommissionRetry))
 	sb.WriteString(fmt.Sprintf("AutoDecommission:     %v\n", info.IsAutoDecommission))
 	return sb.String()
+}
+func replicaInHost(hosts []string, replica string) bool {
+	for _, host := range hosts {
+		if replica == host {
+			return true
+		}
+	}
+	return false
 }

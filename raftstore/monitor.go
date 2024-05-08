@@ -130,7 +130,7 @@ func (d *monitor) MonitorZombie(id uint64, peer proto.Peer, replicasMsg string, 
 	d.zombieDurations[zombiePeer] = du
 	d.zombieDurationMutex.Unlock()
 	log.LogError(errMsg)
-	exporter.Warning(errMsg)
+	// exporter.Warning(errMsg)
 }
 
 func (d *monitor) MonitorElection(id uint64, replicaMsg string, du time.Duration) {
