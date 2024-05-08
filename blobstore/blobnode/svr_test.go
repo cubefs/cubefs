@@ -24,6 +24,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/require"
@@ -33,6 +34,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/blobnode/base/flow"
 	"github.com/cubefs/cubefs/blobstore/blobnode/base/qos"
 	"github.com/cubefs/cubefs/blobstore/blobnode/core"
+	"github.com/cubefs/cubefs/blobstore/blobnode/core/disk"
 	"github.com/cubefs/cubefs/blobstore/blobnode/db"
 	bloberr "github.com/cubefs/cubefs/blobstore/common/errors"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
@@ -144,6 +146,73 @@ func TestHandleDiskIOError(t *testing.T) {
 		DiskID: proto.DiskID(102),
 	}
 	di, err = client.DiskInfo(ctx, host, diskInfoArg)
+	require.NoError(t, err)
+	require.Equal(t, proto.DiskID(102), di.DiskID)
+	require.Equal(t, di.Status, proto.DiskStatusNormal)
+}
+
+func TestHandleDiskDrop(t *testing.T) {
+	_, ctx := trace.StartSpanFromContextWithTraceID(context.Background(), "", "TestService")
+
+	service, _ := newTestBlobNodeService(t, "Service")
+	defer cleanTestBlobNodeService(service)
+
+	host := runTestServer(service)
+	client := bnapi.New(&bnapi.Config{})
+	// 2 disk
+	dis, err := client.Stat(ctx, host)
+	require.NoError(t, err)
+	require.Equal(t, 2, len(dis))
+
+	// create chunk in disk 101
+	service.lock.RLock()
+	ds, exist := service.Disks[proto.DiskID(101)]
+	service.lock.RUnlock()
+	require.True(t, exist)
+	require.Equal(t, proto.DiskID(101), ds.ID())
+	delCh := make(chan struct{}, 1)
+	cs, err := ds.CreateChunk(ctx, proto.Vuid(146095996936), 8) // creat chunk
+	require.NoError(t, err)
+	require.Equal(t, int64(1), ds.DiskInfo().UsedChunkCnt) // UsedChunkCnt is len(ds.Chunks
+
+	// relese chunk, and delete db meta
+	go func() {
+		time.Sleep(time.Millisecond * 100)
+		ds.ReleaseChunk(ctx, proto.Vuid(146095996936), true)
+		ds.(*disk.DiskStorageWrapper).SuperBlock.DeleteChunk(ctx, cs.ID())
+		delCh <- struct{}{}
+	}()
+
+	service.lock.RLock()
+	ds, exist = service.Disks[proto.DiskID(101)]
+	service.lock.RUnlock()
+	require.True(t, exist)
+	require.Equal(t, proto.DiskID(101), ds.ID())
+	service.Conf.DiskStatusCheckIntervalSec = 1
+	service.handleDiskDrop(ctx, ds)
+	require.Equal(t, ds.Status(), proto.DiskStatusDropped)
+
+	// release, check ds is clean
+	<-delCh
+	time.Sleep(time.Millisecond * 1100)
+	service.lock.RLock()
+	ds, exist = service.Disks[proto.DiskID(101)]
+	service.lock.RUnlock()
+	require.False(t, exist)
+
+	// 101 disk is delete, NoSuchDisk
+	diskInfoArg := &bnapi.DiskStatArgs{
+		DiskID: proto.DiskID(101),
+	}
+	_, err = client.DiskInfo(ctx, host, diskInfoArg)
+	require.NotNil(t, err)
+	require.Equal(t, bloberr.ErrNoSuchDisk.Error(), err.Error())
+
+	// 102 ok
+	diskInfoArg = &bnapi.DiskStatArgs{
+		DiskID: proto.DiskID(102),
+	}
+	di, err := client.DiskInfo(ctx, host, diskInfoArg)
 	require.NoError(t, err)
 	require.Equal(t, proto.DiskID(102), di.DiskID)
 	require.Equal(t, di.Status, proto.DiskStatusNormal)

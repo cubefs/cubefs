@@ -98,7 +98,7 @@ func (mgr *DataInspectMgr) inspectAllDisks(ctx context.Context) {
 
 	var wg sync.WaitGroup
 	for _, ds := range disks {
-		if ds.Status() >= proto.DiskStatusBroken {
+		if !ds.IsWritable() { // not writable, dont need inspect disk
 			continue
 		}
 		wg.Add(1)

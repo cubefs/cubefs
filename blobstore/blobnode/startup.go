@@ -95,17 +95,18 @@ func isAllInConfig(ctx context.Context, registeredDisks []*bnapi.DiskInfo, conf 
 	return true
 }
 
+// call by heartbeat single, or datafile read/write concurrence
 func (s *Service) handleDiskIOError(ctx context.Context, diskID proto.DiskID, diskErr error) {
 	span := trace.SpanFromContextSafe(ctx)
 
-	span.Debugf("diskID:%v diskErr: %v", diskID, diskErr)
+	span.Debugf("diskID:%d diskErr: %v", diskID, diskErr)
 
 	// first: set disk broken in memory
 	s.lock.RLock()
 	ds, exist := s.Disks[diskID]
 	s.lock.RUnlock()
 	if !exist {
-		span.Errorf("such disk(%v) does exist", diskID)
+		span.Errorf("such diskID(%d) does exist", diskID)
 		return
 	}
 
@@ -128,16 +129,17 @@ func (s *Service) handleDiskIOError(ctx context.Context, diskID proto.DiskID, di
 
 	ds.SetStatus(proto.DiskStatusBroken)
 
+	// May be used by callback func, when concurrently read/write shard in datafile.go. so limit do once
 	_, _, shared := s.groupRun.Do(fmt.Sprintf("diskID:%d", diskID), func() (interface{}, error) {
 		// second: notify cluster mgr
 		for {
 			err := s.ClusterMgrClient.SetDisk(ctx, diskID, proto.DiskStatusBroken)
 			// error is nil or already broken status
 			if err == nil || rpc.DetectStatusCode(err) == bloberr.CodeChangeDiskStatusNotAllow {
-				span.Infof("set disk(%v) broken success, err:%v", diskID, err)
+				span.Infof("set disk(%d) broken success, err:%v", diskID, err)
 				break
 			}
-			span.Errorf("set disk(%v) broken failed: %v", diskID, err)
+			span.Errorf("set disk(%d) broken failed: %v", diskID, err)
 			time.Sleep(3 * time.Second)
 		}
 
@@ -147,7 +149,7 @@ func (s *Service) handleDiskIOError(ctx context.Context, diskID proto.DiskID, di
 		return nil, nil
 	})
 
-	span.Debugf("diskID:%v diskErr: %v, shared:%v", diskID, diskErr, shared)
+	span.Debugf("diskID:%d diskErr: %v, shared:%v", diskID, diskErr, shared)
 }
 
 func (s *Service) waitRepairAndClose(ctx context.Context, disk core.DiskAPI) {
@@ -156,7 +158,7 @@ func (s *Service) waitRepairAndClose(ctx context.Context, disk core.DiskAPI) {
 	ticker := time.NewTicker(time.Duration(s.Conf.DiskStatusCheckIntervalSec) * time.Second)
 	defer ticker.Stop()
 
-	diskId := disk.ID()
+	diskID := disk.ID()
 	for {
 		select {
 		case <-s.closeCh:
@@ -165,28 +167,20 @@ func (s *Service) waitRepairAndClose(ctx context.Context, disk core.DiskAPI) {
 		case <-ticker.C:
 		}
 
-		info, err := s.ClusterMgrClient.DiskInfo(ctx, diskId)
+		info, err := s.ClusterMgrClient.DiskInfo(ctx, diskID)
 		if err != nil {
-			span.Errorf("Failed get clustermgr diskinfo %v, err:%v", diskId, err)
+			span.Errorf("Failed get clustermgr diskinfo %d, err:%v", diskID, err)
 			continue
 		}
 
-		if info.Status == proto.DiskStatusDropped {
-			if disk.IsCleanUp(ctx) {
-				break // is clean, need to delete disk handler
-			}
-			continue // not clean, wait it, next check
-		}
-
 		if info.Status >= proto.DiskStatusRepairing {
-			span.Infof("disk:%v path:%s status:%v", diskId, info.Path, info.Status)
+			span.Infof("disk:%d path:%s status:%v", diskID, info.Path, info.Status)
 			break
 		}
 	}
 
 	// after the repair is triggered, the handle can be safely removed
-
-	span.Infof("Delete %v from the map table of the service", diskId)
+	span.Infof("Delete %d from the map table of the service", diskID)
 
 	s.lock.Lock()
 	delete(s.Disks, disk.ID())
@@ -194,7 +188,44 @@ func (s *Service) waitRepairAndClose(ctx context.Context, disk core.DiskAPI) {
 
 	disk.ResetChunks(ctx)
 
-	span.Infof("disk %v will gc close", diskId)
+	span.Infof("disk %d will gc close", diskID)
+}
+
+func (s *Service) handleDiskDrop(ctx context.Context, ds core.DiskAPI) {
+	diskID := ds.ID()
+	span := trace.SpanFromContextSafe(ctx)
+	span.Debugf("diskID:%d dropped, start check clean", diskID)
+
+	// 1. set disk dropped in memory
+	ds.SetStatus(proto.DiskStatusDropped)
+
+	// 2. check all chunks is clean: chunk handler in memory, physics chunk files
+	go func() {
+		ticker := time.NewTicker(time.Duration(s.Conf.DiskStatusCheckIntervalSec) * time.Second)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-s.closeCh:
+				span.Warn("service is closed. skip check disk drop")
+				return
+			case <-ticker.C:
+			}
+
+			if ds.IsCleanUp(ctx) {
+				break // is clean, need to delete disk handler
+			}
+			// not clean, wait it, next check
+		}
+
+		// 3. physics chunks is already empty, destroy disk/chunks handlers
+		span.Infof("diskID:%d dropped, will gc destroy resource", diskID)
+		s.lock.Lock()
+		delete(s.Disks, diskID)
+		s.lock.Unlock()
+
+		span.Debugf("diskID:%d dropped, end check clean", diskID)
+	}()
 }
 
 func setDefaultIOStat(dryRun bool) error {

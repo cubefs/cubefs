@@ -172,5 +172,6 @@ type DiskAPI interface {
 	WalkChunksWithLock(ctx context.Context, fn func(cs ChunkAPI) error) (err error)
 	ResetChunks(ctx context.Context)
 	IsCleanUp(ctx context.Context) bool
+	IsWritable() bool
 	Close(ctx context.Context)
 }
