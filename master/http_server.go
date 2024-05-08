@@ -400,6 +400,9 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 	router.NewRoute().Methods(http.MethodGet).
 		Path(proto.AdminQueryDecommissionFailedDisk).
 		HandlerFunc(m.QueryDecommissionFailedDisk)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminAbortDecommissionDisk).
+		HandlerFunc(m.abortDecommissionDisk)
 
 	// multi version snapshot APIs
 	router.NewRoute().Methods(http.MethodGet).

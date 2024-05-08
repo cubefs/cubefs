@@ -734,3 +734,12 @@ func (api *AdminAPI) QueryDecommissionFailedDisk(decommType int) (diskInfo []*pr
 	err = api.mc.requestWith(&diskInfo, request)
 	return
 }
+
+func (api *AdminAPI) AbortDiskDecommission(addr string, disk string) (err error) {
+	request := newRequest(post, proto.AdminAbortDecommissionDisk)
+	request.addParam("addr", addr)
+	request.addParam("disk", disk)
+
+	err = api.mc.request(request)
+	return
+}
