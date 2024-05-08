@@ -86,7 +86,7 @@ func (s *Streamer) SetParentInode(inode uint64) {
 
 // String returns the string format of the streamer.
 func (s *Streamer) String() string {
-	return fmt.Sprintf("Streamer{ino(%v)}", s.inode)
+	return fmt.Sprintf("Streamer{ino(%v), refcnt(%v), isOpen(%v), inflight(%v), eh(%v) addr(%p)}", s.inode, s.refcnt, s.isOpen, len(s.request), s.handler, s)
 }
 
 // TODO should we call it RefreshExtents instead?
