@@ -455,7 +455,10 @@ func (s *Streamer) doWrite(data []byte, offset, size int, direct bool) (total in
 	if proto.IsHot(s.client.volumeType) {
 		if storeMode == proto.NormalExtentType && (s.handler == nil || s.handler != nil && s.handler.fileOffset+s.handler.size != offset) {
 			if currentEK := s.extents.GetEnd(uint64(offset)); currentEK != nil && !storage.IsTinyExtent(currentEK.ExtentId) {
-				s.closeOpenHandler()
+				err = s.closeOpenHandler()
+				if err != nil {
+					return
+				}
 
 				log.LogDebugf("doWrite: found ek in ExtentCache, offset(%v) size(%v), ekoffset(%v) eksize(%v)",
 					offset, size, currentEK.FileOffset, currentEK.Size)
@@ -486,7 +489,10 @@ func (s *Streamer) doWrite(data []byte, offset, size int, direct bool) (total in
 				s.dirty = false
 			} else if s.handler.storeMode != storeMode {
 				// store mode changed, so close open handler and start a new one
-				s.closeOpenHandler()
+				err = s.closeOpenHandler()
+				if err != nil {
+					break
+				}
 				continue
 			}
 			ek, err = s.handler.write(data, offset, size, direct)
@@ -501,7 +507,10 @@ func (s *Streamer) doWrite(data []byte, offset, size int, direct bool) (total in
 			log.LogDebugf("doWrite handler write failed so close open handler: ino(%v) offset(%v) size(%v) storeMode(%v) err(%v)",
 				s.inode, offset, size, storeMode, err)
 
-			s.closeOpenHandler()
+			err = s.closeOpenHandler()
+			if err != nil {
+				break
+			}
 		}
 	} else {
 		s.handler = NewExtentHandler(s, offset, storeMode, 0)
@@ -604,35 +613,38 @@ func (s *Streamer) traverse() (err error) {
 	return
 }
 
+// note: The invocation of the closeOpenHandler function on an inode is serialized
+// close open handler, then flush data
 func (s *Streamer) closeOpenHandler() (err error) {
 	log.LogDebugf("closeOpenHandler: streamer(%v)", s)
-	// just in case to avoid infinite loop
-	var cnt int = 2 * MaxPacketErrorCount
+	defer func() {
+		log.LogDebugf("closeOpenHandler: close success, stream(%v)", s)
+	}()
 
 	handler := s.handler
-	for handler != nil && cnt >= 0 {
-		handler.setClosed()
-		log.LogDebugf("closeOpenHandler: eh(%v)", handler)
-		if s.dirtylist.Len() < MaxDirtyListLen {
-			handler.flushPacket()
-		} else {
-			// TODO unhandled error
-			err = s.handler.flush()
+	if handler != nil {
+		log.LogDebugf("closeOpenHandler: flush open handler now, eh(%v)", handler)
+		err = handler.flush()
+		if err != nil {
+			log.LogErrorf("closeOpenHandler: eh(%v) flush failed, err %s", handler, err.Error())
+			return
 		}
-		handler = handler.recoverHandler
-		cnt--
-	}
 
-	if s.handler != nil {
+		handler.setClosed()
 		if !s.dirty {
 			// in case the current handler is not on the dirty list and will not get cleaned up
-			// TODO unhandled error
-			log.LogDebugf("closeOpenHandler cleanup: eh(%v)", s.handler)
+			log.LogDebugf("closeOpenHandler need cleanup: eh(%v)", s.handler)
 			s.handler.cleanup()
 		}
 		s.handler = nil
 	}
-	return err
+
+	err = s.flush()
+	if err != nil {
+		log.LogErrorf("closeOpenHandler: flush extent failed, err %s", err.Error())
+		return err
+	}
+	return nil
 }
 
 func (s *Streamer) open() {
@@ -642,8 +654,7 @@ func (s *Streamer) open() {
 
 func (s *Streamer) release() error {
 	s.refcnt--
-	s.closeOpenHandler()
-	err := s.flush()
+	err := s.closeOpenHandler()
 	if err != nil {
 		s.abort()
 	}
@@ -678,8 +689,7 @@ func (s *Streamer) abort() {
 }
 
 func (s *Streamer) truncate(size int, fullPath string) error {
-	s.closeOpenHandler()
-	err := s.flush()
+	err := s.closeOpenHandler()
 	if err != nil {
 		return err
 	}
