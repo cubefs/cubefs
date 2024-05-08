@@ -156,11 +156,13 @@ func (c *Cluster) checkDiskRecoveryProgress() {
 					partition.DecommissionNeedRollback = true
 					partition.SetDecommissionStatus(DecommissionFail)
 					partition.DecommissionErrorMessage = fmt.Sprintf("New replica %v is unavailable", partition.DecommissionDstAddr)
-					Warn(c.Name, fmt.Sprintf("action[checkDiskRecoveryProgress]clusterID[%v],partitionID[%v] has recovered failed", c.Name, partitionID))
+					Warn(c.Name, fmt.Sprintf("action[checkDiskRecoveryProgress]clusterID[%v],partitionID[%v] replica %v has recovered failed",
+						c.Name, partitionID, partition.DecommissionDstAddr))
 				} else {
 					partition.DecommissionErrorMessage = ""
 					partition.SetDecommissionStatus(DecommissionSuccess) // can be readonly or readwrite
-					Warn(c.Name, fmt.Sprintf("action[checkDiskRecoveryProgress]clusterID[%v],partitionID[%v] has recovered success", c.Name, partitionID))
+					Warn(c.Name, fmt.Sprintf("action[checkDiskRecoveryProgress]clusterID[%v],partitionID[%v] replica %v has recovered success",
+						c.Name, partitionID, partition.DecommissionDstAddr))
 				}
 				partition.RLock()
 				err = c.syncUpdateDataPartition(partition)
