@@ -1268,8 +1268,7 @@ func (partition *DataPartition) Decommission(c *Cluster) bool {
 		srcReplica           *DataReplica
 		resetDecommissionDst = true
 	)
-	log.LogInfof("action[decommissionDataPartition] dp[%v] from node[%v] to node[%v], raftForce[%v] SingleDecommissionStatus[%v]",
-		partition.PartitionID, srcAddr, targetAddr, partition.DecommissionRaftForce, partition.GetSpecialReplicaDecommissionStep())
+
 	begin := time.Now()
 	partition.SetDecommissionStatus(DecommissionPrepare)
 	err = c.syncUpdateDataPartition(partition)
@@ -1277,7 +1276,8 @@ func (partition *DataPartition) Decommission(c *Cluster) bool {
 		log.LogWarnf("action[decommissionDataPartition] dp [%v] update to prepare failed", partition.PartitionID)
 		goto errHandler
 	}
-
+	log.LogInfof("action[decommissionDataPartition] dp[%v] from node[%v] to node[%v], raftForce[%v] SingleDecommissionStatus[%v]",
+		partition.PartitionID, srcAddr, targetAddr, partition.DecommissionRaftForce, partition.GetSpecialReplicaDecommissionStep())
 	// NOTE: delete if not normal data partition or dp is discard
 	if partition.IsDiscard || !proto.IsNormalDp(partition.PartitionType) {
 		if vol, ok := c.vols[partition.VolName]; !ok {
@@ -1392,7 +1392,7 @@ errHandler:
 			// remove dp from BadDataPartitionIDs, preventing errors caused by disk manager not finding the replica
 			err := c.removeDPFromBadDataPartitionIDs(partition.DecommissionSrcAddr, partition.DecommissionSrcDiskPath, partition.PartitionID)
 			if err != nil {
-				log.LogWarnf("action[decommissionDataPartition]dp[%v] rollback to del from bad dataPartitionIDs failed:%v", partition.PartitionID, err)
+				log.LogWarnf("action[decommissionDataPartition] del dp[%v] from bad dataPartitionIDs failed:%v", partition.PartitionID, err)
 			}
 			// choose other node to create data partition when retry decommission
 			if resetDecommissionDst {
@@ -1502,6 +1502,7 @@ func (partition *DataPartition) rollback(c *Cluster) {
 	partition.SetDecommissionStatus(markDecommission)
 	partition.SetSpecialReplicaDecommissionStep(SpecialDecommissionInitial)
 	// specify dst addr do not need rollback
+	// keep DecommissionSrcAddr to prevent allocate DecommissionSrcAddr data node during acquire token
 	if !partition.DecommissionDstAddrSpecify {
 		partition.DecommissionDstAddr = ""
 	}
@@ -1692,7 +1693,16 @@ func (partition *DataPartition) TryAcquireDecommissionToken(c *Cluster) bool {
 			result = true
 			return true
 		}
-		targetHosts, _, err = ns.getAvailDataNodeHosts(partition.Hosts, 1)
+		excludeHosts := partition.Hosts
+		// if dp rollback success, DecommissionSrcAddr is not contained in dp.hosts, so we must prevent
+		// to create new replica on DecommissionSrcAddr, eg 3 replica dp recover failed, but dp hosts do
+		// not contain DecommissionSrcAddr when completing rolling back
+		if partition.DecommissionSrcAddr != "" && !partition.hasHost(partition.DecommissionSrcAddr) {
+			excludeHosts = append(excludeHosts, partition.DecommissionSrcAddr)
+		}
+		log.LogDebugf("action[TryAcquireDecommissionToken]dp %v excludeHosts %v",
+			partition.PartitionID, excludeHosts)
+		targetHosts, _, err = ns.getAvailDataNodeHosts(excludeHosts, 1)
 		if err != nil {
 			log.LogWarnf("action[TryAcquireDecommissionToken] dp %v choose from src nodeset failed:%v",
 				partition.PartitionID, err.Error())
@@ -1708,7 +1718,7 @@ func (partition *DataPartition) TryAcquireDecommissionToken(c *Cluster) bool {
 				goto errHandler
 			}
 			excludeNodeSets = append(excludeNodeSets, ns.ID)
-			if targetHosts, _, err = zone.getAvailNodeHosts(TypeDataPartition, excludeNodeSets, partition.Hosts, 1); err != nil {
+			if targetHosts, _, err = zone.getAvailNodeHosts(TypeDataPartition, excludeNodeSets, excludeHosts, 1); err != nil {
 				// select data nodes from the other zone
 				zones = partition.getLiveZones(partition.DecommissionSrcAddr)
 				var excludeZone []string
@@ -1717,7 +1727,7 @@ func (partition *DataPartition) TryAcquireDecommissionToken(c *Cluster) bool {
 				} else {
 					excludeZone = append(excludeZone, zones[0])
 				}
-				if targetHosts, _, err = c.getHostFromNormalZone(TypeDataPartition, excludeZone, excludeNodeSets, partition.Hosts, 1, 1, ""); err != nil {
+				if targetHosts, _, err = c.getHostFromNormalZone(TypeDataPartition, excludeZone, excludeNodeSets, excludeHosts, 1, 1, ""); err != nil {
 					log.LogWarnf("action[TryAcquireDecommissionToken] dp %v getHostFromNormalZone failed:%v",
 						partition.PartitionID, err.Error())
 					goto errHandler

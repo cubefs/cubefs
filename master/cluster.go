@@ -4347,7 +4347,7 @@ func (c *Cluster) checkDecommissionDisk() {
 func (c *Cluster) scheduleToBadDisk() {
 	go func() {
 		for {
-			if c.partition.IsRaftLeader() && c.AutoDecommissionDiskIsEnabled() {
+			if c.partition.IsRaftLeader() && c.AutoDecommissionDiskIsEnabled() && c.metaReady {
 				c.checkBadDisk()
 			}
 			time.Sleep(10 * time.Second)
