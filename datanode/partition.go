@@ -367,6 +367,7 @@ func newDataPartition(dpCfg *dataPartitionCfg, disk *Disk, isCreate bool) (dp *D
 		if err = partition.storeAppliedID(partition.appliedID); err != nil {
 			log.LogErrorf("action[newDataPartition] dp %v initial Apply [%v] failed: %v",
 				partition.partitionID, partition.appliedID, err)
+			partition.checkIsDiskError(err, WriteFlag)
 			return
 		}
 	}
@@ -618,6 +619,7 @@ func (dp *DataPartition) Stop() {
 		err := dp.storeAppliedID(atomic.LoadUint64(&dp.appliedID))
 		if err != nil {
 			log.LogErrorf("action[Stop]: failed to store applied index")
+			dp.checkIsDiskError(err, WriteFlag)
 		}
 	})
 }
