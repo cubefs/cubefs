@@ -72,7 +72,9 @@ func (cache *ExtentCache) RefreshForce(inode uint64, getExtents GetExtentsFunc) 
 	}
 	//log.LogDebugf("Local ExtentCache before update: ino(%v) gen(%v) size(%v) extents(%v)", inode, cache.gen, cache.size, cache.List())
 	cache.update(gen, size, extents)
-	log.LogDebugf("Local ExtentCache after update: ino(%v) gen(%v) size(%v) extents(%v)", inode, cache.gen, cache.size, cache.List())
+	if log.EnableDebug() {
+		log.LogDebugf("Local ExtentCache after update: ino(%v) gen(%v) size(%v) extents(%v)", inode, cache.gen, cache.size, cache.List())
+	}
 	return nil
 }
 
@@ -88,7 +90,9 @@ func (cache *ExtentCache) Refresh(inode uint64, getExtents GetExtentsFunc) error
 	}
 	//log.LogDebugf("Local ExtentCache before update: ino(%v) gen(%v) size(%v) extents(%v)", inode, cache.gen, cache.size, cache.List())
 	cache.update(gen, size, extents)
-	log.LogDebugf("Local ExtentCache after update: ino(%v) gen(%v) size(%v) extents(%v)", inode, cache.gen, cache.size, cache.List())
+	if log.EnableDebug() {
+		log.LogDebugf("Local ExtentCache after update: ino(%v) gen(%v) size(%v) extents(%v)", inode, cache.gen, cache.size, cache.List())
+	}
 	return nil
 }
 
