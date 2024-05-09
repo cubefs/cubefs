@@ -14,6 +14,7 @@ This page contains a list of organizations who are using CubeFS in production or
 - **[LinkSure Network](https://cn.wifi.com)**: LinkSure uses CubeFS to store application logs running inside container environments as well as nginx logs. Also, they use CubeFS as the backend storage for Elasticsearch.
 - **[Reconova](http://www.reconova.com):** Reconova uses CubeFS to store massive small files in the production environment. It currently uses one CubeFS volume to store more than 80 million small files and each file around 40 kilobytes in size.
 - **[BIGO](https://www.bigo.sg/):** BIGO uses CubeFS to store logs for AI platform applications that running in the container environment, because CubeFS have excellent concurrent processing capability.
+- **[Vipshop](https://www.vip.com/):** Cubefs is used in the offline hybrid deployment scenario of YARN on Kubernetes.After some adjustments, it has become quite stable.
 
 ## Adopters
 
@@ -29,11 +30,17 @@ This page contains a list of organizations who are using CubeFS in production or
 | [LinkSure Network](https://cn.wifi.com) | ![production](https://img.shields.io/badge/-production-blue?style=flat) |
 | [BIGO LIVE](https://www.bigo.tv/cn/) | ![production](https://img.shields.io/badge/-production-blue?style=flat) |
 | [Xiaomi](https://www.mi.com/global/) | ![production](https://img.shields.io/badge/-production-blue?style=flat) |
+| [shengwang.cn](https://www.shengwang.cn/) | ![production](https://img.shields.io/badge/-production-blue?style=flat) |
+| [Vipshop](https://www.vip.com/) | ![production](https://img.shields.io/badge/-production-blue?style=flat) |
+| [CreditEase](https://www.creditease.com/) | ![production](https://img.shields.io/badge/-production-blue?style=flat) |
 | [PITS Global Data Recovery Services](https://www.pitsdatarecovery.net/) | ![testing](https://img.shields.io/badge/-testing-green?style=flat) |
 | [Da-Jiang Innovations](https://www.dji.com/cn) | ![testing](https://img.shields.io/badge/-testing-green?style=flat) |
-| [Yanhuang Data](https://yanhuangdata.com/) | ![testing](https://img.shields.io/badge/-testing-green?style=flat) |
 | [Sinosoft](http://www.sinosoft.com.cn) | ![testing](https://img.shields.io/badge/-testing-green?style=flat) |
 | [DADA](https://about.imdada.cn) | ![testing](https://img.shields.io/badge/-testing-green?style=flat) |
 | [Club Factory](https://www.wholeeprime.com/) | ![testing](https://img.shields.io/badge/-testing-green?style=flat) |
 | [Nanjing University](https://www.nju.edu.cn/en/) | ![testing](https://img.shields.io/badge/-testing-green?style=flat) |
 | [PSBC](https://www.psbc.com/) | ![testing](https://img.shields.io/badge/-testing-green?style=flat) |
+| [DeepMirror](https://deepmirror.vercel.app/) | ![testing](https://img.shields.io/badge/-testing-green?style=flat) |
+| [shoppe](https://shopee.com/) | ![testing](https://img.shields.io/badge/-testing-green?style=flat) |
+| [houdutech](https://www.houdutech.cn) | ![testing](https://img.shields.io/badge/-testing-green?style=flat) |
+| [cecloud](https://www.cecloud.com/) | ![testing](https://img.shields.io/badge/-testing-green?style=flat) |
