@@ -2786,6 +2786,7 @@ func (m *Server) getDataNode(w http.ResponseWriter, r *http.Request) {
 		DomainAddr:                dataNode.DomainAddr,
 		ReportTime:                dataNode.ReportTime,
 		IsActive:                  dataNode.isActive,
+		ToBeOffline:               dataNode.ToBeOffline,
 		IsWriteAble:               dataNode.isWriteAble(),
 		UsageRatio:                dataNode.UsageRatio,
 		SelectedTimes:             dataNode.SelectedTimes,
@@ -2799,6 +2800,7 @@ func (m *Server) getDataNode(w http.ResponseWriter, r *http.Request) {
 		MaxDpCntLimit:             dataNode.GetDpCntLimit(),
 		CpuUtil:                   dataNode.CpuUtil.Load(),
 		IoUtils:                   dataNode.GetIoUtils(),
+		DecommissionedDisk:        dataNode.getDecommissionedDisks(),
 	}
 
 	sendOkReply(w, r, newSuccessHTTPReply(dataNodeInfo))
@@ -6873,6 +6875,7 @@ func (m *Server) abortDecommissionDisk(w http.ResponseWriter, r *http.Request) {
 		sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("cancel decommission datanode(%v) disk(%v) success", addr, disk)))
 	}
 }
+
 func (m *Server) queryDiskBrokenThreshold(w http.ResponseWriter, r *http.Request) {
 	metric := exporter.NewTPCnt("req_queryDiskBrokenThreshold")
 	defer func() {
