@@ -63,32 +63,38 @@ func TestPersistInodesFreeList(t *testing.T) {
 		RootDir:       rootDir,
 	}
 	mp := newPartitionForFreeList(config, &metadataManager{partitions: make(map[uint64]MetaPartition)})
-	const testCount = DeleteInodeFileRollingSize/8 + 1000
-	inodes := make([]uint64, 0, testCount)
-	for i := 0; i < testCount; i++ {
-		inodes = append(inodes, uint64(i))
-	}
+	t.Logf("Persist one inode")
 	mp.persistDeletedInodes([]uint64{0})
 	fileName := path.Join(config.RootDir, DeleteInodeFileExtension)
 	oldIno, err := fileutil.Stat(fileName)
 	require.NoError(t, err)
-	mp.persistDeletedInodes(inodes)
-	dentries, err := os.ReadDir(rootDir)
+	t.Logf("Persist many inodes")
+	const persistBatchCount = 50000
+	const testCount = DeleteInodeFileRollingSize / 8
+	inodes := make([]uint64, 0, persistBatchCount)
+	for i := 0; i < persistBatchCount; i++ {
+		inodes = append(inodes, uint64(i)+1000000)
+	}
+	for i := 0; i < testCount; i += len(inodes) {
+		mp.persistDeletedInodes(inodes)
+		t.Logf("Persist %v inodes", i)
+	}
+	dentries, err := fileutil.ReadDir(rootDir)
 	require.NoError(t, err)
 	// NOTE: rolling must happend once
 	cnt := 0
 	for _, dentry := range dentries {
-		if strings.HasPrefix(dentry.Name(), DeleteInodeFileExtension) {
+		if strings.HasPrefix(dentry, DeleteInodeFileExtension) {
 			cnt++
-			info, err := os.Stat(path.Join(rootDir, dentry.Name()))
+			info, err := os.Stat(path.Join(rootDir, dentry))
 			require.NoError(t, err)
-			t.Logf("found delete inode file %v size %v MB", dentry.Name(), info.Size()/util.MB)
+			t.Logf("found delete inode file %v size %v MB", dentry, info.Size()/util.MB)
 		}
 	}
 	if cnt < 2 {
 		nowIno, err := fileutil.Stat(fileName)
 		require.NoError(t, err)
-		require.NotEqual(t, oldIno.Ino, nowIno.Ino)
+		require.NotEqualValues(t, oldIno.Ino, nowIno.Ino)
 		return
 	}
 	require.Greater(t, cnt, 1)
