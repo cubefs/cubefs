@@ -101,6 +101,7 @@ var (
 	ErrDecompressFailed                        = errors.New("decompress data failed")
 	ErrDecommissionDiskErrDPFirst              = errors.New("decommission disk error data partition first")
 	ErrAllReplicaUnavailable                   = errors.New("all replica unavailable")
+	ErrDiskNotExists                           = errors.New("disk not exists")
 )
 
 // http response error code and error message definitions
