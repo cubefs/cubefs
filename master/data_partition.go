@@ -1304,11 +1304,12 @@ func (partition *DataPartition) Decommission(c *Cluster) bool {
 			partition.PartitionID, partition.Status)
 		return true
 	}
-
-	if err = c.validateDecommissionDataPartition(partition, srcAddr); err != nil {
-		goto errHandler
+	// do not check condition for decommission if set DecommissionRaftForce
+	if !partition.DecommissionRaftForce {
+		if err = c.validateDecommissionDataPartition(partition, srcAddr); err != nil {
+			goto errHandler
+		}
 	}
-
 	err = c.updateDataNodeSize(targetAddr, partition)
 	if err != nil {
 		log.LogWarnf("action[decommissionDataPartition] target addr can't be writable, add %s %s", targetAddr, err.Error())
@@ -1358,8 +1359,9 @@ func (partition *DataPartition) Decommission(c *Cluster) bool {
 		return true
 	} else {
 		log.LogInfof("action[decommissionDataPartition]clusterID[%v] dp[%v] "+
-			"on node:%v offline success,newHost[%v],PersistenceHosts:[%v], SingleDecommissionStatus[%v]prepare consume[%v]seconds",
-			c.Name, partition.PartitionID, srcAddr, targetAddr, partition.Hosts, partition.GetSpecialReplicaDecommissionStep(), time.Since(begin).Seconds())
+			"on node:%v offline success,newHost[%v],PersistenceHosts:[%v], SingleDecommissionStatus[%v] DecommissionRaftForce %v prepare consume[%v]seconds",
+			c.Name, partition.PartitionID, srcAddr, targetAddr, partition.Hosts, partition.GetSpecialReplicaDecommissionStep(),
+			partition.DecommissionRaftForce, time.Since(begin).Seconds())
 		return true
 	}
 
@@ -1403,11 +1405,11 @@ errHandler:
 	}
 	msg = fmt.Sprintf("clusterID[%v] vol[%v] dp[%v]  on Node:%v  "+
 		"to newHost:%v Err:%v, PersistenceHosts:%v ,retry %v,status %v, isRecover %v SingleDecommissionStatus[%v]"+
-		" DecommissionNeedRollback[%v] DecommissionNeedRollbackTimes %v consume[%v]seconds",
+		" DecommissionNeedRollback[%v] DecommissionNeedRollbackTimes %v DecommissionRaftForce %v consume[%v]seconds",
 		c.Name, partition.VolName, partition.PartitionID, srcAddr, targetAddr, err.Error(),
 		partition.Hosts, partition.DecommissionRetry, partition.GetDecommissionStatus(),
 		partition.isRecover, partition.GetSpecialReplicaDecommissionStep(), partition.DecommissionNeedRollback,
-		partition.DecommissionNeedRollbackTimes, time.Since(begin).Seconds())
+		partition.DecommissionNeedRollbackTimes, partition.DecommissionRaftForce, time.Since(begin).Seconds())
 	log.LogWarnf("action[decommissionDataPartition] %s", msg)
 	partition.DecommissionErrorMessage = err.Error()
 	return false
@@ -1540,11 +1542,11 @@ func (partition *DataPartition) addToDecommissionList(c *Cluster) {
 		return
 	}
 	log.LogInfof("action[addToDecommissionList]ready to add dp[%v] decommission src[%v] Disk[%v] dst[%v] status[%v] specialStep[%v],"+
-		" RollbackTimes(%v) isRecover(%v) retry[%v] host[%v] type[%v] to decommission list[%v]",
+		" RollbackTimes(%v) isRecover(%v) retry[%v] host[%v] type[%v] to force[%v] decommission list[%v]",
 		partition.PartitionID, partition.DecommissionSrcAddr, partition.DecommissionSrcDiskPath,
 		partition.DecommissionDstAddr, partition.GetDecommissionStatus(), partition.GetSpecialReplicaDecommissionStep(),
 		partition.DecommissionNeedRollbackTimes, partition.isRecover, partition.DecommissionRetry, partition.Hosts,
-		partition.DecommissionType, ns.ID)
+		partition.DecommissionType, partition.DecommissionRaftForce, ns.ID)
 	ns.AddToDecommissionDataPartitionList(partition, c)
 }
 
