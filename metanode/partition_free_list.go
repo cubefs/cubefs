@@ -267,8 +267,8 @@ func (mp *metaPartition) deleteMarkedInodes(inoSlice []uint64) {
 		return
 	}
 	log.LogDebugf("[deleteMarkedInodes] . mp[%v] inoSlice [%v]", mp.config.PartitionId, inoSlice)
-	shouldCommit := make([]*Inode, 0, DeleteBatchCount())
-	shouldRePushToFreeList := make([]*Inode, 0)
+	var shouldCommit []*Inode
+	var shouldRePushToFreeList []*Inode
 	deleteExtentsByPartition := make(map[uint64][]*proto.DelExtentParam)
 	allInodes := make([]*Inode, 0)
 	for _, ino := range inoSlice {
