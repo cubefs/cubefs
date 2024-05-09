@@ -1346,6 +1346,13 @@ func (s *DataNode) handlePacketToAddDataPartitionRaftMember(p *repl.Packet) {
 
 	isRaftLeader, err = s.forwardToRaftLeader(dp, p, false)
 	if !isRaftLeader {
+		if err != nil {
+			log.LogWarnf("action[handlePacketToAddDataPartitionRaftMember]dp %v  req %v forward to leader failed:%v",
+				dp.partitionID, p.GetReqID(), err)
+		} else {
+			log.LogWarnf("action[handlePacketToAddDataPartitionRaftMember]dp %v  req %v forward to leader",
+				dp.partitionID, p.GetReqID())
+		}
 		return
 	}
 	log.LogInfof("action[handlePacketToAddDataPartitionRaftMember] before ChangeRaftMember %v which is sync. partition id %v", req.AddPeer, req.PartitionId)
@@ -1396,11 +1403,10 @@ func (s *DataNode) handlePacketToRemoveDataPartitionRaftMember(p *repl.Packet) {
 		return
 	}
 
-	log.LogDebugf("action[handlePacketToRemoveDataPartitionRaftMember], req %v (%s) RemoveRaftPeer(%s) dp %v replicaNum %v",
-		p.GetReqID(), string(reqData), req.RemovePeer.Addr, dp.partitionID, dp.replicaNum)
+	log.LogInfof("action[handlePacketToRemoveDataPartitionRaftMember], req %v (%s) RemoveRaftPeer(%s) dp %v replicaNum %v config.Peer %v replica %v",
+		p.GetReqID(), string(reqData), req.RemovePeer.Addr, dp.partitionID, dp.replicaNum, dp.config.Peers, dp.replicas)
 
 	p.PartitionID = req.PartitionId
-	log.LogInfof("action[handlePacketToRemoveDataPartitionRaftMember]dp %v config.Peer %v replica %v", dp.partitionID, dp.config.Peers, dp.replicas)
 	// do not return error to keep decommission progress go forword
 	if req.AutoRemove {
 		if !dp.IsExistPeer(req.RemovePeer) && !req.Force {
@@ -1418,7 +1424,13 @@ func (s *DataNode) handlePacketToRemoveDataPartitionRaftMember(p *repl.Packet) {
 
 	isRaftLeader, err = s.forwardToRaftLeader(dp, p, req.Force)
 	if !isRaftLeader {
-		log.LogWarnf("handlePacketToRemoveDataPartitionRaftMember return no leader")
+		if err != nil {
+			log.LogWarnf("action[handlePacketToRemoveDataPartitionRaftMember]dp %v  req %v forward to leader failed:%v",
+				dp.partitionID, p.GetReqID(), err)
+		} else {
+			log.LogWarnf("action[handlePacketToRemoveDataPartitionRaftMember]dp %v  req %v forward to leader",
+				dp.partitionID, p.GetReqID())
+		}
 		return
 	}
 

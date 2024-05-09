@@ -238,8 +238,9 @@ func (partition *DataPartition) createTaskToAddRaftMember(addPeer proto.Peer, le
 }
 
 func (partition *DataPartition) createTaskToRemoveRaftMember(c *Cluster, removePeer proto.Peer, force bool, autoRemove bool) (err error) {
-	doWork := func(leaderAddr string) error {
-		log.LogInfof("action[createTaskToRemoveRaftMember] vol[%v],data partition[%v] removePeer %v leaderAddr %v", partition.VolName, partition.PartitionID, removePeer, leaderAddr)
+	doWork := func(leaderAddr string, flag bool) error {
+		log.LogInfof("action[createTaskToRemoveRaftMember] vol[%v],data partition[%v] removePeer %v leaderAddr %v autoRemove %v",
+			partition.VolName, partition.PartitionID, removePeer, leaderAddr, flag)
 		req := newRemoveDataPartitionRaftMemberRequest(partition.PartitionID, removePeer)
 		req.Force = force
 		req.AutoRemove = autoRemove
@@ -260,20 +261,22 @@ func (partition *DataPartition) createTaskToRemoveRaftMember(c *Cluster, removeP
 	}
 
 	leaderAddr := partition.getLeaderAddr()
+	log.LogInfof("action[createTaskToRemoveRaftMember] vol[%v],data partition[%v] removePeer %v leaderAddr %v autoRemove %v",
+		partition.VolName, partition.PartitionID, removePeer, leaderAddr, autoRemove)
 	if leaderAddr == "" {
 		if force {
 			for _, replica := range partition.Replicas {
 				if replica.Addr != removePeer.Addr {
 					leaderAddr = replica.Addr
 				}
-				doWork(leaderAddr)
+				doWork(leaderAddr, autoRemove)
 			}
 		} else {
 			err = proto.ErrNoLeader
 			return
 		}
 	} else {
-		return doWork(leaderAddr)
+		return doWork(leaderAddr, autoRemove)
 	}
 	return
 }
@@ -1910,6 +1913,7 @@ func (partition *DataPartition) removeReplicaByForce(c *Cluster, peerAddr string
 	if partition.getLeaderAddr() == "" {
 		force = true
 	}
+	log.LogInfof("action[removeReplicaByForce]dp[%v] rollback to del peer %v force %v", partition.PartitionID, peerAddr, force)
 	err := c.removeDataReplica(partition, peerAddr, false, force)
 	if err != nil {
 		return err
@@ -2003,6 +2007,16 @@ func (partition *DataPartition) checkReplicaMeta(c *Cluster) {
 	if partition.getLeaderAddr() == "" {
 		force = true
 	}
+	for _, replica := range partition.Replicas {
+		redundantPeers := findPeersToDeleteByConfig(replica.LocalPeers, partition.Peers)
+		for _, peer := range redundantPeers {
+			// remove raft member
+			partition.createTaskToRemoveRaftMember(c, peer, force, true)
+			log.LogInfof("action[checkReplicaMeta]dp(%v) remove redundant peer %v force %v",
+				partition.PartitionID, peer, force)
+		}
+	}
+
 	for _, replica := range partition.Replicas {
 		redundantPeers := findPeersToDeleteByConfig(replica.LocalPeers, partition.Peers)
 		for _, peer := range redundantPeers {
