@@ -3993,6 +3993,7 @@ func (m *Server) decommissionDisk(w http.ResponseWriter, r *http.Request) {
 		raftForce             bool
 		limit                 int
 		decommissionType      int
+		dataNode              *DataNode
 	)
 	metric := exporter.NewTPCnt(apiToMetricsName(proto.DecommissionDisk))
 	defer func() {
@@ -4006,6 +4007,20 @@ func (m *Server) decommissionDisk(w http.ResponseWriter, r *http.Request) {
 	raftForce, err = parseRaftForce(r)
 	if err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	if dataNode, err = m.cluster.dataNode(offLineAddr); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(proto.ErrDataNodeNotExists))
+		return
+	}
+	found := false
+	for _, disk := range dataNode.AllDisks {
+		if disk == diskPath {
+			found = true
+		}
+	}
+	if !found {
+		sendErrReply(w, r, newErrHTTPReply(proto.ErrDiskNotExists))
 		return
 	}
 	if err = m.cluster.migrateDisk(offLineAddr, diskPath, "", raftForce, limit, diskDisable, uint32(decommissionType)); err != nil {
