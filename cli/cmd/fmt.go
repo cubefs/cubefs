@@ -628,6 +628,13 @@ func formatNodeStatus(status bool) string {
 	return "Inactive"
 }
 
+func formatNodeOfflineStatus(status bool) string {
+	if status {
+		return "True"
+	}
+	return "False"
+}
+
 var (
 	units         = []string{"B", "KB", "MB", "GB", "TB", "PB"}
 	step  float64 = 1024
@@ -762,9 +769,11 @@ func formatDataNodeDetail(dn *proto.DataNodeInfo, rowTable bool) string {
 	sb.WriteString(fmt.Sprintf("  Total               : %v\n", formatSize(dn.Total)))
 	sb.WriteString(fmt.Sprintf("  Zone                : %v\n", dn.ZoneName))
 	sb.WriteString(fmt.Sprintf("  IsActive            : %v\n", formatNodeStatus(dn.IsActive)))
+	sb.WriteString(fmt.Sprintf("  ToBeOffline         : %v\n", formatNodeOfflineStatus(dn.ToBeOffline)))
 	sb.WriteString(fmt.Sprintf("  Report time         : %v\n", formatTimeToString(dn.ReportTime)))
 	sb.WriteString(fmt.Sprintf("  Partition count     : %v\n", dn.DataPartitionCount))
 	sb.WriteString(fmt.Sprintf("  Bad disks           : %v\n", dn.BadDisks))
+	sb.WriteString(fmt.Sprintf("  Decommissioned disks           : %v\n", dn.DecommissionedDisk))
 	sb.WriteString(fmt.Sprintf("  Persist partitions  : %v\n", dn.PersistenceDataPartitions))
 	sb.WriteString(fmt.Sprintf("  Can Alloc Partition : %v\n", dn.CanAllocPartition))
 	sb.WriteString(fmt.Sprintf("  CpuUtil             : %.1f%%\n", dn.CpuUtil))

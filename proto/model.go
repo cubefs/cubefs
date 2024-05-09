@@ -60,6 +60,7 @@ type DataNodeInfo struct {
 	DomainAddr                string
 	ReportTime                time.Time
 	IsActive                  bool
+	ToBeOffline               bool
 	IsWriteAble               bool
 	UsageRatio                float64 // used / total space
 	SelectedTimes             uint64  // number times that this datanode has been selected as the location for a data partition.
@@ -73,6 +74,7 @@ type DataNodeInfo struct {
 	MaxDpCntLimit             uint32             `json:"maxDpCntLimit"`
 	CpuUtil                   float64            `json:"cpuUtil"`
 	IoUtils                   map[string]float64 `json:"ioUtil"`
+	DecommissionedDisk        []string
 }
 
 // MetaPartition defines the structure of a meta partition
