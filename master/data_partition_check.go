@@ -149,7 +149,7 @@ func (partition *DataPartition) checkLeader(c *Cluster, clusterID string, timeOu
 		report = true
 	}
 	if WarnMetrics != nil {
-		WarnMetrics.WarnDpNoLeader(clusterID, partition.PartitionID, report)
+		WarnMetrics.WarnDpNoLeader(clusterID, partition.PartitionID, partition.ReplicaNum, report)
 	}
 	partition.Unlock()
 	if report && partition.ReplicaNum == 1 && partition.GetDecommissionStatus() == DecommissionInitial &&
