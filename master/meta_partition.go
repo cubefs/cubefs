@@ -285,7 +285,7 @@ func (mp *MetaPartition) checkLeader(clusterID string) {
 		report = true
 	}
 	if WarnMetrics != nil {
-		WarnMetrics.WarnMpNoLeader(clusterID, mp.PartitionID, report)
+		WarnMetrics.WarnMpNoLeader(clusterID, mp.PartitionID, mp.ReplicaNum, report)
 	}
 }
 
