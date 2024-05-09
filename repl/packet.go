@@ -50,11 +50,13 @@ type Packet struct {
 	shallDegrade bool
 	AfterPre     bool
 	IsRdma       bool
+	RdmaBuffer   []byte
 }
 
 type FollowerPacket struct {
 	proto.Packet
-	respCh chan error
+	respCh     chan error
+	RdmaBuffer []byte
 }
 
 func NewFollowerPacket() (fp *FollowerPacket) {
@@ -108,7 +110,7 @@ func (p *Packet) AfterTp() (ok bool) {
 	return
 }
 
-func (p *Packet) clean() {
+func (p *Packet) clean(c ...net.Conn) {
 	if p.Data == nil && p.OrgBuffer == nil {
 		return
 	}
@@ -117,8 +119,12 @@ func (p *Packet) clean() {
 	p.Data = nil
 	p.Arg = nil
 	if p.IsRdma {
-		if p.OrgBuffer != nil {
-			_ = rdma.ReleaseDataBuffer(p.OrgBuffer)
+		if p.RdmaBuffer != nil {
+			if len(c) != 1 {
+				return
+			}
+			conn := c[0].(*rdma.Connection)
+			conn.ReleaseConnRxDataBuffer(p.RdmaBuffer) //rdma todo
 		}
 	} else {
 		if p.OrgBuffer != nil && len(p.OrgBuffer) == util.BlockSize && p.IsWriteOperation() {
@@ -141,7 +147,7 @@ func copyPacket(src *Packet, dst *FollowerPacket) {
 	dst.ExtentOffset = src.ExtentOffset
 	dst.ReqID = src.ReqID
 	dst.Data = src.OrgBuffer
-
+	dst.RdmaBuffer = src.RdmaBuffer
 }
 
 func (p *Packet) BeforeTp(clusterID string) (ok bool) {
@@ -351,48 +357,32 @@ func (p *Packet) ReadFromConnFromCli(c net.Conn, deadlineTime time.Duration) (er
 	*/
 
 	if conn, ok := c.(*rdma.Connection); ok {
-		//log.LogDebugf("rdma conn read start")
-		//println("rdma conn read start")
-		var headerBuff []byte
-		var dataBuff []byte
-		var offset int
-		//conn, _ := c.(*rdma.Connection)
-		if _, err = conn.Read(nil); err != nil {
+		var dataBuffer []byte
+		if dataBuffer, err = conn.GetRecvMsgBuffer(); err != nil {
 			return
 		}
-		if headerBuff, dataBuff, err = conn.GetRecvMsgBuffer(); err != nil {
-			return
-		}
-		defer func() {
-			_ = conn.RdmaPostRecvHeader(headerBuff)
-		}()
+		p.RdmaBuffer = dataBuffer
 
-		if err = p.UnmarshalHeader(headerBuff); err != nil {
-			_ = rdma.ReleaseDataBuffer(dataBuff)
+		if err = p.UnmarshalHeader(dataBuffer[0:util.PacketHeaderSize]); err != nil {
+			conn.ReleaseConnRxDataBuffer(dataBuffer) //rdma todo
 			return
 		}
-
-		offset += util.PacketHeaderSize + 8 //rdma
 
 		if p.ArgLen > 0 {
 			p.Arg = make([]byte, int(p.ArgLen))
-			copy(p.Arg, headerBuff[offset:offset+int(p.ArgLen)])
+			copy(p.Arg, dataBuffer[util.PacketHeaderSize:util.PacketHeaderSize+p.ArgLen])
 		}
-		offset += 40
 
 		if p.Size < 0 {
-			_ = rdma.ReleaseDataBuffer(dataBuff)
+			conn.ReleaseConnRxDataBuffer(dataBuffer) //rdma todo
 			return
 		}
 		size := p.Size
 		if p.IsReadOperation() && p.ResultCode == proto.OpInitResultCode {
 			size = 0
 		}
-		p.Data = dataBuff[:int(size)]
-		//conn.Buffs[&dataBuff[0]] = dataBuff
-
+		p.Data = dataBuffer[util.RdmaPacketHeaderSize : util.RdmaPacketHeaderSize+int(size)]
 		p.IsRdma = true
-		//log.LogDebugf("rdma conn read exit")
 		return
 	} else {
 		var header []byte

@@ -97,7 +97,7 @@ func (ft *FollowerTransport) serverWriteToFollower() {
 		case p := <-ft.sendCh:
 			log.LogDebugf("writeToFollowerRdmaConn start: followerPacket:%v", p)
 			if conn, ok := ft.conn.(*rdma.Connection); ok {
-				if err := p.WriteToFollowerRDMAConn(conn); err != nil {
+				if err := p.WriteToRDMAConn(conn, p.RdmaBuffer); err != nil {
 					p.PackErrorBody(ActionSendToFollowers, err.Error())
 					p.respCh <- fmt.Errorf(string(p.Data[:p.Size]))
 					log.LogErrorf("serverWriteToFollower ft.addr(%v), err (%v)", ft.addr, err.Error())
@@ -165,6 +165,7 @@ func (ft *FollowerTransport) readFollowerResult(request *FollowerPacket) (err er
 			reply.clean()
 			request.respCh <- err
 			if err != nil {
+				log.LogErrorf("serverWriteToFollower ft.addr(%v), err (%v)", ft.addr, err.Error())
 				RdmaConnPool.PutRdmaConn(conn, true)
 			}
 		} else {
@@ -185,7 +186,7 @@ func (ft *FollowerTransport) readFollowerResult(request *FollowerPacket) (err er
 	}
 	log.LogDebugf("RecvRespFromRDMAConn start: reply:%v", reply)
 	if conn, ok := ft.conn.(*rdma.Connection); ok {
-		if reply.RecvRespFromRDMAConn(conn, timeOut); err != nil {
+		if reply.ReadFromRDMAConn(conn, timeOut); err != nil {
 			log.LogErrorf("readFollowerResult ft.addr(%v), err(%v)", ft.addr, err.Error())
 			return
 		}
@@ -325,8 +326,8 @@ func (rp *ReplProtocol) readPkgAndPrepare() (err error) {
 			request.GetUniqueLogId(), rp.sourceConn.RemoteAddr().String())
 	*/
 	log.LogDebugf("packet: %v", request)
-	log.LogDebugf("action[readPkgAndPrepare] packet(%v) op %v from remote(%v) conn(%v) ",
-		request.GetUniqueLogId(), request.Opcode, rp.sourceConn.RemoteAddr().String(), rp.sourceConn)
+	log.LogDebugf("action[readPkgAndPrepare] packet(%v) op %v from remote(%v) ",
+		request.GetUniqueLogId(), request.Opcode, rp.sourceConn.RemoteAddr().String())
 
 	if err = request.resolveFollowersAddr(); err != nil {
 		log.LogDebugf("resolveFollowerAddr failed, err:%v", err)
@@ -342,7 +343,8 @@ func (rp *ReplProtocol) readPkgAndPrepare() (err error) {
 	err = rp.putToBeProcess(request)
 	if err != nil {
 		if request.IsRdma {
-			_ = rdma.ReleaseDataBuffer(request.Data)
+			conn := rp.sourceConn.(*rdma.Connection)
+			conn.ReleaseConnRxDataBuffer(request.RdmaBuffer) //rdma todo
 		}
 	}
 	log.LogDebugf("read pkg and prepare exit")
@@ -469,7 +471,7 @@ func (rp *ReplProtocol) checkLocalResultAndReciveAllFollowerResponse() {
 func (rp *ReplProtocol) writeResponse(reply *Packet) {
 	var err error
 	defer func() {
-		reply.clean()
+		reply.clean(rp.sourceConn)
 	}()
 	if reply.IsErrPacket() {
 		/*
@@ -508,10 +510,10 @@ func (rp *ReplProtocol) writeResponse(reply *Packet) {
 		}
 		log.LogDebugf("send resp to tcp conn: time[%v]", time.Now())
 	}
-	/*
-		log.LogDebugf(reply.LogMessage(ActionWriteToClient,
-			rp.sourceConn.RemoteAddr().String(), reply.StartT, err))
-	*/
+
+	log.LogDebugf(reply.LogMessage(ActionWriteToClient,
+		rp.sourceConn.RemoteAddr().String(), reply.StartT, err)) //rdma todo
+
 }
 
 // Stop stops the replication protocol.

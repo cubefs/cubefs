@@ -369,20 +369,19 @@ func (s *DataNode) parseConfig(cfg *config.Config) (err error) {
 	if isRdma {
 		LocalRdmaIP = cfg.GetString("rdmaIP")
 		rdmaServerPort = cfg.GetString("rdmaPort")
-		util.Config.MemBlockNum = int(cfg.GetInt64WithDefault("rdmaMemBlockNum", 8*1024*5))
-		util.Config.MemBlockSize = int(cfg.GetInt64WithDefault("rdmaMemBlockSize", 65536*2))
-		util.Config.MemPoolLevel = int(cfg.GetInt64WithDefault("rdmaMemPoolLevel", 18))
+		util.Config.MemBlockNum = int(cfg.GetInt64WithDefault("rdmaMemBlockNum", 4*8*1024))
+		util.Config.MemBlockSize = int(cfg.GetInt64WithDefault("rdmaMemBlockSize", 128*1024))
+		util.Config.MemPoolLevel = int(cfg.GetInt64WithDefault("rdmaMemPoolLevel", 15))
 
-		util.Config.HeaderBlockNum = int(cfg.GetInt64WithDefault("rdmaHeaderBlockNum", 32*1024))
-		util.Config.HeaderPoolLevel = int(cfg.GetInt64WithDefault("rdmaHeaderPoolLevel", 15))
-
-		util.Config.ResponseBlockNum = int(cfg.GetInt64WithDefault("rdmaResponseBlockNum", 32*1024))
-		util.Config.ResponsePoolLevel = int(cfg.GetInt64WithDefault("rdmaResponsePoolLevel", 15))
+		util.Config.ConnDataSize = int(cfg.GetInt64WithDefault("rdmaConnDataSize", 128*1024*32))
 
 		util.Config.WqDepth = int(cfg.GetInt64WithDefault("wqDepth", 32))
 		util.Config.MinCqeNum = int(cfg.GetInt64WithDefault("minCqeNum", 1024))
 
 		util.Config.EnableRdmaLog = cfg.GetBoolWithDefault("enableRdmaLog", false)
+		util.Config.RdmaLogDir = cfg.GetString("rdmaLogDir")
+
+		util.Config.WorkerNum = int(cfg.GetInt64WithDefault("workerNum", 4))
 
 		stream.StreamRdmaConnPool = util.NewRdmaConnectPool()
 		repl.RdmaConnPool = util.NewRdmaConnectPool()

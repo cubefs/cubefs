@@ -10,6 +10,7 @@
 #include <sys/socket.h>
 #include <netdb.h>
 #include <unistd.h>
+#include <endian.h>
 //#include "wait_group.h"
 #include "rdma_proto.h"
 //#include "rdma_proto.h"
@@ -19,25 +20,20 @@
 
 static const int trace = 0;
 #define TRACE_PRINT(fn) if (trace) fn
-#define ntohu64(v) (v)
-#define htonu64(v) (v)
-
-#define RDMA_DEFAULT_DX_SIZE  (1024*1024)
-static int rdma_dx_size = RDMA_DEFAULT_DX_SIZE;
-
-extern void DisConnectCallback(void*);
+#define ntohu64(v) be64toh(v)
+#define htonu64(v) htobe64(v)
 
 int64_t get_time_ns();
 
-int conn_rdma_read(connection *conn, memory_entry* entry);
+int conn_rdma_post_recv(connection *conn, rdma_ctl_cmd *cmd);
 
-int conn_rdma_post_recv(connection *conn, void *block);
-
-int conn_rdma_post_send(connection *conn, void *block, int32_t len);
+int conn_rdma_post_send(connection *conn, rdma_ctl_cmd *cmd);
 
 void rdma_destroy_ioBuf(connection *conn);
 
-int rdma_setup_ioBuf(connection *conn, int conn_type);
+int rdma_setup_ioBuf(connection *conn);
+
+int rdma_adjust_txBuf(connection *conn, uint32_t length);
 
 void destroy_connection(connection *conn);
 
@@ -53,29 +49,25 @@ int del_conn_from_server(connection *conn, struct rdma_listener *server);
 
 void conn_disconnect(connection *conn);
 
-//int DisConnect(Connection* conn, bool force);//TODO
+//int rdma_post_send_cmd(connection *conn, rdma_ctl_cmd *cmd);
 
-int rdma_post_send_header(connection *conn, void* header);
+//int rdma_post_recv_cmd(connection *conn, rdma_ctl_cmd *cmd);
 
-int rdma_post_send_response(connection *conn, response *response);
+int rdma_exchange_rx(connection *conn);
 
-int rdma_post_recv_header(connection* conn, void *header_ctx);
+int rdma_notify_buf_full(connection *conn);
 
-int rdma_post_recv_response(connection *conn, void *response_ctx);
+int conn_app_write_external_buffer(connection *conn, void *buffer, uint32_t size);
 
-int conn_app_write(connection *conn, void* buff, void *header_ctx, int32_t len);
+int conn_app_write(connection *conn, data_entry *entry, uint32_t size);
 
-int conn_app_send_resp(connection *conn, void* response_ctx);
+void* get_pool_data_buffer(uint32_t size, int64_t *ret_size);
 
-void* get_data_buffer(uint32_t size, int64_t timeout_us,int64_t *ret_size);
+data_entry* get_conn_tx_data_buffer(connection *conn, uint32_t size);
 
-void* get_response_buffer(connection *conn, int64_t timeout_us, int32_t *ret_size);
+rdma_ctl_cmd* get_cmd_buffer(connection *conn);
 
-void* get_header_buffer(connection *conn, int64_t timeout_us, int32_t *ret_size);
-
-memory_entry* get_recv_msg_buffer(connection *conn);
-
-memory_entry* get_recv_response_buffer(connection *conn);
+data_entry* get_recv_msg_buffer(connection *conn);
 
 void set_conn_context(connection* conn, void* conn_context);
 
@@ -83,10 +75,12 @@ void set_send_timeout_us(connection* conn, int64_t timeout_us);
 
 void set_recv_timeout_us(connection* conn, int64_t timeout_us);
 
-int release_data_buffer(void* buff);
+int release_cmd_buffer(connection *conn, rdma_ctl_cmd *cmd);
 
-int release_response_buffer(connection* conn, void* buff);
+int release_pool_data_buffer(connection *conn, void* buff, uint32_t size);
 
-int release_header_buffer(connection* conn, void* buff);
+int release_conn_rx_data_buffer(connection *conn, data_entry *data);
+
+int release_conn_tx_data_buffer(connection *conn, data_entry *data);
 
 #endif

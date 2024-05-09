@@ -1,20 +1,20 @@
 #ifndef RDMA_PROTO_H
 #define RDMA_PROTO_H
 
-#include "memory_pool.h"
-#include "object_pool.h"
-
-#include "hashmap.h"
-#include "queue.h"
-#include "log.h"
+#define _GNU_SOURCE
 #include <rdma/rdma_cma.h>
 #include <rdma/rdma_verbs.h>
-//#include "wait_group.h"
 #include <stdbool.h>
 #include <netdb.h>
 #include <sys/eventfd.h>
 #include <pthread.h>
 #include <semaphore.h>
+#include <string.h>
+
+#include "memory_pool.h"
+#include "hashmap.h"
+#include "queue.h"
+#include "log.h"
 
 #define C_OK 0
 #define C_ERR 1
@@ -38,32 +38,26 @@ void *cq_thread(void *ctx);
 extern int WQ_DEPTH;
 extern int WQ_SG_DEPTH;
 extern int MIN_CQE_NUM;
+extern int CONN_DATA_SIZE;
 
 extern struct rdma_pool *rdma_pool;
-extern struct rdma_pool_config *rdma_pool_config;
+extern struct rdma_env_config *rdma_env_config;
 extern FILE *fp;
 extern struct net_env_st *g_net_env;
 
 struct rdma_pool {
     memory_pool *memory_pool;
-    object_pool *header_pool;
-    object_pool *response_pool;
 };
 
-struct rdma_pool_config {
+struct rdma_env_config {
     int mem_block_num;
     int mem_block_size;
     int mem_pool_level;
-
-    int header_block_num;
-    int header_pool_level;
-
-    int response_block_num;
-    int response_pool_level;
-
+    int conn_data_size;
     int wq_depth;
     int min_cqe_num;
     int enable_rdma_log;
+    char* rdma_log_dir;
     int worker_num;
 };
 
@@ -98,9 +92,9 @@ typedef struct worker {
     pthread_t  cq_poller_thread;
     pthread_spinlock_t nd_map_lock;
     khash_t(map)       *nd_map;
-    khash_t(map)       *closing_nd_map;
-    pthread_spinlock_t lock;
-    Queue              *conn_list;
+    khash_t(map)       *closing_nd_map; //TODO
+    pthread_spinlock_t lock; //TODO
+    Queue              *conn_list; //TODO
     uint8_t          id;
     uint32_t         qp_cnt;
     pthread_t        w_pid;
@@ -129,63 +123,49 @@ struct net_env_st {
     worker              worker[];
 };
 
-typedef struct request_header {//__attribute__((packed))
-    uint8_t              magic;
-    uint8_t              extent_type;// the highest bit be set while rsp to client if version not consistent then Verseq be valid
-    uint8_t              opcode;
-    uint8_t              result_code;
-    uint8_t              remaining_followers;
-    uint32_t             crc;
-    uint32_t             size;
-    uint32_t             arg_len;
-    uint64_t             partition_id;
-    uint64_t             extent_id;
-    int64_t              extent_offset;
-    int64_t              req_id;
-    uint64_t             kernel_offset;
-    uint64_t             ver_seq;// only used in mod request to datanode
-    unsigned char        arg[40];// for create or append ops, the data contains the address
-    unsigned char        list[40];
-    uint8_t              rdma_version;//rdma协议版本
-    uint64_t             rdma_addr;
-    uint32_t             rdma_length;
-    uint32_t             rdma_key;
-}__attribute__((packed)) header;//
+typedef struct rdma_memory {
+    uint16_t opcode;
+    uint8_t rsvd[14];
+    uint64_t addr;
+    uint32_t length;
+    uint32_t key;
+} rdma_memory;
 
-typedef struct request_response {
-    uint8_t              magic;
-    uint8_t              extent_type;// the highest bit be set while rsp to client if version not consistent then Verseq be valid
-    uint8_t              opcode;
-    uint8_t              result_code;
-    uint8_t              remaining_followers;
-    uint32_t             crc;
-    uint32_t             size;
-    uint32_t             arg_len;
-    uint64_t             partition_id;
-    uint64_t             extent_id;
-    int64_t              extent_offset;
-    int64_t              req_id;
-    uint64_t             kernel_offset;
-    uint64_t             ver_seq;// only used in mod request to datanode
-    unsigned char        arg[40];// for create or append ops, the data contains the address
-    unsigned char        data[40];
-    unsigned char        list[40];
-    uint8_t              rdma_version;//rdma协议版本
-    uint64_t             rdma_addr;
-    uint32_t             rdma_length;
-    uint32_t             rdma_key;
-} response;
+typedef struct rdma_full_msg {
+    uint16_t opcode;
+    uint8_t rsvd[26];
+    uint32_t tx_full_offset;
+} rdma_full_msg;
 
-typedef struct memory_entry {
-    void* header_buff;
-    void* data_buff;
-    void* response_buff;
-    uint32_t data_len;
-    uint32_t header_len;
-    uint32_t response_len;
-    bool     is_response;
+typedef union rdma_ctl_cmd {
+    rdma_memory memory;
+    rdma_full_msg full_msg;
+} rdma_ctl_cmd;
+
+typedef enum rdma_opcode {
+    EXCHANGE_MEMORY = 0,
+    NOTIFY_FULLBUF = 1,
+} rdma_opcode;
+
+typedef struct data_buf {
+    struct ibv_mr *mr;
+    char *addr;
+    uint32_t length;
+    uint32_t offset;
+    uint32_t pos;
+} data_buf;
+
+typedef struct cmd_entry {
+    rdma_ctl_cmd *cmd;
     uint64_t nd;
-} memory_entry;
+} cmd_entry;
+
+typedef struct data_entry {
+    char *addr;
+    char *remote_addr;
+    uint32_t data_len;
+    uint32_t mem_len;
+} data_entry;
 
 typedef enum connection_state {
     CONN_STATE_NONE = 0,
@@ -209,15 +189,27 @@ typedef struct connection {
     struct rdma_cm_id * cm_id;
     struct ibv_qp *qp;
     struct ibv_mr *mr;
-    memory_pool *pool;
-    object_pool* header_pool;
-    object_pool* response_pool;
-    header *header_buf;
-    struct ibv_mr *header_mr;
-    response *response_buf;
-    struct ibv_mr *response_mr;
+    //TX
+    data_buf *tx;
+    char *remote_rx_addr;
+    uint32_t remote_rx_key;
+    uint32_t remote_rx_length;
+    uint32_t remote_rx_offset;
+
+    //RX
+    data_buf *rx;
+
+    //control_buff
+    rdma_ctl_cmd *ctl_buf;
+    struct ibv_mr *ctl_buf_mr;
+
+    uint32_t tx_full_offset;
+    uint32_t rx_full_offset;
+
     Queue *free_list;
     Queue *msg_list;
+    pthread_spinlock_t free_list_lock;
+    pthread_spinlock_t msg_list_lock;
     void* context;
     void* conn_context;
     connection_state state;
@@ -228,6 +220,7 @@ typedef struct connection {
     int64_t send_timeout_ns;
     int64_t recv_timeout_ns;
     worker *worker;
+    int ref;
 } connection;
 
 struct rdma_listener {
@@ -237,376 +230,51 @@ struct rdma_listener {
     char* port;
     pthread_spinlock_t conn_lock;
     khash_t(map) *conn_map;
+    pthread_spinlock_t wait_conns_lock;
     Queue *wait_conns;
     int connect_fd;//sem_t*
 };
 
-static int get_header_size() {
-    return sizeof(struct request_header);
-}
 
-static int get_response_size() {
-    return sizeof(struct request_response);
-}
 
-static uint64_t allocate_nd(int type) {
-    int id_index = ID_GEN_CTRL;
-    union conn_nd_union id;
+uint64_t allocate_nd(int type);
 
-    id_index += 1;
-    id.nd_.worker_id = __sync_fetch_and_add((g_net_env->id_gen + id_index), 1) & 0xFF;
-    id.nd_.type = type & 0xFF;
-    id.nd_.m1 = 'c';
-    id.nd_.m2 = 'b';
-    id.nd_.id = __sync_fetch_and_add((g_net_env->id_gen + ID_GEN_MAX -1), 1);
-    return id.nd;
-}
+void cbrdma_parse_nd(uint64_t nd, int *id, int * worker_id, int * is_server, int * is_active);
 
-static void cbrdma_parse_nd(uint64_t nd, int *id, int * worker_id, int * is_server, int * is_active) {
-    *id = (nd & 0xFFFFFFFF);
-    *worker_id = ((nd >> 32) & 0xFF);
-    uint8_t type  = (((nd >> 32) & 0xFF00) >> 8);
-    *is_server = type & 0x80;
-    *is_active = type & 0x40;
-}
+struct rdma_env_config* get_rdma_env_config();
 
-static struct rdma_pool_config* get_rdma_pool_config() {
-    rdma_pool_config = (struct rdma_pool_config*)malloc(sizeof(struct rdma_pool_config));
-    memset(rdma_pool_config, 0, sizeof(struct rdma_pool_config));
-    rdma_pool_config->mem_block_num = 8 * 5 * 1024;//
-    rdma_pool_config->mem_block_size = 65536 * 2;
-    rdma_pool_config->mem_pool_level = 18;
-    rdma_pool_config->header_block_num = 32 * 1024;
-    rdma_pool_config->header_pool_level = 15;
-    rdma_pool_config->response_block_num = 32 * 1024;
-    rdma_pool_config->response_pool_level = 15;
-    rdma_pool_config->wq_depth = 32;
-    rdma_pool_config->min_cqe_num = 1024;
-    rdma_pool_config->enable_rdma_log = 0;
-    return rdma_pool_config;
-}
+int init_worker(worker *worker, event_callback cb, int index);
 
-static int init_worker(worker *worker, event_callback cb) {
-    int ret = 0;
+void destroy_worker(worker *worker);
 
-    worker->pd = g_net_env->pd;
-    //log_debug("ibv_alloc_pd:%p", worker->pd);
-    worker->comp_channel = ibv_create_comp_channel(g_net_env->ctx);
-    if (worker->comp_channel == NULL) {
-        log_debug("ibv create comp channel failed\n");
-        return 0;
-    }
-    //log_debug("ibv_create_comp_channel:%p",worker->comp_channel);
-    worker->cq = ibv_create_cq(g_net_env->ctx, MIN_CQE_NUM, NULL, worker->comp_channel, 0);
-    if (worker->cq == NULL) {
-        //return assert,ignore resource free
-        log_debug("create cq failed, errno:%d", errno);
-        goto err_destroy_compchannel;
-    }
-    //log_debug("ibv_create_cq:%p", worker->cq);
-    ibv_req_notify_cq(worker->cq, 0);
+void destroy_rdma_env();
 
-    ret = pthread_spin_init(&(worker->lock), PTHREAD_PROCESS_SHARED);
-    if (ret != 0) {
-        log_debug("init worker spin task_lock failed, err:%d", ret);
-        goto err_destroy_cq;
-    }
-    ret = pthread_spin_init(&(worker->nd_map_lock), PTHREAD_PROCESS_SHARED);
-    if (ret != 0) {
-        log_debug("init worker spin lock failed, err:%d", ret);
-        goto err_destroy_workerlock;
-    }
-    worker->nd_map = hashmap_create();
-    worker->closing_nd_map = hashmap_create();
-    //list_head_init(&worker->conn_list);
-    worker->conn_list = InitQueue();
-    if (worker->conn_list == NULL) {
-        log_debug("init worker conn list failed");
-        goto err_destroy_map;
-    }
-    worker->w_pid = 0;
-    pthread_create(&worker->cq_poller_thread, NULL, cb, worker);
-    return C_OK;
-err_destroy_map:
-    hashmap_destroy(worker->closing_nd_map);
-    hashmap_destroy(worker->nd_map);
-    pthread_spin_destroy(&worker->nd_map_lock);
-err_destroy_workerlock:
-    pthread_spin_destroy(&worker->lock);
-err_destroy_cq:
-    ibv_destroy_cq(worker->cq);
-err_destroy_compchannel:
-    ibv_destroy_comp_channel(worker->comp_channel);
-    return C_ERR;
-}
+int init_rdma_env(struct rdma_env_config* config);
 
-static void destroy_worker(worker *worker) {
-    worker->close = 1;
-    pthread_join(worker->cq_poller_thread, NULL);
-    worker->w_pid = 0;
+void conn_add_ref(connection* conn);
 
-    if (worker->conn_list != NULL) {
-        DestroyQueue(worker->conn_list);
-        worker->conn_list = NULL;
-    }
-    if (worker->closing_nd_map != NULL) {
-        hashmap_destroy(worker->closing_nd_map);
-        worker->closing_nd_map = NULL;
-    }
-    if (worker->nd_map != NULL) {
-        hashmap_destroy(worker->nd_map);
-        worker->nd_map = NULL;
-    }
-    pthread_spin_destroy(&worker->nd_map_lock);
-    pthread_spin_destroy(&worker->lock);
+void conn_del_ref(connection* conn);
 
-    if (worker->cq != NULL) {
-        log_debug("ibv_destroy_cq:%p", worker->cq);
-        ibv_destroy_cq(worker->cq);
-        worker->cq = NULL;
-    }
-    if(worker->comp_channel != NULL) {
-        log_debug("ibv_destroy_comp_channel:%p", worker->comp_channel);
-        ibv_destroy_comp_channel(worker->comp_channel);
-        worker->comp_channel = NULL;
-    }
+void set_conn_state(connection* conn, int state);
 
-    worker->pd = NULL;
-}
+int get_conn_state(connection* conn);
 
-static void destroy_rdma_env() {
-    if (g_net_env != NULL) {
-        for (int i = 0; i < g_net_env->worker_num; i++) {
-            destroy_worker(g_net_env->worker + i);
-        }
+worker* get_worker_by_nd(uint64_t nd);
 
-        if (g_net_env->event_channel != NULL) {
-            rdma_destroy_event_channel(g_net_env->event_channel);
-            g_net_env->event_channel = NULL;
-        }
+int add_conn_to_worker(connection * conn, worker * worker, khash_t(map) *hmap);
 
-        g_net_env->close = 1;
-        pthread_join(g_net_env->cm_event_loop_thread, NULL);
+int del_conn_from_worker(uint64_t nd, worker * worker, khash_t(map) *hmap);
 
-        if (g_net_env->all_devs != NULL) {
-            rdma_free_devices(g_net_env->all_devs);
-            g_net_env->all_devs = NULL;
-        }
+void get_worker_and_connect_by_nd(uint64_t nd, worker ** worker, connection** conn);
 
-        pthread_spin_destroy(&g_net_env->server_lock);
+int add_server_to_env(struct rdma_listener *server, khash_t(map) *hmap);
 
-        hashmap_destroy(g_net_env->server_map);
+int del_server_from_env(struct rdma_listener *server);
 
-        free(g_net_env);
-        g_net_env = NULL;
-    }
+int open_event_fd();
 
-    if (rdma_pool != NULL) {
-        if(rdma_pool->memory_pool != NULL) {
-            close_memory_pool(rdma_pool->memory_pool);
-        }
-        if(rdma_pool->header_pool != NULL) {
-            close_object_pool(rdma_pool->header_pool);
-        }
-        if(rdma_pool->response_pool != NULL) {
-            close_object_pool(rdma_pool->response_pool);
-        }
-        free(rdma_pool);
-    }
-    if (rdma_pool_config != NULL) {
-        free(rdma_pool_config);
-    }
+int wait_event(int fd);
 
-    if (fp != NULL) {
-        fclose(fp);
-    }
-}
-
-static int init_rdma_env(struct rdma_pool_config* config) {
-    if(config == NULL) {
-        return 0;
-    }
-    rdma_pool_config = config;
-
-    if (rdma_pool_config->enable_rdma_log == 1) {
-        log_set_level(0);
-        log_set_quiet(0);
-        fp = fopen("/c_debug.log", "ab");
-        if(fp == NULL) {
-            goto err_free_config;
-        }
-        log_add_fp(fp, LOG_DEBUG);
-    } else {
-        log_set_quiet(1);
-    }
-
-    int len = sizeof(struct net_env_st) + 32 * sizeof(worker);//config->worker_num
-    g_net_env = (struct net_env_st*)malloc(len);
-    if (g_net_env == NULL) {
-        log_debug("init env failed: no enouth memory");
-        goto err_close_fp;
-    }
-    g_net_env->worker_num = 32;//config->worker_num
-    g_net_env->server_map = hashmap_create();
-    log_debug("%p\n",g_net_env->server_map);
-
-    if (pthread_spin_init(&(g_net_env->server_lock), PTHREAD_PROCESS_SHARED) != 0) {
-        log_debug("init g_net_env->server_lock spin lock failed");
-        goto err_free_gnetenv;
-    }
-
-    g_net_env->all_devs = rdma_get_devices(&g_net_env->ib_dev_cnt);
-    if (g_net_env->all_devs == NULL) {
-        log_debug("init env failed: get rdma devices failed");
-        goto err_destroy_spinlock;
-    }
-    log_debug("rdma_get_devices find ib_dev_cnt:%d", g_net_env->ib_dev_cnt);
-
-    if (g_net_env->ib_dev_cnt > 0) {
-        g_net_env->ctx = g_net_env->all_devs[0];
-    } else {
-        log_debug("can not find rdma dev");
-        goto err_free_devices;
-    }
-
-    g_net_env->event_channel = rdma_create_event_channel();
-    g_net_env->pd = ibv_alloc_pd(g_net_env->ctx);
-    if (g_net_env->pd == NULL) {
-        log_debug("alloc pd failed, errno:%d", errno);
-        goto err_destroy_eventchannel;
-    }
-    log_debug("g net env alloc pd:%p",g_net_env->pd);
-    pthread_create(&g_net_env->cm_event_loop_thread, NULL, cm_thread, g_net_env);
-    int index;
-    for (index = 0; index < g_net_env->worker_num; index++) {
-        log_debug("init worker(%d)", index);
-        g_net_env->worker[index].id = index;
-        if(init_worker(g_net_env->worker + index, cq_thread) == C_ERR) {
-            log_debug("init env failed: init worker[%d] failed", index);
-            goto err_destroy_worker;
-        }
-    }
-    WQ_DEPTH = rdma_pool_config->wq_depth;
-    MIN_CQE_NUM = rdma_pool_config->min_cqe_num;
-    rdma_pool = (struct rdma_pool*)malloc(sizeof(struct rdma_pool));
-    if (rdma_pool == NULL) {
-        log_debug("malloc rdma pool failed");
-        goto err_destroy_worker;
-    }
-    memset(rdma_pool, 0, sizeof(struct rdma_pool));
-    rdma_pool->memory_pool = init_memory_pool(rdma_pool_config->mem_block_num, rdma_pool_config->mem_block_size, rdma_pool_config->mem_pool_level, g_net_env->pd);
-    if(rdma_pool->memory_pool == NULL) {
-        log_debug("init rdma memory pool failed");
-        goto err_free_rdmapool;
-    }
-    rdma_pool->header_pool = init_object_pool(rdma_pool_config->header_block_num, get_header_size(), rdma_pool_config->header_pool_level);
-    if(rdma_pool->header_pool == NULL) {
-        log_debug("init rdma header pool failed");
-        goto err_close_memorypool;
-    }
-    rdma_pool->response_pool = init_object_pool(rdma_pool_config->response_block_num, get_response_size(), rdma_pool_config->response_pool_level);
-    if(rdma_pool->response_pool == NULL) {
-        log_debug("init rdma response pool failed");
-        goto err_close_headerpool;
-    }
-    return C_OK;
-err_close_headerpool:
-    close_object_pool(rdma_pool->header_pool);
-err_close_memorypool:
-    close_memory_pool(rdma_pool->memory_pool);
-err_free_rdmapool:
-    free(rdma_pool);
-err_destroy_worker:
-    ibv_dealloc_pd(g_net_env->pd);
-    for (int i = 0; i < index; i++) {
-        destroy_worker(g_net_env->worker + i);
-    }
-err_destroy_eventchannel:
-    rdma_destroy_event_channel(g_net_env->event_channel);
-err_free_devices:
-    rdma_free_devices(g_net_env->all_devs);
-err_destroy_spinlock:
-    pthread_spin_destroy(&g_net_env->server_lock);
-err_free_gnetenv:
-    hashmap_destroy(g_net_env->server_map);
-    free(g_net_env);
-err_close_fp:
-    fclose(fp);
-err_free_config:
-    free(rdma_pool_config);
-    return C_ERR;
-}
-
-static void set_conn_state(connection* conn, int state) {
-    int old_state = conn->state;
-    conn->state = state;
-    log_debug("conn(%lu-%p) state: %d-->%d", conn->nd, conn, old_state, state);
-}
-
-static worker* get_worker_by_nd(uint64_t nd) {
-    int worker_id = ((nd) >>32) % g_net_env->worker_num;//CONN_ID_BIT_LEN
-    log_debug("get worker by nd: worker_id:%d",worker_id);
-    return g_net_env->worker + worker_id;
-}
-
-static int add_conn_to_worker(connection * conn, worker * worker, khash_t(map) *hmap) {
-    int ret = 0;
-    pthread_spin_lock(&worker->nd_map_lock);
-    ret = hashmap_put(hmap, conn->nd, (uint64_t)conn);
-    pthread_spin_unlock(&worker->nd_map_lock);
-    log_debug("add conn(%p nd:%d) from worker(%p) nd_map(%p)",conn,conn->nd,worker,worker->nd_map);
-    return ret >= 0;
-}
-
-static int del_conn_from_worker(uint64_t nd, worker * worker, khash_t(map) *hmap) {
-    int ret = 0;
-    pthread_spin_lock(&worker->nd_map_lock);
-    ret = hashmap_del(hmap, nd);
-    pthread_spin_unlock(&worker->nd_map_lock);
-    log_debug("del conn(nd:%d) from worker(%p) nd_map(%p)",nd,worker,worker->nd_map);
-    return ret >= 0;
-}
-
-static void get_worker_and_connect_by_nd(uint64_t nd, worker ** worker, connection** conn) {
-    *worker = get_worker_by_nd(nd);
-    pthread_spin_lock(&(*worker)->nd_map_lock);
-    *conn = (connection*)hashmap_get((*worker)->nd_map, nd);
-    pthread_spin_unlock(&(*worker)->nd_map_lock);
-}
-
-static int add_server_to_env(struct rdma_listener *server, khash_t(map) *hmap) {
-    int ret = 0;
-    pthread_spin_lock(&g_net_env->server_lock);
-    ret = hashmap_put(hmap, server->nd, (uint64_t)server);
-    pthread_spin_unlock(&g_net_env->server_lock);
-    return ret >= 0;
-}
-
-static int del_server_from_env(struct rdma_listener *server) {
-    int ret = 0;
-    pthread_spin_lock(&g_net_env->server_lock);
-    ret = hashmap_del(g_net_env->server_map, server->nd);
-    pthread_spin_unlock(&g_net_env->server_lock);
-    return ret >= 0;
-}
-
-static inline int open_event_fd() {
-    return eventfd(0, EFD_SEMAPHORE);
-}
-
-static inline void wait_event(int fd) {
-    uint64_t value = 0;
-    return read(fd, &value, 8);
-}
-
-static inline void notify_event(int fd, int flag) {
-	if (flag == 0) {
-		uint64_t value = 1;
-        write(fd, &value, 8);
-	} else {
-		close(fd);
-	}
-	return;
-}
+int notify_event(int fd, int flag);
 
 #endif

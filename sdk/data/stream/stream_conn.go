@@ -255,7 +255,7 @@ func (sc *StreamConn) sendToRDMAConn(conn *rdma.Connection, req *Packet, getRepl
 	rdmaAddr := wrapper.GetRdmaAddr(sc.currAddr)
 	for i := 0; i < StreamSendMaxRetry; i++ {
 		log.LogDebugf("sendToConn: send to addr(%v), reqPacket(%v)", rdmaAddr, req) //sc.currAddr
-		err = req.WriteToRDMAConn(conn)
+		err = req.WriteToRDMAConn(conn, req.RdmaBuffer)
 		if err != nil {
 			msg := fmt.Sprintf("sendToConn: failed to write to addr(%v) err(%v)", rdmaAddr, err) //sc.currAddr
 			log.LogWarn(msg)

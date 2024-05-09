@@ -657,9 +657,18 @@ func (s *Streamer) doOverwrite(req *ExtentRequest, direct bool) (total int, err 
 		replyPacket := new(Packet)
 		err = sc.Send(&retry, reqPacket, func(conn net.Conn) (error, bool) {
 			var e error
+			defer func() {
+				if IsRdma {
+					c, _ := conn.(*rdma.Connection)
+					rdma.ReleaseDataBuffer(c, reqPacket.Data, util.RdmaPacketHeaderSize+reqPacket.Size)
+				} else {
+					proto.Buffers.Put(reqPacket.Data)
+				}
+			}()
+
 			if IsRdma {
 				c, _ := conn.(*rdma.Connection)
-				e = replyPacket.RecvRespFromRDMAConn(c, proto.ReadDeadlineTime)
+				e = replyPacket.ReadFromRDMAConn(c, proto.ReadDeadlineTime)
 			} else {
 				e = replyPacket.ReadFromConnWithVer(conn, proto.ReadDeadlineTime)
 			}
@@ -692,12 +701,6 @@ func (s *Streamer) doOverwrite(req *ExtentRequest, direct bool) (total int, err 
 
 			return e, false
 		}, IsRdma)
-
-		if IsRdma {
-			rdma.ReleaseDataBuffer(reqPacket.Data)
-		} else {
-			proto.Buffers.Put(reqPacket.Data)
-		}
 
 		reqPacket.Data = nil
 		log.LogDebugf("doOverwrite: ino(%v) req(%v) reqPacket(%v) err(%v) replyPacket(%v)", s.inode, req, reqPacket, err, replyPacket)

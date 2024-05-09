@@ -11,16 +11,14 @@
 
 #include "connection.h"
 
-#define UNUSED(x) (void)(x)
-//#define C_OK 1
-//#define C_ERR 0
 
+int process_recv_event(connection *conn, cmd_entry *entry);
 
-int process_recv_event(connection *conn, memory_entry *entry);
+int process_send_event(connection *conn, cmd_entry *entry);
 
-int process_send_event(connection *conn);
+int process_write_event(connection *conn);
 
-int process_read_event(connection *conn, memory_entry *entry);
+int process_recv_imm_event(connection *conn, cmd_entry *entry, uint32_t offset_add, uint32_t byte_len);
 
 void process_cq_event(struct ibv_wc *wcs, int num, worker *worker);
 

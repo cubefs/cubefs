@@ -31,8 +31,9 @@ import (
 // Packet defines a wrapper of the packet in proto.
 type Packet struct {
 	proto.Packet
-	inode    uint64
-	errCount int
+	inode      uint64
+	errCount   int
+	RdmaBuffer []byte
 }
 
 // String returns the string format of the packet.
@@ -63,13 +64,19 @@ func NewWritePacket(inode uint64, fileOffset, storeMode int) *Packet {
 	p.KernelOffset = uint64(fileOffset)
 	if storeMode == proto.TinyExtentType {
 		if IsRdma {
-			p.Data, _ = rdma.GetDataBuffer(util.DefaultTinySizeLimit, int((time.Second * 2).Microseconds()))
+			dataBuffer, _ := rdma.GetDataBuffer(util.DefaultTinySizeLimit + util.RdmaPacketHeaderSize)
+			p.Arg = dataBuffer[util.PacketHeaderSize:util.RdmaPacketHeaderSize]
+			p.Data = dataBuffer[util.RdmaPacketHeaderSize:]
+			p.RdmaBuffer = dataBuffer
 		} else {
 			p.Data, _ = proto.Buffers.Get(util.DefaultTinySizeLimit)
 		}
 	} else {
 		if IsRdma {
-			p.Data, _ = rdma.GetDataBuffer(util.BlockSize, int((time.Second * 2).Microseconds()))
+			dataBuffer, _ := rdma.GetDataBuffer(util.BlockSize + util.RdmaPacketHeaderSize)
+			p.Arg = dataBuffer[util.PacketHeaderSize:util.RdmaPacketHeaderSize]
+			p.Data = dataBuffer[util.RdmaPacketHeaderSize:]
+			p.RdmaBuffer = dataBuffer
 		} else {
 			p.Data, _ = proto.Buffers.Get(util.BlockSize)
 		}
@@ -127,7 +134,10 @@ func NewOverwritePacket(dp *wrapper.DataPartition, extentID uint64, extentOffset
 	p.inode = inode
 	p.KernelOffset = uint64(fileOffset)
 	if IsRdma {
-		p.Data, _ = rdma.GetDataBuffer(util.BlockSize, int((time.Second * 2).Microseconds()))
+		dataBuffer, _ := rdma.GetDataBuffer(util.BlockSize + util.RdmaPacketHeaderSize)
+		p.Arg = dataBuffer[util.PacketHeaderSize:util.RdmaPacketHeaderSize]
+		p.Data = dataBuffer[util.RdmaPacketHeaderSize:]
+		p.RdmaBuffer = dataBuffer
 	} else {
 		p.Data, _ = proto.Buffers.Get(util.BlockSize)
 	}
@@ -204,7 +214,7 @@ func (p *Packet) isValidReadReply(q *Packet) bool {
 func (p *Packet) writeToConn(conn net.Conn) error {
 	p.CRC = crc32.ChecksumIEEE(p.Data[:p.Size])
 	if c, ok := conn.(*rdma.Connection); ok {
-		return p.WriteToRDMAConn(c)
+		return p.WriteToRDMAConn(c, p.RdmaBuffer)
 	} else {
 		return p.WriteToConn(conn)
 	}

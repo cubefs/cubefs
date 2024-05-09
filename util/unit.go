@@ -38,22 +38,20 @@ const (
 )
 
 const (
-	BlockCount          = 1024
-	BlockSize           = 65536 * 2
-	ReadBlockSize       = BlockSize
-	RepairReadBlockSize = 512 * util.KB
-	PerBlockCrcSize     = 4
-	ExtentSize          = BlockCount * BlockSize
-	PacketHeaderSize    = 57
-	BlockHeaderSize     = 4096
-	SyscallTryMaxTimes  = 3
-	PacketHeaderVerSize = 65
-)
-
-const (
-	PageSize          = 4 * util.KB
-	FallocFLKeepSize  = 1
-	FallocFLPunchHole = 2
+	PageSize             = 4 * util.KB
+	FallocFLKeepSize     = 1
+	FallocFLPunchHole    = 2
+	BlockCount           = 1024
+	BlockSize            = 65536 * 2
+	ReadBlockSize        = BlockSize
+	RepairReadBlockSize  = 512 * util.KB
+	PerBlockCrcSize      = 4
+	ExtentSize           = BlockCount * BlockSize
+	PacketHeaderSize     = 57
+	BlockHeaderSize      = 4096
+	SyscallTryMaxTimes   = 3
+	PacketHeaderVerSize  = 65
+	RdmaPacketHeaderSize = 121
 )
 
 const (
