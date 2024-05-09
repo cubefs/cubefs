@@ -302,6 +302,8 @@ func main() {
 
 		util.Config.EnableRdmaLog = cfg.GetBoolWithDefault("enableRdmaLog", false)
 
+		util.Config.WorkerNum = int(cfg.GetInt64WithDefault("workerNum", 32))
+
 		stream.StreamRdmaConnPool = util.NewRdmaConnectPool()
 	}
 

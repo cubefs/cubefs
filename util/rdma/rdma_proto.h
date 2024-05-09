@@ -283,11 +283,15 @@ static struct rdma_pool_config* get_rdma_pool_config() {
     rdma_pool_config->wq_depth = 32;
     rdma_pool_config->min_cqe_num = 1024;
     rdma_pool_config->enable_rdma_log = 0;
+    rdma_pool_config->worker_num = 32;
     return rdma_pool_config;
 }
 
 static int init_worker(worker *worker, event_callback cb) {
     int ret = 0;
+    pthread_attr_t attr;
+    struct sched_param param;
+    int policy;
 
     worker->pd = g_net_env->pd;
     //log_debug("ibv_alloc_pd:%p", worker->pd);
@@ -325,7 +329,16 @@ static int init_worker(worker *worker, event_callback cb) {
         goto err_destroy_map;
     }
     worker->w_pid = 0;
-    pthread_create(&worker->cq_poller_thread, NULL, cb, worker);
+
+    pthread_attr_init(&attr);
+    pthread_attr_getschedpolicy(&attr, &policy);
+    //pthread_attr_setinheritsched(&attr, PTHREAD_EXPLICIT_SCHED);
+    policy = SCHED_FIFO;
+    pthread_attr_setschedpolicy(&attr, policy);
+    param.sched_priority = sched_get_priority_max(policy);
+    pthread_attr_setschedparam(&attr, &param);
+
+    pthread_create(&worker->cq_poller_thread, &attr, cb, worker);
     return C_OK;
 err_destroy_map:
     hashmap_destroy(worker->closing_nd_map);
@@ -426,6 +439,11 @@ static int init_rdma_env(struct rdma_pool_config* config) {
     if(config == NULL) {
         return 0;
     }
+
+    pthread_attr_t attr;
+    struct sched_param param;
+    int policy;
+
     rdma_pool_config = config;
 
     if (rdma_pool_config->enable_rdma_log == 1) {
@@ -440,13 +458,13 @@ static int init_rdma_env(struct rdma_pool_config* config) {
         log_set_quiet(1);
     }
 
-    int len = sizeof(struct net_env_st) + 32 * sizeof(worker);//config->worker_num
+    int len = sizeof(struct net_env_st) + config->worker_num * sizeof(worker);//32
     g_net_env = (struct net_env_st*)malloc(len);
     if (g_net_env == NULL) {
         log_debug("init env failed: no enouth memory");
         goto err_close_fp;
     }
-    g_net_env->worker_num = 32;//config->worker_num
+    g_net_env->worker_num = config->worker_num;//32
     g_net_env->server_map = hashmap_create();
     log_debug("%p\n",g_net_env->server_map);
 
@@ -476,7 +494,16 @@ static int init_rdma_env(struct rdma_pool_config* config) {
         goto err_destroy_eventchannel;
     }
     log_debug("g net env alloc pd:%p",g_net_env->pd);
-    pthread_create(&g_net_env->cm_event_loop_thread, NULL, cm_thread, g_net_env);
+
+    pthread_attr_init(&attr);
+    pthread_attr_getschedpolicy(&attr, &policy);
+    //pthread_attr_setinheritsched(&attr, PTHREAD_EXPLICIT_SCHED);
+    policy = SCHED_FIFO;
+    pthread_attr_setschedpolicy(&attr, policy);
+    param.sched_priority = sched_get_priority_max(policy);
+    pthread_attr_setschedparam(&attr, &param);
+
+    pthread_create(&g_net_env->cm_event_loop_thread, &attr, cm_thread, g_net_env);
     int index;
     for (index = 0; index < g_net_env->worker_num; index++) {
         log_debug("init worker(%d)", index);

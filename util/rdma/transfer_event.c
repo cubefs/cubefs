@@ -134,6 +134,7 @@ void *cq_thread(void *ctx) {
         if (worker->close == 1) {
             goto exit;
         }
+        /*
         //log_debug("cq_thread: work comp channel:%p", worker->comp_channel);
         ret = ibv_get_cq_event(worker->comp_channel, &ev_cq, &ev_ctx);
         if(ret != 0) {
@@ -147,13 +148,14 @@ void *cq_thread(void *ctx) {
             log_debug("ibv req notify cq error\n");
             goto error;
         }
+        */
         ret = ibv_poll_cq(worker->cq, 32, wcs);
         if (ret < 0) {
             log_debug("ibv poll cq failed: %d", ret);
             goto error;
         }
         process_cq_event(wcs, ret, worker);
-        ibv_ack_cq_events(worker->cq, ret);
+        //ibv_ack_cq_events(worker->cq, ret);
         log_debug("process cq event finish");
     }
 error:

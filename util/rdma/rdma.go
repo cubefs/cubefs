@@ -347,6 +347,7 @@ type RdmaPoolConfig struct {
 	WqDepth           int
 	MinCqeNum         int
 	EnableRdmaLog     bool
+	WorkerNum         int
 }
 
 func parseRdmaPoolConfig(gCfg *RdmaPoolConfig, cCfg *C.struct_rdma_pool_config) error {
@@ -385,6 +386,9 @@ func parseRdmaPoolConfig(gCfg *RdmaPoolConfig, cCfg *C.struct_rdma_pool_config) 
 	}
 	if gCfg.EnableRdmaLog {
 		cCfg.enable_rdma_log = C.int(1)
+	}
+	if gCfg.WorkerNum != 0 {
+		cCfg.worker_num = C.int(gCfg.WorkerNum)
 	}
 	return nil
 }

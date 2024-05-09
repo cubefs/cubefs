@@ -292,6 +292,8 @@ func (s *DataNode) parseConfig(cfg *config.Config) (err error) {
 
 		util.Config.EnableRdmaLog = cfg.GetBoolWithDefault("enableRdmaLog", false)
 
+		util.Config.WorkerNum = int(cfg.GetInt64WithDefault("workerNum", 32))
+
 		stream.StreamRdmaConnPool = util.NewRdmaConnectPool()
 		repl.RdmaConnPool = util.NewRdmaConnectPool()
 	}
