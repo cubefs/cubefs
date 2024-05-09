@@ -239,6 +239,12 @@ func submit(rs RaftServer, ctx context.Context, key string, value []byte) error 
 }
 
 func TestRaftServer(t *testing.T) {
+	var pprofServer *http.Server
+	defer func() {
+		if pprofServer != nil {
+			pprofServer.Close()
+		}
+	}()
 	log.SetOutputLevel(0)
 	os.RemoveAll("/tmp/raftserver")
 	go func() {
@@ -258,7 +264,11 @@ func TestRaftServer(t *testing.T) {
 			}
 		})
 		mainMux.Handle("/", mainHandler)
-		if err := http.ListenAndServe(":8080", mainMux); err != http.ErrServerClosed {
+		pprofServer = &http.Server{
+			Addr:    ":8080",
+			Handler: mainMux,
+		}
+		if err := pprofServer.ListenAndServe(); err != http.ErrServerClosed {
 			return
 		}
 	}()

@@ -111,7 +111,7 @@ func TestCreateColdVol(t *testing.T) {
 	assert.True(t, vol.domainId == 0)
 
 	delVol(volName, t)
-	time.Sleep(15 * time.Second)
+	time.Sleep(30 * time.Second)
 
 	req[volTypeKey] = proto.VolumeTypeCold
 
