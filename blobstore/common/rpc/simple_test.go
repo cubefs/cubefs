@@ -141,7 +141,7 @@ func TestClient_NewClient(t *testing.T) {
 		cfg := Config{}
 		NewClient(&cfg)
 		require.Equal(t, 10, cfg.Tc.MaxConnsPerHost)
-		require.Equal(t, int64(0), cfg.Tc.DialTimeoutMs)
+		require.Equal(t, int64(100), cfg.Tc.DialTimeoutMs)
 		require.False(t, cfg.Tc.Auth.EnableAuth)
 	}
 	{
@@ -150,7 +150,7 @@ func TestClient_NewClient(t *testing.T) {
 		cfg.Tc.Auth.Secret = "true"
 		NewClient(&cfg)
 		require.Equal(t, 10, cfg.Tc.MaxConnsPerHost)
-		require.Equal(t, int64(0), cfg.Tc.DialTimeoutMs)
+		require.Equal(t, int64(100), cfg.Tc.DialTimeoutMs)
 		require.True(t, cfg.Tc.Auth.EnableAuth)
 		require.Equal(t, "true", cfg.Tc.Auth.Secret)
 	}
@@ -160,7 +160,7 @@ func TestClient_NewClient(t *testing.T) {
 		NewClient(&cfg)
 		require.Equal(t, 4, cfg.Tc.MaxConnsPerHost)
 		require.Equal(t, 0, cfg.Tc.MaxIdleConnsPerHost)
-		require.Equal(t, int64(0), cfg.Tc.DialTimeoutMs)
+		require.Equal(t, int64(200), cfg.Tc.DialTimeoutMs)
 		require.False(t, cfg.Tc.Auth.EnableAuth)
 	}
 }
