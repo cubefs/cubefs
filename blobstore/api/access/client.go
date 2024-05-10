@@ -89,7 +89,7 @@ func (mode RPCConnectMode) getConfig(speed float64, timeout, baseTimeout int64) 
 		BodyBaseTimeoutMs: getBaseTimeout(30 * 1000),
 		Tc: rpc.TransportConfig{
 			// dial timeout
-			DialTimeoutMs: 5 * 1000,
+			DialTimeoutMs: 200,
 			// response header timeout after send the request
 			ResponseHeaderTimeoutMs: 5 * 1000,
 			// IdleConnTimeout is the maximum amount of time an idle
@@ -109,21 +109,21 @@ func (mode RPCConnectMode) getConfig(speed float64, timeout, baseTimeout int64) 
 		config.ClientTimeoutMs = getTimeout(getSpeed(40))
 		config.BodyBandwidthMBPs = getSpeed(40)
 		config.BodyBaseTimeoutMs = getBaseTimeout(3 * 1000)
-		config.Tc.DialTimeoutMs = 2 * 1000
+		config.Tc.DialTimeoutMs = 100
 		config.Tc.ResponseHeaderTimeoutMs = 2 * 1000
 		config.Tc.IdleConnTimeoutMs = 10 * 1000
 	case GeneralConnMode:
 		config.ClientTimeoutMs = getTimeout(getSpeed(20))
 		config.BodyBandwidthMBPs = getSpeed(20)
 		config.BodyBaseTimeoutMs = getBaseTimeout(10 * 1000)
-		config.Tc.DialTimeoutMs = 3 * 1000
+		config.Tc.DialTimeoutMs = 100
 		config.Tc.ResponseHeaderTimeoutMs = 3 * 1000
 		config.Tc.IdleConnTimeoutMs = 30 * 1000
 	case SlowConnMode:
 		config.ClientTimeoutMs = getTimeout(getSpeed(4))
 		config.BodyBandwidthMBPs = getSpeed(4)
 		config.BodyBaseTimeoutMs = getBaseTimeout(120 * 1000)
-		config.Tc.DialTimeoutMs = 10 * 1000
+		config.Tc.DialTimeoutMs = 200
 		config.Tc.ResponseHeaderTimeoutMs = 10 * 1000
 		config.Tc.IdleConnTimeoutMs = 60 * 1000
 	case NoLimitConnMode:
@@ -408,6 +408,9 @@ func (c *client) putObject(ctx context.Context, args *PutArgs) (location Locatio
 	req, err := http.NewRequest(http.MethodPut, urlStr, args.Body)
 	if err != nil {
 		return
+	}
+	if args.GetBody != nil {
+		req.GetBody = args.GetBody
 	}
 
 	resp := &PutResp{}
