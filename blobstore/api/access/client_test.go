@@ -955,3 +955,34 @@ func TestAccessClientLogger(t *testing.T) {
 	_, _, err = client.Put(randCtx(), &args)
 	require.Error(t, err)
 }
+
+func TestAccessClientPutRetryGetBody(t *testing.T) {
+	cfg := access.Config{}
+	cfg.RPCConfig = &rpc.Config{}
+	cfg.LogLevel = log.Lfatal
+	cfg.PriorityAddrs = []string{"http://127.0.0.1:9500", mockServer.URL}
+	client, err := access.New(cfg)
+	require.NoError(t, err)
+	for range [100]struct{}{} {
+		retried := false
+		args := access.PutArgs{
+			Size: int64(1),
+			Body: bytes.NewBuffer([]byte{'a'}),
+			GetBody: func() (io.ReadCloser, error) {
+				retried = true
+				return io.NopCloser(bytes.NewBuffer([]byte{'z'})), nil
+			},
+		}
+		loc, _, err := client.Put(randCtx(), &args)
+		require.NoError(t, err)
+		rc, err := client.Get(randCtx(), &access.GetArgs{Location: loc, ReadSize: uint64(1)})
+		require.NoError(t, err)
+		buff, err := io.ReadAll(rc)
+		require.NoError(t, err)
+		if len(buff) > 0 && buff[0] == 'z' {
+			require.True(t, retried)
+			return
+		}
+	}
+	require.Fail(t, "retry with get body failed")
+}
