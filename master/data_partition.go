@@ -1114,7 +1114,9 @@ func (partition *DataPartition) MarkDecommissionStatus(srcAddr, dstAddr, srcDisk
 	}
 	// for auto decommission, need raftForce to delete src if no leader
 	if migrateType == AutoDecommission {
-		if partition.getLeaderAddr() == "" {
+		log.LogDebugf("action[MarkDecommissionStatus] dp[%v] lostLeader %v leader %v interval %v",
+			partition.PartitionID, partition.lostLeader(c), partition.getLeaderAddr(), time.Now().Unix()-partition.LeaderReportTime)
+		if partition.lostLeader(c) {
 			if partition.getReplicaEqualStatusNum(proto.Unavailable) == partition.ReplicaNum {
 				log.LogWarnf("action[MarkDecommissionStatus] dp[%v] all replica is unavaliable, cannot handle in auto decommission mode",
 					partition.PartitionID)
@@ -2002,16 +2004,6 @@ func (partition *DataPartition) needManualFix() bool {
 func (partition *DataPartition) checkReplicaMeta(c *Cluster) {
 	// find redundant peers from replica meta
 	force := false
-	for _, replica := range partition.Replicas {
-		redundantPeers := findPeersToDeleteByConfig(replica.LocalPeers, partition.Peers)
-		for _, peer := range redundantPeers {
-			// remove raft member
-			partition.createTaskToRemoveRaftMember(c, peer, force, true)
-			log.LogInfof("action[checkReplicaMeta]dp(%v) remove redundant peer %v force %v",
-				partition.PartitionID, peer, force)
-		}
-	}
-
 	for _, replica := range partition.Replicas {
 		redundantPeers := findPeersToDeleteByConfig(replica.LocalPeers, partition.Peers)
 		for _, peer := range redundantPeers {
