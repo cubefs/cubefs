@@ -40,7 +40,7 @@ type LbConfig struct {
 	// remove failed hosts will not work.
 	FailRetryIntervalS int `json:"fail_retry_interval_s"`
 	// Within MaxFailsPeriodS, if the number of failures is greater than or equal
-	// to MaxFails, the host is considered disconnected.
+	// to HostTryTimes, the host is considered disconnected.
 	MaxFailsPeriodS int `json:"max_fails_period_s"`
 
 	// RequestTryTimes The maximum number of attempts for a request hosts.
@@ -77,7 +77,7 @@ func NewLbClient(cfg *LbConfig, sel Selector) Client {
 		cfg.MaxFailsPeriodS = 1
 	}
 	if cfg.RequestTryTimes == 0 {
-		cfg.RequestTryTimes = cfg.HostTryTimes + 1
+		cfg.RequestTryTimes = len(cfg.Hosts) + len(cfg.BackupHosts) + 1
 	}
 	if cfg.ShouldRetry == nil {
 		cfg.ShouldRetry = defaultShouldRetry
