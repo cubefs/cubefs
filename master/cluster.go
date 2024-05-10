@@ -1244,7 +1244,7 @@ func (c *Cluster) checkReplicaOfDataPartitions(ignoreDiscardDp bool) (
 			}
 
 			if proto.IsHot(vol.VolType) {
-				if dp.getLeaderAddr() == "" && (time.Now().Unix()-dp.LeaderReportTime > c.cfg.DpNoLeaderReportIntervalSec) {
+				if dp.lostLeader(c) {
 					noLeaderDPs = append(noLeaderDPs, dp)
 				}
 			}

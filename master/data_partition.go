@@ -1905,12 +1905,10 @@ func (partition *DataPartition) markRollbackFailed(needRollback bool) {
 
 func (partition *DataPartition) removeReplicaByForce(c *Cluster, peerAddr string) error {
 	// del new add replica,may timeout, try rollback next time
-	force := false
+	force := partition.DecommissionRaftForce
 	// if single dp add raft member success but add a replica fails, use force to delete raft member
 	// to avoid no leader
-	//  to make sure host for dp on master is correct,redundant peer on dataNode can be deleted by scheduled task for
-	// checkReplicaMeta
-	if partition.getLeaderAddr() == "" {
+	if partition.ReplicaNum == 1 && partition.lostLeader(c) {
 		force = true
 	}
 	log.LogInfof("action[removeReplicaByForce]dp[%v] rollback to del peer %v force %v", partition.PartitionID, peerAddr, force)
@@ -2004,9 +2002,6 @@ func (partition *DataPartition) needManualFix() bool {
 func (partition *DataPartition) checkReplicaMeta(c *Cluster) {
 	// find redundant peers from replica meta
 	force := false
-	if partition.getLeaderAddr() == "" {
-		force = true
-	}
 	for _, replica := range partition.Replicas {
 		redundantPeers := findPeersToDeleteByConfig(replica.LocalPeers, partition.Peers)
 		for _, peer := range redundantPeers {
@@ -2042,4 +2037,8 @@ func findPeersToDeleteByConfig(toCompare, basePeers []proto.Peer) []proto.Peer {
 		}
 	}
 	return redundantPeers
+}
+
+func (partition *DataPartition) lostLeader(c *Cluster) bool {
+	return partition.getLeaderAddr() == "" && (time.Now().Unix()-partition.LeaderReportTime > c.cfg.DpNoLeaderReportIntervalSec)
 }
