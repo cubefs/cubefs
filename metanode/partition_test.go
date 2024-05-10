@@ -233,7 +233,7 @@ func checkTreeCntForMpTest(t *testing.T, mp *metaPartition) {
 }
 
 func TestMultiPartitionOnDisk(t *testing.T) {
-	dbManager := NewRocksdbManager(0, 0)
+	dbManager := NewRocksdbManager(0, 0, 0)
 	dbDir, err := os.MkdirTemp("", "")
 	require.NoError(t, err)
 	t.Logf("db dir is %v", dbDir)
@@ -296,7 +296,7 @@ func getSSTCountForPartitionTest(t *testing.T, dir string) (count int) {
 }
 
 func TestLoadAndStoreMetaPartition(t *testing.T) {
-	dbManager := NewRocksdbManager(0, 0)
+	dbManager := NewRocksdbManager(0, 0, 0)
 	dbDir, err := os.MkdirTemp("", "")
 	require.NoError(t, err)
 	t.Logf("db dir is %v", dbDir)

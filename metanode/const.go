@@ -242,6 +242,7 @@ const (
 
 	// NOTE: metanode rocksdb config
 	cfgRocksdbWriteBufferSize = "rocksdbWriteBufferSize" // int
+	cfsRocksdbWriteBufferNum  = "rocksdbWriteBufferNum"  // int
 	cfgRocksdbBlockCacheSize  = "rocksdbBlockCacheSize"  // uint64
 )
 

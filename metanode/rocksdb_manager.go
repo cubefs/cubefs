@@ -54,6 +54,7 @@ type RocksdbHandle struct {
 
 type rocksdbManager struct {
 	writeBufferSize int
+	writeBufferNum  int
 	blockCacheSize  uint64
 	mutex           sync.Mutex
 	dbs             map[string]*RocksdbHandle
@@ -100,7 +101,7 @@ func (r *rocksdbManager) OpenRocksdb(dbPath string) (db *RocksdbOperator, err er
 	}
 	handle.rc += 1
 	if handle.rc == 1 {
-		err = handle.db.OpenDb(dbPath, r.writeBufferSize, r.blockCacheSize, 0, 0, 0)
+		err = handle.db.OpenDb(dbPath, r.writeBufferSize, r.writeBufferNum, r.blockCacheSize, 0, 0, 0)
 		if err != nil {
 			handle.rc -= 1
 			return
@@ -192,9 +193,10 @@ func (r *rocksdbManager) GetPartitionCount(dbPath string) (count int, err error)
 
 var _ RocksdbManager = &rocksdbManager{}
 
-func NewRocksdbManager(writeBufferSize int, blockCacheSize uint64) (p RocksdbManager) {
+func NewRocksdbManager(writeBufferSize int, writeBufferNum int, blockCacheSize uint64) (p RocksdbManager) {
 	p = &rocksdbManager{
 		writeBufferSize: writeBufferSize,
+		writeBufferNum:  writeBufferNum,
 		blockCacheSize:  blockCacheSize,
 		dbs:             make(map[string]*RocksdbHandle),
 	}

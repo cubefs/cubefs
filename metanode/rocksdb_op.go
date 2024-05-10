@@ -34,6 +34,7 @@ import (
 const (
 	DefaultCacheSize       = 256 * util.MB
 	DefaultWriteBuffSize   = 256 * util.MB
+	DefaultWriteBuffNum    = 4
 	DefaultRetryCount      = 3
 	DefaultMaxLogFileSize  = 1 * util.MB
 	DefaultLogFileRollTime = 3 * 24 * time.Hour // NOTE: 3 day
@@ -164,6 +165,7 @@ func (db *RocksdbOperator) CloseDb() (err error) {
 
 func (dbInfo *RocksdbOperator) newRocksdbOptions(
 	writeBufferSize int,
+	writeBufferNum int,
 	blockCacheSize uint64,
 	maxLogFileSize int,
 	logFileTimeToRoll time.Duration,
@@ -173,6 +175,9 @@ func (dbInfo *RocksdbOperator) newRocksdbOptions(
 	// NOTE: check and set default options
 	if writeBufferSize == 0 {
 		writeBufferSize = DefaultWriteBuffSize
+	}
+	if writeBufferNum == 0 {
+		writeBufferNum = DefaultWriteBuffNum
 	}
 	if maxLogFileSize == 0 {
 		maxLogFileSize = DefaultMaxLogFileSize
@@ -190,7 +195,7 @@ func (dbInfo *RocksdbOperator) newRocksdbOptions(
 	// NOTE: main options
 	opts.SetCreateIfMissing(true)
 	opts.SetWriteBufferSize(writeBufferSize)
-	opts.SetMaxWriteBufferNumber(2)
+	opts.SetMaxWriteBufferNumber(writeBufferNum)
 	opts.SetCompression(gorocksdb.NoCompression)
 
 	tableOpts = gorocksdb.NewDefaultBlockBasedTableOptions()
@@ -205,7 +210,7 @@ func (dbInfo *RocksdbOperator) newRocksdbOptions(
 	return
 }
 
-func (dbInfo *RocksdbOperator) doOpen(dir string, writeBufferSize int, blockCacheSize uint64, maxLogFileSize int, logFileTimeToRoll time.Duration, keepLogFileNum int) (err error) {
+func (dbInfo *RocksdbOperator) doOpen(dir string, writeBufferSize int, writeBufferNum int, blockCacheSize uint64, maxLogFileSize int, logFileTimeToRoll time.Duration, keepLogFileNum int) (err error) {
 	var stat fs.FileInfo
 
 	stat, err = os.Stat(dir)
@@ -226,7 +231,7 @@ func (dbInfo *RocksdbOperator) doOpen(dir string, writeBufferSize int, blockCach
 	}
 
 	log.LogInfof("[doOpen] rocksdb dir(%v)", dir)
-	dbInfo.openOption, dbInfo.cache, dbInfo.tableOption = dbInfo.newRocksdbOptions(writeBufferSize, blockCacheSize, maxLogFileSize, logFileTimeToRoll, keepLogFileNum)
+	dbInfo.openOption, dbInfo.cache, dbInfo.tableOption = dbInfo.newRocksdbOptions(writeBufferSize, writeBufferNum, blockCacheSize, maxLogFileSize, logFileTimeToRoll, keepLogFileNum)
 
 	dbInfo.db, err = gorocksdb.OpenDb(dbInfo.openOption, dir)
 
@@ -242,7 +247,7 @@ func (dbInfo *RocksdbOperator) doOpen(dir string, writeBufferSize int, blockCach
 	return nil
 }
 
-func (dbInfo *RocksdbOperator) OpenDb(dir string, writeBufferSize int, blockCacheSize uint64, maxLogFileSize int, logFileTimeToRoll time.Duration, keepLogFileNum int) (err error) {
+func (dbInfo *RocksdbOperator) OpenDb(dir string, writeBufferSize int, writeBufferNum int, blockCacheSize uint64, maxLogFileSize int, logFileTimeToRoll time.Duration, keepLogFileNum int) (err error) {
 	ok := atomic.CompareAndSwapUint32(&dbInfo.state, dbInitSt, dbOpenningSt)
 	ok = ok || atomic.CompareAndSwapUint32(&dbInfo.state, dbClosedSt, dbOpenningSt)
 	if !ok {
@@ -264,10 +269,10 @@ func (dbInfo *RocksdbOperator) OpenDb(dir string, writeBufferSize int, blockCach
 		dbInfo.mutex.Unlock()
 	}()
 
-	return dbInfo.doOpen(dir, writeBufferSize, blockCacheSize, maxLogFileSize, logFileTimeToRoll, keepLogFileNum)
+	return dbInfo.doOpen(dir, writeBufferSize, writeBufferNum, blockCacheSize, maxLogFileSize, logFileTimeToRoll, keepLogFileNum)
 }
 
-func (dbInfo *RocksdbOperator) ReOpenDb(dir string, writeBufferSize int, blockCacheSize uint64, maxLogFileSize int, logFileTimeToRoll time.Duration, keepLogFileNum int) (err error) {
+func (dbInfo *RocksdbOperator) ReOpenDb(dir string, writeBufferSize int, writeBufferNum int, blockCacheSize uint64, maxLogFileSize int, logFileTimeToRoll time.Duration, keepLogFileNum int) (err error) {
 	if ok := atomic.CompareAndSwapUint32(&dbInfo.state, dbClosedSt, dbOpenningSt); !ok {
 		if atomic.LoadUint32(&dbInfo.state) == dbOpenedSt {
 			//already opened
@@ -290,7 +295,7 @@ func (dbInfo *RocksdbOperator) ReOpenDb(dir string, writeBufferSize int, blockCa
 		return fmt.Errorf("rocks db dir changed, need new db instance")
 	}
 
-	return dbInfo.doOpen(dir, writeBufferSize, blockCacheSize, maxLogFileSize, logFileTimeToRoll, keepLogFileNum)
+	return dbInfo.doOpen(dir, writeBufferSize, writeBufferNum, blockCacheSize, maxLogFileSize, logFileTimeToRoll, keepLogFileNum)
 }
 
 func genRocksDBReadOption(snap *gorocksdb.Snapshot) (ro *gorocksdb.ReadOptions) {

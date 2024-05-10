@@ -23,7 +23,7 @@ import (
 )
 
 func TestRocksdbManager(t *testing.T) {
-	manager := metanode.NewRocksdbManager(0, 0)
+	manager := metanode.NewRocksdbManager(0, 0, 0)
 	dbDir, err := os.MkdirTemp("", "")
 	require.NoError(t, err)
 	defer os.RemoveAll(dbDir)

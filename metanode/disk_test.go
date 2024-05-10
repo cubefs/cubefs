@@ -35,7 +35,7 @@ func newMetaNodeForDiskTest(t *testing.T, dir string, rocksdbDir string, raftDir
 		raftDir:        raftDir,
 		disks:          make(map[string]*diskmon.FsCapMon),
 		diskStopCh:     make(chan struct{}),
-		rocksdbManager: NewRocksdbManager(0, 0),
+		rocksdbManager: NewRocksdbManager(0, 0, 0),
 	}
 	return
 }

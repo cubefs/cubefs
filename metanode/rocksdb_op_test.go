@@ -45,7 +45,7 @@ func TestOpenDb(t *testing.T) {
 	os.RemoveAll(path)
 	db := metanode.NewRocksdb()
 	defer os.RemoveAll(path)
-	err := db.OpenDb(path, 0, 0, 0, 0, 0)
+	err := db.OpenDb(path, 0, 0, 0, 0, 0, 0)
 	require.NoError(t, err)
 
 	err = db.CloseDb()
@@ -57,13 +57,13 @@ func TestReopneDb(t *testing.T) {
 	os.RemoveAll(path)
 	db := metanode.NewRocksdb()
 	defer os.RemoveAll(path)
-	err := db.OpenDb(path, 0, 0, 0, 0, 0)
+	err := db.OpenDb(path, 0, 0, 0, 0, 0, 0)
 	require.NoError(t, err)
 
 	err = db.CloseDb()
 	require.NoError(t, err)
 
-	err = db.ReOpenDb(path, 0, 0, 0, 0, 0)
+	err = db.ReOpenDb(path, 0, 0, 0, 0, 0, 0)
 	require.NoError(t, err)
 
 	err = db.CloseDb()
@@ -284,7 +284,7 @@ func TestOps(t *testing.T) {
 	defer os.RemoveAll(path)
 	defer os.RemoveAll(path2)
 	db := metanode.NewRocksdb()
-	_ = db.OpenDb(path, 0, 0, 0, 0, 0)
+	_ = db.OpenDb(path, 0, 0, 0, 0, 0, 0)
 
 	start := time.Now()
 	insertByItem(t, db)
@@ -327,7 +327,7 @@ func TestOps(t *testing.T) {
 	runtime.GC()
 	time.Sleep(time.Second * 3)
 	db2 := metanode.NewRocksdb()
-	_ = db2.OpenDb(path2, 0, 0, 0, 0, 0)
+	_ = db2.OpenDb(path2, 0, 0, 0, 0, 0, 0)
 	genenerData(t, db2)
 	start = time.Now()
 
@@ -335,7 +335,7 @@ func TestOps(t *testing.T) {
 	err := db.CloseDb()
 	require.NoError(t, err)
 	os.Rename(path2, path)
-	db.ReOpenDb(path, 0, 0, 0, 0, 0)
+	db.ReOpenDb(path, 0, 0, 0, 0, 0, 0)
 	t.Logf("reopen db delete used:%v \n", time.Since(start))
 	rangeTest(t, db)
 	deleteDataByMultiItems(t, db)
@@ -394,7 +394,7 @@ func TestAbortOps(t *testing.T) {
 	os.RemoveAll(path)
 	defer os.RemoveAll(path)
 	db := metanode.NewRocksdb()
-	_ = db.OpenDb(path, 0, 0, 0, 0, 0)
+	_ = db.OpenDb(path, 0, 0, 0, 0, 0, 0)
 	genenerData(t, db)
 	rangeTest(t, db)
 
@@ -415,7 +415,7 @@ func TestRocksDB_accessDB(t *testing.T) {
 	os.RemoveAll(path)
 	defer os.RemoveAll(path)
 	db := metanode.NewRocksdb()
-	_ = db.OpenDb(path, 0, 0, 0, 0, 0)
+	_ = db.OpenDb(path, 0, 0, 0, 0, 0, 0)
 	genenerData(t, db)
 	dbSnap := db.OpenSnap()
 	require.NotNil(t, dbSnap)
@@ -449,7 +449,7 @@ func TestFlushSinglePartition(t *testing.T) {
 	defer os.RemoveAll(path)
 	db := metanode.NewRocksdb()
 
-	err := db.OpenDb(path, 0, 0, 0, 0, 0)
+	err := db.OpenDb(path, 0, 0, 0, 0, 0, 0)
 	require.NoError(t, err)
 
 	// genenerData(t, db)

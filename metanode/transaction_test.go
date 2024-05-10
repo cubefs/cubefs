@@ -65,7 +65,7 @@ func newMetaPartition(PartitionId uint64, manager *metadataManager, storeMode pr
 		storeChan:      make(chan *storeMsg, 100),
 		vol:            NewVol(),
 		manager:        manager,
-		rocksdbManager: NewRocksdbManager(0, 0),
+		rocksdbManager: NewRocksdbManager(0, 0, 0),
 	}
 	err := mp.rocksdbManager.Register(metaConf.RocksDBDir)
 	if err != nil {
