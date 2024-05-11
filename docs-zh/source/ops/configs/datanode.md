@@ -24,9 +24,7 @@
 | disks         | string slice | 格式：`磁盘挂载路径:预留空间` ，预留空间配置范围`[20G,50G]` | 是   |
 | diskCurrentLoadDpLimit | int | 一个磁盘上并发加载的data partition的最大数量 | No |
 | diskCurrentStopDpLimit | int | 一个磁盘上并发停止的data partition的最大数量 | No |
-| diskLoadDpAllowDelay | bool | 允许延迟加载data partition | No |
 | enableLogPanicHook | bool | (实验性) Hook `panic` 函数以便在执行`panic`之前使日志落盘 | No | false |
-
 ## 配置示例
 
 ``` json

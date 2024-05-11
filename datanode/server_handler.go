@@ -767,24 +767,3 @@ func (s *DataNode) markDiskBroken(w http.ResponseWriter, r *http.Request) {
 	}
 	s.buildSuccessResp(w, "success")
 }
-
-func (s *DataNode) setDiskExtentReadLimitStatus(w http.ResponseWriter, r *http.Request) {
-	const (
-		paramStatus = "status"
-	)
-	if err := r.ParseForm(); err != nil {
-		err = fmt.Errorf("parse form fail: %v", err)
-		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	status, err := strconv.ParseBool(r.FormValue(paramStatus))
-	if err != nil {
-		err = fmt.Errorf("parse param %v fail: %v", paramStatus, err)
-		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	for _, disk := range s.space.disks {
-		disk.SetExtentRepairReadLimitStatus(status)
-	}
-	s.buildSuccessResp(w, "success")
-}

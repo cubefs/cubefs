@@ -18,6 +18,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"hash/crc32"
+	"io/ioutil"
 	syslog "log"
 	"math"
 	"net"
@@ -245,8 +246,10 @@ func (dp *DataPartition) ForceSetRaftRunning() {
 // It reads the partition metadata file stored under the specified directory
 // and creates the partition instance.
 func LoadDataPartition(partitionDir string, disk *Disk) (dp *DataPartition, err error) {
-	var metaFileData []byte
-	if metaFileData, err = os.ReadFile(path.Join(partitionDir, DataPartitionMetadataFileName)); err != nil {
+	var (
+		metaFileData []byte
+	)
+	if metaFileData, err = ioutil.ReadFile(path.Join(partitionDir, DataPartitionMetadataFileName)); err != nil {
 		return
 	}
 	meta := &DataPartitionMetadata{}
