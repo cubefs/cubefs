@@ -126,7 +126,6 @@ const (
 	// load/stop dp limit
 	ConfigDiskCurrentLoadDpLimit = "diskCurrentLoadDpLimit"
 	ConfigDiskCurrentStopDpLimit = "diskCurrentStopDpLimit"
-	ConfigDiskLoadDpAllowDelay   = "diskLoadDpAllowDelay"
 	//disk read extent limit
 	ConfigEnableDiskReadExtentLimit = "enableDiskReadRepairExtentLimit" //bool
 
@@ -425,8 +424,6 @@ func (s *DataNode) newSpaceManager(cfg *config.Config) (err error) {
 }
 
 func (s *DataNode) startSpaceManager(cfg *config.Config) (err error) {
-	allowDelay := cfg.GetBool(ConfigDiskLoadDpAllowDelay)
-
 	diskRdonlySpace := uint64(cfg.GetInt64(CfgDiskRdonlySpace))
 	if diskRdonlySpace < DefaultDiskRetainMin {
 		diskRdonlySpace = DefaultDiskRetainMin
@@ -484,7 +481,7 @@ func (s *DataNode) startSpaceManager(cfg *config.Config) (err error) {
 		wg.Add(1)
 		go func(wg *sync.WaitGroup, path string, reservedSpace uint64) {
 			defer wg.Done()
-			s.space.LoadDisk(path, reservedSpace, diskRdonlySpace, DefaultDiskMaxErr, diskEnableReadRepairExtentLimit, allowDelay)
+			s.space.LoadDisk(path, reservedSpace, diskRdonlySpace, DefaultDiskMaxErr, diskEnableReadRepairExtentLimit)
 		}(&wg, path, reservedSpace)
 	}
 
