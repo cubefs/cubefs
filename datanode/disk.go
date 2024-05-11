@@ -49,7 +49,7 @@ const (
 	ExpiredPartitionExistTime = time.Hour * time.Duration(24*7)
 )
 
-const DefaultCurrentLoadDpLimit = 1
+const DefaultCurrentLoadDpLimit = 4
 
 const (
 	DecommissionDiskMark = "decommissionDiskMark"
