@@ -30,7 +30,6 @@ import (
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/log"
-	"github.com/cubefs/cubefs/util/stat"
 )
 
 // State machines
@@ -114,6 +113,9 @@ type ExtentHandler struct {
 	lastKey  proto.ExtentKey
 
 	meetLimitedIoError bool
+
+	stop chan struct{}
+	sync.Once
 }
 
 // NewExtentHandler returns a new extent handler.
@@ -131,6 +133,7 @@ func NewExtentHandler(stream *Streamer, offset int, storeMode int, size int) *Ex
 		reply:              make(chan *Packet, 1024),
 		doneSender:         make(chan struct{}),
 		doneReceiver:       make(chan struct{}),
+		stop:               make(chan struct{}),
 		meetLimitedIoError: false,
 	}
 
@@ -404,8 +407,14 @@ func (eh *ExtentHandler) processReplyError(packet *Packet, errmsg string) {
 }
 
 func (eh *ExtentHandler) flush() (err error) {
+	log.LogDebugf("ExtentHandler flush begin: eh(%s)", eh.String())
 	eh.flushPacket()
-	eh.waitForFlush()
+	err = eh.waitForFlush()
+	if err != nil {
+		log.LogErrorf("ExtentHandler flush failed, eh(%s), err %s", eh.String(), err.Error())
+		return err
+	}
+
 	err = eh.appendExtentKey()
 	if err != nil {
 		return
@@ -423,15 +432,20 @@ func (eh *ExtentHandler) flush() (err error) {
 }
 
 func (eh *ExtentHandler) cleanup() (err error) {
-	eh.doneSender <- struct{}{}
-	eh.doneReceiver <- struct{}{}
-	if eh.conn != nil {
-		conn := eh.conn
-		eh.conn = nil
-		// TODO unhandled error
-		status := eh.getStatus()
-		StreamConnPool.PutConnect(conn, status >= ExtentStatusRecovery)
-	}
+	log.LogDebugf("cleanup: eh(%v)", eh)
+	eh.Once.Do(func() {
+		eh.doneSender <- struct{}{}
+		eh.doneReceiver <- struct{}{}
+		if eh.conn != nil {
+			conn := eh.conn
+			eh.conn = nil
+			// TODO unhandled error
+			status := eh.getStatus()
+			StreamConnPool.PutConnect(conn, status >= ExtentStatusRecovery)
+		}
+		close(eh.stop)
+	})
+
 	return
 }
 
@@ -445,12 +459,10 @@ func (eh *ExtentHandler) appendExtentKey() (err error) {
 			if proto.IsCold(eh.stream.client.volumeType) && eh.status == ExtentStatusError {
 				return
 			}
-			discard := eh.stream.extents.Append(eh.key, true)
-			err = eh.stream.client.appendExtentKey(eh.stream.parentInode, eh.inode, *eh.key, discard)
-
+			var status int
 			ekey := *eh.key
 			doAppend := func() (err error) {
-				discard = eh.stream.extents.Append(&ekey, true)
+				discard := eh.stream.extents.Append(&ekey, true)
 				status, err = eh.stream.client.appendExtentKey(eh.stream.parentInode, eh.inode, ekey, discard)
 				if atomic.LoadInt32(&eh.stream.needUpdateVer) > 0 {
 					if errUpdateExtents := eh.stream.GetExtentsForce(); errUpdateExtents != nil {
@@ -518,13 +530,30 @@ func (eh *ExtentHandler) appendExtentKey() (err error) {
 
 // This function is meaningful to be called from stream writer flush method,
 // because there is no new write request.
-func (eh *ExtentHandler) waitForFlush() {
+func (eh *ExtentHandler) waitForFlush() (err error) {
+	log.LogDebugf("ExtentHandler waitForFlush begin: eh(%v)", eh)
+	defer func() {
+		log.LogDebugf("ExtentHandler waitForFlush end: eh(%v)", eh)
+	}()
+
 	if atomic.LoadInt32(&eh.inflight) <= 0 {
 		return
 	}
-	for range eh.empty {
-		if atomic.LoadInt32(&eh.inflight) <= 0 {
-			return
+
+	//	t := time.NewTicker(10 * time.Second)
+	//	defer t.Stop()
+
+	for {
+		select {
+		case <-eh.empty:
+			if atomic.LoadInt32(&eh.inflight) <= 0 {
+				return
+			}
+		case <-eh.stop:
+			if atomic.LoadInt32(&eh.inflight) <= 0 {
+				return
+			}
+			return fmt.Errorf("eh maybe cleaned")
 		}
 	}
 }
