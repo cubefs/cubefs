@@ -16,6 +16,12 @@ RUN tar -zxf go_bin.tar.gz -C /go/
 RUN go env -w CGO_CFLAGS="-I/go/src/github.com/cubefs/cubefs/build/include"
 RUN go env -w CGO_LDFLAGS="-L/go/src/github.com/cubefs/cubefs/build/lib -lrocksdb -lz -lbz2 -lsnappy -llz4 -lzstd -lstdc++"
 
+# install requirements for rdma
+RUN apt-get update && \
+    apt-get install -y libibverbs-dev && \
+    apt-get install -y librdmacm-dev && \
+    apt-get install -y libibverbs1 ibverbs-utils librdmacm1 libibumad3 ibverbs-providers rdma-core
+
 # cleanup environment
 RUN apt-get install -y jq fuse \
         && rm -rf /var/lib/apt/lists/* \

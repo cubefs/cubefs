@@ -29,6 +29,7 @@ type Stats struct {
 
 	Zone                               string
 	ConnectionCnt                      int64
+	RdmaConnectionCnt                  int64
 	ClusterID                          string
 	TCPAddr                            string
 	Start                              time.Time
@@ -59,9 +60,17 @@ func (s *Stats) AddConnection() {
 	atomic.AddInt64(&s.ConnectionCnt, 1)
 }
 
+func (s *Stats) AddRdmaConnection() {
+	atomic.AddInt64(&s.RdmaConnectionCnt, 1)
+}
+
 // RemoveConnection removes a connection.
 func (s *Stats) RemoveConnection() {
 	atomic.AddInt64(&s.ConnectionCnt, -1)
+}
+
+func (s *Stats) RemoveRdmaConnection() {
+	atomic.AddInt64(&s.RdmaConnectionCnt, -1)
 }
 
 // GetConnectionCount gets the connection count.

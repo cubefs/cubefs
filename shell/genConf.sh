@@ -21,6 +21,11 @@ ip2=172.16.1.102
 ip3=172.16.1.103
 ip4=172.16.1.104
 
+ip5=172.16.1.111
+ip6=172.16.1.112
+ip7=172.16.1.113
+ip8=172.16.1.114
+
 peers="1:$ip1:17010,2:${ip2}:17010,3:${ip3}:17010"
 echo "peers $peers"
 
@@ -55,17 +60,17 @@ genData()
 
   confFile="${confDir}/data$1.conf"
   if [ ! -f "$confFile" ]; then
-    sed "s/_ip_/${2}/g" ${tplDir}/data.tpl | sed "s|_dir_|${dataDir}|g" | sed "s|_master_addr_|${masterAddr}|g" > "$confFile"
+    sed "s/_ip_/${2}/g" ${tplDir}/data.tpl | sed "s|_dir_|${dataDir}|g" | sed "s|_master_addr_|${masterAddr}|g" | sed "s|_rdma_|${3}|g" > "$confFile"
     echo "gen data$1.conf success"
   else
     echo "data$1.conf already exists, skipping generation"
   fi
 }
 
-genData 1 $ip1
-genData 2 $ip2
-genData 3 $ip3
-genData 4 $ip4
+genData 1 $ip1 $ip5
+genData 2 $ip2 $ip6
+genData 3 $ip3 $ip7
+genData 4 $ip4 $ip8
 
 
 genMeta()
@@ -115,3 +120,4 @@ genObject()
 }
 
 genObject
+
