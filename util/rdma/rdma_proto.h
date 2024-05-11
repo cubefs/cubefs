@@ -287,11 +287,9 @@ static struct rdma_pool_config* get_rdma_pool_config() {
     return rdma_pool_config;
 }
 
-static int init_worker(worker *worker, event_callback cb) {
+static int init_worker(worker *worker, event_callback cb, int index) {
     int ret = 0;
-    pthread_attr_t attr;
-    struct sched_param param;
-    int policy;
+    char str[20];
 
     worker->pd = g_net_env->pd;
     //log_debug("ibv_alloc_pd:%p", worker->pd);
@@ -330,15 +328,10 @@ static int init_worker(worker *worker, event_callback cb) {
     }
     worker->w_pid = 0;
 
-    pthread_attr_init(&attr);
-    pthread_attr_getschedpolicy(&attr, &policy);
-    //pthread_attr_setinheritsched(&attr, PTHREAD_EXPLICIT_SCHED);
-    policy = SCHED_FIFO;
-    pthread_attr_setschedpolicy(&attr, policy);
-    param.sched_priority = sched_get_priority_max(policy);
-    pthread_attr_setschedparam(&attr, &param);
+    pthread_create(&worker->cq_poller_thread, NULL, cb, worker);
+    sprintf(str, "cq_worker:%d", index);
+    pthread_setname_np(worker->cq_poller_thread, str);
 
-    pthread_create(&worker->cq_poller_thread, &attr, cb, worker);
     return C_OK;
 err_destroy_map:
     hashmap_destroy(worker->closing_nd_map);
@@ -440,10 +433,6 @@ static int init_rdma_env(struct rdma_pool_config* config) {
         return 0;
     }
 
-    pthread_attr_t attr;
-    struct sched_param param;
-    int policy;
-
     rdma_pool_config = config;
 
     if (rdma_pool_config->enable_rdma_log == 1) {
@@ -495,20 +484,13 @@ static int init_rdma_env(struct rdma_pool_config* config) {
     }
     log_debug("g net env alloc pd:%p",g_net_env->pd);
 
-    pthread_attr_init(&attr);
-    pthread_attr_getschedpolicy(&attr, &policy);
-    //pthread_attr_setinheritsched(&attr, PTHREAD_EXPLICIT_SCHED);
-    policy = SCHED_FIFO;
-    pthread_attr_setschedpolicy(&attr, policy);
-    param.sched_priority = sched_get_priority_max(policy);
-    pthread_attr_setschedparam(&attr, &param);
-
-    pthread_create(&g_net_env->cm_event_loop_thread, &attr, cm_thread, g_net_env);
+    pthread_create(&g_net_env->cm_event_loop_thread, NULL, cm_thread, g_net_env);
+    pthread_setname_np(g_net_env->cm_event_loop_thread, "cm_worker");
     int index;
     for (index = 0; index < g_net_env->worker_num; index++) {
         log_debug("init worker(%d)", index);
         g_net_env->worker[index].id = index;
-        if(init_worker(g_net_env->worker + index, cq_thread) == C_ERR) {
+        if(init_worker(g_net_env->worker + index, cq_thread, index) == C_ERR) {
             log_debug("init env failed: init worker[%d] failed", index);
             goto err_destroy_worker;
         }
