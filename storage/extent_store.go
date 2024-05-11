@@ -74,6 +74,10 @@ const (
 )
 
 var (
+	ErrStoreAlreadyClosed = errors.New("extent store already closed")
+)
+
+var (
 	RegexpExtentFile, _ = regexp.Compile(`^(\d)+$`)
 	SnapShotFilePool    = &sync.Pool{New: func() interface{} {
 		return new(proto.File)
@@ -181,6 +185,7 @@ type ExtentStore struct {
 	extentLockMap                     map[uint64]proto.GcFlag
 	elMutex                           sync.RWMutex
 	extentLock                        bool
+	stopMutex                         sync.RWMutex
 	stopC                             chan interface{}
 
 	ApplyId      uint64
@@ -373,6 +378,14 @@ func (s *ExtentStore) startFlushCache() {
 
 // Create creates an extent.
 func (s *ExtentStore) Create(extentID uint64) (err error) {
+	s.stopMutex.RLock()
+	defer s.stopMutex.RUnlock()
+	if s.closed {
+		err = ErrStoreAlreadyClosed
+		log.LogErrorf("[Create] store(%v) failed to create extent(%v), err(%v)", s.dataPath, extentID, err)
+		return
+	}
+
 	var e *Extent
 	name := path.Join(s.dataPath, strconv.Itoa(int(extentID)))
 	if s.HasExtent(extentID) {
@@ -681,6 +694,14 @@ func (s *ExtentStore) initBaseFileID(allowDelay bool, loadTimeout time.Duration)
 
 // Write writes the given extent to the disk.
 func (s *ExtentStore) Write(extentID uint64, offset, size int64, data []byte, crc uint32, writeType int, isSync bool, isHole bool, isRepair, isBackupWrite bool) (status uint8, err error) {
+	s.stopMutex.RLock()
+	defer s.stopMutex.RUnlock()
+	if s.closed {
+		err = ErrStoreAlreadyClosed
+		log.LogErrorf("[Write] store(%v) failed to write extent(%v), err(%v)", s.dataPath, extentID, err)
+		return
+	}
+
 	var (
 		e  *Extent
 		ei *ExtentInfo
@@ -877,6 +898,14 @@ func (s *ExtentStore) GetGcFlag(extId uint64) proto.GcFlag {
 
 // MarkDelete marks the given extent as deleted.
 func (s *ExtentStore) MarkDelete(extentID uint64, offset, size int64) (err error) {
+	s.stopMutex.RLock()
+	defer s.stopMutex.RUnlock()
+	if s.closed {
+		err = ErrStoreAlreadyClosed
+		log.LogErrorf("[MarkDelete] store(%v) failed to mark delete extent(%v), err(%v)", s.dataPath, extentID, err)
+		return
+	}
+
 	var ei *ExtentInfo
 	s.eiMutex.RLock()
 	ei = s.extentInfoMap[extentID]
@@ -988,8 +1017,10 @@ func (s *ExtentStore) Close() {
 			vFp.Close()
 		}
 	}
-	s.closed = true
 
+	s.stopMutex.Lock()
+	defer s.stopMutex.Unlock()
+	s.closed = true
 	if err := s.writeReadDirHint(); err != nil {
 		log.LogErrorf("[Close] store(%v) failed to write extent hint, err(%v)", s.dataPath, err)
 	}
