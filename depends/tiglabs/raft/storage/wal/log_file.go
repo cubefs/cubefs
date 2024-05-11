@@ -16,12 +16,17 @@ package wal
 
 import (
 	"bytes"
+	"errors"
 	"io"
 	"os"
 	"path"
 
 	"github.com/cubefs/cubefs/depends/tiglabs/raft/proto"
 	"github.com/cubefs/cubefs/depends/tiglabs/raft/util/log"
+)
+
+var (
+	ErrDuplicatedLogEntry = errors.New("duplicated raft wal entry")
 )
 
 type logEntryFile struct {
@@ -163,6 +168,11 @@ func (lf *logEntryFile) ReBuildIndex() (truncateOffset int64, err error) {
 		if rec.recType == recTypeLogEntry {
 			ent := &proto.Entry{}
 			ent.Decode(rec.data)
+
+			// NOTE: check log index
+			if lf.index.Len() != 0 && lf.index.Last() >= ent.Index {
+				return 0, ErrDuplicatedLogEntry
+			}
 			lf.index = lf.index.Append(uint32(offset), ent)
 		} else {
 			// All valid log entries have been loaded
