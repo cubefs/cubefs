@@ -19,6 +19,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/cubefs/cubefs/util/log"
+	"github.com/cubefs/cubefs/util/rdma"
 	"io"
 	"net"
 	"strconv"
@@ -689,11 +691,167 @@ func (p *Packet) WriteToConn(c net.Conn) (err error) {
 	return
 }
 
+func (p *Packet) WriteToRDMAConn(conn *rdma.Connection) (err error) {
+	//var dataBuff []byte
+	var headerBuff []byte
+	offset := 0
+
+	if headerBuff, err = conn.GetHeaderBuffer(int((time.Second * 2).Microseconds())); err != nil {
+		//log.LogDebugf("rdma get headerBuffer error %v", err)
+		return
+	}
+
+	//if p.Data != nil && p.Size != 0 {
+	//	if dataBuff, err = rdma.GetDataBuffer(p.Size, int((time.Second * 2).Microseconds())); err != nil {
+	//		log.LogDebugf("rdma get data buffer error %v", err)
+	//		return
+	//	}
+	//}
+
+	defer func() {
+		if headerBuff != nil {
+			log.LogDebugf("header buff release")
+			_ = conn.ReleaseHeaderBuffer(headerBuff)
+		}
+		//if dataBuff != nil {
+		//	log.LogDebugf("data buff release")
+		//	if err = rdma.ReleaseDataBuffer(dataBuff); err != nil {
+		//
+		//	}
+		//}
+	}()
+
+	//conn.SetWriteDeadline(time.Now().Add(WriteDeadlineTime * time.Second)) //rdma todo
+
+	p.MarshalHeader(headerBuff)
+	offset += util.PacketHeaderSize + 8
+	if p.ArgLen != 0 {
+		copy(headerBuff[offset:], p.Arg)
+	}
+	offset += 40
+
+	//if p.Data != nil && p.Size != 0 {
+	//	copy(dataBuff[:p.Size], p.Data)
+	//}
+	//combined := append(headerBuffByte, p.Data...)
+
+	if _, err = conn.WriteBuffer(headerBuff, p.Data); err != nil {
+		//log.LogDebugf("rdma write error %v", err)
+		return
+	}
+	//log.LogDebugf("rdma write success %v", err)
+	return
+}
+
+func (p *Packet) WriteToFollowerRDMAConn(conn *rdma.Connection) (err error) {
+	var headerBuff []byte
+
+	defer func() {
+		log.LogDebugf("header buff release")
+		_ = conn.ReleaseHeaderBuffer(headerBuff)
+	}()
+
+	if headerBuff, err = conn.GetHeaderBuffer(int((time.Second * 2).Microseconds())); err != nil {
+		return
+	}
+
+	//conn.SetWriteDeadline(time.Now().Add(WriteDeadlineTime * time.Second))  //rdma todo
+	p.MarshalHeader(headerBuff)
+
+	//combined := append(p.Data,headerBuffByte...)
+	if _, err = conn.WriteBuffer(headerBuff, p.Data); err != nil {
+		return
+	}
+	return
+}
+
+func (p *Packet) SendRespToRDMAConn(conn *rdma.Connection) (err error) {
+	var respBuff []byte
+	var offset uint32 = 0
+
+	defer func() {
+		if respBuff != nil {
+			if err = conn.ReleaseResponseBuffer(respBuff); err != nil {
+			}
+		}
+	}()
+
+	if respBuff, err = conn.GetResponseBuffer(int((time.Second * 2).Microseconds())); err != nil {
+		return
+	}
+
+	p.MarshalHeader(respBuff)
+	offset += util.PacketHeaderSize + 8
+	if p.ArgLen != 0 {
+		copy(respBuff[offset:], p.Arg)
+	}
+	offset += 40
+
+	if p.Data != nil && p.Size != 0 {
+		copy(respBuff[offset:offset+p.Size], p.Data)
+	}
+	if _, err = conn.SendResp(respBuff); err != nil {
+		return
+	}
+	log.LogDebugf("rdma send resp success")
+	return
+}
+
 // ReadFull is a wrapper function of io.ReadFull.
 func ReadFull(c net.Conn, buf *[]byte, readSize int) (err error) {
 	*buf = make([]byte, readSize)
 	_, err = io.ReadFull(c, (*buf)[:readSize])
 	return
+}
+
+func (p *Packet) RecvRespFromRDMAConn(c *rdma.Connection, timeoutSec int) (err error) {
+	//if timeoutSec != NoReadDeadlineTime {  //rdma todo
+	//	c.SetReadDeadline(time.Now().Add(time.Second * time.Duration(timeoutSec)))
+	//} else {
+	//	c.SetReadDeadline(time.Time{})
+	//}
+
+	var respBuff []byte
+	var offset uint32 = 0
+
+	if err = c.RecvResp(nil); err != nil {
+		//log.LogDebugf("rdma recv resp error %v", err)
+		return
+	}
+
+	if respBuff, err = c.GetRecvResponseBuffer(); err != nil {
+		//log.LogDebugf("rdma getRecvResponseBuffer error %v", err)
+		return
+	}
+	defer func() {
+		_ = c.RdmaPostRecvResponse(respBuff)
+	}()
+
+	if err = p.UnmarshalHeader(respBuff); err != nil {
+		return
+	}
+
+	offset += util.PacketHeaderSize + 8
+
+	if p.ArgLen > 0 {
+		p.Arg = make([]byte, int(p.ArgLen))
+		copy(p.Arg, respBuff[offset:offset+p.ArgLen])
+	}
+	offset += 40
+
+	if p.Size < 0 {
+		return syscall.EBADMSG
+	}
+	size := p.Size
+	if (p.Opcode == OpRead || p.Opcode == OpStreamRead || p.Opcode == OpExtentRepairRead || p.Opcode == OpStreamFollowerRead) && p.ResultCode == OpInitResultCode {
+		size = 0
+	}
+	p.Data = make([]byte, size)
+	copy(p.Data, respBuff[offset:offset+size])
+	//p.Data = respBuff[offset : offset+size]
+	//c.Buffs[&p.Data[0]] = respBuff  //rdma TODO
+	return
+
 }
 
 // ReadFromConn reads the data from the given connection.
@@ -742,6 +900,104 @@ func (p *Packet) ReadFromConn(c net.Conn, timeoutSec int) (err error) {
 	}
 	return nil
 }
+
+func (p *Packet) ReadFromRDMAConn(conn *rdma.Connection) (err error) { //rdma todo
+	var headerBuff []byte
+	var dataBuff []byte
+	//var recvLen int
+	offset := 0
+
+	defer func() {
+		if headerBuff != nil {
+			if err = conn.RdmaPostRecvHeader(headerBuff); err != nil {
+
+			}
+		}
+		if dataBuff != nil {
+			if err = rdma.ReleaseDataBuffer(dataBuff); err != nil {
+
+			}
+		}
+	}()
+
+	if _, err = conn.Read(nil); err != nil {
+		return
+	}
+
+	headerBuff, dataBuff, err = conn.GetRecvMsgBuffer()
+
+	if err = p.UnmarshalHeader(headerBuff); err != nil {
+		return
+	}
+	offset += util.PacketHeaderSize + 8
+
+	if p.ArgLen > 0 {
+		p.Arg = make([]byte, int(p.ArgLen))
+		copy(p.Arg, headerBuff[offset:offset+int(p.ArgLen)])
+	}
+	offset += 40
+
+	if p.Size < 0 {
+		return syscall.EBADMSG
+	}
+	size := p.Size
+	if (p.Opcode == OpRead || p.Opcode == OpStreamRead || p.Opcode == OpExtentRepairRead || p.Opcode == OpStreamFollowerRead) && p.ResultCode == OpInitResultCode {
+		size = 0
+	}
+	p.Data = make([]byte, size)
+	copy(p.Data, dataBuff[:int(size)])
+
+	return
+}
+
+/*
+func (p *Packet) RecvRespFromRDMAConn(conn *rdma.Connection) (err error) {
+	var respBuff *rdma.Buffer
+	var respBuffByte []byte
+	var offset uint32 = 0
+
+	defer func() {
+		if respBuff != nil {
+			if err = respBuff.Release();err != nil {
+
+			}
+		}
+	}()
+
+	if err = conn.RecvResp(nil); err != nil {
+		return
+	}
+
+	respBuff, err = conn.GetRecvResponseBuffer()
+	if respBuffByte, err = respBuff.GetByte();err != nil {
+		return
+	}
+
+	if err = p.UnmarshalHeader(respBuffByte); err != nil {
+		return
+	}
+	offset += util.PacketHeaderSize + 8
+
+	if p.ArgLen > 0 {
+		p.Arg = make([]byte, int(p.ArgLen))
+		copy(p.Arg, respBuffByte[offset: offset + p.ArgLen])
+	}
+	offset += 40
+
+	if p.Size < 0 {
+		return syscall.EBADMSG
+	}
+	size := p.Size
+	//if (p.Opcode == OpRead || p.Opcode == OpStreamRead || p.Opcode == OpExtentRepairRead || p.Opcode == OpStreamFollowerRead) && p.ResultCode == OpInitResultCode {
+	//	size = 0
+	//}
+	p.Data = make([]byte, size)
+	copy(p.Data, respBuffByte[offset:offset + size])
+
+	return
+
+}
+*/
 
 // PacketOkReply sets the result code as OpOk, and sets the body as empty.
 func (p *Packet) PacketOkReply() {

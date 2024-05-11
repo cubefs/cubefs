@@ -7,6 +7,7 @@ fi
 
 # gen net subip 
 sh ./shell/genIp.sh $2
+sh ./shell/genIp_rdma.sh enp0s8
 
 # gen config file
 sh ./shell/genConf.sh ${1}

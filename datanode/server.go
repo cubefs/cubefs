@@ -17,6 +17,8 @@ package datanode
 import (
 	"bytes"
 	"fmt"
+	"github.com/cubefs/cubefs/sdk/data/stream"
+	"github.com/cubefs/cubefs/util/rdma"
 	"net"
 	"net/http"
 	"os/exec"
@@ -51,9 +53,11 @@ var (
 	ErrNewSpaceManagerFailed       = errors.New("Creater new space manager failed")
 	ErrGetMasterDatanodeInfoFailed = errors.New("Failed to get datanode info from master")
 
-	LocalIP, serverPort string
-	gConnPool           = util.NewConnectPool()
-	//MasterClient        = masterSDK.NewMasterClient(nil, false)
+	LocalIP, serverPort         string
+	LocalRdmaIP, rdmaServerPort string
+	isRdma                      bool
+	gConnPool                   = util.NewConnectPool()
+	// MasterClient        = masterSDK.NewMasterClient(nil, false)
 	MasterClient *masterSDK.MasterCLientWithResolver
 )
 
@@ -112,6 +116,7 @@ const (
 type DataNode struct {
 	space           *SpaceManager
 	port            string
+	rdmaPort        string
 	zoneName        string
 	clusterID       string
 	localIP         string
@@ -126,8 +131,9 @@ type DataNode struct {
 	raftRecvBufSize int
 	startTime       int64
 
-	tcpListener net.Listener
-	stopC       chan bool
+	tcpListener  net.Listener
+	rdmaListener *rdma.Server
+	stopC        chan bool
 
 	smuxPortShift      int
 	enableSmuxConnPool bool
@@ -222,6 +228,12 @@ func doStart(server common.Server, cfg *config.Config) (err error) {
 		return
 	}
 
+	if isRdma {
+		if err = s.startRDMAService(); err != nil {
+			return
+		}
+	}
+
 	//smux listening & smux connection pool
 	if err = s.startSmuxService(cfg); err != nil {
 		return
@@ -260,6 +272,28 @@ func (s *DataNode) parseConfig(cfg *config.Config) (err error) {
 	)
 	LocalIP = cfg.GetString(ConfigKeyLocalIP)
 	port = cfg.GetString(proto.ListenPort)
+
+	isRdma = cfg.GetBoolWithDefault("enableRdma", false)
+	if isRdma {
+		LocalRdmaIP = cfg.GetString("rdmaIP")
+		rdmaServerPort = cfg.GetString("rdmaPort")
+		util.Config.MemBlockNum = int(cfg.GetInt64WithDefault("rdmaMemBlockNum", 8*1024*5))
+		util.Config.MemBlockSize = int(cfg.GetInt64WithDefault("rdmaMemBlockSize", 65536*2))
+		util.Config.MemPoolLevel = int(cfg.GetInt64WithDefault("rdmaMemPoolLevel", 18))
+
+		util.Config.HeaderBlockNum = int(cfg.GetInt64WithDefault("rdmaHeaderBlockNum", 32*1024))
+		util.Config.HeaderPoolLevel = int(cfg.GetInt64WithDefault("rdmaHeaderPoolLevel", 15))
+
+		util.Config.ResponseBlockNum = int(cfg.GetInt64WithDefault("rdmaResponseBlockNum", 32*1024))
+		util.Config.ResponsePoolLevel = int(cfg.GetInt64WithDefault("rdmaResponsePoolLevel", 15))
+
+		util.Config.WqDepth = int(cfg.GetInt64WithDefault("wqDepth", 32))
+		util.Config.MinCqeNum = int(cfg.GetInt64WithDefault("minCqeNum", 1024))
+
+		stream.StreamRdmaConnPool = util.NewRdmaConnectPool()
+		repl.RdmaConnPool = util.NewRdmaConnectPool()
+	}
+
 	s.bindIp = cfg.GetBool(proto.BindIpKey)
 	serverPort = port
 	if regexpPort, err = regexp.Compile("^(\\d)+$"); err != nil {
@@ -560,6 +594,27 @@ func (s *DataNode) registerHandler() {
 	http.HandleFunc("/getMetricsDegrade", s.getMetricsDegrade)
 	http.HandleFunc("/qosEnable", s.setQosEnable())
 }
+func (s *DataNode) startRDMAService() (err error) {
+	log.LogInfo("Start: startRDMAService")
+	addr := fmt.Sprintf("%s:%v", LocalRdmaIP, rdmaServerPort)
+	util.InitRdmaEnv()
+	l, err := rdma.NewRdmaServer(LocalRdmaIP, rdmaServerPort) //LocalIP ,s.port
+	log.LogDebugf("action[startRDMAService] listen %v address(%v).", "rdma", addr)
+	if err != nil {
+		log.LogError("failed to listen, err:", err)
+		return
+	}
+	s.rdmaListener = l
+	go func(ln *rdma.Server) {
+		for {
+			conn := ln.Accept()
+			//TODO
+			//log.LogDebugf("action[startRDMAService] accept connection from %s.", conn.RemoteAddr().String())
+			go s.serveConn(conn)
+		}
+	}(l)
+	return
+}
 
 func (s *DataNode) startTCPService() (err error) {
 	log.LogInfo("Start: startTCPService")
@@ -598,14 +653,24 @@ func (s *DataNode) stopTCPService() (err error) {
 }
 
 func (s *DataNode) serveConn(conn net.Conn) {
+	var ok bool
+	var c *net.TCPConn
 	space := s.space
-	space.Stats().AddConnection()
-	c, _ := conn.(*net.TCPConn)
-	c.SetKeepAlive(true)
-	c.SetNoDelay(true)
+	if c, ok = conn.(*net.TCPConn); ok {
+		space.Stats().AddConnection()
+		c.SetKeepAlive(true)
+		c.SetNoDelay(true)
+	} else {
+		space.Stats().AddRdmaConnection()
+	}
+
 	packetProcessor := repl.NewReplProtocol(conn, s.Prepare, s.OperatePacket, s.Post)
 	packetProcessor.ServerConn()
-	space.Stats().RemoveConnection()
+	if ok {
+		space.Stats().RemoveConnection()
+	} else {
+		space.Stats().RemoveRdmaConnection()
+	}
 }
 
 func (s *DataNode) startSmuxService(cfg *config.Config) (err error) {

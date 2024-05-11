@@ -23,6 +23,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"github.com/cubefs/cubefs/sdk/data/stream"
 	"io/ioutil"
 	syslog "log"
 	"net"
@@ -282,6 +283,25 @@ func main() {
 	 */
 
 	cfg, _ := config.LoadConfigFile(*configFile)
+
+	stream.IsRdma = cfg.GetBoolWithDefault("enableRdma", false)
+	if stream.IsRdma {
+		util.Config.MemBlockNum = int(cfg.GetInt64WithDefault("rdmaMemBlockNum", 8*1024*5))
+		util.Config.MemBlockSize = int(cfg.GetInt64WithDefault("rdmaMemBlockSize", 65536*2))
+		util.Config.MemPoolLevel = int(cfg.GetInt64WithDefault("rdmaMemPoolLevel", 18))
+
+		util.Config.HeaderBlockNum = int(cfg.GetInt64WithDefault("rdmaHeaderBlockNum", 32*1024))
+		util.Config.HeaderPoolLevel = int(cfg.GetInt64WithDefault("rdmaHeaderPoolLevel", 15))
+
+		util.Config.ResponseBlockNum = int(cfg.GetInt64WithDefault("rdmaResponseBlockNum", 32*1024))
+		util.Config.ResponsePoolLevel = int(cfg.GetInt64WithDefault("rdmaResponsePoolLevel", 15))
+
+		util.Config.WqDepth = int(cfg.GetInt64WithDefault("wqDepth", 32))
+		util.Config.MinCqeNum = int(cfg.GetInt64WithDefault("minCqeNum", 1024))
+
+		stream.StreamRdmaConnPool = util.NewRdmaConnectPool()
+	}
+
 	opt, err := parseMountOption(cfg)
 
 	if err != nil {

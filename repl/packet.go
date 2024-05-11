@@ -17,6 +17,7 @@ package repl
 import (
 	"fmt"
 	"github.com/cubefs/cubefs/util/log"
+	"github.com/cubefs/cubefs/util/rdma"
 	"io"
 	"net"
 	"strings"
@@ -48,6 +49,7 @@ type Packet struct {
 	// used locally
 	shallDegrade bool
 	AfterPre     bool
+	IsRdma       bool
 }
 
 type FollowerPacket struct {
@@ -114,9 +116,15 @@ func (p *Packet) clean() {
 	p.TpObject = nil
 	p.Data = nil
 	p.Arg = nil
-	if p.OrgBuffer != nil && len(p.OrgBuffer) == util.BlockSize && p.IsWriteOperation() {
-		proto.Buffers.Put(p.OrgBuffer)
-		p.OrgBuffer = nil
+	if p.IsRdma {
+		if p.OrgBuffer != nil {
+			_ = rdma.ReleaseDataBuffer(p.OrgBuffer)
+		}
+	} else {
+		if p.OrgBuffer != nil && len(p.OrgBuffer) == util.BlockSize && p.IsWriteOperation() {
+			proto.Buffers.Put(p.OrgBuffer)
+			p.OrgBuffer = nil
+		}
 	}
 }
 
@@ -334,37 +342,87 @@ func (p *Packet) ReadFull(c net.Conn, opcode uint8, readSize int) (err error) {
 }
 
 func (p *Packet) ReadFromConnFromCli(c net.Conn, deadlineTime time.Duration) (err error) {
-	if deadlineTime != proto.NoReadDeadlineTime {
-		c.SetReadDeadline(time.Now().Add(deadlineTime * time.Second))
-	} else {
-		c.SetReadDeadline(time.Time{})
-	}
-	header, err := proto.Buffers.Get(util.PacketHeaderSize)
-	if err != nil {
-		header = make([]byte, util.PacketHeaderSize)
-	}
-	defer proto.Buffers.Put(header)
-	if _, err = io.ReadFull(c, header); err != nil {
-		return
-	}
-	if err = p.UnmarshalHeader(header); err != nil {
-		return
-	}
+	/*
+		if deadlineTime != proto.NoReadDeadlineTime {
+			c.SetReadDeadline(time.Now().Add(deadlineTime * time.Second))
+		} else {
+			c.SetReadDeadline(time.Time{})
+		}
+	*/
 
-	if p.ArgLen > 0 {
-		if err = proto.ReadFull(c, &p.Arg, int(p.ArgLen)); err != nil {
+	if conn, ok := c.(*rdma.Connection); ok {
+		log.LogDebugf("rdma conn read start")
+		println("rdma conn read start")
+		var headerBuff []byte
+		var dataBuff []byte
+		var offset int
+		//conn, _ := c.(*rdma.Connection)
+		if _, err = conn.Read(nil); err != nil {
 			return
 		}
-	}
+		if headerBuff, dataBuff, err = conn.GetRecvMsgBuffer(); err != nil {
+			return
+		}
+		defer func() {
+			_ = conn.RdmaPostRecvHeader(headerBuff)
+		}()
 
-	if p.Size < 0 {
+		if err = p.UnmarshalHeader(headerBuff); err != nil {
+			_ = rdma.ReleaseDataBuffer(dataBuff)
+			return
+		}
+
+		offset += util.PacketHeaderSize + 8 //rdma
+
+		if p.ArgLen > 0 {
+			p.Arg = make([]byte, int(p.ArgLen))
+			copy(p.Arg, headerBuff[offset:offset+int(p.ArgLen)])
+		}
+		offset += 40
+
+		if p.Size < 0 {
+			_ = rdma.ReleaseDataBuffer(dataBuff)
+			return
+		}
+		size := p.Size
+		if p.IsReadOperation() && p.ResultCode == proto.OpInitResultCode {
+			size = 0
+		}
+		p.Data = dataBuff[:int(size)]
+		//conn.Buffs[&dataBuff[0]] = dataBuff
+
+		p.IsRdma = true
+		log.LogDebugf("rdma conn read exit")
 		return
+	} else {
+		var header []byte
+		header, err = proto.Buffers.Get(util.PacketHeaderSize)
+		if err != nil {
+			header = make([]byte, util.PacketHeaderSize)
+		}
+		defer proto.Buffers.Put(header)
+		if _, err = io.ReadFull(c, header); err != nil {
+			return
+		}
+		if err = p.UnmarshalHeader(header); err != nil {
+			return
+		}
+
+		if p.ArgLen > 0 {
+			if err = proto.ReadFull(c, &p.Arg, int(p.ArgLen)); err != nil {
+				return
+			}
+		}
+
+		if p.Size < 0 {
+			return
+		}
+		size := p.Size
+		if p.IsReadOperation() && p.ResultCode == proto.OpInitResultCode {
+			size = 0
+		}
+		return p.ReadFull(c, p.Opcode, int(size))
 	}
-	size := p.Size
-	if p.IsReadOperation() && p.ResultCode == proto.OpInitResultCode {
-		size = 0
-	}
-	return p.ReadFull(c, p.Opcode, int(size))
 }
 
 func (p *Packet) IsMasterCommand() bool {

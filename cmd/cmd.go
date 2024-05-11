@@ -130,7 +130,7 @@ func main() {
 		fmt.Printf("%v", Version)
 		os.Exit(0)
 	}
-
+	/**/
 	/*
 	 * LoadConfigFile should be checked before start daemon, since it will
 	 * call os.Exit() w/o notifying the parent process.

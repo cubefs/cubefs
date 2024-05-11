@@ -17,6 +17,7 @@ package repl
 import (
 	"container/list"
 	"fmt"
+	"github.com/cubefs/cubefs/util/rdma"
 	"net"
 	"sync"
 
@@ -29,7 +30,8 @@ import (
 )
 
 var (
-	gConnPool = util.NewConnectPool()
+	gConnPool    = util.NewConnectPool()
+	RdmaConnPool *util.RdmaConnectPool //= util.NewRdmaConnectPool()
 )
 
 // ReplProtocol defines the struct of the replication protocol.
@@ -92,13 +94,26 @@ func (ft *FollowerTransport) serverWriteToFollower() {
 	for {
 		select {
 		case p := <-ft.sendCh:
-			if err := p.WriteToConn(ft.conn); err != nil {
-				p.PackErrorBody(ActionSendToFollowers, err.Error())
-				p.respCh <- fmt.Errorf(string(p.Data[:p.Size]))
-				log.LogErrorf("serverWriteToFollower ft.addr(%v), err (%v)", ft.addr, err.Error())
-				ft.conn.Close()
-				continue
+			if conn, ok := ft.conn.(*rdma.Connection); ok {
+				if err := p.WriteToFollowerRDMAConn(conn); err != nil {
+					p.PackErrorBody(ActionSendToFollowers, err.Error())
+					p.respCh <- fmt.Errorf(string(p.Data[:p.Size]))
+					log.LogErrorf("serverWriteToFollower ft.addr(%v), err (%v)", ft.addr, err.Error())
+					RdmaConnPool.PutRdmaConn(conn, true)
+
+					continue
+				}
+			} else {
+				if err := p.WriteToConn(ft.conn); err != nil {
+					p.PackErrorBody(ActionSendToFollowers, err.Error())
+					p.respCh <- fmt.Errorf(string(p.Data[:p.Size]))
+					log.LogErrorf("serverWriteToFollower ft.addr(%v), err (%v)", ft.addr, err.Error())
+					ft.conn.Close()
+
+					continue
+				}
 			}
+
 			ft.recvCh <- p
 		case <-ft.exitCh:
 			ft.exitedMu.Lock()
@@ -133,10 +148,19 @@ func (ft *FollowerTransport) serverReadFromFollower() {
 func (ft *FollowerTransport) readFollowerResult(request *FollowerPacket) (err error) {
 	reply := NewPacket()
 	defer func() {
-		reply.clean()
-		request.respCh <- err
-		if err != nil {
-			ft.conn.Close()
+		if conn, ok := ft.conn.(*rdma.Connection); ok {
+			log.LogDebugf("readFollowerResult: packet(%v)", reply)
+			reply.clean()
+			request.respCh <- err
+			if err != nil {
+				RdmaConnPool.PutRdmaConn(conn, true)
+			}
+		} else {
+			reply.clean()
+			request.respCh <- err
+			if err != nil {
+				ft.conn.Close()
+			}
 		}
 	}()
 	if request.IsErrPacket() {
@@ -147,9 +171,17 @@ func (ft *FollowerTransport) readFollowerResult(request *FollowerPacket) (err er
 	if request.IsBatchDeleteExtents() {
 		timeOut = proto.BatchDeleteExtentReadDeadLineTime
 	}
-	if err = reply.ReadFromConn(ft.conn, timeOut); err != nil {
-		log.LogErrorf("readFollowerResult ft.addr(%v), err(%v)", ft.addr, err.Error())
-		return
+
+	if conn, ok := ft.conn.(*rdma.Connection); ok {
+		if reply.RecvRespFromRDMAConn(conn, timeOut); err != nil {
+			log.LogErrorf("readFollowerResult ft.addr(%v), err(%v)", ft.addr, err.Error())
+			return
+		}
+	} else {
+		if err = reply.ReadFromConn(ft.conn, timeOut); err != nil {
+			log.LogErrorf("readFollowerResult ft.addr(%v), err(%v)", ft.addr, err.Error())
+			return
+		}
 	}
 
 	if reply.ReqID != request.ReqID || reply.PartitionID != request.PartitionID ||
@@ -270,21 +302,36 @@ func (rp *ReplProtocol) hasError() bool {
 
 func (rp *ReplProtocol) readPkgAndPrepare() (err error) {
 	request := NewPacket()
+	log.LogDebugf("read pkg and prepare start")
 	if err = request.ReadFromConnFromCli(rp.sourceConn, proto.NoReadDeadlineTime); err != nil {
 		return
 	}
-	log.LogDebugf("action[readPkgAndPrepare] packet(%v) from remote(%v) ",
-		request.GetUniqueLogId(), rp.sourceConn.RemoteAddr().String())
+	/*
+		log.LogDebugf("action[readPkgAndPrepare] packet(%v) from remote(%v) ",
+			request.GetUniqueLogId(), rp.sourceConn.RemoteAddr().String())
+	*/
+	log.LogDebugf("read pkg and prepare time[%v]", time.Now())
+	log.LogDebugf("packet: %v", request)
+	//log.LogDebugf("action[readPkgAndPrepare] packet(%v) op %v from remote(%v) conn(%v) ",
+	//	request.GetUniqueLogId(), request.Opcode, rp.sourceConn.RemoteAddr().String(), rp.sourceConn)
+
 	if err = request.resolveFollowersAddr(); err != nil {
+		log.LogDebugf("resolveFollowerAddr failed, err:%v", err)
 		err = rp.putResponse(request)
 		return
 	}
 	if err = rp.prepareFunc(request); err != nil {
+		log.LogDebugf("prepareFunc failed, err:%v", err)
 		err = rp.putResponse(request)
 		return
 	}
 
 	err = rp.putToBeProcess(request)
+	if err != nil {
+		if request.IsRdma {
+			_ = rdma.ReleaseDataBuffer(request.Data)
+		}
+	}
 
 	return
 }
@@ -293,6 +340,7 @@ func (rp *ReplProtocol) sendRequestToAllFollowers(request *Packet) (index int, e
 	for index = 0; index < len(request.followersAddrs); index++ {
 		var transport *FollowerTransport
 		if transport, err = rp.allocateFollowersConns(request, index); err != nil {
+			log.LogDebugf("allocateFollowersConns failed, err(%v)", err)
 			request.PackErrorBody(ActionSendToFollowers, err.Error())
 			return
 		}
@@ -402,30 +450,46 @@ func (rp *ReplProtocol) writeResponse(reply *Packet) {
 		reply.clean()
 	}()
 	if reply.IsErrPacket() {
-		err = fmt.Errorf(reply.LogMessage(ActionWriteToClient, rp.sourceConn.RemoteAddr().String(),
-			reply.StartT, fmt.Errorf(string(reply.Data[:reply.Size]))))
-		if reply.ResultCode == proto.OpNotExistErr {
-			log.LogInfof(err.Error())
-		} else {
-			log.LogErrorf(err.Error())
-		}
+		/*
+			err = fmt.Errorf(reply.LogMessage(ActionWriteToClient, rp.sourceConn.RemoteAddr().String(),
+				reply.StartT, fmt.Errorf(string(reply.Data[:reply.Size]))))
+			if reply.ResultCode == proto.OpNotExistErr || reply.ResultCode == proto.ErrCodeVersionOpError {
+				log.LogInfof(err.Error())
+			} else {
+				log.LogErrorf(err.Error())
+			}
+		*/
 		rp.Stop()
 	}
-
+	log.LogDebugf("try rsp opcode %v %v %v", rp.replId, reply.Opcode, rp.sourceConn)
 	// execute the post-processing function
 	rp.postFunc(reply)
 	if !reply.NeedReply {
 		return
 	}
-
-	if err = reply.WriteToConn(rp.sourceConn); err != nil {
-		err = fmt.Errorf(reply.LogMessage(ActionWriteToClient, fmt.Sprintf("local(%v)->remote(%v)", rp.sourceConn.LocalAddr().String(),
-			rp.sourceConn.RemoteAddr().String()), reply.StartT, err))
-		log.LogErrorf(err.Error())
-		rp.Stop()
+	if conn, ok := rp.sourceConn.(*rdma.Connection); ok {
+		log.LogDebugf("send resp to rdma conn: packet(%v)", reply)
+		if err = reply.SendRespToRDMAConn(conn); err != nil {
+			err = fmt.Errorf(reply.LogMessage(ActionWriteToClient, fmt.Sprintf("local(%v)->remote(%v)", rp.sourceConn.LocalAddr().String(),
+				rp.sourceConn.RemoteAddr().String()), reply.StartT, err))
+			log.LogErrorf(err.Error())
+			rp.Stop()
+		}
+		log.LogDebugf("send resp to rdma conn: time[%v]", time.Now())
+	} else {
+		log.LogDebugf("send resp to rdma conn: packet(%v)", reply)
+		if err = reply.WriteToConn(rp.sourceConn); err != nil {
+			err = fmt.Errorf(reply.LogMessage(ActionWriteToClient, fmt.Sprintf("local(%v)->remote(%v)", rp.sourceConn.LocalAddr().String(),
+				rp.sourceConn.RemoteAddr().String()), reply.StartT, err))
+			log.LogErrorf(err.Error())
+			rp.Stop()
+		}
+		log.LogDebugf("send resp to tcp conn: time[%v]", time.Now())
 	}
-	log.LogDebugf(reply.LogMessage(ActionWriteToClient,
-		rp.sourceConn.RemoteAddr().String(), reply.StartT, err))
+	/*
+		log.LogDebugf(reply.LogMessage(ActionWriteToClient,
+			rp.sourceConn.RemoteAddr().String(), reply.StartT, err))
+	*/
 }
 
 // Stop stops the replication protocol.
@@ -477,7 +541,11 @@ func (rp *ReplProtocol) allocateFollowersConns(p *Packet, index int) (transport 
 			}
 
 		} else {
-			conn, err = gConnPool.GetConnect(addr)
+			if _, ok := rp.sourceConn.(*rdma.Connection); ok {
+				conn, err = RdmaConnPool.GetRdmaConn(addr)
+			} else {
+				conn, err = gConnPool.GetConnect(addr)
+			}
 			if err != nil {
 				return
 			}

@@ -16,6 +16,7 @@ package wrapper
 
 import (
 	"fmt"
+	"github.com/cubefs/cubefs/util/rdma"
 	"net"
 	"strings"
 	"sync"
@@ -124,6 +125,29 @@ func (dp *DataPartition) String() string {
 		dp.PartitionID, dp.PartitionType, dp.Status, dp.ReplicaNum, dp.Hosts, dp.NearHosts)
 }
 
+func (dp *DataPartition) CheckAllRdmaHostsIsAvail(exclude map[string]struct{}) {
+	var (
+		client *rdma.Client
+		conn   *rdma.Connection
+		err    error
+	)
+	for i := 0; i < len(dp.Hosts); i++ {
+		host := GetRdmaAddr(dp.Hosts[i])
+		pars := strings.Split(host, ":")
+		if client, err = rdma.NewRdmaClient(pars[0], pars[1]); err != nil {
+			log.LogWarnf("CheckAllRdmaHostsIsAvail: dial host (%v) err(%v)", host, err)
+			if strings.Contains(err.Error(), syscall.ECONNREFUSED.Error()) { //TODO rdma connection refused
+				exclude[host] = struct{}{}
+			}
+			continue
+		}
+		conn = client.Dial() //rdma todo rdma connection timeout
+		conn.Close()
+		client.Close()
+	}
+
+}
+
 func (dp *DataPartition) CheckAllHostsIsAvail(exclude map[string]struct{}) {
 	var (
 		conn net.Conn
@@ -146,6 +170,34 @@ func (dp *DataPartition) CheckAllHostsIsAvail(exclude map[string]struct{}) {
 // GetAllAddrs returns the addresses of all the replicas of the data partition.
 func (dp *DataPartition) GetAllAddrs() string {
 	return strings.Join(dp.Hosts[1:], proto.AddrSplit) + proto.AddrSplit
+}
+
+func (dp *DataPartition) GetAllRdmaAddrs() string {
+	hosts := strings.SplitN(dp.GetAllAddrs(), proto.AddrSplit, -1)
+	rdmaHosts := ""
+	for _, host := range hosts[:len(hosts)-1] {
+		pars := strings.Split(host, ":")
+		ip, _ := pars[0], pars[1]
+		//ips := strings.Split(ip, ".")
+		//tmp, _ := strconv.Atoi(ips[3])
+		//ip = ips[0] + "." + ips[1] + "." + ips[2] + "." + strconv.Itoa(tmp+10)
+		addr := ip + ":17360"
+		rdmaHosts += addr + "/"
+	}
+	return rdmaHosts
+}
+
+func GetRdmaAddr(addr string) string {
+
+	pars := strings.Split(addr, ":")
+	ip, _ := pars[0], pars[1]
+	//ips := strings.Split(ip, ".")
+	//tmp, _ := strconv.Atoi(ips[3])
+	//ip = ips[0] + "." + ips[1] + "." + ips[2] + "." + strconv.Itoa(tmp+10)
+	rdmaAddr := ip + ":17360"
+	return rdmaAddr
+
+	return addr
 }
 
 func isExcluded(dp *DataPartition, exclude map[string]struct{}) bool {

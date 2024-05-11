@@ -20,6 +20,7 @@ import (
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/sdk/data/wrapper"
 	"github.com/cubefs/cubefs/util"
+	"github.com/cubefs/cubefs/util/rdma"
 	"hash/crc32"
 	"io"
 	"net"
@@ -48,9 +49,17 @@ func NewWritePacket(inode uint64, fileOffset, storeMode int) *Packet {
 	p.inode = inode
 	p.KernelOffset = uint64(fileOffset)
 	if storeMode == proto.TinyExtentType {
-		p.Data, _ = proto.Buffers.Get(util.DefaultTinySizeLimit)
+		if IsRdma {
+			p.Data, _ = rdma.GetDataBuffer(util.DefaultTinySizeLimit, int((time.Second * 2).Microseconds()))
+		} else {
+			p.Data, _ = proto.Buffers.Get(util.DefaultTinySizeLimit)
+		}
 	} else {
-		p.Data, _ = proto.Buffers.Get(util.BlockSize)
+		if IsRdma {
+			p.Data, _ = rdma.GetDataBuffer(util.BlockSize, int((time.Second * 2).Microseconds()))
+		} else {
+			p.Data, _ = proto.Buffers.Get(util.BlockSize)
+		}
 	}
 	return p
 }
@@ -70,7 +79,12 @@ func NewOverwritePacket(dp *wrapper.DataPartition, extentID uint64, extentOffset
 	p.Opcode = proto.OpRandomWrite
 	p.inode = inode
 	p.KernelOffset = uint64(fileOffset)
-	p.Data, _ = proto.Buffers.Get(util.BlockSize)
+	if IsRdma {
+		p.Data, _ = rdma.GetDataBuffer(util.BlockSize, int((time.Second * 2).Microseconds()))
+	} else {
+		p.Data, _ = proto.Buffers.Get(util.BlockSize)
+	}
+
 	return p
 }
 
@@ -142,7 +156,11 @@ func (p *Packet) isValidReadReply(q *Packet) bool {
 
 func (p *Packet) writeToConn(conn net.Conn) error {
 	p.CRC = crc32.ChecksumIEEE(p.Data[:p.Size])
-	return p.WriteToConn(conn)
+	if c, ok := conn.(*rdma.Connection); ok {
+		return p.WriteToRDMAConn(c)
+	} else {
+		return p.WriteToConn(conn)
+	}
 }
 
 func (p *Packet) readFromConn(c net.Conn, deadlineTime time.Duration) (err error) {

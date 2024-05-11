@@ -30,7 +30,7 @@ fi
 NPROC=${NPROC:-"1"}
 
 GCC_LIBRARY_PATH="/lib /lib64 /usr/lib /usr/lib64 /usr/local/lib /usr/local/lib64"
-cgo_cflags=""
+cgo_cflags="-std=gnu99"
 cgo_ldflags="-lstdc++ -lm"
 
 case $(uname -s | tr 'A-Z' 'a-z') in
@@ -232,7 +232,7 @@ pre_build_server() {
 }
 
 pre_build() {
-    export CGO_CFLAGS=""
+    export CGO_CFLAGS="-std=gnu99"
     export CGO_LDFLAGS=""
 
     init_gopath

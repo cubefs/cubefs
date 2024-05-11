@@ -17,6 +17,7 @@ package datanode
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/cubefs/cubefs/util/log"
 	"hash/crc32"
 	"sync/atomic"
 
@@ -75,6 +76,7 @@ func (s *DataNode) checkCrc(p *repl.Packet) (err error) {
 	}
 	crc := crc32.ChecksumIEEE(p.Data[:p.Size])
 	if crc != p.CRC {
+		log.LogDebugf("check crc failed, p.crc(%v) != crc(%v)", p.CRC, crc)
 		return storage.CrcMismatchError
 	}
 

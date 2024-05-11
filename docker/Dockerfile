@@ -20,6 +20,12 @@ RUN  mkdir -p /tmp/ltp /opt/ltp && cd /tmp/ltp \
 RUN apt-get install -y sudo python3 python3-pip
 RUN pip3 install boto3 unittest2 requests
 
+# install requirements for rdma
+RUN apt-get update && \
+    apt-get install -y libibverbs-dev && \
+    apt-get install -y librdmacm-dev && \
+    apt-get install -y libibverbs1 ibverbs-utils librdmacm1 libibumad3 ibverbs-providers rdma-core
+
 # cleanup environment
 RUN apt-get install -y jq fuse \
         && rm -rf /var/lib/apt/lists/* \
