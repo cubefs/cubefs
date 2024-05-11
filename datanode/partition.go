@@ -149,7 +149,7 @@ func (dp *DataPartition) SetForbidden(status bool) {
 
 func CreateDataPartition(dpCfg *dataPartitionCfg, disk *Disk, request *proto.CreateDataPartitionRequest) (dp *DataPartition, err error) {
 
-	if dp, err = newDataPartition(dpCfg, disk, true, false); err != nil {
+	if dp, err = newDataPartition(dpCfg, disk, true); err != nil {
 		return
 	}
 	dp.ForceLoadHeader()
@@ -211,7 +211,7 @@ func (dp *DataPartition) ForceSetRaftRunning() {
 // LoadDataPartition loads and returns a partition instance based on the specified directory.
 // It reads the partition metadata file stored under the specified directory
 // and creates the partition instance.
-func LoadDataPartition(partitionDir string, disk *Disk, allowDelay bool) (dp *DataPartition, err error) {
+func LoadDataPartition(partitionDir string, disk *Disk) (dp *DataPartition, err error) {
 	var (
 		metaFileData []byte
 	)
@@ -238,7 +238,7 @@ func LoadDataPartition(partitionDir string, disk *Disk, allowDelay bool) (dp *Da
 		NodeID:        disk.space.GetNodeID(),
 		ClusterID:     disk.space.GetClusterID(),
 	}
-	if dp, err = newDataPartition(dpCfg, disk, false, allowDelay); err != nil {
+	if dp, err = newDataPartition(dpCfg, disk, false); err != nil {
 		return
 	}
 	dp.computeUsage()
@@ -278,7 +278,7 @@ func LoadDataPartition(partitionDir string, disk *Disk, allowDelay bool) (dp *Da
 	return
 }
 
-func newDataPartition(dpCfg *dataPartitionCfg, disk *Disk, isCreate bool, allowDelay bool) (dp *DataPartition, err error) {
+func newDataPartition(dpCfg *dataPartitionCfg, disk *Disk, isCreate bool) (dp *DataPartition, err error) {
 	partitionID := dpCfg.PartitionID
 	begin := time.Now()
 	defer func() {
@@ -319,7 +319,7 @@ func newDataPartition(dpCfg *dataPartitionCfg, disk *Disk, isCreate bool, allowD
 	log.LogInfof("action[newDataPartition] dp %v replica num %v isCreate %v", partitionID, dpCfg.ReplicaNum, isCreate)
 	partition.replicasInit()
 	partition.extentStore, err = storage.NewExtentStore(partition.path, dpCfg.PartitionID, dpCfg.PartitionSize,
-		partition.partitionType, isCreate, allowDelay)
+		partition.partitionType, isCreate)
 	if err != nil {
 		return
 	}

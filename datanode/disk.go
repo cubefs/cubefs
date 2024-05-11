@@ -442,7 +442,7 @@ type dpLoadInfo struct {
 }
 
 // RestorePartition reads the files stored on the local disk and restores the data partitions.
-func (d *Disk) RestorePartition(visitor PartitionVisitor, allowDelay bool) (err error) {
+func (d *Disk) RestorePartition(visitor PartitionVisitor) (err error) {
 	var convert = func(node *proto.DataNodeInfo) *DataNodeInfo {
 		result := &DataNodeInfo{}
 		result.Addr = node.Addr
@@ -503,7 +503,7 @@ func (d *Disk) RestorePartition(visitor PartitionVisitor, allowDelay bool) (err 
 						log.LogInfof("[RestorePartition] disk(%v) load dp(%v) using time(%v) slow(%v)", d.Path, dp.partitionID, time.Since(begin), time.Since(begin) > 1*time.Second)
 					}
 				}()
-				if dp, err = LoadDataPartition(path.Join(d.Path, filename), d, allowDelay); err != nil {
+				if dp, err = LoadDataPartition(path.Join(d.Path, filename), d); err != nil {
 					mesg := fmt.Sprintf("action[RestorePartition] new partition(%v) err(%v) ",
 						partitionID, err.Error())
 					log.LogError(mesg)

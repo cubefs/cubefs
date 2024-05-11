@@ -207,7 +207,7 @@ func (manager *SpaceManager) Stats() *Stats {
 }
 
 func (manager *SpaceManager) LoadDisk(path string, reservedSpace, diskRdonlySpace uint64, maxErrCnt int,
-	diskEnableReadRepairExtentLimit bool, allowDelay bool) (err error) {
+	diskEnableReadRepairExtentLimit bool) (err error) {
 	var (
 		disk    *Disk
 		visitor PartitionVisitor
@@ -233,7 +233,7 @@ func (manager *SpaceManager) LoadDisk(path string, reservedSpace, diskRdonlySpac
 			log.LogErrorf("NewDisk fail err:[%v]", err)
 			return
 		}
-		err = disk.RestorePartition(visitor, allowDelay)
+		err = disk.RestorePartition(visitor)
 		if err != nil {
 			log.LogErrorf("RestorePartition fail err:[%v]", err)
 			return

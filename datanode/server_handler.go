@@ -597,7 +597,7 @@ func (s *DataNode) reloadDataPartition(w http.ResponseWriter, r *http.Request) {
 	partition.Disk().DetachDataPartition(partition)
 
 	log.LogDebugf("data partition %v is detached", partitionID)
-	_, err = LoadDataPartition(rootDir, disk, false)
+	_, err = LoadDataPartition(rootDir, disk)
 	if err != nil {
 		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
 	} else {
@@ -765,7 +765,7 @@ func (s *DataNode) loadDataPartition(w http.ResponseWriter, r *http.Request) {
 
 	log.LogDebugf("data partition disk %v rootDir %v", disk, rootDir)
 
-	_, err = LoadDataPartition(path.Join(diskPath, rootDir), disk, false)
+	_, err = LoadDataPartition(path.Join(diskPath, rootDir), disk)
 	if err != nil {
 		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
 	} else {
