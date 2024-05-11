@@ -706,7 +706,7 @@ func (s *DataNode) detachDataPartition(w http.ResponseWriter, r *http.Request) {
 	partition.Disk().DetachDataPartition(partition)
 
 	log.LogDebugf("data partition %v is detached", partitionID)
-	_, err = LoadDataPartition(rootDir, disk, false)
+	_, err = LoadDataPartition(rootDir, disk)
 	s.buildSuccessResp(w, "success")
 }
 
