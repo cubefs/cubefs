@@ -116,6 +116,9 @@ type ExtentHandler struct {
 	lastKey   proto.ExtentKey
 
 	meetLimitedIoError bool
+
+	stop chan struct{}
+	sync.Once
 }
 
 // NewExtentHandler returns a new extent handler.
@@ -133,6 +136,7 @@ func NewExtentHandler(stream *Streamer, offset int, storeMode int, size int) *Ex
 		reply:              make(chan *Packet, 1024),
 		doneSender:         make(chan struct{}),
 		doneReceiver:       make(chan struct{}),
+		stop:               make(chan struct{}),
 		meetLimitedIoError: false,
 	}
 
@@ -406,8 +410,14 @@ func (eh *ExtentHandler) processReplyError(packet *Packet, errmsg string) {
 }
 
 func (eh *ExtentHandler) flush() (err error) {
+	log.LogDebugf("ExtentHandler flush begin: eh(%s)", eh.String())
 	eh.flushPacket()
-	eh.waitForFlush()
+	err = eh.waitForFlush()
+	if err != nil {
+		log.LogErrorf("ExtentHandler flush failed, eh(%s), err %s", eh.String(), err.Error())
+		return err
+	}
+
 	err = eh.appendExtentKey()
 	if err != nil {
 		return
@@ -425,15 +435,20 @@ func (eh *ExtentHandler) flush() (err error) {
 }
 
 func (eh *ExtentHandler) cleanup() (err error) {
-	eh.doneSender <- struct{}{}
-	eh.doneReceiver <- struct{}{}
-	if eh.conn != nil {
-		conn := eh.conn
-		eh.conn = nil
-		// TODO unhandled error
-		status := eh.getStatus()
-		StreamConnPool.PutConnect(conn, status >= ExtentStatusRecovery)
-	}
+	log.LogDebugf("cleanup: eh(%v)", eh)
+	eh.Once.Do(func() {
+		eh.doneSender <- struct{}{}
+		eh.doneReceiver <- struct{}{}
+		if eh.conn != nil {
+			conn := eh.conn
+			eh.conn = nil
+			// TODO unhandled error
+			status := eh.getStatus()
+			StreamConnPool.PutConnect(conn, status >= ExtentStatusRecovery)
+		}
+		close(eh.stop)
+	})
+
 	return
 }
 
@@ -520,7 +535,12 @@ func (eh *ExtentHandler) appendExtentKey() (err error) {
 
 // This function is meaningful to be called from stream writer flush method,
 // because there is no new write request.
-func (eh *ExtentHandler) waitForFlush() {
+func (eh *ExtentHandler) waitForFlush() (err error) {
+	log.LogDebugf("ExtentHandler waitForFlush begin: eh(%v)", eh)
+	defer func() {
+		log.LogDebugf("ExtentHandler waitForFlush end: eh(%v)", eh)
+	}()
+
 	if atomic.LoadInt32(&eh.inflight) <= 0 {
 		return
 	}
@@ -534,10 +554,11 @@ func (eh *ExtentHandler) waitForFlush() {
 			if atomic.LoadInt32(&eh.inflight) <= 0 {
 				return
 			}
-			//		case <-t.C:
-			//			if atomic.LoadInt32(&eh.inflight) <= 0 {
-			//				return
-			//			}
+		case <-eh.stop:
+			if atomic.LoadInt32(&eh.inflight) <= 0 {
+				return
+			}
+			return fmt.Errorf("eh maybe cleaned")
 		}
 	}
 }
