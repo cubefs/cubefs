@@ -6756,6 +6756,7 @@ func (m *Server) abortDecommissionDisk(w http.ResponseWriter, r *http.Request) {
 		sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("cancel decommission datanode(%v) disk(%v) success", addr, disk)))
 	}
 }
+
 func (m *Server) queryDiskBrokenThreshold(w http.ResponseWriter, r *http.Request) {
 	metric := exporter.NewTPCnt("req_queryDiskBrokenThreshold")
 	defer func() {

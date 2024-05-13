@@ -190,6 +190,7 @@ type DiskErrReplicaInfo struct {
 	Addr string
 	Disk string
 }
+
 type ClusterStatInfo struct {
 	DataNodeStatInfo *NodeStatInfo
 	MetaNodeStatInfo *NodeStatInfo

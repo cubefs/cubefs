@@ -432,7 +432,7 @@ func (d *Disk) doDiskError() {
 
 func (d *Disk) triggerDiskError(rwFlag uint8, dpId uint64) {
 	mesg := fmt.Sprintf("disk path %v error on %v, dpId %v", d.Path, LocalIP, dpId)
-	//exporter.Warning(mesg)
+	// exporter.Warning(mesg)
 	log.LogWarnf(mesg)
 
 	if rwFlag == WriteFlag {
@@ -451,7 +451,7 @@ func (d *Disk) triggerDiskError(rwFlag uint8, dpId uint64) {
 		msg := fmt.Sprintf("set disk unavailable for too many disk error, "+
 			"disk path(%v), ip(%v), diskErrCnt(%v), diskErrPartitionCnt(%v) threshold(%v)",
 			d.Path, LocalIP, diskErrCnt, diskErrPartitionCnt, d.dataNode.diskUnavailablePartitionErrorCount)
-		//exporter.Warning(msg)
+		// exporter.Warning(msg)
 		log.LogWarnf(msg)
 		d.doDiskError()
 	}
@@ -641,8 +641,8 @@ func (d *Disk) RestorePartition(visitor PartitionVisitor) (err error) {
 				if IsDiskErr(err.Error()) {
 					d.triggerDiskError(ReadFlag, partitionID)
 				}
-				//exporter.Warning(mesg)
-				//syslog.Println(mesg)
+				// exporter.Warning(mesg)
+				// syslog.Println(mesg)
 				return
 			}
 			if visitor != nil {
