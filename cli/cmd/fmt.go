@@ -973,6 +973,7 @@ func formatDecommissionFailedDiskInfo(info *proto.DecommissionFailedDiskInfo) st
 	sb.WriteString(fmt.Sprintf("AutoDecommission:     %v\n", info.IsAutoDecommission))
 	return sb.String()
 }
+
 func replicaInHost(hosts []string, replica string) bool {
 	for _, host := range hosts {
 		if replica == host {
