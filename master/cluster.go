@@ -3934,7 +3934,7 @@ func (c *Cluster) setMarkDiskBrokenThreshold(val float64) (err error) {
 
 func (c *Cluster) getMarkDiskBrokenThreshold() (v float64) {
 	v = c.MarkDiskBrokenThreshold.Load()
-	if v <= 0 || v > 1 {
+	if v < 0 || v > 1 {
 		v = defaultMarkDiskBrokenThreshold
 	}
 	return
@@ -4380,7 +4380,20 @@ func (c *Cluster) handleDataNodeBadDisk(dataNode *DataNode) {
 		log.LogDebugf("[handleDataNodeBadDisk] data node(%v) bad disk(%v), bad dp cnt (%v) total dp cnt(%v) ratio(%v)",
 			dataNode.Addr, disk.DiskPath, len(disk.DiskErrPartitionList), disk.TotalPartitionCnt, ratio)
 		// decommission dp form bad disk
-		if ratio <= c.getMarkDiskBrokenThreshold() {
+		threshold := c.getMarkDiskBrokenThreshold()
+		if threshold == defaultMarkDiskBrokenThreshold || ratio >= threshold {
+			log.LogInfof("[handleDataNodeBadDisk] try to decommission disk(%v) on %v", disk.DiskPath, dataNode.Addr)
+			// NOTE: decommission all dps and disable disk
+			ok, status := c.canAutoDecommissionDisk(dataNode.Addr, disk.DiskPath)
+			if !ok {
+				log.LogWarnf("[handleDataNodeBadDisk] cannnot auto decommission dp on data node(%v) disk(%v) status(%v), skip", dataNode.Addr, disk.DiskPath, status)
+				continue
+			}
+			err := c.migrateDisk(dataNode.Addr, disk.DiskPath, "", false, 0, true, AutoDecommission)
+			if err != nil {
+				log.LogErrorf("[handleDataNodeBadDisk] failed to decommission broken disk(%v) on data node(%v), err(%v)", disk.DiskPath, dataNode.Addr, err)
+			}
+		} else {
 			for _, dpId := range disk.DiskErrPartitionList {
 				log.LogDebugf("[handleDataNodeBadDisk] try to decommission dp(%v)", dpId)
 				dp, err := c.getDataPartitionByID(dpId)
@@ -4398,19 +4411,6 @@ func (c *Cluster) handleDataNodeBadDisk(dataNode *DataNode) {
 					log.LogErrorf("[handleDataNodeBadDisk] failed to decommssion dp(%v) on data node(%v) disk(%v), err(%v)", dataNode.Addr, disk.DiskPath, dp.PartitionID, err)
 					continue
 				}
-			}
-		} else if len(disk.DiskErrPartitionList) != 0 {
-			log.LogDebugf("[handleDataNodeBadDisk] try to decommission disk(%v) on %v", disk.DiskPath, dataNode.Addr)
-			// NOTE: decommission all dps and disable disk
-			ok, status := c.canAutoDecommissionDisk(dataNode.Addr, disk.DiskPath)
-			if !ok {
-				log.LogInfof("[handleDataNodeBadDisk] cannnot auto decommission dp on data node(%v) disk(%v) status(%v), skip", dataNode.Addr, disk.DiskPath, status)
-				continue
-			}
-			log.LogDebugf("[handleDataNodeBadDisk] decommission disk(%v)", disk.DiskPath)
-			err := c.migrateDisk(dataNode.Addr, disk.DiskPath, "", false, 0, true, AutoDecommission)
-			if err != nil {
-				log.LogErrorf("[handleDataNodeBadDisk] failed to decommission broken disk(%v) on data node(%v), err(%v)", disk.DiskPath, dataNode.Addr, err)
 			}
 		}
 	}

@@ -210,7 +210,7 @@ const (
 	defaultClientReqPeriodSeconds                = 1
 	defaultMaxQuotaNumPerVol                     = 100
 	defaultVolDelayDeleteTimeHour                = 48
-	defaultMarkDiskBrokenThreshold               = 0.5
+	defaultMarkDiskBrokenThreshold               = 0 // decommission all dp from disk
 	maxMpCreationCount                           = 10
 )
 

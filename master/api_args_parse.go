@@ -1926,3 +1926,22 @@ func parseS3QosReq(r *http.Request, req *proto.S3QosRequest) (err error) {
 	log.LogInfo("parseS3QosReq success.")
 	return
 }
+
+func parseRequestToSetDiskBrokenThreshold(r *http.Request) (ratio float64, err error) {
+	if err = r.ParseForm(); err != nil {
+		return
+	}
+	if ratio, err = extractDiskBrokenThreshold(r); err != nil {
+		return
+	}
+	return
+}
+
+func extractDiskBrokenThreshold(r *http.Request) (ratio float64, err error) {
+	var value string
+	if value = r.FormValue(markDiskBrokenThresholdKey); value == "" {
+		err = keyNotFound(markDiskBrokenThresholdKey)
+		return
+	}
+	return strconv.ParseFloat(value, 64)
+}

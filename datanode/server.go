@@ -655,7 +655,7 @@ func (s *DataNode) registerHandler() {
 	http.HandleFunc("/setDiskExtentReadLimitStatus", s.setDiskExtentReadLimitStatus)
 	http.HandleFunc("/queryDiskExtentReadLimitStatus", s.queryDiskExtentReadLimitStatus)
 	// http.HandleFunc("/detachDataPartition", s.detachDataPartition)
-	// http.HandleFunc("/loadDataPartition", s.loadDataPartition)
+	http.HandleFunc("/loadDataPartition", s.loadDataPartition)
 	http.HandleFunc("/releaseDiskExtentReadLimitToken", s.releaseDiskExtentReadLimitToken)
 	http.HandleFunc("/markDataPartitionBroken", s.markDataPartitionBroken)
 	http.HandleFunc("/markDiskBroken", s.markDiskBroken)
