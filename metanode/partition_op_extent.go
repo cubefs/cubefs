@@ -42,7 +42,7 @@ func (mp *metaPartition) CheckQuota(inodeId uint64, p *Packet) (iParm *Inode, in
 	item := mp.inodeTree.Get(iParm)
 	if item == nil {
 		err = fmt.Errorf("inode[%v] not exist", iParm)
-		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+		p.PacketErrorWithBody(proto.OpNotExistErr, []byte(err.Error()))
 		return
 	}
 	inode = item.(*Inode)
