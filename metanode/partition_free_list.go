@@ -208,10 +208,11 @@ func (mp *metaPartition) deleteWorker() {
 			if inode, ok := mp.inodeTree.Get(&Inode{Inode: ino}).(*Inode); ok {
 				inTx, _ := mp.txProcessor.txResource.isInodeInTransction(inode)
 				if inode.ShouldDelayDelete() || inTx {
-					if log.EnableDebug() {
-						log.LogDebugf("[deleteWorker] mpId(%v) delay to remove inode(%v) Nlink(%v) migrateStorageClass(%v), inTx %v",
-							mp.config.PartitionId, inode.Inode, inode.HybridCouldExtentsMigration.storageClass, inode.NLink, inTx)
-					}
+					// TODO:tangjingyu too many logs leads to high mem usage.
+					//if log.EnableDebug() {
+					//	log.LogDebugf("[deleteWorker] mpId(%v) delay to remove inode(%v) Nlink(%v) migrateStorageClass(%v), inTx %v",
+					//		mp.config.PartitionId, inode.Inode, inode.HybridCouldExtentsMigration.storageClass, inode.NLink, inTx)
+					//}
 					delayDeleteInos = append(delayDeleteInos, ino)
 					continue
 				}
@@ -224,7 +225,7 @@ func (mp *metaPartition) deleteWorker() {
 		for _, delayDeleteIno := range delayDeleteInos {
 			mp.freeList.Push(delayDeleteIno)
 		}
-		log.LogDebugf("[deleteWorker] delete inodes [%v]", buffSlice)
+		log.LogDebugf("[deleteWorker] metaPartition[%v] inodes[%v]", mp.config.PartitionId, buffSlice)
 
 		mp.persistDeletedInodes(buffSlice)
 		mp.deleteMarkedInodes(buffSlice)
