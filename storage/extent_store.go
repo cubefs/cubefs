@@ -460,6 +460,8 @@ func (s *ExtentStore) Read(extentID uint64, offset, size int64, nbuf []byte, isR
 	//if err = s.checkOffsetAndSize(extentID, offset, size); err != nil {
 	//	return
 	//}
+	log.LogDebugf("action[Extent.read]extent %v offset %v size %v  ei.Size %v e.dataSize %v isRepairRead %v",
+		extentID, offset, size, ei.Size, e.dataSize, isRepairRead)
 	crc, err = e.Read(nbuf, offset, size, isRepairRead)
 
 	return
