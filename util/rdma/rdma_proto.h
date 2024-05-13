@@ -13,6 +13,8 @@
 #include <stdbool.h>
 #include <netdb.h>
 #include <sys/eventfd.h>
+#define __USE_GNU
+#include <sched.h>
 #include <pthread.h>
 #include <semaphore.h>
 
@@ -290,6 +292,7 @@ static struct rdma_pool_config* get_rdma_pool_config() {
 static int init_worker(worker *worker, event_callback cb, int index) {
     int ret = 0;
     char str[20];
+    cpu_set_t cpuset;
 
     worker->pd = g_net_env->pd;
     //log_debug("ibv_alloc_pd:%p", worker->pd);
@@ -331,6 +334,9 @@ static int init_worker(worker *worker, event_callback cb, int index) {
     pthread_create(&worker->cq_poller_thread, NULL, cb, worker);
     sprintf(str, "cq_worker:%d", index);
     pthread_setname_np(worker->cq_poller_thread, str);
+    __CPU_ZERO_S(sizeof(cpu_set_t), &cpuset);
+    __CPU_SET_S(index, sizeof(cpu_set_t), &cpuset);
+    pthread_setaffinity_np(worker->cq_poller_thread, sizeof(cpu_set_t), &cpuset);
 
     return C_OK;
 err_destroy_map:
