@@ -133,7 +133,7 @@ type ExtentStore struct {
 	metadataFp             *os.File // metadata file pointer?
 	tinyExtentDeleteFp     *os.File
 	normalExtentDeleteFp   *os.File
-	closed                 bool
+	closed                 int32
 	availableTinyExtentC   chan uint64 // available tinyExtent channel
 	availableTinyExtentMap sync.Map
 	brokenTinyExtentC      chan uint64 // broken tinyExtent channel
@@ -228,7 +228,7 @@ func NewExtentStore(dataDir string, partitionID uint64, storeSize, dpType int, i
 	}
 	s.hasAllocSpaceExtentIDOnVerfiyFile = s.GetPreAllocSpaceExtentIDOnVerifyFile()
 	s.storeSize = storeSize
-	s.closed = false
+	s.closed = 0
 	err = s.initTinyExtent()
 	if err != nil {
 		return
@@ -312,11 +312,24 @@ func (s *ExtentStore) startFlushCache() {
 	}
 }
 
+func (s *ExtentStore) IsClosed() (closed bool) {
+	closed = atomic.LoadInt32(&s.closed) == 1
+	return
+}
+
+func (s *ExtentStore) setClosed(v bool) {
+	closed := int32(0)
+	if v {
+		closed = 1
+	}
+	atomic.StoreInt32(&s.closed, closed)
+}
+
 // Create creates an extent.
 func (s *ExtentStore) Create(extentID uint64) (err error) {
 	s.stopMutex.RLock()
 	defer s.stopMutex.RUnlock()
-	if s.closed {
+	if s.IsClosed() {
 		err = ErrStoreAlreadyClosed
 		log.LogErrorf("[Create] store(%v) failed to create extent(%v), err(%v)", s.dataPath, extentID, err)
 		return
@@ -582,7 +595,7 @@ func (s *ExtentStore) initBaseFileID() error {
 func (s *ExtentStore) Write(extentID uint64, offset, size int64, data []byte, crc uint32, writeType int, isSync bool, isHole bool, isRepair, isBackupWrite bool) (status uint8, err error) {
 	s.stopMutex.RLock()
 	defer s.stopMutex.RUnlock()
-	if s.closed {
+	if s.IsClosed() {
 		err = ErrStoreAlreadyClosed
 		log.LogErrorf("[Write] store(%v) failed to write extent(%v), err(%v)", s.dataPath, extentID, err)
 		return
@@ -786,7 +799,7 @@ func (s *ExtentStore) GetGcFlag(extId uint64) proto.GcFlag {
 func (s *ExtentStore) MarkDelete(extentID uint64, offset, size int64) (err error) {
 	s.stopMutex.RLock()
 	defer s.stopMutex.RUnlock()
-	if s.closed {
+	if s.IsClosed() {
 		err = ErrStoreAlreadyClosed
 		log.LogErrorf("[MarkDelete] store(%v) failed to mark delete extent(%v), err(%v)", s.dataPath, extentID, err)
 		return
@@ -878,7 +891,7 @@ func (s *ExtentStore) Flush() {
 	}()
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
-	if s.closed {
+	if s.IsClosed() {
 		return
 	}
 	s.cache.Flush()
@@ -892,7 +905,7 @@ func (s *ExtentStore) Close() {
 	}()
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
-	if s.closed {
+	if s.IsClosed() {
 		return
 	}
 	close(s.stopC)
@@ -915,7 +928,7 @@ func (s *ExtentStore) Close() {
 
 	s.stopMutex.Lock()
 	defer s.stopMutex.Unlock()
-	s.closed = true
+	s.setClosed(true)
 	if err := s.writeReadDirHint(); err != nil {
 		log.LogErrorf("[Close] store(%v) failed to write extent hint, err(%v)", s.dataPath, err)
 	}
