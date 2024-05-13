@@ -438,12 +438,12 @@ func (client *ExtentClient) EvictStream(inode uint64) error {
 		return nil
 	}
 	if s.isOpen {
-		s.isOpen = false
 		err := s.IssueEvictRequest()
 		if err != nil {
 			return err
 		}
 		s.done <- struct{}{}
+		s.isOpen = false
 	} else {
 		delete(s.client.streamers, s.inode)
 		s.client.streamerLock.Unlock()
@@ -674,6 +674,8 @@ func (client *ExtentClient) GetStreamer(inode uint64) *Streamer {
 	}
 	if !s.isOpen {
 		s.isOpen = true
+		s.request = make(chan interface{}, 64)
+		s.pendingCache = make(chan bcacheKey, 1)
 		go s.server()
 		go s.asyncBlockCache()
 	}
