@@ -66,6 +66,10 @@ func (dp *DataPartition) Apply(command []byte, index uint64) (resp interface{}, 
 func (dp *DataPartition) ApplyMemberChange(confChange *raftproto.ConfChange, index uint64) (resp interface{}, err error) {
 	defer func(index uint64) {
 		if err == nil {
+			if !dp.extentStore.IsClosed() {
+				log.LogWarnf("[ApplyMemberChange] vol(%v) dp(%v) delay update apply id(%v), dp already stop!", dp.volumeID, dp.partitionID, index)
+				return
+			}
 			dp.uploadApplyID(index)
 		} else {
 			err = fmt.Errorf("[ApplyMemberChange] ApplyID(%v) Partition(%v) apply err(%v)]", index, dp.partitionID, err)
@@ -73,6 +77,11 @@ func (dp *DataPartition) ApplyMemberChange(confChange *raftproto.ConfChange, ind
 			panic(newRaftApplyError(err))
 		}
 	}(index)
+
+	if dp.extentStore.IsClosed() {
+		log.LogWarnf("[ApplyMemberChange] vol(%v) dp(%v) delay apply member change, apply id(%v), dp already stop!", dp.volumeID, dp.partitionID, index)
+		return
+	}
 
 	// Change memory the status
 	var (
