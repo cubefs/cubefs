@@ -394,19 +394,18 @@ func (e *Extent) Write(data []byte, offset, size int64, crc uint32, writeType in
 
 // Read reads data from an extent.
 func (e *Extent) Read(data []byte, offset, size int64, isRepairRead bool) (crc uint32, err error) {
-	log.LogDebugf("action[Extent.read] offset %v size %v extent %v", offset, size, e)
 	if IsTinyExtent(e.extentID) {
 		return e.ReadTiny(data, offset, size, isRepairRead)
 	}
 
 	if err = e.checkReadOffsetAndSize(offset, size); err != nil {
-		log.LogErrorf("action[Extent.Read] offset %d size %d err %v", offset, size, err)
+		log.LogErrorf("action[Extent.Read]extent %v offset %d size %d err %v", e.extentID, offset, size, err)
 		return
 	}
 
 	var rSize int
 	if rSize, err = e.file.ReadAt(data[:size], offset); err != nil {
-		log.LogErrorf("action[Extent.Read] offset %v size %v err %v realsize %v", offset, size, err, rSize)
+		log.LogErrorf("action[Extent.Read]extent %v offset %v size %v err %v realsize %v", e.extentID, offset, size, err, rSize)
 		return
 	}
 	crc = crc32.ChecksumIEEE(data)
@@ -426,7 +425,8 @@ func (e *Extent) ReadTiny(data []byte, offset, size int64, isRepairRead bool) (c
 func (e *Extent) checkReadOffsetAndSize(offset, size int64) error {
 	if (e.snapshotDataOff == util.ExtentSize && offset > e.Size()) ||
 		(e.snapshotDataOff > util.ExtentSize && uint64(offset) > e.snapshotDataOff) {
-		return newParameterError("offset=%d size=%d snapshotDataOff=%d", offset, size, e.snapshotDataOff)
+		return newParameterError("offset=%d size=%d snapshotDataOff=%d e.Size=%v", offset, size,
+			e.snapshotDataOff, e.Size())
 	}
 	return nil
 }
