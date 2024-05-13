@@ -1358,6 +1358,17 @@ func parseAndExtractSetNodeInfoParams(r *http.Request) (params map[string]interf
 		params[metaNodeSelectorKey] = value
 	}
 
+	if value = r.FormValue(markDiskBrokenThresholdKey); value != "" {
+		noParams = false
+		val := float64(0)
+		val, err = strconv.ParseFloat(value, 64)
+		if err != nil {
+			err = unmatchedKey(markDiskBrokenThresholdKey)
+			return
+		}
+		params[markDiskBrokenThresholdKey] = val
+	}
+
 	if noParams {
 		err = keyNotFound(nodeDeleteBatchCountKey)
 		return
