@@ -1542,15 +1542,15 @@ func TestSetVolumeDpRepairBlockSize(t *testing.T) {
 }
 
 func TestSetMarkDiskBrokenThreshold(t *testing.T) {
-	reqUrl := fmt.Sprintf("%v%v", hostAddr, proto.AdminSetClusterInfo)
+	reqUrl := fmt.Sprintf("%v%v", hostAddr, proto.AdminSetNodeInfo)
 	setVal := 0.5
 	oldVal := server.cluster.getMarkDiskBrokenThreshold()
 	setUrl := fmt.Sprintf("%v?%v=%v&dirSizeLimit=0", reqUrl, markDiskBrokenThresholdKey, setVal)
 	unsetUrl := fmt.Sprintf("%v?%v=%v&dirSizeLimit=0", reqUrl, markDiskBrokenThresholdKey, oldVal)
 	process(setUrl, t)
-	// require.EqualValues(t, setVal, server.cluster.getMarkDiskBrokenThreshold())
+	require.EqualValues(t, setVal, server.cluster.getMarkDiskBrokenThreshold())
 	process(unsetUrl, t)
-	// require.EqualValues(t, oldVal, server.cluster.getMarkDiskBrokenThreshold())
+	require.EqualValues(t, oldVal, server.cluster.getMarkDiskBrokenThreshold())
 }
 
 func TestSetDiscardDp(t *testing.T) {
