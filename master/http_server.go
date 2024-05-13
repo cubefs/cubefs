@@ -350,6 +350,12 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.AdminQueryAutoDecommissionDisk).
 		HandlerFunc(m.queryAutoDecommissionDisk)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminSetDiskBrokenThreshold).
+		HandlerFunc(m.setDiskBrokenThreshold)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminQueryDiskBrokenThreshold).
+		HandlerFunc(m.queryDiskBrokenThreshold)
 
 	// volume management APIs
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).

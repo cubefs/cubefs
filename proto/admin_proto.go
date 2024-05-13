@@ -105,10 +105,11 @@ const (
 	AdminEnableAutoDecommissionDisk   = "/admin/enableAutoDecommissionDisk"
 	AdminQueryAutoDecommissionDisk    = "/admin/queryAutoDecommissionDisk"
 	// graphql master api
-	AdminClusterAPI = "/api/cluster"
-	AdminUserAPI    = "/api/user"
-	AdminVolumeAPI  = "/api/volume"
-
+	AdminClusterAPI               = "/api/cluster"
+	AdminUserAPI                  = "/api/user"
+	AdminVolumeAPI                = "/api/volume"
+	AdminSetDiskBrokenThreshold   = "/admin/setDiskBrokenThreshold"
+	AdminQueryDiskBrokenThreshold = "/admin/queryDiskBrokenThreshold"
 	// graphql coonsole api
 	ConsoleIQL        = "/iql"
 	ConsoleLoginAPI   = "/login"

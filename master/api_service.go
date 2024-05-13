@@ -6689,7 +6689,6 @@ func (m *Server) QueryDecommissionFailedDisk(w http.ResponseWriter, r *http.Requ
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-
 	disks := make([]*proto.DecommissionFailedDiskInfo, 0)
 	m.cluster.DecommissionDisks.Range(func(key, value interface{}) bool {
 		d := value.(*DecommissionDisk)
@@ -6729,21 +6728,49 @@ func (m *Server) abortDecommissionDisk(w http.ResponseWriter, r *http.Request) {
 	}
 	disk, err = extractDiskPath(r)
 	if err != nil {
+		key := fmt.Sprintf("%v_%v", addr, disk)
+		val, ok := m.cluster.DecommissionDisks.Load(key)
+		if !ok {
+			sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: fmt.Sprintf("decommission datanode %v disk %v not found", addr, disk)})
+			return
+		}
+		dd := val.(*DecommissionDisk)
+		err = dd.Abort(m.cluster)
+		if err != nil {
+			sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodePersistenceByRaft, Msg: err.Error()})
+			return
+		}
+		sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("cancel decommission datanode(%v) disk(%v) success", addr, disk)))
+	}
+}
+func (m *Server) queryDiskBrokenThreshold(w http.ResponseWriter, r *http.Request) {
+	metric := exporter.NewTPCnt("req_queryDiskBrokenThreshold")
+	defer func() {
+		metric.Set(nil)
+	}()
+	ratio := m.cluster.MarkDiskBrokenThreshold.Load()
+	rstMsg := fmt.Sprintf("disk broken ratio is %v ", ratio)
+	sendOkReply(w, r, newSuccessHTTPReply(rstMsg))
+}
+
+func (m *Server) setDiskBrokenThreshold(w http.ResponseWriter, r *http.Request) {
+	metric := exporter.NewTPCnt("req_setDiskBrokenThreshold")
+	defer func() {
+		metric.Set(nil)
+	}()
+	var (
+		ratio float64
+		err   error
+	)
+	if ratio, err = parseRequestToSetDiskBrokenThreshold(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
 
-	key := fmt.Sprintf("%v_%v", addr, disk)
-	val, ok := m.cluster.DecommissionDisks.Load(key)
-	if !ok {
-		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: fmt.Sprintf("decommission datanode %v disk %v not found", addr, disk)})
+	if err = m.cluster.setMarkDiskBrokenThreshold(ratio); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(errors.NewErrorf("set disk broken ratio failed:%v", err)))
 		return
 	}
-	dd := val.(*DecommissionDisk)
-	err = dd.Abort(m.cluster)
-	if err != nil {
-		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodePersistenceByRaft, Msg: err.Error()})
-		return
-	}
-	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("cancel decommission datanode(%v) disk(%v) success", addr, disk)))
+	rstMsg := fmt.Sprintf("disk broken rationis set to %v ", ratio)
+	sendOkReply(w, r, newSuccessHTTPReply(rstMsg))
 }
