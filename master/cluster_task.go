@@ -295,7 +295,8 @@ type VolNameSet map[string]struct{}
 
 func (c *Cluster) checkReplicaMetaPartitions() (
 	lackReplicaMetaPartitions []*MetaPartition, noLeaderMetaPartitions []*MetaPartition,
-	unavailableReplicaMPs []*MetaPartition, excessReplicaMetaPartitions, inodeCountNotEqualMPs, maxInodeNotEqualMPs, dentryCountNotEqualMPs []*MetaPartition, err error) {
+	unavailableReplicaMPs []*MetaPartition, excessReplicaMetaPartitions, inodeCountNotEqualMPs, maxInodeNotEqualMPs, dentryCountNotEqualMPs []*MetaPartition, err error,
+) {
 	lackReplicaMetaPartitions = make([]*MetaPartition, 0)
 	noLeaderMetaPartitions = make([]*MetaPartition, 0)
 	excessReplicaMetaPartitions = make([]*MetaPartition, 0)
@@ -501,10 +502,8 @@ func (c *Cluster) addMetaReplica(partition *MetaPartition, addr string) (err err
 	if err = c.addMetaPartitionRaftMember(partition, addPeer); err != nil {
 		return
 	}
-	newHosts := make([]string, 0, len(partition.Hosts)+1)
-	newPeers := make([]proto.Peer, 0, len(partition.Hosts)+1)
-	newHosts = append(partition.Hosts, addPeer.Addr)
-	newPeers = append(partition.Peers, addPeer)
+	newHosts := append(partition.Hosts, addPeer.Addr)
+	newPeers := append(partition.Peers, addPeer)
 	if err = partition.persistToRocksDB("addMetaReplica", partition.volName, newHosts, newPeers, c); err != nil {
 		return
 	}
@@ -886,7 +885,6 @@ func (c *Cluster) adjustMetaNode(metaNode *MetaNode) {
 		return
 	}
 	err = c.t.putMetaNode(metaNode)
-	return
 }
 
 func (c *Cluster) handleDataNodeTaskResponse(nodeAddr string, task *proto.AdminTask) {
@@ -935,7 +933,6 @@ func (c *Cluster) handleDataNodeTaskResponse(nodeAddr string, task *proto.AdminT
 
 errHandler:
 	log.LogErrorf("process task[%v] failed,err:%v", task.ToString(), err)
-	return
 }
 
 func (c *Cluster) dealDeleteDataPartitionResponse(nodeAddr string, resp *proto.DeleteDataPartitionResponse) (err error) {
@@ -1069,7 +1066,6 @@ func (c *Cluster) adjustDataNode(dataNode *DataNode) {
 		return
 	}
 	err = c.t.putDataNode(dataNode)
-	return
 }
 
 /*if node report data partition infos,so range data partition infos,then update data partition info*/

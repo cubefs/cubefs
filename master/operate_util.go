@@ -31,7 +31,8 @@ import (
 
 func newCreateDataPartitionRequest(volName string, ID uint64, replicaNum int, members []proto.Peer,
 	dataPartitionSize, leaderSize int, hosts []string, createType int, partitionType int,
-	decommissionedDisks []string, verSeq uint64) (req *proto.CreateDataPartitionRequest) {
+	decommissionedDisks []string, verSeq uint64,
+) (req *proto.CreateDataPartitionRequest) {
 	req = &proto.CreateDataPartitionRequest{
 		PartitionTyp:        partitionType,
 		PartitionId:         ID,
@@ -133,7 +134,7 @@ func unmarshalTaskResponse(task *proto.AdminTask) (err error) {
 }
 
 func contains(arr []string, element string) (ok bool) {
-	if arr == nil || len(arr) == 0 {
+	if len(arr) == 0 {
 		return
 	}
 
@@ -147,7 +148,7 @@ func contains(arr []string, element string) (ok bool) {
 }
 
 func containsID(arr []uint64, element uint64) bool {
-	if arr == nil || len(arr) == 0 {
+	if len(arr) == 0 {
 		return false
 	}
 
@@ -161,7 +162,7 @@ func containsID(arr []uint64, element uint64) bool {
 }
 
 func reshuffleHosts(oldHosts []string) (newHosts []string, err error) {
-	if oldHosts == nil || len(oldHosts) == 0 {
+	if len(oldHosts) == 0 {
 		log.LogError(fmt.Sprintf("action[reshuffleHosts],err:%v", proto.ErrReshuffleArray))
 		err = proto.ErrReshuffleArray
 		return
@@ -203,10 +204,6 @@ func unmatchedKey(name string) (err error) {
 	return errors.NewErrorf("parameter %v not match", name)
 }
 
-func txInvalidMask() (err error) {
-	return errors.New("transaction mask key value pair should be: enableTxMaskKey=[create|mkdir|remove|rename|mknod|symlink|link]\n enableTxMaskKey=off \n enableTxMaskKey=all")
-}
-
 func notFoundMsg(name string) (err error) {
 	return errors.NewErrorf("%v not found", name)
 }
@@ -227,10 +224,6 @@ func dataReplicaNotFound(addr string) (err error) {
 	return notFoundMsg(fmt.Sprintf("data replica[%v]", addr))
 }
 
-func zoneNotFound(name string) (err error) {
-	return notFoundMsg(fmt.Sprintf("zone[%v]", name))
-}
-
 func nodeSetNotFound(id uint64) (err error) {
 	return notFoundMsg(fmt.Sprintf("node set[%v]", id))
 }
@@ -247,10 +240,6 @@ func lcNodeNotFound(addr string) (err error) {
 	return notFoundMsg(fmt.Sprintf("lc node[%v]", addr))
 }
 
-func volNotFound(name string) (err error) {
-	return notFoundMsg(fmt.Sprintf("vol[%v]", name))
-}
-
 func matchKey(serverKey, clientKey string) bool {
 	h := md5.New()
 	_, err := h.Write([]byte(serverKey))
@@ -259,5 +248,5 @@ func matchKey(serverKey, clientKey string) bool {
 		return false
 	}
 	cipherStr := h.Sum(nil)
-	return strings.ToLower(clientKey) == strings.ToLower(hex.EncodeToString(cipherStr))
+	return strings.EqualFold(clientKey, hex.EncodeToString(cipherStr))
 }

@@ -120,7 +120,7 @@ func (c *ConsoleNode) loadConfig(cfg *config.Config) (err error) {
 	if len(c.listen) == 0 {
 		c.listen = "80"
 	}
-	if match := regexp.MustCompile("^(\\d)+$").MatchString(c.listen); !match {
+	if match := regexp.MustCompile(`^(\d)+$`).MatchString(c.listen); !match {
 		return fmt.Errorf("invalid listen configuration:[%s]", c.listen)
 	}
 	log.LogInfof("console loadConfig: setup config: %v(%v)", proto.ListenPort, c.listen)

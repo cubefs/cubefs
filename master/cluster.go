@@ -78,7 +78,6 @@ type Cluster struct {
 	MasterSecretKey              []byte
 	lastZoneIdxForNode           int
 	zoneIdxMux                   sync.Mutex //
-	zoneList                     []string
 	followerReadManager          *followerReadManager
 	diskQosEnable                bool
 	QosAcceptLimit               *rate.Limiter
@@ -172,7 +171,8 @@ func (mgr *followerReadManager) getVolumeDpView() {
 	}
 
 	for _, vv := range volViews {
-		if (vv.Status == proto.VolStatusMarkDelete && !vv.Forbidden) || (vv.Status == proto.VolStatusMarkDelete && vv.Forbidden && vv.DeleteExecTime.Sub(time.Now()) <= 0) {
+		if (vv.Status == proto.VolStatusMarkDelete && !vv.Forbidden) ||
+			(vv.Status == proto.VolStatusMarkDelete && vv.Forbidden && time.Until(vv.DeleteExecTime) <= 0) {
 			mgr.rwMutex.Lock()
 			mgr.lastUpdateTick[vv.Name] = time.Now()
 			mgr.status[vv.Name] = false
@@ -194,7 +194,8 @@ func (mgr *followerReadManager) sendFollowerVolumeDpView() {
 	vols := mgr.c.copyVols()
 	for _, vol := range vols {
 		log.LogDebugf("followerReadManager.getVolumeDpView %v", vol.Name)
-		if (vol.Status == proto.VolStatusMarkDelete && !vol.Forbidden) || (vol.Status == proto.VolStatusMarkDelete && vol.Forbidden && vol.DeleteExecTime.Sub(time.Now()) <= 0) {
+		if (vol.Status == proto.VolStatusMarkDelete && !vol.Forbidden) ||
+			(vol.Status == proto.VolStatusMarkDelete && vol.Forbidden && time.Until(vol.DeleteExecTime) <= 0) {
 			continue
 		}
 		var body []byte
@@ -225,12 +226,8 @@ func (mgr *followerReadManager) isVolRecordObsolete(volName string) bool {
 		// vol has been completely deleted
 		return true
 	}
-
-	if (volView.Status == proto.VolStatusMarkDelete && !volView.Forbidden) || (volView.Status == proto.VolStatusMarkDelete && volView.Forbidden && volView.DeleteExecTime.Sub(time.Now()) <= 0) {
-		return true
-	}
-
-	return false
+	return (volView.Status == proto.VolStatusMarkDelete && !volView.Forbidden) ||
+		(volView.Status == proto.VolStatusMarkDelete && volView.Forbidden && time.Until(volView.DeleteExecTime) <= 0)
 }
 
 func (mgr *followerReadManager) DelObsoleteVolRecord(obsoleteVolNames map[string]struct{}) {
@@ -311,9 +308,9 @@ func (mgr *followerReadManager) getVolViewAsFollower(key string, compress bool) 
 	defer mgr.rwMutex.RUnlock()
 	ok = true
 	if compress {
-		value, _ = mgr.volDataPartitionsCompress[key]
+		value = mgr.volDataPartitionsCompress[key]
 	} else {
-		value, _ = mgr.volDataPartitionsView[key]
+		value = mgr.volDataPartitionsView[key]
 	}
 	log.LogDebugf("getVolViewAsFollower. volume %v return!", key)
 	return
@@ -332,9 +329,9 @@ func newCluster(name string, leaderInfo *LeaderInfo, fsm *MetadataFsm, partition
 	c = new(Cluster)
 	c.Name = name
 	c.leaderInfo = leaderInfo
-	c.vols = make(map[string]*Vol, 0)
+	c.vols = make(map[string]*Vol)
 	c.delayDeleteVolsInfo = make([]*delayDeleteVolInfo, 0)
-	c.stopc = make(chan bool, 0)
+	c.stopc = make(chan bool)
 	c.cfg = cfg
 	if c.cfg.MaxDpCntLimit == 0 {
 		c.cfg.MaxDpCntLimit = defaultMaxDpCntLimit
@@ -484,7 +481,7 @@ func (c *Cluster) scheduleToCheckDelayDeleteVols() {
 				for index := 0; index < len(c.delayDeleteVolsInfo); index++ {
 					currentDeleteVol := c.delayDeleteVolsInfo[index]
 					log.LogDebugf("action[scheduleToCheckDelayDeleteVols] currentDeleteVol[%v]", currentDeleteVol)
-					if currentDeleteVol.execTime.Sub(time.Now()) > 0 {
+					if time.Until(currentDeleteVol.execTime) > 0 {
 						continue
 					}
 					go func() {
@@ -578,7 +575,7 @@ func (c *Cluster) scheduleToCheckVolQos() {
 func (c *Cluster) scheduleToCheckNodeSetGrpManagerStatus() {
 	go func() {
 		for {
-			if c.FaultDomain == false || !c.partition.IsRaftLeader() {
+			if !c.FaultDomain || !c.partition.IsRaftLeader() {
 				time.Sleep(time.Minute)
 				continue
 			}
@@ -638,7 +635,8 @@ func (c *Cluster) doLoadDataPartitions() {
 	}()
 	vols := c.allVols()
 	for _, vol := range vols {
-		if (vol.Status == proto.VolStatusMarkDelete && !vol.Forbidden) || (vol.Status == proto.VolStatusMarkDelete && vol.Forbidden && vol.DeleteExecTime.Sub(time.Now()) <= 0) {
+		if (vol.Status == proto.VolStatusMarkDelete && !vol.Forbidden) ||
+			(vol.Status == proto.VolStatusMarkDelete && vol.Forbidden && time.Until(vol.DeleteExecTime) <= 0) {
 			continue
 		}
 		vol.loadDataPartition(c)
@@ -701,10 +699,6 @@ func (c *Cluster) scheduleToCheckHeartbeat() {
 			time.Sleep(time.Second * defaultIntervalToCheckHeartbeat)
 		}
 	}()
-}
-
-func (c *Cluster) passAclCheck(ip string) {
-	// do nothing
 }
 
 func (c *Cluster) checkLeaderAddr() {
@@ -801,7 +795,6 @@ func (c *Cluster) checkLcNodeHeartbeat() {
 		log.LogInfof("checkLcNodeHeartbeat: deregister node(%v)", node)
 		_ = c.delLcNode(node)
 	}
-	return
 }
 
 func (c *Cluster) scheduleToCheckMetaPartitions() {
@@ -1163,8 +1156,7 @@ func (c *Cluster) checkLackReplicaAndHostDataPartitions() (lackReplicaDataPartit
 	vols := c.copyVols()
 	var ids []uint64
 	for _, vol := range vols {
-		var dps *DataPartitionMap
-		dps = vol.dataPartitions
+		dps := vol.dataPartitions
 		for _, dp := range dps.partitions {
 			if dp.ReplicaNum > uint8(len(dp.Hosts)) && len(dp.Hosts) == len(dp.Replicas) && (dp.IsDecommissionInitial() || dp.IsRollbackFailed()) {
 				lackReplicaDataPartitions = append(lackReplicaDataPartitions, dp)
@@ -1181,8 +1173,7 @@ func (c *Cluster) checkLackReplicaDataPartitions() (lackReplicaDataPartitions []
 	lackReplicaDataPartitions = make([]*DataPartition, 0)
 	vols := c.copyVols()
 	for _, vol := range vols {
-		var dps *DataPartitionMap
-		dps = vol.dataPartitions
+		dps := vol.dataPartitions
 		for _, dp := range dps.partitions {
 			if dp.ReplicaNum > uint8(len(dp.Hosts)) {
 				lackReplicaDataPartitions = append(lackReplicaDataPartitions, dp)
@@ -1195,7 +1186,8 @@ func (c *Cluster) checkLackReplicaDataPartitions() (lackReplicaDataPartitions []
 
 func (c *Cluster) checkReplicaOfDataPartitions(ignoreDiscardDp bool) (
 	lackReplicaDPs []*DataPartition, unavailableReplicaDPs []*DataPartition, repFileCountDifferDps []*DataPartition,
-	repUsedSizeDifferDps []*DataPartition, excessReplicaDPs []*DataPartition, noLeaderDPs []*DataPartition, err error) {
+	repUsedSizeDifferDps []*DataPartition, excessReplicaDPs []*DataPartition, noLeaderDPs []*DataPartition, err error,
+) {
 	noLeaderDPs = make([]*DataPartition, 0)
 	lackReplicaDPs = make([]*DataPartition, 0)
 	unavailableReplicaDPs = make([]*DataPartition, 0)
@@ -1203,14 +1195,14 @@ func (c *Cluster) checkReplicaOfDataPartitions(ignoreDiscardDp bool) (
 
 	vols := c.copyVols()
 	for _, vol := range vols {
-		var dps *DataPartitionMap
-		dps = vol.dataPartitions
+		dps := vol.dataPartitions
 		for _, dp := range dps.partitions {
 			if ignoreDiscardDp && dp.IsDiscard {
 				continue
 			}
 
-			if (vol.Status == proto.VolStatusMarkDelete && !vol.Forbidden) || (vol.Status == proto.VolStatusMarkDelete && vol.Forbidden && vol.DeleteExecTime.Sub(time.Now()) <= 0) {
+			if (vol.Status == proto.VolStatusMarkDelete && !vol.Forbidden) ||
+				(vol.Status == proto.VolStatusMarkDelete && vol.Forbidden && time.Until(vol.DeleteExecTime) <= 0) {
 				continue
 			}
 
@@ -1376,7 +1368,6 @@ func (c *Cluster) deleteVol(name string) {
 	c.volMutex.Lock()
 	defer c.volMutex.Unlock()
 	delete(c.vols, name)
-	return
 }
 
 func (c *Cluster) markDeleteVol(name, authKey string, force bool, isNotCancel bool) (err error) {
@@ -1652,7 +1643,8 @@ errHandler:
 }
 
 func (c *Cluster) syncCreateDataPartitionToDataNode(host string, size uint64, dp *DataPartition,
-	peers []proto.Peer, hosts []string, createType int, partitionType int, needRollBack, ignoreDecommissionDisk bool) (diskPath string, err error) {
+	peers []proto.Peer, hosts []string, createType int, partitionType int, needRollBack, ignoreDecommissionDisk bool,
+) (diskPath string, err error) {
 	log.LogInfof("action[syncCreateDataPartitionToDataNode] dp [%v] createType[%v], partitionType[%v] ignoreDecommissionDisk[%v]",
 		dp.PartitionID, createType, partitionType, ignoreDecommissionDisk)
 	dataNode, err := c.dataNode(host)
@@ -1766,7 +1758,8 @@ func (c *Cluster) chooseZone2Plus1(zones []*Zone, excludeNodeSets []uint64, excl
 }
 
 func (c *Cluster) chooseZoneNormal(zones []*Zone, excludeNodeSets []uint64, excludeHosts []string,
-	nodeType uint32, replicaNum int) (hosts []string, peers []proto.Peer, err error) {
+	nodeType uint32, replicaNum int,
+) (hosts []string, peers []proto.Peer, err error) {
 	log.LogInfof("action[chooseZoneNormal] zones[%s] nodeType[%d] replicaNum[%d]", printZonesName(zones), nodeType, replicaNum)
 
 	c.zoneIdxMux.Lock()
@@ -1834,8 +1827,6 @@ func (c *Cluster) getHostFromNormalZone(nodeType uint32, excludeZones []string, 
 		goto result
 	}
 
-	hosts = make([]string, 0)
-	peers = make([]proto.Peer, 0)
 	if excludeHosts == nil {
 		excludeHosts = make([]string, 0)
 	}
@@ -2085,7 +2076,7 @@ func (c *Cluster) delDecommissionDiskFromCache(dd *DecommissionDisk) {
 func (c *Cluster) decommissionSingleDp(dp *DataPartition, newAddr, offlineAddr string) (err error) {
 	var (
 		dataNode       *DataNode
-		decommContinue = false
+		decommContinue bool
 		newReplica     *DataReplica
 	)
 
@@ -2140,7 +2131,7 @@ func (c *Cluster) decommissionSingleDp(dp *DataPartition, newAddr, offlineAddr s
 				log.LogInfof("action[decommissionSingleDp] dp %v replica[%v] status %v",
 					dp.PartitionID, newReplica.Addr, newReplica.Status)
 				if newReplica.isRepairing() { // wait for repair
-					if time.Now().Sub(dp.RecoverStartTime) > c.GetDecommissionDataPartitionRecoverTimeOut() {
+					if time.Since(dp.RecoverStartTime) > c.GetDecommissionDataPartitionRecoverTimeOut() {
 						err = fmt.Errorf("action[decommissionSingleDp] dp %v new replica %v repair time out",
 							dp.PartitionID, newAddr)
 						dp.DecommissionNeedRollback = true
@@ -3621,7 +3612,7 @@ func (c *Cluster) allVolNames() (vols []string) {
 }
 
 func (c *Cluster) copyVols() (vols map[string]*Vol) {
-	vols = make(map[string]*Vol, 0)
+	vols = make(map[string]*Vol)
 	c.volMutex.RLock()
 	defer c.volMutex.RUnlock()
 
@@ -3634,7 +3625,7 @@ func (c *Cluster) copyVols() (vols map[string]*Vol) {
 
 // Return all the volumes except the ones that have been marked to be deleted.
 func (c *Cluster) allVols() (vols map[string]*Vol) {
-	vols = make(map[string]*Vol, 0)
+	vols = make(map[string]*Vol)
 	c.volMutex.RLock()
 	defer c.volMutex.RUnlock()
 	for name, vol := range c.vols {
@@ -3793,11 +3784,6 @@ func (c *Cluster) setMetaNodeDeleteWorkerSleepMs(val uint64) (err error) {
 	return
 }
 
-func (c *Cluster) getMaxDpCntLimit() (dpCntInLimit uint64) {
-	dpCntInLimit = atomic.LoadUint64(&c.cfg.MaxDpCntLimit)
-	return
-}
-
 func (c *Cluster) setMaxDpCntLimit(val uint64) (err error) {
 	if val == 0 {
 		val = defaultMaxDpCntLimit
@@ -3863,8 +3849,8 @@ func (c *Cluster) setMaxConcurrentLcNodes(count uint64) (err error) {
 
 func (c *Cluster) clearVols() {
 	c.volMutex.Lock()
-	defer c.volMutex.Unlock()
-	c.vols = make(map[string]*Vol, 0)
+	c.vols = make(map[string]*Vol)
+	c.volMutex.Unlock()
 }
 
 func (c *Cluster) clearTopology() {
@@ -3911,7 +3897,7 @@ func (c *Cluster) checkDecommissionDataNode() {
 			partitions := c.getAllDataPartitionByDataNode(dataNode.Addr)
 			// if only decommission part of data partitions, do not remove the data node
 			if len(partitions) != 0 {
-				if time.Now().Sub(time.Unix(dataNode.DecommissionCompleteTime, 0)) > (20 * time.Minute) {
+				if time.Since(time.Unix(dataNode.DecommissionCompleteTime, 0)) > (20 * time.Minute) {
 					log.LogWarnf("action[checkDecommissionDataNode] dataNode %v decommission completed, "+
 						"but has dp left, so only reset decommission status", dataNode.Addr)
 					dataNode.resetDecommissionStatus()
@@ -4185,7 +4171,7 @@ func (c *Cluster) checkDecommissionDisk() {
 		// keep failed decommission disk in list for preventing the reuse of a
 		// term in future decommissioning operations
 		if status == DecommissionSuccess {
-			if time.Now().Sub(time.Unix(disk.DecommissionCompleteTime, 0)) > (20 * time.Minute) {
+			if time.Since(time.Unix(disk.DecommissionCompleteTime, 0)) > (20 * time.Minute) {
 				if err := c.syncDeleteDecommissionDisk(disk); err != nil {
 					msg := fmt.Sprintf("action[checkDecommissionDisk],clusterID[%v] node[%v] disk[%v],"+
 						"syncDeleteDecommissionDisk failed,err[%v]",
@@ -4706,7 +4692,6 @@ func (c *Cluster) DelBucketLifecycle(VolName string) {
 	}
 	c.lcMgr.DelS3BucketLifecycle(VolName)
 	log.LogInfof("action[DelS3BucketLifecycle],clusterID[%v] vol:%v", c.Name, VolName)
-	return
 }
 
 func (c *Cluster) addDecommissionDiskToNodeset(dd *DecommissionDisk) (err error) {

@@ -48,7 +48,6 @@ func (partition *DataPartition) validateCRC(clusterID string) {
 		Warn(clusterID, fmt.Sprintf("vol[%v],dpId[%v],liveAddrs[%v],inactiveAddrs[%v]", partition.VolName, partition.PartitionID, liveAddrs, inactiveAddrs))
 	}
 	partition.doValidateCRC(liveReplicas, clusterID)
-	return
 }
 
 func (partition *DataPartition) doValidateCRC(liveReplicas []*DataReplica, clusterID string) {
@@ -73,7 +72,7 @@ func (partition *DataPartition) doValidateCRC(liveReplicas []*DataReplica, clust
 }
 
 func (partition *DataPartition) checkTinyExtentFile(fc *FileInCore, liveReplicas []*DataReplica, clusterID string, getInfoCallback func() string) {
-	if fc.shouldCheckCrc() == false {
+	if !fc.shouldCheckCrc() {
 		return
 	}
 	fms, needRepair := fc.needCrcRepair(liveReplicas, getInfoCallback)
@@ -93,11 +92,10 @@ func (partition *DataPartition) checkTinyExtentFile(fc *FileInCore, liveReplicas
 		msg = msg + fmt.Sprintf("fm[%v]:%v\n", fm.locIndex, fm)
 	}
 	Warn(clusterID, msg)
-	return
 }
 
 func (partition *DataPartition) checkExtentFile(fc *FileInCore, liveReplicas []*DataReplica, clusterID string, getInfoCallback func() string) {
-	if fc.shouldCheckCrc() == false {
+	if !fc.shouldCheckCrc() {
 		return
 	}
 	fms, needRepair := fc.needCrcRepair(liveReplicas, getInfoCallback)
@@ -155,5 +153,4 @@ func (partition *DataPartition) checkExtentFile(fc *FileInCore, liveReplicas []*
 			Warn(clusterID, msg)
 		}
 	}
-	return
 }

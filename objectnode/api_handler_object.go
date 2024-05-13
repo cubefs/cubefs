@@ -36,7 +36,7 @@ import (
 )
 
 var (
-	rangeRegexp  = regexp.MustCompile("^bytes=(\\d)*-(\\d)*$")
+	rangeRegexp  = regexp.MustCompile(`^bytes=(\d)*-(\d)*$`)
 	MaxKeyLength = 750
 )
 
@@ -300,8 +300,6 @@ func (o *ObjectNode) getObjectHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
-
-	return
 }
 
 func CheckConditionInHeader(r *http.Request, fileInfo *FSFileInfo) *ErrorCode {
@@ -526,8 +524,6 @@ func (o *ObjectNode) headObjectHandler(w http.ResponseWriter, r *http.Request) {
 	for name, value := range fileInfo.Metadata {
 		w.Header().Set(XAmzMetaPrefix+name, value)
 	}
-
-	return
 }
 
 // Delete objects (multiple objects)
@@ -549,8 +545,7 @@ func (o *ObjectNode) deleteObjectsHandler(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	var vol *Volume
-	if vol, err = o.getVol(param.Bucket()); err != nil {
+	if _, err = o.getVol(param.Bucket()); err != nil {
 		log.LogErrorf("deleteObjectsHandler: load volume fail: requestID(%v) volume(%v) err(%v)",
 			GetRequestID(r), param.Bucket(), err)
 		return
@@ -629,7 +624,6 @@ func (o *ObjectNode) deleteObjectsHandler(w http.ResponseWriter, r *http.Request
 
 	deletedObjects := make([]Deleted, 0, len(deleteReq.Objects))
 	deletedErrors := make([]Error, 0)
-	objectKeys := make([]string, 0, len(deleteReq.Objects))
 	start := time.Now()
 	for _, object := range deleteReq.Objects {
 		result := POLICY_UNKNOW
@@ -650,7 +644,6 @@ func (o *ObjectNode) deleteObjectsHandler(w http.ResponseWriter, r *http.Request
 			})
 			continue
 		}
-		objectKeys = append(objectKeys, object.Key)
 		log.LogWarnf("deleteObjectsHandler: delete path: requestID(%v) remote(%v) volume(%v) path(%v)",
 			GetRequestID(r), getRequestIP(r), vol.Name(), object.Key)
 		// QPS and Concurrency Limit
@@ -684,7 +677,6 @@ func (o *ObjectNode) deleteObjectsHandler(w http.ResponseWriter, r *http.Request
 	}
 
 	writeSuccessResponseXML(w, response)
-	return
 }
 
 func extractSrcBucketKey(r *http.Request) (srcBucketId, srcKey, versionId string, err error) {
@@ -928,7 +920,6 @@ func (o *ObjectNode) copyObjectHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeSuccessResponseXML(w, response)
-	return
 }
 
 // List objects v1
@@ -1068,7 +1059,6 @@ func (o *ObjectNode) getBucketV1Handler(w http.ResponseWriter, r *http.Request) 
 	}
 
 	writeSuccessResponseXML(w, response)
-	return
 }
 
 // List objects version 2
@@ -1237,7 +1227,6 @@ func (o *ObjectNode) getBucketV2Handler(w http.ResponseWriter, r *http.Request) 
 	}
 
 	writeSuccessResponseXML(w, response)
-	return
 }
 
 // Put object
@@ -1407,7 +1396,6 @@ func (o *ObjectNode) putObjectHandler(w http.ResponseWriter, r *http.Request) {
 
 	// set response header
 	w.Header()[ETag] = []string{wrapUnescapedQuot(fsFileInfo.ETag)}
-	return
 }
 
 // Post object
@@ -1732,7 +1720,6 @@ func (o *ObjectNode) deleteObjectHandler(w http.ResponseWriter, r *http.Request)
 	}
 
 	w.WriteHeader(http.StatusNoContent)
-	return
 }
 
 // Get object tagging
@@ -1794,7 +1781,6 @@ func (o *ObjectNode) getObjectTaggingHandler(w http.ResponseWriter, r *http.Requ
 	}
 
 	writeSuccessResponseXML(w, response)
-	return
 }
 
 // Put object tagging
@@ -1870,8 +1856,6 @@ func (o *ObjectNode) putObjectTaggingHandler(w http.ResponseWriter, r *http.Requ
 		}
 		return
 	}
-
-	return
 }
 
 // Delete object tagging
@@ -1923,7 +1907,6 @@ func (o *ObjectNode) deleteObjectTaggingHandler(w http.ResponseWriter, r *http.R
 	}
 
 	w.WriteHeader(http.StatusNoContent)
-	return
 }
 
 // Put object extend attribute (xattr)
@@ -1999,8 +1982,6 @@ func (o *ObjectNode) putObjectXAttrHandler(w http.ResponseWriter, r *http.Reques
 		}
 		return
 	}
-
-	return
 }
 
 // Get object extend attribute (xattr)
@@ -2070,7 +2051,6 @@ func (o *ObjectNode) getObjectXAttrHandler(w http.ResponseWriter, r *http.Reques
 	}
 
 	writeSuccessResponseXML(w, response)
-	return
 }
 
 // Delete object extend attribute (xattr)
@@ -2125,8 +2105,6 @@ func (o *ObjectNode) deleteObjectXAttrHandler(w http.ResponseWriter, r *http.Req
 		}
 		return
 	}
-
-	return
 }
 
 // List object xattrs
@@ -2187,7 +2165,6 @@ func (o *ObjectNode) listObjectXAttrs(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeSuccessResponseXML(w, response)
-	return
 }
 
 // GetObjectRetention
@@ -2254,7 +2231,6 @@ func (o *ObjectNode) getObjectRetentionHandler(w http.ResponseWriter, r *http.Re
 	}
 
 	writeSuccessResponseXML(w, b)
-	return
 }
 
 func parsePartInfo(partNumber uint64, fileSize uint64) (uint64, uint64, uint64, uint64) {

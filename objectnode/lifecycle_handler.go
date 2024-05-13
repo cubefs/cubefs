@@ -82,7 +82,6 @@ func (o *ObjectNode) getBucketLifecycleConfigurationHandler(w http.ResponseWrite
 	}
 
 	writeSuccessResponseXML(w, data)
-	return
 }
 
 // API reference: https://docs.aws.amazon.com/zh_cn/AmazonS3/latest/API/API_PutBucketLifecycleConfiguration.html

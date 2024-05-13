@@ -134,15 +134,14 @@ func getSnapshot(t *testing.T, snapshotFile string, url string) {
 func TestGetInodeSnapshot(t *testing.T) {
 	url := fmt.Sprintf("http://127.0.0.1:%v%v?pid=%v",
 		PROF_PORT, "/getInodeSnapshot", METAPARTITION_ID)
-	fmt.Printf(url)
-	fmt.Printf("\n")
+	fmt.Println(url)
 	getSnapshot(t, inodeFile, url)
 }
 
 func TestGetDentrySnapshot(t *testing.T) {
 	url := fmt.Sprintf("http://127.0.0.1:%v%v?pid=%v",
 		PROF_PORT, "/getDentrySnapshot", METAPARTITION_ID)
-	fmt.Printf(url)
+	fmt.Println(url)
 	getSnapshot(t, dentryFile, url)
 }
 

@@ -99,7 +99,7 @@ func PartFromBytes(raw []byte) *Part {
 	offset += n
 	// decode inode
 	var inode uint64
-	inode, n = binary.Uvarint(raw[offset:])
+	inode, _ = binary.Uvarint(raw[offset:])
 
 	muPart := &Part{
 		ID:         uint16(u64ID),

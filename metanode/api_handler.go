@@ -78,8 +78,7 @@ func (m *MetaNode) registerAPIHandler() (err error) {
 	return
 }
 
-func (m *MetaNode) getParamsHandler(w http.ResponseWriter,
-	r *http.Request) {
+func (m *MetaNode) getParamsHandler(w http.ResponseWriter, r *http.Request) {
 	resp := NewAPIResponse(http.StatusOK, http.StatusText(http.StatusOK))
 	params := make(map[string]interface{})
 	params[metaNodeDeleteBatchCountKey] = DeleteBatchCount()
@@ -90,8 +89,7 @@ func (m *MetaNode) getParamsHandler(w http.ResponseWriter,
 	}
 }
 
-func (m *MetaNode) getSmuxStatHandler(w http.ResponseWriter,
-	r *http.Request) {
+func (m *MetaNode) getSmuxStatHandler(w http.ResponseWriter, r *http.Request) {
 	resp := NewAPIResponse(http.StatusOK, http.StatusText(http.StatusOK))
 	resp.Data = smuxPool.GetStat()
 	data, _ := resp.Marshal()
@@ -100,8 +98,7 @@ func (m *MetaNode) getSmuxStatHandler(w http.ResponseWriter,
 	}
 }
 
-func (m *MetaNode) getPartitionsHandler(w http.ResponseWriter,
-	r *http.Request) {
+func (m *MetaNode) getPartitionsHandler(w http.ResponseWriter, r *http.Request) {
 	resp := NewAPIResponse(http.StatusOK, http.StatusText(http.StatusOK))
 	resp.Data = m.metadataManager
 	data, _ := resp.Marshal()
@@ -288,7 +285,6 @@ func (m *MetaNode) getSplitKeyHandler(w http.ResponseWriter, r *http.Request) {
 	} else {
 		log.LogDebugf("getSplitKeyHandler")
 	}
-	return
 }
 
 func (m *MetaNode) getInodeHandler(w http.ResponseWriter, r *http.Request) {
@@ -343,7 +339,6 @@ func (m *MetaNode) getInodeHandler(w http.ResponseWriter, r *http.Request) {
 	if len(p.Data) > 0 {
 		resp.Data = json.RawMessage(p.Data)
 	}
-	return
 }
 
 func (m *MetaNode) getRaftStatusHandler(w http.ResponseWriter, r *http.Request) {
@@ -371,8 +366,7 @@ func (m *MetaNode) getRaftStatusHandler(w http.ResponseWriter, r *http.Request) 
 	resp.Data = raftStatus
 }
 
-func (m *MetaNode) getEbsExtentsByInodeHandler(w http.ResponseWriter,
-	r *http.Request) {
+func (m *MetaNode) getEbsExtentsByInodeHandler(w http.ResponseWriter, r *http.Request) {
 	r.ParseForm()
 	resp := NewAPIResponse(http.StatusBadRequest, "")
 	defer func() {
@@ -412,11 +406,9 @@ func (m *MetaNode) getEbsExtentsByInodeHandler(w http.ResponseWriter,
 	if len(p.Data) > 0 {
 		resp.Data = json.RawMessage(p.Data)
 	}
-	return
 }
 
-func (m *MetaNode) getExtentsByInodeHandler(w http.ResponseWriter,
-	r *http.Request) {
+func (m *MetaNode) getExtentsByInodeHandler(w http.ResponseWriter, r *http.Request) {
 	r.ParseForm()
 	resp := NewAPIResponse(http.StatusBadRequest, "")
 	defer func() {
@@ -466,7 +458,6 @@ func (m *MetaNode) getExtentsByInodeHandler(w http.ResponseWriter,
 	if len(p.Data) > 0 {
 		resp.Data = json.RawMessage(p.Data)
 	}
-	return
 }
 
 func (m *MetaNode) getDentryHandler(w http.ResponseWriter, r *http.Request) {
@@ -524,7 +515,6 @@ func (m *MetaNode) getDentryHandler(w http.ResponseWriter, r *http.Request) {
 	if len(p.Data) > 0 {
 		resp.Data = json.RawMessage(p.Data)
 	}
-	return
 }
 
 func (m *MetaNode) getTxHandler(w http.ResponseWriter, r *http.Request) {
@@ -573,7 +563,6 @@ func (m *MetaNode) getTxHandler(w http.ResponseWriter, r *http.Request) {
 	if len(p.Data) > 0 {
 		resp.Data = json.RawMessage(p.Data)
 	}
-	return
 }
 
 func (m *MetaNode) getRealVerSeq(w http.ResponseWriter, r *http.Request) (verSeq uint64, err error) {
@@ -661,7 +650,6 @@ func (m *MetaNode) getAllDentriesHandler(w http.ResponseWriter, r *http.Request)
 	if _, err = w.Write(buff.Bytes()); err != nil {
 		log.LogErrorf("[getAllDentriesHandler] response %s", err)
 	}
-	return
 }
 
 func (m *MetaNode) getAllTxHandler(w http.ResponseWriter, r *http.Request) {
@@ -710,17 +698,11 @@ func (m *MetaNode) getAllTxHandler(w http.ResponseWriter, r *http.Request) {
 
 		if ino, ok := i.(*TxRollbackInode); ok {
 			_, err = w.Write([]byte(ino.ToString()))
-			if err != nil {
-				return false
-			}
-			return true
+			return err == nil
 		}
 		if den, ok := i.(*TxRollbackDentry); ok {
 			_, err = w.Write([]byte(den.ToString()))
-			if err != nil {
-				return false
-			}
-			return true
+			return err == nil
 		}
 
 		val, err = json.Marshal(i)
@@ -745,7 +727,6 @@ func (m *MetaNode) getAllTxHandler(w http.ResponseWriter, r *http.Request) {
 	if _, err = w.Write(buff.Bytes()); err != nil {
 		log.LogErrorf("[getAllTxHandler] response %s", err)
 	}
-	return
 }
 
 func (m *MetaNode) getDirectoryHandler(w http.ResponseWriter, r *http.Request) {
@@ -795,7 +776,6 @@ func (m *MetaNode) getDirectoryHandler(w http.ResponseWriter, r *http.Request) {
 	if len(p.Data) > 0 {
 		resp.Data = json.RawMessage(p.Data)
 	}
-	return
 }
 
 func (m *MetaNode) genClusterVersionFileHandler(w http.ResponseWriter, r *http.Request) {
@@ -823,7 +803,6 @@ func (m *MetaNode) genClusterVersionFileHandler(w http.ResponseWriter, r *http.R
 			return
 		}
 	}
-	return
 }
 
 func (m *MetaNode) getInodeSnapshotHandler(w http.ResponseWriter, r *http.Request) {

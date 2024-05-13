@@ -209,7 +209,7 @@ func (s *Streamer) server() {
 				if s.idle >= streamWriterIdleTimeoutPeriod && len(s.request) == 0 {
 					if s.client.disableMetaCache || !s.needBCache {
 						// get current stream in map
-						current_s, _ := s.client.streamers[s.inode]
+						current_s := s.client.streamers[s.inode]
 						// one stream maybe has multi server coroutine
 						// when the stream's residual server coroutine exits, others stream maybe deleted
 						if current_s == s {
@@ -534,7 +534,6 @@ func (s *Streamer) doDirectWriteByAppend(req *ExtentRequest, direct bool, op uin
 		}
 
 		total += packSize
-		break
 	}
 	if err != nil {
 		log.LogErrorf("action[doDirectWriteByAppend] data process err %v", err)

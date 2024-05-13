@@ -16,7 +16,6 @@ package meta
 
 import (
 	gerrors "errors"
-	"fmt"
 	"sync"
 	"syscall"
 	"time"
@@ -41,7 +40,7 @@ const (
 )
 
 const (
-	statusUnknown int = iota
+	_ int = iota
 	statusOK
 	statusExist
 	statusNoent
@@ -219,7 +218,7 @@ func NewMetaWrapper(config *MetaConfig) (*MetaWrapper, error) {
 	mw.forceUpdateLimit = rate.NewLimiter(1, MinForceUpdateMetaPartitionsInterval)
 	mw.EnableSummary = config.EnableSummary
 	mw.DirChildrenNumLimit = proto.DefaultDirChildrenNumLimit
-	mw.uniqidRangeMap = make(map[uint64]*uniqidRange, 0)
+	mw.uniqidRangeMap = make(map[uint64]*uniqidRange)
 	mw.qc = NewQuotaCache(DefaultQuotaExpiration, MaxQuotaCache)
 	mw.VerReadSeq = config.VerReadSeq
 
@@ -297,10 +296,6 @@ func (mw *MetaWrapper) Cluster() string {
 
 func (mw *MetaWrapper) LocalIP() string {
 	return mw.localIP
-}
-
-func (mw *MetaWrapper) exporterKey(act string) string {
-	return fmt.Sprintf("%s_sdk_meta_%s", mw.cluster, act)
 }
 
 // Proto ResultCode to status

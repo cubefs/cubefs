@@ -17,6 +17,7 @@ package btree
 import (
 	"flag"
 	"fmt"
+	"io"
 	"math/rand"
 	"reflect"
 	"sort"
@@ -161,6 +162,7 @@ func TestDeleteMin(t *testing.T) {
 	for _, v := range perm(100) {
 		tr.ReplaceOrInsert(v)
 	}
+	tr.root.print(io.Discard, 2)
 	var got []Item
 	for v := tr.DeleteMin(); v != nil; v = tr.DeleteMin() {
 		got = append(got, v)

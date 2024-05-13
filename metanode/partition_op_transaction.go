@@ -112,7 +112,6 @@ func (mp *metaPartition) txInitToRm(txInfo *proto.TransactionInfo, p *Packet) {
 	}
 
 	p.ResultCode = proto.OpOk
-	return
 }
 
 func canRetry(status uint8) bool {

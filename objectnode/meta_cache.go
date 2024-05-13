@@ -43,10 +43,7 @@ type AttrItem struct {
 }
 
 func (attr *AttrItem) IsExpired() bool {
-	if attr.expiredTime < time.Now().Unix() {
-		return true
-	}
-	return false
+	return attr.expiredTime < time.Now().Unix()
 }
 
 // VolumeInodeAttrsCache caches Attrs for Inodes
@@ -208,10 +205,7 @@ func (di *DentryItem) Key() string {
 }
 
 func (di *DentryItem) IsExpired() bool {
-	if di.expiredTime < time.Now().Unix() {
-		return true
-	}
-	return false
+	return di.expiredTime < time.Now().Unix()
 }
 
 // VolumeDentryCache accelerates translating S3 path to posix-compatible file system metadata within a volume

@@ -30,7 +30,6 @@ func (mf *KeystoreFsm) DeleteKey(id string) {
 	mf.ksMutex.Lock()
 	defer mf.ksMutex.Unlock()
 	delete(mf.keystore, id)
-	return
 }
 
 func (mf *KeystoreFsm) PutAKInfo(akInfo *keystore.AccessKeyInfo) {
@@ -55,5 +54,4 @@ func (mf *KeystoreFsm) DeleteAKInfo(accessKey string) {
 	mf.aksMutex.Lock()
 	defer mf.aksMutex.Unlock()
 	delete(mf.accessKeystore, accessKey)
-	return
 }

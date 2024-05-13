@@ -176,12 +176,12 @@ func (vs *lcSnapshotVerStatus) DeleteOldResult() {
 	defer vs.Unlock()
 	for k, v := range vs.TaskResults {
 		// delete result that already done
-		if v.Done == true && time.Now().After(v.EndTime.Add(time.Minute*10)) {
+		if v.Done && time.Now().After(v.EndTime.Add(time.Minute*10)) {
 			delete(vs.TaskResults, k)
 			log.LogDebugf("delete result already done: %v", v)
 		}
 		// delete result that not done but no updating
-		if v.Done != true && time.Now().After(v.UpdateTime.Add(time.Minute*10)) {
+		if !v.Done && time.Now().After(v.UpdateTime.Add(time.Minute*10)) {
 			delete(vs.TaskResults, k)
 			log.LogWarnf("delete result that not done but no updating: %v", v)
 		}

@@ -140,15 +140,6 @@ func (t *topology) deleteDataNode(dataNode *DataNode) {
 	t.dataNodes.Delete(dataNode.Addr)
 }
 
-func (t *topology) getZoneByDataNode(dataNode *DataNode) (zone *Zone, err error) {
-	_, ok := t.dataNodes.Load(dataNode.Addr)
-	if !ok {
-		return nil, errors.Trace(dataNodeNotFound(dataNode.Addr), "%v not found", dataNode.Addr)
-	}
-
-	return t.getZone(dataNode.ZoneName)
-}
-
 func (t *topology) putMetaNode(metaNode *MetaNode) (err error) {
 	if _, ok := t.metaNodes.Load(metaNode.Addr); ok {
 		return
@@ -266,7 +257,7 @@ func (nsgm *DomainManager) start() {
 }
 
 func (nsgm *DomainManager) createDomain(zoneName string) (err error) {
-	if nsgm.init == false {
+	if !nsgm.init {
 		return fmt.Errorf("createDomain err [%v]", err)
 	}
 	log.LogInfof("zone name [%v] createDomain", zoneName)
@@ -328,7 +319,7 @@ func (nsgm *DomainManager) checkExcludeZoneState() {
 			excludeNeedDomain)
 		nsgm.c.needFaultDomain = true
 	} else {
-		if nsgm.c.needFaultDomain == true {
+		if nsgm.c.needFaultDomain {
 			log.LogInfof("action[checkExcludeZoneState] needFaultDomain be set false")
 		}
 		nsgm.c.needFaultDomain = false
@@ -456,8 +447,7 @@ func (nsgm *DomainManager) buildNodeSetGrp(domainGrpManager *DomainNodeSetGrpMan
 		return
 	}
 
-	var method map[int]buildNodeSetGrpMethod
-	method = make(map[int]buildNodeSetGrpMethod)
+	method := make(map[int]buildNodeSetGrpMethod)
 	method[3] = buildNodeSetGrp3Zone
 	method[2] = buildNodeSetGrp2Plus1
 	method[1] = buildNodeSetGrpOneZone
@@ -578,7 +568,8 @@ func (nsgm *DomainManager) getHostFromNodeSetGrpSpecific(domainGrpManager *Domai
 func (nsgm *DomainManager) getHostFromNodeSetGrp(domainId uint64, replicaNum uint8, createType uint32) (
 	hosts []string,
 	peers []proto.Peer,
-	err error) {
+	err error,
+) {
 	var ok bool
 	var index int
 
@@ -893,7 +884,7 @@ func (nsgm *DomainManager) putNodeSet(ns *nodeSet, load bool) (err error) {
 		nsgm.ZoneName2DomainIdMap[ns.zoneName] = 0
 	}
 	if index, ok = nsgm.domainId2IndexMap[domainId]; !ok {
-		if domainId > 0 && load == false { // domainId 0 can be created through nodeset create,others be created by createDomain
+		if domainId > 0 && !load { // domainId 0 can be created through nodeset create,others be created by createDomain
 			err = fmt.Errorf("inconsistent domainid exist in name map but node exist in index map")
 			log.LogErrorf("action[putNodeSet]  %v", err)
 			return
@@ -1276,12 +1267,6 @@ func (t *topology) getAllZones() (zones []*Zone) {
 	return
 }
 
-func (t *topology) getZoneByIndex(index int) (zone *Zone) {
-	t.zoneLock.RLock()
-	defer t.zoneLock.RUnlock()
-	return t.zones[index]
-}
-
 func (t *topology) getNodeSetByNodeSetId(nodeSetId uint64) (nodeSet *nodeSet, err error) {
 	zones := t.getAllZones()
 	for _, zone := range zones {
@@ -1406,15 +1391,6 @@ func (t *topology) allocZonesForDataNode(zoneNum, replicaNum int, excludeZone []
 	return
 }
 
-func (ns *nodeSet) dataNodeCount() int {
-	var count int
-	ns.dataNodes.Range(func(key, value interface{}) bool {
-		count++
-		return true
-	})
-	return count
-}
-
 // Zone stores all the zone related information
 type Zone struct {
 	name                    string
@@ -1518,12 +1494,6 @@ func (zone *Zone) getStatusToString() string {
 	} else {
 		return "unavailable"
 	}
-}
-
-func (zone *Zone) isSingleNodeSet() bool {
-	zone.RLock()
-	defer zone.RUnlock()
-	return len(zone.nodeSetMap) == 1
 }
 
 func (zone *Zone) getNodeSet(setID uint64) (ns *nodeSet, err error) {
@@ -1653,15 +1623,6 @@ func (zone *Zone) putDataNode(dataNode *DataNode) (err error) {
 	return
 }
 
-func (zone *Zone) getDataNode(addr string) (dataNode *DataNode, err error) {
-	value, ok := zone.dataNodes.Load(addr)
-	if !ok {
-		return nil, errors.Trace(dataNodeNotFound(addr), "%v not found", addr)
-	}
-	dataNode = value.(*DataNode)
-	return
-}
-
 func (zone *Zone) deleteDataNode(dataNode *DataNode) {
 	ns, err := zone.getNodeSet(dataNode.NodeSetID)
 	if err != nil {
@@ -1770,7 +1731,7 @@ func (zone *Zone) isUsedRatio(ratio float64) (can bool) {
 	)
 	zone.dataNodes.Range(func(addr, value interface{}) bool {
 		dataNode := value.(*DataNode)
-		if dataNode.isActive == true {
+		if dataNode.isActive {
 			dataNodeUsed += dataNode.Used
 		} else {
 			dataNodeUsed += dataNode.Total
@@ -1786,7 +1747,7 @@ func (zone *Zone) isUsedRatio(ratio float64) (can bool) {
 
 	zone.metaNodes.Range(func(addr, value interface{}) bool {
 		metaNode := value.(*MetaNode)
-		if metaNode.IsActive == true && metaNode.isWritable() == true {
+		if metaNode.IsActive && metaNode.isWritable() {
 			metaNodeUsed += metaNode.Used
 		} else {
 			metaNodeUsed += metaNode.Total
@@ -1808,7 +1769,7 @@ func (zone *Zone) getDataUsed() (dataNodeUsed uint64, dataNodeTotal uint64) {
 	defer zone.RUnlock()
 	zone.dataNodes.Range(func(addr, value interface{}) bool {
 		dataNode := value.(*DataNode)
-		if dataNode.isActive == true {
+		if dataNode.isActive {
 			dataNodeUsed += dataNode.Used
 		} else {
 			dataNodeUsed += dataNode.Total
@@ -1826,7 +1787,7 @@ func (zone *Zone) getMetaUsed() (metaNodeUsed uint64, metaNodeTotal uint64) {
 
 	zone.metaNodes.Range(func(addr, value interface{}) bool {
 		metaNode := value.(*MetaNode)
-		if metaNode.IsActive == true && metaNode.isWritable() == true {
+		if metaNode.IsActive && metaNode.isWritable() {
 			metaNodeUsed += metaNode.Used
 		} else {
 			metaNodeUsed += metaNode.Total
@@ -1853,23 +1814,12 @@ func (zone *Zone) canWriteForMetaNode(replicaNum uint8) (can bool) {
 	var leastAlive uint8
 	zone.metaNodes.Range(func(addr, value interface{}) bool {
 		metaNode := value.(*MetaNode)
-		if metaNode.IsActive == true && metaNode.isWritable() == true {
+		if metaNode.IsActive && metaNode.isWritable() {
 			leastAlive++
 		}
 		if leastAlive >= replicaNum {
 			can = true
 			return false
-		}
-		return true
-	})
-	return
-}
-
-func (zone *Zone) getDataNodeMaxTotal() (maxTotal uint64) {
-	zone.dataNodes.Range(func(key, value interface{}) bool {
-		dataNode := value.(*DataNode)
-		if dataNode.Total > maxTotal {
-			maxTotal = dataNode.Total
 		}
 		return true
 	})
@@ -2169,7 +2119,6 @@ func (l *DecommissionDataPartitionList) pushFailedDp(value *DataPartition, c *Cl
 	l.mu.Unlock()
 	log.LogInfof("action[pushFailedDp]  add dp[%v] status[%v] isRecover[%v]",
 		value.PartitionID, status, value.isRecover)
-	return
 }
 
 func (l *DecommissionDataPartitionList) Remove(value *DataPartition) {

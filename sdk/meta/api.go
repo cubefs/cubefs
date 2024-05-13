@@ -53,20 +53,6 @@ const (
 	ForceUpdateRWMP        = "ForceUpdateRWMP"
 )
 
-func mapHaveSameKeys(m1, m2 map[uint32]*proto.MetaQuotaInfo) bool {
-	if len(m1) != len(m2) {
-		return false
-	}
-
-	for k := range m1 {
-		if _, ok := m2[k]; !ok {
-			return false
-		}
-	}
-
-	return true
-}
-
 func (mw *MetaWrapper) GetRootIno(subdir string) (uint64, error) {
 	rootIno, err := mw.LookupPath(subdir)
 	if err != nil {
@@ -113,7 +99,7 @@ func (mw *MetaWrapper) Statfs() (total, used, inodeCount uint64) {
 
 func (mw *MetaWrapper) Create_ll(parentID uint64, name string, mode, uid, gid uint32, target []byte, fullPath string) (*proto.InodeInfo, error) {
 	// if mw.EnableTransaction {
-	txMask := proto.TxOpMaskOff
+	var txMask proto.TxOpMask
 	if proto.IsRegular(mode) {
 		txMask = proto.TxOpMaskCreate
 	} else if proto.IsDir(mode) {
@@ -148,7 +134,8 @@ func (mw *MetaWrapper) txCreate_ll(parentID uint64, name string, mode, uid, gid 
 
 	var quotaIds []uint32
 	if mw.EnableQuota {
-		quotaInfos, err := mw.getInodeQuota(parentMP, parentID)
+		var quotaInfos map[uint32]*proto.MetaQuotaInfo
+		quotaInfos, err = mw.getInodeQuota(parentMP, parentID)
 		if err != nil {
 			log.LogErrorf("Create_ll: get parent quota fail, parentID(%v) err(%v)", parentID, err)
 			return nil, syscall.ENOENT
@@ -1640,7 +1627,8 @@ func (mw *MetaWrapper) link(parentID uint64, name string, ino uint64, fullPath s
 		return nil, statusToErrno(status)
 	}
 	if mw.EnableQuota {
-		quotaInfos, err := mw.getInodeQuota(parentMP, parentID)
+		var quotaInfos map[uint32]*proto.MetaQuotaInfo
+		quotaInfos, err = mw.getInodeQuota(parentMP, parentID)
 		if err != nil {
 			log.LogErrorf("link: get parent quota fail, parentID(%v) err(%v)", parentID, err)
 			return nil, syscall.ENOENT
@@ -1880,8 +1868,8 @@ func (mw *MetaWrapper) GetMultipart_ll(path, multipartId string) (info *proto.Mu
 	return multipartInfo, nil
 }
 
-func (mw *MetaWrapper) AddMultipartPart_ll(path, multipartId string, partId uint16, size uint64, md5 string,
-	inodeInfo *proto.InodeInfo) (oldInode uint64, updated bool, err error) {
+func (mw *MetaWrapper) AddMultipartPart_ll(path, multipartId string, partId uint16, size uint64, md5 string, inodeInfo *proto.InodeInfo,
+) (oldInode uint64, updated bool, err error) {
 	var (
 		mpId  uint64
 		found bool
@@ -1985,7 +1973,6 @@ func (mw *MetaWrapper) ListMultipart_ll(prefix, delimiter, keyMarker string, mul
 			if err != nil || status != statusOK {
 				log.LogErrorf("ListMultipart: partition list multipart fail, partitionID(%v) err(%v) status(%v)",
 					mp.PartitionID, err, status)
-				err = statusToErrno(status)
 				return
 			}
 			wl.Lock()
@@ -2132,7 +2119,6 @@ func (mw *MetaWrapper) UpdateSummary_ll(parentIno uint64, filesInc int64, dirsIn
 			return
 		}
 	}
-	return
 }
 
 func (mw *MetaWrapper) ReadDirOnly_ll(parentID uint64) ([]proto.Dentry, error) {
@@ -2274,7 +2260,6 @@ func (mw *MetaWrapper) getDirSummary(summaryInfo *SummaryInfo, inodeCh <-chan ui
 		}
 	}
 	close(errch)
-	return
 }
 
 func (mw *MetaWrapper) getSummaryOrigin(parentIno uint64, summaryCh chan<- SummaryInfo, errCh chan<- error, wg *sync.WaitGroup, currentGoroutineNum *int32, newGoroutine bool, goroutineNum int32) {
@@ -2413,7 +2398,7 @@ func (mw *MetaWrapper) refreshSummary(parentIno uint64, errCh chan<- error, wg *
 
 func (mw *MetaWrapper) BatchSetInodeQuota_ll(inodes []uint64, quotaId uint32, IsRoot bool) (ret map[uint64]uint8, err error) {
 	batchInodeMap := make(map[uint64][]uint64)
-	ret = make(map[uint64]uint8, 0)
+	ret = make(map[uint64]uint8)
 	for _, ino := range inodes {
 		mp := mw.getPartitionByInode(ino)
 		if mp == nil {
@@ -2447,7 +2432,7 @@ func (mw *MetaWrapper) GetPartitionByInodeId_ll(inodeId uint64) (mp *MetaPartiti
 
 func (mw *MetaWrapper) BatchDeleteInodeQuota_ll(inodes []uint64, quotaId uint32) (ret map[uint64]uint8, err error) {
 	batchInodeMap := make(map[uint64][]uint64)
-	ret = make(map[uint64]uint8, 0)
+	ret = make(map[uint64]uint8)
 	for _, ino := range inodes {
 		mp := mw.getPartitionByInode(ino)
 		if mp == nil {

@@ -181,7 +181,7 @@ func (mp *metaPartition) getInode(ino *Inode, listAll bool) (resp *InodeResponse
 	resp.Status = proto.OpOk
 
 	i := mp.getInodeByVer(ino)
-	if i == nil || (listAll == false && i.ShouldDelete()) {
+	if i == nil || (!listAll && i.ShouldDelete()) {
 		log.LogDebugf("action[getInode] ino  %v not found", ino)
 		resp.Status = proto.OpNotExistErr
 		return
@@ -308,7 +308,7 @@ func (mp *metaPartition) fsmUnlinkInode(ino *Inode, uniqID uint64) (resp *InodeR
 	log.LogDebugf("action[fsmUnlinkInode] mp[%v] get inode[%v]", mp.config.PartitionId, inode)
 	var (
 		doMore bool
-		status = proto.OpOk
+		status uint8
 	)
 
 	if ino.getVer() == 0 {
@@ -416,11 +416,9 @@ func (mp *metaPartition) internalDeleteInode(ino *Inode) {
 	mp.inodeTree.Delete(ino)
 	mp.freeList.Remove(ino.Inode)
 	mp.extendTree.Delete(&Extend{inode: ino.Inode}) // Also delete extend attribute.
-	return
 }
 
 func (mp *metaPartition) fsmAppendExtents(ino *Inode) (status uint8) {
-	status = proto.OpOk
 	item := mp.inodeTree.CopyGet(ino)
 	if item == nil {
 		status = proto.OpNotExistErr
@@ -795,7 +793,7 @@ func (mp *metaPartition) fsmSetInodeQuotaBatch(req *proto.BatchSetMetaserverQuot
 	var files int64
 	var bytes int64
 	resp = &proto.BatchSetMetaserverQuotaResponse{}
-	resp.InodeRes = make(map[uint64]uint8, 0)
+	resp.InodeRes = make(map[uint64]uint8)
 	for _, ino := range req.Inodes {
 		var isExist bool
 		var err error
@@ -862,7 +860,7 @@ func (mp *metaPartition) fsmDeleteInodeQuotaBatch(req *proto.BatchDeleteMetaserv
 	var files int64
 	var bytes int64
 	resp = &proto.BatchDeleteMetaserverQuotaResponse{}
-	resp.InodeRes = make(map[uint64]uint8, 0)
+	resp.InodeRes = make(map[uint64]uint8)
 
 	for _, ino := range req.Inodes {
 		var err error

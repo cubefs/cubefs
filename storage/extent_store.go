@@ -38,9 +38,6 @@ import (
 	"github.com/cubefs/cubefs/util/log"
 )
 
-//TODO: remove this later.
-//go:generate golangci-lint run --issues-exit-code=1 -D errcheck -E bodyclose ./...
-
 const (
 	ExtCrcHeaderFileName     = "EXTENT_CRC"
 	ExtBaseExtentIDFileName  = "EXTENT_META"

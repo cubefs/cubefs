@@ -78,7 +78,6 @@ func (c *cacheMetaLoader) storePolicy(p *Policy) {
 	c.om.policyLock.Lock()
 	c.om.policy = p
 	c.om.policyLock.Unlock()
-	return
 }
 
 func (c *cacheMetaLoader) loadACL() (p *AccessControlPolicy, err error) {
@@ -103,7 +102,6 @@ func (c *cacheMetaLoader) storeACL(p *AccessControlPolicy) {
 	c.om.aclLock.Lock()
 	c.om.acl = p
 	c.om.aclLock.Unlock()
-	return
 }
 
 func (c *cacheMetaLoader) loadCORS() (cors *CORSConfiguration, err error) {
@@ -128,7 +126,6 @@ func (c *cacheMetaLoader) storeCORS(cors *CORSConfiguration) {
 	c.om.corsLock.Lock()
 	c.om.corsConfig = cors
 	c.om.corsLock.Unlock()
-	return
 }
 
 func (c *cacheMetaLoader) loadObjectLock() (config *ObjectLockConfig, err error) {
@@ -153,7 +150,6 @@ func (c *cacheMetaLoader) storeObjectLock(config *ObjectLockConfig) {
 	c.om.objectLock.Lock()
 	c.om.lockConfig = config
 	c.om.objectLock.Unlock()
-	return
 }
 
 func (c *cacheMetaLoader) setSynced() {

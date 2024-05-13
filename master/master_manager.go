@@ -98,7 +98,6 @@ func (m *Server) handlePeerChange(confChange *proto.ConfChange) (err error) {
 func (m *Server) handleApplySnapshot() {
 	m.fsm.restore()
 	m.restoreIDAlloc()
-	return
 }
 
 func (m *Server) handleRaftUserCmd(opt uint32, key string, cmdMap map[string][]byte) (err error) {

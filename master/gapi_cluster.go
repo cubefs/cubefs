@@ -227,7 +227,8 @@ func (m *ClusterService) decommissionDataNode(ctx context.Context, args struct {
 
 func (m *ClusterService) decommissionMetaNode(ctx context.Context, args struct {
 	OffLineAddr string
-}) (*proto.GeneralResp, error) {
+},
+) (*proto.GeneralResp, error) {
 	if _, _, err := permissions(ctx, ADMIN); err != nil {
 		return nil, err
 	}
@@ -244,7 +245,8 @@ func (m *ClusterService) decommissionMetaNode(ctx context.Context, args struct {
 
 func (m *ClusterService) loadMetaPartition(ctx context.Context, args struct {
 	PartitionID uint64
-}) (*proto.GeneralResp, error) {
+},
+) (*proto.GeneralResp, error) {
 	if _, _, err := permissions(ctx, ADMIN); err != nil {
 		return nil, err
 	}
@@ -261,7 +263,8 @@ func (m *ClusterService) loadMetaPartition(ctx context.Context, args struct {
 func (m *ClusterService) decommissionMetaPartition(ctx context.Context, args struct {
 	PartitionID uint64
 	NodeAddr    string
-}) (*proto.GeneralResp, error) {
+},
+) (*proto.GeneralResp, error) {
 	if _, _, err := permissions(ctx, ADMIN); err != nil {
 		return nil, err
 	}
@@ -274,19 +277,6 @@ func (m *ClusterService) decommissionMetaPartition(ctx context.Context, args str
 	}
 	log.LogInfof(proto.AdminDecommissionMetaPartition+" partitionID :%v  decommissionMetaPartition successfully", args.PartitionID)
 	return proto.Success("success"), nil
-}
-
-func (m *ClusterService) getMetaNode(ctx context.Context, args struct {
-	NodeAddr string
-}) (*MetaNode, error) {
-	if _, _, err := permissions(ctx, ADMIN); err != nil {
-		return nil, err
-	}
-	metaNode, err := m.cluster.metaNode(args.NodeAddr)
-	if err != nil {
-		return nil, err
-	}
-	return metaNode, nil
 }
 
 // View the topology of the cluster.
@@ -361,7 +351,8 @@ func (s *ClusterService) masterList(ctx context.Context, args struct{}) ([]*Mast
 
 func (s *ClusterService) dataNodeGet(ctx context.Context, args struct {
 	Addr string
-}) (*DataNode, error) {
+},
+) (*DataNode, error) {
 	if _, _, err := permissions(ctx, ADMIN); err != nil {
 		return nil, err
 	}
@@ -382,7 +373,8 @@ func (s *ClusterService) dataNodeList(ctx context.Context, args struct{}) ([]*Da
 
 func (s *ClusterService) dataNodeListTest(ctx context.Context, args struct {
 	Num int64
-}) ([]*DataNode, error) {
+},
+) ([]*DataNode, error) {
 	if _, _, err := permissions(ctx, ADMIN); err != nil {
 		return nil, err
 	}
@@ -409,7 +401,8 @@ func (s *ClusterService) dataNodeListTest(ctx context.Context, args struct {
 
 func (s *ClusterService) metaNodeGet(ctx context.Context, args struct {
 	Addr string
-}) (*MetaNode, error) {
+},
+) (*MetaNode, error) {
 	if _, _, err := permissions(ctx, ADMIN); err != nil {
 		return nil, err
 	}
@@ -432,22 +425,12 @@ func (s *ClusterService) metaNodeList(ctx context.Context, args struct{}) ([]*Me
 	return all, nil
 }
 
-func (m *ClusterService) addMetaNode(ctx context.Context, args struct {
-	NodeAddr string
-	ZoneName string
-}) (uint64, error) {
-	if id, err := m.cluster.addMetaNode(args.NodeAddr, args.ZoneName, 0); err != nil {
-		return 0, err
-	} else {
-		return id, nil
-	}
-}
-
 // Dynamically remove a master node. Similar to addRaftNode, this operation is performed online.
 func (m *ClusterService) removeRaftNode(ctx context.Context, args struct {
 	Id   uint64
 	Addr string
-}) (*proto.GeneralResp, error) {
+},
+) (*proto.GeneralResp, error) {
 	if _, _, err := permissions(ctx, ADMIN); err != nil {
 		return nil, err
 	}
@@ -463,7 +446,8 @@ func (m *ClusterService) removeRaftNode(ctx context.Context, args struct {
 func (m *ClusterService) addRaftNode(ctx context.Context, args struct {
 	Id   uint64
 	Addr string
-}) (*proto.GeneralResp, error) {
+},
+) (*proto.GeneralResp, error) {
 	if _, _, err := permissions(ctx, ADMIN); err != nil {
 		return nil, err
 	}
@@ -486,7 +470,8 @@ func (m *ClusterService) addRaftNode(ctx context.Context, args struct {
 //  2. and the number of r&w data partition is less than 20.
 func (m *ClusterService) clusterFreeze(ctx context.Context, args struct {
 	Status bool
-}) (*proto.GeneralResp, error) {
+},
+) (*proto.GeneralResp, error) {
 	if _, _, err := permissions(ctx, ADMIN); err != nil {
 		return nil, err
 	}
@@ -508,7 +493,8 @@ type WarnMessage struct {
 
 func (m *ClusterService) alarmList(ctx context.Context, args struct {
 	Size int32
-}) ([]*WarnMessage, error) {
+},
+) ([]*WarnMessage, error) {
 	if _, _, err := permissions(ctx, ADMIN); err != nil {
 		return nil, err
 	}

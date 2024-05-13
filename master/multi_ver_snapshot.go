@@ -196,7 +196,7 @@ func (verMgr *VolVersionManager) SetVerStrategy(strategy proto.VolumeVerStrategy
 	log.LogWarnf("vol %v SetVerStrategy.keepCnt %v need in [1-%v], peroidic %v need in [1-%v], enable %v", verMgr.vol.Name,
 		strategy.KeepVerCnt, MaxSnapshotCount, strategy.GetPeriodic(), 24*7, strategy.Enable)
 
-	if strategy.Enable == true {
+	if strategy.Enable {
 		if strategy.KeepVerCnt > MaxSnapshotCount || strategy.GetPeriodic() > 24*7 || strategy.KeepVerCnt < 0 || strategy.GetPeriodic() < 0 {
 			return fmt.Errorf("SetVerStrategy.vol %v keepCnt %v need in [1-%v], peroidic %v need in [1-%v] not qualified",
 				verMgr.vol.Name, strategy.KeepVerCnt, MaxSnapshotCount, strategy.GetPeriodic(), 24*7)
@@ -757,18 +757,6 @@ func (verMgr *VolVersionManager) getOldestVer() (ver uint64, status uint8) {
 	}
 	log.LogInfof("action[getLatestVer] ver len %v verMgr %v", size, verMgr)
 	return verMgr.multiVersionList[0].Ver, verMgr.multiVersionList[0].Status
-}
-
-func (verMgr *VolVersionManager) getVolDelStatus() (status uint8) {
-	verMgr.RLock()
-	defer verMgr.RUnlock()
-
-	size := len(verMgr.multiVersionList)
-	if size == 0 {
-		return 0
-	}
-	log.LogInfof("action[getLatestVer] ver len %v verMgr %v", size, verMgr)
-	return verMgr.multiVersionList[size-1].Status
 }
 
 func (verMgr *VolVersionManager) getLatestVer() (ver uint64) {

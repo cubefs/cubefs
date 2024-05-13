@@ -5,11 +5,9 @@ import (
 	"time"
 
 	"github.com/cubefs/cubefs/util/log"
-	"golang.org/x/time/rate"
 )
 
 const (
-	defaultMarkDeleteLimitRate  = rate.Inf
 	defaultMarkDeleteLimitBurst = 512
 	defaultIOLimitBurst         = 512
 	UpdateNodeInfoTicket        = 1 * time.Minute

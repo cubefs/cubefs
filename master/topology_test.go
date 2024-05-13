@@ -120,14 +120,14 @@ func TestAllocZones(t *testing.T) {
 	cluster.cfg = newClusterConfig()
 
 	// don't cross zone
-	hosts, _, err := cluster.getHostFromNormalZone(TypeDataPartition, nil, nil, nil, replicaNum, 1, "")
+	_, _, err = cluster.getHostFromNormalZone(TypeDataPartition, nil, nil, nil, replicaNum, 1, "")
 	if err != nil {
 		t.Error(err)
 		return
 	}
 
 	// cross zone
-	hosts, _, err = cluster.getHostFromNormalZone(TypeDataPartition, nil, nil, nil, replicaNum, 2, "")
+	hosts, _, err := cluster.getHostFromNormalZone(TypeDataPartition, nil, nil, nil, replicaNum, 2, "")
 	if err != nil {
 		t.Error(err)
 		return

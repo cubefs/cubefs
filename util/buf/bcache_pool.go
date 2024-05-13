@@ -50,5 +50,5 @@ func (fileCachePool *FileBCachePool) Get() []byte {
 
 func (fileCachePool *FileBCachePool) Put(data []byte) {
 	atomic.AddInt64(&bcacheCount, -1)
-	fileCachePool.pool.Put(data)
+	fileCachePool.pool.Put(data) // nolint: staticcheck
 }

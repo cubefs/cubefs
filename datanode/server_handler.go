@@ -727,8 +727,6 @@ func (s *DataNode) loadDataPartition(w http.ResponseWriter, r *http.Request) {
 	for _, fileInfo := range fileInfoList {
 		filename := fileInfo.Name()
 		if !disk.isPartitionDir(filename) {
-			if disk.isExpiredPartitionDir(filename) {
-			}
 			continue
 		}
 

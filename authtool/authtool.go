@@ -57,10 +57,7 @@ var action2PathMap = map[string]string{
 	OSGetCaps:      proto.OSGetCaps,
 }
 
-var (
-	cflag    string
-	flaginfo flagInfo
-)
+var flaginfo flagInfo
 
 type ticketFlag struct {
 	key     string
@@ -364,7 +361,7 @@ func accessAuthServer() {
 				panic(err)
 			}
 		} else {
-			if res, err = resp.KeyInfo.DumpJSONStr(resp.AuthIDKey); err != nil {
+			if _, err = resp.KeyInfo.DumpJSONStr(resp.AuthIDKey); err != nil {
 				panic(err)
 			}
 		}

@@ -186,7 +186,8 @@ func (ft *FollowerTransport) Write(p *FollowerPacket) {
 }
 
 func NewReplProtocol(inConn net.Conn, prepareFunc func(p *Packet) error,
-	operatorFunc func(p *Packet, c net.Conn) error, postFunc func(p *Packet) error) *ReplProtocol {
+	operatorFunc func(p *Packet, c net.Conn) error, postFunc func(p *Packet) error,
+) *ReplProtocol {
 	rp := new(ReplProtocol)
 	rp.packetList = list.New()
 	rp.ackCh = make(chan struct{}, RequestChanSize)
@@ -259,10 +260,6 @@ func (rp *ReplProtocol) setReplProtocolError(request *Packet, index int) {
 	atomic.StoreInt32(&rp.isError, ReplProtocolError)
 }
 
-func (rp *ReplProtocol) hasError() bool {
-	return atomic.LoadInt32(&rp.isError) == ReplProtocolError
-}
-
 func (rp *ReplProtocol) readPkgAndPrepare() (err error) {
 	request := NewPacket()
 	if err = request.ReadFromConnWithVer(rp.sourceConn, proto.NoReadDeadlineTime); err != nil {
@@ -303,11 +300,11 @@ func (rp *ReplProtocol) sendRequestToAllFollowers(request *Packet) (index int, e
 }
 
 // OperatorAndForwardPktGoRoutine reads packets from the to-be-processed channel and writes responses to the client.
-// 1. Read a packet from toBeProcessCh, and determine if it needs to be forwarded or not. If the answer is no, then
-// 	  process the packet locally and put it into responseCh.
-// 2. If the packet needs to be forwarded, the first send it to the followers, and execute the operator function.
-//    Then notify receiveResponse to read the followers' responses.
-// 3. Read a reply from responseCh, and write to the client.
+//  1. Read a packet from toBeProcessCh, and determine if it needs to be forwarded or not. If the answer is no, then
+//     process the packet locally and put it into responseCh.
+//  2. If the packet needs to be forwarded, the first send it to the followers, and execute the operator function.
+//     Then notify receiveResponse to read the followers' responses.
+//  3. Read a reply from responseCh, and write to the client.
 func (rp *ReplProtocol) OperatorAndForwardPktGoRoutine() {
 	for {
 		select {

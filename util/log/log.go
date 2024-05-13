@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"log"
+	syslog "log"
 	"math"
 	"net/http"
 	"os"
@@ -35,7 +36,6 @@ import (
 	"time"
 
 	blog "github.com/cubefs/cubefs/blobstore/util/log"
-	syslog "log"
 )
 
 type Level uint8
@@ -98,7 +98,6 @@ func setBlobLogLevel(loglevel Level) {
 	case ErrorLevel:
 		blevel = blog.Lerror
 	default:
-		blevel = blog.Lwarn
 	}
 	blog.SetOutputLevel(blevel)
 }
