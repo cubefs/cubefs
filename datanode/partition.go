@@ -946,7 +946,7 @@ func (dp *DataPartition) DoExtentStoreRepair(repairTask *DataPartitionRepairTask
 		return
 	}
 	store := dp.extentStore
-	log.LogDebugf("DoExtentStoreRepair dp %v len extents %v type %v",
+	log.LogDebugf("DoExtentStoreRepair dp %v len extents to created %v type %v",
 		dp.partitionID, len(repairTask.ExtentsToBeCreated), repairTask.TaskType)
 	for _, extentInfo := range repairTask.ExtentsToBeCreated {
 		log.LogDebugf("DoExtentStoreRepair.dp %v len extentInfo %v", dp.partitionID, extentInfo)
@@ -978,9 +978,11 @@ func (dp *DataPartition) DoExtentStoreRepair(repairTask *DataPartitionRepairTask
 		recoverIndex int
 	)
 	wg = new(sync.WaitGroup)
+	log.LogDebugf("DoExtentStoreRepair dp %v len extents to repair %v type %v",
+		dp.partitionID, len(repairTask.ExtentsToBeRepaired), repairTask.TaskType)
 	log.LogInfof("[DoExtentStoreRepair] dp(%v) start repair extents len(%v)", dp.partitionID, len(repairTask.extents))
 	for _, extentInfo := range repairTask.ExtentsToBeRepaired {
-		log.LogInfof("[DoExtentStoreRepair] dp(%v) repiar extent(%v)", dp.partitionID, extentInfo)
+		log.LogDebugf("[DoExtentStoreRepair] dp(%v) repiar extent(%v)", dp.partitionID, extentInfo)
 		if dp.dataNode.space.Partition(dp.partitionID) == nil {
 			log.LogWarnf("DoExtentStoreRepair dp %v is detached, quit repair",
 				dp.partitionID)
