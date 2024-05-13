@@ -218,11 +218,9 @@ func createVol(kv map[string]interface{}, t *testing.T) {
 	switch kv[volTypeKey].(int) {
 	case proto.VolumeTypeHot:
 		checkWithDefault(kv, replicaNumKey, 3)
-		break
 	case proto.VolumeTypeCold:
 		checkWithDefault(kv, cacheCapacity, 80)
 		checkWithDefault(kv, replicaNumKey, 1)
-		break
 	default:
 		// do nothing
 	}

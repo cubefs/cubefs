@@ -23,11 +23,6 @@ import (
 	"github.com/cubefs/cubefs/util/btree"
 )
 
-type ExtentVal struct {
-	dataMap map[string][]byte
-	verSeq  uint64
-}
-
 type Extend struct {
 	inode     uint64
 	dataMap   map[string][]byte
@@ -178,9 +173,8 @@ func (e *Extend) Get(key []byte) (value []byte, exist bool) {
 
 func (e *Extend) Remove(key []byte) {
 	e.mu.Lock()
-	defer e.mu.Unlock()
 	delete(e.dataMap, string(key))
-	return
+	e.mu.Unlock()
 }
 
 func (e *Extend) Range(visitor func(key, value []byte) bool) {

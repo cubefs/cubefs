@@ -35,9 +35,6 @@ import (
 	"golang.org/x/time/rate"
 )
 
-//TODO: remove this later.
-//go:generate golangci-lint run --issues-exit-code=1 -D errcheck -E bodyclose ./...
-
 type LcNode struct {
 	listen           string
 	localServerAddr  string

@@ -304,8 +304,10 @@ func ParseUserDefinedMetadata(header http.Header) map[string]string {
 }
 
 // validate Cache-Control
-var cacheControlDir = []string{"public", "private", "no-cache", "no-store", "no-transform", "must-revalidate", "proxy-revalidate"}
-var maxAgeRegexp = regexp.MustCompile("^((max-age)|(s-maxage))=[1-9][0-9]*$")
+var (
+	cacheControlDir = []string{"public", "private", "no-cache", "no-store", "no-transform", "must-revalidate", "proxy-revalidate"}
+	maxAgeRegexp    = regexp.MustCompile("^((max-age)|(s-maxage))=[1-9][0-9]*$")
+)
 
 func ValidateCacheControl(cacheControl string) bool {
 	cacheDirs := strings.Split(cacheControl, ",")

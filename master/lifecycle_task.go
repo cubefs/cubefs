@@ -63,7 +63,6 @@ func (c *Cluster) handleLcNodeTaskResponse(nodeAddr string, task *proto.AdminTas
 
 errHandler:
 	log.LogWarnf("lc handleLcNodeTaskResponse failed, task: %v, err: %v", task.ToString(), err)
-	return
 }
 
 func (c *Cluster) handleLcNodeHeartbeatResp(nodeAddr string, resp *proto.LcNodeHeartbeatResponse) (err error) {

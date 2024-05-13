@@ -189,8 +189,6 @@ const (
 	opFSMVerListSnapShot = 73
 )
 
-var exporterKey string
-
 var (
 	ErrNoLeader   = errors.New("no leader")
 	ErrNotALeader = errors.New("not a leader")
@@ -200,16 +198,13 @@ var (
 const (
 	defaultMetadataDir = "metadataDir"
 	defaultRaftDir     = "raftDir"
-	defaultAuthTimeout = 5 // seconds
 )
 
 // Configuration keys
 const (
 	cfgLocalIP                   = "localIP"
-	cfgListen                    = "listen"
 	cfgMetadataDir               = "metadataDir"
 	cfgRaftDir                   = "raftDir"
-	cfgMasterAddrs               = "masterAddrs" // will be deprecated
 	cfgRaftHeartbeatPort         = "raftHeartbeatPort"
 	cfgRaftReplicaPort           = "raftReplicaPort"
 	cfgDeleteBatchCount          = "deleteBatchCount"
@@ -247,4 +242,22 @@ const (
 	KB = 1 << (10 * iota)
 	MB
 	GB
+)
+
+// TODO: to remove unused by golangci
+var (
+	_ = opFSMDelVer
+	_ = opFSMDeletePartition
+	_ = opFSMSentToChanV1
+	_ = opFSMStoreTickV1
+	_ = opFSMUpdateSummaryInfo
+	_ = (*metaPartition).doDeleteMarkedInodes
+	_ = (*Dentry).getLastestVer
+	_ = (*Inode).isEkInRefMap
+	_ = (*metaPartition).notifyRaftFollowerToFreeInodes
+	_ = (*metaPartition).decommissionPartition
+	_ = (*metaPartition).getDentryTree
+	_ = (*metaPartition).internalHasInode
+	_ = (*metaPartition).fsmDelVerExtents
+	_ = (*TransactionResource).copyGetTxRbInode
 )

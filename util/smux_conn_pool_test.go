@@ -514,7 +514,7 @@ func TestConcurrentGetConn(t *testing.T) {
 			defer wg.Done()
 			stream, err := pool.GetConnect(addr)
 			if err != nil {
-				t.Fatal(err)
+				panic(err)
 			}
 			streamsCh <- stream
 		}()
@@ -559,7 +559,7 @@ func TestConcurrentGetPutConn(t *testing.T) {
 			defer wg.Done()
 			stream, err := pool.GetConnect(addr)
 			if err != nil {
-				t.Fatal(err)
+				panic(err)
 			}
 
 			time.Sleep(time.Millisecond * time.Duration(rand.Intn(10)+1))

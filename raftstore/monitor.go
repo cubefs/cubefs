@@ -83,9 +83,7 @@ type monitor struct {
 }
 
 func newMonitor() *monitor {
-	var m *monitor
-	m = &monitor{}
-
+	m := &monitor{}
 	m.zombieDurations = make(map[zombiePeer]time.Duration)
 	m.noLeaderDurations = make(map[uint64]time.Duration)
 	return m

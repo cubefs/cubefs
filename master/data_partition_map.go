@@ -43,7 +43,7 @@ type DataPartitionMap struct {
 
 func newDataPartitionMap(volName string) (dpMap *DataPartitionMap) {
 	dpMap = new(DataPartitionMap)
-	dpMap.partitionMap = make(map[uint64]*DataPartition, 0)
+	dpMap.partitionMap = make(map[uint64]*DataPartition)
 	dpMap.partitions = make([]*DataPartition, 0)
 	dpMap.responseCache = make([]byte, 0)
 	dpMap.responseCompressCache = make([]byte, 0)
@@ -55,13 +55,9 @@ func newDataPartitionMap(volName string) (dpMap *DataPartitionMap) {
 // attention: it's not deep clone for element, dataPartition
 func (dpMap *DataPartitionMap) clonePartitions() []*DataPartition {
 	dpMap.RLock()
-	defer dpMap.RUnlock()
-
-	partitions := make([]*DataPartition, 0)
-	for _, dp := range dpMap.partitions {
-		partitions = append(partitions, dp)
-	}
-
+	partitions := make([]*DataPartition, 0, len(dpMap.partitions))
+	partitions = append(partitions, dpMap.partitions...)
+	dpMap.RUnlock()
 	return partitions
 }
 

@@ -90,7 +90,7 @@ func (lcMgr *lifecycleManager) scanning() bool {
 	}
 
 	for _, v := range lcMgr.lcRuleTaskStatus.Results {
-		if v.Done != true && time.Now().Before(v.UpdateTime.Add(time.Minute*10)) {
+		if !v.Done && time.Now().Before(v.UpdateTime.Add(time.Minute*10)) {
 			return true
 		}
 	}
@@ -232,19 +232,16 @@ func (ns *lcNodeStatus) GetIdleNode() (nodeAddr string) {
 
 func (ns *lcNodeStatus) RemoveNode(nodeAddr string) {
 	ns.Lock()
-	defer ns.Unlock()
 	delete(ns.WorkingCount, nodeAddr)
-	return
+	ns.Unlock()
 }
 
 func (ns *lcNodeStatus) UpdateNode(nodeAddr string, count int) {
 	ns.Lock()
-	defer ns.Unlock()
 	ns.WorkingCount[nodeAddr] = count
-	return
+	ns.Unlock()
 }
 
-// -----------------------------------------------
 type lcRuleTaskStatus struct {
 	sync.RWMutex
 	ToBeScanned map[string]*proto.RuleTask

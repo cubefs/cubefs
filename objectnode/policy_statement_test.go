@@ -55,7 +55,7 @@ func TestPolicyExample(t *testing.T) {
 	var policy Policy
 	err := json.Unmarshal([]byte(policyJson), &policy)
 	require.NoError(t, err)
-	out, err := json.Marshal(policy)
+	out, _ := json.Marshal(policy)
 	err = json.Unmarshal(out, &policy)
 	require.NoError(t, err)
 }

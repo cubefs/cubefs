@@ -24,6 +24,18 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func init() {
+	// unused
+	_s := SignatureInfo{}
+	_ = _s.credential
+	_ = _s.signedHeaders
+	_ = _s.version
+	_ = _s.algorithm
+	_ = _s.signature
+	_ = _s.stringToSign
+	_ = _s.canonicalRequest
+}
+
 func TestGetSecurityToken(t *testing.T) {
 	token := "X-AMZ-SECURITY-TOKEN-EXAMPLE"
 	// header

@@ -364,8 +364,6 @@ func (mp *metaPartition) GetExtentByVer(ino *Inode, req *proto.GetExtentsRequest
 			return rsp.Extents[i].FileOffset < rsp.Extents[j].FileOffset
 		})
 	})
-
-	return
 }
 
 func (mp *metaPartition) SetUidLimit(info []*proto.UidSpaceInfo) {

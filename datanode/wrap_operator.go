@@ -954,6 +954,7 @@ func (s *DataNode) handleExtentRepairReadPacket(p *repl.Packet, connect net.Conn
 	partition := p.Object.(*DataPartition)
 	if !partition.disk.RequireReadExtentToken(partition.partitionID) {
 		err = storage.NoDiskReadRepairExtentTokenError
+		log.LogWarn("check the source code cos i don't understand the unuesd error,", err)
 		log.LogDebugf("dp(%v) disk(%v) extent(%v) wait for read extent token",
 			p.PartitionID, partition.disk.Path, p.ExtentID)
 		return
@@ -1047,10 +1048,6 @@ func writeEmptyPacketOnExtentRepairRead(reply repl.PacketInterface, newOffset, c
 	return
 }
 
-func (s *DataNode) attachAvaliSizeOnExtentRepairRead(reply *repl.Packet, avaliSize uint64) {
-	binary.BigEndian.PutUint64(reply.Arg[9:17], avaliSize)
-}
-
 func (s *DataNode) NormalSnapshotExtentRepairRead(request *repl.Packet, connect net.Conn) {
 	replyFunc := func() repl.PacketInterface {
 		reply := repl.NewNormalExtentWithHoleStreamReadResponsePacket(request.ReqID, request.PartitionID, request.ExtentID)
@@ -1082,7 +1079,6 @@ func (s *DataNode) tinyExtentRepairRead(request *repl.Packet, connect net.Conn) 
 		return reply
 	}
 	s.ExtentWithHoleRepairRead(request, connect, replyFunc)
-	return
 }
 
 // Handle tinyExtentRepairRead packet.

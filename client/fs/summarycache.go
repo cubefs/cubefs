@@ -126,19 +126,13 @@ func (sc *SummaryCache) evict(foreground bool) {
 func (sc *SummaryCache) backgroundEviction() {
 	t := time.NewTicker(SummaryBgEvictionInterval)
 	defer t.Stop()
-	for {
-		select {
-		case <-t.C:
-			sc.Lock()
-			sc.evict(false)
-			sc.Unlock()
-		}
+	for range t.C {
+		sc.Lock()
+		sc.evict(false)
+		sc.Unlock()
 	}
 }
 
 func cacheExpired(info *summaryCacheElement) bool {
-	if time.Now().UnixNano() > info.expiration {
-		return true
-	}
-	return false
+	return time.Now().UnixNano() > info.expiration
 }

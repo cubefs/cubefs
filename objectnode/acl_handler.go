@@ -63,7 +63,6 @@ func (o *ObjectNode) getBucketACLHandler(w http.ResponseWriter, r *http.Request)
 	}
 
 	writeSuccessResponseXML(w, data)
-	return
 }
 
 // https://docs.aws.amazon.com/AmazonS3/latest/API/API_PutBucketAcl.html
@@ -104,8 +103,6 @@ func (o *ObjectNode) putBucketACLHandler(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	vol.metaLoader.storeACL(acl)
-
-	return
 }
 
 // https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObjectAcl.html
@@ -156,7 +153,6 @@ func (o *ObjectNode) getObjectACLHandler(w http.ResponseWriter, r *http.Request)
 	}
 
 	writeSuccessResponseXML(w, data)
-	return
 }
 
 // https://docs.aws.amazon.com/AmazonS3/latest/API/API_PutObjectAcl.html
@@ -236,6 +232,4 @@ func (o *ObjectNode) putObjectACLHandler(w http.ResponseWriter, r *http.Request)
 		}
 		return
 	}
-
-	return
 }

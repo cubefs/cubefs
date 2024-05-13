@@ -196,10 +196,7 @@ func (checker *uniqChecker) doEvict(evictBid uint64) {
 		checker.inQue.scan(func(op *uniqOp) bool {
 			cnt++
 			delete(checker.op, op.uniqid)
-			if op.uniqid == evictBid {
-				return false
-			}
-			return true
+			return op.uniqid != evictBid
 		})
 	}
 

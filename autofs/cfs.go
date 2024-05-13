@@ -175,7 +175,7 @@ func cfsList() error {
 
 	for _, v := range mps {
 		if v.Type == "fuse" || v.Type == "fuse.cubefs" {
-			fmt.Println(fmt.Sprintf("%s on %s type %s (%s)", v.Device, v.Path, v.Type, strings.Join(v.Opts, ",")))
+			fmt.Printf("%s on %s type %s (%s)\n", v.Device, v.Path, v.Type, strings.Join(v.Opts, ","))
 		}
 	}
 

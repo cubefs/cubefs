@@ -703,7 +703,7 @@ func (d *Dentry) UnmarshalKey(k []byte) (err error) {
 	if err = binary.Read(buff, binary.BigEndian, &d.ParentId); err != nil {
 		return
 	}
-	d.Name = string(buff.Bytes())
+	d.Name = buff.String()
 	return
 }
 

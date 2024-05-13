@@ -323,7 +323,6 @@ func (client *ExtentClient) GetFlowInfo() (*proto.ClientReportLimitInfo, bool) {
 func (client *ExtentClient) UpdateFlowInfo(limit *proto.LimitRsp2Client) {
 	log.LogInfof("action[UpdateFlowInfo.UpdateFlowInfo]")
 	client.LimitManager.SetClientLimit(limit)
-	return
 }
 
 func (client *ExtentClient) SetClientID(id uint64) (err error) {
@@ -539,7 +538,8 @@ func (client *ExtentClient) Truncate(mw *meta.MetaWrapper, parentIno uint64, ino
 	var err error
 	var oldSize uint64
 	if mw.EnableSummary {
-		info, err = mw.InodeGet_ll(inode)
+		// TODO: err ???
+		info, _ = mw.InodeGet_ll(inode)
 		oldSize = info.Size
 	}
 	err = s.IssueTruncRequest(size, fullPath)

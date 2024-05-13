@@ -91,7 +91,7 @@ func TestQuotaHbInfo(t *testing.T) {
 	hbInfo := &proto.QuotaHeartBeatInfo{
 		VolName:     VolNameForTest,
 		QuotaId:     quotaId,
-		LimitedInfo: proto.QuotaLimitedInfo{true, true},
+		LimitedInfo: proto.QuotaLimitedInfo{LimitedFiles: true, LimitedBytes: true},
 		Enable:      true,
 	}
 	hbInfos = append(hbInfos, hbInfo)
@@ -102,7 +102,7 @@ func TestQuotaHbInfo(t *testing.T) {
 	hbInfo = &proto.QuotaHeartBeatInfo{
 		VolName:     VolNameForTest,
 		QuotaId:     quotaId2,
-		LimitedInfo: proto.QuotaLimitedInfo{true, false},
+		LimitedInfo: proto.QuotaLimitedInfo{LimitedFiles: true},
 		Enable:      false,
 	}
 	hbInfos = append(hbInfos, hbInfo)
@@ -117,10 +117,10 @@ func TestGetQuotaReportInfos(t *testing.T) {
 	// var infos []*proto.QuotaReportInfo
 	partition.mqMgr.updateUsedInfo(100, 1, quotaId)
 	partition.mqMgr.updateUsedInfo(200, 2, quotaId)
-	partition.mqMgr.limitedMap.Store(quotaId, proto.QuotaLimitedInfo{false, false})
+	partition.mqMgr.limitedMap.Store(quotaId, proto.QuotaLimitedInfo{})
 	info := &proto.QuotaReportInfo{
 		QuotaId:  quotaId,
-		UsedInfo: proto.QuotaUsedInfo{3, 300},
+		UsedInfo: proto.QuotaUsedInfo{UsedFiles: 3, UsedBytes: 300},
 	}
 
 	infos := partition.mqMgr.getQuotaReportInfos()

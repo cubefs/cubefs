@@ -37,6 +37,12 @@ const snapshotFullPath = "(Snapshot Cmd Unsupported)"
 
 var gMetaWrapper *meta.MetaWrapper
 
+// TODO: unused
+var (
+	_ = readSnapshot
+	_ = doUnlinkInode
+)
+
 func newCleanCmd() *cobra.Command {
 	c := &cobra.Command{
 		Use:   "clean",
@@ -237,7 +243,6 @@ func doUnlinkInode(inode *Inode) error {
 		if err != syscall.ENOENT {
 			return err
 		}
-		err = nil
 	}
 
 	err = gMetaWrapper.Evict(inode.Inode, snapshotFullPath)

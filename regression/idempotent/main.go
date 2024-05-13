@@ -86,6 +86,4 @@ func main() {
 		fmt.Println("2: ", err)
 		return
 	}
-
-	return
 }

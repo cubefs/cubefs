@@ -259,13 +259,11 @@ func TestCarryWeightNodeSelector(t *testing.T) {
 		if node == nil {
 			return
 		}
-		count, _ := dataSelectTimes[node.ID]
-		count += 1
-		dataSelectTimes[node.ID] = count
+		dataSelectTimes[node.ID]++
 	}
 	t.Logf("%v data node select times:\n", selector.GetName())
 	printNodeSelectTimes(t, dataSelectTimes)
-	count, _ := dataSelectTimes[dataNode.ID]
+	count := dataSelectTimes[dataNode.ID]
 	for _, c := range dataSelectTimes {
 		if count < c {
 			t.Errorf("%v failed to select data nodes", selector.GetName())
@@ -290,13 +288,11 @@ func TestCarryWeightNodeSelector(t *testing.T) {
 		if node == nil {
 			return
 		}
-		count, _ := metaSelectTimes[node.ID]
-		count += 1
-		metaSelectTimes[node.ID] = count
+		metaSelectTimes[node.ID]++
 	}
 	t.Logf("%v meta node select times:\n", selector.GetName())
 	printNodeSelectTimes(t, metaSelectTimes)
-	count, _ = metaSelectTimes[metaNode.ID]
+	count = metaSelectTimes[metaNode.ID]
 	for _, c := range metaSelectTimes {
 		if count < c {
 			t.Errorf("%v failed to select meta nodes", selector.GetName())
@@ -379,13 +375,11 @@ func TestStrawNodeSelector(t *testing.T) {
 		if node == nil {
 			return
 		}
-		count, _ := dataSelectTimes[node.ID]
-		count += 1
-		dataSelectTimes[node.ID] = count
+		dataSelectTimes[node.ID]++
 	}
 	t.Logf("%v data node select times:\n", selector.GetName())
 	printNodeSelectTimes(t, dataSelectTimes)
-	count, _ := dataSelectTimes[dataNode.ID]
+	count := dataSelectTimes[dataNode.ID]
 	for _, c := range dataSelectTimes {
 		if count < c {
 			t.Errorf("%v failed to select data nodes", selector.GetName())
@@ -406,13 +400,11 @@ func TestStrawNodeSelector(t *testing.T) {
 		if node == nil {
 			return
 		}
-		count, _ := metaSelectTimes[node.ID]
-		count += 1
-		metaSelectTimes[node.ID] = count
+		metaSelectTimes[node.ID]++
 	}
 	t.Logf("%v meta node select times:\n", selector.GetName())
 	printNodeSelectTimes(t, metaSelectTimes)
-	count, _ = metaSelectTimes[metaNode.ID]
+	count = metaSelectTimes[metaNode.ID]
 	for _, c := range metaSelectTimes {
 		if count < c {
 			t.Errorf("%v failed to select meta nodes", selector.GetName())
@@ -480,9 +472,7 @@ func nodeSelectorBench(selector NodeSelector, nset *nodeSet, onSelect func(addr 
 			return nil, err
 		}
 		for _, peer := range peers {
-			count, _ := times[peer.ID]
-			count += 1
-			times[peer.ID] = count
+			times[peer.ID]++
 			if onSelect != nil {
 				onSelect(peer.Addr)
 			}

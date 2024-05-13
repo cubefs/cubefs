@@ -57,17 +57,13 @@ func newCluster(name string, leaderInfo *LeaderInfo, fsm *KeystoreFsm, partition
 	c.cfg = cfg
 	c.fsm = fsm
 	c.partition = partition
-	c.fsm.keystore = make(map[string]*keystore.KeyInfo, 0)
-	c.fsm.accessKeystore = make(map[string]*keystore.AccessKeyInfo, 0)
+	c.fsm.keystore = make(map[string]*keystore.KeyInfo)
+	c.fsm.accessKeystore = make(map[string]*keystore.AccessKeyInfo)
 	return
 }
 
 func (c *Cluster) scheduleTask() {
 	c.scheduleToCheckHeartbeat()
-}
-
-func (c *Cluster) authAddr() (addr string) {
-	return c.leaderInfo.addr
 }
 
 func (c *Cluster) scheduleToCheckHeartbeat() {

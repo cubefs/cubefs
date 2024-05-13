@@ -62,7 +62,6 @@ func (o *ObjectNode) getBucketPolicyHandler(w http.ResponseWriter, r *http.Reque
 	}
 
 	writeSuccessResponseJSON(w, response)
-	return
 }
 
 // https://docs.aws.amazon.com/AmazonS3/latest/API/API_PutBucketPolicy.html
@@ -120,7 +119,6 @@ func (o *ObjectNode) putBucketPolicyHandler(w http.ResponseWriter, r *http.Reque
 	vol.metaLoader.storePolicy(policy)
 
 	w.WriteHeader(http.StatusNoContent)
-	return
 }
 
 // https://docs.aws.amazon.com/AmazonS3/latest/API/API_DeleteBucketPolicy.html
@@ -153,5 +151,4 @@ func (o *ObjectNode) deleteBucketPolicyHandler(w http.ResponseWriter, r *http.Re
 	vol.metaLoader.storePolicy(nil)
 
 	w.WriteHeader(http.StatusNoContent)
-	return
 }

@@ -147,5 +147,4 @@ func (o *ObjectNode) unsupportedOperationHandler(w http.ResponseWriter, r *http.
 		ActionFromRouteName(mux.CurrentRoute(r).GetName()),
 		r.UserAgent())
 	UnsupportedOperation.ServeResponse(w, r)
-	return
 }

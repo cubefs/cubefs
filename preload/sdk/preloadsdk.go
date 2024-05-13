@@ -378,7 +378,7 @@ func (c *PreLoadClient) allocatePreloadDP(target string, count int, ttl uint64, 
 
 	if float64(need+used) > float64(total) {
 		log.LogErrorf("AllocatePreLoadDataPartition failed: need space (%v) GB, volume total(%v)GB used(%v)GB", need, total, used)
-		return errors.New(fmt.Sprintf("AllocatePreLoadDataPartition failed: need space (%v) GB, volume total(%v)GB used(%v)GB", need, total, used))
+		return fmt.Errorf("AllocatePreLoadDataPartition failed: need space (%v) GB, volume total(%v)GB used(%v)GB", need, total, used)
 	}
 	err = c.ec.AllocatePreLoadDataPartition(c.vol, count, need, ttl, zones)
 
@@ -438,7 +438,7 @@ func (c *PreLoadClient) preloadFileWorker(id int64, jobs <-chan fileInfo, wg *sy
 	var succeed int64 = 0
 	noWritableDP := false
 	for job := range jobs {
-		if noWritableDP == true {
+		if noWritableDP {
 			log.LogWarnf("no writable dp,ingnore (%v) to cbfs", job.name)
 			continue // consume the job
 		}
@@ -503,7 +503,7 @@ func (c *PreLoadClient) preloadFileWorker(id int64, jobs <-chan fileInfo, wg *sy
 			}
 		}
 		c.ec.CloseStream(ino)
-		if subErr == false {
+		if !subErr {
 			log.LogInfof("worker %v preload (%v) to cbfs success", id, job.name)
 			succeed += 1
 		}

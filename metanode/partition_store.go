@@ -54,7 +54,6 @@ const (
 	verdataFile             = "multiVer"
 	StaleMetadataSuffix     = ".old"
 	StaleMetadataTimeFormat = "20060102150405.000000000"
-	verdataInitFile         = "multiVerInitFile"
 )
 
 func (mp *metaPartition) loadMetadata() (err error) {
@@ -339,7 +338,7 @@ func (mp *metaPartition) loadMultipart(rootDir string, crc uint32) (err error) {
 	var offset, n int
 	// read number of multipart
 	var numMultiparts uint64
-	numMultiparts, n = binary.Uvarint(mem)
+	numMultiparts, _ = binary.Uvarint(mem)
 	varintTmp := make([]byte, binary.MaxVarintLen64)
 	// write number of multipart
 	n = binary.PutUvarint(varintTmp, numMultiparts)
@@ -356,8 +355,7 @@ func (mp *metaPartition) loadMultipart(rootDir string, crc uint32) (err error) {
 		if _, err = crcCheck.Write(mem[offset-n : offset]); err != nil {
 			return err
 		}
-		var multipart *Multipart
-		multipart = MultipartFromBytes(mem[offset : offset+int(numBytes)])
+		multipart := MultipartFromBytes(mem[offset : offset+int(numBytes)])
 		log.LogDebugf("loadMultipart: create multipart from bytes: partitionID（%v) multipartID(%v)", mp.config.PartitionId, multipart.id)
 		mp.fsmCreateMultipart(multipart)
 		offset += int(numBytes)
@@ -1043,8 +1041,7 @@ func (mp *metaPartition) storeTxInfo(rootDir string, sm *storeMsg) (crc uint32, 
 	return
 }
 
-func (mp *metaPartition) storeInode(rootDir string,
-	sm *storeMsg) (crc uint32, err error) {
+func (mp *metaPartition) storeInode(rootDir string, sm *storeMsg) (crc uint32, err error) {
 	filename := path.Join(rootDir, inodeFile)
 	fp, err := os.OpenFile(filename, os.O_RDWR|os.O_TRUNC|os.O_APPEND|os.
 		O_CREATE, 0o755)
@@ -1102,8 +1099,7 @@ func (mp *metaPartition) storeInode(rootDir string,
 	return
 }
 
-func (mp *metaPartition) storeDentry(rootDir string,
-	sm *storeMsg) (crc uint32, err error) {
+func (mp *metaPartition) storeDentry(rootDir string, sm *storeMsg) (crc uint32, err error) {
 	filename := path.Join(rootDir, dentryFile)
 	fp, err := os.OpenFile(filename, os.O_RDWR|os.O_TRUNC|os.O_APPEND|os.
 		O_CREATE, 0o755)

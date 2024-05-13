@@ -203,11 +203,6 @@ func (p *Packet) resolveFollowersAddr() (err error) {
 		p.followersAddrs = followerAddrs[:int(followerNum)]
 		log.LogInfof("action[resolveFollowersAddr] %v", p.followersAddrs)
 	}
-	if p.RemainingFollowers < 0 {
-		err = ErrBadNodes
-		return
-	}
-
 	return
 }
 
@@ -422,10 +417,6 @@ func (p *Packet) GetExtentOffset() int64 {
 
 func (p *Packet) IsErrPacket() bool {
 	return p.ResultCode != proto.OpOk && p.ResultCode != proto.OpInitResultCode
-}
-
-func (p *Packet) getErrMessage() (m string) {
-	return fmt.Sprintf("req(%v) err(%v)", p.GetUniqueLogId(), string(p.Data[:p.Size]))
 }
 
 var ErrorUnknownOp = errors.New("unknown opcode")

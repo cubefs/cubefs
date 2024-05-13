@@ -52,8 +52,8 @@ var (
 	ErrNewSpaceManagerFailed       = errors.New("Creater new space manager failed")
 	ErrGetMasterDatanodeInfoFailed = errors.New("Failed to get datanode info from master")
 
-	LocalIP, serverPort string
-	gConnPool           = util.NewConnectPool()
+	LocalIP   string
+	gConnPool = util.NewConnectPool()
 	// MasterClient        = masterSDK.NewMasterClient(nil, false)
 	MasterClient *masterSDK.MasterCLientWithResolver
 )
@@ -133,7 +133,6 @@ type DataNode struct {
 	port            string
 	zoneName        string
 	clusterID       string
-	localIP         string
 	bindIp          bool
 	localServerAddr string
 	nodeID          uint64
@@ -144,6 +143,7 @@ type DataNode struct {
 	tickInterval    int
 	raftRecvBufSize int
 	startTime       int64
+	// localIP         string
 
 	tcpListener net.Listener
 	stopC       chan bool
@@ -174,12 +174,12 @@ type DataNode struct {
 	diskWriteIops           int
 	diskWriteFlow           int
 	dpMaxRepairErrCnt       uint64
-	dpRepairTimeOut         uint64
 	clusterUuid             string
 	clusterUuidEnable       bool
 	serviceIDKey            string
 	cpuUtil                 atomicutil.Float64
 	cpuSamplerDone          chan struct{}
+	// dpRepairTimeOut         uint64
 
 	diskUnavailablePartitionErrorCount uint64 // disk status becomes unavailable when disk error partition count reaches this value
 }
@@ -189,7 +189,7 @@ type verOp2Phase struct {
 	verPrepare uint64
 	status     uint32
 	step       uint32
-	op         uint8
+	// op         uint8
 	sync.Mutex
 }
 
@@ -305,7 +305,6 @@ func (s *DataNode) parseConfig(cfg *config.Config) (err error) {
 	LocalIP = cfg.GetString(ConfigKeyLocalIP)
 	port = cfg.GetString(proto.ListenPort)
 	s.bindIp = cfg.GetBool(proto.BindIpKey)
-	serverPort = port
 	if regexpPort, err = regexp.Compile(`^(\d)+$`); err != nil {
 		return fmt.Errorf("Err:no port")
 	}

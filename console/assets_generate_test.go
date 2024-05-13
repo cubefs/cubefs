@@ -9,7 +9,7 @@ import (
 
 func TestMakeHtml2GoBin(t *testing.T) {
 	// when you need rebuild html . please open it
-	return
+	_ = getAssets
 	/*
 		assets := getAssets()
 
