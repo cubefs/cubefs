@@ -2031,7 +2031,7 @@ func (m *Server) queryDataPartitionDecommissionStatus(w http.ResponseWriter, r *
 	info := &proto.DecommissionDataPartitionInfo{
 		PartitionId:       partitionID,
 		ReplicaNum:        dp.ReplicaNum,
-		Status:            dp.GetDecommissionStatus(),
+		Status:            GetDecommissionStatusMessage(dp.GetDecommissionStatus()),
 		SpecialStep:       dp.GetSpecialReplicaDecommissionStep(),
 		Retry:             dp.DecommissionRetry,
 		RaftForce:         dp.DecommissionRaftForce,
@@ -2043,6 +2043,7 @@ func (m *Server) queryDataPartitionDecommissionStatus(w http.ResponseWriter, r *
 		Replicas:          replicas,
 		ErrorMessage:      dp.DecommissionErrorMessage,
 		NeedRollbackTimes: atomic.LoadUint32(&dp.DecommissionNeedRollbackTimes),
+		DecommissionType:  GetDecommissionTypeMessage(dp.DecommissionType),
 	}
 	sendOkReply(w, r, newSuccessHTTPReply(info))
 }

@@ -2061,9 +2061,10 @@ func (l *DecommissionDataPartitionList) Put(id uint64, value *DataPartition, c *
 			id, value.PartitionID)
 	}
 
-	log.LogInfof("action[DecommissionDataPartitionListPut] ns[%v] add dp[%v] status[%v] specialStep(%v) isRecover[%v] rollbackTimes(%v)",
+	log.LogInfof("action[DecommissionDataPartitionListPut] ns[%v] add dp[%v] status[%v] specialStep(%v) "+
+		"isRecover[%v] rollbackTimes(%v) migrateType(%v)",
 		id, value.PartitionID, value.GetDecommissionStatus(), value.GetSpecialReplicaDecommissionStep(),
-		value.isRecover, value.DecommissionNeedRollbackTimes)
+		value.isRecover, value.DecommissionNeedRollbackTimes, value.DecommissionType)
 }
 
 func (l *DecommissionDataPartitionList) Remove(value *DataPartition) {

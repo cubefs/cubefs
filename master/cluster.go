@@ -385,12 +385,12 @@ func (c *Cluster) scheduleTask() {
 	c.scheduleToCheckDiskRecoveryProgress()
 	c.scheduleToCheckMetaPartitionRecoveryProgress()
 	c.scheduleToLoadMetaPartitions()
-	c.scheduleToReduceReplicaNum()
+	// c.scheduleToReduceReplicaNum()
 	c.scheduleToCheckNodeSetGrpManagerStatus()
 	c.scheduleToCheckFollowerReadCache()
 	c.scheduleToCheckDecommissionDataNode()
 	c.scheduleToCheckDecommissionDisk()
-	c.scheduleToCheckDataReplicas()
+	// c.scheduleToCheckDataReplicas()
 	c.scheduleToLcScan()
 	c.scheduleToSnapshotDelVerScan()
 	c.scheduleToBadDisk()
@@ -850,6 +850,7 @@ func (c *Cluster) checkMetaPartitions() {
 	}
 }
 
+// move to partition.checkReplicaMeta
 func (c *Cluster) scheduleToReduceReplicaNum() {
 	go func() {
 		for {
@@ -883,6 +884,7 @@ func (c *Cluster) getInvalidIDNodes() (nodes []*InvalidNodeView) {
 	return
 }
 
+// move to partition.checkReplicaMeta
 func (c *Cluster) scheduleToCheckDataReplicas() {
 	go func() {
 		for {
@@ -2164,7 +2166,9 @@ func (c *Cluster) decommissionSingleDp(dp *DataPartition, newAddr, offlineAddr s
 			}
 			log.LogInfof("action[decommissionSingleDp] dp %v liveReplicas num[%v]",
 				dp.PartitionID, len(liveReplicas))
-			if len(liveReplicas) >= int(dp.ReplicaNum+1) {
+			// for operation of auto add replica, liveReplicas should equal to dp.ReplicaNum
+			if (len(liveReplicas) >= int(dp.ReplicaNum+1) && dp.DecommissionType != AutoAddReplica) ||
+				(len(liveReplicas) == int(dp.ReplicaNum) && dp.DecommissionType == AutoAddReplica) {
 				log.LogInfof("action[decommissionSingleDp] dp %v replica[%v] status %v",
 					dp.PartitionID, newReplica.Addr, newReplica.Status)
 				dataNodeRebootRetryTimes = 0 // reset dataNodeRebootRetryTimes
@@ -2790,6 +2794,11 @@ func (c *Cluster) removeDataReplica(dp *DataPartition, addr string, validate boo
 				dp.VolName, dp.PartitionID, addr, err)
 		}
 	}()
+	// TODO-chi:??
+	//if dp.DecommissionType == AutoAddReplica && dp.DecommissionNeedRollback == false {
+	//	log.LogDebugf("action[removeDataReplica]auto add dp %v skip  rollback %v", dp.PartitionID, dp.DecommissionNeedRollback)
+	//	return
+	//}
 	log.LogInfof("action[removeDataReplica]  dp %v try remove replica  addr [%v]", dp.PartitionID, addr)
 	// validate be set true only in api call
 	if validate && !raftForceDel {
