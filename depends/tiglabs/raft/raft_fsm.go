@@ -188,13 +188,6 @@ func (r *raftFsm) doRandomSeed() {
 }
 
 func (r *raftFsm) StopFsm() {
-	peers := make([]proto.Peer, len(r.replicas))
-	for _, r := range r.replicas {
-		peers = append(peers, r.peer)
-	}
-	if r.mo != nil {
-		r.mo.RemovePartition(r.id, peers)
-	}
 	close(r.stopCh)
 }
 
