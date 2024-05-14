@@ -33,6 +33,8 @@ This page contains a list of organizations who are using CubeFS in production or
 | [shengwang.cn](https://www.shengwang.cn/) | ![production](https://img.shields.io/badge/-production-blue?style=flat) |
 | [Vipshop](https://www.vip.com/) | ![production](https://img.shields.io/badge/-production-blue?style=flat) |
 | [CreditEase](https://www.creditease.com/) | ![production](https://img.shields.io/badge/-production-blue?style=flat) |
+| [TD Tech](https://www.td-tech.com/) | ![production](https://img.shields.io/badge/-production-blue?style=flat) |
+| [Digtal guangdong](https://www.digitalgd.com.cn/) | ![production](https://img.shields.io/badge/-production-blue?style=flat) |
 | [PITS Global Data Recovery Services](https://www.pitsdatarecovery.net/) | ![testing](https://img.shields.io/badge/-testing-green?style=flat) |
 | [Da-Jiang Innovations](https://www.dji.com/cn) | ![testing](https://img.shields.io/badge/-testing-green?style=flat) |
 | [Sinosoft](http://www.sinosoft.com.cn) | ![testing](https://img.shields.io/badge/-testing-green?style=flat) |
