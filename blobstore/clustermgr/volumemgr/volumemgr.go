@@ -450,7 +450,7 @@ func (v *VolumeMgr) LockVolume(ctx context.Context, vid proto.Vid) error {
 	return nil
 }
 
-func (v *VolumeMgr) UnlockVolume(ctx context.Context, vid proto.Vid) error {
+func (v *VolumeMgr) UnlockVolume(ctx context.Context, vid proto.Vid, force bool) error {
 	span := trace.SpanFromContextSafe(ctx)
 
 	vol := v.all.getVol(vid)
@@ -473,10 +473,14 @@ func (v *VolumeMgr) UnlockVolume(ctx context.Context, vid proto.Vid) error {
 	}
 	vol.lock.RUnlock()
 
+	taskType := base.VolumeTaskTypeUnlock
+	if force {
+		taskType = base.VolumeTaskTypeUnlockForce
+	}
 	param := ChangeVolStatusCtx{
 		Vid:      vid,
 		TaskID:   uuid.New().String(),
-		TaskType: base.VolumeTaskTypeUnlock,
+		TaskType: taskType,
 	}
 	data, err := json.Marshal(param)
 	if err != nil {

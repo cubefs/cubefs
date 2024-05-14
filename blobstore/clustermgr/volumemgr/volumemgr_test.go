@@ -889,22 +889,25 @@ func TestVolumeMgr_UnlockVolume(t *testing.T) {
 
 	mockRaftServer := mocks.NewMockRaftServer(gomock.NewController(t))
 	mockVolumeMgr.raftServer = mockRaftServer
-	mockRaftServer.EXPECT().Propose(gomock.Any(), gomock.Any()).Return(nil)
+	mockRaftServer.EXPECT().Propose(gomock.Any(), gomock.Any()).Return(nil).Times(2)
 
 	// failed case: lock status can unlock
 	vol2 := mockVolumeMgr.all.getVol(2)
 	require.Equal(t, proto.VolumeStatusIdle, vol2.volInfoBase.Status)
-	err := mockVolumeMgr.UnlockVolume(context.Background(), 2)
+	err := mockVolumeMgr.UnlockVolume(context.Background(), 2, false)
 	require.NoError(t, err)
 
 	// failed case: vid not exist
-	err = mockVolumeMgr.UnlockVolume(context.Background(), 55)
+	err = mockVolumeMgr.UnlockVolume(context.Background(), 55, false)
 	require.Error(t, err)
 
 	vol2.lock.Lock()
 	vol2.volInfoBase.Status = proto.VolumeStatusLock
 	vol2.lock.Unlock()
-	err = mockVolumeMgr.UnlockVolume(context.Background(), 2)
+	err = mockVolumeMgr.UnlockVolume(context.Background(), 2, false)
+	require.NoError(t, err)
+
+	err = mockVolumeMgr.UnlockVolume(context.Background(), 2, true)
 	require.NoError(t, err)
 
 	ret, err := mockVolumeMgr.GetVolumeInfo(context.Background(), 2)
@@ -921,6 +924,16 @@ func TestVolumeMgr_UnlockVolume(t *testing.T) {
 	// volume status id idle , cannot apply volume unlock task, direct return but error is nil
 	err = mockVolumeMgr.applyVolumeTask(context.Background(), 2, uuid.NewString(), base.VolumeTaskTypeUnlock)
 	require.NoError(t, err)
+
+	vol2.lock.Lock()
+	vol2.volInfoBase.Status = proto.VolumeStatusLock
+	vol2.lock.Unlock()
+	err = mockVolumeMgr.applyVolumeTask(context.Background(), 2, uuid.New().String(), base.VolumeTaskTypeUnlockForce)
+	require.NoError(t, err)
+
+	ret, err = mockVolumeMgr.GetVolumeInfo(context.Background(), 2)
+	require.NoError(t, err)
+	require.Equal(t, proto.VolumeStatusUnlocking, ret.Status)
 }
 
 func TestVolumeMgr_Report(t *testing.T) {
