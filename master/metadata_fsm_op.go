@@ -163,6 +163,7 @@ type dataPartitionValue struct {
 	DecommissionErrorMessage       string
 	DecommissionNeedRollbackTimes  uint32
 	DecommissionType               uint32
+	RestoreReplica                 uint32
 }
 
 func (dpv *dataPartitionValue) Restore(c *Cluster) (dp *DataPartition) {
@@ -194,6 +195,7 @@ func (dpv *dataPartitionValue) Restore(c *Cluster) (dp *DataPartition) {
 	dp.DecommissionNeedRollbackTimes = dpv.DecommissionNeedRollbackTimes
 	dp.DecommissionErrorMessage = dpv.DecommissionErrorMessage
 	dp.DecommissionType = dpv.DecommissionType
+	dp.RestoreReplica = dpv.RestoreReplica
 	for _, rv := range dpv.Replicas {
 		if !contains(dp.Hosts, rv.Addr) {
 			continue
@@ -225,7 +227,7 @@ func newDataPartitionValue(dp *DataPartition) (dpv *dataPartitionValue) {
 		RdOnly:                         dp.RdOnly,
 		IsDiscard:                      dp.IsDiscard,
 		DecommissionRetry:              dp.DecommissionRetry,
-		DecommissionStatus:             dp.DecommissionStatus,
+		DecommissionStatus:             atomic.LoadUint32(&dp.DecommissionStatus),
 		DecommissionSrcAddr:            dp.DecommissionSrcAddr,
 		DecommissionDstAddr:            dp.DecommissionDstAddr,
 		DecommissionRaftForce:          dp.DecommissionRaftForce,
@@ -239,6 +241,7 @@ func newDataPartitionValue(dp *DataPartition) (dpv *dataPartitionValue) {
 		DecommissionErrorMessage:       dp.DecommissionErrorMessage,
 		DecommissionNeedRollbackTimes:  dp.DecommissionNeedRollbackTimes,
 		DecommissionType:               dp.DecommissionType,
+		RestoreReplica:                 atomic.LoadUint32(&dp.RestoreReplica),
 	}
 	for _, replica := range dp.Replicas {
 		rv := &replicaValue{Addr: replica.Addr, DiskPath: replica.DiskPath}
