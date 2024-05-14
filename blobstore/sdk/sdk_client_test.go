@@ -15,22 +15,18 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/codemode"
 	errcode "github.com/cubefs/cubefs/blobstore/common/errors"
 	"github.com/cubefs/cubefs/blobstore/testing/mocks"
-	_ "github.com/cubefs/cubefs/blobstore/testing/nolog"
 	"github.com/cubefs/cubefs/blobstore/util/closer"
+	"github.com/cubefs/cubefs/blobstore/util/log"
 )
 
 func newSdkHandler() *sdkHandler {
 	ctr := gomock.NewController(&testing.T{})
 	h := mocks.NewMockStreamHandler(ctr)
 	l := stream.NewLimiter(stream.LimitConfig{
-		NameRps: map[string]int{
-			"alloc": 2,
-		},
-		ReaderMBps: 0,
-		WriterMBps: 0,
+		NameRps: map[string]int{"alloc": 2},
 	})
 
-	conf := Config{}
+	conf := Config{LogLevel: log.Lpanic}
 	fixConfig(&conf)
 	return &sdkHandler{
 		handler: h,
@@ -40,11 +36,11 @@ func newSdkHandler() *sdkHandler {
 	}
 }
 
-func TestNewSdkBlobstore(t *testing.T) {
+func TestSdkBlobstore_New(t *testing.T) {
 	conf := &Config{}
 	conf.IDC = "xx"
 	_, err := New(conf)
-	require.NotNil(t, err)
+	require.Error(t, err)
 }
 
 func TestSdkHandler_Delete(t *testing.T) {
@@ -60,13 +56,7 @@ func TestSdkHandler_Delete(t *testing.T) {
 	require.NotNil(t, err)
 	require.ErrorIs(t, err, errcode.ErrIllegalArguments)
 
-	args := &acapi.DeleteArgs{
-		Locations: []acapi.Location{
-			{
-				Size: 0,
-			},
-		},
-	}
+	args := &acapi.DeleteArgs{Locations: []acapi.Location{{}}}
 	ret, err := hd.Delete(ctx, args)
 	require.NoError(t, err)
 	require.Nil(t, ret)
@@ -205,9 +195,7 @@ func TestSdkHandler_Put(t *testing.T) {
 	require.Equal(t, uint64(0), loc.Size)
 	require.Equal(t, 1, len(hash))
 
-	args := &acapi.PutArgs{
-		Size: 2,
-	}
+	args := &acapi.PutArgs{Size: 2}
 
 	hd.handler.(*mocks.MockStreamHandler).EXPECT().Put(any, any, any, any).Return(nil, errMock)
 	loc, hash, err = hd.Put(ctx, args)
@@ -267,9 +255,7 @@ func TestSdkHandler_putParts(t *testing.T) {
 	hd := newSdkHandler()
 
 	hd.conf.MaxSizePutOnce = 8
-	args := &acapi.PutArgs{
-		Size: 12,
-	}
+	args := &acapi.PutArgs{Size: 12}
 
 	// alloc fail
 	args.Hashes = 1
