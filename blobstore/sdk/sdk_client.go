@@ -7,8 +7,6 @@ import (
 	"io"
 	"net/http"
 
-	"gopkg.in/natefinch/lumberjack.v2"
-
 	"github.com/cubefs/cubefs/blobstore/access/stream"
 	acapi "github.com/cubefs/cubefs/blobstore/api/access"
 	errcode "github.com/cubefs/cubefs/blobstore/common/errors"
@@ -26,7 +24,6 @@ import (
 )
 
 const (
-	defaultClientTimeoutMs int64 = 5000    // 5s
 	defaultMaxSizePutOnce  int64 = 1 << 28 // 256MB
 	defaultMaxPartRetry    int   = 3
 	defaultPartConcurrence int   = 4
@@ -53,15 +50,19 @@ func init() {
 	})
 }
 
+// ResetMemoryPool is thread unsafe, call it on init.
+func ResetMemoryPool(sizeClasses map[int]int) {
+	memPool = resourcepool.NewMemPool(sizeClasses)
+}
+
 type Config struct {
 	stream.StreamConfig
 	Limit           stream.LimitConfig `json:"limit"`
-	ClientTimeoutMs int64              `json:"client_timeout_ms"`
 	MaxSizePutOnce  int64              `json:"max_size_put_once"`
 	MaxPartRetry    int                `json:"max_part_retry"`
 	PartConcurrence int                `json:"part_concurrence"`
 	LogLevel        log.Level          `json:"log_level"`
-	Logger          *lumberjack.Logger `json:"logger"`
+	Logger          io.Writer          `json:"-"`
 }
 
 type sdkHandler struct {
@@ -473,7 +474,8 @@ func (s *sdkHandler) putPartsBatch(ctx context.Context, parts []blobPart) error 
 }
 
 func (s *sdkHandler) readerPipeline(span trace.Span, reqBody io.Reader,
-	closeCh <-chan struct{}, size, blobSize int) <-chan []byte {
+	closeCh <-chan struct{}, size, blobSize int,
+) <-chan []byte {
 	ch := make(chan []byte, s.conf.PartConcurrence-1)
 	go func() {
 		for size > 0 {
@@ -735,7 +737,6 @@ func httpError(err error) error {
 }
 
 func fixConfig(cfg *Config) {
-	defaulter.Less(&cfg.ClientTimeoutMs, defaultClientTimeoutMs)
 	defaulter.LessOrEqual(&cfg.MaxSizePutOnce, defaultMaxSizePutOnce)
 	defaulter.Less(&cfg.MaxPartRetry, defaultMaxPartRetry)
 	defaulter.LessOrEqual(&cfg.PartConcurrence, defaultPartConcurrence)
