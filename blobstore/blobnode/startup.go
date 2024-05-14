@@ -19,7 +19,10 @@ import (
 	"fmt"
 	"os"
 	"sync"
+	"sync/atomic"
 	"time"
+
+	"github.com/prometheus/client_golang/prometheus"
 
 	bnapi "github.com/cubefs/cubefs/blobstore/api/blobnode"
 	cmapi "github.com/cubefs/cubefs/blobstore/api/clustermgr"
@@ -43,7 +46,22 @@ const (
 	TickInterval   = 1
 	HeartbeatTicks = 30
 	ExpiresTicks   = 60
+	LostDiskCount  = 3
 )
+
+var diskHealthMetric = prometheus.NewGaugeVec(
+	prometheus.GaugeOpts{
+		Namespace: "blobstore",
+		Subsystem: "blobnode",
+		Name:      "lost_disk",
+		Help:      "blobnode lost disk",
+	},
+	[]string{"cluster_id", "idc", "rack", "host", "disk"},
+)
+
+func init() {
+	prometheus.MustRegister(diskHealthMetric)
+}
 
 func readFormatInfo(ctx context.Context, diskRootPath string) (
 	formatInfo *core.FormatInfo, err error,
@@ -120,10 +138,11 @@ func (s *Service) handleDiskIOError(ctx context.Context, diskID proto.DiskID, di
 			if diskutil.IsLostDisk(dsAPI.DiskInfo().Path) {
 				lostCnt++
 				span.Errorf("open diskId: %v, path: %v, disk lost", dsAPI.ID(), dsAPI.DiskInfo().Path)
+				s.reportLostDisk(&s.Conf.HostInfo, dsAPI.DiskInfo().Path) // runtime check
 			}
 		}
-		if lostCnt >= 3 {
-			log.Fatalf("lost disk count: %v over threshold", lostCnt)
+		if lostCnt >= LostDiskCount {
+			log.Fatalf("lost disk count:%d over threshold:%d", lostCnt, LostDiskCount)
 		}
 	}
 
@@ -145,6 +164,15 @@ func (s *Service) handleDiskIOError(ctx context.Context, diskID proto.DiskID, di
 
 		// After the repair is triggered, the handle can be safely removed
 		go s.waitRepairAndClose(ctx, ds)
+
+		// we already tell cm this disk is bad
+		dsInfo := ds.DiskInfo()
+		s.reportOnlineDisk(&core.HostInfo{
+			ClusterID: dsInfo.ClusterID,
+			IDC:       dsInfo.Idc,
+			Rack:      dsInfo.Rack,
+			Host:      dsInfo.Host,
+		}, dsInfo.Path)
 
 		return nil, nil
 	})
@@ -306,6 +334,7 @@ func NewService(conf Config) (svr *Service, err error) {
 	wg := sync.WaitGroup{}
 	errCh := make(chan error, len(conf.Disks))
 
+	lostCnt := int32(0)
 	for _, diskConf := range conf.Disks {
 		wg.Add(1)
 
@@ -319,8 +348,13 @@ func NewService(conf Config) (svr *Service, err error) {
 			svr.fixDiskConf(&diskConf)
 
 			if diskConf.MustMountPoint && !myos.IsMountPoint(diskConf.Path) {
+				lost := atomic.AddInt32(&lostCnt, 1)
+				svr.reportLostDisk(&diskConf.HostInfo, diskConf.Path) // startup check lost disk
 				// skip
 				span.Errorf("Path is not mount point:%s, err:%v. skip init", diskConf.Path, err)
+				if lost >= LostDiskCount {
+					log.Fatalf("lost disk count:%d over threshold:%d", lost, LostDiskCount)
+				}
 				return
 			}
 			// read disk meta. get DiskID
@@ -366,6 +400,7 @@ func NewService(conf Config) (svr *Service, err error) {
 			svr.Disks[ds.DiskID] = ds
 			svr.lock.Unlock()
 
+			svr.reportOnlineDisk(&diskConf.HostInfo, diskConf.Path) // restart, normal disk
 			span.Infof("Init disk storage, cluster:%v, diskID:%v", conf.ClusterID, format.DiskID)
 		}(diskConf)
 	}
@@ -412,4 +447,25 @@ func NewService(conf Config) (svr *Service, err error) {
 	go svr.inspectMgr.loopDataInspect()
 
 	return
+}
+
+// when find the lost disk, set value 1
+func (s *Service) reportLostDisk(hostInfo *core.HostInfo, diskPath string) {
+	diskHealthMetric.WithLabelValues(hostInfo.ClusterID.ToString(),
+		hostInfo.IDC,
+		hostInfo.Rack,
+		hostInfo.Host,
+		diskPath,
+	).Set(1)
+}
+
+// 1. when startup ok, we set value 0(normal disk)
+// 2. when the lost disk is report to cm(set broken), we know it is bad disk, set 0
+func (s *Service) reportOnlineDisk(hostInfo *core.HostInfo, diskPath string) {
+	diskHealthMetric.WithLabelValues(hostInfo.ClusterID.ToString(),
+		hostInfo.IDC,
+		hostInfo.Rack,
+		hostInfo.Host,
+		diskPath,
+	).Set(0)
 }
