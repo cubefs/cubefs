@@ -75,6 +75,11 @@ func (m *VolumeMgr) setVolumeStatus(task *volTask) error {
 				task.String(), vid, i, vuids[i], diskIds[i], err)
 			return err
 		}
+		if diskInfo.Status == proto.DiskStatusBroken {
+			span.Infof("ignore broken disk: info [task=%s vid=%d index=%d vuid=%d diskId=%d err=%v]",
+				task.String(), vid, i, vuids[i], diskIds[i], err)
+			continue
+		}
 		wg.Add(1)
 		// send msg to blobnode
 		go func(i int, host string, diskID proto.DiskID) {
@@ -94,6 +99,13 @@ func (m *VolumeMgr) setVolumeStatus(task *volTask) error {
 			case base.VolumeTaskTypeUnlock:
 				msg = "readwrite"
 				e = m.blobNodeClient.SetChunkReadwrite(ctx, host, &arg)
+			case base.VolumeTaskTypeUnlockForce:
+				msg = "readwrite"
+				e = m.blobNodeClient.SetChunkReadwrite(ctx, host, &arg)
+				if e != nil {
+					span.Errorf("set chunk %s [task=%s blobnode=%s vuid=%d] error: %v", msg, task.String(), host, vuids[i], e)
+					e = nil
+				}
 			default:
 				log.Panicf("Unknown taskType(%d)", task.taskType)
 			}
@@ -149,7 +161,7 @@ func (m *VolumeMgr) applyVolumeTask(ctx context.Context, vid proto.Vid, taskID s
 		// store task to db
 		err = m.volumeTbl.PutVolumeAndTask(rec, taskRecord)
 		vol.lock.Unlock()
-	case base.VolumeTaskTypeUnlock:
+	case base.VolumeTaskTypeUnlock, base.VolumeTaskTypeUnlockForce:
 		vol.lock.Lock()
 		if !vol.canUnlock() {
 			span.Warnf("volume can't unlock, status=%d", vol.getStatus())
@@ -161,7 +173,6 @@ func (m *VolumeMgr) applyVolumeTask(ctx context.Context, vid proto.Vid, taskID s
 		// store task to db
 		err = m.volumeTbl.PutVolumeAndTask(rec, taskRecord)
 		vol.lock.Unlock()
-		// nothing to do
 	default:
 		span.Panicf("Unknown task type(%d)", t)
 	}
@@ -193,7 +204,7 @@ func (m *VolumeMgr) applyRemoveVolumeTask(ctx context.Context, vid proto.Vid, ta
 	}
 	m.lastTaskIdMap.Delete(vid)
 	m.taskMgr.DeleteTask(vid, taskId) // follower should delete this task from task manager
-	if taskType == base.VolumeTaskTypeUnlock {
+	if taskType == base.VolumeTaskTypeUnlock || taskType == base.VolumeTaskTypeUnlockForce {
 		vol.lock.Lock()
 		// set volume status into idle, it'll call change volume status function
 		span.Debugf("vid: %d, status is: %s", vol.vid, vol.getStatus().String())

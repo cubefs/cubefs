@@ -253,7 +253,7 @@ func (s *Service) VolumeUnlock(c *rpc.Context) {
 	}
 	span.Debugf("accept VolumeUnlock request, args: %v", args)
 
-	c.RespondError(s.VolumeMgr.UnlockVolume(ctx, args.Vid))
+	c.RespondError(s.VolumeMgr.UnlockVolume(ctx, args.Vid, args.Force))
 }
 
 func (s *Service) VolumeUnitAlloc(c *rpc.Context) {

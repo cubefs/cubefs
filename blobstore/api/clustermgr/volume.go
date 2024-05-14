@@ -166,7 +166,8 @@ func (c *Client) LockVolume(ctx context.Context, args *LockVolumeArgs) (err erro
 }
 
 type UnlockVolumeArgs struct {
-	Vid proto.Vid `json:"vid"`
+	Vid   proto.Vid `json:"vid"`
+	Force bool      `json:"force"`
 }
 
 func (c *Client) UnlockVolume(ctx context.Context, args *UnlockVolumeArgs) (err error) {
