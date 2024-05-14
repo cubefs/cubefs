@@ -1161,6 +1161,23 @@ func GetSpecialDecommissionStatusMessage(status uint32) string {
 	}
 }
 
+func GetDecommissionTypeMessage(status uint32) string {
+	switch status {
+	case AutoDecommission:
+		return "AutoDecommission"
+	case ManualDecommission:
+		return "ManualDecommission"
+	case AllDecommission:
+		return "AllDecommission"
+	case AutoAddReplica:
+		return "AutoAddReplica"
+	case InitialDecommission:
+		return "InitialDecommission"
+	default:
+		return "Unknown"
+	}
+}
+
 func (partition *DataPartition) MarkDecommissionStatus(srcAddr, dstAddr, srcDisk string, raftForce bool, term uint64,
 	migrateType uint32, c *Cluster, ns *nodeSet) (err error) {
 	defer func() {
