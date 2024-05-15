@@ -23,6 +23,7 @@ import (
 
 // hostItem Host information
 type hostItem struct {
+	id      int
 	rawHost string
 	// The last time the host failed
 	lastFailedTime int64
@@ -34,24 +35,28 @@ type hostItem struct {
 	sync.RWMutex
 }
 
+func (hi *hostItem) ID() int      { return hi.id }
+func (hi *hostItem) Host() string { return hi.rawHost }
+
+// UniqueHost unique host maked by config's hosts and backups
+type UniqueHost interface {
+	ID() int
+	Host() string
+}
+
 type Selector interface {
-	// GetAvailableHosts get the available hosts
-	GetAvailableHosts() []string
-	// SetFail Mark host unavailable
-	SetFail(string)
-	// Close If use a background coroutine to enable the broken host, you can use it to close the coroutine
+	// GetAllHosts() returns all hosts of the selector
+	GetAllHosts() []UniqueHost
+	// GetAvailableHosts get the available hosts, those hosts must be in all hosts
+	GetAvailableHosts() []UniqueHost
+	// SetFailHost try to mark the host unavailable
+	SetFailHost(UniqueHost)
+	// Close the background coroutine which enable the broken host
 	Close()
 }
 
 // allocate hostItem to request
 type selector struct {
-	// normal hosts
-	hosts []*hostItem
-	// broken hosts
-	crackHosts map[*hostItem]interface{}
-	// backup hosts
-	backupHost []*hostItem
-	hostMap    map[string]*hostItem
 	// the frequency for a host to retry, if retryTimes > hostTryTimes the host will be marked as failed
 	hostTryTimes int
 	// retry interval after host failure, after this time, the host can be remarked as available
@@ -59,35 +64,39 @@ type selector struct {
 	// the interval for a host can fail one time, the lastFailedTime will be set to current time if exceeded
 	maxFailsPeriodS int
 
-	sync.RWMutex
 	cancelDetectionGoroutine context.CancelFunc
+
+	hostItems map[*hostItem]struct{}
+
+	sync.RWMutex
+	availHosts       []*hostItem            // normal available hosts
+	availBackupHosts []*hostItem            // backup available hosts
+	unavailHosts     map[*hostItem]struct{} // unavailable hosts
 }
 
-func newSelector(cfg *LbConfig) Selector {
+// NewSelector returns default selector
+func NewSelector(cfg *LbConfig) Selector {
 	ctx, cancelFunc := context.WithCancel(context.Background())
 	rand.Seed(time.Now().UnixNano())
 	s := &selector{
-		hosts:                    initHost(cfg.Hosts, cfg, false),
-		backupHost:               initHost(cfg.BackupHosts, cfg, true),
 		hostTryTimes:             cfg.HostTryTimes,
 		failRetryIntervalS:       cfg.FailRetryIntervalS,
-		crackHosts:               map[*hostItem]interface{}{},
-		hostMap:                  map[string]*hostItem{},
+		unavailHosts:             make(map[*hostItem]struct{}),
+		hostItems:                make(map[*hostItem]struct{}),
 		cancelDetectionGoroutine: cancelFunc,
 		maxFailsPeriodS:          cfg.MaxFailsPeriodS,
 	}
-	s.initHostMap()
+	s.initHosts(cfg)
 	if cfg.FailRetryIntervalS < 0 {
 		return s
 	}
 	go func() {
-		s.detectAvailableHostInBack()
 		ticker := time.NewTicker(time.Duration(s.failRetryIntervalS) * time.Second)
 		defer ticker.Stop()
 		for {
+			s.detectUnavailableHosts()
 			select {
 			case <-ticker.C:
-				s.detectAvailableHostInBack()
 			case <-ctx.Done():
 				return
 			}
@@ -96,29 +105,45 @@ func newSelector(cfg *LbConfig) Selector {
 	return s
 }
 
-// GetAvailableHosts return available hosts from hosts and backupHost
-func (s *selector) GetAvailableHosts() (hosts []string) {
-	s.RLock()
-	hostLen := len(s.hosts)
-	length := len(s.hosts) + len(s.backupHost)
-	hosts = make([]string, length)
-	for index, host := range s.hosts {
-		hosts[index] = host.rawHost
+// GetAllHosts returns hosts and backups
+func (s *selector) GetAllHosts() (hosts []UniqueHost) {
+	hosts = make([]UniqueHost, 0, len(s.hostItems))
+	for host := range s.hostItems {
+		hosts = append(hosts, host)
 	}
-	for index, host := range s.backupHost {
-		hosts[index+hostLen] = host.rawHost
+	return hosts
+}
+
+// GetAvailableHosts return available hosts from hosts and backupHosts
+func (s *selector) GetAvailableHosts() (hosts []UniqueHost) {
+	s.RLock()
+	hostLen := len(s.availHosts)
+	length := len(s.availHosts) + len(s.availBackupHosts)
+	hosts = make([]UniqueHost, 0, length)
+	for _, host := range s.availHosts {
+		hosts = append(hosts, host)
+	}
+	for _, host := range s.availBackupHosts {
+		hosts = append(hosts, host)
 	}
 	s.RUnlock()
 	randomShuffle(hosts, hostLen)
-	return
+	return hosts
 }
 
-// SetFail update the requestFailedRetryTimes of hostItem or disable the host
-func (s *selector) SetFail(host string) {
+// SetFailHost update the requestFailedRetryTimes of UniqueHost or disable the host
+func (s *selector) SetFailHost(host UniqueHost) {
 	if s.failRetryIntervalS < 0 {
 		return
 	}
-	item := s.hostMap[host]
+	for item := range s.hostItems {
+		if item.ID() == host.ID() {
+			s.setFailHost(item)
+		}
+	}
+}
+
+func (s *selector) setFailHost(item *hostItem) {
 	item.Lock()
 	now := time.Now().Unix()
 	// init last failed time
@@ -139,11 +164,11 @@ func (s *selector) SetFail(host string) {
 	s.disableHost(item)
 }
 
-// detectAvailableHostInBack enable the host from crackHosts
-func (s *selector) detectAvailableHostInBack() {
+// detectUnavailableHosts enable the host from unavailHosts
+func (s *selector) detectUnavailableHosts() {
 	var cache []*hostItem
 	s.RLock()
-	for key := range s.crackHosts {
+	for key := range s.unavailHosts {
 		cache = append(cache, key)
 	}
 	s.RUnlock()
@@ -154,36 +179,40 @@ func (s *selector) detectAvailableHostInBack() {
 		if now-hItem.lastFailedTime >= int64(s.failRetryIntervalS) {
 			hItem.retryTimes = s.hostTryTimes
 			hItem.lastFailedTime = 0
-			hItem.Unlock()
 			s.enableHost(hItem)
-			continue
 		}
 		hItem.Unlock()
 	}
 }
 
-func initHost(hosts []string, cfg *LbConfig, isBackup bool) (hs []*hostItem) {
-	for _, host := range hosts {
-		hs = append(hs, &hostItem{
-			retryTimes: cfg.HostTryTimes,
+func (s *selector) initHosts(cfg *LbConfig) {
+	id := 1
+	for _, host := range cfg.Hosts {
+		item := &hostItem{
+			id:         id,
 			rawHost:    host,
-			isBackup:   isBackup,
-		})
+			retryTimes: cfg.HostTryTimes,
+			isBackup:   false,
+		}
+		s.availHosts = append(s.availHosts, item)
+		s.hostItems[item] = struct{}{}
+		id++
 	}
-	return
+	for _, host := range cfg.BackupHosts {
+		item := &hostItem{
+			id:         id,
+			rawHost:    host,
+			retryTimes: cfg.HostTryTimes,
+			isBackup:   true,
+		}
+		s.availBackupHosts = append(s.availBackupHosts, item)
+		s.hostItems[item] = struct{}{}
+		id++
+	}
 }
 
-func (s *selector) initHostMap() {
-	for _, item := range s.hosts {
-		s.hostMap[item.rawHost] = item
-	}
-	for _, item := range s.backupHost {
-		s.hostMap[item.rawHost] = item
-	}
-}
-
-//  mess up the order of hosts to load balancing
-func randomShuffle(hosts []string, length int) {
+// randomShuffle mess up the order of hosts to load balancing
+func randomShuffle(hosts []UniqueHost, length int) {
 	for i := length; i > 0; i-- {
 		lastIdx := i - 1
 		idx := rand.Intn(i)
@@ -196,17 +225,17 @@ func randomShuffle(hosts []string, length int) {
 	}
 }
 
-// add unavailable host from hosts or backupHost into crackHosts
+// add unavailable host from hosts or backupHosts into unavailHosts
 func (s *selector) disableHost(item *hostItem) {
 	s.Lock()
 	defer s.Unlock()
-	s.crackHosts[item] = struct{}{}
+	s.unavailHosts[item] = struct{}{}
 	index := 0
 	var temp *[]*hostItem
 	if item.isBackup {
-		temp = &s.backupHost
+		temp = &s.availBackupHosts
 	} else {
-		temp = &s.hosts
+		temp = &s.availHosts
 	}
 	for ; index < len(*temp); index++ {
 		if item == (*temp)[index] {
@@ -220,17 +249,16 @@ func (s *selector) disableHost(item *hostItem) {
 	}
 }
 
-// enableHost add available host from crackHosts into backupHost or hosts
-func (s *selector) enableHost(hItem *hostItem) {
+// enableHost add available host from unavailHosts into backupHosts or hosts
+func (s *selector) enableHost(item *hostItem) {
 	s.Lock()
 	defer s.Unlock()
-
-	delete(s.crackHosts, hItem)
-	if hItem.isBackup {
-		s.backupHost = append(s.backupHost, hItem)
+	delete(s.unavailHosts, item)
+	if item.isBackup {
+		s.availBackupHosts = append(s.availBackupHosts, item)
 		return
 	}
-	s.hosts = append(s.hosts, hItem)
+	s.availHosts = append(s.availHosts, item)
 }
 
 func (s *selector) Close() {
