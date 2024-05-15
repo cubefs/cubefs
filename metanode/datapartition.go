@@ -15,9 +15,10 @@
 package metanode
 
 import (
-	"github.com/cubefs/cubefs/proto"
 	"strings"
 	"sync"
+
+	"github.com/cubefs/cubefs/proto"
 )
 
 // DataPartition defines the struct of data partition that will be used on the meta node.
@@ -27,6 +28,7 @@ type DataPartition struct {
 	ReplicaNum    uint8
 	PartitionType string
 	Hosts         []string
+	IsDiscard     bool
 }
 
 // GetAllAddrs returns all addresses of the data partition.
