@@ -4364,15 +4364,22 @@ func (c *Cluster) handleDataNodeBadDisk(dataNode *DataNode) {
 
 	for _, disk := range dataNode.BadDiskStats {
 		// TODO:no dp left on bad disk, notify sre to remove this disk
-		if disk.TotalPartitionCnt == 0 {
+		// decommission failed, but lack replica for disk err dp is already removed
+		retry := c.RetryDecommissionDisk(dataNode.Addr, disk.DiskPath)
+		if disk.TotalPartitionCnt == 0 && !retry {
 			continue
 		}
-		ratio := float64(len(disk.DiskErrPartitionList)) / float64(disk.TotalPartitionCnt)
-		log.LogDebugf("[handleDataNodeBadDisk] data node(%v) bad disk(%v), bad dp cnt (%v) total dp cnt(%v) ratio(%v)",
+		var ratio float64
+		if disk.TotalPartitionCnt != 0 {
+			ratio = float64(len(disk.DiskErrPartitionList)) / float64(disk.TotalPartitionCnt)
+		} else {
+			ratio = 0
+		}
+		log.LogDebugf("[handleDataNodeBadDisk] data node(%v) bad disk(%v), bad dp cnt (%v) total dp cnt(%v) ratio(%v) retry(%v)",
 			dataNode.Addr, disk.DiskPath, len(disk.DiskErrPartitionList), disk.TotalPartitionCnt, ratio)
 		// decommission dp form bad disk
 		threshold := c.getMarkDiskBrokenThreshold()
-		if threshold == defaultMarkDiskBrokenThreshold || ratio >= threshold {
+		if threshold == defaultMarkDiskBrokenThreshold || ratio >= threshold || retry {
 			log.LogInfof("[handleDataNodeBadDisk] try to decommission disk(%v) on %v", disk.DiskPath, dataNode.Addr)
 			// NOTE: decommission all dps and disable disk
 			ok, status := c.canAutoDecommissionDisk(dataNode.Addr, disk.DiskPath)
@@ -4514,7 +4521,7 @@ func (c *Cluster) TryDecommissionDisk(disk *DecommissionDisk) {
 			continue
 		}
 		if err = dp.MarkDecommissionStatus(node.Addr, disk.DstAddr, disk.DiskPath, disk.DecommissionRaftForce,
-			disk.DecommissionTerm, disk.Type, c); err != nil {
+			disk.DecommissionTerm, disk.Type, c, ns); err != nil {
 			if strings.Contains(err.Error(), proto.ErrDecommissionDiskErrDPFirst.Error()) {
 				c.syncUpdateDataPartition(dp)
 				// still decommission dp but not involved in the calculation of the decommission progress.
@@ -5004,7 +5011,7 @@ func (c *Cluster) markDecommissionDataPartition(dp *DataPartition, src *DataNode
 		err = errors.NewErrorf(" dataPartitionID :%v not find nodeset for addr %v", dp.PartitionID, addr)
 		return
 	}
-	if err = dp.MarkDecommissionStatus(addr, "", replica.DiskPath, raftForce, uint64(time.Now().Unix()), migrateType, c); err != nil {
+	if err = dp.MarkDecommissionStatus(addr, "", replica.DiskPath, raftForce, uint64(time.Now().Unix()), migrateType, c, ns); err != nil {
 		if !strings.Contains(err.Error(), proto.ErrDecommissionDiskErrDPFirst.Error()) {
 			if strings.Contains(err.Error(), proto.ErrAllReplicaUnavailable.Error()) {
 				dp.DecommissionNeedRollbackTimes = defaultDecommissionRollbackLimit
@@ -5066,4 +5073,13 @@ func (c *Cluster) getDiskErrDataPartitionsView() (dps proto.DiskErrPartitionView
 	})
 
 	return
+}
+func (c *Cluster) RetryDecommissionDisk(addr string, diskPath string) bool {
+	key := fmt.Sprintf("%s_%s", addr, diskPath)
+	if value, ok := c.DecommissionDisks.Load(key); ok {
+		d := value.(*DecommissionDisk)
+		status := d.GetDecommissionStatus()
+		return status == DecommissionFail
+	}
+	return false
 }
