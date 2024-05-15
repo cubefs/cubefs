@@ -335,21 +335,19 @@ func (a *Audit) formatMetaLog(ipAddr, hostName, op, src, dst string, err error, 
 }
 
 // NOTE: master audit logs
-// format for decommssion:
-// [COMMON HEADER] OP OLD_STATUS STATUS ADDR DISK DP_ID DST_ADDR ERR
-func (a *Audit) formatMasterAudit(op string, oldStatus string, status string, src string, disk string, id string, dst string, err error) (str string) {
+func (a *Audit) formatMasterAudit(op string, message string, err error) (str string) {
 	var errStr string
 	if err != nil {
 		errStr = err.Error()
 	} else {
 		errStr = "nil"
 	}
-	str = fmt.Sprintf("%v, %v, %v, %v, %v, %v, %v, %v, ERR: %v", a.formatCommonHeader(), op, oldStatus, status, src, disk, id, dst, errStr)
+	str = fmt.Sprintf("%v, %v, %v, ERR: %v", a.formatCommonHeader(), op, message, errStr)
 	return
 }
 
-func (a *Audit) formatMasterLog(op string, oldStatus string, status string, src string, disk string, id string, dst string, err error) {
-	if entry := a.formatMasterAudit(op, oldStatus, status, src, disk, id, dst, err); entry != "" {
+func (a *Audit) formatMasterLog(op string, message string, err error) {
+	if entry := a.formatMasterAudit(op, message, err); entry != "" {
 		if a.prefix != nil {
 			entry = fmt.Sprintf("%s%s", a.prefix.String(), entry)
 		}
@@ -363,7 +361,8 @@ func (a *Audit) LogResetDpDecommission(status string, src string, disk string, d
 	disk = fmt.Sprintf("SrcDisk: %v", disk)
 	id := fmt.Sprintf("DpId: %v", dpId)
 	dst = fmt.Sprintf("DstAddr: %v", dst)
-	a.formatMasterLog("RESET_DP_DECOMMISSION", status, "Next: Initial", src, disk, id, dst, nil)
+	message := fmt.Sprintf("%v %v %v %v %v %v", status, "Next: Initial", src, disk, id, dst)
+	a.formatMasterLog("RESET_DP_DECOMMISSION", message, nil)
 }
 
 func (a *Audit) LogChangeDpDecommission(oldStatus string, status string, src string, disk string, dpId uint64, dst string) {
@@ -373,7 +372,8 @@ func (a *Audit) LogChangeDpDecommission(oldStatus string, status string, src str
 	disk = fmt.Sprintf("SrcDisk: %v", disk)
 	id := fmt.Sprintf("DpId: %v", dpId)
 	dst = fmt.Sprintf("DstAddr: %v", dst)
-	a.formatMasterLog("DP_DECOMMISSION_CHANGE", oldStatus, status, src, disk, id, dst, nil)
+	message := fmt.Sprintf("%v %v %v %v %v %v", oldStatus, status, src, disk, id, dst)
+	a.formatMasterLog("DP_DECOMMISSION_CHANGE", message, nil)
 }
 
 func (a *Audit) ResetWriterBufferSize(size int) {
