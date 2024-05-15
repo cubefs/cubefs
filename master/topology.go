@@ -2405,6 +2405,7 @@ func (l *DecommissionDiskList) PopMarkDecommissionDisk(limit int) (count int, co
 	}
 	return count, collection
 }
+
 func (l *DecommissionDataPartitionList) Has(id uint64) bool {
 	l.mu.Lock()
 	_, ok := l.cacheMap[id]
