@@ -336,7 +336,8 @@ func (f *File) Read(ctx context.Context, req *fuse.ReadRequest, resp *fuse.ReadR
 	} else {
 		size, err = f.fReader.Read(ctx, resp.Data[fuse.OutHeaderSize:], int(req.Offset), req.Size)
 	}
-	if err != nil && err != io.EOF {
+	// If f.info.Size >= req.Size and read returns EOF, this indicates that the metadata and data of the file are inconsistent
+	if err != nil && err != io.EOF || err == io.EOF && f.info.Size >= uint64(req.Size) {
 		msg := fmt.Sprintf("Read: ino(%v) req(%v) err(%v) size(%v)", f.info.Inode, req, err, size)
 		f.super.handleError("Read", msg)
 		errMetric := exporter.NewCounter("fileReadFailed")
