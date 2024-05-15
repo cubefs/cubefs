@@ -17,6 +17,8 @@ package datanode
 import (
 	"fmt"
 	"math"
+	"os"
+	"path"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -439,6 +441,8 @@ func (manager *SpaceManager) DeletePartition(dpID uint64) {
 	dp := manager.partitions[dpID]
 	if dp == nil {
 		manager.partitionMutex.Unlock()
+		// maybe dp not loaded when triggered disk error, need to remove disk root dir
+		manager.deleteDataPartitionNotLoaded(dpID)
 		return
 	}
 
@@ -522,5 +526,45 @@ func (s *DataNode) buildHeartBeatResponse(response *proto.DataNodeHeartbeatRespo
 			DiskErrPartitionList: d.GetDiskErrPartitionList(),
 		}
 		response.DiskStats = append(response.DiskStats, bds)
+	}
+}
+
+func (manager *SpaceManager) deleteDataPartitionNotLoaded(id uint64) {
+	disks := manager.GetDisks()
+	for _, d := range disks {
+		if d.HasDiskErrPartition(id) {
+			// delete it from DiskErrPartitionSet, not report to master any more
+			d.DiskErrPartitionSet.Delete(id)
+			// remove dp root dir
+			fileInfoList, err := os.ReadDir(d.Path)
+			if err != nil {
+				log.LogErrorf("[deleteDataPartitionNotLoaded] disk(%v)load file list err %v",
+					d.Path, err)
+				return
+			}
+			for _, fileInfo := range fileInfoList {
+				filename := fileInfo.Name()
+				if !d.isPartitionDir(filename) {
+					log.LogWarnf("[deleteDataPartitionNotLoaded] disk(%v)ignore file %v",
+						d.Path, filename)
+					continue
+				}
+
+				if partitionID, _, err := unmarshalPartitionName(filename); err != nil {
+					log.LogErrorf("action[deleteDataPartitionNotLoaded] unmarshal partitionName(%v) from disk(%v) err(%v) ",
+						filename, d.Path, err.Error())
+					continue
+				} else {
+					if partitionID == id {
+						rootPath := path.Join(d.Path, filename)
+						err = os.RemoveAll(rootPath)
+						if err != nil {
+							log.LogErrorf("action[deleteDataPartitionNotLoaded] disk(%v) remove root dir (%v) failed err(%v) ",
+								d.Path, rootPath, err.Error())
+						}
+					}
+				}
+			}
+		}
 	}
 }

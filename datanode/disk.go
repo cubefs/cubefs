@@ -740,6 +740,11 @@ func (d *Disk) GetDiskErrPartitionCount() uint64 {
 	return uint64(len(d.GetDiskErrPartitionList()))
 }
 
+func (d *Disk) HasDiskErrPartition(dpId uint64) bool {
+	_, ok := d.DiskErrPartitionSet.Load(dpId)
+	return ok
+}
+
 // isExpiredPartition return whether one partition is expired
 // if one partition does not exist in master, we decided that it is one expired partition
 func isExpiredPartition(id uint64, partitions []uint64) bool {
