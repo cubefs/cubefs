@@ -78,6 +78,7 @@ func (mp *metaPartition) UpdateVolumeView(dataView *proto.DataPartitionsView, vo
 				Status:      view.DataPartitions[i].Status,
 				Hosts:       view.DataPartitions[i].Hosts,
 				ReplicaNum:  view.DataPartitions[i].ReplicaNum,
+				IsDiscard:   view.DataPartitions[i].IsDiscard,
 			}
 		}
 		return newView
@@ -353,6 +354,14 @@ func (mp *metaPartition) doDeleteMarkedInodes(ext *proto.ExtentKey) (err error) 
 		err = errors.NewErrorf("dp id(%v) is invalid", ext.PartitionId)
 		return
 	}
+
+	defer func() {
+		if err != nil && dp.IsDiscard {
+			log.LogWarnf("doBatchDeleteExtentsByPartition: dp is already discard, no need to delete any more. dp(%d), err %s", dp.PartitionID, err.Error())
+			err = nil
+		}
+	}()
+
 	addr := util.ShiftAddrPort(dp.Hosts[0], smuxPortShift)
 	conn, err := smuxPool.GetConnect(addr)
 	log.LogInfof("doDeleteMarkedInodes mp (%v) GetConnect (%v), ext(%s)", mp.config.PartitionId, addr, ext.String())
@@ -414,6 +423,13 @@ func (mp *metaPartition) doBatchDeleteExtentsByPartition(partitionID uint64, ext
 			return
 		}
 	}
+
+	defer func() {
+		if err != nil && dp.IsDiscard {
+			log.LogWarnf("doBatchDeleteExtentsByPartition: dp is already discard, no need to delete any more. dp(%d), err %s", dp.PartitionID, err.Error())
+			err = nil
+		}
+	}()
 
 	// delete the data node
 	if len(dp.Hosts) < 1 {
