@@ -241,9 +241,11 @@ const (
 	cfgDiskReservedSpace = "diskReservedSpace"
 
 	// NOTE: metanode rocksdb config
-	cfgRocksdbWriteBufferSize = "rocksdbWriteBufferSize" // int
-	cfsRocksdbWriteBufferNum  = "rocksdbWriteBufferNum"  // int
-	cfgRocksdbBlockCacheSize  = "rocksdbBlockCacheSize"  // uint64
+	cfgRocksdbWriteBufferSize       = "rocksdbWriteBufferSize"       // int
+	cfsRocksdbWriteBufferNum        = "rocksdbWriteBufferNum"        // int
+	cfgRocksdbBlockCacheSize        = "rocksdbBlockCacheSize"        // uint64
+	cfsRocksdbMinWriteBufferToMerge = "rocksdbMinWriteBufferToMerge" // int
+	cfsRocksdbMode                  = "rocksdbMode"                  // string
 )
 
 const (

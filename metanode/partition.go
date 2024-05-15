@@ -1304,7 +1304,7 @@ func (mp *metaPartition) initObjects(isCreate bool) (err error) {
 	}
 
 	if mp.HasRocksDBStore() {
-		mp.db, err = mp.rocksdbManager.OpenRocksdb(mp.config.RocksDBDir)
+		mp.db, err = mp.rocksdbManager.OpenRocksdb(mp.config.RocksDBDir, mp.config.PartitionId)
 		if err != nil {
 			log.LogErrorf("[initObjects] mp(%v) failed to open rocksdb, err(%v)", mp.config.PartitionId, err)
 			return

@@ -16,6 +16,9 @@ package metanode
 
 import (
 	"errors"
+	"fmt"
+	"path"
+	"strings"
 	"sync"
 
 	"github.com/cubefs/cubefs/util/diskmon"
@@ -33,7 +36,7 @@ type RocksdbManager interface {
 
 	Unregister(dbPath string) (err error)
 
-	OpenRocksdb(dbPath string) (db *RocksdbOperator, err error)
+	OpenRocksdb(dbPath string, metaPartitionId uint64) (db *RocksdbOperator, err error)
 
 	CloseRocksdb(db *RocksdbOperator)
 
@@ -52,7 +55,7 @@ type RocksdbHandle struct {
 	partitions int
 }
 
-type rocksdbManager struct {
+type PerDiskRocksdbManager struct {
 	writeBufferSize     int
 	writeBufferNum      int
 	minWriteBuffToMerge int
@@ -61,7 +64,7 @@ type rocksdbManager struct {
 	dbs                 map[string]*RocksdbHandle
 }
 
-func (r *rocksdbManager) Register(dbPath string) (err error) {
+func (r *PerDiskRocksdbManager) Register(dbPath string) (err error) {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 	_, ok := r.dbs[dbPath]
@@ -76,7 +79,7 @@ func (r *rocksdbManager) Register(dbPath string) (err error) {
 	return
 }
 
-func (r *rocksdbManager) Unregister(dbPath string) (err error) {
+func (r *PerDiskRocksdbManager) Unregister(dbPath string) (err error) {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 	handle, ok := r.dbs[dbPath]
@@ -92,7 +95,9 @@ func (r *rocksdbManager) Unregister(dbPath string) (err error) {
 	return
 }
 
-func (r *rocksdbManager) OpenRocksdb(dbPath string) (db *RocksdbOperator, err error) {
+func (r *PerDiskRocksdbManager) OpenRocksdb(dbPath string, metaPartitionId uint64) (db *RocksdbOperator, err error) {
+	log.LogDebugf("[OpenRocksdb] open rocksdb(%v) for mp(%v)", dbPath, metaPartitionId)
+
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 	handle, ok := r.dbs[dbPath]
@@ -112,7 +117,7 @@ func (r *rocksdbManager) OpenRocksdb(dbPath string) (db *RocksdbOperator, err er
 	return
 }
 
-func (r *rocksdbManager) CloseRocksdb(db *RocksdbOperator) {
+func (r *PerDiskRocksdbManager) CloseRocksdb(db *RocksdbOperator) {
 	dbPath := db.dir
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
@@ -129,7 +134,7 @@ func (r *rocksdbManager) CloseRocksdb(db *RocksdbOperator) {
 	}
 }
 
-func (r *rocksdbManager) SelectRocksdbDisk(usableFactor float64) (disk string, err error) {
+func (r *PerDiskRocksdbManager) SelectRocksdbDisk(usableFactor float64) (disk string, err error) {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 	stats := make([]diskmon.DiskStat, 0)
@@ -154,7 +159,7 @@ func (r *rocksdbManager) SelectRocksdbDisk(usableFactor float64) (disk string, e
 	return
 }
 
-func (r *rocksdbManager) AttachPartition(dbPath string) (err error) {
+func (r *PerDiskRocksdbManager) AttachPartition(dbPath string) (err error) {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 	handle, ok := r.dbs[dbPath]
@@ -166,7 +171,7 @@ func (r *rocksdbManager) AttachPartition(dbPath string) (err error) {
 	return
 }
 
-func (r *rocksdbManager) DetachPartition(dbPath string) (err error) {
+func (r *PerDiskRocksdbManager) DetachPartition(dbPath string) (err error) {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 	handle, ok := r.dbs[dbPath]
@@ -180,7 +185,7 @@ func (r *rocksdbManager) DetachPartition(dbPath string) (err error) {
 	return
 }
 
-func (r *rocksdbManager) GetPartitionCount(dbPath string) (count int, err error) {
+func (r *PerDiskRocksdbManager) GetPartitionCount(dbPath string) (count int, err error) {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 	handle, ok := r.dbs[dbPath]
@@ -192,14 +197,178 @@ func (r *rocksdbManager) GetPartitionCount(dbPath string) (count int, err error)
 	return
 }
 
-var _ RocksdbManager = &rocksdbManager{}
+var _ RocksdbManager = &PerDiskRocksdbManager{}
 
-func NewRocksdbManager(writeBufferSize int, writeBufferNum int, blockCacheSize uint64) (p RocksdbManager) {
-	p = &rocksdbManager{
-		writeBufferSize: writeBufferSize,
-		writeBufferNum:  writeBufferNum,
-		blockCacheSize:  blockCacheSize,
-		dbs:             make(map[string]*RocksdbHandle),
+type PerPartitionRocksdbManager struct {
+	writeBufferSize     int
+	writeBufferNum      int
+	minWriteBuffToMerge int
+	blockCacheSize      uint64
+	mutex               sync.Mutex
+	partitionCnt        map[string]int
+	dbs                 map[string]interface{}
+}
+
+func (r *PerPartitionRocksdbManager) AttachPartition(dbPath string) (err error) {
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+
+	cnt, ok := r.partitionCnt[dbPath]
+	if !ok {
+		err = ErrUnregisteredRocksdbPath
+		return
 	}
+	cnt += 1
+	r.partitionCnt[dbPath] = cnt
+	return
+}
+
+func (r *PerPartitionRocksdbManager) DetachPartition(dbPath string) (err error) {
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+
+	cnt, ok := r.partitionCnt[dbPath]
+	if !ok {
+		err = ErrUnregisteredRocksdbPath
+		return
+	}
+	if cnt != 0 {
+		cnt -= 1
+		r.partitionCnt[dbPath] = cnt
+	}
+	return
+}
+
+func (r *PerPartitionRocksdbManager) GetPartitionCount(dbPath string) (count int, err error) {
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+
+	count, ok := r.partitionCnt[dbPath]
+	if !ok {
+		err = ErrUnregisteredRocksdbPath
+		return
+	}
+	return
+}
+
+func (r *PerPartitionRocksdbManager) OpenRocksdb(dbPath string, metaPartitionId uint64) (db *RocksdbOperator, err error) {
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+
+	_, ok := r.dbs[dbPath]
+	if !ok {
+		err = ErrUnregisteredRocksdbPath
+		return
+	}
+
+	mpPath := fmt.Sprintf("metaPartition_%v", metaPartitionId)
+	perPartitionDbDir := path.Join(dbPath, mpPath)
+	db = NewRocksdb()
+	err = db.OpenDb(perPartitionDbDir, r.writeBufferSize, r.writeBufferNum, r.minWriteBuffToMerge, r.blockCacheSize, 0, 0, 0)
+	return
+}
+
+func (r *PerPartitionRocksdbManager) CloseRocksdb(db *RocksdbOperator) {
+	err := db.CloseDb()
+	if err != nil {
+		log.LogErrorf("[CloseRocksdb] failed to close rocksdb(%v), err(%v)", db.dir, err)
+	}
+}
+
+func (r *PerPartitionRocksdbManager) Register(dbPath string) (err error) {
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+	_, ok := r.dbs[dbPath]
+	if ok {
+		err = ErrRocksdbPathRegistered
+		return
+	}
+	r.dbs[dbPath] = 1
+	r.partitionCnt[dbPath] = 0
+	return
+}
+
+func (r *PerPartitionRocksdbManager) Unregister(dbPath string) (err error) {
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+	_, ok := r.dbs[dbPath]
+	if !ok {
+		err = ErrUnregisteredRocksdbPath
+		return
+	}
+	delete(r.dbs, dbPath)
+	delete(r.partitionCnt, dbPath)
+	return
+}
+
+func (r *PerPartitionRocksdbManager) SelectRocksdbDisk(usableFactor float64) (disk string, err error) {
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+	stats := make([]diskmon.DiskStat, 0)
+	for dir := range r.dbs {
+		var stat diskmon.DiskStat
+		stat, err = diskmon.NewDiskStat(dir)
+		if err != nil {
+			log.LogErrorf("[SelectRocksdbDisk] failed to select rocksdb disk, err(%v)", err)
+			return
+		}
+		stat.PartitionCount = r.partitionCnt[dir]
+		stats = append(stats, stat)
+	}
+	d, err := diskmon.SelectDisk(stats, usableFactor)
+	if err != nil {
+		log.LogErrorf("[SelectRocksdbDisk] failed to select rocksdb disk, err(%v)", err)
+		return
+	}
+	disk = d.Path
+	r.partitionCnt[disk] += 1
+	return
+}
+
+var _ RocksdbManager = &PerPartitionRocksdbManager{}
+
+func NewPerDiskRocksdbManager(writeBufferSize int, writeBufferNum int, minWriteBuffToMerge int, blockCacheSize uint64) (p RocksdbManager) {
+	p = &PerDiskRocksdbManager{
+		writeBufferSize:     writeBufferSize,
+		writeBufferNum:      writeBufferNum,
+		minWriteBuffToMerge: minWriteBuffToMerge,
+		blockCacheSize:      blockCacheSize,
+		dbs:                 make(map[string]*RocksdbHandle),
+	}
+	return
+}
+
+func NewPerPartitionRocksdbManager(writeBufferSize int, writeBufferNum int, minWriteBuffToMerge int, blockCacheSize uint64) (p RocksdbManager) {
+	p = &PerPartitionRocksdbManager{
+		writeBufferSize:     writeBufferSize,
+		writeBufferNum:      writeBufferNum,
+		minWriteBuffToMerge: minWriteBuffToMerge,
+		blockCacheSize:      blockCacheSize,
+		dbs:                 make(map[string]interface{}),
+		partitionCnt:        make(map[string]int),
+	}
+	return
+}
+
+type RocksdbMode int
+
+const (
+	PerDiskRocksdbMode      RocksdbMode = 0
+	PerPartitionRocksdbMode RocksdbMode = iota
+)
+
+const DefaultRocksdbMode = PerDiskRocksdbMode
+
+func ParseRocksdbMode(option string) (mode RocksdbMode) {
+	option = strings.ToLower(option)
+	configMap := map[string]RocksdbMode{
+		"disk":      PerDiskRocksdbMode,
+		"partition": PerPartitionRocksdbMode,
+	}
+	mode, ok := configMap[option]
+	if ok {
+		return
+	}
+	mode = DefaultRocksdbMode
 	return
 }

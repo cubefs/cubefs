@@ -22,8 +22,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestRocksdbManager(t *testing.T) {
-	manager := metanode.NewRocksdbManager(0, 0, 0)
+func testRocksdbManager(t *testing.T, manager metanode.RocksdbManager) {
 	dbDir, err := os.MkdirTemp("", "")
 	require.NoError(t, err)
 	defer os.RemoveAll(dbDir)
@@ -31,9 +30,9 @@ func TestRocksdbManager(t *testing.T) {
 	require.NoError(t, err)
 	err = manager.Register(dbDir)
 	require.ErrorIs(t, err, metanode.ErrRocksdbPathRegistered)
-	_, err = manager.OpenRocksdb(dbDir + "_123")
+	_, err = manager.OpenRocksdb(dbDir+"_123", 0)
 	require.ErrorIs(t, err, metanode.ErrUnregisteredRocksdbPath)
-	db, err := manager.OpenRocksdb(dbDir)
+	db, err := manager.OpenRocksdb(dbDir, 0)
 	require.NoError(t, err)
 	manager.CloseRocksdb(db)
 	err = manager.AttachPartition(dbDir)
@@ -49,4 +48,25 @@ func TestRocksdbManager(t *testing.T) {
 	disk, err := manager.SelectRocksdbDisk(0)
 	require.NoError(t, err)
 	require.EqualValues(t, dbDir, disk)
+}
+
+func TestPerDiskRocksdbManager(t *testing.T) {
+	manager := metanode.NewPerDiskRocksdbManager(0, 0, 0, 0)
+	testRocksdbManager(t, manager)
+}
+
+func TestPerPartitionRocksdbManager(t *testing.T) {
+	manager := metanode.NewPerPartitionRocksdbManager(0, 0, 0, 0)
+	testRocksdbManager(t, manager)
+}
+
+func TestParseRocksdbMode(t *testing.T) {
+	mode := metanode.ParseRocksdbMode("disk")
+	require.EqualValues(t, metanode.PerDiskRocksdbMode, mode)
+
+	mode = metanode.ParseRocksdbMode("partition")
+	require.EqualValues(t, metanode.PerPartitionRocksdbMode, mode)
+
+	mode = metanode.ParseRocksdbMode("")
+	require.EqualValues(t, metanode.DefaultRocksdbMode, mode)
 }
