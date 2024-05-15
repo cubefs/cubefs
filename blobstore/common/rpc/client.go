@@ -36,7 +36,6 @@ type Config struct {
 	ClientTimeoutMs int64 `json:"client_timeout_ms"`
 	// bandwidthBPMs for read body
 	BodyBandwidthMBPs float64 `json:"body_bandwidth_mbps"`
-
 	// base timeout for read body
 	BodyBaseTimeoutMs int64 `json:"body_base_timeout_ms"`
 	// transport config
@@ -280,7 +279,6 @@ func (c *client) Close() {
 }
 
 func (c *client) doWithCtx(ctx context.Context, req *http.Request) (resp *http.Response, err error) {
-	span := trace.SpanFromContextSafe(ctx)
 	req = req.WithContext(ctx)
 	if c.bandwidthBPMs > 0 && req.Body != nil {
 		t := req.ContentLength/c.bandwidthBPMs + c.bodyBaseTimeoutMs
@@ -288,6 +286,7 @@ func (c *client) doWithCtx(ctx context.Context, req *http.Request) (resp *http.R
 	}
 	resp, err = c.client.Do(req)
 	if err != nil {
+		span := trace.SpanFromContextSafe(ctx)
 		span.Warnf("do request to %s failed, error: %s", req.URL, err.Error())
 		return
 	}
@@ -331,7 +330,6 @@ func ParseData(resp *http.Response, data interface{}) (err error) {
 		}
 		return NewError(resp.StatusCode, "", err)
 	}
-
 	return ParseResponseErr(resp)
 }
 

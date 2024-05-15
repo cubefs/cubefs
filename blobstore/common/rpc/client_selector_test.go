@@ -22,12 +22,18 @@ import (
 )
 
 func TestSelector_Base(t *testing.T) {
-	cfg := newCfg([]string{"http://127.0.0.1:8888", "http://127.0.0.1:8888"},
-		[]string{"http://127.0.0.1:8988", "http://127.0.0.1:8998"})
+	host1 := "http://127.0.0.1:8888"
+	host3 := "http://127.0.0.1:8988"
+	host4 := "http://127.0.0.1:8998"
+	cfg := newCfg([]string{host1, host1}, []string{host3, host4})
 	cfg.HostTryTimes = 3
 	cfg.FailRetryIntervalS = 1
 	cfg.MaxFailsPeriodS = 1
-	s := newSelector(cfg)
+	s := NewSelector(cfg)
+	defer s.Close()
+
+	hosts := s.GetAllHosts()
+	require.Equal(t, 4, len(hosts))
 
 	sel, ok := s.(*selector)
 	require.Equal(t, true, ok)
@@ -35,23 +41,23 @@ func TestSelector_Base(t *testing.T) {
 	require.Equal(t, 4, len(s.GetAvailableHosts()))
 
 	// test set fail
-	s.SetFail("http://127.0.0.1:8988")
-	s.SetFail("http://127.0.0.1:8988")
-	s.SetFail("http://127.0.0.1:8988")
+	failHost := hosts[3]
+	for range [3]struct{}{} {
+		s.SetFailHost(failHost)
+	}
 	require.Equal(t, 3, len(s.GetAvailableHosts()))
 
 	// test enable host
-	for key := range sel.crackHosts {
+	for key := range sel.unavailHosts {
 		sel.enableHost(key)
+		require.Equal(t, failHost.Host(), key.rawHost)
 	}
 	require.Equal(t, 4, len(s.GetAvailableHosts()))
 
 	// test detect
-	s.SetFail("http://127.0.0.1:8888")
-	s.SetFail("http://127.0.0.1:8888")
-	s.SetFail("http://127.0.0.1:8888")
+	for range [3]struct{}{} {
+		s.SetFailHost(failHost)
+	}
 	time.Sleep(time.Millisecond * 1200)
 	require.Equal(t, 4, len(s.GetAvailableHosts()))
-
-	s.Close()
 }
