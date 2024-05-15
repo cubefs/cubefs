@@ -1095,7 +1095,7 @@ func GetDecommissionStatusMessage(status uint32) string {
 }
 
 func (partition *DataPartition) MarkDecommissionStatus(srcAddr, dstAddr, srcDisk string, raftForce bool, term uint64,
-	migrateType uint32, c *Cluster) (err error) {
+	migrateType uint32, c *Cluster, ns *nodeSet) (err error) {
 	if partition.needManualFix() && migrateType == AutoDecommission {
 		return proto.ErrAllReplicaUnavailable
 	}
@@ -1107,10 +1107,11 @@ func (partition *DataPartition) MarkDecommissionStatus(srcAddr, dstAddr, srcDisk
 			partition.PartitionID, len(partition.Hosts), partition.ReplicaNum)
 	}
 	status := partition.GetDecommissionStatus()
-	if !partition.canMarkDecommission(status) {
-		log.LogWarnf("action[MarkDecommissionStatus] dp[%v] cannot make decommission:status[%v]",
-			partition.PartitionID, status)
-		return errors.NewErrorf("dp[%v] cannot make decommission:status[%v]", partition.PartitionID, status)
+	if !partition.canMarkDecommission(status, ns) {
+		log.LogWarnf("action[MarkDecommissionStatus] dp[%v] cannot make decommission:status[%v] inDecommission[%v]",
+			partition.PartitionID, status, ns.processDataPartitionDecommission(partition.PartitionID))
+		return errors.NewErrorf("dp[%v] cannot make decommission:status[%v] inDecommission[%v]",
+			partition.PartitionID, status, ns.processDataPartitionDecommission(partition.PartitionID))
 	}
 	// for auto decommission, need raftForce to delete src if no leader
 	if migrateType == AutoDecommission {
@@ -1560,16 +1561,21 @@ func (partition *DataPartition) checkConsumeToken() bool {
 }
 
 // only mark stop status or initial
-func (partition *DataPartition) canMarkDecommission(status uint32) bool {
+func (partition *DataPartition) canMarkDecommission(status uint32, ns *nodeSet) bool {
 	// dp may not be reset decommission status from last decommission
 	//if partition.DecommissionTerm != term {
 	//	return true
 	//}
+	// make sure dp release the token
+	if ns.processDataPartitionDecommission(partition.PartitionID) {
+		return false
+	}
 	if status == DecommissionInitial ||
 		status == DecommissionPause {
 		return true
 	}
-	if status == DecommissionFail && atomic.LoadUint32(&partition.DecommissionNeedRollbackTimes) >= defaultDecommissionRollbackLimit {
+	if status == DecommissionFail &&
+		atomic.LoadUint32(&partition.DecommissionNeedRollbackTimes) >= defaultDecommissionRollbackLimit {
 		return true
 	}
 	return false

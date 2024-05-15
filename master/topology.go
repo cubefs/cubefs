@@ -2405,3 +2405,13 @@ func (l *DecommissionDiskList) PopMarkDecommissionDisk(limit int) (count int, co
 	}
 	return count, collection
 }
+func (l *DecommissionDataPartitionList) Has(id uint64) bool {
+	l.mu.Lock()
+	_, ok := l.cacheMap[id]
+	l.mu.Unlock()
+	return ok
+}
+
+func (ns *nodeSet) processDataPartitionDecommission(id uint64) bool {
+	return ns.decommissionDataPartitionList.Has(id)
+}
