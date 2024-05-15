@@ -1193,6 +1193,11 @@ func (c *Cluster) loadClusterValue() (err error) {
 		c.EnableAutoDecommissionDisk = cv.EnableAutoDecommissionDisk
 		c.DecommissionLimit = cv.DecommissionLimit
 		c.cfg.volDelayDeleteTimeHour = cv.VolDeletionDelayTimeHour
+
+		if c.cfg.volDelayDeleteTimeHour <= 0 {
+			c.cfg.volDelayDeleteTimeHour = defaultVolDelayDeleteTimeHour
+		}
+
 		if c.cfg.QosMasterAcceptLimit < QosMasterAcceptCnt {
 			c.cfg.QosMasterAcceptLimit = QosMasterAcceptCnt
 		}
