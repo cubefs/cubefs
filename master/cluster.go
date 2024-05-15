@@ -4366,7 +4366,7 @@ func (c *Cluster) handleDataNodeBadDisk(dataNode *DataNode) {
 			ratio = 0
 		}
 		log.LogDebugf("[handleDataNodeBadDisk] data node(%v) bad disk(%v), bad dp cnt (%v) total dp cnt(%v) ratio(%v) retry(%v)",
-			dataNode.Addr, disk.DiskPath, len(disk.DiskErrPartitionList), disk.TotalPartitionCnt, ratio)
+			dataNode.Addr, disk.DiskPath, len(disk.DiskErrPartitionList), disk.TotalPartitionCnt, ratio, retry)
 		// decommission dp form bad disk
 		threshold := c.getMarkDiskBrokenThreshold()
 		if threshold == defaultMarkDiskBrokenThreshold || ratio >= threshold || retry {
@@ -5063,6 +5063,7 @@ func (c *Cluster) getDiskErrDataPartitionsView() (dps proto.DiskErrPartitionView
 
 	return
 }
+
 func (c *Cluster) RetryDecommissionDisk(addr string, diskPath string) bool {
 	key := fmt.Sprintf("%s_%s", addr, diskPath)
 	if value, ok := c.DecommissionDisks.Load(key); ok {
