@@ -52,14 +52,17 @@ const (
 	maxAlg
 )
 
-var cachedClient = struct {
-	mu    sync.Mutex
-	cache map[string]*cmapi.Client
-}{
-	cache: make(map[string]*cmapi.Client),
+type keyClient struct {
+	key string
+	cli *cmapi.Client
 }
 
-func getClusterClient(conf cmapi.Config) *cmapi.Client {
+var cachedClient = struct {
+	mu    sync.Mutex
+	cache map[proto.ClusterID]*keyClient
+}{cache: make(map[proto.ClusterID]*keyClient)}
+
+func getClusterClient(ctx context.Context, clusterID proto.ClusterID, conf cmapi.Config) *cmapi.Client {
 	hosts := make([]string, len(conf.Hosts))
 	copy(hosts, conf.Hosts[:])
 	sort.Strings(hosts)
@@ -67,13 +70,20 @@ func getClusterClient(conf cmapi.Config) *cmapi.Client {
 
 	cachedClient.mu.Lock()
 	defer cachedClient.mu.Unlock()
-	cli, ok := cachedClient.cache[key]
-	if ok {
+	keyCli, ok := cachedClient.cache[clusterID]
+	if !ok {
+		cli := cmapi.New(&conf)
+		cachedClient.cache[clusterID] = &keyClient{key: key, cli: cli}
 		return cli
 	}
-	cli = cmapi.New(&conf)
-	cachedClient.cache[key] = cli
-	return cli
+	if keyCli.key != key {
+		span := trace.SpanFromContextSafe(ctx)
+		span.Warnf("change cluster(%d) clustermgr hosts %s -> %s", clusterID, keyCli.key, key)
+		cli := cmapi.New(&conf)
+		keyCli.key = key
+		*keyCli.cli = *cli
+	}
+	return keyCli.cli
 }
 
 // IsValid returns valid algorithm or not.
@@ -230,7 +240,7 @@ func (c *clusterControllerImpl) loadWithConfig() error {
 	for _, cs := range c.config.Clusters {
 		conf := c.config.CMClientConfig
 		conf.Hosts = cs.Hosts
-		cmCli := getClusterClient(conf)
+		cmCli := getClusterClient(ctx, cs.ClusterID, conf)
 
 		stat, err := cmCli.Stat(ctx)
 		if err != nil {
@@ -254,7 +264,6 @@ func (c *clusterControllerImpl) loadWithConfig() error {
 			span.Debug("readonly or no available cluster", clusterInfo.ClusterID)
 		}
 	}
-
 	return c.deal(ctx, available, allClusters, totalAvailable)
 }
 
@@ -305,7 +314,12 @@ func (c *clusterControllerImpl) loadWithConsul() error {
 	return c.deal(ctx, available, allClusters, totalAvailable)
 }
 
-func (c *clusterControllerImpl) deal(ctx context.Context, available []*cmapi.ClusterInfo, allClusters clusterMap, totalAvailable int64) error {
+func (c *clusterControllerImpl) deal(ctx context.Context,
+	available []*cmapi.ClusterInfo, allClusters clusterMap, totalAvailable int64,
+) error {
+	if len(allClusters) == 0 {
+		return nil
+	}
 	span := trace.SpanFromContextSafe(ctx)
 
 	sort.Slice(available, func(i, j int) bool {
@@ -313,9 +327,14 @@ func (c *clusterControllerImpl) deal(ctx context.Context, available []*cmapi.Clu
 	})
 
 	newClusters := make([]*cmapi.ClusterInfo, 0, len(allClusters))
-	for clusterID := range allClusters {
+	for clusterID, cluster := range allClusters {
 		if _, ok := c.serviceMgrs.Load(clusterID); !ok {
-			newClusters = append(newClusters, allClusters[clusterID].clusterInfo)
+			newClusters = append(newClusters, cluster.clusterInfo)
+		} else {
+			// update cluster client if hosts changed
+			conf := c.config.CMClientConfig
+			conf.Hosts = cluster.clusterInfo.Nodes[:]
+			getClusterClient(ctx, clusterID, conf)
 		}
 	}
 
@@ -325,7 +344,7 @@ func (c *clusterControllerImpl) deal(ctx context.Context, available []*cmapi.Clu
 		if allClusters[clusterID].client == nil {
 			conf := c.config.CMClientConfig
 			conf.Hosts = newCluster.Nodes
-			allClusters[clusterID].client = getClusterClient(conf)
+			allClusters[clusterID].client = getClusterClient(ctx, clusterID, conf)
 		}
 
 		cmCli := allClusters[clusterID].client
