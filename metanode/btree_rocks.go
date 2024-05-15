@@ -381,6 +381,17 @@ func (r *RocksTree) CommitAndReleaseBatchWriteHandle(handle interface{}, needCom
 	return nil
 }
 
+func (r *RocksTree) CommitAndReleaseBatchWriteForClear(handle interface{}) error {
+	defer r.ReleaseBatchHandle(handle)
+	var (
+		err error
+	)
+	if err = r.CommitBatch(handle); err != nil {
+		return err
+	}
+	return nil
+}
+
 func (r *RocksTree) ClearBatchWriteHandle(handle interface{}) error {
 	return r.db.ClearBatchWriteHandle(handle)
 }

@@ -1286,7 +1286,14 @@ func (mp *metaPartition) Clear() (err error) {
 		log.LogErrorf("[Clear] mp(%v) failed to delete metadata, err(%v)", mp.config.PartitionId, err)
 		return
 	}
-	err = mp.inodeTree.CommitAndReleaseBatchWriteHandle(handle, false)
+	err = mp.inodeTree.CommitAndReleaseBatchWriteForClear(handle)
+	if err != nil {
+		return
+	}
+	err = mp.inodeTree.Flush()
+	if err != nil {
+		return
+	}
 	mp.applyID = 0
 	mp.txProcessor.txManager.txIdAlloc.setTransactionID(0)
 	mp.deletedExtentId = 0

@@ -118,6 +118,7 @@ type Tree interface {
 	CreateBatchWriteHandle() (interface{}, error)
 	CommitBatchWrite(handle interface{}, needCommitApplyID bool) error
 	CommitAndReleaseBatchWriteHandle(handle interface{}, needCommitApplyID bool) error
+	CommitAndReleaseBatchWriteForClear(handle interface{}) error
 	ReleaseBatchWriteHandle(handle interface{}) error
 	BatchWriteCount(handle interface{}) (int, error)
 	ClearBatchWriteHandle(handle interface{}) error
