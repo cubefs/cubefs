@@ -53,11 +53,12 @@ type RocksdbHandle struct {
 }
 
 type rocksdbManager struct {
-	writeBufferSize int
-	writeBufferNum  int
-	blockCacheSize  uint64
-	mutex           sync.Mutex
-	dbs             map[string]*RocksdbHandle
+	writeBufferSize     int
+	writeBufferNum      int
+	minWriteBuffToMerge int
+	blockCacheSize      uint64
+	mutex               sync.Mutex
+	dbs                 map[string]*RocksdbHandle
 }
 
 func (r *rocksdbManager) Register(dbPath string) (err error) {
@@ -101,7 +102,7 @@ func (r *rocksdbManager) OpenRocksdb(dbPath string) (db *RocksdbOperator, err er
 	}
 	handle.rc += 1
 	if handle.rc == 1 {
-		err = handle.db.OpenDb(dbPath, r.writeBufferSize, r.writeBufferNum, r.blockCacheSize, 0, 0, 0)
+		err = handle.db.OpenDb(dbPath, r.writeBufferSize, r.writeBufferNum, r.minWriteBuffToMerge, r.blockCacheSize, 0, 0, 0)
 		if err != nil {
 			handle.rc -= 1
 			return
