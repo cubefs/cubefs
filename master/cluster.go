@@ -557,11 +557,17 @@ func (c *Cluster) scheduleToCheckVolStatus() {
 func (c *Cluster) scheduleToCheckFollowerReadCache() {
 	go func() {
 		for {
-			if !c.partition.IsRaftLeader() {
-				c.followerReadManager.getVolumeDpView()
-				c.followerReadManager.checkStatus()
-			} else {
-				c.followerReadManager.sendFollowerVolumeDpView()
+			select {
+			case <-c.stopc:
+				log.LogInfof("[scheduleToCheckFollowerReadCache] master stop!")
+				return
+			default:
+				if !c.partition.IsRaftLeader() {
+					c.followerReadManager.getVolumeDpView()
+					c.followerReadManager.checkStatus()
+				} else {
+					c.followerReadManager.sendFollowerVolumeDpView()
+				}
 			}
 			time.Sleep(5 * time.Second)
 		}
