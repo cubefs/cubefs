@@ -46,15 +46,17 @@ type MockDataServer struct {
 	partitions                      []*MockDataPartition
 	zoneName                        string
 	mc                              *master.MasterClient
+	mediaType                       uint32
 	sync.RWMutex
 }
 
-func NewMockDataServer(addr string, zoneName string) *MockDataServer {
+func NewMockDataServer(addr string, zoneName string, mediaType uint32) *MockDataServer {
 	mds := &MockDataServer{
 		TcpAddr:    addr,
 		zoneName:   zoneName,
 		partitions: make([]*MockDataPartition, 0),
 		mc:         master.NewMasterClient([]string{hostAddr}, false),
+		mediaType:  mediaType,
 	}
 
 	return mds
@@ -70,7 +72,7 @@ func (mds *MockDataServer) register() {
 	var nodeID uint64
 	var retry int
 	for retry < 3 {
-		nodeID, err = mds.mc.NodeAPI().AddDataNode(mds.TcpAddr, mds.zoneName, proto.MediaType_SSD)
+		nodeID, err = mds.mc.NodeAPI().AddDataNode(mds.TcpAddr, mds.zoneName, mds.mediaType)
 		if err == nil {
 			break
 		}
