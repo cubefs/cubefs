@@ -24,9 +24,10 @@ import (
 )
 
 const (
-	defaultMaxSizePutOnce  int64 = 1 << 28 // 256MB
-	defaultMaxPartRetry    int   = 3
-	defaultPartConcurrence int   = 4
+	defaultMaxSizePutOnce  int64  = 1 << 28 // 256MB
+	defaultMaxRetry        int    = 3
+	defaultRetryDelayMs    uint32 = 10
+	defaultPartConcurrence int    = 4
 )
 
 type noopBody struct{}
@@ -59,7 +60,8 @@ type Config struct {
 	stream.StreamConfig
 	Limit           stream.LimitConfig `json:"limit"`
 	MaxSizePutOnce  int64              `json:"max_size_put_once"`
-	MaxPartRetry    int                `json:"max_part_retry"`
+	MaxRetry        int                `json:"max_retry"`
+	RetryDelayMs    uint32             `json:"retry_delay_ms"`
 	PartConcurrence int                `json:"part_concurrence"`
 	LogLevel        log.Level          `json:"log_level"`
 	Logger          io.Writer          `json:"-"`
@@ -89,8 +91,8 @@ func New(conf *Config) (acapi.API, error) {
 	}, nil
 }
 
-func (s *sdkHandler) Get(ctx context.Context, args *acapi.GetArgs) (body io.ReadCloser, err error) {
-	if !args.IsValid() || args.Body == nil {
+func (s *sdkHandler) Get(ctx context.Context, args *acapi.GetArgs) (io.ReadCloser, error) {
+	if !args.IsValid() {
 		return nil, errcode.ErrIllegalArguments
 	}
 
@@ -118,7 +120,7 @@ func (s *sdkHandler) Delete(ctx context.Context, args *acapi.DeleteArgs) (failed
 		return nil, nil
 	}
 
-	if err = retry.Timed(3, 10).On(func() error {
+	if err = retry.Timed(s.conf.MaxRetry, s.conf.RetryDelayMs).On(func() error {
 		// access response 2xx even if there has failed locations
 		deleteResp, err1 := s.doDelete(ctx, &acapi.DeleteArgs{Locations: locations})
 		if err1 != nil && rpc.DetectStatusCode(err1) != http.StatusIMUsed {
@@ -135,7 +137,7 @@ func (s *sdkHandler) Delete(ctx context.Context, args *acapi.DeleteArgs) (failed
 	return nil, nil
 }
 
-func (s *sdkHandler) Put(ctx context.Context, args *acapi.PutArgs) (acapi.Location, acapi.HashSumMap, error) {
+func (s *sdkHandler) Put(ctx context.Context, args *acapi.PutArgs) (lc acapi.Location, hm acapi.HashSumMap, err error) {
 	if args == nil {
 		return acapi.Location{}, nil, errcode.ErrIllegalArguments
 	}
@@ -150,7 +152,24 @@ func (s *sdkHandler) Put(ctx context.Context, args *acapi.PutArgs) (acapi.Locati
 
 	ctx = acapi.ClientWithReqidContext(ctx)
 	if args.Size <= s.conf.MaxSizePutOnce {
-		return s.doPutObject(ctx, args)
+		if args.GetBody == nil {
+			return s.doPutObject(ctx, args)
+		}
+
+		i := 0
+		err = retry.Timed(s.conf.MaxRetry, s.conf.RetryDelayMs).On(func() error {
+			if i >= 1 {
+				args.Body, err = args.GetBody()
+				if err != nil {
+					return err
+				}
+			}
+
+			i++
+			lc, hm, err = s.doPutObject(ctx, args)
+			return err
+		})
+		return lc, hm, err
 	}
 	return s.putParts(ctx, args)
 }
@@ -224,31 +243,64 @@ func (s *sdkHandler) deleteBlob(ctx context.Context, args *acapi.DeleteBlobArgs)
 	return nil
 }
 
-func (s *sdkHandler) doGet(ctx context.Context, args *acapi.GetArgs) (resp io.ReadCloser, err error) {
+func (s *sdkHandler) doGet(ctx context.Context, args *acapi.GetArgs) (io.ReadCloser, error) {
 	span := trace.SpanFromContextSafe(ctx)
+	var err error
 
 	span.Debugf("accept sdk request args:%+v", args)
 	if !stream.LocationCrcVerify(&args.Location) {
 		err = errcode.ErrIllegalArguments
 		span.Error("stream get args is invalid ", errors.Detail(err))
-		return
+		return noopBody{}, err
 	}
 
-	writer := s.limiter.Writer(ctx, args.Body)
+	if args.Writer != nil {
+		err = s.zeroCopyGet(ctx, args)
+		return noopBody{}, err
+	}
+
+	r, w := io.Pipe()
+	writer := s.limiter.Writer(ctx, w)
 	transfer, err := s.handler.Get(ctx, writer, args.Location, args.ReadSize, args.Offset)
 	if err != nil {
 		span.Error("stream get prepare failed", errors.Detail(err))
-		return
+		w.Close()
+		return noopBody{}, err
+	}
+
+	go func() {
+		err = transfer()
+		if err != nil {
+			span.Error("stream get transfer failed", errors.Detail(err))
+			w.CloseWithError(err) // Read will return this error
+			return
+		}
+		span.Info("done sdk get request")
+		w.Close() // Read will return io.EOF
+	}()
+
+	return r, nil
+}
+
+// will get blobs by zero copy, this function has different response, no Close, no go routine
+func (s *sdkHandler) zeroCopyGet(ctx context.Context, args *acapi.GetArgs) error {
+	span := trace.SpanFromContextSafe(ctx)
+
+	writer := s.limiter.Writer(ctx, args.Writer)
+	transfer, err := s.handler.Get(ctx, writer, args.Location, args.ReadSize, args.Offset)
+	if err != nil {
+		span.Error("stream get prepare failed", errors.Detail(err))
+		return err
 	}
 
 	err = transfer()
 	if err != nil {
 		span.Error("stream get transfer failed", errors.Detail(err))
-		return
+		return err
 	}
 	span.Info("done sdk get request")
 
-	return io.NopCloser(args.Body), nil
+	return nil
 }
 
 func (s *sdkHandler) doDelete(ctx context.Context, args *acapi.DeleteArgs) (resp acapi.DeleteResp, err error) {
@@ -614,7 +666,7 @@ func (s *sdkHandler) putParts(ctx context.Context, args *acapi.PutArgs) (acapi.L
 			}
 		}
 
-		tryTimes := s.conf.MaxPartRetry
+		tryTimes := s.conf.MaxRetry
 		for {
 			if len(loc.Blobs) > acapi.MaxLocationBlobs {
 				releaseBuffer(parts)
@@ -660,7 +712,7 @@ func (s *sdkHandler) putParts(ctx context.Context, args *acapi.PutArgs) (acapi.L
 			if tryTimes > 0 { // has retry setting
 				if tryTimes == 1 {
 					releaseBuffer(parts)
-					span.Error("exceed the max retry limit", s.conf.MaxPartRetry)
+					span.Error("exceed the max retry limit", s.conf.MaxRetry)
 					return acapi.Location{}, nil, errcode.ErrUnexpected
 				}
 				tryTimes--
@@ -668,7 +720,7 @@ func (s *sdkHandler) putParts(ctx context.Context, args *acapi.PutArgs) (acapi.L
 
 			var restPartsResp *acapi.AllocResp
 			// alloc the rest parts
-			err = retry.Timed(3, 10).RuptOn(func() (bool, error) {
+			err = retry.Timed(s.conf.MaxRetry, s.conf.RetryDelayMs).RuptOn(func() (bool, error) {
 				resp, err1 := s.Alloc(ctx, &acapi.AllocArgs{
 					Size:            remainSize,
 					BlobSize:        loc.BlobSize,
@@ -738,7 +790,8 @@ func httpError(err error) error {
 
 func fixConfig(cfg *Config) {
 	defaulter.LessOrEqual(&cfg.MaxSizePutOnce, defaultMaxSizePutOnce)
-	defaulter.Less(&cfg.MaxPartRetry, defaultMaxPartRetry)
+	defaulter.LessOrEqual(&cfg.MaxRetry, defaultMaxRetry)
+	defaulter.LessOrEqual(&cfg.RetryDelayMs, defaultRetryDelayMs)
 	defaulter.LessOrEqual(&cfg.PartConcurrence, defaultPartConcurrence)
 	log.SetOutputLevel(cfg.LogLevel)
 	if cfg.Logger != nil {

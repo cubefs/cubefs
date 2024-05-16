@@ -41,6 +41,12 @@ func TestSdkBlobstore_New(t *testing.T) {
 	conf.IDC = "xx"
 	_, err := New(conf)
 	require.Error(t, err)
+	require.Contains(t, err.Error(), "consul can not be empty")
+
+	conf.ClusterConfig.ConsulAgentAddr = "xxx"
+	_, err = New(conf)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "cluster")
 }
 
 func TestSdkHandler_Delete(t *testing.T) {
@@ -115,51 +121,84 @@ func TestSdkHandler_Get(t *testing.T) {
 	require.NotNil(t, err)
 	require.ErrorIs(t, err, errcode.ErrIllegalArguments)
 
-	ret, err := hd.Get(ctx, &acapi.GetArgs{Body: bytes.NewBuffer([]byte{})})
+	// get size 0
+	ret, err := hd.Get(ctx, &acapi.GetArgs{})
 	require.NoError(t, err)
 	retBuf := make([]byte, 2)
 	n, _ := ret.Read(retBuf)
 	require.Equal(t, 0, n)
 
+	// args error
 	args := &acapi.GetArgs{
 		ReadSize: 1,
 		Location: acapi.Location{
 			Size: 2,
 		},
-		Body: bytes.NewBuffer([]byte{}),
 	}
 	_, err = hd.Get(ctx, args)
 	require.NotNil(t, err)
 	require.ErrorIs(t, err, errcode.ErrIllegalArguments)
 
+	// stream get error, get nil
 	crc, _ := stream.LocationCrcCalculate(&args.Location)
 	args.Location.Crc = crc
 	hd.handler.(*mocks.MockStreamHandler).EXPECT().Get(any, any, any, any, any).Return(nil, errMock)
 	args.ReadSize = 2
-	_, err = hd.Get(ctx, args)
-	require.NotNil(t, err)
-	require.ErrorIs(t, err, errMock)
-
-	hd.handler.(*mocks.MockStreamHandler).EXPECT().Get(any, any, any, any, any).Return(func() error { return errMock }, nil)
 	ret, err = hd.Get(ctx, args)
 	require.NotNil(t, err)
 	require.ErrorIs(t, err, errMock)
-	require.Nil(t, ret)
+	n, _ = ret.Read(retBuf)
+	require.Equal(t, 0, n)
+
+	// stream get error, do transfer error
+	hd.handler.(*mocks.MockStreamHandler).EXPECT().Get(any, any, any, any, any).Return(func() error { return errMock }, nil)
+	ret, err = hd.Get(ctx, args)
+	require.NoError(t, err)
+	n, err = ret.Read(retBuf)
+	require.NotNil(t, err)
+	require.Equal(t, 0, n)
 
 	hd.handler.(*mocks.MockStreamHandler).EXPECT().Get(any, any, any, any, any).Return(func() error { return nil }, nil)
 	ret, err = hd.Get(ctx, args)
 	require.NoError(t, err)
-	retBuf = make([]byte, args.ReadSize*2)
 	n, _ = ret.Read(retBuf)
 	require.Equal(t, 0, n)
 
+	// ok
 	data := "test read"
 	args.ReadSize = uint64(len(data))
 	args.Location.Size = args.ReadSize
 	crc, _ = stream.LocationCrcCalculate(&args.Location)
 	args.Location.Crc = crc
-	args.Body = bytes.NewBuffer([]byte{})
-	hd.handler.(*mocks.MockStreamHandler).EXPECT().Get(any, args.Body, any, any, any).DoAndReturn(
+	rd, wr := io.Pipe()
+	hd.handler.(*mocks.MockStreamHandler).EXPECT().Get(any, any, any, any, any).DoAndReturn(
+		func(ctx context.Context, w io.Writer, location acapi.Location, readSize, offset uint64) (func() error, error) {
+			w = wr
+			if readSize > 0 && readSize < 1024 {
+				return func() error {
+					_, err1 := w.Write([]byte(data))
+					return err1
+				}, nil
+			}
+			return nil, errMock
+		})
+	_, err = hd.Get(ctx, args)
+	require.NoError(t, err)
+	retBuf = make([]byte, args.ReadSize*2)
+	ret = rd
+	n, _ = ret.Read(retBuf)
+	require.Equal(t, args.ReadSize, uint64(n))
+	require.Equal(t, data, string(retBuf[:n]))
+
+	// ok, zero copy
+	data = "test read"
+	args.ReadSize = uint64(len(data))
+	args.Location.Size = args.ReadSize
+	crc, _ = stream.LocationCrcCalculate(&args.Location)
+	args.Location.Crc = crc
+	buff := bytes.NewBuffer([]byte{})
+	args.Writer = buff
+	hd.handler.(*mocks.MockStreamHandler).EXPECT().Get(any, args.Writer, any, any, any).DoAndReturn(
 		func(ctx context.Context, w io.Writer, location acapi.Location, readSize, offset uint64) (func() error, error) {
 			if readSize > 0 && readSize < 1024 {
 				return func() error {
@@ -171,10 +210,9 @@ func TestSdkHandler_Get(t *testing.T) {
 		})
 	ret, err = hd.Get(ctx, args)
 	require.NoError(t, err)
-	retBuf = make([]byte, args.ReadSize*2)
+	require.Equal(t, data, buff.String())
 	n, _ = ret.Read(retBuf)
-	require.Equal(t, args.ReadSize, uint64(n))
-	require.Equal(t, data, string(retBuf[:n]))
+	require.Equal(t, 0, n)
 }
 
 func TestSdkHandler_Put(t *testing.T) {
@@ -197,14 +235,39 @@ func TestSdkHandler_Put(t *testing.T) {
 
 	args := &acapi.PutArgs{Size: 2}
 
+	// stream put error
 	hd.handler.(*mocks.MockStreamHandler).EXPECT().Put(any, any, any, any).Return(nil, errMock)
 	loc, hash, err = hd.Put(ctx, args)
 	require.NotNil(t, err)
 	require.Equal(t, uint64(0), loc.Size)
 	require.Equal(t, 0, len(hash))
 
+	// ok
 	args.Hashes = 1
 	mockLoc := acapi.Location{Size: 2}
+	hd.handler.(*mocks.MockStreamHandler).EXPECT().Put(any, any, any, any).Return(&mockLoc, nil)
+	loc, hash, err = hd.Put(ctx, args)
+	require.NoError(t, err)
+	require.Equal(t, mockLoc.Size, loc.Size)
+	require.Equal(t, int(args.Hashes), len(hash))
+
+	// handler put error, retry 3 times
+	args.GetBody = func() (io.ReadCloser, error) {
+		return nil, nil
+	}
+	hd.handler.(*mocks.MockStreamHandler).EXPECT().Put(any, any, any, any).Return(nil, errMock).Times(3)
+	loc, hash, err = hd.Put(ctx, args)
+	require.NotNil(t, err)
+	require.Equal(t, uint64(0), loc.Size)
+	require.Equal(t, 0, len(hash))
+
+	// retry ok
+	data := make([]byte, 8)
+	args.GetBody = func() (io.ReadCloser, error) {
+		buff := bytes.NewBuffer(data)
+		return io.NopCloser(buff), nil
+	}
+	hd.handler.(*mocks.MockStreamHandler).EXPECT().Put(any, any, any, any).Return(nil, errMock)
 	hd.handler.(*mocks.MockStreamHandler).EXPECT().Put(any, any, any, any).Return(&mockLoc, nil)
 	loc, hash, err = hd.Put(ctx, args)
 	require.NoError(t, err)
