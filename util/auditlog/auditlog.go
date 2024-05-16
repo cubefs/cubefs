@@ -335,19 +335,19 @@ func (a *Audit) formatMetaLog(ipAddr, hostName, op, src, dst string, err error, 
 }
 
 // NOTE: master audit logs
-func (a *Audit) formatMasterAudit(op string, message string, err error) (str string) {
+func (a *Audit) formatMasterAudit(op, msg string, err error) (str string) {
 	var errStr string
 	if err != nil {
 		errStr = err.Error()
 	} else {
 		errStr = "nil"
 	}
-	str = fmt.Sprintf("%v, %v, %v, ERR: %v", a.formatCommonHeader(), op, message, errStr)
+	str = fmt.Sprintf("%v, %v, %v, ERR: %v", a.formatCommonHeader(), op, msg, errStr)
 	return
 }
 
-func (a *Audit) formatMasterLog(op string, message string, err error) {
-	if entry := a.formatMasterAudit(op, message, err); entry != "" {
+func (a *Audit) formatMasterLog(op, msg string, err error) {
+	if entry := a.formatMasterAudit(op, msg, err); entry != "" {
 		if a.prefix != nil {
 			entry = fmt.Sprintf("%s%s", a.prefix.String(), entry)
 		}
@@ -465,23 +465,13 @@ func LogTxOp(clientAddr, volume, op, txId string, err error, latency int64) {
 	gAdt.LogTxOp(clientAddr, volume, op, txId, err, latency)
 }
 
-func LogResetDpDecommission(status string, src string, disk string, dpId uint64, dst string) {
+func LogMasterOp(op, msg string, err error) {
 	gAdtMutex.RLock()
 	defer gAdtMutex.RUnlock()
 	if gAdt == nil {
 		return
 	}
-	gAdt.LogResetDpDecommission(status, src, disk, dpId, dst)
-}
-
-func LogChangeDpDecommission(oldStatus string, status string, src string, disk string, dpId uint64, dst string) {
-	gAdtMutex.RLock()
-	defer gAdtMutex.RUnlock()
-	if gAdt == nil {
-		return
-	}
-
-	gAdt.LogChangeDpDecommission(oldStatus, status, src, disk, dpId, dst)
+	gAdt.formatMasterLog(op, msg, err)
 }
 
 func ResetWriterBufferSize(size int) {
