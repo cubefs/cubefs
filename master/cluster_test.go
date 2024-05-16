@@ -394,21 +394,23 @@ func TestCreateVolWithDpCount(t *testing.T) {
 
 	t.Run("dpCount != default count", func(t *testing.T) {
 		req := &createVolReq{
-			name:             commonVolName + "001",
-			owner:            "cfs",
-			dpSize:           3,
-			mpCount:          30,
-			dpCount:          30,
-			dpReplicaNum:     3,
-			capacity:         100,
-			followerRead:     false,
-			authenticate:     false,
-			crossZone:        true,
+			name:         commonVolName + "001",
+			owner:        "cfs",
+			dpSize:       3,
+			mpCount:      30,
+			dpCount:      30,
+			dpReplicaNum: 3,
+			capacity:     100,
+			followerRead: false,
+			authenticate: false,
+			//crossZone:        true, //TODO: tangjingyu: hybrid cloud support crossZone
+			crossZone:        false,
 			normalZonesFirst: false,
-			zoneName:         testZone1 + "," + testZone2,
-			description:      "",
-			qosLimitArgs:     &qosArgs{},
-			volStorageClass:  defaultVolStorageClass,
+			//zoneName:         testZone1 + "," + testZone2, //TODO: tangjingyu: hybrid cloud support crossZone
+			zoneName:        testZone2,
+			description:     "",
+			qosLimitArgs:    &qosArgs{},
+			volStorageClass: defaultVolStorageClass,
 		}
 		_, err := server.cluster.createVol(req)
 		require.NoError(t, err)

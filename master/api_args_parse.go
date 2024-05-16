@@ -784,7 +784,7 @@ type createVolReq struct {
 
 	//hybrid cloud
 	volStorageClass     uint32
-	allowedStorageClass []uint32 // format is uint32 Separated by commas: "StorageClass1, StorageClass2, ..."
+	allowedStorageClass []uint32
 	cacheDpStorageClass uint32
 }
 
