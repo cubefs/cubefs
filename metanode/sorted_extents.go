@@ -369,7 +369,7 @@ func (se *SortedExtents) AppendWithCheck(inodeID uint64, ek proto.ExtentKey, add
 	endOffset := ek.FileOffset + uint64(ek.Size)
 	se.Lock()
 	defer se.Unlock()
-	log.LogDebugf("action[AppendWithCheck] ek [%v], clientDiscardExts [%v] se.eks [%v]", ek, clientDiscardExts, se.eks)
+	// log.LogDebugf("action[AppendWithCheck] ek [%v], clientDiscardExts [%v] se.eks [%v]", ek, clientDiscardExts, se.eks)
 	if len(se.eks) <= 0 {
 		se.eks = append(se.eks, ek)
 		return
@@ -377,7 +377,7 @@ func (se *SortedExtents) AppendWithCheck(inodeID uint64, ek proto.ExtentKey, add
 	idx := len(se.eks) - 1
 	tailKey := &se.eks[idx]
 
-	log.LogDebugf("action[AppendWithCheck] ek [%v],tailKey %v, clientDiscardExts [%v] se.eks [%v]", ek, tailKey, clientDiscardExts, se.eks)
+	// log.LogDebugf("action[AppendWithCheck] ek [%v],tailKey %v, clientDiscardExts [%v] se.eks [%v]", ek, tailKey, clientDiscardExts, se.eks)
 	if ok := se.CheckAndAddRef(tailKey, &ek, addRefFunc); ok {
 		se.eks = append(se.eks, ek)
 		return
