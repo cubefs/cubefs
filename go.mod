@@ -5,6 +5,7 @@ go 1.17
 replace (
 	github.com/jacobsa/fuse => ./depends/jacobsa/fuse
 	github.com/spf13/cobra => ./depends/spf13/cobra
+	github.com/tecbot/gorocksdb v0.0.0-20191217155057-f0fad39f321c => github.com/Cloudstriff/gorocksdb v1.0.1
 )
 
 require (

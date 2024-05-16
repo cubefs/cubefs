@@ -918,6 +918,14 @@ func (opts *Options) SetStatsDumpPeriodSec(value uint) {
 	C.rocksdb_options_set_stats_dump_period_sec(opts.c, C.uint(value))
 }
 
+// SetStatsPersistPeriodSec sets the stats persist period in seconds.
+//
+// If not zero, persist stats to LOG every stats_persist_period_sec
+// Default: 300 (5 min)
+func (opts *Options) SetStatsPersistPeriodSec(value uint) {
+	C.rocksdb_options_set_stats_persist_period_sec(opts.c, C.uint(value))
+}
+
 // SetAdviseRandomOnOpen specifies whether we will hint the underlying
 // file system that the file access pattern is random, when a sst file is opened.
 // Default: true
@@ -1194,6 +1202,55 @@ func (opts *Options) SetMemTablePrefixBloomSizeRatio(value float64) {
 // Default: false
 func (opts *Options) SetOptimizeFiltersForHits(value bool) {
 	C.rocksdb_options_set_optimize_filters_for_hits(opts.c, C.int(btoi(value)))
+}
+
+// SetMaxSubCompactions set max_subcompactions
+// This value represents the maximum number of threads that will
+// concurrently perform a compaction job by breaking it into multiple,
+// smaller ones that are run simultaneously.
+// Default: 1 (i.e. no subcompactions)
+//
+// Dynamically changeable through SetDBOptions() API.
+func (opts *Options) SetMaxSubCompactions(value int) {
+	C.rocksdb_options_set_max_subcompactions(opts.c, C.uint32_t(value))
+}
+
+// SetWriteBufferManager set write_bufffer_manager for the option
+// The memory usage of memtable will report to this object. The same object
+// can be passed into multiple DBs and it will track the sum of size of all
+// the DBs. If the total size of all live memtables of all the DBs exceeds
+// a limit, a flush will be triggered in the next DB to which the next write
+// is issued.
+//
+// If the object is only passed to one DB, the behavior is the same as
+// db_write_buffer_size. When write_buffer_manager is set, the value set will
+// override db_write_buffer_size.
+//
+// This feature is disabled by default. Specify a non-zero value
+// to enable it.
+//
+// Default: null
+func (opts *Options) SetWriteBufferManager(w *WriteBufferManager) {
+	C.rocksdb_options_set_write_buffer_manager(opts.c, w.c)
+}
+
+// SetSstFileManager set sst_file_manager for the option
+// Use to track SST files and control their file deletion rate.
+//
+// Features:
+//  - Throttle the deletion rate of the SST files.
+//  - Keep track the total size of all SST files.
+//  - Set a maximum allowed space limit for SST files that when reached
+//    the DB wont do any further flushes or compactions and will set the
+//    background error.
+//  - Can be shared between multiple dbs.
+// Limitations:
+//  - Only track and throttle deletes of SST files in
+//    first db_path (db_name if db_paths is empty).
+//
+// Default: null
+func (opts *Options) SetSstFileManager(s *SstFileManager) {
+	C.rocksdb_options_set_sst_file_manager(opts.c, s.c)
 }
 
 // Destroy deallocates the Options object.

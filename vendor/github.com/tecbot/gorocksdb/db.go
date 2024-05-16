@@ -674,10 +674,53 @@ func (db *DB) SetOptions(keys, values []string) error {
 		cKeys[i] = C.CString(keys[i])
 		cValues[i] = C.CString(values[i])
 	}
+	defer func() {
+		for i := range cKeys {
+			C.free(unsafe.Pointer(cKeys[i]))
+			C.free(unsafe.Pointer(cValues[i]))
+		}
+	}()
 
 	var cErr *C.char
 
 	C.rocksdb_set_options(
+		db.c,
+		C.int(num_keys),
+		&cKeys[0],
+		&cValues[0],
+		&cErr,
+	)
+	if cErr != nil {
+		defer C.rocksdb_free(unsafe.Pointer(cErr))
+		return errors.New(C.GoString(cErr))
+	}
+	return nil
+}
+
+// SetDBOptions dynamically changes options through the SetDBOptions API.
+func (db *DB) SetDBOptions(keys, values []string) error {
+	num_keys := len(keys)
+
+	if num_keys == 0 {
+		return nil
+	}
+
+	cKeys := make([]*C.char, num_keys)
+	cValues := make([]*C.char, num_keys)
+	for i := range keys {
+		cKeys[i] = C.CString(keys[i])
+		cValues[i] = C.CString(values[i])
+	}
+	defer func() {
+		for i := range cKeys {
+			C.free(unsafe.Pointer(cKeys[i]))
+			C.free(unsafe.Pointer(cValues[i]))
+		}
+	}()
+
+	var cErr *C.char
+
+	C.rocksdb_set_dboptions(
 		db.c,
 		C.int(num_keys),
 		&cKeys[0],
@@ -745,6 +788,17 @@ func (db *DB) CompactRangeCF(cf *ColumnFamilyHandle, r Range) {
 func (db *DB) Flush(opts *FlushOptions) error {
 	var cErr *C.char
 	C.rocksdb_flush(db.c, opts.c, &cErr)
+	if cErr != nil {
+		defer C.rocksdb_free(unsafe.Pointer(cErr))
+		return errors.New(C.GoString(cErr))
+	}
+	return nil
+}
+
+// FlushCF triggers a manuel column family flush for the database.
+func (db *DB) FlushCF(opts *FlushOptions, cf *ColumnFamilyHandle) error {
+	var cErr *C.char
+	C.rocksdb_flush_cf(db.c, opts.c, cf.c, &cErr)
 	if cErr != nil {
 		defer C.rocksdb_free(unsafe.Pointer(cErr))
 		return errors.New(C.GoString(cErr))
