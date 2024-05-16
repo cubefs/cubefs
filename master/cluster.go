@@ -2113,7 +2113,7 @@ func (c *Cluster) decommissionSingleDp(dp *DataPartition, newAddr, offlineAddr s
 	}()
 	// 1. add new replica first
 	if dp.GetSpecialReplicaDecommissionStep() == SpecialDecommissionEnter {
-		if err = c.addDataReplica(dp, newAddr, true, false); err != nil {
+		if err = c.addDataReplica(dp, newAddr, false); err != nil {
 			err = fmt.Errorf("action[decommissionSingleDp] dp %v addDataReplica fail err %v", dp.PartitionID, err)
 			goto ERR
 		}
@@ -2338,7 +2338,7 @@ func (c *Cluster) autoAddDataReplica(dp *DataPartition) (success bool, err error
 	}
 
 	newAddr = targetHosts[0]
-	if err = c.addDataReplica(dp, newAddr, true, false); err != nil {
+	if err = c.addDataReplica(dp, newAddr, false); err != nil {
 		goto errHandler
 	}
 
@@ -2487,7 +2487,7 @@ func (c *Cluster) migrateDataPartition(srcAddr, targetAddr string, dp *DataParti
 		if err = c.removeDataReplica(dp, srcAddr, false, raftForce); err != nil {
 			goto errHandler
 		}
-		if err = c.addDataReplica(dp, newAddr, true, false); err != nil {
+		if err = c.addDataReplica(dp, newAddr, false); err != nil {
 			goto errHandler
 		}
 
@@ -2574,7 +2574,7 @@ func (c *Cluster) validateDecommissionDataPartition(dp *DataPartition, offlineAd
 	return
 }
 
-func (c *Cluster) addDataReplica(dp *DataPartition, addr string, validate bool, ignoreDecommissionDisk bool) (err error) {
+func (c *Cluster) addDataReplica(dp *DataPartition, addr string, ignoreDecommissionDisk bool) (err error) {
 	defer func() {
 		if err != nil {
 			log.LogErrorf("action[addDataReplica],vol[%v],dp %v ,err[%v]", dp.VolName, dp.PartitionID, err)
@@ -2585,16 +2585,6 @@ func (c *Cluster) addDataReplica(dp *DataPartition, addr string, validate bool, 
 
 	log.LogInfof("action[addDataReplica]  dp %v enter %v add replica %v", dp.PartitionID, ignoreDecommissionDisk, addr)
 
-	if validate {
-		if dp.isSpecialReplicaCnt() && len(dp.Hosts) > int(dp.ReplicaNum) {
-			return fmt.Errorf("action[addDataReplica]special replica dp(%v) hosts(%v) has redundant replica",
-				dp.PartitionID, dp.Hosts)
-		}
-		if !dp.isSpecialReplicaCnt() && len(dp.Hosts) > int(dp.ReplicaNum)-1 {
-			return fmt.Errorf("action[addDataReplica]3 replica  dp(%v) hosts(%v)  has redundant replica",
-				dp.PartitionID, dp.Hosts)
-		}
-	}
 	dp.addReplicaMutex.Lock()
 	defer dp.addReplicaMutex.Unlock()
 
