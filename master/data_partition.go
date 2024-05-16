@@ -1099,19 +1099,20 @@ func (partition *DataPartition) MarkDecommissionStatus(srcAddr, dstAddr, srcDisk
 	if partition.needManualFix() && migrateType == AutoDecommission {
 		return proto.ErrAllReplicaUnavailable
 	}
+	// TODO-chi:can delete this blok
 	// 1 or 2 replica can always add new replica if retrying decommission
 	// for 3 replica,
-	if partition.isSpecialReplicaCnt() && len(partition.Hosts) >= int(partition.ReplicaNum+1) {
-		return errors.NewErrorf("special replica dp[%v] host length(%v) is different from replicaNum(%v), "+
-			"wait for auto reduce replica",
-			partition.PartitionID, len(partition.Hosts), partition.ReplicaNum)
-	}
+	// if partition.isSpecialReplicaCnt() && len(partition.Hosts) >= int(partition.ReplicaNum+1) {
+	//	return errors.NewErrorf("special replica dp[%v] host length(%v) is different from replicaNum(%v), "+
+	//		"wait for auto reduce replica",
+	//		partition.PartitionID, len(partition.Hosts), partition.ReplicaNum)
+	//}
 	status := partition.GetDecommissionStatus()
 	if err = partition.canMarkDecommission(status, ns); err != nil {
-		log.LogWarnf("action[MarkDecommissionStatus] dp[%v] cannot make decommission:status[%v] inDecommission[%v]",
-			partition.PartitionID, status, ns.processDataPartitionDecommission(partition.PartitionID))
-		return errors.NewErrorf("dp[%v] cannot make decommission:status[%v] inDecommission[%v]",
-			partition.PartitionID, status, ns.processDataPartitionDecommission(partition.PartitionID))
+		log.LogWarnf("action[MarkDecommissionStatus] dp[%v] cannot make decommission:%v",
+			partition.PartitionID, err)
+		return errors.NewErrorf("dp[%v] cannot make decommission err:%v",
+			partition.PartitionID, err)
 	}
 	// for auto decommission, need raftForce to delete src if no leader
 	if migrateType == AutoDecommission {
@@ -1341,7 +1342,7 @@ func (partition *DataPartition) Decommission(c *Cluster) bool {
 		if err = c.removeDataReplica(partition, srcAddr, false, partition.DecommissionRaftForce); err != nil {
 			goto errHandler
 		}
-		if err = c.addDataReplica(partition, targetAddr, true, false); err != nil {
+		if err = c.addDataReplica(partition, targetAddr, false); err != nil {
 			goto errHandler
 		}
 		newReplica, _ := partition.getReplica(targetAddr)
@@ -1474,7 +1475,7 @@ func (partition *DataPartition) rollback(c *Cluster) {
 	defer func() {
 		c.syncUpdateDataPartition(partition)
 		auditlog.LogMasterOp("DataPartitionDecommissionRollback",
-			fmt.Sprintf("dp %v rollback", partition.PartitionID), err)
+			fmt.Sprintf("dp %v rollback", partition.decommissionInfo()), err)
 	}()
 	// delete it from BadDataPartitionIds
 	err = c.removeDPFromBadDataPartitionIDs(partition.DecommissionSrcAddr, partition.DecommissionSrcDiskPath, partition.PartitionID)
@@ -1895,7 +1896,7 @@ func (partition *DataPartition) needRollback(c *Cluster) bool {
 		}
 		c.syncUpdateDataPartition(partition)
 		auditlog.LogMasterOp("DataPartitionDecommissionRollback",
-			fmt.Sprintf("dp %v rollback reach max times", partition.PartitionID), err)
+			fmt.Sprintf("dp %v rollback reach max times", partition.decommissionInfo()), err)
 		return false
 	}
 	return true
@@ -1918,6 +1919,9 @@ func (partition *DataPartition) removeReplicaByForce(c *Cluster, peerAddr string
 	log.LogInfof("action[removeReplicaByForce]dp[%v] rollback to del peer %v force %v", partition.PartitionID, peerAddr, force)
 	err := c.removeDataReplica(partition, peerAddr, false, force)
 	if err != nil {
+		// to ensure hosts for master is always correct
+		// redundant replica can be deleted by checkReplicaMeta
+		partition.removeHostByForce(c, peerAddr)
 		return err
 	}
 	return nil
@@ -2046,4 +2050,35 @@ func (partition *DataPartition) decommissionInfo() string {
 		partition.Hosts, partition.DecommissionRetry, partition.isRecover, partition.GetDecommissionStatus(),
 		partition.GetSpecialReplicaDecommissionStep(), partition.DecommissionNeedRollback,
 		partition.DecommissionNeedRollbackTimes, partition.DecommissionRaftForce)
+}
+
+func (partition *DataPartition) removeHostByForce(c *Cluster, peerAddr string) {
+	dataNode, err := c.dataNode(peerAddr)
+	if err != nil {
+		log.LogWarnf("action[removeHostByForce]dp %v find dataNode %v failed:%v",
+			partition.PartitionID, peerAddr, err)
+		return
+	}
+	removePeer := proto.Peer{ID: dataNode.ID, Addr: peerAddr}
+	if err = c.removeHostMember(partition, removePeer); err != nil {
+		log.LogWarnf("action[removeHostByForce]dp %v remove host %v failed:%v",
+			partition.PartitionID, peerAddr, err)
+		return
+	}
+	// data replica would be mark expired when dataNode reboot
+	leaderAddr := partition.getLeaderAddrWithLock()
+	if leaderAddr != peerAddr {
+		return
+	}
+	if dataNode, err = c.dataNode(partition.Hosts[0]); err != nil {
+		log.LogWarnf("action[removeHostByForce]dp %v find dataNode %v failed:%v",
+			partition.PartitionID, partition.Hosts[0], err)
+		return
+	}
+	if err = partition.tryToChangeLeader(c, dataNode); err != nil {
+		log.LogWarnf("action[removeHostByForce]dp %v tryToChangeLeader %v failed:%v",
+			partition.PartitionID, partition.Hosts[0], err)
+		return
+	}
+	return
 }
