@@ -16,6 +16,7 @@ package master
 
 import (
 	"fmt"
+	"github.com/cubefs/cubefs/util/auditlog"
 	"math"
 	"strings"
 	"sync"
@@ -24,7 +25,6 @@ import (
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util"
-	"github.com/cubefs/cubefs/util/auditlog"
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/cubefs/cubefs/util/strutil"
@@ -1107,7 +1107,7 @@ func (partition *DataPartition) MarkDecommissionStatus(srcAddr, dstAddr, srcDisk
 			partition.PartitionID, len(partition.Hosts), partition.ReplicaNum)
 	}
 	status := partition.GetDecommissionStatus()
-	if !partition.canMarkDecommission(status, ns) {
+	if err = partition.canMarkDecommission(status, ns); err != nil {
 		log.LogWarnf("action[MarkDecommissionStatus] dp[%v] cannot make decommission:status[%v] inDecommission[%v]",
 			partition.PartitionID, status, ns.processDataPartitionDecommission(partition.PartitionID))
 		return errors.NewErrorf("dp[%v] cannot make decommission:status[%v] inDecommission[%v]",
@@ -1199,10 +1199,6 @@ func (partition *DataPartition) MarkDecommissionStatus(srcAddr, dstAddr, srcDisk
 }
 
 func (partition *DataPartition) SetDecommissionStatus(status uint32) {
-	if status == DecommissionFail || status == DecommissionSuccess {
-		auditlog.LogChangeDpDecommission(GetDecommissionStatusMessage(partition.GetDecommissionStatus()), GetDecommissionStatusMessage(status), partition.DecommissionSrcAddr, partition.DecommissionSrcDiskPath, partition.PartitionID, partition.DecommissionDstAddr)
-	}
-
 	log.LogDebugf("[SetDecommissionStatus] set dp(%v) decommission status to status(%v)", partition.PartitionID, status)
 	atomic.StoreUint32(&partition.DecommissionStatus, status)
 }
@@ -1364,10 +1360,10 @@ func (partition *DataPartition) Decommission(c *Cluster) bool {
 		}
 		return true
 	} else {
-		log.LogInfof("action[decommissionDataPartition]clusterID[%v] dp[%v] "+
-			"on node:%v offline success,newHost[%v],PersistenceHosts:[%v], SingleDecommissionStatus[%v] DecommissionRaftForce %v prepare consume[%v]seconds",
-			c.Name, partition.PartitionID, srcAddr, targetAddr, partition.Hosts, partition.GetSpecialReplicaDecommissionStep(),
-			partition.DecommissionRaftForce, time.Since(begin).Seconds())
+		msg := fmt.Sprintf("clusterID[%v] info[%v] offline success: consume[%v]seconds",
+			c.Name, partition.decommissionInfo(), time.Since(begin).Seconds())
+		log.LogInfof("action[decommissionDataPartition] %v", msg)
+		auditlog.LogMasterOp("DataPartitionDecommission", msg, nil)
 		return true
 	}
 
@@ -1409,14 +1405,10 @@ errHandler:
 			}
 		}
 	}
-	msg = fmt.Sprintf("clusterID[%v] vol[%v] dp[%v]  on Node:%v  "+
-		"to newHost:%v Err:%v, PersistenceHosts:%v ,retry %v,status %v, isRecover %v SingleDecommissionStatus[%v]"+
-		" DecommissionNeedRollback[%v] DecommissionNeedRollbackTimes %v DecommissionRaftForce %v consume[%v]seconds",
-		c.Name, partition.VolName, partition.PartitionID, srcAddr, targetAddr, err.Error(),
-		partition.Hosts, partition.DecommissionRetry, partition.GetDecommissionStatus(),
-		partition.isRecover, partition.GetSpecialReplicaDecommissionStep(), partition.DecommissionNeedRollback,
-		partition.DecommissionNeedRollbackTimes, partition.DecommissionRaftForce, time.Since(begin).Seconds())
+	msg = fmt.Sprintf("clusterID[%v] info[%v] offline failed:%v consume[%v]seconds",
+		c.Name, partition.decommissionInfo(), err.Error(), time.Since(begin).Seconds())
 	log.LogWarnf("action[decommissionDataPartition] %s", msg)
+	auditlog.LogMasterOp("DataPartitionDecommission", msg, err)
 	partition.DecommissionErrorMessage = err.Error()
 	return false
 }
@@ -1462,10 +1454,6 @@ func (partition *DataPartition) PauseDecommission(c *Cluster) bool {
 }
 
 func (partition *DataPartition) ResetDecommissionStatus() {
-	if partition.GetDecommissionStatus() != DecommissionInitial {
-		auditlog.LogResetDpDecommission(GetDecommissionStatusMessage(partition.GetDecommissionStatus()), partition.DecommissionSrcAddr, partition.DecommissionSrcDiskPath, partition.PartitionID, partition.DecommissionDstAddr)
-	}
-
 	partition.DecommissionDstAddr = ""
 	partition.DecommissionSrcAddr = ""
 	partition.DecommissionRetry = 0
@@ -1482,9 +1470,14 @@ func (partition *DataPartition) ResetDecommissionStatus() {
 }
 
 func (partition *DataPartition) rollback(c *Cluster) {
-	defer c.syncUpdateDataPartition(partition)
+	var err error
+	defer func() {
+		c.syncUpdateDataPartition(partition)
+		auditlog.LogMasterOp("DataPartitionDecommissionRollback",
+			fmt.Sprintf("dp %v rollback", partition.PartitionID), err)
+	}()
 	// delete it from BadDataPartitionIds
-	err := c.removeDPFromBadDataPartitionIDs(partition.DecommissionSrcAddr, partition.DecommissionSrcDiskPath, partition.PartitionID)
+	err = c.removeDPFromBadDataPartitionIDs(partition.DecommissionSrcAddr, partition.DecommissionSrcDiskPath, partition.PartitionID)
 	if err != nil {
 		log.LogWarnf("action[rollback]dp[%v] rollback to del from bad dataPartitionIDs failed:%v", partition.PartitionID, err)
 	}
@@ -1561,24 +1554,25 @@ func (partition *DataPartition) checkConsumeToken() bool {
 }
 
 // only mark stop status or initial
-func (partition *DataPartition) canMarkDecommission(status uint32, ns *nodeSet) bool {
+func (partition *DataPartition) canMarkDecommission(status uint32, ns *nodeSet) error {
 	// dp may not be reset decommission status from last decommission
 	//if partition.DecommissionTerm != term {
 	//	return true
 	//}
 	// make sure dp release the token
+	rollbackTimes := atomic.LoadUint32(&partition.DecommissionNeedRollbackTimes)
 	if ns.processDataPartitionDecommission(partition.PartitionID) {
-		return false
+		return errors.NewErrorf("dp[%v]cannot mark decommission for decommission progress is not ended")
 	}
 	if status == DecommissionInitial ||
 		status == DecommissionPause {
-		return true
+		return nil
 	}
-	if status == DecommissionFail &&
-		atomic.LoadUint32(&partition.DecommissionNeedRollbackTimes) >= defaultDecommissionRollbackLimit {
-		return true
+	if status == DecommissionFail && rollbackTimes >= defaultDecommissionRollbackLimit {
+		return nil
 	}
-	return false
+	return errors.NewErrorf("dp[%v]cannot mark decommission: status %v rollbackTimes %v",
+		partition.PartitionID, status, rollbackTimes)
 }
 
 func (partition *DataPartition) canAddToDecommissionList() bool {
@@ -1900,6 +1894,8 @@ func (partition *DataPartition) needRollback(c *Cluster) bool {
 				partition.PartitionID, partition.DecommissionDstAddr, err)
 		}
 		c.syncUpdateDataPartition(partition)
+		auditlog.LogMasterOp("DataPartitionDecommissionRollback",
+			fmt.Sprintf("dp %v rollback reach max times", partition.PartitionID), err)
 		return false
 	}
 	return true
@@ -2008,6 +2004,7 @@ func (partition *DataPartition) needManualFix() bool {
 }
 
 func (partition *DataPartition) checkReplicaMeta(c *Cluster) {
+	var auditMsg string
 	// find redundant peers from replica meta
 	force := false
 	for _, replica := range partition.Replicas {
@@ -2015,8 +2012,9 @@ func (partition *DataPartition) checkReplicaMeta(c *Cluster) {
 		for _, peer := range redundantPeers {
 			// remove raft member
 			partition.createTaskToRemoveRaftMember(c, peer, force, true)
-			log.LogInfof("action[checkReplicaMeta]dp(%v) remove redundant peer %v force %v",
-				partition.PartitionID, peer, force)
+			auditMsg = fmt.Sprintf("dp(%v) remove redundant peer %v force %v", partition.PartitionID, peer, force)
+			log.LogInfof("action[checkReplicaMeta]%v", auditMsg)
+			auditlog.LogMasterOp("RestoreReplicaMeta", auditMsg, nil)
 		}
 	}
 }
@@ -2039,4 +2037,13 @@ func findPeersToDeleteByConfig(toCompare, basePeers []proto.Peer) []proto.Peer {
 
 func (partition *DataPartition) lostLeader(c *Cluster) bool {
 	return partition.getLeaderAddr() == "" && (time.Now().Unix()-partition.LeaderReportTime > c.cfg.DpNoLeaderReportIntervalSec)
+}
+
+func (partition *DataPartition) decommissionInfo() string {
+	return fmt.Sprintf("vol(%v)_dp(%v)_src(%v)_dst(%v)_hosts(%v)_retry(%v)_isRecover(%v)_status(%v)_specialStatus(%v)"+
+		"_needRollback(%v)_rollbackTimes(%v)_force(%v)",
+		partition.VolName, partition.PartitionID, partition.DecommissionSrcAddr, partition.DecommissionDstAddr,
+		partition.Hosts, partition.DecommissionRetry, partition.isRecover, partition.GetDecommissionStatus(),
+		partition.GetSpecialReplicaDecommissionStep(), partition.DecommissionNeedRollback,
+		partition.DecommissionNeedRollbackTimes, partition.DecommissionRaftForce)
 }
