@@ -82,7 +82,7 @@ func newDataNodeListCmd(client *master.MasterClient) *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&optFilterWritable, "filter-writable", "", "Filter node writable status")
-	cmd.Flags().StringVar(&optFilterStatus, "filter-status", "", "Filter node status [Active, Inactive")
+	cmd.Flags().StringVar(&optFilterStatus, "filter-status", "", "Filter node status [Active, Inactive]")
 	return cmd
 }
 

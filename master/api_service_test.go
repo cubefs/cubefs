@@ -137,12 +137,12 @@ func createDefaultMasterServerForTest() *Server {
 	}
 	// add data node
 	mockDataServers = make([]*mocktest.MockDataServer, 0)
-	mockDataServers = append(mockDataServers, addDataServer(mds1Addr, testZone1))
-	mockDataServers = append(mockDataServers, addDataServer(mds2Addr, testZone1))
-	mockDataServers = append(mockDataServers, addDataServer(mds3Addr, testZone2))
-	mockDataServers = append(mockDataServers, addDataServer(mds4Addr, testZone2))
-	mockDataServers = append(mockDataServers, addDataServer(mds5Addr, testZone2))
-	mockDataServers = append(mockDataServers, addDataServer(mds6Addr, testZone2))
+	mockDataServers = append(mockDataServers, addDataServer(mds1Addr, testZone1, defaultMediaType))
+	mockDataServers = append(mockDataServers, addDataServer(mds2Addr, testZone1, defaultMediaType))
+	mockDataServers = append(mockDataServers, addDataServer(mds3Addr, testZone2, defaultMediaType))
+	mockDataServers = append(mockDataServers, addDataServer(mds4Addr, testZone2, defaultMediaType))
+	mockDataServers = append(mockDataServers, addDataServer(mds5Addr, testZone2, defaultMediaType))
+	mockDataServers = append(mockDataServers, addDataServer(mds6Addr, testZone2, defaultMediaType))
 
 	// add meta node
 	mockMetaServers = make([]*mocktest.MockMetaServer, 0)
@@ -285,8 +285,8 @@ func createMasterServer(cfgJSON string) (server *Server, err error) {
 	return server, nil
 }
 
-func addDataServer(addr, zoneName string) *mocktest.MockDataServer {
-	mds := mocktest.NewMockDataServer(addr, zoneName)
+func addDataServer(addr, zoneName string, mediaType uint32) *mocktest.MockDataServer {
+	mds := mocktest.NewMockDataServer(addr, zoneName, mediaType)
 	mds.Start()
 	return mds
 }
@@ -898,7 +898,7 @@ func TestAddDataReplica(t *testing.T) {
 	func() {
 		mockServerLock.Lock()
 		defer mockServerLock.Unlock()
-		mockDataServers = append(mockDataServers, addDataServer(dsAddr, "zone2"))
+		mockDataServers = append(mockDataServers, addDataServer(dsAddr, "zone2", defaultMediaType))
 	}()
 	reqURL := fmt.Sprintf("%v%v?id=%v&addr=%v&force=true", hostAddr, proto.AdminAddDataReplica, partition.PartitionID, dsAddr)
 	process(reqURL, t)
