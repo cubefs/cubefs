@@ -2155,7 +2155,6 @@ func (c *Cluster) decommissionSingleDp(dp *DataPartition, newAddr, offlineAddr s
 					dp.PartitionID, newAddr)
 				log.LogWarnf("action[decommissionSingleDp] dp %v err:%v", dp.PartitionID, err)
 				dp.DecommissionNeedRollback = false
-				newReplica.Status = proto.Unavailable // remove from data partition check
 				goto ERR
 			}
 			log.LogInfof("action[decommissionSingleDp] dp %v liveReplicas num[%v]",
@@ -2584,14 +2583,16 @@ func (c *Cluster) addDataReplica(dp *DataPartition, addr string, validate bool, 
 		}
 	}()
 
-	log.LogInfof("action[addDataReplica]  dp %v enter %v", dp.PartitionID, ignoreDecommissionDisk)
+	log.LogInfof("action[addDataReplica]  dp %v enter %v add replica %v", dp.PartitionID, ignoreDecommissionDisk, addr)
 
 	if validate {
 		if dp.isSpecialReplicaCnt() && len(dp.Hosts) > int(dp.ReplicaNum) {
-			return fmt.Errorf("action[addDataReplica]special replica dp(%v) has redundant replica", dp.PartitionID)
+			return fmt.Errorf("action[addDataReplica]special replica dp(%v) hosts(%v) has redundant replica",
+				dp.PartitionID, dp.Hosts)
 		}
 		if !dp.isSpecialReplicaCnt() && len(dp.Hosts) > int(dp.ReplicaNum)-1 {
-			return fmt.Errorf("action[addDataReplica]3 replica  dp(%v) has redundant replica", dp.PartitionID)
+			return fmt.Errorf("action[addDataReplica]3 replica  dp(%v) hosts(%v)  has redundant replica",
+				dp.PartitionID, dp.Hosts)
 		}
 	}
 	dp.addReplicaMutex.Lock()
