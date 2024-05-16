@@ -410,7 +410,6 @@ services:
             - "-c"
             - >-
                 set -e;
-                tar -zxf /go/rocksdb_libs.tar.gz -C ${CFSROOT}/build
 
     format:
         <<: *command

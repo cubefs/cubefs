@@ -21,5 +21,6 @@
   "rocksdbMode": "disk",
   "rocksdbBlockCacheSize": 0,
   "rocksdbWriteBufferNum": 0,
-  "rocksdbWriteBufferSize": 0
+  "rocksdbWriteBufferSize": 0,
+  "rocksdbMaxSubCompactions": 0
 }

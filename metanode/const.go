@@ -245,6 +245,7 @@ const (
 	cfsRocksdbWriteBufferNum        = "rocksdbWriteBufferNum"        // int
 	cfgRocksdbBlockCacheSize        = "rocksdbBlockCacheSize"        // uint64
 	cfsRocksdbMinWriteBufferToMerge = "rocksdbMinWriteBufferToMerge" // int
+	cfsRocksdbMaxSubCompactions     = "rocksdbMaxSubCompactions"     // int
 	cfsRocksdbMode                  = "rocksdbMode"                  // string
 )
 

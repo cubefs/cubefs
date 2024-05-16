@@ -141,11 +141,12 @@ func (m *MetaNode) newRocksdbManager(cfg *config.Config) (err error) {
 	blockCacheSize := cfg.GetInt64(cfgRocksdbBlockCacheSize)
 	writeBufferNum := cfg.GetInt(cfsRocksdbWriteBufferNum)
 	minWriteBufferToMerge := cfg.GetInt(cfsRocksdbMinWriteBufferToMerge)
+	maxSubCompactions := cfg.GetInt(cfsRocksdbMaxSubCompactions)
 	rocksdbMode := ParseRocksdbMode(cfg.GetString(cfsRocksdbMode))
 	if rocksdbMode == PerDiskRocksdbMode {
-		m.rocksdbManager = NewPerDiskRocksdbManager(writeBufferSize, writeBufferNum, minWriteBufferToMerge, uint64(blockCacheSize))
+		m.rocksdbManager = NewPerDiskRocksdbManager(writeBufferSize, writeBufferNum, minWriteBufferToMerge, maxSubCompactions, uint64(blockCacheSize))
 	} else {
-		m.rocksdbManager = NewPerPartitionRocksdbManager(writeBufferSize, writeBufferNum, minWriteBufferToMerge, uint64(blockCacheSize))
+		m.rocksdbManager = NewPerPartitionRocksdbManager(writeBufferSize, writeBufferNum, minWriteBufferToMerge, maxSubCompactions, uint64(blockCacheSize))
 	}
 	for _, dbPath := range m.rocksDirs {
 		err = m.rocksdbManager.Register(dbPath)

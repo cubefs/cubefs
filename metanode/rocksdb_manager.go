@@ -59,6 +59,7 @@ type PerDiskRocksdbManager struct {
 	writeBufferSize     int
 	writeBufferNum      int
 	minWriteBuffToMerge int
+	maxSubCompactions   int
 	blockCacheSize      uint64
 	mutex               sync.Mutex
 	dbs                 map[string]*RocksdbHandle
@@ -107,7 +108,7 @@ func (r *PerDiskRocksdbManager) OpenRocksdb(dbPath string, metaPartitionId uint6
 	}
 	handle.rc += 1
 	if handle.rc == 1 {
-		err = handle.db.OpenDb(dbPath, r.writeBufferSize, r.writeBufferNum, r.minWriteBuffToMerge, r.blockCacheSize, 0, 0, 0)
+		err = handle.db.OpenDb(dbPath, r.writeBufferSize, r.writeBufferNum, r.minWriteBuffToMerge, r.maxSubCompactions, r.blockCacheSize, 0, 0, 0)
 		if err != nil {
 			handle.rc -= 1
 			return
@@ -203,6 +204,7 @@ type PerPartitionRocksdbManager struct {
 	writeBufferSize     int
 	writeBufferNum      int
 	minWriteBuffToMerge int
+	maxSubCompactions   int
 	blockCacheSize      uint64
 	mutex               sync.Mutex
 	partitionCnt        map[string]int
@@ -264,7 +266,7 @@ func (r *PerPartitionRocksdbManager) OpenRocksdb(dbPath string, metaPartitionId 
 	mpPath := fmt.Sprintf("metaPartition_%v", metaPartitionId)
 	perPartitionDbDir := path.Join(dbPath, mpPath)
 	db = NewRocksdb()
-	err = db.OpenDb(perPartitionDbDir, r.writeBufferSize, r.writeBufferNum, r.minWriteBuffToMerge, r.blockCacheSize, 0, 0, 0)
+	err = db.OpenDb(perPartitionDbDir, r.writeBufferSize, r.writeBufferNum, r.minWriteBuffToMerge, r.maxSubCompactions, r.blockCacheSize, 0, 0, 0)
 	return
 }
 
@@ -327,22 +329,24 @@ func (r *PerPartitionRocksdbManager) SelectRocksdbDisk(usableFactor float64) (di
 
 var _ RocksdbManager = &PerPartitionRocksdbManager{}
 
-func NewPerDiskRocksdbManager(writeBufferSize int, writeBufferNum int, minWriteBuffToMerge int, blockCacheSize uint64) (p RocksdbManager) {
+func NewPerDiskRocksdbManager(writeBufferSize int, writeBufferNum int, minWriteBuffToMerge int, maxSubCompactions int, blockCacheSize uint64) (p RocksdbManager) {
 	p = &PerDiskRocksdbManager{
 		writeBufferSize:     writeBufferSize,
 		writeBufferNum:      writeBufferNum,
 		minWriteBuffToMerge: minWriteBuffToMerge,
+		maxSubCompactions:   maxSubCompactions,
 		blockCacheSize:      blockCacheSize,
 		dbs:                 make(map[string]*RocksdbHandle),
 	}
 	return
 }
 
-func NewPerPartitionRocksdbManager(writeBufferSize int, writeBufferNum int, minWriteBuffToMerge int, blockCacheSize uint64) (p RocksdbManager) {
+func NewPerPartitionRocksdbManager(writeBufferSize int, writeBufferNum int, minWriteBuffToMerge int, maxSubCompactions int, blockCacheSize uint64) (p RocksdbManager) {
 	p = &PerPartitionRocksdbManager{
 		writeBufferSize:     writeBufferSize,
 		writeBufferNum:      writeBufferNum,
 		minWriteBuffToMerge: minWriteBuffToMerge,
+		maxSubCompactions:   maxSubCompactions,
 		blockCacheSize:      blockCacheSize,
 		dbs:                 make(map[string]interface{}),
 		partitionCnt:        make(map[string]int),
