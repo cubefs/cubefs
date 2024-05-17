@@ -340,9 +340,10 @@ func (m *MetaNode) parseConfig(cfg *config.Config) (err error) {
 		return err
 	}
 
+	var legacyStorageClassMsg string
 	if !cfg.HasKey(cfgLegacyStorageClass) {
 		legacyReplicaStorageClass = proto.StorageClass_Unspecified
-		log.LogInfof("parseConfig: [%v] not set", cfgLegacyStorageClass)
+		legacyStorageClassMsg = fmt.Sprintf("parseConfig: [%v] not set", cfgLegacyStorageClass)
 	} else {
 		err, legacyReplicaStorageClass = cfg.GetUint32(cfgLegacyStorageClass)
 		if err != nil || !proto.IsValidStorageClass(legacyReplicaStorageClass) {
@@ -351,8 +352,11 @@ func (m *MetaNode) parseConfig(cfg *config.Config) (err error) {
 			return err
 		}
 
-		log.LogInfof("parseConfig: config[%v]: %v", cfgLegacyStorageClass, proto.StorageClassString(legacyReplicaStorageClass))
+		legacyStorageClassMsg = fmt.Sprintf("parseConfig: config[%v]: %v",
+			cfgLegacyStorageClass, proto.StorageClassString(legacyReplicaStorageClass))
 	}
+	syslog.Println(legacyStorageClassMsg)
+	log.LogInfof(legacyStorageClassMsg)
 
 	err = m.validConfig()
 	return
