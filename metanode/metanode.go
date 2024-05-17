@@ -40,6 +40,10 @@ import (
 	"github.com/cubefs/cubefs/util/log"
 )
 
+const (
+	RocksdbModeMetaFile = ".rocksdbMode"
+)
+
 var (
 	clusterInfo *proto.ClusterInfo
 	// masterClient   *masterSDK.MasterClient
@@ -136,13 +140,80 @@ func (m *MetaNode) checkLocalPartitionMatchWithMaster() (err error) {
 	return
 }
 
+func (m *MetaNode) hasPartitions() (ok bool, err error) {
+	dentries, err := os.ReadDir(m.metadataDir)
+	if err != nil {
+		return
+	}
+	for _, dentry := range dentries {
+		if strings.HasPrefix(dentry.Name(), partitionPrefix) {
+			ok = true
+			return
+		}
+	}
+	return
+}
+
+func (m *MetaNode) persistRocksdbMode(mode string) (err error) {
+	file := path.Join(m.metadataDir, RocksdbModeMetaFile)
+	tmpFile := file + ".tmp"
+	err = os.WriteFile(tmpFile, []byte(mode), 0o644)
+	if err != nil {
+		return
+	}
+	err = os.Rename(tmpFile, file)
+	return
+}
+
+func (m *MetaNode) readRocksdbMode() (mode string, err error) {
+	file := path.Join(m.metadataDir, RocksdbModeMetaFile)
+	v, err := os.ReadFile(file)
+	if err != nil {
+		return
+	}
+	mode = string(v)
+	return
+}
+
 func (m *MetaNode) newRocksdbManager(cfg *config.Config) (err error) {
 	writeBufferSize := cfg.GetInt(cfgRocksdbWriteBufferSize)
 	blockCacheSize := cfg.GetInt64(cfgRocksdbBlockCacheSize)
 	writeBufferNum := cfg.GetInt(cfsRocksdbWriteBufferNum)
 	minWriteBufferToMerge := cfg.GetInt(cfsRocksdbMinWriteBufferToMerge)
 	maxSubCompactions := cfg.GetInt(cfsRocksdbMaxSubCompactions)
-	rocksdbMode := ParseRocksdbMode(cfg.GetString(cfsRocksdbMode))
+	mode := cfg.GetString(cfsRocksdbMode)
+	rocksdbMode := ParseRocksdbMode(mode)
+
+	rocksdbModeFile := path.Join(m.metadataDir, RocksdbModeMetaFile)
+	if fileutil.Exist(rocksdbModeFile) {
+		var tmp string
+		if tmp, err = m.readRocksdbMode(); err != nil {
+			return
+		}
+		// NOTE: check rocksdb mode consistence
+		if mode != tmp {
+			log.LogWarnf("[newRocksdbManager] inconsistent rocksdb config meta file(%v) persist(%v) config(%v)", rocksdbModeFile, tmp, mode)
+			var hasMp bool
+			hasMp, err = m.hasPartitions()
+			if err != nil {
+				log.LogErrorf("[newRocksdbManager] failed to get persist mp cnt, err(%v)", err)
+				return
+			}
+			if hasMp {
+				log.LogErrorf("[newRocksdbManager] failed to change rocksdb mode(%v) to new(%v), has meta partitions on disk", tmp, mode)
+				return errors.NewErrorf("cannot init rocksdb manager, inconsistent rocksdb mode")
+			}
+			log.LogWarnf("[newRocksdbManager] change rocksdb mode(%v) to new(%v)", tmp, mode)
+		}
+		rocksdbMode = ParseRocksdbMode(mode)
+	}
+	// NOTE: persist rocksdb mode to disk
+	err = m.persistRocksdbMode(mode)
+	if err != nil {
+		log.LogErrorf("[newRocksdbManager] failed to persist rocksdb mode(%v) to meta file(%v), err(%v)", mode, rocksdbModeFile, err)
+		return
+	}
+
 	if rocksdbMode == PerDiskRocksdbMode {
 		m.rocksdbManager = NewPerDiskRocksdbManager(writeBufferSize, writeBufferNum, minWriteBufferToMerge, maxSubCompactions, uint64(blockCacheSize))
 	} else {
