@@ -994,8 +994,7 @@ func (mp *metaPartition) HandleLeaderChange(leader uint64) {
 			exporter.Warning(fmt.Sprintf("[HandleLeaderChange] pid %v init root inode id: %s.", mp.config.PartitionId, err.Error()))
 		}
 		ino := NewInode(id, proto.Mode(os.ModePerm|os.ModeDir))
-		ino.StorageClass = legacyReplicaStorageClass
-		//ino.StorageClass = proto.StorageClass_Replica_HDD
+		ino.StorageClass = mp.volStorageClass
 		go mp.initInode(ino)
 	}
 	//refresh forbidden migration list
