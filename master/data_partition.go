@@ -1528,7 +1528,8 @@ func (partition *DataPartition) canMarkDecommission(status uint32, ns *nodeSet) 
 		status == DecommissionPause {
 		return nil
 	}
-	if status == DecommissionFail && rollbackTimes >= defaultDecommissionRollbackLimit {
+	// do not need to check rollback times, when reach max, dp is removed for decommission list
+	if status == DecommissionFail {
 		return nil
 	}
 	return errors.NewErrorf("dp[%v]cannot mark decommission: status %v rollbackTimes %v",
