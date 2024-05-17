@@ -1033,7 +1033,7 @@ func (s *ExtentStore) GetStoreUsedSize() (used int64) {
 				continue
 			}
 			if log.EnableDebug() {
-				log.LogDebugf("[GetStoreUsedSize] store(%v) tiny extent(%v) size(%v)", s.dataPath, einfo.FileID, strutil.FormatSize(uint64(size)))
+				log.LogDebugf("[GetStoreUsedSize] store(%v) tiny extent(%v) size(%v) raw(%v)", s.dataPath, einfo.FileID, strutil.FormatSize(uint64(size)), size)
 			}
 			used += size
 			tinyTotal += uint64(size)
@@ -1046,10 +1046,14 @@ func (s *ExtentStore) GetStoreUsedSize() (used int64) {
 				}
 				actualSize, err := s.getFileDiskUsed(path.Join(s.dataPath, strconv.FormatInt(int64(einfo.FileID), 10)))
 				if err != nil {
-					log.LogErrorf("[GetStoreUsedSize] store(%v) failed to get normal extent(%v) disk used", s.dataPath, einfo.FileID)
+					if os.IsNotExist(err) {
+						log.LogInfof("[GetStoreUsedSize] store(%v) extent(%v) already be deleted, skip", s.dataPath, einfo.FileID)
+						continue
+					}
+					log.LogErrorf("[GetStoreUsedSize] store(%v) failed to get normal extent(%v) disk used, err(%v)", s.dataPath, einfo.FileID, err)
 					continue
 				}
-				log.LogDebugf("[GetStoreUsedSize] store(%v) normal extent(%v) size(%v), actual size(%v)", s.dataPath, einfo.FileID, strutil.FormatSize(uint64(size)), strutil.FormatSize(uint64(actualSize)))
+				log.LogDebugf("[GetStoreUsedSize] store(%v) normal extent(%v) size(%v) raw(%v), actual size(%v) raw(%v)", s.dataPath, einfo.FileID, strutil.FormatSize(uint64(size)), size, strutil.FormatSize(uint64(actualSize)), actualSize)
 				if actualSize < size {
 					log.LogWarnf("[GetStoreUsedSize] store(%v) normal extent(%v) actual size(%v), size(%v) einfo size(%v) snapshot off(%v)", s.dataPath, einfo.FileID, strutil.FormatSize(uint64(actualSize)), strutil.FormatSize(uint64(size)), strutil.FormatSize(einfo.Size), strutil.FormatSize(einfo.SnapshotDataOff))
 				}
@@ -1059,7 +1063,7 @@ func (s *ExtentStore) GetStoreUsedSize() (used int64) {
 		}
 	}
 	if log.EnableInfo() {
-		log.LogInfof("[GetStoreUsedSize] store(%v) total size(%v) tiny total(%v) normal total(%v)", s.dataPath, strutil.FormatSize(uint64(used)), strutil.FormatSize(tinyTotal), strutil.FormatSize(normalTotal))
+		log.LogInfof("[GetStoreUsedSize] store(%v) total size(%v) raw(%v) tiny total(%v) raw(%v) normal total(%v) raw(%v)", s.dataPath, strutil.FormatSize(uint64(used)), used, strutil.FormatSize(tinyTotal), tinyTotal, strutil.FormatSize(normalTotal), normalTotal)
 	}
 	return
 }
