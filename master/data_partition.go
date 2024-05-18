@@ -1161,23 +1161,6 @@ func GetSpecialDecommissionStatusMessage(status uint32) string {
 	}
 }
 
-func GetDecommissionTypeMessage(status uint32) string {
-	switch status {
-	case AutoDecommission:
-		return "AutoDecommission"
-	case ManualDecommission:
-		return "ManualDecommission"
-	case AllDecommission:
-		return "AllDecommission"
-	case AutoAddReplica:
-		return "AutoAddReplica"
-	case InitialDecommission:
-		return "InitialDecommission"
-	default:
-		return "Unknown"
-	}
-}
-
 func (partition *DataPartition) MarkDecommissionStatus(srcAddr, dstAddr, srcDisk string, raftForce bool, term uint64,
 	migrateType uint32, c *Cluster, ns *nodeSet) (err error) {
 	defer func() {
@@ -1804,7 +1787,13 @@ func (partition *DataPartition) TryAcquireDecommissionToken(c *Cluster) bool {
 		log.LogDebugf("action[TryAcquireDecommissionToken] dp %v get token to %v consume(%v) err(%v) result(%v)",
 			partition.decommissionInfo(), partition.DecommissionDstAddr, time.Now().Sub(begin).String(), err, result)
 	}()
-
+	if err = partition.checkReplicaMeta(c); err != nil {
+		goto errHandler
+	}
+	if !partition.setRestoreReplicaForbidden() {
+		err = proto.ErrRestoringReplica
+		goto errHandler
+	}
 	// the first time for dst addr not specify
 	if !partition.DecommissionDstAddrSpecify && partition.DecommissionDstAddr == "" {
 		// try to find available data node in src nodeset
