@@ -1620,6 +1620,12 @@ func (m *Server) addDataReplica(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
+	// for disk manager to check status for new replica
+	dp.DecommissionDstAddr = addr
+	dp.DecommissionType = ManualAddReplica
+	dp.RecoverStartTime = time.Now()
+	dp.SetDecommissionStatus(DecommissionRunning)
+	dp.setRestoreReplicaForbidden()
 
 	dp.Status = proto.ReadOnly
 	dp.isRecover = true
@@ -2029,21 +2035,22 @@ func (m *Server) queryDataPartitionDecommissionStatus(w http.ResponseWriter, r *
 		replicas = append(replicas, replica.Addr)
 	}
 	info := &proto.DecommissionDataPartitionInfo{
-		PartitionId:       partitionID,
-		ReplicaNum:        dp.ReplicaNum,
-		Status:            GetDecommissionStatusMessage(dp.GetDecommissionStatus()),
-		SpecialStep:       dp.GetSpecialReplicaDecommissionStep(),
-		Retry:             dp.DecommissionRetry,
-		RaftForce:         dp.DecommissionRaftForce,
-		Recover:           dp.isRecover,
-		SrcAddress:        dp.DecommissionSrcAddr,
-		SrcDiskPath:       dp.DecommissionSrcDiskPath,
-		DstAddress:        dp.DecommissionDstAddr,
-		Term:              dp.DecommissionTerm,
-		Replicas:          replicas,
-		ErrorMessage:      dp.DecommissionErrorMessage,
-		NeedRollbackTimes: atomic.LoadUint32(&dp.DecommissionNeedRollbackTimes),
-		DecommissionType:  GetDecommissionTypeMessage(dp.DecommissionType),
+		PartitionId:        partitionID,
+		ReplicaNum:         dp.ReplicaNum,
+		Status:             GetDecommissionStatusMessage(dp.GetDecommissionStatus()),
+		SpecialStep:        dp.GetSpecialReplicaDecommissionStep(),
+		Retry:              dp.DecommissionRetry,
+		RaftForce:          dp.DecommissionRaftForce,
+		Recover:            dp.isRecover,
+		SrcAddress:         dp.DecommissionSrcAddr,
+		SrcDiskPath:        dp.DecommissionSrcDiskPath,
+		DstAddress:         dp.DecommissionDstAddr,
+		Term:               dp.DecommissionTerm,
+		Replicas:           replicas,
+		ErrorMessage:       dp.DecommissionErrorMessage,
+		NeedRollbackTimes:  atomic.LoadUint32(&dp.DecommissionNeedRollbackTimes),
+		DecommissionType:   GetDecommissionTypeMessage(dp.DecommissionType),
+		RestoreReplicaType: GetRestoreReplicaMessage(dp.RestoreReplica),
 	}
 	sendOkReply(w, r, newSuccessHTTPReply(info))
 }
