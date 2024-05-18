@@ -2267,7 +2267,6 @@ func (l *DecommissionDataPartitionList) traverse(c *Cluster) {
 						dp.decommissionInfo(), time.Since(dp.RecoverStartTime))
 					dp.ResetDecommissionStatus()
 					dp.setRestoreReplicaStop()
-
 					err := c.syncUpdateDataPartition(dp)
 					if err != nil {
 						log.LogWarnf("action[DecommissionListTraverse]Remove success dp[%v] failed for %v",

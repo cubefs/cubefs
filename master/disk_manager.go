@@ -427,7 +427,7 @@ func (dd *DecommissionDisk) GetDecommissionFailedDPByTerm(c *Cluster) []proto.Fa
 	var failedDps []proto.FailedDpInfo
 	log.LogDebugf("action[GetDecommissionFailedDPByTerm] partitions len %v", len(partitions))
 	for _, dp := range partitions {
-		if dp.IsRollbackFailed() {
+		if dp.IsRollbackFailed() || dp.GetDecommissionStatus() == DecommissionNeedManualFix {
 			failedDps = append(failedDps, proto.FailedDpInfo{PartitionID: dp.PartitionID, ErrMsg: dp.DecommissionErrorMessage})
 			log.LogWarnf("action[GetDecommissionFailedDPByTerm] dp[%v] failed", dp.PartitionID)
 		}
