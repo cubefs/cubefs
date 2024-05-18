@@ -468,3 +468,29 @@ func TestFlushSinglePartition(t *testing.T) {
 	err = db.CloseDb()
 	require.NoError(t, err)
 }
+
+func TestFlushDb(t *testing.T) {
+	path := getRocksdbPathForTest()
+	os.RemoveAll(path)
+	defer os.RemoveAll(path)
+	db := metanode.NewRocksdb()
+
+	err := db.OpenDb(path, 0, 0, 0, 0, 0, 0, 0, 0)
+	require.NoError(t, err)
+
+	// genenerData(t, db)
+	err = db.Put([]byte("Hello"), []byte("World"))
+	require.NoError(t, err)
+
+	count := getSSTCount(t, path)
+	require.EqualValues(t, 0, count)
+
+	err = db.Flush()
+	require.NoError(t, err)
+
+	count = getSSTCount(t, path)
+	require.NotEqualValues(t, 0, count)
+
+	err = db.CloseDb()
+	require.NoError(t, err)
+}

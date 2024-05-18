@@ -441,9 +441,7 @@ func (r *RocksTree) GetCursor() uint64 {
 
 // NOTE: we disable WAL, flush operation write all data to sst files
 func (r *RocksTree) Flush() error {
-	begin := r.warpPartitionKey(r.partitionId, []byte{})
-	end := r.warpPartitionKey(r.partitionId+1, []byte{})
-	return r.db.CompactRange(begin, end)
+	return r.db.Flush()
 }
 
 func (r *RocksTree) Count(tp TreeType) (uint64, error) {
