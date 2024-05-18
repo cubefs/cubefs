@@ -96,8 +96,12 @@ func (c *Cluster) checkDiskRecoveryProgress() {
 			if newReplica == nil {
 				log.LogWarnf("action[checkDiskRecoveryProgress] dp %v cannot find replica %v", partition.PartitionID,
 					partition.DecommissionDstAddr)
-				partition.DecommissionNeedRollback = true
-				partition.SetDecommissionStatus(DecommissionFail)
+				if partition.DecommissionType == ManualAddReplica {
+					partition.resetForManualAddReplica()
+				} else {
+					partition.DecommissionNeedRollback = true
+					partition.SetDecommissionStatus(DecommissionFail)
+				}
 				partition.DecommissionErrorMessage = fmt.Sprintf("Decommission target node %v not found", partition.DecommissionDstAddr)
 				partition.RLock()
 				err = c.syncUpdateDataPartition(partition)
@@ -114,10 +118,14 @@ func (c *Cluster) checkDiskRecoveryProgress() {
 					masterNode, _ := partition.getReplica(partition.Hosts[0])
 					duration := time.Unix(masterNode.ReportTime, 0).Sub(time.Unix(newReplica.ReportTime, 0))
 					if math.Abs(duration.Minutes()) > 10 {
-						partition.SetDecommissionStatus(DecommissionFail)
+						if partition.DecommissionType == ManualAddReplica {
+							partition.resetForManualAddReplica()
+						} else {
+							partition.SetDecommissionStatus(DecommissionFail)
+							partition.DecommissionNeedRollback = false
+						}
 						partition.DecommissionErrorMessage = fmt.Sprintf("Decommission target node %v cannot finish recover"+
 							"for host[0] %v is down ", partition.DecommissionDstAddr, masterNode.Addr)
-						partition.DecommissionNeedRollback = false
 						Warn(c.Name, fmt.Sprintf("action[checkDiskRecoveryProgress]clusterID[%v],partitionID[%v] %v",
 							c.Name, partitionID, partition.DecommissionErrorMessage))
 						partition.RLock()
@@ -129,8 +137,12 @@ func (c *Cluster) checkDiskRecoveryProgress() {
 						partition.RUnlock()
 						continue
 					} else if time.Since(partition.RecoverStartTime) > c.GetDecommissionDataPartitionRecoverTimeOut() {
-						partition.DecommissionNeedRollback = true
-						partition.SetDecommissionStatus(DecommissionFail)
+						if partition.DecommissionType == ManualAddReplica {
+							partition.resetForManualAddReplica()
+						} else {
+							partition.DecommissionNeedRollback = true
+							partition.SetDecommissionStatus(DecommissionFail)
+						}
 						partition.DecommissionErrorMessage = fmt.Sprintf("Decommission target node %v repair timeout", partition.DecommissionDstAddr)
 						Warn(c.Name, fmt.Sprintf("action[checkDiskRecoveryProgress]clusterID[%v],partitionID[%v]  recovered timeout %s",
 							c.Name, partitionID, time.Since(partition.RecoverStartTime)))
@@ -146,8 +158,31 @@ func (c *Cluster) checkDiskRecoveryProgress() {
 				}
 				newBadDpIds = append(newBadDpIds, partitionID)
 			} else {
+				if partition.DecommissionType == ManualAddReplica {
+					if newReplica.isUnavailable() {
+						partition.DecommissionErrorMessage = fmt.Sprintf("New replica %v is unavailable", partition.DecommissionDstAddr)
+						Warn(c.Name, fmt.Sprintf("action[checkDiskRecoveryProgress]clusterID[%v],partitionID[%v] replica %v has recovered failed",
+							c.Name, partitionID, partition.DecommissionDstAddr))
+					} else {
+						partition.DecommissionErrorMessage = ""
+						Warn(c.Name, fmt.Sprintf("action[checkDiskRecoveryProgress]clusterID[%v],partitionID[%v] replica %v has recovered success",
+							c.Name, partitionID, partition.DecommissionDstAddr))
+					}
+					partition.resetForManualAddReplica()
+					log.LogInfof("[checkDiskRecoveryProgress] dp(%v) manual add new replica addr %v status(%v)",
+						partitionID, newReplica.Addr, newReplica.Status)
+					partition.RLock()
+					err = c.syncUpdateDataPartition(partition)
+					if err != nil {
+						log.LogErrorf("[checkDiskRecoveryProgress] update dp(%v) fail, err(%v)", partitionID, err)
+						err = nil
+					}
+					partition.RUnlock()
+					continue
+				}
 				if partition.isSpecialReplicaCnt() && !partition.DecommissionRaftForce {
-					log.LogInfof("[checkDiskRecoveryProgress] special dp(%v) new replica status(%v)", partitionID, newReplica.Status)
+					log.LogInfof("[checkDiskRecoveryProgress] special dp(%v) new replica addr %v status(%v)",
+						partitionID, newReplica.Addr, newReplica.Status)
 					continue // change dp decommission status in decommission function
 				}
 				// do not add to BadDataPartitionIds
@@ -395,7 +430,7 @@ func (dd *DecommissionDisk) GetDecommissionFailedDPByTerm(c *Cluster) []proto.Fa
 	var failedDps []proto.FailedDpInfo
 	log.LogDebugf("action[GetDecommissionFailedDPByTerm] partitions len %v", len(partitions))
 	for _, dp := range partitions {
-		if dp.IsRollbackFailed() {
+		if dp.IsRollbackFailed() || dp.GetDecommissionStatus() == DecommissionNeedManualFix {
 			failedDps = append(failedDps, proto.FailedDpInfo{PartitionID: dp.PartitionID, ErrMsg: dp.DecommissionErrorMessage})
 			log.LogWarnf("action[GetDecommissionFailedDPByTerm] dp[%v] failed", dp.PartitionID)
 		}
