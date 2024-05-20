@@ -185,8 +185,7 @@ func (mw *MetaWrapper) icreate(mp *MetaPartition, mode, uid, gid uint32, target 
 		Target:      target,
 		StorageType: mw.DefaultStorageClass,
 	}
-	//TODO:tangjinyu test only
-	log.LogDebugf("###### icreate req.StorageType(%v) mw.DefaultStorageClass(%v)", req.StorageType, mw.DefaultStorageClass)
+
 	req.FullPaths = []string{fullPath}
 
 	packet := proto.NewPacketReqID()
