@@ -7006,3 +7006,21 @@ func (m *Server) resetDataPartitionRestoreStatus(w http.ResponseWriter, r *http.
 	log.LogInfof("[resetDataPartitionRestoreStaus] reset dp(%v) restore status ok(%v)", dpId, ok)
 	sendOkReply(w, r, newSuccessHTTPReply(ok))
 }
+
+func (m *Server) getAllDataNodes(w http.ResponseWriter, r *http.Request) {
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminGetClusterDataNodes))
+	defer func() {
+		doStatAndMetric(proto.AdminGetClusterDataNodes, metric, nil, nil)
+	}()
+	dataNodes := m.cluster.allDataNodes()
+	sendOkReply(w, r, newSuccessHTTPReply(dataNodes))
+}
+
+func (m *Server) getAllMetaNodes(w http.ResponseWriter, r *http.Request) {
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminGetClusterMetaNodes))
+	defer func() {
+		doStatAndMetric(proto.AdminGetClusterMetaNodes, metric, nil, nil)
+	}()
+	metaNodes := m.cluster.allMetaNodes()
+	sendOkReply(w, r, newSuccessHTTPReply(metaNodes))
+}

@@ -35,6 +35,8 @@ const (
 	AdminGetCluster                           = "/admin/getCluster"
 	AdminSetClusterInfo                       = "/admin/setClusterInfo"
 	AdminGetMonitorPushAddr                   = "/admin/getMonitorPushAddr"
+	AdminGetClusterDataNodes                  = "/admin/cluster/getAllDataNodes"
+	AdminGetClusterMetaNodes                  = "/admin/cluster/getAllMetaNodes"
 	AdminGetDataPartition                     = "/dataPartition/get"
 	AdminLoadDataPartition                    = "/dataPartition/load"
 	AdminCreateDataPartition                  = "/dataPartition/create"

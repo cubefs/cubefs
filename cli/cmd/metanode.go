@@ -62,16 +62,16 @@ func newMetaNodeListCmd(client *master.MasterClient) *cobra.Command {
 			defer func() {
 				errout(err)
 			}()
-			var view *proto.ClusterView
-			if view, err = client.AdminAPI().GetCluster(); err != nil {
+			var metaNodes []proto.NodeView
+			if metaNodes, err = client.AdminAPI().GetClusterMetaNodes(); err != nil {
 				return
 			}
-			sort.SliceStable(view.MetaNodes, func(i, j int) bool {
-				return view.MetaNodes[i].ID < view.MetaNodes[j].ID
+			sort.SliceStable(metaNodes, func(i, j int) bool {
+				return metaNodes[i].ID < metaNodes[j].ID
 			})
 			stdout("[Meta nodes]\n")
 			stdout("%v\n", formatNodeViewTableHeader())
-			for _, node := range view.MetaNodes {
+			for _, node := range metaNodes {
 				if optFilterStatus != "" &&
 					!strings.Contains(formatNodeStatus(node.IsActive), optFilterStatus) {
 					continue

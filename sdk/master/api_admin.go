@@ -49,6 +49,18 @@ func (api *AdminAPI) GetCluster() (cv *proto.ClusterView, err error) {
 	return
 }
 
+func (api *AdminAPI) GetClusterDataNodes() (nodes []proto.NodeView, err error) {
+	nodes = []proto.NodeView{}
+	err = api.mc.requestWith(&nodes, newRequest(get, proto.AdminGetClusterDataNodes).Header(api.h))
+	return
+}
+
+func (api *AdminAPI) GetClusterMetaNodes() (nodes []proto.NodeView, err error) {
+	nodes = []proto.NodeView{}
+	err = api.mc.requestWith(&nodes, newRequest(get, proto.AdminGetClusterMetaNodes).Header(api.h))
+	return
+}
+
 func (api *AdminAPI) GetClusterNodeInfo() (cn *proto.ClusterNodeInfo, err error) {
 	cn = &proto.ClusterNodeInfo{}
 	err = api.mc.requestWith(cn, newRequest(get, proto.AdminGetNodeInfo).Header(api.h))
