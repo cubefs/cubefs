@@ -247,7 +247,8 @@ func (m *warningMetrics) deleteMissingDp(missingDpAddrSet addrSet, clusterName, 
 	if _, ok := missingDpAddrSet.addrs[addr]; !ok {
 		return
 	}
-
+	m.dpMissingReplicaMutex.Lock()
+	defer m.dpMissingReplicaMutex.Unlock()
 	replicaAlive := m.dpMissingReplicaInfo[dpId].replicaAlive
 	replicaNum := m.dpMissingReplicaInfo[dpId].replicaNum
 
