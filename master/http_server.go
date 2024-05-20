@@ -338,11 +338,8 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 		Path(proto.AdminGetClusterValue).
 		HandlerFunc(m.GetClusterValue)
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
-		Path(proto.AdminUpdateDecommissionDiskFactor).
-		HandlerFunc(m.updateDecommissionDiskFactor)
-	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
-		Path(proto.AdminQueryDecommissionDiskLimit).
-		HandlerFunc(m.queryDecommissionDiskLimit)
+		Path(proto.AdminUpdateDecommissionDiskLimit).
+		HandlerFunc(m.updateDecommissionDiskLimit)
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.AdminEnableAutoDecommissionDisk).
 		HandlerFunc(m.enableAutoDecommissionDisk)

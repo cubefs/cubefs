@@ -134,7 +134,7 @@ const (
 	verSeqKey                  = "verSeq"
 	Periodic                   = "periodic"
 	DecommissionType           = "decommissionType"
-	decommissionDiskFactor     = "decommissionDiskFactor"
+	decommissionDiskLimit      = "decommissionDiskLimit"
 	dpRepairBlockSizeKey       = "dpRepairBlockSize"
 	markDiskBrokenThresholdKey = "markDiskBrokenThreshold"
 	decommissionTypeKey        = "decommissionType"

@@ -1522,7 +1522,7 @@ func (partition *DataPartition) canMarkDecommission(status uint32, ns *nodeSet) 
 	// make sure dp release the token
 	rollbackTimes := atomic.LoadUint32(&partition.DecommissionNeedRollbackTimes)
 	if ns.processDataPartitionDecommission(partition.PartitionID) {
-		return errors.NewErrorf("dp[%v]cannot mark decommission for decommission progress is not ended")
+		return errors.NewErrorf("dp[%v]cannot mark decommission for decommission progress is not ended", partition.PartitionID)
 	}
 	if status == DecommissionInitial ||
 		status == DecommissionPause {

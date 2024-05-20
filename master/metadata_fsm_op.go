@@ -61,7 +61,7 @@ type clusterValue struct {
 	DpMaxRepairErrCnt           uint64
 	DpRepairTimeOut             uint64
 	EnableAutoDecommissionDisk  bool
-	DecommissionDiskFactor      float64
+	DecommissionDiskLimit       uint32
 	VolDeletionDelayTimeHour    int64
 	MarkDiskBrokenThreshold     float64
 }
@@ -94,7 +94,7 @@ func newClusterValue(c *Cluster) (cv *clusterValue) {
 		DpMaxRepairErrCnt:           c.cfg.DpMaxRepairErrCnt,
 		DpRepairTimeOut:             c.cfg.DpRepairTimeOut,
 		EnableAutoDecommissionDisk:  c.EnableAutoDecommissionDisk,
-		DecommissionDiskFactor:      c.DecommissionDiskFactor,
+		DecommissionDiskLimit:       c.GetDecommissionDiskLimit(),
 		VolDeletionDelayTimeHour:    c.cfg.volDelayDeleteTimeHour,
 		MarkDiskBrokenThreshold:     c.getMarkDiskBrokenThreshold(),
 	}
@@ -1148,7 +1148,7 @@ func (c *Cluster) loadClusterValue() (err error) {
 		c.clusterUuidEnable = cv.ClusterUuidEnable
 		c.DecommissionLimit = cv.DecommissionLimit
 		c.EnableAutoDecommissionDisk = cv.EnableAutoDecommissionDisk
-		c.DecommissionDiskFactor = cv.DecommissionDiskFactor
+		c.DecommissionLimit = cv.DecommissionLimit
 		c.cfg.volDelayDeleteTimeHour = cv.VolDeletionDelayTimeHour
 		if c.cfg.QosMasterAcceptLimit < QosMasterAcceptCnt {
 			c.cfg.QosMasterAcceptLimit = QosMasterAcceptCnt
@@ -1201,7 +1201,6 @@ func (c *Cluster) loadNodeSets() (err error) {
 
 		ns := newNodeSet(c, nsv.ID, cap, nsv.ZoneName)
 		ns.UpdateMaxParallel(int32(c.DecommissionLimit))
-		ns.UpdateDecommissionDiskFactor(c.DecommissionDiskFactor)
 		if nsv.DataNodeSelector != "" && ns.GetDataNodeSelector() != nsv.DataNodeSelector {
 			ns.SetDataNodeSelector(nsv.DataNodeSelector)
 		}
