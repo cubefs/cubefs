@@ -808,13 +808,13 @@ func formatDataNodeDetail(dn *proto.DataNodeInfo, rowTable bool) string {
 	sb.WriteString(fmt.Sprintf("  Bad disks           : %v\n", dn.BadDisks))
 	sb.WriteString(fmt.Sprintf("  Decommissioned disks: %v\n", dn.DecommissionedDisk))
 	sb.WriteString(fmt.Sprintf("  Persist partitions  : %v\n", dn.PersistenceDataPartitions))
-	sb.WriteString(fmt.Sprintf("  Backup partitions  : %v\n", dn.BackupDataPartitions))
+	sb.WriteString(fmt.Sprintf("  Backup partitions   : %v\n", dn.BackupDataPartitions))
 	sb.WriteString(fmt.Sprintf("  Can alloc partition : %v\n", dn.CanAllocPartition))
 	sb.WriteString(fmt.Sprintf("  Max partition count : %v\n", dn.MaxDpCntLimit))
 	sb.WriteString(fmt.Sprintf("  CpuUtil             : %.1f%%\n", dn.CpuUtil))
 	sb.WriteString("  IoUtils             :\n")
 	for device, used := range dn.IoUtils {
-		sb.WriteString(fmt.Sprintf("                       %v:%.1f%%\n", device, used))
+		sb.WriteString(fmt.Sprintf("                        %v:%.1f%%\n", device, used))
 	}
 	return sb.String()
 }
@@ -838,7 +838,8 @@ func formatMetaNodeDetail(mn *proto.MetaNodeInfo, rowTable bool) string {
 	sb.WriteString(fmt.Sprintf("  Allocated           : %v\n", formatSize(mn.Used)))
 	sb.WriteString(fmt.Sprintf("  Total               : %v\n", formatSize(mn.Total)))
 	sb.WriteString(fmt.Sprintf("  Zone                : %v\n", mn.ZoneName))
-	sb.WriteString(fmt.Sprintf("  Status            : %v\n", formatNodeStatus(mn.IsActive)))
+	sb.WriteString(fmt.Sprintf("  Status              : %v\n", formatNodeStatus(mn.IsActive)))
+	sb.WriteString(fmt.Sprintf("  Rdonly              : %v\n", mn.RdOnly))
 	sb.WriteString(fmt.Sprintf("  Report time         : %v\n", formatTimeToString(mn.ReportTime)))
 	sb.WriteString(fmt.Sprintf("  Partition count     : %v\n", mn.MetaPartitionCount))
 	sb.WriteString(fmt.Sprintf("  Persist partitions  : %v\n", mn.PersistenceMetaPartitions))
