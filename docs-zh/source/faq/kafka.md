@@ -1,4 +1,4 @@
-# kafka消费问题
+# kafka 消费问题
 
 ## offset is outside the range
 
@@ -8,20 +8,20 @@
 The Requested offset is outside the range of offsets maintained by the server for the given topic/patition.
 ```
 
-指定消费位移时，如果对应位移超过了Kafka对应分区的范围，则会出现类似如上报错，一般原因会有以下几种
+指定消费位移时，如果对应位移超过了 Kafka 对应分区的范围，则会出现类似如上报错，一般原因会有以下几种
 
-- 消费能力跟不上，Kafka集群的数据有保护期，过期后的数据会被删除，因此提供的位移可能是低于Kafka服务端的最小位移，一般有以下解决办法
-  - 调整消费参数，具体可以参考[Scheduler配置](../maintenance/configs/blobstore/scheduler.md)
-  - 新增Scheduler节点
+- 消费能力跟不上，Kafka 集群的数据有保护期，过期后的数据会被删除，因此提供的位移可能是低于 Kafka 服务端的最小位移，一般有以下解决办法
+  - 调整消费参数，具体可以参考 [Scheduler 配置](../ops/configs/blobstore/scheduler.md)
+  - 新增 Scheduler 节点
 
 ::: tip 提示
-scheduler节点数最大不能大于kafka分区数
+scheduler 节点数最大不能大于 kafka 分区数
 :::
 
-- Kafka集群有更换主题或者清理主题数据，但是Clustermgr的消费位移未清理，导致指定offset大于Kafka集群对应分区范围
-  - 清理Clustermgr中保存的消费位移或者重新设置对应消费位移
+- Kafka 集群有更换主题或者清理主题数据，但是 Clustermgr 的消费位移未清理，导致指定 offset 大于 Kafka 集群对应分区范围
+  - 清理 Clustermgr 中保存的消费位移或者重新设置对应消费位移
 
-无论是哪种原因，当前Scheduler服务正常启动，都需要将Clustermgr中的消费位移设置正确才能启动，下面介绍如何通过blobstore-cli工具问题处理步骤
+无论是哪种原因，当前 Scheduler 服务正常启动，都需要将 Clustermgr 中的消费位移设置正确才能启动，下面介绍如何通过 blobstore-cli 工具问题处理步骤
 
 - **查看消费位移**
 
@@ -76,14 +76,14 @@ next marker: shard_repair-consume_offset-shard_repair_10001-17
 ```
 
 ::: tip 提示
-如果查看某个分区的消费位移，可以`cm kv list --prefix <task_type>-consume_offset-<topic>-<partition>`，如`cm kv list --prefix shard_repair-consume_offset-shard_repair_10001-20`
+如果查看某个分区的消费位移，可以 `cm kv list --prefix <task_type>-consume_offset-<topic>-<partition>`，如 `cm kv list --prefix shard_repair-consume_offset-shard_repair_10001-20`
 :::
 
-- **比对Kafka服务端分区位移**
+- **比对 Kafka 服务端分区位移**
 
-核对确认Clustermgr保存的消费位移是否不在Kafka集群的对应分区范围内
+核对确认 Clustermgr 保存的消费位移是否不在 Kafka 集群的对应分区范围内
 
-- **停止scheduler节点**
+- **停止 scheduler 节点**
 
 - **修正消费位移**
 
@@ -93,4 +93,4 @@ next marker: shard_repair-consume_offset-shard_repair_10001-17
 scheduler kafka set --task_type shard_repair --topic shard_repair_10001 --partition 20 332053
 ```
 
-- **启动Scheduler**
+- **启动 Scheduler**

@@ -5,7 +5,7 @@ A **volume** is a logical concept composed of multiple metadata and data shards.
 - From the client's perspective, a volume can be seen as a file system instance that can be accessed by containers. A volume can be mounted in multiple containers, allowing files to be accessed by different clients simultaneously.
 - From the perspective of object storage, a volume corresponds to a bucket.
 
-The following will introduce how to create volumes in different modes. For more volume operations, please refer to [Volume Management Commands](../maintenance/admin-api/master/volume.md).
+The following will introduce how to create volumes in different modes. For more volume operations, please refer to [Volume Management api](../dev-guide/admin-api/master/volume.md).
 
 ## Create Replicated Volume
 

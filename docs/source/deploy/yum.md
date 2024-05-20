@@ -56,7 +56,7 @@ Defines the startup parameters of each Master node.
 | master_exporterPort        | int    | Port for prometheus to obtain monitoring data                                                                                                                    | No       |
 | master_metaNodeReservedMem | string | Reserved memory size for metadata nodes. If the remaining memory is less than this value, the MetaNode becomes read-only. Unit: bytes, default value: 1073741824 | No       |
 
-> For more configuration information, please refer to [Master Configuration Instructions](../maintenance/configs/master.md).
+> For more configuration information, please refer to [Master Configuration Instructions](../ops/configs/master.md).
 
 ### DataNode Config
 
@@ -74,7 +74,7 @@ Defines the startup parameters of each DataNode.
 | datanode_exporterPort  | string       | Port for the monitoring system to collect data                                                                                                                                                                              | No       |
 | datanode_disks         | string array | Format: *PATH:RETAIN*, PATH: disk mount path, RETAIN: the minimum reserved space under this path, and the disk is considered full if the remaining space is less than this value. Unit: bytes. (Recommended value: 20G~50G) | Yes      |
 
-> For more configuration information, please refer to [DataNode Configuration Instructions](../maintenance/configs/datanode.md).
+> For more configuration information, please refer to [DataNode Configuration Instructions](../ops/configs/datanode.md).
 
 ### MetaNode Config
 
@@ -93,7 +93,7 @@ Defines the startup parameters of the MetaNode.
 | metanode_exporterPort      | string | Port for prometheus to obtain monitoring data                                                                                           | No       |
 | metanode_totalMem          | string | Maximum available memory. This value needs to be higher than the value of metaNodeReservedMem in the master configuration. Unit: bytes. | Yes      |
 
-> For more configuration information, please refer to [MetaNode Configuration Instructions](../maintenance/configs/metanode.md).
+> For more configuration information, please refer to [MetaNode Configuration Instructions](../ops/configs/metanode.md).
 
 ### ObjectNode Config
 
@@ -108,7 +108,7 @@ Defines the startup parameters of the ObjectNode.
 | objectnode_exporterPort | string       | Port for prometheus to obtain monitoring data                                                                  | No       |
 | objectnode_enableHTTPS  | string       | Whether to support the HTTPS protocol                                                                          | Yes      |
 
-> For more configuration information, please refer to [ObjectNode Configuration Instructions](../maintenance/configs/objectnode.md).
+> For more configuration information, please refer to [ObjectNode Configuration Instructions](../ops/configs/objectnode.md).
 
 ### Client Config
 
@@ -125,7 +125,7 @@ Defines the startup parameters of the FUSE client.
 | client_exporterPort | string | Port for prometheus to obtain monitoring data                                  | Yes      |
 | client_profPort     | string | Port for golang pprof debugging                                                | No       |
 
-> For more configuration information, please refer to [Client Configuration Instructions](../maintenance/configs/client.md).
+> For more configuration information, please refer to [Client Configuration Instructions](../ops/configs/client.md).
 
 ``` yaml
 [master]
