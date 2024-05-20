@@ -302,6 +302,8 @@ type volValue struct {
 	IopsRLimit, IopsWLimit, FlowRlimit, FlowWlimit         uint64
 	IopsRMagnify, IopsWMagnify, FlowRMagnify, FlowWMagnify uint32
 	ClientReqPeriod, ClientHitTriggerCnt                   uint32
+	TrashInterval                                          int64
+
 	Forbidden                                              bool
 	EnableAuditLog                                         bool
 	DpRepairBlockSize                                      uint64
@@ -372,6 +374,7 @@ func newVolValue(vol *Vol) (vv *volValue) {
 		DeleteExecTime:        vol.DeleteExecTime,
 		User:                  vol.user,
 		DpRepairBlockSize:     vol.dpRepairBlockSize,
+		TrashInterval:         vol.TrashInterval,
 	}
 
 	return

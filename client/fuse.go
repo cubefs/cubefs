@@ -23,6 +23,8 @@ package main
 import (
 	"flag"
 	"fmt"
+	"github.com/cubefs/cubefs/sdk/meta"
+	"io/ioutil"
 	"io"
 	syslog "log"
 	"math"
@@ -614,7 +616,7 @@ func mount(opt *proto.MountOptions) (fsConn *fuse.Conn, super *cfs.Super, err er
 	http.HandleFunc(auditlog.DisableAuditLogReqPath, auditlog.DisableAuditLog)
 	http.HandleFunc(auditlog.SetAuditLogBufSizeReqPath, auditlog.ResetWriterBuffSize)
 	//trash 发布前修改
-	//	http.HandleFunc(trash.DisableTrash, super.DisableTrash)
+	http.HandleFunc(meta.DisableTrash, super.DisableTrash)
 	statusCh := make(chan error)
 	pprofAddr := ":" + opt.Profport
 	if opt.LocallyProf {

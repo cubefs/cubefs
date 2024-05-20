@@ -1911,6 +1911,23 @@ func extractInodeId(r *http.Request) (inode uint64, err error) {
 	return strconv.ParseUint(value, 10, 64)
 }
 
+func parseRequestToSetTrashInterval(r *http.Request) (name, authKey string, interval int64, err error) {
+	if err = r.ParseForm(); err != nil {
+		return
+	}
+
+	if name, err = extractName(r); err != nil {
+		return
+	}
+	if authKey, err = extractAuthKey(r); err != nil {
+		return
+	}
+	if interval, err = extractInt64WithDefault(r, TrashIntervalKey, 0); err != nil {
+		return
+	}
+	return
+}
+
 func parseRequestToUpdateDecommissionDiskLimit(r *http.Request) (limit uint32, err error) {
 	if err = r.ParseForm(); err != nil {
 		return

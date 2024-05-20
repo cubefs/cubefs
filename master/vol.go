@@ -50,6 +50,7 @@ type VolVarargs struct {
 	txConflictRetryNum      int64
 	txConflictRetryInterval int64
 	txOpLimit               int
+	trashInterval           int64
 }
 
 // Vol represents a set of meta partitionMap and data partitionMap
@@ -112,6 +113,7 @@ type Vol struct {
 	volLock                 sync.RWMutex
 	quotaManager            *MasterQuotaManager
 	enableQuota             bool
+	TrashInterval           int64
 	VersionMgr              *VolVersionManager
 	Forbidden               bool
 	mpsLock                 *mpsLockManager
@@ -211,6 +213,7 @@ func newVolFromVolValue(vv *volValue) (vol *Vol) {
 	if vol.txConflictRetryInterval == 0 {
 		vol.txConflictRetryInterval = proto.DefaultTxConflictRetryInterval
 	}
+	vol.TrashInterval = vv.TrashInterval
 	vol.Forbidden = vv.Forbidden
 	vol.EnableAuditLog = vv.EnableAuditLog
 	vol.authKey = vv.AuthKey
@@ -1612,6 +1615,7 @@ func setVolFromArgs(args *VolVarargs, vol *Vol) {
 
 	vol.dpSelectorName = args.dpSelectorName
 	vol.dpSelectorParm = args.dpSelectorParm
+	vol.TrashInterval = args.trashInterval
 }
 
 func getVolVarargs(vol *Vol) *VolVarargs {
