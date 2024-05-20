@@ -314,6 +314,12 @@ func (dd *DecommissionDisk) updateDecommissionStatus(c *Cluster, debug bool) (ui
 			failedNum++
 			failedPartitionIds = append(failedPartitionIds, dp.PartitionID)
 		}
+
+		if dp.GetDecommissionStatus() == DecommissionNeedManualFix {
+			failedNum++
+			failedPartitionIds = append(failedPartitionIds, dp.PartitionID)
+		}
+
 		if dp.GetDecommissionStatus() == DecommissionRunning {
 			runningNum++
 			runningPartitionIds = append(runningPartitionIds, dp.PartitionID)
