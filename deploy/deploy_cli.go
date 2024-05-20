@@ -17,7 +17,7 @@ func init() {
 }
 
 func main() {
-	_, err := log.InitLog("/tmp/cfs", "deploy", log.DebugLevel, nil, log.DefaultLogLeftSpaceLimit)
+	_, err := log.InitLog("/tmp/cfs", "deploy", log.DebugLevel, nil, log.DefaultLogLeftSpaceLimitRatio)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		log.LogFlush()
