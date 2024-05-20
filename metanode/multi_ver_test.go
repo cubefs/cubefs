@@ -97,7 +97,7 @@ func init() {
 	logDir := cfg.GetString(ConfigKeyLogDir)
 	os.RemoveAll(logDir)
 
-	if _, err := log.InitLog(logDir, "metanode", log.DebugLevel, nil, log.DefaultLogLeftSpaceLimit); err != nil {
+	if _, err := log.InitLog(logDir, "metanode", log.DebugLevel, nil, log.DefaultLogLeftSpaceLimitRatio); err != nil {
 		fmt.Println("Fatal: failed to start the cubefs daemon - ", err)
 		return
 	}

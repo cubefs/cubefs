@@ -119,7 +119,7 @@ func Clean(opt string, args []string) error {
 
 	ump.InitUmp("snapshot", "")
 
-	_, err := log.InitLog("snapshotlog", "snapshot", log.DebugLevel, nil, log.DefaultLogLeftSpaceLimit)
+	_, err := log.InitLog("snapshotlog", "snapshot", log.DebugLevel, nil, log.DefaultLogLeftSpaceLimitRatio)
 	if err != nil {
 		return fmt.Errorf("Init log failed: %v", err)
 	}
