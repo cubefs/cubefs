@@ -47,6 +47,7 @@ This page listed the CubeFS main maintainers and their responsibilities.
 | Zhihao Wang ([@Cresc](https://github.com/zhihao-wang))                 | [wzh07@hotmail.com](mailto:liqing.qiya@gmail.com)                | Blobstore Blobnode           | -            |
 | NaturalSelect([@NaturalSelect](https://github.com/NaturalSelect))      | [2145973003@qq.com](mailto:2145973003@qq.com)                    | Master, MetaNode             | -            |
 | setcy ([@setcy](https://github.com/setcy))                             | [asetcy@gmail.com](mailto:asetcy@gmail.com)                      | Master, Cli                  | -            |
+| Shuqiang Zheng ([@shuqiang-zheng](https://github.com/shuqiang-zheng))  | [782879301@qq.com](mailto:782879301@qq.com)                      | Master, DataNode, Client     | [OPPO]       |
 
 
 [OPPO]: https://www.oppo.com/en/
