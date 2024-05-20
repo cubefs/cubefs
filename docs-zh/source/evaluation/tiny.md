@@ -23,7 +23,7 @@ done
 
 ## 测试结果
 
-![Small File Benchmark](../pic/cfs-small-file-benchmark.png)
+![Small File Benchmark](./pic/cfs-small-file-benchmark.png)
 
 | 文件大小（KB）   | 1      | 2      | 4      | 8      | 16     | 32     | 64     | 128    |
 |------------|--------|--------|--------|--------|--------|--------|--------|--------|

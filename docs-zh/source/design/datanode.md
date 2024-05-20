@@ -1,12 +1,12 @@
 # 多副本子系统
 
-![Data Subsystem Architecture](../pic/data-subsystem.png)
+![Data Subsystem Architecture](./pic/data-subsystem.png)
 
 多副本子系统的设计是为了满足大、小文件支持顺序随机访问的多租户需求，由多个数据节点（DataNode）组成，每个节点管理一组数据分片（DataPartition），多个节点的 DataPartition 构成了副本组。副本之间的数据为镜像关系，通过强一致的复制协议来保证副本之间的数据一致性，用户可以根据应用场景灵活的配置不同副本数。而 DataNode 作为本系统的存储引擎，用于管理单节点上的数据，既可用作持久化存储，也可用做纠删码存储的缓存节点。 另外，针对副本间的数据复制，系统采用两种不同的复制协议，在确保副本之间数据强一致性的同时还兼顾了服务的性能和 IO 的吞吐量。
 
 ## 存储拓扑
 
-![image](../pic/cfs-data-storage-topology.png)
+![image](./pic/cfs-data-storage-topology.png)
 
 在 CubeFS 中，用户能够直接操作的是卷（Volume），这是一个逻辑概念，其数据存储在 DataNode 管理的磁盘上，在磁盘上会被组织在一个个 DataPartition 中，这也是一个逻辑概念。有了这层逻辑概念，DataNode 可在 DataPartition 的基础上进行副本的划分和管理，它们之间使用 Raft 协议保证副本的一致性。
 
@@ -16,13 +16,13 @@
 
 将大文件的内容存储为一个或多个扩展数据块（Extent）的文件，这些 Extent 可以分布在不同 DataNode 上的不同 DataPartition 中。将新文件写入 Extent 存储区时数据始终是以新 Extent 的零偏移量写入，这样就不需要在 Extent 内进行偏移。文件的最后一个范围不需要通过填充来补齐其大小限制（即该范围没有空洞），并且不会存储来自其他文件的数据。
 
-![image](../pic/cfs-data-largefile.png)
+![image](./pic/cfs-data-largefile.png)
 
 ### 小文件存储
 
 将多个小文件的内存聚合存储在一个 Extent 内，并将每个文件内容的物理偏移量记录在相应的元数据（保存在元数据子系统中）中。删除文件内容（释放此文件占用的磁盘空间）是通过底层文件系统提供的文件穿洞接口（`fallocate()`）实现的，这种设计的优点是不需要实现垃圾回收机制，因此在一定程度上避免使用从逻辑偏移到物理偏移的映射。注意，这与删除大文件不同，在删除大文件时是直接从磁盘中删除对应的 Extent 文件的。
 
-![image](../pic/cfs-data-smallfile.png)
+![image](./pic/cfs-data-smallfile.png)
 
 ### 数据复制
 
@@ -30,11 +30,11 @@
 
 - 当文件按顺序写入时，使用主备份复制协议来确保数据的强一致性并提供高效的 IO 能力。
 
-![image](../pic/workflow-sequential-write.png)
+![image](./pic/workflow-sequential-write.png)
 
 - 在随机写入覆盖现有的文件内容时，采用一种基于 Multi-Raft 的复制协议以确保数据的强一致性。
 
-![image](../pic/workflow-overwriting.png)
+![image](./pic/workflow-overwriting.png)
 
 ### 故障恢复
 

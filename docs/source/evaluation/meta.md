@@ -15,7 +15,7 @@ done
 
 ## Directory Creation
 
-![Dir Creation](../pic/cfs-mdtest-dir-creation.png)
+![Dir Creation](./pic/cfs-mdtest-dir-creation.png)
 
 |           | 1 Process | 4 Processes | 16 Processes | 64 Processes |
 |-----------|-----------|-------------|--------------|--------------|
@@ -26,7 +26,7 @@ done
 
 ## Directory Removal
 
-![Dir Removal](../pic/cfs-mdtest-dir-removal.png)
+![Dir Removal](./pic/cfs-mdtest-dir-removal.png)
 
 |           | 1 Process | 4 Processes | 16 Processes | 64 Processes |
 |-----------|-----------|-------------|--------------|--------------|
@@ -37,7 +37,7 @@ done
 
 ## Directory Status Check
 
-![Dir Stat](../pic/cfs-mdtest-dir-stat.png)
+![Dir Stat](./pic/cfs-mdtest-dir-stat.png)
 
 |           | 1 Process   | 4 Processes | 16 Processes | 64 Processes |
 |-----------|-------------|-------------|--------------|--------------|
@@ -48,7 +48,7 @@ done
 
 ## File Creation
 
-![File Creation](../pic/cfs-mdtest-file-creation.png)
+![File Creation](./pic/cfs-mdtest-file-creation.png)
 
 |           | 1 Process | 4 Processes | 16 Processes | 64 Processes |
 |-----------|-----------|-------------|--------------|--------------|
@@ -59,7 +59,7 @@ done
 
 ## File Removal
 
-![File Removal](../pic/cfs-mdtest-file-removal.png)
+![File Removal](./pic/cfs-mdtest-file-removal.png)
 
 |           | 1 Process | 4 Processes | 16 Processes | 64 Processes |
 |-----------|-----------|-------------|--------------|--------------|
@@ -70,7 +70,7 @@ done
 
 ## Tree Creation
 
-![Tree Creation](../pic/cfs-mdtest-tree-creation.png)
+![Tree Creation](./pic/cfs-mdtest-tree-creation.png)
 
 |           | 1 Process | 4 Processes | 16 Processes | 64 Processes |
 |-----------|-----------|-------------|--------------|--------------|
@@ -81,7 +81,7 @@ done
 
 ## Tree Removal
 
-![Tree Removal](../pic/cfs-mdtest-tree-removal.png)
+![Tree Removal](./pic/cfs-mdtest-tree-removal.png)
 
 |           | 1 Process | 4 Processes | 16 Processes | 64 Processes |
 |-----------|-----------|-------------|--------------|--------------|

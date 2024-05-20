@@ -4,7 +4,7 @@ Before CubeFS 3.0.0, only multi-replica storage was provided. As data scales con
 
 CubeFS recently released version 3.0.0, one of its key features being the addition of support for EC (the Erasure Code section in the figure below). EC will significantly reduce data redundancy and optimize storage costs, providing strong support for larger-scale storage needs.
 
-![arc](../pic/cfs-arch-ec.png)
+![arc](./pic/cfs-arch-ec.png)
 
 ## System Features
 

@@ -1,7 +1,7 @@
 # Using Erasure Coding System
 
 ::: tip Note
-For a quick experience, please refer to [Single-Node Mode](../quick-start/node.md).
+For a quick experience, please refer to [Single-Deploy Mode](../quickstart/single-deploy.md).
 :::
 
 ## Compilation and Building
@@ -107,7 +107,7 @@ nohup ./clustermgr -f clustermgr2.conf
 }
 ```
 
-Set the initial value of background task according to the mentioned in [ClusterMgr Manage](../maintenance/admin-api/blobstore/cm.md)
+Set the initial value of background task according to the mentioned in [ClusterMgr Manage](../ops/admin-api/blobstore/cm.md)
 ```bash
 #example balance
 $> curl -X POST http://127.0.0.1:9998/config/set -d '{"key":"balance","value":"false"}' --header 'Content-Type: application/json'
@@ -336,13 +336,13 @@ nohup ./access -f access.conf
 
 ### Configuration Instructions
 
-- [General Configuration Instructions](../maintenance/configs/blobstore/base.md)
-- [RPC Configuration Instructions](../maintenance/configs/blobstore/rpc.md)
-- [Clustermgr Configuration Instructions](../maintenance/configs/blobstore/cm.md)
-- [Access Configuration Instructions](../maintenance/configs/blobstore/access.md)
-- [BlobNode Configuration Instructions](../maintenance/configs/blobstore/blobnode.md)
-- [Proxy Configuration Instructions](../maintenance/configs/blobstore/proxy.md)
-- [Scheduler Configuration Instructions](../maintenance/configs/blobstore/scheduler.md)
+- [General Configuration Instructions](../ops/configs/blobstore/base.md)
+- [RPC Configuration Instructions](../ops/configs/blobstore/rpc.md)
+- [Clustermgr Configuration Instructions](../ops/configs/blobstore/cm.md)
+- [Access Configuration Instructions](../ops/configs/blobstore/access.md)
+- [BlobNode Configuration Instructions](../ops/configs/blobstore/blobnode.md)
+- [Proxy Configuration Instructions](../ops/configs/blobstore/proxy.md)
+- [Scheduler Configuration Instructions](../ops/configs/blobstore/scheduler.md)
 
 ## Deployment Tips
 
@@ -368,7 +368,7 @@ Learner nodes are generally used for data backup and fault recovery.
 :::
 
 - Enable the Clustermgr service on the new node and add the member information of the current node to the configuration of the new service.
-- Call the [member addition interface](../maintenance/admin-api/blobstore/cm.md) to add the newly started learner node to the cluster.
+- Call the [member addition interface](../dev-guide/admin-api/blobstore/cm.md) to add the newly started learner node to the cluster.
   ```bash
   curl -X POST --header 'Content-Type: application/json' -d '{"peer_id": 4, "host": "127.0.0.1:10113","node_host": "127.0.0.1:10001", "member_type": 1}' "http://127.0.0.1:9998/member/add" 
   ```
@@ -422,11 +422,11 @@ The reference configuration is as follows: `clustermgr-learner.conf`:
 
 ## Upload Testing
 
-> Refer to [Quick Use](../quick-start/verify.md) for details.
+> Refer to [Quick Use](../quickstart/verify.md) for details.
 
 ## Modifying Master Configuration
 
-Modify the `ebsAddr` configuration item in the Master configuration file ([more configuration references](../maintenance/configs/master.md)) to the Consul address registered by the Access node.
+Modify the `ebsAddr` configuration item in the Master configuration file ([more configuration references](../ops/configs/master.md)) to the Consul address registered by the Access node.
 
 ## Creating Erasure-coded Volume
 

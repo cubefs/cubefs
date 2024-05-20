@@ -3,9 +3,9 @@
 ## Memory and Performance Optimization
 
 - The Fuse client occupies too much memory, exceeding 2GB, which has a significant impact on other businesses.
-  - Offline modification: Set the `readRate` and `writeRate` parameters in the configuration file, restart the client. [For details, please refer to](../maintenance/configs/config.md)
+  - Offline modification: Set the `readRate` and `writeRate` parameters in the configuration file, restart the client. [For details, please refer to](../ops/configs/config.md)
   - Online modification: `http://{clientIP}:{profPort} /rate/set?write=800&read=800`
-- Fuse client performance optimization, [please refer to Fuse optimization](../maintenance/fuse.md)
+- Fuse client performance optimization, [please refer to Fuse optimization](../evaluation/fuse.md)
 
 ## Mounting Issues
 

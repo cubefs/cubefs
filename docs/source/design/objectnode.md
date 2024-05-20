@@ -4,7 +4,7 @@ The Object Gateway provides a compatible S3 object storage interface, making Cub
 
 ## Framework
 
-![image](../pic/cfs-object-subsystem-structure.png)
+![image](./pic/cfs-object-subsystem-structure.png)
 
 The ObjectNode is a functional subsystem node. It obtains the volume view (volume topology) from the Resource Manager (Master) as needed. Each ObjectNode communicates directly with the Metadata subsystem (MetaNode) and the Replica subsystem (DataNode).
 
@@ -31,7 +31,7 @@ Based on the original POSIX compatibility design, each file operation request fr
 
 **Example:**
 
-![image](../pic/cfs-object-subsystem-semantic.png)
+![image](./pic/cfs-object-subsystem-semantic.png)
 
 > Put object \'*example/a/b.txt*\' will create and write data to file
 > \'*/a/b.txt*\' in volume \'*example*\'.
@@ -43,11 +43,11 @@ Before using the object storage function, users need to create users through the
 CubeFS uses the **Owner** field of a volume as the user ID. There are two ways to create a user:
 
 1. When creating a volume through the Resource Manager API, if there is no user with the same name as the Owner in the cluster, a user with the ID of Owner will be automatically created.
-2. Call the user management API of the Resource Manager to create a user. [For details, please refer to](../maintenance/admin-api/master/user.md)
+2. Call the user management API of the Resource Manager to create a user. [For details, please refer to](../dev-guide/admin-api/master/user.md)
 
 ## Authorization and Authentication
 
-The signature verification algorithm in the object storage interface is fully compatible with the Amazon S3 service. Users can obtain user information through the management API, please refer to [Get User Information](../maintenance/admin-api/master/user.md).
+The signature verification algorithm in the object storage interface is fully compatible with the Amazon S3 service. Users can obtain user information through the management API, please refer to [Get User Information](../dev-guide/admin-api/master/user.md).
 
 After obtaining the *AccessKey* and *SecretKey*, users can use the algorithm to generate a signature to access the object storage function.
 
