@@ -130,6 +130,7 @@ const (
 	enableQuota                = "enableQuota"
 	dpDiscardKey               = "dpDiscard"
 	ignoreDiscardKey           = "ignoreDiscard"
+	TrashIntervalKey           = "trashInterval"
 	ClientIDKey                = "clientIDKey"
 	verSeqKey                  = "verSeq"
 	Periodic                   = "periodic"
