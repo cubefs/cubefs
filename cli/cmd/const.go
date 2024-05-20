@@ -48,6 +48,7 @@ const (
 	CliOpQueryDecommission           = "query-decommission"
 	CliOpEnableAutoDecommission      = "enable-auto-decommission"
 	CliOpQueryDecommissionFailedDisk = "query-decommission-failed-disk"
+	CliOpSetDecommissionDiskLimit    = "set-decommission-disk-limit"
 
 	// Shorthand format of operation name
 	CliOpDecommissionShortHand = "dec"

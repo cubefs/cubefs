@@ -102,7 +102,7 @@ type Cluster struct {
 	lcNodes                      sync.Map
 	lcMgr                        *lifecycleManager
 	snapshotMgr                  *snapshotDelManager
-	DecommissionDiskFactor       float64
+	DecommissionDiskLimit        uint32
 	S3ApiQosQuota                *sync.Map // (api,uid,limtType) -> limitQuota
 	MarkDiskBrokenThreshold      atomicutil.Float64
 }
@@ -4983,6 +4983,18 @@ func (c *Cluster) GetDecommissionDataPartitionRecoverTimeOut() time.Duration {
 	} else {
 		return time.Second * time.Duration(c.cfg.DpRepairTimeOut)
 	}
+}
+
+func (c *Cluster) GetDecommissionDiskLimit() (limit uint32) {
+	limit = atomic.LoadUint32(&c.DecommissionDiskLimit)
+	if limit == 0 {
+		limit = 1
+	}
+	return
+}
+
+func (c *Cluster) setDecommissionDiskLimit(limit uint32) {
+	atomic.StoreUint32(&c.DecommissionDiskLimit, limit)
 }
 
 func (c *Cluster) markDecommissionDataPartition(dp *DataPartition, src *DataNode, raftForce bool, migrateType uint32) (err error) {
