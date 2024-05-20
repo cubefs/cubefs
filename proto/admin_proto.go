@@ -102,10 +102,9 @@ const (
 
 	AdminLcNode = "/admin/lcnode"
 
-	AdminUpdateDecommissionDiskFactor = "/admin/updateDecommissionDiskFactor"
-	AdminQueryDecommissionDiskLimit   = "/admin/queryDecommissionDiskLimit"
-	AdminEnableAutoDecommissionDisk   = "/admin/enableAutoDecommissionDisk"
-	AdminQueryAutoDecommissionDisk    = "/admin/queryAutoDecommissionDisk"
+	AdminUpdateDecommissionDiskLimit = "/admin/updateDecommissionDiskLimit"
+	AdminEnableAutoDecommissionDisk  = "/admin/enableAutoDecommissionDisk"
+	AdminQueryAutoDecommissionDisk   = "/admin/queryAutoDecommissionDisk"
 	// graphql master api
 	AdminClusterAPI               = "/api/cluster"
 	AdminUserAPI                  = "/api/user"

@@ -757,3 +757,11 @@ func (api *AdminAPI) AbortDiskDecommission(addr string, disk string) (err error)
 	err = api.mc.request(request)
 	return
 }
+
+func (api AdminAPI) SetDecommissionDiskLimit(limit uint32) (err error) {
+	request := newRequest(post, proto.AdminUpdateDecommissionDiskLimit)
+	request.addParam("decommissionDiskLimit", strconv.FormatUint(uint64(limit), 10))
+
+	err = api.mc.request(request)
+	return
+}

@@ -927,26 +927,24 @@ func (nsgm *DomainManager) putNodeSet(ns *nodeSet, load bool) (err error) {
 }
 
 type nodeSet struct {
-	ID                             uint64
-	Capacity                       int
-	zoneName                       string
-	metaNodes                      *sync.Map
-	dataNodes                      *sync.Map
-	decommissionDataPartitionList  *DecommissionDataPartitionList
-	decommissionParallelLimit      int32
-	decommissionDiskParallelFactor float64
-	nodeSelectLock                 sync.Mutex
-	dataNodeSelectorLock           sync.RWMutex
-	dataNodeSelector               NodeSelector
-	metaNodeSelectorLock           sync.RWMutex
-	metaNodeSelector               NodeSelector
+	ID                            uint64
+	Capacity                      int
+	zoneName                      string
+	metaNodes                     *sync.Map
+	dataNodes                     *sync.Map
+	decommissionDataPartitionList *DecommissionDataPartitionList
+	decommissionParallelLimit     int32
+	nodeSelectLock                sync.Mutex
+	dataNodeSelectorLock          sync.RWMutex
+	dataNodeSelector              NodeSelector
+	metaNodeSelectorLock          sync.RWMutex
+	metaNodeSelector              NodeSelector
 	sync.RWMutex
 	manualDecommissionDiskList        *DecommissionDiskList
 	autoDecommissionDiskList          *DecommissionDiskList
 	doneDecommissionDiskListTraverse  chan struct{}
 	startDecommissionDiskListTraverse chan struct{}
 	DecommissionDisks                 sync.Map
-	diskParallelFactorLk              sync.Mutex
 }
 
 type nodeSetDecommissionParallelStatus struct {
@@ -1085,21 +1083,6 @@ func (ns *nodeSet) UpdateMaxParallel(maxParallel int32) {
 	atomic.StoreInt32(&ns.decommissionParallelLimit, maxParallel)
 }
 
-func (ns *nodeSet) UpdateDecommissionDiskFactor(factor float64) {
-	log.LogDebugf("action[UpdateDecommissionFactor]nodeSet[%v] decommission disk factor update to [%v]", ns.ID, factor)
-	ns.diskParallelFactorLk.Lock()
-	defer ns.diskParallelFactorLk.Unlock()
-	ns.decommissionDiskParallelFactor = factor
-}
-
-func (ns *nodeSet) QueryDecommissionDiskLimit() int {
-	ns.diskParallelFactorLk.Lock()
-	defer ns.diskParallelFactorLk.Unlock()
-	log.LogDebugf("action[QueryDecommissionDiskLimit]nodeSet[%v] decommission disk limit to [%v]",
-		ns.ID, int(ns.decommissionDiskParallelFactor*float64(ns.dataNodeLen())))
-	return int(ns.decommissionDiskParallelFactor * float64(ns.dataNodeLen()))
-}
-
 func (ns *nodeSet) getDecommissionParallelStatus() (int32, int32, []uint64) {
 	return ns.decommissionDataPartitionList.getDecommissionParallelStatus()
 }
@@ -1184,9 +1167,7 @@ func (ns *nodeSet) traverseDecommissionDisk(c *Cluster) {
 				}
 				return true
 			})
-			ns.diskParallelFactorLk.Lock()
-			maxDiskDecommissionCnt := int(ns.decommissionDiskParallelFactor * float64(ns.dataNodeLen()))
-			ns.diskParallelFactorLk.Unlock()
+			maxDiskDecommissionCnt := int(c.GetDecommissionDiskLimit())
 			if maxDiskDecommissionCnt == 0 && ns.dataNodeLen() != 0 {
 				manualCnt, manualDisks := ns.manualDecommissionDiskList.PopMarkDecommissionDisk(0)
 				log.LogDebugf("traverseDecommissionDisk traverse manualCnt %v",
@@ -1556,7 +1537,6 @@ func (zone *Zone) createNodeSet(c *Cluster) (ns *nodeSet, err error) {
 		}
 		ns = newNodeSet(c, id, c.cfg.nodeSetCapacity, zone.name)
 		ns.UpdateMaxParallel(int32(c.DecommissionLimit))
-		ns.UpdateDecommissionDiskFactor(c.DecommissionDiskFactor)
 		ns.startDecommissionSchedule()
 		log.LogInfof("action[createNodeSet] syncAddNodeSet[%v] zonename[%v]", ns.ID, zone.name)
 		if err = c.syncAddNodeSet(ns); err != nil {
@@ -1952,41 +1932,6 @@ func (zone *Zone) updateDecommissionLimit(limit int32, c *Cluster) (err error) {
 		}
 	}
 	log.LogInfof("All nodeset from %v set decommission limit to %v", zone.name, limit)
-	return
-}
-
-func (zone *Zone) updateDecommissionDiskFactor(factor float64, c *Cluster) (err error) {
-	nodeSets := zone.getAllNodeSet()
-
-	if nodeSets == nil {
-		log.LogWarnf("Nodeset form %v is nil", zone.name)
-		return proto.ErrNoNodeSetToUpdateDecommissionDiskFactor
-	}
-
-	for _, ns := range nodeSets {
-		ns.UpdateDecommissionDiskFactor(factor)
-		if err = c.syncUpdateNodeSet(ns); err != nil {
-			log.LogWarnf("updateDecommissionDiskFactor nodeset [%v] failed,err:%v", ns.ID, err.Error())
-			continue
-		}
-	}
-	log.LogInfof("All nodeset from %v set decommission disk factor to %v", zone.name, factor)
-	return
-}
-
-func (zone *Zone) queryDecommissionDiskLimit() (err error, diskLimit []proto.DecommissionDiskLimitDetail) {
-	nodeSets := zone.getAllNodeSet()
-	diskLimit = make([]proto.DecommissionDiskLimitDetail, 0)
-	if nodeSets == nil {
-		log.LogWarnf("Nodeset form %v is nil", zone.name)
-		return proto.ErrNoNodeSetToQueryDecommissionDiskLimit, nil
-	}
-
-	for _, ns := range nodeSets {
-		limit := ns.QueryDecommissionDiskLimit()
-		diskLimit = append(diskLimit, proto.DecommissionDiskLimitDetail{NodeSetId: ns.ID, Limit: limit})
-	}
-	log.LogInfof("All nodeset from %v set decommission disk limit  %v", zone.name, diskLimit)
 	return
 }
 
