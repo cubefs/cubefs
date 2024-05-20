@@ -318,6 +318,16 @@ func TestGetCluster(t *testing.T) {
 	process(reqURL, t)
 }
 
+func TestGetClusterDataNodes(t *testing.T) {
+	reqURL := fmt.Sprintf("%v%v", hostAddr, proto.AdminGetClusterDataNodes)
+	process(reqURL, t)
+}
+
+func TestGetClusterMetaNodes(t *testing.T) {
+	reqURL := fmt.Sprintf("%v%v", hostAddr, proto.AdminGetClusterMetaNodes)
+	process(reqURL, t)
+}
+
 func TestGetIpAndClusterName(t *testing.T) {
 	reqURL := fmt.Sprintf("%v%v", hostAddr, proto.AdminGetIP)
 	process(reqURL, t)
