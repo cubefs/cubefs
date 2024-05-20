@@ -39,14 +39,14 @@ func validVols(client, complete interface{}) []string {
 func validDataNodes(client *sdk.MasterClient, toComplete string) []string {
 	var (
 		validDataNodes []string
-		clusterView    *proto.ClusterView
+		dataNodes      []proto.NodeView
 
 		err error
 	)
-	if clusterView, err = client.AdminAPI().GetCluster(); err != nil {
+	if dataNodes, err = client.AdminAPI().GetClusterDataNodes(); err != nil {
 		errout(err)
 	}
-	for _, dn := range clusterView.DataNodes {
+	for _, dn := range dataNodes {
 		validDataNodes = append(validDataNodes, dn.Addr)
 	}
 	return validDataNodes
@@ -55,13 +55,13 @@ func validDataNodes(client *sdk.MasterClient, toComplete string) []string {
 func validMetaNodes(client *sdk.MasterClient, toComplete string) []string {
 	var (
 		validMetaNodes []string
-		clusterView    *proto.ClusterView
+		metaNodes      []proto.NodeView
 		err            error
 	)
-	if clusterView, err = client.AdminAPI().GetCluster(); err != nil {
+	if metaNodes, err = client.AdminAPI().GetClusterMetaNodes(); err != nil {
 		errout(err)
 	}
-	for _, mn := range clusterView.MetaNodes {
+	for _, mn := range metaNodes {
 		validMetaNodes = append(validMetaNodes, mn.Addr)
 	}
 	return validMetaNodes
