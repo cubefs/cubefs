@@ -21,6 +21,7 @@ package main
 //
 
 import (
+	"bufio"
 	"flag"
 	"fmt"
 	"io"
@@ -59,6 +60,15 @@ import (
 	"github.com/cubefs/cubefs/util/ump"
 	"github.com/jacobsa/daemonize"
 	_ "go.uber.org/automaxprocs"
+)
+
+const (
+	// CfsExitNormal exit normally, by umount
+	CfsExitNormal = "NORMAL"
+	// CfsExitAbnormal exit abnormal, include panic, SIGINT, SIGTERM
+	CfsExitAbnormal = "ABNORMAL"
+	// CfsExitUnknown exit unknown, include SIGKILL(kill -9) and system exit
+	CfsExitUnknown = "UNKNOWN"
 )
 
 const (
@@ -259,6 +269,54 @@ func doSuspend(uds string, port string) (*os.File, error) {
 	return fud, nil
 }
 
+func getLastExitInfo(outputFile *os.File) string {
+	scanner := bufio.NewScanner(outputFile)
+	lastCubeFsLine := ""
+	for scanner.Scan() {
+		line := scanner.Text()
+		if strings.Contains(line, "CubeFS Client") {
+			lastCubeFsLine = line
+		}
+	}
+
+	exitInfo := ""
+	if lastCubeFsLine != "" {
+		outputFile.Seek(0, 0)
+		scanner = bufio.NewScanner(outputFile)
+		// find last exit info
+		for scanner.Scan() {
+			line := scanner.Text()
+			if line == lastCubeFsLine {
+				for scanner.Scan() {
+					line := scanner.Text()
+					if strings.Contains(line, "exit normally") {
+						exitInfo = CfsExitNormal
+						break
+					}
+					if strings.Contains(line, "received signal (interrupt)") {
+						exitInfo = CfsExitAbnormal
+						break
+					}
+					if strings.Contains(line, "received signal (terminated)") {
+						exitInfo = CfsExitAbnormal
+						break
+					}
+					if strings.Contains(line, "panic") {
+						exitInfo = CfsExitAbnormal
+						break
+					}
+				}
+				// if not found exit info, it's `kill -9` or system exit
+				if exitInfo == "" {
+					exitInfo = CfsExitUnknown
+				}
+				break
+			}
+		}
+	}
+	return exitInfo
+}
+
 func main() {
 	flag.Parse()
 
@@ -369,6 +427,9 @@ func main() {
 	}()
 	syslog.SetOutput(outputFile)
 
+	// get cfs-client last exit info from output.log
+	exitInfo := getLastExitInfo(outputFile)
+
 	if *configRestoreFuse {
 		syslog.Println("NeedAfterAlloc restore fuse")
 		opt.NeedRestoreFuse = true
@@ -473,6 +534,12 @@ func main() {
 			fsConn.SetFuseDevFile(fud)
 		}
 	}
+	// if last exit info no empty, export it
+	if exitInfo != "" {
+		syslog.Printf("LastExitInfo: %v", exitInfo)
+		errMetric := exporter.NewCounter("LastExitInfo")
+		errMetric.AddWithLabels(1, map[string]string{exporter.Op: "EXIT", exporter.Type: exitInfo})
+	}
 
 	if err = fs.Serve(fsConn, super, opt); err != nil {
 		log.LogFlush()
@@ -486,6 +553,7 @@ func main() {
 		syslog.Printf("fs Serve returns err(%v)\n", err)
 		os.Exit(1)
 	}
+	syslog.Printf("exit normally\n")
 }
 
 func getPushAddrFromMaster(masterAddr string) (addr string, err error) {
