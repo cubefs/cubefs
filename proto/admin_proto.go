@@ -237,6 +237,8 @@ const (
 	QuotaGet    = "/quota/get"
 	// QuotaBatchModifyPath = "/quota/batchModifyPath"
 	QuotaListAll = "/quota/listAll"
+	//trash
+	AdminSetTrashInterval = "/vol/setTrashInterval"
 
 	// s3 qos api
 	S3QoSSet    = "/s3/qos/set"
@@ -1102,7 +1104,7 @@ type SimpleVolView struct {
 	CacheRule        string
 	PreloadCapacity  uint64
 	Uids             []UidSimpleInfo
-	TrashInterval    int
+	TrashInterval    int64
 
 	// multi version snapshot
 	LatestVer         uint64
