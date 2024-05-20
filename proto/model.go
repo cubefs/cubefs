@@ -128,6 +128,7 @@ type ClusterView struct {
 	VolDeletionDelayTimeHour int64
 	MarkDiskBrokenThreshold  float64
 	EnableAutoDecommission   bool
+	DecommissionDiskLimit    uint32
 	DataNodeStatInfo         *NodeStatInfo
 	MetaNodeStatInfo         *NodeStatInfo
 	VolStatInfo              []*VolStatInfo
@@ -442,10 +443,6 @@ func (v *VolVersionInfoList) GetLastVer() uint64 {
 type DecommissionDiskLimitDetail struct {
 	NodeSetId uint64
 	Limit     int
-}
-
-type DecommissionDiskLimit struct {
-	Details []DecommissionDiskLimitDetail
 }
 
 type DecommissionDiskInfo struct {

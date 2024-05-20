@@ -1911,17 +1911,22 @@ func extractInodeId(r *http.Request) (inode uint64, err error) {
 	return strconv.ParseUint(value, 10, 64)
 }
 
-func parseRequestToUpdateDecommissionDiskFactor(r *http.Request) (factor float64, err error) {
+func parseRequestToUpdateDecommissionDiskLimit(r *http.Request) (limit uint32, err error) {
 	if err = r.ParseForm(); err != nil {
 		return
 	}
 
 	var value string
-	if value = r.FormValue(decommissionDiskFactor); value == "" {
-		err = keyNotFound(decommissionDiskFactor)
+	if value = r.FormValue(decommissionDiskLimit); value == "" {
+		err = keyNotFound(decommissionDiskLimit)
 		return
 	}
-	return strconv.ParseFloat(value, 64)
+	tmp, err := strconv.ParseUint(value, 10, 32)
+	if err != nil {
+		return
+	}
+	limit = uint32(tmp)
+	return
 }
 
 func parseS3QosReq(r *http.Request, req *proto.S3QosRequest) (err error) {

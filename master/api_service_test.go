@@ -1595,3 +1595,16 @@ func TestSetDiscardDp(t *testing.T) {
 	process(unsetUrl, t)
 	require.False(t, dp.IsDiscard)
 }
+
+func TestSetDecommissionDiskLimit(t *testing.T) {
+	oldVal := server.cluster.GetDecommissionDiskLimit()
+	reqUrl := fmt.Sprintf("%v%v", hostAddr, proto.AdminUpdateDecommissionDiskLimit)
+	setUrl := fmt.Sprintf("%v?%v=%v", reqUrl, decommissionDiskLimit, oldVal+1)
+	unsetUrl := fmt.Sprintf("%v?%v=%v", reqUrl, decommissionDiskLimit, oldVal)
+
+	process(setUrl, t)
+	require.EqualValues(t, oldVal+1, server.cluster.GetDecommissionDiskLimit())
+
+	process(unsetUrl, t)
+	require.EqualValues(t, oldVal, server.cluster.GetDecommissionDiskLimit())
+}
