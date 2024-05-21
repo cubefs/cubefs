@@ -890,12 +890,12 @@ func (partition *DataPartition) removeOneReplicaByHost(c *Cluster, host string) 
 		log.LogWarnf("action[removeOneReplicaByHost]  partition %v reset DecommissionDstAddr", partition.PartitionID)
 		return
 	}
-	//oldReplicaNum := partition.ReplicaNum
-	//partition.ReplicaNum = partition.ReplicaNum - 1
+	// oldReplicaNum := partition.ReplicaNum
+	// partition.ReplicaNum = partition.ReplicaNum - 1
 	//
-	//if err = c.syncUpdateDataPartition(partition); err != nil {
+	// if err = c.syncUpdateDataPartition(partition); err != nil {
 	//	partition.ReplicaNum = oldReplicaNum
-	//}
+	// }
 
 	return
 }
@@ -1010,7 +1010,6 @@ func (partition *DataPartition) buildDpInfo(c *Cluster) *proto.DataPartitionInfo
 		OfflinePeerID:            partition.OfflinePeerID,
 		IsRecover:                partition.isRecover,
 		FilesWithMissingReplica:  filesMissReplicas,
-		SingleDecommissionAddr:   partition.SingleDecommissionAddr,
 		IsDiscard:                partition.IsDiscard,
 		SingleDecommissionStatus: partition.GetSpecialReplicaDecommissionStep(),
 		Forbidden:                forbidden,
@@ -1066,7 +1065,8 @@ func GetDecommissionStatusMessage(status uint32) string {
 }
 
 func (partition *DataPartition) MarkDecommissionStatus(srcAddr, dstAddr, srcDisk string, raftForce bool, term uint64,
-	migrateType uint32, c *Cluster, ns *nodeSet) (err error) {
+	migrateType uint32, c *Cluster, ns *nodeSet,
+) (err error) {
 	if partition.needManualFix() && migrateType == AutoDecommission {
 		return proto.ErrAllReplicaUnavailable
 	}
@@ -1077,7 +1077,7 @@ func (partition *DataPartition) MarkDecommissionStatus(srcAddr, dstAddr, srcDisk
 	//	return errors.NewErrorf("special replica dp[%v] host length(%v) is different from replicaNum(%v), "+
 	//		"wait for auto reduce replica",
 	//		partition.PartitionID, len(partition.Hosts), partition.ReplicaNum)
-	//}
+	// }
 	status := partition.GetDecommissionStatus()
 	if err = partition.canMarkDecommission(status, ns); err != nil {
 		log.LogWarnf("action[MarkDecommissionStatus] dp[%v] cannot make decommission:%v",
@@ -1460,10 +1460,10 @@ func (partition *DataPartition) rollback(c *Cluster) {
 		partition.DecommissionErrorMessage = fmt.Sprintf("rollback failed:%v", err.Error())
 		return
 	}
-	//err = partition.restoreReplicaMeta(c)
-	//if err != nil {
+	// err = partition.restoreReplicaMeta(c)
+	// if err != nil {
 	//	return
-	//}
+	// }
 	// release token first
 	partition.ReleaseDecommissionToken(c)
 	// reset status if rollback success
@@ -1527,9 +1527,9 @@ func (partition *DataPartition) checkConsumeToken() bool {
 // only mark stop status or initial
 func (partition *DataPartition) canMarkDecommission(status uint32, ns *nodeSet) error {
 	// dp may not be reset decommission status from last decommission
-	//if partition.DecommissionTerm != term {
+	// if partition.DecommissionTerm != term {
 	//	return true
-	//}
+	// }
 	// make sure dp release the token
 	rollbackTimes := atomic.LoadUint32(&partition.DecommissionNeedRollbackTimes)
 	if ns.processDataPartitionDecommission(partition.PartitionID) {
@@ -1779,7 +1779,7 @@ func (partition *DataPartition) ReleaseDecommissionToken(c *Cluster) {
 	}
 }
 
-//func (partition *DataPartition) ShouldReleaseDecommissionTokenByStop(c *Cluster) {
+// func (partition *DataPartition) ShouldReleaseDecommissionTokenByStop(c *Cluster) {
 //	if partition.DecommissionDstAddr == "" && !partition.DecommissionDstAddrSpecify {
 //		return
 //	}
@@ -1789,7 +1789,7 @@ func (partition *DataPartition) ReleaseDecommissionToken(c *Cluster) {
 //			partition.PartitionID, partition.DecommissionDstAddr)
 //	}
 //	partition.ReleaseDecommissionToken(c)
-//}
+// }
 
 func getTargetNodeset(addr string, c *Cluster) (ns *nodeSet, zone *Zone, err error) {
 	var dataNode *DataNode
@@ -2019,5 +2019,4 @@ func (partition *DataPartition) removeHostByForce(c *Cluster, peerAddr string) {
 			partition.PartitionID, partition.Hosts[0], err)
 		return
 	}
-	return
 }

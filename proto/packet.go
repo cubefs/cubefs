@@ -257,9 +257,8 @@ const (
 	OpReadRepairExtentAgain uint8 = 0xEF
 
 	// io speed limit
-	OpLimitedIoErr          uint8 = 0xB1
-	OpReadRepairExtentAgain uint8 = 0xEF
-	OpStoreClosed           uint8 = 0xB2
+	OpLimitedIoErr uint8 = 0xB1
+	OpStoreClosed  uint8 = 0xB2
 )
 
 const (

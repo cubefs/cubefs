@@ -741,11 +741,7 @@ func (s *DataNode) handleBatchMarkDeletePacket(p *repl.Packet, c net.Conn) {
 	store := partition.ExtentStore()
 	if err == nil {
 		for _, ext := range exts {
-			ok, err := store.CanGcDelete(ext.ExtentId)
-			if err != nil {
-				log.LogErrorf("[handleBatchMarkDeletePacket] dp(%v) failed to get extent(%v) info, err(%v)", ext.PartitionId, ext.ExtentId, err)
-				return
-			}
+			ok := store.CanGcDelete(ext.ExtentId)
 			if p.Opcode == proto.OpGcBatchDeleteExtent && ok {
 				log.LogWarnf("handleBatchMarkDeletePacket: ext %d is not in gc status, can't be gc delete, dp %d", ext.ExtentId, ext.PartitionId)
 				err = storage.ParameterMismatchError
@@ -1222,12 +1218,7 @@ func (s *DataNode) handlePacketToGetAppliedID(p *repl.Packet) {
 
 func (s *DataNode) handlePacketToGetPartitionSize(p *repl.Packet) {
 	partition := p.Object.(*DataPartition)
-	usedSize, err := partition.extentStore.StoreSizeExtentID(p.ExtentID)
-	if err != nil {
-		log.LogErrorf("[handlePacketToGetPartitionSize] dp(%v) failed to get extents size, err(%v)", partition.partitionID, err)
-		p.PacketErrorWithBody(proto.OpDiskErr, []byte(err.Error()))
-		return
-	}
+	usedSize := partition.extentStore.StoreSizeExtentID(p.ExtentID)
 	buf := make([]byte, 8)
 	binary.BigEndian.PutUint64(buf, uint64(usedSize))
 	p.AddMesgLog(fmt.Sprintf("partitionSize_(%v)", usedSize))
@@ -1236,13 +1227,7 @@ func (s *DataNode) handlePacketToGetPartitionSize(p *repl.Packet) {
 
 func (s *DataNode) handlePacketToGetMaxExtentIDAndPartitionSize(p *repl.Packet) {
 	partition := p.Object.(*DataPartition)
-	maxExtentID, totalPartitionSize, err := partition.extentStore.GetMaxExtentIDAndPartitionSize()
-	if err != nil {
-		log.LogErrorf("[handlePacketToGetMaxExtentIDAndPartitionSize] dp(%v) failed to get extents size, err(%v)", partition.partitionID, err)
-		p.PacketErrorWithBody(proto.OpDiskErr, []byte(err.Error()))
-		return
-	}
-
+	maxExtentID, totalPartitionSize := partition.extentStore.GetMaxExtentIDAndPartitionSize()
 	buf := make([]byte, 16)
 	binary.BigEndian.PutUint64(buf[0:8], uint64(maxExtentID))
 	binary.BigEndian.PutUint64(buf[8:16], totalPartitionSize)
@@ -1716,7 +1701,6 @@ func (s *DataNode) handleBatchLockNormalExtent(p *repl.Packet, connect net.Conn)
 	}
 	log.LogInfof("action[handleBatchLockNormalExtent] dp %d, success len: %v, isCreate: %v, flag %s, cost %d ms",
 		partition.partitionID, len(gcLockEks.Eks), gcLockEks.IsCreate, gcLockEks.Flag.String(), time.Since(start).Milliseconds())
-	return
 }
 
 func (s *DataNode) handleBatchUnlockNormalExtent(p *repl.Packet, connect net.Conn) {
@@ -1743,5 +1727,4 @@ func (s *DataNode) handleBatchUnlockNormalExtent(p *repl.Packet, connect net.Con
 	store.ExtentBatchUnlockNormalExtent(exts)
 
 	log.LogInfof("action[handleBatchUnlockNormalExtent] success len: %v", len(exts))
-	return
 }

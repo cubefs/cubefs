@@ -479,7 +479,7 @@ func (eh *ExtentHandler) appendExtentKey() (err error) {
 				eh.dirty = false
 				eh.lastKey = *eh.key
 				log.LogDebugf("action[appendExtentKey] status %v, needUpdateVer %v, eh{%v}", status, eh.stream.needUpdateVer, eh)
-				return
+				return nil
 			}
 			// Due to the asynchronous synchronization of version numbers, the extent cache version of the client is updated first before being written to the meta.
 			// However, it is possible for the client version to lag behind the meta version, resulting in partial inconsistencies in judgment.

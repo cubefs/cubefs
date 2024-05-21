@@ -57,6 +57,7 @@ func (mp *metaPartition) startFreeList() (err error) {
 		return
 	}
 
+	go mp.updateVolWorker()
 	go mp.deleteWorker()
 	mp.startToDeleteExtents()
 	return
@@ -116,7 +117,7 @@ func (mp *metaPartition) updateVolWorker() {
 		}
 		for i := 0; i < len(view.DataPartitions); i++ {
 			if len(view.DataPartitions[i].Hosts) < 1 {
-				log.LogErrorf("action[UpdateVolumeView] dp id(%v) is invalid, DataPartitionResponse detail[%v]",
+				log.LogErrorf("updateVolWorker dp id(%v) is invalid, DataPartitionResponse detail[%v]",
 					view.DataPartitions[i].PartitionID, view.DataPartitions[i])
 				continue
 			}
@@ -222,7 +223,8 @@ func (mp *metaPartition) deleteWorker() {
 
 // delete Extents by Partition,and find all successDelete inode
 func (mp *metaPartition) batchDeleteExtentsByPartition(partitionDeleteExtents map[uint64][]*proto.DelExtentParam,
-	allInodes []*Inode) (shouldCommit []*Inode, shouldPushToFreeList []*Inode) {
+	allInodes []*Inode,
+) (shouldCommit []*Inode, shouldPushToFreeList []*Inode) {
 	occurErrors := make(map[uint64]error)
 	shouldCommit = make([]*Inode, 0, len(allInodes))
 	shouldPushToFreeList = make([]*Inode, 0)

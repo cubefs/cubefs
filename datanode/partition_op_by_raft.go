@@ -231,7 +231,7 @@ func (dp *DataPartition) ApplyRandomWrite(command []byte, raftApplyID uint64) (r
 		} else {
 			if err == storage.ErrStoreAlreadyClosed {
 				err = nil
-				resp = proto.OpStoreClosed
+				respStatus = proto.OpStoreClosed
 				log.LogWarnf("[ApplyRandomWrite] vol(%v) dp(%v) apply id(%v) store already closed", dp.volumeID, dp.partitionID, raftApplyID)
 				return
 			}

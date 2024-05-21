@@ -1846,15 +1846,6 @@ func extractQuotaId(r *http.Request) (quotaId uint32, err error) {
 	return
 }
 
-func extractInodeId(r *http.Request) (inode uint64, err error) {
-	var value string
-	if value = r.FormValue(inodeKey); value == "" {
-		err = keyNotFound(inodeKey)
-		return
-	}
-	return strconv.ParseUint(value, 10, 64)
-}
-
 func parseRequestToSetTrashInterval(r *http.Request) (name, authKey string, interval int64, err error) {
 	if err = r.ParseForm(); err != nil {
 		return

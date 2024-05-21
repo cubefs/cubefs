@@ -25,7 +25,6 @@ import (
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/auditlog"
 	"github.com/cubefs/cubefs/util/errors"
-	"github.com/cubefs/cubefs/util/log"
 )
 
 func (mp *metaPartition) TxCreateDentry(req *proto.TxCreateDentryRequest, p *Packet, remoteAddr string) (err error) {
@@ -286,10 +285,7 @@ func (mp *metaPartition) DeleteDentry(req *DeleteDentryReq, p *Packet, remoteAdd
 			return
 		}
 	}
-	dentry := &Dentry{
-		ParentId: req.ParentID,
-		Name:     req.Name,
-	}
+
 	dentry.setVerSeq(req.Verseq)
 	log.LogDebugf("action[DeleteDentry] den param(%v)", dentry)
 

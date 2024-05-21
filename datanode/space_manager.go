@@ -39,25 +39,23 @@ const DefaultStopDpLimit = 4
 
 // SpaceManager manages the disk space.
 type SpaceManager struct {
-	clusterID            string
-	disks                map[string]*Disk
-	partitions           map[uint64]*DataPartition
-	raftStore            raftstore.RaftStore
-	nodeID               uint64
-	diskMutex            sync.RWMutex
-	partitionMutex       sync.RWMutex
-	stats                *Stats
-	stopC                chan bool
-	selectedIndex        int // TODO what is selected index
-	diskList             []string
-	dataNode             *DataNode
-	createPartitionMutex sync.RWMutex
-	rand                 *rand.Rand
-	currentLoadDpCount   int
-	currentStopDpCount   int
-	diskUtils            map[string]*atomicutil.Float64
-	samplerDone          chan struct{}
-	allDisksLoaded       bool
+	clusterID          string
+	disks              map[string]*Disk
+	partitions         map[uint64]*DataPartition
+	raftStore          raftstore.RaftStore
+	nodeID             uint64
+	diskMutex          sync.RWMutex
+	partitionMutex     sync.RWMutex
+	stats              *Stats
+	stopC              chan bool
+	diskList           []string
+	dataNode           *DataNode
+	rand               *rand.Rand
+	currentLoadDpCount int
+	currentStopDpCount int
+	diskUtils          map[string]*atomicutil.Float64
+	samplerDone        chan struct{}
+	allDisksLoaded     bool
 }
 
 const diskSampleDuration = 1 * time.Second
@@ -276,7 +274,8 @@ func (manager *SpaceManager) Stats() *Stats {
 }
 
 func (manager *SpaceManager) LoadDisk(path string, reservedSpace, diskRdonlySpace uint64, maxErrCnt int,
-	diskEnableReadRepairExtentLimit bool) (err error) {
+	diskEnableReadRepairExtentLimit bool,
+) (err error) {
 	var (
 		disk    *Disk
 		visitor PartitionVisitor
@@ -432,7 +431,7 @@ func (manager *SpaceManager) Partition(partitionID uint64) (dp *DataPartition) {
 func (manager *SpaceManager) AttachPartition(dp *DataPartition) {
 	begin := time.Now()
 	defer func() {
-		log.LogInfof("[AttachPartition] load dp(%v) attach using time(%v)", dp.partitionID, time.Now().Sub(begin))
+		log.LogInfof("[AttachPartition] load dp(%v) attach using time(%v)", dp.partitionID, time.Since(begin))
 	}()
 	manager.partitionMutex.Lock()
 	defer manager.partitionMutex.Unlock()

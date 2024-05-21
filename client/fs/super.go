@@ -88,11 +88,8 @@ type Super struct {
 	ebsc         *blobstore.BlobStoreClient
 	sc           *SummaryCache
 
-	taskPool     []common.TaskPool
-	closeC       chan struct{}
-	disableTrash bool
-
-	enableVerRead bool
+	taskPool []common.TaskPool
+	closeC   chan struct{}
 }
 
 // Functions that Super needs to implement
@@ -521,7 +518,7 @@ func (s *Super) QueryTrash(w http.ResponseWriter, r *http.Request) {
 	if !flag {
 		replySucc(w, r, fmt.Sprintf("Trash is now enable interval[%v]\n", s.mw.TrashInterval))
 	} else {
-		replySucc(w, r, fmt.Sprintf("Trash is now disable\n"))
+		replySucc(w, r, "Trash is now disable\n")
 	}
 }
 

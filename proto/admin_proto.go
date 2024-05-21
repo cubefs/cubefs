@@ -19,6 +19,8 @@ import (
 	"fmt"
 	"strconv"
 	"time"
+
+	"github.com/cubefs/cubefs/util"
 )
 
 type ContextUserKey string
@@ -1132,7 +1134,7 @@ type SimpleVolView struct {
 	// multi version snapshot
 	LatestVer         uint64
 	Forbidden         bool
-	DisableAuditLog  bool
+	DisableAuditLog   bool
 	DeleteExecTime    time.Time
 	DpRepairBlockSize uint64
 }

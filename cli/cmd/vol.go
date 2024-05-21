@@ -1105,7 +1105,6 @@ func newVolSetTrashIntervalCmd(client *master.MasterClient) *cobra.Command {
 		Short: cmdVolSetTrashIntervalShort,
 		Args:  cobra.MinimumNArgs(2),
 		Run: func(cmd *cobra.Command, args []string) {
-
 			var (
 				err      error
 				interval time.Duration
@@ -1115,7 +1114,7 @@ func newVolSetTrashIntervalCmd(client *master.MasterClient) *cobra.Command {
 			name := args[0]
 			defer func() {
 				if err != nil {
-					errout("%v\n", err)
+					errout(err)
 				}
 			}()
 

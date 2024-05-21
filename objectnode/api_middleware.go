@@ -189,7 +189,6 @@ func (o *ObjectNode) policyCheckMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(
 		func(w http.ResponseWriter, r *http.Request) {
 			o.policyCheck(next.ServeHTTP).ServeHTTP(w, r)
-			return
 		})
 }
 

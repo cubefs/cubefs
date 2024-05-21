@@ -186,7 +186,8 @@ func (dp *DataPartition) getLocalExtentInfo(extentType uint8, tinyExtents []uint
 }
 
 func (dp *DataPartition) getRemoteExtentInfo(extentType uint8, tinyExtents []uint64,
-	target string) (extentFiles []*storage.ExtentInfo, err error) {
+	target string,
+) (extentFiles []*storage.ExtentInfo, err error) {
 	p := repl.NewPacketToGetAllWatermarks(dp.partitionID, extentType)
 	extentFiles = make([]*storage.ExtentInfo, 0)
 	if proto.IsTinyExtentType(extentType) {
@@ -539,7 +540,8 @@ func (dp *DataPartition) ExtentWithHoleRepairRead(request repl.PacketInterface, 
 }
 
 func (dp *DataPartition) NormalExtentRepairRead(p repl.PacketInterface, connect net.Conn, isRepairRead bool,
-	metrics *DataNodeMetrics, makeRspPacket repl.MakeStreamReadResponsePacket) (err error) {
+	metrics *DataNodeMetrics, makeRspPacket repl.MakeStreamReadResponsePacket,
+) (err error) {
 	var (
 		metricPartitionIOLabels     map[string]string
 		partitionIOMetric, tpObject *exporter.TimePointCount
@@ -681,7 +683,6 @@ func (dp *DataPartition) applyRepairKey(extentID int) (m string) {
 	return fmt.Sprintf("ApplyRepairKey(%v_%v)", dp.partitionID, extentID)
 }
 
-// The actual repair of an extent happens here.
 // The actual repair of an extent happens here.
 func (dp *DataPartition) streamRepairExtent(remoteExtentInfo *storage.ExtentInfo,
 	tinyPackFunc, normalPackFunc, normalWithHoleFunc repl.MakeExtentRepairReadPacket,

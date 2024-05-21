@@ -141,7 +141,9 @@ func (s *DefaultRandomSelector) getLocalLeaderDataPartition(exclude map[string]s
 	return s.getRandomDataPartition(localLeaderPartitions, exclude)
 }
 
-func (s *DefaultRandomSelector) getRandomDataPartition(partitions []*DataPartition, exclude map[string]struct{}) (dp *DataPartition) {
+func (s *DefaultRandomSelector) getRandomDataPartition(partitions []*DataPartition, exclude map[string]struct{}) (
+	dp *DataPartition,
+) {
 	length := len(partitions)
 	if length == 0 {
 		return nil

@@ -104,8 +104,9 @@ func (mw *MetaWrapper) txIcreate(tx *Transaction, mp *MetaPartition, mode, uid, 
 	return status, resp.Info, nil
 }
 
-func (mw *MetaWrapper) quotaIcreate(mp *MetaPartition, mode, uid, gid uint32, target []byte, quotaIds []uint32, fullPath string,
-) (status int, info *proto.InodeInfo, err error) {
+func (mw *MetaWrapper) quotaIcreate(mp *MetaPartition, mode, uid, gid uint32, target []byte, quotaIds []uint32, fullPath string) (status int,
+	info *proto.InodeInfo, err error,
+) {
 	bgTime := stat.BeginStat()
 	defer func() {
 		stat.EndStat("icreate", err, bgTime, 1)
@@ -164,8 +165,9 @@ func (mw *MetaWrapper) quotaIcreate(mp *MetaPartition, mode, uid, gid uint32, ta
 	return statusOK, resp.Info, nil
 }
 
-func (mw *MetaWrapper) icreate(mp *MetaPartition, mode, uid, gid uint32, target []byte, fullPath string,
-) (status int, info *proto.InodeInfo, err error) {
+func (mw *MetaWrapper) icreate(mp *MetaPartition, mode, uid, gid uint32, target []byte, fullPath string) (status int,
+	info *proto.InodeInfo, err error,
+) {
 	bgTime := stat.BeginStat()
 	defer func() {
 		stat.EndStat("icreate", err, bgTime, 1)
@@ -252,7 +254,8 @@ func (mw *MetaWrapper) sendToMetaPartitionWithTx(mp *MetaPartition, req *proto.P
 }
 
 func (mw *MetaWrapper) SendTxPack(req proto.TxPack, resp interface{}, Opcode uint8, mp *MetaPartition,
-	checkStatusFunc func(int, *proto.Packet) error, ignoreExistError bool) (status int, err error, packet *proto.Packet) {
+	checkStatusFunc func(int, *proto.Packet) error, ignoreExistError bool,
+) (status int, err error, packet *proto.Packet) {
 	packet = proto.NewPacketReqID()
 	packet.Opcode = Opcode
 	packet.PartitionID = mp.PartitionID
@@ -277,7 +280,7 @@ func (mw *MetaWrapper) SendTxPack(req proto.TxPack, resp interface{}, Opcode uin
 			return
 		}
 	} else if status != statusOK {
-		if !(status == statusExist && ignoreExistError == false) {
+		if !(status == statusExist && !ignoreExistError) {
 			err = errors.New(packet.GetResultMsg())
 			log.LogErrorf("SendTxPack: packet(%v) mp(%v) req(%v) txInfo(%v) result(%v)",
 				packet, mp, packet.GetOpMsg(), req.GetInfo(), packet.GetResultMsg())
@@ -476,7 +479,8 @@ func (mw *MetaWrapper) ievict(mp *MetaPartition, inode uint64, fullPath string) 
 }
 
 func (mw *MetaWrapper) txDcreate(tx *Transaction, mp *MetaPartition, parentID uint64, name string, inode uint64,
-	mode uint32, quotaIds []uint32, fullPath string, ignoreExist bool) (status int, err error) {
+	mode uint32, quotaIds []uint32, fullPath string, ignoreExist bool,
+) (status int, err error) {
 	bgTime := stat.BeginStat()
 	defer func() {
 		stat.EndStat("txDcreate", err, bgTime, 1)
@@ -503,7 +507,7 @@ func (mw *MetaWrapper) txDcreate(tx *Transaction, mp *MetaPartition, parentID ui
 		metric.SetWithLabels(err, map[string]string{exporter.Vol: mw.volname})
 	}()
 
-	//statusCheckFunc := func(status int, packet *proto.Packet) (err error) {
+	// statusCheckFunc := func(status int, packet *proto.Packet) (err error) {
 	//	if (status != statusOK) && (status != statusExist) {
 	//		err = errors.New(packet.GetResultMsg())
 	//		log.LogErrorf("txDcreate: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
@@ -512,7 +516,7 @@ func (mw *MetaWrapper) txDcreate(tx *Transaction, mp *MetaPartition, parentID ui
 	//		log.LogWarnf("txDcreate: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
 	//	}
 	//	return
-	//}
+	// }
 
 	var packet *proto.Packet
 	if status, err, packet = mw.SendTxPack(req, nil, proto.OpMetaTxCreateDentry, mp, nil, ignoreExist); err != nil {
@@ -525,7 +529,8 @@ func (mw *MetaWrapper) txDcreate(tx *Transaction, mp *MetaPartition, parentID ui
 }
 
 func (mw *MetaWrapper) quotaDcreate(mp *MetaPartition, parentID uint64, name string, inode uint64, mode uint32,
-	quotaIds []uint32, fullPath string, ignoreExistError bool) (status int, err error) {
+	quotaIds []uint32, fullPath string, ignoreExistError bool,
+) (status int, err error) {
 	bgTime := stat.BeginStat()
 	defer func() {
 		stat.EndStat("dcreate", err, bgTime, 1)
@@ -570,7 +575,7 @@ func (mw *MetaWrapper) quotaDcreate(mp *MetaPartition, parentID uint64, name str
 	if (status != statusOK) && (status != statusExist) {
 		err = errors.New(packet.GetResultMsg())
 		log.LogErrorf("quotaDcreate: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
-	} else if status == statusExist && ignoreExistError == false {
+	} else if status == statusExist && !ignoreExistError {
 		log.LogWarnf("quotaDcreate: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
 	}
 	log.LogDebugf("quotaDcreate: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
@@ -578,7 +583,8 @@ func (mw *MetaWrapper) quotaDcreate(mp *MetaPartition, parentID uint64, name str
 }
 
 func (mw *MetaWrapper) dcreate(mp *MetaPartition, parentID uint64, name string, inode uint64, mode uint32,
-	fullPath string, ignoreExistError bool) (status int, err error) {
+	fullPath string, ignoreExistError bool,
+) (status int, err error) {
 	bgTime := stat.BeginStat()
 	defer func() {
 		stat.EndStat("dcreate", err, bgTime, 1)
@@ -622,7 +628,7 @@ func (mw *MetaWrapper) dcreate(mp *MetaPartition, parentID uint64, name string, 
 	if (status != statusOK) && (status != statusExist) {
 		err = errors.New(packet.GetResultMsg())
 		log.LogErrorf("dcreate: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
-	} else if status == statusExist && ignoreExistError == false {
+	} else if status == statusExist && !ignoreExistError {
 		log.LogWarnf("dcreate: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
 	}
 	if proto.IsDir(mode) {
@@ -766,7 +772,7 @@ func (mw *MetaWrapper) txCreateTX(tx *Transaction, mp *MetaPartition) (status in
 	return statusOK, nil
 }
 
-//func (mw *MetaWrapper) txPreCommit(tx *Transaction, mp *MetaPartition) (status int, err error) {
+// func (mw *MetaWrapper) txPreCommit(tx *Transaction, mp *MetaPartition) (status int, err error) {
 //	bgTime := stat.BeginStat()
 //	defer func() {
 //		stat.EndStat("txPreCommit", err, bgTime, 1)
@@ -795,7 +801,7 @@ func (mw *MetaWrapper) txCreateTX(tx *Transaction, mp *MetaPartition) (status in
 //	}
 //
 //	return statusOK, nil
-//}
+// }
 
 func (mw *MetaWrapper) txDdelete(tx *Transaction, mp *MetaPartition, parentID, ino uint64, name string, fullPath string) (status int, inode uint64, err error) {
 	bgTime := stat.BeginStat()
@@ -896,8 +902,9 @@ func (mw *MetaWrapper) canDeleteInode(mp *MetaPartition, info *proto.InodeInfo, 
 	return true, nil
 }
 
-func (mw *MetaWrapper) ddeletes(mp *MetaPartition, parentID uint64, dentries []proto.Dentry, fullPaths []string,
-) (status int, resp *proto.BatchDeleteDentryResponse, err error) {
+func (mw *MetaWrapper) ddeletes(mp *MetaPartition, parentID uint64, dentries []proto.Dentry, fullPaths []string) (status int,
+	resp *proto.BatchDeleteDentryResponse, err error,
+) {
 	bgTime := stat.BeginStat()
 	defer func() {
 		stat.EndStat("ddeletes", err, bgTime, 1)
@@ -2489,7 +2496,8 @@ func (mw *MetaWrapper) updateXAttrs(mp *MetaPartition, inode uint64, filesInc in
 	return nil
 }
 
-func (mw *MetaWrapper) batchSetInodeQuota(mp *MetaPartition, inodes []uint64, quotaId uint32, IsRoot bool,
+func (mw *MetaWrapper) batchSetInodeQuota(mp *MetaPartition, inodes []uint64, quotaId uint32,
+	IsRoot bool,
 ) (resp *proto.BatchSetMetaserverQuotaResponse, err error) {
 	bgTime := stat.BeginStat()
 	defer func() {
@@ -2538,7 +2546,8 @@ func (mw *MetaWrapper) batchSetInodeQuota(mp *MetaPartition, inodes []uint64, qu
 	return
 }
 
-func (mw *MetaWrapper) batchDeleteInodeQuota(mp *MetaPartition, inodes []uint64, quotaId uint32,
+func (mw *MetaWrapper) batchDeleteInodeQuota(mp *MetaPartition, inodes []uint64,
+	quotaId uint32,
 ) (resp *proto.BatchDeleteMetaserverQuotaResponse, err error) {
 	bgTime := stat.BeginStat()
 	defer func() {

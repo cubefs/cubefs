@@ -12,15 +12,17 @@ import (
 	"time"
 
 	"github.com/cubefs/cubefs/proto"
+	"github.com/google/uuid"
+
+	// "syscall"
+
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/log"
-	"github.com/google/uuid"
 )
 
 // put deleted files or directories into this folder under Trash
-const CurrentName = "Current"
-
 const (
+	CurrentName         = "Current"
 	TrashPrefix         = ".Trash"
 	ExpiredPrefix       = "Expired"
 	ParentDirPrefix     = "|__|"
@@ -41,7 +43,6 @@ const (
 type Trash struct {
 	mw                        *MetaWrapper
 	mountPath                 string
-	mountPoint                string
 	trashRoot                 string
 	trashRootIno              uint64
 	deleteInterval            int64
@@ -169,34 +170,6 @@ func (trash *Trash) CleanTrashPatchCache(parentPathAbsolute string, fileName str
 	log.LogDebugf("CleanTrashPatchCache: CleanTrashPatchCache(%v)  ", dstPath)
 }
 
-func (trash *Trash) findFileFromExpired(fileName string) (info *proto.InodeInfo, err error) {
-	log.LogDebugf("action[findFileFromExpired]find %v", fileName)
-	entries, err := trash.mw.ReadDir_ll(trash.trashRootIno)
-	if err != nil {
-		log.LogWarnf("action[findFileFromExpired]ReadDir trashRoot  failed: %v", err.Error())
-		return nil, err
-	}
-	for _, entry := range entries {
-		if !proto.IsDir(entry.Type) {
-			continue
-		}
-		// skip current
-		if strings.Compare(entry.Name, CurrentName) == 0 {
-			continue
-		}
-		dstPath := path.Join(trash.trashRoot, entry.Name, fileName)
-		log.LogDebugf("action[findFileFromExpired]try find %v", dstPath)
-		info, err = trash.LookupPath(dstPath, false)
-		if err != nil {
-			log.LogDebugf("action[findFileFromExpired]find  %v failed: %v", dstPath, err.Error())
-			continue
-		} else {
-			return info, nil
-		}
-	}
-	return nil, err
-}
-
 func (trash *Trash) MoveToTrash(parentPathAbsolute string, parentIno uint64, fileName string, isDir bool) (err error) {
 	start := time.Now()
 	defer func() {
@@ -262,12 +235,12 @@ func (trash *Trash) MoveToTrash(parentPathAbsolute string, parentIno uint64, fil
 				return
 			}
 
-			err = trash.mw.XAttrSet_ll(info.Inode, []byte(OriginalName), []byte(originName))
+			err = trash.mw.XAttrSet_ll(info.Inode, []byte(OriginalName), []byte(name))
 			if err != nil {
 				log.LogWarnf("action[MoveToTrash] set xattr for %v[%v] failed:%v", dstPath, info.Inode, err.Error())
 				return
 			}
-			log.LogDebugf("action[MoveToTrash] set xattr for %v [%v]success:%v", dstPath, info.Inode, originName)
+			log.LogDebugf("action[MoveToTrash] set xattr for %v [%v]success:%v", dstPath, info.Inode, name)
 		}(originName, dstPath, trashCurrentIno)
 	}
 	// nil to check tmp file exist
@@ -279,10 +252,8 @@ func (trash *Trash) MoveToTrash(parentPathAbsolute string, parentIno uint64, fil
 func transferLongFileName(filePath string) (newName, oldName string) {
 	oldName = path.Base(filePath)
 	parentPath := path.Dir(filePath)
-	if strings.HasPrefix(oldName, ParentDirPrefix) {
-		newName = strings.TrimPrefix(oldName, ParentDirPrefix)
-	}
-	newName = strings.ReplaceAll(oldName, ParentDirPrefix, "/")
+	newName = strings.TrimPrefix(oldName, ParentDirPrefix)
+	newName = strings.ReplaceAll(newName, ParentDirPrefix, "/")
 	newBaseName := path.Base(newName)
 	return path.Join(parentPath, LongNamePrefix+newBaseName+ParentDirPrefix+uuid.New().String()), oldName
 }
@@ -364,8 +335,8 @@ func (trash *Trash) renameCurrent() {
 		return
 	}
 	checkPointInterval := trash.deleteInterval / 4
-	if time.Now().Sub(inoInfo.CreateTime) < (time.Duration(checkPointInterval) * time.Minute) {
-		log.LogDebugf("action[renameCurrent]trashCurrent keep for 1/4 interval %v", time.Now().Sub(inoInfo.CreateTime).String())
+	if time.Since(inoInfo.CreateTime) < (time.Duration(checkPointInterval) * time.Minute) {
+		log.LogDebugf("action[renameCurrent]trashCurrent keep for 1/4 interval %v", time.Since(inoInfo.CreateTime).String())
 		return
 	}
 	// ensure files in current is rebuild
@@ -437,7 +408,6 @@ func (trash *Trash) removeAll(dirName string, dirIno uint64) {
 		}
 		batchNr := uint64(len(batches))
 		if batchNr == 0 || (from != "" && batchNr == 1) {
-			noMore = true
 			break
 		} else if batchNr < DefaultReaddirLimit {
 			noMore = true
@@ -468,92 +438,18 @@ func (trash *Trash) removeAll(dirName string, dirIno uint64) {
 		wg.Wait()
 		from = batches[len(batches)-1].Name
 	}
-	noMore = false
-	from = ""
-	for !noMore {
-		batches, err := trash.mw.ReadDirLimit_ll(dirIno, from, DefaultReaddirLimit)
-		if err != nil {
-			log.LogErrorf("action[removeAll] ReadDirLimit_ll: ino(%v) err(%v) from(%v)", dirIno, err, from)
-			return
-		}
-		batchNr := uint64(len(batches))
-		if batchNr == 0 || (from != "" && batchNr == 1) {
-			noMore = true
-			break
-		} else if batchNr < DefaultReaddirLimit {
-			noMore = true
-		}
-		if from != "" {
-			batches = batches[1:]
-		}
-		for _, entry := range batches {
-			select {
-			case trash.traverseDirGoroutineLimit <- true:
-				wg.Add(1)
-				go func(parentIno uint64, entry string, isDir bool, fullPath string) {
-					defer wg.Done()
-					trash.deleteTask(parentIno, entry, isDir, fullPath)
-				}(dirIno, entry.Name, proto.IsDir(entry.Type), path.Join(dirName, entry.Name))
-			default:
-				trash.deleteTask(dirIno, entry.Name, proto.IsDir(entry.Type), path.Join(dirName, entry.Name))
-			}
-		}
-		wg.Wait()
-		from = batches[len(batches)-1].Name
-	}
-	// entries, err := trash.mw.ReadDir_ll(dirIno)
-	// if err != nil {
-	//	log.LogWarnf("action[deleteDir]delete %v failed: %v", dirName, err)
-	//	return
-	// }
-	// delete sub files
-	// for _, entry := range entries {
-	//	log.LogDebugf("action[deleteDir]traverse  %v", entry.Name)
-	//	if !proto.IsDir(entry.Type) {
-	//		continue
-	//	}
-	//	trash.mw.AddInoInfoCache(entry.Inode, dirIno, entry.Name)
-	//	select {
-	//	case trash.traverseDirGoroutineLimit <- true:
-	//		log.LogDebugf("action[deleteDir]launch goroutine  %v", entry.Name)
-	//		wg.Add(1)
-	//		go func(dirName string, dirIno uint64) {
-	//			defer wg.Done()
-	//			trash.removeAll(dirName, dirIno)
-	//			trash.releaseTraverseToken()
-	//		}(entry.Name, entry.Inode)
-	//	default:
-	//		log.LogDebugf("action[deleteDir]execute local  %v", entry.Name)
-	//		trash.removeAll(entry.Name, entry.Inode)
-	//	}
-	// }
-	// wg.Wait()
-	// //all sub files is deleted
-	// for _, entry := range entries {
-	//	select {
-	//	case trash.traverseDirGoroutineLimit <- true:
-	//		wg.Add(1)
-	//		go func(parentIno uint64, entry string, isDir bool) {
-	//			defer wg.Done()
-	//			trash.deleteTask(parentIno, entry, isDir)
-	//		}(dirIno, entry.Name, proto.IsDir(entry.Type))
-	//	default:
-	//		trash.deleteTask(dirIno, entry.Name, proto.IsDir(entry.Type))
-	//	}
-	// }
-	// wg.Wait()
 	log.LogDebugf("action[deleteDir] delete complete %v", dirName)
 }
 
 func (trash *Trash) extractTimeStampFromName(fileName string) (err error, timeStamp int64) {
 	subs := strings.Split(fileName, "_")
 	if len(subs) != 2 {
-		return errors.New(fmt.Sprintf("fileName format is not valid")), 0
+		return errors.New("fileName format is not valid"), 0
 	}
 
 	parsedTime, err := time.ParseInLocation(ExpiredTimeFormat, subs[1], time.Local)
 	if err != nil {
-		return errors.New(fmt.Sprintf("fileName format is not valid")), 0
+		return errors.New("fileName format is not valid"), 0
 	}
 	return nil, parsedTime.Unix()
 }
@@ -590,10 +486,7 @@ func (trash *Trash) pathIsExistInTrash(filePath string) bool {
 	} else {
 		currentIno := info.Inode
 		_, _, err := trash.mw.Lookup_ll(currentIno, path.Base(filePath))
-		if err != nil {
-			return false
-		}
-		return true
+		return err == nil
 	}
 }
 
@@ -706,7 +599,6 @@ func (trash *Trash) createParentPathInTrash(parentPath, rootDir string) (err err
 		}
 		if info == nil {
 			panic(fmt.Sprintf("info should not be nil for parentPath %v", parentPath))
-			return
 		}
 		parentInfo, err = trash.CreateDirectory(parentIno, sub, info.Mode, info.Uid, info.Gid, path.Join(parentPath, sub), true)
 		if err != nil {
@@ -763,18 +655,6 @@ func (trash *Trash) rename(oldPath, newPath string) error {
 	}
 
 	return trash.mw.Rename_ll(oldInfo.Inode, path.Base(oldPath), newInfo.Inode, path.Base(newPath), oldPath, newPath, true)
-}
-
-func (trash *Trash) deleteSrcDir(dirPath string) error {
-	parentDir := path.Dir(dirPath)
-	parentInfo, err := trash.LookupPath(parentDir, true)
-	if err != nil {
-		log.LogDebugf("action[deleteSrcDir] lookup  %v failed %v", parentDir, err.Error())
-		return err
-
-	}
-	_, err = trash.mw.Delete_ll(parentInfo.Inode, path.Base(dirPath), true, dirPath)
-	return err
 }
 
 func (trash *Trash) IsTrashRoot(parentIno uint64, name string) bool {
@@ -912,7 +792,6 @@ func (trash *Trash) buildDeletedFileParentDirs() {
 		}
 		batchNr := uint64(len(batches))
 		if batchNr == 0 || (from != "" && batchNr == 1) {
-			noMore = true
 			break
 		} else if batchNr < DefaultReaddirLimit {
 			noMore = true
@@ -1075,9 +954,7 @@ func (trash *Trash) recoverPosixPathName(fileName string, fileIno uint64) string
 			log.LogDebugf("action[recoverPosixPathName] fileName %v is read from xattr ", fileName)
 		}
 	}
-	if strings.HasPrefix(fileName, ParentDirPrefix) {
-		fileName = strings.TrimPrefix(fileName, ParentDirPrefix)
-	}
+	fileName = strings.TrimPrefix(fileName, ParentDirPrefix)
 	fileName = strings.ReplaceAll(fileName, ParentDirPrefix, "/")
 	return fileName
 }

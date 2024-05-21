@@ -2080,8 +2080,9 @@ func (v *Volume) lookupDirectories(dirs []string, autoCreate bool) (inode uint64
 	return
 }
 
-func (v *Volume) listFilesV1(prefix, marker, delimiter string, maxKeys uint64, onlyObject bool,
-) (infos []*FSFileInfo, prefixes Prefixes, nextMarker string, err error) {
+func (v *Volume) listFilesV1(prefix, marker, delimiter string, maxKeys uint64, onlyObject bool) (infos []*FSFileInfo,
+	prefixes Prefixes, nextMarker string, err error,
+) {
 	prefixMap := PrefixMap(make(map[string]struct{}))
 
 	parentId, dirs, err := v.findParentId(prefix)
@@ -2127,8 +2128,9 @@ func (v *Volume) listFilesV1(prefix, marker, delimiter string, maxKeys uint64, o
 	return
 }
 
-func (v *Volume) listFilesV2(prefix, startAfter, contToken, delimiter string, maxKeys uint64,
-) (infos []*FSFileInfo, prefixes Prefixes, nextMarker string, err error) {
+func (v *Volume) listFilesV2(prefix, startAfter, contToken, delimiter string, maxKeys uint64) (infos []*FSFileInfo,
+	prefixes Prefixes, nextMarker string, err error,
+) {
 	prefixMap := PrefixMap(make(map[string]struct{}))
 
 	var marker string
@@ -2467,8 +2469,9 @@ func (v *Volume) updateETag(inode uint64, size int64, mt time.Time) (etagValue E
 	return
 }
 
-func (v *Volume) ListMultipartUploads(prefix, delimiter, keyMarker string, multipartIdMarker string, maxUploads uint64,
-) (uploads []*FSUpload, nextMarker, nextMultipartIdMarker string, isTruncated bool, prefixes []string, err error) {
+func (v *Volume) ListMultipartUploads(prefix, delimiter, keyMarker string, multipartIdMarker string, maxUploads uint64) (
+	uploads []*FSUpload, nextMarker, nextMultipartIdMarker string, isTruncated bool, prefixes []string, err error,
+) {
 	sessions, err := v.mw.ListMultipart_ll(prefix, delimiter, keyMarker, multipartIdMarker, maxUploads)
 	if err != nil || len(sessions) == 0 {
 		return

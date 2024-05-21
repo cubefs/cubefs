@@ -585,8 +585,8 @@ func (o *ObjectNode) checkReqParts(param *RequestParam, reqParts *CompleteMultip
 
 	maxPartNum := saveParts[len(saveParts)-1].ID
 	allSaveParts := make([]*proto.MultipartPartInfo, maxPartNum+1)
-	uploadedInfo := make(map[uint16]string, 0)
-	discardedPartInodes = make(map[uint64]uint16, 0)
+	uploadedInfo := make(map[uint16]string)
+	discardedPartInodes = make(map[uint64]uint16)
 	for _, uploadedPart := range multipartInfo.Parts {
 		log.LogDebugf("checkReqParts: server save part check: requestID(%v) volume(%v) part(%v)",
 			GetRequestID(param.r), param.Bucket(), uploadedPart)
