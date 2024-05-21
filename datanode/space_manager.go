@@ -17,24 +17,20 @@ package datanode
 import (
 	"fmt"
 	"math"
+	"math/rand"
 	"os"
 	"path"
-	"math/rand"
 	"sync"
-	"math"
 	"sync/atomic"
 	"time"
-
-	"math"
-	"os"
 
 	syslog "log"
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/raftstore"
+	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/atomicutil"
 	"github.com/cubefs/cubefs/util/loadutil"
-	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/shirou/gopsutil/disk"
 )
@@ -273,7 +269,8 @@ func (manager *SpaceManager) Stats() *Stats {
 }
 
 func (manager *SpaceManager) LoadDisk(path string, reservedSpace, diskRdonlySpace uint64, maxErrCnt int,
-	diskEnableReadRepairExtentLimit bool) (err error) {
+	diskEnableReadRepairExtentLimit bool,
+) (err error) {
 	var (
 		disk    *Disk
 		visitor PartitionVisitor

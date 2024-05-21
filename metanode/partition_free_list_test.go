@@ -15,16 +15,41 @@
 package metanode
 
 import (
+	"fmt"
 	"os"
 	"path"
 	"strings"
-	"sync"
 	"testing"
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util"
+	"github.com/cubefs/cubefs/util/fileutil"
 	"github.com/stretchr/testify/require"
 )
+
+var VolNameForFreeListTest = "TestForFreeList"
+
+func newPartitionForFreeList(conf *MetaPartitionConfig, manager *metadataManager) (mp *metaPartition) {
+	mp = &metaPartition{
+		config:        conf,
+		dentryTree:    NewBtree(),
+		inodeTree:     NewBtree(),
+		extendTree:    NewBtree(),
+		multipartTree: NewBtree(),
+		stopC:         make(chan bool),
+		storeChan:     make(chan *storeMsg, 100),
+		freeList:      newFreeList(),
+		extDelCh:      make(chan []proto.ExtentKey, defaultDelExtentsCnt),
+		extReset:      make(chan struct{}),
+		vol:           NewVol(),
+		manager:       manager,
+	}
+	mp.config.Cursor = 0
+	mp.config.End = 100000
+	mp.uidManager = NewUidMgr(conf.VolName, mp.config.PartitionId)
+	mp.mqMgr = NewQuotaManager(conf.VolName, mp.config.PartitionId)
+	return mp
+}
 
 func TestPersistInodesFreeList(t *testing.T) {
 	rootDir, err := os.MkdirTemp("", "")
@@ -42,9 +67,10 @@ func TestPersistInodesFreeList(t *testing.T) {
 	fileName := path.Join(config.RootDir, DeleteInodeFileExtension)
 	oldIno, err := fileutil.Stat(fileName)
 	require.NoError(t, err)
-	t.Logf("Persist many inodes")
-	const persistBatchCount = 50000
-	const testCount = DeleteInodeFileRollingSize / 8
+	const persistBatchCount = 500000
+	unitSize := len(fmt.Sprintf("%v\n", 1000000))
+	testCount := DeleteInodeFileRollingSize / unitSize
+	t.Logf("Persist many inodes, unitSize %d, total %d", unitSize, testCount)
 	inodes := make([]uint64, 0, persistBatchCount)
 	for i := 0; i < persistBatchCount; i++ {
 		inodes = append(inodes, uint64(i)+1000000)

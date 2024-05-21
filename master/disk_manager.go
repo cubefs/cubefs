@@ -210,7 +210,8 @@ func (c *Cluster) deleteAndSyncDecommissionedDisk(dataNode *DataNode, diskPath s
 }
 
 func (c *Cluster) decommissionDisk(dataNode *DataNode, raftForce bool, badDiskPath string,
-	badPartitions []*DataPartition, diskDisable bool) (err error) {
+	badPartitions []*DataPartition, diskDisable bool,
+) (err error) {
 	msg := fmt.Sprintf("action[decommissionDisk], Node[%v] OffLine,disk[%v]", dataNode.Addr, badDiskPath)
 	log.LogWarn(msg)
 

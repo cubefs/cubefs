@@ -50,7 +50,7 @@ func (op stringLikeOp) evaluate(values map[string]string) bool {
 	return true
 }
 
-//  returns condition key which is used by this condition operation.
+// returns condition key which is used by this condition operation.
 func (op stringLikeOp) keys() KeySet {
 	keys := make(KeySet)
 	for key := range op.m {
@@ -128,7 +128,7 @@ func (op stringNotLikeOp) operator() operator {
 	return stringNotLike
 }
 
-//  returns new StringNotLike operation.
+// returns new StringNotLike operation.
 func newStringNotLikeOp(m map[Key]ValueSet) (Operation, error) {
 	newMap, err := parseMap(m, stringNotLike)
 	if err != nil {
@@ -138,7 +138,7 @@ func newStringNotLikeOp(m map[Key]ValueSet) (Operation, error) {
 	return NewStringNotLikeOp(newMap)
 }
 
-//  returns new StringNotLike operation.
+// returns new StringNotLike operation.
 func NewStringNotLikeOp(m map[Key]StringSet) (Operation, error) {
 	return &stringNotLikeOp{stringLikeOp{m}}, nil
 }

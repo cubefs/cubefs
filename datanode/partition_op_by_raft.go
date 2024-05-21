@@ -231,7 +231,7 @@ func (dp *DataPartition) ApplyRandomWrite(command []byte, raftApplyID uint64) (r
 		} else {
 			if err == storage.ErrStoreAlreadyClosed {
 				err = nil
-				resp = proto.OpStoreClosed
+				respStatus = proto.OpStoreClosed
 				log.LogWarnf("[ApplyRandomWrite] vol(%v) dp(%v) apply id(%v) store already closed", dp.volumeID, dp.partitionID, raftApplyID)
 				return
 			}
@@ -282,7 +282,7 @@ func (dp *DataPartition) ApplyRandomWrite(command []byte, raftApplyID uint64) (r
 		}
 
 		dp.disk.limitWrite.Run(int(opItem.size), func() {
-			respStatus, err = dp.ExtentStore().Write(opItem.extentID, opItem.offset, opItem.size, opItem.data, opItem.crc, writeType, syncWrite, false, false)
+			respStatus, err = dp.ExtentStore().Write(opItem.extentID, opItem.offset, opItem.size, opItem.data, opItem.crc, writeType, syncWrite, false, false, opItem.opcode == proto.OpBackupWrite)
 		})
 		if err == nil || err == storage.ErrStoreAlreadyClosed {
 			break

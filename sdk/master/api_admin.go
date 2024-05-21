@@ -247,17 +247,6 @@ func (api *AdminAPI) UnDeleteVolume(volName, authKey string, status bool) (err e
 	return
 }
 
-func (api *AdminAPI) UnDeleteVolume(volName, authKey string, status bool) (err error) {
-	var request = newAPIRequest(http.MethodGet, proto.AdminDeleteVol)
-	request.addParam("name", volName)
-	request.addParam("authKey", authKey)
-	request.addParam("delete", strconv.FormatBool(false))
-	if _, err = api.mc.serveRequest(request); err != nil {
-		return
-	}
-	return
-}
-
 func (api *AdminAPI) UpdateVolume(
 	vv *proto.SimpleVolView,
 	txTimeout int64,
@@ -404,15 +393,6 @@ func (api *AdminAPI) SetVolumeForbidden(volName string, forbidden bool) (err err
 	request.addParam("name", volName)
 	request.addParam("forbidden", strconv.FormatBool(forbidden))
 	_, err = api.mc.serveRequest(request)
-	return
-}
-func (api *AdminAPI) SetVolumeForbidden(volName string, forbidden bool) (err error) {
-	request := newAPIRequest(http.MethodGet, proto.AdminVolForbidden)
-	request.addParam("name", volName)
-	request.addParam("forbidden", strconv.FormatBool(forbidden))
-	if _, err = api.mc.serveRequest(request); err != nil {
-		return
-	}
 	return
 }
 
@@ -769,7 +749,7 @@ func (api *AdminAPI) AbortDiskDecommission(addr string, disk string) (err error)
 }
 
 func (api *AdminAPI) SetClusterDecommissionLimit(limit int32) (err error) {
-	var request = newAPIRequest(http.MethodPost, proto.AdminUpdateDecommissionLimit)
+	request := newAPIRequest(http.MethodPost, proto.AdminUpdateDecommissionLimit)
 	request.addParam("decommissionLimit", strconv.FormatInt(int64(limit), 10))
 	if _, err = api.mc.serveRequest(request); err != nil {
 		return
@@ -779,7 +759,7 @@ func (api *AdminAPI) SetClusterDecommissionLimit(limit int32) (err error) {
 
 func (api *AdminAPI) QueryDecommissionToken() (status []proto.DecommissionTokenStatus, err error) {
 	var buf []byte
-	var request = newAPIRequest(http.MethodGet, proto.AdminQueryDecommissionToken)
+	request := newAPIRequest(http.MethodGet, proto.AdminQueryDecommissionToken)
 	if buf, err = api.mc.serveRequest(request); err != nil {
 		return
 	}

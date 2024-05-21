@@ -86,13 +86,13 @@ func NewChanPool(newFunc func() []byte, capacity int) Pool {
 // release the redundant buffers per release interval duration.
 //
 // reserve 30% redundancy of capacity
-//  - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-//  |      length of buffer chan        |     concurrence     |
-//  - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-//  |  redundant  |            capacity            | reserved |
-//  - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-//  | to release  |          buffers keep in memory           |
-//  - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+//   - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+//     |      length of buffer chan        |     concurrence     |
+//   - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+//     |  redundant  |            capacity            | reserved |
+//   - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+//     | to release  |          buffers keep in memory           |
+//   - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 func (p *chPool) loopRelease() {
 	const emaRound = 5
 

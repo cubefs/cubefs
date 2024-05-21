@@ -22,7 +22,8 @@ import (
 )
 
 func (mp *metaPartition) batchSetInodeQuota(req *proto.BatchSetMetaserverQuotaReuqest,
-	resp *proto.BatchSetMetaserverQuotaResponse) (err error) {
+	resp *proto.BatchSetMetaserverQuotaResponse,
+) (err error) {
 	if len(req.Inodes) == 0 {
 		return nil
 	}
@@ -45,7 +46,8 @@ func (mp *metaPartition) batchSetInodeQuota(req *proto.BatchSetMetaserverQuotaRe
 }
 
 func (mp *metaPartition) batchDeleteInodeQuota(req *proto.BatchDeleteMetaserverQuotaReuqest,
-	resp *proto.BatchDeleteMetaserverQuotaResponse) (err error) {
+	resp *proto.BatchDeleteMetaserverQuotaResponse,
+) (err error) {
 	if len(req.Inodes) == 0 {
 		return nil
 	}
