@@ -102,7 +102,9 @@ var (
 	ErrDecommissionDiskErrDPFirst              = errors.New("decommission disk error data partition first")
 	ErrAllReplicaUnavailable                   = errors.New("all replica unavailable")
 	ErrDiskNotExists                           = errors.New("disk not exists")
-	ErrRestoringReplica                        = errors.New("performing restore replica")
+	ErrPerformingRestoreReplica                = errors.New("is performing restore replica")
+	ErrPerformingDecommission                  = errors.New("is performing decommission")
+	ErrWaitForAutoAddReplica                   = errors.New("wait for auto add replica")
 )
 
 // http response error code and error message definitions
