@@ -1104,12 +1104,29 @@ func GetRestoreReplicaMessage(status uint32) string {
 	}
 }
 
+func GetSpecialDecommissionStatusMessage(status uint32) string {
+	switch status {
+	case SpecialDecommissionInitial:
+		return "SpecialDecommissionInitial"
+	case SpecialDecommissionEnter:
+		return "SpecialDecommissionEnter"
+	case SpecialDecommissionWaitAddRes:
+		return "SpecialDecommissionWaitAddRes"
+	case SpecialDecommissionWaitAddResFin:
+		return "SpecialDecommissionWaitAddResFin"
+	case SpecialDecommissionRemoveOld:
+		return "SpecialDecommissionRemoveOld"
+	default:
+		return "Unknown"
+	}
+}
+
 func (partition *DataPartition) MarkDecommissionStatus(srcAddr, dstAddr, srcDisk string, raftForce bool, term uint64,
 	migrateType uint32, c *Cluster, ns *nodeSet) (err error) {
 	if partition.needManualFix() {
 		return proto.ErrAllReplicaUnavailable
 	}
-	// TODO-chi:can delete this blok
+	// TODO-chi:can delete this block
 	// 1 or 2 replica can always add new replica if retrying decommission
 	// for 3 replica,
 	// if partition.isSpecialReplicaCnt() && len(partition.Hosts) >= int(partition.ReplicaNum+1) {
@@ -1117,6 +1134,11 @@ func (partition *DataPartition) MarkDecommissionStatus(srcAddr, dstAddr, srcDisk
 	//		"wait for auto reduce replica",
 	//		partition.PartitionID, len(partition.Hosts), partition.ReplicaNum)
 	// }
+	if err = partition.tryRestoreReplicaMeta(c, migrateType); err != nil {
+		log.LogWarnf("action[MarkDecommissionStatus] dp[%v]tryRestoreReplicaMeta failed:%v",
+			partition.PartitionID, err)
+		return err
+	}
 	status := partition.GetDecommissionStatus()
 	if err = partition.canMarkDecommission(status, ns); err != nil {
 		log.LogWarnf("action[MarkDecommissionStatus] dp[%v] cannot make decommission:%v",
@@ -1166,21 +1188,17 @@ func (partition *DataPartition) MarkDecommissionStatus(srcAddr, dstAddr, srcDisk
 				}
 			}
 		}
-	} else {
-		if partition.lostLeader(c) {
-			if partition.getReplicaEqualStatusNum(proto.Unavailable) == partition.ReplicaNum {
-				log.LogWarnf("action[MarkDecommissionStatus] dp[%v] all replica is unavaliable, cannot handle in manual decommission mode",
-					partition.PartitionID)
-				partition.SetDecommissionStatus(DecommissionNeedManualFix)
-				partition.DecommissionErrorMessage = "all replica is unavailable, cannot handle in manual decommission mode"
-				return proto.ErrAllReplicaUnavailable
-			}
-		}
 	}
 	if partition.IsDecommissionPaused() {
 		if !partition.pauseReplicaRepair(partition.DecommissionDstAddr, false, c) {
 			log.LogWarnf("action[MarkDecommissionStatus] dp [%d] recover from stop failed", partition.PartitionID)
 			return errors.NewErrorf("action[MarkDecommissionStatus] dp [%d] recover from stop failed", partition.PartitionID)
+		}
+		// forbidden dp to restore meta for replica
+		// if migrateType is AutoAddReplica, RestoreReplica is already RestoreReplicaMetaRunning, so do not need to check
+		// this flag again
+		if !partition.setRestoreReplicaForbidden() && migrateType != AutoAddReplica {
+			return errors.NewErrorf("set RestoreReplicaMetaForbidden failed")
 		}
 		partition.SetDecommissionStatus(markDecommission)
 		// update decommissionTerm for next time query
@@ -1188,6 +1206,10 @@ func (partition *DataPartition) MarkDecommissionStatus(srcAddr, dstAddr, srcDisk
 		partition.DecommissionRaftForce = raftForce
 		partition.DecommissionType = migrateType
 		return
+	}
+	// forbidden dp to restore meta for replica
+	if !partition.setRestoreReplicaForbidden() && migrateType != AutoAddReplica {
+		return errors.NewErrorf("set RestoreReplicaMetaForbidden failed")
 	}
 	// initial or failed restart
 	partition.ResetDecommissionStatus()
@@ -1213,9 +1235,8 @@ func (partition *DataPartition) MarkDecommissionStatus(srcAddr, dstAddr, srcDisk
 	if dstAddr != "" {
 		partition.DecommissionDstAddrSpecify = true
 	}
-	log.LogDebugf("action[MarkDecommissionStatus] dp[%v] SrcAddr %v, dstAddr %v, diskPath %v, raftForce %v term %v type %v",
-		partition.PartitionID, partition.DecommissionSrcAddr, partition.DecommissionDstAddr,
-		partition.DecommissionSrcDiskPath, partition.DecommissionRaftForce, partition.DecommissionTerm, partition.DecommissionType)
+
+	log.LogDebugf("action[MarkDecommissionStatus] dp[%v]", partition.decommissionInfo())
 	return
 }
 
@@ -1562,12 +1583,8 @@ func (partition *DataPartition) addToDecommissionList(c *Cluster) {
 		log.LogWarnf("action[addToDecommissionList]dataNode[%v] nodeSet is nil:%v", dataNode.Addr, err.Error())
 		return
 	}
-	log.LogInfof("action[addToDecommissionList]ready to add dp[%v] decommission src[%v] Disk[%v] dst[%v] status[%v] specialStep[%v],"+
-		" RollbackTimes(%v) isRecover(%v) retry[%v] host[%v] type[%v] to force[%v] decommission list[%v]",
-		partition.PartitionID, partition.DecommissionSrcAddr, partition.DecommissionSrcDiskPath,
-		partition.DecommissionDstAddr, partition.GetDecommissionStatus(), partition.GetSpecialReplicaDecommissionStep(),
-		partition.DecommissionNeedRollbackTimes, partition.isRecover, partition.DecommissionRetry, partition.Hosts,
-		partition.DecommissionType, partition.DecommissionRaftForce, ns.ID)
+	log.LogInfof("action[addToDecommissionList]ready to add dp[%v] to decommission list[%v]",
+		partition.decommissionInfo(), ns.ID)
 	ns.AddToDecommissionDataPartitionList(partition, c)
 }
 
@@ -1704,15 +1721,9 @@ func (partition *DataPartition) TryAcquireDecommissionToken(c *Cluster) bool {
 	begin := time.Now()
 	defer func() {
 		log.LogDebugf("action[TryAcquireDecommissionToken] dp %v get token to %v consume(%v) err(%v) result(%v)",
-			partition.PartitionID, partition.DecommissionDstAddr, time.Since(begin).String(), err, result)
+			partition.decommissionInfo(), partition.DecommissionDstAddr, time.Now().Sub(begin).String(), err, result)
 	}()
-	if err = partition.checkReplicaMeta(c); err != nil {
-		goto errHandler
-	}
-	if !partition.setRestoreReplicaForbidden() {
-		err = proto.ErrRestoringReplica
-		goto errHandler
-	}
+
 	// the first time for dst addr not specify
 	if !partition.DecommissionDstAddrSpecify && partition.DecommissionDstAddr == "" {
 		// try to find available data node in src nodeset
@@ -1869,8 +1880,7 @@ func getTargetNodeset(addr string, c *Cluster) (ns *nodeSet, zone *Zone, err err
 }
 
 func (partition *DataPartition) needRollback(c *Cluster) bool {
-	log.LogDebugf("action[needRollback]dp[%v]DecommissionNeedRollbackTimes[%v]", partition.PartitionID,
-		atomic.LoadUint32(&partition.DecommissionNeedRollbackTimes))
+	log.LogDebugf("action[needRollback]dp[%v]", partition.decommissionInfo())
 	// failed by error except add replica or create dp or repair dp
 	if !partition.DecommissionNeedRollback {
 		return false
@@ -2009,10 +2019,10 @@ func (partition *DataPartition) checkReplicaMeta(c *Cluster) (err error) {
 	if partition.isPerformingDecommission(c) {
 		log.LogDebugf("action[checkReplicaMeta]dp(%v) is performing decommission, skip it",
 			partition.PartitionID)
-		return errors.NewErrorf("is performing decommission")
+		return proto.ErrPerformingRestoreReplica
 	}
 	if !partition.setRestoreReplicaRunning() {
-		return errors.NewErrorf("is performing restore replica")
+		return proto.ErrPerformingDecommission
 	}
 	partition.setRestoreReplicaStatus(RestoreReplicaMetaRunning)
 	err = c.syncUpdateDataPartition(partition)
@@ -2091,11 +2101,13 @@ func (partition *DataPartition) checkReplicaMeta(c *Cluster) (err error) {
 		auditlog.LogMasterOp("RestoreReplicaMeta", auditMsg, err)
 		if err != nil {
 			return
+		} else {
+			return proto.ErrWaitForAutoAddReplica
 		}
 	}
 	return
 	// find redundant replica
-	//if partition.ReplicaNum < uint8(len(partition.Hosts)) {
+	// if partition.ReplicaNum < uint8(len(partition.Hosts)) {
 	//	host := partition.getToBeDecommissionHost(int(partition.ReplicaNum))
 	//	if host != "" {
 	//		err = partition.removeOneReplicaByHost(c, host)
@@ -2104,7 +2116,7 @@ func (partition *DataPartition) checkReplicaMeta(c *Cluster) (err error) {
 	//		partition.PartitionID, partition.ReplicaNum, len(partition.Hosts), host)
 	//	log.LogDebugf("action[checkReplicaMeta]%v: err %v", auditMsg, err)
 	//	auditlog.LogMasterOp("RestoreReplicaMeta", auditMsg, err)
-	//}
+	// }
 }
 
 func findPeersToDeleteByConfig(toCompare, basePeers []proto.Peer) []proto.Peer {
@@ -2129,11 +2141,12 @@ func (partition *DataPartition) lostLeader(c *Cluster) bool {
 
 func (partition *DataPartition) decommissionInfo() string {
 	return fmt.Sprintf("vol(%v)_dp(%v)_src(%v)_dst(%v)_hosts(%v)_retry(%v)_isRecover(%v)_status(%v)_specialStatus(%v)"+
-		"_needRollback(%v)_rollbackTimes(%v)_force(%v)_type(%v)",
+		"_needRollback(%v)_rollbackTimes(%v)_force(%v)_type(%v)_RestoreReplica(%v)",
 		partition.VolName, partition.PartitionID, partition.DecommissionSrcAddr, partition.DecommissionDstAddr,
-		partition.Hosts, partition.DecommissionRetry, partition.isRecover, partition.GetDecommissionStatus(),
-		partition.GetSpecialReplicaDecommissionStep(), partition.DecommissionNeedRollback,
-		partition.DecommissionNeedRollbackTimes, partition.DecommissionRaftForce, partition.DecommissionType)
+		partition.Hosts, partition.DecommissionRetry, partition.isRecover, GetDecommissionStatusMessage(partition.GetDecommissionStatus()),
+		GetSpecialDecommissionStatusMessage(partition.GetSpecialReplicaDecommissionStep()), partition.DecommissionNeedRollback,
+		partition.DecommissionNeedRollbackTimes, partition.DecommissionRaftForce, GetDecommissionTypeMessage(partition.DecommissionType),
+		GetRestoreReplicaMessage(partition.RestoreReplica))
 }
 
 func (partition *DataPartition) isPerformingDecommission(c *Cluster) bool {
@@ -2219,4 +2232,26 @@ func (partition *DataPartition) setRestoreReplicaForbidden() bool {
 
 func (partition *DataPartition) setRestoreReplicaStop() bool {
 	return atomic.CompareAndSwapUint32(&partition.RestoreReplica, RestoreReplicaMetaForbidden, RestoreReplicaMetaStop)
+}
+
+func (partition *DataPartition) tryRestoreReplicaMeta(c *Cluster, migrateType uint32) error {
+	// AutoAddReplica do not need to check meta for replica again
+	if migrateType == AutoAddReplica {
+		return nil
+	}
+	//
+	if migrateType == AutoDecommission && partition.getDiskErrorReplica() != nil {
+		return nil
+	}
+
+	if migrateType == ManualDecommission && partition.getDiskErrorReplica() != nil {
+		return errors.NewErrorf("has disk error replica,wait for auto decommission")
+	}
+
+	err := partition.checkReplicaMeta(c)
+	if err != nil {
+		return errors.NewErrorf("restore replica meta failed:%v", err.Error())
+	}
+
+	return nil
 }
