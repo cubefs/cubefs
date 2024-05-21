@@ -1635,14 +1635,9 @@ func (s *ExtentStore) GetExtentFinfoSize(extentID uint64) (size uint64, err erro
 
 func (s *ExtentStore) GetExtentWithHoleAvailableOffset(extentID uint64, offset int64) (newOffset, newEnd int64, err error) {
 	var e *Extent
-	if !IsTinyExtent(extentID) {
-		return 0, 0, fmt.Errorf("unavali extent(%v)", extentID)
-	}
-	ei, _ := s.GetExtentInfo(extentID)
-	if err != nil {
-		log.LogErrorf("[TinyExtentGetFinfoSize] failed to get extent(%v) info, err(%v)", extentID, err)
-		return
-	}
+	s.eiMutex.RLock()
+	ei := s.extentInfoMap[extentID]
+	s.eiMutex.RUnlock()
 	if e, err = s.extentWithHeader(ei); err != nil {
 		return
 	}
