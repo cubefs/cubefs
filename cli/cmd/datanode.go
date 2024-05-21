@@ -166,7 +166,7 @@ func newDataNodeMigrateCmd(client *master.MasterClient) *cobra.Command {
 			if len(args) != 0 {
 				return nil, cobra.ShellCompDirectiveNoFileComp
 			}
-			return validMetaNodes(client, toComplete), cobra.ShellCompDirectiveNoFileComp
+			return validDataNodes(client, toComplete), cobra.ShellCompDirectiveNoFileComp
 		},
 	}
 	cmd.Flags().IntVar(&optCount, CliFlagCount, dpMigrateMax, "Migrate dp count,default 15")
