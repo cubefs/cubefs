@@ -60,3 +60,14 @@ func (s *Set) Clear() {
 	defer s.Unlock()
 	s.m = make(map[string]Null)
 }
+
+func (s *Set) Range(fun func(key interface{}) bool) {
+	s.RLock()
+	defer s.RUnlock()
+
+	for k := range s.m {
+		if !fun(k) {
+			return
+		}
+	}
+}

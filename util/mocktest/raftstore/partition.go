@@ -82,14 +82,6 @@ func (mr *MockPartitionMockRecorder) CommittedIndex() *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CommittedIndex", reflect.TypeOf((*MockPartition)(nil).CommittedIndex))
 }
 
-// IsRestoring mocks base method.
-func (m *MockPartition) IsRestoring() bool {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "IsRestoring")
-	ret0, _ := ret[0].(bool)
-	return ret0
-}
-
 // IsRestoring indicates an expected call of IsRestoring.
 func (mr *MockPartitionMockRecorder) IsRestoring() *gomock.Call {
 	mr.mock.ctrl.T.Helper()

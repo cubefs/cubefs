@@ -35,7 +35,8 @@ func (ls *LoginService) login(ctx context.Context, args struct {
 	UserID   string
 	Password string
 	empty    bool
-}) (*UserToken, error) {
+},
+) (*UserToken, error) {
 	_, err := ls.client.ValidatePassword(ctx, args.UserID, args.Password)
 	if err != nil {
 		return nil, err

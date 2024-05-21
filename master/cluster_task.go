@@ -295,7 +295,8 @@ type VolNameSet map[string]struct{}
 
 func (c *Cluster) checkReplicaMetaPartitions() (
 	lackReplicaMetaPartitions []*MetaPartition, noLeaderMetaPartitions []*MetaPartition,
-	unavailableReplicaMPs []*MetaPartition, excessReplicaMetaPartitions, inodeCountNotEqualMPs, maxInodeNotEqualMPs, dentryCountNotEqualMPs []*MetaPartition, err error) {
+	unavailableReplicaMPs []*MetaPartition, excessReplicaMetaPartitions, inodeCountNotEqualMPs, maxInodeNotEqualMPs, dentryCountNotEqualMPs []*MetaPartition, err error,
+) {
 	lackReplicaMetaPartitions = make([]*MetaPartition, 0)
 	noLeaderMetaPartitions = make([]*MetaPartition, 0)
 	excessReplicaMetaPartitions = make([]*MetaPartition, 0)

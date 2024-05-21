@@ -70,7 +70,8 @@ func NewWritePacket(inode uint64, fileOffset, storeMode int) *Packet {
 
 // NewOverwritePacket returns a new overwrite packet.
 func NewOverwriteByAppendPacket(dp *wrapper.DataPartition, extentID uint64, extentOffset int,
-	inode uint64, fileOffset int, direct bool, op uint8) *Packet {
+	inode uint64, fileOffset int, direct bool, op uint8,
+) *Packet {
 	p := new(Packet)
 	p.PartitionID = dp.PartitionID
 	p.Magic = proto.ProtoMagic

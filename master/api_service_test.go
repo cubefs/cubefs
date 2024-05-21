@@ -127,7 +127,6 @@ func createDefaultMasterServerForTest() *Server {
 	}`
 
 	testServer, err := createMasterServer(cfgJSON)
-
 	if err != nil {
 		panic(err)
 	}
@@ -1579,11 +1578,11 @@ func TestVolumeEnableAuditLog(t *testing.T) {
 	enableUrl := fmt.Sprintf("%v?name=%v&%v=true", reqUrl, vol.Name, enableKey)
 	disableUrl := fmt.Sprintf("%v?name=%v&%v=false", reqUrl, vol.Name, enableKey)
 	process(disableUrl, t)
-	require.True(t, vol.DisableAuditLog)
-	require.True(t, checkVolAuditLog(name, false))
-	process(enableUrl, t)
 	require.False(t, vol.DisableAuditLog)
 	require.True(t, checkVolAuditLog(name, true))
+	process(enableUrl, t)
+	require.True(t, vol.DisableAuditLog)
+	require.True(t, checkVolAuditLog(name, false))
 }
 
 func checkVolDpRepairBlockSize(name string, size uint64) (success bool) {

@@ -51,7 +51,7 @@ func (v Value) GetInt() (int, error) {
 	return v.i, err
 }
 
-//  gets stored string value.
+// gets stored string value.
 func (v Value) GetString() (string, error) {
 	var err error
 
@@ -81,12 +81,12 @@ func (v Value) MarshalJSON() ([]byte, error) {
 	}
 }
 
-//  stores bool value.
+// stores bool value.
 func (v *Value) StoreBool(b bool) {
 	*v = Value{t: reflect.Bool, b: b}
 }
 
-//  stores int value.
+// stores int value.
 func (v *Value) StoreInt(i int) {
 	*v = Value{t: reflect.Int, i: i}
 }
@@ -154,7 +154,7 @@ func NewStringValue(s string) Value {
 	return *value
 }
 
-//  unique list of values.
+// unique list of values.
 type ValueSet map[Value]struct{}
 
 // adds given value to value set.
@@ -162,7 +162,7 @@ func (set ValueSet) Add(value Value) {
 	set[value] = struct{}{}
 }
 
-//  encodes ValueSet to JSON data.
+// encodes ValueSet to JSON data.
 func (set ValueSet) MarshalJSON() ([]byte, error) {
 	values := []Value{}
 	for k := range set {
@@ -206,7 +206,7 @@ func (set *ValueSet) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-//  returns new value set containing given values.
+// returns new value set containing given values.
 func NewValueSet(values ...Value) ValueSet {
 	set := make(ValueSet)
 
