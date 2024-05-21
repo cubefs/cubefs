@@ -2806,11 +2806,10 @@ func (c *Cluster) removeDataReplica(dp *DataPartition, addr string, validate boo
 				dp.VolName, dp.PartitionID, addr, err)
 		}
 	}()
-	// TODO-chi:??
-	//if dp.DecommissionType == AutoAddReplica && dp.DecommissionNeedRollback == false {
-	//	log.LogDebugf("action[removeDataReplica]auto add dp %v skip  rollback %v", dp.PartitionID, dp.DecommissionNeedRollback)
-	//	return
-	//}
+	if dp.DecommissionType == AutoAddReplica {
+		log.LogDebugf("action[removeDataReplica]auto add dp %v skip  removeDataReplica %v", dp.PartitionID, addr)
+		return
+	}
 	log.LogInfof("action[removeDataReplica]  dp %v try remove replica  addr [%v]", dp.PartitionID, addr)
 	// validate be set true only in api call
 	if validate && !raftForceDel {
@@ -4402,7 +4401,8 @@ func (c *Cluster) handleDataNodeBadDisk(dataNode *DataNode) {
 			// NOTE: decommission all dps and disable disk
 			ok, status := c.canAutoDecommissionDisk(dataNode.Addr, disk.DiskPath)
 			if !ok {
-				log.LogWarnf("[handleDataNodeBadDisk] cannnot auto decommission dp on data node(%v) disk(%v) status(%v), skip", dataNode.Addr, disk.DiskPath, status)
+				log.LogWarnf("[handleDataNodeBadDisk] cannnot auto decommission dp on data node(%v) disk(%v) status(%v), skip",
+					dataNode.Addr, disk.DiskPath, GetDecommissionStatusMessage(status))
 				continue
 			}
 			err := c.migrateDisk(dataNode.Addr, disk.DiskPath, "", false, 0, true, AutoDecommission)
@@ -5042,6 +5042,7 @@ func (c *Cluster) markDecommissionDataPartition(dp *DataPartition, src *DataNode
 		err = errors.NewErrorf(" dataPartitionID :%v not find nodeset for addr %v", dp.PartitionID, addr)
 		return
 	}
+
 	if err = dp.MarkDecommissionStatus(addr, "", replica.DiskPath, raftForce, uint64(time.Now().Unix()), migrateType, c, ns); err != nil {
 		if !strings.Contains(err.Error(), proto.ErrDecommissionDiskErrDPFirst.Error()) {
 			if strings.Contains(err.Error(), proto.ErrAllReplicaUnavailable.Error()) {
