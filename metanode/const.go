@@ -242,11 +242,11 @@ const (
 
 	// NOTE: metanode rocksdb config
 	cfgRocksdbWriteBufferSize       = "rocksdbWriteBufferSize"       // int
-	cfsRocksdbWriteBufferNum        = "rocksdbWriteBufferNum"        // int
+	cfgRocksdbWriteBufferNum        = "rocksdbWriteBufferNum"        // int
 	cfgRocksdbBlockCacheSize        = "rocksdbBlockCacheSize"        // uint64
-	cfsRocksdbMinWriteBufferToMerge = "rocksdbMinWriteBufferToMerge" // int
-	cfsRocksdbMaxSubCompactions     = "rocksdbMaxSubCompactions"     // int
-	cfsRocksdbMode                  = "rocksdbMode"                  // string
+	cfgRocksdbMinWriteBufferToMerge = "rocksdbMinWriteBufferToMerge" // int
+	cfgRocksdbMaxSubCompactions     = "rocksdbMaxSubCompactions"     // int
+	cfgRocksdbMode                  = "rocksdbMode"                  // string
 )
 
 const (

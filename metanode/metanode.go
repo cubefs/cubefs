@@ -178,10 +178,10 @@ func (m *MetaNode) readRocksdbMode() (mode string, err error) {
 func (m *MetaNode) newRocksdbManager(cfg *config.Config) (err error) {
 	writeBufferSize := cfg.GetInt(cfgRocksdbWriteBufferSize)
 	blockCacheSize := cfg.GetInt64(cfgRocksdbBlockCacheSize)
-	writeBufferNum := cfg.GetInt(cfsRocksdbWriteBufferNum)
-	minWriteBufferToMerge := cfg.GetInt(cfsRocksdbMinWriteBufferToMerge)
-	maxSubCompactions := cfg.GetInt(cfsRocksdbMaxSubCompactions)
-	mode := cfg.GetString(cfsRocksdbMode)
+	writeBufferNum := cfg.GetInt(cfgRocksdbWriteBufferNum)
+	minWriteBufferToMerge := cfg.GetInt(cfgRocksdbMinWriteBufferToMerge)
+	maxSubCompactions := cfg.GetInt(cfgRocksdbMaxSubCompactions)
+	mode := cfg.GetString(cfgRocksdbMode)
 	rocksdbMode := ParseRocksdbMode(mode)
 
 	rocksdbModeFile := path.Join(m.metadataDir, RocksdbModeMetaFile)
