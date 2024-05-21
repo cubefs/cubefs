@@ -53,7 +53,7 @@ func (key Key) IsValid() bool {
 	return false
 }
 
-//  encodes Key to JSON data.
+// encodes Key to JSON data.
 func (key Key) MarshalJSON() ([]byte, error) {
 	if !key.IsValid() {
 		return nil, fmt.Errorf("unknown key: %v", key)
@@ -73,7 +73,7 @@ func (key Key) Name() string {
 	return strings.TrimPrefix(keyString, "s3:")
 }
 
-//  decodes string data to Key.
+// decodes string data to Key.
 func (key *Key) UnmarshalText(data []byte) error {
 	var s string
 	if err := json.Unmarshal(data, &s); err != nil {
@@ -89,7 +89,7 @@ func (key *Key) UnmarshalText(data []byte) error {
 	return nil
 }
 
-//  decodes JSON data to Key.
+// decodes JSON data to Key.
 func (key *Key) UnmarshalJSON(data []byte) error {
 	var s string
 	if err := json.Unmarshal(data, &s); err != nil {
@@ -128,9 +128,10 @@ func (set KeySet) AddAll(keys KeySet) {
 
 // returns a key set contains difference of two key set.
 // Example:
-//     keySet1 := ["one", "two", "three"]
-//     keySet2 := ["two", "four", "three"]
-//     keySet1.Difference(keySet2) == ["one"]
+//
+//	keySet1 := ["one", "two", "three"]
+//	keySet2 := ["two", "four", "three"]
+//	keySet1.Difference(keySet2) == ["one"]
 func (set KeySet) Difference(sset KeySet) KeySet {
 	nset := make(KeySet)
 

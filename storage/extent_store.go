@@ -20,12 +20,9 @@ import (
 	"fmt"
 	"hash/crc32"
 	"io"
+	"io/fs"
 	"os"
 	"path"
-	"time"
-
-	"hash/crc32"
-	"io"
 	"regexp"
 	"runtime"
 	"sort"
@@ -70,9 +67,7 @@ const (
 	StaleExtStoreTimeFormat   = "20060102150405.000000000"
 )
 
-var (
-	ErrStoreAlreadyClosed = errors.New("extent store already closed")
-)
+var ErrStoreAlreadyClosed = errors.New("extent store already closed")
 
 var (
 	RegexpExtentFile, _ = regexp.Compile(`^(\d)+$`)
@@ -208,6 +203,23 @@ func NewExtentStore(dataDir string, partitionID uint64, storeSize, dpType int, i
 		}
 	}
 
+	aId := 0
+	var vFp *os.File
+	for {
+		dataPath := path.Join(s.dataPath, ExtCrcHeaderFileName+"_"+strconv.Itoa(aId))
+		if _, err = os.Stat(dataPath); err != nil {
+			log.LogDebugf("NewExtentStore. partitionID [%v] dataPath not exist err %v. verifyExtentFpAppend init return", partitionID, err)
+			break
+		}
+		if vFp, err = os.OpenFile(dataPath, os.O_CREATE|os.O_RDWR, 0o666); err != nil {
+			log.LogErrorf("NewExtentStore. partitionID [%v] dataPath exist but open err %v. verifyExtentFpAppend init return", partitionID, err)
+			return
+		}
+		log.LogDebugf("NewExtentStore. partitionID [%v] dataPath exist and opened id %v", partitionID, aId)
+		s.verifyExtentFpAppend = append(s.verifyExtentFpAppend, vFp)
+		aId++
+	}
+
 	stat, err := s.tinyExtentDeleteFp.Stat()
 	if err != nil {
 		return
@@ -220,7 +232,7 @@ func NewExtentStore(dataDir string, partitionID uint64, storeSize, dpType int, i
 	}
 
 	s.extentInfoMap = make(map[uint64]*ExtentInfo)
-	s.extentLockMap = make(map[uint64]proto.GcFlag, 0)
+	s.extentLockMap = make(map[uint64]proto.GcFlag)
 	s.cache = NewExtentCache(100)
 	if err = s.initBaseFileID(); err != nil {
 		err = fmt.Errorf("init base field ID: %v", err)
@@ -387,8 +399,8 @@ func (s *ExtentStore) GetExtentInfoFromDisk(id uint64) (ei *ExtentInfo, err erro
 		}
 		if IsTinyExtent(id) {
 			watermark := ei.Size
-			if watermark%PageSize != 0 {
-				watermark = watermark + (PageSize - watermark%PageSize)
+			if watermark%util.PageSize != 0 {
+				watermark = watermark + (util.PageSize - watermark%util.PageSize)
 			}
 			ei.Size = watermark
 		}
@@ -457,7 +469,7 @@ func (s *ExtentStore) writeReadDirHint() (err error) {
 		log.LogErrorf("[writeReadDirHint] store(%v) failed to marshal hint, err(%v)", s.dataPath, err)
 		return
 	}
-	if err = os.WriteFile(hintTempPath, buff.Bytes(), 0666); err != nil {
+	if err = os.WriteFile(hintTempPath, buff.Bytes(), 0o666); err != nil {
 		log.LogErrorf("[writeReadDirHint] store(%v) failed to write readdir hint, err(%v)", s.dataPath, err)
 		return
 	}
@@ -529,9 +541,7 @@ func (s *ExtentStore) initBaseFileID() error {
 	defer func() {
 		log.LogInfof("[initBaseFileID] store(%v) init base file id using time(%v), count(%v)", s.dataPath, time.Since(begin), extNum)
 	}()
-	var (
-		baseFileID uint64
-	)
+	var baseFileID uint64
 	baseFileID, _ = s.GetPersistenceBaseExtentID()
 	log.LogInfof("[initBaseFileID] store(%v) init base file to persistence base extent id using time(%v)", s.dataPath, time.Since(begin))
 
@@ -541,7 +551,6 @@ func (s *ExtentStore) initBaseFileID() error {
 	extMap, err = s.readReadDirHint()
 	if err != nil {
 		log.LogErrorf("[initBaseFileID] store(%v) failed to read hint, err(%v)", s.dataPath, err)
-		err = nil
 	}
 	// NOTE: remove hint
 	if err = s.removeReadDirHint(); err != nil {
@@ -611,17 +620,10 @@ func (s *ExtentStore) Write(extentID uint64, offset, size int64, data []byte, cr
 		ei *ExtentInfo
 	)
 
-	ei, _ = s.GetExtentInfo(extentID)
-	e, err = s.extentWithHeader(ei)
-	s.eiMutex.Unlock()
-	if err != nil {
-		return status, err
-	}
-
 	s.elMutex.RLock()
 	if isBackupWrite {
 		// NOTE: meet an error is impossible
-		_, ok = s.GetExtentInfo(extentID)
+		_, ok := s.GetExtentInfo(extentID)
 		if !ok {
 			s.elMutex.RUnlock()
 			err = fmt.Errorf("extent(%v) is not locked", extentID)
@@ -772,12 +774,8 @@ func (s *ExtentStore) punchDelete(extentID uint64, offset, size int64) (err erro
 	return
 }
 
-func (s *ExtentStore) CanGcDelete(extId uint64) (ok bool, err error) {
+func (s *ExtentStore) CanGcDelete(extId uint64) (ok bool) {
 	ei, _ := s.GetExtentInfo(extId)
-	if err != nil {
-		log.LogErrorf("[IsMarkGc] failed to get extent(%v) info, err(%v)", extId, err)
-		return
-	}
 	if ei == nil || ei.IsDeleted {
 		return true
 	}
@@ -810,12 +808,10 @@ func (s *ExtentStore) MarkDelete(extentID uint64, offset, size int64) (err error
 		return
 	}
 
-	var (
-		ei *ExtentInfo
-	)
+	var ei *ExtentInfo
 
 	if IsTinyExtent(extentID) {
-		return s.tinyDelete(extentID, offset, size)
+		return s.punchDelete(extentID, offset, size)
 	}
 
 	ei, _ = s.GetExtentInfo(extentID)
@@ -941,14 +937,8 @@ func (s *ExtentStore) Close() {
 
 // Watermark returns the extent info of the given extent on the record.
 func (s *ExtentStore) Watermark(extentID uint64) (ei *ExtentInfo, err error) {
-	var (
-		has bool
-	)
+	var has bool
 	ei, has = s.GetExtentInfo(extentID)
-	if err != nil {
-		log.LogErrorf("[Watermark] failed to get extent(%v) watermark, err(%v)", extentID, err)
-		return
-	}
 	if !has {
 		err = fmt.Errorf("e %v not exist", s.getExtentKey(extentID))
 		return
@@ -1085,10 +1075,6 @@ func (s *ExtentStore) getTinyExtentInfo() (extents []*ExtentInfo) {
 	for extentID = TinyExtentStartID; extentID < TinyExtentCount+TinyExtentStartID; extentID++ {
 		var ei *ExtentInfo
 		ei, _ = s.GetExtentInfo(extentID)
-		if err != nil {
-			log.LogErrorf("[getTinyExtentInfo] failed to get extent(%v) info, err(%v)", extentID, err)
-			return
-		}
 		if ei == nil {
 			continue
 		}
@@ -1354,14 +1340,6 @@ func (s *ExtentStore) UpdateBaseExtentID(id uint64) (err error) {
 	return
 }
 
-func (s *ExtentStore) extent(extentID uint64) (e *Extent, err error) {
-	if e, err = s.LoadExtentFromDisk(extentID, false); err != nil {
-		err = fmt.Errorf("load extent from disk: %v", err)
-		return nil, err
-	}
-	return
-}
-
 func (s *ExtentStore) extentWithHeader(ei *ExtentInfo) (e *Extent, err error) {
 	var ok bool
 	if ei == nil || ei.IsDeleted {
@@ -1595,9 +1573,7 @@ func (s *ExtentStore) TinyExtentRecover(extentID uint64, offset, size int64, dat
 }
 
 func (s *ExtentStore) TinyExtentGetFinfoSize(extentID uint64) (size uint64, err error) {
-	var (
-		e *Extent
-	)
+	var e *Extent
 	if !IsTinyExtent(extentID) {
 		return 0, fmt.Errorf("unavali extent id (%v)", extentID)
 	}
@@ -1619,16 +1595,29 @@ func (s *ExtentStore) TinyExtentGetFinfoSize(extentID uint64) (size uint64, err 
 	return
 }
 
-func (s *ExtentStore) GetExtentWithHoleAvailableOffset(extentID uint64, offset int64) (newOffset, newEnd int64, err error) {
+func (s *ExtentStore) GetExtentFinfoSize(extentID uint64) (size uint64, err error) {
 	var e *Extent
-	if !IsTinyExtent(extentID) {
-		return 0, 0, fmt.Errorf("unavali extent(%v)", extentID)
-	}
-	ei, _ := s.GetExtentInfo(extentID)
-	if err != nil {
-		log.LogErrorf("[TinyExtentGetFinfoSize] failed to get extent(%v) info, err(%v)", extentID, err)
+	s.eiMutex.RLock()
+	ei := s.extentInfoMap[extentID]
+	s.eiMutex.RUnlock()
+	if e, err = s.extentWithHeader(ei); err != nil {
 		return
 	}
+
+	finfo, err := e.file.Stat()
+	if err != nil {
+		return 0, err
+	}
+	size = uint64(finfo.Size())
+
+	return
+}
+
+func (s *ExtentStore) GetExtentWithHoleAvailableOffset(extentID uint64, offset int64) (newOffset, newEnd int64, err error) {
+	var e *Extent
+	s.eiMutex.RLock()
+	ei := s.extentInfoMap[extentID]
+	s.eiMutex.RUnlock()
 	if e, err = s.extentWithHeader(ei); err != nil {
 		return
 	}

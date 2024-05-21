@@ -25,7 +25,6 @@ import (
 	"os"
 	"path"
 	"sort"
-	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -168,7 +167,6 @@ func (dp *DataPartition) SetRepairBlockSize(size uint64) {
 }
 
 func CreateDataPartition(dpCfg *dataPartitionCfg, disk *Disk, request *proto.CreateDataPartitionRequest) (dp *DataPartition, err error) {
-
 	if dp, err = newDataPartition(dpCfg, disk, true); err != nil {
 		return
 	}
@@ -246,9 +244,7 @@ func (dp *DataPartition) ForceSetRaftRunning() {
 // It reads the partition metadata file stored under the specified directory
 // and creates the partition instance.
 func LoadDataPartition(partitionDir string, disk *Disk) (dp *DataPartition, err error) {
-	var (
-		metaFileData []byte
-	)
+	var metaFileData []byte
 	if metaFileData, err = ioutil.ReadFile(path.Join(partitionDir, DataPartitionMetadataFileName)); err != nil {
 		return
 	}
@@ -820,36 +816,6 @@ func (dp *DataPartition) statusUpdate() {
 	dp.partitionStatus = status
 }
 
-func parseFileName(filename string) (extentID uint64, isExtent bool) {
-	var (
-		err error
-	)
-	if extentID, err = strconv.ParseUint(filename, 10, 64); err != nil {
-		isExtent = false
-		return
-	}
-	isExtent = true
-	return
-}
-
-func (dp *DataPartition) actualSize(path string, finfo os.FileInfo) (size int64) {
-	name := finfo.Name()
-	extentID, isExtent := parseFileName(name)
-	if !isExtent {
-		return 0
-	}
-	if storage.IsTinyExtent(extentID) {
-		stat := new(syscall.Stat_t)
-		err := syscall.Stat(fmt.Sprintf("%v/%v", path, finfo.Name()), stat)
-		if err != nil {
-			return finfo.Size()
-		}
-		return stat.Blocks * DiskSectorSize
-	}
-
-	return finfo.Size()
-}
-
 func (dp *DataPartition) computeUsage() {
 	if dp.intervalToUpdatePartitionSize.Unix() != 0 &&
 		time.Since(dp.intervalToUpdatePartitionSize) < IntervalToUpdatePartitionSize {
@@ -1311,7 +1277,7 @@ func (vo *VolMap) getSimpleVolViewWithRetry(dp *DataPartition) (vv *proto.Simple
 	return
 }
 
-func (dp *DataPartition) doExtentTtl(ttl int) (err error) {
+func (dp *DataPartition) doExtentTtl(ttl int) {
 	if ttl <= 0 {
 		log.LogWarn("[doTTL] ttl is 0, set default 30", ttl)
 		ttl = 30
@@ -1328,10 +1294,9 @@ func (dp *DataPartition) doExtentTtl(ttl int) (err error) {
 			dp.extentStore.MarkDelete(ext.FileID, 0, 0)
 		}
 	}
-	return
 }
 
-func (dp *DataPartition) doExtentEvict(vv *proto.SimpleVolView) (err error) {
+func (dp *DataPartition) doExtentEvict(vv *proto.SimpleVolView) {
 	var (
 		needDieOut      bool
 		freeSpace       int
@@ -1389,7 +1354,6 @@ func (dp *DataPartition) doExtentEvict(vv *proto.SimpleVolView) (err error) {
 			break
 		}
 	}
-	return
 }
 
 func (dp *DataPartition) startEvict() {
@@ -1432,21 +1396,13 @@ func (dp *DataPartition) startEvict() {
 		case <-lruTimer.C:
 			log.LogDebugf("start [doExtentEvict] vol(%s), dp(%d).", vv.Name, dp.partitionID)
 			evictStart := time.Now()
-			err = dp.doExtentEvict(vv)
-			if err != nil {
-				log.LogErrorf("[doExtentEvict] vol(%v) dp(%v) failed to handle extent ttl, err(%v)", vv.Name, dp.partitionID, err)
-				continue
-			}
+			dp.doExtentEvict(vv)
 			log.LogDebugf("action[doExtentEvict] vol(%v), dp(%v), cost (%v)ms, .", vv.Name, dp.partitionID, time.Since(evictStart))
 
 		case <-ttlTimer.C:
 			log.LogDebugf("start [doExtentTtl] vol(%s), dp(%d).", vv.Name, dp.partitionID)
 			ttlStart := time.Now()
-			err = dp.doExtentTtl(cacheTtl)
-			if err != nil {
-				log.LogErrorf("[doExtentTtl] vol(%v) dp(%v) failed to handle extent ttl, err(%v)", vv.Name, dp.partitionID, err)
-				continue
-			}
+			dp.doExtentTtl(cacheTtl)
 			log.LogDebugf("action[doExtentTtl] vol(%v), dp(%v), cost (%v)ms.", vv.Name, dp.partitionID, time.Since(ttlStart))
 
 		case <-dp.stopC:

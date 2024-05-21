@@ -227,7 +227,7 @@ func (dataNode *DataNode) dpCntInLimit() bool {
 }
 
 func (dataNode *DataNode) isWriteAbleWithSizeNoLock(size uint64) (ok bool) {
-	if dataNode.isActive == true && dataNode.AvailableSpace > size && !dataNode.RdOnly &&
+	if dataNode.isActive && dataNode.AvailableSpace > size && !dataNode.RdOnly &&
 		dataNode.Total > dataNode.Used && (dataNode.Total-dataNode.Used) > size {
 		ok = true
 	}

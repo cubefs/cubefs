@@ -721,7 +721,7 @@ func mount(opt *proto.MountOptions) (fsConn *fuse.Conn, super *cfs.Super, err er
 
 func registerInterceptedSignal(mnt string) {
 	sigC := make(chan os.Signal, 1)
-	signal.Notify(sigC, syscall.SIGINT, syscall.SIGTERM, syscall.SIGKILL)
+	signal.Notify(sigC, syscall.SIGINT, syscall.SIGTERM)
 	go func() {
 		sig := <-sigC
 		syslog.Printf("Killed due to a received signal (%v)[%d-%v]\n", sig, os.Getpid(), mnt)

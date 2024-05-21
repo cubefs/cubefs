@@ -18,7 +18,6 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	syslog "log"
 	"net"
 	"os"
@@ -334,13 +333,7 @@ func (dp *DataPartition) StartRaftAfterRepair(isLoad bool) {
 			if currLeaderPartitionSize < initPartitionSize {
 				initPartitionSize = currLeaderPartitionSize
 			}
-			localSize, err := dp.extentStore.StoreSizeExtentID(initMaxExtentID)
-			if err != nil {
-				log.LogErrorf("[StartRaftAfterRepair] dp(%v) failed to get size, err(%v)", dp.partitionID, err)
-				return
-			}
-
-			log.LogInfof("StartRaftAfterRepair PartitionID(%v) initMaxExtentID(%v) initPartitionSize(%v) currLeaderPartitionSize(%v)"+
+			localSize := dp.extentStore.StoreSizeExtentID(initMaxExtentID)
 			dp.decommissionRepairProgress = float64(localSize) / float64(initPartitionSize)
 			log.LogInfof("action[StartRaftAfterRepair] PartitionID(%v) initMaxExtentID(%v) initPartitionSize(%v) currLeaderPartitionSize(%v)"+
 				"localSize(%v)", dp.partitionID, initMaxExtentID, initPartitionSize, currLeaderPartitionSize, localSize)
@@ -816,7 +809,7 @@ func (dp *DataPartition) getAllReplicaAppliedID() (allAppliedID []uint64, replyN
 		target := replicas[i]
 		appliedID, err := dp.getRemoteAppliedID(target, p)
 		if err != nil {
-			log.LogErrorf("partition(%v) getRemoteAppliedID from replica(%v) Failed(%v).", dp.partitionID, targetReplica, err)
+			log.LogErrorf("partition(%v) getRemoteAppliedID from replica(%v) Failed(%v).", dp.partitionID, target, err)
 			continue
 		}
 		if appliedID == 0 {

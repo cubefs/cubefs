@@ -27,10 +27,11 @@ import (
 )
 
 // PutAt access interface /putat, put one blob
-//     required: rc file reader
-//     required: clusterID VolumeID BlobID
-//     required: size, one blob size
-//     optional: hasherMap, computing hash
+//
+//	required: rc file reader
+//	required: clusterID VolumeID BlobID
+//	required: size, one blob size
+//	optional: hasherMap, computing hash
 func (h *Handler) PutAt(ctx context.Context, rc io.Reader,
 	clusterID proto.ClusterID, vid proto.Vid, bid proto.BlobID, size int64,
 	hasherMap access.HasherMap) error {

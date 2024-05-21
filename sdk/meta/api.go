@@ -120,7 +120,8 @@ func (mw *MetaWrapper) Create_ll(parentID uint64, name string, mode, uid, gid ui
 }
 
 func (mw *MetaWrapper) txCreate_ll(parentID uint64, name string, mode, uid, gid uint32, target []byte, txType uint32,
-	fullPath string, ignoreExist bool) (info *proto.InodeInfo, err error) {
+	fullPath string, ignoreExist bool,
+) (info *proto.InodeInfo, err error) {
 	var (
 		status int
 		// err          error
@@ -213,7 +214,8 @@ create_dentry:
 }
 
 func (mw *MetaWrapper) create_ll(parentID uint64, name string, mode, uid, gid uint32, target []byte,
-	fullPath string, ignoreExist bool) (*proto.InodeInfo, error) {
+	fullPath string, ignoreExist bool,
+) (*proto.InodeInfo, error) {
 	var (
 		status       int
 		err          error
@@ -664,7 +666,7 @@ func (mw *MetaWrapper) txDelete_ll(parentID uint64, name string, isDir bool, ful
 		return nil, syscall.ENOENT
 	}
 
-	if mw.disableTrash == false && mw.disableTrashByClient == false {
+	if !mw.disableTrash && !mw.disableTrashByClient {
 		if mw.trashPolicy == nil {
 			log.LogDebugf("TRACE Remove:TrashPolicy is nil")
 			mw.enableTrash()
@@ -782,7 +784,7 @@ func (mw *MetaWrapper) txDelete_ll(parentID uint64, name string, isDir bool, ful
 		tx.SetOnCommit(job)
 	}
 	// clear trash cache
-	if mw.trashPolicy != nil && mw.disableTrash == false {
+	if mw.trashPolicy != nil && !mw.disableTrash {
 		mw.trashPolicy.CleanTrashPatchCache(mw.getCurrentPath(parentID), name)
 	}
 	return info, preErr
@@ -811,7 +813,7 @@ func (mw *MetaWrapper) Delete_ll_EX(parentID uint64, name string, isDir bool, ve
 		return nil, syscall.ENOENT
 	}
 
-	if mw.disableTrash == false && mw.disableTrashByClient == false {
+	if !mw.disableTrash && !mw.disableTrashByClient {
 		if mw.trashPolicy == nil {
 			log.LogDebugf("TRACE Remove:TrashPolicy is nil")
 			mw.enableTrash()
@@ -1053,7 +1055,7 @@ func (mw *MetaWrapper) deletewithcond_ll(parentID, cond uint64, name string, isD
 		}()
 	}
 	// clear trash cache
-	if mw.trashPolicy != nil && mw.disableTrash == false {
+	if mw.trashPolicy != nil && !mw.disableTrash {
 		mw.trashPolicy.CleanTrashPatchCache(mw.getCurrentPath(parentID), name)
 	}
 
@@ -2032,7 +2034,8 @@ func (mw *MetaWrapper) GetMultipart_ll(path, multipartId string) (info *proto.Mu
 	return multipartInfo, nil
 }
 
-func (mw *MetaWrapper) AddMultipartPart_ll(path, multipartId string, partId uint16, size uint64, md5 string, inodeInfo *proto.InodeInfo,
+func (mw *MetaWrapper) AddMultipartPart_ll(path, multipartId string, partId uint16, size uint64, md5 string,
+	inodeInfo *proto.InodeInfo,
 ) (oldInode uint64, updated bool, err error) {
 	var (
 		mpId  uint64

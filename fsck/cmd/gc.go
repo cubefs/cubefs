@@ -334,7 +334,6 @@ func getExtentsFromMp(dir string, volname string, cnt int) {
 	wg.Wait()
 
 	slog.Printf("Get extents from vol %v success, cost %d ms\n", volname, time.Since(start).Milliseconds())
-	return
 }
 
 func getExtentsByMpId(dir string, volname string, mpId string) {
@@ -597,7 +596,6 @@ func newGetDpExtentsCmd() *cobra.Command {
 			writeNormalVerifyInfo(dir, volname, DpDir)
 			slog.Printf("get extent from dpId success, vol %s, cost %d ms",
 				volname, time.Since(start).Milliseconds())
-			return
 		},
 	}
 
@@ -1032,7 +1030,6 @@ func addMpExtentToBF(mpDir string) (err error) {
 			line, err := reader.ReadBytes('\n')
 			if err != nil {
 				if err == io.EOF {
-					err = nil
 					break
 				}
 				slog.Fatalf("Read line failed, path %s, err: %v", filePath, err)
@@ -1127,7 +1124,6 @@ func calcDpBadNormalExtentByBF(vol, dpDir, badDir string, concurrency int) (err 
 				line, err := reader.ReadBytes('\n')
 				if err != nil {
 					if err == io.EOF {
-						err = nil
 						break
 					}
 					log.LogErrorf("read line failed, path %s, err: %v", filePath, err)
@@ -1271,7 +1267,6 @@ func checkBadNormalExtents(volname, dir, checkDpId string) {
 			line, err := reader.ReadBytes('\n')
 			if err != nil {
 				if err == io.EOF {
-					err = nil
 					break
 				}
 				slog.Fatalf("Read line failed, path %s, err: %v", badExtentPath, err)
@@ -1316,7 +1311,6 @@ func checkBadNormalExtents(volname, dir, checkDpId string) {
 			line, err := reader.ReadBytes('\n')
 			if err != nil {
 				if err == io.EOF {
-					err = nil
 					break
 				}
 				slog.Fatalf("Read line failed, path %s, err: %v", filePath, err)
@@ -1342,7 +1336,6 @@ func checkBadNormalExtents(volname, dir, checkDpId string) {
 		}
 	}
 	slog.Printf("finally check success, no wrong bad extents vol %s, dp %s, cost %d ms", volname, checkDpId, time.Since(start).Milliseconds())
-	return
 }
 
 func batchLockBadNormalExtent(dpIdStr string, exts []*BadNornalExtent, IsCreate bool, beforeTime string) (err error) {
@@ -1621,7 +1614,6 @@ func cleanBadNormalExtent(volname, dir, backupDir, dpIdStr, extentStr string) (e
 		line, err := reader.ReadBytes('\n')
 		if err != nil {
 			if err == io.EOF {
-				err = nil
 				slog.Fatalf("extent %s is not in target dp %s bad file", extentStr, dpIdStr)
 				break
 			}
@@ -1641,7 +1633,7 @@ func cleanBadNormalExtent(volname, dir, backupDir, dpIdStr, extentStr string) (e
 			continue
 		}
 
-		var exts = []*BadNornalExtent{&badExtent}
+		exts := []*BadNornalExtent{&badExtent}
 
 		err = batchLockBadNormalExtent(dpIdStr, exts, false, string(data))
 		if err != nil {
@@ -2164,9 +2156,7 @@ func rollbackBadNormalExtent(volname, backupDir, dpId, extent string) (err error
 		return
 	}
 
-	if strings.HasSuffix(extent, BackSuffix) {
-		extent = strings.TrimSuffix(extent, BackSuffix)
-	}
+	extent = strings.TrimSuffix(extent, BackSuffix)
 
 	badExtent.Size = uint32(len(data))
 	badExtent.ExtentId = extent

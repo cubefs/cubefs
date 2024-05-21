@@ -17,6 +17,7 @@ package datanode
 import (
 	"context"
 	"fmt"
+	syslog "log"
 	"os"
 	"path"
 	"regexp"
@@ -26,6 +27,8 @@ import (
 	"sync/atomic"
 	"syscall"
 	"time"
+
+	"github.com/cubefs/cubefs/util/exporter"
 
 	"golang.org/x/time/rate"
 
@@ -569,7 +572,7 @@ type dpLoadInfo struct {
 
 // RestorePartition reads the files stored on the local disk and restores the data partitions.
 func (d *Disk) RestorePartition(visitor PartitionVisitor) (err error) {
-	var convert = func(node *proto.DataNodeInfo) *DataNodeInfo {
+	convert := func(node *proto.DataNodeInfo) *DataNodeInfo {
 		result := &DataNodeInfo{}
 		result.Addr = node.Addr
 		result.PersistenceDataPartitions = node.PersistenceDataPartitions
@@ -750,10 +753,6 @@ func (d *Disk) updateDisk(allocSize uint64) {
 		return
 	}
 	d.Available = d.Available - allocSize
-}
-
-func (d *Disk) getSelectWeight() float64 {
-	return float64(atomic.LoadUint64(&d.Allocated)) / float64(d.Total)
 }
 
 func (d *Disk) AddDiskErrPartition(dpId uint64) {

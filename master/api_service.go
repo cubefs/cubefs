@@ -303,11 +303,11 @@ func (m *Server) setEnableAuditLogForVolume(w http.ResponseWriter, r *http.Reque
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeVolNotExists, Msg: err.Error()})
 		return
 	}
-	oldEnable := vol.EnableAuditLog
-	vol.EnableAuditLog = status
+	oldEnable := vol.DisableAuditLog
+	vol.DisableAuditLog = status
 	defer func() {
 		if err != nil {
-			vol.EnableAuditLog = oldEnable
+			vol.DisableAuditLog = oldEnable
 		}
 	}()
 	if err = m.cluster.syncUpdateVol(vol); err != nil {

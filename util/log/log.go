@@ -328,9 +328,7 @@ func InitLog(dir, module string, level Level, rotate *LogRotate, logLeftSpaceLim
 	}
 
 	if rotate.headRoom == 0 {
-		var minLogLeftSpaceLimit float64
-
-		minLogLeftSpaceLimit = float64(fs.Blocks*uint64(fs.Bsize)) * logLeftSpaceLimitRatio / 1024 / 1024
+		minLogLeftSpaceLimit := float64(fs.Blocks*uint64(fs.Bsize)) * logLeftSpaceLimitRatio / 1024 / 1024
 
 		rotate.SetHeadRoomMb(int64(math.Min(minLogLeftSpaceLimit, DefaultHeadRoom)))
 	}

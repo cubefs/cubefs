@@ -15,6 +15,7 @@
 package metanode
 
 import (
+	"fmt"
 	"os"
 	"path"
 	"strings"
@@ -25,6 +26,8 @@ import (
 	"github.com/cubefs/cubefs/util/fileutil"
 	"github.com/stretchr/testify/require"
 )
+
+var VolNameForFreeListTest = "TestForFreeList"
 
 func newPartitionForFreeList(conf *MetaPartitionConfig, manager *metadataManager) (mp *metaPartition) {
 	mp = &metaPartition{
@@ -64,9 +67,10 @@ func TestPersistInodesFreeList(t *testing.T) {
 	fileName := path.Join(config.RootDir, DeleteInodeFileExtension)
 	oldIno, err := fileutil.Stat(fileName)
 	require.NoError(t, err)
-	t.Logf("Persist many inodes")
-	const persistBatchCount = 50000
-	const testCount = DeleteInodeFileRollingSize / 8
+	const persistBatchCount = 500000
+	unitSize := len(fmt.Sprintf("%v\n", 1000000))
+	testCount := DeleteInodeFileRollingSize / unitSize
+	t.Logf("Persist many inodes, unitSize %d, total %d", unitSize, testCount)
 	inodes := make([]uint64, 0, persistBatchCount)
 	for i := 0; i < persistBatchCount; i++ {
 		inodes = append(inodes, uint64(i)+1000000)

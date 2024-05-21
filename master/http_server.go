@@ -21,6 +21,7 @@ import (
 	"html"
 	"net/http"
 	"net/http/httputil"
+	"strings"
 	"time"
 
 	"github.com/gorilla/mux"

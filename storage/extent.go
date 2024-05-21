@@ -88,6 +88,15 @@ func (ei *ExtentInfo) MarshalBinaryWithBuffer(buff *bytes.Buffer) (err error) {
 	if err = binary.Write(buff, binary.BigEndian, ei.AccessTime); err != nil {
 		return
 	}
+	if err = binary.Write(buff, binary.BigEndian, ei.SnapPreAllocDataOff); err != nil {
+		return
+	}
+	if err = binary.Write(buff, binary.BigEndian, ei.SnapshotDataOff); err != nil {
+		return
+	}
+	if err = binary.Write(buff, binary.BigEndian, ei.ApplyID); err != nil {
+		return
+	}
 	return
 }
 
@@ -115,6 +124,18 @@ func (ei *ExtentInfo) UnmarshalBinaryWithBuffer(buff *bytes.Buffer) (err error) 
 	}
 	if err = binary.Read(buff, binary.BigEndian, &ei.AccessTime); err != nil {
 		return
+	}
+
+	if buff.Len() > 0 {
+		if err = binary.Read(buff, binary.BigEndian, &ei.SnapPreAllocDataOff); err != nil {
+			return
+		}
+		if err = binary.Read(buff, binary.BigEndian, &ei.SnapshotDataOff); err != nil {
+			return
+		}
+		if err = binary.Read(buff, binary.BigEndian, &ei.ApplyID); err != nil {
+			return
+		}
 	}
 	return
 }
@@ -261,7 +282,7 @@ func (e *Extent) GetDataSize(statSize int64) (dataSize int64) {
 
 // RestoreFromFS restores the entity data and status from the file stored on the filesystem.
 func (e *Extent) RestoreFromFS() (err error) {
-	if e.file, err = os.OpenFile(e.filePath, os.O_RDWR, 0666); err != nil {
+	if e.file, err = os.OpenFile(e.filePath, os.O_RDWR, 0o666); err != nil {
 		if os.IsNotExist(err) {
 			err = ExtentNotFoundError
 		}

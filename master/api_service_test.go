@@ -127,7 +127,6 @@ func createDefaultMasterServerForTest() *Server {
 	}`
 
 	testServer, err := createMasterServer(cfgJSON)
-
 	if err != nil {
 		panic(err)
 	}
@@ -344,11 +343,11 @@ func processWithFatalV2(url string, success bool, req map[string]interface{}, t 
 	assert.Nil(t, err)
 
 	if success {
-		assert.True(t, reply.Code == proto.ErrCodeSuccess)
+		require.EqualValues(t, proto.ErrCodeSuccess, reply.Code)
 		return reply
 	}
 
-	assert.True(t, reply.Code != proto.ErrCodeSuccess)
+	require.NotEqualValues(t, proto.ErrCodeSuccess, reply.Code)
 
 	return
 }
@@ -659,11 +658,11 @@ func TestUpdateVol(t *testing.T) {
 	assert.True(t, view.CrossZone == true)
 
 	// vol cann't be delete except no inode and dentry exist
-	//delVol(volName, t)
+	// delVol(volName, t)
 	//
-	//time.Sleep(10 * time.Second)
-	//// can't update vol after delete
-	//checkParam(cacheLRUIntervalKey, proto.AdminUpdateVol, req, lru, lru, t)
+	// time.Sleep(10 * time.Second)
+	// // can't update vol after delete
+	// checkParam(cacheLRUIntervalKey, proto.AdminUpdateVol, req, lru, lru, t)
 }
 
 func setUpdateVolParm(key string, req map[string]interface{}, val interface{}, t *testing.T) {
@@ -1570,11 +1569,11 @@ func TestVolumeEnableAuditLog(t *testing.T) {
 	enableUrl := fmt.Sprintf("%v?name=%v&%v=true", reqUrl, vol.Name, enableKey)
 	disableUrl := fmt.Sprintf("%v?name=%v&%v=false", reqUrl, vol.Name, enableKey)
 	process(disableUrl, t)
-	require.True(t, vol.DisableAuditLog)
-	require.True(t, checkVolAuditLog(name, false))
-	process(enableUrl, t)
 	require.False(t, vol.DisableAuditLog)
 	require.True(t, checkVolAuditLog(name, true))
+	process(enableUrl, t)
+	require.True(t, vol.DisableAuditLog)
+	require.True(t, checkVolAuditLog(name, false))
 }
 
 func checkVolDpRepairBlockSize(name string, size uint64) (success bool) {

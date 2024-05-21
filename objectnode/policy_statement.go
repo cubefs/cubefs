@@ -106,7 +106,7 @@ func (s *Statement) isEffectValid() bool {
 	return false
 }
 
-//  "Principal": "*" or "Principal" : {"AWS":"111122223333"} or "Principal" : {"AWS":["111122223333","444455556666"]}
+// "Principal": "*" or "Principal" : {"AWS":"111122223333"} or "Principal" : {"AWS":["111122223333","444455556666"]}
 func (s *Statement) isPrincipalValid() bool {
 	// principal: uid must be "*" or uint32, and can't be 0
 	switch s.Principal.(type) {
