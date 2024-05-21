@@ -44,7 +44,6 @@ func main() {
 }
 
 func listenPprof() {
-
 	mainMux := http.NewServeMux()
 	mux := http.NewServeMux()
 	mux.Handle("/debug/pprof", http.HandlerFunc(pprof.Index))

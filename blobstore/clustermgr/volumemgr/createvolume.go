@@ -38,13 +38,13 @@ const (
 	defaulRetrySleepInterval = 1
 )
 
-// 1. get unfinished volume from transited table, finish last create volume job when current node id is equal to CreateByNodeID
-// 2. increase epoch of volume and save into transited table(raft propose).
-//    this step is an optimized operation to avoiding raft propose every retry alloc chunks,
-//    so that we don't need to save current epoch of volume unit every retry alloc chunks
-// 3. alloc chunks for volume
-// 4. raft propose apply create volume if 3 step success
-// 5. success and return
+//  1. get unfinished volume from transited table, finish last create volume job when current node id is equal to CreateByNodeID
+//  2. increase epoch of volume and save into transited table(raft propose).
+//     this step is an optimized operation to avoiding raft propose every retry alloc chunks,
+//     so that we don't need to save current epoch of volume unit every retry alloc chunks
+//  3. alloc chunks for volume
+//  4. raft propose apply create volume if 3 step success
+//  5. success and return
 func (v *VolumeMgr) finishLastCreateJob(ctx context.Context) error {
 	span := trace.SpanFromContextSafe(ctx)
 

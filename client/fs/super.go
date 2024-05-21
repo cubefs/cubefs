@@ -109,8 +109,8 @@ const (
 // NewSuper returns a new Super.
 func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 	s = new(Super)
-	var masters = strings.Split(opt.Master, meta.HostsSeparator)
-	var metaConfig = &meta.MetaConfig{
+	masters := strings.Split(opt.Master, meta.HostsSeparator)
+	metaConfig := &meta.MetaConfig{
 		Volume:          opt.Volname,
 		Owner:           opt.Owner,
 		Masters:         masters,
@@ -119,7 +119,7 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 		ValidateOwner:   opt.Authenticate || opt.AccessKey == "",
 		EnableSummary:   opt.EnableSummary && opt.EnableXattr,
 		MetaSendTimeout: opt.MetaSendTimeout,
-		//EnableTransaction: opt.EnableTransaction,
+		// EnableTransaction: opt.EnableTransaction,
 		SubDir:                     opt.SubDir,
 		TrashRebuildGoroutineLimit: int(opt.TrashRebuildGoroutineLimit),
 		TrashTraverseLimit:         int(opt.TrashDeleteExpiredDirGoroutineLimit),
@@ -502,9 +502,7 @@ func (s *Super) SetResume(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Super) DisableTrash(w http.ResponseWriter, r *http.Request) {
-	var (
-		err error
-	)
+	var err error
 	if err = r.ParseForm(); err != nil {
 		replyFail(w, r, err.Error())
 		return

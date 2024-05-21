@@ -92,8 +92,8 @@ type MetaConfig struct {
 	OnAsyncTaskError AsyncTaskErrorFunc
 	EnableSummary    bool
 	MetaSendTimeout  int64
-	//EnableTransaction uint8
-	//EnableTransaction bool
+	// EnableTransaction uint8
+	// EnableTransaction bool
 	MountPoint                 string
 	SubDir                     string
 	TrashTraverseLimit         int
@@ -169,7 +169,7 @@ type MetaWrapper struct {
 	uniqidRangeMutex sync.Mutex
 
 	qc *QuotaCache
-	//trash
+	// trash
 	TrashInterval int64
 	trashPolicy   *Trash
 	disableTrash  bool
@@ -242,7 +242,6 @@ func NewMetaWrapper(config *MetaConfig) (*MetaWrapper, error) {
 	mw.uniqidRangeMap = make(map[uint64]*uniqidRange, 0)
 	mw.qc = NewQuotaCache(DefaultQuotaExpiration, MaxQuotaCache)
 	mw.VerReadSeq = config.VerReadSeq
-	mw.entryCache = make(map[uint64]inoInfoCache)
 	mw.dirCache = make(map[uint64]dirInfoCache)
 	mw.subDir = config.SubDir
 	limit := MaxMountRetryLimit
@@ -277,6 +276,7 @@ func NewMetaWrapper(config *MetaConfig) (*MetaWrapper, error) {
 	go mw.refresh()
 	return mw, nil
 }
+
 func (mw *MetaWrapper) enableTrash() {
 	if mw.disableTrash == true {
 		return

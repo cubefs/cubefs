@@ -134,7 +134,8 @@ func (mw *MetaWrapper) Create_ll(parentID uint64, name string, mode, uid, gid ui
 }
 
 func (mw *MetaWrapper) txCreate_ll(parentID uint64, name string, mode, uid, gid uint32, target []byte, txType uint32,
-	fullPath string, ignoreExist bool) (info *proto.InodeInfo, err error) {
+	fullPath string, ignoreExist bool,
+) (info *proto.InodeInfo, err error) {
 	var (
 		status int
 		// err          error
@@ -226,7 +227,8 @@ create_dentry:
 }
 
 func (mw *MetaWrapper) create_ll(parentID uint64, name string, mode, uid, gid uint32, target []byte,
-	fullPath string, ignoreExist bool) (*proto.InodeInfo, error) {
+	fullPath string, ignoreExist bool,
+) (*proto.InodeInfo, error) {
 	var (
 		status       int
 		err          error
@@ -358,7 +360,7 @@ func (mw *MetaWrapper) Lookup_ll(parentID uint64, name string) (inode uint64, mo
 	if err != nil || status != statusOK {
 		return 0, 0, statusToErrno(status)
 	}
-	//only save dir
+	// only save dir
 	if proto.IsDir(mode) {
 		mw.AddInoInfoCache(inode, parentID, name)
 	}
@@ -560,7 +562,7 @@ func (mw *MetaWrapper) BatchGetXAttr(inodes []uint64, keys []string) ([]*proto.X
 func (mw *MetaWrapper) shouldNotMoveToTrash(parentMP *MetaPartition, parentIno uint64, entry string, isDir bool) (error, bool) {
 	log.LogDebugf("action[shouldNotMoveToTrash]: parentIno(%v) entry(%v)", parentIno, entry)
 
-	status, inode, mode, err := mw.lookup(parentMP, parentIno, entry)
+	status, inode, mode, err := mw.lookup(parentMP, parentIno, entry, mw.LastVerSeq)
 	if err != nil || status != statusOK {
 		return statusToErrno(status), false
 	}
@@ -569,7 +571,7 @@ func (mw *MetaWrapper) shouldNotMoveToTrash(parentMP *MetaPartition, parentIno u
 		log.LogErrorf("shouldNotMoveToTrash: No inode partition, parentID(%v) name(%v) ino(%v)", parentIno, entry, inode)
 		return syscall.EAGAIN, false
 	}
-	status, info, err := mw.iget(mp, inode)
+	status, info, err := mw.iget(mp, inode, mw.LastVerSeq)
 	if err != nil || status != statusOK {
 		return statusToErrno(status), false
 	}
@@ -611,11 +613,11 @@ func (mw *MetaWrapper) shouldNotMoveToTrash(parentMP *MetaPartition, parentIno u
 	if strings.Contains(currentPath, UnknownPath) {
 		return nil, true
 	}
-	//log.LogDebugf("action[shouldNotMoveToTrash]: parentIno(%v) entry(%v) currentPath(%v)", parentIno, entry, currentPath)
+	// log.LogDebugf("action[shouldNotMoveToTrash]: parentIno(%v) entry(%v) currentPath(%v)", parentIno, entry, currentPath)
 
 	subs := strings.Split(currentPath, "/")
 	if len(subs) == 1 {
-		//should never happen: file in root trash
+		// should never happen: file in root trash
 		if subs[0] == TrashPrefix {
 			log.LogDebugf("action[shouldNotMoveToTrash]: currentPath(%v) should not remove ", subs[0])
 			return nil, true
@@ -625,13 +627,13 @@ func (mw *MetaWrapper) shouldNotMoveToTrash(parentMP *MetaPartition, parentIno u
 			log.LogDebugf("action[shouldNotMoveToTrash]: currentPath(%v)is expired ", currentPath)
 			return nil, true
 		}
-		//should never happen: dir in root trash
+		// should never happen: dir in root trash
 		if subs[0] == TrashPrefix {
 			log.LogDebugf("action[shouldMoveToTrash]: currentPath(%v) not legal ", currentPath)
 			return nil, true
 		}
 	}
-	//log.LogDebugf("action[shouldMoveToTrash]: currentPath(%v) is not expired ", currentPath)
+	// log.LogDebugf("action[shouldMoveToTrash]: currentPath(%v) is not expired ", currentPath)
 	return nil, false
 }
 
@@ -645,6 +647,10 @@ func (mw *MetaWrapper) Delete_ll(parentID uint64, name string, isDir bool, fullP
 	} else {
 		return mw.Delete_ll_EX(parentID, name, isDir, 0, fullPath)
 	}
+}
+
+func (mw *MetaWrapper) DeleteWithCond_ll(parentID, cond uint64, name string, isDir bool, fullPath string) (*proto.InodeInfo, error) {
+	return mw.deletewithcond_ll(parentID, cond, name, isDir, fullPath)
 }
 
 func (mw *MetaWrapper) Delete_Ver_ll(parentID uint64, name string, isDir bool, verSeq uint64, fullPath string) (*proto.InodeInfo, error) {
@@ -678,7 +684,7 @@ func (mw *MetaWrapper) txDelete_ll(parentID uint64, name string, isDir bool, ful
 			log.LogDebugf("TRACE Remove:TrashPolicy is nil")
 			mw.enableTrash()
 		}
-		//cannot delete .Trash
+		// cannot delete .Trash
 		err, ret := mw.shouldNotMoveToTrash(parentMP, parentID, name, isDir)
 		if err != nil {
 			log.LogErrorf("Delete_ll: shouldNotMoveToTrash failed:%v", err)
@@ -790,7 +796,7 @@ func (mw *MetaWrapper) txDelete_ll(parentID uint64, name string, isDir bool, ful
 		}
 		tx.SetOnCommit(job)
 	}
-	//clear trash cache
+	// clear trash cache
 	if mw.trashPolicy != nil && mw.disableTrash == false {
 		mw.trashPolicy.CleanTrashPatchCache(mw.getCurrentPath(parentID), name)
 	}
@@ -825,7 +831,7 @@ func (mw *MetaWrapper) Delete_ll_EX(parentID uint64, name string, isDir bool, ve
 			log.LogDebugf("TRACE Remove:TrashPolicy is nil")
 			mw.enableTrash()
 		}
-		//cannot delete .Trash
+		// cannot delete .Trash
 		err, ret := mw.shouldNotMoveToTrash(parentMP, parentID, name, isDir)
 		if err != nil {
 			log.LogErrorf("Delete_ll: shouldNotMoveToTrash name %v failed %v", name, err)
@@ -1061,7 +1067,7 @@ func (mw *MetaWrapper) deletewithcond_ll(parentID, cond uint64, name string, isD
 			}
 		}()
 	}
-	//clear trash cache
+	// clear trash cache
 	if mw.trashPolicy != nil && mw.disableTrash == false {
 		mw.trashPolicy.CleanTrashPatchCache(mw.getCurrentPath(parentID), name)
 	}
@@ -1265,6 +1271,7 @@ func (mw *MetaWrapper) rename_ll(srcParentID uint64, srcName string, dstParentID
 		oldInode   uint64
 		lastVerSeq uint64
 	)
+	start := time.Now()
 	defer func() {
 		if err != nil {
 			log.LogErrorf("Rename_ll: srcName %v srcFullPath %v dstName %v dstFullPath %v err %v",
@@ -1335,7 +1342,7 @@ func (mw *MetaWrapper) rename_ll(srcParentID uint64, srcName string, dstParentID
 			return syscall.EAGAIN
 		}
 		dstInodeInfo, _ = mw.InodeGet_ll(oldInode)
-		//delete old cache
+		// delete old cache
 		mw.DeleteInoInfoCache(oldInode)
 	}
 
@@ -1429,8 +1436,8 @@ func (mw *MetaWrapper) rename_ll(srcParentID uint64, srcName string, dstParentID
 	// 	mw.BatchSetInodeQuota_ll(inodes, quotaId, false)
 	// }
 
-	//log.LogDebugf("Rename_ll: dstInodeInfo %v", dstInodeInfo)
-	//mw.AddInoInfoCache(dstInodeInfo.Inode, dstParentID, dstName)
+	// log.LogDebugf("Rename_ll: dstInodeInfo %v", dstInodeInfo)
+	// mw.AddInoInfoCache(dstInodeInfo.Inode, dstParentID, dstName)
 	mw.DeleteInoInfoCache(srcInodeInfo.Inode)
 	if proto.IsDir(srcInodeInfo.Mode) {
 		mw.AddInoInfoCache(srcInodeInfo.Inode, dstParentID, dstName)
@@ -2040,7 +2047,8 @@ func (mw *MetaWrapper) GetMultipart_ll(path, multipartId string) (info *proto.Mu
 }
 
 func (mw *MetaWrapper) AddMultipartPart_ll(path, multipartId string, partId uint16, size uint64, md5 string,
-	inodeInfo *proto.InodeInfo) (oldInode uint64, updated bool, err error) {
+	inodeInfo *proto.InodeInfo,
+) (oldInode uint64, updated bool, err error) {
 	var (
 		mpId  uint64
 		found bool
@@ -2673,7 +2681,7 @@ func (mw *MetaWrapper) getCurrentPathToMountSub(parentIno uint64) (parentPath st
 	log.LogDebugf("action[getCurrentPathToMountSub]: currentPath(%v)  parentIno(%v)", currentPath, parentIno)
 
 	subs := strings.Split(currentPath, "/")
-	var index = 0
+	index := 0
 	for i, sub := range subs {
 		if sub == mw.subDir {
 			index = i

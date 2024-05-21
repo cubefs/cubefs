@@ -233,8 +233,8 @@ func (a *volumeAllocator) Insert(v *volume, mode codemode.CodeMode) {
 // PreAlloc select volumes which can alloc
 // 1. when EnableDiskLoad=false, all volume will range by health, the more healthier volume will range in front of the optional head
 // 2. when EnableDiskLoad=true, if do not hash enough volumes to alloc ,
-//      1) first add disk's load and retry, each time add one until disk's load equal to diskLoadThreshold will set EnableDiskLoad=false
-//      2) second minus volume score and retry , each time minus one until volume's score equal to scoreThreshold
+//  1. first add disk's load and retry, each time add one until disk's load equal to diskLoadThreshold will set EnableDiskLoad=false
+//  2. second minus volume score and retry , each time minus one until volume's score equal to scoreThreshold
 func (a *volumeAllocator) PreAlloc(ctx context.Context, mode codemode.CodeMode, count int) ([]proto.Vid, int) {
 	span := trace.SpanFromContextSafe(ctx)
 	idleVolumes := a.idles[mode]

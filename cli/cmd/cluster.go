@@ -330,7 +330,7 @@ If 'forbid=true', MetaPartition decommission/migrate and MetaNode decommission i
 }
 
 func newClusterSetDecommissionLimitCmd(client *master.MasterClient) *cobra.Command {
-	var cmd = &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   CliOpSetDecommissionLimit + " [LIMIT]",
 		Short: cmdSetDecommissionLimitShort,
 		Args:  cobra.MinimumNArgs(1),
@@ -338,7 +338,7 @@ func newClusterSetDecommissionLimitCmd(client *master.MasterClient) *cobra.Comma
 			var err error
 			defer func() {
 				if err != nil {
-					errout("Error: %v", err)
+					errout(err)
 				}
 			}()
 			limit, err := strconv.ParseInt(args[0], 10, 32)
@@ -353,7 +353,7 @@ func newClusterSetDecommissionLimitCmd(client *master.MasterClient) *cobra.Comma
 }
 
 func newClusterQueryDecommissionStatusCmd(client *master.MasterClient) *cobra.Command {
-	var cmd = &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   CliOpQueryDecommissionStatus,
 		Short: cmdQueryDecommissionStatus,
 		Run: func(cmd *cobra.Command, args []string) {
@@ -361,7 +361,7 @@ func newClusterQueryDecommissionStatusCmd(client *master.MasterClient) *cobra.Co
 			var status []proto.DecommissionTokenStatus
 			defer func() {
 				if err != nil {
-					errout("Error: %v", err)
+					errout(err)
 				}
 			}()
 			if status, err = client.AdminAPI().QueryDecommissionToken(); err != nil {
@@ -476,6 +476,80 @@ func newClusterSetDecommissionDiskLimitCmd(client *master.MasterClient) *cobra.C
 				return
 			}
 			stdout("Set decommission disk limit to %v successfully\n", limit)
+		},
+	}
+	return cmd
+}
+
+func newClusterEnableAutoDecommissionDisk(client *master.MasterClient) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:       CliOpEnableAutoDecommission + " [STATUS]",
+		ValidArgs: []string{"true", "false"},
+		Short:     cmdEnableAutoDecommissionDiskShort,
+		Args:      cobra.MinimumNArgs(1),
+		Run: func(cmd *cobra.Command, args []string) {
+			var (
+				err    error
+				enable bool
+			)
+			defer func() {
+				errout(err)
+			}()
+			if enable, err = strconv.ParseBool(args[0]); err != nil {
+				return
+			}
+			if err = client.AdminAPI().SetAutoDecommissionDisk(enable); err != nil {
+				return
+			}
+			if enable {
+				stdout("Enable auto decommission successful!\n")
+			} else {
+				stdout("Disable auto decommission successful!\n")
+			}
+		},
+	}
+	return cmd
+}
+
+func newClusterQueryDecommissionFailedDisk(client *master.MasterClient) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   CliOpQueryDecommissionFailedDisk + " [TYPE]",
+		Short: cmdQueryDecommissionFailedDiskShort,
+		Args:  cobra.MinimumNArgs(1),
+		Run: func(cmd *cobra.Command, args []string) {
+			var (
+				err        error
+				decommType int
+			)
+
+			defer func() {
+				errout(err)
+			}()
+
+			args[0] = strings.ToLower(args[0])
+			if args[0] != "auto" && args[0] != "manual" && args[0] != "all" {
+				err = fmt.Errorf("unknown decommission type %v, not \"auto\", \"manual\" and \"and\"", args[0])
+				return
+			}
+
+			switch args[0] {
+			case "manual":
+				decommType = 0
+			case "auto":
+				decommType = 1
+			case "all":
+				decommType = 2
+			}
+
+			diskInfo, err := client.AdminAPI().QueryDecommissionFailedDisk(decommType)
+			if err != nil {
+				return
+			}
+
+			stdout("FailedDisks:\n")
+			for i, d := range diskInfo {
+				stdout("[%v/%v]\n%v", i+1, len(diskInfo), formatDecommissionFailedDiskInfo(d))
+			}
 		},
 	}
 	return cmd

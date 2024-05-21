@@ -17,9 +17,6 @@ package raftserver
 import (
 	"bytes"
 	"context"
-	"encoding/binary"
-	"io"
-	"math/rand"
 	"net/http"
 	"net/http/pprof"
 	"os"
@@ -125,10 +122,6 @@ func TestRaftServer(t *testing.T) {
 			return
 		}
 	}()
-	var stores [3]*srvStore
-	var sms [3]*srvStatemachine
-	var rss [3]RaftServer
-	var err error
 	defer ctrl.Finish()
 
 	var (

@@ -741,11 +741,7 @@ func (s *DataNode) handleBatchMarkDeletePacket(p *repl.Packet, c net.Conn) {
 	store := partition.ExtentStore()
 	if err == nil {
 		for _, ext := range exts {
-			ok, err := store.CanGcDelete(ext.ExtentId)
-			if err != nil {
-				log.LogErrorf("[handleBatchMarkDeletePacket] dp(%v) failed to get extent(%v) info, err(%v)", ext.PartitionId, ext.ExtentId, err)
-				return
-			}
+			ok := store.CanGcDelete(ext.ExtentId)
 			if p.Opcode == proto.OpGcBatchDeleteExtent && ok {
 				log.LogWarnf("handleBatchMarkDeletePacket: ext %d is not in gc status, can't be gc delete, dp %d", ext.ExtentId, ext.PartitionId)
 				err = storage.ParameterMismatchError
@@ -827,7 +823,7 @@ func (s *DataNode) handleWritePacket(p *repl.Packet) {
 		partition.disk.allocCheckLimit(proto.IopsWriteType, 1)
 
 		if writable := partition.disk.limitWrite.TryRun(int(p.Size), func() {
-			_, err = store.Write(p.ExtentID, p.ExtentOffset, int64(p.Size), p.Data, p.CRC, storage.AppendWriteType, p.IsSyncWrite(), false, false)
+			_, err = store.Write(p.ExtentID, p.ExtentOffset, int64(p.Size), p.Data, p.CRC, storage.AppendWriteType, p.IsSyncWrite(), false, false, false)
 		}); !writable {
 			err = storage.LimitedIoError
 			return
@@ -849,7 +845,7 @@ func (s *DataNode) handleWritePacket(p *repl.Packet) {
 		partition.disk.allocCheckLimit(proto.IopsWriteType, 1)
 
 		if writable := partition.disk.limitWrite.TryRun(int(p.Size), func() {
-			_, err = store.Write(p.ExtentID, p.ExtentOffset, int64(p.Size), p.Data, p.CRC, storage.AppendWriteType, p.IsSyncWrite(), false, false)
+			_, err = store.Write(p.ExtentID, p.ExtentOffset, int64(p.Size), p.Data, p.CRC, storage.AppendWriteType, p.IsSyncWrite(), false, false, false)
 		}); !writable {
 			err = storage.LimitedIoError
 			return
@@ -877,7 +873,7 @@ func (s *DataNode) handleWritePacket(p *repl.Packet) {
 			partition.disk.allocCheckLimit(proto.IopsWriteType, 1)
 
 			if writable := partition.disk.limitWrite.TryRun(currSize, func() {
-				_, err = store.Write(p.ExtentID, p.ExtentOffset+int64(offset), int64(currSize), data, crc, storage.AppendWriteType, p.IsSyncWrite(), false, false)
+				_, err = store.Write(p.ExtentID, p.ExtentOffset+int64(offset), int64(currSize), data, crc, storage.AppendWriteType, p.IsSyncWrite(), false, false, false)
 			}); !writable {
 				err = storage.LimitedIoError
 				return
@@ -1226,12 +1222,7 @@ func (s *DataNode) handlePacketToGetAppliedID(p *repl.Packet) {
 
 func (s *DataNode) handlePacketToGetPartitionSize(p *repl.Packet) {
 	partition := p.Object.(*DataPartition)
-	usedSize, err := partition.extentStore.StoreSizeExtentID(p.ExtentID)
-	if err != nil {
-		log.LogErrorf("[handlePacketToGetPartitionSize] dp(%v) failed to get extents size, err(%v)", partition.partitionID, err)
-		p.PacketErrorWithBody(proto.OpDiskErr, []byte(err.Error()))
-		return
-	}
+	usedSize := partition.extentStore.StoreSizeExtentID(p.ExtentID)
 	buf := make([]byte, 8)
 	binary.BigEndian.PutUint64(buf, uint64(usedSize))
 	p.AddMesgLog(fmt.Sprintf("partitionSize_(%v)", usedSize))
@@ -1240,13 +1231,7 @@ func (s *DataNode) handlePacketToGetPartitionSize(p *repl.Packet) {
 
 func (s *DataNode) handlePacketToGetMaxExtentIDAndPartitionSize(p *repl.Packet) {
 	partition := p.Object.(*DataPartition)
-	maxExtentID, totalPartitionSize, err := partition.extentStore.GetMaxExtentIDAndPartitionSize()
-	if err != nil {
-		log.LogErrorf("[handlePacketToGetMaxExtentIDAndPartitionSize] dp(%v) failed to get extents size, err(%v)", partition.partitionID, err)
-		p.PacketErrorWithBody(proto.OpDiskErr, []byte(err.Error()))
-		return
-	}
-
+	maxExtentID, totalPartitionSize := partition.extentStore.GetMaxExtentIDAndPartitionSize()
 	buf := make([]byte, 16)
 	binary.BigEndian.PutUint64(buf[0:8], uint64(maxExtentID))
 	binary.BigEndian.PutUint64(buf[8:16], totalPartitionSize)
@@ -1675,9 +1660,7 @@ func (s *DataNode) handlePacketToRecoverDataReplicaMeta(p *repl.Packet) {
 }
 
 func (s *DataNode) handleBatchLockNormalExtent(p *repl.Packet, connect net.Conn) {
-	var (
-		err error
-	)
+	var err error
 
 	defer func() {
 		if err != nil {
@@ -1726,9 +1709,7 @@ func (s *DataNode) handleBatchLockNormalExtent(p *repl.Packet, connect net.Conn)
 }
 
 func (s *DataNode) handleBatchUnlockNormalExtent(p *repl.Packet, connect net.Conn) {
-	var (
-		err error
-	)
+	var err error
 
 	defer func() {
 		if err != nil {

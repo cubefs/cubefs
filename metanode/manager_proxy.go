@@ -15,7 +15,6 @@
 package metanode
 
 import (
-	"github.com/cubefs/cubefs/storage"
 	"net"
 
 	"github.com/cubefs/cubefs/storage"
@@ -89,7 +88,8 @@ func (m *metadataManager) IsForbiddenOp(mp MetaPartition, reqOp uint8) bool {
 // The proxy is used during the leader change. When a leader of a partition changes, the proxy forwards the request to
 // the new leader.
 func (m *metadataManager) serveProxy(conn net.Conn, mp MetaPartition,
-	p *Packet) (ok bool) {
+	p *Packet,
+) (ok bool) {
 	var (
 		mConn      *net.TCPConn
 		leaderAddr string

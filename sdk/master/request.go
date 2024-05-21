@@ -109,6 +109,19 @@ func newRequest(method string, path string) *request {
 	return req
 }
 
+func newAPIRequest(method string, path string) *request {
+	req := &request{
+		method: method,
+		path:   path,
+		params: make(map[string]string),
+		header: make(map[string]string),
+	}
+
+	req.header["User-Agent"] = ReqHeaderUA
+
+	return req
+}
+
 func mergeHeader(headers map[string]string, added ...string) map[string]string {
 	if len(added)%2 == 1 {
 		added = added[:len(added)-1]

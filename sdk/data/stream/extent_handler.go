@@ -22,8 +22,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/cubefs/cubefs/util/stat"
-
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/sdk/data/wrapper"
 	"github.com/cubefs/cubefs/sdk/meta"
@@ -463,7 +461,7 @@ func (eh *ExtentHandler) appendExtentKey() (err error) {
 				return
 			}
 			discard := eh.stream.extents.Append(eh.key, true)
-			err = eh.stream.client.appendExtentKey(eh.stream.parentInode, eh.inode, *eh.key, discard)
+			status, err := eh.stream.client.appendExtentKey(eh.stream.parentInode, eh.inode, *eh.key, discard)
 
 			ekey := *eh.key
 			doAppend := func() (err error) {
@@ -484,7 +482,7 @@ func (eh *ExtentHandler) appendExtentKey() (err error) {
 				eh.dirty = false
 				eh.lastKey = *eh.key
 				log.LogDebugf("action[appendExtentKey] status %v, needUpdateVer %v, eh{%v}", status, eh.stream.needUpdateVer, eh)
-				return
+				return nil
 			}
 			// Due to the asynchronous synchronization of version numbers, the extent cache version of the client is updated first before being written to the meta.
 			// However, it is possible for the client version to lag behind the meta version, resulting in partial inconsistencies in judgment.

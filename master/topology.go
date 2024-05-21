@@ -578,7 +578,8 @@ func (nsgm *DomainManager) getHostFromNodeSetGrpSpecific(domainGrpManager *Domai
 func (nsgm *DomainManager) getHostFromNodeSetGrp(domainId uint64, replicaNum uint8, createType uint32) (
 	hosts []string,
 	peers []proto.Peer,
-	err error) {
+	err error,
+) {
 	var ok bool
 	var index int
 

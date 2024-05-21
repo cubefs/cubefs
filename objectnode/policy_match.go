@@ -67,7 +67,7 @@ func (s *Statement) match(apiName string, uid string, conditionCheck map[string]
 	return true
 }
 
-//----------------------------------------------------------------------------------------------------------------
+// ----------------------------------------------------------------------------------------------------------------
 func (s *Statement) matchAction(apiName string) bool {
 	log.LogDebug("start to match action")
 	switch s.Action.(type) {
@@ -106,7 +106,7 @@ func (actions ActionType) match(apiToMatch string) bool {
 	return false
 }
 
-//----------------------------------------------------------------------------------------------------------------
+// ----------------------------------------------------------------------------------------------------------------
 func (s *Statement) matchPrincipal(uid string) bool {
 	switch s.Principal.(type) {
 	case string: // "*" or "123"
@@ -146,7 +146,7 @@ func (p PrincipalType) match(uid string) bool {
 	}
 }
 
-//----------------------------------------------------------------------------------------------------------------
+// ----------------------------------------------------------------------------------------------------------------
 func (s *Statement) matchResource(apiName string, keyname interface{}) bool {
 	if IsBucketApi(apiName) {
 		return s.matchBucketInResource()
@@ -237,7 +237,7 @@ func makeRegexPattern(raw string) string {
 	return pattern
 }
 
-//----------------------------------------------------------------------------------------------------------------
+// ----------------------------------------------------------------------------------------------------------------
 func (s *Statement) matchCondition(conditionCheck map[string]string) bool {
 	// condition is optional
 	if s.Condition == nil {
