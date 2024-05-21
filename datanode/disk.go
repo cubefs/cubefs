@@ -17,6 +17,7 @@ package datanode
 import (
 	"context"
 	"fmt"
+	syslog "log"
 	"os"
 	"path"
 	"regexp"
@@ -26,6 +27,8 @@ import (
 	"sync/atomic"
 	"syscall"
 	"time"
+
+	"github.com/cubefs/cubefs/util/exporter"
 
 	"golang.org/x/time/rate"
 
@@ -100,7 +103,8 @@ const (
 type PartitionVisitor func(dp *DataPartition)
 
 func NewDisk(path string, reservedSpace, diskRdonlySpace uint64, maxErrCnt int, space *SpaceManager,
-	diskEnableReadRepairExtentLimit bool) (d *Disk, err error) {
+	diskEnableReadRepairExtentLimit bool,
+) (d *Disk, err error) {
 	d = new(Disk)
 	d.Path = path
 	d.ReservedSpace = reservedSpace
@@ -568,7 +572,7 @@ type dpLoadInfo struct {
 
 // RestorePartition reads the files stored on the local disk and restores the data partitions.
 func (d *Disk) RestorePartition(visitor PartitionVisitor) (err error) {
-	var convert = func(node *proto.DataNodeInfo) *DataNodeInfo {
+	convert := func(node *proto.DataNodeInfo) *DataNodeInfo {
 		result := &DataNodeInfo{}
 		result.Addr = node.Addr
 		result.PersistenceDataPartitions = node.PersistenceDataPartitions

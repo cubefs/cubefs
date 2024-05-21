@@ -18,7 +18,6 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	syslog "log"
 	"net"
 	"net/http"
 	"os"
@@ -29,11 +28,6 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
-	"time"
-
-	"errors"
-	syslog "log"
-	"os"
 	"syscall"
 	"time"
 
@@ -48,6 +42,7 @@ import (
 	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/loadutil"
 	"github.com/cubefs/cubefs/util/log"
+	syslog "log"
 
 	"github.com/xtaci/smux"
 )
@@ -126,8 +121,8 @@ const (
 	// load/stop dp limit
 	ConfigDiskCurrentLoadDpLimit = "diskCurrentLoadDpLimit"
 	ConfigDiskCurrentStopDpLimit = "diskCurrentStopDpLimit"
-	//disk read extent limit
-	ConfigEnableDiskReadExtentLimit = "enableDiskReadRepairExtentLimit" //bool
+	// disk read extent limit
+	ConfigEnableDiskReadExtentLimit = "enableDiskReadRepairExtentLimit" // bool
 
 	ConfigServiceIDKey = "serviceIDKey"
 
@@ -263,7 +258,7 @@ func doStart(server common.Server, cfg *config.Config) (err error) {
 		return
 	}
 
-	//smux listening & smux connection pool
+	// smux listening & smux connection pool
 	if err = s.startSmuxService(cfg); err != nil {
 		return
 	}

@@ -32,11 +32,12 @@ import (
 var errAllocatePunishedVolume = errors.New("allocate punished volume")
 
 // Alloc access interface /alloc
-//     required: size, file size
-//     optional: blobSize > 0, alloc with blobSize
-//               assignClusterID > 0, assign to alloc in this cluster certainly
-//               codeMode > 0, alloc in this codemode
-//     return: a location of file
+//
+//	required: size, file size
+//	optional: blobSize > 0, alloc with blobSize
+//	          assignClusterID > 0, assign to alloc in this cluster certainly
+//	          codeMode > 0, alloc in this codemode
+//	return: a location of file
 func (h *Handler) Alloc(ctx context.Context, size uint64, blobSize uint32,
 	assignClusterID proto.ClusterID, codeMode codemode.CodeMode) (*access.Location, error) {
 	span := trace.SpanFromContextSafe(ctx)

@@ -328,11 +328,11 @@ type MountOptions struct {
 	RequestTimeout               int64
 	MinWriteAbleDataPartitionCnt int
 	FileSystemName               string
-	//TrashInterval                       int64
+	// TrashInterval                       int64
 	TrashDeleteExpiredDirGoroutineLimit int64
 	TrashRebuildGoroutineLimit          int64
 
-	VerReadSeq                   uint64
+	VerReadSeq uint64
 	// disable mount subtype
 	DisableMountSubtype bool
 }

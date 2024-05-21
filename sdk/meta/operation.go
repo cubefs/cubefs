@@ -32,7 +32,8 @@ import (
 //
 // txIcreate create inode and tx together
 func (mw *MetaWrapper) txIcreate(tx *Transaction, mp *MetaPartition, mode, uid, gid uint32,
-	target []byte, quotaIds []uint32, fullPath string) (status int, info *proto.InodeInfo, err error) {
+	target []byte, quotaIds []uint32, fullPath string,
+) (status int, info *proto.InodeInfo, err error) {
 	bgTime := stat.BeginStat()
 	defer func() {
 		stat.EndStat("txIcreate", err, bgTime, 1)
@@ -104,7 +105,8 @@ func (mw *MetaWrapper) txIcreate(tx *Transaction, mp *MetaPartition, mode, uid, 
 }
 
 func (mw *MetaWrapper) quotaIcreate(mp *MetaPartition, mode, uid, gid uint32, target []byte, quotaIds []uint32, fullPath string) (status int,
-	info *proto.InodeInfo, err error) {
+	info *proto.InodeInfo, err error,
+) {
 	bgTime := stat.BeginStat()
 	defer func() {
 		stat.EndStat("icreate", err, bgTime, 1)
@@ -164,7 +166,8 @@ func (mw *MetaWrapper) quotaIcreate(mp *MetaPartition, mode, uid, gid uint32, ta
 }
 
 func (mw *MetaWrapper) icreate(mp *MetaPartition, mode, uid, gid uint32, target []byte, fullPath string) (status int,
-	info *proto.InodeInfo, err error) {
+	info *proto.InodeInfo, err error,
+) {
 	bgTime := stat.BeginStat()
 	defer func() {
 		stat.EndStat("icreate", err, bgTime, 1)
@@ -251,7 +254,8 @@ func (mw *MetaWrapper) sendToMetaPartitionWithTx(mp *MetaPartition, req *proto.P
 }
 
 func (mw *MetaWrapper) SendTxPack(req proto.TxPack, resp interface{}, Opcode uint8, mp *MetaPartition,
-	checkStatusFunc func(int, *proto.Packet) error, ignoreExistError bool) (status int, err error, packet *proto.Packet) {
+	checkStatusFunc func(int, *proto.Packet) error, ignoreExistError bool,
+) (status int, err error, packet *proto.Packet) {
 	packet = proto.NewPacketReqID()
 	packet.Opcode = Opcode
 	packet.PartitionID = mp.PartitionID
@@ -475,7 +479,8 @@ func (mw *MetaWrapper) ievict(mp *MetaPartition, inode uint64, fullPath string) 
 }
 
 func (mw *MetaWrapper) txDcreate(tx *Transaction, mp *MetaPartition, parentID uint64, name string, inode uint64,
-	mode uint32, quotaIds []uint32, fullPath string, ignoreExist bool) (status int, err error) {
+	mode uint32, quotaIds []uint32, fullPath string, ignoreExist bool,
+) (status int, err error) {
 	bgTime := stat.BeginStat()
 	defer func() {
 		stat.EndStat("txDcreate", err, bgTime, 1)
@@ -524,7 +529,8 @@ func (mw *MetaWrapper) txDcreate(tx *Transaction, mp *MetaPartition, parentID ui
 }
 
 func (mw *MetaWrapper) quotaDcreate(mp *MetaPartition, parentID uint64, name string, inode uint64, mode uint32,
-	quotaIds []uint32, fullPath string, ignoreExistError bool) (status int, err error) {
+	quotaIds []uint32, fullPath string, ignoreExistError bool,
+) (status int, err error) {
 	bgTime := stat.BeginStat()
 	defer func() {
 		stat.EndStat("dcreate", err, bgTime, 1)
@@ -577,7 +583,8 @@ func (mw *MetaWrapper) quotaDcreate(mp *MetaPartition, parentID uint64, name str
 }
 
 func (mw *MetaWrapper) dcreate(mp *MetaPartition, parentID uint64, name string, inode uint64, mode uint32,
-	fullPath string, ignoreExistError bool) (status int, err error) {
+	fullPath string, ignoreExistError bool,
+) (status int, err error) {
 	bgTime := stat.BeginStat()
 	defer func() {
 		stat.EndStat("dcreate", err, bgTime, 1)
@@ -896,7 +903,8 @@ func (mw *MetaWrapper) canDeleteInode(mp *MetaPartition, info *proto.InodeInfo, 
 }
 
 func (mw *MetaWrapper) ddeletes(mp *MetaPartition, parentID uint64, dentries []proto.Dentry, fullPaths []string) (status int,
-	resp *proto.BatchDeleteDentryResponse, err error) {
+	resp *proto.BatchDeleteDentryResponse, err error,
+) {
 	bgTime := stat.BeginStat()
 	defer func() {
 		stat.EndStat("ddeletes", err, bgTime, 1)
@@ -2489,7 +2497,8 @@ func (mw *MetaWrapper) updateXAttrs(mp *MetaPartition, inode uint64, filesInc in
 }
 
 func (mw *MetaWrapper) batchSetInodeQuota(mp *MetaPartition, inodes []uint64, quotaId uint32,
-	IsRoot bool) (resp *proto.BatchSetMetaserverQuotaResponse, err error) {
+	IsRoot bool,
+) (resp *proto.BatchSetMetaserverQuotaResponse, err error) {
 	bgTime := stat.BeginStat()
 	defer func() {
 		stat.EndStat("batchSetInodeQuota", err, bgTime, 1)
@@ -2538,7 +2547,8 @@ func (mw *MetaWrapper) batchSetInodeQuota(mp *MetaPartition, inodes []uint64, qu
 }
 
 func (mw *MetaWrapper) batchDeleteInodeQuota(mp *MetaPartition, inodes []uint64,
-	quotaId uint32) (resp *proto.BatchDeleteMetaserverQuotaResponse, err error) {
+	quotaId uint32,
+) (resp *proto.BatchDeleteMetaserverQuotaResponse, err error) {
 	bgTime := stat.BeginStat()
 	defer func() {
 		stat.EndStat("batchDeleteInodeQuota", err, bgTime, 1)
@@ -2643,7 +2653,8 @@ func (mw *MetaWrapper) getInodeQuota(mp *MetaPartition, inode uint64) (quotaInfo
 }
 
 func (mw *MetaWrapper) applyQuota(parentIno uint64, quotaId uint32, totalInodeCount *uint64, curInodeCount *uint64, inodes *[]uint64,
-	maxInodes uint64, first bool) (err error) {
+	maxInodes uint64, first bool,
+) (err error) {
 	if first {
 		var rootInodes []uint64
 		var ret map[uint64]uint8
@@ -2714,7 +2725,8 @@ func (mw *MetaWrapper) applyQuota(parentIno uint64, quotaId uint32, totalInodeCo
 }
 
 func (mw *MetaWrapper) revokeQuota(parentIno uint64, quotaId uint32, totalInodeCount *uint64, curInodeCount *uint64, inodes *[]uint64,
-	maxInodes uint64, first bool) (err error) {
+	maxInodes uint64, first bool,
+) (err error) {
 	if first {
 		var rootInodes []uint64
 		rootInodes = append(rootInodes, parentIno)

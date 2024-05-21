@@ -26,7 +26,8 @@ import (
 )
 
 func (partition *DataPartition) checkStatus(clusterName string, needLog bool, dpTimeOutSec int64, c *Cluster,
-	shouldDpInhibitWriteByVolFull bool, forbiddenVol bool) {
+	shouldDpInhibitWriteByVolFull bool, forbiddenVol bool,
+) {
 	partition.Lock()
 	defer partition.Unlock()
 	var liveReplicas []*DataReplica

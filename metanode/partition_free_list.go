@@ -54,12 +54,38 @@ func (mp *metaPartition) startFreeList() (err error) {
 		return
 	}
 
+	go mp.updateVolWorker()
 	go mp.deleteWorker()
 	mp.startToDeleteExtents()
 	return
 }
 
-UpdateVolumeView(dataView *proto.DataPartitionsView, volumeView *proto.SimpleVolView) {
+func (mp *metaPartition) UpdateVolumeView(dataView *proto.DataPartitionsView, volumeView *proto.SimpleVolView) {
+	convert := func(view *proto.DataPartitionsView) *DataPartitionsView {
+		newView := &DataPartitionsView{
+			DataPartitions: make([]*DataPartition, len(view.DataPartitions)),
+		}
+		for i := 0; i < len(view.DataPartitions); i++ {
+			if len(view.DataPartitions[i].Hosts) < 1 {
+				log.LogErrorf("action[UpdateVolumeView] dp id(%v) is invalid, DataPartitionResponse detail[%v]",
+					view.DataPartitions[i].PartitionID, view.DataPartitions[i])
+				continue
+			}
+			newView.DataPartitions[i] = &DataPartition{
+				PartitionID: view.DataPartitions[i].PartitionID,
+				Status:      view.DataPartitions[i].Status,
+				Hosts:       view.DataPartitions[i].Hosts,
+				ReplicaNum:  view.DataPartitions[i].ReplicaNum,
+				IsDiscard:   view.DataPartitions[i].IsDiscard,
+			}
+		}
+		return newView
+	}
+	mp.vol.UpdatePartitions(convert(dataView))
+	mp.vol.volDeleteLockTime = volumeView.DeleteLockTime
+}
+
+func (mp *metaPartition) updateVolView(convert func(view *proto.DataPartitionsView) *DataPartitionsView) (err error) {
 	volName := mp.config.VolName
 	dataView, err := masterClient.ClientAPI().EncodingGzip().GetDataPartitions(volName)
 	if err != nil {
@@ -88,7 +114,7 @@ func (mp *metaPartition) updateVolWorker() {
 		}
 		for i := 0; i < len(view.DataPartitions); i++ {
 			if len(view.DataPartitions[i].Hosts) < 1 {
-				log.LogErrorf("action[UpdateVolumeView] dp id(%v) is invalid, DataPartitionResponse detail[%v]",
+				log.LogErrorf("updateVolWorker dp id(%v) is invalid, DataPartitionResponse detail[%v]",
 					view.DataPartitions[i].PartitionID, view.DataPartitions[i])
 				continue
 			}
@@ -102,8 +128,16 @@ func (mp *metaPartition) updateVolWorker() {
 		}
 		return newView
 	}
-	mp.vol.UpdatePartitions(convert(dataView))
-	mp.vol.volDeleteLockTime = volumeView.DeleteLockTime
+	mp.updateVolView(convert)
+	for {
+		select {
+		case <-mp.stopC:
+			t.Stop()
+			return
+		case <-t.C:
+			mp.updateVolView(convert)
+		}
+	}
 }
 
 const (
@@ -186,7 +220,8 @@ func (mp *metaPartition) deleteWorker() {
 
 // delete Extents by Partition,and find all successDelete inode
 func (mp *metaPartition) batchDeleteExtentsByPartition(partitionDeleteExtents map[uint64][]*proto.DelExtentParam,
-	allInodes []*Inode) (shouldCommit []*Inode, shouldPushToFreeList []*Inode) {
+	allInodes []*Inode,
+) (shouldCommit []*Inode, shouldPushToFreeList []*Inode) {
 	occurErrors := make(map[uint64]error)
 	shouldCommit = make([]*Inode, 0, len(allInodes))
 	shouldPushToFreeList = make([]*Inode, 0)

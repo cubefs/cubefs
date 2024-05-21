@@ -33,10 +33,11 @@ const (
 
 // WithRequestID trace request id in full life of the request
 // The second parameter rid could be the one of type below:
-//     a string,
-//     an interface { String() string },
-//     an interface { TraceID() string },
-//     an interface { RequestID() string },
+//
+//	a string,
+//	an interface { String() string },
+//	an interface { TraceID() string },
+//	an interface { RequestID() string },
 func WithRequestID(ctx context.Context, rid interface{}) context.Context {
 	return context.WithValue(ctx, reqidKey, rid)
 }

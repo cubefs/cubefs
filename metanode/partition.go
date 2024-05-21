@@ -1263,7 +1263,8 @@ func (mp *metaPartition) GetBaseConfig() MetaPartitionConfig {
 
 // UpdatePartition updates the meta partition. TODO remove? no usage?
 func (mp *metaPartition) UpdatePartition(req *UpdatePartitionReq,
-	resp *UpdatePartitionResp) (err error) {
+	resp *UpdatePartitionResp,
+) (err error) {
 	reqData, err := json.Marshal(req)
 	if err != nil {
 		resp.Status = proto.TaskFailed

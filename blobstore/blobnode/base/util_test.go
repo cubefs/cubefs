@@ -24,10 +24,11 @@ import (
 )
 
 // Example:
-//   "Range": "bytes=0-99"
-//   "Range": "bytes=100-200"
-//   "Range": "bytes=-50"
-//   "Range": "bytes=150-"
+//
+//	"Range": "bytes=0-99"
+//	"Range": "bytes=100-200"
+//	"Range": "bytes=-50"
+//	"Range": "bytes=150-"
 func TestParseOneRange(t *testing.T) {
 	s1 := "bytes=0-99"
 	s2 := "bytes=100-200"

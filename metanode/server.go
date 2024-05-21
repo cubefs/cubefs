@@ -101,7 +101,8 @@ func (m *MetaNode) serveConn(conn net.Conn, stopC chan uint8) {
 }
 
 func (m *MetaNode) handlePacket(conn net.Conn, p *Packet,
-	remoteAddr string) (err error) {
+	remoteAddr string,
+) (err error) {
 	// Handle request
 	err = m.metadataManager.HandleMetadataOperation(conn, p, remoteAddr)
 	return
