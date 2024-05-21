@@ -22,7 +22,7 @@ import (
 
 type StringSet map[string]struct{}
 
-//  returns StringSet as string slice.
+// returns StringSet as string slice.
 func (set StringSet) ToSlice() []string {
 	keys := make([]string, 0, len(set))
 	for k := range set {
@@ -147,7 +147,7 @@ func NewStringSet() StringSet {
 	return make(StringSet)
 }
 
-//  creates new string set with given string values.
+// creates new string set with given string values.
 func CreateStringSet(sl ...string) StringSet {
 	set := make(StringSet)
 	for _, k := range sl {

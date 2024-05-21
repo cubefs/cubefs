@@ -1997,7 +1997,7 @@ func (v *Volume) recursiveMakeDirectory(path string) (partentIno uint64, err err
 		}
 		if err == syscall.ENOENT {
 			var info *proto.InodeInfo
-			info, err = v.mw.Create_ll(partentIno, pathItem.Name, uint32(DefaultDirMode), 0, 0, nil, path[:pathIterator.cursor])
+			info, err = v.mw.Create_ll(partentIno, pathItem.Name, uint32(DefaultDirMode), 0, 0, nil, path[:pathIterator.cursor], false)
 			if err != nil && err == syscall.EEXIST {
 				existInode, mode, e := v.mw.Lookup_ll(partentIno, pathItem.Name)
 				if e != nil {
@@ -2081,7 +2081,8 @@ func (v *Volume) lookupDirectories(dirs []string, autoCreate bool) (inode uint64
 }
 
 func (v *Volume) listFilesV1(prefix, marker, delimiter string, maxKeys uint64, onlyObject bool) (infos []*FSFileInfo,
-	prefixes Prefixes, nextMarker string, err error) {
+	prefixes Prefixes, nextMarker string, err error,
+) {
 	prefixMap := PrefixMap(make(map[string]struct{}))
 
 	parentId, dirs, err := v.findParentId(prefix)
@@ -2128,7 +2129,8 @@ func (v *Volume) listFilesV1(prefix, marker, delimiter string, maxKeys uint64, o
 }
 
 func (v *Volume) listFilesV2(prefix, startAfter, contToken, delimiter string, maxKeys uint64) (infos []*FSFileInfo,
-	prefixes Prefixes, nextMarker string, err error) {
+	prefixes Prefixes, nextMarker string, err error,
+) {
 	prefixMap := PrefixMap(make(map[string]struct{}))
 
 	var marker string
@@ -2234,7 +2236,8 @@ func (v *Volume) findParentId(prefix string) (inode uint64, prefixDirs []string,
 // that match the prefix and delimiter criteria. Stop when the number of matches reaches a threshold
 // or all files and directories are scanned.
 func (v *Volume) recursiveScan(fileInfos []*FSFileInfo, prefixMap PrefixMap, parentId, maxKeys, readLimit, rc uint64, dirs []string,
-	prefix, marker, delimiter string, onlyObject, firstEnter bool) ([]*FSFileInfo, PrefixMap, string, uint64, error) {
+	prefix, marker, delimiter string, onlyObject, firstEnter bool,
+) ([]*FSFileInfo, PrefixMap, string, uint64, error) {
 	var err error
 	var nextMarker string
 	var lastKey string
@@ -2469,7 +2472,8 @@ func (v *Volume) updateETag(inode uint64, size int64, mt time.Time) (etagValue E
 }
 
 func (v *Volume) ListMultipartUploads(prefix, delimiter, keyMarker string, multipartIdMarker string, maxUploads uint64) (
-	uploads []*FSUpload, nextMarker, nextMultipartIdMarker string, isTruncated bool, prefixes []string, err error) {
+	uploads []*FSUpload, nextMarker, nextMultipartIdMarker string, isTruncated bool, prefixes []string, err error,
+) {
 	sessions, err := v.mw.ListMultipart_ll(prefix, delimiter, keyMarker, multipartIdMarker, maxUploads)
 	if err != nil || len(sessions) == 0 {
 		return

@@ -123,7 +123,8 @@ type blockingKeyCountLimit struct {
 }
 
 // NewBlockingKeyCountLimit returns blocking limiter
-//     with concurrent n by everyone key
+//
+//	with concurrent n by everyone key
 func NewBlockingKeyCountLimit(n int) limit.Limiter {
 	return &blockingKeyCountLimit{
 		limit:  n,

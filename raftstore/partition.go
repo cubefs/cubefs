@@ -80,7 +80,8 @@ type partition struct {
 
 // ChangeMember submits member change event and information to raft log.
 func (p *partition) ChangeMember(changeType proto.ConfChangeType, peer proto.Peer, context []byte) (
-	resp interface{}, err error) {
+	resp interface{}, err error,
+) {
 	if !p.IsRaftLeader() {
 		err = raft.ErrNotLeader
 		return

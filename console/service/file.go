@@ -71,7 +71,8 @@ type ListFileInfo struct {
 func (fs *FileService) listFile(ctx context.Context, args struct {
 	VolName string
 	Request ListFilesV1Option
-}) (*ListFileInfo, error) {
+},
+) (*ListFileInfo, error) {
 	userInfo, _, err := permissions(ctx, USER|ADMIN)
 	if err != nil {
 		return nil, err
@@ -250,7 +251,8 @@ func (fs *FileService) signURL(ctx context.Context, args struct {
 	VolName       string
 	Path          string
 	ExpireMinutes int64
-}) (*proto.GeneralResp, error) {
+},
+) (*proto.GeneralResp, error) {
 	if args.Path == "" || args.ExpireMinutes <= 0 || args.VolName == "" {
 		return nil, fmt.Errorf("param has err")
 	}

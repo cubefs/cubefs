@@ -19,6 +19,8 @@ import (
 	"fmt"
 	"strconv"
 	"time"
+
+	"github.com/cubefs/cubefs/util"
 )
 
 // api
@@ -235,7 +237,7 @@ const (
 	QuotaGet    = "/quota/get"
 	// QuotaBatchModifyPath = "/quota/batchModifyPath"
 	QuotaListAll = "/quota/listAll"
-	//trash
+	// trash
 	AdminSetTrashInterval = "/vol/setTrashInterval"
 
 	// s3 qos api
@@ -1108,7 +1110,7 @@ type SimpleVolView struct {
 	// multi version snapshot
 	LatestVer         uint64
 	Forbidden         bool
-	DisableAuditLog  bool
+	DisableAuditLog   bool
 	DeleteExecTime    time.Time
 	DpRepairBlockSize uint64
 }
