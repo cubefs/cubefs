@@ -25,9 +25,11 @@ import (
 	"os"
 	"path"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"time"
 
 	raftProto "github.com/cubefs/cubefs/depends/tiglabs/raft/proto"
@@ -167,7 +169,6 @@ func (dp *DataPartition) SetRepairBlockSize(size uint64) {
 }
 
 func CreateDataPartition(dpCfg *dataPartitionCfg, disk *Disk, request *proto.CreateDataPartitionRequest) (dp *DataPartition, err error) {
-
 	if dp, err = newDataPartition(dpCfg, disk, true); err != nil {
 		return
 	}
@@ -245,9 +246,7 @@ func (dp *DataPartition) ForceSetRaftRunning() {
 // It reads the partition metadata file stored under the specified directory
 // and creates the partition instance.
 func LoadDataPartition(partitionDir string, disk *Disk) (dp *DataPartition, err error) {
-	var (
-		metaFileData []byte
-	)
+	var metaFileData []byte
 	if metaFileData, err = ioutil.ReadFile(path.Join(partitionDir, DataPartitionMetadataFileName)); err != nil {
 		return
 	}
@@ -820,9 +819,7 @@ func (dp *DataPartition) statusUpdate() {
 }
 
 func parseFileName(filename string) (extentID uint64, isExtent bool) {
-	var (
-		err error
-	)
+	var err error
 	if extentID, err = strconv.ParseUint(filename, 10, 64); err != nil {
 		isExtent = false
 		return
@@ -855,13 +852,6 @@ func (dp *DataPartition) computeUsage() {
 		log.LogDebugf("[computeUsage] dp(%v) skip size update", dp.partitionID)
 		return
 	}
-	used, err := dp.ExtentStore().GetStoreUsedSize()
-	if err != nil {
-		log.LogErrorf("[computeUsage] dp(%v) failed to compute extents size, err(%v)", dp.partitionID, err)
-		return
-	}
-	dp.used = int(used)
-	dp.intervalToUpdatePartitionSize = time.Now().Unix()
 	dp.used = int(dp.ExtentStore().GetStoreUsedSize())
 	if log.EnableDebug() {
 		log.LogDebugf("[computeUsage] dp(%v) update size(%v)", dp.partitionID, strutil.FormatSize(uint64(dp.used)))
@@ -1317,18 +1307,13 @@ func (vo *VolMap) getSimpleVolViewWithRetry(dp *DataPartition) (vv *proto.Simple
 	return
 }
 
-func (dp *DataPartition) doExtentTtl(ttl int) (err error) {
+func (dp *DataPartition) doExtentTtl(ttl int) {
 	if ttl <= 0 {
 		log.LogWarn("[doTTL] ttl is 0, set default 30", ttl)
 		ttl = 30
 	}
 
-	extents, err := dp.extentStore.DumpExtents()
-	if err != nil {
-		log.LogErrorf("[doExtentTtl] dp(%v) failed to dump extents, err(%v)", dp.partitionID, err)
-		return
-	}
-
+	extents := dp.extentStore.DumpExtents()
 	for _, ext := range extents {
 		if storage.IsTinyExtent(ext.FileID) {
 			continue
@@ -1342,7 +1327,7 @@ func (dp *DataPartition) doExtentTtl(ttl int) (err error) {
 	return
 }
 
-func (dp *DataPartition) doExtentEvict(vv *proto.SimpleVolView) (err error) {
+func (dp *DataPartition) doExtentEvict(vv *proto.SimpleVolView) {
 	var (
 		needDieOut      bool
 		freeSpace       int
@@ -1368,11 +1353,7 @@ func (dp *DataPartition) doExtentEvict(vv *proto.SimpleVolView) (err error) {
 
 	// if dp extent count larger than upper count, do die out.
 	freeExtentCount = 0
-	extInfos, err := dp.extentStore.DumpExtents()
-	if err != nil {
-		log.LogErrorf("[doExtentEvict] dp(%v) failed to dump extents, err(%v)", dp.partitionID, err)
-		return
-	}
+	extInfos := dp.extentStore.DumpExtents()
 	maxExtentCount := dp.Size() / util.DefaultTinySizeLimit
 	if len(extInfos) > maxExtentCount {
 		needDieOut = true
@@ -1447,21 +1428,13 @@ func (dp *DataPartition) startEvict() {
 		case <-lruTimer.C:
 			log.LogDebugf("start [doExtentEvict] vol(%s), dp(%d).", vv.Name, dp.partitionID)
 			evictStart := time.Now()
-			err = dp.doExtentEvict(vv)
-			if err != nil {
-				log.LogErrorf("[doExtentEvict] vol(%v) dp(%v) failed to handle extent ttl, err(%v)", vv.Name, dp.partitionID, err)
-				continue
-			}
+			dp.doExtentEvict(vv)
 			log.LogDebugf("action[doExtentEvict] vol(%v), dp(%v), cost (%v)ms, .", vv.Name, dp.partitionID, time.Since(evictStart))
 
 		case <-ttlTimer.C:
 			log.LogDebugf("start [doExtentTtl] vol(%s), dp(%d).", vv.Name, dp.partitionID)
 			ttlStart := time.Now()
-			err = dp.doExtentTtl(cacheTtl)
-			if err != nil {
-				log.LogErrorf("[doExtentTtl] vol(%v) dp(%v) failed to handle extent ttl, err(%v)", vv.Name, dp.partitionID, err)
-				continue
-			}
+			dp.doExtentTtl(cacheTtl)
 			log.LogDebugf("action[doExtentTtl] vol(%v), dp(%v), cost (%v)ms.", vv.Name, dp.partitionID, time.Since(ttlStart))
 
 		case <-dp.stopC:

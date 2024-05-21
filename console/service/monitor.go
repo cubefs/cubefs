@@ -32,7 +32,8 @@ func NewMonitorService(addr, app, cluster, dashboardAddr string) *MonitorService
 
 func (fs *MonitorService) empty(ctx context.Context, args struct {
 	Empty bool
-}) bool {
+},
+) bool {
 	return args.Empty
 }
 

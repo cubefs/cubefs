@@ -35,8 +35,8 @@ type Encoder interface {
 	Close() error
 }
 
-//----------------------
-//nop encoder
+// ----------------------
+// nop encoder
 type NopEncoder struct{}
 
 func (e *NopEncoder) Encode(v interface{}) error {
@@ -47,7 +47,7 @@ func (e *NopEncoder) Close() error {
 	return nil
 }
 
-//----------------------------------
+// ----------------------------------
 // recode log encode
 type Config struct {
 	Dir       string `json:"dir"`
@@ -107,7 +107,7 @@ func (rl *RecordLog) Close() error {
 	return rl.f.Close()
 }
 
-//-------------------------------
+// -------------------------------
 type Decoder interface {
 	Decode(v interface{}) error
 }

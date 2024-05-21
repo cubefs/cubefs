@@ -130,7 +130,7 @@ const (
 	OpLcNodeScan           uint8 = 0x56
 	OpLcNodeSnapshotVerDel uint8 = 0x5B
 
-	//backUp
+	// backUp
 	OpBatchLockNormalExtent   uint8 = 0x57
 	OpBatchUnlockNormalExtent uint8 = 0x58
 	OpBackupRead              uint8 = 0x59
@@ -257,9 +257,8 @@ const (
 	OpReadRepairExtentAgain uint8 = 0xEF
 
 	// io speed limit
-	OpLimitedIoErr          uint8 = 0xB1
-	OpReadRepairExtentAgain uint8 = 0xEF
-	OpStoreClosed           uint8 = 0xB2
+	OpLimitedIoErr uint8 = 0xB1
+	OpStoreClosed  uint8 = 0xB2
 )
 
 const (

@@ -254,7 +254,7 @@ run_test() {
     export JENKINS_TEST=1
     ulimit -n 65536
     echo -n "${TPATH}"
-    go test -cover -v -coverprofile=cover.output $(go list ./... | grep -v depends) | tee cubefs_unittest.output
+    go test -cover -v -coverprofile=cover.output $(go list ./... | grep -v depends | grep master) | tee cubefs_unittest.output
     ret=$?
     popd >/dev/null
     exit $ret

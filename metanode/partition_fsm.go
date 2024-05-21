@@ -299,7 +299,7 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 		}
 		err = mp.fsmSetXAttr(extend)
 	case opFSMLockDir:
-		var req = &proto.LockDirRequest{}
+		req := &proto.LockDirRequest{}
 		if err = json.Unmarshal(msg.V, req); err != nil {
 			return
 		}

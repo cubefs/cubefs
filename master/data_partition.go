@@ -1049,7 +1049,6 @@ func (partition *DataPartition) buildDpInfo(c *Cluster) *proto.DataPartitionInfo
 		OfflinePeerID:            partition.OfflinePeerID,
 		IsRecover:                partition.isRecover,
 		FilesWithMissingReplica:  filesMissReplicas,
-		SingleDecommissionAddr:   partition.SingleDecommissionAddr,
 		IsDiscard:                partition.IsDiscard,
 		SingleDecommissionStatus: partition.GetSpecialReplicaDecommissionStep(),
 		Forbidden:                forbidden,
@@ -1106,7 +1105,8 @@ func GetDecommissionStatusMessage(status uint32) string {
 }
 
 func (partition *DataPartition) MarkDecommissionStatus(srcAddr, dstAddr, srcDisk string, raftForce bool, term uint64,
-	migrateType uint32, c *Cluster, ns *nodeSet) (err error) {
+	migrateType uint32, c *Cluster, ns *nodeSet,
+) (err error) {
 	if partition.needManualFix() && migrateType == AutoDecommission {
 		return proto.ErrAllReplicaUnavailable
 	}

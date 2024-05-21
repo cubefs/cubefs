@@ -15,11 +15,11 @@
 package metanode
 
 import (
+	"fmt"
+	"math"
 	"strconv"
 	"strings"
 	"time"
-	"fmt"
-	"math"
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/log"
@@ -43,7 +43,7 @@ func (mp *metaPartition) fsmLockDir(req *proto.LockDirRequest) (resp *proto.Lock
 
 	log.LogDebugf("fsmLockDir ino=%v, lockId=%d, submitTime=%v, lease=%d\n", ino, lockId, submitTime, lease)
 
-	var newExtend = NewExtend(ino)
+	newExtend := NewExtend(ino)
 	treeItem := mp.extendTree.CopyGet(newExtend)
 
 	var firstLock bool = false
@@ -72,7 +72,7 @@ func (mp *metaPartition) fsmLockDir(req *proto.LockDirRequest) (resp *proto.Lock
 		lockId = int64(uu_id.ID())
 		lockIdStr = strconv.Itoa(int(lockId))
 		value = lockIdStr + "|" + validTimeStr
-		newExtend.Put([]byte("dir_lock"), []byte(value))
+		newExtend.Put([]byte("dir_lock"), []byte(value), 0)
 		mp.extendTree.ReplaceOrInsert(newExtend, true)
 	} else {
 		log.LogDebugf("fsmLockDir oldValue=%s\n", oldValue)
@@ -103,7 +103,7 @@ func (mp *metaPartition) fsmLockDir(req *proto.LockDirRequest) (resp *proto.Lock
 		}
 
 		existExtend.Remove([]byte("dir_lock"))
-		newExtend.Put([]byte("dir_lock"), []byte(value))
+		newExtend.Put([]byte("dir_lock"), []byte(value), 0)
 		existExtend.Merge(newExtend, true)
 	}
 

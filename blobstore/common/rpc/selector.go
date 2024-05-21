@@ -182,7 +182,7 @@ func (s *selector) initHostMap() {
 	}
 }
 
-//  mess up the order of hosts to load balancing
+// mess up the order of hosts to load balancing
 func randomShuffle(hosts []string, length int) {
 	for i := length; i > 0; i-- {
 		lastIdx := i - 1

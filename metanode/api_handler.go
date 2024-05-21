@@ -79,7 +79,8 @@ func (m *MetaNode) registerAPIHandler() (err error) {
 }
 
 func (m *MetaNode) getParamsHandler(w http.ResponseWriter,
-	r *http.Request) {
+	r *http.Request,
+) {
 	resp := NewAPIResponse(http.StatusOK, http.StatusText(http.StatusOK))
 	params := make(map[string]interface{})
 	params[metaNodeDeleteBatchCountKey] = DeleteBatchCount()
@@ -91,7 +92,8 @@ func (m *MetaNode) getParamsHandler(w http.ResponseWriter,
 }
 
 func (m *MetaNode) getSmuxStatHandler(w http.ResponseWriter,
-	r *http.Request) {
+	r *http.Request,
+) {
 	resp := NewAPIResponse(http.StatusOK, http.StatusText(http.StatusOK))
 	resp.Data = smuxPool.GetStat()
 	data, _ := resp.Marshal()
@@ -101,7 +103,8 @@ func (m *MetaNode) getSmuxStatHandler(w http.ResponseWriter,
 }
 
 func (m *MetaNode) getPartitionsHandler(w http.ResponseWriter,
-	r *http.Request) {
+	r *http.Request,
+) {
 	resp := NewAPIResponse(http.StatusOK, http.StatusText(http.StatusOK))
 	resp.Data = m.metadataManager
 	data, _ := resp.Marshal()
@@ -372,7 +375,8 @@ func (m *MetaNode) getRaftStatusHandler(w http.ResponseWriter, r *http.Request) 
 }
 
 func (m *MetaNode) getEbsExtentsByInodeHandler(w http.ResponseWriter,
-	r *http.Request) {
+	r *http.Request,
+) {
 	r.ParseForm()
 	resp := NewAPIResponse(http.StatusBadRequest, "")
 	defer func() {
@@ -416,7 +420,8 @@ func (m *MetaNode) getEbsExtentsByInodeHandler(w http.ResponseWriter,
 }
 
 func (m *MetaNode) getExtentsByInodeHandler(w http.ResponseWriter,
-	r *http.Request) {
+	r *http.Request,
+) {
 	r.ParseForm()
 	resp := NewAPIResponse(http.StatusBadRequest, "")
 	defer func() {

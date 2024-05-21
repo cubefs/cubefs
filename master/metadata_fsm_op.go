@@ -305,8 +305,8 @@ type volValue struct {
 	TrashInterval                                          int64
 	DisableAuditLog                                        bool
 
-	Forbidden                                              bool
-	DpRepairBlockSize                                      uint64
+	Forbidden         bool
+	DpRepairBlockSize uint64
 }
 
 func (v *volValue) Bytes() (raw []byte, err error) {

@@ -30,10 +30,10 @@ func TestReaddir(t *testing.T) {
 	file1 := "f1"
 	file2 := "f2"
 
-	err = os.WriteFile(path.Join(tmpDir, file1), []byte(""), 0644)
+	err = os.WriteFile(path.Join(tmpDir, file1), []byte(""), 0o644)
 	require.NoError(t, err)
 
-	os.WriteFile(path.Join(tmpDir, file2), []byte(""), 0644)
+	os.WriteFile(path.Join(tmpDir, file2), []byte(""), 0o644)
 	require.NoError(t, err)
 
 	names, err := fileutil.ReadDir(tmpDir)
