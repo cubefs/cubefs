@@ -19,14 +19,15 @@ import (
 	"testing"
 	"time"
 
+	"github.com/golang/mock/gomock"
+	"github.com/stretchr/testify/require"
+
 	"github.com/cubefs/cubefs/blobstore/api/blobnode"
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
+	apierrors "github.com/cubefs/cubefs/blobstore/common/errors"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
 	_ "github.com/cubefs/cubefs/blobstore/testing/nolog"
-
-	"github.com/golang/mock/gomock"
-	"github.com/stretchr/testify/require"
 )
 
 func TestDiskMgr_Normal(t *testing.T) {
@@ -108,6 +109,14 @@ func TestDiskMgr_Dropping(t *testing.T) {
 		err = testDiskMgr.droppingDisk(ctx, 1)
 		require.NoError(t, err)
 
+		// add dropping disk repeatedly
+		err = testDiskMgr.droppingDisk(ctx, 1)
+		require.NoError(t, err)
+
+		// set status when disk is dropping, return ErrChangeDiskStatusNotAllow
+		err = testDiskMgr.SetStatus(ctx, 1, proto.DiskStatusBroken, false)
+		require.ErrorIs(t, apierrors.ErrChangeDiskStatusNotAllow, err)
+
 		droppingList, err = testDiskMgr.ListDroppingDisk(ctx)
 		require.NoError(t, err)
 		require.Equal(t, 1, len(droppingList))
@@ -130,6 +139,10 @@ func TestDiskMgr_Dropping(t *testing.T) {
 		require.Equal(t, 2, len(droppingList))
 
 		err = testDiskMgr.droppedDisk(ctx, 1)
+		require.NoError(t, err)
+
+		// add dropping disk 1 repeatedly
+		err = testDiskMgr.droppingDisk(ctx, 1)
 		require.NoError(t, err)
 
 		droppingList, err = testDiskMgr.ListDroppingDisk(ctx)

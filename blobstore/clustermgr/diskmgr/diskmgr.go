@@ -170,6 +170,20 @@ func (d *diskItem) genFilterKey() string {
 	return d.info.Host + d.info.Path
 }
 
+func (d *diskItem) withRLocked(f func() error) error {
+	d.lock.RLock()
+	defer d.lock.RUnlock()
+
+	return f()
+}
+
+func (d *diskItem) withLocked(f func() error) error {
+	d.lock.Lock()
+	defer d.lock.Unlock()
+
+	return f()
+}
+
 func New(scopeMgr scopemgr.ScopeMgrAPI, db *normaldb.NormalDB, cfg DiskMgrConfig) (*DiskMgr, error) {
 	_, ctx := trace.StartSpanFromContext(context.Background(), "NewDiskMgr")
 	if len(cfg.CodeModes) == 0 {
@@ -332,56 +346,69 @@ func (d *DiskMgr) SetStatus(ctx context.Context, id proto.DiskID, status proto.D
 		return apierrors.ErrInvalidStatus
 	}
 
-	diskInfo, ok := d.getDisk(id)
+	disk, ok := d.getDisk(id)
 	if !ok {
 		span.Error("diskMgr.SetStatus disk not found in all disks, diskID: %v, status: %v", id, status)
 		return apierrors.ErrCMDiskNotFound
 	}
 
-	diskInfo.lock.RLock()
-	if diskInfo.info.Status == status {
-		diskInfo.lock.RUnlock()
-		return nil
-	}
-	beforeSeq, ok = validSetStatus[diskInfo.info.Status]
-	diskInfo.lock.RUnlock()
-	if !ok {
-		panic(fmt.Sprintf("invalid disk status in disk table, diskid: %d, state: %d", id, status))
-	}
-
-	// can't change status back or change status more than 2 motion
-	if beforeSeq > afterSeq || (afterSeq-beforeSeq > 1 && status != proto.DiskStatusDropped) {
-		// return error in pre set request
-		if !isCommit {
-			return apierrors.ErrChangeDiskStatusNotAllow
+	err := disk.withRLocked(func() error {
+		if disk.info.Status == status {
+			return nil
 		}
-		// return nil in wal log replay situation
+		// disallow set disk status when disk is dropping, as disk status will be dropped finally
+		if disk.dropping && status != proto.DiskStatusDropped {
+			if !isCommit {
+				return apierrors.ErrChangeDiskStatusNotAllow
+			}
+			span.Warnf("disk[%d] is dropping, can't set disk status", id)
+			return nil
+		}
+
+		beforeSeq, ok = validSetStatus[disk.info.Status]
+		if !ok {
+			panic(fmt.Sprintf("invalid disk status in disk table, diskid: %d, state: %d", id, status))
+		}
+		// can't change status back or change status more than 2 motion
+		if beforeSeq > afterSeq || (afterSeq-beforeSeq > 1 && status != proto.DiskStatusDropped) {
+			// return error in pre set request
+			if !isCommit {
+				return apierrors.ErrChangeDiskStatusNotAllow
+			}
+			// return nil in wal log replay situation
+			span.Warnf("disallow set disk[%d] status[%d], before seq: %d, after seq: %d", id, status, beforeSeq, afterSeq)
+			return nil
+		}
+
 		return nil
+	})
+	if err != nil {
+		return err
 	}
 
 	if !isCommit {
 		return nil
 	}
 
-	diskInfo.lock.Lock()
-	defer diskInfo.lock.Unlock()
-	// concurrent double check
-	if diskInfo.info.Status == status {
+	return disk.withLocked(func() error {
+		// concurrent double check
+		if disk.info.Status == status {
+			return nil
+		}
+
+		err := d.diskTbl.UpdateDiskStatus(id, status)
+		if err != nil {
+			err = errors.Info(err, "diskMgr.SetStatus update disk info failed").Detail(err)
+			span.Error(errors.Detail(err))
+			return err
+		}
+		disk.info.Status = status
+		if !disk.needFilter() {
+			d.hostPathFilter.Delete(disk.genFilterKey())
+		}
+
 		return nil
-	}
-
-	err := d.diskTbl.UpdateDiskStatus(id, status)
-	if err != nil {
-		err = errors.Info(err, "diskMgr.SetStatus update disk info failed").Detail(err)
-		span.Error(errors.Detail(err))
-		return err
-	}
-	diskInfo.info.Status = status
-	if !diskInfo.needFilter() {
-		d.hostPathFilter.Delete(diskInfo.genFilterKey())
-	}
-
-	return nil
+	})
 }
 
 func (d *DiskMgr) IsDroppingDisk(ctx context.Context, id proto.DiskID) (bool, error) {
@@ -629,20 +656,24 @@ func (d *DiskMgr) addDisk(ctx context.Context, info blobnode.DiskInfo) error {
 
 // droppingDisk add a dropping disk
 func (d *DiskMgr) droppingDisk(ctx context.Context, id proto.DiskID) error {
+	span := trace.SpanFromContext(ctx)
+
 	disk, ok := d.getDisk(id)
 	if !ok {
 		return apierrors.ErrCMDiskNotFound
 	}
 
-	disk.lock.RLock()
-	if disk.dropping {
-		disk.lock.RUnlock()
-		return nil
-	}
-	disk.lock.RUnlock()
-
 	disk.lock.Lock()
 	defer disk.lock.Unlock()
+
+	if disk.dropping {
+		return nil
+	}
+	if disk.info.Status != proto.DiskStatusNormal {
+		span.Warnf("disk[%d] status is not normal, can't add into dropping disk list", id)
+		return nil
+	}
+
 	err := d.droppedDiskTbl.AddDroppingDisk(id)
 	if err != nil {
 		return err
