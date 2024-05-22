@@ -1070,7 +1070,6 @@ func (s *ExtentStore) GetAllWatermarks(filter ExtentFilter) (extents []*ExtentIn
 
 func (s *ExtentStore) getTinyExtentInfo() (extents []*ExtentInfo) {
 	extents = make([]*ExtentInfo, 0)
-	s.eiMutex.RLock()
 	var extentID uint64
 	for extentID = TinyExtentStartID; extentID < TinyExtentCount+TinyExtentStartID; extentID++ {
 		var ei *ExtentInfo
@@ -1080,8 +1079,6 @@ func (s *ExtentStore) getTinyExtentInfo() (extents []*ExtentInfo) {
 		}
 		extents = append(extents, ei)
 	}
-	s.eiMutex.RUnlock()
-
 	return
 }
 
