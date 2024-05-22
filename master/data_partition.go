@@ -1163,6 +1163,13 @@ func GetSpecialDecommissionStatusMessage(status uint32) string {
 
 func (partition *DataPartition) MarkDecommissionStatus(srcAddr, dstAddr, srcDisk string, raftForce bool, term uint64,
 	migrateType uint32, c *Cluster, ns *nodeSet) (err error) {
+	defer func() {
+		if err != nil {
+			msg := fmt.Sprintf("dp(%v) mark decommission status failed", partition.decommissionInfo())
+			auditlog.LogMasterOp("DataPartitionDecommission", msg, err)
+		}
+	}()
+
 	if partition.needManualFix() {
 		return proto.ErrAllReplicaUnavailable
 	}
