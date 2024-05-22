@@ -185,16 +185,6 @@ func (s *Service) DiskSet(c *rpc.Context) {
 		return
 	}
 
-	isDropping, err := s.DiskMgr.IsDroppingDisk(ctx, args.DiskID)
-	if err != nil {
-		c.RespondError(err)
-		return
-	}
-	if isDropping {
-		c.RespondError(apierrors.ErrDiskIsDropping)
-		return
-	}
-
 	diskInfo, err := s.DiskMgr.GetDiskInfo(ctx, args.DiskID)
 	if err != nil {
 		c.RespondError(err)
