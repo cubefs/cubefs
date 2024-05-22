@@ -17,6 +17,7 @@ package master
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/cubefs/cubefs/util/auditlog"
 	"math"
 	"net/http"
 	"sort"
@@ -26,7 +27,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/cubefs/cubefs/util/auditlog"
 	"github.com/google/uuid"
 	"golang.org/x/time/rate"
 
@@ -4530,6 +4530,7 @@ func (c *Cluster) TryDecommissionDisk(disk *DecommissionDisk) {
 	defer func() {
 		if err != nil {
 			disk.DecommissionRetry++
+			auditlog.LogMasterOp("DiskDecommission", rstMsg, err)
 		}
 		auditlog.LogMasterOp("DiskDecommission", rstMsg, err)
 		c.syncUpdateDecommissionDisk(disk)
