@@ -162,6 +162,7 @@ const (
 	QueryDiskDecoProgress              = "/disk/queryDecommissionProgress"
 	MarkDecoDiskFixed                  = "/disk/MarkDecommissionDiskFixed"
 	PauseDecommissionDisk              = "/disk/pauseDecommission"
+	CancelDecommissionDisk             = "/disk/cancelDecommission"
 	QueryDecommissionDiskDecoFailedDps = "/disk/queryDecommissionFailedDps"
 	QueryBadDisks                      = "/disk/queryBadDisks"
 	QueryDisks                         = "/disk/queryDisks"
