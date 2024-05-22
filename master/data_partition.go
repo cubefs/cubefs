@@ -2109,12 +2109,14 @@ func (partition *DataPartition) checkReplicaMeta(c *Cluster) (err error) {
 	if partition.isPerformingDecommission(c) {
 		log.LogDebugf("action[checkReplicaMeta]dp(%v) is performing decommission, skip it",
 			partition.PartitionID)
-		return proto.ErrPerformingRestoreReplica
-	}
-	if !partition.setRestoreReplicaRunning() {
 		return proto.ErrPerformingDecommission
 	}
-	partition.setRestoreReplicaStatus(RestoreReplicaMetaRunning)
+	if !partition.setRestoreReplicaRunning() {
+		log.LogDebugf("action[checkReplicaMeta]dp(%v) set RestoreReplicaMetaRunning failed",
+			partition.PartitionID)
+		return proto.ErrPerformingRestoreReplica
+	}
+
 	err = c.syncUpdateDataPartition(partition)
 	if err != nil {
 		partition.setRestoreReplicaStatus(RestoreReplicaMetaStop)
