@@ -4045,7 +4045,7 @@ func (c *Cluster) checkDecommissionDataNode() {
 					log.LogWarnf("action[checkDecommissionDataNode] dataNode %v decommission completed, "+
 						"but has dp left, so only reset decommission status", dataNode.Addr)
 					dataNode.resetDecommissionStatus()
-					// todo: 解锁锁定的磁盘
+					c.syncUpdateDataNode(dataNode)
 				}
 				return true
 			}
@@ -4062,7 +4062,6 @@ func (c *Cluster) checkDecommissionDataNode() {
 				log.LogWarnf("action[checkDecommissionDataNode] del dataNode %v", dataNode.Addr)
 				dataNode.delDecommissionDiskFromCache(c)
 				c.delDataNodeFromCache(dataNode)
-
 			}
 		}
 		return true
@@ -4552,7 +4551,9 @@ func (c *Cluster) TryDecommissionDisk(disk *DecommissionDisk) {
 				ignoreIDs = append(ignoreIDs, dp.PartitionID)
 				continue
 			} else {
-				// mark as failed
+				// mark as failed and set decommission src, make sure it can be included in the calculation of progress
+				dp.DecommissionSrcAddr = node.Addr
+				dp.DecommissionSrcDiskPath = disk.DstAddr
 				if strings.Contains(err.Error(), proto.ErrAllReplicaUnavailable.Error()) {
 					dp.DecommissionNeedRollbackTimes = defaultDecommissionRollbackLimit
 					dp.DecommissionNeedRollback = false
