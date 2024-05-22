@@ -196,6 +196,11 @@ func (dpv *dataPartitionValue) Restore(c *Cluster) (dp *DataPartition) {
 	dp.DecommissionErrorMessage = dpv.DecommissionErrorMessage
 	dp.DecommissionType = dpv.DecommissionType
 	dp.RestoreReplica = dpv.RestoreReplica
+	// to ensure progress of checkReplicaMeta can be run again, the status of RestoreReplicaMeta can not be
+	// set to RestoreReplicaMetaStop otherwise for checkReplicaMeta cannot be executed.
+	if dp.RestoreReplica == RestoreReplicaMetaRunning {
+		dp.RestoreReplica = RestoreReplicaMetaStop
+	}
 	for _, rv := range dpv.Replicas {
 		if !contains(dp.Hosts, rv.Addr) {
 			continue
