@@ -27,6 +27,9 @@ type (
 	BlobID    uint64
 	Vid       uint32
 	ClusterID uint32
+	NodeID    uint32
+	NodeSetID uint32
+	DiskSetID uint32
 )
 
 func (id DiskID) Encode() []byte {
@@ -74,4 +77,20 @@ func DecodeToken(token string) (host string, vid Vid, err error) {
 	}
 	vid = Vid(vidU32)
 	return
+}
+
+func (id NodeID) Encode() []byte {
+	key := make([]byte, 4)
+	binary.BigEndian.PutUint32(key, uint32(id))
+	return key
+}
+
+func (id *NodeID) Decode(b []byte) NodeID {
+	key := binary.BigEndian.Uint32(b)
+	*id = NodeID(key)
+	return *id
+}
+
+func (id NodeID) ToString() string {
+	return strconv.FormatUint(uint64(id), 10)
 }

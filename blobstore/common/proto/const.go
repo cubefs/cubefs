@@ -25,7 +25,12 @@ const (
 	ServiceNameScheduler = "SCHEDULER"
 )
 
-type DiskStatus uint8
+type (
+	DiskStatus uint8
+	NodeStatus uint8
+	DiskType   uint8
+	NodeRole   uint8
+)
 
 // disk status
 const (
@@ -57,6 +62,26 @@ func (status DiskStatus) String() string {
 		return "unknown"
 	}
 }
+
+// node status
+const (
+	NodeStatusNormal  = NodeStatus(iota + 1) // 1
+	NodeStatusDropped                        // 2
+	NodeStatusMax                            // 3
+)
+
+// disk type
+const (
+	DiskTypeHDD     = DiskType(iota + 1) // 1
+	DiskTypeSATASSD                      // 2
+	DiskTypeNVMeSSD                      // 3
+)
+
+// node role
+const (
+	NodeRoleBlobNode = NodeRole(iota + 1)
+	NodeRoleShardNode
+)
 
 const (
 	InvalidDiskID = DiskID(0)
