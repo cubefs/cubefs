@@ -17,7 +17,6 @@ package master
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/cubefs/cubefs/util/auditlog"
 	"math"
 	"net/http"
 	"sort"
