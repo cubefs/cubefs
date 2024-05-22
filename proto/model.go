@@ -487,6 +487,7 @@ type DecommissionDataPartitionInfo struct {
 	NeedRollbackTimes  uint32
 	DecommissionType   string
 	RestoreReplicaType string
+	IsDiscard          bool
 }
 
 type DecommissionedDisks struct {
