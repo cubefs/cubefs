@@ -70,7 +70,8 @@ func NewWritePacket(inode uint64, fileOffset, storeMode int) *Packet {
 
 // NewOverwritePacket returns a new overwrite packet.
 func NewOverwriteByAppendPacket(dp *wrapper.DataPartition, extentID uint64, extentOffset int,
-	inode uint64, fileOffset int, direct bool, op uint8) *Packet {
+	inode uint64, fileOffset int, direct bool, op uint8,
+) *Packet {
 	p := new(Packet)
 	p.PartitionID = dp.PartitionID
 	p.Magic = proto.ProtoMagic
@@ -204,10 +205,6 @@ func (p *Packet) readFromConn(c net.Conn, deadlineTime time.Duration) (err error
 		if err = readToBuffer(c, &p.Arg, int(p.ArgLen)); err != nil {
 			return
 		}
-	}
-
-	if p.Size < 0 {
-		return
 	}
 
 	size := int(p.Size)

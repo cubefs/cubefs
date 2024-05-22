@@ -35,7 +35,6 @@ import (
 const (
 	prefixDelExtent     = "EXTENT_DEL"
 	prefixDelExtentV2   = "EXTENT_DEL_V2"
-	prefixMultiVer      = verdataFile
 	maxDeleteExtentSize = 10 * MB
 )
 

@@ -43,6 +43,8 @@ type DropMgrConfig struct {
 	TaskLimitPerDisk int `json:"task_limit_per_disk"`
 }
 
+var ErrHandleLockVolFail = errors.New("handle lock volume fail")
+
 type dropDisk struct {
 	*client.DiskInfoSimple
 
@@ -171,8 +173,8 @@ func NewDiskDropMgr(clusterMgrCli client.ClusterMgrAPI, volumeUpdater client.IVo
 	conf.MigrateConfig.finishTaskCallback = mgr.releaseTaskLimit
 	conf.MigrateConfig.clearJunkTasksWhenLoadingFunc = mgr.clearJunkTasksWhenLoading
 	// nothing need handle for this case, init an empty func
-	conf.MigrateConfig.lockFailHandleFunc = func(ctx context.Context, task *proto.MigrateTask) {
-		_ = struct{}{}
+	conf.MigrateConfig.lockFailHandleFunc = func(ctx context.Context, task *proto.MigrateTask) error {
+		return ErrHandleLockVolFail
 	}
 	mgr.IMigrator = NewMigrateMgr(clusterMgrCli, volumeUpdater, taskSwitch,
 		taskLogger, &conf.MigrateConfig, proto.TaskTypeDiskDrop)

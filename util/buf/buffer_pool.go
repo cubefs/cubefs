@@ -193,7 +193,7 @@ func (bufferP *BufferPool) putHead(index int, data []byte) {
 	case bufferP.headPools[index] <- data:
 		return
 	default:
-		bufferP.headPool.Put(data)
+		bufferP.headPool.Put(data) // nolint: staticcheck
 	}
 }
 
@@ -202,7 +202,7 @@ func (bufferP *BufferPool) putHeadVer(index int, data []byte) {
 	case bufferP.headVerPools[index] <- data:
 		return
 	default:
-		bufferP.headVerPool.Put(data)
+		bufferP.headVerPool.Put(data) // nolint: staticcheck
 	}
 }
 
@@ -211,7 +211,7 @@ func (bufferP *BufferPool) putNormal(index int, data []byte) {
 	case bufferP.normalPools[index] <- data:
 		return
 	default:
-		bufferP.normalPool.Put(data)
+		bufferP.normalPool.Put(data) // nolint: staticcheck
 	}
 }
 
@@ -234,7 +234,7 @@ func (bufferP *BufferPool) Put(data []byte) {
 		id := atomic.AddUint64(&normalBufFreecId, 1)
 		bufferP.putNormal(int(id%slotCnt), data)
 	} else if size == util.DefaultTinySizeLimit {
-		bufferP.tinyPool.Put(data)
+		bufferP.tinyPool.Put(data) // nolint: staticcheck
 		atomic.AddInt64(&tinyBuffersCount, -1)
 	}
 }

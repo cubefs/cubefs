@@ -144,12 +144,11 @@ const (
 )
 
 const (
-	deleteIllegalReplicaErr       = "deleteIllegalReplicaErr "
-	addMissingReplicaErr          = "addMissingReplicaErr "
-	checkDataPartitionDiskErr     = "checkDataPartitionDiskErr  "
-	dataNodeOfflineErr            = "dataNodeOfflineErr "
-	diskOfflineErr                = "diskOfflineErr "
-	handleDataPartitionOfflineErr = "handleDataPartitionOffLineErr "
+	deleteIllegalReplicaErr   = "deleteIllegalReplicaErr "
+	addMissingReplicaErr      = "addMissingReplicaErr "
+	checkDataPartitionDiskErr = "checkDataPartitionDiskErr  "
+	dataNodeOfflineErr        = "dataNodeOfflineErr "
+	diskOfflineErr            = "diskOfflineErr "
 )
 
 const (
@@ -350,4 +349,32 @@ type NodeType int
 const (
 	DataNodeType = NodeType(0)
 	MetaNodeType = NodeType(iota)
+)
+
+// TODO: to remove unused by golangci
+var (
+	_ = startKey
+	_ = nodeHostsKey
+	_ = fullPathKey
+	_ = inodeKey
+	_ = dataNodeOfflineErr
+	_ = defaultMigrateDpCnt
+	_ = idSeparator
+	_ = volCachePrefix
+	_ = opSyncDataPartitionsView
+	_ = opSyncUpdateLcNode
+
+	_ = (createVolReq{}).clientReqPeriod
+	_ = (createVolReq{}).clientHitTriggerCnt
+
+	_ = (*Server).createDomainHandler
+	_ = (*VolumeService).markDeleteVol
+
+	__c = (*Cluster)(nil)
+	_   = __c.checkLackReplicaDataPartitions
+	_   = __c.getAllMetaPartitionsByMetaNode
+	_   = __c.isRecovering
+	_   = __c.updateInodeIDRange
+	_   = __c.setMaxConcurrentLcNodes
+	_   = __c.checkCorruptMetaNode
 )

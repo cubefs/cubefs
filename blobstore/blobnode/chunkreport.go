@@ -51,7 +51,7 @@ func (s *Service) reportChunkInfoToClusterMgr() {
 	dirtychunks := make(map[proto.Vuid]core.ChunkAPI)
 	cis := make([]bnapi.ChunkInfo, 0)
 	for _, cs := range chunks {
-		if cs.Disk().Status() >= proto.DiskStatusBroken || !cs.IsDirty() {
+		if !cs.Disk().IsWritable() || !cs.IsDirty() { // not writable, dont need report
 			continue
 		}
 

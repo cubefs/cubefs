@@ -46,6 +46,9 @@ func transferDirectoryToRemote(localFilePath string, remoteFilePath string, remo
 	return nil
 }
 
+// TODO: to remove unused by golangci
+var _ = copyFolder
+
 func copyFolder(sourcePath, destinationPath string) error {
 	err := filepath.Walk(sourcePath, func(path string, info os.FileInfo, err error) error {
 		if err != nil {

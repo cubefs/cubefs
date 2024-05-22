@@ -64,10 +64,6 @@ var cfgJSON = `{
 	}`
 var tlog *testing.T
 
-func tLogf(format string, args ...interface{}) {
-	tlog.Log(fmt.Sprintf(format, args...))
-}
-
 func newPartition(conf *MetaPartitionConfig, manager *metadataManager) (mp *metaPartition) {
 	mp = &metaPartition{
 		config:        conf,
@@ -102,7 +98,6 @@ func init() {
 		return
 	}
 	log.LogDebugf("action start")
-	return
 }
 
 func initMp(t *testing.T) {
@@ -605,7 +600,7 @@ func TestAppendList(t *testing.T) {
 	mp.verSeq = iTmp.getVer()
 	mp.fsmAppendExtentsWithCheck(iTmp, true)
 
-	getExtRsp = testGetExtList(t, ino, ino.getLayerVer(0))
+	_ = testGetExtList(t, ino, ino.getLayerVer(0))
 
 	assert.True(t, len(ino.Extents.eks) == lastTopEksLen+2)
 	assert.True(t, checkOffSetInSequnce(t, ino.Extents.eks))
@@ -988,7 +983,6 @@ func testDeleteDirTree(t *testing.T, parentId uint64, verSeq uint64) {
 		log.LogDebugf("action[testDeleteDirTree] seq [%v] delete children %v", verSeq, child)
 		testDeleteFile(t, verSeq, parentId, &child)
 	}
-	return
 }
 
 func testCleanSnapshot(t *testing.T, verSeq uint64) {
@@ -999,7 +993,6 @@ func testCleanSnapshot(t *testing.T, verSeq uint64) {
 		verSeq = math.MaxUint64
 	}
 	testDeleteDirTree(t, 1, verSeq)
-	return
 }
 
 // create
@@ -1574,12 +1567,7 @@ func TestGetAllVerList(t *testing.T) {
 	mp.multiVersionList.VerList = append(mp.multiVersionList.VerList[:1], mp.multiVersionList.VerList[2:]...)
 	tmp = append(tmp, &proto.VolVersionInfo{Ver: 30, Status: proto.VersionNormal})
 
-	sort.SliceStable(tmp, func(i, j int) bool {
-		if tmp[i].Ver < tmp[j].Ver {
-			return true
-		}
-		return false
-	})
+	sort.SliceStable(tmp, func(i, j int) bool { return tmp[i].Ver < tmp[j].Ver })
 
 	t.Logf("tmp[%v]", tmp)
 	t.Logf("mp.multiVersionList %v", mp.multiVersionList)

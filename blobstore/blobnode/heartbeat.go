@@ -76,25 +76,31 @@ func (s *Service) syncDiskStatus(ctx context.Context, diskInfosRet []*cmapi.Disk
 	span := trace.SpanFromContextSafe(ctx)
 
 	for _, diskInfo := range diskInfosRet {
-		diskId := diskInfo.DiskID
+		diskID := diskInfo.DiskID
 		status := diskInfo.Status
 
 		s.lock.RLock()
-		ds, exist := s.Disks[diskId]
+		ds, exist := s.Disks[diskID]
 		s.lock.RUnlock()
 		if !exist {
-			span.Errorf("no such disk: %v", diskId)
+			span.Errorf("no such diskID: %d", diskID)
 			continue
 		}
 
-		if ds.Status() >= proto.DiskStatusBroken {
-			span.Warnf("non normal disk(%v), but still in disks. skip.", diskId)
+		if !ds.IsWritable() { // local disk status, not normal disk, skip
+			span.Warnf("non normal diskID(%d), but still in disks. skip.", diskID)
 			continue
 		}
 
-		if status >= proto.DiskStatusBroken {
-			span.Warnf("notify broken. diskID:%v ds.Status:%v, status:%v", diskId, ds.Status(), status)
-			s.handleDiskIOError(ctx, diskId, bloberr.ErrDiskBroken)
+		switch status { // remote cm disk status
+		case proto.DiskStatusBroken, proto.DiskStatusRepairing, proto.DiskStatusRepaired:
+			span.Warnf("notify broken. diskID:%d local.Status:%v, cm.status:%v", diskID, ds.Status(), status)
+			s.handleDiskIOError(ctx, diskID, bloberr.ErrDiskBroken)
+			continue
+
+		case proto.DiskStatusDropped:
+			span.Warnf("disk drop: diskID:%d local.Status:%v, cm.status:%v", diskID, ds.Status(), status)
+			s.handleDiskDrop(ctx, ds)
 			continue
 		}
 	}

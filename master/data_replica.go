@@ -25,7 +25,7 @@ import (
 type DataReplica struct {
 	proto.DataReplica
 	dataNode *DataNode
-	loc      uint8
+	// loc      uint8
 }
 
 func newDataReplica(dataNode *DataNode) (replica *DataReplica) {
@@ -63,18 +63,6 @@ func (replica *DataReplica) isActive(timeOutSec int64) bool {
 
 func (replica *DataReplica) getReplicaNode() (node *DataNode) {
 	return replica.dataNode
-}
-
-// check if the replica's location is available
-func (replica *DataReplica) isLocationAvailable() (isAvailable bool) {
-	dataNode := replica.getReplicaNode()
-	dataNode.Lock()
-	defer dataNode.Unlock()
-	if dataNode.isActive == true && replica.isActive(defaultDataPartitionTimeOutSec) == true {
-		isAvailable = true
-	}
-
-	return
 }
 
 func (replica *DataReplica) isRepairing() bool {

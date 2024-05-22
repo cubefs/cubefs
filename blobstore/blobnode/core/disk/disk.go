@@ -692,7 +692,9 @@ func (ds *DiskStorage) ReleaseChunk(ctx context.Context, vuid proto.Vuid, force 
 	}
 	defer ds.ChunkLimitPerKey.Release(vuid)
 
-	if ds.status >= proto.DiskStatusBroken {
+	// if disk is dropped, it need release
+	status := ds.Status()
+	if status >= proto.DiskStatusBroken && status <= proto.DiskStatusRepaired {
 		return bloberr.ErrDiskBroken
 	}
 
@@ -1105,6 +1107,10 @@ func (ds *DiskStorage) IsCleanUp(ctx context.Context) bool {
 	}
 
 	return true
+}
+
+func (ds *DiskStorage) IsWritable() bool {
+	return ds.Status() == proto.DiskStatusNormal
 }
 
 func isValidStateTransition(src, dest bnapi.ChunkStatus) bool {

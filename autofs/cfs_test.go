@@ -10,15 +10,11 @@ import (
 func TestCfsOption_Parse(t *testing.T) {
 	c1 := cfsParse("tmp/mp", "subdir=sc1ch,volName=m1-project,owner=11111111,accessKey=ya0VE1xxxyyy===gY431,secretKey=5Clssf7831eXSmxxxyyyDQl2Is6J2x,masterAddr=10.0.0.1:22222,enablePosixACL")
 
-	if c1 == nil {
-		t.Error("parsed nil")
-	}
-
 	if c1.MountPoint != "tmp/mp" || c1.Subdir != "sc1ch" || c1.AccessKey != "ya0VE1xxxyyy===gY431" {
 		t.Error("parsedErr, c1: ", fmt.Sprintf("%+v", c1))
 	}
 
-	log.Println(fmt.Sprintf("option: %+v", c1))
+	log.Printf("option: %+v", c1)
 }
 
 func TestCfsOption_ConvertToCliOptions(t *testing.T) {

@@ -108,9 +108,9 @@ type ExtentHandler struct {
 	doneSender chan struct{}
 
 	// ver update need alloc new extent
-	verUpdate chan uint64
-	appendLK  sync.Mutex
-	lastKey   proto.ExtentKey
+	appendLK sync.Mutex
+	lastKey  proto.ExtentKey
+	// verUpdate chan uint64
 }
 
 // NewExtentHandler returns a new extent handler.
@@ -380,7 +380,6 @@ func (eh *ExtentHandler) processReply(packet *Packet) {
 	proto.Buffers.Put(packet.Data)
 	packet.Data = nil
 	eh.dirty = true
-	return
 }
 
 func (eh *ExtentHandler) processReplyError(packet *Packet, errmsg string) {
@@ -516,20 +515,9 @@ func (eh *ExtentHandler) waitForFlush() {
 	if atomic.LoadInt32(&eh.inflight) <= 0 {
 		return
 	}
-
-	//	t := time.NewTicker(10 * time.Second)
-	//	defer t.Stop()
-
-	for {
-		select {
-		case <-eh.empty:
-			if atomic.LoadInt32(&eh.inflight) <= 0 {
-				return
-			}
-			//		case <-t.C:
-			//			if atomic.LoadInt32(&eh.inflight) <= 0 {
-			//				return
-			//			}
+	for range eh.empty {
+		if atomic.LoadInt32(&eh.inflight) <= 0 {
+			return
 		}
 	}
 }
@@ -622,25 +610,13 @@ func (eh *ExtentHandler) allocateExtent() (err error) {
 		return nil
 	}
 
-	errmsg := fmt.Sprintf("allocateExtent failed: hit max retry limit")
+	errmsg := "allocateExtent failed: hit max retry limit"
 	if err != nil {
 		err = errors.Trace(err, errmsg)
 	} else {
 		err = errors.New(errmsg)
 	}
 	return err
-}
-
-func (eh *ExtentHandler) createConnection(dp *wrapper.DataPartition) (*net.TCPConn, error) {
-	conn, err := net.DialTimeout("tcp", dp.Hosts[0], time.Second)
-	if err != nil {
-		return nil, err
-	}
-	connect := conn.(*net.TCPConn)
-	// TODO unhandled error
-	connect.SetKeepAlive(true)
-	connect.SetNoDelay(true)
-	return connect, nil
 }
 
 func (eh *ExtentHandler) createExtent(dp *wrapper.DataPartition) (extID int, err error) {

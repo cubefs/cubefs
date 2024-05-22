@@ -141,7 +141,7 @@ func (mp *metaPartition) CreateInode(req *CreateInoReq, p *Packet, remoteAddr st
 		resp := &CreateInoResp{
 			Info: &proto.InodeInfo{},
 		}
-		if replyInfo(resp.Info, ino, make(map[uint32]*proto.MetaQuotaInfo, 0)) {
+		if replyInfo(resp.Info, ino, make(map[uint32]*proto.MetaQuotaInfo)) {
 			status = proto.OpOk
 			reply, err = json.Marshal(resp)
 			if err != nil {
@@ -244,7 +244,7 @@ func (mp *metaPartition) TxUnlinkInode(req *proto.TxUnlinkInodeRequest, p *Packe
 				Info: &proto.InodeInfo{},
 			}
 			if respIno != nil {
-				replyInfo(resp.Info, respIno, make(map[uint32]*proto.MetaQuotaInfo, 0))
+				replyInfo(resp.Info, respIno, make(map[uint32]*proto.MetaQuotaInfo))
 				if reply, err = json.Marshal(resp); err != nil {
 					status = proto.OpErr
 					reply = []byte(err.Error())
@@ -332,7 +332,7 @@ func (mp *metaPartition) UnlinkInode(req *UnlinkInoReq, p *Packet, remoteAddr st
 			resp := &UnlinkInoResp{
 				Info: &proto.InodeInfo{},
 			}
-			replyInfo(resp.Info, msg.Msg, make(map[uint32]*proto.MetaQuotaInfo, 0))
+			replyInfo(resp.Info, msg.Msg, make(map[uint32]*proto.MetaQuotaInfo))
 			if reply, err = json.Marshal(resp); err != nil {
 				status = proto.OpErr
 				reply = []byte(err.Error())
@@ -415,7 +415,7 @@ func (mp *metaPartition) UnlinkInodeBatch(req *BatchUnlinkInoReq, p *Packet, rem
 		}
 
 		info := &proto.InodeInfo{}
-		replyInfo(info, ir.Msg, make(map[uint32]*proto.MetaQuotaInfo, 0))
+		replyInfo(info, ir.Msg, make(map[uint32]*proto.MetaQuotaInfo))
 		result.Items = append(result.Items, &struct {
 			Info   *proto.InodeInfo `json:"info"`
 			Status uint8            `json:"status"`
@@ -497,8 +497,6 @@ func (mp *metaPartition) InodeGet(req *InodeGetReq, p *Packet) (err error) {
 
 	log.LogDebugf("action[Inode] %v seq [%v] retMsg.status [%v], getAllVerInfo %v",
 		ino.Inode, req.VerSeq, retMsg.Status, getAllVerInfo)
-
-	ino = retMsg.Msg
 
 	var (
 		reply      []byte
@@ -619,7 +617,7 @@ func (mp *metaPartition) TxCreateInodeLink(req *proto.TxLinkInodeRequest, p *Pac
 		resp := &proto.TxLinkInodeResponse{
 			Info: &proto.InodeInfo{},
 		}
-		if replyInfo(resp.Info, retMsg.Msg, make(map[uint32]*proto.MetaQuotaInfo, 0)) {
+		if replyInfo(resp.Info, retMsg.Msg, make(map[uint32]*proto.MetaQuotaInfo)) {
 			status = proto.OpOk
 			reply, err = json.Marshal(resp)
 			if err != nil {
@@ -668,7 +666,7 @@ func (mp *metaPartition) CreateInodeLink(req *LinkInodeReq, p *Packet, remoteAdd
 		resp := &LinkInodeResp{
 			Info: &proto.InodeInfo{},
 		}
-		if replyInfo(resp.Info, retMsg.Msg, make(map[uint32]*proto.MetaQuotaInfo, 0)) {
+		if replyInfo(resp.Info, retMsg.Msg, make(map[uint32]*proto.MetaQuotaInfo)) {
 			status = proto.OpOk
 			reply, err = json.Marshal(resp)
 			if err != nil {

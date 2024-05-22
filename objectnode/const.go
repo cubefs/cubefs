@@ -196,3 +196,20 @@ const (
 	TaggingKeyMaxLength   = 128
 	TaggingValueMaxLength = 256
 )
+
+// TODO: to remove unused by golangci
+var (
+	_ = tempFileName
+	_ = formatSimpleTime
+	_ = formatTimeISOLocal
+	_ = transferError
+	_ = isIPNetContainsIP
+	_ = patternMatch
+	_ = (*objectStore).Init
+	_ = (*objectStore).List
+	_ = (*xattrStore).getInode
+	_ = (*Volume).appendInodeHash
+	_ = (*Volume).loadUserDefinedMetadata
+	_ = (*Volume).copyFile
+	_ = (*Condition).parseOperations
+)

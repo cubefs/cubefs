@@ -32,10 +32,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-const (
-	blobSize = 1 << 20
-)
-
 var dataCache []byte
 
 type MockEbsService struct {
@@ -56,7 +52,8 @@ func NewMockEbsService() *MockEbsService {
 				w.Header().Set("X-Ack-Crc-Encoded", "1")
 				w.WriteHeader(http.StatusOK)
 
-				body := crc32block.NewDecoderReader(req.Body)
+				body := crc32block.NewBodyDecoder(req.Body)
+				defer body.Close()
 				dataCache = dataCache[:cap(dataCache)]
 				dataCache = dataCache[:crc32block.DecodeSizeWithDefualtBlock(int64(l))]
 				io.ReadFull(body, dataCache)

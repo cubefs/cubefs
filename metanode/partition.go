@@ -107,10 +107,6 @@ func (c *MetaPartitionConfig) checkMeta() (err error) {
 			"now partition id is: %d", c.PartitionId)
 		return
 	}
-	if c.Start < 0 {
-		err = errors.NewErrorf("[checkMeta]: start at least 0")
-		return
-	}
 	if c.End <= c.Start {
 		err = errors.NewErrorf("[checkMeta]: end=%v, "+
 			"start=%v; end <= start", c.End, c.Start)
@@ -288,8 +284,6 @@ type UidManager struct {
 	accumRebuildDelta *sync.Map // snapshot redoLog
 	accumRebuildBase  *sync.Map // snapshot mirror
 	uidAcl            *sync.Map
-	lastUpdateTime    time.Time
-	enable            bool
 	rbuilding         bool
 	volName           string
 	acLock            sync.RWMutex
@@ -503,7 +497,6 @@ type metaPartition struct {
 	vol                    *Vol
 	manager                *metadataManager
 	isLoadingMetaPartition bool
-	summaryLock            sync.Mutex
 	ebsClient              *blobstore.BlobStoreClient
 	volType                int
 	isFollowerRead         bool
@@ -515,7 +508,6 @@ type metaPartition struct {
 	uniqChecker            *uniqChecker
 	verSeq                 uint64
 	multiVersionList       *proto.VolVersionInfoList
-	versionLock            sync.Mutex
 	verUpdateChan          chan []byte
 	enableAuditLog         bool
 }
@@ -574,10 +566,7 @@ func (mp *metaPartition) GetAllVerList() (verList []*proto.VolVersionInfo) {
 		verList = append(verList, verInfo)
 	}
 	sort.SliceStable(verList, func(i, j int) bool {
-		if verList[i].Ver < verList[j].Ver {
-			return true
-		}
-		return false
+		return verList[i].Ver < verList[j].Ver
 	})
 	return
 }
@@ -838,8 +827,8 @@ func (mp *metaPartition) stopRaft() {
 	if mp.raftPartition != nil {
 		// TODO Unhandled errors
 		// mp.raftPartition.Stop()
+		_ = struct{}{}
 	}
-	return
 }
 
 func (mp *metaPartition) getRaftPort() (heartbeat, replica int, err error) {
@@ -905,7 +894,6 @@ func (mp *metaPartition) SetFollowerRead(fRead bool) {
 		return
 	}
 	mp.isFollowerRead = fRead
-	return
 }
 
 // IsLeader returns the raft leader address and if the current meta partition is the leader.
@@ -1142,7 +1130,6 @@ func (mp *metaPartition) store(sm *storeMsg) (err error) {
 		// TODO Unhandled errors
 		os.RemoveAll(tmpDir)
 	}
-	err = nil
 	if err = os.MkdirAll(tmpDir, 0o775); err != nil {
 		return
 	}
@@ -1261,7 +1248,8 @@ func (mp *metaPartition) GetBaseConfig() MetaPartitionConfig {
 
 // UpdatePartition updates the meta partition. TODO remove? no usage?
 func (mp *metaPartition) UpdatePartition(req *UpdatePartitionReq,
-	resp *UpdatePartitionResp) (err error) {
+	resp *UpdatePartitionResp,
+) (err error) {
 	reqData, err := json.Marshal(req)
 	if err != nil {
 		resp.Status = proto.TaskFailed
@@ -1425,8 +1413,6 @@ func (mp *metaPartition) multiVersionTTLWork(dur time.Duration) {
 			return
 		}
 	}
-
-	return
 }
 
 func (mp *metaPartition) delPartitionVersion(verSeq uint64) {
@@ -1566,8 +1552,6 @@ func (mp *metaPartition) delPartitionInodesVersion(verSeq uint64, wg *sync.WaitG
 		}
 		return true
 	})
-
-	return
 }
 
 // cacheTTLWork only happen in datalake situation

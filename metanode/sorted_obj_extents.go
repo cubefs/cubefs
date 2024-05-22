@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"math"
 	"sync"
 
 	"github.com/cubefs/cubefs/proto"
@@ -153,7 +152,7 @@ func (se *SortedObjExtents) FindOffsetExist(fileOffset uint64) (bool, int) {
 	}
 	left, right, mid := 0, len(se.eks)-1, 0
 	for {
-		mid = int(math.Floor(float64((left + right) / 2)))
+		mid = (left + right) / 2
 		if se.eks[mid].FileOffset > fileOffset {
 			right = mid - 1
 		} else if se.eks[mid].FileOffset < fileOffset {

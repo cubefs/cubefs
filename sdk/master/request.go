@@ -50,16 +50,6 @@ func (r *request) addParam(key, value string) *request {
 	return r
 }
 
-func (r *request) addHeader(key, value string) *request {
-	r.header[key] = value
-	return r
-}
-
-func (r *request) setBody(body []byte) *request {
-	r.body = body
-	return r
-}
-
 func (r *request) Param(params ...anyParam) *request {
 	for _, param := range params {
 		r.addParamAny(param.key, param.val)

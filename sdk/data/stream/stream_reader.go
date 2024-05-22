@@ -266,7 +266,7 @@ func (s *Streamer) asyncBlockCache() {
 			} else {
 				data = make([]byte, ek.Size)
 			}
-			reader, err := s.GetExtentReader(ek)
+			reader, _ := s.GetExtentReader(ek)
 			fullReq := NewExtentRequest(int(ek.FileOffset), int(ek.Size), data, ek)
 			readBytes, err := reader.Read(fullReq)
 			if err != nil || readBytes != len(data) {
@@ -299,8 +299,5 @@ func (s *Streamer) asyncBlockCache() {
 }
 
 func (s *Streamer) exceedBlockSize(size uint32) bool {
-	if size > bcache.BigExtentSize {
-		return true
-	}
-	return false
+	return size > bcache.BigExtentSize
 }

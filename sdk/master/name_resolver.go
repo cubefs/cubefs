@@ -189,7 +189,7 @@ func (ns *NameResolver) Resolve() (changed bool, err error) {
 		return false, fmt.Errorf("name or ip empty")
 	}
 
-	ipSet := make(map[string]struct{}, 0)
+	ipSet := make(map[string]struct{})
 
 	if len(ns.domains) > 0 {
 		var addrs []net.IP

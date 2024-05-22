@@ -84,7 +84,6 @@ func (sender *AdminTaskManager) doDeleteTasks() {
 	for _, t := range delTasks {
 		sender.DelTask(t)
 	}
-	return
 }
 
 func (sender *AdminTaskManager) getToBeDeletedTasks() (delTasks []*proto.AdminTask) {
@@ -260,14 +259,14 @@ func (sender *AdminTaskManager) getToDoTasks() (tasks []*proto.AdminTask) {
 
 	// send heartbeat task first
 	for _, t := range sender.TaskMap {
-		if t.IsHeartbeatTask() && t.CheckTaskNeedSend() == true {
+		if t.IsHeartbeatTask() && t.CheckTaskNeedSend() {
 			tasks = append(tasks, t)
 			t.SendTime = time.Now().Unix()
 		}
 	}
 	// send urgent task immediately
 	for _, t := range sender.TaskMap {
-		if t.IsUrgentTask() && t.CheckTaskNeedSend() == true {
+		if t.IsUrgentTask() && t.CheckTaskNeedSend() {
 			tasks = append(tasks, t)
 			t.SendTime = time.Now().Unix()
 		}

@@ -129,9 +129,9 @@ type DataPartition struct {
 	persistMetaMutex              sync.RWMutex
 
 	// snapshot
+	// verSeqPrepare              uint64
+	// verSeqCommitStatus         int8
 	verSeq                     uint64
-	verSeqPrepare              uint64
-	verSeqCommitStatus         int8
 	volVersionInfoList         *proto.VolVersionInfoList
 	decommissionRepairProgress float64 // record repair progress for decommission datapartition
 	stopRecover                bool
@@ -736,7 +736,6 @@ func (dp *DataPartition) checkIsDiskError(err error, rwFlag uint8) {
 
 	// must after change disk.status
 	dp.statusUpdate()
-	return
 }
 
 func newRaftApplyError(err error) error {

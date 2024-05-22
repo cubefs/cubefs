@@ -29,10 +29,6 @@ import (
 	"github.com/cubefs/cubefs/util/log"
 )
 
-const (
-	nodeType = "auth"
-)
-
 func (m *Server) getTicket(w http.ResponseWriter, r *http.Request) {
 	var (
 		plaintext []byte
@@ -43,7 +39,7 @@ func (m *Server) getTicket(w http.ResponseWriter, r *http.Request) {
 		message   string
 	)
 
-	if m.metaReady == false {
+	if !m.metaReady {
 		log.LogWarnf("action[handlerWithInterceptor] leader meta has not ready")
 		http.Error(w, m.leaderInfo.addr, http.StatusBadRequest)
 	}
@@ -79,7 +75,6 @@ func (m *Server) getTicket(w http.ResponseWriter, r *http.Request) {
 	}
 
 	sendOkReply(w, r, newSuccessHTTPAuthReply(message))
-	return
 }
 
 func (m *Server) raftNodeOp(w http.ResponseWriter, r *http.Request) {
@@ -145,21 +140,14 @@ func (m *Server) raftNodeOp(w http.ResponseWriter, r *http.Request) {
 	}
 
 	sendOkReply(w, r, newSuccessHTTPAuthReply(message))
-	return
 }
 
 func (m *Server) handleAddRaftNode(raftNodeInfo *proto.AuthRaftNodeInfo) (err error) {
-	if err = m.cluster.addRaftNode(raftNodeInfo.ID, raftNodeInfo.Addr); err != nil {
-		return
-	}
-	return
+	return m.cluster.addRaftNode(raftNodeInfo.ID, raftNodeInfo.Addr)
 }
 
 func (m *Server) handleRemoveRaftNode(raftNodeInfo *proto.AuthRaftNodeInfo) (err error) {
-	if err = m.cluster.removeRaftNode(raftNodeInfo.ID, raftNodeInfo.Addr); err != nil {
-		return
-	}
-	return
+	return m.cluster.removeRaftNode(raftNodeInfo.ID, raftNodeInfo.Addr)
 }
 
 func genAuthRaftNodeOpResp(req *proto.APIAccessReq, ts int64, key []byte, msg string) (message string, err error) {
@@ -289,28 +277,18 @@ func (m *Server) apiAccessEntry(w http.ResponseWriter, r *http.Request) {
 	}
 
 	sendOkReply(w, r, newSuccessHTTPAuthReply(message))
-	return
 }
 
 func (m *Server) handleCreateKey(keyInfo *keystore.KeyInfo) (res *keystore.KeyInfo, err error) {
-	if res, err = m.cluster.CreateNewKey(keyInfo.ID, keyInfo); err != nil {
-		return
-	}
-	return
+	return m.cluster.CreateNewKey(keyInfo.ID, keyInfo)
 }
 
 func (m *Server) handleDeleteKey(keyInfo *keystore.KeyInfo) (res *keystore.KeyInfo, err error) {
-	if res, err = m.cluster.DeleteKey(keyInfo.ID); err != nil {
-		return
-	}
-	return
+	return m.cluster.DeleteKey(keyInfo.ID)
 }
 
 func (m *Server) handleGetKey(keyInfo *keystore.KeyInfo) (res *keystore.KeyInfo, err error) {
-	if res, err = m.getSecretKeyInfo(keyInfo.ID); err != nil {
-		return
-	}
-	return
+	return m.getSecretKeyInfo(keyInfo.ID)
 }
 
 func (m *Server) handleAddCaps(keyInfo *keystore.KeyInfo) (res *keystore.KeyInfo, err error) {
@@ -437,7 +415,6 @@ func (m *Server) osCapsOp(w http.ResponseWriter, r *http.Request) {
 	}
 
 	sendOkReply(w, r, newSuccessHTTPAuthReply(message))
-	return
 }
 
 func (m *Server) genTicket(key []byte, serviceID string, IP string, caps []byte) (ticket cryptoutil.Ticket) {
@@ -680,7 +657,6 @@ func send(w http.ResponseWriter, r *http.Request, reply []byte) {
 		return
 	}
 	log.LogInfof("URL[%v],remoteAddr[%v],response ok", r.URL, r.RemoteAddr)
-	return
 }
 
 func keyNotFound(name string) (err error) {
@@ -700,5 +676,4 @@ func sendErrReply(w http.ResponseWriter, r *http.Request, HTTPAuthReply *proto.H
 	if _, err = w.Write(reply); err != nil {
 		log.LogErrorf("fail to write http reply[%s] len[%d].URL[%v],remoteAddr[%v] err:[%v]", string(reply), len(reply), r.URL, r.RemoteAddr, err)
 	}
-	return
 }

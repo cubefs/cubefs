@@ -142,8 +142,6 @@ func (o *ObjectNode) createBucketHandler(w http.ResponseWriter, r *http.Request)
 		}
 		vol.metaLoader.storeACL(acl)
 	}
-
-	return
 }
 
 // Delete bucket
@@ -207,7 +205,6 @@ func (o *ObjectNode) deleteBucketHandler(w http.ResponseWriter, r *http.Request)
 	// release Volume from Volume manager
 	o.vm.Release(bucket)
 	w.WriteHeader(http.StatusNoContent)
-	return
 }
 
 // List buckets
@@ -276,7 +273,6 @@ func (o *ObjectNode) listBucketsHandler(w http.ResponseWriter, r *http.Request) 
 	}
 
 	writeSuccessResponseXML(w, response)
-	return
 }
 
 // Get bucket location
@@ -318,7 +314,6 @@ func (o *ObjectNode) getBucketLocationHandler(w http.ResponseWriter, r *http.Req
 	}
 
 	writeSuccessResponseXML(w, response)
-	return
 }
 
 // Get bucket tagging
@@ -371,7 +366,6 @@ func (o *ObjectNode) getBucketTaggingHandler(w http.ResponseWriter, r *http.Requ
 	}
 
 	writeSuccessResponseXML(w, response)
-	return
 }
 
 // Put bucket tagging
@@ -437,7 +431,6 @@ func (o *ObjectNode) putBucketTaggingHandler(w http.ResponseWriter, r *http.Requ
 	}
 
 	w.WriteHeader(http.StatusNoContent)
-	return
 }
 
 // Delete bucket tagging
@@ -477,7 +470,6 @@ func (o *ObjectNode) deleteBucketTaggingHandler(w http.ResponseWriter, r *http.R
 	}
 
 	w.WriteHeader(http.StatusNoContent)
-	return
 }
 
 func calculateAuthKey(key string) (authKey string, err error) {
@@ -547,7 +539,6 @@ func (o *ObjectNode) putObjectLockConfigurationHandler(w http.ResponseWriter, r 
 	vol.metaLoader.storeObjectLock(config)
 
 	w.WriteHeader(http.StatusNoContent)
-	return
 }
 
 // Get Object Lock Configuration
@@ -592,7 +583,6 @@ func (o *ObjectNode) getObjectLockConfigurationHandler(w http.ResponseWriter, r 
 	}
 
 	writeSuccessResponseXML(w, data)
-	return
 }
 
 func (o *ObjectNode) getUserInfoByAccessKeyV2(accessKey string) (userInfo *proto.UserInfo, err error) {

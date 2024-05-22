@@ -91,7 +91,6 @@ func newRaftLogger(dir string) {
 		return
 	}
 	logger.SetLogger(raftLog)
-	return
 }
 
 // NewRaftStore returns a new raft store instance.

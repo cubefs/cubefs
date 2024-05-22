@@ -130,7 +130,6 @@ var (
 	statusEISDIR  = errorToStatus(syscall.EISDIR)
 	statusENOSPC  = errorToStatus(syscall.ENOSPC)
 )
-var once sync.Once
 
 func init() {
 	gClientManager = &clientManager{
@@ -152,10 +151,6 @@ type clientManager struct {
 	nextClientID int64
 	clients      map[int64]*client
 	mu           sync.RWMutex
-}
-
-type pushConfig struct {
-	PushAddr string `json:"pushAddr"`
 }
 
 func newClient() *client {
@@ -851,7 +846,7 @@ func cfs_lsdir(id C.int64_t, fd C.int, direntsInfo []C.struct_cfs_dirent_info, c
 	}
 
 	dirp := f.dirp
-	inodeIDS := make([]uint64, count, count)
+	inodeIDS := make([]uint64, count)
 	inodeMap := make(map[uint64]C.int)
 	for dirp.pos < len(dirp.dirents) && n < count {
 		inodeIDS[n] = dirp.dirents[dirp.pos].Inode

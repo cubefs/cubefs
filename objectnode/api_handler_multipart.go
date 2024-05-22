@@ -146,7 +146,6 @@ func (o *ObjectNode) createMultipleUploadHandler(w http.ResponseWriter, r *http.
 	}
 
 	writeSuccessResponseXML(w, response)
-	return
 }
 
 // Upload part
@@ -272,7 +271,6 @@ func (o *ObjectNode) uploadPartHandler(w http.ResponseWriter, r *http.Request) {
 
 	// write header to response
 	w.Header()[ETag] = []string{"\"" + fsFileInfo.ETag + "\""}
-	return
 }
 
 // Upload part copy
@@ -424,7 +422,6 @@ func (o *ObjectNode) uploadPartCopyHandler(w http.ResponseWriter, r *http.Reques
 	response := NewS3CopyPartResult(Etag, fsFileInfo.CreateTime.UTC().Format(time.RFC3339)).String()
 
 	writeSuccessResponseXML(w, []byte(response))
-	return
 }
 
 func handleWritePartErr(err error) error {
@@ -556,18 +553,18 @@ func (o *ObjectNode) listPartsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeSuccessResponseXML(w, response)
-	return
 }
 
 func (o *ObjectNode) checkReqParts(param *RequestParam, reqParts *CompleteMultipartUploadRequest, multipartInfo *proto.MultipartInfo) (
-	discardedPartInodes map[uint64]uint16, committedPartInfo *proto.MultipartInfo, err error) {
+	discardedPartInodes map[uint64]uint16, committedPartInfo *proto.MultipartInfo, err error,
+) {
 	if len(reqParts.Parts) <= 0 {
 		err = InvalidPart
 		log.LogErrorf("checkReqParts: upload part is empty: requestID(%v) volume(%v)", GetRequestID(param.r), param.Bucket())
 		return
 	}
 
-	reqInfo := make(map[int]int, 0)
+	reqInfo := make(map[int]int)
 	for _, reqPart := range reqParts.Parts {
 		reqInfo[reqPart.PartNumber] = 0
 	}
@@ -588,8 +585,8 @@ func (o *ObjectNode) checkReqParts(param *RequestParam, reqParts *CompleteMultip
 
 	maxPartNum := saveParts[len(saveParts)-1].ID
 	allSaveParts := make([]*proto.MultipartPartInfo, maxPartNum+1)
-	uploadedInfo := make(map[uint16]string, 0)
-	discardedPartInodes = make(map[uint64]uint16, 0)
+	uploadedInfo := make(map[uint16]string)
+	discardedPartInodes = make(map[uint64]uint16)
 	for _, uploadedPart := range multipartInfo.Parts {
 		log.LogDebugf("checkReqParts: server save part check: requestID(%v) volume(%v) part(%v)",
 			GetRequestID(param.r), param.Bucket(), uploadedPart)
@@ -785,7 +782,6 @@ func (o *ObjectNode) completeMultipartUploadHandler(w http.ResponseWriter, r *ht
 	}
 
 	writeSuccessResponseXML(w, response)
-	return
 }
 
 // Abort multipart
@@ -840,7 +836,6 @@ func (o *ObjectNode) abortMultipartUploadHandler(w http.ResponseWriter, r *http.
 	}
 
 	w.WriteHeader(http.StatusNoContent)
-	return
 }
 
 // List multipart uploads
@@ -940,7 +935,6 @@ func (o *ObjectNode) listMultipartUploadsHandler(w http.ResponseWriter, r *http.
 	}
 
 	writeSuccessResponseXML(w, response)
-	return
 }
 
 func determineCopyRange(copyRange string, fsize int64) (firstByte, copyLength int64, err *ErrorCode) {

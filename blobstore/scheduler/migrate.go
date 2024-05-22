@@ -324,7 +324,7 @@ var defaultClearJunkTasksFunc = func(ctx context.Context, tasks []*proto.Migrate
 
 type taskLimitFunc func(diskId proto.DiskID)
 
-type lockFailFunc func(ctx context.Context, task *proto.MigrateTask)
+type lockFailFunc func(ctx context.Context, task *proto.MigrateTask) error
 
 var defaultDiskTaskLimitFunc = func(diskId proto.DiskID) {
 	_ = struct{}{}
@@ -571,8 +571,7 @@ func (mgr *MigrateMgr) prepareTask() (err error) {
 	if err != nil {
 		if rpc.DetectStatusCode(err) == errcode.CodeLockNotAllow {
 			// disk drop lockVolFailHandleFunc is nil, and can not finished in advance
-			mgr.lockVolFailHandleFunc(ctx, migTask)
-			return nil
+			return mgr.lockVolFailHandleFunc(ctx, migTask)
 		}
 		span.Errorf("lock volume failed: volume_id[%v], err[%+v]", migTask.SourceVuid.Vid(), err)
 		return err
@@ -718,8 +717,9 @@ func (mgr *MigrateMgr) AddTask(ctx context.Context, task *proto.MigrateTask) {
 	mgr.addMigratingVuid(task.SourceDiskID, task.SourceVuid, task.TaskID)
 }
 
-func (mgr *MigrateMgr) handleLockVolFail(ctx context.Context, task *proto.MigrateTask) {
+func (mgr *MigrateMgr) handleLockVolFail(ctx context.Context, task *proto.MigrateTask) error {
 	mgr.finishTaskInAdvance(ctx, task, "lock volume fail")
+	return nil
 }
 
 func (mgr *MigrateMgr) finishTaskInAdvance(ctx context.Context, task *proto.MigrateTask, reason string) {

@@ -41,7 +41,6 @@ const (
 	inodeNum    = 1001
 	pInodeNum   = 1002
 	inodeNum2   = 1003
-	inodeNum3   = 1004
 	dentryName  = "parent"
 )
 

@@ -52,6 +52,7 @@ func (tc TransportConfig) Default() TransportConfig {
 	none := TransportConfig{}
 	if noAuth == none {
 		return TransportConfig{
+			DialTimeoutMs:       100,
 			MaxConnsPerHost:     10,
 			MaxIdleConns:        1000,
 			MaxIdleConnsPerHost: 10,

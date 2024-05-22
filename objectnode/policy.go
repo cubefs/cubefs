@@ -183,7 +183,7 @@ func (o *ObjectNode) policyCheck(f http.HandlerFunc) http.HandlerFunc {
 
 		// step2. Check user policy
 		userInfo := new(proto.UserInfo)
-		userPolicy := new(proto.UserPolicy)
+		var userPolicy *proto.UserPolicy
 		isOwner := false
 		if isAnonymous(param.accessKey) && apiAllowAnonymous(param.apiName) {
 			log.LogDebugf("anonymous user: requestID(%v)", GetRequestID(r))
@@ -332,7 +332,7 @@ func (o *ObjectNode) allowedBySrcBucketPolicy(param *RequestParam, reqUid string
 		log.LogDebugf("copySource(%v) argument invalid: requestID(%v)", paramCopy.r.Header.Get(XAmzCopySource), GetRequestID(paramCopy.r))
 		return
 	}
-	vol, acl, policy, err := o.loadBucketMeta(srcBucketId)
+	vol, _, policy, err := o.loadBucketMeta(srcBucketId)
 	if err != nil {
 		log.LogErrorf("srcBucket policy check: load bucket metadata fail: requestID(%v) err(%v)", GetRequestID(paramCopy.r), err)
 		return
@@ -363,6 +363,7 @@ func (o *ObjectNode) allowedBySrcBucketPolicy(param *RequestParam, reqUid string
 	}
 
 	isOwner := reqUid == vol.owner
+	var acl *AccessControlPolicy
 	if acl, err = getObjectACL(vol, srcKey, true); err != nil && err != syscall.ENOENT {
 		log.LogErrorf("srcBucket acl check: get object acl fail: requestID(%v) volume(%v) path(%v) err(%v)",
 			GetRequestID(paramCopy.r), srcBucketId, srcKey, err)

@@ -394,7 +394,6 @@ func (tm *TransactionManager) processExpiredTransactions() {
 		log.LogWarnf("processExpiredTransactions for mp[%v] exit", mpId)
 		txCheckTimer.Stop()
 		clearTimer.Stop()
-		return
 	}()
 
 	for {
@@ -748,7 +747,6 @@ func buildTxPacket(data interface{}, mp uint64, op uint8) (pkt *proto.Packet, er
 func (tm *TransactionManager) setTransactionState(txId string, state int32) (status uint8, err error) {
 	var val []byte
 	var resp interface{}
-	status = proto.OpOk
 
 	stateReq := &proto.TxSetStateRequest{
 		TxID:  txId,
@@ -830,7 +828,6 @@ func (tm *TransactionManager) clearOrphanTx(tx *proto.TransactionInfo) {
 	err = tm.txProcessor.mp.TxRollbackRM(aReq, newPkt)
 	log.LogWarnf("clearOrphanTx: finally rollback tx in rm, tx %v, status %s, err %v",
 		tx, newPkt.GetResultMsg(), err)
-	return
 }
 
 func (tm *TransactionManager) commitTx(txId string, skipSetStat bool) (status uint8, err error) {

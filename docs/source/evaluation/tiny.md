@@ -22,7 +22,7 @@ done
 
 ## Test Results
 
-![Small File Benchmark](../pic/cfs-small-file-benchmark.png)
+![Small File Benchmark](./pic/cfs-small-file-benchmark.png)
 
 | File Size (KB) | 1      | 2      | 4      | 8      | 16     | 32     | 64     | 128    |
 |----------------|--------|--------|--------|--------|--------|--------|--------|--------|

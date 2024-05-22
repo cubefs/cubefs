@@ -97,7 +97,6 @@ func TestPanicCheckMetaPartitions(t *testing.T) {
 	}
 	mp := newMetaPartition(partitionID, 1, defaultMaxMetaPartitionInodeID, vol.mpReplicaNum, vol.Name, vol.ID, 0)
 	vol.addMetaPartition(mp)
-	mp = nil
 	c.checkMetaPartitions()
 	t.Logf("catched panic")
 }
@@ -152,9 +151,7 @@ func TestCheckBadDiskRecovery(t *testing.T) {
 	}
 	vol.volLock.RLock()
 	dps := make([]*DataPartition, 0)
-	for _, dp := range vol.dataPartitions.partitions {
-		dps = append(dps, dp)
-	}
+	dps = append(dps, vol.dataPartitions.partitions...)
 	dpsMapLen := len(vol.dataPartitions.partitionMap)
 	vol.volLock.RUnlock()
 	dpsLen := len(dps)
@@ -165,7 +162,6 @@ func TestCheckBadDiskRecovery(t *testing.T) {
 	for _, dp := range dps {
 		dp.RLock()
 		if len(dp.Replicas) == 0 {
-			dpsLen--
 			dp.RUnlock()
 			return
 		}
@@ -241,7 +237,6 @@ func TestCheckBadMetaPartitionRecovery(t *testing.T) {
 	for _, mp := range mps {
 		mp.RLock()
 		if len(mp.Replicas) == 0 {
-			mpsLen--
 			mp.RUnlock()
 			return
 		}

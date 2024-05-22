@@ -83,10 +83,11 @@ type DiskStatInfo struct {
 }
 
 type SpaceStatInfo struct {
-	TotalSpace     int64          `json:"total_space"`
-	FreeSpace      int64          `json:"free_space"`
-	UsedSpace      int64          `json:"used_space"`
-	WritableSpace  int64          `json:"writable_space"`
+	TotalSpace     int64          `json:"total_space"`    // total physical space
+	FreeSpace      int64          `json:"free_space"`     // free physical space which is writable
+	ReadOnlySpace  int64          `json:"readonly_space"` // free physical space which is readonly
+	UsedSpace      int64          `json:"used_space"`     // used physical space
+	WritableSpace  int64          `json:"writable_space"` // writable logical space
 	TotalBlobNode  int64          `json:"total_blob_node"`
 	TotalDisk      int64          `json:"total_disk"`
 	DisksStatInfos []DiskStatInfo `json:"disk_stat_infos"`

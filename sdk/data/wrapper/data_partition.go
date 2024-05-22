@@ -56,12 +56,9 @@ func (dp *DataPartition) RecordWrite(startT int64) {
 	cost := time.Now().UnixNano() - startT
 
 	dp.Metrics.Lock()
-	defer dp.Metrics.Unlock()
-
 	dp.Metrics.WriteOpNum++
 	dp.Metrics.SumWriteLatencyNano += cost
-
-	return
+	dp.Metrics.Unlock()
 }
 
 func (dp *DataPartition) MetricsRefresh() {

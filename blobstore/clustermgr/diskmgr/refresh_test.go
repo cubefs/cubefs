@@ -1,9 +1,11 @@
 package diskmgr
 
 import (
+	"context"
 	"testing"
 
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
+	"github.com/cubefs/cubefs/blobstore/common/trace"
 )
 
 func TestWritableSpace(t *testing.T) {
@@ -19,4 +21,13 @@ func TestWritableSpace(t *testing.T) {
 	}
 	testDiskMgr.calculateWritable(spaceInfo, idcBlobNodeStgs)
 	t.Log("writable space: ", spaceInfo.WritableSpace)
+}
+
+func TestReadonlySpace(t *testing.T) {
+	testDiskMgr, closeTestDiskMgr := initTestDiskMgr(t)
+	defer closeTestDiskMgr()
+
+	_, ctx := trace.StartSpanFromContext(context.Background(), "")
+	initTestDiskMgrDisksWithReadonly(t, testDiskMgr, 1, 4, testIdcs...)
+	testDiskMgr.refresh(ctx)
 }

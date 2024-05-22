@@ -31,7 +31,7 @@ func NewRootCmd() *cobra.Command {
 		Args:  cobra.MinimumNArgs(0),
 		Run: func(cmd *cobra.Command, args []string) {
 			if optShowVersion {
-				_, _ = fmt.Fprintf(os.Stdout, proto.DumpVersion("SNAPSHOT"))
+				fmt.Fprintln(os.Stdout, proto.DumpVersion("SNAPSHOT"))
 				return
 			}
 		},

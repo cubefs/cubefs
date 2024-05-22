@@ -83,7 +83,6 @@ type metadataManager struct {
 	mu                   sync.RWMutex
 	partitions           map[uint64]MetaPartition // Key: metaRangeId, Val: metaPartition
 	metaNode             *MetaNode
-	flDeleteBatchCount   atomic.Value
 	fileStatsEnable      bool
 	curQuotaGoroutineNum int32
 	maxQuotaGoroutineNum int32
@@ -377,7 +376,6 @@ func (m *metadataManager) onStop() {
 		// stop sampler
 		close(m.stopC)
 	}
-	return
 }
 
 // LoadMetaPartition returns the meta partition with the specified volName.
@@ -511,7 +509,7 @@ func (m *metadataManager) loadPartitions() (err error) {
 }
 
 func (m *metadataManager) attachPartition(id uint64, partition MetaPartition) (err error) {
-	syslog.Println(fmt.Sprintf("start load metaPartition %v", id))
+	syslog.Printf("start load metaPartition %v\n", id)
 	partition.ForceSetMetaPartitionToLoadding()
 	if err = partition.Start(false); err != nil {
 		msg := fmt.Sprintf("load meta partition %v fail: %v", id, err)
@@ -639,10 +637,7 @@ func (m *metadataManager) MarshalJSON() (data []byte, err error) {
 
 func (m *metadataManager) QuotaGoroutineIsOver() (lsOver bool) {
 	log.LogInfof("QuotaGoroutineIsOver cur [%v] max [%v]", m.curQuotaGoroutineNum, m.maxQuotaGoroutineNum)
-	if atomic.LoadInt32(&m.curQuotaGoroutineNum) >= m.maxQuotaGoroutineNum {
-		return true
-	}
-	return false
+	return atomic.LoadInt32(&m.curQuotaGoroutineNum) >= m.maxQuotaGoroutineNum
 }
 
 func (m *metadataManager) QuotaGoroutineInc(num int32) {

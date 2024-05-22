@@ -107,14 +107,19 @@ func (d *DiskMgr) refresh(ctx context.Context) {
 		if disk.dropping {
 			diskStatInfosM[idc].Dropping += 1
 		}
-		// filter unavailable disk
-		if !disk.isAvailable() {
+		// filter abnormal disk
+		if disk.info.Status != proto.DiskStatusNormal {
 			disk.lock.RUnlock()
 			continue
 		}
-		diskStatInfosM[idc].Available += 1
 		spaceStatInfo.TotalSpace += size
+		if readonly { // include dropping disk
+			spaceStatInfo.ReadOnlySpace += free
+			disk.lock.RUnlock()
+			continue
+		}
 		spaceStatInfo.FreeSpace += free
+		diskStatInfosM[idc].Available += 1
 
 		// filter expired disk
 		if disk.isExpire() {
@@ -179,7 +184,7 @@ func (d *DiskMgr) refresh(ctx context.Context) {
 	for idc := range diskStatInfosM {
 		spaceStatInfo.DisksStatInfos = append(spaceStatInfo.DisksStatInfos, *diskStatInfosM[idc])
 	}
-	spaceStatInfo.UsedSpace = spaceStatInfo.TotalSpace - spaceStatInfo.FreeSpace
+	spaceStatInfo.UsedSpace = spaceStatInfo.TotalSpace - spaceStatInfo.FreeSpace - spaceStatInfo.ReadOnlySpace
 	d.spaceStatInfo.Store(spaceStatInfo)
 }
 
@@ -193,7 +198,7 @@ func (d *DiskMgr) calculateWritable(spaceStatInfo *clustermgr.SpaceStatInfo, idc
 			stripe := make([]int64, idcSuCount)
 			lefts := make(maxHeap, 0)
 			n := int64(0)
-			for _, v := range idcBlobNodeStgs[d.IDC[0]] {
+			for _, v := range stgs {
 				count := v.free / d.ChunkSize
 				if count > 0 {
 					lefts = append(lefts, count)

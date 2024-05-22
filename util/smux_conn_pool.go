@@ -381,14 +381,11 @@ func (p *SmuxPool) callCreate() (createCall *createSessCall) {
 	if createCall == nil {
 		goto tryCreateNewSess
 	}
-	select {
-	case <-createCall.notify:
-		if time.Now().UnixNano()-createCall.idle > defaultCreateInterval {
-			goto tryCreateNewSess
-		} else {
-			return
-		}
-		// default:
+	<-createCall.notify
+	if time.Now().UnixNano()-createCall.idle > defaultCreateInterval {
+		goto tryCreateNewSess
+	} else {
+		return
 	}
 tryCreateNewSess:
 	prev := createCall

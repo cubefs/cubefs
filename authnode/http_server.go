@@ -54,7 +54,6 @@ func (m *Server) startHTTPService() {
 			}
 		}
 	}()
-	return
 }
 
 func (m *Server) newAuthProxy() *AuthProxy {
@@ -122,7 +121,6 @@ func (m *Server) handleFunctions() {
 	http.Handle(proto.OSAddCaps, m.handlerWithInterceptor())
 	http.Handle(proto.OSDeleteCaps, m.handlerWithInterceptor())
 	http.Handle(proto.OSGetCaps, m.handlerWithInterceptor())
-	return
 }
 
 func (m *Server) handlerWithInterceptor() http.Handler {

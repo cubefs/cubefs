@@ -22,13 +22,13 @@ import (
 
 type repairWorker struct {
 	proto.Packet
-	followersAddrs  []string
-	followerPackets []*repl.FollowerPacket
-	IsReleased      int32 // TODO what is released?
-	Object          interface{}
-	TpObject        *exporter.TimePointCount
-	NeedReply       bool
-	OrgBuffer       []byte
+	// followersAddrs  []string
+	// followerPackets []*repl.FollowerPacket
+	IsReleased int32 // TODO what is released?
+	Object     interface{}
+	TpObject   *exporter.TimePointCount
+	NeedReply  bool
+	OrgBuffer  []byte
 
 	// used locally
 	shallDegrade bool
@@ -166,8 +166,8 @@ func (p *repairWorker) WriteToConn(c net.Conn) (err error) {
 }
 
 func (p *repairWorker) ReadFromConnWithVer(c net.Conn, timeoutSec int) (err error) {
-	select {
-	case pr := <-p.packChannel:
+	pr := <-p.packChannel
+	{
 		p.CRC = pr.GetCRC()
 		p.Data = make([]byte, len(pr.GetData()))
 		copy(p.Data, pr.GetData())
@@ -285,7 +285,6 @@ func extentReloadCheckNormalCrc(t *testing.T, s *storage.ExtentStore, id uint64,
 	assert.True(t, err == nil)
 	extCrc := e.GetCrc(0)
 	assert.True(t, crc == extCrc)
-	return
 }
 
 func extentStoreSnapshotRwTest(t *testing.T, s *storage.ExtentStore, id uint64, crc uint32, data []byte) {
@@ -377,7 +376,7 @@ func mockInitWorker(t *testing.T, role string) *repairWorker {
 		return new(net.TCPConn), nil
 	}
 	worker.dp.dataNode.putRepairConnFunc = func(con net.Conn, force bool) {
-		return
+		_ = struct{}{}
 	}
 	return worker
 }
@@ -399,8 +398,6 @@ func workerInit(t *testing.T, id uint64, data []byte, crc uint32) {
 	recvWorker = mockInitWorker(t, "receiver")
 	sendWorker.dstWorker = recvWorker
 	recvWorker.dstWorker = sendWorker
-
-	return
 }
 
 func senderRepairWorker(t *testing.T, exitCh chan struct{}) {

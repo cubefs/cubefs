@@ -391,7 +391,7 @@ func (v *Volume) GetXAttr(path string, key string) (info *proto.XAttrInfo, err e
 
 		info = &proto.XAttrInfo{
 			Inode:  inode,
-			XAttrs: make(map[string]string, 0),
+			XAttrs: make(map[string]string),
 		}
 
 		var attr *proto.XAttrInfo
@@ -1555,12 +1555,12 @@ func (v *Volume) readEbs(inode, inodeSize uint64, path string, writer io.Writer,
 	}
 
 	ctx := context.Background()
-	_ = context.WithValue(ctx, "objectnode", 1)
+	// _ = context.WithValue(ctx, "objectnode", 1) // TODO: ???
 	reader := v.getEbsReader(inode)
 	var n int
 	var rest uint64
 	tmp := buf.ReadBufPool.Get().([]byte)
-	defer buf.ReadBufPool.Put(tmp)
+	defer buf.ReadBufPool.Put(tmp) // nolint: staticcheck
 
 	for {
 		if rest = upper - offset; rest <= 0 {
@@ -1749,7 +1749,7 @@ func (v *Volume) ObjectMeta(path string) (info *FSFileInfo, xattr *proto.XAttrIn
 	// Load user-defined metadata
 	var retainUntilDate string
 	var retainUntilDateInt64 int64
-	metadata := make(map[string]string, 0)
+	metadata := make(map[string]string)
 	for key, val := range xattr.XAttrs {
 		if !strings.HasPrefix(key, XAttrKeyOSSPrefix) {
 			metadata[key] = val
@@ -1959,7 +1959,7 @@ func updateAttrCache(inode uint64, key, value, volName string) {
 		attrItem := &AttrItem{
 			XAttrInfo: proto.XAttrInfo{
 				Inode:  inode,
-				XAttrs: make(map[string]string, 0),
+				XAttrs: make(map[string]string),
 			},
 		}
 		attrItem.XAttrs[key] = value
@@ -2080,8 +2080,8 @@ func (v *Volume) lookupDirectories(dirs []string, autoCreate bool) (inode uint64
 	return
 }
 
-func (v *Volume) listFilesV1(prefix, marker, delimiter string, maxKeys uint64, onlyObject bool) (infos []*FSFileInfo,
-	prefixes Prefixes, nextMarker string, err error) {
+func (v *Volume) listFilesV1(prefix, marker, delimiter string, maxKeys uint64, onlyObject bool,
+) (infos []*FSFileInfo, prefixes Prefixes, nextMarker string, err error) {
 	prefixMap := PrefixMap(make(map[string]struct{}))
 
 	parentId, dirs, err := v.findParentId(prefix)
@@ -2127,8 +2127,8 @@ func (v *Volume) listFilesV1(prefix, marker, delimiter string, maxKeys uint64, o
 	return
 }
 
-func (v *Volume) listFilesV2(prefix, startAfter, contToken, delimiter string, maxKeys uint64) (infos []*FSFileInfo,
-	prefixes Prefixes, nextMarker string, err error) {
+func (v *Volume) listFilesV2(prefix, startAfter, contToken, delimiter string, maxKeys uint64,
+) (infos []*FSFileInfo, prefixes Prefixes, nextMarker string, err error) {
 	prefixMap := PrefixMap(make(map[string]struct{}))
 
 	var marker string
@@ -2234,15 +2234,14 @@ func (v *Volume) findParentId(prefix string) (inode uint64, prefixDirs []string,
 // that match the prefix and delimiter criteria. Stop when the number of matches reaches a threshold
 // or all files and directories are scanned.
 func (v *Volume) recursiveScan(fileInfos []*FSFileInfo, prefixMap PrefixMap, parentId, maxKeys, readLimit, rc uint64, dirs []string,
-	prefix, marker, delimiter string, onlyObject, firstEnter bool) ([]*FSFileInfo, PrefixMap, string, uint64, error) {
+	prefix, marker, delimiter string, onlyObject, firstEnter bool,
+) ([]*FSFileInfo, PrefixMap, string, uint64, error) {
 	var err error
 	var nextMarker string
 	var lastKey string
 
 	currentPath := strings.Join(dirs, pathSep) + pathSep
-	if strings.HasPrefix(currentPath, pathSep) {
-		currentPath = strings.TrimPrefix(currentPath, pathSep)
-	}
+	currentPath = strings.TrimPrefix(currentPath, pathSep)
 	log.LogDebugf("recursiveScan enter: currentPath(/%v) fileInfos(%v) parentId(%v) prefix(%v) marker(%v) rc(%v)",
 		currentPath, fileInfos, parentId, prefix, marker, rc)
 	defer func() {
@@ -2468,8 +2467,8 @@ func (v *Volume) updateETag(inode uint64, size int64, mt time.Time) (etagValue E
 	return
 }
 
-func (v *Volume) ListMultipartUploads(prefix, delimiter, keyMarker string, multipartIdMarker string, maxUploads uint64) (
-	uploads []*FSUpload, nextMarker, nextMultipartIdMarker string, isTruncated bool, prefixes []string, err error) {
+func (v *Volume) ListMultipartUploads(prefix, delimiter, keyMarker string, multipartIdMarker string, maxUploads uint64,
+) (uploads []*FSUpload, nextMarker, nextMultipartIdMarker string, isTruncated bool, prefixes []string, err error) {
 	sessions, err := v.mw.ListMultipart_ll(prefix, delimiter, keyMarker, multipartIdMarker, maxUploads)
 	if err != nil || len(sessions) == 0 {
 		return
@@ -2674,7 +2673,7 @@ func (v *Volume) CopyFile(sv *Volume, sourcePath, targetPath, metaDirective stri
 			log.LogInfof("CopyFile: target path is equal with source path, replace metadata, source path(%v) target path(%v) opt(%v)",
 				sourcePath, targetPath, opt)
 		}
-		info, xattr, err = sv.ObjectMeta(sourcePath)
+		info, _, err = sv.ObjectMeta(sourcePath)
 		return info, err
 	}
 

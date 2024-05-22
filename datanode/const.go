@@ -103,3 +103,11 @@ const (
 	MaxFullSyncTinyDeleteTime                    = 3600 * 24
 	MinTinyExtentDeleteRecordSyncSize            = 4 * 1024 * 1024
 )
+
+// TODO: to remove unused by golangci
+var (
+	_ = (*DataPartition).canRemoveSelf
+	_ = (*DataPartition).getMemberExtentIDAndPartitionSize
+	_ = (*DataNode).detachDataPartition
+	_ = (*DataNode).loadDataPartition
+)

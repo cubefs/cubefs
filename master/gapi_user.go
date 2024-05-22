@@ -85,8 +85,9 @@ func (s *UserService) registerQuery(schema *schemabuilder.Schema) {
 
 func (m *UserService) getUserAKInfo(ctx context.Context, args struct {
 	AccessKey string
-}) (*proto.UserInfo, error) {
-	uid, perm, err := permissions(ctx, ADMIN|USER)
+},
+) (*proto.UserInfo, error) {
+	uid, perm, _ := permissions(ctx, ADMIN|USER)
 	userInfo, err := m.user.getKeyInfo(args.AccessKey)
 	if err != nil {
 		return nil, err
@@ -222,7 +223,8 @@ func (s *UserService) updateUser(ctx context.Context, args proto.UserUpdateParam
 
 func (s *UserService) deleteUser(ctx context.Context, args struct {
 	UserID string
-}) (*proto.GeneralResp, error) {
+},
+) (*proto.GeneralResp, error) {
 	uid, _, err := permissions(ctx, ADMIN)
 	if err != nil {
 		return nil, err
@@ -239,7 +241,8 @@ func (s *UserService) deleteUser(ctx context.Context, args struct {
 
 func (s *UserService) getUserInfo(ctx context.Context, args struct {
 	UserID string
-}) (*proto.UserInfo, error) {
+},
+) (*proto.UserInfo, error) {
 	uid, perm, err := permissions(ctx, ADMIN|USER)
 	if err != nil {
 		return nil, err
@@ -274,7 +277,8 @@ type UserUseSpace struct {
 
 func (s *UserService) topNUser(ctx context.Context, args struct {
 	N int32
-}) ([]*UserUseSpace, error) {
+},
+) ([]*UserUseSpace, error) {
 	if _, _, err := permissions(ctx, ADMIN); err != nil {
 		return nil, err
 	}
@@ -334,7 +338,8 @@ func (s *UserService) topNUser(ctx context.Context, args struct {
 func (s *UserService) validatePassword(ctx context.Context, args struct {
 	UserID   string
 	Password string
-}) (*proto.UserInfo, error) {
+},
+) (*proto.UserInfo, error) {
 	ui, err := s.user.getUserInfo(args.UserID)
 	if err != nil {
 		return nil, err

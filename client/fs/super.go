@@ -88,9 +88,8 @@ type Super struct {
 	ebsc         *blobstore.BlobStoreClient
 	sc           *SummaryCache
 
-	taskPool      []common.TaskPool
-	closeC        chan struct{}
-	enableVerRead bool
+	taskPool []common.TaskPool
+	closeC   chan struct{}
 }
 
 // Functions that Super needs to implement
@@ -290,9 +289,8 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 func (s *Super) scheduleFlush() {
 	t := time.NewTicker(2 * time.Second)
 	defer t.Stop()
-	for {
-		select {
-		case <-t.C:
+	for range t.C {
+		{
 			ctx := context.Background()
 			s.fslock.Lock()
 			for ino, node := range s.nodeCache {
@@ -338,8 +336,8 @@ func (s *Super) Node(ino, pino uint64, mode uint32) (fs.Node, error) {
 		// the node is not evict. So we create a streamer for it,
 		// and streamer's refcnt is 0.
 		file := node.(*File)
-		file.Open(nil, nil, nil)
-		file.Release(nil, nil)
+		file.Open(context.TODO(), nil, nil)
+		file.Release(context.TODO(), nil)
 	}
 	s.fslock.Lock()
 	s.nodeCache[ino] = node
@@ -398,10 +396,6 @@ func (s *Super) SetRate(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (s *Super) exporterKey(act string) string {
-	return fmt.Sprintf("%v_fuseclient_%v", s.cluster, act)
-}
-
 func (s *Super) umpKey(act string) string {
 	return fmt.Sprintf("%v_fuseclient_%v", s.cluster, act)
 }
@@ -456,11 +450,11 @@ func (s *Super) SetSuspend(w http.ResponseWriter, r *http.Request) {
 
 	// wait
 	msg := <-s.suspendCh
-	switch msg.(type) {
+	switch msgVal := msg.(type) {
 	case error:
-		err = msg.(error)
+		err = msgVal
 	case string:
-		ret = msg.(string)
+		ret = msgVal
 	default:
 		err = fmt.Errorf("Unknown return type: %v", msg)
 	}

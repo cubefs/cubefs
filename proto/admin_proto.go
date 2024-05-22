@@ -23,6 +23,8 @@ import (
 	"github.com/cubefs/cubefs/util"
 )
 
+type ContextUserKey string
+
 // api
 const (
 	// Admin APIs
@@ -225,8 +227,8 @@ const (
 	// graphql api for header
 	HeadAuthorized  = "Authorization"
 	ParamAuthorized = "_authorization"
-	UserKey         = "_user_key"
-	UserInfoKey     = "_user_info_key"
+	UserKey         = ContextUserKey("_user_key")
+	UserInfoKey     = ContextUserKey("_user_info_key")
 	// quota
 	QuotaCreate = "/quota/create"
 	QuotaUpdate = "/quota/update"

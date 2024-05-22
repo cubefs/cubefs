@@ -142,8 +142,6 @@ func (s *KFasterRandomSelector) RemoveDP(partitionID uint64) {
 	newRwPartition = append(newRwPartition, partitions[i+1:]...)
 
 	s.Refresh(newRwPartition)
-
-	return
 }
 
 func (s *KFasterRandomSelector) Count() int {

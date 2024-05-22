@@ -483,23 +483,21 @@ func (mm *monitorMetrics) start() {
 func (mm *monitorMetrics) statMetrics() {
 	ticker := time.NewTicker(StatPeriod)
 	defer func() {
+		ticker.Stop()
 		if err := recover(); err != nil {
 			ticker.Stop()
 			log.LogErrorf("statMetrics panic,msg:%v", err)
 		}
 	}()
 
-	for {
-		select {
-		case <-ticker.C:
-			partition := mm.cluster.partition
-			if partition != nil && partition.IsRaftLeader() {
-				mm.resetFollowerMetrics()
-				mm.doStat()
-			} else {
-				mm.resetAllLeaderMetrics()
-				mm.doFollowerStat()
-			}
+	for range ticker.C {
+		partition := mm.cluster.partition
+		if partition != nil && partition.IsRaftLeader() {
+			mm.resetFollowerMetrics()
+			mm.doStat()
+		} else {
+			mm.resetAllLeaderMetrics()
+			mm.doFollowerStat()
 		}
 	}
 }
@@ -554,11 +552,11 @@ func (mm *monitorMetrics) setMpAndDpMetrics() {
 
 	vols := mm.cluster.copyVols()
 	for _, vol := range vols {
-		if (vol.Status == proto.VolStatusMarkDelete && !vol.Forbidden) || (vol.Status == proto.VolStatusMarkDelete && vol.Forbidden && vol.DeleteExecTime.Sub(time.Now()) <= 0) {
+		if (vol.Status == proto.VolStatusMarkDelete && !vol.Forbidden) ||
+			(vol.Status == proto.VolStatusMarkDelete && vol.Forbidden && time.Until(vol.DeleteExecTime) <= 0) {
 			continue
 		}
-		var dps *DataPartitionMap
-		dps = vol.dataPartitions
+		dps := vol.dataPartitions
 		dpCount += len(dps.partitions)
 		for _, dp := range dps.partitions {
 			if dp.ReplicaNum > uint8(len(dp.liveReplicas(defaultDataPartitionTimeOutSec))) {
@@ -580,9 +578,7 @@ func (mm *monitorMetrics) setMpAndDpMetrics() {
 	mm.dataPartitionCount.Set(float64(dpCount))
 	mm.ReplicaMissingDPCount.Set(float64(dpMissingReplicaDpCount))
 	mm.DpMissingLeaderCount.Set(float64(dpMissingLeaderCount))
-
 	mm.MpMissingLeaderCount.Set(float64(mpMissingLeaderCount))
-	return
 }
 
 func (mm *monitorMetrics) setVolNoCacheMetrics() {
@@ -598,7 +594,7 @@ func (mm *monitorMetrics) setVolNoCacheMetrics() {
 			continue
 		}
 
-		if stat == true {
+		if stat {
 			deleteVolNames[volName] = struct{}{}
 			log.LogDebugf("setVolNoCacheMetrics: to deleteVolNames volName %v for status becomes ok", volName)
 			continue
@@ -632,9 +628,7 @@ func (mm *monitorMetrics) setVolMetrics() {
 			return true
 		}
 		mm.volNames[volName] = struct{}{}
-		if _, ok := deleteVolNames[volName]; ok {
-			delete(deleteVolNames, volName)
-		}
+		delete(deleteVolNames, volName)
 
 		mm.volTotalSpace.SetWithLabelValues(float64(volStatInfo.TotalSize)/float64(util.GB), volName)
 		mm.volUsedSpace.SetWithLabelValues(float64(volStatInfo.UsedSize)/float64(util.GB), volName)
@@ -709,7 +703,8 @@ func (mm *monitorMetrics) setMpInconsistentErrorMetric() {
 	defer mm.cluster.volMutex.RUnlock()
 
 	for _, vol := range mm.cluster.vols {
-		if (vol.Status == proto.VolStatusMarkDelete && !vol.Forbidden) || (vol.Status == proto.VolStatusMarkDelete && vol.Forbidden && vol.DeleteExecTime.Sub(time.Now()) <= 0) {
+		if (vol.Status == proto.VolStatusMarkDelete && !vol.Forbidden) ||
+			(vol.Status == proto.VolStatusMarkDelete && vol.Forbidden && time.Until(vol.DeleteExecTime) <= 0) {
 			continue
 		}
 		vol.mpsLock.RLock()
@@ -906,7 +901,7 @@ func (mm *monitorMetrics) deleteS3LcVolMetric(volName string) {
 
 func (mm *monitorMetrics) setLcMetrics() {
 	lcTaskStatus := mm.cluster.lcMgr.lcRuleTaskStatus
-	volumeScanStatistics := make(map[string]proto.LcNodeRuleTaskStatistics, 0)
+	volumeScanStatistics := make(map[string]proto.LcNodeRuleTaskStatistics)
 	lcTaskStatus.RLock()
 	for _, r := range lcTaskStatus.Results {
 		key := r.Volume + "[" + r.RuleId + "]"

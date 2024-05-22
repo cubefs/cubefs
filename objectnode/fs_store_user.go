@@ -91,7 +91,6 @@ func ReleaseUserInfoStore(store UserInfoStore) {
 	if cacheStore, is := store.(*CacheUserInfoStore); is {
 		cacheStore.Close()
 	}
-	return
 }
 
 type CacheUserInfoLoader struct {

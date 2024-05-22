@@ -460,9 +460,7 @@ func (u *User) getUsersOfVol(volName string) (userIDs []string, err error) {
 	}
 	volUser.Mu.RLock()
 	defer volUser.Mu.RUnlock()
-	for _, userID := range volUser.UserIDs {
-		userIDs = append(userIDs, userID)
-	}
+	userIDs = append(userIDs, volUser.UserIDs...)
 	log.LogInfof("action[getUsersOfVol], vol: %v, user numbers: %v", volName, len(userIDs))
 	return
 }

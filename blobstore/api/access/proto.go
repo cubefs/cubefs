@@ -488,6 +488,13 @@ type PutArgs struct {
 	Size   int64         `json:"size"`
 	Hashes HashAlgorithm `json:"hashes,omitempty"`
 	Body   io.Reader     `json:"-"`
+
+	// GetBody defines an optional func to return a new copy of Body.
+	// It is used for client requests when a redirect requires reading
+	// the body more than once. Use of GetBody still requires setting Body.
+	//
+	// There force reset request.GetBody if it is setting.
+	GetBody func() (io.ReadCloser, error) `json:"-"`
 }
 
 // IsValid is valid put args
@@ -561,9 +568,10 @@ type AllocResp struct {
 
 // GetArgs for service /get
 type GetArgs struct {
-	Location Location `json:"location"`
-	Offset   uint64   `json:"offset"`
-	ReadSize uint64   `json:"read_size"`
+	Location Location  `json:"location"`
+	Offset   uint64    `json:"offset"`
+	ReadSize uint64    `json:"read_size"`
+	Writer   io.Writer `json:"-"`
 }
 
 // IsValid is valid get args

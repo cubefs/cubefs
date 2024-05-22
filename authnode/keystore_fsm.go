@@ -37,8 +37,6 @@ type raftLeaderChangeHandler func(leader uint64)
 
 type raftPeerChangeHandler func(confChange *proto.ConfChange) (err error)
 
-type raftCmdApplyHandler func(cmd *RaftCmd) (err error)
-
 type raftApplySnapshotHandler func()
 
 // KeystoreFsm represents the finite state machine of a keystore

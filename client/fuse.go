@@ -70,12 +70,12 @@ const (
 )
 
 const (
-	LoggerDir    = "client"
+	// LoggerDir    = "client"
 	LoggerPrefix = "client"
 	LoggerOutput = "output.log"
 
-	ModuleName            = "fuseclient"
-	ConfigKeyExporterPort = "exporterKey"
+	ModuleName = "fuseclient"
+	// ConfigKeyExporterPort = "exporterKey"
 
 	ControlCommandSetRate      = "/rate/set"
 	ControlCommandGetRate      = "/rate/get"

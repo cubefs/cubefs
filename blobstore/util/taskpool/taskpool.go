@@ -15,18 +15,25 @@
 // Package taskpool provides limited pool running task
 package taskpool
 
-import "sync"
+import (
+	"sync"
+	"sync/atomic"
+)
 
 // TaskPool limited pool
 type TaskPool struct {
-	pool chan func()
-	wg   *sync.WaitGroup
+	pool  chan func()
+	wg    *sync.WaitGroup
+	doing *uint32
 }
 
 // New returns task pool with workerCount and poolSize
 func New(workerCount, poolSize int) TaskPool {
 	pool := make(chan func(), poolSize)
 	wg := &sync.WaitGroup{}
+	doing := uint32(0)
+	tp := TaskPool{pool: pool, wg: wg, doing: &doing}
+
 	wg.Add(workerCount)
 	for i := 0; i < workerCount; i++ {
 		go func() {
@@ -36,11 +43,13 @@ func New(workerCount, poolSize int) TaskPool {
 				if !ok {
 					break
 				}
+				atomic.AddUint32(tp.doing, 1)
 				task()
+				atomic.AddUint32(tp.doing, ^uint32(0))
 			}
 		}()
 	}
-	return TaskPool{pool: pool, wg: wg}
+	return tp
 }
 
 // Run add task to pool, block if pool is full
@@ -56,6 +65,10 @@ func (tp TaskPool) TryRun(task func()) bool {
 	default:
 		return false
 	}
+}
+
+func (tp TaskPool) Running() uint32 {
+	return atomic.LoadUint32(tp.doing)
 }
 
 // Close the pool, the function is concurrent unsafe

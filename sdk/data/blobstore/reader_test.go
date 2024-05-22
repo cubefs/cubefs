@@ -321,7 +321,7 @@ func TestAsyncCache(t *testing.T) {
 		ctx := context.Background()
 		err := gohook.HookMethod(ebsc, "Read", tc.ebsReadFunc, nil)
 		if err != nil {
-			t.Fatal(fmt.Sprintf("Hook advance instance method failed:%s", err.Error()))
+			t.Fatalf("Hook advance instance method failed:%s", err.Error())
 		}
 		reader.fileLength = tc.fileSize
 		reader.cacheAction = tc.cacheAction
@@ -470,8 +470,8 @@ func TestReadSliceRange(t *testing.T) {
 	}
 }
 
-func MockGetObjExtentsTrue(m *meta.MetaWrapper, inode uint64) (gen uint64, size uint64,
-	extents []proto.ExtentKey, objExtents []proto.ObjExtentKey, err error) {
+func MockGetObjExtentsTrue(m *meta.MetaWrapper, inode uint64,
+) (gen uint64, size uint64, extents []proto.ExtentKey, objExtents []proto.ObjExtentKey, err error) {
 	objEks := make([]proto.ObjExtentKey, 0)
 	objEkLen := 5
 	expectedFileSize := 0
@@ -483,32 +483,34 @@ func MockGetObjExtentsTrue(m *meta.MetaWrapper, inode uint64) (gen uint64, size 
 	return 1, 1, nil, objEks, nil
 }
 
-func MockGetObjExtentsFalse(m *meta.MetaWrapper, inode uint64) (gen uint64, size uint64,
-	extents []proto.ExtentKey, objExtents []proto.ObjExtentKey, err error) {
+func MockGetObjExtentsFalse(m *meta.MetaWrapper, inode uint64,
+) (gen uint64, size uint64, extents []proto.ExtentKey, objExtents []proto.ObjExtentKey, err error) {
 	return 1, 1, nil, nil, errors.New("Get objEks failed")
 }
 
 func MockEbscReadTrue(ebsc *BlobStoreClient, ctx context.Context, volName string,
-	buf []byte, offset uint64, size uint64,
-	oek proto.ObjExtentKey) (readN int, err error) {
+	buf []byte, offset uint64, size uint64, oek proto.ObjExtentKey,
+) (readN int, err error) {
 	reader := strings.NewReader("Hello world.")
-	readN, err = io.ReadFull(reader, buf)
+	readN, _ = io.ReadFull(reader, buf)
 	return readN, nil
 }
 
 func MockEbscReadFalse(ebsc *BlobStoreClient, ctx context.Context, volName string,
-	buf []byte, offset uint64, size uint64,
-	oek proto.ObjExtentKey) (readN int, err error) {
+	buf []byte, offset uint64, size uint64, oek proto.ObjExtentKey,
+) (readN int, err error) {
 	return 0, syscall.EIO
 }
 
 func MockReadExtentTrue(client *stream.ExtentClient, inode uint64, ek *proto.ExtentKey,
-	data []byte, offset int, size int) (read int, err error, b bool) {
+	data []byte, offset int, size int,
+) (read int, err error, b bool) {
 	return len("Hello world"), nil, true
 }
 
 func MockReadExtentFalse(client *stream.ExtentClient, inode uint64, ek *proto.ExtentKey,
-	data []byte, offset int, size int) (read int, err error) {
+	data []byte, offset int, size int,
+) (read int, err error) {
 	return 0, errors.New("Read extent failed")
 }
 
@@ -521,12 +523,13 @@ func MockCheckDataPartitionExistFalse(client *stream.ExtentClient, partitionID u
 }
 
 func MockWriteTrue(client *stream.ExtentClient, inode uint64, offset int, data []byte,
-	flags int, checkFunc func() error) (write int, err error) {
+	flags int, checkFunc func() error,
+) (write int, err error) {
 	return len(data), nil
 }
 
-func MockWriteFalse(client *stream.ExtentClient, inode uint64, offset int, data []byte,
-	flags int) (write int, err error) {
+func MockWriteFalse(client *stream.ExtentClient, inode uint64, offset int, data []byte, flags int,
+) (write int, err error) {
 	return 0, errors.New("Write failed")
 }
 

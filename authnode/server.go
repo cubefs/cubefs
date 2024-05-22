@@ -212,7 +212,7 @@ func (m *Server) Start(cfg *config.Config) (err error) {
 		return fmt.Errorf("action[Start] failed %v,err: auth root Key invalid=%s", proto.ErrInvalidCfg, AuthRootKey)
 	}
 
-	if cfg.GetBool(EnableHTTPS) == true {
+	if cfg.GetBool(EnableHTTPS) {
 		m.cluster.PKIKey.EnableHTTPS = true
 		if m.cluster.PKIKey.AuthRootPublicKey, err = os.ReadFile("/app/server.crt"); err != nil {
 			return fmt.Errorf("action[Start] failed,err[%v]", err)

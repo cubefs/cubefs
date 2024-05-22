@@ -128,7 +128,7 @@ func (h *graphqlProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) 
 	}
 
 	UserID := ui.User_id
-	header.Set(proto.UserKey, UserID)
+	header.Set(string(proto.UserKey), UserID)
 
 	rep, err := h.client.Proxy(r.Context(), r, header)
 	if err != nil {
@@ -271,26 +271,6 @@ func (h *httpHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	wg.Wait()
 	runner.Stop()
-}
-
-func parseResponseNames(r *http.Request) ([]string, error) {
-	var params httpPostBody
-	if err := json.NewDecoder(r.Body).Decode(&params); err != nil {
-		return nil, err
-	}
-
-	query, err := graphql.Parse(params.Query, params.Variables)
-	if err != nil {
-		return nil, err
-	}
-
-	list := make([]string, 0)
-
-	for _, s := range query.Selections {
-		list = append(list, s.Name)
-	}
-
-	return list, nil
 }
 
 func IQLFun(writer http.ResponseWriter, request *http.Request) {

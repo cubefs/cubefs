@@ -101,6 +101,9 @@ func NewClient(cfg *Config) Client {
 		cfg = &Config{}
 	}
 	cfg.Tc = cfg.Tc.Default()
+	if cfg.Tc.DialTimeoutMs <= 0 {
+		cfg.Tc.DialTimeoutMs = 200
+	}
 	if cfg.BodyBaseTimeoutMs == 0 {
 		cfg.BodyBaseTimeoutMs = 30 * 1e3
 	}

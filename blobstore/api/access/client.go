@@ -42,9 +42,7 @@ import (
 const (
 	defaultMaxSizePutOnce  int64 = 1 << 28 // 256MB
 	defaultMaxPartRetry    int   = 3
-	defaultMaxHostRetry    int   = 3
 	defaultPartConcurrence int   = 4
-	defaultServiceInterval int   = 3600 // one hour.
 	defaultServiceName           = "access"
 )
 
@@ -52,7 +50,7 @@ const (
 type RPCConnectMode uint8
 
 // timeout: [short - - - - - - - - -> long]
-//       quick --> general --> default --> slow --> nolimit
+// - - - quick --> general --> default --> slow --> nolimit
 // speed: 40MB -->  20MB   -->  10MB   --> 4MB  --> nolimit
 const (
 	DefaultConnMode RPCConnectMode = iota
@@ -89,7 +87,7 @@ func (mode RPCConnectMode) getConfig(speed float64, timeout, baseTimeout int64) 
 		BodyBaseTimeoutMs: getBaseTimeout(30 * 1000),
 		Tc: rpc.TransportConfig{
 			// dial timeout
-			DialTimeoutMs: 5 * 1000,
+			DialTimeoutMs: 200,
 			// response header timeout after send the request
 			ResponseHeaderTimeoutMs: 5 * 1000,
 			// IdleConnTimeout is the maximum amount of time an idle
@@ -109,21 +107,21 @@ func (mode RPCConnectMode) getConfig(speed float64, timeout, baseTimeout int64) 
 		config.ClientTimeoutMs = getTimeout(getSpeed(40))
 		config.BodyBandwidthMBPs = getSpeed(40)
 		config.BodyBaseTimeoutMs = getBaseTimeout(3 * 1000)
-		config.Tc.DialTimeoutMs = 2 * 1000
+		config.Tc.DialTimeoutMs = 100
 		config.Tc.ResponseHeaderTimeoutMs = 2 * 1000
 		config.Tc.IdleConnTimeoutMs = 10 * 1000
 	case GeneralConnMode:
 		config.ClientTimeoutMs = getTimeout(getSpeed(20))
 		config.BodyBandwidthMBPs = getSpeed(20)
 		config.BodyBaseTimeoutMs = getBaseTimeout(10 * 1000)
-		config.Tc.DialTimeoutMs = 3 * 1000
+		config.Tc.DialTimeoutMs = 100
 		config.Tc.ResponseHeaderTimeoutMs = 3 * 1000
 		config.Tc.IdleConnTimeoutMs = 30 * 1000
 	case SlowConnMode:
 		config.ClientTimeoutMs = getTimeout(getSpeed(4))
 		config.BodyBandwidthMBPs = getSpeed(4)
 		config.BodyBaseTimeoutMs = getBaseTimeout(120 * 1000)
-		config.Tc.DialTimeoutMs = 10 * 1000
+		config.Tc.DialTimeoutMs = 200
 		config.Tc.ResponseHeaderTimeoutMs = 10 * 1000
 		config.Tc.IdleConnTimeoutMs = 60 * 1000
 	case NoLimitConnMode:
@@ -153,22 +151,23 @@ type Config struct {
 
 	// Consul is consul config for discovering service
 	Consul ConsulConfig
-	// ServiceIntervalS is interval seconds for discovering service
+	// ServiceIntervalS is interval seconds for discovering service hosts,
+	//   at least 5 seconds and default is 5 minutes.
 	ServiceIntervalS int
 	// PriorityAddrs priority addrs of access service when retry
 	PriorityAddrs []string
-	// MaxSizePutOnce max size using once-put object interface
+	// MaxSizePutOnce max size using once-put object interface, default is 256MB.
 	MaxSizePutOnce int64
 	// MaxPartRetry max retry times when putting one part, 0 means forever
 	MaxPartRetry int
-	// MaxHostRetry max retry hosts of access service
+	// MaxHostRetry max retry hosts of access, default all hosts.
 	MaxHostRetry int
 	// PartConcurrence concurrence of put parts
 	PartConcurrence int
 
 	// rpc selector config
-	// Failure retry interval, default value is -1, if FailRetryIntervalS < 0,
-	// remove failed hosts will not work.
+	// Failure retry interval, default value is 300s,
+	// if FailRetryIntervalS < 0, remove failed hosts will not work.
 	FailRetryIntervalS int
 	// Within MaxFailsPeriodS, if the number of failures is greater than or equal to MaxFails,
 	// the host is considered disconnected.
@@ -248,10 +247,12 @@ func init() {
 func New(cfg Config) (API, error) {
 	defaulter.LessOrEqual(&cfg.MaxSizePutOnce, defaultMaxSizePutOnce)
 	defaulter.Less(&cfg.MaxPartRetry, defaultMaxPartRetry)
-	defaulter.LessOrEqual(&cfg.MaxHostRetry, defaultMaxHostRetry)
 	defaulter.LessOrEqual(&cfg.PartConcurrence, defaultPartConcurrence)
-	if cfg.ServiceIntervalS < 300 { // at least 5 minutes
-		cfg.ServiceIntervalS = defaultServiceInterval
+	defaulter.Equal(&cfg.FailRetryIntervalS, 300)
+	defaulter.LessOrEqual(&cfg.MaxFailsPeriodS, 10)
+	defaulter.Equal(&cfg.ServiceIntervalS, 300) // 5 minutes
+	if cfg.ServiceIntervalS < 5 {
+		cfg.ServiceIntervalS = 5
 	}
 
 	log.SetOutputLevel(cfg.LogLevel)
@@ -320,10 +321,11 @@ func New(cfg Config) (API, error) {
 	}
 	c.rpcClient.Store(getClient(&cfg, hosts))
 
-	ticker := time.NewTicker(time.Duration(cfg.ServiceIntervalS) * time.Second)
 	go func() {
+		ticker := time.NewTicker(time.Duration(cfg.ServiceIntervalS) * time.Second)
+		defer ticker.Stop()
 		for {
-			old := hosts
+			old := hosts[:]
 			select {
 			case <-ticker.C:
 				hosts, err = hostGetter()
@@ -336,10 +338,10 @@ func New(cfg Config) (API, error) {
 					if ok && oldClient != nil {
 						oldClient.Close()
 					}
+					log.Warnf("update hosts of client (%v) -> (%v)", old, hosts)
 					c.rpcClient.Store(getClient(&cfg, hosts))
 				}
 			case <-c.stop:
-				ticker.Stop()
 				return
 			}
 		}
@@ -409,6 +411,9 @@ func (c *client) putObject(ctx context.Context, args *PutArgs) (location Locatio
 	if err != nil {
 		return
 	}
+	if args.GetBody != nil {
+		req.GetBody = args.GetBody
+	}
 
 	resp := &PutResp{}
 	if err = rpcClient.DoWith(ctx, req, resp, rpc.WithCrcEncode()); err == nil {
@@ -465,7 +470,8 @@ func (c *client) putPartsBatch(ctx context.Context, parts []blobPart) error {
 }
 
 func (c *client) readerPipeline(span trace.Span, reqBody io.Reader,
-	closeCh <-chan struct{}, size, blobSize int) <-chan []byte {
+	closeCh <-chan struct{}, size, blobSize int,
+) <-chan []byte {
 	ch := make(chan []byte, c.config.PartConcurrence-1)
 	go func() {
 		for size > 0 {

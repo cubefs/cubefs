@@ -251,11 +251,11 @@ func (operations *Condition) parseOperations(operatorMap map[string]map[string]i
 			if err != nil {
 				return err
 			}
-			switch values.(type) {
+			switch vals := values.(type) {
 			case string:
-				valueSet.Add(NewStringValue(values.(string)))
+				valueSet.Add(NewStringValue(vals))
 			case []interface{}:
-				for _, value := range values.([]interface{}) {
+				for _, value := range vals {
 					if valueString, ok := value.(string); ok {
 						valueSet.Add(NewStringValue(valueString))
 					} else {

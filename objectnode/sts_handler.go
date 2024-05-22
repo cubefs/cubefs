@@ -111,5 +111,4 @@ func (o *ObjectNode) getFederationTokenHandler(w http.ResponseWriter, r *http.Re
 	}
 
 	writeSuccessResponseXML(w, response)
-	return
 }

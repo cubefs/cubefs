@@ -40,7 +40,6 @@ type VolVarargs struct {
 	dpSelectorName          string
 	dpSelectorParm          string
 	coldArgs                *coldVolArgs
-	domainId                uint64
 	dpReplicaNum            uint8
 	enablePosixAcl          bool
 	dpReadOnlyWhenVolFull   bool
@@ -121,8 +120,7 @@ type Vol struct {
 }
 
 func newVol(vv volValue) (vol *Vol) {
-	vol = &Vol{ID: vv.ID, Name: vv.Name, MetaPartitions: make(map[uint64]*MetaPartition, 0)}
-
+	vol = &Vol{ID: vv.ID, Name: vv.Name, MetaPartitions: make(map[uint64]*MetaPartition)}
 	if vol.threshold <= 0 {
 		vol.threshold = defaultMetaPartitionMemUsageThreshold
 	}
@@ -284,9 +282,8 @@ func (mpsLock *mpsLockManager) RUnlock() {
 
 func (mpsLock *mpsLockManager) CheckExceptionLock(interval time.Duration, expireTime time.Duration) {
 	ticker := time.NewTicker(interval)
-	for {
-		select {
-		case <-ticker.C:
+	for range ticker.C {
+		{
 			if mpsLock.vol.status() == proto.VolStatusMarkDelete || atomic.LoadInt32(&mpsLock.enable) == 0 {
 				break
 			}
@@ -331,7 +328,7 @@ func (vol *Vol) CheckStrategy(c *Cluster) {
 					return
 				}
 				vol.VersionMgr.RLock()
-				if vol.VersionMgr.strategy.GetPeriodicSecond() == 0 || vol.VersionMgr.strategy.Enable == false { // strategy not be set
+				if vol.VersionMgr.strategy.GetPeriodicSecond() == 0 || !vol.VersionMgr.strategy.Enable { // strategy not be set
 					vol.VersionMgr.RUnlock()
 					continue
 				}
@@ -371,8 +368,8 @@ func (vol *Vol) getPreloadCapacity() uint64 {
 
 func (vol *Vol) initQosManager(limitArgs *qosArgs) {
 	vol.qosManager = &QosCtrlManager{
-		cliInfoMgrMap:        make(map[uint64]*ClientInfoMgr, 0),
-		serverFactorLimitMap: make(map[uint32]*ServerFactorLimit, 0),
+		cliInfoMgrMap:        make(map[uint64]*ClientInfoMgr),
+		serverFactorLimitMap: make(map[uint32]*ServerFactorLimit),
 		qosEnable:            limitArgs.qosEnable,
 		vol:                  vol,
 		ClientHitTriggerCnt:  defaultClientTriggerHitCnt,
@@ -793,7 +790,6 @@ func (vol *Vol) checkSplitMetaPartition(c *Cluster, metaPartitionInodeStep uint6
 		log.LogInfof("volume[%v] split MaxMP[%v], MaxInodeID[%d] Start[%d] RWMPNum[%d] maxMPInodeUsedRatio[%.2f]",
 			vol.Name, maxPartitionID, maxMP.MaxInodeID, maxMP.Start, RWMPNum, maxMPInodeUsedRatio)
 	}
-	return
 }
 
 func (mp *MetaPartition) memUsedReachThreshold(clusterName, volName string) bool {
@@ -820,7 +816,7 @@ func (mp *MetaPartition) memUsedReachThreshold(clusterName, volName string) bool
 }
 
 func (vol *Vol) cloneMetaPartitionMap() (mps map[uint64]*MetaPartition) {
-	mps = make(map[uint64]*MetaPartition, 0)
+	mps = make(map[uint64]*MetaPartition)
 	vol.mpsLock.RLock()
 	defer vol.mpsLock.RUnlock()
 	for _, mp := range vol.MetaPartitions {
@@ -842,7 +838,7 @@ func (vol *Vol) setMpForbid() {
 func (vol *Vol) cloneDataPartitionMap() (dps map[uint64]*DataPartition) {
 	vol.dataPartitions.RLock()
 	defer vol.dataPartitions.RUnlock()
-	dps = make(map[uint64]*DataPartition, 0)
+	dps = make(map[uint64]*DataPartition)
 	for _, dp := range vol.dataPartitions.partitionMap {
 		dps[dp.PartitionID] = dp
 	}
@@ -939,11 +935,7 @@ func (vol *Vol) shouldInhibitWriteBySpaceFull() bool {
 	}
 
 	usedSpace := vol.totalUsedSpace() / util.GB
-	if usedSpace >= vol.capacity() {
-		return true
-	}
-
-	return false
+	return usedSpace >= vol.capacity()
 }
 
 func (vol *Vol) needCreateDataPartition() (ok bool, err error) {
@@ -1063,21 +1055,6 @@ func (vol *Vol) totalUsedSpaceByMeta(byMeta bool) uint64 {
 
 func (vol *Vol) cfsUsedSpace() uint64 {
 	return vol.dataPartitions.totalUsedSpace()
-}
-
-func (vol *Vol) sendViewCacheToFollower(c *Cluster) {
-	var err error
-	log.LogInfof("action[asyncSendPartitionsToFollower]")
-
-	metadata := new(RaftCmd)
-	metadata.Op = opSyncDataPartitionsView
-	metadata.K = vol.Name
-	metadata.V = vol.dataPartitions.getDataPartitionResponseCache()
-
-	if err = c.submit(metadata); err != nil {
-		log.LogErrorf("action[asyncSendPartitionsToFollower] error [%v]", err)
-	}
-	log.LogInfof("action[asyncSendPartitionsToFollower] finished")
 }
 
 func (vol *Vol) ebsUsedSpace() uint64 {
@@ -1231,8 +1208,6 @@ func (vol *Vol) checkStatus(c *Cluster) {
 			vol.deleteDataPartitionFromDataNode(c, dataTask)
 		}
 	}()
-
-	return
 }
 
 func (vol *Vol) deleteMetaPartitionFromMetaNode(c *Cluster, task *proto.AdminTask) {
@@ -1262,7 +1237,6 @@ func (vol *Vol) deleteMetaPartitionFromMetaNode(c *Cluster, task *proto.AdminTas
 	mp.removeReplicaByAddr(metaNode.Addr)
 	mp.removeMissingReplica(metaNode.Addr)
 	mp.Unlock()
-	return
 }
 
 func (vol *Vol) deleteDataPartitionFromDataNode(c *Cluster, task *proto.AdminTask) (err error) {
@@ -1325,7 +1299,6 @@ func (vol *Vol) deleteMetaPartitionsFromStore(c *Cluster) {
 	for _, mp := range vol.MetaPartitions {
 		c.syncDeleteMetaPartition(mp)
 	}
-	return
 }
 
 func (vol *Vol) deleteDataPartitionsFromStore(c *Cluster) {
@@ -1385,7 +1358,7 @@ func (vol *Vol) doSplitMetaPartition(c *Cluster, mp *MetaPartition, end uint64, 
 	}
 
 	log.LogWarnf("action[splitMetaPartition],partition[%v],start[%v],end[%v],new end[%v]", mp.PartitionID, mp.Start, mp.End, end)
-	cmdMap := make(map[string]*RaftCmd, 0)
+	cmdMap := make(map[string]*RaftCmd)
 	oldEnd := mp.End
 	mp.End = end
 

@@ -211,7 +211,7 @@ func (writer *Writer) WriteFromReader(ctx context.Context, reader io.Reader, h h
 		exec        = NewExecutor(writer.wConcurrency)
 		leftToWrite int
 	)
-	defer buf.ReadBufPool.Put(tmp)
+	defer buf.ReadBufPool.Put(tmp) // nolint: staticcheck
 
 	writer.fileOffset = 0
 	writer.err = make(chan *wSliceErr)
@@ -428,10 +428,6 @@ func (writer *Writer) Flush(ino uint64, ctx context.Context) (err error) {
 		return
 	}
 	return writer.flush(ino, ctx, true)
-}
-
-func (writer *Writer) shouldCacheCfs() bool {
-	return writer.cacheAction == proto.RWCache
 }
 
 func (writer *Writer) prepareWriteSlice(offset int, data []byte) []*rwSlice {

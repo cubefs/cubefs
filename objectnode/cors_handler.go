@@ -68,7 +68,6 @@ func (o *ObjectNode) getBucketCorsHandler(w http.ResponseWriter, r *http.Request
 	}
 
 	writeSuccessResponseXML(w, data)
-	return
 }
 
 // https://docs.aws.amazon.com/AmazonS3/latest/API/API_PutBucketCors.html
@@ -123,8 +122,6 @@ func (o *ObjectNode) putBucketCorsHandler(w http.ResponseWriter, r *http.Request
 		return
 	}
 	vol.metaLoader.storeCORS(corsConfig)
-
-	return
 }
 
 // https://docs.aws.amazon.com/AmazonS3/latest/API/API_DeleteBucketCors.html
@@ -156,7 +153,6 @@ func (o *ObjectNode) deleteBucketCorsHandler(w http.ResponseWriter, r *http.Requ
 	vol.metaLoader.storeCORS(nil)
 
 	w.WriteHeader(http.StatusNoContent)
-	return
 }
 
 // Option object
@@ -164,5 +160,4 @@ func (o *ObjectNode) deleteBucketCorsHandler(w http.ResponseWriter, r *http.Requ
 func (o *ObjectNode) optionsObjectHandler(w http.ResponseWriter, r *http.Request) {
 	log.LogInfof("optionsObjectHandler: OPTIONS object, requestID(%v) remote(%v)", GetRequestID(r), r.RemoteAddr)
 	// Already done in methods 'corsMiddleware'.
-	return
 }

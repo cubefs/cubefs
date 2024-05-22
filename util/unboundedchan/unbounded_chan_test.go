@@ -15,6 +15,7 @@
 package unboundedchan
 
 import (
+	"fmt"
 	"sync"
 	"testing"
 )
@@ -43,17 +44,17 @@ func TestWriteReadUnboundedChan(t *testing.T) {
 			t.Logf("val(%v), ok(%v)", val, ok)
 			v1, ok := values[val]
 			if ok {
-				t.Fatalf("value(%v) is not expected to be in UnboundedChan multiple times", v1)
+				panic(fmt.Sprintf("value(%v) is not expected to be in UnboundedChan multiple times", v1))
 			} else {
 				values[val] = val
 			}
 			if v1 >= 100 || v1 < 0 {
-				t.Fatalf("value(%v) is expected in range 0-99", v1)
+				panic(fmt.Sprintf("value(%v) is expected in range 0-99", v1))
 			}
 			total++
 		}
 		if total != 100 {
-			t.Fatalf("expected total num(%v), got(%v)", 100, total)
+			panic(fmt.Sprintf("expected total num(%v), got(%v)", 100, total))
 		}
 		t.Logf("total: %v", total)
 	}()

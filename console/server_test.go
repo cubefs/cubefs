@@ -8,8 +8,8 @@ import (
 )
 
 func TestServer(t *testing.T) {
-	return
-
+	_ = graphErr{}
+	_ = graphResponse{}
 	// if _, err := log.InitLog("/tmp", "console", log.DebugLevel, nil); err != nil {
 	// 	panic(err)
 	// }

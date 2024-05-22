@@ -51,31 +51,12 @@ type LimitFactor struct {
 	mgr                *LimitManager
 	gridId             uint64
 	magnify            uint32
-	winBuffer          uint64
 	lock               sync.RWMutex
 	valAllocApply      uint64
 	valAllocCommit     uint64
 	valAllocLastApply  uint64
 	valAllocLastCommit uint64
 	isSetLimitZero     bool
-}
-
-func (factor *LimitFactor) getNeedByMagnify(allocCnt uint32, magnify uint32) uint64 {
-	if magnify == 0 {
-		return 0
-	}
-	if allocCnt > 1000 {
-		log.QosWriteDebugf("action[getNeedByMagnify] allocCnt %v", allocCnt)
-		magnify = defaultMagnifyFactor
-	}
-
-	need := uint64(allocCnt * magnify)
-	if factor.factorType == proto.FlowWriteType || factor.factorType == proto.FlowReadType {
-		if need > util.GB/8 {
-			need = util.GB / 8
-		}
-	}
-	return need
 }
 
 func (factor *LimitFactor) alloc(allocCnt uint32) (ret uint8, future *util.Future) {
@@ -240,7 +221,6 @@ func (factor *LimitFactor) TryReleaseWaitList() {
 		log.QosWriteDebugf("action[TryReleaseWaitList] type [%v] ele used [%v] consumed!", proto.QosTypeString(factor.factorType), ele.used)
 		ele.future.Respond(true, nil)
 
-		value = value.Next()
 		factor.waitList.Remove(factor.waitList.Front())
 	}
 }
@@ -321,7 +301,7 @@ type LimitManager struct {
 
 func NewLimitManager(client wrapper.SimpleClientInfo) *LimitManager {
 	mgr := &LimitManager{
-		limitMap:      make(map[uint32]*LimitFactor, 0),
+		limitMap:      make(map[uint32]*LimitFactor),
 		enable:        false, // assign from master
 		simpleClient:  client,
 		HitTriggerCnt: gridHitLimitCnt,
@@ -372,7 +352,7 @@ func (limitManager *LimitManager) CalcNeedByPow(limitFactor *LimitFactor, used u
 
 func (limitManager *LimitManager) GetFlowInfo() (*proto.ClientReportLimitInfo, bool) {
 	info := &proto.ClientReportLimitInfo{
-		FactorMap: make(map[uint32]*proto.ClientLimitInfo, 0),
+		FactorMap: make(map[uint32]*proto.ClientLimitInfo),
 	}
 	var (
 		validCliInfo bool

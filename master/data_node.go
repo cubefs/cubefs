@@ -101,8 +101,6 @@ func (dataNode *DataNode) checkLiveness() {
 	if time.Since(dataNode.ReportTime) > time.Second*time.Duration(defaultNodeTimeOutSec) {
 		dataNode.isActive = false
 	}
-
-	return
 }
 
 func (dataNode *DataNode) badPartitions(diskPath string, c *Cluster) (partitions []*DataPartition) {
@@ -171,17 +169,10 @@ func (dataNode *DataNode) updateNodeMetric(resp *proto.DataNodeHeartbeatResponse
 func (dataNode *DataNode) canAlloc() bool {
 	dataNode.RLock()
 	defer dataNode.RUnlock()
-
 	if !overSoldLimit() {
 		return true
 	}
-
-	maxCapacity := overSoldCap(dataNode.Total)
-	if maxCapacity < dataNode.TotalPartitionSize {
-		return false
-	}
-
-	return true
+	return overSoldCap(dataNode.Total) >= dataNode.TotalPartitionSize
 }
 
 func (dataNode *DataNode) isWriteAble() (ok bool) {
@@ -224,7 +215,7 @@ func (dataNode *DataNode) isWriteAbleWithSize(size uint64) (ok bool) {
 	dataNode.RLock()
 	defer dataNode.RUnlock()
 
-	if dataNode.isActive == true && dataNode.AvailableSpace > size {
+	if dataNode.isActive && dataNode.AvailableSpace > size {
 		ok = true
 	}
 
