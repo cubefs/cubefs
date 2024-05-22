@@ -17,6 +17,7 @@ package blobnode
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"os"
 	"sync"
 	"sync/atomic"
@@ -295,6 +296,11 @@ func NewService(conf Config) (svr *Service, err error) {
 		span.Fatalf("blobnode register to clusterMgr error:%v", err)
 	}
 
+	if err = registerNode(ctx, clusterMgrCli, &conf); err != nil {
+		span.Fatalf("fail to register node to clusterMgr, err:%+v", err)
+		return nil, err
+	}
+
 	registeredDisks, err := clusterMgrCli.ListHostDisk(ctx, conf.Host)
 	if err != nil {
 		span.Errorf("Failed ListDisk from clusterMgr. err:%v", err)
@@ -361,8 +367,8 @@ func NewService(conf Config) (svr *Service, err error) {
 			format, err := readFormatInfo(ctx, diskConf.Path)
 			if err != nil {
 				// todo: report to ums
-				err = nil // skip
 				span.Errorf("Failed read diskMeta:%s, err:%v. skip init", diskConf.Path, err)
+				err = nil // skip
 				return
 			}
 
@@ -375,7 +381,6 @@ func NewService(conf Config) (svr *Service, err error) {
 			nonNormal := foundInCluster && diskInfo.Status != proto.DiskStatusNormal
 			if nonNormal {
 				// todo: report to ums
-				err = nil
 				span.Warnf("disk(%v):path(%v) is not normal, skip init", format.DiskID, diskConf.Path)
 				return
 			}
@@ -388,7 +393,7 @@ func NewService(conf Config) (svr *Service, err error) {
 
 			if !foundInCluster {
 				span.Warnf("diskInfo:%v not found in clusterMgr, will register to cluster", diskInfo)
-				diskInfo := ds.DiskInfo()
+				diskInfo := ds.DiskInfo() // get nodeID to add disk
 				err := clusterMgrCli.AddDisk(ctx, &diskInfo)
 				if err != nil {
 					span.Errorf("Failed register disk: %v, err:%v", diskInfo, err)
@@ -468,4 +473,27 @@ func (s *Service) reportOnlineDisk(hostInfo *core.HostInfo, diskPath string) {
 		hostInfo.Host,
 		diskPath,
 	).Set(0)
+}
+
+func registerNode(ctx context.Context, clusterMgrCli *cmapi.Client, conf *Config) error {
+	if err := core.CheckNodeConf(&conf.HostInfo); err != nil {
+		return err
+	}
+
+	nodeToCm := bnapi.NodeInfo{
+		ClusterID: conf.ClusterID,
+		DiskType:  conf.DiskType,
+		Idc:       conf.IDC,
+		Rack:      conf.Rack,
+		Host:      conf.Host,
+		Role:      proto.NodeRoleBlobNode,
+	}
+
+	nodeID, err := clusterMgrCli.AddNode(ctx, &nodeToCm)
+	if err != nil && rpc.DetectStatusCode(err) != http.StatusCreated {
+		return err
+	}
+
+	conf.NodeID = nodeID
+	return nil
 }

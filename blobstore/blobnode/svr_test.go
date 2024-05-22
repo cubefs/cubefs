@@ -251,9 +251,10 @@ func TestService2(t *testing.T) {
 	require.NoError(t, err)
 	conf := Config{
 		HostInfo: core.HostInfo{
-			IDC:  "testIdc",
-			Rack: "testRack",
-			Host: "127.0.0.1",
+			IDC:      "testIdc",
+			Rack:     "testRack",
+			Host:     "127.0.0.1",
+			DiskType: proto.DiskTypeHDD,
 		},
 		Disks: []core.Config{
 			{BaseConfig: core.BaseConfig{Path: path1, AutoFormat: true, MaxChunks: 700}, MetaConfig: db.MetaConfig{}},
@@ -292,8 +293,9 @@ func newTestBlobNodeService(t *testing.T, path string) (*Service, *mockClusterMg
 
 	conf := Config{
 		HostInfo: core.HostInfo{
-			IDC:  "testIdc",
-			Rack: "testRack",
+			IDC:      "testIdc",
+			Rack:     "testRack",
+			DiskType: proto.DiskTypeHDD,
 		},
 		Disks: []core.Config{
 			{BaseConfig: core.BaseConfig{Path: path1, AutoFormat: true, MaxChunks: 700}, MetaConfig: db.MetaConfig{}},
@@ -367,8 +369,9 @@ func TestService_CmdpChunk(t *testing.T) {
 
 	conf := Config{
 		HostInfo: core.HostInfo{
-			IDC:  "testIdc",
-			Rack: "testRack",
+			IDC:      "testIdc",
+			Rack:     "testRack",
+			DiskType: proto.DiskTypeHDD,
 		},
 		Disks: []core.Config{
 			{BaseConfig: core.BaseConfig{Path: path1, AutoFormat: true, MaxChunks: 700}, MetaConfig: db.MetaConfig{}},
@@ -586,8 +589,9 @@ type mockDiskInfo struct {
 var _mockDiskIdBase = int64(100)
 
 type mockClusterMgr struct {
-	reqIdx int64
-	disks  []mockDiskInfo
+	reqIdx  int64
+	nodeIdx int32
+	disks   []mockDiskInfo
 }
 
 func init() {
@@ -598,6 +602,7 @@ func init() {
 	rpc.RegisterArgsParser(&cmapi.DiskSetArgs{}, "json")
 	rpc.RegisterArgsParser(&cmapi.ReportChunkArgs{}, "json")
 	rpc.RegisterArgsParser(&cmapi.GetVolumeArgs{}, "json")
+	rpc.RegisterArgsParser(&cmapi.NodeInfoArgs{}, "json")
 }
 
 func mockClusterMgrRouter(service *mockClusterMgr) *rpc.Router {
@@ -612,6 +617,11 @@ func mockClusterMgrRouter(service *mockClusterMgr) *rpc.Router {
 	r.Handle(http.MethodPost, "/chunk/report", service.ChunkReport, rpc.OptArgsBody())
 	r.Handle(http.MethodGet, "/volume/get", service.VolumeGet, rpc.OptArgsQuery())
 	r.Handle(http.MethodPost, "/service/register", service.ServiceRegister, rpc.OptArgsBody())
+
+	r.Handle(http.MethodPost, "/node/add", service.NodeAdd, rpc.OptArgsBody())
+	r.Handle(http.MethodPost, "/node/drop", service.NodeDrop, rpc.OptArgsBody())
+	r.Handle(http.MethodGet, "/node/info", service.NodeInfo, rpc.OptArgsQuery())
+
 	return r
 }
 
@@ -786,6 +796,42 @@ func (mcm *mockClusterMgr) VolumeGet(c *rpc.Context) {
 	c.RespondError(errors.New("not implement"))
 }
 
+func (mcm *mockClusterMgr) NodeAdd(c *rpc.Context) {
+	args := new(bnapi.NodeInfo)
+	if err := c.ParseArgs(args); err != nil {
+		c.RespondError(bloberr.ErrIllegalArguments)
+		return
+	}
+
+	nodeID := atomic.AddInt32(&mcm.nodeIdx, 1)
+	ret := &cmapi.NodeIDAllocRet{
+		NodeID: proto.NodeID(nodeID),
+	}
+
+	c.RespondJSON(ret)
+}
+
+func (mcm *mockClusterMgr) NodeDrop(c *rpc.Context) {
+	args := new(cmapi.NodeInfoArgs)
+	if err := c.ParseArgs(args); err != nil {
+		c.RespondError(bloberr.ErrIllegalArguments)
+		return
+	}
+}
+
+func (mcm *mockClusterMgr) NodeInfo(c *rpc.Context) {
+	args := new(cmapi.NodeInfoArgs)
+	if err := c.ParseArgs(args); err != nil {
+		c.RespondError(bloberr.ErrIllegalArguments)
+		return
+	}
+	ret := &bnapi.NodeInfo{}
+	ret.NodeID = args.NodeID
+	ret.DiskType = proto.DiskTypeHDD
+
+	c.RespondJSON(ret)
+}
+
 func TestService_ConfigReload(t *testing.T) {
 	ctr := gomock.NewController(t)
 	ds1 := NewMockDiskAPI(ctr)
@@ -871,4 +917,47 @@ func TestService_ConfigReload(t *testing.T) {
 		require.Equal(t, int64(20*1024*1024), conf2.NormalMBPS)
 		require.Equal(t, svr.Conf.DiskConfig.DataQos.BackgroundMBPS*1024*1024, conf2.BackgroundMBPS)
 	}
+}
+
+func TestService_RegisterNode(t *testing.T) {
+	ctx := context.Background()
+
+	mcm := mockClusterMgr{
+		nodeIdx: 0,
+	}
+	mcmURL := runMockClusterMgr(&mcm)
+	cc := &cmapi.Config{}
+	cc.Hosts = []string{mcmURL}
+	conf := Config{
+		Clustermgr: cc,
+	}
+	svr := &Service{
+		ClusterMgrClient: cmapi.New(cc),
+		Conf:             &conf,
+	}
+
+	err := registerNode(ctx, svr.ClusterMgrClient, svr.Conf)
+	require.NotNil(t, err)
+
+	// first register
+	svr.Conf.DiskType = proto.DiskTypeHDD
+	err = registerNode(ctx, svr.ClusterMgrClient, svr.Conf)
+	require.NoError(t, err)
+	require.Equal(t, proto.NodeID(1), svr.Conf.HostInfo.NodeID)
+
+	// duplicate register
+
+	// register node 2
+	conf2 := Config{
+		Clustermgr: cc,
+	}
+	svr2 := &Service{
+		ClusterMgrClient: cmapi.New(cc),
+		Conf:             &conf2,
+	}
+	svr2.Conf.DiskType = proto.DiskTypeSATASSD
+	err = registerNode(ctx, svr2.ClusterMgrClient, svr2.Conf)
+	require.NoError(t, err)
+	require.Equal(t, proto.NodeID(2), svr2.Conf.HostInfo.NodeID)
+	require.NotEqual(t, svr.Conf.NodeID, svr2.Conf.NodeID)
 }

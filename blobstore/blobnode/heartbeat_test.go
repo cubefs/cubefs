@@ -88,8 +88,9 @@ func TestHeartbeat2(t *testing.T) {
 
 	conf := Config{
 		HostInfo: core.HostInfo{
-			IDC:  "testIdc",
-			Rack: "testRack",
+			IDC:      "testIdc",
+			Rack:     "testRack",
+			DiskType: proto.DiskTypeHDD,
 		},
 		Disks: []core.Config{
 			{BaseConfig: core.BaseConfig{Path: path1, AutoFormat: true, MaxChunks: 700}, MetaConfig: db.MetaConfig{}},
@@ -156,8 +157,9 @@ func TestHeartbeat3(t *testing.T) {
 
 	conf := Config{
 		HostInfo: core.HostInfo{
-			IDC:  "testIdc",
-			Rack: "testRack",
+			IDC:      "testIdc",
+			Rack:     "testRack",
+			DiskType: proto.DiskTypeHDD,
 		},
 		Disks: []core.Config{
 			{BaseConfig: core.BaseConfig{Path: path1, AutoFormat: true, MaxChunks: 700}, MetaConfig: db.MetaConfig{}},

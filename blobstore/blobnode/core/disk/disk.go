@@ -203,6 +203,7 @@ func (ds *DiskStorage) DiskInfo() (info bnapi.DiskInfo) {
 	info.Rack = hostInfo.Rack
 	info.Host = hostInfo.Host
 	info.Path = ds.Conf.Path
+	info.NodeID = ds.Conf.NodeID
 
 	// status
 	info.Status = ds.status
