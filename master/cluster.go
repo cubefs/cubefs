@@ -17,6 +17,7 @@ package master
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/cubefs/cubefs/util/auditlog"
 	"math"
 	"net/http"
 	"sort"
@@ -4214,7 +4215,9 @@ func (c *Cluster) TryDecommissionDataNode(dataNode *DataNode) {
 		if left-dpCnt >= 0 {
 			err = c.migrateDisk(dataNode.Addr, disk, dataNode.DecommissionDstAddr, dataNode.DecommissionRaftForce, dpCnt, true, ManualDecommission)
 			if err != nil {
-				log.LogWarnf("action[TryDecommissionDataNode] %v failed", err)
+				msg := fmt.Sprintf("disk(%v_%v)failed to mark decommission", dataNode.Addr, disk)
+				log.LogWarnf("action[TryDecommissionDataNode] %v failed %v", msg, err)
+				auditlog.LogMasterOp("DiskDecommission", msg, err)
 				continue
 			}
 			decommissionDpTotal += dpCnt
@@ -4222,7 +4225,9 @@ func (c *Cluster) TryDecommissionDataNode(dataNode *DataNode) {
 		} else {
 			err = c.migrateDisk(dataNode.Addr, disk, dataNode.DecommissionDstAddr, dataNode.DecommissionRaftForce, left, true, ManualDecommission)
 			if err != nil {
-				log.LogWarnf("action[TryDecommissionDataNode] %v failed", err)
+				msg := fmt.Sprintf("disk(%v_%v)failed to mark decommission", dataNode.Addr, disk)
+				log.LogWarnf("action[TryDecommissionDataNode] %v failed %v", msg, err)
+				auditlog.LogMasterOp("DiskDecommission", msg, err)
 				continue
 			}
 			decommissionDpTotal += left
@@ -4384,6 +4389,8 @@ func (c *Cluster) handleDataNodeBadDisk(dataNode *DataNode) {
 		// decommission failed, but lack replica for disk err dp is already removed
 		retry := c.RetryDecommissionDisk(dataNode.Addr, disk.DiskPath)
 		if disk.TotalPartitionCnt == 0 && !retry {
+			msg := fmt.Sprintf("disk(%v_%v) can be removed", dataNode.Addr, disk.DiskPath)
+			auditlog.LogMasterOp("DiskDecommission", msg, nil)
 			continue
 		}
 		var ratio float64
@@ -4407,7 +4414,9 @@ func (c *Cluster) handleDataNodeBadDisk(dataNode *DataNode) {
 			}
 			err := c.migrateDisk(dataNode.Addr, disk.DiskPath, "", false, 0, true, AutoDecommission)
 			if err != nil {
-				log.LogErrorf("[handleDataNodeBadDisk] failed to decommission broken disk(%v) on data node(%v), err(%v)", disk.DiskPath, dataNode.Addr, err)
+				msg := fmt.Sprintf("disk(%v_%v)failed to mark decommission", dataNode.Addr, disk.DiskPath)
+				auditlog.LogMasterOp("DiskDecommission", msg, err)
+				log.LogErrorf("[handleDataNodeBadDisk]%v, err(%v)", msg, err)
 			}
 		} else {
 			for _, dpId := range disk.DiskErrPartitionList {
@@ -4458,6 +4467,7 @@ func (c *Cluster) TryDecommissionDisk(disk *DecommissionDisk) {
 	defer func() {
 		if err != nil {
 			disk.DecommissionRetry++
+			auditlog.LogMasterOp("DiskDecommission", rstMsg, err)
 		}
 		c.syncUpdateDecommissionDisk(disk)
 	}()
@@ -4569,10 +4579,9 @@ func (c *Cluster) TryDecommissionDisk(disk *DecommissionDisk) {
 	if disk.DiskDisable {
 		c.addAndSyncDecommissionedDisk(node, disk.DiskPath)
 	}
-	rstMsg = fmt.Sprintf("receive decommissionDisk node[%v] disk[%v],badPartitionIds %v,raftForce %v"+
-		" DecommissionDpTotal %v term %v  Type[%v] has offline to [%v]successfully, ignore (%v) %v",
-		node.Addr, disk.DiskPath, badPartitionIds, disk.DecommissionRaftForce,
-		disk.DecommissionDpTotal, disk.DecommissionTerm, disk.Type, disk.DstAddr, len(ignoreIDs), ignoreIDs)
+	rstMsg = fmt.Sprintf("disk[%v] badPartitionIds %v offline successfully, ignore (%v) %v",
+		disk.decommissionInfo(), badPartitionIds, len(ignoreIDs), ignoreIDs)
+	auditlog.LogMasterOp("DiskDecommission", rstMsg, nil)
 	log.LogInfof("action[TryDecommissionDisk] %s", rstMsg)
 }
 
