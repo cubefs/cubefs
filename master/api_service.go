@@ -2051,6 +2051,7 @@ func (m *Server) queryDataPartitionDecommissionStatus(w http.ResponseWriter, r *
 		NeedRollbackTimes:  atomic.LoadUint32(&dp.DecommissionNeedRollbackTimes),
 		DecommissionType:   GetDecommissionTypeMessage(dp.DecommissionType),
 		RestoreReplicaType: GetRestoreReplicaMessage(dp.RestoreReplica),
+		IsDiscard:          dp.IsDiscard,
 	}
 	sendOkReply(w, r, newSuccessHTTPReply(info))
 }
