@@ -41,9 +41,13 @@ func (c *Client) AllocNodeID(ctx context.Context) (proto.NodeID, error) {
 }
 
 // AddNode add a new node into cluster manager
-func (c *Client) AddNode(ctx context.Context, info *blobnode.NodeInfo) (err error) {
-	err = c.PostWith(ctx, "/node/add", nil, info)
-	return
+func (c *Client) AddNode(ctx context.Context, info *blobnode.NodeInfo) (proto.NodeID, error) {
+	ret := &NodeIDAllocRet{}
+	err := c.PostWith(ctx, "/node/add", ret, info)
+	if err != nil {
+		return 0, err
+	}
+	return ret.NodeID, nil
 }
 
 // DropNode drop a node from cluster manager
