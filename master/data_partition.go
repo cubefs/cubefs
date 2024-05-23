@@ -1570,6 +1570,11 @@ func (partition *DataPartition) ResetDecommissionStatus() {
 	partition.DecommissionType = InitialDecommission
 }
 
+func (partition *DataPartition) resetRestoreMeta(expected uint32) (ok bool) {
+	ok = atomic.CompareAndSwapUint32(&partition.RestoreReplica, expected, RestoreReplicaMetaStop)
+	return
+}
+
 func (partition *DataPartition) rollback(c *Cluster) {
 	var err error
 	defer func() {
