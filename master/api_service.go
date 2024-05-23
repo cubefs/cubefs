@@ -4420,6 +4420,7 @@ func (m *Server) getMetaNode(w http.ResponseWriter, r *http.Request) {
 		NodeSetID:                 metaNode.NodeSetID,
 		PersistenceMetaPartitions: metaNode.PersistenceMetaPartitions,
 		CanAllowPartition:         metaNode.isWritable() && metaNode.mpCntInLimit(),
+		MaxMpCntLimit:             metaNode.GetMpCntLimit(),
 		CpuUtil:                   metaNode.CpuUtil.Load(),
 	}
 	sendOkReply(w, r, newSuccessHTTPReply(metaNodeInfo))
