@@ -6857,3 +6857,28 @@ func (m *Server) cancelDisableDisk(w http.ResponseWriter, r *http.Request) {
 	rstMsg := fmt.Sprintf("cancel decommission disk[%s] successfully ", key)
 	sendOkReply(w, r, newSuccessHTTPReply(rstMsg))
 }
+
+func (m *Server) resetDataPartitionRestoreStatus(w http.ResponseWriter, r *http.Request) {
+	var err error
+
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminAbortDecommissionDisk))
+	defer func() {
+		doStatAndMetric(proto.AdminResetDataPartitionRestoreStatus, metric, err, nil)
+	}()
+
+	dpId, err := parseRequestToResetDpRestoreStatus(r)
+	if err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+
+	dp, err := m.cluster.getDataPartitionByID(dpId)
+	if err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+
+	ok := dp.resetRestoreMeta(RestoreReplicaMetaRunning)
+	log.LogInfof("[resetDataPartitionRestoreStaus] reset dp(%v) restore status ok(%v)", dpId, ok)
+	sendOkReply(w, r, newSuccessHTTPReply(ok))
+}
