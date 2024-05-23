@@ -30,9 +30,10 @@ func TestDataInspect(t *testing.T) {
 	}
 	cfg := DataInspectConf{IntervalSec: 100, RateLimit: 2}
 
-	clusterMgrCli := mocks.NewMockClientAPI(ctr)
-	clusterMgrCli.EXPECT().GetConfig(any, any).AnyTimes().Return("", nil)
-	switchMgr := taskswitch.NewSwitchMgr(clusterMgrCli)
+	getter := mocks.NewMockAccessor(ctr)
+	getter.EXPECT().GetConfig(any, any).AnyTimes().Return("", nil)
+	getter.EXPECT().SetConfig(any, any, any).AnyTimes().Return(nil)
+	switchMgr := taskswitch.NewSwitchMgr(getter)
 	mgr, err := NewDataInspectMgr(svr, cfg, switchMgr)
 	svr.inspectMgr = mgr
 	require.NoError(t, err)

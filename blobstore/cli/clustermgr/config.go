@@ -19,7 +19,6 @@ import (
 
 	"github.com/desertbit/grumble"
 
-	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/cli/common"
 	"github.com/cubefs/cubefs/blobstore/cli/common/flags"
 	"github.com/cubefs/cubefs/blobstore/cli/common/fmt"
@@ -96,10 +95,7 @@ func addCmdConfig(cmd *grumble.Command) {
 			if common.Confirm(fmt.Sprintf(
 				"to set key: `%s` from `%s` --> `%s` ?", common.Loaded.Sprint(key),
 				common.Danger.Sprint(oldV), common.Normal.Sprint(value))) {
-				return cli.SetConfig(ctx, &clustermgr.ConfigSetArgs{
-					Key:   key,
-					Value: value,
-				})
+				return cli.SetConfig(ctx, key, value)
 			}
 			return nil
 		},
