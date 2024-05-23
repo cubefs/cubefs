@@ -348,11 +348,11 @@ func processWithFatalV2(url string, success bool, req map[string]interface{}, t 
 	assert.Nil(t, err)
 
 	if success {
-		assert.True(t, reply.Code == proto.ErrCodeSuccess)
+		require.EqualValues(t, proto.ErrCodeSuccess, reply.Code)
 		return reply
 	}
 
-	assert.True(t, reply.Code != proto.ErrCodeSuccess)
+	require.NotEqualValues(t, proto.ErrCodeSuccess, reply.Code)
 
 	return
 }

@@ -781,10 +781,18 @@ func (api *AdminAPI) SetVolTrashInterval(volName string, authKey string, interva
 	return
 }
 
-func (api AdminAPI) SetDecommissionDiskLimit(limit uint32) (err error) {
+func (api *AdminAPI) SetDecommissionDiskLimit(limit uint32) (err error) {
 	request := newRequest(post, proto.AdminUpdateDecommissionDiskLimit)
 	request.addParam("decommissionDiskLimit", strconv.FormatUint(uint64(limit), 10))
 
 	err = api.mc.request(request)
+	return
+}
+
+func (api *AdminAPI) ResetDataPartitionRestoreStatus(dpId uint64) (ok bool, err error) {
+	request := newRequest(post, proto.AdminResetDataPartitionRestoreStatus)
+	request.addParam("id", strconv.FormatUint(dpId, 10))
+
+	err = api.mc.requestWith(&ok, request)
 	return
 }
