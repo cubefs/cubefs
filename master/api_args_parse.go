@@ -1982,3 +1982,11 @@ func extractDiskBrokenThreshold(r *http.Request) (ratio float64, err error) {
 	}
 	return strconv.ParseFloat(value, 64)
 }
+
+func parseRequestToResetDpRestoreStatus(r *http.Request) (dpId uint64, err error) {
+	if err = r.ParseForm(); err != nil {
+		return
+	}
+	dpId, err = extractDataPartitionID(r)
+	return
+}
