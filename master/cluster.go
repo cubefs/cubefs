@@ -2653,7 +2653,6 @@ func (c *Cluster) updateDataNodeSize(addr string, dp *DataPartition) error {
 	}
 
 	dataNode.AvailableSpace -= leaderSize
-
 	return nil
 }
 
@@ -4281,9 +4280,7 @@ func (c *Cluster) migrateDisk(nodeAddr, diskPath, dstPath string, raftForce bool
 	}
 	// add to the nodeset decommission list
 	c.addDecommissionDiskToNodeset(disk)
-	log.LogInfof("action[addDecommissionDisk],clusterID[%v] dataNodeAddr:%v,diskPath[%v] raftForce [%v] "+
-		"limit [%v], diskDisable [%v], migrateType [%v] term [%v]",
-		c.Name, nodeAddr, diskPath, raftForce, limit, diskDisable, migrateType, disk.DecommissionTerm)
+	log.LogInfof("action[addDecommissionDisk],clusterID[%v] add disk[%v]", c.Name, disk.decommissionInfo())
 	return
 }
 
@@ -4460,8 +4457,8 @@ func (c *Cluster) TryDecommissionDisk(disk *DecommissionDisk) {
 	defer func() {
 		if err != nil {
 			disk.DecommissionRetry++
-			auditlog.LogMasterOp("DiskDecommission", rstMsg, err)
 		}
+		auditlog.LogMasterOp("DiskDecommission", rstMsg, err)
 		c.syncUpdateDecommissionDisk(disk)
 	}()
 	if node, err = c.dataNode(disk.SrcAddr); err != nil {
