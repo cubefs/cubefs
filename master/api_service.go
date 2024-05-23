@@ -6777,20 +6777,22 @@ func (m *Server) abortDecommissionDisk(w http.ResponseWriter, r *http.Request) {
 	}
 	disk, err = extractDiskPath(r)
 	if err != nil {
-		key := fmt.Sprintf("%v_%v", addr, disk)
-		val, ok := m.cluster.DecommissionDisks.Load(key)
-		if !ok {
-			sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: fmt.Sprintf("decommission datanode %v disk %v not found", addr, disk)})
-			return
-		}
-		dd := val.(*DecommissionDisk)
-		err = dd.Abort(m.cluster)
-		if err != nil {
-			sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodePersistenceByRaft, Msg: err.Error()})
-			return
-		}
-		sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("cancel decommission datanode(%v) disk(%v) success", addr, disk)))
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
 	}
+	key := fmt.Sprintf("%v_%v", addr, disk)
+	val, ok := m.cluster.DecommissionDisks.Load(key)
+	if !ok {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: fmt.Sprintf("decommission datanode %v disk %v not found", addr, disk)})
+		return
+	}
+	dd := val.(*DecommissionDisk)
+	err = dd.Abort(m.cluster)
+	if err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodePersistenceByRaft, Msg: err.Error()})
+		return
+	}
+	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("cancel decommission datanode(%v) disk(%v) success", addr, disk)))
 }
 
 func (m *Server) queryDiskBrokenThreshold(w http.ResponseWriter, r *http.Request) {
