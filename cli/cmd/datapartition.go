@@ -43,6 +43,7 @@ func newDataPartitionCmd(client *master.MasterClient) *cobra.Command {
 		newDataPartitionGetDiscardCmd(client),
 		newDataPartitionSetDiscardCmd(client),
 		newDataPartitionQueryDecommissionProgress(client),
+		newDataPartitionResetRestoreStatusCmd(client),
 	)
 	return cmd
 }
@@ -56,6 +57,7 @@ const (
 	cmdDataPartitionGetDiscardShort                = "Display all discard data partitions"
 	cmdDataPartitionSetDiscardShort                = "Set discard flag for data partition"
 	cmdDataPartitionQueryDecommissionProgressShort = "Query data partition decommission progress"
+	cmdDataPartitionResetRestoreStatusShort        = "Reset data partition restore status"
 )
 
 func newDataPartitionGetCmd(client *master.MasterClient) *cobra.Command {
@@ -469,6 +471,41 @@ func newDataPartitionQueryDecommissionProgress(client *master.MasterClient) *cob
 			}
 
 			stdout("%v", formatDataPartitionDecommissionProgress(info))
+		},
+	}
+	return cmd
+}
+
+func newDataPartitionResetRestoreStatusCmd(client *master.MasterClient) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   CliOpResetRestoreStatus + " [DATA PARTITION ID]",
+		Short: cmdDataPartitionResetRestoreStatusShort,
+		Args:  cobra.MinimumNArgs(1),
+		Run: func(cmd *cobra.Command, args []string) {
+			var (
+				err  error
+				dpId uint64
+			)
+
+			defer func() {
+				errout(err)
+			}()
+
+			dpId, err = strconv.ParseUint(args[0], 10, 64)
+			if err != nil {
+				return
+			}
+
+			ok, err := client.AdminAPI().ResetDataPartitionRestoreStatus(dpId)
+			if err != nil {
+				return
+			}
+
+			if ok {
+				stdout("Reset data partition %v restore status to stop\n", dpId)
+				return
+			}
+			stdout("No need to reset data partition %v restore status\n", dpId)
 		},
 	}
 	return cmd

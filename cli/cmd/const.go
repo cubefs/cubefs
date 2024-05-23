@@ -49,6 +49,7 @@ const (
 	CliOpEnableAutoDecommission      = "enable-auto-decommission"
 	CliOpQueryDecommissionFailedDisk = "query-decommission-failed-disk"
 	CliOpSetDecommissionDiskLimit    = "set-decommission-disk-limit"
+	CliOpResetRestoreStatus          = "reset-restore-status"
 
 	CliOpSetDecommissionLimit    = "set-decommission-limit"
 	CliOpQueryDecommissionStatus = "query-decommission-status"

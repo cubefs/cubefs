@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util"
@@ -101,16 +102,16 @@ func TestCreateColdVol(t *testing.T) {
 
 	// check default val of normal vol
 	vol, err := server.cluster.getVol(volName)
-	assert.Nil(t, err)
-	assert.True(t, vol.dataPartitionSize == 120*util.GB)
-	assert.True(t, len(vol.MetaPartitions) == defaultInitMetaPartitionCount)
-	assert.False(t, vol.FollowerRead)
-	assert.False(t, vol.authenticate)
-	assert.False(t, vol.crossZone)
-	assert.True(t, vol.capacity() == 100)
-	assert.True(t, vol.VolType == proto.VolumeTypeHot)
-	assert.True(t, vol.dpReplicaNum == defaultReplicaNum)
-	assert.True(t, vol.domainId == 0)
+	require.NoError(t, err)
+	require.EqualValues(t, 120*util.GB, vol.dataPartitionSize)
+	require.EqualValues(t, defaultInitMetaPartitionCount, len(vol.MetaPartitions))
+	require.False(t, vol.FollowerRead)
+	require.False(t, vol.authenticate)
+	require.False(t, vol.crossZone)
+	require.EqualValues(t, 100, vol.capacity())
+	require.EqualValues(t, proto.VolumeTypeHot, vol.VolType)
+	require.EqualValues(t, defaultReplicaNum, vol.dpReplicaNum)
+	require.EqualValues(t, 0, vol.domainId)
 
 	delVol(volName, t)
 	time.Sleep(30 * time.Second)
@@ -121,18 +122,18 @@ func TestCreateColdVol(t *testing.T) {
 
 	// check default val of LF vol
 	vol, err = server.cluster.getVol(volName)
-	assert.Nil(t, err)
-	assert.True(t, vol.CacheRule == "")
-	assert.True(t, vol.EbsBlkSize == defaultEbsBlkSize)
-	assert.True(t, vol.CacheCapacity == 0)
-	assert.True(t, vol.CacheAction == proto.NoCache)
-	assert.True(t, vol.CacheThreshold == defaultCacheThreshold)
-	assert.True(t, vol.dpReplicaNum == 0)
-	assert.True(t, vol.FollowerRead)
-	assert.True(t, vol.CacheTTL == defaultCacheTtl)
-	assert.True(t, vol.CacheHighWater == defaultCacheHighWater)
-	assert.True(t, vol.CacheLowWater == defaultCacheLowWater)
-	assert.True(t, vol.CacheLRUInterval == defaultCacheLruInterval)
+	require.NoError(t, err)
+	require.EqualValues(t, "", vol.CacheRule)
+	require.EqualValues(t, defaultEbsBlkSize, vol.EbsBlkSize)
+	require.EqualValues(t, 0, vol.CacheCapacity)
+	require.EqualValues(t, proto.NoCache, vol.CacheAction)
+	require.EqualValues(t, vol.CacheThreshold, defaultCacheThreshold)
+	require.EqualValues(t, 0, vol.dpReplicaNum)
+	require.True(t, vol.FollowerRead)
+	require.EqualValues(t, defaultCacheTtl, vol.CacheTTL)
+	require.EqualValues(t, defaultCacheHighWater, vol.CacheHighWater)
+	require.EqualValues(t, defaultCacheLowWater, vol.CacheLowWater)
+	require.EqualValues(t, defaultCacheLruInterval, vol.CacheLRUInterval)
 
 	delVol(volName, t)
 
