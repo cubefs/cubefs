@@ -20,6 +20,7 @@ import (
 	"sync"
 	"time"
 
+	errcode "github.com/cubefs/cubefs/blobstore/common/errors"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
 )
 
@@ -89,20 +90,21 @@ func (s *TaskSwitch) WaitEnable() {
 	s.wg.Wait()
 }
 
-type ConfigGetter interface {
-	GetConfig(ctx context.Context, key string) (val string, err error)
+type Accessor interface {
+	GetConfig(ctx context.Context, key string) (value string, err error)
+	SetConfig(ctx context.Context, key, value string) error
 }
 
 type SwitchMgr struct {
-	switchs     map[string]*TaskSwitch
-	mu          sync.Mutex
-	cmCfgGetter ConfigGetter
+	switchs  map[string]*TaskSwitch
+	mu       sync.Mutex
+	accessor Accessor
 }
 
-func NewSwitchMgr(cmCli ConfigGetter) *SwitchMgr {
+func NewSwitchMgr(accessor Accessor) *SwitchMgr {
 	sm := SwitchMgr{
-		switchs:     make(map[string]*TaskSwitch),
-		cmCfgGetter: cmCli,
+		switchs:  make(map[string]*TaskSwitch),
+		accessor: accessor,
 	}
 	go sm.loopUpdate()
 	return &sm
@@ -122,9 +124,14 @@ func (sm *SwitchMgr) update() {
 	span, ctx := trace.StartSpanFromContext(context.Background(), "")
 
 	for switchName, taskSwitch := range sm.switchs {
-		statusStr, err := sm.cmCfgGetter.GetConfig(ctx, switchName)
+		statusStr, err := sm.accessor.GetConfig(ctx, switchName)
 		if err != nil {
 			span.Errorf("Get Fail switchName %s err %v", switchName, err)
+			if err == errcode.ErrNotFound {
+				if err = sm.accessor.SetConfig(ctx, switchName, SwitchClose); err != nil {
+					span.Errorf("Set Fail switchName %s err %v", switchName, err)
+				}
+			}
 			continue
 		}
 

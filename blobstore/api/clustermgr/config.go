@@ -38,8 +38,8 @@ func (c *Client) GetConfig(ctx context.Context, key string) (ret string, err err
 	return
 }
 
-func (c *Client) SetConfig(ctx context.Context, args *ConfigSetArgs) (err error) {
-	err = c.PostWith(ctx, "/config/set", nil, args)
+func (c *Client) SetConfig(ctx context.Context, key, value string) (err error) {
+	err = c.PostWith(ctx, "/config/set", nil, &ConfigSetArgs{Key: key, Value: value})
 	return
 }
 

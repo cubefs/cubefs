@@ -34,7 +34,8 @@ import (
 )
 
 type ClusterMgrConfigAPI interface {
-	GetConfig(ctx context.Context, key string) (val string, err error)
+	GetConfig(ctx context.Context, key string) (value string, err error)
+	SetConfig(ctx context.Context, key, value string) error
 }
 
 type ClusterMgrVolumeAPI interface {
@@ -357,6 +358,7 @@ type RegisterInfo struct {
 // IClusterManager define the interface of clustermgr
 type IClusterManager interface {
 	GetConfig(ctx context.Context, key string) (ret string, err error)
+	SetConfig(ctx context.Context, key, value string) (err error)
 	GetVolumeInfo(ctx context.Context, args *cmapi.GetVolumeArgs) (ret *cmapi.VolumeInfo, err error)
 	LockVolume(ctx context.Context, args *cmapi.LockVolumeArgs) (err error)
 	UnlockVolume(ctx context.Context, args *cmapi.UnlockVolumeArgs) (err error)
@@ -403,6 +405,19 @@ func (c *clustermgrClient) GetConfig(ctx context.Context, key string) (val strin
 		return
 	}
 	return ret, err
+}
+
+func (c *clustermgrClient) SetConfig(ctx context.Context, key, value string) error {
+	c.rwLock.Lock()
+	defer c.rwLock.Unlock()
+
+	span := trace.SpanFromContextSafe(ctx)
+	err := c.client.SetConfig(ctx, key, value)
+	if err != nil {
+		span.Errorf("set config failed: key[%s], value[%s], err[%+v]", key, value, err)
+		return err
+	}
+	return nil
 }
 
 // GetVolumeInfo returns volume info
