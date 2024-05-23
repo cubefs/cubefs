@@ -61,6 +61,7 @@ const (
 	NormalExtentDeleteRetainTime = 3600 * 4
 	CacheFlushInterval           = 5 * time.Second
 	ExtentReadDirHint            = "READDIR_HINT"
+	ExtentReadDirHintV2          = "READDIR_HINT_V2"
 	ExtentReadDirHintTemp        = "READDIR_HINT.tmp"
 
 	StaleExtStoreBackupSuffix = ".old"
@@ -389,13 +390,14 @@ func (s *ExtentStore) GetExtentInfoFromDisk(id uint64) (ei *ExtentInfo, err erro
 
 		ino := stat.Sys().(*syscall.Stat_t)
 		ei = &ExtentInfo{
-			FileID:     id,
-			Size:       uint64(stat.Size()),
-			Crc:        0,
-			IsDeleted:  false,
-			AccessTime: time.Unix(int64(ino.Atim.Sec), int64(ino.Atim.Nsec)).Unix(),
-			ModifyTime: stat.ModTime().Unix(),
-			Source:     "",
+			FileID:          id,
+			Size:            uint64(stat.Size()),
+			Crc:             0,
+			IsDeleted:       false,
+			AccessTime:      time.Unix(int64(ino.Atim.Sec), int64(ino.Atim.Nsec)).Unix(),
+			ModifyTime:      stat.ModTime().Unix(),
+			Source:          "",
+			SnapshotDataOff: util.ExtentSize,
 		}
 		if IsTinyExtent(id) {
 			watermark := ei.Size
@@ -403,6 +405,10 @@ func (s *ExtentStore) GetExtentInfoFromDisk(id uint64) (ei *ExtentInfo, err erro
 				watermark = watermark + (util.PageSize - watermark%util.PageSize)
 			}
 			ei.Size = watermark
+		}
+		// NOTE: init snapshot offset
+		if stat.Size() > int64(ei.SnapshotDataOff) {
+			ei.SnapshotDataOff = uint64(stat.Size())
 		}
 		return
 	}
@@ -456,7 +462,7 @@ func (s *ExtentStore) writeReadDirHint() (err error) {
 	}()
 
 	hintTempPath := path.Join(s.dataPath, ExtentReadDirHintTemp)
-	hintPath := path.Join(s.dataPath, ExtentReadDirHint)
+	hintPath := path.Join(s.dataPath, ExtentReadDirHintV2)
 	buff := bytes.NewBuffer([]byte{})
 	err = s.RangeExtentInfo(func(id uint64, ei *ExtentInfo) (ok bool, err error) {
 		err = ei.MarshalBinaryWithBuffer(buff)
@@ -497,7 +503,7 @@ func (s *ExtentStore) readReadDirHint() (extMap map[uint64]*ExtentInfo, err erro
 		log.LogInfof("[readReadDirHint] store(%v) read hint file using time(%v), read size(%v), cnt(%v), slow(%v)", s.dataPath, time.Since(begin), size, cnt, slow)
 	}()
 
-	hintPath := path.Join(s.dataPath, ExtentReadDirHint)
+	hintPath := path.Join(s.dataPath, ExtentReadDirHintV2)
 	data, err = os.ReadFile(hintPath)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -522,14 +528,25 @@ func (s *ExtentStore) readReadDirHint() (extMap map[uint64]*ExtentInfo, err erro
 }
 
 func (s *ExtentStore) removeReadDirHint() (err error) {
-	hintPath := path.Join(s.dataPath, ExtentReadDirHint)
+	hintPath := path.Join(s.dataPath, ExtentReadDirHintV2)
 	err = os.Remove(hintPath)
 	if err != nil {
 		if os.IsNotExist(err) {
 			err = nil
 			return
 		}
-		log.LogErrorf("[removeReadDirHint] store(%v) failed to remove read dir hint, err(%v)", s.dataPath, err)
+		log.LogErrorf("[removeReadDirHint] store(%v) failed to remove read dir hint(%v), err(%v)", s.dataPath, hintPath, err)
+		return
+	}
+	// NOTE: delete old version
+	hintPath = path.Join(s.dataPath, ExtentReadDirHint)
+	err = os.Remove(hintPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			err = nil
+			return
+		}
+		log.LogErrorf("[removeReadDirHint] store(%v) failed to remove read dir hint(%v), err(%v)", s.dataPath, hintPath, err)
 		return
 	}
 	return
@@ -1022,8 +1039,11 @@ func (s *ExtentStore) GetStoreUsedSize() (used int64) {
 			tinyTotal += uint64(size)
 		} else {
 			// NOTE: for debug
-			size := int64(einfo.Size + (einfo.SnapshotDataOff - util.ExtentSize))
+			size := int64(einfo.TotalSize())
 			if log.EnableDebug() {
+				if size < 0 {
+					log.LogErrorf("[GetStoreUsedSize] store(%v) extent(%v) size(%v) is < 0, extent size(%v) snap off(%v)", s.dataPath, einfo.FileID, size, einfo.Size, einfo.SnapshotDataOff)
+				}
 				actualSize, err := s.getFileDiskUsed(path.Join(s.dataPath, strconv.FormatInt(int64(einfo.FileID), 10)))
 				if err != nil {
 					log.LogErrorf("[GetStoreUsedSize] store(%v) failed to get normal extent(%v) disk used", s.dataPath, einfo.FileID)
