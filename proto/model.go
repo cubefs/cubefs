@@ -46,6 +46,7 @@ type MetaNodeInfo struct {
 	PersistenceMetaPartitions []uint64
 	RdOnly                    bool
 	CanAllowPartition         bool
+	MaxMpCntLimit             uint32
 	CpuUtil                   float64 `json:"cpuUtil"`
 }
 

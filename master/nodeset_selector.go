@@ -22,7 +22,6 @@ import (
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util"
-	"github.com/cubefs/cubefs/util/errors"
 )
 
 const RoundRobinNodesetSelectorName = "RoundRobin"
@@ -125,7 +124,6 @@ func (s *RoundRobinNodesetSelector) Select(nsc nodeSetCollection, excludeNodeSet
 		return nsc[i].ID < nsc[j].ID
 	})
 	for i := 0; i < len(nsc); i++ {
-
 		if s.index >= len(nsc) {
 			s.index = 0
 		}
@@ -143,9 +141,9 @@ func (s *RoundRobinNodesetSelector) Select(nsc nodeSetCollection, excludeNodeSet
 
 	switch s.nodeType {
 	case DataNodeType:
-		err = errors.NewError(proto.ErrNoNodeSetToCreateDataPartition)
+		err = proto.ErrNoNodeSetToCreateDataPartition
 	case MetaNodeType:
-		err = errors.NewError(proto.ErrNoNodeSetToCreateMetaPartition)
+		err = proto.ErrNoNodeSetToCreateMetaPartition
 	default:
 		panic("unknow node type")
 	}
@@ -265,9 +263,9 @@ func (s *CarryWeightNodesetSelector) Select(nsc nodeSetCollection, excludeNodeSe
 err:
 	switch s.nodeType {
 	case DataNodeType:
-		err = errors.NewError(proto.ErrNoNodeSetToCreateDataPartition)
+		err = proto.ErrNoNodeSetToCreateDataPartition
 	case MetaNodeType:
-		err = errors.NewError(proto.ErrNoNodeSetToCreateMetaPartition)
+		err = proto.ErrNoNodeSetToCreateMetaPartition
 	default:
 		panic("unknow node type")
 	}
@@ -303,9 +301,9 @@ func (s *AvailableSpaceFirstNodesetSelector) Select(nsc nodeSetCollection, exclu
 	}
 	switch s.nodeType {
 	case DataNodeType:
-		err = errors.NewError(proto.ErrNoNodeSetToCreateDataPartition)
+		err = proto.ErrNoNodeSetToCreateDataPartition
 	case MetaNodeType:
-		err = errors.NewError(proto.ErrNoNodeSetToCreateMetaPartition)
+		err = proto.ErrNoNodeSetToCreateMetaPartition
 	default:
 		panic("unknow node type")
 	}
@@ -347,9 +345,9 @@ func (s *StrawNodesetSelector) Select(nsc nodeSetCollection, excludeNodeSets []u
 	if len(nsc) < 1 {
 		switch s.nodeType {
 		case DataNodeType:
-			err = errors.NewError(proto.ErrNoNodeSetToCreateDataPartition)
+			err = proto.ErrNoNodeSetToCreateDataPartition
 		case MetaNodeType:
-			err = errors.NewError(proto.ErrNoNodeSetToCreateMetaPartition)
+			err = proto.ErrNoNodeSetToCreateMetaPartition
 		default:
 			panic("unknow node type")
 		}
