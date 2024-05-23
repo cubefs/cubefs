@@ -193,7 +193,7 @@ func (s *CarryWeightNodeSelector) getCarryDataNodes(maxTotal uint64, excludeHost
 		}
 		if !dataNode.canAllocDp() {
 			log.LogWarnf("[getAvailCarryDataNodeTab] dataNode [%v] writeable(%v), isActive(%v) AvailableSpace(%v) "+
-				"RdOnly(%v) Total(%v) Used(%v) offline(%v), availableDiskCnt(%v) adpCnt(%v) excludeHosts[%v]",
+				"RdOnly(%v) Total(%v) Used(%v) offline(%v), availableDiskCnt(%v) dpCnt(%v) excludeHosts[%v]",
 				dataNode.Addr, dataNode.isWriteAble(), dataNode.isActive, dataNode.AvailableSpace, dataNode.RdOnly,
 				dataNode.Total, dataNode.Used, dataNode.ToBeOffline, dataNode.availableDiskCount(),
 				dataNode.DataPartitionCount, excludeHosts)

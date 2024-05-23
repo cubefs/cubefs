@@ -475,7 +475,7 @@ type DecommissionDataPartitionInfo struct {
 	PartitionId        uint64
 	ReplicaNum         uint8
 	Status             string
-	SpecialStep        uint32
+	SpecialStep        string
 	Retry              int
 	RaftForce          bool
 	Recover            bool
