@@ -1108,7 +1108,7 @@ func GetDecommissionStatusMessage(status uint32) string {
 	case DecommissionNeedManualFix:
 		return "DecommissionNeedManualFix"
 	default:
-		return "Unknown"
+		return fmt.Sprintf("Unkown:%v", status)
 	}
 }
 
@@ -1127,7 +1127,7 @@ func GetDecommissionTypeMessage(status uint32) string {
 	case ManualAddReplica:
 		return "ManualAddReplica"
 	default:
-		return "Unknown"
+		return fmt.Sprintf("Unkown:%v", status)
 	}
 }
 
@@ -1140,7 +1140,7 @@ func GetRestoreReplicaMessage(status uint32) string {
 	case RestoreReplicaMetaForbidden:
 		return "RestoreReplicaMetaForbidden"
 	default:
-		return "Unknown"
+		return fmt.Sprintf("Unkown:%v", status)
 	}
 }
 
@@ -1157,7 +1157,7 @@ func GetSpecialDecommissionStatusMessage(status uint32) string {
 	case SpecialDecommissionRemoveOld:
 		return "SpecialDecommissionRemoveOld"
 	default:
-		return "Unknown"
+		return fmt.Sprintf("Unkown:%v", status)
 	}
 }
 

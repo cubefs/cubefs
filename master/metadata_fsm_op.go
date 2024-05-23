@@ -1741,10 +1741,7 @@ func (c *Cluster) loadDecommissionDiskList() (err error) {
 
 		dd := ddv.Restore()
 		c.DecommissionDisks.Store(dd.GenerateKey(), dd)
-		log.LogInfof("action[loadDecommissionDiskList],decommissionDisk[%v] type %v dst[%v] status[%v] raftForce[%v]"+
-			"dpTotal[%v] term[%v]",
-			dd.GenerateKey(), dd.Type, dd.DstAddr, dd.GetDecommissionStatus(), dd.DecommissionRaftForce,
-			dd.DecommissionDpTotal, dd.DecommissionTerm)
+		log.LogInfof("action[loadDecommissionDiskList]load disk(%v)", dd.decommissionInfo())
 		c.addDecommissionDiskToNodeset(dd)
 	}
 	return
