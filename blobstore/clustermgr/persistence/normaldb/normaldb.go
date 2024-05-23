@@ -19,6 +19,7 @@ import "github.com/cubefs/cubefs/blobstore/common/kvstore"
 var (
 	scopeCF            = "scope"
 	diskCF             = "disk"
+	nodeCF             = "node"
 	configCF           = "config"
 	diskDropCF         = "disk_drop"
 	serviceCF          = "service"
@@ -30,6 +31,7 @@ var (
 	normalDBCfs = []string{
 		scopeCF,
 		diskCF,
+		nodeCF,
 		diskDropCF,
 		configCF,
 		serviceCF,

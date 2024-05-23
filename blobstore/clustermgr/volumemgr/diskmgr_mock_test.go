@@ -69,17 +69,17 @@ func (mr *MockDiskMgrAPIMockRecorder) AllocDiskID(arg0 interface{}) *gomock.Call
 }
 
 // CheckDiskInfoDuplicated mocks base method.
-func (m *MockDiskMgrAPI) CheckDiskInfoDuplicated(arg0 context.Context, arg1 *blobnode.DiskInfo) bool {
+func (m *MockDiskMgrAPI) CheckDiskInfoDuplicated(arg0 context.Context, arg1 *blobnode.DiskInfo, arg2 *blobnode.NodeInfo) bool {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "CheckDiskInfoDuplicated", arg0, arg1)
+	ret := m.ctrl.Call(m, "CheckDiskInfoDuplicated", arg0, arg1, arg2)
 	ret0, _ := ret[0].(bool)
 	return ret0
 }
 
 // CheckDiskInfoDuplicated indicates an expected call of CheckDiskInfoDuplicated.
-func (mr *MockDiskMgrAPIMockRecorder) CheckDiskInfoDuplicated(arg0, arg1 interface{}) *gomock.Call {
+func (mr *MockDiskMgrAPIMockRecorder) CheckDiskInfoDuplicated(arg0, arg1, arg2 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CheckDiskInfoDuplicated", reflect.TypeOf((*MockDiskMgrAPI)(nil).CheckDiskInfoDuplicated), arg0, arg1)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CheckDiskInfoDuplicated", reflect.TypeOf((*MockDiskMgrAPI)(nil).CheckDiskInfoDuplicated), arg0, arg1, arg2)
 }
 
 // GetDiskInfo mocks base method.

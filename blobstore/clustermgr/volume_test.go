@@ -530,6 +530,11 @@ func generateVolume(volumeDBPath, NormalDBPath string) error {
 		return err
 	}
 
+	nodeTable, err := normaldb.OpenNodeTable(normalDB)
+	if err != nil {
+		return err
+	}
+
 	diskTable, err := normaldb.OpenDiskTable(normalDB, true)
 	if err != nil {
 		return err
@@ -539,9 +544,6 @@ func generateVolume(volumeDBPath, NormalDBPath string) error {
 			Version:      normaldb.DiskInfoVersionNormal,
 			DiskID:       proto.DiskID(i),
 			ClusterID:    proto.ClusterID(1),
-			Idc:          "z0",
-			Rack:         "rack1",
-			Host:         "http://127.0.0." + strconv.Itoa(i) + ":80800",
 			Path:         "",
 			Status:       proto.DiskStatusNormal,
 			Readonly:     false,
@@ -553,16 +555,34 @@ func generateVolume(volumeDBPath, NormalDBPath string) error {
 			Free:         100000,
 			MaxChunkCnt:  10,
 			FreeChunkCnt: 10,
+			NodeID:       proto.NodeID(i),
+		}
+		nr := &normaldb.NodeInfoRecord{
+			Version:   normaldb.NodeInfoVersionNormal,
+			ClusterID: proto.ClusterID(1),
+			NodeID:    proto.NodeID(i),
+			Idc:       "z0",
+			Rack:      "rack1",
+			Host:      "http://127.0.0." + strconv.Itoa(i) + ":80800",
+			Role:      proto.NodeRoleBlobNode,
+			Status:    proto.NodeStatusNormal,
 		}
 		if i >= 9 && i < 18 {
 			dr.Idc = "z1"
+			nr.Idc = "z1"
 		} else if i >= 18 {
 			dr.Idc = "z2"
+			nr.Idc = "z2"
 		}
 		err := diskTable.AddDisk(dr)
 		if err != nil {
 			return err
 		}
+		err = nodeTable.UpdateNode(nr)
+		if err != nil {
+			return err
+		}
+
 	}
 
 	return nil

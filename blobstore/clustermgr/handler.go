@@ -56,6 +56,17 @@ func NewHandler(service *Service) *rpc.Router {
 
 	rpc.POST("/admin/disk/update", service.AdminDiskUpdate, rpc.OptArgsBody())
 
+	//=====================node==========================
+	rpc.RegisterArgsParser(&clustermgr.NodeInfoArgs{}, "json")
+
+	rpc.POST("/nodeid/alloc", service.NodeIDAlloc)
+
+	rpc.POST("/node/add", service.NodeAdd, rpc.OptArgsBody())
+
+	rpc.POST("/node/drop", service.NodeDrop, rpc.OptArgsBody())
+
+	rpc.GET("/node/info", service.NodeInfo, rpc.OptArgsQuery())
+
 	//==================service==========================
 	rpc.RegisterArgsParser(&clustermgr.GetServiceArgs{}, "json")
 

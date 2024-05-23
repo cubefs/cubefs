@@ -38,7 +38,11 @@ const (
 	OperTypeHeartbeatDiskInfo
 	OperTypeSwitchReadonly
 	OperTypeAdminUpdateDisk
+	OperTypeAddNode
+	OperTypeDropNode
 )
+
+const synchronizedDiskID = 1
 
 func (d *DiskMgr) LoadData(ctx context.Context) error {
 	diskDBs, err := d.diskTbl.GetAllDisks()
@@ -49,10 +53,36 @@ func (d *DiskMgr) LoadData(ctx context.Context) error {
 	if err != nil {
 		return errors.Info(err, "get dropping disks failed").Detail(err)
 	}
+	nodeDBs, err := d.nodeTbl.GetAllNodes()
+	if err != nil {
+		return errors.Info(err, "get all nodes failed").Detail(err)
+	}
 	droppingDisks := make(map[proto.DiskID]bool)
 	for _, diskID := range droppingDiskDBs {
 		droppingDisks[diskID] = true
 	}
+
+	allNodes := make(map[proto.NodeID]*nodeItem)
+	curNodeSetID := map[proto.NodeRole]proto.NodeSetID{proto.NodeRoleBlobNode: ECNodeSetID}
+	curDiskSetID := map[proto.NodeRole]proto.DiskSetID{proto.NodeRoleBlobNode: ECDiskSetID}
+	for _, node := range nodeDBs {
+		info := nodeInfoRecordToNodeInfo(node)
+		ni := &nodeItem{
+			nodeID: info.NodeID,
+			info:   info,
+			disks:  make(map[proto.DiskID]*blobnode.DiskInfo),
+		}
+		allNodes[info.NodeID] = ni
+		// filter dropped node, do not add into cluster topology and host path filter
+		if ni.isUsingStatus() {
+			d.topoMgrs[info.Role].AddNodeToNodeSet(ni)
+			d.hostPathFilter.Store(ni.genFilterKey(), 1)
+		}
+		if info.NodeSetID >= curNodeSetID[info.Role] {
+			curNodeSetID[info.Role] = info.NodeSetID
+		}
+	}
+	d.allNodes = allNodes
 
 	allDisks := make(map[proto.DiskID]*diskItem)
 	for _, disk := range diskDBs {
@@ -71,8 +101,24 @@ func (d *DiskMgr) LoadData(ctx context.Context) error {
 		if di.needFilter() {
 			d.hostPathFilter.Store(di.genFilterKey(), 1)
 		}
+		ni, ok := d.getNode(info.NodeID)
+		if ok { // compatible case
+			d.topoMgrs[ni.info.Role].AddDiskToDiskSet(ni.info.DiskType, ni.info.NodeSetID, di)
+			ni.disks[info.DiskID] = info
+		}
+		if info.DiskSetID >= curDiskSetID[ni.info.Role] {
+			curDiskSetID[ni.info.Role] = info.DiskSetID
+		}
 	}
+
 	d.allDisks = allDisks
+	for role := range curNodeSetID {
+		d.topoMgrs[role].SetNodeSetID(curNodeSetID[role])
+	}
+	for role := range curDiskSetID {
+		d.topoMgrs[role].SetDiskSetID(curDiskSetID[role])
+	}
+
 	return nil
 }
 
@@ -117,10 +163,11 @@ func (d *DiskMgr) Apply(ctx context.Context, operTypes []int32, datas [][]byte, 
 				wg.Done()
 				continue
 			}
-			d.taskPool.Run(d.getTaskIdx(diskInfo.DiskID), func() {
+			d.taskPool.Run(synchronizedDiskID, func() {
+				// add node run on fixed goroutine synchronously
+				err = d.addDisk(taskCtx, diskInfo)
 				// don't return error if disk already exist
-				err = d.addDisk(taskCtx, *diskInfo)
-				if err != nil && err != ErrDiskExist {
+				if err != nil && !errors.Is(err, ErrDiskExist) {
 					errs[idx] = err
 				}
 				wg.Done()
@@ -196,6 +243,39 @@ func (d *DiskMgr) Apply(ctx context.Context, operTypes []int32, datas [][]byte, 
 			}
 			d.taskPool.Run(d.getTaskIdx(args.DiskID), func() {
 				errs[idx] = d.adminUpdateDisk(ctx, args)
+				wg.Done()
+			})
+		case OperTypeAddNode:
+			args := &blobnode.NodeInfo{}
+			err := json.Unmarshal(datas[idx], args)
+			if err != nil {
+				errs[idx] = errors.Info(err, t, datas[idx]).Detail(err)
+				wg.Done()
+				continue
+			}
+			// add node run on fixed goroutine synchronously
+			d.taskPool.Run(d.getTaskIdx(synchronizedDiskID), func() {
+				err = d.addNode(taskCtx, args)
+				// don't return error if node already exist
+				if err != nil && !errors.Is(err, ErrNodeExist) {
+					errs[idx] = err
+				}
+				wg.Done()
+			})
+		case OperTypeDropNode:
+			args := &clustermgr.NodeInfoArgs{}
+			err := json.Unmarshal(datas[idx], args)
+			if err != nil {
+				errs[idx] = errors.Info(err, t, datas[idx]).Detail(err)
+				wg.Done()
+				continue
+			}
+			// drop node run on fixed goroutine synchronously
+			d.taskPool.Run(d.getTaskIdx(synchronizedDiskID), func() {
+				err = d.dropNode(taskCtx, args)
+				if err != nil {
+					errs[idx] = err
+				}
 				wg.Done()
 			})
 		default:
