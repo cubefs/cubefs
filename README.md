@@ -43,7 +43,7 @@ Some key features of CubeFS include:
 - Flexible storage policies, high-performance replication or low-cost erasure coding
 
 
-<div width="100%" style="text-align:center;"><img alt="CubeFS Architecture" src="https://raw.githubusercontent.com/cubefs/cubefs/master/docs/source/pic/cfs-arch-ec.png"/></div>
+<div width="100%" style="text-align:center;"><img alt="CubeFS Architecture" src="https://raw.githubusercontent.com/cubefs/cubefs/master/docs/source/overview/pic/cfs-arch-ec.png"/></div>
 
 ## Documents
 
