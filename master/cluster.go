@@ -4530,7 +4530,6 @@ func (c *Cluster) TryDecommissionDisk(disk *DecommissionDisk) {
 	defer func() {
 		if err != nil {
 			disk.DecommissionRetry++
-			auditlog.LogMasterOp("DiskDecommission", rstMsg, err)
 		}
 		auditlog.LogMasterOp("DiskDecommission", rstMsg, err)
 		c.syncUpdateDecommissionDisk(disk)

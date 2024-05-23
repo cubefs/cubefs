@@ -1168,23 +1168,6 @@ func GetSpecialDecommissionStatusMessage(status uint32) string {
 	}
 }
 
-func GetSpecialDecommissionStatusMessage(status uint32) string {
-	switch status {
-	case SpecialDecommissionInitial:
-		return "SpecialDecommissionInitial"
-	case SpecialDecommissionEnter:
-		return "SpecialDecommissionEnter"
-	case SpecialDecommissionWaitAddRes:
-		return "SpecialDecommissionWaitAddRes"
-	case SpecialDecommissionWaitAddResFin:
-		return "SpecialDecommissionWaitAddResFin"
-	case SpecialDecommissionRemoveOld:
-		return "SpecialDecommissionRemoveOld"
-	default:
-		return "Unknown"
-	}
-}
-
 func (partition *DataPartition) MarkDecommissionStatus(srcAddr, dstAddr, srcDisk string, raftForce bool, term uint64,
 	migrateType uint32, c *Cluster, ns *nodeSet) (err error) {
 	defer func() {
