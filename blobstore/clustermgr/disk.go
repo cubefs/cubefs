@@ -35,7 +35,7 @@ func (s *Service) DiskIdAlloc(c *rpc.Context) {
 	span.Info("accept DiskIdAlloc request")
 	diskID, err := s.DiskMgr.AllocDiskID(ctx)
 	if err != nil {
-		span.Errorf("alloc disk id failed =>", errors.Detail(err))
+		span.Error("alloc disk id failed =>", errors.Detail(err))
 		c.RespondError(err)
 		return
 	}
@@ -52,35 +52,37 @@ func (s *Service) DiskAdd(c *rpc.Context) {
 	}
 	span.Infof("accept DiskAdd request, args: %v", args)
 
-	info, err := s.DiskMgr.GetDiskInfo(ctx, args.DiskID)
-	if info != nil && err == nil {
+	diskInfo, err := s.DiskMgr.GetDiskInfo(ctx, args.DiskID)
+	if diskInfo != nil && err == nil {
 		span.Warnf("disk already exist, no need to create again, disk info: %v", args)
 		c.RespondError(apierrors.ErrExist)
 		return
 	}
-	if s.DiskMgr.CheckDiskInfoDuplicated(ctx, args) {
-		span.Warnf("disk host and path duplicated")
+	nodeInfo, err := s.DiskMgr.GetNodeInfo(ctx, args.NodeID)
+	if err != nil {
+		span.Warnf("nodeID not exist, disk info: %v", args)
+		c.RespondError(apierrors.ErrCMNodeNotFound)
+		return
+	}
+	if s.DiskMgr.CheckDiskInfoDuplicated(ctx, args, nodeInfo) {
+		span.Warn("disk host and path duplicated")
 		c.RespondError(apierrors.ErrIllegalArguments)
 		return
 	}
 	if args.ClusterID != s.ClusterID {
-		span.Warnf("invalid clusterID")
+		span.Warn("invalid clusterID")
 		c.RespondError(apierrors.ErrIllegalArguments)
 		return
 	}
-	for i := range s.IDC {
-		if args.Idc == s.IDC[i] {
-			break
-		}
-		if i == len(s.IDC)-1 {
-			span.Warnf("invalid idc %s, service idc: %v", args.Idc, s.IDC)
-			c.RespondError(apierrors.ErrIllegalArguments)
-			return
-		}
+	curDiskID := s.ScopeMgr.GetCurrent(diskmgr.DiskIDScopeName)
+	if proto.DiskID(curDiskID) < args.DiskID {
+		span.Warn("invalid disk_id")
+		c.RespondError(apierrors.ErrIllegalArguments)
+		return
 	}
-	current := s.ScopeMgr.GetCurrent(diskmgr.DiskIDScopeName)
-	if proto.DiskID(current) < args.DiskID {
-		span.Warnf("invalid disk_id")
+	curNodeID := s.ScopeMgr.GetCurrent(diskmgr.NodeIDScopeName)
+	if proto.NodeID(curNodeID) < args.NodeID {
+		span.Warn("invalid node_id")
 		c.RespondError(apierrors.ErrIllegalArguments)
 		return
 	}
@@ -298,7 +300,7 @@ func (s *Service) DiskDropped(c *rpc.Context) {
 		return
 	}
 
-	// 2. check if disk's chunk has been remove
+	// 2. check if disk's chunk has been removed
 	volumeUnits, err := s.VolumeMgr.ListVolumeUnitInfo(ctx, &clustermgr.ListVolumeUnitArgs{DiskID: args.DiskID})
 	if err != nil {
 		c.RespondError(err)

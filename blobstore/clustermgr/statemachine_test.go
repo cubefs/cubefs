@@ -57,6 +57,7 @@ func TestStateMachine(t *testing.T) {
 	testServiceCfg.RaftConfig.ServerConfig.ListenPort = oldPort
 	testServiceCfg.RaftConfig.ServerConfig.Members = oldMembers
 
+	insertNodeInfos(t, srcClusterClient, 0, 0, "z0")
 	insertDiskInfos(t, srcClusterClient, 1, 10, "z0")
 
 	// test snapshot

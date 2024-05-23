@@ -33,6 +33,7 @@ func TestApplier_Others(t *testing.T) {
 	testDiskMgr, closeTestDiskMgr := initTestDiskMgr(t)
 	defer closeTestDiskMgr()
 	_, ctx := trace.StartSpanFromContext(context.Background(), "")
+	initTestDiskMgrNodes(t, testDiskMgr, 0, 0, testIdcs...)
 	initTestDiskMgrDisks(t, testDiskMgr, 1, 10, testIdcs...)
 
 	// test module and others
@@ -76,6 +77,16 @@ var testDiskInfo = blobnode.DiskInfo{
 	Rack:      "testrack",
 	Status:    proto.DiskStatusNormal,
 	Readonly:  false,
+	NodeID:    proto.NodeID(1),
+}
+
+var testNodeInfo = blobnode.NodeInfo{
+	ClusterID: proto.ClusterID(1),
+	Idc:       "z0",
+	Rack:      "testrack",
+	Status:    proto.NodeStatusNormal,
+	NodeID:    proto.NodeID(1),
+	Role:      proto.NodeRoleBlobNode,
 }
 
 func TestApplier_Apply(t *testing.T) {
@@ -85,6 +96,17 @@ func TestApplier_Apply(t *testing.T) {
 
 	operTypes := make([]int32, 0)
 	datas := make([][]byte, 0)
+
+	// OperTypeAddNode
+	{
+		info := testNodeInfo
+		info.Host = hostPrefix + strconv.Itoa(1)
+
+		operTypes = append(operTypes, OperTypeAddNode)
+		data, err := json.Marshal(&info)
+		require.NoError(t, err)
+		datas = append(datas, data)
+	}
 
 	// OperTypeAddDisk
 	{
@@ -99,6 +121,15 @@ func TestApplier_Apply(t *testing.T) {
 			datas = append(datas, data)
 		}
 	}
+
+	ctxs := make([]base.ProposeContext, 0)
+	for i := 0; i < len(operTypes); i++ {
+		ctxs = append(ctxs, base.ProposeContext{ReqID: span.TraceID()})
+	}
+
+	// apply add node and disk firstly, as synchronously
+	err := testDiskMgr.Apply(ctx, operTypes, datas, ctxs)
+	require.NoError(t, err)
 
 	// OperTypeSetDiskStatus
 	{
@@ -150,11 +181,11 @@ func TestApplier_Apply(t *testing.T) {
 		datas = append(datas, data)
 	}
 
-	ctxs := make([]base.ProposeContext, 0)
+	ctxs = make([]base.ProposeContext, 0)
 	for i := 0; i < len(operTypes); i++ {
 		ctxs = append(ctxs, base.ProposeContext{ReqID: span.TraceID()})
 	}
 
-	err := testDiskMgr.Apply(ctx, operTypes, datas, ctxs)
+	err = testDiskMgr.Apply(ctx, operTypes, datas, ctxs)
 	require.NoError(t, err)
 }

@@ -39,6 +39,13 @@ var testDiskInfo = blobnode.DiskInfo{
 	Readonly:  false,
 }
 
+var testNodeInfo = blobnode.NodeInfo{
+	ClusterID: proto.ClusterID(1),
+	Idc:       "z0",
+	Status:    proto.NodeStatusNormal,
+	DiskType:  proto.DiskTypeHDD,
+}
+
 func insertDiskInfos(t *testing.T, client *clustermgr.Client, start, end int, idcs ...string) {
 	ctx := newCtx()
 	for idx, idc := range idcs {
@@ -47,11 +54,29 @@ func insertDiskInfos(t *testing.T, client *clustermgr.Client, start, end int, id
 			require.NoError(t, err)
 			testDiskInfo.DiskID = proto.DiskID(idx*10000 + i)
 			hostID := i / 60
+			testDiskInfo.NodeID = proto.NodeID(idx*10000 + hostID)
 			testDiskInfo.Rack = "testrack-" + strconv.Itoa(hostID)
 			testDiskInfo.Host = idc + "testhost-" + strconv.Itoa(hostID)
 			testDiskInfo.Idc = idc
 			testDiskInfo.Path = "testpath-" + testDiskInfo.DiskID.ToString()
 			err = client.AddDisk(ctx, &testDiskInfo)
+			require.NoError(t, err)
+		}
+	}
+}
+
+func insertNodeInfos(t *testing.T, client *clustermgr.Client, start, end int, idcs ...string) {
+	ctx := newCtx()
+	for idx, idc := range idcs {
+		for i := start; i <= end; i++ {
+			_, err := client.AllocNodeID(ctx)
+			require.NoError(t, err)
+			testNodeInfo.NodeID = proto.NodeID(idx*10000 + i)
+			testNodeInfo.Rack = "testrack-" + strconv.Itoa(i)
+			testNodeInfo.Host = idc + "testhost-" + strconv.Itoa(i)
+			testNodeInfo.Idc = idc
+			testNodeInfo.DiskType = proto.DiskTypeHDD
+			err = client.AddNode(ctx, &testNodeInfo)
 			require.NoError(t, err)
 		}
 	}
@@ -74,6 +99,7 @@ func TestDisk(t *testing.T) {
 
 	// test disk add/set disk
 	{
+		insertNodeInfos(t, testClusterClient, 0, 0, testService.IDC[0])
 		insertDiskInfos(t, testClusterClient, 1, 10, testService.IDC[0])
 		disk1, err := testClusterClient.DiskInfo(ctx, 1)
 		require.NoError(t, err)

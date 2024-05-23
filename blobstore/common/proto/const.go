@@ -77,6 +77,19 @@ const (
 	DiskTypeNVMeSSD                      // 3
 )
 
+func (t DiskType) String() string {
+	switch t {
+	case DiskTypeHDD:
+		return "hdd"
+	case DiskTypeSATASSD:
+		return "satassd"
+	case DiskTypeNVMeSSD:
+		return "nvmessd"
+	default:
+		return "unknown"
+	}
+}
+
 // node role
 const (
 	NodeRoleBlobNode = NodeRole(iota + 1)

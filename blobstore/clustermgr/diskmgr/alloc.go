@@ -29,6 +29,18 @@ const (
 
 var defaultAllocTolerateBuff int64 = 50
 
+type diskSetStorage struct {
+	diskSetID   proto.DiskSetID
+	freeChunk   int64
+	idcStorages map[string]*idcStorage
+}
+
+type nodeSetStorage struct {
+	nodeSetID proto.NodeSetID
+	freeChunk int64
+	diskSets  map[proto.DiskSetID]*diskSetStorage
+}
+
 // idcStorage represent an idc allocator
 type idcStorage struct {
 	idc string
