@@ -2038,7 +2038,7 @@ func (m *Server) queryDataPartitionDecommissionStatus(w http.ResponseWriter, r *
 		PartitionId:        partitionID,
 		ReplicaNum:         dp.ReplicaNum,
 		Status:             GetDecommissionStatusMessage(dp.GetDecommissionStatus()),
-		SpecialStep:        dp.GetSpecialReplicaDecommissionStep(),
+		SpecialStep:        GetSpecialDecommissionStatusMessage(dp.GetSpecialReplicaDecommissionStep()),
 		Retry:              dp.DecommissionRetry,
 		RaftForce:          dp.DecommissionRaftForce,
 		Recover:            dp.isRecover,
