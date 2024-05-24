@@ -644,7 +644,7 @@ func (api *AdminAPI) DiskDetail(addr string, diskPath string) (disk *proto.DiskI
 
 func (api *AdminAPI) DecommissionDisk(addr string, disk string) (err error) {
 	return api.mc.request(newRequest(post, proto.DecommissionDisk).Header(api.h).
-		addParam("addr", addr).addParam("disk", disk))
+		addParam("addr", addr).addParam("disk", disk).addParam("decommissionType", "1"))
 }
 
 func (api *AdminAPI) RecommissionDisk(addr string, disk string) (err error) {
