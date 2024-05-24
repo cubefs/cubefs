@@ -280,7 +280,9 @@ func (partition *DataPartition) createTaskToCreateDataPartition(addr string, dat
 ) {
 	leaderSize := 0
 	if createType == proto.DecommissionedCreateDataPartition {
+		partition.RLock()
 		leaderSize = int(partition.Replicas[0].Used)
+		partition.RUnlock()
 	}
 
 	task = proto.NewAdminTask(proto.OpCreateDataPartition, addr, newCreateDataPartitionRequest(
@@ -385,8 +387,9 @@ func (partition *DataPartition) deleteReplicaByIndex(index int) {
 	msg := fmt.Sprintf("deleteReplicaByIndex dp %v  index:%v  locations :%v ", partition.PartitionID, index, replicaAddrs)
 	log.LogInfo(msg)
 	replicasAfter := partition.Replicas[index+1:]
-	partition.Replicas = partition.Replicas[:index]
-	partition.Replicas = append(partition.Replicas, replicasAfter...)
+	tmp := partition.Replicas[:index]
+	tmp = append(tmp, replicasAfter...)
+	partition.Replicas = tmp
 }
 
 func (partition *DataPartition) createLoadTasks() (tasks []*proto.AdminTask) {
@@ -838,100 +841,6 @@ func (partition *DataPartition) activeUsedSimilar() bool {
 	}
 
 	return minus < util.GB
-}
-
-func (partition *DataPartition) getToBeDecommissionHost(replicaNum int) (host string) {
-	partition.RLock()
-	defer partition.RUnlock()
-	// if decommission happened, remove DecommissionDstAddr
-	if partition.IsRollbackFailed() {
-		if partition.isSpecialReplicaCnt() {
-			// if new replica is created, but decommission is failed for target data node is down. roll back is failed
-			// at this time. when data node is recover, new created replica can still do repair work
-			host = partition.DecommissionDstAddr
-			if host == "" {
-				log.LogInfof("action[getToBeDecommissionHost]  partition %v cannot find decommission dst",
-					partition.PartitionID)
-			}
-			hostLen := len(partition.Hosts)
-			if hostLen <= 1 || hostLen <= replicaNum {
-				return
-			}
-			host = partition.Hosts[hostLen-1]
-		} else {
-			// if rollback is failed
-			log.LogInfof("action[getToBeDecommissionHost]  partition %v need to decommission %v",
-				partition.PartitionID, partition.DecommissionDstAddr)
-			host = partition.DecommissionDstAddr
-		}
-		return
-	}
-	// remove the last host if decommission status is DecommissionInitial
-	if partition.IsDecommissionInitial() {
-		hostLen := len(partition.Hosts)
-		if hostLen <= 1 || hostLen <= replicaNum {
-			return
-		}
-		host = partition.Hosts[hostLen-1]
-	}
-	// if decommission is running, return ""
-	return
-}
-
-func (partition *DataPartition) removeOneReplicaByHost(c *Cluster, host string) (err error) {
-	if err = c.removeDataReplica(partition, host, false, false); err != nil {
-		return
-	}
-
-	partition.RLock()
-	defer partition.RUnlock()
-
-	if partition.IsRollbackFailed() {
-		partition.DecommissionDstAddr = ""
-		c.syncUpdateDataPartition(partition)
-		log.LogWarnf("action[removeOneReplicaByHost]  partition %v reset DecommissionDstAddr", partition.PartitionID)
-		return
-	}
-	// oldReplicaNum := partition.ReplicaNum
-	// partition.ReplicaNum = partition.ReplicaNum - 1
-	//
-	// if err = c.syncUpdateDataPartition(partition); err != nil {
-	//	partition.ReplicaNum = oldReplicaNum
-	// }
-
-	return
-}
-
-func (partition *DataPartition) getNodeSets() (nodeSets []uint64) {
-	partition.RLock()
-	defer partition.RUnlock()
-	nodeSetMap := map[uint64]struct{}{}
-	for _, replica := range partition.Replicas {
-		if replica.dataNode == nil {
-			continue
-		}
-		nodeSetMap[replica.dataNode.NodeSetID] = struct{}{}
-	}
-	for nodeSet := range nodeSetMap {
-		nodeSets = append(nodeSets, nodeSet)
-	}
-	return
-}
-
-func (partition *DataPartition) getZones() (zones []string) {
-	partition.RLock()
-	defer partition.RUnlock()
-	zoneMap := map[string]struct{}{}
-	for _, replica := range partition.Replicas {
-		if replica.dataNode == nil {
-			continue
-		}
-		zoneMap[replica.dataNode.ZoneName] = struct{}{}
-	}
-	for zone := range zoneMap {
-		zones = append(zones, zone)
-	}
-	return
 }
 
 func (partition *DataPartition) getLiveZones(offlineAddr string) (zones []string) {
@@ -1735,7 +1644,7 @@ func (partition *DataPartition) TryAcquireDecommissionToken(c *Cluster) bool {
 	begin := time.Now()
 	defer func() {
 		log.LogDebugf("action[TryAcquireDecommissionToken] dp %v get token to %v consume(%v) err(%v) result(%v)",
-			partition.decommissionInfo(), partition.DecommissionDstAddr, time.Now().Sub(begin).String(), err, result)
+			partition.decommissionInfo(), partition.DecommissionDstAddr, time.Since(begin).String(), err, result)
 	}()
 
 	// the first time for dst addr not specify
@@ -2190,10 +2099,6 @@ func (partition *DataPartition) isPerformingDecommission(c *Cluster) bool {
 		return false
 	}
 	return ns.decommissionDataPartitionList.hasDecommissionToken(partition.PartitionID)
-}
-
-func (partition *DataPartition) isPerformingRestoreReplica() bool {
-	return atomic.LoadUint32(&partition.RestoreReplica) == RestoreReplicaMetaRunning
 }
 
 func (partition *DataPartition) setRestoreReplicaStatus(status uint32) {

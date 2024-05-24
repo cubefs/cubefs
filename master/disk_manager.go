@@ -83,14 +83,14 @@ func (c *Cluster) checkDiskRecoveryProgress() {
 				log.LogWarnf("[checkDiskRecoveryProgress] dp(%v) is discard, decommission successfully", partition.PartitionID)
 				continue
 			}
-			//if len(partition.Replicas) == 0 ||
+			// if len(partition.Replicas) == 0 ||
 			//	(!partition.isSpecialReplicaCnt() && len(partition.Replicas) < int(partition.ReplicaNum)) ||
 			//	(partition.isSpecialReplicaCnt() && len(partition.Replicas) > int(partition.ReplicaNum)) {
 			//	newBadDpIds = append(newBadDpIds, partitionID)
 			//	log.LogInfof("action[checkDiskRecoveryProgress] dp %v newBadDpIds [%v] replics %v conf replics num %v",
 			//		partition.PartitionID, newBadDpIds, len(partition.Replicas), int(partition.ReplicaNum))
 			//	continue
-			//}
+			// }
 
 			newReplica, _ := partition.getReplica(partition.DecommissionDstAddr)
 			if newReplica == nil {
@@ -172,7 +172,6 @@ func (c *Cluster) checkDiskRecoveryProgress() {
 					err = c.syncUpdateDataPartition(partition)
 					if err != nil {
 						log.LogErrorf("[checkDiskRecoveryProgress] update dp(%v) fail, err(%v)", partitionID, err)
-						err = nil
 					}
 					partition.RUnlock()
 					continue

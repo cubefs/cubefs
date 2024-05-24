@@ -30,12 +30,12 @@
 //	}
 //
 //	func main() {
-//	 	ph := profile.NewProfileHandler("127.0.0.1:8888")
+//	 	ph := profile.NewProfileHandler("192.0.2.1:8888")
 //			httpServer := &http.Server{
-//				Addr:    "127.0.0.1:8888",
+//				Addr:    "192.0.2.1:8888",
 //				Handler: rpc.MiddlewareHandlerWith(rpc.DefaultRouter, ph),
 //			}
-//			log.Info("Server is running at", "127.0.0.1:8888")
+//			log.Info("Server is running at", "192.0.2.1:8888")
 //			go func() {
 //				err = httpServer.ListenAndServe()
 //				require.NoError(t, err)
