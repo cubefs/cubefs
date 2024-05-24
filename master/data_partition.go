@@ -288,7 +288,9 @@ func (partition *DataPartition) createTaskToCreateDataPartition(addr string, dat
 ) {
 	leaderSize := 0
 	if createType == proto.DecommissionedCreateDataPartition {
+		partition.RLock()
 		leaderSize = int(partition.Replicas[0].Used)
+		partition.RUnlock()
 	}
 
 	task = proto.NewAdminTask(proto.OpCreateDataPartition, addr, newCreateDataPartitionRequest(
@@ -410,8 +412,9 @@ func (partition *DataPartition) deleteReplicaByIndex(index int) {
 	msg := fmt.Sprintf("deleteReplicaByIndex dp %v  index:%v  locations :%v ", partition.PartitionID, index, replicaAddrs)
 	log.LogInfo(msg)
 	replicasAfter := partition.Replicas[index+1:]
-	partition.Replicas = partition.Replicas[:index]
-	partition.Replicas = append(partition.Replicas, replicasAfter...)
+	tmp := partition.Replicas[:index]
+	tmp = append(tmp, replicasAfter...)
+	partition.Replicas = tmp
 }
 
 func (partition *DataPartition) createLoadTasks() (tasks []*proto.AdminTask) {
