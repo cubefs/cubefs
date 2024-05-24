@@ -37,7 +37,7 @@ const (
 
 var (
 	RdmaEnvInit = false
-	Config      = &rdma.RdmaPoolConfig{}
+	Config      = &rdma.RdmaEnvConfig{}
 )
 
 func InitRdmaEnv() {

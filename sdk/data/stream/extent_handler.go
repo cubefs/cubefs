@@ -249,12 +249,13 @@ func (eh *ExtentHandler) sender() {
 			packet.ExtentOffset = int64(extOffset)
 
 			if IsRdma {
-				packet.Arg = ([]byte)(eh.dp.GetAllRdmaAddrs())
+				allRdmaAddrs := ([]byte)(eh.dp.GetAllRdmaAddrs())
+				copy(packet.Arg, allRdmaAddrs)
+				packet.ArgLen = uint32(len(allRdmaAddrs))
 			} else {
 				packet.Arg = ([]byte)(eh.dp.GetAllAddrs())
+				packet.ArgLen = uint32(len(packet.Arg))
 			}
-
-			packet.ArgLen = uint32(len(packet.Arg))
 
 			packet.RemainingFollowers = uint8(len(eh.dp.Hosts) - 1)
 			if len(eh.dp.Hosts) == 1 {
@@ -341,7 +342,7 @@ func (eh *ExtentHandler) processReply(packet *Packet) {
 	reply := NewReply(packet.ReqID, packet.PartitionID, packet.ExtentID)
 	var err error
 	if IsRdma {
-		err = reply.RecvRespFromRDMAConn(eh.rdmaConn, proto.ReadDeadlineTime)
+		err = reply.ReadFromRDMAConn(eh.rdmaConn, proto.ReadDeadlineTime)
 		log.LogDebugf("rdma conn recv reply: %v, err: %v", reply, err)
 		log.LogDebugf("rdma conn recv reply end: time[%v]\",time.Now()")
 	} else {
@@ -402,7 +403,7 @@ func (eh *ExtentHandler) processReply(packet *Packet) {
 	}
 
 	if IsRdma {
-		rdma.ReleaseDataBuffer(packet.Data)
+		rdma.ReleaseDataBuffer(eh.rdmaConn, packet.RdmaBuffer, util.RdmaPacketHeaderSize+packet.Size)
 	} else {
 		proto.Buffers.Put(packet.Data)
 	}
