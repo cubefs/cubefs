@@ -4562,7 +4562,7 @@ func (c *Cluster) TryDecommissionDisk(disk *DecommissionDisk) {
 			} else {
 				// mark as failed and set decommission src, make sure it can be included in the calculation of progress
 				dp.DecommissionSrcAddr = node.Addr
-				dp.DecommissionSrcDiskPath = disk.DstAddr
+				dp.DecommissionSrcDiskPath = disk.DiskPath
 				if strings.Contains(err.Error(), proto.ErrAllReplicaUnavailable.Error()) {
 					dp.DecommissionNeedRollbackTimes = defaultDecommissionRollbackLimit
 					dp.DecommissionNeedRollback = false
@@ -4572,6 +4572,8 @@ func (c *Cluster) TryDecommissionDisk(disk *DecommissionDisk) {
 					dp.DecommissionErrorMessage = err.Error()
 				}
 				dp.DecommissionTerm = disk.DecommissionTerm
+				log.LogWarnf("action[TryDecommissionDisk] disk(%v) set dp(%v) DecommissionTerm %v",
+					disk.decommissionInfo(), dp.PartitionID, disk.DecommissionTerm)
 			}
 		} else {
 			ns.AddToDecommissionDataPartitionList(dp, c)
