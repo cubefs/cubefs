@@ -305,8 +305,10 @@ func (e *Extent) RestoreFromFS() (err error) {
 
 	e.dataSize = e.GetDataSize(info.Size())
 	e.snapshotDataOff = util.ExtentSize
-	if info.Size() > util.ExtentSize {
-		e.snapshotDataOff = uint64(info.Size())
+	if !IsTinyExtent(e.extentID) {
+		if info.Size() > util.ExtentSize {
+			e.snapshotDataOff = uint64(info.Size())
+		}
 	}
 
 	atomic.StoreInt64(&e.modifyTime, info.ModTime().Unix())
