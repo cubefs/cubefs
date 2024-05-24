@@ -410,8 +410,10 @@ func (s *ExtentStore) GetExtentInfoFromDisk(id uint64) (ei *ExtentInfo, err erro
 			ei.Size = watermark
 		}
 		// NOTE: init snapshot offset
-		if stat.Size() > int64(ei.SnapshotDataOff) {
-			ei.SnapshotDataOff = uint64(stat.Size())
+		if !IsTinyExtent(id) {
+			if stat.Size() > int64(ei.SnapshotDataOff) {
+				ei.SnapshotDataOff = uint64(stat.Size())
+			}
 		}
 		return
 	}
