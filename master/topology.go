@@ -1106,7 +1106,7 @@ func (ns *nodeSet) AddDecommissionDisk(dd *DecommissionDisk) {
 	} else {
 		ns.addAutoDecommissionDisk(dd)
 	}
-	log.LogInfof("action[AddDecommissionDisk] add disk %v type %v to  ns %v", dd.GenerateKey(), dd.Type, ns.ID)
+	log.LogInfof("action[AddDecommissionDisk] add disk %v  to  ns %v", dd.decommissionInfo(), ns.ID)
 }
 
 func (ns *nodeSet) RemoveDecommissionDisk(dd *DecommissionDisk) {
@@ -2240,8 +2240,8 @@ func (l *DecommissionDiskList) Put(nsId uint64, value *DecommissionDisk) {
 	elm := l.decommissionList.PushBack(value)
 	l.cacheMap[value.GenerateKey()] = elm
 
-	log.LogDebugf("action[DecommissionDataPartitionListPut] ns[%v] add disk[%v] status[%v] type[%v]",
-		nsId, value.GenerateKey(), value.GetDecommissionStatus(), value.Type)
+	log.LogDebugf("action[DecommissionDataPartitionListPut] ns[%v] add disk[%v]",
+		nsId, value.decommissionInfo())
 }
 
 func (l *DecommissionDiskList) Remove(nsId uint64, value *DecommissionDisk) {

@@ -502,7 +502,8 @@ func (dd *DecommissionDisk) CanBePaused() bool {
 }
 
 func (dd *DecommissionDisk) decommissionInfo() string {
-	return fmt.Sprintf("disk(%v_%v)_dst(%v)_total(%v)_term(%v)_type(%v)_force(%v)_retry(%v)",
+	return fmt.Sprintf("disk(%v_%v)_dst(%v)_total(%v)_term(%v)_type(%v)_force(%v)_retry(%v)_status(%v)",
 		dd.SrcAddr, dd.DiskPath, dd.DstAddr, dd.DecommissionDpTotal, dd.DecommissionTerm,
-		GetDecommissionTypeMessage(dd.Type), dd.DecommissionRaftForce, dd.DecommissionRetry)
+		GetDecommissionTypeMessage(dd.Type), dd.DecommissionRaftForce, dd.DecommissionRetry,
+		GetDecommissionStatusMessage(dd.DecommissionStatus))
 }
