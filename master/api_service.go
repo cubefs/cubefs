@@ -5547,6 +5547,7 @@ func (m *Server) queryDecommissionToken(w http.ResponseWriter, r *http.Request) 
 				NodesetID:   s.ID,
 				CurTokenNum: s.CurTokenNum,
 				MaxTokenNum: s.MaxTokenNum,
+				RunningDp:   s.RunningDp,
 			})
 		}
 	}
