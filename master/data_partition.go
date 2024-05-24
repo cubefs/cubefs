@@ -1107,6 +1107,8 @@ func GetDecommissionStatusMessage(status uint32) string {
 		return "Failed"
 	case DecommissionNeedManualFix:
 		return "DecommissionNeedManualFix"
+	case DecommissionPrepare:
+		return "DecommissionPrepare"
 	default:
 		return fmt.Sprintf("Unkown:%v", status)
 	}
