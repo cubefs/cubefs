@@ -715,38 +715,6 @@ func (vol *Vol) isOkUpdateRepCnt() (ok bool, rsp []uint64) {
 	return ok, rsp
 }
 
-func (vol *Vol) checkReplicaNum(c *Cluster) {
-	if !vol.NeedToLowerReplica {
-		return
-	}
-	var err error
-	if proto.IsCold(vol.VolType) {
-		return
-	}
-
-	dps := vol.cloneDataPartitionMap()
-	cnt := 0
-	for _, dp := range dps {
-		host := dp.getToBeDecommissionHost(int(vol.dpReplicaNum))
-		if host == "" {
-			continue
-		}
-		if err = dp.removeOneReplicaByHost(c, host); err != nil {
-			if dp.isSpecialReplicaCnt() && len(dp.Hosts) > 1 {
-				log.LogWarnf("action[checkReplicaNum] removeOneReplicaByHost host [%v],vol[%v],err[%v]", host, vol.Name, err)
-				continue
-			}
-			log.LogErrorf("action[checkReplicaNum] removeOneReplicaByHost host [%v],vol[%v],err[%v]", host, vol.Name, err)
-			continue
-		}
-		cnt++
-		if cnt > 100 {
-			return
-		}
-	}
-	vol.NeedToLowerReplica = false
-}
-
 func (vol *Vol) checkMetaPartitions(c *Cluster) {
 	var tasks []*proto.AdminTask
 	metaPartitionInodeIdStep := gConfig.MetaPartitionInodeIdStep
