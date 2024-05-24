@@ -19,6 +19,7 @@ import (
 	"math/rand"
 	"sync/atomic"
 
+	"github.com/cubefs/cubefs/blobstore/common/codemode"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
 )
@@ -29,40 +30,259 @@ const (
 
 var defaultAllocTolerateBuff int64 = 50
 
-type diskSetStorage struct {
-	diskSetID   proto.DiskSetID
-	freeChunk   int64
-	idcStorages map[string]*idcStorage
+type clusterInfoGetter interface {
+	getNode(nodeID proto.NodeID) (node *nodeItem, exist bool)
+	getDisk(diskID proto.DiskID) (disk *diskItem, exist bool)
 }
 
-type nodeSetStorage struct {
+type topoInfoGetter interface {
+	getNodeNum(diskType proto.DiskType, id proto.NodeSetID) int
+}
+
+type nodeSetAllocatorMap map[proto.NodeSetID]*nodeSetAllocator
+
+type allocatorConfig struct {
+	nodeSets map[proto.DiskType]nodeSetAllocatorMap
+	diskSets map[proto.DiskSetID]*diskSetAllocator
+	dg       clusterInfoGetter
+	tg       topoInfoGetter
+	diffRack bool
+	diffHost bool
+}
+
+func newAllocator(cfg allocatorConfig) *allocator {
+	return &allocator{
+		nodeSets: cfg.nodeSets,
+		diskSets: cfg.diskSets,
+		cfg:      cfg,
+	}
+}
+
+type allocator struct {
+	nodeSets map[proto.DiskType]nodeSetAllocatorMap
+	diskSets map[proto.DiskSetID]*diskSetAllocator
+	cfg      allocatorConfig
+}
+
+type allocRet struct {
+	Idc   string
+	Disks []proto.DiskID
+}
+
+// Alloc alloc disk id
+// todo: add retry when diskset alloc failed or idc alloc failed
+func (a *allocator) Alloc(ctx context.Context, diskType proto.DiskType, mode codemode.CodeMode) ([]allocRet, error) {
+	span := trace.SpanFromContextSafe(ctx)
+	var (
+		err        error
+		ret        = make([]allocRet, 0)
+		idcIndexes = mode.T().GetECLayoutByAZ()
+		allocCount = mode.GetShardNum()
+	)
+
+	// alloc nodeset
+	nodeSetAllocator, err := a.allocNodeSet(ctx, diskType, mode)
+	if err != nil {
+		span.Errorf("alloc nodeset failed, err: %s", err.Error())
+		return nil, err
+	}
+	// alloc diskset
+	diskSetAllocator, err := nodeSetAllocator.allocDiskSet(ctx, allocCount)
+	if err != nil {
+		span.Errorf("alloc diskset failed, err: %s", err.Error())
+		return nil, err
+	}
+
+	idcAllocators := diskSetAllocator.alloc(ctx, len(idcIndexes[0]))
+	if len(idcAllocators) < len(idcIndexes) {
+		span.Errorf("need %d idcAllocators, but got %d", len(idcIndexes), len(idcAllocators))
+		return nil, ErrNoEnoughSpace
+	}
+
+	for i := range idcIndexes {
+		count := len(idcIndexes[i])
+		_disks, _err := idcAllocators[i].alloc(ctx, count, nil)
+		if _err != nil {
+			span.Errorf("alloc from idc allocator failed, err:%s", _err.Error())
+			return nil, _err
+		}
+
+		ret = append(ret, allocRet{
+			Idc:   idcAllocators[i].idc,
+			Disks: _disks,
+		})
+	}
+	// update diskset and nodeset free chunk
+	atomic.AddInt64(&diskSetAllocator.freeChunk, -int64(allocCount))
+	atomic.AddInt64(&nodeSetAllocator.freeChunk, -int64(allocCount))
+
+	return ret, nil
+}
+
+func (a *allocator) ReAlloc(ctx context.Context, count int, excludes []proto.DiskID, diskSetID proto.DiskSetID, idc string) ([]proto.DiskID, error) {
+	stg := a.diskSets[diskSetID].idcAllocators[idc]
+
+	_excludes := make(map[proto.DiskID]*diskItem)
+	if len(excludes) > 0 {
+		for _, diskID := range excludes {
+			_excludes[diskID], _ = a.cfg.dg.getDisk(diskID)
+		}
+	}
+
+	return stg.alloc(ctx, count, _excludes)
+}
+
+func (a *allocator) allocNodeSet(ctx context.Context, diskType proto.DiskType, mode codemode.CodeMode) (*nodeSetAllocator, error) {
+	span := trace.SpanFromContextSafe(ctx)
+
+	count := mode.GetShardNum()
+	nodeSetAllocators, ok := a.nodeSets[diskType]
+	if !ok {
+		span.Errorf("can not find nodeset of diskType: %s", diskType.String())
+		return nil, ErrNoEnoughSpace
+	}
+
+	// EC mode
+	if !mode.T().IsReplicateMode() {
+		nodeSetAllocator, ok := nodeSetAllocators[ECNodeSetID]
+		if !ok || nodeSetAllocator.freeChunk < int64(count) {
+			span.Errorf("can not find nodeset of EC mode, diskType: %s", diskType.String())
+			return nil, ErrNoEnoughSpace
+		}
+		return nodeSetAllocator, nil
+	}
+
+	// choose nodeset by free chunk count weight
+	total := len(nodeSetAllocators)
+	totalFreeChunkNum := int64(0)
+	allocatableNodeSets := make([]*nodeSetAllocator, 0, total)
+	for _, n := range nodeSetAllocators {
+		if n.nodeSetID == ECNodeSetID {
+			continue
+		}
+		// filter nodeset which is not match the alloc node count
+		c := a.cfg.tg.getNodeNum(diskType, n.nodeSetID)
+		if a.cfg.diffHost && c < count {
+			span.Debugf("filter nodeset id:%d, need %d node but got:%d, diskType:%d", n.nodeSetID, count, c, diskType)
+			continue
+		}
+		allocatableNodeSets = append(allocatableNodeSets, n)
+		totalFreeChunkNum += atomic.LoadInt64(&n.freeChunk)
+	}
+	if totalFreeChunkNum <= 0 {
+		span.Errorf("totalFreeChunkNum <= 0, no nodeset can be allocate")
+		return nil, ErrNoEnoughSpace
+	}
+
+	randNum := rand.Int63n(totalFreeChunkNum)
+	for i := 0; i < total; i++ {
+		ns := allocatableNodeSets[i]
+		free := atomic.LoadInt64(&ns.freeChunk)
+		if free > randNum && free > int64(count) {
+			return ns, nil
+		}
+		randNum -= free
+	}
+	span.Errorf("allocate nodeSet failed, codeMode: %s, allocate num: %d", mode.String(), count)
+	return nil, ErrNoEnoughSpace
+}
+
+func newNodeSetAllocator(id proto.NodeSetID) *nodeSetAllocator {
+	return &nodeSetAllocator{
+		nodeSetID: id,
+		diskSets:  make(map[proto.DiskSetID]*diskSetAllocator),
+	}
+}
+
+type nodeSetAllocator struct {
 	nodeSetID proto.NodeSetID
 	freeChunk int64
-	diskSets  map[proto.DiskSetID]*diskSetStorage
+	diskSets  map[proto.DiskSetID]*diskSetAllocator
 }
 
-// idcStorage represent an idc allocator
-type idcStorage struct {
+func (n *nodeSetAllocator) addDiskSet(diskSet *diskSetAllocator) {
+	n.diskSets[diskSet.diskSetID] = diskSet
+	n.freeChunk += diskSet.freeChunk
+}
+
+func (n *nodeSetAllocator) allocDiskSet(ctx context.Context, count int) (*diskSetAllocator, error) {
+	span := trace.SpanFromContextSafe(ctx)
+
+	// EC mode
+	if n.nodeSetID == ECNodeSetID {
+		diskSet, ok := n.diskSets[ECDiskSetID]
+		if !ok {
+			span.Errorf("can not find diskset of EC mode")
+			return nil, ErrNoEnoughSpace
+		}
+		return diskSet, nil
+	}
+
+	randNum := rand.Int63n(atomic.LoadInt64(&n.freeChunk))
+	for _, diskSet := range n.diskSets {
+		free := atomic.LoadInt64(&diskSet.freeChunk)
+		if free > randNum && free >= int64(count) {
+			return diskSet, nil
+		}
+		randNum -= free
+	}
+	span.Errorf("allocate diskSet from nodeSet:%d failed, allocate num: %d", n.nodeSetID, count)
+	return nil, ErrNoEnoughSpace
+}
+
+func newDiskSetAllocator(id proto.DiskSetID, freeChunk int64, idcAllocators map[string]*idcAllocator) *diskSetAllocator {
+	return &diskSetAllocator{
+		diskSetID:     id,
+		freeChunk:     freeChunk,
+		idcAllocators: idcAllocators,
+	}
+}
+
+type diskSetAllocator struct {
+	diskSetID     proto.DiskSetID
+	freeChunk     int64
+	idcAllocators map[string]*idcAllocator
+}
+
+func (d *diskSetAllocator) alloc(ctx context.Context, count int) (ret []*idcAllocator) {
+	span := trace.SpanFromContextSafe(ctx)
+	for _, idcAllocator := range d.idcAllocators {
+		nodeNum := len(idcAllocator.blobNodeStorages)
+		if idcAllocator.diffHost && nodeNum < count {
+			span.Errorf("allocate diff host idcAllocator from diskSet: %d failed, allocate num: %d, node num: %d", d.diskSetID, count, nodeNum)
+			continue
+		}
+		if free := atomic.LoadInt64(&idcAllocator.freeChunk); free < int64(count) {
+			span.Errorf("allocate idcAllocator from diskSet: %d failed, allocate num: %d, idc free: %d", d.diskSetID, count, free)
+			continue
+		}
+		ret = append(ret, idcAllocator)
+	}
+	return
+}
+
+// idcAllocator represent an idc allocator
+type idcAllocator struct {
 	idc string
 	// freeChunk should always read and write by atomic
 	freeChunk int64
 	diffRack  bool
 	diffHost  bool
 
-	rackStorages     map[string]*rackStorage
-	blobNodeStorages []*blobNodeStorage
+	rackStorages     map[string]*rackAllocator
+	blobNodeStorages []*blobNodeAllocator
 }
 
-// rackStorage represent an rack storage info
-type rackStorage struct {
+// rackAllocator represent an rack storage info
+type rackAllocator struct {
 	rack string
 	// freeChunk should always read and write by atomic
 	freeChunk        int64
-	blobNodeStorages []*blobNodeStorage
+	blobNodeStorages []*blobNodeAllocator
 }
 
-// blobNodeStorage represent an data node storage info
-type blobNodeStorage struct {
+// blobNodeAllocator represent an data node storage info
+type blobNodeAllocator struct {
 	host string
 	// freeChunk should always read and write by atomic
 	freeChunk int64
@@ -71,7 +291,7 @@ type blobNodeStorage struct {
 }
 
 // allocDisk will choose disk by disk free chunk count weight
-func (d *blobNodeStorage) allocDisk(ctx context.Context, excludes map[proto.DiskID]*diskItem) (chosenDisk *diskItem) {
+func (d *blobNodeAllocator) allocDisk(ctx context.Context, excludes map[proto.DiskID]*diskItem) (chosenDisk *diskItem) {
 	span := trace.SpanFromContextSafe(ctx)
 	totalFreeChunk := atomic.LoadInt64(&d.freeChunk)
 	if totalFreeChunk <= 0 {
@@ -115,10 +335,10 @@ func (d *blobNodeStorage) allocDisk(ctx context.Context, excludes map[proto.Disk
 	return chosenDisk
 }
 
-func (s *idcStorage) alloc(ctx context.Context, count int, excludes map[proto.DiskID]*diskItem) ([]proto.DiskID, error) {
+func (s *idcAllocator) alloc(ctx context.Context, count int, excludes map[proto.DiskID]*diskItem) ([]proto.DiskID, error) {
 	span := trace.SpanFromContextSafe(ctx)
 	var chosenRacks map[string]int
-	var chosenDataStorages map[*blobNodeStorage]int
+	var chosenDataStorages map[*blobNodeAllocator]int
 	var chosenDisks map[proto.DiskID]*diskItem
 	ret := make([]proto.DiskID, 0)
 
@@ -159,19 +379,19 @@ func (s *idcStorage) alloc(ctx context.Context, count int, excludes map[proto.Di
 // 1. alloc rack with free chunk weight
 // 2. alloc from rack's data node storage
 // 3. if can't meet the alloc count request, then retry with enable same rack
-func (s *idcStorage) allocFromRack(ctx context.Context, count int, excludes map[proto.DiskID]*diskItem) (chosenRacksRet map[string]int, chosenDataStorages map[*blobNodeStorage]int, chosenDisks map[proto.DiskID]*diskItem) {
+func (s *idcAllocator) allocFromRack(ctx context.Context, count int, excludes map[proto.DiskID]*diskItem) (chosenRacksRet map[string]int, chosenDataStorages map[*blobNodeAllocator]int, chosenDisks map[proto.DiskID]*diskItem) {
 	span := trace.SpanFromContextSafe(ctx)
 	rackNum := len(s.rackStorages)
 	chosenRacksRet = make(map[string]int, count)
 	chosenRacks := make([]string, 0, rackNum/2)
 	chosenRacksNum := make(map[string]int, rackNum/2)
-	chosenDataStorages = make(map[*blobNodeStorage]int)
+	chosenDataStorages = make(map[*blobNodeAllocator]int)
 	chosenDisks = make(map[proto.DiskID]*diskItem)
 	totalFreeChunk := atomic.LoadInt64(&s.freeChunk) - defaultAllocTolerateBuff
 	_totalFreeChunk := totalFreeChunk
 	_count := count
 
-	rackStorages := make([]*rackStorage, 0, len(s.rackStorages))
+	rackStorages := make([]*rackAllocator, 0, len(s.rackStorages))
 	for _, rackStg := range s.rackStorages {
 		rackStorages = append(rackStorages, rackStg)
 	}
@@ -260,14 +480,14 @@ RETRY:
 	return
 }
 
-// 1. copy rack's blobNodeStorage pointer array
-// 2. alloc from blobNodeStorage array
+// 1. copy rack's blobNodeAllocator pointer array
+// 2. alloc from blobNodeAllocator array
 // 3. the alloc result length may not equal to count if there is no enough space or something else
-func (s *idcStorage) allocFromBlobNodeStorages(ctx context.Context, count int, totalFreeChunk int64, srcBlobNodeStorages []*blobNodeStorage, excludes map[proto.DiskID]*diskItem) (chosenDataStorages map[*blobNodeStorage]int, chosenDisks map[proto.DiskID]*diskItem) {
+func (s *idcAllocator) allocFromBlobNodeStorages(ctx context.Context, count int, totalFreeChunk int64, srcBlobNodeStorages []*blobNodeAllocator, excludes map[proto.DiskID]*diskItem) (chosenDataStorages map[*blobNodeAllocator]int, chosenDisks map[proto.DiskID]*diskItem) {
 	span := trace.SpanFromContextSafe(ctx)
 	excludeHosts := make(map[string]bool)
 	chosenDisks = make(map[proto.DiskID]*diskItem)
-	chosenDataStorages = make(map[*blobNodeStorage]int)
+	chosenDataStorages = make(map[*blobNodeAllocator]int)
 	randNum := int64(0)
 
 	for _, diskInfo := range excludes {
@@ -276,7 +496,7 @@ func (s *idcStorage) allocFromBlobNodeStorages(ctx context.Context, count int, t
 		diskInfo.lock.RUnlock()
 	}
 
-	blobNodeStorages := make([]*blobNodeStorage, 0, len(s.blobNodeStorages))
+	blobNodeStorages := make([]*blobNodeAllocator, 0, len(s.blobNodeStorages))
 	blobNodeStorageNum := 0
 	// build available blobNodeStorages, filter exclude host or disk
 	for i := range srcBlobNodeStorages {
@@ -301,7 +521,7 @@ func (s *idcStorage) allocFromBlobNodeStorages(ctx context.Context, count int, t
 				}
 				newDisks = append(newDisks, disk)
 			}
-			blobNodeStorages[blobNodeStorageNum] = &blobNodeStorage{
+			blobNodeStorages[blobNodeStorageNum] = &blobNodeAllocator{
 				host:      srcBlobNodeStorages[i].host,
 				freeChunk: freeChunk,
 				disks:     newDisks,

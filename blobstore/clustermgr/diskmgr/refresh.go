@@ -18,6 +18,7 @@ import (
 	"container/heap"
 	"context"
 	"math"
+	"sync/atomic"
 
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/common/codemode"
@@ -46,261 +47,270 @@ func (h *maxHeap) Pop() interface{} {
 
 // refresh use for refreshing storage allocator info and cluster statistic info
 func (d *DiskMgr) refresh(ctx context.Context) {
-	span := trace.SpanFromContextSafe(ctx)
-
-	allDisks := d.getAllDisk()
-	span.Info("all disk length: ", len(allDisks))
-
-	// generate copySet topology
-	nodeSets := make(map[proto.NodeRole]map[proto.DiskType]map[proto.NodeSetID]map[proto.DiskSetID][]*diskItem)
-	// compatible case
-	nodeSets[proto.NodeRoleBlobNode] = make(map[proto.DiskType]map[proto.NodeSetID]map[proto.DiskSetID][]*diskItem)
-	nodeSets[proto.NodeRoleBlobNode][proto.DiskTypeHDD] = make(map[proto.NodeSetID]map[proto.DiskSetID][]*diskItem)
-	nodeSets[proto.NodeRoleBlobNode][proto.DiskTypeHDD][ECNodeSetID] = make(map[proto.DiskSetID][]*diskItem)
-	nodeSets[proto.NodeRoleBlobNode][proto.DiskTypeHDD][ECNodeSetID][ECDiskSetID] = allDisks
-	for _, disk := range allDisks {
-		disk.lock.RLock()
-		nodeID := disk.info.NodeID
-		diskSetID := disk.info.DiskSetID
-		disk.lock.RUnlock()
-
-		node, ok := d.getNode(nodeID)
-		if !ok {
-			continue
-		}
-		// filter dropped node
-		node.lock.RLock()
-		if !node.isUsingStatus() {
-			node.lock.RUnlock()
-			continue
-		}
-		nodeRole := node.info.Role
-		nodeSetID := node.info.NodeSetID
-		diskType := node.info.DiskType
-		node.lock.RUnlock()
-
-		if _, ok := nodeSets[nodeRole]; !ok {
-			nodeSets[nodeRole] = make(map[proto.DiskType]map[proto.NodeSetID]map[proto.DiskSetID][]*diskItem)
-		}
-		if _, ok := nodeSets[nodeRole][diskType]; !ok {
-			nodeSets[nodeRole][diskType] = make(map[proto.NodeSetID]map[proto.DiskSetID][]*diskItem)
-		}
-		if _, ok := nodeSets[nodeRole][diskType][nodeSetID]; !ok {
-			nodeSets[nodeRole][diskType][nodeSetID] = make(map[proto.DiskSetID][]*diskItem)
-		}
-		nodeSets[nodeRole][diskType][nodeSetID][diskSetID] = append(nodeSets[nodeRole][diskType][nodeSetID][diskSetID], disk)
-	}
-
 	// generate nodeRole -> diskType -> nodeSet -> diskSet -> idc -> rack -> blobnode storage and statInfo
-	nodeSetStorages := make(map[proto.NodeRole]map[proto.DiskType]map[proto.NodeSetID]*nodeSetStorage)
+	nodeSetAllocators := make(map[proto.NodeRole]map[proto.DiskType]nodeSetAllocatorMap)
+	diskSetAllocators := make(map[proto.NodeRole]map[proto.DiskSetID]*diskSetAllocator)
+
 	// space and disk stat info
 	spaceStatInfos := make(map[proto.NodeRole]map[proto.DiskType]*clustermgr.SpaceStatInfo)
-	diskStatInfos := make(map[proto.NodeRole]map[proto.DiskType]map[string]*clustermgr.DiskStatInfo)
-	for nodeRole, nodeSetsOfNodeRole := range nodeSets {
+
+	for nodeRole, mgr := range d.topoMgrs {
+		if _, ok := nodeSetAllocators[nodeRole]; !ok {
+			nodeSetAllocators[nodeRole] = make(map[proto.DiskType]nodeSetAllocatorMap)
+		}
+		if _, ok := diskSetAllocators[nodeRole]; !ok {
+			diskSetAllocators[nodeRole] = make(map[proto.DiskSetID]*diskSetAllocator)
+		}
 		if _, ok := spaceStatInfos[nodeRole]; !ok {
 			spaceStatInfos[nodeRole] = make(map[proto.DiskType]*clustermgr.SpaceStatInfo)
 		}
-		if _, ok := diskStatInfos[nodeRole]; !ok {
-			diskStatInfos[nodeRole] = make(map[proto.DiskType]map[string]*clustermgr.DiskStatInfo)
-		}
-		for diskType, nodeSetsOfDiskType := range nodeSetsOfNodeRole {
+
+		ecDiskSet := make(map[proto.DiskType][]*diskItem)
+		nodeSetsMap := mgr.GetAllNodeSets(ctx)
+
+		for diskType, nodeSets := range nodeSetsMap {
+			if _, ok := nodeSetAllocators[nodeRole][diskType]; !ok {
+				nodeSetAllocators[nodeRole][diskType] = make(nodeSetAllocatorMap)
+			}
 			if _, ok := spaceStatInfos[nodeRole][diskType]; !ok {
 				spaceStatInfos[nodeRole][diskType] = &clustermgr.SpaceStatInfo{}
 			}
 			spaceStatInfo := spaceStatInfos[nodeRole][diskType]
-			if _, ok := diskStatInfos[nodeRole][diskType]; !ok {
-				diskStatInfos[nodeRole][diskType] = make(map[string]*clustermgr.DiskStatInfo)
-			}
+			diskStatInfo := make(map[string]*clustermgr.DiskStatInfo)
 			for i := range d.IDC {
-				diskStatInfos[nodeRole][diskType][d.IDC[i]] = &clustermgr.DiskStatInfo{
-					IDC: d.IDC[i],
+				diskStatInfo[d.IDC[i]] = &clustermgr.DiskStatInfo{IDC: d.IDC[i]}
+			}
+
+			for _, nodeSet := range nodeSets {
+				nodeSetAllocator := newNodeSetAllocator(nodeSet.ID())
+				for _, diskSet := range nodeSet.GetDiskSets() {
+					disks := diskSet.GetDisks()
+					// ecDiskSet[diskType] = append(ecDiskSet[diskType], disks...)
+					idcAllocators, diskSetFreeChunk := d.generateDiskSetStorage(ctx, disks, spaceStatInfo, diskStatInfo)
+					diskSetAllocator := newDiskSetAllocator(diskSet.ID(), diskSetFreeChunk, idcAllocators)
+					diskSetAllocators[nodeRole][diskSet.ID()] = diskSetAllocator
+					nodeSetAllocator.addDiskSet(diskSetAllocator)
 				}
+				nodeSetAllocators[nodeRole][diskType][nodeSet.ID()] = nodeSetAllocator
 			}
-			diskStatInfoIdcs := diskStatInfos[nodeRole][diskType]
-			for nodeSetID, nodeSet := range nodeSetsOfDiskType {
-				d.generateDiskSetStorage(ctx, nodeSet, nodeRole, spaceStatInfo, diskStatInfoIdcs, nodeSetStorages, nodeSetID, diskType)
-			}
-			spaceStatInfo.UsedSpace = spaceStatInfo.TotalSpace - spaceStatInfo.FreeSpace - spaceStatInfo.ReadOnlySpace
-			for idc := range diskStatInfoIdcs {
-				spaceStatInfo.DisksStatInfos = append(spaceStatInfo.DisksStatInfos, *diskStatInfoIdcs[idc])
+
+			for idc := range diskStatInfo {
+				spaceStatInfo.DisksStatInfos = append(spaceStatInfo.DisksStatInfos, *diskStatInfo[idc])
 			}
 		}
-	}
 
-	// atomic store nodeSetStorages
-	d.allocators.Store(nodeSetStorages)
+		// compatible
+		if nodeRole == proto.NodeRoleBlobNode {
+			allDisks := d.getAllDisk()
+			diskTypeDisks := make(map[proto.DiskType][]*diskItem)
+			for _, disk := range allDisks {
+				diskType := d.getDiskType(disk)
+				diskTypeDisks[diskType] = append(diskTypeDisks[diskType], disk)
+			}
+
+			for diskType := range diskTypeDisks {
+				ecDiskSet[diskType] = diskTypeDisks[diskType]
+				ecSpaceStateInfo := &clustermgr.SpaceStatInfo{}
+				diskStatInfo := make(map[string]*clustermgr.DiskStatInfo)
+				for i := range d.IDC {
+					diskStatInfo[d.IDC[i]] = &clustermgr.DiskStatInfo{IDC: d.IDC[i]}
+				}
+
+				ecIdcAllocators, ecFreeChunk := d.generateDiskSetStorage(ctx, ecDiskSet[diskType], ecSpaceStateInfo, diskStatInfo)
+
+				// initial ec allocator
+				diskSetAllocator := newDiskSetAllocator(ECDiskSetID, ecFreeChunk, ecIdcAllocators)
+				diskSetAllocators[nodeRole][ECDiskSetID] = diskSetAllocator
+				nodeSetAllocator := newNodeSetAllocator(ECNodeSetID)
+				nodeSetAllocator.addDiskSet(diskSetAllocator)
+				if _, ok := nodeSetAllocators[nodeRole][diskType]; !ok {
+					nodeSetAllocators[nodeRole][diskType] = make(nodeSetAllocatorMap)
+				}
+				nodeSetAllocators[nodeRole][diskType][ECNodeSetID] = nodeSetAllocator
+
+				// update space state info
+				for idc := range diskStatInfo {
+					ecSpaceStateInfo.DisksStatInfos = append(ecSpaceStateInfo.DisksStatInfos, *diskStatInfo[idc])
+				}
+				// no copy set register, set space info and disk stat info by ec statistic
+				if len(nodeSetsMap) == 0 {
+					spaceStatInfos[nodeRole][diskType] = ecSpaceStateInfo
+					continue
+				}
+
+				// TODO: calculate writable space by replicate code mode and ec code mode ratio
+				spaceStatInfos[nodeRole][diskType].WritableSpace = ecSpaceStateInfo.WritableSpace
+			}
+		}
+
+		if d.allocators[nodeRole] == nil {
+			d.allocators[nodeRole] = &atomic.Value{}
+		}
+
+		d.allocators[nodeRole].Store(newAllocator(allocatorConfig{
+			nodeSets: nodeSetAllocators[nodeRole],
+			diskSets: diskSetAllocators[nodeRole],
+			dg:       d,
+			tg:       d.topoMgrs[nodeRole],
+			diffHost: d.HostAware,
+			diffRack: d.RackAware,
+		}))
+	}
 
 	d.spaceStatInfo.Store(spaceStatInfos)
 }
 
-func (d *DiskMgr) generateDiskSetStorage(ctx context.Context, diskSets map[proto.DiskSetID][]*diskItem, nodeRole proto.NodeRole, spaceStatInfo *clustermgr.SpaceStatInfo,
-	diskStatInfosM map[string]*clustermgr.DiskStatInfo, nodeSetStorages map[proto.NodeRole]map[proto.DiskType]map[proto.NodeSetID]*nodeSetStorage, nodeSetID proto.NodeSetID, diskType proto.DiskType,
-) {
+func (d *DiskMgr) generateDiskSetStorage(ctx context.Context, disks []*diskItem, spaceStatInfo *clustermgr.SpaceStatInfo,
+	diskStatInfosM map[string]*clustermgr.DiskStatInfo,
+) (ret map[string]*idcAllocator, freeChunk int64) {
 	span := trace.SpanFromContextSafe(ctx)
-	for diskSetID, diskSet := range diskSets {
-		switch nodeRole {
-		case proto.NodeRoleBlobNode:
-			blobNodeStgs := make(map[string]*blobNodeStorage)
-			idcFreeChunks := make(map[string]int64)
-			idcRackStgs := make(map[string]map[string]*rackStorage)
-			idcBlobNodeStgs := make(map[string][]*blobNodeStorage)
-			rackBlobNodeStgs := make(map[string][]*blobNodeStorage)
-			rackFreeChunks := make(map[string]int64)
-			for _, disk := range diskSet {
-				// read one disk info
-				disk.lock.RLock()
-				idc := disk.info.Idc
-				rack := disk.info.Rack
-				host := disk.info.Host
-				if host == "" {
-					node, _ := d.getNode(disk.info.NodeID)
-					idc = node.info.Idc
-					rack = node.info.Rack
-					host = node.info.Host
-				}
-				freeChunk := disk.info.FreeChunkCnt
-				maxChunk := disk.info.MaxChunkCnt
-				readonly := disk.info.Readonly
-				size := disk.info.Size
-				free := disk.info.Free
-				status := disk.info.Status
-				// rack can be the same in different idc, so we make rack string with idc
-				rack = idc + "-" + rack
-				spaceStatInfo.TotalDisk += 1
-				// idc disk status num calculate
-				diskStatInfosM[idc].Total += 1
-				diskStatInfosM[idc].TotalChunk += maxChunk
-				diskStatInfosM[idc].TotalFreeChunk += freeChunk
-				if readonly {
-					diskStatInfosM[idc].Readonly += 1
-				}
-				switch status {
-				case proto.DiskStatusBroken:
-					diskStatInfosM[idc].Broken += 1
-				case proto.DiskStatusRepairing:
-					diskStatInfosM[idc].Repairing += 1
-				case proto.DiskStatusRepaired:
-					diskStatInfosM[idc].Repaired += 1
-				case proto.DiskStatusDropped:
-					diskStatInfosM[idc].Dropped += 1
-				default:
-				}
-				if disk.dropping {
-					diskStatInfosM[idc].Dropping += 1
-				}
-				// filter abnormal disk
-				if disk.info.Status != proto.DiskStatusNormal {
-					disk.lock.RUnlock()
-					continue
-				}
-				spaceStatInfo.TotalSpace += size
-				if readonly { // include dropping disk
-					spaceStatInfo.ReadOnlySpace += free
-					disk.lock.RUnlock()
+	blobNodeStgs := make(map[string]*blobNodeAllocator)
+	idcFreeChunks := make(map[string]int64)
+	idcRackStgs := make(map[string]map[string]*rackAllocator)
+	idcBlobNodeStgs := make(map[string][]*blobNodeAllocator)
+	rackBlobNodeStgs := make(map[string][]*blobNodeAllocator)
+	rackFreeChunks := make(map[string]int64)
+
+	for _, disk := range disks {
+		// read one disk info
+		disk.lock.RLock()
+		idc := disk.info.Idc
+		rack := disk.info.Rack
+		host := disk.info.Host
+		if host == "" {
+			node, _ := d.getNode(disk.info.NodeID)
+			idc = node.info.Idc
+			rack = node.info.Rack
+			host = node.info.Host
+		}
+		freeChunk := disk.info.FreeChunkCnt
+		maxChunk := disk.info.MaxChunkCnt
+		readonly := disk.info.Readonly
+		size := disk.info.Size
+		free := disk.info.Free
+		status := disk.info.Status
+		// rack can be the same in different idc, so we make rack string with idc
+		rack = idc + "-" + rack
+		spaceStatInfo.TotalDisk += 1
+		// idc disk status num calculate
+		if diskStatInfosM[idc] == nil {
+			diskStatInfosM[idc] = &clustermgr.DiskStatInfo{IDC: idc}
+		}
+		diskStatInfosM[idc].Total += 1
+		diskStatInfosM[idc].TotalChunk += maxChunk
+		diskStatInfosM[idc].TotalFreeChunk += freeChunk
+		if readonly {
+			diskStatInfosM[idc].Readonly += 1
+		}
+		switch status {
+		case proto.DiskStatusBroken:
+			diskStatInfosM[idc].Broken += 1
+		case proto.DiskStatusRepairing:
+			diskStatInfosM[idc].Repairing += 1
+		case proto.DiskStatusRepaired:
+			diskStatInfosM[idc].Repaired += 1
+		case proto.DiskStatusDropped:
+			diskStatInfosM[idc].Dropped += 1
+		default:
+		}
+		if disk.dropping {
+			diskStatInfosM[idc].Dropping += 1
+		}
+		// filter abnormal disk
+		if disk.info.Status != proto.DiskStatusNormal {
+			disk.lock.RUnlock()
+			continue
+		}
+		spaceStatInfo.TotalSpace += size
+		if readonly { // include dropping disk
+			spaceStatInfo.ReadOnlySpace += free
+			disk.lock.RUnlock()
 			continue
 		}
 		spaceStatInfo.FreeSpace += free
 		diskStatInfosM[idc].Available += 1
 
-				// filter expired disk
-				if disk.isExpire() {
-					disk.lock.RUnlock()
-					diskStatInfosM[idc].Expired += 1
-					continue
-				}
-				disk.lock.RUnlock()
+		// filter expired disk
+		if disk.isExpire() {
+			disk.lock.RUnlock()
+			diskStatInfosM[idc].Expired += 1
+			continue
+		}
+		disk.lock.RUnlock()
 
-				// build for idcRackStorage
-				if _, ok := idcRackStgs[idc]; !ok {
-					idcRackStgs[idc] = make(map[string]*rackStorage)
-				}
-				if _, ok := idcRackStgs[idc][rack]; !ok {
-					idcRackStgs[idc][rack] = &rackStorage{rack: rack}
-				}
-				// build for idcStorage
-				if _, ok := idcBlobNodeStgs[idc]; !ok {
-					idcBlobNodeStgs[idc] = make([]*blobNodeStorage, 0)
-					idcFreeChunks[idc] = 0
-				}
-				idcFreeChunks[idc] += freeChunk
-				// build for rackStorage
-				if _, ok := rackBlobNodeStgs[rack]; !ok {
-					rackBlobNodeStgs[rack] = make([]*blobNodeStorage, 0)
-					rackFreeChunks[rack] = 0
-				}
-				rackFreeChunks[rack] += freeChunk
-				// build for blobNodeStorage
-				if _, ok := blobNodeStgs[host]; !ok {
-					blobNodeStgs[host] = &blobNodeStorage{host: host, disks: make([]*diskItem, 0)}
-					// append idc data node
-					idcBlobNodeStgs[idc] = append(idcBlobNodeStgs[idc], blobNodeStgs[host])
-					// append rack data node
-					rackBlobNodeStgs[rack] = append(rackBlobNodeStgs[rack], blobNodeStgs[host])
-				}
-				blobNodeStgs[host].disks = append(blobNodeStgs[host].disks, disk)
-				blobNodeStgs[host].freeChunk += freeChunk
-				blobNodeStgs[host].free += free
-			}
-			span.Debugf("all blobNodeStgs: %+v", blobNodeStgs)
+		// build for idcRackStorage
+		if _, ok := idcRackStgs[idc]; !ok {
+			idcRackStgs[idc] = make(map[string]*rackAllocator)
+		}
+		if _, ok := idcRackStgs[idc][rack]; !ok {
+			idcRackStgs[idc][rack] = &rackAllocator{rack: rack}
+		}
+		// build for idcAllocator
+		if _, ok := idcBlobNodeStgs[idc]; !ok {
+			idcBlobNodeStgs[idc] = make([]*blobNodeAllocator, 0)
+			idcFreeChunks[idc] = 0
+		}
+		idcFreeChunks[idc] += freeChunk
+		// build for rackAllocator
+		if _, ok := rackBlobNodeStgs[rack]; !ok {
+			rackBlobNodeStgs[rack] = make([]*blobNodeAllocator, 0)
+			rackFreeChunks[rack] = 0
+		}
+		rackFreeChunks[rack] += freeChunk
+		// build for blobNodeAllocator
+		if _, ok := blobNodeStgs[host]; !ok {
+			blobNodeStgs[host] = &blobNodeAllocator{host: host, disks: make([]*diskItem, 0)}
+			// append idc data node
+			idcBlobNodeStgs[idc] = append(idcBlobNodeStgs[idc], blobNodeStgs[host])
+			// append rack data node
+			rackBlobNodeStgs[rack] = append(rackBlobNodeStgs[rack], blobNodeStgs[host])
+		}
+		blobNodeStgs[host].disks = append(blobNodeStgs[host].disks, disk)
+		blobNodeStgs[host].freeChunk += freeChunk
+		blobNodeStgs[host].free += free
 
-			for _, rackStgs := range idcRackStgs {
-				for rack := range rackStgs {
-					rackStgs[rack].freeChunk = rackFreeChunks[rack]
-					rackStgs[rack].blobNodeStorages = rackBlobNodeStgs[rack]
-				}
-			}
-			for idc := range idcBlobNodeStgs {
-				span.Infof("%s idcBlobNodeStgs length: %d", idc, len(idcBlobNodeStgs[idc]))
-			}
+		span.Debugf("all blobNodeStgs: %+v", blobNodeStgs)
 
-			if len(idcRackStgs) > 0 {
-				freeChunk := int64(0)
-				idcStorages := make(map[string]*idcStorage)
-				for i := range d.IDC {
-					spaceStatInfo.TotalBlobNode += int64(len(idcBlobNodeStgs[d.IDC[i]]))
-					idcStorages[d.IDC[i]] = &idcStorage{
-						idc:              d.IDC[i],
-						freeChunk:        idcFreeChunks[d.IDC[i]],
-						diffRack:         d.RackAware,
-						diffHost:         d.HostAware,
-						rackStorages:     idcRackStgs[d.IDC[i]],
-						blobNodeStorages: idcBlobNodeStgs[d.IDC[i]],
-					}
-					freeChunk += idcFreeChunks[d.IDC[i]]
-				}
-
-				if _, ok := nodeSetStorages[nodeRole]; !ok {
-					nodeSetStorages[nodeRole] = make(map[proto.DiskType]map[proto.NodeSetID]*nodeSetStorage)
-				}
-				if _, ok := nodeSetStorages[nodeRole][diskType]; !ok {
-					nodeSetStorages[nodeRole][diskType] = make(map[proto.NodeSetID]*nodeSetStorage)
-				}
-				if nodeSetStorages[nodeRole][diskType][nodeSetID] == nil {
-					nodeSetStorages[nodeRole][diskType][nodeSetID] = &nodeSetStorage{
-						nodeSetID: nodeSetID,
-						diskSets:  make(map[proto.DiskSetID]*diskSetStorage),
-					}
-				}
-				nodeSetStorages[nodeRole][diskType][nodeSetID].freeChunk += freeChunk
-				nodeSetStorages[nodeRole][diskType][nodeSetID].diskSets[diskSetID] = &diskSetStorage{
-					diskSetID:   diskSetID,
-					freeChunk:   freeChunk,
-					idcStorages: idcStorages,
-				}
+		for _, rackStgs := range idcRackStgs {
+			for rack := range rackStgs {
+				rackStgs[rack].freeChunk = rackFreeChunks[rack]
+				rackStgs[rack].blobNodeStorages = rackBlobNodeStgs[rack]
 			}
-			d.calculateWritable(spaceStatInfo, idcBlobNodeStgs)
-		default:
+		}
+		for idc := range idcBlobNodeStgs {
+			span.Infof("%s idcBlobNodeStgs length: %d", idc, len(idcBlobNodeStgs[idc]))
 		}
 	}
+
+	spaceStatInfo.UsedSpace = spaceStatInfo.TotalSpace - spaceStatInfo.FreeSpace - spaceStatInfo.ReadOnlySpace
+
+	if len(idcRackStgs) > 0 {
+		ret = make(map[string]*idcAllocator)
+		for i := range d.IDC {
+			spaceStatInfo.TotalBlobNode += int64(len(idcBlobNodeStgs[d.IDC[i]]))
+			ret[d.IDC[i]] = &idcAllocator{
+				idc:              d.IDC[i],
+				freeChunk:        idcFreeChunks[d.IDC[i]],
+				diffRack:         d.RackAware,
+				diffHost:         d.HostAware,
+				rackStorages:     idcRackStgs[d.IDC[i]],
+				blobNodeStorages: idcBlobNodeStgs[d.IDC[i]],
+			}
+			freeChunk += idcFreeChunks[d.IDC[i]]
+		}
+		spaceStatInfo.WritableSpace += d.calculateWritable(idcBlobNodeStgs)
+	}
+
+	return
 }
 
-func (d *DiskMgr) calculateWritable(spaceStatInfo *clustermgr.SpaceStatInfo, idcBlobNodeStgs map[string][]*blobNodeStorage) {
+func (d *DiskMgr) calculateWritable(idcBlobNodeStgs map[string][]*blobNodeAllocator) int64 {
 	// writable space statistic
 	codeMode, suCount := d.getMaxSuCount()
 	idcSuCount := suCount / len(d.IDC)
 	if d.HostAware && len(idcBlobNodeStgs) > 0 {
 		// calculate minimum idc writable chunk num
-		calIDCWritableFunc := func(stgs []*blobNodeStorage) int64 {
+		calIDCWritableFunc := func(stgs []*blobNodeAllocator) int64 {
 			stripe := make([]int64, idcSuCount)
 			lefts := make(maxHeap, 0)
 			n := int64(0)
@@ -338,9 +348,9 @@ func (d *DiskMgr) calculateWritable(spaceStatInfo *clustermgr.SpaceStatInfo, idc
 				minimumStripeCount = n
 			}
 		}
-		spaceStatInfo.WritableSpace = minimumStripeCount * int64(codeMode.Tactic().N) * d.ChunkSize
-		return
+		return minimumStripeCount * int64(codeMode.Tactic().N) * d.ChunkSize
 	}
+
 	if len(idcBlobNodeStgs) > 0 {
 		minimumChunkNum := int64(math.MaxInt64)
 		for idc := range idcBlobNodeStgs {
@@ -352,8 +362,10 @@ func (d *DiskMgr) calculateWritable(spaceStatInfo *clustermgr.SpaceStatInfo, idc
 				minimumChunkNum = idcChunkNum
 			}
 		}
-		spaceStatInfo.WritableSpace = minimumChunkNum / int64(idcSuCount) * int64(codeMode.Tactic().N) * d.ChunkSize
+		return minimumChunkNum / int64(idcSuCount) * int64(codeMode.Tactic().N) * d.ChunkSize
 	}
+
+	return 0
 }
 
 func (d *DiskMgr) getMaxSuCount() (codemode.CodeMode, int) {

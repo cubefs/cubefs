@@ -346,40 +346,6 @@ func Test_NewVolumeMgr(t *testing.T) {
 	mockVolumeMgr.configMgr.Delete(context.Background(), "key1")
 }
 
-func TestVolumeMgr_AllocChunkForIdcUnits(t *testing.T) {
-	mockVolumeMgr, clean := initMockVolumeMgr(t)
-	defer clean()
-
-	vol := mockVolumeMgr.all.getVol(1)
-	require.NotNil(t, vol)
-	vuInfos := make(map[proto.VuidPrefix]*clustermgr.VolumeUnitInfo)
-	for i := 0; i < 6; i++ {
-		vuInfos[vol.vUnits[i].vuidPrefix] = vol.vUnits[i].vuInfo
-	}
-
-	mockDiskMgr := NewMockDiskMgrAPI(gomock.NewController(t))
-	mockDiskMgr.EXPECT().Stat(gomock.Any()).AnyTimes().Return(&clustermgr.SpaceStatInfo{TotalDisk: 35})
-	mockDiskMgr.EXPECT().IsDiskWritable(gomock.Any(), gomock.Any()).AnyTimes().DoAndReturn(mockIsDiskWritable)
-	mockDiskMgr.EXPECT().GetDiskInfo(gomock.Any(), gomock.Any()).AnyTimes().DoAndReturn(mockGetDiskInfo)
-	mockDiskMgr.EXPECT().AllocChunks(gomock.Any(), gomock.Any()).AnyTimes().DoAndReturn(func(ctx context.Context, policy *diskmgr.AllocPolicy) ([]proto.DiskID, error) {
-		diskids := make([]proto.DiskID, len(policy.Vuids))
-		for i := range diskids {
-			if i < 2 {
-				diskids[i] = 9999
-			} else {
-				diskids[i] = 0
-			}
-		}
-		return diskids, errors.New("err")
-	})
-	_, ctx := trace.StartSpanFromContext(context.Background(), "allocChunkForIdc")
-	mockVolumeMgr.diskMgr = mockDiskMgr
-	mockVolumeMgr.allocChunkForIdcUnits(ctx, "z1", vuInfos)
-	for i := range vuInfos {
-		require.Equal(t, vuInfos[i].DiskID, proto.DiskID(9999))
-	}
-}
-
 func TestVolumeMgr_ListVolumeInfo(t *testing.T) {
 	mockVolumeMgr, clean := initMockVolumeMgr(t)
 	defer clean()

@@ -44,6 +44,7 @@ var testNodeInfo = blobnode.NodeInfo{
 	Idc:       "z0",
 	Status:    proto.NodeStatusNormal,
 	DiskType:  proto.DiskTypeHDD,
+	Role:      proto.NodeRoleBlobNode,
 }
 
 func insertDiskInfos(t *testing.T, client *clustermgr.Client, start, end int, idcs ...string) {

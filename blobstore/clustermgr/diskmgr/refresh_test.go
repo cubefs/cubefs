@@ -13,13 +13,13 @@ func TestWritableSpace(t *testing.T) {
 	defer closeTestDiskMgr()
 
 	spaceInfo := &clustermgr.SpaceStatInfo{}
-	idcBlobNodeStgs := make(map[string][]*blobNodeStorage)
+	idcBlobNodeStgs := make(map[string][]*blobNodeAllocator)
 	for i := range testDiskMgr.IDC {
 		for j := 0; j < 16; j++ {
-			idcBlobNodeStgs[testDiskMgr.IDC[i]] = append(idcBlobNodeStgs[testDiskMgr.IDC[i]], &blobNodeStorage{free: 100 * testDiskMgr.ChunkSize})
+			idcBlobNodeStgs[testDiskMgr.IDC[i]] = append(idcBlobNodeStgs[testDiskMgr.IDC[i]], &blobNodeAllocator{free: 100 * testDiskMgr.ChunkSize})
 		}
 	}
-	testDiskMgr.calculateWritable(spaceInfo, idcBlobNodeStgs)
+	testDiskMgr.calculateWritable(idcBlobNodeStgs)
 	t.Log("writable space: ", spaceInfo.WritableSpace)
 }
 

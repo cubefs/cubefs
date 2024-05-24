@@ -106,17 +106,17 @@ func (d *DiskMgr) LoadData(ctx context.Context) error {
 			d.topoMgrs[ni.info.Role].AddDiskToDiskSet(ni.info.DiskType, ni.info.NodeSetID, di)
 			ni.disks[info.DiskID] = info
 		}
-		if info.DiskSetID >= curDiskSetID[ni.info.Role] {
+		if info.DiskSetID > 0 && info.DiskSetID >= curDiskSetID[ni.info.Role] {
 			curDiskSetID[ni.info.Role] = info.DiskSetID
 		}
 	}
 
 	d.allDisks = allDisks
-	for role := range curNodeSetID {
-		d.topoMgrs[role].SetNodeSetID(curNodeSetID[role])
+	for role, id := range curNodeSetID {
+		d.topoMgrs[role].SetNodeSetID(id)
 	}
-	for role := range curDiskSetID {
-		d.topoMgrs[role].SetDiskSetID(curDiskSetID[role])
+	for role, id := range curDiskSetID {
+		d.topoMgrs[role].SetDiskSetID(id)
 	}
 
 	return nil
