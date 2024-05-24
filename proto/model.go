@@ -386,6 +386,7 @@ type DecommissionTokenStatus struct {
 	NodesetID   uint64
 	CurTokenNum int32
 	MaxTokenNum int32
+	RunningDp   []uint64
 }
 
 type VolVersionInfo struct {
