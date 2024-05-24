@@ -748,7 +748,7 @@ func (v *VolumeMgr) loop() {
 			}
 
 			span_, ctx_ := trace.StartSpanFromContext(context.Background(), "")
-			span_.Debug("leader node start create volume")
+			span_.Infof("leader node start create volume")
 
 			allocatableVolCounts := v.allocator.StatAllocatable()
 			diskNums := v.diskMgr.Stat(ctx_).TotalDisk
@@ -767,7 +767,7 @@ func (v *VolumeMgr) loop() {
 				}
 
 				curVolCount := allocatableVolCounts[modeConfig.mode]
-				span_.Debugf("code mode %v,min allocatable volume count is %d, current count is %d", modeConfig.mode, v.MinAllocableVolumeCount, curVolCount)
+				span_.Infof("code mode %v,min allocatable volume count is %d, current count is %d", modeConfig.mode, v.MinAllocableVolumeCount, curVolCount)
 				for i := curVolCount; i < minVolCount; i++ {
 					select {
 					case <-ctx.Done():

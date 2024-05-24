@@ -17,13 +17,18 @@ package clustermgr
 import (
 	"context"
 	"fmt"
+	"math"
 	"math/rand"
 	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strconv"
 	"sync"
 	"testing"
+	"time"
+
+	"github.com/google/uuid"
 
 	"github.com/stretchr/testify/require"
 
@@ -109,12 +114,14 @@ func cleanTestService(testService *Service) {
 
 func initTestService(t testing.TB) (*Service, func()) {
 	cfg := *testServiceCfg
-	cfg.DBPath = "/tmp/tmpsvrdb-" + randID()
-	cfg.NormalDBPath = cfg.DBPath + "/normaldb-" + randID()
-	cfg.KvDBPath = cfg.DBPath + "/kvdb-" + randID()
-	cfg.VolumeMgrConfig.VolumeDBPath = cfg.DBPath + "/volumedb-" + randID()
-	cfg.RaftConfig.RaftDBPath = cfg.DBPath + "/raftdb-" + randID()
-	cfg.RaftConfig.ServerConfig.WalDir = "/tmp/tmpsvrraftwal-" + randID()
+
+	rand.Seed(time.Now().UnixNano())
+	cfg.DBPath = os.TempDir() + "/" + uuid.NewString() + strconv.FormatInt(rand.Int63n(math.MaxInt64), 10)
+	cfg.NormalDBPath = cfg.DBPath + "/normaldb"
+	cfg.KvDBPath = cfg.DBPath + "/kvdb"
+	cfg.VolumeMgrConfig.VolumeDBPath = cfg.DBPath + "/volumedb"
+	cfg.RaftConfig.RaftDBPath = cfg.DBPath + "/raftdb"
+	cfg.RaftConfig.ServerConfig.WalDir = cfg.DBPath + "/raftwal"
 	cfg.RaftConfig.ServerConfig.ListenPort = GetFreePort()
 	cfg.RaftConfig.ServerConfig.Members = []raftserver.Member{
 		{NodeID: 1, Host: fmt.Sprintf("127.0.0.1:%d", GetFreePort()), Learner: false},

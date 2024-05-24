@@ -17,6 +17,7 @@ package diskmgr
 import (
 	"context"
 	"fmt"
+	"math/rand"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -42,6 +43,7 @@ const (
 	defaultFlushIntervalS           = 600
 	defaultApplyConcurrency         = 10
 	defaultListDiskMaxCount         = 200
+	defaultAllocRetryTimes          = 3
 )
 
 // CopySet Config
@@ -65,6 +67,7 @@ var (
 	ErrBlobNodeCreateChunkFailed = errors.New("blob node create chunk failed")
 	ErrNodeExist                 = errors.New("node already exist")
 	ErrNodeNotExist              = errors.New("node not exist")
+	ErrInValidAllocPolicy        = errors.New("alloc policy is invalid")
 )
 
 var validSetStatus = map[proto.DiskStatus]int{
@@ -104,9 +107,13 @@ type DiskMgrAPI interface {
 }
 
 type AllocPolicy struct {
-	Idc      string
+	DiskType proto.DiskType
+	CodeMode codemode.CodeMode
 	Vuids    []proto.Vuid
-	Excludes []proto.DiskID
+
+	Excludes  []proto.DiskID
+	DiskSetID proto.DiskSetID
+	Idc       string
 }
 
 type HeartbeatEvent struct {
@@ -144,7 +151,7 @@ type DiskMgr struct {
 	allDisks       map[proto.DiskID]*diskItem
 	allNodes       map[proto.NodeID]*nodeItem
 	topoMgrs       map[proto.NodeRole]*topoMgr
-	allocators     *atomic.Value
+	allocators     map[proto.NodeRole]*atomic.Value
 	taskPool       *base.TaskDistribution
 	hostPathFilter sync.Map
 
@@ -213,7 +220,7 @@ func New(scopeMgr scopemgr.ScopeMgrAPI, db *normaldb.NormalDB, cfg DiskMgrConfig
 	}
 
 	dm := &DiskMgr{
-		allocators: &atomic.Value{},
+		allocators: map[proto.NodeRole]*atomic.Value{},
 		topoMgrs:   map[proto.NodeRole]*topoMgr{proto.NodeRoleBlobNode: newTopoMgr()},
 		taskPool:   base.NewTaskDistribution(int(cfg.ApplyConcurrency), 1),
 
@@ -450,82 +457,120 @@ func (d *DiskMgr) ListDroppingDisk(ctx context.Context) ([]*blobnode.DiskInfo, e
 }
 
 // AllocChunk return available chunks in data center
-func (d *DiskMgr) AllocChunks(ctx context.Context, policy *AllocPolicy) (ret []proto.DiskID, err error) {
-	span, ctx := trace.StartSpanFromContextWithTraceID(ctx, "AllocChunks", trace.SpanFromContextSafe(ctx).TraceID()+"/"+policy.Idc)
-	allocators := d.allocators.Load().(map[proto.NodeRole]map[proto.DiskType]map[proto.NodeSetID]*nodeSetStorage)
-	ecNoSetAllocators := allocators[proto.NodeRoleBlobNode][proto.DiskTypeHDD][ECNodeSetID]
-	if ecNoSetAllocators == nil {
-		return nil, ErrNoEnoughSpace
-	}
+func (d *DiskMgr) AllocChunks(ctx context.Context, policy *AllocPolicy) ([]proto.DiskID, error) {
+	span, ctx := trace.StartSpanFromContextWithTraceID(ctx, "AllocChunks", trace.SpanFromContextSafe(ctx).TraceID())
 
-	v := ecNoSetAllocators.diskSets[ECDiskSetID].idcStorages[policy.Idc]
-	if v == nil {
-		return nil, ErrNoEnoughSpace
-	}
-	allocator := v
+	var (
+		err       error
+		allocator = d.allocators[proto.NodeRoleBlobNode].Load().(*allocator)
+		// to make sure return disks order match with policy.Vuids
+		idcVuidIndexMap = make(map[string]map[proto.Vuid]int)
+		idcVuidMap      = make(map[string][]proto.Vuid)
+		idcDiskMap      = make(map[string][]proto.DiskID)
+		ret             = make([]proto.DiskID, len(policy.Vuids))
+	)
 
-	var excludes map[proto.DiskID]*diskItem
+	// repair
 	if len(policy.Excludes) > 0 {
-		excludes = make(map[proto.DiskID]*diskItem)
-		for _, diskID := range policy.Excludes {
-			excludes[diskID], _ = d.getDisk(diskID)
+		ret, err := allocator.ReAlloc(ctx, len(policy.Vuids), policy.Excludes, policy.DiskSetID, policy.Idc)
+		if err != nil {
+			return nil, err
 		}
-	}
-
-	ret, err = allocator.alloc(ctx, len(policy.Vuids), excludes)
-	if err != nil {
-		return
-	}
-
-	// check if allocated result is host aware or disk aware
-	if d.HostAware {
-		selectedHost := make(map[string]bool)
-		for i := range ret {
-			disk, ok := d.getDisk(ret[i])
-			if !ok {
-				return nil, errors.Info(ErrDiskNotExist, fmt.Sprintf("disk[%d]", ret[i])).Detail(ErrDiskNotExist)
-			}
-			disk.lock.RLock()
-			if selectedHost[disk.info.Host] {
-				disk.lock.RUnlock()
-				return nil, errors.New(fmt.Sprintf("duplicated host, selected disks: %v", ret))
-			}
-			selectedHost[disk.info.Host] = true
-			disk.lock.RUnlock()
+		idcVuidMap[policy.Idc] = policy.Vuids
+		idcDiskMap[policy.Idc] = ret
+		idcVuidIndexMap[policy.Idc] = make(map[proto.Vuid]int, len(ret))
+		for idx, vuid := range policy.Vuids {
+			idcVuidIndexMap[policy.Idc][vuid] = idx
 		}
 	} else {
-		selectedDisk := make(map[proto.DiskID]bool)
-		for i := range ret {
-			if selectedDisk[ret[i]] {
-				return nil, errors.New(fmt.Sprintf("duplicated disk, selected disks: %v", ret))
+		tactic := policy.CodeMode.Tactic()
+		idcIndexes := tactic.GetECLayoutByAZ()
+		rand.Seed(time.Now().UnixNano())
+		rand.Shuffle(len(idcIndexes), func(i, j int) {
+			idcIndexes[i], idcIndexes[j] = idcIndexes[j], idcIndexes[i]
+		})
+		span.Debugf("idcIndexes is %#v", idcIndexes)
+
+		ret, err := allocator.Alloc(ctx, policy.DiskType, policy.CodeMode)
+		if err != nil {
+			span.Errorf("create volume alloc first time failed, err: %s", err.Error())
+			return nil, err
+		}
+
+		for idcIdx, r := range ret {
+			idc := r.Idc
+			idcDiskMap[idc] = r.Disks
+			idcVuidIndexMap[idc] = make(map[proto.Vuid]int)
+			for _, vuidIdx := range idcIndexes[idcIdx] {
+				idcVuidMap[idc] = append(idcVuidMap[idc], policy.Vuids[vuidIdx])
+				idcVuidIndexMap[idc][policy.Vuids[vuidIdx]] = vuidIdx
 			}
-			selectedDisk[ret[i]] = true
 		}
 	}
 
-	wg := sync.WaitGroup{}
-	for idx := range ret {
-		wg.Add(1)
-		i := idx
+	// retry
+	for idc, idcDisks := range idcDiskMap {
+		vuids := idcVuidMap[idc]
+		disks := idcDisks
 
-		disk, _ := d.getDisk(ret[i])
+		diskInfo, _ := d.getDisk(disks[0])
+		diskSetID := diskInfo.info.DiskSetID
+		excludes := make([]proto.DiskID, 0)
 
-		disk.lock.RLock()
-		host := disk.info.Host
-		disk.lock.RUnlock()
-		go func() {
-			defer wg.Done()
-			blobNodeErr := d.blobNodeClient.CreateChunk(ctx, host,
-				&blobnode.CreateChunkArgs{DiskID: ret[i], Vuid: policy.Vuids[i], ChunkSize: d.ChunkSize})
-			// record error info and set ret[i] to InvalidDiskID
-			if blobNodeErr != nil {
-				span.Errorf("allocate chunk from blob node failed, diskID: %v, host: %s, err: %v", ret[i], host, blobNodeErr)
-				ret[i] = proto.InvalidDiskID
-				err = ErrBlobNodeCreateChunkFailed
+		retryTimes := defaultAllocRetryTimes
+
+	RETRY:
+		if len(excludes) > 0 {
+			disks, err = allocator.ReAlloc(ctx, len(vuids), excludes, diskSetID, idc)
+			if err != nil {
+				return nil, err
 			}
-		}()
+		}
+
+		if err := d.validateAllocRet(disks); err != nil {
+			return nil, err
+		}
+
+		failVuids := make([]proto.Vuid, 0)
+		wg := sync.WaitGroup{}
+		wg.Add(len(disks))
+
+		for ii := range disks {
+			idx := ii
+
+			disk, _ := d.getDisk(disks[idx])
+			disk.lock.RLock()
+			host := disk.info.Host
+			disk.lock.RUnlock()
+
+			go func() {
+				defer wg.Done()
+
+				blobNodeErr := d.blobNodeClient.CreateChunk(ctx, host,
+					&blobnode.CreateChunkArgs{DiskID: disks[idx], Vuid: vuids[idx], ChunkSize: d.ChunkSize})
+				if blobNodeErr != nil {
+					vuidPrefix := vuids[idx].VuidPrefix()
+					newVuid := proto.EncodeVuid(vuidPrefix, vuids[idx].Epoch()+1)
+					failVuids = append(failVuids, newVuid)
+
+					span.Errorf("allocate chunk from blob node failed, diskID: %d, host: %s, err: %s", disks[idx], host, blobNodeErr)
+					return
+				}
+				excludes = append(excludes, disks[idx])
+				ret[idcVuidIndexMap[idc][vuids[idx]]] = disks[idx]
+			}()
+		}
+		wg.Wait()
+		vuids = failVuids
+
+		if len(failVuids) > 0 {
+			if retryTimes == 0 {
+				return nil, ErrBlobNodeCreateChunkFailed
+			}
+			retryTimes -= 1
+			goto RETRY
+		}
 	}
-	wg.Wait()
 
 	return ret, err
 }
@@ -578,7 +623,12 @@ func (d *DiskMgr) ListDiskInfo(ctx context.Context, opt *clustermgr.ListOptionAr
 // Stat return disk statistic info of a cluster
 func (d *DiskMgr) Stat(ctx context.Context) *clustermgr.SpaceStatInfo {
 	spaceStatInfo := d.spaceStatInfo.Load().(map[proto.NodeRole]map[proto.DiskType]*clustermgr.SpaceStatInfo)
-	ret := *spaceStatInfo[proto.NodeRoleBlobNode][proto.DiskTypeHDD]
+	nodeSpaceInfo := spaceStatInfo[proto.NodeRoleBlobNode]
+	diskTypeInfo, ok := nodeSpaceInfo[proto.DiskTypeHDD]
+	if !ok {
+		return &clustermgr.SpaceStatInfo{}
+	}
+	ret := *diskTypeInfo
 	return &ret
 }
 
@@ -996,6 +1046,45 @@ func (d *DiskMgr) getNode(nodeID proto.NodeID) (node *nodeItem, exist bool) {
 	node, exist = d.allNodes[nodeID]
 	d.metaLock.RUnlock()
 	return
+}
+
+func (d *DiskMgr) getDiskType(disk *diskItem) proto.DiskType {
+	n, _ := d.getNode(disk.info.NodeID)
+	if n == nil {
+		// compatible
+		return proto.DiskTypeHDD
+	}
+	return n.info.DiskType
+}
+
+func (d *DiskMgr) validateAllocRet(disks []proto.DiskID) error {
+	if d.HostAware {
+		selectedHost := make(map[string]bool)
+		for i := range disks {
+			disk, ok := d.getDisk(disks[i])
+			if !ok {
+				return errors.Info(ErrDiskNotExist, fmt.Sprintf("disk[%d]", disks[i])).Detail(ErrDiskNotExist)
+			}
+			disk.lock.RLock()
+			if selectedHost[disk.info.Host] {
+				disk.lock.RUnlock()
+				return errors.New(fmt.Sprintf("duplicated host, selected disks: %v", disks))
+			}
+			selectedHost[disk.info.Host] = true
+			disk.lock.RUnlock()
+		}
+		return nil
+	}
+
+	selectedDisk := make(map[proto.DiskID]bool)
+	for i := range disks {
+		if selectedDisk[disks[i]] {
+			return errors.New(fmt.Sprintf("duplicated disk, selected disks: %v", disks))
+		}
+		selectedDisk[disks[i]] = true
+	}
+
+	return nil
 }
 
 func nodeInfoRecordToNodeInfo(infoDB *normaldb.NodeInfoRecord) *blobnode.NodeInfo {

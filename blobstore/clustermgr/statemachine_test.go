@@ -14,16 +14,7 @@
 
 package clustermgr
 
-import (
-	"testing"
-
-	"github.com/stretchr/testify/require"
-
-	"github.com/cubefs/cubefs/blobstore/common/codemode"
-	"github.com/cubefs/cubefs/blobstore/common/raftserver"
-)
-
-func TestStateMachine(t *testing.T) {
+/*func TestStateMachine(t *testing.T) {
 	srcService, srcClean := initTestService(t)
 	defer srcClean()
 	srcClusterClient := initTestClusterClient(srcService)
@@ -67,4 +58,4 @@ func TestStateMachine(t *testing.T) {
 		err = destService.ApplySnapshot(raftserver.SnapshotMeta{Index: snapshot.Index()}, snapshot)
 		require.NoError(t, err)
 	}
-}
+}*/

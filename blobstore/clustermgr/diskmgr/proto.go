@@ -24,20 +24,6 @@ func (n *nodeItem) genFilterKey() string {
 	return n.info.Host + n.info.DiskType.String()
 }
 
-func (n *nodeItem) withRLocked(f func() error) error {
-	n.lock.RLock()
-	defer n.lock.RUnlock()
-
-	return f()
-}
-
-func (n *nodeItem) withLocked(f func() error) error {
-	n.lock.Lock()
-	defer n.lock.Unlock()
-
-	return f()
-}
-
 type diskItem struct {
 	diskID         proto.DiskID
 	info           *blobnode.DiskInfo

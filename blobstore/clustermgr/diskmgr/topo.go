@@ -189,6 +189,11 @@ func (t *topoMgr) getNodeSet(diskType proto.DiskType, nodeSetID proto.NodeSetID)
 	return nodeSet
 }
 
+func (t *topoMgr) getNodeNum(diskType proto.DiskType, id proto.NodeSetID) int {
+	nodeSet := t.getNodeSet(diskType, id)
+	return nodeSet.getNodeNum()
+}
+
 type nodeSetItem struct {
 	nodeSetID proto.NodeSetID
 	diskSets  map[proto.DiskSetID]*diskSetItem
@@ -212,6 +217,10 @@ func (n *nodeSetItem) GetDiskSets() []*diskSetItem {
 
 func (n *nodeSetItem) ID() proto.NodeSetID {
 	return n.nodeSetID
+}
+
+func (n *nodeSetItem) getNodeNum() int {
+	return len(n.nodes)
 }
 
 func (n *nodeSetItem) addNode(node *nodeItem) {
@@ -295,7 +304,7 @@ func (d *diskSetItem) GetDisks() []*diskItem {
 	for i := range d.disks {
 		ret = append(ret, d.disks[i])
 	}
-	return nil
+	return ret
 }
 
 func (d *diskSetItem) ID() proto.DiskSetID {
