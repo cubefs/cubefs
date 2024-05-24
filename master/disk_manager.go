@@ -367,7 +367,6 @@ func (dd *DecommissionDisk) updateDecommissionStatus(c *Cluster, debug bool) (ui
 			stopNum++
 			stopPartitionIds = append(stopPartitionIds, dp.PartitionID)
 		}
-		log.LogDebugf("[updateDecommissionStatus] dp(%v) decommission status(%v)", dp.PartitionID, dp.GetDecommissionStatus())
 		partitionIds = append(partitionIds, dp.PartitionID)
 	}
 	progress = float64(totalNum-len(partitions)) / float64(totalNum)
