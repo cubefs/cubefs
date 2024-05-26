@@ -446,7 +446,7 @@ func (w *Wrapper) getDataPartitionFromMaster(isInit bool, dpId uint64) (err erro
 	dpr.IsRecover = dpInfo.IsRecover
 	dpr.IsDiscard = dpInfo.IsDiscard
 
-	DataPartitions := make([]*proto.DataPartitionResponse, 1)
+	DataPartitions := make([]*proto.DataPartitionResponse, 0, 1)
 	DataPartitions = append(DataPartitions, dpr)
 	return w.updateDataPartitionByRsp(isInit, DataPartitions)
 }

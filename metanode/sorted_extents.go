@@ -610,7 +610,7 @@ func (se *SortedExtents) Delete(delEks []proto.ExtentKey) (curEks []proto.Extent
 	se.RLock()
 	defer se.RUnlock()
 
-	curEks = make([]proto.ExtentKey, len(se.eks)-len(delEks))
+	curEks = make([]proto.ExtentKey, 0, len(se.eks)-len(delEks))
 	for _, key := range se.eks {
 		delFlag := false
 		for _, delKey := range delEks {
