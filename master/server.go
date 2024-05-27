@@ -195,8 +195,10 @@ func (m *Server) Shutdown() {
 		m.fsm.Stop()
 	}
 
-	// then stop rocksDBStore
-	time.Sleep(time.Second)
+	// NOTE: wait 10 second for background goroutines to exit
+	time.Sleep(10 * time.Second)
+
+	// NOTE: close rocksdb
 	if m.rocksDBStore != nil {
 		m.rocksDBStore.Close()
 	}
