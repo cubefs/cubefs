@@ -57,6 +57,7 @@ const (
 	CodeIllegalTask             = 672
 	CodeRequestLimited          = 673
 	CodeUnsupportedTaskCodeMode = 674
+	CodePutShardTimeout         = 675
 )
 
 var (
@@ -99,6 +100,7 @@ var (
 	ErrDestReplicaBad          = Error(CodeDestReplicaBad)
 	ErrRequestLimited          = Error(CodeRequestLimited)
 	ErrUnsupportedTaskCodeMode = Error(CodeUnsupportedTaskCodeMode)
+	ErrPutShardTimeout         = Error(CodePutShardTimeout)
 )
 
 var ErrShardMayBeLost = errors.New("shard may be lost")
