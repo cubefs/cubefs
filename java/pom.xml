@@ -70,5 +70,21 @@
             </plugin>
         </plugins>
     </build>
-
+    <distributionManagement>
+        <repository>
+            <id>nexus-releases</id>
+            <url>http://nexus.os.adc.com/nexus/content/repositories/releases/</url>
+        </repository>
+        <snapshotRepository>
+            <id>nexus-snapshots</id>
+            <url>http://nexus.os.adc.com/nexus/content/repositories/snapshots/</url>
+        </snapshotRepository>
+    </distributionManagement>
+    <repositories>
+        <repository>
+            <id>nexus-public</id>
+            <name>Public repositories</name>
+            <url>http://nexus.os.adc.com/nexus/content/groups/public/</url>
+        </repository>
+    </repositories>
 </project>
