@@ -2151,6 +2151,11 @@ func (partition *DataPartition) checkReplicaMeta(c *Cluster) (err error) {
 		}
 		redundantPeers := findPeersToDeleteByConfig(replica.LocalPeers, partition.Peers)
 		for _, peer := range redundantPeers {
+			// 1-replica rollback failed due to new replica is unavailable(no leader),
+			// use raftForce in this case(the left replica should be rw or ro status).
+			if partition.ReplicaNum == 1 && partition.DecommissionDstAddr == peer.Addr && partition.Status != proto.Unavailable {
+				force = true
+			}
 			// remove raft member
 			err = partition.createTaskToRemoveRaftMember(c, peer, force, true)
 			auditMsg = fmt.Sprintf("dp(%v) remove redundant peer %v force %v", partition.PartitionID, peer, force)
