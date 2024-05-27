@@ -362,9 +362,9 @@ type FailedDpInfo struct {
 
 type DecommissionProgress struct {
 	Status        uint32
+	StatusMessage string
 	Progress      string
 	FailedDps     []FailedDpInfo
-	StatusMessage string
 }
 
 type BadDiskInfo struct {
