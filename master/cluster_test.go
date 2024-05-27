@@ -394,7 +394,7 @@ func TestCreateVolWithDpCount(t *testing.T) {
 		req := &createVolReq{
 			name:         commonVolName + "001",
 			owner:        "cfs",
-			dpSize:       3,
+			dpSize:       11,
 			mpCount:      30,
 			dpCount:      30,
 			dpReplicaNum: 3,
@@ -410,7 +410,12 @@ func TestCreateVolWithDpCount(t *testing.T) {
 			qosLimitArgs:    &qosArgs{},
 			volStorageClass: defaultVolStorageClass,
 		}
-		_, err := server.cluster.createVol(req)
+
+		// auto set allowedStorageClass[] in createVolReq
+		err := server.checkCreateVolReq(req)
+		require.NoError(t, err)
+
+		_, err = server.cluster.createVol(req)
 		require.NoError(t, err)
 
 		vol, err := server.cluster.getVol(req.name)
