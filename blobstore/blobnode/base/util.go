@@ -25,6 +25,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/cubefs/cubefs/blobstore/common/codemode"
 	"github.com/cubefs/cubefs/blobstore/common/errors"
 )
 
@@ -164,6 +165,14 @@ func GenMetric(stat interface{}) (map[string]float64, error) {
 
 func BackgroudReqID(prefix string) string {
 	return prefix + time.Now().Format("2006-01-02 15:04:05")
+}
+
+// Check codeMode, if replica3 return error
+func ValidateCodeMode(mode codemode.CodeMode) error {
+	if mode == codemode.Replica3 {
+		return errors.ErrUnsupportedTaskCodeMode
+	}
+	return nil
 }
 
 func isPathSafe(filePath string) bool {

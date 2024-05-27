@@ -18,6 +18,7 @@ import (
 	"context"
 
 	"github.com/cubefs/cubefs/blobstore/api/scheduler"
+	"github.com/cubefs/cubefs/blobstore/blobnode/base"
 	"github.com/cubefs/cubefs/blobstore/blobnode/base/workutils"
 	"github.com/cubefs/cubefs/blobstore/blobnode/client"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
@@ -46,6 +47,10 @@ func NewInspectTaskMgr(concurrency int, bidGetter client.IBlobNode, reporter sch
 func (mgr *InspectTaskMgr) AddTask(ctx context.Context, task *proto.VolumeInspectTask) error {
 	span := trace.SpanFromContextSafe(ctx)
 	if err := mgr.taskLimit.Acquire(); err != nil {
+		return err
+	}
+
+	if err := base.ValidateCodeMode(task.Mode); err != nil {
 		return err
 	}
 
