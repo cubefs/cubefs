@@ -23,6 +23,7 @@ import (
 
 	"github.com/cubefs/cubefs/blobstore/api/blobnode"
 	"github.com/cubefs/cubefs/blobstore/api/scheduler"
+	"github.com/cubefs/cubefs/blobstore/blobnode/base"
 	"github.com/cubefs/cubefs/blobstore/common/counter"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
@@ -129,6 +130,10 @@ func (tm *TaskRunnerMgr) AddTask(ctx context.Context, task MigrateTaskEx) error 
 	mgr, ok := tm.typeMgr[t.TaskType]
 	if !ok {
 		return fmt.Errorf("invalid task type: %s", t.TaskType)
+	}
+
+	if err := base.ValidateCodeMode(t.CodeMode); err != nil {
+		return err
 	}
 
 	w := tm.genWorker(task)

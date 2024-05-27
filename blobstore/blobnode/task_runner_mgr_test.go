@@ -24,6 +24,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/cubefs/cubefs/blobstore/api/scheduler"
+	"github.com/cubefs/cubefs/blobstore/common/codemode"
+	errcode "github.com/cubefs/cubefs/blobstore/common/errors"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/testing/mocks"
 )
@@ -112,6 +114,16 @@ func TestTaskRunnerMgr(t *testing.T) {
 		tm.StopAllAliveRunner()
 		tm.TaskStats()
 	}
+}
+
+func TestNewTaskRunnerMgr2(t *testing.T) {
+	cli := mocks.NewMockIScheduler(C(t))
+	tm := NewTaskRunnerMgr("Z0", getDefaultConfig().WorkerConfigMeter, NewMockMigrateWorker, cli, cli)
+	ctx := context.Background()
+	err := tm.AddTask(ctx, MigrateTaskEx{
+		taskInfo: &proto.MigrateTask{CodeMode: codemode.Replica3, TaskID: "id", TaskType: proto.TaskTypeBalance},
+	})
+	require.Error(t, err, errcode.ErrUnsupportedTaskCodeMode)
 }
 
 func newMockRenewalCli(t *testing.T, mockFailTasks map[string]bool, mockErr error, times int) scheduler.IMigrator {

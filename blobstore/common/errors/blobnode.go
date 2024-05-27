@@ -52,10 +52,11 @@ const (
 	CodeShardListExceedLimit = 656
 	CodeShardInvalidBid      = 657
 
-	CodeDestReplicaBad = 670
-	CodeOrphanShard    = 671
-	CodeIllegalTask    = 672
-	CodeRequestLimited = 673
+	CodeDestReplicaBad          = 670
+	CodeOrphanShard             = 671
+	CodeIllegalTask             = 672
+	CodeRequestLimited          = 673
+	CodeUnsupportedTaskCodeMode = 674
 )
 
 var (
@@ -93,10 +94,11 @@ var (
 	ErrShardListExceedLimit = Error(CodeShardListExceedLimit)
 	ErrShardInvalidBid      = Error(CodeShardInvalidBid)
 
-	ErrOrphanShard    = Error(CodeOrphanShard)
-	ErrIllegalTask    = Error(CodeIllegalTask)
-	ErrDestReplicaBad = Error(CodeDestReplicaBad)
-	ErrRequestLimited = Error(CodeRequestLimited)
+	ErrOrphanShard             = Error(CodeOrphanShard)
+	ErrIllegalTask             = Error(CodeIllegalTask)
+	ErrDestReplicaBad          = Error(CodeDestReplicaBad)
+	ErrRequestLimited          = Error(CodeRequestLimited)
+	ErrUnsupportedTaskCodeMode = Error(CodeUnsupportedTaskCodeMode)
 )
 
 var ErrShardMayBeLost = errors.New("shard may be lost")

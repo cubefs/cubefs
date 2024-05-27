@@ -20,6 +20,7 @@ import (
 	"sync"
 
 	api "github.com/cubefs/cubefs/blobstore/api/blobnode"
+	"github.com/cubefs/cubefs/blobstore/blobnode/base"
 	"github.com/cubefs/cubefs/blobstore/blobnode/base/workutils"
 	"github.com/cubefs/cubefs/blobstore/blobnode/client"
 	"github.com/cubefs/cubefs/blobstore/common/codemode"
@@ -81,6 +82,11 @@ func (repairer *ShardRepairer) RepairShard(ctx context.Context, task *proto.Shar
 	if !task.IsValid() {
 		span.Errorf("shard repair task is illegal: task[%+v]", task)
 		return errcode.ErrIllegalTask
+	}
+
+	if err := base.ValidateCodeMode(task.CodeMode); err != nil {
+		span.Errorf("shard repair task codeMode is unsupported: task[%+v]", task)
+		return err
 	}
 
 	shardInfos := repairer.listShardsInfo(ctx, task.Sources, task.Bid)

@@ -288,6 +288,25 @@ func testShardRepair2(t *testing.T, mode codemode.CodeMode) {
 	require.NoError(t, err)
 }
 
+func TestShardRepair3(t *testing.T) {
+	mode := codemode.Replica3
+	replicas := genMockVol(1, mode)
+	bids := []proto.BlobID{1}
+	sizes := []int64{1025}
+	getter := NewMockGetterWithBids(replicas, mode, bids, sizes)
+	task := &proto.ShardRepairTask{
+		Bid:      1,
+		CodeMode: mode,
+		Sources:  replicas,
+		BadIdxs:  []uint8{0, 1},
+	}
+
+	repairer := NewShardRepairer(getter)
+
+	err := repairer.RepairShard(context.Background(), task)
+	require.Error(t, err, codemode.Replica3)
+}
+
 func TestCheckOrphanShard(t *testing.T) {
 	testWithAllMode(t, testCheckOrphanShard)
 }

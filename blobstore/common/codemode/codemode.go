@@ -14,7 +14,9 @@
 
 package codemode
 
-import "fmt"
+import (
+	"fmt"
+)
 
 type (
 	// CodeMode EC encode and decode mode
@@ -41,6 +43,8 @@ const (
 	// for test
 	EC6P6L9  CodeMode = 200
 	EC6P8L10 CodeMode = 201
+	// replica
+	Replica3 CodeMode = 101
 )
 
 // Note: Don't modify it unless you know very well how codemode works.
@@ -76,6 +80,8 @@ var constCodeModeTactic = map[CodeMode]Tactic{
 	EC4P4L2:       {N: 4, M: 4, L: 2, AZCount: 2, PutQuorum: 6, GetQuorum: 0, MinShardSize: alignSize2KB},
 	EC6P6L9:       {N: 6, M: 6, L: 9, AZCount: 3, PutQuorum: 11, GetQuorum: 0, MinShardSize: alignSize2KB},
 	EC6P8L10:      {N: 6, M: 8, L: 10, AZCount: 2, PutQuorum: 13, GetQuorum: 0, MinShardSize: alignSize0B},
+	// replica
+	Replica3: {N: 3, AZCount: 3, PutQuorum: 3, GetQuorum: 0, MinShardSize: alignSize2KB},
 }
 
 var constName2CodeMode = map[CodeModeName]CodeMode{
@@ -95,6 +101,7 @@ var constName2CodeMode = map[CodeModeName]CodeMode{
 	"EC6P6L9":       EC6P6L9,
 	"EC6P8L10":      EC6P8L10,
 	"EC12P9":        EC12P9,
+	"Replica3":      Replica3,
 }
 
 var constCodeMode2Name = map[CodeMode]CodeModeName{
@@ -114,6 +121,7 @@ var constCodeMode2Name = map[CodeMode]CodeModeName{
 	EC6P6L9:       "EC6P6L9",
 	EC6P8L10:      "EC6P8L10",
 	EC12P9:        "EC12P9",
+	Replica3:      "Replica3",
 }
 
 //vol layout ep:EC6P10L2
