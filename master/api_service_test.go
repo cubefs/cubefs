@@ -1643,6 +1643,18 @@ func TestSetMarkDiskBrokenThreshold(t *testing.T) {
 	require.EqualValues(t, oldVal, server.cluster.getMarkDiskBrokenThreshold())
 }
 
+func TestSetEnableAutoDpMetaRepair(t *testing.T) {
+	reqUrl := fmt.Sprintf("%v%v", hostAddr, proto.AdminSetNodeInfo)
+	oldVal := server.cluster.getDisableAutoDpMetaRepair()
+	setVal := !oldVal
+	setUrl := fmt.Sprintf("%v?%v=%v&dirSizeLimit=0", reqUrl, autoDpMetaRepairKey, setVal)
+	unsetUrl := fmt.Sprintf("%v?%v=%v&dirSizeLimit=0", reqUrl, autoDpMetaRepairKey, oldVal)
+	process(setUrl, t)
+	require.EqualValues(t, !setVal, server.cluster.getDisableAutoDpMetaRepair())
+	process(unsetUrl, t)
+	require.EqualValues(t, !oldVal, server.cluster.getDisableAutoDpMetaRepair())
+}
+
 func TestSetDiscardDp(t *testing.T) {
 	name := "setDiscardVol"
 	createVol(map[string]interface{}{nameKey: name}, t)

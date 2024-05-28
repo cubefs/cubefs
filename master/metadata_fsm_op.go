@@ -64,6 +64,7 @@ type clusterValue struct {
 	DecommissionDiskLimit       uint32
 	VolDeletionDelayTimeHour    int64
 	MarkDiskBrokenThreshold     float64
+	DisableAutoDpMetaRepair     bool
 }
 
 func newClusterValue(c *Cluster) (cv *clusterValue) {
@@ -97,6 +98,7 @@ func newClusterValue(c *Cluster) (cv *clusterValue) {
 		DecommissionDiskLimit:       c.GetDecommissionDiskLimit(),
 		VolDeletionDelayTimeHour:    c.cfg.volDelayDeleteTimeHour,
 		MarkDiskBrokenThreshold:     c.getMarkDiskBrokenThreshold(),
+		DisableAutoDpMetaRepair:     c.getDisableAutoDpMetaRepair(),
 	}
 	return cv
 }
@@ -1043,6 +1045,10 @@ func (c *Cluster) updateMarkDiskBrokenThreshold(val float64) {
 	c.MarkDiskBrokenThreshold.Store(val)
 }
 
+func (c *Cluster) updateDisableAutoDpMetaRepair(val bool) {
+	c.DisableAutoDpMetaRepair.Store(val)
+}
+
 func (c *Cluster) updateDecommissionDiskLimit(val uint32) {
 	if val < 1 {
 		val = 1
@@ -1193,6 +1199,7 @@ func (c *Cluster) loadClusterValue() (err error) {
 		c.updateDecommissionDiskLimit(cv.DecommissionDiskLimit)
 		c.checkDataReplicasEnable = cv.CheckDataReplicasEnable
 		c.updateMarkDiskBrokenThreshold(cv.MarkDiskBrokenThreshold)
+		c.updateDisableAutoDpMetaRepair(cv.DisableAutoDpMetaRepair)
 	}
 	return
 }

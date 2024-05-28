@@ -1324,6 +1324,17 @@ func parseAndExtractSetNodeInfoParams(r *http.Request) (params map[string]interf
 		params[markDiskBrokenThresholdKey] = val
 	}
 
+	if value = r.FormValue(autoDpMetaRepairKey); value != "" {
+		noParams = false
+		val := false
+		val, err = strconv.ParseBool(value)
+		if err != nil {
+			err = unmatchedKey(autoDpMetaRepairKey)
+			return
+		}
+		params[autoDpMetaRepairKey] = val
+	}
+
 	if noParams {
 		err = keyNotFound(nodeDeleteBatchCountKey)
 		return
