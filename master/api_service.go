@@ -793,6 +793,7 @@ func (m *Server) getCluster(w http.ResponseWriter, r *http.Request) {
 		VolDeletionDelayTimeHour: m.cluster.cfg.volDelayDeleteTimeHour,
 		DpRepairTimeout:          m.cluster.GetDecommissionDataPartitionRecoverTimeOut(),
 		MarkDiskBrokenThreshold:  m.cluster.getMarkDiskBrokenThreshold(),
+		DisableAutoDpMetaRepair:  m.cluster.getDisableAutoDpMetaRepair(),
 		EnableAutoDecommission:   m.cluster.AutoDecommissionDiskIsEnabled(),
 		DecommissionDiskLimit:    m.cluster.GetDecommissionDiskLimit(),
 		MasterNodes:              make([]proto.NodeView, 0),
@@ -3109,6 +3110,15 @@ func (m *Server) setNodeInfoHandler(w http.ResponseWriter, r *http.Request) {
 	if val, ok := params[markDiskBrokenThresholdKey]; ok {
 		if markDiskBrokenThreshold, ok := val.(float64); ok {
 			if err = m.cluster.setMarkDiskBrokenThreshold(markDiskBrokenThreshold); err != nil {
+				sendErrReply(w, r, newErrHTTPReply(err))
+				return
+			}
+		}
+	}
+
+	if val, ok := params[autoDpMetaRepairKey]; ok {
+		if autoRepair, ok := val.(bool); ok {
+			if err = m.cluster.setDisableAutoDpMetaRepair(!autoRepair); err != nil {
 				sendErrReply(w, r, newErrHTTPReply(err))
 				return
 			}
