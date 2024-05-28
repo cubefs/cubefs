@@ -2250,10 +2250,11 @@ func (l *DecommissionDataPartitionList) traverse(c *Cluster) {
 						log.LogDebugf("action[DecommissionListTraverse]Remove dp[%v] for fail",
 							dp.PartitionID)
 						l.Remove(dp)
+						// if dp is not removed from decommission list, do not reset RestoreReplica
+						dp.setRestoreReplicaStop()
 					}
 					// rollback fail/success need release token
 					dp.ReleaseDecommissionToken(c)
-					dp.setRestoreReplicaStop()
 					c.syncUpdateDataPartition(dp)
 				} else if dp.IsDecommissionPaused() {
 					log.LogDebugf("action[DecommissionListTraverse]Remove dp[%v] for paused ",
