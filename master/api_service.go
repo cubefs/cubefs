@@ -2688,6 +2688,13 @@ func (m *Server) checkCreateVolReq(req *createVolReq) (err error) {
 	}
 
 	req.coldArgs = args
+
+	if proto.IsHot(req.volType) && (req.dpReplicaNum == 1 || req.dpReplicaNum == 2) && !req.followerRead {
+		err = fmt.Errorf("hot volume dpReplicaNum(%v) less than 3, followerRead must set true", req.dpReplicaNum)
+		log.LogErrorf("[checkCreateVolReq] creating vol(%v) err:%v", req.name, err.Error())
+		return err
+	}
+
 	return nil
 }
 
@@ -2708,12 +2715,6 @@ func (m *Server) createVol(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err = m.checkCreateVolReq(req); err != nil {
-		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
-		return
-	}
-
-	if proto.IsHot(req.volType) && (req.dpReplicaNum == 1 || req.dpReplicaNum == 2) && !req.followerRead {
-		err = fmt.Errorf("hot volume replicaNum be 2 and 3,followerRead must set true")
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
