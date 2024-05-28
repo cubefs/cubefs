@@ -44,6 +44,7 @@ type DefaultRandomSelector struct {
 	sync.RWMutex
 	localLeaderPartitions []*DataPartition
 	partitions            []*DataPartition
+	removeDpMutex         sync.Mutex
 }
 
 func (s *DefaultRandomSelector) Name() string {
@@ -87,6 +88,9 @@ func (s *DefaultRandomSelector) Select(exclude map[string]struct{}) (dp *DataPar
 }
 
 func (s *DefaultRandomSelector) RemoveDP(partitionID uint64) {
+	s.removeDpMutex.Lock()
+	defer s.removeDpMutex.Unlock()
+
 	s.RLock()
 	rwPartitionGroups := s.partitions
 	localLeaderPartitions := s.localLeaderPartitions

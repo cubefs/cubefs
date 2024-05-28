@@ -161,7 +161,8 @@ func (s *DataNode) checkPacketAndPrepare(p *repl.Packet) error {
 		}
 	} else if p.IsLeaderPacket() && p.IsCreateExtentOperation() {
 		if partition.isNormalType() && partition.GetExtentCount() >= storage.MaxExtentCount*3 {
-			return fmt.Errorf("checkPacketAndPrepare partition %v has reached maxExtentId", p.PartitionID)
+			log.LogErrorf("[checkPacketAndPrepare] partition %v has reached maxExtentId", p.PartitionID)
+			return storage.ReachMaxExtentsCountError
 		}
 		p.ExtentID, err = store.NextExtentID()
 		if err != nil {
