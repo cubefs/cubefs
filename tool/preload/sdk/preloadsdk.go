@@ -156,6 +156,7 @@ func NewClient(config PreloadConfig) *PreLoadClient {
 		OnTruncate:             mw.Truncate,
 		VolStorageClass:        view.VolStorageClass,
 		VolAllowedStorageClass: view.AllowedStorageClass,
+		VolCacheDpStorageClass: view.CacheDpStorageClass,
 	}); err != nil {
 		log.LogErrorf("newClient NewExtentClient failed(%v)", err)
 		return nil

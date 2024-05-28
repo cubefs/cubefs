@@ -247,6 +247,7 @@ type client struct {
 	enableAudit            bool
 	volStorageClass        uint32
 	volAllowedStorageClass []uint32
+	cacheDpStorageClass    uint32
 
 	// runtime context
 	cwd    string // current working directory
@@ -1450,6 +1451,7 @@ func (c *client) start() (err error) {
 		DisableMetaCache:       true,
 		VolStorageClass:        c.volStorageClass,
 		VolAllowedStorageClass: c.volAllowedStorageClass,
+		VolCacheDpStorageClass: c.cacheDpStorageClass,
 	}); err != nil {
 		log.LogErrorf("newClient NewExtentClient failed(%v)", err)
 		return
@@ -1722,6 +1724,7 @@ func (c *client) loadConfFromMaster(masters []string) (err error) {
 	c.cacheThreshold = volumeInfo.CacheThreshold
 	c.volStorageClass = volumeInfo.VolStorageClass
 	c.volAllowedStorageClass = volumeInfo.AllowedStorageClass
+	c.cacheDpStorageClass = volumeInfo.CacheDpStorageClass
 
 	var clusterInfo *proto.ClusterInfo
 	clusterInfo, err = mc.AdminAPI().GetClusterInfo()

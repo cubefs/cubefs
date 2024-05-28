@@ -641,12 +641,6 @@ func (vol *Vol) initDataPartitions(c *Cluster, dpCount int, mediaType uint32) (e
 		dpCount = defaultInitDataPartitionCnt
 	}
 
-	// The previous check ensured that that vol.volStorageClass must is vol.allowedStorageClass[]
-	//for storageClass := range vol.allowedStorageClass {
-	//	mediaType := proto.GetMediaTypeByStorageClass(storageClass)
-	//}
-
-	//TODO:tangjingyu: create dp for each mediaType
 	// initialize k data partitionMap at a time
 	err = c.batchCreateDataPartition(vol, dpCount, true, mediaType)
 	return
