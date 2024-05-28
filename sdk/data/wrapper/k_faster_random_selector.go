@@ -55,6 +55,7 @@ type KFasterRandomSelector struct {
 	kValueHundred int
 	kValue        int
 	partitions    []*DataPartition
+	removeDpMutex sync.Mutex
 }
 
 func (s *KFasterRandomSelector) Name() string {
@@ -124,6 +125,9 @@ func (s *KFasterRandomSelector) Select(exclude map[string]struct{}) (dp *DataPar
 }
 
 func (s *KFasterRandomSelector) RemoveDP(partitionID uint64) {
+	s.removeDpMutex.Lock()
+	defer s.removeDpMutex.Unlock()
+
 	s.RLock()
 	partitions := s.partitions
 	s.RUnlock()

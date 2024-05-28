@@ -257,8 +257,9 @@ const (
 	OpReadRepairExtentAgain uint8 = 0xEF
 
 	// io speed limit
-	OpLimitedIoErr uint8 = 0xB1
-	OpStoreClosed  uint8 = 0xB2
+	OpLimitedIoErr       uint8 = 0xB1
+	OpStoreClosed        uint8 = 0xB2
+	OpReachMaxExtentsErr uint8 = 0xB3
 )
 
 const (
@@ -710,6 +711,10 @@ func (p *Packet) GetResultMsg() (m string) {
 		m = "OpForbidErr"
 	case OpLimitedIoErr:
 		m = "OpLimitedIoErr"
+	case OpStoreClosed:
+		return "OpStoreClosed"
+	case OpReachMaxExtentsErr:
+		return "OpReachMaxExtentsErr"
 	default:
 		return fmt.Sprintf("Unknown ResultCode(%v)", p.ResultCode)
 	}
