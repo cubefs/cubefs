@@ -430,7 +430,9 @@ func (dp *DataPartition) notifyFollower(wg *sync.WaitGroup, index int, members [
 	defer func() {
 		wg.Done()
 		if err == nil {
-			log.LogInfof(ActionNotifyFollowerToRepair+" to host(%v) Partition(%v) done", target, dp.partitionID)
+			log.LogInfof(ActionNotifyFollowerToRepair+" to host(%v) Partition(%v) type(%v) ToBeCreated(%v) ToBeRepaired(%v) done",
+				target, dp.partitionID, members[index].TaskType, len(members[index].ExtentsToBeCreated),
+				len(members[index].ExtentsToBeRepaired))
 		} else {
 			log.LogErrorf(ActionNotifyFollowerToRepair+" to host(%v) Partition(%v) failed, err(%v)", target, dp.partitionID, err)
 		}
