@@ -106,6 +106,7 @@ type Cluster struct {
 	DecommissionDiskLimit        uint32
 	S3ApiQosQuota                *sync.Map // (api,uid,limtType) -> limitQuota
 	MarkDiskBrokenThreshold      atomicutil.Float64
+	DisableAutoDpMetaRepair      atomicutil.Bool
 }
 
 type delayDeleteVolInfo struct {
@@ -372,6 +373,7 @@ func newCluster(name string, leaderInfo *LeaderInfo, fsm *MetadataFsm, partition
 	c.snapshotMgr.cluster = c
 	c.S3ApiQosQuota = new(sync.Map)
 	c.MarkDiskBrokenThreshold.Store(defaultMarkDiskBrokenThreshold)
+	c.DisableAutoDpMetaRepair.Store(defaultDisableDpMetaRepair)
 	return
 }
 
@@ -3948,6 +3950,23 @@ func (c *Cluster) getMarkDiskBrokenThreshold() (v float64) {
 	if v < 0 || v > 1 {
 		v = defaultMarkDiskBrokenThreshold
 	}
+	return
+}
+
+func (c *Cluster) setDisableAutoDpMetaRepair(val bool) (err error) {
+	oldVal := c.DisableAutoDpMetaRepair.Load()
+	c.DisableAutoDpMetaRepair.Store(val)
+	if err = c.syncPutCluster(); err != nil {
+		log.LogErrorf("[setEnableAutoDpMetaRepair] failed to set enable auto dp meta, err(%v)", err)
+		c.DisableAutoDpMetaRepair.Store(oldVal)
+		err = proto.ErrPersistenceByRaft
+		return
+	}
+	return
+}
+
+func (c *Cluster) getDisableAutoDpMetaRepair() (v bool) {
+	v = c.DisableAutoDpMetaRepair.Load()
 	return
 }
 
