@@ -1928,37 +1928,6 @@ func (partition *DataPartition) ReleaseDecommissionToken(c *Cluster) {
 //	partition.ReleaseDecommissionToken(c)
 //}
 
-func (partition *DataPartition) restoreReplicaMeta(c *Cluster) (err error) {
-	//dst has
-	//dstDataNode, err := c.dataNode(partition.DecommissionDstAddr)
-	//if err != nil {
-	//	log.LogWarnf("action[restoreReplicaMeta]partition %v find dst %v data node failed:%v",
-	//		partition.PartitionID, partition.DecommissionDstAddr, err.Error())
-	//	return
-	//}
-	//removePeer := proto.Peer{ID: dstDataNode.ID, Addr: partition.DecommissionDstAddr}
-	//if err = c.removeHostMember(partition, removePeer); err != nil {
-	//	log.LogWarnf("action[restoreReplicaMeta]partition %v metadata  removeReplica %v failed:%v",
-	//		partition.PartitionID, partition.DecommissionDstAddr, err.Error())
-	//	return
-	//}
-	srcDataNode, err := c.dataNode(partition.DecommissionSrcAddr)
-	if err != nil {
-		log.LogWarnf("action[restoreReplicaMeta]partition %v find src %v data node failed:%v",
-			partition.PartitionID, partition.DecommissionSrcAddr, err.Error())
-		return
-	}
-	addPeer := proto.Peer{ID: srcDataNode.ID, Addr: partition.DecommissionSrcAddr}
-	if err = c.addDataPartitionRaftMember(partition, addPeer); err != nil {
-		log.LogWarnf("action[restoreReplicaMeta]partition %v metadata addReplica %v failed:%v",
-			partition.PartitionID, partition.DecommissionSrcAddr, err.Error())
-		return
-	}
-	log.LogDebugf("action[restoreReplicaMeta]partition %v meta data has restored:hosts [%v] peers[%v]",
-		partition.PartitionID, partition.Hosts, partition.Peers)
-	return
-}
-
 func getTargetNodeset(addr string, c *Cluster) (ns *nodeSet, zone *Zone, err error) {
 	var dataNode *DataNode
 	dataNode, err = c.dataNode(addr)
@@ -2248,12 +2217,12 @@ func (partition *DataPartition) lostLeader(c *Cluster) bool {
 
 func (partition *DataPartition) decommissionInfo() string {
 	return fmt.Sprintf("vol(%v)_dp(%v)_src(%v)_dst(%v)_hosts(%v)_retry(%v)_isRecover(%v)_status(%v)_specialStatus(%v)"+
-		"_needRollback(%v)_rollbackTimes(%v)_force(%v)_type(%v)_RestoreReplica(%v)",
+		"_needRollback(%v)_rollbackTimes(%v)_force(%v)_type(%v)_RestoreReplica(%v)_errMsg(%v)",
 		partition.VolName, partition.PartitionID, partition.DecommissionSrcAddr, partition.DecommissionDstAddr,
 		partition.Hosts, partition.DecommissionRetry, partition.isRecover, GetDecommissionStatusMessage(partition.GetDecommissionStatus()),
 		GetSpecialDecommissionStatusMessage(partition.GetSpecialReplicaDecommissionStep()), partition.DecommissionNeedRollback,
 		partition.DecommissionNeedRollbackTimes, partition.DecommissionRaftForce, GetDecommissionTypeMessage(partition.DecommissionType),
-		GetRestoreReplicaMessage(partition.RestoreReplica))
+		GetRestoreReplicaMessage(partition.RestoreReplica), partition.DecommissionErrorMessage)
 }
 
 func (partition *DataPartition) isPerformingDecommission(c *Cluster) bool {
@@ -2280,7 +2249,7 @@ func (partition *DataPartition) isPerformingDecommission(c *Cluster) bool {
 			partition.PartitionID, partition.DecommissionSrcAddr, err)
 		return false
 	}
-	return ns.decommissionDataPartitionList.hasDecommissionToken(partition.PartitionID)
+	return ns.processDataPartitionDecommission(partition.PartitionID)
 }
 
 func (partition *DataPartition) isPerformingRestoreReplica() bool {
