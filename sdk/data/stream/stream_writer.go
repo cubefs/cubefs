@@ -920,21 +920,19 @@ func (s *Streamer) traverse() (err error) {
 		if eh.getStatus() >= ExtentStatusClosed {
 			// handler can be in different status such as close, recovery, and error,
 			// and therefore there can be packet that has not been flushed yet.
-			if eh.packet != nil {
-				eh.flushPacket()
-				if atomic.LoadInt32(&eh.inflight) > 0 {
-					log.LogDebugf("Streamer traverse skipped: non-zero inflight, eh(%v)", eh)
-					continue
+			eh.flushPacket()
+			if atomic.LoadInt32(&eh.inflight) > 0 {
+				log.LogDebugf("Streamer traverse skipped: non-zero inflight, eh(%v)", eh)
+				continue
+			}
+			err = eh.appendExtentKey()
+			if err != nil {
+				log.LogWarnf("Streamer traverse abort: appendExtentKey failed, eh(%v) err(%v)", eh, err)
+				// set the streamer to error status to avoid further writes
+				if err == syscall.EIO {
+					atomic.StoreInt32(&eh.stream.status, StreamerError)
 				}
-				err = eh.appendExtentKey()
-				if err != nil {
-					log.LogWarnf("Streamer traverse abort: appendExtentKey failed, eh(%v) err(%v)", eh, err)
-					// set the streamer to error status to avoid further writes
-					if err == syscall.EIO {
-						atomic.StoreInt32(&eh.stream.status, StreamerError)
-					}
-					return
-				}
+				return
 			}
 			s.dirtylist.Remove(element)
 			eh.cleanup()
@@ -1024,6 +1022,7 @@ func (s *Streamer) abort() {
 		s.dirtylist.Remove(element)
 		// TODO unhandled error
 		eh.cleanup()
+		log.LogDebugf("abort cleanup: eh(%v)", s.handler)
 	}
 }
 
