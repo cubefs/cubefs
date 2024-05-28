@@ -2481,7 +2481,8 @@ func (c *Cluster) updateDataNodeSize(addr string, dp *DataPartition) error {
 	defer dataNode.Unlock()
 
 	if !dataNode.isWriteAbleWithSizeNoLock(10 * util.GB) {
-		return fmt.Errorf("new datanode %s is not writable %d", addr, dataNode.AvailableSpace)
+		return fmt.Errorf("new datanode %s is not writable AvailableSpace(%v) isActive(%v) RdOnly(%v) Total(%v) Used(%v)",
+			addr, dataNode.AvailableSpace, dataNode.isActive, dataNode.RdOnly, dataNode.Total, dataNode.Used)
 	}
 
 	dataNode.LastUpdateTime = time.Now()
@@ -2638,7 +2639,9 @@ func (c *Cluster) removeDataReplica(dp *DataPartition, addr string, validate boo
 				dp.VolName, dp.PartitionID, addr, err)
 		}
 	}()
-	if dp.DecommissionType == AutoAddReplica {
+	// skip removeDataReplica when decommission AutoAddReplica mode, but when execute rollback operation,
+	// can not skip it to delete decommission dst replica
+	if dp.DecommissionType == AutoAddReplica && addr == dp.DecommissionSrcAddr {
 		log.LogDebugf("action[removeDataReplica]auto add dp %v skip  removeDataReplica %v", dp.PartitionID, addr)
 		return
 	}

@@ -2182,7 +2182,7 @@ func (l *DecommissionDataPartitionList) traverse(c *Cluster) {
 			}
 			allDecommissionDP := l.GetAllDecommissionDataPartitions()
 			for _, dp := range allDecommissionDP {
-				log.LogDebugf("[DecommissionListTraverse] traverse dp(%v) discard(%v) decommission status(%v)", dp.PartitionID, dp.IsDiscard, dp.GetDecommissionStatus())
+				log.LogDebugf("[DecommissionListTraverse] traverse dp(%v)", dp.decommissionInfo())
 				if dp.IsDecommissionSuccess() {
 					l.Remove(dp)
 					dp.ReleaseDecommissionToken(c)
