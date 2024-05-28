@@ -1974,6 +1974,11 @@ func (partition *DataPartition) needManualFix() bool {
 func (partition *DataPartition) checkReplicaMeta(c *Cluster) (err error) {
 	var auditMsg string
 
+	if c.getDisableAutoDpMetaRepair() {
+		log.LogDebugf("[checkReplicaMeta] cluster disable auto dp meta repair, skip dp(%v)", partition.PartitionID)
+		return
+	}
+
 	if partition.isPerformingDecommission(c) {
 		log.LogDebugf("action[checkReplicaMeta]dp(%v) is performing decommission, skip it",
 			partition.PartitionID)
