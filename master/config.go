@@ -68,7 +68,9 @@ const (
 	defaultNodeTimeOutSec                      = noHeartBeatTimes * defaultIntervalToCheckHeartbeat
 	defaultDataPartitionTimeOutSec             = 5 * defaultIntervalToCheckHeartbeat
 	defaultMissingDataPartitionInterval        = 24 * 3600
-	defaultDpNoLeaderReportIntervalSec         = 10 * 60
+	// defaultDpNoLeaderReportIntervalSec         = 10 * 60
+	// TODO-chi: for test
+	defaultDpNoLeaderReportIntervalSec         = 10
 	defaultMpNoLeaderReportIntervalSec         = 5
 	defaultIntervalToAlarmMissingDataPartition = 60 * 60
 	timeToWaitForResponse                      = 120         // time to wait for response by the master during loading partition
