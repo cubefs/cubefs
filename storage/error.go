@@ -40,6 +40,7 @@ var (
 	VerNotConsistentError            = errors.New("ver not consistent")
 	SnapshotNeedNewExtentError       = errors.New("snapshot need new extent error")
 	NoDiskReadRepairExtentTokenError = errors.New("no disk read repair extent token")
+	ReachMaxExtentsCountError        = errors.New("reached max extents count")
 )
 
 func newParameterError(format string, a ...interface{}) error {
