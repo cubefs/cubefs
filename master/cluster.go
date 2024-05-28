@@ -4587,7 +4587,6 @@ func (c *Cluster) TryDecommissionDisk(disk *DecommissionDisk) {
 	}
 	rstMsg = fmt.Sprintf("disk[%v] badPartitionIds %v offline successfully, ignore (%v) %v",
 		disk.decommissionInfo(), badPartitionIds, len(ignoreIDs), ignoreIDs)
-	auditlog.LogMasterOp("DiskDecommission", rstMsg, nil)
 	log.LogInfof("action[TryDecommissionDisk] %s", rstMsg)
 }
 
