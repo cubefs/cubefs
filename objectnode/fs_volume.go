@@ -3058,6 +3058,7 @@ func NewVolume(config *VolumeConfig) (*Volume, error) {
 		OnRenewalForbiddenMigration: metaWrapper.RenewalForbiddenMigration,
 		VolStorageClass:             volumeInfo.VolStorageClass,
 		VolAllowedStorageClass:      volumeInfo.AllowedStorageClass,
+		VolCacheDpStorageClass:      volumeInfo.CacheDpStorageClass,
 	}
 
 	if proto.IsStorageClassBlobStore(volumeInfo.VolStorageClass) {

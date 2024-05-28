@@ -312,6 +312,7 @@ retry:
 	client.preload = config.Preload
 	client.disableMetaCache = config.DisableMetaCache
 	client.renewalForbiddenMigration = config.OnRenewalForbiddenMigration
+	client.CacheDpStorageClass = config.VolCacheDpStorageClass
 
 	if config.StreamRetryTimeout <= 0 {
 		client.streamRetryTimeout = StreamSendMaxTimeout
@@ -351,8 +352,6 @@ retry:
 
 	log.LogInfof("max streamer limit %d", client.maxStreamerLimit)
 	client.streamerList = list.New()
-
-	client.CacheDpStorageClass = config.VolCacheDpStorageClass
 
 	go client.backgroundEvictStream()
 
