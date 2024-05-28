@@ -445,7 +445,8 @@ func TestCreateVolWithDpCount(t *testing.T) {
 			qosLimitArgs:     &qosArgs{},
 			volStorageClass:  defaultVolStorageClass,
 		}
-		_, err := server.cluster.createVol(req)
+
+		err := server.checkCreateVolReq(req)
 		require.Error(t, err)
 	})
 }
