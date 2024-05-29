@@ -221,6 +221,8 @@ func (c *Cluster) addAndSyncDecommissionedDisk(dataNode *DataNode, diskPath stri
 	}
 	if err = c.syncUpdateDataNode(dataNode); err != nil {
 		dataNode.deleteDecommissionedDisk(diskPath)
+		log.LogWarnf("action[addAndSyncDecommissionedDisk]submit raft failed: %v, delete disks[%v], dataNode[%v]",
+			err, diskPath, dataNode.Addr)
 		return
 	}
 	log.LogInfof("action[addAndSyncDecommissionedDisk] finish, remaining decommissioned disks[%v], dataNode[%v]", dataNode.getDecommissionedDisks(), dataNode.Addr)
