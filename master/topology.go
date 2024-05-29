@@ -2123,7 +2123,12 @@ func (l *DecommissionDataPartitionList) Put(id uint64, value *DataPartition, c *
 	// restore from rocksdb
 	// NOTE: if dp is discard, not need to get token, decommission will success directly
 	if value.checkConsumeToken() && !value.IsDiscard {
-		value.TryAcquireDecommissionToken(c)
+		// keep origin error msg, DecommissionErrorMessage would be replaced by "no node set available" e.g. if
+		// execute TryAcquireDecommissionToken failed
+		msg := value.DecommissionErrorMessage
+		if !value.TryAcquireDecommissionToken(c) {
+			value.DecommissionErrorMessage = msg
+		}
 	}
 
 	// restore special replica decommission progress
