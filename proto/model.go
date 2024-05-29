@@ -130,6 +130,7 @@ type ClusterView struct {
 	MarkDiskBrokenThreshold  float64
 	EnableAutoDecommission   bool
 	DecommissionDiskLimit    uint32
+	DpRepairTimeout          time.Duration
 	DataNodeStatInfo         *NodeStatInfo
 	MetaNodeStatInfo         *NodeStatInfo
 	VolStatInfo              []*VolStatInfo
