@@ -35,6 +35,13 @@ func (s *DataNode) Prepare(p *repl.Packet) (err error) {
 			p.AfterPre = true
 		}
 	}()
+
+	// service not start and not urgent req.
+	if !s.HasStarted() && !p.IsUrgentLeaderReq() {
+		log.LogDebugf("prepare: datanode still not start, op %s", p.GetOpMsg())
+		return fmt.Errorf("datanode still not started")
+	}
+
 	if p.IsMasterCommand() {
 		return
 	}
