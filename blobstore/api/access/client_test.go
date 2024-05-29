@@ -939,7 +939,7 @@ func TestAccessClientLogger(t *testing.T) {
 		Logger: &access.Logger{
 			Filename: file.Name(),
 		},
-		PriorityAddrs: []string{"127.0.0.1:9500"},
+		PriorityAddrs: []string{"127.0.0.1:37173"},
 	}
 	client, err := access.New(cfg)
 	require.NoError(t, err)
@@ -957,13 +957,14 @@ func TestAccessClientLogger(t *testing.T) {
 }
 
 func TestAccessClientPutRetryGetBody(t *testing.T) {
+	refusedAddr := "http://127.0.0.1:37173"
 	cfg := access.Config{}
 	cfg.RPCConfig = &rpc.Config{}
 	cfg.LogLevel = log.Lfatal
-	cfg.PriorityAddrs = []string{"http://127.0.0.1:9500", mockServer.URL}
+	cfg.PriorityAddrs = []string{refusedAddr, refusedAddr, mockServer.URL, refusedAddr}
 	client, err := access.New(cfg)
 	require.NoError(t, err)
-	for range [100]struct{}{} {
+	for range [1000]struct{}{} {
 		retried := false
 		args := access.PutArgs{
 			Size: int64(1),

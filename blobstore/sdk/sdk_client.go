@@ -3,6 +3,7 @@ package sdk
 import (
 	"bytes"
 	"context"
+	"crypto/sha1"
 	"fmt"
 	"io"
 	"net/http"
@@ -51,6 +52,16 @@ func init() {
 	})
 }
 
+func initWithRegionMagic(regionMagic string) {
+	if regionMagic == "" {
+		log.Warn("no region magic setting, using default secret keys for checksum")
+		return
+	}
+	b := sha1.Sum([]byte(regionMagic))
+	stream.TokenInitSecret(b[:8])
+	stream.LocationInitSecret(b[:8])
+}
+
 // ResetMemoryPool is thread unsafe, call it on init.
 func ResetMemoryPool(sizeClasses map[int]int) {
 	memPool = resourcepool.NewMemPool(sizeClasses)
@@ -76,6 +87,8 @@ type sdkHandler struct {
 
 func New(conf *Config) (acapi.API, error) {
 	fixConfig(conf)
+	// add region magic checksum to the secret keys
+	initWithRegionMagic(conf.StreamConfig.ClusterConfig.RegionMagic)
 
 	cl := closer.New()
 	h, err := stream.NewStreamHandler(&conf.StreamConfig, cl.Done())
@@ -214,7 +227,7 @@ func (s *sdkHandler) deleteBlob(ctx context.Context, args *acapi.DeleteBlobArgs)
 	span.Debugf("accept /deleteblob request args:%+v", args)
 
 	valid := false
-	for _, secretKey := range stream.StreamTokenSecretKeys {
+	for _, secretKey := range stream.TokenSecretKeys() {
 		token := uptoken.DecodeToken(args.Token)
 		if token.IsValid(args.ClusterID, args.Vid, args.BlobID, uint32(args.Size), secretKey[:]) {
 			valid = true
@@ -421,7 +434,7 @@ func (s *sdkHandler) doPutAt(ctx context.Context, args *acapi.PutAtArgs) (hashSu
 	span.Debugf("accept sdk putat request args:%+v", args)
 
 	valid := false
-	for _, secretKey := range stream.StreamTokenSecretKeys {
+	for _, secretKey := range stream.TokenSecretKeys() {
 		token := uptoken.DecodeToken(args.Token)
 		if token.IsValid(args.ClusterID, args.Vid, args.BlobID, uint32(args.Size), secretKey[:]) {
 			valid = true
