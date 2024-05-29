@@ -4395,7 +4395,6 @@ func (c *Cluster) TryDecommissionDisk(disk *DecommissionDisk) {
 				if strings.Contains(err.Error(), proto.ErrAllReplicaUnavailable.Error()) {
 					dp.DecommissionNeedRollbackTimes = defaultDecommissionRollbackLimit
 					dp.DecommissionNeedRollback = false
-					dp.IsDiscard = true
 				} else {
 					dp.markRollbackFailed(false)
 					dp.DecommissionErrorMessage = err.Error()
@@ -4889,7 +4888,6 @@ func (c *Cluster) markDecommissionDataPartition(dp *DataPartition, src *DataNode
 			if strings.Contains(err.Error(), proto.ErrAllReplicaUnavailable.Error()) {
 				dp.DecommissionNeedRollbackTimes = defaultDecommissionRollbackLimit
 				dp.DecommissionNeedRollback = false
-				dp.IsDiscard = true
 			} else {
 				dp.markRollbackFailed(false)
 				dp.DecommissionErrorMessage = err.Error()
