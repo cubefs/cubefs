@@ -793,6 +793,7 @@ func (m *Server) getCluster(w http.ResponseWriter, r *http.Request) {
 		MaxMetaNodeID:            m.cluster.idAlloc.commonID,
 		MaxMetaPartitionID:       m.cluster.idAlloc.metaPartitionID,
 		VolDeletionDelayTimeHour: m.cluster.cfg.volDelayDeleteTimeHour,
+		DpRepairTimeout:          m.cluster.GetDecommissionDataPartitionRecoverTimeOut(),
 		MarkDiskBrokenThreshold:  m.cluster.getMarkDiskBrokenThreshold(),
 		EnableAutoDecommission:   m.cluster.AutoDecommissionDiskIsEnabled(),
 		DecommissionDiskLimit:    m.cluster.GetDecommissionDiskLimit(),
@@ -3907,7 +3908,6 @@ func (m *Server) getNodeInfoHandler(w http.ResponseWriter, r *http.Request) {
 	resp[nodeMarkDeleteRateKey] = fmt.Sprintf("%v", m.cluster.cfg.DataNodeDeleteLimitRate)
 	resp[nodeDeleteWorkerSleepMs] = fmt.Sprintf("%v", m.cluster.cfg.MetaNodeDeleteWorkerSleepMs)
 	resp[nodeAutoRepairRateKey] = fmt.Sprintf("%v", m.cluster.cfg.DataNodeAutoRepairLimitRate)
-	resp[nodeDpRepairTimeOutKey] = fmt.Sprintf("%v", m.cluster.cfg.DpRepairTimeOut)
 	resp[nodeDpMaxRepairErrCntKey] = fmt.Sprintf("%v", m.cluster.cfg.DpMaxRepairErrCnt)
 	resp[clusterLoadFactorKey] = fmt.Sprintf("%v", m.cluster.cfg.ClusterLoadFactor)
 	resp[maxDpCntLimitKey] = fmt.Sprintf("%v", m.cluster.getMaxDpCntLimit())
