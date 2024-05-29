@@ -180,7 +180,6 @@ type DataNode struct {
 	diskWriteIops           int
 	diskWriteFlow           int
 	dpMaxRepairErrCnt       uint64
-	dpRepairTimeOut         uint64
 	clusterUuid             string
 	clusterUuidEnable       bool
 	serviceIDKey            string
