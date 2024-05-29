@@ -1043,6 +1043,13 @@ func (c *Cluster) updateMarkDiskBrokenThreshold(val float64) {
 	c.MarkDiskBrokenThreshold.Store(val)
 }
 
+func (c *Cluster) updateDecommissionDiskLimit(val uint32) {
+	if val < 1 {
+		val = 1
+	}
+	atomic.StoreUint32(&c.DecommissionDiskLimit, val)
+}
+
 func (c *Cluster) loadZoneValue() (err error) {
 	var ok bool
 	result, err := c.fsm.store.SeekForPrefix([]byte(zonePrefix))
@@ -1183,7 +1190,7 @@ func (c *Cluster) loadClusterValue() (err error) {
 
 		c.updateMaxConcurrentLcNodes(cv.MaxConcurrentLcNodes)
 		log.LogInfof("action[loadClusterValue], metaNodeThreshold[%v]", cv.Threshold)
-
+		c.updateDecommissionDiskLimit(cv.DecommissionDiskLimit)
 		c.checkDataReplicasEnable = cv.CheckDataReplicasEnable
 		c.updateMarkDiskBrokenThreshold(cv.MarkDiskBrokenThreshold)
 	}
