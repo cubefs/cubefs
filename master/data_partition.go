@@ -1175,6 +1175,11 @@ func (partition *DataPartition) MarkDecommissionStatus(srcAddr, dstAddr, srcDisk
 		}
 	}()
 
+	var status uint32
+	// if mark discard, decommission it directly to delete replica
+	if partition.IsDiscard {
+		goto directly
+	}
 	if partition.needManualFix() {
 		return proto.ErrAllReplicaUnavailable
 	}
@@ -1191,7 +1196,7 @@ func (partition *DataPartition) MarkDecommissionStatus(srcAddr, dstAddr, srcDisk
 			partition.PartitionID, err)
 		return err
 	}
-	status := partition.GetDecommissionStatus()
+	status = partition.GetDecommissionStatus()
 	if err = partition.canMarkDecommission(status, ns); err != nil {
 		log.LogWarnf("action[MarkDecommissionStatus] dp[%v] cannot make decommission:%v",
 			partition.PartitionID, err)
@@ -1203,7 +1208,7 @@ func (partition *DataPartition) MarkDecommissionStatus(srcAddr, dstAddr, srcDisk
 		log.LogDebugf("action[MarkDecommissionStatus] dp[%v] lostLeader %v leader %v interval %v",
 			partition.PartitionID, partition.lostLeader(c), partition.getLeaderAddr(), time.Now().Unix()-partition.LeaderReportTime)
 		if partition.lostLeader(c) {
-			if partition.getReplicaEqualStatusNum(proto.Unavailable) == partition.ReplicaNum {
+			if partition.getReplicaDiskErrorNum() == partition.ReplicaNum {
 				log.LogWarnf("action[MarkDecommissionStatus] dp[%v] all replica is unavaliable, cannot handle in auto decommission mode",
 					partition.PartitionID)
 				partition.SetDecommissionStatus(DecommissionNeedManualFix)
@@ -1226,7 +1231,7 @@ func (partition *DataPartition) MarkDecommissionStatus(srcAddr, dstAddr, srcDisk
 			}
 		} else {
 			// for special dp , if no replica is disk err, leader should not be none, so decommission the replica it hoped
-			if partition.ReplicaNum == 3 && partition.getReplicaEqualStatusNum(proto.Unavailable) == 1 {
+			if partition.ReplicaNum == 3 && partition.getReplicaDiskErrorNum() == 1 {
 				diskErrReplica := partition.getDiskErrorReplica()
 				if diskErrReplica != nil {
 					// decommission disk err replica first
@@ -1242,7 +1247,7 @@ func (partition *DataPartition) MarkDecommissionStatus(srcAddr, dstAddr, srcDisk
 		}
 	} else {
 		if partition.lostLeader(c) {
-			if partition.getReplicaEqualStatusNum(proto.Unavailable) == partition.ReplicaNum {
+			if partition.getReplicaDiskErrorNum() == partition.ReplicaNum {
 				log.LogWarnf("action[MarkDecommissionStatus] dp[%v] all replica is unavaliable, cannot handle in manual decommission mode",
 					partition.PartitionID)
 				partition.SetDecommissionStatus(DecommissionNeedManualFix)
@@ -1251,6 +1256,7 @@ func (partition *DataPartition) MarkDecommissionStatus(srcAddr, dstAddr, srcDisk
 			}
 		}
 	}
+directly:
 	if partition.IsDecommissionPaused() {
 		if !partition.pauseReplicaRepair(partition.DecommissionDstAddr, false, c) {
 			log.LogWarnf("action[MarkDecommissionStatus] dp [%d] recover from stop failed", partition.PartitionID)
@@ -1259,9 +1265,18 @@ func (partition *DataPartition) MarkDecommissionStatus(srcAddr, dstAddr, srcDisk
 		// forbidden dp to restore meta for replica
 		// if migrateType is AutoAddReplica, RestoreReplica is already RestoreReplicaMetaRunning, so do not need to check
 		// this flag again
-		if !partition.setRestoreReplicaForbidden() && migrateType != AutoAddReplica {
-			return errors.NewErrorf("set RestoreReplicaMetaForbidden failed")
+		for {
+			if !partition.setRestoreReplicaForbidden() && migrateType != AutoAddReplica {
+				partition.DecommissionRetry++
+				if partition.DecommissionRetry >= defaultDecommissionRetryLimit {
+					return errors.NewErrorf("set RestoreReplicaMetaForbidden failed")
+				}
+				// wait for checkReplicaMeta ended
+				time.Sleep(3 * time.Second)
+			}
+			break
 		}
+		partition.DecommissionRetry = 0
 		partition.SetDecommissionStatus(markDecommission)
 		// update decommissionTerm for next time query
 		partition.DecommissionTerm = term
@@ -1270,8 +1285,16 @@ func (partition *DataPartition) MarkDecommissionStatus(srcAddr, dstAddr, srcDisk
 		return
 	}
 	// forbidden dp to restore meta for replica
-	if !partition.setRestoreReplicaForbidden() && migrateType != AutoAddReplica {
-		return errors.NewErrorf("set RestoreReplicaMetaForbidden failed")
+	for {
+		if !partition.setRestoreReplicaForbidden() && migrateType != AutoAddReplica {
+			partition.DecommissionRetry++
+			if partition.DecommissionRetry >= defaultDecommissionRetryLimit {
+				return errors.NewErrorf("set RestoreReplicaMetaForbidden failed")
+			}
+			// wait for checkReplicaMeta ended
+			time.Sleep(3 * time.Second)
+		}
+		break
 	}
 	// initial or failed restart
 	partition.ResetDecommissionStatus()
@@ -2055,12 +2078,12 @@ func (partition *DataPartition) createTaskToRecoverDataReplicaMeta(addr string, 
 	return
 }
 
-func (partition *DataPartition) getReplicaEqualStatusNum(status int8) uint8 {
+func (partition *DataPartition) getReplicaDiskErrorNum() uint8 {
 	partition.RLock()
 	defer partition.RUnlock()
 	var count uint8 = 0
 	for _, replica := range partition.Replicas {
-		if replica.Status == status {
+		if replica.TriggerDiskError {
 			count++
 		}
 	}
