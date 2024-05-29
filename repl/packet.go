@@ -506,6 +506,21 @@ func (p *Packet) IsMasterCommand() bool {
 	}
 }
 
+// op need to be processed by dp raft leader.
+func (p *Packet) IsUrgentLeaderReq() bool {
+	switch p.Opcode {
+	case
+		proto.OpRandomWrite,
+		proto.OpRandomWriteAppend,
+		proto.OpRandomWriteVer,
+		proto.OpSyncRandomWrite,
+		proto.OpStreamRead,
+		proto.OpRead:
+		return true
+	}
+	return false
+}
+
 func (p *Packet) IsForwardPacket() bool {
 	r := p.RemainingFollowers > 0 && !p.isSpecialReplicaCntPacket()
 	return r
