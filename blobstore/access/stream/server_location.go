@@ -52,22 +52,34 @@ var (
 		{0x5f, 0x00, 0x88, 0x96, 0x00, 0xa1, 0xfe, 0x1b},
 		{0xff, 0x1f, 0x2f, 0x4f, 0x7f, 0xaf, 0xef, 0xff},
 	}
-	InitTokenSecret sync.Once
+	_initTokenSecret sync.Once
 
 	LocationCrcCalculate = calcCrc
 	LocationCrcFill      = fillCrc
 	LocationCrcVerify    = verifyCrc
 	LocationCrcSign      = signCrc
 	LocationInitSecret   = initLocationSecret
-
-	StreamTokenSecretKeys = tokenSecretKeys
-	StreamGenTokens       = genTokens
+	StreamGenTokens      = genTokens
 )
 
 func initLocationSecret(b []byte) {
 	_initLocationSecret.Do(func() {
 		copy(_crcMagicKey[7:], b)
 	})
+}
+
+// TokenInitSecret initializate token's secret keys once.
+func TokenInitSecret(b []byte) {
+	_initTokenSecret.Do(func() {
+		for idx := range tokenSecretKeys {
+			copy(tokenSecretKeys[idx][7:], b)
+		}
+	})
+}
+
+// TokenSecretKeys returns const token keys.
+func TokenSecretKeys() [][20]byte {
+	return tokenSecretKeys[:]
 }
 
 func calcCrc(loc *access.Location) (uint32, error) {

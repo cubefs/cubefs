@@ -48,21 +48,13 @@ const (
 	limitNameSign   = "sign"
 )
 
-func initTokenSecret(b []byte) {
-	stream.InitTokenSecret.Do(func() {
-		for idx := range stream.StreamTokenSecretKeys {
-			copy(stream.StreamTokenSecretKeys[idx][7:], b)
-		}
-	})
-}
-
 func initWithRegionMagic(regionMagic string) {
 	if regionMagic == "" {
 		log.Warn("no region magic setting, using default secret keys for checksum")
 		return
 	}
 	b := sha1.Sum([]byte(regionMagic))
-	initTokenSecret(b[:8])
+	stream.TokenInitSecret(b[:8])
 	stream.LocationInitSecret(b[:8])
 }
 
@@ -296,7 +288,7 @@ func (s *Service) PutAt(c *rpc.Context) {
 	}
 
 	valid := false
-	for _, secretKey := range stream.StreamTokenSecretKeys {
+	for _, secretKey := range stream.TokenSecretKeys() {
 		token := uptoken.DecodeToken(args.Token)
 		if token.IsValid(args.ClusterID, args.Vid, args.BlobID, uint32(args.Size), secretKey[:]) {
 			valid = true
@@ -546,7 +538,7 @@ func (s *Service) DeleteBlob(c *rpc.Context) {
 	}
 
 	valid := false
-	for _, secretKey := range stream.StreamTokenSecretKeys {
+	for _, secretKey := range stream.TokenSecretKeys() {
 		token := uptoken.DecodeToken(args.Token)
 		if token.IsValid(args.ClusterID, args.Vid, args.BlobID, uint32(args.Size), secretKey[:]) {
 			valid = true
