@@ -32,6 +32,8 @@ const (
 	FinishLoadDataPartitionExtentHeader = 1
 )
 
+const statusStarted = 1
+
 // cmd response
 const (
 	ReadFlag  = 1
