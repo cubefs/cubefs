@@ -5022,9 +5022,8 @@ func (c *Cluster) SetAutoDecommissionDisk(flag bool) {
 func (c *Cluster) GetDecommissionDataPartitionRecoverTimeOut() time.Duration {
 	if c.cfg.DpRepairTimeOut == 0 {
 		return time.Hour * 2
-	} else {
-		return time.Second * time.Duration(c.cfg.DpRepairTimeOut)
 	}
+	return time.Duration(c.cfg.DpRepairTimeOut)
 }
 
 func (c *Cluster) GetDecommissionDiskLimit() (limit uint32) {

@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/sdk/master"
@@ -253,6 +254,7 @@ func newClusterSetParasCmd(client *master.MasterClient) *cobra.Command {
 	metaNodeSelector := ""
 	markBrokenDiskThreshold := ""
 	opMaxMpCntLimit := ""
+	dpRepairTimeout := ""
 	cmd := &cobra.Command{
 		Use:   CliOpSetCluster,
 		Short: cmdClusterSetClusterInfoShort,
@@ -269,10 +271,24 @@ func newClusterSetParasCmd(client *master.MasterClient) *cobra.Command {
 				}
 				markBrokenDiskThreshold = fmt.Sprintf("%v", val)
 			}
+
+			if dpRepairTimeout != "" {
+				var repairTimeout time.Duration
+				repairTimeout, err = time.ParseDuration(dpRepairTimeout)
+				if err != nil {
+					return
+				}
+				if repairTimeout < 0 {
+					err = fmt.Errorf("dp repair timeout %v smaller than 0", repairTimeout)
+					return
+				}
+
+				dpRepairTimeout = strconv.FormatInt(int64(repairTimeout), 10)
+			}
 			if err = client.AdminAPI().SetClusterParas(optDelBatchCount, optMarkDeleteRate, optDelWorkerSleepMs,
 				optAutoRepairRate, optLoadFactor, opMaxDpCntLimit, opMaxMpCntLimit, clientIDKey,
 				dataNodesetSelector, metaNodesetSelector,
-				dataNodeSelector, metaNodeSelector, markBrokenDiskThreshold); err != nil {
+				dataNodeSelector, metaNodeSelector, markBrokenDiskThreshold, dpRepairTimeout); err != nil {
 				return
 			}
 			stdout("Cluster parameters has been set successfully. \n")
@@ -291,6 +307,7 @@ func newClusterSetParasCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().StringVar(&dataNodeSelector, CliFlagDataNodeSelector, "", "Set the node select policy(datanode) for cluster")
 	cmd.Flags().StringVar(&metaNodeSelector, CliFlagMetaNodeSelector, "", "Set the node select policy(metanode) for cluster")
 	cmd.Flags().StringVar(&markBrokenDiskThreshold, CliFlagMarkDiskBrokenThreshold, "", "Threshold to mark disk as broken")
+	cmd.Flags().StringVar(&dpRepairTimeout, CliFlagDpRepairTimeout, "", "Data partition repair timeout")
 	return cmd
 }
 
