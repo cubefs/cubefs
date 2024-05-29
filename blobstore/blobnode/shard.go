@@ -134,6 +134,7 @@ func (s *Service) ShardGet(c *rpc.Context) {
 	} else {
 		written, err = cs.Read(ctx, shard)
 	}
+
 	if err != nil {
 		span.Errorf("Failed read. args:%v err:%v, written:%v", args, err, written)
 		if isShardErr(err) {
@@ -145,6 +146,8 @@ func (s *Service) ShardGet(c *rpc.Context) {
 		}
 		return
 	}
+
+	s.reportGetTraffic(args.Type, written)
 }
 
 /*
@@ -513,6 +516,7 @@ func (s *Service) ShardPut(c *rpc.Context) {
 		}
 	}
 
+	s.reportPutTraffic(args.Type, args.Size)
 	c.RespondJSON(ret)
 }
 

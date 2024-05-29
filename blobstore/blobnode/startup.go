@@ -23,8 +23,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/prometheus/client_golang/prometheus"
-
 	bnapi "github.com/cubefs/cubefs/blobstore/api/blobnode"
 	cmapi "github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/blobnode/base/flow"
@@ -49,20 +47,6 @@ const (
 	ExpiresTicks   = 60
 	LostDiskCount  = 3
 )
-
-var diskHealthMetric = prometheus.NewGaugeVec(
-	prometheus.GaugeOpts{
-		Namespace: "blobstore",
-		Subsystem: "blobnode",
-		Name:      "lost_disk",
-		Help:      "blobnode lost disk",
-	},
-	[]string{"cluster_id", "idc", "rack", "host", "disk"},
-)
-
-func init() {
-	prometheus.MustRegister(diskHealthMetric)
-}
 
 func readFormatInfo(ctx context.Context, diskRootPath string) (
 	formatInfo *core.FormatInfo, err error,
@@ -452,27 +436,6 @@ func NewService(conf Config) (svr *Service, err error) {
 	go svr.inspectMgr.loopDataInspect()
 
 	return
-}
-
-// when find the lost disk, set value 1
-func (s *Service) reportLostDisk(hostInfo *core.HostInfo, diskPath string) {
-	diskHealthMetric.WithLabelValues(hostInfo.ClusterID.ToString(),
-		hostInfo.IDC,
-		hostInfo.Rack,
-		hostInfo.Host,
-		diskPath,
-	).Set(1)
-}
-
-// 1. when startup ok, we set value 0(normal disk)
-// 2. when the lost disk is report to cm(set broken), we know it is bad disk, set 0
-func (s *Service) reportOnlineDisk(hostInfo *core.HostInfo, diskPath string) {
-	diskHealthMetric.WithLabelValues(hostInfo.ClusterID.ToString(),
-		hostInfo.IDC,
-		hostInfo.Rack,
-		hostInfo.Host,
-		diskPath,
-	).Set(0)
 }
 
 func registerNode(ctx context.Context, clusterMgrCli *cmapi.Client, conf *Config) error {
