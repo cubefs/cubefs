@@ -1048,6 +1048,17 @@ func (ns *nodeSet) canWriteForDataNode(replicaNum int) bool {
 	return count >= replicaNum
 }
 
+func (ns *nodeSet) canAllocDataNodeCnt() (cnt int) {
+	ns.dataNodes.Range(func(key, value interface{}) bool {
+		node := value.(*DataNode)
+		if node.isWriteAble() && node.dpCntInLimit() {
+			cnt++
+		}
+		return true
+	})
+	return
+}
+
 func (ns *nodeSet) canWriteForMetaNode(replicaNum int) bool {
 	var count int
 	ns.metaNodes.Range(func(key, value interface{}) bool {
@@ -1063,6 +1074,17 @@ func (ns *nodeSet) canWriteForMetaNode(replicaNum int) bool {
 	log.LogInfof("canWriteForMetaNode zone[%v], ns[%v],count[%v] replicaNum[%v]",
 		ns.zoneName, ns.ID, count, replicaNum)
 	return count >= replicaNum
+}
+
+func (ns *nodeSet) canAllocMetaNodeCnt() (cnt int) {
+	ns.metaNodes.Range(func(key, value interface{}) bool {
+		node := value.(*MetaNode)
+		if node.isWritable() && node.mpCntInLimit() {
+			cnt++
+		}
+		return true
+	})
+	return
 }
 
 func (ns *nodeSet) putDataNode(dataNode *DataNode) {
