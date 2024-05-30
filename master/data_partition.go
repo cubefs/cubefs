@@ -2017,6 +2017,8 @@ func (partition *DataPartition) removeReplicaByForce(c *Cluster, peerAddr string
 	log.LogInfof("action[removeReplicaByForce]dp[%v] rollback to del peer %v force %v", partition.PartitionID, peerAddr, force)
 	err := c.removeDataReplica(partition, peerAddr, false, force)
 	if err != nil {
+		log.LogWarnf("action[removeReplicaByForce]dp[%v] rollback to del peer %v force %v failed:%v, delete peer on master"+
+			"", partition.PartitionID, peerAddr, force, err)
 		// to ensure hosts for master is always correct
 		// redundant replica can be deleted by checkReplicaMeta
 		partition.removeHostByForce(c, peerAddr)
@@ -2143,9 +2145,9 @@ func (partition *DataPartition) checkReplicaMeta(c *Cluster) (err error) {
 		}
 		redundantPeers := findPeersToDeleteByConfig(replica.LocalPeers, partition.Peers)
 		for _, peer := range redundantPeers {
-			// 1-replica rollback failed due to new replica is unavailable(no leader),
-			// use raftForce in this case(the left replica should be rw or ro status).
-			if partition.ReplicaNum == 1 && partition.DecommissionDstAddr == peer.Addr && partition.Status != proto.Unavailable {
+			// use raftForce to delete redundant peer when dp is leaderless. This progress maybe keep executing util
+			// wal logs with member change be truncated
+			if partition.lostLeader(c) && partition.getReplicaDiskErrorNum() == 0 && partition.getSpecifyStatusReplicaNum(proto.Unavailable) == 0 {
 				force = true
 			}
 			// remove raft member
@@ -2240,12 +2242,13 @@ func (partition *DataPartition) lostLeader(c *Cluster) bool {
 
 func (partition *DataPartition) decommissionInfo() string {
 	return fmt.Sprintf("vol(%v)_dp(%v)_src(%v)_dst(%v)_hosts(%v)_retry(%v)_isRecover(%v)_status(%v)_specialStatus(%v)"+
-		"_needRollback(%v)_rollbackTimes(%v)_force(%v)_type(%v)_RestoreReplica(%v)_errMsg(%v)_discard(%v)",
+		"_needRollback(%v)_rollbackTimes(%v)_force(%v)_type(%v)_RestoreReplica(%v)_errMsg(%v)_discard(%v)_term(%v)",
 		partition.VolName, partition.PartitionID, partition.DecommissionSrcAddr, partition.DecommissionDstAddr,
 		partition.Hosts, partition.DecommissionRetry, partition.isRecover, GetDecommissionStatusMessage(partition.GetDecommissionStatus()),
 		GetSpecialDecommissionStatusMessage(partition.GetSpecialReplicaDecommissionStep()), partition.DecommissionNeedRollback,
 		partition.DecommissionNeedRollbackTimes, partition.DecommissionRaftForce, GetDecommissionTypeMessage(partition.DecommissionType),
-		GetRestoreReplicaMessage(partition.RestoreReplica), partition.DecommissionErrorMessage, partition.IsDiscard)
+		GetRestoreReplicaMessage(partition.RestoreReplica), partition.DecommissionErrorMessage, partition.IsDiscard,
+		partition.DecommissionTerm)
 }
 
 func (partition *DataPartition) isPerformingDecommission(c *Cluster) bool {
@@ -2354,4 +2357,16 @@ func (partition *DataPartition) tryRestoreReplicaMeta(c *Cluster, migrateType ui
 	}
 
 	return nil
+}
+
+func (partition *DataPartition) getSpecifyStatusReplicaNum(status int8) uint8 {
+	partition.RLock()
+	defer partition.RUnlock()
+	var count uint8 = 0
+	for _, replica := range partition.Replicas {
+		if replica.Status == status {
+			count++
+		}
+	}
+	return count
 }
