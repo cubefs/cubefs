@@ -191,17 +191,8 @@ func (s *CarryWeightNodeSelector) getCarryDataNodes(maxTotal uint64, excludeHost
 			// log.LogDebugf("[getAvailCarryDataNodeTab] dataNode [%v] is excludeHosts", dataNode.Addr)
 			return true
 		}
-		if !dataNode.canAllocDp() {
-			log.LogWarnf("[getAvailCarryDataNodeTab] dataNode [%v] writeable(%v), isActive(%v) AvailableSpace(%v) "+
-				"RdOnly(%v) Total(%v) Used(%v) offline(%v), availableDiskCnt(%v) dpCnt(%v) excludeHosts[%v]",
-				dataNode.Addr, dataNode.isWriteAble(), dataNode.isActive, dataNode.AvailableSpace, dataNode.RdOnly,
-				dataNode.Total, dataNode.Used, dataNode.ToBeOffline, dataNode.availableDiskCount(),
-				dataNode.DataPartitionCount, excludeHosts)
-			return true
-		}
-
-		if !dataNode.canAlloc() {
-			log.LogWarnf("[getAvailCarryDataNodeTab] dataNode [%v] is overSold excludeHosts[%v]", dataNode.Addr, excludeHosts)
+		if !canAllocPartition(dataNode, s.nodeType) {
+			log.LogWarnf("[getCarryDataNodes] data node(%v) cannot alloc dp, total space(%v) avaliable space(%v) used space(%v), offline(%v), avaliable disk cnt(%v), dp count(%v), over sold(%v), exclude hosts(%v)", dataNode.Addr, dataNode.Total, dataNode.AvailableSpace, dataNode.Used, dataNode.ToBeOffline, dataNode.availableDiskCount(), dataNode.DataPartitionCount, !dataNode.canAlloc(), excludeHosts)
 			return true
 		}
 		if s.carry[dataNode.ID] >= 1.0 {
@@ -225,7 +216,8 @@ func (s *CarryWeightNodeSelector) getCarryMetaNodes(maxTotal uint64, excludeHost
 		if contains(excludeHosts, metaNode.Addr) {
 			return true
 		}
-		if !metaNode.isWritable() {
+		if !canAllocPartition(metaNode, s.nodeType) {
+			log.LogWarnf("[getCarryMetaNodes] meta node(%v) cannot alloc mp, total space(%v) used space(%v), offline(%v), mp count(%v), exclude hosts(%v)", metaNode.Addr, metaNode.Total, metaNode.Used, metaNode.ToBeOffline, metaNode.MetaPartitionCount, excludeHosts)
 			return true
 		}
 		if s.carry[metaNode.ID] >= 1.0 {
