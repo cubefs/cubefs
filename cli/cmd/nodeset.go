@@ -59,11 +59,11 @@ func newNodeSetListCmd(client *master.MasterClient) *cobra.Command {
 			if nodeSetStats, err = client.AdminAPI().ListNodeSets(zoneName); err != nil {
 				return
 			}
-			zoneTablePattern := "%-6v %-6v %-12v %-10v %-10v\n"
-			stdout(zoneTablePattern, "ID", "Cap", "Zone", "MetaNum", "DataNum")
-			zoneDataPattern := "%-6v %-6v %-12v %-10v %-10v\n"
+			zoneTablePattern := "%-6v %-6v %-12v %-10v %-12v %-10v %-12v\n"
+			stdout(zoneTablePattern, "ID", "Cap", "Zone", "MetaNum", "CanAllocMeta", "DataNum", "CanAllocData")
+			zoneDataPattern := "%-6v %-6v %-12v %-10v %-12v %-10v %-12v\n"
 			for _, nodeSet := range nodeSetStats {
-				stdout(zoneDataPattern, nodeSet.ID, nodeSet.Capacity, nodeSet.Zone, nodeSet.MetaNodeNum, nodeSet.DataNodeNum)
+				stdout(zoneDataPattern, nodeSet.ID, nodeSet.Capacity, nodeSet.Zone, nodeSet.MetaNodeNum, nodeSet.CanAllocMetaNodeCnt, nodeSet.DataNodeNum, nodeSet.CanAllocDataNodeCnt)
 			}
 		},
 	}
