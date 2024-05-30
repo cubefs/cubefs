@@ -477,11 +477,13 @@ func (m *Server) listNodeSets(w http.ResponseWriter, r *http.Request) {
 		nsc := zone.getAllNodeSet()
 		for _, ns := range nsc {
 			nsStat := &proto.NodeSetStat{
-				ID:          ns.ID,
-				Capacity:    ns.Capacity,
-				Zone:        zone.name,
-				DataNodeNum: ns.dataNodeLen(),
-				MetaNodeNum: ns.metaNodeLen(),
+				ID:                  ns.ID,
+				Capacity:            ns.Capacity,
+				Zone:                zone.name,
+				CanAllocDataNodeCnt: ns.canAllocDataNodeCnt(),
+				CanAllocMetaNodeCnt: ns.canAllocMetaNodeCnt(),
+				DataNodeNum:         ns.dataNodeLen(),
+				MetaNodeNum:         ns.metaNodeLen(),
 			}
 			nodeSetStats = append(nodeSetStats, nsStat)
 		}
@@ -516,11 +518,13 @@ func (m *Server) getNodeSet(w http.ResponseWriter, r *http.Request) {
 	}
 
 	nsStat := &proto.NodeSetStatInfo{
-		ID:               ns.ID,
-		Capacity:         ns.Capacity,
-		Zone:             ns.zoneName,
-		DataNodeSelector: ns.GetDataNodeSelector(),
-		MetaNodeSelector: ns.GetMetaNodeSelector(),
+		ID:                  ns.ID,
+		Capacity:            ns.Capacity,
+		Zone:                ns.zoneName,
+		CanAllocDataNodeCnt: ns.canAllocDataNodeCnt(),
+		CanAllocMetaNodeCnt: ns.canAllocMetaNodeCnt(),
+		DataNodeSelector:    ns.GetDataNodeSelector(),
+		MetaNodeSelector:    ns.GetMetaNodeSelector(),
 	}
 	ns.dataNodes.Range(func(key, value interface{}) bool {
 		dn := value.(*DataNode)
