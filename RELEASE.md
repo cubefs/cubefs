@@ -30,6 +30,7 @@ coordination of releases.  For more info on feature and release planning see:
 | official  | vX.Y.Z         | release-X.Y.Z        | as needed (post beta)        |
 
 # Types of Branch 
+Currently, the main branches are based on the following rules, with a few exceptions for community vendors or subsystem blobstore branch naming.
 * Develop Branch (`develop-X.Y.Z`)
 * Release Branch (`release-X.Y.Z`)
 
@@ -45,8 +46,8 @@ The project Maintainers own this decision.
 
 # Artifacts included in the release
 ## Binary file version
-- cubefs-3.3.2-linux-amd64.tar.gz
-- cubefs-3.3.2-linux-amd64.tar.gz.sha256sum
+- cubefs-X.Y.Z-linux-amd64.tar.gz
+- cubefs-X.Y.Z-linux-amd64.tar.gz.sha256sum
 
 ## Source Code Related
 - Generate a key pair based on GPG encryption to ensure that the code is not maliciously modified, for example：v3.3.2.tar.gz.asc
