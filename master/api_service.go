@@ -1472,6 +1472,7 @@ func (m *Server) createDataPartition(w http.ResponseWriter, r *http.Request) {
 	}
 	if reqCreateCount > maxInitDataPartitionCnt {
 		err = fmt.Errorf("count[%d] exceeds maximum limit[%d]", reqCreateCount, maxInitDataPartitionCnt)
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
 	if vol, err = m.cluster.getVol(volName); err != nil {
