@@ -823,6 +823,8 @@ func formatNodeSetView(ns *proto.NodeSetStatInfo) string {
 	sb.WriteString(fmt.Sprintf("NodeSet ID:       %v\n", ns.ID))
 	sb.WriteString(fmt.Sprintf("Capacity:         %v\n", ns.Capacity))
 	sb.WriteString(fmt.Sprintf("Zone:             %v\n", ns.Zone))
+	sb.WriteString(fmt.Sprintf("CanAllocDataNode: %v\n", ns.CanAllocDataNodeCnt))
+	sb.WriteString(fmt.Sprintf("CanAllocMetaNode: %v\n", ns.CanAllocMetaNodeCnt))
 	sb.WriteString(fmt.Sprintf("DataNodeSelector: %v\n", ns.DataNodeSelector))
 	sb.WriteString(fmt.Sprintf("MetaNodeSelector: %v\n", ns.MetaNodeSelector))
 	var dataTotal, dataUsed, dataAvail, metaTotal, metaUsed, metaAvail uint64
