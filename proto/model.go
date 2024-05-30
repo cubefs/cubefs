@@ -214,21 +214,25 @@ type ZoneNodesStat struct {
 }
 
 type NodeSetStat struct {
-	ID          uint64
-	Capacity    int
-	Zone        string
-	MetaNodeNum int
-	DataNodeNum int
+	ID                  uint64
+	Capacity            int
+	Zone                string
+	CanAllocMetaNodeCnt int
+	CanAllocDataNodeCnt int
+	MetaNodeNum         int
+	DataNodeNum         int
 }
 
 type NodeSetStatInfo struct {
-	ID               uint64
-	Capacity         int
-	Zone             string
-	MetaNodes        []*NodeStatView
-	DataNodes        []*NodeStatView
-	DataNodeSelector string
-	MetaNodeSelector string
+	ID                  uint64
+	Capacity            int
+	Zone                string
+	CanAllocMetaNodeCnt int
+	CanAllocDataNodeCnt int
+	MetaNodes           []*NodeStatView
+	DataNodes           []*NodeStatView
+	DataNodeSelector    string
+	MetaNodeSelector    string
 }
 
 type NodeStatView struct {
