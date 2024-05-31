@@ -80,7 +80,7 @@ func newDecommissionDiskCmd(client *master.MasterClient) *cobra.Command {
 			if err = client.AdminAPI().DecommissionDisk(args[0], args[1]); err != nil {
 				return
 			}
-			stdout("Mark disk %v:%v to be decommissioned", args[0], args[1])
+			stdout("Mark disk %v:%v to be decommissioned\n", args[0], args[1])
 		},
 	}
 	return cmd
@@ -103,7 +103,7 @@ func newRecommissionDiskCmd(client *master.MasterClient) *cobra.Command {
 			if err = client.AdminAPI().RecommissionDisk(args[0], args[1]); err != nil {
 				return
 			}
-			stdout("Mark disk %v:%v to be recommissioned", args[0], args[1])
+			stdout("Mark disk %v:%v to be recommissioned\n", args[0], args[1])
 		},
 	}
 	return cmd
