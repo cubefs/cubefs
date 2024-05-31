@@ -280,10 +280,6 @@ func (ei *ExtentInfo) UpdateExtentInfo(extent *Extent, crc uint32) {
 // When the master sends the loadDataPartition request, the snapshot is used to compare the replicas.
 func (s *ExtentStore) SnapShot() (files []*proto.File, err error) {
 	var normalExtentSnapshot, tinyExtentSnapshot []*ExtentInfo
-
-	// compute crc again to guarantee crc and applyID is the newest
-	s.autoComputeExtentCrc()
-
 	if normalExtentSnapshot, _, err = s.GetAllWatermarks(NormalExtentFilter()); err != nil {
 		log.LogErrorf("SnapShot GetAllWatermarks err %v", err)
 		return
