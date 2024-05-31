@@ -25,6 +25,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/api/access"
 	"github.com/cubefs/cubefs/blobstore/common/codemode"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
+	"github.com/cubefs/cubefs/blobstore/common/uptoken"
 	"github.com/cubefs/cubefs/blobstore/util/bytespool"
 )
 
@@ -101,6 +102,34 @@ func TestAccessServiceLocationSecret(t *testing.T) {
 	}
 }
 
+func TestAccessServiceTokenSecret(t *testing.T) {
+	keys := tokenSecretKeys
+	defer func() {
+		tokenSecretKeys = keys
+	}()
+	b := [...]byte{1: 2, 7: 8}
+	loc := &access.Location{
+		ClusterID: 1,
+		CodeMode:  1,
+		Size:      1023,
+		BlobSize:  1024,
+		Blobs: []access.SliceInfo{{
+			MinBid: 11,
+			Vid:    199,
+			Count:  1,
+		}},
+	}
+
+	for idx := range tokenSecretKeys {
+		copy(tokenSecretKeys[idx][7:], b[:])
+	}
+	tokens := genTokens(loc)
+	require.Equal(t, 1, len(tokens))
+
+	token := uptoken.DecodeToken(tokens[0])
+	require.True(t, token.IsValid(1, 199, 11, 1023, TokenSecretKeys()[0][:]))
+}
+
 func TestAccessServiceLocationSignCrc(t *testing.T) {
 	loc := &access.Location{
 		ClusterID: 1,
@@ -168,7 +197,8 @@ func calcCrcWithoutMagic(loc *access.Location) (uint32, error) {
 
 func benchmarkCrc(b *testing.B, key string,
 	location access.Location, blob access.SliceInfo,
-	run func(loc *access.Location) (uint32, error)) {
+	run func(loc *access.Location) (uint32, error),
+) {
 	cases := []int{0, 2, 4, 8, 16, 32}
 	for _, l := range cases {
 		b.ResetTimer()

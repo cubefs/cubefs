@@ -532,7 +532,7 @@ func assertErrorCode(t *testing.T, code int, err error) {
 }
 
 func TestAccessServiceTokens(t *testing.T) {
-	skey := stream.StreamTokenSecretKeys[0][:]
+	skey := stream.TokenSecretKeys()[0][:]
 	checker := func(loc *access.Location, tokens []string) {
 		if loc.Size == 0 {
 			require.Equal(t, 0, len(tokens))

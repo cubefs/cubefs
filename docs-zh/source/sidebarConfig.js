@@ -34,7 +34,7 @@ module.exports = [
             'user-guide/authnode.md',
             'user-guide/gui.md',
             {
-                text: 'cli 使用指南',
+                text: 'CLI 使用',
                 children: [
                     'user-guide/cli/overview.md',
                     'user-guide/cli/cluster.md',

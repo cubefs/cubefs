@@ -9,15 +9,6 @@ The CubeFS community adheres to the following principles:
 - Transparent and accessible: Changes to the CubeFS organization, CubeFS code repositories, and CNCF related activities (e.g. level, involvement, etc) are done in public.
 - Merit: Ideas and contributions are accepted according to their technical merit and alignment with project objectives, scope, and design principles.
 
-## Project Lead
-
-The CubeFS project has a project lead.
-
-- A project lead in CubeFS is a single person that has a final say controversial issues concerning the CubeFS project.
-- The term of the project lead position is one year, and individuals can serve multiple terms in this role.
-- The project lead is elected by CubeFS maintainers according to an individual's technical merit to CubeFS project.
-- The current project lead is identified in the top level [MAINTAINERS](MAINTAINERS.md) file with the string `project lead` and the term behind the name.
-
 ## Expectations from The Steering Committee
 
 The CubeFS project has a Steering Committee.
@@ -76,9 +67,9 @@ remove them from the core-maintainers team;
 go to https://maintainers.cncf.io/ and open a PR to remove them under CubeFS;
 remove them from the cubefs.groups.io/g/maintainers mailing list.
 
-## Changes in Project Lead and Steering Committee
+## Changes in Steering Committee
 
-Changes in project lead or or steering committee members are initiated by opening a github PR.
+Changes in steering committee members are initiated by opening a github PR.
 
 Anyone from CubeFS community can vote on the PR with either +1 or -1.
 
@@ -91,15 +82,15 @@ The PR should only be opened no earlier than 4 weeks before the end of the term.
 The PR should be kept open for no less than 2 weeks. The PR can only be merged after the end of the
 last term, with more +1 than -1 in the binding votes.
 
-When there are conflicting PRs about changes in project lead or Steering Committee, the PR with the most binding +1 votes is merged.
+When there are conflicting PRs about changes in Steering Committee, the PR with the most binding +1 votes is merged.
 
-The project lead or Steering Committee member can volunteer to step down.
+The Steering Committee member can volunteer to step down.
 
 ## Changes in Project Governance
 
 - Changes in project governance (GOVERNANCE.md) could be initiated by opening a github PR.
-- The PR should only be opened no earlier than 4 weeks before the end of the project lead's term.
-- The PR should be kept open for no less than 2 weeks. The PR can only be merged follow the same
+- The PR should only be opened no earlier than 4 weeks before the end of the Steering Committee's term.
+- The PR should be kept open for no less than 1 weeks. The PR can only be merged follow the same
 - voting process as in `Changes in Project Lead`.
 
 ## vendor-neutrality
@@ -118,13 +109,12 @@ or by sending an email to `maintainers@cubefs.groups.io`.
 In general, we prefer that technical issues and maintainer membership are amicably worked out between the persons involved.
 If a dispute cannot be decided independently, get a third-party maintainer (e.g. a mutual contact with some background
 on the issue, but not involved in the conflict) to intercede.
-If a dispute still cannot be decided, the project lead has the final say to decide an issue.
+If a dispute still cannot be decided, the The PR should only be opened no earlier than 4 weeks before the end of the Steering Committee's term.has the final say to decide an issue.
 
 Decision making process should be transparent to adhere to
 the principles of CubeFS project.
 
-All proposals, ideas, and decisions by maintainers or the project lead
-should either be part of a github issue or PR, or be sent to `maintainers@cubefs.groups.io`.
+All proposals, ideas, and decisions by maintainers or the Steering Committee should either be part of a github issue or PR, or be sent to `maintainers@cubefs.groups.io`.
 
 ## Github Project Administration
 
