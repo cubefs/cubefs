@@ -536,7 +536,6 @@ func (s *DataNode) handleHeartbeatPacket(p *repl.Packet) {
 	go func() {
 		request := &proto.HeartBeatRequest{}
 		response := &proto.DataNodeHeartbeatResponse{}
-		s.buildHeartBeatResponse(response)
 
 		if task.OpCode == proto.OpDataNodeHeartbeat {
 			marshaled, _ := json.Marshal(task.Request)
@@ -547,11 +546,13 @@ func (s *DataNode) handleHeartbeatPacket(p *repl.Packet) {
 					request.EnableDiskQos,
 					s.diskQosEnable)
 			}
+			// NOTE: set decommission disks
+			s.checkDecommissionDisks(request.DecommissionDisks)
+
+			s.buildHeartBeatResponse(response)
 
 			// set volume forbidden
 			s.checkVolumeForbidden(request.ForbiddenVols)
-			// set decommission disks
-			s.checkDecommissionDisks(request.DecommissionDisks)
 			s.diskQosEnableFromMaster = request.EnableDiskQos
 
 			s.checkVolumeDpRepairBlockSize(request.VolDpRepairBlockSize)
