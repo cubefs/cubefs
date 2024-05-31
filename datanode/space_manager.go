@@ -32,6 +32,7 @@ import (
 	"github.com/cubefs/cubefs/util/atomicutil"
 	"github.com/cubefs/cubefs/util/loadutil"
 	"github.com/cubefs/cubefs/util/log"
+	"github.com/cubefs/cubefs/util/strutil"
 	"github.com/shirou/gopsutil/disk"
 )
 
@@ -352,7 +353,11 @@ func (manager *SpaceManager) updateMetrics() {
 		}
 
 		used += d.Used
-		available += d.Available
+		if !d.GetDecommissionStatus() {
+			available += d.Available
+		} else {
+			log.LogInfof("[updateMetrics] disk(%v) is decommissioned, avaliable space(%v) raw(%v)", d.Path, strutil.FormatSize(d.Available), d.Available)
+		}
 		totalPartitionSize += d.Allocated
 		remainingCapacityToCreatePartition += d.Unallocated
 		partitionCnt += uint64(d.PartitionCount())
