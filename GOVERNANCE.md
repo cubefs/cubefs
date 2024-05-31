@@ -39,15 +39,17 @@ Every Committer is listed in the top-level [MAINTAINERS](MAINTAINERS.md) file.
 
 ## Becoming a committer
 
-If you are interested in becoming a committer, please email `maintainers@cubefs.groups.io`, 
-The steering committee will review the proposal,and you will receive an invitation letter from the community after the review is passed.
+If you are interested in becoming a committer, please email `maintainers@cubefs.groups.io` or opening a pull request,
+and list your contributions.The steering committee will review the proposal by majority votes,
+and you will receive an invitation letter from the community after the review is passed.
 
 ## Becoming a Maintainer
 
-On successful merge of a significant pull request any current maintainer can reach
-to the author behind the pull request and ask them if they are willing to become a CubeFS
-maintainer. The email of the new maintainer invitation should be cc'ed to `maintainers@cubefs.groups.io`
-as part of the process.The steering committee will review the proposal,and you will receive an invitation letter from the community after the review is passed.
+On the successful merge of a significant pull request or upon making significant contributions,
+any current maintainer can reach to the author behind the pull request and ask them if they are willing to become a CubeFS maintainer.
+Maintainers have the authority to nominate new maintainers by either sending an email to maintainers@cubefs.groups.io or opening a pull request. 
+Typically, new maintainers are selected from among the committers.The steering committee will review the proposal by majority votes,
+and you will receive an invitation letter from the community after the review is passed.
 
 ## Changes in Maintainership
 
@@ -71,7 +73,7 @@ remove them from the cubefs.groups.io/g/maintainers mailing list.
 
 Changes in steering committee members are initiated by opening a github PR.
 
-Anyone from CubeFS community can vote on the PR with either +1 or -1.
+Anyone from CubeFS maintainers can vote on the PR with either +1 or -1.
 
 Only the following votes are binding:
 1) Any maintainer that has been listed in the top-level [MAINTAINERS](MAINTAINERS.md) file before the PR is opened.
@@ -91,9 +93,9 @@ The Steering Committee member can volunteer to step down.
 - Changes in project governance (GOVERNANCE.md) could be initiated by opening a github PR.
 - The PR should only be opened no earlier than 4 weeks before the end of the Steering Committee's term.
 - The PR should be kept open for no less than 1 weeks. The PR can only be merged follow the same
-- voting process as in `Changes in Project Lead`.
+- Voting process as in `Changes in Steering Committee`.
 
-## vendor-neutrality
+## Vendor-neutrality
 
 - Vendors share communication channels of the community, such as social media and messaging platforms.
 - All vendors involved in the project are encouraged to actively participate in the topic selection process for public events.
@@ -109,7 +111,7 @@ or by sending an email to `maintainers@cubefs.groups.io`.
 In general, we prefer that technical issues and maintainer membership are amicably worked out between the persons involved.
 If a dispute cannot be decided independently, get a third-party maintainer (e.g. a mutual contact with some background
 on the issue, but not involved in the conflict) to intercede.
-If a dispute still cannot be decided, the The PR should only be opened no earlier than 4 weeks before the end of the Steering Committee's term.has the final say to decide an issue.
+If a dispute still cannot be decided, the Steering Committee can make the decision by majority votes.
 
 Decision making process should be transparent to adhere to
 the principles of CubeFS project.
