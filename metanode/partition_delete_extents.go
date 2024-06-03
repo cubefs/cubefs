@@ -58,6 +58,7 @@ func (mp *metaPartition) createExtentDeleteFile(prefix string, idx int64, fileLi
 	}
 	if _, err = fp.Write(extentsFileHeader); err != nil {
 		log.LogErrorf("[metaPartition] createExtentDeletFile Write %v %v error %v", mp.config.RootDir, fileName, err)
+		fp.Close()
 	}
 	fileSize = int64(len(extentsFileHeader))
 	fileList.PushBack(fileName)
@@ -117,11 +118,11 @@ LOOP:
 
 	log.LogDebugf("action[appendDelExtentsToFile] verseq [%v] fileName %v", mp.verSeq, fileName)
 	// TODO Unhandled errors
-	defer fp.Close()
 	buf := make([]byte, 0)
 	for {
 		select {
 		case <-mp.stopC:
+			fp.Close()
 			return
 		case <-mp.extReset:
 			// TODO Unhandled errors
@@ -133,14 +134,14 @@ LOOP:
 			var data []byte
 			buf = buf[:0]
 			if len(eks) == 0 {
-				goto LOOP
+				log.LogDebugf("[appendDelExtentsToFile] vol(%v) mp(%v) eks cnt is 0", mp.GetVolName(), mp.config.PartitionId)
+				continue
 			}
 			log.LogDebugf("[appendDelExtentsToFile] mp(%v) del eks [%v]", mp.config.PartitionId, eks)
 			for _, ek := range eks {
 				data, err = ek.MarshalBinaryWithCheckSum(true)
 				if err != nil {
-					log.LogWarnf("[appendDelExtentsToFile] partitionId=%d,"+
-						" extentKey marshal: %s", mp.config.PartitionId, err.Error())
+					log.LogWarnf("[appendDelExtentsToFile] partitionId=%d, extentKey marshal: %v", mp.config.PartitionId, err)
 					break
 				}
 				buf = append(buf, data...)
@@ -162,11 +163,11 @@ LOOP:
 				if err != nil {
 					panic(err)
 				}
-				log.LogDebugf("appendDelExtentsToFile. volname [%v] mp[%v] createExtentDeleteFile %v",
-					mp.GetVolName(), mp.config.PartitionId, fileName)
+				log.LogDebugf("appendDelExtentsToFile. volname [%v] mp[%v] createExtentDeleteFile %v", mp.GetVolName(), mp.config.PartitionId, fileName)
 			}
 			// write delete extents into file
 			if _, err = fp.Write(buf); err != nil {
+				fp.Close()
 				panic(err)
 			}
 			fileSize += int64(len(buf))
@@ -275,6 +276,7 @@ func (mp *metaPartition) deleteExtentsFromList(fileList *synclist.SyncList) {
 		stat, err := fp.Stat()
 		if err != nil {
 			log.LogErrorf("[deleteExtentsFromList] mp(%v) stat file(%v) err(%v)", mp.config.PartitionId, fileName, err)
+			fp.Close()
 			continue
 		}
 		log.LogDebugf("[deleteExtentsFromList] volname [%v] mp[%v] o openFile %v file len %v cursor %v", mp.GetVolName(), mp.config.PartitionId, file,
