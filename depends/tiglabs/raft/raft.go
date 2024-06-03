@@ -206,6 +206,9 @@ func (s *raft) doStop() {
 
 func (s *raft) runApply() {
 	defer func() {
+		if r := recover(); r != nil {
+			log.LogWarnf("raft(%v) runApply occurred panic,err[%v]", s.raftFsm.id, r)
+		}
 		s.doStop()
 		s.resetApply()
 	}()
