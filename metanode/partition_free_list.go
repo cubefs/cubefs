@@ -568,8 +568,8 @@ func (mp *metaPartition) recycleInodeDelFile() {
 			return
 		}
 		// NOTE: delete a file and pop an item
-		oldestFile := inodeDelFiles[len(inodeDelFiles)-1]
-		inodeDelFiles = inodeDelFiles[:len(inodeDelFiles)-1]
+		oldestFile := inodeDelFiles[0]
+		inodeDelFiles = inodeDelFiles[1:]
 		err = os.Remove(oldestFile)
 		if err != nil {
 			log.LogErrorf("[recycleInodeDelFile] mp(%v) failed to remove file(%v)", mp.config.PartitionId, oldestFile)
