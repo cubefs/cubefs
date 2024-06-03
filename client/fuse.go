@@ -36,6 +36,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"runtime/debug"
+	runtimepprof "runtime/pprof"
 	"strings"
 	"syscall"
 	"time"
@@ -82,12 +83,11 @@ const (
 )
 
 const (
-	// LoggerDir    = "client"
-	LoggerPrefix = "client"
-	LoggerOutput = "output.log"
-
-	ModuleName = "fuseclient"
-	// ConfigKeyExporterPort = "exporterKey"
+	LoggerDir             = "client"
+	LoggerPrefix          = "client"
+	LoggerOutput          = "output.log"
+	ModuleName            = "fuseclient"
+	ConfigKeyExporterPort = "exporterKey"
 
 	ControlCommandSetRate      = "/rate/set"
 	ControlCommandGetRate      = "/rate/get"
@@ -315,6 +315,31 @@ func getLastExitInfo(outputFile *os.File) string {
 		}
 	}
 	return exitInfo
+}
+
+func printGoroutineInfo(logPath string) {
+	now := time.Now()
+	nowStr := now.Format("20060102150405")
+	goroutineFileName := "goroutine." + nowStr + ".log"
+	goroutineFilePath := path.Join(logPath, LoggerPrefix, goroutineFileName)
+	goroutineFile, err := os.OpenFile(goroutineFilePath, os.O_CREATE|os.O_RDWR|os.O_APPEND, 0o666)
+	if err != nil {
+		err = errors.NewErrorf("Open goroutine file failed: %v\n", err)
+		fmt.Println(err)
+		daemonize.SignalOutcome(err)
+		os.Exit(1)
+	}
+	defer func() {
+		goroutineFile.Sync()
+		goroutineFile.Close()
+	}()
+
+	runtime.SetBlockProfileRate(1)
+	runtime.SetMutexProfileFraction(1)
+	err = runtimepprof.Lookup("goroutine").WriteTo(goroutineFile, 2)
+	if err != nil {
+		syslog.Printf("print goroutine info failed: %v\n", err)
+	}
 }
 
 func main() {
@@ -557,6 +582,9 @@ func main() {
 		os.Exit(1)
 	}
 	syslog.Printf("exit normally\n")
+
+	// print goroutine info to log file
+	printGoroutineInfo(opt.Logpath)
 }
 
 func getPushAddrFromMaster(masterAddr string) (addr string, err error) {
