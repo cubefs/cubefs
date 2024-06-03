@@ -70,11 +70,13 @@ func (s *DefaultRandomSelector) Refresh(partitions []*DataPartition) (err error)
 func (s *DefaultRandomSelector) Select(exclude map[string]struct{}) (dp *DataPartition, err error) {
 	dp = s.getLocalLeaderDataPartition(exclude)
 	if dp != nil {
+		log.LogDebugf("Select: select dp[%v] address[%p] from LocalLeaderDataPartition", dp, dp)
 		return dp, nil
 	}
 
 	s.RLock()
 	partitions := s.partitions
+	log.LogDebugf("Select: len(s.partitions)=%v\n", len(s.partitions))
 	s.RUnlock()
 
 	dp = s.getRandomDataPartition(partitions, exclude)
@@ -94,17 +96,21 @@ func (s *DefaultRandomSelector) RemoveDP(partitionID uint64) {
 	s.RLock()
 	rwPartitionGroups := s.partitions
 	localLeaderPartitions := s.localLeaderPartitions
+	log.LogDebugf("RemoveDP: partitionID[%v], len(s.partitions)=%v len(s.localLeaderPartitions)=%v\n", partitionID, len(s.partitions), len(s.localLeaderPartitions))
 	s.RUnlock()
 
 	var i int
 	for i = 0; i < len(rwPartitionGroups); i++ {
 		if rwPartitionGroups[i].PartitionID == partitionID {
+			log.LogDebugf("RemoveDP: found partitionID[%v] in rwPartitionGroups. dp[%v] address[%p]\n", partitionID, rwPartitionGroups[i], rwPartitionGroups[i])
 			break
 		}
 	}
 	if i >= len(rwPartitionGroups) {
+		log.LogDebugf("RemoveDP: not found partitionID[%v] in rwPartitionGroups", partitionID)
 		return
 	}
+
 	newRwPartition := make([]*DataPartition, 0)
 	newRwPartition = append(newRwPartition, rwPartitionGroups[:i]...)
 	newRwPartition = append(newRwPartition, rwPartitionGroups[i+1:]...)
@@ -112,15 +118,18 @@ func (s *DefaultRandomSelector) RemoveDP(partitionID uint64) {
 	defer func() {
 		s.Lock()
 		s.partitions = newRwPartition
+		log.LogDebugf("RemoveDP: finish, partitionID[%v], len(s.partitions)=%v\n", partitionID, len(s.partitions))
 		s.Unlock()
 	}()
 
 	for i = 0; i < len(localLeaderPartitions); i++ {
 		if localLeaderPartitions[i].PartitionID == partitionID {
+			log.LogDebugf("RemoveDP: found partitionID[%v] in localLeaderPartitions. dp[%v] address[%p]\n", partitionID, localLeaderPartitions[i], localLeaderPartitions[i])
 			break
 		}
 	}
 	if i >= len(localLeaderPartitions) {
+		log.LogDebugf("RemoveDP: not found partitionID[%v] in localLeaderPartitions", partitionID)
 		return
 	}
 	newLocalLeaderPartitions := make([]*DataPartition, 0)
@@ -130,6 +139,7 @@ func (s *DefaultRandomSelector) RemoveDP(partitionID uint64) {
 	s.Lock()
 	defer s.Unlock()
 	s.localLeaderPartitions = newLocalLeaderPartitions
+	log.LogDebugf("RemoveDP: finish, partitionID[%v], len(s.localLeaderPartitions)=%v\n", partitionID, len(s.localLeaderPartitions))
 
 	return
 }
@@ -143,6 +153,7 @@ func (s *DefaultRandomSelector) Count() int {
 func (s *DefaultRandomSelector) getLocalLeaderDataPartition(exclude map[string]struct{}) *DataPartition {
 	s.RLock()
 	localLeaderPartitions := s.localLeaderPartitions
+	log.LogDebugf("getLocalLeaderDataPartition: len(s.localLeaderPartitions)=%v\n", len(s.localLeaderPartitions))
 	s.RUnlock()
 	return s.getRandomDataPartition(localLeaderPartitions, exclude)
 }
