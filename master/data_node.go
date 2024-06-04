@@ -524,6 +524,7 @@ func (dataNode *DataNode) resetDecommissionStatus() {
 	dataNode.DecommissionLimit = 0
 	dataNode.DecommissionCompleteTime = 0
 	dataNode.DecommissionDiskList = make([]string, 0)
+	dataNode.ToBeOffline = false
 }
 
 func (dataNode *DataNode) createVersionTask(volume string, version uint64, op uint8, addr string, verList []*proto.VolVersionInfo) (task *proto.AdminTask) {
