@@ -47,6 +47,7 @@ func (h *maxHeap) Pop() interface{} {
 
 // refresh use for refreshing storage allocator info and cluster statistic info
 func (d *DiskMgr) refresh(ctx context.Context) {
+	span := trace.SpanFromContextSafe(ctx)
 	// generate nodeRole -> diskType -> nodeSet -> diskSet -> idc -> rack -> blobnode storage and statInfo
 	nodeSetAllocators := make(map[proto.NodeRole]map[proto.DiskType]nodeSetAllocatorMap)
 	diskSetAllocators := make(map[proto.NodeRole]map[proto.DiskSetID]*diskSetAllocator)
@@ -102,6 +103,7 @@ func (d *DiskMgr) refresh(ctx context.Context) {
 		// compatible
 		if nodeRole == proto.NodeRoleBlobNode {
 			allDisks := d.getAllDisk()
+			span.Debugf("get all disks, len:%d", len(allDisks))
 			diskTypeDisks := make(map[proto.DiskType][]*diskItem)
 			for _, disk := range allDisks {
 				diskType := d.getDiskType(disk)
@@ -127,6 +129,7 @@ func (d *DiskMgr) refresh(ctx context.Context) {
 					nodeSetAllocators[nodeRole][diskType] = make(nodeSetAllocatorMap)
 				}
 				nodeSetAllocators[nodeRole][diskType][ECNodeSetID] = nodeSetAllocator
+				span.Debugf("add ec nodeset")
 
 				// update space state info
 				for idc := range diskStatInfo {
@@ -177,8 +180,7 @@ func (d *DiskMgr) generateDiskSetStorage(ctx context.Context, disks []*diskItem,
 		idc := disk.info.Idc
 		rack := disk.info.Rack
 		host := disk.info.Host
-		if host == "" {
-			node, _ := d.getNode(disk.info.NodeID)
+		if node, ok := d.getNode(disk.info.NodeID); ok {
 			idc = node.info.Idc
 			rack = node.info.Rack
 			host = node.info.Host

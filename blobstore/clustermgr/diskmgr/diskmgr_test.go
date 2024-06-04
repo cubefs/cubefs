@@ -49,12 +49,12 @@ func TestDiskMgr_Normal(t *testing.T) {
 
 	// addDisk and GetDiskInfo and CheckDiskInfoDuplicated
 	{
-		initTestDiskMgrNodes(t, testDiskMgr, 0, 0, testIdcs[0])
-		initTestDiskMgrDisks(t, testDiskMgr, 1, 10, testIdcs[0])
+		initTestDiskMgrNodes(t, testDiskMgr, 1, 1, testIdcs[0])
+		initTestDiskMgrDisks(t, testDiskMgr, 1, 10, false, testIdcs[0])
 
-		nodeInfo, err := testDiskMgr.GetNodeInfo(ctx, proto.NodeID(0))
+		nodeInfo, err := testDiskMgr.GetNodeInfo(ctx, proto.NodeID(1))
 		require.NoError(t, err)
-		require.Equal(t, proto.NodeID(0), nodeInfo.NodeID)
+		require.Equal(t, proto.NodeID(1), nodeInfo.NodeID)
 		for i := 1; i <= 10; i++ {
 			diskInfo, err := testDiskMgr.GetDiskInfo(ctx, proto.DiskID(i))
 			require.NoError(t, err)
@@ -67,10 +67,10 @@ func TestDiskMgr_Normal(t *testing.T) {
 		diskInfo, err := testDiskMgr.GetDiskInfo(ctx, proto.DiskID(1))
 		require.NoError(t, err)
 		diskInfo.Path += "notDuplicated"
-		nodeInfo, err = testDiskMgr.GetNodeInfo(ctx, proto.NodeID(0))
+		nodeInfo, err = testDiskMgr.GetNodeInfo(ctx, proto.NodeID(1))
 		require.NoError(t, err)
 		duplicated := testDiskMgr.CheckDiskInfoDuplicated(ctx, diskInfo, nodeInfo)
-		require.Equal(t, false, duplicated)
+		require.Equal(t, true, duplicated)
 	}
 
 	// IsDiskWritable and SetStatus and SwitchReadonly
@@ -101,8 +101,8 @@ func TestDiskMgr_Normal(t *testing.T) {
 func TestDiskMgr_Dropping(t *testing.T) {
 	testDiskMgr, closeTestDiskMgr := initTestDiskMgr(t)
 	defer closeTestDiskMgr()
-	initTestDiskMgrNodes(t, testDiskMgr, 0, 0, testIdcs[0])
-	initTestDiskMgrDisks(t, testDiskMgr, 1, 10, testIdcs[0])
+	initTestDiskMgrNodes(t, testDiskMgr, 1, 1, testIdcs[0])
+	initTestDiskMgrDisks(t, testDiskMgr, 1, 10, false, testIdcs[0])
 
 	_, ctx := trace.StartSpanFromContext(context.Background(), "")
 
@@ -169,8 +169,8 @@ func TestDiskMgr_Dropping(t *testing.T) {
 func TestDiskMgr_Heartbeat(t *testing.T) {
 	testDiskMgr, closeTestDiskMgr := initTestDiskMgr(t)
 	defer closeTestDiskMgr()
-	initTestDiskMgrNodes(t, testDiskMgr, 0, 0, testIdcs[0])
-	initTestDiskMgrDisks(t, testDiskMgr, 1, 10, testIdcs[0])
+	initTestDiskMgrNodes(t, testDiskMgr, 1, 1, testIdcs[0])
+	initTestDiskMgrDisks(t, testDiskMgr, 1, 10, false, testIdcs[0])
 	_, ctx := trace.StartSpanFromContext(context.Background(), "")
 
 	heartbeatInfos := make([]*blobnode.DiskHeartBeatInfo, 0)
@@ -215,8 +215,8 @@ func TestDiskMgr_Heartbeat(t *testing.T) {
 func TestDiskMgr_ListDisks(t *testing.T) {
 	testDiskMgr, closeTestDiskMgr := initTestDiskMgr(t)
 	defer closeTestDiskMgr()
-	initTestDiskMgrNodes(t, testDiskMgr, 0, 0, testIdcs[0])
-	initTestDiskMgrDisks(t, testDiskMgr, 1, 10, testIdcs[0])
+	initTestDiskMgrNodes(t, testDiskMgr, 1, 1, testIdcs[0])
+	initTestDiskMgrDisks(t, testDiskMgr, 1, 10, false, testIdcs[0])
 	_, ctx := trace.StartSpanFromContext(context.Background(), "")
 
 	diskInfo, err := testDiskMgr.GetDiskInfo(ctx, proto.DiskID(1))
@@ -271,8 +271,8 @@ func TestDiskMgr_ListDisks(t *testing.T) {
 func TestDiskMgr_AdminUpdateDisk(t *testing.T) {
 	testDiskMgr, closeTestDiskMgr := initTestDiskMgr(t)
 	defer closeTestDiskMgr()
-	initTestDiskMgrNodes(t, testDiskMgr, 0, 0, testIdcs[0])
-	initTestDiskMgrDisks(t, testDiskMgr, 1, 10, testIdcs[0])
+	initTestDiskMgrNodes(t, testDiskMgr, 1, 1, testIdcs[0])
+	initTestDiskMgrDisks(t, testDiskMgr, 1, 10, false, testIdcs[0])
 	_, ctx := trace.StartSpanFromContext(context.Background(), "")
 
 	diskInfo := &blobnode.DiskInfo{

@@ -96,9 +96,21 @@ const (
 	NodeRoleShardNode
 )
 
+func (role NodeRole) String() string {
+	switch role {
+	case NodeRoleBlobNode:
+		return "blobnode"
+	case NodeRoleShardNode:
+		return "shardnode"
+	default:
+		return "unknown"
+	}
+}
+
 const (
 	InvalidDiskID = DiskID(0)
 	InValidBlobID = BlobID(0)
+	InvalidNodeID = NodeID(0)
 	InvalidCrc32  = uint32(0)
 	InvalidVid    = Vid(0)
 	InvalidVuid   = Vuid(0)

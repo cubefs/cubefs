@@ -52,12 +52,6 @@ func (s *Service) DiskAdd(c *rpc.Context) {
 	}
 	span.Infof("accept DiskAdd request, args: %v", args)
 
-	diskInfo, err := s.DiskMgr.GetDiskInfo(ctx, args.DiskID)
-	if diskInfo != nil && err == nil {
-		span.Warnf("disk already exist, no need to create again, disk info: %v", args)
-		c.RespondError(apierrors.ErrExist)
-		return
-	}
 	nodeInfo, err := s.DiskMgr.GetNodeInfo(ctx, args.NodeID)
 	if err != nil {
 		span.Warnf("nodeID not exist, disk info: %v", args)
@@ -65,7 +59,7 @@ func (s *Service) DiskAdd(c *rpc.Context) {
 		return
 	}
 	if s.DiskMgr.CheckDiskInfoDuplicated(ctx, args, nodeInfo) {
-		span.Warn("disk host and path duplicated")
+		span.Warn("disk exist or host and path duplicated")
 		c.RespondError(apierrors.ErrIllegalArguments)
 		return
 	}

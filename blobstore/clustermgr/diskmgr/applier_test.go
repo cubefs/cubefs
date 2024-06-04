@@ -33,8 +33,8 @@ func TestApplier_Others(t *testing.T) {
 	testDiskMgr, closeTestDiskMgr := initTestDiskMgr(t)
 	defer closeTestDiskMgr()
 	_, ctx := trace.StartSpanFromContext(context.Background(), "")
-	initTestDiskMgrNodes(t, testDiskMgr, 0, 0, testIdcs...)
-	initTestDiskMgrDisks(t, testDiskMgr, 1, 10, testIdcs...)
+	initTestDiskMgrNodes(t, testDiskMgr, 1, 1, testIdcs...)
+	initTestDiskMgrDisks(t, testDiskMgr, 1, 10, false, testIdcs...)
 
 	// test module and others
 	{
