@@ -40,6 +40,20 @@ func (t *topoMgr) SetDiskSetID(id proto.DiskSetID) {
 	t.curDiskSetID = id
 }
 
+func (t *topoMgr) GetNodeSetID() proto.NodeSetID {
+	t.lock.RLock()
+	defer t.lock.RUnlock()
+
+	return t.curNodeSetID
+}
+
+func (t *topoMgr) GetDiskSetID() proto.DiskSetID {
+	t.lock.RLock()
+	defer t.lock.RUnlock()
+
+	return t.curDiskSetID
+}
+
 func (t *topoMgr) AllocNodeSetID(ctx context.Context, info *blobnode.NodeInfo, config CopySetConfig, rackAware bool) proto.NodeSetID {
 	span := trace.SpanFromContextSafe(ctx)
 	t.lock.Lock()
@@ -191,7 +205,7 @@ func (t *topoMgr) getNodeSet(diskType proto.DiskType, nodeSetID proto.NodeSetID)
 
 func (t *topoMgr) getNodeNum(diskType proto.DiskType, id proto.NodeSetID) int {
 	nodeSet := t.getNodeSet(diskType, id)
-	return nodeSet.getNodeNum()
+	return nodeSet.GetNodeNum()
 }
 
 type nodeSetItem struct {
@@ -219,8 +233,22 @@ func (n *nodeSetItem) ID() proto.NodeSetID {
 	return n.nodeSetID
 }
 
-func (n *nodeSetItem) getNodeNum() int {
+func (n *nodeSetItem) GetNodeNum() int {
+	n.RLock()
+	defer n.RUnlock()
+
 	return len(n.nodes)
+}
+
+func (n *nodeSetItem) GetNodeIDs() []proto.NodeID {
+	n.RLock()
+	defer n.RUnlock()
+
+	nodeIDs := make([]proto.NodeID, 0, len(n.nodes))
+	for nodeID := range n.nodes {
+		nodeIDs = append(nodeIDs, nodeID)
+	}
+	return nodeIDs
 }
 
 func (n *nodeSetItem) addNode(node *nodeItem) {
@@ -274,7 +302,7 @@ func (n *nodeSetItem) getNodeSetLen() int {
 
 func (n *nodeSetItem) getNodeSetIDCAndRackLen(idc, rack string) (int, int) {
 	var nodeSetIdcLen, nodeSetRackLen int
-
+	n.RLock()
 	for _, node := range n.nodes {
 		if node.info.Idc == idc {
 			nodeSetIdcLen += 1
@@ -283,6 +311,7 @@ func (n *nodeSetItem) getNodeSetIDCAndRackLen(idc, rack string) (int, int) {
 			nodeSetRackLen += 1
 		}
 	}
+	n.RUnlock()
 
 	return nodeSetIdcLen, nodeSetRackLen
 }
@@ -311,6 +340,17 @@ func (d *diskSetItem) ID() proto.DiskSetID {
 	return d.diskSetID
 }
 
+func (d *diskSetItem) GetDiskIDs() []proto.DiskID {
+	d.RLock()
+	defer d.RUnlock()
+
+	diskIDs := make([]proto.DiskID, 0, len(d.disks))
+	for diskID := range d.disks {
+		diskIDs = append(diskIDs, diskID)
+	}
+	return diskIDs
+}
+
 func (d *diskSetItem) add(disk *diskItem) {
 	d.Lock()
 	defer d.Unlock()
@@ -330,5 +370,8 @@ func (d *diskSetItem) remove(disk *diskItem) {
 }
 
 func (d *diskSetItem) getDiskSetLen(nodeID proto.NodeID) (int, int) {
+	d.RLock()
+	defer d.RUnlock()
+
 	return len(d.disks), d.nodeDiskCount[nodeID]
 }

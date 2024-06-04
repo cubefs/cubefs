@@ -22,25 +22,10 @@ import (
 	"github.com/cubefs/cubefs/blobstore/clustermgr/base"
 	"github.com/cubefs/cubefs/blobstore/clustermgr/diskmgr"
 	apierrors "github.com/cubefs/cubefs/blobstore/common/errors"
-	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/rpc"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
 	"github.com/cubefs/cubefs/blobstore/util/errors"
 )
-
-func (s *Service) NodeIDAlloc(c *rpc.Context) {
-	ctx := c.Request.Context()
-	span := trace.SpanFromContextSafe(ctx)
-
-	span.Info("accept NodeIDAlloc request")
-	nodeID, err := s.DiskMgr.AllocNodeID(ctx)
-	if err != nil {
-		span.Errorf("alloc node id failed =>", errors.Detail(err))
-		c.RespondError(err)
-		return
-	}
-	c.RespondJSON(&clustermgr.NodeIDAllocRet{NodeID: nodeID})
-}
 
 func (s *Service) NodeAdd(c *rpc.Context) {
 	ctx := c.Request.Context()
@@ -52,15 +37,9 @@ func (s *Service) NodeAdd(c *rpc.Context) {
 	}
 	span.Infof("accept NodeAdd request, args: %v", args)
 
-	info, err := s.DiskMgr.GetNodeInfo(ctx, args.NodeID)
-	if info != nil && err == nil {
+	if nodeID, ok := s.DiskMgr.CheckNodeInfoDuplicated(ctx, args); ok {
 		span.Warnf("node already exist, no need to create again, node info: %v", args)
-		c.RespondError(apierrors.ErrExist)
-		return
-	}
-	if s.DiskMgr.CheckHostInfoDuplicated(ctx, args) {
-		span.Warn("node host duplicated")
-		c.RespondError(apierrors.ErrIllegalArguments)
+		c.RespondJSON(&clustermgr.NodeIDAllocRet{NodeID: nodeID})
 		return
 	}
 	if args.ClusterID != s.ClusterID {
@@ -78,14 +57,15 @@ func (s *Service) NodeAdd(c *rpc.Context) {
 			return
 		}
 	}
-	curNodeID := s.ScopeMgr.GetCurrent(diskmgr.NodeIDScopeName)
-	if proto.NodeID(curNodeID) < args.NodeID {
-		span.Warn("invalid node_id")
-		c.RespondError(apierrors.ErrIllegalArguments)
+	nodeID, err := s.DiskMgr.AllocNodeID(ctx)
+	if err != nil {
+		span.Errorf("alloc node id failed =>", errors.Detail(err))
+		c.RespondError(err)
 		return
 	}
+	args.NodeID = nodeID
 	if args.NodeSetID != diskmgr.NullNodeSetID { // nodeSetID is specified
-		err = s.DiskMgr.ValidateNodeSetID(ctx, args)
+		err := s.DiskMgr.ValidateNodeSetID(ctx, args)
 		if err != nil {
 			c.RespondError(err)
 			return
@@ -103,7 +83,9 @@ func (s *Service) NodeAdd(c *rpc.Context) {
 	if err != nil {
 		span.Error(err)
 		c.RespondError(apierrors.ErrRaftPropose)
+		return
 	}
+	c.RespondJSON(&clustermgr.NodeIDAllocRet{NodeID: nodeID})
 }
 
 func (s *Service) NodeDrop(c *rpc.Context) {
@@ -136,6 +118,7 @@ func (s *Service) NodeDrop(c *rpc.Context) {
 	if err != nil {
 		span.Error(err)
 		c.RespondError(apierrors.ErrRaftPropose)
+		return
 	}
 }
 
@@ -163,4 +146,18 @@ func (s *Service) NodeInfo(c *rpc.Context) {
 		return
 	}
 	c.RespondJSON(ret)
+}
+
+func (s *Service) TopoInfo(c *rpc.Context) {
+	ctx := c.Request.Context()
+	span := trace.SpanFromContextSafe(ctx)
+	span.Info("accept TopoInfo request")
+
+	// linear read
+	if err := s.raftNode.ReadIndex(ctx); err != nil {
+		span.Errorf("topo info read index error: %v", err)
+		c.RespondError(apierrors.ErrRaftReadIndex)
+		return
+	}
+	c.RespondJSON(s.DiskMgr.GetTopoInfo(ctx))
 }

@@ -76,7 +76,7 @@ func (d *DiskMgr) LoadData(ctx context.Context) error {
 		// filter dropped node, do not add into cluster topology and host path filter
 		if ni.isUsingStatus() {
 			d.topoMgrs[info.Role].AddNodeToNodeSet(ni)
-			d.hostPathFilter.Store(ni.genFilterKey(), 1)
+			d.hostPathFilter.Store(ni.genFilterKey(), ni.nodeID)
 		}
 		if info.NodeSetID >= curNodeSetID[info.Role] {
 			curNodeSetID[info.Role] = info.NodeSetID
@@ -164,7 +164,7 @@ func (d *DiskMgr) Apply(ctx context.Context, operTypes []int32, datas [][]byte, 
 				continue
 			}
 			d.taskPool.Run(synchronizedDiskID, func() {
-				// add node run on fixed goroutine synchronously
+				// add disk run on fixed goroutine synchronously
 				err = d.addDisk(taskCtx, diskInfo)
 				// don't return error if disk already exist
 				if err != nil && !errors.Is(err, ErrDiskExist) {

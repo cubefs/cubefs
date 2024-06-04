@@ -28,7 +28,7 @@ func TestReadonlySpace(t *testing.T) {
 	defer closeTestDiskMgr()
 
 	_, ctx := trace.StartSpanFromContext(context.Background(), "")
-	initTestDiskMgrNodes(t, testDiskMgr, 0, 0, testIdcs...)
+	initTestDiskMgrNodes(t, testDiskMgr, 1, 1, testIdcs...)
 	initTestDiskMgrDisksWithReadonly(t, testDiskMgr, 1, 4, testIdcs...)
 	testDiskMgr.refresh(ctx)
 }

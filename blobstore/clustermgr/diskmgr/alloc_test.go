@@ -79,7 +79,7 @@ func initTestDiskMgr(t *testing.T) (d *DiskMgr, closeFunc func()) {
 	}
 }
 
-func initTestDiskMgrDisks(t *testing.T, testDiskMgr *DiskMgr, start, end int, idcs ...string) {
+func initTestDiskMgrDisks(t *testing.T, testDiskMgr *DiskMgr, start, end int, specifyNodeID bool, idcs ...string) {
 	_, ctx := trace.StartSpanFromContext(context.Background(), "")
 	diskInfo := blobnode.DiskInfo{
 		DiskHeartBeatInfo: blobnode.DiskHeartBeatInfo{
@@ -97,7 +97,10 @@ func initTestDiskMgrDisks(t *testing.T, testDiskMgr *DiskMgr, start, end int, id
 	for idx, idc := range idcs {
 		for i := start; i <= end; i++ {
 			diskInfo.DiskID = proto.DiskID(idx*10000 + i)
-			hostID := i / 60
+			hostID := i/60 + 1
+			if specifyNodeID {
+				hostID = i
+			}
 			diskInfo.NodeID = proto.NodeID(idx*10000 + hostID)
 			diskInfo.Rack = strconv.Itoa(hostID)
 			diskInfo.Host = idc + hostPrefix + strconv.Itoa(hostID)
@@ -128,7 +131,7 @@ func initTestDiskMgrDisksWithReadonly(t *testing.T, testDiskMgr *DiskMgr, start,
 	for idx, idc := range idcs {
 		for i := start; i <= end; i++ {
 			diskInfo.DiskID = proto.DiskID(idx*10000 + i)
-			hostID := i / 60
+			hostID := i/60 + 1
 			diskInfo.NodeID = proto.NodeID(idx*10000 + hostID)
 			diskInfo.Rack = strconv.Itoa(hostID)
 			diskInfo.Host = idc + hostPrefix + strconv.Itoa(hostID)
@@ -176,8 +179,8 @@ func TestAlloc(t *testing.T) {
 	// disable same host, insert not enough disk
 	// alloc should return ErrNoEnoughSpace
 	{
-		initTestDiskMgrNodes(t, testDiskMgr, 0, 5, testIdcs...)
-		initTestDiskMgrDisks(t, testDiskMgr, 1, 300, testIdcs...)
+		initTestDiskMgrNodes(t, testDiskMgr, 1, 6, testIdcs...)
+		initTestDiskMgrDisks(t, testDiskMgr, 1, 300, false, testIdcs...)
 
 		// refresh cluster's disk space allocator
 		testDiskMgr.refresh(ctx)
@@ -222,7 +225,7 @@ func TestAlloc(t *testing.T) {
 	// alloc should be successful
 	{
 		initTestDiskMgrNodes(t, testDiskMgr, 6, 10, testIdcs[0])
-		initTestDiskMgrDisks(t, testDiskMgr, 301, 539, testIdcs[0])
+		initTestDiskMgrDisks(t, testDiskMgr, 301, 539, false, testIdcs[0])
 		// refresh cluster's disk space allocator
 		_, ctx = trace.StartSpanFromContext(context.Background(), "alloc-enough-space")
 		testDiskMgr.HostAware = true
@@ -315,8 +318,8 @@ func TestAllocWithSameHost(t *testing.T) {
 	// enable same host, insert not enough disk
 	// alloc should return ErrNoEnoughSpace
 	{
-		initTestDiskMgrNodes(t, testDiskMgr, 0, 0, testIdcs...)
-		initTestDiskMgrDisks(t, testDiskMgr, 1, 10, testIdcs...)
+		initTestDiskMgrNodes(t, testDiskMgr, 1, 1, testIdcs...)
+		initTestDiskMgrDisks(t, testDiskMgr, 1, 10, false, testIdcs...)
 		testDiskMgr.HostAware = false
 		testDiskMgr.RackAware = false
 		testDiskMgr.refresh(ctx)
@@ -335,8 +338,8 @@ func TestAllocWithSameHost(t *testing.T) {
 
 	// enable same host, insert enough disk, no error will return
 	{
-		initTestDiskMgrNodes(t, testDiskMgr, 1, 1, testIdcs...)
-		initTestDiskMgrDisks(t, testDiskMgr, 11, 12, testIdcs...)
+		initTestDiskMgrNodes(t, testDiskMgr, 2, 2, testIdcs...)
+		initTestDiskMgrDisks(t, testDiskMgr, 11, 12, false, testIdcs...)
 		_, ctx = trace.StartSpanFromContext(context.Background(), "alloc-same-host-not-enough")
 		testDiskMgr.refresh(ctx)
 		allocators := testDiskMgr.allocators[proto.NodeRoleBlobNode].Load().(*allocator)
@@ -426,8 +429,8 @@ func TestAllocWithDiffRack(t *testing.T) {
 	// enable same host, insert not enough disk
 	// alloc should return ErrNoEnoughSpace
 	{
-		initTestDiskMgrNodes(t, testDiskMgr, 0, 0, testIdcs[0])
-		initTestDiskMgrDisks(t, testDiskMgr, 1, 10, testIdcs[0])
+		initTestDiskMgrNodes(t, testDiskMgr, 1, 10, testIdcs[0])
+		initTestDiskMgrDisks(t, testDiskMgr, 1, 10, true, testIdcs[0])
 
 		// 1-8 use test-rack-[1-8]
 		// 9-10 use same rack: test-rack-8
@@ -495,8 +498,8 @@ func TestAllocWithDiffHost(t *testing.T) {
 	// enable same host, insert not enough disk
 	// alloc should return ErrNoEnoughSpace
 	{
-		initTestDiskMgrNodes(t, testDiskMgr, 0, 0, testIdcs[0])
-		initTestDiskMgrDisks(t, testDiskMgr, 1, 10, testIdcs[0])
+		initTestDiskMgrNodes(t, testDiskMgr, 1, 10, testIdcs[0])
+		initTestDiskMgrDisks(t, testDiskMgr, 1, 10, true, testIdcs[0])
 
 		// 1-8 use test-rack-[1-8]
 		// 9-10 use same rack: test-rack-8
@@ -556,8 +559,8 @@ func TestAllocWithDiffRackAndSameHost(t *testing.T) {
 	// enable same host, insert not enough disk
 	// alloc should return ErrNoEnoughSpace
 	{
-		initTestDiskMgrNodes(t, testDiskMgr, 0, 0, testIdcs[0])
-		initTestDiskMgrDisks(t, testDiskMgr, 1, 10, testIdcs[0])
+		initTestDiskMgrNodes(t, testDiskMgr, 1, 10, testIdcs[0])
+		initTestDiskMgrDisks(t, testDiskMgr, 1, 10, true, testIdcs[0])
 
 		// 1-8 use test-rack-[1-8]
 		// 9-10 use same rack: test-rack-8
@@ -624,8 +627,8 @@ func TestAllocCost(t *testing.T) {
 		totalTimes  = 1 * 100
 	)
 
-	initTestDiskMgrNodes(t, testDiskMgr, 0, 300, testIdcs[0])
-	initTestDiskMgrDisks(t, testDiskMgr, 1, 1800, testIdcs[0])
+	initTestDiskMgrNodes(t, testDiskMgr, 1, 300, testIdcs[0])
+	initTestDiskMgrDisks(t, testDiskMgr, 1, 1800, false, testIdcs[0])
 	// refresh cluster's disk space allocator
 	testDiskMgr.refresh(ctx)
 	allocators := testDiskMgr.allocators[proto.NodeRoleBlobNode].Load().(*allocator)

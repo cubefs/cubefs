@@ -19,7 +19,6 @@ import (
 
 	"github.com/cubefs/cubefs/blobstore/api/blobnode"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
-	"github.com/cubefs/cubefs/blobstore/common/rpc"
 )
 
 type NodeInfoArgs struct {
@@ -30,17 +29,20 @@ type NodeIDAllocRet struct {
 	NodeID proto.NodeID `json:"node_id"`
 }
 
-// AllocNodeID alloc nodeID from cluster manager
-func (c *Client) AllocNodeID(ctx context.Context) (proto.NodeID, error) {
-	ret := &NodeIDAllocRet{}
-	err := c.PostWith(ctx, "/nodeid/alloc", ret, rpc.NoneBody)
-	if err != nil {
-		return 0, err
-	}
-	return ret.NodeID, nil
+type NodeSetInfo struct {
+	ID       proto.NodeSetID                    `json:"id"`
+	Number   int                                `json:"number"`
+	Nodes    []proto.NodeID                     `json:"nodes"`
+	DiskSets map[proto.DiskSetID][]proto.DiskID `json:"disk_sets"`
 }
 
-// AddNode add a new node into cluster manager
+type TopoInfo struct {
+	CurNodeSetIDs map[proto.NodeRole]proto.NodeSetID                                     `json:"cur_node_set_ids"`
+	CurDiskSetIDs map[proto.NodeRole]proto.DiskSetID                                     `json:"cur_disk_set_ids"`
+	AllNodeSets   map[proto.NodeRole]map[proto.DiskType]map[proto.NodeSetID]*NodeSetInfo `json:"all_node_sets"`
+}
+
+// AddNode add a new node into cluster manager and return allocated nodeID
 func (c *Client) AddNode(ctx context.Context, info *blobnode.NodeInfo) (proto.NodeID, error) {
 	ret := &NodeIDAllocRet{}
 	err := c.PostWith(ctx, "/node/add", ret, info)
@@ -60,5 +62,12 @@ func (c *Client) DropNode(ctx context.Context, id proto.NodeID) (err error) {
 func (c *Client) NodeInfo(ctx context.Context, id proto.NodeID) (ret *blobnode.NodeInfo, err error) {
 	ret = &blobnode.NodeInfo{}
 	err = c.GetWith(ctx, "/node/info?node_id="+id.ToString(), ret)
+	return
+}
+
+// TopoInfo get nodeset and diskset topo info from cluster manager
+func (c *Client) TopoInfo(ctx context.Context) (ret *TopoInfo, err error) {
+	ret = &TopoInfo{}
+	err = c.GetWith(ctx, "/topo/info", ret)
 	return
 }

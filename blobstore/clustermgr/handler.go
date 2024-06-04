@@ -59,13 +59,13 @@ func NewHandler(service *Service) *rpc.Router {
 	//=====================node==========================
 	rpc.RegisterArgsParser(&clustermgr.NodeInfoArgs{}, "json")
 
-	rpc.POST("/nodeid/alloc", service.NodeIDAlloc)
-
 	rpc.POST("/node/add", service.NodeAdd, rpc.OptArgsBody())
 
 	rpc.POST("/node/drop", service.NodeDrop, rpc.OptArgsBody())
 
 	rpc.GET("/node/info", service.NodeInfo, rpc.OptArgsQuery())
+
+	rpc.GET("/topo/info", service.TopoInfo)
 
 	//==================service==========================
 	rpc.RegisterArgsParser(&clustermgr.GetServiceArgs{}, "json")

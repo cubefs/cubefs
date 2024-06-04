@@ -32,7 +32,6 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
 	"github.com/cubefs/cubefs/blobstore/util/errors"
-	"github.com/cubefs/cubefs/blobstore/util/log"
 )
 
 const (
@@ -135,7 +134,7 @@ type DiskMgrConfig struct {
 	CodeModes                []codemode.CodeMode `json:"-"`
 	ChunkSize                int64               `json:"-"`
 
-	CopySetConfigs map[proto.NodeRole]map[proto.DiskType]CopySetConfig `json:"-"`
+	CopySetConfigs map[proto.NodeRole]map[proto.DiskType]CopySetConfig `json:"copy_set_configs"`
 }
 
 type CopySetConfig struct {
@@ -294,11 +293,7 @@ func (d *DiskMgr) GetDiskInfo(ctx context.Context, id proto.DiskID) (*blobnode.D
 		return nil
 	})
 
-	if diskInfo.Host == "" {
-		nodeInfo, ok := d.getNode(diskInfo.NodeID)
-		if !ok {
-			return nil, apierrors.ErrCMNodeNotFound
-		}
+	if nodeInfo, ok := d.getNode(diskInfo.NodeID); ok {
 		diskInfo.Idc = nodeInfo.info.Idc
 		diskInfo.Rack = nodeInfo.info.Rack
 		diskInfo.Host = nodeInfo.info.Host
@@ -324,10 +319,19 @@ func (d *DiskMgr) IsFrequentHeatBeat(id proto.DiskID, HeartbeatNotifyIntervalS i
 }
 
 func (d *DiskMgr) CheckDiskInfoDuplicated(ctx context.Context, diskInfo *blobnode.DiskInfo, nodeInfo *blobnode.NodeInfo) bool {
+	di, ok := d.getDisk(diskInfo.DiskID)
+	// compatible case: disk register again to diskSet
+	if ok && di.info.NodeID == proto.InvalidNodeID && diskInfo.NodeID != proto.InvalidNodeID &&
+		di.info.Host == nodeInfo.Host && di.info.Idc == nodeInfo.Idc && di.info.Rack == nodeInfo.Rack {
+		return false
+	}
+	if ok { // disk exist
+		return true
+	}
 	disk := &diskItem{
 		info: &blobnode.DiskInfo{Host: nodeInfo.Host, Path: diskInfo.Path},
 	}
-	_, ok := d.hostPathFilter.Load(disk.genFilterKey())
+	_, ok = d.hostPathFilter.Load(disk.genFilterKey())
 	return ok
 }
 
@@ -634,12 +638,6 @@ func (d *DiskMgr) Stat(ctx context.Context) *clustermgr.SpaceStatInfo {
 
 // SwitchReadonly can switch disk's readonly or writable
 func (d *DiskMgr) SwitchReadonly(diskID proto.DiskID, readonly bool) error {
-	defer func() {
-		p := recover()
-		if p != nil {
-			log.Fatalf("disk id: %d, disks: %+v", diskID, d.allDisks)
-		}
-	}()
 	disk, _ := d.getDisk(diskID)
 
 	disk.lock.RLock()
@@ -689,6 +687,100 @@ func (d *DiskMgr) GetHeartbeatChangeDisks() []HeartbeatEvent {
 	return ret
 }
 
+func (d *DiskMgr) AllocNodeID(ctx context.Context) (proto.NodeID, error) {
+	_, nodeID, err := d.scopeMgr.Alloc(ctx, NodeIDScopeName, 1)
+	if err != nil {
+		return 0, errors.Info(err, "diskMgr.AllocNodeID failed").Detail(err)
+	}
+	return proto.NodeID(nodeID), nil
+}
+
+func (d *DiskMgr) GetNodeInfo(ctx context.Context, nodeID proto.NodeID) (*blobnode.NodeInfo, error) {
+	nodeInfo, ok := d.getNode(nodeID)
+	if !ok {
+		return nil, apierrors.ErrCMNodeNotFound
+	}
+
+	nodeInfo.lock.RLock()
+	defer nodeInfo.lock.RUnlock()
+	newNodeInfo := *(nodeInfo.info)
+	// need to copy before return, or the higher level may change the node info by pointer
+	return &(newNodeInfo), nil
+}
+
+func (d *DiskMgr) GetTopoInfo(ctx context.Context) *clustermgr.TopoInfo {
+	ret := &clustermgr.TopoInfo{
+		CurNodeSetIDs: make(map[proto.NodeRole]proto.NodeSetID),
+		CurDiskSetIDs: make(map[proto.NodeRole]proto.DiskSetID),
+		AllNodeSets:   make(map[proto.NodeRole]map[proto.DiskType]map[proto.NodeSetID]*clustermgr.NodeSetInfo),
+	}
+	for role, topoMgr := range d.topoMgrs {
+		ret.CurNodeSetIDs[role] = topoMgr.GetNodeSetID()
+		ret.CurDiskSetIDs[role] = topoMgr.GetDiskSetID()
+		if _, ok := ret.AllNodeSets[role]; !ok {
+			ret.AllNodeSets[role] = make(map[proto.DiskType]map[proto.NodeSetID]*clustermgr.NodeSetInfo)
+		}
+		nodeSetsMap := topoMgr.GetAllNodeSets(ctx)
+		for diskType, nodeSets := range nodeSetsMap {
+			if _, ok := ret.AllNodeSets[role][diskType]; !ok {
+				ret.AllNodeSets[role][diskType] = make(map[proto.NodeSetID]*clustermgr.NodeSetInfo)
+			}
+			for _, nodeSet := range nodeSets {
+				nodeSetInfo, ok := ret.AllNodeSets[role][diskType][nodeSet.ID()]
+				if !ok {
+					nodeSetInfo = &clustermgr.NodeSetInfo{
+						ID:       nodeSet.ID(),
+						Number:   nodeSet.GetNodeNum(),
+						Nodes:    nodeSet.GetNodeIDs(),
+						DiskSets: make(map[proto.DiskSetID][]proto.DiskID),
+					}
+					ret.AllNodeSets[role][diskType][nodeSet.ID()] = nodeSetInfo
+				}
+				diskSets := nodeSet.GetDiskSets()
+				for _, diskSet := range diskSets {
+					nodeSetInfo.DiskSets[diskSet.ID()] = diskSet.GetDiskIDs()
+				}
+			}
+		}
+	}
+	return ret
+}
+
+func (d *DiskMgr) IsDroppedNode(ctx context.Context, nodeID proto.NodeID) (bool, error) {
+	node, ok := d.getNode(nodeID)
+	if !ok {
+		return false, apierrors.ErrCMNodeNotFound
+	}
+
+	node.lock.RLock()
+	defer node.lock.RUnlock()
+
+	for _, disk := range node.disks {
+		di := &diskItem{
+			diskID: disk.DiskID,
+			info:   disk,
+		}
+		if di.needFilter() {
+			return false, apierrors.ErrCMHasDiskNotDroppedOrRepaired
+		}
+	}
+	if node.isUsingStatus() {
+		return false, nil
+	}
+	return true, nil
+}
+
+func (d *DiskMgr) CheckNodeInfoDuplicated(ctx context.Context, info *blobnode.NodeInfo) (proto.NodeID, bool) {
+	node := &nodeItem{
+		info: &blobnode.NodeInfo{Host: info.Host, DiskType: info.DiskType},
+	}
+	if v, ok := d.hostPathFilter.Load(node.genFilterKey()); ok {
+		nodeID := v.(proto.NodeID)
+		return nodeID, true
+	}
+	return proto.InvalidNodeID, false
+}
+
 func (d *DiskMgr) ValidateNodeSetID(ctx context.Context, info *blobnode.NodeInfo) error {
 	if err := d.topoMgrs[info.Role].ValidateNodeSetID(ctx, info.DiskType, info.NodeSetID); err != nil {
 		return err
@@ -702,9 +794,9 @@ func (d *DiskMgr) addDisk(ctx context.Context, info *blobnode.DiskInfo) error {
 
 	d.metaLock.Lock()
 	defer d.metaLock.Unlock()
-	// concurrent double check
-	_, ok := d.allDisks[info.DiskID]
-	if ok {
+	// compatible case: disk register again to diskSet
+	di, ok := d.allDisks[info.DiskID]
+	if ok && (di.info.NodeID != proto.InvalidNodeID || info.NodeID == proto.InvalidNodeID) {
 		return nil
 	}
 	// alloc diskSetID
@@ -924,59 +1016,6 @@ func diskInfoRecordToDiskInfo(infoDB *normaldb.DiskInfoRecord) *blobnode.DiskInf
 	}
 }
 
-func (d *DiskMgr) AllocNodeID(ctx context.Context) (proto.NodeID, error) {
-	_, nodeID, err := d.scopeMgr.Alloc(ctx, NodeIDScopeName, 1)
-	if err != nil {
-		return 0, errors.Info(err, "diskMgr.AllocNodeID failed").Detail(err)
-	}
-	return proto.NodeID(nodeID), nil
-}
-
-func (d *DiskMgr) GetNodeInfo(ctx context.Context, nodeID proto.NodeID) (*blobnode.NodeInfo, error) {
-	nodeInfo, ok := d.getNode(nodeID)
-	if !ok {
-		return nil, apierrors.ErrCMNodeNotFound
-	}
-
-	nodeInfo.lock.RLock()
-	defer nodeInfo.lock.RUnlock()
-	newNodeInfo := *(nodeInfo.info)
-	// need to copy before return, or the higher level may change the node info by pointer
-	return &(newNodeInfo), nil
-}
-
-func (d *DiskMgr) IsDroppedNode(ctx context.Context, nodeID proto.NodeID) (bool, error) {
-	node, ok := d.getNode(nodeID)
-	if !ok {
-		return false, apierrors.ErrCMNodeNotFound
-	}
-
-	node.lock.RLock()
-	defer node.lock.RUnlock()
-
-	for _, disk := range node.disks {
-		di := &diskItem{
-			diskID: disk.DiskID,
-			info:   disk,
-		}
-		if di.needFilter() {
-			return false, apierrors.ErrCMHasDiskNotDroppedOrRepaired
-		}
-	}
-	if node.isUsingStatus() {
-		return false, nil
-	}
-	return true, nil
-}
-
-func (d *DiskMgr) CheckHostInfoDuplicated(ctx context.Context, info *blobnode.NodeInfo) bool {
-	node := &nodeItem{
-		info: &blobnode.NodeInfo{Host: info.Host, DiskType: info.DiskType},
-	}
-	_, ok := d.hostPathFilter.Load(node.genFilterKey())
-	return ok
-}
-
 // addNode add a new node into cluster, it returns ErrNodeExist if node already exist
 func (d *DiskMgr) addNode(ctx context.Context, info *blobnode.NodeInfo) error {
 	span := trace.SpanFromContextSafe(ctx)
@@ -994,6 +1033,7 @@ func (d *DiskMgr) addNode(ctx context.Context, info *blobnode.NodeInfo) error {
 	if info.NodeSetID == NullNodeSetID {
 		info.NodeSetID = d.topoMgrs[info.Role].AllocNodeSetID(ctx, info, d.CopySetConfigs[info.Role][info.DiskType], d.RackAware)
 	}
+	info.Status = proto.NodeStatusNormal
 
 	// add node to nodeTbl and nodeSet
 	err := d.nodeTbl.UpdateNode(nodeInfoToNodeInfoRecord(info))
@@ -1005,7 +1045,7 @@ func (d *DiskMgr) addNode(ctx context.Context, info *blobnode.NodeInfo) error {
 	ni := &nodeItem{nodeID: info.NodeID, info: info, disks: make(map[proto.DiskID]*blobnode.DiskInfo)}
 	d.topoMgrs[info.Role].AddNodeToNodeSet(ni)
 	d.allNodes[info.NodeID] = ni
-	d.hostPathFilter.Store(ni.genFilterKey(), 1)
+	d.hostPathFilter.Store(ni.genFilterKey(), ni.nodeID)
 
 	return nil
 }
