@@ -1159,8 +1159,8 @@ func (mp *metaPartition) UpdateExtentKeyAfterMigration(req *proto.UpdateExtentKe
 			delMigrationIno := item.(*Inode)
 			//prepare HybridCouldExtentsMigration info for extent key delete
 			if req.StorageClass == proto.StorageClass_BlobStore {
-				log.LogDebugf("action[UpdateExtentKeyAfterMigration] prepare to delete migration obj extent key for "+
-					"inode %v", delMigrationIno.Inode)
+				log.LogInfof("action[UpdateExtentKeyAfterMigration] mp(%v) after err, prepare to delete migration obj extent key for inode %v",
+					mp.config.PartitionId, delMigrationIno.Inode)
 				delMigrationIno.HybridCouldExtentsMigration.storageClass = req.StorageClass
 				delMigrationIno.HybridCouldExtentsMigration.sortedEks = NewSortedObjExtentsFromObjEks(req.NewObjExtentKeys)
 			}

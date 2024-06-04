@@ -398,12 +398,16 @@ func (w *Wrapper) updateDataPartitionByRsp(forceUpdate bool, refreshPolicy Refre
 			w.volName, len(rwPartitionGroups), len(DataPartitions), forceUpdate, refreshPolicy)
 		w.refreshDpSelector(refreshPolicy, rwPartitionGroups)
 	} else {
-		err = errors.New("updateDataPartition: no writable data partition")
-		log.LogWarnf("updateDataPartition: no enough writable data partitions, volume(%v) with %v rw partitions(%v all), forceUpdate(%v)",
-			w.volName, len(rwPartitionGroups), len(DataPartitions), forceUpdate)
+		if len(DataPartitions) == 0 && (proto.IsCold(w.volType) || proto.IsStorageClassBlobStore(w.volStorageClass)) {
+			log.LogInfof("updateDataPartition: cold volume with no data partitions")
+		} else {
+			err = errors.New("updateDataPartition: no writable data partition")
+			log.LogWarnf("updateDataPartition: no enough writable data partitions, volume(%v) with %v rw partitions(%v all), forceUpdate(%v)",
+				w.volName, len(rwPartitionGroups), len(DataPartitions), forceUpdate)
+		}
 	}
 
-	log.LogInfof("updateDataPartition: finissdk/data/wrapper/wrapper.goh")
+	log.LogInfof("updateDataPartition: finish")
 	return err
 }
 

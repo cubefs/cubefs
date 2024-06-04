@@ -1079,7 +1079,7 @@ func (i *Inode) UnmarshalInodeValue(buff *bytes.Buffer) (err error) {
 			err = UnmarshalInodeFiledError("extSize(v4)", err)
 			return
 		}
-		fmt.Printf("ino %v extSize %v\n", i.Inode, extSize)
+
 		if extSize > 0 {
 			extBytes := make([]byte, extSize)
 			if _, err = io.ReadFull(buff, extBytes); err != nil {

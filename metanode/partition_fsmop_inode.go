@@ -1069,25 +1069,25 @@ func (mp *metaPartition) fsmUpdateExtentKeyAfterMigration(inoParam *Inode) (resp
 	i.Lock()
 	defer i.Unlock()
 	if i.StorageClass == inoParam.HybridCouldExtentsMigration.storageClass {
-		log.LogWarnf("[fsmUpdateExtentKeyAfterMigration] inode(%v) storageClass(%v) is already the same with req storageClass",
-			i.Inode, i.StorageClass)
+		log.LogWarnf("[fsmUpdateExtentKeyAfterMigration] mp(%v) inode(%v) storageClass(%v) is already the same with req storageClass",
+			mp.config.PartitionId, i.Inode, i.StorageClass)
 		resp.Status = proto.OpNotPerm
 		return
 	}
 	// for empty file, HybridCouldExtents.sortedEks is nil and StorageClass_Unspecified
 	// but HybridCouldExtentsMigration.sortedEks for inoParam is always not nil
 	if i.HybridCouldExtents.sortedEks == nil && i.StorageClass != proto.StorageClass_Unspecified && inoParam.HybridCouldExtentsMigration.sortedEks != nil {
-		log.LogWarnf("[fsmUpdateExtentKeyAfterMigration] inode(%v) storageClass(%v) extent key is empty, but extent key "+
+		log.LogWarnf("[fsmUpdateExtentKeyAfterMigration] mp(%v) inode(%v) storageClass(%v) extent key is empty, but extent key "+
 			"for migration storageClass(%v) is not empty",
-			i.Inode, i.StorageClass, i.HybridCouldExtentsMigration.storageClass)
+			mp.config.PartitionId, i.Inode, i.StorageClass, i.HybridCouldExtentsMigration.storageClass)
 		resp.Status = proto.OpNotPerm
 		return
 	}
 
 	if i.HybridCouldExtents.sortedEks != nil && inoParam.HybridCouldExtentsMigration.sortedEks == nil {
-		log.LogWarnf("[fsmUpdateExtentKeyAfterMigration] inode(%v) storageClass(%v) migrate extent key for migration "+
+		log.LogWarnf("[fsmUpdateExtentKeyAfterMigration] mp(%v) inode(%v) storageClass(%v) migrate extent key for migration "+
 			"storageClass(%v) is empty ",
-			i.Inode, i.StorageClass, i.HybridCouldExtentsMigration.storageClass)
+			mp.config.PartitionId, i.Inode, i.StorageClass, i.HybridCouldExtentsMigration.storageClass)
 		resp.Status = proto.OpNotPerm
 		return
 	}
@@ -1101,12 +1101,12 @@ func (mp *metaPartition) fsmUpdateExtentKeyAfterMigration(inoParam *Inode) (resp
 	i.HybridCouldExtents.sortedEks = inoParam.HybridCouldExtentsMigration.sortedEks
 	//delete migration ek in future
 	i.Flag |= DeleteMigrationExtentKeyFlag
-	log.LogInfof("action[fsmUpdateExtentKeyAfterMigration] inode %v storage class change from %v to %v", i.Inode,
-		i.HybridCouldExtentsMigration.storageClass, i.StorageClass)
+	log.LogInfof("action[fsmUpdateExtentKeyAfterMigration] mp(%v) inode %v storage class change from %v to %v", i.Inode,
+		mp.config.PartitionId, i.HybridCouldExtentsMigration.storageClass, i.StorageClass)
 	logCurrentExtentKeys(i.StorageClass, i.HybridCouldExtents.sortedEks, i.Inode)
 	logCurrentExtentKeys(i.HybridCouldExtentsMigration.storageClass, i.HybridCouldExtentsMigration.sortedEks, i.Inode)
-	log.LogInfof("action[fsmUpdateExtentKeyAfterMigration] inode %v migration ek will be deleted at %v",
-		i.Inode, time.Unix(i.HybridCouldExtentsMigration.expiredTime, 0).Format("2006-01-02 15:04:05"))
+	log.LogInfof("action[fsmUpdateExtentKeyAfterMigration] mp(%v) inode %v migration ek will be deleted at %v",
+		mp.config.PartitionId, i.Inode, time.Unix(i.HybridCouldExtentsMigration.expiredTime, 0).Format("2006-01-02 15:04:05"))
 	mp.freeList.Push(i.Inode)
 	return
 }
