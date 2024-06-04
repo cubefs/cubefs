@@ -404,14 +404,6 @@ func (f *File) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.Wri
 
 	defer func() {
 		f.super.ic.Delete(ino)
-
-		if log.EnableDebug() && err == nil {
-			expectedSize := req.Offset + int64(len(req.Data))
-			streamSize, _, _ := f.super.ec.FileSize(ino)
-			if streamSize < int(expectedSize) {
-				log.LogErrorf("[Write] ino(%v) uncorrect write, expected size(%v), actual size(%v)", ino, expectedSize, streamSize)
-			}
-		}
 	}()
 
 	var waitForFlush bool
