@@ -843,7 +843,19 @@ func (dp *DataPartition) streamRepairExtent(remoteExtentInfo *storage.ExtentInfo
 				}
 			} else {
 				log.LogDebugf("streamRepairExtent reply size %v, currFixoffset %v, reply %v ", reply.GetSize(), currFixOffset, reply)
-				_, err = store.Write(uint64(localExtentInfo.FileID), int64(currFixOffset), int64(reply.GetSize()), reply.GetData(), reply.GetCRC(), wType, BufferWrite, isEmptyResponse, true, request.GetOpcode() == proto.OpBackupWrite)
+				param := &storage.WriteParam{
+					ExtentID:      uint64(localExtentInfo.FileID),
+					Offset:        int64(currFixOffset),
+					Size:          int64(reply.GetSize()),
+					Data:          reply.GetData(),
+					Crc:           reply.GetCRC(),
+					WriteType:     wType,
+					IsSync:        BufferWrite,
+					IsHole:        isEmptyResponse,
+					IsRepair:      true,
+					IsBackupWrite: request.GetOpcode() == proto.OpBackupWrite,
+				}
+				_, err = store.Write(param)
 			}
 			// log.LogDebugf("streamRepairExtent reply size %v, currFixoffset %v, reply %v err %v", reply.Size, currFixOffset, reply, err)
 			// write to the local extent file
