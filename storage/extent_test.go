@@ -56,51 +56,82 @@ func getMockCrcPersist(t *testing.T) storage.UpdateCrcFunc {
 
 func normalExtentRwTest(t *testing.T, e *storage.Extent) {
 	data := []byte(dataStr)
-	_, err := e.Write(data, 0, 0, 0, storage.AppendWriteType, true, getMockCrcPersist(t), nil, false, false)
+	param := &storage.WriteParam{
+		Data:      data,
+		Offset:    0,
+		ExtentID:  0,
+		Crc:       0,
+		WriteType: storage.AppendWriteType,
+		IsSync:    true,
+		IsHole:    false,
+		IsRepair:  false,
+	}
+	_, err := e.Write(param, getMockCrcPersist(t))
+	param.Size = int64(len(data))
 	require.Error(t, err)
 	// append write
-	_, err = e.Write(data, 0, int64(len(data)), 0, storage.AppendWriteType, true, getMockCrcPersist(t), nil, false, false)
+	_, err = e.Write(param, getMockCrcPersist(t))
 	require.NoError(t, err)
 	require.EqualValues(t, e.Size(), len(data))
 	_, err = e.Read(data, 0, int64(len(data)), false)
 	require.NoError(t, err)
 	require.Equal(t, string(data), dataStr)
 	// failed append write
-	_, err = e.Write(data, 0, int64(len(data)), 0, storage.AppendWriteType, true, getMockCrcPersist(t), nil, false, false)
+	param.WriteType = storage.AppendWriteType
+	_, err = e.Write(param, getMockCrcPersist(t))
 	require.Error(t, err)
 	// random append write
 	oldSize := e.Size()
-	_, err = e.Write(data, 0, int64(len(data)), 0, storage.RandomWriteType, true, getMockCrcPersist(t), nil, false, false)
+	param.WriteType = storage.RandomWriteType
+	_, err = e.Write(param, getMockCrcPersist(t))
 	require.NoError(t, err)
 	require.Equal(t, e.Size(), oldSize)
 	_, err = e.Read(data, 0, int64(len(data)), false)
 	require.NoError(t, err)
 	require.Equal(t, string(data), dataStr)
-	_, err = e.Write(data, util.BlockSize, dataSize, 0, storage.RandomWriteType, true, getMockCrcPersist(t), nil, false, false)
+
+	param.Offset = util.BlockSize
+	param.Size = dataSize
+	_, err = e.Write(param, getMockCrcPersist(t))
 	require.NoError(t, err)
-	_, err = e.Write(data, util.ExtentSize, dataSize, 0, storage.RandomWriteType, true, getMockCrcPersist(t), nil, false, false)
+	param.Offset = util.ExtentSize
+	_, err = e.Write(param, getMockCrcPersist(t))
 	require.NoError(t, err)
 	// TODO: append random write test
 }
 
 func tinyExtentRwTest(t *testing.T, e *storage.Extent) {
 	data := []byte(dataStr)
+	param := &storage.WriteParam{
+		Data:   data,
+		IsSync: true,
+	}
 	// write oversize
-	_, err := e.Write(data, storage.ExtentMaxSize, dataSize, 0, storage.RandomWriteType, true, getMockCrcPersist(t), nil, false, false)
+	param.Offset = storage.ExtentMaxSize
+	param.Size = dataSize
+	param.WriteType = storage.RandomWriteType
+	_, err := e.Write(param, getMockCrcPersist(t))
 	require.ErrorIs(t, err, storage.ExtentIsFullError)
+
 	// append write
-	_, err = e.Write(data, 0, int64(len(data)), 0, storage.AppendWriteType, true, getMockCrcPersist(t), nil, false, false)
+	param.Offset = 0
+	param.Size = int64(len(data))
+	param.WriteType = storage.AppendWriteType
+	_, err = e.Write(param, getMockCrcPersist(t))
 	require.NoError(t, err)
 	require.EqualValues(t, e.Size()%util.PageSize, 0)
 	_, err = e.Read(data, 0, int64(len(data)), false)
 	require.NoError(t, err)
 	require.Equal(t, string(data), dataStr)
+
 	// failed append write
-	_, err = e.Write(data, 0, int64(len(data)), 0, storage.AppendWriteType, true, getMockCrcPersist(t), nil, false, false)
+	_, err = e.Write(param, getMockCrcPersist(t))
 	require.Error(t, err)
 	// random write
 	oldSize := e.Size()
-	_, err = e.Write(data, int64(len(data)), int64(len(data)), 0, storage.RandomWriteType, true, getMockCrcPersist(t), nil, false, false)
+	param.WriteType = storage.RandomWriteType
+	param.Offset = int64(len(data))
+	_, err = e.Write(param, getMockCrcPersist(t))
 	require.NoError(t, err)
 	require.Equal(t, e.Size(), oldSize)
 	_, err = e.Read(data, int64(len(data)), int64(len(data)), false)
@@ -285,12 +316,23 @@ func TestExtentRecovery(t *testing.T) {
 	headSize := 128 * 1024
 
 	data := bytes.Repeat([]byte("s"), headSize)
+	param := &storage.WriteParam{
+		Data:   data,
+		IsSync: true,
+	}
 	for i := 0; i < 10; i++ {
-		_, err := e.Write(data, int64(i)*util.BlockSize, int64(headSize), 0, storage.AppendWriteType, true, getMockCrcPersist(t), nil, false, false)
+		param.Offset = int64(i) * util.BlockSize
+		param.Size = int64(headSize)
+		param.WriteType = storage.AppendWriteType
+
+		_, err := e.Write(param, getMockCrcPersist(t))
 		require.NoError(t, err)
 	}
 	for i := 0; i < 10; i++ {
-		_, err := e.Write(data, int64(i)*util.BlockSize+util.ExtentSize, int64(headSize), 0, storage.AppendRandomWriteType, true, getMockCrcPersist(t), nil, false, false)
+		param.Offset = int64(i)*util.BlockSize + util.ExtentSize
+		param.Size = int64(headSize)
+		param.WriteType = storage.AppendRandomWriteType
+		_, err := e.Write(param, getMockCrcPersist(t))
 		require.NoError(t, err)
 	}
 	e.GetFile().Close()
