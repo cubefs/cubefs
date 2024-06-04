@@ -824,7 +824,19 @@ func (s *DataNode) handleWritePacket(p *repl.Packet) {
 		partition.disk.allocCheckLimit(proto.IopsWriteType, 1)
 
 		if writable := partition.disk.limitWrite.TryRun(int(p.Size), func() {
-			_, err = store.Write(p.ExtentID, p.ExtentOffset, int64(p.Size), p.Data, p.CRC, storage.AppendWriteType, p.IsSyncWrite(), false, false, false)
+			param := &storage.WriteParam{
+				ExtentID:      p.ExtentID,
+				Offset:        p.ExtentOffset,
+				Size:          int64(p.Size),
+				Data:          p.Data,
+				Crc:           p.CRC,
+				WriteType:     storage.AppendWriteType,
+				IsSync:        p.IsSyncWrite(),
+				IsHole:        false,
+				IsRepair:      false,
+				IsBackupWrite: false,
+			}
+			_, err = store.Write(param)
 		}); !writable {
 			err = storage.LimitedIoError
 			return
@@ -846,7 +858,19 @@ func (s *DataNode) handleWritePacket(p *repl.Packet) {
 		partition.disk.allocCheckLimit(proto.IopsWriteType, 1)
 
 		if writable := partition.disk.limitWrite.TryRun(int(p.Size), func() {
-			_, err = store.Write(p.ExtentID, p.ExtentOffset, int64(p.Size), p.Data, p.CRC, storage.AppendWriteType, p.IsSyncWrite(), false, false, false)
+			param := &storage.WriteParam{
+				ExtentID:      p.ExtentID,
+				Offset:        p.ExtentOffset,
+				Size:          int64(p.Size),
+				Data:          p.Data,
+				Crc:           p.CRC,
+				WriteType:     storage.AppendWriteType,
+				IsSync:        p.IsSyncWrite(),
+				IsHole:        false,
+				IsRepair:      false,
+				IsBackupWrite: false,
+			}
+			_, err = store.Write(param)
 		}); !writable {
 			err = storage.LimitedIoError
 			return
@@ -874,7 +898,19 @@ func (s *DataNode) handleWritePacket(p *repl.Packet) {
 			partition.disk.allocCheckLimit(proto.IopsWriteType, 1)
 
 			if writable := partition.disk.limitWrite.TryRun(currSize, func() {
-				_, err = store.Write(p.ExtentID, p.ExtentOffset+int64(offset), int64(currSize), data, crc, storage.AppendWriteType, p.IsSyncWrite(), false, false, false)
+				param := &storage.WriteParam{
+					ExtentID:      p.ExtentID,
+					Offset:        p.ExtentOffset + int64(offset),
+					Size:          int64(currSize),
+					Data:          data,
+					Crc:           crc,
+					WriteType:     storage.AppendWriteType,
+					IsSync:        p.IsSyncWrite(),
+					IsHole:        false,
+					IsRepair:      false,
+					IsBackupWrite: false,
+				}
+				_, err = store.Write(param)
 			}); !writable {
 				err = storage.LimitedIoError
 				return
