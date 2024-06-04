@@ -16,10 +16,12 @@ package stream
 
 import (
 	"fmt"
+	"hash/crc32"
 	"net"
 	"strings"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"time"
 
 	"github.com/cubefs/cubefs/proto"
@@ -78,7 +80,7 @@ type ExtentHandler struct {
 	// Allocated in the sender, and released in the receiver.
 	// Will not be changed.
 	conn     *net.TCPConn
-	rdmaConn *rdma.Connection
+	rdmaConn []*rdma.Connection
 	dp       *wrapper.DataPartition
 
 	// Issue a signal to this channel when *inflight* hits zero.
@@ -261,28 +263,35 @@ func (eh *ExtentHandler) sender() {
 			packet.ExtentOffset = int64(extOffset)
 
 			if IsRdma {
-				allRdmaAddrs := ([]byte)(eh.dp.GetAllRdmaAddrs())
-				copy(packet.Arg, allRdmaAddrs)
-				packet.ArgLen = uint32(len(allRdmaAddrs))
+				packet.Arg = nil
+				packet.ArgLen = 0
+				packet.RemainingFollowers = 0
+				//allRdmaAddrs := ([]byte)(eh.dp.GetAllRdmaAddrs())
+				//copy(packet.Arg, allRdmaAddrs)
+				//packet.ArgLen = uint32(len(allRdmaAddrs))
 			} else {
 				packet.Arg = ([]byte)(eh.dp.GetAllAddrs())
 				packet.ArgLen = uint32(len(packet.Arg))
+				packet.RemainingFollowers = uint8(len(eh.dp.Hosts) - 1)
+				if len(eh.dp.Hosts) == 1 {
+					packet.RemainingFollowers = 127
+				}
 			}
 
-			packet.RemainingFollowers = uint8(len(eh.dp.Hosts) - 1)
-			if len(eh.dp.Hosts) == 1 {
-				packet.RemainingFollowers = 127
-			}
 			packet.StartT = time.Now().UnixNano()
 
 			log.LogDebugf("ExtentHandler sender: extent allocated, eh(%v) dp(%v) extID(%v) packet(%v)", eh, eh.dp, eh.extID, packet.GetUniqueLogId())
 			if IsRdma {
-				log.LogDebugf("rdma conn write packet start: time[%v]", time.Now())
-				log.LogDebugf("packet: %v", packet)
-				if err = packet.writeToConn(eh.rdmaConn); err != nil {
-					log.LogWarnf("sender writeTo: failed, eh(%v) err(%v) packet(%v)", eh, err, packet)
-					eh.setClosed()
-					eh.setRecovery()
+				packet.CRC = crc32.ChecksumIEEE(packet.Data[:packet.Size])
+				log.LogDebugf("rdma conn write packet begin ReqId: %d", packet.ReqID)
+				for _, conn := range eh.rdmaConn {
+					err = packet.WriteToRDMAConn(conn, packet.RdmaBuffer)
+					if err != nil {
+						log.LogWarnf("sender writeTo: failed, eh(%v) err(%v) packet(%v)", eh, err, packet)
+						eh.setClosed()
+						eh.setRecovery()
+						break
+					}
 				}
 				log.LogDebugf("rdma conn write packet: %v, err:%v", packet, err)
 			} else {
@@ -338,68 +347,94 @@ func (eh *ExtentHandler) processReply(packet *Packet) {
 		log.LogDebugf("processReply recover packet: handler is in recovery status, inflight(%v) from eh(%v) to recoverHandler(%v) packet(%v)", atomic.LoadInt32(&eh.inflight), eh, eh.recoverHandler, packet)
 		return
 	}
+
 	var verUpdate bool
 	reply := NewReply(packet.ReqID, packet.PartitionID, packet.ExtentID)
-
 	var err error
+
 	if IsRdma {
-		err = reply.ReadFromRDMAConn(eh.rdmaConn, proto.ReadDeadlineTime)
-		log.LogDebugf("rdma conn recv reply: %v, err: %v", reply, err)
-		log.LogDebugf("rdma conn recv reply end: time[%v]\",time.Now()")
+		errs := make([]error, len(eh.rdmaConn))
+		allReply := make([]*Packet, len(eh.rdmaConn))
+		for index, conn := range eh.rdmaConn {
+			allReply[index] = NewReply(packet.ReqID, packet.PartitionID, packet.ExtentID)
+			errs[index] = allReply[index].ReadFromRDMAConn(conn, proto.ReadDeadlineTime)
+		}
+		for i := 0; i < len(eh.rdmaConn); i++ {
+			if errs[i] != nil {
+				log.LogErrorf("rdma conn recv reply: %v, err: %v", allReply[i], errs[i])
+				eh.processReplyError(packet, errs[i].Error())
+				return
+			}
+
+			if allReply[i].ResultCode != proto.OpOk {
+				errmsg := fmt.Sprintf("reply NOK: reply(%v)", allReply[i])
+				eh.processReplyError(packet, errmsg)
+				return
+			}
+
+			if !packet.isValidWriteReply(allReply[i]) {
+				errmsg := fmt.Sprintf("request and reply does not match: reply(%v)", allReply[i])
+				eh.processReplyError(packet, errmsg)
+				return
+			}
+
+			if allReply[i].CRC != packet.CRC {
+				errmsg := fmt.Sprintf("inconsistent CRC: reqCRC(%v) replyCRC(%v) reply(%v) ", packet.CRC, allReply[i].CRC, allReply[i])
+				eh.processReplyError(packet, errmsg)
+				return
+			}
+		}
+		reply = allReply[0]
 	} else {
 		err = reply.ReadFromConnWithVer(eh.conn, proto.ReadDeadlineTime)
 		log.LogDebugf("tcp conn recv reply: %v, err: %v", reply, err)
 		log.LogDebugf("tcp conn recv reply end: time[%v]\",time.Now()")
-	}
-	if err != nil {
-		eh.processReplyError(packet, err.Error())
-		return
-	}
-
-	if reply.VerSeq > atomic.LoadUint64(&eh.stream.verSeq) || (eh.key != nil && reply.VerSeq > eh.key.GetSeq()) {
-		log.LogDebugf("processReply.UpdateLatestVer update verseq according to data rsp from version %v to %v", eh.stream.verSeq, reply.VerSeq)
-		if err = eh.stream.client.UpdateLatestVer(&proto.VolVersionInfoList{VerList: reply.VerList}); err != nil {
+		if err != nil {
 			eh.processReplyError(packet, err.Error())
 			return
 		}
-		if err = eh.appendExtentKey(); err != nil {
-			eh.processReplyError(packet, err.Error())
-			return
+
+		if reply.VerSeq > atomic.LoadUint64(&eh.stream.verSeq) || (eh.key != nil && reply.VerSeq > eh.key.GetSeq()) {
+			log.LogDebugf("processReply.UpdateLatestVer update verseq according to data rsp from version %v to %v", eh.stream.verSeq, reply.VerSeq)
+			if err = eh.stream.client.UpdateLatestVer(&proto.VolVersionInfoList{VerList: reply.VerList}); err != nil {
+				eh.processReplyError(packet, err.Error())
+				return
+			}
+			if err = eh.appendExtentKey(); err != nil {
+				eh.processReplyError(packet, err.Error())
+				return
+			}
+			eh.key = nil
+			verUpdate = true
 		}
-		eh.key = nil
-		verUpdate = true
-	}
 
-	// NOTE: if meet a io limited error
-	if reply.ResultCode == proto.OpLimitedIoErr {
-		log.LogWarnf("[processReply] eh(%v) packet(%v) reply(%v) try again", eh, packet, reply)
-		eh.meetLimitedIoError = true
-		time.Sleep(StreamSendSleepInterval)
-	}
+		// NOTE: if meet a io limited error
+		if reply.ResultCode == proto.OpLimitedIoErr {
+			log.LogWarnf("[processReply] eh(%v) packet(%v) reply(%v) try again", eh, packet, reply)
+			eh.meetLimitedIoError = true
+			time.Sleep(StreamSendSleepInterval)
+		}
 
-	if reply.ResultCode != proto.OpOk {
-		if reply.ResultCode != proto.ErrCodeVersionOpError {
-			errmsg := fmt.Sprintf("reply NOK: reply(%v)", reply)
-			log.LogDebugf("processReply packet (%v) errmsg (%v)", packet, errmsg)
+		if reply.ResultCode != proto.OpOk {
+			if reply.ResultCode != proto.ErrCodeVersionOpError {
+				errmsg := fmt.Sprintf("reply NOK: reply(%v)", reply)
+				log.LogDebugf("processReply packet (%v) errmsg (%v)", packet, errmsg)
+				eh.processReplyError(packet, errmsg)
+				return
+			}
+			// todo(leonchang) need check safety
+			log.LogWarnf("processReply: get reply, eh(%v) packet(%v) reply(%v)", eh, packet, reply)
+			eh.stream.GetExtentsForceRefresh()
+		}
+
+		if reply.CRC != packet.CRC {
+			errmsg := fmt.Sprintf("inconsistent CRC: reqCRC(%v) replyCRC(%v) reply(%v) ", packet.CRC, reply.CRC, reply)
 			eh.processReplyError(packet, errmsg)
 			return
 		}
-		// todo(leonchang) need check safety
-		log.LogWarnf("processReply: get reply, eh(%v) packet(%v) reply(%v)", eh, packet, reply)
-		eh.stream.GetExtentsForceRefresh()
 	}
 
-	if !packet.isValidWriteReply(reply) {
-		errmsg := fmt.Sprintf("request and reply does not match: reply(%v)", reply)
-		eh.processReplyError(packet, errmsg)
-		return
-	}
-
-	if reply.CRC != packet.CRC {
-		errmsg := fmt.Sprintf("inconsistent CRC: reqCRC(%v) replyCRC(%v) reply(%v) ", packet.CRC, reply.CRC, reply)
-		eh.processReplyError(packet, errmsg)
-		return
-	}
+	log.LogDebugf("processReply: get reply, eh(%v) packet(%v) reply(%v)", eh, packet, reply)
 
 	eh.dp.RecordWrite(packet.StartT)
 
@@ -432,7 +467,13 @@ func (eh *ExtentHandler) processReply(packet *Packet) {
 	}
 
 	if IsRdma {
-		rdma.ReleaseDataBuffer(eh.rdmaConn, packet.RdmaBuffer, util.RdmaPacketHeaderSize+packet.Size)
+		for index, conn := range eh.rdmaConn {
+			if index == 0 {
+				rdma.ReleaseDataBuffer(conn, packet.RdmaBuffer, util.RdmaPacketHeaderSize+packet.Size)
+			} else {
+				rdma.ReleaseDataBuffer(conn, nil, util.RdmaPacketHeaderSize+packet.Size)
+			}
+		}
 	} else {
 		proto.Buffers.Put(packet.Data)
 	}
@@ -646,27 +687,111 @@ func (eh *ExtentHandler) recoverPacket(packet *Packet) error {
 }
 
 func (eh *ExtentHandler) discardPacket(packet *Packet) {
-	proto.Buffers.Put(packet.Data)
+	if IsRdma && (packet.Opcode == proto.OpWrite || packet.Opcode == proto.OpSyncWrite) {
+		for _, conn := range eh.rdmaConn {
+			rdma.ReleaseDataBuffer(conn, packet.RdmaBuffer, util.RdmaPacketHeaderSize+packet.Size)
+		}
+
+	} else {
+		proto.Buffers.Put(packet.Data)
+	}
 	packet.Data = nil
 	eh.setError()
 }
 
 func (eh *ExtentHandler) allocateExtent() (err error) {
+	if IsRdma {
+		return eh.allocateExtentRdma()
+	}
+	return eh.allocateExtentTcp()
+}
+
+func (eh *ExtentHandler) allocateExtentTcp() (err error) {
 	var (
-		dp       *wrapper.DataPartition
-		conn     *net.TCPConn
-		rdmaConn *rdma.Connection
-		extID    int
+		dp    *wrapper.DataPartition
+		conn  *net.TCPConn
+		extID int
 	)
 
-	log.LogDebugf("ExtentHandler allocateExtent enter: eh(%v)", eh)
+	//log.LogDebugf("ExtentHandler allocateExtentTcp enter: eh(%v)", eh)
 
 	exclude := make(map[string]struct{})
 
 	for i := 0; i < MaxSelectDataPartitionForWrite; i++ {
 		if eh.key == nil {
 			if dp, err = eh.stream.client.dataWrapper.GetDataPartitionForWrite(exclude); err != nil {
-				log.LogWarnf("allocateExtent: failed to get write data partition, eh(%v) exclude(%v), clear exclude and try again!", eh, exclude)
+				log.LogWarnf("allocateExtentTcp: failed to get write data partition, eh(%v) exclude(%v), clear exclude and try again!", eh, exclude)
+				exclude = make(map[string]struct{})
+				continue
+			}
+
+			extID = 0
+			if eh.storeMode == proto.NormalExtentType {
+				extID, err = eh.createExtent(dp)
+				if err != nil {
+					log.LogDebugf("create extent error: %s", err.Error())
+				}
+			}
+			if err != nil {
+				log.LogWarnf("allocateExtentTcp: exclude dp[%v] for write caused by create extent failed, eh(%v) err(%v) exclude(%v)",
+					dp, eh, err, exclude)
+				eh.stream.client.dataWrapper.RemoveDataPartitionForWrite(dp.PartitionID)
+				dp.CheckAllHostsIsAvail(exclude)
+
+				continue
+			}
+		} else {
+			if dp, err = eh.stream.client.dataWrapper.GetDataPartition(eh.key.PartitionId); err != nil {
+				log.LogWarnf("allocateExtentTcp: failed to get write data partition, eh(%v)", eh)
+				break
+			}
+			extID = int(eh.key.ExtentId)
+		}
+
+		if conn, err = StreamConnPool.GetConnect(dp.Hosts[0]); err != nil {
+			log.LogWarnf("allocateExtentTcp: failed to create connection, eh(%v) err(%v) dp(%v) exclude(%v)",
+				eh, err, dp, exclude)
+			// If storeMode is tinyExtentType and can't create connection, we also check host status.
+			dp.CheckAllHostsIsAvail(exclude)
+			if eh.key != nil {
+				break
+			}
+			continue
+		}
+
+		// success
+		eh.dp = dp
+		eh.conn = conn
+		eh.extID = extID
+
+		log.LogDebugf("allocateExtentTcp exit: eh(%v) dp(%v) extID(%v)", eh, dp, extID)
+		return nil
+	}
+
+	errmsg := fmt.Sprintf("allocateExtentTcp failed: hit max retry limit")
+	if err != nil {
+		err = errors.Trace(err, errmsg)
+	} else {
+		err = errors.New(errmsg)
+	}
+	return err
+}
+
+func (eh *ExtentHandler) allocateExtentRdma() (err error) {
+	var (
+		dp       *wrapper.DataPartition
+		rdmaConn []*rdma.Connection
+		extID    int
+	)
+
+	//log.LogDebugf("allocateExtentRdma allocateExtent enter: eh(%v)", eh)
+
+	exclude := make(map[string]struct{})
+
+	for i := 0; i < MaxSelectDataPartitionForWrite; i++ {
+		if eh.key == nil {
+			if dp, err = eh.stream.client.dataWrapper.GetDataPartitionForWrite(exclude); err != nil {
+				log.LogWarnf("allocateExtentRdma: failed to get write data partition, eh(%v) exclude(%v), clear exclude and try again!", eh, exclude)
 				exclude = make(map[string]struct{})
 				continue
 			}
@@ -682,65 +807,56 @@ func (eh *ExtentHandler) allocateExtent() (err error) {
 					time.Sleep(time.Second * time.Duration(i+1))
 					continue
 				}
-				log.LogWarnf("allocateExtent: exclude dp[%v] for write caused by create extent failed, eh(%v) err(%v) exclude(%v)",
+				log.LogWarnf("allocateExtentRdma: exclude dp[%v] for write caused by create extent failed, eh(%v) err(%v) exclude(%v)",
 					dp, eh, err, exclude)
 				eh.stream.client.dataWrapper.RemoveDataPartitionForWrite(dp.PartitionID)
-				if IsRdma {
-					dp.CheckAllRdmaHostsIsAvail(exclude)
-				} else {
-					dp.CheckAllHostsIsAvail(exclude)
-				}
+				CheckAllRdmaHostsIsAvail(dp, exclude)
 
 				continue
 			}
 		} else {
 			if dp, err = eh.stream.client.dataWrapper.GetDataPartition(eh.key.PartitionId); err != nil {
-				log.LogWarnf("allocateExtent: failed to get write data partition, eh(%v)", eh)
+				log.LogWarnf("allocateExtentRdma: failed to get write data partition, eh(%v)", eh)
 				break
 			}
 			extID = int(eh.key.ExtentId)
 		}
 
-		if IsRdma {
+		if eh.storeMode == proto.TinyExtentType {
+			rdmaConn = make([]*rdma.Connection, 0, 1)
 			addr := wrapper.GetRdmaAddr(dp.Hosts[0])
-			if rdmaConn, err = StreamRdmaConnPool.GetRdmaConn(addr); err != nil {
-				log.LogWarnf("allocateExtent: failed to create connection, eh(%v) err(%v) dp(%v) exclude(%v)",
-					eh, err, dp, exclude)
-				// If storeMode is tinyExtentType and can't create connection, we also check host status.
-				dp.CheckAllRdmaHostsIsAvail(exclude)
-				if eh.key != nil {
-					break
-				}
-				continue
+			conn, err := StreamRdmaConnPool.GetRdmaConn(addr)
+			if err != nil {
+				log.LogWarnf("allocateExtentRdma: failed to get rdma connection, eh(%v) host(%v) err(%v)", eh, addr, err)
+				CheckAllRdmaHostsIsAvail(dp, exclude)
+				break
 			}
+			rdmaConn = append(rdmaConn, conn)
 		} else {
-			if conn, err = StreamConnPool.GetConnect(dp.Hosts[0]); err != nil {
-				log.LogWarnf("allocateExtent: failed to create connection, eh(%v) err(%v) dp(%v) exclude(%v)",
-					eh, err, dp, exclude)
-				// If storeMode is tinyExtentType and can't create connection, we also check host status.
-				dp.CheckAllHostsIsAvail(exclude)
-				if eh.key != nil {
-					break
+			rdmaConn = make([]*rdma.Connection, 0, len(dp.Hosts))
+
+			for _, host := range dp.Hosts {
+				addr := wrapper.GetRdmaAddr(host)
+				conn, err := StreamRdmaConnPool.GetRdmaConn(addr)
+				if err != nil {
+					log.LogWarnf("allocateExtentRdma: failed to get rdma connection, eh(%v) host(%v) err(%v)", eh, addr, err)
+					CheckAllRdmaHostsIsAvail(dp, exclude)
+					continue
 				}
-				continue
+				rdmaConn = append(rdmaConn, conn)
 			}
 		}
 
 		// success
 		eh.dp = dp
-		if IsRdma {
-			eh.rdmaConn = rdmaConn
-		} else {
-			eh.conn = conn
-		}
-		//eh.conn = conn
+		eh.rdmaConn = rdmaConn
 		eh.extID = extID
 
-		log.LogDebugf("ExtentHandler allocateExtent exit: eh(%v) dp(%v) extID(%v)", eh, dp, extID)
+		log.LogDebugf("allocateExtentRdma exit: eh(%v) dp(%v) extID(%v)", eh, dp, extID)
 		return nil
 	}
 
-	errmsg := fmt.Sprintf("allocateExtent failed: hit max retry limit")
+	errmsg := fmt.Sprintf("allocateExtentRdma failed: hit max retry limit")
 	if err != nil {
 		err = errors.Trace(err, errmsg)
 	} else {
@@ -837,4 +953,24 @@ func (eh *ExtentHandler) setError() bool {
 		atomic.StoreInt32(&eh.stream.status, StreamerError)
 	}
 	return atomic.CompareAndSwapInt32(&eh.status, ExtentStatusRecovery, ExtentStatusError)
+}
+
+func CheckAllRdmaHostsIsAvail(dp *wrapper.DataPartition, exclude map[string]struct{}) {
+	var (
+		rdmaConn *rdma.Connection
+		err      error
+	)
+	for i := 0; i < len(dp.Hosts); i++ {
+		host := wrapper.GetRdmaAddr(dp.Hosts[i])
+		rdmaConn, err = StreamRdmaConnPool.GetRdmaConn(host)
+		if err != nil {
+			log.LogWarnf("CheckAllRdmaHostsIsAvail: dial host (%v) err(%v)", host, err)
+			if strings.Contains(err.Error(), syscall.ECONNREFUSED.Error()) {
+				exclude[host] = struct{}{}
+			}
+			continue
+		}
+		StreamRdmaConnPool.PutRdmaConn(rdmaConn, false)
+	}
+
 }

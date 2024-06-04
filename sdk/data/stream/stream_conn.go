@@ -154,7 +154,7 @@ func (sc *StreamConn) Send(retry *bool, req *Packet, getReply GetReplyFunc, isRd
 }
 
 func (sc *StreamConn) sendToPartition(req *Packet, retry *bool, getReply GetReplyFunc, isRdma bool) (err error) {
-	if isRdma {
+	if isRdma && (req.Opcode == proto.OpWrite || req.Opcode == proto.OpSyncWrite) {
 		return sc.sendToPartitionByRDMA(req, retry, getReply)
 	} else {
 		return sc.sendToDataPartition(req, retry, getReply)

@@ -778,9 +778,11 @@ int release_cmd_buffer(connection *conn, rdma_ctl_cmd *cmd) {
 }
 
 int release_pool_data_buffer(connection *conn, void* buff, uint32_t size) {
-    int index = (int)(((char*)buff - (rdma_pool->memory_pool->original_mem)) / (rdma_env_config->mem_block_size));
-    buddy_free(rdma_pool->memory_pool->allocation, index);
-    //buddy_dump(rdmaPool->memoryPool->allocation);
+    if (buff != NULL) {
+        int index = (int)(((char*)buff - (rdma_pool->memory_pool->original_mem)) / (rdma_env_config->mem_block_size));
+        buddy_free(rdma_pool->memory_pool->allocation, index);
+        //buddy_dump(rdmaPool->memoryPool->allocation);
+    }
     if (conn->tx->pos + size > conn->tx->length) {
         conn->tx->pos = 0;
     }

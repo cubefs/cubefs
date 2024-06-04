@@ -179,7 +179,11 @@ func GetDataBuffer(len uint32) ([]byte, error) {
 }
 
 func ReleaseDataBuffer(conn *Connection, dataBuffer []byte, size uint32) error {
-	C.release_pool_data_buffer((*C.connection)(conn.cConn), unsafe.Pointer(&dataBuffer[0]), C.uint32_t(size))
+	if dataBuffer != nil {
+		C.release_pool_data_buffer((*C.connection)(conn.cConn), unsafe.Pointer(&dataBuffer[0]), C.uint32_t(size))
+	} else {
+		C.release_pool_data_buffer((*C.connection)(conn.cConn), unsafe.Pointer(nil), C.uint32_t(size))
+	}
 	return nil
 }
 
