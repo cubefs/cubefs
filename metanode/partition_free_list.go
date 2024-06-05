@@ -652,7 +652,12 @@ func (mp *metaPartition) recycleInodeDelFile() {
 			return
 		}
 		diskSpaceLeft = int64(stat.Bavail * uint64(stat.Bsize))
-		if diskSpaceLeft >= 50*util.GB && len(inodeDelFiles) < 5 {
+		// NOTE: 5% of disk space
+		spaceWaterMark := int64(stat.Blocks*uint64(stat.Bsize)) / 20
+		if spaceWaterMark > 50*util.GB {
+			spaceWaterMark = 50 * util.GB
+		}
+		if diskSpaceLeft >= spaceWaterMark && len(inodeDelFiles) < 5 {
 			log.LogDebugf("[recycleInodeDelFile] mp(%v) not need to recycle, return", mp.config.PartitionId)
 			return
 		}
