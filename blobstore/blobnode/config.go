@@ -26,6 +26,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/blobnode/core"
 	"github.com/cubefs/cubefs/blobstore/blobnode/db"
 	"github.com/cubefs/cubefs/blobstore/cmd"
+	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/rpc"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
 	"github.com/cubefs/cubefs/blobstore/util/defaulter"
@@ -110,6 +111,7 @@ func configInit(config *Config) {
 	}
 	defaulter.LessOrEqual(&config.InspectConf.IntervalSec, DefaultChunkInspectIntervalSec)
 	defaulter.LessOrEqual(&config.InspectConf.RateLimit, DefaultInspectRate)
+	defaulter.LessOrEqual(&config.HostInfo.DiskType, proto.DiskTypeHDD)
 }
 
 func (s *Service) changeLimit(ctx context.Context, c Config) {
