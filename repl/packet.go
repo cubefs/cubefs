@@ -416,6 +416,19 @@ func (p *Packet) IsLeaderPacket() (ok bool) {
 	return
 }
 
+// op need to be processed by dp raft leader.
+func (p *Packet) IsUrgentLeaderReq() bool {
+	switch p.Opcode {
+	case
+		proto.OpRandomWrite,
+		proto.OpSyncRandomWrite,
+		proto.OpStreamRead,
+		proto.OpRead:
+		return true
+	}
+	return false
+}
+
 func (p *Packet) IsTinyExtentType() bool {
 	return p.ExtentType == proto.TinyExtentType
 }

@@ -170,6 +170,7 @@ type DataNode struct {
 	clusterUuid             string
 	clusterUuidEnable       bool
 	serviceIDKey            string
+	started                 int32
 }
 
 func NewServer() *DataNode {
@@ -189,6 +190,15 @@ func (s *DataNode) Shutdown() {
 // Sync keeps data node in sync.
 func (s *DataNode) Sync() {
 	s.control.Sync()
+}
+
+func (s *DataNode) setStart() {
+	atomic.StoreInt32(&s.started, statusStarted)
+	log.LogWarnf("setStart: datanode start success, set start status")
+}
+
+func (s *DataNode) HasStarted() bool {
+	return atomic.LoadInt32(&s.started) == statusStarted
 }
 
 // Workflow of starting up a data node.
@@ -256,7 +266,7 @@ func doStart(server common.Server, cfg *config.Config) (err error) {
 
 	// start metrics (LackDpCount, etc.)
 	s.startMetrics()
-
+	s.setStart()
 	return
 }
 

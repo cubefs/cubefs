@@ -36,6 +36,8 @@ const (
 	WriteFlag = 2
 )
 
+const statusStarted = 1
+
 // Error code
 const (
 	RaftNotStarted = "RaftNotStarted"
