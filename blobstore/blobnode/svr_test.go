@@ -936,12 +936,9 @@ func TestService_RegisterNode(t *testing.T) {
 		Conf:             &conf,
 	}
 
-	err := registerNode(ctx, svr.ClusterMgrClient, svr.Conf)
-	require.NotNil(t, err)
-
 	// first register
 	svr.Conf.DiskType = proto.DiskTypeHDD
-	err = registerNode(ctx, svr.ClusterMgrClient, svr.Conf)
+	err := registerNode(ctx, svr.ClusterMgrClient, svr.Conf)
 	require.NoError(t, err)
 	require.Equal(t, proto.NodeID(1), svr.Conf.HostInfo.NodeID)
 
@@ -960,4 +957,8 @@ func TestService_RegisterNode(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, proto.NodeID(2), svr2.Conf.HostInfo.NodeID)
 	require.NotEqual(t, svr.Conf.NodeID, svr2.Conf.NodeID)
+
+	svr.Conf.DiskType = 0
+	err = registerNode(ctx, svr.ClusterMgrClient, svr.Conf)
+	require.NotNil(t, err)
 }

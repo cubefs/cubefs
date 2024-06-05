@@ -96,6 +96,7 @@ type HostInfo struct {
 	Host      string          `json:"host"`
 	DiskType  proto.DiskType  `json:"disk_type,omitempty"` // On a node, there is only one type of disk, and no other types
 	NodeID    proto.NodeID    `json:"-"`                   // A node is a process
+	ReAddDisk bool            `json:"re_add_disk"`         // need to re-register all disks under the node. temp switch
 }
 
 type Config struct {
@@ -159,7 +160,7 @@ func InitConfig(conf *Config) error {
 }
 
 func CheckNodeConf(conf *HostInfo) error {
-	if conf.DiskType == 0 {
+	if conf.DiskType <= 0 {
 		return errors.New("disk type is not specified")
 	}
 
