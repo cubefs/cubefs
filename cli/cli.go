@@ -61,6 +61,7 @@ func setupCommands(cfg *cmd.Config) *cobra.Command {
 	  $ echo 'source {path of cfs-cli.sh}' >>~/.bashrc
 	  $ source ~/.bashrc
 	`)
+			fmt.Fprintf(os.Stdout, "\n")
 		},
 	}
 

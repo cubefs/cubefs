@@ -3200,13 +3200,14 @@ func (c *Cluster) createVol(req *createVolReq) (vol *Vol, err error) {
 		goto errHandler
 	}
 
+	// NOTE: init data partitions
 	if vol.CacheCapacity > 0 || (proto.IsHot(vol.VolType) && vol.Capacity > 0) {
 		if req.dpCount > maxInitDataPartitionCnt {
 			err = fmt.Errorf("action[createVol] initDataPartitions failed, vol[%v], dpCount[%d] exceeds maximum limit[%d]",
 				req.name, req.dpCount, maxInitDataPartitionCnt)
 			goto errHandler
 		}
-		for retryCount := 0; readWriteDataPartitions < defaultInitMetaPartitionCount && retryCount < 3; retryCount++ {
+		for retryCount := 0; readWriteDataPartitions < defaultInitDataPartitionCnt && retryCount < 3; retryCount++ {
 			err = vol.initDataPartitions(c, req.dpCount)
 			if err != nil {
 				log.LogError("action[createVol] init dataPartition error ",
@@ -3216,9 +3217,9 @@ func (c *Cluster) createVol(req *createVolReq) (vol *Vol, err error) {
 			readWriteDataPartitions = len(vol.dataPartitions.partitionMap)
 		}
 
-		if len(vol.dataPartitions.partitionMap) < defaultInitMetaPartitionCount {
+		if len(vol.dataPartitions.partitionMap) < defaultInitDataPartitionCnt {
 			err = fmt.Errorf("action[createVol] vol[%v] initDataPartitions failed, less than %d",
-				vol.Name, defaultInitMetaPartitionCount)
+				vol.Name, defaultInitDataPartitionCnt)
 
 			oldVolStatus := vol.Status
 			vol.Status = proto.VolStatusMarkDelete
@@ -3235,6 +3236,9 @@ func (c *Cluster) createVol(req *createVolReq) (vol *Vol, err error) {
 
 	vol.dataPartitions.readableAndWritableCnt = readWriteDataPartitions
 	vol.updateViewCache(c)
+	// NOTE: update dp view cache
+	vol.dataPartitions.updateResponseCache(true, 0, vol)
+	vol.dataPartitions.updateCompressCache(true, 0, vol)
 
 	log.LogInfof("action[createVol] vol[%v], readableAndWritableCnt[%v]", req.name, readWriteDataPartitions)
 	return
