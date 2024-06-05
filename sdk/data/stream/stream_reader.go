@@ -230,7 +230,9 @@ func (s *Streamer) read(data []byte, offset int, size int) (total int, err error
 				}
 			}
 
+			beg := time.Now()
 			readBytes, err = reader.Read(req)
+			clientMetric.WithLabelValues("Streamer_read_Read").Observe(float64(time.Since(beg).Microseconds()))
 			log.LogDebugf("TRACE Stream read: ino(%v) req(%v) readBytes(%v) err(%v)", s.inode, req, readBytes, err)
 
 			total += readBytes
