@@ -375,8 +375,8 @@ func (w *Wrapper) updateDataPartitionByRsp(forceUpdate bool, refreshPolicy Refre
 
 	// if not forceUpdate, at least keep 1 rw dp in the selector to avoid can't do write
 	if forceUpdate || len(rwPartitionGroups) >= 1 {
-		log.LogInfof("updateDataPartition: refresh dpSelector of volume(%v) with %v rw partitions(%v all), forceUpdate(%v)",
-			w.volName, len(rwPartitionGroups), len(DataPartitions), forceUpdate)
+		log.LogInfof("updateDataPartition: refresh dpSelector of volume(%v) with %v rw partitions(%v all), forceUpdate(%v) policy(%v)",
+			w.volName, len(rwPartitionGroups), len(DataPartitions), forceUpdate, refreshPolicy)
 		w.refreshDpSelector(refreshPolicy, rwPartitionGroups)
 	} else {
 		err = errors.New("updateDataPartition: no writable data partition")
