@@ -30,7 +30,6 @@ import (
 	"github.com/cubefs/cubefs/sdk/meta"
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/errors"
-	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/cubefs/cubefs/util/stat"
 	"github.com/prometheus/client_golang/prometheus"
@@ -543,7 +542,6 @@ func (client *ExtentClient) Write(inode uint64, offset int, data []byte, flags i
 	write, err = s.IssueWriteRequest(offset, data, flags, checkFunc)
 	if err != nil {
 		log.LogError(errors.Stack(err))
-		exporter.Warning(err.Error())
 	}
 	return
 }
