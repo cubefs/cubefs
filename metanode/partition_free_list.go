@@ -59,6 +59,7 @@ func (mp *metaPartition) startFreeList() (err error) {
 
 	go mp.updateVolWorker()
 	go mp.deleteWorker()
+	go mp.startRecycleInodeDelFile()
 	mp.startToDeleteExtents()
 	return
 }
@@ -627,7 +628,24 @@ func (mp *metaPartition) deleteObjExtents(oeks []proto.ObjExtentKey) (err error)
 	return err
 }
 
+func (mp *metaPartition) startRecycleInodeDelFile() {
+	timer := time.NewTicker(time.Minute)
+	defer timer.Stop()
+	for {
+		select {
+		case <-mp.stopC:
+			return
+		case <-timer.C:
+			mp.recycleInodeDelFile()
+		}
+	}
+}
+
 func (mp *metaPartition) recycleInodeDelFile() {
+	if !mp.recycleInodeDelFileFlag.TestAndSet() {
+		return
+	}
+	defer mp.recycleInodeDelFileFlag.Release()
 	// NOTE: get all files
 	dentries, err := os.ReadDir(mp.config.RootDir)
 	if err != nil {
