@@ -796,6 +796,7 @@ func (m *Server) getCluster(w http.ResponseWriter, r *http.Request) {
 		EnableAutoDpMetaRepair:   m.cluster.getEnableAutoDpMetaRepair(),
 		EnableAutoDecommission:   m.cluster.AutoDecommissionDiskIsEnabled(),
 		DecommissionDiskLimit:    m.cluster.GetDecommissionDiskLimit(),
+		DpTimeout:                time.Duration(m.cluster.getDataPartitionTimeoutSec()) * time.Second,
 		MasterNodes:              make([]proto.NodeView, 0),
 		MetaNodes:                make([]proto.NodeView, 0),
 		DataNodes:                make([]proto.NodeView, 0),
@@ -3121,6 +3122,15 @@ func (m *Server) setNodeInfoHandler(w http.ResponseWriter, r *http.Request) {
 	if val, ok := params[autoDpMetaRepairKey]; ok {
 		if autoRepair, ok := val.(bool); ok {
 			if err = m.cluster.setEnableAutoDpMetaRepair(autoRepair); err != nil {
+				sendErrReply(w, r, newErrHTTPReply(err))
+				return
+			}
+		}
+	}
+
+	if val, ok := params[dpTimeoutKey]; ok {
+		if dpTimeout, ok := val.(int64); ok {
+			if err = m.cluster.setDataPartitionTimeout(dpTimeout); err != nil {
 				sendErrReply(w, r, newErrHTTPReply(err))
 				return
 			}
