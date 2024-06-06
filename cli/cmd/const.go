@@ -136,6 +136,7 @@ const (
 	CliFlagEnableCrossZone         = "cross-zone"
 	CliFlagAutoDpMetaRepair        = "autoDpMetaRepair"
 	CliFlagDpRepairTimeout         = "dpRepairTimeout"
+	CliFlagDpTimeout               = "dpTimeout"
 
 	// CliFlagSetDataPartitionCount	= "count" use dp-count instead
 

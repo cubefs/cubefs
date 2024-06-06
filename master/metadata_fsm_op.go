@@ -65,6 +65,7 @@ type clusterValue struct {
 	VolDeletionDelayTimeHour    int64
 	MarkDiskBrokenThreshold     float64
 	EnableAutoDpMetaRepair      bool
+	DataPartitionTimeoutSec     int64
 }
 
 func newClusterValue(c *Cluster) (cv *clusterValue) {
@@ -99,6 +100,7 @@ func newClusterValue(c *Cluster) (cv *clusterValue) {
 		VolDeletionDelayTimeHour:    c.cfg.volDelayDeleteTimeHour,
 		MarkDiskBrokenThreshold:     c.getMarkDiskBrokenThreshold(),
 		EnableAutoDpMetaRepair:      c.getEnableAutoDpMetaRepair(),
+		DataPartitionTimeoutSec:     c.getDataPartitionTimeoutSec(),
 	}
 	return cv
 }
@@ -1030,6 +1032,10 @@ func (c *Cluster) updateDataPartitionRepairTimeOut(val uint64) {
 	atomic.StoreUint64(&c.cfg.DpRepairTimeOut, val)
 }
 
+func (c *Cluster) updateDataPartitionTimeoutSec(val int64) {
+	atomic.StoreInt64(&c.cfg.DataPartitionTimeOutSec, val)
+}
+
 func (c *Cluster) updateDataNodeAutoRepairLimit(val uint64) {
 	atomic.StoreUint64(&c.cfg.DataNodeAutoRepairLimitRate, val)
 }
@@ -1213,6 +1219,7 @@ func (c *Cluster) loadClusterValue() (err error) {
 		c.checkDataReplicasEnable = cv.CheckDataReplicasEnable
 		c.updateMarkDiskBrokenThreshold(cv.MarkDiskBrokenThreshold)
 		c.updateEnableAutoDpMetaRepair(cv.EnableAutoDpMetaRepair)
+		c.updateDataPartitionTimeoutSec(cv.DataPartitionTimeoutSec)
 	}
 	return
 }
