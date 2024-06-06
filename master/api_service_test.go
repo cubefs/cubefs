@@ -1654,14 +1654,14 @@ func TestSetMarkDiskBrokenThreshold(t *testing.T) {
 
 func TestSetEnableAutoDpMetaRepair(t *testing.T) {
 	reqUrl := fmt.Sprintf("%v%v", hostAddr, proto.AdminSetNodeInfo)
-	oldVal := server.cluster.getDisableAutoDpMetaRepair()
+	oldVal := server.cluster.getEnableAutoDpMetaRepair()
 	setVal := !oldVal
 	setUrl := fmt.Sprintf("%v?%v=%v&dirSizeLimit=0", reqUrl, autoDpMetaRepairKey, setVal)
 	unsetUrl := fmt.Sprintf("%v?%v=%v&dirSizeLimit=0", reqUrl, autoDpMetaRepairKey, oldVal)
 	process(setUrl, t)
-	require.EqualValues(t, !setVal, server.cluster.getDisableAutoDpMetaRepair())
+	require.EqualValues(t, setVal, server.cluster.getEnableAutoDpMetaRepair())
 	process(unsetUrl, t)
-	require.EqualValues(t, !oldVal, server.cluster.getDisableAutoDpMetaRepair())
+	require.EqualValues(t, oldVal, server.cluster.getEnableAutoDpMetaRepair())
 }
 
 func TestSetDiscardDp(t *testing.T) {
@@ -1709,4 +1709,29 @@ func TestSetDecommissionDiskLimit(t *testing.T) {
 
 	process(unsetUrl, t)
 	require.EqualValues(t, oldVal, server.cluster.GetDecommissionDiskLimit())
+}
+
+func TestUpdateVolAutoDpMetaRepair(t *testing.T) {
+	name := "enableAutoDpMetaRepairVol"
+	createVol(map[string]interface{}{nameKey: name}, t)
+	vol, err := server.cluster.getVol(name)
+	if err != nil {
+		t.Errorf("failed to get vol %v, err %v", name, err)
+		return
+	}
+	defer func() {
+		reqURL := fmt.Sprintf("%v%v?name=%v&authKey=%v", hostAddr, proto.AdminDeleteVol, name, buildAuthKey(testOwner))
+		process(reqURL, t)
+	}()
+	reqUrl := fmt.Sprintf("%v%v?%v=%v&%v=%v", hostAddr, proto.AdminUpdateVol, nameKey, vol.Name, volAuthKey, buildAuthKey(testOwner))
+	oldVal := vol.EnableAutoMetaRepair.Load()
+	setVal := !oldVal
+	setUrl := fmt.Sprintf("%v&%v=%v", reqUrl, autoDpMetaRepairKey, setVal)
+	unsetUrl := fmt.Sprintf("%v&%v=%v", reqUrl, autoDpMetaRepairKey, oldVal)
+
+	process(setUrl, t)
+	require.EqualValues(t, setVal, vol.EnableAutoMetaRepair.Load())
+
+	process(unsetUrl, t)
+	require.EqualValues(t, oldVal, vol.EnableAutoMetaRepair.Load())
 }

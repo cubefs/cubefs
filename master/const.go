@@ -213,7 +213,7 @@ const (
 	defaultMaxQuotaNumPerVol                     = 100
 	defaultVolDelayDeleteTimeHour                = 48
 	defaultMarkDiskBrokenThreshold               = 0 // decommission all dp from disk
-	defaultDisableDpMetaRepair                   = false
+	defaultEnableDpMetaRepair                    = false
 	maxMpCreationCount                           = 10
 )
 

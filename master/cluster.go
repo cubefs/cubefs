@@ -106,7 +106,7 @@ type Cluster struct {
 	DecommissionDiskLimit        uint32
 	S3ApiQosQuota                *sync.Map // (api,uid,limtType) -> limitQuota
 	MarkDiskBrokenThreshold      atomicutil.Float64
-	DisableAutoDpMetaRepair      atomicutil.Bool
+	EnableAutoDpMetaRepair       atomicutil.Bool
 }
 
 type delayDeleteVolInfo struct {
@@ -373,7 +373,7 @@ func newCluster(name string, leaderInfo *LeaderInfo, fsm *MetadataFsm, partition
 	c.snapshotMgr.cluster = c
 	c.S3ApiQosQuota = new(sync.Map)
 	c.MarkDiskBrokenThreshold.Store(defaultMarkDiskBrokenThreshold)
-	c.DisableAutoDpMetaRepair.Store(defaultDisableDpMetaRepair)
+	c.EnableAutoDpMetaRepair.Store(defaultEnableDpMetaRepair)
 	return
 }
 
@@ -3478,6 +3478,7 @@ func (c *Cluster) doCreateVol(req *createVolReq) (vol *Vol, err error) {
 		FlowWlimit:   req.qosLimitArgs.flowWVal,
 
 		DpReadOnlyWhenVolFull: req.DpReadOnlyWhenVolFull,
+		EnableAutoMetaRepair:  false,
 	}
 
 	log.LogInfof("[doCreateVol] volView, %v", vv)
@@ -3957,20 +3958,20 @@ func (c *Cluster) getMarkDiskBrokenThreshold() (v float64) {
 	return
 }
 
-func (c *Cluster) setDisableAutoDpMetaRepair(val bool) (err error) {
-	oldVal := c.DisableAutoDpMetaRepair.Load()
-	c.DisableAutoDpMetaRepair.Store(val)
+func (c *Cluster) setEnableAutoDpMetaRepair(val bool) (err error) {
+	oldVal := c.EnableAutoDpMetaRepair.Load()
+	c.EnableAutoDpMetaRepair.Store(val)
 	if err = c.syncPutCluster(); err != nil {
 		log.LogErrorf("[setEnableAutoDpMetaRepair] failed to set enable auto dp meta, err(%v)", err)
-		c.DisableAutoDpMetaRepair.Store(oldVal)
+		c.EnableAutoDpMetaRepair.Store(oldVal)
 		err = proto.ErrPersistenceByRaft
 		return
 	}
 	return
 }
 
-func (c *Cluster) getDisableAutoDpMetaRepair() (v bool) {
-	v = c.DisableAutoDpMetaRepair.Load()
+func (c *Cluster) getEnableAutoDpMetaRepair() (v bool) {
+	v = c.EnableAutoDpMetaRepair.Load()
 	return
 }
 
