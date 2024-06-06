@@ -292,6 +292,7 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 	var optReplicaNum string
 	var optDeleteLockTime int64
 	var optEnableQuota string
+	var optEnableDpAutoMetaRepair string
 	confirmString := strings.Builder{}
 	var vv *proto.SimpleVolView
 	cmd := &cobra.Command{
@@ -582,8 +583,23 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 					formatEnabledDisabled(vv.DpReadOnlyWhenVolFull), formatEnabledDisabled(enable)))
 				vv.DpReadOnlyWhenVolFull = enable
 			} else {
-				confirmString.WriteString(fmt.Sprintf("  Vol readonly full : %v\n",
+				confirmString.WriteString(fmt.Sprintf("  Vol readonly when full : %v\n",
 					formatEnabledDisabled(vv.DpReadOnlyWhenVolFull)))
+			}
+			if optEnableDpAutoMetaRepair != "" {
+				enable := false
+				if enable, err = strconv.ParseBool(optEnableDpAutoMetaRepair); err != nil {
+					return
+				}
+				if vv.EnableAutoDpMetaRepair != enable {
+					isChange = true
+					confirmString.WriteString(fmt.Sprintf("  EnableAutoDpMetaRepair : %v -> %v\n", vv.EnableAutoDpMetaRepair, enable))
+					vv.EnableAutoDpMetaRepair = enable
+				} else {
+					confirmString.WriteString(fmt.Sprintf("  EnableAutoDpMetaRepair : %v", vv.EnableAutoDpMetaRepair))
+				}
+			} else {
+				confirmString.WriteString(fmt.Sprintf("  EnableAutoDpMetaRepair : %v", vv.EnableAutoDpMetaRepair))
 			}
 
 			if err != nil {
@@ -644,6 +660,7 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().StringVar(&optEnableQuota, CliFlagEnableQuota, "", "Enable quota")
 	cmd.Flags().Int64Var(&optDeleteLockTime, CliFlagDeleteLockTime, -1, "Specify delete lock time[Unit: hour] for volume")
 	cmd.Flags().StringVar(&clientIDKey, CliFlagClientIDKey, client.ClientIDKey(), CliUsageClientIDKey)
+	cmd.Flags().StringVar(&optEnableDpAutoMetaRepair, CliFlagAutoDpMetaRepair, "", "Enable or disable dp auto meta repair")
 
 	return cmd
 }
