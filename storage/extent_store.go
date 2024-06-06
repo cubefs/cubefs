@@ -21,6 +21,7 @@ import (
 	"hash/crc32"
 	"io"
 	"io/fs"
+	"math/rand"
 	"os"
 	"path"
 	"regexp"
@@ -62,7 +63,8 @@ const (
 	AppendRandomWriteType    = 4
 
 	NormalExtentDeleteRetainTime = 3600 * 4
-	CacheFlushInterval           = 5 * time.Second
+	CacheFlushMinInterval        = 5 * time.Minute
+	CacheFlushMaxInterval        = 15 * time.Minute
 	ExtentReadDirHint            = "READDIR_HINT"
 	ExtentReadDirHintV2          = "READDIR_HINT_V2"
 	ExtentReadDirHintTemp        = "READDIR_HINT.tmp"
@@ -311,16 +313,19 @@ func (s *ExtentStore) SnapShot() (files []*proto.File, err error) {
 
 func (s *ExtentStore) startFlushCache() {
 	// NOTE: flush extents in cache
-	timer := time.NewTicker(CacheFlushInterval)
+	randGen := rand.New(rand.NewSource(time.Now().UnixMicro()))
 	for {
 		select {
-		case <-timer.C:
-			log.LogInfof("[startFlushCache] flush extent cache")
-			s.cache.CopyAndFlush(5 * time.Second)
 		case <-s.stopC:
-			timer.Stop()
 			return
+		default:
+			log.LogInfof("[startFlushCache] flush extent cache")
+			s.cache.CopyAndFlush(30 * time.Second)
 		}
+		tmp := randGen.Int63n(int64(CacheFlushMaxInterval - CacheFlushMinInterval))
+		randSleep := time.Duration(tmp) + CacheFlushMinInterval
+		log.LogDebugf("[startFlushCache] startFlushCache sleep time(%v)", randSleep)
+		time.Sleep(randSleep)
 	}
 }
 
