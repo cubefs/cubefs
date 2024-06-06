@@ -279,27 +279,39 @@ build_server() {
 }
 
 build_clustermgr() {
-    CGO_ENABLED=1 go build ${MODFLAGS} -gcflags=all=-trimpath=${SrcPath} -asmflags=all=-trimpath=${SrcPath} -ldflags="${LDFlags}" -o ${BuildBinPath}/blobstore ${SrcPath}/blobstore/cmd/clustermgr
+    pushd $SrcPath/blobstore/cmd/clustermgr >/dev/null
+    CGO_ENABLED=1 go build ${MODFLAGS} -gcflags=all=-trimpath=${SrcPath} -asmflags=all=-trimpath=${SrcPath} -ldflags="${LDFlags}" -o ${BuildBinPath}/blobstore .
+    popd >/dev/null
 }
 
 build_blobnode() {
-    CGO_ENABLED=1 go build ${MODFLAGS} -gcflags=all=-trimpath=${SrcPath} -asmflags=all=-trimpath=${SrcPath} -ldflags="${LDFlags}" -o ${BuildBinPath}/blobstore ${SrcPath}/blobstore/cmd/blobnode
+    pushd $SrcPath/blobstore/cmd/blobnode >/dev/null
+    CGO_ENABLED=1 go build ${MODFLAGS} -gcflags=all=-trimpath=${SrcPath} -asmflags=all=-trimpath=${SrcPath} -ldflags="${LDFlags}" -o ${BuildBinPath}/blobstore .
+    popd >/dev/null
 }
 
 build_access() {
-    CGO_ENABLED=0 go build ${MODFLAGS} -gcflags=all=-trimpath=${SrcPath} -asmflags=all=-trimpath=${SrcPath} -ldflags="${LDFlags}" -o ${BuildBinPath}/blobstore ${SrcPath}/blobstore/cmd/access
+    pushd $SrcPath/blobstore/cmd/access >/dev/null
+    CGO_ENABLED=0 go build ${MODFLAGS} -gcflags=all=-trimpath=${SrcPath} -asmflags=all=-trimpath=${SrcPath} -ldflags="${LDFlags}" -o ${BuildBinPath}/blobstore .
+    popd >/dev/null
 }
 
 build_scheduler() {
-    CGO_ENABLED=0 go build ${MODFLAGS} -gcflags=all=-trimpath=${SrcPath} -asmflags=all=-trimpath=${SrcPath} -ldflags="${LDFlags}" -o ${BuildBinPath}/blobstore ${SrcPath}/blobstore/cmd/scheduler
+    pushd $SrcPath/blobstore/cmd/scheduler >/dev/null
+    CGO_ENABLED=0 go build ${MODFLAGS} -gcflags=all=-trimpath=${SrcPath} -asmflags=all=-trimpath=${SrcPath} -ldflags="${LDFlags}" -o ${BuildBinPath}/blobstore .
+    popd >/dev/null
 }
 
 build_proxy() {
-    CGO_ENABLED=0 go build ${MODFLAGS} -gcflags=all=-trimpath=${SrcPath} -asmflags=all=-trimpath=${SrcPath} -ldflags="${LDFlags}" -o ${BuildBinPath}/blobstore ${SrcPath}/blobstore/cmd/proxy
+    pushd $SrcPath/blobstore/cmd/proxy >/dev/null
+    CGO_ENABLED=0 go build ${MODFLAGS} -gcflags=all=-trimpath=${SrcPath} -asmflags=all=-trimpath=${SrcPath} -ldflags="${LDFlags}" -o ${BuildBinPath}/blobstore .
+    popd >/dev/null
 }
 
 build_blobstore_cli() {
-    CGO_ENABLED=1 go build ${MODFLAGS} -gcflags=all=-trimpath=${SrcPath} -asmflags=all=-trimpath=${SrcPath} -ldflags="${LDFlags}" -o ${BuildBinPath}/blobstore/blobstore-cli ${SrcPath}/blobstore/cli/cli
+    pushd $SrcPath/blobstore/cli/cli >/dev/null
+    CGO_ENABLED=1 go build ${MODFLAGS} -gcflags=all=-trimpath=${SrcPath} -asmflags=all=-trimpath=${SrcPath} -ldflags="${LDFlags}" -o ${BuildBinPath}/blobstore/blobstore-cli .
+    popd >/dev/null
 }
 
 build_blobstore() {
