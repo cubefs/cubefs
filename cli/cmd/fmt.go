@@ -72,7 +72,7 @@ func formatClusterView(cv *proto.ClusterView, cn *proto.ClusterNodeInfo, cp *pro
 	sb.WriteString(fmt.Sprintf("  DpRepairTimeout    : %v\n", cv.DpRepairTimeout))
 	sb.WriteString(fmt.Sprintf("  volDeletionDelayTime : %v h\n", cv.VolDeletionDelayTimeHour))
 	sb.WriteString(fmt.Sprintf("  EnableAutoDecommission: %v\n", cv.EnableAutoDecommission))
-	sb.WriteString(fmt.Sprintf("  DisableAutoDpMetaRepair: %v\n", cv.DisableAutoDpMetaRepair))
+	sb.WriteString(fmt.Sprintf("  EnableAutoDpMetaRepair: %v\n", cv.EnableAutoDpMetaRepair))
 	sb.WriteString(fmt.Sprintf("  MarkDiskBrokenThreshold : %v\n", strutil.FormatPercent(cv.MarkDiskBrokenThreshold)))
 	sb.WriteString(fmt.Sprintf("  DecommissionDiskLimit: %v\n", cv.DecommissionDiskLimit))
 	return sb.String()
@@ -175,6 +175,7 @@ func formatSimpleVolView(svv *proto.SimpleVolView) string {
 	sb.WriteString(fmt.Sprintf("  DisableAuditLog                 : %v\n", svv.DisableAuditLog))
 	sb.WriteString(fmt.Sprintf("  TrashInterval                   : %v\n", time.Duration(svv.TrashInterval)*time.Minute))
 	sb.WriteString(fmt.Sprintf("  DpRepairBlockSize               : %v\n", strutil.FormatSize(svv.DpRepairBlockSize)))
+	sb.WriteString(fmt.Sprintf("  EnableAutoDpMetaRepair          : %v\n", svv.EnableAutoDpMetaRepair))
 	sb.WriteString(fmt.Sprintf("  Quota                           : %v\n", formatEnabledDisabled(svv.EnableQuota)))
 	if svv.Forbidden && svv.Status == 1 {
 		sb.WriteString(fmt.Sprintf("  DeleteDelayTime                 : %v\n", time.Until(svv.DeleteExecTime)))

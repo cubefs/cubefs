@@ -64,7 +64,7 @@ type clusterValue struct {
 	DecommissionDiskLimit       uint32
 	VolDeletionDelayTimeHour    int64
 	MarkDiskBrokenThreshold     float64
-	DisableAutoDpMetaRepair     bool
+	EnableAutoDpMetaRepair      bool
 }
 
 func newClusterValue(c *Cluster) (cv *clusterValue) {
@@ -98,7 +98,7 @@ func newClusterValue(c *Cluster) (cv *clusterValue) {
 		DecommissionDiskLimit:       c.GetDecommissionDiskLimit(),
 		VolDeletionDelayTimeHour:    c.cfg.volDelayDeleteTimeHour,
 		MarkDiskBrokenThreshold:     c.getMarkDiskBrokenThreshold(),
-		DisableAutoDpMetaRepair:     c.getDisableAutoDpMetaRepair(),
+		EnableAutoDpMetaRepair:      c.getEnableAutoDpMetaRepair(),
 	}
 	return cv
 }
@@ -315,8 +315,9 @@ type volValue struct {
 	TrashInterval                                          int64
 	DisableAuditLog                                        bool
 
-	Forbidden         bool
-	DpRepairBlockSize uint64
+	Forbidden            bool
+	DpRepairBlockSize    uint64
+	EnableAutoMetaRepair bool
 }
 
 func (v *volValue) Bytes() (raw []byte, err error) {
@@ -385,6 +386,7 @@ func newVolValue(vol *Vol) (vv *volValue) {
 		DeleteExecTime:        vol.DeleteExecTime,
 		User:                  vol.user,
 		DpRepairBlockSize:     vol.dpRepairBlockSize,
+		EnableAutoMetaRepair:  vol.EnableAutoMetaRepair.Load(),
 	}
 
 	return
@@ -1055,8 +1057,8 @@ func (c *Cluster) updateMarkDiskBrokenThreshold(val float64) {
 	c.MarkDiskBrokenThreshold.Store(val)
 }
 
-func (c *Cluster) updateDisableAutoDpMetaRepair(val bool) {
-	c.DisableAutoDpMetaRepair.Store(val)
+func (c *Cluster) updateEnableAutoDpMetaRepair(val bool) {
+	c.EnableAutoDpMetaRepair.Store(val)
 }
 
 func (c *Cluster) updateDecommissionDiskLimit(val uint32) {
@@ -1210,7 +1212,7 @@ func (c *Cluster) loadClusterValue() (err error) {
 		c.updateDecommissionDiskLimit(cv.DecommissionDiskLimit)
 		c.checkDataReplicasEnable = cv.CheckDataReplicasEnable
 		c.updateMarkDiskBrokenThreshold(cv.MarkDiskBrokenThreshold)
-		c.updateDisableAutoDpMetaRepair(cv.DisableAutoDpMetaRepair)
+		c.updateEnableAutoDpMetaRepair(cv.EnableAutoDpMetaRepair)
 	}
 	return
 }
