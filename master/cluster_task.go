@@ -663,7 +663,7 @@ func (c *Cluster) doLoadDataPartition(dp *DataPartition) {
 	c.addDataNodeTasks(loadTasks)
 	success := false
 	for i := 0; i < timeToWaitForResponse; i++ {
-		if dp.checkLoadResponse(c.cfg.DataPartitionTimeOutSec) {
+		if dp.checkLoadResponse(c.getDataPartitionTimeoutSec()) {
 			success = true
 			break
 		}

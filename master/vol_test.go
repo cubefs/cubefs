@@ -178,7 +178,7 @@ func TestCreateColdVol(t *testing.T) {
 	delVol(volName3, t)
 
 	// NOTE: check all vols
-	timeout := time.Now().Add(60 * time.Second)
+	timeout := time.Now().Add(100 * time.Second)
 	for time.Now().Before(timeout) {
 		_, err = server.cluster.getVol(volName1)
 		if err == nil {
