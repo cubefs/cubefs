@@ -793,7 +793,7 @@ func (m *Server) getCluster(w http.ResponseWriter, r *http.Request) {
 		VolDeletionDelayTimeHour: m.cluster.cfg.volDelayDeleteTimeHour,
 		DpRepairTimeout:          m.cluster.GetDecommissionDataPartitionRecoverTimeOut(),
 		MarkDiskBrokenThreshold:  m.cluster.getMarkDiskBrokenThreshold(),
-		DisableAutoDpMetaRepair:  m.cluster.getDisableAutoDpMetaRepair(),
+		EnableAutoDpMetaRepair:   m.cluster.getEnableAutoDpMetaRepair(),
 		EnableAutoDecommission:   m.cluster.AutoDecommissionDiskIsEnabled(),
 		DecommissionDiskLimit:    m.cluster.GetDecommissionDiskLimit(),
 		MasterNodes:              make([]proto.NodeView, 0),
@@ -2306,6 +2306,7 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 
 	newArgs.dpReplicaNum = uint8(req.replicaNum)
 	newArgs.dpReadOnlyWhenVolFull = req.dpReadOnlyWhenVolFull
+	newArgs.enableAutoDpMetaRepair = req.enableAutoDpMetaRepair
 
 	log.LogWarnf("[updateVolOut] name [%s], z1 [%s], z2[%s] replicaNum[%v]", req.name, req.zoneName, vol.Name, req.replicaNum)
 	if err = m.cluster.updateVol(req.name, req.authKey, newArgs); err != nil {
@@ -2692,6 +2693,7 @@ func newSimpleView(vol *Vol) (view *proto.SimpleVolView) {
 		Forbidden:               vol.Forbidden,
 		DeleteExecTime:          vol.DeleteExecTime,
 		DpRepairBlockSize:       vol.dpRepairBlockSize,
+		EnableAutoDpMetaRepair:  vol.EnableAutoMetaRepair.Load(),
 	}
 
 	vol.uidSpaceManager.rwMutex.RLock()
@@ -3118,7 +3120,7 @@ func (m *Server) setNodeInfoHandler(w http.ResponseWriter, r *http.Request) {
 
 	if val, ok := params[autoDpMetaRepairKey]; ok {
 		if autoRepair, ok := val.(bool); ok {
-			if err = m.cluster.setDisableAutoDpMetaRepair(!autoRepair); err != nil {
+			if err = m.cluster.setEnableAutoDpMetaRepair(autoRepair); err != nil {
 				sendErrReply(w, r, newErrHTTPReply(err))
 				return
 			}
