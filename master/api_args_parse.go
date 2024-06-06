@@ -397,6 +397,7 @@ type updateVolReq struct {
 	dpReadOnlyWhenVolFull   bool
 	enableQuota             bool
 	crossZone               bool
+	enableAutoDpMetaRepair  bool
 }
 
 func parseColdVolUpdateArgs(r *http.Request, vol *Vol) (args *coldVolArgs, err error) {
@@ -529,6 +530,10 @@ func parseVolUpdateReq(r *http.Request, vol *Vol, req *updateVolReq) (err error)
 	}
 
 	if req.dpReadOnlyWhenVolFull, err = extractBoolWithDefault(r, dpReadOnlyWhenVolFull, vol.DpReadOnlyWhenVolFull); err != nil {
+		return
+	}
+
+	if req.enableAutoDpMetaRepair, err = extractBoolWithDefault(r, autoDpMetaRepairKey, vol.EnableAutoMetaRepair.Load()); err != nil {
 		return
 	}
 

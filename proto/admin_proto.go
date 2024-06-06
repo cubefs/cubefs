@@ -1136,11 +1136,12 @@ type SimpleVolView struct {
 	TrashInterval    int64
 
 	// multi version snapshot
-	LatestVer         uint64
-	Forbidden         bool
-	DisableAuditLog   bool
-	DeleteExecTime    time.Time
-	DpRepairBlockSize uint64
+	LatestVer              uint64
+	Forbidden              bool
+	DisableAuditLog        bool
+	DeleteExecTime         time.Time
+	DpRepairBlockSize      uint64
+	EnableAutoDpMetaRepair bool
 }
 
 type NodeSetInfo struct {

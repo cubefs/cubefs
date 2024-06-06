@@ -128,7 +128,7 @@ type ClusterView struct {
 	MaxMetaPartitionID       uint64
 	VolDeletionDelayTimeHour int64
 	MarkDiskBrokenThreshold  float64
-	DisableAutoDpMetaRepair  bool
+	EnableAutoDpMetaRepair   bool
 	EnableAutoDecommission   bool
 	DecommissionDiskLimit    uint32
 	DpRepairTimeout          time.Duration
