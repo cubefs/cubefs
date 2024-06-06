@@ -140,6 +140,7 @@ const (
 	markDiskBrokenThresholdKey = "markDiskBrokenThreshold"
 	decommissionTypeKey        = "decommissionType"
 	autoDpMetaRepairKey        = "autoDpMetaRepair"
+	dpTimeoutKey               = "dpTimeout"
 )
 
 const (

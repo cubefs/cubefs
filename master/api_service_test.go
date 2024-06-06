@@ -1664,6 +1664,30 @@ func TestSetEnableAutoDpMetaRepair(t *testing.T) {
 	require.EqualValues(t, oldVal, server.cluster.getEnableAutoDpMetaRepair())
 }
 
+func TestSetDpTimeout(t *testing.T) {
+	reqUrl := fmt.Sprintf("%v%v", hostAddr, proto.AdminSetNodeInfo)
+	oldVal := server.cluster.getDataPartitionTimeoutSec()
+	setVal := int64(10)
+	setUrl := fmt.Sprintf("%v?%v=%v&dirSizeLimit=0", reqUrl, dpTimeoutKey, setVal)
+	unsetUrl := fmt.Sprintf("%v?%v=%v&dirSizeLimit=0", reqUrl, dpTimeoutKey, oldVal)
+	process(setUrl, t)
+	require.EqualValues(t, setVal, server.cluster.getDataPartitionTimeoutSec())
+	process(unsetUrl, t)
+	require.EqualValues(t, oldVal, server.cluster.getDataPartitionTimeoutSec())
+}
+
+func TestSetDpRepairTimeout(t *testing.T) {
+	reqUrl := fmt.Sprintf("%v%v", hostAddr, proto.AdminSetNodeInfo)
+	oldVal := server.cluster.cfg.DpRepairTimeOut
+	setVal := 4 * time.Hour
+	setUrl := fmt.Sprintf("%v?%v=%v", reqUrl, nodeDpRepairTimeOutKey, uint64(setVal))
+	unsetUrl := fmt.Sprintf("%v?%v=%v", reqUrl, nodeDpRepairTimeOutKey, oldVal)
+	process(setUrl, t)
+	require.EqualValues(t, setVal, time.Duration(server.cluster.cfg.DpRepairTimeOut))
+	process(unsetUrl, t)
+	require.EqualValues(t, oldVal, server.cluster.cfg.DpRepairTimeOut)
+}
+
 func TestSetDiscardDp(t *testing.T) {
 	name := "setDiscardVol"
 	createVol(map[string]interface{}{nameKey: name}, t)
