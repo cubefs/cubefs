@@ -140,6 +140,7 @@ type Extent struct {
 	dataSize   int64
 	hasClose   int32
 	header     []byte
+	drity      int32
 	sync.Mutex
 }
 
@@ -148,7 +149,7 @@ func NewExtentInCore(name string, extentID uint64) *Extent {
 	e := new(Extent)
 	e.extentID = extentID
 	e.filePath = name
-
+	e.drity = 0
 	return e
 }
 
@@ -293,6 +294,14 @@ func (e *Extent) WriteTiny(data []byte, offset, size int64, crc uint32, writeTyp
 
 // Write writes data to an extent.
 func (e *Extent) Write(data []byte, offset, size int64, crc uint32, writeType int, isSync bool, crcFunc UpdateCrcFunc, ei *ExtentInfo) (err error) {
+	defer func() {
+		tmp := int32(0)
+		if !isSync {
+			tmp = 1
+		}
+		atomic.StoreInt32(&e.drity, tmp)
+	}()
+
 	if IsTinyExtent(e.extentID) {
 		err = e.WriteTiny(data, offset, size, crc, writeType, isSync)
 		return
@@ -362,7 +371,7 @@ func (e *Extent) ReadTiny(data []byte, offset, size int64, isRepairRead bool) (c
 
 // Flush synchronizes data to the disk.
 func (e *Extent) Flush() (err error) {
-	if e.HasClosed() {
+	if e.HasClosed() || !atomic.CompareAndSwapInt32(&e.drity, 1, 0) {
 		return
 	}
 	err = e.file.Sync()
