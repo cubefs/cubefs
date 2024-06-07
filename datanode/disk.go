@@ -30,13 +30,13 @@ import (
 
 	"github.com/cubefs/cubefs/util/exporter"
 
-	"golang.org/x/time/rate"
-
+	"github.com/cubefs/cubefs/depends/tiglabs/raft"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/loadutil"
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/cubefs/cubefs/util/strutil"
 	"github.com/shirou/gopsutil/disk"
+	"golang.org/x/time/rate"
 )
 
 var (
@@ -633,12 +633,14 @@ func (d *Disk) RestorePartition(visitor PartitionVisitor) (err error) {
 					}
 				}()
 				if dp, err = LoadDataPartition(path.Join(d.Path, filename), d); err != nil {
-					mesg := fmt.Sprintf("action[RestorePartition] new partition(%v) err(%v) ",
-						partitionID, err.Error())
-					log.LogError(mesg)
-					exporter.Warning(mesg)
-					syslog.Println(mesg)
-					return
+					if !strings.Contains(err.Error(), raft.ErrRaftExists.Error()) {
+						mesg := fmt.Sprintf("action[RestorePartition] new partition(%v) err(%v) ",
+							partitionID, err.Error())
+						log.LogError(mesg)
+						exporter.Warning(mesg)
+						syslog.Println(mesg)
+						return
+					}
 				}
 				if visitor != nil {
 					visitor(dp)
