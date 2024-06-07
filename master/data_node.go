@@ -16,6 +16,7 @@ package master
 
 import (
 	"fmt"
+	"github.com/cubefs/cubefs/util/auditlog"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -99,10 +100,12 @@ func (dataNode *DataNode) SetIoUtils(used map[string]float64) {
 func (dataNode *DataNode) checkLiveness() {
 	dataNode.Lock()
 	defer dataNode.Unlock()
-	log.LogInfof("action[checkLiveness] datanode[%v] report time[%v],since report time[%v], need gap [%v]",
-		dataNode.Addr, dataNode.ReportTime, time.Since(dataNode.ReportTime), time.Second*time.Duration(defaultNodeTimeOutSec))
 	if time.Since(dataNode.ReportTime) > time.Second*time.Duration(defaultNodeTimeOutSec) {
 		dataNode.isActive = false
+		msg := fmt.Sprintf("datanode[%v] report time[%v],since report time[%v], need gap [%v]",
+			dataNode.Addr, dataNode.ReportTime, time.Since(dataNode.ReportTime), time.Second*time.Duration(defaultNodeTimeOutSec))
+		log.LogWarnf("action[checkLiveness]  %v", msg)
+		auditlog.LogMasterOp("DataNodeLive", msg, nil)
 	}
 }
 
