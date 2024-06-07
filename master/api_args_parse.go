@@ -26,11 +26,17 @@ import (
 	"strings"
 	"time"
 
+	"github.com/cubefs/cubefs/cmd/common"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/compressor"
 	"github.com/cubefs/cubefs/util/cryptoutil"
 	"github.com/cubefs/cubefs/util/log"
+)
+
+var (
+	parseArgs = common.ParseArguments
+	newArg    = common.NewArgument
 )
 
 // Parse the request that adds/deletes a raft node.
@@ -949,7 +955,9 @@ func extractNodeAddr(r *http.Request) (nodeAddr string, err error) {
 	}
 	if ipAddr, ok := util.ParseAddrToIpAddr(nodeAddr); ok {
 		nodeAddr = ipAddr
+		return
 	}
+	err = unmatchedKey(addrKey)
 	return
 }
 

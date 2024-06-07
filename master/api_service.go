@@ -788,6 +788,7 @@ func (m *Server) getCluster(w http.ResponseWriter, r *http.Request) {
 		MasterNodes:              make([]proto.NodeView, 0),
 		MetaNodes:                make([]proto.NodeView, 0),
 		DataNodes:                make([]proto.NodeView, 0),
+		FlashNodes:               make([]proto.NodeView, 0),
 		VolStatInfo:              make([]*proto.VolStatInfo, 0),
 		BadPartitionIDs:          make([]proto.BadPartitionView, 0),
 		BadMetaPartitionIDs:      make([]proto.BadPartitionView, 0),
@@ -797,6 +798,7 @@ func (m *Server) getCluster(w http.ResponseWriter, r *http.Request) {
 	cv.MasterNodes = m.cluster.allMasterNodes()
 	cv.MetaNodes = m.cluster.allMetaNodes()
 	cv.DataNodes = m.cluster.allDataNodes()
+	cv.FlashNodes = m.cluster.allFlashNodes()
 	cv.DataNodeStatInfo = m.cluster.dataNodeStatInfo
 	cv.MetaNodeStatInfo = m.cluster.metaNodeStatInfo
 	for _, name := range vols {
@@ -2278,6 +2280,17 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 	}
 
 	newArgs := getVolVarargs(vol)
+	if err = parseArgs(r,
+		newArg("remoteCacheEnable", &newArgs.remoteCacheEnable).OmitEmpty(),
+		newArg("remoteCacheEnable", &newArgs.remoteCacheEnable).OmitEmpty(),
+		newArg("remoteCachePath", &newArgs.remoteCachePath).OmitEmpty(),
+		newArg("remoteCacheAutoPrepare", &newArgs.remoteCacheAutoPrepare).OmitEmpty(),
+		newArg("remoteCacheTTL", &newArgs.remoteCacheTTL).OmitEmpty(),
+		newArg("remoteCacheReadTimeoutSec", &newArgs.remoteCacheReadTimeoutSec).OmitEmpty(),
+	); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
 
 	newArgs.zoneName = req.zoneName
 	newArgs.description = req.description
@@ -2678,6 +2691,12 @@ func newSimpleView(vol *Vol) (view *proto.SimpleVolView) {
 		Forbidden:               vol.Forbidden,
 		EnableAuditLog:          vol.EnableAuditLog,
 		DeleteExecTime:          vol.DeleteExecTime,
+
+		RemoteCacheEnable:         vol.remoteCacheEnable,
+		RemoteCachePath:           vol.remoteCachePath,
+		RemoteCacheAutoPrepare:    vol.remoteCacheAutoPrepare,
+		RemoteCacheTTL:            vol.remoteCacheTTL,
+		RemoteCacheReadTimeoutSec: vol.remoteCacheReadTimeoutSec,
 	}
 
 	vol.uidSpaceManager.RLock()

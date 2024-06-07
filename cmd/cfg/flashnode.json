@@ -1,0 +1,19 @@
+{
+  "role": "flashnode",
+  "listen": "6100",
+  "prof": "6101",
+  "logLevel": "info",
+  "logDir": "/export/Logs/flashnode",
+  "warnLogDir":"/export/home/tomcat/UMP-Monitor/logs/",
+  "consulAddr": "http://consul.prometheus-cfs.local",
+  "exporterPort": 9514,
+  "masterAddr": [
+    "192.168.31.173:80",
+    "192.168.31.141:80",
+    "192.168.30.200:80"
+  ],
+  "zoneName": "zone",
+  "memTotal": 0,
+  "memPercent": 0.5,
+  "readRps": 512
+}

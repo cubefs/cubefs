@@ -49,6 +49,12 @@ type VolVarargs struct {
 	txConflictRetryNum      int64
 	txConflictRetryInterval int64
 	txOpLimit               int
+
+	remoteCacheEnable         bool
+	remoteCachePath           string
+	remoteCacheAutoPrepare    bool
+	remoteCacheTTL            int64
+	remoteCacheReadTimeoutSec int64
 }
 
 // Vol represents a set of meta partitionMap and data partitionMap
@@ -75,6 +81,12 @@ type Vol struct {
 	CacheLowWater    int
 	CacheLRUInterval int
 	CacheRule        string
+
+	remoteCacheEnable         bool
+	remoteCachePath           string
+	remoteCacheAutoPrepare    bool
+	remoteCacheTTL            int64
+	remoteCacheReadTimeoutSec int64
 
 	PreloadCacheOn          bool
 	NeedToLowerReplica      bool
@@ -1547,6 +1559,12 @@ func setVolFromArgs(args *VolVarargs, vol *Vol) {
 
 	vol.dpSelectorName = args.dpSelectorName
 	vol.dpSelectorParm = args.dpSelectorParm
+
+	vol.remoteCacheEnable = args.remoteCacheEnable
+	vol.remoteCachePath = args.remoteCachePath
+	vol.remoteCacheAutoPrepare = args.remoteCacheAutoPrepare
+	vol.remoteCacheTTL = args.remoteCacheTTL
+	vol.remoteCacheReadTimeoutSec = args.remoteCacheReadTimeoutSec
 }
 
 func getVolVarargs(vol *Vol) *VolVarargs {
@@ -1581,6 +1599,12 @@ func getVolVarargs(vol *Vol) *VolVarargs {
 		txOpLimit:               vol.txOpLimit,
 		coldArgs:                args,
 		dpReadOnlyWhenVolFull:   vol.DpReadOnlyWhenVolFull,
+
+		remoteCacheEnable:         vol.remoteCacheEnable,
+		remoteCachePath:           vol.remoteCachePath,
+		remoteCacheAutoPrepare:    vol.remoteCacheAutoPrepare,
+		remoteCacheTTL:            vol.remoteCacheTTL,
+		remoteCacheReadTimeoutSec: vol.remoteCacheReadTimeoutSec,
 	}
 }
 

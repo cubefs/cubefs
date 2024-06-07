@@ -80,6 +80,8 @@ func NewRootCmd(client *master.MasterClient) *CubeFSCmd {
 		newQuotaCmd(client),
 		newDiskCmd(client),
 		newVersionCmd(client),
+		newFlashNodeCmd(client),
+		newFlashGroupCmd(client),
 	)
 	return cmd
 }

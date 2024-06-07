@@ -54,6 +54,7 @@ type Streamer struct {
 	pendingCache         chan bcacheKey
 	verSeq               uint64
 	needUpdateVer        int32
+	bloomStatus          bool
 }
 
 type bcacheKey struct {
@@ -75,6 +76,7 @@ func NewStreamer(client *ExtentClient, inode uint64) *Streamer {
 	s.pendingCache = make(chan bcacheKey, 1)
 	s.verSeq = client.multiVerMgr.latestVerSeq
 	s.extents.verSeq = client.multiVerMgr.latestVerSeq
+	s.bloomStatus = client.GetInodeBloomStatus(inode)
 	go s.server()
 	go s.asyncBlockCache()
 	return s
@@ -200,6 +202,16 @@ func (s *Streamer) read(data []byte, offset int, size int) (total int, err error
 					}
 				}
 				log.LogDebugf("TRACE Stream read. miss blockCache cacheKey(%v) loadBcache(%v)", cacheKey, s.client.loadBcache)
+			} else if s.enableRemoteCache() {
+				var cacheReadRequests []*CacheReadRequest
+				cacheReadRequests, err = s.prepareCacheRequests(uint64(offset), uint64(size), data)
+				if err == nil {
+					var read int
+					if read, err = s.readFromRemoteCache(ctx, uint64(offset), uint64(size), cacheReadRequests); err == nil {
+						return read, err
+					}
+				}
+				log.LogWarnf("Stream read: readFromRemoteCache failed: ino(%v) offset(%v) size(%v), err(%v)", s.inode, offset, size, err)
 			}
 
 			if s.needBCache {

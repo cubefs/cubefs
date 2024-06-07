@@ -15,6 +15,7 @@
 package cmd
 
 import (
+	"encoding/json"
 	"fmt"
 	"math"
 	"strconv"
@@ -31,6 +32,11 @@ func formatAddr(ipAddr string, domainAddr string) (addr string) {
 		addr = ipAddr
 	}
 	return
+}
+
+func formatIndent(v interface{}) string {
+	b, _ := json.MarshalIndent(v, "", "  ")
+	return string(b)
 }
 
 func formatClusterView(cv *proto.ClusterView, cn *proto.ClusterNodeInfo, cp *proto.ClusterIP) string {
@@ -182,6 +188,11 @@ func formatSimpleVolView(svv *proto.SimpleVolView) string {
 		sb.WriteString(fmt.Sprintf("  CacheHighWater       : %v\n", svv.CacheHighWater))
 		sb.WriteString(fmt.Sprintf("  CacheRule            : %v\n", svv.CacheRule))
 	}
+	sb.WriteString(fmt.Sprintf("  remoteCacheEnable               : %v\n", svv.RemoteCacheEnable))
+	sb.WriteString(fmt.Sprintf("  remoteCachePath                 : %v\n", svv.RemoteCachePath))
+	sb.WriteString(fmt.Sprintf("  remoteCacheAutoPrepare          : %v\n", svv.RemoteCacheAutoPrepare))
+	sb.WriteString(fmt.Sprintf("  remoteCacheTTL                  : %v\n", svv.RemoteCacheTTL))
+	sb.WriteString(fmt.Sprintf("  remoteCacheReadTimeoutSec       : %v\n", svv.RemoteCacheReadTimeoutSec))
 	return sb.String()
 }
 
@@ -962,4 +973,32 @@ func formatDataPartitionDecommissionProgress(info *proto.DecommissionDataPartiti
 	sb.WriteString(fmt.Sprintf("NeedRollbackTimes: %v\n", info.NeedRollbackTimes))
 	sb.WriteString(fmt.Sprintf("ErrorMessage:      %v\n", info.ErrorMessage))
 	return sb.String()
+}
+
+var (
+	formatFlashNodeSimpleViewTableTitle = arow("Zone", "ID", "Address", "Active", "Enable", "FlashGroupID", "ReportTime")
+	formatFlashNodeViewTableTitle       = append(formatFlashNodeSimpleViewTableTitle[:], "HitRate", "Evicts", "Limit")
+	formatFlashGroupViewTile            = arow("ID", "Slots", "Status", "FlashNodeCount")
+)
+
+func formatFlashNodeView(fn *proto.FlashNodeViewInfo) string {
+	return "[FlashNode]\n" + alignColumn(
+		arow("  ID", fn.ID),
+		arow("  Address", fn.Addr),
+		arow("  Version", fn.Version),
+		arow("  ZoneName", fn.ZoneName),
+		arow("  FlashGroupID", fn.FlashGroupID),
+		arow("  ReportTime", formatTimeToString(fn.ReportTime)),
+		arow("  IsActive", fn.IsActive),
+		arow("  IsEnable", fn.IsEnable),
+	)
+}
+
+func formatFlashGroupView(fg *proto.FlashGroupAdminView) string {
+	return "[FlashGroup]\n" + alignColumn(
+		arow("  ID", fg.ID),
+		arow("  Slots", fg.Slots),
+		arow("  Status", fg.Status),
+		arow("  FlashNodeCount", fg.FlashNodeCount),
+	)
 }

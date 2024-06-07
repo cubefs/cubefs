@@ -276,6 +276,11 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 	var optCacheLRUInterval int
 	var optDpReadOnlyWhenVolFull string
 	var clientIDKey string
+	var optRcEnable string
+	var optRcPath string
+	var optRcAutoPrepare string
+	var optRcTTL int64
+	var optRcReadTimeoutSec int64
 
 	var optYes bool
 	var optTxMask string
@@ -571,6 +576,64 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 					formatEnabledDisabled(vv.DpReadOnlyWhenVolFull)))
 			}
 
+			cws := confirmString.WriteString
+			checkChangedFlag := func(val, opt interface{}, name string) error {
+				var oldVal interface{}
+				switch v := val.(type) {
+				case *string:
+					oldVal = *v
+				case *bool:
+					oldVal = *v
+				case *int64:
+					oldVal = *v
+				}
+				if !cmd.Flags().Changed(name) {
+					cws(fmt.Sprintf("  %-26s : %v\n", name, oldVal))
+					return nil
+				}
+
+				chaned := false
+				switch v := val.(type) {
+				case *string:
+					chaned = *v != opt.(string)
+					*v = opt.(string)
+				case *bool:
+					optVal, e := strconv.ParseBool(opt.(string))
+					if e != nil {
+						return e
+					}
+					opt = optVal
+					chaned = *v != optVal
+					*v = optVal
+				case *int64:
+					chaned = *v != opt.(int64)
+					*v = opt.(int64)
+				}
+
+				if chaned {
+					isChange = true
+					cws(fmt.Sprintf("  %-26s : %v -> %v\n", name, oldVal, opt))
+				} else {
+					cws(fmt.Sprintf("  %-26s : %v\n", name, oldVal))
+				}
+				return nil
+			}
+
+			for _, rcOpt := range []struct {
+				val, opt interface{}
+				name     string
+			}{
+				{&vv.RemoteCacheEnable, optRcEnable, CliFlagRemoteCacheEnable},
+				{&vv.RemoteCachePath, optRcPath, CliFlagRemoteCachePath},
+				{&vv.RemoteCacheAutoPrepare, optRcAutoPrepare, CliFlagRemoteCacheAutoPrepare},
+				{&vv.RemoteCacheTTL, optRcTTL, CliFlagRemoteCacheTTL},
+				{&vv.RemoteCacheReadTimeoutSec, optRcReadTimeoutSec, CliFlagRemoteCacheReadTimeoutSec},
+			} {
+				if err = checkChangedFlag(rcOpt.val, rcOpt.opt, rcOpt.name); err != nil {
+					return
+				}
+			}
+
 			if err != nil {
 				return
 			}
@@ -628,6 +691,12 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().StringVar(&optEnableQuota, CliFlagEnableQuota, "", "Enable quota")
 	cmd.Flags().Int64Var(&optDeleteLockTime, CliFlagDeleteLockTime, -1, "Specify delete lock time[Unit: hour] for volume")
 	cmd.Flags().StringVar(&clientIDKey, CliFlagClientIDKey, client.ClientIDKey(), CliUsageClientIDKey)
+
+	cmd.Flags().StringVar(&optRcEnable, CliFlagRemoteCacheEnable, "", "Remote cache enable")
+	cmd.Flags().StringVar(&optRcPath, CliFlagRemoteCachePath, "", "Remote cache path, split with (,)")
+	cmd.Flags().StringVar(&optRcAutoPrepare, CliFlagRemoteCacheAutoPrepare, "", "Remote cache auto prepare")
+	cmd.Flags().Int64Var(&optRcTTL, CliFlagRemoteCacheTTL, 0, "Remote cache ttl")
+	cmd.Flags().Int64Var(&optRcReadTimeoutSec, CliFlagRemoteCacheReadTimeoutSec, 0, "Remote cache read timeout second")
 
 	return cmd
 }
