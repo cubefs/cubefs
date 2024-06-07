@@ -300,7 +300,7 @@ func LoadDataPartition(partitionDir string, disk *Disk) (dp *DataPartition, err 
 		go dp.StartRaftAfterRepair(true)
 	}
 	if err != nil {
-		log.LogErrorf("PartitionID(%v) start raft err(%v)..", dp.partitionID, err)
+		log.LogErrorf("PartitionID(%v) start raft err(%v)..", dp.info(), err)
 		// disk.space.DetachDataPartition(dp.partitionID)
 		return
 	}
@@ -890,7 +890,7 @@ func (dp *DataPartition) updateReplicas(isForce bool) (err error) {
 		return
 	}
 	dp.isLeader = false
-	isLeader, replicas, err := dp.fetchReplicasFromMaster()
+	isLeader, replicas, _, err := dp.fetchReplicasFromMaster()
 	if err != nil {
 		return
 	}
@@ -923,8 +923,13 @@ func (dp *DataPartition) compareReplicas(v1, v2 []string) (equals bool) {
 	return false
 }
 
+type ReplicaInfo struct {
+	Addr string
+	Disk string
+}
+
 // Fetch the replica information from the master.
-func (dp *DataPartition) fetchReplicasFromMaster() (isLeader bool, replicas []string, err error) {
+func (dp *DataPartition) fetchReplicasFromMaster() (isLeader bool, replicas []string, infos []ReplicaInfo, err error) {
 	var partition *proto.DataPartitionInfo
 	retry := 0
 	for {
@@ -941,6 +946,9 @@ func (dp *DataPartition) fetchReplicasFromMaster() (isLeader bool, replicas []st
 	}
 
 	replicas = append(replicas, partition.Hosts...)
+	for _, replica := range partition.Replicas {
+		infos = append(infos, ReplicaInfo{Addr: replica.Addr, Disk: replica.DiskPath})
+	}
 	if partition.Hosts != nil && len(partition.Hosts) >= 1 {
 		leaderAddr := strings.Split(partition.Hosts[0], ":")
 		if len(leaderAddr) == 2 && strings.TrimSpace(leaderAddr[0]) == LocalIP {

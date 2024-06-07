@@ -289,10 +289,61 @@ func (manager *SpaceManager) LoadDisk(path string, reservedSpace, diskRdonlySpac
 	log.LogDebugf("action[LoadDisk] load disk from path(%v).", path)
 	visitor = func(dp *DataPartition) {
 		manager.partitionMutex.Lock()
-		defer manager.partitionMutex.Unlock()
-		if _, has := manager.partitions[dp.partitionID]; !has {
+		if loadedDp, has := manager.partitions[dp.partitionID]; !has {
 			manager.partitions[dp.partitionID] = dp
+			manager.partitionMutex.Unlock()
 			log.LogDebugf("action[LoadDisk] put partition(%v) to manager manager.", dp.partitionID)
+		} else {
+			manager.partitionMutex.Unlock()
+			log.LogWarnf("action[LoadDisk] dp(%v) is loaded, to load(%v).", loadedDp.info(), dp.info())
+			_, _, infos, err := dp.fetchReplicasFromMaster()
+			if err != nil {
+				manager.DetachDataPartition(loadedDp.partitionID)
+				loadedDp.Stop()
+				loadedDp.Disk().DetachDataPartition(loadedDp)
+				log.LogErrorf("action[LoadDisk] dp(%v) is detached,due to get dp info failed(%v).",
+					loadedDp.info(), err)
+			} else {
+				var correctReplic ReplicaInfo
+				for _, replica := range infos {
+					if replica.Addr == manager.dataNode.localServerAddr {
+						correctReplic = replica
+						break
+					}
+				}
+				if correctReplic.Disk == "" && correctReplic.Addr == "" {
+					loadedDp.Stop()
+					loadedDp.Disk().DetachDataPartition(loadedDp)
+					log.LogErrorf("action[LoadDisk] dp(%v) is detached,due to data node not contains in replicas"+
+						"from master.", loadedDp.info())
+				} else {
+					if loadedDp.disk.Path == correctReplic.Disk {
+						dp.Stop()
+						dp.Disk().DetachDataPartition(dp)
+						if err := dp.RemoveAll(); err != nil {
+							log.LogErrorf("action[LoadDisk]failed to remove dp(%v) dir(%v), err(%v)",
+								dp.partitionID, dp.Path(), err)
+						}
+					} else {
+						// detach loaded dp
+						loadedDp.Stop()
+						loadedDp.Disk().DetachDataPartition(loadedDp)
+						if err := loadedDp.RemoveAll(); err != nil {
+							log.LogErrorf("action[LoadDisk]failed to remove dp(%v) dir(%v), err(%v)",
+								loadedDp.partitionID, loadedDp.Path(), err)
+						}
+						dp.Stop()
+						dp.Disk().DetachDataPartition(dp)
+						dp2, err := LoadDataPartition(dp.path, dp.disk)
+						if err != nil {
+							log.LogErrorf("action[LoadDisk]failed to load dp %v (%v_%v), err(%v)",
+								dp.partitionID, dp.path, dp.disk, err)
+						} else {
+							manager.AttachPartition(dp2)
+						}
+					}
+				}
+			}
 		}
 	}
 
