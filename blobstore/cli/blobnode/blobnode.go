@@ -15,9 +15,9 @@
 package blobnode
 
 import (
-	"github.com/cubefs/cubefs/blobstore/cli/common/flags"
-
 	"github.com/desertbit/grumble"
+
+	"github.com/cubefs/cubefs/blobstore/cli/common/flags"
 )
 
 // Register register blobnode.
