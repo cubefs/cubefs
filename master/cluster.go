@@ -2647,6 +2647,9 @@ func (c *Cluster) addDataReplica(dp *DataPartition, addr string, ignoreDecommiss
 
 // update datanode size with to replica size
 func (c *Cluster) updateDataNodeSize(addr string, dp *DataPartition) error {
+	if len(dp.Replicas) == 0 {
+		return errors.NewErrorf("dp %v has empty replica", dp.decommissionInfo())
+	}
 	leaderSize := dp.Replicas[0].Used
 	dataNode, err := c.dataNode(addr)
 	if err != nil {
@@ -2750,7 +2753,17 @@ func (c *Cluster) addDataPartitionRaftMember(dp *DataPartition, addPeer proto.Pe
 		_, err = c.buildAddDataPartitionRaftMemberTaskAndSyncSendTask(dp, addPeer, host)
 		if err == nil {
 			break
+		} else {
+			// if send to leader raise err, it may send to follower ,then follower forward
+			// this request to leader, return nil. so when leader encounter en error, should
+			//  return err
+			if leaderAddr != "" && leaderAddr == host {
+				dp.Hosts = oldHosts
+				dp.Peers = oldPeers
+				return err
+			}
 		}
+
 		if index < len(candidateAddrs)-1 {
 			time.Sleep(retrySendSyncTaskInternal)
 		}
