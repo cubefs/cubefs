@@ -261,6 +261,24 @@ type client struct {
 	mu   sync.Mutex
 }
 
+//export cfs_IsDir
+func cfs_IsDir(mode C.mode_t) C.char {
+	var isDir uint8 = 0
+	if (mode & C.S_IFMT) == C.S_IFDIR {
+		isDir = 1
+	}
+	return C.char(isDir)
+}
+
+//export cfs_IsRegular
+func cfs_IsRegular(mode C.mode_t) C.char {
+	var isRegular uint8 = 0
+	if (mode & C.S_IFMT) == C.S_IFREG {
+		isRegular = 1
+	}
+	return C.char(isRegular)
+}
+
 //export cfs_symlink
 func cfs_symlink(id C.int64_t, src_path *C.char, dst_path *C.char) C.int {
 	c, exist := getClient(int64(id))
