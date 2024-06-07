@@ -19,8 +19,6 @@ import (
 	"net"
 	"sync"
 	"time"
-
-	"github.com/cubefs/cubefs/util/log"
 )
 
 type Object struct {
@@ -169,11 +167,9 @@ func (cp *ConnectPool) autoRelease() {
 			pools = append(pools, pool)
 		}
 		cp.RUnlock()
-		begin := time.Now()
 		for _, pool := range pools {
 			pool.autoRelease()
 		}
-		log.LogInfof("[autoRelease] release conn pool cnt(%v) using time(%v)", len(pools), time.Since(begin))
 		timer.Reset(time.Second)
 	}
 }
