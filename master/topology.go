@@ -17,6 +17,7 @@ package master
 import (
 	"container/list"
 	"fmt"
+	"github.com/cubefs/cubefs/util/auditlog"
 	"sort"
 	"strings"
 	"sync"
@@ -2191,6 +2192,8 @@ func (l *DecommissionDataPartitionList) traverse(c *Cluster) {
 				if dp.IsDecommissionSuccess() {
 					l.Remove(dp)
 					dp.ReleaseDecommissionToken(c)
+					msg := fmt.Sprintf("dp %v decommission success, cost %v",
+						dp.decommissionInfo(), time.Since(dp.RecoverStartTime))
 					dp.ResetDecommissionStatus()
 					dp.setRestoreReplicaStop()
 					err := c.syncUpdateDataPartition(dp)
@@ -2201,6 +2204,7 @@ func (l *DecommissionDataPartitionList) traverse(c *Cluster) {
 						log.LogDebugf("action[DecommissionListTraverse]Remove dp[%v] for success",
 							dp.PartitionID)
 					}
+					auditlog.LogMasterOp("TraverseDataPartition", msg, err)
 				} else if dp.IsDecommissionFailed() {
 					if !dp.tryRollback(c) {
 						log.LogDebugf("action[DecommissionListTraverse]Remove dp[%v] for fail",
@@ -2212,6 +2216,8 @@ func (l *DecommissionDataPartitionList) traverse(c *Cluster) {
 					// rollback fail/success need release token
 					dp.ReleaseDecommissionToken(c)
 					c.syncUpdateDataPartition(dp)
+					msg := fmt.Sprintf("dp %v decommission failed", dp.decommissionInfo())
+					auditlog.LogMasterOp("TraverseDataPartition", msg, nil)
 				} else if dp.IsDecommissionPaused() {
 					log.LogDebugf("action[DecommissionListTraverse]Remove dp[%v] for paused ",
 						dp.PartitionID)

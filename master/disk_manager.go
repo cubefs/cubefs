@@ -191,8 +191,9 @@ func (c *Cluster) checkDiskRecoveryProgress() {
 				} else {
 					partition.DecommissionErrorMessage = ""
 					partition.SetDecommissionStatus(DecommissionSuccess) // can be readonly or readwrite
-					Warn(c.Name, fmt.Sprintf("action[checkDiskRecoveryProgress]clusterID[%v],partitionID[%v] replica %v has recovered success",
-						c.Name, partitionID, partition.DecommissionDstAddr))
+					Warn(c.Name, fmt.Sprintf("action[checkDiskRecoveryProgress]clusterID[%v],partitionID[%v] "+
+						"replica %v has recovered success,cost(%v)",
+						c.Name, partitionID, partition.DecommissionDstAddr, time.Since(partition.RecoverStartTime).String()))
 				}
 				partition.RLock()
 				err = c.syncUpdateDataPartition(partition)
