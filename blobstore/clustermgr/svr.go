@@ -102,6 +102,8 @@ type Config struct {
 	DiskMgrConfig            diskmgr.DiskMgrConfig     `json:"disk_mgr_config"`
 	ClusterReportIntervalS   int                       `json:"cluster_report_interval_s"`
 	ConsulAgentAddr          string                    `json:"consul_agent_addr"`
+	ConsulToken              string                    `json:"consul_token"`
+	ConsulTokenFile          string                    `json:"consul_token_file"`
 	HeartbeatNotifyIntervalS int                       `json:"heartbeat_notify_interval_s"`
 	MaxHeartbeatNotifyNum    int                       `json:"max_heartbeat_notify_num"`
 	ChunkSize                uint64                    `json:"chunk_size"`
@@ -199,6 +201,13 @@ func New(cfg *Config) (*Service, error) {
 	// consul client initial
 	consulConf := api.DefaultConfig()
 	consulConf.Address = cfg.ConsulAgentAddr
+	if cfg.ConsulTokenFile != "" {
+		consulConf.TokenFile = cfg.ConsulTokenFile
+	}
+	if cfg.ConsulToken != "" {
+		consulConf.Token = cfg.ConsulToken
+	}
+
 	consulClient, err := api.NewClient(consulConf)
 	if err != nil {
 		log.Fatalf("new consul client failed, err: %v", err)
