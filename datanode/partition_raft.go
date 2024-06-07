@@ -252,8 +252,12 @@ func (dp *DataPartition) StartRaftLoggingSchedule() {
 					dp.checkIsDiskError(err, WriteFlag)
 					continue
 				}
-				dp.raftPartition.Truncate(dp.minAppliedID)
-				dp.lastTruncateID = dp.minAppliedID
+				truncIndex := dp.minAppliedID
+				if truncIndex > appliedID {
+					truncIndex = appliedID
+				}
+				dp.raftPartition.Truncate(truncIndex)
+				dp.lastTruncateID = truncIndex
 				if err := dp.PersistMetadata(); err != nil {
 					log.LogErrorf("[StartRaftLoggingSchedule] partition [%v] persist metadata during scheduled truncate raft log failed: %v", dp.partitionID, err)
 					truncateRaftLogTimer.Reset(time.Minute)
