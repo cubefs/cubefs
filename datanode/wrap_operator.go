@@ -1329,7 +1329,8 @@ func (s *DataNode) handlePacketToAddDataPartitionRaftMember(p *repl.Packet) {
 		return
 	}
 
-	log.LogInfof("action[handlePacketToAddDataPartitionRaftMember] %v, partition id %v", req.AddPeer, req.PartitionId)
+	log.LogInfof("action[handlePacketToAddDataPartitionRaftMember]req(%v) addPeer %v, partition id %v",
+		p.GetReqID(), req.AddPeer, req.PartitionId)
 
 	p.AddMesgLog(string(reqData))
 	dp := s.space.Partition(req.PartitionId)
@@ -1352,11 +1353,11 @@ func (s *DataNode) handlePacketToAddDataPartitionRaftMember(p *repl.Packet) {
 	isRaftLeader, err = s.forwardToRaftLeader(dp, p, false)
 	if !isRaftLeader {
 		if err != nil {
-			log.LogWarnf("action[handlePacketToAddDataPartitionRaftMember]dp %v  req %v forward to leader failed:%v",
-				dp.partitionID, p.GetReqID(), err)
+			log.LogWarnf("action[handlePacketToAddDataPartitionRaftMember]dp %v  req %v  addPeer %v forward to leader failed:%v",
+				dp.partitionID, p.GetReqID(), req.AddPeer, err)
 		} else {
-			log.LogWarnf("action[handlePacketToAddDataPartitionRaftMember]dp %v  req %v forward to leader",
-				dp.partitionID, p.GetReqID())
+			log.LogWarnf("action[handlePacketToAddDataPartitionRaftMember]dp %v  req %v  addPeer %v forward to leader",
+				dp.partitionID, p.GetReqID(), req.AddPeer)
 		}
 		return
 	}
@@ -1412,8 +1413,9 @@ func (s *DataNode) handlePacketToRemoveDataPartitionRaftMember(p *repl.Packet) {
 		p.GetReqID(), string(reqData), req.RemovePeer.Addr, dp.partitionID, dp.replicaNum, dp.config.Peers, dp.replicas)
 
 	p.PartitionID = req.PartitionId
-	// do not return error to keep decommission progress go forward
-	// do not check replica existence on leader for autoRemove enable, follower may be contains redundant peers
+	// do not return error to keep master decommission progress go forward
+	// do not check replica existence on leader for autoRemove enable, follower may be contains redundant peers, make sure
+	// leader can send remove wal logs to follower
 	if !dp.IsExistReplica(req.RemovePeer.Addr) && !req.Force && !req.AutoRemove {
 		log.LogWarnf("action[handlePacketToRemoveDataPartitionRaftMember]dp %v receive MasterCommand:  req %v "+
 			"RemoveRaftPeer(%v) force(%v)  autoRemove(%v) has not exist", dp.partitionID, p.GetReqID(), req.RemovePeer, req.Force, req.AutoRemove)
@@ -1460,7 +1462,8 @@ func (s *DataNode) handlePacketToRemoveDataPartitionRaftMember(p *repl.Packet) {
 			}
 		}
 	}
-	if !found && !req.AutoRemove {
+
+	if !found && !req.AutoRemove && !req.Force {
 		err = errors.NewErrorf("cannot found peer(%v) in dp(%v) peers", req.RemovePeer.Addr, dp.partitionID)
 		log.LogWarnf("handlePacketToRemoveDataPartitionRaftMember:%v", err.Error())
 		return

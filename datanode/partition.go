@@ -1514,13 +1514,15 @@ func (dp *DataPartition) reload(s *SpaceManager) error {
 	disk := dp.disk
 	rootDir := dp.path
 	log.LogDebugf("data partition disk %v rootDir %v", disk, rootDir)
-	s.partitionMutex.Lock()
-	delete(s.partitions, dp.partitionID)
-	s.partitionMutex.Unlock()
+	s.DetachDataPartition(dp.partitionID)
 	dp.Stop()
 	dp.Disk().DetachDataPartition(dp)
 	log.LogDebugf("data partition %v is detached", dp.partitionID)
-	_, err := LoadDataPartition(rootDir, disk)
+	dp2, err := LoadDataPartition(rootDir, disk)
+	if err != nil {
+		return err
+	}
+	s.AttachPartition(dp2)
 	return err
 }
 
