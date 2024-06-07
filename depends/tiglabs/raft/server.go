@@ -234,6 +234,8 @@ func (rs *RaftServer) Status(id uint64) (status *Status) {
 
 	if ok {
 		status = raft.status()
+	} else {
+		logger.Warn("raftServer cannot found, id:%d", id)
 	}
 	if status == nil {
 		status = &Status{

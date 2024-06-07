@@ -121,8 +121,8 @@ func (r *raftFsm) campaign(force bool, t CampaignType) {
 		}
 		li, lt := r.raftLog.lastIndexAndTerm()
 		if logger.IsEnableDebug() {
-			logger.Debug("[raft->campaign][%v,%v logterm: %d, index: %d] sent "+
-				"%v request to %v at term %d.   raftFSM[%p]", msgType, r.id, r.config.ReplicateAddr, lt, li, id, r.term, r)
+			logger.Debug("[raft->campaign][%v,raft %v, term: %d] sent "+
+				"index %v request to %v at term %d. raftFSM[%p]", msgType, r.id, lt, li, id, r.term, r)
 		}
 
 		m := proto.GetMessage()
