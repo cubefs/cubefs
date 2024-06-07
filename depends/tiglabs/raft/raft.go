@@ -211,6 +211,7 @@ func (s *raft) runApply() {
 		}
 		s.doStop()
 		s.resetApply()
+		log.LogWarnf("raft(%v) quit runApply", s.raftFsm.id)
 	}()
 
 	loopCount := 0
@@ -271,6 +272,7 @@ func (s *raft) run() {
 		s.stopSnapping()
 		s.raftConfig.Storage.Close()
 		close(s.done)
+		log.LogWarnf("raft(%v) quit run", s.raftFsm.id)
 	}()
 
 	s.prevHardSt.Term = s.raftFsm.term
