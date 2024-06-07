@@ -15,15 +15,32 @@
 package fileutil
 
 import (
+	"io/fs"
 	"os"
 	"syscall"
 )
+
+const StatBlockSize = 512
 
 func Stat(name string) (stat *syscall.Stat_t, err error) {
 	info, err := os.Stat(name)
 	if err != nil {
 		return
 	}
+	stat = ConvertStat(info)
+	return
+}
+
+func ConvertStat(info fs.FileInfo) (stat *syscall.Stat_t) {
 	stat = info.Sys().(*syscall.Stat_t)
+	return
+}
+
+func GetFilePhysicalSize(name string) (size int64, err error) {
+	stat, err := Stat(name)
+	if err != nil {
+		return
+	}
+	size = stat.Blocks * StatBlockSize
 	return
 }
