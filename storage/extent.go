@@ -30,6 +30,7 @@ import (
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util"
+	"github.com/cubefs/cubefs/util/atomicutil"
 	"github.com/cubefs/cubefs/util/log"
 )
 
@@ -173,6 +174,7 @@ type Extent struct {
 	hasClose        int32
 	header          []byte
 	snapshotDataOff uint64
+	dirty           atomicutil.Bool
 	sync.Mutex
 }
 
@@ -182,6 +184,7 @@ func NewExtentInCore(name string, extentID uint64) *Extent {
 	e.extentID = extentID
 	e.filePath = name
 	e.snapshotDataOff = util.ExtentSize
+	e.dirty.Store(false)
 	return e
 }
 
@@ -375,6 +378,10 @@ func (e *Extent) WriteTiny(data []byte, offset, size int64, crc uint32, writeTyp
 
 // Write writes data to an extent.
 func (e *Extent) Write(data []byte, offset, size int64, crc uint32, writeType int, isSync bool, crcFunc UpdateCrcFunc, ei *ExtentInfo, isHole bool, isRepair bool) (status uint8, err error) {
+	defer func() {
+		e.dirty.Store(!isSync)
+	}()
+
 	log.LogDebugf("action[Extent.Write] path %v offset %v size %v writeType %v", e.filePath, offset, size, writeType)
 	status = proto.OpOk
 	if IsTinyExtent(e.extentID) {
@@ -536,7 +543,7 @@ func (e *Extent) checkWriteOffsetAndSize(writeType int, offset, size int64, isRe
 
 // Flush synchronizes data to the disk.
 func (e *Extent) Flush() (err error) {
-	if e.HasClosed() {
+	if e.HasClosed() || !e.dirty.CompareAndSwap(true, false) {
 		return
 	}
 	err = e.file.Sync()
