@@ -155,6 +155,8 @@ extern int cfs_unlock_dir(int64_t id, char *path);
 extern int cfs_get_dir_lock(int64_t id, char *path, int64_t *lock_id, char **valid_time);
 extern int cfs_symlink(int64_t id, char *src_path, char *dst_path);
 extern int cfs_link(int64_t id, char *src_path, char *dst_path);
+extern char cfs_IsDir(mode_t mode);
+extern char cfs_IsRegular(mode_t mode);
 
 #ifdef __cplusplus
 }
