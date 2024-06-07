@@ -143,6 +143,8 @@ type ClusterConfig struct {
 	ServicePunishValidIntervalS int    `json:"service_punish_valid_interval_s"`
 
 	ConsulAgentAddr string    `json:"consul_agent_addr"`
+	ConsulToken     string    `json:"consul_token"`
+	ConsulTokenFile string    `json:"consul_token_file"`
 	Clusters        []Cluster `json:"clusters"`
 }
 
@@ -183,9 +185,15 @@ func NewClusterController(cfg *ClusterConfig, proxy proxy.Cacher, stopCh <-chan 
 
 	consulConf := api.DefaultConfig()
 	consulConf.Address = cfg.ConsulAgentAddr
+	if cfg.ConsulTokenFile != "" {
+		consulConf.TokenFile = cfg.ConsulTokenFile
+	}
+	if cfg.ConsulToken != "" {
+		consulConf.Token = cfg.ConsulToken
+	}
 	var client *api.Client
 	var err error
-	if consulConf.Address != "" {
+	if cfg.ConsulAgentAddr != "" {
 		client, err = api.NewClient(consulConf)
 		if err != nil {
 			return nil, fmt.Errorf("new consul client failed, err: %v", err)
