@@ -2132,6 +2132,34 @@ func (partition *DataPartition) checkReplicaMeta(c *Cluster) (err error) {
 		c.syncUpdateDataPartition(partition)
 	}()
 	log.LogDebugf("action[checkReplicaMeta]dp %v", partition.decommissionInfo())
+
+	// for add/delete replica, add/delete raft member first, then add/delete replica
+	// when retry is 4, then executing
+	// or replica is not loaded for unexpected error
+	//var redundantPeers []proto.Peer
+	//if len(partition.Peers) == int(partition.ReplicaNum) && len(partition.Peers) > len(partition.Replicas) {
+	//	for _, peer := range partition.Peers {
+	//		found := false
+	//		for _, replica := range partition.Replicas {
+	//			if replica.Addr == peer.Addr {
+	//				found = true
+	//			}
+	//		}
+	//		if !found {
+	//			redundantPeers = append(redundantPeers, peer)
+	//		}
+	//	}
+	//	// remove from hosts and peers only
+	//	for _, peer := range redundantPeers {
+	//		err = c.removeHostMember(partition, peer)
+	//		auditMsg = fmt.Sprintf("dp(%v) remove unloaded peer %v for master", partition.PartitionID, peer)
+	//		log.LogDebugf("action[checkReplicaMeta]%v: err %v", auditMsg, err)
+	//		auditlog.LogMasterOp("RestoreReplicaMeta", auditMsg, err)
+	//		if err != nil {
+	//			return
+	//		}
+	//	}
+	//}
 	// find redundant peers from replica meta
 	force := false
 	for _, replica := range partition.Replicas {

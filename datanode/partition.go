@@ -640,6 +640,7 @@ func (dp *DataPartition) Stop() {
 		log.LogInfo(msg)
 	}()
 	dp.stopOnce.Do(func() {
+		log.LogInfof("action[Stop]:dp(%v) stop once", dp.info())
 		if dp.stopC != nil {
 			close(dp.stopC)
 		}
@@ -692,6 +693,7 @@ func (dp *DataPartition) RemoveAll() (err error) {
 	defer dp.persistMetaMutex.Unlock()
 
 	err = os.RemoveAll(dp.Path())
+	log.LogInfof("action[Stop]:dp(%v) remove %v", dp.info(), dp.Path())
 	return
 }
 
@@ -1535,4 +1537,25 @@ func (dp *DataPartition) hasNodeIDConflict(addr string, nodeID uint64) error {
 		}
 	}
 	return nil
+}
+
+func (dp *DataPartition) info() string {
+	return fmt.Sprintf("id(%v)_disk(%v)_type(%v)", dp.partitionID, dp.disk.Path, dp.partitionType)
+}
+
+func (dp *DataPartition) fetchDataNodesFromMaster() (nodes []proto.NodeView, err error) {
+	retry := 0
+	for {
+		if nodes, err = MasterClient.AdminAPI().GetClusterDataNodes(); err != nil {
+			retry++
+			if retry > 5 {
+				return
+			}
+		} else {
+			break
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+
+	return
 }
