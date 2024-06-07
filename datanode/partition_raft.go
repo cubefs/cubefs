@@ -348,9 +348,11 @@ func (dp *DataPartition) StartRaftAfterRepair(isLoad bool) {
 			}
 
 			if err := dp.StartRaft(isLoad); err != nil {
-				log.LogErrorf("action[StartRaftAfterRepair] PartitionID(%v) start raft err(%v). Retry after 20s.", dp.partitionID, err)
-				timer.Reset(5 * time.Second)
-				continue
+				log.LogErrorf("action[StartRaftAfterRepair] dp(%v) start raft err(%v)", dp.info(), err)
+				dp.DataPartitionCreateType = proto.NormalCreateDataPartition
+				dp.decommissionRepairProgress = float64(1)
+				dp.PersistMetadata()
+				return
 			}
 			// start raft
 			dp.DataPartitionCreateType = proto.NormalCreateDataPartition
