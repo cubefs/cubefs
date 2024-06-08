@@ -17,7 +17,6 @@ package master
 import (
 	"container/list"
 	"fmt"
-	"github.com/cubefs/cubefs/util/auditlog"
 	"sort"
 	"strings"
 	"sync"
@@ -26,6 +25,7 @@ import (
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util"
+	"github.com/cubefs/cubefs/util/auditlog"
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/log"
 )
