@@ -390,6 +390,7 @@ func newDataPartition(dpCfg *dataPartitionCfg, disk *Disk, isCreate bool) (dp *D
 	dp = partition
 	go partition.statusUpdateScheduler()
 	go partition.startEvict()
+	go partition.validatePeers()
 	if isCreate {
 		if err = dp.getVerListFromMaster(); err != nil {
 			log.LogErrorf("action[newDataPartition] vol %v dp %v loadFromMaster verList failed err %v", dp.volumeID, dp.partitionID, err)
@@ -1509,19 +1510,43 @@ func (dp *DataPartition) info() string {
 	return fmt.Sprintf("id(%v)_disk(%v)_type(%v)", dp.partitionID, dp.disk.Path, dp.partitionType)
 }
 
-func (dp *DataPartition) fetchDataNodesFromMaster() (nodes []proto.NodeView, err error) {
-	retry := 0
+func (dp *DataPartition) validatePeers() {
+	ticker := time.NewTicker(10 * time.Second)
 	for {
-		if nodes, err = MasterClient.AdminAPI().GetClusterDataNodes(); err != nil {
-			retry++
-			if retry > 5 {
-				return
+		select {
+		case <-ticker.C:
+			dataNodes := dp.dataNode.space.getDataNodeIDs()
+			for _, peer := range dp.config.Peers {
+				for _, dn := range dataNodes {
+					if dn.Addr == peer.Addr && dn.ID != peer.ID {
+						log.LogWarnf("dp %v find expired peer %v(expected %v_%v)", dp.info(), peer, dn.ID, dn.Addr)
+						newReq := &proto.RemoveDataPartitionRaftMemberRequest{
+							PartitionId: dp.partitionID,
+							Force:       true,
+							RemovePeer:  peer,
+						}
+						reqData, err := json.Marshal(newReq)
+						if err != nil {
+							log.LogWarnf("dp %v marshal newReq %v failed %v", dp.info(), newReq, err)
+							continue
+						}
+						cc := &raftProto.ConfChange{
+							Type: raftProto.ConfRemoveNode,
+							Peer: raftProto.Peer{
+								ID: peer.ID,
+							},
+							Context: reqData,
+						}
+						dp.dataNode.space.raftStore.RaftServer().RemoveRaftForce(dp.partitionID, cc)
+						dp.ApplyMemberChange(cc, 0)
+						dp.PersistMetadata()
+						log.LogWarnf("dp %v remove expired peer %v", dp.info(), peer)
+					}
+				}
 			}
-		} else {
-			break
+		case <-dp.stopC:
+			ticker.Stop()
+			return
 		}
-		time.Sleep(200 * time.Millisecond)
 	}
-
-	return
 }
