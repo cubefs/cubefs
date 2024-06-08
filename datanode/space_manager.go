@@ -59,6 +59,8 @@ type SpaceManager struct {
 	diskUtils            map[string]*atomicutil.Float64
 	samplerDone          chan struct{}
 	allDisksLoaded       bool
+	dataNodeIDs          map[string]uint64
+	dataNodeIDsMutex     sync.RWMutex
 }
 
 const diskSampleDuration = 1 * time.Second
@@ -76,6 +78,7 @@ func NewSpaceManager(dataNode *DataNode) *SpaceManager {
 	space.currentLoadDpCount = DefaultCurrentLoadDpLimit
 	space.currentStopDpCount = DefaultStopDpLimit
 	space.diskUtils = make(map[string]*atomicutil.Float64)
+	space.dataNodeIDs = make(map[string]uint64)
 	go space.statUpdateScheduler()
 
 	return space
@@ -464,6 +467,7 @@ func (manager *SpaceManager) statUpdateScheduler() {
 			select {
 			case <-ticker.C:
 				manager.updateMetrics()
+				manager.updateDataNodeIDs()
 			case <-manager.stopC:
 				ticker.Stop()
 				return
@@ -663,4 +667,53 @@ func (manager *SpaceManager) deleteDataPartitionNotLoaded(id uint64) {
 			}
 		}
 	}
+}
+
+func (manager *SpaceManager) fetchDataNodesFromMaster() (nodes []proto.NodeView, err error) {
+	retry := 0
+	for {
+		if nodes, err = MasterClient.AdminAPI().GetClusterDataNodes(); err != nil {
+			retry++
+			if retry > 5 {
+				return
+			}
+		} else {
+			break
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+
+	return
+}
+
+func (manager *SpaceManager) updateDataNodeIDs() {
+	dataNodes, err := manager.fetchDataNodesFromMaster()
+	if err != nil {
+		log.LogErrorf("action[updateDataNodeID] fetch dataNodes from master failed err(%v) ", err.Error())
+		return
+	}
+	// lear old
+	manager.dataNodeIDsMutex.Lock()
+	defer manager.dataNodeIDsMutex.Unlock()
+	for key := range manager.dataNodeIDs {
+		delete(manager.dataNodeIDs, key)
+	}
+	for _, dn := range dataNodes {
+		manager.dataNodeIDs[dn.Addr] = dn.ID
+	}
+}
+
+type DataNodeID struct {
+	Addr string
+	ID   uint64
+}
+
+func (manager *SpaceManager) getDataNodeIDs() []DataNodeID {
+	manager.dataNodeIDsMutex.RLock()
+	defer manager.dataNodeIDsMutex.RUnlock()
+	var ids []DataNodeID
+	for addr, id := range manager.dataNodeIDs {
+		ids = append(ids, DataNodeID{Addr: addr, ID: id})
+	}
+	return ids
 }
