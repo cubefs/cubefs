@@ -616,12 +616,12 @@ func (partition *DataPartition) getLiveReplicasFromHosts(timeOutSec int64) (repl
 		if replica.isLive(partition.PartitionID, timeOutSec) {
 			replicas = append(replicas, replica)
 		} else {
-			msg := fmt.Sprintf("dp %v replica addr %v is unavailable, datanode active %v replica status %v and is active %v",
-				partition.PartitionID, replica.Addr, replica.dataNode.isActive, replica.Status, replica.isActive(timeOutSec))
+			// msg := fmt.Sprintf("dp %v replica addr %v is unavailable, datanode active %v replica status %v and is active %v",
+			//	partition.PartitionID, replica.Addr, replica.dataNode.isActive, replica.Status, replica.isActive(timeOutSec))
 			replica.Status = proto.Unavailable
-			log.LogWarnf("action[getLiveReplicasFromHosts] vol %v dp %v replica %v is unavailable",
+			log.LogDebugf("action[getLiveReplicasFromHosts] vol %v dp %v replica %v is unavailable",
 				partition.VolName, partition.PartitionID, replica.Addr)
-			auditlog.LogMasterOp("DataPartitionReplicaStatus", msg, nil)
+			// auditlog.LogMasterOp("DataPartitionReplicaStatus", msg, nil)
 		}
 	}
 
@@ -1086,15 +1086,16 @@ func (partition *DataPartition) MarkDecommissionStatus(srcAddr, dstAddr, srcDisk
 			}
 			raftForce = true
 			diskErrReplica := partition.getDiskErrorReplica()
-			log.LogWarnf("action[MarkDecommissionStatus] dp[%v] has disk error replica %v",
-				partition.PartitionID, diskErrReplica)
 			if diskErrReplica != nil {
+				log.LogWarnf("action[MarkDecommissionStatus] dp[%v] has disk error replica %v:%v",
+					partition.PartitionID, diskErrReplica.Addr, diskErrReplica.DiskPath)
 				// decommission disk err replica first
 				if diskErrReplica.Addr != srcAddr {
 					srcAddr = diskErrReplica.Addr
 					srcDisk = diskErrReplica.DiskPath
-					log.LogWarnf("action[MarkDecommissionStatus] dp[%v] decommission bad replica %v_%v first",
-						partition.PartitionID, diskErrReplica.Addr, diskErrReplica.DiskPath)
+					log.LogWarnf("action[MarkDecommissionStatus] dp[%v] decommission bad replica %v_%v first, expect"+
+						"to decommission %v",
+						partition.PartitionID, diskErrReplica.Addr, diskErrReplica.DiskPath, srcAddr)
 					err = proto.ErrDecommissionDiskErrDPFirst
 				}
 			}
