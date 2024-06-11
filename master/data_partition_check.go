@@ -152,33 +152,34 @@ func (partition *DataPartition) checkLeader(c *Cluster, clusterID string, timeOu
 		WarnMetrics.WarnDpNoLeader(clusterID, partition.PartitionID, partition.ReplicaNum, report)
 	}
 	partition.Unlock()
-	if report && partition.ReplicaNum == 1 && partition.GetDecommissionStatus() == DecommissionInitial &&
-		len(partition.Hosts) == 1 && len(partition.Peers) == 1 {
-		replica := partition.Replicas[0]
-		// heart beat is not arrived
-		if len(replica.LocalPeers) == 0 {
-			return
-		}
-		redundantPeers := findRedundantPeers(partition.Hosts, replica.LocalPeers)
-		log.LogInfof("action[checkLeader] partition %v try to recover leader local peers(%v) redundantPeers(%v)",
-			partition.PartitionID, replica.LocalPeers, redundantPeers)
-		for _, peer := range redundantPeers {
-			log.LogInfof("action[checkLeader] partition %v remove peer (%v)",
-				partition.PartitionID, peer)
-			dataNode, err := c.dataNode(peer)
-			if err != nil {
-				log.LogInfof("action[checkLeader] partition %v find data node for peer (%v) failed %v",
-					partition.PartitionID, peer, err)
-				continue
-			}
-			removePeer := proto.Peer{ID: dataNode.ID, Addr: peer}
-			if err := c.removeDataPartitionRaftMember(partition, removePeer, true); err != nil {
-				log.LogInfof("action[checkLeader] partition %v remove peer (%v) failed %v",
-					partition.PartitionID, peer, err)
-				continue
-			}
-		}
-	}
+	// if report && partition.ReplicaNum == 1 && partition.GetDecommissionStatus() == DecommissionInitial &&
+	//	len(partition.Hosts) == 1 && len(partition.Peers) == 1 {
+	//	replica := partition.Replicas[0]
+	//	// heart beat is not arrived
+	//	if len(replica.LocalPeers) == 0 {
+	//		return
+	//	}
+	//	redundantPeers := findRedundantPeers(partition.Hosts, replica.LocalPeers)
+	//	log.LogInfof("action[checkLeader] partition %v try to recover leader local peers(%v) redundantPeers(%v)",
+	//		partition.PartitionID, replica.LocalPeers, redundantPeers)
+	//	for _, peer := range redundantPeers {
+	//		log.LogInfof("action[checkLeader] partition %v remove peer (%v)",
+	//			partition.PartitionID, peer)
+	//		dataNode, err := c.dataNode(peer)
+	//		if err != nil {
+	//			log.LogInfof("action[checkLeader] partition %v find data node for peer (%v) failed %v",
+	//				partition.PartitionID, peer, err)
+	//			continue
+	//		}
+	//		removePeer := proto.Peer{ID: dataNode.ID, Addr: peer}
+	//		if err := c.removeDataPartitionRaftMember(partition, removePeer, true); err != nil {
+	//			log.LogInfof("action[checkLeader] partition %v remove peer (%v) failed %v",
+	//				partition.PartitionID, peer, err)
+	//			continue
+	//		}
+	//	}
+	// }
+	return
 }
 
 func findRedundantPeers(a []string, b []proto.Peer) []string {
