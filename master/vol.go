@@ -1024,7 +1024,8 @@ func (vol *Vol) checkAutoDataPartitionCreation(c *Cluster) {
 	}
 
 	vol.setStatus(proto.VolStatusNormal)
-	log.LogInfof("action[autoCreateDataPartitions] vol[%v] before autoCreateDataPartitions", vol.Name)
+	log.LogInfof("[checkAutoDataPartitionCreation] before autoCreateDataPartitions, vol[%v] clusterDisableAutoAllocate[%v] vol.Forbidden[%v]",
+		vol.Name, c.DisableAutoAllocate, vol.Forbidden)
 	if !c.DisableAutoAllocate && !vol.Forbidden {
 		vol.autoCreateDataPartitions(c)
 	}
@@ -1064,7 +1065,7 @@ func (vol *Vol) needCreateDataPartition() (ok bool, err error) {
 		return
 	}
 
-	if proto.IsHot(vol.VolType) {
+	if proto.IsStorageClassReplica(vol.volStorageClass) {
 		if vol.IsReadOnlyForVolFull() {
 			vol.setAllDataPartitionsToReadOnly()
 			err = proto.ErrVolNoAvailableSpace
@@ -1153,8 +1154,8 @@ func (vol *Vol) autoCreateDataPartitions(c *Cluster) {
 		}
 		mediaType := proto.GetMediaTypeByStorageClass(asc)
 		rwDpCountOfMediaType := vol.dataPartitions.getReadWriteDataPartitionCntByMediaType(mediaType)
-		log.LogInfof("action[autoCreateDataPartitions] mediaType:%v, rwDpCountOfMediaType:%v",
-			mediaType, rwDpCountOfMediaType)
+		log.LogInfof("action[autoCreateDataPartitions] vol(%v) mediaType:%v, rwDpCountOfMediaType:%v",
+			vol.Name, proto.MediaTypeString(mediaType), rwDpCountOfMediaType)
 		var createDpCount int
 		if asc == vol.volStorageClass && vol.Capacity > 200000 && rwDpCountOfMediaType < 200 {
 			createDpCount = vol.calculateExpansionNum()
