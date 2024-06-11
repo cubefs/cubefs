@@ -371,7 +371,7 @@ func (w *Wrapper) updateDataPartitionByRsp(forceUpdate bool, refreshPolicy Refre
 	rwPartitionGroups := make([]*DataPartition, 0)
 	for index, partition := range DataPartitions {
 		if partition == nil {
-			log.LogErrorf("action[updateDataPartitionByRsp] index [%v] is nil", index)
+			log.LogErrorf("[updateDataPartitionByRsp] index [%v] is nil", index)
 			continue
 		}
 		dp := convert(partition)

@@ -2842,6 +2842,13 @@ func (c *Cluster) addDataReplica(dp *DataPartition, addr string, ignoreDecommiss
 		return
 	}
 
+	if dataNode.MediaType != dp.MediaType {
+		err = fmt.Errorf("target datanode mediaType(%v) not match datapartition mediaType(%v)",
+			proto.MediaTypeString(dataNode.MediaType), proto.MediaTypeString(dp.MediaType))
+		log.LogErrorf("[addDataReplica] dpId(%v), err: %v", dp.PartitionID, err.Error())
+		return
+	}
+
 	addPeer := proto.Peer{ID: dataNode.ID, Addr: addr}
 
 	if !proto.IsNormalDp(dp.PartitionType) {
