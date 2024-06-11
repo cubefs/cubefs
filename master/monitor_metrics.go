@@ -403,18 +403,18 @@ func (m *warningMetrics) WarnMissingMp(clusterName, addr string, partitionID uin
 
 // leader only
 func (m *warningMetrics) CleanObsoleteMpMissing(clusterName string, mp *MetaPartition) {
-	m.mpMissingReplicaMutex.Lock()
-	defer m.mpMissingReplicaMutex.Unlock()
 	if clusterName != m.cluster.Name {
 		return
 	}
 	id := strconv.FormatUint(mp.PartitionID, 10)
 
+	m.mpMissingReplicaMutex.Lock()
 	missingRepAddrs, ok := m.mpMissingReplicaInfo[id]
 	if !ok {
+		m.mpMissingReplicaMutex.Unlock()
 		return
 	}
-
+	m.mpMissingReplicaMutex.Unlock()
 	for addr := range missingRepAddrs.addrs {
 		if _, err := mp.getMetaReplica(addr); err != nil {
 			log.LogDebugf("action[warningMetrics] delete obsolete Mp missing record: dpId(%v), addr(%v)", id, addr)
