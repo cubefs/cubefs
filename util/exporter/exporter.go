@@ -46,12 +46,13 @@ const (
 	ChSize                  = 1024 * 10        // collect chan size
 
 	// monitor label name
-	Vol    = "vol"
-	Disk   = "disk"
-	PartId = "partid"
-	Op     = "op"
-	Type   = "type"
-	Err    = "err"
+	Vol     = "vol"
+	Disk    = "disk"
+	PartId  = "partid"
+	Op      = "op"
+	Type    = "type"
+	Err     = "err"
+	Version = "version"
 )
 
 var (
