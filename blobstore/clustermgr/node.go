@@ -57,6 +57,11 @@ func (s *Service) NodeAdd(c *rpc.Context) {
 			return
 		}
 	}
+	if err := s.DiskMgr.ValidateNodeRole(ctx, args); err != nil {
+		span.Warn("invalid role")
+		c.RespondError(err)
+		return
+	}
 	nodeID, err := s.DiskMgr.AllocNodeID(ctx)
 	if err != nil {
 		span.Errorf("alloc node id failed =>", errors.Detail(err))

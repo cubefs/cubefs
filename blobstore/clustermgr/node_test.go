@@ -32,7 +32,13 @@ func TestNodeAddandDrop(t *testing.T) {
 		_, err = testClusterClient.AddNode(ctx, &testNodeInfo)
 		require.Error(t, err)
 
+		testNodeInfo.Host = testService.IDC[0] + "testhost-" + strconv.Itoa(2)
 		testNodeInfo.Idc = testService.IDC[0]
+		testNodeInfo.Role = proto.NodeRole(0)
+		_, err = testClusterClient.AddNode(ctx, &testNodeInfo)
+		require.Error(t, err)
+
+		testNodeInfo.Role = proto.NodeRoleBlobNode
 		testNodeInfo.ClusterID = proto.ClusterID(2)
 		_, err = testClusterClient.AddNode(ctx, &testNodeInfo)
 		require.Error(t, err)

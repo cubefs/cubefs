@@ -788,6 +788,13 @@ func (d *DiskMgr) ValidateNodeSetID(ctx context.Context, info *blobnode.NodeInfo
 	return nil
 }
 
+func (d *DiskMgr) ValidateNodeRole(ctx context.Context, info *blobnode.NodeInfo) error {
+	if _, ok := d.topoMgrs[info.Role]; !ok {
+		return apierrors.ErrIllegalArguments
+	}
+	return nil
+}
+
 // addDisk add a new disk into cluster, it return ErrDiskExist if disk already exist
 func (d *DiskMgr) addDisk(ctx context.Context, info *blobnode.DiskInfo) error {
 	span := trace.SpanFromContextSafe(ctx)
