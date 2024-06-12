@@ -72,6 +72,7 @@ type ExtentInfo struct {
 	SnapshotDataOff     uint64 `json:"snapSize"`
 	SnapPreAllocDataOff uint64 `json:"snapPreAllocSize"`
 	ApplyID             uint64 `json:"applyID"`
+	ApplySize           int64  `json:"ApplySize"`
 }
 
 func (ei *ExtentInfo) TotalSize() uint64 {
@@ -577,12 +578,8 @@ func (e *Extent) GetCrc(blockNo int64) uint32 {
 	return binary.BigEndian.Uint32(e.header[blockNo*util.PerBlockCrcSize : (blockNo+1)*util.PerBlockCrcSize])
 }
 
-func (e *Extent) autoComputeExtentCrc(crcFunc UpdateCrcFunc) (crc uint32, err error) {
+func (e *Extent) autoComputeExtentCrc(extSize int64, crcFunc UpdateCrcFunc) (crc uint32, err error) {
 	var blockCnt int
-	extSize := e.Size()
-	if e.snapshotDataOff > util.ExtentSize {
-		extSize = int64(e.snapshotDataOff)
-	}
 	blockCnt = int(extSize / util.BlockSize)
 	if extSize%util.BlockSize != 0 {
 		blockCnt += 1
