@@ -70,7 +70,8 @@ func TestDiskDropLoad(t *testing.T) {
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().ListDropDisks(any).Times(1).Return(nil, nil)
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().ListAllMigrateTasks(any, any).Times(1).Return([]*proto.MigrateTask{t1}, nil)
 		vuid := volume.VunitLocations[0].Vuid
-		volume.VunitLocations[0].Vuid = 0
+		epoch := vuid.Epoch()
+		volume.VunitLocations[0].Vuid = proto.EncodeVuid(vuid.VuidPrefix(), epoch+1)
 		mgr.topologyMgr.(*MockClusterTopology).EXPECT().GetVolume(any).Times(1).Return(volume, nil)
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().DeleteMigrateTask(any, t1.TaskID).Times(1).Return(nil)
 		mgr.IMigrator.(*MockMigrater).EXPECT().Load().Return(nil)

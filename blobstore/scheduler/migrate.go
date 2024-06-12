@@ -684,6 +684,7 @@ func (mgr *MigrateMgr) finishTask() (err error) {
 	}
 
 	_ = mgr.finishQueue.RemoveTask(migrateTask.TaskID)
+	_ = mgr.updateVolumeCache(ctx, migrateTask)
 
 	base.VolTaskLockerInst().Unlock(ctx, migrateTask.SourceVuid.Vid())
 	mgr.deleteMigratingVuid(migrateTask.SourceDiskID, migrateTask.SourceVuid)
