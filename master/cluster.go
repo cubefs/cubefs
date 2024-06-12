@@ -2323,6 +2323,21 @@ func (c *Cluster) migrateDataNode(srcAddr, targetAddr string, raftForce bool, li
 		return
 	}
 
+	if targetAddr != "" {
+		var targetNode *DataNode
+		targetNode, err = c.dataNode(targetAddr)
+		if err != nil {
+			return
+		}
+
+		if targetNode.MediaType != srcNode.MediaType {
+			err = fmt.Errorf("targetNode mediaType(%v) not match srcNode mediaType(%v)",
+				proto.MediaTypeString(targetNode.MediaType), proto.MediaTypeString(srcNode.MediaType))
+			log.LogErrorf("[migrateDataNode] %v", err.Error())
+			return
+		}
+	}
+
 	status := srcNode.GetDecommissionStatus()
 
 	if status == markDecommission || status == DecommissionRunning {
