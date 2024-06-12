@@ -86,6 +86,7 @@ func (d *dropDisk) waitDone() {
 }
 
 func (d *dropDisk) done() {
+	d.undoneTaskCnt = 0
 	d.wait <- struct{}{}
 }
 
@@ -380,10 +381,10 @@ func (mgr *DiskDropMgr) isMigrated(vuid proto.Vuid) (bool, error) {
 	}
 	for _, location := range volume.VunitLocations {
 		if location.Vuid.Index() == vuid.Index() {
-			if location.Vuid != vuid {
+			if vuid.Epoch() < location.Vuid.Epoch() {
 				return true, nil
 			}
-			break
+			return false, nil
 		}
 	}
 	return false, nil
