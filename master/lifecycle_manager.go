@@ -84,24 +84,29 @@ func (lcMgr *lifecycleManager) genEnabledRuleTasks() []*proto.RuleTask {
 }
 
 func (lcMgr *lifecycleManager) scanning() bool {
-	log.LogInfof("decide scanning, lcNodeStatus: %v, lcRuleTaskStatus: %v", lcMgr.lcNodeStatus, lcMgr.lcRuleTaskStatus)
 	if len(lcMgr.lcRuleTaskStatus.ToBeScanned) > 0 {
 		return true
 	}
 
+	lcMgr.lcRuleTaskStatus.RLock()
 	for _, v := range lcMgr.lcRuleTaskStatus.Results {
 		if v.Done != true && time.Now().Before(v.UpdateTime.Add(time.Minute*10)) {
+			lcMgr.lcRuleTaskStatus.RUnlock()
 			return true
 		}
 	}
+	lcMgr.lcRuleTaskStatus.RUnlock()
 
+	lcMgr.lcNodeStatus.RLock()
 	for _, c := range lcMgr.lcNodeStatus.WorkingCount {
 		if c > 0 {
+			lcMgr.lcNodeStatus.RUnlock()
 			return true
 		}
 	}
+	lcMgr.lcNodeStatus.RUnlock()
 
-	log.LogInfof("decide scanning, scanning stop!")
+	log.LogInfo("decide scanning: scanning finished!")
 	return false
 }
 
