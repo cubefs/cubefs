@@ -74,7 +74,7 @@ func (dp *DataPartition) ApplyMemberChange(confChange *raftproto.ConfChange, ind
 		} else {
 			err = fmt.Errorf("[ApplyMemberChange] ApplyID(%v) Partition(%v) apply err(%v)]", index, dp.partitionID, err)
 			exporter.Warning(err.Error())
-			panic(newRaftApplyError(err))
+			// panic(newRaftApplyError(err))
 		}
 	}(index)
 
@@ -128,18 +128,13 @@ func (dp *DataPartition) ApplyMemberChange(confChange *raftproto.ConfChange, ind
 	}
 	if err != nil {
 		log.LogErrorf("action[ApplyMemberChange] dp(%v) type(%v) err(%v) index(%v).", dp.partitionID, confChange.Type, err, index)
-		if IsDiskErr(err.Error()) {
-			panic(newRaftApplyError(err))
-		}
 		return
 	}
 	if isUpdated {
 		dp.DataPartitionCreateType = proto.NormalCreateDataPartition
 		if err = dp.PersistMetadata(); err != nil {
 			log.LogErrorf("action[ApplyMemberChange] dp(%v) PersistMetadata err(%v).", dp.partitionID, err)
-			if IsDiskErr(err.Error()) {
-				panic(newRaftApplyError(err))
-			}
+			dp.checkIsDiskError(err, WriteFlag)
 			return
 		}
 	}
