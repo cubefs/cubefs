@@ -149,7 +149,6 @@ type ExtentStore struct {
 	extentLock                        bool
 	stopMutex                         sync.RWMutex
 	stopC                             chan interface{}
-	ApplyIdMutex                      sync.RWMutex
 	ApplyId                           uint64
 }
 
@@ -1541,9 +1540,7 @@ func (s *ExtentStore) autoComputeExtentCrc() {
 	sort.Sort(ExtentInfoArr(extentInfos))
 
 	for _, ei := range extentInfos {
-		s.ApplyIdMutex.RLock()
 		if ei == nil {
-			s.ApplyIdMutex.RUnlock()
 			continue
 		}
 
@@ -1553,22 +1550,22 @@ func (s *ExtentStore) autoComputeExtentCrc() {
 			e, err := s.extentWithHeader(ei)
 			if err != nil {
 				log.LogWarnf("[autoComputeExtentCrc] get extent error:%+v", err)
-				s.ApplyIdMutex.RUnlock()
 				continue
 			}
-
-			extentCrc, err := e.autoComputeExtentCrc(s.PersistenceBlockCrc)
+			extSize := e.Size()
+			if e.snapshotDataOff > util.ExtentSize {
+				extSize = int64(e.snapshotDataOff)
+			}
+			extentCrc, err := e.autoComputeExtentCrc(extSize, s.PersistenceBlockCrc)
 			if err != nil {
 				log.LogError("[autoComputeExtentCrc] compute crc fail", err)
-				s.ApplyIdMutex.RUnlock()
 				continue
 			}
-
+			ei.ApplySize = extSize
 			ei.UpdateExtentInfo(e, extentCrc)
-			ei.ApplyID = s.ApplyId
+			atomic.StoreUint64(&ei.ApplyID, s.ApplyId)
 			time.Sleep(time.Millisecond * 100)
 		}
-		s.ApplyIdMutex.RUnlock()
 	}
 
 	time.Sleep(time.Second)
