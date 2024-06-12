@@ -380,13 +380,14 @@ func (m *warningMetrics) deleteMissingMp(missingMpAddrSet addrSet, clusterName, 
 // leader only
 func (m *warningMetrics) WarnMissingMp(clusterName, addr string, partitionID uint64, report bool) {
 	m.mpMissingReplicaMutex.Lock()
-	defer m.mpMissingReplicaMutex.Unlock()
+
 	if clusterName != m.cluster.Name {
 		return
 	}
 
 	id := strconv.FormatUint(partitionID, 10)
 	if !report {
+		m.mpMissingReplicaMutex.Unlock()
 		m.deleteMissingMp(m.mpMissingReplicaInfo[id], clusterName, id, addr)
 		return
 	}
@@ -399,6 +400,7 @@ func (m *warningMetrics) WarnMissingMp(clusterName, addr string, partitionID uin
 		// m.mpMissingReplicaInfo[id] = make(addrSet)
 	}
 	m.mpMissingReplicaInfo[id].addrs[addr] = voidVal
+	m.mpMissingReplicaMutex.Unlock()
 }
 
 // leader only
