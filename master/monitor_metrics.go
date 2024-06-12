@@ -382,6 +382,7 @@ func (m *warningMetrics) WarnMissingMp(clusterName, addr string, partitionID uin
 	m.mpMissingReplicaMutex.Lock()
 
 	if clusterName != m.cluster.Name {
+		m.mpMissingReplicaMutex.Unlock()
 		return
 	}
 
