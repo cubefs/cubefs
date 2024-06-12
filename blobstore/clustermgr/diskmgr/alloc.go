@@ -120,6 +120,9 @@ func (a *allocator) Alloc(ctx context.Context, diskType proto.DiskType, mode cod
 }
 
 func (a *allocator) ReAlloc(ctx context.Context, count int, excludes []proto.DiskID, diskSetID proto.DiskSetID, idc string) ([]proto.DiskID, error) {
+	if diskSetID == NullDiskSetID {
+		diskSetID = ECDiskSetID
+	}
 	stg := a.diskSets[diskSetID].idcAllocators[idc]
 
 	_excludes := make(map[proto.DiskID]*diskItem)
