@@ -86,6 +86,10 @@ var errCodeMap = map[int]string{
 	CodeRejectDeleteSystemConfig:     "reject delete system config",
 	CodeRegisterServiceInvalidParams: "register service params is invalid",
 
+	CodeCMNodeNotFound:                "node not found",
+	CodeCMHasDiskNotDroppedOrRepaired: "some disks are in use",
+	CodeCMNodeSetNotFound:             "nodeset not found",
+
 	// scheduler
 	CodeNotingTodo: "nothing to do",
 

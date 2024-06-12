@@ -100,6 +100,7 @@ func (s *Service) NodeDrop(c *rpc.Context) {
 
 	isDropped, err := s.DiskMgr.IsDroppedNode(ctx, args.NodeID)
 	if err != nil {
+		span.Warnf("NodeDrop isDroppedNode err: %v", err)
 		c.RespondError(err)
 		return
 	}
