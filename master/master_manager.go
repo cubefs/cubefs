@@ -38,7 +38,7 @@ func (m *Server) handleLeaderChange(leader uint64) {
 		return
 	}
 
-	oldLeaderAddr := m.leaderInfo.addr
+	// oldLeaderAddr := m.leaderInfo.addr
 	m.leaderInfo.addr = AddrDatabase[leader]
 	log.LogWarnf("action[handleLeaderChange]  [%v] ", m.leaderInfo.addr)
 	m.reverseProxy = m.newReverseProxy()
@@ -46,13 +46,13 @@ func (m *Server) handleLeaderChange(leader uint64) {
 	if m.id == leader {
 		Warn(m.clusterName, fmt.Sprintf("clusterID[%v] leader is changed to %v",
 			m.clusterName, m.leaderInfo.addr))
-		if oldLeaderAddr != m.leaderInfo.addr {
-			m.cluster.checkPersistClusterValue()
+		// if oldLeaderAddr != m.leaderInfo.addr {
+		m.cluster.checkPersistClusterValue()
 
-			m.loadMetadata()
-			m.cluster.metaReady = true
-			m.metaReady = true
-		}
+		m.loadMetadata()
+		m.cluster.metaReady = true
+		m.metaReady = true
+		// }
 		m.cluster.checkDataNodeHeartbeat()
 		m.cluster.checkMetaNodeHeartbeat()
 		m.cluster.checkLcNodeHeartbeat()
