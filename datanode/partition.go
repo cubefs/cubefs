@@ -301,7 +301,7 @@ func LoadDataPartition(partitionDir string, disk *Disk) (dp *DataPartition, err 
 	}
 	if err != nil {
 		log.LogErrorf("PartitionID(%v) start raft err(%v)..", dp.info(), err)
-		// disk.space.DetachDataPartition(dp.partitionID)
+		disk.space.DetachDataPartition(dp.partitionID)
 		return
 	}
 
