@@ -101,7 +101,6 @@ func doStart(s common.Server, cfg *config.Config) (err error) {
 		l.debugServiceStart()
 	}
 
-	exporter.Init(ModuleName, cfg)
 	exporter.RegistConsul(l.clusterID, ModuleName, cfg)
 	log.LogInfo("lcnode start successfully")
 
