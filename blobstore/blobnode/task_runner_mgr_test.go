@@ -74,7 +74,7 @@ func initTestTaskRunnerMgr(t *testing.T, cli scheduler.IMigrator, taskCnt int, t
 		for i := 0; i < taskCnt; i++ {
 			taskID := fmt.Sprintf("%s_%d", typ, i+1)
 			err := tm.AddTask(ctx, MigrateTaskEx{
-				taskInfo: &proto.MigrateTask{TaskID: taskID, TaskType: typ},
+				taskInfo: &proto.MigrateTask{TaskID: taskID, TaskType: typ, CodeMode: 200},
 			})
 			require.NoError(t, err)
 		}

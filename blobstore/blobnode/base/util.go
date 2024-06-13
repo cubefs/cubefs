@@ -167,9 +167,10 @@ func BackgroudReqID(prefix string) string {
 	return prefix + time.Now().Format("2006-01-02 15:04:05")
 }
 
-// Check codeMode, if replica3 return error
+// ValidateCodeMode Check codemode, if replica mode return error
 func ValidateCodeMode(mode codemode.CodeMode) error {
-	if mode == codemode.Replica3 {
+	tactic := mode.Tactic()
+	if tactic.IsReplicateMode() {
 		return errors.ErrUnsupportedTaskCodeMode
 	}
 	return nil
