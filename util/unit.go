@@ -147,7 +147,7 @@ func ParseIpAddrToDomainAddr(ipAddr string) (domainAddr string) {
 	}
 	domains, err := net.LookupAddr(ip)
 	if err != nil {
-		log.LogWarnf("action[ParseIpAddrToDomainAddr] failed, ipAddr[%v], ip[%v], err[%v]", ipAddr, ip, err)
+		log.LogInfof("action[ParseIpAddrToDomainAddr] failed, ipAddr[%v], ip[%v], err[%v]", ipAddr, ip, err)
 		return
 	}
 	for _, v := range domains {
