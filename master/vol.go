@@ -523,6 +523,13 @@ func (vol *Vol) checkReplicaNum(c *Cluster) {
 		if host == "" {
 			continue
 		}
+
+		if !c.cfg.EnableAutoDeleteReplica {
+			log.LogWarnf("action[checkReplicaNum] removeOneReplicaByHost print log host [%v],vol[%v],dp[%d]",
+				host, vol.Name, dp.PartitionID)
+			continue
+		}
+
 		if err = dp.removeOneReplicaByHost(c, host, vol.dpReplicaNum == dp.ReplicaNum); err != nil {
 			if dp.isSpecialReplicaCnt() && len(dp.Hosts) > 1 {
 				log.LogWarnf("action[checkReplicaNum] removeOneReplicaByHost host [%v],vol[%v],err[%v]", host, vol.Name, err)
