@@ -978,8 +978,6 @@ func GetDecommissionStatusMessage(status uint32) string {
 		return "Success"
 	case DecommissionFail:
 		return "Failed"
-	case DecommissionNeedManualFix:
-		return "DecommissionNeedManualFix"
 	case DecommissionPrepare:
 		return "DecommissionPrepare"
 	default:
@@ -1050,9 +1048,6 @@ func (partition *DataPartition) MarkDecommissionStatus(srcAddr, dstAddr, srcDisk
 	if partition.IsDiscard {
 		goto directly
 	}
-	if partition.needManualFix() {
-		return proto.ErrAllReplicaUnavailable
-	}
 	// TODO-chi:can delete this block
 	// 1 or 2 replica can always add new replica if retrying decommission
 	// for 3 replica,
@@ -1081,7 +1076,6 @@ func (partition *DataPartition) MarkDecommissionStatus(srcAddr, dstAddr, srcDisk
 			if partition.getReplicaDiskErrorNum() == partition.ReplicaNum {
 				log.LogWarnf("action[MarkDecommissionStatus] dp[%v] all replica is unavaliable, cannot handle in auto decommission mode",
 					partition.PartitionID)
-				partition.SetDecommissionStatus(DecommissionNeedManualFix)
 				partition.DecommissionErrorMessage = "all replica is unavailable, cannot handle in auto decommission mode"
 				return proto.ErrAllReplicaUnavailable
 			}
@@ -1121,7 +1115,6 @@ func (partition *DataPartition) MarkDecommissionStatus(srcAddr, dstAddr, srcDisk
 			if partition.getReplicaDiskErrorNum() == partition.ReplicaNum {
 				log.LogWarnf("action[MarkDecommissionStatus] dp[%v] all replica is unavaliable, cannot handle in manual decommission mode",
 					partition.PartitionID)
-				partition.SetDecommissionStatus(DecommissionNeedManualFix)
 				partition.DecommissionErrorMessage = "all replica is unavailable, cannot handle in manual decommission mode"
 				return proto.ErrAllReplicaUnavailable
 			}
@@ -1970,10 +1963,6 @@ func (partition *DataPartition) getDiskErrorReplica() *DataReplica {
 		}
 	}
 	return nil
-}
-
-func (partition *DataPartition) needManualFix() bool {
-	return partition.GetDecommissionStatus() == DecommissionNeedManualFix
 }
 
 func (partition *DataPartition) checkReplicaMeta(c *Cluster) (err error) {
