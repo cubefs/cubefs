@@ -2819,6 +2819,7 @@ func (m *Server) getDataNode(w http.ResponseWriter, r *http.Request) {
 		CpuUtil:                   dataNode.CpuUtil.Load(),
 		IoUtils:                   dataNode.GetIoUtils(),
 		DecommissionedDisk:        dataNode.getDecommissionedDisks(),
+		BackupDataPartitions:      dataNode.getBackupDataPartitionIDs(),
 	}
 
 	sendOkReply(w, r, newSuccessHTTPReply(dataNodeInfo))
