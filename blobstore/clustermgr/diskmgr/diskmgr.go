@@ -16,6 +16,7 @@ package diskmgr
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"math/rand"
 	"sync"
@@ -30,6 +31,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/codemode"
 	apierrors "github.com/cubefs/cubefs/blobstore/common/errors"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
+	"github.com/cubefs/cubefs/blobstore/common/raftserver"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
 	"github.com/cubefs/cubefs/blobstore/util/errors"
 )
@@ -153,6 +155,8 @@ type DiskMgr struct {
 	allocators     map[proto.NodeRole]*atomic.Value
 	taskPool       *base.TaskDistribution
 	hostPathFilter sync.Map
+	pendingEntries sync.Map
+	raftServer     raftserver.RaftServer
 
 	scopeMgr       scopemgr.ScopeMgrAPI
 	diskTbl        *normaldb.DiskTable
@@ -271,6 +275,10 @@ func (d *DiskMgr) RefreshExpireTime() {
 		di.lock.Unlock()
 	}
 	d.metaLock.RUnlock()
+}
+
+func (c *DiskMgr) SetRaftServer(raftServer raftserver.RaftServer) {
+	c.raftServer = raftServer
 }
 
 func (d *DiskMgr) AllocDiskID(ctx context.Context) (proto.DiskID, error) {
@@ -795,6 +803,26 @@ func (d *DiskMgr) ValidateNodeRole(ctx context.Context, info *blobnode.NodeInfo)
 	return nil
 }
 
+func (d *DiskMgr) AddDisk(ctx context.Context, args *blobnode.DiskInfo) error {
+	span := trace.SpanFromContextSafe(ctx)
+	data, err := json.Marshal(args)
+	if err != nil {
+		span.Errorf("json marshal failed, disk info: %v, error: %v", args, err)
+		return errors.Info(apierrors.ErrUnexpected).Detail(err)
+	}
+	proposeInfo := base.EncodeProposeInfo(d.GetModuleName(), OperTypeAddDisk, data, base.ProposeContext{ReqID: span.TraceID()})
+	err = d.raftServer.Propose(ctx, proposeInfo)
+	if err != nil {
+		span.Error(err)
+		return apierrors.ErrRaftPropose
+	}
+	if v, ok := d.pendingEntries.Load(fmtApplyContextKey("disk-add", args.DiskID.ToString())); ok {
+		d.pendingEntries.Delete(args.DiskID)
+		return v.(error)
+	}
+	return nil
+}
+
 // addDisk add a new disk into cluster, it return ErrDiskExist if disk already exist
 func (d *DiskMgr) addDisk(ctx context.Context, info *blobnode.DiskInfo) error {
 	span := trace.SpanFromContextSafe(ctx)
@@ -808,6 +836,11 @@ func (d *DiskMgr) addDisk(ctx context.Context, info *blobnode.DiskInfo) error {
 	}
 	// alloc diskSetID
 	node := d.allNodes[info.NodeID]
+	if node.info.Status == proto.NodeStatusDropped {
+		span.Warnf("node is dropped, disk info: %v", info)
+		d.pendingEntries.Store(fmtApplyContextKey("disk-add", info.DiskID.ToString()), apierrors.ErrCMNodeNotFound)
+		return nil
+	}
 	info.DiskSetID = d.topoMgrs[node.info.Role].AllocDiskSetID(ctx, info, node.info, d.CopySetConfigs[node.info.Role][node.info.DiskType])
 
 	// calculate free and max chunk count
@@ -1083,7 +1116,6 @@ func (d *DiskMgr) dropNode(ctx context.Context, arg *clustermgr.NodeInfoArgs) er
 		return errors.Info(err, "nodeTbl UpdateNode failed").Detail(err)
 	}
 	d.topoMgrs[node.info.Role].RemoveNodeFromNodeSet(node)
-	d.hostPathFilter.Delete(node.genFilterKey())
 
 	return nil
 }
@@ -1132,6 +1164,10 @@ func (d *DiskMgr) validateAllocRet(disks []proto.DiskID) error {
 	}
 
 	return nil
+}
+
+func fmtApplyContextKey(opType, id string) string {
+	return fmt.Sprintf("%s-%s", opType, id)
 }
 
 func nodeInfoRecordToNodeInfo(infoDB *normaldb.NodeInfoRecord) *blobnode.NodeInfo {

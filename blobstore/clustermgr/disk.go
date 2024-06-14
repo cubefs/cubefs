@@ -53,8 +53,8 @@ func (s *Service) DiskAdd(c *rpc.Context) {
 	span.Infof("accept DiskAdd request, args: %v", args)
 
 	nodeInfo, err := s.DiskMgr.GetNodeInfo(ctx, args.NodeID)
-	if err != nil {
-		span.Warnf("nodeID not exist, disk info: %v", args)
+	if err != nil || nodeInfo.Status == proto.NodeStatusDropped {
+		span.Warnf("nodeID not exist or node is dropped, disk info: %v", args)
 		c.RespondError(apierrors.ErrCMNodeNotFound)
 		return
 	}
@@ -80,18 +80,9 @@ func (s *Service) DiskAdd(c *rpc.Context) {
 		c.RespondError(apierrors.ErrIllegalArguments)
 		return
 	}
-
-	data, err := json.Marshal(args)
+	err = s.DiskMgr.AddDisk(ctx, args)
 	if err != nil {
-		span.Errorf("json marshal failed, disk info: %v, error: %v", args, err)
-		c.RespondError(errors.Info(apierrors.ErrUnexpected).Detail(err))
 		return
-	}
-	proposeInfo := base.EncodeProposeInfo(s.DiskMgr.GetModuleName(), diskmgr.OperTypeAddDisk, data, base.ProposeContext{ReqID: span.TraceID()})
-	err = s.raftNode.Propose(ctx, proposeInfo)
-	if err != nil {
-		span.Error(err)
-		c.RespondError(apierrors.ErrRaftPropose)
 	}
 }
 
