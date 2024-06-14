@@ -301,8 +301,9 @@ func (partition *DataPartition) createTaskToCreateDataPartition(addr string, dat
 	return
 }
 
-func (partition *DataPartition) createTaskToDeleteDataPartition(addr string) (task *proto.AdminTask) {
-	task = proto.NewAdminTask(proto.OpDeleteDataPartition, addr, newDeleteDataPartitionRequest(partition.PartitionID))
+func (partition *DataPartition) createTaskToDeleteDataPartition(addr string, raftForceDel bool) (task *proto.AdminTask) {
+	task = proto.NewAdminTask(proto.OpDeleteDataPartition, addr,
+		newDeleteDataPartitionRequest(partition.PartitionID, partition.DecommissionType, raftForceDel, partition.isSpecialReplicaCnt()))
 	partition.resetTaskID(task)
 	return
 }
@@ -1514,7 +1515,7 @@ errHandler:
 		partition.ReleaseDecommissionToken(c)
 	}
 
-	// if need rollback, set to fail,reset DecommissionDstAddr
+	// if need rollback, set to fail
 	// do not reset DecommissionDstAddr outside the rollback operation, as it may cause rollback failure
 	if partition.DecommissionNeedRollback {
 		partition.SetDecommissionStatus(DecommissionFail)
@@ -2230,7 +2231,7 @@ func (partition *DataPartition) checkReplicaMeta(c *Cluster) (err error) {
 			if err != nil {
 				return
 			}
-			err = c.deleteDataReplica(partition, dataNode)
+			err = c.deleteDataReplica(partition, dataNode, false)
 			auditMsg = fmt.Sprintf("dp(%v) remove redundant replica on %v for master,base on replica %v,localPeers(%v) ",
 				partition.decommissionInfo(), peer.Addr, replica.Addr, replica.LocalPeers)
 			auditlog.LogMasterOp("RestoreReplicaMeta", auditMsg, err)
@@ -2410,7 +2411,9 @@ func (partition *DataPartition) tryRestoreReplicaMeta(c *Cluster, migrateType ui
 		}
 		return nil
 	}
-	//
+	// auto decommission need to decommission replica with disk error first.
+	// 2-replica is leaderless,with 1 disk error and 1 normal , cannot be meta repaired because has
+	// disk error replica, it results raftForce always false
 	if migrateType == AutoDecommission && partition.getDiskErrorReplica() != nil {
 		return nil
 	}

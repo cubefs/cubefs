@@ -545,6 +545,9 @@ type DeleteDataPartitionRequest struct {
 	DataPartitionType string
 	PartitionId       uint64
 	PartitionSize     int
+	Force             bool
+	DecommissionType  uint32
+	IsSpecialReplica  bool
 }
 
 // DeleteDataPartitionResponse defines the response to the request of deleting a data partition.
@@ -740,23 +743,24 @@ type BadDiskStat struct {
 
 // DataNodeHeartbeatResponse defines the response to the data node heartbeat.
 type DataNodeHeartbeatResponse struct {
-	Total               uint64
-	Used                uint64
-	Available           uint64
-	TotalPartitionSize  uint64 // volCnt * volsize
-	RemainingCapacity   uint64 // remaining capacity to create partition
-	CreatedPartitionCnt uint32
-	MaxCapacity         uint64 // maximum capacity to create partition
-	StartTime           int64
-	ZoneName            string
-	PartitionReports    []*DataPartitionReport
-	Status              uint8
-	Result              string
-	AllDisks            []string
-	BadDisks            []string           // Keep this old field for compatibility
-	BadDiskStats        []BadDiskStat      // key: disk path
-	CpuUtil             float64            `json:"cpuUtil"`
-	IoUtils             map[string]float64 `json:"ioUtil"`
+	Total                uint64
+	Used                 uint64
+	Available            uint64
+	TotalPartitionSize   uint64 // volCnt * volsize
+	RemainingCapacity    uint64 // remaining capacity to create partition
+	CreatedPartitionCnt  uint32
+	MaxCapacity          uint64 // maximum capacity to create partition
+	StartTime            int64
+	ZoneName             string
+	PartitionReports     []*DataPartitionReport
+	Status               uint8
+	Result               string
+	AllDisks             []string
+	BadDisks             []string           // Keep this old field for compatibility
+	BadDiskStats         []BadDiskStat      // key: disk path
+	CpuUtil              float64            `json:"cpuUtil"`
+	IoUtils              map[string]float64 `json:"ioUtil"`
+	BackupDataPartitions []BackupDataPartitionInfo
 }
 
 // MetaPartitionReport defines the meta partition report.
@@ -1256,3 +1260,18 @@ const (
 const (
 	LFClient = 1 // low frequency client
 )
+
+const (
+	InitialDecommission uint32 = iota
+	ManualDecommission         // used for queryAllDecommissionDisk
+	AutoDecommission
+	AllDecommission
+	AutoAddReplica
+	ManualAddReplica
+)
+
+type BackupDataPartitionInfo struct {
+	Addr        string
+	Disk        string
+	PartitionID uint64
+}
