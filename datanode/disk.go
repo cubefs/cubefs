@@ -45,11 +45,13 @@ var (
 	RegexpCachePartitionDir, _       = regexp.Compile(`^cachepartition_(\d)+_(\d)+$`)
 	RegexpPreLoadPartitionDir, _     = regexp.Compile(`^preloadpartition_(\d)+_(\d)+$`)
 	RegexpExpiredDataPartitionDir, _ = regexp.Compile(`^expired_datapartition_(\d)+_(\d)+$`)
+	RegexpBackupDataPartitionDir, _  = regexp.Compile(`^backup_datapartition_(\d)+_(\d)+$`)
 )
 
 const (
 	ExpiredPartitionPrefix    = "expired_"
 	ExpiredPartitionExistTime = time.Hour * time.Duration(24*7)
+	BackupPartitionPrefix     = "backup_"
 )
 
 const DefaultCurrentLoadDpLimit = 4
@@ -93,6 +95,7 @@ type Disk struct {
 	extentRepairReadLimit       chan struct{}
 	enableExtentRepairReadLimit bool
 	extentRepairReadDp          uint64
+	BackupDataPartitions        sync.Map
 }
 
 const (
@@ -665,6 +668,14 @@ func (d *Disk) RestorePartition(visitor PartitionVisitor) (err error) {
 				toDeleteExpiredPartitionNames = append(toDeleteExpiredPartitionNames, name)
 				log.LogInfof("action[RestorePartition] find expired partition on path(%s)", name)
 			}
+			if d.isBackupPartitionDir(filename) {
+				if partitionID, err = unmarshalBackupPartitionDirName(filename); err != nil {
+					log.LogErrorf("action[RestorePartition] unmarshal partitionName(%v) from disk(%v) err(%v) ",
+						filename, d.Path, err.Error())
+				} else {
+					d.AddBackupPartitionDir(partitionID)
+				}
+			}
 			continue
 		}
 
@@ -826,4 +837,34 @@ func (d *Disk) SetExtentRepairReadLimitStatus(status bool) {
 
 func (d *Disk) QueryExtentRepairReadLimitStatus() (bool, uint64) {
 	return d.enableExtentRepairReadLimit, d.extentRepairReadDp
+}
+
+func (d *Disk) isBackupPartitionDir(filename string) (isBackupPartitionDir bool) {
+	isBackupPartitionDir = RegexpBackupDataPartitionDir.MatchString(filename)
+	return
+}
+
+func (d *Disk) AddBackupPartitionDir(id uint64) {
+	d.BackupDataPartitions.Store(id, proto.BackupDataPartitionInfo{Addr: d.dataNode.localServerAddr, Disk: d.Path, PartitionID: id})
+}
+
+func (d *Disk) GetBackupPartitionDirList() (backupInfos []proto.BackupDataPartitionInfo) {
+	backupInfos = make([]proto.BackupDataPartitionInfo, 0)
+	d.BackupDataPartitions.Range(func(key, value interface{}) bool {
+		backupInfos = append(backupInfos, value.(proto.BackupDataPartitionInfo))
+		return true
+	})
+	return backupInfos
+}
+
+func unmarshalBackupPartitionDirName(name string) (partitionID uint64, err error) {
+	arr := strings.Split(name, "_")
+	if len(arr) != 4 {
+		err = fmt.Errorf("error backupDataPartition name(%v)", name)
+		return
+	}
+	if partitionID, err = strconv.ParseUint(arr[2], 10, 64); err != nil {
+		return
+	}
+	return
 }

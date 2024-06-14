@@ -687,13 +687,27 @@ func (dp *DataPartition) ForceLoadHeader() {
 	dp.loadExtentHeaderStatus = FinishLoadDataPartitionExtentHeader
 }
 
-func (dp *DataPartition) RemoveAll() (err error) {
+func (dp *DataPartition) RemoveAll(decommissionType uint32, force, isSpecialReplica bool) (err error) {
 	dp.persistMetaMutex.Lock()
 	defer dp.persistMetaMutex.Unlock()
 
-	err = os.RemoveAll(dp.Path())
-	log.LogInfof("action[Stop]:dp(%v) remove %v", dp.info(), dp.Path())
-	return
+	if force && isSpecialReplica && decommissionType == proto.AutoDecommission {
+		originalPath := dp.Path()
+		parent := path.Dir(originalPath)
+		fileName := path.Base(originalPath)
+		newFilename := BackupPartitionPrefix + fileName
+		newPath := path.Join(parent, newFilename)
+		err = os.Rename(originalPath, newPath)
+		if err == nil {
+			dp.path = newPath
+			dp.disk.AddBackupPartitionDir(dp.partitionID)
+		}
+		log.LogInfof("action[Stop]:dp(%v) rename dir from %v to %v,err %v", dp.info(), originalPath, newPath, err)
+	} else {
+		err = os.RemoveAll(dp.Path())
+		log.LogInfof("action[Stop]:dp(%v) remove %v,err %v", dp.info(), dp.Path(), err)
+	}
+	return err
 }
 
 // PersistMetadata persists the file metadata on the disk.
