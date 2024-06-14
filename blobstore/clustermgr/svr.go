@@ -297,6 +297,7 @@ func New(cfg *Config) (*Service, error) {
 
 	// set raftServer
 	service.raftNode.SetRaftServer(raftServer)
+	diskMgr.SetRaftServer(raftServer)
 	scopeMgr.SetRaftServer(raftServer)
 	volumeMgr.SetRaftServer(raftServer)
 	configMgr.SetRaftServer(raftServer)

@@ -64,6 +64,19 @@ func TestNodeAddandDrop(t *testing.T) {
 		require.NoError(t, err)
 		err = testClusterClient.DropNode(ctx, proto.NodeID(1))
 		require.NoError(t, err)
+
+		// add disk to dropped node
+		err = testClusterClient.AddDisk(ctx, &testDiskInfo)
+		require.Error(t, err)
+
+		// add node without changing ip and port
+		testNodeInfo.Rack = "testrack-" + strconv.Itoa(0)
+		testNodeInfo.Host = testService.IDC[0] + "testhost-" + strconv.Itoa(0)
+		testNodeInfo.Idc = testService.IDC[0]
+		nodeID, err = testClusterClient.AddNode(ctx, &testNodeInfo)
+		require.NoError(t, err)
+		require.Equal(t, nodeID, proto.NodeID(1))
+
 	}
 }
 
