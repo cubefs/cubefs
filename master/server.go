@@ -236,6 +236,9 @@ func (m *Server) checkConfig(cfg *config.Config) (err error) {
 	m.config.DisableAutoCreate = cfg.GetBoolWithDefault(disableAutoCreate, false)
 	syslog.Printf("get disableAutoCreate cfg %v", m.config.DisableAutoCreate)
 
+	m.config.EnableAutoDeleteReplica = cfg.GetBoolWithDefault(enableAutoDeleteReplica, false)
+	syslog.Printf("get enableAutoDeleteReplica cfg %v", m.config.EnableAutoDeleteReplica)
+
 	m.config.faultDomain = cfg.GetBoolWithDefault(faultDomain, false)
 	m.config.heartbeatPort = cfg.GetInt64(heartbeatPortKey)
 	m.config.replicaPort = cfg.GetInt64(replicaPortKey)

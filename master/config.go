@@ -47,6 +47,7 @@ const (
 	cfgmetaPartitionInodeIdStep         = "metaPartitionInodeIdStep"
 	cfgMaxQuotaNumPerVol                = "maxQuotaNumPerVol"
 	disableAutoCreate                   = "disableAutoCreate"
+	enableAutoDeleteReplica             = "enableAutoDeleteReplica"
 	cfgMonitorPushAddr                  = "monitorPushAddr"
 	intervalToScanS3Expiration          = "intervalToScanS3Expiration"
 
@@ -130,6 +131,7 @@ type clusterConfig struct {
 	MetaPartitionInodeIdStep            uint64
 	MaxQuotaNumPerVol                   int
 	DisableAutoCreate                   bool
+	EnableAutoDeleteReplica             bool
 	MonitorPushAddr                     string
 	IntervalToScanS3Expiration          int64
 	MaxConcurrentLcNodes                uint64
