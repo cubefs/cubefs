@@ -71,6 +71,7 @@ type DataNode struct {
 	DecommissionDiskList      []string           // NOTE: the disks that running decommission
 	DecommissionDpTotal       int
 	DecommissionSyncMutex     sync.Mutex
+	BackupDataPartitions      []proto.BackupDataPartitionInfo
 }
 
 func newDataNode(addr, zoneName, clusterID string) (dataNode *DataNode) {
@@ -161,6 +162,7 @@ func (dataNode *DataNode) updateNodeMetric(resp *proto.DataNodeHeartbeatResponse
 	dataNode.AllDisks = resp.AllDisks
 	dataNode.BadDisks = resp.BadDisks
 	dataNode.BadDiskStats = resp.BadDiskStats
+	dataNode.BackupDataPartitions = resp.BackupDataPartitions
 
 	dataNode.StartTime = resp.StartTime
 	if dataNode.Total == 0 {
@@ -569,4 +571,14 @@ func (dataNode *DataNode) delDecommissionDiskFromCache(c *Cluster) {
 		c.DecommissionDisks.Delete(key)
 		log.LogDebugf("action[delDecommissionDiskFromCache] remove  %v", key)
 	}
+}
+
+func (dataNode *DataNode) getBackupDataPartitionIDs() (ids []uint64) {
+	dataNode.RLock()
+	dataNode.RUnlock()
+	ids = make([]uint64, 0)
+	for _, info := range dataNode.BackupDataPartitions {
+		ids = append(ids, info.PartitionID)
+	}
+	return ids
 }
