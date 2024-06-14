@@ -1158,7 +1158,7 @@ func (vol *Vol) deleteDataPartition(c *Cluster, dp *DataPartition) {
 	}
 
 	for _, addr := range addrs {
-		if err := vol.deleteDataPartitionFromDataNode(c, dp.createTaskToDeleteDataPartition(addr)); err != nil {
+		if err := vol.deleteDataPartitionFromDataNode(c, dp.createTaskToDeleteDataPartition(addr, false)); err != nil {
 			log.LogErrorf("[deleteDataPartitionFromDataNode] delete data replica from datanode fail, id %d, err %s", dp.PartitionID, err.Error())
 		}
 	}
@@ -1365,7 +1365,7 @@ func (vol *Vol) getTasksToDeleteDataPartitions() (tasks []*proto.AdminTask) {
 
 	for _, dp := range vol.dataPartitions.partitions {
 		for _, replica := range dp.Replicas {
-			tasks = append(tasks, dp.createTaskToDeleteDataPartition(replica.Addr))
+			tasks = append(tasks, dp.createTaskToDeleteDataPartition(replica.Addr, false))
 		}
 	}
 	return

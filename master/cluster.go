@@ -1583,7 +1583,7 @@ func (c *Cluster) createDataPartition(volName string, preload *DataPartitionPreL
 				if err != nil {
 					return
 				}
-				task := dp.createTaskToDeleteDataPartition(host)
+				task := dp.createTaskToDeleteDataPartition(host, false)
 				tasks := make([]*proto.AdminTask, 0)
 				tasks = append(tasks, task)
 				c.addDataNodeTasks(tasks)
@@ -2685,7 +2685,7 @@ func (c *Cluster) removeDataReplica(dp *DataPartition, addr string, validate boo
 		return
 	}
 
-	if err = c.deleteDataReplica(dp, dataNode); err != nil {
+	if err = c.deleteDataReplica(dp, dataNode, raftForceDel); err != nil {
 		return
 	}
 	// may already change leader during last decommission
@@ -2782,7 +2782,7 @@ func (c *Cluster) updateDataPartitionOfflinePeerIDWithLock(dp *DataPartition, pe
 	return
 }
 
-func (c *Cluster) deleteDataReplica(dp *DataPartition, dataNode *DataNode) (err error) {
+func (c *Cluster) deleteDataReplica(dp *DataPartition, dataNode *DataNode, raftForceDel bool) (err error) {
 	dp.Lock()
 	// in case dataNode is unreachable,update meta first.
 	dp.removeReplicaByAddr(dataNode.Addr)
@@ -2792,7 +2792,7 @@ func (c *Cluster) deleteDataReplica(dp *DataPartition, dataNode *DataNode) (err 
 		dp.Unlock()
 		return
 	}
-	task := dp.createTaskToDeleteDataPartition(dataNode.Addr)
+	task := dp.createTaskToDeleteDataPartition(dataNode.Addr, raftForceDel)
 	dp.Unlock()
 
 	_, err = dataNode.TaskManager.syncSendAdminTask(task)

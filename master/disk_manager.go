@@ -262,12 +262,12 @@ func (c *Cluster) decommissionDisk(dataNode *DataNode, raftForce bool, badDiskPa
 }
 
 const (
-	InitialDecommission uint32 = iota
-	ManualDecommission         // used for queryAllDecommissionDisk
-	AutoDecommission
-	AllDecommission
-	AutoAddReplica
-	ManualAddReplica
+	InitialDecommission = proto.InitialDecommission
+	ManualDecommission  = proto.ManualDecommission
+	AutoDecommission    = proto.AutoDecommission
+	AllDecommission     = proto.AllDecommission
+	AutoAddReplica      = proto.AutoAddReplica
+	ManualAddReplica    = proto.ManualAddReplica
 )
 
 type DecommissionDisk struct {

@@ -611,6 +611,7 @@ func (s *DataNode) handlePacketToDeleteDataPartition(p *repl.Packet) {
 		return
 	}
 	request := &proto.DeleteDataPartitionRequest{}
+	log.LogInfof(fmt.Sprintf("action[handlePacketToDeleteDataPartition] request %v ", request))
 	if task.OpCode == proto.OpDeleteDataPartition {
 		bytes, _ := json.Marshal(task.Request)
 		p.AddMesgLog(string(bytes))
@@ -618,7 +619,7 @@ func (s *DataNode) handlePacketToDeleteDataPartition(p *repl.Packet) {
 		if err != nil {
 			return
 		} else {
-			s.space.DeletePartition(request.PartitionId)
+			err = s.space.DeletePartition(request.PartitionId, request.DecommissionType, request.Force, request.IsSpecialReplica)
 		}
 	} else {
 		err = fmt.Errorf("illegal opcode ")
@@ -626,8 +627,9 @@ func (s *DataNode) handlePacketToDeleteDataPartition(p *repl.Packet) {
 	if err != nil {
 		err = errors.Trace(err, "delete DataPartition failed,PartitionID(%v)", request.PartitionId)
 		log.LogErrorf("action[handlePacketToDeleteDataPartition] err(%v).", err)
+	} else {
+		log.LogInfof(fmt.Sprintf("action[handlePacketToDeleteDataPartition] %v success", request.PartitionId))
 	}
-	log.LogInfof(fmt.Sprintf("action[handlePacketToDeleteDataPartition] %v error(%v)", request.PartitionId, err))
 }
 
 // Handle OpLoadDataPartition packet.
