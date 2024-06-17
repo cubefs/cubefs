@@ -414,7 +414,7 @@ func TestVolumeUnitTable_RangeVolumeUints(t *testing.T) {
 	require.NoError(t, err)
 
 	i := 0
-	volumeTable.RangeVolumeUnits(func(unitRecord *VolumeUnitRecord) {
+	volumeTable.RangeVolumeUnits(func(unitRecord *VolumeUnitRecord) error {
 		i++
 	})
 	require.Equal(t, len(units), i)
