@@ -21,6 +21,8 @@ import (
 	"fmt"
 	"hash/crc32"
 	"net"
+	"os"
+	"path"
 	"strconv"
 	"strings"
 	"sync"
@@ -191,6 +193,8 @@ func (s *DataNode) OperatePacket(p *repl.Packet, c net.Conn) (err error) {
 		s.handlePacketToStopDataPartitionRepair(p)
 	case proto.OpRecoverDataReplicaMeta:
 		s.handlePacketToRecoverDataReplicaMeta(p)
+	case proto.OpRecoverBackupDataReplica:
+		s.handlePacketToRecoverBackupDataReplica(p)
 	default:
 		p.PackErrorBody(repl.ErrorUnknownOp.Error(), repl.ErrorUnknownOp.Error()+strconv.Itoa(int(p.Opcode)))
 	}
@@ -1769,4 +1773,85 @@ func (s *DataNode) handleBatchUnlockNormalExtent(p *repl.Packet, connect net.Con
 	store.ExtentBatchUnlockNormalExtent(exts)
 
 	log.LogInfof("action[handleBatchUnlockNormalExtent] success len: %v", len(exts))
+}
+
+func (s *DataNode) handlePacketToRecoverBackupDataReplica(p *repl.Packet) {
+	task := &proto.AdminTask{}
+	err := json.Unmarshal(p.Data, task)
+	defer func() {
+		if err != nil {
+			p.PackErrorBody(ActionRecoverDataReplicaMeta, err.Error())
+		} else {
+			p.PacketOkReply()
+		}
+	}()
+	if err != nil {
+		return
+	}
+	request := &proto.RecoverBackupDataReplicaRequest{}
+	if task.OpCode != proto.OpRecoverBackupDataReplica {
+		err = fmt.Errorf("action[handlePacketToRecoverBackupDataReplica] illegal opcode ")
+		log.LogWarnf("action[handlePacketToRecoverBackupDataReplica] illegal opcode ")
+		return
+	}
+
+	bytes, _ := json.Marshal(task.Request)
+	p.AddMesgLog(string(bytes))
+	err = json.Unmarshal(bytes, request)
+	if err != nil {
+		return
+	}
+	log.LogDebugf("action[handlePacketToRecoverBackupDataReplica] try recover %v", request.PartitionId)
+	disk, err := s.space.GetDisk(request.Disk)
+	if err != nil {
+		log.LogErrorf("action[handlePacketToRecoverBackupDataReplica] disk(%v) is not found err(%v).", request.Disk, err)
+		return
+	}
+
+	fileInfoList, err := os.ReadDir(disk.Path)
+	if err != nil {
+		log.LogErrorf("action[handlePacketToRecoverBackupDataReplica] read dir(%v) err(%v).", disk.Path, err)
+		return
+	}
+	rootDir := ""
+	for _, fileInfo := range fileInfoList {
+		filename := fileInfo.Name()
+
+		if !disk.isBackupPartitionDir(filename) {
+			continue
+		}
+
+		if id, err := unmarshalBackupPartitionDirName(filename); err != nil {
+			log.LogErrorf("action[handlePacketToRecoverBackupDataReplica] unmarshal partitionName(%v) from disk(%v) err(%v) ",
+				filename, disk.Path, err.Error())
+			continue
+		} else {
+			if id == request.PartitionId {
+				rootDir = filename
+			}
+		}
+	}
+	if rootDir == "" {
+		log.LogErrorf("action[handlePacketToRecoverBackupDataReplica] dp root not found in dir(%v) .", disk.Path)
+		return
+	}
+
+	// rename root dir back to normal
+	newPath := strings.Replace(rootDir, BackupPartitionPrefix, "", 1)
+	err = os.Rename(path.Join(disk.Path, rootDir), path.Join(disk.Path, newPath))
+	if err != nil {
+		log.LogErrorf("action[handlePacketToRecoverBackupDataReplica] rename disk %v rootDir %v to %v failed %v.",
+			disk.Path, rootDir, newPath, err)
+		return
+	}
+
+	dp, err := LoadDataPartition(path.Join(request.Disk, newPath), disk)
+	if err != nil {
+		log.LogErrorf("action[handlePacketToRecoverBackupDataReplica] load disk %v rootDir %v failed err %v.",
+			disk.Path, rootDir, err)
+	} else {
+		s.space.AttachPartition(dp)
+		log.LogInfof("action[handlePacketToRecoverBackupDataReplica] load disk %v rootDir %v success .",
+			disk.Path, rootDir)
+	}
 }
