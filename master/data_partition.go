@@ -2289,3 +2289,11 @@ func (partition *DataPartition) getSpecifyStatusReplicaNum(status int8) uint8 {
 	}
 	return count
 }
+
+func (partition *DataPartition) createTaskToRecoverBackupDataPartitionReplica(addr, disk string) (task *proto.AdminTask,
+) {
+	task = proto.NewAdminTask(proto.OpRecoverBackupDataReplica, addr, newRecoverBackupDataPartitionReplicaRequest(
+		partition.PartitionID, disk))
+	partition.resetTaskID(task)
+	return
+}

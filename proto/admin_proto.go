@@ -1300,3 +1300,8 @@ type BackupDataPartitionInfo struct {
 	Disk        string
 	PartitionID uint64
 }
+
+type RecoverBackupDataReplicaRequest struct {
+	PartitionId uint64
+	Disk        string
+}

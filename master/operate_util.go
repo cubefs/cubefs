@@ -262,3 +262,11 @@ func matchKey(serverKey, clientKey string) bool {
 	cipherStr := h.Sum(nil)
 	return strings.EqualFold(clientKey, hex.EncodeToString(cipherStr))
 }
+
+func newRecoverBackupDataPartitionReplicaRequest(ID uint64, disk string) (req *proto.RecoverBackupDataReplicaRequest) {
+	req = &proto.RecoverBackupDataReplicaRequest{
+		PartitionId: ID,
+		Disk:        disk,
+	}
+	return
+}
