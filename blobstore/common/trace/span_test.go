@@ -396,3 +396,27 @@ func Benchmark_Span_TrackLog(b *testing.B) {
 		}
 	})
 }
+
+func Benchmark_Span_Assertion(b *testing.B) {
+	span, _ := opentracing.StartSpanFromContext(context.Background(), "")
+	b.Run("SpanImplement", func(b *testing.B) {
+		b.ResetTimer()
+		for ii := 0; ii <= b.N; ii++ {
+			spanAssert(span)
+		}
+	})
+
+	optSpan := span.(Span).WithOperation("opt").WithOperation("opt-again")
+	b.Run("SpanOperation", func(b *testing.B) {
+		b.ResetTimer()
+		for ii := 0; ii <= b.N; ii++ {
+			spanAssert(optSpan)
+		}
+	})
+	b.Run("SpanInterface", func(b *testing.B) {
+		b.ResetTimer()
+		for ii := 0; ii <= b.N; ii++ {
+			_ = span.(Span)
+		}
+	})
+}
