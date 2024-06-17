@@ -225,15 +225,18 @@ func (t *Tracer) Close() error {
 // found, StartSpanFromContext creates a root (parentless) Span.
 func StartSpanFromContext(ctx context.Context, operationName string, opts ...opentracing.StartSpanOption) (Span, context.Context) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, operationName, opts...)
-	return span.(Span), ctx
+	s, _ := spanAssert(span)
+	return s, ctx
 }
 
 // StartSpanFromContextWithTraceID starts and return a new span with `operationName` and traceID.
 func StartSpanFromContextWithTraceID(ctx context.Context, operationName string, traceID string, opts ...opentracing.StartSpanOption) (Span, context.Context) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, operationName, opts...)
-	s := span.(*spanImpl)
-	s.context.traceID = traceID
-	return s, ctx
+	if s, ok := span.(*spanImpl); ok {
+		s.context.traceID = traceID
+		return s, ctx
+	}
+	return span.(Span), ctx
 }
 
 // StartSpanFromHTTPHeaderSafe starts and return a Span with `operationName` and http.Request
@@ -255,23 +258,21 @@ func ContextWithSpan(ctx context.Context, span Span) context.Context {
 // SpanFromContext returns the `Span` previously associated with `ctx`, or
 // `nil` if no such `Span` could be found.
 func SpanFromContext(ctx context.Context) Span {
-	span := opentracing.SpanFromContext(ctx)
-	s, ok := span.(Span)
+	span, ok := spanAssert(opentracing.SpanFromContext(ctx))
 	if !ok {
 		return nil
 	}
-	return s
+	return span
 }
 
 // SpanFromContextSafe returns the `Span` previously associated with `ctx`, or
 // creates a root Span with name default.
 func SpanFromContextSafe(ctx context.Context) Span {
-	span := opentracing.SpanFromContext(ctx)
-	s, ok := span.(Span)
-	if !ok || s == nil {
+	span, ok := spanAssert(opentracing.SpanFromContext(ctx))
+	if !ok || span == nil {
 		return opentracing.GlobalTracer().StartSpan(defaultRootSpanName).(Span)
 	}
-	return s
+	return span
 }
 
 // NewContextFromSpan returns a new context with trace id.
