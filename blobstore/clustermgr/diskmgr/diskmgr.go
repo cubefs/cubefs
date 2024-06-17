@@ -85,7 +85,7 @@ type DiskMgrAPI interface {
 	// GetDiskInfo return disk info, it return ErrDiskNotFound if disk not found
 	GetDiskInfo(ctx context.Context, id proto.DiskID) (*blobnode.DiskInfo, error)
 	// CheckDiskInfoDuplicated return true if disk info already exit, like host and path duplicated
-	CheckDiskInfoDuplicated(ctx context.Context, info *blobnode.DiskInfo, nodeInfo *blobnode.NodeInfo) bool
+	CheckDiskInfoDuplicated(ctx context.Context, info *blobnode.DiskInfo, nodeInfo *blobnode.NodeInfo) error
 	// IsDiskWritable judge disk if writable, disk status unmoral or readonly or heartbeat timeout will return true
 	IsDiskWritable(ctx context.Context, id proto.DiskID) (bool, error)
 	// SetStatus change disk status, in some case, change status is not allow
@@ -326,21 +326,26 @@ func (d *DiskMgr) IsFrequentHeatBeat(id proto.DiskID, HeartbeatNotifyIntervalS i
 	return false, nil
 }
 
-func (d *DiskMgr) CheckDiskInfoDuplicated(ctx context.Context, diskInfo *blobnode.DiskInfo, nodeInfo *blobnode.NodeInfo) bool {
+func (d *DiskMgr) CheckDiskInfoDuplicated(ctx context.Context, diskInfo *blobnode.DiskInfo, nodeInfo *blobnode.NodeInfo) error {
+	span := trace.SpanFromContextSafe(ctx)
 	di, ok := d.getDisk(diskInfo.DiskID)
 	// compatible case: disk register again to diskSet
 	if ok && di.info.NodeID == proto.InvalidNodeID && diskInfo.NodeID != proto.InvalidNodeID &&
 		di.info.Host == nodeInfo.Host && di.info.Idc == nodeInfo.Idc && di.info.Rack == nodeInfo.Rack {
-		return false
+		return nil
 	}
 	if ok { // disk exist
-		return true
+		span.Warn("disk exist")
+		return apierrors.ErrExist
 	}
 	disk := &diskItem{
 		info: &blobnode.DiskInfo{Host: nodeInfo.Host, Path: diskInfo.Path},
 	}
-	_, ok = d.hostPathFilter.Load(disk.genFilterKey())
-	return ok
+	if _, ok = d.hostPathFilter.Load(disk.genFilterKey()); ok {
+		span.Warn("host and path duplicated")
+		return apierrors.ErrIllegalArguments
+	}
+	return nil
 }
 
 func (d *DiskMgr) IsDiskWritable(ctx context.Context, id proto.DiskID) (bool, error) {
