@@ -233,7 +233,12 @@ func (dataNode *DataNode) GetDpCntLimit() uint32 {
 }
 
 func (dataNode *DataNode) dpCntInLimit() bool {
-	return dataNode.DataPartitionCount <= dataNode.GetDpCntLimit()
+	inLimit := dataNode.DataPartitionCount <= dataNode.GetDpCntLimit()
+	if !inLimit {
+		log.LogInfof("dpCntInLimit: dp count is already over limit for node %s, cnt %d, limit %d",
+			dataNode.Addr, dataNode.DataPartitionCount, dataNode.GetDpCntLimit())
+	}
+	return inLimit
 }
 
 func (dataNode *DataNode) isWriteAbleWithSizeNoLock(size uint64) (ok bool) {
