@@ -72,6 +72,17 @@ type Span interface {
 	log.BaseLogger
 }
 
+func spanAssert(spanCarrier interface{}) (Span, bool) {
+	if span, ok := spanCarrier.(*spanImpl); ok {
+		return span, true
+	}
+	if span, ok := spanCarrier.(*operationSpan); ok {
+		return span, true
+	}
+	s, ok := spanCarrier.(Span)
+	return s, ok
+}
+
 // spanImpl implements Span
 type spanImpl struct {
 	operationName string
