@@ -1066,12 +1066,7 @@ func (mp *metaPartition) fsmUpdateExtentKeyAfterMigration(inoParam *Inode) (resp
 	i := item.(*Inode)
 	i.Lock()
 	defer i.Unlock()
-	if i.StorageClass == inoParam.HybridCouldExtentsMigration.storageClass {
-		log.LogWarnf("[fsmUpdateExtentKeyAfterMigration] mp(%v) inode(%v) storageClass(%v) is already the same with req storageClass",
-			mp.config.PartitionId, i.Inode, i.StorageClass)
-		resp.Status = proto.OpNotPerm
-		return
-	}
+
 	// for empty file, HybridCouldExtents.sortedEks is nil and StorageClass_Unspecified
 	// but HybridCouldExtentsMigration.sortedEks for inoParam is always not nil
 	if i.HybridCouldExtents.sortedEks == nil && i.StorageClass != proto.StorageClass_Unspecified && inoParam.HybridCouldExtentsMigration.sortedEks != nil {
@@ -1088,6 +1083,39 @@ func (mp *metaPartition) fsmUpdateExtentKeyAfterMigration(inoParam *Inode) (resp
 			mp.config.PartitionId, i.Inode, i.StorageClass, i.HybridCouldExtentsMigration.storageClass)
 		resp.Status = proto.OpNotPerm
 		return
+	}
+
+	// if StorageClass is the same, check if sortedEks is the same
+	if i.StorageClass == inoParam.HybridCouldExtentsMigration.storageClass &&
+		i.HybridCouldExtents.sortedEks != nil &&
+		inoParam.HybridCouldExtentsMigration.sortedEks != nil {
+		if proto.IsStorageClassReplica(i.StorageClass) {
+			inoExtents := i.HybridCouldExtents.sortedEks.(*SortedExtents)
+			mExtents := inoParam.HybridCouldExtentsMigration.sortedEks.(*SortedExtents)
+			if inoExtents.Equals(mExtents) {
+				log.LogInfof("[fsmUpdateExtentKeyAfterMigration] mp(%v) inode(%v) storageClass(%v) and extents same with req",
+					mp.config.PartitionId, i.Inode, i.StorageClass)
+				return
+			} else {
+				log.LogWarnf("[fsmUpdateExtentKeyAfterMigration] mp(%v) inode(%v) storageClass(%v) is already the same with req storageClass, but extents different",
+					mp.config.PartitionId, i.Inode, i.StorageClass)
+				resp.Status = proto.OpNotPerm
+				return
+			}
+		} else if proto.IsStorageClassBlobStore(i.StorageClass) {
+			inoObjExt := i.HybridCouldExtents.sortedEks.(*SortedObjExtents)
+			mObjExt := inoParam.HybridCouldExtentsMigration.sortedEks.(*SortedObjExtents)
+			if inoObjExt.Equals(mObjExt) {
+				log.LogInfof("[fsmUpdateExtentKeyAfterMigration] mp(%v) inode(%v) storageClass(%v) and objExtents same with req",
+					mp.config.PartitionId, i.Inode, i.StorageClass)
+				return
+			} else {
+				log.LogWarnf("[fsmUpdateExtentKeyAfterMigration] mp(%v) inode(%v) storageClass(%v) is already the same with req storageClass, but objExtents different",
+					mp.config.PartitionId, i.Inode, i.StorageClass)
+				resp.Status = proto.OpNotPerm
+				return
+			}
+		}
 	}
 
 	// store old storage ek in HybridCouldExtentsMigration
