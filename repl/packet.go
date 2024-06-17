@@ -503,7 +503,8 @@ func (p *Packet) IsMasterCommand() bool {
 		proto.OpDecommissionDataPartition,
 		proto.OpAddDataPartitionRaftMember,
 		proto.OpRemoveDataPartitionRaftMember,
-		proto.OpDataPartitionTryToLeader:
+		proto.OpDataPartitionTryToLeader,
+		proto.OpRecoverBackupDataReplica:
 		return true
 	default:
 		return false

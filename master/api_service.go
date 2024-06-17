@@ -1627,6 +1627,21 @@ func (m *Server) addDataReplica(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	retry := 0
+	for {
+		if !dp.setRestoreReplicaForbidden() {
+			retry++
+			if retry > defaultDecommissionRetryLimit {
+			} else {
+				err = errors.NewErrorf("set RestoreReplicaMetaForbidden failed")
+				sendErrReply(w, r, newErrHTTPReply(err))
+				return
+			}
+			time.Sleep(1 * time.Second)
+		}
+		break
+	}
+
 	if err = m.cluster.addDataReplica(dp, addr, false); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
@@ -1636,7 +1651,6 @@ func (m *Server) addDataReplica(w http.ResponseWriter, r *http.Request) {
 	dp.DecommissionType = ManualAddReplica
 	dp.RecoverStartTime = time.Now()
 	dp.SetDecommissionStatus(DecommissionRunning)
-	dp.setRestoreReplicaForbidden()
 
 	dp.Status = proto.ReadOnly
 	dp.isRecover = true
@@ -1895,6 +1909,15 @@ func (m *Server) decommissionDataPartition(w http.ResponseWriter, r *http.Reques
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
+	decommissionType, err := parseUintParam(r, DecommissionType)
+	if err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	// default is ManualDecommission
+	if decommissionType == 0 {
+		decommissionType = int(ManualDecommission)
+	}
 	node, err := c.dataNode(addr)
 	if err != nil {
 		rstMsg = fmt.Sprintf(" dataPartitionID :%v not find datanode for addr %v",
@@ -1902,7 +1925,7 @@ func (m *Server) decommissionDataPartition(w http.ResponseWriter, r *http.Reques
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: rstMsg})
 		return
 	}
-	err = m.cluster.markDecommissionDataPartition(dp, node, raftForce, ManualDecommission)
+	err = m.cluster.markDecommissionDataPartition(dp, node, raftForce, uint32(decommissionType))
 	if err != nil {
 		rstMsg = err.Error()
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: rstMsg})
@@ -6933,4 +6956,88 @@ func (m *Server) getAllMetaNodes(w http.ResponseWriter, r *http.Request) {
 	}()
 	metaNodes := m.cluster.allMetaNodes()
 	sendOkReply(w, r, newSuccessHTTPReply(metaNodes))
+}
+
+func (m *Server) recoverDiskErrorReplica(w http.ResponseWriter, r *http.Request) {
+	var (
+		msg         string
+		addr        string
+		dp          *DataPartition
+		dataNode    *DataNode
+		partitionID uint64
+		err         error
+	)
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminRecoverDiskErrorReplica))
+	defer func() {
+		doStatAndMetric(proto.AdminRecoverDiskErrorReplica, metric, err, nil)
+	}()
+
+	if partitionID, addr, err = parseRequestToAddDataReplica(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	if dp, err = m.cluster.getDataPartitionByID(partitionID); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(proto.ErrDataPartitionNotExists))
+		return
+	}
+
+	dataNode, err = m.cluster.dataNode(addr)
+	if err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+
+	if !proto.IsNormalDp(dp.PartitionType) {
+		err = fmt.Errorf("action[recoverDiskErrorReplica] [%d] is not normal dp, not support add or delete replica", dp.PartitionID)
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+
+	if dp.ReplicaNum == uint8(len(dp.Replicas)) {
+		err = fmt.Errorf("action[recoverDiskErrorReplica] [%d] already have %v replicas", dp.PartitionID, dp.ReplicaNum)
+		sendErrReply(w, r, newErrHTTPReply(err))
+	}
+
+	retry := 0
+	for {
+		if !dp.setRestoreReplicaForbidden() {
+			retry++
+			if retry > defaultDecommissionRetryLimit {
+			} else {
+				err = errors.NewErrorf("set RestoreReplicaMetaForbidden failed")
+				sendErrReply(w, r, newErrHTTPReply(err))
+				return
+			}
+			time.Sleep(1 * time.Second)
+		}
+		break
+	}
+	defer dp.setRestoreReplicaStop()
+	// restore raft member first
+	addPeer := proto.Peer{ID: dataNode.ID, Addr: addr}
+
+	log.LogInfof("action[recoverDiskErrorReplica] dp %v dst addr %v try add raft member, node id %v", dp.PartitionID, addr, dataNode.ID)
+	if err = m.cluster.addDataPartitionRaftMember(dp, addPeer); err != nil {
+		log.LogWarnf("action[recoverDiskErrorReplica] dp %v addr %v try add raft member err [%v]", dp.PartitionID, addr, err)
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+	// find replica disk path
+	backupInfo, err := dataNode.getBackupDataPartitionInfo(partitionID)
+	if err != nil {
+		log.LogWarnf("action[recoverDiskErrorReplica] cannot find backup info for dp %v on dataNode %v", partitionID, dataNode.Addr)
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+
+	err = m.cluster.syncRecoverBackupDataPartitionReplica(addr, backupInfo.Disk, dp)
+	if err != nil {
+		log.LogWarnf("action[recoverDiskErrorReplica] dp(%v)  recover replica [%v_%v] fail %v", dp.PartitionID, addr, backupInfo.Disk, err)
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+	msg = fmt.Sprintf("action[recoverDiskErrorReplica] dp(%v)  recover replica [%v_%v] successfully", dp.decommissionInfo(), backupInfo.Addr, backupInfo.Disk)
+	log.LogInfof("%v", msg)
+	sendOkReply(w, r, newSuccessHTTPReply(msg))
 }
