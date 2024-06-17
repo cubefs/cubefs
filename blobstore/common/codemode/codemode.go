@@ -85,8 +85,7 @@ var constCodeModeTactic = map[CodeMode]Tactic{
 	EC6P8L10:      {N: 6, M: 8, L: 10, AZCount: 2, PutQuorum: 13, GetQuorum: 0, MinShardSize: alignSize0B},
 
 	// for replicate
-	Replica3: {N: 3, M: 0, L: 0, AZCount: 3, PutQuorum: 3},
-
+	Replica3:      {N: 3, M: 0, L: 0, AZCount: 3, PutQuorum: 3},
 	Replica3OneAZ: {N: 3, M: 0, L: 0, AZCount: 1, PutQuorum: 3},
 }
 
@@ -104,11 +103,13 @@ var constName2CodeMode = map[CodeModeName]CodeMode{
 	"EC3P3":         EC3P3,
 	"EC10P4":        EC10P4,
 	"EC6P3":         EC6P3,
-	"EC6P6L9":       EC6P6L9,
-	"EC6P8L10":      EC6P8L10,
 	"EC12P9":        EC12P9,
+
 	"Replica3":      Replica3,
 	"Replica3OneAZ": Replica3OneAZ,
+
+	"EC6P6L9":  EC6P6L9,
+	"EC6P8L10": EC6P8L10,
 }
 
 var constCodeMode2Name = map[CodeMode]CodeModeName{
@@ -125,11 +126,13 @@ var constCodeMode2Name = map[CodeMode]CodeModeName{
 	EC3P3:         "EC3P3",
 	EC10P4:        "EC10P4",
 	EC6P3:         "EC6P3",
-	EC6P6L9:       "EC6P6L9",
-	EC6P8L10:      "EC6P8L10",
 	EC12P9:        "EC12P9",
+
 	Replica3:      "Replica3",
 	Replica3OneAZ: "Replica3OneAZ",
+
+	EC6P6L9:  "EC6P6L9",
+	EC6P8L10: "EC6P8L10",
 }
 
 //vol layout ep:EC6P10L2
@@ -252,10 +255,8 @@ func (c CodeMode) String() string {
 
 // IsValid check the CodeMode is valid
 func (c CodeMode) IsValid() bool {
-	if _, ok := constCodeMode2Name[c]; ok {
-		return ok
-	}
-	return false
+	_, ok := constCodeMode2Name[c]
+	return ok
 }
 
 // GetCodeMode get the code mode by name
@@ -268,10 +269,8 @@ func (cn CodeModeName) GetCodeMode() CodeMode {
 
 // IsValid check the CodeMode is valid by Name
 func (cn CodeModeName) IsValid() bool {
-	if _, ok := constName2CodeMode[cn]; ok {
-		return ok
-	}
-	return false
+	_, ok := constName2CodeMode[cn]
+	return ok
 }
 
 // Tactic get tactic by code mode name
@@ -281,6 +280,10 @@ func (cn CodeModeName) Tactic() Tactic {
 
 // IsValid ec tactic valid or not
 func (c *Tactic) IsValid() bool {
+	if c.IsReplicateMode() {
+		return c.N > 0 && c.AZCount > 0 && c.N%c.AZCount == 0 &&
+			c.PutQuorum > 0 && c.GetQuorum >= 0
+	}
 	return c.N > 0 && c.M > 0 && c.L >= 0 && c.AZCount > 0 &&
 		c.PutQuorum > 0 && c.GetQuorum >= 0 && c.MinShardSize >= 0 &&
 		c.N%c.AZCount == 0 && c.M%c.AZCount == 0 && c.L%c.AZCount == 0
@@ -365,6 +368,17 @@ func (c *Tactic) IsReplicateMode() bool {
 	return c.M == 0 && c.L == 0
 }
 
+// GetECCodeModes get all available ec CodeModes
+func GetECCodeModes() []CodeMode {
+	modes := make([]CodeMode, 0)
+	for _, mode := range GetAllCodeModes() {
+		if !mode.T().IsReplicateMode() {
+			modes = append(modes, mode)
+		}
+	}
+	return modes
+}
+
 // GetAllCodeModes get all the available CodeModes
 func GetAllCodeModes() []CodeMode {
 	return []CodeMode{
@@ -381,6 +395,11 @@ func GetAllCodeModes() []CodeMode {
 		EC3P3,
 		EC10P4,
 		EC6P3,
+		EC12P9,
+
+		Replica3,
+		Replica3OneAZ,
+
 		EC6P6L9,
 		EC6P8L10,
 	}

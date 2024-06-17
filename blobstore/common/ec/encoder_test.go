@@ -247,7 +247,7 @@ func TestLrcEncoder(t *testing.T) {
 }
 
 func TestLrcReconstruct(t *testing.T) {
-	for _, cm := range codemode.GetAllCodeModes() {
+	for _, cm := range codemode.GetECCodeModes() {
 		testLrcReconstruct(t, cm)
 	}
 }

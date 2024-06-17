@@ -52,10 +52,15 @@ func TestCodeModeBase(t *testing.T) {
 
 	for _, cm := range GetAllCodeModes() {
 		require.True(t, cm.IsValid())
+		require.True(t, cm.T().IsValid())
 		require.True(t, cm.Name().IsValid())
 		require.Equal(t, cm.String(), string(cm.Name()))
 		require.Equal(t, cm, cm.Name().GetCodeMode())
 		require.Equal(t, cm.Tactic(), cm.Name().Tactic())
+	}
+	for _, cm := range GetECCodeModes() {
+		require.True(t, cm.IsValid())
+		require.False(t, cm.T().IsReplicateMode())
 	}
 
 	name := CodeModeName("xxx")

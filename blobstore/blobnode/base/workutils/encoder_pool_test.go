@@ -23,7 +23,7 @@ import (
 )
 
 func TestEncoderPool(t *testing.T) {
-	modes := codemode.GetAllCodeModes()
+	modes := codemode.GetECCodeModes()
 	for _, mode := range modes {
 		_, err := GetEncoder(mode)
 		require.NoError(t, err)
