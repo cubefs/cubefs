@@ -36,6 +36,7 @@ import (
 	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/loadutil"
 	"github.com/cubefs/cubefs/util/log"
+	"github.com/cubefs/cubefs/util/strutil"
 )
 
 const (
@@ -46,6 +47,11 @@ const (
 const sampleDuration = 1 * time.Second
 
 const UpdateVolTicket = 2 * time.Minute
+
+const (
+	gcTimerDuration  = 10 * time.Second
+	gcRecyclePercent = 0.90
+)
 
 // MetadataManager manages all the meta partitions.
 type MetadataManager interface {
@@ -61,10 +67,11 @@ type MetadataManager interface {
 
 // MetadataManagerConfig defines the configures in the metadata manager.
 type MetadataManagerConfig struct {
-	NodeID    uint64
-	RootDir   string
-	ZoneName  string
-	RaftStore raftstore.RaftStore
+	NodeID        uint64
+	RootDir       string
+	ZoneName      string
+	EnableGcTimer bool
+	RaftStore     raftstore.RaftStore
 }
 
 type verOp2Phase struct {
@@ -94,6 +101,8 @@ type metadataManager struct {
 	stopC                chan struct{}
 	volUpdating          *sync.Map // map[string]*verOp2Phase
 	verUpdateChan        chan string
+	enableGcTimer        bool
+	gcTimer              *util.RecycleTimer
 }
 
 func (m *metadataManager) GetAllVolumes() (volumes *util.Set) {
@@ -422,6 +431,39 @@ func (m *metadataManager) startCpuSample() {
 	}()
 }
 
+func (m *metadataManager) startGcTimer() {
+	if !m.enableGcTimer {
+		log.LogDebugf("[startGcTimer] gc timer disable")
+		return
+	}
+
+	defer func() {
+		if r := recover(); r != nil {
+			log.LogErrorf("[startGcTimer] panic(%v)", r)
+		}
+	}()
+
+	enable, err := loadutil.IsEnableSwapMemory()
+	if err != nil {
+		log.LogErrorf("[startGcTimer] failed to get swap memory info, err(%v)", err)
+		return
+	}
+	if enable {
+		log.LogWarnf("[startGcTimer] swap memory is enable")
+		return
+	}
+	if m.gcTimer, err = util.NewRecycleTimer(gcTimerDuration, gcRecyclePercent, 1*util.GB); err != nil {
+		log.LogErrorf("[startGcTimer] failed to start gc timer, err(%v)", err)
+		return
+	}
+	m.gcTimer.SetPanicHook(func(r interface{}) {
+		log.LogErrorf("[startGcTimer] gc timer panic, err(%v)", r)
+	})
+	m.gcTimer.SetStatHook(func(totalPercent float64, currentProcess, currentGoHeap uint64) {
+		log.LogWarnf("[startGcTimer] host use too many memory, percent(%v), current process(%v), current process go heap(%v)", strutil.FormatPercent(totalPercent), strutil.FormatSize(currentProcess), strutil.FormatSize(currentGoHeap))
+	})
+}
+
 func (m *metadataManager) startSnapshotVersionPromote() {
 	m.verUpdateChan = make(chan string, 1000)
 	go func() {
@@ -448,6 +490,7 @@ func (m *metadataManager) onStart() (err error) {
 	m.startCpuSample()
 	m.startSnapshotVersionPromote()
 	m.startUpdateVolumes()
+	m.startGcTimer()
 	return
 }
 
@@ -457,6 +500,10 @@ func (m *metadataManager) onStop() {
 		for _, partition := range m.partitions {
 			partition.Stop()
 		}
+	}
+
+	if m.gcTimer != nil {
+		m.gcTimer.Stop()
 	}
 	return
 }
@@ -776,6 +823,7 @@ func NewMetadataManager(conf MetadataManagerConfig, metaNode *MetaNode) Metadata
 		metaNode:             metaNode,
 		maxQuotaGoroutineNum: defaultMaxQuotaGoroutine,
 		volUpdating:          new(sync.Map),
+		enableGcTimer:        conf.EnableGcTimer,
 	}
 }
 
