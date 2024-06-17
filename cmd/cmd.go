@@ -25,9 +25,11 @@ import (
 	"path"
 	"path/filepath"
 	"runtime"
+	"runtime/debug"
 	"strconv"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/cubefs/cubefs/authnode"
 	"github.com/cubefs/cubefs/cmd/common"
@@ -124,6 +126,16 @@ func modifyOpenFiles() (err error) {
 	}
 	syslog.Println("Rlimit Final", rLimit)
 	return
+}
+
+func releaseMemory(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusOK)
+	w.Header().Set("Content-Type", "text/plain")
+	begin := time.Now()
+	debug.FreeOSMemory()
+	interval := time.Since(begin)
+	msg := fmt.Sprintf("Success to release memory using %v", interval)
+	w.Write([]byte(msg))
 }
 
 func main() {
@@ -320,6 +332,7 @@ func main() {
 			mux.Handle("/debug/pprof/symbol", http.HandlerFunc(pprof.Symbol))
 			mux.Handle("/debug/pprof/trace", http.HandlerFunc(pprof.Trace))
 			mux.Handle("/debug/", http.HandlerFunc(pprof.Index))
+			mux.Handle("/releaseMemory", http.HandlerFunc(releaseMemory))
 			mainHandler := http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 				if strings.HasPrefix(req.URL.Path, "/debug/") {
 					mux.ServeHTTP(w, req)
