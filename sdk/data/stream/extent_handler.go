@@ -23,14 +23,13 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/cubefs/cubefs/util/rdma"
-	"github.com/cubefs/cubefs/util/stat"
-
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/sdk/data/wrapper"
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/log"
+	"github.com/cubefs/cubefs/util/rdma"
+	"github.com/cubefs/cubefs/util/stat"
 )
 
 // State machines
@@ -257,7 +256,9 @@ func (eh *ExtentHandler) sender() {
 			packet.ExtentID = uint64(eh.extID)
 			packet.ExtentOffset = int64(extOffset)
 
-			if IsRdma && eh.storeMode != proto.TinyExtentType {
+			packet.multiCopy = eh.MultiCopiesSwitch()
+
+			if packet.multiCopy {
 				packet.Arg = nil
 				packet.ArgLen = 0
 				packet.RemainingFollowers = 0
@@ -282,8 +283,12 @@ func (eh *ExtentHandler) sender() {
 			//log.LogDebugf("ExtentHandler sender: extent allocated, eh(%v) dp(%v) extID(%v) packet(%v)", eh, eh.dp, eh.extID, packet.GetUniqueLogId())
 			if IsRdma {
 				packet.CRC = crc32.ChecksumIEEE(packet.Data[:packet.Size])
+				connCount := len(eh.rdmaConn)
+				if !packet.multiCopy && (connCount > 1) {
+					connCount = 1
+				}
 				log.LogDebugf("rdma conn write packet begin ReqId: %d", packet.ReqID)
-				for _, conn := range eh.rdmaConn {
+				for _, conn := range eh.rdmaConn[:connCount] {
 					err = packet.WriteToRDMAConn(conn, packet.RdmaBuffer)
 					if err != nil {
 						log.LogWarnf("sender writeTo: failed, eh(%v) err(%v) packet(%v)", eh, err, packet)
@@ -361,7 +366,11 @@ func (eh *ExtentHandler) processReply(packet *Packet) {
 	reply := NewReply(packet.ReqID, packet.PartitionID, packet.ExtentID)
 	var err error
 	if IsRdma {
-		for _, conn := range eh.rdmaConn {
+		connCount := len(eh.rdmaConn)
+		if !packet.multiCopy && (connCount > 1) {
+			connCount = 1
+		}
+		for _, conn := range eh.rdmaConn[:connCount] {
 			err = reply.ReadFromRDMAConn(conn, proto.ReadDeadlineTime)
 			if err != nil {
 				log.LogErrorf("rdma conn recv reply: %v, err: %v", reply, err)
@@ -856,6 +865,22 @@ func (eh *ExtentHandler) setError() bool {
 		atomic.StoreInt32(&eh.stream.status, StreamerError)
 	}
 	return atomic.CompareAndSwapInt32(&eh.status, ExtentStatusRecovery, ExtentStatusError)
+}
+
+func (eh *ExtentHandler) MultiCopiesSwitch() bool {
+	if !IsRdma {
+		return false
+	}
+
+	if eh.storeMode == proto.TinyExtentType {
+		return false
+	}
+
+	if eh.stream.client.LimitManager.GetWriteSpeed() > (300 * util.MB) {
+		return false
+	}
+
+	return true
 }
 
 func CheckAllRdmaHostsIsAvail(dp *wrapper.DataPartition, exclude map[string]struct{}) {

@@ -16,9 +16,6 @@ package stream
 
 import (
 	"fmt"
-	"github.com/cubefs/cubefs/util/buf"
-	"github.com/cubefs/cubefs/util/exporter"
-	"golang.org/x/net/context"
 	"io"
 	"sync"
 	"sync/atomic"
@@ -27,7 +24,10 @@ import (
 	"github.com/cubefs/cubefs/blockcache/bcache"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util"
+	"github.com/cubefs/cubefs/util/buf"
+	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
+	"golang.org/x/net/context"
 )
 
 // One inode corresponds to one streamer. All the requests to the same inode will be queued.

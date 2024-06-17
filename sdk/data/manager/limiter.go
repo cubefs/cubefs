@@ -2,7 +2,6 @@ package manager
 
 import (
 	"container/list"
-	"golang.org/x/net/context"
 	"math"
 	"sync"
 	"sync/atomic"
@@ -12,6 +11,7 @@ import (
 	"github.com/cubefs/cubefs/sdk/data/wrapper"
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/log"
+	"golang.org/x/net/context"
 )
 
 const (
@@ -574,4 +574,8 @@ func (limitManager *LimitManager) UpdateFlowInfo(limit *proto.LimitRsp2Client) {
 func (limitManager *LimitManager) SetClientID(id uint64) (err error) {
 	limitManager.ID = id
 	return
+}
+
+func (limitManager *LimitManager) GetWriteSpeed() uint64 {
+	return atomic.LoadUint64(&limitManager.limitMap[proto.FlowWriteType].valAllocCommit)
 }

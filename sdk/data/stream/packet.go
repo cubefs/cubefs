@@ -17,14 +17,15 @@ package stream
 import (
 	"encoding/binary"
 	"fmt"
-	"github.com/cubefs/cubefs/proto"
-	"github.com/cubefs/cubefs/sdk/data/wrapper"
-	"github.com/cubefs/cubefs/util"
-	"github.com/cubefs/cubefs/util/rdma"
 	"hash/crc32"
 	"io"
 	"net"
 	"time"
+
+	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/sdk/data/wrapper"
+	"github.com/cubefs/cubefs/util"
+	"github.com/cubefs/cubefs/util/rdma"
 )
 
 // Packet defines a wrapper of the packet in proto.
@@ -32,6 +33,7 @@ type Packet struct {
 	proto.Packet
 	inode      uint64
 	errCount   int
+	multiCopy  bool
 	RdmaBuffer []byte
 }
 

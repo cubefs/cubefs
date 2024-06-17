@@ -19,7 +19,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/cubefs/cubefs/util/rdma"
 	"io"
 	"net"
 	"strconv"
@@ -29,6 +28,7 @@ import (
 
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/buf"
+	"github.com/cubefs/cubefs/util/rdma"
 )
 
 var (
@@ -820,55 +820,6 @@ func (p *Packet) ReadFromConn(c net.Conn, timeoutSec int) (err error) {
 	}
 	return nil
 }
-
-/*
-func (p *Packet) RecvRespFromRDMAConn(conn *rdma.Connection) (err error) {
-	var respBuff *rdma.Buffer
-	var respBuffByte []byte
-	var offset uint32 = 0
-
-	defer func() {
-		if respBuff != nil {
-			if err = respBuff.Release();err != nil {
-
-			}
-		}
-	}()
-
-	if err = conn.RecvResp(nil); err != nil {
-		return
-	}
-
-	respBuff, err = conn.GetRecvResponseBuffer()
-	if respBuffByte, err = respBuff.GetByte();err != nil {
-		return
-	}
-
-	if err = p.UnmarshalHeader(respBuffByte); err != nil {
-		return
-	}
-	offset += util.PacketHeaderSize + 8
-
-	if p.ArgLen > 0 {
-		p.Arg = make([]byte, int(p.ArgLen))
-		copy(p.Arg, respBuffByte[offset: offset + p.ArgLen])
-	}
-	offset += 40
-
-	if p.Size < 0 {
-		return syscall.EBADMSG
-	}
-	size := p.Size
-	//if (p.Opcode == OpRead || p.Opcode == OpStreamRead || p.Opcode == OpExtentRepairRead || p.Opcode == OpStreamFollowerRead) && p.ResultCode == OpInitResultCode {
-	//	size = 0
-	//}
-	p.Data = make([]byte, size)
-	copy(p.Data, respBuffByte[offset:offset + size])
-
-	return
-
-}
-*/
 
 // PacketOkReply sets the result code as OpOk, and sets the body as empty.
 func (p *Packet) PacketOkReply() {

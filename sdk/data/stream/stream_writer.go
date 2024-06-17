@@ -16,14 +16,11 @@ package stream
 
 import (
 	"fmt"
-	"github.com/cubefs/cubefs/util/rdma"
 	"hash/crc32"
 	"net"
 	"sync/atomic"
 	"syscall"
 	"time"
-
-	"golang.org/x/net/context"
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/sdk/data/wrapper"
@@ -31,6 +28,8 @@ import (
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/log"
+	"github.com/cubefs/cubefs/util/rdma"
+	"golang.org/x/net/context"
 )
 
 const (
@@ -297,6 +296,7 @@ func (s *Streamer) write(data []byte, offset, size, flags int, checkFunc func() 
 
 	ctx := context.Background()
 	s.client.writeLimiter.Wait(ctx)
+	s.client.LimitManager.WriteAlloc(ctx, size)
 
 	requests := s.extents.PrepareWriteRequests(offset, size, data)
 	log.LogDebugf("Streamer write: ino(%v) prepared requests(%v)", s.inode, requests)
