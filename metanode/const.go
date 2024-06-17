@@ -227,6 +227,7 @@ const (
 	cfgRetainLogs                = "retainLogs"                // string, raft RetainLogs
 	cfgRaftSyncSnapFormatVersion = "raftSyncSnapFormatVersion" // int, format version of snapshot that raft leader sent to follower
 	cfgServiceIDKey              = "serviceIDKey"
+	cfgEnableGcTimer             = "enableGcTimer" // bool
 
 	metaNodeDeleteBatchCountKey = "batchCount"
 	configNameResolveInterval   = "nameResolveInterval" // int

@@ -15,12 +15,70 @@
 package loadutil_test
 
 import (
+	"runtime"
+	"runtime/debug"
 	"testing"
 
+	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/loadutil"
+	"github.com/cubefs/cubefs/util/strutil"
+	"github.com/stretchr/testify/require"
 )
 
 func TestMemoryUsed(t *testing.T) {
-	used := loadutil.GetMemUsedPercent()
+	used, err := loadutil.GetMemoryUsedPercent()
+	require.NoError(t, err)
 	t.Logf("Mem Used:%v\n", used)
+}
+
+func TestGetTotalMem(t *testing.T) {
+	total, err := loadutil.GetTotalMemory()
+	require.NoError(t, err)
+	t.Logf("Mem Total:%v\n", total)
+}
+
+func TestGetCurrMemory(t *testing.T) {
+	curr, err := loadutil.GetCurrentProcessMemory()
+	require.NoError(t, err)
+	require.Greater(t, curr, uint64(0))
+}
+
+func TestAlloc(t *testing.T) {
+	allocSize := uint64(4 * util.GB)
+	total, err := loadutil.GetTotalMemory()
+	t.Logf("Total Memory %v", strutil.FormatSize(total))
+	require.NoError(t, err)
+	for allocSize > total {
+		allocSize /= 2
+	}
+
+	buff := make([]byte, allocSize)
+	for i := 0; i < int(allocSize); i++ {
+		buff[i] = 0
+	}
+
+	curr, err := loadutil.GetCurrentProcessMemory()
+	require.NoError(t, err)
+	require.Greater(t, curr, allocSize)
+	t.Logf("Memory %v Inused %v", strutil.FormatSize(curr), strutil.FormatSize(loadutil.GetGoInUsedHeap()))
+
+	buff = nil
+	curr, err = loadutil.GetCurrentProcessMemory()
+	require.NoError(t, err)
+	require.Greater(t, curr, allocSize)
+	runtime.GC()
+	t.Logf("Memory %v Inused %v", strutil.FormatSize(curr), strutil.FormatSize(loadutil.GetGoInUsedHeap()))
+
+	old := curr
+	debug.FreeOSMemory()
+	curr, err = loadutil.GetCurrentProcessMemory()
+	require.NoError(t, err)
+	require.Less(t, curr, old)
+	t.Logf("Memory %v", strutil.FormatSize(curr))
+}
+
+func TestGetTotalSwapedMemory(t *testing.T) {
+	total, err := loadutil.GetTotalSwapMemory()
+	require.NoError(t, err)
+	t.Logf("Swap Memory %v", strutil.FormatSize(total))
 }
