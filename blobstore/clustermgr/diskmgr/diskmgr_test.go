@@ -55,22 +55,31 @@ func TestDiskMgr_Normal(t *testing.T) {
 		nodeInfo, err := testDiskMgr.GetNodeInfo(ctx, proto.NodeID(1))
 		require.NoError(t, err)
 		require.Equal(t, proto.NodeID(1), nodeInfo.NodeID)
+		// test disk exist
 		for i := 1; i <= 10; i++ {
 			diskInfo, err := testDiskMgr.GetDiskInfo(ctx, proto.DiskID(i))
 			require.NoError(t, err)
 			require.Equal(t, proto.DiskID(i), diskInfo.DiskID)
-			duplicated := testDiskMgr.CheckDiskInfoDuplicated(ctx, diskInfo, nodeInfo)
-			require.Equal(t, true, duplicated)
+			diskExist := testDiskMgr.CheckDiskInfoDuplicated(ctx, diskInfo, nodeInfo)
+			require.Equal(t, apierrors.ErrExist, diskExist)
 		}
 
-		// test CheckDiskInfoDuplicated return false case
+		// test host and path duplicated
 		diskInfo, err := testDiskMgr.GetDiskInfo(ctx, proto.DiskID(1))
 		require.NoError(t, err)
-		diskInfo.Path += "notDuplicated"
+		diskInfo.DiskID = proto.DiskID(11)
 		nodeInfo, err = testDiskMgr.GetNodeInfo(ctx, proto.NodeID(1))
 		require.NoError(t, err)
 		duplicated := testDiskMgr.CheckDiskInfoDuplicated(ctx, diskInfo, nodeInfo)
-		require.Equal(t, true, duplicated)
+		require.Equal(t, apierrors.ErrIllegalArguments, duplicated)
+
+		// test normal case
+		diskInfo.DiskID = proto.DiskID(11)
+		diskInfo.Path += "notDuplicated"
+		nodeInfo, err = testDiskMgr.GetNodeInfo(ctx, proto.NodeID(1))
+		require.NoError(t, err)
+		duplicated = testDiskMgr.CheckDiskInfoDuplicated(ctx, diskInfo, nodeInfo)
+		require.Equal(t, nil, duplicated)
 	}
 
 	// IsDiskWritable and SetStatus and SwitchReadonly

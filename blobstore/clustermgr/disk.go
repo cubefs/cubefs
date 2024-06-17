@@ -58,9 +58,8 @@ func (s *Service) DiskAdd(c *rpc.Context) {
 		c.RespondError(apierrors.ErrCMNodeNotFound)
 		return
 	}
-	if s.DiskMgr.CheckDiskInfoDuplicated(ctx, args, nodeInfo) {
-		span.Warn("disk exist or host and path duplicated")
-		c.RespondError(apierrors.ErrIllegalArguments)
+	if err = s.DiskMgr.CheckDiskInfoDuplicated(ctx, args, nodeInfo); err != nil {
+		c.RespondError(err)
 		return
 	}
 	if args.ClusterID != s.ClusterID {
