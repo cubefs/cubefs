@@ -15,6 +15,7 @@
 package volumedb
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/google/uuid"
@@ -414,10 +415,18 @@ func TestVolumeUnitTable_RangeVolumeUints(t *testing.T) {
 	require.NoError(t, err)
 
 	i := 0
-	volumeTable.RangeVolumeUnits(func(unitRecord *VolumeUnitRecord) {
+	volumeTable.RangeVolumeUnits(func(unitRecord *VolumeUnitRecord) error {
 		i++
+		return nil
 	})
 	require.Equal(t, len(units), i)
+
+	err = errors.New("RangeVolumeUnits")
+	require.ErrorIs(t, err, volumeTable.RangeVolumeUnits(
+		func(_ *VolumeUnitRecord) error {
+			return err
+		}),
+	)
 }
 
 func TestVolumeTable_PutVolumeAndTask(t *testing.T) {

@@ -53,6 +53,7 @@ func addCmdListAllDB(cmd *grumble.Command) {
 		Args: func(a *grumble.Args) {
 			a.String("volumeDBPath", "volume db path")
 			a.String("normalDBPath", "normal db path")
+			a.String("kvDBPath", "kv db path")
 		},
 	}
 	cmd.AddCommand(command)
@@ -62,7 +63,7 @@ func cmdListAllDB(c *grumble.Context) error {
 	volumeDBPath := c.Args.String("volumeDBPath")
 	normalDBPath := c.Args.String("normalDBPath")
 	kvDBPath := c.Args.String("kvDBPath")
-	if volumeDBPath == "" || normalDBPath == "" {
+	if volumeDBPath == "" || normalDBPath == "" || kvDBPath == "" {
 		return errors.New("invalid command arguments")
 	}
 
@@ -88,6 +89,13 @@ func cmdListAllDB(c *grumble.Context) error {
 	}
 	fmt.Println("list volumes: ")
 	err = listAllVolumes(volumeTbl)
+	if err != nil {
+		return err
+	}
+	fmt.Println()
+
+	fmt.Println("list volumeUnits: ")
+	err = listAllVolumeUnits(volumeTbl)
 	if err != nil {
 		return err
 	}
@@ -127,9 +135,6 @@ func cmdListAllDB(c *grumble.Context) error {
 	fmt.Println()
 
 	serviceTbl := normaldb.OpenServiceTable(normalDB)
-	if err != nil {
-		return err
-	}
 	fmt.Println("list service: ")
 	err = listAllServices(serviceTbl)
 	if err != nil {
@@ -182,6 +187,17 @@ func listAllVolumes(volumeTbl *volumedb.VolumeTable) error {
 		data, err := json.Marshal(volInfo)
 		if err != nil {
 			return fmt.Errorf("json marshal failed, err: %s", err.Error())
+		}
+		fmt.Println(string(data))
+		return nil
+	})
+}
+
+func listAllVolumeUnits(volumeTbl *volumedb.VolumeTable) error {
+	return volumeTbl.RangeVolumeUnits(func(unitRecord *volumedb.VolumeUnitRecord) error {
+		data, err := json.Marshal(*unitRecord)
+		if err != nil {
+			return fmt.Errorf("json marshal: %s", err.Error())
 		}
 		fmt.Println(string(data))
 		return nil
