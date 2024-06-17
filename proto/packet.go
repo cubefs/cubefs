@@ -150,6 +150,7 @@ const (
 	OpQos                           uint8 = 0x6A
 	OpStopDataPartitionRepair       uint8 = 0x6B
 	OpRecoverDataReplicaMeta        uint8 = 0x6C
+	OpRecoverBackupDataReplica      uint8 = 0x6D
 
 	// Operations: MultipartInfo
 	OpCreateMultipart  uint8 = 0x70
