@@ -39,7 +39,7 @@ var (
 )
 
 func testWithAllMode(t *testing.T, testFunc func(t *testing.T, mode codemode.CodeMode)) {
-	for _, mode := range codemode.GetAllCodeModes() {
+	for _, mode := range codemode.GetECCodeModes() {
 		testFunc(t, mode)
 	}
 }

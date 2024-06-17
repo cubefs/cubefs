@@ -428,7 +428,7 @@ func TestAllocVolumeRetry(t *testing.T) {
 	cmcli := mock.ProxyMockClusterMgrCli(t)
 	v := volumeMgr{clusterMgr: cmcli}
 
-	codemodes := codemode.GetAllCodeModes()
+	codemodes := codemode.GetECCodeModes()
 	args := &cm.AllocVolumeArgs{
 		CodeMode: codemode.CodeMode(len(codemodes) + 1),
 	}
