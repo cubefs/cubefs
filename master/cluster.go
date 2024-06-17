@@ -2961,7 +2961,8 @@ func (c *Cluster) deleteDataReplica(dp *DataPartition, dataNode *DataNode, raftF
 	// in case dataNode is unreachable,update meta first.
 	dp.removeReplicaByAddr(dataNode.Addr)
 	dp.checkAndRemoveMissReplica(dataNode.Addr)
-
+	log.LogDebugf("action[deleteDataReplica] vol[%v],data partition[%v] remove replica[%v] force(%v)",
+		dp.VolName, dp.decommissionInfo(), dataNode.Addr, raftForceDel)
 	if err = dp.update("deleteDataReplica", dp.VolName, dp.Peers, dp.Hosts, c); err != nil {
 		dp.Unlock()
 		return
@@ -5193,4 +5194,19 @@ func (c *Cluster) RetryDecommissionDisk(addr string, diskPath string) bool {
 		return status == DecommissionFail
 	}
 	return false
+}
+
+func (c *Cluster) syncRecoverBackupDataPartitionReplica(host, disk string, dp *DataPartition) (err error) {
+	log.LogInfof("action[syncRecoverBackupDataPartitionReplica] dp [%v] to recover replica on %v_%v", dp.PartitionID, host, disk)
+	var dataNode *DataNode
+	dataNode, err = c.dataNode(host)
+	if err != nil {
+		return
+	}
+	var task *proto.AdminTask
+	task = dp.createTaskToRecoverBackupDataPartitionReplica(host, disk)
+	if _, err = dataNode.TaskManager.syncSendAdminTask(task); err != nil {
+		return
+	}
+	return
 }

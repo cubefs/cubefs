@@ -24,6 +24,7 @@ import (
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/atomicutil"
 	"github.com/cubefs/cubefs/util/auditlog"
+	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/log"
 )
 
@@ -577,4 +578,16 @@ func (dataNode *DataNode) getBackupDataPartitionIDs() (ids []uint64) {
 		ids = append(ids, info.PartitionID)
 	}
 	return ids
+}
+
+func (dataNode *DataNode) getBackupDataPartitionInfo(id uint64) (proto.BackupDataPartitionInfo, error) {
+	dataNode.RLock()
+	dataNode.RUnlock()
+	for _, info := range dataNode.BackupDataPartitions {
+		if info.PartitionID == id {
+			return info, nil
+		}
+	}
+	return proto.BackupDataPartitionInfo{}, errors.NewErrorf("cannot find backup info "+
+		"for dp (%v) on datanode (%v)", id, dataNode.Addr)
 }
