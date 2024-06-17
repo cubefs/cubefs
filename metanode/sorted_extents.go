@@ -634,3 +634,25 @@ func (se *SortedExtents) Delete(delEks []proto.ExtentKey) (curEks []proto.Extent
 	se.eks = curEks
 	return
 }
+
+func (se *SortedExtents) Equals(other *SortedExtents) bool {
+	se.RLock()
+	defer se.RUnlock()
+
+	if other == nil {
+		return false
+	}
+
+	if len(se.eks) != len(other.eks) {
+		return false
+	}
+
+	for idx, seKey := range se.eks {
+		otherKey := other.eks[idx]
+		if !seKey.Equals(&otherKey) {
+			return false
+		}
+	}
+
+	return true
+}
