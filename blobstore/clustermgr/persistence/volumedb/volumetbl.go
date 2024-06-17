@@ -472,7 +472,7 @@ func (v *VolumeTable) PutVolumeUnits(units []*VolumeUnitRecord) (err error) {
 	return v.unitTbl.DoBatch(batch)
 }
 
-func (v *VolumeTable) RangeVolumeUnits(f func(unitRecord *VolumeUnitRecord)) (err error) {
+func (v *VolumeTable) RangeVolumeUnits(f func(unitRecord *VolumeUnitRecord) error) (err error) {
 	snap := v.unitTbl.NewSnapshot()
 	defer v.unitTbl.ReleaseSnapshot(snap)
 	iter := v.unitTbl.NewIterator(snap)
@@ -487,7 +487,9 @@ func (v *VolumeTable) RangeVolumeUnits(f func(unitRecord *VolumeUnitRecord)) (er
 		if err != nil {
 			return err
 		}
-		f(info)
+		if err = f(info); err != nil {
+			return err
+		}
 		iter.Next()
 	}
 	return
