@@ -464,7 +464,7 @@ func getExtentsByMpId(dir string, volname string, mpId string) {
 				ModifyTime:         0,
 				NLink:              1,
 				Extents:            metanode.NewSortedExtents(),
-				StorageClass:       0, //TODO:tangjingyu use CONST VAR
+				StorageClass:       proto.StorageClass_Unspecified,
 				HybridCouldExtents: metanode.NewSortedHybridCloudExtents(),
 			}
 			slog.Printf("[getExtentsByMpId] host(%v) mpId(%v) get inode(%v): %v", addr, mpId, ino.Inode, ino.String())
@@ -510,9 +510,8 @@ func getExtentsByMpId(dir string, volname string, mpId string) {
 					walkBuf = normalBuf
 					replicaExtents.Range(walkFunc)
 				} else {
-					slog.Printf("[getExtentsByMpId] ######## HybridCouldExtents is nil, mpId(%v) inode(%v) replica(%v): (%v)",
-						mpId, ino.Inode, addr, proto.StorageClassString(ino.StorageClass)) //TODO:tangjingyu
-					log.LogErrorf("HybridCouldExtents is nil, mpId(%v) inode(%v) host(%v)", mpId, ino.Inode, addr)
+					log.LogErrorf("HybridCouldExtents is nil, mpId(%v) inode(%v) host(%v) storageClass(%v)",
+						mpId, ino.Inode, addr, proto.StorageClassString(ino.StorageClass))
 				}
 			}
 
@@ -526,9 +525,8 @@ func getExtentsByMpId(dir string, volname string, mpId string) {
 				}
 				//TODO: handle other impl type of HybridCouldExtentsMigration
 			} else {
-				slog.Printf("[getExtentsByMpId] ######## HybridCouldExtentsMigration is nil, mpId(%v) inode(%v) replica(%v): (%v)",
-					mpId, ino.Inode, addr, proto.StorageClassString(ino.HybridCouldExtentsMigration.GetStorageClass())) //TODO:tangjingyu
-				log.LogDebugf("HybridCouldExtentsMigration is nil, mpId(%v) inode(%v) host(%v)", mpId, ino.Inode, addr)
+				log.LogDebugf("HybridCouldExtentsMigration is nil, mpId(%v) inode(%v) host(%v) storageClass(%v)",
+					mpId, ino.Inode, addr, proto.StorageClassString(ino.HybridCouldExtentsMigration.GetStorageClass()))
 			}
 		}
 	}
@@ -665,7 +663,7 @@ func newGetDpExtentsCmd() *cobra.Command {
 			log.LogInfof("beforeTime: %v", beforeTime)
 			currentTimeUnix := time.Now().Unix()
 			beforeTimeUnix := t.Unix()
-			//TODO:tangjingyu
+			//TODO:tangjingyu comment this for test. must uncomment before release
 			//threeHours := int64(3600 * 3)
 			//
 			//if currentTimeUnix-beforeTimeUnix < threeHours {

@@ -2844,14 +2844,14 @@ func (m *metadataManager) opMetaUpdateExtentKeyAfterMigration(conn net.Conn, p *
 	remoteAddr string) (err error) {
 	req := &UpdateExtentKeyAfterMigrationRequest{}
 	if err = json.Unmarshal(p.Data, req); err != nil {
-		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		p.PacketErrorWithBody(proto.OpArgMismatchErr, ([]byte)(err.Error()))
 		m.respondToClientWithVer(conn, p)
 		err = errors.NewErrorf("[%v] req: %v, resp: %v", p.GetOpMsgWithReqAndResult(), req, err.Error())
 		return
 	}
 	mp, err := m.getPartition(req.PartitionID)
 	if err != nil {
-		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		p.PacketErrorWithBody(proto.OpNotExistErr, ([]byte)(err.Error()))
 		m.respondToClientWithVer(conn, p)
 		err = errors.NewErrorf("[%v] req: %v, resp: %v", p.GetOpMsgWithReqAndResult(), req, err.Error())
 		return

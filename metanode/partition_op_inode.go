@@ -1169,18 +1169,10 @@ func (mp *metaPartition) UpdateExtentKeyAfterMigration(req *proto.UpdateExtentKe
 		}
 	}()
 
-	if ino.StorageClass == req.StorageClass {
-		err = fmt.Errorf("inode(%v) storageClass(%v) is already the same with request storageClass",
-			ino.Inode, ino.StorageClass)
-		log.LogWarnf("[UpdateExtentKeyAfterMigration] %v", err.Error())
-		p.PacketErrorWithBody(proto.OpOk, []byte(err.Error()))
-		return
-	}
-
 	if atomic.LoadUint32(&ino.ForbiddenMigration) == ForbiddenToMigration {
 		err = fmt.Errorf("mp %v inode %v is forbidden to migration", mp.config.PartitionId, ino.Inode)
 		log.LogErrorf("action[UpdateExtentKeyAfterMigration] %v", err)
-		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+		p.PacketErrorWithBody(proto.OpNotPerm, []byte(err.Error()))
 		return
 	}
 	writeGen := atomic.LoadUint64(&ino.WriteGeneration)
@@ -1188,7 +1180,7 @@ func (mp *metaPartition) UpdateExtentKeyAfterMigration(req *proto.UpdateExtentKe
 		err = fmt.Errorf("mp %v inode %v write generation is %v now: receive %v",
 			mp.config.PartitionId, ino.Inode, writeGen, req.WriteGen)
 		log.LogErrorf("action[UpdateExtentKeyAfterMigration] %v", err)
-		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+		p.PacketErrorWithBody(proto.OpNotPerm, []byte(err.Error()))
 		return
 	}
 	//store ek after migration in HybridCouldExtentsMigration
@@ -1206,7 +1198,7 @@ func (mp *metaPartition) UpdateExtentKeyAfterMigration(req *proto.UpdateExtentKe
 				err = fmt.Errorf("mp %v inode %v migration class now is %v",
 					mp.config.PartitionId, ino.Inode, item.(*Inode).HybridCouldExtentsMigration.storageClass)
 				log.LogErrorf("action[UpdateExtentKeyAfterMigration] %v", err)
-				p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+				p.PacketErrorWithBody(proto.OpArgMismatchErr, []byte(err.Error()))
 				return
 			}
 			ino.HybridCouldExtentsMigration.sortedEks = item.(*Inode).HybridCouldExtentsMigration.sortedEks
@@ -1215,13 +1207,13 @@ func (mp *metaPartition) UpdateExtentKeyAfterMigration(req *proto.UpdateExtentKe
 		err = fmt.Errorf("mp %v inode %v unsupport new migration storage class %v",
 			mp.config.PartitionId, ino.Inode, req.StorageClass)
 		log.LogErrorf("action[UpdateExtentKeyAfterMigration] %v", err)
-		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+		p.PacketErrorWithBody(proto.OpArgMismatchErr, []byte(err.Error()))
 		return
 	}
 	val, err := ino.Marshal()
 	if err != nil {
 		log.LogErrorf("action[UpdateExtentKeyAfterMigration] ino %v marshall failed %v", ino.Inode, err.Error())
-		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+		p.PacketErrorWithBody(proto.OpArgMismatchErr, []byte(err.Error()))
 		return
 	}
 	resp, err := mp.submit(opFSMUpdateExtentKeyAfterMigration, val)
@@ -1234,7 +1226,7 @@ func (mp *metaPartition) UpdateExtentKeyAfterMigration(req *proto.UpdateExtentKe
 		err = fmt.Errorf("fsm resp err status(%v)", fsmRespStatus)
 		log.LogErrorf("action[UpdateExtentKeyAfterMigration] ino(%v) storageClass(%v) req(%v), fsm return err:%v",
 			ino.Inode, ino.StorageClass, req, err.Error())
-		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+		p.PacketErrorWithBody(fsmRespStatus, []byte(err.Error()))
 		return
 	}
 
