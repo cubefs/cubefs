@@ -692,7 +692,6 @@ func (dp *DataPartition) ForceLoadHeader() {
 func (dp *DataPartition) RemoveAll(decommissionType uint32, force, isSpecialReplica bool) (err error) {
 	dp.persistMetaMutex.Lock()
 	defer dp.persistMetaMutex.Unlock()
-
 	if force && isSpecialReplica && decommissionType == proto.AutoDecommission {
 		originalPath := dp.Path()
 		parent := path.Dir(originalPath)
@@ -756,6 +755,7 @@ func (dp *DataPartition) PersistMetadata() (err error) {
 	if metaData, err = json.Marshal(md); err != nil {
 		return
 	}
+	// persist meta can be failed with  io error
 	if _, err = metadataFile.Write(metaData); err != nil {
 		return
 	}
@@ -1525,8 +1525,8 @@ func (dp *DataPartition) handleDecommissionRecoverFailed() {
 
 func (dp *DataPartition) incDiskErrCnt() {
 	diskErrCnt := atomic.AddUint64(&dp.diskErrCnt, 1)
-	dp.PersistMetadata()
-	log.LogWarnf("[incDiskErrCnt]: dp(%v) disk err count:%v", dp.partitionID, diskErrCnt)
+	err := dp.PersistMetadata()
+	log.LogWarnf("[incDiskErrCnt]: dp(%v) disk err count:%v, err %v", dp.partitionID, diskErrCnt, err)
 }
 
 func (dp *DataPartition) getDiskErrCnt() uint64 {
