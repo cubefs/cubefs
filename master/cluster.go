@@ -2602,7 +2602,7 @@ func (c *Cluster) autoAddDataReplica(dp *DataPartition) (success bool, err error
 		if ns, err = zone.getNodeSet(nodeSets[0]); err != nil {
 			goto errHandler
 		}
-		if targetHosts, _, err = ns.getAvailDataNodeHosts(dp.Hosts, 1, zone.dataMediaType); err != nil {
+		if targetHosts, _, err = ns.getAvailDataNodeHosts(dp.Hosts, 1); err != nil {
 			goto errHandler
 		}
 	}
@@ -2703,7 +2703,11 @@ func (c *Cluster) migrateDataPartition(srcAddr, targetAddr string, dp *DataParti
 
 	if targetAddr != "" {
 		targetHosts = []string{targetAddr}
-	} else if targetHosts, _, err = ns.getAvailDataNodeHosts(dp.Hosts, 1, dp.MediaType); err != nil {
+		if err = c.checkDataNodesMediaTypeForMigrate(dataNode, targetAddr); err != nil {
+			log.LogErrorf("[migrateDataPartition] check mediaType err: %v", err.Error())
+			goto errHandler
+		}
+	} else if targetHosts, _, err = ns.getAvailDataNodeHosts(dp.Hosts, 1); err != nil {
 		if _, ok := c.vols[dp.VolName]; !ok {
 			log.LogWarnf("clusterID[%v] partitionID:%v  on node:%v offline failed,PersistenceHosts:[%v]",
 				c.Name, dp.PartitionID, srcAddr, dp.Hosts)
@@ -2852,25 +2856,25 @@ func (c *Cluster) addDataReplica(dp *DataPartition, addr string, ignoreDecommiss
 	dp.addReplicaMutex.Lock()
 	defer dp.addReplicaMutex.Unlock()
 
-	dataNode, err := c.dataNode(addr)
+	targetDataNode, err := c.dataNode(addr)
 	if err != nil {
 		return
 	}
 
-	if dataNode.MediaType != dp.MediaType {
+	if targetDataNode.MediaType != dp.MediaType {
 		err = fmt.Errorf("target datanode mediaType(%v) not match datapartition mediaType(%v)",
-			proto.MediaTypeString(dataNode.MediaType), proto.MediaTypeString(dp.MediaType))
+			proto.MediaTypeString(targetDataNode.MediaType), proto.MediaTypeString(dp.MediaType))
 		log.LogErrorf("[addDataReplica] dpId(%v), err: %v", dp.PartitionID, err.Error())
 		return
 	}
 
-	addPeer := proto.Peer{ID: dataNode.ID, Addr: addr}
+	addPeer := proto.Peer{ID: targetDataNode.ID, Addr: addr}
 
 	if !proto.IsNormalDp(dp.PartitionType) {
 		return fmt.Errorf("action[addDataReplica] [%d] is not normal dp, not support add or delete replica", dp.PartitionID)
 	}
 
-	log.LogInfof("action[addDataReplica] dp %v dst addr %v try add raft member, node id %v", dp.PartitionID, addr, dataNode.ID)
+	log.LogInfof("action[addDataReplica] dp %v dst addr %v try add raft member, node id %v", dp.PartitionID, addr, targetDataNode.ID)
 	if err = c.addDataPartitionRaftMember(dp, addPeer); err != nil {
 		log.LogWarnf("action[addDataReplica] dp %v addr %v try add raft member err [%v]", dp.PartitionID, addr, err)
 		return
@@ -3662,6 +3666,7 @@ func (c *Cluster) initDataPartitionsForCreateVol(vol *Vol, dpCount int, mediaTyp
 	}
 
 	for retryCount := 0; readWriteDataPartitions < defaultInitDataPartitionCnt && retryCount < 3; retryCount++ {
+		//TODO:tangjingyu: when retry, to create dp count should be dpCount - alreadyCreatedCount
 		err = vol.initDataPartitions(c, dpCount, mediaType)
 		if err != nil {
 			log.LogError("action[initDataPartitionsForCreateVol] init dataPartition error:",
@@ -4702,11 +4707,55 @@ func (c *Cluster) TryDecommissionDataNode(dataNode *DataNode) {
 	auditlog.LogMasterOp("DataNodeDecommission", msg, nil)
 }
 
-func (c *Cluster) migrateDisk(dataNode *DataNode, diskPath, dstPath string, raftForce bool, limit int, diskDisable bool, migrateType uint32) (err error) {
+func (c *Cluster) checkDataNodesMediaTypeForMigrate(srcNode *DataNode, dstAddr string) (err error) {
+	var dstNode *DataNode
+
+	if srcNode == nil {
+		log.LogErrorf("[checkDataNodesMediaTypeForMigrate] srcNode is nil")
+		return
+	}
+
+	if dstAddr != "" {
+		dstNode, err = c.dataNode(dstAddr)
+		if err != nil {
+			log.LogErrorf("[CheckDataNodesMediaTypeForMigrate] get dstNode(%v) failed: %v", dstAddr, err.Error())
+			return
+		}
+
+		if dstNode.MediaType != srcNode.MediaType {
+			err = fmt.Errorf("dstNode mediaType(%v) not match srcNode mediaType(%v)",
+				proto.MediaTypeString(dstNode.MediaType), proto.MediaTypeString(srcNode.MediaType))
+			log.LogErrorf("[CheckDataNodesMediaTypeForMigrate] %v", err.Error())
+			return
+		}
+	}
+
+	return nil
+}
+
+func (c *Cluster) checkDataNodeAddrMediaTypeForMigrate(srcAddr, dstAddr string) (err error) {
+	var srcNode *DataNode
+
+	srcNode, err = c.dataNode(srcAddr)
+	if err != nil {
+		log.LogErrorf("[CheckDataNodesMediaTypeForMigrate] get srcNode(%v) failed: %v", srcAddr, err.Error())
+		return
+	}
+
+	return c.checkDataNodesMediaTypeForMigrate(srcNode, dstAddr)
+}
+
+func (c *Cluster) migrateDisk(dataNode *DataNode, diskPath, dstAddr string, raftForce bool, limit int, diskDisable bool, migrateType uint32) (err error) {
 	var disk *DecommissionDisk
 	nodeAddr := dataNode.Addr
-	key := fmt.Sprintf("%s_%s", nodeAddr, diskPath)
+	if dstAddr != "" {
+		if err = c.checkDataNodeAddrMediaTypeForMigrate(nodeAddr, dstAddr); err != nil {
+			log.LogErrorf("[migrateDisk] check mediaType err: %v", err.Error())
+			return
+		}
+	}
 
+	key := fmt.Sprintf("%s_%s", nodeAddr, diskPath)
 	if value, ok := c.DecommissionDisks.Load(key); ok {
 		disk = value.(*DecommissionDisk)
 		status := disk.GetDecommissionStatus()
@@ -4731,7 +4780,7 @@ func (c *Cluster) migrateDisk(dataNode *DataNode, diskPath, dstPath string, raft
 	disk.ResidualDecommissionDps = make([]proto.IgnoreDecommissionDP, 0)
 	disk.IgnoreDecommissionDps = make([]proto.IgnoreDecommissionDP, 0)
 	// disk should be decommission all the dp
-	disk.markDecommission(dstPath, raftForce, limit)
+	disk.markDecommission(dstAddr, raftForce, limit)
 	if err = c.syncAddDecommissionDisk(disk); err != nil {
 		err = fmt.Errorf("action[addDecommissionDisk],clusterID[%v] dataNodeAddr:%v diskPath:%v err:%v ",
 			c.Name, nodeAddr, diskPath, err.Error())

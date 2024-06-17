@@ -481,13 +481,13 @@ func (dd *DecommissionDisk) GetDecommissionFailedDP(c *Cluster) (error, []uint64
 	return nil, failedDps
 }
 
-func (dd *DecommissionDisk) markDecommission(dstPath string, raftForce bool, limit int) {
+func (dd *DecommissionDisk) markDecommission(dstAddr string, raftForce bool, limit int) {
 	// if transfer from pause,do not change these attrs
 	if dd.GetDecommissionStatus() != DecommissionPause {
 		dd.DecommissionDpTotal = InvalidDecommissionDpCnt
 		dd.DecommissionDpCount = limit
 		dd.DecommissionRaftForce = raftForce
-		dd.DstAddr = dstPath
+		dd.DstAddr = dstAddr
 		dd.DecommissionTimes = 0
 	}
 	dd.DecommissionTerm = uint64(time.Now().Unix())
