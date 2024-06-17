@@ -44,6 +44,7 @@ import (
 	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/loadutil"
 	"github.com/cubefs/cubefs/util/log"
+	"github.com/cubefs/cubefs/util/strutil"
 
 	"github.com/xtaci/smux"
 )
@@ -127,11 +128,18 @@ const (
 
 	ConfigServiceIDKey = "serviceIDKey"
 
+	ConfigEnableGcTimer = "enableGcTimer"
+
 	// disk status becomes unavailable if disk error partition count reaches this value
 	ConfigKeyDiskUnavailablePartitionErrorCount = "diskUnavailablePartitionErrorCount"
 )
 
 const cpuSampleDuration = 1 * time.Second
+
+const (
+	gcTimerDuration  = 10 * time.Second
+	gcRecyclePercent = 0.90
+)
 
 // DataNode defines the structure of a data node.
 type DataNode struct {
@@ -186,6 +194,9 @@ type DataNode struct {
 	cpuUtil                 atomicutil.Float64
 	cpuSamplerDone          chan struct{}
 	// dpRepairTimeOut         uint64
+
+	enableGcTimer bool
+	gcTimer       *util.RecycleTimer
 
 	diskUnavailablePartitionErrorCount uint64 // disk status becomes unavailable when disk error partition count reaches this value
 	started                            int32
@@ -286,6 +297,8 @@ func doStart(server common.Server, cfg *config.Config) (err error) {
 	// start cpu sampler
 	s.startCpuSample()
 
+	s.startGcTimer()
+
 	s.setStart()
 
 	return
@@ -322,6 +335,9 @@ func doShutdown(server common.Server) {
 	MasterClient.Stop()
 	// stop cpu sample
 	close(s.cpuSamplerDone)
+	if s.gcTimer != nil {
+		s.gcTimer.Stop()
+	}
 }
 
 func (s *DataNode) parseConfig(cfg *config.Config) (err error) {
@@ -375,6 +391,8 @@ func (s *DataNode) parseConfig(cfg *config.Config) (err error) {
 	s.metricsDegrade = cfg.GetInt64(CfgMetricsDegrade)
 
 	s.serviceIDKey = cfg.GetString(ConfigServiceIDKey)
+
+	s.enableGcTimer = cfg.GetBoolWithDefault(ConfigEnableGcTimer, false)
 
 	diskUnavailablePartitionErrorCount := cfg.GetInt64(ConfigKeyDiskUnavailablePartitionErrorCount)
 	if diskUnavailablePartitionErrorCount <= 0 || diskUnavailablePartitionErrorCount > 100 {
@@ -993,6 +1011,39 @@ func (s *DataNode) startCpuSample() {
 			}
 		}
 	}()
+}
+
+func (s *DataNode) startGcTimer() {
+	if !s.enableGcTimer {
+		return
+	}
+
+	defer func() {
+		if r := recover(); r != nil {
+			log.LogErrorf("[startGcTimer] panic(%v)", r)
+		}
+	}()
+
+	enable, err := loadutil.IsEnableSwapMemory()
+	if err != nil {
+		log.LogErrorf("[startGcTimer] failed to get swap memory info, err(%v)", err)
+		return
+	}
+	if enable {
+		log.LogWarnf("[startGcTimer] swap memory is enable")
+		return
+	}
+	s.gcTimer, err = util.NewRecycleTimer(gcTimerDuration, gcRecyclePercent, 1*util.GB)
+	if err != nil {
+		log.LogErrorf("[startGcTimer] failed to start gc timer, err(%v)", err)
+		return
+	}
+	s.gcTimer.SetPanicHook(func(r interface{}) {
+		log.LogErrorf("[startGcTimer] gc timer panic, err(%v)", r)
+	})
+	s.gcTimer.SetStatHook(func(totalPercent float64, currentProcess, currentGoHeap uint64) {
+		log.LogWarnf("[startGcTimer] host use too many memory, percent(%v), current process(%v), current process go heap(%v)", strutil.FormatPercent(totalPercent), strutil.FormatSize(currentProcess), strutil.FormatSize(currentGoHeap))
+	})
 }
 
 func (s *DataNode) scheduleToCheckLackPartitions() {

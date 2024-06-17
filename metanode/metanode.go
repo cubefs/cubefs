@@ -141,7 +141,7 @@ func doStart(s common.Server, cfg *config.Config) (err error) {
 	if err = m.startRaftServer(cfg); err != nil {
 		return
 	}
-	if err = m.newMetaManager(); err != nil {
+	if err = m.newMetaManager(cfg); err != nil {
 		return
 	}
 	if err = m.startServer(); err != nil {
@@ -392,7 +392,7 @@ func (m *MetaNode) validConfig() (err error) {
 	return
 }
 
-func (m *MetaNode) newMetaManager() (err error) {
+func (m *MetaNode) newMetaManager(cfg *config.Config) (err error) {
 	if _, err = os.Stat(m.metadataDir); err != nil {
 		if err = os.MkdirAll(m.metadataDir, 0o755); err != nil {
 			return
@@ -419,10 +419,11 @@ func (m *MetaNode) newMetaManager() (err error) {
 
 	// load metadataManager
 	conf := MetadataManagerConfig{
-		NodeID:    m.nodeId,
-		RootDir:   m.metadataDir,
-		RaftStore: m.raftStore,
-		ZoneName:  m.zoneName,
+		NodeID:        m.nodeId,
+		RootDir:       m.metadataDir,
+		RaftStore:     m.raftStore,
+		ZoneName:      m.zoneName,
+		EnableGcTimer: cfg.GetBoolWithDefault(cfgEnableGcTimer, false),
 	}
 	m.metadataManager = NewMetadataManager(conf, m)
 	return

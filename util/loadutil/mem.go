@@ -12,9 +12,97 @@
 
 package loadutil
 
-import "github.com/shirou/gopsutil/mem"
+import (
+	"bufio"
+	"fmt"
+	"os"
+	"runtime"
+	"strconv"
+	"strings"
 
-func GetMemUsedPercent() float64 {
-	memInfo, _ := mem.VirtualMemory()
-	return memInfo.UsedPercent
+	"github.com/shirou/gopsutil/mem"
+)
+
+const PRO_MEM = "/proc/%d/status"
+
+func GetMemoryUsedPercent() (used float64, err error) {
+	memInfo, err := mem.VirtualMemory()
+	if err != nil {
+		return
+	}
+	used = memInfo.UsedPercent
+	return
+}
+
+func GetTotalMemory() (total uint64, err error) {
+	memInfo, err := mem.VirtualMemory()
+	if err != nil {
+		return
+	}
+	total = memInfo.Total
+	return
+}
+
+func GetUsedMemory() (used uint64, err error) {
+	memInfo, err := mem.VirtualMemory()
+	if err != nil {
+		return
+	}
+	used = memInfo.Used
+	return
+}
+
+func GetTotalSwapMemory() (total uint64, err error) {
+	memInfo, err := mem.SwapMemory()
+	if err != nil {
+		return
+	}
+	total = memInfo.Total
+	return
+}
+
+func IsEnableSwapMemory() (enable bool, err error) {
+	total, err := GetTotalSwapMemory()
+	if err != nil {
+		return
+	}
+	enable = total != 0
+	return
+}
+
+var procMemFile = fmt.Sprintf(PRO_MEM, os.Getpid())
+
+func GetCurrentProcessMemory() (used uint64, err error) {
+	fp, err := os.Open(procMemFile)
+	if err != nil {
+		return
+	}
+	defer fp.Close()
+	scan := bufio.NewScanner(fp)
+	for scan.Scan() {
+		line := scan.Text()
+		if !strings.HasPrefix(line, "VmRSS:") {
+			continue
+		}
+		value := strings.TrimPrefix(line, "VmRSS:")
+		value = strings.TrimSpace(value)
+		value = strings.TrimSuffix(value, " kB")
+		used, err = strconv.ParseUint(value, 10, 64)
+		if err != nil {
+			return
+		}
+		used = used * 1024
+		break
+	}
+	return
+}
+
+func GetGoMemStats() (heapInfo runtime.MemStats) {
+	runtime.ReadMemStats(&heapInfo)
+	return
+}
+
+func GetGoInUsedHeap() (size uint64) {
+	size = GetGoMemStats().HeapInuse
+	return
 }
