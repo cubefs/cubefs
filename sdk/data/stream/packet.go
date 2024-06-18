@@ -33,7 +33,6 @@ type Packet struct {
 	proto.Packet
 	inode      uint64
 	errCount   int
-	multiCopy  bool
 	RdmaBuffer []byte
 }
 

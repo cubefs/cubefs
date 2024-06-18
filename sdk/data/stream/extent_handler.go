@@ -81,6 +81,7 @@ type ExtentHandler struct {
 	// Will not be changed.
 	conn     *net.TCPConn
 	rdmaConn []*rdma.Connection
+	mulCopy  bool
 	dp       *wrapper.DataPartition
 
 	// Issue a signal to this channel when *inflight* hits zero.
@@ -127,6 +128,7 @@ func NewExtentHandler(stream *Streamer, offset int, storeMode int, size int) *Ex
 		reply:        make(chan *Packet, 1024),
 		doneSender:   make(chan struct{}),
 		doneReceiver: make(chan struct{}),
+		mulCopy:      false,
 	}
 
 	go eh.receiver()
@@ -256,9 +258,7 @@ func (eh *ExtentHandler) sender() {
 			packet.ExtentID = uint64(eh.extID)
 			packet.ExtentOffset = int64(extOffset)
 
-			packet.multiCopy = eh.MultiCopiesSwitch()
-
-			if packet.multiCopy {
+			if eh.mulCopy {
 				packet.Arg = nil
 				packet.ArgLen = 0
 				packet.RemainingFollowers = 0
@@ -283,12 +283,8 @@ func (eh *ExtentHandler) sender() {
 			//log.LogDebugf("ExtentHandler sender: extent allocated, eh(%v) dp(%v) extID(%v) packet(%v)", eh, eh.dp, eh.extID, packet.GetUniqueLogId())
 			if IsRdma {
 				packet.CRC = crc32.ChecksumIEEE(packet.Data[:packet.Size])
-				connCount := len(eh.rdmaConn)
-				if !packet.multiCopy && (connCount > 1) {
-					connCount = 1
-				}
 				log.LogDebugf("rdma conn write packet begin ReqId: %d", packet.ReqID)
-				for _, conn := range eh.rdmaConn[:connCount] {
+				for _, conn := range eh.rdmaConn {
 					err = packet.WriteToRDMAConn(conn, packet.RdmaBuffer)
 					if err != nil {
 						log.LogWarnf("sender writeTo: failed, eh(%v) err(%v) packet(%v)", eh, err, packet)
@@ -366,11 +362,7 @@ func (eh *ExtentHandler) processReply(packet *Packet) {
 	reply := NewReply(packet.ReqID, packet.PartitionID, packet.ExtentID)
 	var err error
 	if IsRdma {
-		connCount := len(eh.rdmaConn)
-		if !packet.multiCopy && (connCount > 1) {
-			connCount = 1
-		}
-		for _, conn := range eh.rdmaConn[:connCount] {
+		for _, conn := range eh.rdmaConn {
 			err = reply.ReadFromRDMAConn(conn, proto.ReadDeadlineTime)
 			if err != nil {
 				log.LogErrorf("rdma conn recv reply: %v, err: %v", reply, err)
@@ -736,17 +728,12 @@ func (eh *ExtentHandler) allocateExtentRdma() (err error) {
 			extID = int(eh.key.ExtentId)
 		}
 
-		if eh.storeMode == proto.TinyExtentType {
-			rdmaConn = make([]*rdma.Connection, 0, 1)
-			addr := wrapper.GetRdmaAddr(dp.Hosts[0])
-			conn, err := StreamRdmaConnPool.GetRdmaConn(addr)
-			if err != nil {
-				log.LogWarnf("allocateExtentRdma: failed to get rdma connection, eh(%v) host(%v) err(%v)", eh, addr, err)
-				CheckAllRdmaHostsIsAvail(dp, exclude)
-				break
-			}
-			rdmaConn = append(rdmaConn, conn)
-		} else {
+		eh.mulCopy = false
+		if eh.storeMode == proto.NormalExtentType && eh.stream.client.LimitManager.GetWriteSpeed() <= (300*util.MB) {
+			eh.mulCopy = true
+		}
+
+		if eh.mulCopy {
 			rdmaConn = make([]*rdma.Connection, 0, len(dp.Hosts))
 
 			for _, host := range dp.Hosts {
@@ -759,6 +746,16 @@ func (eh *ExtentHandler) allocateExtentRdma() (err error) {
 				}
 				rdmaConn = append(rdmaConn, conn)
 			}
+		} else {
+			rdmaConn = make([]*rdma.Connection, 0, 1)
+			addr := wrapper.GetRdmaAddr(dp.Hosts[0])
+			conn, err := StreamRdmaConnPool.GetRdmaConn(addr)
+			if err != nil {
+				log.LogWarnf("allocateExtentRdma: failed to get rdma connection, eh(%v) host(%v) err(%v)", eh, addr, err)
+				CheckAllRdmaHostsIsAvail(dp, exclude)
+				break
+			}
+			rdmaConn = append(rdmaConn, conn)
 		}
 
 		// success
@@ -865,22 +862,6 @@ func (eh *ExtentHandler) setError() bool {
 		atomic.StoreInt32(&eh.stream.status, StreamerError)
 	}
 	return atomic.CompareAndSwapInt32(&eh.status, ExtentStatusRecovery, ExtentStatusError)
-}
-
-func (eh *ExtentHandler) MultiCopiesSwitch() bool {
-	if !IsRdma {
-		return false
-	}
-
-	if eh.storeMode == proto.TinyExtentType {
-		return false
-	}
-
-	if eh.stream.client.LimitManager.GetWriteSpeed() > (300 * util.MB) {
-		return false
-	}
-
-	return true
 }
 
 func CheckAllRdmaHostsIsAvail(dp *wrapper.DataPartition, exclude map[string]struct{}) {
