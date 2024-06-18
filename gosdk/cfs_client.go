@@ -76,6 +76,11 @@ type (
 		cluster             string
 		dirChildrenNumLimit uint32
 
+		// hybrid cloud
+		volStorageClass        uint32
+		volAllowedStorageClass []uint32
+		volCacheDpStorageClass uint32
+
 		// runtime context
 		cwd    string // current working directory
 		fdmap  map[uint]*File
@@ -139,11 +144,12 @@ type (
 	File struct {
 		client *Client
 
-		fd    uint
-		ino   uint64
-		pino  uint64
-		flags int
-		mode  uint32
+		fd           uint
+		ino          uint64
+		pino         uint64
+		flags        int
+		mode         uint32
+		storageClass uint32 // for hybrid cloud
 
 		// dir only
 		dirp *dirStream
@@ -246,18 +252,20 @@ func (c *Client) Start() (err error) {
 	}
 	var ec *stream.ExtentClient
 	if ec, err = stream.NewExtentClient(&stream.ExtentConfig{
-		Volume:            c.cfg.VolName,
-		VolumeType:        c.volType,
-		Masters:           masters,
-		FollowerRead:      c.cfg.FollowerRead,
-		OnAppendExtentKey: mw.AppendExtentKey,
-		OnGetExtents:      mw.GetExtents,
-		OnTruncate:        mw.Truncate,
-		BcacheEnable:      c.cfg.EnableBcache,
-		OnLoadBcache:      c.bc.Get,
-		OnCacheBcache:     c.bc.Put,
-		OnEvictBcache:     c.bc.Evict,
-		DisableMetaCache:  true,
+		Volume:                 c.cfg.VolName,
+		Masters:                masters,
+		FollowerRead:           c.cfg.FollowerRead,
+		OnAppendExtentKey:      mw.AppendExtentKey,
+		OnGetExtents:           mw.GetExtents,
+		OnTruncate:             mw.Truncate,
+		BcacheEnable:           c.cfg.EnableBcache,
+		OnLoadBcache:           c.bc.Get,
+		OnCacheBcache:          c.bc.Put,
+		OnEvictBcache:          c.bc.Evict,
+		DisableMetaCache:       true,
+		VolStorageClass:        c.volStorageClass,
+		VolAllowedStorageClass: c.volAllowedStorageClass,
+		VolCacheDpStorageClass: c.volCacheDpStorageClass,
 	}); err != nil {
 		log.LogErrorf("newClient NewExtentClient failed(%v)", err)
 		return
@@ -422,13 +430,18 @@ func (c *Client) OpenFile(path string, flags int, mode uint32) (*File, error) {
 		fileCachePattern := fmt.Sprintf(".*%s.*", c.cacheRuleKey)
 		fileCache, _ = regexp.MatchString(fileCachePattern, absPath)
 	}
-	f := c.allocFD(info.Inode, fuseFlags, fuseMode, fileCache, info.Size, parentIno, absPath)
+	f := c.allocFD(info.Inode, fuseFlags, fuseMode, fileCache, info.Size, parentIno, absPath, info.StorageClass)
 	if f == nil {
 		return nil, syscall.EMFILE
 	}
 
+	var openForWrite = false
+	if fuseFlags&0x0f != syscall.O_RDONLY {
+		openForWrite = true
+	}
+
 	if proto.IsRegular(info.Mode) {
-		c.openStream(f)
+		c.openStream(f, openForWrite)
 		if fuseFlags&(syscall.O_TRUNC) != 0 {
 			if accFlags != (syscall.O_WRONLY) && accFlags != (syscall.O_RDWR) {
 				_ = c.closeStream(f)
@@ -959,8 +972,8 @@ func (c *Client) mkdir(pino uint64, name string, mode uint32, fullPath string) (
 	return c.mw.Create_ll(pino, name, fuseMode, 0, 0, nil, fullPath, false)
 }
 
-func (c *Client) openStream(f *File) {
-	_ = c.ec.OpenStream(f.ino)
+func (c *Client) openStream(f *File, openForWrite bool) {
+	_ = c.ec.OpenStream(f.ino, openForWrite, proto.IsStorageClassBlobStore(f.storageClass))
 }
 
 func (c *Client) closeStream(f *File) error {
@@ -1034,7 +1047,7 @@ func (c *Client) write(f *File, offset int64, data []byte, flags int) (n int, er
 			}
 			return nil
 		}
-		n, err = c.ec.Write(f.ino, int(offset), data, flags, checkFunc)
+		n, err = c.ec.Write(f.ino, int(offset), data, flags, checkFunc, f.storageClass, false)
 	} else {
 		n, err = f.fileWriter.Write(c.ctx(c.ID, f.ino), int(offset), data, flags)
 	}
@@ -1046,7 +1059,7 @@ func (c *Client) write(f *File, offset int64, data []byte, flags int) (n int, er
 
 func (c *Client) read(f *File, offset int64, data []byte) (n int, err error) {
 	if proto.IsHot(c.volType) {
-		n, err = c.ec.Read(f.ino, data, int(offset), len(data))
+		n, err = c.ec.Read(f.ino, data, int(offset), len(data), f.storageClass, false)
 	} else {
 		n, err = f.fileReader.Read(c.ctx(c.ID, f.ino), data, int(offset), len(data))
 	}
@@ -1089,7 +1102,7 @@ func (c *Client) lookupPath(path string) (*proto.InodeInfo, error) {
 	return info, nil
 }
 
-func (c *Client) allocFD(ino uint64, flags int, mode uint32, fileCache bool, fileSize uint64, parentInode uint64, path string) *File {
+func (c *Client) allocFD(ino uint64, flags int, mode uint32, fileCache bool, fileSize uint64, parentInode uint64, path string, storageClass uint32) *File {
 	c.fdlock.Lock()
 	defer c.fdlock.Unlock()
 	fd, ok := c.fdset.NextClear(0)
@@ -1097,8 +1110,8 @@ func (c *Client) allocFD(ino uint64, flags int, mode uint32, fileCache bool, fil
 		return nil
 	}
 	c.fdset.Set(fd)
-	f := &File{client: c, fd: fd, ino: ino, flags: flags, mode: mode, pino: parentInode, path: path}
-	if proto.IsCold(c.volType) {
+	f := &File{client: c, fd: fd, ino: ino, flags: flags, mode: mode, pino: parentInode, path: path, storageClass: storageClass}
+	if proto.IsCold(c.volType) || proto.IsStorageClassBlobStore(c.volStorageClass) {
 		clientConf := blobstore.ClientConfig{
 			VolName:         c.cfg.VolName,
 			VolType:         c.volType,
@@ -1156,6 +1169,9 @@ func (c *Client) loadConfFromMaster(masters []string) (err error) {
 	c.cacheAction = volumeInfo.CacheAction
 	c.cacheRuleKey = volumeInfo.CacheRule
 	c.cacheThreshold = volumeInfo.CacheThreshold
+	c.volStorageClass = volumeInfo.VolStorageClass
+	c.volAllowedStorageClass = volumeInfo.AllowedStorageClass
+	c.volCacheDpStorageClass = volumeInfo.CacheDpStorageClass
 
 	var clusterInfo *proto.ClusterInfo
 	clusterInfo, err = mc.AdminAPI().GetClusterInfo()
