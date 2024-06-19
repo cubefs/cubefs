@@ -43,12 +43,12 @@ func TestSingleZone(t *testing.T) {
 	// single zone exclude,if it is a single zone excludeZones don't take effect
 	excludeZones := make([]string, 0)
 	excludeZones = append(excludeZones, zoneName)
-	zones, err := topo.allocZonesForDataNode(replicaNum, replicaNum, excludeZones)
+	zones, err := topo.allocZonesForNode(&topo.metaTopology, replicaNum, replicaNum, excludeZones, []*Zone{})
 	require.NoError(t, err)
 	require.EqualValues(t, 1, len(zones))
 
 	// single zone normal
-	zones, err = topo.allocZonesForDataNode(replicaNum, replicaNum, nil)
+	zones, err = topo.allocZonesForNode(&topo.dataTopology, replicaNum, replicaNum, nil, []*Zone{})
 	require.NoError(t, err)
 	newHosts, _, err := zones[0].getAvailNodeHosts(TypeDataPartition, nil, nil, replicaNum)
 	require.NoError(t, err)
@@ -60,6 +60,36 @@ func TestAllocZones(t *testing.T) {
 	topo := newTopology()
 	c := new(Cluster)
 	zoneCount := 3
+
+	hostZoneMap := make(map[string]string)
+	hostZoneMap[mds1Addr] = testZone1
+	hostZoneMap[mds2Addr] = testZone1
+	hostZoneMap[mds3Addr] = testZone2
+	hostZoneMap[mds4Addr] = testZone2
+	hostZoneMap[mds5Addr] = testZone3
+
+	zoneMap := make(map[string]bool)
+	zoneMap[testZone1] = false
+	zoneMap[testZone2] = false
+	zoneMap[testZone3] = false
+
+	getZoneCntFunc := func(hosts []string) int {
+		for _, host := range hosts {
+			zoneNm := hostZoneMap[host]
+			zoneMap[zoneNm] = true
+		}
+		var zoneCnt int
+		for _, v := range zoneMap {
+			if v {
+				zoneCnt++
+			}
+		}
+		for k := range zoneMap {
+			zoneMap[k] = false
+		}
+		return zoneCnt
+	}
+
 	// add three zones
 	zoneName1 := testZone1
 	zone1 := newZone(zoneName1)
@@ -91,9 +121,9 @@ func TestAllocZones(t *testing.T) {
 	require.EqualValues(t, zoneCount, len(zones))
 	// only pass replica num
 	replicaNum := 2
-	zones, err := topo.allocZonesForDataNode(replicaNum, replicaNum, nil)
+	zones, err := topo.allocZonesForNode(&topo.dataTopology, replicaNum, replicaNum, nil, []*Zone{})
 	require.NoError(t, err)
-	require.EqualValues(t, replicaNum, len(zones))
+	require.EqualValues(t, len(topo.getAllZones()), len(zones))
 
 	cluster := new(Cluster)
 	cluster.t = topo
@@ -109,12 +139,17 @@ func TestAllocZones(t *testing.T) {
 	hosts, _, err = cluster.getHostFromNormalZone(TypeDataPartition, nil, nil, nil, replicaNum, 2, "")
 	require.NoError(t, err)
 
+	// specific zone
+	hosts, _, err = cluster.getHostFromNormalZone(TypeDataPartition, nil, nil, nil, 3, 2, zoneName1+","+zoneName2)
+	require.NoError(t, err)
+	require.EqualValues(t, getZoneCntFunc(hosts), 2)
+
 	t.Logf("ChooseTargetDataHosts in multi zones,hosts[%v]", hosts)
 	// after excluding zone3, alloc zones will be success
 	excludeZones := make([]string, 0)
 	excludeZones = append(excludeZones, zoneName3)
 
-	zones, err = topo.allocZonesForDataNode(2, replicaNum, excludeZones)
+	zones, err = topo.allocZonesForNode(&topo.dataTopology, 2, replicaNum, excludeZones, []*Zone{})
 	if err != nil {
 		t.Logf("allocZonesForDataNode failed,err[%v]", err)
 	}

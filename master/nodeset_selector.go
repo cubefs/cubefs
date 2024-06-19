@@ -77,9 +77,9 @@ func (ns *nodeSet) getMetaNodeTotalAvailableSpace() (space uint64) {
 func (ns *nodeSet) canWriteFor(nodeType NodeType, replica int) bool {
 	switch nodeType {
 	case DataNodeType:
-		return ns.canWriteForDataNode(replica)
+		return ns.canWriteForNode(ns.dataNodes, replica)
 	case MetaNodeType:
-		return ns.canWriteForMetaNode(replica)
+		return ns.canWriteForNode(ns.metaNodes, replica)
 	default:
 		panic("unknow node type")
 	}
