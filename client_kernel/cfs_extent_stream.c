@@ -1541,7 +1541,7 @@ static int cfs_set_packet_rdma_buffer_crc(struct cfs_extent_writer *writer, stru
 	packet->request.hdr.size = cpu_to_be32(size);
 	packet->pkg_data_type = CFS_PACKAGE_RDMA_ITER;
 	packet->data_buffer = pDataBuf;
-	packet->request.hdr_padding.RdmaAddr = pDataBuf->dma_addr;
+	packet->request.hdr_padding.RdmaAddr = cpu_to_be64(pDataBuf->dma_addr);
 	packet->request.hdr_padding.RdmaLength = htonl(size);
 
 	return 0;
