@@ -1530,7 +1530,7 @@ func (c *Cluster) createDataPartition(volName string, preload *DataPartitionPreL
 			goto errHandler
 		}
 	} else {
-		zoneNum := c.decideZoneNum(vol.crossZone)
+		zoneNum := c.decideZoneNum(vol) // zoneNum scope [1,3]
 		if targetHosts, targetPeers, err = c.getHostFromNormalZone(TypeDataPartition, nil, nil, nil,
 			int(dpReplicaNum), zoneNum, zoneName); err != nil {
 			goto errHandler
@@ -1656,53 +1656,51 @@ func (c *Cluster) syncCreateMetaPartitionToMetaNode(host string, mp *MetaPartiti
 // if vol is not cross zone, return 1
 // if vol enable cross zone and the zone number of cluster less than defaultReplicaNum return 2
 // otherwise, return defaultReplicaNum
-func (c *Cluster) decideZoneNum(crossZone bool) (zoneNum int) {
-	if !crossZone {
+func (c *Cluster) decideZoneNum(vol *Vol) (zoneNum int) {
+	if !vol.crossZone {
 		return 1
 	}
-
+	specificZoneList := strings.Split(vol.zoneName, ",")
 	var zoneLen int
 	if c.FaultDomain {
 		zoneLen = len(c.t.domainExcludeZones)
 	} else {
-		zoneLen = c.t.zoneLen()
+		zoneLen = 1
+		if len(specificZoneList) > 1 {
+			zoneLen = len(specificZoneList)
+		} else if vol.crossZone {
+			zoneLen = 2
+		}
 	}
 
 	if zoneLen < defaultReplicaNum {
 		zoneNum = 2
-	} else {
+	}
+	if zoneLen > defaultReplicaNum {
 		zoneNum = defaultReplicaNum
 	}
 
 	return zoneNum
 }
 
-func (c *Cluster) chooseZone2Plus1(zones []*Zone, excludeNodeSets []uint64, excludeHosts []string,
+func (c *Cluster) chooseZone2Plus1(rsMgr *rsManager, zones []*Zone, excludeNodeSets []uint64, excludeHosts []string,
 	nodeType uint32, replicaNum int) (hosts []string, peers []proto.Peer, err error,
 ) {
-	if replicaNum < 2 || replicaNum > 3 {
+	if replicaNum < 2 || replicaNum > defaultReplicaNum {
 		return nil, nil, fmt.Errorf("action[chooseZone2Plus1] replicaNum [%v]", replicaNum)
 	}
-
 	zoneList := make([]*Zone, 2)
-	if zones[0].getSpaceLeft(nodeType) < zones[1].getSpaceLeft(nodeType) {
-		zoneList[0] = zones[0]
-		zoneList[1] = zones[1]
-	} else {
-		zoneList[0] = zones[1]
-		zoneList[1] = zones[0]
-	}
-
-	for i := 2; i < len(zones); i++ {
-		spaceLeft := zones[i].getSpaceLeft(nodeType)
-		if spaceLeft > zoneList[0].getSpaceLeft(nodeType) {
-			if spaceLeft > zoneList[1].getSpaceLeft(nodeType) {
-				zoneList[1] = zones[i]
-			} else {
-				zoneList[0] = zones[i]
-			}
+	for i := range []int{1, 2} {
+		if rsMgr.zoneIndexForNode >= len(zones) {
+			rsMgr.zoneIndexForNode = 0
 		}
+		zoneList[i] = zones[rsMgr.zoneIndexForNode]
+		rsMgr.zoneIndexForNode++
 	}
+	sort.Slice(zoneList, func(i, j int) bool {
+		return zoneList[i].getSpaceLeft(nodeType) < zoneList[j].getSpaceLeft(nodeType)
+	})
+
 	log.LogInfof("action[chooseZone2Plus1] type [%v] after check,zone0 [%v] left [%v] zone1 [%v] left [%v]",
 		nodeType, zoneList[0].name, zoneList[0].getSpaceLeft(nodeType), zoneList[1].name, zoneList[1].getSpaceLeft(nodeType))
 
@@ -1750,46 +1748,57 @@ func (c *Cluster) chooseZoneNormal(zones []*Zone, excludeNodeSets []uint64, excl
 	return
 }
 
-func (c *Cluster) getHostFromNormalZone(nodeType uint32, excludeZones []string, excludeNodeSets []uint64,
-	excludeHosts []string, replicaNum int,
-	zoneNum int, specifiedZone string) (hosts []string, peers []proto.Peer, err error,
-) {
-	var zones []*Zone
-	zones = make([]*Zone, 0)
-	if replicaNum <= zoneNum {
-		zoneNum = replicaNum
-	}
+func (c *Cluster) getSpecificZoneList(specifiedZone string) (zones []*Zone, err error) {
 	// when creating vol,user specified a zone,we reset zoneNum to 1,to be created partition with specified zone,
 	// if specified zone is not writable,we choose a zone randomly
-	if specifiedZone != "" {
-		if err = c.checkNormalZoneName(specifiedZone); err != nil {
+
+	if err = c.checkNormalZoneName(specifiedZone); err != nil {
+		Warn(c.Name, fmt.Sprintf("cluster[%v],specified zone[%v]is found", c.Name, specifiedZone))
+		return
+	}
+	zoneList := strings.Split(specifiedZone, ",")
+	for i := 0; i < len(zoneList); i++ {
+		var zone *Zone
+		if zone, err = c.t.getZone(zoneList[i]); err != nil {
 			Warn(c.Name, fmt.Sprintf("cluster[%v],specified zone[%v]is found", c.Name, specifiedZone))
 			return
 		}
-		zoneList := strings.Split(specifiedZone, ",")
-		for i := 0; i < len(zoneList); i++ {
-			var zone *Zone
-			if zone, err = c.t.getZone(zoneList[i]); err != nil {
-				Warn(c.Name, fmt.Sprintf("cluster[%v],specified zone[%v]is found", c.Name, specifiedZone))
-				return
-			}
-			zones = append(zones, zone)
-		}
-	} else {
-		if nodeType == TypeDataPartition {
-			if zones, err = c.t.allocZonesForDataNode(zoneNum, replicaNum, excludeZones); err != nil {
-				return
-			}
-		} else {
-			if zones, err = c.t.allocZonesForMetaNode(zoneNum, replicaNum, excludeZones); err != nil {
-				return
-			}
-		}
+		zones = append(zones, zone)
+	}
+	return
+}
+
+func (c *Cluster) getHostFromNormalZone(nodeType uint32, excludeZones []string, excludeNodeSets []uint64,
+	excludeHosts []string, replicaNum int,
+	zoneNumNeed int, specifiedZoneName string) (hosts []string, peers []proto.Peer, err error,
+) {
+	var zonesQualified []*Zone
+	zonesQualified = make([]*Zone, 0)
+	if replicaNum <= zoneNumNeed {
+		zoneNumNeed = replicaNum
 	}
 
-	if len(zones) == 1 {
-		log.LogInfof("action[getHostFromNormalZone] zones [%v]", zones[0].name)
-		if hosts, peers, err = zones[0].getAvailNodeHosts(nodeType, excludeNodeSets, excludeHosts, replicaNum); err != nil {
+	var specifiedZones []*Zone
+	var rsMgr *rsManager
+	if specifiedZoneName != "" {
+		if specifiedZones, err = c.getSpecificZoneList(specifiedZoneName); err != nil {
+			return
+		}
+	}
+	if nodeType == TypeDataPartition {
+		rsMgr = &c.t.dataTopology
+	} else {
+		rsMgr = &c.t.metaTopology
+	}
+
+	// get all zones that qualified
+	if zonesQualified, err = c.t.allocZonesForNode(rsMgr, zoneNumNeed, replicaNum, excludeZones, specifiedZones); err != nil {
+		return
+	}
+
+	if len(zonesQualified) == 1 {
+		log.LogInfof("action[getHostFromNormalZone] zones [%v]", zonesQualified[0].name)
+		if hosts, peers, err = zonesQualified[0].getAvailNodeHosts(nodeType, excludeNodeSets, excludeHosts, replicaNum); err != nil {
 			log.LogErrorf("action[getHostFromNormalZone],err[%v]", err)
 			return
 		}
@@ -1799,23 +1808,23 @@ func (c *Cluster) getHostFromNormalZone(nodeType uint32, excludeZones []string, 
 	if excludeHosts == nil {
 		excludeHosts = make([]string, 0)
 	}
-
-	if c.cfg.DefaultNormalZoneCnt == defaultNormalCrossZoneCnt && len(zones) >= defaultNormalCrossZoneCnt {
-		if hosts, peers, err = c.chooseZoneNormal(zones, excludeNodeSets, excludeHosts, nodeType, replicaNum); err != nil {
+	// The upper process tries to go and get the dedicated zones, and the latter tries to choose the right zones as possible.
+	if c.cfg.DefaultNormalZoneCnt == defaultNormalCrossZoneCnt && len(zonesQualified) >= defaultNormalCrossZoneCnt {
+		if hosts, peers, err = c.chooseZoneNormal(zonesQualified, excludeNodeSets, excludeHosts, nodeType, replicaNum); err != nil {
 			return
 		}
 	} else {
-		if hosts, peers, err = c.chooseZone2Plus1(zones, excludeNodeSets, excludeHosts, nodeType, replicaNum); err != nil {
+		if hosts, peers, err = c.chooseZone2Plus1(rsMgr, zonesQualified, excludeNodeSets, excludeHosts, nodeType, replicaNum); err != nil {
 			return
 		}
 	}
 
 result:
-	log.LogInfof("action[getHostFromNormalZone] replicaNum[%v],zoneNum[%v],selectedZones[%v],hosts[%v]", replicaNum, zoneNum, len(zones), hosts)
+	log.LogInfof("action[getHostFromNormalZone] replicaNum[%v],zoneNum[%v],selectedZones[%v],hosts[%v]", replicaNum, zoneNumNeed, len(zonesQualified), hosts)
 	if len(hosts) != replicaNum {
-		log.LogErrorf("action[getHostFromNormalZone] replicaNum[%v],zoneNum[%v],selectedZones[%v],hosts[%v]", replicaNum, zoneNum, len(zones), hosts)
+		log.LogErrorf("action[getHostFromNormalZone] replicaNum[%v],zoneNum[%v],selectedZones[%v],hosts[%v]", replicaNum, zoneNumNeed, len(zonesQualified), hosts)
 		return nil, nil, errors.Trace(proto.ErrNoDataNodeToCreateDataPartition, "hosts len[%v],replicaNum[%v],zoneNum[%v],selectedZones[%v]",
-			len(hosts), replicaNum, zoneNum, len(zones))
+			len(hosts), replicaNum, zoneNumNeed, len(zonesQualified))
 	}
 
 	return
@@ -3438,7 +3447,7 @@ func (c *Cluster) allDataNodes() (dataNodes []proto.NodeView) {
 		dataNode := node.(*DataNode)
 		dataNodes = append(dataNodes, proto.NodeView{
 			Addr: dataNode.Addr, DomainAddr: dataNode.DomainAddr,
-			IsActive: dataNode.isActive, ID: dataNode.ID, IsWritable: dataNode.isWriteAble(),
+			IsActive: dataNode.isActive, ID: dataNode.ID, IsWritable: dataNode.IsWriteAble(),
 		})
 		return true
 	})
@@ -3451,7 +3460,7 @@ func (c *Cluster) allMetaNodes() (metaNodes []proto.NodeView) {
 		metaNode := node.(*MetaNode)
 		metaNodes = append(metaNodes, proto.NodeView{
 			ID: metaNode.ID, Addr: metaNode.Addr, DomainAddr: metaNode.DomainAddr,
-			IsActive: metaNode.IsActive, IsWritable: metaNode.isWritable(),
+			IsActive: metaNode.IsActive, IsWritable: metaNode.IsWriteAble(),
 		})
 		return true
 	})

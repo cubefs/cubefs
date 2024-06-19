@@ -800,7 +800,7 @@ func (mp *MetaPartition) memUsedReachThreshold(clusterName, volName string) bool
 	if !foundReadonlyReplica || readonlyReplica == nil {
 		return false
 	}
-	if readonlyReplica.metaNode.isWritable() {
+	if readonlyReplica.metaNode.IsWriteAble() {
 		msg := fmt.Sprintf("action[checkSplitMetaPartition] vol[%v],max meta parition[%v] status is readonly\n",
 			volName, mp.PartitionID)
 		Warn(clusterName, msg)
@@ -1483,8 +1483,7 @@ func (vol *Vol) doCreateMetaPartition(c *Cluster, start, end uint64) (mp *MetaPa
 		}
 	} else {
 		var excludeZone []string
-		zoneNum := c.decideZoneNum(vol.crossZone)
-
+		zoneNum := c.decideZoneNum(vol)
 		if hosts, peers, err = c.getHostFromNormalZone(TypeMetaPartition, excludeZone, nil, nil, int(vol.mpReplicaNum), zoneNum, vol.zoneName); err != nil {
 			log.LogErrorf("action[doCreateMetaPartition] getHostFromNormalZone err[%v]", err)
 			return nil, errors.NewError(err)

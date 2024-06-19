@@ -91,6 +91,10 @@ func newDataNode(addr, zoneName, clusterID string) (dataNode *DataNode) {
 	return
 }
 
+func (dataNode *DataNode) IsActiveNode() bool {
+	return dataNode.isActive
+}
+
 func (dataNode *DataNode) GetIoUtils() map[string]float64 {
 	return dataNode.ioUtils.Load().(map[string]float64)
 }
@@ -186,7 +190,7 @@ func (dataNode *DataNode) canAlloc() bool {
 	return overSoldCap(dataNode.Total) >= dataNode.TotalPartitionSize
 }
 
-func (dataNode *DataNode) isWriteAble() (ok bool) {
+func (dataNode *DataNode) IsWriteAble() (ok bool) {
 	dataNode.RLock()
 	defer dataNode.RUnlock()
 
@@ -203,7 +207,7 @@ func (dataNode *DataNode) availableDiskCount() (cnt int) {
 }
 
 func (dataNode *DataNode) canAllocDp() bool {
-	if !dataNode.isWriteAble() {
+	if !dataNode.IsWriteAble() {
 		return false
 	}
 
@@ -217,24 +221,34 @@ func (dataNode *DataNode) canAllocDp() bool {
 		return false
 	}
 
-	if !dataNode.dpCntInLimit() {
+	if !dataNode.PartitionCntLimited() {
 		return false
 	}
 
 	return true
 }
 
-func (dataNode *DataNode) GetDpCntLimit() uint32 {
+func (dataNode *DataNode) GetPartitionLimitCnt() uint32 {
 	return uint32(dataNode.DpCntLimit.GetCntLimit())
 }
 
-func (dataNode *DataNode) dpCntInLimit() bool {
-	inLimit := dataNode.DataPartitionCount <= dataNode.GetDpCntLimit()
-	if !inLimit {
+func (dataNode *DataNode) GetAvailableSpace() uint64 {
+	return dataNode.AvailableSpace
+}
+
+func (dataNode *DataNode) PartitionCntLimited() bool {
+	limited := dataNode.DataPartitionCount <= dataNode.GetPartitionLimitCnt()
+	if !limited {
 		log.LogInfof("dpCntInLimit: dp count is already over limit for node %s, cnt %d, limit %d",
-			dataNode.Addr, dataNode.DataPartitionCount, dataNode.GetDpCntLimit())
+			dataNode.Addr, dataNode.DataPartitionCount, dataNode.GetPartitionLimitCnt())
 	}
-	return inLimit
+	return limited
+}
+
+func (dataNode *DataNode) GetStorageInfo() string {
+	return fmt.Sprintf("data node(%v) cannot alloc dp, total space(%v) avaliable space(%v) used space(%v), offline(%v), avaliable disk cnt(%v), dp count(%v), over sold(%v))",
+		dataNode.GetAddr(), dataNode.GetTotal(), dataNode.GetTotal()-dataNode.GetUsed(), dataNode.GetUsed(),
+		dataNode.ToBeOffline, dataNode.availableDiskCount(), dataNode.DataPartitionCount, !dataNode.canAlloc())
 }
 
 func (dataNode *DataNode) isWriteAbleWithSizeNoLock(size uint64) (ok bool) {
@@ -251,6 +265,18 @@ func (dataNode *DataNode) isWriteAbleWithSize(size uint64) (ok bool) {
 	defer dataNode.RUnlock()
 
 	return dataNode.isWriteAbleWithSizeNoLock(size)
+}
+
+func (dataNode *DataNode) GetUsed() uint64 {
+	dataNode.RLock()
+	defer dataNode.RUnlock()
+	return dataNode.Used
+}
+
+func (dataNode *DataNode) GetTotal() uint64 {
+	dataNode.RLock()
+	defer dataNode.RUnlock()
+	return dataNode.Total
 }
 
 func (dataNode *DataNode) GetID() uint64 {
