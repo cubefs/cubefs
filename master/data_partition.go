@@ -734,6 +734,10 @@ func (partition *DataPartition) updateMetric(vr *proto.DataPartitionReport, data
 		partition.LeaderReportTime = time.Now().Unix()
 	}
 	replica.NeedsToCompare = vr.NeedCompare
+	// if repair progress is forward,update RecoverStartTime
+	if vr.DecommissionRepairProgress > replica.DecommissionRepairProgress {
+		partition.RecoverStartTime = time.Now()
+	}
 	replica.DecommissionRepairProgress = vr.DecommissionRepairProgress
 	replica.LocalPeers = vr.LocalPeers
 	replica.TriggerDiskError = vr.TriggerDiskError
@@ -939,7 +943,7 @@ const (
 	DecommissionRunning
 	DecommissionSuccess
 	DecommissionFail
-	DecommissionNeedManualFix
+	DecommissionCancel
 )
 
 const (
@@ -980,6 +984,8 @@ func GetDecommissionStatusMessage(status uint32) string {
 		return "Failed"
 	case DecommissionPrepare:
 		return "DecommissionPrepare"
+	case DecommissionCancel:
+		return "DecommissionCancel"
 	default:
 		return fmt.Sprintf("Unkown:%v", status)
 	}
@@ -1260,9 +1266,22 @@ func (partition *DataPartition) Decommission(c *Cluster) bool {
 		targetAddr           = partition.DecommissionDstAddr
 		srcReplica           *DataReplica
 		resetDecommissionDst = true
+		begin                = time.Now()
 	)
 
-	begin := time.Now()
+	if partition.GetDecommissionStatus() == DecommissionInitial {
+		log.LogWarnf("action[decommissionDataPartition] dp [%v] may be cancel", partition.decommissionInfo())
+		partition.DecommissionErrorMessage = "cancel decommission"
+		partition.markRollbackFailed(false)
+		return false
+	}
+	if !c.AutoDecommissionDiskIsEnabled() && partition.DecommissionType == AutoDecommission {
+		log.LogWarnf("action[decommissionDataPartition] dp [%v] decommission is disable", partition.decommissionInfo())
+		partition.DecommissionErrorMessage = "disable auto " +
+			" decommission"
+		partition.markRollbackFailed(false)
+		return false
+	}
 	partition.SetDecommissionStatus(DecommissionPrepare)
 	err = c.syncUpdateDataPartition(partition)
 	if err != nil {
