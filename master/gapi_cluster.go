@@ -300,12 +300,12 @@ func (m *ClusterService) getTopology(ctx context.Context, args struct{}) (*proto
 			cv.NodeSet[ns.ID] = nsView
 			ns.dataNodes.Range(func(key, value interface{}) bool {
 				dataNode := value.(*DataNode)
-				nsView.DataNodes = append(nsView.DataNodes, proto.NodeView{ID: dataNode.ID, Addr: dataNode.Addr, IsActive: dataNode.isActive, IsWritable: dataNode.isWriteAble()})
+				nsView.DataNodes = append(nsView.DataNodes, proto.NodeView{ID: dataNode.ID, Addr: dataNode.Addr, IsActive: dataNode.isActive, IsWritable: dataNode.IsWriteAble()})
 				return true
 			})
 			ns.metaNodes.Range(func(key, value interface{}) bool {
 				metaNode := value.(*MetaNode)
-				nsView.MetaNodes = append(nsView.MetaNodes, proto.NodeView{ID: metaNode.ID, Addr: metaNode.Addr, IsActive: metaNode.IsActive, IsWritable: metaNode.isWritable()})
+				nsView.MetaNodes = append(nsView.MetaNodes, proto.NodeView{ID: metaNode.ID, Addr: metaNode.Addr, IsActive: metaNode.IsActive, IsWritable: metaNode.IsWriteAble()})
 				return true
 			})
 		}

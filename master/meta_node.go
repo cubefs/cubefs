@@ -15,6 +15,7 @@
 package master
 
 import (
+	"fmt"
 	"sync"
 	"time"
 
@@ -61,8 +62,34 @@ func newMetaNode(addr, zoneName, clusterID string) (node *MetaNode) {
 	return
 }
 
+func (metaNode *MetaNode) IsActiveNode() bool {
+	return metaNode.IsActive
+}
+
 func (metaNode *MetaNode) clean() {
 	metaNode.Sender.exitCh <- struct{}{}
+}
+
+func (metaNode *MetaNode) GetStorageInfo() string {
+	return fmt.Sprintf("meta node(%v) cannot alloc dp, total space(%v) avaliable space(%v) used space(%v), offline(%v),  mp count(%v)",
+		metaNode.GetAddr(), metaNode.GetTotal(), metaNode.GetTotal()-metaNode.GetUsed(), metaNode.GetUsed(),
+		metaNode.ToBeOffline, metaNode.MetaPartitionCount)
+}
+
+func (metaNode *MetaNode) GetTotal() uint64 {
+	metaNode.RLock()
+	defer metaNode.RUnlock()
+	return metaNode.Total
+}
+
+func (metaNode *MetaNode) GetUsed() uint64 {
+	metaNode.RLock()
+	defer metaNode.RUnlock()
+	return metaNode.Used
+}
+
+func (metaNode *MetaNode) GetAvailableSpace() uint64 {
+	return metaNode.Total - metaNode.Used
 }
 
 func (metaNode *MetaNode) GetID() uint64 {
@@ -84,7 +111,7 @@ func (metaNode *MetaNode) SelectNodeForWrite() {
 	metaNode.SelectCount++
 }
 
-func (metaNode *MetaNode) isWritable() (ok bool) {
+func (metaNode *MetaNode) IsWriteAble() (ok bool) {
 	metaNode.RLock()
 	defer metaNode.RUnlock()
 	if metaNode.IsActive && metaNode.MaxMemAvailWeight > gConfig.metaNodeReservedMem &&
@@ -163,13 +190,13 @@ func (metaNode *MetaNode) checkHeartbeat() {
 	}
 }
 
-func (metaNode *MetaNode) GetMpCntLimit() (limit uint32) {
+func (metaNode *MetaNode) GetPartitionLimitCnt() (limit uint32) {
 	limit = uint32(metaNode.MpCntLimit.GetCntLimit())
 	return
 }
 
-func (metaNode *MetaNode) mpCntInLimit() bool {
-	return uint32(metaNode.MetaPartitionCount) <= metaNode.GetMpCntLimit()
+func (metaNode *MetaNode) PartitionCntLimited() bool {
+	return uint32(metaNode.MetaPartitionCount) <= metaNode.GetPartitionLimitCnt()
 }
 
 // LeaderMetaNode define the leader metaPartitions in meta node
