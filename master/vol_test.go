@@ -81,13 +81,15 @@ func TestVol(t *testing.T) {
 }
 
 func TestCreateColdVol(t *testing.T) {
-	volName := "coldVol"
+	volName1 := "coldVol"
+	volName2 := "coldVol2"
+	volName3 := "coldVol3"
 
 	req := map[string]interface{}{}
 	// name can't be empty
-	checkCreateVolParam(nameKey, req, "", volName, t)
+	checkCreateVolParam(nameKey, req, "", volName1, t)
 	// name regex is illegal
-	checkCreateVolParam(nameKey, req, "_vol", volName, t)
+	checkCreateVolParam(nameKey, req, "_vol", volName1, t)
 	// owner empty
 	checkCreateVolParam(volOwnerKey, req, "", testOwner, t)
 	// owner illegal
@@ -101,7 +103,7 @@ func TestCreateColdVol(t *testing.T) {
 	processWithFatalV2(proto.AdminCreateVol, true, req, t)
 
 	// check default val of normal vol
-	vol, err := server.cluster.getVol(volName)
+	vol, err := server.cluster.getVol(volName1)
 	require.NoError(t, err)
 	require.EqualValues(t, 120*util.GB, vol.dataPartitionSize)
 	require.EqualValues(t, defaultInitMetaPartitionCount, len(vol.MetaPartitions))
@@ -113,15 +115,16 @@ func TestCreateColdVol(t *testing.T) {
 	require.EqualValues(t, defaultReplicaNum, vol.dpReplicaNum)
 	require.EqualValues(t, 0, vol.domainId)
 
-	delVol(volName, t)
-	time.Sleep(30 * time.Second)
+	delVol(volName1, t)
+	// time.Sleep(30 * time.Second)
 
+	req[nameKey] = volName2
 	req[volTypeKey] = proto.VolumeTypeCold
 
 	processWithFatalV2(proto.AdminCreateVol, true, req, t)
 
 	// check default val of LF vol
-	vol, err = server.cluster.getVol(volName)
+	vol, err = server.cluster.getVol(volName2)
 	require.NoError(t, err)
 	require.EqualValues(t, "", vol.CacheRule)
 	require.EqualValues(t, defaultEbsBlkSize, vol.EbsBlkSize)
@@ -135,10 +138,9 @@ func TestCreateColdVol(t *testing.T) {
 	require.EqualValues(t, defaultCacheLowWater, vol.CacheLowWater)
 	require.EqualValues(t, defaultCacheLruInterval, vol.CacheLRUInterval)
 
-	delVol(volName, t)
+	delVol(volName2, t)
 
-	volName = "coldVol2"
-	req[nameKey] = volName
+	req[nameKey] = volName3
 	req[cacheRuleKey] = "cacheRule"
 
 	blkSize := 7 * 1024 * 1024
@@ -163,7 +165,7 @@ func TestCreateColdVol(t *testing.T) {
 
 	processWithFatalV2(proto.AdminCreateVol, true, req, t)
 
-	view := getSimpleVol(volName, true, t)
+	view := getSimpleVol(volName3, true, t)
 	assert.True(t, view.ObjBlockSize == blkSize)
 	assert.True(t, view.CacheCapacity == uint64(cacheCap))
 	assert.True(t, view.CacheThreshold == threshold)
@@ -173,7 +175,35 @@ func TestCreateColdVol(t *testing.T) {
 	assert.True(t, view.CacheLowWater == low)
 	assert.True(t, view.CacheLruInterval == lru)
 
-	delVol(volName, t)
+	delVol(volName3, t)
+
+	// NOTE: check all vols
+	timeout := time.Now().Add(100 * time.Second)
+	for time.Now().Before(timeout) {
+		_, err = server.cluster.getVol(volName1)
+		if err == nil {
+			time.Sleep(1 * time.Second)
+			continue
+		}
+		require.ErrorIs(t, err, proto.ErrVolNotExists)
+
+		_, err = server.cluster.getVol(volName2)
+		if err == nil {
+			time.Sleep(1 * time.Second)
+			continue
+		}
+		require.ErrorIs(t, err, proto.ErrVolNotExists)
+
+		_, err = server.cluster.getVol(volName3)
+		if err == nil {
+			time.Sleep(1 * time.Second)
+			continue
+		}
+		require.ErrorIs(t, err, proto.ErrVolNotExists)
+		return
+	}
+
+	t.Errorf("Delete cold vols timeout")
 }
 
 func checkCreateVolParam(key string, req map[string]interface{}, wrong, correct interface{}, t *testing.T) {

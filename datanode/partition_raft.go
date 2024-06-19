@@ -252,8 +252,12 @@ func (dp *DataPartition) StartRaftLoggingSchedule() {
 					dp.checkIsDiskError(err, WriteFlag)
 					continue
 				}
-				dp.raftPartition.Truncate(dp.minAppliedID)
-				dp.lastTruncateID = dp.minAppliedID
+				truncIndex := dp.minAppliedID
+				if truncIndex > appliedID {
+					truncIndex = appliedID
+				}
+				dp.raftPartition.Truncate(truncIndex)
+				dp.lastTruncateID = truncIndex
 				if err := dp.PersistMetadata(); err != nil {
 					log.LogErrorf("[StartRaftLoggingSchedule] partition [%v] persist metadata during scheduled truncate raft log failed: %v", dp.partitionID, err)
 					truncateRaftLogTimer.Reset(time.Minute)
@@ -344,9 +348,11 @@ func (dp *DataPartition) StartRaftAfterRepair(isLoad bool) {
 			}
 
 			if err := dp.StartRaft(isLoad); err != nil {
-				log.LogErrorf("action[StartRaftAfterRepair] PartitionID(%v) start raft err(%v). Retry after 20s.", dp.partitionID, err)
-				timer.Reset(5 * time.Second)
-				continue
+				log.LogErrorf("action[StartRaftAfterRepair] dp(%v) start raft err(%v)", dp.info(), err)
+				dp.DataPartitionCreateType = proto.NormalCreateDataPartition
+				dp.decommissionRepairProgress = float64(1)
+				dp.PersistMetadata()
+				return
 			}
 			// start raft
 			dp.DataPartitionCreateType = proto.NormalCreateDataPartition

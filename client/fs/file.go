@@ -322,7 +322,7 @@ func (f *File) Read(ctx context.Context, req *fuse.ReadRequest, resp *fuse.ReadR
 		stat.StatBandWidth("Read", uint32(req.Size))
 	}()
 
-	log.LogDebugf("TRACE Read enter: ino(%v) offset(%v) reqsize(%v) req(%v)", f.info.Inode, req.Offset, req.Size, req)
+	log.LogDebugf("TRACE Read enter: ino(%v) offset(%v) filesize(%v) reqsize(%v) req(%v)", f.info.Inode, req.Offset, f.info.Size, req.Size, req)
 
 	start := time.Now()
 
@@ -342,6 +342,16 @@ func (f *File) Read(ctx context.Context, req *fuse.ReadRequest, resp *fuse.ReadR
 		errMetric := exporter.NewCounter("fileReadFailed")
 		errMetric.AddWithLabels(1, map[string]string{exporter.Vol: f.super.volname, exporter.Err: "EIO"})
 		return ParseError(err)
+	}
+
+	// last read request of file
+	if f.info.Size > uint64(req.Offset) && uint64(req.Offset+int64(req.Size)) >= f.info.Size {
+		// at least read bytes: f.info.Size - req.Offset
+		if size > 0 && uint64(size) < f.info.Size-uint64(req.Offset) {
+			log.LogErrorf("Read: error data size, ino(%v) offset(%v) filesize(%v) reqsize(%v) size(%v)\n", f.info.Inode, req.Offset, f.info.Size, req.Size, size)
+			errMetric := exporter.NewCounter("fileReadFailed")
+			errMetric.AddWithLabels(1, map[string]string{exporter.Vol: f.super.volname, exporter.Err: "EIO"})
+		}
 	}
 
 	if size > req.Size {

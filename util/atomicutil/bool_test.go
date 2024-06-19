@@ -12,36 +12,19 @@
 // implied. See the License for the specific language governing
 // permissions and limitations under the License.
 
-package fileutil_test
+package atomicutil_test
 
 import (
-	"os"
-	"path"
 	"testing"
 
-	"github.com/cubefs/cubefs/util/fileutil"
+	"github.com/cubefs/cubefs/util/atomicutil"
 	"github.com/stretchr/testify/require"
 )
 
-func TestStat(t *testing.T) {
-	dir, err := os.MkdirTemp("", "")
-	require.NoError(t, err)
-	defer os.Remove(dir)
-	ino, err := fileutil.Stat(dir)
-	require.NoError(t, err)
-	require.NotEqual(t, 0, ino)
-}
-
-const blkSize = 4096
-
-func TestGetFilePhyscialSize(t *testing.T) {
-	dir, err := os.MkdirTemp("", "")
-	require.NoError(t, err)
-	defer os.RemoveAll(dir)
-	tmpFile := path.Join(dir, "tmp")
-	err = os.WriteFile(tmpFile, []byte("Hello World"), 0o755)
-	require.NoError(t, err)
-	size, err := fileutil.GetFilePhysicalSize(tmpFile)
-	require.NoError(t, err)
-	require.EqualValues(t, blkSize, size)
+func TestAtomicBool(t *testing.T) {
+	b := atomicutil.Bool{}
+	b.Store(true)
+	require.True(t, b.Load())
+	require.True(t, b.CompareAndSwap(true, false))
+	require.False(t, b.Load())
 }

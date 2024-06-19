@@ -30,12 +30,32 @@ import (
 	"github.com/cubefs/cubefs/sdk/meta"
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/errors"
-	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/cubefs/cubefs/util/stat"
+	"github.com/prometheus/client_golang/prometheus"
 
 	"golang.org/x/time/rate"
 )
+
+var (
+	clientMetric = prometheus.NewSummaryVec(
+		prometheus.SummaryOpts{
+			Namespace:  "cubefs",
+			Subsystem:  "client",
+			Name:       "client_cost_time",
+			Help:       "time cost in cubefs sdk",
+			Objectives: map[float64]float64{0.5: 0.05, 0.75: 0.025, 0.9: 0.01, 0.95: 0.005, 0.99: 0.001, 0.999: 0.0001, 0.9999: 0.00001},
+		}, []string{"api"})
+	readReqCountMetric = prometheus.NewGauge(
+		prometheus.GaugeOpts{
+			Name: "read_req_cnt",
+		})
+)
+
+func init() {
+	prometheus.MustRegister(clientMetric)
+	prometheus.MustRegister(readReqCountMetric)
+}
 
 type (
 	SplitExtentKeyFunc  func(parentInode, inode uint64, key proto.ExtentKey) error
@@ -498,11 +518,11 @@ func (client *ExtentClient) FileSize(inode uint64) (size int, gen uint64, valid 
 }
 
 // SetFileSize set the file size.
-func (client *ExtentClient) SetFileSize(inode uint64, size int) {
+func (client *ExtentClient) SetFileSize(inode uint64, size int, sync bool) {
 	s := client.GetStreamer(inode)
 	if s != nil {
 		log.LogDebugf("SetFileSize: ino(%v) size(%v)", inode, size)
-		s.extents.SetSize(uint64(size), true)
+		s.extents.SetSize(uint64(size), sync)
 	}
 }
 
@@ -523,7 +543,6 @@ func (client *ExtentClient) Write(inode uint64, offset int, data []byte, flags i
 	write, err = s.IssueWriteRequest(offset, data, flags, checkFunc)
 	if err != nil {
 		log.LogError(errors.Stack(err))
-		exporter.Warning(err.Error())
 	}
 	return
 }
@@ -570,6 +589,12 @@ func (client *ExtentClient) Flush(inode uint64) error {
 func (client *ExtentClient) Read(inode uint64, data []byte, offset int, size int) (read int, err error) {
 	// log.LogErrorf("======> ExtentClient Read Enter, inode(%v), len(data)=(%v), offset(%v), size(%v).", inode, len(data), offset, size)
 	// t1 := time.Now()
+	beg := time.Now()
+	defer func() {
+		clientMetric.WithLabelValues("Read").Observe(float64(time.Since(beg).Microseconds()))
+	}()
+
+	readReqCountMetric.Inc()
 	if size == 0 {
 		return
 	}
@@ -581,16 +606,23 @@ func (client *ExtentClient) Read(inode uint64, data []byte, offset int, size int
 	}
 
 	s.once.Do(func() {
+		beg = time.Now()
 		s.GetExtents()
+		clientMetric.WithLabelValues("Read_GetExtents").Observe(float64(time.Since(beg).Microseconds()))
 	})
 
+	beg = time.Now()
 	err = s.IssueFlushRequest()
 	if err != nil {
 		return
 	}
+	clientMetric.WithLabelValues("Read_Flush").Observe(float64(time.Since(beg).Microseconds()))
 
+	beg = time.Now()
 	read, err = s.read(data, offset, size)
+	clientMetric.WithLabelValues("Read_read").Observe(float64(time.Since(beg).Microseconds()))
 	// log.LogErrorf("======> ExtentClient Read Exit, inode(%v), time[%v us].", inode, time.Since(t1).Microseconds())
+	readReqCountMetric.Dec()
 	return
 }
 

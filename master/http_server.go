@@ -359,6 +359,12 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.AdminQueryDiskBrokenThreshold).
 		HandlerFunc(m.queryDiskBrokenThreshold)
+	router.NewRoute().Methods(http.MethodGet).
+		Path(proto.AdminGetClusterDataNodes).
+		HandlerFunc(m.getAllDataNodes)
+	router.NewRoute().Methods(http.MethodGet).
+		Path(proto.AdminGetClusterMetaNodes).
+		HandlerFunc(m.getAllMetaNodes)
 
 	// volume management APIs
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
@@ -557,6 +563,9 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 	router.NewRoute().Methods(http.MethodGet).
 		Path(proto.AdminRecoverReplicaMeta).
 		HandlerFunc(m.recoverReplicaMeta)
+	router.NewRoute().Methods(http.MethodGet).
+		Path(proto.AdminRecoverDiskErrorReplica).
+		HandlerFunc(m.recoverDiskErrorReplica)
 
 	// meta node management APIs
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).

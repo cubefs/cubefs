@@ -23,6 +23,8 @@ import (
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/atomicutil"
+	"github.com/cubefs/cubefs/util/auditlog"
+	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/log"
 )
 
@@ -70,6 +72,7 @@ type DataNode struct {
 	DecommissionDiskList      []string           // NOTE: the disks that running decommission
 	DecommissionDpTotal       int
 	DecommissionSyncMutex     sync.Mutex
+	BackupDataPartitions      []proto.BackupDataPartitionInfo
 }
 
 func newDataNode(addr, zoneName, clusterID string) (dataNode *DataNode) {
@@ -98,10 +101,12 @@ func (dataNode *DataNode) SetIoUtils(used map[string]float64) {
 func (dataNode *DataNode) checkLiveness() {
 	dataNode.Lock()
 	defer dataNode.Unlock()
-	log.LogInfof("action[checkLiveness] datanode[%v] report time[%v],since report time[%v], need gap [%v]",
-		dataNode.Addr, dataNode.ReportTime, time.Since(dataNode.ReportTime), time.Second*time.Duration(defaultNodeTimeOutSec))
 	if time.Since(dataNode.ReportTime) > time.Second*time.Duration(defaultNodeTimeOutSec) {
 		dataNode.isActive = false
+		msg := fmt.Sprintf("datanode[%v] report time[%v],since report time[%v], need gap [%v]",
+			dataNode.Addr, dataNode.ReportTime, time.Since(dataNode.ReportTime), time.Second*time.Duration(defaultNodeTimeOutSec))
+		log.LogWarnf("action[checkLiveness]  %v", msg)
+		auditlog.LogMasterOp("DataNodeLive", msg, nil)
 	}
 
 	return
@@ -158,6 +163,7 @@ func (dataNode *DataNode) updateNodeMetric(resp *proto.DataNodeHeartbeatResponse
 	dataNode.AllDisks = resp.AllDisks
 	dataNode.BadDisks = resp.BadDisks
 	dataNode.BadDiskStats = resp.BadDiskStats
+	dataNode.BackupDataPartitions = resp.BackupDataPartitions
 
 	dataNode.StartTime = resp.StartTime
 	if dataNode.Total == 0 {
@@ -230,7 +236,12 @@ func (dataNode *DataNode) GetDpCntLimit() uint32 {
 }
 
 func (dataNode *DataNode) dpCntInLimit() bool {
-	return dataNode.DataPartitionCount <= dataNode.GetDpCntLimit()
+	inLimit := dataNode.DataPartitionCount <= dataNode.GetDpCntLimit()
+	if !inLimit {
+		log.LogInfof("dpCntInLimit: dp count is already over limit for node %s, cnt %d, limit %d",
+			dataNode.Addr, dataNode.DataPartitionCount, dataNode.GetDpCntLimit())
+	}
+	return inLimit
 }
 
 func (dataNode *DataNode) isWriteAbleWithSizeNoLock(size uint64) (ok bool) {
@@ -527,6 +538,7 @@ func (dataNode *DataNode) resetDecommissionStatus() {
 	dataNode.DecommissionLimit = 0
 	dataNode.DecommissionCompleteTime = 0
 	dataNode.DecommissionDiskList = make([]string, 0)
+	dataNode.ToBeOffline = false
 }
 
 func (dataNode *DataNode) createVersionTask(volume string, version uint64, op uint8, addr string, verList []*proto.VolVersionInfo) (task *proto.AdminTask) {
@@ -556,4 +568,26 @@ func (dataNode *DataNode) delDecommissionDiskFromCache(c *Cluster) {
 		c.DecommissionDisks.Delete(key)
 		log.LogDebugf("action[delDecommissionDiskFromCache] remove  %v", key)
 	}
+}
+
+func (dataNode *DataNode) getBackupDataPartitionIDs() (ids []uint64) {
+	dataNode.RLock()
+	dataNode.RUnlock()
+	ids = make([]uint64, 0)
+	for _, info := range dataNode.BackupDataPartitions {
+		ids = append(ids, info.PartitionID)
+	}
+	return ids
+}
+
+func (dataNode *DataNode) getBackupDataPartitionInfo(id uint64) (proto.BackupDataPartitionInfo, error) {
+	dataNode.RLock()
+	dataNode.RUnlock()
+	for _, info := range dataNode.BackupDataPartitions {
+		if info.PartitionID == id {
+			return info, nil
+		}
+	}
+	return proto.BackupDataPartitionInfo{}, errors.NewErrorf("cannot find backup info "+
+		"for dp (%v) on datanode (%v)", id, dataNode.Addr)
 }

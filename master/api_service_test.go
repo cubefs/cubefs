@@ -318,6 +318,16 @@ func TestGetCluster(t *testing.T) {
 	process(reqURL, t)
 }
 
+func TestGetClusterDataNodes(t *testing.T) {
+	reqURL := fmt.Sprintf("%v%v", hostAddr, proto.AdminGetClusterDataNodes)
+	process(reqURL, t)
+}
+
+func TestGetClusterMetaNodes(t *testing.T) {
+	reqURL := fmt.Sprintf("%v%v", hostAddr, proto.AdminGetClusterMetaNodes)
+	process(reqURL, t)
+}
+
 func TestGetIpAndClusterName(t *testing.T) {
 	reqURL := fmt.Sprintf("%v%v", hostAddr, proto.AdminGetIP)
 	process(reqURL, t)
@@ -1642,6 +1652,42 @@ func TestSetMarkDiskBrokenThreshold(t *testing.T) {
 	require.EqualValues(t, oldVal, server.cluster.getMarkDiskBrokenThreshold())
 }
 
+func TestSetEnableAutoDpMetaRepair(t *testing.T) {
+	reqUrl := fmt.Sprintf("%v%v", hostAddr, proto.AdminSetNodeInfo)
+	oldVal := server.cluster.getEnableAutoDpMetaRepair()
+	setVal := !oldVal
+	setUrl := fmt.Sprintf("%v?%v=%v&dirSizeLimit=0", reqUrl, autoDpMetaRepairKey, setVal)
+	unsetUrl := fmt.Sprintf("%v?%v=%v&dirSizeLimit=0", reqUrl, autoDpMetaRepairKey, oldVal)
+	process(setUrl, t)
+	require.EqualValues(t, setVal, server.cluster.getEnableAutoDpMetaRepair())
+	process(unsetUrl, t)
+	require.EqualValues(t, oldVal, server.cluster.getEnableAutoDpMetaRepair())
+}
+
+func TestSetDpTimeout(t *testing.T) {
+	reqUrl := fmt.Sprintf("%v%v", hostAddr, proto.AdminSetNodeInfo)
+	oldVal := server.cluster.getDataPartitionTimeoutSec()
+	setVal := int64(10)
+	setUrl := fmt.Sprintf("%v?%v=%v&dirSizeLimit=0", reqUrl, dpTimeoutKey, setVal)
+	unsetUrl := fmt.Sprintf("%v?%v=%v&dirSizeLimit=0", reqUrl, dpTimeoutKey, oldVal)
+	process(setUrl, t)
+	require.EqualValues(t, setVal, server.cluster.getDataPartitionTimeoutSec())
+	process(unsetUrl, t)
+	require.EqualValues(t, oldVal, server.cluster.getDataPartitionTimeoutSec())
+}
+
+func TestSetDpRepairTimeout(t *testing.T) {
+	reqUrl := fmt.Sprintf("%v%v", hostAddr, proto.AdminSetNodeInfo)
+	oldVal := server.cluster.cfg.DpRepairTimeOut
+	setVal := 4 * time.Hour
+	setUrl := fmt.Sprintf("%v?%v=%v", reqUrl, nodeDpRepairTimeOutKey, uint64(setVal))
+	unsetUrl := fmt.Sprintf("%v?%v=%v", reqUrl, nodeDpRepairTimeOutKey, oldVal)
+	process(setUrl, t)
+	require.EqualValues(t, setVal, time.Duration(server.cluster.cfg.DpRepairTimeOut))
+	process(unsetUrl, t)
+	require.EqualValues(t, oldVal, server.cluster.cfg.DpRepairTimeOut)
+}
+
 func TestSetDiscardDp(t *testing.T) {
 	name := "setDiscardVol"
 	createVol(map[string]interface{}{nameKey: name}, t)
@@ -1687,4 +1733,29 @@ func TestSetDecommissionDiskLimit(t *testing.T) {
 
 	process(unsetUrl, t)
 	require.EqualValues(t, oldVal, server.cluster.GetDecommissionDiskLimit())
+}
+
+func TestUpdateVolAutoDpMetaRepair(t *testing.T) {
+	name := "enableAutoDpMetaRepairVol"
+	createVol(map[string]interface{}{nameKey: name}, t)
+	vol, err := server.cluster.getVol(name)
+	if err != nil {
+		t.Errorf("failed to get vol %v, err %v", name, err)
+		return
+	}
+	defer func() {
+		reqURL := fmt.Sprintf("%v%v?name=%v&authKey=%v", hostAddr, proto.AdminDeleteVol, name, buildAuthKey(testOwner))
+		process(reqURL, t)
+	}()
+	reqUrl := fmt.Sprintf("%v%v?%v=%v&%v=%v", hostAddr, proto.AdminUpdateVol, nameKey, vol.Name, volAuthKey, buildAuthKey(testOwner))
+	oldVal := vol.EnableAutoMetaRepair.Load()
+	setVal := !oldVal
+	setUrl := fmt.Sprintf("%v&%v=%v", reqUrl, autoDpMetaRepairKey, setVal)
+	unsetUrl := fmt.Sprintf("%v&%v=%v", reqUrl, autoDpMetaRepairKey, oldVal)
+
+	process(setUrl, t)
+	require.EqualValues(t, setVal, vol.EnableAutoMetaRepair.Load())
+
+	process(unsetUrl, t)
+	require.EqualValues(t, oldVal, vol.EnableAutoMetaRepair.Load())
 }

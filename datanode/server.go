@@ -31,6 +31,8 @@ import (
 	"syscall"
 	"time"
 
+	syslog "log"
+
 	"github.com/cubefs/cubefs/cmd/common"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/raftstore"
@@ -42,7 +44,6 @@ import (
 	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/loadutil"
 	"github.com/cubefs/cubefs/util/log"
-	syslog "log"
 
 	"github.com/xtaci/smux"
 )
@@ -179,7 +180,6 @@ type DataNode struct {
 	diskWriteIops           int
 	diskWriteFlow           int
 	dpMaxRepairErrCnt       uint64
-	dpRepairTimeOut         uint64
 	clusterUuid             string
 	clusterUuidEnable       bool
 	serviceIDKey            string
@@ -187,6 +187,7 @@ type DataNode struct {
 	cpuSamplerDone          chan struct{}
 
 	diskUnavailablePartitionErrorCount uint64 // disk status becomes unavailable when disk error partition count reaches this value
+	started                            int32
 }
 
 type verOp2Phase struct {
@@ -230,7 +231,6 @@ func doStart(server common.Server, cfg *config.Config) (err error) {
 		return
 	}
 
-	exporter.Init(ModuleName, cfg)
 	s.registerMetrics()
 	s.register(cfg)
 
@@ -284,7 +284,19 @@ func doStart(server common.Server, cfg *config.Config) (err error) {
 
 	// start cpu sampler
 	s.startCpuSample()
+
+	s.setStart()
+
 	return
+}
+
+func (s *DataNode) setStart() {
+	atomic.StoreInt32(&s.started, statusStarted)
+	log.LogWarnf("setStart: datanode start success, set start status")
+}
+
+func (s *DataNode) HasStarted() bool {
+	return atomic.LoadInt32(&s.started) == statusStarted
 }
 
 func doShutdown(server common.Server) {

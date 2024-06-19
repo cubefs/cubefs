@@ -375,8 +375,8 @@ func (w *Wrapper) updateDataPartitionByRsp(forceUpdate bool, refreshPolicy Refre
 
 	// if not forceUpdate, at least keep 1 rw dp in the selector to avoid can't do write
 	if forceUpdate || len(rwPartitionGroups) >= 1 {
-		log.LogInfof("updateDataPartition: refresh dpSelector of volume(%v) with %v rw partitions(%v all), forceUpdate(%v)",
-			w.volName, len(rwPartitionGroups), len(DataPartitions), forceUpdate)
+		log.LogInfof("updateDataPartition: refresh dpSelector of volume(%v) with %v rw partitions(%v all), forceUpdate(%v) policy(%v)",
+			w.volName, len(rwPartitionGroups), len(DataPartitions), forceUpdate, refreshPolicy)
 		w.refreshDpSelector(refreshPolicy, rwPartitionGroups)
 	} else {
 		err = errors.New("updateDataPartition: no writable data partition")
@@ -575,15 +575,15 @@ func (w *Wrapper) WarningMsg() string {
 }
 
 func (w *Wrapper) updateDataNodeStatus() (err error) {
-	var cv *proto.ClusterView
-	cv, err = w.mc.AdminAPI().GetCluster()
+	var dataNodes []proto.NodeView
+	dataNodes, err = w.mc.AdminAPI().GetClusterDataNodes()
 	if err != nil {
-		log.LogErrorf("updateDataNodeStatus: get cluster fail: err(%v)", err)
+		log.LogErrorf("updateDataNodeStatus: GetClusterDataNodes fail: err(%v)", err)
 		return
 	}
 
 	newHostsStatus := make(map[string]bool)
-	for _, node := range cv.DataNodes {
+	for _, node := range dataNodes {
 		newHostsStatus[node.Addr] = node.IsActive
 	}
 	log.LogInfof("updateDataNodeStatus: update %d hosts status", len(newHostsStatus))

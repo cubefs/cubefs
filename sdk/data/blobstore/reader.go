@@ -32,7 +32,21 @@ import (
 	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/cubefs/cubefs/util/stat"
+	"github.com/prometheus/client_golang/prometheus"
 )
+
+var readerMetric = prometheus.NewSummaryVec(
+	prometheus.SummaryOpts{
+		Namespace:  "cubefs",
+		Subsystem:  "client",
+		Name:       "reader_cost_time",
+		Help:       "time cost in cubefs sdk",
+		Objectives: map[float64]float64{0.5: 0.05, 0.75: 0.025, 0.9: 0.01, 0.95: 0.005, 0.99: 0.001, 0.999: 0.0001, 0.9999: 0.00001},
+	}, []string{"api"})
+
+func init() {
+	prometheus.MustRegister(readerMetric)
+}
 
 type rwSlice struct {
 	index        int
@@ -128,6 +142,11 @@ func NewReader(config ClientConfig) (reader *Reader) {
 }
 
 func (reader *Reader) Read(ctx context.Context, buf []byte, offset int, size int) (int, error) {
+	beg := time.Now()
+	defer func() {
+		readerMetric.WithLabelValues("BlobstorRead").Observe(float64(time.Since(beg).Microseconds()))
+	}()
+
 	if reader == nil {
 		return 0, fmt.Errorf("reader is not opened yet")
 	}

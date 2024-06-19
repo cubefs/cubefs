@@ -35,6 +35,13 @@ func (s *DataNode) Prepare(p *repl.Packet) (err error) {
 			p.AfterPre = true
 		}
 	}()
+
+	// service not start and not urgent req.
+	if !s.HasStarted() && !p.IsUrgentLeaderReq() {
+		log.LogDebugf("prepare: datanode still not start, op %s", p.GetOpMsg())
+		return fmt.Errorf("datanode still not started")
+	}
+
 	if p.IsMasterCommand() {
 		return
 	}
@@ -154,7 +161,8 @@ func (s *DataNode) checkPacketAndPrepare(p *repl.Packet) error {
 		}
 	} else if p.IsLeaderPacket() && p.IsCreateExtentOperation() {
 		if partition.isNormalType() && partition.GetExtentCount() >= storage.MaxExtentCount*3 {
-			return fmt.Errorf("checkPacketAndPrepare partition %v has reached maxExtentId", p.PartitionID)
+			log.LogErrorf("[checkPacketAndPrepare] partition %v has reached maxExtentId", p.PartitionID)
+			return storage.ReachMaxExtentsCountError
 		}
 		p.ExtentID, err = store.NextExtentID()
 		if err != nil {

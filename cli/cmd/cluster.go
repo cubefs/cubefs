@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/sdk/master"
@@ -252,7 +253,10 @@ func newClusterSetParasCmd(client *master.MasterClient) *cobra.Command {
 	dataNodeSelector := ""
 	metaNodeSelector := ""
 	markBrokenDiskThreshold := ""
+	autoDpMetaRepair := ""
 	opMaxMpCntLimit := ""
+	dpRepairTimeout := ""
+	dpTimeout := ""
 	cmd := &cobra.Command{
 		Use:   CliOpSetCluster,
 		Short: cmdClusterSetClusterInfoShort,
@@ -269,10 +273,42 @@ func newClusterSetParasCmd(client *master.MasterClient) *cobra.Command {
 				}
 				markBrokenDiskThreshold = fmt.Sprintf("%v", val)
 			}
+			if autoDpMetaRepair != "" {
+				if _, err = strconv.ParseBool(autoDpMetaRepair); err != nil {
+					return
+				}
+			}
+
+			if dpRepairTimeout != "" {
+				var repairTimeout time.Duration
+				repairTimeout, err = time.ParseDuration(dpRepairTimeout)
+				if err != nil {
+					return
+				}
+				if repairTimeout < time.Second {
+					err = fmt.Errorf("dp repair timeout %v smaller than 1s", repairTimeout)
+					return
+				}
+
+				dpRepairTimeout = strconv.FormatInt(int64(repairTimeout), 10)
+			}
+			if dpTimeout != "" {
+				var heartbeatTimeout time.Duration
+				heartbeatTimeout, err = time.ParseDuration(dpTimeout)
+				if err != nil {
+					return
+				}
+				if heartbeatTimeout < time.Second {
+					err = fmt.Errorf("dp timeout %v smaller than 1s", heartbeatTimeout)
+					return
+				}
+
+				dpTimeout = strconv.FormatInt(int64(heartbeatTimeout.Seconds()), 10)
+			}
 			if err = client.AdminAPI().SetClusterParas(optDelBatchCount, optMarkDeleteRate, optDelWorkerSleepMs,
 				optAutoRepairRate, optLoadFactor, opMaxDpCntLimit, opMaxMpCntLimit, clientIDKey,
 				dataNodesetSelector, metaNodesetSelector,
-				dataNodeSelector, metaNodeSelector, markBrokenDiskThreshold); err != nil {
+				dataNodeSelector, metaNodeSelector, markBrokenDiskThreshold, autoDpMetaRepair, dpRepairTimeout, dpTimeout); err != nil {
 				return
 			}
 			stdout("Cluster parameters has been set successfully. \n")
@@ -291,6 +327,9 @@ func newClusterSetParasCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().StringVar(&dataNodeSelector, CliFlagDataNodeSelector, "", "Set the node select policy(datanode) for cluster")
 	cmd.Flags().StringVar(&metaNodeSelector, CliFlagMetaNodeSelector, "", "Set the node select policy(metanode) for cluster")
 	cmd.Flags().StringVar(&markBrokenDiskThreshold, CliFlagMarkDiskBrokenThreshold, "", "Threshold to mark disk as broken")
+	cmd.Flags().StringVar(&autoDpMetaRepair, CliFlagAutoDpMetaRepair, "", "Enable or disable auto data partition meta repair")
+	cmd.Flags().StringVar(&dpRepairTimeout, CliFlagDpRepairTimeout, "", "Data partition repair timeout(example: 1h)")
+	cmd.Flags().StringVar(&dpTimeout, CliFlagDpTimeout, "", "Data partition heartbeat timeout(example: 10s)")
 	return cmd
 }
 

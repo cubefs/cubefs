@@ -409,6 +409,7 @@ type updateVolReq struct {
 	dpReadOnlyWhenVolFull   bool
 	enableQuota             bool
 	crossZone               bool
+	enableAutoDpMetaRepair  bool
 }
 
 func parseColdVolUpdateArgs(r *http.Request, vol *Vol) (args *coldVolArgs, err error) {
@@ -541,6 +542,10 @@ func parseVolUpdateReq(r *http.Request, vol *Vol, req *updateVolReq) (err error)
 	}
 
 	if req.dpReadOnlyWhenVolFull, err = extractBoolWithDefault(r, dpReadOnlyWhenVolFull, vol.DpReadOnlyWhenVolFull); err != nil {
+		return
+	}
+
+	if req.enableAutoDpMetaRepair, err = extractBoolWithDefault(r, autoDpMetaRepairKey, vol.EnableAutoMetaRepair.Load()); err != nil {
 		return
 	}
 
@@ -1371,6 +1376,28 @@ func parseAndExtractSetNodeInfoParams(r *http.Request) (params map[string]interf
 			return
 		}
 		params[markDiskBrokenThresholdKey] = val
+	}
+
+	if value = r.FormValue(autoDpMetaRepairKey); value != "" {
+		noParams = false
+		val := false
+		val, err = strconv.ParseBool(value)
+		if err != nil {
+			err = unmatchedKey(autoDpMetaRepairKey)
+			return
+		}
+		params[autoDpMetaRepairKey] = val
+	}
+
+	if value = r.FormValue(dpTimeoutKey); value != "" {
+		noParams = false
+		val := int64(0)
+		val, err = strconv.ParseInt(value, 10, 64)
+		if err != nil {
+			err = unmatchedKey(dpTimeoutKey)
+			return
+		}
+		params[dpTimeoutKey] = val
 	}
 
 	if noParams {

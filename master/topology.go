@@ -25,6 +25,7 @@ import (
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util"
+	"github.com/cubefs/cubefs/util/auditlog"
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/log"
 )
@@ -1058,6 +1059,17 @@ func (ns *nodeSet) canWriteForDataNode(replicaNum int) bool {
 	return count >= replicaNum
 }
 
+func (ns *nodeSet) canAllocDataNodeCnt() (cnt int) {
+	ns.dataNodes.Range(func(key, value interface{}) bool {
+		node := value.(*DataNode)
+		if node.isWriteAble() && node.dpCntInLimit() {
+			cnt++
+		}
+		return true
+	})
+	return
+}
+
 func (ns *nodeSet) canWriteForMetaNode(replicaNum int) bool {
 	var count int
 	ns.metaNodes.Range(func(key, value interface{}) bool {
@@ -1073,6 +1085,17 @@ func (ns *nodeSet) canWriteForMetaNode(replicaNum int) bool {
 	log.LogInfof("canWriteForMetaNode zone[%v], ns[%v],count[%v] replicaNum[%v]",
 		ns.zoneName, ns.ID, count, replicaNum)
 	return count >= replicaNum
+}
+
+func (ns *nodeSet) canAllocMetaNodeCnt() (cnt int) {
+	ns.metaNodes.Range(func(key, value interface{}) bool {
+		node := value.(*MetaNode)
+		if node.isWritable() && node.mpCntInLimit() {
+			cnt++
+		}
+		return true
+	})
+	return
 }
 
 func (ns *nodeSet) putDataNode(dataNode *DataNode) {
@@ -1116,7 +1139,7 @@ func (ns *nodeSet) AddDecommissionDisk(dd *DecommissionDisk) {
 	} else {
 		ns.addAutoDecommissionDisk(dd)
 	}
-	log.LogInfof("action[AddDecommissionDisk] add disk %v type %v to  ns %v", dd.GenerateKey(), dd.Type, ns.ID)
+	log.LogInfof("action[AddDecommissionDisk] add disk %v  to  ns %v", dd.decommissionInfo(), ns.ID)
 }
 
 func (ns *nodeSet) RemoveDecommissionDisk(dd *DecommissionDisk) {
@@ -2101,7 +2124,12 @@ func (l *DecommissionDataPartitionList) Put(id uint64, value *DataPartition, c *
 	// restore from rocksdb
 	// NOTE: if dp is discard, not need to get token, decommission will success directly
 	if value.checkConsumeToken() && !value.IsDiscard {
-		value.TryAcquireDecommissionToken(c)
+		// keep origin error msg, DecommissionErrorMessage would be replaced by "no node set available" e.g. if
+		// execute TryAcquireDecommissionToken failed
+		msg := value.DecommissionErrorMessage
+		if !value.TryAcquireDecommissionToken(c) {
+			value.DecommissionErrorMessage = msg
+		}
 	}
 
 	// restore special replica decommission progress
@@ -2231,12 +2259,15 @@ func (l *DecommissionDataPartitionList) traverse(c *Cluster) {
 			}
 			allDecommissionDP := l.GetAllDecommissionDataPartitions()
 			for _, dp := range allDecommissionDP {
-				log.LogDebugf("[DecommissionListTraverse] traverse dp(%v) discard(%v) decommission status(%v)", dp.PartitionID, dp.IsDiscard, dp.GetDecommissionStatus())
+				log.LogDebugf("[DecommissionListTraverse] traverse dp(%v)", dp.decommissionInfo())
 				if dp.IsDecommissionSuccess() {
 					l.Remove(dp)
 					dp.ReleaseDecommissionToken(c)
+					msg := fmt.Sprintf("dp %v decommission success, cost %v",
+						dp.decommissionInfo(), time.Since(dp.RecoverStartTime))
 					dp.ResetDecommissionStatus()
 					dp.setRestoreReplicaStop()
+
 					err := c.syncUpdateDataPartition(dp)
 					if err != nil {
 						log.LogWarnf("action[DecommissionListTraverse]Remove success dp[%v] failed for %v",
@@ -2245,22 +2276,28 @@ func (l *DecommissionDataPartitionList) traverse(c *Cluster) {
 						log.LogDebugf("action[DecommissionListTraverse]Remove dp[%v] for success",
 							dp.PartitionID)
 					}
+					auditlog.LogMasterOp("TraverseDataPartition", msg, err)
 				} else if dp.IsDecommissionFailed() {
 					if !dp.tryRollback(c) {
 						log.LogDebugf("action[DecommissionListTraverse]Remove dp[%v] for fail",
 							dp.PartitionID)
 						l.Remove(dp)
+						// if dp is not removed from decommission list, do not reset RestoreReplica
+						dp.setRestoreReplicaStop()
 					}
 					// rollback fail/success need release token
 					dp.ReleaseDecommissionToken(c)
-					dp.setRestoreReplicaStop()
+					dp.DecommissionType = InitialDecommission
 					c.syncUpdateDataPartition(dp)
+					msg := fmt.Sprintf("dp %v decommission failed", dp.decommissionInfo())
+					auditlog.LogMasterOp("TraverseDataPartition", msg, nil)
 				} else if dp.IsDecommissionPaused() {
 					log.LogDebugf("action[DecommissionListTraverse]Remove dp[%v] for paused ",
 						dp.PartitionID)
 					dp.ReleaseDecommissionToken(c)
 					l.Remove(dp)
 					dp.setRestoreReplicaStop()
+					dp.DecommissionType = InitialDecommission
 					c.syncUpdateDataPartition(dp)
 				} else if dp.IsDecommissionInitial() { // fixed done ,not release token
 					l.Remove(dp)
@@ -2311,8 +2348,8 @@ func (l *DecommissionDiskList) Put(nsId uint64, value *DecommissionDisk) {
 	elm := l.decommissionList.PushBack(value)
 	l.cacheMap[value.GenerateKey()] = elm
 
-	log.LogDebugf("action[DecommissionDataPartitionListPut] ns[%v] add disk[%v] status[%v] type[%v]",
-		nsId, value.GenerateKey(), value.GetDecommissionStatus(), value.Type)
+	log.LogDebugf("action[DecommissionDataPartitionListPut] ns[%v] add disk[%v]",
+		nsId, value.decommissionInfo())
 }
 
 func (l *DecommissionDiskList) Remove(nsId uint64, value *DecommissionDisk) {

@@ -19,7 +19,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"net"
 	"net/http"
 	"os"
@@ -33,6 +32,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/cubefs/cubefs/util/fileutil"
 	"github.com/cubefs/cubefs/util/log"
 )
 
@@ -569,35 +569,52 @@ func (a *Audit) newWriterSize(size int) error {
 }
 
 func (a *Audit) removeLogFile() {
-	fs := syscall.Statfs_t{}
-	if err := syscall.Statfs(a.logDir, &fs); err != nil {
-		log.LogErrorf("Get fs stat failed, err: %v", err)
+	dentries, err := fileutil.ReadDir(a.logDir)
+	if err != nil {
+		log.LogErrorf("[removeLogFile] ReadDir failed, logDir: %s, err: %v", a.logDir, err)
+		return
+	}
+
+	oldLogs := make([]string, 0)
+	for _, dentry := range dentries {
+		if strings.HasPrefix(dentry, Audit_Module) && strings.HasSuffix(dentry, ShiftedExtension) {
+			oldLogs = append(oldLogs, dentry)
+		}
+	}
+
+	if len(oldLogs) == 0 {
+		return
+	}
+
+	fs, err := fileutil.Statfs(a.logDir)
+	if err != nil {
+		log.LogErrorf("[removeLogFile] Get fs stat failed, err: %v", err)
 		return
 	}
 	diskSpaceLeft := int64(fs.Bavail * uint64(fs.Bsize))
-	diskSpaceLeft -= DefaultHeadRoom * 1024 * 1024
 
-	fInfos, err := ioutil.ReadDir(a.logDir)
-	if err != nil {
-		log.LogErrorf("ReadDir failed, logDir: %s, err: %v", a.logDir, err)
-		return
-	}
-	var needDelFiles ShiftedFile
-	for _, info := range fInfos {
-		if a.shouldDelete(info, diskSpaceLeft, Audit_Module) {
-			needDelFiles = append(needDelFiles, info)
+	sort.Slice(oldLogs, func(i, j int) bool {
+		return oldLogs[i] < oldLogs[j]
+	})
+
+	for len(oldLogs) != 0 && diskSpaceLeft < DefaultHeadRoom*1024*1024 {
+		oldestFile := path.Join(a.logDir, oldLogs[0])
+		fileInfo, err := os.Stat(oldestFile)
+		if err != nil {
+			log.LogErrorf("[removeLogFile] failed to stat file(%v), err(%v)", oldestFile, err)
+			return
 		}
-	}
-	sort.Sort(needDelFiles)
-	for _, info := range needDelFiles {
-		if err = os.Remove(path.Join(a.logDir, info.Name())); err != nil {
-			log.LogErrorf("Remove log file failed, logFileName: %s, err: %v", info.Name(), err)
-			continue
+		if !a.shouldDelete(fileInfo, diskSpaceLeft, Audit_Module) {
+			log.LogDebugf("[removeLogFile] cannot delete oldest file(%v)", oldestFile)
+			return
 		}
-		diskSpaceLeft += info.Size()
-		if diskSpaceLeft > 0 && time.Since(info.ModTime()) < MaxReservedDays {
-			break
+		if err = os.Remove(oldestFile); err != nil && !os.IsNotExist(err) {
+			log.LogErrorf("[removeLogFile] failed to remove file(%v), err(%v)", oldestFile, err)
+			return
 		}
+		oldLogs = oldLogs[1:]
+		stat := fileutil.ConvertStat(fileInfo)
+		diskSpaceLeft += stat.Blocks * fileutil.StatBlockSize
 	}
 }
 

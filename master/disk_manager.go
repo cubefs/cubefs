@@ -144,8 +144,8 @@ func (c *Cluster) checkDiskRecoveryProgress() {
 							partition.SetDecommissionStatus(DecommissionFail)
 						}
 						partition.DecommissionErrorMessage = fmt.Sprintf("Decommission target node %v repair timeout", partition.DecommissionDstAddr)
-						Warn(c.Name, fmt.Sprintf("action[checkDiskRecoveryProgress]clusterID[%v],partitionID[%v]  recovered timeout %s",
-							c.Name, partitionID, time.Since(partition.RecoverStartTime)))
+						Warn(c.Name, fmt.Sprintf("action[checkDiskRecoveryProgress]clusterID[%v],partitionID[%v] replica %v_%v recovered timeout %s",
+							c.Name, partitionID, newReplica.Addr, newReplica.DiskPath, time.Since(partition.RecoverStartTime)))
 						partition.RLock()
 						err = c.syncUpdateDataPartition(partition)
 						if err != nil {
@@ -195,8 +195,9 @@ func (c *Cluster) checkDiskRecoveryProgress() {
 				} else {
 					partition.DecommissionErrorMessage = ""
 					partition.SetDecommissionStatus(DecommissionSuccess) // can be readonly or readwrite
-					Warn(c.Name, fmt.Sprintf("action[checkDiskRecoveryProgress]clusterID[%v],partitionID[%v] replica %v has recovered success",
-						c.Name, partitionID, partition.DecommissionDstAddr))
+					Warn(c.Name, fmt.Sprintf("action[checkDiskRecoveryProgress]clusterID[%v],partitionID[%v] "+
+						"replica %v has recovered success,cost(%v)",
+						c.Name, partitionID, partition.DecommissionDstAddr, time.Since(partition.RecoverStartTime).String()))
 				}
 				partition.RLock()
 				err = c.syncUpdateDataPartition(partition)
@@ -226,6 +227,8 @@ func (c *Cluster) addAndSyncDecommissionedDisk(dataNode *DataNode, diskPath stri
 	}
 	if err = c.syncUpdateDataNode(dataNode); err != nil {
 		dataNode.deleteDecommissionedDisk(diskPath)
+		log.LogWarnf("action[addAndSyncDecommissionedDisk]submit raft failed: %v, delete disks[%v], dataNode[%v]",
+			err, diskPath, dataNode.Addr)
 		return
 	}
 	log.LogInfof("action[addAndSyncDecommissionedDisk] finish, remaining decommissioned disks[%v], dataNode[%v]", dataNode.getDecommissionedDisks(), dataNode.Addr)
@@ -264,12 +267,12 @@ func (c *Cluster) decommissionDisk(dataNode *DataNode, raftForce bool, badDiskPa
 }
 
 const (
-	InitialDecommission uint32 = iota
-	ManualDecommission         // used for queryAllDecommissionDisk
-	AutoDecommission
-	AllDecommission
-	AutoAddReplica
-	ManualAddReplica
+	InitialDecommission = proto.InitialDecommission
+	ManualDecommission  = proto.ManualDecommission
+	AutoDecommission    = proto.AutoDecommission
+	AllDecommission     = proto.AllDecommission
+	AutoAddReplica      = proto.AutoAddReplica
+	ManualAddReplica    = proto.ManualAddReplica
 )
 
 type DecommissionDisk struct {
@@ -353,11 +356,6 @@ func (dd *DecommissionDisk) updateDecommissionStatus(c *Cluster, debug bool) (ui
 			failedPartitionIds = append(failedPartitionIds, dp.PartitionID)
 		}
 
-		if dp.GetDecommissionStatus() == DecommissionNeedManualFix {
-			failedNum++
-			failedPartitionIds = append(failedPartitionIds, dp.PartitionID)
-		}
-
 		if dp.GetDecommissionStatus() == DecommissionRunning {
 			runningNum++
 			runningPartitionIds = append(runningPartitionIds, dp.PartitionID)
@@ -371,7 +369,6 @@ func (dd *DecommissionDisk) updateDecommissionStatus(c *Cluster, debug bool) (ui
 			stopNum++
 			stopPartitionIds = append(stopPartitionIds, dp.PartitionID)
 		}
-		log.LogDebugf("[updateDecommissionStatus] dp(%v) decommission status(%v)", dp.PartitionID, dp.GetDecommissionStatus())
 		partitionIds = append(partitionIds, dp.PartitionID)
 	}
 	progress = float64(totalNum-len(partitions)) / float64(totalNum)
@@ -506,7 +503,8 @@ func (dd *DecommissionDisk) CanBePaused() bool {
 }
 
 func (dd *DecommissionDisk) decommissionInfo() string {
-	return fmt.Sprintf("disk(%v_%v)_dst(%v)_total(%v)_term(%v)_type(%v)_force(%v)_retry(%v)",
+	return fmt.Sprintf("disk(%v_%v)_dst(%v)_total(%v)_term(%v)_type(%v)_force(%v)_retry(%v)_status(%v)",
 		dd.SrcAddr, dd.DiskPath, dd.DstAddr, dd.DecommissionDpTotal, dd.DecommissionTerm,
-		GetDecommissionTypeMessage(dd.Type), dd.DecommissionRaftForce, dd.DecommissionRetry)
+		GetDecommissionTypeMessage(dd.Type), dd.DecommissionRaftForce, dd.DecommissionRetry,
+		GetDecommissionStatusMessage(dd.DecommissionStatus))
 }

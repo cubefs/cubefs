@@ -12,35 +12,37 @@
 // implied. See the License for the specific language governing
 // permissions and limitations under the License.
 
-package fileutil
+package atomicutil
 
-import (
-	"io/fs"
-	"os"
-	"syscall"
-)
+import "sync/atomic"
 
-const StatBlockSize = 512
+type Bool struct {
+	val uint32
+}
 
-func Stat(name string) (stat *syscall.Stat_t, err error) {
-	info, err := os.Stat(name)
-	if err != nil {
-		return
-	}
-	stat = ConvertStat(info)
+func (b *Bool) Load() (v bool) {
+	v = atomic.LoadUint32(&b.val) == 1
 	return
 }
 
-func ConvertStat(info fs.FileInfo) (stat *syscall.Stat_t) {
-	stat = info.Sys().(*syscall.Stat_t)
+func (b *Bool) Store(v bool) {
+	val := uint32(0)
+	if v {
+		val = 1
+	}
+	atomic.StoreUint32(&b.val, val)
 	return
 }
 
-func GetFilePhysicalSize(name string) (size int64, err error) {
-	stat, err := Stat(name)
-	if err != nil {
-		return
+func (b *Bool) CompareAndSwap(old bool, newVal bool) (swaped bool) {
+	oldVal := uint32(0)
+	if old {
+		oldVal = 1
 	}
-	size = stat.Blocks * StatBlockSize
+	val := uint32(0)
+	if newVal {
+		val = 1
+	}
+	swaped = atomic.CompareAndSwapUint32(&b.val, oldVal, val)
 	return
 }

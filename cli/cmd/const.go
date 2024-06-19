@@ -134,6 +134,9 @@ const (
 	CliFlagMarkDiskBrokenThreshold = "markBrokenDiskThreshold"
 	CliFlagForce                   = "force"
 	CliFlagEnableCrossZone         = "cross-zone"
+	CliFlagAutoDpMetaRepair        = "autoDpMetaRepair"
+	CliFlagDpRepairTimeout         = "dpRepairTimeout"
+	CliFlagDpTimeout               = "dpTimeout"
 
 	// CliFlagSetDataPartitionCount	= "count" use dp-count instead
 

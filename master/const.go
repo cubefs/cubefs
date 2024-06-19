@@ -139,6 +139,8 @@ const (
 	dpRepairBlockSizeKey       = "dpRepairBlockSize"
 	markDiskBrokenThresholdKey = "markDiskBrokenThreshold"
 	decommissionTypeKey        = "decommissionType"
+	autoDpMetaRepairKey        = "autoDpMetaRepair"
+	dpTimeoutKey               = "dpTimeout"
 )
 
 const (
@@ -212,6 +214,7 @@ const (
 	defaultMaxQuotaNumPerVol                     = 100
 	defaultVolDelayDeleteTimeHour                = 48
 	defaultMarkDiskBrokenThreshold               = 0 // decommission all dp from disk
+	defaultEnableDpMetaRepair                    = false
 	maxMpCreationCount                           = 10
 )
 

@@ -64,6 +64,8 @@ type clusterValue struct {
 	DecommissionDiskLimit       uint32
 	VolDeletionDelayTimeHour    int64
 	MarkDiskBrokenThreshold     float64
+	EnableAutoDpMetaRepair      bool
+	DataPartitionTimeoutSec     int64
 }
 
 func newClusterValue(c *Cluster) (cv *clusterValue) {
@@ -97,6 +99,8 @@ func newClusterValue(c *Cluster) (cv *clusterValue) {
 		DecommissionDiskLimit:       c.GetDecommissionDiskLimit(),
 		VolDeletionDelayTimeHour:    c.cfg.volDelayDeleteTimeHour,
 		MarkDiskBrokenThreshold:     c.getMarkDiskBrokenThreshold(),
+		EnableAutoDpMetaRepair:      c.getEnableAutoDpMetaRepair(),
+		DataPartitionTimeoutSec:     c.getDataPartitionTimeoutSec(),
 	}
 	return cv
 }
@@ -313,8 +317,9 @@ type volValue struct {
 	TrashInterval                                          int64
 	DisableAuditLog                                        bool
 
-	Forbidden         bool
-	DpRepairBlockSize uint64
+	Forbidden            bool
+	DpRepairBlockSize    uint64
+	EnableAutoMetaRepair bool
 }
 
 func (v *volValue) Bytes() (raw []byte, err error) {
@@ -383,6 +388,7 @@ func newVolValue(vol *Vol) (vv *volValue) {
 		DeleteExecTime:        vol.DeleteExecTime,
 		User:                  vol.user,
 		DpRepairBlockSize:     vol.dpRepairBlockSize,
+		EnableAutoMetaRepair:  vol.EnableAutoMetaRepair.Load(),
 	}
 
 	return
@@ -1026,6 +1032,10 @@ func (c *Cluster) updateDataPartitionRepairTimeOut(val uint64) {
 	atomic.StoreUint64(&c.cfg.DpRepairTimeOut, val)
 }
 
+func (c *Cluster) updateDataPartitionTimeoutSec(val int64) {
+	atomic.StoreInt64(&c.cfg.DataPartitionTimeOutSec, val)
+}
+
 func (c *Cluster) updateDataNodeAutoRepairLimit(val uint64) {
 	atomic.StoreUint64(&c.cfg.DataNodeAutoRepairLimitRate, val)
 }
@@ -1051,6 +1061,17 @@ func (c *Cluster) updateMarkDiskBrokenThreshold(val float64) {
 		val = defaultMarkDiskBrokenThreshold
 	}
 	c.MarkDiskBrokenThreshold.Store(val)
+}
+
+func (c *Cluster) updateEnableAutoDpMetaRepair(val bool) {
+	c.EnableAutoDpMetaRepair.Store(val)
+}
+
+func (c *Cluster) updateDecommissionDiskLimit(val uint32) {
+	if val < 1 {
+		val = 1
+	}
+	atomic.StoreUint32(&c.DecommissionDiskLimit, val)
 }
 
 func (c *Cluster) loadZoneValue() (err error) {
@@ -1172,6 +1193,11 @@ func (c *Cluster) loadClusterValue() (err error) {
 		c.EnableAutoDecommissionDisk = cv.EnableAutoDecommissionDisk
 		c.DecommissionLimit = cv.DecommissionLimit
 		c.cfg.volDelayDeleteTimeHour = cv.VolDeletionDelayTimeHour
+
+		if c.cfg.volDelayDeleteTimeHour <= 0 {
+			c.cfg.volDelayDeleteTimeHour = defaultVolDelayDeleteTimeHour
+		}
+
 		if c.cfg.QosMasterAcceptLimit < QosMasterAcceptCnt {
 			c.cfg.QosMasterAcceptLimit = QosMasterAcceptCnt
 		}
@@ -1194,9 +1220,11 @@ func (c *Cluster) loadClusterValue() (err error) {
 
 		c.updateMaxConcurrentLcNodes(cv.MaxConcurrentLcNodes)
 		log.LogInfof("action[loadClusterValue], metaNodeThreshold[%v]", cv.Threshold)
-
+		c.updateDecommissionDiskLimit(cv.DecommissionDiskLimit)
 		c.checkDataReplicasEnable = cv.CheckDataReplicasEnable
 		c.updateMarkDiskBrokenThreshold(cv.MarkDiskBrokenThreshold)
+		c.updateEnableAutoDpMetaRepair(cv.EnableAutoDpMetaRepair)
+		c.updateDataPartitionTimeoutSec(cv.DataPartitionTimeoutSec)
 	}
 	return
 }

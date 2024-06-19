@@ -49,6 +49,18 @@ func (api *AdminAPI) GetCluster() (cv *proto.ClusterView, err error) {
 	return
 }
 
+func (api *AdminAPI) GetClusterDataNodes() (nodes []proto.NodeView, err error) {
+	nodes = []proto.NodeView{}
+	err = api.mc.requestWith(&nodes, newRequest(get, proto.AdminGetClusterDataNodes).Header(api.h))
+	return
+}
+
+func (api *AdminAPI) GetClusterMetaNodes() (nodes []proto.NodeView, err error) {
+	nodes = []proto.NodeView{}
+	err = api.mc.requestWith(&nodes, newRequest(get, proto.AdminGetClusterMetaNodes).Header(api.h))
+	return
+}
+
 func (api *AdminAPI) GetClusterNodeInfo() (cn *proto.ClusterNodeInfo, err error) {
 	cn = &proto.ClusterNodeInfo{}
 	err = api.mc.requestWith(cn, newRequest(get, proto.AdminGetNodeInfo).Header(api.h))
@@ -158,12 +170,13 @@ func (api *AdminAPI) CreateDataPartition(volName string, count int, clientIDKey 
 	))
 }
 
-func (api *AdminAPI) DecommissionDataPartition(dataPartitionID uint64, nodeAddr string, raftForce bool, clientIDKey string) (err error) {
+func (api *AdminAPI) DecommissionDataPartition(dataPartitionID uint64, nodeAddr string, raftForce bool, clientIDKey, decommissionType string) (err error) {
 	request := newRequest(get, proto.AdminDecommissionDataPartition).Header(api.h)
 	request.addParam("id", strconv.FormatUint(dataPartitionID, 10))
 	request.addParam("addr", nodeAddr)
 	request.addParam("raftForceDel", strconv.FormatBool(raftForce))
 	request.addParam("clientIDKey", clientIDKey)
+	request.addParam("decommissionType", decommissionType)
 	_, err = api.mc.serveRequest(request)
 	return
 }
@@ -278,6 +291,7 @@ func (api *AdminAPI) UpdateVolume(
 	request.addParam("replicaNum", strconv.FormatUint(uint64(vv.DpReplicaNum), 10))
 	request.addParam("enableQuota", strconv.FormatBool(vv.EnableQuota))
 	request.addParam("deleteLockTime", strconv.FormatInt(vv.DeleteLockTime, 10))
+	request.addParam("autoDpMetaRepair", strconv.FormatBool(vv.EnableAutoDpMetaRepair))
 	request.addParam("clientIDKey", clientIDKey)
 	if txMask != "" {
 		request.addParam("enableTxMask", txMask)
@@ -503,6 +517,7 @@ func (api *AdminAPI) SetMasterVolDeletionDelayTime(volDeletionDelayTimeHour int)
 
 func (api *AdminAPI) SetClusterParas(batchCount, markDeleteRate, deleteWorkerSleepMs, autoRepairRate, loadFactor, maxDpCntLimit, maxMpCntLimit, clientIDKey string,
 	dataNodesetSelector, metaNodesetSelector, dataNodeSelector, metaNodeSelector string, markDiskBrokenThreshold string,
+	enableAutoDpMetaRepair string, dpRepairTimeout string, dpTimeout string,
 ) (err error) {
 	request := newRequest(get, proto.AdminSetNodeInfo).Header(api.h)
 	request.addParam("batchCount", batchCount)
@@ -520,6 +535,15 @@ func (api *AdminAPI) SetClusterParas(batchCount, markDeleteRate, deleteWorkerSle
 	request.addParam("metaNodeSelector", metaNodeSelector)
 	if markDiskBrokenThreshold != "" {
 		request.addParam("markDiskBrokenThreshold", markDiskBrokenThreshold)
+	}
+	if enableAutoDpMetaRepair != "" {
+		request.addParam("autoDpMetaRepair", enableAutoDpMetaRepair)
+	}
+	if dpRepairTimeout != "" {
+		request.addParam("dpRepairTimeOut", dpRepairTimeout)
+	}
+	if dpTimeout != "" {
+		request.addParam("dpTimeout", dpTimeout)
 	}
 	_, err = api.mc.serveRequest(request)
 	return
@@ -618,7 +642,7 @@ func (api *AdminAPI) QueryBadDisks() (badDisks *proto.BadDiskInfos, err error) {
 
 func (api *AdminAPI) DecommissionDisk(addr string, disk string) (err error) {
 	return api.mc.request(newRequest(post, proto.DecommissionDisk).Header(api.h).
-		addParam("addr", addr).addParam("disk", disk))
+		addParam("addr", addr).addParam("disk", disk).addParam("decommissionType", "1"))
 }
 
 func (api *AdminAPI) RecommissionDisk(addr string, disk string) (err error) {

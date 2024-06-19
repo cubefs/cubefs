@@ -76,6 +76,7 @@ type DataNodeInfo struct {
 	CpuUtil                   float64            `json:"cpuUtil"`
 	IoUtils                   map[string]float64 `json:"ioUtil"`
 	DecommissionedDisk        []string
+	BackupDataPartitions      []uint64
 }
 
 // MetaPartition defines the structure of a meta partition
@@ -128,8 +129,11 @@ type ClusterView struct {
 	MaxMetaPartitionID       uint64
 	VolDeletionDelayTimeHour int64
 	MarkDiskBrokenThreshold  float64
+	EnableAutoDpMetaRepair   bool
 	EnableAutoDecommission   bool
 	DecommissionDiskLimit    uint32
+	DpRepairTimeout          time.Duration
+	DpTimeout                time.Duration
 	DataNodeStatInfo         *NodeStatInfo
 	MetaNodeStatInfo         *NodeStatInfo
 	VolStatInfo              []*VolStatInfo
@@ -214,21 +218,25 @@ type ZoneNodesStat struct {
 }
 
 type NodeSetStat struct {
-	ID          uint64
-	Capacity    int
-	Zone        string
-	MetaNodeNum int
-	DataNodeNum int
+	ID                  uint64
+	Capacity            int
+	Zone                string
+	CanAllocMetaNodeCnt int
+	CanAllocDataNodeCnt int
+	MetaNodeNum         int
+	DataNodeNum         int
 }
 
 type NodeSetStatInfo struct {
-	ID               uint64
-	Capacity         int
-	Zone             string
-	MetaNodes        []*NodeStatView
-	DataNodes        []*NodeStatView
-	DataNodeSelector string
-	MetaNodeSelector string
+	ID                  uint64
+	Capacity            int
+	Zone                string
+	CanAllocMetaNodeCnt int
+	CanAllocDataNodeCnt int
+	MetaNodes           []*NodeStatView
+	DataNodes           []*NodeStatView
+	DataNodeSelector    string
+	MetaNodeSelector    string
 }
 
 type NodeStatView struct {
@@ -362,9 +370,9 @@ type FailedDpInfo struct {
 
 type DecommissionProgress struct {
 	Status        uint32
+	StatusMessage string
 	Progress      string
 	FailedDps     []FailedDpInfo
-	StatusMessage string
 }
 
 type BadDiskInfo struct {
@@ -386,6 +394,7 @@ type DecommissionTokenStatus struct {
 	NodesetID   uint64
 	CurTokenNum int32
 	MaxTokenNum int32
+	RunningDp   []uint64
 }
 
 type VolVersionInfo struct {

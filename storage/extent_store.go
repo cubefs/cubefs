@@ -21,6 +21,7 @@ import (
 	"hash/crc32"
 	"io"
 	"io/fs"
+	"math/rand"
 	"os"
 	"path"
 	"regexp"
@@ -62,7 +63,8 @@ const (
 	AppendRandomWriteType    = 4
 
 	NormalExtentDeleteRetainTime = 3600 * 4
-	CacheFlushInterval           = 5 * time.Second
+	CacheFlushMinInterval        = 5 * time.Minute
+	CacheFlushMaxInterval        = 15 * time.Minute
 	ExtentReadDirHint            = "READDIR_HINT"
 	ExtentReadDirHintV2          = "READDIR_HINT_V2"
 	ExtentReadDirHintTemp        = "READDIR_HINT.tmp"
@@ -150,9 +152,7 @@ type ExtentStore struct {
 	extentLock                        bool
 	stopMutex                         sync.RWMutex
 	stopC                             chan interface{}
-
-	ApplyId      uint64
-	ApplyIdMutex sync.RWMutex
+	ApplyId                           uint64
 }
 
 func MkdirAll(name string) (err error) {
@@ -280,10 +280,6 @@ func (ei *ExtentInfo) UpdateExtentInfo(extent *Extent, crc uint32) {
 // When the master sends the loadDataPartition request, the snapshot is used to compare the replicas.
 func (s *ExtentStore) SnapShot() (files []*proto.File, err error) {
 	var normalExtentSnapshot, tinyExtentSnapshot []*ExtentInfo
-
-	// compute crc again to guarantee crc and applyID is the newest
-	s.autoComputeExtentCrc()
-
 	if normalExtentSnapshot, _, err = s.GetAllWatermarks(NormalExtentFilter()); err != nil {
 		log.LogErrorf("SnapShot GetAllWatermarks err %v", err)
 		return
@@ -293,7 +289,9 @@ func (s *ExtentStore) SnapShot() (files []*proto.File, err error) {
 	for _, ei := range normalExtentSnapshot {
 		file := GetSnapShotFileFromPool()
 		file.Name = strconv.FormatUint(ei.FileID, 10)
+
 		file.Size = uint32(ei.Size)
+
 		file.Modified = ei.ModifyTime
 		file.Crc = atomic.LoadUint32(&ei.Crc)
 		file.ApplyID = ei.ApplyID
@@ -315,16 +313,19 @@ func (s *ExtentStore) SnapShot() (files []*proto.File, err error) {
 
 func (s *ExtentStore) startFlushCache() {
 	// NOTE: flush extents in cache
-	timer := time.NewTicker(CacheFlushInterval)
+	randGen := rand.New(rand.NewSource(time.Now().UnixMicro()))
 	for {
 		select {
-		case <-timer.C:
-			log.LogInfof("[startFlushCache] flush extent cache")
-			s.cache.CopyAndFlush(5 * time.Second)
 		case <-s.stopC:
-			timer.Stop()
 			return
+		default:
+			log.LogInfof("[startFlushCache] flush extent cache")
+			s.cache.CopyAndFlush(30 * time.Second)
 		}
+		tmp := randGen.Int63n(int64(CacheFlushMaxInterval - CacheFlushMinInterval))
+		randSleep := time.Duration(tmp) + CacheFlushMinInterval
+		log.LogDebugf("[startFlushCache] startFlushCache sleep time(%v)", randSleep)
+		time.Sleep(randSleep)
 	}
 }
 
@@ -410,8 +411,10 @@ func (s *ExtentStore) GetExtentInfoFromDisk(id uint64) (ei *ExtentInfo, err erro
 			ei.Size = watermark
 		}
 		// NOTE: init snapshot offset
-		if stat.Size() > int64(ei.SnapshotDataOff) {
-			ei.SnapshotDataOff = uint64(stat.Size())
+		if !IsTinyExtent(id) {
+			if stat.Size() > int64(ei.SnapshotDataOff) {
+				ei.SnapshotDataOff = uint64(stat.Size())
+			}
 		}
 		return
 	}
@@ -626,12 +629,12 @@ func (s *ExtentStore) initBaseFileID() error {
 }
 
 // Write writes the given extent to the disk.
-func (s *ExtentStore) Write(extentID uint64, offset, size int64, data []byte, crc uint32, writeType int, isSync bool, isHole bool, isRepair, isBackupWrite bool) (status uint8, err error) {
+func (s *ExtentStore) Write(param *WriteParam) (status uint8, err error) {
 	s.stopMutex.RLock()
 	defer s.stopMutex.RUnlock()
 	if s.IsClosed() {
 		err = ErrStoreAlreadyClosed
-		log.LogErrorf("[Write] store(%v) failed to write extent(%v), err(%v)", s.dataPath, extentID, err)
+		log.LogErrorf("[Write] store(%v) failed to write param(%v), err(%v)", s.dataPath, param, err)
 		return
 	}
 
@@ -641,22 +644,22 @@ func (s *ExtentStore) Write(extentID uint64, offset, size int64, data []byte, cr
 	)
 
 	s.elMutex.RLock()
-	if isBackupWrite {
+	if param.IsBackupWrite {
 		// NOTE: meet an error is impossible
-		_, ok := s.GetExtentInfo(extentID)
+		_, ok := s.GetExtentInfo(param.ExtentID)
 		if !ok {
 			s.elMutex.RUnlock()
-			err = fmt.Errorf("extent(%v) is not locked", extentID)
-			log.LogErrorf("[Write] gc_extent[%d] is not locked", extentID)
+			err = fmt.Errorf("extent(%v) is not locked", param.ExtentID)
+			log.LogErrorf("[Write] gc_extent[%d] is not locked", param.ExtentID)
 			return
 		}
 	} else {
 		if s.extentLock {
-			if flag, ok := s.extentLockMap[extentID]; ok {
-				log.LogErrorf("[Write] gc_extent_lock[%d] is locked, path %s", extentID, s.dataPath)
+			if flag, ok := s.extentLockMap[param.ExtentID]; ok {
+				log.LogErrorf("[Write] gc_extent_lock[%d] is locked, path %s", param.ExtentID, s.dataPath)
 				if flag == proto.GcDeleteFlag {
 					s.elMutex.RUnlock()
-					err = fmt.Errorf("extent(%v) is locked", extentID)
+					err = fmt.Errorf("extent(%v) is locked", param.ExtentID)
 					return
 				}
 			}
@@ -666,7 +669,7 @@ func (s *ExtentStore) Write(extentID uint64, offset, size int64, data []byte, cr
 
 	s.eiMutex.Lock()
 	status = proto.OpOk
-	ei = s.extentInfoMap[extentID]
+	ei = s.extentInfoMap[param.ExtentID]
 	e, err = s.extentWithHeader(ei)
 	s.eiMutex.Unlock()
 	if err != nil {
@@ -674,13 +677,13 @@ func (s *ExtentStore) Write(extentID uint64, offset, size int64, data []byte, cr
 	}
 	// update access time
 	atomic.StoreInt64(&ei.AccessTime, time.Now().Unix())
-	log.LogDebugf("action[Write] dp %v extentID %v offset %v size %v writeTYPE %v isRepair(%v)", s.partitionID, extentID, offset, size, writeType, isRepair)
-	if err = s.checkOffsetAndSize(extentID, offset, size, writeType, isRepair); err != nil {
+	log.LogDebugf("action[Write] dp %v write param(%v)", s.partitionID, param)
+	if err = s.checkOffsetAndSize(param); err != nil {
 		log.LogInfof("action[Write] path %v err %v", e.filePath, err)
 		return status, err
 	}
 
-	status, err = e.Write(data, offset, size, crc, writeType, isSync, s.PersistenceBlockCrc, ei, isHole, isRepair)
+	status, err = e.Write(param, s.PersistenceBlockCrc)
 	if err != nil {
 		log.LogInfof("action[Write] path %v err %v", e.filePath, err)
 		return status, err
@@ -690,27 +693,27 @@ func (s *ExtentStore) Write(extentID uint64, offset, size int64, data []byte, cr
 	return status, nil
 }
 
-func (s *ExtentStore) checkOffsetAndSize(extentID uint64, offset, size int64, writeType int, isRepair bool) error {
-	if IsTinyExtent(extentID) {
+func (s *ExtentStore) checkOffsetAndSize(param *WriteParam) error {
+	if IsTinyExtent(param.ExtentID) {
 		return nil
 	}
 	// random write pos can happen on modAppend partition of extent
-	if writeType == RandomWriteType {
+	if param.WriteType == RandomWriteType {
 		return nil
 	}
-	if writeType == AppendRandomWriteType {
-		if offset < util.ExtentSize {
-			return newParameterError("writeType=%d offset=%d size=%d", writeType, offset, size)
+	if param.WriteType == AppendRandomWriteType {
+		if param.Offset < util.ExtentSize {
+			return newParameterError("Write param error(%v)", param)
 		}
 		return nil
 	}
-	if size == 0 ||
-		offset >= util.BlockCount*util.BlockSize ||
-		offset+size > util.BlockCount*util.BlockSize {
-		return newParameterError("offset=%d size=%d", offset, size)
+	if param.Size == 0 ||
+		param.Offset >= util.BlockCount*util.BlockSize ||
+		param.Offset+param.Size > util.BlockCount*util.BlockSize {
+		return newParameterError("offset=%d size=%d", param.Offset, param.Size)
 	}
-	if !isRepair && size > util.BlockSize {
-		return newParameterError("offset=%d size=%d", offset, size)
+	if !param.IsRepair && param.Size > util.BlockSize {
+		return newParameterError("offset=%d size=%d", param.Offset, param.Size)
 	}
 	return nil
 }
@@ -1036,7 +1039,7 @@ func (s *ExtentStore) GetStoreUsedSize() (used int64) {
 				continue
 			}
 			if log.EnableDebug() {
-				log.LogDebugf("[GetStoreUsedSize] store(%v) tiny extent(%v) size(%v)", s.dataPath, einfo.FileID, strutil.FormatSize(uint64(size)))
+				log.LogDebugf("[GetStoreUsedSize] store(%v) tiny extent(%v) size(%v) raw(%v)", s.dataPath, einfo.FileID, strutil.FormatSize(uint64(size)), size)
 			}
 			used += size
 			tinyTotal += uint64(size)
@@ -1049,10 +1052,14 @@ func (s *ExtentStore) GetStoreUsedSize() (used int64) {
 				}
 				actualSize, err := s.getFileDiskUsed(path.Join(s.dataPath, strconv.FormatInt(int64(einfo.FileID), 10)))
 				if err != nil {
-					log.LogErrorf("[GetStoreUsedSize] store(%v) failed to get normal extent(%v) disk used", s.dataPath, einfo.FileID)
+					if os.IsNotExist(err) {
+						log.LogInfof("[GetStoreUsedSize] store(%v) extent(%v) already be deleted, skip", s.dataPath, einfo.FileID)
+						continue
+					}
+					log.LogErrorf("[GetStoreUsedSize] store(%v) failed to get normal extent(%v) disk used, err(%v)", s.dataPath, einfo.FileID, err)
 					continue
 				}
-				log.LogDebugf("[GetStoreUsedSize] store(%v) normal extent(%v) size(%v), actual size(%v)", s.dataPath, einfo.FileID, strutil.FormatSize(uint64(size)), strutil.FormatSize(uint64(actualSize)))
+				log.LogDebugf("[GetStoreUsedSize] store(%v) normal extent(%v) size(%v) raw(%v), actual size(%v) raw(%v)", s.dataPath, einfo.FileID, strutil.FormatSize(uint64(size)), size, strutil.FormatSize(uint64(actualSize)), actualSize)
 				if actualSize < size {
 					log.LogWarnf("[GetStoreUsedSize] store(%v) normal extent(%v) actual size(%v), size(%v) einfo size(%v) snapshot off(%v)", s.dataPath, einfo.FileID, strutil.FormatSize(uint64(actualSize)), strutil.FormatSize(uint64(size)), strutil.FormatSize(einfo.Size), strutil.FormatSize(einfo.SnapshotDataOff))
 				}
@@ -1062,7 +1069,7 @@ func (s *ExtentStore) GetStoreUsedSize() (used int64) {
 		}
 	}
 	if log.EnableInfo() {
-		log.LogInfof("[GetStoreUsedSize] store(%v) total size(%v) tiny total(%v) normal total(%v)", s.dataPath, strutil.FormatSize(uint64(used)), strutil.FormatSize(tinyTotal), strutil.FormatSize(normalTotal))
+		log.LogInfof("[GetStoreUsedSize] store(%v) total size(%v) raw(%v) tiny total(%v) raw(%v) normal total(%v) raw(%v)", s.dataPath, strutil.FormatSize(uint64(used)), used, strutil.FormatSize(tinyTotal), tinyTotal, strutil.FormatSize(normalTotal), normalTotal)
 	}
 	return
 }
@@ -1536,9 +1543,7 @@ func (s *ExtentStore) autoComputeExtentCrc() {
 	sort.Sort(ExtentInfoArr(extentInfos))
 
 	for _, ei := range extentInfos {
-		s.ApplyIdMutex.RLock()
 		if ei == nil {
-			s.ApplyIdMutex.RUnlock()
 			continue
 		}
 
@@ -1548,22 +1553,22 @@ func (s *ExtentStore) autoComputeExtentCrc() {
 			e, err := s.extentWithHeader(ei)
 			if err != nil {
 				log.LogWarnf("[autoComputeExtentCrc] get extent error:%+v", err)
-				s.ApplyIdMutex.RUnlock()
 				continue
 			}
-
-			extentCrc, err := e.autoComputeExtentCrc(s.PersistenceBlockCrc)
+			extSize := e.Size()
+			if e.snapshotDataOff > util.ExtentSize {
+				extSize = int64(e.snapshotDataOff)
+			}
+			extentCrc, err := e.autoComputeExtentCrc(extSize, s.PersistenceBlockCrc)
 			if err != nil {
 				log.LogError("[autoComputeExtentCrc] compute crc fail", err)
-				s.ApplyIdMutex.RUnlock()
 				continue
 			}
-
+			ei.ApplySize = extSize
 			ei.UpdateExtentInfo(e, extentCrc)
-			ei.ApplyID = s.ApplyId
+			atomic.StoreUint64(&ei.ApplyID, s.ApplyId)
 			time.Sleep(time.Millisecond * 100)
 		}
-		s.ApplyIdMutex.RUnlock()
 	}
 
 	time.Sleep(time.Second)
