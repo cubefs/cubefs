@@ -20,9 +20,10 @@ import (
 	"math/rand"
 	"strings"
 
+	"time"
+
 	"github.com/cubefs/cubefs/depends/tiglabs/raft/logger"
 	"github.com/cubefs/cubefs/depends/tiglabs/raft/proto"
-	"time"
 )
 
 // CampaignType represents the type of campaigning
@@ -188,7 +189,7 @@ func (r *raftFsm) doRandomSeed() {
 }
 
 func (r *raftFsm) StopFsm() {
-	peers := make([]proto.Peer, len(r.replicas))
+	peers := make([]proto.Peer, 0, len(r.replicas))
 	for _, r := range r.replicas {
 		peers = append(peers, r.peer)
 	}
