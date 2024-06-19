@@ -44,7 +44,6 @@ import (
 	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/loadutil"
 	"github.com/cubefs/cubefs/util/log"
-	syslog "log"
 
 	"github.com/xtaci/smux"
 )
