@@ -35,21 +35,21 @@ static int do_extent_request_rdma(struct cfs_extent_stream *es,
 	err = cfs_rdma_create(host, es->ec->log, &sock, es->rdma_port);
 	if (err < 0) {
 		cfs_log_error(es->ec->log, "rdma(%s) create error %d\n",
-			      cfs_pr_addr(host), err);
+			      cfs_pr_addr_rdma(host, es->rdma_port), err);
 		return err;
 	}
 
 	err = cfs_rdma_send_packet(sock, packet);
 	if (err < 0) {
 		cfs_log_error(es->ec->log, "rdma(%s) send packet error %d\n",
-			      cfs_pr_addr(host), err);
+			      cfs_pr_addr_rdma(host, es->rdma_port), err);
 		goto out;
 	}
 
 	err = cfs_rdma_recv_packet(sock, packet);
 	if (err) {
 		cfs_log_error(es->ec->log, "rdma(%s) recv packet error %d\n",
-			      cfs_pr_addr(host), err);
+			      cfs_pr_addr_rdma(host, es->rdma_port), err);
 		goto out;
 	}
 
@@ -1541,8 +1541,8 @@ static int cfs_set_packet_rdma_buffer_crc(struct cfs_extent_writer *writer, stru
 	packet->request.hdr.size = cpu_to_be32(size);
 	packet->pkg_data_type = CFS_PACKAGE_RDMA_ITER;
 	packet->data_buffer = pDataBuf;
-	packet->request.hdr_padding.RdmaAddr = cpu_to_be64(pDataBuf->dma_addr);
-	packet->request.hdr_padding.RdmaLength = htonl(size);
+	packet->request.hdr_padding.rdma_addr = cpu_to_be64(pDataBuf->dma_addr);
+	packet->request.hdr_padding.rdma_length = htonl(size);
 
 	return 0;
 }

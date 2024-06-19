@@ -129,8 +129,8 @@ static int cfs_rdma_pages_to_buffer(struct cfs_socket *csk, struct cfs_packet *p
 		kunmap(frags[i].page->page);
 		len += frags[i].size;
 	}
-	packet->request.hdr_padding.RdmaAddr = cpu_to_be64(pDataBuf->dma_addr);
-	packet->request.hdr_padding.RdmaLength = htonl(count);
+	packet->request.hdr_padding.rdma_addr = cpu_to_be64(pDataBuf->dma_addr);
+	packet->request.hdr_padding.rdma_length = htonl(count);
 
 	return 0;
 }
@@ -148,8 +148,8 @@ static int cfs_rdma_iter_to_buffer(struct cfs_socket *csk, struct cfs_packet *pa
 	packet->data_buffer = pDataBuf;
 	// copy the data into data buffer.
 	memcpy(pDataBuf->pBuff, packet->request.iov.iov_base, size);
-	packet->request.hdr_padding.RdmaAddr = cpu_to_be64(pDataBuf->dma_addr);
-	packet->request.hdr_padding.RdmaLength = htonl(size);
+	packet->request.hdr_padding.rdma_addr = cpu_to_be64(pDataBuf->dma_addr);
+	packet->request.hdr_padding.rdma_length = htonl(size);
 
 	return 0;
 }
@@ -170,8 +170,9 @@ static int cfs_rdma_attach_buffer(struct cfs_socket *csk, struct cfs_packet *pac
 		printk("failed to allocate data buffer. size=%ld\n", count);
 		return -ENOMEM;
 	}
-	packet->request.hdr_padding.RdmaAddr = cpu_to_be64(pDataBuf->dma_addr);
-	packet->request.hdr_padding.RdmaLength = htonl(count);
+	packet->data_buffer = pDataBuf;
+	packet->request.hdr_padding.rdma_addr = cpu_to_be64(pDataBuf->dma_addr);
+	packet->request.hdr_padding.rdma_length = htonl(count);
 
 	return 0;
 }
@@ -236,7 +237,7 @@ int cfs_rdma_send_packet(struct cfs_socket *csk, struct cfs_packet *packet)
 			packet->request.hdr.size = cpu_to_be32(cfs_buffer_size(csk->tx_buffer));
 	}
 
-	packet->request.hdr_padding.RdmaKey = htonl(csk->ibvsock->pd->unsafe_global_rkey);
+	packet->request.hdr_padding.rdma_key = htonl(csk->ibvsock->pd->unsafe_global_rkey);
 	iov.iov_base = &packet->request;
 	iov.iov_len = sizeof(struct cfs_packet_hdr) + sizeof(struct request_hdr_padding);
 	iov_iter_init(&iter, READ, &iov, 1, iov.iov_len);

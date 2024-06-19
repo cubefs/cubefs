@@ -132,6 +132,7 @@ static inline int cfs_parse_status(u8 status)
 #define CFS_PACKAGE_RDMA_ITER 3
 
 #define CFS_PACKET_REQUEST_BUFFER_SIZE 40
+#define CFS_PACKET_ARG_SIZE 64
 
 /**
  *  Define cubefs file mode, refer to "https://pkg.go.dev/io/fs#FileMode".
@@ -891,26 +892,24 @@ cfs_packet_gquota_reply_clear(struct cfs_packet_gquota_reply *reply)
 }
 
 struct request_hdr_padding {
-	uint64_t VerSeq; // only used in mod request to datanode
-	unsigned char
-		arg[CFS_PACKET_REQUEST_BUFFER_SIZE]; // for create or append ops, the data contains the address
+	uint64_t ver_seq;
+	unsigned char arg[CFS_PACKET_ARG_SIZE];
 	unsigned char list[CFS_PACKET_REQUEST_BUFFER_SIZE];
-	uint8_t RdmaVersion; //rdma version
-	uint64_t RdmaAddr;
-	uint32_t RdmaLength;
-	uint32_t RdmaKey;
-}__attribute__((packed)); //
+	uint8_t rdma_version;
+	uint64_t rdma_addr;
+	uint32_t rdma_length;
+	uint32_t rdma_key;
+}__attribute__((packed));
 
 struct reply_hdr_padding {
-	uint64_t VerSeq; // only used in mod request to datanode
-	unsigned char
-		arg[CFS_PACKET_REQUEST_BUFFER_SIZE]; // for create or append ops, the data contains the address
-	unsigned char data[500];
+	uint64_t ver_seq;
+	unsigned char arg[CFS_PACKET_ARG_SIZE];
+	unsigned char data[CFS_PACKET_REQUEST_BUFFER_SIZE];
 	unsigned char list[CFS_PACKET_REQUEST_BUFFER_SIZE];
-	uint8_t RdmaVersion; //rdma version
-	uint64_t RdmaAddr;
-	uint32_t RdmaLength;
-	uint32_t RdmaKey;
+	uint8_t rdma_version;
+	uint64_t rdma_addr;
+	uint32_t rdma_length;
+	uint32_t rdma_key;
 }__attribute__((packed));
 
 struct cfs_packet {
@@ -1023,7 +1022,7 @@ static inline int cfs_packet_set_request_arg(struct cfs_packet *packet,
 	size_t len = 0;
 
 	len = cfs_buffer_size(arg);
-	if (len > CFS_PACKET_REQUEST_BUFFER_SIZE) {
+	if (len > CFS_PACKET_ARG_SIZE) {
 		return -EINVAL;
 	}
 
