@@ -16,6 +16,7 @@ package meta
 
 import (
 	gerrors "errors"
+	"math/rand"
 	"sync"
 	"syscall"
 	"time"
@@ -240,6 +241,8 @@ func NewMetaWrapper(config *MetaConfig) (*MetaWrapper, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	mw.epoch = uint64(rand.Intn(len(mw.rwPartitions) + 1)) // Choose the init mp randomly.
 
 	go mw.updateQuotaInfoTick()
 	go mw.refresh()
