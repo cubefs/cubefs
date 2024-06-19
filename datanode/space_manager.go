@@ -297,9 +297,16 @@ func (manager *SpaceManager) LoadDisk(path string, reservedSpace, diskRdonlySpac
 		if loadedDp, has := manager.partitions[dp.partitionID]; !has {
 			manager.partitions[dp.partitionID] = dp
 			manager.partitionMutex.Unlock()
-			log.LogDebugf("action[LoadDisk] put partition(%v) to manager manager.", dp.partitionID)
+			log.LogDebugf("action[LoadDisk] put partition(%v) to manager.", dp.partitionID)
 		} else {
 			manager.partitionMutex.Unlock()
+
+			if loadedDp.disk.Path == dp.disk.Path {
+				log.LogWarnf("[LoadDisk] dp(%v) is loaded, to load(%v), but disk path is the same",
+					loadedDp.info(), dp.info())
+				return
+			}
+
 			log.LogWarnf("action[LoadDisk] dp(%v) is loaded, to load(%v).", loadedDp.info(), dp.info())
 			_, _, infos, err := dp.fetchReplicasFromMaster()
 			if err != nil {
