@@ -121,7 +121,7 @@ func TestTaskProc(t *testing.T) {
 	volMgr.all.putVol(vol)
 	_, ctx := trace.StartSpanFromContext(context.Background(), "")
 	// volume lock
-	volMgr.applyVolumeTask(ctx, 1, uuid.New().String(), base.VolumeTaskTypeLock)
+	volMgr.applyVolumeTask(ctx, vol.vid, uuid.New().String(), base.VolumeTaskTypeLock)
 	require.Equal(t, proto.VolumeStatusLock, vol.volInfoBase.Status)
 	taskid, hit := volMgr.lastTaskIdMap.Load(vol.vid)
 	require.True(t, hit)
@@ -131,12 +131,40 @@ func TestTaskProc(t *testing.T) {
 	require.False(t, hit)
 
 	// volume unlock
-	volMgr.applyVolumeTask(ctx, 1, uuid.New().String(), base.VolumeTaskTypeUnlock)
+	volMgr.applyVolumeTask(ctx, vol.vid, uuid.New().String(), base.VolumeTaskTypeUnlock)
 	taskid, hit = volMgr.lastTaskIdMap.Load(vol.vid)
 	require.True(t, hit)
 	time.Sleep(100 * time.Millisecond) // wait task finish
 	volMgr.applyRemoveVolumeTask(ctx, vol.vid, taskid.(string), base.VolumeTaskTypeUnlock)
 	require.Equal(t, proto.VolumeStatusIdle, vol.volInfoBase.Status)
+
+	// test unlock volume force
+	{
+		volMgr.applyVolumeTask(ctx, vol.vid, uuid.New().String(), base.VolumeTaskTypeLock)
+		require.Equal(t, proto.VolumeStatusLock, vol.volInfoBase.Status)
+		taskid, hit = volMgr.lastTaskIdMap.Load(vol.vid)
+		require.True(t, hit)
+		time.Sleep(100 * time.Millisecond)
+		volMgr.applyRemoveVolumeTask(ctx, vol.vid, taskid.(string), base.VolumeTaskTypeLock)
+		_, hit = volMgr.lastTaskIdMap.Load(vol.vid)
+		require.False(t, hit)
+
+		volMgr.applyVolumeTask(ctx, vol.vid, uuid.New().String(), base.VolumeTaskTypeUnlock)
+		_, hit = volMgr.lastTaskIdMap.Load(vol.vid)
+		require.True(t, hit)
+		// unlock volume force, replace the old unlock volume task
+		err = volMgr.applyVolumeTask(ctx, vol.vid, uuid.New().String(), base.VolumeTaskTypeUnlockForce)
+		require.NoError(t, err)
+		taskid, hit = volMgr.lastTaskIdMap.Load(vol.vid)
+		require.True(t, hit)
+		// unlock volume force repeatedly
+		err = volMgr.applyVolumeTask(ctx, vol.vid, uuid.New().String(), base.VolumeTaskTypeUnlockForce)
+		require.NoError(t, err)
+		err = volMgr.applyRemoveVolumeTask(ctx, vol.vid, taskid.(string), base.VolumeTaskTypeUnlockForce)
+		require.NoError(t, err)
+		_, hit = volMgr.lastTaskIdMap.Load(vol.vid)
+		require.False(t, hit)
+	}
 
 	// delete task
 	task := newVolTask(taskRec.Vid, taskRec.TaskType, taskRec.TaskId, volMgr.setVolumeStatus)

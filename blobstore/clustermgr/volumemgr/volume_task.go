@@ -141,6 +141,7 @@ func (m *VolumeMgr) applyVolumeTask(ctx context.Context, vid proto.Vid, taskID s
 	// set volume status=lock if t is base.VolumeTaskTypeLock
 	var (
 		err        error
+		addNewTask bool
 		taskRecord = &volumedb.VolumeTaskRecord{
 			Vid:      vid,
 			TaskType: task.taskType,
@@ -149,36 +150,67 @@ func (m *VolumeMgr) applyVolumeTask(ctx context.Context, vid proto.Vid, taskID s
 	)
 	switch t {
 	case base.VolumeTaskTypeLock:
-		vol.lock.Lock()
-		if !vol.canLock() {
-			span.Warnf("volume can't lock, status=%d", vol.getStatus())
-			vol.lock.Unlock()
-			return nil
-		}
-		// set volume status into lock, it'll call change volume status function
-		vol.setStatus(ctx, proto.VolumeStatusLock)
-		rec := vol.ToRecord()
-		// store task to db
-		err = m.volumeTbl.PutVolumeAndTask(rec, taskRecord)
-		vol.lock.Unlock()
-	case base.VolumeTaskTypeUnlock, base.VolumeTaskTypeUnlockForce:
-		vol.lock.Lock()
-		if !vol.canUnlock() {
-			span.Warnf("volume can't unlock, status=%d", vol.getStatus())
-			vol.lock.Unlock()
-			return nil
-		}
-		vol.setStatus(ctx, proto.VolumeStatusUnlocking)
-		rec := vol.ToRecord()
-		// store task to db
-		err = m.volumeTbl.PutVolumeAndTask(rec, taskRecord)
-		vol.lock.Unlock()
+		err = vol.withLocked(func() error {
+			if !vol.canLock() {
+				span.Warnf("volume can't lock, status=%d", vol.getStatus())
+				return nil
+			}
+
+			addNewTask = true
+			// set volume status into lock, it'll call change volume status function
+			vol.setStatus(ctx, proto.VolumeStatusLock)
+			rec := vol.ToRecord()
+			// store task to db
+			return m.volumeTbl.PutVolumeAndTask(rec, taskRecord)
+		})
+	case base.VolumeTaskTypeUnlock:
+		err = vol.withLocked(func() error {
+			if !vol.canUnlock() {
+				span.Warnf("volume can't unlock, status=%d", vol.getStatus())
+				return nil
+			}
+
+			addNewTask = true
+			vol.setStatus(ctx, proto.VolumeStatusUnlocking)
+			rec := vol.ToRecord()
+			// store task to db
+			return m.volumeTbl.PutVolumeAndTask(rec, taskRecord)
+		})
+	case base.VolumeTaskTypeUnlockForce:
+		err = vol.withLocked(func() error {
+			if !vol.canUnlockForce() {
+				span.Warnf("volume can't unlock force, status=%d", vol.getStatus())
+				return nil
+			}
+
+			oldTask := m.taskMgr.GetTask(vid)
+			if oldTask != nil {
+				if oldTask.taskType == t {
+					span.Warnf("volume already in unlocking force")
+					return nil
+				}
+				// other task type exist, remove old task firstly
+				if err = m.volumeTbl.DeleteTaskRecord(vid); err != nil {
+					span.Errorf("remove old task type task %s error: %v", task.String(), err)
+					return err
+				}
+			}
+
+			addNewTask = true
+			vol.setStatus(ctx, proto.VolumeStatusUnlocking)
+			rec := vol.ToRecord()
+			// store task to db
+			return m.volumeTbl.PutVolumeAndTask(rec, taskRecord)
+		})
 	default:
 		span.Panicf("Unknown task type(%d)", t)
 	}
 	if err != nil {
 		span.Errorf("persist task %s error: %v", task.String(), err)
 		return err
+	}
+	if !addNewTask {
+		return nil
 	}
 
 	// add task into taskManager
