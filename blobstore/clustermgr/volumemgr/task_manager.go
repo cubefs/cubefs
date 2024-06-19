@@ -181,6 +181,16 @@ func (m *taskManager) AddTask(task *volTask) {
 	m.notify()
 }
 
+func (m *taskManager) GetTask(vid proto.Vid) *volTask {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	elem, hit := m.taskMap[vid]
+	if !hit {
+		return nil
+	}
+	return elem.Value.(*volTask)
+}
+
 func (m *taskManager) DeleteTask(vid proto.Vid, taskId string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()

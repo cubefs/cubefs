@@ -459,19 +459,23 @@ func (v *VolumeMgr) UnlockVolume(ctx context.Context, vid proto.Vid, force bool)
 		return apierrors.ErrVolumeNotExist
 	}
 
-	vol.lock.RLock()
-	status := vol.getStatus()
-	if status == proto.VolumeStatusUnlocking || status == proto.VolumeStatusIdle {
-		vol.lock.RUnlock()
-		return nil
-	}
+	propose := false
+	err := vol.withRLocked(func() error {
+		status := vol.getStatus()
+		if status == proto.VolumeStatusIdle || (!force && status == proto.VolumeStatusUnlocking) {
+			return nil
+		}
+		if status == proto.VolumeStatusActive {
+			span.Warnf("can't unlock volume, volume %d, current status(%d)", vid, vol.getStatus())
+			return apierrors.ErrUnlockNotAllow
+		}
 
-	if status == proto.VolumeStatusActive {
-		vol.lock.RUnlock()
-		span.Warnf("can't unlock volume, volume %d, current status(%d)", vid, vol.getStatus())
-		return apierrors.ErrUnlockNotAllow
+		propose = true
+		return nil
+	})
+	if err != nil || !propose {
+		return err
 	}
-	vol.lock.RUnlock()
 
 	taskType := base.VolumeTaskTypeUnlock
 	if force {
