@@ -100,11 +100,13 @@ func (v *VolumeMgr) AllocVolumeUnit(ctx context.Context, vuid proto.Vuid) (*cmap
 	}
 
 	policy := &diskmgr.AllocPolicy{
-		CodeMode:  vol.volInfoBase.CodeMode,
-		Vuids:     []proto.Vuid{newVuid.(proto.Vuid)},
-		Idc:       diskInfo.Idc,
-		Excludes:  excludes,
-		DiskSetID: diskInfo.DiskSetID,
+		CodeMode: vol.volInfoBase.CodeMode,
+		Vuids:    []proto.Vuid{newVuid.(proto.Vuid)},
+		Idc:      diskInfo.Idc,
+		Excludes: excludes,
+	}
+	if policy.CodeMode.T().IsReplicateMode() {
+		policy.DiskSetID = diskInfo.DiskSetID
 	}
 
 	allocDiskID, err := v.diskMgr.AllocChunks(ctx, policy)

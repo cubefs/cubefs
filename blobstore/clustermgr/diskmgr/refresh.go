@@ -270,18 +270,17 @@ func (d *DiskMgr) generateDiskSetStorage(ctx context.Context, disks []*diskItem,
 		blobNodeStgs[host].disks = append(blobNodeStgs[host].disks, disk)
 		blobNodeStgs[host].freeChunk += freeChunk
 		blobNodeStgs[host].free += free
+	}
 
-		span.Debugf("all blobNodeStgs: %+v", blobNodeStgs)
-
-		for _, rackStgs := range idcRackStgs {
-			for rack := range rackStgs {
-				rackStgs[rack].freeChunk = rackFreeChunks[rack]
-				rackStgs[rack].blobNodeStorages = rackBlobNodeStgs[rack]
-			}
+	span.Debugf("all blobNodeStgs: %+v", blobNodeStgs)
+	for _, rackStgs := range idcRackStgs {
+		for rack := range rackStgs {
+			rackStgs[rack].freeChunk = rackFreeChunks[rack]
+			rackStgs[rack].blobNodeStorages = rackBlobNodeStgs[rack]
 		}
-		for idc := range idcBlobNodeStgs {
-			span.Infof("%s idcBlobNodeStgs length: %d", idc, len(idcBlobNodeStgs[idc]))
-		}
+	}
+	for idc := range idcBlobNodeStgs {
+		span.Infof("%s idcBlobNodeStgs length: %d", idc, len(idcBlobNodeStgs[idc]))
 	}
 
 	spaceStatInfo.UsedSpace = spaceStatInfo.TotalSpace - spaceStatInfo.FreeSpace - spaceStatInfo.ReadOnlySpace
