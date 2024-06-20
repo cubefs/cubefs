@@ -1,4 +1,4 @@
-// Copyright 2024 The CubeFS Authors.
+// Copyright 2023 The CubeFS Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,44 +14,29 @@
 
 package atomicutil
 
-import "sync/atomic"
+import (
+	"math"
+	"sync/atomic"
+)
 
-type Bool struct {
+type Float32 struct {
 	val uint32
 }
 
-func (b *Bool) Load() (v bool) {
-	v = atomic.LoadUint32(&b.val) == 1
+func (f *Float32) Load() float32 {
+	return math.Float32frombits(atomic.LoadUint32(&f.val))
+}
+
+func (f *Float32) Store(val float32) {
+	atomic.StoreUint32(&f.val, math.Float32bits(val))
+}
+
+func (f *Float32) CompareAndSwap(old float32, new float32) (swaped bool) {
+	swaped = atomic.CompareAndSwapUint32(&f.val, math.Float32bits(old), math.Float32bits(new))
 	return
 }
 
-func (b *Bool) Store(v bool) {
-	val := uint32(0)
-	if v {
-		val = 1
-	}
-	atomic.StoreUint32(&b.val, val)
-	return
-}
-
-func (b *Bool) CompareAndSwap(old bool, newVal bool) (swaped bool) {
-	oldVal := uint32(0)
-	if old {
-		oldVal = 1
-	}
-	val := uint32(0)
-	if newVal {
-		val = 1
-	}
-	swaped = atomic.CompareAndSwapUint32(&b.val, oldVal, val)
-	return
-}
-
-func (b *Bool) Swap(new bool) (old bool) {
-	tmp := uint32(0)
-	if new {
-		tmp = 1
-	}
-	old = atomic.SwapUint32(&b.val, tmp) == 1
+func (f *Float32) Swap(new float32) (old float32) {
+	old = math.Float32frombits(atomic.SwapUint32(&f.val, math.Float32bits(new)))
 	return
 }
