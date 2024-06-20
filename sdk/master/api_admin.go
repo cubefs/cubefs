@@ -517,7 +517,9 @@ func (api *AdminAPI) SetMasterVolDeletionDelayTime(volDeletionDelayTimeHour int)
 
 func (api *AdminAPI) SetClusterParas(batchCount, markDeleteRate, deleteWorkerSleepMs, autoRepairRate, loadFactor, maxDpCntLimit, maxMpCntLimit, clientIDKey string,
 	dataNodesetSelector, metaNodesetSelector, dataNodeSelector, metaNodeSelector string, markDiskBrokenThreshold string,
-	enableAutoDpMetaRepair string, dpRepairTimeout string, dpTimeout string,
+	enableAutoDecommissionDisk string, autoDecommissionDiskInterval string,
+	enableAutoDpMetaRepair string, autoDpMetaRepairParallelCnt string,
+	dpRepairTimeout string, dpTimeout string,
 ) (err error) {
 	request := newRequest(get, proto.AdminSetNodeInfo).Header(api.h)
 	request.addParam("batchCount", batchCount)
@@ -536,8 +538,17 @@ func (api *AdminAPI) SetClusterParas(batchCount, markDeleteRate, deleteWorkerSle
 	if markDiskBrokenThreshold != "" {
 		request.addParam("markDiskBrokenThreshold", markDiskBrokenThreshold)
 	}
+	if enableAutoDecommissionDisk != "" {
+		request.addParam("autoDecommissionDisk", enableAutoDecommissionDisk)
+	}
+	if autoDecommissionDiskInterval != "" {
+		request.addParam("autoDecommissionDiskInterval", autoDecommissionDiskInterval)
+	}
 	if enableAutoDpMetaRepair != "" {
 		request.addParam("autoDpMetaRepair", enableAutoDpMetaRepair)
+	}
+	if autoDpMetaRepairParallelCnt != "" {
+		request.addParam("autoDpMetaRepairParallelCnt", autoDpMetaRepairParallelCnt)
 	}
 	if dpRepairTimeout != "" {
 		request.addParam("dpRepairTimeOut", dpRepairTimeout)

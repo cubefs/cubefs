@@ -87,7 +87,8 @@ type Cluster struct {
 	apiLimiter                   *ApiLimiter
 	DecommissionDisks            sync.Map
 	DecommissionLimit            uint64
-	EnableAutoDecommissionDisk   bool
+	EnableAutoDecommissionDisk   atomicutil.Bool
+	AutoDecommissionInterval     atomicutil.Int64
 	AutoDecommissionDiskMux      sync.Mutex
 	checkAutoCreateDataPartition bool
 	masterClient                 *masterSDK.MasterClient
@@ -107,6 +108,7 @@ type Cluster struct {
 	S3ApiQosQuota                *sync.Map // (api,uid,limtType) -> limitQuota
 	MarkDiskBrokenThreshold      atomicutil.Float64
 	EnableAutoDpMetaRepair       atomicutil.Bool
+	AutoDpMetaRepairParallelCnt  atomicutil.Uint32
 }
 
 type delayDeleteVolInfo struct {
@@ -374,6 +376,7 @@ func newCluster(name string, leaderInfo *LeaderInfo, fsm *MetadataFsm, partition
 	c.S3ApiQosQuota = new(sync.Map)
 	c.MarkDiskBrokenThreshold.Store(defaultMarkDiskBrokenThreshold)
 	c.EnableAutoDpMetaRepair.Store(defaultEnableDpMetaRepair)
+	c.AutoDecommissionInterval.Store(int64(defaultAutoDecommissionDiskInterval))
 	return
 }
 
@@ -4432,7 +4435,7 @@ func (c *Cluster) scheduleToBadDisk() {
 			if c.partition.IsRaftLeader() && c.AutoDecommissionDiskIsEnabled() && c.metaReady {
 				c.checkBadDisk()
 			}
-			time.Sleep(10 * time.Second)
+			time.Sleep(c.GetAutoDecommissionDiskInterval())
 		}
 	}()
 }
@@ -5092,13 +5095,50 @@ func (c *Cluster) addDecommissionDiskToNodeset(dd *DecommissionDisk) (err error)
 func (c *Cluster) AutoDecommissionDiskIsEnabled() bool {
 	c.AutoDecommissionDiskMux.Lock()
 	defer c.AutoDecommissionDiskMux.Unlock()
-	return c.EnableAutoDecommissionDisk
+	return c.EnableAutoDecommissionDisk.Load()
 }
 
 func (c *Cluster) SetAutoDecommissionDisk(flag bool) {
 	c.AutoDecommissionDiskMux.Lock()
 	defer c.AutoDecommissionDiskMux.Unlock()
-	c.EnableAutoDecommissionDisk = flag
+	c.EnableAutoDecommissionDisk.Store(flag)
+}
+
+func (c *Cluster) GetAutoDecommissionDiskInterval() (interval time.Duration) {
+	tmp := c.AutoDecommissionInterval.Load()
+	if tmp == 0 {
+		tmp = int64(defaultAutoDecommissionDiskInterval)
+	}
+	interval = time.Duration(tmp)
+	return
+}
+
+func (c *Cluster) setAutoDecommissionDiskInterval(interval time.Duration) (err error) {
+	old := c.AutoDecommissionInterval.Load()
+	c.AutoDecommissionInterval.Store(int64(interval))
+	if err = c.syncPutCluster(); err != nil {
+		c.AutoDecommissionInterval.Store(old)
+		return
+	}
+	return
+}
+
+func (c *Cluster) GetAutoDpMetaRepairParallelCnt() (cnt int) {
+	cnt = int(c.AutoDpMetaRepairParallelCnt.Load())
+	if cnt == 0 {
+		cnt = defaultAutoDpMetaRepairPallarelCnt
+	}
+	return
+}
+
+func (c *Cluster) setAutoDpMetaRepairParallelCnt(cnt int) (err error) {
+	old := c.AutoDpMetaRepairParallelCnt.Load()
+	c.AutoDpMetaRepairParallelCnt.Store(uint32(cnt))
+	if err = c.syncPutCluster(); err != nil {
+		c.AutoDpMetaRepairParallelCnt.Store(old)
+		return
+	}
+	return
 }
 
 func (c *Cluster) GetDecommissionDataPartitionRecoverTimeOut() time.Duration {

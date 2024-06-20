@@ -21,9 +21,9 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestAtomicFloat64(t *testing.T) {
-	f := atomicutil.Float64{}
-	testVal := float64(1.0)
+func TestAtomicFloat32(t *testing.T) {
+	f := atomicutil.Float32{}
+	testVal := float32(1.0)
 	f.Store(testVal)
 	require.Equal(t, testVal, f.Load())
 	require.True(t, f.CompareAndSwap(testVal, 0))

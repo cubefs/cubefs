@@ -117,31 +117,33 @@ type MetaReplicaInfo struct {
 
 // ClusterView provides the view of a cluster.
 type ClusterView struct {
-	Name                     string
-	CreateTime               string
-	LeaderAddr               string
-	DisableAutoAlloc         bool
-	ForbidMpDecommission     bool
-	MetaNodeThreshold        float32
-	Applied                  uint64
-	MaxDataPartitionID       uint64
-	MaxMetaNodeID            uint64
-	MaxMetaPartitionID       uint64
-	VolDeletionDelayTimeHour int64
-	MarkDiskBrokenThreshold  float64
-	EnableAutoDpMetaRepair   bool
-	EnableAutoDecommission   bool
-	DecommissionDiskLimit    uint32
-	DpRepairTimeout          time.Duration
-	DpTimeout                time.Duration
-	DataNodeStatInfo         *NodeStatInfo
-	MetaNodeStatInfo         *NodeStatInfo
-	VolStatInfo              []*VolStatInfo
-	BadPartitionIDs          []BadPartitionView
-	BadMetaPartitionIDs      []BadPartitionView
-	MasterNodes              []NodeView
-	MetaNodes                []NodeView
-	DataNodes                []NodeView
+	Name                         string
+	CreateTime                   string
+	LeaderAddr                   string
+	DisableAutoAlloc             bool
+	ForbidMpDecommission         bool
+	MetaNodeThreshold            float32
+	Applied                      uint64
+	MaxDataPartitionID           uint64
+	MaxMetaNodeID                uint64
+	MaxMetaPartitionID           uint64
+	VolDeletionDelayTimeHour     int64
+	MarkDiskBrokenThreshold      float64
+	EnableAutoDpMetaRepair       bool
+	AutoDpMetaRepairParallelCnt  int
+	EnableAutoDecommission       bool
+	AutoDecommissionDiskInterval time.Duration
+	DecommissionDiskLimit        uint32
+	DpRepairTimeout              time.Duration
+	DpTimeout                    time.Duration
+	DataNodeStatInfo             *NodeStatInfo
+	MetaNodeStatInfo             *NodeStatInfo
+	VolStatInfo                  []*VolStatInfo
+	BadPartitionIDs              []BadPartitionView
+	BadMetaPartitionIDs          []BadPartitionView
+	MasterNodes                  []NodeView
+	MetaNodes                    []NodeView
+	DataNodes                    []NodeView
 }
 
 // ClusterNode defines the structure of a cluster node
