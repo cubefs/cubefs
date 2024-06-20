@@ -228,7 +228,16 @@ static struct inode *cfs_inode_new(struct super_block *sb,
 	return inode;
 }
 
-#ifdef KERNEL_HAS_FOLIO
+#ifdef KERNEL_READ_PAGE
+static int cfs_readpage(struct file *file, struct page *page)
+{
+	struct inode *inode = file_inode(file);
+	struct cfs_inode *ci = (struct cfs_inode *)inode;
+
+	return cfs_extent_read_pages(ci->es, false, &page, 1, page_offset(page),
+				     0, PAGE_SIZE);
+}
+#else
 static int cfs_readfolio(struct file *file, struct folio *folio)
 {
 	struct inode *inode = file_inode(file);
@@ -238,23 +247,13 @@ static int cfs_readfolio(struct file *file, struct folio *folio)
 	return cfs_extent_read_pages(ci->es, false, &page, 1, page_offset(&(folio->page)),
 				     0, PAGE_SIZE);
 }
+#endif
 
+#ifdef KERNEL_HAS_FOLIO
 bool cfs_dirty_folio(struct address_space *mapping, struct folio *folio) {
 	return __set_page_dirty_nobuffers(&(folio->page));
 }
 #else
-/**
- * Called when readpages() failed to update page.
- */
-static int cfs_readpage(struct file *file, struct page *page)
-{
-	struct inode *inode = file_inode(file);
-	struct cfs_inode *ci = (struct cfs_inode *)inode;
-
-	return cfs_extent_read_pages(ci->es, false, &page, 1, page_offset(page),
-				     0, PAGE_SIZE);
-}
-
 static int cfs_readpages_cb(void *data, struct page *page)
 {
 	struct cfs_page_vec *vec = data;
@@ -1590,6 +1589,19 @@ static void cfs_kill_sb(struct super_block *sb)
 }
 
 #ifdef KERNEL_HAS_FOLIO
+#ifdef KERNEL_READ_PAGE
+const struct address_space_operations cfs_address_ops = {
+	.writepage = cfs_writepage,
+	.readpage = cfs_readpage,
+	.writepages = cfs_writepages,
+	.dirty_folio = cfs_dirty_folio,
+	.write_begin = cfs_write_begin,
+	.write_end = cfs_write_end,
+	.invalidate_folio = NULL,
+	.releasepage = NULL,
+	.direct_IO = cfs_direct_io,
+};
+#else
 const struct address_space_operations cfs_address_ops = {
 	.writepage = cfs_writepage,
 	.read_folio = cfs_readfolio,
@@ -1601,6 +1613,7 @@ const struct address_space_operations cfs_address_ops = {
 	.release_folio = NULL,
 	.direct_IO = cfs_direct_io,
 };
+#endif
 #else
 const struct address_space_operations cfs_address_ops = {
 	.readpage = cfs_readpage,
@@ -1719,7 +1732,7 @@ static int proc_log_open(struct inode *inode, struct file *file)
 #ifdef KERNEL_HAS_PDE_DATA
 	file->private_data = PDE_DATA(inode);
 #else
-	file->private_data = NODE_DATA(inode->i_ino);
+	file->private_data = NULL;
 #endif
 	return 0;
 }

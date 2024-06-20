@@ -645,5 +645,25 @@ int test (void)
 EOF
 check_flags "KERNEL_WRITE_GEGIN_NO_FLAGS"
 
+cat > $TEST_C <<EOF
+#include <linux/fs.h>
+#include "test.h"
+
+int cfs_readpage_test(struct file *file, struct page *page) {
+    return 0;
+}
+
+int test (void)
+{
+    struct address_space_operations cfs_test_ops = {
+        .readpage = cfs_readpage_test,
+    };
+
+    return cfs_test_ops.readpage(NULL, NULL);
+}
+
+EOF
+check_flags "KERNEL_READ_PAGE"
+
 echo "#endif" >> $CONFIG_H
 rm -rf $TMPDIR
