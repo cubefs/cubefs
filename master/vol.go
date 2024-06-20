@@ -56,22 +56,7 @@ type VolVarargs struct {
 	enableAutoDpMetaRepair  bool
 }
 
-// Vol represents a set of meta partitionMap and data partitionMap
-type Vol struct {
-	ID                uint64
-	Name              string
-	Owner             string
-	OSSAccessKey      string
-	OSSSecretKey      string
-	dpReplicaNum      uint8
-	mpReplicaNum      uint8
-	Status            uint8
-	Deleting          bool
-	threshold         float32
-	dataPartitionSize uint64 // byte
-	Capacity          uint64 // GB
-	VolType           int
-
+type CacheSubItem struct {
 	EbsBlkSize       int
 	CacheCapacity    uint64
 	CacheAction      int
@@ -81,59 +66,94 @@ type Vol struct {
 	CacheLowWater    int
 	CacheLRUInterval int
 	CacheRule        string
+	PreloadCacheOn   bool
+	preloadCapacity  uint64
+}
 
-	PreloadCacheOn          bool
-	NeedToLowerReplica      bool
-	FollowerRead            bool
-	authenticate            bool
-	crossZone               bool
-	domainOn                bool
-	defaultPriority         bool // old default zone first
-	enablePosixAcl          bool
-	enableTransaction       proto.TxOpMask
+type TxSubItem struct {
 	txTimeout               int64
 	txConflictRetryNum      int64
 	txConflictRetryInterval int64
 	txOpLimit               int
-	zoneName                string
-	MetaPartitions          map[uint64]*MetaPartition `graphql:"-"`
-	dataPartitions          *DataPartitionMap
-	mpsCache                []byte
-	viewCache               []byte
-	createDpMutex           sync.RWMutex
-	createMpMutex           sync.RWMutex
-	createTime              int64
-	DeleteLockTime          int64
-	description             string
-	dpSelectorName          string
-	dpSelectorParm          string
-	domainId                uint64
-	qosManager              *QosCtrlManager
-	DpReadOnlyWhenVolFull   bool // only if this switch is on, all dp becomes readonly when vol is full
-	ReadOnlyForVolFull      bool // only if the switch DpReadOnlyWhenVolFull is on, mark vol is readonly when is full
-	aclMgr                  AclManager
-	uidSpaceManager         *UidSpaceManager
-	volLock                 sync.RWMutex
-	quotaManager            *MasterQuotaManager
-	enableQuota             bool
-	TrashInterval           int64
-	DisableAuditLog         bool
-	VersionMgr              *VolVersionManager
-	Forbidden               bool
-	mpsLock                 *mpsLockManager
-	preloadCapacity         uint64
-	authKey                 string
-	DeleteExecTime          time.Time
-	user                    *User
-	dpRepairBlockSize       uint64
-	EnableAutoMetaRepair    atomicutil.Bool
+	enableTransaction       proto.TxOpMask
+}
+
+type TopoSubItem struct {
+	crossZone       bool
+	domainOn        bool
+	dpSelectorName  string
+	dpSelectorParm  string
+	domainId        uint64
+	defaultPriority bool // old default zone first
+	createDpMutex   sync.RWMutex
+	createMpMutex   sync.RWMutex
+}
+
+type AuthenticSubItem struct {
+	OSSAccessKey   string
+	OSSSecretKey   string
+	authenticate   bool
+	enablePosixAcl bool
+	authKey        string
+}
+
+type VolDeletionSubItem struct {
+	Deleting       bool
+	DeleteLockTime int64
+	Forbidden      bool
+	DeleteExecTime time.Time
+}
+
+// Vol represents a set of meta partitionMap and data partitionMap
+type Vol struct {
+	ID            uint64
+	Name          string
+	Owner         string
+	Status        uint8
+	VolType       int
+	zoneName      string
+	user          *User
+	createTime    int64
+	description   string
+	TrashInterval int64
+
+	dpReplicaNum      uint8
+	mpReplicaNum      uint8
+	dataPartitionSize uint64 // byte
+	Capacity          uint64 // GB
+	dpRepairBlockSize uint64
+
+	MetaPartitions map[uint64]*MetaPartition `graphql:"-"`
+	dataPartitions *DataPartitionMap
+	mpsCache       []byte
+	viewCache      []byte
+
+	NeedToLowerReplica    bool
+	FollowerRead          bool
+	enableQuota           bool
+	DisableAuditLog       bool
+	DpReadOnlyWhenVolFull bool // only if this switch is on, all dp becomes readonly when vol is full
+	ReadOnlyForVolFull    bool // only if the switch DpReadOnlyWhenVolFull is on, mark vol is readonly when is full
+	EnableAutoMetaRepair  atomicutil.Bool
+
+	TopoSubItem
+	CacheSubItem
+	TxSubItem
+	AuthenticSubItem
+	VolDeletionSubItem
+
+	qosManager      *QosCtrlManager
+	aclMgr          AclManager
+	uidSpaceManager *UidSpaceManager
+	quotaManager    *MasterQuotaManager
+	VersionMgr      *VolVersionManager
+
+	mpsLock *mpsLockManager
+	volLock sync.RWMutex
 }
 
 func newVol(vv volValue) (vol *Vol) {
-	vol = &Vol{ID: vv.ID, Name: vv.Name, MetaPartitions: make(map[uint64]*MetaPartition)}
-	if vol.threshold <= 0 {
-		vol.threshold = defaultMetaPartitionMemUsageThreshold
-	}
+	vol = &Vol{ID: vv.ID, Name: vv.Name, MetaPartitions: make(map[uint64]*MetaPartition, 0)}
 
 	vol.dataPartitions = newDataPartitionMap(vv.Name)
 	vol.VersionMgr = newVersionMgr(vol)
