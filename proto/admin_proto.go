@@ -548,7 +548,6 @@ type DeleteDataPartitionRequest struct {
 	PartitionSize     int
 	Force             bool
 	DecommissionType  uint32
-	IsSpecialReplica  bool
 }
 
 // DeleteDataPartitionResponse defines the response to the request of deleting a data partition.
