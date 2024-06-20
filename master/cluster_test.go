@@ -367,8 +367,8 @@ func TestBalanceMetaPartition(t *testing.T) {
 func TestMasterClientLeaderChange(t *testing.T) {
 	cluster := &Cluster{
 		masterClient: masterSDK.NewMasterClient(nil, false),
-		t:            newTopology(),
 	}
+	cluster.t = newTopology()
 	server := &Server{
 		cluster: cluster,
 		leaderInfo: &LeaderInfo{
