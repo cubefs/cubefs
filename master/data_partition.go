@@ -1131,8 +1131,8 @@ func GetDecommissionTypeMessage(status uint32) string {
 		return "AutoDecommission"
 	case ManualDecommission:
 		return "ManualDecommission"
-	case AllDecommission:
-		return "AllDecommission"
+	case QueryDecommission:
+		return "QueryDecommission"
 	case AutoAddReplica:
 		return "AutoAddReplica"
 	case InitialDecommission:
@@ -1188,14 +1188,6 @@ func (partition *DataPartition) MarkDecommissionStatus(srcAddr, dstAddr, srcDisk
 	if partition.IsDiscard {
 		goto directly
 	}
-	// TODO-chi:can delete this block
-	// 1 or 2 replica can always add new replica if retrying decommission
-	// for 3 replica,
-	// if partition.isSpecialReplicaCnt() && len(partition.Hosts) >= int(partition.ReplicaNum+1) {
-	//	return errors.NewErrorf("special replica dp[%v] host length(%v) is different from replicaNum(%v), "+
-	//		"wait for auto reduce replica",
-	//		partition.PartitionID, len(partition.Hosts), partition.ReplicaNum)
-	//}
 	if err = partition.tryRestoreReplicaMeta(c, migrateType); err != nil {
 		log.LogWarnf("action[MarkDecommissionStatus] dp[%v]tryRestoreReplicaMeta failed:%v",
 			partition.PartitionID, err)
@@ -2158,33 +2150,10 @@ func (partition *DataPartition) checkReplicaMeta(c *Cluster) (err error) {
 		log.LogDebugf("action[checkReplicaMeta]%v, err %v", auditMsg, err)
 		auditlog.LogMasterOp("RestoreReplicaMeta", auditMsg, err)
 		if err != nil {
-			return
+			return nil
 		}
 	}
 
-	//if len(partition.Peers) == int(partition.ReplicaNum) && len(partition.Peers) > len(partition.Replicas) {
-	//	for _, peer := range partition.Peers {
-	//		found := false
-	//		for _, replica := range partition.Replicas {
-	//			if replica.Addr == peer.Addr {
-	//				found = true
-	//			}
-	//		}
-	//		if !found {
-	//			redundantPeers = append(redundantPeers, peer)
-	//		}
-	//	}
-	//	// remove from hosts and peers only
-	//	for _, peer := range redundantPeers {
-	//		err = c.removeHostMember(partition, peer)
-	//		auditMsg = fmt.Sprintf("dp(%v) remove unloaded peer %v for master", partition.PartitionID, peer)
-	//		log.LogDebugf("action[checkReplicaMeta]%v: err %v", auditMsg, err)
-	//		auditlog.LogMasterOp("RestoreReplicaMeta", auditMsg, err)
-	//		if err != nil {
-	//			return
-	//		}
-	//	}
-	//}
 	// find redundant peers from replica meta
 	force := false
 	for _, replica := range partition.Replicas {
@@ -2200,7 +2169,7 @@ func (partition *DataPartition) checkReplicaMeta(c *Cluster) (err error) {
 		for _, peer := range redundantPeers {
 			// use raftForce to delete redundant peer when dp is leaderless. This progress maybe keep executing util
 			// wal logs with member change be truncated
-			if partition.lostLeader(c) && partition.getReplicaDiskErrorNum() == 0 && partition.getSpecifyStatusReplicaNum(proto.Unavailable) == 0 {
+			if partition.lostLeader(c) {
 				force = true
 			}
 			// remove raft member
@@ -2210,7 +2179,7 @@ func (partition *DataPartition) checkReplicaMeta(c *Cluster) (err error) {
 			log.LogDebugf("action[checkReplicaMeta]%v, err %v", auditMsg, err)
 			auditlog.LogMasterOp("RestoreReplicaMeta", auditMsg, err)
 			if err != nil {
-				return
+				return nil
 			}
 		}
 	}
@@ -2227,7 +2196,7 @@ func (partition *DataPartition) checkReplicaMeta(c *Cluster) (err error) {
 				partition.decommissionInfo(), peer, replica.Addr, replica.LocalPeers)
 			auditlog.LogMasterOp("RestoreReplicaMeta", auditMsg, err)
 			if err != nil {
-				return
+				return nil
 			}
 			// redundant peers on master may exist on dataNode, and the redundant replica will be
 			// added into partition.Replicas again by hear beat.
@@ -2237,14 +2206,14 @@ func (partition *DataPartition) checkReplicaMeta(c *Cluster) (err error) {
 				partition.decommissionInfo(), peer.Addr, replica.Addr, replica.LocalPeers)
 			auditlog.LogMasterOp("RestoreReplicaMeta", auditMsg, err)
 			if err != nil {
-				return
+				return nil
 			}
 			err = c.deleteDataReplica(partition, dataNode, false)
 			auditMsg = fmt.Sprintf("dp(%v) remove redundant replica on %v for master,base on replica %v,localPeers(%v) ",
 				partition.decommissionInfo(), peer.Addr, replica.Addr, replica.LocalPeers)
 			auditlog.LogMasterOp("RestoreReplicaMeta", auditMsg, err)
 			if err != nil {
-				return
+				return nil
 			}
 		}
 	}
@@ -2264,7 +2233,7 @@ func (partition *DataPartition) checkReplicaMeta(c *Cluster) (err error) {
 		if err != nil {
 			log.LogWarnf("action[checkReplicaMeta]dp(%v) cannot find node %v",
 				partition.PartitionID, addr)
-			return
+			return nil
 		}
 		err = c.markDecommissionDataPartition(partition, node, false, AutoAddReplica)
 		auditMsg = fmt.Sprintf("dp(%v) ReplicaNum %v hostsNum %v auto add replica",
@@ -2272,23 +2241,12 @@ func (partition *DataPartition) checkReplicaMeta(c *Cluster) (err error) {
 		log.LogDebugf("action[checkReplicaMeta]%v: err %v", auditMsg, err)
 		auditlog.LogMasterOp("RestoreReplicaMeta", auditMsg, err)
 		if err != nil {
-			return
+			return nil
 		} else {
 			return proto.ErrWaitForAutoAddReplica
 		}
 	}
 	return
-	// find redundant replica
-	//if partition.ReplicaNum < uint8(len(partition.Hosts)) {
-	//	host := partition.getToBeDecommissionHost(int(partition.ReplicaNum))
-	//	if host != "" {
-	//		err = partition.removeOneReplicaByHost(c, host)
-	//	}
-	//	auditMsg = fmt.Sprintf("dp(%v) ReplicaNum %v hostsNum %v auto delete replica: %v",
-	//		partition.PartitionID, partition.ReplicaNum, len(partition.Hosts), host)
-	//	log.LogDebugf("action[checkReplicaMeta]%v: err %v", auditMsg, err)
-	//	auditlog.LogMasterOp("RestoreReplicaMeta", auditMsg, err)
-	//}
 }
 
 func findPeersToDeleteByConfig(toCompare, basePeers []proto.Peer) []proto.Peer {
@@ -2418,16 +2376,6 @@ func (partition *DataPartition) tryRestoreReplicaMeta(c *Cluster, migrateType ui
 			return proto.ErrPerformingDecommission
 		}
 		return nil
-	}
-	// auto decommission need to decommission replica with disk error first.
-	// 2-replica is leaderless,with 1 disk error and 1 normal , cannot be meta repaired because has
-	// disk error replica, it results raftForce always false
-	if migrateType == AutoDecommission && partition.getDiskErrorReplica() != nil {
-		return nil
-	}
-
-	if migrateType == ManualDecommission && partition.getDiskErrorReplica() != nil {
-		return errors.NewErrorf("has disk error replica,wait for auto decommission")
 	}
 
 	err := partition.checkReplicaMeta(c)

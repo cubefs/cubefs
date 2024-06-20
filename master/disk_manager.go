@@ -270,7 +270,7 @@ const (
 	InitialDecommission = proto.InitialDecommission
 	ManualDecommission  = proto.ManualDecommission
 	AutoDecommission    = proto.AutoDecommission
-	AllDecommission     = proto.AllDecommission
+	QueryDecommission   = proto.QueryDecommission
 	AutoAddReplica      = proto.AutoAddReplica
 	ManualAddReplica    = proto.ManualAddReplica
 )
