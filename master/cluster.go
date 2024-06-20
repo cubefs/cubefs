@@ -42,73 +42,95 @@ import (
 	"github.com/cubefs/cubefs/util/log"
 )
 
-// Cluster stores all the cluster-level information.
-type Cluster struct {
-	Name                         string
-	CreateTime                   int64
-	vols                         map[string]*Vol
-	delayDeleteVolsInfo          []*delayDeleteVolInfo
-	stopc                        chan bool
-	dataNodes                    sync.Map
-	metaNodes                    sync.Map
-	volMutex                     sync.RWMutex // volume mutex
-	createVolMutex               sync.RWMutex // create volume mutex
-	deleteVolMutex               sync.RWMutex // delete volume mutex
-	mnMutex                      sync.RWMutex // meta node mutex
-	dnMutex                      sync.RWMutex // data node mutex
-	nsMutex                      sync.RWMutex // nodeset mutex
-	badPartitionMutex            sync.RWMutex // BadDataPartitionIds and BadMetaPartitionIds operate mutex
-	leaderInfo                   *LeaderInfo
-	cfg                          *clusterConfig
-	metaReady                    bool
-	retainLogs                   uint64
-	idAlloc                      *IDAllocator
-	t                            *topology
-	dataNodeStatInfo             *nodeStatInfo
-	metaNodeStatInfo             *nodeStatInfo
-	zoneStatInfos                map[string]*proto.ZoneStat
-	volStatInfo                  sync.Map
-	domainManager                *DomainManager
-	BadDataPartitionIds          *sync.Map
-	BadMetaPartitionIds          *sync.Map
-	DisableAutoAllocate          bool
-	ForbidMpDecommission         bool
+type ClusterVolSubItem struct {
+	vols                map[string]*Vol
+	delayDeleteVolsInfo []*delayDeleteVolInfo
+	volMutex            sync.RWMutex // volume mutex
+	createVolMutex      sync.RWMutex // create volume mutex
+	deleteVolMutex      sync.RWMutex // delete volume mutex
+}
+
+type ClusterTopoSubItem struct {
+	dataNodes sync.Map
+	metaNodes sync.Map
+	lcNodes   sync.Map
+
+	idAlloc            *IDAllocator
+	t                  *topology
+	dataNodeStatInfo   *nodeStatInfo
+	metaNodeStatInfo   *nodeStatInfo
+	zoneStatInfos      map[string]*proto.ZoneStat
+	volStatInfo        sync.Map
+	zoneIdxMux         sync.Mutex //
+	zoneList           []string
+	lastZoneIdxForNode int
+
+	checkAutoCreateDataPartition bool
 	FaultDomain                  bool
 	needFaultDomain              bool // FaultDomain is true and normal zone aleady used up
-	fsm                          *MetadataFsm
-	partition                    raftstore.Partition
-	MasterSecretKey              []byte
-	lastZoneIdxForNode           int
-	zoneIdxMux                   sync.Mutex //
-	zoneList                     []string
-	followerReadManager          *followerReadManager
-	diskQosEnable                bool
-	QosAcceptLimit               *rate.Limiter
-	apiLimiter                   *ApiLimiter
-	DecommissionDisks            sync.Map
-	DecommissionLimit            uint64
-	EnableAutoDecommissionDisk   atomicutil.Bool
-	AutoDecommissionInterval     atomicutil.Int64
-	AutoDecommissionDiskMux      sync.Mutex
-	checkAutoCreateDataPartition bool
-	masterClient                 *masterSDK.MasterClient
-	checkDataReplicasEnable      bool
-	fileStatsEnable              bool
-	clusterUuid                  string
-	clusterUuidEnable            bool
-	inodeCountNotEqualMP         *sync.Map
-	maxInodeNotEqualMP           *sync.Map
-	dentryCountNotEqualMP        *sync.Map
-	ac                           *authSDK.AuthClient
-	authenticate                 bool
-	lcNodes                      sync.Map
-	lcMgr                        *lifecycleManager
-	snapshotMgr                  *snapshotDelManager
-	DecommissionDiskLimit        uint32
-	S3ApiQosQuota                *sync.Map // (api,uid,limtType) -> limitQuota
-	MarkDiskBrokenThreshold      atomicutil.Float64
-	EnableAutoDpMetaRepair       atomicutil.Bool
-	AutoDpMetaRepairParallelCnt  atomicutil.Uint32
+	domainManager                *DomainManager
+
+	inodeCountNotEqualMP  *sync.Map
+	maxInodeNotEqualMP    *sync.Map
+	dentryCountNotEqualMP *sync.Map
+
+	mnMutex sync.RWMutex // meta node mutex
+	dnMutex sync.RWMutex // data node mutex
+	nsMutex sync.RWMutex // nodeset mutex
+}
+
+type ClusterDecommission struct {
+	BadDataPartitionIds     *sync.Map
+	BadMetaPartitionIds     *sync.Map
+	DecommissionDisks       sync.Map
+	DecommissionLimit       uint64
+	AutoDecommissionDiskMux sync.Mutex
+	DecommissionDiskLimit   uint32
+	MarkDiskBrokenThreshold atomicutil.Float64
+	badPartitionMutex       sync.RWMutex // BadDataPartitionIds and BadMetaPartitionIds operate mutex
+
+	ForbidMpDecommission        bool
+	EnableAutoDpMetaRepair      atomicutil.Bool
+	EnableAutoDecommissionDisk  atomicutil.Bool
+	AutoDecommissionInterval    atomicutil.Int64
+	AutoDpMetaRepairParallelCnt atomicutil.Uint32
+}
+
+// Cluster stores all the cluster-level information.
+type Cluster struct {
+	Name            string
+	CreateTime      int64
+	clusterUuid     string
+	leaderInfo      *LeaderInfo
+	cfg             *clusterConfig
+	fsm             *MetadataFsm
+	partition       raftstore.Partition
+	MasterSecretKey []byte
+	retainLogs      uint64
+	stopc           chan bool
+
+	ClusterVolSubItem
+	ClusterTopoSubItem
+	ClusterDecommission
+
+	metaReady               bool
+	DisableAutoAllocate     bool
+	diskQosEnable           bool
+	checkDataReplicasEnable bool
+	fileStatsEnable         bool
+	clusterUuidEnable       bool
+	authenticate            bool
+
+	S3ApiQosQuota  *sync.Map // (api,uid,limtType) -> limitQuota
+	QosAcceptLimit *rate.Limiter
+	apiLimiter     *ApiLimiter
+
+	followerReadManager *followerReadManager
+	lcMgr               *lifecycleManager
+	snapshotMgr         *snapshotDelManager
+
+	ac           *authSDK.AuthClient
+	masterClient *masterSDK.MasterClient
 }
 
 type delayDeleteVolInfo struct {
