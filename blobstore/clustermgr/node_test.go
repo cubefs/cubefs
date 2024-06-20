@@ -77,6 +77,16 @@ func TestNodeAddandDrop(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, nodeID, proto.NodeID(1))
 
+		// invalid nodeRole
+		testNodeInfo.Role = proto.NodeRoleMax
+		_, err = testClusterClient.AddNode(ctx, &testNodeInfo)
+		require.Error(t, err)
+
+		// invalid diskType
+		testNodeInfo.Role = proto.NodeRoleBlobNode
+		testNodeInfo.DiskType = proto.DiskTypeMax
+		_, err = testClusterClient.AddNode(ctx, &testNodeInfo)
+		require.Error(t, err)
 	}
 }
 

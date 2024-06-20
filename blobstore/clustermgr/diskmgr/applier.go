@@ -102,7 +102,7 @@ func (d *DiskMgr) LoadData(ctx context.Context) error {
 			d.hostPathFilter.Store(di.genFilterKey(), 1)
 		}
 		ni, ok := d.getNode(info.NodeID)
-		if ok { // compatible case
+		if ok && !di.dropping && di.needFilter() { // compatible case
 			d.topoMgrs[ni.info.Role].AddDiskToDiskSet(ni.info.DiskType, ni.info.NodeSetID, di)
 			ni.disks[info.DiskID] = info
 		}

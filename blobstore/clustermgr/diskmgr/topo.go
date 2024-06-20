@@ -70,7 +70,8 @@ func (t *topoMgr) AllocNodeSetID(ctx context.Context, info *blobnode.NodeInfo, c
 
 RETRY:
 	for nodeSetID, nodeSet := range t.allNodeSets[info.DiskType] {
-		if nodeSetLen := nodeSet.getNodeSetLen(); nodeSetLen >= nodeSetCap {
+		nodeSetLen := nodeSet.getNodeSetLen()
+		if nodeSetLen >= nodeSetCap {
 			continue
 		}
 		nodeSetIdcLen, nodeSetRackLen := nodeSet.getNodeSetIDCAndRackLen(info.Idc, info.Rack)
@@ -81,7 +82,7 @@ RETRY:
 		if rackAware && nodeSetRackLen >= nodeSetRackCap && !retryMode {
 			continue
 		}
-		span.Debugf("nodeSetID %d is chosen, nodeSetLen:%d, nodeSetIdcLen:%d, nodeSetRackLen:%d", nodeSetID, nodeSetIdcLen, nodeSetRackLen)
+		span.Debugf("nodeSetID %d is chosen, nodeSetLen:%d, nodeSetIdcLen:%d, nodeSetRackLen:%d", nodeSetID, nodeSetLen, nodeSetIdcLen, nodeSetRackLen)
 		return nodeSetID
 	}
 	if rackAware && !retryMode {
@@ -91,6 +92,7 @@ RETRY:
 	}
 
 	t.curNodeSetID += 1
+	span.Debugf("Alloc new nodeSetID %d", t.curNodeSetID)
 	return t.curNodeSetID
 }
 
@@ -113,6 +115,7 @@ func (t *topoMgr) AllocDiskSetID(ctx context.Context, diskInfo *blobnode.DiskInf
 	}
 
 	t.curDiskSetID += 1
+	span.Debugf("Alloc new diskSetID %d", t.curDiskSetID)
 	return t.curDiskSetID
 }
 
