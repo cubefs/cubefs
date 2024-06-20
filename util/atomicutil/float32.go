@@ -12,21 +12,31 @@
 // implied. See the License for the specific language governing
 // permissions and limitations under the License.
 
-package atomicutil_test
+package atomicutil
 
 import (
-	"testing"
-
-	"github.com/cubefs/cubefs/util/atomicutil"
-	"github.com/stretchr/testify/require"
+	"math"
+	"sync/atomic"
 )
 
-func TestAtomicFloat64(t *testing.T) {
-	f := atomicutil.Float64{}
-	testVal := float64(1.0)
-	f.Store(testVal)
-	require.Equal(t, testVal, f.Load())
-	require.True(t, f.CompareAndSwap(testVal, 0))
-	require.EqualValues(t, 0, f.Swap(testVal))
-	require.EqualValues(t, testVal, f.Load())
+type Float32 struct {
+	val uint32
+}
+
+func (f *Float32) Load() float32 {
+	return math.Float32frombits(atomic.LoadUint32(&f.val))
+}
+
+func (f *Float32) Store(val float32) {
+	atomic.StoreUint32(&f.val, math.Float32bits(val))
+}
+
+func (f *Float32) CompareAndSwap(old float32, new float32) (swaped bool) {
+	swaped = atomic.CompareAndSwapUint32(&f.val, math.Float32bits(old), math.Float32bits(new))
+	return
+}
+
+func (f *Float32) Swap(new float32) (old float32) {
+	old = math.Float32frombits(atomic.SwapUint32(&f.val, math.Float32bits(new)))
+	return
 }

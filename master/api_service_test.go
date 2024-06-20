@@ -1645,6 +1645,30 @@ func TestSetMarkDiskBrokenThreshold(t *testing.T) {
 	require.EqualValues(t, oldVal, server.cluster.getMarkDiskBrokenThreshold())
 }
 
+func TestSetEnableAutoDecommissionDisk(t *testing.T) {
+	reqUrl := fmt.Sprintf("%v%v", hostAddr, proto.AdminSetNodeInfo)
+	oldVal := server.cluster.EnableAutoDecommissionDisk.Load()
+	setVal := !oldVal
+	setUrl := fmt.Sprintf("%v?%v=%v&dirSizeLimit=0", reqUrl, autoDecommissionDiskKey, setVal)
+	unsetUrl := fmt.Sprintf("%v?%v=%v&dirSizeLimit=0", reqUrl, autoDecommissionDiskKey, oldVal)
+	process(setUrl, t)
+	require.EqualValues(t, setVal, server.cluster.EnableAutoDecommissionDisk.Load())
+	process(unsetUrl, t)
+	require.EqualValues(t, oldVal, server.cluster.EnableAutoDecommissionDisk.Load())
+}
+
+func TestSetDecommissionDiskInterval(t *testing.T) {
+	reqUrl := fmt.Sprintf("%v%v", hostAddr, proto.AdminSetNodeInfo)
+	oldVal := server.cluster.GetAutoDecommissionDiskInterval()
+	setVal := oldVal + 10*time.Second
+	setUrl := fmt.Sprintf("%v?%v=%v&dirSizeLimit=0", reqUrl, autoDecommissionDiskIntervalKey, int64(setVal))
+	unsetUrl := fmt.Sprintf("%v?%v=%v&dirSizeLimit=0", reqUrl, autoDecommissionDiskIntervalKey, int64(oldVal))
+	process(setUrl, t)
+	require.EqualValues(t, setVal, server.cluster.GetAutoDecommissionDiskInterval())
+	process(unsetUrl, t)
+	require.EqualValues(t, oldVal, server.cluster.GetAutoDecommissionDiskInterval())
+}
+
 func TestSetEnableAutoDpMetaRepair(t *testing.T) {
 	reqUrl := fmt.Sprintf("%v%v", hostAddr, proto.AdminSetNodeInfo)
 	oldVal := server.cluster.getEnableAutoDpMetaRepair()
@@ -1655,6 +1679,18 @@ func TestSetEnableAutoDpMetaRepair(t *testing.T) {
 	require.EqualValues(t, setVal, server.cluster.getEnableAutoDpMetaRepair())
 	process(unsetUrl, t)
 	require.EqualValues(t, oldVal, server.cluster.getEnableAutoDpMetaRepair())
+}
+
+func TestSetAutoDpMetaRepairParallelCnt(t *testing.T) {
+	reqUrl := fmt.Sprintf("%v%v", hostAddr, proto.AdminSetNodeInfo)
+	oldVal := server.cluster.GetAutoDpMetaRepairParallelCnt()
+	setVal := 200
+	setUrl := fmt.Sprintf("%v?%v=%v&dirSizeLimit=0", reqUrl, autoDpMetaRepairParallelCntKey, setVal)
+	unsetUrl := fmt.Sprintf("%v?%v=%v&dirSizeLimit=0", reqUrl, autoDpMetaRepairParallelCntKey, oldVal)
+	process(setUrl, t)
+	require.EqualValues(t, setVal, server.cluster.GetAutoDpMetaRepairParallelCnt())
+	process(unsetUrl, t)
+	require.EqualValues(t, oldVal, server.cluster.GetAutoDpMetaRepairParallelCnt())
 }
 
 func TestSetDpTimeout(t *testing.T) {
