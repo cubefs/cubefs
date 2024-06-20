@@ -18,7 +18,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/cubefs/cubefs/util/auditlog"
 	"io"
 	"math"
 	"net/http"
@@ -32,6 +31,7 @@ import (
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util"
+	"github.com/cubefs/cubefs/util/auditlog"
 	"github.com/cubefs/cubefs/util/compressor"
 	"github.com/cubefs/cubefs/util/cryptoutil"
 	"github.com/cubefs/cubefs/util/errors"
@@ -1639,6 +1639,7 @@ func (m *Server) addDataReplica(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			time.Sleep(1 * time.Second)
+			continue
 		}
 		break
 	}
@@ -5448,10 +5449,10 @@ func (m *Server) GetAllVersionInfo(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, newErrHTTPReply(proto.ErrVolNotExists))
 		return
 	}
-	//if !proto.IsHot(vol.VolType) {
+	// if !proto.IsHot(vol.VolType) {
 	//	sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeVersionOpError, Msg: "vol need be hot one"})
 	//	return
-	//}
+	// }
 
 	verList = vol.VersionMgr.getVersionList()
 
@@ -7075,7 +7076,6 @@ func (m *Server) cancelDisableDisk(w http.ResponseWriter, r *http.Request) {
 		dp.setRestoreReplicaStop()
 		auditlog.LogMasterOp("CancelDataPartitionDecommission", msg, nil)
 	}
-	//m.cluster.DecommissionDisks.Delete(key)
 	disk.SetDecommissionStatus(DecommissionCancel)
 	rstMsg := fmt.Sprintf("cancel decommission disk[%s] successfully ", key)
 	sendOkReply(w, r, newSuccessHTTPReply(rstMsg))
@@ -7170,12 +7170,12 @@ func (m *Server) recoverDiskErrorReplica(w http.ResponseWriter, r *http.Request)
 		if !dp.setRestoreReplicaForbidden() {
 			retry++
 			if retry > defaultDecommissionRetryLimit {
-			} else {
 				err = errors.NewErrorf("set RestoreReplicaMetaForbidden failed")
 				sendErrReply(w, r, newErrHTTPReply(err))
 				return
 			}
 			time.Sleep(1 * time.Second)
+			continue
 		}
 		break
 	}

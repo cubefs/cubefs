@@ -140,8 +140,6 @@ func (s *DefaultRandomSelector) RemoveDP(partitionID uint64) {
 	s.localLeaderPartitions = newLocalLeaderPartitions
 	s.Unlock()
 	log.LogDebugf("RemoveDP: finish, partitionID[%v], len(s.localLeaderPartitions)=%v\n", partitionID, len(s.localLeaderPartitions))
-
-	return
 }
 
 func (s *DefaultRandomSelector) Count() int {

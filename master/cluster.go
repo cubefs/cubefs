@@ -1773,7 +1773,6 @@ func (c *Cluster) getHostFromNormalZone(nodeType uint32, excludeZones []string, 
 	zoneNumNeed int, specifiedZoneName string) (hosts []string, peers []proto.Peer, err error,
 ) {
 	var zonesQualified []*Zone
-	zonesQualified = make([]*Zone, 0)
 	if replicaNum <= zoneNumNeed {
 		zoneNumNeed = replicaNum
 	}
@@ -5037,8 +5036,7 @@ func (c *Cluster) syncRecoverBackupDataPartitionReplica(host, disk string, dp *D
 	if err != nil {
 		return
 	}
-	var task *proto.AdminTask
-	task = dp.createTaskToRecoverBackupDataPartitionReplica(host, disk)
+	task := dp.createTaskToRecoverBackupDataPartitionReplica(host, disk)
 	if _, err = dataNode.TaskManager.syncSendAdminTask(task); err != nil {
 		return
 	}

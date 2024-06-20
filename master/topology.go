@@ -30,10 +30,10 @@ import (
 )
 
 type rsManager struct {
-	nodeType         NodeType
+	// nodeType         NodeType
 	nodes            *sync.Map
 	zoneIndexForNode int
-	zones            []*Zone
+	// zones            []*Zone
 }
 
 func (rsm *rsManager) clear() {
@@ -56,12 +56,6 @@ func newTopology() (t *topology) {
 	t.metaTopology.nodes = new(sync.Map)
 	t.zones = make([]*Zone, 0)
 	return
-}
-
-func (t *topology) getZoneLen() int {
-	t.zoneLock.RLock()
-	defer t.zoneLock.RUnlock()
-	return len(t.zones)
 }
 
 func (t *topology) zoneLen() int {
@@ -147,15 +141,6 @@ func (t *topology) deleteDataNode(dataNode *DataNode) {
 	}
 	zone.deleteDataNode(dataNode)
 	t.dataTopology.nodes.Delete(dataNode.Addr)
-}
-
-func (t *topology) getZoneByDataNode(dataNode *DataNode) (zone *Zone, err error) {
-	_, ok := t.dataTopology.nodes.Load(dataNode.Addr)
-	if !ok {
-		return nil, errors.Trace(dataNodeNotFound(dataNode.Addr), "%v not found", dataNode.Addr)
-	}
-
-	return t.getZone(dataNode.ZoneName)
 }
 
 func (t *topology) putMetaNode(metaNode *MetaNode) (err error) {
@@ -1296,7 +1281,7 @@ func (t *topology) allocZonesForNode(rsMgr *rsManager, zoneNumNeed, replicaNum i
 	if len(t.domainExcludeZones) > 0 {
 		zones = t.getDomainExcludeZones()
 		log.LogInfof("action[allocZonesForMetaNode] getDomainExcludeZones zones [%v]", t.domainExcludeZones)
-	} else if specialZones != nil && len(specialZones) > 0 {
+	} else if len(specialZones) > 0 {
 		zones = specialZones
 		zoneNumNeed = len(specialZones)
 	} else {
@@ -1334,15 +1319,6 @@ func (t *topology) allocZonesForNode(rsMgr *rsManager, zoneNumNeed, replicaNum i
 	zones = candidateZones
 	err = nil
 	return
-}
-
-func (ns *nodeSet) dataNodeCount() int {
-	var count int
-	ns.dataNodes.Range(func(key, value interface{}) bool {
-		count++
-		return true
-	})
-	return count
 }
 
 // Zone stores all the zone related information
@@ -1699,7 +1675,7 @@ func (zone *Zone) isUsedRatio(ratio float64) (can bool) {
 
 	zone.metaNodes.Range(func(addr, value interface{}) bool {
 		metaNode := value.(*MetaNode)
-		if metaNode.IsActive && metaNode.isWritable() {
+		if metaNode.IsActive && metaNode.IsWriteAble() {
 			metaNodeUsed += metaNode.Used
 		} else {
 			metaNodeUsed += metaNode.Total
@@ -1837,14 +1813,6 @@ func (zone *Zone) loadDataNodeQosLimit() {
 		}
 		return true
 	})
-}
-
-func (zone *Zone) dataNodeCount() (len int) {
-	zone.dataNodes.Range(func(key, value interface{}) bool {
-		len++
-		return true
-	})
-	return
 }
 
 func (zone *Zone) updateDecommissionLimit(limit int32, c *Cluster) (err error) {

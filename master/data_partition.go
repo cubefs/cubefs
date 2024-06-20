@@ -295,7 +295,7 @@ func (partition *DataPartition) createTaskToCreateDataPartition(addr string, dat
 
 func (partition *DataPartition) createTaskToDeleteDataPartition(addr string, raftForceDel bool) (task *proto.AdminTask) {
 	task = proto.NewAdminTask(proto.OpDeleteDataPartition, addr,
-		newDeleteDataPartitionRequest(partition.PartitionID, partition.DecommissionType, raftForceDel, partition.isSpecialReplicaCnt()))
+		newDeleteDataPartitionRequest(partition.PartitionID, partition.DecommissionType, raftForceDel))
 	partition.resetTaskID(task)
 	return
 }
@@ -1143,6 +1143,7 @@ directly:
 				}
 				// wait for checkReplicaMeta ended
 				time.Sleep(3 * time.Second)
+				continue
 			}
 			break
 		}
@@ -1163,6 +1164,7 @@ directly:
 			}
 			// wait for checkReplicaMeta ended
 			time.Sleep(3 * time.Second)
+			continue
 		}
 		break
 	}
@@ -2026,7 +2028,7 @@ func (partition *DataPartition) checkReplicaMeta(c *Cluster) (err error) {
 		}
 	}
 
-	//if len(partition.Peers) == int(partition.ReplicaNum) && len(partition.Peers) > len(partition.Replicas) {
+	// if len(partition.Peers) == int(partition.ReplicaNum) && len(partition.Peers) > len(partition.Replicas) {
 	//	for _, peer := range partition.Peers {
 	//		found := false
 	//		for _, replica := range partition.Replicas {
@@ -2048,7 +2050,7 @@ func (partition *DataPartition) checkReplicaMeta(c *Cluster) (err error) {
 	//			return
 	//		}
 	//	}
-	//}
+	// }
 	// find redundant peers from replica meta
 	force := false
 	for _, replica := range partition.Replicas {

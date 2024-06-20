@@ -31,7 +31,6 @@ func (b *Bool) Store(v bool) {
 		val = 1
 	}
 	atomic.StoreUint32(&b.val, val)
-	return
 }
 
 func (b *Bool) CompareAndSwap(old bool, newVal bool) (swaped bool) {

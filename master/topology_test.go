@@ -136,7 +136,7 @@ func TestAllocZones(t *testing.T) {
 	t.Logf("ChooseTargetDataHosts in single zone,hosts[%v]", hosts)
 
 	// cross zone
-	hosts, _, err = cluster.getHostFromNormalZone(TypeDataPartition, nil, nil, nil, replicaNum, 2, "")
+	_, _, err = cluster.getHostFromNormalZone(TypeDataPartition, nil, nil, nil, replicaNum, 2, "")
 	require.NoError(t, err)
 
 	// specific zone
