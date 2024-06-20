@@ -783,29 +783,31 @@ func (m *Server) getCluster(w http.ResponseWriter, r *http.Request) {
 	}()
 
 	cv := &proto.ClusterView{
-		Name:                     m.cluster.Name,
-		CreateTime:               time.Unix(m.cluster.CreateTime, 0).Format(proto.TimeFormat),
-		LeaderAddr:               m.leaderInfo.addr,
-		DisableAutoAlloc:         m.cluster.DisableAutoAllocate,
-		ForbidMpDecommission:     m.cluster.ForbidMpDecommission,
-		MetaNodeThreshold:        m.cluster.cfg.MetaNodeThreshold,
-		Applied:                  m.fsm.applied,
-		MaxDataPartitionID:       m.cluster.idAlloc.dataPartitionID,
-		MaxMetaNodeID:            m.cluster.idAlloc.commonID,
-		MaxMetaPartitionID:       m.cluster.idAlloc.metaPartitionID,
-		VolDeletionDelayTimeHour: m.cluster.cfg.volDelayDeleteTimeHour,
-		DpRepairTimeout:          m.cluster.GetDecommissionDataPartitionRecoverTimeOut(),
-		MarkDiskBrokenThreshold:  m.cluster.getMarkDiskBrokenThreshold(),
-		EnableAutoDpMetaRepair:   m.cluster.getEnableAutoDpMetaRepair(),
-		EnableAutoDecommission:   m.cluster.AutoDecommissionDiskIsEnabled(),
-		DecommissionDiskLimit:    m.cluster.GetDecommissionDiskLimit(),
-		DpTimeout:                time.Duration(m.cluster.getDataPartitionTimeoutSec()) * time.Second,
-		MasterNodes:              make([]proto.NodeView, 0),
-		MetaNodes:                make([]proto.NodeView, 0),
-		DataNodes:                make([]proto.NodeView, 0),
-		VolStatInfo:              make([]*proto.VolStatInfo, 0),
-		BadPartitionIDs:          make([]proto.BadPartitionView, 0),
-		BadMetaPartitionIDs:      make([]proto.BadPartitionView, 0),
+		Name:                         m.cluster.Name,
+		CreateTime:                   time.Unix(m.cluster.CreateTime, 0).Format(proto.TimeFormat),
+		LeaderAddr:                   m.leaderInfo.addr,
+		DisableAutoAlloc:             m.cluster.DisableAutoAllocate,
+		ForbidMpDecommission:         m.cluster.ForbidMpDecommission,
+		MetaNodeThreshold:            m.cluster.cfg.MetaNodeThreshold,
+		Applied:                      m.fsm.applied,
+		MaxDataPartitionID:           m.cluster.idAlloc.dataPartitionID,
+		MaxMetaNodeID:                m.cluster.idAlloc.commonID,
+		MaxMetaPartitionID:           m.cluster.idAlloc.metaPartitionID,
+		VolDeletionDelayTimeHour:     m.cluster.cfg.volDelayDeleteTimeHour,
+		DpRepairTimeout:              m.cluster.GetDecommissionDataPartitionRecoverTimeOut(),
+		MarkDiskBrokenThreshold:      m.cluster.getMarkDiskBrokenThreshold(),
+		EnableAutoDpMetaRepair:       m.cluster.getEnableAutoDpMetaRepair(),
+		AutoDpMetaRepairParallelCnt:  m.cluster.GetAutoDpMetaRepairParallelCnt(),
+		EnableAutoDecommission:       m.cluster.AutoDecommissionDiskIsEnabled(),
+		AutoDecommissionDiskInterval: m.cluster.GetAutoDecommissionDiskInterval(),
+		DecommissionDiskLimit:        m.cluster.GetDecommissionDiskLimit(),
+		DpTimeout:                    time.Duration(m.cluster.getDataPartitionTimeoutSec()) * time.Second,
+		MasterNodes:                  make([]proto.NodeView, 0),
+		MetaNodes:                    make([]proto.NodeView, 0),
+		DataNodes:                    make([]proto.NodeView, 0),
+		VolStatInfo:                  make([]*proto.VolStatInfo, 0),
+		BadPartitionIDs:              make([]proto.BadPartitionView, 0),
+		BadMetaPartitionIDs:          make([]proto.BadPartitionView, 0),
 	}
 
 	vols := m.cluster.allVolNames()
@@ -3160,9 +3162,39 @@ func (m *Server) setNodeInfoHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	if val, ok := params[autoDecommissionDiskKey]; ok {
+		if autoDecomm, ok := val.(bool); ok {
+			old := m.cluster.EnableAutoDecommissionDisk.Load()
+			m.cluster.EnableAutoDecommissionDisk.Store(autoDecomm)
+			if err = m.cluster.syncPutCluster(); err != nil {
+				m.cluster.EnableAutoDecommissionDisk.Store(old)
+				sendErrReply(w, r, newErrHTTPReply(err))
+				return
+			}
+		}
+	}
+
+	if val, ok := params[autoDecommissionDiskIntervalKey]; ok {
+		if interval, ok := val.(time.Duration); ok {
+			if err = m.cluster.setAutoDecommissionDiskInterval(interval); err != nil {
+				sendErrReply(w, r, newErrHTTPReply(err))
+				return
+			}
+		}
+	}
+
 	if val, ok := params[autoDpMetaRepairKey]; ok {
 		if autoRepair, ok := val.(bool); ok {
 			if err = m.cluster.setEnableAutoDpMetaRepair(autoRepair); err != nil {
+				sendErrReply(w, r, newErrHTTPReply(err))
+				return
+			}
+		}
+	}
+
+	if val, ok := params[autoDpMetaRepairParallelCntKey]; ok {
+		if cnt, ok := val.(int); ok {
+			if err = m.cluster.setAutoDpMetaRepairParallelCnt(cnt); err != nil {
 				sendErrReply(w, r, newErrHTTPReply(err))
 				return
 			}

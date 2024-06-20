@@ -30,3 +30,13 @@ func (f *Float64) Load() float64 {
 func (f *Float64) Store(val float64) {
 	atomic.StoreUint64(&f.val, math.Float64bits(val))
 }
+
+func (f *Float64) CompareAndSwap(old float64, new float64) (swaped bool) {
+	swaped = atomic.CompareAndSwapUint64(&f.val, math.Float64bits(old), math.Float64bits(new))
+	return
+}
+
+func (f *Float64) Swap(new float64) (old float64) {
+	old = math.Float64frombits(atomic.SwapUint64(&f.val, math.Float64bits(new)))
+	return
+}
