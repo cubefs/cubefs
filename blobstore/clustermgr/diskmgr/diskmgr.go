@@ -53,12 +53,6 @@ const (
 	ECDiskSetID   = proto.DiskSetID(1)
 	NullNodeSetID = proto.NodeSetID(0)
 	NullDiskSetID = proto.DiskSetID(0)
-
-	defaultNodeSetCap                = 108
-	defaultNodeSetIdcCap             = 36
-	defaultNodeSetRackCap            = 6
-	defaultDiskSetCap                = 2160
-	defaultDiskCountPerNodeInDiskSet = 20
 )
 
 var (
@@ -178,17 +172,6 @@ func New(scopeMgr scopemgr.ScopeMgrAPI, db *normaldb.NormalDB, cfg DiskMgrConfig
 	}
 	if len(cfg.IDC) == 0 {
 		return nil, errors.New("idc can not be nil")
-	}
-	if cfg.CopySetConfigs == nil {
-		cfg.CopySetConfigs = make(map[proto.NodeRole]map[proto.DiskType]CopySetConfig)
-		cfg.CopySetConfigs[proto.NodeRoleBlobNode] = make(map[proto.DiskType]CopySetConfig)
-		cfg.CopySetConfigs[proto.NodeRoleBlobNode][proto.DiskTypeHDD] = CopySetConfig{
-			NodeSetCap:                defaultNodeSetCap,
-			NodeSetIdcCap:             defaultNodeSetIdcCap,
-			NodeSetRackCap:            defaultNodeSetRackCap,
-			DiskSetCap:                defaultDiskSetCap,
-			DiskCountPerNodeInDiskSet: defaultDiskCountPerNodeInDiskSet,
-		}
 	}
 
 	diskTbl, err := normaldb.OpenDiskTable(db, cfg.EnsureIndex)
@@ -839,14 +822,15 @@ func (d *DiskMgr) addDisk(ctx context.Context, info *blobnode.DiskInfo) error {
 	if ok && (di.info.NodeID != proto.InvalidNodeID || info.NodeID == proto.InvalidNodeID) {
 		return nil
 	}
-	// alloc diskSetID
-	node := d.allNodes[info.NodeID]
-	if node.info.Status == proto.NodeStatusDropped {
-		span.Warnf("node is dropped, disk info: %v", info)
-		d.pendingEntries.Store(fmtApplyContextKey("disk-add", info.DiskID.ToString()), apierrors.ErrCMNodeNotFound)
-		return nil
+	// alloc diskSetID and compatible case: update follower first
+	if node, ok := d.allNodes[info.NodeID]; ok {
+		if node.info.Status == proto.NodeStatusDropped {
+			span.Warnf("node is dropped, disk info: %v", info)
+			d.pendingEntries.Store(fmtApplyContextKey("disk-add", info.DiskID.ToString()), apierrors.ErrCMNodeNotFound)
+			return nil
+		}
+		info.DiskSetID = d.topoMgrs[node.info.Role].AllocDiskSetID(ctx, info, node.info, d.CopySetConfigs[node.info.Role][node.info.DiskType])
 	}
-	info.DiskSetID = d.topoMgrs[node.info.Role].AllocDiskSetID(ctx, info, node.info, d.CopySetConfigs[node.info.Role][node.info.DiskType])
 
 	// calculate free and max chunk count
 	info.MaxChunkCnt = info.Size / d.ChunkSize

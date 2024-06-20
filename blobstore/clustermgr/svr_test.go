@@ -126,6 +126,12 @@ func initTestService(t testing.TB) (*Service, func()) {
 	cfg.RaftConfig.ServerConfig.Members = []raftserver.Member{
 		{NodeID: 1, Host: fmt.Sprintf("127.0.0.1:%d", GetFreePort()), Learner: false},
 	}
+	copySetConfs := make(map[proto.NodeRole]map[proto.DiskType]diskmgr.CopySetConfig)
+	copySetConfs[proto.NodeRoleBlobNode] = make(map[proto.DiskType]diskmgr.CopySetConfig)
+	blobNodeHDDCopySetConf := copySetConfs[proto.NodeRoleBlobNode][proto.DiskTypeHDD]
+	blobNodeHDDCopySetConf.NodeSetCap = defaultNodeSetCap
+	copySetConfs[proto.NodeRoleBlobNode][proto.DiskTypeHDD] = blobNodeHDDCopySetConf
+	cfg.DiskMgrConfig.CopySetConfigs = copySetConfs
 	os.Mkdir(cfg.DBPath, 0o755)
 	testService, err := New(&cfg)
 	require.NoError(t, err)

@@ -51,6 +51,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/raftserver"
 	"github.com/cubefs/cubefs/blobstore/common/rpc"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
+	"github.com/cubefs/cubefs/blobstore/util/defaulter"
 	"github.com/cubefs/cubefs/blobstore/util/errors"
 	"github.com/cubefs/cubefs/blobstore/util/log"
 	"github.com/cubefs/cubefs/blobstore/util/retry"
@@ -79,6 +80,12 @@ const (
 	defaultMaxHeartbeatNotifyNum    = 2000
 	defaultMetricReportIntervalM    = 2
 	defaultCheckConsistentIntervalM = 360
+
+	defaultNodeSetCap                = 108
+	defaultNodeSetIdcCap             = 36
+	defaultNodeSetRackCap            = 6
+	defaultDiskSetCap                = 2160
+	defaultDiskCountPerNodeInDiskSet = 20
 )
 
 var (
@@ -466,6 +473,22 @@ func (c *Config) checkAndFix() (err error) {
 	if c.KvDBPath == "" {
 		c.KvDBPath = c.DBPath + "/kvdb"
 	}
+
+	copySetConfs := c.DiskMgrConfig.CopySetConfigs
+	if copySetConfs == nil {
+		copySetConfs = make(map[proto.NodeRole]map[proto.DiskType]diskmgr.CopySetConfig)
+		c.DiskMgrConfig.CopySetConfigs = copySetConfs
+	}
+	if copySetConfs[proto.NodeRoleBlobNode] == nil {
+		copySetConfs[proto.NodeRoleBlobNode] = make(map[proto.DiskType]diskmgr.CopySetConfig)
+	}
+	blobNodeHDDCopySetConf := copySetConfs[proto.NodeRoleBlobNode][proto.DiskTypeHDD]
+	defaulter.Equal(&blobNodeHDDCopySetConf.NodeSetCap, defaultNodeSetCap)
+	defaulter.Equal(&blobNodeHDDCopySetConf.NodeSetIdcCap, defaultNodeSetIdcCap)
+	defaulter.Equal(&blobNodeHDDCopySetConf.NodeSetRackCap, defaultNodeSetRackCap)
+	defaulter.Equal(&blobNodeHDDCopySetConf.DiskSetCap, defaultDiskSetCap)
+	defaulter.Equal(&blobNodeHDDCopySetConf.DiskCountPerNodeInDiskSet, defaultDiskCountPerNodeInDiskSet)
+	copySetConfs[proto.NodeRoleBlobNode][proto.DiskTypeHDD] = blobNodeHDDCopySetConf
 
 	return
 }

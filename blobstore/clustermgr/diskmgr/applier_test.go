@@ -87,6 +87,7 @@ var testNodeInfo = blobnode.NodeInfo{
 	Status:    proto.NodeStatusNormal,
 	NodeID:    proto.NodeID(1),
 	Role:      proto.NodeRoleBlobNode,
+	DiskType:  proto.DiskTypeHDD,
 }
 
 func TestApplier_Apply(t *testing.T) {
@@ -114,6 +115,7 @@ func TestApplier_Apply(t *testing.T) {
 			info := testDiskInfo
 			info.DiskID = proto.DiskID(i)
 			info.Host = hostPrefix + strconv.Itoa(i)
+			info.NodeID = testNodeInfo.NodeID
 
 			operTypes = append(operTypes, OperTypeAddDisk)
 			data, err := json.Marshal(&info)

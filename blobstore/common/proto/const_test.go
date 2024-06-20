@@ -41,3 +41,23 @@ func TestProtoVolumeStatus(t *testing.T) {
 	require.False(t, st.IsValid())
 	t.Logf("volume st %d -> %s", st, st)
 }
+
+func TestProtoDiskType(t *testing.T) {
+	for diskType := proto.DiskTypeHDD; diskType < proto.DiskTypeMax; diskType++ {
+		require.True(t, diskType.IsValid())
+		t.Logf("disk type %d -> %s", diskType, diskType)
+	}
+	diskType := proto.DiskType(0xff)
+	require.False(t, diskType.IsValid())
+	t.Logf("disk type %d -> %s", diskType, diskType)
+}
+
+func TestProtoNodeRole(t *testing.T) {
+	for nodeRole := proto.NodeRoleBlobNode; nodeRole < proto.NodeRoleMax; nodeRole++ {
+		require.True(t, nodeRole.IsValid())
+		t.Logf("node role %d -> %s", nodeRole, nodeRole)
+	}
+	nodeRole := proto.NodeRole(0xff)
+	require.False(t, nodeRole.IsValid())
+	t.Logf("node role %d -> %s", nodeRole, nodeRole)
+}

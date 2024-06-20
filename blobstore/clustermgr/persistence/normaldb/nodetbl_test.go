@@ -20,6 +20,7 @@ var nr1 = NodeInfoRecord{
 	Host:      "127.0.0.1",
 	Status:    proto.NodeStatusNormal,
 	Role:      proto.NodeRoleBlobNode,
+	DiskType:  proto.DiskTypeHDD,
 }
 
 var nr2 = NodeInfoRecord{
@@ -31,6 +32,7 @@ var nr2 = NodeInfoRecord{
 	Host:      "127.0.0.2",
 	Status:    proto.NodeStatusNormal,
 	Role:      proto.NodeRoleBlobNode,
+	DiskType:  proto.DiskTypeHDD,
 }
 
 func TestNodeTbl(t *testing.T) {

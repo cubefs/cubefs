@@ -566,6 +566,7 @@ func generateVolume(volumeDBPath, NormalDBPath string) error {
 			Host:      "http://127.0.0." + strconv.Itoa(i) + ":80800",
 			Role:      proto.NodeRoleBlobNode,
 			Status:    proto.NodeStatusNormal,
+			DiskType:  proto.DiskTypeHDD,
 		}
 		if i >= 9 && i < 18 {
 			dr.Idc = "z1"

@@ -952,7 +952,7 @@ func TestService_RegisterNode(t *testing.T) {
 		ClusterMgrClient: cmapi.New(cc),
 		Conf:             &conf2,
 	}
-	svr2.Conf.DiskType = proto.DiskTypeSATASSD
+	svr2.Conf.DiskType = proto.DiskTypeSSD
 	err = registerNode(ctx, svr2.ClusterMgrClient, svr2.Conf)
 	require.NoError(t, err)
 	require.Equal(t, proto.NodeID(2), svr2.Conf.HostInfo.NodeID)
