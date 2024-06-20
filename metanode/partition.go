@@ -500,7 +500,6 @@ type metaPartition struct {
 	vol                     *Vol
 	manager                 *metadataManager
 	isLoadingMetaPartition  bool
-	summaryLock             sync.Mutex
 	ebsClient               *blobstore.BlobStoreClient
 	volType                 int
 	isFollowerRead          bool
@@ -512,7 +511,6 @@ type metaPartition struct {
 	uniqChecker             *uniqChecker
 	verSeq                  uint64
 	multiVersionList        *proto.VolVersionInfoList
-	versionLock             sync.Mutex
 	verUpdateChan           chan []byte
 	enableAuditLog          bool
 	recycleInodeDelFileFlag atomicutil.Flag

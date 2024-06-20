@@ -260,13 +260,6 @@ func (dataNode *DataNode) isWriteAbleWithSizeNoLock(size uint64) (ok bool) {
 	return
 }
 
-func (dataNode *DataNode) isWriteAbleWithSize(size uint64) (ok bool) {
-	dataNode.RLock()
-	defer dataNode.RUnlock()
-
-	return dataNode.isWriteAbleWithSizeNoLock(size)
-}
-
 func (dataNode *DataNode) GetUsed() uint64 {
 	dataNode.RLock()
 	defer dataNode.RUnlock()
@@ -591,7 +584,7 @@ func (dataNode *DataNode) delDecommissionDiskFromCache(c *Cluster) {
 
 func (dataNode *DataNode) getBackupDataPartitionIDs() (ids []uint64) {
 	dataNode.RLock()
-	dataNode.RUnlock()
+	defer dataNode.RUnlock()
 	ids = make([]uint64, 0)
 	for _, info := range dataNode.BackupDataPartitions {
 		ids = append(ids, info.PartitionID)
@@ -601,7 +594,7 @@ func (dataNode *DataNode) getBackupDataPartitionIDs() (ids []uint64) {
 
 func (dataNode *DataNode) getBackupDataPartitionInfo(id uint64) (proto.BackupDataPartitionInfo, error) {
 	dataNode.RLock()
-	dataNode.RUnlock()
+	defer dataNode.RUnlock()
 	for _, info := range dataNode.BackupDataPartitions {
 		if info.PartitionID == id {
 			return info, nil

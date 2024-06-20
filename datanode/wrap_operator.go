@@ -623,7 +623,7 @@ func (s *DataNode) handlePacketToDeleteDataPartition(p *repl.Packet) {
 		if err != nil {
 			return
 		} else {
-			err = s.space.DeletePartition(request.PartitionId, request.DecommissionType, request.Force, request.IsSpecialReplica)
+			err = s.space.DeletePartition(request.PartitionId, request.DecommissionType, request.Force)
 		}
 	} else {
 		err = fmt.Errorf("illegal opcode ")
@@ -1845,12 +1845,11 @@ func (s *DataNode) handlePacketToRecoverBackupDataReplica(p *repl.Packet) {
 		return
 	}
 
-	dp, err := LoadDataPartition(path.Join(request.Disk, newPath), disk)
+	_, err = LoadDataPartition(path.Join(request.Disk, newPath), disk)
 	if err != nil {
 		log.LogErrorf("action[handlePacketToRecoverBackupDataReplica] load disk %v rootDir %v failed err %v.",
 			disk.Path, rootDir, err)
 	} else {
-		s.space.AttachPartition(dp)
 		log.LogInfof("action[handlePacketToRecoverBackupDataReplica] load disk %v rootDir %v success .",
 			disk.Path, rootDir)
 	}
