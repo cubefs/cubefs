@@ -1287,9 +1287,9 @@ const (
 
 const (
 	InitialDecommission uint32 = iota
-	ManualDecommission         // used for queryAllDecommissionDisk
+	ManualDecommission
 	AutoDecommission
-	AllDecommission
+	QueryDecommission // used for querying decommission progress for ManualDecommission and AutoDecommission
 	AutoAddReplica
 	ManualAddReplica
 )
