@@ -228,6 +228,21 @@ static struct inode *cfs_inode_new(struct super_block *sb,
 	return inode;
 }
 
+#ifdef KERNEL_HAS_FOLIO
+static int cfs_readfolio(struct file *file, struct folio *folio)
+{
+	struct inode *inode = file_inode(file);
+	struct cfs_inode *ci = (struct cfs_inode *)inode;
+	struct page *page = &(folio->page);
+
+	return cfs_extent_read_pages(ci->es, false, &page, 1, page_offset(&(folio->page)),
+				     0, PAGE_SIZE);
+}
+
+bool cfs_dirty_folio(struct address_space *mapping, struct folio *folio) {
+	return __set_page_dirty_nobuffers(&(folio->page));
+}
+#else
 /**
  * Called when readpages() failed to update page.
  */
@@ -291,6 +306,7 @@ out:
 	cfs_page_vec_release(vec);
 	return ret;
 }
+#endif
 
 static inline loff_t cfs_inode_page_size(struct cfs_inode *ci,
 					 struct page *page)
@@ -368,9 +384,15 @@ static int cfs_writepages(struct address_space *mapping,
 /**
  * Called by generic_file_aio_write(), caller holds the i_mutex.
  */
+#ifdef KERNEL_WRITE_GEGIN_NO_FLAGS
+static int cfs_write_begin(struct file *file, struct address_space *mapping,
+			   loff_t pos, unsigned len,
+			   struct page **pagep, void **fsdata)
+#else
 static int cfs_write_begin(struct file *file, struct address_space *mapping,
 			   loff_t pos, unsigned len, unsigned flags,
 			   struct page **pagep, void **fsdata)
+#endif
 {
 	struct inode *inode = file_inode(file);
 	struct cfs_inode *ci = (struct cfs_inode *)inode;
@@ -385,9 +407,15 @@ static int cfs_write_begin(struct file *file, struct address_space *mapping,
 	/**
 	 * find or create a locked page.
 	 */
+#ifdef KERNEL_WRITE_GEGIN_NO_FLAGS
+	page = grab_cache_page_write_begin(mapping, index);
+	if (!page)
+		return -ENOMEM;
+#else
 	page = grab_cache_page_write_begin(mapping, index, flags);
 	if (!page)
 		return -ENOMEM;
+#endif
 
 	wait_on_page_writeback(page);
 
@@ -1561,6 +1589,19 @@ static void cfs_kill_sb(struct super_block *sb)
 	kill_anon_super(sb);
 }
 
+#ifdef KERNEL_HAS_FOLIO
+const struct address_space_operations cfs_address_ops = {
+	.writepage = cfs_writepage,
+	.read_folio = cfs_readfolio,
+	.writepages = cfs_writepages,
+	.dirty_folio = cfs_dirty_folio,
+	.write_begin = cfs_write_begin,
+	.write_end = cfs_write_end,
+	.invalidate_folio = NULL,
+	.release_folio = NULL,
+	.direct_IO = cfs_direct_io,
+};
+#else
 const struct address_space_operations cfs_address_ops = {
 	.readpage = cfs_readpage,
 	.readpages = cfs_readpages,
@@ -1573,6 +1614,7 @@ const struct address_space_operations cfs_address_ops = {
 	.releasepage = NULL,
 	.direct_IO = cfs_direct_io,
 };
+#endif
 
 const struct file_operations cfs_file_fops = {
 	.open = cfs_open,
@@ -1674,7 +1716,11 @@ struct file_system_type cfs_fs_type = {
 
 static int proc_log_open(struct inode *inode, struct file *file)
 {
+#ifdef KERNEL_HAS_PDE_DATA
 	file->private_data = PDE_DATA(inode);
+#else
+	file->private_data = NODE_DATA(inode->i_ino);
+#endif
 	return 0;
 }
 

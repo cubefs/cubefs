@@ -24,7 +24,7 @@
 #ifndef JSMN_H
 #define JSMN_H
 
-#include <stddef.h>
+#include <linux/stddef.h>
 
 #ifdef __cplusplus
 extern "C" {

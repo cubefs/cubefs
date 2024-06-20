@@ -595,5 +595,55 @@ int test (void)
 EOF
 check_flags "OFED_HAS_IB_CREATE_CQATTR"
 
+cat > $TEST_C <<EOF
+#include "test.h"
+
+int test (void)
+{
+    struct inode *inode = NULL;
+    void *data = NULL;
+    data = PDE_DATA(inode)
+    return 0;
+}
+
+EOF
+check_flags "KERNEL_HAS_PDE_DATA"
+
+cat > $TEST_C <<EOF
+#include "test.h"
+
+int test (void)
+{
+    struct folio item;
+    struct folio *fl = NULL;
+    fl = &item;
+    return 0;
+}
+
+EOF
+check_flags "KERNEL_HAS_FOLIO"
+
+cat > $TEST_C <<EOF
+#include <linux/fs.h>
+#include "test.h"
+
+int cfs_write_begin_test(struct file *file, struct address_space *mapping,
+			   loff_t pos, unsigned len,
+			   struct page **pagep, void **fsdata) {
+    return 0;
+}
+
+int test (void)
+{
+    struct address_space_operations cfs_test_ops = {
+        .write_begin = cfs_write_begin_test,
+    };
+    
+    return cfs_test_ops.write_begin(NULL, NULL, 0, 0, NULL, NULL);
+}
+
+EOF
+check_flags "KERNEL_WRITE_GEGIN_NO_FLAGS"
+
 echo "#endif" >> $CONFIG_H
 rm -rf $TMPDIR
