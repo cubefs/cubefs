@@ -1329,6 +1329,28 @@ func parseAndExtractSetNodeInfoParams(r *http.Request) (params map[string]interf
 		params[markDiskBrokenThresholdKey] = val
 	}
 
+	if value = r.FormValue(autoDecommissionDiskKey); value != "" {
+		noParams = false
+		val := false
+		val, err = strconv.ParseBool(value)
+		if err != nil {
+			err = unmatchedKey(autoDecommissionDiskKey)
+			return
+		}
+		params[autoDecommissionDiskKey] = val
+	}
+
+	if value = r.FormValue(autoDecommissionDiskIntervalKey); value != "" {
+		noParams = false
+		val := int64(0)
+		val, err = strconv.ParseInt(value, 10, 64)
+		if err != nil {
+			err = unmatchedKey(autoDecommissionDiskIntervalKey)
+			return
+		}
+		params[autoDecommissionDiskIntervalKey] = time.Duration(val)
+	}
+
 	if value = r.FormValue(autoDpMetaRepairKey); value != "" {
 		noParams = false
 		val := false
@@ -1338,6 +1360,17 @@ func parseAndExtractSetNodeInfoParams(r *http.Request) (params map[string]interf
 			return
 		}
 		params[autoDpMetaRepairKey] = val
+	}
+
+	if value = r.FormValue(autoDpMetaRepairParallelCntKey); value != "" {
+		noParams = false
+		val := int64(0)
+		val, err = strconv.ParseInt(value, 10, 32)
+		if err != nil {
+			err = unmatchedKey(autoDpMetaRepairParallelCntKey)
+			return
+		}
+		params[autoDpMetaRepairParallelCntKey] = int(val)
 	}
 
 	if value = r.FormValue(dpTimeoutKey); value != "" {

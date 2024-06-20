@@ -253,7 +253,10 @@ func newClusterSetParasCmd(client *master.MasterClient) *cobra.Command {
 	dataNodeSelector := ""
 	metaNodeSelector := ""
 	markBrokenDiskThreshold := ""
+	autoDecommissionDisk := ""
+	autoDecommissionDiskInterval := ""
 	autoDpMetaRepair := ""
+	autoDpMetaRepairParallelCnt := ""
 	opMaxMpCntLimit := ""
 	dpRepairTimeout := ""
 	dpTimeout := ""
@@ -273,8 +276,33 @@ func newClusterSetParasCmd(client *master.MasterClient) *cobra.Command {
 				}
 				markBrokenDiskThreshold = fmt.Sprintf("%v", val)
 			}
+
+			if autoDecommissionDisk != "" {
+				if _, err = strconv.ParseBool(autoDecommissionDisk); err != nil {
+					return
+				}
+			}
+			if autoDecommissionDiskInterval != "" {
+				var interval time.Duration
+				interval, err = time.ParseDuration(autoDecommissionDiskInterval)
+				if err != nil {
+					return
+				}
+				if interval < time.Second {
+					err = fmt.Errorf("auto decommission disk interval %v smaller than 1s", interval)
+					return
+				}
+
+				autoDecommissionDiskInterval = strconv.FormatInt(int64(interval), 10)
+			}
+
 			if autoDpMetaRepair != "" {
 				if _, err = strconv.ParseBool(autoDpMetaRepair); err != nil {
+					return
+				}
+			}
+			if autoDpMetaRepairParallelCnt != "" {
+				if _, err = strconv.ParseInt(autoDpMetaRepairParallelCnt, 10, 64); err != nil {
 					return
 				}
 			}
@@ -308,7 +336,10 @@ func newClusterSetParasCmd(client *master.MasterClient) *cobra.Command {
 			if err = client.AdminAPI().SetClusterParas(optDelBatchCount, optMarkDeleteRate, optDelWorkerSleepMs,
 				optAutoRepairRate, optLoadFactor, opMaxDpCntLimit, opMaxMpCntLimit, clientIDKey,
 				dataNodesetSelector, metaNodesetSelector,
-				dataNodeSelector, metaNodeSelector, markBrokenDiskThreshold, autoDpMetaRepair, dpRepairTimeout, dpTimeout); err != nil {
+				dataNodeSelector, metaNodeSelector, markBrokenDiskThreshold,
+				autoDecommissionDisk, autoDecommissionDiskInterval,
+				autoDpMetaRepair, autoDpMetaRepairParallelCnt,
+				dpRepairTimeout, dpTimeout); err != nil {
 				return
 			}
 			stdout("Cluster parameters has been set successfully. \n")
@@ -328,8 +359,11 @@ func newClusterSetParasCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().StringVar(&metaNodeSelector, CliFlagMetaNodeSelector, "", "Set the node select policy(metanode) for cluster")
 	cmd.Flags().StringVar(&markBrokenDiskThreshold, CliFlagMarkDiskBrokenThreshold, "", "Threshold to mark disk as broken")
 	cmd.Flags().StringVar(&autoDpMetaRepair, CliFlagAutoDpMetaRepair, "", "Enable or disable auto data partition meta repair")
+	cmd.Flags().StringVar(&autoDpMetaRepairParallelCnt, CliFlagAutoDpMetaRepairParallelCnt, "", "Parallel count of auto data partition meta repair")
 	cmd.Flags().StringVar(&dpRepairTimeout, CliFlagDpRepairTimeout, "", "Data partition repair timeout(example: 1h)")
 	cmd.Flags().StringVar(&dpTimeout, CliFlagDpTimeout, "", "Data partition heartbeat timeout(example: 10s)")
+	cmd.Flags().StringVar(&autoDecommissionDisk, CliFlagAutoDecommissionDisk, "", "Enable od disable auto decommission disk")
+	cmd.Flags().StringVar(&autoDecommissionDiskInterval, CliFlagAutoDecommissionDiskInterval, "", "Interval of auto decommission disk(example: 10s)")
 	return cmd
 }
 

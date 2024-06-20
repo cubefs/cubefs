@@ -607,7 +607,7 @@ func (vol *Vol) checkDataPartitions(c *Cluster) (cnt int) {
 
 	partitions := vol.dataPartitions.clonePartitions()
 	checkMetaDp := make(map[uint64]*DataPartition)
-	checkMetaPool := routinepool.NewRoutinePool(10)
+	checkMetaPool := routinepool.NewRoutinePool(c.GetAutoDpMetaRepairParallelCnt())
 	defer checkMetaPool.WaitAndClose()
 	var checkMetaDpWg sync.WaitGroup
 
