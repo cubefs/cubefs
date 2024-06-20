@@ -689,10 +689,10 @@ func (dp *DataPartition) ForceLoadHeader() {
 	dp.loadExtentHeaderStatus = FinishLoadDataPartitionExtentHeader
 }
 
-func (dp *DataPartition) RemoveAll(decommissionType uint32, force, isSpecialReplica bool) (err error) {
+func (dp *DataPartition) RemoveAll(decommissionType uint32, force bool) (err error) {
 	dp.persistMetaMutex.Lock()
 	defer dp.persistMetaMutex.Unlock()
-	if force && isSpecialReplica && decommissionType == proto.AutoDecommission {
+	if force && decommissionType == proto.AutoDecommission {
 		originalPath := dp.Path()
 		parent := path.Dir(originalPath)
 		fileName := path.Base(originalPath)
@@ -1541,12 +1541,11 @@ func (dp *DataPartition) reload(s *SpaceManager) error {
 	dp.Stop()
 	dp.Disk().DetachDataPartition(dp)
 	log.LogDebugf("data partition %v is detached", dp.partitionID)
-	dp2, err := LoadDataPartition(rootDir, disk)
+	_, err := LoadDataPartition(rootDir, disk)
 	if err != nil {
 		return err
 	}
-	s.AttachPartition(dp2)
-	return err
+	return nil
 }
 
 func (dp *DataPartition) resetDiskErrCnt() {

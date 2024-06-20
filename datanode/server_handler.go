@@ -861,11 +861,10 @@ func (s *DataNode) loadDataPartition(w http.ResponseWriter, r *http.Request) {
 
 	log.LogDebugf("data partition disk %v rootDir %v", disk, rootDir)
 
-	dp, err := LoadDataPartition(path.Join(diskPath, rootDir), disk)
+	_, err = LoadDataPartition(path.Join(diskPath, rootDir), disk)
 	if err != nil {
 		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
 	} else {
-		s.space.AttachPartition(dp)
 		s.buildSuccessResp(w, "success")
 	}
 }

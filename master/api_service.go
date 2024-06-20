@@ -18,7 +18,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/cubefs/cubefs/util/auditlog"
 	"io"
 	"math"
 	"net/http"
@@ -32,6 +31,7 @@ import (
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util"
+	"github.com/cubefs/cubefs/util/auditlog"
 	"github.com/cubefs/cubefs/util/compressor"
 	"github.com/cubefs/cubefs/util/cryptoutil"
 	"github.com/cubefs/cubefs/util/errors"
@@ -6956,7 +6956,6 @@ func (m *Server) cancelDisableDisk(w http.ResponseWriter, r *http.Request) {
 		dp.setRestoreReplicaStop()
 		auditlog.LogMasterOp("CancelDataPartitionDecommission", msg, nil)
 	}
-	//m.cluster.DecommissionDisks.Delete(key)
 	disk.SetDecommissionStatus(DecommissionCancel)
 	rstMsg := fmt.Sprintf("cancel decommission disk[%s] successfully ", key)
 	sendOkReply(w, r, newSuccessHTTPReply(rstMsg))

@@ -286,70 +286,7 @@ func (manager *SpaceManager) LoadDisk(path string, reservedSpace, diskRdonlySpac
 
 	log.LogDebugf("action[LoadDisk] load disk from path(%v).", path)
 	visitor = func(dp *DataPartition) {
-		manager.partitionMutex.Lock()
-		if loadedDp, has := manager.partitions[dp.partitionID]; !has {
-			manager.partitions[dp.partitionID] = dp
-			manager.partitionMutex.Unlock()
-			log.LogDebugf("action[LoadDisk] put partition(%v) to manager.", dp.partitionID)
-		} else {
-			manager.partitionMutex.Unlock()
-
-			if loadedDp.disk.Path == dp.disk.Path {
-				log.LogWarnf("[LoadDisk] dp(%v) is loaded, to load(%v), but disk path is the same",
-					loadedDp.info(), dp.info())
-				return
-			}
-
-			log.LogWarnf("action[LoadDisk] dp(%v) is loaded, to load(%v).", loadedDp.info(), dp.info())
-			_, _, infos, err := dp.fetchReplicasFromMaster()
-			if err != nil {
-				manager.DetachDataPartition(loadedDp.partitionID)
-				loadedDp.Stop()
-				loadedDp.Disk().DetachDataPartition(loadedDp)
-				log.LogErrorf("action[LoadDisk] dp(%v) is detached,due to get dp info failed(%v).",
-					loadedDp.info(), err)
-			} else {
-				var correctReplic ReplicaInfo
-				for _, replica := range infos {
-					if replica.Addr == manager.dataNode.localServerAddr {
-						correctReplic = replica
-						break
-					}
-				}
-				if correctReplic.Disk == "" && correctReplic.Addr == "" {
-					loadedDp.Stop()
-					loadedDp.Disk().DetachDataPartition(loadedDp)
-					log.LogErrorf("action[LoadDisk] dp(%v) is detached,due to data node not contains in replicas"+
-						"from master.", loadedDp.info())
-				} else {
-					if loadedDp.disk.Path == correctReplic.Disk {
-						dp.Stop()
-						dp.Disk().DetachDataPartition(dp)
-						if err := dp.RemoveAll(proto.InitialDecommission, false, false); err != nil {
-							log.LogErrorf("action[LoadDisk]failed to remove dp(%v) dir(%v), err(%v)",
-								dp.partitionID, dp.Path(), err)
-						}
-					} else {
-						// detach loaded dp
-						loadedDp.Stop()
-						loadedDp.Disk().DetachDataPartition(loadedDp)
-						if err := loadedDp.RemoveAll(proto.InitialDecommission, false, false); err != nil {
-							log.LogErrorf("action[LoadDisk]failed to remove dp(%v) dir(%v), err(%v)",
-								loadedDp.partitionID, loadedDp.Path(), err)
-						}
-						dp.Stop()
-						dp.Disk().DetachDataPartition(dp)
-						dp2, err := LoadDataPartition(dp.path, dp.disk)
-						if err != nil {
-							log.LogErrorf("action[LoadDisk]failed to load dp %v (%v_%v), err(%v)",
-								dp.partitionID, dp.path, dp.disk, err)
-						} else {
-							manager.AttachPartition(dp2)
-						}
-					}
-				}
-			}
-		}
+		// do noting here, dp is attached to space manager in RestorePartition
 	}
 
 	if _, err = manager.GetDisk(path); err != nil {
@@ -496,8 +433,67 @@ func (manager *SpaceManager) AttachPartition(dp *DataPartition) {
 		log.LogInfof("[AttachPartition] load dp(%v) attach using time(%v)", dp.partitionID, time.Now().Sub(begin))
 	}()
 	manager.partitionMutex.Lock()
-	defer manager.partitionMutex.Unlock()
-	manager.partitions[dp.partitionID] = dp
+	if loadedDp, has := manager.partitions[dp.partitionID]; !has {
+		manager.partitions[dp.partitionID] = dp
+		manager.partitionMutex.Unlock()
+		log.LogDebugf("action[AttachPartition] put partition(%v) to manager.", dp.partitionID)
+	} else {
+		manager.partitionMutex.Unlock()
+
+		if loadedDp.disk.Path == dp.disk.Path {
+			log.LogWarnf("[AttachPartition] dp(%v) is loaded, to load(%v), but disk path is the same",
+				loadedDp.info(), dp.info())
+			return
+		}
+
+		log.LogWarnf("action[AttachPartition] dp(%v) is loaded, to load(%v).", loadedDp.info(), dp.info())
+		_, _, infos, err := dp.fetchReplicasFromMaster()
+		if err != nil {
+			manager.DetachDataPartition(loadedDp.partitionID)
+			loadedDp.Stop()
+			loadedDp.Disk().DetachDataPartition(loadedDp)
+			log.LogErrorf("action[LoadDisk] dp(%v) is detached,due to get dp info failed(%v).",
+				loadedDp.info(), err)
+		} else {
+			var correctReplica ReplicaInfo
+			for _, replica := range infos {
+				if replica.Addr == manager.dataNode.localServerAddr {
+					correctReplica = replica
+					break
+				}
+			}
+			if correctReplica.Disk == "" && correctReplica.Addr == "" {
+				loadedDp.Stop()
+				loadedDp.Disk().DetachDataPartition(loadedDp)
+				log.LogErrorf("action[LoadDisk] dp(%v) is detached,due to data node not contains in replicas"+
+					"from master.", loadedDp.info())
+			} else {
+				if loadedDp.disk.Path == correctReplica.Disk {
+					dp.Stop()
+					dp.Disk().DetachDataPartition(dp)
+					if err := dp.RemoveAll(proto.InitialDecommission, true); err != nil {
+						log.LogErrorf("action[LoadDisk]failed to remove dp(%v) dir(%v), err(%v)",
+							dp.partitionID, dp.Path(), err)
+					}
+				} else {
+					// detach loaded dp
+					loadedDp.Stop()
+					loadedDp.Disk().DetachDataPartition(loadedDp)
+					if err := loadedDp.RemoveAll(proto.InitialDecommission, true); err != nil {
+						log.LogErrorf("action[LoadDisk]failed to remove dp(%v) dir(%v), err(%v)",
+							loadedDp.partitionID, loadedDp.Path(), err)
+					}
+					dp.Stop()
+					dp.Disk().DetachDataPartition(dp)
+					_, err := LoadDataPartition(dp.path, dp.disk)
+					if err != nil {
+						log.LogErrorf("action[LoadDisk]failed to load dp %v (%v_%v), err(%v)",
+							dp.partitionID, dp.path, dp.disk, err)
+					}
+				}
+			}
+		}
+	}
 }
 
 // DetachDataPartition removes a data partition from the partition map.
@@ -547,14 +543,14 @@ func (manager *SpaceManager) CreatePartition(request *proto.CreateDataPartitionR
 }
 
 // DeletePartition deletes a partition based on the partition id.
-func (manager *SpaceManager) DeletePartition(dpID uint64, decommissionType uint32, force, isSpecialReplica bool) (err error) {
+func (manager *SpaceManager) DeletePartition(dpID uint64, decommissionType uint32, force bool) (err error) {
 	manager.partitionMutex.Lock()
 
 	dp := manager.partitions[dpID]
 	if dp == nil {
 		manager.partitionMutex.Unlock()
 		// maybe dp not loaded when triggered disk error, need to remove disk root dir
-		err = manager.deleteDataPartitionNotLoaded(dpID, decommissionType, force, isSpecialReplica)
+		err = manager.deleteDataPartitionNotLoaded(dpID, decommissionType, force)
 		return err
 	}
 
@@ -562,7 +558,7 @@ func (manager *SpaceManager) DeletePartition(dpID uint64, decommissionType uint3
 	manager.partitionMutex.Unlock()
 	dp.Stop()
 	dp.Disk().DetachDataPartition(dp)
-	if err := dp.RemoveAll(decommissionType, force, isSpecialReplica); err != nil {
+	if err := dp.RemoveAll(decommissionType, force); err != nil {
 		return err
 	}
 	return nil
@@ -638,7 +634,7 @@ func (manager *SpaceManager) getPartitionIds() []uint64 {
 	return res
 }
 
-func (manager *SpaceManager) deleteDataPartitionNotLoaded(id uint64, decommissionType uint32, force, isSpecialReplica bool) error {
+func (manager *SpaceManager) deleteDataPartitionNotLoaded(id uint64, decommissionType uint32, force bool) error {
 	disks := manager.GetDisks()
 	for _, d := range disks {
 		if d.HasDiskErrPartition(id) {
@@ -666,7 +662,7 @@ func (manager *SpaceManager) deleteDataPartitionNotLoaded(id uint64, decommissio
 				} else {
 					if partitionID == id {
 						rootPath := path.Join(d.Path, filename)
-						if decommissionType == proto.AutoDecommission && isSpecialReplica && force {
+						if decommissionType == proto.AutoDecommission && force {
 							newPath := path.Join(d.Path, BackupPartitionPrefix+filename)
 							err = os.Rename(rootPath, newPath)
 							if err == nil {
