@@ -49,12 +49,11 @@ func newCreateDataPartitionRequest(volName string, ID uint64, replicaNum int, me
 	return
 }
 
-func newDeleteDataPartitionRequest(ID uint64, decommissionType uint32, raftForceDel, isSpecialReplica bool) (req *proto.DeleteDataPartitionRequest) {
+func newDeleteDataPartitionRequest(ID uint64, decommissionType uint32, raftForceDel bool) (req *proto.DeleteDataPartitionRequest) {
 	req = &proto.DeleteDataPartitionRequest{
 		PartitionId:      ID,
 		DecommissionType: decommissionType,
 		Force:            raftForceDel,
-		IsSpecialReplica: isSpecialReplica,
 	}
 	return
 }
