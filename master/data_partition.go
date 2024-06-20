@@ -303,7 +303,7 @@ func (partition *DataPartition) createTaskToCreateDataPartition(addr string, dat
 
 func (partition *DataPartition) createTaskToDeleteDataPartition(addr string, raftForceDel bool) (task *proto.AdminTask) {
 	task = proto.NewAdminTask(proto.OpDeleteDataPartition, addr,
-		newDeleteDataPartitionRequest(partition.PartitionID, partition.DecommissionType, raftForceDel, partition.isSpecialReplicaCnt()))
+		newDeleteDataPartitionRequest(partition.PartitionID, partition.DecommissionType, raftForceDel))
 	partition.resetTaskID(task)
 	return
 }
