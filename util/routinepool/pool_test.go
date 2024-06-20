@@ -54,3 +54,10 @@ func TestRoutinePool(t *testing.T) {
 
 	require.EqualValues(t, totalRoutineNum, value)
 }
+
+func TestNewAndClose(t *testing.T) {
+	maxRoutineNum := 10
+	pool := NewRoutinePool(maxRoutineNum)
+
+	pool.WaitAndClose()
+}

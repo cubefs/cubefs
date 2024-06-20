@@ -29,6 +29,7 @@ import (
 	"github.com/cubefs/cubefs/util/atomicutil"
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/log"
+	"github.com/cubefs/cubefs/util/routinepool"
 )
 
 type VolVarargs struct {
@@ -605,6 +606,25 @@ func (vol *Vol) checkDataPartitions(c *Cluster) (cnt int) {
 	totalPreloadCapacity := uint64(0)
 
 	partitions := vol.dataPartitions.clonePartitions()
+	checkMetaDp := make(map[uint64]*DataPartition)
+	checkMetaPool := routinepool.NewRoutinePool(10)
+	defer checkMetaPool.WaitAndClose()
+	var checkMetaDpWg sync.WaitGroup
+
+	afterCheckMetaReplica := func(dp *DataPartition) {
+		if time.Now().Unix()-vol.createTime < defaultIntervalToCheckHeartbeat*3 && !vol.Forbidden {
+			dp.setReadWrite()
+		}
+
+		if dp.Status == proto.ReadWrite {
+			cnt++
+		}
+
+		dp.checkDiskError(c.Name, c.leaderInfo.addr)
+
+		dp.checkReplicationTask(c.Name, vol.dataPartitionSize)
+	}
+
 	for _, dp := range partitions {
 
 		if proto.IsPreLoadDp(dp.PartitionType) {
@@ -635,20 +655,25 @@ func (vol *Vol) checkDataPartitions(c *Cluster) (cnt int) {
 
 		// NOTE: cluster or enable meta repair
 		if c.getEnableAutoDpMetaRepair() || vol.EnableAutoMetaRepair.Load() {
-			dp.checkReplicaMeta(c)
+			checkMetaDp[dp.PartitionID] = dp
+			localDp := dp
+			checkMetaDpWg.Add(1)
+			checkMetaPool.Submit(func() {
+				defer checkMetaDpWg.Done()
+				log.LogDebugf("[checkDataPartitions] check meta for vol(%v) dp(%v)", dp.VolName, dp.PartitionID)
+				localDp.checkReplicaMeta(c)
+			})
+			continue
 		}
 
-		if time.Now().Unix()-vol.createTime < defaultIntervalToCheckHeartbeat*3 && !vol.Forbidden {
-			dp.setReadWrite()
+		afterCheckMetaReplica(dp)
+	}
+
+	if len(checkMetaDp) != 0 {
+		checkMetaDpWg.Wait()
+		for _, dp := range checkMetaDp {
+			afterCheckMetaReplica(dp)
 		}
-
-		if dp.Status == proto.ReadWrite {
-			cnt++
-		}
-
-		dp.checkDiskError(c.Name, c.leaderInfo.addr)
-
-		dp.checkReplicationTask(c.Name, vol.dataPartitionSize)
 	}
 
 	if overSoldFactor > 0 {
