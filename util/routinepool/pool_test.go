@@ -51,3 +51,10 @@ func TestExample(t *testing.T) {
 		t.Fatalf("expected value(%v), got(%v)", totalRoutineNum, value)
 	}
 }
+
+func TestNewAndClose(t *testing.T) {
+	maxRoutineNum := 10
+	pool := NewRoutinePool(maxRoutineNum)
+
+	pool.WaitAndClose()
+}
