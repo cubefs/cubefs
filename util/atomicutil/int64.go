@@ -16,42 +16,35 @@ package atomicutil
 
 import "sync/atomic"
 
-type Bool struct {
-	val uint32
+type Int64 struct {
+	v int64
 }
 
-func (b *Bool) Load() (v bool) {
-	v = atomic.LoadUint32(&b.val) == 1
+func (i *Int64) Load() (v int64) {
+	v = atomic.LoadInt64(&i.v)
 	return
 }
 
-func (b *Bool) Store(v bool) {
-	val := uint32(0)
-	if v {
-		val = 1
-	}
-	atomic.StoreUint32(&b.val, val)
+func (i *Int64) Store(v int64) {
+	atomic.StoreInt64(&i.v, v)
+}
+
+func (i *Int64) CompareAndSwap(old int64, new int64) (swaped bool) {
+	swaped = atomic.CompareAndSwapInt64(&i.v, old, new)
 	return
 }
 
-func (b *Bool) CompareAndSwap(old bool, newVal bool) (swaped bool) {
-	oldVal := uint32(0)
-	if old {
-		oldVal = 1
-	}
-	val := uint32(0)
-	if newVal {
-		val = 1
-	}
-	swaped = atomic.CompareAndSwapUint32(&b.val, oldVal, val)
+func (i *Int64) Add(v int64) (new int64) {
+	new = atomic.AddInt64(&i.v, v)
 	return
 }
 
-func (b *Bool) Swap(new bool) (old bool) {
-	tmp := uint32(0)
-	if new {
-		tmp = 1
-	}
-	old = atomic.SwapUint32(&b.val, tmp) == 1
+func (i *Int64) Sub(v int64) (new int64) {
+	new = atomic.AddInt64(&i.v, -v)
+	return
+}
+
+func (i *Int64) Swap(v int64) (old int64) {
+	old = atomic.SwapInt64(&i.v, v)
 	return
 }

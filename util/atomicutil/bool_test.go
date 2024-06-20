@@ -27,4 +27,6 @@ func TestAtomicBool(t *testing.T) {
 	require.True(t, b.Load())
 	require.True(t, b.CompareAndSwap(true, false))
 	require.False(t, b.Load())
+	require.False(t, b.Swap(true))
+	require.True(t, b.Load())
 }

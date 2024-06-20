@@ -1,4 +1,4 @@
-// Copyright 2023 The CubeFS Authors.
+// Copyright 2024 The CubeFS Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -21,12 +21,13 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestAtomicFloat64(t *testing.T) {
-	f := atomicutil.Float64{}
-	testVal := float64(1.0)
-	f.Store(testVal)
-	require.Equal(t, testVal, f.Load())
-	require.True(t, f.CompareAndSwap(testVal, 0))
-	require.EqualValues(t, 0, f.Swap(testVal))
-	require.EqualValues(t, testVal, f.Load())
+func TestInt32(t *testing.T) {
+	i := atomicutil.Int32{}
+	i.Store(1)
+	require.EqualValues(t, 1, i.Load())
+	require.EqualValues(t, 2, i.Add(1))
+	require.EqualValues(t, 2, i.Swap(1))
+	require.True(t, i.CompareAndSwap(1, 2))
+	require.EqualValues(t, 2, i.Load())
+	require.EqualValues(t, 1, i.Sub(1))
 }
