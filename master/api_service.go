@@ -4110,6 +4110,9 @@ func (m *Server) decommissionDisk(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, newErrHTTPReply(proto.ErrDiskNotExists))
 		return
 	}
+	if decommissionType == int(InitialDecommission) {
+		decommissionType = int(ManualDecommission)
+	}
 	if err = m.cluster.migrateDisk(offLineAddr, diskPath, "", raftForce, limit, diskDisable, uint32(decommissionType)); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
@@ -4260,7 +4263,7 @@ func (m *Server) queryAllDecommissionDisk(w http.ResponseWriter, r *http.Request
 	resp := &proto.DecommissionDisksResponse{}
 	m.cluster.DecommissionDisks.Range(func(key, value interface{}) bool {
 		disk := value.(*DecommissionDisk)
-		if decommissoinType == int(AllDecommission) || (decommissoinType != int(AllDecommission) && disk.Type == uint32(decommissoinType)) {
+		if decommissoinType == int(QueryDecommission) || (decommissoinType != int(QueryDecommission) && disk.Type == uint32(decommissoinType)) {
 			status, progress := disk.updateDecommissionStatus(m.cluster, true)
 			progress, _ = FormatFloatFloor(progress, 4)
 			decommissionProgress := proto.DecommissionProgress{
@@ -6813,7 +6816,7 @@ func (m *Server) QueryDecommissionFailedDisk(w http.ResponseWriter, r *http.Requ
 	m.cluster.DecommissionDisks.Range(func(key, value interface{}) bool {
 		d := value.(*DecommissionDisk)
 		if d.GetDecommissionStatus() == DecommissionFail {
-			if d.Type == uint32(decommType) || decommType == int(AllDecommission) {
+			if d.Type == uint32(decommType) || decommType == int(QueryDecommission) {
 				disks = append(disks, &proto.DecommissionFailedDiskInfo{
 					SrcAddr:               d.SrcAddr,
 					DiskPath:              d.DiskPath,
