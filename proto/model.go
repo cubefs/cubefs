@@ -368,11 +368,18 @@ type FailedDpInfo struct {
 	ErrMsg      string
 }
 
+type IgnoreDecommissionDP struct {
+	PartitionID uint64
+	ErrMsg      string
+}
 type DecommissionProgress struct {
-	Status        uint32
-	StatusMessage string
-	Progress      string
-	FailedDps     []FailedDpInfo
+	Status            uint32
+	StatusMessage     string
+	DecommissionTimes uint8
+	DecommissionTerm  uint64
+	Progress          string
+	FailedDps         []FailedDpInfo
+	IgnoreDps         []IgnoreDecommissionDP
 }
 
 type DiskInfo struct {
@@ -520,7 +527,7 @@ type DecommissionFailedDiskInfo struct {
 	SrcAddr               string
 	DiskPath              string
 	DecommissionRaftForce bool
-	DecommissionRetry     uint8
+	DecommissionTimes     uint8
 	DecommissionDpTotal   int
 	IsAutoDecommission    bool
 }

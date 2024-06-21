@@ -4361,7 +4361,7 @@ func (c *Cluster) TryDecommissionDisk(disk *DecommissionDisk) {
 	)
 	defer func() {
 		if err != nil {
-			disk.DecommissionRetry++
+			disk.DecommissionTimes++
 		}
 		auditlog.LogMasterOp("DiskDecommission", rstMsg, err)
 		c.syncUpdateDecommissionDisk(disk)
@@ -4432,6 +4432,7 @@ func (c *Cluster) TryDecommissionDisk(disk *DecommissionDisk) {
 		return
 	}
 	var ignoreIDs []uint64
+	IgnoreDecommissionDps := make([]proto.IgnoreDecommissionDP, 0)
 	for _, dp := range badPartitions {
 		// dp with decommission success cannot be reset during master load metadata
 		if dp.IsDecommissionSuccess() && dp.DecommissionTerm == disk.DecommissionTerm {
@@ -4448,15 +4449,19 @@ func (c *Cluster) TryDecommissionDisk(disk *DecommissionDisk) {
 			if strings.Contains(err.Error(), proto.ErrDecommissionDiskErrDPFirst.Error()) {
 				c.syncUpdateDataPartition(dp)
 				// still decommission dp but not involved in the calculation of the decommission progress.
-				disk.DecommissionDpTotal -= 1
+				//disk.DecommissionDpTotal -= 1
 				ns.AddToDecommissionDataPartitionList(dp, c)
 				ignoreIDs = append(ignoreIDs, dp.PartitionID)
+				IgnoreDecommissionDps = append(IgnoreDecommissionDps, proto.IgnoreDecommissionDP{PartitionID: dp.PartitionID,
+					ErrMsg: proto.ErrDecommissionDiskErrDPFirst.Error()})
 				continue
 			} else if strings.Contains(err.Error(), proto.ErrPerformingDecommission.Error()) {
-				disk.DecommissionDpTotal -= 1
+				//disk.DecommissionDpTotal -= 1
 				ignoreIDs = append(ignoreIDs, dp.PartitionID)
 				log.LogWarnf("action[TryDecommissionDisk] disk(%v) dp(%v) is decommissioning",
 					disk.decommissionInfo(), dp.PartitionID)
+				IgnoreDecommissionDps = append(IgnoreDecommissionDps, proto.IgnoreDecommissionDP{PartitionID: dp.PartitionID,
+					ErrMsg: proto.ErrPerformingDecommission.Error()})
 				continue
 			} else {
 				// mark as failed and set decommission src, make sure it can be included in the calculation of progress
@@ -4480,6 +4485,7 @@ func (c *Cluster) TryDecommissionDisk(disk *DecommissionDisk) {
 		badPartitionIds = append(badPartitionIds, dp.PartitionID)
 	}
 	disk.SetDecommissionStatus(DecommissionRunning)
+	disk.IgnoreDecommissionDps = IgnoreDecommissionDps
 	if disk.DiskDisable {
 		c.addAndSyncDecommissionedDisk(node, disk.DiskPath)
 	}
