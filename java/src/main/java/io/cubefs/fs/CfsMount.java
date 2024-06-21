@@ -67,6 +67,16 @@ public class CfsMount {
         return libcfs.cfs_getcwd(this.cid);
     }
 
+	public boolean IsDir(int mode) {
+        int result = libcfs.cfs_IsDir(mode);
+		return result != 0;
+    }
+
+	public boolean IsRegular(int mode) {
+		int result = libcfs.cfs_IsRegular(mode);
+		return result != 0;
+	}
+
     public int getAttr(String path, CfsLibrary.StatInfo stat) throws FileNotFoundException {
         int result = libcfs.cfs_getattr(this.cid, path, stat);
         if (result != SUCCESS) {
