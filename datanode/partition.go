@@ -311,9 +311,9 @@ func LoadDataPartition(partitionDir string, disk *Disk) (dp *DataPartition, err 
 	disk.AddSize(uint64(dp.Size()))
 	dp.ForceLoadHeader()
 	// if dp trigger disk error before, add it to diskErrPartitionSet
-	// TODO: should care which disk error type is ?
 	dp.diskErrCnt = meta.DiskErrCnt
 	if meta.DiskErrCnt > 0 {
+		dp.stopRaft()
 		disk.AddDiskErrPartition(dp.partitionID)
 		diskErrPartitionCnt := disk.GetDiskErrPartitionCount()
 		if diskErrPartitionCnt >= disk.dataNode.diskUnavailablePartitionErrorCount {
