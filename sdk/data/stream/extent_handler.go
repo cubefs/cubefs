@@ -179,11 +179,6 @@ func (eh *ExtentHandler) write(data []byte, offset, size int, direct bool) (ek *
 			}
 			//log.LogDebugf("ExtentHandler Write: NewPacket, eh(%v) packet(%v)", eh, eh.packet)
 		}
-		if eh.packet.Data == nil {
-			log.LogErrorf("The data buffer is run out.")
-			err = errors.New("exhaust the data buffer")
-			return
-		}
 		packsize := int(eh.packet.Size)
 		write = util.Min(size-total, blksize-packsize)
 		if write > 0 {
@@ -257,20 +252,16 @@ func (eh *ExtentHandler) sender() {
 			packet.ExtentID = uint64(eh.extID)
 			packet.ExtentOffset = int64(extOffset)
 
-			if IsRdma && eh.storeMode != proto.TinyExtentType {
+			if IsRdma {
 				packet.Arg = nil
 				packet.ArgLen = 0
 				packet.RemainingFollowers = 0
+				//allRdmaAddrs := ([]byte)(eh.dp.GetAllRdmaAddrs())
+				//copy(packet.Arg, allRdmaAddrs)
+				//packet.ArgLen = uint32(len(allRdmaAddrs))
 			} else {
-				if IsRdma {
-					allRdmaAddrs := ([]byte)(eh.dp.GetAllRdmaAddrs())
-					copy(packet.Arg, allRdmaAddrs)
-					packet.ArgLen = uint32(len(allRdmaAddrs))
-				} else {
-					packet.Arg = ([]byte)(eh.dp.GetAllAddrs())
-					packet.ArgLen = uint32(len(packet.Arg))
-				}
-
+				packet.Arg = ([]byte)(eh.dp.GetAllAddrs())
+				packet.ArgLen = uint32(len(packet.Arg))
 				packet.RemainingFollowers = uint8(len(eh.dp.Hosts) - 1)
 				if len(eh.dp.Hosts) == 1 {
 					packet.RemainingFollowers = 127
@@ -444,7 +435,7 @@ func (eh *ExtentHandler) processReply(packet *Packet) {
 		eh.key.Size += packet.Size
 	}
 
-	if IsRdma && (packet.Opcode == proto.OpWrite || packet.Opcode == proto.OpSyncWrite) {
+	if IsRdma {
 		for index, conn := range eh.rdmaConn {
 			if index == 0 {
 				rdma.ReleaseDataBuffer(conn, packet.RdmaBuffer, util.RdmaPacketHeaderSize+packet.Size)
