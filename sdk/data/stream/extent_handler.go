@@ -732,6 +732,8 @@ func (eh *ExtentHandler) allocateExtentRdma() (err error) {
 		if eh.storeMode == proto.NormalExtentType && eh.stream.client.LimitManager.GetWriteSpeed() <= (300*util.MB) {
 			eh.mulCopy = true
 		}
+		log.LogDebugf("eh:%v start mulCopy:%v", eh, eh.mulCopy)
+		log.LogDebugf("eh:%v get write speed:%v", eh.stream.client.LimitManager.GetWriteSpeed())
 
 		if eh.mulCopy {
 			rdmaConn = make([]*rdma.Connection, 0, len(dp.Hosts))
