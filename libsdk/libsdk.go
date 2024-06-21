@@ -262,21 +262,21 @@ type client struct {
 }
 
 //export cfs_IsDir
-func cfs_IsDir(mode C.mode_t) C.char {
+func cfs_IsDir(mode C.mode_t) C.int {
 	var isDir uint8 = 0
 	if (mode & C.S_IFMT) == C.S_IFDIR {
 		isDir = 1
 	}
-	return C.char(isDir)
+	return C.int(isDir)
 }
 
 //export cfs_IsRegular
-func cfs_IsRegular(mode C.mode_t) C.char {
+func cfs_IsRegular(mode C.mode_t) C.int {
 	var isRegular uint8 = 0
 	if (mode & C.S_IFMT) == C.S_IFREG {
 		isRegular = 1
 	}
-	return C.char(isRegular)
+	return C.int(isRegular)
 }
 
 //export cfs_symlink
