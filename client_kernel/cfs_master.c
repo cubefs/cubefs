@@ -276,6 +276,7 @@ static int do_http_request(struct cfs_master_client *mc,
 		}
 		ret = cfs_socket_set_recv_timeout(csk, HTTP_RECV_TIMEOUT_MS);
 		if (ret < 0) {
+			cfs_pr_err("set recv timeout error %d\n", ret);
 			cfs_socket_release(csk, true);
 			continue;
 		}

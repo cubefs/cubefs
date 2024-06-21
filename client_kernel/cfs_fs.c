@@ -242,16 +242,17 @@ static int cfs_readfolio(struct file *file, struct folio *folio)
 {
 	struct inode *inode = file_inode(file);
 	struct cfs_inode *ci = (struct cfs_inode *)inode;
-	struct page *page = &(folio->page);
+	struct page *page = folio_page(folio, 0);
 
-	return cfs_extent_read_pages(ci->es, false, &page, 1, page_offset(&(folio->page)),
+	return cfs_extent_read_pages(ci->es, false, &page, 1, page_offset(page),
 				     0, PAGE_SIZE);
 }
 #endif
 
 #ifdef KERNEL_HAS_FOLIO
 bool cfs_dirty_folio(struct address_space *mapping, struct folio *folio) {
-	return __set_page_dirty_nobuffers(&(folio->page));
+	struct page *page = folio_page(folio, 0);
+	return __set_page_dirty_nobuffers(page);
 }
 #else
 static int cfs_readpages_cb(void *data, struct page *page)
@@ -1732,7 +1733,7 @@ static int proc_log_open(struct inode *inode, struct file *file)
 #ifdef KERNEL_HAS_PDE_DATA
 	file->private_data = PDE_DATA(inode);
 #else
-	file->private_data = NULL;
+	file->private_data = pde_data(inode);
 #endif
 	return 0;
 }

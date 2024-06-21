@@ -602,7 +602,7 @@ int test (void)
 {
     struct inode *inode = NULL;
     void *data = NULL;
-    data = PDE_DATA(inode)
+    data = PDE_DATA(inode);
     return 0;
 }
 

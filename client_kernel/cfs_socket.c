@@ -26,9 +26,6 @@ int cfs_socket_create(enum cfs_socket_type type,
 	u32 key;
 	int ret;
 	int optval;
-#ifdef KERNEL_HAS_SOCK_SETSOCKOPT
-	sockptr_t sockptr;
-#endif
 
 	BUG_ON(sock_pool == NULL);
 
@@ -56,6 +53,7 @@ int cfs_socket_create(enum cfs_socket_type type,
 #endif
 		if (ret < 0) {
 			kfree(csk);
+			cfs_pr_err("sock_create_kern error: %d\n", ret);
 			return ret;
 		}
 		csk->sock->sk->sk_allocation = GFP_NOFS;
@@ -65,6 +63,7 @@ int cfs_socket_create(enum cfs_socket_type type,
 		if (ret < 0 && ret != -EINPROGRESS) {
 			sock_release(csk->sock);
 			kfree(csk);
+			cfs_pr_err("kernel_connect error: %d\n", ret);
 			return ret;
 		}
 
@@ -75,26 +74,16 @@ int cfs_socket_create(enum cfs_socket_type type,
 			cfs_buffer_release(csk->rx_buffer);
 			sock_release(csk->sock);
 			kfree(csk);
+			cfs_pr_err("failed to new tx and rx buffer\n");
 			return -ENOMEM;
 		}
 
 #ifdef KERNEL_HAS_SOCK_SETSOCKOPT
 		optval = 1;
-		sockptr = KERNEL_SOCKPTR(&optval);
-		ret = sock_setsockopt(csk->sock, SOL_TCP, TCP_NODELAY,
-					sockptr, sizeof(sockptr));
-		if (ret < 0)
-			cfs_pr_warning(
-				"sock_setsockopt TCP_NODELAY error %d\n",
-				ret);
-
-		optval = 1;
 		ret = sock_setsockopt(csk->sock, SOL_SOCKET, SO_REUSEADDR,
-					sockptr, sizeof(sockptr));
+					KERNEL_SOCKPTR(&optval), sizeof(optval));
 		if (ret < 0)
-			cfs_pr_warning(
-				"sock_setsockopt SO_REUSEADDR error %d\n",
-				ret);
+			cfs_pr_err("sock_setsockopt SO_REUSEADDR error %d\n", ret);
 #else
 		optval = 1;
 		ret = kernel_setsockopt(csk->sock, SOL_TCP, TCP_NODELAY,
@@ -157,14 +146,12 @@ void cfs_socket_release(struct cfs_socket *csk, bool forever)
 int cfs_socket_set_recv_timeout(struct cfs_socket *csk, u32 timeout_ms)
 {
 #ifdef KERNEL_HAS_SOCK_SETSOCKOPT
-	struct old_timeval32 tv;
-	sockptr_t sockptr;
-	sockptr = KERNEL_SOCKPTR(&tv);
+	struct __kernel_sock_timeval tv;
 
 	tv.tv_sec = timeout_ms / 1000;
 	tv.tv_usec = (timeout_ms % 1000) * 1000;
-	return sock_setsockopt(csk->sock, SOL_SOCKET, SO_RCVTIMEO_OLD,
-				 sockptr, sizeof(sockptr));
+	return sock_setsockopt(csk->sock, SOL_SOCKET, SO_RCVTIMEO_NEW,
+				 KERNEL_SOCKPTR(&tv), sizeof(tv));
 #else
 	struct timeval tv;
 
