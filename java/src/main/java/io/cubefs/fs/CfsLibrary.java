@@ -127,4 +127,7 @@ public interface CfsLibrary extends Library {
 
     int cfs_getsummary(long cid, String path, SummaryInfo.ByReference summaryInfo, String useCache, int goroutineNum);
     int cfs_refreshsummary(long cid, String path, int goroutineNum);
+
+	char cfs_IsDir(int mode);
+	char cfs_IsRegular(int mode);
 }
