@@ -982,7 +982,7 @@ func formatDecommissionFailedDiskInfo(info *proto.DecommissionFailedDiskInfo) st
 	sb.WriteString(fmt.Sprintf("DiskPath:             %v\n", info.DiskPath))
 	sb.WriteString(fmt.Sprintf("DpTotal:              %v\n", info.DecommissionDpTotal))
 	sb.WriteString(fmt.Sprintf("RaftForce:            %v\n", info.DecommissionRaftForce))
-	sb.WriteString(fmt.Sprintf("Retry:                %v\n", info.DecommissionRetry))
+	sb.WriteString(fmt.Sprintf("Retry:                %v\n", info.DecommissionTimes))
 	sb.WriteString(fmt.Sprintf("AutoDecommission:     %v\n", info.IsAutoDecommission))
 	return sb.String()
 }

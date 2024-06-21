@@ -1713,12 +1713,13 @@ type decommissionDiskValue struct {
 	DiskPath                 string
 	DecommissionStatus       uint32
 	DecommissionRaftForce    bool
-	DecommissionRetry        uint8
+	DecommissionTimes        uint8
 	DecommissionDpTotal      int
 	DecommissionTerm         uint64
 	Type                     uint32
 	DecommissionCompleteTime int64
 	DecommissionLimit        int
+	IgnoreDecommissionDps    []bsProto.IgnoreDecommissionDP
 }
 
 func newDecommissionDiskValue(disk *DecommissionDisk) *decommissionDiskValue {
@@ -1726,7 +1727,7 @@ func newDecommissionDiskValue(disk *DecommissionDisk) *decommissionDiskValue {
 		SrcAddr:                  disk.SrcAddr,
 		DstAddr:                  disk.DstAddr,
 		DiskPath:                 disk.DiskPath,
-		DecommissionRetry:        disk.DecommissionRetry,
+		DecommissionTimes:        disk.DecommissionTimes,
 		DecommissionStatus:       atomic.LoadUint32(&disk.DecommissionStatus),
 		DecommissionRaftForce:    disk.DecommissionRaftForce,
 		DecommissionDpTotal:      disk.DecommissionDpTotal,
@@ -1734,6 +1735,7 @@ func newDecommissionDiskValue(disk *DecommissionDisk) *decommissionDiskValue {
 		Type:                     disk.Type,
 		DecommissionCompleteTime: disk.DecommissionCompleteTime,
 		DecommissionLimit:        disk.DecommissionDpCount,
+		IgnoreDecommissionDps:    disk.IgnoreDecommissionDps,
 	}
 }
 
@@ -1742,7 +1744,7 @@ func (ddv *decommissionDiskValue) Restore() *DecommissionDisk {
 		SrcAddr:                  ddv.SrcAddr,
 		DstAddr:                  ddv.DstAddr,
 		DiskPath:                 ddv.DiskPath,
-		DecommissionRetry:        ddv.DecommissionRetry,
+		DecommissionTimes:        ddv.DecommissionTimes,
 		DecommissionStatus:       ddv.DecommissionStatus,
 		DecommissionRaftForce:    ddv.DecommissionRaftForce,
 		DecommissionDpTotal:      ddv.DecommissionDpTotal,
@@ -1750,6 +1752,7 @@ func (ddv *decommissionDiskValue) Restore() *DecommissionDisk {
 		Type:                     ddv.Type,
 		DecommissionCompleteTime: ddv.DecommissionCompleteTime,
 		DecommissionDpCount:      ddv.DecommissionLimit,
+		IgnoreDecommissionDps:    ddv.IgnoreDecommissionDps,
 	}
 }
 
