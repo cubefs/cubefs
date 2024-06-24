@@ -52,8 +52,13 @@ type topology struct {
 func newTopology() (t *topology) {
 	t = new(topology)
 	t.zoneMap = new(sync.Map)
+
+	t.dataTopology.nodeType = DataNodeType
 	t.dataTopology.nodes = new(sync.Map)
+
+	t.metaTopology.nodeType = MetaNodeType
 	t.metaTopology.nodes = new(sync.Map)
+
 	t.zones = make([]*Zone, 0)
 	return
 }
@@ -1282,6 +1287,9 @@ func calculateDemandWriteNodes(zoneNum int, replicaNum int, isSpecialZoneName bo
 
 // Choose the zone if it is writable and adapt to the rules for classifying zones
 func (t *topology) allocZonesForNode(rsMgr *rsManager, zoneNumNeed, replicaNum int, excludeZone []string, specialZones []*Zone) (zones []*Zone, err error) {
+	log.LogDebugf("[allocZonesForNode] NodeType(%v) zoneNumNeed(%v) replicaNum(%v) excludeZone(%v) specialZones(%v)",
+		rsMgr.nodeType, zoneNumNeed, replicaNum, excludeZone, specialZones)
+
 	if len(t.domainExcludeZones) > 0 {
 		zones = t.getDomainExcludeZones()
 		log.LogInfof("action[allocZonesForMetaNode] getDomainExcludeZones zones [%v]", t.domainExcludeZones)
@@ -1309,14 +1317,15 @@ func (t *topology) allocZonesForNode(rsMgr *rsManager, zoneNumNeed, replicaNum i
 			continue
 		}
 
-		if zone.canWriteForNode(rsMgr.nodes, uint8(demandWriteNodesCntPerZone)) {
+		if zone.canWriteForNode(rsMgr.nodeType, uint8(demandWriteNodesCntPerZone)) {
+			log.LogDebugf("[allocZonesForNode] pick up candidate zone: %v", zone.name)
 			candidateZones = append(candidateZones, zone)
 		}
 	}
 
 	// if across zone,candidateZones must be larger than or equal with 2,otherwise,must have a candidate zone
 	if (zoneNumNeed >= 2 && len(candidateZones) < 2) || len(candidateZones) < 1 {
-		log.LogError(fmt.Sprintf("action[allocZonesForqa n   Node],reqZoneNum[%v],candidateZones[%v],demandWriteNodes[%v],err:%v",
+		log.LogError(fmt.Sprintf("action[allocZonesForNode],reqZoneNum[%v],candidateZones[%v],demandWriteNodes[%v],err:%v",
 			zoneNumNeed, len(candidateZones), demandWriteNodesCntPerZone, proto.ErrNoZoneToCreateMetaPartition))
 		return nil, proto.ErrNoZoneToCreateMetaPartition
 	}
@@ -1631,12 +1640,21 @@ func (zone *Zone) allocNodeSetForMetaNode(excludeNodeSets []uint64, replicaNum u
 	return ns, nil
 }
 
-func (zone *Zone) canWriteForNode(nodes *sync.Map, replicaNum uint8) (can bool) {
+func (zone *Zone) canWriteForNode(nodeType NodeType, replicaNum uint8) (can bool) {
 	zone.RLock()
 	defer zone.RUnlock()
+
+	var nodes *sync.Map
+	if nodeType == DataNodeType {
+		nodes = zone.dataNodes
+	} else {
+		nodes = zone.metaNodes
+	}
+
 	var leastAlive uint8
 	nodes.Range(func(addr, value interface{}) bool {
 		node := value.(Node)
+		log.LogDebugf("[canWriteForNode] check nodeId(%v) addr(%v) zone(%v)", node.GetID(), node.GetAddr(), zone.name)
 		if !node.PartitionCntLimited() {
 			return true
 		}
@@ -1647,6 +1665,7 @@ func (zone *Zone) canWriteForNode(nodes *sync.Map, replicaNum uint8) (can bool) 
 			can = true
 			return false
 		}
+		log.LogDebugf("[canWriteForNode] canWrite: nodeId(%v) addr(%v)  zone(%v)", node.GetID(), node.GetAddr(), zone.name)
 		return true
 	})
 	return
@@ -1729,7 +1748,7 @@ func (zone *Zone) getAvailNodeHosts(nodeType uint32, excludeNodeSets []uint64, e
 		return
 	}
 
-	log.LogDebugf("[x] get node host, zone(%s), nodeType(%d)", zone.name, nodeType)
+	log.LogDebugf("[getAvailNodeHosts] get node host, zone(%s), nodeType(%d)", zone.name, nodeType)
 
 	if nodeType == TypeDataPartition {
 		ns, err := zone.allocNodeSetForDataNode(excludeNodeSets, uint8(replicaNum))
