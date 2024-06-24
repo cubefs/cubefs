@@ -597,10 +597,11 @@ check_flags "OFED_HAS_IB_CREATE_CQATTR"
 
 cat > $TEST_C <<EOF
 #include "test.h"
+#include <linux/proc_fs.h>
 
 int test (void)
 {
-    struct inode *inode = NULL;
+    const struct inode *inode = NULL;
     void *data = NULL;
     data = PDE_DATA(inode);
     return 0;
