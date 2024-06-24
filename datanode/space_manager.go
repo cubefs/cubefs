@@ -471,7 +471,7 @@ func (manager *SpaceManager) AttachPartition(dp *DataPartition) {
 				if loadedDp.disk.Path == correctReplica.Disk {
 					dp.Stop()
 					dp.Disk().DetachDataPartition(dp)
-					if err := dp.RemoveAll(proto.InitialDecommission, true); err != nil {
+					if err := dp.RemoveAll(true); err != nil {
 						log.LogErrorf("action[LoadDisk]failed to remove dp(%v) dir(%v), err(%v)",
 							dp.partitionID, dp.Path(), err)
 					}
@@ -479,7 +479,7 @@ func (manager *SpaceManager) AttachPartition(dp *DataPartition) {
 					// detach loaded dp
 					loadedDp.Stop()
 					loadedDp.Disk().DetachDataPartition(loadedDp)
-					if err := loadedDp.RemoveAll(proto.InitialDecommission, true); err != nil {
+					if err := loadedDp.RemoveAll(true); err != nil {
 						log.LogErrorf("action[LoadDisk]failed to remove dp(%v) dir(%v), err(%v)",
 							loadedDp.partitionID, loadedDp.Path(), err)
 					}
@@ -543,14 +543,14 @@ func (manager *SpaceManager) CreatePartition(request *proto.CreateDataPartitionR
 }
 
 // DeletePartition deletes a partition based on the partition id.
-func (manager *SpaceManager) DeletePartition(dpID uint64, decommissionType uint32, force bool) (err error) {
+func (manager *SpaceManager) DeletePartition(dpID uint64, force bool) (err error) {
 	manager.partitionMutex.Lock()
 
 	dp := manager.partitions[dpID]
 	if dp == nil {
 		manager.partitionMutex.Unlock()
 		// maybe dp not loaded when triggered disk error, need to remove disk root dir
-		err = manager.deleteDataPartitionNotLoaded(dpID, decommissionType, force)
+		err = manager.deleteDataPartitionNotLoaded(dpID, force)
 		return err
 	}
 
@@ -558,7 +558,7 @@ func (manager *SpaceManager) DeletePartition(dpID uint64, decommissionType uint3
 	manager.partitionMutex.Unlock()
 	dp.Stop()
 	dp.Disk().DetachDataPartition(dp)
-	if err := dp.RemoveAll(decommissionType, force); err != nil {
+	if err := dp.RemoveAll(force); err != nil {
 		return err
 	}
 	return nil
@@ -634,7 +634,7 @@ func (manager *SpaceManager) getPartitionIds() []uint64 {
 	return res
 }
 
-func (manager *SpaceManager) deleteDataPartitionNotLoaded(id uint64, decommissionType uint32, force bool) error {
+func (manager *SpaceManager) deleteDataPartitionNotLoaded(id uint64, force bool) error {
 	disks := manager.GetDisks()
 	for _, d := range disks {
 		if d.HasDiskErrPartition(id) {
@@ -662,8 +662,17 @@ func (manager *SpaceManager) deleteDataPartitionNotLoaded(id uint64, decommissio
 				} else {
 					if partitionID == id {
 						rootPath := path.Join(d.Path, filename)
-						if decommissionType == proto.AutoDecommission && force {
+						if force {
 							newPath := path.Join(d.Path, BackupPartitionPrefix+filename)
+							_, err := os.Stat(newPath)
+							if err == nil {
+								newPathWithTimestamp := fmt.Sprintf("%v-%v", newPath, time.Now().Format("20060102150405"))
+								err = os.Rename(newPath, newPathWithTimestamp)
+								if err != nil {
+									log.LogWarnf("action[deleteDataPartitionNotLoaded]: rename dir from %v to %v,err %v", newPath, newPathWithTimestamp, err)
+									return err
+								}
+							}
 							err = os.Rename(rootPath, newPath)
 							if err == nil {
 								d.AddBackupPartitionDir(id)
