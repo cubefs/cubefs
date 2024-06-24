@@ -123,7 +123,7 @@ func TestAllocZones(t *testing.T) {
 	replicaNum := 2
 	zones, err := topo.allocZonesForNode(&topo.dataTopology, replicaNum, replicaNum, nil, []*Zone{})
 	require.NoError(t, err)
-	require.EqualValues(t, len(topo.getAllZones()), len(zones))
+	require.EqualValues(t, 2, len(zones))
 
 	cluster := new(Cluster)
 	cluster.t = topo
