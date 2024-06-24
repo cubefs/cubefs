@@ -135,6 +135,7 @@ module.exports = [
         text: 'Dev Guide',
         children: [
             'dev-guide/code.md',
+            'dev-guide/libsdk.md',
             {
                 text: 'Manage API',
                 children: [
