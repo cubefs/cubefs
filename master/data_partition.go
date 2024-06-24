@@ -1137,10 +1137,10 @@ directly:
 		// this flag again
 		for {
 			if !partition.setRestoreReplicaForbidden() && migrateType != AutoAddReplica {
-				partition.DecommissionRetry++
-				if partition.DecommissionRetry >= defaultDecommissionRetryLimit {
-					return errors.NewErrorf("set RestoreReplicaMetaForbidden failed")
-				}
+				// partition.DecommissionRetry++
+				// if partition.DecommissionRetry >= defaultDecommissionRetryLimit {
+				//	 return errors.NewErrorf("set RestoreReplicaMetaForbidden failed")
+				// }
 				// wait for checkReplicaMeta ended
 				time.Sleep(3 * time.Second)
 				continue
@@ -2288,9 +2288,18 @@ func (partition *DataPartition) tryRestoreReplicaMeta(c *Cluster, migrateType ui
 		return nil
 	}
 
-	err := partition.checkReplicaMeta(c)
-	if err != nil {
-		return errors.NewErrorf("restore replica meta failed:%v", err.Error())
+	for {
+		err := partition.checkReplicaMeta(c)
+		if err != nil {
+			if err == proto.ErrPerformingRestoreReplica {
+				log.LogDebugf("action[tryRestoreReplicaMeta]dp(%v) wait for checking replica",
+					partition.PartitionID)
+				time.Sleep(time.Second)
+				continue
+			}
+			return errors.NewErrorf("restore replica meta failed:%v", err.Error())
+		}
+		return nil
 	}
 
 	return nil
