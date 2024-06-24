@@ -687,15 +687,24 @@ func (dp *DataPartition) ForceLoadHeader() {
 	dp.loadExtentHeaderStatus = FinishLoadDataPartitionExtentHeader
 }
 
-func (dp *DataPartition) RemoveAll(decommissionType uint32, force bool) (err error) {
+func (dp *DataPartition) RemoveAll(force bool) (err error) {
 	dp.persistMetaMutex.Lock()
 	defer dp.persistMetaMutex.Unlock()
-	if force && decommissionType == proto.AutoDecommission {
+	if force {
 		originalPath := dp.Path()
 		parent := path.Dir(originalPath)
 		fileName := path.Base(originalPath)
 		newFilename := BackupPartitionPrefix + fileName
 		newPath := path.Join(parent, newFilename)
+		_, err = os.Stat(newPath)
+		if err == nil {
+			newPathWithTimestamp := fmt.Sprintf("%v-%v", newPath, time.Now().Format("20060102150405"))
+			err = os.Rename(newPath, newPathWithTimestamp)
+			if err != nil {
+				log.LogWarnf("action[Stop]:dp(%v) rename dir from %v to %v,err %v", dp.info(), newPath, newPathWithTimestamp, err)
+				return err
+			}
+		}
 		err = os.Rename(originalPath, newPath)
 		if err == nil {
 			dp.path = newPath

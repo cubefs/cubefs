@@ -4449,19 +4449,23 @@ func (c *Cluster) TryDecommissionDisk(disk *DecommissionDisk) {
 			if strings.Contains(err.Error(), proto.ErrDecommissionDiskErrDPFirst.Error()) {
 				c.syncUpdateDataPartition(dp)
 				// still decommission dp but not involved in the calculation of the decommission progress.
-				//disk.DecommissionDpTotal -= 1
+				// disk.DecommissionDpTotal -= 1
 				ns.AddToDecommissionDataPartitionList(dp, c)
 				ignoreIDs = append(ignoreIDs, dp.PartitionID)
-				IgnoreDecommissionDps = append(IgnoreDecommissionDps, proto.IgnoreDecommissionDP{PartitionID: dp.PartitionID,
-					ErrMsg: proto.ErrDecommissionDiskErrDPFirst.Error()})
+				IgnoreDecommissionDps = append(IgnoreDecommissionDps, proto.IgnoreDecommissionDP{
+					PartitionID: dp.PartitionID,
+					ErrMsg:      proto.ErrDecommissionDiskErrDPFirst.Error(),
+				})
 				continue
 			} else if strings.Contains(err.Error(), proto.ErrPerformingDecommission.Error()) {
-				//disk.DecommissionDpTotal -= 1
+				// disk.DecommissionDpTotal -= 1
 				ignoreIDs = append(ignoreIDs, dp.PartitionID)
 				log.LogWarnf("action[TryDecommissionDisk] disk(%v) dp(%v) is decommissioning",
 					disk.decommissionInfo(), dp.PartitionID)
-				IgnoreDecommissionDps = append(IgnoreDecommissionDps, proto.IgnoreDecommissionDP{PartitionID: dp.PartitionID,
-					ErrMsg: proto.ErrPerformingDecommission.Error()})
+				IgnoreDecommissionDps = append(IgnoreDecommissionDps, proto.IgnoreDecommissionDP{
+					PartitionID: dp.PartitionID,
+					ErrMsg:      proto.ErrPerformingDecommission.Error(),
+				})
 				continue
 			} else {
 				// mark as failed and set decommission src, make sure it can be included in the calculation of progress
