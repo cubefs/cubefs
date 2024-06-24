@@ -1543,7 +1543,6 @@ func (vol *Vol) doCreateMetaPartition(c *Cluster, start, end uint64) (mp *MetaPa
 			log.LogErrorf("action[doCreateMetaPartition] getHostFromNormalZone err[%v]", err)
 			return nil, errors.NewError(err)
 		}
-
 	}
 
 	log.LogInfof("target meta hosts:%v,peers:%v", hosts, peers)
