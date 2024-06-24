@@ -1163,7 +1163,11 @@ func (ns *nodeSet) traverseDecommissionDisk(c *Cluster) {
 		case <-t.C:
 			if c.partition != nil && !c.partition.IsRaftLeader() {
 				log.LogWarnf("Leader changed, stop traverse!")
-				continue
+				ns.DecommissionDisks.Range(func(key, value interface{}) bool {
+					ns.RemoveDecommissionDisk(value.(*DecommissionDisk))
+					return true
+				})
+				return
 			}
 			runningCnt := 0
 			ns.DecommissionDisks.Range(func(key, value interface{}) bool {
@@ -2144,7 +2148,12 @@ func (l *DecommissionDataPartitionList) traverse(c *Cluster) {
 		case <-t.C:
 			if c.partition != nil && !c.partition.IsRaftLeader() {
 				log.LogWarnf("Leader changed, stop traverse!")
-				continue
+				// clear decommission list
+				allDecommissionDP := l.GetAllDecommissionDataPartitions()
+				for _, dp := range allDecommissionDP {
+					l.Remove(dp)
+				}
+				return
 			}
 			allDecommissionDP := l.GetAllDecommissionDataPartitions()
 			for _, dp := range allDecommissionDP {
