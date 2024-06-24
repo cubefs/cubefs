@@ -349,37 +349,44 @@ func (eh *ExtentHandler) processReply(packet *Packet) {
 		return
 	}
 
-	reply := NewReply(packet.ReqID, packet.PartitionID, packet.ExtentID)
-	var err error
+	//reply := NewReply(packet.ReqID, packet.PartitionID, packet.ExtentID)
+	var reply *Packet
 	if IsRdma {
-		for _, conn := range eh.rdmaConn {
-			err = reply.ReadFromRDMAConn(conn, proto.ReadDeadlineTime)
-			if err != nil {
-				log.LogErrorf("rdma conn recv reply: %v, err: %v", reply, err)
-				eh.processReplyError(packet, err.Error())
+		errs := make([]error, len(eh.rdmaConn))
+		allReply := make([]*Packet, len(eh.rdmaConn))
+		for index, conn := range eh.rdmaConn {
+			allReply[index] = NewReply(packet.ReqID, packet.PartitionID, packet.ExtentID)
+			errs[index] = allReply[index].ReadFromRDMAConn(conn, proto.ReadDeadlineTime)
+		}
+		for i := 0; i < len(eh.rdmaConn); i++ {
+			if errs[i] != nil {
+				log.LogErrorf("rdma conn recv reply: %v, err: %v", allReply[i], errs[i])
+				eh.processReplyError(packet, errs[i].Error())
 				return
 			}
 
-			if reply.ResultCode != proto.OpOk {
-				errmsg := fmt.Sprintf("reply NOK: reply(%v)", reply)
+			if allReply[i].ResultCode != proto.OpOk {
+				errmsg := fmt.Sprintf("reply NOK: reply(%v)", allReply[i])
 				eh.processReplyError(packet, errmsg)
 				return
 			}
 
-			if !packet.isValidWriteReply(reply) {
-				errmsg := fmt.Sprintf("request and reply does not match: reply(%v)", reply)
+			if !packet.isValidWriteReply(allReply[i]) {
+				errmsg := fmt.Sprintf("request and reply does not match: reply(%v)", allReply[i])
 				eh.processReplyError(packet, errmsg)
 				return
 			}
 
-			if reply.CRC != packet.CRC {
-				errmsg := fmt.Sprintf("inconsistent CRC: reqCRC(%v) replyCRC(%v) reply(%v) ", packet.CRC, reply.CRC, reply)
+			if allReply[i].CRC != packet.CRC {
+				errmsg := fmt.Sprintf("inconsistent CRC: reqCRC(%v) replyCRC(%v) reply(%v) ", packet.CRC, allReply[i].CRC, allReply[i])
 				eh.processReplyError(packet, errmsg)
 				return
 			}
 		}
+		reply = allReply[0]
 	} else {
-		err = reply.ReadFromConn(eh.conn, proto.ReadDeadlineTime)
+		reply = NewReply(packet.ReqID, packet.PartitionID, packet.ExtentID)
+		err := reply.ReadFromConn(eh.conn, proto.ReadDeadlineTime)
 		log.LogDebugf("tcp conn recv reply: %v, err: %v", reply, err)
 		log.LogDebugf("tcp conn recv reply end: time[%v]", time.Now())
 
