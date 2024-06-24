@@ -623,7 +623,7 @@ func (s *DataNode) handlePacketToDeleteDataPartition(p *repl.Packet) {
 		if err != nil {
 			return
 		} else {
-			err = s.space.DeletePartition(request.PartitionId, request.DecommissionType, request.Force)
+			err = s.space.DeletePartition(request.PartitionId, request.Force)
 		}
 	} else {
 		err = fmt.Errorf("illegal opcode ")
