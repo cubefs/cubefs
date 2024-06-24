@@ -664,10 +664,10 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 					confirmString.WriteString(fmt.Sprintf("  EnableAutoDpMetaRepair : %v -> %v\n", vv.EnableAutoDpMetaRepair, enable))
 					vv.EnableAutoDpMetaRepair = enable
 				} else {
-					confirmString.WriteString(fmt.Sprintf("  EnableAutoDpMetaRepair : %v", vv.EnableAutoDpMetaRepair))
+					confirmString.WriteString(fmt.Sprintf("  EnableAutoDpMetaRepair : %v\n", vv.EnableAutoDpMetaRepair))
 				}
 			} else {
-				confirmString.WriteString(fmt.Sprintf("  EnableAutoDpMetaRepair : %v", vv.EnableAutoDpMetaRepair))
+				confirmString.WriteString(fmt.Sprintf("  EnableAutoDpMetaRepair : %v\n", vv.EnableAutoDpMetaRepair))
 			}
 
 			if optVolStorageClass != 0 {
@@ -760,8 +760,9 @@ const (
 
 func newVolInfoCmd(client *master.MasterClient) *cobra.Command {
 	var (
-		optMetaDetail bool
-		optDataDetail bool
+		optMetaDetail       bool
+		optDataDetail       bool
+		opHybridCloudDetail bool
 	)
 
 	cmd := &cobra.Command{
@@ -781,6 +782,22 @@ func newVolInfoCmd(client *master.MasterClient) *cobra.Command {
 			}
 			// print summary info
 			stdout("Summary:\n%s\n", formatSimpleVolView(svv))
+
+			if opHybridCloudDetail {
+				var info *proto.VolStatInfo
+				if info, err = client.ClientAPI().GetVolumeStat(volumeName); err != nil {
+					err = fmt.Errorf("Get volume hyrbid cloud detail information failed:\n%v\n", err)
+					return
+				}
+				stdout("Usage by storage class:\n")
+				stdout("%v\n", hybridCloudStorageTableHeader)
+				sort.Slice(info.StatByStorageClass, func(i, j int) bool {
+					return info.StatByStorageClass[i].StorageClass < info.StatByStorageClass[j].StorageClass
+				})
+				for _, view := range info.StatByStorageClass {
+					stdout("%v\n", formatHybridCloudStorageTableRow(view))
+				}
+			}
 
 			// print metadata detail
 			if optMetaDetail {
@@ -825,6 +842,7 @@ func newVolInfoCmd(client *master.MasterClient) *cobra.Command {
 	}
 	cmd.Flags().BoolVarP(&optMetaDetail, "meta-partition", "m", false, "Display meta partition detail information")
 	cmd.Flags().BoolVarP(&optDataDetail, "data-partition", "d", false, "Display data partition detail information")
+	cmd.Flags().BoolVarP(&opHybridCloudDetail, "storage-class", "s", false, "Display hybrid cloud detail information")
 	return cmd
 }
 
