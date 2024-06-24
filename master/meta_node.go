@@ -104,6 +104,12 @@ func (metaNode *MetaNode) GetAddr() string {
 	return metaNode.Addr
 }
 
+func (metaNode *MetaNode) GetZoneName() string {
+	metaNode.RLock()
+	defer metaNode.RUnlock()
+	return metaNode.ZoneName
+}
+
 // SelectNodeForWrite implements the Node interface
 func (metaNode *MetaNode) SelectNodeForWrite() {
 	metaNode.Lock()

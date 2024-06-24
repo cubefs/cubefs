@@ -370,6 +370,12 @@ func (dataNode *DataNode) GetAddr() string {
 	return dataNode.Addr
 }
 
+func (dataNode *DataNode) GetZoneName() string {
+	dataNode.RLock()
+	defer dataNode.RUnlock()
+	return dataNode.ZoneName
+}
+
 // SelectNodeForWrite implements "SelectNodeForWrite" in the Node interface
 func (dataNode *DataNode) SelectNodeForWrite() {
 	dataNode.Lock()
