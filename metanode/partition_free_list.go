@@ -201,6 +201,7 @@ func (mp *metaPartition) deleteWorker() {
 			if ino == 0 {
 				break
 			}
+			//TODO:tangjingyu，distinguished remove inode and migrateEks
 			log.LogDebugf("action[deleteWorker]: vol(%v) mp(%v) remove inode(%v)", mp.config.VolName, mp.config.PartitionId, ino)
 
 			// check inode nlink == 0 and deleteMarkFlag unset

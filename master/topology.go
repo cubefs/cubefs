@@ -1340,16 +1340,24 @@ func (t *topology) getDomainExcludeZones() (zones []*Zone) {
 	return
 }
 
-func (t *topology) getAllZones() (zones []*Zone) {
+func (t *topology) getZonesByMediaType(mediaType uint32) (zones []*Zone) {
 	t.zoneLock.RLock()
 	defer t.zoneLock.RUnlock()
+
 	zones = make([]*Zone, 0)
 	t.zoneMap.Range(func(zoneName, value interface{}) bool {
 		zone := value.(*Zone)
-		zones = append(zones, zone)
+		if mediaType == proto.MediaType_Unspecified || zone.dataMediaType == mediaType {
+			zones = append(zones, zone)
+		}
+
 		return true
 	})
 	return
+}
+
+func (t *topology) getAllZones() (zones []*Zone) {
+	return t.getZonesByMediaType(proto.MediaType_Unspecified)
 }
 
 func (t *topology) getZoneByIndex(index int) (zone *Zone) {
@@ -1386,19 +1394,21 @@ func calculateDemandWriteNodes(zoneNum int, replicaNum int, isSpecialZoneName bo
 }
 
 // Choose the zone if it is writable and adapt to the rules for classifying zones
-func (t *topology) allocZonesForNode(rsMgr *rsManager, zoneNumNeed, replicaNum int, excludeZone []string, specialZones []*Zone, mediaType uint32) (zones []*Zone, err error) {
-	log.LogDebugf("[allocZonesForNode] NodeType(%v) zoneNumNeed(%v) replicaNum(%v) excludeZone(%v) specialZones(%v)",
-		rsMgr.nodeType, zoneNumNeed, replicaNum, excludeZone, specialZones)
+func (t *topology) allocZonesForNode(rsMgr *rsManager, zoneNumNeed, replicaNum int, excludeZone []string,
+	specialZones []*Zone, dataMediaType uint32) (zones []*Zone, err error) {
+	log.LogDebugf("[allocZonesForNode] NodeType(%v) zoneNumNeed(%v) replicaNum(%v) excludeZone(%v) specialZones(%v) dataMediaType(%v)",
+		rsMgr.nodeType, zoneNumNeed, replicaNum, excludeZone, specialZones, proto.MediaTypeString(dataMediaType))
 
 	if len(t.domainExcludeZones) > 0 {
 		zones = t.getDomainExcludeZones()
 		log.LogInfof("action[allocZonesForNode] getDomainExcludeZones zones [%v]", t.domainExcludeZones)
 	} else if specialZones != nil && len(specialZones) > 0 {
+		//TODO:tangjingyu: mediaType
 		zones = specialZones
 		zoneNumNeed = len(specialZones)
 	} else {
 		// if domain enable, will not enter here
-		zones = t.getAllZones()
+		zones = t.getZonesByMediaType(dataMediaType)
 	}
 	if t.isSingleZone() {
 		return zones, nil
@@ -1793,7 +1803,7 @@ func (zone *Zone) canWriteForNode(nodeType NodeType, replicaNum uint8) (can bool
 			can = true
 			return false
 		}
-		log.LogDebugf("[canWriteForNode] canWrite: nodeId(%v) addr(%v)  zone(%v)", node.GetID(), node.GetAddr(), zone.name)
+		log.LogDebugf("[canWriteForNode] canWrite: nodeId(%v) addr(%v) zone(%v)", node.GetID(), node.GetAddr(), zone.name)
 		return true
 	})
 	return
@@ -1882,6 +1892,7 @@ func (zone *Zone) getDataNodeMaxTotal() (maxTotal uint64) {
 	return
 }
 
+//TODO:tangjingyu mediaType
 func (zone *Zone) getAvailNodeHosts(nodeType uint32, excludeNodeSets []uint64, excludeHosts []string, replicaNum int) (newHosts []string, peers []proto.Peer, err error) {
 	if replicaNum == 0 {
 		return

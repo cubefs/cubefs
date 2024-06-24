@@ -1913,29 +1913,62 @@ func (c *Cluster) syncCreateMetaPartitionToMetaNode(host string, mp *MetaPartiti
 	return
 }
 
+func (c *Cluster) getZoneListOfMediaType(vol *Vol, mediaType uint32) (zoneListOfMediaType []*Zone) {
+	zoneListOfMediaType = make([]*Zone, 0)
+
+	specificZoneList := strings.Split(vol.zoneName, ",")
+	for _, zoneName := range specificZoneList {
+		zone, err := c.t.getZone(zoneName)
+		if err != nil {
+			continue
+		}
+
+		if mediaType == proto.MediaType_Unspecified {
+			log.LogDebugf("[getZoneListOfMediaType] vol(%v) pick up zone(%v), mediaType(%v)",
+				vol.Name, zoneName, proto.MediaTypeString(mediaType))
+			zoneListOfMediaType = append(zoneListOfMediaType, zone)
+			continue
+		}
+
+		if zone.dataMediaType != mediaType {
+			continue
+		}
+
+		zoneListOfMediaType = append(zoneListOfMediaType, zone)
+		log.LogDebugf("[getZoneListOfMediaType] vol(%v) pick up zone(%v) of mediaType(%v)",
+			vol.Name, zoneName, proto.MediaTypeString(mediaType))
+	}
+
+	return
+}
+
 // decideZoneNum
 // if vol is not cross zone, return 1
 // if vol enable cross zone and the zone number of cluster less than defaultReplicaNum return 2
 // otherwise, return defaultReplicaNum
-//TODO:tangjingyu: use param mediaType
 func (c *Cluster) decideZoneNum(vol *Vol, mediaType uint32) (zoneNum int) {
 	if !vol.crossZone {
 		return 1
 	}
-	specificZoneList := strings.Split(vol.zoneName, ",")
+
+	specificZoneListOfMediaType := c.getZoneListOfMediaType(vol, mediaType)
+
 	var zoneLen int
 	if c.FaultDomain {
 		zoneLen = len(c.t.domainExcludeZones)
 	} else {
 		zoneLen = 1
-		if len(specificZoneList) > 1 {
-			zoneLen = len(specificZoneList)
+		if len(specificZoneListOfMediaType) > 1 {
+			zoneLen = len(specificZoneListOfMediaType)
 		} else if vol.crossZone {
 			zoneLen = 2
 		}
 	}
 
-	//TODO:tangjingyu: pick up zone len by mediaType
+	zoneCntMediaType := c.t.zoneLenOfDtaMediaType(mediaType)
+	if zoneLen > zoneCntMediaType {
+		zoneLen = zoneCntMediaType
+	}
 
 	if zoneLen < defaultReplicaNum {
 		zoneNum = 2
@@ -2033,8 +2066,8 @@ func (c *Cluster) getSpecificZoneList(specifiedZone string) (zones []*Zone, err 
 }
 
 func (c *Cluster) getHostFromNormalZone(nodeType uint32, excludeZones []string, excludeNodeSets []uint64,
-	excludeHosts []string, replicaNum int,
-	zoneNumNeed int, specifiedZoneName string, mediaType uint32) (hosts []string, peers []proto.Peer, err error,
+	excludeHosts []string, replicaNum int, zoneNumNeed int,
+	specifiedZoneName string, mediaType uint32) (hosts []string, peers []proto.Peer, err error,
 ) {
 	var zonesQualified []*Zone
 	zonesQualified = make([]*Zone, 0)
@@ -2045,6 +2078,7 @@ func (c *Cluster) getHostFromNormalZone(nodeType uint32, excludeZones []string, 
 	var specifiedZones []*Zone
 	var rsMgr *rsManager
 	if specifiedZoneName != "" {
+		//TODO:tangjngyu mediaType
 		if specifiedZones, err = c.getSpecificZoneList(specifiedZoneName); err != nil {
 			return
 		}
