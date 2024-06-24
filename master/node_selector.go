@@ -74,6 +74,7 @@ type Node interface {
 	GetAvailableSpace() uint64
 	GetStorageInfo() string
 	IsOffline() bool
+	GetZoneName() string
 }
 
 // SortedWeightedNodes defines an array sorted by carry
