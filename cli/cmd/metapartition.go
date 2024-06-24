@@ -72,7 +72,7 @@ func newMetaPartitionGetCmd(client *master.MasterClient) *cobra.Command {
 			if partition, err = client.ClientAPI().GetMetaPartition(partitionID); err != nil {
 				return
 			}
-			stdout(formatMetaPartitionInfo(partition))
+			stdout("%v\n", formatMetaPartitionInfo(partition))
 		},
 	}
 	return cmd
@@ -83,10 +83,10 @@ func newListCorruptMetaPartitionCmd(client *master.MasterClient) *cobra.Command 
 		Use:   CliOpCheck,
 		Short: cmdCheckCorruptMetaPartitionShort,
 		Long: `If the meta nodes are marked as "Inactive", it means the nodes has been not available for a long time. It is suggested to eliminate
-the network, disk or other problems first. If the bad nodes can never be "active" again, they are called corrupt nodes. And the 
-"decommission" command can be used to discard the corrupt nodes. However, if more than half replicas of a partition are on 
-the corrupt nodes, the few remaining replicas can not reach an agreement with one leader. In this case, you can use the 
-"metapartition reset" command to fix the problem, however this action may lead to data loss, be careful to do this. The 
+the network, disk or other problems first. If the bad nodes can never be "active" again, they are called corrupt nodes. And the
+"decommission" command can be used to discard the corrupt nodes. However, if more than half replicas of a partition are on
+the corrupt nodes, the few remaining replicas can not reach an agreement with one leader. In this case, you can use the
+"metapartition reset" command to fix the problem, however this action may lead to data loss, be careful to do this. The
 "reset" command will be released in next version.`,
 		Run: func(cmd *cobra.Command, args []string) {
 			var (

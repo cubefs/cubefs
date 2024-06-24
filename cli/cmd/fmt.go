@@ -17,6 +17,7 @@ package cmd
 import (
 	"fmt"
 	"math"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -548,6 +549,17 @@ func formatMetaPartitionInfo(partition *proto.MetaPartitionInfo) string {
 	for partitionHost, id := range partition.MissNodes {
 		sb.WriteString(fmt.Sprintf("  [%v, %v]\n", partitionHost, id))
 	}
+	if len(partition.StatByStorageClass) != 0 {
+		sb.WriteString("\n")
+		sort.Slice(partition.StatByStorageClass, func(i, j int) bool {
+			return partition.StatByStorageClass[i].StorageClass < partition.StatByStorageClass[j].StorageClass
+		})
+		sb.WriteString("Usage by storageClass:\n")
+		sb.WriteString(fmt.Sprintf("%v\n", hybridCloudStorageTableHeader))
+		for _, view := range partition.StatByStorageClass {
+			sb.WriteString(fmt.Sprintf("%v\n", formatHybridCloudStorageTableRow(view)))
+		}
+	}
 	return sb.String()
 }
 
@@ -1025,4 +1037,14 @@ func replicaInHost(hosts []string, replica string) bool {
 
 func formatDecommissionTokenStatus(status *proto.DecommissionTokenStatus) string {
 	return fmt.Sprintf("Nodeset %v: %v/%v", status.NodesetID, status.CurTokenNum, status.MaxTokenNum)
+}
+
+var (
+	hybridCloudStorageTablePattern = "%-12v    %-12v    %-12v"
+	hybridCloudStorageTableHeader  = fmt.Sprintf(hybridCloudStorageTablePattern, "STORAGE CLASS", "INODE COUNT", "SIZE")
+)
+
+func formatHybridCloudStorageTableRow(view *proto.StatOftorageClass) (row string) {
+	row = fmt.Sprintf(hybridCloudStorageTablePattern, proto.StorageClassString(view.StorageClass), view.InodeCount, view.UsedSizeBytes)
+	return
 }
