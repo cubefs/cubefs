@@ -69,7 +69,7 @@ static int do_extent_request(struct cfs_extent_stream *es,
 	struct cfs_socket *sock;
 	int err;
 
-	err = cfs_socket_create(CFS_SOCK_TYPE_TCP, host, es->ec->log, &sock);
+	err = cfs_socket_create(host, es->ec->log, &sock);
 	if (err) {
 		cfs_log_error(es->ec->log, "socket(%s) create error %d\n",
 			      cfs_pr_addr(host), err);

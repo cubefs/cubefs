@@ -26,13 +26,11 @@ struct cfs_extent_reader *cfs_extent_reader_new(struct cfs_extent_stream *es,
 		ret = cfs_rdma_create(&dp->members.base[host_idx], es->ec->log,
 				      &reader->sock, es->rdma_port);
 	} else {
-		ret = cfs_socket_create(CFS_SOCK_TYPE_TCP,
-					&dp->members.base[host_idx],
+		ret = cfs_socket_create(&dp->members.base[host_idx],
 					es->ec->log, &reader->sock);
 	}
 	*/
-	ret = cfs_socket_create(CFS_SOCK_TYPE_TCP,
-				&dp->members.base[host_idx],
+	ret = cfs_socket_create(&dp->members.base[host_idx],
 				es->ec->log, &reader->sock);
 
 	if (ret < 0) {

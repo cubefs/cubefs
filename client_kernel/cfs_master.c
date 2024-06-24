@@ -267,7 +267,7 @@ static int do_http_request(struct cfs_master_client *mc,
 		host = &mc->hosts.base[i++];
 		if (i == mc->hosts.num)
 			i = 0;
-		ret = cfs_socket_create(CFS_SOCK_TYPE_TCP, host, mc->log, &csk);
+		ret = cfs_socket_create(host, mc->log, &csk);
 		if (ret < 0) {
 			cfs_log_error(mc->log,
 				      "connect master node %s error %d\n",

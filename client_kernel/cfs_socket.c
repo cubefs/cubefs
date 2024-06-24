@@ -18,11 +18,10 @@ inline u32 hash_sockaddr_storage(const struct sockaddr_storage *addr)
 	}
 }
 
-int cfs_socket_create(enum cfs_socket_type type,
-		      const struct sockaddr_storage *ss, struct cfs_log *log,
+int cfs_socket_create(const struct sockaddr_storage *ss, struct cfs_log *log,
 		      struct cfs_socket **cskp)
 {
-	struct cfs_socket *csk;
+	struct cfs_socket *csk = NULL;
 	u32 key;
 	int ret;
 	int optval;

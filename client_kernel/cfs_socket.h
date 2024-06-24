@@ -12,10 +12,6 @@
 
 struct cfs_socket_pool;
 
-enum cfs_socket_type {
-	CFS_SOCK_TYPE_TCP = 0,
-	CFS_SOCK_TYPE_RDMA = 1,
-};
 struct cfs_socket {
 	struct hlist_node hash;
 	struct list_head list;
@@ -47,8 +43,7 @@ struct cfs_socket_pool {
 };
 
 inline u32 hash_sockaddr_storage(const struct sockaddr_storage *addr);
-int cfs_socket_create(enum cfs_socket_type type,
-		      const struct sockaddr_storage *dst, struct cfs_log *log,
+int cfs_socket_create(const struct sockaddr_storage *dst, struct cfs_log *log,
 		      struct cfs_socket **cskp);
 void cfs_socket_release(struct cfs_socket *csk, bool forever);
 // void cfs_socket_set_callback(struct cfs_socket *csk,

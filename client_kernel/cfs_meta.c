@@ -13,7 +13,7 @@ static int do_meta_request_internal(struct cfs_meta_client *mc,
 	struct cfs_socket *sock;
 	int ret;
 
-	ret = cfs_socket_create(CFS_SOCK_TYPE_TCP, host, mc->log, &sock);
+	ret = cfs_socket_create(host, mc->log, &sock);
 	if (ret < 0) {
 		cfs_log_error(mc->log, "socket(%s) create error %d\n",
 			      cfs_pr_addr(host), ret);
