@@ -29,7 +29,6 @@ var (
 	dirChildrenNumLimit uint32 = proto.DefaultDirChildrenNumLimit
 
 	RocksDBModeMaxFsUsedPercent uint64 = DefaultRocksDBModeMaxFsUsedPercent
-	MemModeMaxFsUsedPercent     uint64 = DefaultMemModeMaxFsUsedFactorPercent
 )
 
 func DeleteBatchCount() uint64 {
@@ -69,26 +68,8 @@ func DeleteWorkerSleepMs() {
 	}
 }
 
-func updateRocksDBModeMaxFsUsedPercent(val float32) {
-	if val <= 0 || val >= 1 {
-		return
-	}
-	atomic.StoreUint64(&RocksDBModeMaxFsUsedPercent, uint64(val*100))
-}
-
 func getRocksDBModeMaxFsUsedPercent() uint64 {
 	return atomic.LoadUint64(&RocksDBModeMaxFsUsedPercent)
-}
-
-func updateMemModeMaxFsUsedPercent(val float32) {
-	if val <= 0 || val >= 1 {
-		return
-	}
-	atomic.StoreUint64(&MemModeMaxFsUsedPercent, uint64(val*100))
-}
-
-func getMemModeMaxFsUsedPercent() uint64 {
-	return atomic.LoadUint64(&MemModeMaxFsUsedPercent)
 }
 
 func GetDumpWaterLevel() uint64 {

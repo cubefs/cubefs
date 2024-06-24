@@ -977,10 +977,7 @@ func (mp *metaPartition) cleanMemoryTreeResource() {
 }
 
 func (mp *metaPartition) selectRocksDBDir() (err error) {
-	maxUsedPercent := getMemModeMaxFsUsedPercent()
-	if mp.HasRocksDBStore() {
-		maxUsedPercent = getRocksDBModeMaxFsUsedPercent()
-	}
+	maxUsedPercent := getRocksDBModeMaxFsUsedPercent()
 	factor := float64(maxUsedPercent) / float64(100)
 
 	dir, err := mp.manager.rocksdbManager.SelectRocksdbDisk(factor)

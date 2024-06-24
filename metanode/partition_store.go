@@ -118,8 +118,7 @@ func (mp *metaPartition) loadMetadata() (err error) {
 	if mp.config.StoreMode < proto.StoreModeMem || mp.config.StoreMode > proto.StoreModeRocksDb {
 		mp.config.StoreMode = proto.StoreModeMem
 	}
-	if mp.config.RocksDBDir == "" {
-		// new version but old config; need select one dir
+	if mp.config.StoreMode == proto.StoreModeRocksDb && mp.config.RocksDBDir == "" {
 		err = mp.selectRocksDBDir()
 		if err != nil {
 			return
