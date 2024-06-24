@@ -1481,7 +1481,6 @@ func (c *Cluster) isFaultDomain(vol *Vol) bool {
 // 3. Communicate with the data node to synchronously create a data partition.
 // - If succeeded, replicate the data through raft and persist it to RocksDB.
 // - Otherwise, throw errors
-
 func (c *Cluster) createDataPartition(volName string, preload *DataPartitionPreLoad) (dp *DataPartition, err error) {
 	log.LogInfof("action[createDataPartition] preload [%v]", preload)
 	var (
@@ -1706,7 +1705,7 @@ func (c *Cluster) chooseZone2Plus1(rsMgr *rsManager, zones []*Zone, excludeNodeS
 	for _, zone := range zoneList {
 		selectedHosts, selectedPeers, e := zone.getAvailNodeHosts(nodeType, excludeNodeSets, excludeHosts, num)
 		if e != nil {
-			log.LogErrorf("action[getHostFromNormalZone] error [%v]", e)
+			log.LogErrorf("action[chooseZone2Plus1] getAvailNodeHosts error: [%v]", e)
 			return nil, nil, e
 		}
 
@@ -1796,7 +1795,7 @@ func (c *Cluster) getHostFromNormalZone(nodeType uint32, excludeZones []string, 
 	if len(zonesQualified) == 1 {
 		log.LogInfof("action[getHostFromNormalZone] zones [%v]", zonesQualified[0].name)
 		if hosts, peers, err = zonesQualified[0].getAvailNodeHosts(nodeType, excludeNodeSets, excludeHosts, replicaNum); err != nil {
-			log.LogErrorf("action[getHostFromNormalZone],err[%v]", err)
+			log.LogErrorf("action[getHostFromNormalZone] err[%v]", err)
 			return
 		}
 		goto result
