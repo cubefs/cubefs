@@ -4,6 +4,8 @@
 #ifndef __CFS_COMMON_H__
 #define __CFS_COMMON_H__
 
+#include "config.h"
+
 #include <crypto/hash.h>
 #include <crypto/md5.h>
 #include <linux/backing-dev.h>
@@ -41,8 +43,10 @@
 #ifdef KERNEL_HAS_SOCK_CREATE_KERN_WITH_NET
 #include <net/net_namespace.h>
 #endif
+#ifdef KERNEL_HAS_SOCK_SETSOCKOPT
+#include <net/tcp.h>
+#endif
 
-#include "config.h"
 
 struct cfs_mount_info {
 	struct cfs_options *options;

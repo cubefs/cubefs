@@ -79,6 +79,11 @@ int cfs_socket_create(const struct sockaddr_storage *ss, struct cfs_log *log,
 
 #ifdef KERNEL_HAS_SOCK_SETSOCKOPT
 		optval = 1;
+		ret = tcp_setsockopt(csk->sock->sk, SOL_TCP, TCP_NODELAY,
+					KERNEL_SOCKPTR(&optval), sizeof(optval));
+		if (ret < 0)
+			cfs_pr_err("tcp_setsockopt TCP_NODELAY error %d\n", ret);
+
 		ret = sock_setsockopt(csk->sock, SOL_SOCKET, SO_REUSEADDR,
 					KERNEL_SOCKPTR(&optval), sizeof(optval));
 		if (ret < 0)
