@@ -129,7 +129,8 @@ func initTestService(t testing.TB) (*Service, func()) {
 	copySetConfs := make(map[proto.NodeRole]map[proto.DiskType]diskmgr.CopySetConfig)
 	copySetConfs[proto.NodeRoleBlobNode] = make(map[proto.DiskType]diskmgr.CopySetConfig)
 	blobNodeHDDCopySetConf := copySetConfs[proto.NodeRoleBlobNode][proto.DiskTypeHDD]
-	blobNodeHDDCopySetConf.NodeSetCap = defaultNodeSetCap
+	blobNodeHDDCopySetConf.NodeSetCap = 3
+	blobNodeHDDCopySetConf.DiskSetCap = 6
 	copySetConfs[proto.NodeRoleBlobNode][proto.DiskTypeHDD] = blobNodeHDDCopySetConf
 	cfg.DiskMgrConfig.CopySetConfigs = copySetConfs
 	os.Mkdir(cfg.DBPath, 0o755)

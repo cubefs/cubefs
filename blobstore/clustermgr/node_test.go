@@ -96,8 +96,25 @@ func TestTopoInfo(t *testing.T) {
 	testClusterClient := initTestClusterClient(testService)
 	ctx := newCtx()
 
-	insertNodeInfos(t, testClusterClient, 0, 0, testService.IDC[0])
+	insertNodeInfos(t, testClusterClient, 0, 9, testService.IDC[0])
 	insertDiskInfos(t, testClusterClient, 1, 10, testService.IDC[0])
-	_, err := testClusterClient.TopoInfo(ctx)
+	ret, err := testClusterClient.TopoInfo(ctx)
 	require.NoError(t, err)
+
+	var diskSetMaxLen, nodeSetMaxLen int
+	blobNodeHDDNodeSets := ret.AllNodeSets[proto.NodeRoleBlobNode][proto.DiskTypeHDD]
+	copySetConf := testService.DiskMgr.DiskMgrConfig.CopySetConfigs[proto.NodeRoleBlobNode][proto.DiskTypeHDD]
+	diskSetCap, nodeSetCap := copySetConf.DiskSetCap, copySetConf.NodeSetCap
+	for _, nodeSet := range blobNodeHDDNodeSets {
+		if nodeSet.Number > nodeSetMaxLen {
+			nodeSetMaxLen = nodeSet.Number
+		}
+		for _, disks := range nodeSet.DiskSets {
+			if len(disks) > diskSetMaxLen {
+				diskSetMaxLen = len(disks)
+			}
+		}
+	}
+	require.Equal(t, diskSetCap, diskSetMaxLen)
+	require.Equal(t, nodeSetCap, nodeSetMaxLen)
 }
