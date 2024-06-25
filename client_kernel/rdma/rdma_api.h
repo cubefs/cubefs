@@ -2,7 +2,6 @@
 #define RDMA_API_H_
 
 #include <linux/module.h>
-#include <linux/printk.h>
 #include <linux/inet.h>
 #include <linux/socket.h>
 #include <linux/delay.h>
@@ -55,11 +54,5 @@ extern void IBVSocket_free_data_buf(struct IBVSocket *this, struct BufferItem *i
 
 #define MIN(a, b) (((a) < (b)) ? (a) : (b))
 #define MAX(a, b) (((a) < (b)) ? (b) : (a))
-
-#ifdef DEBUG
-#define ibv_print_debug(fmt, ...) printk(fmt, ##__VA_ARGS__)
-#else
-#define ibv_print_debug(fmt, ...)
-#endif
 
 #endif

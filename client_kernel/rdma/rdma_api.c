@@ -1,5 +1,4 @@
 #include <linux/module.h>
-#include <linux/printk.h>
 #include <linux/inet.h>
 #include <linux/socket.h>
 #include <linux/delay.h>
@@ -16,11 +15,11 @@ int verify_rdma_event_handler(struct rdma_cm_id *cm_id,
 	int retVal = 0;
 
 	if (!this) {
-		printk("this is null\n");
+		ibv_print_error("this is null\n");
 		return 0;
 	}
 	if (!event) {
-		printk("event is null\n");
+		ibv_print_error("event is null\n");
 		return 0;
 	}
 	ibv_print_debug("rdma event: %i, status: %i\n", event->event, event->status);
@@ -112,7 +111,7 @@ void __IBVSocket_cqSendEventHandler(struct ib_event *event, void *data)
 }
 
 void print_ip_addr(u32 addr) {
-	printk("ip addr: %d.%d.%d.%d\n", (addr & 0xff000000) >> 24, (addr & 0x00ff0000) >> 16, (addr & 0x0000ff00) >> 8, (addr & 0x000000ff));
+	ibv_print_info("ip addr: %d.%d.%d.%d\n", (addr & 0xff000000) >> 24, (addr & 0x00ff0000) >> 16, (addr & 0x0000ff00) >> 8, (addr & 0x000000ff));
 }
 
 int RingBuffer_init(struct IBVSocket *this) {
@@ -154,7 +153,7 @@ int RingBuffer_init(struct IBVSocket *this) {
 		wr.num_sge = 1;
 		ret = ib_post_recv(this->qp, &wr, &bad_wr);
 		if (unlikely(ret)) {
-			printk("ib_post_recv failed. ErrCode: %d\n", ret);
+			ibv_print_error("ib_post_recv failed. ErrCode: %d\n", ret);
 			return -EIO;
 		}
 	}
@@ -247,7 +246,7 @@ struct IBVSocket *IBVSocket_construct(struct sockaddr_in *sin) {
 
 	this = kzalloc(sizeof(struct IBVSocket), GFP_KERNEL);
 	if (!this) {
-		printk("kzalloc failed\n");
+		ibv_print_error("kzalloc failed\n");
 		return ERR_PTR(-ENOMEM);
 	}
 
@@ -256,13 +255,13 @@ struct IBVSocket *IBVSocket_construct(struct sockaddr_in *sin) {
 
 	this->cm_id = rdma_create_id(&init_net, verify_rdma_event_handler, this, RDMA_PS_TCP, IB_QPT_RC);
 	if (IS_ERR(this->cm_id)) {
-		printk("rdma_create_id failed: %ld\n", PTR_ERR(this->cm_id));
+		ibv_print_error("rdma_create_id failed: %ld\n", PTR_ERR(this->cm_id));
 		goto err_free_this;
 	}
 
 	ret = rdma_resolve_addr(this->cm_id, NULL, (struct sockaddr *)sin, IBVSOCKET_CONN_TIMEOUT_MS);
 	if (ret) {
-		printk("rdma_resolve_addr failed: %d\n", ret);
+		ibv_print_error("rdma_resolve_addr failed: %d\n", ret);
 		goto err_destroy_cm_id;
 	}
 
@@ -270,7 +269,7 @@ struct IBVSocket *IBVSocket_construct(struct sockaddr_in *sin) {
 
 	ret = rdma_resolve_route(this->cm_id, IBVSOCKET_CONN_TIMEOUT_MS);
 	if (ret) {
-		printk("rdma_resolve_route failed: %d.\n", ret);
+		ibv_print_error("rdma_resolve_route failed: %d.\n", ret);
 		goto err_destroy_cm_id;
 	}
 
@@ -278,7 +277,7 @@ struct IBVSocket *IBVSocket_construct(struct sockaddr_in *sin) {
 
 	this->pd = ib_alloc_pd(this->cm_id->device, IB_PD_UNSAFE_GLOBAL_RKEY);
 	if (IS_ERR(this->pd)) {
-		printk("Couldn't allocate PD. ErrCode: %ld\n", PTR_ERR(this->pd));
+		ibv_print_error("Couldn't allocate PD. ErrCode: %ld\n", PTR_ERR(this->pd));
 		goto err_destroy_cm_id;
 	}
 
@@ -288,13 +287,13 @@ struct IBVSocket *IBVSocket_construct(struct sockaddr_in *sin) {
 
 	this->recvCQ = ib_create_cq(this->cm_id->device, __IBVSocket_recvCompletionHandler, __IBVSocket_cqRecvEventHandler, this, &attrs);
 	if (IS_ERR(this->recvCQ)) {
-		printk("couldn't create recv CQ. ErrCode: %ld\n", PTR_ERR(this->recvCQ));
+		ibv_print_error("couldn't create recv CQ. ErrCode: %ld\n", PTR_ERR(this->recvCQ));
 		goto err_dealloc_pd;
 	}
 
 	this->sendCQ = ib_create_cq(this->cm_id->device, __IBVSocket_sendCompletionHandler, __IBVSocket_cqSendEventHandler, this, &attrs);
 	if (IS_ERR(this->sendCQ)) {
-		printk("couldn't create send CQ. ErrCode: %ld\n", PTR_ERR(this->sendCQ));
+		ibv_print_error("couldn't create send CQ. ErrCode: %ld\n", PTR_ERR(this->sendCQ));
 		goto err_free_recv_cq;
 	}
 
@@ -314,24 +313,24 @@ struct IBVSocket *IBVSocket_construct(struct sockaddr_in *sin) {
 
 	ret = rdma_create_qp(this->cm_id, this->pd, &qpInitAttr);
 	if (ret) {
-		printk("couldn't create QP. ErrCode: %d\n", ret);
+		ibv_print_error("couldn't create QP. ErrCode: %d\n", ret);
 		goto err_free_send_cq;
 	}
 	this->qp = this->cm_id->qp;
 
 	ret = RingBuffer_init(this);
 	if (ret < 0) {
-		printk("RingBuffer_init error: %d\n", ret);
+		ibv_print_error("RingBuffer_init error: %d\n", ret);
 		goto err_destroy_qp;
 	}
 
 	if (ib_req_notify_cq(this->recvCQ, IB_CQ_NEXT_COMP)) {
-		printk("couldn't request recv CQ notification\n");
+		ibv_print_error("couldn't request recv CQ notification\n");
 		goto err_destroy_qp;
 	}
 
 	if (ib_req_notify_cq(this->sendCQ, IB_CQ_NEXT_COMP)) {
-		printk("couldn't request send CQ notification\n");
+		ibv_print_error("couldn't request send CQ notification\n");
 		goto err_destroy_qp;
 	}
 
@@ -342,13 +341,13 @@ struct IBVSocket *IBVSocket_construct(struct sockaddr_in *sin) {
 	conn_param.rnr_retry_count = 7;
 	ret = rdma_connect(this->cm_id, &conn_param);
 	if (unlikely(ret)) {
-		printk("rdma_connect failed. ErrCode: %d\n", ret);
+		ibv_print_error("rdma_connect failed. ErrCode: %d\n", ret);
 		goto err_destroy_qp;
 	}
 
 	wait_event_interruptible_timeout(this->eventWaitQ, this->connState != IBVSOCKETCONNSTATE_ROUTERESOLVED, TIMEOUT_JS);
 	if (this->connState != IBVSOCKETCONNSTATE_ESTABLISHED) {
-		printk("connection not established. state=%d\n", this->connState);
+		ibv_print_error("connection not established. state=%d\n", this->connState);
 		goto err_destroy_qp;
 	}
 
@@ -492,7 +491,7 @@ ssize_t IBVSocket_recvT(struct IBVSocket *this, struct iov_iter *iter) {
 				this->recvBuf[index]->used = true;
             }
         } else if (numElements < 0) {
-			printk("ib_poll_cq recvCQ failed. ErrCode: %d\n", numElements);
+			ibv_print_error("ib_poll_cq recvCQ failed. ErrCode: %d\n", numElements);
 			return -EIO;
 		}
 
@@ -506,7 +505,7 @@ ssize_t IBVSocket_recvT(struct IBVSocket *this, struct iov_iter *iter) {
 		}
     }
 	if (index < 0) {
-		printk("Timeout waiting for receive buffer\n");
+		ibv_print_error("Timeout waiting for receive buffer\n");
 		return -ENOMEM;
 	}
 
@@ -538,7 +537,7 @@ ssize_t IBVSocket_send(struct IBVSocket *this, struct iov_iter *iter) {
 				}
 			}
 		} else if (numElements < 0) {
-			printk("ib_poll_cq sendCQ failed. ErrCode: %d\n", numElements);
+			ibv_print_error("ib_poll_cq sendCQ failed. ErrCode: %d\n", numElements);
 			return -EIO;
 		}
 
@@ -549,7 +548,7 @@ ssize_t IBVSocket_send(struct IBVSocket *this, struct iov_iter *iter) {
 	}
 
 	if (index < 0) {
-		printk("Timeout waiting for send buffer\n");
+		ibv_print_error("Timeout waiting for send buffer\n");
 		return -ENOMEM;
 	}
 
@@ -567,7 +566,7 @@ ssize_t IBVSocket_send(struct IBVSocket *this, struct iov_iter *iter) {
 	send_wr.next = NULL;
     ret = ib_post_send(this->qp, &send_wr, &send_bad_wr);
     if (unlikely(ret)) {
-        printk("ib_post_send() failed. ErrCode: %d\n", ret);
+        ibv_print_error("ib_post_send() failed. ErrCode: %d\n", ret);
         return -EIO;
     }
 
@@ -590,7 +589,7 @@ struct BufferItem *IBVSocket_get_data_buf(struct IBVSocket *this, size_t size) {
 
 void IBVSocket_free_data_buf(struct IBVSocket *this, struct BufferItem *item) {
 	if (!item->used) {
-		printk("error: the buffer is not used. ptr: %llx\n", (uint64_t)item);
+		ibv_print_info("error: the buffer is not used. ptr: %llx\n", (uint64_t)item);
 		return;
 	}
 	item->used = false;

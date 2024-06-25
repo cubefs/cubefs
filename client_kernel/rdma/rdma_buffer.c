@@ -45,7 +45,7 @@ int rdma_buffer_get(struct BufferItem **item, size_t size) {
     } else if (size <= BUFFER_1M_SIZE) {
         index = 2;
     } else {
-        printk("size=%ld > %d\n", size, BUFFER_1M_SIZE);
+        ibv_print_error("size=%ld > %d\n", size, BUFFER_1M_SIZE);
         return -EPERM;
     }
 
@@ -63,7 +63,7 @@ void rdma_buffer_put(struct BufferItem *item) {
     } else if (item->size <= BUFFER_1M_SIZE) {
         index = 2;
     } else {
-        printk("size=%ld > %d\n", item->size, BUFFER_1M_SIZE);
+        ibv_print_error("size=%ld > %d\n", item->size, BUFFER_1M_SIZE);
         return;
     }
 
@@ -151,7 +151,7 @@ int rdma_buffer_new(u32 rdma_port) {
 
     rdma_pool->cm_id = rdma_create_id(&init_net, rdma_buffer_event_handler, NULL, RDMA_PS_TCP, IB_QPT_RC);
     if (IS_ERR(rdma_pool->cm_id)) {
-        printk("rdma_create_id failed\n");
+        ibv_print_error("rdma_create_id failed\n");
         return -EPERM;
     }
 
@@ -160,7 +160,7 @@ int rdma_buffer_new(u32 rdma_port) {
     sin.sin_addr.s_addr = in_aton("127.0.0.1");
     ret = rdma_resolve_addr(rdma_pool->cm_id, NULL, (struct sockaddr *)&sin, 500);
     if (ret) {
-        printk("rdma_resolve_addr failed\n");
+        ibv_print_error("rdma_resolve_addr failed\n");
         ret = -EPERM;
         goto err_out;
     }
@@ -174,7 +174,7 @@ int rdma_buffer_new(u32 rdma_port) {
     for (i = 0; i < 3; i++) {
         ret = rdma_buffer_create(&(rdma_pool->buffer[i]));
         if (ret < 0) {
-            printk("rdma_buffer_create failed\n");
+            ibv_print_error("rdma_buffer_create failed\n");
             goto err_out;
         }
     }

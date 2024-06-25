@@ -2,6 +2,7 @@
 #define __CFS_RDMA_BUFFER_H__
 
 #include <linux/list.h>
+#include <linux/printk.h>
 #include <linux/types.h>
 #include <linux/mutex.h>
 #include <linux/wait.h>
@@ -43,5 +44,13 @@ int rdma_buffer_new(u32 rdma_port);
 void rdma_buffer_release(void);
 int rdma_buffer_get(struct BufferItem **item, size_t size);
 void rdma_buffer_put(struct BufferItem *item);
+
+#define ibv_print_error(fmt, ...) printk("%s:%d[%s] ERROR: "fmt, __FILE__, __LINE__, __FUNCTION__, ##__VA_ARGS__)
+#define ibv_print_info(fmt, ...) printk("%s:%d[%s] INFO: "fmt, __FILE__, __LINE__, __FUNCTION__, ##__VA_ARGS__)
+#ifdef DEBUG
+#define ibv_print_debug(fmt, ...) printk("%s:%d[%s] DEBUG: "fmt, __FILE__, __LINE__, __FUNCTION__, ##__VA_ARGS__)
+#else
+#define ibv_print_debug(fmt, ...)
+#endif
 
 #endif
