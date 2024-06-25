@@ -136,10 +136,11 @@ type DiskMgrConfig struct {
 
 type CopySetConfig struct {
 	NodeSetCap                int `json:"node_set_cap"`
-	NodeSetIdcCap             int `json:"node_set_idc_cap"`
 	NodeSetRackCap            int `json:"node_set_rack_cap"`
 	DiskSetCap                int `json:"disk_set_cap"`
 	DiskCountPerNodeInDiskSet int `json:"disk_count_per_node_in_disk_set"`
+
+	NodeSetIdcCap int `json:"-"`
 }
 
 type DiskMgr struct {
