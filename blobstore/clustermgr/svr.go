@@ -82,7 +82,6 @@ const (
 	defaultCheckConsistentIntervalM = 360
 
 	defaultNodeSetCap                = 108
-	defaultNodeSetIdcCap             = 36
 	defaultNodeSetRackCap            = 6
 	defaultDiskSetCap                = 2160
 	defaultDiskCountPerNodeInDiskSet = 20
@@ -484,10 +483,10 @@ func (c *Config) checkAndFix() (err error) {
 	}
 	blobNodeHDDCopySetConf := copySetConfs[proto.NodeRoleBlobNode][proto.DiskTypeHDD]
 	defaulter.Equal(&blobNodeHDDCopySetConf.NodeSetCap, defaultNodeSetCap)
-	defaulter.Equal(&blobNodeHDDCopySetConf.NodeSetIdcCap, defaultNodeSetIdcCap)
 	defaulter.Equal(&blobNodeHDDCopySetConf.NodeSetRackCap, defaultNodeSetRackCap)
 	defaulter.Equal(&blobNodeHDDCopySetConf.DiskSetCap, defaultDiskSetCap)
 	defaulter.Equal(&blobNodeHDDCopySetConf.DiskCountPerNodeInDiskSet, defaultDiskCountPerNodeInDiskSet)
+	blobNodeHDDCopySetConf.NodeSetIdcCap = (blobNodeHDDCopySetConf.NodeSetCap + len(c.IDC) - 1) / len(c.IDC)
 	copySetConfs[proto.NodeRoleBlobNode][proto.DiskTypeHDD] = blobNodeHDDCopySetConf
 
 	return
