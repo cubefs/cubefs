@@ -49,10 +49,11 @@ const (
 
 // CopySet Config
 const (
-	ECNodeSetID   = proto.NodeSetID(1)
-	ECDiskSetID   = proto.DiskSetID(1)
 	NullNodeSetID = proto.NodeSetID(0)
-	NullDiskSetID = proto.DiskSetID(0)
+
+	ecNodeSetID   = proto.NodeSetID(1)
+	ecDiskSetID   = proto.DiskSetID(1)
+	nullDiskSetID = proto.DiskSetID(0)
 )
 
 var (
@@ -472,7 +473,13 @@ func (d *DiskMgr) AllocChunks(ctx context.Context, policy *AllocPolicy) ([]proto
 
 	// repair
 	if len(policy.Excludes) > 0 {
-		ret, err := allocator.ReAlloc(ctx, len(policy.Vuids), policy.Excludes, policy.DiskSetID, policy.Idc)
+		ret, err := allocator.ReAlloc(ctx, reAllocPolicy{
+			diskType:  policy.DiskType,
+			diskSetID: policy.DiskSetID,
+			idc:       policy.Idc,
+			count:     len(policy.Vuids),
+			excludes:  policy.Excludes,
+		})
 		if err != nil {
 			return nil, err
 		}
@@ -514,14 +521,23 @@ func (d *DiskMgr) AllocChunks(ctx context.Context, policy *AllocPolicy) ([]proto
 		disks := idcDisks
 
 		diskInfo, _ := d.getDisk(disks[0])
-		diskSetID := diskInfo.info.DiskSetID
+		diskSetID := nullDiskSetID
+		if policy.CodeMode.T().IsReplicateMode() {
+			diskSetID = diskInfo.info.DiskSetID
+		}
 		excludes := make([]proto.DiskID, 0)
 
 		retryTimes := defaultAllocRetryTimes
 
 	RETRY:
 		if len(excludes) > 0 {
-			disks, err = allocator.ReAlloc(ctx, len(vuids), excludes, diskSetID, idc)
+			disks, err = allocator.ReAlloc(ctx, reAllocPolicy{
+				diskType:  policy.DiskType,
+				diskSetID: diskSetID,
+				idc:       idc,
+				count:     len(vuids),
+				excludes:  excludes,
+			})
 			if err != nil {
 				return nil, err
 			}

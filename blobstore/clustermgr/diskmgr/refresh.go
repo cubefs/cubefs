@@ -48,20 +48,15 @@ func (h *maxHeap) Pop() interface{} {
 // refresh use for refreshing storage allocator info and cluster statistic info
 func (d *DiskMgr) refresh(ctx context.Context) {
 	span := trace.SpanFromContextSafe(ctx)
-	// generate nodeRole -> diskType -> nodeSet -> diskSet -> idc -> rack -> blobnode storage and statInfo
-	nodeSetAllocators := make(map[proto.NodeRole]map[proto.DiskType]nodeSetAllocatorMap)
-	diskSetAllocators := make(map[proto.NodeRole]map[proto.DiskSetID]*diskSetAllocator)
 
 	// space and disk stat info
 	spaceStatInfos := make(map[proto.NodeRole]map[proto.DiskType]*clustermgr.SpaceStatInfo)
 
 	for nodeRole, mgr := range d.topoMgrs {
-		if _, ok := nodeSetAllocators[nodeRole]; !ok {
-			nodeSetAllocators[nodeRole] = make(map[proto.DiskType]nodeSetAllocatorMap)
-		}
-		if _, ok := diskSetAllocators[nodeRole]; !ok {
-			diskSetAllocators[nodeRole] = make(map[proto.DiskSetID]*diskSetAllocator)
-		}
+		// generate diskType -> nodeSet -> diskSet -> idc -> rack -> blobnode storage and statInfo
+		nodeSetAllocators := make(map[proto.DiskType]nodeSetAllocatorMap)
+		diskSetAllocators := make(map[proto.DiskType]diskSetAllocatorMap)
+
 		if _, ok := spaceStatInfos[nodeRole]; !ok {
 			spaceStatInfos[nodeRole] = make(map[proto.DiskType]*clustermgr.SpaceStatInfo)
 		}
@@ -70,8 +65,11 @@ func (d *DiskMgr) refresh(ctx context.Context) {
 		nodeSetsMap := mgr.GetAllNodeSets(ctx)
 
 		for diskType, nodeSets := range nodeSetsMap {
-			if _, ok := nodeSetAllocators[nodeRole][diskType]; !ok {
-				nodeSetAllocators[nodeRole][diskType] = make(nodeSetAllocatorMap)
+			if _, ok := nodeSetAllocators[diskType]; !ok {
+				nodeSetAllocators[diskType] = make(nodeSetAllocatorMap)
+			}
+			if _, ok := diskSetAllocators[diskType]; !ok {
+				diskSetAllocators[diskType] = make(diskSetAllocatorMap)
 			}
 			if _, ok := spaceStatInfos[nodeRole][diskType]; !ok {
 				spaceStatInfos[nodeRole][diskType] = &clustermgr.SpaceStatInfo{}
@@ -89,10 +87,10 @@ func (d *DiskMgr) refresh(ctx context.Context) {
 					// ecDiskSet[diskType] = append(ecDiskSet[diskType], disks...)
 					idcAllocators, diskSetFreeChunk := d.generateDiskSetStorage(ctx, disks, spaceStatInfo, diskStatInfo)
 					diskSetAllocator := newDiskSetAllocator(diskSet.ID(), diskSetFreeChunk, idcAllocators)
-					diskSetAllocators[nodeRole][diskSet.ID()] = diskSetAllocator
+					diskSetAllocators[diskType][diskSet.ID()] = diskSetAllocator
 					nodeSetAllocator.addDiskSet(diskSetAllocator)
 				}
-				nodeSetAllocators[nodeRole][diskType][nodeSet.ID()] = nodeSetAllocator
+				nodeSetAllocators[diskType][nodeSet.ID()] = nodeSetAllocator
 			}
 
 			for idc := range diskStatInfo {
@@ -111,6 +109,13 @@ func (d *DiskMgr) refresh(ctx context.Context) {
 			}
 
 			for diskType := range diskTypeDisks {
+				if _, ok := nodeSetAllocators[diskType]; !ok {
+					nodeSetAllocators[diskType] = make(nodeSetAllocatorMap)
+				}
+				if _, ok := diskSetAllocators[diskType]; !ok {
+					diskSetAllocators[diskType] = make(diskSetAllocatorMap)
+				}
+
 				ecDiskSet[diskType] = diskTypeDisks[diskType]
 				ecSpaceStateInfo := &clustermgr.SpaceStatInfo{}
 				diskStatInfo := make(map[string]*clustermgr.DiskStatInfo)
@@ -121,14 +126,11 @@ func (d *DiskMgr) refresh(ctx context.Context) {
 				ecIdcAllocators, ecFreeChunk := d.generateDiskSetStorage(ctx, ecDiskSet[diskType], ecSpaceStateInfo, diskStatInfo)
 
 				// initial ec allocator
-				diskSetAllocator := newDiskSetAllocator(ECDiskSetID, ecFreeChunk, ecIdcAllocators)
-				diskSetAllocators[nodeRole][ECDiskSetID] = diskSetAllocator
-				nodeSetAllocator := newNodeSetAllocator(ECNodeSetID)
+				diskSetAllocator := newDiskSetAllocator(ecDiskSetID, ecFreeChunk, ecIdcAllocators)
+				diskSetAllocators[diskType][ecDiskSetID] = diskSetAllocator
+				nodeSetAllocator := newNodeSetAllocator(ecNodeSetID)
 				nodeSetAllocator.addDiskSet(diskSetAllocator)
-				if _, ok := nodeSetAllocators[nodeRole][diskType]; !ok {
-					nodeSetAllocators[nodeRole][diskType] = make(nodeSetAllocatorMap)
-				}
-				nodeSetAllocators[nodeRole][diskType][ECNodeSetID] = nodeSetAllocator
+				nodeSetAllocators[diskType][ecNodeSetID] = nodeSetAllocator
 				span.Debugf("add ec nodeset")
 
 				// update space state info
@@ -151,8 +153,8 @@ func (d *DiskMgr) refresh(ctx context.Context) {
 		}
 
 		d.allocators[nodeRole].Store(newAllocator(allocatorConfig{
-			nodeSets: nodeSetAllocators[nodeRole],
-			diskSets: diskSetAllocators[nodeRole],
+			nodeSets: nodeSetAllocators,
+			diskSets: diskSetAllocators,
 			dg:       d,
 			tg:       d.topoMgrs[nodeRole],
 			diffHost: d.HostAware,

@@ -39,11 +39,14 @@ type topoInfoGetter interface {
 	getNodeNum(diskType proto.DiskType, id proto.NodeSetID) int
 }
 
-type nodeSetAllocatorMap map[proto.NodeSetID]*nodeSetAllocator
+type (
+	nodeSetAllocatorMap map[proto.NodeSetID]*nodeSetAllocator
+	diskSetAllocatorMap map[proto.DiskSetID]*diskSetAllocator
+)
 
 type allocatorConfig struct {
 	nodeSets map[proto.DiskType]nodeSetAllocatorMap
-	diskSets map[proto.DiskSetID]*diskSetAllocator
+	diskSets map[proto.DiskType]diskSetAllocatorMap
 	dg       clusterInfoGetter
 	tg       topoInfoGetter
 	diffRack bool
@@ -60,7 +63,7 @@ func newAllocator(cfg allocatorConfig) *allocator {
 
 type allocator struct {
 	nodeSets map[proto.DiskType]nodeSetAllocatorMap
-	diskSets map[proto.DiskSetID]*diskSetAllocator
+	diskSets map[proto.DiskType]diskSetAllocatorMap
 	cfg      allocatorConfig
 }
 
@@ -119,20 +122,28 @@ func (a *allocator) Alloc(ctx context.Context, diskType proto.DiskType, mode cod
 	return ret, nil
 }
 
-func (a *allocator) ReAlloc(ctx context.Context, count int, excludes []proto.DiskID, diskSetID proto.DiskSetID, idc string) ([]proto.DiskID, error) {
-	if diskSetID == NullDiskSetID {
-		diskSetID = ECDiskSetID
+type reAllocPolicy struct {
+	diskType  proto.DiskType
+	diskSetID proto.DiskSetID
+	idc       string
+	count     int
+	excludes  []proto.DiskID
+}
+
+func (a *allocator) ReAlloc(ctx context.Context, policy reAllocPolicy) ([]proto.DiskID, error) {
+	if policy.diskSetID == nullDiskSetID {
+		policy.diskSetID = ecDiskSetID
 	}
-	stg := a.diskSets[diskSetID].idcAllocators[idc]
+	stg := a.diskSets[policy.diskType][policy.diskSetID].idcAllocators[policy.idc]
 
 	_excludes := make(map[proto.DiskID]*diskItem)
-	if len(excludes) > 0 {
-		for _, diskID := range excludes {
+	if len(policy.excludes) > 0 {
+		for _, diskID := range policy.excludes {
 			_excludes[diskID], _ = a.cfg.dg.getDisk(diskID)
 		}
 	}
 
-	return stg.alloc(ctx, count, _excludes)
+	return stg.alloc(ctx, policy.count, _excludes)
 }
 
 func (a *allocator) allocNodeSet(ctx context.Context, diskType proto.DiskType, mode codemode.CodeMode) (*nodeSetAllocator, error) {
@@ -147,7 +158,7 @@ func (a *allocator) allocNodeSet(ctx context.Context, diskType proto.DiskType, m
 
 	// EC mode
 	if !mode.T().IsReplicateMode() {
-		nodeSetAllocator, ok := nodeSetAllocators[ECNodeSetID]
+		nodeSetAllocator, ok := nodeSetAllocators[ecNodeSetID]
 		if !ok || nodeSetAllocator.freeChunk < int64(count) {
 			span.Errorf("can not find nodeset of EC mode, diskType: %s", diskType.String())
 			return nil, ErrNoEnoughSpace
@@ -160,7 +171,7 @@ func (a *allocator) allocNodeSet(ctx context.Context, diskType proto.DiskType, m
 	totalFreeChunkNum := int64(0)
 	allocatableNodeSets := make([]*nodeSetAllocator, 0, total)
 	for _, n := range nodeSetAllocators {
-		if n.nodeSetID == ECNodeSetID {
+		if n.nodeSetID == ecNodeSetID {
 			continue
 		}
 		// filter nodeset which is not match the alloc node count
@@ -211,20 +222,10 @@ func (n *nodeSetAllocator) addDiskSet(diskSet *diskSetAllocator) {
 func (n *nodeSetAllocator) allocDiskSet(ctx context.Context, count int) (*diskSetAllocator, error) {
 	span := trace.SpanFromContextSafe(ctx)
 
-	// EC mode
-	if n.nodeSetID == ECNodeSetID {
-		diskSet, ok := n.diskSets[ECDiskSetID]
-		if !ok {
-			span.Errorf("can not find diskset of EC mode")
-			return nil, ErrNoEnoughSpace
-		}
-		return diskSet, nil
-	}
-
 	randNum := rand.Int63n(atomic.LoadInt64(&n.freeChunk))
 	for _, diskSet := range n.diskSets {
 		free := atomic.LoadInt64(&diskSet.freeChunk)
-		if free > randNum && free >= int64(count) {
+		if free >= randNum && free >= int64(count) {
 			return diskSet, nil
 		}
 		randNum -= free
