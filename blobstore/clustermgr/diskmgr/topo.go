@@ -107,7 +107,7 @@ func (t *topoMgr) AllocDiskSetID(ctx context.Context, diskInfo *blobnode.DiskInf
 	diskCountPerNode := config.DiskCountPerNodeInDiskSet
 	for diskSetID, diskSet := range nodeSet.diskSets {
 		diskSetLen, diskCount := diskSet.getDiskSetLen(diskInfo.NodeID)
-		if diskSetLen > diskSetCap || diskCount > diskCountPerNode {
+		if diskSetLen >= diskSetCap || diskCount >= diskCountPerNode {
 			continue
 		}
 		span.Debugf("diskSetID %d is chosen, diskSetLen:%d, diskCount:%d", diskSetID, diskSetLen, diskCount)
