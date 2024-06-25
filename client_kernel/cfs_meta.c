@@ -263,9 +263,6 @@ static bool meta_get_parition_iter(const void *item, void *udata)
 	return false;
 }
 
-/**
- * Caller must holes read lock.
- */
 static struct cfs_meta_partition *
 cfs_meta_get_partition_by_inode(struct cfs_meta_client *mc, u64 ino)
 {
@@ -274,13 +271,12 @@ cfs_meta_get_partition_by_inode(struct cfs_meta_client *mc, u64 ino)
 	uintptr_t ptr;
 
 	ptr = (uintptr_t)&pivot;
+	read_lock(&mc->lock);
 	btree_descend(mc->partition_ranges, &ptr, meta_get_parition_iter, &ctx);
+	read_unlock(&mc->lock);
 	return ctx.found;
 }
 
-/**
- * Caller must holes read lock.
- */
 static struct cfs_meta_partition *
 cfs_meta_select_partition(struct cfs_meta_client *mc)
 {
@@ -1204,19 +1200,16 @@ int cfs_meta_create(struct cfs_meta_client *mc, u64 parent_ino,
 	u32 retry;
 	int ret = 0;
 
-	read_lock(&mc->lock);
 	parent_mp = cfs_meta_get_partition_by_inode(mc, parent_ino);
 	if (!parent_mp) {
-		ret = -ENOENT;
-		goto unlock;
+		return -ENOENT;
 	}
 
 	retry = mc->nr_rw_partitions;
 	while (retry-- > 0) {
 		mp = cfs_meta_select_partition(mc);
 		if (!mp) {
-			ret = -ENOENT;
-			goto unlock;
+			return -ENOENT;
 		}
 		ret = cfs_meta_icreate_internal(mc, mp, mode, uid, gid, target,
 						quota_infos, iinfo);
@@ -1226,7 +1219,7 @@ int cfs_meta_create(struct cfs_meta_client *mc, u64 parent_ino,
 	if (ret != 0) {
 		cfs_log_error(mc->log, "create inode error %d\n", ret);
 		ret = ret < 0 ? ret : -ret;
-		goto unlock;
+		return ret;
 	}
 
 	ret = cfs_meta_dcreate_internal(mc, parent_mp, parent_ino, name,
@@ -1235,11 +1228,9 @@ int cfs_meta_create(struct cfs_meta_client *mc, u64 parent_ino,
 		cfs_log_error(mc->log, "create dentry error %d\n", ret);
 		cfs_packet_inode_release(*iinfo);
 		ret = ret < 0 ? ret : -ret;
-		goto unlock;
+		return ret;
 	}
 
-unlock:
-	read_unlock(&mc->lock);
 	return ret;
 }
 
@@ -1257,19 +1248,17 @@ int cfs_meta_link(struct cfs_meta_client *mc, u64 parent_ino, struct qstr *name,
 	struct cfs_packet_inode *iinfo;
 	int ret;
 
-	read_lock(&mc->lock);
 	parent_mp = cfs_meta_get_partition_by_inode(mc, parent_ino);
 	mp = cfs_meta_get_partition_by_inode(mc, ino);
 	if (!parent_mp || !mp) {
-		ret = -ENOENT;
-		goto unlock;
+		return -ENOENT;
 	}
 
 	ret = cfs_meta_ilink_internal(mc, mp, ino, &iinfo);
 	if (ret != 0) {
 		cfs_log_error(mc->log, "create inode error %d\n", ret);
 		ret = ret < 0 ? ret : -ret;
-		goto unlock;
+		return ret;
 	}
 	ret = cfs_meta_dcreate_internal(mc, parent_mp, parent_ino, name,
 					iinfo->ino, iinfo->mode, NULL);
@@ -1277,17 +1266,15 @@ int cfs_meta_link(struct cfs_meta_client *mc, u64 parent_ino, struct qstr *name,
 		cfs_log_error(mc->log, "create dentry error %d\n", ret);
 		cfs_packet_inode_release(iinfo);
 		cfs_meta_iunlink_internal(mc, mp, ino, NULL);
-		goto unlock;
+		return ret;
 	} else if (ret < 0) {
 		cfs_log_error(mc->log, "create dentry error %d\n", ret);
 		cfs_packet_inode_release(iinfo);
-		goto unlock;
+		return ret;
 	}
 	if (iinfop)
 		*iinfop = iinfo;
 
-unlock:
-	read_unlock(&mc->lock);
 	return ret;
 }
 
@@ -1312,37 +1299,33 @@ int cfs_meta_delete(struct cfs_meta_client *mc, u64 parent_ino,
 		}
 		cfs_packet_inode_release(iinfo);
 	}
-	read_lock(&mc->lock);
+
 	mp = cfs_meta_get_partition_by_inode(mc, parent_ino);
 	if (!mp) {
-		ret = -ENOENT;
-		goto unlock;
+		return -ENOENT;
 	}
 	ret = cfs_meta_ddelete_internal(mc, mp, parent_ino, name, &ino);
 	if (ret != 0) {
 		ret = ret < 0 ? ret : -ret;
-		goto unlock;
+		return ret;
 	}
 	mp = cfs_meta_get_partition_by_inode(mc, ino);
 	if (!mp) {
-		ret = -ENOENT;
-		goto unlock;
+		return -ENOENT;
 	}
 	ret = cfs_meta_iunlink_internal(mc, mp, ino, NULL);
 	if (ret != 0) {
 		ret = ret < 0 ? ret : -ret;
-		goto unlock;
+		return ret;
 	}
 	ret = cfs_meta_ievict_internal(mc, mp, ino);
 	if (ret != 0) {
 		ret = ret < 0 ? ret : -ret;
-		goto unlock;
+		return ret;
 	}
 	if (ret_ino)
 		*ret_ino = ino;
 
-unlock:
-	read_unlock(&mc->lock);
 	return ret;
 }
 
@@ -1359,28 +1342,25 @@ int cfs_meta_rename(struct cfs_meta_client *mc, u64 src_parent_ino,
 	umode_t mode;
 	int ret;
 
-	read_lock(&mc->lock);
 	src_parent_mp = cfs_meta_get_partition_by_inode(mc, src_parent_ino);
 	dst_parent_mp = cfs_meta_get_partition_by_inode(mc, dst_parent_ino);
 	if (!src_parent_mp || !dst_parent_mp) {
-		ret = -ENOENT;
-		goto unlock;
+		return -ENOENT;
 	}
 	ret = cfs_meta_lookup_internal(mc, src_parent_mp, src_parent_ino,
 				       src_name, &src_ino, &mode);
 	if (ret != 0) {
 		ret = ret < 0 ? ret : -ret;
-		goto unlock;
+		return ret;
 	}
 	src_mp = cfs_meta_get_partition_by_inode(mc, src_ino);
 	if (!src_mp) {
-		ret = -ENOENT;
-		goto unlock;
+		return -ENOENT;
 	}
 	ret = cfs_meta_ilink_internal(mc, src_mp, src_ino, NULL);
 	if (ret != 0) {
 		ret = ret < 0 ? ret : -ret;
-		goto unlock;
+		return ret;
 	}
 	ret = cfs_meta_dcreate_internal(mc, dst_parent_mp, dst_parent_ino,
 					dst_name, src_ino, mode, NULL);
@@ -1391,9 +1371,9 @@ int cfs_meta_rename(struct cfs_meta_client *mc, u64 src_parent_ino,
 	if (ret > 0) {
 		cfs_meta_iunlink_internal(mc, src_parent_mp, src_ino, NULL);
 		ret = -ret;
-		goto unlock;
+		goto out;
 	} else if (ret < 0)
-		goto unlock;
+		goto out;
 
 	ret = cfs_meta_ddelete_internal(mc, src_parent_mp, src_parent_ino,
 					src_name, NULL);
@@ -1412,9 +1392,9 @@ int cfs_meta_rename(struct cfs_meta_client *mc, u64 src_parent_ino,
 			cfs_meta_iunlink_internal(mc, src_parent_mp, src_ino,
 						  NULL);
 		ret = -old_ret;
-		goto unlock;
+		goto out;
 	} else if (ret < 0)
-		goto unlock;
+		goto out;
 
 	cfs_meta_iunlink_internal(mc, src_parent_mp, src_ino, NULL);
 	if (old_ino != 0) {
@@ -1426,8 +1406,7 @@ int cfs_meta_rename(struct cfs_meta_client *mc, u64 src_parent_ino,
 		}
 	}
 
-unlock:
-	read_unlock(&mc->lock);
+out:
 	return ret;
 }
 
@@ -1441,30 +1420,25 @@ int cfs_meta_lookup(struct cfs_meta_client *mc, u64 parent_ino,
 	u64 ino;
 	int ret;
 
-	read_lock(&mc->lock);
 	mp = cfs_meta_get_partition_by_inode(mc, parent_ino);
 	if (!mp) {
-		ret = -ENOENT;
-		goto unlock;
+		return -ENOENT;
 	}
 	ret = cfs_meta_lookup_internal(mc, mp, parent_ino, name, &ino, NULL);
 	if (ret != 0) {
 		ret = ret < 0 ? ret : -ret;
-		goto unlock;
+		return ret;
 	}
 	mp = cfs_meta_get_partition_by_inode(mc, ino);
 	if (!mp) {
-		ret = -ENOENT;
-		goto unlock;
+		return -ENOENT;
 	}
 	ret = cfs_meta_iget_internal(mc, mp, ino, iinfo);
 	if (ret != 0) {
 		ret = ret < 0 ? ret : -ret;
-		goto unlock;
+		return ret;
 	}
 
-unlock:
-	read_unlock(&mc->lock);
 	return ret;
 }
 
@@ -1477,7 +1451,6 @@ int cfs_meta_lookup_path(struct cfs_meta_client *mc, const char *path,
 	u64 ino = 1;
 	int ret;
 
-	read_lock(&mc->lock);
 	while (path) {
 		ch = strchr(path, '/');
 		name.len = ch ? ch - path : strlen(path);
@@ -1486,20 +1459,20 @@ int cfs_meta_lookup_path(struct cfs_meta_client *mc, const char *path,
 		if (strncmp(name.name, ".", name.len) == 0 ||
 		    strncmp(name.name, "..", name.len) == 0) {
 			ret = -EINVAL;
-			goto unlock;
+			goto out;
 		}
 
 		if (name.len > 0) {
 			mp = cfs_meta_get_partition_by_inode(mc, ino);
 			if (!mp) {
 				ret = -ENOENT;
-				goto unlock;
+				goto out;
 			}
 			ret = cfs_meta_lookup_internal(mc, mp, ino, &name, &ino,
 						       NULL);
 			if (ret != 0) {
 				ret = ret < 0 ? ret : -ret;
-				goto unlock;
+				goto out;
 			}
 		}
 		path = ch ? ch + 1 : NULL;
@@ -1508,16 +1481,15 @@ int cfs_meta_lookup_path(struct cfs_meta_client *mc, const char *path,
 	mp = cfs_meta_get_partition_by_inode(mc, ino);
 	if (!mp) {
 		ret = -ENOENT;
-		goto unlock;
+		goto out;
 	}
 	ret = cfs_meta_iget_internal(mc, mp, ino, iinfo);
 	if (ret != 0) {
 		ret = ret < 0 ? ret : -ret;
-		goto unlock;
+		goto out;
 	}
 
-unlock:
-	read_unlock(&mc->lock);
+out:
 	return ret;
 }
 
@@ -1530,20 +1502,16 @@ int cfs_meta_get(struct cfs_meta_client *mc, u64 ino,
 	struct cfs_meta_partition *mp;
 	int ret;
 
-	read_lock(&mc->lock);
 	mp = cfs_meta_get_partition_by_inode(mc, ino);
 	if (!mp) {
-		ret = -ENOENT;
-		goto unlock;
+		return -ENOENT;
 	}
 	ret = cfs_meta_iget_internal(mc, mp, ino, iinfo);
 	if (ret != 0) {
 		ret = ret < 0 ? ret : -ret;
-		goto unlock;
+		return ret;
 	}
 
-unlock:
-	read_unlock(&mc->lock);
 	return ret;
 }
 
@@ -1609,7 +1577,6 @@ int cfs_meta_batch_get(struct cfs_meta_client *mc, struct u64_array *ino_vec,
 	int ret;
 
 	hash_init(tasks);
-	read_lock(&mc->lock);
 	for (i = 0; i < ino_vec->num; i++) {
 		mp = cfs_meta_get_partition_by_inode(mc, ino_vec->base[i]);
 		if (!mp)
@@ -1622,7 +1589,7 @@ int cfs_meta_batch_get(struct cfs_meta_client *mc, struct u64_array *ino_vec,
 			task = batch_iget_task_new(mc, mp, ino_vec->num);
 			if (!task) {
 				ret = -ENOMEM;
-				goto unlock;
+				goto out;
 			}
 			hash_add(tasks, &task->hash, mp->id);
 		}
@@ -1638,7 +1605,7 @@ int cfs_meta_batch_get(struct cfs_meta_client *mc, struct u64_array *ino_vec,
 
 	ret = cfs_packet_inode_ptr_array_init(iinfo_vec, ino_vec->num);
 	if (ret < 0)
-		goto unlock;
+		goto out;
 	hash_for_each(tasks, i, task, hash) {
 		while (task->iinfo_vec.num > 0) {
 			task->iinfo_vec.num--;
@@ -1647,8 +1614,7 @@ int cfs_meta_batch_get(struct cfs_meta_client *mc, struct u64_array *ino_vec,
 		}
 	}
 
-unlock:
-	read_unlock(&mc->lock);
+out:
 	hash_for_each_safe(tasks, i, tmp, task, hash) {
 		hash_del(&task->hash);
 		batch_iget_task_release(task);
@@ -1667,21 +1633,17 @@ int cfs_meta_readdir(struct cfs_meta_client *mc, u64 parent_ino,
 	struct cfs_meta_partition *mp;
 	int ret;
 
-	read_lock(&mc->lock);
 	mp = cfs_meta_get_partition_by_inode(mc, parent_ino);
 	if (!mp) {
-		ret = -ENOENT;
-		goto unlock;
+		return -ENOENT;
 	}
 	ret = cfs_meta_readdir_internal(mc, mp, parent_ino, from, limit,
 					dentries);
 	if (ret != 0) {
 		ret = ret < 0 ? ret : -ret;
-		goto unlock;
+		return ret;
 	}
 
-unlock:
-	read_unlock(&mc->lock);
 	return ret;
 }
 
@@ -1693,20 +1655,16 @@ int cfs_meta_set_attr(struct cfs_meta_client *mc, u64 ino, struct iattr *attr)
 	struct cfs_meta_partition *mp;
 	int ret;
 
-	read_lock(&mc->lock);
 	mp = cfs_meta_get_partition_by_inode(mc, ino);
 	if (!mp) {
-		ret = -ENOENT;
-		goto unlock;
+		return -ENOENT;
 	}
 	ret = cfs_meta_set_attr_internal(mc, mp, ino, attr);
 	if (ret != 0) {
 		ret = ret < 0 ? ret : -ret;
-		goto unlock;
+		return ret;
 	}
 
-unlock:
-	read_unlock(&mc->lock);
 	return ret;
 }
 
@@ -1719,21 +1677,17 @@ int cfs_meta_set_xattr(struct cfs_meta_client *mc, u64 ino, const char *name,
 	struct cfs_meta_partition *mp;
 	int ret;
 
-	read_lock(&mc->lock);
 	mp = cfs_meta_get_partition_by_inode(mc, ino);
 	if (!mp) {
-		ret = -ENOENT;
-		goto unlock;
+		return -ENOENT;
 	}
 	ret = cfs_meta_set_xattr_internal(mc, mp, ino, name, value, value_len,
 					  flags);
 	if (ret != 0) {
 		ret = ret < 0 ? ret : -ret;
-		goto unlock;
+		return ret;
 	}
 
-unlock:
-	read_unlock(&mc->lock);
 	return ret;
 }
 
@@ -1747,22 +1701,18 @@ ssize_t cfs_meta_get_xattr(struct cfs_meta_client *mc, u64 ino,
 	size_t out_len;
 	ssize_t ret;
 
-	read_lock(&mc->lock);
 	mp = cfs_meta_get_partition_by_inode(mc, ino);
 	if (!mp) {
-		ret = -ENOENT;
-		goto unlock;
+		return -ENOENT;
 	}
 	ret = cfs_meta_get_xattr_internal(mc, mp, ino, name, value, size,
 					  &out_len);
 	if (ret != 0) {
 		ret = ret < 0 ? ret : -ret;
-		goto unlock;
+		return ret;
 	}
 	ret = out_len;
 
-unlock:
-	read_unlock(&mc->lock);
 	return ret;
 }
 
@@ -1776,21 +1726,17 @@ ssize_t cfs_meta_list_xattr(struct cfs_meta_client *mc, u64 ino, char *names,
 	size_t out_len;
 	ssize_t ret;
 
-	read_lock(&mc->lock);
 	mp = cfs_meta_get_partition_by_inode(mc, ino);
 	if (!mp) {
-		ret = -ENOENT;
-		goto unlock;
+		return -ENOENT;
 	}
 	ret = cfs_meta_list_xattr_internal(mc, mp, ino, names, size, &out_len);
 	if (ret != 0) {
 		ret = ret < 0 ? ret : -ret;
-		goto unlock;
+		return ret;
 	}
 	ret = out_len;
 
-unlock:
-	read_unlock(&mc->lock);
 	return ret;
 }
 
@@ -1805,17 +1751,14 @@ int cfs_meta_remove_xattr(struct cfs_meta_client *mc, u64 ino, const char *name)
 	read_lock(&mc->lock);
 	mp = cfs_meta_get_partition_by_inode(mc, ino);
 	if (!mp) {
-		ret = -ENOENT;
-		goto unlock;
+		return -ENOENT;
 	}
 	ret = cfs_meta_remove_xattr_internal(mc, mp, ino, name);
 	if (ret != 0) {
 		ret = ret < 0 ? ret : -ret;
-		goto unlock;
+		return ret;
 	}
 
-unlock:
-	read_unlock(&mc->lock);
 	return ret;
 }
 
@@ -1874,20 +1817,16 @@ int cfs_meta_list_extent(struct cfs_meta_client *mc, u64 ino, u64 *gen,
 	struct cfs_meta_partition *mp;
 	int ret;
 
-	read_lock(&mc->lock);
 	mp = cfs_meta_get_partition_by_inode(mc, ino);
 	if (!mp) {
-		ret = -ENOENT;
-		goto unlock;
+		return -ENOENT;
 	}
 	ret = cfs_meta_list_extent_internal(mc, mp, ino, gen, size, extents);
 	if (ret != 0) {
 		ret = ret < 0 ? ret : -ret;
-		goto unlock;
+		return ret;
 	}
 
-unlock:
-	read_unlock(&mc->lock);
 	return ret;
 }
 
@@ -1938,21 +1877,17 @@ int cfs_meta_append_extent(struct cfs_meta_client *mc, u64 ino,
 	struct cfs_meta_partition *mp;
 	int ret;
 
-	read_lock(&mc->lock);
 	mp = cfs_meta_get_partition_by_inode(mc, ino);
 	if (!mp) {
-		ret = -ENOENT;
-		goto unlock;
+		return -ENOENT;
 	}
 	ret = cfs_meta_append_extent_internal(mc, mp, ino, extent,
 					      discard_extents);
 	if (ret != 0) {
 		ret = ret < 0 ? ret : -ret;
-		goto unlock;
+		return ret;
 	}
 
-unlock:
-	read_unlock(&mc->lock);
 	return ret;
 }
 
@@ -1998,19 +1933,15 @@ int cfs_meta_truncate(struct cfs_meta_client *mc, u64 ino, loff_t size)
 	struct cfs_meta_partition *mp;
 	int ret;
 
-	read_lock(&mc->lock);
 	mp = cfs_meta_get_partition_by_inode(mc, ino);
 	if (!mp) {
-		ret = -ENOENT;
-		goto unlock;
+		return -ENOENT;
 	}
 	ret = cfs_meta_truncate_internal(mc, mp, ino, size);
 	if (ret != 0) {
 		ret = ret < 0 ? ret : -ret;
-		goto unlock;
+		return ret;
 	}
 
-unlock:
-	read_unlock(&mc->lock);
 	return ret;
 }
