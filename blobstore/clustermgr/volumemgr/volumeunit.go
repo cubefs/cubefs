@@ -100,6 +100,7 @@ func (v *VolumeMgr) AllocVolumeUnit(ctx context.Context, vuid proto.Vuid) (*cmap
 	}
 
 	policy := &diskmgr.AllocPolicy{
+		DiskType: proto.DiskTypeHDD,
 		CodeMode: vol.volInfoBase.CodeMode,
 		Vuids:    []proto.Vuid{newVuid.(proto.Vuid)},
 		Idc:      diskInfo.Idc,

@@ -167,7 +167,7 @@ func (t *topoMgr) ValidateNodeSetID(ctx context.Context, diskType proto.DiskType
 	defer t.lock.RUnlock()
 
 	curNodeSetID := t.curNodeSetID
-	if curNodeSetID < nodeSetID || nodeSetID == ECNodeSetID {
+	if curNodeSetID < nodeSetID || nodeSetID == ecNodeSetID {
 		span.Warn("invalid node set id")
 		return apierrors.ErrIllegalArguments
 	}

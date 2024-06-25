@@ -63,8 +63,8 @@ func (d *DiskMgr) LoadData(ctx context.Context) error {
 	}
 
 	allNodes := make(map[proto.NodeID]*nodeItem)
-	curNodeSetID := map[proto.NodeRole]proto.NodeSetID{proto.NodeRoleBlobNode: ECNodeSetID}
-	curDiskSetID := map[proto.NodeRole]proto.DiskSetID{proto.NodeRoleBlobNode: ECDiskSetID}
+	curNodeSetID := map[proto.NodeRole]proto.NodeSetID{proto.NodeRoleBlobNode: ecNodeSetID}
+	curDiskSetID := map[proto.NodeRole]proto.DiskSetID{proto.NodeRoleBlobNode: ecDiskSetID}
 	for _, node := range nodeDBs {
 		info := nodeInfoRecordToNodeInfo(node)
 		ni := &nodeItem{
