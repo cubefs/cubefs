@@ -169,6 +169,11 @@ func getVuidFromCm(ctx context.Context, cmCli *clustermgr.Client, dInfos []*blob
 		for _, info := range units {
 			fmt.Printf("  vuid=%d\n", info.Vuid)
 		}
+
+		// The blobnode has performed disk swapping, so the disks count pulled from CM may be greater than disks count on the blobnode. A prompt is needed.
+		if dInfo.Status != proto.DiskStatusDropped {
+			fmt.Printf("diskID=%d\tstatus=%d\tpath=%s\n", dInfo.DiskID, dInfo.Status, dInfo.Path)
+		}
 	}
 	return vuidCnt, nil
 }
@@ -302,18 +307,30 @@ func newCmClient(c *grumble.Context) *clustermgr.Client {
 
 func parseAllLocalDiskIdsByCm(c *grumble.Context) (diskInfos []*blobnode.DiskInfo, err error) {
 	const prefix = "http://"
+	const maxCnt = 100
 	host := c.Flags.String("node_host")
 
 	cmCli := newCmClient(c)
-	ret, err := cmCli.ListDisk(context.Background(), &clustermgr.ListOptionArgs{Host: prefix + host})
-	if err != nil {
-		return nil, err
+	marker := proto.DiskID(0)
+	ret := clustermgr.ListDiskRet{}
+	for {
+		ret, err = cmCli.ListDisk(context.Background(),
+			&clustermgr.ListOptionArgs{Host: prefix + host, Count: maxCnt, Marker: marker})
+		if err != nil {
+			return nil, err
+		}
+
+		diskInfos = append(diskInfos, ret.Disks...)
+		if len(diskInfos) == 0 {
+			return nil, fmt.Errorf("error: empty, invalid disk ids")
+		}
+
+		if ret.Marker == proto.InvalidDiskID {
+			break
+		}
+		marker = ret.Marker
 	}
 
-	diskInfos = ret.Disks
-	if len(diskInfos) == 0 {
-		return nil, fmt.Errorf("error: empty, invalid disk ids")
-	}
 	return diskInfos, nil
 }
 
