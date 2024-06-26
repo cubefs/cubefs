@@ -115,6 +115,9 @@ func (d *DiskMgr) refresh(ctx context.Context) {
 				if _, ok := diskSetAllocators[diskType]; !ok {
 					diskSetAllocators[diskType] = make(diskSetAllocatorMap)
 				}
+				if _, ok := spaceStatInfos[nodeRole][diskType]; !ok {
+					spaceStatInfos[nodeRole][diskType] = &clustermgr.SpaceStatInfo{}
+				}
 
 				ecDiskSet[diskType] = diskTypeDisks[diskType]
 				ecSpaceStateInfo := &clustermgr.SpaceStatInfo{}
