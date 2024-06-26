@@ -917,7 +917,7 @@ func (c *Cluster) handleDataNodeTaskResponse(nodeAddr string, task *proto.AdminT
 		err = c.handleResponseToLoadDataPartition(task.OperatorAddr, response)
 	case proto.OpDataNodeHeartbeat:
 		response := task.Response.(*proto.DataNodeHeartbeatResponse)
-		err = c.handleDataNodeHeartbeatResp(task.OperatorAddr, response)
+		err = c.handleDataNodeHeartbeatResp(task.OperatorAddr, response, task.RequestID)
 	case proto.OpVersionOperation:
 		response := task.Response.(*proto.MultiVersionOpResponse)
 		err = c.dealOpDataNodeMultiVerResp(task.OperatorAddr, response)
@@ -981,12 +981,13 @@ func (c *Cluster) handleResponseToLoadDataPartition(nodeAddr string, resp *proto
 	return
 }
 
-func (c *Cluster) handleDataNodeHeartbeatResp(nodeAddr string, resp *proto.DataNodeHeartbeatResponse) (err error) {
+func (c *Cluster) handleDataNodeHeartbeatResp(nodeAddr string, resp *proto.DataNodeHeartbeatResponse, reqId string) (err error) {
 	var (
 		dataNode *DataNode
 		logMsg   string
 	)
-	log.LogInfof("action[handleDataNodeHeartbeatResp] clusterID[%v] receive dataNode[%v] heartbeat, ", c.Name, nodeAddr)
+	log.LogInfof("action[handleDataNodeHeartbeatResp] clusterID[%v] receive dataNode[%v] heartbeat %v ",
+		c.Name, nodeAddr, reqId)
 	if resp.Status != proto.TaskSucceeds {
 		Warn(c.Name, fmt.Sprintf("action[handleDataNodeHeartbeatResp] clusterID[%v] dataNode[%v] heartbeat task failed",
 			c.Name, nodeAddr))
