@@ -144,6 +144,7 @@ type ClusterView struct {
 	DataNodeStatInfo             *NodeStatInfo
 	MetaNodeStatInfo             *NodeStatInfo
 	VolStatInfo                  []*VolStatInfo
+	StatOftorageClass            []*StatOftorageClass
 	BadPartitionIDs              []BadPartitionView
 	BadMetaPartitionIDs          []BadPartitionView
 	MasterNodes                  []NodeView
