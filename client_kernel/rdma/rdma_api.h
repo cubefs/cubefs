@@ -13,9 +13,7 @@
 
 #define IBVSOCKET_CONN_TIMEOUT_MS 5000
 #define MSG_LEN 4096
-#define BLOCK_NUM 8
-#define DATA_BUF_NUM 32
-#define MAX_RETRY_COUNT 5000
+#define BLOCK_NUM 32
 #define TIMEOUT_JS 5000
 
 enum IBVSocketConnState {

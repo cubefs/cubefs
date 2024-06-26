@@ -24,7 +24,7 @@ char* parse_sinaddr(const struct in_addr saddr)
 int cfs_rdma_create(struct sockaddr_storage *ss, struct cfs_log *log,
 		    struct cfs_socket **cskp, u32 rdma_port)
 {
-	struct cfs_socket *csk;
+	struct cfs_socket *csk = NULL;
 	u32 key;
 	struct sockaddr_in dst_addr;
 
