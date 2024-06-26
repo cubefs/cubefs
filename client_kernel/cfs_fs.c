@@ -1522,7 +1522,7 @@ static int cfs_fs_fill_super(struct super_block *sb, void *data, int silent)
 
 	sb->s_fs_info = cmi;
 #ifdef KERNEL_HAS_SUPER_SETUP_BDI_NAME
-	ret = super_setup_bdi_name(sb, "cubefs-%s", cmi->options->volume);
+	ret = super_setup_bdi_name(sb, "cubefs-%s", cmi->unique_name);
 	if (ret < 0)
 		return ret;
 #else
@@ -1787,12 +1787,12 @@ static int init_proc(struct cfs_mount_info *cmi)
 	char *proc_name;
 
 	proc_name =
-		kzalloc(strlen("fs/cubefs/") + strlen(cmi->options->volume) + 1,
+		kzalloc(strlen("fs/cubefs/") + strlen(cmi->unique_name) + 1,
 			GFP_KERNEL);
 	if (!proc_name)
 		return -ENOMEM;
 
-	sprintf(proc_name, "fs/cubefs/%s", cmi->options->volume);
+	sprintf(proc_name, "fs/cubefs/%s", cmi->unique_name);
 	cmi->proc_dir = proc_mkdir(proc_name, NULL);
 	if (!cmi->proc_dir) {
 		kfree(proc_name);
@@ -1843,6 +1843,20 @@ static void update_limit_work_cb(struct work_struct *work)
 	cfs_cluster_info_clear(&info);
 }
 
+bool cfs_unique_name_exist(char *unique_name) {
+	char proc_file_name[CMI_UNI_NAME_LEN];
+	struct file *fp = NULL;
+
+	sprintf(proc_file_name, "/proc/fs/cubefs/%s", unique_name);
+	fp = filp_open(proc_file_name, O_RDONLY, 0);
+	if (IS_ERR(fp)) {
+		return false;
+	}
+
+	filp_close(fp, 0);
+	return true;
+}
+
 /**
  * @return mount_info if success, error code if failed.
  */
@@ -1853,11 +1867,30 @@ struct cfs_mount_info *cfs_mount_info_new(struct cfs_options *options)
 #ifndef KERNEL_HAS_SUPER_SETUP_BDI_NAME
 	int ret;
 #endif
+	size_t len = 0;
+	int i = 0;
 
 	cmi = kzalloc(sizeof(*cmi), GFP_NOFS);
 	if (!cmi)
 		return ERR_PTR(-ENOMEM);
 	cmi->options = options;
+	if (options->volume) {
+		len = strlen(options->volume);
+		if (len > CMI_UNI_NAME_LEN - 32) {
+			len = CMI_UNI_NAME_LEN - 32;
+		}
+		strncpy(cmi->unique_name, options->volume, len);
+		i = 0;
+		do {
+			sprintf(cmi->unique_name+len, "-%d", prandom_u32_max(10000));
+			i++;
+		} while(cfs_unique_name_exist(cmi->unique_name) && i < 10000);
+		cfs_pr_info("set unique_name: %s\n", cmi->unique_name);
+	} else {
+		cfs_pr_err("the volume name is null\n");
+		strcpy(cmi->unique_name, "null-volume");
+	}
+
 	atomic_long_set(&cmi->links_limit, CFS_LINKS_DEFAULT);
 	INIT_DELAYED_WORK(&cmi->update_limit_work, update_limit_work_cb);
 
@@ -1877,7 +1910,7 @@ struct cfs_mount_info *cfs_mount_info_new(struct cfs_options *options)
 		goto err_bdi;
 	}
 	cmi->bdi.ra_pages = (VM_MAX_READAHEAD * 1024) / PAGE_SIZE;
-	ret = bdi_register(&cmi->bdi, NULL, "cubefs-%s", options->volume);
+	ret = bdi_register(&cmi->bdi, NULL, "cubefs-%s", cmi->unique_name);
 	if (ret < 0) {
 		err_ptr = ERR_PTR(ret);
 		goto err_bdi2;

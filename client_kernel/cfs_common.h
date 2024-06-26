@@ -47,6 +47,7 @@
 #include <net/tcp.h>
 #endif
 
+#define CMI_UNI_NAME_LEN 64
 
 struct cfs_mount_info {
 	struct cfs_options *options;
@@ -59,6 +60,7 @@ struct cfs_mount_info {
 	atomic_long_t links_limit;
 	struct delayed_work update_limit_work;
 	struct backing_dev_info bdi;
+	char unique_name[CMI_UNI_NAME_LEN];
 };
 
 #undef pr_fmt
