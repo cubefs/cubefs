@@ -74,10 +74,8 @@ func (d *DiskMgr) LoadData(ctx context.Context) error {
 		}
 		allNodes[info.NodeID] = ni
 		d.hostPathFilter.Store(ni.genFilterKey(), ni.nodeID)
-		// filter dropped node, do not add into cluster topology
-		if ni.isUsingStatus() {
-			d.topoMgrs[info.Role].AddNodeToNodeSet(ni)
-		}
+		// not filter dropped node to generate nodeSet
+		d.topoMgrs[info.Role].AddNodeToNodeSet(ni)
 		if info.NodeSetID >= curNodeSetID[info.Role] {
 			curNodeSetID[info.Role] = info.NodeSetID
 		}
@@ -102,7 +100,7 @@ func (d *DiskMgr) LoadData(ctx context.Context) error {
 			d.hostPathFilter.Store(di.genFilterKey(), 1)
 		}
 		ni, ok := d.getNode(info.NodeID)
-		if ok && !di.dropping && di.needFilter() { // compatible case
+		if ok { // compatible case and not filter dropped disk to generate diskSet
 			d.topoMgrs[ni.info.Role].AddDiskToDiskSet(ni.info.DiskType, ni.info.NodeSetID, di)
 			ni.disks[info.DiskID] = info
 		}
