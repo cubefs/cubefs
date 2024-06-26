@@ -95,7 +95,7 @@ func NewS3Scanner(adminTask *proto.AdminTask, l *LcNode) (*LcScanner, error) {
 
 	var ebsClient *blobstore.BlobStoreClient
 	if l.ebsAddr != "" {
-		var ebsConfig = access.Config{
+		ebsConfig := access.Config{
 			ConnMode: access.NoLimitConnMode,
 			Consul: access.ConsulConfig{
 				Address: l.ebsAddr,
@@ -122,7 +122,7 @@ func NewS3Scanner(adminTask *proto.AdminTask, l *LcNode) (*LcScanner, error) {
 			scanner.Volume, volumeInfo.Status)
 		return nil, proto.ErrVolNotExists
 	}
-	var extentConfig = &stream.ExtentConfig{
+	extentConfig := &stream.ExtentConfig{
 		Volume:                      scanner.Volume,
 		Masters:                     l.masters,
 		FollowerRead:                true,

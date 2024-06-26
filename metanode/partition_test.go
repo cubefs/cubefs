@@ -166,18 +166,22 @@ func TestMetaPartition_LoadHybridCouldMigrationSnapshot(t *testing.T) {
 	ino := NewInode(2, 0)
 	ino.StorageClass = proto.StorageClass_BlobStore
 	ino.HybridCouldExtents.sortedEks = NewSortedObjExtentsFromObjEks(
-		[]proto.ObjExtentKey{{Size: uint64(1024), FileOffset: uint64(0), BlobSize: 4194304, BlobsLen: 1,
-			Blobs: []proto.Blob{{Count: 1, MinBid: 30138734, Vid: 525}}}})
+		[]proto.ObjExtentKey{{
+			Size: uint64(1024), FileOffset: uint64(0), BlobSize: 4194304, BlobsLen: 1,
+			Blobs: []proto.Blob{{Count: 1, MinBid: 30138734, Vid: 525}},
+		}})
 	ino.HybridCouldExtentsMigration.storageClass = proto.StorageClass_Replica_SSD
-	ino.HybridCouldExtentsMigration.sortedEks = NewSortedExtentsFromEks([]proto.ExtentKey{{FileOffset: 0, PartitionId: 164,
-		ExtentId: 55, ExtentOffset: 0, Size: 1024, CRC: 0}})
+	ino.HybridCouldExtentsMigration.sortedEks = NewSortedExtentsFromEks([]proto.ExtentKey{{
+		FileOffset: 0, PartitionId: 164,
+		ExtentId: 55, ExtentOffset: 0, Size: 1024, CRC: 0,
+	}})
 	mp.inodeTree.ReplaceOrInsert(ino, true)
-	//dentry := &Dentry{}
-	//mp.dentryTree.ReplaceOrInsert(dentry, true)
-	//extend := &Extend{}
-	//mp.extendTree.ReplaceOrInsert(extend, true)
-	//multipart := &Multipart{}
-	//mp.multipartTree.ReplaceOrInsert(multipart, true)
+	// dentry := &Dentry{}
+	// mp.dentryTree.ReplaceOrInsert(dentry, true)
+	// extend := &Extend{}
+	// mp.extendTree.ReplaceOrInsert(extend, true)
+	// multipart := &Multipart{}
+	// mp.multipartTree.ReplaceOrInsert(multipart, true)
 	msg := &storeMsg{
 		command:        1,
 		applyIndex:     0,

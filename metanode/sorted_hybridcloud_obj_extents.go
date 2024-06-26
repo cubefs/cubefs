@@ -3,6 +3,7 @@ package metanode
 import (
 	"bytes"
 	"fmt"
+
 	"github.com/cubefs/cubefs/proto"
 )
 
@@ -21,7 +22,7 @@ func NewSortedHybridCloudExtents() *SortedHybridCloudExtents {
 type SortedHybridCloudExtentsMigration struct {
 	sortedEks    interface{}
 	storageClass uint32
-	expiredTime  int64 //delay delete
+	expiredTime  int64 // delay delete
 }
 
 func (sem *SortedHybridCloudExtentsMigration) GetSortedEks() interface{} {

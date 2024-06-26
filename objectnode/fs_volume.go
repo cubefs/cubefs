@@ -700,7 +700,7 @@ func (v *Volume) PutObject(path string, reader io.Reader, opt *PutFileOption) (f
 	}()
 
 	md5Hash := md5.New()
-	var isCache = false
+	isCache := false
 	if proto.IsStorageClassBlobStore(invisibleTempDataInode.StorageClass) {
 		isCache = true
 	}
@@ -1041,7 +1041,7 @@ func (v *Volume) WritePart(path string, multipartId string, partId uint16, reade
 		etag    string
 		md5Hash = md5.New()
 	)
-	var isCache = false
+	isCache := false
 	if proto.IsStorageClassBlobStore(tempInodeInfo.StorageClass) {
 		isCache = true
 	}
@@ -1442,7 +1442,7 @@ func (v *Volume) appendInodeHash(h hash.Hash, inode uint64, total uint64, preAll
 		if uint64(size) > rest {
 			size = int(rest)
 		}
-		//no reference to this appendInodeHash
+		// no reference to this appendInodeHash
 		n, err = v.ec.Read(inode, buf, offset, size, proto.StorageClass_Unspecified, false)
 		if err != nil && err != io.EOF {
 			log.LogErrorf("appendInodeHash: data read fail, inode(%v) offset(%v) size(%v) err(%v)", inode, offset, size, err)
@@ -1546,7 +1546,7 @@ func (v *Volume) loadUserDefinedMetadata(inode uint64) (metadata map[string]stri
 }
 
 func (v *Volume) readFile(inode, inodeSize uint64, path string, writer io.Writer, offset, size uint64, storageClass uint32) (err error) {
-	var isCache = false
+	isCache := false
 	if proto.IsStorageClassBlobStore(storageClass) {
 		isCache = true
 	}
@@ -2623,7 +2623,7 @@ func (v *Volume) CopyFile(sv *Volume, sourcePath, targetPath, metaDirective stri
 		log.LogErrorf("CopyFile: copy source path file size greater than 5GB, source path(%v), target path(%v)", sourcePath, targetPath)
 		return nil, syscall.EFBIG
 	}
-	var isCache = false
+	isCache := false
 	if proto.IsStorageClassBlobStore(sInodeInfo.StorageClass) {
 		isCache = true
 	}

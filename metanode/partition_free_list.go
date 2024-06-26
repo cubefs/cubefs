@@ -195,7 +195,7 @@ func (mp *metaPartition) deleteWorker() {
 			if ino == 0 {
 				break
 			}
-			//TODO:tangjingyu，distinguished remove inode and migrateEks
+			// TODO:tangjingyu，distinguished remove inode and migrateEks
 			log.LogDebugf("action[deleteWorker]: vol(%v) mp(%v) remove inode(%v)", mp.config.VolName, mp.config.PartitionId, ino)
 
 			// check inode nlink == 0 and deleteMarkFlag unset
@@ -260,7 +260,7 @@ func (mp *metaPartition) batchDeleteExtentsByPartition(partitionDeleteExtents ma
 	for i := 0; i < len(allInodes); i++ {
 		successDeleteExtentCnt := 0
 		inode := allInodes[i]
-		var extents = NewSortedExtents()
+		extents := NewSortedExtents()
 		if isCache {
 			extents = inode.Extents
 		} else if isMigration {
@@ -335,8 +335,7 @@ func (mp *metaPartition) deleteMarkedInodes(inoSlice []uint64) {
 	}
 	// step1: delete inode by current storage class
 	if len(replicaInodes) > 0 {
-		shouldCommitReplicaInode, shouldRePushToFreeListReplicaInode :=
-			mp.deleteMarkedReplicaInodes(replicaInodes, false, false)
+		shouldCommitReplicaInode, shouldRePushToFreeListReplicaInode := mp.deleteMarkedReplicaInodes(replicaInodes, false, false)
 		allInodes = append(allInodes, shouldCommitReplicaInode...)
 		shouldRePushToFreeList = append(shouldRePushToFreeList, shouldRePushToFreeListReplicaInode...)
 	}
@@ -355,15 +354,14 @@ func (mp *metaPartition) deleteMarkedInodes(inoSlice []uint64) {
 			replicaInodes = append(replicaInodes, ino.Inode)
 		} else if proto.IsStorageClassBlobStore(ino.HybridCouldExtentsMigration.storageClass) {
 			ebsInodes = append(ebsInodes, ino.Inode)
-		} else { //StorageClass_Unspecified
+		} else { // StorageClass_Unspecified
 			leftInodes = append(leftInodes, ino)
 		}
 	}
 	allInodes = make([]*Inode, 0)
 	allInodes = append(allInodes, leftInodes...)
 	if len(replicaInodes) > 0 {
-		shouldCommitReplicaInode, shouldRePushToFreeListReplicaInode :=
-			mp.deleteMarkedReplicaInodes(replicaInodes, false, true)
+		shouldCommitReplicaInode, shouldRePushToFreeListReplicaInode := mp.deleteMarkedReplicaInodes(replicaInodes, false, true)
 		allInodes = append(allInodes, shouldCommitReplicaInode...)
 		shouldRePushToFreeList = append(shouldRePushToFreeList, shouldRePushToFreeListReplicaInode...)
 	}
@@ -390,8 +388,7 @@ func (mp *metaPartition) deleteMarkedInodes(inoSlice []uint64) {
 	allInodes = make([]*Inode, 0)
 	allInodes = append(allInodes, leftInodes...)
 	if len(replicaInodes) > 0 {
-		shouldCommitReplicaInode, shouldRePushToFreeListReplicaInode :=
-			mp.deleteMarkedReplicaInodes(replicaInodes, true, false)
+		shouldCommitReplicaInode, shouldRePushToFreeListReplicaInode := mp.deleteMarkedReplicaInodes(replicaInodes, true, false)
 		allInodes = append(allInodes, shouldCommitReplicaInode...)
 		shouldRePushToFreeList = append(shouldRePushToFreeList, shouldRePushToFreeListReplicaInode...)
 	}
@@ -423,7 +420,7 @@ func (mp *metaPartition) deleteMarkedInodes(inoSlice []uint64) {
 			}
 		}
 	}
-	//only reset migration extent key
+	// only reset migration extent key
 	if len(deleteMigrationEkInodes) > 0 {
 		bufSlice := make([]byte, 0, 8*len(deleteMigrationEkInodes))
 		for _, inode := range deleteMigrationEkInodes {

@@ -2,6 +2,7 @@ package proto
 
 import (
 	"bytes"
+
 	"github.com/cubefs/cubefs/util/btree"
 )
 

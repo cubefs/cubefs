@@ -125,7 +125,7 @@ func (t *TransitionMgr) migrate(e *proto.ScanDentry) (err error) {
 	md5Value = hex.EncodeToString(md5Hash.Sum(nil))
 	log.LogDebugf("migrate file finished, inode(%v), md5Value: %v", e.Inode, md5Value)
 
-	//check read from src extent
+	// check read from src extent
 	srcMd5Hash := md5.New()
 	err = t.readFromExtentClient(e, srcMd5Hash, false, 0, 0)
 	if err != nil {
@@ -140,7 +140,7 @@ func (t *TransitionMgr) migrate(e *proto.ScanDentry) (err error) {
 		return
 	}
 
-	//check read from dst migration extent
+	// check read from dst migration extent
 	dstMd5Hash := md5.New()
 	err = t.readFromExtentClient(e, dstMd5Hash, true, 0, 0)
 	if err != nil {
@@ -246,11 +246,11 @@ func (t *TransitionMgr) migrateToEbs(e *proto.ScanDentry) (oek []proto.ObjExtent
 	}
 	log.LogDebugf("migrateToEbs finished, inode(%v), oek: %v, md5Value: %v", e.Inode, oek, md5Value)
 
-	//check read from extent
+	// check read from extent
 	var srcMd5 []string
 	var from int
 	var part uint64 = util.ExtentSize
-	var rest = e.Size
+	rest := e.Size
 	for rest > 0 {
 		var getSize uint64
 		if rest > part {

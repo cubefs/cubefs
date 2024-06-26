@@ -408,7 +408,7 @@ func (l *LcNode) debugServiceStart() {
 		Path("/debug/getFile").
 		HandlerFunc(l.debugServiceGetFile)
 
-	var server = &http.Server{
+	server := &http.Server{
 		Addr:         ":8088",
 		Handler:      router,
 		ReadTimeout:  5 * time.Minute,
@@ -429,7 +429,7 @@ func (l *LcNode) debugServiceGetFile(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, fmt.Sprintf("ParseForm err: %v", err.Error()), http.StatusBadRequest)
 		return
 	}
-	var vol = r.FormValue("vol")
+	vol := r.FormValue("vol")
 	var ino uint64
 	if ino, err = strconv.ParseUint(r.FormValue("ino"), 10, 64); err != nil {
 		http.Error(w, fmt.Sprintf("ParseUint ino err: %v", err.Error()), http.StatusBadRequest)
@@ -461,7 +461,7 @@ func (l *LcNode) debugServiceGetFile(w http.ResponseWriter, r *http.Request) {
 		asc = append(asc, uint32(scUint64))
 	}
 
-	var metaConfig = &meta.MetaConfig{
+	metaConfig := &meta.MetaConfig{
 		Volume:        vol,
 		Masters:       l.masters,
 		Authenticate:  false,
@@ -473,7 +473,7 @@ func (l *LcNode) debugServiceGetFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer metaWrapper.Close()
-	var extentConfig = &stream.ExtentConfig{
+	extentConfig := &stream.ExtentConfig{
 		Volume:                      vol,
 		Masters:                     l.masters,
 		FollowerRead:                true,

@@ -1632,7 +1632,7 @@ func (c *client) mkdir(pino uint64, name string, mode uint32, fullPath string) (
 }
 
 func (c *client) openStream(f *file) {
-	var isCache = false
+	isCache := false
 	if proto.IsStorageClassBlobStore(f.storageClass) {
 		isCache = true
 	}

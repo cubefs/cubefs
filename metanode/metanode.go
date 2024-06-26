@@ -38,7 +38,7 @@ import (
 
 var (
 	clusterInfo *proto.ClusterInfo
-	//masterClient   *masterSDK.MasterClient
+	// masterClient   *masterSDK.MasterClient
 	masterClient              *masterSDK.MasterCLientWithResolver
 	configTotalMem            uint64
 	serverPort                string

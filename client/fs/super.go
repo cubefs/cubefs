@@ -17,7 +17,6 @@ package fs
 import (
 	"context"
 	"fmt"
-	"github.com/cubefs/cubefs/blobstore/api/access"
 	"net/http"
 	"os"
 	"path"
@@ -26,6 +25,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/cubefs/cubefs/blobstore/api/access"
 
 	"github.com/cubefs/cubefs/blockcache/bcache"
 	"github.com/cubefs/cubefs/client/common"

@@ -241,7 +241,7 @@ func (s *Streamer) server() {
 			if !s.openForWrite {
 				renewalTimer.Stop()
 			} else {
-				//renewal forbidden migration
+				// renewal forbidden migration
 				err := s.client.renewalForbiddenMigration(s.inode)
 				if err != nil {
 					log.LogWarnf("ino(%v) renewalForbiddenMigration failed err %v", s.inode, err.Error())

@@ -359,7 +359,7 @@ func getExtentsByMpId(dir string, volname string, mpId string) {
 		slog.Fatalf("Open normalFile failed, mp %s, err: %v", mpId, err)
 	}
 
-	normalMigrateFile, err := os.OpenFile(normalMigratePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	normalMigrateFile, err := os.OpenFile(normalMigratePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
 	if err != nil {
 		slog.Fatalf("Open normalMigrateFile failed, mp %s, err: %v", mpId, err)
 	}
@@ -523,7 +523,7 @@ func getExtentsByMpId(dir string, volname string, mpId string) {
 					walkBuf = normalMigrateBuf
 					replicaMigrateExtents.Range(walkFunc)
 				}
-				//TODO: handle other impl type of HybridCouldExtentsMigration
+				// TODO: handle other impl type of HybridCouldExtentsMigration
 			} else {
 				log.LogDebugf("HybridCouldExtentsMigration is nil, mpId(%v) inode(%v) host(%v) storageClass(%v)",
 					mpId, ino.Inode, addr, proto.StorageClassString(ino.HybridCouldExtentsMigration.GetStorageClass()))
@@ -608,7 +608,7 @@ func InitLocalDir(dir string, volname string, partitionId string, dirType string
 	normalMigratePath := filepath.Join(dir, volname, dirType, normalDir, migrateDir)
 	_, err = os.Stat(normalMigratePath)
 	if os.IsNotExist(err) {
-		if err = os.MkdirAll(normalMigratePath, 0755); err != nil {
+		if err = os.MkdirAll(normalMigratePath, 0o755); err != nil {
 			slog.Fatalf("create dir failed, path %s, err : %v", normalMigratePath, err)
 			return
 		}

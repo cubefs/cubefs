@@ -435,7 +435,7 @@ func (c *Client) OpenFile(path string, flags int, mode uint32) (*File, error) {
 		return nil, syscall.EMFILE
 	}
 
-	var openForWrite = false
+	openForWrite := false
 	if fuseFlags&0x0f != syscall.O_RDONLY {
 		openForWrite = true
 	}

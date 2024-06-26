@@ -16,11 +16,12 @@ package wrapper
 
 import (
 	"fmt"
-	"github.com/cubefs/cubefs/proto"
 	"math/rand"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/cubefs/cubefs/proto"
 
 	"github.com/cubefs/cubefs/util/log"
 )

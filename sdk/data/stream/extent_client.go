@@ -439,12 +439,12 @@ func (client *ExtentClient) OpenStream(inode uint64, openForWrite, isCache bool)
 		s = NewStreamer(client, inode, openForWrite, isCache)
 		client.streamers[inode] = s
 	} else {
-		//If you open a file in write mode first and then open the same file
-		//in read mode without modifying any attributes, maintaining the file's immutability status.
+		// If you open a file in write mode first and then open the same file
+		// in read mode without modifying any attributes, maintaining the file's immutability status.
 		if !s.openForWrite {
 			s.openForWrite = openForWrite
 		}
-		//TODO: update isCache?
+		// TODO: update isCache?
 	}
 	return s.IssueOpenRequest()
 }
@@ -513,7 +513,7 @@ func (client *ExtentClient) RefreshExtentsCache(inode uint64) error {
 	if s == nil {
 		return nil
 	}
-	var isMigration = false
+	isMigration := false
 	if s.isCache {
 		isMigration = true
 	}
@@ -626,7 +626,7 @@ func (client *ExtentClient) Flush(inode uint64) error {
 }
 
 func (client *ExtentClient) Read(inode uint64, data []byte, offset int, size int, storageClass uint32, isMigration bool) (read int, err error) {
-	//log.LogErrorf("======> ExtentClient Read Enter, inode(%v), len(data)=(%v), offset(%v), size(%v) storageClass(%v) isMigration(%v)",
+	// log.LogErrorf("======> ExtentClient Read Enter, inode(%v), len(data)=(%v), offset(%v), size(%v) storageClass(%v) isMigration(%v)",
 	//	inode, len(data), offset, size, storageClass, isMigration)
 	// t1 := time.Now()
 	beg := time.Now()

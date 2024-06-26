@@ -252,7 +252,7 @@ func (ebs *BlobStoreClient) Put(ctx context.Context, volName string, f io.Reader
 
 	var from uint64
 	var part uint64 = util.ExtentSize
-	var rest = size
+	rest := size
 	for rest > 0 {
 		var putSize uint64
 		if rest > part {
@@ -346,7 +346,7 @@ func (ebs *BlobStoreClient) Get(ctx context.Context, volName string, offset uint
 		BlobSize:  oek.BlobSize,
 		Blobs:     sliceInfos,
 	}
-	//func get has retry
+	// func get has retry
 	log.LogDebugf("TRACE Ebs Read, oek(%v) loc(%v)", oek, loc)
 	defer func() {
 		if body != nil {

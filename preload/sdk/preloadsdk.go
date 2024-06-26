@@ -500,7 +500,7 @@ func (c *PreLoadClient) preloadFileWorker(id int64, jobs <-chan fileInfo, wg *sy
 			}
 
 			_, err = c.ec.Write(ino, int(objExtent.FileOffset), buf, 0, nil, c.CacheDpStorageClass, false)
-			//in preload mode,once extend_hander set to error, streamer is set to error
+			// in preload mode,once extend_hander set to error, streamer is set to error
 			// so write should fail immediately
 			if err != nil {
 				subErr = true

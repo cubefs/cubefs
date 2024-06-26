@@ -4,12 +4,13 @@ import (
 	"crypto/md5"
 	"encoding/hex"
 	"fmt"
-	"github.com/cubefs/cubefs/proto"
 	"io"
 	"net/http"
 	"os"
 	"path"
 	"testing"
+
+	"github.com/cubefs/cubefs/proto"
 
 	"github.com/stretchr/testify/require"
 )
