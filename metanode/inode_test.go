@@ -3,12 +3,13 @@ package metanode
 import (
 	"bytes"
 	"encoding/binary"
-	"github.com/cubefs/cubefs/proto"
-	"github.com/cubefs/cubefs/util/timeutil"
-	"github.com/stretchr/testify/assert"
 	"reflect"
 	"sync"
 	"testing"
+
+	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util/timeutil"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestEmptyV4Inode_Marshal(t *testing.T) {
@@ -24,9 +25,10 @@ func TestEmptyV4Inode_Marshal(t *testing.T) {
 func TestHDDV4Inode_Marshal(t *testing.T) {
 	ino := NewInode(1024, 0)
 	ino.StorageClass = proto.MediaType_HDD
-	ino.HybridCouldExtents.sortedEks =
-		NewSortedExtentsFromEks([]proto.ExtentKey{{FileOffset: 11, PartitionId: 12,
-			ExtentId: 13, ExtentOffset: 0, Size: 0, CRC: 0}})
+	ino.HybridCouldExtents.sortedEks = NewSortedExtentsFromEks([]proto.ExtentKey{{
+		FileOffset: 11, PartitionId: 12,
+		ExtentId: 13, ExtentOffset: 0, Size: 0, CRC: 0,
+	}})
 	var data []byte
 	data, _ = ino.Marshal()
 	targetIno := NewInode(0, 0)
@@ -61,12 +63,15 @@ func TestEBSV4Inode_Marshal(t *testing.T) {
 func TestSDDToHDDV4Inode_Marshal(t *testing.T) {
 	ino := NewInode(1024, 0)
 	ino.StorageClass = proto.MediaType_SSD
-	ino.HybridCouldExtents.sortedEks =
-		NewSortedExtentsFromEks([]proto.ExtentKey{{FileOffset: 11, PartitionId: 12,
-			ExtentId: 13, ExtentOffset: 0, Size: 0, CRC: 0}})
+	ino.HybridCouldExtents.sortedEks = NewSortedExtentsFromEks([]proto.ExtentKey{{
+		FileOffset: 11, PartitionId: 12,
+		ExtentId: 13, ExtentOffset: 0, Size: 0, CRC: 0,
+	}})
 	ino.HybridCouldExtentsMigration.storageClass = proto.MediaType_HDD
-	ino.HybridCouldExtentsMigration.sortedEks = NewSortedExtentsFromEks([]proto.ExtentKey{{FileOffset: 11, PartitionId: 14,
-		ExtentId: 16, ExtentOffset: 0, Size: 0, CRC: 0}})
+	ino.HybridCouldExtentsMigration.sortedEks = NewSortedExtentsFromEks([]proto.ExtentKey{{
+		FileOffset: 11, PartitionId: 14,
+		ExtentId: 16, ExtentOffset: 0, Size: 0, CRC: 0,
+	}})
 	var data []byte
 	data, _ = ino.Marshal()
 	targetIno := NewInode(0, 0)
@@ -78,9 +83,10 @@ func TestSDDToHDDV4Inode_Marshal(t *testing.T) {
 func TestSDDToEBSV4Inode_Marshal(t *testing.T) {
 	ino := NewInode(1024, 0)
 	ino.StorageClass = proto.MediaType_SSD
-	ino.HybridCouldExtents.sortedEks =
-		NewSortedExtentsFromEks([]proto.ExtentKey{{FileOffset: 11, PartitionId: 12,
-			ExtentId: 13, ExtentOffset: 0, Size: 0, CRC: 0}})
+	ino.HybridCouldExtents.sortedEks = NewSortedExtentsFromEks([]proto.ExtentKey{{
+		FileOffset: 11, PartitionId: 12,
+		ExtentId: 13, ExtentOffset: 0, Size: 0, CRC: 0,
+	}})
 	ino.HybridCouldExtentsMigration.storageClass = proto.StorageClass_BlobStore
 	ino.HybridCouldExtentsMigration.sortedEks = NewSortedObjExtentsFromObjEks(
 		[]proto.ObjExtentKey{{Size: uint64(100), FileOffset: uint64(100)}})
@@ -95,8 +101,10 @@ func TestV1InodeStoreInSSDToV4Inode_UnMarshal(t *testing.T) {
 	legacyReplicaStorageClass = proto.StorageClass_Replica_SSD
 	//
 	ino := NewOldVersionInode(1024, 0)
-	ino.Extents = NewSortedExtentsFromEks([]proto.ExtentKey{{FileOffset: 11, PartitionId: 12,
-		ExtentId: 13, ExtentOffset: 0, Size: 0, CRC: 0}})
+	ino.Extents = NewSortedExtentsFromEks([]proto.ExtentKey{{
+		FileOffset: 11, PartitionId: 12,
+		ExtentId: 13, ExtentOffset: 0, Size: 0, CRC: 0,
+	}})
 	var data []byte
 	data, _ = ino.Marshal()
 	targetIno := NewInode(0, 0)
@@ -139,8 +147,10 @@ func TestV1InodeStoreInEBSWithCacheToV4Inode_UnMarshal(t *testing.T) {
 	ino := NewOldVersionInode(1024, 0)
 	ino.ObjExtents = NewSortedObjExtentsFromObjEks(
 		[]proto.ObjExtentKey{{Size: uint64(100), FileOffset: uint64(100)}})
-	ino.Extents = NewSortedExtentsFromEks([]proto.ExtentKey{{FileOffset: 11, PartitionId: 12,
-		ExtentId: 13, ExtentOffset: 0, Size: 0, CRC: 0}})
+	ino.Extents = NewSortedExtentsFromEks([]proto.ExtentKey{{
+		FileOffset: 11, PartitionId: 12,
+		ExtentId: 13, ExtentOffset: 0, Size: 0, CRC: 0,
+	}})
 	var data []byte
 	data, _ = ino.Marshal()
 	targetIno := NewInode(0, 0)
@@ -181,11 +191,15 @@ func TestV4MigrationInodeCopy(t *testing.T) {
 	ino := NewInode(1024, 0)
 	ino.StorageClass = proto.MediaType_SSD
 	ino.HybridCouldExtentsMigration.storageClass = proto.MediaType_HDD
-	ino.HybridCouldExtents.sortedEks = NewSortedExtentsFromEks([]proto.ExtentKey{{FileOffset: 11, PartitionId: 12,
-		ExtentId: 13, ExtentOffset: 0, Size: 0, CRC: 0}})
+	ino.HybridCouldExtents.sortedEks = NewSortedExtentsFromEks([]proto.ExtentKey{{
+		FileOffset: 11, PartitionId: 12,
+		ExtentId: 13, ExtentOffset: 0, Size: 0, CRC: 0,
+	}})
 
-	ino.HybridCouldExtentsMigration.sortedEks = NewSortedExtentsFromEks([]proto.ExtentKey{{FileOffset: 21, PartitionId: 22,
-		ExtentId: 23, ExtentOffset: 0, Size: 0, CRC: 0}})
+	ino.HybridCouldExtentsMigration.sortedEks = NewSortedExtentsFromEks([]proto.ExtentKey{{
+		FileOffset: 21, PartitionId: 22,
+		ExtentId: 23, ExtentOffset: 0, Size: 0, CRC: 0,
+	}})
 	temp := ino.Copy().(*Inode)
 	assert.True(t, ino.Equal(temp))
 }
@@ -194,8 +208,10 @@ func TestV4MigrationInodeCopyDirectly(t *testing.T) {
 	ino := NewInode(1024, 0)
 	ino.StorageClass = proto.MediaType_SSD
 	ino.HybridCouldExtentsMigration.storageClass = proto.StorageClass_BlobStore
-	ino.HybridCouldExtents.sortedEks = NewSortedExtentsFromEks([]proto.ExtentKey{{FileOffset: 11, PartitionId: 12,
-		ExtentId: 13, ExtentOffset: 0, Size: 0, CRC: 0}})
+	ino.HybridCouldExtents.sortedEks = NewSortedExtentsFromEks([]proto.ExtentKey{{
+		FileOffset: 11, PartitionId: 12,
+		ExtentId: 13, ExtentOffset: 0, Size: 0, CRC: 0,
+	}})
 
 	ino.HybridCouldExtentsMigration.sortedEks = NewSortedObjExtentsFromObjEks(
 		[]proto.ObjExtentKey{{Size: uint64(100), FileOffset: uint64(100)}})
@@ -237,7 +253,7 @@ type OldVersionInode struct {
 	NLink      uint32 // NodeLink counts
 	Flag       int32
 	Reserved   uint64 // reserved space
-	//Extents    *ExtentsTree
+	// Extents    *ExtentsTree
 	Extents    *SortedExtents
 	ObjExtents *SortedObjExtents
 }

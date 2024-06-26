@@ -17,7 +17,6 @@ package fs
 import (
 	"context"
 	"fmt"
-	"github.com/cubefs/cubefs/util/errors"
 	"io"
 	"path"
 	"strings"
@@ -25,6 +24,8 @@ import (
 	"sync/atomic"
 	"syscall"
 	"time"
+
+	"github.com/cubefs/cubefs/util/errors"
 
 	"github.com/cubefs/cubefs/depends/bazil.org/fuse"
 	"github.com/cubefs/cubefs/depends/bazil.org/fuse/fs"
@@ -228,11 +229,11 @@ func (f *File) Open(ctx context.Context, req *fuse.OpenRequest, resp *fuse.OpenR
 			needBCache = true
 		}
 	}
-	var openForWrite = false
+	openForWrite := false
 	if req.Flags&0x0f != syscall.O_RDONLY {
 		openForWrite = true
 	}
-	var isCache = false
+	isCache := false
 	if proto.IsStorageClassBlobStore(f.info.StorageClass) {
 		isCache = true
 	}
@@ -589,11 +590,11 @@ func (f *File) Setattr(ctx context.Context, req *fuse.SetattrRequest, resp *fuse
 
 	ino := f.info.Inode
 	start := time.Now()
-	var openForWrite = false
+	openForWrite := false
 	if req.Flags&0x0f != syscall.O_RDONLY {
 		openForWrite = true
 	}
-	var isCache = false
+	isCache := false
 	if proto.IsStorageClassBlobStore(f.info.StorageClass) {
 		isCache = true
 	}

@@ -174,11 +174,11 @@ func (d *Dir) Create(ctx context.Context, req *fuse.CreateRequest, resp *fuse.Cr
 	d.super.ic.Put(info)
 	child := NewFile(d.super, info, uint32(req.Flags&DefaultFlag), d.info.Inode, req.Name)
 	newInode = info.Inode
-	var openForWrite = false
+	openForWrite := false
 	if req.Flags&0x0f != syscall.O_RDONLY {
 		openForWrite = true
 	}
-	var isCache = false
+	isCache := false
 	if proto.IsStorageClassBlobStore(info.StorageClass) {
 		isCache = true
 	}
@@ -360,7 +360,7 @@ func (d *Dir) Lookup(ctx context.Context, req *fuse.LookupRequest, resp *fuse.Lo
 	for {
 		info, err = d.super.InodeGet(ino)
 		if err != nil {
-			//if OpMismatchStorageClass ,clear nodeCache and inode cache
+			// if OpMismatchStorageClass ,clear nodeCache and inode cache
 			if strings.Contains(err.Error(), "OpMismatchStorageClass") {
 				d.super.fslock.Lock()
 				delete(d.super.nodeCache, ino)
@@ -391,7 +391,7 @@ func (d *Dir) Lookup(ctx context.Context, req *fuse.LookupRequest, resp *fuse.Lo
 		}
 		d.super.nodeCache[ino] = child
 	} else {
-		//read dir first then look up
+		// read dir first then look up
 		if mode.IsDir() {
 			if child.(*Dir).info.StorageClass != info.StorageClass {
 				child = NewDir(d.super, info, d.info.Inode, req.Name)
@@ -524,7 +524,7 @@ func (d *Dir) ReadDir(ctx context.Context, req *fuse.ReadRequest, resp *fuse.Rea
 	for _, info := range infos {
 		cacheInfo := d.super.ic.Get(info.Inode)
 		if cacheInfo != nil {
-			//if storage class has been changed. delete the
+			// if storage class has been changed. delete the
 			if cacheInfo.StorageClass != info.StorageClass {
 				delete(d.super.nodeCache, info.Inode)
 			}

@@ -65,7 +65,7 @@ func (o *ObjectNode) getBucketLifecycleConfigurationHandler(w http.ResponseWrite
 		return
 	}
 
-	var lifeCycle = NewLifecycleConfiguration()
+	lifeCycle := NewLifecycleConfiguration()
 	lifeCycle.Rules = lcConf.Rules
 	var data []byte
 	data, err = xml.Marshal(lifeCycle)
@@ -76,7 +76,6 @@ func (o *ObjectNode) getBucketLifecycleConfigurationHandler(w http.ResponseWrite
 
 	writeSuccessResponseXML(w, data)
 	return
-
 }
 
 // API reference: https://docs.aws.amazon.com/zh_cn/AmazonS3/latest/API/API_PutBucketLifecycleConfiguration.html
@@ -108,7 +107,7 @@ func (o *ObjectNode) putBucketLifecycleConfigurationHandler(w http.ResponseWrite
 		return
 	}
 
-	var lifeCycle = NewLifecycleConfiguration()
+	lifeCycle := NewLifecycleConfiguration()
 	if err = UnmarshalXMLEntity(requestBody, lifeCycle); err != nil {
 		log.LogWarnf("putBucketLifecycle failed: decode request body err: requestID(%v) err(%v)", GetRequestID(r), err)
 		errorCode = LifeCycleErrMalformedXML

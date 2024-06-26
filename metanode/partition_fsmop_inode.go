@@ -478,7 +478,7 @@ func (mp *metaPartition) fsmAppendExtentsWithCheck(ino *Inode, isSplit bool) (st
 	}
 
 	oldSize := int64(fsmIno.Size)
-	//get eks from inoParm, so do not need transform from HybridCouldExtents
+	// get eks from inoParm, so do not need transform from HybridCouldExtents
 	var (
 		eks         []proto.ExtentKey
 		isCache     bool
@@ -549,7 +549,7 @@ func (mp *metaPartition) fsmAppendExtentsWithCheck(ino *Inode, isSplit bool) (st
 			mp.extDelCh <- eks[:1]
 		}
 	} else {
-		//TODO: support hybrid-cloud
+		// TODO: support hybrid-cloud
 		// only the ek itself will be moved to level before
 		// ino verseq be set with mp ver before submit in case other mp be updated while on flight, which will lead to
 		// inconsistent between raft pairs
@@ -592,7 +592,7 @@ func (mp *metaPartition) fsmAppendObjExtents(ino *Inode) (status uint8) {
 		status = proto.OpMismatchStorageClass
 		return
 	}
-	//eks := ino.ObjExtents.CopyExtents()
+	// eks := ino.ObjExtents.CopyExtents()
 	eks := ino.HybridCouldExtents.sortedEks.(*SortedObjExtents).CopyExtents()
 	err := inode.AppendObjExtents(eks, ino.ModifyTime)
 	// if err is not nil, means obj eks exist overlap.
@@ -1125,7 +1125,7 @@ func (mp *metaPartition) fsmUpdateExtentKeyAfterMigration(inoParam *Inode) (resp
 	// store new storage ek  in HybridCouldExtents
 	i.StorageClass = inoParam.HybridCouldExtentsMigration.storageClass
 	i.HybridCouldExtents.sortedEks = inoParam.HybridCouldExtentsMigration.sortedEks
-	//delete migration ek in future
+	// delete migration ek in future
 	i.Flag |= DeleteMigrationExtentKeyFlag
 	log.LogInfof("action[fsmUpdateExtentKeyAfterMigration] mp(%v) inode %v storage class change from %v to %v", i.Inode,
 		mp.config.PartitionId, i.HybridCouldExtentsMigration.storageClass, i.StorageClass)
@@ -1235,7 +1235,7 @@ func (mp *metaPartition) fsmInternalDeleteMigrationExtentKey(inoParam *Inode) (r
 		return
 	}
 	i := item.(*Inode)
-	//may be triggered by updateMigrationExtentKey
+	// may be triggered by updateMigrationExtentKey
 	if proto.IsStorageClassBlobStore(inoParam.HybridCouldExtentsMigration.storageClass) {
 		log.LogDebugf("action[fsmInternalDeleteMigrationExtentKey] inode %v migration ek replaced,"+
 			" old migrationStorageClass(%v)", i.Inode, i.HybridCouldExtentsMigration.storageClass)
