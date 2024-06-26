@@ -16,6 +16,10 @@ package diskmgr
 
 import (
 	"context"
+	"fmt"
+	"math/rand"
+	"os"
+	"path"
 	"testing"
 	"time"
 
@@ -24,6 +28,7 @@ import (
 
 	"github.com/cubefs/cubefs/blobstore/api/blobnode"
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
+	"github.com/cubefs/cubefs/blobstore/clustermgr/persistence/normaldb"
 	apierrors "github.com/cubefs/cubefs/blobstore/common/errors"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
@@ -317,4 +322,48 @@ func TestDiskMgr_AdminUpdateDisk(t *testing.T) {
 	}
 	err = testDiskMgr.adminUpdateDisk(ctx, diskInfo1)
 	require.Error(t, err)
+}
+
+func TestLoadData(t *testing.T) {
+	testTmpDBPath := path.Join(os.TempDir(), fmt.Sprintf("diskmgr-%d-%010d", time.Now().Unix(), rand.Intn(100000000)))
+	defer os.RemoveAll(testTmpDBPath)
+	testDB, err := normaldb.OpenNormalDB(testTmpDBPath)
+	require.NoError(t, err)
+	defer testDB.Close()
+
+	nr := normaldb.NodeInfoRecord{
+		Version:   normaldb.NodeInfoVersionNormal,
+		NodeID:    proto.NodeID(1),
+		ClusterID: proto.ClusterID(1),
+		NodeSetID: proto.NodeSetID(2),
+		Status:    proto.NodeStatusDropped,
+		Role:      proto.NodeRoleBlobNode,
+		DiskType:  proto.DiskTypeHDD,
+	}
+	nodeTbl, err := normaldb.OpenNodeTable(testDB)
+	require.NoError(t, err)
+	err = nodeTbl.UpdateNode(&nr)
+	require.NoError(t, err)
+	dr := normaldb.DiskInfoRecord{
+		Version:   normaldb.DiskInfoVersionNormal,
+		DiskID:    proto.DiskID(1),
+		NodeID:    proto.NodeID(1),
+		ClusterID: proto.ClusterID(1),
+		DiskSetID: proto.DiskSetID(2),
+		Status:    proto.DiskStatusRepaired,
+	}
+	diskTbl, err := normaldb.OpenDiskTable(testDB, true)
+	require.NoError(t, err)
+	err = diskTbl.AddDisk(&dr)
+	require.NoError(t, err)
+	diskMgr, err := New(testMockScopeMgr, testDB, testDiskMgrConfig)
+	require.NoError(t, err)
+
+	_, ctx := trace.StartSpanFromContext(context.Background(), "")
+	topoInfo := diskMgr.GetTopoInfo(ctx)
+	blobNodeHDDNodeSets := topoInfo.AllNodeSets[proto.NodeRoleBlobNode][proto.DiskTypeHDD]
+	nodeSet, nodeSetExist := blobNodeHDDNodeSets[proto.NodeSetID(2)]
+	_, diskSetExist := nodeSet.DiskSets[proto.DiskSetID(2)]
+	require.Equal(t, nodeSetExist, true)
+	require.Equal(t, diskSetExist, true)
 }

@@ -140,7 +140,10 @@ func (t *topoMgr) AddNodeToNodeSet(node *nodeItem) {
 
 	t.lock.Unlock()
 
-	nodeSet.addNode(node)
+	// filter dropped node, do not add into nodeSet
+	if node.isUsingStatus() {
+		nodeSet.addNode(node)
+	}
 }
 
 func (t *topoMgr) RemoveNodeFromNodeSet(node *nodeItem) {
@@ -284,7 +287,10 @@ func (n *nodeSetItem) addDisk(disk *diskItem) {
 
 	n.Unlock()
 
-	diskSet.add(disk)
+	// filter dropping or repaired disk, do not add into diskSet
+	if !disk.dropping && disk.needFilter() {
+		diskSet.add(disk)
+	}
 }
 
 func (n *nodeSetItem) removeDisk(disk *diskItem) {
