@@ -1045,6 +1045,6 @@ var (
 )
 
 func formatHybridCloudStorageTableRow(view *proto.StatOftorageClass) (row string) {
-	row = fmt.Sprintf(hybridCloudStorageTablePattern, proto.StorageClassString(view.StorageClass), view.InodeCount, view.UsedSizeBytes)
+	row = fmt.Sprintf(hybridCloudStorageTablePattern, proto.StorageClassString(view.StorageClass), view.InodeCount, strutil.FormatSize(view.UsedSizeBytes))
 	return
 }

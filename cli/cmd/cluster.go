@@ -73,6 +73,8 @@ const (
 )
 
 func newClusterInfoCmd(client *master.MasterClient) *cobra.Command {
+	var volStorageClass bool
+
 	cmd := &cobra.Command{
 		Use:   CliOpInfo,
 		Short: cmdClusterInfoShort,
@@ -82,7 +84,7 @@ func newClusterInfoCmd(client *master.MasterClient) *cobra.Command {
 			var cn *proto.ClusterNodeInfo
 			var cp *proto.ClusterIP
 			var clusterPara map[string]string
-			if cv, err = client.AdminAPI().GetCluster(); err != nil {
+			if cv, err = client.AdminAPI().GetCluster(volStorageClass); err != nil {
 				errout(err)
 			}
 			if cn, err = client.AdminAPI().GetClusterNodeInfo(); err != nil {
@@ -104,8 +106,17 @@ func newClusterInfoCmd(client *master.MasterClient) *cobra.Command {
 			stdout(fmt.Sprintf("  MaxDpCntLimit      : %v\n", clusterPara[nodeMaxDpCntLimit]))
 			stdout(fmt.Sprintf("  MaxMpCntLimit      : %v\n", clusterPara[nodeMaxMpCntLimit]))
 			stdout("\n")
+
+			if volStorageClass {
+				stdout("Usage by storage class:\n")
+				stdout("%v\n", hybridCloudStorageTableHeader)
+				for _, view := range cv.StatOftorageClass {
+					stdout("%v\n", formatHybridCloudStorageTableRow(view))
+				}
+			}
 		},
 	}
+	cmd.Flags().BoolVarP(&volStorageClass, "storage-class", "s", false, "Display hybrid cloud storage info")
 	return cmd
 }
 

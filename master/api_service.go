@@ -778,10 +778,26 @@ func (m *Server) aclOperate(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *Server) getCluster(w http.ResponseWriter, r *http.Request) {
+	var volStorageClass bool
+
 	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminGetCluster))
 	defer func() {
 		doStatAndMetric(proto.AdminGetCluster, metric, nil, nil)
 	}()
+
+	if err := r.ParseForm(); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+
+	if value := r.FormValue(volStorageClassKey); value != "" {
+		var err error
+		volStorageClass, err = strconv.ParseBool(value)
+		if err != nil {
+			sendErrReply(w, r, newErrHTTPReply(err))
+			return
+		}
+	}
 
 	cv := &proto.ClusterView{
 		Name:                         m.cluster.Name,
@@ -809,6 +825,7 @@ func (m *Server) getCluster(w http.ResponseWriter, r *http.Request) {
 		MetaNodes:                    make([]proto.NodeView, 0),
 		DataNodes:                    make([]proto.NodeView, 0),
 		VolStatInfo:                  make([]*proto.VolStatInfo, 0),
+		StatOftorageClass:            make([]*proto.StatOftorageClass, 0),
 		BadPartitionIDs:              make([]proto.BadPartitionView, 0),
 		BadMetaPartitionIDs:          make([]proto.BadPartitionView, 0),
 	}
@@ -826,6 +843,44 @@ func (m *Server) getCluster(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		cv.VolStatInfo = append(cv.VolStatInfo, stat.(*volStatInfo))
+	}
+
+	if volStorageClass {
+		log.LogInfof("[getCluster] get hybrid cloud storage class info")
+		stats := make(map[uint32]*proto.StatOftorageClass)
+		for _, name := range vols {
+			vol, err := m.cluster.getVol(name)
+			if err != nil {
+				log.LogErrorf("[getCluster] cannot get vol(%v) err(%v)", name, err)
+				sendErrReply(w, r, newErrHTTPReply(err))
+				return
+			}
+
+			volStats := vol.StatByStorageClass
+			for _, stat := range volStats {
+				_, ok := stats[stat.StorageClass]
+				if !ok {
+					// NOTE: copy a new stat
+					stats[stat.StorageClass] = &proto.StatOftorageClass{
+						StorageClass:  stat.StorageClass,
+						InodeCount:    stat.InodeCount,
+						UsedSizeBytes: stat.UsedSizeBytes,
+					}
+					continue
+				}
+				total := stats[stat.StorageClass]
+				total.InodeCount += stat.InodeCount
+				total.UsedSizeBytes += stat.UsedSizeBytes
+			}
+		}
+
+		for _, stat := range stats {
+			cv.StatOftorageClass = append(cv.StatOftorageClass, stat)
+		}
+
+		sort.Slice(cv.StatOftorageClass, func(i, j int) bool {
+			return cv.StatOftorageClass[i].StorageClass < cv.StatOftorageClass[j].StorageClass
+		})
 	}
 	cv.BadPartitionIDs = m.cluster.getBadDataPartitionsView()
 	cv.BadMetaPartitionIDs = m.cluster.getBadMetaPartitionsView()
