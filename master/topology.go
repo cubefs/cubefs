@@ -533,7 +533,7 @@ func (nsgm *DomainManager) buildNodeSetGrp(domainGrpManager *DomainNodeSetGrpMan
 	return nil
 }
 
-//TODO:tangjingyu param mediaType not used, need keep it?
+// TODO:tangjingyu param mediaType not used, need keep it?
 func (nsgm *DomainManager) getHostFromNodeSetGrpSpecific(domainGrpManager *DomainNodeSetGrpManager, replicaNum uint8,
 	createType uint32, mediaType uint32) (
 	hosts []string,
@@ -612,7 +612,7 @@ func (nsgm *DomainManager) getHostFromNodeSetGrpSpecific(domainGrpManager *Domai
 	return nil, nil, fmt.Errorf("action[getHostFromNodeSetGrpSpecific] cann't alloc host")
 }
 
-//TODO:tangjingyu param mediaType not used, need keep it?
+// TODO:tangjingyu param mediaType not used, need keep it?
 func (nsgm *DomainManager) getHostFromNodeSetGrp(domainId uint64, replicaNum uint8, createType uint32, mediaType uint32) (
 	hosts []string,
 	peers []proto.Peer,
@@ -1389,7 +1389,7 @@ func (t *topology) allocZonesForNode(rsMgr *rsManager, zoneNumNeed, replicaNum i
 		zones = t.getDomainExcludeZones()
 		log.LogInfof("action[allocZonesForNode] getDomainExcludeZones zones [%v]", t.domainExcludeZones)
 	} else if specialZones != nil && len(specialZones) > 0 {
-		//TODO:tangjingyu: mediaType
+		// TODO:tangjingyu: mediaType
 		zones = specialZones
 		zoneNumNeed = len(specialZones)
 	} else {

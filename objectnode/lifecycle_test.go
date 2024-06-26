@@ -49,7 +49,7 @@ func TestLifecycleConfiguration(t *testing.T) {
 </LifecycleConfiguration>
 `
 
-	var l1 = NewLifecycleConfiguration()
+	l1 := NewLifecycleConfiguration()
 	err := xml.Unmarshal([]byte(LifecycleXml), l1)
 	require.NoError(t, err)
 
@@ -85,7 +85,7 @@ func TestLifecycleConfiguration(t *testing.T) {
 	day = 0
 	l1.Rules[0].Expiration.Days = &day
 
-	//date
+	// date
 	l1.Rules[0].Expiration.Days = nil
 	now := time.Now().In(time.UTC)
 	ti := time.Date(now.Year(), now.Month(), now.Day(), 1, 0, 0, 0, time.UTC)
@@ -93,7 +93,7 @@ func TestLifecycleConfiguration(t *testing.T) {
 	err = proto.ValidRules(l1.Rules)
 	require.Equal(t, err, proto.LifeCycleErrDateType)
 
-	//days and date all nil
+	// days and date all nil
 	l1.Rules[0].Expiration.Days = nil
 	l1.Rules[0].Expiration.Date = nil
 	err = proto.ValidRules(l1.Rules)
@@ -139,7 +139,7 @@ func TestLifecycleConfigurationTransition1(t *testing.T) {
 </LifecycleConfiguration>
 `
 
-	var l1 = NewLifecycleConfiguration()
+	l1 := NewLifecycleConfiguration()
 	err := xml.Unmarshal([]byte(LifecycleXml), l1)
 	require.NoError(t, err)
 
@@ -190,14 +190,14 @@ func TestLifecycleConfigurationTransition2(t *testing.T) {
 </LifecycleConfiguration>
 `
 
-	var l1 = NewLifecycleConfiguration()
+	l1 := NewLifecycleConfiguration()
 	err := xml.Unmarshal([]byte(LifecycleXml), l1)
 	require.NoError(t, err)
 
 	err = proto.ValidRules(l1.Rules)
 	require.Equal(t, proto.LifeCycleErrStorageClass, err)
 
-	//test validTransitions
+	// test validTransitions
 	l1.Rules[0].Transitions[1].StorageClass = "BLOBSTORE"
 	now := time.Now().In(time.UTC)
 	ti := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)

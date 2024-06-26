@@ -205,7 +205,7 @@ const (
 	opFSMRenewalForbiddenMigration           = 87
 	opFSMUpdateExtentKeyAfterMigration       = 88
 	opFSMInternalFreeInodeMigrationExtentKey = 89
-	opFSMSetInodeCreateTime                  = 90 //for debug
+	opFSMSetInodeCreateTime                  = 90 // for debug
 	opFSMDeleteMigrationExtentKey            = 91
 	opFSMInternalDeleteMigrationExtentKey    = 93
 )
