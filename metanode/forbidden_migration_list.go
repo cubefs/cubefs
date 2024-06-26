@@ -2,9 +2,10 @@ package metanode
 
 import (
 	"container/list"
-	"github.com/cubefs/cubefs/util/log"
 	"sync"
 	"time"
+
+	"github.com/cubefs/cubefs/util/log"
 )
 
 const (
@@ -40,8 +41,10 @@ func (fmList *forbiddenMigrationList) Put(ino uint64) {
 		delete(fmList.index, ino)
 	}
 	expiration := time.Now().Add(fmList.expiration).Unix()
-	info := &forbiddenInodeInfo{ino: ino,
-		expiration: expiration}
+	info := &forbiddenInodeInfo{
+		ino:        ino,
+		expiration: expiration,
+	}
 	element := fmList.list.PushFront(info)
 	fmList.index[ino] = element
 	fmList.Unlock()
@@ -65,12 +68,12 @@ func (fmList *forbiddenMigrationList) getExpiredForbiddenMigrationInodes(id uint
 	log.LogDebugf("[getExpiredForbiddenMigrationInodes] mp(%v) len(%v)", id, fmList.list.Len())
 	for e := fmList.list.Back(); e != nil; {
 		info := e.Value.(*forbiddenInodeInfo)
-		//the first one that has not expired
+		// the first one that has not expired
 		if info.expiration > currentTime {
 			log.LogDebugf("[getExpiredForbiddenMigrationInodes] mp(%v) ino %v is not expired:%v", id, info.ino, info.expiration)
 			return expiredInos
 		}
-		//reset
+		// reset
 		expiredInos = append(expiredInos, info.ino)
 		next := e.Prev()
 		fmList.list.Remove(e)
@@ -92,7 +95,6 @@ func (fmList *forbiddenMigrationList) getAllForbiddenMigrationInodes(mpId uint64
 		} else {
 			log.LogWarnf("[getAllForbiddenMigrationInodes] mp %v value %v", mpId, e.Value)
 		}
-
 	}
 	return allInos
 }

@@ -37,7 +37,7 @@ import (
 const (
 	DeleteMarkFlag               = 1 << 0
 	InodeDelTop                  = 1 << 1
-	DeleteMigrationExtentKeyFlag = 1 << 2 //only delete migration ek by delay
+	DeleteMigrationExtentKeyFlag = 1 << 2 // only delete migration ek by delay
 )
 
 var (
@@ -45,7 +45,7 @@ var (
 	V2EnableColdInodeFlag uint64 = 0x02
 	V3EnableSnapInodeFlag uint64 = 0x04
 	V4EnableHybridCloud   uint64 = 0x08
-	//V4CacheExtentsFlag    uint64 = 0x07
+	// V4CacheExtentsFlag    uint64 = 0x07
 	V4ReplicaExtentsFlag   uint64 = 0x10
 	V4EBSExtentsFlag       uint64 = 0x20
 	V4MigrationExtentsFlag uint64 = 0x40
@@ -95,11 +95,11 @@ type Inode struct {
 	// Extents    *ExtentsTree
 	Extents *SortedExtents // in HybridCloud, this is for cache dp only
 
-	//ObjExtents *SortedObjExtents
+	// ObjExtents *SortedObjExtents
 	// Snapshot
 	multiSnap *InodeMultiSnap
 
-	//HybridCloud
+	// HybridCloud
 	StorageClass                uint32
 	HybridCouldExtents          *SortedHybridCloudExtents
 	HybridCouldExtentsMigration *SortedHybridCloudExtentsMigration
@@ -248,7 +248,7 @@ func (inode *Inode) GetAllExtsOfflineInode(mpID uint64, isCache bool, isMigratio
 			dIno = inode.multiSnap.multiVersions[i-1]
 		}
 		log.LogDebugf("deleteMarkedInodes. GetAllExtsOfflineInode.mp[%v] inode[%v] dino[%v]", mpID, inode.Inode, dIno)
-		var extents = NewSortedExtents()
+		extents := NewSortedExtents()
 		if isCache {
 			extents = dIno.Extents
 		} else if isMigration {
@@ -403,7 +403,7 @@ func (ino *Inode) getAllLayerEks() (rsp []proto.LayerInfo) {
 		Eks:      ino.Extents.eks,
 	}
 	rsp = append(rsp, layerInfo)
-	//TODO:support hybrid-cloud
+	// TODO:support hybrid-cloud
 	ino.RangeMultiVer(func(idx int, info *Inode) bool {
 		rspInodeInfo := &proto.InodeInfo{}
 		replyInfo(rspInodeInfo, info, nil)
@@ -472,7 +472,7 @@ func NewInode(ino uint64, t uint32) *Inode {
 		ModifyTime: ts,
 		NLink:      1,
 		Extents:    NewSortedExtents(),
-		//ObjExtents:         NewSortedObjExtents(),
+		// ObjExtents:         NewSortedObjExtents(),
 		multiSnap:                   nil,
 		StorageClass:                proto.StorageClass_Unspecified,
 		HybridCouldExtents:          NewSortedHybridCloudExtents(),
@@ -515,7 +515,7 @@ func (i *Inode) Copy() BtreeItem {
 	newIno.Extents = i.Extents.Clone()
 	newIno.WriteGeneration = i.WriteGeneration
 	newIno.ForbiddenMigration = i.ForbiddenMigration
-	//newIno.ObjExtents = i.ObjExtents.Clone()
+	// newIno.ObjExtents = i.ObjExtents.Clone()
 	if i.multiSnap != nil {
 		newIno.multiSnap = &InodeMultiSnap{
 			verSeq:        i.getVer(),
@@ -534,11 +534,9 @@ func (i *Inode) Copy() BtreeItem {
 		newIno.HybridCouldExtentsMigration.storageClass = i.HybridCouldExtentsMigration.storageClass
 		newIno.HybridCouldExtentsMigration.expiredTime = i.HybridCouldExtentsMigration.expiredTime
 		if proto.IsStorageClassReplica(i.HybridCouldExtentsMigration.storageClass) {
-			newIno.HybridCouldExtentsMigration.sortedEks =
-				i.HybridCouldExtentsMigration.sortedEks.(*SortedExtents).Clone()
+			newIno.HybridCouldExtentsMigration.sortedEks = i.HybridCouldExtentsMigration.sortedEks.(*SortedExtents).Clone()
 		} else {
-			newIno.HybridCouldExtentsMigration.sortedEks =
-				i.HybridCouldExtentsMigration.sortedEks.(*SortedObjExtents).Clone()
+			newIno.HybridCouldExtentsMigration.sortedEks = i.HybridCouldExtentsMigration.sortedEks.(*SortedObjExtents).Clone()
 		}
 	}
 	i.RUnlock()
@@ -574,7 +572,7 @@ func (i *Inode) CopyDirectly() BtreeItem {
 	newIno.Extents = i.Extents.Clone()
 	newIno.WriteGeneration = i.WriteGeneration
 	newIno.ForbiddenMigration = i.ForbiddenMigration
-	//newIno.ObjExtents = i.ObjExtents.Clone()
+	// newIno.ObjExtents = i.ObjExtents.Clone()
 	if i.HybridCouldExtents.sortedEks != nil {
 		if proto.IsStorageClassReplica(i.StorageClass) {
 			newIno.HybridCouldExtents.sortedEks = i.HybridCouldExtents.sortedEks.(*SortedExtents).Clone()
@@ -586,11 +584,9 @@ func (i *Inode) CopyDirectly() BtreeItem {
 		newIno.HybridCouldExtentsMigration.storageClass = i.HybridCouldExtentsMigration.storageClass
 		newIno.HybridCouldExtentsMigration.expiredTime = i.HybridCouldExtentsMigration.expiredTime
 		if proto.IsStorageClassReplica(i.HybridCouldExtentsMigration.storageClass) {
-			newIno.HybridCouldExtentsMigration.sortedEks =
-				i.HybridCouldExtentsMigration.sortedEks.(*SortedExtents).Clone()
+			newIno.HybridCouldExtentsMigration.sortedEks = i.HybridCouldExtentsMigration.sortedEks.(*SortedExtents).Clone()
 		} else {
-			newIno.HybridCouldExtentsMigration.sortedEks =
-				i.HybridCouldExtentsMigration.sortedEks.(*SortedObjExtents).Clone()
+			newIno.HybridCouldExtentsMigration.sortedEks = i.HybridCouldExtentsMigration.sortedEks.(*SortedObjExtents).Clone()
 		}
 	}
 	return newIno
@@ -735,7 +731,7 @@ func (i *Inode) UnmarshalKey(k []byte) (err error) {
 func (i *Inode) MarshalInodeValue(buff *bytes.Buffer) {
 	var err error
 	log.LogDebugf("MarshalInodeValue ino(%v) storageClass(%v) Reserved(%v)", i.Inode, i.StorageClass, i.Reserved)
-	//reset reserved, V4EBSExtentsFlag maybe changed after migration .eg
+	// reset reserved, V4EBSExtentsFlag maybe changed after migration .eg
 	i.Reserved = 0
 	//defer func() {
 	//	if err := recover(); err != nil {
@@ -789,7 +785,7 @@ func (i *Inode) MarshalInodeValue(buff *bytes.Buffer) {
 	//}
 	i.Reserved |= V3EnableSnapInodeFlag
 	i.Reserved |= V4EnableHybridCloud
-	//to check flag
+	// to check flag
 
 	if proto.IsStorageClassBlobStore(i.StorageClass) {
 		if i.HybridCouldExtents.sortedEks != nil {
@@ -897,7 +893,7 @@ func (i *Inode) MarshalInodeValue(buff *bytes.Buffer) {
 		if err = binary.Write(buff, binary.BigEndian, &i.HybridCouldExtentsMigration.expiredTime); err != nil {
 			panic(err)
 		}
-		//empty file after migration, it's mek is nil
+		// empty file after migration, it's mek is nil
 		if i.HybridCouldExtentsMigration.sortedEks != nil {
 			if proto.IsStorageClassReplica(i.HybridCouldExtentsMigration.storageClass) {
 				log.LogDebugf("MarshalInodeValue ino(%v) migrationStorageClass(%v) marshall V4MigrationExtentsFlag SortedExtents Reserved(%v)",
@@ -961,7 +957,7 @@ func (i *Inode) MarshalValue() (val []byte) {
 	i.RLock()
 	i.MarshalInodeValue(buff)
 	if i.getLayerLen() > 0 || i.getVer() > 0 {
-		//TODO:tangjingyu log for debug only
+		// TODO:tangjingyu log for debug only
 		log.LogWarnf("##### [MarshalValue] verCnt(%v) verSeq(%v) inode[%v] stack(%v)",
 			i.getLayerLen(), i.getVer(), i, string(debug.Stack()))
 	}
@@ -977,7 +973,7 @@ func (i *Inode) MarshalValue() (val []byte) {
 
 	if i.multiSnap != nil {
 		for idx, ino := range i.multiSnap.multiVersions {
-			//TODO:tangjingyu log for debug only
+			// TODO:tangjingyu log for debug only
 			log.LogWarnf("##### [MarshalValue] handle multiVersions idx(%v) inode[%v] ", idx, i)
 			ino.MarshalInodeValue(buff)
 		}
@@ -1070,9 +1066,9 @@ func (i *Inode) UnmarshalInodeValue(buff *bytes.Buffer) (err error) {
 	v2 := i.Reserved&V2EnableColdInodeFlag > 0
 	v4 := i.Reserved&V4EnableHybridCloud > 0
 	log.LogDebugf("UnmarshalInodeValue ino(%v) v2(%v) v3(%v) v4(%v)", i.Inode, v2, v3, v4)
-	//hybridcloud format
+	// hybridcloud format
 	if v4 {
-		//TODO:tangjingyu test only
+		// TODO:tangjingyu test only
 		log.LogDebugf("#### [UnmarshalInodeValue] v4, ino(%v)", i.Inode)
 		if err = binary.Read(buff, binary.BigEndian, &i.StorageClass); err != nil {
 			err = UnmarshalInodeFiledError("StorageClass(v4)", err)
@@ -1089,7 +1085,7 @@ func (i *Inode) UnmarshalInodeValue(buff *bytes.Buffer) (err error) {
 		log.LogDebugf("UnmarshalInodeValue ino(%v) StorageClass(%v) ForbiddenMigration(%v) WriteGeneration(%v) v2(%v) v3(%v) v4(%v)",
 			i.Inode, i.StorageClass, i.ForbiddenMigration, i.WriteGeneration, v2, v3, v4)
 		extSize := uint32(0)
-		//unmarshall extents cache
+		// unmarshall extents cache
 		if err = binary.Read(buff, binary.BigEndian, &extSize); err != nil {
 			err = UnmarshalInodeFiledError("extSize(v4)", err)
 			return
@@ -1234,11 +1230,11 @@ func (i *Inode) UnmarshalInodeValue(buff *bytes.Buffer) (err error) {
 			i.setVer(seq)
 		}
 
-	} else { //transform old-format inode to v4-format
-		//TODO:tangjingyu test only
+	} else { // transform old-format inode to v4-format
+		// TODO:tangjingyu test only
 		log.LogDebugf("#### [UnmarshalInodeValue] ELSE v4, ino(%v)", i.Inode)
 		if v2 || v3 {
-			//TODO:tangjingyu test only
+			// TODO:tangjingyu test only
 			log.LogDebugf("#### [UnmarshalInodeValue] v2 || v3 , ino(%v)", i.Inode)
 			if v2 {
 				i.StorageClass = proto.StorageClass_BlobStore
@@ -1309,7 +1305,7 @@ func (i *Inode) UnmarshalInodeValue(buff *bytes.Buffer) (err error) {
 				}
 			}
 		} else {
-			//TODO:tangjingyu test only
+			// TODO:tangjingyu test only
 			log.LogDebugf("#### [UnmarshalInodeValue] not v2 v3 V4, ino(%v)", i.Inode)
 			i.StorageClass = legacyReplicaStorageClass
 			if i.StorageClass == proto.StorageClass_Unspecified {
@@ -1410,7 +1406,7 @@ func (i *Inode) UnmarshalValue(val []byte) (err error) {
 		}
 		log.LogDebugf("####[UnmarshalValue] inode(%v) newSeq(%v), get verCnt: %v", i.Inode, i.getVer(), verCnt)
 		if verCnt > 0 {
-			//TODO:tangjingyu log for debug only
+			// TODO:tangjingyu log for debug only
 			log.LogWarnf("####[UnmarshalValue] inode(%v) newSeq(%v), get verCnt: %v", i.Inode, i.getVer(), verCnt)
 		}
 
@@ -2017,7 +2013,7 @@ func (i *Inode) CreateUnlinkVer(mpVer uint64, nVer uint64) {
 	ino.setVer(nVer)
 
 	i.Extents = NewSortedExtents()
-	//i.ObjExtents = NewSortedObjExtents()
+	// i.ObjExtents = NewSortedObjExtents()
 	i.HybridCouldExtents = NewSortedHybridCloudExtents()
 	i.SetDeleteMark()
 
@@ -2042,7 +2038,7 @@ func (i *Inode) CreateVer(ver uint64) {
 	// inode copy not include multi ver array
 	ino := i.CopyDirectly().(*Inode)
 	ino.Extents = NewSortedExtents()
-	//ino.ObjExtents = NewSortedObjExtents()
+	// ino.ObjExtents = NewSortedObjExtents()
 	ino.HybridCouldExtents = NewSortedHybridCloudExtents()
 	ino.setVer(i.getVer())
 	i.setVer(ver)
@@ -2079,7 +2075,7 @@ func (i *Inode) SplitExtentWithCheck(param *AppendExtParam) (delExtents []proto.
 	i.Lock()
 	defer i.Unlock()
 	i.buildMultiSnap()
-	var extents = NewSortedExtents()
+	extents := NewSortedExtents()
 	if param.isCache {
 		extents = i.Extents
 	} else {
@@ -2141,7 +2137,7 @@ func (i *Inode) CreateLowerVersion(curVer uint64, verlist *proto.VolVersionInfoL
 
 	ino := i.CopyDirectly().(*Inode)
 	ino.Extents = NewSortedExtents()
-	//ino.ObjExtents = NewSortedObjExtents()
+	// ino.ObjExtents = NewSortedObjExtents()
 	ino.HybridCouldExtents = NewSortedHybridCloudExtents()
 	ino.setVer(nextVer)
 
@@ -2200,7 +2196,7 @@ func (i *Inode) AppendExtentWithCheck(param *AppendExtParam) (delExtents []proto
 		log.LogErrorf("action[AppendExtentWithCheck] mpId[%v].status [%v]", param.mpId, status)
 		return
 	}
-	//TODO:support hybridcloud
+	// TODO:support hybridcloud
 	// multi version take effect
 	if i.getVer() > 0 && len(delExtents) > 0 {
 		var err error
@@ -2212,7 +2208,7 @@ func (i *Inode) AppendExtentWithCheck(param *AppendExtParam) (delExtents []proto
 			return nil, proto.OpErr
 		}
 	}
-	//only update size when write into replicaSystem,
+	// only update size when write into replicaSystem,
 	if proto.IsStorageClassReplica(i.StorageClass) && param.isCache == false && param.isMigration == false {
 		size := extents.Size()
 		if i.Size < size {
@@ -2505,7 +2501,7 @@ func (i *Inode) CopyTinyExtents() (delExtents []proto.ExtentKey) {
 func (i *Inode) updateStorageClass(storageClass uint32, isCache, isMigration bool) error {
 	i.Lock()
 	defer i.Unlock()
-	//update ek to Extents(SSD layer), no need to update storage class for Inode
+	// update ek to Extents(SSD layer), no need to update storage class for Inode
 	if isCache {
 		return nil
 	}

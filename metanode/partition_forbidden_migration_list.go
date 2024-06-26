@@ -1,9 +1,10 @@
 package metanode
 
 import (
+	"time"
+
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/log"
-	"time"
 )
 
 const (
@@ -68,7 +69,6 @@ func (mp *metaPartition) checkForbiddenMigrationWorker() {
 				}
 			}
 		}
-
 	}
 }
 

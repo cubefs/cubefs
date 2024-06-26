@@ -58,7 +58,7 @@ const (
 
 	cfgHttpReversePoolSize = "httpReversePoolSize"
 
-	cfgLegacyDataMediaType = "legacyDataMediaType" // for hybrid cloud
+	cfgLegacyDataMediaType = "legacyDataMediaType" // for hybrid cloud upgrade
 )
 
 // default value
