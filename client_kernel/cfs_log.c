@@ -47,13 +47,12 @@ void cfs_log_write(struct cfs_log *log, const char *fmt, ...)
 
 	spin_lock(&log->lock);
 	while (nr_text > 0) {
-		copy = min_t(u32, CFS_LOG_BUF_LEN - log->head, nr_text);
-		memcpy(log->buf + log->head, text + offset, copy);
-		log->head = (log->head + copy) % CFS_LOG_BUF_LEN;
+		copy = min_t(u32, CFS_LOG_BUF_LEN - log->tail, nr_text);
+		memcpy(log->buf + log->tail, text + offset, copy);
+		log->tail = (log->tail + copy) % CFS_LOG_BUF_LEN;
 		log->size = min_t(u32, log->size + copy, CFS_LOG_BUF_LEN);
 		if (log->size == CFS_LOG_BUF_LEN)
-			log->tail =
-				(log->head - CFS_LOG_BUF_LEN) % CFS_LOG_BUF_LEN;
+			log->head = log->tail;
 		offset += copy;
 		nr_text -= copy;
 	}
@@ -67,19 +66,19 @@ int cfs_log_read(struct cfs_log *log, char __user *buf, size_t len)
 	u32 offset = 0;
 	u32 copy;
 
-	spin_lock(&log->lock);
 	len = min_t(u32, len, log->size);
 	while (len > 0) {
-		copy = min_t(u32, CFS_LOG_BUF_LEN - log->tail, len);
-		if (copy_to_user(buf + offset, log->buf + log->tail, copy)) {
-			spin_unlock(&log->lock);
+		copy = min_t(u32, CFS_LOG_BUF_LEN - log->head, len);
+		if (copy_to_user(buf + offset, log->buf + log->head, copy)) {
 			return -EFAULT;
 		}
-		log->tail = (log->tail + copy) % CFS_LOG_BUF_LEN;
+		spin_lock(&log->lock);
+		log->head = (log->head + copy) % CFS_LOG_BUF_LEN;
 		log->size -= copy;
+		spin_unlock(&log->lock);
 		offset += copy;
 		len -= copy;
 	}
-	spin_unlock(&log->lock);
+
 	return offset;
 }
