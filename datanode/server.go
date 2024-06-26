@@ -133,7 +133,7 @@ const (
 	// disk status becomes unavailable if disk error partition count reaches this value
 	ConfigKeyDiskUnavailablePartitionErrorCount = "diskUnavailablePartitionErrorCount"
 
-	//storage device media type, for hybrid cloud, in string: SDD or HDD
+	// storage device media type, for hybrid cloud, in string: SDD or HDD
 	ConfigMediaType = "mediaType"
 )
 

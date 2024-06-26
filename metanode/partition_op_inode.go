@@ -1154,17 +1154,17 @@ func (mp *metaPartition) UpdateExtentKeyAfterMigration(req *proto.UpdateExtentKe
 	}
 
 	defer func() {
-		//delete migration extent key if encounter an error
+		// delete migration extent key if encounter an error
 		if err != nil {
 			delMigrationIno := item.(*Inode)
-			//prepare HybridCouldExtentsMigration info for extent key delete
+			// prepare HybridCouldExtentsMigration info for extent key delete
 			if req.StorageClass == proto.StorageClass_BlobStore {
 				log.LogInfof("action[UpdateExtentKeyAfterMigration] mp(%v) after err, prepare to delete migration obj extent key for inode %v",
 					mp.config.PartitionId, delMigrationIno.Inode)
 				delMigrationIno.HybridCouldExtentsMigration.storageClass = req.StorageClass
 				delMigrationIno.HybridCouldExtentsMigration.sortedEks = NewSortedObjExtentsFromObjEks(req.NewObjExtentKeys)
 			}
-			//notify follower to delete migration extent key
+			// notify follower to delete migration extent key
 			mp.internalNotifyFollowerToDeleteExtentKey(delMigrationIno)
 		}
 	}()
@@ -1183,7 +1183,7 @@ func (mp *metaPartition) UpdateExtentKeyAfterMigration(req *proto.UpdateExtentKe
 		p.PacketErrorWithBody(proto.OpNotPerm, []byte(err.Error()))
 		return
 	}
-	//store ek after migration in HybridCouldExtentsMigration
+	// store ek after migration in HybridCouldExtentsMigration
 	ino.HybridCouldExtentsMigration.storageClass = req.StorageClass
 	ino.HybridCouldExtentsMigration.expiredTime = time.Now().Add(time.Duration(req.DelayDeleteMinute) * time.Minute).Unix()
 	if req.StorageClass == proto.StorageClass_BlobStore {
@@ -1236,7 +1236,6 @@ func (mp *metaPartition) UpdateExtentKeyAfterMigration(req *proto.UpdateExtentKe
 }
 
 func (mp *metaPartition) InodeGetWithEk(req *InodeGetReq, p *Packet) (err error) {
-
 	ino := NewInode(req.Inode, 0)
 	ino.setVer(req.VerSeq)
 	getAllVerInfo := req.VerAll
@@ -1289,7 +1288,7 @@ func (mp *metaPartition) InodeGetWithEk(req *InodeGetReq, p *Packet) (err error)
 			log.LogInfof("action[InodeGetWithEk] Cache Extents append ek %v", ek)
 			return true
 		})
-		//get EK
+		// get EK
 		if ino.HybridCouldExtents.sortedEks != nil {
 			if proto.IsStorageClassReplica(ino.StorageClass) {
 				extents := ino.HybridCouldExtents.sortedEks.(*SortedExtents)
@@ -1378,7 +1377,7 @@ func (mp *metaPartition) DeleteMigrationExtentKey(req *proto.DeleteMigrationExte
 				err, time.Since(start).Milliseconds(), req.Inode, ino.StorageClass, ino.StorageClass)
 		}()
 	}
-	//no migration extent key to delete
+	// no migration extent key to delete
 	if ino.HybridCouldExtentsMigration.storageClass == proto.StorageClass_Unspecified {
 		p.PacketOkReply()
 		return

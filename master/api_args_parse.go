@@ -782,7 +782,7 @@ type createVolReq struct {
 	// cold vol args
 	coldArgs coldVolArgs
 
-	//hybrid cloud
+	// hybrid cloud
 	volStorageClass     uint32
 	allowedStorageClass []uint32
 	cacheDpStorageClass uint32

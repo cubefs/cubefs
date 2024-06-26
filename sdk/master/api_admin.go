@@ -351,7 +351,7 @@ func (api *AdminAPI) VolExpand(volName string, capacity uint64, authKey, clientI
 }
 
 func (api *AdminAPI) VolAddAllowedStorageClass(volName string, addAllowedStorageClass uint32, ebsBlkSize int, authKey, clientIDKey string) (err error) {
-	var request = newRequest(http.MethodGet, proto.AdminVolAddAllowedStorageClass).Header(api.h)
+	request := newRequest(http.MethodGet, proto.AdminVolAddAllowedStorageClass).Header(api.h)
 	request.addParam("name", volName)
 	request.addParam("allowedStorageClass", strconv.FormatUint(uint64(addAllowedStorageClass), 10))
 	request.addParam("ebsBlkSize", strconv.Itoa(ebsBlkSize))

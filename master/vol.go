@@ -653,7 +653,7 @@ func (vol *Vol) checkDataPartitions(c *Cluster) (cnt int) {
 	if vol.Status != proto.VolStatusMarkDelete && proto.IsHot(vol.VolType) &&
 		(time.Now().Unix()-vol.createTime >= defaultIntervalToCheckDataPartition) {
 		for _, asc := range vol.allowedStorageClass {
-			//check if need create dp for each allowedStorageClass of vol
+			// check if need create dp for each allowedStorageClass of vol
 			if !proto.IsStorageClassReplica(asc) {
 				continue
 			}
@@ -666,7 +666,6 @@ func (vol *Vol) checkDataPartitions(c *Cluster) (cnt int) {
 				c.batchCreateDataPartition(vol, 1, false, mediaType)
 			}
 		}
-
 	}
 
 	totalPreloadCapacity := uint64(0)
@@ -1150,7 +1149,7 @@ func (vol *Vol) autoCreateDataPartitions(c *Cluster) {
 		return
 	}
 
-	//check for hot vol
+	// check for hot vol
 	for _, asc := range vol.allowedStorageClass {
 		if !proto.IsStorageClassReplica(asc) {
 			continue

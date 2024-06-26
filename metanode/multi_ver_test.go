@@ -473,7 +473,7 @@ func TestAppendList(t *testing.T) {
 			Extents: &SortedExtents{
 				eks: exts,
 			},
-			//ObjExtents: NewSortedObjExtents(),
+			// ObjExtents: NewSortedObjExtents(),
 			multiSnap: &InodeMultiSnap{
 				verSeq: seq,
 			},
@@ -486,16 +486,16 @@ func TestAppendList(t *testing.T) {
 		}
 	}
 	t.Logf("layer len %v, arr size %v, seqarr(%v)", ino.getLayerLen(), len(seqArr), seqArr)
-	//TODO:leonrayang
+	// TODO:leonrayang
 	assert.True(t, ino.getLayerLen() == len(seqArr))
 	assert.True(t, ino.getVer() == mp.verSeq)
 
 	for i := 0; i < len(seqArr)-1; i++ {
-		//TODO:hybrid cloud support snapshot
-		//assert.True(t, ino.getLayerVer(i) == seqArr[len(seqArr)-i-2])
+		// TODO:hybrid cloud support snapshot
+		// assert.True(t, ino.getLayerVer(i) == seqArr[len(seqArr)-i-2])
 		t.Logf("layer %v len %v content %v,seq [%v], %v", i, len(ino.multiSnap.multiVersions[i].Extents.eks), ino.multiSnap.multiVersions[i].Extents.eks,
 			ino.getLayerVer(i), seqArr[len(seqArr)-i-2])
-		//TODO:leonrayang
+		// TODO:leonrayang
 		assert.True(t, len(ino.multiSnap.multiVersions[i].Extents.eks) == 0)
 	}
 
@@ -533,8 +533,8 @@ func TestAppendList(t *testing.T) {
 	t.Logf("top layer len %v, layer 1 len %v arr size %v", len(ino.Extents.eks), len(ino.multiSnap.multiVersions[0].Extents.eks), len(seqArr))
 	assert.True(t, len(ino.multiSnap.multiVersions[0].Extents.eks) == 1)
 	assert.True(t, len(ino.Extents.eks) == len(seqArr)+1)
-	//TODO:leonrayang
-	//testCheckExtList(t, ino, seqArr)
+	// TODO:leonrayang
+	// testCheckExtList(t, ino, seqArr)
 
 	//--------  split at middle  -----------------------------------------------
 	t.Logf("start split at middle")
@@ -901,7 +901,7 @@ func testAppendExt(t *testing.T, seq uint64, idx int, inode uint64) {
 		Extents: &SortedExtents{
 			eks: exts,
 		},
-		//ObjExtents: NewSortedObjExtents(),
+		// ObjExtents: NewSortedObjExtents(),
 		multiSnap: &InodeMultiSnap{
 			verSeq: seq,
 		},
@@ -1214,8 +1214,8 @@ func TestInodeVerMarshal(t *testing.T) {
 	assert.True(t, ino2.getVer() == topSeq)
 	assert.True(t, ino2.getLayerLen() == ino1.getLayerLen())
 	assert.True(t, ino2.getLayerVer(0) == sndSeq)
-	//TODO:leonrayang
-	//assert.True(t, reflect.DeepEqual(ino1, ino2))
+	// TODO:leonrayang
+	// assert.True(t, reflect.DeepEqual(ino1, ino2))
 }
 
 func TestSplitKey(t *testing.T) {

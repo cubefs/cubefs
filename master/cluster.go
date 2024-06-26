@@ -2076,7 +2076,7 @@ func (c *Cluster) getHostFromNormalZone(nodeType uint32, excludeZones []string, 
 	var specifiedZones []*Zone
 	var rsMgr *rsManager
 	if specifiedZoneName != "" {
-		//TODO:tangjngyu mediaType
+		// TODO:tangjngyu mediaType
 		if specifiedZones, err = c.getSpecificZoneList(specifiedZoneName); err != nil {
 			return
 		}
@@ -3666,7 +3666,7 @@ func (c *Cluster) initDataPartitionsForCreateVol(vol *Vol, dpCount int, mediaTyp
 	}
 
 	for retryCount := 0; readWriteDataPartitions < defaultInitDataPartitionCnt && retryCount < 3; retryCount++ {
-		//TODO:tangjingyu: when retry, to create dp count should be dpCount - alreadyCreatedCount
+		// TODO:tangjingyu: when retry, to create dp count should be dpCount - alreadyCreatedCount
 		err = vol.initDataPartitions(c, dpCount, mediaType)
 		if err != nil {
 			log.LogError("action[initDataPartitionsForCreateVol] init dataPartition error:",

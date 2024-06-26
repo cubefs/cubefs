@@ -365,7 +365,7 @@ func (w *Wrapper) updateDataPartitionByRsp(forceUpdate bool, refreshPolicy Refre
 			ClientWrapper:         w,
 		}
 	}
-	if proto.IsStorageClassBlobStore(w.volStorageClass) { //avoid stuck on read from deleted cache-dp
+	if proto.IsStorageClassBlobStore(w.volStorageClass) { // avoid stuck on read from deleted cache-dp
 		w.clearPartitions()
 	}
 	rwPartitionGroups := make([]*DataPartition, 0)

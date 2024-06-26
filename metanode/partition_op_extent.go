@@ -128,14 +128,13 @@ func (mp *metaPartition) ExtentAppendWithCheck(req *proto.AppendExtentKeyWithChe
 		p.PacketErrorWithBody(status, reply)
 		return
 	}
-	//TODO:if storage type is not ssd , update extent key by CacheExtentAppendWithCheck
+	// TODO:if storage type is not ssd , update extent key by CacheExtentAppendWithCheck
 	// check volume's Type: if volume's type is cold, cbfs' extent can be modify/add only when objextent exist
-	//if proto.IsCold(mp.volType) {
+	// if proto.IsCold(mp.volType) {
 	if req.IsCache {
 		i.RLock()
 		if i.HybridCouldExtents.sortedEks == nil {
 			i.HybridCouldExtents.sortedEks = NewSortedObjExtents()
-
 		}
 		ObjExtents := i.HybridCouldExtents.sortedEks.(*SortedObjExtents)
 		exist, idx := ObjExtents.FindOffsetExist(req.Extent.FileOffset)
@@ -533,7 +532,7 @@ func (mp *metaPartition) ExtentsList(req *proto.GetExtentsRequest, p *Packet) (e
 		} else {
 			mp.persistInodeAccessTime(ino.Inode, p)
 
-			//if inode is required for writing, mark it as forbidden migration
+			// if inode is required for writing, mark it as forbidden migration
 			if req.OpenForWrite {
 				var val []byte
 				val, err = ino.Marshal()
@@ -549,7 +548,7 @@ func (mp *metaPartition) ExtentsList(req *proto.GetExtentsRequest, p *Packet) (e
 			}
 		}
 	}
-	//mark inode as ForbiddenMigration
+	// mark inode as ForbiddenMigration
 	p.PacketErrorWithBody(status, reply)
 	return
 }
@@ -581,7 +580,7 @@ func (mp *metaPartition) ObjExtentsList(req *proto.GetExtentsRequest, p *Packet)
 				resp.Extents = append(resp.Extents, ek)
 				return true
 			})
-			//from SortedHybridCloudExtents
+			// from SortedHybridCloudExtents
 			if ino.HybridCouldExtents.sortedEks != nil {
 				objEks := ino.HybridCouldExtents.sortedEks.(*SortedObjExtents)
 				objEks.Range(func(ek proto.ObjExtentKey) bool {
@@ -713,7 +712,7 @@ func (mp *metaPartition) BatchObjExtentAppend(req *proto.AppendObjExtentKeysRequ
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return
 	}
-	//can only be called when write into ebs
+	// can only be called when write into ebs
 	ino.StorageClass = proto.StorageClass_BlobStore
 	objExtents := req.Extents
 	ino.HybridCouldExtents.sortedEks = NewSortedObjExtents()

@@ -2780,7 +2780,6 @@ func (mw *MetaWrapper) RenewalForbiddenMigration(inode uint64) error {
 		return statusToErrno(status)
 	}
 	return nil
-
 }
 
 func (mw *MetaWrapper) UpdateExtentKeyAfterMigration(inode uint64, storageType uint32, objExtentKeys []proto.ObjExtentKey,

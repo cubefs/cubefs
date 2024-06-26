@@ -1191,7 +1191,7 @@ func (m *MetaNode) updateExtentKeyAfterMigrationHandler(w http.ResponseWriter, r
 		log.LogErrorf("[updateExtentKeyAfterMigrationHandler] read request data body err:%s", err)
 		return
 	}
-	var req = &proto.UpdateExtentKeyAfterMigrationRequest{}
+	req := &proto.UpdateExtentKeyAfterMigrationRequest{}
 	if err = json.Unmarshal(bytes, req); err != nil {
 		resp.Code = http.StatusBadRequest
 		resp.Msg = err.Error()

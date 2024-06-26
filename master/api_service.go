@@ -1553,7 +1553,7 @@ func (m *Server) createDataPartition(w http.ResponseWriter, r *http.Request) {
 
 	lastTotalDataPartitions = len(vol.dataPartitions.partitions)
 	clusterTotalDataPartitions = m.cluster.getDataPartitionCount()
-	//TODO:tangjingyu need to support requester to specify volStorageClass?
+	// TODO:tangjingyu need to support requester to specify volStorageClass?
 	err = m.cluster.batchCreateDataPartition(vol, reqCreateCount, false, proto.GetMediaTypeByStorageClass(vol.volStorageClass))
 	rstMsg = fmt.Sprintf(" createDataPartition succeeeds. "+
 		"clusterLastTotalDataPartitions[%v],vol[%v] has %v data partitions previously and %v data partitions now",
@@ -6844,7 +6844,7 @@ func (m *Server) SetBucketLifecycle(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-	//lifecycle transition storage class must in vol allowedStorageClass
+	// lifecycle transition storage class must in vol allowedStorageClass
 	for _, rule := range req.Rules {
 		for _, t := range rule.Transitions {
 			if !allowedStorageClass(t.StorageClass, vol.allowedStorageClass) {
