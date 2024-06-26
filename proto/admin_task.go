@@ -17,6 +17,8 @@ package proto
 import (
 	"fmt"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 const (
@@ -41,6 +43,7 @@ type AdminTask struct {
 	SendCount    uint8
 	Request      interface{}
 	Response     interface{}
+	RequestID    string
 }
 
 // ToString returns the string format of the task.
@@ -125,6 +128,7 @@ func NewAdminTask(opCode uint8, opAddr string, request interface{}) (t *AdminTas
 	t.OperatorAddr = opAddr
 	t.ID = fmt.Sprintf("addr[%v]_op[%v]", t.OperatorAddr, t.OpCode)
 	t.CreateTime = time.Now().Unix()
+	t.RequestID = uuid.New().String()
 	return
 }
 

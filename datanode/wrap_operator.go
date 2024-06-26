@@ -540,7 +540,7 @@ func (s *DataNode) handleHeartbeatPacket(p *repl.Packet) {
 	go func() {
 		request := &proto.HeartBeatRequest{}
 		response := &proto.DataNodeHeartbeatResponse{}
-
+		begin := time.Now()
 		if task.OpCode == proto.OpDataNodeHeartbeat {
 			marshaled, _ := json.Marshal(task.Request)
 			_ = json.Unmarshal(marshaled, request)
@@ -550,17 +550,25 @@ func (s *DataNode) handleHeartbeatPacket(p *repl.Packet) {
 					request.EnableDiskQos,
 					s.diskQosEnable)
 			}
+
+			log.LogDebugf("handleHeartbeatPacket receive req(%v)", task.RequestID)
 			// NOTE: set decommission disks
 			s.checkDecommissionDisks(request.DecommissionDisks)
+			log.LogDebugf("handleHeartbeatPacket checkDecommissionDisks req(%v) cost %v",
+				task.RequestID, time.Now().Sub(begin).Milliseconds())
 
 			s.buildHeartBeatResponse(response)
-
+			log.LogDebugf("handleHeartbeatPacket buildHeartBeatResponse req(%v) cost %v",
+				task.RequestID, time.Now().Sub(begin).Milliseconds())
 			// set volume forbidden
 			s.checkVolumeForbidden(request.ForbiddenVols)
+			log.LogDebugf("handleHeartbeatPacket checkVolumeForbidden req(%v) cost %v",
+				task.RequestID, time.Now().Sub(begin).Milliseconds())
 			s.diskQosEnableFromMaster = request.EnableDiskQos
 
 			s.checkVolumeDpRepairBlockSize(request.VolDpRepairBlockSize)
-
+			log.LogDebugf("handleHeartbeatPacket checkVolumeDpRepairBlockSize req(%v) cost %v",
+				task.RequestID, time.Now().Sub(begin).Milliseconds())
 			var needUpdate bool
 			for _, pair := range []struct {
 				replace uint64
@@ -592,6 +600,8 @@ func (s *DataNode) handleHeartbeatPacket(p *repl.Packet) {
 			response.Result = err.Error()
 		}
 		task.Response = response
+		log.LogDebugf("handleHeartbeatPacket send response req(%v) cost %v, cost from sendTime %v",
+			task.RequestID, time.Now().Sub(begin).Milliseconds(), time.Now().Sub(time.Unix(task.SendTime, 0)).Milliseconds())
 		if err = MasterClient.NodeAPI().ResponseDataNodeTask(task); err != nil {
 			err = errors.Trace(err, "heartbeat to master(%v) failed.", request.MasterAddr)
 			log.LogErrorf("HeartbeatPacket response to master: task(%v), err(%v)", task, err.Error())
