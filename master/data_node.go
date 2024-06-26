@@ -263,6 +263,12 @@ func (dataNode *DataNode) isWriteAbleWithSizeNoLock(size uint64) (ok bool) {
 		dataNode.Total > dataNode.Used && (dataNode.Total-dataNode.Used) > size {
 		ok = true
 	}
+	if !ok {
+		log.LogInfof("node %v, isActive %v, RdOnly %v, Total %v AvailableSpace %v, "+
+			"used %v, dp cnt %v required size %v",
+			dataNode.Addr, dataNode.isActive, dataNode.RdOnly, dataNode.Total, dataNode.AvailableSpace, dataNode.Used,
+			dataNode.DataPartitionCount, size)
+	}
 
 	return
 }
