@@ -1082,7 +1082,6 @@ func (partition *DataPartition) MarkDecommissionStatus(srcAddr, dstAddr, srcDisk
 			if partition.getReplicaDiskErrorNum() == partition.ReplicaNum {
 				log.LogWarnf("action[MarkDecommissionStatus] dp[%v] all replica is unavaliable, cannot handle in auto decommission mode",
 					partition.PartitionID)
-				partition.DecommissionErrorMessage = "all replica is unavailable, cannot handle in auto decommission mode"
 				return proto.ErrAllReplicaUnavailable
 			}
 			raftForce = true
@@ -1121,7 +1120,6 @@ func (partition *DataPartition) MarkDecommissionStatus(srcAddr, dstAddr, srcDisk
 			if partition.getReplicaDiskErrorNum() == partition.ReplicaNum {
 				log.LogWarnf("action[MarkDecommissionStatus] dp[%v] all replica is unavaliable, cannot handle in manual decommission mode",
 					partition.PartitionID)
-				partition.DecommissionErrorMessage = "all replica is unavailable, cannot handle in manual decommission mode"
 				return proto.ErrAllReplicaUnavailable
 			}
 		}
