@@ -110,7 +110,7 @@ func newClusterInfoCmd(client *master.MasterClient) *cobra.Command {
 			if volStorageClass {
 				stdout("Usage by storage class:\n")
 				stdout("%v\n", hybridCloudStorageTableHeader)
-				for _, view := range cv.StatOftorageClass {
+				for _, view := range cv.StatOfStorageClass {
 					stdout("%v\n", formatHybridCloudStorageTableRow(view))
 				}
 			}
