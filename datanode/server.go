@@ -431,6 +431,30 @@ func (s *DataNode) newSpaceManager(cfg *config.Config) (err error) {
 	return
 }
 
+func (s *DataNode) getBrokenDisks() (disks map[string]interface{}, err error) {
+	var dataNode *proto.DataNodeInfo
+	for i := 0; i < 3; i++ {
+		dataNode, err = MasterClient.NodeAPI().GetDataNode(s.localServerAddr)
+		if err != nil {
+			log.LogErrorf("action[getBrokenDisks]: getDataNode error %v", err)
+			continue
+		}
+		disks = make(map[string]interface{})
+		break
+	}
+
+	if disks == nil {
+		log.LogErrorf("action[getBrokenDisks]: failed to get datanode(%v), err(%v)", s.localServerAddr, err)
+		err = fmt.Errorf("failed to get datanode %v", s.localServerAddr)
+		return
+	}
+	log.LogInfof("[getBrokenDisks] data node(%v) broken disks(%v)", dataNode.Addr, dataNode.BadDisks)
+	for _, disk := range dataNode.BadDisks {
+		disks[disk] = 1
+	}
+	return
+}
+
 func (s *DataNode) startSpaceManager(cfg *config.Config) (err error) {
 	diskRdonlySpace := uint64(cfg.GetInt64(CfgDiskRdonlySpace))
 	if diskRdonlySpace < DefaultDiskRetainMin {
@@ -452,6 +476,13 @@ func (s *DataNode) startSpaceManager(cfg *config.Config) (err error) {
 			paths = append(paths, p.(string))
 		}
 	}
+
+	brokenDisks, err := s.getBrokenDisks()
+	if err != nil {
+		log.LogErrorf("[startSpaceManager] failed to get broken disks, err(%v)", err)
+		return
+	}
+	log.LogInfof("[startSpaceManager] broken disks(%v)", brokenDisks)
 
 	var wg sync.WaitGroup
 	for _, d := range paths {
@@ -489,7 +520,12 @@ func (s *DataNode) startSpaceManager(cfg *config.Config) (err error) {
 		wg.Add(1)
 		go func(wg *sync.WaitGroup, path string, reservedSpace uint64) {
 			defer wg.Done()
-			s.space.LoadDisk(path, reservedSpace, diskRdonlySpace, DefaultDiskMaxErr, diskEnableReadRepairExtentLimit)
+			if _, broken := brokenDisks[path]; !broken {
+				s.space.LoadDisk(path, reservedSpace, diskRdonlySpace, DefaultDiskMaxErr, diskEnableReadRepairExtentLimit)
+				return
+			}
+			log.LogWarnf("[startSpaceManager] load broken disk(%v)", path)
+			s.space.LoadBrokenDisk(path, reservedSpace, diskRdonlySpace, DefaultDiskMaxErr, diskEnableReadRepairExtentLimit)
 		}(&wg, path, reservedSpace)
 	}
 
