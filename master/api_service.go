@@ -825,7 +825,7 @@ func (m *Server) getCluster(w http.ResponseWriter, r *http.Request) {
 		MetaNodes:                    make([]proto.NodeView, 0),
 		DataNodes:                    make([]proto.NodeView, 0),
 		VolStatInfo:                  make([]*proto.VolStatInfo, 0),
-		StatOftorageClass:            make([]*proto.StatOftorageClass, 0),
+		StatOfStorageClass:           make([]*proto.StatOfStorageClass, 0),
 		BadPartitionIDs:              make([]proto.BadPartitionView, 0),
 		BadMetaPartitionIDs:          make([]proto.BadPartitionView, 0),
 	}
@@ -846,8 +846,8 @@ func (m *Server) getCluster(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if volStorageClass {
-		log.LogInfof("[getCluster] get hybrid cloud storage class info")
-		stats := make(map[uint32]*proto.StatOftorageClass)
+		log.LogInfof("[getCluster] get hybrid cloud storage class stat")
+		stats := make(map[uint32]*proto.StatOfStorageClass)
 		for _, name := range vols {
 			vol, err := m.cluster.getVol(name)
 			if err != nil {
@@ -861,7 +861,7 @@ func (m *Server) getCluster(w http.ResponseWriter, r *http.Request) {
 				_, ok := stats[stat.StorageClass]
 				if !ok {
 					// NOTE: copy a new stat
-					stats[stat.StorageClass] = &proto.StatOftorageClass{
+					stats[stat.StorageClass] = &proto.StatOfStorageClass{
 						StorageClass:  stat.StorageClass,
 						InodeCount:    stat.InodeCount,
 						UsedSizeBytes: stat.UsedSizeBytes,
@@ -875,11 +875,11 @@ func (m *Server) getCluster(w http.ResponseWriter, r *http.Request) {
 		}
 
 		for _, stat := range stats {
-			cv.StatOftorageClass = append(cv.StatOftorageClass, stat)
+			cv.StatOfStorageClass = append(cv.StatOfStorageClass, stat)
 		}
 
-		sort.Slice(cv.StatOftorageClass, func(i, j int) bool {
-			return cv.StatOftorageClass[i].StorageClass < cv.StatOftorageClass[j].StorageClass
+		sort.Slice(cv.StatOfStorageClass, func(i, j int) bool {
+			return cv.StatOfStorageClass[i].StorageClass < cv.StatOfStorageClass[j].StorageClass
 		})
 	}
 	cv.BadPartitionIDs = m.cluster.getBadDataPartitionsView()
@@ -1523,6 +1523,7 @@ func (m *Server) createDataPartition(w http.ResponseWriter, r *http.Request) {
 		volName                    string
 		vol                        *Vol
 		reqCreateCount             int
+		mediaType                  uint32
 		lastTotalDataPartitions    int
 		clusterTotalDataPartitions int
 		err                        error
@@ -1532,10 +1533,12 @@ func (m *Server) createDataPartition(w http.ResponseWriter, r *http.Request) {
 		doStatAndMetric(proto.AdminCreateDataPartition, metric, err, map[string]string{exporter.Vol: volName})
 	}()
 
-	if reqCreateCount, volName, err = parseRequestToCreateDataPartition(r); err != nil {
+	if reqCreateCount, volName, mediaType, err = parseRequestToCreateDataPartition(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
+	log.LogInfof("[createDataPartition] createCount(%v) volName(%v) mediaType(%v)", reqCreateCount, volName, mediaType)
+
 	if reqCreateCount > maxInitDataPartitionCnt {
 		err = fmt.Errorf("count[%d] exceeds maximum limit[%d]", reqCreateCount, maxInitDataPartitionCnt)
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
@@ -1546,15 +1549,26 @@ func (m *Server) createDataPartition(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if proto.IsCold(vol.VolType) {
+	if !proto.IsStorageClassReplica(vol.volStorageClass) {
 		sendErrReply(w, r, newErrHTTPReply(fmt.Errorf("low frequency vol can't create dp")))
+		return
+	}
+
+	if mediaType == proto.MediaType_Unspecified {
+		mediaType = proto.GetMediaTypeByStorageClass(vol.volStorageClass)
+		log.LogInfof("[createDataPartition] vol(%v) no assigned mediaType in volStorageClass, choose mediaType(%v) by volStorageClass(%v)",
+			volName, proto.MediaTypeString(mediaType), proto.StorageClassString(vol.volStorageClass))
+	} else if !proto.IsValidMediaType(mediaType) {
+		err = fmt.Errorf("invalid param mediaType(%v)", mediaType)
+		log.LogErrorf("[createDataPartition] vol(%v), err: %v", volName, err.Error())
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
 
 	lastTotalDataPartitions = len(vol.dataPartitions.partitions)
 	clusterTotalDataPartitions = m.cluster.getDataPartitionCount()
-	// TODO:tangjingyu to support assign mediaType
-	err = m.cluster.batchCreateDataPartition(vol, reqCreateCount, false, proto.GetMediaTypeByStorageClass(vol.volStorageClass))
+
+	err = m.cluster.batchCreateDataPartition(vol, reqCreateCount, false, mediaType)
 	rstMsg = fmt.Sprintf(" createDataPartition succeeeds. "+
 		"clusterLastTotalDataPartitions[%v],vol[%v] has %v data partitions previously and %v data partitions now",
 		clusterTotalDataPartitions, volName, lastTotalDataPartitions, len(vol.dataPartitions.partitions))

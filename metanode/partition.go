@@ -289,7 +289,7 @@ type MetaPartition interface {
 	IsEnableAuditLog() bool
 	SetEnableAuditLog(status bool)
 	UpdateVolumeView(dataView *proto.DataPartitionsView, volumeView *proto.SimpleVolView)
-	GetStatByStorageClass() []*proto.StatOftorageClass
+	GetStatByStorageClass() []*proto.StatOfStorageClass
 }
 
 type UidManager struct {
@@ -532,7 +532,7 @@ type metaPartition struct {
 	enablePersistAccessTime bool
 	accessTimeValidInterval uint64
 	storageTypes            []uint32
-	statByStorageClass      []*proto.StatOftorageClass
+	statByStorageClass      []*proto.StatOfStorageClass
 	fmList                  *forbiddenMigrationList
 	volStorageClass         uint32
 }
@@ -607,8 +607,8 @@ func (mp *metaPartition) updateSize() {
 			case <-timer.C:
 				size := uint64(0)
 
-				statByStorageClassMap := make(map[uint32]*proto.StatOftorageClass)
-				var statOfStorageClass *proto.StatOftorageClass
+				statByStorageClassMap := make(map[uint32]*proto.StatOfStorageClass)
+				var statOfStorageClass *proto.StatOfStorageClass
 				var ok bool
 
 				mp.inodeTree.GetTree().Ascend(func(item BtreeItem) bool {
@@ -625,7 +625,7 @@ func (mp *metaPartition) updateSize() {
 				})
 				mp.size = size
 
-				toSlice := make([]*proto.StatOftorageClass, 0)
+				toSlice := make([]*proto.StatOfStorageClass, 0)
 				for _, stat := range statByStorageClassMap {
 					toSlice = append(toSlice, stat)
 				}
@@ -1790,6 +1790,6 @@ func (mp *metaPartition) GetAccessTimeValidInterval() time.Duration {
 	return time.Duration(interval)
 }
 
-func (mp *metaPartition) GetStatByStorageClass() []*proto.StatOftorageClass {
+func (mp *metaPartition) GetStatByStorageClass() []*proto.StatOfStorageClass {
 	return mp.statByStorageClass
 }

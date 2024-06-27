@@ -997,6 +997,8 @@ const (
 
 func newVolAddDPCmd(client *master.MasterClient) *cobra.Command {
 	var clientIDKey string
+	var mediaType uint32
+
 	cmd := &cobra.Command{
 		Use:   cmdVolAddDPCmdUse,
 		Short: cmdVolAddDPCmdShort,
@@ -1016,7 +1018,7 @@ func newVolAddDPCmd(client *master.MasterClient) *cobra.Command {
 				err = fmt.Errorf("number must be larger than 0")
 				return
 			}
-			if err = client.AdminAPI().CreateDataPartition(volume, int(count), clientIDKey); err != nil {
+			if err = client.AdminAPI().CreateDataPartition(volume, int(count), clientIDKey, mediaType); err != nil {
 				return
 			}
 			stdout("Add dp successfully.\n")
@@ -1029,6 +1031,7 @@ func newVolAddDPCmd(client *master.MasterClient) *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&clientIDKey, CliFlagClientIDKey, client.ClientIDKey(), CliUsageClientIDKey)
+	cmd.Flags().Uint32Var(&mediaType, CliFlagMediaType, proto.MediaType_Unspecified, "Specify the mediaType of datapartition, [1(SSD) | 2(HDD)]")
 	return cmd
 }
 

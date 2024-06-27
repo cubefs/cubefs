@@ -163,11 +163,12 @@ func (api *AdminAPI) LoadDataPartition(volName string, partitionID uint64, clien
 	))
 }
 
-func (api *AdminAPI) CreateDataPartition(volName string, count int, clientIDKey string) (err error) {
+func (api *AdminAPI) CreateDataPartition(volName string, count int, clientIDKey string, mediaType uint32) (err error) {
 	return api.mc.request(newRequest(get, proto.AdminCreateDataPartition).Header(api.h).Param(
 		anyParam{"name", volName},
 		anyParam{"count", count},
 		anyParam{"clientIDKey", clientIDKey},
+		anyParam{"mediaType", mediaType},
 	))
 }
 

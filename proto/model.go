@@ -102,7 +102,7 @@ type MetaPartitionInfo struct {
 	MissNodes          map[string]int64
 	LoadResponse       []*MetaPartitionLoadResponse
 	Forbidden          bool
-	StatByStorageClass []*StatOftorageClass
+	StatByStorageClass []*StatOfStorageClass
 }
 
 // MetaReplica defines the replica of a meta partition
@@ -144,7 +144,7 @@ type ClusterView struct {
 	DataNodeStatInfo             *NodeStatInfo
 	MetaNodeStatInfo             *NodeStatInfo
 	VolStatInfo                  []*VolStatInfo
-	StatOftorageClass            []*StatOftorageClass
+	StatOfStorageClass           []*StatOfStorageClass
 	BadPartitionIDs              []BadPartitionView
 	BadMetaPartitionIDs          []BadPartitionView
 	MasterNodes                  []NodeView
@@ -284,7 +284,7 @@ type VolStatInfo struct {
 	TrashInterval         int64 `json:"TrashIntervalV2"`
 	DefaultStorageClass   uint32
 	CacheDpStorageClass   uint32
-	StatByStorageClass    []*StatOftorageClass
+	StatByStorageClass    []*StatOfStorageClass
 }
 
 // DataPartition represents the structure of storing the file contents.

@@ -1023,7 +1023,7 @@ func parseRequestToCreateVol(r *http.Request, req *createVolReq) (err error) {
 	return
 }
 
-func parseRequestToCreateDataPartition(r *http.Request) (count int, name string, err error) {
+func parseRequestToCreateDataPartition(r *http.Request) (count int, volName string, mediaType uint32, err error) {
 	if err = r.ParseForm(); err != nil {
 		return
 	}
@@ -1034,9 +1034,14 @@ func parseRequestToCreateDataPartition(r *http.Request) (count int, name string,
 		err = unmatchedKey(countKey)
 		return
 	}
-	if name, err = extractName(r); err != nil {
+	if volName, err = extractName(r); err != nil {
 		return
 	}
+
+	if mediaType, err = extractMediaType(r); err != nil {
+		return
+	}
+
 	return
 }
 

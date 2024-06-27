@@ -1044,7 +1044,7 @@ var (
 	hybridCloudStorageTableHeader  = fmt.Sprintf(hybridCloudStorageTablePattern, "STORAGE CLASS", "INODE COUNT", "SIZE")
 )
 
-func formatHybridCloudStorageTableRow(view *proto.StatOftorageClass) (row string) {
+func formatHybridCloudStorageTableRow(view *proto.StatOfStorageClass) (row string) {
 	row = fmt.Sprintf(hybridCloudStorageTablePattern, proto.StorageClassString(view.StorageClass), view.InodeCount, strutil.FormatSize(view.UsedSizeBytes))
 	return
 }

@@ -43,7 +43,7 @@ type MetaReplica struct {
 	ReportTime         int64
 	Status             int8 // unavailable, readOnly, readWrite
 	IsLeader           bool
-	StatByStorageClass []*proto.StatOftorageClass
+	StatByStorageClass []*proto.StatOfStorageClass
 	metaNode           *MetaNode
 }
 
@@ -76,14 +76,14 @@ type MetaPartition struct {
 	EqualCheckPass     bool
 	VerSeq             uint64
 	heartBeatDone      bool
-	StatByStorageClass []*proto.StatOftorageClass
+	StatByStorageClass []*proto.StatOfStorageClass
 	sync.RWMutex
 }
 
 func newMetaReplica(start, end uint64, metaNode *MetaNode) (mr *MetaReplica) {
 	mr = &MetaReplica{start: start, end: end, nodeID: metaNode.ID, Addr: metaNode.Addr}
 	mr.metaNode = metaNode
-	mr.StatByStorageClass = make([]*proto.StatOftorageClass, 0)
+	mr.StatByStorageClass = make([]*proto.StatOfStorageClass, 0)
 	mr.ReportTime = time.Now().Unix()
 	return
 }
@@ -100,7 +100,7 @@ func newMetaPartition(partitionID, start, end uint64, replicaNum uint8, volName 
 	mp.VerSeq = verSeq
 	mp.LoadResponse = make([]*proto.MetaPartitionLoadResponse, 0)
 	mp.EqualCheckPass = true
-	mp.StatByStorageClass = make([]*proto.StatOftorageClass, 0)
+	mp.StatByStorageClass = make([]*proto.StatOfStorageClass, 0)
 	return
 }
 
@@ -775,7 +775,7 @@ func (mr *MetaReplica) updateMetric(mgr *proto.MetaPartitionReport) {
 		mr.StatByStorageClass = mgr.StatByStorageClass
 	} else if len(mr.StatByStorageClass) != 0 {
 		// handle compatibility, report from old version metanode has no filed StatByStorageClass
-		mr.StatByStorageClass = make([]*proto.StatOftorageClass, 0)
+		mr.StatByStorageClass = make([]*proto.StatOfStorageClass, 0)
 	}
 	mr.setLastReportTime()
 
@@ -918,9 +918,9 @@ func (mp *MetaPartition) SetTxCnt() {
 }
 
 func (mp *MetaPartition) setStatByStorageClass() {
-	var mpStat *proto.StatOftorageClass
+	var mpStat *proto.StatOfStorageClass
 	var ok bool
-	statByStorageClassMap := make(map[uint32]*proto.StatOftorageClass)
+	statByStorageClassMap := make(map[uint32]*proto.StatOfStorageClass)
 
 	for _, r := range mp.Replicas {
 		if r.StatByStorageClass == nil {
@@ -943,7 +943,7 @@ func (mp *MetaPartition) setStatByStorageClass() {
 		}
 	}
 
-	toSlice := make([]*proto.StatOftorageClass, 0)
+	toSlice := make([]*proto.StatOfStorageClass, 0)
 	for _, mpStat := range statByStorageClassMap {
 		toSlice = append(toSlice, mpStat)
 	}
