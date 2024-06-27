@@ -307,6 +307,22 @@ func (manager *SpaceManager) LoadDisk(path string, reservedSpace, diskRdonlySpac
 	return
 }
 
+func (manager *SpaceManager) LoadBrokenDisk(path string, reservedSpace, diskRdonlySpace uint64, maxErrCnt int, diskEnableReadRepairExtentLimit bool) (err error) {
+	var disk *Disk
+
+	if diskRdonlySpace < reservedSpace {
+		diskRdonlySpace = reservedSpace
+	}
+
+	log.LogDebugf("action[LoadBrokenDisk] load broken disk from path(%v).", path)
+
+	if _, err = manager.GetDisk(path); err != nil {
+		disk = NewBrokenDisk(path, reservedSpace, diskRdonlySpace, maxErrCnt, manager, diskEnableReadRepairExtentLimit)
+		manager.putDisk(disk)
+	}
+	return
+}
+
 func (manager *SpaceManager) GetDisk(path string) (d *Disk, err error) {
 	manager.diskMutex.RLock()
 	defer manager.diskMutex.RUnlock()
