@@ -16,6 +16,7 @@ package master
 
 import (
 	"fmt"
+	"sort"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -148,7 +149,28 @@ func (dataNode *DataNode) getDisks(c *Cluster) (diskPaths []string) {
 	return
 }
 
-func (dataNode *DataNode) updateNodeMetric(resp *proto.DataNodeHeartbeatResponse) {
+func (dataNode *DataNode) updateBadDisks(latest []string) (ok bool) {
+	sort.Slice(latest, func(i, j int) bool {
+		return latest[i] < latest[j]
+	})
+
+	curr := dataNode.BadDisks
+	dataNode.BadDisks = latest
+	if len(curr) != len(latest) {
+		ok = true
+		return
+	}
+
+	for i := 0; i < len(curr); i++ {
+		if curr[i] != latest[i] {
+			ok = true
+			return
+		}
+	}
+	return
+}
+
+func (dataNode *DataNode) updateNodeMetric(c *Cluster, resp *proto.DataNodeHeartbeatResponse) {
 	dataNode.Lock()
 	defer dataNode.Unlock()
 	dataNode.DomainAddr = util.ParseIpAddrToDomainAddr(dataNode.Addr)
@@ -165,7 +187,7 @@ func (dataNode *DataNode) updateNodeMetric(resp *proto.DataNodeHeartbeatResponse
 	dataNode.TotalPartitionSize = resp.TotalPartitionSize
 
 	dataNode.AllDisks = resp.AllDisks
-	dataNode.BadDisks = resp.BadDisks
+	updated := dataNode.updateBadDisks(resp.BadDisks)
 	dataNode.BadDiskStats = resp.BadDiskStats
 	dataNode.BackupDataPartitions = resp.BackupDataPartitions
 
@@ -177,6 +199,14 @@ func (dataNode *DataNode) updateNodeMetric(resp *proto.DataNodeHeartbeatResponse
 	}
 	dataNode.ReportTime = time.Now()
 	dataNode.isActive = true
+
+	if updated {
+		log.LogInfof("[updateNodeMetric] update data node(%v)", dataNode.Addr)
+		if err := c.syncUpdateDataNode(dataNode); err != nil {
+			log.LogErrorf("[updateNodeMetric] failed to update datanode(%v), err(%v)", dataNode.Addr, err)
+		}
+	}
+
 	log.LogDebugf("updateNodeMetric. datanode id %v addr %v total %v used %v avaliable %v", dataNode.ID, dataNode.Addr,
 		dataNode.Total, dataNode.Used, dataNode.AvailableSpace)
 }

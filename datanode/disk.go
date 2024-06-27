@@ -155,6 +155,22 @@ func NewDisk(path string, reservedSpace, diskRdonlySpace uint64, maxErrCnt int, 
 	return
 }
 
+func NewBrokenDisk(path string, reservedSpace, diskRdonlySpace uint64, maxErrCnt int, space *SpaceManager, diskEnableReadRepairExtentLimit bool) (d *Disk) {
+	d = &Disk{
+		Path:                        path,
+		ReservedSpace:               reservedSpace,
+		MaxErrCnt:                   maxErrCnt,
+		Status:                      proto.Unavailable,
+		RejectWrite:                 true,
+		space:                       space,
+		dataNode:                    space.dataNode,
+		partitionMap:                make(map[uint64]*DataPartition),
+		DiskErrPartitionSet:         sync.Map{},
+		enableExtentRepairReadLimit: diskEnableReadRepairExtentLimit,
+	}
+	return
+}
+
 func (d *Disk) MarkDecommissionStatus(decommission bool) {
 	probePath := path.Join(d.Path, DecommissionDiskMark)
 	var err error
@@ -199,7 +215,16 @@ func (d *Disk) GetDiskPartition() *disk.PartitionStat {
 	return d.diskPartition
 }
 
+func (d *Disk) isBrokenDisk() (ok bool) {
+	ok = d.Status == proto.Unavailable && d.limitRead == nil && d.limitWrite == nil
+	return
+}
+
 func (d *Disk) updateQosLimiter() {
+	if d.isBrokenDisk() {
+		log.LogInfof("[updateQosLimiter] disk(%v) is broken", d.Path)
+		return
+	}
 	if d.dataNode.diskReadFlow > 0 {
 		d.limitFactor[proto.FlowReadType].SetLimit(rate.Limit(d.dataNode.diskReadFlow))
 	}
