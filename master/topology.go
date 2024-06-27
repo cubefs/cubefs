@@ -1395,6 +1395,24 @@ func calculateDemandWriteNodes(zoneNum int, replicaNum int, isSpecialZoneName bo
 	return
 }
 
+func (t *topology) pickUpZonesByMediaType(zones []*Zone, dataMediaType uint32) (zonesOfMediaType []*Zone) {
+	if dataMediaType == proto.MediaType_Unspecified {
+		log.LogDebugf("[pickUpZonesByMediaType] not require dataMediaType, zoneLen(%v)", len(zones))
+		zonesOfMediaType = zones
+		return
+	}
+
+	zonesOfMediaType = make([]*Zone, 0)
+	for _, zone := range zones {
+		if zone.dataMediaType == dataMediaType {
+			log.LogDebugf("[pickUpZonesByMediaType] pick up zone(%v), dataMediaType(%v)", zone.name, dataMediaType)
+			zonesOfMediaType = append(zonesOfMediaType, zone)
+		}
+	}
+
+	return zonesOfMediaType
+}
+
 // Choose the zone if it is writable and adapt to the rules for classifying zones
 func (t *topology) allocZonesForNode(rsMgr *rsManager, zoneNumNeed, replicaNum int, excludeZone []string,
 	specialZones []*Zone, dataMediaType uint32) (zones []*Zone, err error) {
@@ -1405,8 +1423,7 @@ func (t *topology) allocZonesForNode(rsMgr *rsManager, zoneNumNeed, replicaNum i
 		zones = t.getDomainExcludeZones()
 		log.LogInfof("action[allocZonesForNode] getDomainExcludeZones zones [%v]", t.domainExcludeZones)
 	} else if specialZones != nil && len(specialZones) > 0 {
-		// TODO:tangjingyu: mediaType
-		zones = specialZones
+		zones = t.pickUpZonesByMediaType(specialZones, dataMediaType)
 		zoneNumNeed = len(specialZones)
 	} else {
 		// if domain enable, will not enter here
@@ -1437,9 +1454,15 @@ func (t *topology) allocZonesForNode(rsMgr *rsManager, zoneNumNeed, replicaNum i
 
 	// if across zone,candidateZones must be larger than or equal with 2,otherwise,must have a candidate zone
 	if (zoneNumNeed >= 2 && len(candidateZones) < 2) || len(candidateZones) < 1 {
-		log.LogError(fmt.Sprintf("action[allocZonesForNode],reqZoneNum[%v],candidateZones[%v],demandWriteNodes[%v],err:%v",
-			zoneNumNeed, len(candidateZones), demandWriteNodesCntPerZone, proto.ErrNoZoneToCreateMetaPartition))
-		return nil, proto.ErrNoZoneToCreateMetaPartition
+		if rsMgr.nodeType == DataNodeType {
+			err = proto.ErrNoZoneToCreateDataPartition
+		} else {
+			err = proto.ErrNoZoneToCreateMetaPartition
+		}
+
+		log.LogErrorf("action[allocZonesForNode],reqZoneNum[%v],candidateZones[%v],demandWriteNodes[%v],err:%v",
+			zoneNumNeed, len(candidateZones), demandWriteNodesCntPerZone, err.Error())
+		return nil, err
 	}
 	zones = candidateZones
 	err = nil
@@ -1894,7 +1917,6 @@ func (zone *Zone) getDataNodeMaxTotal() (maxTotal uint64) {
 	return
 }
 
-// TODO:tangjingyu mediaType
 func (zone *Zone) getAvailNodeHosts(nodeType uint32, excludeNodeSets []uint64, excludeHosts []string, replicaNum int) (newHosts []string, peers []proto.Peer, err error) {
 	if replicaNum == 0 {
 		return

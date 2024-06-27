@@ -2065,7 +2065,7 @@ func (c *Cluster) getSpecificZoneList(specifiedZone string) (zones []*Zone, err 
 
 func (c *Cluster) getHostFromNormalZone(nodeType uint32, excludeZones []string, excludeNodeSets []uint64,
 	excludeHosts []string, replicaNum int, zoneNumNeed int,
-	specifiedZoneName string, mediaType uint32) (hosts []string, peers []proto.Peer, err error,
+	specifiedZoneName string, dataMediaType uint32) (hosts []string, peers []proto.Peer, err error,
 ) {
 	var zonesQualified []*Zone
 	zonesQualified = make([]*Zone, 0)
@@ -2076,7 +2076,6 @@ func (c *Cluster) getHostFromNormalZone(nodeType uint32, excludeZones []string, 
 	var specifiedZones []*Zone
 	var rsMgr *rsManager
 	if specifiedZoneName != "" {
-		// TODO:tangjngyu mediaType
 		if specifiedZones, err = c.getSpecificZoneList(specifiedZoneName); err != nil {
 			return
 		}
@@ -2088,7 +2087,7 @@ func (c *Cluster) getHostFromNormalZone(nodeType uint32, excludeZones []string, 
 	}
 
 	// get all zones that qualified
-	if zonesQualified, err = c.t.allocZonesForNode(rsMgr, zoneNumNeed, replicaNum, excludeZones, specifiedZones, mediaType); err != nil {
+	if zonesQualified, err = c.t.allocZonesForNode(rsMgr, zoneNumNeed, replicaNum, excludeZones, specifiedZones, dataMediaType); err != nil {
 		return
 	}
 
