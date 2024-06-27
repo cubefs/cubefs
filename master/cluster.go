@@ -4648,13 +4648,8 @@ func (c *Cluster) TryDecommissionDisk(disk *DecommissionDisk) {
 				// mark as failed and set decommission src, make sure it can be included in the calculation of progress
 				dp.DecommissionSrcAddr = node.Addr
 				dp.DecommissionSrcDiskPath = disk.DiskPath
-				if strings.Contains(err.Error(), proto.ErrAllReplicaUnavailable.Error()) {
-					dp.DecommissionNeedRollbackTimes = defaultDecommissionRollbackLimit
-					dp.DecommissionNeedRollback = false
-				} else {
-					dp.markRollbackFailed(false)
-					dp.DecommissionErrorMessage = err.Error()
-				}
+				dp.markRollbackFailed(false)
+				dp.DecommissionErrorMessage = err.Error()
 				dp.DecommissionTerm = disk.DecommissionTerm
 				log.LogWarnf("action[TryDecommissionDisk] disk(%v) set dp(%v) DecommissionTerm %v",
 					disk.decommissionInfo(), dp.PartitionID, disk.DecommissionTerm)
@@ -5180,13 +5175,8 @@ func (c *Cluster) markDecommissionDataPartition(dp *DataPartition, src *DataNode
 
 	if err = dp.MarkDecommissionStatus(addr, "", replica.DiskPath, raftForce, uint64(time.Now().Unix()), migrateType, c, ns); err != nil {
 		if !strings.Contains(err.Error(), proto.ErrDecommissionDiskErrDPFirst.Error()) {
-			if strings.Contains(err.Error(), proto.ErrAllReplicaUnavailable.Error()) {
-				dp.DecommissionNeedRollbackTimes = defaultDecommissionRollbackLimit
-				dp.DecommissionNeedRollback = false
-			} else {
-				dp.markRollbackFailed(false)
-				dp.DecommissionErrorMessage = err.Error()
-			}
+			dp.markRollbackFailed(false)
+			dp.DecommissionErrorMessage = err.Error()
 			c.syncUpdateDataPartition(dp)
 			return
 		}
