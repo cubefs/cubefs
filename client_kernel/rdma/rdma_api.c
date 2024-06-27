@@ -484,6 +484,7 @@ ssize_t IBVSocket_recvT(struct IBVSocket *this, struct iov_iter *iter) {
 
     while(true) {
 		if (this->connState != IBVSOCKETCONNSTATE_ESTABLISHED) {
+			ibv_print_error("rdma link state: %d\n", this->connState);
 			return -EIO;
 		}
         numElements = ib_poll_cq(this->recvCQ, 8, wc);
@@ -507,7 +508,7 @@ ssize_t IBVSocket_recvT(struct IBVSocket *this, struct iov_iter *iter) {
 			break;
 		}
 		if (time_out_jiffies < jiffies) {
-			ibv_print_debug("rdma receive timeout %d seconds\n", IBVSOCKET_CONN_TIMEOUT_MS/1000);
+			ibv_print_error("rdma receive timeout %d seconds\n", IBVSOCKET_CONN_TIMEOUT_MS/1000);
 			return -ETIMEDOUT;
 		}
     }
@@ -532,6 +533,7 @@ ssize_t IBVSocket_send(struct IBVSocket *this, struct iov_iter *iter) {
 
 	while(true) {
 		if (this->connState != IBVSOCKETCONNSTATE_ESTABLISHED) {
+			ibv_print_error("rdma link state: %d\n", this->connState);
 			return -EIO;
 		}
 

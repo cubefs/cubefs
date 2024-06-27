@@ -212,8 +212,8 @@ int cfs_rdma_send_packet(struct cfs_socket *csk, struct cfs_packet *packet)
 	ssize_t len = 0;
 	int ret = 0;
 
-	if (packet->request.hdr.opcode != CFS_OP_STREAM_WRITE) {
-		cfs_log_error(csk->log, "only support stream write opcode\n");
+	if (packet->request.hdr.opcode != CFS_OP_STREAM_WRITE && packet->request.hdr.opcode != CFS_OP_STREAM_RANDOM_WRITE) {
+		cfs_log_error(csk->log, "only support write opcode\n");
 		return -EPERM;
 	}
 
@@ -349,8 +349,8 @@ int cfs_rdma_recv_packet(struct cfs_socket *csk, struct cfs_packet *packet)
 	ssize_t len = 0;
 	int arglen;
 
-	if (packet->request.hdr.opcode != CFS_OP_STREAM_WRITE) {
-		cfs_log_error(csk->log, "only support stream write opcode\n");
+	if (packet->request.hdr.opcode != CFS_OP_STREAM_WRITE && packet->request.hdr.opcode != CFS_OP_STREAM_RANDOM_WRITE) {
+		cfs_log_error(csk->log, "only support write opcode\n");
 		return -EPERM;
 	}
 
