@@ -486,8 +486,13 @@ func (c *Config) checkAndFix() (err error) {
 	defaulter.Equal(&blobNodeHDDCopySetConf.NodeSetRackCap, defaultNodeSetRackCap)
 	defaulter.Equal(&blobNodeHDDCopySetConf.DiskSetCap, defaultDiskSetCap)
 	defaulter.Equal(&blobNodeHDDCopySetConf.DiskCountPerNodeInDiskSet, defaultDiskCountPerNodeInDiskSet)
-	blobNodeHDDCopySetConf.NodeSetIdcCap = (blobNodeHDDCopySetConf.NodeSetCap + len(c.IDC) - 1) / len(c.IDC)
 	copySetConfs[proto.NodeRoleBlobNode][proto.DiskTypeHDD] = blobNodeHDDCopySetConf
+	for _, copySetConfOfRole := range copySetConfs {
+		for diskType, copySetConf := range copySetConfOfRole {
+			copySetConf.NodeSetIdcCap = (copySetConf.NodeSetCap + len(c.IDC) - 1) / len(c.IDC)
+			copySetConfOfRole[diskType] = copySetConf
+		}
+	}
 
 	return
 }
