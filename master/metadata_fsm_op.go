@@ -421,6 +421,7 @@ type dataNodeValue struct {
 	ToBeOffline              bool
 	DecommissionDiskList     []string
 	DecommissionDpTotal      int
+	BadDisks                 []string
 }
 
 func newDataNodeValue(dataNode *DataNode) *dataNodeValue {
@@ -439,6 +440,7 @@ func newDataNodeValue(dataNode *DataNode) *dataNodeValue {
 		ToBeOffline:              dataNode.ToBeOffline,
 		DecommissionDiskList:     dataNode.DecommissionDiskList,
 		DecommissionDpTotal:      dataNode.DecommissionDpTotal,
+		BadDisks:                 dataNode.BadDisks,
 	}
 }
 
@@ -1452,6 +1454,7 @@ func (c *Cluster) loadDataNodes() (err error) {
 		dataNode.ToBeOffline = dnv.ToBeOffline
 		dataNode.DecommissionDiskList = dnv.DecommissionDiskList
 		dataNode.DecommissionDpTotal = dnv.DecommissionDpTotal
+		dataNode.BadDisks = dnv.BadDisks
 		olddn, ok := c.dataNodes.Load(dataNode.Addr)
 		if ok {
 			if olddn.(*DataNode).ID <= dataNode.ID {
