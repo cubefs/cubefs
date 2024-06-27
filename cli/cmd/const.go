@@ -143,9 +143,9 @@ const (
 	CliFlagDpBackupTimeout              = "dpBackupTimeout"
 	CliFlagDecommissionDpLimit          = "decommissionDpLimit"
 	CliFlagDecommissionDiskLimit        = "decommissionDiskLimit"
-
-	CliFlagAllowedStorageClass = "allowedStorageClass"
-	CliFlagVolStorageClass     = "volStorageClass"
+	CliFlagAllowedStorageClass          = "allowedStorageClass"
+	CliFlagVolStorageClass              = "volStorageClass"
+	CliFlagMediaType                    = "mediaType"
 
 	// CliFlagSetDataPartitionCount	= "count" use dp-count instead
 

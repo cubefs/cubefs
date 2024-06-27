@@ -83,7 +83,7 @@ func newPartition(conf *MetaPartitionConfig, manager *metadataManager) (mp *meta
 		vol:                NewVol(),
 		manager:            manager,
 		verSeq:             conf.VerSeq,
-		statByStorageClass: make([]*proto.StatOftorageClass, 0),
+		statByStorageClass: make([]*proto.StatOfStorageClass, 0),
 		fmList:             newForbiddenMigrationList(proto.ForbiddenMigrationRenewalPeriod),
 	}
 	mp.config.Cursor = 0

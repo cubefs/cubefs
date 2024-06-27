@@ -158,7 +158,7 @@ type Vol struct {
 	allowedStorageClass []uint32 // specifies which storageClasses the vol use, a cluster may have multiple StorageClasses
 	volStorageClass     uint32   // specifies which storageClass is written, unless dirStorageClass is set in file path
 	cacheDpStorageClass uint32   // for SDK those access cache/preload dp of cold volume
-	StatByStorageClass  []*proto.StatOftorageClass
+	StatByStorageClass  []*proto.StatOfStorageClass
 }
 
 func newVol(vv volValue) (vol *Vol) {
@@ -231,7 +231,7 @@ func newVol(vv volValue) (vol *Vol) {
 	copy(vol.allowedStorageClass, vv.AllowedStorageClass)
 	vol.volStorageClass = vv.VolStorageClass
 	vol.cacheDpStorageClass = vv.CacheDpStorageClass
-	vol.StatByStorageClass = make([]*proto.StatOftorageClass, 0)
+	vol.StatByStorageClass = make([]*proto.StatOfStorageClass, 0)
 	return
 }
 
@@ -793,11 +793,11 @@ func (vol *Vol) checkMetaPartitions(c *Cluster) {
 	var (
 		doSplit               bool
 		err                   error
-		volStat               *proto.StatOftorageClass
+		volStat               *proto.StatOfStorageClass
 		ok                    bool
-		statByStorageClassMap map[uint32]*proto.StatOftorageClass
+		statByStorageClassMap map[uint32]*proto.StatOfStorageClass
 	)
-	statByStorageClassMap = make(map[uint32]*proto.StatOftorageClass)
+	statByStorageClassMap = make(map[uint32]*proto.StatOfStorageClass)
 
 	for _, mp := range mps {
 		doSplit = mp.checkStatus(c.Name, true, int(vol.mpReplicaNum), maxPartitionID, metaPartitionInodeIdStep, vol.Forbidden)
@@ -827,7 +827,7 @@ func (vol *Vol) checkMetaPartitions(c *Cluster) {
 		}
 	}
 
-	StatOfStorageClassSlice := make([]*proto.StatOftorageClass, 0)
+	StatOfStorageClassSlice := make([]*proto.StatOfStorageClass, 0)
 	for _, volStat = range statByStorageClassMap {
 		StatOfStorageClassSlice = append(StatOfStorageClassSlice, volStat)
 	}

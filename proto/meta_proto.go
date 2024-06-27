@@ -142,14 +142,14 @@ func (quotaInfo *QuotaInfo) IsOverQuotaBytes() (isOver bool) {
 	return
 }
 
-type StatOftorageClass struct {
+type StatOfStorageClass struct {
 	StorageClass  uint32
 	InodeCount    uint64
 	UsedSizeBytes uint64
 }
 
-func NewStatOfStorageClass(storageClass uint32) *StatOftorageClass {
-	return &StatOftorageClass{
+func NewStatOfStorageClass(storageClass uint32) *StatOfStorageClass {
+	return &StatOfStorageClass{
 		StorageClass:  storageClass,
 		InodeCount:    0,
 		UsedSizeBytes: 0,
