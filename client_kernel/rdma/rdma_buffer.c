@@ -28,7 +28,9 @@ int rdma_buffer_allocate(struct BufferItem **item, struct cfs_rdma_buffer *buffe
         tmp->size = buffer->size;
         tmp->used = false;
         tmp->dma_addr = ib_dma_map_single(rdma_pool->cm_id->device, tmp->pBuff, buffer->size, DMA_BIDIRECTIONAL);
+        mutex_lock(&rdma_pool->all_lock);
         list_add_tail(&tmp->all_list, &rdma_pool->all_list);
+        mutex_unlock(&rdma_pool->all_lock);
     }
     *item = tmp;
 
@@ -85,15 +87,17 @@ void rdma_buffer_free_all(void) {
         return;
     }
 
+    mutex_lock(&rdma_pool->all_lock);
 	list_for_each_entry_safe(item, tmp, &rdma_pool->all_list, all_list) {
         if (!item) {
             continue;
         }
+        list_del(&item->all_list);
         ib_dma_unmap_single(rdma_pool->cm_id->device, item->dma_addr, item->size, DMA_BIDIRECTIONAL);
         kfree(item->pBuff);
         kfree(item);
-		list_del(&item->all_list);
 	}
+    mutex_unlock(&rdma_pool->all_lock);
 }
 
 int rdma_buffer_create(struct cfs_rdma_buffer *buffer) {

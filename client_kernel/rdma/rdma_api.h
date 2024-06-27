@@ -13,7 +13,7 @@
 
 #define IBVSOCKET_CONN_TIMEOUT_MS 5000
 #define MSG_LEN 4096
-#define BLOCK_NUM 32
+#define BLOCK_NUM 8
 #define TIMEOUT_JS 5000
 
 enum IBVSocketConnState {
@@ -41,6 +41,7 @@ struct IBVSocket {
 	int sendBufIndex;
 	struct mutex lock;
 	volatile IBVSocketConnState_t connState;
+	struct sockaddr_in remote_addr;
 };
 
 extern struct IBVSocket *IBVSocket_construct(struct sockaddr_in *sin);

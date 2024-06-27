@@ -110,8 +110,10 @@ void __IBVSocket_cqSendEventHandler(struct ib_event *event, void *data)
 	ibv_print_debug("__IBVSocket_cqSendEventHandler\n");
 }
 
-void print_ip_addr(u32 addr) {
-	ibv_print_info("ip addr: %d.%d.%d.%d\n", (addr & 0xff000000) >> 24, (addr & 0x00ff0000) >> 16, (addr & 0x0000ff00) >> 8, (addr & 0x000000ff));
+char *print_ip_addr(u32 addr) {
+	static char ip_addr[16];
+	sprintf(ip_addr, "%d.%d.%d.%d", (addr & 0xff000000) >> 24, (addr & 0x00ff0000) >> 16, (addr & 0x0000ff00) >> 8, (addr & 0x000000ff));
+	return ip_addr;
 }
 
 void RingBuffer_free(struct IBVSocket *this) {
@@ -143,8 +145,10 @@ int RingBuffer_init(struct IBVSocket *this) {
 	struct ib_sge sge;
 	int ret;
 
-	if (!this)
-		return -1;
+	if (!this) {
+		ibv_print_error("the ibv socket is null\n");
+		return -EPERM;
+	}
 
 	mutex_init(&this->lock);
 	
@@ -358,6 +362,11 @@ struct IBVSocket *IBVSocket_construct(struct sockaddr_in *sin) {
 		goto err_destroy_qp;
 	}
 
+	this->remote_addr.sin_family = sin->sin_family;
+	this->remote_addr.sin_port = sin->sin_port;
+	this->remote_addr.sin_addr.s_addr = sin->sin_addr.s_addr;
+	ibv_print_info("connect to %s:%d success\n", print_ip_addr(ntohl(sin->sin_addr.s_addr)), ntohs(sin->sin_port));
+
     return this;
 
 err_destroy_qp:
@@ -446,8 +455,8 @@ ssize_t IBVSocket_post_recv(struct IBVSocket *this, int index) {
 	wr.num_sge = 1;
 	ret = ib_post_recv(this->qp, &wr, &bad_wr);
 	if (unlikely(ret)) {
-		ibv_print_debug("ib_post_recv failed. ErrCode: %d\n", ret);
-		return -EIO;
+		ibv_print_error("ib_post_recv failed. ErrCode: %d\n", ret);
+		return ret;
 	}
 
     return 0;
@@ -458,7 +467,7 @@ ssize_t IBVSocket_copy_restore(struct IBVSocket *this, struct iov_iter *iter, in
     ssize_t isize = 0;
 
 	if (index < 0 || index >= BLOCK_NUM) {
-		ibv_print_debug("index is out of range 0-%d, index=%d\n", (BLOCK_NUM-1), index);
+		ibv_print_error("index is out of range 0-%d, index=%d\n", (BLOCK_NUM-1), index);
 		return -EINVAL;
 	}
 
@@ -468,7 +477,7 @@ ssize_t IBVSocket_copy_restore(struct IBVSocket *this, struct iov_iter *iter, in
 
 	ret = IBVSocket_post_recv(this, index);
 	if (unlikely(ret < 0)) {
-		ibv_print_debug("IBVSocket_post_recv error: %d\n", ret);
+		ibv_print_error("IBVSocket_post_recv error: %d\n", ret);
 		return ret;
 	}
 
@@ -492,7 +501,7 @@ ssize_t IBVSocket_recvT(struct IBVSocket *this, struct iov_iter *iter) {
             for (i = 0; i < numElements; i++) {
 				index = wc[i].wr_id;
 				if (wc[i].status != IB_WC_SUCCESS) {
-					ibv_print_debug("recv status: %d, opcode: %d, wr_id: %lld\n", wc[i].status, wc[i].opcode, wc[i].wr_id);
+					ibv_print_error("recv status: %d, opcode: %d, wr_id: %lld\n", wc[i].status, wc[i].opcode, wc[i].wr_id);
 					IBVSocket_post_recv(this, index);
 					continue;
 				}
@@ -533,7 +542,8 @@ ssize_t IBVSocket_send(struct IBVSocket *this, struct iov_iter *iter) {
 
 	while(true) {
 		if (this->connState != IBVSOCKETCONNSTATE_ESTABLISHED) {
-			ibv_print_error("rdma link state: %d\n", this->connState);
+			ibv_print_error("rdma link state: %d. remote: %s:%d\n", this->connState,
+				print_ip_addr(ntohl(this->remote_addr.sin_addr.s_addr)), ntohs(this->remote_addr.sin_port));
 			return -EIO;
 		}
 
