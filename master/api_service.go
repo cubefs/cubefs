@@ -1553,7 +1553,7 @@ func (m *Server) createDataPartition(w http.ResponseWriter, r *http.Request) {
 
 	lastTotalDataPartitions = len(vol.dataPartitions.partitions)
 	clusterTotalDataPartitions = m.cluster.getDataPartitionCount()
-	// TODO:tangjingyu need to support requester to specify volStorageClass?
+	// TODO:tangjingyu to support assign mediaType
 	err = m.cluster.batchCreateDataPartition(vol, reqCreateCount, false, proto.GetMediaTypeByStorageClass(vol.volStorageClass))
 	rstMsg = fmt.Sprintf(" createDataPartition succeeeds. "+
 		"clusterLastTotalDataPartitions[%v],vol[%v] has %v data partitions previously and %v data partitions now",
