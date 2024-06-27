@@ -755,45 +755,49 @@ func (s *DataNode) handleBatchMarkDeletePacket(p *repl.Packet, c net.Conn) {
 	// if we prevent it, we will get "orphan extents"
 	var exts []*proto.DelExtentParam
 	err = json.Unmarshal(p.Data, &exts)
+	if err != nil {
+		log.LogErrorf("[handleBatchMarkDeletePacket] failed to unmarshal request, err(%v)", err)
+		return
+	}
 	store := partition.ExtentStore()
-	if err == nil {
-		for _, ext := range exts {
-			ok := store.CanGcDelete(ext.ExtentId)
-			if p.Opcode == proto.OpGcBatchDeleteExtent && ok {
-				log.LogWarnf("handleBatchMarkDeletePacket: ext %d is not in gc status, can't be gc delete, dp %d", ext.ExtentId, ext.PartitionId)
-				err = storage.ParameterMismatchError
-				return
-			}
+	for _, ext := range exts {
+		ok := store.CanGcDelete(ext.ExtentId)
+		if p.Opcode == proto.OpGcBatchDeleteExtent && ok {
+			log.LogWarnf("handleBatchMarkDeletePacket: ext %d is not in gc status, can't be gc delete, dp %d", ext.ExtentId, ext.PartitionId)
+			err = storage.ParameterMismatchError
+			return
+		}
 
-			if deleteLimiteRater.Allow() {
-				log.LogInfof(fmt.Sprintf("recive DeleteExtent (%v) from (%v)", ext, c.RemoteAddr().String()))
-				partition.disk.allocCheckLimit(proto.IopsWriteType, 1)
-				partition.disk.limitWrite.Run(0, func() {
-					log.LogInfof("[handleBatchMarkDeletePacket] vol(%v) dp(%v) mark delete extent(%v)", partition.config.VolName, partition.partitionID, ext.ExtentId)
-					if proto.IsTinyExtentType(p.ExtentType) || ext.IsSnapshotDeletion {
-						err = store.MarkDelete(ext.ExtentId, int64(ext.ExtentOffset), int64(ext.Size))
-					} else {
-						// NOTE: it must use 0 to remove normal extent
-						// Consider the following scenario:
-						// data partition replica 1: size 200kb
-						//                replica 2: size 100kb
-						//                replica 3: size 100kb
-						// meta partition: size 100kb
-						// when we remove the file, the request size is 100kb
-						// replica 1 will lost 100kb if we use ext.Size to remove extent
-						err = partition.ExtentStore().MarkDelete(ext.ExtentId, 0, 0)
-					}
-					if err != nil {
-						log.LogErrorf("action[handleBatchMarkDeletePacket]: failed to mark delete extent(%v), %v", ext.ExtentId, err)
-					}
-				})
-				if err != nil {
-					return
-				}
+		if !deleteLimiteRater.Allow() {
+			log.LogInfof("[handleBatchMarkDeletePacket] delete limiter reach(%v), remote (%v) try again.", deleteLimiteRater.Limit(), c.RemoteAddr().String())
+			err = storage.LimitedIoError
+			return
+		}
+
+		log.LogInfof(fmt.Sprintf("recive DeleteExtent (%v) from (%v)", ext, c.RemoteAddr().String()))
+		partition.disk.allocCheckLimit(proto.IopsWriteType, 1)
+		partition.disk.limitWrite.Run(0, func() {
+			log.LogInfof("[handleBatchMarkDeletePacket] vol(%v) dp(%v) mark delete extent(%v)", partition.config.VolName, partition.partitionID, ext.ExtentId)
+			if proto.IsTinyExtentType(p.ExtentType) || ext.IsSnapshotDeletion {
+				err = store.MarkDelete(ext.ExtentId, int64(ext.ExtentOffset), int64(ext.Size))
 			} else {
-				log.LogInfof("delete limiter reach(%v), remote (%v) try again.", deleteLimiteRater.Limit(), c.RemoteAddr().String())
-				err = storage.LimitedIoError
+				// NOTE: it must use 0 to remove normal extent
+				// Consider the following scenario:
+				// data partition replica 1: size 200kb
+				//                replica 2: size 100kb
+				//                replica 3: size 100kb
+				// meta partition: size 100kb
+				// when we remove the file, the request size is 100kb
+				// replica 1 will lost 100kb if we use ext.Size to remove extent
+				err = partition.ExtentStore().MarkDelete(ext.ExtentId, 0, 0)
 			}
+			if err != nil {
+				log.LogErrorf("action[handleBatchMarkDeletePacket]: failed to mark delete extent(%v), %v", ext.ExtentId, err)
+			}
+		})
+		// NOTE: reutrn if meet error
+		if err != nil {
+			return
 		}
 	}
 }
