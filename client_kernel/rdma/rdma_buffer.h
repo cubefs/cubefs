@@ -16,6 +16,7 @@
 #define BUFFER_128K_NUM 500
 #define BUFFER_1M_SIZE 1024 * 1024
 #define BUFFER_1M_NUM 50
+#define DEFAULT_RDMA_PORT 17360
 
 struct BufferItem {
 	char *pBuff;
@@ -40,7 +41,7 @@ struct cfs_rdma_buffer_pool {
     struct mutex all_lock;
 };
 
-int rdma_buffer_new(u32 rdma_port);
+int rdma_buffer_new(void);
 void rdma_buffer_release(void);
 int rdma_buffer_get(struct BufferItem **item, size_t size);
 void rdma_buffer_put(struct BufferItem *item);

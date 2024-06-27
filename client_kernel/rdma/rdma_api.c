@@ -114,55 +114,6 @@ void print_ip_addr(u32 addr) {
 	ibv_print_info("ip addr: %d.%d.%d.%d\n", (addr & 0xff000000) >> 24, (addr & 0x00ff0000) >> 16, (addr & 0x0000ff00) >> 8, (addr & 0x000000ff));
 }
 
-int RingBuffer_init(struct IBVSocket *this) {
-	struct BufferItem *item = NULL;
-	int i = 0;
-	struct ib_recv_wr wr;
-	const struct ib_recv_wr *bad_wr;
-	struct ib_sge sge;
-	int ret;
-
-	if (!this)
-		return -1;
-
-	mutex_init(&this->lock);
-	
-	for (i=0; i<BLOCK_NUM; i++) {
-		ret = rdma_buffer_get(&item, BUFFER_4K_SIZE);
-		if (ret < 0) {
-			return -ENOMEM;
-		}
-		this->recvBuf[i] = item;
-	}
-
-	for (i=0; i<BLOCK_NUM; i++) {
-		ret = rdma_buffer_get(&item, BUFFER_4K_SIZE);
-		if (ret < 0) {
-			return -ENOMEM;
-		}
-		this->sendBuf[i] = item;
-	}
-
-	for (i=0; i<BLOCK_NUM; i++) {
-		sge.addr = this->recvBuf[i]->dma_addr;
-		sge.length = MSG_LEN;
-		sge.lkey = this->pd->local_dma_lkey;
-		wr.next = NULL;
-		wr.wr_id = i;
-		wr.sg_list = &sge;
-		wr.num_sge = 1;
-		ret = ib_post_recv(this->qp, &wr, &bad_wr);
-		if (unlikely(ret)) {
-			ibv_print_error("ib_post_recv failed. ErrCode: %d\n", ret);
-			return -EIO;
-		}
-	}
-	this->recvBufIndex = 0;
-	this->sendBufIndex = 0;
-
-	return 0;
-}
-
 void RingBuffer_free(struct IBVSocket *this) {
 	int i = 0;
 
@@ -182,6 +133,62 @@ void RingBuffer_free(struct IBVSocket *this) {
 			this->sendBuf[i] = NULL;
 		}
 	}
+}
+
+int RingBuffer_init(struct IBVSocket *this) {
+	struct BufferItem *item = NULL;
+	int i = 0;
+	struct ib_recv_wr wr;
+	const struct ib_recv_wr *bad_wr;
+	struct ib_sge sge;
+	int ret;
+
+	if (!this)
+		return -1;
+
+	mutex_init(&this->lock);
+	
+	for (i=0; i<BLOCK_NUM; i++) {
+		ret = rdma_buffer_get(&item, BUFFER_4K_SIZE);
+		if (ret < 0) {
+			ret = -ENOMEM;
+			goto err_out;
+		}
+		this->recvBuf[i] = item;
+	}
+
+	for (i=0; i<BLOCK_NUM; i++) {
+		ret = rdma_buffer_get(&item, BUFFER_4K_SIZE);
+		if (ret < 0) {
+			ret = -ENOMEM;
+			goto err_out;
+		}
+		this->sendBuf[i] = item;
+	}
+
+	for (i=0; i<BLOCK_NUM; i++) {
+		sge.addr = this->recvBuf[i]->dma_addr;
+		sge.length = MSG_LEN;
+		sge.lkey = this->pd->local_dma_lkey;
+		wr.next = NULL;
+		wr.wr_id = i;
+		wr.sg_list = &sge;
+		wr.num_sge = 1;
+		ret = ib_post_recv(this->qp, &wr, &bad_wr);
+		if (unlikely(ret)) {
+			ibv_print_error("ib_post_recv failed. ErrCode: %d\n", ret);
+			ret = -EIO;
+			goto err_out;
+		}
+	}
+	this->recvBufIndex = 0;
+	this->sendBufIndex = 0;
+
+	return 0;
+
+err_out:
+	RingBuffer_free(this);
+	return ret;
 }
 
 int RingBuffer_alloc(struct IBVSocket *this, bool send) {

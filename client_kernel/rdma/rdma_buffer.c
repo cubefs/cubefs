@@ -2,7 +2,7 @@
 #include <linux/in.h>
 #include "rdma_buffer.h"
 
-static struct cfs_rdma_buffer_pool *rdma_pool;
+static struct cfs_rdma_buffer_pool *rdma_pool = NULL;
 
 int rdma_buffer_allocate(struct BufferItem **item, struct cfs_rdma_buffer *buffer) {
 	struct BufferItem *tmp = NULL;
@@ -81,6 +81,9 @@ int rdma_buffer_event_handler(struct rdma_cm_id *cm_id, struct rdma_cm_event *ev
 void rdma_buffer_free_all(void) {
 	struct BufferItem *item = NULL;
 	struct BufferItem *tmp = NULL;
+    if (!rdma_pool) {
+        return;
+    }
 
 	list_for_each_entry_safe(item, tmp, &rdma_pool->all_list, all_list) {
         if (!item) {
@@ -131,10 +134,14 @@ int rdma_buffer_create(struct cfs_rdma_buffer *buffer) {
     return 0;
 }
 
-int rdma_buffer_new(u32 rdma_port) {
+int rdma_buffer_new(void) {
     int ret;
     struct sockaddr_in sin;
     int i = 0;
+
+    if (rdma_pool) {
+        return 0;
+    }
 
     rdma_pool = kzalloc(sizeof(*rdma_pool), GFP_KERNEL);
     if (!rdma_pool) {
@@ -156,7 +163,7 @@ int rdma_buffer_new(u32 rdma_port) {
     }
 
     sin.sin_family = AF_INET;
-    sin.sin_port = htons(rdma_port);
+    sin.sin_port = htons(DEFAULT_RDMA_PORT);
     sin.sin_addr.s_addr = in_aton("127.0.0.1");
     ret = rdma_resolve_addr(rdma_pool->cm_id, NULL, (struct sockaddr *)&sin, 500);
     if (ret) {
@@ -189,6 +196,10 @@ err_out:
 }
 
 void rdma_buffer_release(void) {
+    if (!rdma_pool) {
+        return;
+    }
+
     rdma_buffer_free_all();
     rdma_destroy_id(rdma_pool->cm_id);
     kfree(rdma_pool);

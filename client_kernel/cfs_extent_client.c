@@ -123,14 +123,7 @@ cfs_extent_client_new(struct cfs_mount_info *cmi)
 	INIT_DELAYED_WORK(&ec->update_dp_work, update_dp_work_cb);
 	schedule_delayed_work(&ec->update_dp_work,
 			      msecs_to_jiffies(EXTENT_UPDATE_DP_INTERVAL_MS));
-	if (ec->enable_rdma) {
-		ret = rdma_buffer_new(ec->rdma_port);
-		if (ret < 0) {
-			printk("error to call rdma_buffer_new\n");
-			kfree(ec);
-			return ERR_PTR(ret);
-		}
-	}
+
 	return ec;
 }
 
@@ -149,7 +142,6 @@ void cfs_extent_client_release(struct cfs_extent_client *ec)
 	}
 	if (ec->enable_rdma) {
 		cfs_rdma_clean_sockets_in_exit();
-		rdma_buffer_release();
 	}
 	kfree(ec);
 }
