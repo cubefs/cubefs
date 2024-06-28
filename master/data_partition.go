@@ -1156,13 +1156,9 @@ directly:
 	// forbidden dp to restore meta for replica
 	for {
 		if !partition.setRestoreReplicaForbidden() && migrateType != AutoAddReplica {
-			partition.DecommissionRetry++
-			if partition.DecommissionRetry >= defaultDecommissionRetryLimit {
-				return errors.NewErrorf("set RestoreReplicaMetaForbidden failed")
-			}
-			// wait for checkReplicaMeta ended
-			time.Sleep(3 * time.Second)
-			continue
+			log.LogWarnf("action[MarkDecommissionStatus] dp [%d]wait for setting restore replica forbidden",
+				partition.PartitionID)
+			time.Sleep(1 * time.Second)
 		}
 		break
 	}

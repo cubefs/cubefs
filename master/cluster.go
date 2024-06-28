@@ -4135,7 +4135,7 @@ func (c *Cluster) TryDecommissionDataNode(dataNode *DataNode) {
 			break
 		}
 		if left-dpCnt >= 0 {
-			err = c.migrateDisk(dataNode.Addr, disk, dataNode.DecommissionDstAddr, dataNode.DecommissionRaftForce, dpCnt, true, ManualDecommission)
+			err = c.migrateDisk(dataNode, disk, dataNode.DecommissionDstAddr, dataNode.DecommissionRaftForce, dpCnt, true, ManualDecommission)
 			if err != nil {
 				msg := fmt.Sprintf("disk(%v_%v)failed to mark decommission", dataNode.Addr, disk)
 				log.LogWarnf("action[TryDecommissionDataNode] %v failed %v", msg, err)
@@ -4145,7 +4145,7 @@ func (c *Cluster) TryDecommissionDataNode(dataNode *DataNode) {
 			decommissionDpTotal += dpCnt
 			left = left - dpCnt
 		} else {
-			err = c.migrateDisk(dataNode.Addr, disk, dataNode.DecommissionDstAddr, dataNode.DecommissionRaftForce, left, true, ManualDecommission)
+			err = c.migrateDisk(dataNode, disk, dataNode.DecommissionDstAddr, dataNode.DecommissionRaftForce, left, true, ManualDecommission)
 			if err != nil {
 				msg := fmt.Sprintf("disk(%v_%v)failed to mark decommission", dataNode.Addr, disk)
 				log.LogWarnf("action[TryDecommissionDataNode] %v failed %v", msg, err)
@@ -4177,8 +4177,9 @@ func (c *Cluster) TryDecommissionDataNode(dataNode *DataNode) {
 		dataNode.DecommissionDstAddr, dataNode.DecommissionDpTotal)
 }
 
-func (c *Cluster) migrateDisk(nodeAddr, diskPath, dstPath string, raftForce bool, limit int, diskDisable bool, migrateType uint32) (err error) {
+func (c *Cluster) migrateDisk(dataNode *DataNode, diskPath, dstPath string, raftForce bool, limit int, diskDisable bool, migrateType uint32) (err error) {
 	var disk *DecommissionDisk
+	nodeAddr := dataNode.Addr
 	key := fmt.Sprintf("%s_%s", nodeAddr, diskPath)
 
 	if value, ok := c.DecommissionDisks.Load(key); ok {
@@ -4207,6 +4208,9 @@ func (c *Cluster) migrateDisk(nodeAddr, diskPath, dstPath string, raftForce bool
 		Warn(c.Name, err.Error())
 		c.delDecommissionDiskFromCache(disk)
 		return
+	}
+	if disk.DiskDisable {
+		c.addAndSyncDecommissionedDisk(dataNode, disk.DiskPath)
 	}
 	// add to the nodeset decommission list
 	c.addDecommissionDiskToNodeset(disk)
@@ -4332,7 +4336,7 @@ func (c *Cluster) handleDataNodeBadDisk(dataNode *DataNode) {
 					dataNode.Addr, disk.DiskPath, GetDecommissionStatusMessage(status))
 				continue
 			}
-			err := c.migrateDisk(dataNode.Addr, disk.DiskPath, "", false, 0, true, AutoDecommission)
+			err := c.migrateDisk(dataNode, disk.DiskPath, "", false, 0, true, AutoDecommission)
 			if err != nil {
 				msg := fmt.Sprintf("disk(%v_%v)failed to mark decommission", dataNode.Addr, disk.DiskPath)
 				auditlog.LogMasterOp("DiskDecommission", msg, err)
@@ -4510,9 +4514,6 @@ func (c *Cluster) TryDecommissionDisk(disk *DecommissionDisk) {
 	}
 	disk.SetDecommissionStatus(DecommissionRunning)
 	disk.IgnoreDecommissionDps = IgnoreDecommissionDps
-	if disk.DiskDisable {
-		c.addAndSyncDecommissionedDisk(node, disk.DiskPath)
-	}
 	rstMsg = fmt.Sprintf("disk[%v] badPartitionIds %v offline successfully, ignore (%v) %v",
 		disk.decommissionInfo(), badPartitionIds, len(ignoreIDs), ignoreIDs)
 	log.LogInfof("action[TryDecommissionDisk] %s", rstMsg)
