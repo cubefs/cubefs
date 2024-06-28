@@ -25,6 +25,7 @@ struct BufferItem {
 	size_t size;
     struct list_head list;
     struct list_head all_list;
+    bool is_tmp;
 };
 
 struct cfs_rdma_buffer {
