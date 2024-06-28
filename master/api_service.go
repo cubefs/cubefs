@@ -4142,7 +4142,7 @@ func (m *Server) decommissionDisk(w http.ResponseWriter, r *http.Request) {
 	if decommissionType == int(InitialDecommission) {
 		decommissionType = int(ManualDecommission)
 	}
-	if err = m.cluster.migrateDisk(offLineAddr, diskPath, "", raftForce, limit, diskDisable, uint32(decommissionType)); err != nil {
+	if err = m.cluster.migrateDisk(dataNode, diskPath, "", raftForce, limit, diskDisable, uint32(decommissionType)); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
