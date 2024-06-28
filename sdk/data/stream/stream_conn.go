@@ -16,6 +16,7 @@ package stream
 
 import (
 	"fmt"
+	"math/rand"
 	"net"
 	"strings"
 	"sync/atomic"
@@ -37,7 +38,8 @@ var (
 const (
 	StreamSendMaxRetry      = 200
 	StreamSendSleepInterval = 100 * time.Millisecond
-	StreamSendMaxTimeout    = 10 * time.Minute
+	StreamSendMaxTimeout    = 20 * time.Minute
+	RetryFactor             = 12 / 10
 )
 
 type GetReplyFunc func(conn *net.TCPConn) (err error, again bool)
@@ -108,6 +110,8 @@ func (sc *StreamConn) String() string {
 // or the maximum number of retries is reached.
 func (sc *StreamConn) Send(retry *bool, req *Packet, getReply GetReplyFunc) (err error) {
 	start := time.Now()
+	retryInterval := StreamSendSleepInterval
+
 	for i := 0; i < StreamSendMaxRetry; i++ {
 		err = sc.sendToDataPartition(req, retry, getReply)
 		if err == nil || err == proto.ErrCodeVersionOp || !*retry || err == TryOtherAddrError || strings.Contains(err.Error(), "OpForbidErr") {
@@ -119,9 +123,8 @@ func (sc *StreamConn) Send(retry *bool, req *Packet, getReply GetReplyFunc) (err
 			return errors.NewErrorf("retry failed, err %s", err.Error())
 		}
 
-		retryInterval := StreamSendSleepInterval
 		if req.IsRandomWrite() {
-			retryInterval = StreamSendSleepInterval + time.Duration(i)*StreamSendSleepInterval
+			retryInterval = retryInterval*RetryFactor + time.Duration(rand.Int63n(int64(retryInterval)))
 		}
 
 		log.LogWarnf("StreamConn Send: err(%v), req %d, interval %d ms, cost %d ms",
