@@ -776,7 +776,7 @@ func (s *DataNode) handleBatchMarkDeletePacket(p *repl.Packet, c net.Conn) {
 
 		log.LogInfof(fmt.Sprintf("recive DeleteExtent (%v) from (%v)", ext, c.RemoteAddr().String()))
 		partition.disk.allocCheckLimit(proto.IopsWriteType, 1)
-		partition.disk.limitWrite.Run(0, func() {
+		writable := partition.disk.limitWrite.TryRun(0, func() {
 			log.LogInfof("[handleBatchMarkDeletePacket] vol(%v) dp(%v) mark delete extent(%v)", partition.config.VolName, partition.partitionID, ext.ExtentId)
 			if proto.IsTinyExtentType(p.ExtentType) || ext.IsSnapshotDeletion {
 				err = store.MarkDelete(ext.ExtentId, int64(ext.ExtentOffset), int64(ext.Size))
@@ -795,6 +795,13 @@ func (s *DataNode) handleBatchMarkDeletePacket(p *repl.Packet, c net.Conn) {
 				log.LogErrorf("action[handleBatchMarkDeletePacket]: failed to mark delete extent(%v), %v", ext.ExtentId, err)
 			}
 		})
+
+		if !writable {
+			log.LogInfof("[handleBatchMarkDeletePacket] delete limitIo reach(%v), remote (%v) try again.", deleteLimiteRater.Limit(), c.RemoteAddr().String())
+			err = storage.LimitedIoError
+			return
+		}
+
 		// NOTE: reutrn if meet error
 		if err != nil {
 			return
