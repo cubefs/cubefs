@@ -19,3 +19,4 @@ java/target
 java/src/main/resources/*.so
 /cover.output
 /cubefs_unittest.output
+.version
