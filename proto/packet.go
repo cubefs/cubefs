@@ -359,6 +359,15 @@ func NewPacketReqID() *Packet {
 	return p
 }
 
+func (p *Packet) IsRandomWrite() bool {
+	switch p.Opcode {
+	case OpRandomWrite, OpSyncRandomWrite, OpSyncRandomWriteVer, OpRandomWriteVer:
+		return true
+	default:
+		return false
+	}
+}
+
 func (p *Packet) GetCopy() *Packet {
 	newPacket := NewPacket()
 	newPacket.ReqID = p.ReqID
