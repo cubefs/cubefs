@@ -630,7 +630,7 @@ func (s *Streamer) doOverwrite(req *ExtentRequest, direct bool) (total int, err 
 		log.LogDebugf("action[doOverwrite] inode %v extentid %v,extentOffset %v(%v,%v,%v,%v) offset %v, streamer seq %v", s.inode, req.ExtentKey.ExtentId, reqPacket.ExtentOffset,
 			offset, ekFileOffset, total, ekExtOffset, offset, s.verSeq)
 		if direct {
-			reqPacket.Opcode = proto.OpSyncRandomWrite
+			reqPacket.Opcode = proto.OpSyncRandomWriteVer
 		}
 		packSize := util.Min(size-total, util.BlockSize)
 		copy(reqPacket.Data[:packSize], req.Data[total:total+packSize])

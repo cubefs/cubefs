@@ -37,6 +37,7 @@ var (
 const (
 	StreamSendMaxRetry      = 200
 	StreamSendSleepInterval = 100 * time.Millisecond
+	StreamSendMaxTimeout    = 10 * time.Minute
 )
 
 type GetReplyFunc func(conn *net.TCPConn) (err error, again bool)
@@ -106,15 +107,28 @@ func (sc *StreamConn) String() string {
 // Send send the given packet over the network through the stream connection until success
 // or the maximum number of retries is reached.
 func (sc *StreamConn) Send(retry *bool, req *Packet, getReply GetReplyFunc) (err error) {
+	start := time.Now()
 	for i := 0; i < StreamSendMaxRetry; i++ {
 		err = sc.sendToDataPartition(req, retry, getReply)
 		if err == nil || err == proto.ErrCodeVersionOp || !*retry || err == TryOtherAddrError || strings.Contains(err.Error(), "OpForbidErr") {
 			return
 		}
-		log.LogWarnf("StreamConn Send: err(%v)", err)
-		time.Sleep(StreamSendSleepInterval)
+
+		if time.Since(start) > StreamSendMaxTimeout {
+			log.LogWarnf("StreamConn Send: retry still failed after %d ms, req %d", StreamSendMaxTimeout.Milliseconds(), req.ReqID)
+			return errors.NewErrorf("retry failed, err %s", err.Error())
+		}
+
+		retryInterval := StreamSendSleepInterval
+		if req.IsRandomWrite() {
+			retryInterval = StreamSendSleepInterval + time.Duration(i)*StreamSendSleepInterval
+		}
+
+		log.LogWarnf("StreamConn Send: err(%v), req %d, interval %d ms, cost %d ms",
+			err, req.ReqID, retryInterval.Milliseconds(), time.Since(start).Milliseconds())
+		time.Sleep(retryInterval)
 	}
-	return errors.New(fmt.Sprintf("StreamConn Send: retried %v times and still failed, sc(%v) reqPacket(%v)", StreamSendMaxRetry, sc, req))
+	return errors.NewErrorf("StreamConn Send: retried %v times and still failed, sc(%v) reqPacket(%v), err %s", StreamSendMaxRetry, sc, req, err.Error())
 }
 
 func (sc *StreamConn) sendToDataPartition(req *Packet, retry *bool, getReply GetReplyFunc) (err error) {
@@ -180,6 +194,7 @@ func (sc *StreamConn) sendToConn(conn *net.TCPConn, req *Packet, getReply GetRep
 		}
 		// NOTE: if we meet a try again error
 		if err == LimitedIoError {
+			log.LogWarnf("sendToConn: found ulimit io error, dp %d, req %d, err %s", req.PartitionID, req.ReqID, err.Error())
 			i -= 1
 		}
 
