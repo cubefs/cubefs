@@ -19,6 +19,7 @@ import (
 	"hash/crc32"
 	"net"
 	"strings"
+	"time"
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/sdk/data/wrapper"
@@ -34,6 +35,8 @@ type ExtentReader struct {
 	dp           *wrapper.DataPartition
 	followerRead bool
 	retryRead    bool
+
+	maxRetryTimeout time.Duration
 }
 
 // NewExtentReader returns a new extent reader.
@@ -59,7 +62,7 @@ func (reader *ExtentReader) Read(req *ExtentRequest) (readBytes int, err error) 
 	size := req.Size
 
 	reqPacket := NewReadPacket(reader.key, offset, size, reader.inode, req.FileOffset, reader.followerRead)
-	sc := NewStreamConn(reader.dp, reader.followerRead)
+	sc := NewStreamConn(reader.dp, reader.followerRead, reader.maxRetryTimeout)
 
 	log.LogDebugf("ExtentReader Read enter: size(%v) req(%v) reqPacket(%v)", size, req, reqPacket)
 

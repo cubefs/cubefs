@@ -76,6 +76,7 @@ const (
 	SnapshotReadVerSeq
 
 	DisableMountSubtype
+	StreamRetryTimeOut
 	MaxMountOption
 )
 
@@ -170,6 +171,7 @@ func InitMountOptions(opts []MountOption) {
 	opts[FileSystemName] = MountOption{"fileSystemName", "The explicit name of the filesystem", "", ""}
 	opts[SnapshotReadVerSeq] = MountOption{"snapshotReadSeq", "Snapshot read seq", "", int64(0)} // default false
 	opts[DisableMountSubtype] = MountOption{"disableMountSubtype", "Disable Mount Subtype", "", false}
+	opts[StreamRetryTimeOut] = MountOption{"streamRetryTimeout", "max stream retry timeout, s", "", int64(0)}
 
 	for i := 0; i < MaxMountOption; i++ {
 		flag.StringVar(&opts[i].cmdlineValue, opts[i].keyword, "", opts[i].description)
@@ -335,4 +337,6 @@ type MountOptions struct {
 	VerReadSeq uint64
 	// disable mount subtype
 	DisableMountSubtype bool
+	// stream retry timeout
+	StreamRetryTimeout int
 }

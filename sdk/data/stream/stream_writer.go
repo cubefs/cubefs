@@ -459,6 +459,8 @@ func (s *Streamer) doDirectWriteByAppend(req *ExtentRequest, direct bool, op uin
 	sc := &StreamConn{
 		dp:       dp,
 		currAddr: addr,
+
+		maxRetryTimeout: s.client.streamRetryTimeout,
 	}
 
 	replyPacket := new(Packet)
@@ -618,7 +620,7 @@ func (s *Streamer) doOverwrite(req *ExtentRequest, direct bool) (total int, err 
 		retry = false
 	}
 
-	sc := NewStreamConn(dp, false)
+	sc := NewStreamConn(dp, false, s.client.streamRetryTimeout)
 
 	for total < size {
 		reqPacket := NewOverwritePacket(dp, req.ExtentKey.ExtentId, offset-ekFileOffset+total+ekExtOffset, s.inode, offset)
