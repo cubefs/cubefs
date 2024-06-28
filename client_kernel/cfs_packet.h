@@ -357,7 +357,7 @@ static inline void cfs_packet_extent_init(struct cfs_packet_extent *ext,
 
 static inline void cfs_packet_extent_clear(struct cfs_packet_extent *extent)
 {
-	(void)extent;
+	memset(extent, 0, sizeof(*extent));
 }
 
 DEFINE_ARRAY(struct, cfs_packet_extent)
