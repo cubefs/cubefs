@@ -46,7 +46,7 @@ struct IBVSocket {
 
 extern struct IBVSocket *IBVSocket_construct(struct sockaddr_in *sin);
 extern bool IBVSocket_destruct(struct IBVSocket *_this);
-extern ssize_t IBVSocket_recvT(struct IBVSocket *_this, struct iov_iter *iter);
+extern ssize_t IBVSocket_recvT(struct IBVSocket *this, struct iov_iter *iter, __be64 req_id);
 extern ssize_t IBVSocket_send(struct IBVSocket *_this, struct iov_iter *source);
 extern struct BufferItem *IBVSocket_get_data_buf(struct IBVSocket *this, size_t size);
 extern void IBVSocket_free_data_buf(struct IBVSocket *this, struct BufferItem *item);

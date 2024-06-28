@@ -33,13 +33,11 @@ int cfs_rdma_create(struct sockaddr_storage *ss, struct cfs_log *log,
 	key = hash_sockaddr_storage(ss);
 	mutex_lock(&rdma_sock_pool->lock);
 	hash_for_each_possible(rdma_sock_pool->head, csk, hash, key) {
-		if (cfs_addr_cmp(&csk->ss_dst, ss) == 0)
+		if (cfs_addr_cmp(&csk->ss_dst, ss) == 0 && atomic_read(&csk->rdma_refcnt) <= BLOCK_NUM)
 			break;
 	}
 
 	if (!csk) {
-		mutex_unlock(&rdma_sock_pool->lock);
-
 		csk = kzalloc(sizeof(*csk), GFP_NOFS);
 		if (!csk)
 			return -ENOMEM;
@@ -70,11 +68,14 @@ int cfs_rdma_create(struct sockaddr_storage *ss, struct cfs_log *log,
 
 		csk->pool = rdma_sock_pool;
 		csk->enable_rdma = true;
+		atomic_set(&csk->rdma_refcnt, 1);
+		hash_add(rdma_sock_pool->head, &csk->hash, key);
+		list_add_tail(&csk->list, &rdma_sock_pool->lru);
 	} else {
-		hash_del(&csk->hash);
-		list_del(&csk->list);
-		mutex_unlock(&rdma_sock_pool->lock);
+		atomic_inc(&csk->rdma_refcnt);
 	}
+
+	mutex_unlock(&rdma_sock_pool->lock);
 
 	csk->log = log;
 	*cskp = csk;
@@ -82,23 +83,33 @@ int cfs_rdma_create(struct sockaddr_storage *ss, struct cfs_log *log,
 	return 0;
 }
 
-void cfs_rdma_release(struct cfs_socket *csk, bool forever)
-{
+void cfs_rdma_socket_clean(struct cfs_socket *csk) {
 	if (!csk)
 		return;
-	if (forever) {
-		if (csk->ibvsock)
-			IBVSocket_destruct(csk->ibvsock);
-		cfs_buffer_release(csk->tx_buffer);
-		cfs_buffer_release(csk->rx_buffer);
-		kfree(csk);
-	} else {
-		u32 key = hash_sockaddr_storage(&csk->ss_dst);
-		mutex_lock(&rdma_sock_pool->lock);
-		hash_add(rdma_sock_pool->head, &csk->hash, key);
-		list_add_tail(&csk->list, &rdma_sock_pool->lru);
-		csk->jiffies = jiffies;
-		mutex_unlock(&rdma_sock_pool->lock);
+	if (csk->ibvsock)
+		IBVSocket_destruct(csk->ibvsock);
+	cfs_buffer_release(csk->tx_buffer);
+	cfs_buffer_release(csk->rx_buffer);
+	kfree(csk);
+}
+
+void cfs_rdma_release(struct cfs_socket *csk, bool forever)
+{
+	int cnt = 0;
+	if (!csk)
+		return;
+	cnt = atomic_fetch_sub(1, &csk->rdma_refcnt);
+
+	if (cnt <= 1) {
+		if (forever) {
+			mutex_lock(&rdma_sock_pool->lock);
+			hash_del(&csk->hash);
+			list_del(&csk->list);
+			mutex_unlock(&rdma_sock_pool->lock);
+			cfs_rdma_socket_clean(csk);
+		} else {
+			csk->jiffies = jiffies;
+		}
 	}
 }
 
@@ -358,7 +369,7 @@ int cfs_rdma_recv_packet(struct cfs_socket *csk, struct cfs_packet *packet)
 	iov.iov_len = sizeof(struct cfs_packet_hdr) + sizeof(struct reply_hdr_padding);
 	iov_iter_init(&iter, WRITE, &iov, 1, iov.iov_len);
 
-	len = IBVSocket_recvT(csk->ibvsock, &iter);
+	len = IBVSocket_recvT(csk->ibvsock, &iter, packet->request.hdr.req_id);
 	if (len < 0) {
 		cfs_log_error(csk->log,
 			"rdma socket receive ret: %d\n", len);
@@ -417,12 +428,15 @@ static void rdma_pool_lru_work_cb(struct work_struct *work)
 	schedule_delayed_work(delayed_work, CFS_RDMA_SOCKET_TIMEOUT);
 	mutex_lock(&rdma_sock_pool->lock);
 	list_for_each_entry_safe(sock, tmp, &rdma_sock_pool->lru, list) {
+		if (atomic_read(&sock->rdma_refcnt) > 0) {
+			continue;
+		}
 		if (sock->jiffies + CFS_RDMA_SOCKET_TIMEOUT > jiffies) {
 			continue;
 		}
 		hash_del(&sock->hash);
 		list_del(&sock->list);
-		cfs_rdma_release(sock, true);
+		cfs_rdma_socket_clean(sock);
 	}
 	mutex_unlock(&rdma_sock_pool->lock);
 }
@@ -438,7 +452,7 @@ void cfs_rdma_clean_sockets_in_exit(void)
 	list_for_each_entry_safe(sock, tmp, &rdma_sock_pool->lru, list) {
 		hash_del(&sock->hash);
 		list_del(&sock->list);
-		cfs_rdma_release(sock, true);
+		cfs_rdma_socket_clean(sock);
 	}
 	mutex_unlock(&rdma_sock_pool->lock);
 }

@@ -7,6 +7,7 @@
 #include <rdma/rdma_cm.h>
 #include <rdma/ib_cm.h>
 #include "rdma_api.h"
+#include "../cfs_packet.h"
 
 int verify_rdma_event_handler(struct rdma_cm_id *cm_id,
 			   struct rdma_cm_event *event)
@@ -68,7 +69,7 @@ int verify_rdma_event_handler(struct rdma_cm_id *cm_id,
 
 	case RDMA_CM_EVENT_DISCONNECTED:
 		this->connState = IBVSOCKETCONNSTATE_UNCONNECTED;
-		ibv_print_debug("receive event RDMA_CM_EVENT_DISCONNECTED\n");
+		ibv_print_info("receive event RDMA_CM_EVENT_DISCONNECTED\n");
 		break;
 
 	case RDMA_CM_EVENT_DEVICE_REMOVAL:
@@ -358,7 +359,8 @@ struct IBVSocket *IBVSocket_construct(struct sockaddr_in *sin) {
 
 	wait_event_interruptible_timeout(this->eventWaitQ, this->connState != IBVSOCKETCONNSTATE_ROUTERESOLVED, TIMEOUT_JS);
 	if (this->connState != IBVSOCKETCONNSTATE_ESTABLISHED) {
-		ibv_print_error("connection not established. state=%d\n", this->connState);
+		ibv_print_error("connection to %s:%d not established. state=%d\n",
+			print_ip_addr(ntohl(sin->sin_addr.s_addr)), ntohs(sin->sin_port), this->connState);
 		goto err_destroy_qp;
 	}
 
@@ -392,38 +394,42 @@ err_free_this:
 }
 
 bool IBVSocket_destruct(struct IBVSocket *this) {
-	if (this == NULL) {
+	if (!this) {
 		return false;
 	}
+
+	ibv_print_info("disconnect rdma link with %s:%d\n",
+		print_ip_addr(ntohl(this->remote_addr.sin_addr.s_addr)), ntohs(this->remote_addr.sin_port));
+
 	this->connState = IBVSOCKETCONNSTATE_DESTROYED;
 
-    if (this->cm_id != NULL) {
+    if (this->cm_id) {
         rdma_disconnect(this->cm_id);
     }
 
     RingBuffer_free(this);
 
-    if (this->qp != NULL) {
+    if (this->qp) {
         rdma_destroy_qp(this->cm_id);
         this->qp = NULL;
     }
 	
-    if (this->sendCQ != NULL) {
+    if (this->sendCQ) {
         ib_destroy_cq_user(this->sendCQ, NULL);
         this->sendCQ = NULL;
     }
 	
-    if (this->recvCQ != NULL) {
+    if (this->recvCQ) {
         ib_destroy_cq_user(this->recvCQ, NULL);
         this->recvCQ = NULL;
     }
 
-    if (this->pd != NULL) {
+    if (this->pd) {
         ib_dealloc_pd(this->pd);
         this->pd = NULL;
     }
 
-	if (this->cm_id != NULL) {
+	if (this->cm_id) {
         rdma_destroy_id(this->cm_id);
         this->cm_id = NULL;
     }
@@ -462,6 +468,33 @@ ssize_t IBVSocket_post_recv(struct IBVSocket *this, int index) {
     return 0;
 }
 
+int RingBuffer_get_by_req_id(struct IBVSocket *this, __be64 req_id) {
+	int i = 0;
+	struct cfs_packet_hdr *hdr = NULL;
+
+	mutex_lock(&this->lock);
+
+	for (i = this->recvBufIndex; i<BLOCK_NUM; i++) {
+		hdr = (struct cfs_packet_hdr *)this->recvBuf[i]->pBuff;
+		if (this->recvBuf[i]->used && hdr->req_id == req_id) {
+			this->recvBufIndex = (i+1)%BLOCK_NUM;
+			mutex_unlock(&this->lock);
+			return i;
+		}
+	}
+	for (i=0; i<this->recvBufIndex; i++) {
+		hdr = (struct cfs_packet_hdr *)this->recvBuf[i]->pBuff;
+		if (this->recvBuf[i]->used && hdr->req_id == req_id) {
+			this->recvBufIndex = (i+1)%BLOCK_NUM;
+			mutex_unlock(&this->lock);
+			return i;
+		}
+	}
+
+	mutex_unlock(&this->lock);
+	return -1;
+}
+
 ssize_t IBVSocket_copy_restore(struct IBVSocket *this, struct iov_iter *iter, int index) {
     int ret;
     ssize_t isize = 0;
@@ -484,7 +517,7 @@ ssize_t IBVSocket_copy_restore(struct IBVSocket *this, struct iov_iter *iter, in
     return isize;
 }
 
-ssize_t IBVSocket_recvT(struct IBVSocket *this, struct iov_iter *iter) {
+ssize_t IBVSocket_recvT(struct IBVSocket *this, struct iov_iter *iter, __be64 req_id) {
 	struct ib_wc wc[8];
 	int numElements;
 	int i;
@@ -512,7 +545,7 @@ ssize_t IBVSocket_recvT(struct IBVSocket *this, struct iov_iter *iter) {
 			return -EIO;
 		}
 
-		index = RingBuffer_alloc(this, false);
+		index = RingBuffer_get_by_req_id(this, req_id);
 		if (index >= 0) {
 			break;
 		}

@@ -24,6 +24,7 @@ struct cfs_socket {
 	struct cfs_log *log;
 	struct IBVSocket* ibvsock;
 	bool enable_rdma;
+	atomic_t rdma_refcnt;
 };
 
 struct cfs_socket_ops {
