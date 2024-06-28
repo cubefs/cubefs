@@ -132,10 +132,10 @@ type ClusterView struct {
 	EnableAutoDpMetaRepair       bool
 	AutoDpMetaRepairParallelCnt  int
 	EnableAutoDecommission       bool
-	AutoDecommissionDiskInterval time.Duration
+	AutoDecommissionDiskInterval string
 	DecommissionDiskLimit        uint32
-	DpRepairTimeout              time.Duration
-	DpTimeout                    time.Duration
+	DpRepairTimeout              string
+	DpTimeout                    string
 	DataNodeStatInfo             *NodeStatInfo
 	MetaNodeStatInfo             *NodeStatInfo
 	VolStatInfo                  []*VolStatInfo
