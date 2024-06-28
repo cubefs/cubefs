@@ -241,6 +241,7 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 
 		DisableMetaCache:             DisableMetaCache,
 		MinWriteAbleDataPartitionCnt: opt.MinWriteAbleDataPartitionCnt,
+		StreamRetryTimeout:           opt.StreamRetryTimeout,
 	}
 
 	s.ec, err = stream.NewExtentClient(extentConfig)
