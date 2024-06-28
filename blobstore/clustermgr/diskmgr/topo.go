@@ -2,6 +2,7 @@ package diskmgr
 
 import (
 	"context"
+	"sort"
 	"sync"
 
 	"github.com/cubefs/cubefs/blobstore/api/blobnode"
@@ -62,6 +63,14 @@ func (t *topoMgr) AllocNodeSetID(ctx context.Context, info *blobnode.NodeInfo, c
 	if _, ok := t.allNodeSets[info.DiskType]; !ok {
 		t.allNodeSets[info.DiskType] = make(nodeSetMap)
 	}
+	// sort current nodeSetIDs so that the master allocation result is the same as the slave one.
+	allNodeSets := make([]*nodeSetItem, 0, len(t.allNodeSets[info.DiskType]))
+	for _, nodeSet := range t.allNodeSets[info.DiskType] {
+		allNodeSets = append(allNodeSets, nodeSet)
+	}
+	sort.Slice(allNodeSets, func(i, j int) bool {
+		return allNodeSets[i].ID() < allNodeSets[j].ID()
+	})
 
 	var retryMode bool
 	nodeSetCap := config.NodeSetCap
@@ -69,7 +78,7 @@ func (t *topoMgr) AllocNodeSetID(ctx context.Context, info *blobnode.NodeInfo, c
 	nodeSetRackCap := config.NodeSetRackCap
 
 RETRY:
-	for nodeSetID, nodeSet := range t.allNodeSets[info.DiskType] {
+	for _, nodeSet := range allNodeSets {
 		nodeSetLen := nodeSet.getNodeSetLen()
 		if nodeSetLen >= nodeSetCap {
 			continue
@@ -82,8 +91,8 @@ RETRY:
 		if rackAware && nodeSetRackLen >= nodeSetRackCap && !retryMode {
 			continue
 		}
-		span.Debugf("nodeSetID %d is chosen, nodeSetLen:%d, nodeSetIdcLen:%d, nodeSetRackLen:%d", nodeSetID, nodeSetLen, nodeSetIdcLen, nodeSetRackLen)
-		return nodeSetID
+		span.Debugf("nodeSetID %d is chosen, nodeSetLen:%d, nodeSetIdcLen:%d, nodeSetRackLen:%d", nodeSet.ID(), nodeSetLen, nodeSetIdcLen, nodeSetRackLen)
+		return nodeSet.ID()
 	}
 	if rackAware && !retryMode {
 		span.Warn("retry without rackAware")
@@ -102,16 +111,24 @@ func (t *topoMgr) AllocDiskSetID(ctx context.Context, diskInfo *blobnode.DiskInf
 
 	t.lock.Lock()
 	defer t.lock.Unlock()
+	// sort current diskSetIDs so that the master allocation result is the same as the slave one.
+	allDiskSets := make([]*diskSetItem, 0, len(nodeSet.diskSets))
+	for _, diskSet := range nodeSet.diskSets {
+		allDiskSets = append(allDiskSets, diskSet)
+	}
+	sort.Slice(allDiskSets, func(i, j int) bool {
+		return allDiskSets[i].ID() < allDiskSets[j].ID()
+	})
 
 	diskSetCap := config.DiskSetCap
 	diskCountPerNode := config.DiskCountPerNodeInDiskSet
-	for diskSetID, diskSet := range nodeSet.diskSets {
+	for _, diskSet := range allDiskSets {
 		diskSetLen, diskCount := diskSet.getDiskSetLen(diskInfo.NodeID)
 		if diskSetLen >= diskSetCap || diskCount >= diskCountPerNode {
 			continue
 		}
-		span.Debugf("diskSetID %d is chosen, diskSetLen:%d, diskCount:%d", diskSetID, diskSetLen, diskCount)
-		return diskSetID
+		span.Debugf("diskSetID %d is chosen, diskSetLen:%d, diskCount:%d", diskSet.ID(), diskSetLen, diskCount)
+		return diskSet.ID()
 	}
 
 	t.curDiskSetID += 1
