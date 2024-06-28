@@ -38,7 +38,7 @@ var (
 const (
 	StreamSendMaxRetry      = 200
 	StreamSendSleepInterval = 100 * time.Millisecond
-	StreamSendMaxTimeout    = 20 * time.Minute
+	StreamSendMaxTimeout    = 10 * time.Minute
 	RetryFactor             = 12 / 10
 )
 
@@ -48,12 +48,20 @@ type GetReplyFunc func(conn *net.TCPConn) (err error, again bool)
 type StreamConn struct {
 	dp       *wrapper.DataPartition
 	currAddr string
+
+	maxRetryTimeout time.Duration
 }
 
 var StreamConnPool = util.NewConnectPool()
 
 // NewStreamConn returns a new stream connection.
-func NewStreamConn(dp *wrapper.DataPartition, follower bool) (sc *StreamConn) {
+func NewStreamConn(dp *wrapper.DataPartition, follower bool, timeout time.Duration) (sc *StreamConn) {
+	defer func() {
+		if sc != nil {
+			sc.maxRetryTimeout = timeout
+		}
+	}()
+
 	if !follower {
 		sc = &StreamConn{
 			dp:       dp,
@@ -106,6 +114,13 @@ func (sc *StreamConn) String() string {
 	return fmt.Sprintf("Partition(%v) CurrentAddr(%v) Hosts(%v)", sc.dp.PartitionID, sc.currAddr, sc.dp.Hosts)
 }
 
+func (sc *StreamConn) getRetryTimeOut() time.Duration {
+	if sc.maxRetryTimeout <= 0 {
+		return StreamSendMaxTimeout
+	}
+	return sc.maxRetryTimeout
+}
+
 // Send send the given packet over the network through the stream connection until success
 // or the maximum number of retries is reached.
 func (sc *StreamConn) Send(retry *bool, req *Packet, getReply GetReplyFunc) (err error) {
@@ -118,8 +133,8 @@ func (sc *StreamConn) Send(retry *bool, req *Packet, getReply GetReplyFunc) (err
 			return
 		}
 
-		if time.Since(start) > StreamSendMaxTimeout {
-			log.LogWarnf("StreamConn Send: retry still failed after %d ms, req %d", StreamSendMaxTimeout.Milliseconds(), req.ReqID)
+		if time.Since(start) > sc.getRetryTimeOut() {
+			log.LogWarnf("StreamConn Send: retry still failed after %d ms, req %d", sc.getRetryTimeOut().Milliseconds(), req.ReqID)
 			return errors.NewErrorf("retry failed, err %s", err.Error())
 		}
 
