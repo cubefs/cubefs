@@ -6947,15 +6947,21 @@ func (m *Server) lcnodeInfo(w http.ResponseWriter, r *http.Request) {
 			rsp *LcNodeInfoResponse
 			err error
 		)
-		if rsp, err = m.cluster.getAllLcNodeInfo(); err != nil {
+		vol := r.FormValue("vol")
+		done := r.FormValue("done")
+		if rsp, err = m.cluster.getAllLcNodeInfo(vol, done); err != nil {
 			sendErrReply(w, r, newErrHTTPReply(err))
 			return
 		}
 		sendOkReply(w, r, newSuccessHTTPReply(rsp))
 	case "start":
 		if m.cluster.partition != nil && m.cluster.partition.IsRaftLeader() {
-			m.cluster.startLcScan()
-			sendOkReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeSuccess})
+			success, msg := m.cluster.startLcScan()
+			if success {
+				sendOkReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeSuccess})
+			} else {
+				sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: msg})
+			}
 		} else {
 			sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: "not leader"})
 		}

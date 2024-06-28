@@ -5309,15 +5309,60 @@ type LcNodeInfoResponse struct {
 	SnapshotNodeStatus lcNodeStatus
 }
 
-func (c *Cluster) getAllLcNodeInfo() (rsp *LcNodeInfoResponse, err error) {
-	rsp = &LcNodeInfoResponse{}
+func (c *Cluster) getAllLcNodeInfo(vol, done string) (rsp *LcNodeInfoResponse, err error) {
+	rsp = &LcNodeInfoResponse{
+		LcRuleTaskStatus: lcRuleTaskStatus{
+			ToBeScanned: make(map[string]*proto.RuleTask),
+			Results:     make(map[string]*proto.LcNodeRuleTaskResponse),
+		},
+	}
+	var b []byte
+
+	if vol != "" || done != "" {
+		tmpLcRuleTaskStatus := lcRuleTaskStatus{}
+		c.lcMgr.lcRuleTaskStatus.RLock()
+		if b, err = json.Marshal(c.lcMgr.lcRuleTaskStatus); err != nil {
+			c.lcMgr.lcRuleTaskStatus.RUnlock()
+			return
+		}
+		c.lcMgr.lcRuleTaskStatus.RUnlock()
+		if err = json.Unmarshal(b, &tmpLcRuleTaskStatus); err != nil {
+			return
+		}
+
+		for k, v := range tmpLcRuleTaskStatus.Results {
+			if strings.HasPrefix(k, vol) {
+				if done == "true" && v.Done {
+					rsp.LcRuleTaskStatus.Results[k] = v
+					continue
+				}
+				if done == "false" && !v.Done {
+					rsp.LcRuleTaskStatus.Results[k] = v
+					continue
+				}
+				if done == "" {
+					rsp.LcRuleTaskStatus.Results[k] = v
+				}
+			}
+		}
+
+		for k, v := range tmpLcRuleTaskStatus.ToBeScanned {
+			if strings.HasPrefix(k, vol) && (done == "false" || done == "") {
+				rsp.LcRuleTaskStatus.ToBeScanned[k] = v
+			}
+		}
+
+		rsp.LcRuleTaskStatus.StartTime = tmpLcRuleTaskStatus.StartTime
+		rsp.LcRuleTaskStatus.EndTime = tmpLcRuleTaskStatus.EndTime
+		return
+	}
+
 	c.lcNodes.Range(func(addr, value interface{}) bool {
 		rsp.RegisterInfos = append(rsp.RegisterInfos, &LcNodeStatInfo{
 			Addr: addr.(string),
 		})
 		return true
 	})
-	var b []byte
 
 	c.lcMgr.RLock()
 	if b, err = json.Marshal(c.lcMgr.lcConfigurations); err != nil {
@@ -5413,7 +5458,7 @@ func (c *Cluster) scheduleToLcScan() {
 	}()
 }
 
-func (c *Cluster) startLcScan() {
+func (c *Cluster) startLcScan() (success bool, msg string) {
 	defer func() {
 		if r := recover(); r != nil {
 			log.LogWarnf("startLcScan occurred panic,err[%v]", r)
@@ -5421,7 +5466,7 @@ func (c *Cluster) startLcScan() {
 				"startLcScan occurred panic")
 		}
 	}()
-	c.lcMgr.startLcScan()
+	return c.lcMgr.startLcScan()
 }
 
 func (c *Cluster) scheduleToSnapshotDelVerScan() {

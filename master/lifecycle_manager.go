@@ -45,16 +45,20 @@ func newLifecycleManager() *lifecycleManager {
 	return lcMgr
 }
 
-func (lcMgr *lifecycleManager) startLcScan() {
+func (lcMgr *lifecycleManager) startLcScan() (success bool, msg string) {
 	// stop if already scanning
 	if lcMgr.scanning() {
-		log.LogWarnf("rescheduleScanRoutine: scanning is not completed, lcRuleTaskStatus(%v)", lcMgr.lcRuleTaskStatus)
+		success = false
+		msg = "startLcScan failed: scanning is not completed"
+		log.LogWarn(msg)
 		return
 	}
 
 	tasks := lcMgr.genEnabledRuleTasks()
 	if len(tasks) <= 0 {
-		log.LogDebugf("startLcScan: no enabled lifecycle rule task to schedule!")
+		success = false
+		msg = "startLcScan: no enabled lifecycle rule task to schedule!"
+		log.LogDebug(msg)
 		return
 	} else {
 		log.LogDebugf("startLcScan: %v lifecycle rule tasks to schedule!", len(tasks))
@@ -67,6 +71,8 @@ func (lcMgr *lifecycleManager) startLcScan() {
 	}
 
 	go lcMgr.process()
+	success = true
+	return
 }
 
 // generate tasks for every bucket
