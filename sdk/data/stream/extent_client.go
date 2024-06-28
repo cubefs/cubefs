@@ -141,6 +141,7 @@ type ExtentConfig struct {
 
 	DisableMetaCache             bool
 	MinWriteAbleDataPartitionCnt int
+	StreamRetryTimeout           int
 }
 
 type MultiVerMgr struct {
@@ -159,6 +160,7 @@ type ExtentClient struct {
 	readLimiter        *rate.Limiter
 	writeLimiter       *rate.Limiter
 	disableMetaCache   bool
+	streamRetryTimeout time.Duration
 	volumeType         int
 	volumeName         string
 	bcacheEnable       bool
@@ -294,6 +296,13 @@ retry:
 	client.BcacheHealth = true
 	client.preload = config.Preload
 	client.disableMetaCache = config.DisableMetaCache
+
+	if config.StreamRetryTimeout <= 0 {
+		client.streamRetryTimeout = StreamSendMaxTimeout
+	} else {
+		client.streamRetryTimeout = time.Duration(config.StreamRetryTimeout) * time.Second
+	}
+	log.LogInfof("stream retry timeout %d ms", client.streamRetryTimeout.Milliseconds())
 
 	var readLimit, writeLimit rate.Limit
 	if config.ReadRate <= 0 {
