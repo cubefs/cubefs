@@ -230,7 +230,6 @@ func (dataNode *DataNode) canAlloc() bool {
 func (dataNode *DataNode) IsWriteAble() (ok bool) {
 	dataNode.RLock()
 	defer dataNode.RUnlock()
-
 	return dataNode.isWriteAbleWithSizeNoLock(10 * util.GB)
 }
 
@@ -652,4 +651,17 @@ func (dataNode *DataNode) getBackupDataPartitionInfo(id uint64) (proto.BackupDat
 	}
 	return proto.BackupDataPartitionInfo{}, errors.NewErrorf("cannot find backup info "+
 		"for dp (%v) on datanode (%v)", id, dataNode.Addr)
+}
+
+func (dataNode *DataNode) createTaskToRecoverBadDisk(diskPath string) (err error) {
+	task := proto.NewAdminTask(proto.OpRecoverBadDisk, dataNode.Addr, newRecoverBadDiskRequest(diskPath))
+	_, err = dataNode.TaskManager.syncSendAdminTask(task)
+	return err
+}
+
+func (dataNode *DataNode) IsOffline() bool {
+	if cnt := dataNode.availableDiskCount(); cnt == 0 {
+		return true
+	}
+	return dataNode.ToBeOffline
 }

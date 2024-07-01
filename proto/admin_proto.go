@@ -161,13 +161,15 @@ const (
 	DecommissionDisk                   = "/disk/decommission"
 	RecommissionDisk                   = "/disk/recommission"
 	QueryDiskDecoProgress              = "/disk/queryDecommissionProgress"
-	MarkDecoDiskFixed                  = "/disk/MarkDecommissionDiskFixed"
+	DeleteDecommissionDiskRecord       = "/disk/deleteDecommissionDiskRecord"
 	PauseDecommissionDisk              = "/disk/pauseDecommission"
 	CancelDecommissionDisk             = "/disk/cancelDecommission"
+	ResetDecommissionDiskStatus        = "/disk/resetDecommissionStatus"
 	QueryDecommissionDiskDecoFailedDps = "/disk/queryDecommissionFailedDps"
 	QueryBadDisks                      = "/disk/queryBadDisks"
 	RestoreStoppedAutoDecommissionDisk = "/disk/restoreStoppedAutoDecommissionDisk"
 	QueryAllDecommissionDisk           = "/disk/queryAllDecommissionDisk"
+	RecoverBadDisk                     = "/disk/recoverBadDisk"
 	GetDataNode                        = "/dataNode/get"
 	AddMetaNode                        = "/metaNode/add"
 	DecommissionMetaNode               = "/metaNode/decommission"
@@ -1279,4 +1281,8 @@ type BackupDataPartitionInfo struct {
 type RecoverBackupDataReplicaRequest struct {
 	PartitionId uint64
 	Disk        string
+}
+
+type RecoverBadDiskRequest struct {
+	DiskPath string
 }

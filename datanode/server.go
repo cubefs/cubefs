@@ -468,7 +468,7 @@ func (s *DataNode) getBrokenDisks() (disks map[string]interface{}, err error) {
 	}
 	log.LogInfof("[getBrokenDisks] data node(%v) broken disks(%v)", dataNode.Addr, dataNode.BadDisks)
 	for _, disk := range dataNode.BadDisks {
-		disks[disk] = 1
+		disks[disk] = struct{}{}
 	}
 	return
 }
@@ -538,12 +538,17 @@ func (s *DataNode) startSpaceManager(cfg *config.Config) (err error) {
 		wg.Add(1)
 		go func(wg *sync.WaitGroup, path string, reservedSpace uint64) {
 			defer wg.Done()
-			if _, broken := brokenDisks[path]; !broken {
-				s.space.LoadDisk(path, reservedSpace, diskRdonlySpace, DefaultDiskMaxErr, diskEnableReadRepairExtentLimit)
+			err := s.space.LoadDisk(path, reservedSpace, diskRdonlySpace, DefaultDiskMaxErr, diskEnableReadRepairExtentLimit)
+			if err != nil {
+				log.LogErrorf("[startSpaceManager] load disk %v failed: %v", path, err)
 				return
 			}
-			log.LogWarnf("[startSpaceManager] load broken disk(%v)", path)
-			s.space.LoadBrokenDisk(path, reservedSpace, diskRdonlySpace, DefaultDiskMaxErr, diskEnableReadRepairExtentLimit)
+			if _, found := brokenDisks[path]; found {
+				disk, _ := s.space.GetDisk(path)
+				disk.doDiskError()
+				log.LogErrorf("[startSpaceManager] disk %v is already IO error", path)
+				return
+			}
 		}(&wg, path, reservedSpace)
 	}
 
