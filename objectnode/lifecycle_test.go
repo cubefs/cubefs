@@ -241,3 +241,86 @@ func TestLifecycleConfigurationTransition2(t *testing.T) {
 	err = proto.ValidRules(l1.Rules)
 	require.NoError(t, err)
 }
+
+func TestLifecycleConfigurationTransition3(t *testing.T) {
+	LifecycleXml := `
+<LifecycleConfiguration>
+    <Rule>
+        <ID>id1</ID>
+        <Status>Enabled</Status>
+        <Transition>
+           <Days>365</Days>
+           <StorageClass>HDD</StorageClass>
+        </Transition>
+    </Rule>
+    <Rule>
+        <ID>id2</ID>
+        <Status>Enabled</Status>
+        <Transition>
+           <Days>365</Days>
+           <StorageClass>HDD</StorageClass>
+        </Transition>
+    </Rule>
+</LifecycleConfiguration>
+`
+
+	l1 := NewLifecycleConfiguration()
+	err := xml.Unmarshal([]byte(LifecycleXml), l1)
+	require.NoError(t, err)
+
+	err = proto.ValidRules(l1.Rules)
+	require.Equal(t, proto.LifeCycleErrConflictRules, err)
+
+	LifecycleXml2 := `
+<LifecycleConfiguration>
+    <Rule>
+        <ID>id1</ID>
+        <Status>Enabled</Status>
+        <Filter>
+           <Prefix></Prefix>
+        </Filter>
+        <Transition>
+           <Days>365</Days>
+           <StorageClass>HDD</StorageClass>
+        </Transition>
+    </Rule>
+    <Rule>
+        <ID>id2</ID>
+        <Status>Enabled</Status>
+        <Filter>
+           <Prefix></Prefix>
+        </Filter>
+        <Transition>
+           <Days>365</Days>
+           <StorageClass>HDD</StorageClass>
+        </Transition>
+    </Rule>
+</LifecycleConfiguration>
+`
+	l2 := NewLifecycleConfiguration()
+	err = xml.Unmarshal([]byte(LifecycleXml2), l2)
+	require.NoError(t, err)
+
+	err = proto.ValidRules(l2.Rules)
+	require.Equal(t, proto.LifeCycleErrConflictRules, err)
+
+	l2.Rules[0].Filter.Prefix = "log"
+	l2.Rules[1].Filter.Prefix = "log1"
+	err = proto.ValidRules(l2.Rules)
+	require.Equal(t, proto.LifeCycleErrConflictRules, err)
+
+	l2.Rules[0].Filter.Prefix = "log1"
+	l2.Rules[1].Filter.Prefix = "log"
+	err = proto.ValidRules(l2.Rules)
+	require.Equal(t, proto.LifeCycleErrConflictRules, err)
+
+	l2.Rules[0].Filter.Prefix = "log"
+	l2.Rules[1].Filter.Prefix = "log"
+	err = proto.ValidRules(l2.Rules)
+	require.Equal(t, proto.LifeCycleErrConflictRules, err)
+
+	l2.Rules[0].Filter.Prefix = "log1"
+	l2.Rules[1].Filter.Prefix = "log2"
+	err = proto.ValidRules(l2.Rules)
+	require.NoError(t, err)
+}
