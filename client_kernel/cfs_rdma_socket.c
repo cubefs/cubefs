@@ -419,7 +419,7 @@ int cfs_rdma_recv_packet(struct cfs_socket *csk, struct cfs_packet *packet)
 	return ret;
 }
 
-static void rdma_pool_lru_work_cb(struct work_struct *work)
+static void cfs_rdma_pool_lru_work_cb(struct work_struct *work)
 {
 	struct delayed_work *delayed_work = to_delayed_work(work);
 	struct cfs_socket *sock;
@@ -467,7 +467,7 @@ int cfs_rdma_module_init(void)
 	hash_init(rdma_sock_pool->head);
 	INIT_LIST_HEAD(&rdma_sock_pool->lru);
 	mutex_init(&rdma_sock_pool->lock);
-	INIT_DELAYED_WORK(&rdma_sock_pool->work, rdma_pool_lru_work_cb);
+	INIT_DELAYED_WORK(&rdma_sock_pool->work, cfs_rdma_pool_lru_work_cb);
 	schedule_delayed_work(&rdma_sock_pool->work,
 			      msecs_to_jiffies(SOCK_POOL_LRU_INTERVAL_MS));
 
