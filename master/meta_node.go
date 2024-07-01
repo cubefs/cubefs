@@ -199,6 +199,10 @@ func (metaNode *MetaNode) PartitionCntLimited() bool {
 	return uint32(metaNode.MetaPartitionCount) <= metaNode.GetPartitionLimitCnt()
 }
 
+func (metaNode *MetaNode) IsOffline() bool {
+	return metaNode.ToBeOffline
+}
+
 // LeaderMetaNode define the leader metaPartitions in meta node
 type LeaderMetaNode struct {
 	addr           string

@@ -3027,17 +3027,24 @@ func (m *Server) cancelDecommissionDataNode(w http.ResponseWriter, r *http.Reque
 		sendErrReply(w, r, newErrHTTPReply(proto.ErrDataNodeNotExists))
 		return
 	}
-	// find all decommission failed data partitions for this node
-	leftPartitions := m.cluster.getAllDecommissionDataPartitionByDataNode(offLineAddr)
-	for _, dp := range leftPartitions {
-		if dp.GetDecommissionStatus() == DecommissionSuccess || dp.IsRollbackFailed() || ns.HasDecommissionToken(dp.PartitionID) {
-			continue
+	for _, disk := range node.DecommissionDiskList {
+		key := fmt.Sprintf("%s_%s", node.Addr, disk)
+		if value, ok := m.cluster.DecommissionDisks.Load(key); ok {
+			dd := value.(*DecommissionDisk)
+			dd.cancelDecommission(m.cluster, ns)
 		}
-		msg := fmt.Sprintf("dp(%v) cancel decommission", dp.decommissionInfo())
-		dp.ResetDecommissionStatus()
-		dp.setRestoreReplicaStop()
-		auditlog.LogMasterOp("CancelDataPartitionDecommission", msg, nil)
 	}
+	// find all decommission failed data partitions for this node
+	// leftPartitions := m.cluster.getAllDecommissionDataPartitionByDataNode(offLineAddr)
+	// for _, dp := range leftPartitions {
+	//	if dp.GetDecommissionStatus() == DecommissionSuccess || dp.IsRollbackFailed() || ns.HasDecommissionToken(dp.PartitionID) {
+	//		continue
+	//	}
+	//	msg := fmt.Sprintf("dp(%v) cancel decommission", dp.decommissionInfo())
+	//	dp.ResetDecommissionStatus()
+	//	dp.setRestoreReplicaStop()
+	//	auditlog.LogMasterOp("CancelDataPartitionDecommission", msg, nil)
+	// }
 
 	rstMsg = fmt.Sprintf("cancel decommission data node [%v] success", offLineAddr)
 	sendOkReply(w, r, newSuccessHTTPReply(rstMsg))
@@ -4321,13 +4328,13 @@ func (m *Server) queryAllDecommissionDisk(w http.ResponseWriter, r *http.Request
 	sendOkReply(w, r, newSuccessHTTPReply(resp))
 }
 
-func (m *Server) markDecoDiskFixed(w http.ResponseWriter, r *http.Request) {
+func (m *Server) deleteDecommissionDiskRecord(w http.ResponseWriter, r *http.Request) {
 	var (
 		offLineAddr, diskPath string
 		err                   error
 	)
 
-	metric := exporter.NewTPCnt("req_markDecoDiskFixed")
+	metric := exporter.NewTPCnt("req_deleteDecommissionDisk")
 	defer func() {
 		metric.Set(err)
 	}()
@@ -4339,7 +4346,7 @@ func (m *Server) markDecoDiskFixed(w http.ResponseWriter, r *http.Request) {
 	key := fmt.Sprintf("%s_%s", offLineAddr, diskPath)
 	value, ok := m.cluster.DecommissionDisks.Load(key)
 	if !ok {
-		ret := fmt.Sprintf("action[queryDiskDecoProgress]cannot found decommission task for  node[%v] disk[%v], "+
+		ret := fmt.Sprintf("action[deleteDecommissionDiskRecord]cannot found decommission task for  node[%v] disk[%v], "+
 			"may be already offline", offLineAddr, diskPath)
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: ret})
 		return
@@ -6938,7 +6945,7 @@ func (m *Server) setDiskBrokenThreshold(w http.ResponseWriter, r *http.Request) 
 	sendOkReply(w, r, newSuccessHTTPReply(rstMsg))
 }
 
-func (m *Server) cancelDisableDisk(w http.ResponseWriter, r *http.Request) {
+func (m *Server) cancelDecommissionDisk(w http.ResponseWriter, r *http.Request) {
 	var (
 		offLineAddr, diskPath string
 		err                   error
@@ -6959,44 +6966,39 @@ func (m *Server) cancelDisableDisk(w http.ResponseWriter, r *http.Request) {
 	key := fmt.Sprintf("%s_%s", offLineAddr, diskPath)
 	value, ok := m.cluster.DecommissionDisks.Load(key)
 	if !ok {
-		ret := fmt.Sprintf("action[queryDiskDecoProgress]cannot found decommission task for node[%v] disk[%v], "+
+		ret := fmt.Sprintf("action[cancelDecommissionDisk]cannot found decommission task for node[%v] disk[%v], "+
 			"may be already offline", offLineAddr, diskPath)
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: ret})
 		return
 	}
 	if dataNode, err = m.cluster.dataNode(offLineAddr); err != nil {
-		ret := fmt.Sprintf("action[queryDiskDecoProgress]cannot find dataNode[%s]", offLineAddr)
+		ret := fmt.Sprintf("action[cancelDecommissionDisk]cannot find dataNode[%s]", offLineAddr)
 		log.LogWarnf("%v", ret)
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: ret})
 		return
 	}
 
 	if zone, err = m.cluster.t.getZone(dataNode.ZoneName); err != nil {
-		ret := fmt.Sprintf("action[queryDiskDecoProgress] find datanode[%s] zone failed[%v]",
+		ret := fmt.Sprintf("action[cancelDecommissionDisk] find datanode[%s] zone failed[%v]",
 			dataNode.Addr, err.Error())
 		log.LogWarnf("%v", ret)
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: ret})
 		return
 	}
 	if ns, err = zone.getNodeSet(dataNode.NodeSetID); err != nil {
-		ret := fmt.Sprintf("action[queryDiskDecoProgress] find datanode[%s] nodeset[%v] failed[%v]",
+		ret := fmt.Sprintf("action[cancelDecommissionDisk] find datanode[%s] nodeset[%v] failed[%v]",
 			dataNode.Addr, dataNode.NodeSetID, err.Error())
 		log.LogWarnf("%v", ret)
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: ret})
 		return
 	}
 	disk := value.(*DecommissionDisk)
-	dps := m.cluster.getAllDecommissionDataPartitionByDiskAndTerm(disk.SrcAddr, disk.DiskPath, disk.DecommissionTerm)
-	for _, dp := range dps {
-		if dp.GetDecommissionStatus() == DecommissionSuccess || dp.IsRollbackFailed() || ns.HasDecommissionToken(dp.PartitionID) {
-			continue
-		}
-		msg := fmt.Sprintf("dp(%v) cancel decommission", dp.decommissionInfo())
-		dp.ResetDecommissionStatus()
-		dp.setRestoreReplicaStop()
-		auditlog.LogMasterOp("CancelDataPartitionDecommission", msg, nil)
+	if err = disk.cancelDecommission(m.cluster, ns); err != nil {
+		ret := fmt.Sprintf("action[cancelDecommissionDisk] cancel disk %v decommission failed[%v]",
+			key, err.Error())
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: ret})
+		return
 	}
-	disk.SetDecommissionStatus(DecommissionCancel)
 	rstMsg := fmt.Sprintf("cancel decommission disk[%s] successfully ", key)
 	sendOkReply(w, r, newSuccessHTTPReply(rstMsg))
 }
@@ -7022,7 +7024,7 @@ func (m *Server) resetDataPartitionRestoreStatus(w http.ResponseWriter, r *http.
 	}
 
 	ok := dp.resetRestoreMeta(RestoreReplicaMetaRunning)
-	log.LogInfof("[resetDataPartitionRestoreStaus] reset dp(%v) restore status ok(%v)", dpId, ok)
+	log.LogInfof("[resetDataPartitionRestoreStatus] reset dp(%v) restore status ok(%v)", dpId, ok)
 	sendOkReply(w, r, newSuccessHTTPReply(ok))
 }
 
@@ -7126,4 +7128,84 @@ func (m *Server) recoverDiskErrorReplica(w http.ResponseWriter, r *http.Request)
 	msg = fmt.Sprintf("action[recoverDiskErrorReplica] dp(%v)  recover replica [%v_%v] successfully", dp.decommissionInfo(), backupInfo.Addr, backupInfo.Disk)
 	log.LogInfof("%v", msg)
 	sendOkReply(w, r, newSuccessHTTPReply(msg))
+}
+
+func (m *Server) resetDecommissionDiskStatus(w http.ResponseWriter, r *http.Request) {
+	var (
+		offLineAddr, diskPath string
+		err                   error
+	)
+
+	metric := exporter.NewTPCnt("req_resetDecommissionDisk")
+	defer func() {
+		metric.Set(err)
+	}()
+
+	if offLineAddr, diskPath, _, _, _, err = parseReqToDecoDisk(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	key := fmt.Sprintf("%s_%s", offLineAddr, diskPath)
+	value, ok := m.cluster.DecommissionDisks.Load(key)
+	if !ok {
+		ret := fmt.Sprintf("action[resetDecommissionDiskStatus]cannot found decommission task for node[%v] disk[%v], "+
+			"may be already offline", offLineAddr, diskPath)
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: ret})
+		return
+	}
+	disk := value.(*DecommissionDisk)
+	disk.SetDecommissionStatus(DecommissionInitial)
+	err = m.cluster.syncUpdateDecommissionDisk(disk)
+	if err != nil {
+		ret := fmt.Sprintf("action[resetDecommissionDiskStatus]persist disk[%v] failed %v", key, err.Error())
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: ret})
+		return
+	}
+	rstMsg := fmt.Sprintf("reset decommission disk[%s] successfully ", key)
+	sendOkReply(w, r, newSuccessHTTPReply(rstMsg))
+}
+
+func (m *Server) recoverBadDisk(w http.ResponseWriter, r *http.Request) {
+	var (
+		offLineAddr, diskPath string
+		err                   error
+		dataNode              *DataNode
+		found                 = false
+	)
+
+	metric := exporter.NewTPCnt("req_resetDecommissionDisk")
+	defer func() {
+		metric.Set(err)
+	}()
+
+	if offLineAddr, diskPath, _, _, _, err = parseReqToDecoDisk(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	// check if bad disk is reported
+	if dataNode, err = m.cluster.dataNode(offLineAddr); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(proto.ErrDataNodeNotExists))
+		return
+	}
+
+	for _, disk := range dataNode.BadDiskStats {
+		if disk.DiskPath == diskPath {
+			found = true
+			break
+		}
+	}
+	if !found {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: fmt.Sprintf("disk %v is not reported"+
+			"from dataNode %v", diskPath, offLineAddr)})
+		return
+	}
+	err = dataNode.createTaskToRecoverBadDisk(diskPath)
+	if err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: err.Error()})
+		return
+	}
+
+	key := fmt.Sprintf("%s_%s", offLineAddr, diskPath)
+	rstMsg := fmt.Sprintf("recover bad disk[%s] successfully ", key)
+	sendOkReply(w, r, newSuccessHTTPReply(rstMsg))
 }
