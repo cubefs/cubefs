@@ -647,8 +647,8 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 		Path(proto.QueryDiskDecoProgress).
 		HandlerFunc(m.queryDiskDecoProgress)
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
-		Path(proto.MarkDecoDiskFixed).
-		HandlerFunc(m.markDecoDiskFixed)
+		Path(proto.DeleteDecommissionDiskRecord).
+		HandlerFunc(m.deleteDecommissionDiskRecord)
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.PauseDecommissionDisk).
 		HandlerFunc(m.pauseDecommissionDisk)
@@ -672,10 +672,16 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 		HandlerFunc(m.queryDisableDisk)
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.CancelDecommissionDisk).
-		HandlerFunc(m.cancelDisableDisk)
+		HandlerFunc(m.cancelDecommissionDisk)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.ResetDecommissionDiskStatus).
+		HandlerFunc(m.resetDecommissionDiskStatus)
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.AdminResetDataPartitionRestoreStatus).
 		HandlerFunc(m.resetDataPartitionRestoreStatus)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.RecoverBadDisk).
+		HandlerFunc(m.recoverBadDisk)
 
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.AdminSetNodeInfo).
