@@ -123,14 +123,14 @@ void RingBuffer_free(struct IBVSocket *this) {
 	if (!this)
 		return;
 
-	for (i=0; i<BLOCK_NUM; i++) {
+	for (i=0; i<WR_MAX_NUM; i++) {
 		if (this->recvBuf[i]) {
 			rdma_buffer_put(this->recvBuf[i]);
 			this->recvBuf[i] = NULL;
 		}
 	}
 
-	for (i=0; i<BLOCK_NUM; i++) {
+	for (i=0; i<WR_MAX_NUM; i++) {
 		if (this->sendBuf[i]) {
 			rdma_buffer_put(this->sendBuf[i]);
 			this->sendBuf[i] = NULL;
@@ -153,7 +153,7 @@ int RingBuffer_init(struct IBVSocket *this) {
 
 	mutex_init(&this->lock);
 	
-	for (i=0; i<BLOCK_NUM; i++) {
+	for (i=0; i<WR_MAX_NUM; i++) {
 		ret = rdma_buffer_get(&item, BUFFER_4K_SIZE);
 		if (ret < 0) {
 			ret = -ENOMEM;
@@ -162,7 +162,7 @@ int RingBuffer_init(struct IBVSocket *this) {
 		this->recvBuf[i] = item;
 	}
 
-	for (i=0; i<BLOCK_NUM; i++) {
+	for (i=0; i<WR_MAX_NUM; i++) {
 		ret = rdma_buffer_get(&item, BUFFER_4K_SIZE);
 		if (ret < 0) {
 			ret = -ENOMEM;
@@ -171,7 +171,7 @@ int RingBuffer_init(struct IBVSocket *this) {
 		this->sendBuf[i] = item;
 	}
 
-	for (i=0; i<BLOCK_NUM; i++) {
+	for (i=0; i<WR_MAX_NUM; i++) {
 		sge.addr = this->recvBuf[i]->dma_addr;
 		sge.length = MSG_LEN;
 		sge.lkey = this->pd->local_dma_lkey;
@@ -201,7 +201,7 @@ int RingBuffer_alloc(struct IBVSocket *this, bool send) {
 
 	mutex_lock(&this->lock);
 	if (send) {
-		for (i = this->sendBufIndex; i<BLOCK_NUM; i++) {
+		for (i = this->sendBufIndex; i<WR_MAX_NUM; i++) {
 			if (!this->sendBuf[i]->used) {
 				this->sendBuf[i]->used = true;
 				this->sendBufIndex = i;
@@ -218,16 +218,16 @@ int RingBuffer_alloc(struct IBVSocket *this, bool send) {
 			}
 		}
 	} else {
-		for (i = this->recvBufIndex; i<BLOCK_NUM; i++) {
+		for (i = this->recvBufIndex; i<WR_MAX_NUM; i++) {
 			if (this->recvBuf[i]->used) {
-				this->recvBufIndex = (i+1)%BLOCK_NUM;
+				this->recvBufIndex = (i+1)%WR_MAX_NUM;
 				mutex_unlock(&this->lock);
 				return i;
 			}
 		}
 		for (i=0; i<this->recvBufIndex; i++) {
 			if (this->recvBuf[i]->used) {
-				this->recvBufIndex = (i+1)%BLOCK_NUM;
+				this->recvBufIndex = (i+1)%WR_MAX_NUM;
 				mutex_unlock(&this->lock);
 				return i;
 			}
@@ -239,7 +239,7 @@ int RingBuffer_alloc(struct IBVSocket *this, bool send) {
 }
 
 void RingBuffer_dealloc(struct IBVSocket *this, bool send, int index) {
-	if (index < 0 || index >= BLOCK_NUM)
+	if (index < 0 || index >= WR_MAX_NUM)
 		return;
 
 	if (send) {
@@ -293,7 +293,7 @@ struct IBVSocket *IBVSocket_construct(struct sockaddr_in *sin) {
 		goto err_destroy_cm_id;
 	}
 
-	attrs.cqe = BLOCK_NUM;
+	attrs.cqe = WR_MAX_NUM;
 	attrs.comp_vector = 0;
 	attrs.flags = 0;
 
@@ -316,8 +316,8 @@ struct IBVSocket *IBVSocket_construct(struct sockaddr_in *sin) {
 	qpInitAttr.qp_type = IB_QPT_RC;
 	//qpInitAttr.sq_sig_type = IB_SIGNAL_REQ_WR;
 	qpInitAttr.sq_sig_type = IB_SIGNAL_ALL_WR;
-	qpInitAttr.cap.max_send_wr = BLOCK_NUM;
-	qpInitAttr.cap.max_recv_wr = BLOCK_NUM;
+	qpInitAttr.cap.max_send_wr = WR_MAX_NUM;
+	qpInitAttr.cap.max_recv_wr = WR_MAX_NUM;
 	qpInitAttr.cap.max_send_sge = 1;
 	qpInitAttr.cap.max_recv_sge = 1;
 	qpInitAttr.cap.max_inline_data = 0;
@@ -446,7 +446,7 @@ ssize_t IBVSocket_post_recv(struct IBVSocket *this, int index) {
 	struct ib_sge sge;
     int ret;
 
-	if (index < 0 || index >= BLOCK_NUM) {
+	if (index < 0 || index >= WR_MAX_NUM) {
 		return -EINVAL;
 	}
 
@@ -474,10 +474,10 @@ int RingBuffer_get_by_req_id(struct IBVSocket *this, __be64 req_id) {
 
 	mutex_lock(&this->lock);
 
-	for (i = this->recvBufIndex; i<BLOCK_NUM; i++) {
+	for (i = this->recvBufIndex; i<WR_MAX_NUM; i++) {
 		hdr = (struct cfs_packet_hdr *)this->recvBuf[i]->pBuff;
 		if (this->recvBuf[i]->used && hdr->req_id == req_id) {
-			this->recvBufIndex = (i+1)%BLOCK_NUM;
+			this->recvBufIndex = (i+1)%WR_MAX_NUM;
 			mutex_unlock(&this->lock);
 			return i;
 		}
@@ -485,7 +485,7 @@ int RingBuffer_get_by_req_id(struct IBVSocket *this, __be64 req_id) {
 	for (i=0; i<this->recvBufIndex; i++) {
 		hdr = (struct cfs_packet_hdr *)this->recvBuf[i]->pBuff;
 		if (this->recvBuf[i]->used && hdr->req_id == req_id) {
-			this->recvBufIndex = (i+1)%BLOCK_NUM;
+			this->recvBufIndex = (i+1)%WR_MAX_NUM;
 			mutex_unlock(&this->lock);
 			return i;
 		}
@@ -499,8 +499,8 @@ ssize_t IBVSocket_copy_restore(struct IBVSocket *this, struct iov_iter *iter, in
     int ret;
     ssize_t isize = 0;
 
-	if (index < 0 || index >= BLOCK_NUM) {
-		ibv_print_error("index is out of range 0-%d, index=%d\n", (BLOCK_NUM-1), index);
+	if (index < 0 || index >= WR_MAX_NUM) {
+		ibv_print_error("index is out of range 0-%d, index=%d\n", (WR_MAX_NUM-1), index);
 		return -EINVAL;
 	}
 

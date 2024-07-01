@@ -13,7 +13,7 @@
 
 #define IBVSOCKET_CONN_TIMEOUT_MS 5000
 #define MSG_LEN 4096
-#define BLOCK_NUM 8
+#define WR_MAX_NUM 32
 #define TIMEOUT_JS 5000
 
 enum IBVSocketConnState {
@@ -35,9 +35,9 @@ struct IBVSocket {
 	struct ib_cq *recvCQ; // recv completion queue
 	struct ib_cq *sendCQ; // send completion queue
 	struct ib_qp *qp; // send+recv queue pair
-	struct BufferItem *recvBuf[BLOCK_NUM];
+	struct BufferItem *recvBuf[WR_MAX_NUM];
 	int recvBufIndex;
-	struct BufferItem *sendBuf[BLOCK_NUM];
+	struct BufferItem *sendBuf[WR_MAX_NUM];
 	int sendBufIndex;
 	struct mutex lock;
 	volatile IBVSocketConnState_t connState;
