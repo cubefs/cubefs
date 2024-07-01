@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util/auditlog"
 	"github.com/cubefs/cubefs/util/log"
 )
 
@@ -509,4 +510,20 @@ func (dd *DecommissionDisk) decommissionInfo() string {
 		dd.SrcAddr, dd.DiskPath, dd.DstAddr, dd.DecommissionDpTotal, dd.DecommissionTerm,
 		GetDecommissionTypeMessage(dd.Type), dd.DecommissionRaftForce, dd.DecommissionTimes,
 		GetDecommissionStatusMessage(dd.DecommissionStatus))
+}
+
+func (dd *DecommissionDisk) cancelDecommission(cluster *Cluster, ns *nodeSet) (err error) {
+	dps := cluster.getAllDecommissionDataPartitionByDiskAndTerm(dd.SrcAddr, dd.DiskPath, dd.DecommissionTerm)
+	for _, dp := range dps {
+		if dp.GetDecommissionStatus() == DecommissionSuccess || dp.IsRollbackFailed() || ns.HasDecommissionToken(dp.PartitionID) {
+			continue
+		}
+		msg := fmt.Sprintf("dp(%v) cancel decommission", dp.decommissionInfo())
+		dp.ResetDecommissionStatus()
+		dp.setRestoreReplicaStop()
+		auditlog.LogMasterOp("CancelDataPartitionDecommission", msg, nil)
+	}
+	dd.SetDecommissionStatus(DecommissionCancel)
+	err = cluster.syncUpdateDecommissionDisk(dd)
+	return err
 }

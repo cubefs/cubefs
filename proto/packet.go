@@ -151,6 +151,7 @@ const (
 	OpStopDataPartitionRepair       uint8 = 0x6B
 	OpRecoverDataReplicaMeta        uint8 = 0x6C
 	OpRecoverBackupDataReplica      uint8 = 0x6D
+	OpRecoverBadDisk                uint8 = 0x6E
 
 	// Operations: MultipartInfo
 	OpCreateMultipart  uint8 = 0x70
