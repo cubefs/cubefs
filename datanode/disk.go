@@ -897,3 +897,7 @@ func unmarshalBackupPartitionDirName(name string) (partitionID uint64, err error
 	}
 	return
 }
+
+func (d *Disk) recoverDiskError() {
+	d.Status = proto.ReadWrite
+}
