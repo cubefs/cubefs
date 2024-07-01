@@ -18,7 +18,7 @@
 #define BUFFER_1M_NUM 256
 #define DEFAULT_RDMA_PORT 17360
 
-struct BufferItem {
+struct cfs_node {
 	char *pBuff;
 	u64 dma_addr;
 	bool used;
@@ -36,16 +36,16 @@ struct cfs_rdma_buffer {
 
 struct cfs_rdma_buffer_pool {
 	struct rdma_cm_id *cm_id;
-    wait_queue_head_t eventWaitQ;
+    wait_queue_head_t event_wait_queue;
 	struct cfs_rdma_buffer buffer[3];
     struct list_head all_list;
     struct mutex all_lock;
 };
 
-int rdma_buffer_new(void);
-void rdma_buffer_release(void);
-int rdma_buffer_get(struct BufferItem **item, size_t size);
-void rdma_buffer_put(struct BufferItem *item);
+int cfs_rdma_buffer_new(void);
+void cfs_rdma_buffer_release(void);
+int cfs_rdma_buffer_get(struct cfs_node **item, size_t size);
+void cfs_rdma_buffer_put(struct cfs_node *item);
 
 #define ibv_print_error(fmt, ...) printk("%s:%d[%s] ERROR: "fmt, __FILE__, __LINE__, __FUNCTION__, ##__VA_ARGS__)
 #define ibv_print_info(fmt, ...) printk("%s:%d[%s] INFO: "fmt, __FILE__, __LINE__, __FUNCTION__, ##__VA_ARGS__)

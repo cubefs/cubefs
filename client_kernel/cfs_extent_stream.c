@@ -1518,18 +1518,18 @@ retry:
 }
 
 static int cfs_set_packet_rdma_buffer_crc(struct cfs_extent_writer *writer, struct cfs_packet *packet, struct iov_iter *iter, size_t size) {
-	struct BufferItem *pDataBuf = NULL;
+	struct cfs_node *pDataBuf = NULL;
 	u32 crc = 0;
 	bool ret = false;
 
-	pDataBuf = IBVSocket_get_data_buf(writer->sock->ibvsock, size);
+	pDataBuf = ibv_socket_get_data_buf(writer->sock->ibvsock, size);
 	if (!pDataBuf) {
 		return -ENOMEM;
 	}
 
 	ret = copy_from_iter_full(pDataBuf->pBuff, size, iter);
 	if (!ret) {
-		IBVSocket_free_data_buf(writer->sock->ibvsock, pDataBuf);
+		ibv_socket_free_data_buf(writer->sock->ibvsock, pDataBuf);
 		return -EIO;
 	}
 

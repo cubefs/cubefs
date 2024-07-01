@@ -4,13 +4,13 @@
 
 static struct cfs_rdma_buffer_pool *rdma_pool = NULL;
 
-int rdma_buffer_allocate(struct BufferItem **item, struct cfs_rdma_buffer *buffer) {
-	struct BufferItem *tmp = NULL;
+int cfs_rdma_buffer_allocate(struct cfs_node **item, struct cfs_rdma_buffer *buffer) {
+	struct cfs_node *tmp = NULL;
 
     // search the list.
     mutex_lock(&buffer->lock);
     if (!list_empty(&buffer->lru)) {
-        tmp = list_first_entry(&buffer->lru, struct BufferItem, list);
+        tmp = list_first_entry(&buffer->lru, struct cfs_node, list);
         list_del(&tmp->list);
     }
     mutex_unlock(&buffer->lock);
@@ -38,7 +38,7 @@ int rdma_buffer_allocate(struct BufferItem **item, struct cfs_rdma_buffer *buffe
     return 0;
 }
 
-int rdma_buffer_get(struct BufferItem **item, size_t size) {
+int cfs_rdma_buffer_get(struct cfs_node **item, size_t size) {
     int index = -1;
 
     if (size <= BUFFER_4K_SIZE) {
@@ -52,10 +52,10 @@ int rdma_buffer_get(struct BufferItem **item, size_t size) {
         return -EPERM;
     }
 
-    return rdma_buffer_allocate(item, &(rdma_pool->buffer[index]));
+    return cfs_rdma_buffer_allocate(item, &(rdma_pool->buffer[index]));
 }
 
-void rdma_buffer_put(struct BufferItem *item) {
+void cfs_rdma_buffer_put(struct cfs_node *item) {
     struct cfs_rdma_buffer *buffer = NULL;
     int index = -1;
 
@@ -85,14 +85,14 @@ void rdma_buffer_put(struct BufferItem *item) {
     mutex_unlock(&buffer->lock);
 }
 
-int rdma_buffer_event_handler(struct rdma_cm_id *cm_id, struct rdma_cm_event *event) {
-	wake_up(&rdma_pool->eventWaitQ);
+int cfs_rdma_buffer_event_handler(struct rdma_cm_id *cm_id, struct rdma_cm_event *event) {
+	wake_up(&rdma_pool->event_wait_queue);
 	return 0;
 }
 
-void rdma_buffer_free_all(void) {
-	struct BufferItem *item = NULL;
-	struct BufferItem *tmp = NULL;
+void cfs_rdma_buffer_free_all(void) {
+	struct cfs_node *item = NULL;
+	struct cfs_node *tmp = NULL;
     if (!rdma_pool) {
         return;
     }
@@ -110,9 +110,9 @@ void rdma_buffer_free_all(void) {
     mutex_unlock(&rdma_pool->all_lock);
 }
 
-int rdma_buffer_create(struct cfs_rdma_buffer *buffer) {
+int cfs_rdma_buffer_create(struct cfs_rdma_buffer *buffer) {
     int i = 0;
-    struct BufferItem *item = NULL;
+    struct cfs_node *item = NULL;
     int buffer_num = 0;
 
     switch(buffer->size) {
@@ -149,7 +149,7 @@ int rdma_buffer_create(struct cfs_rdma_buffer *buffer) {
     return 0;
 }
 
-int rdma_buffer_new(void) {
+int cfs_rdma_buffer_new(void) {
     int ret;
     struct sockaddr_in sin;
     int i = 0;
@@ -169,9 +169,9 @@ int rdma_buffer_new(void) {
         INIT_LIST_HEAD(&rdma_pool->buffer[i].lru);
         mutex_init(&rdma_pool->buffer[i].lock);
     }
-    init_waitqueue_head(&rdma_pool->eventWaitQ);
+    init_waitqueue_head(&rdma_pool->event_wait_queue);
 
-    rdma_pool->cm_id = rdma_create_id(&init_net, rdma_buffer_event_handler, NULL, RDMA_PS_TCP, IB_QPT_RC);
+    rdma_pool->cm_id = rdma_create_id(&init_net, cfs_rdma_buffer_event_handler, NULL, RDMA_PS_TCP, IB_QPT_RC);
     if (IS_ERR(rdma_pool->cm_id)) {
         ibv_print_error("rdma_create_id failed\n");
         return -EPERM;
@@ -187,16 +187,16 @@ int rdma_buffer_new(void) {
         goto err_out;
     }
 
-    wait_event_interruptible(rdma_pool->eventWaitQ, true);
+    wait_event_interruptible(rdma_pool->event_wait_queue, true);
 
     rdma_pool->buffer[0].size = BUFFER_4K_SIZE;
     rdma_pool->buffer[1].size = BUFFER_128K_SIZE;
     rdma_pool->buffer[2].size = BUFFER_1M_SIZE;
 
     for (i = 0; i < 3; i++) {
-        ret = rdma_buffer_create(&(rdma_pool->buffer[i]));
+        ret = cfs_rdma_buffer_create(&(rdma_pool->buffer[i]));
         if (ret < 0) {
-            ibv_print_error("rdma_buffer_create failed\n");
+            ibv_print_error("cfs_rdma_buffer_create failed\n");
             goto err_out;
         }
     }
@@ -204,18 +204,18 @@ int rdma_buffer_new(void) {
     return 0;
 
 err_out:
-    rdma_buffer_free_all();
+    cfs_rdma_buffer_free_all();
     rdma_destroy_id(rdma_pool->cm_id);
     rdma_pool = NULL;
     return ret;
 }
 
-void rdma_buffer_release(void) {
+void cfs_rdma_buffer_release(void) {
     if (!rdma_pool) {
         return;
     }
 
-    rdma_buffer_free_all();
+    cfs_rdma_buffer_free_all();
     rdma_destroy_id(rdma_pool->cm_id);
     kfree(rdma_pool);
     rdma_pool = NULL;

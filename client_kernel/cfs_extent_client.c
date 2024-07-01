@@ -124,15 +124,15 @@ cfs_extent_client_new(struct cfs_mount_info *cmi)
 	schedule_delayed_work(&ec->update_dp_work,
 			      msecs_to_jiffies(EXTENT_UPDATE_DP_INTERVAL_MS));
 	/*
-	* For non-rdma device, don't call rdma_buffer_new().
-	* The rdma_buffer_new calls rdma_create_id and rdma_resolve_addr.
+	* For non-rdma device, don't call cfs_rdma_buffer_new().
+	* The cfs_rdma_buffer_new calls rdma_create_id and rdma_resolve_addr.
 	* It allocates a rdma pd.
 	* The release buffer is done in cfs_rdma_module_exit when module exits.
 	*/
 	if (ec->enable_rdma) {
-		ret = rdma_buffer_new();
+		ret = cfs_rdma_buffer_new();
 		if (ret < 0) {
-			cfs_pr_err("error to call rdma_buffer_new. ret=%d\n", ret);
+			cfs_pr_err("error to call cfs_rdma_buffer_new. ret=%d\n", ret);
 			kfree(ec);
 			return ERR_PTR(ret);
 		}

@@ -17,7 +17,7 @@
 #define WR_MAX_NUM 32
 #define TIMEOUT_JS 5000
 
-enum IBVSocketConnState {
+enum ibv_socket_conn_state {
 	IBVSOCKETCONNSTATE_UNCONNECTED = 0,
 	IBVSOCKETCONNSTATE_CONNECTING = 1,
 	IBVSOCKETCONNSTATE_ADDRESSRESOLVED = 2,
@@ -27,30 +27,29 @@ enum IBVSocketConnState {
 	IBVSOCKETCONNSTATE_REJECTED_STALE = 6,
 	IBVSOCKETCONNSTATE_DESTROYED = 7
 };
-typedef enum IBVSocketConnState IBVSocketConnState_t;
 
-struct IBVSocket {
-	wait_queue_head_t eventWaitQ;
+struct ibv_socket {
+	wait_queue_head_t event_wait_queue;
 	struct rdma_cm_id *cm_id;
 	struct ib_pd *pd;
-	struct ib_cq *recvCQ; // recv completion queue
-	struct ib_cq *sendCQ; // send completion queue
+	struct ib_cq *recv_cq; // recv completion queue
+	struct ib_cq *send_cq; // send completion queue
 	struct ib_qp *qp; // send+recv queue pair
-	struct BufferItem *recvBuf[WR_MAX_NUM];
-	int recvBufIndex;
-	struct BufferItem *sendBuf[WR_MAX_NUM];
-	int sendBufIndex;
+	struct cfs_node *recv_buf[WR_MAX_NUM];
+	int recv_buf_index;
+	struct cfs_node *send_buf[WR_MAX_NUM];
+	int send_buf_index;
 	struct mutex lock;
-	volatile IBVSocketConnState_t connState;
+	volatile enum ibv_socket_conn_state conn_state;
 	struct sockaddr_in remote_addr;
 };
 
-extern struct IBVSocket *IBVSocket_construct(struct sockaddr_in *sin);
-extern bool IBVSocket_destruct(struct IBVSocket *_this);
-extern ssize_t IBVSocket_recvT(struct IBVSocket *this, struct iov_iter *iter, __be64 req_id);
-extern ssize_t IBVSocket_send(struct IBVSocket *_this, struct iov_iter *source);
-extern struct BufferItem *IBVSocket_get_data_buf(struct IBVSocket *this, size_t size);
-extern void IBVSocket_free_data_buf(struct IBVSocket *this, struct BufferItem *item);
+extern struct ibv_socket *ibv_socket_construct(struct sockaddr_in *sin);
+extern bool ibv_socket_destruct(struct ibv_socket *this);
+extern ssize_t ibv_socket_recv(struct ibv_socket *this, struct iov_iter *iter, __be64 req_id);
+extern ssize_t ibv_socket_send(struct ibv_socket *this, struct iov_iter *source);
+extern struct cfs_node *ibv_socket_get_data_buf(struct ibv_socket *this, size_t size);
+extern void ibv_socket_free_data_buf(struct ibv_socket *this, struct cfs_node *item);
 
 #define MIN(a, b) (((a) < (b)) ? (a) : (b))
 #define MAX(a, b) (((a) < (b)) ? (b) : (a))

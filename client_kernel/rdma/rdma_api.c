@@ -9,10 +9,10 @@
 #include "rdma_api.h"
 #include "../cfs_packet.h"
 
-int verify_rdma_event_handler(struct rdma_cm_id *cm_id,
+int ibv_socket_event_handler(struct rdma_cm_id *cm_id,
 			   struct rdma_cm_event *event)
 {
-	struct IBVSocket *this = cm_id->context;
+	struct ibv_socket *this = cm_id->context;
 	int retVal = 0;
 
 	if (!this) {
@@ -27,25 +27,25 @@ int verify_rdma_event_handler(struct rdma_cm_id *cm_id,
 
 	switch (event->event) {
 	case RDMA_CM_EVENT_ADDR_RESOLVED:
-		this->connState = IBVSOCKETCONNSTATE_ADDRESSRESOLVED;
+		this->conn_state = IBVSOCKETCONNSTATE_ADDRESSRESOLVED;
 		ibv_print_debug("receive event RDMA_CM_EVENT_ADDR_RESOLVED\n");
 		break;
 	case RDMA_CM_EVENT_ADDR_ERROR:
 	case RDMA_CM_EVENT_UNREACHABLE:
 		retVal = -ENETUNREACH;
-		this->connState = IBVSOCKETCONNSTATE_FAILED;
+		this->conn_state = IBVSOCKETCONNSTATE_FAILED;
 		ibv_print_debug("receive event RDMA_CM_EVENT_ADDR_ERROR or UNREACHABLE = %d\n", event->event);
 		break;
 
 	case RDMA_CM_EVENT_ROUTE_RESOLVED:
-		this->connState = IBVSOCKETCONNSTATE_ROUTERESOLVED;
+		this->conn_state = IBVSOCKETCONNSTATE_ROUTERESOLVED;
 		ibv_print_debug("receive event RDMA_CM_EVENT_ROUTE_RESOLVED\n");
 		break;
 
 	case RDMA_CM_EVENT_ROUTE_ERROR:
 	case RDMA_CM_EVENT_CONNECT_ERROR:
 		retVal = -ETIMEDOUT;
-		this->connState = IBVSOCKETCONNSTATE_FAILED;
+		this->conn_state = IBVSOCKETCONNSTATE_FAILED;
 		ibv_print_debug("receive event RDMA_CM_EVENT_ROUTE_ERROR or CONNECT_ERROR = %d\n", event->event);
 		break;
 
@@ -58,22 +58,22 @@ int verify_rdma_event_handler(struct rdma_cm_id *cm_id,
 		break;
 
 	case RDMA_CM_EVENT_REJECTED:
-		this->connState = IBVSOCKETCONNSTATE_REJECTED_STALE;
+		this->conn_state = IBVSOCKETCONNSTATE_REJECTED_STALE;
 		ibv_print_debug("receive event RDMA_CM_EVENT_REJECTED: %s\n", rdma_reject_msg(cm_id, event->status));
 		break;
 
 	case RDMA_CM_EVENT_ESTABLISHED:
-		this->connState = IBVSOCKETCONNSTATE_ESTABLISHED;
+		this->conn_state = IBVSOCKETCONNSTATE_ESTABLISHED;
 		ibv_print_debug("receive event RDMA_CM_EVENT_ESTABLISHED\n");
 		break;
 
 	case RDMA_CM_EVENT_DISCONNECTED:
-		this->connState = IBVSOCKETCONNSTATE_UNCONNECTED;
+		this->conn_state = IBVSOCKETCONNSTATE_UNCONNECTED;
 		ibv_print_info("receive event RDMA_CM_EVENT_DISCONNECTED\n");
 		break;
 
 	case RDMA_CM_EVENT_DEVICE_REMOVAL:
-		this->connState = IBVSOCKETCONNSTATE_UNCONNECTED;
+		this->conn_state = IBVSOCKETCONNSTATE_UNCONNECTED;
 		ibv_print_debug("receive event RDMA_CM_EVENT_DEVICE_REMOVAL\n");
 		break;
 
@@ -82,33 +82,33 @@ int verify_rdma_event_handler(struct rdma_cm_id *cm_id,
 		break;
 	}
 
-	wake_up(&this->eventWaitQ);
+	wake_up(&this->event_wait_queue);
 	return retVal;
 }
 
-void __IBVSocket_recvCompletionHandler(struct ib_cq *cq, void *cq_context)
+void ibv_socket_recv_complete_hdr(struct ib_cq *cq, void *cq_context)
 {
-	ibv_print_debug("recvCompletionHandler\n");
+	ibv_print_debug("ibv_socket_recv_complete_hdr\n");
 }
 
-void __IBVSocket_cqRecvEventHandler(struct ib_event *event, void *data)
+void ibv_socket_cq_recv_event_hdr(struct ib_event *event, void *data)
 {
-	ibv_print_debug("__IBVSocket_cqRecvEventHandler\n");
+	ibv_print_debug("ibv_socket_cq_recv_event_hdr\n");
 }
 
-void __IBVSocket_qpEventHandler(struct ib_event *event, void *data)
+void ibv_socket_qp_event_hdr(struct ib_event *event, void *data)
 {
-	ibv_print_debug("__IBVSocket_qpEventHandler\n");
+	ibv_print_debug("ibv_socket_qp_event_hdr\n");
 }
 
-void __IBVSocket_sendCompletionHandler(struct ib_cq *cq, void *cq_context)
+void ibv_socket_send_complete_hdr(struct ib_cq *cq, void *cq_context)
 {
-	ibv_print_debug("sendCompletionHandler\n");
+	ibv_print_debug("ibv_socket_send_complete_hdr\n");
 }
 
-void __IBVSocket_cqSendEventHandler(struct ib_event *event, void *data)
+void ibv_socket_cq_send_event_hdr(struct ib_event *event, void *data)
 {
-	ibv_print_debug("__IBVSocket_cqSendEventHandler\n");
+	ibv_print_debug("ibv_socket_cq_send_event_hdr\n");
 }
 
 char *print_ip_addr(u32 addr) {
@@ -117,29 +117,29 @@ char *print_ip_addr(u32 addr) {
 	return ip_addr;
 }
 
-void RingBuffer_free(struct IBVSocket *this) {
+void ibv_socket_ring_buffer_free(struct ibv_socket *this) {
 	int i = 0;
 
 	if (!this)
 		return;
 
 	for (i=0; i<WR_MAX_NUM; i++) {
-		if (this->recvBuf[i]) {
-			rdma_buffer_put(this->recvBuf[i]);
-			this->recvBuf[i] = NULL;
+		if (this->recv_buf[i]) {
+			cfs_rdma_buffer_put(this->recv_buf[i]);
+			this->recv_buf[i] = NULL;
 		}
 	}
 
 	for (i=0; i<WR_MAX_NUM; i++) {
-		if (this->sendBuf[i]) {
-			rdma_buffer_put(this->sendBuf[i]);
-			this->sendBuf[i] = NULL;
+		if (this->send_buf[i]) {
+			cfs_rdma_buffer_put(this->send_buf[i]);
+			this->send_buf[i] = NULL;
 		}
 	}
 }
 
-int RingBuffer_init(struct IBVSocket *this) {
-	struct BufferItem *item = NULL;
+int ibv_socket_ring_buffer_init(struct ibv_socket *this) {
+	struct cfs_node *item = NULL;
 	int i = 0;
 	struct ib_recv_wr wr;
 	const struct ib_recv_wr *bad_wr;
@@ -154,25 +154,27 @@ int RingBuffer_init(struct IBVSocket *this) {
 	mutex_init(&this->lock);
 	
 	for (i=0; i<WR_MAX_NUM; i++) {
-		ret = rdma_buffer_get(&item, BUFFER_4K_SIZE);
+		ret = cfs_rdma_buffer_get(&item, BUFFER_4K_SIZE);
 		if (ret < 0) {
 			ret = -ENOMEM;
 			goto err_out;
 		}
-		this->recvBuf[i] = item;
+		item->used = false;
+		this->recv_buf[i] = item;
 	}
 
 	for (i=0; i<WR_MAX_NUM; i++) {
-		ret = rdma_buffer_get(&item, BUFFER_4K_SIZE);
+		ret = cfs_rdma_buffer_get(&item, BUFFER_4K_SIZE);
 		if (ret < 0) {
 			ret = -ENOMEM;
 			goto err_out;
 		}
-		this->sendBuf[i] = item;
+		item->used = false;
+		this->send_buf[i] = item;
 	}
 
 	for (i=0; i<WR_MAX_NUM; i++) {
-		sge.addr = this->recvBuf[i]->dma_addr;
+		sge.addr = this->recv_buf[i]->dma_addr;
 		sge.length = MSG_LEN;
 		sge.lkey = this->pd->local_dma_lkey;
 		wr.next = NULL;
@@ -186,86 +188,65 @@ int RingBuffer_init(struct IBVSocket *this) {
 			goto err_out;
 		}
 	}
-	this->recvBufIndex = 0;
-	this->sendBufIndex = 0;
+	this->recv_buf_index = 0;
+	this->send_buf_index = 0;
 
 	return 0;
 
 err_out:
-	RingBuffer_free(this);
+	ibv_socket_ring_buffer_free(this);
 	return ret;
 }
 
-int RingBuffer_alloc(struct IBVSocket *this, bool send) {
+int ibv_socket_get_send_buf(struct ibv_socket *this) {
 	int i = 0;
 
 	mutex_lock(&this->lock);
-	if (send) {
-		for (i = this->sendBufIndex; i<WR_MAX_NUM; i++) {
-			if (!this->sendBuf[i]->used) {
-				this->sendBuf[i]->used = true;
-				this->sendBufIndex = i;
-				mutex_unlock(&this->lock);
-				return i;
-			}
-		}
-		for (i = 0; i<this->sendBufIndex; i++) {
-			if (!this->sendBuf[i]->used) {
-				this->sendBuf[i]->used = true;
-				this->sendBufIndex = i;
-				mutex_unlock(&this->lock);
-				return i;
-			}
-		}
-	} else {
-		for (i = this->recvBufIndex; i<WR_MAX_NUM; i++) {
-			if (this->recvBuf[i]->used) {
-				this->recvBufIndex = (i+1)%WR_MAX_NUM;
-				mutex_unlock(&this->lock);
-				return i;
-			}
-		}
-		for (i=0; i<this->recvBufIndex; i++) {
-			if (this->recvBuf[i]->used) {
-				this->recvBufIndex = (i+1)%WR_MAX_NUM;
-				mutex_unlock(&this->lock);
-				return i;
-			}
+	for (i = this->send_buf_index; i<WR_MAX_NUM; i++) {
+		if (!this->send_buf[i]->used) {
+			this->send_buf[i]->used = true;
+			this->send_buf_index = i;
+			mutex_unlock(&this->lock);
+			return i;
 		}
 	}
-
+	for (i = 0; i<this->send_buf_index; i++) {
+		if (!this->send_buf[i]->used) {
+			this->send_buf[i]->used = true;
+			this->send_buf_index = i;
+			mutex_unlock(&this->lock);
+			return i;
+		}
+	}
 	mutex_unlock(&this->lock);
+
 	return -1;
 }
 
-void RingBuffer_dealloc(struct IBVSocket *this, bool send, int index) {
+void ibv_socket_put_send_buf(struct ibv_socket *this, int index) {
 	if (index < 0 || index >= WR_MAX_NUM)
 		return;
 
-	if (send) {
-		this->sendBuf[index]->used = false;
-	} else {
-		this->recvBuf[index]->used = false;
-	}
+	this->send_buf[index]->used = false;
 }
 
-struct IBVSocket *IBVSocket_construct(struct sockaddr_in *sin) {
-	struct IBVSocket *this;
+struct ibv_socket *ibv_socket_construct(struct sockaddr_in *sin) {
+	struct ibv_socket *this;
 	struct ib_cq_init_attr attrs;
 	struct ib_qp_init_attr qpInitAttr;
 	struct rdma_conn_param conn_param;
 	int ret;
 
-	this = kzalloc(sizeof(struct IBVSocket), GFP_KERNEL);
+	this = kzalloc(sizeof(struct ibv_socket), GFP_KERNEL);
 	if (!this) {
 		ibv_print_error("kzalloc failed\n");
 		return ERR_PTR(-ENOMEM);
 	}
 
-	this->connState = IBVSOCKETCONNSTATE_CONNECTING;
-	init_waitqueue_head(&this->eventWaitQ);
+	this->conn_state = IBVSOCKETCONNSTATE_CONNECTING;
+	init_waitqueue_head(&this->event_wait_queue);
 
-	this->cm_id = rdma_create_id(&init_net, verify_rdma_event_handler, this, RDMA_PS_TCP, IB_QPT_RC);
+	this->cm_id = rdma_create_id(&init_net, ibv_socket_event_handler, this, RDMA_PS_TCP, IB_QPT_RC);
 	if (IS_ERR(this->cm_id)) {
 		ibv_print_error("rdma_create_id failed: %ld\n", PTR_ERR(this->cm_id));
 		goto err_free_this;
@@ -277,7 +258,7 @@ struct IBVSocket *IBVSocket_construct(struct sockaddr_in *sin) {
 		goto err_destroy_cm_id;
 	}
 
-	wait_event_interruptible(this->eventWaitQ, this->connState != IBVSOCKETCONNSTATE_CONNECTING);
+	wait_event_interruptible(this->event_wait_queue, this->conn_state != IBVSOCKETCONNSTATE_CONNECTING);
 
 	ret = rdma_resolve_route(this->cm_id, IBVSOCKET_CONN_TIMEOUT_MS);
 	if (ret) {
@@ -285,7 +266,7 @@ struct IBVSocket *IBVSocket_construct(struct sockaddr_in *sin) {
 		goto err_destroy_cm_id;
 	}
 
-	wait_event_interruptible( this->eventWaitQ, this->connState != IBVSOCKETCONNSTATE_ADDRESSRESOLVED);
+	wait_event_interruptible( this->event_wait_queue, this->conn_state != IBVSOCKETCONNSTATE_ADDRESSRESOLVED);
 
 	this->pd = ib_alloc_pd(this->cm_id->device, IB_PD_UNSAFE_GLOBAL_RKEY);
 	if (IS_ERR(this->pd)) {
@@ -297,22 +278,22 @@ struct IBVSocket *IBVSocket_construct(struct sockaddr_in *sin) {
 	attrs.comp_vector = 0;
 	attrs.flags = 0;
 
-	this->recvCQ = ib_create_cq(this->cm_id->device, __IBVSocket_recvCompletionHandler, __IBVSocket_cqRecvEventHandler, this, &attrs);
-	if (IS_ERR(this->recvCQ)) {
-		ibv_print_error("couldn't create recv CQ. ErrCode: %ld\n", PTR_ERR(this->recvCQ));
+	this->recv_cq = ib_create_cq(this->cm_id->device, ibv_socket_recv_complete_hdr, ibv_socket_cq_recv_event_hdr, this, &attrs);
+	if (IS_ERR(this->recv_cq)) {
+		ibv_print_error("couldn't create recv CQ. ErrCode: %ld\n", PTR_ERR(this->recv_cq));
 		goto err_dealloc_pd;
 	}
 
-	this->sendCQ = ib_create_cq(this->cm_id->device, __IBVSocket_sendCompletionHandler, __IBVSocket_cqSendEventHandler, this, &attrs);
-	if (IS_ERR(this->sendCQ)) {
-		ibv_print_error("couldn't create send CQ. ErrCode: %ld\n", PTR_ERR(this->sendCQ));
+	this->send_cq = ib_create_cq(this->cm_id->device, ibv_socket_send_complete_hdr, ibv_socket_cq_send_event_hdr, this, &attrs);
+	if (IS_ERR(this->send_cq)) {
+		ibv_print_error("couldn't create send CQ. ErrCode: %ld\n", PTR_ERR(this->send_cq));
 		goto err_free_recv_cq;
 	}
 
 	memset(&qpInitAttr, 0, sizeof(qpInitAttr));
-	qpInitAttr.event_handler = __IBVSocket_qpEventHandler;
-	qpInitAttr.send_cq = this->sendCQ;
-	qpInitAttr.recv_cq = this->recvCQ;
+	qpInitAttr.event_handler = ibv_socket_qp_event_hdr;
+	qpInitAttr.send_cq = this->send_cq;
+	qpInitAttr.recv_cq = this->recv_cq;
 	qpInitAttr.qp_type = IB_QPT_RC;
 	//qpInitAttr.sq_sig_type = IB_SIGNAL_REQ_WR;
 	qpInitAttr.sq_sig_type = IB_SIGNAL_ALL_WR;
@@ -330,18 +311,18 @@ struct IBVSocket *IBVSocket_construct(struct sockaddr_in *sin) {
 	}
 	this->qp = this->cm_id->qp;
 
-	ret = RingBuffer_init(this);
+	ret = ibv_socket_ring_buffer_init(this);
 	if (ret < 0) {
-		ibv_print_error("RingBuffer_init error: %d\n", ret);
+		ibv_print_error("ibv_socket_ring_buffer_init error: %d\n", ret);
 		goto err_destroy_qp;
 	}
 
-	if (ib_req_notify_cq(this->recvCQ, IB_CQ_NEXT_COMP)) {
+	if (ib_req_notify_cq(this->recv_cq, IB_CQ_NEXT_COMP)) {
 		ibv_print_error("couldn't request recv CQ notification\n");
 		goto err_destroy_qp;
 	}
 
-	if (ib_req_notify_cq(this->sendCQ, IB_CQ_NEXT_COMP)) {
+	if (ib_req_notify_cq(this->send_cq, IB_CQ_NEXT_COMP)) {
 		ibv_print_error("couldn't request send CQ notification\n");
 		goto err_destroy_qp;
 	}
@@ -357,10 +338,10 @@ struct IBVSocket *IBVSocket_construct(struct sockaddr_in *sin) {
 		goto err_destroy_qp;
 	}
 
-	wait_event_interruptible_timeout(this->eventWaitQ, this->connState != IBVSOCKETCONNSTATE_ROUTERESOLVED, TIMEOUT_JS);
-	if (this->connState != IBVSOCKETCONNSTATE_ESTABLISHED) {
+	wait_event_interruptible_timeout(this->event_wait_queue, this->conn_state != IBVSOCKETCONNSTATE_ROUTERESOLVED, TIMEOUT_JS);
+	if (this->conn_state != IBVSOCKETCONNSTATE_ESTABLISHED) {
 		ibv_print_error("connection to %s:%d not established. state=%d\n",
-			print_ip_addr(ntohl(sin->sin_addr.s_addr)), ntohs(sin->sin_port), this->connState);
+			print_ip_addr(ntohl(sin->sin_addr.s_addr)), ntohs(sin->sin_port), this->conn_state);
 		goto err_destroy_qp;
 	}
 
@@ -372,14 +353,14 @@ struct IBVSocket *IBVSocket_construct(struct sockaddr_in *sin) {
     return this;
 
 err_destroy_qp:
-	RingBuffer_free(this);
+	ibv_socket_ring_buffer_free(this);
 	rdma_destroy_qp(this->cm_id);
 
 err_free_send_cq:
-	ib_destroy_cq_user(this->sendCQ, NULL);
+	ib_destroy_cq_user(this->send_cq, NULL);
 
 err_free_recv_cq:
-	ib_destroy_cq_user(this->recvCQ, NULL);
+	ib_destroy_cq_user(this->recv_cq, NULL);
 
 err_dealloc_pd:
 	ib_dealloc_pd(this->pd);
@@ -393,7 +374,7 @@ err_free_this:
 	return ERR_PTR(-EIO);
 }
 
-bool IBVSocket_destruct(struct IBVSocket *this) {
+bool ibv_socket_destruct(struct ibv_socket *this) {
 	if (!this) {
 		return false;
 	}
@@ -401,27 +382,27 @@ bool IBVSocket_destruct(struct IBVSocket *this) {
 	ibv_print_info("disconnect rdma link with %s:%d\n",
 		print_ip_addr(ntohl(this->remote_addr.sin_addr.s_addr)), ntohs(this->remote_addr.sin_port));
 
-	this->connState = IBVSOCKETCONNSTATE_DESTROYED;
+	this->conn_state = IBVSOCKETCONNSTATE_DESTROYED;
 
     if (this->cm_id) {
         rdma_disconnect(this->cm_id);
     }
 
-    RingBuffer_free(this);
+    ibv_socket_ring_buffer_free(this);
 
     if (this->qp) {
         rdma_destroy_qp(this->cm_id);
         this->qp = NULL;
     }
 	
-    if (this->sendCQ) {
-        ib_destroy_cq_user(this->sendCQ, NULL);
-        this->sendCQ = NULL;
+    if (this->send_cq) {
+        ib_destroy_cq_user(this->send_cq, NULL);
+        this->send_cq = NULL;
     }
 	
-    if (this->recvCQ) {
-        ib_destroy_cq_user(this->recvCQ, NULL);
-        this->recvCQ = NULL;
+    if (this->recv_cq) {
+        ib_destroy_cq_user(this->recv_cq, NULL);
+        this->recv_cq = NULL;
     }
 
     if (this->pd) {
@@ -440,7 +421,7 @@ bool IBVSocket_destruct(struct IBVSocket *this) {
     return true;
 }
 
-ssize_t IBVSocket_post_recv(struct IBVSocket *this, int index) {
+ssize_t ibv_socket_post_recv(struct ibv_socket *this, int index) {
 	struct ib_recv_wr wr;
 	const struct ib_recv_wr *bad_wr;
 	struct ib_sge sge;
@@ -450,9 +431,9 @@ ssize_t IBVSocket_post_recv(struct IBVSocket *this, int index) {
 		return -EINVAL;
 	}
 
-	RingBuffer_dealloc(this, false, index);
+	this->recv_buf[index]->used = false;
 
-	sge.addr = this->recvBuf[index]->dma_addr;
+	sge.addr = this->recv_buf[index]->dma_addr;
 	sge.length = MSG_LEN;
 	sge.lkey = this->pd->local_dma_lkey;
     wr.next = NULL;
@@ -468,24 +449,24 @@ ssize_t IBVSocket_post_recv(struct IBVSocket *this, int index) {
     return 0;
 }
 
-int RingBuffer_get_by_req_id(struct IBVSocket *this, __be64 req_id) {
+int ibv_socket_get_buffer_by_req_id(struct ibv_socket *this, __be64 req_id) {
 	int i = 0;
 	struct cfs_packet_hdr *hdr = NULL;
 
 	mutex_lock(&this->lock);
 
-	for (i = this->recvBufIndex; i<WR_MAX_NUM; i++) {
-		hdr = (struct cfs_packet_hdr *)this->recvBuf[i]->pBuff;
-		if (this->recvBuf[i]->used && hdr->req_id == req_id) {
-			this->recvBufIndex = (i+1)%WR_MAX_NUM;
+	for (i = this->recv_buf_index; i<WR_MAX_NUM; i++) {
+		hdr = (struct cfs_packet_hdr *)this->recv_buf[i]->pBuff;
+		if (this->recv_buf[i]->used && hdr->req_id == req_id) {
+			this->recv_buf_index = (i+1)%WR_MAX_NUM;
 			mutex_unlock(&this->lock);
 			return i;
 		}
 	}
-	for (i=0; i<this->recvBufIndex; i++) {
-		hdr = (struct cfs_packet_hdr *)this->recvBuf[i]->pBuff;
-		if (this->recvBuf[i]->used && hdr->req_id == req_id) {
-			this->recvBufIndex = (i+1)%WR_MAX_NUM;
+	for (i=0; i<this->recv_buf_index; i++) {
+		hdr = (struct cfs_packet_hdr *)this->recv_buf[i]->pBuff;
+		if (this->recv_buf[i]->used && hdr->req_id == req_id) {
+			this->recv_buf_index = (i+1)%WR_MAX_NUM;
 			mutex_unlock(&this->lock);
 			return i;
 		}
@@ -495,7 +476,7 @@ int RingBuffer_get_by_req_id(struct IBVSocket *this, __be64 req_id) {
 	return -1;
 }
 
-ssize_t IBVSocket_copy_restore(struct IBVSocket *this, struct iov_iter *iter, int index) {
+ssize_t ibv_socket_copy_restore(struct ibv_socket *this, struct iov_iter *iter, int index) {
     int ret;
     ssize_t isize = 0;
 
@@ -506,18 +487,18 @@ ssize_t IBVSocket_copy_restore(struct IBVSocket *this, struct iov_iter *iter, in
 
 	isize = MIN(MSG_LEN, iter->iov->iov_len);
 
-    memcpy(iter->iov->iov_base, this->recvBuf[index]->pBuff, isize);
+    memcpy(iter->iov->iov_base, this->recv_buf[index]->pBuff, isize);
 
-	ret = IBVSocket_post_recv(this, index);
+	ret = ibv_socket_post_recv(this, index);
 	if (unlikely(ret < 0)) {
-		ibv_print_error("IBVSocket_post_recv error: %d\n", ret);
+		ibv_print_error("ibv_socket_post_recv error: %d\n", ret);
 		return ret;
 	}
 
     return isize;
 }
 
-ssize_t IBVSocket_recvT(struct IBVSocket *this, struct iov_iter *iter, __be64 req_id) {
+ssize_t ibv_socket_recv(struct ibv_socket *this, struct iov_iter *iter, __be64 req_id) {
 	struct ib_wc wc[8];
 	int numElements;
 	int i;
@@ -525,32 +506,32 @@ ssize_t IBVSocket_recvT(struct IBVSocket *this, struct iov_iter *iter, __be64 re
 	unsigned long time_out_jiffies = jiffies + msecs_to_jiffies(IBVSOCKET_RECV_TIMEOUT_MS);
 
     while(true) {
-		if (this->connState != IBVSOCKETCONNSTATE_ESTABLISHED) {
-			ibv_print_error("rdma link state: %d\n", this->connState);
+		if (this->conn_state != IBVSOCKETCONNSTATE_ESTABLISHED) {
+			ibv_print_error("rdma link state: %d\n", this->conn_state);
 			return -EIO;
 		}
-        numElements = ib_poll_cq(this->recvCQ, 8, wc);
+        numElements = ib_poll_cq(this->recv_cq, 8, wc);
         if (numElements > 0) {
             for (i = 0; i < numElements; i++) {
 				index = wc[i].wr_id;
 				if (wc[i].status != IB_WC_SUCCESS) {
 					ibv_print_error("recv status: %d, opcode: %d, wr_id: %lld\n", wc[i].status, wc[i].opcode, wc[i].wr_id);
-					IBVSocket_post_recv(this, index);
+					ibv_socket_post_recv(this, index);
 					continue;
 				}
-				this->recvBuf[index]->used = true;
+				this->recv_buf[index]->used = true;
             }
         } else if (numElements < 0) {
-			ibv_print_error("ib_poll_cq recvCQ failed. ErrCode: %d\n", numElements);
+			ibv_print_error("ib_poll_cq recv_cq failed. ErrCode: %d\n", numElements);
 			return -EIO;
 		}
 
-		index = RingBuffer_get_by_req_id(this, req_id);
+		index = ibv_socket_get_buffer_by_req_id(this, req_id);
 		if (index >= 0) {
 			break;
 		}
 		if (time_out_jiffies < jiffies) {
-			ibv_print_error("rdma receive timeout %d seconds\n", IBVSOCKET_RECV_TIMEOUT_MS/1000);
+			ibv_print_error("rdma receive timeout %d seconds. req id=%lld\n", IBVSOCKET_RECV_TIMEOUT_MS/1000, be64_to_cpu(req_id));
 			return -ETIMEDOUT;
 		}
     }
@@ -559,10 +540,10 @@ ssize_t IBVSocket_recvT(struct IBVSocket *this, struct iov_iter *iter, __be64 re
 		return -ENOMEM;
 	}
 
-    return IBVSocket_copy_restore(this, iter, index);
+    return ibv_socket_copy_restore(this, iter, index);
 }
 
-ssize_t IBVSocket_send(struct IBVSocket *this, struct iov_iter *iter) {
+ssize_t ibv_socket_send(struct ibv_socket *this, struct iov_iter *iter) {
    	struct ib_send_wr send_wr;
 	const struct ib_send_wr *send_bad_wr;
 	struct ib_sge sge;
@@ -574,26 +555,26 @@ ssize_t IBVSocket_send(struct IBVSocket *this, struct iov_iter *iter) {
 	int index = -1;
 
 	while(true) {
-		if (this->connState != IBVSOCKETCONNSTATE_ESTABLISHED) {
-			ibv_print_error("rdma link state: %d. remote: %s:%d\n", this->connState,
+		if (this->conn_state != IBVSOCKETCONNSTATE_ESTABLISHED) {
+			ibv_print_error("rdma link state: %d. remote: %s:%d\n", this->conn_state,
 				print_ip_addr(ntohl(this->remote_addr.sin_addr.s_addr)), ntohs(this->remote_addr.sin_port));
 			return -EIO;
 		}
 
-		numElements = ib_poll_cq(this->sendCQ, 8, wc);
+		numElements = ib_poll_cq(this->send_cq, 8, wc);
 		if (numElements > 0) {
 			for (i = 0; i < numElements; i++) {
-				RingBuffer_dealloc(this, true, wc[i].wr_id);
+				ibv_socket_put_send_buf(this, wc[i].wr_id);
 				if (wc[i].status != IB_WC_SUCCESS) {
-					ibv_print_debug("send status: %d, opcode: %d, wr_id: %lld\n", wc[i].status, wc[i].opcode, wc[i].wr_id);
+					ibv_print_error("send status: %d, opcode: %d, wr_id: %lld\n", wc[i].status, wc[i].opcode, wc[i].wr_id);
 				}
 			}
 		} else if (numElements < 0) {
-			ibv_print_error("ib_poll_cq sendCQ failed. ErrCode: %d\n", numElements);
+			ibv_print_error("ib_poll_cq send_cq failed. ErrCode: %d\n", numElements);
 			return -EIO;
 		}
 
-		index = RingBuffer_alloc(this, true);
+		index = ibv_socket_get_send_buf(this);
 		if (index >= 0) {
 			break;
 		}
@@ -605,9 +586,9 @@ ssize_t IBVSocket_send(struct IBVSocket *this, struct iov_iter *iter) {
 	}
 
     isize = MIN(MSG_LEN, iter->iov->iov_len);
-    memcpy(this->sendBuf[index]->pBuff, iter->iov->iov_base, isize);
+    memcpy(this->send_buf[index]->pBuff, iter->iov->iov_base, isize);
 
-	sge.addr = this->sendBuf[index]->dma_addr;
+	sge.addr = this->send_buf[index]->dma_addr;
 	sge.length = isize;
 	sge.lkey = this->pd->local_dma_lkey;
 	send_wr.wr_id = index;
@@ -625,12 +606,12 @@ ssize_t IBVSocket_send(struct IBVSocket *this, struct iov_iter *iter) {
     return isize;
 }
 
-struct BufferItem *IBVSocket_get_data_buf(struct IBVSocket *this, size_t size) {
+struct cfs_node *ibv_socket_get_data_buf(struct ibv_socket *this, size_t size) {
 	int ret = 0;
-	struct BufferItem *item = NULL;
+	struct cfs_node *item = NULL;
 	size_t alloc_size = PAGE_ALIGN(size);
 
-	ret = rdma_buffer_get(&item, alloc_size);
+	ret = cfs_rdma_buffer_get(&item, alloc_size);
 	if (ret < 0) {
 		return NULL;
 	}
@@ -639,11 +620,11 @@ struct BufferItem *IBVSocket_get_data_buf(struct IBVSocket *this, size_t size) {
 	return item;
 }
 
-void IBVSocket_free_data_buf(struct IBVSocket *this, struct BufferItem *item) {
+void ibv_socket_free_data_buf(struct ibv_socket *this, struct cfs_node *item) {
 	if (!item->used) {
 		ibv_print_info("error: the buffer is not used. ptr: %llx\n", (uint64_t)item);
 		return;
 	}
 	item->used = false;
-	rdma_buffer_put(item);
+	cfs_rdma_buffer_put(item);
 }

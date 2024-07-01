@@ -57,7 +57,7 @@ int cfs_rdma_create(struct sockaddr_storage *ss, struct cfs_log *log,
 		dst_addr.sin_port = htons(rdma_port);
 		dst_addr.sin_addr.s_addr = ((struct sockaddr_in *)ss)->sin_addr.s_addr;
 		//dst_addr.sin_addr.s_addr = in_aton("127.0.0.1");
-		csk->ibvsock = IBVSocket_construct(&dst_addr);
+		csk->ibvsock = ibv_socket_construct(&dst_addr);
 		if (IS_ERR(csk->ibvsock)) {
 			cfs_pr_err("failed to connect to %s:%hu\n", parse_sinaddr(dst_addr.sin_addr), rdma_port);
 			cfs_buffer_release(csk->tx_buffer);
@@ -87,7 +87,7 @@ void cfs_rdma_socket_clean(struct cfs_socket *csk) {
 	if (!csk)
 		return;
 	if (csk->ibvsock)
-		IBVSocket_destruct(csk->ibvsock);
+		ibv_socket_destruct(csk->ibvsock);
 	cfs_buffer_release(csk->tx_buffer);
 	cfs_buffer_release(csk->rx_buffer);
 	kfree(csk);
@@ -115,7 +115,7 @@ void cfs_rdma_release(struct cfs_socket *csk, bool forever)
 
 static int cfs_rdma_pages_to_buffer(struct cfs_socket *csk, struct cfs_packet *packet) {
 	struct cfs_page_frag *frags;
-	struct BufferItem *pDataBuf = NULL;
+	struct cfs_node *pDataBuf = NULL;
 	char *pStart = NULL;
 	ssize_t count = 0;
 	ssize_t len = 0;
@@ -126,7 +126,7 @@ static int cfs_rdma_pages_to_buffer(struct cfs_socket *csk, struct cfs_packet *p
 	for (i = 0; i < packet->request.data.write.nr; i++) {
 		count += frags[i].size;
 	}
-	pDataBuf = IBVSocket_get_data_buf(csk->ibvsock, count);
+	pDataBuf = ibv_socket_get_data_buf(csk->ibvsock, count);
 	if (!pDataBuf) {
 		printk("failed to allocate data buffer. size=%ld\n", count);
 		return -ENOMEM;
@@ -147,11 +147,11 @@ static int cfs_rdma_pages_to_buffer(struct cfs_socket *csk, struct cfs_packet *p
 }
 
 static int cfs_rdma_iter_to_buffer(struct cfs_socket *csk, struct cfs_packet *packet) {
-	struct BufferItem *pDataBuf = NULL;
+	struct cfs_node *pDataBuf = NULL;
 	ssize_t size = 0;
 
 	size = be32_to_cpu(packet->request.hdr.size);
-	pDataBuf = IBVSocket_get_data_buf(csk->ibvsock, size);
+	pDataBuf = ibv_socket_get_data_buf(csk->ibvsock, size);
 	if (!pDataBuf) {
 		printk("failed to allocate data buffer. size=%ld\n", size);
 		return -ENOMEM;
@@ -167,7 +167,7 @@ static int cfs_rdma_iter_to_buffer(struct cfs_socket *csk, struct cfs_packet *pa
 
 static int cfs_rdma_attach_buffer(struct cfs_socket *csk, struct cfs_packet *packet) {
 	struct cfs_page_frag *frags;
-	struct BufferItem *pDataBuf = NULL;
+	struct cfs_node *pDataBuf = NULL;
 	ssize_t count = 0;
 	int i;
 
@@ -176,7 +176,7 @@ static int cfs_rdma_attach_buffer(struct cfs_socket *csk, struct cfs_packet *pac
 	for (i = 0; i < packet->reply.data.read.nr; i++) {
 		count += frags[i].size;
 	}
-	pDataBuf = IBVSocket_get_data_buf(csk->ibvsock, count);
+	pDataBuf = ibv_socket_get_data_buf(csk->ibvsock, count);
 	if (!pDataBuf) {
 		printk("failed to allocate data buffer. size=%ld\n", count);
 		return -ENOMEM;
@@ -255,9 +255,9 @@ int cfs_rdma_send_packet(struct cfs_socket *csk, struct cfs_packet *packet)
 
 	switch (packet->request.hdr.opcode) {
 		case CFS_OP_EXTENT_CREATE:
-			len = IBVSocket_send(csk->ibvsock, &iter);
+			len = ibv_socket_send(csk->ibvsock, &iter);
 			if (len < 0) {
-				cfs_log_error(csk->log, "IBVSocket_send error: %ld\n", len);
+				cfs_log_error(csk->log, "ibv_socket_send error: %ld\n", len);
 			}
 			break;
 		case CFS_OP_STREAM_WRITE:
@@ -268,9 +268,9 @@ int cfs_rdma_send_packet(struct cfs_socket *csk, struct cfs_packet *packet)
 				return ret;
 			}
 
-			len = IBVSocket_send(csk->ibvsock, &iter);
+			len = ibv_socket_send(csk->ibvsock, &iter);
 			if (len < 0) {
-				cfs_log_error(csk->log, "IBVSocket_send error: %ld\n", len);
+				cfs_log_error(csk->log, "ibv_socket_send error: %ld\n", len);
 			}
 			break;
 		case CFS_OP_STREAM_READ:
@@ -280,15 +280,15 @@ int cfs_rdma_send_packet(struct cfs_socket *csk, struct cfs_packet *packet)
 				cfs_log_error(csk->log, "cfs_rdma_attach_buffer error: %ld\n", ret);
 				return ret;
 			}
-			len = IBVSocket_send(csk->ibvsock, &iter);
+			len = ibv_socket_send(csk->ibvsock, &iter);
 			if (len < 0) {
-				cfs_log_error(csk->log, "IBVSocket_send error: %ld\n", len);
+				cfs_log_error(csk->log, "ibv_socket_send error: %ld\n", len);
 			}
 			break;
 		default:
-			len = IBVSocket_send(csk->ibvsock, &iter);
+			len = ibv_socket_send(csk->ibvsock, &iter);
 			if (len < 0) {
-				cfs_log_error(csk->log, "IBVSocket_send error: %ld\n", len);
+				cfs_log_error(csk->log, "ibv_socket_send error: %ld\n", len);
 			}
 			break;
 	}
@@ -300,7 +300,7 @@ int cfs_rdma_send_packet(struct cfs_socket *csk, struct cfs_packet *packet)
 }
 
 static int cfs_rdma_buffer_to_pages(struct cfs_socket *csk, struct cfs_packet *packet) {
-	struct BufferItem *pDataBuf = NULL;
+	struct cfs_node *pDataBuf = NULL;
 	struct cfs_page_frag *frags;
 	ssize_t count = 0;
 	char *pStart = NULL;
@@ -322,13 +322,13 @@ static int cfs_rdma_buffer_to_pages(struct cfs_socket *csk, struct cfs_packet *p
 		count += frags[i].size;
 	}
 	// release the data buffer.
-	IBVSocket_free_data_buf(csk->ibvsock, pDataBuf);
+	ibv_socket_free_data_buf(csk->ibvsock, pDataBuf);
 
 	return 0;
 }
 
 static int cfs_rdma_buffer_to_iter(struct cfs_socket *csk, struct cfs_packet *packet) {
-	struct BufferItem *pDataBuf = NULL;
+	struct cfs_node *pDataBuf = NULL;
 	ssize_t len = 0;
 	u32 datalen = 0;
 
@@ -347,7 +347,7 @@ static int cfs_rdma_buffer_to_iter(struct cfs_socket *csk, struct cfs_packet *pa
 	}
 
 	// release the data buffer.
-	IBVSocket_free_data_buf(csk->ibvsock, pDataBuf);
+	ibv_socket_free_data_buf(csk->ibvsock, pDataBuf);
 
 	return 0;
 }
@@ -369,7 +369,7 @@ int cfs_rdma_recv_packet(struct cfs_socket *csk, struct cfs_packet *packet)
 	iov.iov_len = sizeof(struct cfs_packet_hdr) + sizeof(struct reply_hdr_padding);
 	iov_iter_init(&iter, WRITE, &iov, 1, iov.iov_len);
 
-	len = IBVSocket_recvT(csk->ibvsock, &iter, packet->request.hdr.req_id);
+	len = ibv_socket_recv(csk->ibvsock, &iter, packet->request.hdr.req_id);
 	if (len < 0) {
 		cfs_log_error(csk->log,
 			"rdma socket receive ret: %d\n", len);
@@ -391,7 +391,7 @@ int cfs_rdma_recv_packet(struct cfs_socket *csk, struct cfs_packet *packet)
 	switch (packet->request.hdr.opcode) {
 		case CFS_OP_STREAM_WRITE:
 		case CFS_OP_STREAM_RANDOM_WRITE:
-			IBVSocket_free_data_buf(csk->ibvsock, packet->data_buffer);
+			ibv_socket_free_data_buf(csk->ibvsock, packet->data_buffer);
 			break;
 		case CFS_OP_STREAM_READ:
 		case CFS_OP_STREAM_FOLLOWER_READ:
@@ -490,5 +490,5 @@ void cfs_rdma_module_exit(void)
 	mutex_destroy(&rdma_sock_pool->lock);
 	kfree(rdma_sock_pool);
 	rdma_sock_pool = NULL;
-	rdma_buffer_release();
+	cfs_rdma_buffer_release();
 }

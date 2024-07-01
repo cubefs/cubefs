@@ -22,7 +22,7 @@ struct cfs_socket {
 	struct cfs_buffer *rx_buffer;
 	unsigned long jiffies;
 	struct cfs_log *log;
-	struct IBVSocket* ibvsock;
+	struct ibv_socket* ibvsock;
 	bool enable_rdma;
 	atomic_t rdma_refcnt;
 };
