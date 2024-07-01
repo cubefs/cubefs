@@ -73,6 +73,7 @@ type Node interface {
 	GetUsed() uint64
 	GetAvailableSpace() uint64
 	GetStorageInfo() string
+	IsOffline() bool
 }
 
 // SortedWeightedNodes defines an array sorted by carry
@@ -158,8 +159,14 @@ func (s *CarryWeightNodeSelector) getCarryNodes(nset *nodeSet, maxTotal uint64, 
 			// log.LogDebugf("[getAvailCarryDataNodeTab] dataNode [%v] is excludeHosts", dataNode.Addr)
 			return true
 		}
+		if node.IsOffline() {
+			log.LogWarnf("[getCarryDataNodes] nodeType (%v) storage info (%v)  exclude hosts(%v) is offline",
+				s.nodeType, node.GetStorageInfo(), excludeHosts)
+			return true
+		}
 		if !canAllocPartition(node) {
-			log.LogWarnf("[getCarryDataNodes] nodeType (%v) storage info (%v)  exclude hosts(%v)", s.nodeType, node.GetStorageInfo(), excludeHosts)
+			log.LogWarnf("[getCarryDataNodes] nodeType (%v) storage info (%v)  exclude hosts(%v)", s.nodeType,
+				node.GetStorageInfo(), excludeHosts)
 			return true
 		}
 		if s.carry[node.GetID()] >= 1.0 {

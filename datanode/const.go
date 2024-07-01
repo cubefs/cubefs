@@ -71,6 +71,8 @@ const (
 	ActionUpdateVersion              = "ActionUpdateVersion"
 	ActionStopDataPartitionRepair    = "ActionStopDataPartitionRepair"
 	ActionRecoverDataReplicaMeta     = "ActionRecoverDataReplicaMeta"
+	ActionRecoverBackupDataReplica   = "ActionRecoverBackupDataReplica"
+	ActionRecoverBadDisk             = "ActionRecoverBadDisk"
 )
 
 // Apply the raft log operation. Currently we only have the random write operation.
