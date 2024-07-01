@@ -17,6 +17,7 @@ package proto
 import (
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -83,6 +84,7 @@ var (
 	LifeCycleErrDaysType       = errors.New("'Days' for Expiration action must be a positive integer")
 	LifeCycleErrStorageClass   = errors.New("'StorageClass' must be different for 'Transition' actions in same 'Rule'")
 	LifeCycleErrMalformedXML   = errors.New("The XML you provided was not well-formed or did not validate against our published schema")
+	LifeCycleErrConflictRules  = errors.New("Conflicting rule prefix")
 )
 
 func ValidRules(Rules []*Rule) error {
@@ -103,6 +105,45 @@ func ValidRules(Rules []*Rule) error {
 		}
 		if err := validRule(rule); err != nil {
 			return err
+		}
+	}
+
+	if err := ValidRulePrefix(Rules); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func ValidRulePrefix(Rules []*Rule) error {
+	if len(Rules) == 1 {
+		return nil
+	}
+	var prefixes []string
+	for _, rule := range Rules {
+		if rule.Filter == nil {
+			return LifeCycleErrConflictRules
+		}
+		if rule.Filter != nil {
+			if rule.Filter.Prefix == "" {
+				return LifeCycleErrConflictRules
+			} else {
+				prefixes = append(prefixes, rule.Filter.Prefix)
+			}
+		}
+	}
+
+	for i, p1 := range prefixes {
+		for j, p2 := range prefixes {
+			if i == j {
+				continue
+			}
+			if strings.HasPrefix(p1, p2) {
+				return LifeCycleErrConflictRules
+			}
+			if strings.HasPrefix(p2, p1) {
+				return LifeCycleErrConflictRules
+			}
 		}
 	}
 
