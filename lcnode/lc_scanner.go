@@ -373,14 +373,15 @@ func (s *LcScanner) handleFile(dentry *proto.ScanDentry) {
 	log.LogDebugf("handleFile: %v, fileChan: %v", dentry, s.fileChan.Len())
 	var err error
 	start := time.Now()
-	defer func() {
-		if dentry.Op != "" {
-			auditlog.LogLcNodeOp(dentry.Op, dentry.Name, dentry.Path, dentry.ParentId, dentry.Inode, dentry.Size, dentry.WriteGen,
-				dentry.HasMek, dentry.StorageClass, proto.OpTypeToStorageType(dentry.Op), time.Since(start).Milliseconds(), err)
-		}
-	}()
+	op := dentry.Op
+	if op != "" {
+		defer func() {
+			auditlog.LogLcNodeOp(op, s.Volume, dentry.Name, dentry.Path, dentry.ParentId, dentry.Inode, dentry.Size, dentry.WriteGen,
+				dentry.HasMek, dentry.StorageClass, proto.OpTypeToStorageType(op), time.Since(start).Milliseconds(), err)
+		}()
+	}
 
-	switch dentry.Op {
+	switch op {
 	case proto.OpTypeDelete:
 		s.limiter.Wait(context.Background())
 		_, err = s.mw.DeleteWithCond_ll(dentry.ParentId, dentry.Inode, dentry.Name, os.FileMode(dentry.Type).IsDir(), dentry.Path)
@@ -408,7 +409,7 @@ func (s *LcScanner) handleFile(dentry *proto.ScanDentry) {
 			log.LogErrorf("migrate err: %v, dentry: %+v, skip it", err, dentry)
 			return
 		}
-		err = s.mw.UpdateExtentKeyAfterMigration(dentry.Inode, proto.OpTypeToStorageType(dentry.Op), nil, dentry.WriteGen, delayDelMinute, dentry.Path)
+		err = s.mw.UpdateExtentKeyAfterMigration(dentry.Inode, proto.OpTypeToStorageType(op), nil, dentry.WriteGen, delayDelMinute, dentry.Path)
 		if err != nil {
 			atomic.AddInt64(&s.currentStat.ErrorSkippedNum, 1)
 			log.LogErrorf("update extent key err: %v, dentry: %+v, skip it", err, dentry)
@@ -432,7 +433,7 @@ func (s *LcScanner) handleFile(dentry *proto.ScanDentry) {
 			log.LogErrorf("migrateToEbs err: %v, dentry: %+v, skip it", err, dentry)
 			return
 		}
-		err = s.mw.UpdateExtentKeyAfterMigration(dentry.Inode, proto.OpTypeToStorageType(dentry.Op), oek, dentry.WriteGen, delayDelMinute, dentry.Path)
+		err = s.mw.UpdateExtentKeyAfterMigration(dentry.Inode, proto.OpTypeToStorageType(op), oek, dentry.WriteGen, delayDelMinute, dentry.Path)
 		if err != nil {
 			atomic.AddInt64(&s.currentStat.ErrorSkippedNum, 1)
 			log.LogErrorf("update extent key err: %v, dentry: %+v, skip it", err, dentry)
