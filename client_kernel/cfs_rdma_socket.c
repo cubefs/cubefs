@@ -470,7 +470,7 @@ int cfs_rdma_module_init(void)
 	INIT_DELAYED_WORK(&rdma_sock_pool->work, rdma_pool_lru_work_cb);
 	schedule_delayed_work(&rdma_sock_pool->work,
 			      msecs_to_jiffies(SOCK_POOL_LRU_INTERVAL_MS));
-	rdma_buffer_new();
+
 	return 0;
 }
 

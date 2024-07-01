@@ -12,6 +12,7 @@
 #include "rdma_buffer.h"
 
 #define IBVSOCKET_CONN_TIMEOUT_MS 5000
+#define IBVSOCKET_RECV_TIMEOUT_MS 30000
 #define MSG_LEN 4096
 #define WR_MAX_NUM 32
 #define TIMEOUT_JS 5000
