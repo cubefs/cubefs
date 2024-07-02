@@ -15,7 +15,10 @@
 package meta
 
 import (
+	"encoding/json"
 	"fmt"
+	"github.com/cubefs/cubefs/util"
+	"github.com/cubefs/cubefs/util/rdma"
 	"strconv"
 	"sync"
 	"syscall"
@@ -27,6 +30,8 @@ import (
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/cubefs/cubefs/util/stat"
 )
+
+var IsRdma bool
 
 // API implementations
 //
@@ -1250,7 +1255,20 @@ func (mw *MetaWrapper) appendExtentKey(mp *MetaPartition, inode uint64, extent p
 	packet := proto.NewPacketReqID()
 	packet.Opcode = proto.OpMetaExtentAddWithCheck
 	packet.PartitionID = mp.PartitionID
-	err = packet.MarshalData(req)
+	if IsRdma {
+		var data []byte
+		data, err = json.Marshal(req)
+		if err == nil {
+			dataBuffer, _ := rdma.GetDataBuffer(uint32(len(data) + util.PacketHeaderSize))
+			packet.Data = dataBuffer[util.PacketHeaderSize:]
+			packet.RdmaBuffer = dataBuffer
+			copy(packet.Data[:len(data)], data)
+			packet.Size = uint32(len(data))
+		}
+	} else {
+		err = packet.MarshalData(req)
+	}
+
 	if err != nil {
 		log.LogErrorf("appendExtentKey: req(%v) err(%v)", *req, err)
 		return
@@ -1261,7 +1279,11 @@ func (mw *MetaWrapper) appendExtentKey(mp *MetaPartition, inode uint64, extent p
 		metric.SetWithLabels(err, map[string]string{exporter.Vol: mw.volname})
 	}()
 
-	packet, err = mw.sendToMetaPartition(mp, packet)
+	if IsRdma {
+		packet, err = mw.sendToMetaPartitionByRdma(mp, packet)
+	} else {
+		packet, err = mw.sendToMetaPartition(mp, packet)
+	}
 	if err != nil {
 		log.LogErrorf("appendExtentKey: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
 		return

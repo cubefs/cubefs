@@ -89,6 +89,7 @@ type metadataManager struct {
 	rootDir              string
 	raftStore            raftstore.RaftStore
 	connPool             *util.ConnectPool
+	rdmaConnPool         *util.RdmaConnectPool
 	state                uint32
 	mu                   sync.RWMutex
 	partitions           map[uint64]MetaPartition // Key: metaRangeId, Val: metaPartition
@@ -483,6 +484,9 @@ func (m *metadataManager) startSnapshotVersionPromote() {
 // onStart creates the connection pool and loads the partitions.
 func (m *metadataManager) onStart() (err error) {
 	m.connPool = util.NewConnectPool()
+	if isRdma {
+		m.rdmaConnPool = util.NewRdmaConnectPool()
+	}
 	err = m.loadPartitions()
 	if err != nil {
 		return

@@ -31,9 +31,11 @@ import (
 // Packet defines a wrapper of the packet in proto.
 type Packet struct {
 	proto.Packet
-	inode      uint64
-	errCount   int
-	RdmaBuffer []byte
+	inode                     uint64
+	errCount                  int
+	PutToReplyChanStartTime   *time.Time
+	PutToRequestChanStartTime *time.Time
+	WriteStartTime            *time.Time
 }
 
 // String returns the string format of the packet.
@@ -134,9 +136,8 @@ func NewOverwritePacket(dp *wrapper.DataPartition, extentID uint64, extentOffset
 	p.inode = inode
 	p.KernelOffset = uint64(fileOffset)
 	if IsRdma {
-		dataBuffer, _ := rdma.GetDataBuffer(util.BlockSize + util.RdmaPacketHeaderSize)
-		p.Arg = dataBuffer[util.PacketHeaderSize:util.RdmaPacketHeaderSize]
-		p.Data = dataBuffer[util.RdmaPacketHeaderSize:]
+		dataBuffer, _ := rdma.GetDataBuffer(util.BlockSize + util.PacketHeaderSize)
+		p.Data = dataBuffer[util.PacketHeaderSize:]
 		p.RdmaBuffer = dataBuffer
 	} else {
 		p.Data, _ = proto.Buffers.Get(util.BlockSize)
@@ -163,6 +164,10 @@ func NewReadPacket(key *proto.ExtentKey, extentOffset, size int, inode uint64, f
 	p.RemainingFollowers = 0
 	p.inode = inode
 	p.KernelOffset = uint64(fileOffset)
+	if IsRdma {
+		dataBuffer, _ := rdma.GetDataBuffer(util.PacketHeaderSize)
+		p.RdmaBuffer = dataBuffer
+	}
 	return p
 }
 
@@ -213,14 +218,64 @@ func (p *Packet) isValidReadReply(q *Packet) bool {
 
 func (p *Packet) writeToConn(conn net.Conn) error {
 	p.CRC = crc32.ChecksumIEEE(p.Data[:p.Size])
-	if c, ok := conn.(*rdma.Connection); ok {
-		return p.WriteToRDMAConn(c, p.RdmaBuffer)
-	} else {
-		return p.WriteToConn(conn)
-	}
+	return p.WriteToConn(conn)
 }
 
 func (p *Packet) readFromConn(c net.Conn, deadlineTime time.Duration) (err error) {
+	if conn, ok := c.(*rdma.Connection); ok {
+		return p.readFromRdmaConn(conn, deadlineTime)
+	} else {
+		return p.readFromTcpConn(c, deadlineTime)
+	}
+}
+
+func (p *Packet) readFromRdmaConn(c *rdma.Connection, deadlineTime time.Duration) (err error) {
+	//if deadlineTime != proto.NoReadDeadlineTime { //rdma todo
+	//	c.SetReadDeadline(time.Now().Add(deadlineTime * time.Second))
+	//}
+	var dataBuffer []byte
+	var offset uint32
+
+	defer func() {
+		if dataBuffer != nil {
+			if err = c.ReleaseConnRxDataBuffer(dataBuffer); err != nil { //rdma todo
+			}
+		}
+	}()
+
+	if dataBuffer, err = c.GetRecvMsgBuffer(); err != nil {
+		return
+	}
+
+	if err = p.UnmarshalHeader(dataBuffer[0:util.PacketHeaderSize]); err != nil {
+		return
+	}
+
+	offset = util.PacketHeaderSize
+
+	if p.ArgLen > 0 {
+		p.Arg = make([]byte, int(p.ArgLen))
+		copy(p.Arg, dataBuffer[util.PacketHeaderSize:util.PacketHeaderSize+p.ArgLen])
+		//p.Arg = dataBuffer[offset : offset+p.ArgLen]
+		offset = util.RdmaPacketHeaderSize
+	}
+
+	if p.Size < 0 {
+		return
+	}
+	size := int(p.Size)
+	if size > len(p.Data) {
+		size = len(p.Data)
+	}
+
+	//p.Data = dataBuffer[offset : offset+size]
+	p.Data = make([]byte, size)
+	copy(p.Data, dataBuffer[offset:offset+uint32(size)])
+	//p.RdmaBuffer = dataBuffer
+	return
+}
+
+func (p *Packet) readFromTcpConn(c net.Conn, deadlineTime time.Duration) (err error) {
 	if deadlineTime != proto.NoReadDeadlineTime {
 		c.SetReadDeadline(time.Now().Add(deadlineTime * time.Second))
 	}

@@ -15,6 +15,7 @@
 package metanode
 
 import (
+	"github.com/cubefs/cubefs/util/rdma"
 	"net"
 
 	"github.com/cubefs/cubefs/proto"
@@ -82,8 +83,12 @@ func (m *metadataManager) respondToClient(conn net.Conn, p *Packet) (err error) 
 		}
 	}()
 
-	// process data and send reply though specified tcp connection.
-	err = p.WriteToConn(conn)
+	// process data and send reply though specified tcp or rdma connection.
+	if c, ok := conn.(*rdma.Connection); ok {
+		err = p.WriteToRdmaConn(c)
+	} else {
+		err = p.WriteToConn(conn)
+	}
 	if err != nil {
 		log.LogErrorf("response to client[%s], "+
 			"request[%s], response packet[%s]",

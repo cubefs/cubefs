@@ -49,14 +49,15 @@ type Packet struct {
 	// used locally
 	shallDegrade bool
 	AfterPre     bool
-	IsRdma       bool
-	RdmaBuffer   []byte
+
+	PutTobeProcessChanStartTime *time.Time
+	PutResponseChanStartTime    *time.Time
+	ReadStartTime               *time.Time
 }
 
 type FollowerPacket struct {
 	proto.Packet
-	respCh     chan error
-	RdmaBuffer []byte
+	respCh chan error
 }
 
 func NewFollowerPacket() (fp *FollowerPacket) {
@@ -348,6 +349,44 @@ func (p *Packet) ReadFull(c net.Conn, opcode uint8, readSize int) (err error) {
 }
 
 func (p *Packet) ReadFromConnFromCli(c net.Conn, deadlineTime time.Duration) (err error) {
+	if conn, ok := c.(*rdma.Connection); ok {
+		return p.ReadFromRdmaConnFromCli(conn, deadlineTime)
+	} else {
+		return p.ReadFromTcpConnFromCli(c, deadlineTime)
+	}
+}
+
+func (p *Packet) ReadFromTcpConnFromCli(c net.Conn, deadlineTime time.Duration) (err error) {
+	var header []byte
+	header, err = proto.Buffers.Get(util.PacketHeaderSize)
+	if err != nil {
+		header = make([]byte, util.PacketHeaderSize)
+	}
+	defer proto.Buffers.Put(header)
+	if _, err = io.ReadFull(c, header); err != nil {
+		return
+	}
+	if err = p.UnmarshalHeader(header); err != nil {
+		return
+	}
+
+	if p.ArgLen > 0 {
+		if err = proto.ReadFull(c, &p.Arg, int(p.ArgLen)); err != nil {
+			return
+		}
+	}
+
+	if p.Size < 0 {
+		return
+	}
+	size := p.Size
+	if p.IsReadOperation() && p.ResultCode == proto.OpInitResultCode {
+		size = 0
+	}
+	return p.ReadFull(c, p.Opcode, int(size))
+}
+
+func (p *Packet) ReadFromRdmaConnFromCli(conn *rdma.Connection, deadlineTime time.Duration) (err error) {
 	/*
 		if deadlineTime != proto.NoReadDeadlineTime {
 			c.SetReadDeadline(time.Now().Add(deadlineTime * time.Second))
@@ -355,64 +394,39 @@ func (p *Packet) ReadFromConnFromCli(c net.Conn, deadlineTime time.Duration) (er
 			c.SetReadDeadline(time.Time{})
 		}
 	*/
-
-	if conn, ok := c.(*rdma.Connection); ok {
-		var dataBuffer []byte
-		if dataBuffer, err = conn.GetRecvMsgBuffer(); err != nil {
-			return
-		}
-		p.RdmaBuffer = dataBuffer
-
-		if err = p.UnmarshalHeader(dataBuffer[0:util.PacketHeaderSize]); err != nil {
-			conn.ReleaseConnRxDataBuffer(dataBuffer) //rdma todo
-			return
-		}
-
-		if p.ArgLen > 0 {
-			p.Arg = make([]byte, int(p.ArgLen))
-			copy(p.Arg, dataBuffer[util.PacketHeaderSize:util.PacketHeaderSize+p.ArgLen])
-		}
-
-		if p.Size < 0 {
-			conn.ReleaseConnRxDataBuffer(dataBuffer) //rdma todo
-			return
-		}
-		size := p.Size
-		if p.IsReadOperation() && p.ResultCode == proto.OpInitResultCode {
-			size = 0
-		}
-		p.Data = dataBuffer[util.RdmaPacketHeaderSize : util.RdmaPacketHeaderSize+int(size)]
-		p.IsRdma = true
+	var dataBuffer []byte
+	var offset uint32
+	if dataBuffer, err = conn.GetRecvMsgBuffer(); err != nil {
 		return
-	} else {
-		var header []byte
-		header, err = proto.Buffers.Get(util.PacketHeaderSize)
-		if err != nil {
-			header = make([]byte, util.PacketHeaderSize)
-		}
-		defer proto.Buffers.Put(header)
-		if _, err = io.ReadFull(c, header); err != nil {
-			return
-		}
-		if err = p.UnmarshalHeader(header); err != nil {
-			return
-		}
-
-		if p.ArgLen > 0 {
-			if err = proto.ReadFull(c, &p.Arg, int(p.ArgLen)); err != nil {
-				return
-			}
-		}
-
-		if p.Size < 0 {
-			return
-		}
-		size := p.Size
-		if p.IsReadOperation() && p.ResultCode == proto.OpInitResultCode {
-			size = 0
-		}
-		return p.ReadFull(c, p.Opcode, int(size))
 	}
+
+	if err = p.UnmarshalHeader(dataBuffer[0:util.PacketHeaderSize]); err != nil {
+		conn.ReleaseConnRxDataBuffer(dataBuffer) //rdma todo
+		return
+	}
+	offset += util.PacketHeaderSize
+
+	if len(dataBuffer) == util.RdmaPacketHeaderSize+int(p.Size) { //header + args + data
+		if p.ArgLen > 0 {
+			//p.Arg = make([]byte, int(p.ArgLen))
+			//copy(p.Arg, dataBuffer[util.PacketHeaderSize:util.PacketHeaderSize+p.ArgLen])
+			p.Arg = dataBuffer[util.PacketHeaderSize : util.PacketHeaderSize+p.ArgLen]
+		}
+		offset = util.RdmaPacketHeaderSize
+	}
+
+	if p.Size < 0 {
+		conn.ReleaseConnRxDataBuffer(dataBuffer) //rdma todo
+		return
+	}
+	size := p.Size
+	if p.IsReadOperation() && p.ResultCode == proto.OpInitResultCode {
+		size = 0
+	}
+	p.Data = dataBuffer[offset : offset+size]
+	p.RdmaBuffer = dataBuffer
+	p.IsRdma = true
+	return
 }
 
 func (p *Packet) IsMasterCommand() bool {

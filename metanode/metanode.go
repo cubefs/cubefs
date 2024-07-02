@@ -53,6 +53,7 @@ var (
 type MetaNode struct {
 	nodeId                    uint64
 	listen                    string
+	rdmaListen                string
 	bindIp                    bool
 	metadataDir               string // root dir of the metaNode
 	raftDir                   string // root dir of the raftStore log
@@ -66,6 +67,7 @@ type MetaNode struct {
 	raftSyncSnapFormatVersion uint32 // format version of snapshot that raft leader sent to follower
 	zoneName                  string
 	httpStopC                 chan uint8
+	rdmaStopC                 chan uint8
 	smuxStopC                 chan uint8
 	metrics                   *MetaNodeMetrics
 	tickInterval              int
@@ -75,6 +77,7 @@ type MetaNode struct {
 	clusterUuidEnable         bool
 	clusterEnableSnapshot     bool
 	serviceIDKey              string
+	rdmaConnectionCnt         int64
 
 	control common.Control
 }
@@ -149,6 +152,11 @@ func doStart(s common.Server, cfg *config.Config) (err error) {
 	if err = m.startServer(); err != nil {
 		return
 	}
+	if isRdma {
+		if err = m.startRdmaServer(); err != nil {
+			return
+		}
+	}
 	if err = m.startSmuxServer(); err != nil {
 		return
 	}
@@ -182,6 +190,9 @@ func doShutdown(s common.Server) {
 	// shutdown node and release the resource
 	m.stopStat()
 	m.stopServer()
+	if isRdma {
+		m.stopRdmaServer()
+	}
 	m.stopSmuxServer()
 	m.stopMetaManager()
 	m.stopRaftServer()
@@ -200,6 +211,24 @@ func (m *MetaNode) parseConfig(cfg *config.Config) (err error) {
 	}
 	m.localAddr = cfg.GetString(cfgLocalIP)
 	m.listen = cfg.GetString(proto.ListenPort)
+	isRdma = cfg.GetBoolWithDefault("enableRdma", false)
+	if isRdma {
+		m.rdmaListen = cfg.GetString("rdmaPort")
+		util.Config.MemBlockNum = int(cfg.GetInt64WithDefault("rdmaMemBlockNum", 4*8*1024))
+		util.Config.MemBlockSize = int(cfg.GetInt64WithDefault("rdmaMemBlockSize", 128*1024))
+		util.Config.MemPoolLevel = int(cfg.GetInt64WithDefault("rdmaMemPoolLevel", 15))
+
+		util.Config.ConnDataSize = int(cfg.GetInt64WithDefault("rdmaConnDataSize", 128*1024*32))
+
+		util.Config.WqDepth = int(cfg.GetInt64WithDefault("wqDepth", 32))
+		util.Config.MinCqeNum = int(cfg.GetInt64WithDefault("minCqeNum", 1024))
+
+		util.Config.EnableRdmaLog = cfg.GetBoolWithDefault("enableRdmaLog", false)
+		util.Config.RdmaLogDir = cfg.GetString("rdmaLogDir")
+
+		util.Config.WorkerNum = int(cfg.GetInt64WithDefault("workerNum", 4))
+	}
+
 	m.bindIp = cfg.GetBool(proto.BindIpKey)
 	serverPort = m.listen
 	m.metadataDir = cfg.GetString(cfgMetadataDir)
@@ -498,4 +527,14 @@ func (m *MetaNode) AddConnection() {
 // RemoveConnection removes a connection.
 func (m *MetaNode) RemoveConnection() {
 	atomic.AddInt64(&m.connectionCnt, -1)
+}
+
+// AddRdmaConnection adds a rdma connection.
+func (m *MetaNode) AddRdmaConnection() {
+	atomic.AddInt64(&m.rdmaConnectionCnt, 1)
+}
+
+// RemoveRdmaConnection removes a rdma connection.
+func (m *MetaNode) RemoveRdmaConnection() {
+	atomic.AddInt64(&m.rdmaConnectionCnt, -1)
 }

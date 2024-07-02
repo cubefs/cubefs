@@ -25,6 +25,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/cubefs/cubefs/util/rdma"
+
 	"github.com/cubefs/cubefs/datanode/storage"
 
 	raftProto "github.com/cubefs/cubefs/depends/tiglabs/raft/proto"
@@ -1243,9 +1245,16 @@ func (m *metadataManager) opMetaExtentAddWithCheck(conn net.Conn, p *Packet,
 		err = errors.NewErrorf("[%v] req: %v, resp: %v", p.GetOpMsgWithReqAndResult(), req, err.Error())
 		return
 	}
-	if !m.serveProxy(conn, mp, p) {
-		return
+	if c, ok := conn.(*rdma.Connection); ok {
+		if !m.serveRdmaProxy(c, mp, p) {
+			return
+		}
+	} else {
+		if !m.serveProxy(conn, mp, p) {
+			return
+		}
 	}
+
 	if err = m.checkMultiVersionStatus(mp, p); err != nil {
 		err = errors.NewErrorf("[%v],req[%v],err[%v]", p.GetOpMsgWithReqAndResult(), req, string(p.Data))
 		m.respondToClientWithVer(conn, p)

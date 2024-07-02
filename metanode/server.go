@@ -16,6 +16,7 @@ package metanode
 
 import (
 	"fmt"
+	"github.com/cubefs/cubefs/util/rdma"
 	"io"
 	"net"
 
@@ -25,6 +26,8 @@ import (
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/log"
 )
+
+var isRdma bool
 
 // StartTcpService binds and listens to the specified port.
 func (m *MetaNode) startServer() (err error) {
@@ -96,6 +99,72 @@ func (m *MetaNode) serveConn(conn net.Conn, stopC chan uint8) {
 		}
 		if err := m.handlePacket(conn, p, remoteAddr); err != nil {
 			log.LogErrorf("serve handlePacket fail: %v", err)
+		}
+	}
+}
+
+// StartRdmaService binds and listens to the specified port.
+func (m *MetaNode) startRdmaServer() (err error) {
+	// initialize and start the server.
+	m.rdmaStopC = make(chan uint8)
+
+	util.InitRdmaEnv()
+	ln, err := rdma.NewRdmaServer(m.localAddr, m.rdmaListen)
+	if err != nil {
+		return
+	}
+	go func(stopC chan uint8) {
+		defer ln.Close()
+		for {
+			conn, err := ln.Accept()
+			select {
+			case <-stopC:
+				return
+			default:
+			}
+			if err != nil {
+				continue
+			}
+			go m.serveRdmaConn(conn, stopC)
+		}
+	}(m.rdmaStopC)
+	log.LogInfof("start rdma server over...")
+	return
+}
+
+func (m *MetaNode) stopRdmaServer() {
+	if m.rdmaStopC != nil {
+		defer func() {
+			if r := recover(); r != nil {
+				log.LogErrorf("action[StopRdmaServer],err:%v", r)
+			}
+		}()
+		close(m.rdmaStopC)
+	}
+}
+
+// Read data from the specified rdma connection until the connection is closed by the remote or the rdma service is down.
+func (m *MetaNode) serveRdmaConn(conn *rdma.Connection, stopC chan uint8) {
+	defer func() {
+		conn.Close()
+		m.RemoveRdmaConnection()
+	}()
+	m.AddRdmaConnection()
+
+	remoteAddr := conn.RemoteAddr().String()
+	for {
+		select {
+		case <-stopC:
+			return
+		default:
+		}
+		p := &Packet{}
+		if err := p.ReadFromRdmaConn(conn, proto.NoReadDeadlineTime); err != nil {
+			log.LogError("rdma serve MetaNode: ", err.Error())
+			return
+		}
+		if err := m.handlePacket(conn, p, remoteAddr); err != nil {
+			log.LogErrorf("rdma serve handlePacket fail: %v", err)
 		}
 	}
 }

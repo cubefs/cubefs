@@ -155,13 +155,17 @@ func (eh *ExtentHandler) String() string {
 }
 
 func (eh *ExtentHandler) write(data []byte, offset, size int, direct bool) (ek *proto.ExtentKey, err error) {
+	bgTime := stat.BeginStat()
 	var total, write int
-	log.LogDebugf("extentHandler write start")
+	//log.LogDebugf("extentHandler write start")
 	status := eh.getStatus()
 	if status >= ExtentStatusClosed {
 		err = errors.NewErrorf("ExtentHandler Write: Full or Recover eh(%v) key(%v)", eh, eh.key)
 		return
 	}
+
+	stat.EndStat("write(extentHandler write get status)", nil, bgTime, 1)
+	bgTime1 := stat.BeginStat()
 
 	var blksize int
 	if eh.storeMode == proto.TinyExtentType {
@@ -170,6 +174,9 @@ func (eh *ExtentHandler) write(data []byte, offset, size int, direct bool) (ek *
 		blksize = util.BlockSize
 	}
 	log.LogDebugf("blksize: %v", blksize)
+
+	stat.EndStat("write(extentHandler write get blksize)", nil, bgTime1, 1)
+	bgTime2 := stat.BeginStat()
 	// If this write request is not continuous, and cannot be merged
 	// into the extent handler, just close it and return error.
 	// In this case, the caller should try to create a new extent handler.
@@ -182,8 +189,10 @@ func (eh *ExtentHandler) write(data []byte, offset, size int, direct bool) (ek *
 			return
 		}
 	}
+	stat.EndStat("write(extentHandler write check incontinuous)", nil, bgTime2, 1)
 
 	for total < size {
+		bgTime3 := stat.BeginStat()
 		if eh.packet == nil {
 			eh.packet = NewWritePacket(eh.inode, offset+total, eh.storeMode)
 			if direct {
@@ -193,17 +202,20 @@ func (eh *ExtentHandler) write(data []byte, offset, size int, direct bool) (ek *
 		}
 		packsize := int(eh.packet.Size)
 		write = util.Min(size-total, blksize-packsize)
+		stat.EndStat("write(extentHandler write newWritePacket)", nil, bgTime3, 1)
+		bgTime4 := stat.BeginStat()
 		if write > 0 {
 			copy(eh.packet.Data[packsize:packsize+write], data[total:total+write])
 			eh.packet.Size += uint32(write)
 			total += write
 		}
-
+		stat.EndStat("write(extentHandler write copy)", nil, bgTime4, 1)
 		if int(eh.packet.Size) >= blksize {
 			log.LogDebugf("packet flush start")
 			log.LogDebugf("packet: %v", eh.packet)
 			eh.flushPacket()
 		}
+		stat.EndStat("write(extentHandler write traver)", nil, bgTime3, 1)
 	}
 
 	eh.size += total
@@ -214,6 +226,7 @@ func (eh *ExtentHandler) write(data []byte, offset, size int, direct bool) (ek *
 		FileOffset: uint64(eh.fileOffset),
 		Size:       uint32(eh.size),
 	}
+	stat.EndStat("write(extentHandler write)", nil, bgTime, 1)
 	return ek, nil
 }
 
@@ -223,7 +236,10 @@ func (eh *ExtentHandler) sender() {
 	for {
 		select {
 		case packet := <-eh.request:
-			log.LogDebugf("ExtentHandler sender begin: eh(%v) packet(%v)", eh, packet)
+			stat.EndStat("write(requestChan)", nil, packet.PutToRequestChanStartTime, 1)
+			bgTime1 := stat.BeginStat()
+
+			log.LogDebugf("ExtentHandler sender begin: eh(%v) packet(%v)", eh, packet.GetUniqueLogId())
 			if eh.getStatus() >= ExtentStatusRecovery {
 				log.LogWarnf("sender in recovery: eh(%v) packet(%v)", eh, packet)
 				eh.reply <- packet
@@ -247,7 +263,6 @@ func (eh *ExtentHandler) sender() {
 					continue
 				}
 			}
-
 			// For ExtentStore, calculate the extent offset.
 			// For TinyStore, the extent offset is always 0 in the request packet,
 			// and the reply packet tells the real extent offset.
@@ -280,12 +295,18 @@ func (eh *ExtentHandler) sender() {
 
 			packet.StartT = time.Now().UnixNano()
 
-			log.LogDebugf("ExtentHandler sender: extent allocated, eh(%v) dp(%v) extID(%v) packet(%v)", eh, eh.dp, eh.extID, packet.GetUniqueLogId())
+			stat.EndStat("write(fill packet)", err, bgTime1, 1)
+			bgTime2 := stat.BeginStat()
+
+			//log.LogDebugf("ExtentHandler sender: extent allocated, eh(%v) dp(%v) extID(%v) packet(%v)", eh, eh.dp, eh.extID, packet.GetUniqueLogId())
 			if IsRdma {
 				packet.CRC = crc32.ChecksumIEEE(packet.Data[:packet.Size])
 				log.LogDebugf("rdma conn write packet begin ReqId: %d", packet.ReqID)
+				stat.EndStat("write(checkCrc)", nil, bgTime2, 1)
+				packet.WriteStartTime = stat.BeginStat()
+
 				for _, conn := range eh.rdmaConn {
-					err = packet.WriteToRDMAConn(conn, packet.RdmaBuffer)
+					err = packet.WriteExternalToRdmaConn(conn, packet.RdmaBuffer, int(util.RdmaPacketHeaderSize+packet.Size))
 					if err != nil {
 						log.LogWarnf("sender writeTo: failed, eh(%v) err(%v) packet(%v)", eh, err, packet)
 						eh.setClosed()
@@ -294,16 +315,24 @@ func (eh *ExtentHandler) sender() {
 					}
 				}
 				log.LogDebugf("rdma conn write packet: %v, err:%v", packet, err)
+
+				stat.EndStat("write(writeToRdmaConn)", err, bgTime2, 1)
 			} else {
 				log.LogDebugf("tcp conn write packet start: time[%v]", time.Now())
 				log.LogDebugf("packet: %v", packet)
+				packet.WriteStartTime = stat.BeginStat()
 				if err = packet.writeToConn(eh.conn); err != nil {
 					log.LogWarnf("sender writeTo: failed, eh(%v) err(%v) packet(%v)", eh, err, packet)
 					eh.setClosed()
 					eh.setRecovery()
 				}
 				log.LogDebugf("tcp conn write packet: %v, err:%v", packet, err)
+
+				stat.EndStat("write(writeToTcpConn)", err, bgTime2, 1)
 			}
+
+			stat.EndStat("write(sender)", err, bgTime1, 1)
+			packet.PutToReplyChanStartTime = stat.BeginStat()
 
 			eh.reply <- packet
 		case <-eh.doneSender:
@@ -318,8 +347,16 @@ func (eh *ExtentHandler) receiver() {
 	for {
 		select {
 		case packet := <-eh.reply:
+
+			stat.EndStat("write(replyChan)", nil, packet.PutToReplyChanStartTime, 1)
+			bgTime3 := stat.BeginStat()
+
 			log.LogDebugf("receiver begin: eh(%v) packet(%v)", eh, packet.GetUniqueLogId())
 			eh.processReply(packet)
+			//log.LogDebugf("receiver end: eh(%v) packet(%v)", eh, packet.GetUniqueLogId())
+
+			stat.EndStat("write(receiver)", nil, bgTime3, 1)
+			stat.EndStat("write(sender->receiver)", nil, packet.PutToRequestChanStartTime, 1)
 		case <-eh.doneReceiver:
 			log.LogDebugf("receiver done: eh(%v) size(%v) ek(%v)", eh, eh.size, eh.key)
 			return
@@ -328,10 +365,13 @@ func (eh *ExtentHandler) receiver() {
 }
 
 func (eh *ExtentHandler) processReply(packet *Packet) {
+	bgTime4 := stat.BeginStat()
+	var bgTime7 *time.Time
 	defer func() {
 		if atomic.AddInt32(&eh.inflight, -1) <= 0 {
 			eh.empty <- struct{}{}
 		}
+		stat.EndStat("write(process reply defer)", nil, bgTime7, 1)
 	}()
 
 	status := eh.getStatus()
@@ -349,16 +389,20 @@ func (eh *ExtentHandler) processReply(packet *Packet) {
 	}
 
 	var verUpdate bool
-	reply := NewReply(packet.ReqID, packet.PartitionID, packet.ExtentID)
 	var err error
-
+	var bgTime5 *time.Time
+	var reply *Packet
+	var allReply []*Packet
 	if IsRdma {
 		errs := make([]error, len(eh.rdmaConn))
-		allReply := make([]*Packet, len(eh.rdmaConn))
+		allReply = make([]*Packet, len(eh.rdmaConn))
 		for index, conn := range eh.rdmaConn {
 			allReply[index] = NewReply(packet.ReqID, packet.PartitionID, packet.ExtentID)
-			errs[index] = allReply[index].ReadFromRDMAConn(conn, proto.ReadDeadlineTime)
+			errs[index] = allReply[index].ReadFromRdmaConn(conn, proto.ReadDeadlineTime)
 		}
+		stat.EndStat("write(write-read)", nil, packet.WriteStartTime, 1)
+		stat.EndStat("write(readFromRdmaConn)", nil, bgTime4, 1)
+		bgTime5 = stat.BeginStat()
 		for i := 0; i < len(eh.rdmaConn); i++ {
 			if errs[i] != nil {
 				log.LogErrorf("rdma conn recv reply: %v, err: %v", allReply[i], errs[i])
@@ -386,9 +430,11 @@ func (eh *ExtentHandler) processReply(packet *Packet) {
 		}
 		reply = allReply[0]
 	} else {
-		err = reply.ReadFromConnWithVer(eh.conn, proto.ReadDeadlineTime)
-		log.LogDebugf("tcp conn recv reply: %v, err: %v", reply, err)
-		log.LogDebugf("tcp conn recv reply end: time[%v]\",time.Now()")
+		reply = NewReply(packet.ReqID, packet.PartitionID, packet.ExtentID)
+		err := reply.ReadFromConnWithVer(eh.conn, proto.ReadDeadlineTime)
+		stat.EndStat("write(write-read)", nil, packet.WriteStartTime, 1)
+		stat.EndStat("write(readFromTcpConn)", nil, bgTime4, 1)
+		bgTime5 = stat.BeginStat()
 		if err != nil {
 			eh.processReplyError(packet, err.Error())
 			return
@@ -436,6 +482,9 @@ func (eh *ExtentHandler) processReply(packet *Packet) {
 
 	log.LogDebugf("processReply: get reply, eh(%v) packet(%v) reply(%v)", eh, packet, reply)
 
+	stat.EndStat("write(check reply)", nil, bgTime5, 1)
+	bgTime6 := stat.BeginStat()
+
 	eh.dp.RecordWrite(packet.StartT)
 
 	var extID, extOffset uint64
@@ -480,6 +529,10 @@ func (eh *ExtentHandler) processReply(packet *Packet) {
 
 	packet.Data = nil
 	eh.dirty = true
+
+	stat.EndStat("write(release data buffer)", nil, bgTime6, 1)
+	bgTime7 = stat.BeginStat()
+	return
 }
 
 func (eh *ExtentHandler) processReplyError(packet *Packet, errmsg string) {
@@ -688,8 +741,12 @@ func (eh *ExtentHandler) recoverPacket(packet *Packet) error {
 
 func (eh *ExtentHandler) discardPacket(packet *Packet) {
 	if IsRdma && (packet.Opcode == proto.OpWrite || packet.Opcode == proto.OpSyncWrite) {
-		for _, conn := range eh.rdmaConn {
-			rdma.ReleaseDataBuffer(conn, packet.RdmaBuffer, util.RdmaPacketHeaderSize+packet.Size)
+		for index, conn := range eh.rdmaConn {
+			if index == 0 {
+				rdma.ReleaseDataBuffer(conn, packet.RdmaBuffer, util.RdmaPacketHeaderSize+packet.Size)
+			} else {
+				rdma.ReleaseDataBuffer(conn, nil, util.RdmaPacketHeaderSize+packet.Size)
+			}
 		}
 
 	} else {
@@ -930,6 +987,7 @@ func (eh *ExtentHandler) pushToRequest(packet *Packet) {
 	// Increase before sending the packet, because inflight is used
 	// to determine if the handler has finished.
 	atomic.AddInt32(&eh.inflight, 1)
+	packet.PutToRequestChanStartTime = stat.BeginStat()
 	eh.request <- packet
 }
 

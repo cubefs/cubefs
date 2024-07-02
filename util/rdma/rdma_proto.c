@@ -94,9 +94,9 @@ int init_worker(worker *worker, event_callback cb, int index) {
     pthread_create(&worker->cq_poller_thread, NULL, cb, worker);
     sprintf(str, "cq_worker:%d", index);
     pthread_setname_np(worker->cq_poller_thread, str);
-    __CPU_ZERO_S(sizeof(cpu_set_t), &cpuset);
-    __CPU_SET_S(index, sizeof(cpu_set_t), &cpuset);
-    pthread_setaffinity_np(worker->cq_poller_thread, sizeof(cpu_set_t), &cpuset);
+    //__CPU_ZERO_S(sizeof(cpu_set_t), &cpuset);
+    //__CPU_SET_S(index, sizeof(cpu_set_t), &cpuset);
+    //pthread_setaffinity_np(worker->cq_poller_thread, sizeof(cpu_set_t), &cpuset);
 
     return C_OK;
 err_destroy_map:
