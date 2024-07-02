@@ -1079,9 +1079,11 @@ func (partition *DataPartition) MarkDecommissionStatus(srcAddr, dstAddr, srcDisk
 		log.LogDebugf("action[MarkDecommissionStatus] dp[%v] lostLeader %v leader %v interval %v",
 			partition.PartitionID, partition.lostLeader(c), partition.getLeaderAddr(), time.Now().Unix()-partition.LeaderReportTime)
 		if partition.lostLeader(c) {
-			if partition.getReplicaDiskErrorNum() == partition.ReplicaNum {
-				log.LogWarnf("action[MarkDecommissionStatus] dp[%v] all replica is unavaliable, cannot handle in auto decommission mode",
-					partition.PartitionID)
+			// auto add replica may be skipped, so check with ReplicaNum or Peers
+			diskErrReplicaNum := partition.getReplicaDiskErrorNum()
+			if diskErrReplicaNum == partition.ReplicaNum || diskErrReplicaNum == uint8(len(partition.Peers)) {
+				log.LogWarnf("action[MarkDecommissionStatus] dp[%v] all live replica is unavaliable,"+
+					" cannot handle in auto decommission mode", partition.decommissionInfo())
 				return proto.ErrAllReplicaUnavailable
 			}
 			raftForce = true
@@ -2125,6 +2127,12 @@ func (partition *DataPartition) checkReplicaMeta(c *Cluster) (err error) {
 			auditMsg = fmt.Sprintf("dp(%v) ReplicaNum %v hostsNum %v auto add replica",
 				partition.PartitionID, partition.ReplicaNum, len(partition.Hosts))
 			auditlog.LogMasterOp("RestoreReplicaMeta", auditMsg, err)
+			return
+		}
+		// may be one replica is unavailable
+		if partition.lostLeader(c) {
+			auditMsg = fmt.Sprintf("dp(%v) lost leader skip auto add replica", partition.PartitionID)
+			auditlog.LogMasterOp("RestoreReplicaMeta", auditMsg, nil)
 			return
 		}
 		addr := partition.Hosts[0]
