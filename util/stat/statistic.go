@@ -252,10 +252,10 @@ func WriteStat() error {
 	}
 
 	fmt.Fprintf(ioStream, "%-42s|%10s|%8s|%8s|%8s|%8s|%8s|%8s|%8s|\n",
-		"", "TOTAL", "FAILED", "AVG(ms)", "MAX(ms)", "MIN(ms)",
-		">"+strconv.Itoa(int(gSt.timeOutUs[0])/1000)+"ms",
-		">"+strconv.Itoa(int(gSt.timeOutUs[1])/1000)+"ms",
-		">"+strconv.Itoa(int(gSt.timeOutUs[2])/1000)+"ms")
+		"", "TOTAL", "FAILED", "AVG(us)", "MAX(us)", "MIN(us)",
+		">"+strconv.Itoa(int(gSt.timeOutUs[0]))+"us",
+		">"+strconv.Itoa(int(gSt.timeOutUs[1]))+"us",
+		">"+strconv.Itoa(int(gSt.timeOutUs[2]))+"us")
 
 	typeNames := make([]string, 0)
 	for typeName := range gSt.typeInfoMap {
@@ -272,7 +272,7 @@ func WriteStat() error {
 
 		fmt.Fprintf(ioStream, "%-42s|%10d|%8d|%8.2f|%8.2f|%8.2f|%8d|%8d|%8d|\n",
 			typeInfo.typeName, typeInfo.allCount, typeInfo.failCount,
-			float32(avgUs)/1000, float32(typeInfo.maxTime)/1000, float32(typeInfo.minTime)/1000,
+			float32(avgUs), float32(typeInfo.maxTime), float32(typeInfo.minTime),
 			typeInfo.timeOut[0], typeInfo.timeOut[1], typeInfo.timeOut[2])
 	}
 
