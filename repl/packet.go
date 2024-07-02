@@ -51,6 +51,9 @@ type Packet struct {
 	AfterPre     bool
 	IsRdma       bool
 	RdmaBuffer   []byte
+
+	PutTobeProcessChanStartTime *time.Time
+	PutResponseChanStartTime    *time.Time
 }
 
 type FollowerPacket struct {
