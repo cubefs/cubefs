@@ -106,10 +106,6 @@ func NewHeadBufferPool() *sync.Pool {
 func NewNormalBufferPool() *sync.Pool {
 	return &sync.Pool{
 		New: func() interface{} {
-			if NormalBuffersTotalLimit != InvalidLimit && atomic.LoadInt64(&normalBuffersCount) >= NormalBuffersTotalLimit {
-				ctx := context.Background()
-				normalBuffersRateLimit.Wait(ctx)
-			}
 			return make([]byte, util.BlockSize)
 		},
 	}
@@ -118,10 +114,6 @@ func NewNormalBufferPool() *sync.Pool {
 func NewRepiarBufferPool() *sync.Pool {
 	return &sync.Pool{
 		New: func() interface{} {
-			if RepairBuffersTotalLimit != InvalidLimit && atomic.LoadInt64(&repairBuffersCount) >= RepairBuffersTotalLimit {
-				ctx := context.Background()
-				repairBuffersRateLimit.Wait(ctx)
-			}
 			return make([]byte, util.RepairReadBlockSize)
 		},
 	}
@@ -182,6 +174,12 @@ func (bufferP *BufferPool) getHeadVer(id uint64) (data []byte) {
 }
 
 func (bufferP *BufferPool) getNoraml(id uint64) (data []byte) {
+
+	if NormalBuffersTotalLimit != InvalidLimit && atomic.LoadInt64(&normalBuffersCount) >= NormalBuffersTotalLimit {
+		ctx := context.Background()
+		normalBuffersRateLimit.Wait(ctx)
+	}
+
 	select {
 	case data = <-bufferP.normalPools[id%slotCnt]:
 		return
@@ -191,6 +189,11 @@ func (bufferP *BufferPool) getNoraml(id uint64) (data []byte) {
 }
 
 func (bufferP *BufferPool) getRepair(id uint64) (data []byte) {
+	if RepairBuffersTotalLimit != InvalidLimit && atomic.LoadInt64(&repairBuffersCount) >= RepairBuffersTotalLimit {
+		ctx := context.Background()
+		repairBuffersRateLimit.Wait(ctx)
+	}
+
 	select {
 	case data = <-bufferP.repairPools[id%slotCnt]:
 		return
