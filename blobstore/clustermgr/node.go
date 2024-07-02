@@ -57,8 +57,8 @@ func (s *Service) NodeAdd(c *rpc.Context) {
 			return
 		}
 	}
-	if err := s.DiskMgr.ValidateNodeRole(ctx, args); err != nil {
-		span.Warn("invalid role")
+	if err := s.DiskMgr.ValidateNodeInfo(ctx, args); err != nil {
+		span.Warn("invalid nodeinfo")
 		c.RespondError(err)
 		return
 	}

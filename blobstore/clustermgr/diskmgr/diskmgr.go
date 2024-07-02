@@ -723,23 +723,23 @@ func (d *DiskMgr) GetNodeInfo(ctx context.Context, nodeID proto.NodeID) (*blobno
 
 func (d *DiskMgr) GetTopoInfo(ctx context.Context) *clustermgr.TopoInfo {
 	ret := &clustermgr.TopoInfo{
-		CurNodeSetIDs: make(map[proto.NodeRole]proto.NodeSetID),
-		CurDiskSetIDs: make(map[proto.NodeRole]proto.DiskSetID),
-		AllNodeSets:   make(map[proto.NodeRole]map[proto.DiskType]map[proto.NodeSetID]*clustermgr.NodeSetInfo),
+		CurNodeSetIDs: make(map[string]proto.NodeSetID),
+		CurDiskSetIDs: make(map[string]proto.DiskSetID),
+		AllNodeSets:   make(map[string]map[string]map[proto.NodeSetID]*clustermgr.NodeSetInfo),
 	}
 	for role, topoMgr := range d.topoMgrs {
-		ret.CurNodeSetIDs[role] = topoMgr.GetNodeSetID()
-		ret.CurDiskSetIDs[role] = topoMgr.GetDiskSetID()
-		if _, ok := ret.AllNodeSets[role]; !ok {
-			ret.AllNodeSets[role] = make(map[proto.DiskType]map[proto.NodeSetID]*clustermgr.NodeSetInfo)
+		ret.CurNodeSetIDs[role.String()] = topoMgr.GetNodeSetID()
+		ret.CurDiskSetIDs[role.String()] = topoMgr.GetDiskSetID()
+		if _, ok := ret.AllNodeSets[role.String()]; !ok {
+			ret.AllNodeSets[role.String()] = make(map[string]map[proto.NodeSetID]*clustermgr.NodeSetInfo)
 		}
 		nodeSetsMap := topoMgr.GetAllNodeSets(ctx)
 		for diskType, nodeSets := range nodeSetsMap {
-			if _, ok := ret.AllNodeSets[role][diskType]; !ok {
-				ret.AllNodeSets[role][diskType] = make(map[proto.NodeSetID]*clustermgr.NodeSetInfo)
+			if _, ok := ret.AllNodeSets[role.String()][diskType.String()]; !ok {
+				ret.AllNodeSets[role.String()][diskType.String()] = make(map[proto.NodeSetID]*clustermgr.NodeSetInfo)
 			}
 			for _, nodeSet := range nodeSets {
-				nodeSetInfo, ok := ret.AllNodeSets[role][diskType][nodeSet.ID()]
+				nodeSetInfo, ok := ret.AllNodeSets[role.String()][diskType.String()][nodeSet.ID()]
 				if !ok {
 					nodeSetInfo = &clustermgr.NodeSetInfo{
 						ID:       nodeSet.ID(),
@@ -747,7 +747,7 @@ func (d *DiskMgr) GetTopoInfo(ctx context.Context) *clustermgr.TopoInfo {
 						Nodes:    nodeSet.GetNodeIDs(),
 						DiskSets: make(map[proto.DiskSetID][]proto.DiskID),
 					}
-					ret.AllNodeSets[role][diskType][nodeSet.ID()] = nodeSetInfo
+					ret.AllNodeSets[role.String()][diskType.String()][nodeSet.ID()] = nodeSetInfo
 				}
 				diskSets := nodeSet.GetDiskSets()
 				for _, diskSet := range diskSets {
@@ -801,8 +801,11 @@ func (d *DiskMgr) ValidateNodeSetID(ctx context.Context, info *blobnode.NodeInfo
 	return nil
 }
 
-func (d *DiskMgr) ValidateNodeRole(ctx context.Context, info *blobnode.NodeInfo) error {
+func (d *DiskMgr) ValidateNodeInfo(ctx context.Context, info *blobnode.NodeInfo) error {
 	if _, ok := d.topoMgrs[info.Role]; !ok {
+		return apierrors.ErrIllegalArguments
+	}
+	if !info.DiskType.IsValid() {
 		return apierrors.ErrIllegalArguments
 	}
 	return nil
