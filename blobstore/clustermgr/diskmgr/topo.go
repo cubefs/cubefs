@@ -219,6 +219,14 @@ func (t *topoMgr) GetAllNodeSets(ctx context.Context) map[proto.DiskType][]*node
 	return ret
 }
 
+func (t *topoMgr) GetNodeNum(diskType proto.DiskType) int {
+	num := 0
+	for _, nodeSet := range t.allNodeSets[diskType] {
+		num += nodeSet.GetNodeNum()
+	}
+	return num
+}
+
 func (t *topoMgr) getNodeSet(diskType proto.DiskType, nodeSetID proto.NodeSetID) *nodeSetItem {
 	t.lock.RLock()
 	nodeSet := t.allNodeSets[diskType][nodeSetID]
