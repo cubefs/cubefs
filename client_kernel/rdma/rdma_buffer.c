@@ -38,17 +38,30 @@ int cfs_rdma_buffer_allocate(struct cfs_node **item, struct cfs_rdma_buffer *buf
     return 0;
 }
 
+inline int cfs_buffer_size_to_index(size_t size) {
+    int index = -1;
+
+    if (size <= BUFFER_512B_SIZE) {
+        index = 0;
+    }else if (size <= BUFFER_4K_SIZE) {
+        index = 1;
+    } else if (size <= BUFFER_128K_SIZE) {
+        index = 2;
+    } else if (size <= BUFFER_1M_SIZE) {
+        index = 3;
+    } else {
+        ibv_print_error("size=%ld > %d\n", size, BUFFER_1M_SIZE);
+    }
+
+    return index;
+}
+
 int cfs_rdma_buffer_get(struct cfs_node **item, size_t size) {
     int index = -1;
 
-    if (size <= BUFFER_4K_SIZE) {
-        index = 0;
-    } else if (size <= BUFFER_128K_SIZE) {
-        index = 1;
-    } else if (size <= BUFFER_1M_SIZE) {
-        index = 2;
-    } else {
-        ibv_print_error("size=%ld > %d\n", size, BUFFER_1M_SIZE);
+    index = cfs_buffer_size_to_index(size);
+    if (index < 0) {
+        ibv_print_error("cfs_buffer_size_to_index return error: %d\n", index);
         return -EPERM;
     }
 
@@ -59,16 +72,6 @@ void cfs_rdma_buffer_put(struct cfs_node *item) {
     struct cfs_rdma_buffer *buffer = NULL;
     int index = -1;
 
-    if (item->size <= BUFFER_4K_SIZE) {
-        index = 0;
-    } else if (item->size <= BUFFER_128K_SIZE) {
-        index = 1;
-    } else if (item->size <= BUFFER_1M_SIZE) {
-        index = 2;
-    } else {
-        ibv_print_error("size=%ld > %d\n", item->size, BUFFER_1M_SIZE);
-        return;
-    }
     if (item->is_tmp) {
         mutex_lock(&rdma_pool->all_lock);
         list_del(&item->all_list);
@@ -76,6 +79,12 @@ void cfs_rdma_buffer_put(struct cfs_node *item) {
         ib_dma_unmap_single(rdma_pool->cm_id->device, item->dma_addr, item->size, DMA_BIDIRECTIONAL);
         kfree(item->pBuff);
         kfree(item);
+        return;
+    }
+
+    index = cfs_buffer_size_to_index(item->size);
+    if (index < 0) {
+        ibv_print_error("cfs_buffer_size_to_index return error: %d\n", index);
         return;
     }
 
@@ -115,18 +124,10 @@ int cfs_rdma_buffer_create(struct cfs_rdma_buffer *buffer) {
     struct cfs_node *item = NULL;
     int buffer_num = 0;
 
-    switch(buffer->size) {
-        case BUFFER_4K_SIZE:
-            buffer_num = BUFFER_4K_NUM;
-            break;
-        case BUFFER_128K_SIZE:
-            buffer_num = BUFFER_128K_NUM;
-            break;
-        case BUFFER_1M_SIZE:
-            buffer_num = BUFFER_1M_NUM;
-            break;
-        default:
-            buffer_num = BUFFER_1M_NUM;
+    if (buffer->size == BUFFER_1M_SIZE) {
+        buffer_num = BUFFER_1M_NUM;
+    } else {
+        buffer_num = BUFFER_DEFAULT_NUM;
     }
 
     for (i = 0; i < buffer_num; i++) {
@@ -165,7 +166,7 @@ int cfs_rdma_buffer_new(void) {
 
     INIT_LIST_HEAD(&rdma_pool->all_list);
     mutex_init(&rdma_pool->all_lock);
-    for (i = 0; i < 3; i++) {
+    for (i = 0; i < BUFFER_LEVEL_NUM; i++) {
         INIT_LIST_HEAD(&rdma_pool->buffer[i].lru);
         mutex_init(&rdma_pool->buffer[i].lock);
     }
@@ -189,11 +190,12 @@ int cfs_rdma_buffer_new(void) {
 
     wait_event_interruptible(rdma_pool->event_wait_queue, true);
 
-    rdma_pool->buffer[0].size = BUFFER_4K_SIZE;
-    rdma_pool->buffer[1].size = BUFFER_128K_SIZE;
-    rdma_pool->buffer[2].size = BUFFER_1M_SIZE;
+    rdma_pool->buffer[0].size = BUFFER_512B_SIZE;
+    rdma_pool->buffer[1].size = BUFFER_4K_SIZE;
+    rdma_pool->buffer[2].size = BUFFER_128K_SIZE;
+    rdma_pool->buffer[3].size = BUFFER_1M_SIZE;
 
-    for (i = 0; i < 3; i++) {
+    for (i = 0; i < BUFFER_LEVEL_NUM; i++) {
         ret = cfs_rdma_buffer_create(&(rdma_pool->buffer[i]));
         if (ret < 0) {
             ibv_print_error("cfs_rdma_buffer_create failed\n");

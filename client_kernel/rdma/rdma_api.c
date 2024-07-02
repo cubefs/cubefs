@@ -69,7 +69,7 @@ int ibv_socket_event_handler(struct rdma_cm_id *cm_id,
 
 	case RDMA_CM_EVENT_DISCONNECTED:
 		this->conn_state = IBVSOCKETCONNSTATE_UNCONNECTED;
-		ibv_print_info("receive event RDMA_CM_EVENT_DISCONNECTED\n");
+		ibv_print_debug("receive event RDMA_CM_EVENT_DISCONNECTED\n");
 		break;
 
 	case RDMA_CM_EVENT_DEVICE_REMOVAL:
@@ -154,7 +154,7 @@ int ibv_socket_ring_buffer_init(struct ibv_socket *this) {
 	mutex_init(&this->lock);
 	
 	for (i=0; i<WR_MAX_NUM; i++) {
-		ret = cfs_rdma_buffer_get(&item, BUFFER_4K_SIZE);
+		ret = cfs_rdma_buffer_get(&item, BUFFER_LEN);
 		if (ret < 0) {
 			ret = -ENOMEM;
 			goto err_out;
@@ -164,7 +164,7 @@ int ibv_socket_ring_buffer_init(struct ibv_socket *this) {
 	}
 
 	for (i=0; i<WR_MAX_NUM; i++) {
-		ret = cfs_rdma_buffer_get(&item, BUFFER_4K_SIZE);
+		ret = cfs_rdma_buffer_get(&item, BUFFER_LEN);
 		if (ret < 0) {
 			ret = -ENOMEM;
 			goto err_out;
@@ -175,7 +175,7 @@ int ibv_socket_ring_buffer_init(struct ibv_socket *this) {
 
 	for (i=0; i<WR_MAX_NUM; i++) {
 		sge.addr = this->recv_buf[i]->dma_addr;
-		sge.length = MSG_LEN;
+		sge.length = BUFFER_LEN;
 		sge.lkey = this->pd->local_dma_lkey;
 		wr.next = NULL;
 		wr.wr_id = i;
@@ -348,7 +348,7 @@ struct ibv_socket *ibv_socket_construct(struct sockaddr_in *sin) {
 	this->remote_addr.sin_family = sin->sin_family;
 	this->remote_addr.sin_port = sin->sin_port;
 	this->remote_addr.sin_addr.s_addr = sin->sin_addr.s_addr;
-	ibv_print_info("connect to %s:%d success\n", print_ip_addr(ntohl(sin->sin_addr.s_addr)), ntohs(sin->sin_port));
+	ibv_print_debug("connect to %s:%d success\n", print_ip_addr(ntohl(sin->sin_addr.s_addr)), ntohs(sin->sin_port));
 
     return this;
 
@@ -379,7 +379,7 @@ bool ibv_socket_destruct(struct ibv_socket *this) {
 		return false;
 	}
 
-	ibv_print_info("disconnect rdma link with %s:%d\n",
+	ibv_print_debug("disconnect rdma link with %s:%d\n",
 		print_ip_addr(ntohl(this->remote_addr.sin_addr.s_addr)), ntohs(this->remote_addr.sin_port));
 
 	this->conn_state = IBVSOCKETCONNSTATE_DESTROYED;
@@ -434,7 +434,7 @@ ssize_t ibv_socket_post_recv(struct ibv_socket *this, int index) {
 	this->recv_buf[index]->used = false;
 
 	sge.addr = this->recv_buf[index]->dma_addr;
-	sge.length = MSG_LEN;
+	sge.length = BUFFER_LEN;
 	sge.lkey = this->pd->local_dma_lkey;
     wr.next = NULL;
 	wr.wr_id = index;
@@ -485,7 +485,7 @@ ssize_t ibv_socket_copy_restore(struct ibv_socket *this, struct iov_iter *iter, 
 		return -EINVAL;
 	}
 
-	isize = MIN(MSG_LEN, iter->iov->iov_len);
+	isize = MIN(BUFFER_LEN, iter->iov->iov_len);
 
     memcpy(iter->iov->iov_base, this->recv_buf[index]->pBuff, isize);
 
@@ -585,7 +585,7 @@ ssize_t ibv_socket_send(struct ibv_socket *this, struct iov_iter *iter) {
 		return -ENOMEM;
 	}
 
-    isize = MIN(MSG_LEN, iter->iov->iov_len);
+    isize = MIN(BUFFER_LEN, iter->iov->iov_len);
     memcpy(this->send_buf[index]->pBuff, iter->iov->iov_base, isize);
 
 	sge.addr = this->send_buf[index]->dma_addr;
@@ -609,9 +609,8 @@ ssize_t ibv_socket_send(struct ibv_socket *this, struct iov_iter *iter) {
 struct cfs_node *ibv_socket_get_data_buf(struct ibv_socket *this, size_t size) {
 	int ret = 0;
 	struct cfs_node *item = NULL;
-	size_t alloc_size = PAGE_ALIGN(size);
 
-	ret = cfs_rdma_buffer_get(&item, alloc_size);
+	ret = cfs_rdma_buffer_get(&item, size);
 	if (ret < 0) {
 		return NULL;
 	}

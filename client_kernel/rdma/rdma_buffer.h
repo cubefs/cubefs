@@ -10,12 +10,16 @@
 #include <rdma/rdma_cm.h>
 #include <rdma/ib_cm.h>
 
+#define BUFFER_512B_SIZE 512
 #define BUFFER_4K_SIZE 4096
-#define BUFFER_4K_NUM 1024
 #define BUFFER_128K_SIZE 128 * 1024
-#define BUFFER_128K_NUM 4096
+#define BUFFER_DEFAULT_NUM 4096
+
 #define BUFFER_1M_SIZE 1024 * 1024
 #define BUFFER_1M_NUM 256
+
+#define BUFFER_LEVEL_NUM 4
+
 #define DEFAULT_RDMA_PORT 17360
 
 struct cfs_node {
@@ -37,7 +41,7 @@ struct cfs_rdma_buffer {
 struct cfs_rdma_buffer_pool {
 	struct rdma_cm_id *cm_id;
     wait_queue_head_t event_wait_queue;
-	struct cfs_rdma_buffer buffer[3];
+	struct cfs_rdma_buffer buffer[BUFFER_LEVEL_NUM];
     struct list_head all_list;
     struct mutex all_lock;
 };
