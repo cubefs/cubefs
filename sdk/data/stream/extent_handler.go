@@ -216,6 +216,10 @@ func (eh *ExtentHandler) sender() {
 		//		case <-t.C:
 		//			log.LogDebugf("sender alive: eh(%v) inflight(%v)", eh, atomic.LoadInt32(&eh.inflight))
 		case packet := <-eh.request:
+
+			stat.EndStat("write(requestChan)", nil, packet.PutToRequestChanStartTime, 1)
+			bgTime1 := stat.BeginStat()
+
 			log.LogDebugf("ExtentHandler sender begin: eh(%v) packet(%v)", eh, packet.GetUniqueLogId())
 			if eh.getStatus() >= ExtentStatusRecovery {
 				log.LogWarnf("sender in recovery: eh(%v) packet(%v)", eh, packet)
@@ -240,7 +244,6 @@ func (eh *ExtentHandler) sender() {
 					continue
 				}
 			}
-
 			// For ExtentStore, calculate the extent offset.
 			// For TinyStore, the extent offset is always 0 in the request packet,
 			// and the reply packet tells the real extent offset.
@@ -270,6 +273,9 @@ func (eh *ExtentHandler) sender() {
 
 			packet.StartT = time.Now().UnixNano()
 
+			stat.EndStat("write(fill packet)", err, bgTime1, 1)
+			bgTime2 := stat.BeginStat()
+
 			//log.LogDebugf("ExtentHandler sender: extent allocated, eh(%v) dp(%v) extID(%v) packet(%v)", eh, eh.dp, eh.extID, packet.GetUniqueLogId())
 			if IsRdma {
 				packet.CRC = crc32.ChecksumIEEE(packet.Data[:packet.Size])
@@ -284,6 +290,8 @@ func (eh *ExtentHandler) sender() {
 					}
 				}
 				log.LogDebugf("rdma conn write packet: %v, err:%v", packet, err)
+
+				stat.EndStat("write(writeToRdmaConn)", err, bgTime2, 1)
 			} else {
 				log.LogDebugf("tcp conn write packet start: time[%v]", time.Now())
 				log.LogDebugf("packet: %v", packet)
@@ -293,7 +301,12 @@ func (eh *ExtentHandler) sender() {
 					eh.setRecovery()
 				}
 				log.LogDebugf("tcp conn write packet: %v, err:%v", packet, err)
+
+				stat.EndStat("write(writeToTcpConn)", err, bgTime2, 1)
 			}
+
+			stat.EndStat("write(sender)", err, bgTime1, 1)
+			packet.PutToReplyChanStartTime = stat.BeginStat()
 
 			eh.reply <- packet
 
@@ -316,9 +329,15 @@ func (eh *ExtentHandler) receiver() {
 		//		case <-t.C:
 		//			log.LogDebugf("receiver alive: eh(%v) inflight(%v)", eh, atomic.LoadInt32(&eh.inflight))
 		case packet := <-eh.reply:
+
+			stat.EndStat("write(replyChan)", nil, packet.PutToReplyChanStartTime, 1)
+			bgTime3 := stat.BeginStat()
+
 			log.LogDebugf("receiver begin: eh(%v) packet(%v)", eh, packet.GetUniqueLogId())
 			eh.processReply(packet)
 			//log.LogDebugf("receiver end: eh(%v) packet(%v)", eh, packet.GetUniqueLogId())
+
+			stat.EndStat("write(receiver)", nil, bgTime3, 1)
 		case <-eh.doneReceiver:
 			log.LogDebugf("receiver done: eh(%v) size(%v) ek(%v)", eh, eh.size, eh.key)
 			return
@@ -332,6 +351,8 @@ func (eh *ExtentHandler) processReply(packet *Packet) {
 			eh.empty <- struct{}{}
 		}
 	}()
+
+	bgTime4 := stat.BeginStat()
 
 	//log.LogDebugf("processReply enter: eh(%v) packet(%v)", eh, packet.GetUniqueLogId())
 
@@ -349,7 +370,7 @@ func (eh *ExtentHandler) processReply(packet *Packet) {
 		return
 	}
 
-	//reply := NewReply(packet.ReqID, packet.PartitionID, packet.ExtentID)
+	var bgTime5 *time.Time
 	var reply *Packet
 	if IsRdma {
 		errs := make([]error, len(eh.rdmaConn))
@@ -358,6 +379,8 @@ func (eh *ExtentHandler) processReply(packet *Packet) {
 			allReply[index] = NewReply(packet.ReqID, packet.PartitionID, packet.ExtentID)
 			errs[index] = allReply[index].ReadFromRDMAConn(conn, proto.ReadDeadlineTime)
 		}
+		stat.EndStat("write(readFromRdmaConn)", nil, bgTime4, 1)
+		bgTime5 = stat.BeginStat()
 		for i := 0; i < len(eh.rdmaConn); i++ {
 			if errs[i] != nil {
 				log.LogErrorf("rdma conn recv reply: %v, err: %v", allReply[i], errs[i])
@@ -387,6 +410,10 @@ func (eh *ExtentHandler) processReply(packet *Packet) {
 	} else {
 		reply = NewReply(packet.ReqID, packet.PartitionID, packet.ExtentID)
 		err := reply.ReadFromConn(eh.conn, proto.ReadDeadlineTime)
+
+		stat.EndStat("write(readFromTcpConn)", nil, bgTime4, 1)
+		bgTime5 = stat.BeginStat()
+
 		log.LogDebugf("tcp conn recv reply: %v, err: %v", reply, err)
 		log.LogDebugf("tcp conn recv reply end: time[%v]", time.Now())
 
@@ -415,6 +442,9 @@ func (eh *ExtentHandler) processReply(packet *Packet) {
 	}
 
 	log.LogDebugf("processReply: get reply, eh(%v) packet(%v) reply(%v)", eh, packet, reply)
+
+	stat.EndStat("write(check reply)", nil, bgTime5, 1)
+	bgTime6 := stat.BeginStat()
 
 	eh.dp.RecordWrite(packet.StartT)
 
@@ -456,6 +486,7 @@ func (eh *ExtentHandler) processReply(packet *Packet) {
 
 	packet.Data = nil
 	eh.dirty = true
+	stat.EndStat("write(release data buffer)", nil, bgTime6, 1)
 	return
 }
 
@@ -834,6 +865,7 @@ func (eh *ExtentHandler) pushToRequest(packet *Packet) {
 	// Increase before sending the packet, because inflight is used
 	// to determine if the handler has finished.
 	atomic.AddInt32(&eh.inflight, 1)
+	packet.PutToRequestChanStartTime = stat.BeginStat()
 	eh.request <- packet
 }
 

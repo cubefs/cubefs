@@ -30,9 +30,11 @@ import (
 // Packet defines a wrapper of the packet in proto.
 type Packet struct {
 	proto.Packet
-	inode      uint64
-	errCount   int
-	RdmaBuffer []byte
+	inode                     uint64
+	errCount                  int
+	RdmaBuffer                []byte
+	PutToReplyChanStartTime   *time.Time
+	PutToRequestChanStartTime *time.Time
 }
 
 // String returns the string format of the packet.
