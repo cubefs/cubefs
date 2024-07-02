@@ -135,6 +135,7 @@ module.exports = [
         text: '开发指南',
         children: [
             'dev-guide/code.md',
+            'dev-guide/libsdk.md',
             {
                 text: '管理 API',
                 children: [
