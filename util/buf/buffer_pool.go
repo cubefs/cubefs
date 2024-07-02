@@ -67,10 +67,6 @@ func NewHeadBufferPool() *sync.Pool {
 func NewNormalBufferPool() *sync.Pool {
 	return &sync.Pool{
 		New: func() interface{} {
-			if NormalBuffersTotalLimit != InvalidLimit && atomic.LoadInt64(&normalBuffersCount) >= NormalBuffersTotalLimit {
-				ctx := context.Background()
-				normalBuffersRateLimit.Wait(ctx)
-			}
 			return make([]byte, util.BlockSize)
 		},
 	}
@@ -115,6 +111,12 @@ func (bufferP *BufferPool) getHead(id uint64) (data []byte) {
 }
 
 func (bufferP *BufferPool) getNoraml(id uint64) (data []byte) {
+
+	if NormalBuffersTotalLimit != InvalidLimit && atomic.LoadInt64(&normalBuffersCount) >= NormalBuffersTotalLimit {
+		ctx := context.Background()
+		normalBuffersRateLimit.Wait(ctx)
+	}
+
 	select {
 	case data = <-bufferP.normalPools[id%slotCnt]:
 		return
