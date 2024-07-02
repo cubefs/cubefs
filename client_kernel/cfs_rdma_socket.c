@@ -1,5 +1,8 @@
 #include "cfs_rdma_socket.h"
 #include "cfs_log.h"
+#ifndef KERNEL_HAS_COPY_FROM_ITER_FULL
+#include "iov_iter.h"
+#endif
 
 static struct cfs_socket_pool *rdma_sock_pool;
 
@@ -251,7 +254,11 @@ int cfs_rdma_send_packet(struct cfs_socket *csk, struct cfs_packet *packet)
 	packet->request.hdr_padding.rdma_key = htonl(csk->ibvsock->pd->unsafe_global_rkey);
 	iov.iov_base = &packet->request;
 	iov.iov_len = sizeof(struct cfs_packet_hdr) + sizeof(struct request_hdr_padding);
+	#ifdef KERNEL_HAS_IOV_ITER_WITH_TAG
 	iov_iter_init(&iter, READ, &iov, 1, iov.iov_len);
+	#else
+	iov_iter_init(&iter, &iov, 1, iov.iov_len, 0);
+	#endif
 
 	switch (packet->request.hdr.opcode) {
 		case CFS_OP_EXTENT_CREATE:
@@ -367,7 +374,11 @@ int cfs_rdma_recv_packet(struct cfs_socket *csk, struct cfs_packet *packet)
 
 	iov.iov_base = &packet->reply;
 	iov.iov_len = sizeof(struct cfs_packet_hdr) + sizeof(struct reply_hdr_padding);
+	#ifdef KERNEL_HAS_IOV_ITER_WITH_TAG
 	iov_iter_init(&iter, WRITE, &iov, 1, iov.iov_len);
+	#else
+	iov_iter_init(&iter, &iov, 1, iov.iov_len, 0);
+	#endif
 
 	len = ibv_socket_recv(csk->ibvsock, &iter, packet->request.hdr.req_id);
 	if (len < 0) {

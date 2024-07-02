@@ -357,10 +357,10 @@ err_destroy_qp:
 	rdma_destroy_qp(this->cm_id);
 
 err_free_send_cq:
-	ib_destroy_cq_user(this->send_cq, NULL);
+	ib_destroy_cq(this->send_cq);
 
 err_free_recv_cq:
-	ib_destroy_cq_user(this->recv_cq, NULL);
+	ib_destroy_cq(this->recv_cq);
 
 err_dealloc_pd:
 	ib_dealloc_pd(this->pd);
@@ -396,12 +396,12 @@ bool ibv_socket_destruct(struct ibv_socket *this) {
     }
 	
     if (this->send_cq) {
-        ib_destroy_cq_user(this->send_cq, NULL);
+        ib_destroy_cq(this->send_cq);
         this->send_cq = NULL;
     }
 	
     if (this->recv_cq) {
-        ib_destroy_cq_user(this->recv_cq, NULL);
+        ib_destroy_cq(this->recv_cq);
         this->recv_cq = NULL;
     }
 

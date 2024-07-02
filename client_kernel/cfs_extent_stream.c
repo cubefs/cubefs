@@ -2,6 +2,9 @@
  * Copyright 2023 The CubeFS Authors.
  */
 #include "cfs_extent.h"
+#ifndef KERNEL_HAS_COPY_FROM_ITER_FULL
+#include "iov_iter.h"
+#endif
 
 #define EXTENT_RECV_TIMEOUT_MS 5000u
 
@@ -1699,7 +1702,7 @@ static size_t cfs_extent_read_iter(struct cfs_extent_stream *es,
 	return read_bytes;
 }
 
-ssize_t cfs_extent_direct_io(struct cfs_extent_stream *es, struct iov_iter *iter, loff_t offset)
+ssize_t cfs_extent_direct_io(struct cfs_extent_stream *es, int type, struct iov_iter *iter, loff_t offset)
 {
 	LIST_HEAD(io_info_list);
 	struct cfs_extent_io_info *io_info;
@@ -1731,7 +1734,7 @@ ssize_t cfs_extent_direct_io(struct cfs_extent_stream *es, struct iov_iter *iter
 		io_info = list_first_entry(&io_info_list,
 					   struct cfs_extent_io_info, list);
 		list_del(&io_info->list);
-		if (iov_iter_rw(iter) == WRITE) {
+		if (type == WRITE) {
 			io_ret = cfs_extent_write_iter(es, io_info, iter);
 		} else {
 			io_ret = cfs_extent_read_iter(es, io_info, iter);

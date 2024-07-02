@@ -300,7 +300,7 @@ int test (void)
 }
 
 EOF
-check_flags "KERNEL_HAS_ITER_BVEC"
+check_flags "KERNEL_HAS_ITER_IS_IOVEC"
 
 cat > $TEST_C <<EOF
 #include <linux/uio.h>
@@ -665,6 +665,32 @@ int test (void)
 
 EOF
 check_flags "KERNEL_READ_PAGE"
+
+cat > $TEST_C <<EOF
+#include <linux/uio.h>
+#include "test.h"
+
+int test (void)
+{
+    return copy_from_iter_full(NULL, 0, NULL);
+}
+
+EOF
+check_flags "KERNEL_HAS_COPY_FROM_ITER_FULL"
+
+cat > $TEST_C <<EOF
+#include <linux/fs.h>
+#include "test.h"
+
+int test (void)
+{
+    struct iov_iter *iov = NULL;
+    iov = iov;
+    return 0;
+}
+
+EOF
+check_flags "KERNEL_HAS_IOV_ITER_IN_FS"
 
 echo "#endif" >> $CONFIG_H
 rm -rf $TMPDIR

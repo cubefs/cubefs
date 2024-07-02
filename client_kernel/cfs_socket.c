@@ -2,6 +2,9 @@
  * Copyright 2023 The CubeFS Authors.
  */
 #include "cfs_socket.h"
+#ifndef KERNEL_HAS_COPY_FROM_ITER_FULL
+#include "iov_iter.h"
+#endif
 
 static struct cfs_socket_pool *sock_pool;
 
