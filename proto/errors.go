@@ -103,7 +103,7 @@ var (
 	ErrAllReplicaUnavailable                   = errors.New("all replica unavailable")
 	ErrDiskNotExists                           = errors.New("disk not exists")
 	ErrPerformingRestoreReplica                = errors.New("is performing restore replica")
-	ErrPerformingDecommission                  = errors.New("is performing decommission")
+	ErrPerformingDecommission                  = errors.New("one replica is performing decommission")
 	ErrWaitForAutoAddReplica                   = errors.New("wait for auto add replica")
 )
 
