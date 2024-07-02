@@ -54,6 +54,7 @@ type Packet struct {
 
 	PutTobeProcessChanStartTime *time.Time
 	PutResponseChanStartTime    *time.Time
+	ReadStartTime               *time.Time
 }
 
 type FollowerPacket struct {

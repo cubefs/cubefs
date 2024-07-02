@@ -35,6 +35,7 @@ type Packet struct {
 	RdmaBuffer                []byte
 	PutToReplyChanStartTime   *time.Time
 	PutToRequestChanStartTime *time.Time
+	WriteStartTime            *time.Time
 }
 
 // String returns the string format of the packet.

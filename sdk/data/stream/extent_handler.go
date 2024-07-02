@@ -280,6 +280,9 @@ func (eh *ExtentHandler) sender() {
 			if IsRdma {
 				packet.CRC = crc32.ChecksumIEEE(packet.Data[:packet.Size])
 				log.LogDebugf("rdma conn write packet begin ReqId: %d", packet.ReqID)
+				stat.EndStat("write(checkCrc)", nil, bgTime2, 1)
+				packet.WriteStartTime = stat.BeginStat()
+
 				for _, conn := range eh.rdmaConn {
 					err = packet.WriteToRDMAConn(conn, packet.RdmaBuffer)
 					if err != nil {
@@ -346,13 +349,14 @@ func (eh *ExtentHandler) receiver() {
 }
 
 func (eh *ExtentHandler) processReply(packet *Packet) {
+	bgTime4 := stat.BeginStat()
+	var bgTime7 *time.Time
 	defer func() {
 		if atomic.AddInt32(&eh.inflight, -1) <= 0 {
 			eh.empty <- struct{}{}
 		}
+		stat.EndStat("write(process reply defer)", nil, bgTime7, 1)
 	}()
-
-	bgTime4 := stat.BeginStat()
 
 	//log.LogDebugf("processReply enter: eh(%v) packet(%v)", eh, packet.GetUniqueLogId())
 
@@ -379,6 +383,7 @@ func (eh *ExtentHandler) processReply(packet *Packet) {
 			allReply[index] = NewReply(packet.ReqID, packet.PartitionID, packet.ExtentID)
 			errs[index] = allReply[index].ReadFromRDMAConn(conn, proto.ReadDeadlineTime)
 		}
+		stat.EndStat("write(write-read)", nil, packet.WriteStartTime, 1)
 		stat.EndStat("write(readFromRdmaConn)", nil, bgTime4, 1)
 		bgTime5 = stat.BeginStat()
 		for i := 0; i < len(eh.rdmaConn); i++ {
@@ -487,6 +492,7 @@ func (eh *ExtentHandler) processReply(packet *Packet) {
 	packet.Data = nil
 	eh.dirty = true
 	stat.EndStat("write(release data buffer)", nil, bgTime6, 1)
+	bgTime7 = stat.BeginStat()
 	return
 }
 

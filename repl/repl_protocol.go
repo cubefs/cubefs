@@ -329,6 +329,7 @@ func (rp *ReplProtocol) readPkgAndPrepare() (err error) {
 	var bgTime1 *time.Time
 	if request.Opcode == proto.OpWrite {
 		bgTime1 = stat.BeginStat()
+		request.ReadStartTime = bgTime1
 	}
 	log.LogDebugf("packet: %v", request)
 	log.LogDebugf("action[readPkgAndPrepare] packet(%v) op %v from remote(%v) ",
@@ -448,6 +449,7 @@ func (rp *ReplProtocol) writeResponseToClientGoRroutine() {
 			log.LogDebugf("writeResponseToClient end:%v", request)
 			if request.Opcode == proto.OpWrite {
 				stat.EndStat("write(writeResponse)", nil, bgTime3, 1)
+				stat.EndStat("write(read-write)", nil, request.ReadStartTime, 1)
 			}
 		case <-rp.exitC:
 			rp.exitedMu.Lock()
@@ -498,9 +500,18 @@ func (rp *ReplProtocol) checkLocalResultAndReciveAllFollowerResponse() {
 
 // Write a reply to the client.
 func (rp *ReplProtocol) writeResponse(reply *Packet) {
+	var bgTime4 *time.Time
+	var bgTime6 *time.Time
+	if reply.Opcode == proto.OpWrite {
+		bgTime4 = stat.BeginStat()
+	}
+
 	var err error
 	defer func() {
 		reply.clean(rp.sourceConn)
+		if reply.Opcode == proto.OpWrite {
+			stat.EndStat("write(reply clean)", nil, bgTime6, 1)
+		}
 	}()
 	if reply.IsErrPacket() {
 		/*
@@ -513,10 +524,6 @@ func (rp *ReplProtocol) writeResponse(reply *Packet) {
 			}
 		*/
 		rp.Stop()
-	}
-	var bgTime4 *time.Time
-	if reply.Opcode == proto.OpWrite {
-		bgTime4 = stat.BeginStat()
 	}
 	log.LogDebugf("try rsp opcode %v %v %v", rp.replId, reply.Opcode, rp.sourceConn)
 	// execute the post-processing function
@@ -551,6 +558,7 @@ func (rp *ReplProtocol) writeResponse(reply *Packet) {
 
 	if reply.Opcode == proto.OpWrite {
 		stat.EndStat("write(sendRespToConn)", nil, bgTime5, 1)
+		bgTime6 = stat.BeginStat()
 	}
 
 	log.LogDebugf(reply.LogMessage(ActionWriteToClient,
