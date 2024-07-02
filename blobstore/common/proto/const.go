@@ -99,6 +99,8 @@ func (t DiskType) IsValid() bool {
 	return t >= DiskTypeHDD && t < DiskTypeMax
 }
 
+func (t *DiskType) UnmarshalText(text []byte) error { return nil }
+
 func (t *DiskType) UnmarshalJSON(data []byte) error {
 	if diskType, err := strconv.Atoi(string(data)); err == nil {
 		if !DiskType(diskType).IsValid() {
@@ -144,6 +146,8 @@ func (role NodeRole) String() string {
 func (role NodeRole) IsValid() bool {
 	return role >= NodeRoleBlobNode && role < NodeRoleMax
 }
+
+func (role *NodeRole) UnmarshalText(text []byte) error { return nil }
 
 func (role *NodeRole) UnmarshalJSON(data []byte) error {
 	if nodeRole, err := strconv.Atoi(string(data)); err == nil {

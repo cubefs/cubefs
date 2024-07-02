@@ -361,7 +361,7 @@ func TestLoadData(t *testing.T) {
 
 	_, ctx := trace.StartSpanFromContext(context.Background(), "")
 	topoInfo := diskMgr.GetTopoInfo(ctx)
-	blobNodeHDDNodeSets := topoInfo.AllNodeSets[proto.NodeRoleBlobNode][proto.DiskTypeHDD]
+	blobNodeHDDNodeSets := topoInfo.AllNodeSets[proto.NodeRoleBlobNode.String()][proto.DiskTypeHDD.String()]
 	nodeSet, nodeSetExist := blobNodeHDDNodeSets[proto.NodeSetID(2)]
 	_, diskSetExist := nodeSet.DiskSets[proto.DiskSetID(2)]
 	require.Equal(t, nodeSetExist, true)

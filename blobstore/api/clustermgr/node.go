@@ -37,9 +37,9 @@ type NodeSetInfo struct {
 }
 
 type TopoInfo struct {
-	CurNodeSetIDs map[proto.NodeRole]proto.NodeSetID                                     `json:"cur_node_set_ids"`
-	CurDiskSetIDs map[proto.NodeRole]proto.DiskSetID                                     `json:"cur_disk_set_ids"`
-	AllNodeSets   map[proto.NodeRole]map[proto.DiskType]map[proto.NodeSetID]*NodeSetInfo `json:"all_node_sets"`
+	CurNodeSetIDs map[string]proto.NodeSetID                             `json:"cur_node_set_ids"`
+	CurDiskSetIDs map[string]proto.DiskSetID                             `json:"cur_disk_set_ids"`
+	AllNodeSets   map[string]map[string]map[proto.NodeSetID]*NodeSetInfo `json:"all_node_sets"`
 }
 
 // AddNode add a new node into cluster manager and return allocated nodeID
