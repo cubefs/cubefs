@@ -4309,6 +4309,8 @@ func (m *Server) queryAllDecommissionDisk(w http.ResponseWriter, r *http.Request
 				Status:        status,
 				Progress:      fmt.Sprintf("%.2f%%", progress*float64(100)),
 				StatusMessage: GetDecommissionStatusMessage(status),
+				IgnoreDps:     disk.IgnoreDecommissionDps,
+				FailedDps:     disk.GetDecommissionFailedDPByTerm(m.cluster),
 			}
 			dps := disk.GetDecommissionFailedDPByTerm(m.cluster)
 			decommissionProgress.FailedDps = dps
