@@ -133,8 +133,8 @@ To ensure high availability of the service, at least 3 instances of the DataNode
   "exporterPort": 9502,
   "masterAddr": [
      "127.0.0.1:17010",
-     "127.0.0.1:17010",
-     "127.0.0.1:17010"
+     "127.0.0.2:17010",
+     "127.0.0.3:17010"
   ],
   "disks": [
      "/data0:10737418240",
