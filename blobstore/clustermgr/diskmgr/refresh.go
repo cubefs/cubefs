@@ -96,6 +96,8 @@ func (d *DiskMgr) refresh(ctx context.Context) {
 			for idc := range diskStatInfo {
 				spaceStatInfo.DisksStatInfos = append(spaceStatInfo.DisksStatInfos, *diskStatInfo[idc])
 			}
+
+			spaceStatInfo.TotalBlobNode = int64(mgr.GetNodeNum(diskType))
 		}
 
 		// compatible
