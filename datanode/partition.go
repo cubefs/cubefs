@@ -828,10 +828,6 @@ func (dp *DataPartition) statusUpdate() {
 		}
 	}
 
-	if dp.disk.Status == proto.ReadOnly {
-		status = proto.ReadOnly
-	}
-
 	if dp.getDiskErrCnt() > 0 {
 		status = proto.Unavailable
 	}
