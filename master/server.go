@@ -183,12 +183,18 @@ func (m *Server) Start(cfg *config.Config) (err error) {
 	return nil
 }
 
+var closeStopcOnce sync.Once
+
 // Shutdown closes the server
 func (m *Server) Shutdown() {
 	var err error
-	if m.cluster.stopc != nil {
-		close(m.cluster.stopc)
-	}
+
+	closeStopcOnce.Do(func() {
+		if m.cluster.stopc != nil {
+			close(m.cluster.stopc)
+		}
+	})
+
 	if m.apiServer != nil {
 		if err = m.apiServer.Shutdown(context.Background()); err != nil {
 			log.LogErrorf("action[Shutdown] failed, err: %v", err)
