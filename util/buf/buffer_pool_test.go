@@ -22,7 +22,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-const checkPoolLoopCount = buf.HeaderBufferPoolSize
+var checkPoolLoopCount = buf.HeaderBufferPoolSize
 
 func checkPool(t *testing.T, pool *buf.BufferPool, size int) {
 	first, err := pool.Get(size)
