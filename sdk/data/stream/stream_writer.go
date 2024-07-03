@@ -17,6 +17,7 @@ package stream
 import (
 	"fmt"
 	"github.com/cubefs/cubefs/util/rdma"
+	"github.com/cubefs/cubefs/util/stat"
 	"hash/crc32"
 	"net"
 	"sync/atomic"
@@ -61,20 +62,24 @@ type OpenRequest struct {
 
 // WriteRequest defines a write request.
 type WriteRequest struct {
-	fileOffset int
-	size       int
-	data       []byte
-	flags      int
-	writeBytes int
-	err        error
-	done       chan struct{}
-	checkFunc  func() error
+	fileOffset              int
+	size                    int
+	data                    []byte
+	flags                   int
+	writeBytes              int
+	err                     error
+	done                    chan struct{}
+	checkFunc               func() error
+	PutDoneChanStartTime    *time.Time
+	PutRequestChanStartTime *time.Time
 }
 
 // FlushRequest defines a flush request.
 type FlushRequest struct {
-	err  error
-	done chan struct{}
+	err                     error
+	done                    chan struct{}
+	PutDoneChanStartTime    *time.Time
+	PutRequestChanStartTime *time.Time
 }
 
 // ReleaseRequest defines a release request.
@@ -121,10 +126,12 @@ func (s *Streamer) IssueWriteRequest(offset int, data []byte, flags int, checkFu
 	request.done = make(chan struct{}, 1)
 	request.checkFunc = checkFunc
 
+	request.PutRequestChanStartTime = stat.BeginStat()
 	s.request <- request
 	s.writeLock.Unlock()
 
 	<-request.done
+	stat.EndStat("write(stream write done chan)", nil, request.PutDoneChanStartTime, 1)
 	err = request.err
 	write = request.writeBytes
 	writeRequestPool.Put(request)
@@ -134,8 +141,10 @@ func (s *Streamer) IssueWriteRequest(offset int, data []byte, flags int, checkFu
 func (s *Streamer) IssueFlushRequest() error {
 	request := flushRequestPool.Get().(*FlushRequest)
 	request.done = make(chan struct{}, 1)
+	request.PutRequestChanStartTime = stat.BeginStat()
 	s.request <- request
 	<-request.done
+	stat.EndStat("write(stream flush done chan)", nil, request.PutDoneChanStartTime, 1)
 	err := request.err
 	flushRequestPool.Put(request)
 	return err
@@ -263,13 +272,17 @@ func (s *Streamer) handleRequest(request interface{}) {
 		s.open()
 		request.done <- struct{}{}
 	case *WriteRequest:
+		stat.EndStat("write(stream write request chan)", nil, request.PutRequestChanStartTime, 1)
 		request.writeBytes, request.err = s.write(request.data, request.fileOffset, request.size, request.flags, request.checkFunc)
+		request.PutDoneChanStartTime = stat.BeginStat()
 		request.done <- struct{}{}
 	case *TruncRequest:
 		request.err = s.truncate(request.size)
 		request.done <- struct{}{}
 	case *FlushRequest:
+		stat.EndStat("write(stream flush request chan)", nil, request.PutRequestChanStartTime, 1)
 		request.err = s.flush()
+		request.PutDoneChanStartTime = stat.BeginStat()
 		request.done <- struct{}{}
 	case *ReleaseRequest:
 		request.err = s.release()
@@ -282,6 +295,7 @@ func (s *Streamer) handleRequest(request interface{}) {
 }
 
 func (s *Streamer) write(data []byte, offset, size, flags int, checkFunc func() error) (total int, err error) {
+	bgTime := stat.BeginStat()
 	var direct bool
 
 	if flags&proto.FlagsSyncWrite != 0 {
@@ -351,6 +365,7 @@ func (s *Streamer) write(data []byte, offset, size, flags int, checkFunc func() 
 		log.LogDebugf("Streamer write: ino(%v) filesize changed to (%v)", s.inode, offset+total)
 	}
 	log.LogDebugf("Streamer write exit: ino(%v) offset(%v) size(%v) done total(%v) err(%v)", s.inode, offset, size, total, err)
+	stat.EndStat("write(stream write)", nil, bgTime, 1)
 	return
 }
 
@@ -452,6 +467,7 @@ func (s *Streamer) doOverwrite(req *ExtentRequest, direct bool) (total int, err 
 }
 
 func (s *Streamer) doWrite(data []byte, offset, size int, direct bool) (total int, err error) {
+	bgTime := stat.BeginStat()
 	var (
 		ek        *proto.ExtentKey
 		storeMode int
@@ -543,10 +559,13 @@ func (s *Streamer) doWrite(data []byte, offset, size int, direct bool) (total in
 	total = size
 
 	log.LogDebugf("doWrite exit: ino(%v) offset(%v) size(%v) ek(%v)", s.inode, offset, size, ek)
+
+	stat.EndStat("write(doWrite)", nil, bgTime, 1)
 	return
 }
 
 func (s *Streamer) flush() (err error) {
+	bgTime := stat.BeginStat()
 	for {
 		element := s.dirtylist.Get()
 		if element == nil {
@@ -571,6 +590,7 @@ func (s *Streamer) flush() (err error) {
 		}
 		log.LogDebugf("Streamer flush end: eh(%v)", eh)
 	}
+	stat.EndStat("write(stream flush)", nil, bgTime, 1)
 	return
 }
 

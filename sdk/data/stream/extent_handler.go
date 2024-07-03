@@ -143,6 +143,7 @@ func (eh *ExtentHandler) String() string {
 }
 
 func (eh *ExtentHandler) write(data []byte, offset, size int, direct bool) (ek *proto.ExtentKey, err error) {
+	bgTime := stat.BeginStat()
 	var total, write int
 	log.LogDebugf("extentHandler write start")
 	status := eh.getStatus()
@@ -202,6 +203,7 @@ func (eh *ExtentHandler) write(data []byte, offset, size int, direct bool) (ek *
 		FileOffset: uint64(eh.fileOffset),
 		Size:       uint32(eh.size),
 	}
+	stat.EndStat("write(extentHandler write)", nil, bgTime, 1)
 	return ek, nil
 }
 
