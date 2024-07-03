@@ -2771,7 +2771,7 @@ func (mw *MetaWrapper) GetStorageClass() uint32 {
 func (mw *MetaWrapper) RenewalForbiddenMigration(inode uint64) error {
 	mp := mw.getPartitionByInode(inode)
 	if mp == nil {
-		log.LogErrorf("Truncate: No inode partition, ino(%v)", inode)
+		log.LogErrorf("[RenewalForbiddenMigration]: No inode partition, ino(%v)", inode)
 		return syscall.ENOENT
 	}
 

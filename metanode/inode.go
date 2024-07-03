@@ -1395,7 +1395,7 @@ func (i *Inode) UnmarshalValue(val []byte) (err error) {
 			log.LogWarnf("####[UnmarshalValue] inode(%v) newSeq(%v), get verCnt: %v", i.Inode, i.getVer(), verCnt)
 		}
 
-		//TODO:tangjingyu need to handle it
+		//TODO:tangjingyu need to handle it when support snapshot
 		//if verCnt > 0 && i.getVer() == 0 {
 		//	err = fmt.Errorf("inode[%v] verCnt[%v] rootVer [%v]", i.Inode, verCnt, i.getVer())
 		//	log.LogFatalf("UnmarshalValue. %v", err)

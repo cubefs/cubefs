@@ -719,7 +719,7 @@ func (c *Cluster) handleMetaNodeTaskResponse(nodeAddr string, task *proto.AdminT
 	if err != nil {
 		log.LogError(fmt.Sprintf("process task[%v] failed", task.ToString()))
 	} else {
-		log.LogInfof("process task:%v status:%v success", task.IdString(), task.Status)
+		log.LogInfof("[handleMetaNodeTaskResponse] process task:%v status:%v success", task.IdString(), task.Status)
 	}
 	return
 errHandler:
@@ -1012,7 +1012,9 @@ func (c *Cluster) handleDataNodeHeartbeatResp(nodeAddr string, resp *proto.DataN
 		c.t.deleteDataNode(dataNode)
 		oldZoneName := dataNode.ZoneName
 		dataNode.ZoneName = resp.ZoneName
+		c.dnMutex.Lock()
 		c.adjustDataNode(dataNode)
+		c.dnMutex.Unlock()
 		log.LogWarnf("dataNode [%v] zone changed from [%v] to [%v]", dataNode.Addr, oldZoneName, resp.ZoneName)
 	}
 	// change cpu util and io used
@@ -1035,8 +1037,6 @@ errHandler:
 }
 
 func (c *Cluster) adjustDataNode(dataNode *DataNode) {
-	c.dnMutex.Lock()
-	defer c.dnMutex.Unlock()
 	oldNodeSetID := dataNode.NodeSetID
 	var err error
 	defer func() {
@@ -1062,6 +1062,10 @@ func (c *Cluster) adjustDataNode(dataNode *DataNode) {
 		}
 	}
 	c.nsMutex.Unlock()
+
+	if _, err = c.checkSetZoneMediaTypePersist(zone, dataNode.MediaType); err != nil {
+		return
+	}
 
 	dataNode.NodeSetID = ns.ID
 	if err = c.syncUpdateDataNode(dataNode); err != nil {

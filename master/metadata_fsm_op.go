@@ -1132,6 +1132,7 @@ func (c *Cluster) loadZoneValue() (err error, updatedZones []*Zone) {
 			continue
 		}
 		if cv.DataMediaType == proto.MediaType_Unspecified {
+			// TODO:tangjingyu check zone's datanode count > 0 before set as legacyDataMediaType
 			cv.DataMediaType = c.server.config.legacyDataMediaType
 			autoUpdated = true
 			log.LogWarnf("legacy zone(%v), set mediaType(%v) by config legacyDataMediaType",
