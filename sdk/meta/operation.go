@@ -2927,7 +2927,6 @@ func (mw *MetaWrapper) lockDir(mp *MetaPartition, inode uint64, lease uint64, lo
 	return
 }
 
-//=======
 func (mw *MetaWrapper) renewalForbiddenMigration(mp *MetaPartition, inode uint64) (status int, err error) {
 	bgTime := stat.BeginStat()
 	defer func() {
