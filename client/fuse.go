@@ -756,7 +756,8 @@ func mount(opt *proto.MountOptions) (fsConn *fuse.Conn, super *cfs.Super, err er
 			volumeInfo, err = mc.AdminAPI().GetVolumeSimpleInfo(opt.Volname)
 			if err != nil {
 				log.LogErrorf("UpdateVolConf: get vol info from master failed, err %s", err.Error())
-				if err == proto.ErrVolNotExists {
+				if err.Error() == proto.ErrVolNotExists.Error() {
+					log.LogErrorf("volume %v not exist, stop client\n", opt.Volname)
 					log.LogFlush()
 					daemonize.SignalOutcome(err)
 					os.Exit(1)
