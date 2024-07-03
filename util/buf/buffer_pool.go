@@ -11,8 +11,8 @@ import (
 )
 
 const (
-	HeaderBufferPoolSize = 8192
-	InvalidLimit         = 0
+	InvalidLimit      = 0
+	MinBufferChanSize = 16
 )
 
 var ReadBufPool = sync.Pool{
@@ -30,6 +30,7 @@ const (
 )
 
 var (
+	HeaderBufferPoolSize     int   = 8192
 	tinyBuffersTotalLimit    int64 = 4096
 	NormalBuffersTotalLimit  int64
 	HeadBuffersTotalLimit    int64
@@ -132,7 +133,7 @@ type BufferPool struct {
 	repairPool   *sync.Pool
 }
 
-var slotCnt = uint64(16)
+const slotCnt = 16
 
 // NewBufferPool returns a new buffered pool.
 func NewBufferPool() (bufferP *BufferPool) {
