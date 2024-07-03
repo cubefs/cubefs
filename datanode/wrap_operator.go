@@ -26,7 +26,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/cubefs/cubefs/depends/tiglabs/raft"
@@ -1926,7 +1925,7 @@ func (s *DataNode) handlePacketToRecoverBadDisk(p *repl.Packet) {
 			log.LogWarnf("action[handlePacketToRecoverBadDisk] bad dp(%v) not found on disk (%v).", dpId, request.DiskPath)
 			return true
 		}
-		atomic.AddUint64(&partition.diskErrCnt, 0)
+		partition.resetDiskErrCnt()
 		if err = partition.PersistMetadata(); err != nil {
 			log.LogWarnf("action[handlePacketToRecoverBadDisk] bad dp(%v) on disk (%v) persist failed %v.",
 				dpId, request.DiskPath, err)
