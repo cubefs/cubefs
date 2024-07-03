@@ -1616,8 +1616,10 @@ func (partition *DataPartition) rollback(c *Cluster) {
 	defer func() {
 		c.syncUpdateDataPartition(partition)
 		auditlog.LogMasterOp("DataPartitionDecommissionRollback",
-			fmt.Sprintf("dp %v rollback", partition.decommissionInfo()), err)
+			fmt.Sprintf("dp %v rollback end", partition.decommissionInfo()), err)
 	}()
+	auditlog.LogMasterOp("DataPartitionDecommissionRollback",
+		fmt.Sprintf("dp %v rollback start", partition.decommissionInfo()), nil)
 	// delete it from BadDataPartitionIds
 	err = c.removeDPFromBadDataPartitionIDs(partition.DecommissionSrcAddr, partition.DecommissionSrcDiskPath, partition.PartitionID)
 	if err != nil {

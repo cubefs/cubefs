@@ -385,6 +385,10 @@ func (dd *DecommissionDisk) updateDecommissionStatus(c *Cluster, debug bool) (ui
 			dd.GenerateKey(), progress, totalNum, partitionIds, failedNum, failedPartitionIds, runningNum, runningPartitionIds,
 			prepareNum, preparePartitionIds, stopNum, stopPartitionIds, ignorePartitionIds, dd.DecommissionTerm)
 	}
+	// if decommission is cancel, len(partitions) is 0
+	if dd.GetDecommissionStatus() == DecommissionCancel {
+		return DecommissionCancel, progress
+	}
 	if failedNum >= (len(partitions)+len(ignorePartitionIds)-stopNum) && failedNum != 0 {
 		dd.markDecommissionFailed()
 		return DecommissionFail, progress
@@ -527,6 +531,8 @@ func (dd *DecommissionDisk) cancelDecommission(cluster *Cluster, ns *nodeSet) (e
 		auditlog.LogMasterOp("CancelDataPartitionDecommission", msg, nil)
 	}
 	dd.SetDecommissionStatus(DecommissionCancel)
+	msg := fmt.Sprintf("disk(%v) cancel decommission", dd.decommissionInfo())
+	auditlog.LogMasterOp("CancelDiskDecommission", msg, nil)
 	err = cluster.syncUpdateDecommissionDisk(dd)
 	return err
 }
