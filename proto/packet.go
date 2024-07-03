@@ -919,6 +919,15 @@ func InitBufferPool(bufLimit int64) {
 	Buffers = buf.NewBufferPool()
 }
 
+func InitBufferPoolEx(bufLimit int64, chanSize int) {
+	if chanSize > 0 && chanSize < buf.MinBufferChanSize {
+		buf.HeaderBufferPoolSize = buf.MinBufferChanSize
+	} else {
+		buf.HeaderBufferPoolSize = chanSize
+	}
+	InitBufferPool(bufLimit)
+}
+
 func (p *Packet) IsBatchLockNormalExtents() bool {
 	return p.Opcode == OpBatchLockNormalExtent
 }
