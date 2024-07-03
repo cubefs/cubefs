@@ -122,6 +122,8 @@ type ClusterView struct {
 	MaxMetaNodeID            uint64
 	MaxMetaPartitionID       uint64
 	VolDeletionDelayTimeHour int64
+	MarkDiskBrokenThreshold  float64
+	EnableAutoDecommission   bool
 	DataNodeStatInfo         *NodeStatInfo
 	MetaNodeStatInfo         *NodeStatInfo
 	VolStatInfo              []*VolStatInfo
@@ -306,6 +308,7 @@ type DataReplica struct {
 	NeedsToCompare             bool
 	DiskPath                   string
 	DecommissionRepairProgress float64
+	LocalPeers                 []Peer
 }
 
 // data partition diagnosis represents the inactive data nodes, corrupt data partitions, and data partitions lack of replicas
@@ -334,10 +337,15 @@ type MetaPartitionDiagnosis struct {
 	DentryCountNotEqualReplicaMetaPartitionIDs []uint64
 }
 
+type FailedDpInfo struct {
+	PartitionID uint64
+	ErrMsg      string
+}
+
 type DecommissionProgress struct {
 	Status        uint32
 	Progress      string
-	FailedDps     []uint64
+	FailedDps     []FailedDpInfo
 	StatusMessage string
 }
 
@@ -463,7 +471,22 @@ type DecommissionDataPartitionInfo struct {
 	DstAddress        string
 	Term              uint64
 	Replicas          []string
-	WaitTimes         int
 	ErrorMessage      string
 	NeedRollbackTimes uint32
+}
+
+type DecommissionedDisks struct {
+	Node  string
+	Disks []string
+}
+
+type BadReplicaMetaInfo struct {
+	PartitionId uint64
+	Replica     string
+	BadPeer     []Peer
+	ExpectPeer  []Peer
+}
+
+type BadReplicaMetaResponse struct {
+	Infos []BadReplicaMetaInfo
 }

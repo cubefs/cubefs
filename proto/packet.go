@@ -33,7 +33,7 @@ import (
 )
 
 var (
-	GRequestID = int64(1)
+	GRequestID = time.Now().Unix()<<32 + 1
 	Buffers    *buf.BufferPool
 )
 
@@ -142,6 +142,7 @@ const (
 	OpDataPartitionTryToLeader      uint8 = 0x69
 	OpQos                           uint8 = 0x6A
 	OpStopDataPartitionRepair       uint8 = 0x6B
+	OpRecoverDataReplicaMeta        uint8 = 0x6C
 
 	// Operations: MultipartInfo
 	OpCreateMultipart  uint8 = 0x70
@@ -246,6 +247,9 @@ const (
 	OpSplitMarkDelete       uint8 = 0xD6
 	OpTryOtherExtent        uint8 = 0xD7
 	OpReadRepairExtentAgain uint8 = 0xEF
+
+	// io speed limit
+	OpLimitedIoErr uint8 = 0xB1
 )
 
 const (
@@ -687,6 +691,8 @@ func (p *Packet) GetResultMsg() (m string) {
 		m = "OpUploadPartConflictErr"
 	case OpForbidErr:
 		m = "OpForbidErr"
+	case OpLimitedIoErr:
+		m = "OpLimitedIoErr"
 	default:
 		return fmt.Sprintf("Unknown ResultCode(%v)", p.ResultCode)
 	}

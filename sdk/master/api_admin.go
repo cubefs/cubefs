@@ -400,6 +400,14 @@ func (api *AdminAPI) SetVolumeAuditLog(volName string, enable bool) (err error) 
 	return
 }
 
+func (api *AdminAPI) SetVolumeDpRepairBlockSize(volName string, repairSize uint64) (err error) {
+	request := newRequest(post, proto.AdminVolSetDpRepairBlockSize).Header(api.h)
+	request.addParam("name", volName)
+	request.addParam("dpRepairBlockSize", strconv.FormatUint(repairSize, 10))
+	_, err = api.mc.serveRequest(request)
+	return
+}
+
 func (api *AdminAPI) GetMonitorPushAddr() (addr string, err error) {
 	err = api.mc.requestWith(&addr, newRequest(get, proto.AdminGetMonitorPushAddr).Header(api.h))
 	return
@@ -490,7 +498,7 @@ func (api *AdminAPI) SetMasterVolDeletionDelayTime(volDeletionDelayTimeHour int)
 }
 
 func (api *AdminAPI) SetClusterParas(batchCount, markDeleteRate, deleteWorkerSleepMs, autoRepairRate, loadFactor, maxDpCntLimit, clientIDKey string,
-	dataNodesetSelector, metaNodesetSelector, dataNodeSelector, metaNodeSelector string,
+	dataNodesetSelector, metaNodesetSelector, dataNodeSelector, metaNodeSelector string, markDiskBrokenThreshold string,
 ) (err error) {
 	request := newRequest(get, proto.AdminSetNodeInfo).Header(api.h)
 	request.addParam("batchCount", batchCount)
@@ -505,6 +513,9 @@ func (api *AdminAPI) SetClusterParas(batchCount, markDeleteRate, deleteWorkerSle
 	request.addParam("metaNodesetSelector", metaNodesetSelector)
 	request.addParam("dataNodeSelector", dataNodeSelector)
 	request.addParam("metaNodeSelector", metaNodeSelector)
+	if markDiskBrokenThreshold != "" {
+		request.addParam("markDiskBrokenThreshold", markDiskBrokenThreshold)
+	}
 	_, err = api.mc.serveRequest(request)
 	return
 }
@@ -643,11 +654,12 @@ func (api *AdminAPI) GetDiscardDataPartition() (discardDpInfos *proto.DiscardDat
 	return
 }
 
-func (api *AdminAPI) SetDataPartitionDiscard(partitionId uint64, discard bool) (err error) {
+func (api *AdminAPI) SetDataPartitionDiscard(partitionId uint64, discard bool, force bool) (err error) {
 	request := newRequest(post, proto.AdminSetDpDiscard).
 		Header(api.h).
 		addParam("id", strconv.FormatUint(partitionId, 10)).
-		addParam("dpDiscard", strconv.FormatBool(discard))
+		addParam("dpDiscard", strconv.FormatBool(discard)).
+		addParam("force", strconv.FormatBool(force))
 	if err = api.mc.request(request); err != nil {
 		return
 	}
@@ -718,4 +730,11 @@ func (api *AdminAPI) DelBucketLifecycle(volume string) (err error) {
 
 func (api *AdminAPI) GetS3QoSInfo() (data []byte, err error) {
 	return api.mc.serveRequest(newRequest(get, proto.S3QoSGet).Header(api.h))
+}
+
+func (api *AdminAPI) SetAutoDecommissionDisk(enable bool) (err error) {
+	request := newRequest(post, proto.AdminEnableAutoDecommissionDisk)
+	request.addParam("enable", strconv.FormatBool(enable))
+	_, err = api.mc.serveRequest(request)
+	return
 }

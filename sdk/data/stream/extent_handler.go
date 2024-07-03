@@ -17,6 +17,7 @@ package stream
 import (
 	"fmt"
 	"net"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -107,27 +108,28 @@ type ExtentHandler struct {
 	// Signaled in receiver ONLY to exit *sender*.
 	doneSender chan struct{}
 
-	// ver update need alloc new extent
 	appendLK sync.Mutex
 	lastKey  proto.ExtentKey
-	// verUpdate chan uint64
+
+	meetLimitedIoError bool
 }
 
 // NewExtentHandler returns a new extent handler.
 func NewExtentHandler(stream *Streamer, offset int, storeMode int, size int) *ExtentHandler {
 	// log.LogDebugf("NewExtentHandler stack(%v)", string(debug.Stack()))
 	eh := &ExtentHandler{
-		stream:       stream,
-		id:           GetExtentHandlerID(),
-		inode:        stream.inode,
-		fileOffset:   offset,
-		size:         size,
-		storeMode:    storeMode,
-		empty:        make(chan struct{}, 1024),
-		request:      make(chan *Packet, 1024),
-		reply:        make(chan *Packet, 1024),
-		doneSender:   make(chan struct{}),
-		doneReceiver: make(chan struct{}),
+		stream:             stream,
+		id:                 GetExtentHandlerID(),
+		inode:              stream.inode,
+		fileOffset:         offset,
+		size:               size,
+		storeMode:          storeMode,
+		empty:              make(chan struct{}, 1024),
+		request:            make(chan *Packet, 1024),
+		reply:              make(chan *Packet, 1024),
+		doneSender:         make(chan struct{}),
+		doneReceiver:       make(chan struct{}),
+		meetLimitedIoError: false,
 	}
 
 	go eh.receiver()
@@ -323,6 +325,43 @@ func (eh *ExtentHandler) processReply(packet *Packet) {
 		eh.key = nil
 		verUpdate = true
 	}
+
+	// NOTE: if meet a io limited error
+	if reply.ResultCode == proto.OpLimitedIoErr {
+		log.LogWarnf("[processReply] eh(%v) packet(%v) reply(%v) try again", eh, packet, reply)
+		host := eh.conn.RemoteAddr()
+		// NOTE: use tmp connection to avoid packet reorder
+		tmpConn, err := StreamConnPool.GetConnect(host.String())
+		if err != nil {
+			log.LogErrorf("[processReply] eh(%v) packet(%v) failed to get tmp conn retry, err(%v)", eh, packet, err)
+			eh.processReplyError(packet, err.Error())
+			return
+		}
+		forceClose := false
+		defer func() {
+			StreamConnPool.PutConnect(tmpConn, forceClose)
+		}()
+		for try := 0; reply.ResultCode == proto.OpLimitedIoErr; try++ {
+			time.Sleep(StreamSendSleepInterval)
+			log.LogWarnf("[processReply] eh(%v) packet(%v) limited io retry count(%v)", eh, packet, try)
+			if err = packet.writeToConn(tmpConn); err != nil {
+				forceClose = true
+				log.LogWarnf("sender writeTo: failed, eh(%v) err(%v) packet(%v)", eh, err, packet)
+				eh.processReplyError(packet, err.Error())
+				return
+			}
+			reply = NewReply(packet.ReqID, packet.PartitionID, packet.ExtentID)
+			err = reply.ReadFromConn(tmpConn, proto.ReadDeadlineTime)
+			if err != nil {
+				forceClose = true
+				log.LogErrorf("[processReply] failed to read reply from connection, eh(%v) err(%v) packet(%v)", eh, err, packet)
+				eh.processReplyError(packet, err.Error())
+				return
+			}
+		}
+		eh.meetLimitedIoError = true
+	}
+
 	if reply.ResultCode != proto.OpOk {
 		if reply.ResultCode != proto.ErrCodeVersionOpError {
 			errmsg := fmt.Sprintf("reply NOK: reply(%v)", reply)
@@ -523,7 +562,11 @@ func (eh *ExtentHandler) waitForFlush() {
 }
 
 func (eh *ExtentHandler) recoverPacket(packet *Packet) error {
-	packet.errCount++
+	// NOTE: if last result code is limited io error
+	// allow client to retry indefinitely
+	if !eh.meetLimitedIoError {
+		packet.errCount++
+	}
 	if packet.errCount >= MaxPacketErrorCount || proto.IsCold(eh.stream.client.volumeType) {
 		return errors.New(fmt.Sprintf("recoverPacket failed: reach max error limit, eh(%v) packet(%v)", eh, packet))
 	}
@@ -576,6 +619,12 @@ func (eh *ExtentHandler) allocateExtent() (err error) {
 				extID, err = eh.createExtent(dp)
 			}
 			if err != nil {
+				// NOTE: try again
+				if strings.Contains(err.Error(), "Again") || strings.Contains(err.Error(), "DiskNoSpaceErr") {
+					log.LogWarnf("[allocateExtent] eh(%v) try agagin", eh)
+					i -= 1
+					continue
+				}
 				log.LogWarnf("allocateExtent: exclude dp[%v] for write caused by create extent failed, eh(%v) err(%v) exclude(%v)",
 					dp, eh, err, exclude)
 				eh.stream.client.dataWrapper.RemoveDataPartitionForWrite(dp.PartitionID)
@@ -648,6 +697,9 @@ func (eh *ExtentHandler) createExtent(dp *wrapper.DataPartition) (extID int, err
 	}
 
 	if p.ResultCode != proto.OpOk {
+		if p.ResultCode == proto.OpDiskNoSpaceErr {
+			log.LogWarnf("[createExtent] dp(%v) disk full or tiny extent runs out", dp.PartitionID)
+		}
 		return extID, errors.New(fmt.Sprintf("createExtent: ResultCode NOK, packet(%v) datapartionHosts(%v) ResultCode(%v)", p, dp.Hosts[0], p.GetResultMsg()))
 	}
 

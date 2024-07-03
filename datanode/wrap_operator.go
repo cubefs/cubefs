@@ -35,6 +35,7 @@ import (
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
+	"github.com/cubefs/cubefs/util/strutil"
 )
 
 var ErrForbiddenDataPartition = errors.New("the data partition is forbidden")
@@ -184,6 +185,8 @@ func (s *DataNode) OperatePacket(p *repl.Packet, c net.Conn) (err error) {
 		s.handleUpdateVerPacket(p)
 	case proto.OpStopDataPartitionRepair:
 		s.handlePacketToStopDataPartitionRepair(p)
+	case proto.OpRecoverDataReplicaMeta:
+		s.handlePacketToRecoverDataReplicaMeta(p)
 	default:
 		p.PackErrorBody(repl.ErrorUnknownOp.Error(), repl.ErrorUnknownOp.Error()+strconv.Itoa(int(p.Opcode)))
 	}
@@ -203,6 +206,7 @@ func (s *DataNode) handlePacketToCreateExtent(p *repl.Packet) {
 	}()
 	partition := p.Object.(*DataPartition)
 	if partition.Available() <= 0 || !partition.disk.CanWrite() {
+		log.LogWarnf("[handlePacketToCreateExtent] dp(%v) not enough space, available(%v) canWrite(%v)", partition.partitionID, strutil.FormatSize(uint64(partition.Available())), partition.disk.CanWrite())
 		err = storage.NoSpaceError
 		return
 	} else if partition.disk.Status == proto.Unavailable {
@@ -212,6 +216,7 @@ func (s *DataNode) handlePacketToCreateExtent(p *repl.Packet) {
 
 	// in case too many extents
 	if partition.GetExtentCount() >= storage.MaxExtentCount+10 {
+		log.LogWarnf("[handlePacketToCreateExtent] dp(%v) not enough space, too many extents(%v)", partition.partitionID, partition.GetExtentCount())
 		err = storage.NoSpaceError
 		return
 	}
@@ -478,6 +483,23 @@ func (s *DataNode) checkVolumeForbidden(volNames []string) {
 	})
 }
 
+func (s *DataNode) checkVolumeDpRepairBlockSize(dpRepairBlockSize map[string]uint64) {
+	s.space.RangePartitions(func(partition *DataPartition) bool {
+		size := uint64(proto.DefaultDpRepairBlockSize)
+		if len(dpRepairBlockSize) != 0 {
+			var ok bool
+			if size, ok = dpRepairBlockSize[partition.volumeID]; !ok {
+				size = proto.DefaultDpRepairBlockSize
+			}
+		}
+		log.LogDebugf("[checkVolumeDpRepairBlockSize] volume(%v) dp(%v) repair block size(%v) current size(%v)", partition.volumeID, partition.partitionID, size, partition.GetRepairBlockSize())
+		if partition.GetRepairBlockSize() != size {
+			partition.SetRepairBlockSize(size)
+		}
+		return true
+	})
+}
+
 func (s *DataNode) checkDecommissionDisks(decommissionDisks []string) {
 	decommissionDiskSet := util.NewSet()
 	for _, disk := range decommissionDisks {
@@ -534,6 +556,8 @@ func (s *DataNode) handleHeartbeatPacket(p *repl.Packet) {
 			// set decommission disks
 			s.checkDecommissionDisks(request.DecommissionDisks)
 			s.diskQosEnableFromMaster = request.EnableDiskQos
+
+			s.checkVolumeDpRepairBlockSize(request.VolDpRepairBlockSize)
 
 			var needUpdate bool
 			for _, pair := range []struct {
@@ -732,7 +756,7 @@ func (s *DataNode) handleBatchMarkDeletePacket(p *repl.Packet, c net.Conn) {
 				}
 			} else {
 				log.LogInfof("delete limiter reach(%v), remote (%v) try again.", deleteLimiteRater.Limit(), c.RemoteAddr().String())
-				err = storage.TryAgainError
+				err = storage.LimitedIoError
 			}
 		}
 	}
@@ -762,6 +786,7 @@ func (s *DataNode) handleWritePacket(p *repl.Packet) {
 		metricPartitionIOLabels = GetIoMetricLabels(partition, "write")
 	}
 	if partition.Available() <= 0 || !partition.disk.CanWrite() {
+		log.LogWarnf("[handleWritePacket] dp(%v) not enough space, available(%v) canWrite(%v)", partition.partitionID, strutil.FormatSize(uint64(partition.Available())), partition.disk.CanWrite())
 		err = storage.NoSpaceError
 		return
 	} else if partition.disk.Status == proto.Unavailable {
@@ -778,9 +803,9 @@ func (s *DataNode) handleWritePacket(p *repl.Packet) {
 		partition.disk.allocCheckLimit(proto.IopsWriteType, 1)
 
 		if writable := partition.disk.limitWrite.TryRun(int(p.Size), func() {
-			_, err = store.Write(p.ExtentID, p.ExtentOffset, int64(p.Size), p.Data, p.CRC, storage.AppendWriteType, p.IsSyncWrite(), false)
+			_, err = store.Write(p.ExtentID, p.ExtentOffset, int64(p.Size), p.Data, p.CRC, storage.AppendWriteType, p.IsSyncWrite(), false, false)
 		}); !writable {
-			err = storage.TryAgainError
+			err = storage.LimitedIoError
 			return
 		}
 		if !shallDegrade {
@@ -800,9 +825,9 @@ func (s *DataNode) handleWritePacket(p *repl.Packet) {
 		partition.disk.allocCheckLimit(proto.IopsWriteType, 1)
 
 		if writable := partition.disk.limitWrite.TryRun(int(p.Size), func() {
-			_, err = store.Write(p.ExtentID, p.ExtentOffset, int64(p.Size), p.Data, p.CRC, storage.AppendWriteType, p.IsSyncWrite(), false)
+			_, err = store.Write(p.ExtentID, p.ExtentOffset, int64(p.Size), p.Data, p.CRC, storage.AppendWriteType, p.IsSyncWrite(), false, false)
 		}); !writable {
-			err = storage.TryAgainError
+			err = storage.LimitedIoError
 			return
 		}
 		if !shallDegrade {
@@ -828,9 +853,9 @@ func (s *DataNode) handleWritePacket(p *repl.Packet) {
 			partition.disk.allocCheckLimit(proto.IopsWriteType, 1)
 
 			if writable := partition.disk.limitWrite.TryRun(currSize, func() {
-				_, err = store.Write(p.ExtentID, p.ExtentOffset+int64(offset), int64(currSize), data, crc, storage.AppendWriteType, p.IsSyncWrite(), false)
+				_, err = store.Write(p.ExtentID, p.ExtentOffset+int64(offset), int64(currSize), data, crc, storage.AppendWriteType, p.IsSyncWrite(), false, false)
 			}); !writable {
-				err = storage.TryAgainError
+				err = storage.LimitedIoError
 				return
 			}
 			if !shallDegrade {
@@ -944,10 +969,16 @@ func (s *DataNode) handleStreamReadPacket(p *repl.Packet, connect net.Conn, isRe
 
 func (s *DataNode) handleExtentRepairReadPacket(p *repl.Packet, connect net.Conn, isRepairRead bool) {
 	var err error
+
+	defer func() {
+		if err != nil {
+			p.PackErrorBody(ActionStreamRead, err.Error())
+			p.WriteToConn(connect)
+			return
+		}
+	}()
 	err = requestDoExtentRepair()
 	if err != nil {
-		p.PackErrorBody(ActionStreamRead, err.Error())
-		p.WriteToConn(connect)
 		return
 	}
 	defer fininshDoExtentRepair()
@@ -1345,7 +1376,7 @@ func (s *DataNode) handlePacketToRemoveDataPartitionRaftMember(p *repl.Packet) {
 
 	p.PartitionID = req.PartitionId
 
-	if !dp.IsExistReplica(req.RemovePeer.Addr) {
+	if !dp.IsExistReplica(req.RemovePeer.Addr) && !req.Force {
 		log.LogWarnf("action[handlePacketToRemoveDataPartitionRaftMember] receive MasterCommand:  req %v[%v] "+
 			"RemoveRaftPeer(%v) has not exist", p.GetReqID(), string(reqData), req.RemovePeer.Addr)
 		return
@@ -1356,7 +1387,41 @@ func (s *DataNode) handlePacketToRemoveDataPartitionRaftMember(p *repl.Packet) {
 		log.LogWarnf("handlePacketToRemoveDataPartitionRaftMember return no leader")
 		return
 	}
-	if err = dp.CanRemoveRaftMember(req.RemovePeer, req.Force); err != nil {
+
+	removePeer := req.RemovePeer
+	found := false
+	// nodeId may be changed for this peer, reset nodeID to META of dp
+	for _, peer := range dp.config.Peers {
+		if peer.Addr != req.RemovePeer.Addr {
+			continue
+		} else {
+			found = true
+			if peer.ID != req.RemovePeer.ID {
+				// update removePeer.ID  according to local config
+				removePeer.ID = peer.ID
+				log.LogWarnf("handlePacketToRemoveDataPartitionRaftMember dp(%v) peer(%v) nodeID(%v) is different from req(%v)",
+					dp.partitionID, peer.Addr, peer.ID, req.RemovePeer.ID)
+				// update reqData for
+				newReq := &proto.RemoveDataPartitionRaftMemberRequest{
+					PartitionId: req.PartitionId, Force: req.Force,
+					RemovePeer: removePeer,
+				}
+				reqData, err = json.Marshal(newReq)
+				if err != nil {
+					log.LogWarnf("handlePacketToRemoveDataPartitionRaftMember dp(%v) marshall req(%v) failed:%v",
+						dp.partitionID, newReq, err)
+					return
+				}
+			}
+		}
+	}
+	if !found {
+		err = errors.NewErrorf("cannot found peer(%v) in dp(%v) peers", req.RemovePeer.Addr, dp.partitionID)
+		log.LogWarnf("handlePacketToRemoveDataPartitionRaftMember:%v", err.Error())
+		return
+	}
+
+	if err = dp.CanRemoveRaftMember(removePeer, req.Force); err != nil {
 		log.LogWarnf("action[handlePacketToRemoveDataPartitionRaftMember] CanRemoveRaftMember failed "+
 			"req %v dp %v err %v",
 			p.GetReqID(), dp.partitionID, err.Error())
@@ -1367,7 +1432,7 @@ func (s *DataNode) handlePacketToRemoveDataPartitionRaftMember(p *repl.Packet) {
 		cc := &raftProto.ConfChange{
 			Type: raftProto.ConfRemoveNode,
 			Peer: raftProto.Peer{
-				ID: req.RemovePeer.ID,
+				ID: removePeer.ID,
 			},
 			Context: reqData,
 		}
@@ -1494,4 +1559,56 @@ func (s *DataNode) handlePacketToStopDataPartitionRepair(p *repl.Packet) {
 	}
 	dp.StopDecommissionRecover(request.Stop)
 	log.LogInfof("action[handlePacketToStopDataPartitionRepair] %v stop %v success", request.PartitionId, request.Stop)
+}
+
+func (s *DataNode) handlePacketToRecoverDataReplicaMeta(p *repl.Packet) {
+	task := &proto.AdminTask{}
+	err := json.Unmarshal(p.Data, task)
+	defer func() {
+		if err != nil {
+			p.PackErrorBody(ActionRecoverDataReplicaMeta, err.Error())
+		} else {
+			p.PacketOkReply()
+		}
+	}()
+	if err != nil {
+		return
+	}
+	request := &proto.RecoverDataReplicaMetaRequest{}
+	if task.OpCode != proto.OpRecoverDataReplicaMeta {
+		err = fmt.Errorf("action[handlePacketToRecoverDataReplicaMeta] illegal opcode ")
+		log.LogWarnf("action[handlePacketToRecoverDataReplicaMeta] illegal opcode ")
+		return
+	}
+
+	bytes, _ := json.Marshal(task.Request)
+	p.AddMesgLog(string(bytes))
+	err = json.Unmarshal(bytes, request)
+	if err != nil {
+		return
+	}
+	log.LogDebugf("action[handlePacketToRecoverDataReplicaMeta] try stop %v", request.PartitionId)
+	dp := s.space.Partition(request.PartitionId)
+	if dp == nil {
+		err = proto.ErrDataPartitionNotExists
+		log.LogWarnf("action[handlePacketToRecoverDataReplicaMeta] cannot find dp %v", request.PartitionId)
+		return
+	}
+	// modify meta content
+	dp.config.Hosts = request.Hosts
+	dp.config.Peers = request.Peers
+	if err = dp.PersistMetadata(); err != nil {
+		log.LogErrorf("action[ApplyMemberChange] dp(%v) PersistMetadata err(%v).", dp.partitionID, err)
+		if IsDiskErr(err.Error()) {
+			panic(newRaftApplyError(err))
+		}
+		return
+	}
+	// reload data partition
+	err = dp.reload(s.space)
+	if err != nil {
+		log.LogWarnf("action[handlePacketToRecoverDataReplicaMeta] dp %v recover replica failed %v", dp.partitionID, err)
+	} else {
+		log.LogInfof("action[handlePacketToRecoverDataReplicaMeta] dp %v recover replica success", dp.partitionID)
+	}
 }

@@ -43,6 +43,8 @@ const (
 	AdminDiagnoseDataPartition                = "/dataPartition/diagnose"
 	AdminResetDataPartitionDecommissionStatus = "/dataPartition/resetDecommissionStatus"
 	AdminQueryDataPartitionDecommissionStatus = "/dataPartition/queryDecommissionStatus"
+	AdminCheckReplicaMeta                     = "/dataPartition/checkReplicaMeta"
+	AdminRecoverReplicaMeta                   = "/dataPartition/recoverReplicaMeta"
 	AdminDeleteDataReplica                    = "/dataReplica/delete"
 	AdminAddDataReplica                       = "/dataReplica/add"
 	AdminDeleteVol                            = "/vol/delete"
@@ -51,6 +53,7 @@ const (
 	AdminVolExpand                            = "/vol/expand"
 	AdminVolForbidden                         = "/vol/forbidden"
 	AdminVolEnableAuditLog                    = "/vol/auditlog"
+	AdminVolSetDpRepairBlockSize              = "/vol/setDpRepairBlockSize"
 	AdminCreateVol                            = "/admin/createVol"
 	AdminGetVol                               = "/admin/getVol"
 	AdminClusterFreeze                        = "/cluster/freeze"
@@ -608,6 +611,12 @@ type StopDataPartitionRepairResponse struct {
 	PartitionId uint64
 }
 
+type RecoverDataReplicaMetaRequest struct {
+	PartitionId uint64
+	Peers       []Peer
+	Hosts       []string
+}
+
 // File defines the file struct.
 type File struct {
 	Name     string
@@ -688,9 +697,10 @@ type HeartBeatRequest struct {
 	UidLimitToMetaNode
 	QuotaHeartBeatInfos
 	TxInfos
-	ForbiddenVols     []string
-	DisableAuditVols  []string
-	DecommissionDisks []string // NOTE: for datanode
+	ForbiddenVols        []string
+	DisableAuditVols     []string
+	DecommissionDisks    []string // NOTE: for datanode
+	VolDpRepairBlockSize map[string]uint64
 }
 
 // DataPartitionReport defines the partition report.
@@ -705,6 +715,7 @@ type DataPartitionReport struct {
 	ExtentCount                int
 	NeedCompare                bool
 	DecommissionRepairProgress float64
+	LocalPeers                 []Peer
 }
 
 type DataNodeQosResponse struct {
@@ -714,6 +725,12 @@ type DataNodeQosResponse struct {
 	FlowWlimit uint64
 	Status     uint8
 	Result     string
+}
+
+type BadDiskStat struct {
+	DiskPath             string
+	TotalPartitionCnt    int
+	DiskErrPartitionList []uint64
 }
 
 type DiskStat struct {
@@ -745,6 +762,7 @@ type DataNodeHeartbeatResponse struct {
 	Status              uint8
 	Result              string
 	BadDisks            []string           // Keep this old field for compatibility
+	BadDiskStats        []BadDiskStat      // key: disk path
 	DiskStats           []DiskStat         // key: disk path
 	CpuUtil             float64            `json:"cpuUtil"`
 	IoUtils             map[string]float64 `json:"ioUtil"`
@@ -883,6 +901,7 @@ type DataPartitionResponse struct {
 // DataPartitionsView defines the view of a data partition
 type DataPartitionsView struct {
 	DataPartitions []*DataPartitionResponse
+	VolReadOnly    bool // to notify client no readwrite dp
 }
 
 type DiskDataPartitionsView struct {
@@ -892,6 +911,7 @@ type DiskDataPartitionsView struct {
 func NewDataPartitionsView() (dataPartitionsView *DataPartitionsView) {
 	dataPartitionsView = new(DataPartitionsView)
 	dataPartitionsView.DataPartitions = make([]*DataPartitionResponse, 0)
+	dataPartitionsView.VolReadOnly = false
 	return
 }
 
@@ -1102,10 +1122,11 @@ type SimpleVolView struct {
 	PreloadCapacity  uint64
 	Uids             []UidSimpleInfo
 	// multi version snapshot
-	LatestVer      uint64
-	Forbidden      bool
-	EnableAuditLog bool
-	DeleteExecTime time.Time
+	LatestVer         uint64
+	Forbidden         bool
+	EnableAuditLog    bool
+	DeleteExecTime    time.Time
+	DpRepairBlockSize uint64
 }
 
 type NodeSetInfo struct {

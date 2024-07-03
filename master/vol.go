@@ -61,6 +61,7 @@ type Vol struct {
 	dpReplicaNum      uint8
 	mpReplicaNum      uint8
 	Status            uint8
+	Deleting          bool
 	threshold         float32
 	dataPartitionSize uint64 // byte
 	Capacity          uint64 // GB
@@ -103,7 +104,8 @@ type Vol struct {
 	dpSelectorParm          string
 	domainId                uint64
 	qosManager              *QosCtrlManager
-	DpReadOnlyWhenVolFull   bool
+	DpReadOnlyWhenVolFull   bool // only if this switch is on, all dp becomes readonly when vol is full
+	ReadOnlyForVolFull      bool // only if the switch DpReadOnlyWhenVolFull is on, mark vol is readonly when is full
 	aclMgr                  AclManager
 	uidSpaceManager         *UidSpaceManager
 	volLock                 sync.RWMutex
@@ -117,6 +119,7 @@ type Vol struct {
 	authKey                 string
 	DeleteExecTime          time.Time
 	user                    *User
+	dpRepairBlockSize       uint64
 }
 
 func newVol(vv volValue) (vol *Vol) {
@@ -185,6 +188,7 @@ func newVol(vv volValue) (vol *Vol) {
 	vol.mpsLock = newMpsLockManager(vol)
 	vol.EnableAuditLog = true
 	vol.preloadCapacity = math.MaxUint64 // mark as special value to trigger calculate
+	vol.dpRepairBlockSize = proto.DefaultDpRepairBlockSize
 	return
 }
 
@@ -210,6 +214,10 @@ func newVolFromVolValue(vv *volValue) (vol *Vol) {
 	vol.authKey = vv.AuthKey
 	vol.DeleteExecTime = vv.DeleteExecTime
 	vol.user = vv.User
+	vol.dpRepairBlockSize = vv.DpRepairBlockSize
+	if vol.dpRepairBlockSize == 0 {
+		vol.dpRepairBlockSize = proto.DefaultDpRepairBlockSize
+	}
 	return vol
 }
 
@@ -464,11 +472,11 @@ func (vol *Vol) getRWMetaPartitionNum() (num uint64, isHeartBeatDone bool) {
 }
 
 func (vol *Vol) getDataPartitionsView() (body []byte, err error) {
-	return vol.dataPartitions.updateResponseCache(false, 0, vol.VolType)
+	return vol.dataPartitions.updateResponseCache(false, 0, vol)
 }
 
 func (vol *Vol) getDataPartitionViewCompress() (body []byte, err error) {
-	return vol.dataPartitions.updateCompressCache(false, 0, vol.VolType)
+	return vol.dataPartitions.updateCompressCache(false, 0, vol)
 }
 
 func (vol *Vol) getDataPartitionByID(partitionID uint64) (dp *DataPartition, err error) {
@@ -582,6 +590,8 @@ func (vol *Vol) checkDataPartitions(c *Cluster) (cnt int) {
 	}
 
 	shouldDpInhibitWriteByVolFull := vol.shouldInhibitWriteBySpaceFull()
+	vol.SetReadOnlyForVolFull(shouldDpInhibitWriteByVolFull)
+
 	totalPreloadCapacity := uint64(0)
 
 	partitions := vol.dataPartitions.clonePartitions()
@@ -608,9 +618,10 @@ func (vol *Vol) checkDataPartitions(c *Cluster) (cnt int) {
 
 		dp.checkReplicaStatus(c.cfg.DataPartitionTimeOutSec)
 		dp.checkStatus(c.Name, true, c.cfg.DataPartitionTimeOutSec, c, shouldDpInhibitWriteByVolFull, vol.Forbidden)
-		dp.checkLeader(c.Name, c.cfg.DataPartitionTimeOutSec)
+		dp.checkLeader(c, c.Name, c.cfg.DataPartitionTimeOutSec)
 		dp.checkMissingReplicas(c.Name, c.leaderInfo.addr, c.cfg.MissingDataPartitionInterval, c.cfg.IntervalToAlarmMissingDataPartition)
 		dp.checkReplicaNum(c, vol)
+		// dp.checkReplicaMeta(c)
 
 		if time.Now().Unix()-vol.createTime < defaultIntervalToCheckHeartbeat*3 && !vol.Forbidden {
 			dp.setReadWrite()
@@ -873,6 +884,25 @@ func (vol *Vol) capacity() uint64 {
 	return vol.Capacity
 }
 
+func (vol *Vol) SetReadOnlyForVolFull(isFull bool) {
+	vol.volLock.Lock()
+	defer vol.volLock.Unlock()
+
+	if isFull {
+		if vol.DpReadOnlyWhenVolFull {
+			vol.ReadOnlyForVolFull = isFull
+		}
+	} else {
+		vol.ReadOnlyForVolFull = isFull
+	}
+}
+
+func (vol *Vol) IsReadOnlyForVolFull() bool {
+	vol.volLock.RLock()
+	defer vol.volLock.RUnlock()
+	return vol.ReadOnlyForVolFull
+}
+
 func (vol *Vol) autoDeleteDp(c *Cluster) {
 	if vol.dataPartitions == nil {
 		return
@@ -935,7 +965,12 @@ func (vol *Vol) shouldInhibitWriteBySpaceFull() bool {
 	}
 
 	usedSpace := vol.totalUsedSpace() / util.GB
-	return usedSpace >= vol.capacity()
+	if usedSpace >= vol.capacity() {
+		return true
+	}
+
+	vol.ReadOnlyForVolFull = false
+	return false
 }
 
 func (vol *Vol) needCreateDataPartition() (ok bool, err error) {
@@ -951,7 +986,7 @@ func (vol *Vol) needCreateDataPartition() (ok bool, err error) {
 	}
 
 	if proto.IsHot(vol.VolType) {
-		if vol.shouldInhibitWriteBySpaceFull() {
+		if vol.IsReadOnlyForVolFull() {
 			vol.setAllDataPartitionsToReadOnly()
 			err = proto.ErrVolNoAvailableSpace
 			return
@@ -1199,7 +1234,14 @@ func (vol *Vol) checkStatus(c *Cluster) {
 	if len(metaTasks) == 0 && len(dataTasks) == 0 {
 		vol.deleteVolFromStore(c)
 	}
+
+	if vol.Deleting {
+		log.LogWarnf("action[volCheckStatus] vol[%v] is already in deleting status", vol.Name)
+		return
+	}
+
 	go func() {
+		vol.Deleting = true
 		for _, metaTask := range metaTasks {
 			vol.deleteMetaPartitionFromMetaNode(c, metaTask)
 		}
@@ -1207,6 +1249,7 @@ func (vol *Vol) checkStatus(c *Cluster) {
 		for _, dataTask := range dataTasks {
 			vol.deleteDataPartitionFromDataNode(c, dataTask)
 		}
+		vol.Deleting = false
 	}()
 }
 
@@ -1231,7 +1274,6 @@ func (vol *Vol) deleteMetaPartitionFromMetaNode(c *Cluster, task *proto.AdminTas
 	_, err = metaNode.Sender.syncSendAdminTask(task)
 	if err != nil {
 		log.LogErrorf("action[deleteMetaPartition] vol[%v],meta partition[%v],err[%v]", mp.volName, mp.PartitionID, err)
-		return
 	}
 	mp.Lock()
 	mp.removeReplicaByAddr(metaNode.Addr)
@@ -1261,7 +1303,7 @@ func (vol *Vol) deleteDataPartitionFromDataNode(c *Cluster, task *proto.AdminTas
 	_, err = dataNode.TaskManager.syncSendAdminTask(task)
 	if err != nil {
 		log.LogErrorf("action[deleteDataReplica] vol[%v],data partition[%v],err[%v]", dp.VolName, dp.PartitionID, err)
-		return
+		err = nil
 	}
 
 	dp.Lock()

@@ -23,6 +23,7 @@ import (
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/sdk/master"
 	"github.com/cubefs/cubefs/util"
+	"github.com/cubefs/cubefs/util/strutil"
 	"github.com/spf13/cobra"
 )
 
@@ -51,6 +52,7 @@ func newVolCmd(client *master.MasterClient) *cobra.Command {
 		newVolAddMPCmd(client),
 		newVolSetForbiddenCmd(client),
 		newVolSetAuditLogCmd(client),
+		newVolSetDpRepairBlockSize(client),
 	)
 	return cmd
 }
@@ -1041,6 +1043,36 @@ func newVolSetAuditLogCmd(client *master.MasterClient) *cobra.Command {
 				return
 			}
 			stdout("Volume audit log has been set successfully, please wait few minutes for the settings to take effect.\n")
+		},
+	}
+	return cmd
+}
+
+var (
+	cmdVolSetDpRepairBlockSize      = "set-repair-size [VOLUME] [SIZE]"
+	cmdVolSetDpRepairBlockSizeShort = "Set dp repair block size for volume"
+)
+
+func newVolSetDpRepairBlockSize(client *master.MasterClient) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   cmdVolSetDpRepairBlockSize,
+		Short: cmdVolSetDpRepairBlockSizeShort,
+		Args:  cobra.MinimumNArgs(2),
+		Run: func(cmd *cobra.Command, args []string) {
+			name := args[0]
+			settingStr := args[1]
+			var err error
+			defer func() {
+				errout(err)
+			}()
+			size, err := strutil.ParseSize(settingStr)
+			if err != nil {
+				return
+			}
+			if err = client.AdminAPI().SetVolumeDpRepairBlockSize(name, size); err != nil {
+				return
+			}
+			stdout("Volume dp repair block size has been set successfully, please wait few minutes for the settings to take effect.\n")
 		},
 	}
 	return cmd

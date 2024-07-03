@@ -83,9 +83,8 @@ func (m *metadataManager) opMasterHeartbeat(conn net.Conn, p *Packet, remoteAddr
 			Request: req,
 		}
 	)
-
+	start := time.Now()
 	go func() {
-		start := time.Now()
 		decode := json.NewDecoder(bytes.NewBuffer(data))
 		decode.UseNumber()
 		if err = decode.Decode(adminTask); err != nil {

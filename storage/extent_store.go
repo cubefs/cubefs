@@ -252,7 +252,7 @@ func (ei *ExtentInfo) UpdateExtentInfo(extent *Extent, crc uint32) {
 	ei.Size = uint64(extent.dataSize)
 	ei.SnapshotDataOff = extent.snapshotDataOff
 
-	log.LogInfof("action[ExtentInfo.UpdateExtentInfo] ei info [%v]", ei.String())
+	log.LogDebugf("action[ExtentInfo.UpdateExtentInfo] ei info [%v]", ei.String())
 
 	if !IsTinyExtent(ei.FileID) {
 		atomic.StoreUint32(&ei.Crc, crc)
@@ -374,7 +374,7 @@ func (s *ExtentStore) initBaseFileID() error {
 }
 
 // Write writes the given extent to the disk.
-func (s *ExtentStore) Write(extentID uint64, offset, size int64, data []byte, crc uint32, writeType int, isSync bool, isHole bool) (status uint8, err error) {
+func (s *ExtentStore) Write(extentID uint64, offset, size int64, data []byte, crc uint32, writeType int, isSync bool, isHole bool, isRepair bool) (status uint8, err error) {
 	var (
 		e  *Extent
 		ei *ExtentInfo
@@ -389,13 +389,13 @@ func (s *ExtentStore) Write(extentID uint64, offset, size int64, data []byte, cr
 	}
 	// update access time
 	atomic.StoreInt64(&ei.AccessTime, time.Now().Unix())
-	log.LogDebugf("action[Write] dp %v extentID %v offset %v size %v writeTYPE %v", s.partitionID, extentID, offset, size, writeType)
-	if err = s.checkOffsetAndSize(extentID, offset, size, writeType); err != nil {
+	log.LogDebugf("action[Write] dp %v extentID %v offset %v size %v writeTYPE %v isRepair(%v)", s.partitionID, extentID, offset, size, writeType, isRepair)
+	if err = s.checkOffsetAndSize(extentID, offset, size, writeType, isRepair); err != nil {
 		log.LogInfof("action[Write] path %v err %v", e.filePath, err)
 		return status, err
 	}
 
-	status, err = e.Write(data, offset, size, crc, writeType, isSync, s.PersistenceBlockCrc, ei, isHole)
+	status, err = e.Write(data, offset, size, crc, writeType, isSync, s.PersistenceBlockCrc, ei, isHole, isRepair)
 	if err != nil {
 		log.LogInfof("action[Write] path %v err %v", e.filePath, err)
 		return status, err
@@ -405,7 +405,7 @@ func (s *ExtentStore) Write(extentID uint64, offset, size int64, data []byte, cr
 	return status, nil
 }
 
-func (s *ExtentStore) checkOffsetAndSize(extentID uint64, offset, size int64, writeType int) error {
+func (s *ExtentStore) checkOffsetAndSize(extentID uint64, offset, size int64, writeType int, isRepair bool) error {
 	if IsTinyExtent(extentID) {
 		return nil
 	}
@@ -419,9 +419,12 @@ func (s *ExtentStore) checkOffsetAndSize(extentID uint64, offset, size int64, wr
 		}
 		return nil
 	}
-	if size == 0 || size > util.BlockSize ||
+	if size == 0 ||
 		offset >= util.BlockCount*util.BlockSize ||
 		offset+size > util.BlockCount*util.BlockSize {
+		return newParameterError("offset=%d size=%d", offset, size)
+	}
+	if !isRepair && size > util.BlockSize {
 		return newParameterError("offset=%d size=%d", offset, size)
 	}
 	return nil
@@ -834,6 +837,8 @@ func (s *ExtentStore) GetMaxExtentIDAndPartitionSize() (maxExtentID, totalSize u
 			maxExtentID = extentInfo.FileID
 		}
 		totalSize += extentInfo.TotalSize()
+		log.LogDebugf("GetMaxExtentIDAndPartitionSize dp %v add extentInfo %v size %v", s.partitionID,
+			extentInfo.FileID, extentInfo.TotalSize())
 	}
 	return maxExtentID, totalSize
 }

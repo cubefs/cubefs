@@ -41,6 +41,7 @@ const (
 	BlockCount          = 1024
 	BlockSize           = 65536 * 2
 	ReadBlockSize       = BlockSize
+	RepairReadBlockSize = 512 * util.KB
 	PerBlockCrcSize     = 4
 	ExtentSize          = BlockCount * BlockSize
 	PacketHeaderSize    = 57
@@ -65,7 +66,7 @@ const (
 const (
 	UidLimitList = 0
 	UidAddLimit  = 1
-	UidDel       = 2
+	UidDelLimit  = 2
 	UidGetLimit  = 3
 )
 

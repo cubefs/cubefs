@@ -17,7 +17,6 @@ package datanode
 import (
 	"fmt"
 	"math"
-	"os"
 	"sync"
 	"time"
 
@@ -301,7 +300,12 @@ func (manager *SpaceManager) updateMetrics() {
 			continue
 		}
 
-		total += d.Total
+		if d.Used > d.Total {
+			total += d.Used
+		} else {
+			total += d.Total
+		}
+
 		used += d.Used
 		available += d.Available
 		totalPartitionSize += d.Allocated
@@ -441,7 +445,9 @@ func (manager *SpaceManager) DeletePartition(dpID uint64) {
 	manager.partitionMutex.Unlock()
 	dp.Stop()
 	dp.Disk().DetachDataPartition(dp)
-	os.RemoveAll(dp.Path())
+	if err := dp.RemoveAll(); err != nil {
+		log.LogErrorf("[DeletePartition] failed to remove dp(%v) dir(%v), err(%v)", dp.partitionID, dp.Path(), err)
+	}
 }
 
 func (s *DataNode) buildHeartBeatResponse(response *proto.DataNodeHeartbeatResponse) {
@@ -476,6 +482,7 @@ func (s *DataNode) buildHeartBeatResponse(response *proto.DataNodeHeartbeatRespo
 			ExtentCount:                partition.GetExtentCount(),
 			NeedCompare:                true,
 			DecommissionRepairProgress: partition.decommissionRepairProgress,
+			LocalPeers:                 partition.config.Peers,
 		}
 		log.LogDebugf("action[Heartbeats] dpid(%v), status(%v) total(%v) used(%v) leader(%v) isLeader(%v).", vr.PartitionID, vr.PartitionStatus, vr.Total, vr.Used, leaderAddr, vr.IsLeader)
 		response.PartitionReports = append(response.PartitionReports, vr)
@@ -484,8 +491,19 @@ func (s *DataNode) buildHeartBeatResponse(response *proto.DataNodeHeartbeatRespo
 
 	disks := space.GetDisks()
 	for _, d := range disks {
-		if d.Status == proto.Unavailable {
+		brokenDpsCnt := d.GetDiskErrPartitionCount()
+		brokenDps := d.GetDiskErrPartitionList()
+		log.LogInfof("[buildHeartBeatResponse] disk(%v) status(%v) broken dp len(%v)", d.Path, d.Status, brokenDpsCnt)
+		if d.Status == proto.Unavailable || brokenDpsCnt != 0 {
 			response.BadDisks = append(response.BadDisks, d.Path)
+			bds := proto.BadDiskStat{
+				DiskPath:             d.Path,
+				TotalPartitionCnt:    d.PartitionCount(),
+				DiskErrPartitionList: brokenDps,
+			}
+			response.BadDiskStats = append(response.BadDiskStats, bds)
+			log.LogErrorf("[buildHeartBeatResponse] disk(%v) total(%v) broken dp len(%v) %v",
+				d.Path, bds.TotalPartitionCnt, brokenDpsCnt, brokenDps)
 		}
 
 		bds := proto.DiskStat{

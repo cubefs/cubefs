@@ -36,19 +36,20 @@ import (
 )
 
 type dataPartitionCfg struct {
-	VolName       string              `json:"vol_name"`
-	ClusterID     string              `json:"cluster_id"`
-	PartitionID   uint64              `json:"partition_id"`
-	PartitionSize int                 `json:"partition_size"`
-	PartitionType int                 `json:"partition_type"`
-	Peers         []proto.Peer        `json:"peers"`
-	Hosts         []string            `json:"hosts"`
-	NodeID        uint64              `json:"-"`
-	RaftStore     raftstore.RaftStore `json:"-"`
-	ReplicaNum    int
-	VerSeq        uint64 `json:"ver_seq"`
-	CreateType    int
-	Forbidden     bool
+	VolName           string              `json:"vol_name"`
+	ClusterID         string              `json:"cluster_id"`
+	PartitionID       uint64              `json:"partition_id"`
+	PartitionSize     int                 `json:"partition_size"`
+	PartitionType     int                 `json:"partition_type"`
+	Peers             []proto.Peer        `json:"peers"`
+	Hosts             []string            `json:"hosts"`
+	NodeID            uint64              `json:"-"`
+	RaftStore         raftstore.RaftStore `json:"-"`
+	ReplicaNum        int
+	VerSeq            uint64 `json:"ver_seq"`
+	CreateType        int
+	Forbidden         bool
+	DpRepairBlockSize uint64
 }
 
 func (dp *DataPartition) raftPort() (heartbeat, replica int, err error) {
@@ -175,7 +176,7 @@ func (dp *DataPartition) CanRemoveRaftMember(peer proto.Peer, force bool) error 
 	}
 
 	log.LogInfof("action[CanRemoveRaftMember] dp %v replicaNum %v peers %v", dp.partitionID, dp.replicaNum, len(dp.config.Peers))
-	if dp.replicaNum == 2 && len(dp.config.Peers) == 2 && force {
+	if force {
 		return nil
 	}
 
@@ -764,10 +765,12 @@ func (dp *DataPartition) broadcastMinAppliedID(minAppliedID uint64) (err error) 
 
 // Get all replica applied ids
 func (dp *DataPartition) getAllReplicaAppliedID() (allAppliedID []uint64, replyNum uint8) {
-	allAppliedID = make([]uint64, dp.getReplicaLen())
-	for i := 0; i < dp.getReplicaLen(); i++ {
+	replicas := dp.getReplicaCopy()
+	replicaLen := len(replicas)
+	allAppliedID = make([]uint64, replicaLen)
+	for i := 0; i < replicaLen; i++ {
 		p := NewPacketToGetAppliedID(dp.partitionID)
-		replicaHostParts := strings.Split(dp.getReplicaAddr(i), ":")
+		replicaHostParts := strings.Split(replicas[i], ":")
 		replicaHost := strings.TrimSpace(replicaHostParts[0])
 		if LocalIP == replicaHost {
 			log.LogDebugf("partition(%v) local no send msg. localIP(%v) replicaHost(%v) appliedId(%v)",
@@ -776,7 +779,7 @@ func (dp *DataPartition) getAllReplicaAppliedID() (allAppliedID []uint64, replyN
 			replyNum++
 			continue
 		}
-		target := dp.getReplicaAddr(i)
+		target := replicas[i]
 		appliedID, err := dp.getRemoteAppliedID(target, p)
 		if err != nil {
 			log.LogErrorf("partition(%v) getRemoteAppliedID Failed(%v).", dp.partitionID, err)

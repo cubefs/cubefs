@@ -62,6 +62,7 @@ type clusterValue struct {
 	EnableAutoDecommissionDisk  bool
 	DecommissionDiskFactor      float64
 	VolDeletionDelayTimeHour    int64
+	MarkDiskBrokenThreshold     float64
 }
 
 func newClusterValue(c *Cluster) (cv *clusterValue) {
@@ -93,6 +94,7 @@ func newClusterValue(c *Cluster) (cv *clusterValue) {
 		EnableAutoDecommissionDisk:  c.EnableAutoDecommissionDisk,
 		DecommissionDiskFactor:      c.DecommissionDiskFactor,
 		VolDeletionDelayTimeHour:    c.cfg.volDelayDeleteTimeHour,
+		MarkDiskBrokenThreshold:     c.getMarkDiskBrokenThreshold(),
 	}
 	return cv
 }
@@ -156,8 +158,8 @@ type dataPartitionValue struct {
 	RecoverStartTime               int64
 	RecoverLastConsumeTime         float64
 	Forbidden                      bool
-	DecommissionWaitTimes          int
 	DecommissionErrorMessage       string
+	DecommissionNeedRollbackTimes  uint32
 }
 
 func (dpv *dataPartitionValue) Restore(c *Cluster) (dp *DataPartition) {
@@ -186,7 +188,8 @@ func (dpv *dataPartitionValue) Restore(c *Cluster) (dp *DataPartition) {
 	dp.DecommissionNeedRollback = dpv.DecommissionNeedRollback
 	dp.RecoverStartTime = time.Unix(dpv.RecoverStartTime, 0)
 	dp.RecoverLastConsumeTime = time.Duration(dpv.RecoverLastConsumeTime) * time.Second
-	dp.DecommissionWaitTimes = dpv.DecommissionWaitTimes
+	dp.DecommissionNeedRollbackTimes = dpv.DecommissionNeedRollbackTimes
+	dp.DecommissionErrorMessage = dpv.DecommissionErrorMessage
 	for _, rv := range dpv.Replicas {
 		if !contains(dp.Hosts, rv.Addr) {
 			continue
@@ -229,8 +232,8 @@ func newDataPartitionValue(dp *DataPartition) (dpv *dataPartitionValue) {
 		DecommissionNeedRollback:       dp.DecommissionNeedRollback,
 		RecoverStartTime:               dp.RecoverStartTime.Unix(),
 		RecoverLastConsumeTime:         dp.RecoverLastConsumeTime.Seconds(),
-		DecommissionWaitTimes:          dp.DecommissionWaitTimes,
 		DecommissionErrorMessage:       dp.DecommissionErrorMessage,
+		DecommissionNeedRollbackTimes:  dp.DecommissionNeedRollbackTimes,
 	}
 	for _, replica := range dp.Replicas {
 		rv := &replicaValue{Addr: replica.Addr, DiskPath: replica.DiskPath}
@@ -296,6 +299,7 @@ type volValue struct {
 	ClientReqPeriod, ClientHitTriggerCnt                   uint32
 	Forbidden                                              bool
 	EnableAuditLog                                         bool
+	DpRepairBlockSize                                      uint64
 }
 
 func (v *volValue) Bytes() (raw []byte, err error) {
@@ -362,6 +366,7 @@ func newVolValue(vol *Vol) (vv *volValue) {
 		AuthKey:               vol.authKey,
 		DeleteExecTime:        vol.DeleteExecTime,
 		User:                  vol.user,
+		DpRepairBlockSize:     vol.dpRepairBlockSize,
 	}
 
 	return
@@ -386,7 +391,6 @@ type dataNodeValue struct {
 	DecommissionDstAddr      string
 	DecommissionRaftForce    bool
 	DecommissionLimit        int
-	DecommissionRetry        uint8
 	DecommissionCompleteTime int64
 	ToBeOffline              bool
 	DecommissionDiskList     []string
@@ -405,7 +409,6 @@ func newDataNodeValue(dataNode *DataNode) *dataNodeValue {
 		DecommissionDstAddr:      dataNode.DecommissionDstAddr,
 		DecommissionRaftForce:    dataNode.DecommissionRaftForce,
 		DecommissionLimit:        dataNode.DecommissionLimit,
-		DecommissionRetry:        dataNode.DecommissionRetry,
 		DecommissionCompleteTime: dataNode.DecommissionCompleteTime,
 		ToBeOffline:              dataNode.ToBeOffline,
 		DecommissionDiskList:     dataNode.DecommissionDiskList,
@@ -642,6 +645,11 @@ func (c *Cluster) syncAddDataPartition(dp *DataPartition) (err error) {
 }
 
 func (c *Cluster) syncUpdateDataPartition(dp *DataPartition) (err error) {
+	if _, err = c.getDataPartitionByID(dp.PartitionID); err != nil {
+		log.LogWarnf("[syncUpdateDataPartition] update dp(%v) but dp not found, err(%v)", dp.PartitionID, err)
+		err = nil
+		return
+	}
 	return c.putDataPartitionInfo(opSyncUpdateDataPartition, dp)
 }
 
@@ -1008,6 +1016,13 @@ func (c *Cluster) updateInodeIdStep(val uint64) {
 	atomic.StoreUint64(&c.cfg.MetaPartitionInodeIdStep, val)
 }
 
+func (c *Cluster) updateMarkDiskBrokenThreshold(val float64) {
+	if val <= 0 || val > 1 {
+		val = defaultMarkDiskBrokenThreshold
+	}
+	c.MarkDiskBrokenThreshold.Store(val)
+}
+
 func (c *Cluster) loadZoneValue() (err error) {
 	var ok bool
 	result, err := c.fsm.store.SeekForPrefix([]byte(zonePrefix))
@@ -1149,6 +1164,7 @@ func (c *Cluster) loadClusterValue() (err error) {
 		log.LogInfof("action[loadClusterValue], metaNodeThreshold[%v]", cv.Threshold)
 
 		c.checkDataReplicasEnable = cv.CheckDataReplicasEnable
+		c.updateMarkDiskBrokenThreshold(cv.MarkDiskBrokenThreshold)
 	}
 	return
 }
@@ -1369,7 +1385,6 @@ func (c *Cluster) loadDataNodes() (err error) {
 		dataNode.DecommissionDstAddr = dnv.DecommissionDstAddr
 		dataNode.DecommissionRaftForce = dnv.DecommissionRaftForce
 		dataNode.DecommissionLimit = dnv.DecommissionLimit
-		dataNode.DecommissionRetry = dnv.DecommissionRetry
 		dataNode.DecommissionCompleteTime = dnv.DecommissionCompleteTime
 		dataNode.ToBeOffline = dnv.ToBeOffline
 		dataNode.DecommissionDiskList = dnv.DecommissionDiskList
@@ -1383,10 +1398,10 @@ func (c *Cluster) loadDataNodes() (err error) {
 		}
 		c.dataNodes.Store(dataNode.Addr, dataNode)
 		log.LogInfof("action[loadDataNodes],dataNode[%v],dataNodeID[%v],zone[%v],ns[%v] DecommissionStatus [%v] "+
-			"DecommissionDstAddr[%v] DecommissionRaftForce[%v] DecommissionDpTotal[%v] DecommissionLimit[%v]  DecommissionRetry[%v] "+
+			"DecommissionDstAddr[%v] DecommissionRaftForce[%v] DecommissionDpTotal[%v] DecommissionLimit[%v]  "+
 			"DecommissionCompleteTime [%v] ToBeOffline[%v]",
 			dataNode.Addr, dataNode.ID, dnv.ZoneName, dnv.NodeSetID, dataNode.DecommissionStatus, dataNode.DecommissionDstAddr,
-			dataNode.DecommissionRaftForce, dataNode.DecommissionDpTotal, dataNode.DecommissionLimit, dataNode.DecommissionRetry,
+			dataNode.DecommissionRaftForce, dataNode.DecommissionDpTotal, dataNode.DecommissionLimit,
 			time.Unix(dataNode.DecommissionCompleteTime, 0).Format("2006-01-02 15:04:05"),
 			dataNode.ToBeOffline)
 	}
@@ -1556,6 +1571,9 @@ func (c *Cluster) loadDataPartitions() (err error) {
 		}
 
 		dp := dpv.Restore(c)
+		if dp.IsDiscard {
+			log.LogWarnf("[loadDataPartitions] dp(%v) is discard, decommission status(%v)", dp.PartitionID, dp.GetDecommissionStatus())
+		}
 		vol.dataPartitions.put(dp)
 		c.addBadDataPartitionIdMap(dp)
 		// add to nodeset decommission list

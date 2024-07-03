@@ -34,6 +34,7 @@ import (
 	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/loadutil"
 	"github.com/cubefs/cubefs/util/log"
+	"github.com/cubefs/cubefs/util/strutil"
 	"github.com/shirou/gopsutil/disk"
 )
 
@@ -247,6 +248,7 @@ func (d *Disk) CanWrite() bool {
 		return true
 	}
 
+	log.LogInfof("[CanWrite] disk(%v) is not writable, total(%v) disk rdonly space(%v), used(%v) reserved space(%v)", d.Path, strutil.FormatSize(d.Total), strutil.FormatSize(d.DiskRdonlySpace), strutil.FormatSize(d.Used), strutil.FormatSize(d.ReservedSpace))
 	return false
 }
 
@@ -448,7 +450,6 @@ func (d *Disk) triggerDiskError(rwFlag uint8, dpId uint64) {
 	}
 
 	d.AddDiskErrPartition(dpId)
-
 	diskErrCnt := d.getTotalErrCnt()
 	diskErrPartitionCnt := d.GetDiskErrPartitionCount()
 	if diskErrPartitionCnt >= d.dataNode.diskUnavailablePartitionErrorCount {
@@ -725,6 +726,7 @@ func (d *Disk) getSelectWeight() float64 {
 
 func (d *Disk) AddDiskErrPartition(dpId uint64) {
 	if _, ok := d.DiskErrPartitionSet[dpId]; !ok {
+		log.LogWarnf("[AddDiskErrPartition] mark dp(%v) as broken", dpId)
 		d.DiskErrPartitionSet[dpId] = struct{}{}
 	}
 }

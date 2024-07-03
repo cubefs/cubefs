@@ -655,6 +655,8 @@ func (s *DataNode) registerHandler() {
 	// http.HandleFunc("/detachDataPartition", s.detachDataPartition)
 	// http.HandleFunc("/loadDataPartition", s.loadDataPartition)
 	http.HandleFunc("/releaseDiskExtentReadLimitToken", s.releaseDiskExtentReadLimitToken)
+	http.HandleFunc("/markDataPartitionBroken", s.markDataPartitionBroken)
+	http.HandleFunc("/markDiskBroken", s.markDiskBroken)
 }
 
 func (s *DataNode) startTCPService() (err error) {

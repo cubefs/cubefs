@@ -48,8 +48,9 @@ type DataNode struct {
 	TotalPartitionSize        uint64
 	NodeSetID                 uint64
 	PersistenceDataPartitions []uint64
-	BadDisks                  []string         // Keep this old field for compatibility
-	DiskStats                 []proto.DiskStat // key: disk path
+	BadDisks                  []string            // Keep this old field for compatibility
+	BadDiskStats              []proto.BadDiskStat // key: disk path
+	DiskStats                 []proto.DiskStat    // key: disk path
 	DecommissionedDisks       sync.Map
 	ToBeOffline               bool
 	RdOnly                    bool
@@ -61,7 +62,6 @@ type DataNode struct {
 	DecommissionStatus        uint32
 	DecommissionDstAddr       string
 	DecommissionRaftForce     bool
-	DecommissionRetry         uint8
 	DecommissionLimit         int
 	DecommissionCompleteTime  int64
 	DpCntLimit                DpCountLimiter     `json:"-"` // max count of data partition in a data node
@@ -69,6 +69,7 @@ type DataNode struct {
 	ioUtils                   atomic.Value       `json:"-"`
 	DecommissionDiskList      []string
 	DecommissionDpTotal       int
+	DecommissionSyncMutex     sync.Mutex
 }
 
 func newDataNode(addr, zoneName, clusterID string) (dataNode *DataNode) {
@@ -248,8 +249,9 @@ func (dataNode *DataNode) clean() {
 
 func (dataNode *DataNode) createHeartbeatTask(masterAddr string, enableDiskQos bool) (task *proto.AdminTask) {
 	request := &proto.HeartBeatRequest{
-		CurrTime:   time.Now().Unix(),
-		MasterAddr: masterAddr,
+		CurrTime:             time.Now().Unix(),
+		MasterAddr:           masterAddr,
+		VolDpRepairBlockSize: make(map[string]uint64),
 	}
 	request.EnableDiskQos = enableDiskQos
 	request.QosIopsReadLimit = dataNode.QosIopsRLimit
@@ -305,21 +307,20 @@ func (dataNode *DataNode) updateDecommissionStatus(c *Cluster, debug bool) (uint
 	if dataNode.GetDecommissionStatus() == DecommissionSuccess {
 		return DecommissionSuccess, float64(1)
 	}
-	if dataNode.GetDecommissionStatus() == DecommissionFail {
-		return DecommissionFail, float64(0)
-	}
 	if dataNode.GetDecommissionStatus() == DecommissionPause {
 		return DecommissionPause, float64(0)
 	}
-	defer func() {
-		c.syncUpdateDataNode(dataNode)
-	}()
-	// not enter running status
-	if dataNode.DecommissionRetry >= defaultDecommissionRetryLimit {
-		dataNode.markDecommissionFail()
+	// trigger error when try to decommission dataNode
+	if dataNode.GetDecommissionStatus() == DecommissionFail && dataNode.DecommissionDpTotal == 0 {
 		return DecommissionFail, float64(0)
 	}
 
+	dataNode.DecommissionSyncMutex.Lock()
+	defer dataNode.DecommissionSyncMutex.Unlock()
+
+	defer func() {
+		c.syncUpdateDataNode(dataNode)
+	}()
 	log.LogDebugf("action[GetLatestDecommissionDataPartition]dataNode %v diskList %v",
 		dataNode.Addr, dataNode.DecommissionDiskList)
 
@@ -394,7 +395,7 @@ func (dataNode *DataNode) updateDecommissionStatus(c *Cluster, debug bool) (uint
 	if debug {
 		log.LogInfof("action[updateDecommissionStatus] dataNode[%v] progress[%v] totalNum[%v] "+
 			"partitionIds %v  FailedNum[%v] failedPartitionIds %v, runningNum[%v] runningDp %v, prepareNum[%v] prepareDp %v "+
-			"stopNum[%v] stopPartitionIds %v ",
+			"stopNum[%v] stopPartitionIds %v",
 			dataNode.Addr, progress, len(partitions), partitionIds, failedNum, failedPartitionIds, runningNum, runningPartitionIds,
 			prepareNum, preparePartitionIds, stopNum, stopPartitionIds)
 	}
@@ -429,13 +430,13 @@ func (dataNode *DataNode) SetDecommissionStatus(status uint32) {
 	atomic.StoreUint32(&dataNode.DecommissionStatus, status)
 }
 
-func (dataNode *DataNode) GetDecommissionFailedDPByTerm(c *Cluster) []uint64 {
-	var failedDps []uint64
+func (dataNode *DataNode) GetDecommissionFailedDPByTerm(c *Cluster) []proto.FailedDpInfo {
+	var failedDps []proto.FailedDpInfo
 	partitions := dataNode.GetLatestDecommissionDataPartition(c)
 	log.LogDebugf("action[GetDecommissionDataNodeFailedDP] partitions len %v", len(partitions))
 	for _, dp := range partitions {
 		if dp.IsRollbackFailed() {
-			failedDps = append(failedDps, dp.PartitionID)
+			failedDps = append(failedDps, proto.FailedDpInfo{PartitionID: dp.PartitionID, ErrMsg: dp.DecommissionErrorMessage})
 			log.LogWarnf("action[GetDecommissionDataNodeFailedDP] dp[%v] failed", dp.PartitionID)
 		}
 	}
@@ -444,24 +445,15 @@ func (dataNode *DataNode) GetDecommissionFailedDPByTerm(c *Cluster) []uint64 {
 }
 
 func (dataNode *DataNode) GetDecommissionFailedDP(c *Cluster) (error, []uint64) {
-	var (
-		failedDps []uint64
-		err       error
-	)
-	if dataNode.GetDecommissionStatus() != DecommissionFail {
-		err = fmt.Errorf("action[GetDecommissionDataNodeFailedDP]dataNode[%s] status must be failed,but[%d]",
-			dataNode.Addr, dataNode.GetDecommissionStatus())
-		return err, failedDps
-	}
+	var failedDps []uint64
 	partitions := c.getAllDecommissionDataPartitionByDataNode(dataNode.Addr)
 	log.LogDebugf("action[GetDecommissionDataNodeFailedDP] partitions len %v", len(partitions))
 	for _, dp := range partitions {
 		if dp.IsDecommissionFailed() {
 			failedDps = append(failedDps, dp.PartitionID)
-			log.LogWarnf("action[GetDecommissionDataNodeFailedDP] dp[%v] failed", dp.PartitionID)
 		}
 	}
-	log.LogWarnf("action[GetDecommissionDataNodeFailedDP] failed dp list [%v]", failedDps)
+	log.LogInfof("action[GetDecommissionDataNodeFailedDP] failed dp list [%v]", failedDps)
 	return nil, failedDps
 }
 
@@ -469,8 +461,6 @@ func (dataNode *DataNode) markDecommission(targetAddr string, raftForce bool, li
 	dataNode.SetDecommissionStatus(markDecommission)
 	dataNode.DecommissionRaftForce = raftForce
 	dataNode.DecommissionDstAddr = targetAddr
-	// reset decommission status for failed once
-	dataNode.DecommissionRetry = 0
 	dataNode.DecommissionLimit = limit
 	dataNode.DecommissionDiskList = make([]string, 0)
 }
@@ -502,7 +492,6 @@ func (dataNode *DataNode) resetDecommissionStatus() {
 	dataNode.SetDecommissionStatus(DecommissionInitial)
 	dataNode.DecommissionRaftForce = false
 	dataNode.DecommissionDstAddr = ""
-	dataNode.DecommissionRetry = 0
 	dataNode.DecommissionLimit = 0
 	dataNode.DecommissionCompleteTime = 0
 	dataNode.DecommissionDiskList = make([]string, 0)

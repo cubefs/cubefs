@@ -84,10 +84,6 @@ type Wrapper struct {
 	SimpleClient                SimpleClientInfo
 }
 
-func (w *Wrapper) GetMasterClient() *masterSDK.MasterClient {
-	return w.mc
-}
-
 // NewDataPartitionWrapper returns a new data partition wrapper.
 func NewDataPartitionWrapper(client SimpleClientInfo, volName string, masters []string, preload bool, minWritableDataPartitionCnt int, verReadSeq uint64) (w *Wrapper, err error) {
 	log.LogInfof("action[NewDataPartitionWrapper] verReadSeq %v", verReadSeq)
@@ -352,7 +348,7 @@ func (w *Wrapper) updateSimpleVolView() (err error) {
 	return nil
 }
 
-func (w *Wrapper) updateDataPartitionByRsp(isInit bool, DataPartitions []*proto.DataPartitionResponse) (err error) {
+func (w *Wrapper) updateDataPartitionByRsp(forceUpdate bool, DataPartitions []*proto.DataPartitionResponse) (err error) {
 	convert := func(response *proto.DataPartitionResponse) *DataPartition {
 		return &DataPartition{
 			DataPartitionResponse: *response,
@@ -386,15 +382,15 @@ func (w *Wrapper) updateDataPartitionByRsp(isInit bool, DataPartitions []*proto.
 		}
 	}
 
-	// isInit used to identify whether this call is caused by mount action
-	if isInit || len(rwPartitionGroups) >= w.minWritableDataPartitionCnt || (proto.IsCold(w.volType) && (len(rwPartitionGroups) >= 1)) {
-		log.LogInfof("updateDataPartition: refresh dpSelector of volume(%v) with %v rw partitions(%v all), isInit(%v), minWritableDataPartitionCnt(%v)",
-			w.volName, len(rwPartitionGroups), len(DataPartitions), isInit, w.minWritableDataPartitionCnt)
+	// if not forceUpdate, at least keep 1 rw dp in the selector to avoid can't do write
+	if forceUpdate || len(rwPartitionGroups) >= 1 {
+		log.LogInfof("updateDataPartition: refresh dpSelector of volume(%v) with %v rw partitions(%v all), forceUpdate(%v)",
+			w.volName, len(rwPartitionGroups), len(DataPartitions), forceUpdate)
 		w.refreshDpSelector(rwPartitionGroups)
 	} else {
 		err = errors.New("updateDataPartition: no writable data partition")
-		log.LogWarnf("updateDataPartition: no enough writable data partitions, volume(%v) with %v rw partitions(%v all), isInit(%v), minWritableDataPartitionCnt(%v)",
-			w.volName, len(rwPartitionGroups), len(DataPartitions), isInit, w.minWritableDataPartitionCnt)
+		log.LogWarnf("updateDataPartition: no enough writable data partitions, volume(%v) with %v rw partitions(%v all), forceUpdate(%v)",
+			w.volName, len(rwPartitionGroups), len(DataPartitions), forceUpdate)
 	}
 
 	log.LogInfof("updateDataPartition: finish")
@@ -410,8 +406,15 @@ func (w *Wrapper) updateDataPartition(isInit bool) (err error) {
 		log.LogErrorf("updateDataPartition: get data partitions fail: volume(%v) err(%v)", w.volName, err)
 		return
 	}
-	log.LogInfof("updateDataPartition: get data partitions: volume(%v) partitions(%v)", w.volName, len(dpv.DataPartitions))
-	return w.updateDataPartitionByRsp(isInit, dpv.DataPartitions)
+	log.LogInfof("updateDataPartition: get data partitions: volume(%v) partitions(%v) VolReadOnly(%v)",
+		w.volName, len(dpv.DataPartitions), dpv.VolReadOnly)
+
+	forceUpdate := false
+	if isInit || dpv.VolReadOnly {
+		forceUpdate = true
+	}
+
+	return w.updateDataPartitionByRsp(forceUpdate, dpv.DataPartitions)
 }
 
 func (w *Wrapper) UpdateDataPartition() (err error) {
@@ -420,7 +423,7 @@ func (w *Wrapper) UpdateDataPartition() (err error) {
 
 // getDataPartitionFromMaster will call master to get data partition info which not include in  cache updated by
 // updateDataPartition which may not take effect if nginx be placed for reduce the pressure of master
-func (w *Wrapper) getDataPartitionFromMaster(isInit bool, dpId uint64) (err error) {
+func (w *Wrapper) getDataPartitionFromMaster(dpId uint64) (err error) {
 	var dpInfo *proto.DataPartitionInfo
 	if dpInfo, err = w.mc.AdminAPI().GetDataPartition(w.volName, dpId); err != nil {
 		log.LogErrorf("getDataPartitionFromMaster: get data partitions fail: volume(%v) dpId(%v) err(%v)",
@@ -448,7 +451,7 @@ func (w *Wrapper) getDataPartitionFromMaster(isInit bool, dpId uint64) (err erro
 
 	DataPartitions := make([]*proto.DataPartitionResponse, 1)
 	DataPartitions = append(DataPartitions, dpr)
-	return w.updateDataPartitionByRsp(isInit, DataPartitions)
+	return w.updateDataPartitionByRsp(false, DataPartitions)
 }
 
 func (w *Wrapper) clearPartitions() {
@@ -516,7 +519,7 @@ func (w *Wrapper) replaceOrInsertPartition(dp *DataPartition) {
 func (w *Wrapper) GetDataPartition(partitionID uint64) (*DataPartition, error) {
 	dp, ok := w.tryGetPartition(partitionID)
 	if !ok && !proto.IsCold(w.volType) { // cache miss && hot volume
-		err := w.getDataPartitionFromMaster(false, partitionID)
+		err := w.getDataPartitionFromMaster(partitionID)
 		if err == nil {
 			dp, ok = w.tryGetPartition(partitionID)
 			if !ok {
