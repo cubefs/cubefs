@@ -182,6 +182,8 @@ func (m *Server) Start(cfg *config.Config) (err error) {
 	return err
 }
 
+var closeStopcOnce sync.Once
+
 // Shutdown closes the server
 func (m *Server) Shutdown() {
 	var err error
@@ -194,6 +196,7 @@ func (m *Server) Shutdown() {
 		m.cluster.wg.Wait()
 		log.LogWarnf("action[Shutdown] cluster stopped!")
 	}
+
 	if m.apiServer != nil {
 		if err = m.apiServer.Shutdown(context.Background()); err != nil {
 			log.LogErrorf("action[Shutdown] failed, err: %v", err)
