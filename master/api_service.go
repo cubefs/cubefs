@@ -4306,11 +4306,13 @@ func (m *Server) queryAllDecommissionDisk(w http.ResponseWriter, r *http.Request
 			status, progress := disk.updateDecommissionStatus(m.cluster, true)
 			progress, _ = FormatFloatFloor(progress, 4)
 			decommissionProgress := proto.DecommissionProgress{
-				Status:        status,
-				Progress:      fmt.Sprintf("%.2f%%", progress*float64(100)),
-				StatusMessage: GetDecommissionStatusMessage(status),
-				IgnoreDps:     disk.IgnoreDecommissionDps,
-				FailedDps:     disk.GetDecommissionFailedDPByTerm(m.cluster),
+				Status:            status,
+				Progress:          fmt.Sprintf("%.2f%%", progress*float64(100)),
+				StatusMessage:     GetDecommissionStatusMessage(status),
+				IgnoreDps:         disk.IgnoreDecommissionDps,
+				FailedDps:         disk.GetDecommissionFailedDPByTerm(m.cluster),
+				DecommissionTerm:  disk.DecommissionTerm,
+				DecommissionTimes: disk.DecommissionTimes,
 			}
 			dps := disk.GetDecommissionFailedDPByTerm(m.cluster)
 			decommissionProgress.FailedDps = dps
