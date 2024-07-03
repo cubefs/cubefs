@@ -601,7 +601,7 @@ func (w *Wrapper) WarningMsg() string {
 
 func (w *Wrapper) updateDataNodeStatus() (err error) {
 	var cv *proto.ClusterView
-	cv, err = w.mc.AdminAPI().GetCluster()
+	cv, err = w.mc.AdminAPI().GetCluster(false)
 	if err != nil {
 		log.LogErrorf("updateDataNodeStatus: get cluster fail: err(%v)", err)
 		return
