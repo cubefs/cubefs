@@ -155,7 +155,8 @@ func (t *TransitionMgr) migrate(e *proto.ScanDentry) (err error) {
 		return
 	}
 
-	log.LogInfof("migrate and check finished, inode(%v)", e.Inode)
+	log.LogInfof("migrate and check md5 finished, vol(%v) inode(%v) path(%v), will do UpdateExtentKeyAfterMigration",
+		t.volume, e.Inode, e.Path)
 	return
 }
 
