@@ -434,6 +434,8 @@ func (f *File) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.Wri
 		}
 		return nil
 	}
+	stat.EndStat("write(file write prepare)", nil, bgTime, 1)
+	bgTime1 := stat.BeginStat()
 	var size int
 	if proto.IsHot(f.super.volType) {
 		f.super.ec.GetStreamer(ino).SetParentInode(f.parentIno)
@@ -459,7 +461,8 @@ func (f *File) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.Wri
 	if size != reqlen {
 		log.LogErrorf("Write: ino(%v) offset(%v) len(%v) size(%v)", ino, req.Offset, reqlen, size)
 	}
-
+	stat.EndStat("write(file write)", nil, bgTime1, 1)
+	bgTime2 := stat.BeginStat()
 	//only hot volType need to wait flush
 	if waitForFlush {
 		err = f.super.ec.Flush(ino)
@@ -471,6 +474,7 @@ func (f *File) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.Wri
 			return ParseError(err)
 		}
 	}
+	stat.EndStat("write(waitForFlush)", nil, bgTime2, 1)
 	elapsed := time.Since(start)
 	log.LogDebugf("TRACE Write: ino(%v) offset(%v) len(%v) flags(%v) fileflags(%v) req(%v) (%v)ns ",
 		ino, req.Offset, reqlen, req.Flags, req.FileFlags, req, elapsed.Nanoseconds())

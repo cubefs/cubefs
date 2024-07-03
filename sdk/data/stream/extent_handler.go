@@ -298,6 +298,7 @@ func (eh *ExtentHandler) sender() {
 			} else {
 				log.LogDebugf("tcp conn write packet start: time[%v]", time.Now())
 				log.LogDebugf("packet: %v", packet)
+				packet.WriteStartTime = stat.BeginStat()
 				if err = packet.writeToConn(eh.conn); err != nil {
 					log.LogWarnf("sender writeTo: failed, eh(%v) err(%v) packet(%v)", eh, err, packet)
 					eh.setClosed()
@@ -341,6 +342,7 @@ func (eh *ExtentHandler) receiver() {
 			//log.LogDebugf("receiver end: eh(%v) packet(%v)", eh, packet.GetUniqueLogId())
 
 			stat.EndStat("write(receiver)", nil, bgTime3, 1)
+			stat.EndStat("write(sender->receiver)", nil, packet.PutToRequestChanStartTime, 1)
 		case <-eh.doneReceiver:
 			log.LogDebugf("receiver done: eh(%v) size(%v) ek(%v)", eh, eh.size, eh.key)
 			return
@@ -416,6 +418,7 @@ func (eh *ExtentHandler) processReply(packet *Packet) {
 		reply = NewReply(packet.ReqID, packet.PartitionID, packet.ExtentID)
 		err := reply.ReadFromConn(eh.conn, proto.ReadDeadlineTime)
 
+		stat.EndStat("write(write-read)", nil, packet.WriteStartTime, 1)
 		stat.EndStat("write(readFromTcpConn)", nil, bgTime4, 1)
 		bgTime5 = stat.BeginStat()
 
