@@ -393,8 +393,9 @@ func (dd *DecommissionDisk) updateDecommissionStatus(c *Cluster, debug bool) (ui
 		dd.markDecommissionFailed()
 		return DecommissionFail, progress
 	}
-	dd.SetDecommissionStatus(DecommissionRunning)
-	return DecommissionRunning, progress
+	// dp is put into decommission list, status is DecommissionRunning
+	// maybe set DecommissionCancel here
+	return dd.GetDecommissionStatus(), progress
 }
 
 func (dd *DecommissionDisk) Abort(c *Cluster) (err error) {
