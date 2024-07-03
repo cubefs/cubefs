@@ -1879,7 +1879,7 @@ struct cfs_mount_info *cfs_mount_info_new(struct cfs_options *options)
 		if (len > CMI_UNI_NAME_LEN - 32) {
 			len = CMI_UNI_NAME_LEN - 32;
 		}
-		strncpy(cmi->unique_name, options->volume, len);
+		memcpy(cmi->unique_name, options->volume, len);
 		i = 0;
 		do {
 			sprintf(cmi->unique_name+len, "-%d", prandom_u32_max(10000));
