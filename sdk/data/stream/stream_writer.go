@@ -315,6 +315,9 @@ func (s *Streamer) write(data []byte, offset, size, flags int, checkFunc func() 
 	requests := s.extents.PrepareWriteRequests(offset, size, data)
 	log.LogDebugf("Streamer write: ino(%v) prepared requests(%v)", s.inode, requests)
 
+	stat.EndStat("write(stream write prepareRequests)", nil, bgTime, 1)
+	bgTime1 := stat.BeginStat()
+
 	isChecked := false
 	// Must flush before doing overwrite
 	for _, req := range requests {
@@ -329,7 +332,8 @@ func (s *Streamer) write(data []byte, offset, size, flags int, checkFunc func() 
 		log.LogDebugf("Streamer write: ino(%v) prepared requests after flush(%v)", s.inode, requests)
 		break
 	}
-
+	stat.EndStat("write(stream write traver req 1)", nil, bgTime1, 1)
+	bgTime2 := stat.BeginStat()
 	for _, req := range requests {
 		var writeSize int
 		if req.ExtentKey != nil {
@@ -346,12 +350,14 @@ func (s *Streamer) write(data []byte, offset, size, flags int, checkFunc func() 
 			}
 
 		} else {
+			bgTime3 := stat.BeginStat()
 			if !isChecked && checkFunc != nil {
 				isChecked = true
 				if err = checkFunc(); err != nil {
 					return
 				}
 			}
+			stat.EndStat("write(stream write checkFunc)", nil, bgTime3, 1)
 			writeSize, err = s.doWrite(req.Data, req.FileOffset, req.Size, direct)
 		}
 		if err != nil {
@@ -360,6 +366,7 @@ func (s *Streamer) write(data []byte, offset, size, flags int, checkFunc func() 
 		}
 		total += writeSize
 	}
+	stat.EndStat("write(stream write traver req 2)", nil, bgTime2, 1)
 	if filesize, _ := s.extents.Size(); offset+total > filesize {
 		s.extents.SetSize(uint64(offset+total), false)
 		log.LogDebugf("Streamer write: ino(%v) filesize changed to (%v)", s.inode, offset+total)
@@ -510,6 +517,8 @@ func (s *Streamer) doWrite(data []byte, offset, size int, direct bool) (total in
 				log.LogDebugf("doWrite: not found ek in ExtentCache, offset(%v) size(%v)", offset, size)
 			}
 		}
+		stat.EndStat("write(doWrite get ek)", nil, bgTime, 1)
+		bgTime1 := stat.BeginStat()
 		for i := 0; i < MaxNewHandlerRetry; i++ {
 			if s.handler == nil {
 				s.handler = NewExtentHandler(s, offset, storeMode, 0)
@@ -533,6 +542,7 @@ func (s *Streamer) doWrite(data []byte, offset, size int, direct bool) (total in
 
 			s.closeOpenHandler()
 		}
+		stat.EndStat("write(doWrite write)", nil, bgTime1, 1)
 	} else {
 		s.handler = NewExtentHandler(s, offset, storeMode, 0)
 		s.dirty = false
@@ -549,6 +559,8 @@ func (s *Streamer) doWrite(data []byte, offset, size int, direct bool) (total in
 		err = s.closeOpenHandler()
 	}
 
+	bgTime2 := stat.BeginStat()
+
 	if err != nil || ek == nil {
 		log.LogErrorf("doWrite error: ino(%v) offset(%v) size(%v) err(%v) ek(%v)", s.inode, offset, size, err, ek)
 		return
@@ -560,6 +572,7 @@ func (s *Streamer) doWrite(data []byte, offset, size int, direct bool) (total in
 
 	log.LogDebugf("doWrite exit: ino(%v) offset(%v) size(%v) ek(%v)", s.inode, offset, size, ek)
 
+	stat.EndStat("write(doWrite) append", nil, bgTime2, 1)
 	stat.EndStat("write(doWrite)", nil, bgTime, 1)
 	return
 }

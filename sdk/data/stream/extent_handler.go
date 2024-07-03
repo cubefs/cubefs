@@ -424,9 +424,6 @@ func (eh *ExtentHandler) processReply(packet *Packet) {
 		stat.EndStat("write(readFromTcpConn)", nil, bgTime4, 1)
 		bgTime5 = stat.BeginStat()
 
-		log.LogDebugf("tcp conn recv reply: %v, err: %v", reply, err)
-		log.LogDebugf("tcp conn recv reply end: time[%v]", time.Now())
-
 		if err != nil {
 			eh.processReplyError(packet, err.Error())
 			return
