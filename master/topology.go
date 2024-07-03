@@ -2134,7 +2134,6 @@ func (l *DecommissionDataPartitionList) traverse(c *Cluster) {
 					dp.ResetDecommissionStatus()
 					c.syncUpdateDataPartition(dp)
 				} else if dp.IsMarkDecommission() && dp.TryAcquireDecommissionToken(c) {
-					// TODO: decommission in here
 					go func(dp *DataPartition) {
 						dp.TryToDecommission(c)
 					}(dp) // special replica cnt cost some time from prepare to running
