@@ -351,7 +351,8 @@ func main() {
 		}
 	}
 
-	proto.InitBufferPool(opt.BuffersTotalLimit)
+	proto.InitBufferPoolEx(opt.BuffersTotalLimit, int(opt.BufferChanSize))
+	log.LogInfof("InitBufferPoolEx: total limit %d, chan size %d", opt.BuffersTotalLimit, opt.BufferChanSize)
 	if proto.IsCold(opt.VolType) {
 		buf.InitCachePool(opt.EbsBlockSize)
 	}
@@ -788,6 +789,7 @@ func parseMountOption(cfg *config.Config) (*proto.MountOptions, error) {
 	}
 
 	opt.BuffersTotalLimit = GlobalMountOptions[proto.BuffersTotalLimit].GetInt64()
+	opt.BufferChanSize = GlobalMountOptions[proto.BufferChanSize].GetInt64()
 	opt.MetaSendTimeout = GlobalMountOptions[proto.MetaSendTimeout].GetInt64()
 	opt.MaxStreamerLimit = GlobalMountOptions[proto.MaxStreamerLimit].GetInt64()
 	opt.EnableAudit = GlobalMountOptions[proto.EnableAudit].GetBool()

@@ -72,6 +72,7 @@ const (
 	MinWriteAbleDataPartitionCnt
 	FileSystemName
 	DisableMountSubtype
+	BufferChanSize
 	MaxMountOption
 )
 
@@ -150,7 +151,8 @@ func InitMountOptions(opts []MountOption) {
 	opts[ReadThreads] = MountOption{"readThreads", "Cold volume read threads", "", int64(10)}
 	opts[WriteThreads] = MountOption{"writeThreads", "Cold volume write threads", "", int64(10)}
 	opts[MetaSendTimeout] = MountOption{"metaSendTimeout", "Meta send timeout", "", int64(600)}
-	opts[BuffersTotalLimit] = MountOption{"buffersTotalLimit", "Send/Receive packets memory limit", "", int64(32768)} //default 4G
+	opts[BuffersTotalLimit] = MountOption{"buffersTotalLimit", "Send/Receive packets memory limit", "", int64(32768)} // default 4G
+	opts[BufferChanSize] = MountOption{"buffersChanSize", "Send/Receive buffer chan size", "", int64(256)}            // default 256
 	opts[MaxStreamerLimit] = MountOption{"maxStreamerLimit", "The maximum number of streamers", "", int64(0)}         // default 0
 	opts[BcacheFilterFiles] = MountOption{"bcacheFilterFiles", "The block cache filter files suffix", "", "py;pyx;sh;yaml;conf;pt;pth;log;out"}
 	opts[BcacheBatchCnt] = MountOption{"bcacheBatchCnt", "The block cache get meta count", "", int64(100000)}
@@ -315,6 +317,7 @@ type MountOptions struct {
 	NeedRestoreFuse              bool
 	MetaSendTimeout              int64
 	BuffersTotalLimit            int64
+	BufferChanSize               int64
 	MaxStreamerLimit             int64
 	EnableAudit                  bool
 	RequestTimeout               int64

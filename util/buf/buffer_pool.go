@@ -11,8 +11,8 @@ import (
 )
 
 const (
-	HeaderBufferPoolSize = 8192
-	InvalidLimit         = 0
+	InvalidLimit      = 0
+	MinBufferChanSize = 16
 )
 
 var ReadBufPool = sync.Pool{
@@ -22,6 +22,7 @@ var ReadBufPool = sync.Pool{
 	},
 }
 
+var HeaderBufferPoolSize int = 8192
 var tinyBuffersTotalLimit int64 = 4096
 var NormalBuffersTotalLimit int64
 var HeadBuffersTotalLimit int64
@@ -81,9 +82,7 @@ type BufferPool struct {
 	normalPool  *sync.Pool
 }
 
-var (
-	slotCnt = uint64(16)
-)
+const slotCnt = 16
 
 // NewBufferPool returns a new buffered pool.
 func NewBufferPool() (bufferP *BufferPool) {
@@ -111,7 +110,6 @@ func (bufferP *BufferPool) getHead(id uint64) (data []byte) {
 }
 
 func (bufferP *BufferPool) getNoraml(id uint64) (data []byte) {
-
 	if NormalBuffersTotalLimit != InvalidLimit && atomic.LoadInt64(&normalBuffersCount) >= NormalBuffersTotalLimit {
 		ctx := context.Background()
 		normalBuffersRateLimit.Wait(ctx)
