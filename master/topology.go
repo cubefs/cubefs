@@ -1165,11 +1165,12 @@ func (ns *nodeSet) traverseDecommissionDisk(c *Cluster) {
 				status := disk.GetDecommissionStatus()
 				if status == DecommissionRunning {
 					runningCnt++
-				} else if status == DecommissionSuccess || status == DecommissionFail || status == DecommissionPause {
+				} else if status == DecommissionSuccess || status == DecommissionFail ||
+					status == DecommissionPause || status == DecommissionCancel {
 					// remove from decommission disk list
-					log.LogWarnf("traverseDecommissionDisk remove disk %v status %v",
-						disk.GenerateKey(), disk.GetDecommissionStatus())
+					msg := fmt.Sprintf("traverseDecommissionDisk remove disk %v ", disk.decommissionInfo())
 					ns.RemoveDecommissionDisk(disk)
+					auditlog.LogMasterOp("DiskDecommission", msg, nil)
 				}
 				return true
 			})
