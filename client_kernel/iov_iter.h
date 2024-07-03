@@ -18,7 +18,7 @@
 #include <linux/version.h>
 #include <linux/uaccess.h>
 
-#if defined(KERNEL_HAS_IOV_ITER_IN_FS)
+#ifdef KERNEL_HAS_IOV_ITER_IN_FS
 #include <linux/fs.h>
 #else
 #include <linux/uio.h>
@@ -58,6 +58,7 @@ static inline size_t copy_from_iter_full(void* to, size_t bytes, struct iov_iter
    size_t copy, left, wanted;
    struct iovec iov;
    char __user* buf;
+   void *dest = to;
 
    if (unlikely(bytes > i->count) )
       bytes = i->count;
@@ -66,36 +67,38 @@ static inline size_t copy_from_iter_full(void* to, size_t bytes, struct iov_iter
       return 0;
 
    wanted = bytes;
+
    iov = iov_iter_iovec(i);
    buf = iov.iov_base;
    copy = min(bytes, iov.iov_len);
-
-   left = __copy_from_user(to, buf, copy);
+   left = __copy_from_user(dest, buf, copy);
    copy -= left;
-   to += copy;
+   dest += copy;
    bytes -= copy;
-   while (unlikely(!left && bytes) ) {
-      iov_iter_advance(i, copy);
+   iov_iter_advance(i, copy);
+
+   while (unlikely(left && bytes) ) {
       iov = iov_iter_iovec(i);
       buf = iov.iov_base;
       copy = min(bytes, iov.iov_len);
-      left = __copy_from_user(to, buf, copy);
+      left = __copy_from_user(dest, buf, copy);
       copy -= left;
-      to += copy;
+      dest += copy;
       bytes -= copy;
+      iov_iter_advance(i, copy);
    }
 
-   iov_iter_advance(i, copy);
    return wanted - bytes;
 }
 
-static inline size_t copy_to_iter(const void* from, size_t bytes, struct iov_iter* i)
+static inline size_t copy_to_iter(void* from, size_t bytes, struct iov_iter* i)
 {
    /* FIXME: check for != IOV iters */
 
    size_t copy, left, wanted;
    struct iovec iov;
    char __user *buf;
+   void *source = from;
 
    if (unlikely(bytes > i->count) )
       bytes = i->count;
@@ -104,25 +107,27 @@ static inline size_t copy_to_iter(const void* from, size_t bytes, struct iov_ite
       return 0;
 
    wanted = bytes;
+
    iov = iov_iter_iovec(i);
    buf = iov.iov_base;
    copy = min(bytes, iov.iov_len);
-
-   left = __copy_to_user(buf, from, copy);
+   left = __copy_to_user(buf, source, copy);
    copy -= left;
-   from += copy;
+   source += copy;
    bytes -= copy;
-   while (unlikely(!left && bytes) ) {
-      iov_iter_advance(i, copy);
+   iov_iter_advance(i, copy);
+
+   while (unlikely(left && bytes) ) {
       iov = iov_iter_iovec(i);
+      buf = iov.iov_base;
       copy = min(bytes, iov.iov_len);
-      left = __copy_to_user(buf, from, copy);
+      left = __copy_to_user(buf, source, copy);
       copy -= left;
-      from += copy;
+      source += copy;
       bytes -= copy;
+      iov_iter_advance(i, copy);
    }
 
-   iov_iter_advance(i, copy);
    return wanted - bytes;
 }
 

@@ -322,12 +322,14 @@ static int cfs_socket_recv_iter(struct cfs_socket *csk, struct iov_iter *iter, u
 	};
 	struct kvec vec;
 	size_t len = 0;
+	void *buffer = NULL;
 
-	vec.iov_base = kvmalloc(size, GFP_KERNEL);
-	if (!vec.iov_base) {
-		printk("failed to kvmalloc size=%d\n", size);
+	buffer = kvmalloc(size, GFP_KERNEL);
+	if (!buffer) {
+		cfs_log_error(csk->log, "failed to kvmalloc size=%d\n", size);
 		return -ENOMEM;
 	}
+	vec.iov_base = buffer;
 	vec.iov_len = size;
 
 	/* Allow interception of SIGKILL only
@@ -337,19 +339,19 @@ static int cfs_socket_recv_iter(struct cfs_socket *csk, struct iov_iter *iter, u
 	ret = kernel_recvmsg(csk->sock, &msghdr, &vec, 1, size, msghdr.msg_flags);
 	sigprocmask(SIG_SETMASK, &oldset, NULL);
 	if (ret < 0) {
-		printk("kernel_recvmsg error: %d\n", ret);
-		kfree(vec.iov_base);
+		cfs_log_error(csk->log, "kernel_recvmsg error: %d\n", ret);
+		kfree(buffer);
 		return ret;
 	}
 
-	len = copy_to_iter(vec.iov_base, size, iter);
+	len = copy_to_iter(buffer, size, iter);
 	if (len != size) {
-		printk("copy error len =%ld, size=%d\n", len, size);
-		kfree(vec.iov_base);
+		cfs_log_error(csk->log, "copy error len =%ld, size=%d\n", len, size);
+		kfree(buffer);
 		return -EFAULT;
 	}
 
-	kfree(vec.iov_base);
+	kfree(buffer);
 	return ret;
 }
 
