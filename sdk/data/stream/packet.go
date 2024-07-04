@@ -32,7 +32,6 @@ type Packet struct {
 	proto.Packet
 	inode                     uint64
 	errCount                  int
-	RdmaBuffer                []byte
 	PutToReplyChanStartTime   *time.Time
 	PutToRequestChanStartTime *time.Time
 	WriteStartTime            *time.Time
@@ -169,11 +168,7 @@ func (p *Packet) isValidReadReply(q *Packet) bool {
 
 func (p *Packet) writeToConn(conn net.Conn) error {
 	p.CRC = crc32.ChecksumIEEE(p.Data[:p.Size])
-	if c, ok := conn.(*rdma.Connection); ok {
-		return p.WriteToRDMAConn(c, p.RdmaBuffer)
-	} else {
-		return p.WriteToConn(conn)
-	}
+	return p.WriteToConn(conn)
 }
 
 func (p *Packet) readFromConn(c net.Conn, deadlineTime time.Duration) (err error) {

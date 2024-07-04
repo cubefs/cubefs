@@ -435,6 +435,9 @@ func (s *Streamer) doOverwrite(req *ExtentRequest, direct bool) (total int, err 
 				if IsRdma {
 					c, _ := conn.(*rdma.Connection)
 					rdma.ReleaseDataBuffer(c, reqPacket.Data, util.RdmaPacketHeaderSize+reqPacket.Size)
+					if replyPacket.RdmaBuffer != nil {
+						c.ReleaseConnRxDataBuffer(replyPacket.RdmaBuffer)
+					}
 				} else {
 					proto.Buffers.Put(reqPacket.Data)
 				}
@@ -442,7 +445,7 @@ func (s *Streamer) doOverwrite(req *ExtentRequest, direct bool) (total int, err 
 
 			if IsRdma {
 				c, _ := conn.(*rdma.Connection)
-				e = replyPacket.ReadFromRDMAConn(c, proto.ReadDeadlineTime)
+				e = replyPacket.ReadFromRdmaConn(c, proto.ReadDeadlineTime)
 			} else {
 				e = replyPacket.ReadFromConn(conn, proto.ReadDeadlineTime)
 			}

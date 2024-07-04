@@ -15,6 +15,8 @@
 package metanode
 
 import (
+	"github.com/cubefs/cubefs/util"
+	"github.com/cubefs/cubefs/util/rdma"
 	"net"
 
 	"github.com/cubefs/cubefs/proto"
@@ -72,6 +74,64 @@ func (m *metadataManager) serveProxy(conn net.Conn, mp MetaPartition,
 			reqID, reqOp, p.ReqID, p.Opcode)
 	}
 	m.connPool.PutConnect(mConn, NoClosedConnect)
+end:
+	m.respondToClient(conn, p)
+	if err != nil {
+		log.LogErrorf("[serveProxy]: req: %d - %v, %v, packet(%v)", p.GetReqID(),
+			p.GetOpMsg(), err, p)
+	}
+	log.LogDebugf("[serveProxy] req: %d - %v, resp: %v, packet(%v)", p.GetReqID(), p.GetOpMsg(),
+		p.GetResultMsg(), p)
+	return
+}
+
+func (m *metadataManager) serveRdmaProxy(conn *rdma.Connection, mp MetaPartition,
+	p *Packet) (ok bool) {
+	var (
+		mConn      *rdma.Connection
+		leaderAddr string
+		err        error
+		reqID      = p.ReqID
+		reqOp      = p.Opcode
+	)
+
+	if leaderAddr, ok = mp.IsLeader(); ok {
+		return
+	}
+	if leaderAddr == "" {
+		err = ErrNoLeader
+		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
+		goto end
+	}
+
+	mConn, err = m.rdmaConnPool.GetRdmaConn(leaderAddr)
+	if err != nil {
+		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+		m.rdmaConnPool.PutRdmaConn(mConn, ForceClosedConnect)
+		goto end
+	}
+
+	// send to master connection
+	if err = p.WriteToRDMAConn(mConn, p.RdmaBuffer, int(util.PacketHeaderSize+p.Size)); err != nil {
+
+	}
+	if err = p.WriteToConn(mConn); err != nil {
+		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+		m.rdmaConnPool.PutRdmaConn(mConn, ForceClosedConnect)
+		goto end
+	}
+
+	// read connection from the master
+	if err = p.ReadFromConn(mConn, proto.NoReadDeadlineTime); err != nil {
+		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+		m.rdmaConnPool.PutRdmaConn(mConn, ForceClosedConnect)
+		goto end
+	}
+	if reqID != p.ReqID || reqOp != p.Opcode {
+		log.LogErrorf("serveProxy: send and received packet mismatch: req(%v_%v) resp(%v_%v)",
+			reqID, reqOp, p.ReqID, p.Opcode)
+	}
+	m.rdmaConnPool.PutRdmaConn(mConn, NoClosedConnect)
 end:
 	m.respondToClient(conn, p)
 	if err != nil {

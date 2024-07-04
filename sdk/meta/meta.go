@@ -106,6 +106,7 @@ type MetaWrapper struct {
 	mc                *masterSDK.MasterClient
 	ac                *authSDK.AuthClient
 	conns             *util.ConnectPool
+	rdmaConns         *util.RdmaConnectPool
 
 	// Callback handler for handling asynchronous task errors.
 	onAsyncTaskError AsyncTaskErrorFunc
@@ -201,6 +202,7 @@ func NewMetaWrapper(config *MetaConfig) (*MetaWrapper, error) {
 	mw.onAsyncTaskError = config.OnAsyncTaskError
 	mw.metaSendTimeout = config.MetaSendTimeout
 	mw.conns = util.NewConnectPool()
+	mw.rdmaConns = util.NewRdmaConnectPool()
 	mw.partitions = make(map[uint64]*MetaPartition)
 	mw.ranges = btree.New(32)
 	mw.rwPartitions = make([]*MetaPartition, 0)

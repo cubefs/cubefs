@@ -259,6 +259,9 @@ func doShutdown(server common.Server) {
 	s.space.Stop()
 	s.stopUpdateNodeInfo()
 	s.stopTCPService()
+	if isRdma {
+		s.stopRDMAService()
+	}
 	s.stopRaftServer()
 	s.stopSmuxService()
 	s.closeSmuxConnPool()
@@ -618,6 +621,15 @@ func (s *DataNode) startRDMAService() (err error) {
 			go s.serveConn(conn)
 		}
 	}(l)
+	return
+}
+
+func (s *DataNode) stopRDMAService() (err error) {
+	if s.rdmaListener != nil {
+
+		s.rdmaListener.Close()
+		log.LogDebugf("action[stopRDMAService] stop rdma service.")
+	}
 	return
 }
 

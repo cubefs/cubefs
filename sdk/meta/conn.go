@@ -16,6 +16,8 @@ package meta
 
 import (
 	"fmt"
+	"github.com/cubefs/cubefs/util"
+	"github.com/cubefs/cubefs/util/rdma"
 	"net"
 	"syscall"
 	"time"
@@ -32,9 +34,10 @@ const (
 )
 
 type MetaConn struct {
-	conn *net.TCPConn
-	id   uint64 //PartitionID
-	addr string //MetaNode addr
+	conn     *net.TCPConn
+	rdmaConn *rdma.Connection
+	id       uint64 //PartitionID
+	addr     string //MetaNode addr
 }
 
 // Connection managements
@@ -53,8 +56,21 @@ func (mw *MetaWrapper) getConn(partitionID uint64, addr string) (*MetaConn, erro
 	return mc, nil
 }
 
+func (mw *MetaWrapper) getRdmaConn(partitionID uint64, addr string) (*MetaConn, error) {
+	conn, err := mw.rdmaConns.GetRdmaConn(addr)
+	if err != nil {
+		return nil, err
+	}
+	mc := &MetaConn{rdmaConn: conn, id: partitionID, addr: addr}
+	return mc, nil
+}
+
 func (mw *MetaWrapper) putConn(mc *MetaConn, err error) {
 	mw.conns.PutConnect(mc.conn, err != nil)
+}
+
+func (mw *MetaWrapper) putRdmaConn(mc *MetaConn, err error) {
+	mw.rdmaConns.PutRdmaConn(mc.rdmaConn, err != nil)
 }
 
 func (mw *MetaWrapper) sendToMetaPartition(mp *MetaPartition, req *proto.Packet) (*proto.Packet, error) {
@@ -134,6 +150,87 @@ out:
 	return resp, nil
 }
 
+func (mw *MetaWrapper) sendToMetaPartitionByRdma(mp *MetaPartition, req *proto.Packet) (*proto.Packet, error) {
+	var (
+		resp  *proto.Packet
+		err   error
+		addr  string
+		mc    *MetaConn
+		start time.Time
+	)
+	var sendTimeLimit int
+	if mw.metaSendTimeout < 20 {
+		sendTimeLimit = 20 * 1000 // ms
+	} else {
+		sendTimeLimit = int(mw.metaSendTimeout) * 1000 // ms
+	}
+	delta := (sendTimeLimit*2/SendRetryLimit - SendRetryInterval*2) / SendRetryLimit // ms
+	log.LogDebugf("mw.metaSendTimeout: %v s, sendTimeLimit: %v ms, delta: %v ms", mw.metaSendTimeout, sendTimeLimit, delta)
+	errs := make(map[int]error, len(mp.Members))
+	var j int
+
+	addr = mp.LeaderAddr
+	if addr == "" {
+		err = errors.New(fmt.Sprintf("sendToMetaPartitionByRdma: failed due to empty leader addr and goto retry, req(%v) mp(%v)", req, mp))
+		goto retry
+	}
+	mc, err = mw.getRdmaConn(mp.PartitionID, addr)
+	if err != nil {
+		log.LogWarnf("sendToMetaPartitionByRdma: getRdmaConn failed and goto retry, req(%v) mp(%v) addr(%v) err(%v)", req, mp, addr, err)
+		goto retry
+	}
+	resp, err = mc.sendByRdma(req)
+	mw.putRdmaConn(mc, err)
+
+	if err == nil && !resp.ShouldRetry() {
+		goto out
+	}
+	log.LogWarnf("sendToMetaPartitionByRdma: leader failed and goto retry, req(%v) mp(%v) mc(%v) err(%v) resp(%v)", req, mp, mc, err, resp)
+
+retry:
+	start = time.Now()
+	for i := 0; i <= SendRetryLimit; i++ {
+		for j, addr = range mp.Members {
+			mc, err = mw.getRdmaConn(mp.PartitionID, addr)
+			errs[j] = err
+			if err != nil {
+				log.LogWarnf("sendToMetaPartitionByRdma: getRdmaConn failed and continue to retry, req(%v) mp(%v) addr(%v) err(%v)", req, mp, addr, err)
+				continue
+			}
+			resp, err = mc.sendByRdma(req)
+			mw.putRdmaConn(mc, err)
+			if err == nil && !resp.ShouldRetry() {
+				goto out
+			}
+			if err == nil {
+				errs[j] = errors.New(fmt.Sprintf("request should retry[%v]", resp.GetResultMsg()))
+			} else {
+				errs[j] = err
+			}
+			log.LogWarnf("sendToMetaPartitionByRdma: retry failed req(%v) mp(%v) mc(%v) errs(%v) resp(%v)", req, mp, mc, errs, resp)
+		}
+		if time.Since(start) > time.Duration(sendTimeLimit)*time.Millisecond {
+			log.LogWarnf("sendToMetaPartitionByRdma: retry timeout req(%v) mp(%v) time(%v)", req, mp, time.Since(start))
+			break
+		}
+		sendRetryInterval := time.Duration(SendRetryInterval+i*delta) * time.Millisecond
+		log.LogWarnf("sendToMetaPartitionByRdma: req(%v) mp(%v) retry in (%v), retry_iteration (%v), retry_totalTime (%v)", req, mp,
+			sendRetryInterval, i+1, time.Since(start))
+		time.Sleep(sendRetryInterval)
+	}
+
+out:
+	if err != nil || resp == nil {
+		rdma.ReleaseDataBuffer(mc.rdmaConn, req.RdmaBuffer, util.PacketHeaderSize+req.Size)
+		mc.rdmaConn.ReleaseConnRxDataBuffer(resp.RdmaBuffer)
+		return nil, errors.New(fmt.Sprintf("sendToMetaPartitionByRdma failed: req(%v) mp(%v) errs(%v) resp(%v)", req, mp, errs, resp))
+	}
+	rdma.ReleaseDataBuffer(mc.rdmaConn, req.RdmaBuffer, util.PacketHeaderSize+req.Size)
+	mc.rdmaConn.ReleaseConnRxDataBuffer(resp.RdmaBuffer)
+	log.LogDebugf("sendToMetaPartitionByRdma: succeed! req(%v) mc(%v) resp(%v)", req, mc, resp)
+	return resp, nil
+}
+
 func (mc *MetaConn) send(req *proto.Packet) (resp *proto.Packet, err error) {
 	err = req.WriteToConn(mc.conn)
 	if err != nil {
@@ -147,6 +244,25 @@ func (mc *MetaConn) send(req *proto.Packet) (resp *proto.Packet, err error) {
 	// Check if the ID and OpCode of the response are consistent with the request.
 	if resp.ReqID != req.ReqID || resp.Opcode != req.Opcode {
 		log.LogErrorf("send: the response packet mismatch with request: conn(%v to %v) req(%v) resp(%v)",
+			mc.conn.LocalAddr(), mc.conn.RemoteAddr(), req, resp)
+		return nil, syscall.EBADMSG
+	}
+	return resp, nil
+}
+
+func (mc *MetaConn) sendByRdma(req *proto.Packet) (resp *proto.Packet, err error) {
+	err = req.WriteToRDMAConn(mc.rdmaConn, req.RdmaBuffer, int(util.PacketHeaderSize+req.Size))
+	if err != nil {
+		return nil, errors.Trace(err, "Failed to write to rdma conn, req(%v)", req)
+	}
+	resp = proto.NewPacket()
+	err = resp.ReadFromRdmaConn(mc.rdmaConn, proto.ReadDeadlineTime)
+	if err != nil {
+		return nil, errors.Trace(err, "Failed to read from rdma conn, req(%v)", req)
+	}
+	// Check if the ID and OpCode of the response are consistent with the request.
+	if resp.ReqID != req.ReqID || resp.Opcode != req.Opcode {
+		log.LogErrorf("send: the response packet mismatch with request: rdma conn(%v to %v) req(%v) resp(%v)",
 			mc.conn.LocalAddr(), mc.conn.RemoteAddr(), req, resp)
 		return nil, syscall.EBADMSG
 	}

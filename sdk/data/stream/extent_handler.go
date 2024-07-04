@@ -297,7 +297,7 @@ func (eh *ExtentHandler) sender() {
 				packet.WriteStartTime = stat.BeginStat()
 
 				for _, conn := range eh.rdmaConn {
-					err = packet.WriteToRDMAConn(conn, packet.RdmaBuffer)
+					err = packet.WriteToRDMAConn(conn, packet.RdmaBuffer, int(util.RdmaPacketHeaderSize+packet.Size))
 					if err != nil {
 						log.LogWarnf("sender writeTo: failed, eh(%v) err(%v) packet(%v)", eh, err, packet)
 						eh.setClosed()
@@ -391,12 +391,20 @@ func (eh *ExtentHandler) processReply(packet *Packet) {
 
 	var bgTime5 *time.Time
 	var reply *Packet
+	var allReply []*Packet
 	if IsRdma {
 		errs := make([]error, len(eh.rdmaConn))
-		allReply := make([]*Packet, len(eh.rdmaConn))
+		allReply = make([]*Packet, len(eh.rdmaConn))
+		defer func() {
+			for index, conn := range eh.rdmaConn {
+				if allReply[index].RdmaBuffer != nil {
+					conn.ReleaseConnRxDataBuffer(allReply[index].RdmaBuffer)
+				}
+			}
+		}()
 		for index, conn := range eh.rdmaConn {
 			allReply[index] = NewReply(packet.ReqID, packet.PartitionID, packet.ExtentID)
-			errs[index] = allReply[index].ReadFromRDMAConn(conn, proto.ReadDeadlineTime)
+			errs[index] = allReply[index].ReadFromRdmaConn(conn, proto.ReadDeadlineTime)
 		}
 		stat.EndStat("write(write-read)", nil, packet.WriteStartTime, 1)
 		stat.EndStat("write(readFromRdmaConn)", nil, bgTime4, 1)
