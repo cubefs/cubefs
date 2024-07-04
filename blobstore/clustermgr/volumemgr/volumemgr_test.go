@@ -317,12 +317,12 @@ func Test_NewVolumeMgr(t *testing.T) {
 	mockRaftServer.EXPECT().IsLeader().AnyTimes().Return(true)
 	mockRaftServer.EXPECT().Status().AnyTimes().Return(raftserver.Status{Id: 1})
 	mockScopeMgr.EXPECT().Alloc(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes().Return(uint64(31), uint64(31), nil)
-	mockDiskMgr.EXPECT().AllocChunks(gomock.Any(), gomock.Any()).AnyTimes().DoAndReturn(func(ctx context.Context, policy *diskmgr.AllocPolicy) ([]proto.DiskID, error) {
+	mockDiskMgr.EXPECT().AllocChunks(gomock.Any(), gomock.Any()).AnyTimes().DoAndReturn(func(ctx context.Context, policy diskmgr.AllocPolicy) ([]proto.DiskID, []proto.Vuid, error) {
 		var diskids []proto.DiskID
 		for i := range policy.Vuids {
 			diskids = append(diskids, proto.DiskID(i+1))
 		}
-		return diskids, nil
+		return diskids, policy.Vuids, nil
 	})
 	mockRaftServer.EXPECT().Propose(gomock.Any(), gomock.Any()).AnyTimes().Return(nil)
 

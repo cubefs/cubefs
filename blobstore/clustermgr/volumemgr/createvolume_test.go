@@ -43,12 +43,12 @@ func TestVolumeMgr_CreateVolume(t *testing.T) {
 	mockRaftServer.EXPECT().Status().AnyTimes().Return(raftserver.Status{Id: 1})
 	mockScopeMgr := mock.NewMockScopeMgrAPI(ctr)
 	mockDiskMgr := NewMockDiskMgrAPI(ctr)
-	mockDiskMgr.EXPECT().AllocChunks(gomock.Any(), gomock.Any()).AnyTimes().DoAndReturn(func(ctx context.Context, policy *diskmgr.AllocPolicy) ([]proto.DiskID, error) {
+	mockDiskMgr.EXPECT().AllocChunks(gomock.Any(), gomock.Any()).AnyTimes().DoAndReturn(func(ctx context.Context, policy diskmgr.AllocPolicy) ([]proto.DiskID, []proto.Vuid, error) {
 		diskids := make([]proto.DiskID, len(policy.Vuids))
 		for i := range diskids {
 			diskids[i] = 9999
 		}
-		return diskids, nil
+		return diskids, policy.Vuids, nil
 	})
 	mockDiskMgr.EXPECT().GetDiskInfo(gomock.Any(), gomock.Any()).AnyTimes().DoAndReturn(mockGetDiskInfo)
 	mockVolumeMgr.raftServer = mockRaftServer
@@ -148,16 +148,16 @@ func TestVolumeMgr_finishLastCreateJob(t *testing.T) {
 	mockDiskMgr := NewMockDiskMgrAPI(ctr)
 	mockRaftServer.EXPECT().Status().AnyTimes().Return(raftserver.Status{Id: 1})
 	allocSuccess := func(n int) {
-		mockDiskMgr.EXPECT().AllocChunks(gomock.Any(), gomock.Any()).MaxTimes(n).DoAndReturn(func(ctx context.Context, policy *diskmgr.AllocPolicy) ([]proto.DiskID, error) {
+		mockDiskMgr.EXPECT().AllocChunks(gomock.Any(), gomock.Any()).MaxTimes(n).DoAndReturn(func(ctx context.Context, policy diskmgr.AllocPolicy) ([]proto.DiskID, []proto.Vuid, error) {
 			diskids := make([]proto.DiskID, len(policy.Vuids))
 			for i := range diskids {
 				diskids[i] = 9999
 			}
-			return diskids, nil
+			return diskids, policy.Vuids, nil
 		})
 	}
 	allocFailed := func(n int) {
-		mockDiskMgr.EXPECT().AllocChunks(gomock.Any(), gomock.Any()).MaxTimes(n).Return(nil, diskmgr.ErrNoEnoughSpace)
+		mockDiskMgr.EXPECT().AllocChunks(gomock.Any(), gomock.Any()).MaxTimes(n).Return(nil, nil, diskmgr.ErrNoEnoughSpace)
 	}
 	mockDiskMgr.EXPECT().GetDiskInfo(gomock.Any(), gomock.Any()).AnyTimes().DoAndReturn(mockGetDiskInfo)
 	mockVolumeMgr.scopeMgr = mockScopeMgr
