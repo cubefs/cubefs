@@ -39,12 +39,13 @@ func (m *MockDiskMgrAPI) EXPECT() *MockDiskMgrAPIMockRecorder {
 }
 
 // AllocChunks mocks base method.
-func (m *MockDiskMgrAPI) AllocChunks(arg0 context.Context, arg1 *diskmgr.AllocPolicy) ([]proto.DiskID, error) {
+func (m *MockDiskMgrAPI) AllocChunks(arg0 context.Context, arg1 diskmgr.AllocPolicy) ([]proto.DiskID, []proto.Vuid, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "AllocChunks", arg0, arg1)
 	ret0, _ := ret[0].([]proto.DiskID)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
+	ret1, _ := ret[1].([]proto.Vuid)
+	ret2, _ := ret[2].(error)
+	return ret0, ret1, ret2
 }
 
 // AllocChunks indicates an expected call of AllocChunks.

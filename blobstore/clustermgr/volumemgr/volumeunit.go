@@ -99,18 +99,19 @@ func (v *VolumeMgr) AllocVolumeUnit(ctx context.Context, vuid proto.Vuid) (*cmap
 		return nil, errors.Info(err, "get disk info failed").Detail(err)
 	}
 
-	policy := &diskmgr.AllocPolicy{
-		DiskType: proto.DiskTypeHDD,
-		CodeMode: vol.volInfoBase.CodeMode,
-		Vuids:    []proto.Vuid{newVuid.(proto.Vuid)},
-		Idc:      diskInfo.Idc,
-		Excludes: excludes,
+	policy := diskmgr.AllocPolicy{
+		DiskType:   proto.DiskTypeHDD,
+		CodeMode:   vol.volInfoBase.CodeMode,
+		Vuids:      []proto.Vuid{newVuid.(proto.Vuid)},
+		Idc:        diskInfo.Idc,
+		Excludes:   excludes,
+		RetryTimes: 0,
 	}
 	if policy.CodeMode.T().IsReplicateMode() {
 		policy.DiskSetID = diskInfo.DiskSetID
 	}
 
-	allocDiskID, err := v.diskMgr.AllocChunks(ctx, policy)
+	allocDiskID, _, err := v.diskMgr.AllocChunks(ctx, policy)
 	if err != nil {
 		return nil, errors.Info(err, "alloc chunk failed").Detail(err)
 	}

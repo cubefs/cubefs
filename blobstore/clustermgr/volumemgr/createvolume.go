@@ -256,17 +256,18 @@ func (v *VolumeMgr) allocChunkForAllUnits(ctx context.Context, vol *CreateVolume
 		vuids = append(vuids, vuInfo.Vuid)
 	}
 
-	policy := &diskmgr.AllocPolicy{
-		DiskType: proto.DiskTypeHDD,
-		CodeMode: vol.VolInfo.CodeMode,
-		Vuids:    vuids,
+	policy := diskmgr.AllocPolicy{
+		DiskType:   proto.DiskTypeHDD,
+		CodeMode:   vol.VolInfo.CodeMode,
+		Vuids:      vuids,
+		RetryTimes: IncreaseEpochInterval,
 	}
 
-	disks, err := v.diskMgr.AllocChunks(ctx, policy)
+	disks, newVuids, err := v.diskMgr.AllocChunks(ctx, policy)
 	if err != nil {
 		return err
 	}
-	for i, vuid := range vuids {
+	for i, vuid := range newVuids {
 		diskInfo, err := v.diskMgr.GetDiskInfo(ctx, disks[i])
 		if err != nil {
 			span.Errorf("allocated disk ,get diskInfo [diskID:%d] error:%v", disks[i], err)

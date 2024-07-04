@@ -44,7 +44,6 @@ const (
 	defaultFlushIntervalS           = 600
 	defaultApplyConcurrency         = 10
 	defaultListDiskMaxCount         = 200
-	defaultAllocRetryTimes          = 3
 )
 
 // CopySet Config
@@ -91,7 +90,7 @@ type DiskMgrAPI interface {
 	// ListDroppingDisk return all dropping disk info
 	ListDroppingDisk(ctx context.Context) ([]*blobnode.DiskInfo, error)
 	// AllocChunk return available chunks in data center
-	AllocChunks(ctx context.Context, policy *AllocPolicy) ([]proto.DiskID, error)
+	AllocChunks(ctx context.Context, policy AllocPolicy) ([]proto.DiskID, []proto.Vuid, error)
 	// ListDiskInfo
 	ListDiskInfo(ctx context.Context, opt *clustermgr.ListOptionArgs) (*clustermgr.ListDiskRet, error)
 	// Stat return disk statistic info of a cluster
@@ -107,9 +106,10 @@ type AllocPolicy struct {
 	CodeMode codemode.CodeMode
 	Vuids    []proto.Vuid
 
-	Excludes  []proto.DiskID
-	DiskSetID proto.DiskSetID
-	Idc       string
+	Excludes   []proto.DiskID
+	DiskSetID  proto.DiskSetID
+	Idc        string
+	RetryTimes int
 }
 
 type HeartbeatEvent struct {
@@ -459,7 +459,7 @@ func (d *DiskMgr) ListDroppingDisk(ctx context.Context) ([]*blobnode.DiskInfo, e
 }
 
 // AllocChunk return available chunks in data center
-func (d *DiskMgr) AllocChunks(ctx context.Context, policy *AllocPolicy) ([]proto.DiskID, error) {
+func (d *DiskMgr) AllocChunks(ctx context.Context, policy AllocPolicy) ([]proto.DiskID, []proto.Vuid, error) {
 	span, ctx := trace.StartSpanFromContextWithTraceID(ctx, "AllocChunks", trace.SpanFromContextSafe(ctx).TraceID())
 
 	var (
@@ -470,6 +470,8 @@ func (d *DiskMgr) AllocChunks(ctx context.Context, policy *AllocPolicy) ([]proto
 		idcVuidMap      = make(map[string][]proto.Vuid)
 		idcDiskMap      = make(map[string][]proto.DiskID)
 		ret             = make([]proto.DiskID, len(policy.Vuids))
+		retVuids        = make([]proto.Vuid, len(policy.Vuids))
+		retryTimes      = policy.RetryTimes
 	)
 
 	// repair
@@ -482,7 +484,7 @@ func (d *DiskMgr) AllocChunks(ctx context.Context, policy *AllocPolicy) ([]proto
 			excludes:  policy.Excludes,
 		})
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		idcVuidMap[policy.Idc] = policy.Vuids
 		idcDiskMap[policy.Idc] = ret
@@ -502,7 +504,7 @@ func (d *DiskMgr) AllocChunks(ctx context.Context, policy *AllocPolicy) ([]proto
 		ret, err := allocator.Alloc(ctx, policy.DiskType, policy.CodeMode)
 		if err != nil {
 			span.Errorf("create volume alloc first time failed, err: %s", err.Error())
-			return nil, err
+			return nil, nil, err
 		}
 
 		for idcIdx, r := range ret {
@@ -510,8 +512,10 @@ func (d *DiskMgr) AllocChunks(ctx context.Context, policy *AllocPolicy) ([]proto
 			idcDiskMap[idc] = r.Disks
 			idcVuidIndexMap[idc] = make(map[proto.Vuid]int)
 			for _, vuidIdx := range idcIndexes[idcIdx] {
-				idcVuidMap[idc] = append(idcVuidMap[idc], policy.Vuids[vuidIdx])
-				idcVuidIndexMap[idc][policy.Vuids[vuidIdx]] = vuidIdx
+				vuid := policy.Vuids[vuidIdx]
+				idcVuidMap[idc] = append(idcVuidMap[idc], vuid)
+				idcVuidIndexMap[idc][vuid] = vuidIdx
+				retVuids[vuidIdx] = vuid
 			}
 		}
 	}
@@ -528,8 +532,6 @@ func (d *DiskMgr) AllocChunks(ctx context.Context, policy *AllocPolicy) ([]proto
 		}
 		excludes := make([]proto.DiskID, 0)
 
-		retryTimes := defaultAllocRetryTimes
-
 	RETRY:
 		if len(excludes) > 0 {
 			disks, err = allocator.ReAlloc(ctx, reAllocPolicy{
@@ -540,12 +542,12 @@ func (d *DiskMgr) AllocChunks(ctx context.Context, policy *AllocPolicy) ([]proto
 				excludes:  excludes,
 			})
 			if err != nil {
-				return nil, err
+				return nil, nil, err
 			}
 		}
 
 		if err := d.validateAllocRet(disks); err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 
 		failVuids := make([]proto.Vuid, 0)
@@ -568,6 +570,7 @@ func (d *DiskMgr) AllocChunks(ctx context.Context, policy *AllocPolicy) ([]proto
 				if blobNodeErr != nil {
 					vuidPrefix := vuids[idx].VuidPrefix()
 					newVuid := proto.EncodeVuid(vuidPrefix, vuids[idx].Epoch()+1)
+					retVuids[idcVuidIndexMap[idc][vuids[idx]]] = newVuid
 					failVuids = append(failVuids, newVuid)
 
 					span.Errorf("allocate chunk from blob node failed, diskID: %d, host: %s, err: %s", disks[idx], host, blobNodeErr)
@@ -582,14 +585,14 @@ func (d *DiskMgr) AllocChunks(ctx context.Context, policy *AllocPolicy) ([]proto
 
 		if len(failVuids) > 0 {
 			if retryTimes == 0 {
-				return nil, ErrBlobNodeCreateChunkFailed
+				return nil, nil, ErrBlobNodeCreateChunkFailed
 			}
 			retryTimes -= 1
 			goto RETRY
 		}
 	}
 
-	return ret, err
+	return ret, retVuids, err
 }
 
 // ListDiskInfo return disk info with specified query condition
