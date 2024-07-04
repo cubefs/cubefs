@@ -48,8 +48,8 @@ type AdminTask struct {
 
 // ToString returns the string format of the task.
 func (t *AdminTask) ToString() (msg string) {
-	msg = fmt.Sprintf("ID[%v] OpCode[%d] Status[%d] LastSendTime[%v]  SendCount[%v] Request[%v] Response[%v]",
-		t.ID, t.OpCode, t.Status, t.SendTime, t.SendCount, t.Request, t.Response)
+	msg = fmt.Sprintf("ReqID[%v]_ID[%v] OpCode[%d] Status[%d] LastSendTime[%v]  SendCount[%v] Request[%v] Response[%v]",
+		t.RequestID, t.ID, t.OpCode, t.Status, t.SendTime, t.SendCount, t.Request, t.Response)
 
 	return
 }
