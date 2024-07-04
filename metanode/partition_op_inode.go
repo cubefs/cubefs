@@ -1170,9 +1170,9 @@ func (mp *metaPartition) UpdateExtentKeyAfterMigration(req *proto.UpdateExtentKe
 	}()
 
 	if atomic.LoadUint32(&ino.ForbiddenMigration) == ForbiddenToMigration {
-		err = fmt.Errorf("mp %v inode %v is forbidden to migration", mp.config.PartitionId, ino.Inode)
+		err = fmt.Errorf("mp %v inode %v is forbidden to migration for lease is occupied by others", mp.config.PartitionId, ino.Inode)
 		log.LogErrorf("action[UpdateExtentKeyAfterMigration] %v", err)
-		p.PacketErrorWithBody(proto.OpNotPerm, []byte(err.Error()))
+		p.PacketErrorWithBody(proto.OpLeaseOccupiedByOthers, []byte(err.Error()))
 		return
 	}
 	writeGen := atomic.LoadUint64(&ino.WriteGeneration)
@@ -1180,7 +1180,7 @@ func (mp *metaPartition) UpdateExtentKeyAfterMigration(req *proto.UpdateExtentKe
 		err = fmt.Errorf("mp %v inode %v write generation is %v now: receive %v",
 			mp.config.PartitionId, ino.Inode, writeGen, req.WriteGen)
 		log.LogErrorf("action[UpdateExtentKeyAfterMigration] %v", err)
-		p.PacketErrorWithBody(proto.OpNotPerm, []byte(err.Error()))
+		p.PacketErrorWithBody(proto.OpLeaseGenerationNotMatch, []byte(err.Error()))
 		return
 	}
 	// store ek after migration in HybridCouldExtentsMigration
