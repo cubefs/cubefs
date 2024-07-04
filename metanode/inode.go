@@ -254,7 +254,7 @@ func (inode *Inode) GetAllExtsOfflineInode(mpID uint64) (extInfo map[uint64][]*p
 			return true
 		})
 		// NOTE: clear all extents in this layer
-		dIno.Extents = NewSortedExtents()
+		// dIno.Extents = NewSortedExtents()
 	}
 	return
 }
