@@ -183,8 +183,7 @@ int cfs_rdma_buffer_new(void) {
     sin.sin_addr.s_addr = in_aton("127.0.0.1");
     ret = rdma_resolve_addr(rdma_pool->cm_id, NULL, (struct sockaddr *)&sin, 500);
     if (ret) {
-        ibv_print_error("rdma_resolve_addr failed\n");
-        ret = -EPERM;
+        ibv_print_error("rdma_resolve_addr failed: %d\n", ret);
         goto err_out;
     }
 
@@ -206,9 +205,8 @@ int cfs_rdma_buffer_new(void) {
     return 0;
 
 err_out:
-    cfs_rdma_buffer_free_all();
-    rdma_destroy_id(rdma_pool->cm_id);
-    rdma_pool = NULL;
+    cfs_rdma_buffer_release();
+
     return ret;
 }
 
@@ -218,7 +216,8 @@ void cfs_rdma_buffer_release(void) {
     }
 
     cfs_rdma_buffer_free_all();
-    rdma_destroy_id(rdma_pool->cm_id);
+    if (rdma_pool->cm_id)
+        rdma_destroy_id(rdma_pool->cm_id);
     kfree(rdma_pool);
     rdma_pool = NULL;
 }

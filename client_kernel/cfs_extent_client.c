@@ -120,9 +120,6 @@ cfs_extent_client_new(struct cfs_mount_info *cmi)
 		kfree(ec);
 		return ERR_PTR(ret);
 	}
-	INIT_DELAYED_WORK(&ec->update_dp_work, update_dp_work_cb);
-	schedule_delayed_work(&ec->update_dp_work,
-			      msecs_to_jiffies(EXTENT_UPDATE_DP_INTERVAL_MS));
 	/*
 	* For non-rdma device, don't call cfs_rdma_buffer_new().
 	* The cfs_rdma_buffer_new calls rdma_create_id and rdma_resolve_addr.
@@ -137,6 +134,10 @@ cfs_extent_client_new(struct cfs_mount_info *cmi)
 			return ERR_PTR(ret);
 		}
 	}
+
+	INIT_DELAYED_WORK(&ec->update_dp_work, update_dp_work_cb);
+	schedule_delayed_work(&ec->update_dp_work,
+			      msecs_to_jiffies(EXTENT_UPDATE_DP_INTERVAL_MS));
 
 	return ec;
 }

@@ -306,7 +306,7 @@ static int cfs_socket_send_iter(struct cfs_socket *csk, struct iov_iter *iter, s
 	sigprocmask(SIG_SETMASK, &blocked, &oldset);
 	ret = kernel_sendmsg(csk->sock, &msghdr, (struct kvec *)iter->iov, iter->nr_segs, size);
 	if (ret < 0) {
-		printk("kernel_sendmsg error: %d\n", ret);
+		cfs_log_error(csk->log, "kernel_sendmsg error: %d\n", ret);
 	}
 	sigprocmask(SIG_SETMASK, &oldset, NULL);
 

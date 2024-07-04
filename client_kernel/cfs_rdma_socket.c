@@ -131,7 +131,7 @@ static int cfs_rdma_pages_to_buffer(struct cfs_socket *csk, struct cfs_packet *p
 	}
 	pDataBuf = ibv_socket_get_data_buf(csk->ibvsock, count);
 	if (!pDataBuf) {
-		printk("failed to allocate data buffer. size=%ld\n", count);
+		cfs_log_error(csk->log, "failed to allocate data buffer. size=%ld\n", count);
 		return -ENOMEM;
 	}
 	packet->data_buffer = pDataBuf;
@@ -156,7 +156,7 @@ static int cfs_rdma_iter_to_buffer(struct cfs_socket *csk, struct cfs_packet *pa
 	size = be32_to_cpu(packet->request.hdr.size);
 	pDataBuf = ibv_socket_get_data_buf(csk->ibvsock, size);
 	if (!pDataBuf) {
-		printk("failed to allocate data buffer. size=%ld\n", size);
+		cfs_log_error(csk->log, "failed to allocate data buffer. size=%ld\n", size);
 		return -ENOMEM;
 	}
 	packet->data_buffer = pDataBuf;
@@ -181,7 +181,7 @@ static int cfs_rdma_attach_buffer(struct cfs_socket *csk, struct cfs_packet *pac
 	}
 	pDataBuf = ibv_socket_get_data_buf(csk->ibvsock, count);
 	if (!pDataBuf) {
-		printk("failed to allocate data buffer. size=%ld\n", count);
+		cfs_log_error(csk->log, "failed to allocate data buffer. size=%ld\n", count);
 		return -ENOMEM;
 	}
 	packet->data_buffer = pDataBuf;
@@ -318,7 +318,7 @@ static int cfs_rdma_buffer_to_pages(struct cfs_socket *csk, struct cfs_packet *p
 	count = 0;
 	pDataBuf = packet->data_buffer;
 	if (!pDataBuf) {
-		printk("the data buffer pointer is null\n");
+		cfs_log_error(csk->log, "the data buffer pointer is null\n");
 		return -EINVAL;
 	}
 
@@ -342,7 +342,7 @@ static int cfs_rdma_buffer_to_iter(struct cfs_socket *csk, struct cfs_packet *pa
 	// copy data from buffer.
 	pDataBuf = packet->data_buffer;
 	if (!pDataBuf) {
-		printk("the data buffer pointer is null\n");
+		cfs_log_error(csk->log, "the data buffer pointer is null\n");
 		return -EINVAL;
 	}
 
@@ -350,7 +350,7 @@ static int cfs_rdma_buffer_to_iter(struct cfs_socket *csk, struct cfs_packet *pa
 
 	len = copy_to_iter(pDataBuf->pBuff, datalen, packet->reply.data.user_iter);
 	if (len != datalen) {
-		printk("warning reply hdr size=%d, copied size=%ld\n", datalen, len);
+		cfs_log_error(csk->log, "warning reply hdr size=%d, copied size=%ld\n", datalen, len);
 	}
 
 	// release the data buffer.
