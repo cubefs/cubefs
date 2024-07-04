@@ -145,12 +145,15 @@ func (eh *ExtentHandler) String() string {
 func (eh *ExtentHandler) write(data []byte, offset, size int, direct bool) (ek *proto.ExtentKey, err error) {
 	bgTime := stat.BeginStat()
 	var total, write int
-	log.LogDebugf("extentHandler write start")
+	//log.LogDebugf("extentHandler write start")
 	status := eh.getStatus()
 	if status >= ExtentStatusClosed {
 		err = errors.NewErrorf("ExtentHandler Write: Full or Recover eh(%v) key(%v)", eh, eh.key)
 		return
 	}
+
+	stat.EndStat("write(extentHandler write get status)", nil, bgTime, 1)
+	bgTime1 := stat.BeginStat()
 
 	var blksize int
 	if eh.storeMode == proto.TinyExtentType {
@@ -159,6 +162,9 @@ func (eh *ExtentHandler) write(data []byte, offset, size int, direct bool) (ek *
 		blksize = util.BlockSize
 	}
 	log.LogDebugf("blksize: %v", blksize)
+
+	stat.EndStat("write(extentHandler write get blksize)", nil, bgTime1, 1)
+	bgTime2 := stat.BeginStat()
 	// If this write request is not continuous, and cannot be merged
 	// into the extent handler, just close it and return error.
 	// In this case, the caller should try to create a new extent handler.
@@ -171,8 +177,10 @@ func (eh *ExtentHandler) write(data []byte, offset, size int, direct bool) (ek *
 			return
 		}
 	}
+	stat.EndStat("write(extentHandler write check incontinuous)", nil, bgTime2, 1)
 
 	for total < size {
+		bgTime3 := stat.BeginStat()
 		if eh.packet == nil {
 			eh.packet = NewWritePacket(eh.inode, offset+total, eh.storeMode)
 			if direct {
@@ -182,17 +190,20 @@ func (eh *ExtentHandler) write(data []byte, offset, size int, direct bool) (ek *
 		}
 		packsize := int(eh.packet.Size)
 		write = util.Min(size-total, blksize-packsize)
+		stat.EndStat("write(extentHandler write newWritePacket)", nil, bgTime3, 1)
+		bgTime4 := stat.BeginStat()
 		if write > 0 {
 			copy(eh.packet.Data[packsize:packsize+write], data[total:total+write])
 			eh.packet.Size += uint32(write)
 			total += write
 		}
-
+		stat.EndStat("write(extentHandler write copy)", nil, bgTime4, 1)
 		if int(eh.packet.Size) >= blksize {
 			log.LogDebugf("packet flush start")
 			log.LogDebugf("packet: %v", eh.packet)
 			eh.flushPacket()
 		}
+		stat.EndStat("write(extentHandler write traver)", nil, bgTime3, 1)
 	}
 
 	eh.size += total

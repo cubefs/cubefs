@@ -376,6 +376,10 @@ func (f *File) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.Wri
 	reqlen := len(req.Data)
 	log.LogDebugf("TRACE Write enter: ino(%v) offset(%v) len(%v)  flags(%v) fileflags(%v) quotaIds(%v) req(%v)",
 		ino, req.Offset, reqlen, req.Flags, req.FileFlags, f.info.QuotaInfos, req)
+
+	stat.EndStat("write(file write print log 1)", nil, bgTime, 1)
+	bgTime3 := stat.BeginStat()
+
 	if proto.IsHot(f.super.volType) {
 		filesize, _ := f.fileSize(ino)
 		if req.Offset > int64(filesize) && reqlen == 1 && req.Data[0] == 0 {
@@ -411,12 +415,16 @@ func (f *File) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.Wri
 	if req.FileFlags&fuse.OpenAppend != 0 || proto.IsCold(f.super.volType) {
 		flags |= proto.FlagsAppend
 	}
+	stat.EndStat("write(file write direct judge)", nil, bgTime3, 1)
+	bgTime4 := stat.BeginStat()
 
 	start := time.Now()
 	metric := exporter.NewTPCnt("filewrite")
 	defer func() {
 		metric.SetWithLabels(err, map[string]string{exporter.Vol: f.super.volname})
 	}()
+
+	stat.EndStat("write(file write newTPCnt)", nil, bgTime4, 1)
 
 	checkFunc := func() error {
 		if !f.super.mw.EnableQuota {

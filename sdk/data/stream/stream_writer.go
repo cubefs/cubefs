@@ -308,14 +308,22 @@ func (s *Streamer) write(data []byte, offset, size, flags int, checkFunc func() 
 	}
 
 	log.LogDebugf("Streamer write enter: ino(%v) offset(%v) size(%v)", s.inode, offset, size)
+	stat.EndStat("write(stream write print log 1)", nil, bgTime, 1)
+	bgTime3 := stat.BeginStat()
 
 	ctx := context.Background()
 	s.client.writeLimiter.Wait(ctx)
 
-	requests := s.extents.PrepareWriteRequests(offset, size, data)
-	log.LogDebugf("Streamer write: ino(%v) prepared requests(%v)", s.inode, requests)
+	stat.EndStat("write(stream write limiter wait)", nil, bgTime3, 1)
+	bgTime4 := stat.BeginStat()
 
-	stat.EndStat("write(stream write prepareRequests)", nil, bgTime, 1)
+	requests := s.extents.PrepareWriteRequests(offset, size, data)
+	stat.EndStat("write(stream write prepareRequests)", nil, bgTime4, 1)
+	bgTime5 := stat.BeginStat()
+	log.LogDebugf("Streamer write: ino(%v) prepared requests(%v)", s.inode, requests)
+	stat.EndStat("write(stream write print log 2)", nil, bgTime5, 1)
+
+	stat.EndStat("write(stream write whole prepareRequests)", nil, bgTime, 1)
 	bgTime1 := stat.BeginStat()
 
 	isChecked := false
@@ -489,6 +497,7 @@ func (s *Streamer) doWrite(data []byte, offset, size int, direct bool) (total in
 	}
 
 	log.LogDebugf("doWrite enter: ino(%v) offset(%v) size(%v) storeMode(%v)", s.inode, offset, size, storeMode)
+	stat.EndStat("write(doWrite print log)", nil, bgTime, 1)
 	if proto.IsHot(s.client.volumeType) {
 		if storeMode == proto.NormalExtentType && (s.handler == nil || s.handler != nil && s.handler.fileOffset+s.handler.size != offset) {
 			if currentEK := s.extents.GetEnd(uint64(offset)); currentEK != nil && !storage.IsTinyExtent(currentEK.ExtentId) {
@@ -570,9 +579,10 @@ func (s *Streamer) doWrite(data []byte, offset, size int, direct bool) (total in
 	_ = s.extents.Append(ek, false)
 	total = size
 
+	stat.EndStat("write(doWrite) append", nil, bgTime2, 1)
+
 	log.LogDebugf("doWrite exit: ino(%v) offset(%v) size(%v) ek(%v)", s.inode, offset, size, ek)
 
-	stat.EndStat("write(doWrite) append", nil, bgTime2, 1)
 	stat.EndStat("write(doWrite)", nil, bgTime, 1)
 	return
 }
