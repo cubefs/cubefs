@@ -485,5 +485,4 @@ type GcLockExtents struct {
 type DelExtentParam struct {
 	*ExtentKey
 	IsSnapshotDeletion bool
-	PartitionId        uint64
 }
