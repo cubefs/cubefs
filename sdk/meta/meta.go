@@ -58,6 +58,8 @@ const (
 	statusTxTimeout
 	statusUploadPartConflict
 	statusNotEmpty
+	statusLeaseOccupiedByOthers
+	statusLeaseGenerationNotMatch
 )
 
 const (
@@ -384,6 +386,10 @@ func parseStatus(result uint8) (status int) {
 		status = statusUploadPartConflict
 	case proto.OpForbidErr:
 		status = statusForbid
+	case proto.OpLeaseOccupiedByOthers:
+		status = statusLeaseOccupiedByOthers
+	case proto.OpLeaseGenerationNotMatch:
+		status = statusLeaseGenerationNotMatch
 	default:
 		status = statusError
 	}
@@ -435,6 +441,10 @@ func statusToErrno(status int) error {
 		return syscall.EEXIST
 	case statusForbid:
 		return syscall.EPERM
+	case statusLeaseOccupiedByOthers:
+		return errors.New("lease occupied by others")
+	case statusLeaseGenerationNotMatch:
+		return errors.New("lease generation not match")
 	default:
 	}
 	return syscall.EIO
