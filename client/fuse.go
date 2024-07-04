@@ -374,7 +374,8 @@ func main() {
 	// load  conf from master
 	for retry := 0; retry < MasterRetrys; retry++ {
 		err = loadConfFromMaster(opt)
-		if err != nil {
+		// if vol not exists, not retry
+		if err != nil && err.Error() != proto.ErrVolNotExists.Error() {
 			time.Sleep(5 * time.Second * time.Duration(retry+1))
 		} else {
 			break
