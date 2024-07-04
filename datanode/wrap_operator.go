@@ -557,20 +557,20 @@ func (s *DataNode) handleHeartbeatPacket(p *repl.Packet) {
 			// NOTE: set decommission disks
 			s.checkDecommissionDisks(request.DecommissionDisks)
 			log.LogDebugf("handleHeartbeatPacket checkDecommissionDisks req(%v) cost %v",
-				task.RequestID, time.Now().Sub(begin).Milliseconds())
+				task.RequestID, time.Now().Sub(begin))
 
 			s.buildHeartBeatResponse(response)
 			log.LogDebugf("handleHeartbeatPacket buildHeartBeatResponse req(%v) cost %v",
-				task.RequestID, time.Now().Sub(begin).Milliseconds())
+				task.RequestID, time.Now().Sub(begin))
 			// set volume forbidden
 			s.checkVolumeForbidden(request.ForbiddenVols)
 			log.LogDebugf("handleHeartbeatPacket checkVolumeForbidden req(%v) cost %v",
-				task.RequestID, time.Now().Sub(begin).Milliseconds())
+				task.RequestID, time.Now().Sub(begin))
 			s.diskQosEnableFromMaster = request.EnableDiskQos
 
 			s.checkVolumeDpRepairBlockSize(request.VolDpRepairBlockSize)
 			log.LogDebugf("handleHeartbeatPacket checkVolumeDpRepairBlockSize req(%v) cost %v",
-				task.RequestID, time.Now().Sub(begin).Milliseconds())
+				task.RequestID, time.Now().Sub(begin))
 			var needUpdate bool
 			for _, pair := range []struct {
 				replace uint64
@@ -603,7 +603,7 @@ func (s *DataNode) handleHeartbeatPacket(p *repl.Packet) {
 		}
 		task.Response = response
 		log.LogDebugf("handleHeartbeatPacket send response req(%v) cost %v, cost from sendTime %v",
-			task.RequestID, time.Now().Sub(begin).Milliseconds(), time.Now().Sub(time.Unix(task.SendTime, 0)).Milliseconds())
+			task.RequestID, time.Now().Sub(begin), time.Now().Sub(time.Unix(task.SendTime, 0)))
 		if err = MasterClient.NodeAPI().ResponseDataNodeTask(task); err != nil {
 			err = errors.Trace(err, "heartbeat to master(%v) failed.", request.MasterAddr)
 			log.LogErrorf("HeartbeatPacket response to master: task(%v), err(%v)", task, err.Error())
