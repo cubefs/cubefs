@@ -280,6 +280,11 @@ func (partition *DataPartition) createTaskToCreateDataPartition(addr string, dat
 ) {
 	leaderSize := 0
 	if createType == proto.DecommissionedCreateDataPartition {
+		if len(partition.Replicas) == 0 {
+			log.LogInfof("action[createTaskToCreateDataPartition] cannot create replica for dp %v with empty repilcas",
+				partition.decommissionInfo())
+			return
+		}
 		partition.RLock()
 		leaderSize = int(partition.Replicas[0].Used)
 		partition.RUnlock()
