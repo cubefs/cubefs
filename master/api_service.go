@@ -7208,8 +7208,17 @@ func (m *Server) recoverBadDisk(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: err.Error()})
 		return
 	}
-
 	key := fmt.Sprintf("%s_%s", offLineAddr, diskPath)
+	value, ok := m.cluster.DecommissionDisks.Load(key)
+	if ok {
+		disk := value.(*DecommissionDisk)
+		err = m.cluster.syncDeleteDecommissionDisk(disk)
+		if err != nil {
+			sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: err.Error()})
+			return
+		}
+		m.cluster.DecommissionDisks.Delete(key)
+	}
 	rstMsg := fmt.Sprintf("recover bad disk[%s] successfully ", key)
 	sendOkReply(w, r, newSuccessHTTPReply(rstMsg))
 }
