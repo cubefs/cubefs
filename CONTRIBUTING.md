@@ -126,3 +126,12 @@ Date:   Thu Apr 27 09:40:02 2023 +0800
 - `goreleaser`: Build release package.
 - `slsa-releaser`: Build release package with [SLSA](https://slsa.dev/).
 - `release_test`: Run ltp tests before released.
+
+## Development, Testing, and Troubleshooting Guidelines
+
+- Develop Guide [link](https://cubefs.io/docs/master/dev-guide/code.html)
+- Testing Guide [link](https://cubefs.io/docs/master/evaluation/env.html)
+- Best Practice Series
+	- [Common Troubleshooting Methods](https://cubefs.io/docs/master/faq/troubleshoot/strategy.html)
+	- [Common Troubleshooting Scenarios](https://cubefs.io/docs/master/faq/troubleshoot/case.html#common-troubleshooting-scenarios)
+	- [Common Operational Issues Handling](https://mp.weixin.qq.com/s/cH9xw5sK80RIkkZWpyd4qA)
