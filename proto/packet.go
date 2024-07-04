@@ -273,11 +273,14 @@ const (
 	OpMetaRenewalForbiddenMigration     uint8 = 0x83
 	OpMetaUpdateExtentKeyAfterMigration uint8 = 0x84
 	OpDeleteMigrationExtentKey          uint8 = 0x85
+	OpLeaseOccupiedByOthers             uint8 = 0x86
+	OpLeaseGenerationNotMatch           uint8 = 0x87
 )
 
 const (
-	WriteDeadlineTime                         = 5
-	ReadDeadlineTime                          = 5
+	WriteDeadlineTime = 5
+	ReadDeadlineTime  = 5
+
 	SyncSendTaskDeadlineTime                  = 30
 	NoReadDeadlineTime                        = -1
 	BatchDeleteExtentReadDeadLineTime         = 120
@@ -741,6 +744,10 @@ func (p *Packet) GetResultMsg() (m string) {
 		return "OpReachMaxExtentsErr"
 	case OpMismatchStorageClass:
 		m = "OpMismatchStorageClass:" + string(p.Data)
+	case OpLeaseOccupiedByOthers:
+		m = "LeaseOccupiedByOthers"
+	case OpLeaseGenerationNotMatch:
+		m = "OpLeaseGenerationNotMatch"
 	default:
 		return fmt.Sprintf("Unknown ResultCode(%v)", p.ResultCode)
 	}
