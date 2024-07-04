@@ -194,10 +194,9 @@ func (mp *metaPartition) batchDeleteExtentsByDp(dpId uint64, extents []*proto.De
 		batchEk := extents[i:limit]
 		err = mp.doBatchDeleteExtentsByPartition(dpId, batchEk)
 		if err != nil {
-			err = nil
-			log.LogErrorf("[batchDeleteExtentsByDp] vol(%v) mp(%v) failed to delete dp(%v) extents cnt(%v)", mp.GetVolName(), mp.config.PartitionId, dp.PartitionID, len(batchEk))
-			retryExtents = append(retryExtents, batchEk...)
-			continue
+			log.LogErrorf("[batchDeleteExtentsByDp] vol(%v) mp(%v) failed to delete dp(%v) extents cnt(%v), err %s", mp.GetVolName(), mp.config.PartitionId, dp.PartitionID, len(batchEk), err.Error())
+			retryExtents = append(retryExtents, extents[i:]...)
+			return
 		}
 		log.LogDebugf("[batchDeleteExtentsByDp] vol(%v) mp(%v) delete eks cnt(%v) from dp(%v)", mp.GetVolName(), mp.config.PartitionId, len(extents), dpId)
 	}
