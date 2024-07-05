@@ -647,8 +647,12 @@ func (eh *ExtentHandler) recoverPacket(packet *Packet) error {
 
 func (eh *ExtentHandler) discardPacket(packet *Packet) {
 	if IsRdma && (packet.Opcode == proto.OpWrite || packet.Opcode == proto.OpSyncWrite) {
-		for _, conn := range eh.rdmaConn {
-			rdma.ReleaseDataBuffer(conn, packet.RdmaBuffer, util.RdmaPacketHeaderSize+packet.Size)
+		for index, conn := range eh.rdmaConn {
+			if index == 0 {
+				rdma.ReleaseDataBuffer(conn, packet.RdmaBuffer, util.RdmaPacketHeaderSize+packet.Size)
+			} else {
+				rdma.ReleaseDataBuffer(conn, nil, util.RdmaPacketHeaderSize+packet.Size)
+			}
 		}
 
 	} else {

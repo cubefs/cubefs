@@ -525,7 +525,7 @@ func (rp *ReplProtocol) writeResponse(reply *Packet) {
 		*/
 		rp.Stop()
 	}
-	log.LogDebugf("try rsp opcode %v %v %v", rp.replId, reply.Opcode, rp.sourceConn)
+
 	// execute the post-processing function
 	rp.postFunc(reply)
 	if !reply.NeedReply {
