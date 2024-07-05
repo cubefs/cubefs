@@ -94,11 +94,6 @@ void cfs_rdma_buffer_put(struct cfs_node *item) {
     mutex_unlock(&buffer->lock);
 }
 
-int cfs_rdma_buffer_event_handler(struct rdma_cm_id *cm_id, struct rdma_cm_event *event) {
-	wake_up(&rdma_pool->event_wait_queue);
-	return 0;
-}
-
 void cfs_rdma_buffer_free_all(void) {
 	struct cfs_node *item = NULL;
 	struct cfs_node *tmp = NULL;
@@ -150,9 +145,32 @@ int cfs_rdma_buffer_create(struct cfs_rdma_buffer *buffer) {
     return 0;
 }
 
+int cfs_rdma_buffer_event_handler(struct rdma_cm_id *cm_id, struct rdma_cm_event *event) {
+    struct cfs_rdma_buffer_pool *pool = cm_id->context;
+
+    switch (event->event) {
+    case RDMA_CM_EVENT_ADDR_RESOLVED:
+        ibv_print_debug("receive event RDMA_CM_EVENT_ADDR_RESOLVED\n");
+        pool->state = EVENT_STATE_ADDRESSRESOLVED;
+        break;
+
+    case RDMA_CM_EVENT_ROUTE_RESOLVED:
+        ibv_print_debug("receive event RDMA_CM_EVENT_ROUTE_RESOLVED\n");
+        pool->state = EVENT_STATE_ROUTERESOLVED;
+        break;
+
+    default:
+        ibv_print_error("receive RDMA_CMA event: %d, status: %i\n", event->event, event->status);
+        pool->state = EVENT_STATE_OTHER;
+        break;
+    }
+    wake_up(&pool->event_wait_queue);
+    return 0;
+}
+
 int cfs_rdma_buffer_new(void) {
     int ret;
-    struct sockaddr_in sin;
+    struct sockaddr_in dst;
     int i = 0;
 
     if (rdma_pool) {
@@ -172,22 +190,33 @@ int cfs_rdma_buffer_new(void) {
     }
     init_waitqueue_head(&rdma_pool->event_wait_queue);
 
-    rdma_pool->cm_id = rdma_create_id(&init_net, cfs_rdma_buffer_event_handler, NULL, RDMA_PS_TCP, IB_QPT_RC);
+    rdma_pool->cm_id = rdma_create_id(&init_net, cfs_rdma_buffer_event_handler, rdma_pool, RDMA_PS_TCP, IB_QPT_RC);
     if (IS_ERR(rdma_pool->cm_id)) {
         ibv_print_error("rdma_create_id failed\n");
         return -EPERM;
     }
 
-    sin.sin_family = AF_INET;
-    sin.sin_port = htons(DEFAULT_RDMA_PORT);
-    sin.sin_addr.s_addr = in_aton("127.0.0.1");
-    ret = rdma_resolve_addr(rdma_pool->cm_id, NULL, (struct sockaddr *)&sin, 500);
+    dst.sin_family = AF_INET;
+    dst.sin_port = htons(DEFAULT_RDMA_PORT);
+    dst.sin_addr.s_addr = in_aton("0.0.0.0");
+    ret = rdma_resolve_addr(rdma_pool->cm_id, NULL, (struct sockaddr *)&dst, 5000);
     if (ret) {
-        ibv_print_error("rdma_resolve_addr failed: %d\n", ret);
+        ibv_print_error("rdma_resolve_addr failed: %d.\n", ret);
         goto err_out;
     }
 
-    wait_event_interruptible(rdma_pool->event_wait_queue, true);
+    wait_event_interruptible(rdma_pool->event_wait_queue, rdma_pool->state != EVENT_STATE_INIT);
+    if (rdma_pool->state != EVENT_STATE_ADDRESSRESOLVED) {
+        ibv_print_error("rdma_pool->state: %d\n", rdma_pool->state);
+        ret = -ENODEV;
+        goto err_out;
+    }
+
+    if (rdma_pool->cm_id->device == NULL) {
+        ibv_print_error("rdma device is null\n");
+        ret = -ENODEV;
+        goto err_out;
+    }
 
     rdma_pool->buffer[0].size = BUFFER_512B_SIZE;
     rdma_pool->buffer[1].size = BUFFER_4K_SIZE;

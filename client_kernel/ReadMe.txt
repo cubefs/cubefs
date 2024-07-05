@@ -25,3 +25,10 @@ The 4.18.0-348.7.1.el8_5.x86_64 is kernel version.
 2. Why not install MLNX_OFED_LINUX kernel module?
 The rdma api is linked to kernel's. If install others, it will over write the kernel's.
 Then rdam api version will be mismatch.
+
+3. CentOS 7.6 can't works. Why?
+Please check whether the rdma device under /dev/infiniband/.
+If not, please try the commands: 
+yum install -y rdma-core librdmacm libibverbs
+modprobe rdma_cm
+modprobe mlx5_ib

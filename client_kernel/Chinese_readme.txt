@@ -35,3 +35,9 @@ export KBUILD_EXTRA_SYMBOLS=/usr/src/kernels/4.18.0-348.7.1.el8_5.x86_64/Module.
 2. 为什么不能安装MLNX_OFED_LINUX的内核部分?
 一旦安装MLNX_OFED_LINUX的内核软件，就会覆盖内核模块的接口。编译时，生成的接口版本和加载时就可能出现不匹配。
 
+3. 为什么centos 7.6不能工作？
+这个可能是因为没有加载rdma的设备。请尝试如下方式加载：
+yum install -y rdma-core librdmacm libibverbs
+modprobe rdma_cm
+modprobe mlx5_ib
+如果加载成功，应该就可以在/dev/infiniband/目录下看到几个rdma设备。

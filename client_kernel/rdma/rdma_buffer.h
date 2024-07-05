@@ -22,6 +22,13 @@
 
 #define DEFAULT_RDMA_PORT 17360
 
+enum cfs_rdma_event_state {
+	EVENT_STATE_INIT = 0,
+	EVENT_STATE_ADDRESSRESOLVED = 1,
+	EVENT_STATE_ROUTERESOLVED = 2,
+	EVENT_STATE_OTHER = 3
+};
+
 struct cfs_node {
 	char *pBuff;
 	u64 dma_addr;
@@ -44,6 +51,7 @@ struct cfs_rdma_buffer_pool {
 	struct cfs_rdma_buffer buffer[BUFFER_LEVEL_NUM];
     struct list_head all_list;
     struct mutex all_lock;
+    enum cfs_rdma_event_state state;
 };
 
 int cfs_rdma_buffer_new(void);
