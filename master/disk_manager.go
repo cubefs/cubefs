@@ -122,11 +122,10 @@ func (c *Cluster) checkDiskRecoveryProgress() {
 						if partition.DecommissionType == ManualAddReplica {
 							partition.resetForManualAddReplica()
 						} else {
-							partition.SetDecommissionStatus(DecommissionFail)
-							partition.DecommissionNeedRollback = false
+							partition.markRollbackFailed(false)
 						}
 						partition.DecommissionErrorMessage = fmt.Sprintf("Decommission target node %v cannot finish recover"+
-							"for host[0] %v is down ", partition.DecommissionDstAddr, masterNode.Addr)
+							" for host[0] %v is down ", partition.DecommissionDstAddr, masterNode.Addr)
 						Warn(c.Name, fmt.Sprintf("action[checkDiskRecoveryProgress]clusterID[%v],partitionID[%v] %v",
 							c.Name, partitionID, partition.DecommissionErrorMessage))
 						partition.RLock()
@@ -379,7 +378,7 @@ func (dd *DecommissionDisk) updateDecommissionStatus(c *Cluster, debug bool) (ui
 
 	progress = float64(totalNum-len(partitions)-len(ignorePartitionIds)) / float64(totalNum)
 	if debug {
-		log.LogInfof("action[updateDecommissionDiskStatus] disk[%v] progress[%v] totalNum[%v] "+
+		log.LogInfof("action[updateDecommissionStatus] disk[%v] progress[%v] totalNum[%v] "+
 			"partitionIds %v  FailedNum[%v] failedPartitionIds %v, runningNum[%v] runningDp %v, prepareNum[%v] prepareDp %v "+
 			"stopNum[%v] stopPartitionIds %v ignorePartitionIds %v term %v",
 			dd.GenerateKey(), progress, totalNum, partitionIds, failedNum, failedPartitionIds, runningNum, runningPartitionIds,
