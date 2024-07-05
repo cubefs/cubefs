@@ -4200,7 +4200,7 @@ func (c *Cluster) TryDecommissionDataNode(dataNode *DataNode) {
 				}
 			}
 		}
-		dataNode.SetDecommissionStatus(DecommissionPrepare)
+		dataNode.SetDecommissionStatus(DecommissionRunning)
 		dataNode.ToBeOffline = true
 		log.LogDebugf("action[TryDecommissionDataNode] dataNode [%s] recover from DecommissionDiskList", dataNode.Addr)
 		return
@@ -4340,7 +4340,7 @@ func (c *Cluster) TryDecommissionDataNode(dataNode *DataNode) {
 	//	toBeOffLinePartitionIds = append(toBeOffLinePartitionIds, dp.PartitionID)
 	//}
 	//disk wait for decommission
-	dataNode.SetDecommissionStatus(DecommissionPrepare)
+	dataNode.SetDecommissionStatus(DecommissionRunning)
 	// avoid alloc dp on this node
 	dataNode.ToBeOffline = true
 	dataNode.DecommissionDiskList = decommissionDiskList
