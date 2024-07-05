@@ -7195,8 +7195,8 @@ func (m *Server) recoverBadDisk(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if !found {
-		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: fmt.Sprintf("disk %v is not reported"+
-			"from dataNode %v", diskPath, offLineAddr)})
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: fmt.Sprintf("disk %v is not bad "+
+			"disk on dataNode %v, do not support recover", diskPath, offLineAddr)})
 		return
 	}
 	err = dataNode.createTaskToRecoverBadDisk(diskPath)
