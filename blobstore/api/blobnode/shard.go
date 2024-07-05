@@ -22,6 +22,7 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/cubefs/cubefs/blobstore/blobnode/base"
 	bloberr "github.com/cubefs/cubefs/blobstore/common/errors"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/rpc"
@@ -79,6 +80,7 @@ func (c *client) PutShard(ctx context.Context, host string, args *PutShardArgs) 
 		host, args.DiskID, args.Vuid, args.Bid, args.Size, args.Type)
 	req, err := http.NewRequest(http.MethodPost, urlStr, args.Body)
 	if err != nil {
+		err = convertEIO(err)
 		return
 	}
 	req.ContentLength = args.Size
@@ -115,6 +117,7 @@ func (c *client) GetShard(ctx context.Context, host string, args *GetShardArgs) 
 
 	resp, err := c.Get(ctx, urlStr)
 	if err != nil {
+		err = convertEIO(err)
 		return nil, 0, err
 	}
 
@@ -161,6 +164,7 @@ func (c *client) RangeGetShard(ctx context.Context, host string, args *RangeGetS
 
 	req, err := http.NewRequest(http.MethodGet, urlStr, nil)
 	if err != nil {
+		err = convertEIO(err)
 		span.Errorf("Failed new req. urlStr:%s, err:%v", urlStr, err)
 		return
 	}
@@ -269,4 +273,12 @@ func (c *client) ListShards(ctx context.Context, host string, args *ListShardsAr
 	}
 
 	return listRet.ShardInfos, listRet.Next, nil
+}
+
+func convertEIO(err error) error {
+	if base.IsEIO(err) {
+		return bloberr.ErrDiskBroken
+	}
+
+	return err
 }
