@@ -92,6 +92,11 @@ func (s *Service) ShardGet(c *rpc.Context) {
 		return
 	}
 
+	if !ds.IsWritable() { // not normal disk, skip
+		c.RespondError(bloberr.ErrDiskBroken)
+		return
+	}
+
 	cs, exist := ds.GetChunkStorage(args.Vuid)
 	if !exist {
 		c.RespondError(bloberr.ErrNoSuchVuid)
@@ -291,6 +296,11 @@ func (s *Service) ShardMarkdelete(c *rpc.Context) {
 		return
 	}
 
+	if !ds.IsWritable() { // not normal disk, skip
+		c.RespondError(bloberr.ErrDiskBroken)
+		return
+	}
+
 	cs, exist := ds.GetChunkStorage(args.Vuid)
 	if !exist {
 		c.RespondError(bloberr.ErrNoSuchVuid)
@@ -366,6 +376,11 @@ func (s *Service) ShardDelete(c *rpc.Context) {
 	s.lock.RUnlock()
 	if !exist {
 		c.RespondError(bloberr.ErrNoSuchDisk)
+		return
+	}
+
+	if !ds.IsWritable() { // not normal disk, skip
+		c.RespondError(bloberr.ErrDiskBroken)
 		return
 	}
 
