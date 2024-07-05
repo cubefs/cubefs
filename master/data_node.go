@@ -391,15 +391,12 @@ func (dataNode *DataNode) checkDecommissionedDisks(d string) (ok bool) {
 
 func (dataNode *DataNode) updateDecommissionStatus(c *Cluster, debug bool) (uint32, float64) {
 	var (
-		partitionIds        []uint64
-		failedPartitionIds  []uint64
-		runningPartitionIds []uint64
-		preparePartitionIds []uint64
-		stopPartitionIds    []uint64
-		totalDisk           = len(dataNode.DecommissionDiskList)
-		markDiskNum         = 0
-		successDiskNum      = 0
-		progress            float64
+		totalDisk      = len(dataNode.DecommissionDiskList)
+		markDiskNum    = 0
+		successDiskNum = 0
+		failedDiskNum  = 0
+		cancelDiskNum  = 0
+		progress       float64
 	)
 	if dataNode.GetDecommissionStatus() == DecommissionInitial {
 		return DecommissionInitial, float64(0)
@@ -441,6 +438,10 @@ func (dataNode *DataNode) updateDecommissionStatus(c *Cluster, debug bool) (uint
 				successDiskNum++
 			} else if status == markDecommission {
 				markDiskNum++
+			} else if status == DecommissionFail {
+				failedDiskNum++
+			} else if status == DecommissionCancel {
+				cancelDiskNum++
 			}
 			_, diskProgress := dd.updateDecommissionStatus(c, debug)
 			progress += diskProgress
@@ -453,56 +454,29 @@ func (dataNode *DataNode) updateDecommissionStatus(c *Cluster, debug bool) (uint
 	// only care data node running/prepare/success
 	// no disk get token
 	if markDiskNum == totalDisk {
-		dataNode.SetDecommissionStatus(DecommissionPrepare)
-		return DecommissionPrepare, float64(0)
-	} else {
-		if successDiskNum == totalDisk {
-			dataNode.SetDecommissionStatus(DecommissionSuccess)
-			return DecommissionSuccess, float64(1)
-		}
+		dataNode.SetDecommissionStatus(markDecommission)
+		return markDecommission, float64(0)
 	}
-	// update datanode or running status
-	partitions := dataNode.GetLatestDecommissionDataPartition(c)
-	// Get all dp on this dataNode
-	failedNum := 0
-	runningNum := 0
-	prepareNum := 0
-	stopNum := 0
+	if successDiskNum == totalDisk {
+		dataNode.SetDecommissionStatus(DecommissionSuccess)
+		return DecommissionSuccess, float64(1)
+	}
 
-	for _, dp := range partitions {
-		if dp.IsDecommissionFailed() {
-			failedNum++
-			failedPartitionIds = append(failedPartitionIds, dp.PartitionID)
-		}
-		if dp.GetDecommissionStatus() == DecommissionRunning {
-			runningNum++
-			runningPartitionIds = append(runningPartitionIds, dp.PartitionID)
-		}
-		if dp.GetDecommissionStatus() == DecommissionPrepare {
-			prepareNum++
-			preparePartitionIds = append(preparePartitionIds, dp.PartitionID)
-		}
-		// datanode may stop before and will be counted into partitions
-		if dp.GetDecommissionStatus() == DecommissionPause {
-			stopNum++
-			stopPartitionIds = append(stopPartitionIds, dp.PartitionID)
-		}
-		partitionIds = append(partitionIds, dp.PartitionID)
-	}
-	progress = progress / float64(totalDisk)
-	if failedNum >= (len(partitions)-stopNum) && failedNum != 0 {
-		dataNode.markDecommissionFail()
+	if failedDiskNum == totalDisk {
+		dataNode.SetDecommissionStatus(DecommissionFail)
 		return DecommissionFail, progress
 	}
-	dataNode.SetDecommissionStatus(DecommissionRunning)
-	if debug {
-		log.LogInfof("action[updateDecommissionStatus] dataNode[%v] progress[%v] totalNum[%v] "+
-			"partitionIds %v  FailedNum[%v] failedPartitionIds %v, runningNum[%v] runningDp %v, prepareNum[%v] prepareDp %v "+
-			"stopNum[%v] stopPartitionIds %v",
-			dataNode.Addr, progress, len(partitions), partitionIds, failedNum, failedPartitionIds, runningNum, runningPartitionIds,
-			prepareNum, preparePartitionIds, stopNum, stopPartitionIds)
+
+	if cancelDiskNum != 0 {
+		dataNode.SetDecommissionStatus(DecommissionCancel)
 	}
-	return DecommissionRunning, progress
+	if debug {
+		log.LogInfof("action[updateDecommissionStatus] dataNode[%v] progress[%v] DecommissionDiskNum[%v] "+
+			"DecommissionDisks %v  markDiskNum[%v]  successDiskNum[%v]  failedDiskNum[%v]  cancelDiskNum[%v]",
+			dataNode.Addr, progress, len(dataNode.DecommissionDiskList), dataNode.DecommissionDiskList, markDiskNum,
+			successDiskNum, failedDiskNum, cancelDiskNum)
+	}
+	return dataNode.GetDecommissionStatus(), progress
 }
 
 func (dataNode *DataNode) GetLatestDecommissionDataPartition(c *Cluster) (partitions []*DataPartition) {

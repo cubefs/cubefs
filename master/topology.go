@@ -2196,18 +2196,20 @@ func (l *DecommissionDataPartitionList) traverse(c *Cluster) {
 					}
 					auditlog.LogMasterOp("TraverseDataPartition", msg, err)
 				} else if dp.IsDecommissionFailed() {
+					remove := false
 					if !dp.tryRollback(c) {
 						log.LogDebugf("action[DecommissionListTraverse]Remove dp[%v] for fail",
 							dp.PartitionID)
 						l.Remove(dp)
 						// if dp is not removed from decommission list, do not reset RestoreReplica
 						dp.setRestoreReplicaStop()
+						remove = true
 					}
 					// rollback fail/success need release token
 					dp.ReleaseDecommissionToken(c)
 					dp.DecommissionType = InitialDecommission
 					c.syncUpdateDataPartition(dp)
-					msg := fmt.Sprintf("dp %v decommission failed", dp.decommissionInfo())
+					msg := fmt.Sprintf("dp %v decommission failed, remove %v", dp.decommissionInfo(), remove)
 					auditlog.LogMasterOp("TraverseDataPartition", msg, nil)
 				} else if dp.IsDecommissionPaused() {
 					log.LogDebugf("action[DecommissionListTraverse]Remove dp[%v] for paused ",
