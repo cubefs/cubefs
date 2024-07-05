@@ -559,18 +559,16 @@ func (s *DataNode) handleHeartbeatPacket(p *repl.Packet) {
 			log.LogDebugf("handleHeartbeatPacket checkDecommissionDisks req(%v) cost %v",
 				task.RequestID, time.Now().Sub(begin))
 
-			s.buildHeartBeatResponse(response)
+			forbiddenVols := make(map[string]struct{})
+			for _, vol := range request.ForbiddenVols {
+				if _, ok := forbiddenVols[vol]; !ok {
+					forbiddenVols[vol] = struct{}{}
+				}
+			}
+			s.buildHeartBeatResponse(response, forbiddenVols, request.VolDpRepairBlockSize)
 			log.LogDebugf("handleHeartbeatPacket buildHeartBeatResponse req(%v) cost %v",
 				task.RequestID, time.Now().Sub(begin))
-			// set volume forbidden
-			s.checkVolumeForbidden(request.ForbiddenVols)
-			log.LogDebugf("handleHeartbeatPacket checkVolumeForbidden req(%v) cost %v",
-				task.RequestID, time.Now().Sub(begin))
 			s.diskQosEnableFromMaster = request.EnableDiskQos
-
-			s.checkVolumeDpRepairBlockSize(request.VolDpRepairBlockSize)
-			log.LogDebugf("handleHeartbeatPacket checkVolumeDpRepairBlockSize req(%v) cost %v",
-				task.RequestID, time.Now().Sub(begin))
 			var needUpdate bool
 			for _, pair := range []struct {
 				replace uint64

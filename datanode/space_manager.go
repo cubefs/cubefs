@@ -580,7 +580,8 @@ func (manager *SpaceManager) DeletePartition(dpID uint64, force bool) (err error
 	return nil
 }
 
-func (s *DataNode) buildHeartBeatResponse(response *proto.DataNodeHeartbeatResponse) {
+func (s *DataNode) buildHeartBeatResponse(response *proto.DataNodeHeartbeatResponse,
+	volNames map[string]struct{}, dpRepairBlockSize map[string]uint64) {
 	response.Status = proto.TaskSucceeds
 	stat := s.space.Stats()
 	stat.Lock()
@@ -618,6 +619,26 @@ func (s *DataNode) buildHeartBeatResponse(response *proto.DataNodeHeartbeatRespo
 		log.LogDebugf("action[Heartbeats] dpid(%v), status(%v) total(%v) used(%v) leader(%v) isLeader(%v) TriggerDiskError(%v).",
 			vr.PartitionID, vr.PartitionStatus, vr.Total, vr.Used, leaderAddr, vr.IsLeader, vr.TriggerDiskError)
 		response.PartitionReports = append(response.PartitionReports, vr)
+
+		if len(volNames) != 0 {
+			if _, ok := volNames[partition.volumeID]; ok {
+				partition.SetForbidden(true)
+			} else {
+				partition.SetForbidden(false)
+			}
+		}
+		size := uint64(proto.DefaultDpRepairBlockSize)
+		if len(dpRepairBlockSize) != 0 {
+			var ok bool
+			if size, ok = dpRepairBlockSize[partition.volumeID]; !ok {
+				size = proto.DefaultDpRepairBlockSize
+			}
+		}
+		log.LogDebugf("action[Heartbeats] volume(%v) dp(%v) repair block size(%v) current size(%v)",
+			partition.volumeID, partition.partitionID, size, partition.GetRepairBlockSize())
+		if partition.GetRepairBlockSize() != size {
+			partition.SetRepairBlockSize(size)
+		}
 		return true
 	})
 
