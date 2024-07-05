@@ -76,7 +76,10 @@ func (s *DataNode) getDiskAPI(w http.ResponseWriter, r *http.Request) {
 
 func (s *DataNode) getStatAPI(w http.ResponseWriter, r *http.Request) {
 	response := &proto.DataNodeHeartbeatResponse{}
-	s.buildHeartBeatResponse(response)
+	forbiddenVols := make(map[string]struct{})
+	volDpRepairBlockSizes := make(map[string]uint64)
+
+	s.buildHeartBeatResponse(response, forbiddenVols, volDpRepairBlockSizes)
 
 	s.buildSuccessResp(w, response)
 }
