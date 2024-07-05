@@ -41,3 +41,8 @@ yum install -y rdma-core librdmacm libibverbs
 modprobe rdma_cm
 modprobe mlx5_ib
 如果加载成功，应该就可以在/dev/infiniband/目录下看到几个rdma设备。
+
+4. 内核态客户端是否可以和fuse客户端共同使用？
+目前在centos7.6上面测试表明，如果insmod cubefs.ko以后，在启动fuse客户端就会失败。命令./cfs-client -c ./conf.cfs报错。
+如果先rmmod cubefs，上面的命令就可以成功运行。这个可能和两个软件启动时，都加载了rdma模块有关系。
+别的操作系统有待验证。

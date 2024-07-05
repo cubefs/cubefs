@@ -68,12 +68,12 @@ int ibv_socket_event_handler(struct rdma_cm_id *cm_id,
 		break;
 
 	case RDMA_CM_EVENT_DISCONNECTED:
-		this->conn_state = IBVSOCKETCONNSTATE_UNCONNECTED;
+		this->conn_state = IBVSOCKETCONNSTATE_DISCONNECTED;
 		ibv_print_debug("receive event RDMA_CM_EVENT_DISCONNECTED\n");
 		break;
 
 	case RDMA_CM_EVENT_DEVICE_REMOVAL:
-		this->conn_state = IBVSOCKETCONNSTATE_UNCONNECTED;
+		this->conn_state = IBVSOCKETCONNSTATE_DESTROYED;
 		ibv_print_debug("receive event RDMA_CM_EVENT_DEVICE_REMOVAL\n");
 		break;
 
