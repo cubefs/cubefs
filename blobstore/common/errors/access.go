@@ -19,8 +19,8 @@ const (
 	CodeAccessReadRequestBody  = 466 // read request body error
 	CodeAccessUnexpect         = 550 // unexpect
 	CodeAccessServiceDiscovery = 551 // service discovery for access api client
-	CodeAccessLimited          = 552 // read write limited for access api client
-	CodeAccessExceedSize       = 553 // exceed max size
+	CodeAccessLimited          = 429 // read write limited for access api client
+	CodeAccessExceedSize       = 400 // exceed max size
 )
 
 // errro of access

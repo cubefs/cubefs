@@ -38,6 +38,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/rpc"
 	"github.com/cubefs/cubefs/blobstore/common/uptoken"
 	"github.com/cubefs/cubefs/blobstore/testing/mocks"
+	_ "github.com/cubefs/cubefs/blobstore/testing/nolog"
 )
 
 var (
@@ -72,7 +73,8 @@ func newService() *Service {
 
 	s.EXPECT().Alloc(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes().DoAndReturn(
 		func(ctx context.Context, size uint64, blobSize uint32,
-			assignClusterID proto.ClusterID, codeMode codemode.CodeMode) (*access.Location, error) {
+			assignClusterID proto.ClusterID, codeMode codemode.CodeMode,
+		) (*access.Location, error) {
 			if size < 1024 {
 				return nil, errors.New("fake alloc location")
 			}
@@ -85,8 +87,8 @@ func newService() *Service {
 	s.EXPECT().PutAt(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(),
 		gomock.Any()).AnyTimes().DoAndReturn(
 		func(ctx context.Context, rc io.Reader,
-			clusterID proto.ClusterID, vid proto.Vid, bid proto.BlobID, size int64,
-			hasherMap access.HasherMap) error {
+			clusterID proto.ClusterID, vid proto.Vid, bid proto.BlobID, size int64, hasherMap access.HasherMap,
+		) error {
 			if size < 1024 {
 				return errcode.ErrAccessLimited
 			}
@@ -222,7 +224,7 @@ func TestAccessServicePutAt(t *testing.T) {
 			resp := &access.PutAtResp{}
 			req, _ := http.NewRequest(method, url(args.Size, "c1fdcecaacbfafd86f0b00"), bytes.NewReader(buf))
 			err := cli.DoWith(ctx, req, resp, rpc.WithCrcEncode())
-			assertErrorCode(t, 552, err)
+			assertErrorCode(t, errcode.CodeAccessLimited, err)
 		}
 		{
 			args.Size = 1024
