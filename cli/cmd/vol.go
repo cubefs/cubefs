@@ -63,6 +63,7 @@ const (
 
 func newVolListCmd(client *master.MasterClient) *cobra.Command {
 	var optKeyword string
+	var clientIDKey string
 	cmd := &cobra.Command{
 		Use:     CliOpList,
 		Short:   cmdVolListShort,
@@ -73,7 +74,7 @@ func newVolListCmd(client *master.MasterClient) *cobra.Command {
 			defer func() {
 				errout(err)
 			}()
-			if vols, err = client.AdminAPI().ListVols(optKeyword); err != nil {
+			if vols, err = client.AdminAPI().ListVols(optKeyword, clientIDKey); err != nil {
 				return
 			}
 			stdout("%v\n", volumeInfoTableHeader)
@@ -82,6 +83,7 @@ func newVolListCmd(client *master.MasterClient) *cobra.Command {
 			}
 		},
 	}
+	cmd.Flags().StringVar(&clientIDKey, CliFlagClientIDKey, client.ClientIDKey(), CliUsageClientIDKey)
 	cmd.Flags().StringVar(&optKeyword, "keyword", "", "Specify keyword of volume name to filter")
 	return cmd
 }
@@ -602,7 +604,7 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 			if len(args) != 0 {
 				return nil, cobra.ShellCompDirectiveNoFileComp
 			}
-			return validVols(client, toComplete), cobra.ShellCompDirectiveNoFileComp
+			return validVols(client, toComplete, clientIDKey), cobra.ShellCompDirectiveNoFileComp
 		},
 	}
 	cmd.Flags().StringVar(&optDescription, CliFlagDescription, "", "The description of volume")
@@ -643,6 +645,7 @@ func newVolInfoCmd(client *master.MasterClient) *cobra.Command {
 	var (
 		optMetaDetail bool
 		optDataDetail bool
+		clientIDKey   string
 	)
 
 	cmd := &cobra.Command{
@@ -701,9 +704,10 @@ func newVolInfoCmd(client *master.MasterClient) *cobra.Command {
 			if len(args) != 0 {
 				return nil, cobra.ShellCompDirectiveNoFileComp
 			}
-			return validVols(client, toComplete), cobra.ShellCompDirectiveNoFileComp
+			return validVols(client, toComplete, clientIDKey), cobra.ShellCompDirectiveNoFileComp
 		},
 	}
+	cmd.Flags().StringVar(&clientIDKey, CliFlagClientIDKey, client.ClientIDKey(), CliUsageClientIDKey)
 	cmd.Flags().BoolVarP(&optMetaDetail, "meta-partition", "m", false, "Display meta partition detail information")
 	cmd.Flags().BoolVarP(&optDataDetail, "data-partition", "d", false, "Display data partition detail information")
 	return cmd
@@ -779,7 +783,7 @@ func newVolDeleteCmd(client *master.MasterClient) *cobra.Command {
 			if len(args) != 0 {
 				return nil, cobra.ShellCompDirectiveNoFileComp
 			}
-			return validVols(client, toComplete), cobra.ShellCompDirectiveNoFileComp
+			return validVols(client, toComplete, clientIDKey), cobra.ShellCompDirectiveNoFileComp
 		},
 	}
 	cmd.Flags().BoolVarP(&optYes, "yes", "y", false, "Answer yes for all questions")
@@ -832,7 +836,7 @@ func newVolTransferCmd(client *master.MasterClient) *cobra.Command {
 				return
 			}
 			var userInfo *proto.UserInfo
-			if userInfo, err = client.UserAPI().GetUserInfo(userID); err != nil {
+			if userInfo, err = client.UserAPI().GetUserInfo(userID, clientIDKey); err != nil {
 				return
 			}
 			param := proto.UserTransferVolParam{
@@ -888,7 +892,7 @@ func newVolAddDPCmd(client *master.MasterClient) *cobra.Command {
 			if len(args) != 0 {
 				return nil, cobra.ShellCompDirectiveNoFileComp
 			}
-			return validVols(client, toComplete), cobra.ShellCompDirectiveNoFileComp
+			return validVols(client, toComplete, clientIDKey), cobra.ShellCompDirectiveNoFileComp
 		},
 	}
 	cmd.Flags().StringVar(&clientIDKey, CliFlagClientIDKey, client.ClientIDKey(), CliUsageClientIDKey)
@@ -930,7 +934,7 @@ func newVolAddMPCmd(client *master.MasterClient) *cobra.Command {
 			if len(args) != 0 {
 				return nil, cobra.ShellCompDirectiveNoFileComp
 			}
-			return validVols(client, toComplete), cobra.ShellCompDirectiveNoFileComp
+			return validVols(client, toComplete, clientIDKey), cobra.ShellCompDirectiveNoFileComp
 		},
 	}
 	cmd.Flags().StringVar(&clientIDKey, CliFlagClientIDKey, client.ClientIDKey(), CliUsageClientIDKey)
@@ -981,7 +985,7 @@ func newVolSetCapacityCmd(use, short string, r clientHandler) *cobra.Command {
 				return nil, cobra.ShellCompDirectiveNoFileComp
 			}
 			volume := r.(*volumeClient)
-			return validVols(volume.client, toComplete), cobra.ShellCompDirectiveNoFileComp
+			return validVols(volume.client, toComplete, clientIDKey), cobra.ShellCompDirectiveNoFileComp
 		},
 	}
 	cmd.Flags().StringVar(&clientIDKey, CliFlagClientIDKey, r.(*volumeClient).client.ClientIDKey(), CliUsageClientIDKey)

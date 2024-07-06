@@ -460,10 +460,10 @@ func (api *AdminAPI) CreateMetaPartition(volName string, count int, clientIDKey 
 	return
 }
 
-func (api *AdminAPI) ListVols(keywords string) (volsInfo []*proto.VolInfo, err error) {
+func (api *AdminAPI) ListVols(keywords string, clientIDKey string) (volsInfo []*proto.VolInfo, err error) {
 	volsInfo = make([]*proto.VolInfo, 0)
 	err = api.mc.requestWith(&volsInfo, newRequest(get, proto.AdminListVols).
-		Header(api.h).addParam("keywords", keywords))
+		Header(api.h).addParam("keywords", keywords).addParam("clientIDKey", clientIDKey))
 	return
 }
 
